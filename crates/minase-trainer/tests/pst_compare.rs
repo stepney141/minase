@@ -1,9 +1,12 @@
 //! PST比較診断の出力契約と明示された失敗条件を、合成MNSDで検査する。
+#[path = "common/mnsd.rs"]
+mod mnsd;
 use minase::{
     eval::{features::FEATURE_COUNT, pst::Pst},
-    training::records::{Header, Outcome, Record},
+    training::records::Header,
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
+use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::diagnostics::{self, Command, PstCompareArgs};
 use serde_json::{Value, json};
 use std::{
@@ -69,12 +72,12 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             format!("{class:040x}"),
             [class; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
             100,
             seed,
-            6,
         )
         .unwrap();
-        let mut bytes = header.encode().to_vec();
+        let mut samples = Vec::new();
         let validation_game = if seed == 11 { 4 } else { 6 };
         for (i, (game, position, outcome)) in [
             (1, sparse(), Outcome::Win),
@@ -87,8 +90,8 @@ impl Fixture {
         .into_iter()
         .enumerate()
         {
-            bytes.extend(
-                Record::from_position(
+            samples.push(
+                Sample::from_position(
                     &position,
                     [100, -200, 300, 400, -500, 600][i],
                     outcome,
@@ -100,10 +103,10 @@ impl Fixture {
                         minase::training::records::Origin::RandomSelfplay
                     },
                 )
-                .encode(),
+                .unwrap(),
             );
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         self.data.push(path);
     }
     fn args(&self, name: &str) -> PstCompareArgs {
@@ -184,37 +187,56 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     }
     let first = fixture.root.join("first");
     let bytes = fs::read(first.join("diagnostic-samples.bin")).unwrap();
-    let header = Header::decode(&bytes[..136]).unwrap();
-    assert_eq!(header.rule_set(), "L0,P0,R1,E0");
-    assert_eq!(header.record_count(), 6);
-    let mut expected: Vec<_> = fixture
-        .data
-        .iter()
-        .flat_map(|path| fs::read(path).unwrap()[136 + 3 * 160..].to_vec())
-        .collect();
-    for record in expected.as_chunks_mut::<160>().0 {
-        record[156] = 3;
+    use minase::training::records::{
+        Origin, Outcome as GameOutcome, Policy, Reader, Value as TeacherValue,
+    };
+    let mut reader = Reader::new(bytes.as_slice()).unwrap();
+    assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
+    assert_eq!(reader.header().game_count(), 6);
+    let dataset = minase_trainer::data::Dataset::open(
+        &fixture.data,
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
+    for (number, &index) in dataset.validation_indices().iter().enumerate() {
+        let game = reader.read_game().unwrap().unwrap();
+        assert_eq!(game.record().game_number(), number as u32 + 1);
+        assert_eq!(
+            game.positions()[0],
+            dataset.record(index).unwrap().to_position().unwrap()
+        );
+        assert_eq!(
+            game.record().start_ply(),
+            dataset.record(index).unwrap().ply()
+        );
     }
-    assert_eq!(&bytes[136..], &expected);
+    assert!(reader.read_game().unwrap().is_none());
     for name in [
         "diagnostic-samples.bin",
         "representatives.bin",
         "removals.bin",
     ] {
-        let mut reader =
-            minase::training::records::Reader::new(fs::File::open(first.join(name)).unwrap())
-                .unwrap();
-        while let Some(record) = reader.read_record().unwrap() {
-            assert_eq!(
-                record.origin(),
-                minase::training::records::Origin::Synthetic
-            );
+        let mut reader = Reader::new(fs::File::open(first.join(name)).unwrap()).unwrap();
+        let mut number = 0;
+        while let Some(game) = reader.read_game().unwrap() {
+            number += 1;
+            assert_eq!(game.record().game_number(), number);
+            assert_eq!(game.record().origin(), Origin::Synthetic);
+            assert_eq!(game.record().outcome(), GameOutcome::NotFromGame);
+            assert_eq!(game.record().entries().len(), 1);
+            let entry = &game.record().entries()[0];
+            assert_eq!(entry.value(), TeacherValue::None);
+            assert_eq!(entry.policy(), &Policy::None);
+            assert_eq!(entry.played_move(), None);
+            game.positions()[0].validate().unwrap();
         }
     }
-    let initial = fs::read(first.join("representatives.bin")).unwrap();
-    assert_eq!(&initial[136 + 146..136 + 156], &[0; 10]);
-    assert_eq!(initial[136 + 156], 3);
-    assert_eq!(&initial[136 + 157..136 + 160], &[0; 3]);
+    let mut representatives =
+        Reader::new(fs::File::open(first.join("representatives.bin")).unwrap()).unwrap();
+    let initial = representatives.read_game().unwrap().unwrap();
+    assert_eq!(initial.positions(), &[Position::initial()]);
+    assert_eq!(initial.record().start_ply(), 0);
     assert_eq!(report["representatives"][1]["index"], 3);
     assert_eq!(report["representatives"][2]["index"], 5);
     diagnostics::run(Command::PstCompare(fixture.args("repeated"))).unwrap();
@@ -289,6 +311,63 @@ fn games_are_counted_by_file_and_game_number() {
     let mut fixture = Fixture::new();
     fixture.data.clear();
     fixture.input(11, 1, true);
+    // 1局の3標本を合法な手順で作り、コピーした別ファイルでは別の対局として数える。
+    use minase::training::records::{
+        Entry, Exclusion, GameRecord, Origin, Outcome as GameOutcome, Policy, Reader,
+        Value as TeacherValue, sorted_legal_moves,
+    };
+    use minase_core::{Game, GameResult, Rules, WinReason};
+    let reader = Reader::new(fs::File::open(&fixture.data[0]).unwrap()).unwrap();
+    let header = reader.header().clone();
+    let start = sparse();
+    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut entries = Vec::new();
+    for (index, score) in [100, -200, 300].into_iter().enumerate() {
+        let mv = sorted_legal_moves(&game).unwrap()[index];
+        entries.push(
+            Entry::new(
+                Some(mv),
+                TeacherValue::AlphaBeta(score),
+                Exclusion::None,
+                Policy::None,
+                None,
+            )
+            .unwrap(),
+        );
+        game.play(mv).unwrap();
+    }
+    entries.push(
+        Entry::new(
+            None,
+            TeacherValue::None,
+            Exclusion::None,
+            Policy::None,
+            None,
+        )
+        .unwrap(),
+    );
+    let record = GameRecord::new(
+        4,
+        Origin::HumanGame,
+        GameOutcome::Game(GameResult::Win {
+            winner: Color::Black,
+            reason: WinReason::Resignation,
+        }),
+        0,
+        start,
+        entries,
+    )
+    .unwrap();
+    let training = GameRecord::new(
+        1,
+        record.origin(),
+        record.outcome(),
+        record.start_ply(),
+        record.start_position().clone(),
+        record.entries().to_vec(),
+    )
+    .unwrap();
+    fs::write(&fixture.data[0], mnsd::bytes(header, &[training, record])).unwrap();
     let duplicate = fixture.root.join("other.bin");
     fs::copy(&fixture.data[0], &duplicate).unwrap();
     fixture.data.push(duplicate);
@@ -338,34 +417,48 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
     let mut position = builder.finish().unwrap();
     position.set_lion_capture(Some(square)).unwrap();
     let path = &fixture.data[0];
-    let mut bytes = fs::read(path).unwrap();
-    let record = Record::from_position(
-        &position,
-        400,
-        Outcome::Win,
-        4,
-        3,
-        minase::training::records::Origin::RandomSelfplay,
-    );
-    bytes[136 + 3 * 160..136 + 4 * 160].copy_from_slice(&record.encode());
-    fs::write(path, &bytes).unwrap();
+    let bytes = fs::read(path).unwrap();
+    use minase::training::records::{GameRecord, Reader};
+    let mut reader = Reader::new(bytes.as_slice()).unwrap();
+    let header = reader.header().clone();
+    let mut games = Vec::new();
+    while let Some(game) = reader.read_game().unwrap() {
+        games.push(game.record().clone());
+    }
+    let previous = &games[3];
+    games[3] = GameRecord::new(
+        previous.game_number(),
+        previous.origin(),
+        previous.outcome(),
+        previous.start_ply(),
+        position.clone(),
+        previous.entries().to_vec(),
+    )
+    .unwrap();
+    fs::write(path, mnsd::bytes(header, &games)).unwrap();
     let report = fixture.run("skipped");
     assert_eq!(report["rust_removal_agreement"]["base"]["skipped"], 1);
     let removal = &report["representatives"][1]["removals"][0];
     assert_eq!(removal["square"], square.dense_index());
     assert!(removal["total_delta_cp"]["base"].is_null());
     assert!(removal["delta_cp"]["base"].is_i64());
-    let mut removed = record.encode();
-    removed[square.dense_index()] = 0;
-    removed[156] = 3;
-    let reason = Record::decode(&removed)
-        .unwrap()
-        .to_position()
-        .unwrap_err()
-        .to_string();
-    assert_eq!(removal["skipped"]["base"], reason);
-    let removals = fs::read(fixture.root.join("skipped/removals.bin")).unwrap();
-    assert!(removals[136..].chunks(160).any(|bytes| bytes == removed));
+    assert_eq!(
+        removal["skipped"]["base"],
+        "lion-promotion flag mismatch: recorded true, restored false"
+    );
+    let mut reader =
+        Reader::new(fs::File::open(fixture.root.join("skipped/removals.bin")).unwrap()).unwrap();
+    let mut count = 0;
+    while let Some(game) = reader.read_game().unwrap() {
+        game.positions()[0].validate().unwrap();
+        count += 1;
+    }
+    assert_eq!(
+        count,
+        report["rust_removal_agreement"]["base"]["checked"]
+            .as_u64()
+            .unwrap()
+    );
 }
 
 #[test]

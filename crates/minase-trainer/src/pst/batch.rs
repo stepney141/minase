@@ -2,10 +2,8 @@
 
 use super::{Error, Result, model::canonical};
 use crate::data::Dataset;
-use minase::{
-    eval::features::{feature_index, lion_feature_index},
-    training::records::{Outcome, Record},
-};
+use crate::data::{Outcome, Sample};
+use minase::eval::features::{feature_index, lion_feature_index};
 use minase_core::Square;
 
 /// 元の盤面の144升と先獅子の1列。
@@ -51,7 +49,7 @@ impl Batch {
     }
 
     /// 読み込み済みの記録、有限な探索値、分類番号からバッチを作る。
-    pub fn from_records(records: &[Record], scores: &[f32], classes: &[u32]) -> Result<Self> {
+    pub fn from_records(records: &[Sample], scores: &[f32], classes: &[u32]) -> Result<Self> {
         if records.len() != scores.len() || records.len() != classes.len() {
             return Err(Error::Invalid("PST teacher array lengths differ"));
         }
@@ -67,7 +65,7 @@ impl Batch {
 
     fn assemble(
         len: usize,
-        records: impl Iterator<Item = Result<(Record, f32, u32)>>,
+        records: impl Iterator<Item = Result<(Sample, f32, u32)>>,
     ) -> Result<Self> {
         check_size(len)?;
         let mut batch = Self {

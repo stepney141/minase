@@ -1,4 +1,7 @@
+#[path = "../../../tests/common/mnsd.rs"]
+mod mnsd;
 use super::*;
+use crate::data::{Outcome, Sample};
 use crate::nn::{BestEpoch, sha256};
 use crate::{
     data::{Dataset, epoch_permutation},
@@ -8,7 +11,7 @@ use crate::{
         reference::{AdamW, AdamWConfig},
     },
 };
-use minase::training::records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record};
+use minase::training::records::{GAME_HEADER_LEN, HEADER_LEN, Header};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 use std::{
     cell::Cell,
@@ -241,9 +244,16 @@ impl Fixture {
 
         // seed=11では0..40のうち4、15、22が検証対局である。
         // 40対局×8局面のうち訓練296局面を33件ずつに分け、末尾を32件にする。
-        let header =
-            Header::new("L0,P0,R1,E0".into(), "1".repeat(40), [2; 32], 200, 11, 320).unwrap();
-        let mut bytes = header.encode().to_vec();
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [2; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
+            200,
+            11,
+        )
+        .unwrap();
+        let mut samples = Vec::new();
         for game in 0..40_u32 {
             for ply in 0..8_u16 {
                 let side = if ply % 2 == 0 {
@@ -272,8 +282,8 @@ impl Fixture {
                     (1, Color::Black) | (2, Color::White) => Outcome::Win,
                     _ => Outcome::Loss,
                 };
-                bytes.extend(
-                    Record::from_position(
+                samples.push(
+                    Sample::from_position(
                         &builder.finish().unwrap(),
                         score,
                         outcome,
@@ -281,11 +291,11 @@ impl Fixture {
                         ply,
                         minase::training::records::Origin::RandomSelfplay,
                     )
-                    .encode(),
+                    .unwrap(),
                 );
             }
         }
-        fs::write(&args.data[0], &bytes).unwrap();
+        fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
         args
     }
 }
@@ -379,13 +389,15 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
 fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     assert_eq!(dataset.record_count(), 320);
     assert_eq!(dataset.training_indices().len(), 296);
     assert_eq!(dataset.validation_indices().len(), 24);
@@ -418,13 +430,15 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
 fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -464,7 +478,7 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
         input["byte_length"],
         fs::metadata(&args.data[0]).unwrap().len()
     );
-    assert_eq!(input["header"]["record_count"], 320);
+    assert_eq!(input["header"]["entry_count"], 320);
     assert_eq!(configuration.document["settings"]["lambda"], 1.0);
     let checkpoint = Checkpoint {
         removal_penalty: args.training.removal_penalty,
@@ -538,13 +552,15 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
 fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -610,13 +626,14 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         {
-            // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-            let dataset = unsafe {
-                Dataset::open(&args.data, args.lookahead().unwrap())
-                    .unwrap()
-                    .with_lambda(args.training.lambda)
-                    .unwrap()
-            };
+            let dataset = Dataset::open(
+                &args.data,
+                args.lookahead().unwrap(),
+                std::num::NonZeroUsize::new(1).unwrap(),
+            )
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap();
             let (model, observations) = initialized(&args, &dataset);
             let teacher_ks = dataset.estimate_teacher_ks().unwrap();
             let configuration =
@@ -688,13 +705,16 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             }
             "data" => {
                 let mut bytes = fs::read(&args.data[0]).unwrap();
-                bytes[116..120].copy_from_slice(&201_u32.to_le_bytes());
+                bytes[120..128].copy_from_slice(&201_u64.to_le_bytes());
                 fs::write(&args.data[0], bytes).unwrap();
             }
             "origin" => {
                 let mut bytes = fs::read(&args.data[0]).unwrap();
-                for record in bytes[HEADER_LEN..].as_chunks_mut::<RECORD_LEN>().0 {
-                    record[156] = 1;
+                for record in bytes[HEADER_LEN..]
+                    .as_chunks_mut::<{ GAME_HEADER_LEN + 7 }>()
+                    .0
+                {
+                    record[4] = 1;
                 }
                 fs::write(&args.data[0], bytes).unwrap();
             }
@@ -750,13 +770,15 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
 fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=1 {
@@ -801,13 +823,15 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
 fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=2 {
@@ -852,13 +876,15 @@ fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoin
 fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let old = completed_checkpoint(
         &model,
@@ -890,13 +916,15 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
 fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe {
-        Dataset::open(&args.data, args.lookahead().unwrap())
-            .unwrap()
-            .with_lambda(args.training.lambda)
-            .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let best_epoch = BestEpoch {
         epoch: 1,

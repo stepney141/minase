@@ -10,9 +10,9 @@ use super::{
 use minase::datagen::game::{CompletedGame, merge_completed_games};
 use minase::datagen::git::{git_output, validate_commit_hash};
 use minase::datagen::statistics::{RecordedStatistics, Statistics};
-use minase::datagen::{data_error, invalid_data, training_error};
+use minase::datagen::{data_error, invalid_data};
 use minase::search::TranspositionTable;
-use minase::training::records::{Header, Writer};
+use minase::training::records::{Header, TeacherKind, Writer};
 use minase_core::Rules;
 use std::{
     fs::{self, File, OpenOptions},
@@ -96,12 +96,12 @@ fn write_training_data(
         rule_set.to_owned(),
         generation_commit.to_owned(),
         network_checksum,
-        arguments.nodes,
+        TeacherKind::AlphaBeta,
+        u64::from(arguments.nodes),
         arguments.seed,
-        0,
     )
-    .map_err(training_error)?;
-    let mut writer = Writer::new(file, header).map_err(training_error)?;
+    .map_err(data_error)?;
+    let mut writer = Writer::new(file, header).map_err(data_error)?;
     let next_game = AtomicU64::new(1);
     let (sender, receiver) = mpsc::channel::<io::Result<CompletedGame>>();
     let start = Instant::now();
@@ -179,7 +179,7 @@ fn write_training_data(
 
     let (total, recorded) = total;
 
-    let file = writer.finish().map_err(training_error)?;
+    let file = writer.finish().map_err(data_error)?;
     file.sync_all()?;
     print_generation_summary(
         arguments,
@@ -267,6 +267,18 @@ fn print_generation_summary(
         "excluded_repetition_rate_percent: {}",
         format_rate_percent(stats.excluded_repetition, stats.recordable_positions)
     );
+    println!(
+        "excluded_mate_band_in_saved_games: {}",
+        recorded.exclusions[1]
+    );
+    println!(
+        "excluded_tactical_in_saved_games: {}",
+        recorded.exclusions[2]
+    );
+    println!(
+        "excluded_repetition_in_saved_games: {}",
+        recorded.exclusions[3]
+    );
     match score_mean_and_std(&recorded.score_frequencies) {
         Some((mean, standard_deviation)) => {
             println!("score_mean: {mean:.6}");
@@ -315,8 +327,10 @@ fn print_generation_summary(
 mod tests {
     use super::*;
     use minase::datagen::game::CompletedRecord;
-    use minase::training::records::{Outcome, Reader, Record};
-    use minase_core::Game;
+    use minase::training::records::{
+        Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Reader, Value,
+    };
+    use minase_core::{DrawReason, Game, GameResult};
     use std::{io::Cursor, num::NonZeroUsize};
 
     #[test]
@@ -338,12 +352,9 @@ mod tests {
         };
         generate(&arguments).unwrap();
         let mut reader = Reader::new(File::open(&arguments.output).unwrap()).unwrap();
-        assert!(reader.header().record_count() > 0);
-        while let Some(record) = reader.read_record().unwrap() {
-            assert_eq!(
-                record.origin(),
-                minase::training::records::Origin::RandomSelfplay
-            );
+        assert!(reader.header().game_count() > 0);
+        while let Some(decoded) = reader.read_game().unwrap() {
+            assert_eq!(decoded.record().origin(), Origin::RandomSelfplay);
         }
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
         fs::remove_dir_all(directory).unwrap();
@@ -360,17 +371,29 @@ mod tests {
         };
         CompletedGame {
             game_number,
-            records: vec![CompletedRecord {
-                record: Record::from_position(
-                    game.position(),
-                    score,
-                    Outcome::Draw,
+            record: Some(
+                GameRecord::new(
                     game_number,
-                    game.ply_count().try_into().unwrap(),
-                    minase::training::records::Origin::RandomSelfplay,
-                ),
-                search_key,
-            }],
+                    Origin::RandomSelfplay,
+                    Outcome::Game(GameResult::Draw {
+                        reason: DrawReason::Agreement,
+                    }),
+                    0,
+                    game.position().clone(),
+                    vec![
+                        Entry::new(
+                            None,
+                            Value::AlphaBeta(score),
+                            Exclusion::None,
+                            Policy::None,
+                            None,
+                        )
+                        .unwrap(),
+                    ],
+                )
+                .unwrap(),
+            ),
+            records: vec![CompletedRecord { score, search_key }],
             stats: Statistics {
                 searched_positions: u64::from(game_number),
                 recordable_positions: 1,
@@ -383,8 +406,15 @@ mod tests {
 
     /// 到着順を変えて統合し、完成バイト列と集計を返す。
     fn merge_in_order(order: &[u32]) -> (Vec<u8>, Statistics, Vec<u64>, u64) {
-        let header = Header::new("L0,P0,R1,E0".to_owned(), "0".repeat(40), [0; 32], 100, 1, 0)
-            .expect("the test header is valid");
+        let header = Header::new(
+            "L0,P0,R1,E0".to_owned(),
+            "0".repeat(40),
+            [0; 32],
+            TeacherKind::AlphaBeta,
+            100,
+            1,
+        )
+        .expect("the test header is valid");
         let mut writer =
             Writer::new(Cursor::new(Vec::new()), header).expect("the in-memory writer is valid");
         let messages = order.iter().map(|&number| Ok(completed_game(number)));
@@ -417,8 +447,15 @@ mod tests {
     /// 対局番号が欠けたまま入力が終われば統合を拒否する。
     #[test]
     fn completed_game_merge_rejects_a_missing_game_number() {
-        let header = Header::new("L0,P0,R1,E0".to_owned(), "0".repeat(40), [0; 32], 100, 1, 0)
-            .expect("the test header is valid");
+        let header = Header::new(
+            "L0,P0,R1,E0".to_owned(),
+            "0".repeat(40),
+            [0; 32],
+            TeacherKind::AlphaBeta,
+            100,
+            1,
+        )
+        .expect("the test header is valid");
         let mut writer =
             Writer::new(Cursor::new(Vec::new()), header).expect("the in-memory writer is valid");
         let messages = [1, 3, 4].map(|number| Ok(completed_game(number)));

@@ -195,11 +195,15 @@ impl Session {
         let base = base::read(&args.base)?;
         let initial = load_initial(&args.init_pst)?;
         validate_initial(&initial, &base.linear)?;
-        // SAFETY: --dataは実行中に変更・切り詰めない入力というコマンドの契約に従う。
+
         // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
-        let dataset = unsafe {
-            Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.training.lambda)?
-        };
+        let dataset = Dataset::open(
+            &args.data,
+            args.lookahead()?,
+            std::num::NonZeroUsize::new(workers)
+                .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+        )?
+        .with_lambda(args.training.lambda)?;
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),

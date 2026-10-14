@@ -1,3 +1,5 @@
+#[path = "../common/mnsd.rs"]
+mod mnsd;
 use super::*;
 use minase::training::records::Header;
 use minase_trainer::pst::v0_piece_values;
@@ -60,9 +62,16 @@ impl Fixture {
             .encode();
         }
         fs::write(&args.init, initial).unwrap();
-        let header =
-            Header::new("L0,P0,R1,E0".into(), "1".repeat(40), [2; 32], 200, 11, 120).unwrap();
-        let mut bytes = header.encode().to_vec();
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [2; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
+            200,
+            11,
+        )
+        .unwrap();
+        let mut samples = Vec::new();
         for game in 0..40 {
             for ply in 0..3 {
                 let side = if ply % 2 == 0 {
@@ -88,8 +97,8 @@ impl Fixture {
                     pieces.push((2, 5, Color::Black, PieceKind::SilverGeneral));
                 }
                 let p = position(&pieces, side, (game % 2 == 0).then_some((5, 5)));
-                bytes.extend(
-                    Record::from_position(
+                samples.push(
+                    Sample::from_position(
                         &p,
                         if side == Color::Black { 300 } else { -300 },
                         if game % 3 == 0 {
@@ -101,11 +110,11 @@ impl Fixture {
                         ply,
                         minase::training::records::Origin::RandomSelfplay,
                     )
-                    .encode(),
+                    .unwrap(),
                 );
             }
         }
-        fs::write(&args.data[0], &bytes).unwrap();
+        fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
         (fixture, args)
     }
 }

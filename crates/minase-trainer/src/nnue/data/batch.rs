@@ -1,4 +1,4 @@
-use minase::training::records::{Outcome, Record};
+use crate::data::{Outcome, Sample};
 use minase_core::{Color, Position};
 
 use super::features::{base_features, canonical_row, input_features};
@@ -21,7 +21,7 @@ pub fn build_targets(
     .map_err(Into::into)
 }
 
-struct Sample {
+struct PositionedSample {
     position: Position,
     perspective: Color,
     score: f32,
@@ -295,7 +295,7 @@ impl BatchSlot {
     /// 教師値と分類は記録と同数で、教師値は有限でなければならない。
     pub fn from_records(
         feature_set: InputFeatureSet,
-        records: &[Record],
+        records: &[Sample],
         teacher_scores: &[f32],
         teacher_classes: &[u32],
     ) -> Result<Self> {
@@ -320,14 +320,14 @@ impl BatchSlot {
     fn assemble(
         feature_set: InputFeatureSet,
         indices: &[u64],
-        samples: impl Iterator<Item = Result<(Record, f32, u32)>>,
+        samples: impl Iterator<Item = Result<(Sample, f32, u32)>>,
     ) -> Result<Self> {
         Self::assemble_positions(
             feature_set,
             indices,
             samples.map(|sample| {
                 let (record, score, class) = sample?;
-                Ok(Sample {
+                Ok(PositionedSample {
                     position: record.to_position()?,
                     perspective: record.side_to_move(),
                     score,
@@ -349,7 +349,7 @@ impl BatchSlot {
             feature_set,
             &indices,
             positions.iter().map(|position| {
-                Ok(Sample {
+                Ok(PositionedSample {
                     position: position.clone(),
                     perspective,
                     score: 0.0,
@@ -363,7 +363,7 @@ impl BatchSlot {
     fn assemble_positions(
         feature_set: InputFeatureSet,
         indices: &[u64],
-        samples: impl Iterator<Item = Result<Sample>>,
+        samples: impl Iterator<Item = Result<PositionedSample>>,
     ) -> Result<Self> {
         if indices.is_empty() || indices.len() > MAX_BATCH_SIZE {
             return Err(Error::BatchSize {

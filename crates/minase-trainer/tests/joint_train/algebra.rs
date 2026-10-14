@@ -2,11 +2,11 @@ use super::*;
 use minase::eval::features::{active_features, mirror_feature};
 use minase_trainer::joint::{Adam, Batch};
 
-fn sample() -> (Model, Batch, Vec<Record>) {
+fn sample() -> (Model, Batch, Vec<Sample>) {
     let records: Vec<_> = [Color::Black, Color::White]
         .into_iter()
         .map(|side| {
-            Record::from_position(
+            Sample::from_position(
                 &position(
                     &[
                         (4, 0, Color::Black, PieceKind::King),
@@ -25,6 +25,7 @@ fn sample() -> (Model, Batch, Vec<Record>) {
                 0,
                 minase::training::records::Origin::RandomSelfplay,
             )
+            .unwrap()
         })
         .collect();
     let batch = Batch::from_records(&records, &[0, 1], &[0.2, 0.8]).unwrap();
@@ -313,14 +314,15 @@ fn fm_removal_rounds_in_embedding_precision_before_adding_pst_delta() {
         Color::Black,
         None,
     );
-    let record = Record::from_position(
+    let record = Sample::from_position(
         &p,
         0,
         Outcome::Win,
         1,
         0,
         minase::training::records::Origin::RandomSelfplay,
-    );
+    )
+    .unwrap();
     let batch = Batch::from_records(&[record], &[0], &[0.5]).unwrap();
     let mut v = vec![[0.0; FM_RANK]; FEATURE_COUNT];
     let (x, y, a) = (0.1234567_f32, 0.2345678_f32, -0.3456789_f32);

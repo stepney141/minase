@@ -1,5 +1,8 @@
 //! 合成RecordだけでMNSDの境界とバッチの外部契約を検証する。
 
+#[path = "common/mnsd.rs"]
+mod mnsd;
+use minase_trainer::data::{Outcome, Sample};
 use std::{
     fs,
     path::PathBuf,
@@ -11,7 +14,7 @@ use minase::{
         features::{FEATURE_COUNT, feature_index, lion_feature_index},
         nnue::feature_set::{FeatureSet, HalfKpHmB8},
     },
-    training::records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
+    training::records::{HEADER_LEN, Header},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
@@ -44,23 +47,23 @@ impl Fixture {
         seed: u64,
         checksum: u8,
         nodes: u32,
-        records: &[Record],
+        records: &[Sample],
     ) -> PathBuf {
         let path = self.0.join(name);
         let header = Header::new(
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [checksum; 32],
-            nodes,
+            minase::training::records::TeacherKind::AlphaBeta,
+            u64::from(nodes),
             seed,
-            records.len() as u64,
         )
         .unwrap();
-        let mut bytes = header.encode().to_vec();
+        let mut samples = Vec::new();
         for record in records {
-            bytes.extend(record.encode());
+            samples.push(record.clone());
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         path
     }
 }
@@ -90,8 +93,8 @@ fn single_pawn(lion: bool) -> Position {
     position
 }
 
-fn sample(position: &Position, game: u32, ply: u16, score: i16, outcome: Outcome) -> Record {
-    Record::from_position(
+fn sample(position: &Position, game: u32, ply: u16, score: i16, outcome: Outcome) -> Sample {
+    Sample::from_position(
         position,
         score,
         outcome,
@@ -99,30 +102,34 @@ fn sample(position: &Position, game: u32, ply: u16, score: i16, outcome: Outcome
         ply,
         minase::training::records::Origin::RandomSelfplay,
     )
+    .unwrap()
 }
 
 #[test]
-fn mmap_reads_multiple_files_and_checks_global_bounds() {
+fn dataset_reads_multiple_files_and_checks_global_bounds() {
     let fixture = Fixture::new();
     let first_records = [
         sample(&Position::initial(), 1, 0, 10, Outcome::Win),
-        sample(&single_pawn(true), 1, 1, -20, Outcome::Loss),
+        sample(&single_pawn(true), 2, 1, -20, Outcome::Loss),
     ];
     let first = fixture.write("first.bin", 11, 1, 200, &first_records);
     let empty = fixture.write("empty.bin", 33, 1, 200, &[]);
     let last_record = sample(&Position::initial(), 2, 0, 30, Outcome::Draw);
     let last = fixture.write("last.bin", 22, 2, 200, std::slice::from_ref(&last_record));
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[first, empty, last], None) }.unwrap();
+
+    let dataset = Dataset::open(
+        &[first, empty, last],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(dataset.record_count(), 3);
     assert_eq!(dataset.headers().count(), 3);
-    for (index, file, offset, expected) in [
-        (0, 0, HEADER_LEN, &first_records[0]),
-        (1, 0, HEADER_LEN + RECORD_LEN, &first_records[1]),
-        (2, 2, HEADER_LEN, &last_record),
+    for (index, expected) in [
+        (0, &first_records[0]),
+        (1, &first_records[1]),
+        (2, &last_record),
     ] {
-        assert_eq!(dataset.location(index).unwrap().file, file);
-        assert_eq!(dataset.location(index).unwrap().byte_offset, offset);
         assert_eq!(&dataset.record(index).unwrap(), expected);
     }
     for index in [3, u64::MAX] {
@@ -136,12 +143,12 @@ fn mmap_reads_multiple_files_and_checks_global_bounds() {
     assert_eq!(dataset.teacher_classes().len(), 2);
     assert_eq!(dataset.teacher_class(0).unwrap(), 0);
     assert_eq!(dataset.teacher_class(2).unwrap(), 1);
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&[], None) }.is_err());
+
+    assert!(Dataset::open(&[], None, std::num::NonZeroUsize::new(1).unwrap()).is_err());
 }
 
 #[test]
-fn mmap_rejects_invalid_headers_lengths_and_records() {
+fn dataset_rejects_invalid_headers_lengths_and_records() {
     let fixture = Fixture::new();
     let records = [sample(&Position::initial(), 1, 0, 1, Outcome::Win)];
     let path = fixture.write("data.bin", 11, 1, 200, &records);
@@ -156,20 +163,26 @@ fn mmap_rejects_invalid_headers_lengths_and_records() {
     bad_magic[0] = b'?';
     cases.push(bad_magic);
     let mut overflow = original.clone();
-    overflow[128..136].copy_from_slice(&u64::MAX.to_le_bytes());
+    overflow[144..152].copy_from_slice(&u64::MAX.to_le_bytes());
     cases.push(overflow);
     for bytes in cases {
         fs::write(&path, bytes).unwrap();
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None) }.is_err());
+
+        assert!(
+            Dataset::open(
+                std::slice::from_ref(&path),
+                None,
+                std::num::NonZeroUsize::new(1).unwrap()
+            )
+            .is_err()
+        );
     }
-    // Record::decodeが予約欄の違反を拒否する。
+    // 対局ヘッダの予約欄の違反を拒否する。
     let mut reserved = original;
-    reserved[HEADER_LEN + 159] = 1;
+    reserved[HEADER_LEN + 7] = 1;
     fs::write(&path, reserved).unwrap();
     assert!(matches!(
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(&[path], None) },
+        Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()),
         Err(Error::Mnsd(
             minase::training::records::Error::NonzeroReservedBytes
         ))
@@ -178,15 +191,29 @@ fn mmap_rejects_invalid_headers_lengths_and_records() {
 
 // フェーズ2aの契約: パスと乱数開始のシードだけで重複を検査する。
 #[test]
-fn mmap_rejects_duplicate_paths_and_random_seeds() {
+fn dataset_rejects_duplicate_paths_and_random_seeds() {
     let fixture = Fixture::new();
     let records = [sample(&Position::initial(), 1, 0, 1, Outcome::Win)];
     let first = fixture.write("a.bin", 11, 1, 200, &records);
     let second = fixture.write("b.bin", 11, 2, 200, &records);
-    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
-    assert!(unsafe { Dataset::open(&[first.clone(), first.clone()], None) }.is_err());
-    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
-    assert!(unsafe { Dataset::open(&[first, second], None) }.is_err());
+
+    assert!(
+        Dataset::open(
+            &[first.clone(), first.clone()],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
+
+    assert!(
+        Dataset::open(
+            &[first, second],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -210,8 +237,8 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
             .collect();
         paths.push(fixture.write(&format!("{i}.bin"), 11, 1, 200, &records));
     }
-    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
-    let dataset = unsafe { Dataset::open(&paths, None) }
+
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.5)
         .unwrap();
@@ -223,14 +250,19 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
     // 実戦入力は内容が同一の別ファイルも受理し、分類を共有する。
     let copy = fixture.0.join("copy.bin");
     fs::copy(&paths[2], &copy).unwrap();
-    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
-    let copied = unsafe { Dataset::open(&[paths[2].clone(), copy], None) }.unwrap();
+
+    let copied = Dataset::open(
+        &[paths[2].clone(), copy],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(copied.record_count(), 4);
     assert_eq!(copied.teacher_classes().len(), 1);
 }
 
 #[test]
-fn mmap_rejects_mixed_and_synthetic_origins_with_path() {
+fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
     use minase::training::records::Origin;
     let fixture = Fixture::new();
     let record = sample(&Position::initial(), 1, 0, 1, Outcome::Win);
@@ -246,8 +278,12 @@ fn mmap_rejects_mixed_and_synthetic_origins_with_path() {
             200,
             &[record.clone(), record.clone().with_origin(origin)],
         );
-        // SAFETY: テスト専用の入力は写像の生存中に変更しない。
-        let error = match unsafe { Dataset::open(std::slice::from_ref(&path), None) } {
+
+        let error = match Dataset::open(
+            std::slice::from_ref(&path),
+            None,
+            std::num::NonZeroUsize::new(1).unwrap(),
+        ) {
             Err(error) => error,
             Ok(_) => panic!("invalid origin accepted"),
         };
@@ -266,9 +302,9 @@ fn mmap_rejects_mixed_and_synthetic_origins_with_path() {
         200,
         &[record.with_origin(Origin::Synthetic)],
     );
-    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+
     assert!(matches!(
-        unsafe { Dataset::open(&[path], None) },
+        Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()),
         Err(Error::SyntheticOrigin { .. })
     ));
 }
@@ -301,12 +337,13 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
     );
     let mut estimates = Vec::new();
     for mix in [1.0, 0.75, 0.125] {
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        let dataset = unsafe {
-            Dataset::open(std::slice::from_ref(&path), None)
-                .unwrap()
-                .with_lambda(mix)
-        }
+        let dataset = Dataset::open(
+            std::slice::from_ref(&path),
+            None,
+            std::num::NonZeroUsize::new(1).unwrap(),
+        )
+        .unwrap()
+        .with_lambda(mix)
         .unwrap();
         estimates.push(dataset.estimate_teacher_ks().unwrap()[0]);
     }
@@ -316,8 +353,11 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
             .iter()
             .all(|value| value.to_bits() == estimates[0].to_bits())
     );
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None).unwrap().with_lambda(0.0) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap())
+        .unwrap()
+        .with_lambda(0.0)
+        .unwrap();
     assert!(dataset.estimate_teacher_ks().unwrap()[0].is_nan());
 }
 
@@ -389,17 +429,20 @@ fn lambda_one_preserves_previous_sigmoid_target_bits() {
 fn lookahead_is_file_local_and_validates_record_order() {
     let fixture = Fixture::new();
     let pos = Position::initial();
-    let first = fixture.write(
-        "first.bin",
-        11,
+    let first = fixture.0.join("first.bin");
+    let header = ab_header(11, 200);
+    let game = played_game(
         1,
-        200,
+        0,
         &[
-            sample(&pos, 1, 0, 7, Outcome::Win),
-            sample(&pos, 1, 1, 2, Outcome::Loss),
-            sample(&pos, 1, 3, 1, Outcome::Loss),
+            (Some(7), Exclusion::None),
+            (Some(2), Exclusion::None),
+            (None, Exclusion::None),
+            (Some(1), Exclusion::None),
+            (None, Exclusion::None),
         ],
     );
+    fs::write(&first, mnsd::bytes(header, &[game])).unwrap();
     let second = fixture.write(
         "second.bin",
         22,
@@ -408,26 +451,20 @@ fn lookahead_is_file_local_and_validates_record_order() {
         &[sample(&pos, 1, 4, 999, Outcome::Win)],
     );
     let options = Lookahead::new(0.5, 3).unwrap();
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[first, second], Some(options)) }.unwrap();
+
+    let dataset = Dataset::open(
+        &[first, second],
+        Some(options),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     let scores: Vec<_> = (0..4).map(|i| dataset.teacher_score(i).unwrap()).collect();
     assert_eq!(scores, [-1.8_f32, 1.0, 1.0, 999.0]);
     assert_eq!(dataset.record(0).unwrap().score(), 7);
     assert_eq!(dataset.teacher_classes()[0].lookahead(), Some(options));
     for (games, plies) in [([2, 1], [0, 1]), ([1, 1], [1, 1]), ([1, 1], [2, 1])] {
-        let path = fixture.write(
-            "unordered.bin",
-            33,
-            1,
-            200,
-            &[
-                sample(&pos, games[0], plies[0], 0, Outcome::Draw),
-                sample(&pos, games[1], plies[1], 0, Outcome::Draw),
-            ],
-        );
         assert!(matches!(
-            // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-            unsafe { Dataset::open(&[path], Some(options)) },
+            minase_trainer::data::compute_lookahead(&games, &plies, &[0.0, 0.0], options),
             Err(Error::RecordOrder { index: 1 })
         ));
     }
@@ -470,8 +507,8 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         &[sample(&pos, 1, 0, 1000, Outcome::Loss)],
     );
     let paths = [first, second, third, fourth];
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&paths, None) }.unwrap();
+
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     assert_eq!(dataset.teacher_classes().len(), 3);
     assert_eq!(dataset.teacher_class(2).unwrap(), 0);
     assert_eq!(dataset.teacher_class(3).unwrap(), 1);
@@ -482,8 +519,13 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     assert!((ks[0] - 50.0).abs() < 1e-8);
     assert!((ks[1] - 4000.0).abs() < 1e-8);
     assert!((ks[2] - 4000.0).abs() < 1e-8);
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let future = unsafe { Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap())) }.unwrap();
+
+    let future = Dataset::open(
+        &paths,
+        Some(Lookahead::new(0.9, 40).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_ne!(dataset.teacher_classes(), future.teacher_classes());
     let only_validation = fixture.write(
         "validation.bin",
@@ -493,12 +535,15 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         &[sample(&pos, 4, 0, 1, Outcome::Win)],
     );
     assert!(matches!(
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(&[only_validation], None) }
-            .unwrap()
-            .with_lambda(0.75)
-            .unwrap()
-            .estimate_teacher_ks(),
+        Dataset::open(
+            &[only_validation],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .unwrap()
+        .with_lambda(0.75)
+        .unwrap()
+        .estimate_teacher_ks(),
         Err(Error::EmptyTeacherClass { class: 0 })
     ));
 }
@@ -518,8 +563,8 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
             sample(&Position::initial(), 4, 0, 3, Outcome::Draw),
         ],
     );
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
@@ -571,8 +616,7 @@ fn halfkp_virtual_observations_are_the_union_of_buckets() {
     }
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     let observed = Observations::compute(
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        &unsafe { Dataset::open(&[path], None) }.unwrap(),
+        &Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap(),
         InputFeatureSet::HalfKpHmB8,
     )
     .unwrap();
@@ -667,8 +711,8 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
         200,
         &[sample(&single_pawn(false), 1, 0, 1, Outcome::Win)],
     );
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     // ReverseIndexの128要素の区分に対し、直前・一致・直後と複数区分を検査する。
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
@@ -699,8 +743,8 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
         sample(&empty, 2, 0, 0, Outcome::Draw),
     ];
     let path = fixture.write("data.bin", 11, 1, 200, &records);
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let slots = build_batches(&dataset, set, batches).unwrap();
@@ -749,8 +793,8 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
         200,
         &[sample(&single_pawn(true), 1, 0, 1, Outcome::Win)],
     );
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let slots = build_batches(&dataset, InputFeatureSet::P, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
@@ -812,8 +856,8 @@ fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
         .map(|(i, position)| sample(position, 1, i as u16, 0, Outcome::Draw))
         .collect();
     let path = fixture.write("data.bin", 11, 1, 200, &records);
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
+
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let indices: Vec<_> = (0..positions.len() as u64).collect();
     let slots = build_batches(&dataset, InputFeatureSet::HalfKpHmB8, &[&indices]).unwrap();
     for (batch, position) in positions.iter().enumerate() {
@@ -856,12 +900,12 @@ fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
             std::slice::from_ref(&record),
         );
         let mut bytes = fs::read(&path).unwrap();
-        bytes[44..84].copy_from_slice(commit.repeat(40).as_bytes());
+        bytes[40..80].copy_from_slice(commit.repeat(40).as_bytes());
         fs::write(&path, bytes).unwrap();
         paths.push(path);
     }
-    // SAFETY: 専用入力をDatasetの生存中に変更しない。
-    let dataset = unsafe { Dataset::open(&paths, None) }
+
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.75)
         .unwrap();
@@ -877,10 +921,345 @@ fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
     let classes = serde_json::to_value(dataset.teacher_classes()).unwrap();
     assert_eq!(classes[0]["generation_commit"], "a".repeat(40));
     assert_eq!(classes[0]["lambda"], 0.75);
-    // SAFETY: 専用入力をDatasetの生存中に変更しない。
-    let other = unsafe { Dataset::open(&paths, None) }
+
+    let other = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.5)
         .unwrap();
     assert_ne!(dataset.teacher_classes(), other.teacher_classes());
+}
+
+use minase::training::records::{
+    Entry, Exclusion, GameRecord, Origin, Policy, Reader, TeacherKind, Value,
+};
+use minase_core::{Game, GameResult, WinReason};
+
+fn ab_header(seed: u64, scale: u64) -> Header {
+    Header::new(
+        "L0,P0,R1,E0".into(),
+        "1".repeat(40),
+        [1; 32],
+        TeacherKind::AlphaBeta,
+        scale,
+        seed,
+    )
+    .unwrap()
+}
+
+fn played_game(number: u32, start_ply: u16, values: &[(Option<i16>, Exclusion)]) -> GameRecord {
+    let mut game = Game::with_default_rules();
+    let mut entries = Vec::new();
+    for (index, &(score, exclusion)) in values.iter().enumerate() {
+        let mv = if index + 1 == values.len() {
+            None
+        } else {
+            Some(minase::training::records::sorted_legal_moves(&game).unwrap()[index])
+        };
+        let value = score.map_or(Value::None, Value::AlphaBeta);
+        entries.push(Entry::new(mv, value, exclusion, Policy::None, None).unwrap());
+        if let Some(mv) = mv {
+            game.play(mv).unwrap();
+        }
+    }
+    GameRecord::new(
+        number,
+        Origin::RandomSelfplay,
+        minase::training::records::Outcome::Game(GameResult::Win {
+            winner: Color::Black,
+            reason: WinReason::Resignation,
+        }),
+        start_ply,
+        Position::initial(),
+        entries,
+    )
+    .unwrap()
+}
+
+#[test]
+fn only_eligible_positions_receive_indices_and_share_the_game_split() {
+    let fixture = Fixture::new();
+    let values = [
+        (Some(100), Exclusion::None),
+        (Some(200), Exclusion::MateBand),
+        (None, Exclusion::None),
+        (Some(-300), Exclusion::None),
+        (Some(400), Exclusion::Tactical),
+        (Some(500), Exclusion::Repetition),
+        (None, Exclusion::None),
+    ];
+    let bytes = mnsd::bytes(
+        ab_header(11, 1_u64 << 40),
+        &[played_game(1, 10, &values), played_game(4, 20, &values)],
+    );
+    let path = fixture.0.join("eligible.bin");
+    fs::write(&path, &bytes).unwrap();
+    let dataset = Dataset::open(
+        &[path],
+        Some(Lookahead::new(0.5, 3).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(dataset.record_count(), 4);
+    assert_eq!(dataset.training_indices(), [0, 1]);
+    assert_eq!(dataset.validation_indices(), [2, 3]);
+    assert_eq!(dataset.teacher_classes()[0].nodes(), 1_u64 << 40);
+    let mut reader = Reader::new(bytes.as_slice()).unwrap();
+    for (offset, number, ply) in [(0, 1, 10), (2, 4, 20)] {
+        let decoded = reader.read_game().unwrap().unwrap();
+        for (local, item, score, outcome) in
+            [(0, 0, 100, Outcome::Win), (1, 3, -300, Outcome::Loss)]
+        {
+            let sample = dataset.record(offset + local).unwrap();
+            assert_eq!(sample.to_position().unwrap(), decoded.positions()[item]);
+            assert_eq!(sample.game_number(), number);
+            assert_eq!(sample.ply(), ply + item as u16);
+            assert_eq!(sample.score(), score);
+            assert_eq!(sample.outcome(), outcome);
+        }
+        assert_eq!(dataset.teacher_score(offset).unwrap(), 300.0);
+        assert_eq!(dataset.teacher_score(offset + 1).unwrap(), -300.0);
+    }
+}
+
+#[test]
+fn mcts_teacher_is_rejected_with_a_dedicated_error_even_when_empty() {
+    let fixture = Fixture::new();
+    let header = Header::new(
+        "L0,P0,R1,E0".into(),
+        "1".repeat(40),
+        [0; 32],
+        TeacherKind::Mcts,
+        100,
+        11,
+    )
+    .unwrap();
+    let path = fixture.0.join("mcts.bin");
+    fs::write(&path, mnsd::bytes(header, &[])).unwrap();
+    assert!(
+        matches!(Dataset::open(std::slice::from_ref(&path), None, std::num::NonZeroUsize::new(1).unwrap()), Err(Error::MctsTeacher { path: actual }) if actual == path)
+    );
+}
+
+#[test]
+fn files_without_eligible_samples_do_not_create_teacher_classes() {
+    let fixture = Fixture::new();
+    let empty = fixture.0.join("no-value.bin");
+    fs::write(
+        &empty,
+        mnsd::bytes(
+            ab_header(11, 200),
+            &[played_game(1, 0, &[(None, Exclusion::None)])],
+        ),
+    )
+    .unwrap();
+    let valid = fixture.write(
+        "valid.bin",
+        22,
+        2,
+        300,
+        &[sample(&single_pawn(false), 1, 0, 12, Outcome::Draw)],
+    );
+    let dataset = Dataset::open(
+        &[empty.clone(), valid],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(dataset.record_count(), 1);
+    assert_eq!(dataset.teacher_classes().len(), 1);
+    assert_eq!(dataset.teacher_class(0).unwrap(), 0);
+    assert_eq!(dataset.record(0).unwrap().score(), 12);
+    let duplicate = fixture.0.join("duplicate.bin");
+    fs::copy(&empty, &duplicate).unwrap();
+    assert!(
+        Dataset::open(
+            &[empty, duplicate],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn compact_positions_preserve_deferred_promotion_and_lion_promotion() {
+    let fixture = Fixture::new();
+    let mut builder = PositionBuilder::new(Color::Black);
+    let deferred = sq(3, 8);
+    builder
+        .put(
+            deferred,
+            PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
+        )
+        .unwrap();
+    builder.mark_promotion_deferred(deferred).unwrap();
+    let lion = sq(8, 8);
+    builder
+        .put(
+            lion,
+            PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
+        )
+        .unwrap();
+    let mut position = builder.finish().unwrap();
+    position.set_lion_capture(Some(lion)).unwrap();
+    let path = fixture.write(
+        "compact.bin",
+        11,
+        1,
+        200,
+        &[sample(&position, 1, u16::MAX, i16::MIN, Outcome::Loss)],
+    );
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
+    let sample = dataset.record(0).unwrap();
+    assert_eq!(sample.to_position().unwrap(), position);
+    assert_eq!(sample.side_to_move(), Color::Black);
+    assert_eq!(sample.lion_square(), Some(lion));
+    assert!(sample.lion_by_kirin_promotion());
+    assert_eq!(sample.board_codes()[deferred.dense_index()], 129);
+    assert_eq!(sample.ply(), u16::MAX);
+    assert_eq!(sample.score(), i16::MIN);
+}
+
+#[test]
+fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positions() {
+    use minase_trainer::data::build_targets_from_arrays;
+    use std::num::NonZeroUsize;
+
+    let fixture = Fixture::new();
+    let mut paths = Vec::new();
+    for (index, seed, scale) in [(0, 11, 200), (1, 22, 300), (2, 33, 200), (3, 44, 300)] {
+        let path = fixture.0.join(format!("replay-{index}.bin"));
+        let games: Vec<_> = (1..=20)
+            .map(|number| {
+                played_game(
+                    number,
+                    10,
+                    &[
+                        (Some(100 + number as i16), Exclusion::None),
+                        (None, Exclusion::None),
+                        (Some(200), Exclusion::Tactical),
+                        (Some(-300), Exclusion::None),
+                        (Some(400), Exclusion::None),
+                    ],
+                )
+            })
+            .collect();
+        fs::write(&path, mnsd::bytes(ab_header(seed, scale), &games)).unwrap();
+        paths.push(path);
+    }
+    paths.insert(1, fixture.write("empty.bin", 55, 7, 600, &[]));
+    paths.push(fixture.write(
+        "human.bin",
+        66,
+        3,
+        400,
+        &[sample(&single_pawn(false), 1, 0, -42, Outcome::Draw).with_origin(Origin::HumanGame)],
+    ));
+
+    for lookahead in [None, Some(Lookahead::new(0.9, 4).unwrap())] {
+        let serial = Dataset::open(&paths, lookahead, NonZeroUsize::new(1).unwrap())
+            .unwrap()
+            .with_lambda(0.75)
+            .unwrap();
+        let parallel = Dataset::open(&paths, lookahead, NonZeroUsize::new(4).unwrap())
+            .unwrap()
+            .with_lambda(0.75)
+            .unwrap();
+        assert_eq!(serial.record_count(), 241);
+        assert_eq!(parallel.record_count(), serial.record_count());
+        assert!(!serial.training_indices().is_empty());
+        assert!(!serial.validation_indices().is_empty());
+        assert_eq!(serial.training_indices(), parallel.training_indices());
+        assert_eq!(serial.validation_indices(), parallel.validation_indices());
+        assert_eq!(
+            serial.paths().collect::<Vec<_>>(),
+            parallel.paths().collect::<Vec<_>>()
+        );
+        assert_eq!(serial.teacher_classes().len(), 3);
+        assert_eq!(serial.teacher_classes(), parallel.teacher_classes());
+        assert_eq!(serial.teacher_lambdas(), parallel.teacher_lambdas());
+        let serial_ks = serial.estimate_teacher_ks().unwrap();
+        let parallel_ks = parallel.estimate_teacher_ks().unwrap();
+        assert_eq!(
+            serial_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>(),
+            parallel_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>()
+        );
+        for index in 0..serial.record_count() {
+            let sample = serial.record(index).unwrap();
+            let other = parallel.record(index).unwrap();
+            assert_eq!(sample, other);
+            assert_eq!(sample.to_position().unwrap(), other.to_position().unwrap());
+            assert_eq!(
+                serial.teacher_score(index).unwrap().to_bits(),
+                parallel.teacher_score(index).unwrap().to_bits()
+            );
+            assert_eq!(
+                serial.teacher_class(index).unwrap(),
+                parallel.teacher_class(index).unwrap()
+            );
+        }
+        let targets = |dataset: &Dataset, ks: &[f64]| {
+            let indices = 0..dataset.record_count();
+            let scores: Vec<_> = indices
+                .clone()
+                .map(|i| dataset.teacher_score(i).unwrap())
+                .collect();
+            let classes: Vec<_> = indices
+                .clone()
+                .map(|i| dataset.teacher_class(i).unwrap())
+                .collect();
+            let outcomes: Vec<_> = indices
+                .map(|i| match dataset.record(i).unwrap().outcome() {
+                    Outcome::Loss => 0,
+                    Outcome::Draw => 1,
+                    Outcome::Win => 2,
+                })
+                .collect();
+            build_targets_from_arrays(&scores, &classes, &outcomes, ks, dataset.teacher_lambdas())
+                .unwrap()
+                .into_iter()
+                .map(f32::to_bits)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            targets(&serial, &serial_ks),
+            targets(&parallel, &parallel_ks)
+        );
+    }
+}
+
+#[test]
+fn parallel_dataset_loading_returns_the_first_error_in_input_order() {
+    use minase::training::records::Error as FormatError;
+    use std::num::NonZeroUsize;
+
+    let fixture = Fixture::new();
+    let first = fixture.write("first.bin", 11, 1, 200, &[]);
+    let second = fixture.0.join("second.bin");
+    let third = fixture.0.join("third.bin");
+    let mut broken = mnsd::bytes(ab_header(22, 200), &[]);
+    broken[113] = 1;
+    fs::write(&second, broken).unwrap();
+    fs::write(&third, b"bad!").unwrap();
+    for workers in [1, 4] {
+        let workers = NonZeroUsize::new(workers).unwrap();
+        assert!(matches!(
+            Dataset::open(
+                &[first.clone(), second.clone(), third.clone()],
+                None,
+                workers
+            ),
+            Err(Error::Mnsd(FormatError::NonzeroReservedBytes))
+        ));
+        // 重複検査も後続ファイルの復号エラーより先に報告する。
+        assert!(matches!(
+            Dataset::open(&[first.clone(), first.clone(), second.clone()], None, workers),
+            Err(Error::Dataset { path, reason: "the same MNSD file was specified more than once" }) if path == first
+        ));
+        let missing = fixture.0.join("missing.bin");
+        assert!(matches!(
+            Dataset::open(&[first.clone(), second.clone(), missing], None, workers),
+            Err(Error::Mnsd(FormatError::NonzeroReservedBytes))
+        ));
+    }
 }

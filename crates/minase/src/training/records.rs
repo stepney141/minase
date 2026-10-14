@@ -1,379 +1,430 @@
-//! 自己対局などから生成する学習データMNSD版1の二進形式。
-//! 多バイト数値はリトルエンディアンで、ヘッダは136バイト、1記録は160バイトである。
-//! バイト配置の正は本モジュールのdocコメント、[`Header`]、[`Record`]、および`encode_piece`である。
-//! 以下の範囲は各区画の先頭からのバイト位置で、上端を含まない。
-//! ファイル長は`136 + 記録数 × 160`バイトと一致しなければならず、この計算のu64のオーバーフローも拒否する。
+//! 対局と教師情報を保存するMNSD版2の二進形式。
+//! 多バイト数値はリトルエンディアンである。以下の範囲は区画の先頭を0とし、上端を含まない。
 //!
-//! ヘッダの`0..4`は識別子`MNSD`、`4..8`は版u32の1、`8..12`は記録長u32の160である。
-//! `12..44`はUTF-8の規則セット名であり、最大32バイト、NULを含まず、不足分を0で埋める。
-//! この形式では規則セット名の空文字列も受理する。
-//! `44..84`は40文字のASCII 16進数字による生成コミットで、大文字と小文字の両方を受理する。
-//! `84..116`は生成時に使った評価関数の重みの検査和32バイトで、駒得評価v0で生成した場合は全0である。
-//! `116..120`は教師探索のノード上限u32、`120..128`は生成の基本シードu64、`128..136`は記録数u64である。
+//! # ヘッダ（152バイト）
 //!
-//! 記録の`0..144`は[`Square::dense_index`]順の盤面で、駒コードは`encode_piece`に従う。
-//! 144は手番で、先手0、後手1である。
-//! 145は先獅子の対象升の[`Square::dense_index`]で、0〜143、なければ255である。
-//! 146は獅子を取った麒麟が同じ着手で成ったかの印で、0または1とし、対象升が255なら0でなければならない。
-//! `147..149`は手番側視点の探索値i16で、単位はセンチポーンである。
-//! 149は手番側から見た終局結果で、負け0、引き分け1、勝ち2である。
-//! `150..154`は生成時に1から付ける対局番号u32で、形式上は0も受理する。
-//! `154..156`は記録時点の手数u16、156は由来である。
-//! 由来は乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3とし、それ以外を拒否する。
-//! `157..160`は予約域であり、復号時に0以外を拒否する。
+//! | 位置 | 型 | 内容と値域 |
+//! |---|---|---|
+//! | 0..4 | `u8[4]` | 識別子`MNSD` |
+//! | 4..8 | u32 | 版2 |
+//! | 8..40 | `u8[32]` | UTF-8の規則セット名。NULを含まない最大32バイトを0で埋める |
+//! | 40..80 | `u8[40]` | 生成コミット。大小文字を許す40桁のASCII 16進数字 |
+//! | 80..112 | `u8[32]` | 教師の重みの検査和。駒得評価では全0 |
+//! | 112 | u8 | 教師の種類。αβ探索0、モンテカルロ木探索（MCTS）1 |
+//! | 113..120 | `u8[7]` | 予約。全0 |
+//! | 120..128 | u64 | 教師の規模。αβのノード上限またはMCTSの探索回数 |
+//! | 128..136 | u64 | 生成の基本シード |
+//! | 136..144 | u64 | 対局数 |
+//! | 144..152 | u64 | 手順の項目の総数 |
+//!
+//! 規則セット名は[`parse_rule_set`]と[`Rules::from_codes`]の両方を通る必要がある。
+//! NUL以後の非0バイト、不正なUTF-8、未知の規則、規則の欠落・重複・矛盾を拒否する。
+//! 規模とシードはu64全域を許す。件数は[`Writer::finish`]で確定する。
+//!
+//! # 対局ヘッダ（161バイト）
+//!
+//! | 位置 | 型 | 内容と値域 |
+//! |---|---|---|
+//! | 0..4 | u32 | 対局番号。0も許す。ファイル内では厳密な昇順 |
+//! | 4 | u8 | 由来。乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3 |
+//! | 5 | u8 | 結果。先手勝ち0、後手勝ち1、引き分け2 |
+//! | 6 | u8 | 終局理由。下記の0〜11 |
+//! | 7 | u8 | 予約。0 |
+//! | 8..10 | u16 | 開始局面までの着手数。0〜65,535手 |
+//! | 10..14 | u32 | 項目数n。1以上で、開始手数+n−1が65,535以下 |
+//! | 14..158 | `u8[144]` | `Square::dense_index`順の盤。下記の駒コードと保留印 |
+//! | 158 | u8 | 開始局面の手番。先手0、後手1 |
+//! | 159 | u8 | 先獅子の対象升。dense_indexの0〜143、なければ255 |
+//! | 160 | u8 | 獅子を取った麒麟が同じ着手で成った印。0か1 |
+//!
+//! 理由0は対局に由来しないことを表し、合成かつ結果2の場合に限る。
+//! 合成以外は理由0を使えない。勝ちの理由は王駒の捕獲1、反復2、駒枯れ3、裸玉4、
+//! 合法手なし5、詰み6、投了7で、結果0か1の場合に限る。
+//! 引き分けの理由は反復8、駒枯れ9、裸玉10、合意11で、結果2の場合に限る。
+//! 結果は来歴として保持する。再生だけで決まらない投了・合意もあるため、再生結果との一致は要求しない。
+//!
+//! 空升は0、駒は`1 + PieceKind::index() + 29×成りビット + 64×陣営`で表す。
+//! 先手は1〜58、後手は65〜122のうち、`PieceCode`の検査付きコンストラクタが受理する組だけを許す。
+//! 最上位ビット128は成り権保留を表す。空升や保留不適格な駒の印を拒否する。
+//! 復元は`PositionBuilder`で配置と保留印を戻し、`set_lion_capture`と`validate`で検査する。
+//! 対象升が255なら麒麟成りの印は0とし、印は盤から復元した値と一致しなければならない。
+//! 王駒の存在など到達可能性は要求しないので、検査を通る合成局面も保存できる。
+//!
+//! # 手順の項目と方策の候補
+//!
+//! k番目の項目は開始局面からk手後の局面を表す。最後の項目だけが指した手を持たない。
+//! 固定部はαβで7バイト、MCTSで11バイトであり、その直後に候補を並べる。
+//!
+//! | 位置 | 型 | 内容と値域 |
+//! |---|---|---|
+//! | 0..2 | u16 | 指した手の番号。なしは65,535 |
+//! | 2..4 | i16 / u16 | 手番側の価値。αβはセンチポーン、MCTSは期待得点で1を65,535とする |
+//! | 4 | u8 | 下位2ビットは除外理由。なし0、詰みの帯1、戦術的な局面2、反復の局面3 |
+//! | 同上 | 同上 | ビット2は価値なし、ビット3は指した手が最善手、ビット4〜7は0 |
+//! | 5..7 | u16 | 方策の候補数。0なら方策なし、ただしビット3が立つ場合を除く |
+//! | 7..11 | u32 | MCTSだけの根の総訪問回数。探索しなかった局面では0 |
+//!
+//! 価値なしなら価値欄は0。ビット3は指した手がある場合だけ使い、候補数は0とする。
+//! この印は指した手を確率1とする方策である。価値の種類と訪問回数の有無はヘッダと一致させる。
+//! 候補1つは4バイトで、0..2が着手番号u16、2..4が確率u16である。
+//! 候補は着手番号の厳密な昇順で、重複、合法手数以上の番号、確率0、確率和が65,535でない列を拒否する。
+//! メモリ上の候補も同じ順序で渡す。候補が明示されない合法手の確率は0である。
+//!
+//! 着手番号は、開始局面からファイルの規則で再生した[`Game::legal_moves`]を並べた0始まりの位置である。
+//! R2・R3の禁止手は履歴から除かれる。開始局面より前の履歴は含まない。
+//! 整列鍵は移動元dense_index、経由升dense_index（なければ255）、到達升dense_index、成り0か1を
+//! 上位から並べた4バイトの符号なし整数とする。鍵の重複と合法手数65,535以上を拒否する。
+//! 書き込みでは番号から戻した着手との一致も検査する。着手または候補がある項目だけ合法手を生成する。
+//! 終局後にさらに指した手がある記録は拒否する。
+//!
+//! [`quantize_policy`]は非負の有限な重みを正の和で正規化し、65,535倍を切り捨てる。
+//! 不足分は端数の大きい順に1ずつ配り、同率なら番号の小さい順を優先する。
+//! 0になった候補を除いて番号順に返す。番号の重複、負・非有限の重み、和0は拒否する。
+//! 有限な重みの総和のオーバーフローを避けるため、正規化前に最大重みで全体を割る。
+//!
+//! 読み込みでは途中切れ、予約欄の非0、未定義値、件数の不一致、末尾の余分なバイトを拒否する。
+//! 最終対局を返す前に総数と末尾を検査し、空ファイルはヘッダの直後に末尾を検査する。
+//! 入出力に失敗した読み書き器は再利用できない。書き出し先は空のストリームに限る。
 
 use core::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use minase_core::piece::PIECE_KIND_COUNT;
+use minase_core::rules::{RuleSetParseError, RulesError, parse_rule_set};
 use minase_core::{
-    BOARD_SQUARE_COUNT, Color, GameResult, IllegalMove, Move, MoveGenerator, PieceCode, PieceKind,
-    Position, PositionBuildError, PositionBuilder, PositionError, Square,
+    Color, DrawReason, Game, GameError, GameResult, Move, PieceCode, PieceKind, Position,
+    PositionBuildError, PositionBuilder, PositionError, Rules, Square, WinReason,
 };
 
-/// 学習データファイルの識別子。
+/// ファイル識別子。
 pub const MAGIC: [u8; 4] = *b"MNSD";
-/// 学習データ形式の版。
-pub const FORMAT_VERSION: u32 = 1;
-/// MNSD版1のリトルエンディアンのヘッダ長136バイト。
-/// 各欄の配置は[`records`](self)のモジュールdocコメントに従う。
-pub const HEADER_LEN: usize = 136;
-/// MNSD版1の記録長160バイト。
-/// 各欄の意味と単位は[`Record`]に、バイト配置は[`records`](self)のモジュールdocコメントにある。
-pub const RECORD_LEN: usize = 160;
+/// 形式の版。
+pub const FORMAT_VERSION: u32 = 2;
+/// ヘッダ長（バイト）。
+pub const HEADER_LEN: usize = 152;
+/// 対局ヘッダ長（バイト）。
+pub const GAME_HEADER_LEN: usize = 161;
 
-/// 規則セット名欄のバイト数。
-const RULE_SET_LEN: usize = 32;
-/// 生成コミット欄のバイト数。
-const COMMIT_LEN: usize = 40;
-/// ネット検査和欄のバイト数。
-const CHECKSUM_LEN: usize = 32;
-/// 先獅子状態がないことを示す升コード。
-const NO_LION_SQUARE: u8 = u8::MAX;
+/// 途中で切れた区画。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Section {
+    /// ファイルヘッダ。
+    Header,
+    /// 対局ヘッダ。
+    GameHeader,
+    /// 項目の固定部。
+    Entry,
+    /// 方策の候補。
+    Candidate,
+}
 
-/// 学習データの復号、局面復元または入出力の失敗。
+/// 形式の検査、局面の復元、入出力の失敗。
 #[derive(Debug)]
 pub enum Error {
-    /// ヘッダの長さが固定長と異なる。
-    InvalidHeaderLength {
-        /// 実際のバイト数。
-        actual: usize,
-    },
-    /// レコードの長さが固定長と異なる。
-    InvalidRecordLength {
-        /// 実際のバイト数。
-        actual: usize,
-    },
-    /// ファイル識別子が一致しない。
-    InvalidMagic {
-        /// 読み取った識別子。
-        actual: [u8; 4],
-    },
-    /// 形式の版が本実装の版と異なる。
-    UnsupportedVersion {
-        /// 読み取った版。
-        actual: u32,
-    },
-    /// ヘッダが示すレコード長が固定長と異なる。
-    UnsupportedRecordLength {
-        /// 読み取ったレコード長。
-        actual: u32,
-    },
-    /// 規則セット名が固定欄へ収まらないかNULを含む。
+    /// 識別子が異なる。
+    InvalidMagic([u8; 4]),
+    /// 対応していない版。
+    UnsupportedVersion(u32),
+    /// 規則セット名が32バイトを超えるかNULを含む。
     InvalidRuleSetName,
-    /// 規則セット名欄がUTF-8またはNUL埋めの規約を満たさない。
+    /// 規則セット名がUTF-8かNUL埋めの規約に違反する。
     InvalidEncodedRuleSetName,
+    /// 規則セットの構文が不正。
+    RuleSetParse(RuleSetParseError),
+    /// 規則セットの組み合わせが不正。
+    Rules(RulesError),
     /// 生成コミットが40桁の16進ASCIIではない。
     InvalidGenerationCommit,
-    /// ファイル長の算出が整数範囲を超えた。
-    FileLengthOverflow,
-    /// ファイル長がヘッダのレコード数と一致しない。
-    FileLengthMismatch {
-        /// ヘッダから算出したバイト数。
-        expected: u64,
-        /// 実際のバイト数。
-        actual: u64,
-    },
-    /// 盤面欄の駒コードが永続形式の定義域外にある。
-    InvalidPieceCode {
-        /// 問題の升。
-        square: Square,
-        /// 問題の駒コード。
-        value: u8,
-    },
-    /// 手番欄が0または1ではない。
-    InvalidSideToMove {
-        /// 読み取った値。
-        value: u8,
-    },
-    /// 先獅子の対象升が0から143または255ではない。
-    InvalidLionSquare {
-        /// 読み取った値。
-        value: u8,
-    },
-    /// 先獅子の麒麟成りフラグが0または1ではない。
-    InvalidLionPromotionFlag {
-        /// 読み取った値。
-        value: u8,
-    },
-    /// 対象升がない先獅子状態に麒麟成りフラグが立っている。
-    LionPromotionWithoutSquare,
-    /// 結果欄が0から2の範囲外にある。
-    InvalidOutcome {
-        /// 読み取った値。
-        value: u8,
-    },
-    /// 由来が0〜3の範囲外にある。
-    InvalidOrigin {
-        /// 読み取った値。
-        value: u8,
-    },
-    /// 予約欄に0以外の値がある。
+    /// 教師の種類が0か1ではない。
+    InvalidTeacherKind(u8),
+    /// 予約欄に非0の値がある。
     NonzeroReservedBytes,
-    /// 局面の組み立てに失敗した。
+    /// 由来が0〜3ではない。
+    InvalidOrigin(u8),
+    /// 結果が0〜2ではない。
+    InvalidOutcome(u8),
+    /// 終局理由が0〜11ではない。
+    InvalidEndReason(u8),
+    /// 結果と終局理由が整合しない。
+    OutcomeReasonMismatch,
+    /// 合成の由来と対局に由来しない結果が対応しない。
+    OriginOutcomeMismatch,
+    /// 項目が1つもない。
+    EmptyGame,
+    /// 最後の局面の手数がu16を超える。
+    PlyOverflow,
+    /// 対局番号が直前の番号以下。
+    GameNumberNotIncreasing,
+    /// 保存用の駒コードが不正。
+    InvalidPieceCode(u8),
+    /// 手番が0か1ではない。
+    InvalidSideToMove(u8),
+    /// 先獅子の升が0〜143か255ではない。
+    InvalidLionSquare(u8),
+    /// 麒麟成りの印が0か1ではない。
+    InvalidLionPromotionFlag(u8),
+    /// 先獅子の升なしで麒麟成りの印がある。
+    LionPromotionWithoutSquare,
+    /// 麒麟成りの印が復元局面と異なる。
+    LionPromotionMismatch,
+    /// 局面の構築に失敗した。
     PositionBuild(PositionBuildError),
-    /// 復元局面が不変条件を満たさない。
+    /// 局面の不変条件に違反した。
     Position(PositionError),
-    /// 記録された麒麟成りフラグと復元結果が一致しない。
-    LionPromotionMismatch {
-        /// 記録された値。
-        recorded: bool,
-        /// 盤面から復元した値。
-        restored: bool,
-    },
-    /// 入出力に失敗した。
+    /// 指した手が最後の項目にある。
+    MoveOnLastEntry,
+    /// 最後以外の項目に指した手がない。
+    MissingPlayedMove,
+    /// 項目の上位4ビットに未定義の印がある。
+    InvalidEntryFlags(u8),
+    /// 価値なしの項目の価値欄が非0。
+    NonzeroAbsentValue,
+    /// 価値の種類がファイルの教師と異なる。
+    ValueKindMismatch,
+    /// αβの項目に訪問回数がある。
+    UnexpectedVisits,
+    /// MCTSの項目に訪問回数がない。
+    MissingVisits,
+    /// 最善手が指した手と同じ印に指した手がない。
+    BestMoveWithoutPlayedMove,
+    /// 最善手が指した手と同じ印に候補の列がある。
+    BestMoveWithCandidates,
+    /// 候補の列が空。方策なしには`Policy::None`を使う。
+    EmptyPolicy,
+    /// 候補数がu16に収まらない。
+    TooManyCandidates,
+    /// 方策の候補が昇順でない。
+    CandidatesNotSorted,
+    /// 方策の候補が重複している。
+    DuplicateCandidate,
+    /// 候補の確率が0。
+    ZeroProbability,
+    /// 候補の確率和が65,535ではない。
+    InvalidProbabilitySum,
+    /// 合法手の番号が範囲外。
+    InvalidMoveIndex(u16),
+    /// 書こうとした着手が合法手と一致しない。
+    IllegalMove(Move),
+    /// 合法手に同一の整列鍵がある。
+    DuplicateMoveKey,
+    /// 合法手数が65,535以上。
+    TooManyLegalMoves,
+    /// 終局後に指した手がある。
+    MoveAfterGameOver,
+    /// 手順の再生に失敗した。
+    Replay(GameError),
+    /// 量子化の重みが負か非有限。
+    InvalidWeight,
+    /// 量子化の重みの和が0。
+    ZeroWeightSum,
+    /// 量子化の番号が重複。
+    DuplicateWeightIndex,
+    /// 浮動小数点の誤差により最大剰余法の配分ができない。
+    QuantizationPrecision,
+    /// 件数がu64に収まらない。
+    CountOverflow,
+    /// ヘッダの項目総数と対局ごとの合計が異なる。
+    EntryCountMismatch,
+    /// 必要な区画が途中で切れている。
+    Truncated(Section),
+    /// 最終対局の後にバイトが残っている。
+    TrailingBytes,
+    /// 書き出し先が空でない。
+    NonemptyOutput,
+    /// 以前の入出力・復号失敗後の再利用。
+    StreamFailed,
+    /// 入出力の失敗。
     Io(io::Error),
 }
 
 impl fmt::Display for Error {
-    /// エラーの説明を整形する。
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidHeaderLength { actual } => {
-                write!(
-                    formatter,
-                    "invalid header length: expected {HEADER_LEN}, got {actual}"
-                )
-            }
-            Self::InvalidRecordLength { actual } => {
-                write!(
-                    formatter,
-                    "invalid record length: expected {RECORD_LEN}, got {actual}"
-                )
-            }
-            Self::InvalidMagic { actual } => write!(formatter, "invalid file magic: {actual:?}"),
-            Self::UnsupportedVersion { actual } => {
-                write!(formatter, "unsupported format version: {actual}")
-            }
-            Self::UnsupportedRecordLength { actual } => {
-                write!(formatter, "unsupported record length: {actual}")
-            }
-            Self::InvalidRuleSetName => formatter.write_str("invalid rule-set name"),
-            Self::InvalidEncodedRuleSetName => formatter.write_str("invalid encoded rule-set name"),
-            Self::InvalidGenerationCommit => formatter
-                .write_str("generation commit must be exactly 40 hexadecimal ASCII characters"),
-            Self::FileLengthOverflow => formatter.write_str("training-data file length overflow"),
-            Self::FileLengthMismatch { expected, actual } => write!(
-                formatter,
-                "training-data file length mismatch: expected {expected}, got {actual}"
-            ),
-            Self::InvalidPieceCode { square, value } => {
-                write!(formatter, "invalid piece code {value} at {square:?}")
-            }
-            Self::InvalidSideToMove { value } => {
-                write!(formatter, "invalid side-to-move code: {value}")
-            }
-            Self::InvalidLionSquare { value } => {
-                write!(formatter, "invalid lion-capture square code: {value}")
-            }
-            Self::InvalidLionPromotionFlag { value } => {
-                write!(formatter, "invalid lion-promotion flag: {value}")
-            }
-            Self::LionPromotionWithoutSquare => {
-                formatter.write_str("lion-promotion flag requires a lion-capture square")
-            }
-            Self::InvalidOutcome { value } => write!(formatter, "invalid outcome code: {value}"),
-            Self::InvalidOrigin { value } => write!(formatter, "invalid origin code: {value}"),
-            Self::NonzeroReservedBytes => {
-                formatter.write_str("record reserved bytes must all be zero")
-            }
-            Self::PositionBuild(error) => write!(formatter, "cannot restore position: {error}"),
-            Self::Position(error) => write!(formatter, "restored position is invalid: {error}"),
-            Self::LionPromotionMismatch { recorded, restored } => write!(
-                formatter,
-                "lion-promotion flag mismatch: recorded {recorded}, restored {restored}"
-            ),
-            Self::Io(error) => error.fmt(formatter),
+            Self::RuleSetParse(e) => write!(f, "invalid rule set: {e}"),
+            Self::Rules(e) => write!(f, "invalid rules: {e}"),
+            Self::PositionBuild(e) => write!(f, "cannot build position: {e}"),
+            Self::Position(e) => write!(f, "invalid position: {e}"),
+            Self::Replay(e) => write!(f, "cannot replay game: {e}"),
+            Self::Io(e) => e.fmt(f),
+            _ => write!(f, "invalid MNSD v2 data: {self:?}"),
         }
     }
 }
-
 impl std::error::Error for Error {
-    /// 原因となった下位エラーを返す。
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::PositionBuild(error) => Some(error),
-            Self::Position(error) => Some(error),
-            Self::Io(error) => Some(error),
+            Self::RuleSetParse(e) => Some(e),
+            Self::Rules(e) => Some(e),
+            Self::PositionBuild(e) => Some(e),
+            Self::Position(e) => Some(e),
+            Self::Replay(e) => Some(e),
+            Self::Io(e) => Some(e),
             _ => None,
         }
     }
 }
-
 impl From<io::Error> for Error {
-    /// 入出力エラーを学習データエラーへ変換する。
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
     }
 }
 
-impl From<PositionBuildError> for Error {
-    /// 局面構築エラーを学習データエラーへ変換する。
-    fn from(error: PositionBuildError) -> Self {
-        Self::PositionBuild(error)
-    }
+/// 教師の価値と探索規模の種類。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TeacherKind {
+    /// αβ探索。
+    AlphaBeta = 0,
+    /// モンテカルロ木探索。
+    Mcts = 1,
 }
 
-impl From<PositionError> for Error {
-    /// 局面不変条件エラーを学習データエラーへ変換する。
-    fn from(error: PositionError) -> Self {
-        Self::Position(error)
-    }
-}
-
-/// 生成時の規則、コミット、重みの検査和、ノード上限、シード、および記録数を持つヘッダ。
-/// 駒得評価v0で生成したデータは、重みの検査和を全0とする。
-#[derive(Clone, PartialEq, Eq, Debug)]
+/// 検証済みのファイルヘッダ。件数は書き込み完了時に設定される。
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Header {
-    /// 採用した規則セットの表示文字列。
     rule_set: String,
-    /// 生成元コミットの完全ハッシュ。
+    rules: Rules,
     generation_commit: String,
-    /// 生成時に使った重みの検査和32バイト。駒得評価v0の場合は全0である。
-    network_checksum: [u8; CHECKSUM_LEN],
-    /// 教師探索のノード上限。
-    teacher_nodes: u32,
-    /// データ生成の基本シード。
+    network_checksum: [u8; 32],
+    teacher_kind: TeacherKind,
+    teacher_scale: u64,
     seed: u64,
-    /// ファイルに格納したレコード数。
-    record_count: u64,
+    game_count: u64,
+    entry_count: u64,
 }
-
 impl Header {
-    /// 指定した来歴から検証済みヘッダを作る。
+    /// 規則セットと来歴を検査し、件数0のヘッダを作る。
     pub fn new(
         rule_set: String,
         generation_commit: String,
-        network_checksum: [u8; CHECKSUM_LEN],
-        teacher_nodes: u32,
+        network_checksum: [u8; 32],
+        teacher_kind: TeacherKind,
+        teacher_scale: u64,
         seed: u64,
-        record_count: u64,
     ) -> Result<Self, Error> {
-        validate_rule_set_name(&rule_set)?;
-        validate_generation_commit(&generation_commit)?;
+        if rule_set.len() > 32 || rule_set.as_bytes().contains(&0) {
+            return Err(Error::InvalidRuleSetName);
+        }
+        let codes = parse_rule_set(&rule_set).map_err(Error::RuleSetParse)?;
+        let rules = Rules::from_codes(&codes).map_err(Error::Rules)?;
+        if generation_commit.len() != 40
+            || !generation_commit.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err(Error::InvalidGenerationCommit);
+        }
         Ok(Self {
             rule_set,
+            rules,
             generation_commit,
             network_checksum,
-            teacher_nodes,
+            teacher_kind,
+            teacher_scale,
             seed,
-            record_count,
+            game_count: 0,
+            entry_count: 0,
         })
     }
-
     /// 規則セット名を返す。
     pub fn rule_set(&self) -> &str {
         &self.rule_set
     }
-
-    /// 生成元コミットの完全ハッシュを返す。
+    /// 解釈した規則集合を返す。
+    pub fn rules(&self) -> Rules {
+        self.rules
+    }
+    /// 生成コミットを返す。
     pub fn generation_commit(&self) -> &str {
         &self.generation_commit
     }
-
-    /// 生成時に使ったネットの検査和を返す。
-    pub const fn network_checksum(&self) -> &[u8; CHECKSUM_LEN] {
+    /// 教師の重みの検査和を返す。
+    pub fn network_checksum(&self) -> &[u8; 32] {
         &self.network_checksum
     }
-
-    /// 教師探索のノード上限を返す。
-    pub const fn teacher_nodes(&self) -> u32 {
-        self.teacher_nodes
+    /// 教師の種類を返す。
+    pub fn teacher_kind(&self) -> TeacherKind {
+        self.teacher_kind
     }
-
-    /// データ生成の基本シードを返す。
-    pub const fn seed(&self) -> u64 {
+    /// 教師の探索規模を返す。
+    pub fn teacher_scale(&self) -> u64 {
+        self.teacher_scale
+    }
+    /// 基本シードを返す。
+    pub fn seed(&self) -> u64 {
         self.seed
     }
-
-    /// ファイルに格納したレコード数を返す。
-    pub const fn record_count(&self) -> u64 {
-        self.record_count
+    /// 対局数を返す。
+    pub fn game_count(&self) -> u64 {
+        self.game_count
+    }
+    /// 項目の総数を返す。
+    pub fn entry_count(&self) -> u64 {
+        self.entry_count
     }
 
-    /// ヘッダを固定長の二進表現へ符号化する。
-    pub fn encode(&self) -> [u8; HEADER_LEN] {
-        let mut bytes = [0_u8; HEADER_LEN];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
-        bytes[8..12].copy_from_slice(&(RECORD_LEN as u32).to_le_bytes());
-        let rule_bytes = self.rule_set.as_bytes();
-        bytes[12..12 + rule_bytes.len()].copy_from_slice(rule_bytes);
-        bytes[44..84].copy_from_slice(self.generation_commit.as_bytes());
-        bytes[84..116].copy_from_slice(&self.network_checksum);
-        bytes[116..120].copy_from_slice(&self.teacher_nodes.to_le_bytes());
-        bytes[120..128].copy_from_slice(&self.seed.to_le_bytes());
-        bytes[128..136].copy_from_slice(&self.record_count.to_le_bytes());
-        bytes
+    fn write(&self, w: &mut impl Write) -> Result<(), Error> {
+        w.write_all(&MAGIC)?;
+        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        let mut name = [0; 32];
+        for (dst, src) in name.iter_mut().zip(self.rule_set.bytes()) {
+            *dst = src;
+        }
+        w.write_all(&name)?;
+        w.write_all(self.generation_commit.as_bytes())?;
+        w.write_all(&self.network_checksum)?;
+        w.write_all(&[self.teacher_kind as u8])?;
+        w.write_all(&[0; 7])?;
+        for value in [
+            self.teacher_scale,
+            self.seed,
+            self.game_count,
+            self.entry_count,
+        ] {
+            w.write_all(&value.to_le_bytes())?;
+        }
+        Ok(())
     }
-
-    /// 固定長の二進表現を検証してヘッダへ復号する。
-    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != HEADER_LEN {
-            return Err(Error::InvalidHeaderLength {
-                actual: bytes.len(),
-            });
+    fn read(r: &mut impl Read) -> Result<Self, Error> {
+        let bytes = input::<HEADER_LEN>(r, Section::Header)?;
+        let mut r = bytes.as_slice();
+        let magic = input::<4>(&mut r, Section::Header)?;
+        if magic != MAGIC {
+            return Err(Error::InvalidMagic(magic));
         }
-        let actual_magic = bytes[0..4].try_into().expect("slice length is fixed");
-        if actual_magic != MAGIC {
-            return Err(Error::InvalidMagic {
-                actual: actual_magic,
-            });
-        }
-        let version = read_u32(bytes, 4);
+        let version = u32::from_le_bytes(input(&mut r, Section::Header)?);
         if version != FORMAT_VERSION {
-            return Err(Error::UnsupportedVersion { actual: version });
+            return Err(Error::UnsupportedVersion(version));
         }
-        let record_length = read_u32(bytes, 8);
-        if record_length != RECORD_LEN as u32 {
-            return Err(Error::UnsupportedRecordLength {
-                actual: record_length,
-            });
+        let name = input::<32>(&mut r, Section::Header)?;
+        let mut rule_set = Vec::new();
+        let mut padding = false;
+        for byte in name {
+            if byte == 0 {
+                padding = true;
+            } else if padding {
+                return Err(Error::InvalidEncodedRuleSetName);
+            } else {
+                rule_set.push(byte);
+            }
         }
-
-        let encoded_rule_set = &bytes[12..44];
-        let rule_end = encoded_rule_set
-            .iter()
-            .position(|&byte| byte == 0)
-            .unwrap_or(RULE_SET_LEN);
-        if encoded_rule_set[rule_end..].iter().any(|&byte| byte != 0) {
-            return Err(Error::InvalidEncodedRuleSetName);
+        let rule_set = String::from_utf8(rule_set).map_err(|_| Error::InvalidEncodedRuleSetName)?;
+        let commit = String::from_utf8(input::<40>(&mut r, Section::Header)?.to_vec())
+            .map_err(|_| Error::InvalidGenerationCommit)?;
+        let checksum = input(&mut r, Section::Header)?;
+        let [kind] = input(&mut r, Section::Header)?;
+        let kind = match kind {
+            0 => TeacherKind::AlphaBeta,
+            1 => TeacherKind::Mcts,
+            x => return Err(Error::InvalidTeacherKind(x)),
+        };
+        if input::<7>(&mut r, Section::Header)? != [0; 7] {
+            return Err(Error::NonzeroReservedBytes);
         }
-        let rule_set = std::str::from_utf8(&encoded_rule_set[..rule_end])
-            .map_err(|_| Error::InvalidEncodedRuleSetName)?
-            .to_owned();
-        let generation_commit = std::str::from_utf8(&bytes[44..84])
-            .map_err(|_| Error::InvalidGenerationCommit)?
-            .to_owned();
-        let network_checksum = bytes[84..116].try_into().expect("slice length is fixed");
-        Self::new(
-            rule_set,
-            generation_commit,
-            network_checksum,
-            read_u32(bytes, 116),
-            read_u64(bytes, 120),
-            read_u64(bytes, 128),
-        )
+        let scale = u64::from_le_bytes(input(&mut r, Section::Header)?);
+        let seed = u64::from_le_bytes(input(&mut r, Section::Header)?);
+        let mut header = Self::new(rule_set, commit, checksum, kind, scale, seed)?;
+        header.game_count = u64::from_le_bytes(input(&mut r, Section::Header)?);
+        header.entry_count = u64::from_le_bytes(input(&mut r, Section::Header)?);
+        Ok(header)
     }
 }
 
@@ -382,750 +433,852 @@ impl Header {
 #[serde(rename_all = "kebab-case")]
 #[repr(u8)]
 pub enum Origin {
-    /// 初期局面から乱数で選んだ数手を指して始めた自己対局。
+    /// 乱数開始の自己対局。
     RandomSelfplay = 0,
-    /// 実戦棋譜の途中局面から始めた自己対局。
+    /// 実戦開始の自己対局。
     HumanOpeningSelfplay = 1,
-    /// 実戦棋譜そのものの局面。
+    /// 実戦対局。
     HumanGame = 2,
-    /// 対局に由来しない診断用の局面など。
+    /// 対局に由来しない合成局面。
     Synthetic = 3,
 }
-
 impl Origin {
-    /// 永続形式の由来コードを検証して復号する。
-    pub const fn from_code(value: u8) -> Result<Self, Error> {
+    /// 永続形式の由来コードを検査する。
+    pub fn from_code(value: u8) -> Result<Self, Error> {
         match value {
             0 => Ok(Self::RandomSelfplay),
             1 => Ok(Self::HumanOpeningSelfplay),
             2 => Ok(Self::HumanGame),
             3 => Ok(Self::Synthetic),
-            _ => Err(Error::InvalidOrigin { value }),
+            x => Err(Error::InvalidOrigin(x)),
         }
     }
 }
 
-/// 手番側から見た終局結果。
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+/// 対局結果、または対局に由来しないことを表す。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// 手番側の負け。
-    Loss,
-    /// 引き分け。
-    Draw,
-    /// 手番側の勝ち。
-    Win,
+    /// 実際の対局の結果と終局理由。
+    Game(GameResult),
+    /// 合成局面であり対局結果がない。
+    NotFromGame,
 }
-
 impl Outcome {
-    /// 対局結果を指定した陣営の視点へ変換する。
-    pub fn from_game_result(result: GameResult, side: Color) -> Self {
-        match result {
-            GameResult::Win { winner, .. } if winner == side => Self::Win,
-            GameResult::Win { .. } => Self::Loss,
-            GameResult::Draw { .. } => Self::Draw,
-        }
-    }
-
-    /// 二進形式の結果コードを返す。
-    const fn code(self) -> u8 {
+    fn codes(self) -> (u8, u8) {
         match self {
-            Self::Loss => 0,
-            Self::Draw => 1,
-            Self::Win => 2,
+            Self::NotFromGame => (2, 0),
+            Self::Game(GameResult::Win { winner, reason }) => (
+                winner as u8,
+                match reason {
+                    WinReason::RoyalCapture => 1,
+                    WinReason::Repetition => 2,
+                    WinReason::PieceExhaustion => 3,
+                    WinReason::BareKing => 4,
+                    WinReason::Stalemate => 5,
+                    WinReason::Mate => 6,
+                    WinReason::Resignation => 7,
+                },
+            ),
+            Self::Game(GameResult::Draw { reason }) => (
+                2,
+                match reason {
+                    DrawReason::Repetition => 8,
+                    DrawReason::PieceExhaustion => 9,
+                    DrawReason::BareKing => 10,
+                    DrawReason::Agreement => 11,
+                },
+            ),
         }
     }
-
-    /// 二進形式の結果コードを復号する。
-    const fn from_code(value: u8) -> Result<Self, Error> {
-        match value {
-            0 => Ok(Self::Loss),
-            1 => Ok(Self::Draw),
-            2 => Ok(Self::Win),
-            _ => Err(Error::InvalidOutcome { value }),
+    fn decode(result: u8, reason: u8) -> Result<Self, Error> {
+        if result > 2 {
+            return Err(Error::InvalidOutcome(result));
         }
-    }
-}
-
-/// 記録局面と教師情報を持つ160バイトのレコード。
-/// 自己対局の生成器は探索値の絶対値29,000以上を除外するため、その出力は詰み帯を含まない。
-/// この型の構築と復号自体はi16全域の探索値と対局番号0も受理し、生成器の除外条件を再検査しない。
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Record {
-    /// 升の`dense_index`順の144駒コード。空升0、先手1〜58、後手65〜122である。
-    board: [u8; BOARD_SQUARE_COUNT],
-    /// 記録局面の手番側。永続形式では先手0、後手1である。
-    side_to_move: Color,
-    /// 先獅子の対象升。永続形式では0〜143、なければ255である。
-    lion_square: Option<Square>,
-    /// 獅子を取った麒麟が同じ着手で成ったかを示す0または1の印。対象升がなければ0である。
-    lion_by_kirin_promotion: bool,
-    /// 手番側視点の探索値。単位はセンチポーン、格納範囲はi16全域である。
-    score: i16,
-    /// 記録局面の手番側から見た終局結果。永続形式では負け0、引き分け1、勝ち2である。
-    outcome: Outcome,
-    /// 生成時に1から付ける対局番号。検証分割を対局単位で行うために持つ。
-    game_number: u32,
-    /// 記録時点までの着手数。1着手を1手と数え、格納範囲は0〜65,535手である。
-    ply: u16,
-    /// 局面を作った経路。
-    origin: Origin,
-}
-
-impl Record {
-    /// 局面と教師情報からレコードを作る。
-    pub fn from_position(
-        position: &Position,
-        score: i16,
-        outcome: Outcome,
-        game_number: u32,
-        ply: u16,
-        origin: Origin,
-    ) -> Self {
-        let mut board = [0_u8; BOARD_SQUARE_COUNT];
-        for square in Square::all() {
-            if let Some(piece) = position.piece_at(square) {
-                board[square.dense_index()] = encode_piece(piece);
-            }
-        }
-        let lion_trigger = position.lion_taken_by_non_lion();
-        Self {
-            board,
-            side_to_move: position.side_to_move(),
-            lion_square: lion_trigger.map(|trigger| trigger.square),
-            lion_by_kirin_promotion: lion_trigger.is_some_and(|trigger| trigger.by_kirin_promotion),
-            score,
-            outcome,
-            game_number,
-            ply,
-            origin,
-        }
-    }
-
-    /// 局面を作った経路を返す。
-    pub const fn origin(&self) -> Origin {
-        self.origin
-    }
-
-    /// 指定した由来の記録を返す。
-    pub fn with_origin(mut self, origin: Origin) -> Self {
-        self.origin = origin;
-        self
-    }
-
-    /// 記録局面の手番側を返す。
-    pub const fn side_to_move(&self) -> Color {
-        self.side_to_move
-    }
-
-    /// 先獅子の対象升を返す。
-    pub const fn lion_square(&self) -> Option<Square> {
-        self.lion_square
-    }
-
-    /// 先獅子の麒麟成りフラグを返す。
-    pub const fn lion_by_kirin_promotion(&self) -> bool {
-        self.lion_by_kirin_promotion
-    }
-
-    /// 手番側視点の探索値を返す。
-    pub const fn score(&self) -> i16 {
-        self.score
-    }
-
-    /// 手番側から見た終局結果を返す。
-    pub const fn outcome(&self) -> Outcome {
-        self.outcome
-    }
-
-    /// 対局番号を返す。
-    pub const fn game_number(&self) -> u32 {
-        self.game_number
-    }
-
-    /// 記録時点の手数を返す。
-    pub const fn ply(&self) -> u16 {
-        self.ply
-    }
-
-    /// レコードを固定長の二進表現へ符号化する。
-    pub fn encode(&self) -> [u8; RECORD_LEN] {
-        let mut bytes = [0_u8; RECORD_LEN];
-        bytes[..BOARD_SQUARE_COUNT].copy_from_slice(&self.board);
-        bytes[144] = self.side_to_move as u8;
-        bytes[145] = self
-            .lion_square
-            .map_or(NO_LION_SQUARE, |square| square.dense_index() as u8);
-        bytes[146] = u8::from(self.lion_by_kirin_promotion);
-        bytes[147..149].copy_from_slice(&self.score.to_le_bytes());
-        bytes[149] = self.outcome.code();
-        bytes[150..154].copy_from_slice(&self.game_number.to_le_bytes());
-        bytes[154..156].copy_from_slice(&self.ply.to_le_bytes());
-        bytes[156] = self.origin as u8;
-        bytes
-    }
-
-    /// 固定長の二進表現を検証してレコードへ復号する。
-    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != RECORD_LEN {
-            return Err(Error::InvalidRecordLength {
-                actual: bytes.len(),
-            });
-        }
-        let mut board = [0_u8; BOARD_SQUARE_COUNT];
-        board.copy_from_slice(&bytes[..BOARD_SQUARE_COUNT]);
-        for square in Square::all() {
-            let value = board[square.dense_index()];
-            if value != 0 {
-                decode_piece(square, value)?;
-            }
-        }
-        let side_to_move = match bytes[144] {
-            0 => Color::Black,
-            1 => Color::White,
-            value => return Err(Error::InvalidSideToMove { value }),
+        let winner = if result == 0 {
+            Color::Black
+        } else {
+            Color::White
         };
-        let lion_square = match bytes[145] {
-            NO_LION_SQUARE => None,
-            value => {
-                Some(Square::from_dense(value as usize).ok_or(Error::InvalidLionSquare { value })?)
-            }
+        let value = match reason {
+            0 => Self::NotFromGame,
+            1..=7 => Self::Game(GameResult::Win {
+                winner,
+                reason: match reason {
+                    1 => WinReason::RoyalCapture,
+                    2 => WinReason::Repetition,
+                    3 => WinReason::PieceExhaustion,
+                    4 => WinReason::BareKing,
+                    5 => WinReason::Stalemate,
+                    6 => WinReason::Mate,
+                    _ => WinReason::Resignation,
+                },
+            }),
+            8..=11 => Self::Game(GameResult::Draw {
+                reason: match reason {
+                    8 => DrawReason::Repetition,
+                    9 => DrawReason::PieceExhaustion,
+                    10 => DrawReason::BareKing,
+                    _ => DrawReason::Agreement,
+                },
+            }),
+            x => return Err(Error::InvalidEndReason(x)),
         };
-        let lion_by_kirin_promotion = match bytes[146] {
-            0 => false,
-            1 => true,
-            value => return Err(Error::InvalidLionPromotionFlag { value }),
-        };
-        if lion_square.is_none() && lion_by_kirin_promotion {
-            return Err(Error::LionPromotionWithoutSquare);
+        if value.codes().0 != result {
+            return Err(Error::OutcomeReasonMismatch);
         }
-        let outcome = Outcome::from_code(bytes[149])?;
-        let origin = Origin::from_code(bytes[156])?;
-        if bytes[157..160].iter().any(|&byte| byte != 0) {
-            return Err(Error::NonzeroReservedBytes);
+        Ok(value)
+    }
+    fn validate_origin(self, origin: Origin) -> Result<(), Error> {
+        if (origin == Origin::Synthetic) != (self == Self::NotFromGame) {
+            return Err(Error::OriginOutcomeMismatch);
         }
-        Ok(Self {
-            board,
-            side_to_move,
-            lion_square,
-            lion_by_kirin_promotion,
-            score: i16::from_le_bytes(bytes[147..149].try_into().expect("slice length is fixed")),
-            outcome,
-            origin,
-            game_number: read_u32(bytes, 150),
-            ply: u16::from_le_bytes(bytes[154..156].try_into().expect("slice length is fixed")),
-        })
-    }
-
-    /// レコードから局面を復元し、不変条件と先獅子状態を検査する。
-    pub fn to_position(&self) -> Result<Position, Error> {
-        let position = self.position_with_side(self.side_to_move)?;
-        let restored_flag = position
-            .lion_taken_by_non_lion()
-            .is_some_and(|trigger| trigger.by_kirin_promotion);
-        if restored_flag != self.lion_by_kirin_promotion {
-            return Err(Error::LionPromotionMismatch {
-                recorded: self.lion_by_kirin_promotion,
-                restored: restored_flag,
-            });
-        }
-        Ok(position)
-    }
-
-    /// 数値診断用の配置と、記録された手番に対応する評価視点を返す。
-    ///
-    /// 盤面と先獅子の升を保持し、記録された麒麟成りフラグとの一致は要求しない。
-    /// 先獅子の升に手番側の駒がある数値診断用の記録では、配置の内部手番を反転して
-    /// `Position`の不変条件を保つ。評価には必ず戻り値の視点を明示的に指定すること。
-    /// 駒除去で先獅子の升が空になった場合も、その升の特徴は保持する。
-    /// 対局の再開と合法手生成には`to_position`を使うこと。
-    pub fn to_position_for_evaluation(&self) -> Result<(Position, Color), Error> {
-        let mut side = self.side_to_move;
-        if let Some(square) = self.lion_square {
-            let value = self.board[square.dense_index()];
-            if value != 0 && decode_piece(square, value)?.color() == Some(side) {
-                side = side.opposite();
-            }
-        }
-        Ok((self.position_with_side(side)?, self.side_to_move))
-    }
-
-    fn position_with_side(&self, side: Color) -> Result<Position, Error> {
-        let mut builder = PositionBuilder::new(side);
-        for square in Square::all() {
-            let value = self.board[square.dense_index()];
-            if value != 0 {
-                builder.put(square, decode_piece(square, value)?)?;
-            }
-        }
-        let mut position = builder.finish()?;
-        position.set_lion_capture(self.lion_square)?;
-        position.validate()?;
-        Ok(position)
-    }
-}
-
-/// 合法な最善手が捕獲または成りなら`true`を返す。
-///
-/// `best_move`が指定局面の合法手でなければ`IllegalMove`を返し、局面は変更しない。
-pub fn best_move_is_tactical(
-    position: &Position,
-    generator: &MoveGenerator,
-    best_move: Move,
-) -> Result<bool, IllegalMove> {
-    let mut legal_moves = Vec::new();
-    generator.generate_moves(position, &mut legal_moves);
-    if !legal_moves.contains(&best_move) {
-        return Err(IllegalMove(best_move));
-    }
-    Ok(best_move.promote
-        || position
-            .captured_squares(best_move)
-            .into_iter()
-            .any(|square| square.is_some()))
-}
-
-/// ヘッダを検証し、レコードを逐次復号する読み込み器。
-pub struct Reader<R> {
-    /// 読み込み元。
-    inner: R,
-    /// 復号済みヘッダ。
-    header: Header,
-    /// 未読レコード数。
-    remaining: u64,
-}
-
-impl<R: Read + Seek> Reader<R> {
-    /// 読み込み元のヘッダとファイル長を検証する。
-    pub fn new(mut inner: R) -> Result<Self, Error> {
-        let actual_length = inner.seek(SeekFrom::End(0))?;
-        inner.seek(SeekFrom::Start(0))?;
-        let mut header_bytes = [0_u8; HEADER_LEN];
-        inner.read_exact(&mut header_bytes)?;
-        let header = Header::decode(&header_bytes)?;
-        let records_length = header
-            .record_count
-            .checked_mul(RECORD_LEN as u64)
-            .ok_or(Error::FileLengthOverflow)?;
-        let expected_length = (HEADER_LEN as u64)
-            .checked_add(records_length)
-            .ok_or(Error::FileLengthOverflow)?;
-        if actual_length != expected_length {
-            return Err(Error::FileLengthMismatch {
-                expected: expected_length,
-                actual: actual_length,
-            });
-        }
-        let remaining = header.record_count;
-        Ok(Self {
-            inner,
-            header,
-            remaining,
-        })
-    }
-
-    /// 復号済みヘッダを返す。
-    pub const fn header(&self) -> &Header {
-        &self.header
-    }
-
-    /// 次のレコードを復号し、末尾なら`None`を返す。
-    pub fn read_record(&mut self) -> Result<Option<Record>, Error> {
-        if self.remaining == 0 {
-            return Ok(None);
-        }
-        let mut bytes = [0_u8; RECORD_LEN];
-        self.inner.read_exact(&mut bytes)?;
-        let record = Record::decode(&bytes)?;
-        self.remaining -= 1;
-        Ok(Some(record))
-    }
-
-    /// 読み込み元を返す。
-    pub fn into_inner(self) -> R {
-        self.inner
-    }
-}
-
-impl<R: Read + Seek> Iterator for Reader<R> {
-    type Item = Result<Record, Error>;
-
-    /// 次のレコードを復号する。
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.read_record() {
-            Ok(Some(record)) => Some(Ok(record)),
-            Ok(None) => None,
-            Err(error) => {
-                self.remaining = 0;
-                Some(Err(error))
-            }
-        }
-    }
-
-    /// 未読レコード数から正確な残数を返す。
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        match usize::try_from(self.remaining) {
-            Ok(remaining) => (remaining, Some(remaining)),
-            Err(_) => (usize::MAX, None),
-        }
-    }
-}
-
-/// ヘッダと固定長レコードを逐次書き出す書き込み器。
-pub struct Writer<W> {
-    /// 書き出し先。
-    inner: W,
-    /// 完了時にレコード数を書き戻すヘッダ。
-    header: Header,
-    /// 書き出し済みレコード数。
-    record_count: u64,
-}
-
-impl<W: Write + Seek> Writer<W> {
-    /// レコード数0の仮ヘッダを書いて書き出しを始める。
-    pub fn new(mut inner: W, mut header: Header) -> Result<Self, Error> {
-        header.record_count = 0;
-        inner.write_all(&header.encode())?;
-        Ok(Self {
-            inner,
-            header,
-            record_count: 0,
-        })
-    }
-
-    /// 1レコードを書き出す。
-    pub fn write_record(&mut self, record: &Record) -> Result<(), Error> {
-        self.inner.write_all(&record.encode())?;
-        self.record_count = self
-            .record_count
-            .checked_add(1)
-            .ok_or(Error::FileLengthOverflow)?;
         Ok(())
     }
+}
 
-    /// レコード数をヘッダへ書き戻し、書き出し先を返す。
+/// 手番側の価値。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Value {
+    /// 探索値を持たない。
+    None,
+    /// αβの探索値（センチポーン）。
+    AlphaBeta(i16),
+    /// MCTSの期待得点。1を65,535とする。
+    Mcts(u16),
+}
+/// 学習用途ごとの選別に使う除外理由。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Exclusion {
+    /// 除外しない。
+    None = 0,
+    /// 詰みの帯。
+    MateBand = 1,
+    /// 戦術的な局面。
+    Tactical = 2,
+    /// 反復の局面。
+    Repetition = 3,
+}
+/// 方策の指定。候補の列は[`Entry::new`]で検査される。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Policy {
+    /// 方策がない。
+    None,
+    /// 指した手が最善手で、確率1。
+    PlayedMove,
+    /// 整列鍵の昇順の候補と量子化した確率。
+    Candidates(Vec<(Move, u16)>),
+}
+/// 1局面の着手と教師情報。ファイルの教師との整合は書き込み時に検査する。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    played_move: Option<Move>,
+    value: Value,
+    exclusion: Exclusion,
+    policy: Policy,
+    visits: Option<u32>,
+}
+impl Entry {
+    /// 方策の順序、確率和、最善手の印を検査して項目を作る。
+    pub fn new(
+        played_move: Option<Move>,
+        value: Value,
+        exclusion: Exclusion,
+        policy: Policy,
+        visits: Option<u32>,
+    ) -> Result<Self, Error> {
+        match &policy {
+            Policy::PlayedMove if played_move.is_none() => {
+                return Err(Error::BestMoveWithoutPlayedMove);
+            }
+            Policy::Candidates(candidates) => {
+                if candidates.is_empty() {
+                    return Err(Error::EmptyPolicy);
+                }
+                if candidates.len() > usize::from(u16::MAX) {
+                    return Err(Error::TooManyCandidates);
+                }
+                validate_probabilities(candidates.iter().map(|(mv, p)| (move_key(*mv), *p)))?;
+            }
+            _ => {}
+        }
+        Ok(Self {
+            played_move,
+            value,
+            exclusion,
+            policy,
+            visits,
+        })
+    }
+    /// 指した手を返す。
+    pub fn played_move(&self) -> Option<Move> {
+        self.played_move
+    }
+    /// 価値を返す。
+    pub fn value(&self) -> Value {
+        self.value
+    }
+    /// 除外理由を返す。
+    pub fn exclusion(&self) -> Exclusion {
+        self.exclusion
+    }
+    /// 方策を返す。
+    pub fn policy(&self) -> &Policy {
+        &self.policy
+    }
+    /// 根の総訪問回数を返す。
+    pub fn visits(&self) -> Option<u32> {
+        self.visits
+    }
+    fn validate_teacher(&self, kind: TeacherKind) -> Result<(), Error> {
+        if matches!(
+            (kind, self.value),
+            (TeacherKind::AlphaBeta, Value::Mcts(_)) | (TeacherKind::Mcts, Value::AlphaBeta(_))
+        ) {
+            return Err(Error::ValueKindMismatch);
+        }
+        match (kind, self.visits) {
+            (TeacherKind::AlphaBeta, Some(_)) => Err(Error::UnexpectedVisits),
+            (TeacherKind::Mcts, None) => Err(Error::MissingVisits),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// 開始局面と途切れない手順を持つ対局記録。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameRecord {
+    game_number: u32,
+    origin: Origin,
+    outcome: Outcome,
+    start_ply: u16,
+    start_position: Position,
+    entries: Vec<Entry>,
+}
+impl GameRecord {
+    /// 局面、由来、手数、および最後だけ着手なしであることを検査する。
+    /// 規則・履歴に依存する着手と教師の検査は[`Writer::write_game`]で行う。
+    pub fn new(
+        game_number: u32,
+        origin: Origin,
+        outcome: Outcome,
+        start_ply: u16,
+        start_position: Position,
+        entries: Vec<Entry>,
+    ) -> Result<Self, Error> {
+        outcome.validate_origin(origin)?;
+        start_position.validate().map_err(Error::Position)?;
+        validate_entry_count(start_ply, entries.len() as u64)?;
+        for (i, entry) in entries.iter().enumerate() {
+            validate_played_move(entry.played_move.is_some(), i + 1 == entries.len())?;
+        }
+        Ok(Self {
+            game_number,
+            origin,
+            outcome,
+            start_ply,
+            start_position,
+            entries,
+        })
+    }
+    /// 対局番号を返す。
+    pub fn game_number(&self) -> u32 {
+        self.game_number
+    }
+    /// 由来を返す。
+    pub fn origin(&self) -> Origin {
+        self.origin
+    }
+    /// 対局結果を返す。
+    pub fn outcome(&self) -> Outcome {
+        self.outcome
+    }
+    /// 開始局面の手数を返す。
+    pub fn start_ply(&self) -> u16 {
+        self.start_ply
+    }
+    /// 開始局面を返す。
+    pub fn start_position(&self) -> &Position {
+        &self.start_position
+    }
+    /// 手順の項目を返す。
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+}
+
+/// 復号した対局と各項目の局面。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecodedGame {
+    record: GameRecord,
+    positions: Vec<Position>,
+}
+impl DecodedGame {
+    /// 復号した対局を返す。
+    pub fn record(&self) -> &GameRecord {
+        &self.record
+    }
+    /// 項目kの局面を添字kで保持する列を返す。項目数と同じ長さである。
+    pub fn positions(&self) -> &[Position] {
+        &self.positions
+    }
+    /// 対局と復元局面の所有権を返す。
+    pub fn into_parts(self) -> (GameRecord, Vec<Position>) {
+        (self.record, self.positions)
+    }
+}
+
+fn move_key(mv: Move) -> u32 {
+    u32::from_be_bytes([
+        mv.from.dense_index() as u8,
+        mv.mid.map_or(255, |s| s.dense_index() as u8),
+        mv.to.dense_index() as u8,
+        u8::from(mv.promote),
+    ])
+}
+/// 履歴を含む合法手を形式の4バイト鍵で整列し、鍵の重複と手数の上限を検査する。
+pub fn sorted_legal_moves(game: &Game) -> Result<Vec<Move>, Error> {
+    let mut moves = game.legal_moves();
+    if moves.len() >= usize::from(u16::MAX) {
+        return Err(Error::TooManyLegalMoves);
+    }
+    moves.sort_unstable_by_key(|mv| move_key(*mv));
+    let mut previous = None;
+    for mv in &moves {
+        let key = move_key(*mv);
+        if previous == Some(key) {
+            return Err(Error::DuplicateMoveKey);
+        }
+        previous = Some(key);
+    }
+    Ok(moves)
+}
+
+/// 最大剰余法で重みを量子化し、番号順・非0・和65,535の候補を返す。
+pub fn quantize_policy(weights: &[(u16, f64)]) -> Result<Vec<(u16, u16)>, Error> {
+    let mut sorted = weights.to_vec();
+    sorted.sort_unstable_by_key(|(index, _)| *index);
+    let mut previous = None;
+    let mut maximum = 0.0_f64;
+    for &(index, weight) in &sorted {
+        if previous == Some(index) {
+            return Err(Error::DuplicateWeightIndex);
+        }
+        previous = Some(index);
+        if !weight.is_finite() || weight < 0.0 {
+            return Err(Error::InvalidWeight);
+        }
+        maximum = maximum.max(weight);
+    }
+    if maximum == 0.0 {
+        return Err(Error::ZeroWeightSum);
+    }
+    let sum: f64 = sorted.iter().map(|(_, weight)| weight / maximum).sum();
+    let mut candidates = Vec::new();
+    let mut allocated = 0_u32;
+    for (index, weight) in sorted {
+        let scaled = (weight / maximum) / sum * f64::from(u16::MAX);
+        let floor = scaled.floor() as u16;
+        allocated = allocated
+            .checked_add(u32::from(floor))
+            .ok_or(Error::QuantizationPrecision)?;
+        candidates.push((index, floor, scaled.fract()));
+    }
+    let missing = u32::from(u16::MAX)
+        .checked_sub(allocated)
+        .ok_or(Error::QuantizationPrecision)?;
+    if missing as usize > candidates.len() {
+        return Err(Error::QuantizationPrecision);
+    }
+    candidates.sort_unstable_by(|a, b| b.2.total_cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    for (_, value, _) in candidates.iter_mut().take(missing as usize) {
+        *value = value.checked_add(1).ok_or(Error::QuantizationPrecision)?;
+    }
+    candidates.sort_unstable_by_key(|c| c.0);
+    Ok(candidates
+        .into_iter()
+        .filter(|c| c.1 != 0)
+        .map(|(i, p, _)| (i, p))
+        .collect())
+}
+
+fn validate_probabilities(candidates: impl IntoIterator<Item = (u32, u16)>) -> Result<(), Error> {
+    let mut previous = None;
+    let mut sum = 0_u64;
+    for (index, probability) in candidates {
+        if previous == Some(index) {
+            return Err(Error::DuplicateCandidate);
+        }
+        if previous.is_some_and(|p| p > index) {
+            return Err(Error::CandidatesNotSorted);
+        }
+        if probability == 0 {
+            return Err(Error::ZeroProbability);
+        }
+        previous = Some(index);
+        sum += u64::from(probability);
+    }
+    if sum != u64::from(u16::MAX) {
+        return Err(Error::InvalidProbabilitySum);
+    }
+    Ok(())
+}
+fn validate_entry_count(ply: u16, count: u64) -> Result<(), Error> {
+    if count == 0 {
+        return Err(Error::EmptyGame);
+    }
+    if count > u64::from(u16::MAX - ply) + 1 {
+        return Err(Error::PlyOverflow);
+    }
+    Ok(())
+}
+fn validate_played_move(has_move: bool, last: bool) -> Result<(), Error> {
+    match (has_move, last) {
+        (true, true) => Err(Error::MoveOnLastEntry),
+        (false, false) => Err(Error::MissingPlayedMove),
+        _ => Ok(()),
+    }
+}
+fn validate_game_number(previous: Option<u32>, next: u32) -> Result<(), Error> {
+    if previous.is_some_and(|p| p >= next) {
+        return Err(Error::GameNumberNotIncreasing);
+    }
+    Ok(())
+}
+fn input<const N: usize>(r: &mut impl Read, section: Section) -> Result<[u8; N], Error> {
+    let mut bytes = [0; N];
+    r.read_exact(&mut bytes).map_err(|e| {
+        if e.kind() == io::ErrorKind::UnexpectedEof {
+            Error::Truncated(section)
+        } else {
+            Error::Io(e)
+        }
+    })?;
+    Ok(bytes)
+}
+fn decode_piece(value: u8) -> Result<PieceCode, Error> {
+    let (color, payload) = match value {
+        1..=58 => (Color::Black, value - 1),
+        65..=122 => (Color::White, value - 65),
+        _ => return Err(Error::InvalidPieceCode(value)),
+    };
+    let kind = PieceKind::from_index(payload % PIECE_KIND_COUNT as u8)
+        .ok_or(Error::InvalidPieceCode(value))?;
+    if payload >= PIECE_KIND_COUNT as u8 {
+        PieceCode::new_promoted(color, kind)
+    } else {
+        PieceCode::new(color, kind)
+    }
+    .ok_or(Error::InvalidPieceCode(value))
+}
+/// 升順に144個の駒コードを返す。最上位ビットは成り権保留を表す。
+/// 駒種または陣営が不正な場合は局面エラーを返す。
+pub fn encode_board(position: &Position) -> Result<[u8; 144], Error> {
+    let mut board = [0; 144];
+    for square in Square::all() {
+        let code = match position.piece_at(square) {
+            None => 0,
+            Some(piece) => {
+                let kind = piece
+                    .kind()
+                    .ok_or(Error::Position(PositionError::InvalidPieceCode { square }))?;
+                let color = piece
+                    .color()
+                    .ok_or(Error::Position(PositionError::InvalidPieceCode { square }))?;
+                1 + kind.index() as u8
+                    + PIECE_KIND_COUNT as u8 * u8::from(piece.is_promoted())
+                    + 64 * color as u8
+            }
+        };
+        board[square.dense_index()] =
+            code | (u8::from(position.promotion_deferred().contains(square)) << 7);
+    }
+    Ok(board)
+}
+fn write_position(w: &mut impl Write, position: &Position) -> Result<(), Error> {
+    w.write_all(&encode_board(position)?)?;
+    let trigger = position.lion_taken_by_non_lion();
+    w.write_all(&[
+        position.side_to_move() as u8,
+        trigger.map_or(255, |t| t.square.dense_index() as u8),
+        u8::from(trigger.is_some_and(|t| t.by_kirin_promotion)),
+    ])?;
+    Ok(())
+}
+fn read_position(r: &mut impl Read) -> Result<Position, Error> {
+    let board = input::<144>(r, Section::GameHeader)?;
+    let [side, lion, flag] = input(r, Section::GameHeader)?;
+    let side = match side {
+        0 => Color::Black,
+        1 => Color::White,
+        x => return Err(Error::InvalidSideToMove(x)),
+    };
+    let lion = if lion == 255 {
+        None
+    } else {
+        Some(Square::from_dense(usize::from(lion)).ok_or(Error::InvalidLionSquare(lion))?)
+    };
+    if flag > 1 {
+        return Err(Error::InvalidLionPromotionFlag(flag));
+    }
+    decode_position(&board, side, lion, flag == 1)
+}
+
+/// 駒コード、手番、先獅子の升と麒麟成りの印から検査済みの局面を復元する。
+/// 駒コード、成り権保留、先獅子の印と局面の不変条件に違反する入力は拒否する。
+pub fn decode_position(
+    board: &[u8; 144],
+    side: Color,
+    lion: Option<Square>,
+    lion_promotion: bool,
+) -> Result<Position, Error> {
+    if lion.is_none() && lion_promotion {
+        return Err(Error::LionPromotionWithoutSquare);
+    }
+    let mut builder = PositionBuilder::new(side);
+    for (square, &code) in Square::all().zip(board) {
+        let piece = code & 127;
+        if piece != 0 {
+            builder
+                .put(square, decode_piece(piece)?)
+                .map_err(Error::PositionBuild)?;
+        }
+        if code & 128 != 0 {
+            builder
+                .mark_promotion_deferred(square)
+                .map_err(Error::PositionBuild)?;
+        }
+    }
+    let mut position = builder.finish().map_err(Error::PositionBuild)?;
+    position.set_lion_capture(lion).map_err(Error::Position)?;
+    position.validate().map_err(Error::Position)?;
+    if position
+        .lion_taken_by_non_lion()
+        .is_some_and(|t| t.by_kirin_promotion)
+        != lion_promotion
+    {
+        return Err(Error::LionPromotionMismatch);
+    }
+    Ok(position)
+}
+fn move_index(moves: &[Move], mv: Move) -> Result<u16, Error> {
+    let index = moves
+        .binary_search_by_key(&move_key(mv), |m| move_key(*m))
+        .map_err(|_| Error::IllegalMove(mv))?;
+    if moves.get(index) != Some(&mv) {
+        return Err(Error::IllegalMove(mv));
+    }
+    u16::try_from(index).map_err(|_| Error::TooManyLegalMoves)
+}
+fn move_at(moves: &[Move], index: u16) -> Result<Move, Error> {
+    moves
+        .get(usize::from(index))
+        .copied()
+        .ok_or(Error::InvalidMoveIndex(index))
+}
+fn legal_moves_for_entry(
+    game: &Game,
+    has_move: bool,
+    has_candidates: bool,
+) -> Result<Vec<Move>, Error> {
+    if has_move && game.result().is_some() {
+        return Err(Error::MoveAfterGameOver);
+    }
+    if has_move || has_candidates {
+        sorted_legal_moves(game)
+    } else {
+        Ok(Vec::new())
+    }
+}
+fn write_entry(
+    w: &mut impl Write,
+    entry: &Entry,
+    game: &mut Game,
+    kind: TeacherKind,
+) -> Result<(), Error> {
+    entry.validate_teacher(kind)?;
+    let candidates = match &entry.policy {
+        Policy::Candidates(c) => c.as_slice(),
+        _ => &[],
+    };
+    let moves = legal_moves_for_entry(game, entry.played_move.is_some(), !candidates.is_empty())?;
+    let played = match entry.played_move {
+        Some(mv) => move_index(&moves, mv)?,
+        None => u16::MAX,
+    };
+    w.write_all(&played.to_le_bytes())?;
+    let value = match entry.value {
+        Value::None => [0; 2],
+        Value::AlphaBeta(v) => v.to_le_bytes(),
+        Value::Mcts(v) => v.to_le_bytes(),
+    };
+    w.write_all(&value)?;
+    let flags = entry.exclusion as u8
+        | (u8::from(entry.value == Value::None) << 2)
+        | (u8::from(entry.policy == Policy::PlayedMove) << 3);
+    w.write_all(&[flags])?;
+    w.write_all(
+        &u16::try_from(candidates.len())
+            .map_err(|_| Error::TooManyCandidates)?
+            .to_le_bytes(),
+    )?;
+    if let Some(visits) = entry.visits {
+        w.write_all(&visits.to_le_bytes())?;
+    }
+    for &(mv, probability) in candidates {
+        w.write_all(&move_index(&moves, mv)?.to_le_bytes())?;
+        w.write_all(&probability.to_le_bytes())?;
+    }
+    if let Some(mv) = entry.played_move {
+        game.play(mv).map_err(Error::Replay)?;
+    }
+    Ok(())
+}
+fn read_entry(
+    r: &mut impl Read,
+    game: &mut Game,
+    kind: TeacherKind,
+    last: bool,
+) -> Result<Entry, Error> {
+    let played = u16::from_le_bytes(input(r, Section::Entry)?);
+    let value_bytes = input::<2>(r, Section::Entry)?;
+    let [flags] = input(r, Section::Entry)?;
+    let count = u16::from_le_bytes(input(r, Section::Entry)?);
+    let visits = match kind {
+        TeacherKind::AlphaBeta => None,
+        TeacherKind::Mcts => Some(u32::from_le_bytes(input(r, Section::Entry)?)),
+    };
+    if flags & 0xf0 != 0 {
+        return Err(Error::InvalidEntryFlags(flags));
+    }
+    let value = if flags & 4 != 0 {
+        if value_bytes != [0; 2] {
+            return Err(Error::NonzeroAbsentValue);
+        }
+        Value::None
+    } else {
+        match kind {
+            TeacherKind::AlphaBeta => Value::AlphaBeta(i16::from_le_bytes(value_bytes)),
+            TeacherKind::Mcts => Value::Mcts(u16::from_le_bytes(value_bytes)),
+        }
+    };
+    if flags & 8 != 0 {
+        if played == u16::MAX {
+            return Err(Error::BestMoveWithoutPlayedMove);
+        }
+        if count != 0 {
+            return Err(Error::BestMoveWithCandidates);
+        }
+    }
+    validate_played_move(played != u16::MAX, last)?;
+    let moves = legal_moves_for_entry(game, played != u16::MAX, count != 0)?;
+    let played_move = if played == u16::MAX {
+        None
+    } else {
+        Some(move_at(&moves, played)?)
+    };
+    let mut candidates = Vec::new();
+    for _ in 0..count {
+        let index = u16::from_le_bytes(input(r, Section::Candidate)?);
+        let probability = u16::from_le_bytes(input(r, Section::Candidate)?);
+        candidates.push((move_at(&moves, index)?, probability));
+    }
+    let policy = if flags & 8 != 0 {
+        Policy::PlayedMove
+    } else if count == 0 {
+        Policy::None
+    } else {
+        Policy::Candidates(candidates)
+    };
+    let exclusion = match flags & 3 {
+        0 => Exclusion::None,
+        1 => Exclusion::MateBand,
+        2 => Exclusion::Tactical,
+        _ => Exclusion::Repetition,
+    };
+    let entry = Entry::new(played_move, value, exclusion, policy, visits)?;
+    if let Some(mv) = played_move {
+        game.play(mv).map_err(Error::Replay)?;
+    }
+    Ok(entry)
+}
+
+/// 対局を検証して書き、完了時に件数を確定する書き込み器。
+pub struct Writer<W> {
+    inner: W,
+    header: Header,
+    previous_number: Option<u32>,
+    failed: bool,
+}
+impl<W: Write + Seek> Writer<W> {
+    /// 空の出力先に対局数0・項目数0の仮ヘッダを書く。
+    pub fn new(mut inner: W, mut header: Header) -> Result<Self, Error> {
+        if inner.seek(SeekFrom::End(0))? != 0 {
+            return Err(Error::NonemptyOutput);
+        }
+        header.game_count = 0;
+        header.entry_count = 0;
+        header.write(&mut inner)?;
+        Ok(Self {
+            inner,
+            header,
+            previous_number: None,
+            failed: false,
+        })
+    }
+    /// 全項目を再生して検査した後、1局を書き出す。検査エラーでは出力を変更しない。
+    pub fn write_game(&mut self, record: &GameRecord) -> Result<(), Error> {
+        if self.failed {
+            return Err(Error::StreamFailed);
+        }
+        validate_game_number(self.previous_number, record.game_number)?;
+        let games = self
+            .header
+            .game_count
+            .checked_add(1)
+            .ok_or(Error::CountOverflow)?;
+        let entries = self
+            .header
+            .entry_count
+            .checked_add(record.entries.len() as u64)
+            .ok_or(Error::CountOverflow)?;
+        let mut bytes = Vec::new();
+        bytes.write_all(&record.game_number.to_le_bytes())?;
+        let (outcome, reason) = record.outcome.codes();
+        bytes.write_all(&[record.origin as u8, outcome, reason, 0])?;
+        bytes.write_all(&record.start_ply.to_le_bytes())?;
+        bytes.write_all(&(record.entries.len() as u32).to_le_bytes())?;
+        write_position(&mut bytes, &record.start_position)?;
+        let mut game = Game::from_position(self.header.rules, record.start_position.clone());
+        for entry in &record.entries {
+            write_entry(&mut bytes, entry, &mut game, self.header.teacher_kind)?;
+        }
+        if let Err(error) = self.inner.write_all(&bytes) {
+            self.failed = true;
+            return Err(Error::Io(error));
+        }
+        self.header.game_count = games;
+        self.header.entry_count = entries;
+        self.previous_number = Some(record.game_number);
+        Ok(())
+    }
+    /// ヘッダへ件数を書き戻してフラッシュし、末尾に位置する出力先を返す。
     pub fn finish(mut self) -> Result<W, Error> {
-        self.header.record_count = self.record_count;
+        if self.failed {
+            return Err(Error::StreamFailed);
+        }
         self.inner.seek(SeekFrom::Start(0))?;
-        self.inner.write_all(&self.header.encode())?;
+        self.header.write(&mut self.inner)?;
+        self.inner.seek(SeekFrom::End(0))?;
         self.inner.flush()?;
         Ok(self.inner)
     }
 }
 
-/// 規則セット名が固定欄へ符号化できることを検査する。
-fn validate_rule_set_name(rule_set: &str) -> Result<(), Error> {
-    if rule_set.len() > RULE_SET_LEN || rule_set.as_bytes().contains(&0) {
-        Err(Error::InvalidRuleSetName)
-    } else {
-        Ok(())
-    }
+/// 対局を逐次復号し、手順を再生して各項目の局面を返す読み込み器。
+pub struct Reader<R> {
+    inner: R,
+    header: Header,
+    read_games: u64,
+    read_entries: u64,
+    previous_number: Option<u32>,
+    failed: bool,
 }
-
-/// コミットハッシュが完全ハッシュの表記規約を満たすことを検査する。
-fn validate_generation_commit(commit: &str) -> Result<(), Error> {
-    if commit.len() == COMMIT_LEN && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        Ok(())
-    } else {
-        Err(Error::InvalidGenerationCommit)
-    }
-}
-
-/// 内部駒コードを`1 + 駒種番号(0〜28) + 29×成りビット + 64×陣営`へ写す。
-/// 駒種番号は[`PieceKind::index`]、成りビットは成駒なら1、それ以外は0である。
-/// 陣営は先手0、後手1であり、空升には別途0を置く。
-/// 先手1〜58と後手65〜122は58<64なので重ならず、陣営と駒を一意に復号できる。
-/// 内部の[`PieceCode`]のビット配置は変わり得るため、生値を永続形式には使わない。
-fn encode_piece(piece: PieceCode) -> u8 {
-    let kind = piece.kind().expect("a board piece must have a kind");
-    let color = piece.color().expect("a board piece must have a color");
-    1 + kind.index() as u8
-        + PIECE_KIND_COUNT as u8 * u8::from(piece.is_promoted())
-        + 64 * color as u8
-}
-
-/// [`encode_piece`]の永続形式を復号する。
-/// 先手1〜58と後手65〜122だけを受理し、59〜64と123〜255を拒否する。
-/// 0は空升として呼び手が扱い、この関数では受理しない。
-/// 範囲内でも[`PieceCode::new`]または[`PieceCode::new_promoted`]で構築できない駒種と成りの組を拒否する。
-/// 成れない駒種の成りも、この検査で拒否する。
-fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
-    let (color, payload) = match value {
-        1..=58 => (Color::Black, value - 1),
-        65..=122 => (Color::White, value - 65),
-        _ => return Err(Error::InvalidPieceCode { square, value }),
-    };
-    let promoted = payload >= PIECE_KIND_COUNT as u8;
-    let kind_index = payload % PIECE_KIND_COUNT as u8;
-    let kind =
-        PieceKind::from_index(kind_index).ok_or(Error::InvalidPieceCode { square, value })?;
-    if promoted {
-        PieceCode::new_promoted(color, kind).ok_or(Error::InvalidPieceCode { square, value })
-    } else {
-        PieceCode::new(color, kind).ok_or(Error::InvalidPieceCode { square, value })
-    }
-}
-
-/// 指定オフセットからリトルエンディアンの`u32`を読む。
-fn read_u32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(
-        bytes[offset..offset + 4]
-            .try_into()
-            .expect("slice length is fixed"),
-    )
-}
-
-/// 指定オフセットからリトルエンディアンの`u64`を読む。
-fn read_u64(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(
-        bytes[offset..offset + 8]
-            .try_into()
-            .expect("slice length is fixed"),
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use super::*;
-    use minase_core::test_util::{position, position_from_codes, sq};
-    use minase_core::{DrawReason, WinReason};
-
-    /// テスト用の有効なヘッダを返す。
-    fn header(record_count: u64) -> Header {
-        Header::new(
-            "L0,P0,R1,E0".to_owned(),
-            "0123456789abcdef0123456789abcdef01234567".to_owned(),
-            [0; CHECKSUM_LEN],
-            100_000,
-            7,
-            record_count,
-        )
-        .unwrap()
-    }
-
-    /// 局面をレコードの符号化と復号を経て往復させる。
-    fn round_trip(position: &Position) -> Position {
-        let record = Record::from_position(
-            position,
-            -123,
-            Outcome::Draw,
-            4,
-            57,
-            crate::training::records::Origin::RandomSelfplay,
-        );
-        Record::decode(&record.encode())
-            .unwrap()
-            .to_position()
-            .unwrap()
-    }
-
-    #[test]
-    fn origin_codes_and_reserved_bytes_follow_the_record_layout() {
-        for (code, origin) in [
-            (0, Origin::RandomSelfplay),
-            (1, Origin::HumanOpeningSelfplay),
-            (2, Origin::HumanGame),
-            (3, Origin::Synthetic),
-        ] {
-            let record =
-                Record::from_position(&Position::initial(), 0, Outcome::Draw, 1, 0, origin);
-            let encoded = record.encode();
-            assert_eq!(encoded[156], code);
-            assert_eq!(&encoded[157..160], &[0; 3]);
-            assert_eq!(Record::decode(&encoded).unwrap(), record);
-        }
-        let record = Record::from_position(
-            &Position::initial(),
-            0,
-            Outcome::Draw,
-            1,
-            0,
-            Origin::RandomSelfplay,
-        );
-        for value in 4..=255 {
-            let mut bytes = record.encode();
-            bytes[156] = value;
-            assert!(
-                matches!(Record::decode(&bytes), Err(Error::InvalidOrigin { value: actual }) if actual == value)
-            );
-        }
-        for offset in 157..160 {
-            let mut bytes = record.encode();
-            bytes[offset] = 1;
-            assert!(matches!(
-                Record::decode(&bytes),
-                Err(Error::NonzeroReservedBytes)
-            ));
-        }
-    }
-
-    // 公開境界は未検証の着手をパニックせず型付きエラーとして拒否する。
-    #[test]
-    fn tactical_move_classification_rejects_a_move_without_an_origin_piece() {
-        let position = Position::empty(Color::Black);
-        let invalid = Move {
-            from: sq(0, 0),
-            mid: None,
-            to: sq(0, 1),
-            promote: false,
+impl<R: Read> Reader<R> {
+    /// ヘッダを検査する。対局数0なら項目数0と直後の末尾も検査する。
+    pub fn new(mut inner: R) -> Result<Self, Error> {
+        let header = Header::read(&mut inner)?;
+        let mut reader = Self {
+            inner,
+            header,
+            read_games: 0,
+            read_entries: 0,
+            previous_number: None,
+            failed: false,
         };
-
-        assert_eq!(
-            best_move_is_tactical(&position, &MoveGenerator::standard(), invalid),
-            Err(IllegalMove(invalid))
-        );
+        if reader.header.game_count == 0 {
+            reader.check_end()?;
+        }
+        Ok(reader)
     }
-
-    // `Record`の契約とMNSDの配置表に従い、盤面、手番、成り状態およびzobristを固定長形式が保存する。
-    #[test]
-    fn positions_round_trip_with_initial_promoted_and_white_to_move_states() {
-        let initial = Position::initial();
-        assert_eq!(round_trip(&initial), initial);
-
-        let promoted = position_from_codes(
-            Color::Black,
-            &[
-                (
-                    sq(1, 1),
-                    PieceCode::new_promoted(Color::Black, PieceKind::WhiteHorse).unwrap(),
-                ),
-                (
-                    sq(4, 4),
-                    PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
-                ),
-            ],
-        );
-        assert_eq!(round_trip(&promoted), promoted);
-
-        let white_to_move = position(
-            Color::White,
-            &[
-                (sq(5, 0), Color::Black, PieceKind::King),
-                (sq(6, 11), Color::White, PieceKind::King),
-            ],
-        );
-        assert_eq!(round_trip(&white_to_move), white_to_move);
+    /// 復号したヘッダを返す。
+    pub fn header(&self) -> &Header {
+        &self.header
     }
-
-    // `Record`の先獅子の契約に従い、先獅子の対象升と麒麟成り原因を盤面から復元する。
-    #[test]
-    fn lion_trigger_round_trips_with_and_without_kirin_promotion() {
-        let mut ordinary = position(Color::Black, &[(sq(4, 4), Color::White, PieceKind::Bishop)]);
-        ordinary.set_lion_capture(Some(sq(4, 4))).unwrap();
-        assert_eq!(round_trip(&ordinary), ordinary);
-
-        let trigger_square = sq(7, 7);
-        let mut promoted_kirin = position_from_codes(
-            Color::Black,
-            &[(
-                trigger_square,
-                PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
-            )],
-        );
-        promoted_kirin
-            .set_lion_capture(Some(trigger_square))
-            .unwrap();
-        let restored = round_trip(&promoted_kirin);
-        assert_eq!(restored, promoted_kirin);
-        assert!(
-            restored
-                .lion_taken_by_non_lion()
-                .unwrap()
-                .by_kirin_promotion
-        );
+    /// 次の対局を返す。最終対局を返す前に項目総数と末尾を検査する。
+    pub fn read_game(&mut self) -> Result<Option<DecodedGame>, Error> {
+        if self.failed {
+            return Err(Error::StreamFailed);
+        }
+        let result = self.read_next();
+        if result.is_err() {
+            self.failed = true;
+        }
+        result
     }
-
-    // `encode_piece`の番号割り当てに従い、陣営の間の空き領域と上限外の値は駒に復号できない。
-    #[test]
-    fn persistent_piece_codes_use_disjoint_color_ranges_and_reject_gaps() {
-        for color in Color::ALL {
-            for kind in PieceKind::ALL {
-                let expected_range = match color {
-                    Color::Black => 1..=58,
-                    Color::White => 65..=122,
-                };
-                let unpromoted_code = 1 + kind.index() as u8 + 64 * color as u8;
-                if let Some(piece) = PieceCode::new(color, kind) {
-                    assert_eq!(decode_piece(sq(0, 0), unpromoted_code).unwrap(), piece);
-                } else {
-                    let mut encoded = Record::from_position(
-                        &Position::initial(),
-                        0,
-                        Outcome::Draw,
-                        1,
-                        0,
-                        crate::training::records::Origin::RandomSelfplay,
-                    )
-                    .encode();
-                    encoded[0] = unpromoted_code;
-                    assert!(matches!(
-                        Record::decode(&encoded),
-                        Err(Error::InvalidPieceCode { .. })
-                    ));
-                }
-                if let Some(promoted) = PieceCode::new_promoted(color, kind) {
-                    let promoted_code = encode_piece(promoted);
-                    assert!(expected_range.contains(&promoted_code));
-                    assert_eq!(decode_piece(sq(0, 0), promoted_code).unwrap(), promoted);
-                }
+    /// 入力の所有権を返す。未読の対局は検査しない。
+    pub fn into_inner(self) -> R {
+        self.inner
+    }
+    fn read_next(&mut self) -> Result<Option<DecodedGame>, Error> {
+        if self.read_games == self.header.game_count {
+            return Ok(None);
+        }
+        let bytes = input::<GAME_HEADER_LEN>(&mut self.inner, Section::GameHeader)?;
+        let mut r = bytes.as_slice();
+        let number = u32::from_le_bytes(input(&mut r, Section::GameHeader)?);
+        validate_game_number(self.previous_number, number)?;
+        let [origin, outcome, reason, reserved] = input(&mut r, Section::GameHeader)?;
+        let origin = Origin::from_code(origin)?;
+        let outcome = Outcome::decode(outcome, reason)?;
+        outcome.validate_origin(origin)?;
+        if reserved != 0 {
+            return Err(Error::NonzeroReservedBytes);
+        }
+        let ply = u16::from_le_bytes(input(&mut r, Section::GameHeader)?);
+        let count = u32::from_le_bytes(input(&mut r, Section::GameHeader)?);
+        validate_entry_count(ply, u64::from(count))?;
+        let total = self
+            .read_entries
+            .checked_add(u64::from(count))
+            .ok_or(Error::CountOverflow)?;
+        if total > self.header.entry_count {
+            return Err(Error::EntryCountMismatch);
+        }
+        let start = read_position(&mut r)?;
+        let mut game = Game::from_position(self.header.rules, start.clone());
+        let mut entries = Vec::new();
+        let mut positions = Vec::new();
+        for index in 0..count {
+            positions.push(game.position().clone());
+            entries.push(read_entry(
+                &mut self.inner,
+                &mut game,
+                self.header.teacher_kind,
+                index + 1 == count,
+            )?);
+        }
+        let record = GameRecord::new(number, origin, outcome, ply, start, entries)?;
+        self.read_entries = total;
+        self.read_games = self.read_games.checked_add(1).ok_or(Error::CountOverflow)?;
+        self.previous_number = Some(number);
+        if self.read_games == self.header.game_count {
+            self.check_end()?;
+        }
+        Ok(Some(DecodedGame { record, positions }))
+    }
+    fn check_end(&mut self) -> Result<(), Error> {
+        if self.read_entries != self.header.entry_count {
+            return Err(Error::EntryCountMismatch);
+        }
+        let mut byte = [0];
+        loop {
+            match self.inner.read(&mut byte) {
+                Ok(0) => return Ok(()),
+                Ok(_) => return Err(Error::TrailingBytes),
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(Error::Io(e)),
             }
         }
-
-        for value in (59..=64).chain(123..=u8::MAX) {
-            let mut encoded = Record::from_position(
-                &Position::initial(),
-                0,
-                Outcome::Draw,
-                1,
-                0,
-                crate::training::records::Origin::RandomSelfplay,
-            )
-            .encode();
-            encoded[0] = value;
-            assert!(matches!(
-                Record::decode(&encoded),
-                Err(Error::InvalidPieceCode { .. })
-            ));
-        }
-    }
-
-    // `Header`とモジュールのdocコメントのMNSDの配置に従い、識別子、版、レコード長および物理長を受理条件にする。
-    #[test]
-    fn header_and_file_length_mismatches_are_rejected() {
-        let valid = header(0).encode();
-        for (offset, replacement) in [(0, 0_u8), (4, 2), (8, 159)] {
-            let mut invalid = valid;
-            invalid[offset] = replacement;
-            assert!(Header::decode(&invalid).is_err());
-        }
-
-        let bytes = header(1).encode().to_vec();
-        assert!(matches!(
-            Reader::new(Cursor::new(bytes)),
-            Err(Error::FileLengthMismatch { .. })
-        ));
-    }
-
-    // `Record`の終局結果の契約に従い、結果コードは手番側の勝敗と引き分けの3値である。
-    #[test]
-    fn game_results_map_to_side_relative_outcomes() {
-        let black_win = GameResult::Win {
-            winner: Color::Black,
-            reason: WinReason::Mate,
-        };
-        assert_eq!(
-            Outcome::from_game_result(black_win, Color::Black),
-            Outcome::Win
-        );
-        assert_eq!(
-            Outcome::from_game_result(black_win, Color::White),
-            Outcome::Loss
-        );
-        let draw = GameResult::Draw {
-            reason: DrawReason::Repetition,
-        };
-        assert_eq!(Outcome::from_game_result(draw, Color::Black), Outcome::Draw);
-        assert_eq!(Outcome::from_game_result(draw, Color::White), Outcome::Draw);
     }
 }

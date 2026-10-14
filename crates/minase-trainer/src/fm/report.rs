@@ -155,8 +155,12 @@ pub(super) fn scale_report(
     scaled_a: &[f64; FM_RANK],
     args: &ScaleArgs,
 ) -> Result<ValidationReport> {
-    // SAFETY: ほかの学習器コマンドと同じく、実行中の入力MNSDを変更しない契約で開く。
-    let dataset = unsafe { Dataset::open(&args.data, None)? };
+    let dataset = Dataset::open(
+        &args.data,
+        None,
+        std::num::NonZeroUsize::new(crate::nn::workers::workers(None)?)
+            .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+    )?;
     let count = args
         .validation_sample
         .min(dataset.validation_indices().len());

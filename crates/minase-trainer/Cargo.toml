@@ -15,7 +15,6 @@ minase = { path = "../minase" }
 minase-core = { path = "../minase-core" }
 cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading", "cuda-13040"] }
 clap = { version = "4.6.4", features = ["derive"] }
-memmap2 = "0.9"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 sha2 = "0.10"

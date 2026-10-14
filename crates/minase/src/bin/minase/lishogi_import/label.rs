@@ -2,14 +2,16 @@
 
 use super::{cli::Common, filter::winner, input::InputGame, replay::replay};
 use minase::datagen::{
-    self, data_error,
+    self, best_move_is_tactical, data_error,
     game::{CompletedGame, CompletedRecord},
     statistics::Statistics,
 };
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
-use minase::training::records::{Outcome, Record, best_move_is_tactical};
+use minase::training::records::{
+    Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value as TeacherValue,
+};
 use minase_core::notation::sfen::{SetupPosition, to_extended_sfen};
-use minase_core::{Game, MoveGenerator, Rules};
+use minase_core::{Game, GameResult, MoveGenerator, Position, Rules, WinReason};
 use serde::Serialize;
 use serde_json::Value;
 use std::{collections::BTreeMap, io};
@@ -21,7 +23,7 @@ use std::{collections::BTreeMap, io};
 #[derive(Serialize)]
 pub(super) struct GameDetails {
     /// `game`は受理順に1から付ける対局番号を表す整数のJSON数値で、範囲は1〜4,294,967,295である。
-    /// 学習データの`Record::game_number`と一致する識別番号であり、単位はない。
+    /// 学習データの`GameRecord::game_number`と一致する識別番号であり、単位はない。
     pub(super) game: u32,
     /// `sente_rating`は入力の先手レーティングを表す整数のJSON数値またはnullで、単位はレーティング点である。
     /// 型の範囲はi32の−2,147,483,648〜2,147,483,647で、受理対局では必ず値がある。
@@ -49,7 +51,7 @@ pub(super) struct GameDetails {
     /// `plies`は入力の`moves`を空白で分割した着手数を表す非負整数のJSON数値で、片側の1着手を1手と数える。
     /// 再生で終局した後に入力に残る着手も含める。
     pub(super) plies: usize,
-    /// `recorded_positions`はこの対局から学習データへ書いた局面数を表す非負整数のJSON数値で、0も出力する。
+    /// `recorded_positions`はこの対局の除外なし・価値ありの局面数を表す非負整数のJSON数値で、0も出力する。
     pub(super) recorded_positions: usize,
     /// `excluded_positions`は局面の除外理由をキー、局面数を非負整数のJSON数値で持つJSONオブジェクトである。
     /// `mate_band`は探索値の絶対値が29,000センチポーン以上、`tactical`は最善手が捕獲または成りの場合を表す。
@@ -82,6 +84,7 @@ pub(super) fn process_job(
     let limits = SearchLimits::new(None, Some(u64::from(common.nodes.get())), None, None)
         .map_err(data_error)?;
     let mut records = Vec::new();
+    let mut entries = Vec::new();
     let mut stats = Statistics::default();
     let mut retained = Vec::new();
     let mut score_exclusions = 0;
@@ -119,41 +122,88 @@ pub(super) fn process_job(
             )
             .map_err(data_error)?;
             retained.push((u32::from(candidate.ply), to_extended_sfen(&setup)));
-        } else if result.score.unsigned_abs() >= datagen::MATE_BAND_START {
-            stats.excluded_mate_band += 1;
-        } else if best_move_is_tactical(
-            position,
-            &MoveGenerator::new(Rules::ENGINE_DEFAULT.moves),
-            result.best_move,
-        )
-        .map_err(data_error)?
-        {
-            stats.excluded_tactical += 1;
-        } else if candidate.repeated {
-            stats.excluded_repetition += 1;
         } else {
-            let outcome = if winner(&job.input) == Some(position.side_to_move()) {
-                Outcome::Win
+            let score = i16::try_from(result.score).map_err(data_error)?;
+            let exclusion = if result.score.unsigned_abs() >= datagen::MATE_BAND_START {
+                stats.excluded_mate_band += 1;
+                Exclusion::MateBand
+            } else if best_move_is_tactical(
+                position,
+                &MoveGenerator::new(Rules::ENGINE_DEFAULT.moves),
+                result.best_move,
+            )
+            .map_err(data_error)?
+            {
+                stats.excluded_tactical += 1;
+                Exclusion::Tactical
+            } else if candidate.repeated {
+                stats.excluded_repetition += 1;
+                Exclusion::Repetition
             } else {
-                Outcome::Loss
+                records.push(CompletedRecord {
+                    score,
+                    search_key: position.zobrist() ^ position.rights_zobrist(),
+                });
+                Exclusion::None
             };
-            records.push(CompletedRecord {
-                record: Record::from_position(
-                    position,
-                    i16::try_from(result.score).map_err(data_error)?,
-                    outcome,
-                    job.number,
-                    candidate.ply,
-                    minase::training::records::Origin::HumanGame,
-                ),
-                search_key: position.zobrist() ^ position.rights_zobrist(),
-            });
+            let played_move = replay.moves.get(usize::from(candidate.ply)).copied();
+            let policy = if played_move == Some(result.best_move) {
+                Policy::PlayedMove
+            } else {
+                Policy::Candidates(vec![(result.best_move, u16::MAX)])
+            };
+            entries.push(
+                Entry::new(
+                    played_move,
+                    TeacherValue::AlphaBeta(score),
+                    exclusion,
+                    policy,
+                    None,
+                )
+                .map_err(data_error)?,
+            );
         }
     }
+    let record = if openings {
+        None
+    } else {
+        let result = match replay.result {
+            Some(result) => {
+                entries.push(
+                    Entry::new(
+                        None,
+                        TeacherValue::None,
+                        Exclusion::None,
+                        Policy::None,
+                        None,
+                    )
+                    .map_err(data_error)?,
+                );
+                result
+            }
+            None => GameResult::Win {
+                winner: winner(&job.input)
+                    .ok_or_else(|| data_error(super::filter::Exclusion::Winner))?,
+                reason: WinReason::Resignation,
+            },
+        };
+        Some(
+            GameRecord::new(
+                job.number,
+                Origin::HumanGame,
+                Outcome::Game(result),
+                0,
+                Position::initial(),
+                entries,
+            )
+            .map_err(data_error)?,
+        )
+    };
     stats.recorded_positions = records.len() as u64;
     Ok(Processed {
         completed: CompletedGame {
             game_number: job.number,
+            record,
             records,
             stats,
         },

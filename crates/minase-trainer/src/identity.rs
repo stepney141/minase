@@ -1,14 +1,14 @@
 //! 入力は正規化したパスと、形式に応じたヘッダまたはバイト長で識別する。
-//! MNSDは`byte_length`と`header`（規則、生成コミット、重みの検査和、ノード上限、シード、記録数）を持つ。
+//! MNSDは`byte_length`と`header`（規則、生成コミット、重みの検査和、教師の種類と規模、シード、対局数、項目数）を持つ。
 //! MNPTとMNUEはヘッダに記録済みの`checksum`、NPZ（学習器のチェックポイントを含む）は`byte_length`を持つ。
 
 use crate::nn::hex;
-use minase::training::records::{HEADER_LEN, Header};
+use minase::training::records::Reader;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     fs::File,
-    io::{self, Read},
+    io::{self, Read, Seek},
     path::{Path, PathBuf},
 };
 
@@ -29,15 +29,14 @@ pub fn file_identity(path: &Path) -> io::Result<FileIdentity> {
     file.read_exact(&mut magic)?;
     let metadata = match &magic {
         b"MNSD" => {
-            let mut bytes = [0; HEADER_LEN];
-            bytes[..4].copy_from_slice(&magic);
-            file.read_exact(&mut bytes[4..])?;
-            let header = Header::decode(&bytes)
+            file.rewind()?;
+            let reader = Reader::new(file)
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            let header = reader.header();
             json!({"byte_length": length, "header": {
                 "rule_set": header.rule_set(), "generation_commit": header.generation_commit(),
-                "network_checksum": hex(header.network_checksum()), "teacher_nodes": header.teacher_nodes(),
-                "seed": header.seed(), "record_count": header.record_count()
+                "network_checksum": hex(header.network_checksum()), "teacher_kind": header.teacher_kind() as u8, "teacher_scale": header.teacher_scale(),
+                "seed": header.seed(), "game_count": header.game_count(), "entry_count": header.entry_count()
             }})
         }
         b"MNPT" | b"MNUE" => {

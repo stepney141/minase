@@ -1,4 +1,6 @@
 //! pst trainの引数、端数バッチ、再開と成果物を合成MNSDで検証する。
+use common::mnsd;
+use minase_trainer::data::{Outcome, Sample};
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
@@ -8,7 +10,7 @@ use minase::eval::{
     features::FEATURE_COUNT,
     pst::{FM_RANK, Pst},
 };
-use minase::training::records::{Header, Outcome, Record};
+use minase::training::records::Header;
 use minase_core::{Color, PieceKind};
 use minase_trainer::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
@@ -203,9 +205,16 @@ impl Fixture {
             .encode();
         }
         fs::write(&args.init, initial).unwrap();
-        let header =
-            Header::new("L0,P0,R1,E0".into(), "1".repeat(40), [2; 32], 200, 11, 120).unwrap();
-        let mut bytes = header.encode().to_vec();
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [2; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
+            200,
+            11,
+        )
+        .unwrap();
+        let mut samples = Vec::new();
         for game in 0..40 {
             for ply in 0..3 {
                 let side = if ply % 2 == 0 {
@@ -228,8 +237,8 @@ impl Fixture {
                     ]);
                 }
                 let p = common::position(&pieces, side, None);
-                bytes.extend(
-                    Record::from_position(
+                samples.push(
+                    Sample::from_position(
                         &p,
                         if side == Color::Black { 300 } else { -300 },
                         if game % 3 == 0 {
@@ -241,11 +250,11 @@ impl Fixture {
                         ply,
                         minase::training::records::Origin::RandomSelfplay,
                     )
-                    .encode(),
+                    .unwrap(),
                 );
             }
         }
-        fs::write(&args.data[0], &bytes).unwrap();
+        fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
         (fixture, args)
     }
 }
@@ -366,14 +375,13 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
     let (_fixture, mut args) = Fixture::new(false, false);
     args.epochs = 1;
     args.removal_reference = RemovalReferenceKind::V0;
-    // SAFETY: fixture専用の入力はDatasetの生存中に変更しない。
-    let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            Some(minase_trainer::data::Lookahead::new(0.9, 40).unwrap()),
-        )
-        .unwrap()
-    };
+
+    let dataset = Dataset::open(
+        &args.data,
+        Some(minase_trainer::data::Lookahead::new(0.9, 40).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     let dataset = dataset.with_lambda(args.lambda).unwrap();
     let ks = dataset.estimate_teacher_ks().unwrap();
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();

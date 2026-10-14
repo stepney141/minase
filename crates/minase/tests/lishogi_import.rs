@@ -5,9 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use minase::training::records::{Origin, Outcome, Reader};
+use minase::training::records::{
+    Entry, Exclusion, GameRecord, Header, Origin, Outcome, Policy, Reader, TeacherKind,
+    Value as TeacherValue, Writer,
+};
 use minase_core::notation::{sfen::parse_extended_sfen, usi};
-use minase_core::{Color, Game, Rules};
+use minase_core::{Color, Game, GameResult, Rules, WinReason};
 use serde_json::{Value, json};
 
 const CASES: &str = include_str!("fixtures/lishogi_import_cases.ndjson");
@@ -110,30 +113,133 @@ fn games_filter_in_specified_order_and_preserve_details_and_records() {
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 5);
     let mut reader = Reader::new(File::open(dir.path("one.mnsd")).unwrap()).unwrap();
     assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
-    assert_eq!(reader.header().teacher_nodes(), 200);
+    assert_eq!(reader.header().teacher_scale(), 200);
     let mut counts = [0; 3];
-    let mut last_game = 1;
-    while let Some(record) = reader.read_record().unwrap() {
+    let mut last_game = 0;
+    let mut played_policies = 0;
+    let mut candidate_policies = 0;
+    while let Some(decoded) = reader.read_game().unwrap() {
+        let record = decoded.record();
         assert_eq!(record.origin(), Origin::HumanGame);
+        assert_eq!(record.start_ply(), 0);
+        assert_eq!(record.start_position(), &minase_core::Position::initial());
         let game = record.game_number();
-        assert!(game >= last_game);
+        assert!(game > last_game);
         last_game = game;
-        counts[game as usize - 1] += 1;
-        assert!(record.ply() < [22, 81, 19][game as usize - 1]);
         let winning_color = if game == 2 {
             Color::Black
         } else {
             Color::White
         };
+        let id = ["SNjoPiHz", "Lqyj1bLC", "gZ0HcfLK"][game as usize - 1];
+        let input: Value = CASES
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .find(|g| g["id"] == id)
+            .unwrap();
+        let mut replay = Game::new(Rules::ENGINE_DEFAULT);
+        let mut moves = Vec::new();
+        for text in input["moves"].as_str().unwrap().split_whitespace() {
+            if replay.result().is_some() {
+                break;
+            }
+            let mv = usi::parse(replay.position(), text).unwrap();
+            replay.play(mv).unwrap();
+            moves.push(mv);
+        }
+        assert_eq!(record.entries().len(), moves.len() + 1);
         assert_eq!(
             record.outcome(),
-            if record.to_position().unwrap().side_to_move() == winning_color {
-                Outcome::Win
-            } else {
-                Outcome::Loss
-            }
+            Outcome::Game(match replay.result() {
+                Some(result) => result,
+                None => GameResult::Win {
+                    winner: winning_color,
+                    reason: WinReason::Resignation
+                },
+            })
         );
+        let last = record.entries().last().unwrap();
+        assert_eq!(last.played_move(), None);
+        if replay.result().is_some() {
+            if id == "SNjoPiHz" {
+                assert_eq!(
+                    record.outcome(),
+                    Outcome::Game(GameResult::Win {
+                        winner: Color::White,
+                        reason: WinReason::RoyalCapture,
+                    })
+                );
+            }
+            assert_eq!(last.value(), TeacherValue::None);
+            assert_eq!(last.policy(), &Policy::None);
+            assert_eq!(last.exclusion(), Exclusion::None);
+        } else {
+            assert!(matches!(last.value(), TeacherValue::AlphaBeta(_)));
+            assert!(
+                matches!(last.policy(), Policy::Candidates(c) if c.len() == 1 && c[0].1 == 65_535)
+            );
+        }
+        let mut exclusions = [0_u64; 4];
+        for (k, entry) in record.entries().iter().enumerate() {
+            assert_eq!(entry.played_move(), moves.get(k).copied());
+            exclusions[entry.exclusion() as usize] += 1;
+            // 指示書のノード上限で各局面を独立に探索し、保存した価値と最善手を照合する。
+            if entry.value() != TeacherValue::None {
+                use minase::search::{
+                    DEFAULT_THREADS, HistoryTables, SearchLimits, SearchSnapshot,
+                    TranspositionTable, search,
+                };
+                let position_game =
+                    Game::from_position(Rules::ENGINE_DEFAULT, decoded.positions()[k].clone());
+                let expected = search(
+                    &minase::eval::weights().unwrap(),
+                    &SearchSnapshot::from_game(&position_game).unwrap(),
+                    &SearchLimits::new(None, Some(200), None, None).unwrap(),
+                    DEFAULT_THREADS,
+                    &mut TranspositionTable::new(1).unwrap(),
+                    &mut HistoryTables::new(DEFAULT_THREADS),
+                )
+                .unwrap();
+                assert_eq!(
+                    entry.value(),
+                    TeacherValue::AlphaBeta(expected.score.try_into().unwrap())
+                );
+                if entry.played_move() == Some(expected.best_move) {
+                    assert_eq!(entry.policy(), &Policy::PlayedMove);
+                } else {
+                    assert_eq!(
+                        entry.policy(),
+                        &Policy::Candidates(vec![(expected.best_move, 65_535)])
+                    );
+                }
+            }
+            match entry.policy() {
+                Policy::PlayedMove => {
+                    played_policies += 1;
+                    assert!(entry.played_move().is_some());
+                }
+                Policy::Candidates(c) => {
+                    candidate_policies += 1;
+                    assert_eq!(c.len(), 1);
+                    assert_eq!(c[0].1, 65_535);
+                    assert_ne!(entry.played_move(), Some(c[0].0));
+                }
+                Policy::None => assert_eq!(k, moves.len()),
+            }
+            if entry.exclusion() == Exclusion::None && entry.value() != TeacherValue::None {
+                counts[game as usize - 1] += 1;
+            }
+        }
+        for (i, reason) in ["mate_band", "tactical", "repetition"].iter().enumerate() {
+            assert_eq!(
+                report["games"][id]["excluded_positions"][reason],
+                exclusions[i + 1]
+            );
+        }
     }
+    assert_eq!(last_game, 3);
+    assert!(played_policies > 0);
+    assert!(candidate_policies > 0);
     for (count, bound) in counts.into_iter().zip([22, 81, 19]) {
         assert!(count > 0 && count <= bound);
     }
@@ -248,9 +354,9 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
     assert!(!dir.path("bad.mnsd").exists());
     success(command("0", "selfplay.mnsd"));
     let mut reader = Reader::new(File::open(dir.path("selfplay.mnsd")).unwrap()).unwrap();
-    assert!(reader.header().record_count() > 0);
-    while let Some(record) = reader.read_record().unwrap() {
-        assert_eq!(record.origin(), Origin::HumanOpeningSelfplay);
+    assert!(reader.header().game_count() > 0);
+    while let Some(decoded) = reader.read_game().unwrap() {
+        assert_eq!(decoded.record().origin(), Origin::HumanOpeningSelfplay);
     }
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 4);
 }
@@ -365,20 +471,39 @@ fn invalid_utf8_has_line_number_and_existing_outputs_are_preserved() {
 
 #[test]
 fn inspect_accepts_and_displays_synthetic_records() {
-    use minase::training::records::{Header, Record, Writer};
     let dir = Directory::new();
     let path = dir.path("synthetic.mnsd");
-    let header = Header::new("L0,P0,R1,E0".into(), "0".repeat(40), [0; 32], 0, 0, 0).unwrap();
+    let header = Header::new(
+        "L0,P0,R1,E0".into(),
+        "0".repeat(40),
+        [0; 32],
+        TeacherKind::AlphaBeta,
+        0,
+        0,
+    )
+    .unwrap();
     let mut writer = Writer::new(File::create(&path).unwrap(), header).unwrap();
     writer
-        .write_record(&Record::from_position(
-            &minase_core::Position::initial(),
-            0,
-            Outcome::Draw,
-            0,
-            0,
-            Origin::Synthetic,
-        ))
+        .write_game(
+            &GameRecord::new(
+                0,
+                Origin::Synthetic,
+                Outcome::NotFromGame,
+                0,
+                minase_core::Position::initial(),
+                vec![
+                    Entry::new(
+                        None,
+                        TeacherValue::None,
+                        Exclusion::None,
+                        Policy::None,
+                        None,
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap(),
+        )
         .unwrap();
     writer.finish().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
@@ -390,5 +515,200 @@ fn inspect_accepts_and_displays_synthetic_records() {
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(text.contains("origin: Synthetic"));
-    assert!(text.contains("origin_3: 1"));
+    assert!(text.contains("games_origin_3: 1"));
+    assert!(text.contains("origin_3: 0"));
+    assert!(text.contains("eligible_positions: 0"));
+    assert!(text.contains("outcome: none"));
+}
+
+/// 検査出力の全行を固定し、先頭N局というdumpの単位と全対局の集計を検査する。
+#[test]
+fn inspect_dump_has_every_entry_field_in_order() {
+    let dir = Directory::new();
+    let path = dir.path("dump.mnsd");
+    for kind in [TeacherKind::AlphaBeta, TeacherKind::Mcts] {
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [0xab; 32],
+            kind,
+            42,
+            7,
+        )
+        .unwrap();
+        let mut writer = Writer::new(File::create(&path).unwrap(), header).unwrap();
+        let mut game = Game::new(Rules::ENGINE_DEFAULT);
+        let first = usi::parse(game.position(), "1i1h").unwrap();
+        let initial = game.position().clone();
+        game.play(first).unwrap();
+        let last_position = game.position().clone();
+        let best = game.legal_moves()[0];
+        let (value, visits) = match kind {
+            TeacherKind::AlphaBeta => (TeacherValue::AlphaBeta(123), None),
+            TeacherKind::Mcts => (TeacherValue::Mcts(123), Some(456)),
+        };
+        let record = GameRecord::new(
+            9,
+            Origin::HumanGame,
+            Outcome::Game(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::Resignation,
+            }),
+            4,
+            initial.clone(),
+            vec![
+                Entry::new(
+                    Some(first),
+                    value,
+                    Exclusion::Tactical,
+                    Policy::PlayedMove,
+                    visits,
+                )
+                .unwrap(),
+                Entry::new(
+                    None,
+                    value,
+                    Exclusion::None,
+                    Policy::Candidates(vec![(best, 65_535)]),
+                    visits,
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        writer.write_game(&record).unwrap();
+        writer
+            .write_game(
+                &GameRecord::new(
+                    12,
+                    Origin::Synthetic,
+                    Outcome::NotFromGame,
+                    0,
+                    initial.clone(),
+                    vec![
+                        Entry::new(
+                            None,
+                            TeacherValue::None,
+                            Exclusion::None,
+                            Policy::None,
+                            visits.map(|_| 0),
+                        )
+                        .unwrap(),
+                    ],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["data", "selfplay", "inspect"])
+            .arg(&path)
+            .args(["--dump", "1"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        let visits_line = if kind == TeacherKind::Mcts {
+            "root_visits: 456\n"
+        } else {
+            ""
+        };
+        let expected = format!(
+            "header:\nmagic: MNSD\nformat_version: 2\nrule_set: L0,P0,R1,E0\ngeneration_commit: {}\nnetwork_checksum: {}\nteacher_kind: {kind:?}\nteacher_scale: 42\nseed: 7\ngame_count: 2\nentry_count: 3\n\
+entry: 9 0\nsfen: {}\nside_to_move: Black\nlion_square: none\nlion_by_kirin_promotion: false\nvalue: 123\nexclusion: tactical\npolicy: played\n{visits_line}played_move: 1i1h\noutcome: Win\ngame_number: 9\nply: 4\norigin: HumanGame\n\
+entry: 9 1\nsfen: {}\nside_to_move: White\nlion_square: none\nlion_by_kirin_promotion: false\nvalue: 123\nexclusion: none\npolicy: 1 {}:65535\n{visits_line}played_move: none\noutcome: Loss\ngame_number: 9\nply: 5\norigin: HumanGame\n\
+summary:\ngames: 2\nentries: 3\ngames_origin_0: 0\ngames_origin_1: 0\ngames_origin_2: 1\ngames_origin_3: 1\nexclusion_none: 2\nexclusion_mate_band: 0\nexclusion_tactical: 1\nexclusion_repetition: 0\nvalue_none: 1\npolicy_none: 1\npolicy_played: 1\npolicy_candidates: 1\npolicy_candidate_count_1: 1\neligible_positions: 1\norigin_0: 0\norigin_1: 0\norigin_2: 1\norigin_3: 0\noutcome_loss: 1\noutcome_draw: 0\noutcome_win: 0\nscore_minimum: 123\nscore_maximum: 123\nscore_average: 123.000000\nblack_to_move: 0\nwhite_to_move: 1\n",
+            "1".repeat(40),
+            "ab".repeat(32),
+            minase_core::to_sfen(&initial),
+            minase_core::to_sfen(&last_position),
+            usi::text_generated(&last_position, best)
+        );
+        assert_eq!(text, expected);
+        // 2局目だけを途中で切り、失敗位置と非0終了を検査する。
+        let mut bytes = fs::read(&path).unwrap();
+        bytes.pop();
+        fs::write(&path, bytes).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["data", "selfplay", "inspect"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("game at file index 2:"));
+    }
+}
+
+/// 保存対局だけの除外数と学習対象数はファイルから数え直して一致し、打ち切り対局は書かれない。
+#[test]
+fn selfplay_summary_counts_saved_entries_and_discards_capped_games() {
+    let dir = Directory::new();
+    for cap in [1200, 1] {
+        let path = dir.path(&format!("selfplay-{cap}.mnsd"));
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["data", "selfplay", "generate", "--output"])
+            .arg(&path)
+            .args([
+                "--games",
+                "1",
+                "--seed",
+                "7",
+                "--nodes",
+                "100",
+                "--random-moves",
+                "4",
+                "--hash-mb",
+                "1",
+                "--concurrency",
+                "1",
+                "--max-ply",
+                &cap.to_string(),
+                "--allow-dirty",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        let summary: BTreeMap<_, _> = text.lines().filter_map(|l| l.split_once(": ")).collect();
+        let mut reader = Reader::new(File::open(path).unwrap()).unwrap();
+        let mut eligible = 0;
+        let mut exclusions = [0; 4];
+        while let Some(decoded) = reader.read_game().unwrap() {
+            for entry in decoded.record().entries() {
+                exclusions[entry.exclusion() as usize] += 1;
+                if entry.exclusion() == Exclusion::None && entry.value() != TeacherValue::None {
+                    eligible += 1;
+                }
+            }
+        }
+        assert_eq!(
+            summary["recorded_positions"].parse::<u64>().unwrap(),
+            eligible
+        );
+        for (index, reason) in ["mate_band", "tactical", "repetition"].iter().enumerate() {
+            assert_eq!(
+                summary[format!("excluded_{reason}_in_saved_games").as_str()]
+                    .parse::<u64>()
+                    .unwrap(),
+                exclusions[index + 1]
+            );
+        }
+        if cap == 1 {
+            assert_eq!(reader.header().game_count(), 0);
+            assert_eq!(reader.header().entry_count(), 0);
+            assert_eq!(summary["games_discarded_max_ply"], "1");
+        } else {
+            assert_eq!(reader.header().game_count(), 1);
+            assert!(eligible > 0);
+            assert!(exclusions[1..].iter().sum::<u64>() > 0);
+        }
+    }
 }

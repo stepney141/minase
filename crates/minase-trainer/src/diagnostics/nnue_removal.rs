@@ -150,7 +150,7 @@ fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f6
 
 /// 検証集合の標本について、王駒以外の各1枚の除去差分を比較する。
 /// `--float`のチェックポイントと`--net`のMNUE版5は入力特徴の型と幅が一致しなければならない。
-/// 各記録を[`Record::to_position_for_evaluation`](minase::training::records::Record::to_position_for_evaluation)で復元し、記録された手番側を視点とする。
+/// 各記録を[`Sample::to_position`](crate::data::Sample::to_position)で復元し、記録された手番側を視点とする。
 /// 王将と玉将の駒状態11、および太子の駒状態21を除く盤上の全駒を1枚ずつ除く。
 /// 除いた駒が先獅子の対象升にあっても、その対象升は残す。
 /// 除ける駒がない局面は飛ばし、標本全体で除去が0件なら報告を作らずにエラーにする。
@@ -175,7 +175,9 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
     let mut integer_max = 0.0_f64;
     let mut integer_sum = 0.0;
     for &index in &indices {
-        let (before, perspective) = dataset.record(index)?.to_position_for_evaluation()?;
+        let sample = dataset.record(index)?;
+        let before = sample.to_position()?;
+        let perspective = sample.side_to_move();
         let squares: Vec<_> = Square::all()
             .filter_map(|square| {
                 before.piece_at(square).and_then(|piece| {

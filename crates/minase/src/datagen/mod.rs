@@ -2,8 +2,7 @@
 
 use std::io;
 
-use crate::training::records::Error as TrainingDataError;
-use minase_core::Game;
+use minase_core::{Game, IllegalMove, Move, MoveGenerator, Position};
 
 pub mod game;
 pub mod git;
@@ -32,11 +31,6 @@ pub fn data_error(error: impl std::error::Error + Send + Sync + 'static) -> io::
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
 
-/// 学習データエラーをコマンドの不正データエラーへ変換する。
-pub fn training_error(error: TrainingDataError) -> io::Error {
-    invalid_data(error.to_string())
-}
-
 /// 説明を`InvalidData`の入出力エラーへ変換する。
 pub fn invalid_data(error: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.into())
@@ -45,4 +39,46 @@ pub fn invalid_data(error: impl Into<String>) -> io::Error {
 /// バイト列を小文字の16進文字列へ変換する。
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// 合法な最善手が捕獲または成りなら`true`を返す。
+///
+/// `best_move`が指定局面の合法手でなければ`IllegalMove`を返し、局面は変更しない。
+pub fn best_move_is_tactical(
+    position: &Position,
+    generator: &MoveGenerator,
+    best_move: Move,
+) -> Result<bool, IllegalMove> {
+    let mut legal_moves = Vec::new();
+    generator.generate_moves(position, &mut legal_moves);
+    if !legal_moves.contains(&best_move) {
+        return Err(IllegalMove(best_move));
+    }
+    Ok(best_move.promote
+        || position
+            .captured_squares(best_move)
+            .into_iter()
+            .any(|square| square.is_some()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minase_core::{Color, test_util::sq};
+    // 公開境界は未検証の着手をパニックせず型付きエラーとして拒否する。
+    #[test]
+    fn tactical_move_classification_rejects_a_move_without_an_origin_piece() {
+        let position = Position::empty(Color::Black);
+        let invalid = Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(0, 1),
+            promote: false,
+        };
+
+        assert_eq!(
+            best_move_is_tactical(&position, &MoveGenerator::standard(), invalid),
+            Err(IllegalMove(invalid))
+        );
+    }
 }

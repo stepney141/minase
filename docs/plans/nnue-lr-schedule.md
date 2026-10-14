@@ -15,8 +15,10 @@
 
 起案。2026年10月12日に起案した。
 着手は利用者の指示を待つ。
-着手の前提はそろっている。前計画はP型の幅128を採用して完了し、学習器の改名を含む[Python学習器のRustへの移植と撤去](archived/python-trainer-retirement.md)もmasterへマージされた。
+前計画はP型の幅128を採用して完了し、学習器の改名を含む[Python学習器のRustへの移植と撤去](archived/python-trainer-retirement.md)もmasterへマージされた。
 実装は、現在の`crates/minase-trainer`に対して始められる。
+ただし、学習に使う全30ファイルと照合に使う`data/gen3/generated-1500000.bin`は、2026年10月14日に[教師データ形式の統一](archived/unified-teacher-format.md)で形式が変わったため削除したので、学習の前に版2の生成器で生成し直す（1ファイル約70分、30ファイルで約35時間）。
+生成し直したデータは探索も教師の評価関数も当時と異なるので、本書の比較の基準もそのデータで取り直す。
 
 ## 目的
 

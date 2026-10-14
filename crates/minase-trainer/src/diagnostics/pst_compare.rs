@@ -59,7 +59,7 @@ pub struct PstCompareArgs {
 struct ClassMetadata {
     generation_commit: String,
     network_checksum: String,
-    nodes: u32,
+    nodes: u64,
     rule_set: String,
     origin: Origin,
     lookahead_gamma: Option<f64>,
@@ -332,8 +332,14 @@ fn diagnose(
         candidate_float: file_identity(&args.candidate_float)?,
     });
     eprintln!("loading diagnostic data");
-    // SAFETY: --dataの実行中の不変性をCLI契約で要求する。この診断は入力を書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, report.lookahead)?.with_lambda(args.lambda)? };
+
+    let dataset = Dataset::open(
+        &args.data,
+        report.lookahead,
+        std::num::NonZeroUsize::new(crate::nn::workers::workers(None)?)
+            .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+    )?
+    .with_lambda(args.lambda)?;
     report.teacher_classes = dataset
         .teacher_classes()
         .iter()

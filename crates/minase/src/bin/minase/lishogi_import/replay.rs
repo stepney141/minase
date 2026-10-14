@@ -5,7 +5,7 @@ use super::{
     input::InputGame,
 };
 use minase::datagen;
-use minase_core::{Game, GameResult, Position, Rules, notation::usi};
+use minase_core::{Game, GameResult, Move, Position, Rules, notation::usi};
 
 pub(super) struct ReplayPosition {
     pub(super) position: Position,
@@ -16,6 +16,8 @@ pub(super) struct ReplayPosition {
 pub(super) struct Replay {
     pub(super) positions: Vec<ReplayPosition>,
     pub(super) truncated: Option<u32>,
+    pub(super) moves: Vec<Move>,
+    pub(super) result: Option<GameResult>,
 }
 
 /// 対局全体の規則と勝者を照合してから、探索対象を返す。
@@ -23,6 +25,7 @@ pub(super) fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclus
     let mut game = Game::new(Rules::ENGINE_DEFAULT);
     let mut positions = Vec::new();
     let mut truncated = None;
+    let mut played_moves = Vec::new();
     let mut moves = input.moves.split_whitespace();
     loop {
         if !openings && !game.position().promotion_deferred().is_empty() {
@@ -49,8 +52,10 @@ pub(super) fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclus
         };
         let legal = usi::parse(game.position(), text)
             .ok()
-            .and_then(|mv| game.play(mv).ok());
-        if legal.is_none() {
+            .and_then(|mv| game.play(mv).ok().map(|_| mv));
+        if let Some(mv) = legal {
+            played_moves.push(mv);
+        } else {
             if !openings {
                 return Err(Exclusion::IllegalDefaultRules);
             }
@@ -74,5 +79,7 @@ pub(super) fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclus
     Ok(Replay {
         positions,
         truncated,
+        moves: played_moves,
+        result: game.result(),
     })
 }

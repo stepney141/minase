@@ -93,12 +93,13 @@
 | Python学習器のRustへの移植と撤去 | [plans/archived/python-trainer-retirement.md](plans/archived/python-trainer-retirement.md) | 完了（採用） | 2026年10月13日 |
 | ファイル形式の整理と形式の仕様の整備 | [plans/archived/file-format-consolidation.md](plans/archived/file-format-consolidation.md) | 完了（採用） | 2026年10月13日 |
 | NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整 | [plans/nnue-search-spsa.md](plans/nnue-search-spsa.md) | 起案 | |
-| 教師データ形式の統一 | [plans/unified-teacher-format.md](plans/unified-teacher-format.md) | 起案 | |
+| 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [教師データ形式の統一](plans/archived/unified-teacher-format.md)は2026年10月14日に、採用で完了した。教師データの形式を、1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位のMNSDの版2の1つにまとめ、AlphaZeroの計画が予定していた別の形式MNZTは作らなかった。生成器はこれまで捨てていた局面にも除外の理由を付けて書き、学習器は手順を再生して局面を復元する。同じ条件で生成した版1と版2のデータで、学習器が読む局面の列と、NNUEとPSTの学習結果がビット単位で一致することを確かめ（[照合の記録](measurements/unified-teacher-format-equivalence.md)）、生のバイナリは版1の約11分の1から17分の1になった。版1のデータは利用者の判断で生成し直さず、`data/`の44ファイル（約18.3 GB）を削除した。
 - [ファイル形式の整理と形式の仕様の整備](plans/archived/file-format-consolidation.md)は2026年10月13日に、採用で完了した。各形式の版を1つにし、過去のファイルを読み続けない原則で形式を整理した。教師データの局面の由来をMNSDのレコードに置いて来歴JSONと付け直し（MNRS）を撤去し、MNPTを版3だけにし、学習器のチェックポイントをNPZに置き換えて、`MN`の独自形式を7から3へ減らした。残った全形式の仕様はそれを書き出すモジュールのdocコメントに、一覧は[ファイル形式の一覧](guides/file-formats.md)にある。変更の前後で学習の結果がビット単位で一致することを確かめ（[照合の記録](measurements/file-format-consolidation-equivalence.md)）、使えなくなった`data/`のファイル594件（約30 GB）を削除した。学習器の引数`--lambda-override`は必須の`--lambda`に変わった。
 - [Python学習器のRustへの移植と撤去](plans/archived/python-trainer-retirement.md)は2026年10月13日に、採用で完了した。PST、FM、PSTとFMの同時学習の学習器と、PSTとNNUEの診断を、学習器のクレート`crates/minase-trainer`（`nnue-trainer`から改名）へ移植し、評価関数ごとに独立したパイプラインとして持たせた。Pythonの学習順と初期値を一時的に与えた照合で、検証損失と最良エポックが一致し、書き出した整数の重みはPSTでバイト単位、FMで±1単位以内で一致し、現行の`crates/minase/nets/pst.bin`も`fm scale`でバイト単位で再生成できた（[照合の記録](measurements/python-trainer-retirement-checks.md)）。CPUの学習器はPythonのGPUの学習器より速いのでGPUのカーネルは加えず、Pythonの学習ツールと`minase dev pst-probe`、`minase dev nnue-probe`を削除した。同日にmasterへマージした。
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/archived/nnue-replacement.md)は2026年10月12日に、採用で完了した。現行PSTを線形経路として内包する幅128のP型NNUEを、既存の約2,920万局面と新規の約5,100万局面（1局面2万ノード）から[Rust製NNUE学習器](plans/archived/nnue-trainer-rust.md)で学び、基準M（PST＋FM）に対する段階ゲートでSTC `H1`（[0, 0, 24, 0, 80]）、LTC `H1`（[0, 0, 17, 0, 87]、異常0件）となった（[STC](measurements/nnue-replacement-stc.md)、[LTC](measurements/nnue-replacement-ltc.md)）。同じデータのHalfKP-hm-b8はP型に対するSTCで`H0`だった。探索が使う既定の評価関数はNNUEになり、同日にmasterへマージした。
@@ -113,7 +114,6 @@
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
-- [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。後者の学習は前者の結論を待つ。
+- [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。後者の学習は前者の結論を待つ。両計画が学習に使う約30ファイルの教師データは[教師データ形式の統一](plans/archived/unified-teacher-format.md)で削除したので、前者の学習の前に版2で生成し直す（約35時間）。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
-- [教師データ形式の統一](plans/unified-teacher-format.md)は、NNUE用の教師データ形式MNSDとAlphaZero用に予定していたMNZTを、対局単位の連鎖（開始局面と1手7バイトの項目、記録した局面1つあたり約9バイト）で方策も持つMNSDの版2の1つにまとめる。既存の教師データは手順が途切れていて移せないので生成し直す前提であり、どのファイルを生成し直すかは利用者が決める。AlphaZeroのSLの教師生成はこの計画の完了を待つ。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。

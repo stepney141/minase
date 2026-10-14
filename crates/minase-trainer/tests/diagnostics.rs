@@ -1,5 +1,7 @@
 //! 数値診断の出力契約を、手計算できる合成入力と実コマンドで検査する。
 
+use common::mnsd;
+use minase_trainer::data::{Outcome, Sample};
 mod common;
 
 use std::{
@@ -14,7 +16,7 @@ use minase::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
         pst::{FM_RANK, Pst},
     },
-    training::records::{Header, Outcome, Record},
+    training::records::Header,
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::nnue::{
@@ -59,7 +61,7 @@ impl Fixture {
             .zip(games)
             .enumerate()
             .map(|(i, (position, &game))| {
-                Record::from_position(
+                Sample::from_position(
                     position,
                     0,
                     Outcome::Draw,
@@ -67,28 +69,28 @@ impl Fixture {
                     i as u16,
                     minase::training::records::Origin::RandomSelfplay,
                 )
+                .unwrap()
             })
             .collect();
         self.records(name, &records, seed, rules)
     }
 
-    fn records(&self, name: &str, records: &[Record], seed: u64, rules: &str) -> PathBuf {
+    fn records(&self, name: &str, records: &[Sample], seed: u64, rules: &str) -> PathBuf {
         let path = self.path(name);
-        let mut bytes = Header::new(
+        let header = Header::new(
             rules.into(),
             "1".repeat(40),
             [2; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             seed,
-            records.len() as u64,
         )
-        .unwrap()
-        .encode()
-        .to_vec();
+        .unwrap();
+        let mut samples = Vec::new();
         for record in records {
-            bytes.extend(record.encode());
+            samples.push(record.clone());
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         path
     }
 
@@ -257,24 +259,22 @@ fn distribution_positions() -> Vec<Position> {
 fn distribution_preserves_python_schema_order_statistics_and_identities() {
     let f = Fixture::new();
     let positions = distribution_positions();
-    // 数値診断は評価用の復元を使い、先獅子の升に手番側の駒がある記録も受理する。
+    // 先獅子を空升に置き、通常の局面復元で同じ数値診断を行う。
     for (name, seed, game) in [("a.mnsd", 11, 4), ("b.mnsd", 22, 6)] {
         let records: Vec<_> = positions
             .iter()
             .map(|position| {
-                let mut bytes = Record::from_position(
-                    position,
+                let mut position = position.clone();
+                position.set_lion_capture(Square::from_dense(100)).unwrap();
+                Sample::from_position(
+                    &position,
                     0,
                     Outcome::Draw,
                     game,
                     0,
                     minase::training::records::Origin::RandomSelfplay,
                 )
-                .encode();
-                bytes[145] = 0;
-                let record = Record::decode(&bytes).unwrap();
-                assert!(record.to_position().is_err());
-                record
+                .unwrap()
             })
             .collect();
         f.records(name, &records, seed, "engine-default");
@@ -464,7 +464,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         }
         let mut position = builder.finish().unwrap();
         position.set_lion_capture(Square::from_dense(70)).unwrap();
-        let mut record = Record::from_position(
+        let record = Sample::from_position(
             &position,
             0,
             Outcome::Draw,
@@ -472,13 +472,9 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
             0,
             minase::training::records::Origin::RandomSelfplay,
         )
-        .encode();
-        assert_eq!(record[146], 1);
-        // 数値診断の特徴に含めない麒麟成りフラグを、入力で意図的に不一致にする。
-        record[146] = 0;
-        let record = Record::decode(&record).unwrap();
-        assert!(record.to_position().is_err());
-        assert!(record.to_position_for_evaluation().is_ok());
+        .unwrap();
+        assert!(record.lion_by_kirin_promotion());
+        assert_eq!(record.to_position().unwrap(), position);
         f.records("data.mnsd", &[record], 11, "engine-default");
         let values = v0_piece_values();
         let linear: Vec<_> = (0..FEATURE_COUNT)
@@ -585,7 +581,9 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
 
         let position =
             common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        let mut bytes = Record::from_position(
+        let mut position = position;
+        position.set_lion_capture(Square::from_dense(51)).unwrap();
+        let record = Sample::from_position(
             &position,
             0,
             Outcome::Draw,
@@ -593,15 +591,8 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
             0,
             minase::training::records::Origin::RandomSelfplay,
         )
-        .encode();
-        bytes[145] = 50; // 手番側の歩と同じ升に先獅子を置く。
-        let record = Record::decode(&bytes).unwrap();
-        assert!(record.to_position().is_err());
-        let (placement, perspective) = record.to_position_for_evaluation().unwrap();
-        assert_eq!(perspective, Color::Black);
-        assert_eq!(placement.side_to_move(), Color::White);
-        assert_eq!(placement.lion_capture_square(), Square::from_dense(50));
-        placement.validate().unwrap();
+        .unwrap();
+        assert_eq!(record.to_position().unwrap(), position);
         f.records("data.mnsd", &[record], 11, "engine-default");
         fs::remove_file(f.path("report.json")).unwrap();
         let report = f.success(&removal_args("1"), "report.json");

@@ -6,7 +6,7 @@
 
 use minase::datagen::{data_error, invalid_data};
 use minase_core::rng::{XorShift64, derive_seed};
-use minase_core::{Color, Game, GameStatus, Position, Rules};
+use minase_core::{Color, Game, GameStatus, Move, Position, Rules};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader},
@@ -109,14 +109,17 @@ pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
     Ok(openings)
 }
 
-/// 生成の最初の探索に渡す局面を返す。
+/// 最初の探索に渡す対局と、そこまでに乱数で指した手の列を返す。
 pub(super) fn starting_game(
     rules: Rules,
     seed: NonZeroU64,
     opening: Option<&Opening>,
-) -> io::Result<Game> {
+) -> io::Result<(Game, Vec<Move>)> {
     match opening {
-        Some(opening) => Ok(Game::from_position(rules, opening.position.clone())),
+        Some(opening) => Ok((
+            Game::from_position(rules, opening.position.clone()),
+            Vec::new(),
+        )),
         None => generate_opening(rules, seed),
     }
 }
@@ -124,10 +127,14 @@ pub(super) fn starting_game(
 /// 同じ対局シードから決定的に、8〜16手を一様に選んでランダム序盤を作る。
 /// 同じ評価関数どうしが毎回同じ手順をたどり、同じ局面だけを記録することを避ける。
 /// 対局ハーネスの8〜12手より長い範囲を使い、開始局面の多様性を優先する。
-pub(super) fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Result<Game> {
+pub(super) fn generate_opening(
+    rules: Rules,
+    game_seed: NonZeroU64,
+) -> io::Result<(Game, Vec<Move>)> {
     let mut opening_seed = derive_seed(game_seed.get(), 0);
     loop {
         let mut game = Game::new(rules);
+        let mut moves = Vec::new();
         let mut rng = XorShift64::new(opening_seed);
         let opening_plies = 8 + rng.index(NonZeroUsize::new(9).unwrap());
         let mut finished = false;
@@ -144,13 +151,14 @@ pub(super) fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Resul
             let status = game.play(selected).map_err(|error| {
                 invalid_data(format!("random opening move was rejected: {error}"))
             })?;
+            moves.push(selected);
             if matches!(status, GameStatus::Finished(_)) {
                 finished = true;
                 break;
             }
         }
         if !finished {
-            return Ok(game);
+            return Ok((game, moves));
         }
         opening_seed = derive_seed(opening_seed.get(), 0);
     }
@@ -165,7 +173,7 @@ mod tests {
     };
     use std::fs;
 
-    // 一覧を最初の探索へそのまま渡し、開始局面だけは記録しない。
+    // 一覧の局面と手数を保存し、最初の探索には価値なし・最善手の印を付ける。
     #[test]
     fn human_opening_is_exact_and_records_start_after_its_original_ply() {
         use minase_core::notation::{
@@ -195,7 +203,7 @@ mod tests {
         let path = directory.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
         let openings = read_openings(&path).unwrap();
-        let start = starting_game(
+        let (start, moves) = starting_game(
             Rules::ENGINE_DEFAULT,
             derive_seed(42, 1),
             Some(&openings[0]),
@@ -203,6 +211,7 @@ mod tests {
         .unwrap();
         assert_eq!(start.position(), original.position());
         assert_eq!(start.ply_count(), 0);
+        assert!(moves.is_empty());
         let completed = play_game_from_opening(
             &minase::eval::weights().unwrap(),
             Rules::ENGINE_DEFAULT,
@@ -221,13 +230,19 @@ mod tests {
         assert_eq!(completed.stats.discarded_games, 0);
         assert_eq!(completed.stats.planned_injections, 0);
         assert!(!completed.records.is_empty());
-        assert!(completed.records.iter().all(|r| r.record.ply() > 60));
-        assert!(
-            completed
-                .records
-                .iter()
-                .all(|r| r.record.origin()
-                    == minase::training::records::Origin::HumanOpeningSelfplay)
+        use minase::training::records::{Exclusion, Origin, Policy, Value};
+        let decoded =
+            crate::selfplay_gen::test_support::round_trip(completed.record.as_ref().unwrap());
+        let record = decoded.record();
+        assert_eq!(record.start_position(), original.position());
+        assert_eq!(record.start_ply(), 60);
+        assert_eq!(record.origin(), Origin::HumanOpeningSelfplay);
+        assert_eq!(record.entries()[0].value(), Value::None);
+        assert_eq!(record.entries()[0].policy(), &Policy::PlayedMove);
+        assert_eq!(record.entries()[0].exclusion(), Exclusion::None);
+        assert_eq!(
+            record.entries().len() as u64,
+            completed.stats.total_plies - 60 + 1
         );
         fs::remove_dir_all(directory).unwrap();
     }

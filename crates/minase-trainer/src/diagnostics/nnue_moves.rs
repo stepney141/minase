@@ -172,7 +172,7 @@ fn unmatched_error(candidate_only: usize, baseline_only: usize) -> Option<String
 /// `--positions`の全局面の全合法手について、MNUE版5とMNPT版3の着手前後の評価差を比べる。
 /// 合成の由来を含むMNSDも受理する。
 /// ヘッダの規則セットを解釈して`engine-default`との一致を要求し、不一致と記録数0を拒否する。
-/// 各記録を[`Record::to_position`](minase::training::records::Record::to_position)で復元して[`Game`]を作り、[`move_rows`]で各手を評価する。
+/// [`Reader::read_game`]で各対局を復元し、その最初の局面から[`Game`]を作って[`move_rows`]で各手を評価する。
 pub(super) fn run(args: &MovesArgs) -> Result<Report> {
     let net = IntegerNetwork::read(&args.net)?;
     let baseline = read_baseline(&args.base)?;
@@ -181,12 +181,12 @@ pub(super) fn run(args: &MovesArgs) -> Result<Report> {
     if rules != Rules::ENGINE_DEFAULT {
         return Err("diagnostic positions must use engine-default rules".into());
     }
-    if reader.header().record_count() == 0 {
+    if reader.header().game_count() == 0 {
         return Err("move probe positions must be nonempty".into());
     }
     let mut reports = Vec::new();
-    while let Some(record) = reader.read_record()? {
-        let game = Game::from_position(rules, record.to_position()?);
+    while let Some(record) = reader.read_game()? {
+        let game = Game::from_position(rules, record.positions()[0].clone());
         let candidate = move_rows(
             &game,
             rules,

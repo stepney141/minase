@@ -1,16 +1,14 @@
 //! FM学習の数式、固定PST、再現性、出力と拒否条件を検証する。
+use minase_trainer::data::{Outcome, Sample};
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
 #[path = "fm_train/fixture.rs"]
 mod support;
 use clap::Parser;
-use minase::{
-    eval::{
-        features::{FEATURE_COUNT, active_features, mirror_feature},
-        pst::{self, FM_RANK, Pst},
-    },
-    training::records::{Outcome, Record},
+use minase::eval::{
+    features::{FEATURE_COUNT, active_features, mirror_feature},
+    pst::{self, FM_RANK, Pst},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
@@ -111,7 +109,7 @@ fn small_batch() -> (Model, Batch) {
     let records: Vec<_> = positions
         .iter()
         .map(|p| {
-            Record::from_position(
+            Sample::from_position(
                 p,
                 200,
                 Outcome::Win,
@@ -119,6 +117,7 @@ fn small_batch() -> (Model, Batch) {
                 0,
                 minase::training::records::Origin::RandomSelfplay,
             )
+            .unwrap()
         })
         .collect();
     let base = Pst::from_weights(
@@ -233,14 +232,15 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
     .unwrap();
     for p in small_positions() {
         let reflected = mirror(&p);
-        let record = Record::from_position(
+        let record = Sample::from_position(
             &p,
             0,
             Outcome::Draw,
             1,
             0,
             minase::training::records::Origin::RandomSelfplay,
-        );
+        )
+        .unwrap();
         let batch = Batch::from_records(&base, &[record], &[1], &[0.5]).unwrap();
         let mut expected = Vec::new();
         active_features(&reflected, |f| expected.push(f as u32));
@@ -260,8 +260,8 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
 #[test]
 fn observations_include_all_training_mirrors_and_exclude_validation_only_features() {
     let (_fixture, args) = Fixture::new(false, false);
-    // SAFETY: fixture専用のファイルをDatasetの生存中は変更しない。
-    let dataset = unsafe { Dataset::open(&args.data, None).unwrap() };
+
+    let dataset = Dataset::open(&args.data, None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let counts = fm::feature_observations(&dataset).unwrap();
     let mut expected = vec![0; FEATURE_COUNT];
     for &i in dataset.training_indices() {

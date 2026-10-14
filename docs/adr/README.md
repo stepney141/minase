@@ -233,3 +233,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](record-the-origin-in-mnsd-records.md)
 - 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](keep-one-version-per-file-format.md)
 - 2026年10月13日 [学習器のチェックポイントをNPZに置き、設定そのものを収めて比べる](store-trainer-checkpoints-as-npz.md)
+- 2026年10月14日 [教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-as-chained-games.md)
+- 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
+- 2026年10月14日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を、除外の理由を付けて教師データに記録する](record-excluded-positions-with-a-reason.md)
+- 2026年10月14日 [`unsafe`は学習器のGPUの処理だけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-gpu-code.md)

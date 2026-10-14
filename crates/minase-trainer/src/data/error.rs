@@ -9,6 +9,22 @@ pub enum Error {
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
     Mnsd(records::Error),
+    /// MCTSの教師値には対応していない。
+    MctsTeacher {
+        /// 問題のファイル。
+        path: PathBuf,
+    },
+    /// 局面の組み立てに失敗した。
+    PositionBuild(minase_core::PositionBuildError),
+    /// 復元局面の不変条件に違反した。
+    Position(minase_core::PositionError),
+    /// 記録された麒麟成りの印が復元結果と異なる。
+    LionPromotionMismatch {
+        /// 記録された値。
+        recorded: bool,
+        /// 復元した値。
+        restored: bool,
+    },
     /// 1ファイルに複数の由来が含まれる。
     MixedOrigins {
         /// 問題のファイル。
@@ -58,6 +74,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MctsTeacher { path } => write!(f, "{}: MCTS teacher data is not supported", path.display()),
+            Self::PositionBuild(error) => write!(f, "cannot restore position: {error}"),
+            Self::Position(error) => write!(f, "restored position is invalid: {error}"),
+            Self::LionPromotionMismatch { recorded, restored } => write!(f, "lion-promotion flag mismatch: recorded {recorded}, restored {restored}"),
             Self::Io(error) => error.fmt(f),
             Self::Mnsd(error) => error.fmt(f),
             Self::MixedOrigins { path } => write!(f, "{}: mixed record origins", path.display()),
@@ -94,6 +114,8 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::PositionBuild(error) => Some(error),
+            Self::Position(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Mnsd(error) => Some(error),
             _ => None,

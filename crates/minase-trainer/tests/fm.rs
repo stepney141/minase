@@ -1,9 +1,12 @@
 //! FMの数式、保存形式とコマンドの契約を、手計算した値から検査する。
 
+#[path = "common/mnsd.rs"]
+mod mnsd;
 use minase::eval::{
     features::FEATURE_COUNT,
     pst::{FM_RANK, FmWeights, Pst},
 };
+use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::{
     fm::{self, QuarterArgs, ScaleArgs},
     nn::npz::{self, Array},
@@ -437,13 +440,19 @@ fn npz_rejects_wrong_shapes_types_missing_arrays_and_nonfinite_values() {
 
 impl Fixture {
     fn validation_data(&self) -> PathBuf {
-        use minase::training::records::{Header, Outcome, Record};
+        use minase::training::records::Header;
         use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
         let path = self.path("data.mnsd");
-        let mut bytes = Header::new("test".into(), "1".repeat(40), [2; 32], 200, 11, 3)
-            .unwrap()
-            .encode()
-            .to_vec();
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "1".repeat(40),
+            [2; 32],
+            minase::training::records::TeacherKind::AlphaBeta,
+            200,
+            11,
+        )
+        .unwrap();
+        let mut samples = Vec::new();
         for (ply, (count, game)) in [(2, 1), (2, 4), (3, 4)].into_iter().enumerate() {
             let mut builder = PositionBuilder::new(Color::Black);
             for file in 0..count {
@@ -454,8 +463,8 @@ impl Fixture {
                     )
                     .unwrap();
             }
-            bytes.extend(
-                Record::from_position(
+            samples.push(
+                Sample::from_position(
                     &builder.finish().unwrap(),
                     0,
                     Outcome::Draw,
@@ -463,10 +472,10 @@ impl Fixture {
                     ply as u16,
                     minase::training::records::Origin::RandomSelfplay,
                 )
-                .encode(),
+                .unwrap(),
             );
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         let mut u = vec![[0; FM_RANK]; FEATURE_COUNT];
         let mut v = v_with(&[]);
         // 先手歩兵の状態29、段0の3升。V=1とa=1の各対が1cpを与える。

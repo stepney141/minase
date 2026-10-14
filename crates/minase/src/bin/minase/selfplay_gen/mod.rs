@@ -63,6 +63,30 @@ fn engine_default_rules() -> io::Result<Rules> {
 #[cfg(test)]
 mod test_support {
     use minase::search::TranspositionTable;
+    pub(super) fn round_trip(
+        record: &minase::training::records::GameRecord,
+    ) -> minase::training::records::DecodedGame {
+        use minase::training::records::{Header, Reader, TeacherKind, Writer};
+        use std::io::Cursor;
+        let header = Header::new(
+            "L0,P0,R1,E0".into(),
+            "0".repeat(40),
+            [0; 32],
+            TeacherKind::AlphaBeta,
+            100,
+            7,
+        )
+        .unwrap();
+        let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
+        writer.write_game(record).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        let mut reader = Reader::new(bytes.as_slice()).unwrap();
+        let decoded = reader.read_game().unwrap().unwrap();
+        assert!(reader.read_game().unwrap().is_none());
+        assert_eq!(decoded.record(), record);
+        decoded
+    }
+
     pub(super) fn test_table() -> TranspositionTable {
         TranspositionTable::new(1).expect("one MiB is a valid table size")
     }
