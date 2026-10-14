@@ -1,0 +1,11 @@
+[package]
+name = "evaluator-piece-values"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+minase = { path = "../../../crates/minase" }
+minase-core = { path = "../../../crates/minase-core" }
+
+# Stand-alone: keeps this verification crate out of the minase workspace.
+[workspace]
