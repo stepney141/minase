@@ -1,7 +1,7 @@
 //! 入力の識別は形式のヘッダと長さに従い、ファイル全体の内容には依存しない。
 #[path = "common/mnsd.rs"]
 mod mnsd;
-use minase::training::records_v2::{Header, Origin};
+use minase::training::records::{Header, Origin};
 use minase_core::Position;
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::identity::file_identity;
@@ -17,7 +17,7 @@ fn identities_use_paths_lengths_and_header_fields() {
         "L0,P0,R1,E0".into(),
         "a".repeat(40),
         [7; 32],
-        minase::training::records_v2::TeacherKind::AlphaBeta,
+        minase::training::records::TeacherKind::AlphaBeta,
         200,
         11,
     )
@@ -29,7 +29,8 @@ fn identities_use_paths_lengths_and_header_fields() {
         1,
         0,
         Origin::RandomSelfplay,
-    );
+    )
+    .unwrap();
     fs::write(&path, mnsd::independent(header, &[record])).unwrap();
     let identity = serde_json::to_value(file_identity(&path).unwrap()).unwrap();
     assert_eq!(

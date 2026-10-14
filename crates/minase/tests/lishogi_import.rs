@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use minase::training::records_v2::{
+use minase::training::records::{
     Entry, Exclusion, GameRecord, Header, Origin, Outcome, Policy, Reader, TeacherKind,
     Value as TeacherValue, Writer,
 };
@@ -521,7 +521,7 @@ fn inspect_accepts_and_displays_synthetic_records() {
     assert!(text.contains("outcome: none"));
 }
 
-/// 版2の全行を固定し、先頭N局というdumpの単位と全対局の集計を検査する。
+/// 検査出力の全行を固定し、先頭N局というdumpの単位と全対局の集計を検査する。
 #[test]
 fn inspect_dump_has_every_entry_field_in_order() {
     let dir = Directory::new();

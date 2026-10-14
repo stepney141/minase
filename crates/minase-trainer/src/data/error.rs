@@ -1,6 +1,6 @@
 use std::{fmt, io, path::PathBuf};
 
-use minase::training::records_v2;
+use minase::training::records;
 
 /// データ経路の失敗。下位の復号・入出力エラーは原因を保持する。
 #[derive(Debug)]
@@ -8,7 +8,7 @@ pub enum Error {
     /// ファイル操作またはワーカーの起動に失敗した。
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
-    Mnsd(records_v2::Error),
+    Mnsd(records::Error),
     /// MCTSの教師値には対応していない。
     MctsTeacher {
         /// 問題のファイル。
@@ -129,8 +129,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<records_v2::Error> for Error {
-    fn from(error: records_v2::Error) -> Self {
+impl From<records::Error> for Error {
+    fn from(error: records::Error) -> Self {
         Self::Mnsd(error)
     }
 }

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 
 use super::game::CompletedRecord;
-use crate::training::records_v2::{Exclusion, GameRecord};
+use crate::training::records::{Exclusion, GameRecord};
 
 /// 注入オフセットのヒストグラム区間数。
 pub const INJECTION_HISTOGRAM_BINS: usize = 8;

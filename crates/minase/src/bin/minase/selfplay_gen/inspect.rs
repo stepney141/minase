@@ -2,7 +2,7 @@
 
 use super::cli::InspectArguments;
 use minase::datagen::{data_error, hex, invalid_data};
-use minase::training::records_v2::{
+use minase::training::records::{
     Entry, Exclusion, FORMAT_VERSION, GameRecord, Origin, Outcome, Policy, Reader, Value,
 };
 use minase_core::{Color, GameResult, Position, notation::usi, to_sfen};

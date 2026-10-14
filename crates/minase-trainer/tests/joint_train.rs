@@ -96,7 +96,7 @@ fn fm_npz(model: &fm::Model) -> Vec<u8> {
     .unwrap()
 }
 fn dataset(args: &Args) -> Dataset {
-    Dataset::open(&args.data, None)
+    Dataset::open(&args.data, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(args.lambda)
         .unwrap()
@@ -441,21 +441,24 @@ fn exported_quantization_failure_keeps_weights_and_records_error() {
     }
     let p = position(&pieces, Color::Black, None);
     let original = fs::read(&args.data[0]).unwrap();
-    let header = minase::training::records_v2::Reader::new(original.as_slice())
+    let header = minase::training::records::Reader::new(original.as_slice())
         .unwrap()
         .header()
         .clone();
     let mut samples = Vec::new();
     for game in 0..40 {
         for ply in 0..3 {
-            samples.push(Sample::from_position(
-                &p,
-                300,
-                Outcome::Win,
-                game,
-                ply,
-                minase::training::records_v2::Origin::RandomSelfplay,
-            ));
+            samples.push(
+                Sample::from_position(
+                    &p,
+                    300,
+                    Outcome::Win,
+                    game,
+                    ply,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
+                .unwrap(),
+            );
         }
     }
     fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();

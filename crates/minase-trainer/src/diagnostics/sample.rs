@@ -26,7 +26,12 @@ impl SampleArgs {
     /// 学習と同じ[`Dataset::open`]で、先読みなしでMNSDを開く。
     /// 対局単位の検証分割も学習と同じ規則に従う。
     pub(super) fn open(&self) -> Result<Dataset> {
-        Ok(Dataset::open(&self.data, None)?)
+        Ok(Dataset::open(
+            &self.data,
+            None,
+            std::num::NonZeroUsize::new(crate::nn::workers::workers(None)?)
+                .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+        )?)
     }
 
     /// 母集団の通算番号から非復元抽出し、昇順に並べて返す。

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, Seek, Write};
 
-use crate::training::records_v2::{GameRecord, Writer};
+use crate::training::records::{GameRecord, Writer};
 
 use super::statistics::{RecordedStatistics, Statistics};
 use super::{data_error, invalid_data};

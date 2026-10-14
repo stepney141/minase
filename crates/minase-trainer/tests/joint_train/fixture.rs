@@ -1,7 +1,7 @@
 #[path = "../common/mnsd.rs"]
 pub(super) mod mnsd;
 use super::*;
-use minase::training::records_v2::Header;
+use minase::training::records::Header;
 use minase_trainer::pst::v0_piece_values;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -89,7 +89,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -120,18 +120,21 @@ impl Fixture {
                     pieces.push((2, 5, Color::Black, PieceKind::SilverGeneral));
                 }
                 let p = position(&pieces, side, (game % 2 == 0).then_some((5, 5)));
-                samples.push(Sample::from_position(
-                    &p,
-                    if side == Color::Black { 300 } else { -300 },
-                    if game % 3 == 0 {
-                        Outcome::Draw
-                    } else {
-                        Outcome::Win
-                    },
-                    game,
-                    ply,
-                    minase::training::records_v2::Origin::RandomSelfplay,
-                ));
+                samples.push(
+                    Sample::from_position(
+                        &p,
+                        if side == Color::Black { 300 } else { -300 },
+                        if game % 3 == 0 {
+                            Outcome::Draw
+                        } else {
+                            Outcome::Win
+                        },
+                        game,
+                        ply,
+                        minase::training::records::Origin::RandomSelfplay,
+                    )
+                    .unwrap(),
+                );
             }
         }
         fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();

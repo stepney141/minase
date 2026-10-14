@@ -464,8 +464,8 @@ fn removal_partitions(shape: Shape, seed: u64) -> Result<(Model, BatchSlot, Remo
             Outcome::Draw,
             0,
             b as u16,
-            minase::training::records_v2::Origin::RandomSelfplay,
-        ));
+            minase::training::records::Origin::RandomSelfplay,
+        )?);
     }
     let batch = BatchSlot::from_records(shape.feature_set(), &records, &scores, &classes)?;
     for (b, (&column, value)) in REMOVAL_COLUMNS
@@ -565,8 +565,8 @@ pub(super) fn synthetic_batch(set: InputFeatureSet, n: usize, seed: u64) -> Resu
             [Outcome::Loss, Outcome::Draw, Outcome::Win][b % 3],
             (b / 60000) as u32,
             (b % 60000) as u16,
-            minase::training::records_v2::Origin::RandomSelfplay,
-        ));
+            minase::training::records::Origin::RandomSelfplay,
+        )?);
         scores.push(f32::from(score));
         classes.push((b % 3) as u32);
     }

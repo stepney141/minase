@@ -11,7 +11,7 @@ use minase::datagen::{
 };
 use minase::eval::Nnue;
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
-use minase::training::records_v2::{Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value};
+use minase::training::records::{Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value};
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{MoveGenerator, Position, Rules};
 use std::{

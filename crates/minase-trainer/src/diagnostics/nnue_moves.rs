@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs::File, io::BufReader, path::PathBuf};
 
 use clap::Args;
-use minase::{eval::pst, training::records_v2::Reader};
+use minase::{eval::pst, training::records::Reader};
 use minase_core::{
     Color, Game, MoveGenerator, Position, Rules, notation::usi, rules::parse_rule_set,
 };

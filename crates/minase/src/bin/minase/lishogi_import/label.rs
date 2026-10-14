@@ -7,7 +7,7 @@ use minase::datagen::{
     statistics::Statistics,
 };
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
-use minase::training::records_v2::{
+use minase::training::records::{
     Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value as TeacherValue,
 };
 use minase_core::notation::sfen::{SetupPosition, to_extended_sfen};

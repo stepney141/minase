@@ -22,8 +22,9 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
                 outcome,
                 1,
                 0,
-                minase::training::records_v2::Origin::RandomSelfplay,
+                minase::training::records::Origin::RandomSelfplay,
             )
+            .unwrap()
         })
         .collect();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
@@ -53,8 +54,9 @@ fn validation_reports_population_standard_deviation_in_centipawns() {
             Outcome::Draw,
             1,
             i,
-            minase::training::records_v2::Origin::RandomSelfplay,
+            minase::training::records::Origin::RandomSelfplay,
         )
+        .unwrap()
     });
     let batch =
         BatchSlot::from_records(InputFeatureSet::HalfKpHmB8, &records, &[0.0; 2], &[0; 2]).unwrap();
@@ -81,8 +83,9 @@ fn record_batches_reject_mismatched_teachers_and_nonfinite_scores() {
         Outcome::Draw,
         1,
         0,
-        minase::training::records_v2::Origin::RandomSelfplay,
-    );
+        minase::training::records::Origin::RandomSelfplay,
+    )
+    .unwrap();
     assert!(BatchSlot::from_records(InputFeatureSet::P, &[], &[], &[]).is_err());
     assert!(
         BatchSlot::from_records(InputFeatureSet::P, std::slice::from_ref(&record), &[], &[0])

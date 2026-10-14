@@ -26,8 +26,9 @@ fn batch(positions: &[Position]) -> Batch {
                 Outcome::Draw,
                 1,
                 0,
-                minase::training::records_v2::Origin::RandomSelfplay,
+                minase::training::records::Origin::RandomSelfplay,
             )
+            .unwrap()
         })
         .collect();
     Batch::from_records(&records, &vec![0.0; records.len()], &vec![0; records.len()]).unwrap()

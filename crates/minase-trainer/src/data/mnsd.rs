@@ -2,11 +2,13 @@ use crate::data::{Outcome, Sample};
 use std::{
     collections::HashSet,
     fs::File,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
+    thread,
 };
 
 use super::sample::Metadata;
-use minase::training::records_v2::{
+use minase::training::records::{
     Exclusion, Header, Origin, Outcome as GameOutcome, Reader, TeacherKind, Value,
 };
 use serde::Serialize;
@@ -123,7 +125,7 @@ impl LoadedFile {
                     record.game_number(),
                     ply,
                     record.origin(),
-                );
+                )?;
                 let length = file
                     .positions
                     .len()
@@ -166,7 +168,13 @@ impl Dataset {
     /// 先読み指定時は対局・手数の順序も検証する。
     /// 正規化したパスの重複、乱数開始の自己対局のシード重複、由来の混在、合成の入力を拒否する。
     /// 教師値を使う場合は、返されたデータへ[`Self::with_lambda`]で混合比を設定する。
-    pub fn open(paths: &[PathBuf], lookahead: Option<Lookahead>) -> Result<Self> {
+    /// ファイルの読み込みと手順の再生を最大`parallelism`スレッドで行う。
+    /// 結果の集約とエラーの選択は入力順に行い、並列度によって変わらない。
+    pub fn open(
+        paths: &[PathBuf],
+        lookahead: Option<Lookahead>,
+        parallelism: NonZeroUsize,
+    ) -> Result<Self> {
         if paths.is_empty() {
             return Err(invalid(Path::new(""), "at least one MNSD file is required"));
         }
@@ -180,68 +188,94 @@ impl Dataset {
         };
         let mut seeds = HashSet::new();
         let mut unique_paths = HashSet::new();
-        for path in paths {
-            let path = path.canonicalize()?;
-            if !unique_paths.insert(path.clone()) {
-                return Err(invalid(
-                    &path,
-                    "the same MNSD file was specified more than once",
-                ));
-            }
+        for paths in paths.chunks(parallelism.get()) {
+            let loaded = thread::scope(|scope| {
+                let handles: Vec<_> = paths
+                    .iter()
+                    .map(|path| {
+                        thread::Builder::new().spawn_scoped(scope, move || {
+                            let path = path.canonicalize()?;
+                            let file = LoadedFile::open(&path);
+                            Ok::<_, Error>((path, file))
+                        })
+                    })
+                    .collect();
+                // 失敗時も全スレッドを回収してから入力順に結果を処理する。
+                handles
+                    .into_iter()
+                    .map(|handle| {
+                        handle.map_err(Error::Io).and_then(|handle| {
+                            handle.join().map_err(|_| {
+                                Error::Io(std::io::Error::other("MNSD reader worker panicked"))
+                            })?
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            });
+            for result in loaded {
+                let (path, file) = result?;
+                if !unique_paths.insert(path.clone()) {
+                    return Err(invalid(
+                        &path,
+                        "the same MNSD file was specified more than once",
+                    ));
+                }
 
-            let mut file = LoadedFile::open(&path)?;
-            let start = dataset.record_count();
-            let end = start
-                .checked_add(file.metadata.len() as u64)
-                .filter(|&count| count <= i64::MAX as u64)
-                .ok_or_else(|| invalid(&path, "combined record count exceeds i64"))?;
-            let count = file.metadata.len();
-            if file.origin == Some(Origin::RandomSelfplay) && !seeds.insert(file.header.seed()) {
-                return Err(invalid(&path, "random-selfplay file seeds must be unique"));
-            }
-            if let Some(origin) = file.origin.filter(|_| count > 0) {
-                let class = TeacherClass {
-                    generation_commit: file.header.generation_commit().to_ascii_lowercase(),
-                    network_checksum: *file.header.network_checksum(),
-                    nodes: file.header.teacher_scale(),
-                    rule_set: file.header.rule_set().to_owned(),
-                    origin,
-                    lookahead,
-                    lambda: None,
+                let mut file = file?;
+                let start = dataset.record_count();
+                let end = start
+                    .checked_add(file.metadata.len() as u64)
+                    .filter(|&count| count <= i64::MAX as u64)
+                    .ok_or_else(|| invalid(&path, "combined record count exceeds i64"))?;
+                let count = file.metadata.len();
+                if file.origin == Some(Origin::RandomSelfplay) && !seeds.insert(file.header.seed())
+                {
+                    return Err(invalid(&path, "random-selfplay file seeds must be unique"));
+                }
+                if let Some(origin) = file.origin.filter(|_| count > 0) {
+                    let class = TeacherClass {
+                        generation_commit: file.header.generation_commit().to_ascii_lowercase(),
+                        network_checksum: *file.header.network_checksum(),
+                        nodes: file.header.teacher_scale(),
+                        rule_set: file.header.rule_set().to_owned(),
+                        origin,
+                        lookahead,
+                        lambda: None,
+                    };
+                    let class_index = match dataset.classes.iter().position(|item| item == &class) {
+                        Some(index) => index,
+                        None => {
+                            dataset.classes.push(class);
+                            dataset.classes.len() - 1
+                        }
+                    };
+                    file.class = u32::try_from(class_index)
+                        .map_err(|_| invalid(&path, "teacher class count exceeds u32"))?;
+                }
+                let mut games = Vec::with_capacity(count);
+                let mut plies = Vec::with_capacity(count);
+                let mut scores = Vec::with_capacity(count);
+                for local in 0..count {
+                    let metadata = file.metadata[local];
+                    games.push(metadata.game);
+                    plies.push(metadata.ply);
+                    scores.push(f64::from(metadata.score));
+                    let validation = is_validation(file.header.seed(), metadata.game);
+                    let indices = if validation {
+                        &mut dataset.validation_indices
+                    } else {
+                        &mut dataset.training_indices
+                    };
+                    indices.push(start + local as u64);
+                }
+                let scores = match lookahead {
+                    Some(options) => compute_lookahead(&games, &plies, &scores, options)?,
+                    None => scores,
                 };
-                let class_index = match dataset.classes.iter().position(|item| item == &class) {
-                    Some(index) => index,
-                    None => {
-                        dataset.classes.push(class);
-                        dataset.classes.len() - 1
-                    }
-                };
-                file.class = u32::try_from(class_index)
-                    .map_err(|_| invalid(&path, "teacher class count exceeds u32"))?;
+                file.scores = scores.into_iter().map(|value| value as f32).collect();
+                dataset.files.push(file);
+                dataset.offsets.push(end);
             }
-            let mut games = Vec::with_capacity(count);
-            let mut plies = Vec::with_capacity(count);
-            let mut scores = Vec::with_capacity(count);
-            for local in 0..count {
-                let metadata = file.metadata[local];
-                games.push(metadata.game);
-                plies.push(metadata.ply);
-                scores.push(f64::from(metadata.score));
-                let validation = is_validation(file.header.seed(), metadata.game);
-                let indices = if validation {
-                    &mut dataset.validation_indices
-                } else {
-                    &mut dataset.training_indices
-                };
-                indices.push(start + local as u64);
-            }
-            let scores = match lookahead {
-                Some(options) => compute_lookahead(&games, &plies, &scores, options)?,
-                None => scores,
-            };
-            file.scores = scores.into_iter().map(|value| value as f32).collect();
-            dataset.files.push(file);
-            dataset.offsets.push(end);
         }
         Ok(dataset)
     }

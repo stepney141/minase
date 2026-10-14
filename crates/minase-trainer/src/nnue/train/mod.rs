@@ -197,8 +197,13 @@ impl Session {
         validate_initial(&initial, &base.linear)?;
 
         // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
-        let dataset =
-            Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.training.lambda)?;
+        let dataset = Dataset::open(
+            &args.data,
+            args.lookahead()?,
+            std::num::NonZeroUsize::new(workers)
+                .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+        )?
+        .with_lambda(args.training.lambda)?;
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),

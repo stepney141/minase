@@ -3,7 +3,7 @@
 mod mnsd;
 use minase::{
     eval::{features::FEATURE_COUNT, pst::Pst},
-    training::records_v2::Header,
+    training::records::Header,
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::data::{Outcome, Sample};
@@ -72,7 +72,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             format!("{class:040x}"),
             [class; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             100,
             seed,
         )
@@ -90,18 +90,21 @@ impl Fixture {
         .into_iter()
         .enumerate()
         {
-            samples.push(Sample::from_position(
-                &position,
-                [100, -200, 300, 400, -500, 600][i],
-                outcome,
-                game,
-                i as u16,
-                if human {
-                    minase::training::records_v2::Origin::HumanGame
-                } else {
-                    minase::training::records_v2::Origin::RandomSelfplay
-                },
-            ));
+            samples.push(
+                Sample::from_position(
+                    &position,
+                    [100, -200, 300, 400, -500, 600][i],
+                    outcome,
+                    game,
+                    i as u16,
+                    if human {
+                        minase::training::records::Origin::HumanGame
+                    } else {
+                        minase::training::records::Origin::RandomSelfplay
+                    },
+                )
+                .unwrap(),
+            );
         }
         fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         self.data.push(path);
@@ -184,13 +187,18 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     }
     let first = fixture.root.join("first");
     let bytes = fs::read(first.join("diagnostic-samples.bin")).unwrap();
-    use minase::training::records_v2::{
+    use minase::training::records::{
         Origin, Outcome as GameOutcome, Policy, Reader, Value as TeacherValue,
     };
     let mut reader = Reader::new(bytes.as_slice()).unwrap();
     assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
     assert_eq!(reader.header().game_count(), 6);
-    let dataset = minase_trainer::data::Dataset::open(&fixture.data, None).unwrap();
+    let dataset = minase_trainer::data::Dataset::open(
+        &fixture.data,
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     for (number, &index) in dataset.validation_indices().iter().enumerate() {
         let game = reader.read_game().unwrap().unwrap();
         assert_eq!(game.record().game_number(), number as u32 + 1);
@@ -304,7 +312,7 @@ fn games_are_counted_by_file_and_game_number() {
     fixture.data.clear();
     fixture.input(11, 1, true);
     // 1局の3標本を合法な手順で作り、コピーした別ファイルでは別の対局として数える。
-    use minase::training::records_v2::{
+    use minase::training::records::{
         Entry, Exclusion, GameRecord, Origin, Outcome as GameOutcome, Policy, Reader,
         Value as TeacherValue, sorted_legal_moves,
     };
@@ -410,7 +418,7 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
     position.set_lion_capture(Some(square)).unwrap();
     let path = &fixture.data[0];
     let bytes = fs::read(path).unwrap();
-    use minase::training::records_v2::{GameRecord, Reader};
+    use minase::training::records::{GameRecord, Reader};
     let mut reader = Reader::new(bytes.as_slice()).unwrap();
     let header = reader.header().clone();
     let mut games = Vec::new();

@@ -244,8 +244,9 @@ mod tests {
             crate::data::Outcome::Draw,
             0,
             0,
-            minase::training::records_v2::Origin::Synthetic,
+            minase::training::records::Origin::Synthetic,
         )
+        .unwrap()
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 #[path = "mnsd.rs"]
 pub mod mnsd;
-use minase::training::records_v2::Header;
+use minase::training::records::Header;
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::{
@@ -36,7 +36,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -49,13 +49,14 @@ impl Fixture {
                 [Outcome::Win, Outcome::Loss, Outcome::Draw][i % 3],
                 1,
                 i as u16,
-                minase::training::records_v2::Origin::RandomSelfplay,
-            );
+                minase::training::records::Origin::RandomSelfplay,
+            )
+            .unwrap();
             samples.push(record.clone());
         }
         fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         Self {
-            dataset: Dataset::open(&[path], None)
+            dataset: Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap())
                 .unwrap()
                 .with_lambda(1.0)
                 .unwrap(),

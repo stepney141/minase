@@ -1,6 +1,6 @@
 //! ライブラリでの評価、非王駒の除去、合法な成り手とMNSD成果物。
 //!
-//! 標本、代表局面、駒を除いた局面を、1局面1対局の合成MNSD版2として保存する。
+//! 標本、代表局面、駒を除いた局面を、1局面1対局の合成MNSDとして保存する。
 //! `diagnostic-samples.bin`は全帯の標本を通算番号順に、`representatives.bin`は初期局面と帯番号順の代表局面を保存する。
 //! この2ファイルの検査和は基準MNPTから取り、`removals.bin`の検査和は全0とする。
 //! 除去局面は代表局面の順、升番号の順に並べる。
@@ -14,7 +14,7 @@ use super::{
 use crate::data::{Outcome, Sample};
 use minase::{
     eval::pst::evaluate_for_diagnostics,
-    training::records_v2::{
+    training::records::{
         Entry, Exclusion, GameRecord, Header, Origin, Outcome as GameOutcome, Policy, TeacherKind,
         Value, Writer,
     },
@@ -34,7 +34,7 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// 診断用のMNSD版2を新規作成する。
+/// 診断用のMNSDを新規作成する。
 /// ヘッダは規則セット名`"L0,P0,R1,E0"`、生成コミット`"0"`×40、ノード上限0、シード0、αβ教師、渡された検査和である。
 /// 各成果物の記録順と検査和の選択は[`pst_positions`](self)のモジュールdocコメントに従う。
 pub(super) fn write_mnsd(path: &Path, records: &[Sample], checksum: [u8; 32]) -> Result<()> {
@@ -52,7 +52,7 @@ pub(super) fn write_mnsd(path: &Path, records: &[Sample], checksum: [u8; 32]) ->
         let number = u32::try_from(index)
             .ok()
             .and_then(|n| n.checked_add(1))
-            .ok_or(minase::training::records_v2::Error::CountOverflow)?;
+            .ok_or(minase::training::records::Error::CountOverflow)?;
         writer.write_game(&GameRecord::new(
             number,
             Origin::Synthetic,
@@ -200,8 +200,8 @@ fn promotions(model: &Weights, record: &Sample) -> Result<Vec<Promotion>> {
             Outcome::Draw,
             1,
             0,
-            minase::training::records_v2::Origin::Synthetic,
-        );
+            minase::training::records::Origin::Synthetic,
+        )?;
         let bytes = record.board_codes();
         let reference = model.evaluate(&Features::new(&record));
         let delta = -opposite.0 - before.0;
@@ -260,8 +260,8 @@ pub(super) fn diagnose(
         Outcome::Loss,
         0,
         0,
-        minase::training::records_v2::Origin::Synthetic,
-    );
+        minase::training::records::Origin::Synthetic,
+    )?;
     let records: Vec<_> = std::iter::once(initial)
         .chain(selected.iter().map(|(_, _, record)| record.clone()))
         .collect();

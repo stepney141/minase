@@ -1,6 +1,6 @@
 use std::{fmt, io};
 
-use minase::training::records_v2;
+use minase::training::records;
 
 /// NNUEの特徴符号化またはバッチ構築の失敗。
 #[derive(Debug)]
@@ -60,8 +60,8 @@ impl From<crate::data::Error> for Error {
     }
 }
 
-impl From<records_v2::Error> for Error {
-    fn from(error: records_v2::Error) -> Self {
+impl From<records::Error> for Error {
+    fn from(error: records::Error) -> Self {
         Self::Data(error.into())
     }
 }

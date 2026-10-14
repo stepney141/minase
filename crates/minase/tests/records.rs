@@ -1,6 +1,6 @@
-//! フェーズ1の指示書とMNSD版2の配置表に基づく公開境界の試験。
+//! MNSD版2の配置と公開関数の契約を検証する。
 
-use minase::training::records_v2::*;
+use minase::training::records::*;
 use minase_core::test_util::{position, position_from_codes, sq};
 use minase_core::{
     Color, DrawReason, Game, GameResult, Move, PieceCode, PieceKind, Position, WinReason,
@@ -1070,4 +1070,100 @@ fn partial_output_failure_cannot_be_finished_as_a_valid_file() {
         Writer::new(Cursor::new(vec![0]), header(TeacherKind::AlphaBeta)),
         Err(Error::NonemptyOutput)
     ));
+}
+
+#[test]
+fn board_codes_round_trip_all_piece_states_colors_and_deferred_promotions() {
+    use minase_core::PositionBuilder;
+
+    // MNSDの駒コード式と、成り権保留を含む局面の保存契約を検証する。
+    for color in Color::ALL {
+        let square = sq(5, if color == Color::Black { 11 } else { 0 });
+        for kind in PieceKind::ALL {
+            for promoted in [false, true] {
+                let piece = if promoted {
+                    PieceCode::new_promoted(color, kind)
+                } else {
+                    PieceCode::new(color, kind)
+                };
+                let Some(piece) = piece else { continue };
+                for deferred in [false, true] {
+                    if deferred && (promoted || !kind.can_promote()) {
+                        continue;
+                    }
+                    for side in Color::ALL {
+                        let mut builder = PositionBuilder::new(side);
+                        builder.put(square, piece).unwrap();
+                        if deferred {
+                            builder.mark_promotion_deferred(square).unwrap();
+                        }
+                        let position = builder.finish().unwrap();
+                        let codes = encode_board(&position).unwrap();
+                        assert_eq!(
+                            codes[square.dense_index()],
+                            1 + kind.index() as u8
+                                + 29 * u8::from(promoted)
+                                + 64 * color as u8
+                                + 128 * u8::from(deferred)
+                        );
+                        assert_eq!(codes.iter().filter(|&&code| code != 0).count(), 1);
+                        assert_eq!(
+                            decode_position(&codes, side, None, false).unwrap(),
+                            position
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn board_decoder_checks_deferred_and_lion_flags() {
+    use minase_core::PositionBuilder;
+
+    let mut codes = [0; 144];
+    codes[0] = 63;
+    assert!(matches!(
+        decode_position(&codes, Color::Black, None, false),
+        Err(Error::InvalidPieceCode(63))
+    ));
+    codes[0] = 128;
+    assert!(matches!(
+        decode_position(&codes, Color::Black, None, false),
+        Err(Error::PositionBuild(_))
+    ));
+    codes[0] = 0;
+    assert!(matches!(
+        decode_position(&codes, Color::Black, None, true),
+        Err(Error::LionPromotionWithoutSquare)
+    ));
+    for side in Color::ALL {
+        for promoted in [false, true] {
+            let square = sq(6, 6);
+            let mut builder = PositionBuilder::new(side);
+            let piece = if promoted {
+                PieceCode::new_promoted(side.opposite(), PieceKind::Lion)
+            } else {
+                PieceCode::new(side.opposite(), PieceKind::Pawn)
+            }
+            .unwrap();
+            builder.put(square, piece).unwrap();
+            let mut position = builder.finish().unwrap();
+            position.set_lion_capture(Some(square)).unwrap();
+            let codes = encode_board(&position).unwrap();
+            assert_eq!(
+                decode_position(&codes, side, Some(square), promoted).unwrap(),
+                position
+            );
+            assert!(matches!(
+                decode_position(&codes, side, Some(square), !promoted),
+                Err(Error::LionPromotionMismatch)
+            ));
+            assert!(matches!(
+                decode_position(&codes, side.opposite(), Some(square), promoted),
+                Err(Error::Position(_))
+            ));
+        }
+    }
 }

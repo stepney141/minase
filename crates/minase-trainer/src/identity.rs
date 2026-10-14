@@ -3,7 +3,7 @@
 //! MNPTとMNUEはヘッダに記録済みの`checksum`、NPZ（学習器のチェックポイントを含む）は`byte_length`を持つ。
 
 use crate::nn::hex;
-use minase::training::records_v2::Reader;
+use minase::training::records::Reader;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{

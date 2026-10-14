@@ -282,7 +282,13 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
     let threads = options::workers(args.threads)?;
     let workers = threads.min(args.steps);
 
-    let dataset = Dataset::open(&args.data, None)?.with_lambda(args.training.lambda)?;
+    let dataset = Dataset::open(
+        &args.data,
+        None,
+        std::num::NonZeroUsize::new(threads)
+            .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+    )?
+    .with_lambda(args.training.lambda)?;
     if dataset.training_indices().len() < required {
         return Err(Error::Invalid(
             "not enough training positions for (steps + 1) * batch, including warmup",

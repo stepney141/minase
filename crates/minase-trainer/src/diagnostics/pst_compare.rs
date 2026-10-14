@@ -13,7 +13,7 @@ use crate::{
     pst::export::numpy_sum,
 };
 use clap::Args;
-use minase::training::records_v2::Origin;
+use minase::training::records::Origin;
 use serde::Serialize;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
@@ -333,7 +333,13 @@ fn diagnose(
     });
     eprintln!("loading diagnostic data");
 
-    let dataset = Dataset::open(&args.data, report.lookahead)?.with_lambda(args.lambda)?;
+    let dataset = Dataset::open(
+        &args.data,
+        report.lookahead,
+        std::num::NonZeroUsize::new(crate::nn::workers::workers(None)?)
+            .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+    )?
+    .with_lambda(args.lambda)?;
     report.teacher_classes = dataset
         .teacher_classes()
         .iter()

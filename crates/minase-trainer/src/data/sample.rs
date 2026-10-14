@@ -1,6 +1,6 @@
 use super::Error;
-use minase::training::records_v2::{Error as FormatError, Origin};
-use minase_core::{Color, GameResult, PieceCode, PieceKind, Position, PositionBuilder, Square};
+use minase::training::records::{Error as FormatError, Origin, decode_position, encode_board};
+use minase_core::{Color, GameResult, Position, Square};
 
 /// 手番側から見た終局結果。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,19 +51,10 @@ impl Sample {
         game_number: u32,
         ply: u16,
         origin: Origin,
-    ) -> Self {
-        let mut board = [0; 144];
-        for square in Square::all() {
-            if let Some(piece) = position.piece_at(square) {
-                board[square.dense_index()] = 1
-                    + piece.kind().expect("position piece kind").index() as u8
-                    + 29 * u8::from(piece.is_promoted())
-                    + 64 * piece.color().expect("position piece color") as u8
-                    + 128 * u8::from(position.promotion_deferred().contains(square));
-            }
-        }
+    ) -> Result<Self, Error> {
+        let board = encode_board(position)?;
         let trigger = position.lion_taken_by_non_lion();
-        Self {
+        Ok(Self {
             board,
             side: position.side_to_move(),
             lion: trigger.map(|t| t.square),
@@ -75,7 +66,7 @@ impl Sample {
                 outcome,
             },
             origin,
-        }
+        })
     }
     /// 駒コードと成り権保留の印を升順に返す。
     pub fn board_codes(&self) -> &[u8; 144] {
@@ -126,47 +117,17 @@ impl Sample {
     }
     /// 盤、手番、成り権保留、先獅子を復元し、不変条件を検査する。
     pub fn to_position(&self) -> Result<Position, Error> {
-        let mut builder = PositionBuilder::new(self.side);
-        for (square, &code) in Square::all().zip(&self.board) {
-            let value = code & 127;
-            if value == 0 {
-                continue;
+        decode_position(&self.board, self.side, self.lion, self.lion_promotion).map_err(|error| {
+            match error {
+                FormatError::PositionBuild(error) => Error::PositionBuild(error),
+                FormatError::Position(error) => Error::Position(error),
+                FormatError::LionPromotionMismatch => Error::LionPromotionMismatch {
+                    recorded: self.lion_promotion,
+                    restored: !self.lion_promotion,
+                },
+                error => error.into(),
             }
-            let (color, payload) = match value {
-                1..=58 => (Color::Black, value - 1),
-                65..=122 => (Color::White, value - 65),
-                _ => return Err(FormatError::InvalidPieceCode(value).into()),
-            };
-            let kind =
-                PieceKind::from_index(payload % 29).ok_or(FormatError::InvalidPieceCode(value))?;
-            let piece = if payload >= 29 {
-                PieceCode::new_promoted(color, kind)
-            } else {
-                PieceCode::new(color, kind)
-            }
-            .ok_or(FormatError::InvalidPieceCode(value))?;
-            builder.put(square, piece).map_err(Error::PositionBuild)?;
-            if code & 128 != 0 {
-                builder
-                    .mark_promotion_deferred(square)
-                    .map_err(Error::PositionBuild)?;
-            }
-        }
-        let mut position = builder.finish().map_err(Error::PositionBuild)?;
-        position
-            .set_lion_capture(self.lion)
-            .map_err(Error::Position)?;
-        position.validate().map_err(Error::Position)?;
-        let restored = position
-            .lion_taken_by_non_lion()
-            .is_some_and(|t| t.by_kirin_promotion);
-        if restored != self.lion_promotion {
-            return Err(Error::LionPromotionMismatch {
-                recorded: self.lion_promotion,
-                restored,
-            });
-        }
-        Ok(position)
+        })
     }
     pub(super) fn append_compact(&self, bytes: &mut Vec<u8>) {
         let mut occupied = [0; 18];

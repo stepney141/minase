@@ -21,7 +21,7 @@ use minase::{
             head::DirectScrelu,
         },
     },
-    training::records_v2::Header,
+    training::records::Header,
 };
 use minase_core::{Color, PieceKind, Position};
 use minase_trainer::{
@@ -73,15 +73,16 @@ impl Fixture {
                     Outcome::Win,
                     game,
                     0,
-                    minase::training::records_v2::Origin::RandomSelfplay,
+                    minase::training::records::Origin::RandomSelfplay,
                 )
+                .unwrap()
             })
             .collect();
         let header = Header::new(
             RULE_SET.into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -92,7 +93,7 @@ impl Fixture {
         }
         fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         Self {
-            dataset: Dataset::open(&[path], None)
+            dataset: Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap())
                 .unwrap()
                 .with_lambda(1.0)
                 .unwrap(),

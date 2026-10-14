@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(completed.stats.discarded_games, 0);
         assert_eq!(completed.stats.planned_injections, 0);
         assert!(!completed.records.is_empty());
-        use minase::training::records_v2::{Exclusion, Origin, Policy, Value};
+        use minase::training::records::{Exclusion, Origin, Policy, Value};
         let decoded =
             crate::selfplay_gen::test_support::round_trip(completed.record.as_ref().unwrap());
         let record = decoded.record();

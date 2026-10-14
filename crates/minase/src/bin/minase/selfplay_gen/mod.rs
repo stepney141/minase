@@ -64,9 +64,9 @@ fn engine_default_rules() -> io::Result<Rules> {
 mod test_support {
     use minase::search::TranspositionTable;
     pub(super) fn round_trip(
-        record: &minase::training::records_v2::GameRecord,
-    ) -> minase::training::records_v2::DecodedGame {
-        use minase::training::records_v2::{Header, Reader, TeacherKind, Writer};
+        record: &minase::training::records::GameRecord,
+    ) -> minase::training::records::DecodedGame {
+        use minase::training::records::{Header, Reader, TeacherKind, Writer};
         use std::io::Cursor;
         let header = Header::new(
             "L0,P0,R1,E0".into(),

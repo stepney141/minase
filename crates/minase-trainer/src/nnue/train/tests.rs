@@ -11,7 +11,7 @@ use crate::{
         reference::{AdamW, AdamWConfig},
     },
 };
-use minase::training::records_v2::{GAME_HEADER_LEN, HEADER_LEN, Header};
+use minase::training::records::{GAME_HEADER_LEN, HEADER_LEN, Header};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 use std::{
     cell::Cell,
@@ -248,7 +248,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -282,14 +282,17 @@ impl Fixture {
                     (1, Color::Black) | (2, Color::White) => Outcome::Win,
                     _ => Outcome::Loss,
                 };
-                samples.push(Sample::from_position(
-                    &builder.finish().unwrap(),
-                    score,
-                    outcome,
-                    game,
-                    ply,
-                    minase::training::records_v2::Origin::RandomSelfplay,
-                ));
+                samples.push(
+                    Sample::from_position(
+                        &builder.finish().unwrap(),
+                        score,
+                        outcome,
+                        game,
+                        ply,
+                        minase::training::records::Origin::RandomSelfplay,
+                    )
+                    .unwrap(),
+                );
             }
         }
         fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
@@ -387,10 +390,14 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     assert_eq!(dataset.record_count(), 320);
     assert_eq!(dataset.training_indices().len(), 296);
     assert_eq!(dataset.validation_indices().len(), 24);
@@ -424,10 +431,14 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -542,10 +553,14 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -611,10 +626,14 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         {
-            let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-                .unwrap()
-                .with_lambda(args.training.lambda)
-                .unwrap();
+            let dataset = Dataset::open(
+                &args.data,
+                args.lookahead().unwrap(),
+                std::num::NonZeroUsize::new(1).unwrap(),
+            )
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap();
             let (model, observations) = initialized(&args, &dataset);
             let teacher_ks = dataset.estimate_teacher_ks().unwrap();
             let configuration =
@@ -752,10 +771,14 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=1 {
@@ -801,10 +824,14 @@ fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=2 {
@@ -850,10 +877,14 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let old = completed_checkpoint(
         &model,
@@ -886,10 +917,14 @@ fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
 
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap())
-        .unwrap()
-        .with_lambda(args.training.lambda)
-        .unwrap();
+    let dataset = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(args.training.lambda)
+    .unwrap();
     let (model, _) = initialized(&args, &dataset);
     let best_epoch = BestEpoch {
         epoch: 1,

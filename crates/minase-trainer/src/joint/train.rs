@@ -43,7 +43,13 @@ impl Session {
         let workers = workers::workers(args.threads)?;
         let base = Pst::decode(&std::fs::read(&args.base)?)?;
         // このセッションもDatasetを破棄するまで入力を書き換えない。
-        let dataset = Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.lambda)?;
+        let dataset = Dataset::open(
+            &args.data,
+            args.lookahead()?,
+            std::num::NonZeroUsize::new(workers)
+                .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
+        )?
+        .with_lambda(args.lambda)?;
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err("training and validation sets must both be nonempty".into());
         }

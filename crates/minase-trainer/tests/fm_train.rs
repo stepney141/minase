@@ -115,8 +115,9 @@ fn small_batch() -> (Model, Batch) {
                 Outcome::Win,
                 1,
                 0,
-                minase::training::records_v2::Origin::RandomSelfplay,
+                minase::training::records::Origin::RandomSelfplay,
             )
+            .unwrap()
         })
         .collect();
     let base = Pst::from_weights(
@@ -237,8 +238,9 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
             Outcome::Draw,
             1,
             0,
-            minase::training::records_v2::Origin::RandomSelfplay,
-        );
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .unwrap();
         let batch = Batch::from_records(&base, &[record], &[1], &[0.5]).unwrap();
         let mut expected = Vec::new();
         active_features(&reflected, |f| expected.push(f as u32));
@@ -259,7 +261,7 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
 fn observations_include_all_training_mirrors_and_exclude_validation_only_features() {
     let (_fixture, args) = Fixture::new(false, false);
 
-    let dataset = Dataset::open(&args.data, None).unwrap();
+    let dataset = Dataset::open(&args.data, None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let counts = fm::feature_observations(&dataset).unwrap();
     let mut expected = vec![0; FEATURE_COUNT];
     for &i in dataset.training_indices() {

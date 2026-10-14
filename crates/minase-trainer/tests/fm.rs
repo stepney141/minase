@@ -440,14 +440,14 @@ fn npz_rejects_wrong_shapes_types_missing_arrays_and_nonfinite_values() {
 
 impl Fixture {
     fn validation_data(&self) -> PathBuf {
-        use minase::training::records_v2::Header;
+        use minase::training::records::Header;
         use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
         let path = self.path("data.mnsd");
         let header = Header::new(
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -463,14 +463,17 @@ impl Fixture {
                     )
                     .unwrap();
             }
-            samples.push(Sample::from_position(
-                &builder.finish().unwrap(),
-                0,
-                Outcome::Draw,
-                game,
-                ply as u16,
-                minase::training::records_v2::Origin::RandomSelfplay,
-            ));
+            samples.push(
+                Sample::from_position(
+                    &builder.finish().unwrap(),
+                    0,
+                    Outcome::Draw,
+                    game,
+                    ply as u16,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
+                .unwrap(),
+            );
         }
         fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         let mut u = vec![[0; FM_RANK]; FEATURE_COUNT];

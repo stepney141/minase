@@ -12,7 +12,7 @@ use minase::datagen::git::{git_output, validate_commit_hash};
 use minase::datagen::statistics::{RecordedStatistics, Statistics};
 use minase::datagen::{data_error, invalid_data};
 use minase::search::TranspositionTable;
-use minase::training::records_v2::{Header, TeacherKind, Writer};
+use minase::training::records::{Header, TeacherKind, Writer};
 use minase_core::Rules;
 use std::{
     fs::{self, File, OpenOptions},
@@ -327,7 +327,7 @@ fn print_generation_summary(
 mod tests {
     use super::*;
     use minase::datagen::game::CompletedRecord;
-    use minase::training::records_v2::{
+    use minase::training::records::{
         Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Reader, Value,
     };
     use minase_core::{DrawReason, Game, GameResult};

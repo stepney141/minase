@@ -14,7 +14,7 @@ use minase::{
         features::{FEATURE_COUNT, feature_index, lion_feature_index},
         nnue::feature_set::{FeatureSet, HalfKpHmB8},
     },
-    training::records_v2::{HEADER_LEN, Header},
+    training::records::{HEADER_LEN, Header},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
@@ -54,7 +54,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [checksum; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             u64::from(nodes),
             seed,
         )
@@ -100,8 +100,9 @@ fn sample(position: &Position, game: u32, ply: u16, score: i16, outcome: Outcome
         outcome,
         game,
         ply,
-        minase::training::records_v2::Origin::RandomSelfplay,
+        minase::training::records::Origin::RandomSelfplay,
     )
+    .unwrap()
 }
 
 #[test]
@@ -116,7 +117,12 @@ fn dataset_reads_multiple_files_and_checks_global_bounds() {
     let last_record = sample(&Position::initial(), 2, 0, 30, Outcome::Draw);
     let last = fixture.write("last.bin", 22, 2, 200, std::slice::from_ref(&last_record));
 
-    let dataset = Dataset::open(&[first, empty, last], None).unwrap();
+    let dataset = Dataset::open(
+        &[first, empty, last],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(dataset.record_count(), 3);
     assert_eq!(dataset.headers().count(), 3);
     for (index, expected) in [
@@ -138,7 +144,7 @@ fn dataset_reads_multiple_files_and_checks_global_bounds() {
     assert_eq!(dataset.teacher_class(0).unwrap(), 0);
     assert_eq!(dataset.teacher_class(2).unwrap(), 1);
 
-    assert!(Dataset::open(&[], None).is_err());
+    assert!(Dataset::open(&[], None, std::num::NonZeroUsize::new(1).unwrap()).is_err());
 }
 
 #[test]
@@ -162,16 +168,23 @@ fn dataset_rejects_invalid_headers_lengths_and_records() {
     for bytes in cases {
         fs::write(&path, bytes).unwrap();
 
-        assert!(Dataset::open(std::slice::from_ref(&path), None).is_err());
+        assert!(
+            Dataset::open(
+                std::slice::from_ref(&path),
+                None,
+                std::num::NonZeroUsize::new(1).unwrap()
+            )
+            .is_err()
+        );
     }
     // 対局ヘッダの予約欄の違反を拒否する。
     let mut reserved = original;
     reserved[HEADER_LEN + 7] = 1;
     fs::write(&path, reserved).unwrap();
     assert!(matches!(
-        Dataset::open(&[path], None),
+        Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()),
         Err(Error::Mnsd(
-            minase::training::records_v2::Error::NonzeroReservedBytes
+            minase::training::records::Error::NonzeroReservedBytes
         ))
     ));
 }
@@ -184,14 +197,28 @@ fn dataset_rejects_duplicate_paths_and_random_seeds() {
     let first = fixture.write("a.bin", 11, 1, 200, &records);
     let second = fixture.write("b.bin", 11, 2, 200, &records);
 
-    assert!(Dataset::open(&[first.clone(), first.clone()], None).is_err());
+    assert!(
+        Dataset::open(
+            &[first.clone(), first.clone()],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
 
-    assert!(Dataset::open(&[first, second], None).is_err());
+    assert!(
+        Dataset::open(
+            &[first, second],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
-    use minase::training::records_v2::Origin;
+    use minase::training::records::Origin;
     let fixture = Fixture::new();
     let mut paths = Vec::new();
     for (i, origin) in [
@@ -211,7 +238,7 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
         paths.push(fixture.write(&format!("{i}.bin"), 11, 1, 200, &records));
     }
 
-    let dataset = Dataset::open(&paths, None)
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.5)
         .unwrap();
@@ -224,14 +251,19 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
     let copy = fixture.0.join("copy.bin");
     fs::copy(&paths[2], &copy).unwrap();
 
-    let copied = Dataset::open(&[paths[2].clone(), copy], None).unwrap();
+    let copied = Dataset::open(
+        &[paths[2].clone(), copy],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(copied.record_count(), 4);
     assert_eq!(copied.teacher_classes().len(), 1);
 }
 
 #[test]
 fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
-    use minase::training::records_v2::Origin;
+    use minase::training::records::Origin;
     let fixture = Fixture::new();
     let record = sample(&Position::initial(), 1, 0, 1, Outcome::Win);
     for origin in [
@@ -247,7 +279,11 @@ fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
             &[record.clone(), record.clone().with_origin(origin)],
         );
 
-        let error = match Dataset::open(std::slice::from_ref(&path), None) {
+        let error = match Dataset::open(
+            std::slice::from_ref(&path),
+            None,
+            std::num::NonZeroUsize::new(1).unwrap(),
+        ) {
             Err(error) => error,
             Ok(_) => panic!("invalid origin accepted"),
         };
@@ -268,7 +304,7 @@ fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
     );
 
     assert!(matches!(
-        Dataset::open(&[path], None),
+        Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()),
         Err(Error::SyntheticOrigin { .. })
     ));
 }
@@ -301,10 +337,14 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
     );
     let mut estimates = Vec::new();
     for mix in [1.0, 0.75, 0.125] {
-        let dataset = Dataset::open(std::slice::from_ref(&path), None)
-            .unwrap()
-            .with_lambda(mix)
-            .unwrap();
+        let dataset = Dataset::open(
+            std::slice::from_ref(&path),
+            None,
+            std::num::NonZeroUsize::new(1).unwrap(),
+        )
+        .unwrap()
+        .with_lambda(mix)
+        .unwrap();
         estimates.push(dataset.estimate_teacher_ks().unwrap()[0]);
     }
     assert!((estimates[0] - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
@@ -314,7 +354,7 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
             .all(|value| value.to_bits() == estimates[0].to_bits())
     );
 
-    let dataset = Dataset::open(&[path], None)
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.0)
         .unwrap();
@@ -412,7 +452,12 @@ fn lookahead_is_file_local_and_validates_record_order() {
     );
     let options = Lookahead::new(0.5, 3).unwrap();
 
-    let dataset = Dataset::open(&[first, second], Some(options)).unwrap();
+    let dataset = Dataset::open(
+        &[first, second],
+        Some(options),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     let scores: Vec<_> = (0..4).map(|i| dataset.teacher_score(i).unwrap()).collect();
     assert_eq!(scores, [-1.8_f32, 1.0, 1.0, 999.0]);
     assert_eq!(dataset.record(0).unwrap().score(), 7);
@@ -463,7 +508,7 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     );
     let paths = [first, second, third, fourth];
 
-    let dataset = Dataset::open(&paths, None).unwrap();
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     assert_eq!(dataset.teacher_classes().len(), 3);
     assert_eq!(dataset.teacher_class(2).unwrap(), 0);
     assert_eq!(dataset.teacher_class(3).unwrap(), 1);
@@ -475,7 +520,12 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     assert!((ks[1] - 4000.0).abs() < 1e-8);
     assert!((ks[2] - 4000.0).abs() < 1e-8);
 
-    let future = Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap())).unwrap();
+    let future = Dataset::open(
+        &paths,
+        Some(Lookahead::new(0.9, 40).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_ne!(dataset.teacher_classes(), future.teacher_classes());
     let only_validation = fixture.write(
         "validation.bin",
@@ -485,11 +535,15 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         &[sample(&pos, 4, 0, 1, Outcome::Win)],
     );
     assert!(matches!(
-        Dataset::open(&[only_validation], None)
-            .unwrap()
-            .with_lambda(0.75)
-            .unwrap()
-            .estimate_teacher_ks(),
+        Dataset::open(
+            &[only_validation],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .unwrap()
+        .with_lambda(0.75)
+        .unwrap()
+        .estimate_teacher_ks(),
         Err(Error::EmptyTeacherClass { class: 0 })
     ));
 }
@@ -510,7 +564,7 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
         ],
     );
 
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
@@ -562,7 +616,7 @@ fn halfkp_virtual_observations_are_the_union_of_buckets() {
     }
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     let observed = Observations::compute(
-        &Dataset::open(&[path], None).unwrap(),
+        &Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap(),
         InputFeatureSet::HalfKpHmB8,
     )
     .unwrap();
@@ -658,7 +712,7 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
         &[sample(&single_pawn(false), 1, 0, 1, Outcome::Win)],
     );
 
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     // ReverseIndexの128要素の区分に対し、直前・一致・直後と複数区分を検査する。
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
@@ -690,7 +744,7 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
     ];
     let path = fixture.write("data.bin", 11, 1, 200, &records);
 
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let slots = build_batches(&dataset, set, batches).unwrap();
@@ -740,7 +794,7 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
         &[sample(&single_pawn(true), 1, 0, 1, Outcome::Win)],
     );
 
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let slots = build_batches(&dataset, InputFeatureSet::P, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
@@ -803,7 +857,7 @@ fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
         .collect();
     let path = fixture.write("data.bin", 11, 1, 200, &records);
 
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let indices: Vec<_> = (0..positions.len() as u64).collect();
     let slots = build_batches(&dataset, InputFeatureSet::HalfKpHmB8, &[&indices]).unwrap();
     for (batch, position) in positions.iter().enumerate() {
@@ -851,7 +905,7 @@ fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
         paths.push(path);
     }
 
-    let dataset = Dataset::open(&paths, None)
+    let dataset = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.75)
         .unwrap();
@@ -868,14 +922,14 @@ fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
     assert_eq!(classes[0]["generation_commit"], "a".repeat(40));
     assert_eq!(classes[0]["lambda"], 0.75);
 
-    let other = Dataset::open(&paths, None)
+    let other = Dataset::open(&paths, None, std::num::NonZeroUsize::new(1).unwrap())
         .unwrap()
         .with_lambda(0.5)
         .unwrap();
     assert_ne!(dataset.teacher_classes(), other.teacher_classes());
 }
 
-use minase::training::records_v2::{
+use minase::training::records::{
     Entry, Exclusion, GameRecord, Origin, Policy, Reader, TeacherKind, Value,
 };
 use minase_core::{Game, GameResult, WinReason};
@@ -899,7 +953,7 @@ fn played_game(number: u32, start_ply: u16, values: &[(Option<i16>, Exclusion)])
         let mv = if index + 1 == values.len() {
             None
         } else {
-            Some(minase::training::records_v2::sorted_legal_moves(&game).unwrap()[index])
+            Some(minase::training::records::sorted_legal_moves(&game).unwrap()[index])
         };
         let value = score.map_or(Value::None, Value::AlphaBeta);
         entries.push(Entry::new(mv, value, exclusion, Policy::None, None).unwrap());
@@ -910,7 +964,7 @@ fn played_game(number: u32, start_ply: u16, values: &[(Option<i16>, Exclusion)])
     GameRecord::new(
         number,
         Origin::RandomSelfplay,
-        minase::training::records_v2::Outcome::Game(GameResult::Win {
+        minase::training::records::Outcome::Game(GameResult::Win {
             winner: Color::Black,
             reason: WinReason::Resignation,
         }),
@@ -939,7 +993,12 @@ fn only_eligible_positions_receive_indices_and_share_the_game_split() {
     );
     let path = fixture.0.join("eligible.bin");
     fs::write(&path, &bytes).unwrap();
-    let dataset = Dataset::open(&[path], Some(Lookahead::new(0.5, 3).unwrap())).unwrap();
+    let dataset = Dataset::open(
+        &[path],
+        Some(Lookahead::new(0.5, 3).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(dataset.record_count(), 4);
     assert_eq!(dataset.training_indices(), [0, 1]);
     assert_eq!(dataset.validation_indices(), [2, 3]);
@@ -977,7 +1036,7 @@ fn mcts_teacher_is_rejected_with_a_dedicated_error_even_when_empty() {
     let path = fixture.0.join("mcts.bin");
     fs::write(&path, mnsd::bytes(header, &[])).unwrap();
     assert!(
-        matches!(Dataset::open(std::slice::from_ref(&path), None), Err(Error::MctsTeacher { path: actual }) if actual == path)
+        matches!(Dataset::open(std::slice::from_ref(&path), None, std::num::NonZeroUsize::new(1).unwrap()), Err(Error::MctsTeacher { path: actual }) if actual == path)
     );
 }
 
@@ -1000,14 +1059,26 @@ fn files_without_eligible_samples_do_not_create_teacher_classes() {
         300,
         &[sample(&single_pawn(false), 1, 0, 12, Outcome::Draw)],
     );
-    let dataset = Dataset::open(&[empty.clone(), valid], None).unwrap();
+    let dataset = Dataset::open(
+        &[empty.clone(), valid],
+        None,
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap();
     assert_eq!(dataset.record_count(), 1);
     assert_eq!(dataset.teacher_classes().len(), 1);
     assert_eq!(dataset.teacher_class(0).unwrap(), 0);
     assert_eq!(dataset.record(0).unwrap().score(), 12);
     let duplicate = fixture.0.join("duplicate.bin");
     fs::copy(&empty, &duplicate).unwrap();
-    assert!(Dataset::open(&[empty, duplicate], None).is_err());
+    assert!(
+        Dataset::open(
+            &[empty, duplicate],
+            None,
+            std::num::NonZeroUsize::new(1).unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -1038,7 +1109,7 @@ fn compact_positions_preserve_deferred_promotion_and_lion_promotion() {
         200,
         &[sample(&position, 1, u16::MAX, i16::MIN, Outcome::Loss)],
     );
-    let dataset = Dataset::open(&[path], None).unwrap();
+    let dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()).unwrap();
     let sample = dataset.record(0).unwrap();
     assert_eq!(sample.to_position().unwrap(), position);
     assert_eq!(sample.side_to_move(), Color::Black);
@@ -1047,4 +1118,148 @@ fn compact_positions_preserve_deferred_promotion_and_lion_promotion() {
     assert_eq!(sample.board_codes()[deferred.dense_index()], 129);
     assert_eq!(sample.ply(), u16::MAX);
     assert_eq!(sample.score(), i16::MIN);
+}
+
+#[test]
+fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positions() {
+    use minase_trainer::data::build_targets_from_arrays;
+    use std::num::NonZeroUsize;
+
+    let fixture = Fixture::new();
+    let mut paths = Vec::new();
+    for (index, seed, scale) in [(0, 11, 200), (1, 22, 300), (2, 33, 200), (3, 44, 300)] {
+        let path = fixture.0.join(format!("replay-{index}.bin"));
+        let games: Vec<_> = (1..=20)
+            .map(|number| {
+                played_game(
+                    number,
+                    10,
+                    &[
+                        (Some(100 + number as i16), Exclusion::None),
+                        (None, Exclusion::None),
+                        (Some(200), Exclusion::Tactical),
+                        (Some(-300), Exclusion::None),
+                        (Some(400), Exclusion::None),
+                    ],
+                )
+            })
+            .collect();
+        fs::write(&path, mnsd::bytes(ab_header(seed, scale), &games)).unwrap();
+        paths.push(path);
+    }
+    paths.insert(1, fixture.write("empty.bin", 55, 7, 600, &[]));
+    paths.push(fixture.write(
+        "human.bin",
+        66,
+        3,
+        400,
+        &[sample(&single_pawn(false), 1, 0, -42, Outcome::Draw).with_origin(Origin::HumanGame)],
+    ));
+
+    for lookahead in [None, Some(Lookahead::new(0.9, 4).unwrap())] {
+        let serial = Dataset::open(&paths, lookahead, NonZeroUsize::new(1).unwrap())
+            .unwrap()
+            .with_lambda(0.75)
+            .unwrap();
+        let parallel = Dataset::open(&paths, lookahead, NonZeroUsize::new(4).unwrap())
+            .unwrap()
+            .with_lambda(0.75)
+            .unwrap();
+        assert_eq!(serial.record_count(), 241);
+        assert_eq!(parallel.record_count(), serial.record_count());
+        assert!(!serial.training_indices().is_empty());
+        assert!(!serial.validation_indices().is_empty());
+        assert_eq!(serial.training_indices(), parallel.training_indices());
+        assert_eq!(serial.validation_indices(), parallel.validation_indices());
+        assert_eq!(
+            serial.paths().collect::<Vec<_>>(),
+            parallel.paths().collect::<Vec<_>>()
+        );
+        assert_eq!(serial.teacher_classes().len(), 3);
+        assert_eq!(serial.teacher_classes(), parallel.teacher_classes());
+        assert_eq!(serial.teacher_lambdas(), parallel.teacher_lambdas());
+        let serial_ks = serial.estimate_teacher_ks().unwrap();
+        let parallel_ks = parallel.estimate_teacher_ks().unwrap();
+        assert_eq!(
+            serial_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>(),
+            parallel_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>()
+        );
+        for index in 0..serial.record_count() {
+            let sample = serial.record(index).unwrap();
+            let other = parallel.record(index).unwrap();
+            assert_eq!(sample, other);
+            assert_eq!(sample.to_position().unwrap(), other.to_position().unwrap());
+            assert_eq!(
+                serial.teacher_score(index).unwrap().to_bits(),
+                parallel.teacher_score(index).unwrap().to_bits()
+            );
+            assert_eq!(
+                serial.teacher_class(index).unwrap(),
+                parallel.teacher_class(index).unwrap()
+            );
+        }
+        let targets = |dataset: &Dataset, ks: &[f64]| {
+            let indices = 0..dataset.record_count();
+            let scores: Vec<_> = indices
+                .clone()
+                .map(|i| dataset.teacher_score(i).unwrap())
+                .collect();
+            let classes: Vec<_> = indices
+                .clone()
+                .map(|i| dataset.teacher_class(i).unwrap())
+                .collect();
+            let outcomes: Vec<_> = indices
+                .map(|i| match dataset.record(i).unwrap().outcome() {
+                    Outcome::Loss => 0,
+                    Outcome::Draw => 1,
+                    Outcome::Win => 2,
+                })
+                .collect();
+            build_targets_from_arrays(&scores, &classes, &outcomes, ks, dataset.teacher_lambdas())
+                .unwrap()
+                .into_iter()
+                .map(f32::to_bits)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            targets(&serial, &serial_ks),
+            targets(&parallel, &parallel_ks)
+        );
+    }
+}
+
+#[test]
+fn parallel_dataset_loading_returns_the_first_error_in_input_order() {
+    use minase::training::records::Error as FormatError;
+    use std::num::NonZeroUsize;
+
+    let fixture = Fixture::new();
+    let first = fixture.write("first.bin", 11, 1, 200, &[]);
+    let second = fixture.0.join("second.bin");
+    let third = fixture.0.join("third.bin");
+    let mut broken = mnsd::bytes(ab_header(22, 200), &[]);
+    broken[113] = 1;
+    fs::write(&second, broken).unwrap();
+    fs::write(&third, b"bad!").unwrap();
+    for workers in [1, 4] {
+        let workers = NonZeroUsize::new(workers).unwrap();
+        assert!(matches!(
+            Dataset::open(
+                &[first.clone(), second.clone(), third.clone()],
+                None,
+                workers
+            ),
+            Err(Error::Mnsd(FormatError::NonzeroReservedBytes))
+        ));
+        // 重複検査も後続ファイルの復号エラーより先に報告する。
+        assert!(matches!(
+            Dataset::open(&[first.clone(), first.clone(), second.clone()], None, workers),
+            Err(Error::Dataset { path, reason: "the same MNSD file was specified more than once" }) if path == first
+        ));
+        let missing = fixture.0.join("missing.bin");
+        assert!(matches!(
+            Dataset::open(&[first.clone(), second.clone(), missing], None, workers),
+            Err(Error::Mnsd(FormatError::NonzeroReservedBytes))
+        ));
+    }
 }

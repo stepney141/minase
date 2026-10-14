@@ -27,7 +27,7 @@ use label::{GameDetails, Job, process_job};
 use minase::{
     datagen::{self, data_error},
     search::TranspositionTable,
-    training::records_v2::{Header, TeacherKind, Writer},
+    training::records::{Header, TeacherKind, Writer},
 };
 use output::{create, write_json};
 use replay::replay;

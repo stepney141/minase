@@ -16,7 +16,7 @@ use minase::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
         pst::{FM_RANK, Pst},
     },
-    training::records_v2::Header,
+    training::records::Header,
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::nnue::{
@@ -67,8 +67,9 @@ impl Fixture {
                     Outcome::Draw,
                     game,
                     i as u16,
-                    minase::training::records_v2::Origin::RandomSelfplay,
+                    minase::training::records::Origin::RandomSelfplay,
                 )
+                .unwrap()
             })
             .collect();
         self.records(name, &records, seed, rules)
@@ -80,7 +81,7 @@ impl Fixture {
             rules.into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             seed,
         )
@@ -271,8 +272,9 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
                     Outcome::Draw,
                     game,
                     0,
-                    minase::training::records_v2::Origin::RandomSelfplay,
+                    minase::training::records::Origin::RandomSelfplay,
                 )
+                .unwrap()
             })
             .collect();
         f.records(name, &records, seed, "engine-default");
@@ -468,8 +470,9 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
             Outcome::Draw,
             4,
             0,
-            minase::training::records_v2::Origin::RandomSelfplay,
-        );
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .unwrap();
         assert!(record.lion_by_kirin_promotion());
         assert_eq!(record.to_position().unwrap(), position);
         f.records("data.mnsd", &[record], 11, "engine-default");
@@ -586,8 +589,9 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
             Outcome::Draw,
             4,
             0,
-            minase::training::records_v2::Origin::RandomSelfplay,
-        );
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .unwrap();
         assert_eq!(record.to_position().unwrap(), position);
         f.records("data.mnsd", &[record], 11, "engine-default");
         fs::remove_file(f.path("report.json")).unwrap();

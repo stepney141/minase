@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::{Outcome, Sample};
-use minase::training::records_v2::{
+use minase::training::records::{
     Entry, Exclusion, GameRecord, Header, Origin, Outcome as GameOutcome, Policy, Value, Writer,
 };
 use minase_core::{DrawReason, GameResult, WinReason};

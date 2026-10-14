@@ -10,7 +10,7 @@ use minase::eval::{
     features::FEATURE_COUNT,
     pst::{FM_RANK, Pst},
 };
-use minase::training::records_v2::Header;
+use minase::training::records::Header;
 use minase_core::{Color, PieceKind};
 use minase_trainer::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
@@ -209,7 +209,7 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
-            minase::training::records_v2::TeacherKind::AlphaBeta,
+            minase::training::records::TeacherKind::AlphaBeta,
             200,
             11,
         )
@@ -237,18 +237,21 @@ impl Fixture {
                     ]);
                 }
                 let p = common::position(&pieces, side, None);
-                samples.push(Sample::from_position(
-                    &p,
-                    if side == Color::Black { 300 } else { -300 },
-                    if game % 3 == 0 {
-                        Outcome::Draw
-                    } else {
-                        Outcome::Win
-                    },
-                    game,
-                    ply,
-                    minase::training::records_v2::Origin::RandomSelfplay,
-                ));
+                samples.push(
+                    Sample::from_position(
+                        &p,
+                        if side == Color::Black { 300 } else { -300 },
+                        if game % 3 == 0 {
+                            Outcome::Draw
+                        } else {
+                            Outcome::Win
+                        },
+                        game,
+                        ply,
+                        minase::training::records::Origin::RandomSelfplay,
+                    )
+                    .unwrap(),
+                );
             }
         }
         fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
@@ -376,6 +379,7 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
     let dataset = Dataset::open(
         &args.data,
         Some(minase_trainer::data::Lookahead::new(0.9, 40).unwrap()),
+        std::num::NonZeroUsize::new(1).unwrap(),
     )
     .unwrap();
     let dataset = dataset.with_lambda(args.lambda).unwrap();
