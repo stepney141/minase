@@ -27,6 +27,8 @@ pub(super) struct Movement {
 }
 
 /// 完了した1エポックの記録。学習前のエポック0では訓練の欄はnull。
+/// `training.jsonl`へ1エポック1行で保存し、最初と最後の更新で使った倍率を
+/// `lr_multiplier_first`と`lr_multiplier_last`に記録する。エポック0では両欄ともnull。
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EpochRecord {
     /// 学習を実行したデバイス。
@@ -76,6 +78,10 @@ pub struct EpochRecord {
     pub steps: u64,
     /// 全エポックの更新回数。
     pub total_steps: u64,
+    /// このエポックの最初の更新で学習率に掛けた倍率。エポック0ではnull。
+    pub lr_multiplier_first: Option<f64>,
+    /// このエポックの最後の更新で学習率に掛けた倍率。エポック0ではnull。
+    pub lr_multiplier_last: Option<f64>,
 }
 
 /// 累算器が0以下と1以上であった要素の割合。
@@ -159,6 +165,8 @@ pub(super) struct Configuration {
 /// `settings`は引数から`output_dir`、`resume`、`data`、`init_pst`、`base`、`epochs`、
 /// `patience`、`time_limit_hours`、`threads`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
+/// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
+/// 学習の軌跡を変える設定なので、再開時の照合に含める。
 ///
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。

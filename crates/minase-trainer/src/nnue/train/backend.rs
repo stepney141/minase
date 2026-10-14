@@ -117,6 +117,14 @@ impl Backend {
         }
     }
 
+    /// 完了済み更新回数。CUDAでは計算ストリームへ投入済みの更新を含む。
+    pub fn step(&self) -> u64 {
+        match self {
+            Self::Cuda(step) => step.step(),
+            Self::Cpu(cpu) => cpu.optimizer.step(),
+        }
+    }
+
     pub fn memory(&self) -> Result<Option<(usize, usize)>> {
         match self {
             Self::Cuda(step) => {
@@ -147,11 +155,14 @@ impl Backend {
         queue: &mut Queue,
         buffer: &mut Buffer,
         targets: &[f32],
+        multiplier: f64,
     ) -> Result<StepResult> {
         match (self, queue, buffer) {
             (Self::Cuda(step), Queue::Cuda(ring), Buffer::Cuda(host)) => {
                 let ticket = ring.upload_prepared(host)?;
-                Ok(StepResult::Cuda(step.enqueue(ring, &ticket, targets)?))
+                Ok(StepResult::Cuda(
+                    step.enqueue(ring, &ticket, targets, multiplier)?,
+                ))
             }
             (Self::Cpu(cpu), Queue::Cpu, Buffer::Cpu(slot)) => {
                 let Cpu {
@@ -171,7 +182,7 @@ impl Backend {
                     *removal_penalty,
                     *threads,
                 )?;
-                optimizer.update_parallel(model, &gradient.parameters, *threads)?;
+                optimizer.update_parallel(model, &gradient.parameters, *threads, multiplier)?;
                 Ok(StepResult::Cpu(gpu::StepMetrics {
                     losses: gradient.losses,
                     compute_ms: started.elapsed().as_secs_f32() * 1000.0,

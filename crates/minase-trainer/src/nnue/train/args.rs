@@ -5,6 +5,7 @@ use crate::{
         data::{InputFeatureSet, MAX_BATCH_SIZE},
         model::Shape,
         options::{DeviceKind, TrainingOptions},
+        schedule::LrSchedule,
     },
 };
 use serde::Serialize;
@@ -21,6 +22,9 @@ pub struct Args {
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,
+    /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期エポック>:<下限>、cosine:<総長エポック>:<下限>。
+    #[arg(long, default_value = "constant:1", value_parser = clap::value_parser!(LrSchedule))]
+    pub lr_schedule: LrSchedule,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
@@ -75,6 +79,7 @@ impl Args {
     /// ファイルやGPUに触れる前に値と引数の組合せを検査する。
     pub fn validate(&self) -> Result<()> {
         self.training.validate()?;
+        self.lr_schedule.validate()?;
         Shape::new(self.feature_set, self.width, 1.0)?;
         if self.data.is_empty() {
             return Err(Error::Invalid("--data requires at least one file").into());

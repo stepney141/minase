@@ -430,6 +430,12 @@ impl Session {
                 indices: &indices,
                 teacher_ks: &self.teacher_ks,
                 batch: self.args.batch,
+                schedule: self.args.lr_schedule,
+                steps_per_epoch: self
+                    .dataset
+                    .training_indices()
+                    .len()
+                    .div_ceil(self.args.batch) as u64,
                 workers: self.workers,
                 deadline,
             },
@@ -514,6 +520,8 @@ impl Session {
             elapsed_seconds: self.checkpoint.progress.elapsed_seconds,
             steps: training.map_or(0, |(t, _)| t.steps),
             total_steps: self.checkpoint.optimizer.step(),
+            lr_multiplier_first: training.and_then(|(t, _)| t.first_multiplier),
+            lr_multiplier_last: training.and_then(|(t, _)| t.last_multiplier),
         }
     }
 

@@ -12,6 +12,7 @@ use crate::{
     nnue::{
         data::{InputFeatureSet, build_batches, build_targets},
         gpu,
+        schedule::LrSchedule,
     },
 };
 use std::{
@@ -33,6 +34,10 @@ pub(super) struct Training {
     pub compute_seconds: f64,
     pub steps: u64,
     pub positions: usize,
+    /// このエポックの最初に投入した更新の倍率。
+    pub first_multiplier: Option<f64>,
+    /// このエポックの最後に投入した更新の倍率。
+    pub last_multiplier: Option<f64>,
     pub gpu_used_bytes: Option<usize>,
     pub gpu_total_bytes: Option<usize>,
 }
@@ -58,6 +63,10 @@ pub(super) struct Supply<'a> {
     pub indices: &'a [u64],
     pub teacher_ks: &'a [f64],
     pub batch: usize,
+    /// 完了済み更新回数から学習率の倍率を求める規則。
+    pub schedule: LrSchedule,
+    /// `ceil(訓練局面数 / バッチサイズ)`。1以上である。
+    pub steps_per_epoch: u64,
     pub workers: usize,
     pub deadline: Instant,
 }
@@ -137,7 +146,19 @@ pub(super) fn train_epoch(supply: Supply<'_>, backend: &mut Backend) -> Result<O
                 if Instant::now() >= supply.deadline {
                     break;
                 }
-                let result = backend.enqueue(&mut queue, &mut prepared.host, &prepared.targets)?;
+                let multiplier = supply
+                    .schedule
+                    .multiplier(backend.step(), supply.steps_per_epoch);
+                let result = backend.enqueue(
+                    &mut queue,
+                    &mut prepared.host,
+                    &prepared.targets,
+                    multiplier,
+                )?;
+                if training.first_multiplier.is_none() {
+                    training.first_multiplier = Some(multiplier);
+                }
+                training.last_multiplier = Some(multiplier);
                 // 3面だけを循環させる。fillはその面の転送完了を待ってから書き込む。
                 let _ = recycle.send(prepared.host);
                 if let Some((previous, positions)) = pending.replace((result, prepared.positions)) {
