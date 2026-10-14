@@ -9,7 +9,7 @@
 ## コマンドライン
 
 学習器は、使い捨てのブランチ`shuffle-prelim`のコミット8aac823を`cargo build --release -p minase-trainer`でビルドしたもので、実行ファイルのSHA-256は`b0ff10fc…451e`である。
-このコミットは、`minase-trainer nnue train`に各エポックの訓練局面の並べ方を選ぶ試験用の引数`--order`を加えたものであり、masterには入れない。
+このコミットは、`minase-trainer nnue train`に各エポックの訓練局面の並べ方を選ぶ試験用の引数`--order`を加えたものであり、masterには入れず、記録を終えた後の2026年10月14日にブランチごと削除した。
 `--order`を省略したときの学習は、[教師データ形式の統一](../plans/archived/unified-teacher-format.md)を終えたmasterの学習器と同じである。
 
 `$D`は版2の教師データを置いたディレクトリ、`$ROOT`はリポジトリのルート、`<order>`は下の4つの値、`<seed>`は1、2、3である。
