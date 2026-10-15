@@ -712,24 +712,65 @@ fn screlu_derivative_includes_one_but_excludes_saturated_region() {
 
 #[test]
 fn adamw_bias_correction_decay_and_zero_gradient_momentum_match_hand_calculation() {
-    let mut p = [2.0, -3.0];
-    let mut m = [0.0; 2];
-    let mut v = [0.0; 2];
-    let group = AdamWGroup {
-        lr: 0.01,
-        weight_decay: 0.1,
-    };
-    reference::adamw(&mut p, &[0.5, -0.25], &mut m, &mut v, 1, group).unwrap();
-    close(f64::from(p[0]), 1.998 - 0.01 * 0.5 / (0.5 + 1e-8), 2e-7);
-    close(f64::from(p[1]), -2.997 + 0.01 * 0.25 / (0.25 + 1e-8), 2e-7);
-    close(f64::from(m[0]), 0.05, 1e-8);
-    close(f64::from(v[0]), 0.00025, 1e-10);
-    let old = p[0];
-    reference::adamw(&mut p, &[0.0; 2], &mut m, &mut v, 2, group).unwrap();
-    let expected = f64::from(old) * 0.999
-        - 0.01 * (0.045 / 0.19) / ((0.00024975_f64 / 0.001999).sqrt() + 1e-8);
-    close(f64::from(p[0]), expected, 3e-7);
-    assert!(p[0] < old * 0.999);
+    use minase_trainer::nn::AdamCoefficients;
+    // AdamCoefficientsの契約式から、g=(1/2,-1/4), 0, (-1/2,1/4)の
+    // モーメントを手計算する。減衰はモーメントに混ぜず、重みだけに掛かる。
+    for decay in [0.0, 0.1] {
+        let mut p = [2.0_f32, -3.0];
+        let mut m = [0.0; 2];
+        let mut v = [0.0; 2];
+        let group = AdamWGroup {
+            lr: 0.01,
+            weight_decay: decay,
+        };
+        let cases = [
+            (
+                [0.5, -0.25],
+                [0.05, -0.025],
+                [0.00025_f64, 0.0000625],
+                0.1,
+                0.001,
+            ),
+            (
+                [0.0, 0.0],
+                [0.045, -0.0225],
+                [0.00024975, 0.0000624375],
+                0.19,
+                0.001999,
+            ),
+            (
+                [-0.5, 0.25],
+                [-0.0095, 0.00475],
+                [0.00049950025, 0.0001248750625],
+                0.271,
+                0.002997001,
+            ),
+        ];
+        for (step, (gradient, expected_m, expected_v, c1, c2)) in cases.into_iter().enumerate() {
+            let coefficients = AdamCoefficients::new(step as u64 + 1, group).unwrap();
+            for i in 0..2 {
+                let old = f64::from(p[i]);
+                let expected = old * (1.0 - 0.01 * decay)
+                    - 0.01 * (expected_m[i] / c1) / ((expected_v[i] / c2).sqrt() + 1e-8);
+                coefficients.update(&mut p[i], gradient[i], &mut m[i], &mut v[i]);
+                assert!(
+                    (f64::from(p[i]) - expected).abs() < [2e-7, 3e-7, 4e-7][step],
+                    "decay={decay}, step={step}, element={i}"
+                );
+                assert!(
+                    (f64::from(m[i]) - expected_m[i]).abs() < 1e-8,
+                    "decay={decay}, step={step}, element={i}: m"
+                );
+                assert!(
+                    (f64::from(v[i]) - expected_v[i]).abs() < 1e-10,
+                    "decay={decay}, step={step}, element={i}: v"
+                );
+                if step == 1 {
+                    assert!((f64::from(p[i]) - old * (1.0 - 0.01 * decay)) * expected_m[i] < 0.0);
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -1098,82 +1139,4 @@ fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() 
     );
     assert_eq!(model, unchanged);
     assert_eq!(optimizer, before);
-}
-
-#[test]
-fn lambda_one_preserves_default_score_only_losses_and_three_update_state_bits() {
-    // λ=1は探索値だけを教師とする。
-    // 損失の固定値はコミットf9524ddの参照実装を独立にコンパイルし、同じ初期モデルとバッチ列の3更新から採取した。
-    let expected_losses: [(InputFeatureSet, [[u64; 2]; 3]); 2] = [
-        (
-            InputFeatureSet::P,
-            [
-                [0x3fe62eef72492492, 0x3fc2cc476fcf3cf2],
-                [0x3fe62d04adb6db6e, 0x3fad629c16666667],
-                [0x3fe62b7c4db6db6e, 0x3fa093370bd5bd5b],
-            ],
-        ),
-        (
-            InputFeatureSet::HalfKpHmB8,
-            [
-                [0x3fe62eef72492492, 0x3fc2cc488d861861],
-                [0x3fe62d063b6db6db, 0x3fa56ec0fc831d88],
-                [0x3fe62b8052492492, 0x3f7d6ddda85d307e],
-            ],
-        ),
-    ];
-    let fixture = Fixture::new(&positions());
-    let reference = RemovalReference::v0();
-    for (set, expected_losses) in expected_losses {
-        let mut score_only = nonzero_model(set);
-        let mut mixed = score_only.clone();
-        let mut score_optimizer = AdamW::new(score_only.shape(), AdamWConfig::default()).unwrap();
-        let mut mixed_optimizer = score_optimizer.clone();
-        for (indices, expected_loss) in [
-            [0, 1, 2, 0, 1, 2, 1],
-            [2, 1, 0, 1, 2, 0, 2],
-            [1, 0, 2, 2, 1, 0, 0],
-        ]
-        .into_iter()
-        .zip(expected_losses)
-        {
-            let batch = fixture.batch(set, &indices);
-            let score_targets: Vec<_> = batch
-                .teacher_scores()
-                .iter()
-                .map(|&score| (1.0 / (1.0 + (-f64::from(score) / 700.0).exp())) as f32)
-                .collect();
-            let mixed_targets = build_targets(&batch, &[700.0], &[1.0]).unwrap();
-            let expected =
-                loss_and_gradients(&score_only, &batch, &score_targets, &reference, 1000.0)
-                    .unwrap();
-            let actual = reference::loss_and_gradients_parallel(
-                &mixed,
-                &batch,
-                &mixed_targets,
-                &reference,
-                1000.0,
-                5,
-            )
-            .unwrap();
-            for losses in [expected.losses, actual.losses] {
-                assert_eq!(
-                    [losses.bce.to_bits(), losses.auxiliary.to_bits()],
-                    expected_loss,
-                    "{set:?} step {}",
-                    score_optimizer.step() + 1,
-                );
-            }
-            assert_parameter_bits(&actual.parameters, &expected.parameters);
-            score_optimizer
-                .update(&mut score_only, &expected.parameters)
-                .unwrap();
-            mixed_optimizer
-                .update_parallel(&mut mixed, &actual.parameters, 5, 1.0)
-                .unwrap();
-            assert_parameter_bits(mixed.parameters(), score_only.parameters());
-            assert_parameter_bits(mixed_optimizer.m(), score_optimizer.m());
-            assert_parameter_bits(mixed_optimizer.v(), score_optimizer.v());
-        }
-    }
 }

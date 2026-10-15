@@ -15,7 +15,7 @@ use crate::nn::parallel;
 use rows::rows_mut;
 mod removal;
 mod validation;
-pub use optimizer::{AdamW, AdamWConfig, adamw};
+pub use optimizer::{AdamW, AdamWConfig};
 use removal::removal_forward_parallel;
 pub use removal::{Removal, RemovalReference, removal_forward, v0_piece_values};
 pub use validation::{Validation, validation_forward};

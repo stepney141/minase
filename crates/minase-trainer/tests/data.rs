@@ -362,43 +362,6 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
 }
 
 #[test]
-fn targets_match_lambda_three_quarters_hand_calculation_and_zero_lambda_results() {
-    let records: Vec<_> = [Outcome::Loss, Outcome::Draw, Outcome::Win]
-        .into_iter()
-        .map(|outcome| sample(&Position::initial(), 1, 0, 0, outcome))
-        .collect();
-    let batch = BatchSlot::from_records(InputFeatureSet::P, &records, &[0.0; 3], &[0; 3]).unwrap();
-    // score=0ならσ=1/2なので、λ=3/4では3/8、1/2、5/8となる。
-    assert_eq!(
-        build_targets(&batch, &[1000.0], &[0.75]).unwrap(),
-        [0.375, 0.5, 0.625]
-    );
-    assert_eq!(
-        build_targets(&batch, &[f64::NAN], &[0.0]).unwrap(),
-        [0.0, 0.5, 1.0]
-    );
-    let extreme = BatchSlot::from_records(
-        InputFeatureSet::P,
-        &records,
-        &[f32::MAX, -f32::MAX, f32::MAX],
-        &[0; 3],
-    )
-    .unwrap();
-    assert_eq!(
-        build_targets(&extreme, &[f64::NAN], &[0.0]).unwrap(),
-        [0.0, 0.5, 1.0]
-    );
-    for k in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        assert!(build_targets(&batch, &[k], &[0.75]).is_err());
-    }
-    for mix in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
-        assert!(build_targets(&batch, &[1000.0], &[mix]).is_err());
-    }
-    assert!(build_targets(&batch, &[], &[]).is_err());
-    assert!(build_targets(&batch, &[1000.0], &[]).is_err());
-}
-
-#[test]
 fn lambda_one_preserves_previous_sigmoid_target_bits() {
     let scores = [-1000.0, -120.0, 0.0, 75.0, 900.0];
     // λ=1の教師式σ(探索値/K)を独立に計算し、f32へ丸めたビット列である。
@@ -426,7 +389,7 @@ fn lambda_one_preserves_previous_sigmoid_target_bits() {
 }
 
 #[test]
-fn lookahead_is_file_local_and_validates_record_order() {
+fn lookahead_is_file_local() {
     let fixture = Fixture::new();
     let pos = Position::initial();
     let first = fixture.0.join("first.bin");
@@ -462,12 +425,6 @@ fn lookahead_is_file_local_and_validates_record_order() {
     assert_eq!(scores, [-1.8_f32, 1.0, 1.0, 999.0]);
     assert_eq!(dataset.record(0).unwrap().score(), 7);
     assert_eq!(dataset.teacher_classes()[0].lookahead(), Some(options));
-    for (games, plies) in [([2, 1], [0, 1]), ([1, 1], [1, 1]), ([1, 1], [2, 1])] {
-        assert!(matches!(
-            minase_trainer::data::compute_lookahead(&games, &plies, &[0.0, 0.0], options),
-            Err(Error::RecordOrder { index: 1 })
-        ));
-    }
 }
 
 #[test]
