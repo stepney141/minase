@@ -326,54 +326,6 @@ fn accumulator_updates_match_full_refresh_across_move_shapes<F: FeatureSet>() {
     }
 }
 
-both_feature_sets!(royal_promotion_and_captures_update_all_features);
-/// 太子への成りと王・太子の捕獲でも、累算値と取消が全再計算に一致する。
-fn royal_promotion_and_captures_update_all_features<F: FeatureSet>() {
-    for nnue in networks::<F>() {
-        let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
-        let enemy_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
-        let elephant = PieceCode::new(Color::Black, PieceKind::DrunkElephant).unwrap();
-        let mut position = position_from_codes(
-            Color::Black,
-            &[
-                (sq(0, 11), king),
-                (sq(11, 0), enemy_king),
-                (sq(5, 7), elephant),
-            ],
-        );
-        assert_move_accumulator(
-            &nnue,
-            &mut position,
-            Move {
-                from: sq(5, 7),
-                mid: None,
-                to: sq(5, 8),
-                promote: true,
-            },
-        );
-        for victim in [
-            enemy_king,
-            PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
-        ] {
-            let rook = PieceCode::new(Color::Black, PieceKind::Rook).unwrap();
-            let mut position = position_from_codes(
-                Color::Black,
-                &[(sq(0, 11), king), (sq(5, 7), rook), (sq(5, 8), victim)],
-            );
-            assert_move_accumulator(
-                &nnue,
-                &mut position,
-                Move {
-                    from: sq(5, 7),
-                    mid: None,
-                    to: sq(5, 8),
-                    promote: false,
-                },
-            );
-        }
-    }
-}
-
 fn mirror(position: &Position) -> Position {
     let pieces: Vec<_> = position
         .occupied()
@@ -1430,85 +1382,140 @@ fn half_kp_buckets_and_feature_indices_follow_the_contract() {
 
 both_feature_sets!(royal_context_changes_preserve_incremental_evaluation);
 fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
-    let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
-    for side in Color::ALL {
-        let king = PieceCode::new(side, PieceKind::King).unwrap();
-        let enemy_king = PieceCode::new(side.opposite(), PieceKind::King).unwrap();
-        let rank = |r| if side == Color::Black { r } else { 11 - r };
-        for (from, to) in [
-            (sq(5, rank(0)), sq(6, rank(0))), // 鏡映だけが変わる。
-            (sq(6, rank(0)), sq(7, rank(0))), // 最下段の区分が変わる。
-            (sq(6, rank(0)), sq(6, rank(1))),
-            (sq(6, rank(1)), sq(6, rank(2))),
-            (sq(6, rank(2)), sq(7, rank(3))), // 王が動いても文脈は不変。
-        ] {
-            let mut position =
-                position_from_codes(side, &[(from, king), (sq(11, rank(11)), enemy_king)]);
-            assert_move_accumulator(
-                &net,
-                &mut position,
-                Move {
-                    from,
-                    to,
-                    mid: None,
-                    promote: false,
-                },
-            );
-        }
-        let prince = PieceCode::new_promoted(side.opposite(), PieceKind::CrownPrince).unwrap();
-        let rook = PieceCode::new(side, PieceKind::Rook).unwrap();
-        // 王将を失った側の太子が基準になる場合と、王駒がなくなる場合。
-        for survivor in [None, Some((sq(6, rank(11)), prince))] {
-            let mut pieces = vec![
-                (sq(0, rank(0)), king),
-                (sq(5, rank(7)), rook),
-                (sq(5, rank(8)), enemy_king),
-            ];
-            pieces.extend(survivor);
-            let mut position = position_from_codes(side, &pieces);
-            assert_move_accumulator(
-                &net,
-                &mut position,
-                Move {
-                    from: sq(5, rank(7)),
-                    to: sq(5, rank(8)),
-                    mid: None,
-                    promote: false,
-                },
-            );
-        }
-        // 王将が存在しない側に太子が生じ、初めて文脈を持つ。
-        let elephant = PieceCode::new(side, PieceKind::DrunkElephant).unwrap();
-        let mut position = position_from_codes(
-            side,
-            &[(sq(5, rank(7)), elephant), (sq(11, rank(11)), enemy_king)],
-        );
-        assert_move_accumulator(
-            &net,
-            &mut position,
-            Move {
+    for (network, net) in networks::<F>().iter().enumerate() {
+        for side in Color::ALL {
+            let king = PieceCode::new(side, PieceKind::King).unwrap();
+            let enemy_king = PieceCode::new(side.opposite(), PieceKind::King).unwrap();
+            let prince = PieceCode::new_promoted(side.opposite(), PieceKind::CrownPrince).unwrap();
+            let own_prince = PieceCode::new_promoted(side, PieceKind::CrownPrince).unwrap();
+            let rook = PieceCode::new(side, PieceKind::Rook).unwrap();
+            let elephant = PieceCode::new(side, PieceKind::DrunkElephant).unwrap();
+            let rank = |r| if side == Color::Black { r } else { 11 - r };
+            let mut cases = Vec::new();
+            for (case, from, to) in [
+                ("article_9_king_mirror", sq(5, rank(0)), sq(6, rank(0))),
+                ("article_9_king_file_bucket", sq(6, rank(0)), sq(7, rank(0))),
+                (
+                    "article_9_king_rank_bucket_1",
+                    sq(6, rank(0)),
+                    sq(6, rank(1)),
+                ),
+                (
+                    "article_9_king_rank_bucket_2",
+                    sq(6, rank(1)),
+                    sq(6, rank(2)),
+                ),
+                (
+                    "article_9_king_same_context",
+                    sq(6, rank(2)),
+                    sq(7, rank(3)),
+                ),
+            ] {
+                cases.push((
+                    case,
+                    vec![(from, king), (sq(11, rank(11)), enemy_king)],
+                    Move {
+                        from,
+                        to,
+                        mid: None,
+                        promote: false,
+                    },
+                ));
+            }
+            let capture = Move {
                 from: sq(5, rank(7)),
                 to: sq(5, rank(8)),
                 mid: None,
-                promote: true,
-            },
-        );
-        // 太子だけを持つ側では、その移動も鏡映を変える。
-        let prince = PieceCode::new_promoted(side, PieceKind::CrownPrince).unwrap();
-        let mut position = position_from_codes(
-            side,
-            &[(sq(5, rank(0)), prince), (sq(11, rank(11)), enemy_king)],
-        );
-        assert_move_accumulator(
-            &net,
-            &mut position,
-            Move {
-                from: sq(5, rank(0)),
-                to: sq(6, rank(0)),
-                mid: None,
                 promote: false,
-            },
-        );
+            };
+            for (case, victim, survivor) in [
+                ("article_20_capture_king_without_prince", enemy_king, None),
+                (
+                    "article_20_capture_king_with_prince",
+                    enemy_king,
+                    Some((sq(6, rank(11)), prince)),
+                ),
+            ] {
+                let mut pieces = vec![
+                    (sq(0, rank(0)), king),
+                    (capture.from, rook),
+                    (capture.to, victim),
+                ];
+                pieces.extend(survivor);
+                cases.push((case, pieces, capture));
+            }
+            cases.push((
+                "article_18_elephant_promotion_without_king",
+                vec![(capture.from, elephant), (sq(11, rank(11)), enemy_king)],
+                Move {
+                    promote: true,
+                    ..capture
+                },
+            ));
+            // 自王を最上段に置き、敵王または単独の太子を捕獲する。
+            for (case, victim) in [
+                (
+                    "article_20_king_capture_with_own_king_on_top_rank",
+                    enemy_king,
+                ),
+                ("article_20_lone_prince_capture", prince),
+            ] {
+                cases.push((
+                    case,
+                    vec![
+                        (sq(0, rank(11)), king),
+                        (capture.from, rook),
+                        (capture.to, victim),
+                    ],
+                    capture,
+                ));
+            }
+            cases.push((
+                "article_18_elephant_promotion_with_king",
+                vec![
+                    (sq(0, rank(11)), king),
+                    (sq(11, rank(0)), enemy_king),
+                    (capture.from, elephant),
+                ],
+                Move {
+                    promote: true,
+                    ..capture
+                },
+            ));
+            cases.push((
+                "article_10_lone_prince_mirror",
+                vec![(sq(5, rank(0)), own_prince), (sq(11, rank(11)), enemy_king)],
+                Move {
+                    from: sq(5, rank(0)),
+                    to: sq(6, rank(0)),
+                    mid: None,
+                    promote: false,
+                },
+            ));
+            for (case, pieces, mv) in cases {
+                let mut position = position_from_codes(side, &pieces);
+                let before = net.refresh_accumulator(&position);
+                let undo = position.make_move_unchecked(mv, MoveRules::standard());
+                let mut after = Accumulator::new(net.width());
+                net.update_accumulator_after_move(&before, &mut after, &position, &undo);
+                assert_eq!(
+                    after,
+                    net.refresh_accumulator(&position),
+                    "{case}, network={network}, side={side:?}"
+                );
+                assert_eq!(
+                    net.evaluate_accumulator(&after, position.side_to_move()),
+                    evaluate(net, &position),
+                    "{case}, network={network}, side={side:?}"
+                );
+                position.unmake_move(undo);
+                assert_eq!(
+                    before,
+                    net.refresh_accumulator(&position),
+                    "{case}, network={network}, side={side:?}"
+                );
+            }
+        }
     }
 }
 

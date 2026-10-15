@@ -397,31 +397,38 @@ fn article_31_r1_two_workers_score_the_path_cycle_ten_times() {
 }
 
 #[test]
-fn article_31_r1_path_stacks_restore_after_moves_null_moves_and_interruptions() {
+fn article_31_r1_path_stacks_restore_after_moves_and_interruptions() {
     let (root, cycle) = rook_cycle(true, false);
-    for null in [false, true] {
-        for interrupt in [None, Some(0), Some(1), Some(2)] {
-            with_root_searcher(&root, &[], |searcher| {
-                let mut current = root.clone();
-                searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
-                let score = if null {
-                    let beta = evaluate(searcher.nnue, &root);
-                    searcher.search_null_move(&mut current, 2, beta, 0)
-                } else {
-                    searcher.search_move(&mut current, cycle[0], 3, -INFINITY, INFINITY, 0, true, 0)
-                };
-                assert_eq!(
-                    score.is_none(),
-                    interrupt.is_some(),
-                    "null={null}, interrupt={interrupt:?}"
-                );
-                assert_eq!(current, root);
-                assert_eq!(searcher.path_keys, [search_key(&root)]);
-                assert!(searcher.path_moves.is_empty());
-                assert_eq!(searcher.null_move_boundary, None);
-                assert_eq!(searcher.null_move_ply, None);
-            });
-        }
+    for interrupt in [None, Some(0), Some(1), Some(2)] {
+        with_root_searcher(&root, &[], |searcher| {
+            let mut current = root.clone();
+            searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
+            let score =
+                searcher.search_move(&mut current, cycle[0], 3, -INFINITY, INFINITY, 0, true, 0);
+            assert_eq!(
+                score.is_none(),
+                interrupt.is_some(),
+                "article_31_r1 move, interrupt={interrupt:?}"
+            );
+            assert_eq!(current, root, "article_31_r1 move, interrupt={interrupt:?}");
+            assert_eq!(
+                searcher.path_keys,
+                [search_key(&root)],
+                "article_31_r1 move, interrupt={interrupt:?}"
+            );
+            assert!(
+                searcher.path_moves.is_empty(),
+                "article_31_r1 move, interrupt={interrupt:?}"
+            );
+            assert_eq!(
+                searcher.null_move_boundary, None,
+                "article_31_r1 move, interrupt={interrupt:?}"
+            );
+            assert_eq!(
+                searcher.null_move_ply, None,
+                "article_31_r1 move, interrupt={interrupt:?}"
+            );
+        });
     }
 }
 

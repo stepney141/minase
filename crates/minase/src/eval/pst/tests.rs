@@ -353,47 +353,51 @@ fn decode_rejects_invalid_length() {
     }
 }
 
-/// MNPT識別子の不一致が拒否されることを検査する。
+/// MNPTヘッダの各欄の不正値を、欄名と値を付けて検査する。
 #[test]
-fn decode_rejects_invalid_magic() {
-    let mut bytes = valid_bytes();
-    bytes[0] ^= 1;
-    assert!(matches!(
-        Pst::decode(&bytes),
-        Err(Error::InvalidMagic { .. })
-    ));
-}
-
-/// 未対応のMNPT版が拒否されることを検査する。
-#[test]
-fn decode_rejects_unsupported_version() {
-    for version in [1_u32, 2, 4, u32::MAX] {
-        let mut bytes = valid_bytes();
-        bytes[4..8].copy_from_slice(&version.to_le_bytes());
-        assert!(matches!(
-            Pst::decode(&bytes),
-            Err(Error::UnsupportedVersion { actual }) if actual == version
-        ));
+fn decode_rejects_invalid_header_fields() {
+    enum Field {
+        Magic,
+        Version(u32),
+        FeatureCount,
+        RuleSet,
+        K(f32),
     }
-}
-
-/// MNPT特徴数の不一致が拒否されることを検査する。
-#[test]
-fn decode_rejects_unexpected_feature_count() {
-    let mut bytes = valid_bytes();
-    bytes[8] ^= 1;
-    assert!(matches!(
-        Pst::decode(&bytes),
-        Err(Error::UnexpectedFeatureCount { .. })
-    ));
-}
-
-/// 規則セット名欄のNUL埋め違反が拒否されることを検査する。
-#[test]
-fn decode_rejects_invalid_rule_set_field() {
-    let mut bytes = valid_bytes();
-    bytes[47] = b'x';
-    assert!(matches!(Pst::decode(&bytes), Err(Error::InvalidRuleSet)));
+    use Field::*;
+    for (name, field) in [
+        ("magic", Magic),
+        ("version=1", Version(1)),
+        ("version=2", Version(2)),
+        ("version=4", Version(4)),
+        ("version=max", Version(u32::MAX)),
+        ("feature_count", FeatureCount),
+        ("rule_set", RuleSet),
+        ("k=0", K(0.0)),
+        ("k=-1", K(-1.0)),
+        ("k=NaN", K(f32::NAN)),
+        ("k=+inf", K(f32::INFINITY)),
+        ("k=-inf", K(f32::NEG_INFINITY)),
+    ] {
+        let mut bytes = valid_bytes();
+        match field {
+            Magic => bytes[0] ^= 1,
+            Version(value) => bytes[4..8].copy_from_slice(&value.to_le_bytes()),
+            FeatureCount => bytes[8] ^= 1,
+            RuleSet => bytes[47] = b'x',
+            K(value) => bytes[12..16].copy_from_slice(&value.to_le_bytes()),
+        }
+        let error = Pst::decode(&bytes).err().expect(name);
+        let expected = match field {
+            Magic => matches!(error, Error::InvalidMagic { .. }),
+            Version(value) => {
+                matches!(error, Error::UnsupportedVersion { actual } if actual == value)
+            }
+            FeatureCount => matches!(error, Error::UnexpectedFeatureCount { .. }),
+            RuleSet => matches!(error, Error::InvalidRuleSet),
+            K(_) => matches!(error, Error::InvalidK { .. }),
+        };
+        assert!(expected, "field={name}, error={error:?}");
+    }
 }
 
 /// v0初期重みが先獅子のない局面の駒価値差と一致することを検査する。
@@ -472,16 +476,6 @@ fn interpolation_divides_once_and_truncates_toward_zero() {
         set_weight(&mut bytes, 1, feature, eg);
         refresh_checksum(&mut bytes);
         assert_evaluation(&Pst::decode(&bytes).unwrap(), &position, expected);
-    }
-}
-
-/// 勝率尺度は正かつ有限の値だけを受け入れる。
-#[test]
-fn decode_rejects_invalid_k() {
-    for k in [0.0_f32, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        let mut bytes = valid_bytes();
-        bytes[12..16].copy_from_slice(&k.to_le_bytes());
-        assert!(matches!(Pst::decode(&bytes), Err(Error::InvalidK { .. })));
     }
 }
 

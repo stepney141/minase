@@ -311,7 +311,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 }
 
 #[test]
-fn interrupted_null_move_restores_repetition_scope() {
+fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interruption() {
     let root = null_repetition_fixture();
     let nnue = weights().unwrap();
     for nested in [false, true] {
@@ -354,14 +354,58 @@ fn interrupted_null_move_restores_repetition_scope() {
         let beta = evaluate(&nnue, &root);
         assert_eq!(
             searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
-            None
+            None,
+            "article_31_r1 nested={nested}"
         );
-        assert_eq!(searcher.stop_reason, Some(StopReason::NodeLimit));
-        assert_eq!(searcher.nodes, 1);
-        assert_eq!(current, root);
-        assert_eq!(searcher.path_keys, path);
-        assert_eq!(searcher.null_move_ply, null_ply);
-        assert_eq!(searcher.null_move_boundary, boundary);
+        assert_eq!(
+            searcher.stop_reason,
+            Some(StopReason::NodeLimit),
+            "article_31_r1 nested={nested}"
+        );
+        assert_eq!(searcher.nodes, 1, "article_31_r1 nested={nested}");
+        assert_eq!(current, root, "article_31_r1 nested={nested}");
+        assert_eq!(searcher.path_keys, path, "article_31_r1 nested={nested}");
+        assert_eq!(
+            searcher.null_move_ply, null_ply,
+            "article_31_r1 nested={nested}"
+        );
+        assert_eq!(
+            searcher.null_move_boundary, boundary,
+            "article_31_r1 nested={nested}"
+        );
+    }
+
+    let (root, _) = rook_cycle(true, false);
+    for interrupt in [None, Some(0), Some(1), Some(2)] {
+        with_root_searcher(&root, &[], |searcher| {
+            let mut current = root.clone();
+            searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
+            let beta = evaluate(searcher.nnue, &root);
+            let score = searcher.search_null_move(&mut current, 2, beta, 0);
+            assert_eq!(
+                score.is_none(),
+                interrupt.is_some(),
+                "article_31_r1 null, interrupt={interrupt:?}"
+            );
+            assert_eq!(current, root, "article_31_r1 null, interrupt={interrupt:?}");
+            assert_eq!(
+                searcher.path_keys,
+                [search_key(&root)],
+                "article_31_r1 null, interrupt={interrupt:?}"
+            );
+            assert!(
+                searcher.path_moves.is_empty(),
+                "article_31_r1 null, interrupt={interrupt:?}"
+            );
+            assert_eq!(
+                searcher.null_move_boundary, None,
+                "article_31_r1 null, interrupt={interrupt:?}"
+            );
+            assert_eq!(
+                searcher.null_move_ply, None,
+                "article_31_r1 null, interrupt={interrupt:?}"
+            );
+        });
     }
 }
 

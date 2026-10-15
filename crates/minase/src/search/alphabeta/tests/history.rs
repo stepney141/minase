@@ -5,40 +5,64 @@ use super::*;
 use crate::search::HistoryTables;
 use crate::search::alphabeta::params;
 
-// 停止済みでも根の開始は1回。全要素、両手番、各ワーカーで0方向に丸める。
+// 停止済みでも根の開始は1回。両方の履歴を全要素、各ワーカーで検査する。
 #[test]
 fn history_carry_ages_every_worker_once_before_the_first_iteration() {
+    #[cfg(not(feature = "tuning"))]
+    assert_eq!(params::capture_history_decay(), 23);
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(worker_count(4));
-    let values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
-    let expected = values.map(|value| value * params::history_decay() / 100);
+    let mut quiet_values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
+    let mut capture_values = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
     for (worker, history) in histories.workers.iter_mut().enumerate() {
-        for (i, value) in history.iter_mut().flatten().flatten().enumerate() {
-            *value = values[(i + worker) % values.len()];
+        for (index, value) in history.iter_mut().flatten().flatten().enumerate() {
+            *value = quiet_values[(index + worker) % quiet_values.len()];
         }
     }
-    let outcome = run_search_team(
-        &weights().unwrap(),
-        &snapshot.position,
-        snapshot.rules(),
-        snapshot.repetition(),
-        DRAW_SCORE,
-        &snapshot.root_moves,
-        &snapshot.history_keys,
-        &depth_limits(3),
-        &AtomicBool::new(true),
-        worker_count(4),
-        &small_tt(),
-        &mut histories,
-        None,
-        Instant::now(),
-        &AtomicU64::new(0),
-        false,
-    );
-    assert_eq!(outcome.result.nodes, 0);
-    for (worker, history) in histories.workers.iter().enumerate() {
-        for (i, value) in history.iter().flatten().flatten().enumerate() {
-            assert_eq!(*value, expected[(i + worker) % expected.len()]);
+    for (worker, history) in histories.capture.iter_mut().enumerate() {
+        for (index, value) in history.values_mut().iter_mut().enumerate() {
+            *value = capture_values[(index + worker) % capture_values.len()];
+        }
+    }
+    for go in 1..=2 {
+        quiet_values = quiet_values.map(|value| value * params::history_decay() / 100);
+        capture_values = capture_values.map(|value| value * params::capture_history_decay() / 100);
+        let outcome = run_search_team(
+            &weights().unwrap(),
+            &snapshot.position,
+            snapshot.rules(),
+            snapshot.repetition(),
+            DRAW_SCORE,
+            &snapshot.root_moves,
+            &snapshot.history_keys,
+            &depth_limits(3),
+            &AtomicBool::new(true),
+            worker_count(4),
+            &small_tt(),
+            &mut histories,
+            None,
+            Instant::now(),
+            &AtomicU64::new(0),
+            false,
+        );
+        assert_eq!(outcome.result.nodes, 0, "go={go}");
+        for (worker, history) in histories.workers.iter().enumerate() {
+            for (index, value) in history.iter().flatten().flatten().enumerate() {
+                assert_eq!(
+                    *value,
+                    quiet_values[(index + worker) % quiet_values.len()],
+                    "quiet: go={go}, worker={worker}, index={index}"
+                );
+            }
+        }
+        for (worker, history) in histories.capture.iter().enumerate() {
+            for (index, value) in history.values().iter().enumerate() {
+                assert_eq!(
+                    *value,
+                    capture_values[(index + worker) % capture_values.len()],
+                    "capture: go={go}, worker={worker}, index={index}"
+                );
+            }
         }
     }
 }
@@ -46,10 +70,31 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
 // 学習に使われない初期局面の空升→同じ空升を印とし、反復中の再減衰を検出する。
 #[test]
 fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(5, 5), Color::Black, PieceKind::King),
+            (sq(5, 6), Color::White, PieceKind::Pawn),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ],
+    );
+    let mv = Move {
+        from: sq(5, 5),
+        to: sq(5, 6),
+        mid: None,
+        promote: false,
+    };
+    let nnue = weights().unwrap();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = HistoryTables::new(threads);
         for (worker, history) in histories.workers.iter_mut().enumerate() {
             history[0][60][60] = 160 + worker as i32 * 16;
+        }
+        let mut capture_expected = Vec::new();
+        for (worker, history) in histories.capture.iter_mut().enumerate() {
+            let depth = 30 + worker as u32;
+            history.record_cutoff(&board, &nnue, mv, &[], depth);
+            capture_expected.push((depth * depth) as i32);
         }
         let mut table = small_tt();
         let mut expected: Vec<_> = (0..threads.get())
@@ -58,6 +103,9 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
         for search_id in [801, 802] {
             for value in &mut expected {
                 *value = *value * params::history_decay() / 100;
+            }
+            for value in &mut capture_expected {
+                *value = *value * params::capture_history_decay() / 100;
             }
             let handle = crate::search::start_search(
                 weights().unwrap(),
@@ -70,10 +118,20 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                 false,
             );
             let (_, result) = event_reports(drain_raw(&handle));
-            assert_eq!(result.depth, 3);
+            assert_eq!(result.depth, 3, "threads={threads}, search_id={search_id}");
             (table, histories) = handle.join().unwrap();
+            for (worker, history) in histories.capture.iter().enumerate() {
+                assert_eq!(
+                    history.read(&board, &nnue, mv),
+                    capture_expected[worker],
+                    "capture: threads={threads}, search_id={search_id}, worker={worker}"
+                );
+            }
             for (worker, history) in histories.workers.iter().enumerate() {
-                assert_eq!(history[0][60][60], expected[worker]);
+                assert_eq!(
+                    history[0][60][60], expected[worker],
+                    "quiet: threads={threads}, search_id={search_id}, worker={worker}"
+                );
             }
         }
     }

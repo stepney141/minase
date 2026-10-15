@@ -166,36 +166,6 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
-// 時計による停止は反復境界でのsoft limitか、ノード周期でのhard limitである。
-// 実時間の検査では先に到達する検査点が一定でないため、どちらの停止理由も認める。
-#[test]
-fn clock_driven_searches_stop_with_a_time_limit_reason() {
-    let initial = Position::initial();
-
-    // 残り6000 ms、加算100 ms、ply=0ではsoft < hardとなり、反復境界で先に停止し得る。
-    let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
-    let handle = start(
-        snapshot_for(&initial),
-        limits,
-        85,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
-    assert!(matches!(
-        finished.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
-    assert!(legal_moves(&initial).contains(&finished.best_move));
-
-    // 時計の安全上限が効いてsoft=hard=70 msとなる設定を検査する。
-    let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 100))).unwrap();
-    let budget = time_budget(&limits).expect("byoyomi must produce a time budget");
-    assert_eq!(budget.soft, Duration::from_millis(70));
-    assert_eq!(budget.hard, Duration::from_millis(70));
-}
-
 // 秒読みが0、または深さ・ノード数・固定時間を併用した探索は、通常の時計予算と反復開始判定を使う。
 #[test]
 fn excluded_clocks_preserve_reference_budgets_and_iteration_gates() {

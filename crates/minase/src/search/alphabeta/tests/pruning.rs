@@ -521,25 +521,60 @@ fn reverse_futility_exclusions_search_children() {
     let nnue = weights().unwrap();
     let static_eval = evaluate(&nnue, &position);
     let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
+    let attacked = minase_core::parse_sfen("k11/12/12/12/12/11r/12/12/12/12/5P6/11K b").unwrap();
+    let attacked_beta =
+        evaluate(&nnue, &attacked) - nnue.pawn_value() * params::reverse_futility_margin() / 100;
     let cases = [
-        (1, beta - 2, beta, "幅2のPV窓"),
-        (1, -MATE_THRESHOLD - 1, -MATE_THRESHOLD, "βが負の詰み帯"),
-        (1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1, "αだけが詰み帯"),
-        (1, MATE_THRESHOLD - 1, MATE_THRESHOLD, "βが正の詰み帯"),
-        (1, beta, beta + 1, "余裕値に1不足"),
-        (4, beta - 1, beta, "深さ4"),
+        (&position, false, 1, beta - 2, beta, "幅2のPV窓"),
+        (
+            &position,
+            false,
+            1,
+            -MATE_THRESHOLD - 1,
+            -MATE_THRESHOLD,
+            "βが負の詰み帯",
+        ),
+        (
+            &position,
+            false,
+            1,
+            -MATE_THRESHOLD,
+            -MATE_THRESHOLD + 1,
+            "αだけが詰み帯",
+        ),
+        (
+            &position,
+            false,
+            1,
+            MATE_THRESHOLD - 1,
+            MATE_THRESHOLD,
+            "βが正の詰み帯",
+        ),
+        (&position, false, 1, beta, beta + 1, "余裕値に1不足"),
+        (&position, false, 4, beta - 1, beta, "深さ4"),
+        (
+            &attacked,
+            true,
+            1,
+            attacked_beta - 1,
+            attacked_beta,
+            "王駒への利き",
+        ),
     ];
-    for (depth, alpha, beta, reason) in cases {
+    for (position, attacked, depth, alpha, beta, reason) in cases {
         let table = small_tt();
-        table.store(
-            search_key(&position),
-            0,
-            0,
-            Bound::Upper,
-            Some(legal_moves(&position)[0]),
-            0,
-        );
-        let (_, nodes) = run_negamax(&position, depth, alpha, beta, 0, &table);
+        assert_eq!(royal_under_attack(position), attacked, "{reason}");
+        if !attacked {
+            table.store(
+                search_key(position),
+                0,
+                0,
+                Bound::Upper,
+                Some(legal_moves(position)[0]),
+                0,
+            );
+        }
+        let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);
         assert!(nodes > 0, "{reason}");
     }
 }
@@ -556,28 +591,6 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
     let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
     assert_eq!(score, beta - 1);
     assert_eq!(nodes, 0);
-}
-
-// 相手飛車を1筋へ移し、王駒だけへの利きを加えると枝刈りを控える。
-#[test]
-fn reverse_futility_does_not_prune_when_royal_is_attacked() {
-    for (rook_rank, attacked) in [("10r1", false), ("11r", true)] {
-        let position = minase_core::parse_sfen(&format!(
-            "k11/12/12/12/12/{rook_rank}/12/12/12/12/5P6/11K b"
-        ))
-        .unwrap();
-        let nnue = weights().unwrap();
-        let static_eval = evaluate(&nnue, &position);
-        let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
-        assert_eq!(royal_under_attack(&position), attacked);
-        let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &small_tt());
-        if attacked {
-            assert!(nodes > 0);
-        } else {
-            assert_eq!(score, static_eval);
-            assert_eq!(nodes, 0);
-        }
-    }
 }
 
 // razoringは深さ1〜2で「静的評価 + 余裕値 ≤ α」なら静止探索を試し、その値もα以下なら通常探索を省く。
@@ -637,70 +650,74 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
 
 // PV窓、詰み帯、深さ3では通常探索を行う。
 #[test]
-fn razoring_excludes_pv_mate_windows_and_depth_three() {
+fn razoring_exclusions_search_children() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let nnue = weights().unwrap();
     let alpha = evaluate(&nnue, &position)
         + nnue.pawn_value() * params::razoring_margin1().max(params::razoring_margin2()) / 100;
-    for (depth, alpha, beta) in [
-        (1, alpha, alpha + 2),
-        (2, alpha, alpha + 2),
-        (1, MATE_THRESHOLD - 1, MATE_THRESHOLD),
-        (2, MATE_THRESHOLD - 1, MATE_THRESHOLD),
-        (1, MATE_THRESHOLD, MATE_THRESHOLD + 1),
-        (2, MATE_THRESHOLD, MATE_THRESHOLD + 1),
-        (1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
-        (2, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
-        (3, alpha, alpha + 1),
+    let attacked = minase_core::test_util::position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 6), Color::White, PieceKind::Rook),
+        ],
+    );
+    let attacked_eval = evaluate(&nnue, &attacked);
+    for (position, attacked, depth, alpha, beta) in [
+        (&position, false, 1, alpha, alpha + 2),
+        (&position, false, 2, alpha, alpha + 2),
+        (&position, false, 1, MATE_THRESHOLD - 1, MATE_THRESHOLD),
+        (&position, false, 2, MATE_THRESHOLD - 1, MATE_THRESHOLD),
+        (&position, false, 1, MATE_THRESHOLD, MATE_THRESHOLD + 1),
+        (&position, false, 2, MATE_THRESHOLD, MATE_THRESHOLD + 1),
+        (&position, false, 1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
+        (&position, false, 2, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
+        (&position, false, 3, alpha, alpha + 1),
+        (
+            &attacked,
+            true,
+            1,
+            attacked_eval + nnue.pawn_value() * params::razoring_margin1() / 100,
+            attacked_eval + nnue.pawn_value() * params::razoring_margin1() / 100 + 1,
+        ),
+        (
+            &attacked,
+            true,
+            2,
+            attacked_eval + nnue.pawn_value() * params::razoring_margin2() / 100,
+            attacked_eval + nnue.pawn_value() * params::razoring_margin2() / 100 + 1,
+        ),
     ] {
-        let (_, quiet_nodes) = run_quiesce(&position, alpha, beta, 0, &small_tt());
-        let table = small_tt();
-        table.store(
-            search_key(&position),
-            0,
-            0,
-            Bound::Upper,
-            Some(legal_moves(&position)[0]),
-            0,
+        let (quiet_score, quiet_nodes) = run_quiesce(position, alpha, beta, 0, &small_tt());
+        assert_eq!(
+            royal_under_attack(position),
+            attacked,
+            "depth={depth}, alpha={alpha}, attacked={attacked}"
         );
-        let (_, nodes) = run_negamax(&position, depth, alpha, beta, 0, &table);
+        if attacked {
+            assert!(
+                quiet_score <= alpha,
+                "depth={depth}, alpha={alpha}, attacked={attacked}"
+            );
+        }
+        let table = small_tt();
+        if !attacked {
+            table.store(
+                search_key(position),
+                0,
+                0,
+                Bound::Upper,
+                Some(legal_moves(position)[0]),
+                0,
+            );
+        }
+        let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);
         assert!(
             nodes > quiet_nodes,
-            "depth={depth}, alpha={alpha}, beta={beta}: {nodes} <= {}",
+            "depth={depth}, alpha={alpha}, beta={beta}, attacked={attacked}: {nodes} <= {}",
             quiet_nodes
         );
-    }
-}
-
-// 王駒への疑似利きがあれば、静的評価の条件が成立しても探索する。
-#[test]
-fn razoring_excludes_attacked_royals() {
-    let nnue = weights().unwrap();
-    for rook_file in [10, 11] {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(0, 11), Color::White, PieceKind::King),
-                (sq(11, 0), Color::Black, PieceKind::King),
-                (sq(rook_file, 6), Color::White, PieceKind::Rook),
-            ],
-        );
-        assert_eq!(royal_under_attack(&position), rook_file == 11);
-        for (depth, percent) in [
-            (1, params::razoring_margin1()),
-            (2, params::razoring_margin2()),
-        ] {
-            let alpha = evaluate(&nnue, &position) + nnue.pawn_value() * percent / 100;
-            let (quiet_score, quiet_nodes) =
-                run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-            assert!(quiet_score <= alpha);
-            let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
-            if rook_file == 11 {
-                assert!(nodes > quiet_nodes, "王駒への利きがあれば通常探索する");
-            } else {
-                assert_eq!(nodes, quiet_nodes);
-            }
-        }
     }
 }
 

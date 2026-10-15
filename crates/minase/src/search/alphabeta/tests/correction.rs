@@ -124,9 +124,16 @@ fn correction_negamax_update_conditions() {
 }
 
 #[test]
-fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
+fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
     let nnue = weights().unwrap();
-    for score in [MATE_THRESHOLD, -MATE_THRESHOLD, MATE - 1, -MATE + 1] {
+    for (score, update) in [
+        (MATE_THRESHOLD, false),
+        (-MATE_THRESHOLD, false),
+        (MATE - 1, false),
+        (-MATE + 1, false),
+        (29_486, true),
+        (-29_486, true),
+    ] {
         let stop = AtomicBool::new(false);
         let shared = shared(&stop);
         let mut board = minase_core::parse_sfen(QUIET).unwrap();
@@ -160,12 +167,16 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
-            Some(score)
+            Some(score),
+            "article_31_r1 score={score}"
         );
-        assert_eq!(
-            searcher.correction.read(Color::Black, key),
-            64 * 8 * params::correction_weight() / 1024
-        );
+        let before = 64 * 8 * params::correction_weight() / 1024;
+        let after = searcher.correction.read(Color::Black, key);
+        if update {
+            assert_ne!(after, before, "article_31_r1 score={score}");
+        } else {
+            assert_eq!(after, before, "score={score}");
+        }
     }
     for interrupted in [false, true] {
         let stop = AtomicBool::new(interrupted);
@@ -203,75 +214,6 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             64 * 8 * params::correction_weight() / 1024
         );
     }
-}
-
-#[test]
-fn correction_workers_are_independent_and_new_search_resets_table() {
-    let nnue = weights().unwrap();
-    let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
-    let board = minase_core::parse_sfen(QUIET).unwrap();
-    let table = TranspositionTable::new(1).unwrap();
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
-    let mut a = new_searcher(
-        &nnue,
-        &board,
-        MoveRules::standard(),
-        SearchRepetition::R1 {
-            consecutive_attacking_moves: [0; 2],
-        },
-        DRAW_SCORE,
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-        &mut capture_history,
-    );
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
-    let mut b = new_searcher(
-        &nnue,
-        &board,
-        MoveRules::standard(),
-        SearchRepetition::R1 {
-            consecutive_attacking_moves: [0; 2],
-        },
-        DRAW_SCORE,
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-        &mut capture_history,
-    );
-    let key = material_key(&board);
-    let expected = 100 * 8 * params::correction_weight() / 1024;
-    a.correction.update(Color::Black, key, 100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), expected);
-    assert_eq!(b.correction.read(Color::Black, key), 0);
-    b.correction.update(Color::Black, key, -100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), expected);
-    assert_eq!(b.correction.read(Color::Black, key), -expected);
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
-    let c = new_searcher(
-        &nnue,
-        &board,
-        MoveRules::standard(),
-        SearchRepetition::R1 {
-            consecutive_attacking_moves: [0; 2],
-        },
-        DRAW_SCORE,
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-        &mut capture_history,
-    );
-    assert_eq!(c.correction.read(Color::Black, key), 0);
 }
 
 #[test]

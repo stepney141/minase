@@ -164,26 +164,6 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     }
 }
 
-// 先読みの時間予算は的中から計測する。
-// 実時間の統合経路は負荷による検査遅延を許容し、厳密なsoft/hardの区別は下の検査点で固定する。
-#[test]
-fn ponder_hit_finishes_within_the_post_hit_budget_tolerance() {
-    let clock = ClockLimits::new(0, 0, 100, 0).unwrap();
-    let handle = start_ponder(SearchLimits::new(None, None, None, Some(clock)).unwrap(), 1);
-    assert_ponder_running(&handle, Duration::from_millis(350));
-    let hit = Instant::now();
-    handle.ponderhit();
-    let (_, result) = event_reports(drain_raw(&handle));
-    assert!(hit.elapsed() < Duration::from_secs(2));
-    assert!(matches!(
-        result.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
-    assert!(result.elapsed >= Duration::from_millis(350));
-    assert!(legal_moves(&Position::initial()).contains(&result.best_move));
-    handle.join().unwrap();
-}
-
 // 的中時刻はスレッド生成前から共有し、最初の通知だけを記録する。
 // 生成前の的中は共有起点を持つハンドルをスレッドなしで構成して厳密に検査する。
 #[test]

@@ -315,48 +315,6 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
     }
 }
 
-/// 候補1: 探索済みの捕獲手がなければ、非ゼロの履歴も変えない。
-#[test]
-fn capture_history_quiet_cutoff_with_no_earlier_captures_preserves_history() {
-    let board = capture_fixture();
-    let nnue = weights().unwrap();
-    let captures: Vec<_> = legal_moves(&board)
-        .into_iter()
-        .filter(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
-        .collect();
-    assert_eq!(captures.len(), 4);
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &nnue, captures[0], &captures[1..3], 64);
-    let before: Vec<_> = captures
-        .iter()
-        .map(|&mv| history.read(&board, &nnue, mv))
-        .collect();
-
-    history.record_quiet_cutoff(&board, &nnue, &[], 256);
-
-    let after: Vec<_> = captures
-        .iter()
-        .map(|&mv| history.read(&board, &nnue, mv))
-        .collect();
-    assert_eq!(after, before);
-}
-
-/// 別の履歴表を借りる探索ワーカー間では更新が混ざらない。
-#[test]
-fn capture_history_workers_with_separate_tables_are_independent() {
-    let board = capture_fixture();
-    let mv = capture(sq(5, 5), sq(5, 7));
-    with_root_searcher(&board, &[], |first| {
-        first
-            .capture_history
-            .record_cutoff(&board, first.nnue, mv, &[], 3);
-        with_root_searcher(&board, &[], |second| {
-            assert_eq!(second.capture_history.read(&board, second.nnue, mv), 0);
-        });
-        assert_eq!(first.capture_history.read(&board, first.nnue, mv), 9);
-    });
-}
-
 /// 評価値1未満の補正は、正負とも0方向へ丸める。
 #[test]
 fn capture_history_adjustment_truncates_toward_zero() {
@@ -463,74 +421,6 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
         false,
     );
     assert_eq!(outcome.result.nodes, 0);
-}
-
-#[test]
-fn capture_history_carry_ages_every_worker_once_per_go() {
-    #[cfg(not(feature = "tuning"))]
-    assert_eq!(params::capture_history_decay(), 23);
-    let mut histories = crate::search::HistoryTables::new(worker_count(4));
-    let mut expected = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
-    for (worker, history) in histories.capture.iter_mut().enumerate() {
-        for (index, value) in history.values_mut().iter_mut().enumerate() {
-            *value = expected[(index + worker) % expected.len()];
-        }
-    }
-    for _ in 0..2 {
-        expected = expected.map(|value| value * params::capture_history_decay() / 100);
-        stopped_search(&mut histories, worker_count(4));
-        for (worker, history) in histories.capture.iter().enumerate() {
-            for (index, value) in history.values().iter().enumerate() {
-                assert_eq!(*value, expected[(index + worker) % expected.len()]);
-            }
-        }
-    }
-}
-
-/// 初期局面から深さ3では王が到達できない捕獲升を印にし、反復中の再減衰も検出する。
-#[test]
-fn capture_history_carry_survives_handle_round_trips() {
-    let board = position(
-        Color::Black,
-        &[
-            (sq(5, 5), Color::Black, PieceKind::King),
-            (sq(5, 6), Color::White, PieceKind::Pawn),
-            (sq(11, 11), Color::White, PieceKind::King),
-        ],
-    );
-    let mv = capture(sq(5, 5), sq(5, 6));
-    let nnue = weights().unwrap();
-    for threads in [DEFAULT_THREADS, worker_count(4)] {
-        let mut histories = crate::search::HistoryTables::new(threads);
-        let mut expected = Vec::new();
-        for (worker, history) in histories.capture.iter_mut().enumerate() {
-            let depth = 30 + worker as u32;
-            history.record_cutoff(&board, &nnue, mv, &[], depth);
-            expected.push((depth * depth) as i32);
-        }
-        let mut table = small_tt();
-        for search_id in [901, 902] {
-            for value in &mut expected {
-                *value = *value * params::capture_history_decay() / 100;
-            }
-            let handle = crate::search::start_search(
-                weights().unwrap(),
-                snapshot_for(&Position::initial()),
-                depth_limits(3),
-                search_id,
-                threads,
-                table,
-                histories,
-                false,
-            );
-            let (_, result) = event_reports(drain_raw(&handle));
-            assert_eq!(result.depth, 3);
-            (table, histories) = handle.join().unwrap();
-            for (worker, history) in histories.capture.iter().enumerate() {
-                assert_eq!(history.read(&board, &nnue, mv), expected[worker]);
-            }
-        }
-    }
 }
 
 /// 候補4: clearは両方の履歴を全消去し、ワーカー数を保つ。

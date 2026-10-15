@@ -5,38 +5,41 @@ use crate::search::{REPETITION_WIN, in_repetition_band};
 use minase_core::{Game, GameStatus, RepetitionRule, Rules};
 
 #[test]
-fn article_31_r1_draw_value_defaults_to_draw_score() {
+fn article_31_r1_draw_value_defaults_and_validation() {
     let game = Game::new(Rules::ENGINE_DEFAULT);
-    assert_eq!(
-        SearchSnapshot::from_game(&game).unwrap().draw_value(),
-        DRAW_SCORE
-    );
-    assert_eq!(snapshot_for(&Position::initial()).draw_value(), DRAW_SCORE);
-}
-
-#[test]
-fn article_31_r1_draw_value_accepts_inclusive_limits() {
-    let snapshot = snapshot_for(&Position::initial());
-    for value in [-28_999, -50, 0, 50, 28_999] {
-        assert_eq!(
-            snapshot
-                .clone()
-                .with_draw_value(value)
-                .unwrap()
-                .draw_value(),
-            value
-        );
-    }
-}
-
-#[test]
-fn article_31_r1_draw_value_rejects_outside_limits_without_overflow() {
-    let snapshot = snapshot_for(&Position::initial());
-    for value in [i32::MIN, -29_000, 29_000, i32::MAX] {
-        assert!(matches!(
-            snapshot.clone().with_draw_value(value),
-            Err(SearchError::InvalidDrawValue { value: rejected }) if rejected == value
-        ));
+    for (source, snapshot) in [
+        (
+            "article_31_r1_game",
+            SearchSnapshot::from_game(&game).unwrap(),
+        ),
+        ("article_31_r1_position", snapshot_for(&Position::initial())),
+    ] {
+        for (value, valid, default) in [
+            (-28_999, true, DRAW_SCORE),
+            (-50, true, DRAW_SCORE),
+            (0, true, DRAW_SCORE),
+            (50, true, DRAW_SCORE),
+            (28_999, true, DRAW_SCORE),
+            (i32::MIN, false, DRAW_SCORE),
+            (-29_000, false, DRAW_SCORE),
+            (29_000, false, DRAW_SCORE),
+            (i32::MAX, false, DRAW_SCORE),
+        ] {
+            assert_eq!(snapshot.draw_value(), default, "{source}, value={value}");
+            let result = snapshot.clone().with_draw_value(value);
+            if valid {
+                assert_eq!(
+                    result.unwrap().draw_value(),
+                    value,
+                    "{source}, value={value}"
+                );
+            } else {
+                assert!(
+                    matches!(result, Err(SearchError::InvalidDrawValue { value: rejected }) if rejected == value),
+                    "{source}, value={value}"
+                );
+            }
+        }
     }
 }
 

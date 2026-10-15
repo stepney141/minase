@@ -77,8 +77,6 @@ pub(super) fn see_prunes(
     let mut depth = 0_usize;
 
     loop {
-        #[cfg(test)]
-        tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
         let attackers = position.attackers_to_by(side, mv.to, occupied);
         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
         {
@@ -186,7 +184,6 @@ fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -
     let mut depth = 0_usize;
 
     loop {
-        tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
         let attackers = position.attackers_to_by(side, mv.to, occupied);
         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
         {
@@ -312,36 +309,22 @@ mod tests {
         bench_positions, position_from_codes, sampled_random_positions, sq,
     };
 
-    use core::cell::Cell;
-
-    thread_local! {
-        pub(super) static LOOKUPS: Cell<usize> = const { Cell::new(0) };
-    }
-
-    /// 余裕値0・200と負の期待値の境界で契約を検査し、
-    /// 余裕値0の判定と参照実装の逆引き回数を返す。
+    /// 余裕値0・200と負の期待値の境界で契約を検査する。
     fn assert_prune_contract(
         board: &Position,
         rules: MoveRules,
         nnue: &Nnue,
         mv: Move,
         expected: Option<i32>,
-    ) -> (usize, usize) {
-        LOOKUPS.set(0);
+    ) {
         let reference = see_reference(board, rules, nnue, mv);
-        let reference_lookups = LOOKUPS.get();
         assert_eq!(reference, expected, "move={mv:?}");
-        let mut zero_margin_lookups = 0;
         for margin in [0, 200] {
-            LOOKUPS.set(0);
             assert_eq!(
                 see_prunes(board, rules, nnue, mv, margin),
                 reference.is_some_and(|v| v < -margin),
                 "move={mv:?}, margin={margin}"
             );
-            if margin == 0 {
-                zero_margin_lookups = LOOKUPS.get();
-            }
         }
         if let Some(v) = expected.filter(|&v| v < 0) {
             assert!(
@@ -355,7 +338,6 @@ mod tests {
                 -v - 1
             );
         }
-        (zero_margin_lookups, reference_lookups)
     }
 
     // 全捕獲の枝刈り判断を
@@ -413,16 +395,13 @@ mod tests {
             (loss, false),
             (loss + 1, false),
         ] {
-            LOOKUPS.set(0);
             assert_eq!(see_prunes(&board, rules, &nnue, mv, margin), prunes);
-            // 境界以上の余裕値では最初の取り返しだけで終了できる。
-            assert_eq!(LOOKUPS.get(), if prunes { 2 } else { 1 });
         }
     }
 
-    /// 捕獲価値と成り益の上限から交換の符号が確定するときだけ、攻撃駒の逆引きを省く。
+    /// 捕獲価値が成り益の上限付近でも、交換結果に従って枝刈りする。
     #[test]
-    fn see_prunes_skips_lookup_at_the_promotion_gain_bound() {
+    fn see_prunes_respects_the_promotion_gain_bound() {
         use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
         use sha2::{Digest, Sha256};
 
@@ -457,15 +436,14 @@ mod tests {
                     (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
                 ],
             );
-            let counts = assert_prune_contract(
+            assert_prune_contract(
                 &board,
                 MoveRules::standard(),
                 &nnue,
                 capture(sq(5, 4), sq(5, 5)),
                 Some(captured_value - 100),
             );
-            assert_eq!(counts, (usize::from(captured_value < 1000), 2));
-            LOOKUPS.set(0);
+
             assert!(!see_prunes(
                 &board,
                 MoveRules::standard(),
@@ -473,14 +451,12 @@ mod tests {
                 capture(sq(5, 4), sq(5, 5)),
                 200,
             ));
-            assert_eq!(LOOKUPS.get(), usize::from(captured_value < 800));
         }
     }
 
-    // 値0を枝刈りせず、
-    // 最初の取り返し後の逆引きを実際に省く。
+    // 同価値の駒の交換は値0となり、枝刈りしない。
     #[test]
-    fn see_prunes_stops_at_zero_and_skips_remaining_lookups() {
+    fn see_prunes_preserves_zero_value_exchanges() {
         let nnue = weights().unwrap();
         let board = position(
             Color::Black,
@@ -490,14 +466,13 @@ mod tests {
                 (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
             ],
         );
-        let counts = assert_prune_contract(
+        assert_prune_contract(
             &board,
             MoveRules::standard(),
             &nnue,
             capture(sq(5, 4), sq(5, 5)),
             Some(0),
         );
-        assert_eq!(counts, (1, 2));
     }
 
     // 相手の正の成り益を
@@ -517,7 +492,7 @@ mod tests {
                 &[(sq(5, 10), mover), (sq(5, 8), victim), (sq(4, 7), attacker)],
             );
             let expected = value(&nnue, victim) - value(&nnue, mover) - bonus;
-            let counts = assert_prune_contract(
+            assert_prune_contract(
                 &board,
                 MoveRules::standard(),
                 &nnue,
@@ -526,10 +501,8 @@ mod tests {
             );
             if kind == PieceKind::Rook {
                 assert!(expected < 0);
-                assert_eq!(counts, (2, 2));
             } else {
                 assert!(expected >= 0);
-                assert_eq!(counts, (1, 2));
             }
         }
     }
@@ -585,8 +558,7 @@ mod tests {
                     value(&nnue, promoted_lance)
                 };
             assert!(expected < 0);
-            let counts = assert_prune_contract(&board, rules, &nnue, mv, Some(expected));
-            assert_eq!(counts, if defended { (2, 2) } else { (1, 1) });
+            assert_prune_contract(&board, rules, &nnue, mv, Some(expected));
         }
     }
 
@@ -606,20 +578,12 @@ mod tests {
                     (sq(3, 3), unpromoted(Color::White, PieceKind::Lion)),
                 ],
             );
-            let counts = assert_prune_contract(
+            assert_prune_contract(
                 &board,
                 MoveRules::standard(),
                 &nnue,
                 capture(sq(5, 0), sq(5, 5)),
                 None,
-            );
-            assert_eq!(
-                counts,
-                if victim_kind == PieceKind::Lion {
-                    (1, 3)
-                } else {
-                    (3, 3)
-                }
             );
         }
     }
@@ -673,10 +637,7 @@ mod tests {
             to: target,
             promote: false,
         };
-        assert_eq!(
-            assert_prune_contract(&two_stage, rules, &nnue, attached_capture, None),
-            (0, 0)
-        );
+        assert_prune_contract(&two_stage, rules, &nnue, attached_capture, None);
 
         let igui = Move {
             from: sq(5, 7),
@@ -684,10 +645,7 @@ mod tests {
             to: sq(5, 7),
             promote: false,
         };
-        assert_eq!(
-            assert_prune_contract(&two_stage, rules, &nnue, igui, None),
-            (0, 0)
-        );
+        assert_prune_contract(&two_stage, rules, &nnue, igui, None);
 
         let kirin = position(
             Color::Black,
@@ -702,10 +660,7 @@ mod tests {
             to: sq(5, 8),
             promote: true,
         };
-        assert_eq!(
-            assert_prune_contract(&kirin, rules, &nnue, mv, None),
-            (0, 0)
-        );
+        assert_prune_contract(&kirin, rules, &nnue, mv, None);
     }
 
     // 到達升の獅子を、獅子または

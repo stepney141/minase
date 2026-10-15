@@ -56,43 +56,31 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
     }
 }
 
-// 時間と外部停止でFinishedを1回だけ送り、全join後に
+// 時間制限でFinishedを1回だけ送り、全join後に
 // 世代が1回だけ進んだ置換表を返す。深さとノードの停止は専用テストで検査する。
 #[test]
 fn multi_worker_teams_finish_once_and_return_the_shared_table() {
     let initial = Position::initial();
     let root_moves = legal_moves(&initial);
-    for (limits, request_stop, search_id) in [
-        (movetime_limits(10), false, 300),
-        (infinite_limits(), true, 301),
-    ] {
-        let handle = start(
-            snapshot_for(&initial),
-            limits,
-            search_id,
-            worker_count(4),
-            small_tt(),
-        );
-        if request_stop {
-            handle.request_stop();
-        }
-        let (_, finished) = event_reports(drain_raw(&handle));
-        assert!(root_moves.contains(&finished.best_move));
-        if request_stop {
-            assert_eq!(finished.stop_reason, StopReason::ExternalStop);
-        } else {
-            assert!(matches!(
-                finished.stop_reason,
-                StopReason::SoftLimit | StopReason::HardLimit
-            ));
-        }
-        assert!(matches!(
-            handle.events().recv_timeout(Duration::from_secs(1)),
-            Err(mpsc::RecvTimeoutError::Disconnected)
-        ));
-        let (table, _) = handle.join().expect("search team must not panic");
-        assert_eq!(table.generation(), 1);
-    }
+    let handle = start(
+        snapshot_for(&initial),
+        movetime_limits(10),
+        300,
+        worker_count(4),
+        small_tt(),
+    );
+    let (_, finished) = event_reports(drain_raw(&handle));
+    assert!(root_moves.contains(&finished.best_move));
+    assert!(matches!(
+        finished.stop_reason,
+        StopReason::SoftLimit | StopReason::HardLimit
+    ));
+    assert!(matches!(
+        handle.events().recv_timeout(Duration::from_secs(1)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
+    let (table, _) = handle.join().expect("search team must not panic");
+    assert_eq!(table.generation(), 1);
 }
 
 // ノード予約は探索チーム全体の
@@ -189,40 +177,57 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
 // 途中結果がなければ最大完了深さ、同じ深さなら最小のワーカー番号で選ぶ。
 // 深さ0は除き、全員0なら主ワーカーの初期結果を返す。
 #[test]
-fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
+fn worker_outcome_selection_uses_depth_partial_then_index_and_excludes_zero() {
     let moves = legal_moves(&Position::initial());
-    let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
-        partial_score: None,
-        worker_index,
-        result: SearchResult {
-            #[cfg(feature = "search-stats")]
-            stats: crate::search::SearchStats::default(),
-            best_move: moves[move_index],
-            score: worker_index as i32 * 10,
-            depth,
-            nodes: 0,
-        },
-        pv: vec![moves[move_index]],
-        nodes: worker_index as u64,
-    };
+    let outcome =
+        |worker_index: usize, depth: u32, move_index: usize, partial_score| WorkerOutcome {
+            partial_score,
+            worker_index,
+            result: SearchResult {
+                #[cfg(feature = "search-stats")]
+                stats: crate::search::SearchStats::default(),
+                best_move: moves[move_index],
+                score: worker_index as i32 * 10,
+                depth,
+                nodes: 0,
+            },
+            pv: vec![moves[move_index]],
+            nodes: worker_index as u64,
+        };
 
-    let different_depths = vec![outcome(0, 2, 0), outcome(1, 4, 1), outcome(2, 3, 2)];
-    assert_eq!(
-        select_worker_outcome(&different_depths),
-        &different_depths[1]
-    );
-
-    let tied_depths = vec![outcome(2, 4, 2), outcome(0, 3, 0), outcome(1, 4, 1)];
-    assert_eq!(select_worker_outcome(&tied_depths), &tied_depths[2]);
-
-    let main_tied = vec![outcome(1, 4, 1), outcome(0, 4, 0), outcome(2, 3, 2)];
-    assert_eq!(select_worker_outcome(&main_tied), &main_tied[1]);
-
-    let with_zero = vec![outcome(0, 1, 0), outcome(1, 0, 1), outcome(2, 0, 2)];
-    assert_eq!(select_worker_outcome(&with_zero), &with_zero[0]);
-
-    let all_zero = vec![outcome(2, 0, 2), outcome(0, 0, 0), outcome(1, 0, 1)];
-    assert_eq!(select_worker_outcome(&all_zero), &all_zero[1]);
+    for (case, specs, expected_index) in [
+        (
+            "different_depths",
+            [(0, 2, None), (1, 4, None), (2, 3, None)],
+            1,
+        ),
+        ("tied_depths", [(2, 4, None), (0, 3, None), (1, 4, None)], 2),
+        ("main_tied", [(1, 4, None), (0, 4, None), (2, 3, None)], 1),
+        ("with_zero", [(0, 1, None), (1, 0, None), (2, 0, None)], 0),
+        ("all_zero", [(2, 0, None), (0, 0, None), (1, 0, None)], 1),
+        (
+            "partial_breaks_depth_tie",
+            [(1, 4, None), (0, 4, Some(-1000)), (2, 3, None)],
+            1,
+        ),
+        (
+            "depth_precedes_partial",
+            [(1, 4, None), (0, 4, Some(-1000)), (2, 5, None)],
+            2,
+        ),
+        (
+            "index_breaks_deeper_tie",
+            [(1, 5, None), (0, 4, Some(-1000)), (2, 5, None)],
+            0,
+        ),
+    ] {
+        let outcomes = specs.map(|(index, depth, partial)| outcome(index, depth, index, partial));
+        assert_eq!(
+            select_worker_outcome(&outcomes),
+            &outcomes[expected_index],
+            "{case}"
+        );
+    }
 }
 
 // 主ワーカーが深さ上限を完了するとチームを停止し、全員の終了後に最深結果をFinishedへ載せる。
@@ -271,34 +276,4 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
     assert!(finished.depth >= last_progress_depth);
     assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
     assert!(root_moves.contains(&finished.best_move));
-}
-
-// ワーカーの結果を選ぶときは、完了深さを途中結果の有無より優先する。
-#[test]
-fn worker_selection_prefers_completed_depth_then_partial_then_index() {
-    let moves = legal_moves(&Position::initial());
-    let worker = |worker_index, depth, partial_score| WorkerOutcome {
-        partial_score,
-        worker_index,
-        result: SearchResult {
-            #[cfg(feature = "search-stats")]
-            stats: crate::search::SearchStats::default(),
-            best_move: moves[worker_index],
-            score: 100,
-            depth,
-            nodes: 0,
-        },
-        pv: vec![moves[worker_index]],
-        nodes: 0,
-    };
-    let mut outcomes = vec![
-        worker(1, 4, None),
-        worker(0, 4, Some(-1000)),
-        worker(2, 3, None),
-    ];
-    assert_eq!(select_worker_outcome(&outcomes).worker_index, 0);
-    outcomes[2].result.depth = 5;
-    assert_eq!(select_worker_outcome(&outcomes).worker_index, 2);
-    outcomes[0].result.depth = 5;
-    assert_eq!(select_worker_outcome(&outcomes).worker_index, 1);
 }

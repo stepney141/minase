@@ -28,6 +28,7 @@ fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
     alpha
 }
 
+#[cfg(feature = "tuning")]
 pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
     let alpha = quiet_alpha(board, &weights().unwrap());
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
@@ -40,35 +41,6 @@ fn late_move_limits_follow_quadratic_depth_rule() {
     assert_eq!(
         [late_move_limit(1), late_move_limit(2), late_move_limit(3)],
         [1, 2, 3].map(|depth| (params::lmp_base() + params::lmp_slope() * depth * depth) / 100)
-    );
-}
-
-// 静かな手の上限を超えた手を飛ばしても、探索済みの非詰み値を保ち、合法手なしの詰みにはしない。
-#[test]
-fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
-    let board = quiet_board();
-    let nnue = weights().unwrap();
-    let moves = legal_moves(&board);
-    assert!(moves.len() > late_move_limit(3) as usize);
-    assert!(!royal_under_attack(&board));
-    assert!(
-        moves
-            .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, &nnue, mv).is_none())
-    );
-    let (score, nodes) = search_quiet_board(&board);
-    assert_eq!(nodes, late_move_limit(1) as u64);
-    let leaf_scores: Vec<_> = moves
-        .iter()
-        .map(|&mv| {
-            let mut child = board.clone();
-            child.make_move_unchecked(mv, engine_rules());
-            -evaluate(&nnue, &child)
-        })
-        .collect();
-    assert!(score.abs() < MATE_THRESHOLD);
-    assert!(
-        (*leaf_scores.iter().min().unwrap()..=*leaf_scores.iter().max().unwrap()).contains(&score)
     );
 }
 

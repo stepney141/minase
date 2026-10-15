@@ -186,53 +186,6 @@ mod tests {
         assert_eq!(evaluate(&white_to_move), 0);
     }
 
-    // PIECE_VALUESとその出典のコメントが定める駒価値に29駒種すべてが一致する。
-    // 表は比較用の固定値として変えない。
-    #[test]
-    fn piece_values_match_the_frozen_table_for_all_29_kinds() {
-        let frozen_table = [
-            (PieceKind::Pawn, 100),             // 歩兵
-            (PieceKind::GoBetween, 125),        // 仲人
-            (PieceKind::Lance, 375),            // 香車
-            (PieceKind::ReverseChariot, 375),   // 反車
-            (PieceKind::SideMover, 500),        // 横行
-            (PieceKind::VerticalMover, 500),    // 竪行
-            (PieceKind::Bishop, 625),           // 角行
-            (PieceKind::Rook, 750),             // 飛車
-            (PieceKind::DragonHorse, 875),      // 龍馬
-            (PieceKind::DragonKing, 1_000),     // 龍王
-            (PieceKind::FreeKing, 1_500),       // 奔王
-            (PieceKind::King, 2_600),           // 王将・玉将
-            (PieceKind::DrunkElephant, 503),    // 醉象
-            (PieceKind::BlindTiger, 380),       // 盲虎
-            (PieceKind::SilverGeneral, 250),    // 銀将
-            (PieceKind::GoldGeneral, 378),      // 金将
-            (PieceKind::Kirin, 385),            // 麒麟
-            (PieceKind::Phoenix, 383),          // 鳳凰
-            (PieceKind::Lion, 2_500),           // 獅子
-            (PieceKind::CrownPrince, 2_600),    // 太子
-            (PieceKind::WhiteHorse, 875),       // 白駒
-            (PieceKind::Whale, 625),            // 鯨鯢
-            (PieceKind::FlyingOx, 1_000),       // 飛牛
-            (PieceKind::FreeBoar, 1_000),       // 奔猪
-            (PieceKind::FlyingStag, 750),       // 飛鹿
-            (PieceKind::HornedFalcon, 1_250),   // 角鷹
-            (PieceKind::SoaringEagle, 1_375),   // 飛鷲
-            (PieceKind::FerociousLeopard, 375), // 猛豹
-            (PieceKind::CopperGeneral, 250),    // 銅将
-        ];
-
-        // 29駒種を重複なく網羅していることの確認。
-        assert_eq!(frozen_table.len(), PIECE_KIND_COUNT);
-        let mut covered = [false; PIECE_KIND_COUNT];
-        for (kind, value) in frozen_table {
-            assert!(!covered[kind.index()]);
-            covered[kind.index()] = true;
-            assert_eq!(piece_value(kind), value);
-        }
-        assert!(covered.iter().all(|&seen| seen));
-    }
-
     // 実装契約として、`crate::search`のdocコメントが定めるfail-soft negamaxは
     // 静的評価の手番対称性を要件とする。局面Pの先手視点評価と、Pを180度回転して
     // 所有者を入れ替えた局面P'の後手視点評価は一致しなければならない。

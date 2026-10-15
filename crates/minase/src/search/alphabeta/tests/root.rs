@@ -145,27 +145,69 @@ fn interrupted_root_iteration_discards_only_current_counts() {
     });
 }
 
-// 深さ5以上で直前の完了値が詰み帯の外ならその値±初期幅で始め、それ以外は全窓にする。
+// 深さ5以上で通常値だけを狭い窓の中心に使う。
 // 判断の理由は docs/adr/widen-only-the-failed-side-of-aspiration-windows.md にある。
 #[test]
 fn aspiration_initial_window_uses_only_eligible_previous_scores() {
     for depth in 1..=4 {
         let window = AspirationWindow::initial(depth, Some(100), 50);
-        assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
-    }
-    for prev in [
-        None,
-        Some(MATE_THRESHOLD),
-        Some(-MATE_THRESHOLD),
-        Some(MATE),
-        Some(-MATE),
-    ] {
-        let window = AspirationWindow::initial(5, prev, 50);
-        assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
+        assert_eq!(
+            (window.alpha, window.beta),
+            (-INFINITY, INFINITY),
+            "depth={depth}"
+        );
     }
     for depth in [5, 6, 8] {
-        let window = AspirationWindow::initial(depth, Some(100), 50);
-        assert_eq!((window.alpha, window.beta, window.delta), (50, 150, 50));
+        for (case, prev, expected) in [
+            ("no_previous", None, (-INFINITY, INFINITY)),
+            (
+                "mate_threshold",
+                Some(MATE_THRESHOLD),
+                (-INFINITY, INFINITY),
+            ),
+            (
+                "negative_mate_threshold",
+                Some(-MATE_THRESHOLD),
+                (-INFINITY, INFINITY),
+            ),
+            ("mate", Some(MATE), (-INFINITY, INFINITY)),
+            ("negative_mate", Some(-MATE), (-INFINITY, INFINITY)),
+            ("article_31_r1_lower", Some(29_487), (-INFINITY, INFINITY)),
+            ("article_31_r1_inner", Some(29_740), (-INFINITY, INFINITY)),
+            ("article_31_r1_upper", Some(29_743), (-INFINITY, INFINITY)),
+            (
+                "article_31_r1_negative_lower",
+                Some(-29_487),
+                (-INFINITY, INFINITY),
+            ),
+            (
+                "article_31_r1_negative_inner",
+                Some(-29_740),
+                (-INFINITY, INFINITY),
+            ),
+            (
+                "article_31_r1_negative_upper",
+                Some(-29_743),
+                (-INFINITY, INFINITY),
+            ),
+            ("article_31_r1_below_band", Some(29_486), (29_436, INFINITY)),
+            (
+                "article_31_r1_above_negative_band",
+                Some(-29_486),
+                (-INFINITY, -29_436),
+            ),
+            ("ordinary", Some(100), (50, 150)),
+        ] {
+            let window = AspirationWindow::initial(depth, prev, 50);
+            assert_eq!(
+                (window.alpha, window.beta),
+                expected,
+                "{case}, depth={depth}, prev={prev:?}"
+            );
+            if prev == Some(100) {
+                assert_eq!(window.delta, 50, "{case}, depth={depth}");
+            }
+        }
     }
 }
 
@@ -213,29 +255,6 @@ fn aspiration_widens_only_the_failed_side() {
         low.widen_high();
     }
     assert_eq!((low.alpha, low.beta), (-INFINITY, INFINITY));
-}
-
-#[test]
-fn aspiration_normalizes_initial_and_widened_mate_edges() {
-    for distance in [49, 50, 51, 100] {
-        let mut high = AspirationWindow::initial(5, Some(MATE_THRESHOLD - distance), 50);
-        let mut low = AspirationWindow::initial(5, Some(-MATE_THRESHOLD + distance), 50);
-        if distance <= MATE_THRESHOLD - crate::search::REPETITION_BAND_START + 50 {
-            assert_eq!(high.beta, INFINITY);
-            assert_eq!(low.alpha, -INFINITY);
-        } else {
-            assert_eq!(high.beta, MATE_THRESHOLD - distance + 50);
-            assert_eq!(low.alpha, -MATE_THRESHOLD + distance - 50);
-        }
-        let unchanged_alpha = high.alpha;
-        let unchanged_beta = low.beta;
-        for _ in 0..3 {
-            high.widen_high();
-            low.widen_low();
-            assert_eq!((high.alpha, high.beta), (unchanged_alpha, INFINITY));
-            assert_eq!((low.alpha, low.beta), (-INFINITY, unchanged_beta));
-        }
-    }
 }
 
 // 引き分け値0を境界に置き、等号とβ打ち切りを検査する。
