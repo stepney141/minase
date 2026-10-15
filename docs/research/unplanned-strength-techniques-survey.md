@@ -61,7 +61,7 @@ reverse futility pruning、late move pruning、razoring、improvingフラグ、�
 先読み中の目標時間の25%増しは[USI先読みの設計書](../plans/archived/ponder.md)が本方式には当てはまらないと判断し、相手番局面の先読みは同書が見送った。
 秒単位の切り上げは[時間効率の設計書](../plans/archived/time-management-efficiency.md)が不要と判断し、Stockfishの動的な時間係数は同書で束ごと`H0`となった。
 Texel tuningは探索部の設計書が評価関数の次期マイルストーンへ送り、その後に導入した学習済みの駒升表（PST、piece-square table）が同じ役割を果たした。
-反復の結果と置換表の干渉は[反復負け回避の設計書](../plans/search-repetition.md)が扱い、NNUE（差分更新型のニューラルネット評価関数）の第1層拡幅、出力バケット、および相対王駒特徴は段階10の予定に入っている。
+反復の結果と置換表の干渉は[反復負け回避の設計書](../plans/archived/search-repetition.md)が扱い、NNUE（差分更新型のニューラルネット評価関数）の第1層拡幅、出力バケット、および相対王駒特徴は段階10の予定に入っている。
 調整と測定の領域では候補が残らなかった。
 同時摂動確率近似（SPSA）による係数調整とGSPRTの段階ゲートは実装済みであり、LTCでの調整は[SPSAの設計書](../plans/archived/spsa.md)が最初のセッションの採否を見てから判断すると定めているからである。
 

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年8月22日。
+置き換え済み。決定日は2026年8月22日。[R1の反復負けは根の候補手の選別で避け、探索木の中の周回は攻撃側の負けとして読む](avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)、[R2とR3が禁じる着手を探索木の中で読まず、禁止手しかない局面を負けとする](skip-forbidden-repetition-moves-inside-the-tree.md)、および[探索木の中では駒枯れ、裸玉、および詰みの裁定を近似し、厳密な裁定を審判層に委ねる](approximate-exhaustion-and-mate-inside-search-tree.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -32,4 +32,4 @@ R2とR3が禁止する着手は木の中で引き分け相当として扱い、�
 木の中では王駒を取る手を読んで勝ちを判定するので、E1を採用した規則では詰みの扱いが正確になり、詰みで終局する標準規則では1手遅れの近似になる。
 R2とR3で不合法となる手はルートの候補から除かれるので、探索が不合法な着手を返すことはない。
 返す値の細目は、`crates/minase/src/search/alphabeta/negamax.rs`の`negamax`と`search_move`のdocコメントにある。
-[探索部の反復負け回避](../plans/search-repetition.md)は、根での反復負けの回避と木の中の攻撃側の負けを起案しており、採用されればこの決定の一部を置き換える。
+[探索部の反復負け回避](../plans/archived/search-repetition.md)は、根での反復負けの回避と木の中の攻撃側の負けを起案しており、採用されればこの決定の一部を置き換える。

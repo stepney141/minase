@@ -13,7 +13,7 @@
 NNUE同士の採否測定では頻度はさらに高く、[STC](../measurements/search-repetition-stc.md)では段階開始版が586局中195局を反復負けで落とした。
 [既存実装の調査](../research/search-repetition-prior-art.md)によれば、将棋エンジン（やねうら王、Apery、技巧、dlshogi）とシャンチーのエンジン（ElephantEye）は、探索木の中の1回の再現で連続王手や長将の側の負けを返し、Fairy-Stockfishだけが規定回数の成立を待つ。
 根で禁じ手を除く先例は、シャンチーの通信規約UCCIの`banmoves`と、根でだけ規則どおりの回数で判定するElephantEyeにある。
-決定の経緯は[探索部の反復負け回避と反復禁止](../plans/search-repetition.md)の設計書にある。
+決定の経緯は[探索部の反復負け回避と反復禁止](../plans/archived/search-repetition.md)の設計書にある。
 
 ## 決定
 
