@@ -52,7 +52,7 @@ cargo test --release --bin spsa_runner -- --ignored --exact tests::simulation::g
 模擬実験の実装は`src/bin/spsa_runner/tests/simulation.rs`である。
 この実装は、合否の基準を持たない計測であるため、2026年10月15日にテストから削除した。
 再現するには、削除の前のコミット9d40f954のソースを使う。
-その時点のソースは`crates/minase/src/bin/minase/spsa_runner/tests/simulation.rs`にあり、上のコマンドは`cargo test --release -p minase --bin minase -- --ignored --exact spsa_runner::tests::simulation::gain_simulation --nocapture`と読み替える。
+その時点の構成ではソースが`crates/minase/src/bin/minase/spsa_runner/tests/simulation.rs`にあるので、上のコマンドは`cargo test --release -p minase --bin minase -- --ignored --exact spsa_runner::tests::simulation::gain_simulation --nocapture`と読み替える。
 シードは1からSまでの連番であり、すべての候補と予算で同じシードの組を使う。
 同じコマンドを2回実行し、パニック時のスレッド番号を除いて出力が完全に一致することを確かめた。
 全出力は[output.tsv](spsa-gain-simulation/output.tsv)に保存した。
