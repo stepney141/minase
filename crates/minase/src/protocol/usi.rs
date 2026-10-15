@@ -2398,6 +2398,8 @@ mod tests {
                 assert_eq!(output, "", "{name}: {value}");
                 assert_eq!(protocol.root_draw_value(side), expected);
                 assert_eq!(protocol.root_draw_value(other), other_value);
+                // readyokやttの空項目では、未確保と確保済みの空表を区別できない。
+                // 初回探索前の確保という契約に限り内部状態を観測する。
                 assert!(protocol.transposition_table.is_none());
             }
             for value in [
@@ -2805,7 +2807,10 @@ mod tests {
                 })
                 .collect();
             assert!(!depths.is_empty());
-            assert!(depths.windows(2).all(|pair| pair[0] < pair[1]), "{output}");
+            // Threads>1の完了深さの通知順はスケジューリングに依存する。
+            if threads == 1 {
+                assert!(depths.windows(2).all(|pair| pair[0] < pair[1]), "{output}");
+            }
         }
     }
 
@@ -4179,56 +4184,88 @@ mod tests {
         }
     }
 
-    /// [`diagnostic_position`]の契約: RULES.md第5条の初期配置を26行の盤として表示する。
+    /// debugging.mdの駒表記とRULES.md第5条の初期配置を検証する。
+    /// 枠線の幅と空白の数は契約ではない。
     #[test]
     fn diagnostic_startpos_board_matches_rules() {
         let output = session(&[RuleCode::R1], "position startpos\nd\n");
-        let expected = concat!(
-            "   12   11   10    9    8    7    6    5    4    3    2    1\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|^ 香|^ 猛|^ 銅|^ 銀|^ 金|^ 醉|^ 玉|^ 金|^ 銀|^ 銅|^ 猛|^ 香| a\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|^ 反|  ・|^ 角|  ・|^ 盲|^ 鳳|^ 麒|^ 盲|  ・|^ 角|  ・|^ 反| b\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|^ 横|^ 竪|^ 飛|^ 馬|^ 龍|^ 奔|^ 獅|^ 龍|^ 馬|^ 飛|^ 竪|^ 横| c\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩| d\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・| e\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| g\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  ・|  ・|  ・|  仲|  ・|  ・|  ・|  ・|  仲|  ・|  ・|  ・| h\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩| i\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  横|  竪|  飛|  馬|  龍|  獅|  奔|  龍|  馬|  飛|  竪|  横| j\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  反|  ・|  角|  ・|  盲|  麒|  鳳|  盲|  ・|  角|  ・|  反| k\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-            "|  香|  猛|  銅|  銀|  金|  王|  醉|  金|  銀|  銅|  猛|  香| l\n",
-            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
-        );
-        let (board, metadata) = output.split_once("\n\n").unwrap();
-        assert_eq!(board.lines().count(), 26);
-        assert_eq!(format!("{board}\n"), expected);
-        assert!(metadata.starts_with("sfen "));
+        let expected = [
+            "^香 ^猛 ^銅 ^銀 ^金 ^醉 ^玉 ^金 ^銀 ^銅 ^猛 ^香",
+            "^反 ・ ^角 ・ ^盲 ^鳳 ^麒 ^盲 ・ ^角 ・ ^反",
+            "^横 ^竪 ^飛 ^馬 ^龍 ^奔 ^獅 ^龍 ^馬 ^飛 ^竪 ^横",
+            "^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩 ^歩",
+            "・ ・ ・ ^仲 ・ ・ ・ ・ ^仲 ・ ・ ・",
+            "・ ・ ・ ・ ・ ・ ・ ・ ・ ・ ・ ・",
+            "・ ・ ・ ・ ・ ・ ・ ・ ・ ・ ・ ・",
+            "・ ・ ・ 仲 ・ ・ ・ ・ 仲 ・ ・ ・",
+            "歩 歩 歩 歩 歩 歩 歩 歩 歩 歩 歩 歩",
+            "横 竪 飛 馬 龍 獅 奔 龍 馬 飛 竪 横",
+            "反 ・ 角 ・ 盲 麒 鳳 盲 ・ 角 ・ 反",
+            "香 猛 銅 銀 金 王 醉 金 銀 銅 猛 香",
+        ];
+        let rows: Vec<_> = output.lines().filter(|line| line.contains('|')).collect();
+        assert_eq!(rows.len(), 12);
+        for (row, expected) in rows.iter().zip(expected) {
+            let cells: Vec<String> = row
+                .split('|')
+                .skip(1)
+                .take(12)
+                .map(|cell| cell.chars().filter(|c| !c.is_whitespace()).collect())
+                .collect();
+            assert_eq!(cells, expected.split_whitespace().collect::<Vec<_>>());
+        }
+        assert!(output.lines().any(|line| line.starts_with("sfen ")));
     }
 
-    /// [`diagnostic_position`]の契約: 成駒はRULES.md第9条・第10条の駒種と成り印で表示する。
+    /// docs/guides/debugging.mdの「診断の道具」は後手に^、成駒に+を付ける。
     #[test]
     fn diagnostic_board_shows_promoted_kinds_and_owners() {
-        let output = session(
-            &[RuleCode::R1],
-            "position sfen k11/12/12/12/12/+G+p+E+i8/12/12/12/12/12/11K b - 1\nd\n",
+        use minase_core::test_util::{position_from_codes, sq};
+        let position = position_from_codes(
+            Color::Black,
+            &[
+                (
+                    sq(0, 11),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(11, 0),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(0, 6),
+                    PieceCode::new_promoted(Color::Black, PieceKind::Rook).unwrap(),
+                ),
+                (
+                    sq(1, 6),
+                    PieceCode::new_promoted(Color::White, PieceKind::GoldGeneral).unwrap(),
+                ),
+                (
+                    sq(2, 6),
+                    PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap(),
+                ),
+                (
+                    sq(3, 6),
+                    PieceCode::new_promoted(Color::White, PieceKind::DrunkElephant).unwrap(),
+                ),
+            ],
         );
+        let sfen = minase_core::notation::sfen::to_sfen(&position);
+        let output = session(&[RuleCode::R1], &format!("position sfen {sfen} - 1\nd\n"));
         assert!(!output.contains("error"), "{output}");
-        assert_eq!(
-            output.lines().nth(12),
-            Some("| +飛|^+金| +太|^+醉|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f")
-        );
+        let cells: Vec<String> = output
+            .lines()
+            .filter(|line| line.contains('|'))
+            .flat_map(|row| row.split('|').skip(1).take(12))
+            .map(|cell| cell.chars().filter(|c| !c.is_whitespace()).collect())
+            .collect();
+        for piece in ["+飛", "^+金", "+太", "^+醉"] {
+            assert_eq!(
+                cells.iter().filter(|cell| cell.as_str() == piece).count(),
+                1,
+                "{output}"
+            );
+        }
     }
 
     /// [`diagnostic_evaluation`]の契約: 表示評価は全計算と一致し、盤面の各行と注記を表示する。
@@ -4444,23 +4481,47 @@ mod tests {
     // [`parse_go_config`]と[`UsiProtocol::write_handshake`]の先読みの契約を検査する。
     #[test]
     fn ponder_accepts_finite_limits_and_ignores_usi_ponder_option() {
-        for args in [
-            "ponder depth 1",
-            "ponder nodes 100",
-            "ponder btime 1000 wtime 1000 byoyomi 0",
-            "ponder movetime 20",
-            "depth 2 ponder nodes 100 movetime 20 btime 1000",
+        for (args, depth, nodes, movetime, clock) in [
+            ("ponder depth 1", Some(1), None, None, None),
+            ("ponder nodes 100", None, Some(100), None, None),
+            (
+                "ponder btime 1000 wtime 2000 binc 7 winc 9 byoyomi 50",
+                None,
+                None,
+                None,
+                Some((1000, 7, 50)),
+            ),
+            ("ponder movetime 20", None, None, Some(20), None),
+            (
+                "depth 2 ponder nodes 100 movetime 20 btime 1000",
+                Some(2),
+                Some(100),
+                Some(20),
+                Some((1000, 0, 0)),
+            ),
         ] {
-            assert!(
-                parse_go_config(
-                    &args.split_whitespace().collect::<Vec<_>>(),
-                    Color::Black,
-                    0,
-                    30
-                )
-                .is_ok(),
+            let parsed = parse_go_config(
+                &args.split_whitespace().collect::<Vec<_>>(),
+                Color::Black,
+                17,
+                30,
+            )
+            .unwrap();
+            assert!(!parsed.is_infinite(), "{args}");
+            assert_eq!(parsed.depth(), depth, "{args}");
+            assert_eq!(parsed.nodes(), nodes, "{args}");
+            assert_eq!(parsed.movetime_ms(), movetime, "{args}");
+            assert_eq!(
+                parsed
+                    .clock()
+                    .map(|c| (c.remaining_ms(), c.increment_ms(), c.byoyomi_ms())),
+                clock,
                 "{args}"
             );
+            if let Some(clock) = parsed.clock() {
+                assert_eq!(clock.ply(), 17);
+                assert_eq!(clock.byoyomi_margin_ms(), 30);
+            }
         }
         let output = session(&[RuleCode::R1], "position startpos\ngo ponder infinite\n");
         assert_eq!(error_lines(&output).len(), 1, "{output}");

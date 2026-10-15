@@ -76,32 +76,54 @@ mod tests {
     #[test]
     fn failure_reasons_are_counted_separately_and_conserved() {
         let mut counts = FailureCounts::default();
-        counts.record(EngineFailure::IllegalMove);
-        counts.record(EngineFailure::Crash);
-        counts.record(EngineFailure::Timeout);
-        counts.record(EngineFailure::TimeForfeit);
-        counts.record(EngineFailure::RejectedMove);
+        for (failure, times) in [
+            (EngineFailure::IllegalMove, 1),
+            (EngineFailure::Crash, 2),
+            (EngineFailure::Timeout, 3),
+            (EngineFailure::TimeForfeit, 4),
+            (EngineFailure::RejectedMove, 5),
+        ] {
+            for _ in 0..times {
+                counts.record(failure);
+            }
+        }
         assert_eq!(
             counts,
             FailureCounts {
                 illegal_moves: 1,
-                crashes: 1,
-                timeouts: 1,
-                time_forfeits: 1,
-                rejected_moves: 1,
+                crashes: 2,
+                timeouts: 3,
+                time_forfeits: 4,
+                rejected_moves: 5,
             }
         );
         // 集計の合成でも件数は保存される
         let mut total = FailureCounts::default();
         total.add(counts);
-        total.add(counts);
+        total.add(FailureCounts {
+            illegal_moves: 10,
+            crashes: 20,
+            timeouts: 30,
+            time_forfeits: 40,
+            rejected_moves: 50,
+        });
+        assert_eq!(
+            total,
+            FailureCounts {
+                illegal_moves: 11,
+                crashes: 22,
+                timeouts: 33,
+                time_forfeits: 44,
+                rejected_moves: 55,
+            }
+        );
         assert_eq!(
             total.illegal_moves
                 + total.crashes
                 + total.timeouts
                 + total.time_forfeits
                 + total.rejected_moves,
-            10
+            165
         );
     }
 }

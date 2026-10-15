@@ -123,63 +123,96 @@ fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
     assert_eq!(before, pst.refresh_accumulator(position));
 }
 
-/// 候補5の分子差分を全再計算で検査し、成りと獅子のじっとを両手番で含める。
+/// quiet_move_pst_deltaの補間式を固定重みで検査し、成り・じっと・両手番を含める。
 #[test]
-fn quiet_move_pst_delta_matches_refreshed_accumulator_difference() {
-    let sparse = minase_core::test_util::position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::Black, PieceKind::King),
-            (sq(11, 0), Color::White, PieceKind::King),
+fn quiet_move_pst_delta_matches_literal_interpolation_examples() {
+    // 移動前[8,24]、移動後[40,-8]、成り後[80,56]。
+    // q=2: 2×32+88×(-32)=-2752、2×72+88×32=2960。
+    // q=45: 45×(32-32)=0、45×(72+32)=4680。q=90では2880、6480。
+    for (count, quiet, promotion) in [
+        (4, -2752, 2960),
+        (47, 0, 4680),
+        (92, 2880, 6480),
+        (93, 2880, 6480),
+    ] {
+        let mut pieces = vec![
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
             (sq(5, 7), Color::Black, PieceKind::Pawn),
-            (sq(5, 6), Color::Black, PieceKind::Lion),
-        ],
-    );
-    let generator = minase_core::MoveGenerator::new(MoveRules::standard());
-    for pst in [distinct_pst(), fm_tests::synthetic_fm_pst()] {
-        let numerator = |position: &Position, side: Color| {
-            let accumulator = pst.refresh_accumulator(position);
-            interpolation_numerator(
-                accumulator.sums[side.index()],
-                phase(accumulator.piece_count),
-            )
-        };
+            (sq(8, 5), Color::Black, PieceKind::Lion),
+        ];
+        for square in Square::all() {
+            if pieces.len() == count {
+                break;
+            }
+            if square != sq(5, 8)
+                && square != sq(8, 6)
+                && !pieces.iter().any(|&(occupied, _, _)| occupied == square)
+            {
+                pieces.push((square, Color::Black, PieceKind::Pawn));
+            }
+        }
+        let original = minase_core::test_util::position(Color::Black, &pieces);
         for side in Color::ALL {
-            let mut saw_promotion = false;
-            let mut saw_jitto = false;
-            let mut saw_nonzero_delta = false;
-            for mut position in [Position::initial(), sparse.clone()] {
-                if side == Color::White {
-                    position = reflect_ranks_and_swap_colors(&position);
-                }
-                assert_eq!(position.side_to_move(), side);
-                let before = numerator(&position, side);
-                let mut moves = Vec::new();
-                generator.generate_moves(&position, &mut moves);
-                for mv in moves {
-                    if position
-                        .captured_squares(mv)
-                        .into_iter()
-                        .any(|sq| sq.is_some())
-                    {
-                        continue;
-                    }
-                    saw_promotion |= mv.promote;
-                    saw_jitto |= mv.from == mv.to;
-                    let delta = pst.quiet_move_pst_delta(&position, mv);
-                    saw_nonzero_delta |= delta != 0;
-                    let undo = position.make_move_unchecked(mv, generator.rules());
-                    assert_eq!(
-                        delta,
-                        numerator(&position, side) - before,
-                        "side={side:?}, move={mv:?}"
+            let (position, from, to, lion_square) = if side == Color::Black {
+                (original.clone(), sq(5, 7), sq(5, 8), sq(8, 5))
+            } else {
+                (
+                    reflect_ranks_and_swap_colors(&original),
+                    sq(5, 4),
+                    sq(5, 3),
+                    sq(8, 6),
+                )
+            };
+            let pawn = PieceCode::new(side, PieceKind::Pawn).unwrap();
+            let mut legal = Vec::new();
+            minase_core::MoveGenerator::new(MoveRules::standard())
+                .generate_moves(&position, &mut legal);
+            for mut pst in [distinct_pst(), fm_tests::synthetic_fm_pst()] {
+                pst.weights.fill([0, 0]);
+                pst.weights[feature_index(side, pawn, from)] = [8, 24];
+                pst.weights[feature_index(side, pawn, to)] = [40, -8];
+                pst.weights[feature_index(side, pawn.promote().unwrap(), to)] = [80, 56];
+                for (mv, expected) in [
+                    (
+                        Move {
+                            from,
+                            to,
+                            mid: None,
+                            promote: false,
+                        },
+                        quiet,
+                    ),
+                    (
+                        Move {
+                            from,
+                            to,
+                            mid: None,
+                            promote: true,
+                        },
+                        promotion,
+                    ),
+                    (
+                        Move {
+                            from: lion_square,
+                            to: lion_square,
+                            mid: None,
+                            promote: false,
+                        },
+                        0,
+                    ),
+                ] {
+                    assert!(
+                        legal.contains(&mv),
+                        "fixture must provide a legal quiet move: {mv:?}"
                     );
-                    position.unmake_move(undo);
+                    assert_eq!(
+                        pst.quiet_move_pst_delta(&position, mv),
+                        expected,
+                        "count={count}, side={side:?}, move={mv:?}"
+                    );
                 }
             }
-            assert!(saw_promotion, "side={side:?}");
-            assert!(saw_jitto, "side={side:?}");
-            assert!(saw_nonzero_delta, "side={side:?}");
         }
     }
 }
@@ -803,32 +836,36 @@ mod fm_tests {
     /// 全零FMはPSTの補間値を、駒数・手番・先獅子状態によらず保存する。
     #[test]
     fn zero_fm_preserves_pst_interpolation_exactly() {
-        let baseline = distinct_pst();
-        let mut bytes = valid_fm_bytes();
-        let baseline_bytes = baseline.encode();
-        let fm_offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
-        bytes[HEADER_LENGTH..fm_offset].copy_from_slice(&baseline_bytes[HEADER_LENGTH..fm_offset]);
-        refresh_checksum(&mut bytes);
-        let pst = Pst::decode(&bytes).unwrap();
-        for count in [0, 1, 2, 3, 47, 92, 93, 144] {
+        let mut pst = Pst::decode(&valid_fm_bytes()).unwrap();
+        // 全盤上特徴は[8,24]、先獅子特徴は[40,56]（単位1/8cp）。
+        pst.weights[..features::BOARD_FEATURE_COUNT].fill([8, 24]);
+        pst.weights[features::BOARD_FEATURE_COUNT..].fill([40, 56]);
+        // q=0で1枚3cp、q=45で1枚2cp、q=90で1枚1cp。
+        // N=3は(3×(8+89×24))/720=8、先獅子込みは(6432+5024)/720=15。
+        for (count, without_lion, with_lion) in [
+            (0, 0, 7),
+            (1, 3, 10),
+            (2, 6, 13),
+            (3, 8, 15),
+            (47, 94, 100),
+            (92, 92, 97),
+            (93, 93, 98),
+            (144, 144, 149),
+        ] {
             for side in Color::ALL {
                 let mut position = position_with_count(count, side);
-                for with_lion in [false, true] {
-                    if with_lion {
-                        let square = Square::all()
-                            .find(|&sq| {
-                                position
-                                    .piece_at(sq)
-                                    .is_none_or(|p| p.color() != Some(side))
-                            })
-                            .unwrap();
-                        position.set_lion_capture(Some(square)).unwrap();
-                    }
-                    let accumulator = pst.refresh_accumulator(&position);
-                    let expected = interpolate(accumulator.sums[side.index()], count as u32);
-                    assert_eq!(evaluate_pst(&pst, &position), expected);
-                    assert_evaluation(&pst, &position, expected);
-                }
+                assert_eq!(evaluate_pst(&pst, &position), without_lion);
+                assert_evaluation(&pst, &position, without_lion);
+                let square = Square::all()
+                    .find(|&sq| {
+                        position
+                            .piece_at(sq)
+                            .is_none_or(|p| p.color() != Some(side))
+                    })
+                    .unwrap();
+                position.set_lion_capture(Some(square)).unwrap();
+                assert_eq!(evaluate_pst(&pst, &position), with_lion);
+                assert_evaluation(&pst, &position, with_lion);
             }
         }
     }

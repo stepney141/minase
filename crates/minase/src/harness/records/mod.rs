@@ -381,10 +381,17 @@ mod tests {
             "games": [game(), game()],
             "category": null,
         });
+        let accepted = serde_json::from_value::<PairRecord>(value.clone()).unwrap();
+        assert_eq!(accepted.pair_number, 1);
         value
             .as_object_mut()
             .unwrap()
             .insert("unexpected".to_owned(), serde_json::Value::Bool(true));
-        assert!(serde_json::from_value::<PairRecord>(value).is_err());
+        assert_eq!(
+            serde_json::from_value::<PairRecord>(value)
+                .unwrap_err()
+                .classify(),
+            serde_json::error::Category::Data,
+        );
     }
 }

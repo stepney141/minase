@@ -81,11 +81,37 @@ mod tests {
     #[test]
     fn openings_stay_within_8_to_12_plies_and_vary_between_pairs() {
         let rules = Rules::ENGINE_DEFAULT;
-        let base_seed = 20_260_814_u64;
         let mut all_moves = Vec::new();
-        for pair_number in 1..=4 {
-            let pair_seed = derive_seed(base_seed, pair_number);
+        // rng::derive_seedのdocにあるsplitmix64(pair_seed + 0)の固定ベクトル。
+        for (pair_seed, expected_seed) in [
+            (1, 0x910a_2dec_8902_5cc1),
+            (2, 0x9758_35de_1c97_56ce),
+            (3, 0x1d0b_14e4_db01_8fed),
+            (4, 0x6e73_e372_e233_8aca),
+        ] {
+            let pair_seed = NonZeroU64::new(pair_seed).unwrap();
             let opening = generate_opening(rules, pair_seed);
+            let repeated = generate_opening(rules, pair_seed);
+            assert_eq!(opening.moves, repeated.moves);
+            assert_eq!(opening.usi_moves, repeated.usi_moves);
+            assert_eq!(opening.game.position(), repeated.game.position());
+            assert_eq!(opening.seed.get(), expected_seed);
+            // 派生値を報告するだけでなく、その値で乱数を初期化していることも確認する。
+            let mut rng = XorShift64::new(NonZeroU64::new(expected_seed).unwrap());
+            assert_eq!(
+                opening.moves.len(),
+                8 + rng.index(NonZeroUsize::new(5).unwrap())
+            );
+            let mut replay = Game::new(rules);
+            for &mv in &opening.moves {
+                let legal = replay.legal_moves();
+                assert_eq!(
+                    mv,
+                    legal[rng.index(NonZeroUsize::new(legal.len()).unwrap())]
+                );
+                replay.play(mv).unwrap();
+            }
+            assert_eq!(opening.game.position(), replay.position());
             assert!(
                 (8..=12).contains(&opening.moves.len()),
                 "opening length {} is outside the documented 8..=12 range",

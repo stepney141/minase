@@ -211,16 +211,63 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
 mod tests {
     use super::*;
 
-    // 規範文書に明文がないため、不明リビジョンの解決が対局実行前に失敗することを実装契約とする。
-    // 診断文言は契約ではないため種別(Err)だけを検証する。
+    struct Repository(PathBuf);
+
+    impl Drop for Repository {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).expect("remove temporary repository");
+        }
+    }
+
+    // normalize_commitの契約: コミットを完全ハッシュへ解決し、不明な名前は拒否する。
     #[test]
-    fn unknown_commit_revision_fails_resolution() {
-        assert!(
-            normalize_commit(
-                Path::new(env!("CARGO_MANIFEST_DIR")),
-                "definitely-not-a-minase-commit",
-            )
-            .is_err()
+    fn commit_revision_accepts_head_and_rejects_unknown_revision() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "minase-commit-{}-{}",
+            process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+        ));
+        fs::create_dir(&path).unwrap();
+        let repository = Repository(path);
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(&repository.0)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        };
+        git(&["init", "--quiet"]);
+        git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "fixture",
+        ]);
+        let expected = git(&["log", "-1", "--format=%H"]);
+        assert_eq!(expected.len(), 40);
+        assert_eq!(normalize_commit(&repository.0, "HEAD").unwrap(), expected);
+        assert_eq!(
+            normalize_commit(&repository.0, "definitely-not-a-minase-commit")
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Other,
         );
     }
 }
