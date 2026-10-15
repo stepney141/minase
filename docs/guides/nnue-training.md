@@ -26,6 +26,7 @@ nice -n 19 cargo test -j 2 -p minase-trainer
 ```
 
 GPUのカーネルがCPUの参照実装と一致することは、名前が`gpu_`で始まる`#[ignore]`のテストと`minase-trainer nnue check-equivalence`で確かめる。
+`gpu_`のテストは、CUDAで再開した学習が連続した学習と一致することと、途中検証の間隔によらず学習の軌跡が変わらないことも検査する。
 GPUを載せた機械で次を実行し、すべて成功することを確認する。
 
 ```sh

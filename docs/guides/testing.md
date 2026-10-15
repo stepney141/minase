@@ -308,6 +308,14 @@ cargo test -p minase --lib --features search-stats,tuning
 4つ目は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
 これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
 
+`scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。
+現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストだけがあり、外部と通信せずに再試行と待機の規則を検査する。
+`scripts/fetch_lishogi_games.py`を変更したときは、マージの前にリポジトリのルートで次を実行する。
+
+```console
+PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
+```
+
 一般には、マージ前の検査は手動の申し合わせではなく仕組みで止めるのが原則である（付録G）。
 minaseはCIを持たず、gitのフックによる強制も置いていないので、この規則は手順として守る。
 複数のworktreeのブランチを順にmasterへマージするので、マージの後にはマージ後の状態で`cargo test --workspace`を再実行する。
