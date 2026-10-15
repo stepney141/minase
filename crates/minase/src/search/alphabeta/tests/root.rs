@@ -272,7 +272,7 @@ fn aspiration_researches_scores_equal_to_either_edge() {
     let position = quiet_midgame();
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
-    let delta = aspiration_delta(weights().unwrap().pawn_value());
+    let delta = aspiration_delta(test_nnue().pawn_value());
     for (prev, first_nodes) in [(delta, moves.len() as u64), (-delta, 1)] {
         with_root_searcher(&position, &history, |searcher| {
             let (_, score) = searcher

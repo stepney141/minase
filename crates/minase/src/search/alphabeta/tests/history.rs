@@ -18,7 +18,7 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
         }
     }
     let outcome = run_search_team(
-        &weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -58,7 +58,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                 *value = *value * params::history_decay() / 100;
             }
             let handle = crate::search::start_search(
-                weights().unwrap(),
+                Arc::clone(shared_test_nnue()),
                 snapshot_for(&Position::initial()),
                 depth_limits(3),
                 search_id,
@@ -84,7 +84,7 @@ fn history_carry_changes_the_second_search_with_a_fresh_transposition_table() {
     let snapshot = snapshot_for(&quiet_midgame());
     if std::env::var_os(CHILD).is_some() {
         let fresh = crate::search::search(
-            &weights().unwrap(),
+            test_nnue(),
             &snapshot,
             &depth_limits(4),
             DEFAULT_THREADS,
@@ -100,7 +100,7 @@ fn history_carry_changes_the_second_search_with_a_fresh_transposition_table() {
     let mut nodes = Vec::new();
     for search_id in [810, 811] {
         let handle = crate::search::start_search(
-            weights().unwrap(),
+            Arc::clone(shared_test_nnue()),
             snapshot.clone(),
             depth_limits(4),
             search_id,
@@ -210,11 +210,11 @@ fn history_carry_workers_update_their_own_table() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_history_between_searches() {
     let snapshot = snapshot_for(&quiet_midgame());
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = HistoryTables::new(threads);
         crate::search::search(
-            &nnue,
+            nnue,
             &snapshot,
             &depth_limits(3),
             threads,
@@ -230,7 +230,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
         );
         // 2回目は新しい履歴を書き込む前に止め、前回の全要素が消えたことを確かめる。
         run_search_team(
-            &nnue,
+            nnue,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -255,7 +255,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     // 単一ワーカーの実探索でも、履歴を再利用した2回目と新品の表の結果が一致する。
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     let first = crate::search::search(
-        &nnue,
+        nnue,
         &snapshot,
         &depth_limits(3),
         DEFAULT_THREADS,
@@ -264,7 +264,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     )
     .unwrap();
     let second = crate::search::search(
-        &nnue,
+        nnue,
         &snapshot,
         &depth_limits(3),
         DEFAULT_THREADS,

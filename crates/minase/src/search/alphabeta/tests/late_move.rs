@@ -29,7 +29,7 @@ fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
 }
 
 pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
-    let alpha = quiet_alpha(board, &weights().unwrap());
+    let alpha = quiet_alpha(board, test_nnue());
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
 }
 
@@ -47,14 +47,14 @@ fn late_move_limits_follow_quadratic_depth_rule() {
 #[test]
 fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
     let board = quiet_board();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let moves = legal_moves(&board);
     assert!(moves.len() > late_move_limit(3) as usize);
     assert!(!royal_under_attack(&board));
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, &nnue, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, nnue, mv).is_none())
     );
     let (score, nodes) = search_quiet_board(&board);
     assert_eq!(nodes, late_move_limit(1) as u64);
@@ -63,7 +63,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
         .map(|&mv| {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            -evaluate(&nnue, &child)
+            -evaluate(nnue, &child)
         })
         .collect();
     assert!(score.abs() < MATE_THRESHOLD);
@@ -75,7 +75,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
 // PV、詰み帯、王駒への利きがある場合は静かな手を省かない。
 #[test]
 fn late_move_pruning_exclusions_search_all_quiets() {
-    let nnue = epoch_zero_nnue();
+    let nnue = test_nnue();
     for (width, mate_window, attacked) in [(2, false, false), (1, true, false), (1, false, true)] {
         let board = if attacked {
             // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
@@ -86,7 +86,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
         assert_eq!(royal_under_attack(&board), attacked);
         let moves = legal_moves(&board);
         let history = repeated_root_children(&board, &moves);
-        with_nnue_root_searcher(&nnue, &board, &history, |searcher| {
+        with_nnue_root_searcher(nnue, &board, &history, |searcher| {
             let alpha = if mate_window {
                 MATE_THRESHOLD - 1
             } else {
@@ -178,8 +178,8 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
 pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     let board =
         minase_core::parse_sfen("k11/12/12/12/12/10r1/12/2G9/12/G2G2G2G2/12/11K b").unwrap();
-    let nnue = weights().unwrap();
-    let alpha = evaluate(&nnue, &board) + 1;
+    let nnue = test_nnue();
+    let alpha = evaluate(nnue, &board) + 1;
     let losing_move = Move {
         from: sq(11, 0),
         mid: None,
@@ -192,7 +192,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, &nnue, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, nnue, mv).is_none())
     );
     let safe_moves = moves
         .iter()

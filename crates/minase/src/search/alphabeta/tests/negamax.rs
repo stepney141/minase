@@ -86,7 +86,7 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
     );
     let mut after_null = position.clone();
     after_null.make_null_move();
-    let expected = -evaluate(&weights().unwrap(), &after_null);
+    let expected = -evaluate(test_nnue(), &after_null);
     let table = small_tt();
     let (score, nodes) = run_negamax(&position, 4, expected - 1, expected, 0, &table);
     assert_eq!((score, nodes), (expected, 0));
@@ -146,7 +146,7 @@ fn null_move_jitto_does_not_repeat_pre_null_position() {
     let mut returned = after_null.clone();
     returned.make_move_unchecked(reply, engine_rules());
     assert_eq!(search_key(&returned), search_key(&root));
-    assert!(evaluate(&weights().unwrap(), &root) > DRAW_SCORE);
+    assert!(evaluate(test_nnue(), &root) > DRAW_SCORE);
 
     with_root_searcher(&root, &history, |searcher| {
         // 深さ0の記録は手順の優先にだけ使い、後手のじっとを最初に読む。
@@ -312,7 +312,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 #[test]
 fn interrupted_null_move_restores_repetition_scope() {
     let root = null_repetition_fixture();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for nested in [false, true] {
         let external_stop = AtomicBool::new(false);
         let shared = SharedSearch {
@@ -329,7 +329,7 @@ fn interrupted_null_move_restores_repetition_scope() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &root,
             engine_rules(),
             &[],
@@ -346,7 +346,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let boundary = searcher.null_move_boundary;
         let mut current = root.clone();
         // 静的評価付近の窓で枝刈りを避け、実着手を1手積んだ後にノード上限で中断する。
-        let beta = evaluate(&nnue, &root);
+        let beta = evaluate(nnue, &root);
         assert_eq!(
             searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
             None

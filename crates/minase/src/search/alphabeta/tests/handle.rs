@@ -61,12 +61,12 @@ fn search_apis_use_the_supplied_nnue() {
     // 埋め込みネットの出力バイアスだけを変え、注入した重みを区別する。
     use sha2::{Digest, Sha256};
     let mut bytes = include_bytes!("../../../../nets/nnue.bin").to_vec();
+    let embedded = Nnue::decode(&bytes).unwrap();
     let end = bytes.len();
     bytes[end - 4..].copy_from_slice(&520_192_i32.to_le_bytes());
     let checksum = Sha256::digest(&bytes[192..]);
     bytes[144..176].copy_from_slice(&checksum);
     let supplied = Nnue::decode(&bytes).unwrap();
-    let embedded = crate::eval::weights().unwrap();
     let mut child = position.clone();
     let root_move = legal_moves(&position)
         .into_iter()
@@ -193,7 +193,7 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
-    let delta = aspiration_delta(weights().unwrap().pawn_value());
+    let delta = aspiration_delta(test_nnue().pawn_value());
     let previous = -MATE_THRESHOLD + 2 * delta + 1;
     let table = small_tt();
     // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。

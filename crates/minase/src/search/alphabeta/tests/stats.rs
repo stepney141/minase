@@ -172,7 +172,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     let position = quiet_position();
     let mut after_null = position.clone();
     after_null.make_null_move();
-    let expected = -evaluate(&weights().unwrap(), &after_null);
+    let expected = -evaluate(test_nnue(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
         assert_eq!(
             searcher.negamax(&mut position.clone(), 4, expected - 1, expected, 0),
@@ -191,7 +191,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
 #[test]
 fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
     let position = quiet_position();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let mut scored: Vec<_> = legal_moves(&position)
         .into_iter()
         .map(|mv| {
@@ -202,7 +202,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
                     .iter()
                     .all(|&reply| child.captured_squares(reply).iter().all(Option::is_none))
             );
-            (mv, -evaluate(&nnue, &child))
+            (mv, -evaluate(nnue, &child))
         })
         .collect();
     scored.sort_by_key(|&(_, score)| score);
@@ -287,7 +287,7 @@ fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
 fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
     let snapshot = snapshot_for(&Position::initial());
     let outcome = run_search_team(
-        &weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -333,7 +333,7 @@ fn single_worker_fixed_depth_stats_are_reproducible() {
     let snapshot = snapshot_for(&Position::initial());
     let run = || {
         crate::search::search(
-            &weights().unwrap(),
+            test_nnue(),
             &snapshot,
             &depth_limits(4),
             DEFAULT_THREADS,

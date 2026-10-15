@@ -18,7 +18,7 @@ fn capture(from: Square, to: Square) -> Move {
 /// 2枚取りでは価値の大きい駒種を選び、到達升を添字にする。
 #[test]
 fn capture_history_double_capture_uses_more_valuable_victim() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for (mid_kind, to_kind) in [
         (PieceKind::Pawn, PieceKind::Rook),
         (PieceKind::Rook, PieceKind::Pawn),
@@ -39,7 +39,7 @@ fn capture_history_double_capture_uses_more_valuable_victim() {
         };
         assert!(legal_moves(&board).contains(&mv));
         let mut history = CaptureHistory::new();
-        history.record_cutoff(&board, &nnue, mv, &[], 3);
+        history.record_cutoff(&board, nnue, mv, &[], 3);
         for (victim, expected) in [(PieceKind::Pawn, 0), (PieceKind::Rook, 9)] {
             let single = position(
                 Color::Black,
@@ -49,18 +49,18 @@ fn capture_history_double_capture_uses_more_valuable_victim() {
                 ],
             );
             assert_eq!(
-                history.read(&single, &nnue, capture(mv.from, mv.to)),
+                history.read(&single, nnue, capture(mv.from, mv.to)),
                 expected
             );
         }
-        assert_eq!(history.read(&board, &nnue, capture(mv.from, sq(5, 6))), 0);
+        assert_eq!(history.read(&board, nnue, capture(mv.from, sq(5, 6))), 0);
     }
 }
 
 /// 同値の2枚取りでは到達升の駒種を選ぶ。王将と太子の価値は等しい。
 #[test]
 fn capture_history_equal_victims_prefer_destination() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let board = position_with_promoted_pieces(
         Color::Black,
         &[
@@ -78,8 +78,8 @@ fn capture_history_equal_victims_prefer_destination() {
         ..capture(sq(5, 5), sq(6, 6))
     };
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &nnue, mv, &[], 2);
-    assert_eq!(history.read(&board, &nnue, capture(mv.from, mv.to)), 4);
+    history.record_cutoff(&board, nnue, mv, &[], 2);
+    assert_eq!(history.read(&board, nnue, capture(mv.from, mv.to)), 4);
     let king = position(
         Color::Black,
         &[
@@ -87,13 +87,13 @@ fn capture_history_equal_victims_prefer_destination() {
             (mv.to, Color::White, PieceKind::King),
         ],
     );
-    assert_eq!(history.read(&king, &nnue, capture(mv.from, mv.to)), 0);
+    assert_eq!(history.read(&king, nnue, capture(mv.from, mv.to)), 0);
 }
 
 /// 成る手は着手前の駒種を使い、成駒と先後を区別する。
 #[test]
 fn capture_history_promotion_uses_pre_move_piece_and_color() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let mv = Move {
         promote: true,
         ..capture(sq(5, 7), sq(5, 8))
@@ -109,11 +109,11 @@ fn capture_history_promotion_uses_pre_move_piece_and_color() {
     );
     assert!(legal_moves(&board).contains(&mv));
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &nnue, mv, &[], 4);
+    history.record_cutoff(&board, nnue, mv, &[], 4);
     assert_eq!(
         history.read(
             &board,
-            &nnue,
+            nnue,
             Move {
                 promote: false,
                 ..mv
@@ -133,7 +133,7 @@ fn capture_history_promotion_uses_pre_move_piece_and_color() {
                 (mv.to, color.opposite(), PieceKind::Pawn, false),
             ],
         );
-        assert_eq!(history.read(&other, &nnue, mv), expected);
+        assert_eq!(history.read(&other, nnue, mv), expected);
     }
 }
 
@@ -284,7 +284,7 @@ fn capture_history_negamax_penalizes_searched_captures_on_quiet_cutoff() {
 #[test]
 fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
     let board = capture_fixture();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let earlier = [
         capture(sq(5, 5), sq(5, 7)),
         capture(sq(5, 5), sq(3, 5)),
@@ -294,24 +294,24 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
     let limit = i64::from(params::capture_history_limit());
     for depth in [0, 3, 64, 256] {
         let mut history = CaptureHistory::new();
-        history.record_cutoff(&board, &nnue, earlier[0], &[earlier[1]], 64);
-        history.record_cutoff(&board, &nnue, untouched, &[], 3);
-        let before = earlier.map(|mv| history.read(&board, &nnue, mv));
+        history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
+        history.record_cutoff(&board, nnue, untouched, &[], 3);
+        let before = earlier.map(|mv| history.read(&board, nnue, mv));
         assert_eq!(before, [4096, -4096, 0]);
 
-        history.record_quiet_cutoff(&board, &nnue, &earlier, depth);
+        history.record_quiet_cutoff(&board, nnue, &earlier, depth);
 
         let malus = -i64::from(depth).pow(2).min(limit);
         for (mv, old) in earlier.into_iter().zip(before) {
             let old = i64::from(old);
             let expected = old + malus - old * malus.abs() / limit;
             assert_eq!(
-                i64::from(history.read(&board, &nnue, mv)),
+                i64::from(history.read(&board, nnue, mv)),
                 expected,
                 "depth={depth}, old={old}"
             );
         }
-        assert_eq!(history.read(&board, &nnue, untouched), 9);
+        assert_eq!(history.read(&board, nnue, untouched), 9);
     }
 }
 
@@ -319,24 +319,24 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
 #[test]
 fn capture_history_quiet_cutoff_with_no_earlier_captures_preserves_history() {
     let board = capture_fixture();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let captures: Vec<_> = legal_moves(&board)
         .into_iter()
         .filter(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
         .collect();
     assert_eq!(captures.len(), 4);
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &nnue, captures[0], &captures[1..3], 64);
+    history.record_cutoff(&board, nnue, captures[0], &captures[1..3], 64);
     let before: Vec<_> = captures
         .iter()
-        .map(|&mv| history.read(&board, &nnue, mv))
+        .map(|&mv| history.read(&board, nnue, mv))
         .collect();
 
-    history.record_quiet_cutoff(&board, &nnue, &[], 256);
+    history.record_quiet_cutoff(&board, nnue, &[], 256);
 
     let after: Vec<_> = captures
         .iter()
-        .map(|&mv| history.read(&board, &nnue, mv))
+        .map(|&mv| history.read(&board, nnue, mv))
         .collect();
     assert_eq!(after, before);
 }
@@ -361,16 +361,16 @@ fn capture_history_workers_with_separate_tables_are_independent() {
 #[test]
 fn capture_history_adjustment_truncates_toward_zero() {
     let board = capture_fixture();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let winner = capture(sq(5, 5), sq(5, 7));
     let loser = capture(sq(5, 5), sq(3, 5));
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &nnue, winner, &[loser], 1);
+    history.record_cutoff(&board, nnue, winner, &[loser], 1);
     assert!(
         nnue.pawn_value() * params::capture_history_scale() < 100 * params::capture_history_limit()
     );
-    assert_eq!(history.adjustment(&board, &nnue, winner), 0);
-    assert_eq!(history.adjustment(&board, &nnue, loser), 0);
+    assert_eq!(history.adjustment(&board, nnue, winner), 0);
+    assert_eq!(history.adjustment(&board, nnue, loser), 0);
 }
 
 /// SEEで飛ばした捕獲手と先行する静かなTT手は、捕獲打ち切り時にも減点しない。
@@ -445,7 +445,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
 fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZeroUsize) {
     let snapshot = snapshot_for(&Position::initial());
     let outcome = run_search_team(
-        &weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -497,13 +497,13 @@ fn capture_history_carry_survives_handle_round_trips() {
         ],
     );
     let mv = capture(sq(5, 5), sq(5, 6));
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = crate::search::HistoryTables::new(threads);
         let mut expected = Vec::new();
         for (worker, history) in histories.capture.iter_mut().enumerate() {
             let depth = 30 + worker as u32;
-            history.record_cutoff(&board, &nnue, mv, &[], depth);
+            history.record_cutoff(&board, nnue, mv, &[], depth);
             expected.push((depth * depth) as i32);
         }
         let mut table = small_tt();
@@ -512,7 +512,7 @@ fn capture_history_carry_survives_handle_round_trips() {
                 *value = *value * params::capture_history_decay() / 100;
             }
             let handle = crate::search::start_search(
-                weights().unwrap(),
+                Arc::clone(shared_test_nnue()),
                 snapshot_for(&Position::initial()),
                 depth_limits(3),
                 search_id,
@@ -525,7 +525,7 @@ fn capture_history_carry_survives_handle_round_trips() {
             assert_eq!(result.depth, 3);
             (table, histories) = handle.join().unwrap();
             for (worker, history) in histories.capture.iter().enumerate() {
-                assert_eq!(history.read(&board, &nnue, mv), expected[worker]);
+                assert_eq!(history.read(&board, nnue, mv), expected[worker]);
             }
         }
     }
@@ -604,7 +604,7 @@ pub(super) fn zero_decay_clears_capture_history_between_searches() {
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = crate::search::HistoryTables::new(threads);
         crate::search::search(
-            &weights().unwrap(),
+            test_nnue(),
             &snapshot_for(&quiet_midgame()),
             &depth_limits(3),
             threads,

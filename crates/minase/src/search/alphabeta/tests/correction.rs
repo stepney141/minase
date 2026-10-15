@@ -2,7 +2,7 @@
 //! 採用理由はdocs/adr/key-correction-history-by-material.md。
 
 use super::*;
-use crate::eval::{evaluate, weights};
+use crate::eval::evaluate;
 use crate::search::alphabeta::params;
 use minase_core::Color;
 
@@ -25,7 +25,7 @@ const ATTACKED: &str = "k10r/12/12/12/12/12/12/12/12/12/12/11K b";
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
     for (sfen, delta, bound, update, capture, depth) in [
@@ -45,7 +45,7 @@ fn correction_negamax_update_conditions() {
     ] {
         let mut board = minase_core::parse_sfen(sfen).unwrap();
         let key = material_key(&board);
-        let eval = evaluate(&nnue, &board);
+        let eval = evaluate(nnue, &board);
         let score = eval + delta;
         let (alpha, beta) = match bound {
             Bound::Exact => (-INFINITY, INFINITY),
@@ -73,7 +73,7 @@ fn correction_negamax_update_conditions() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &board,
             rules,
             &[],
@@ -121,7 +121,7 @@ fn correction_negamax_update_conditions() {
 
 #[test]
 fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for score in [MATE_THRESHOLD, -MATE_THRESHOLD, MATE - 1, -MATE + 1] {
         let stop = AtomicBool::new(false);
         let shared = shared(&stop);
@@ -140,7 +140,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &board,
             rules,
             &[],
@@ -172,7 +172,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &board,
             MoveRules::standard(),
             &[],
@@ -195,7 +195,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
 
 #[test]
 fn correction_workers_are_independent_and_new_search_resets_table() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
     let board = minase_core::parse_sfen(QUIET).unwrap();
@@ -204,7 +204,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut a = new_searcher(
-        &nnue,
+        nnue,
         &board,
         MoveRules::standard(),
         &[],
@@ -217,7 +217,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut b = new_searcher(
-        &nnue,
+        nnue,
         &board,
         MoveRules::standard(),
         &[],
@@ -238,7 +238,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let c = new_searcher(
-        &nnue,
+        nnue,
         &board,
         MoveRules::standard(),
         &[],
@@ -252,19 +252,19 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
 
 #[test]
 fn correction_changes_futility_expansion_at_boundary() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
     let mut nodes = Vec::new();
     for correction in [0, 1] {
         let mut board = minase_core::parse_sfen(QUIET).unwrap();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(&nnue, &board) + nnue.pawn_value() * params::futility_margin1() / 100;
+        let alpha = evaluate(nnue, &board) + nnue.pawn_value() * params::futility_margin1() / 100;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &board,
             MoveRules::standard(),
             &[],
@@ -297,7 +297,7 @@ fn correction_changes_futility_expansion_at_boundary() {
 
 #[test]
 fn correction_search_move_and_null_move_propagate_material_keys() {
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
     let rules = MoveRules::standard();
@@ -309,7 +309,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &board,
             rules,
             &[],
@@ -347,7 +347,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
-        &nnue,
+        nnue,
         &board,
         rules,
         &[],

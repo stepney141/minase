@@ -456,7 +456,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
 #[test]
 fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let (board, captures) = captures_over_limit();
-    let nnue = epoch_zero_nnue();
+    let nnue = test_nnue();
     // 盲虎は歩兵より捕獲価値が高く、エポック0では評価増分が駒価値とdelta_marginの和に収まる。
     // 先頭の歩兵捕獲だけを枝刈りし、残りの捕獲でαが上がらない局面にする。
     let pieces: Vec<_> = Square::all()
@@ -474,7 +474,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
         })
         .collect();
     let board = position_from_codes(Color::Black, &pieces);
-    with_nnue_root_searcher(&nnue, &board, &[], |searcher| {
+    with_nnue_root_searcher(nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
         seed_first(searcher, &board, captures[0], ply);
         let alpha = evaluate(searcher.nnue, &board)
