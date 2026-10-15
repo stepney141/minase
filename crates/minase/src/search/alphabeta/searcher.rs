@@ -53,8 +53,6 @@ pub(super) fn new_searcher<'a>(
         current_root_nodes: Vec::new(),
         #[cfg(test)]
         interrupt_at: None,
-        #[cfg(test)]
-        move_loop_probe: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         nnue,
@@ -116,19 +114,6 @@ pub(super) enum RepetitionMatch {
     History(usize),
 }
 
-/// 手の順位とノード数の試験で、指定plyの候補を除外し、禁止判定後の順位を観測する。
-#[cfg(test)]
-pub(super) struct MoveLoopProbe {
-    /// 観測する手の深さ。
-    pub(super) ply: u32,
-    /// 比較用に候補列から除く手。
-    pub(super) excluded: Vec<Move>,
-    /// 候補手、探索順位、直前までに数えた静かな手の数。
-    pub(super) visits: Vec<(Move, usize, i32)>,
-    /// 最初の候補を観測した時点の探索経路のキー。
-    pub(super) path_keys: Vec<u64>,
-}
-
 /// 1回の探索実行の可変状態。
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
@@ -140,9 +125,6 @@ pub(super) struct Searcher<'a> {
     /// 「途中結果の採用」の停止契約を実着手の境界で再現する検査用の停止点。
     #[cfg(test)]
     pub(super) interrupt_at: Option<(u64, StopReason)>,
-    /// 禁止手を除いた探索と候補列から除いた対照を比較するための観測点。
-    #[cfg(test)]
-    pub(super) move_loop_probe: Option<MoveLoopProbe>,
     /// このワーカーだけが更新する探索統計。
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,

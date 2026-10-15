@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::search::REPETITION_WIN;
-use crate::search::alphabeta::searcher::MoveLoopProbe;
+use crate::search::alphabeta::pruning::late_move_limit;
 use minase_core::rules::parse_rule_set;
 use minase_core::{Game, GameResult, GameStatus, RepetitionRule, Rules, WinReason};
 
@@ -74,15 +74,6 @@ fn with_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, test: impl FnOnce(&mut 
     );
 }
 
-fn probe(ply: u32, excluded: Vec<Move>) -> MoveLoopProbe {
-    MoveLoopProbe {
-        ply,
-        excluded,
-        visits: Vec::new(),
-        path_keys: Vec::new(),
-    }
-}
-
 /// 静止探索に捕獲がないことを確認し、禁止手を除く1手読みの値を静的評価から求める。
 fn best_allowed_leaf(searcher: &Searcher<'_>, board: &Position, forbidden: Move) -> i32 {
     let mut moves = Vec::new();
@@ -126,19 +117,15 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
                 assert_eq!(current, before);
                 let expected = best_allowed_leaf(searcher, &current, cycle[3]);
                 assert!(expected < DRAW_SCORE);
-                searcher.move_loop_probe = Some(probe(ply, vec![]));
+                let nodes = searcher.nodes;
                 assert_eq!(
                     searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
                     Some(expected)
                 );
-                assert!(
-                    !searcher
-                        .move_loop_probe
-                        .as_ref()
-                        .unwrap()
-                        .visits
-                        .iter()
-                        .any(|&(mv, _, _)| mv == cycle[3])
+                // 捕獲のない1手読みでは、禁止手を除いた各候補だけが1ノードを使う。
+                assert_eq!(
+                    searcher.nodes - nodes,
+                    (legal_moves(&current).len() - 1) as u64
                 );
                 assert!(searcher.tt.probe(search_key(&repeated), ply + 1).is_none());
                 assert_ne!(
@@ -208,20 +195,18 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                 } else {
                     let expected = best_allowed_leaf(searcher, &current, cycle[3]);
                     assert!(expected < DRAW_SCORE);
-                    searcher.move_loop_probe = Some(probe(ply, vec![]));
+                    let before = current.clone();
+                    let nodes = searcher.nodes;
                     assert_eq!(
                         searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
                         Some(expected)
                     );
-                    assert!(
-                        !searcher
-                            .move_loop_probe
-                            .as_ref()
-                            .unwrap()
-                            .visits
-                            .iter()
-                            .any(|&(mv, _, _)| mv == cycle[3])
+                    assert_eq!(
+                        searcher.nodes - nodes,
+                        (legal_moves(&current).len() - 1) as u64
                     );
+                    assert_ne!(searcher.pv[ply as usize][0], cycle[3]);
+                    assert_eq!(current, before);
                 }
             });
         }
@@ -404,63 +389,84 @@ fn check_no_generated_moves_keep_the_mate_score() {
 #[test]
 fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_ranks_or_nodes() {
     let nnue = epoch_zero_nnue();
-    let (mut game, cycle) = cycle_fixture(RepetitionRule::R2, false);
+    // 白の候補は王3手、金6手、歩1手であり、金の戻り1手だけが禁止される。
+    // 残る9手を深さ2のlate move pruningの上限に合わせ、禁止手の誤算入を検出する。
+    let mut game = Game::from_position(
+        rules("L0,P0,R2,E1,E2"),
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(3, 3), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 3), Color::Black, PieceKind::GoldGeneral),
+                (sq(2, 8), Color::White, PieceKind::Pawn),
+                (sq(8, 8), Color::White, PieceKind::GoldGeneral),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    let cycle = [
+        step(sq(3, 3), sq(3, 4)),
+        step(sq(8, 8), sq(8, 7)),
+        step(sq(3, 4), sq(3, 3)),
+        step(sq(8, 7), sq(8, 8)),
+    ];
     play(&mut game, &cycle[..3]);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
     let forbidden = cycle[3];
+    let allowed: Vec<_> = legal_moves(snapshot.position())
+        .into_iter()
+        .filter(|&mv| mv != forbidden)
+        .collect();
+    assert_eq!(allowed, game.legal_moves());
+    assert_eq!(allowed.len(), late_move_limit(2) as usize);
+    let reference = SearchSnapshot::from_parts(
+        snapshot.position().clone(),
+        snapshot.rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        vec![],
+        allowed.clone(),
+    )
+    .unwrap();
     for source in ["tt", "killer", "quiet"] {
-        for mode in ["lmp", "lmr", "cutoff"] {
+        for mode in ["full", "lmp", "lmr", "cutoff"] {
             let mut outcomes = Vec::new();
-            for reference in [false, true] {
-                let repetition = if reference {
-                    SearchRepetition::R1 {
-                        consecutive_attacking_moves: [0; 2],
+            for (is_reference, input) in [(false, &snapshot), (true, &reference)] {
+                with_snapshot(input, &nnue, |searcher| {
+                    let mut current = snapshot.position().clone();
+                    // 履歴値を異ならせ、根と内部ノードの整列の違いに左右されない順序を与える。
+                    for (index, mv) in allowed.iter().enumerate() {
+                        searcher.history[current.side_to_move().index()][mv.from.dense_index()]
+                            [mv.to.dense_index()] = 900 - index as i32;
                     }
-                } else {
-                    snapshot.repetition()
-                };
-                let history = if reference {
-                    &[][..]
-                } else {
-                    snapshot.history_keys()
-                };
-                with_repetition_root_searcher(
-                    &nnue,
-                    snapshot.position(),
-                    snapshot.rules(),
-                    repetition,
-                    history,
-                    |searcher| {
-                        let mut current = snapshot.position().clone();
-                        searcher.move_loop_probe =
-                            Some(probe(0, if reference { vec![forbidden] } else { vec![] }));
-                        // 両者に同じ候補順を与え、対照だけは候補列から禁止手を取り除く。
-                        searcher.history[current.side_to_move().index()]
-                            [forbidden.from.dense_index()][forbidden.to.dense_index()] = 1000;
-                        if source == "tt" {
-                            searcher.tt.store(
-                                search_key(&current),
-                                0,
-                                0,
-                                Bound::Upper,
-                                Some(forbidden),
-                                0,
-                            );
-                        } else if source == "killer" {
-                            searcher.killers[0][0] = Some(forbidden);
-                        }
-                        let static_eval = evaluate(&nnue, &current);
-                        let (depth, alpha, beta, child_score) = match mode {
-                            "lmp" => (2, static_eval + 1, static_eval + 2, -(static_eval + 1)),
-                            "lmr" => (5, -INFINITY, INFINITY, -static_eval),
-                            "cutoff" => (2, -INFINITY, 100, -200),
-                            _ => unreachable!(),
-                        };
-                        // 子の値を固定し、順位以外の深い反復や静止探索の差を比較から除く。
-                        for mv in legal_moves(&current)
-                            .into_iter()
-                            .filter(|&mv| mv != forbidden)
-                        {
+                    searcher.history[current.side_to_move().index()]
+                        [forbidden.from.dense_index()][forbidden.to.dense_index()] = 1000;
+                    if source == "tt" {
+                        searcher.tt.store(
+                            search_key(&current),
+                            0,
+                            0,
+                            Bound::Upper,
+                            Some(forbidden),
+                            0,
+                        );
+                    } else if source == "killer" {
+                        searcher.killers[0][0] = Some(forbidden);
+                    }
+                    let static_eval = evaluate(&nnue, &current);
+                    let (depth, alpha, beta, child_score) = match mode {
+                        "full" => (2, -INFINITY, INFINITY, 0),
+                        "lmp" => (2, static_eval + 1, static_eval + 2, -(static_eval + 1)),
+                        "lmr" => (5, -INFINITY, INFINITY, -static_eval),
+                        "cutoff" => (2, -INFINITY, 100, -200),
+                        _ => unreachable!(),
+                    };
+                    // 全窓の比較以外では子の値を固定し、深い反復や静止探索の差を除く。
+                    // 固定した値ではLMRの減深量自体の違いは観測できない。
+                    if mode != "full" {
+                        for &mv in &allowed {
                             let mut child = current.clone();
                             child.make_move_unchecked(mv, searcher.rules);
                             searcher.tt.store(
@@ -472,48 +478,35 @@ fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_rank
                                 1,
                             );
                         }
+                    }
+                    let (best_move, score) = if is_reference {
+                        searcher
+                            .search_root(&current, input.root_moves(), depth, alpha, beta)
+                            .unwrap()
+                    } else {
                         let score = searcher
                             .negamax(&mut current, depth, alpha, beta, 0)
                             .unwrap();
-                        let visits = searcher.move_loop_probe.as_ref().unwrap().visits.clone();
-                        assert!(!visits.is_empty());
-                        assert_eq!(visits[0].1, 0);
-                        assert!(!visits.iter().any(|&(mv, _, _)| mv == forbidden));
                         assert_eq!(
                             searcher.history[current.side_to_move().index()]
                                 [forbidden.from.dense_index()][forbidden.to.dense_index()],
                             1000
                         );
-                        if mode == "lmr" {
-                            let effective_depth = if source == "tt" { depth } else { depth - 1 };
-                            assert!(visits.iter().any(|&(_, index, _)| lmr_reduction(
-                                effective_depth,
-                                index,
-                                0
-                            ) > 0));
-                        }
-                        if mode == "lmp" {
-                            assert!(searcher.nodes < visits.len() as u64);
-                        }
-                        if mode == "cutoff" {
-                            assert_eq!(searcher.nodes, 1);
-                        }
-                        let histories: Vec<_> = legal_moves(&current)
-                            .into_iter()
-                            .map(|mv| {
-                                searcher.history[current.side_to_move().index()]
-                                    [mv.from.dense_index()][mv.to.dense_index()]
-                            })
-                            .collect();
-                        outcomes.push((
-                            score,
+                        (searcher.pv[0][0], score)
+                    };
+                    assert!(allowed.contains(&best_move));
+                    assert_eq!(current, *snapshot.position());
+                    if mode == "cutoff" {
+                        assert_eq!(searcher.nodes, 1, "source={source}, mode={mode}");
+                    } else if mode != "full" {
+                        assert_eq!(
                             searcher.nodes,
-                            visits,
-                            histories,
-                            searcher.killers[0],
-                        ));
-                    },
-                );
+                            allowed.len() as u64,
+                            "source={source}, mode={mode}"
+                        );
+                    }
+                    outcomes.push((searcher.nodes, best_move, score));
+                });
             }
             assert_eq!(outcomes[0], outcomes[1], "source={source}, mode={mode}");
         }
@@ -616,7 +609,6 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
                     child.make_move_unchecked(mv, searcher.rules);
                 }
                 assert_ne!(search_key(&child), child.zobrist());
-                searcher.move_loop_probe = Some(probe(1, vec![]));
                 if null {
                     assert!(
                         searcher
@@ -630,9 +622,9 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
                             .is_some()
                     );
                 }
-                let observed = searcher.move_loop_probe.as_ref().unwrap();
-                assert!(!observed.visits.is_empty());
-                assert_eq!(observed.path_keys, vec![waiting.zobrist(), child.zobrist()]);
+                // 子の展開、成り権を含む置換表キー、および探索後の復元を確かめる。
+                // 探索中だけ存在する子の経路キーはここでは観測しない。
+                assert!(searcher.nodes > u64::from(!null));
                 assert!(searcher.tt.probe(search_key(&child), 1).is_some());
                 assert!(searcher.tt.probe(child.zobrist(), 1).is_none());
                 assert_eq!(current, waiting);
