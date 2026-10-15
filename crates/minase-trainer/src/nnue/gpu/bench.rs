@@ -322,7 +322,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         step.enable_profiling();
     }
     let warmup_ticket = ring.upload(&warmup)?;
-    step.enqueue(&mut ring, &warmup_ticket, &warmup_targets)?
+    step.enqueue(&mut ring, &warmup_ticket, &warmup_targets, 1.0)?
         .collect()?;
     drop(warmup);
     let (free_after, total) = device.memory_info()?;
@@ -431,7 +431,7 @@ fn consume_batches(
             .map_err(|_| Error::Invalid("batch worker stopped early"))?;
         let ticket = ring.upload(&prepared.batch)?;
         let transfer = ring.transfer_timing(&ticket)?;
-        let result = step.enqueue(ring, &ticket, &prepared.targets)?;
+        let result = step.enqueue(ring, &ticket, &prepared.targets, 1.0)?;
         // 次の更新を投入してから直前の損失とイベント時刻を回収する。
         if let Some(previous) = pending.replace((result, transfer)) {
             measurements.collect(previous)?;
@@ -463,7 +463,7 @@ fn run_cpu(
             args.training.removal_penalty,
             threads,
         )?;
-        optimizer.update_parallel(&mut model, &gradients.parameters, threads)?;
+        optimizer.update_parallel(&mut model, &gradients.parameters, threads, 1.0)?;
         Ok(gradients.losses)
     };
     let warmup = build_batches(dataset, args.feature_set, &[&indices[..args.batch]])?

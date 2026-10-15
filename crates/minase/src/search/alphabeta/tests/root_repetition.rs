@@ -141,7 +141,7 @@ fn article_31_r1_search_selects_the_repetition_winning_move() {
     assert_eq!(game.repetition_root_moves().winning(), &[winning]);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
     assert_eq!(snapshot.root_moves(), &[winning]);
-    let result = search_snapshot(&weights().unwrap(), &snapshot);
+    let result = search_snapshot(test_nnue(), &snapshot);
     assert_eq!(result.best_move, winning);
 }
 
@@ -193,14 +193,14 @@ fn article_31_r1_search_keeps_all_moves_when_every_move_loses() {
     assert_eq!(classified.losing(), legal);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
     assert_eq!(snapshot.root_moves(), legal);
-    let result = search_snapshot(&weights().unwrap(), &snapshot);
+    let result = search_snapshot(test_nnue(), &snapshot);
     assert!(legal.contains(&result.best_move));
 }
 
 #[test]
 fn article_31_r1_search_is_unchanged_without_three_occurrences() {
     // 第31条R1。初出だけの履歴と、2回出現した局面を含む履歴を両方検査する。
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for plies in [0, 7] {
         let game = after_plies(
             rook_cycle_position(Color::Black, sq(3, 3)),
@@ -218,8 +218,8 @@ fn article_31_r1_search_is_unchanged_without_three_occurrences() {
         assert!(classified.losing().is_empty());
         let snapshot = SearchSnapshot::from_game(&game).unwrap();
         assert_eq!(snapshot.root_moves(), game.legal_moves());
-        let actual = search_snapshot(&nnue, &snapshot);
-        let expected = search_snapshot(&nnue, &unfiltered_snapshot(&game, snapshot.repetition()));
+        let actual = search_snapshot(nnue, &snapshot);
+        let expected = search_snapshot(nnue, &unfiltered_snapshot(&game, snapshot.repetition()));
         assert_eq!(actual.best_move, expected.best_move);
         assert_eq!(actual.score, expected.score);
         assert_eq!(actual.nodes, expected.nodes);

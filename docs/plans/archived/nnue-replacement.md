@@ -19,7 +19,7 @@ PSTとPST＋FMのコードは比較用のソースとして残し、探索が使
 完了（採用）。2026年10月8日に起案し、10月9日に着手し、10月11日に利用者の決定で共通土台を持つ構成へ設計を改め、10月12日に完了した。
 P型の幅128のNNUEを埋め込んだ`90280a0`が、基準M `8d0e382`（PST＋FM）に対する段階ゲートでSTC `H1`（104有効ペア、ペンタノミアル[0, 0, 24, 0, 80]、[記録](../../measurements/nnue-replacement-stc.md)）、LTC `H1`（104有効ペア、[0, 0, 17, 0, 87]、異常0件、[記録](../../measurements/nnue-replacement-ltc.md)）となり、採用した。得点率はSTCで約0.885、LTCで約0.918であり、Elo換算でおよそ+350〜+420に相当する。
 型の比較では、同じデータで学んだHalfKP-hm-b8がP型に対する対称仮説のSTCで`H0`（114有効ペア、[80, 0, 30, 0, 4]）となり、P型を採った（[記録](../../measurements/nnue-replacement-features-stc.md)）。
-学習は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)で行い（[学習の記録](../../measurements/nnue-replacement-training.md)）、どちらの型も検証損失はエポック1で最良になり、その後は訓練損失が下がる一方で検証損失が悪化して早期終了した。この頭打ちは[NNUE学習器の学習率スケジュール](../nnue-lr-schedule.md)が扱う。
+学習は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)で行い（[学習の記録](../../measurements/nnue-replacement-training.md)）、どちらの型も検証損失はエポック1で最良になり、その後は訓練損失が下がる一方で検証損失が悪化して早期終了した。この頭打ちは[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)が扱う。
 採用により、探索が使う既定の評価関数はPST＋FMからNNUEへ切り替わった。`eval/pst/`と`handcrafted.rs`は比較用に残っている。masterへのマージは利用者の許可を得てから行う。
 後続の世代反復（採用したネットで教師を生成し直す）は別の設計書で起案する。研究継続の条件（非劣性の測定）は候補が採用されたので適用しない。
 本書の学習と診断に使ったPythonの学習器と`nnue-diagnostics`は、[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)で撤去した。本書の本文の`minase_train`やPythonの診断への言及は当時の手順の記録であり、同じ診断は現在`minase-trainer diag nnue-removal`、`diag nnue-distribution`、`diag nnue-moves`で行う。

@@ -1,6 +1,7 @@
 //! バッチの並列構築と順序を保った投入を、容量3の供給と返却の2チャネルでつなぐ。
 //! 期限は群の前、各バッチの処理前、投入前に確認し、完成したバッチも順列の順に渡す。
 //! 供給側のエラーを受信側の「途中終了」で隠さずに返す。
+//! 途中検証の前には投入済み更新の損失をすべて回収し、検証中は次の更新を投入しない。
 //! CUDAの失敗、時間切れ、正常終了の全経路で両チャネルを閉じ、供給スレッドを回収する。
 
 use super::{
@@ -12,6 +13,7 @@ use crate::{
     nnue::{
         data::{InputFeatureSet, build_batches, build_targets},
         gpu,
+        schedule::LrSchedule,
     },
 };
 use std::{
@@ -31,8 +33,14 @@ pub(super) struct Training {
     pub bce: f64,
     pub auxiliary: f64,
     pub compute_seconds: f64,
+    /// 途中検証の秒数の合計。パラメータの回収とログ保存を含み、学習秒数から除く。
+    pub interval_validation_seconds: f64,
     pub steps: u64,
     pub positions: usize,
+    /// このエポックの最初に投入した更新の倍率。
+    pub first_multiplier: Option<f64>,
+    /// このエポックの最後に投入した更新の倍率。
+    pub last_multiplier: Option<f64>,
     pub gpu_used_bytes: Option<usize>,
     pub gpu_total_bytes: Option<usize>,
 }
@@ -56,8 +64,18 @@ pub(super) struct Supply<'a> {
     pub dataset: &'a Dataset,
     pub feature_set: InputFeatureSet,
     pub indices: &'a [u64],
+    /// 途中検証で評価する全検証集合の通算番号。
+    pub validation_indices: &'a [u64],
     pub teacher_ks: &'a [f64],
     pub batch: usize,
+    /// 検証用の評価器へ渡す補助損失の係数。
+    pub removal_penalty: f64,
+    /// 累積更新回数に対する途中検証の間隔。0なら無効で、エポック境界は除く。
+    pub validation_interval: u64,
+    /// 完了済み更新回数から学習率の倍率を求める規則。
+    pub schedule: LrSchedule,
+    /// `ceil(訓練局面数 / バッチサイズ)`。1以上である。
+    pub steps_per_epoch: u64,
     pub workers: usize,
     pub deadline: Instant,
 }
@@ -112,7 +130,13 @@ fn produce(
     Ok(())
 }
 
-pub(super) fn train_epoch(supply: Supply<'_>, backend: &mut Backend) -> Result<Option<Training>> {
+/// 更新順に損失を集計し、指定間隔で未回収の結果を空にしてから途中検証を呼ぶ。
+/// 検証の閉包はバックエンドを共有借用し、期限切れで検証を中断したら`false`を返す。
+pub(super) fn train_epoch(
+    supply: Supply<'_>,
+    backend: &mut Backend,
+    mut interval_validation: impl FnMut(&Supply<'_>, &Backend) -> Result<bool>,
+) -> Result<Option<Training>> {
     let (mut queue, buffers) = backend.queue(supply.feature_set, supply.batch)?;
     let memory = backend.memory()?;
     let (sender, receiver) = sync_channel(3);
@@ -137,13 +161,43 @@ pub(super) fn train_epoch(supply: Supply<'_>, backend: &mut Backend) -> Result<O
                 if Instant::now() >= supply.deadline {
                     break;
                 }
-                let result = backend.enqueue(&mut queue, &mut prepared.host, &prepared.targets)?;
+                let multiplier = supply
+                    .schedule
+                    .multiplier(backend.step(), supply.steps_per_epoch);
+                let result = backend.enqueue(
+                    &mut queue,
+                    &mut prepared.host,
+                    &prepared.targets,
+                    multiplier,
+                )?;
+                if training.first_multiplier.is_none() {
+                    training.first_multiplier = Some(multiplier);
+                }
+                training.last_multiplier = Some(multiplier);
                 // 3面だけを循環させる。fillはその面の転送完了を待ってから書き込む。
                 let _ = recycle.send(prepared.host);
                 if let Some((previous, positions)) = pending.replace((result, prepared.positions)) {
                     training.collect(previous, positions)?;
                 }
                 submitted += 1;
+                let step = backend.step();
+                if supply.validation_interval > 0
+                    && step.is_multiple_of(supply.validation_interval)
+                    && !step.is_multiple_of(supply.steps_per_epoch)
+                {
+                    if let Some((last, positions)) = pending.take() {
+                        training.collect(last, positions)?;
+                    }
+                    if Instant::now() >= supply.deadline {
+                        return Ok(None);
+                    }
+                    let validation_started = Instant::now();
+                    if !interval_validation(&supply, backend)? {
+                        return Ok(None);
+                    }
+                    training.interval_validation_seconds +=
+                        validation_started.elapsed().as_secs_f64();
+                }
             }
             if let Some((last, positions)) = pending {
                 training.collect(last, positions)?;

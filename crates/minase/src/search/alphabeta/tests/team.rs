@@ -140,7 +140,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let external_stop = AtomicBool::new(true);
     let table = small_tt();
     let outcome = run_search_team(
-        &crate::eval::weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),

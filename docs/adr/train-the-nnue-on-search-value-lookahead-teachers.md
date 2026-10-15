@@ -32,5 +32,5 @@ tataraの勝率モデル損失は、既定のオフセットと尺度がチェ�
 教師用のKを教師の分類ごとに推定する規則と、出力のKを基準の重みファイルの値に固定する規則は、[教師データを来歴ファイルで分類する](classify-teacher-data-by-provenance-files.md)と[学習する評価関数の出力Kを固定する](fix-the-output-k-of-trained-weights.md)が扱う。
 `minase-trainer nnue train`の`--lambda-override`の既定値は1.0であり、PST、FM、および同時学習の学習器が来歴のλを使うのとは既定が異なる。
 初代のネットは、検証損失がどちらの入力特徴集合でもエポック1で最良になり、その後は訓練損失だけが下がった（[学習の記録](../measurements/nnue-replacement-training.md)）。
-この頭打ちは[学習率スケジュール](../plans/nnue-lr-schedule.md)の計画が扱う。
+この頭打ちは[学習率スケジュール](../plans/archived/nnue-lr-schedule.md)の計画が扱う。
 λ=1.0の支持は条件付きなので、教師の混合比を変える提案は、NNUEの候補を対局で測って決める必要がある。

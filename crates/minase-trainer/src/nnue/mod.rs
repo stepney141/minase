@@ -6,4 +6,5 @@ pub mod gpu;
 pub mod model;
 pub mod options;
 pub mod reference;
+pub mod schedule;
 pub mod train;

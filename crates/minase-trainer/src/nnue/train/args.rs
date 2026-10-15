@@ -5,6 +5,7 @@ use crate::{
         data::{InputFeatureSet, MAX_BATCH_SIZE},
         model::Shape,
         options::{DeviceKind, TrainingOptions},
+        schedule::LrSchedule,
     },
 };
 use serde::Serialize;
@@ -21,6 +22,10 @@ pub struct Args {
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,
+    /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期エポック>:<下限>、cosine:<総長エポック>:<下限>。
+    /// 既定値は`cosine:3:0.1`で、総長3エポック、倍率の下限0.1とする。
+    #[arg(long, default_value = "cosine:3:0.1", value_parser = clap::value_parser!(LrSchedule))]
+    pub lr_schedule: LrSchedule,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
@@ -63,6 +68,9 @@ pub struct Args {
     /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
+    /// 指定した更新回数ごとに検証集合全体を評価して`validation-interval.jsonl`へ記録する。0は無効。
+    #[arg(long, default_value_t = 0)]
+    pub validation_interval: u64,
     /// バッチ供給とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,
@@ -75,6 +83,7 @@ impl Args {
     /// ファイルやGPUに触れる前に値と引数の組合せを検査する。
     pub fn validate(&self) -> Result<()> {
         self.training.validate()?;
+        self.lr_schedule.validate()?;
         Shape::new(self.feature_set, self.width, 1.0)?;
         if self.data.is_empty() {
             return Err(Error::Invalid("--data requires at least one file").into());

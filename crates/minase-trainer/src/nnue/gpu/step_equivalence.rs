@@ -217,9 +217,10 @@ fn check(
         let gradients = cpu_gradients(&cpu, batch, targets, &removal, removal_penalty)?;
         cpu_optimizer.update(&mut cpu, &gradients.parameters)?;
         let first_ticket = first_ring.upload(batch)?;
-        let first_result = first.enqueue(&mut first_ring, &first_ticket, targets)?;
+        let first_result = first.enqueue(&mut first_ring, &first_ticket, targets, 1.0)?;
         let repeated_ticket = repeated_ring.upload(batch)?;
-        let repeated_result = repeated.enqueue(&mut repeated_ring, &repeated_ticket, targets)?;
+        let repeated_result =
+            repeated.enqueue(&mut repeated_ring, &repeated_ticket, targets, 1.0)?;
         // 前の損失は次の更新を投入してから回収する。末尾だけループ外で回収する。
         if let Some(previous) = pending.take() {
             collect(&mut report, previous)?;
@@ -621,14 +622,14 @@ mod tests {
                 Step::new(device.clone(), &model, &optimizer, &removal, 1, 1000.0).unwrap();
             let mut ring = HostRing::new(&device, set, 1).unwrap();
             let ticket = ring.upload(&batch).unwrap();
-            let result = step.enqueue(&mut ring, &ticket, &[1.0]).unwrap();
+            let result = step.enqueue(&mut ring, &ticket, &[1.0], 1.0).unwrap();
             assert!(matches!(
                 result.collect(),
                 Err(Error::NonFinite("loss gradient"))
             ));
             assert!(step.snapshot().is_err());
             let ticket = ring.upload(&batch).unwrap();
-            assert!(step.enqueue(&mut ring, &ticket, &[1.0]).is_err());
+            assert!(step.enqueue(&mut ring, &ticket, &[1.0], 1.0).is_err());
         }
     }
 
@@ -714,7 +715,7 @@ mod tests {
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_step_matches_parallel_cpu_with_mixed_targets_and_custom_coefficients() {
-        // CPU実行の並列1更新とCUDA更新を同じ教師値と設定で比較する。
+        // CPU実行の並列1更新とCUDA更新を同じ教師値、設定、学習率の倍率で比較する。
         let device = Device::new(0).unwrap();
         let training = TrainingOptions {
             lr_linear: 0.02,
@@ -735,57 +736,62 @@ mod tests {
             let removal = RemovalReference::v0();
             // 0もruntime引数として通し、補助損失を無効にした境界を保護する。
             for penalty in [0.0, training.removal_penalty] {
-                let mut cpu = fixture.model.clone();
-                let mut cpu_optimizer = fixture.optimizer.clone();
-                let gradients = reference::loss_and_gradients_parallel(
-                    &cpu, &batch, &targets, &removal, penalty, 5,
-                )
-                .unwrap();
-                cpu_optimizer
-                    .update_parallel(&mut cpu, &gradients.parameters, 5)
-                    .unwrap();
-                let mut step = Step::new(
-                    device.clone(),
-                    &fixture.model,
-                    &fixture.optimizer,
-                    &removal,
-                    batch.len(),
-                    penalty,
-                )
-                .unwrap();
-                let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
-                let ticket = ring.upload(&batch).unwrap();
-                let metrics = step
-                    .enqueue(&mut ring, &ticket, &targets)
-                    .unwrap()
-                    .collect()
-                    .unwrap();
-                let (parameters, optimizer) = step.snapshot().unwrap();
-                let mut report = Report {
-                    device_name: device.name().into(),
-                    comparisons: 0,
-                    max_absolute_error: 0.0,
-                    max_relative_error: 0.0,
-                };
-                report
-                    .number(
-                        "parallel CPU BCE",
-                        0,
-                        gradients.losses.bce,
-                        metrics.losses.bce,
+                for multiplier in [1.0, 0.37] {
+                    let mut cpu = fixture.model.clone();
+                    let mut cpu_optimizer = fixture.optimizer.clone();
+                    let gradients = reference::loss_and_gradients_parallel(
+                        &cpu, &batch, &targets, &removal, penalty, 5,
                     )
                     .unwrap();
-                report
-                    .number(
-                        "parallel CPU auxiliary",
-                        0,
-                        gradients.losses.auxiliary,
-                        metrics.losses.auxiliary,
+                    cpu_optimizer
+                        .update_parallel(&mut cpu, &gradients.parameters, 5, multiplier)
+                        .unwrap();
+                    let mut step = Step::new(
+                        device.clone(),
+                        &fixture.model,
+                        &fixture.optimizer,
+                        &removal,
+                        batch.len(),
+                        penalty,
                     )
                     .unwrap();
-                compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer).unwrap();
-                if penalty == 0.0 {
-                    assert_eq!(metrics.losses.auxiliary, 0.0);
+                    let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
+                    let ticket = ring.upload(&batch).unwrap();
+                    let metrics = step
+                        .enqueue(&mut ring, &ticket, &targets, multiplier)
+                        .unwrap()
+                        .collect()
+                        .unwrap();
+                    let (parameters, optimizer) = step.snapshot().unwrap();
+                    assert_eq!(optimizer.config(), training.optimizer());
+                    assert_eq!(cpu_optimizer.config(), training.optimizer());
+                    let mut report = Report {
+                        device_name: device.name().into(),
+                        comparisons: 0,
+                        max_absolute_error: 0.0,
+                        max_relative_error: 0.0,
+                    };
+                    report
+                        .number(
+                            "parallel CPU BCE",
+                            0,
+                            gradients.losses.bce,
+                            metrics.losses.bce,
+                        )
+                        .unwrap();
+                    report
+                        .number(
+                            "parallel CPU auxiliary",
+                            0,
+                            gradients.losses.auxiliary,
+                            metrics.losses.auxiliary,
+                        )
+                        .unwrap();
+                    compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer)
+                        .unwrap();
+                    if penalty == 0.0 {
+                        assert_eq!(metrics.losses.auxiliary, 0.0);
+                    }
                 }
             }
         }
@@ -829,16 +835,23 @@ mod tests {
             .unwrap();
             let mut ring = HostRing::new(&device, set, 129).unwrap();
             let first_ticket = ring.upload(&batches[0]).unwrap();
-            let first = step.enqueue(&mut ring, &first_ticket, &targets[0]).unwrap();
+            let first = step
+                .enqueue(&mut ring, &first_ticket, &targets[0], 1.0)
+                .unwrap();
             let second_ticket = ring.upload(&batches[1]).unwrap();
             let second = step
-                .enqueue(&mut ring, &second_ticket, &targets[1])
+                .enqueue(&mut ring, &second_ticket, &targets[1], 1.0)
                 .unwrap();
             let third_ticket = ring.upload(&batches[2]).unwrap();
-            assert!(step.enqueue(&mut ring, &third_ticket, &targets[2]).is_err());
+            assert!(
+                step.enqueue(&mut ring, &third_ticket, &targets[2], 1.0)
+                    .is_err()
+            );
             assert_eq!(step.step(), fixture.optimizer.step() + 2);
             let first = first.collect().unwrap();
-            let third = step.enqueue(&mut ring, &third_ticket, &targets[2]).unwrap();
+            let third = step
+                .enqueue(&mut ring, &third_ticket, &targets[2], 1.0)
+                .unwrap();
             let actual = [first, second.collect().unwrap(), third.collect().unwrap()];
             let mut report = Report {
                 device_name: device.name().into(),
