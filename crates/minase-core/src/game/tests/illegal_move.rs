@@ -68,7 +68,7 @@ fn article_26_12_no_moves_are_accepted_after_the_game_ends() {
 fn assert_rejection_is_pure(game: &mut Game, rejected: Move, cause: IllegalMoveCause) {
     let position_before = game.position().clone();
     let ply_before = game.ply_count();
-    let keys_before = game.search_key_history().to_vec();
+    let keys_before = game.repetition_key_history().to_vec();
     let legal_before: HashSet<Move> = game.legal_moves().into_iter().collect();
 
     assert_eq!(
@@ -81,7 +81,7 @@ fn assert_rejection_is_pure(game: &mut Game, rejected: Move, cause: IllegalMoveC
 
     assert_eq!(game.position(), &position_before);
     assert_eq!(game.ply_count(), ply_before);
-    assert_eq!(game.search_key_history(), keys_before.as_slice());
+    assert_eq!(game.repetition_key_history(), keys_before.as_slice());
     assert_eq!(
         game.legal_moves().into_iter().collect::<HashSet<_>>(),
         legal_before

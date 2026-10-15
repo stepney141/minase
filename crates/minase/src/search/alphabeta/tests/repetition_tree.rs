@@ -154,7 +154,7 @@ fn article_31_r1_history_attack_counts_cover_exactly_the_history_part() {
                 if !enough {
                     counters[attacker.index()] -= 1;
                 }
-                with_root_searcher(game.position(), game.search_key_history(), |searcher| {
+                with_root_searcher(game.position(), game.repetition_key_history(), |searcher| {
                     searcher.repetition = SearchRepetition::R1 {
                         consecutive_attacking_moves: counters,
                     };
@@ -197,7 +197,7 @@ fn article_31_r1_nearest_occurrence_excludes_an_earlier_quiet_move() {
                 assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
             }
         }
-        with_root_searcher(game.position(), game.search_key_history(), |searcher| {
+        with_root_searcher(game.position(), game.repetition_key_history(), |searcher| {
             searcher.repetition = SearchSnapshot::from_game(&game).unwrap().repetition();
             let mut current = game.position().clone();
             if !in_history {

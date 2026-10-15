@@ -20,6 +20,17 @@ pub enum SearchRepetition {
     R3,
 }
 
+impl SearchRepetition {
+    /// 同一局面のキーを作るための反復規則を返す。
+    pub(super) const fn rule(self) -> RepetitionRule {
+        match self {
+            Self::R1 { .. } => RepetitionRule::R1,
+            Self::R2 => RepetitionRule::R2,
+            Self::R3 => RepetitionRule::R3,
+        }
+    }
+}
+
 /// 探索スレッドへ渡す不変の入力。
 #[derive(Clone)]
 pub struct SearchSnapshot {
@@ -29,7 +40,7 @@ pub struct SearchSnapshot {
     pub(super) rules: MoveRules,
     /// 採用中の反復規則と、規則が要する根の時点の状態。
     pub(super) repetition: SearchRepetition,
-    /// 対局開始から現局面までの探索局面キー。
+    /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: Vec<u64>,
     /// 探索の根で調べる候補手。
     pub(super) root_moves: Vec<Move>,
@@ -71,7 +82,7 @@ impl SearchSnapshot {
             game.position().clone(),
             game.rules().moves,
             repetition,
-            game.search_key_history().to_vec(),
+            game.repetition_key_history().to_vec(),
             root_moves,
         )
     }
@@ -111,7 +122,7 @@ impl SearchSnapshot {
         self.repetition
     }
 
-    /// 対局開始から現局面までの探索局面キーを返す。
+    /// 対局開始から現局面までの反復規則のキーを返す。R2・R3では成り権保留状態を含めない。
     pub fn history_keys(&self) -> &[u64] {
         &self.history_keys
     }
@@ -122,7 +133,7 @@ impl SearchSnapshot {
     }
 }
 
-/// 反復検出と置換表に使う探索局面キーを計算する。
+/// 置換表に使う探索局面キーを計算する。R1の反復規則のキーと同じ値である。
 ///
 /// 第24条第1項dが区別する成り権の保留状態は、P1、P2、P5では駒配置だけで決まらず、次の合法手を変える。
 /// そのため駒配置と手番の[`Position::zobrist`]に[`Position::rights_zobrist`]を合成する。

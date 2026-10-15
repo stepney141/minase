@@ -1,10 +1,13 @@
 //! 内部ノードのαβ探索。
 
 use crate::search::snapshot::search_key;
-use crate::search::{MATE, REPETITION_BAND_START, in_repetition_band};
+use crate::search::{
+    MATE, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition, in_repetition_band,
+};
 use minase_core::mv::Move;
 use minase_core::piece::Color;
 use minase_core::position::Position;
+use minase_core::repetition_key;
 
 use super::INFINITY;
 use super::correction::key_after_move;
@@ -34,11 +37,14 @@ impl Searcher<'_> {
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
     /// 深さ0では[`Self::quiesce`]へ移り、合法手のない局面は第23条により`-MATE + ply`を返す。
+    /// R2・R3で全合法手が禁止手なら`-(REPETITION_WIN - ply)`を返し、どちらも置換表へ保存しない。
+    /// 禁止は履歴と経路に依存するため、別の経路で負けの値が再利用される詰みの帯を使わない。
     /// 中断された場合は`None`を返す。
     ///
     /// 置換表の専用の帯の値は経路に依存するため打ち切りに使わず、記録手だけを使う。
     /// 保存された詰みの距離と読み出し位置の手数の和が256を超える深い詰みの値も、
     /// 補正後に専用の帯へ入ると打ち切りに使われなくなる。保存形式に伴う既知の制約とする。
+    /// 禁止手を除いて求めた通常の評価値は、履歴と経路に依存するまま置換表へ保存する近似を残す。
     ///
     /// 置換表で打ち切れず、要求深さ3以上で記録手がなければ、内部反復減深（IIR）として1だけ浅く読む。
     /// stand-patだけの記録も「記録手なし」に含める。
@@ -189,6 +195,7 @@ impl Searcher<'_> {
         let mut beta_cutoff = false;
         let mut index = 0;
         let mut counted_quiets = 0;
+        let mut had_forbidden_move = false;
         let mut searched_captures = Vec::new();
         let mut searched_quiets: Vec<Move> = Vec::new();
         // 枝刈りされた候補は探索順位に含めない。
@@ -203,6 +210,28 @@ impl Searcher<'_> {
             self.history,
             self.capture_history,
         ) {
+            #[cfg(test)]
+            if self
+                .move_loop_probe
+                .as_ref()
+                .is_some_and(|probe| probe.ply == ply && probe.excluded.contains(&mv))
+            {
+                continue;
+            }
+            // 禁止手は探索順位、枝刈りの静かな手数、履歴の更新対象、ノード数に含めない。
+            if self.move_is_forbidden(position, mv) {
+                had_forbidden_move = true;
+                continue;
+            }
+            #[cfg(test)]
+            if let Some(probe) = &mut self.move_loop_probe
+                && probe.ply == ply
+            {
+                if probe.visits.is_empty() {
+                    probe.path_keys.clone_from(&self.path_keys);
+                }
+                probe.visits.push((mv, index, counted_quiets));
+            }
             // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
             // killer手はこの制限から除くが、futilityの対象にはなり得る。
             let counted_quiet = Some(mv) != tt_move
@@ -314,7 +343,11 @@ impl Searcher<'_> {
             self.stats.record_best_move_rank(best_move_rank);
         }
         let Some(best_move) = best_move else {
-            return Some(-MATE + ply as i32);
+            return Some(if had_forbidden_move {
+                -(REPETITION_WIN - ply as i32)
+            } else {
+                -MATE + ply as i32
+            });
         };
         let bound = if best_score <= original_alpha {
             Bound::Upper
@@ -361,7 +394,8 @@ impl Searcher<'_> {
         let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
         let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
         // このキー自体では反復を判定せず、部分木内の実着手からの参照点にする。
-        self.path_keys.push(search_key(position));
+        self.path_keys
+            .push(repetition_key(self.repetition.rule(), position));
         self.path_moves.push(PathMove {
             mv: None,
             attacking: None,
@@ -382,7 +416,8 @@ impl Searcher<'_> {
     /// 王駒をすべて取る手は子局面での終局値`MATE - (ply + 1)`を返す。
     /// [`Self::find_repetition`]で再現を認めた子局面は、経路へ積む前に[`Self::repetition_score`]を返す。
     /// 第31条R1では現在の着手を含む1周の攻撃側が負け、双方またはどちらも攻撃側でなければ引き分けとする。
-    /// 勝敗の値は`REPETITION_WIN - (ply + 1)`の正負とし、R2とR3は引き分けを返す。
+    /// 勝敗の値は`REPETITION_WIN - (ply + 1)`の正負とし、R3の禁止されない再現は引き分けを返す。
+    /// R2の禁止手は呼び出し前に除く。null moveの部分木では照合範囲より前の再現を検出しない。
     /// その子局面自体は置換表へ保存しないが、反復の値を含めて求めた親の値は保存する。
     /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
     /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
@@ -414,7 +449,13 @@ impl Searcher<'_> {
         }
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
-        if let Some(repeated) = self.find_repetition(key) {
+        let repetition_key = match self.repetition {
+            SearchRepetition::R1 { .. } => key,
+            SearchRepetition::R2 | SearchRepetition::R3 => {
+                repetition_key(self.repetition.rule(), position)
+            }
+        };
+        if let Some(repeated) = self.find_repetition(repetition_key) {
             let score = self.repetition_score(repeated, position, mv, ply);
             position.unmake_move(undo);
             return Some(score);
@@ -429,7 +470,7 @@ impl Searcher<'_> {
         );
         self.material_keys[(ply + 1) as usize] =
             key_after_move(self.material_keys[ply as usize], &undo);
-        self.path_keys.push(key);
+        self.path_keys.push(repetition_key);
         self.path_moves.push(PathMove {
             mv: Some(mv),
             attacking: None,

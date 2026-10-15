@@ -246,7 +246,7 @@ fn occurrences_after(game: &Game, mv: Move) -> usize {
     let mut after = game.position().clone();
     after.make_move_unchecked(mv, game.rules().moves);
     let key = after.zobrist() ^ after.rights_zobrist();
-    game.search_key_history()
+    game.repetition_key_history()
         .iter()
         .filter(|&&old| old == key)
         .count()
@@ -484,14 +484,14 @@ fn article_31_r1_classification_preserves_game_and_skips_unrepeated_history() {
     for game in classified_states() {
         let before = (
             game.position().clone(),
-            game.search_key_history().to_vec(),
+            game.repetition_key_history().to_vec(),
             game.ply_count(),
             game.status(),
             game.legal_moves(),
         );
         game.repetition_root_moves();
         assert_eq!(game.position(), &before.0);
-        assert_eq!(game.search_key_history(), before.1);
+        assert_eq!(game.repetition_key_history(), before.1);
         assert_eq!(game.ply_count(), before.2);
         assert_eq!(game.status(), before.3);
         assert_eq!(game.legal_moves(), before.4);

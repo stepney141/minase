@@ -1,6 +1,66 @@
 //! 第24〜25条の同一局面と反復規則の選択、および第31条の反復に関するローカルルールの試験。
 
 use super::*;
+use crate::rules::parse_rule_set;
+use crate::{RepetitionRule, repetition_key};
+
+#[test]
+fn articles_24_31_r2_p2_keys_ignore_waiting_rights_while_r1_distinguishes_them() {
+    // 第31条R2の補充規定では第24条第1項dを除く。禁止手しかなければ第23条で負ける。
+    let rules = Rules::from_codes(&parse_rule_set("L1,L3,P2,P5,P6,R2,E1,E2").unwrap()).unwrap();
+    let mut game = Game::from_position(
+        rules,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(4, 7), piece(Color::Black, PieceKind::SilverGeneral)),
+                (sq(10, 10), piece(Color::White, PieceKind::GoldGeneral)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ),
+    );
+    assert_eq!(game.play(step(sq(4, 7), sq(4, 8))), Ok(GameStatus::Ongoing));
+    let waiting = game.position().clone();
+    assert!(waiting.promotion_deferred().contains(sq(4, 8)));
+    for mv in [
+        step(sq(10, 10), sq(10, 9)),
+        step(sq(4, 8), sq(5, 9)),
+        step(sq(10, 9), sq(10, 10)),
+    ] {
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        assert_eq!(
+            game.repetition_key_history().last(),
+            Some(&game.position().zobrist())
+        );
+    }
+    let returning = step(sq(5, 9), sq(4, 8));
+    let mut expired = game.position().clone();
+    expired.make_move_unchecked(returning, rules.moves);
+    assert!(expired.promotion_deferred().is_empty());
+    assert_eq!(waiting.zobrist(), expired.zobrist());
+    for rule in [RepetitionRule::R2, RepetitionRule::R3] {
+        assert_eq!(
+            repetition_key(rule, &waiting),
+            repetition_key(rule, &expired)
+        );
+    }
+    assert_ne!(
+        repetition_key(RepetitionRule::R1, &waiting),
+        repetition_key(RepetitionRule::R1, &expired)
+    );
+    assert_eq!(
+        game.repetition_key_history()[1],
+        repetition_key(RepetitionRule::R2, &waiting)
+    );
+    assert_eq!(
+        game.play(returning),
+        Err(GameError::IllegalMove {
+            mv: returning,
+            cause: IllegalMoveCause::Repetition
+        })
+    );
+}
 
 #[test]
 fn article_31_r1_public_attack_counters_follow_moves_and_adjudication() {

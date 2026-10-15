@@ -2,7 +2,7 @@
 
 use super::adjudication::{AdjudicationContext, AdjudicationState, adjudicate_after_move};
 use super::repetition::{
-    RepetitionHistory, repetition_is_forbidden, retain_repetition_allowed_moves,
+    RepetitionHistory, repetition_is_forbidden, repetition_key, retain_repetition_allowed_moves,
 };
 use crate::movegen::MoveGenerator;
 use crate::mv::Move;
@@ -15,7 +15,7 @@ use super::result::{DrawReason, GameResult, GameStatus, WinReason};
 
 /// 1対局の進行を管理する対局管理層。
 ///
-/// 局面、完全な規則集合、生成器、審判状態、探索局面キーの履歴、および対局結果を所有する。
+/// 局面、完全な規則集合、生成器、審判状態、反復規則のキーの履歴、および対局結果を所有する。
 /// 履歴に依存する合法性（R2とR3）と終局の裁定を扱い、終局後の着手を拒否する。
 /// [`Position`]と[`MoveGenerator`]は履歴を知らない。
 /// 探索木の各節点では[`Self::play`]を呼ばず、最善手を決めた後に対局管理側が1回だけ呼ぶ。
@@ -30,8 +30,8 @@ pub struct Game {
     generator: MoveGenerator,
     /// 反復履歴・駒枯れ猶予・手数の裁定用状態。
     adjudication: AdjudicationState,
-    /// 対局開始から現在までの探索局面キー。
-    search_key_history: Vec<u64>,
+    /// 対局開始から現在までの反復規則のキー。R2・R3では成り権保留状態を含めない。
+    repetition_key_history: Vec<u64>,
     /// 終局していれば対局結果。
     result: Option<GameResult>,
 }
@@ -75,8 +75,8 @@ impl Game {
         );
         self.adjudication
             .set_piece_exhaustion_grace(adjudication.piece_exhaustion_grace());
-        self.search_key_history
-            .push(self.position.zobrist() ^ self.position.rights_zobrist());
+        self.repetition_key_history
+            .push(repetition_key(self.rules.repetition, &self.position));
 
         Ok(match adjudication.result() {
             Some(result) => self.finish(result),
@@ -124,14 +124,13 @@ impl Game {
         &self.position
     }
 
-    /// 対局開始から現局面までの探索局面キーを返す。
+    /// 対局開始から現局面までの、採用中の反復規則のキーを返す。
     ///
-    /// 探索局面キーは、盤面・手番・先獅子状態のzobristハッシュと
-    /// 成り権保留状態（P1・P2・P5）のZobristハッシュをXORで合成した値である。
-    /// 成り権保留状態はRULES.md第24条第1項dに対応する。
+    /// 各局面のキーは[`repetition_key`]で作る。R1では成り権保留状態を含め、
+    /// R2・R3では含めない（RULES.md第24条第1項、第31条R2・R3の補充規定）。
     #[inline]
-    pub fn search_key_history(&self) -> &[u64] {
-        &self.search_key_history
+    pub fn repetition_key_history(&self) -> &[u64] {
+        &self.repetition_key_history
     }
 
     /// R1の対局で、直近まで連続した攻撃的着手の数を対局者ごとに返す（RULES.md第31条R1）。
@@ -187,13 +186,13 @@ impl Game {
     /// 王駒がない局面や駒枯れ条件を満たす局面でも、構築時には裁定しない。
     pub fn from_position(rules: Rules, position: Position) -> Self {
         let adjudication = AdjudicationState::new(rules.repetition, &position);
-        let search_key = position.zobrist() ^ position.rights_zobrist();
+        let key = repetition_key(rules.repetition, &position);
         Self {
             position,
             rules,
             generator: MoveGenerator::new(rules.moves),
             adjudication,
-            search_key_history: vec![search_key],
+            repetition_key_history: vec![key],
             result: None,
         }
     }

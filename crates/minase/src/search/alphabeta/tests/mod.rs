@@ -24,6 +24,7 @@ mod pruning;
 mod qsearch_move_limit;
 mod quiesce;
 mod repetition_band;
+mod repetition_prohibition;
 mod repetition_tree;
 mod root;
 mod root_repetition;
@@ -92,7 +93,7 @@ use minase_core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 use minase_core::test_util::{position, position_from_codes, sq};
-use minase_core::{MoveGenerator, Square};
+use minase_core::{MoveGenerator, Square, repetition_key};
 
 // ---------------------------------------------------------------------------
 // ヘルパ
@@ -105,14 +106,18 @@ fn engine_rules() -> MoveRules {
 /// 実着手またはnull moveを適用し、対応する経路と各plyの局面状態を積む。
 fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Option<Move>) {
     if let Some(mv) = mv {
-        assert!(legal_moves(position).contains(&mv));
+        let mut moves = Vec::new();
+        searcher.generator.generate_moves(position, &mut moves);
+        assert!(moves.contains(&mv));
         position.make_move_unchecked(mv, searcher.rules);
     } else {
         position.make_null_move();
         searcher.null_move_boundary = Some(searcher.path_keys.len());
         searcher.null_move_ply = Some(searcher.path_keys.len() as u32);
     }
-    searcher.path_keys.push(search_key(position));
+    searcher
+        .path_keys
+        .push(repetition_key(searcher.repetition.rule(), position));
     searcher.path_moves.push(PathMove {
         mv,
         attacking: None,
@@ -221,6 +226,27 @@ fn with_nnue_root_searcher(
     history: &[u64],
     test: impl FnOnce(&mut Searcher<'_>),
 ) {
+    with_repetition_root_searcher(
+        nnue,
+        position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        history,
+        test,
+    );
+}
+
+/// 着手規則と反復規則を指定し、時間制限のない単一ワーカーで検査する。
+fn with_repetition_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -238,10 +264,8 @@ fn with_nnue_root_searcher(
     let mut searcher = new_searcher(
         nnue,
         position,
-        engine_rules(),
-        SearchRepetition::R1 {
-            consecutive_attacking_moves: [0; 2],
-        },
+        rules,
+        repetition,
         history,
         &shared,
         &table,

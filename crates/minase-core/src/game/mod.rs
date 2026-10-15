@@ -12,7 +12,7 @@ mod root_repetition;
 
 pub use error::{GameError, IllegalMoveCause};
 pub use referee::Game;
-pub use repetition::move_was_attacking;
+pub use repetition::{move_was_attacking, repetition_key};
 pub use result::{DrawReason, GameResult, GameStatus, WinReason};
 pub use root_repetition::RepetitionRootMoves;
 

@@ -50,7 +50,7 @@ fn unfiltered_snapshot(game: &Game, repetition: SearchRepetition) -> SearchSnaps
         game.position().clone(),
         game.rules().moves,
         repetition,
-        game.search_key_history().to_vec(),
+        game.repetition_key_history().to_vec(),
         game.legal_moves(),
     )
     .unwrap()
@@ -207,7 +207,7 @@ fn article_31_r1_search_is_unchanged_without_three_occurrences() {
             &rook_cycle(),
             plies,
         );
-        let history = game.search_key_history();
+        let history = game.repetition_key_history();
         assert!(
             history
                 .iter()

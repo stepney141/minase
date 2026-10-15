@@ -45,7 +45,7 @@ impl Game {
         }
 
         let mut occurrences = HashMap::<u64, usize>::new();
-        for &key in self.search_key_history() {
+        for &key in self.repetition_key_history() {
             *occurrences.entry(key).or_insert(0) += 1;
         }
         let repeated: HashSet<_> = occurrences
