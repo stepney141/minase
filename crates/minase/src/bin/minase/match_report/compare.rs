@@ -72,7 +72,7 @@ mod tests {
     use crate::match_report::report::{FailureCounts, MissingEngineThreads, MissingResourceCounts};
 
     #[test]
-    fn comparison_accepts_exact_threshold_boundaries() {
+    fn comparison_computes_metric_ratios_and_rejects_different_manifests() {
         let make = |m1, m2| Report {
             pentanomial: [0; 5],
             valid_pairs: 1,

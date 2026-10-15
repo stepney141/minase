@@ -65,8 +65,28 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn linux_resource_probe_reports_current_process_cpu_and_memory() {
+        let current = Process::myself().unwrap();
+        let before_stat = current.stat().unwrap();
+        let before_rss = current.status().unwrap().vmhwm.unwrap() * 1024;
         let usage = process_resource_usage(process::id());
-        assert!(usage.cpu_time_ns.is_some());
-        assert!(usage.peak_rss_bytes.is_some_and(|bytes| bytes > 0));
+        let after_stat = current.stat().unwrap();
+        let after_rss = current.status().unwrap().vmhwm.unwrap() * 1024;
+        // procfsのCPU tickとKiBの契約に照らし、観測前後の単調な値で範囲を定める。
+        let cpu = usage.cpu_time_ns.expect("current process CPU time");
+        let ticks_per_second = u128::from(procfs::ticks_per_second());
+        let scaled_cpu = u128::from(cpu) * ticks_per_second;
+        let before = u128::from(before_stat.utime + before_stat.stime) * 1_000_000_000;
+        let after = u128::from(after_stat.utime + after_stat.stime) * 1_000_000_000;
+        assert!(
+            scaled_cpu + ticks_per_second > before,
+            "CPU time below prior observation"
+        );
+        assert!(scaled_cpu <= after, "CPU time above subsequent observation");
+        let rss = usage.peak_rss_bytes.expect("current process peak RSS");
+        assert!(
+            (before_rss..=after_rss).contains(&rss),
+            "peak RSS {rss} outside [{before_rss}, {after_rss}]"
+        );
+        assert_eq!(rss % 1024, 0, "VmHWM is reported in KiB");
     }
 }

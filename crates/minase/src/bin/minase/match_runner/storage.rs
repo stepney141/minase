@@ -893,18 +893,39 @@ mod tests {
 
     // [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
     #[test]
-    fn resume_rejects_version_three_before_decoding_new_fields() {
-        let path = temporary_directory("version-three");
-        let expected = manifest();
-        drop(RunStore::create(&path, expected.clone(), 1).unwrap());
-        fs::write(path.join(MANIFEST_FILE), br#"{"format_version":3}"#).unwrap();
-        let error = RunStore::resume(&path, None).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert!(
-            error
-                .to_string()
-                .contains("unsupported manifest format version 3")
-        );
-        fs::remove_dir_all(path).unwrap();
+    fn resume_rejects_old_versions_before_decoding_new_fields_without_writes() {
+        for version in [3, 4] {
+            let path = temporary_directory("old-version");
+            drop(RunStore::create(&path, manifest(), 1).unwrap());
+            fs::write(
+                path.join(MANIFEST_FILE),
+                format!("{{\"format_version\":{version}}}"),
+            )
+            .unwrap();
+            let before: Vec<_> = [MANIFEST_FILE, "invocations.json", "summary.json"]
+                .into_iter()
+                .map(|name| (name, fs::read(path.join(name)).unwrap()))
+                .collect();
+            let error = RunStore::resume(&path, None).unwrap_err();
+            assert_eq!(
+                error.kind(),
+                io::ErrorKind::InvalidData,
+                "version {version}"
+            );
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("unsupported manifest format version {version}")),
+                "version {version}: {error}"
+            );
+            for (name, bytes) in before {
+                assert_eq!(
+                    fs::read(path.join(name)).unwrap(),
+                    bytes,
+                    "version {version}: {name}"
+                );
+            }
+            fs::remove_dir_all(path).unwrap();
+        }
     }
 }

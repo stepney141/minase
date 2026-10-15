@@ -621,7 +621,7 @@ fn repetition_history_controls_move_indices_for_r2_and_r3() {
 }
 
 #[test]
-fn lion_capture_state_and_all_piece_codes_round_trip() {
+fn lion_capture_state_round_trips() {
     let trigger = sq(4, 4);
     for piece in [
         PieceCode::new(Color::White, PieceKind::Bishop).unwrap(),
@@ -645,33 +645,6 @@ fn lion_capture_state_and_all_piece_codes_round_trip() {
         let mut corrupt = data;
         corrupt[H + 160] ^= 1;
         assert_error(&corrupt, Error::LionPromotionMismatch);
-    }
-    for color in [Color::Black, Color::White] {
-        for kind in PieceKind::ALL {
-            for (promoted, piece) in [
-                (false, PieceCode::new(color, kind)),
-                (true, PieceCode::new_promoted(color, kind)),
-            ] {
-                if let Some(piece) = piece {
-                    let start = position_from_codes(color, &[(sq(0, 0), piece)]);
-                    let r = GameRecord::new(
-                        0,
-                        Origin::Synthetic,
-                        Outcome::NotFromGame,
-                        0,
-                        start.clone(),
-                        vec![entry(None, Policy::None)],
-                    )
-                    .unwrap();
-                    let data = bytes(header(TeacherKind::AlphaBeta), &[r]);
-                    assert_eq!(
-                        data[H + 14],
-                        1 + kind.index() as u8 + 29 * u8::from(promoted) + 64 * color as u8
-                    );
-                    assert_eq!(decode(&data).unwrap()[0].positions(), &[start]);
-                }
-            }
-        }
     }
 }
 

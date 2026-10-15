@@ -320,59 +320,60 @@ mod tests {
         }
     }
 
-    // [`crate::harness::engine::cecp::validate_cecp_limit`]で表現できない制限を拒否する。
+    // CECPで表現できる制限だけを解決し、起動設定と既定容量を保持する。
     #[test]
-    fn cecp_resolution_rejects_unsupported_search_limits() {
-        for limit in [
-            parse_search_limit("nodes=1").unwrap(),
-            parse_search_limit("depth=1,nodes=1").unwrap(),
-            parse_search_limit("time=1000+0,byoyomi=1000").unwrap(),
-            parse_search_limit("time=0+1000,byoyomi=1000").unwrap(),
-            parse_search_limit("time=0+0,byoyomi=1500").unwrap(),
-            parse_search_limit("time=1500+0").unwrap(),
-            parse_search_limit("time=1000+1500").unwrap(),
+    fn cecp_resolution_accepts_supported_limits_and_rejects_unsupported_limits() {
+        for (text, accepted) in [
+            ("depth=4", true),
+            ("time=61000+2000", true),
+            ("time=0+0,byoyomi=2000", true),
+            ("nodes=1", false),
+            ("depth=1,nodes=1", false),
+            ("time=1000+0,byoyomi=1000", false),
+            ("time=0+1000,byoyomi=1000", false),
+            ("time=0+0,byoyomi=1500", false),
+            ("time=1500+0", false),
+            ("time=1000+1500", false),
         ] {
-            let spec = parse_player_spec("cecp:engine").unwrap();
-            let error = resolve_player(spec, limit, None, "R1", Vec::new())
-                .err()
-                .expect("the unsupported CECP limit must fail resolution");
-            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            let result = resolve_player(
+                parse_player_spec("cecp:engine --option value").unwrap(),
+                parse_search_limit(text).unwrap(),
+                None,
+                "R1",
+                Vec::new(),
+            );
+            if accepted {
+                let player = result.unwrap_or_else(|e| panic!("{text}: {e}"));
+                assert_eq!(player.protocol, Protocol::Cecp, "{text}");
+                assert_eq!(player.path, PathBuf::from("engine"), "{text}");
+                assert_eq!(player.args, ["--option", "value"], "{text}");
+                assert_eq!(
+                    probe_engine_defaults(&player, Duration::from_secs(1)).unwrap(),
+                    EngineDefaults {
+                        threads: None,
+                        hash_mb: Some(256)
+                    },
+                    "{text}"
+                );
+            } else {
+                let error = result.err().unwrap_or_else(|| panic!("{text}: accepted"));
+                assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{text}");
+            }
         }
     }
 
-    // [`crate::harness::engine::cecp::validate_cecp_limit`]が受理する3種類の制限を検査する。
     #[test]
-    fn cecp_resolution_accepts_supported_limits_and_marks_the_protocol() {
-        let depth = resolve_player(
-            parse_player_spec("cecp:engine --option value").unwrap(),
-            parse_search_limit("depth=4").unwrap(),
-            None,
+    fn usi_hash_resolution_accepts_non_power_of_two_capacity() {
+        let player = resolve_player(
+            parse_player_spec("engine").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            Some(300),
             "R1",
             Vec::new(),
         )
         .unwrap();
-        assert_eq!(depth.protocol, Protocol::Cecp);
-        assert_eq!(depth.path, PathBuf::from("engine"));
-        assert_eq!(depth.args, ["--option", "value"]);
-        assert_eq!(
-            probe_engine_defaults(&depth, Duration::from_secs(1)).unwrap(),
-            EngineDefaults {
-                threads: None,
-                hash_mb: Some(256),
-            }
-        );
-
-        for limit in ["time=61000+2000", "time=0+0,byoyomi=2000"] {
-            let time = resolve_player(
-                parse_player_spec("cecp:engine").unwrap(),
-                parse_search_limit(limit).unwrap(),
-                None,
-                "R1",
-                Vec::new(),
-            )
-            .unwrap();
-            assert_eq!(time.protocol, Protocol::Cecp);
-        }
+        assert_eq!(player.protocol, Protocol::Usi);
+        assert_eq!(player.hash_mb, Some(300));
     }
 
     // 置換表容量の検証: 0、CECPでの2の冪以外、randomへの指定は拒否する。

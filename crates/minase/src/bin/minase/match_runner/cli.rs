@@ -339,77 +339,89 @@ mod tests {
         assert!(Arguments::try_parse_from(["match_runner", "--resume", "old"]).is_ok());
     }
 
-    // docs/guides/sprt.md測定の種類と標準コマンド節に従い、`--each`がマッチ共通既定、
-    // `--candidate-limit`・`--baseline-limit`が当該エンジンだけを上書きする。
-    // 対等条件と完了基準ゲートの非対称条件を同じCLIで表現できる。
     #[test]
-    fn each_limit_is_shared_and_per_engine_overrides_are_optional() {
-        let equal = Arguments::try_parse_from([
+    fn resume_condition_arguments_are_clap_conflicts() {
+        for args in [
+            vec!["--seed", "42"],
+            vec!["--candidate", "random"],
+            vec!["--baseline", "random"],
+            vec!["--each", "depth=1"],
+            vec!["--rules", "engine-default"],
+            vec!["--max-ply", "16"],
+            vec!["--response-timeout", "120"],
+            vec!["--concurrency", "1"],
+            vec!["--ponder"],
+            vec!["--candidate-limit", "depth=1"],
+            vec!["--baseline-limit", "depth=1"],
+            vec!["--candidate-hash", "256"],
+            vec!["--baseline-hash", "256"],
+        ] {
+            let error = Arguments::try_parse_from(
+                ["match_runner", "--resume", "old"]
+                    .into_iter()
+                    .chain(args.iter().copied()),
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{args:?}"
+            );
+            assert_eq!(error.exit_code(), 2, "{args:?}");
+        }
+        let error = Arguments::try_parse_from([
             "match_runner",
             "--run-dir",
-            "run",
-            "--each",
-            "depth=4",
-            "gsprt",
+            "new",
+            "--target-pairs",
+            "2",
+            "elo",
+            "--pairs",
+            "1",
         ])
-        .expect("the equal-condition invocation must be accepted");
-        assert_eq!(
-            equal.each,
-            SearchLimit::Fixed {
-                depth: Some(4),
-                nodes: None
-            }
-        );
-        assert_eq!(equal.candidate_limit, None);
-        assert_eq!(equal.baseline_limit, None);
-
-        // 完了基準ゲートの形: ベースライン側だけdepth=1へ上書き
-        let gate = Arguments::try_parse_from([
-            "match_runner",
-            "--run-dir",
-            "run",
-            "--each",
-            "depth=4",
-            "--baseline-limit",
-            "depth=1",
-            "gsprt",
-        ])
-        .expect("the asymmetric gate invocation must be accepted");
-        assert_eq!(
-            gate.baseline_limit,
-            Some(SearchLimit::Fixed {
-                depth: Some(1),
-                nodes: None
-            })
-        );
-        assert_eq!(gate.candidate_limit, None);
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        assert_eq!(error.exit_code(), 2);
     }
 
-    // 置換表容量の指定: 両側の容量は独立に指定でき、省略時はNoneを保つ。
+    // 外部入力は型の最大値を超えた時点で拒否する。
     #[test]
-    fn hash_options_resolve_independently_for_each_engine() {
-        let arguments = Arguments::try_parse_from([
-            "match_runner",
-            "--run-dir",
-            "run",
-            "--candidate",
-            "engine",
-            "--baseline",
-            "cecp:engine",
-            "--candidate-hash",
-            "300",
-            "--baseline-hash",
-            "512",
-            "gsprt",
-        ])
-        .unwrap();
-        for (spec, hash_mb, expected) in [
-            (arguments.candidate, arguments.candidate_hash, 300),
-            (arguments.baseline, arguments.baseline_hash, 512),
+    fn numeric_arguments_reject_overflow() {
+        for args in [
+            vec!["--seed", "18446744073709551616"],
+            vec!["--max-ply", "4294967296"],
+            vec!["--candidate-hash", "18446744073709551616"],
+            vec!["--baseline-hash", "18446744073709551616"],
+            vec!["--response-timeout", "18446744073709551616"],
+            vec!["--concurrency", "18446744073709551616"],
+            vec!["gsprt", "--max-pairs", "18446744073709551616"],
+            vec!["elo", "--pairs", "18446744073709551616"],
         ] {
-            let player = resolve_player(spec, arguments.each, hash_mb, "R1", Vec::new()).unwrap();
-            assert_eq!(player.hash_mb, Some(expected));
+            let error = Arguments::try_parse_from(
+                ["match_runner", "--run-dir", "new"]
+                    .into_iter()
+                    .chain(args.iter().copied()),
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "{args:?}"
+            );
         }
+        let error = Arguments::try_parse_from([
+            "match_runner",
+            "--resume",
+            "old",
+            "--target-pairs",
+            "18446744073709551616",
+        ])
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
     // RULES.md第33条: 共通parserへの接続と指定原文の保持を検査する。
