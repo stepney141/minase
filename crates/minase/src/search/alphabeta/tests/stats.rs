@@ -289,7 +289,8 @@ fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
     let outcome = run_search_team(
         &weights().unwrap(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(5),

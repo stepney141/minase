@@ -1,10 +1,12 @@
 //! 反復規則R1の履歴と裁定、および不可逆手と攻撃的着手の判定。
 
 use super::super::result::{DrawReason, GameResult, WinReason};
+use super::repetition_key;
 use crate::movegen::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::{Color, PieceKind};
 use crate::position::{Position, Undo};
+use crate::rules::RepetitionRule;
 use std::collections::HashMap;
 
 /// 第31条R1の裁定に必要な連続可逆手数。
@@ -15,24 +17,16 @@ const R1_MIN_REVERSIBLE_PLIES: u32 = 12;
 
 /// R1で同一局面を判定するキー。
 ///
-/// 局面本体と成り権保留状態（P1・P2・P5）のZobrist値を別成分として保持する。
+/// 局面本体と成り権保留状態（P1・P2・P5）のZobrist値をXORで合成して保持する。
 /// 成り権保留状態はRULES.md第24条第1項dに対応する。
-/// 各値の衝突は実用上無視できるものとし、完全な局面署名とは照合しない。
+/// 値の衝突は実用上無視できるものとし、完全な局面署名とは照合しない。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-struct R1Key {
-    /// 盤面・手番・先獅子状態のZobrist値。
-    position_zobrist: u64,
-    /// 成り権保留状態（P1・P2・P5）のZobrist値。
-    rights_zobrist: u64,
-}
+struct R1Key(u64);
 
 impl R1Key {
     /// 局面からR1の同一局面キーを作る。
     fn from_position(position: &Position) -> Self {
-        Self {
-            position_zobrist: position.zobrist(),
-            rights_zobrist: position.rights_zobrist(),
-        }
+        Self(repetition_key(RepetitionRule::R1, position))
     }
 }
 
@@ -60,6 +54,11 @@ pub(crate) struct R1History {
 }
 
 impl R1History {
+    /// 対局者ごとの、直近まで連続した攻撃的着手の数を返す（第31条R1）。
+    pub(crate) const fn consecutive_attacking_moves(&self) -> [u32; 2] {
+        self.consecutive_attacking_moves
+    }
+
     /// 開始局面を第1回として記録した履歴を作る。
     pub(super) fn new(position: &Position) -> Self {
         Self {
@@ -221,7 +220,7 @@ pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
 /// 動かした駒に捕獲の局面合法手があれば攻撃的である（第31条R1）。
 /// じっとも、元の升にいる駒が相手駒を取れる状態なら攻撃的着手に数える。
 /// この真偽値を用いる判定区間は[`r1_repetition_result`]に従う。
-pub(crate) fn move_was_attacking(
+pub fn move_was_attacking(
     position: &Position,
     generator: &MoveGenerator,
     mover: Color,

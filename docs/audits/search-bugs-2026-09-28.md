@@ -72,7 +72,7 @@ null moveの探索値はβに届かなくなり、打ち切りが起こらない
 
 Stockfishは反復の検出を直近のnull moveより前へ遡らせない（`src/position.cpp`の`do_move`が、直前のnull moveと50手規則の手数の小さい方までを遡る。[反復の先行実装の調査](../research/search-repetition-prior-art.md)参照）。
 ElephantEyeも遡りをnull moveで止める（同）。
-ところが[探索内の反復負け回避](../plans/search-repetition.md)86行は、周回の区間にnull moveが含まれる場合を引き分けとし、その根拠にElephantEyeの遡りの停止を挙げている。
+ところが[探索内の反復負け回避](../plans/archived/search-repetition.md)86行は、周回の区間にnull moveが含まれる場合を引き分けとし、その根拠にElephantEyeの遡りの停止を挙げている。
 遡りを止めれば反復は検出されず、引き分けにはならないので、この記述は引用した先行実装と逆の結論になっている。
 既存のテスト`src/search/alphabeta/tests/contracts.rs`47行は、null move後の実着手による反復を参照に含める現行の挙動を固定している。
 
@@ -99,7 +99,7 @@ Codexは局面`KP10/LL10/12/12/12/12/12/12/12/12/12/10k1 w`で、深さ1が`-601
 Codexは次の2件も再現した。
 1件は、反復による引き分けの値が親局面の置換表項目を通じて別の経路で再利用されるgraph history interactionである。
 もう1件は、R1、R2、R3の反復規則を探索の木の中で一律に引き分けとして扱うことである。
-どちらも[探索部の設計書](../plans/archived/search.md)の「探索内の終局と規則処理」節と[探索内の反復負け回避](../plans/search-repetition.md)に既知の近似として記載されているので、本報告の不具合には含めない。
+どちらも[探索部の設計書](../plans/archived/search.md)の「探索内の終局と規則処理」節と[探索内の反復負け回避](../plans/archived/search-repetition.md)に既知の近似として記載されているので、本報告の不具合には含めない。
 
 ## 問題が見つからなかった観点
 

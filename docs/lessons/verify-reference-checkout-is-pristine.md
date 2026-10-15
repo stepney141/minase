@@ -19,4 +19,4 @@
 ## 出典
 
 - [探索内の反復の扱いに関する既存実装の調査](../research/search-repetition-prior-art.md)
-- [探索部の反復負け回避](../plans/search-repetition.md)
+- [探索部の反復負け回避](../plans/archived/search-repetition.md)

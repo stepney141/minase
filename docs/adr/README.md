@@ -115,7 +115,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年8月22日 [`try_make_move`は全合法手との照合で検査する](check-try-make-move-against-all-legal-moves.md)
 - 2026年8月22日 [実行ファイルでmimallocを使う](use-mimalloc-in-executables.md)
 - 2026年8月22日 [採否はペア単位のペンタノミアルGSPRTで判定する](judge-adoption-by-pentanomial-gsprt.md)
-- 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](approximate-adjudication-inside-search-tree.md)
+- 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](approximate-adjudication-inside-search-tree.md)（置き換え済み）
 - 2026年8月22日 [王手延長を実装しない](omit-check-extension.md)
 - 2026年8月23日 [探索ワーカー数の既定値を1にする](keep-default-threads-at-one.md)
 - 2026年8月23日 [置換表のエントリを2語の原子値にする](use-atomic-two-word-transposition-entries.md)
@@ -237,3 +237,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
 - 2026年10月14日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を、除外の理由を付けて教師データに記録する](record-excluded-positions-with-a-reason.md)
 - 2026年10月14日 [`unsafe`は学習器のGPUの処理だけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-gpu-code.md)
+- 2026年10月15日 [反復による勝敗を、詰み帯の内側の専用の帯で表し、置換表の打ち切りに使わない](reserve-a-path-dependent-band-for-repetition-outcomes.md)
+- 2026年10月15日 [R2とR3が禁じる着手を探索木の中で読まず、禁止手しかない局面を負けとする](skip-forbidden-repetition-moves-inside-the-tree.md)
+- 2026年10月15日 [R1の反復負けは根の候補手の選別で避け、探索木の中の周回は攻撃側の負けとして読む](avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)
+- 2026年10月15日 [探索木の中では駒枯れ、裸玉、および詰みの裁定を近似し、厳密な裁定を審判層に委ねる](approximate-exhaustion-and-mate-inside-search-tree.md)

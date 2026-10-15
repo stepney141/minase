@@ -34,4 +34,4 @@ null moveが入れ子になる場合は内側の境界を使い、部分木か�
 境界の保持と照合は、`crates/minase/src/search/alphabeta/searcher.rs`の`is_repetition`と、`negamax.rs`の`search_null_move`にある。
 非劣性の判定は、10 Elo未満の小さな低下までは否定しない。
 この決定の根拠は棋力の向上ではなく探索値の正しさなので、評価関数が変わっても再提案の理由にはならない。
-反復の値が置換表を通じて別の経路へ漏れる問題は本決定の範囲外であり、[探索部の反復負け回避](../plans/search-repetition.md)が扱う。
+反復の値が置換表を通じて別の経路へ漏れる問題は本決定の範囲外であり、[探索部の反復負け回避](../plans/archived/search-repetition.md)が扱う。

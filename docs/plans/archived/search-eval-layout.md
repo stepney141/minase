@@ -47,7 +47,7 @@ NPSは再編後の中央値が基点の3回の計測の揺れの範囲を上側�
 ブランチ`search-aware-evaluation`は、`src/eval/features.rs`、`src/eval/pst.rs`、および`crates/minase/src/search/mod.rs`を変更し、`src/search/sampling.rs`を追加している。
 [探索局面を用いた学習](search-aware-evaluation.md)は重みを採用せずに完了し、診断用のコードをmasterへ統合するかは利用者の判断を待っている。
 本書の再編を先にmasterへ入れるので、同ブランチを統合する場合はmasterを取り込み、採取の処理を`src/search/alphabeta/sampling.rs`へ、静止探索と`search_move`への呼び出しを`quiesce.rs`と`negamax.rs`へ、特徴の変更を`crates/minase/src/eval/pst/features.rs`へ付け替える。
-[棋力向上段階12](strength-stage12.md)と[反復負け回避](../search-repetition.md)は未着手なので、着手時に新しい配置で実装する。
+[棋力向上段階12](strength-stage12.md)と[反復負け回避](search-repetition.md)は未着手なので、着手時に新しい配置で実装する。
 
 ## 設計判断
 

@@ -5,8 +5,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::eval::Nnue;
-use crate::search::TranspositionTable;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
+use crate::search::{SearchRepetition, TranspositionTable};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
@@ -38,6 +38,7 @@ pub(super) fn run_main_worker(
     nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
+    repetition: SearchRepetition,
     root_moves: &[Move],
     history_keys: &[u64],
     depth_limit: u32,
@@ -54,6 +55,7 @@ pub(super) fn run_main_worker(
         nnue,
         position,
         rules,
+        repetition,
         history_keys,
         shared,
         tt,
@@ -198,6 +200,7 @@ pub(super) fn run_auxiliary_worker(
     nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
+    repetition: SearchRepetition,
     root_moves: &[Move],
     history_keys: &[u64],
     depth_limit: u32,
@@ -211,6 +214,7 @@ pub(super) fn run_auxiliary_worker(
         nnue,
         position,
         rules,
+        repetition,
         history_keys,
         shared,
         tt,

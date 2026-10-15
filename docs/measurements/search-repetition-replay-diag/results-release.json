@@ -1,0 +1,2800 @@
+{
+  "all_moves_losing": 0,
+  "all_moves_losing_games": [],
+  "classification_mismatches": [],
+  "classification_time_us": {
+    "first_call": {
+      "max": 1080.33,
+      "median": 295.89549999999997,
+      "min": 53.393
+    },
+    "min_of_10": {
+      "max": 758.2389999999999,
+      "median": 276.676,
+      "min": 47.19
+    }
+  },
+  "final_move_in_losing": 184,
+  "final_move_not_in_losing": [],
+  "games": 184,
+  "legal_moves": {
+    "max": 144.0,
+    "median": 78.0,
+    "min": 18.0
+  },
+  "losing_counts": {
+    "max": 3.0,
+    "median": 1.0,
+    "min": 1.0
+  },
+  "measurements": [
+    {
+      "classification_time_us": {
+        "first_call": 422.397,
+        "min_of_10": 403.929
+      },
+      "game": 1,
+      "legal": 96,
+      "losing": 1,
+      "move": "2d3d",
+      "pair": 5,
+      "reference_time_us": 2511675.584,
+      "root_turn_index": 375,
+      "turns": 377,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 155.358,
+        "min_of_10": 142.569
+      },
+      "game": 1,
+      "legal": 58,
+      "losing": 1,
+      "move": "6g5f",
+      "pair": 9,
+      "reference_time_us": 390686.18,
+      "root_turn_index": 305,
+      "turns": 306,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 788.765,
+        "min_of_10": 758.2389999999999
+      },
+      "game": 0,
+      "legal": 136,
+      "losing": 2,
+      "move": "8h8i",
+      "pair": 10,
+      "reference_time_us": 3108271.5919999997,
+      "root_turn_index": 326,
+      "turns": 327,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 97.74499999999999,
+        "min_of_10": 89.847
+      },
+      "game": 0,
+      "legal": 31,
+      "losing": 1,
+      "move": "3a3b",
+      "pair": 11,
+      "reference_time_us": 5655.951,
+      "root_turn_index": 758,
+      "turns": 760,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 581.22,
+        "min_of_10": 563.935
+      },
+      "game": 1,
+      "legal": 144,
+      "losing": 2,
+      "move": "7c9a",
+      "pair": 36,
+      "reference_time_us": 181924.828,
+      "root_turn_index": 271,
+      "turns": 272,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 153.084,
+        "min_of_10": 141.094
+      },
+      "game": 1,
+      "legal": 55,
+      "losing": 1,
+      "move": "1k2l",
+      "pair": 52,
+      "reference_time_us": 9897.482,
+      "root_turn_index": 1078,
+      "turns": 1080,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 125.224,
+        "min_of_10": 115.995
+      },
+      "game": 0,
+      "legal": 35,
+      "losing": 1,
+      "move": "1i5e",
+      "pair": 59,
+      "reference_time_us": 5156.941,
+      "root_turn_index": 1457,
+      "turns": 1459,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 138.35,
+        "min_of_10": 131.243
+      },
+      "game": 0,
+      "legal": 54,
+      "losing": 1,
+      "move": "3a8f",
+      "pair": 66,
+      "reference_time_us": 12826.403,
+      "root_turn_index": 512,
+      "turns": 513,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 322.089,
+        "min_of_10": 310.43899999999996
+      },
+      "game": 0,
+      "legal": 102,
+      "losing": 1,
+      "move": "9b8c",
+      "pair": 79,
+      "reference_time_us": 42827.642,
+      "root_turn_index": 321,
+      "turns": 323,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 419.044,
+        "min_of_10": 400.56199999999995
+      },
+      "game": 1,
+      "legal": 114,
+      "losing": 2,
+      "move": "9e5e",
+      "pair": 87,
+      "reference_time_us": 74636.811,
+      "root_turn_index": 273,
+      "turns": 274,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 565.091,
+        "min_of_10": 528.148
+      },
+      "game": 1,
+      "legal": 112,
+      "losing": 2,
+      "move": "4f2f",
+      "pair": 107,
+      "reference_time_us": 1477656.926,
+      "root_turn_index": 172,
+      "turns": 173,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 102.188,
+        "min_of_10": 91.34700000000001
+      },
+      "game": 0,
+      "legal": 36,
+      "losing": 1,
+      "move": "3l2k",
+      "pair": 122,
+      "reference_time_us": 5692.754000000001,
+      "root_turn_index": 986,
+      "turns": 988,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 249.14499999999998,
+        "min_of_10": 237.928
+      },
+      "game": 0,
+      "legal": 77,
+      "losing": 1,
+      "move": "10a5f",
+      "pair": 128,
+      "reference_time_us": 36787.975,
+      "root_turn_index": 429,
+      "turns": 430,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 1080.33,
+        "min_of_10": 678.081
+      },
+      "game": 1,
+      "legal": 115,
+      "losing": 2,
+      "move": "6g4f",
+      "pair": 132,
+      "reference_time_us": 425304.54699999996,
+      "root_turn_index": 345,
+      "turns": 346,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 292.145,
+        "min_of_10": 275.269
+      },
+      "game": 0,
+      "legal": 84,
+      "losing": 1,
+      "move": "10h9h",
+      "pair": 140,
+      "reference_time_us": 1771915.693,
+      "root_turn_index": 710,
+      "turns": 711,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 190.33,
+        "min_of_10": 172.037
+      },
+      "game": 1,
+      "legal": 47,
+      "losing": 1,
+      "move": "8i7i",
+      "pair": 143,
+      "reference_time_us": 464171.519,
+      "root_turn_index": 2135,
+      "turns": 2136,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 98.036,
+        "min_of_10": 85.762
+      },
+      "game": 1,
+      "legal": 47,
+      "losing": 1,
+      "move": "9h8g",
+      "pair": 146,
+      "reference_time_us": 156301.761,
+      "root_turn_index": 480,
+      "turns": 481,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 183.755,
+        "min_of_10": 166.538
+      },
+      "game": 1,
+      "legal": 57,
+      "losing": 1,
+      "move": "2c2b",
+      "pair": 147,
+      "reference_time_us": 311071.901,
+      "root_turn_index": 547,
+      "turns": 549,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 534.596,
+        "min_of_10": 493.58400000000006
+      },
+      "game": 0,
+      "legal": 110,
+      "losing": 1,
+      "move": "7f6g",
+      "pair": 165,
+      "reference_time_us": 2368847.972,
+      "root_turn_index": 396,
+      "turns": 397,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 116.711,
+        "min_of_10": 101.931
+      },
+      "game": 1,
+      "legal": 47,
+      "losing": 1,
+      "move": "11i11h",
+      "pair": 169,
+      "reference_time_us": 57652.032,
+      "root_turn_index": 1021,
+      "turns": 1022,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 377.777,
+        "min_of_10": 356.478
+      },
+      "game": 0,
+      "legal": 90,
+      "losing": 2,
+      "move": "9j9k",
+      "pair": 175,
+      "reference_time_us": 61214.275,
+      "root_turn_index": 448,
+      "turns": 449,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 263.672,
+        "min_of_10": 247.535
+      },
+      "game": 1,
+      "legal": 67,
+      "losing": 1,
+      "move": "6h5h",
+      "pair": 175,
+      "reference_time_us": 65766.263,
+      "root_turn_index": 461,
+      "turns": 462,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 256.978,
+        "min_of_10": 244.234
+      },
+      "game": 0,
+      "legal": 64,
+      "losing": 1,
+      "move": "9k9l",
+      "pair": 176,
+      "reference_time_us": 25274.117,
+      "root_turn_index": 504,
+      "turns": 506,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 480.786,
+        "min_of_10": 450.36400000000003
+      },
+      "game": 1,
+      "legal": 91,
+      "losing": 2,
+      "move": "5d4b",
+      "pair": 183,
+      "reference_time_us": 1364451.004,
+      "root_turn_index": 318,
+      "turns": 319,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 259.222,
+        "min_of_10": 240.41199999999998
+      },
+      "game": 0,
+      "legal": 74,
+      "losing": 2,
+      "move": "5f7g",
+      "pair": 185,
+      "reference_time_us": 173477.598,
+      "root_turn_index": 100,
+      "turns": 101,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 540.518,
+        "min_of_10": 525.5909999999999
+      },
+      "game": 1,
+      "legal": 135,
+      "losing": 1,
+      "move": "9f8e",
+      "pair": 197,
+      "reference_time_us": 117342.457,
+      "root_turn_index": 179,
+      "turns": 180,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 239.303,
+        "min_of_10": 231.274
+      },
+      "game": 0,
+      "legal": 79,
+      "losing": 1,
+      "move": "10h9h",
+      "pair": 212,
+      "reference_time_us": 48406.168,
+      "root_turn_index": 533,
+      "turns": 534,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 378.097,
+        "min_of_10": 345.356
+      },
+      "game": 1,
+      "legal": 95,
+      "losing": 1,
+      "move": "8d8e",
+      "pair": 225,
+      "reference_time_us": 76723.238,
+      "root_turn_index": 339,
+      "turns": 341,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 162.577,
+        "min_of_10": 155.116
+      },
+      "game": 0,
+      "legal": 59,
+      "losing": 1,
+      "move": "11f9f",
+      "pair": 237,
+      "reference_time_us": 12854.503,
+      "root_turn_index": 965,
+      "turns": 967,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 111.31,
+        "min_of_10": 104.188
+      },
+      "game": 1,
+      "legal": 71,
+      "losing": 1,
+      "move": "6e10a",
+      "pair": 252,
+      "reference_time_us": 9509.53,
+      "root_turn_index": 460,
+      "turns": 462,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 190.869,
+        "min_of_10": 185.337
+      },
+      "game": 0,
+      "legal": 66,
+      "losing": 2,
+      "move": "4g6f",
+      "pair": 261,
+      "reference_time_us": 26340.104,
+      "root_turn_index": 52,
+      "turns": 53,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 109.707,
+        "min_of_10": 103.894
+      },
+      "game": 1,
+      "legal": 34,
+      "losing": 1,
+      "move": "11j10j",
+      "pair": 268,
+      "reference_time_us": 10964.33,
+      "root_turn_index": 474,
+      "turns": 475,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 166.143,
+        "min_of_10": 158.483
+      },
+      "game": 1,
+      "legal": 58,
+      "losing": 1,
+      "move": "6i7j",
+      "pair": 307,
+      "reference_time_us": 13982.787,
+      "root_turn_index": 465,
+      "turns": 467,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 316.12600000000003,
+        "min_of_10": 299.13
+      },
+      "game": 0,
+      "legal": 78,
+      "losing": 2,
+      "move": "7g6h",
+      "pair": 319,
+      "reference_time_us": 53028.513999999996,
+      "root_turn_index": 74,
+      "turns": 75,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 150.405,
+        "min_of_10": 143.702
+      },
+      "game": 0,
+      "legal": 65,
+      "losing": 1,
+      "move": "12h7h",
+      "pair": 343,
+      "reference_time_us": 41950.555,
+      "root_turn_index": 582,
+      "turns": 583,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 284.466,
+        "min_of_10": 272.484
+      },
+      "game": 1,
+      "legal": 74,
+      "losing": 2,
+      "move": "6h5h",
+      "pair": 346,
+      "reference_time_us": 48476.122,
+      "root_turn_index": 92,
+      "turns": 93,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 202.618,
+        "min_of_10": 183.61599999999999
+      },
+      "game": 0,
+      "legal": 72,
+      "losing": 2,
+      "move": "8e8f",
+      "pair": 351,
+      "reference_time_us": 26420.349,
+      "root_turn_index": 33,
+      "turns": 34,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 158.174,
+        "min_of_10": 154.263
+      },
+      "game": 0,
+      "legal": 63,
+      "losing": 1,
+      "move": "2b2a",
+      "pair": 356,
+      "reference_time_us": 15050.15,
+      "root_turn_index": 586,
+      "turns": 587,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 233.272,
+        "min_of_10": 219.315
+      },
+      "game": 0,
+      "legal": 76,
+      "losing": 2,
+      "move": "4g6f",
+      "pair": 361,
+      "reference_time_us": 37189.689999999995,
+      "root_turn_index": 53,
+      "turns": 54,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 83.485,
+        "min_of_10": 77.789
+      },
+      "game": 0,
+      "legal": 40,
+      "losing": 1,
+      "move": "5d5f",
+      "pair": 367,
+      "reference_time_us": 7170.272999999999,
+      "root_turn_index": 457,
+      "turns": 458,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 470.527,
+        "min_of_10": 449.13599999999997
+      },
+      "game": 0,
+      "legal": 120,
+      "losing": 2,
+      "move": "10e12e",
+      "pair": 369,
+      "reference_time_us": 87335.66900000001,
+      "root_turn_index": 315,
+      "turns": 316,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 198.989,
+        "min_of_10": 190.96099999999998
+      },
+      "game": 1,
+      "legal": 40,
+      "losing": 1,
+      "move": "5l1h",
+      "pair": 374,
+      "reference_time_us": 11973.998,
+      "root_turn_index": 2387,
+      "turns": 2388,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 444.557,
+        "min_of_10": 437.004
+      },
+      "game": 0,
+      "legal": 107,
+      "losing": 2,
+      "move": "4e3g",
+      "pair": 378,
+      "reference_time_us": 146036.212,
+      "root_turn_index": 219,
+      "turns": 220,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 282.88800000000003,
+        "min_of_10": 260.10699999999997
+      },
+      "game": 0,
+      "legal": 89,
+      "losing": 1,
+      "move": "10d10a",
+      "pair": 384,
+      "reference_time_us": 1036483.767,
+      "root_turn_index": 442,
+      "turns": 443,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 444.04600000000005,
+        "min_of_10": 421.37
+      },
+      "game": 0,
+      "legal": 97,
+      "losing": 2,
+      "move": "2i4i",
+      "pair": 387,
+      "reference_time_us": 1971492.0259999998,
+      "root_turn_index": 208,
+      "turns": 210,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 602.2650000000001,
+        "min_of_10": 562.73
+      },
+      "game": 0,
+      "legal": 119,
+      "losing": 2,
+      "move": "11h9f",
+      "pair": 389,
+      "reference_time_us": 2893472.352,
+      "root_turn_index": 194,
+      "turns": 195,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 407.652,
+        "min_of_10": 374.06800000000004
+      },
+      "game": 1,
+      "legal": 87,
+      "losing": 2,
+      "move": "9e7f",
+      "pair": 394,
+      "reference_time_us": 1758480.233,
+      "root_turn_index": 211,
+      "turns": 212,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 203.718,
+        "min_of_10": 188.75300000000001
+      },
+      "game": 0,
+      "legal": 48,
+      "losing": 1,
+      "move": "12c11c",
+      "pair": 396,
+      "reference_time_us": 320747.48,
+      "root_turn_index": 2680,
+      "turns": 2681,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 447.116,
+        "min_of_10": 419.52299999999997
+      },
+      "game": 1,
+      "legal": 105,
+      "losing": 2,
+      "move": "6g6h",
+      "pair": 409,
+      "reference_time_us": 1505857.861,
+      "root_turn_index": 357,
+      "turns": 358,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 649.601,
+        "min_of_10": 626.204
+      },
+      "game": 1,
+      "legal": 97,
+      "losing": 2,
+      "move": "9e9a",
+      "pair": 410,
+      "reference_time_us": 96472.137,
+      "root_turn_index": 320,
+      "turns": 322,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 277.26,
+        "min_of_10": 261.99300000000005
+      },
+      "game": 1,
+      "legal": 66,
+      "losing": 1,
+      "move": "4a4b",
+      "pair": 411,
+      "reference_time_us": 44142.235,
+      "root_turn_index": 330,
+      "turns": 331,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 353.107,
+        "min_of_10": 335.243
+      },
+      "game": 1,
+      "legal": 100,
+      "losing": 1,
+      "move": "10d11c",
+      "pair": 422,
+      "reference_time_us": 69809.764,
+      "root_turn_index": 388,
+      "turns": 389,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 495.24699999999996,
+        "min_of_10": 443.913
+      },
+      "game": 0,
+      "legal": 104,
+      "losing": 2,
+      "move": "7f6f",
+      "pair": 432,
+      "reference_time_us": 93632.514,
+      "root_turn_index": 196,
+      "turns": 197,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 631.958,
+        "min_of_10": 599.854
+      },
+      "game": 1,
+      "legal": 116,
+      "losing": 2,
+      "move": "4k3j",
+      "pair": 459,
+      "reference_time_us": 158800.51,
+      "root_turn_index": 239,
+      "turns": 240,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 396.33700000000005,
+        "min_of_10": 374.055
+      },
+      "game": 1,
+      "legal": 92,
+      "losing": 2,
+      "move": "8h8g",
+      "pair": 466,
+      "reference_time_us": 74670.47,
+      "root_turn_index": 139,
+      "turns": 140,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 409.58,
+        "min_of_10": 385.666
+      },
+      "game": 1,
+      "legal": 98,
+      "losing": 2,
+      "move": "3e2e",
+      "pair": 482,
+      "reference_time_us": 76316.432,
+      "root_turn_index": 94,
+      "turns": 95,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 230.502,
+        "min_of_10": 212.291
+      },
+      "game": 0,
+      "legal": 68,
+      "losing": 1,
+      "move": "8f7e",
+      "pair": 486,
+      "reference_time_us": 32501.255999999998,
+      "root_turn_index": 478,
+      "turns": 479,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 354.284,
+        "min_of_10": 338.005
+      },
+      "game": 0,
+      "legal": 83,
+      "losing": 2,
+      "move": "8l8k",
+      "pair": 493,
+      "reference_time_us": 138727.132,
+      "root_turn_index": 385,
+      "turns": 386,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 125.20700000000001,
+        "min_of_10": 112.679
+      },
+      "game": 1,
+      "legal": 51,
+      "losing": 1,
+      "move": "6i2i",
+      "pair": 494,
+      "reference_time_us": 8107.705,
+      "root_turn_index": 757,
+      "turns": 758,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 178.49,
+        "min_of_10": 170.381
+      },
+      "game": 0,
+      "legal": 53,
+      "losing": 1,
+      "move": "2k1l",
+      "pair": 532,
+      "reference_time_us": 38470.965000000004,
+      "root_turn_index": 869,
+      "turns": 871,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 300.831,
+        "min_of_10": 281.93800000000005
+      },
+      "game": 0,
+      "legal": 80,
+      "losing": 1,
+      "move": "11j10j",
+      "pair": 533,
+      "reference_time_us": 40807.233,
+      "root_turn_index": 443,
+      "turns": 445,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 113.548,
+        "min_of_10": 104.14
+      },
+      "game": 1,
+      "legal": 36,
+      "losing": 1,
+      "move": "8c9b",
+      "pair": 545,
+      "reference_time_us": 5034.597,
+      "root_turn_index": 832,
+      "turns": 834,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 315.482,
+        "min_of_10": 290.23699999999997
+      },
+      "game": 1,
+      "legal": 112,
+      "losing": 2,
+      "move": "3f4f",
+      "pair": 548,
+      "reference_time_us": 49788.168,
+      "root_turn_index": 90,
+      "turns": 91,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 586.7370000000001,
+        "min_of_10": 560.094
+      },
+      "game": 0,
+      "legal": 106,
+      "losing": 2,
+      "move": "6f6e",
+      "pair": 565,
+      "reference_time_us": 118898.133,
+      "root_turn_index": 198,
+      "turns": 200,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 381.29499999999996,
+        "min_of_10": 367.312
+      },
+      "game": 1,
+      "legal": 78,
+      "losing": 1,
+      "move": "11k12l",
+      "pair": 574,
+      "reference_time_us": 44189.89,
+      "root_turn_index": 317,
+      "turns": 319,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 195.162,
+        "min_of_10": 180.29799999999997
+      },
+      "game": 0,
+      "legal": 61,
+      "losing": 1,
+      "move": "3e2f",
+      "pair": 576,
+      "reference_time_us": 22448.689000000002,
+      "root_turn_index": 445,
+      "turns": 447,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 244.95000000000002,
+        "min_of_10": 229.989
+      },
+      "game": 1,
+      "legal": 64,
+      "losing": 1,
+      "move": "11f10f",
+      "pair": 586,
+      "reference_time_us": 31133.600000000002,
+      "root_turn_index": 445,
+      "turns": 447,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 480.241,
+        "min_of_10": 456.924
+      },
+      "game": 0,
+      "legal": 105,
+      "losing": 2,
+      "move": "7g6g",
+      "pair": 589,
+      "reference_time_us": 97606.87999999999,
+      "root_turn_index": 206,
+      "turns": 207,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 362.11199999999997,
+        "min_of_10": 342.06
+      },
+      "game": 0,
+      "legal": 81,
+      "losing": 1,
+      "move": "10e12g",
+      "pair": 592,
+      "reference_time_us": 64206.195999999996,
+      "root_turn_index": 68,
+      "turns": 69,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 97.80199999999999,
+        "min_of_10": 86.69800000000001
+      },
+      "game": 0,
+      "legal": 42,
+      "losing": 1,
+      "move": "8e8f",
+      "pair": 603,
+      "reference_time_us": 5880.2339999999995,
+      "root_turn_index": 861,
+      "turns": 862,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 383.07,
+        "min_of_10": 360.89599999999996
+      },
+      "game": 1,
+      "legal": 85,
+      "losing": 2,
+      "move": "11e10e",
+      "pair": 613,
+      "reference_time_us": 65478.279,
+      "root_turn_index": 91,
+      "turns": 93,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 293.836,
+        "min_of_10": 276.567
+      },
+      "game": 1,
+      "legal": 72,
+      "losing": 2,
+      "move": "4g6f",
+      "pair": 614,
+      "reference_time_us": 45023.855,
+      "root_turn_index": 71,
+      "turns": 73,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 152.772,
+        "min_of_10": 138.105
+      },
+      "game": 1,
+      "legal": 55,
+      "losing": 1,
+      "move": "11e11d",
+      "pair": 616,
+      "reference_time_us": 13706.232,
+      "root_turn_index": 525,
+      "turns": 526,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 276.009,
+        "min_of_10": 257.998
+      },
+      "game": 1,
+      "legal": 69,
+      "losing": 2,
+      "move": "2c3c",
+      "pair": 625,
+      "reference_time_us": 61074.024,
+      "root_turn_index": 558,
+      "turns": 559,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 523.568,
+        "min_of_10": 504.31300000000005
+      },
+      "game": 0,
+      "legal": 108,
+      "losing": 2,
+      "move": "5f5g",
+      "pair": 630,
+      "reference_time_us": 108839.88799999999,
+      "root_turn_index": 242,
+      "turns": 243,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 385.732,
+        "min_of_10": 365.73699999999997
+      },
+      "game": 0,
+      "legal": 92,
+      "losing": 1,
+      "move": "8d10b",
+      "pair": 634,
+      "reference_time_us": 128383.508,
+      "root_turn_index": 357,
+      "turns": 358,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 305.36,
+        "min_of_10": 290.181
+      },
+      "game": 1,
+      "legal": 80,
+      "losing": 2,
+      "move": "3k4k",
+      "pair": 639,
+      "reference_time_us": 31264.743,
+      "root_turn_index": 349,
+      "turns": 351,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 706.425,
+        "min_of_10": 686.9069999999999
+      },
+      "game": 0,
+      "legal": 103,
+      "losing": 2,
+      "move": "4d4c",
+      "pair": 640,
+      "reference_time_us": 313450.615,
+      "root_turn_index": 277,
+      "turns": 279,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 338.565,
+        "min_of_10": 316.324
+      },
+      "game": 1,
+      "legal": 78,
+      "losing": 1,
+      "move": "3h6h",
+      "pair": 640,
+      "reference_time_us": 67010.75300000001,
+      "root_turn_index": 437,
+      "turns": 439,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 430.81100000000004,
+        "min_of_10": 416.587
+      },
+      "game": 1,
+      "legal": 104,
+      "losing": 2,
+      "move": "5h5g",
+      "pair": 646,
+      "reference_time_us": 74001.02,
+      "root_turn_index": 332,
+      "turns": 333,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 410.579,
+        "min_of_10": 398.23199999999997
+      },
+      "game": 1,
+      "legal": 107,
+      "losing": 1,
+      "move": "7g8f",
+      "pair": 652,
+      "reference_time_us": 78618.723,
+      "root_turn_index": 377,
+      "turns": 378,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 431.815,
+        "min_of_10": 408.65500000000003
+      },
+      "game": 0,
+      "legal": 118,
+      "losing": 1,
+      "move": "6f5f",
+      "pair": 659,
+      "reference_time_us": 86672.485,
+      "root_turn_index": 193,
+      "turns": 194,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 161.50900000000001,
+        "min_of_10": 151.353
+      },
+      "game": 0,
+      "legal": 44,
+      "losing": 1,
+      "move": "1c2c",
+      "pair": 671,
+      "reference_time_us": 16522.68,
+      "root_turn_index": 810,
+      "turns": 811,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 503.263,
+        "min_of_10": 481.68100000000004
+      },
+      "game": 1,
+      "legal": 106,
+      "losing": 2,
+      "move": "3h4h",
+      "pair": 676,
+      "reference_time_us": 111497.548,
+      "root_turn_index": 293,
+      "turns": 294,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 212.791,
+        "min_of_10": 200.189
+      },
+      "game": 0,
+      "legal": 79,
+      "losing": 1,
+      "move": "5d8d",
+      "pair": 682,
+      "reference_time_us": 61453.332,
+      "root_turn_index": 606,
+      "turns": 607,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 450.26099999999997,
+        "min_of_10": 418.581
+      },
+      "game": 0,
+      "legal": 92,
+      "losing": 2,
+      "move": "11j10j",
+      "pair": 687,
+      "reference_time_us": 88254.212,
+      "root_turn_index": 161,
+      "turns": 163,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 214.628,
+        "min_of_10": 200.728
+      },
+      "game": 1,
+      "legal": 63,
+      "losing": 1,
+      "move": "2d2c",
+      "pair": 696,
+      "reference_time_us": 29674.379,
+      "root_turn_index": 354,
+      "turns": 355,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 384.857,
+        "min_of_10": 368.894
+      },
+      "game": 0,
+      "legal": 93,
+      "losing": 1,
+      "move": "8b8a",
+      "pair": 706,
+      "reference_time_us": 90518.365,
+      "root_turn_index": 282,
+      "turns": 283,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 210.44299999999998,
+        "min_of_10": 194.821
+      },
+      "game": 0,
+      "legal": 69,
+      "losing": 1,
+      "move": "11i5i",
+      "pair": 708,
+      "reference_time_us": 32405.369000000002,
+      "root_turn_index": 441,
+      "turns": 442,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 679.7049999999999,
+        "min_of_10": 653.876
+      },
+      "game": 1,
+      "legal": 117,
+      "losing": 2,
+      "move": "2g2h",
+      "pair": 709,
+      "reference_time_us": 155402.343,
+      "root_turn_index": 244,
+      "turns": 245,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 188.615,
+        "min_of_10": 179.175
+      },
+      "game": 1,
+      "legal": 57,
+      "losing": 1,
+      "move": "7b5d",
+      "pair": 718,
+      "reference_time_us": 47008.186,
+      "root_turn_index": 464,
+      "turns": 465,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 226.013,
+        "min_of_10": 209.803
+      },
+      "game": 0,
+      "legal": 65,
+      "losing": 2,
+      "move": "6c7c",
+      "pair": 735,
+      "reference_time_us": 25066.278000000002,
+      "root_turn_index": 444,
+      "turns": 445,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 96.101,
+        "min_of_10": 86.561
+      },
+      "game": 1,
+      "legal": 45,
+      "losing": 1,
+      "move": "6d2d",
+      "pair": 736,
+      "reference_time_us": 6271.152,
+      "root_turn_index": 650,
+      "turns": 651,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 263.928,
+        "min_of_10": 253.356
+      },
+      "game": 0,
+      "legal": 75,
+      "losing": 1,
+      "move": "8d9c",
+      "pair": 741,
+      "reference_time_us": 41774.579,
+      "root_turn_index": 384,
+      "turns": 385,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 224.96699999999998,
+        "min_of_10": 210.609
+      },
+      "game": 0,
+      "legal": 75,
+      "losing": 1,
+      "move": "9j8j",
+      "pair": 746,
+      "reference_time_us": 38936.495,
+      "root_turn_index": 347,
+      "turns": 348,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 122.34,
+        "min_of_10": 110.44699999999999
+      },
+      "game": 0,
+      "legal": 53,
+      "losing": 1,
+      "move": "3i3j",
+      "pair": 747,
+      "reference_time_us": 9609.076,
+      "root_turn_index": 665,
+      "turns": 666,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 234.499,
+        "min_of_10": 221.299
+      },
+      "game": 0,
+      "legal": 66,
+      "losing": 1,
+      "move": "10g6c",
+      "pair": 752,
+      "reference_time_us": 25137.765,
+      "root_turn_index": 515,
+      "turns": 517,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 150.28,
+        "min_of_10": 141.50400000000002
+      },
+      "game": 0,
+      "legal": 59,
+      "losing": 1,
+      "move": "10d8d",
+      "pair": 756,
+      "reference_time_us": 15056.814999999999,
+      "root_turn_index": 433,
+      "turns": 434,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 456.718,
+        "min_of_10": 437.54900000000004
+      },
+      "game": 1,
+      "legal": 108,
+      "losing": 2,
+      "move": "6h5h",
+      "pair": 758,
+      "reference_time_us": 84810.257,
+      "root_turn_index": 333,
+      "turns": 334,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 500.03099999999995,
+        "min_of_10": 475.074
+      },
+      "game": 1,
+      "legal": 97,
+      "losing": 2,
+      "move": "2e3e",
+      "pair": 759,
+      "reference_time_us": 158835.853,
+      "root_turn_index": 83,
+      "turns": 84,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 351.563,
+        "min_of_10": 333.41499999999996
+      },
+      "game": 0,
+      "legal": 79,
+      "losing": 2,
+      "move": "8f8e",
+      "pair": 780,
+      "reference_time_us": 62866.51,
+      "root_turn_index": 64,
+      "turns": 65,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 205.761,
+        "min_of_10": 190.92100000000002
+      },
+      "game": 1,
+      "legal": 60,
+      "losing": 1,
+      "move": "2i11i",
+      "pair": 793,
+      "reference_time_us": 25997.471,
+      "root_turn_index": 582,
+      "turns": 583,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 368.534,
+        "min_of_10": 349.415
+      },
+      "game": 0,
+      "legal": 102,
+      "losing": 2,
+      "move": "5f4g",
+      "pair": 796,
+      "reference_time_us": 64860.746,
+      "root_turn_index": 78,
+      "turns": 79,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 149.328,
+        "min_of_10": 137.002
+      },
+      "game": 1,
+      "legal": 54,
+      "losing": 2,
+      "move": "8g3g",
+      "pair": 800,
+      "reference_time_us": 11295.801,
+      "root_turn_index": 579,
+      "turns": 580,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 198.816,
+        "min_of_10": 185.44899999999998
+      },
+      "game": 0,
+      "legal": 64,
+      "losing": 1,
+      "move": "4l4k",
+      "pair": 814,
+      "reference_time_us": 28157.93,
+      "root_turn_index": 437,
+      "turns": 439,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 324.66,
+        "min_of_10": 310.64200000000005
+      },
+      "game": 1,
+      "legal": 106,
+      "losing": 1,
+      "move": "11f10f",
+      "pair": 824,
+      "reference_time_us": 51834.954000000005,
+      "root_turn_index": 434,
+      "turns": 435,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 558.728,
+        "min_of_10": 534.391
+      },
+      "game": 1,
+      "legal": 88,
+      "losing": 1,
+      "move": "3h3l",
+      "pair": 840,
+      "reference_time_us": 91066.882,
+      "root_turn_index": 474,
+      "turns": 476,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 267.53299999999996,
+        "min_of_10": 247.27400000000003
+      },
+      "game": 1,
+      "legal": 81,
+      "losing": 2,
+      "move": "11d10d",
+      "pair": 842,
+      "reference_time_us": 36988.092,
+      "root_turn_index": 56,
+      "turns": 58,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 252.016,
+        "min_of_10": 237.882
+      },
+      "game": 0,
+      "legal": 66,
+      "losing": 2,
+      "move": "6e6d",
+      "pair": 846,
+      "reference_time_us": 30084.184,
+      "root_turn_index": 416,
+      "turns": 417,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 367.04,
+        "min_of_10": 347.549
+      },
+      "game": 1,
+      "legal": 66,
+      "losing": 1,
+      "move": "7c8c",
+      "pair": 852,
+      "reference_time_us": 56632.674,
+      "root_turn_index": 490,
+      "turns": 492,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 276.89300000000003,
+        "min_of_10": 192.37099999999998
+      },
+      "game": 1,
+      "legal": 54,
+      "losing": 1,
+      "move": "4b4a",
+      "pair": 863,
+      "reference_time_us": 27403.186999999998,
+      "root_turn_index": 477,
+      "turns": 478,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 267.032,
+        "min_of_10": 247.68099999999998
+      },
+      "game": 1,
+      "legal": 73,
+      "losing": 1,
+      "move": "4i5h",
+      "pair": 865,
+      "reference_time_us": 33958.257,
+      "root_turn_index": 603,
+      "turns": 605,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 461.47700000000003,
+        "min_of_10": 437.61499999999995
+      },
+      "game": 0,
+      "legal": 105,
+      "losing": 2,
+      "move": "4h2h",
+      "pair": 870,
+      "reference_time_us": 113949.224,
+      "root_turn_index": 205,
+      "turns": 207,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 447.315,
+        "min_of_10": 426.878
+      },
+      "game": 0,
+      "legal": 113,
+      "losing": 2,
+      "move": "10h11g",
+      "pair": 872,
+      "reference_time_us": 82422.049,
+      "root_turn_index": 78,
+      "turns": 79,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 380.732,
+        "min_of_10": 356.71299999999997
+      },
+      "game": 0,
+      "legal": 69,
+      "losing": 2,
+      "move": "9g11g",
+      "pair": 889,
+      "reference_time_us": 72514.02799999999,
+      "root_turn_index": 78,
+      "turns": 79,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 427.253,
+        "min_of_10": 412.16400000000004
+      },
+      "game": 1,
+      "legal": 82,
+      "losing": 1,
+      "move": "8b8a",
+      "pair": 893,
+      "reference_time_us": 136090.923,
+      "root_turn_index": 423,
+      "turns": 424,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 105.306,
+        "min_of_10": 96.62
+      },
+      "game": 1,
+      "legal": 36,
+      "losing": 1,
+      "move": "9l8k",
+      "pair": 904,
+      "reference_time_us": 7934.895,
+      "root_turn_index": 1323,
+      "turns": 1324,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 185.728,
+        "min_of_10": 174.76
+      },
+      "game": 0,
+      "legal": 60,
+      "losing": 1,
+      "move": "7c6c",
+      "pair": 905,
+      "reference_time_us": 22645.182,
+      "root_turn_index": 396,
+      "turns": 397,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 305.851,
+        "min_of_10": 292.58000000000004
+      },
+      "game": 1,
+      "legal": 81,
+      "losing": 1,
+      "move": "10e8e",
+      "pair": 933,
+      "reference_time_us": 51106.351,
+      "root_turn_index": 311,
+      "turns": 312,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 256.534,
+        "min_of_10": 242.46599999999998
+      },
+      "game": 0,
+      "legal": 72,
+      "losing": 1,
+      "move": "11g11a",
+      "pair": 940,
+      "reference_time_us": 52755.586,
+      "root_turn_index": 486,
+      "turns": 487,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 255.168,
+        "min_of_10": 239.196
+      },
+      "game": 1,
+      "legal": 59,
+      "losing": 2,
+      "move": "7e5c",
+      "pair": 997,
+      "reference_time_us": 37554.662000000004,
+      "root_turn_index": 458,
+      "turns": 459,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 181.818,
+        "min_of_10": 168.781
+      },
+      "game": 0,
+      "legal": 57,
+      "losing": 1,
+      "move": "3d6d",
+      "pair": 1002,
+      "reference_time_us": 19085.392,
+      "root_turn_index": 772,
+      "turns": 773,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 469.88800000000003,
+        "min_of_10": 445.7
+      },
+      "game": 0,
+      "legal": 105,
+      "losing": 2,
+      "move": "2d3d",
+      "pair": 1007,
+      "reference_time_us": 95690.42,
+      "root_turn_index": 222,
+      "turns": 224,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 224.102,
+        "min_of_10": 213.027
+      },
+      "game": 0,
+      "legal": 66,
+      "losing": 1,
+      "move": "5e6d",
+      "pair": 1029,
+      "reference_time_us": 47365.809,
+      "root_turn_index": 529,
+      "turns": 530,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 565.883,
+        "min_of_10": 539.903
+      },
+      "game": 1,
+      "legal": 97,
+      "losing": 2,
+      "move": "7e9e",
+      "pair": 1039,
+      "reference_time_us": 164867.608,
+      "root_turn_index": 215,
+      "turns": 216,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 450.73699999999997,
+        "min_of_10": 424.599
+      },
+      "game": 0,
+      "legal": 102,
+      "losing": 2,
+      "move": "3i2i",
+      "pair": 1054,
+      "reference_time_us": 86406.159,
+      "root_turn_index": 118,
+      "turns": 119,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 115.24,
+        "min_of_10": 101.25500000000001
+      },
+      "game": 0,
+      "legal": 43,
+      "losing": 1,
+      "move": "6j5j",
+      "pair": 1066,
+      "reference_time_us": 7305.935,
+      "root_turn_index": 720,
+      "turns": 722,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 53.393,
+        "min_of_10": 47.19
+      },
+      "game": 0,
+      "legal": 21,
+      "losing": 1,
+      "move": "5i5d",
+      "pair": 1069,
+      "reference_time_us": 1536.942,
+      "root_turn_index": 561,
+      "turns": 563,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 548.55,
+        "min_of_10": 535.985
+      },
+      "game": 1,
+      "legal": 109,
+      "losing": 2,
+      "move": "12f11e",
+      "pair": 1071,
+      "reference_time_us": 113839.98700000001,
+      "root_turn_index": 338,
+      "turns": 340,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 372.83200000000005,
+        "min_of_10": 355.137
+      },
+      "game": 1,
+      "legal": 78,
+      "losing": 1,
+      "move": "4f4e",
+      "pair": 1088,
+      "reference_time_us": 73858.951,
+      "root_turn_index": 395,
+      "turns": 396,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 124.22600000000001,
+        "min_of_10": 110.37899999999999
+      },
+      "game": 0,
+      "legal": 29,
+      "losing": 1,
+      "move": "12k11k",
+      "pair": 1133,
+      "reference_time_us": 2014.988,
+      "root_turn_index": 2393,
+      "turns": 2394,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 225.864,
+        "min_of_10": 213.081
+      },
+      "game": 0,
+      "legal": 75,
+      "losing": 2,
+      "move": "5f4f",
+      "pair": 1139,
+      "reference_time_us": 31781.713000000003,
+      "root_turn_index": 38,
+      "turns": 39,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 211.244,
+        "min_of_10": 196.407
+      },
+      "game": 1,
+      "legal": 64,
+      "losing": 2,
+      "move": "3j1l",
+      "pair": 1139,
+      "reference_time_us": 23919.499,
+      "root_turn_index": 785,
+      "turns": 786,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 602.06,
+        "min_of_10": 582.832
+      },
+      "game": 1,
+      "legal": 144,
+      "losing": 2,
+      "move": "3f1h",
+      "pair": 1143,
+      "reference_time_us": 152403.593,
+      "root_turn_index": 113,
+      "turns": 114,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 685.957,
+        "min_of_10": 655.231
+      },
+      "game": 0,
+      "legal": 110,
+      "losing": 2,
+      "move": "6d5e",
+      "pair": 1172,
+      "reference_time_us": 169102.458,
+      "root_turn_index": 229,
+      "turns": 230,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 214.62,
+        "min_of_10": 201.547
+      },
+      "game": 0,
+      "legal": 66,
+      "losing": 1,
+      "move": "1d8d",
+      "pair": 1180,
+      "reference_time_us": 28359.215,
+      "root_turn_index": 341,
+      "turns": 342,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 529.4,
+        "min_of_10": 507.22099999999995
+      },
+      "game": 1,
+      "legal": 114,
+      "losing": 2,
+      "move": "7e5g",
+      "pair": 1182,
+      "reference_time_us": 108736.822,
+      "root_turn_index": 123,
+      "turns": 124,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 433.633,
+        "min_of_10": 411.384
+      },
+      "game": 0,
+      "legal": 96,
+      "losing": 1,
+      "move": "6g5h",
+      "pair": 1187,
+      "reference_time_us": 80080.055,
+      "root_turn_index": 139,
+      "turns": 141,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 123.39600000000002,
+        "min_of_10": 110.496
+      },
+      "game": 0,
+      "legal": 52,
+      "losing": 1,
+      "move": "5d5c",
+      "pair": 1194,
+      "reference_time_us": 7103.865,
+      "root_turn_index": 559,
+      "turns": 561,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 434.497,
+        "min_of_10": 410.4
+      },
+      "game": 0,
+      "legal": 83,
+      "losing": 1,
+      "move": "7b8b",
+      "pair": 1203,
+      "reference_time_us": 88223.962,
+      "root_turn_index": 423,
+      "turns": 425,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 521.181,
+        "min_of_10": 492.844
+      },
+      "game": 0,
+      "legal": 95,
+      "losing": 2,
+      "move": "3g2g",
+      "pair": 1205,
+      "reference_time_us": 146920.161,
+      "root_turn_index": 162,
+      "turns": 163,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 272.33599999999996,
+        "min_of_10": 256.743
+      },
+      "game": 1,
+      "legal": 89,
+      "losing": 1,
+      "move": "4h5h",
+      "pair": 1210,
+      "reference_time_us": 38887.207,
+      "root_turn_index": 406,
+      "turns": 408,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 63.17600000000001,
+        "min_of_10": 52.18
+      },
+      "game": 0,
+      "legal": 18,
+      "losing": 1,
+      "move": "1e11e",
+      "pair": 1216,
+      "reference_time_us": 2590.222,
+      "root_turn_index": 619,
+      "turns": 620,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 376.919,
+        "min_of_10": 359.439
+      },
+      "game": 0,
+      "legal": 106,
+      "losing": 2,
+      "move": "10e9e",
+      "pair": 1221,
+      "reference_time_us": 67060.02,
+      "root_turn_index": 160,
+      "turns": 161,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 359.173,
+        "min_of_10": 344.04900000000004
+      },
+      "game": 1,
+      "legal": 105,
+      "losing": 2,
+      "move": "11f11g",
+      "pair": 1223,
+      "reference_time_us": 60134.141,
+      "root_turn_index": 71,
+      "turns": 72,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 162.318,
+        "min_of_10": 152.244
+      },
+      "game": 0,
+      "legal": 50,
+      "losing": 1,
+      "move": "7f6f",
+      "pair": 1225,
+      "reference_time_us": 19373.472999999998,
+      "root_turn_index": 528,
+      "turns": 529,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 193.333,
+        "min_of_10": 182.835
+      },
+      "game": 1,
+      "legal": 68,
+      "losing": 1,
+      "move": "5f10k",
+      "pair": 1230,
+      "reference_time_us": 21477.352000000003,
+      "root_turn_index": 414,
+      "turns": 415,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 189.46300000000002,
+        "min_of_10": 172.907
+      },
+      "game": 1,
+      "legal": 47,
+      "losing": 1,
+      "move": "7d8c",
+      "pair": 1234,
+      "reference_time_us": 13380.526,
+      "root_turn_index": 2480,
+      "turns": 2481,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 147.439,
+        "min_of_10": 135.16
+      },
+      "game": 1,
+      "legal": 54,
+      "losing": 1,
+      "move": "7g4j",
+      "pair": 1240,
+      "reference_time_us": 13760.775,
+      "root_turn_index": 522,
+      "turns": 524,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 483.12399999999997,
+        "min_of_10": 462.764
+      },
+      "game": 0,
+      "legal": 107,
+      "losing": 2,
+      "move": "9d2d",
+      "pair": 1241,
+      "reference_time_us": 155455.912,
+      "root_turn_index": 372,
+      "turns": 374,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 281.79200000000003,
+        "min_of_10": 259.646
+      },
+      "game": 0,
+      "legal": 70,
+      "losing": 3,
+      "move": "7f8g",
+      "pair": 1253,
+      "reference_time_us": 40190.458999999995,
+      "root_turn_index": 31,
+      "turns": 33,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 168.858,
+        "min_of_10": 153.28
+      },
+      "game": 0,
+      "legal": 47,
+      "losing": 2,
+      "move": "11b12b",
+      "pair": 1287,
+      "reference_time_us": 21102.704,
+      "root_turn_index": 424,
+      "turns": 425,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 539.882,
+        "min_of_10": 527.534
+      },
+      "game": 0,
+      "legal": 101,
+      "losing": 1,
+      "move": "4g2h",
+      "pair": 1306,
+      "reference_time_us": 161030.60799999998,
+      "root_turn_index": 504,
+      "turns": 505,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 297.955,
+        "min_of_10": 276.78499999999997
+      },
+      "game": 0,
+      "legal": 80,
+      "losing": 2,
+      "move": "6k6l",
+      "pair": 1308,
+      "reference_time_us": 84552.006,
+      "root_turn_index": 406,
+      "turns": 407,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 332.625,
+        "min_of_10": 309.811
+      },
+      "game": 0,
+      "legal": 71,
+      "losing": 1,
+      "move": "12e10g",
+      "pair": 1320,
+      "reference_time_us": 62643.901000000005,
+      "root_turn_index": 54,
+      "turns": 55,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 232.172,
+        "min_of_10": 219.792
+      },
+      "game": 0,
+      "legal": 67,
+      "losing": 2,
+      "move": "9f7g",
+      "pair": 1322,
+      "reference_time_us": 33677.754,
+      "root_turn_index": 53,
+      "turns": 54,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 239.644,
+        "min_of_10": 209.418
+      },
+      "game": 0,
+      "legal": 71,
+      "losing": 1,
+      "move": "10h10l",
+      "pair": 1325,
+      "reference_time_us": 26547.694,
+      "root_turn_index": 457,
+      "turns": 458,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 111.51599999999999,
+        "min_of_10": 101.599
+      },
+      "game": 1,
+      "legal": 42,
+      "losing": 1,
+      "move": "8g10g",
+      "pair": 1332,
+      "reference_time_us": 9331.094,
+      "root_turn_index": 513,
+      "turns": 514,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 697.462,
+        "min_of_10": 662.361
+      },
+      "game": 1,
+      "legal": 127,
+      "losing": 2,
+      "move": "3f3b",
+      "pair": 1336,
+      "reference_time_us": 170051.861,
+      "root_turn_index": 205,
+      "turns": 207,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 150.19299999999998,
+        "min_of_10": 137.244
+      },
+      "game": 1,
+      "legal": 56,
+      "losing": 1,
+      "move": "3d2d",
+      "pair": 1342,
+      "reference_time_us": 13389.58,
+      "root_turn_index": 462,
+      "turns": 463,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 195.60399999999998,
+        "min_of_10": 183.452
+      },
+      "game": 1,
+      "legal": 74,
+      "losing": 1,
+      "move": "7h8g",
+      "pair": 1347,
+      "reference_time_us": 22640.095999999998,
+      "root_turn_index": 433,
+      "turns": 435,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 482.633,
+        "min_of_10": 459.46700000000004
+      },
+      "game": 0,
+      "legal": 104,
+      "losing": 1,
+      "move": "7f6h",
+      "pair": 1358,
+      "reference_time_us": 93110.37899999999,
+      "root_turn_index": 298,
+      "turns": 299,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 470.273,
+        "min_of_10": 447.267
+      },
+      "game": 0,
+      "legal": 109,
+      "losing": 1,
+      "move": "10d7d",
+      "pair": 1361,
+      "reference_time_us": 91783.827,
+      "root_turn_index": 167,
+      "turns": 168,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 449.291,
+        "min_of_10": 429.62
+      },
+      "game": 0,
+      "legal": 90,
+      "losing": 2,
+      "move": "11g9f",
+      "pair": 1367,
+      "reference_time_us": 93955.598,
+      "root_turn_index": 146,
+      "turns": 147,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 367.02700000000004,
+        "min_of_10": 351.20099999999996
+      },
+      "game": 0,
+      "legal": 96,
+      "losing": 3,
+      "move": "10f7f",
+      "pair": 1377,
+      "reference_time_us": 59583.054000000004,
+      "root_turn_index": 459,
+      "turns": 460,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 84.34400000000001,
+        "min_of_10": 72.447
+      },
+      "game": 0,
+      "legal": 30,
+      "losing": 1,
+      "move": "8h12l",
+      "pair": 1379,
+      "reference_time_us": 2544.71,
+      "root_turn_index": 893,
+      "turns": 895,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 515.852,
+        "min_of_10": 483.516
+      },
+      "game": 1,
+      "legal": 111,
+      "losing": 2,
+      "move": "6g7h",
+      "pair": 1391,
+      "reference_time_us": 106771.587,
+      "root_turn_index": 374,
+      "turns": 375,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 699.662,
+        "min_of_10": 666.554
+      },
+      "game": 0,
+      "legal": 132,
+      "losing": 2,
+      "move": "7f8g",
+      "pair": 1393,
+      "reference_time_us": 173232.663,
+      "root_turn_index": 226,
+      "turns": 227,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 390.084,
+        "min_of_10": 367.66799999999995
+      },
+      "game": 1,
+      "legal": 75,
+      "losing": 2,
+      "move": "5h6g",
+      "pair": 1399,
+      "reference_time_us": 70159.706,
+      "root_turn_index": 97,
+      "turns": 99,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 451.133,
+        "min_of_10": 433.683
+      },
+      "game": 0,
+      "legal": 115,
+      "losing": 1,
+      "move": "3h2g",
+      "pair": 1404,
+      "reference_time_us": 88839.531,
+      "root_turn_index": 177,
+      "turns": 178,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 171.258,
+        "min_of_10": 161.259
+      },
+      "game": 0,
+      "legal": 61,
+      "losing": 1,
+      "move": "5f5e",
+      "pair": 1416,
+      "reference_time_us": 17228.737,
+      "root_turn_index": 514,
+      "turns": 516,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 570.708,
+        "min_of_10": 549.446
+      },
+      "game": 1,
+      "legal": 129,
+      "losing": 3,
+      "move": "5h10h",
+      "pair": 1417,
+      "reference_time_us": 110056.351,
+      "root_turn_index": 276,
+      "turns": 277,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 519.2629999999999,
+        "min_of_10": 489.098
+      },
+      "game": 1,
+      "legal": 98,
+      "losing": 2,
+      "move": "8f8e",
+      "pair": 1419,
+      "reference_time_us": 104596.73999999999,
+      "root_turn_index": 196,
+      "turns": 198,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 668.227,
+        "min_of_10": 640.678
+      },
+      "game": 0,
+      "legal": 126,
+      "losing": 2,
+      "move": "12e12d",
+      "pair": 1432,
+      "reference_time_us": 178444.636,
+      "root_turn_index": 227,
+      "turns": 228,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 240.39499999999998,
+        "min_of_10": 222.747
+      },
+      "game": 1,
+      "legal": 72,
+      "losing": 2,
+      "move": "10j11j",
+      "pair": 1441,
+      "reference_time_us": 35567.049000000006,
+      "root_turn_index": 367,
+      "turns": 368,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 240.525,
+        "min_of_10": 228.571
+      },
+      "game": 0,
+      "legal": 73,
+      "losing": 1,
+      "move": "2k2g",
+      "pair": 1460,
+      "reference_time_us": 35063.955,
+      "root_turn_index": 368,
+      "turns": 369,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 397.625,
+        "min_of_10": 377.689
+      },
+      "game": 0,
+      "legal": 96,
+      "losing": 2,
+      "move": "3h4g",
+      "pair": 1471,
+      "reference_time_us": 69087.897,
+      "root_turn_index": 100,
+      "turns": 102,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 117.125,
+        "min_of_10": 104.661
+      },
+      "game": 0,
+      "legal": 40,
+      "losing": 2,
+      "move": "9c7e",
+      "pair": 1497,
+      "reference_time_us": 7378.446,
+      "root_turn_index": 498,
+      "turns": 500,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 513.3,
+        "min_of_10": 485.98400000000004
+      },
+      "game": 1,
+      "legal": 109,
+      "losing": 2,
+      "move": "8b9c",
+      "pair": 1542,
+      "reference_time_us": 108294.818,
+      "root_turn_index": 104,
+      "turns": 106,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 497.64899999999994,
+        "min_of_10": 469.555
+      },
+      "game": 0,
+      "legal": 87,
+      "losing": 2,
+      "move": "8c7b",
+      "pair": 1560,
+      "reference_time_us": 90968.381,
+      "root_turn_index": 384,
+      "turns": 386,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 224.93599999999998,
+        "min_of_10": 202.352
+      },
+      "game": 1,
+      "legal": 53,
+      "losing": 2,
+      "move": "5k5l",
+      "pair": 1572,
+      "reference_time_us": 17540.782000000003,
+      "root_turn_index": 842,
+      "turns": 844,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 682.706,
+        "min_of_10": 665.4929999999999
+      },
+      "game": 1,
+      "legal": 132,
+      "losing": 2,
+      "move": "2e6e",
+      "pair": 1578,
+      "reference_time_us": 155432.495,
+      "root_turn_index": 217,
+      "turns": 219,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 483.837,
+        "min_of_10": 462.523
+      },
+      "game": 0,
+      "legal": 97,
+      "losing": 2,
+      "move": "8h10g",
+      "pair": 1586,
+      "reference_time_us": 91666.493,
+      "root_turn_index": 279,
+      "turns": 280,
+      "winning": 0
+    },
+    {
+      "classification_time_us": {
+        "first_call": 314.745,
+        "min_of_10": 299.044
+      },
+      "game": 0,
+      "legal": 69,
+      "losing": 1,
+      "move": "4a5b",
+      "pair": 1597,
+      "reference_time_us": 56989.391,
+      "root_turn_index": 324,
+      "turns": 326,
+      "winning": 0
+    }
+  ],
+  "reference_time_us": {
+    "max": 3108271.5919999997,
+    "median": 59858.5975,
+    "min": 1536.942
+  },
+  "replay_mismatches": [],
+  "run_dir": "/home/stepney141/board-games/minase/data/matches/movegen-speedup-2-stage7-9-ltc",
+  "winning_nonempty": 0
+}

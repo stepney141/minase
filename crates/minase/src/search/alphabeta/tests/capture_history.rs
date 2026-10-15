@@ -447,7 +447,8 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
     let outcome = run_search_team(
         &weights().unwrap(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(3),

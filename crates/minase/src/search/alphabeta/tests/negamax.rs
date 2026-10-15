@@ -237,10 +237,14 @@ fn jitto_repetition_without_null_move_uses_history_and_path() {
     let mut child = root.clone();
     child.make_move_unchecked(mv, engine_rules());
     let key = search_key(&child);
-    for history in [&[key][..], &[][..]] {
-        with_root_searcher(&root, history, |searcher| {
+    for history in [&[key, search_key(&root)][..], &[][..]] {
+        let start = if history.is_empty() { &child } else { &root };
+        with_root_searcher(start, history, |searcher| {
             if history.is_empty() {
-                searcher.path_keys.insert(0, key);
+                let mut current = child.clone();
+                let reply = jitto(&current);
+                push_path_move(searcher, &mut current, Some(reply));
+                assert_eq!(search_key(&current), search_key(&root));
             }
             let path = searcher.path_keys.clone();
             let mut current = root.clone();
@@ -258,13 +262,10 @@ fn jitto_repetition_without_null_move_uses_history_and_path() {
 /// 外側のnull moveと後手のじっとを経た、先手番の探索経路を作る。
 fn set_outer_null_path(searcher: &mut Searcher<'_>, root: &Position) {
     let mut current = root.clone();
-    current.make_null_move();
-    searcher.path_keys.push(search_key(&current));
-    current.make_move_unchecked(jitto(&current), engine_rules());
+    push_path_move(searcher, &mut current, None);
+    let reply = jitto(&current);
+    push_path_move(searcher, &mut current, Some(reply));
     assert_eq!(search_key(&current), search_key(root));
-    searcher.path_keys.push(search_key(&current));
-    searcher.null_move_ply = Some(1);
-    searcher.null_move_boundary = Some(1);
 }
 
 #[test]
@@ -332,6 +333,9 @@ fn interrupted_null_move_restores_repetition_scope() {
             &nnue,
             &root,
             engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,

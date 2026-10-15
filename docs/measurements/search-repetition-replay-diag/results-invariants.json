@@ -1,0 +1,38 @@
+{
+  "all_moves_losing": 0,
+  "all_moves_losing_games": [],
+  "classification_mismatches": [],
+  "classification_time_us": {
+    "first_call": {
+      "max": 292330.571,
+      "median": 4881.564,
+      "min": 347.056
+    },
+    "min_of_10": {
+      "max": 158758.049,
+      "median": 4306.374,
+      "min": 316.582
+    }
+  },
+  "final_move_in_losing": 184,
+  "final_move_not_in_losing": [],
+  "games": 184,
+  "legal_moves": {
+    "max": 144.0,
+    "median": 78.0,
+    "min": 18.0
+  },
+  "losing_counts": {
+    "max": 3.0,
+    "median": 1.0,
+    "min": 1.0
+  },
+  "reference_time_us": {
+    "max": 3575337.207,
+    "median": 78418.1305,
+    "min": 2060.6600000000003
+  },
+  "replay_mismatches": [],
+  "run_dir": "/home/stepney141/board-games/minase/data/matches/movegen-speedup-2-stage7-9-ltc",
+  "winning_nonempty": 0
+}

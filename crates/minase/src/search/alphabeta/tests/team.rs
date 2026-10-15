@@ -142,7 +142,8 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let outcome = run_search_team(
         &crate::eval::weights().unwrap(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &limits,

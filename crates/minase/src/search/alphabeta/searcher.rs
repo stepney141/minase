@@ -6,13 +6,12 @@ use std::time::Duration;
 use crate::eval::Nnue;
 use crate::eval::nnue::accumulator::NnueAccumulator;
 use crate::search::events::StopReason;
-use crate::search::snapshot::search_key;
-use crate::search::{MAX_PLY, TranspositionTable};
-use minase_core::MoveGenerator;
+use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
 use minase_core::board::Square;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
+use minase_core::{Color, MoveGenerator, move_was_attacking, repetition_key};
 
 use super::capture_history::CaptureHistory;
 use super::correction::{CorrectionTable, material_key};
@@ -40,6 +39,7 @@ pub(super) fn new_searcher<'a>(
     nnue: &'a Nnue,
     position: &Position,
     rules: MoveRules,
+    repetition: SearchRepetition,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
@@ -53,13 +53,18 @@ pub(super) fn new_searcher<'a>(
         current_root_nodes: Vec::new(),
         #[cfg(test)]
         interrupt_at: None,
+        #[cfg(test)]
+        move_loop_probe: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         nnue,
         rules,
+        repetition,
+        root_position: position.clone(),
         generator: MoveGenerator::new(rules),
         history_keys,
-        path_keys: vec![search_key(position)],
+        path_keys: vec![repetition_key(repetition.rule(), position)],
+        path_moves: Vec::new(),
         null_move_ply: None,
         previous_capture: [None; MAX_PLY as usize + 1],
         null_move_boundary: None,
@@ -94,6 +99,36 @@ pub(super) struct PonderIteration {
     pub(super) budget: TimeBudget,
 }
 
+/// 探索経路上の1着手。再現を検出したときの攻撃側の判定に使う。
+pub(super) struct PathMove {
+    /// 実着手。null moveは`None`。
+    pub(super) mv: Option<Move>,
+    /// 再現時に初めて計算する攻撃的着手の判定結果。着手を取り消すときに捨てる。
+    pub(super) attacking: Option<bool>,
+}
+
+/// 再現した局面に最も近い、同一局面の出現位置。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RepetitionMatch {
+    /// 探索経路の局面キーの添字。
+    Path(usize),
+    /// 対局履歴の局面キーの添字。
+    History(usize),
+}
+
+/// 手の順位とノード数の試験で、指定plyの候補を除外し、禁止判定後の順位を観測する。
+#[cfg(test)]
+pub(super) struct MoveLoopProbe {
+    /// 観測する手の深さ。
+    pub(super) ply: u32,
+    /// 比較用に候補列から除く手。
+    pub(super) excluded: Vec<Move>,
+    /// 候補手、探索順位、直前までに数えた静かな手の数。
+    pub(super) visits: Vec<(Move, usize, i32)>,
+    /// 最初の候補を観測した時点の探索経路のキー。
+    pub(super) path_keys: Vec<u64>,
+}
+
 /// 1回の探索実行の可変状態。
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
@@ -105,6 +140,9 @@ pub(super) struct Searcher<'a> {
     /// 「途中結果の採用」の停止契約を実着手の境界で再現する検査用の停止点。
     #[cfg(test)]
     pub(super) interrupt_at: Option<(u64, StopReason)>,
+    /// 禁止手を除いた探索と候補列から除いた対照を比較するための観測点。
+    #[cfg(test)]
+    pub(super) move_loop_probe: Option<MoveLoopProbe>,
     /// このワーカーだけが更新する探索統計。
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,
@@ -112,12 +150,19 @@ pub(super) struct Searcher<'a> {
     pub(super) nnue: &'a Nnue,
     /// 探索内の着手適用に使う規則。
     pub(super) rules: MoveRules,
+    /// 採用中の反復規則と、規則が要する根の時点の状態。
+    pub(super) repetition: SearchRepetition,
+    /// 攻撃的着手の判定で探索経路を再生するための、根の局面の写し。
+    pub(super) root_position: Position,
     /// 探索ノードでの合法手生成器。
     pub(super) generator: MoveGenerator,
-    /// 対局開始から現局面までの探索局面キー。反復の検出に使う。
+    /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: &'a [u64],
-    /// 探索経路上の局面キー。探索内の反復の検出に使う。
+    /// 探索経路上の反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) path_keys: Vec<u64>,
+    /// `path_keys[i + 1]`の局面へ至る着手を`i`番目に持つスタック。
+    /// 根は着手を持たないので、長さは`path_keys.len() - 1`となる。
+    pub(super) path_moves: Vec<PathMove>,
     /// null moveで到達した直後のノードのply。
     pub(super) null_move_ply: Option<u32>,
     /// 直前の捕獲手の到達升。居喰いでも捕獲した駒の最終位置を使う。
@@ -162,14 +207,133 @@ pub(super) struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
-    /// null moveの部分木では境界以降だけ、それ以外では対局履歴と全経路を照合する。
+    /// R2またはR3の下で、この局面からの着手が禁止手（RULES.md第31条R2・R3、第26条第11項）かを返す。R1では常に`false`。
+    ///
+    /// 着手を適用して反復規則のキーを求め、R2では対局履歴または探索経路に1回でも現れていれば、
+    /// R3では対局履歴と探索経路を通じた出現回数が既に3回なら禁止手とする。根の局面は履歴の末尾と経路の先頭の両方にあるので二重に数えない。
+    /// null moveの部分木では、直近のnull move直後以降の探索経路だけを照合し、対局履歴とそれより前の経路は照合しない。
+    pub(super) fn move_is_forbidden(&self, position: &mut Position, mv: Move) -> bool {
+        let limit = match self.repetition {
+            SearchRepetition::R1 { .. } => return false,
+            SearchRepetition::R2 => 1,
+            SearchRepetition::R3 => 3,
+        };
+        let undo = position.make_move_unchecked(mv, self.rules);
+        let key = repetition_key(self.repetition.rule(), position);
+        position.unmake_move(undo);
+
+        let (history, path) = if let Some(boundary) = self.null_move_boundary {
+            (&[][..], &self.path_keys[boundary..])
+        } else {
+            // 履歴があるときは末尾の根を除き、経路の先頭で1回だけ数える。
+            let history = &self.history_keys[..self.history_keys.len().saturating_sub(1)];
+            (history, self.path_keys.as_slice())
+        };
+        history
+            .iter()
+            .chain(path)
+            .filter(|&&past| past == key)
+            .take(limit)
+            .count()
+            == limit
+    }
+
+    /// 同一局面の最も近い出現を、経路、対局履歴の順に新しい方から探す。
+    /// null moveの部分木では、直近のnull move直後の局面以降だけを照合する。
     ///
     /// 呼び出しの時点、反復時の返り値、置換表への保存範囲は[`Self::search_move`]に従う。
     /// null moveをまたぐ反復を除く理由は`docs/adr/detect-repetition-only-after-latest-null-move.md`にある。
-    pub(super) fn is_repetition(&self, key: u64) -> bool {
-        match self.null_move_boundary {
-            Some(boundary) => self.path_keys[boundary..].contains(&key),
-            None => self.history_keys.contains(&key) || self.path_keys.contains(&key),
+    pub(super) fn find_repetition(&self, key: u64) -> Option<RepetitionMatch> {
+        if let Some(boundary) = self.null_move_boundary {
+            return self.path_keys[boundary..]
+                .iter()
+                .rposition(|&past| past == key)
+                .map(|index| RepetitionMatch::Path(boundary + index));
+        }
+        self.path_keys
+            .iter()
+            .rposition(|&past| past == key)
+            .map(RepetitionMatch::Path)
+            .or_else(|| {
+                self.history_keys
+                    .iter()
+                    .rposition(|&past| past == key)
+                    .map(RepetitionMatch::History)
+            })
+    }
+
+    /// 第31条R1の攻撃側を最も近い出現から現在の着手までの1周で判定する。
+    ///
+    /// 一方の着手だけがすべて攻撃的なら、その側の負けを専用の帯で返す。
+    /// 双方が該当する場合、どちらも該当しない場合、およびR2・R3では引き分けを返す。
+    /// 可逆手12手の条件と4回目の出現は調べない探索上の近似であり、値は現在の着手側から見る。
+    /// 履歴の部分は根の攻撃連続数で判定し、経路の部分は根から再生して結果を着手ごとに記録する。
+    /// null moveは区間より前の局面の再生にだけ使い、双方の非攻撃的着手が見つかれば打ち切る。
+    pub(super) fn repetition_score(
+        &mut self,
+        repeated: RepetitionMatch,
+        position: &Position,
+        mv: Move,
+        ply: u32,
+    ) -> i32 {
+        let SearchRepetition::R1 {
+            consecutive_attacking_moves,
+        } = self.repetition
+        else {
+            return DRAW_SCORE;
+        };
+        debug_assert_eq!(self.path_moves.len() + 1, self.path_keys.len());
+        let mut attackers = [true; 2];
+        let start = match repeated {
+            RepetitionMatch::Path(index) => index,
+            RepetitionMatch::History(index) => {
+                let plies = self.history_keys.len() - 1 - index;
+                let last_mover = self.root_position.side_to_move().opposite();
+                for color in Color::ALL {
+                    let moves = plies / 2 + usize::from(plies % 2 == 1 && color == last_mover);
+                    attackers[color.index()] =
+                        moves <= consecutive_attacking_moves[color.index()] as usize;
+                }
+                0
+            }
+        };
+        debug_assert!(
+            self.path_moves[start..]
+                .iter()
+                .all(|entry| entry.mv.is_some())
+        );
+        if attackers == [false; 2] {
+            return DRAW_SCORE;
+        }
+
+        let mut replay = self.root_position.clone();
+        for (index, entry) in self.path_moves.iter_mut().enumerate() {
+            let mover = replay.side_to_move();
+            if let Some(played) = entry.mv {
+                replay.make_move_unchecked(played, self.rules);
+                if index >= start {
+                    let attacking = *entry.attacking.get_or_insert_with(|| {
+                        move_was_attacking(&replay, &self.generator, mover, played)
+                    });
+                    attackers[mover.index()] &= attacking;
+                    if attackers == [false; 2] {
+                        return DRAW_SCORE;
+                    }
+                }
+            } else {
+                replay.make_null_move();
+            }
+        }
+
+        let mover = position.side_to_move().opposite();
+        attackers[mover.index()] &= move_was_attacking(position, &self.generator, mover, mv);
+        match (
+            attackers[mover.index()],
+            attackers[mover.opposite().index()],
+        ) {
+            (true, false) => -(REPETITION_WIN - (ply + 1) as i32),
+            (false, true) => REPETITION_WIN - (ply + 1) as i32,
+            (true, true) | (false, false) => DRAW_SCORE,
         }
     }
 

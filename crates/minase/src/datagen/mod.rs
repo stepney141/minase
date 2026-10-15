@@ -19,7 +19,7 @@ pub const MATE_BAND_START: u32 = 29_000;
 /// 静的評価には履歴を入力しないので、教師には対局内の最初の出現だけを残す。
 /// 理由は`docs/adr/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
 pub fn current_position_is_repeated(game: &Game) -> bool {
-    let history = game.search_key_history();
+    let history = game.repetition_key_history();
     let Some((current, previous)) = history.split_last() else {
         return false;
     };

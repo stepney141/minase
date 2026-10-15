@@ -77,7 +77,7 @@ dlshogiもNVIDIA A100を8枚使う構成で大会に臨んでいる。
 着手の正準形は[指し手正準化](archived/move-canonicalization.md)が定め、方策のラベルはこの正準形の上に定義する。
 学習データは、[教師データ形式の統一](archived/unified-teacher-format.md)が定めた教師データの形式MNSDの版2で記録する。
 探索木の内側の反復の扱いは、αβ探索の現行の近似（反復を引き分けとする）に合わせる。
-[探索部の反復負け回避](search-repetition.md)が採用された場合は、同じ考え方をMCTSにも移す。
+[探索部の反復負け回避](archived/search-repetition.md)が採用された場合は、同じ考え方をMCTSにも移す。
 
 作業とその実行場所の分担は「計算資源の分担」の節が定める。
 作業機の計算資源は、αβ探索の測定、[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](nnue-search-spsa.md)の調整セッション、ならびに[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)のための教師データの再生成（約35時間）および学習と競合する。

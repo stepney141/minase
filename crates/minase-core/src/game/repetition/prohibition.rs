@@ -1,9 +1,10 @@
 //! 反復規則R2・R3の局面出現履歴と着手の禁止。
 
-use super::RepetitionHistory;
+use super::{RepetitionHistory, repetition_key};
 use crate::movegen::MoveGenerator;
 use crate::mv::Move;
 use crate::position::Position;
+use crate::rules::RepetitionRule;
 use std::collections::{HashMap, HashSet};
 
 /// R2とR3で同一局面を判定するキー。
@@ -17,7 +18,7 @@ struct R2R3Key(u64);
 impl R2R3Key {
     /// 局面からR2・R3の同一局面キーを作る。
     fn from_position(position: &Position) -> Self {
-        Self(position.zobrist())
+        Self(repetition_key(RepetitionRule::R2, position))
     }
 }
 

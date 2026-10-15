@@ -305,7 +305,8 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         run_search_team(
             &weights().unwrap(),
             &snapshot.position,
-            snapshot.rules,
+            snapshot.rules(),
+            snapshot.repetition(),
             &snapshot.root_moves,
             &snapshot.history_keys,
             &depth_limits(1),

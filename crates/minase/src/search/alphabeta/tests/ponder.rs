@@ -133,7 +133,8 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     let outcome = run_search_team(
         &weights().unwrap(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &SearchLimits::new(Some(3), None, None, Some(clock)).unwrap(),
@@ -258,6 +259,9 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             &nnue,
             &position,
             engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -407,6 +411,9 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         &nnue,
                         &position,
                         engine_rules(),
+                        SearchRepetition::R1 {
+                            consecutive_attacking_moves: [0; 2],
+                        },
                         &roots,
                         &[],
                         2,
@@ -427,6 +434,9 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     &nnue,
                     &position,
                     engine_rules(),
+                    SearchRepetition::R1 {
+                        consecutive_attacking_moves: [0; 2],
+                    },
                     &[],
                     &shared,
                     &table,
@@ -491,7 +501,8 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     let outcome = run_search_team(
         &weights().unwrap(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &SearchLimits::new(None, None, Some(70), None).unwrap(),
@@ -554,6 +565,9 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     &nnue,
                     &position,
                     engine_rules(),
+                    SearchRepetition::R1 {
+                        consecutive_attacking_moves: [0; 2],
+                    },
                     &[],
                     &shared,
                     &table,

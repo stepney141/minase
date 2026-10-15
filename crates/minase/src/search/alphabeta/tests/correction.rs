@@ -76,6 +76,9 @@ fn correction_negamax_update_conditions() {
             &nnue,
             &board,
             rules,
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -143,6 +146,9 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             &nnue,
             &board,
             rules,
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -175,6 +181,9 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             &nnue,
             &board,
             MoveRules::standard(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -207,6 +216,9 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &nnue,
         &board,
         MoveRules::standard(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         &[],
         &shared,
         &table,
@@ -220,6 +232,9 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &nnue,
         &board,
         MoveRules::standard(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         &[],
         &shared,
         &table,
@@ -241,6 +256,9 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &nnue,
         &board,
         MoveRules::standard(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         &[],
         &shared,
         &table,
@@ -267,6 +285,9 @@ fn correction_changes_futility_expansion_at_boundary() {
             &nnue,
             &board,
             MoveRules::standard(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -312,6 +333,9 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             &nnue,
             &board,
             rules,
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
             &[],
             &shared,
             &table,
@@ -350,6 +374,9 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &nnue,
         &board,
         rules,
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         &[],
         &shared,
         &table,

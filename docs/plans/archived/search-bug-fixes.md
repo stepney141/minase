@@ -37,12 +37,12 @@ stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bu
 - stand-patの件は、不具合ではなく静止探索の近似として扱う（設計判断の「不具合の判定基準」）。
 - 静止探索が合法手のない局面の負け（RULES.md第23条）を検出しない件は、中将棋でこの局面がほとんど現れず、全静止探索ノードで合法手を生成する費用に見合わないので扱わない。
 - 置換表の詰みの値が深い位置で詰みの帯から外れ得る件は、実際の探索深さで起こらないので扱わない。
-- 置換表を通じた反復の値の漏れと、反復規則を探索の木の中で引き分けとして扱う近似は、[探索内の反復負け回避](../search-repetition.md)の範囲なので扱わない。
+- 置換表を通じた反復の値の漏れと、反復規則を探索の木の中で引き分けとして扱う近似は、[探索内の反復負け回避](search-repetition.md)の範囲なので扱わない。
 
 ## 依存関係
 
 基準は監査の基準コミット（masterの先頭）である。
-[探索内の反復負け回避](../search-repetition.md)は起案の状態であり、同書は「null moveを含む手順で局面が再現した場合は引き分けとする」ことを前提にしている。
+[探索内の反復負け回避](search-repetition.md)は起案の状態であり、同書は「null moveを含む手順で局面が再現した場合は引き分けとする」ことを前提にしている。
 本書の修正はこの前提を「null moveより前の局面の再現は反復として検出しない」に変えるので、採用した場合は同書の記述を書き直す（検証の節）。
 
 ## 設計判断
@@ -106,7 +106,7 @@ data/worktrees/search-bug-fixes-runner/target/release/minase match run \
 - `cargo test`、`cargo clippy --all-targets`、`cargo fmt --check`が通る。
 - 修正は探索の挙動を変えるので、`bench`の総ノード数の不変は採否の条件にしない。
 - [探索部の設計書](search.md)の「静止探索」節には、王手中のstand-patが他の脅威を無視するのと同じ種類の近似であることと、全合法手を読む方式が測定で約120 Elo弱かったことを記した。
-- [探索部の設計書](search.md)の「探索内の終局と規則処理」節の反復の記述と、[探索内の反復負け回避](../search-repetition.md)の「周回の区間と攻撃側の判定」の行および検証の節を、null moveより前の局面の再現は反復として検出しないという記述へ改めた。
+- [探索部の設計書](search.md)の「探索内の終局と規則処理」節の反復の記述と、[探索内の反復負け回避](search-repetition.md)の「周回の区間と攻撃側の判定」の行および検証の節を、null moveより前の局面の再現は反復として検出しないという記述へ改めた。
 
 ## 完了条件
 
@@ -118,7 +118,7 @@ data/worktrees/search-bug-fixes-runner/target/release/minase match run \
 
 - [探索部の不具合監査（2026年9月28日）](../../audits/search-bugs-2026-09-28.md)
 - [探索部の設計書](search.md)
-- [探索内の反復負け回避](../search-repetition.md)
+- [探索内の反復負け回避](search-repetition.md)
 - [反復の先行実装の調査](../../research/search-repetition-prior-art.md)
 - [棋力測定の手引き](../../guides/sprt.md)
 - [持ち時間の効率的な使用](time-management-efficiency.md)（非劣性の測定の先例）

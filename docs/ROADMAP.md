@@ -54,7 +54,7 @@
 | SPSAによる探索係数と時間管理係数の調整 | [plans/archived/spsa.md](plans/archived/spsa.md) | 完了（採用） | 2026年9月25日 |
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/archived/lookahead-teacher.md](plans/archived/lookahead-teacher.md) | 完了（一部不採用） | 2026年9月23日 |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/archived/spsa-apply.md](plans/archived/spsa-apply.md) | 完了（採用） | 2026年9月22日 |
-| 探索部の反復負け回避と反復禁止 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
+| 探索部の反復負け回避と反復禁止 | [plans/archived/search-repetition.md](plans/archived/search-repetition.md) | 完了（採用） | 2026年10月15日 |
 | 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/archived/search-revival-spsa.md](plans/archived/search-revival-spsa.md) | 完了（採用） | 2026年10月4日 |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
@@ -101,15 +101,15 @@
 
 ### 直近の完了
 
+- [探索部の反復負け回避と反復禁止](plans/archived/search-repetition.md)は2026年10月15日に、採用で完了した。反復規則R1の千日手で攻撃側として負ける手は、根の合法手を審判層の裁定で分類して候補から除き、探索木の中の周回は攻撃側の負けを詰み帯の内側の専用の帯の値で返すようにした。R2とR3が禁じる着手は探索木の中で読まないようにした。3項目をまとめた候補は段階開始版に対してSTC `H1`（[40, 3, 152, 3, 91]）、LTC `H1`（[58, 9, 190, 10, 110]、異常0件）となり、候補の反復負けはSTCとLTCの計1,348局で0局、段階開始版の反復負けはLTCの762局中277局であった（[STC](measurements/search-repetition-stc.md)、[LTC](measurements/search-repetition-ltc.md)）。
 - [教師データ形式の統一](plans/archived/unified-teacher-format.md)は2026年10月14日に、採用で完了した。教師データの形式を、1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位のMNSDの版2の1つにまとめ、AlphaZeroの計画が予定していた別の形式MNZTは作らなかった。生成器はこれまで捨てていた局面にも除外の理由を付けて書き、学習器は手順を再生して局面を復元する。同じ条件で生成した版1と版2のデータで、学習器が読む局面の列と、NNUEとPSTの学習結果がビット単位で一致することを確かめ（[照合の記録](measurements/unified-teacher-format-equivalence.md)）、生のバイナリは版1の約11分の1から17分の1になった。版1のデータは利用者の判断で生成し直さず、`data/`の44ファイル（約18.3 GB）を削除した。
 - [ファイル形式の整理と形式の仕様の整備](plans/archived/file-format-consolidation.md)は2026年10月13日に、採用で完了した。各形式の版を1つにし、過去のファイルを読み続けない原則で形式を整理した。教師データの局面の由来をMNSDのレコードに置いて来歴JSONと付け直し（MNRS）を撤去し、MNPTを版3だけにし、学習器のチェックポイントをNPZに置き換えて、`MN`の独自形式を7から3へ減らした。残った全形式の仕様はそれを書き出すモジュールのdocコメントに、一覧は[ファイル形式の一覧](guides/file-formats.md)にある。変更の前後で学習の結果がビット単位で一致することを確かめ（[照合の記録](measurements/file-format-consolidation-equivalence.md)）、使えなくなった`data/`のファイル594件（約30 GB）を削除した。学習器の引数`--lambda-override`は必須の`--lambda`に変わった。
 - [Python学習器のRustへの移植と撤去](plans/archived/python-trainer-retirement.md)は2026年10月13日に、採用で完了した。PST、FM、PSTとFMの同時学習の学習器と、PSTとNNUEの診断を、学習器のクレート`crates/minase-trainer`（`nnue-trainer`から改名）へ移植し、評価関数ごとに独立したパイプラインとして持たせた。Pythonの学習順と初期値を一時的に与えた照合で、検証損失と最良エポックが一致し、書き出した整数の重みはPSTでバイト単位、FMで±1単位以内で一致し、現行の`crates/minase/nets/pst.bin`も`fm scale`でバイト単位で再生成できた（[照合の記録](measurements/python-trainer-retirement-checks.md)）。CPUの学習器はPythonのGPUの学習器より速いのでGPUのカーネルは加えず、Pythonの学習ツールと`minase dev pst-probe`、`minase dev nnue-probe`を削除した。同日にmasterへマージした。
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/archived/nnue-replacement.md)は2026年10月12日に、採用で完了した。現行PSTを線形経路として内包する幅128のP型NNUEを、既存の約2,920万局面と新規の約5,100万局面（1局面2万ノード）から[Rust製NNUE学習器](plans/archived/nnue-trainer-rust.md)で学び、基準M（PST＋FM）に対する段階ゲートでSTC `H1`（[0, 0, 24, 0, 80]）、LTC `H1`（[0, 0, 17, 0, 87]、異常0件）となった（[STC](measurements/nnue-replacement-stc.md)、[LTC](measurements/nnue-replacement-ltc.md)）。同じデータのHalfKP-hm-b8はP型に対するSTCで`H0`だった。探索が使う既定の評価関数はNNUEになり、同日にmasterへマージした。
-- [Rust製NNUE学習器（GPU）](plans/archived/nnue-trainer-rust.md)は2026年10月12日に、採用で完了した。将棋のNNUE学習器tataraの速さがRustではなく疎なgather、逆索引の後退、融合した最適化器、非同期の供給というGPUカーネルとデータ経路の設計に由来することを一次情報で確かめ（[調査](research/nnue-trainer-speed.md)）、ホストをRust、カーネルをCUDA C++（NVRTC）で書いた学習器`crates/nnue-trainer`（2026年10月13日に`crates/minase-trainer`へ改名）を作った。GPUカーネルはCPU参照と一致し、1更新の勾配と重みはPythonの学習器と一致する。全30ファイルの1エポックは145〜155秒で、Pythonの学習器の約20分の1である（[記録](measurements/nnue-trainer-rust-checks.md)）。
 
 ### 次の候補
 
-- 探索部の次の対象は[探索部の反復負け回避と反復禁止](plans/search-repetition.md)である。R1の反復負けの回避に加えて、R2とR3が禁じる着手を探索木の中で読まないようにし、3項目を1組の段階ゲートでまとめて測る。引き分けの評価値をやねうら王式のオプションで設定する機能は[別の設計書](plans/draw-value.md)で扱い、反復の計画の後に着手する。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
+- 探索部の次の対象は、引き分けの評価値をやねうら王式のオプションで設定する[引き分けの評価値の設定](plans/draw-value.md)である。[探索部の反復負け回避と反復禁止](plans/archived/search-repetition.md)の完了により着手できる。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
 - 探索が使う既定の評価関数は、2026年10月12日に[NNUE](plans/archived/nnue-replacement.md)へ置き換わった。[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](plans/nnue-search-spsa.md)は、`FmScale`を除く38係数（手の順序付けで加わった未調整の3係数と、時間管理の6係数を含む）を現行のネットで調整し直し、起点のmasterとの段階ゲートで採否を決める。測定機の占有は、過去の同規模の記録からの概算で約半日から2日であり、着手は利用者の指示を待つ。PSTとFMを既定としていた時期に挙げたほかの候補（PSTのさらに長い学習、補正なしのPSTを軽い評価として使うlazy evaluation）を、NNUEの採用後も続けるかは決まっていない。
 - [Athénanの計画](plans/athenan.md)は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。PSTを既定の評価関数とする前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - 評価関数の後続3計画（[静止探索の出力](plans/archived/qsearch-output-training.md)、[順位の損失](plans/archived/rank-loss-training.md)、[関係補正項](plans/archived/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。

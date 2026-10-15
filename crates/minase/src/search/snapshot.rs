@@ -4,7 +4,32 @@ use crate::search::error::SearchError;
 use minase_core::game::{Game, GameStatus};
 use minase_core::mv::Move;
 use minase_core::position::Position;
-use minase_core::rules::MoveRules;
+use minase_core::rules::{MoveRules, RepetitionRule};
+
+/// 探索へ渡す反復規則と、規則が要する根の時点の状態。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchRepetition {
+    /// R1（4回反復の裁定）。根の時点の対局者ごとの攻撃連続数を持つ。
+    R1 {
+        /// 根の時点の攻撃連続数。添字は[`minase_core::Color::index`]に従う。
+        consecutive_attacking_moves: [u32; 2],
+    },
+    /// R2（既出局面の再現の禁止）。
+    R2,
+    /// R3（4回目の出現の禁止）。
+    R3,
+}
+
+impl SearchRepetition {
+    /// 同一局面のキーを作るための反復規則を返す。
+    pub(super) const fn rule(self) -> RepetitionRule {
+        match self {
+            Self::R1 { .. } => RepetitionRule::R1,
+            Self::R2 => RepetitionRule::R2,
+            Self::R3 => RepetitionRule::R3,
+        }
+    }
+}
 
 /// 探索スレッドへ渡す不変の入力。
 #[derive(Clone)]
@@ -13,14 +38,21 @@ pub struct SearchSnapshot {
     pub(super) position: Position,
     /// 探索内で着手へ適用する規則。
     pub(super) rules: MoveRules,
-    /// 対局開始から現局面までの探索局面キー。
+    /// 採用中の反復規則と、規則が要する根の時点の状態。
+    pub(super) repetition: SearchRepetition,
+    /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: Vec<u64>,
-    /// 対局管理層が確定したルート合法手。
+    /// 探索の根で調べる候補手。
     pub(super) root_moves: Vec<Move>,
 }
 
 impl SearchSnapshot {
     /// 継続中の対局から探索用の不変入力を構築する。
+    ///
+    /// RULES.md第31条R1では、反復勝ちの手があれば、その手だけを根の候補手にする。
+    /// なければ、自分の着手または相手の直後の応手で反復負けになる手を除く。
+    /// 全合法手が反復負けに直結する場合は、全手を残す。
+    /// 候補手は[`Game::legal_moves`]の順序を保ち、R1以外の規則では選別しない。
     ///
     /// # Errors
     ///
@@ -30,11 +62,28 @@ impl SearchSnapshot {
         if matches!(game.status(), GameStatus::Finished(_)) {
             return Err(SearchError::FinishedGame);
         }
+        let mut root_moves = game.legal_moves();
+        let classified = game.repetition_root_moves();
+        if !classified.winning().is_empty() {
+            root_moves.retain(|mv| classified.winning().contains(mv));
+        } else if classified.losing().len() < root_moves.len() {
+            root_moves.retain(|mv| !classified.losing().contains(mv));
+        }
+        let repetition = match game.rules().repetition {
+            RepetitionRule::R1 => SearchRepetition::R1 {
+                consecutive_attacking_moves: game
+                    .consecutive_attacking_moves()
+                    .expect("an R1 game must track consecutive attacking moves"),
+            },
+            RepetitionRule::R2 => SearchRepetition::R2,
+            RepetitionRule::R3 => SearchRepetition::R3,
+        };
         Self::from_parts(
             game.position().clone(),
             game.rules().moves,
-            game.search_key_history().to_vec(),
-            game.legal_moves(),
+            repetition,
+            game.repetition_key_history().to_vec(),
+            root_moves,
         )
     }
 
@@ -42,6 +91,7 @@ impl SearchSnapshot {
     pub(super) fn from_parts(
         position: Position,
         rules: MoveRules,
+        repetition: SearchRepetition,
         history_keys: Vec<u64>,
         root_moves: Vec<Move>,
     ) -> Result<Self, SearchError> {
@@ -51,6 +101,7 @@ impl SearchSnapshot {
         Ok(Self {
             position,
             rules,
+            repetition,
             history_keys,
             root_moves,
         })
@@ -66,18 +117,23 @@ impl SearchSnapshot {
         self.rules
     }
 
-    /// 対局開始から現局面までの探索局面キーを返す。
+    /// 採用中の反復規則と、規則が要する根の時点の状態を返す。
+    pub const fn repetition(&self) -> SearchRepetition {
+        self.repetition
+    }
+
+    /// 対局開始から現局面までの反復規則のキーを返す。R2・R3では成り権保留状態を含めない。
     pub fn history_keys(&self) -> &[u64] {
         &self.history_keys
     }
 
-    /// 対局管理層が確定したルート合法手を返す。
+    /// 探索の根で調べる候補手を返す。
     pub fn root_moves(&self) -> &[Move] {
         &self.root_moves
     }
 }
 
-/// 反復検出と置換表に使う探索局面キーを計算する。
+/// 置換表に使う探索局面キーを計算する。R1の反復規則のキーと同じ値である。
 ///
 /// 第24条第1項dが区別する成り権の保留状態は、P1、P2、P5では駒配置だけで決まらず、次の合法手を変える。
 /// そのため駒配置と手番の[`Position::zobrist`]に[`Position::rights_zobrist`]を合成する。
