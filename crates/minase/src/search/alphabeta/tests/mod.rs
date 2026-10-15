@@ -23,6 +23,7 @@ mod pruning;
 mod qsearch_move_limit;
 mod quiesce;
 mod root;
+mod root_repetition;
 mod royal;
 mod scoring;
 #[cfg(feature = "search-stats")]

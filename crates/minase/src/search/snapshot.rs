@@ -15,12 +15,17 @@ pub struct SearchSnapshot {
     pub(super) rules: MoveRules,
     /// 対局開始から現局面までの探索局面キー。
     pub(super) history_keys: Vec<u64>,
-    /// 対局管理層が確定したルート合法手。
+    /// 探索の根で調べる候補手。
     pub(super) root_moves: Vec<Move>,
 }
 
 impl SearchSnapshot {
     /// 継続中の対局から探索用の不変入力を構築する。
+    ///
+    /// RULES.md第31条R1では、反復勝ちの手があれば、その手だけを根の候補手にする。
+    /// なければ、自分の着手または相手の直後の応手で反復負けになる手を除く。
+    /// 全合法手が反復負けに直結する場合は、全手を残す。
+    /// 候補手は[`Game::legal_moves`]の順序を保ち、R1以外の規則では選別しない。
     ///
     /// # Errors
     ///
@@ -30,11 +35,18 @@ impl SearchSnapshot {
         if matches!(game.status(), GameStatus::Finished(_)) {
             return Err(SearchError::FinishedGame);
         }
+        let mut root_moves = game.legal_moves();
+        let repetition = game.repetition_root_moves();
+        if !repetition.winning().is_empty() {
+            root_moves.retain(|mv| repetition.winning().contains(mv));
+        } else if repetition.losing().len() < root_moves.len() {
+            root_moves.retain(|mv| !repetition.losing().contains(mv));
+        }
         Self::from_parts(
             game.position().clone(),
             game.rules().moves,
             game.search_key_history().to_vec(),
-            game.legal_moves(),
+            root_moves,
         )
     }
 
@@ -71,7 +83,7 @@ impl SearchSnapshot {
         &self.history_keys
     }
 
-    /// 対局管理層が確定したルート合法手を返す。
+    /// 探索の根で調べる候補手を返す。
     pub fn root_moves(&self) -> &[Move] {
         &self.root_moves
     }
