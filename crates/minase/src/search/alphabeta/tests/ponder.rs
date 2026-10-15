@@ -135,6 +135,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
+        DRAW_SCORE,
         &snapshot.root_moves,
         &snapshot.history_keys,
         &SearchLimits::new(Some(3), None, None, Some(clock)).unwrap(),
@@ -262,6 +263,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -414,6 +416,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         SearchRepetition::R1 {
                             consecutive_attacking_moves: [0; 2],
                         },
+                        DRAW_SCORE,
                         &roots,
                         &[],
                         2,
@@ -437,6 +440,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     SearchRepetition::R1 {
                         consecutive_attacking_moves: [0; 2],
                     },
+                    DRAW_SCORE,
                     &[],
                     &shared,
                     &table,
@@ -503,6 +507,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
+        DRAW_SCORE,
         &snapshot.root_moves,
         &snapshot.history_keys,
         &SearchLimits::new(None, None, Some(70), None).unwrap(),
@@ -568,6 +573,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     SearchRepetition::R1 {
                         consecutive_attacking_moves: [0; 2],
                     },
+                    DRAW_SCORE,
                     &[],
                     &shared,
                     &table,

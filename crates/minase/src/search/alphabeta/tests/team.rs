@@ -144,6 +144,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
+        DRAW_SCORE,
         &snapshot.root_moves,
         &snapshot.history_keys,
         &limits,

@@ -11,6 +11,7 @@
 mod capture_history;
 mod captures;
 mod correction;
+mod draw_value;
 mod handle;
 mod history;
 mod improving;
@@ -247,6 +248,19 @@ fn with_repetition_root_searcher(
     history: &[u64],
     test: impl FnOnce(&mut Searcher<'_>),
 ) {
+    with_draw_value_root_searcher(nnue, position, rules, repetition, DRAW_SCORE, history, test);
+}
+
+/// RULES.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
+fn with_draw_value_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    draw_value: i32,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -266,6 +280,7 @@ fn with_repetition_root_searcher(
         position,
         rules,
         repetition,
+        draw_value,
         history,
         &shared,
         &table,
@@ -320,6 +335,7 @@ fn run_quiesce(
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &history,
         &shared,
         table,
@@ -364,6 +380,7 @@ fn run_negamax(
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &history,
         &shared,
         table,

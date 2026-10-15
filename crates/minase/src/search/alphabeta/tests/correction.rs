@@ -79,6 +79,7 @@ fn correction_negamax_update_conditions() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -149,6 +150,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -184,6 +186,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -219,6 +222,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &[],
         &shared,
         &table,
@@ -235,6 +239,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &[],
         &shared,
         &table,
@@ -259,6 +264,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &[],
         &shared,
         &table,
@@ -288,6 +294,7 @@ fn correction_changes_futility_expansion_at_boundary() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -336,6 +343,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,
@@ -377,6 +385,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &[],
         &shared,
         &table,
