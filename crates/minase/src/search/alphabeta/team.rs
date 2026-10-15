@@ -9,7 +9,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::eval::Nnue;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
@@ -19,6 +19,7 @@ use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
+use super::clock::SearchClock;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
 use super::params;
@@ -69,8 +70,8 @@ pub(super) struct SharedSearch<'a> {
     pub(super) total_nodes: AtomicU64,
     /// 探索チーム全体で実着手を適用する回数の上限。
     pub(super) node_limit: Option<u64>,
-    /// 補助ワーカー生成前に記録した探索開始時刻。
-    pub(super) started: Instant,
+    /// 探索開始からの経過時間を測る共有時計。
+    pub(super) clock: &'a dyn SearchClock,
     /// 探索途中でも打ち切る時間制限。
     pub(super) hard_limit: Option<HardLimit<'a>>,
 }
@@ -176,7 +177,7 @@ pub(in crate::search) fn run_search_team(
     tt: &TranspositionTable,
     histories: &mut HistoryTables,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
-    started: Instant,
+    clock: &dyn SearchClock,
     hit_ns: &AtomicU64,
     ponder: bool,
 ) -> SearchOutcome {
@@ -208,7 +209,7 @@ pub(in crate::search) fn run_search_team(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit,
-        started,
+        clock,
         hard_limit: time_budget.map(|budget| HardLimit {
             duration: budget.hard,
             hit_ns,
@@ -289,7 +290,7 @@ pub(in crate::search) fn run_search_team(
             .map(|outcome| outcome.result.stats)
             .collect(),
         result,
-        elapsed: started.elapsed(),
+        elapsed: clock.elapsed(),
         pv: adopted.pv.clone(),
         stop_reason: shared.reason(),
     }

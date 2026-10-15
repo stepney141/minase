@@ -322,7 +322,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: Some(1),
-            started: Instant::now(),
+            clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,
         };
         let table = small_tt();

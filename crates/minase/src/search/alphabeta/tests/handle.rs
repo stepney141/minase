@@ -330,7 +330,7 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
         )
     });
     let handle = SearchHandle {
-        started: Instant::now(),
+        clock: Arc::new(ManualClock::new(Duration::ZERO)),
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop,
@@ -348,7 +348,7 @@ fn search_handle_join_returns_the_coordinator_panic() {
     let (sender, events) = mpsc::channel();
     drop(sender);
     let handle = SearchHandle {
-        started: Instant::now(),
+        clock: Arc::new(ManualClock::new(Duration::ZERO)),
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),

@@ -81,7 +81,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now() - Duration::from_millis(500),
+        clock: &ManualClock::new(Duration::from_millis(500)),
         hard_limit: Some(HardLimit {
             duration: budget.hard,
             hit_ns: &AtomicU64::new(0),
@@ -116,29 +116,28 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     assert!(root_moves.contains(&outcome.result.best_move));
 }
 
-// hardはノード周期の時計チェックで
-// 適用される。上限の許容幅はテスト環境定数であり規範値ではない。
-// 次の反復を開始するかどうかの判断との先着は実時間に依存するため停止理由は2値を許容する。
+// 固定時間に達した時計を渡すと、最初のノード検査点でhard limitとして止まる。
 #[test]
 fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let initial = Position::initial();
-    let handle = start(
+    let clock = Arc::new(ManualClock::new(Duration::from_millis(30)));
+    let handle = start_search_with_clock(
+        Arc::clone(shared_test_nnue()),
         snapshot_for(&initial),
         movetime_limits(30),
         61,
         DEFAULT_THREADS,
         small_tt(),
+        crate::search::HistoryTables::new(DEFAULT_THREADS),
+        false,
+        clock,
     );
     let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
-
-    // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
-    assert!(finished.elapsed <= Duration::from_millis(530));
-    // soft=hardのため、先に到達する検査点によって停止理由が変わる。
-    assert!(matches!(
-        finished.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
+    assert_eq!(finished.elapsed, Duration::from_millis(30));
+    assert_eq!(finished.stop_reason, StopReason::HardLimit);
+    assert_eq!(finished.depth, 0);
+    assert_eq!(finished.nodes, 0);
     assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
@@ -367,7 +366,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now() - Duration::from_secs(if ponder { 105 } else { 5 }),
+            clock: &ManualClock::new(Duration::from_secs(if ponder { 105 } else { 5 })),
             hard_limit: Some(HardLimit {
                 duration: budget.hard,
                 hit_ns: &hit_ns,

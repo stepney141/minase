@@ -6,14 +6,14 @@ use crate::eval::evaluate;
 use crate::search::alphabeta::params;
 use minase_core::Color;
 
-fn shared(stop: &AtomicBool) -> SharedSearch<'_> {
+fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<'a> {
     SharedSearch {
         external_stop: stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock,
         hard_limit: None,
     }
 }
@@ -46,7 +46,8 @@ fn correction_negamax_update_conditions() {
     assert_eq!(params::correction_weight(), 37, "数値例の重み");
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
     for (mut board, delta, bound, expected, capture, depth) in [
         (bare_kings(), 320, Bound::Exact, 40, false, 2),
         (bare_kings(), -320, Bound::Exact, -5, false, 2),
@@ -148,7 +149,8 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         (-29_486, -220),
     ] {
         let stop = AtomicBool::new(false);
-        let shared = shared(&stop);
+        let clock = ManualClock::new(Duration::ZERO);
+        let shared = shared(&stop, &clock);
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         let rules = MoveRules::standard();
@@ -196,7 +198,8 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
     }
     for interrupted in [false, true] {
         let stop = AtomicBool::new(interrupted);
-        let shared = shared(&stop);
+        let clock = ManualClock::new(Duration::ZERO);
+        let shared = shared(&stop, &clock);
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         if !interrupted {
@@ -237,7 +240,8 @@ fn correction_changes_futility_expansion_at_boundary() {
     // 100×165/100=165。差4なら4×8×37/1024=1.15625→1。
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
     let mut nodes = Vec::new();
     for correction in [0, 1] {
         let mut board = bare_kings();
@@ -282,7 +286,8 @@ fn correction_changes_futility_expansion_at_boundary() {
 fn correction_search_move_and_null_move_propagate_material_keys() {
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
     let rules = MoveRules::standard();
     let table = TranspositionTable::new(1).unwrap();
     let mut changed = 0;

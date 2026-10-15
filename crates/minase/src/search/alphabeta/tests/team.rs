@@ -16,7 +16,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now(),
+            clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,
         };
         let completed = AtomicU64::new(0);
@@ -137,7 +137,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
         &table,
         &mut crate::search::HistoryTables::new(worker_count(4)),
         None,
-        Instant::now(),
+        &ManualClock::new(Duration::ZERO),
         &AtomicU64::new(0),
         false,
     );

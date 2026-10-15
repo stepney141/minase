@@ -44,11 +44,12 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
+use crate::search::alphabeta::clock::SearchClock;
 use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
@@ -81,7 +82,7 @@ use crate::search::alphabeta::tt::{
 };
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
-use crate::search::handle::SearchHandle;
+use crate::search::handle::{SearchHandle, start_search_with_clock};
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
@@ -344,7 +345,7 @@ fn with_draw_value_root_searcher(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let table = small_tt();
@@ -395,7 +396,7 @@ fn run_quiesce(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let history: Vec<u64> = Vec::new();
@@ -440,7 +441,7 @@ fn run_negamax(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let history: Vec<u64> = Vec::new();
@@ -693,4 +694,29 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
         crate::search::HistoryTables::new(worker_count(threads)),
         true,
     )
+}
+
+/// テストが明示した経過時間だけを返す時計。
+struct ManualClock {
+    nanos: AtomicU64,
+}
+
+impl ManualClock {
+    fn new(elapsed: Duration) -> Self {
+        Self {
+            nanos: AtomicU64::new(elapsed.as_nanos().try_into().unwrap()),
+        }
+    }
+
+    fn set(&self, elapsed: Duration) {
+        let nanos = elapsed.as_nanos().try_into().unwrap();
+        let previous = self.nanos.swap(nanos, AtomicOrdering::Relaxed);
+        assert!(nanos >= previous, "manual clock must be monotonic");
+    }
+}
+
+impl SearchClock for ManualClock {
+    fn elapsed(&self) -> Duration {
+        Duration::from_nanos(self.nanos.load(AtomicOrdering::Relaxed))
+    }
 }

@@ -51,7 +51,7 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             &small_tt(),
             &mut histories,
             None,
-            Instant::now(),
+            &ManualClock::new(Duration::ZERO),
             &AtomicU64::new(0),
             false,
         );
@@ -175,7 +175,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &table,
                 &mut histories,
                 None,
-                Instant::now(),
+                &ManualClock::new(Duration::ZERO),
                 &AtomicU64::new(0),
                 false,
             );
@@ -186,7 +186,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 stop_reason: AtomicU8::new(0),
                 total_nodes: AtomicU64::new(0),
                 node_limit: None,
-                started: Instant::now(),
+                clock: &ManualClock::new(Duration::ZERO),
                 hard_limit: None,
             };
             let searcher = new_searcher(
@@ -226,7 +226,7 @@ fn history_carry_workers_update_their_own_table() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let mut histories = HistoryTables::new(worker_count(4));
@@ -311,7 +311,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
             &small_tt(),
             &mut histories,
             None,
-            Instant::now(),
+            &ManualClock::new(Duration::ZERO),
             &AtomicU64::new(0),
             false,
         );

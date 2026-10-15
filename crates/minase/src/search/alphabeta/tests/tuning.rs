@@ -298,7 +298,7 @@ fn tuning_parameters_in_isolated_process() {
             &small_tt(),
             &mut histories,
             None,
-            Instant::now(),
+            &ManualClock::new(Duration::ZERO),
             &AtomicU64::new(0),
             false,
         );

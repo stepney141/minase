@@ -420,7 +420,7 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
         &small_tt(),
         histories,
         None,
-        Instant::now(),
+        &ManualClock::new(Duration::ZERO),
         &AtomicU64::new(0),
         false,
     );

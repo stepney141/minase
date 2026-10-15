@@ -81,7 +81,7 @@ pub(super) fn run_main_worker(
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some(result.score);
         if ponder && let Some(budget) = time_budget {
-            let iteration_started = shared.started.elapsed();
+            let iteration_started = shared.clock.elapsed();
             let stable = stable_signal(&completed_bests);
             // 前の境界の検査後やワーカー生成前に的中した場合も、開始条件を通す。
             // tを先に記録するので、このhの読み取りより後の的中は必ずtより後になる。
@@ -92,7 +92,7 @@ pub(super) fn run_main_worker(
                 .load(AtomicOrdering::Relaxed);
             if hit_ns != u64::MAX
                 && !should_start_next_iteration(
-                    shared.started.elapsed(),
+                    shared.clock.elapsed(),
                     Duration::from_nanos(hit_ns),
                     budget,
                     stable,
@@ -119,7 +119,7 @@ pub(super) fn run_main_worker(
         result.score = score;
         result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
-        let elapsed = shared.started.elapsed();
+        let elapsed = shared.clock.elapsed();
         if let Some((sender, search_id)) = events {
             let _ = sender.send(SearchEvent::Progress {
                 search_id,
@@ -145,7 +145,7 @@ pub(super) fn run_main_worker(
                 .load(AtomicOrdering::Relaxed);
             hit_ns != u64::MAX
                 && !should_start_next_iteration(
-                    shared.started.elapsed(),
+                    shared.clock.elapsed(),
                     Duration::from_nanos(hit_ns),
                     budget,
                     stable,
