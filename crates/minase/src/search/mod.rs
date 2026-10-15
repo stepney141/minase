@@ -27,7 +27,7 @@ pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, search, start_search};
 pub use limits::{ClockLimits, SearchLimits};
-pub use snapshot::SearchSnapshot;
+pub use snapshot::{SearchRepetition, SearchSnapshot};
 
 use core::num::NonZeroUsize;
 

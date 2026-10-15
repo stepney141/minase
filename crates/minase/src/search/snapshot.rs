@@ -4,7 +4,21 @@ use crate::search::error::SearchError;
 use minase_core::game::{Game, GameStatus};
 use minase_core::mv::Move;
 use minase_core::position::Position;
-use minase_core::rules::MoveRules;
+use minase_core::rules::{MoveRules, RepetitionRule};
+
+/// 探索へ渡す反復規則と、規則が要する根の時点の状態。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchRepetition {
+    /// R1（4回反復の裁定）。根の時点の対局者ごとの攻撃連続数を持つ。
+    R1 {
+        /// 根の時点の攻撃連続数。添字は[`minase_core::Color::index`]に従う。
+        consecutive_attacking_moves: [u32; 2],
+    },
+    /// R2（既出局面の再現の禁止）。
+    R2,
+    /// R3（4回目の出現の禁止）。
+    R3,
+}
 
 /// 探索スレッドへ渡す不変の入力。
 #[derive(Clone)]
@@ -13,6 +27,8 @@ pub struct SearchSnapshot {
     pub(super) position: Position,
     /// 探索内で着手へ適用する規則。
     pub(super) rules: MoveRules,
+    /// 採用中の反復規則と、規則が要する根の時点の状態。
+    pub(super) repetition: SearchRepetition,
     /// 対局開始から現局面までの探索局面キー。
     pub(super) history_keys: Vec<u64>,
     /// 探索の根で調べる候補手。
@@ -36,15 +52,25 @@ impl SearchSnapshot {
             return Err(SearchError::FinishedGame);
         }
         let mut root_moves = game.legal_moves();
-        let repetition = game.repetition_root_moves();
-        if !repetition.winning().is_empty() {
-            root_moves.retain(|mv| repetition.winning().contains(mv));
-        } else if repetition.losing().len() < root_moves.len() {
-            root_moves.retain(|mv| !repetition.losing().contains(mv));
+        let classified = game.repetition_root_moves();
+        if !classified.winning().is_empty() {
+            root_moves.retain(|mv| classified.winning().contains(mv));
+        } else if classified.losing().len() < root_moves.len() {
+            root_moves.retain(|mv| !classified.losing().contains(mv));
         }
+        let repetition = match game.rules().repetition {
+            RepetitionRule::R1 => SearchRepetition::R1 {
+                consecutive_attacking_moves: game
+                    .consecutive_attacking_moves()
+                    .expect("an R1 game must track consecutive attacking moves"),
+            },
+            RepetitionRule::R2 => SearchRepetition::R2,
+            RepetitionRule::R3 => SearchRepetition::R3,
+        };
         Self::from_parts(
             game.position().clone(),
             game.rules().moves,
+            repetition,
             game.search_key_history().to_vec(),
             root_moves,
         )
@@ -54,6 +80,7 @@ impl SearchSnapshot {
     pub(super) fn from_parts(
         position: Position,
         rules: MoveRules,
+        repetition: SearchRepetition,
         history_keys: Vec<u64>,
         root_moves: Vec<Move>,
     ) -> Result<Self, SearchError> {
@@ -63,6 +90,7 @@ impl SearchSnapshot {
         Ok(Self {
             position,
             rules,
+            repetition,
             history_keys,
             root_moves,
         })
@@ -76,6 +104,11 @@ impl SearchSnapshot {
     /// 探索内で着手へ適用する規則を返す。
     pub const fn rules(&self) -> MoveRules {
         self.rules
+    }
+
+    /// 採用中の反復規則と、規則が要する根の時点の状態を返す。
+    pub const fn repetition(&self) -> SearchRepetition {
+        self.repetition
     }
 
     /// 対局開始から現局面までの探索局面キーを返す。

@@ -60,6 +60,11 @@ pub(crate) struct R1History {
 }
 
 impl R1History {
+    /// 対局者ごとの、直近まで連続した攻撃的着手の数を返す（第31条R1）。
+    pub(crate) const fn consecutive_attacking_moves(&self) -> [u32; 2] {
+        self.consecutive_attacking_moves
+    }
+
     /// 開始局面を第1回として記録した履歴を作る。
     pub(super) fn new(position: &Position) -> Self {
         Self {
@@ -221,7 +226,7 @@ pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
 /// 動かした駒に捕獲の局面合法手があれば攻撃的である（第31条R1）。
 /// じっとも、元の升にいる駒が相手駒を取れる状態なら攻撃的着手に数える。
 /// この真偽値を用いる判定区間は[`r1_repetition_result`]に従う。
-pub(crate) fn move_was_attacking(
+pub fn move_was_attacking(
     position: &Position,
     generator: &MoveGenerator,
     mover: Color,

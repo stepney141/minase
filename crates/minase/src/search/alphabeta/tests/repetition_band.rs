@@ -187,7 +187,7 @@ fn repetition_band_is_not_reused_after_only_game_history_changes() {
     let board = repetition_fixture();
     let mut repeated_child = board.clone();
     repeated_child.make_move_unchecked(repetition_move(), engine_rules());
-    let history = [search_key(&repeated_child)];
+    let history = [search_key(&repeated_child), search_key(&board)];
     let (expected, _) = run_negamax(&board, 2, -INFINITY, INFINITY, 0, &small_tt());
     assert!(expected <= -29_744, "履歴なしでは王駒を失う");
     // R1の勝敗と、R2・R3で全手禁止だった負けのいずれも同じ保護を受ける。
@@ -222,7 +222,7 @@ fn repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
     let board = repetition_fixture();
     let mut child = board.clone();
     child.make_move_unchecked(repetition_move(), engine_rules());
-    let history = [search_key(&child)];
+    let history = [search_key(&child), search_key(&board)];
     with_root_searcher(&board, &history, |searcher| {
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),

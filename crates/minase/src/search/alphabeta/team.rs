@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use crate::eval::Nnue;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::limits::SearchLimits;
-use crate::search::{MAX_PLY, TranspositionTable};
+use crate::search::{MAX_PLY, SearchRepetition, TranspositionTable};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
@@ -166,6 +166,7 @@ pub(in crate::search) fn run_search_team(
     nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
+    repetition: SearchRepetition,
     root_moves: &[Move],
     history_keys: &[u64],
     limits: &SearchLimits,
@@ -228,6 +229,7 @@ pub(in crate::search) fn run_search_team(
                     nnue,
                     position,
                     rules,
+                    repetition,
                     root_moves,
                     &history_keys,
                     depth_limit,
@@ -245,6 +247,7 @@ pub(in crate::search) fn run_search_team(
                     nnue,
                     position,
                     rules,
+                    repetition,
                     root_moves,
                     &history_keys,
                     depth_limit,

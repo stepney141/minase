@@ -31,7 +31,7 @@ pub use crate::board::Direction;
 pub use crate::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 pub use crate::game::{
     DrawReason, Game, GameError, GameResult, GameStatus, IllegalMoveCause, RepetitionRootMoves,
-    WinReason,
+    WinReason, move_was_attacking,
 };
 pub use crate::movegen::{IllegalMove, MoveGenerator};
 pub use crate::mv::Move;

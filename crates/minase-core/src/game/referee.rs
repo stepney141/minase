@@ -134,6 +134,12 @@ impl Game {
         &self.search_key_history
     }
 
+    /// R1の対局で、直近まで連続した攻撃的着手の数を対局者ごとに返す（RULES.md第31条R1）。
+    /// 添字は[`Color::index`]に従う。R2またはR3の対局では`None`を返す。
+    pub fn consecutive_attacking_moves(&self) -> Option<[u32; 2]> {
+        self.adjudication.consecutive_attacking_moves()
+    }
+
     /// 現在の対局状態で合法な着手をすべて返す。
     ///
     /// R2またはR3で禁止される反復着手は除外する(第31条)。終局後は空の

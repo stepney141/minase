@@ -3,6 +3,66 @@
 use super::*;
 
 #[test]
+fn article_31_r1_public_attack_counters_follow_moves_and_adjudication() {
+    let mut game = game(position(
+        Color::Black,
+        &[
+            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+            (sq(3, 3), piece(Color::Black, PieceKind::Rook)),
+            (sq(3, 9), piece(Color::White, PieceKind::Pawn)),
+            (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
+            (sq(11, 11), piece(Color::White, PieceKind::King)),
+        ],
+    ));
+    let cycle = [
+        step(sq(3, 3), sq(3, 4)),
+        step(sq(8, 8), sq(8, 7)),
+        step(sq(3, 4), sq(3, 3)),
+        step(sq(8, 7), sq(8, 8)),
+    ];
+    assert_eq!(game.consecutive_attacking_moves(), Some([0; 2]));
+    let generator = MoveGenerator::new(game.rules().moves);
+    for ply in 1..=12 {
+        let mv = cycle[(ply - 1) % cycle.len()];
+        let mover = game.position().side_to_move();
+        let status = game.play(mv);
+        assert_eq!(
+            crate::move_was_attacking(game.position(), &generator, mover, mv),
+            mover == Color::Black
+        );
+        assert_eq!(
+            game.consecutive_attacking_moves(),
+            Some([(ply as u32).div_ceil(2), 0])
+        );
+        if ply < 12 {
+            assert_eq!(status, Ok(GameStatus::Ongoing));
+        } else {
+            assert_eq!(status, win(Color::White, WinReason::Repetition));
+        }
+        if ply == 8 {
+            // 白歩への照準を外す1手で黒の連続数だけが0に戻る。
+            let mut interrupted = game.clone();
+            assert_eq!(
+                interrupted.play(step(sq(3, 3), sq(4, 3))),
+                Ok(GameStatus::Ongoing)
+            );
+            assert_eq!(interrupted.consecutive_attacking_moves(), Some([0; 2]));
+            assert_eq!(game.consecutive_attacking_moves(), Some([4, 0]));
+        }
+    }
+}
+
+#[test]
+fn article_31_r1_attack_counters_are_absent_under_r2_and_r3() {
+    for code in [RuleCode::R2, RuleCode::R3] {
+        let mut game = game_with_codes(Position::initial(), &[code]);
+        assert_eq!(game.consecutive_attacking_moves(), None);
+        assert_eq!(game.play(step(sq(3, 4), sq(3, 5))), Ok(GameStatus::Ongoing));
+        assert_eq!(game.consecutive_attacking_moves(), None);
+    }
+}
+
+#[test]
 fn articles_24_1_and_31_r1_f1_cycle_draws_at_ply_12() {
     // F1(初期局面の仲人往復)は④⑧⑫の完了時に初期
     // 局面の2〜4回目を生じさせ、全12手が非攻撃的なため⑫で引き分けになる。

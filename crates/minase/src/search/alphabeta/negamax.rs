@@ -1,7 +1,7 @@
 //! 内部ノードのαβ探索。
 
 use crate::search::snapshot::search_key;
-use crate::search::{DRAW_SCORE, MATE, REPETITION_BAND_START, in_repetition_band};
+use crate::search::{MATE, REPETITION_BAND_START, in_repetition_band};
 use minase_core::mv::Move;
 use minase_core::piece::Color;
 use minase_core::position::Position;
@@ -13,7 +13,7 @@ use super::pruning::{
     reverse_futility_margin, see_margin,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
-use super::searcher::Searcher;
+use super::searcher::{PathMove, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 
@@ -362,10 +362,15 @@ impl Searcher<'_> {
         let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
         // このキー自体では反復を判定せず、部分木内の実着手からの参照点にする。
         self.path_keys.push(search_key(position));
+        self.path_moves.push(PathMove {
+            mv: None,
+            attacking: None,
+        });
         let score = self
             .negamax(position, depth, -beta, -beta + 1, ply + 1)
             .map(|value| -value);
         self.path_keys.pop();
+        self.path_moves.pop();
         self.null_move_boundary = previous_null_move_boundary;
         self.null_move_ply = previous_null_move_ply;
         position.unmake_null_move(undo);
@@ -375,8 +380,10 @@ impl Searcher<'_> {
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
     ///
     /// 王駒をすべて取る手は子局面での終局値`MATE - (ply + 1)`を返す。
-    /// [`Self::is_repetition`]で反復を認めた子局面は、`path_keys`へ積む前に引き分け値を返す。
-    /// その子局面自体は置換表へ保存しないが、引き分け値を含めて求めた親の値は保存する。
+    /// [`Self::find_repetition`]で再現を認めた子局面は、経路へ積む前に[`Self::repetition_score`]を返す。
+    /// 第31条R1では現在の着手を含む1周の攻撃側が負け、双方またはどちらも攻撃側でなければ引き分けとする。
+    /// 勝敗の値は`REPETITION_WIN - (ply + 1)`の正負とし、R2とR3は引き分けを返す。
+    /// その子局面自体は置換表へ保存しないが、反復の値を含めて求めた親の値は保存する。
     /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
     /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
     /// さらに窓内なら全窓で再探索する。
@@ -407,9 +414,10 @@ impl Searcher<'_> {
         }
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
-        if self.is_repetition(key) {
+        if let Some(repeated) = self.find_repetition(key) {
+            let score = self.repetition_score(repeated, position, mv, ply);
             position.unmake_move(undo);
-            return Some(DRAW_SCORE);
+            return Some(score);
         }
 
         let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
@@ -422,6 +430,10 @@ impl Searcher<'_> {
         self.material_keys[(ply + 1) as usize] =
             key_after_move(self.material_keys[ply as usize], &undo);
         self.path_keys.push(key);
+        self.path_moves.push(PathMove {
+            mv: Some(mv),
+            attacking: None,
+        });
         let mut score = if first {
             self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
                 .map(|value| -value)
@@ -440,6 +452,7 @@ impl Searcher<'_> {
                 .map(|value| -value);
         }
         self.path_keys.pop();
+        self.path_moves.pop();
         position.unmake_move(undo);
         score
     }

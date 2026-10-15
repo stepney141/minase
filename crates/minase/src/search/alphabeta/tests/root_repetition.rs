@@ -45,10 +45,11 @@ fn after_plies(start: Position, cycle: &[Move], plies: usize) -> Game {
     game
 }
 
-fn unfiltered_snapshot(game: &Game) -> SearchSnapshot {
+fn unfiltered_snapshot(game: &Game, repetition: SearchRepetition) -> SearchSnapshot {
     SearchSnapshot::from_parts(
         game.position().clone(),
         game.rules().moves,
+        repetition,
         game.search_key_history().to_vec(),
         game.legal_moves(),
     )
@@ -93,7 +94,16 @@ fn article_31_r1_search_avoids_the_unfiltered_repetition_losing_move() {
     assert_eq!(classified.losing(), &[losing]);
 
     let nnue = epoch_zero_nnue();
-    let unfiltered = search_snapshot(&nnue, &unfiltered_snapshot(&game));
+    // 攻撃連続数を0にした対照は、周回を引き分けとして読む。
+    let unfiltered = search_snapshot(
+        &nnue,
+        &unfiltered_snapshot(
+            &game,
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+        ),
+    );
     assert_eq!(unfiltered.best_move, losing);
     assert_eq!(unfiltered.score, DRAW_SCORE);
 
@@ -209,7 +219,7 @@ fn article_31_r1_search_is_unchanged_without_three_occurrences() {
         let snapshot = SearchSnapshot::from_game(&game).unwrap();
         assert_eq!(snapshot.root_moves(), game.legal_moves());
         let actual = search_snapshot(&nnue, &snapshot);
-        let expected = search_snapshot(&nnue, &unfiltered_snapshot(&game));
+        let expected = search_snapshot(&nnue, &unfiltered_snapshot(&game, snapshot.repetition()));
         assert_eq!(actual.best_move, expected.best_move);
         assert_eq!(actual.score, expected.score);
         assert_eq!(actual.nodes, expected.nodes);

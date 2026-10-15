@@ -80,8 +80,16 @@ fn search_apis_use_the_supplied_nnue() {
     let undo = child.make_move_unchecked(root_move, engine_rules());
     let expected = -evaluate(&supplied, &child);
     child.unmake_move(undo);
-    let snapshot =
-        SearchSnapshot::from_parts(position, engine_rules(), Vec::new(), vec![root_move]).unwrap();
+    let snapshot = SearchSnapshot::from_parts(
+        position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        Vec::new(),
+        vec![root_move],
+    )
+    .unwrap();
 
     let synchronous = crate::search::search(
         &supplied,
@@ -272,7 +280,7 @@ fn join_returns_the_transposition_table_for_reuse() {
     // 探索1と一致する。記録手とカットオフによりノード数は増えない。
     let second = run_search(
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(3),

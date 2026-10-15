@@ -271,7 +271,7 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
     let mut child = root.clone();
     child.make_move_unchecked(draw_move, engine_rules());
     let child_key = search_key(&child);
-    let history = [child_key];
+    let history = [child_key, search_key(&root)];
 
     let mut table = small_tt();
     let result = run_search(
