@@ -66,7 +66,7 @@ pub(super) struct Supply<'a> {
     pub indices: &'a [u64],
     /// 途中検証で評価する全検証集合の通算番号。
     pub validation_indices: &'a [u64],
-    pub teacher_ks: &'a [f64],
+    pub teacher_cp_per_logit: &'a [f64],
     pub batch: usize,
     /// 検証用の評価器へ渡す補助損失の係数。
     pub removal_penalty: f64,
@@ -111,8 +111,11 @@ fn produce(
                     Err(_) => return Ok(()), // 計算側の終了で待機を解除する。
                 },
             };
-            let targets =
-                build_targets(&batch, supply.teacher_ks, supply.dataset.teacher_lambdas())?;
+            let targets = build_targets(
+                &batch,
+                supply.teacher_cp_per_logit,
+                supply.dataset.teacher_lambdas(),
+            )?;
             let positions = batch.len();
             host.fill(batch)?;
             if sender

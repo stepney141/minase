@@ -297,7 +297,7 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
     let base = base::read(&args.base).unwrap();
     let observations = Observations::compute(dataset, args.feature_set).unwrap();
     let model = Model::initialize(
-        Shape::new(args.feature_set, args.width, base.k).unwrap(),
+        Shape::new(args.feature_set, args.width, base.cp_per_logit).unwrap(),
         &crate::nnue::model::load_initial(&args.init_pst).unwrap(),
         Masks::from_observations(args.feature_set, &observations).unwrap(),
         args.seed,
@@ -322,9 +322,16 @@ fn resume_config_allows_budget_and_worker_changes() {
     .with_lambda(args.training.lambda)
     .unwrap();
     let (model, observations) = initialized(&args, &dataset);
-    let teacher_ks = dataset.estimate_teacher_ks().unwrap();
-    let configuration =
-        record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
+    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    let configuration = record::configuration(
+        &args,
+        2,
+        &dataset,
+        &observations,
+        &teacher_cp_per_logit,
+        &model,
+    )
+    .unwrap();
     assert_eq!(
         configuration.document["preprocessing"]["training_positions"],
         296
@@ -400,8 +407,15 @@ fn resume_config_allows_budget_and_worker_changes() {
     resume.time_limit_hours = 12.0;
     resume.threads = Some(3);
     resume.validation_interval = 2;
-    let same =
-        record::configuration(&resume, 3, &dataset, &observations, &teacher_ks, &model).unwrap();
+    let same = record::configuration(
+        &resume,
+        3,
+        &dataset,
+        &observations,
+        &teacher_cp_per_logit,
+        &model,
+    )
+    .unwrap();
     restored
         .check_config(&crate::nn::checkpoint::Configuration::from_document(&same.document).unwrap())
         .unwrap();
@@ -421,9 +435,16 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     .with_lambda(args.training.lambda)
     .unwrap();
     let (model, observations) = initialized(&args, &dataset);
-    let teacher_ks = dataset.estimate_teacher_ks().unwrap();
-    let configuration =
-        record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
+    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    let configuration = record::configuration(
+        &args,
+        2,
+        &dataset,
+        &observations,
+        &teacher_cp_per_logit,
+        &model,
+    )
+    .unwrap();
     let original = configuration.document;
     assert_eq!(original["resumes"], json!([]));
     let path = fixture.0.join("config.json");
@@ -498,10 +519,16 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             .with_lambda(args.training.lambda)
             .unwrap();
             let (model, observations) = initialized(&args, &dataset);
-            let teacher_ks = dataset.estimate_teacher_ks().unwrap();
-            let configuration =
-                record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model)
-                    .unwrap();
+            let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+            let configuration = record::configuration(
+                &args,
+                2,
+                &dataset,
+                &observations,
+                &teacher_cp_per_logit,
+                &model,
+            )
+            .unwrap();
             fs::create_dir(&args.output_dir).unwrap();
             record::write_json(
                 &args.output_dir.join("config.json"),
@@ -1046,7 +1073,7 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
                     .remove(0);
                 let targets = build_targets(
                     &batch,
-                    &stopped.teacher_ks,
+                    &stopped.teacher_cp_per_logit,
                     stopped.dataset.teacher_lambdas(),
                 )
                 .unwrap();
@@ -1433,7 +1460,7 @@ fn arguments_reject_invalid_lr_schedules_before_accessing_files() {
 }
 
 #[test]
-fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
+fn cpu_result_only_training_records_null_teacher_cp_per_logit_and_resumes() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
     args.device = crate::nnue::options::DeviceKind::Cpu;
@@ -1444,7 +1471,10 @@ fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
     run(args.clone()).unwrap();
     let config: Value =
         serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap()).unwrap();
-    assert_eq!(config["preprocessing"]["teacher_ks"], json!([null]));
+    assert_eq!(
+        config["preprocessing"]["teacher_cp_per_logit"],
+        json!([null])
+    );
     assert_eq!(config["preprocessing"]["teacher_lambdas"], json!([0.0]));
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
@@ -1607,7 +1637,7 @@ fn interrupted_interval_validation_discards_the_epoch_without_appending_logs() {
             feature_set: args.feature_set,
             indices: &indices,
             validation_indices: session.dataset.validation_indices(),
-            teacher_ks: &session.teacher_ks,
+            teacher_cp_per_logit: &session.teacher_cp_per_logit,
             batch: args.batch,
             removal_penalty: args.training.removal_penalty,
             validation_interval: args.validation_interval,
@@ -1646,7 +1676,7 @@ fn validation_set_returns_none_when_the_deadline_has_already_expired() {
         dataset: &session.dataset,
         feature_set: session.args.feature_set,
         indices: session.dataset.validation_indices(),
-        teacher_ks: &session.teacher_ks,
+        teacher_cp_per_logit: &session.teacher_cp_per_logit,
         batch: session.args.batch,
         removal_penalty: session.args.training.removal_penalty,
         deadline: Instant::now(),

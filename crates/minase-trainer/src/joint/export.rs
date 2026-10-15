@@ -105,12 +105,12 @@ fn quantized(model: &Model, base: &Pst) -> Result<Pst> {
             .map(|r| r.map(f64::from))
             .collect::<Vec<_>>(),
         &model.fm.a().map(f64::from),
-        f64::from(base.k()),
+        f64::from(base.cp_per_logit()),
     )?;
     Ok(Pst::from_weights_with_fm(
         &pst::export::quantize(&model.pst)?,
         std::array::from_fn(|s| base.piece_value_of_state(s)),
-        base.k(),
+        base.cp_per_logit(),
         base.rule_set(),
         fm.as_weights(),
     )?)
@@ -121,7 +121,8 @@ fn integer(network: &Pst, position: &Position, features: &[usize]) -> i32 {
     .clamp(-28999, 28999) as i32
 }
 /// 実数の合算評価と整数の合算評価の絶対誤差を検証標本で測る。
-/// 誤差は`abs(φ * Σmg + (1−φ) * Σeg + K * Φ − clamp(PST + 整数補正, ±28,999))`である。
+/// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+/// 誤差は`abs(φ * Σmg + (1−φ) * Σeg + cp_per_logit * Φ − clamp(PST + 整数補正, ±28,999))`である。
 /// 実数側はf64で求め、切り詰めない。
 /// 標本は検証集合のエポック0の順列から選び、平均2センチポーン以下を合格とする。
 fn report(
@@ -157,7 +158,7 @@ fn report(
             std::array::from_fn(|e| features.iter().map(|&f| f64::from(endpoints[f][e])).sum());
         let floating = ratio * sums[0]
             + (1.0 - ratio) * sums[1]
-            + f64::from(model.pst.k()) * fm::report::phi(&v, &a, &features);
+            + f64::from(model.pst.cp_per_logit()) * fm::report::phi(&v, &a, &features);
         let error = (floating - f64::from(integer(network, &position, &features))).abs();
         if !error.is_finite() {
             return Err("non-finite joint quantization error".into());
@@ -194,7 +195,7 @@ pub(super) fn quantization_report(
 /// 端点は鏡映対を展開した特徴番号順の値である。
 /// `V`は`<f4`の`[13680, 32]`、`a`は`<f4`の`[32]`、`mask`は`|b1`の`[13680]`である。
 /// この5配列は`fm scale --float`と`nnue train --init-pst`の入力に使える。
-/// MNPTを読み直し、重みとK、駒価値、規則名が出力モデルと基準に一致することを検査する。
+/// MNPTを読み直し、重みと勝率尺度、駒価値、規則名が出力モデルと基準に一致することを検査する。
 /// 量子化の合否は[`report`]で判定する。
 pub(super) fn write_best(
     dataset: &Dataset,
@@ -213,7 +214,7 @@ pub(super) fn write_best(
     let written = Pst::decode(&std::fs::read(directory.join("pst.bin"))?)?;
     if written.weights() != output.weights()
         || written.fm_weights() != output.fm_weights()
-        || written.k().to_bits() != base.k().to_bits()
+        || written.cp_per_logit().to_bits() != base.cp_per_logit().to_bits()
         || written.rule_set() != base.rule_set()
         || (0..pst::v0_piece_values().len())
             .any(|s| written.piece_value_of_state(s) != base.piece_value_of_state(s))

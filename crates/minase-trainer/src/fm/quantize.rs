@@ -8,7 +8,7 @@ use minase::eval::{
 };
 use serde::Serialize;
 
-/// Kと出力係数を吸収した、ランク32の量子化FM。
+/// 勝率尺度（1ロジットあたりのcp）と出力係数を吸収した、ランク32の量子化FM。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Quantized {
     /// 特徴番号順の埋め込み。
@@ -30,25 +30,25 @@ impl Quantized {
     }
 }
 
-/// `u_if = round_ties_even(2^e * sqrt(K) * v_if * sqrt(abs(a_f)))`をi16へ写す。
+/// `u_if = round_ties_even(2^e * sqrt(cp_per_logit) * v_if * sqrt(abs(a_f)))`をi16へ写す。
 /// 符号は`a_f < 0`なら−1、それ以外なら+1である。
 /// 指数を30から0へ下げ、全要素の絶対値が16,383以下になる最大の指数を選ぶ。
 /// この上限はi16の範囲に2倍の余裕を取り、丸めと負側に1広い整数範囲による逸脱を防ぐ。
 /// 指数30はエンジンの読み手の上限であり、非有限値、全0の吸収済み重み、収まる指数のない入力は拒否する。
-/// `N = Σ_f d_f ((Σ_i u_if)^2 − Σ_i u_if^2)`に対する`trunc(N / 2^(2e+1))`が、センチポーン単位の`K * Φ`に対応する。
-pub fn quantize(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], k: f64) -> Result<Quantized> {
+/// `N = Σ_f d_f ((Σ_i u_if)^2 − Σ_i u_if^2)`に対する`trunc(N / 2^(2e+1))`が、センチポーン単位の`cp_per_logit * Φ`に対応する。
+pub fn quantize(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], cp_per_logit: f64) -> Result<Quantized> {
     if v.len() != FEATURE_COUNT
-        || !k.is_finite()
-        || k <= 0.0
+        || !cp_per_logit.is_finite()
+        || cp_per_logit <= 0.0
         || v.iter().flatten().chain(a).any(|x| !x.is_finite())
     {
-        return Err("invalid floating FM weights or K".into());
+        return Err("invalid floating FM weights or cp_per_logit".into());
     }
-    let sqrt_k = k.sqrt();
+    let sqrt_cp_per_logit = cp_per_logit.sqrt();
     let sqrt_a = a.map(|x| x.abs().sqrt());
     let absorbed: Vec<[f64; FM_RANK]> = v
         .iter()
-        .map(|row| std::array::from_fn(|f| sqrt_k * row[f] * sqrt_a[f]))
+        .map(|row| std::array::from_fn(|f| sqrt_cp_per_logit * row[f] * sqrt_a[f]))
         .collect();
     if absorbed.iter().flatten().any(|x| !x.is_finite())
         || absorbed.iter().flatten().all(|&x| x == 0.0)

@@ -67,7 +67,7 @@ fn score(model: &Model, features: &[usize], count: usize) -> f64 {
     for (i, &left) in features.iter().enumerate() {
         for &right in &features[i + 1..] {
             for f in 0..FM_RANK {
-                score += f64::from(model.pst.k())
+                score += f64::from(model.pst.cp_per_logit())
                     * f64::from(model.fm.a()[f])
                     * f64::from(model.fm.v()[left][f])
                     * f64::from(model.fm.v()[right][f]);
@@ -91,7 +91,7 @@ fn oracle(model: &Model, batch: &Batch, lambda: f64, removal: f64) -> f64 {
             .filter(|&&f| f != fm::batch::PADDING)
             .count();
         let cp = score(model, &features, count);
-        let z = cp / f64::from(model.pst.k());
+        let z = cp / f64::from(model.pst.cp_per_logit());
         let mut phi = 0.0;
         for (i, &left) in features.iter().enumerate() {
             for &right in &features[i + 1..] {
@@ -142,7 +142,7 @@ fn oracle(model: &Model, batch: &Batch, lambda: f64, removal: f64) -> f64 {
         }
         let penalty = penalties.iter().sum::<f64>()
             / penalties.len().max(1) as f64
-            / f64::from(model.pst.k());
+            / f64::from(model.pst.cp_per_logit());
         total += z.exp().ln_1p() - z * f64::from([0.2_f32, 0.8][b])
             + lambda * phi * phi
             + removal * penalty;
@@ -198,7 +198,7 @@ fn all_three_gradients_match_independent_numerical_derivatives_with_removal_and_
                     &v,
                     *model.fm.a(),
                     model.fm.mask().to_vec(),
-                    model.fm.k(),
+                    model.fm.cp_per_logit(),
                 )
                 .unwrap();
                 v[feature][f] = minus;
@@ -207,7 +207,7 @@ fn all_three_gradients_match_independent_numerical_derivatives_with_removal_and_
                     &v,
                     *model.fm.a(),
                     model.fm.mask().to_vec(),
-                    model.fm.k(),
+                    model.fm.cp_per_logit(),
                 )
                 .unwrap();
                 close(
@@ -225,14 +225,22 @@ fn all_three_gradients_match_independent_numerical_derivatives_with_removal_and_
             let minus = x - 0.0001;
             a[f] = plus;
             let mut high = model.clone();
-            high.fm =
-                fm::Model::from_weights(model.fm.v(), a, model.fm.mask().to_vec(), model.fm.k())
-                    .unwrap();
+            high.fm = fm::Model::from_weights(
+                model.fm.v(),
+                a,
+                model.fm.mask().to_vec(),
+                model.fm.cp_per_logit(),
+            )
+            .unwrap();
             a[f] = minus;
             let mut low = model.clone();
-            low.fm =
-                fm::Model::from_weights(model.fm.v(), a, model.fm.mask().to_vec(), model.fm.k())
-                    .unwrap();
+            low.fm = fm::Model::from_weights(
+                model.fm.v(),
+                a,
+                model.fm.mask().to_vec(),
+                model.fm.cp_per_logit(),
+            )
+            .unwrap();
             close(
                 f64::from(g.fm[(FEATURE_COUNT + 1) * FM_RANK + f]),
                 (oracle(&high, &batch, lambda, removal) - oracle(&low, &batch, lambda, removal))
@@ -330,23 +338,26 @@ fn fm_removal_rounds_in_embedding_precision_before_adding_pst_delta() {
     v[batch.columns()[0][1] as usize][0] = y;
     let mut coefficients = [0.0; FM_RANK];
     coefficients[0] = a;
-    let k = 317.25_f32;
+    let cp_per_logit = 317.25_f32;
     let model = Model {
-        pst: minase_trainer::pst::Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], k).unwrap(),
-        fm: fm::Model::from_weights(&v, coefficients, vec![true; FEATURE_COUNT], k).unwrap(),
+        pst: minase_trainer::pst::Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], cp_per_logit)
+            .unwrap(),
+        fm: fm::Model::from_weights(&v, coefficients, vec![true; FEATURE_COUNT], cp_per_logit)
+            .unwrap(),
     };
-    // Two own pawns, zero PST: each removal is punished by 0.25 + K*DeltaPhi.
+    // Two own pawns, zero PST: each removal is punished by 0.25 + cp_per_logit*DeltaPhi.
     // Compute the two f32 products explicitly, independently of the reduction code.
     let sum = x + y;
     let d0 = -(a * x) * (sum - x);
     let d1 = -(a * y) * (sum - y);
-    let expected = ((0.25 + f64::from(k) * f64::from(d0)) + (0.25 + f64::from(k) * f64::from(d1)))
-        / (2.0 * f64::from(k));
+    let expected = ((0.25 + f64::from(cp_per_logit) * f64::from(d0))
+        + (0.25 + f64::from(cp_per_logit) * f64::from(d1)))
+        / (2.0 * f64::from(cp_per_logit));
     let actual = joint::gradients(&model, &batch, 0.0, 1.0, 1)
         .unwrap()
         .losses
         .removal;
     assert!((actual - expected).abs() < 1e-15);
-    let double = 0.25 / f64::from(k) - f64::from(a) * f64::from(x) * f64::from(y);
+    let double = 0.25 / f64::from(cp_per_logit) - f64::from(a) * f64::from(x) * f64::from(y);
     assert!((actual - double).abs() > 1e-10);
 }

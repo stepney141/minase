@@ -29,19 +29,21 @@ pub(crate) fn canonical(base: usize) -> usize {
     base / 144 * 72 + square / 12 * 6 + file.min(11 - file)
 }
 
-/// センチポーン単位の正準行`[6841, 2]`と出力用K。末尾はゼロの埋め草。
+/// センチポーン単位の正準行`[6841, 2]`と勝率尺度（1ロジットあたりのcp）。末尾はゼロの埋め草。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Model {
     pub(crate) weights: Vec<f32>,
-    pub(crate) k: f32,
+    pub(crate) cp_per_logit: f32,
 }
 
 impl Model {
     /// 特徴番号順の実数2端点を受け取り、左右の鏡映対の平均を共有行に置く。
-    /// Kは正の有限値、入力は有限かつ[−4096,4095.875]センチポーンを要求する。
-    pub fn initialize(initial: &[[f32; 2]], k: f32) -> Result<Self> {
-        if !k.is_finite() || k <= 0.0 {
-            return Err(Error::Invalid("PST K must be finite and positive"));
+    /// 勝率尺度は正の有限値、入力は有限かつ[−4096,4095.875]センチポーンを要求する。
+    pub fn initialize(initial: &[[f32; 2]], cp_per_logit: f32) -> Result<Self> {
+        if !cp_per_logit.is_finite() || cp_per_logit <= 0.0 {
+            return Err(Error::Invalid(
+                "PST cp_per_logit must be finite and positive",
+            ));
         }
         if initial.len() != FEATURE_COUNT
             || initial
@@ -53,18 +55,20 @@ impl Model {
                 "initial PST must be finite [13680, 2] in -4096..4095.875",
             ));
         }
-        Self::from_endpoints(initial, k)
+        Self::from_endpoints(initial, cp_per_logit)
     }
 
     /// 同時学習用に、有限な2端点を鏡映対で平均し、保存範囲への事前制限は課さない。
     /// 範囲を少し超えるNPZの値でもi16へ丸めると基準と一致し得るため、呼び手が平均の前に量子化して照合する。
-    pub(crate) fn from_endpoints(initial: &[[f32; 2]], k: f32) -> Result<Self> {
+    pub(crate) fn from_endpoints(initial: &[[f32; 2]], cp_per_logit: f32) -> Result<Self> {
         if initial.len() != FEATURE_COUNT
             || initial.iter().flatten().any(|v| !v.is_finite())
-            || !k.is_finite()
-            || k <= 0.0
+            || !cp_per_logit.is_finite()
+            || cp_per_logit <= 0.0
         {
-            return Err(Error::Invalid("PST endpoint shape, finite values or K"));
+            return Err(Error::Invalid(
+                "PST endpoint shape, finite values or cp_per_logit",
+            ));
         }
         let mut weights = vec![0.0; CANONICAL_ROWS * 2];
         for base in (0..FEATURE_COUNT).filter(|base| base % 12 < 6) {
@@ -73,7 +77,10 @@ impl Model {
                     (initial[base][endpoint] + initial[mirror_feature(base)][endpoint]) / 2.0;
             }
         }
-        let model = Self { weights, k };
+        let model = Self {
+            weights,
+            cp_per_logit,
+        };
         model.validate()?;
         Ok(model)
     }
@@ -88,9 +95,9 @@ impl Model {
         &mut self.weights[..FEATURE_COUNT]
     }
 
-    /// ロジットへの換算に使う尺度。
-    pub fn k(&self) -> f32 {
-        self.k
+    /// ロジットへの換算に使う勝率尺度を返す。
+    pub fn cp_per_logit(&self) -> f32 {
+        self.cp_per_logit
     }
 
     /// 鏡映対を展開した13,680特徴の2端点を返す。
@@ -111,8 +118,11 @@ impl Model {
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
-        if self.weights.len() != CANONICAL_ROWS * 2 || !self.k.is_finite() || self.k <= 0.0 {
-            return Err(Error::Invalid("linear model shape or K"));
+        if self.weights.len() != CANONICAL_ROWS * 2
+            || !self.cp_per_logit.is_finite()
+            || self.cp_per_logit <= 0.0
+        {
+            return Err(Error::Invalid("linear model shape or cp_per_logit"));
         }
         if self.weights.iter().any(|v| !v.is_finite()) {
             return Err(Error::Invalid("non-finite PST weight"));

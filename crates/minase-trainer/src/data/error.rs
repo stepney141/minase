@@ -55,14 +55,14 @@ pub enum Error {
     LookaheadSamples,
     /// 教師の混合比が有限な0以上1以下の値ではない。
     TeacherLambda,
-    /// 教師値の構築に必要な分類番号、Kまたは探索値が不正。
+    /// 教師値の構築に必要な分類番号、教師の勝率尺度（1ロジットあたりのcp）または探索値が不正。
     TeacherTargets,
     /// 対局番号または同じ対局内の手数が順序規則に違反した。
     RecordOrder {
         /// 最初に違反したファイル内の記録番号。
         index: usize,
     },
-    /// K推定の標本が空、長さが不一致、または値が定義域外にある。
+    /// 教師の勝率尺度の推定に使う標本が空、長さが不一致、または値が定義域外にある。
     TeacherSamples,
     /// 指定した教師の分類に訓練局面がない。
     EmptyTeacherClass {
@@ -94,14 +94,14 @@ impl fmt::Display for Error {
             }
             Self::TeacherLambda => f.write_str("teacher lambda must be finite and in 0..=1"),
             Self::TeacherTargets => {
-                f.write_str("teacher targets require matching classes, finite positive active K values and finite active scores")
+                f.write_str("teacher targets require matching classes, finite positive active teacher cp_per_logit values and finite active scores")
             }
             Self::RecordOrder { index } => write!(
                 f,
                 "record {index}: games must be nondecreasing and plies strictly increasing within a game"
             ),
             Self::TeacherSamples => f.write_str(
-                "K estimation requires nonempty matching finite scores and results in 0..=2",
+                "teacher cp_per_logit estimation requires nonempty matching finite scores and results in 0..=2",
             ),
             Self::EmptyTeacherClass { class } => {
                 write!(f, "teacher class {class} has no training records")

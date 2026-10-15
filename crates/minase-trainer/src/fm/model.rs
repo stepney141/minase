@@ -12,21 +12,21 @@ pub(crate) const PARAMETERS: usize = V_LEN + FM_RANK;
 pub struct Model {
     pub(crate) weights: Vec<f32>,
     pub(crate) mask: Vec<bool>,
-    pub(crate) k: f32,
+    pub(crate) cp_per_logit: f32,
 }
 impl Model {
     /// 観測行だけを正規分布N(0,1/55)で初期化し、aと未観測行を0にする。
     /// シードから始めるSplitMix64の一様乱数をBox–Muller法で変換する。
     /// 分散1/55は1局面の平均発火特徴数54.9に基づき、初期の特徴和S_fの分散をおよそ1にする。
     /// a=0なのでエポック0の評価は固定PSTと一致する。
-    pub fn initialize(mask: Vec<bool>, k: f32, seed: u64) -> Result<Self> {
+    pub fn initialize(mask: Vec<bool>, cp_per_logit: f32, seed: u64) -> Result<Self> {
         if mask.len() != FEATURE_COUNT {
             return Err("FM observation mask shape".into());
         }
         let mut model = Self {
             weights: vec![0.0; PARAMETERS],
             mask,
-            k,
+            cp_per_logit,
         };
         let mut state = seed;
         let mut uniform = || {
@@ -58,7 +58,7 @@ impl Model {
         v: &[[f32; FM_RANK]],
         a: [f32; FM_RANK],
         mask: Vec<bool>,
-        k: f32,
+        cp_per_logit: f32,
     ) -> Result<Self> {
         if v.len() != FEATURE_COUNT {
             return Err("FM V shape".into());
@@ -66,7 +66,11 @@ impl Model {
         let mut weights: Vec<f32> = v.iter().flatten().copied().collect();
         weights.extend([0.0; FM_RANK]);
         weights.extend(a);
-        let model = Self { weights, mask, k };
+        let model = Self {
+            weights,
+            mask,
+            cp_per_logit,
+        };
         model.validate()?;
         Ok(model)
     }
@@ -84,9 +88,9 @@ impl Model {
     pub fn mask(&self) -> &[bool] {
         &self.mask
     }
-    /// 固定整数PSTの勝率尺度。
-    pub fn k(&self) -> f32 {
-        self.k
+    /// 固定整数PSTの勝率尺度（1ロジットあたりのcp）。
+    pub fn cp_per_logit(&self) -> f32 {
+        self.cp_per_logit
     }
     /// 未観測行と特徴番号13,680の埋め草行を0に戻す。
     /// 観測マスクは[`super::feature_observations`]で訓練集合とその鏡映から作り、検証集合は数えない。
@@ -105,11 +109,11 @@ impl Model {
     pub(crate) fn validate(&self) -> Result<()> {
         if self.weights.len() != PARAMETERS
             || self.mask.len() != FEATURE_COUNT
-            || !self.k.is_finite()
-            || self.k <= 0.0
+            || !self.cp_per_logit.is_finite()
+            || self.cp_per_logit <= 0.0
             || self.weights.iter().any(|v| !v.is_finite())
         {
-            return Err("invalid FM model shape or non-finite weights/K".into());
+            return Err("invalid FM model shape or non-finite weights/cp_per_logit".into());
         }
         for (i, row) in self.weights[..V_LEN]
             .as_chunks::<FM_RANK>()

@@ -60,8 +60,8 @@ pub struct EpochRecord {
 /// `preprocessing.teacher_classes`は分類順の[`crate::data::TeacherClass`]の配列である。
 /// 検査和は32個の数値の配列、`lookahead`は`{gamma, plies}`または`null`、
 /// `lambda`は分類へ適用した値であり、実戦対局では0である。`settings.lambda`は利用者が指定した値である。
-/// `teacher_ks`は分類順の教師用Kでλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
-/// `teacher_k_source = "training"`、`output_k`は初期MNPTから引き継いだ出力用Kである。
+/// `teacher_cp_per_logit`は分類順の教師の勝率尺度（1ロジットあたりのcp）でλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
+/// `teacher_cp_per_logit_source = "training"`、`cp_per_logit`は初期MNPTから引き継いだ勝率尺度である。
 /// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
 /// `validation_indices_sha256`は入力を連結した0始まりの通算番号をリトルエンディアンu64列にしたSHA-256である。
 ///
@@ -71,8 +71,8 @@ pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    teacher_cp_per_logit: &[f64],
+    cp_per_logit: f32,
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
     let object = settings
@@ -100,8 +100,8 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
-    let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":"training", "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

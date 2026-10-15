@@ -8,7 +8,7 @@ use serde_json::json;
 
 /// 同時学習の1エポックの記録。
 /// 損失は局面数で重み付けした平均で、端数バッチも含める。
-/// `removal_loss`は係数適用前の駒除去損失をKで割ったロジット単位の値で、参照は常にv0の駒価値である。
+/// `removal_loss`は係数適用前の駒除去損失を勝率尺度（1ロジットあたりのcp）で割ったロジット単位の値で、参照は常にv0の駒価値である。
 /// `--removal-penalty 0`でも計算して記録し、損失全体と勾配へ掛ける係数だけが0になる。
 /// `phi_squared_mean`は係数適用前の`mean(Φ²)`である。
 /// `total_loss = train_loss + lambda_res * phi_squared_mean + removal_penalty * removal_loss`とする。
@@ -62,8 +62,8 @@ pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    teacher_cp_per_logit: &[f64],
+    cp_per_logit: f32,
     observations: (&[u64], usize),
 ) -> Result<Configuration> {
     let (counts, mask_mismatches) = observations;
@@ -96,8 +96,8 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "base":file_record(&args.base)?, "pst_init":file_record(&args.pst_init)?, "fm_init":file_record(&args.fm_init)?, "fm_reference":file_record(&args.fm_reference)?});
-    let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":"training", "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

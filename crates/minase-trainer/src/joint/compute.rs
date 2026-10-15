@@ -1,5 +1,6 @@
 //! 実数PSTとFMを組み合わせ、両者に同じ損失から勾配を戻す。
-//! ロジットは`z = blend(PST) / K + Φ`、損失は`BCE + λres * mean(Φ²) + penalty * removal`である。
+//! 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+//! ロジットは`z = blend(PST) / cp_per_logit + Φ`、損失は`BCE + λres * mean(Φ²) + penalty * removal`である。
 //! 駒除去差分の参照は常にv0とし、適格性、罰則、正規化は[`crate::pst::linear`]に従う。
 //! 除去係数が0でも除去損失を計算する。
 
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,
-    /// Kで割った駒除去差分の損失。
+    /// 勝率尺度で割った駒除去差分の損失。
     pub removal: f64,
     /// FM補正の二乗平均。
     pub phi_squared_mean: f64,
@@ -36,7 +37,7 @@ pub struct Gradients {
     pub fm: Vec<f32>,
 }
 
-/// `z = blend(実数PST) / K + Φ`から、各局面のBCEとΦを返す。
+/// `z = blend(実数PST) / cp_per_logit + Φ`から、各局面のBCEとΦを返す。
 /// 正則化、駒除去損失、鏡映の追加は行わない。
 pub fn evaluate(model: &Model, batch: &Batch) -> Result<Vec<(f64, f64)>> {
     model.validate()?;
@@ -45,7 +46,7 @@ pub fn evaluate(model: &Model, batch: &Batch) -> Result<Vec<(f64, f64)>> {
         .enumerate()
         .map(|(b, cp)| {
             let (_, _, phi) = fm::compute::statistics(&model.fm, &batch.columns[b]);
-            let z = f64::from(cp / model.pst.k()) + phi;
+            let z = f64::from(cp / model.pst.cp_per_logit()) + phi;
             let loss = bce_with_logits(z, f64::from(batch.targets[b]));
             if !loss.is_finite() || !phi.is_finite() {
                 return Err("non-finite joint validation".into());
@@ -69,8 +70,8 @@ struct Activation {
 }
 
 /// 局面の損失と勾配に必要な和を計算する。
-/// 駒iの除去差分は`Δ_i = Δ_PST,i + K * ΔΦ_i`、`ΔΦ_i = −Σ_f a_f v_if (S_f − v_if)`である。
-/// 除去用の`S_f`と各積はf32、因子方向の和はf64で求め、和をf32へ丸めてからKを掛ける。
+/// 駒iの除去差分は`Δ_i = Δ_PST,i + cp_per_logit * ΔΦ_i`、`ΔΦ_i = −Σ_f a_f v_if (S_f − v_if)`である。
+/// 除去用の`S_f`と各積はf32、因子方向の和はf64で求め、和をf32へ丸めてから勝率尺度を掛ける。
 /// 上流微分は`u_j = d_j * penalty / (バッチ局面数 * max(適格件数, 1))`をf32へ丸めた値である。
 fn position(
     model: &Model,
@@ -84,11 +85,12 @@ fn position(
     let pst_columns = batch.pst.columns_at(b);
     let numerators = batch.pst.phase_numerators()[b];
     let pst_sums = linear::sum_mirrored_f64(model.pst.weights(), pst_columns);
-    let k = f64::from(model.pst.k());
+    let cp_per_logit = f64::from(model.pst.cp_per_logit());
     let n = batch.len() as f64;
     let (sums, pairs, phi) = fm::compute::statistics(&model.fm, columns);
-    let z =
-        f64::from(linear::blend(pst_sums.map(|v| v as f32), numerators[0]) / model.pst.k()) + phi;
+    let z = f64::from(
+        linear::blend(pst_sums.map(|v| v as f32), numerators[0]) / model.pst.cp_per_logit(),
+    ) + phi;
     let bce_gradient = bce_with_logits_gradient(z, f64::from(batch.targets[b])) / n;
     let mut result = Activation {
         losses: Losses {
@@ -122,7 +124,7 @@ fn position(
             pst_sums,
             linear::row(model.pst.weights(), pst_columns[col]).map(f64::from),
             numerators,
-        ) + k * f64::from(delta_phi);
+        ) + cp_per_logit * f64::from(delta_phi);
         let (loss, derivative) = linear::penalty(
             delta,
             refs[col].signum(),
@@ -132,7 +134,7 @@ fn position(
         result.losses.removal += loss;
         derivatives[col] = derivative;
     }
-    result.losses.removal /= eligible.max(1) as f64 * k;
+    result.losses.removal /= eligible.max(1) as f64 * cp_per_logit;
     let scale = removal_penalty / n / eligible.max(1) as f64;
     for col in 0..144 {
         let upstream = (f64::from(derivatives[col]) * scale) as f32;
@@ -150,9 +152,9 @@ fn position(
         pst_columns,
         numerators,
         &derivatives,
-        bce_gradient / k,
+        bce_gradient / cp_per_logit,
         linear::phase(numerators[0]).map(f64::from),
-        scale / k / 90.0,
+        scale / cp_per_logit / 90.0,
     );
     Ok(result)
 }
@@ -160,7 +162,7 @@ fn position(
 /// PST、V、aへBCE、正則化、駒除去の勾配を戻す。
 /// 除去の上流微分uに対し、Vの勾配へ`−a_f (Σ_j u_j v_jf + u_i (S_f − 2v_if))`を加える。
 /// aの勾配へは`−Σ_j u_j (S_f − v_jf) v_jf`を加える。
-/// PSTには`linear::gradient_rows`でBCEの勾配/Kと、`penalty / (バッチ局面数 * max(適格件数, 1) * K * 90)`の倍率を適用する。
+/// PSTには`linear::gradient_rows`でBCEの勾配を勝率尺度で割った値と、`penalty / (バッチ局面数 * max(適格件数, 1) * cp_per_logit * 90)`の倍率を適用する。
 /// 各行の和は局面順であり、縮約順は`threads`によらない。
 pub fn gradients(
     model: &Model,
@@ -259,7 +261,7 @@ pub struct Distribution {
     pub samples: usize,
     /// 常にlogit。
     pub unit: &'static str,
-    /// Kを掛けた母標準偏差、センチポーン。
+    /// 勝率尺度を掛けた母標準偏差、センチポーン。
     pub std_cp: f64,
 }
 /// 最初の5更新の勾配ノルム。再開時にも引き継ぐ。

@@ -2,7 +2,7 @@
 //! `nnue`は[`nnue`]、`pst train`は[`pst`]、`fm train/quarter/scale`は[`fm`]、`joint train`は[`joint`]、`diag`は[`diagnostics`]に対応する。
 //! 特徴とバッチ、モデル、前進と後退、駒除去差分、チェックポイント、学習ループは各評価関数のモジュールが持つ。
 //! 同時学習はPSTとFMの部品を組み合わせ、NNUEの部品は使わない。
-//! 全学習器で共有するのは、MNSD、検証分割、先読み教師、教師用K、教師値を扱う[`data`]と、Adam、二値交差エントロピー、固定順の並列和、NPZ、早期終了、原子的書き込みを扱う[`nn`]である。
+//! 全学習器で共有するのは、MNSD、検証分割、先読み教師、教師の勝率尺度（1ロジットあたりのcp）、教師値を扱う[`data`]と、Adam、二値交差エントロピー、固定順の並列和、NPZ、早期終了、原子的書き込みを扱う[`nn`]である。
 //! 理由は`docs/adr/split-training-pipelines-by-evaluation-function.md`にある。
 //!
 //! PST、FM、同時学習はCPUだけで動き、`--device`を持たず、記録のdeviceは常に`"cpu"`である。

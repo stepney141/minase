@@ -146,7 +146,8 @@ pub(crate) fn std(values: &[f64]) -> f64 {
 
 /// 倍率を焼き込んだ評価の誤差を検証標本で測り、合否を付けずに返す。
 /// 標本はSplitMix64のシードとエポック0の順列から最大`validation_sample`件を選び、局面番号の昇順に並べる。
-/// `float_vs_integer`は`abs(入力の整数PST + K * Φ(V, a′) − 出力のエンジン評価)`である。
+/// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+/// `float_vs_integer`は`abs(入力の整数PST + cp_per_logit * Φ(V, a′) − 出力のエンジン評価)`である。
 /// `tuning_vs_baked`は調整用の`trunc(N * s / (1024 * 2^(2e+1)))`と焼き込んだ整数補正の差である。
 pub(super) fn scale_report(
     source: &Pst,
@@ -181,7 +182,8 @@ pub(super) fn scale_report(
             let mut features = Vec::with_capacity(145);
             active_features(&position, |feature| features.push(feature));
             let baseline = f64::from(pst::evaluate_pst(source, &position));
-            let floating = baseline + f64::from(source.k()) * phi(&weights.v, scaled_a, &features);
+            let floating =
+                baseline + f64::from(source.cp_per_logit()) * phi(&weights.v, scaled_a, &features);
             let integer = f64::from(pst::evaluate(output, &position));
             let tuning = tuning_correction(
                 numerator(source_fm, &features),

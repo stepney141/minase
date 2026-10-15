@@ -277,7 +277,7 @@ fn pair_loss(model: &Model, batch: &Batch, coefficient: f64) -> f64 {
                 }
             }
         }
-        let z = f64::from(batch.baseline()[b] as f32 / model.k()) + phi;
+        let z = f64::from(batch.baseline()[b] as f32 / model.cp_per_logit()) + phi;
         let target = [0.2_f32, 0.8][b] as f64;
         total += z.exp().ln_1p() - z * target + coefficient * phi * phi;
     }
@@ -304,11 +304,21 @@ fn both_gradients_including_regularization_match_pairwise_numerical_derivatives(
                 let plus = x + 1e-3;
                 let minus = x - 1e-3;
                 v[feature as usize][f] = plus;
-                let high =
-                    Model::from_weights(&v, *model.a(), model.mask().to_vec(), model.k()).unwrap();
+                let high = Model::from_weights(
+                    &v,
+                    *model.a(),
+                    model.mask().to_vec(),
+                    model.cp_per_logit(),
+                )
+                .unwrap();
                 v[feature as usize][f] = minus;
-                let low =
-                    Model::from_weights(&v, *model.a(), model.mask().to_vec(), model.k()).unwrap();
+                let low = Model::from_weights(
+                    &v,
+                    *model.a(),
+                    model.mask().to_vec(),
+                    model.cp_per_logit(),
+                )
+                .unwrap();
                 let numerical = (pair_loss(&high, &batch, lambda)
                     - pair_loss(&low, &batch, lambda))
                     / f64::from(plus - minus);
@@ -324,9 +334,13 @@ fn both_gradients_including_regularization_match_pairwise_numerical_derivatives(
             let plus = x + 1e-3;
             let minus = x - 1e-3;
             a[f] = plus;
-            let high = Model::from_weights(model.v(), a, model.mask().to_vec(), model.k()).unwrap();
+            let high =
+                Model::from_weights(model.v(), a, model.mask().to_vec(), model.cp_per_logit())
+                    .unwrap();
             a[f] = minus;
-            let low = Model::from_weights(model.v(), a, model.mask().to_vec(), model.k()).unwrap();
+            let low =
+                Model::from_weights(model.v(), a, model.mask().to_vec(), model.cp_per_logit())
+                    .unwrap();
             let numerical = (pair_loss(&high, &batch, lambda) - pair_loss(&low, &batch, lambda))
                 / f64::from(plus - minus);
             assert!(
@@ -461,7 +475,10 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
         );
         assert!(output.fm_weights().is_some());
         assert_eq!(init.weights(), output.weights());
-        assert_eq!(init.k().to_bits(), output.k().to_bits());
+        assert_eq!(
+            init.cp_per_logit().to_bits(),
+            output.cp_per_logit().to_bits()
+        );
         assert_eq!(init.rule_set(), output.rule_set());
         for state in 0..pst::PIECE_STATE_COUNT {
             assert_eq!(
@@ -541,7 +558,7 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
         .encode(),
     )
     .unwrap();
-    // MNPTのKはペイロードの検査和に含まれず、前処理のoutput_kで照合する。
+    // MNPTの勝率尺度はペイロードの検査和に含まれず、前処理のcp_per_logitで照合する。
     let error = fm::train(args.clone()).unwrap_err();
     checkpoint_contract::assert_mismatch(error.as_ref(), MismatchField::Preprocessing);
     assert_eq!(
@@ -561,7 +578,7 @@ fn equal_losses_keep_epoch_one_and_stop_at_patience_with_zero_output_exclusion()
     let baseline = Pst::from_weights(
         &vec![[8; 2]; FEATURE_COUNT],
         std::array::from_fn(|state| initial.piece_value_of_state(state)),
-        initial.k(),
+        initial.cp_per_logit(),
         initial.rule_set(),
     )
     .unwrap();
@@ -631,7 +648,8 @@ fn quantization_failure_keeps_both_exports_and_records_failure() {
         .iter()
         .map(|&observed| [if observed { 0.5 } else { 0.0 }; FM_RANK])
         .collect::<Vec<_>>();
-    checkpoint.model = Model::from_weights(&v, [0.5; FM_RANK], mask, checkpoint.model.k()).unwrap();
+    checkpoint.model =
+        Model::from_weights(&v, [0.5; FM_RANK], mask, checkpoint.model.cp_per_logit()).unwrap();
     for name in ["latest.npz", "best.npz"] {
         fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
     }
@@ -714,9 +732,9 @@ fn one_epoch_wires_permutation_tail_batches_and_mirror_bits_to_updates() {
         .into_iter()
         .map(|n| n > 0)
         .collect();
-    let mut model = Model::initialize(mask, base.k(), args.seed).unwrap();
+    let mut model = Model::initialize(mask, base.cp_per_logit(), args.seed).unwrap();
     let mut optimizer = Adam::new(args.lr, args.weight_decay).unwrap();
-    let ks = dataset.estimate_teacher_ks().unwrap();
+    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
     let order = minase_trainer::data::epoch_permutation(dataset.training_indices(), args.seed, 1);
     assert_eq!(order.len() % args.batch, 15);
     for indices in order.chunks(args.batch) {
@@ -724,7 +742,8 @@ fn one_epoch_wires_permutation_tail_batches_and_mirror_bits_to_updates() {
             .iter()
             .map(|&index| fm::mirror_bit(args.seed, 1, index))
             .collect();
-        let batch = Batch::from_indices(&dataset, &base, indices, &mirrors, &ks).unwrap();
+        let batch =
+            Batch::from_indices(&dataset, &base, indices, &mirrors, &teacher_cp_per_logit).unwrap();
         let gradients = fm::gradients(&model, &batch, args.lambda_res, 1).unwrap();
         optimizer.update(&mut model, &gradients.weights, 1).unwrap();
     }

@@ -223,9 +223,9 @@ impl Drop for Fixture {
     }
 }
 
-fn model(set: InputFeatureSet, linear: &[[f32; 2]], k: f32) -> Model {
+fn model(set: InputFeatureSet, linear: &[[f32; 2]], cp_per_logit: f32) -> Model {
     Model::initialize(
-        Shape::new(set, 4, k).unwrap(),
+        Shape::new(set, 4, cp_per_logit).unwrap(),
         linear,
         common::all_observed(set),
         1,
@@ -592,7 +592,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
 }
 
 #[test]
-fn removal_uses_f64_recomputation_and_the_integer_network_k() {
+fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let f = Fixture::new();
         let position =
@@ -614,7 +614,7 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
         m.parameter_mut(Parameter::OutputWeights)[..units].fill(0.125);
         m.parameter_mut(Parameter::OutputBias)[0] = 0.1;
         f.checkpoint(m);
-        // 整数側は0評価、K=1000。チェックポイントのK=500を使うとこの既知差分に合わない。
+        // 整数側は0評価、cp_per_logit=1000。チェックポイントのcp_per_logit=500を使うとこの既知差分に合わない。
         f.network(
             "net.bin",
             &model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),

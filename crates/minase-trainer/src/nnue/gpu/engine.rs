@@ -515,7 +515,7 @@ pub(super) fn removal_forward(
         shared_mem_bytes: 0,
     };
     let (n, h, p) = scalars(m.shape, n);
-    let scale = m.shape.k();
+    let scale = m.shape.cp_per_logit();
     let mut args = d.compute.launch_builder(&k.removal);
     args.arg(&input.features)
         .arg(&input.linear_features)
@@ -587,7 +587,7 @@ pub(super) fn output_backward(
     let mut cfg = launch_config(blocks * THREADS)?;
     cfg.shared_mem_bytes = (2 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n, h, p) = scalars(m.shape, n);
-    let scale = m.shape.k();
+    let scale = m.shape.cp_per_logit();
     let mut args = d.compute.launch_builder(&k.head);
     args.arg(&b.acc)
         .arg(&b.lin)
@@ -714,7 +714,7 @@ pub(super) fn backward(
     require_len(b.d_linear.len(), CANONICAL_ROWS * 2)?;
     require_len(b.linear_partials.len(), input.linear_segments * 2)?;
     let rows = CANONICAL_ROWS as u32;
-    let scale = shape.k();
+    let scale = shape.cp_per_logit();
     if input.linear_segments != 0 {
         let segments = input.linear_segments as u32;
         let cfg = cudarc::driver::LaunchConfig {
@@ -870,7 +870,7 @@ fn validation(
     let mut cfg = launch_config(blocks * THREADS)?;
     cfg.shared_mem_bytes = (7 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n32, h, p) = scalars(m.shape, n);
-    let scale = m.shape.k();
+    let scale = m.shape.cp_per_logit();
     let mut args = d.compute.launch_builder(&k.validation);
     args.arg(&b.acc)
         .arg(&b.lin)

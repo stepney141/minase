@@ -10,8 +10,8 @@ pub struct Base {
     pub linear: Vec<[i16; 2]>,
     /// 駒状態番号順の探索用駒価値。単位はセンチポーン。
     pub piece_values: [i32; PIECE_STATE_COUNT],
-    /// 出力のロジットをセンチポーンへ換算する尺度。
-    pub k: f32,
+    /// 勝率尺度（1ロジットあたりのcp）。
+    pub cp_per_logit: f32,
     /// 元のMNPTが指定する規則セット名。
     pub rule_set: String,
 }
@@ -26,7 +26,7 @@ fn decode(bytes: &[u8]) -> Result<Base, Box<dyn Error>> {
     Ok(Base {
         linear: pst.weights().to_vec(),
         piece_values: std::array::from_fn(|state| pst.piece_value_of_state(state)),
-        k: pst.k(),
+        cp_per_logit: pst.cp_per_logit(),
         rule_set: pst.rule_set().to_owned(),
     })
 }
@@ -42,7 +42,7 @@ mod tests {
     };
 
     /// MNPT版3の配置で作る。
-    /// 両端点、規則名、Kは基準の埋め込み値と異なる既知の値を使う。
+    /// 両端点、規則名、勝率尺度は基準の埋め込み値と異なる既知の値を使う。
     fn fixture() -> Vec<u8> {
         Pst::from_weights_with_fm(
             &vec![[123, -456]; FEATURE_COUNT],
@@ -77,7 +77,7 @@ mod tests {
         expected[17] = [i16::MIN, i16::MAX];
         assert_eq!(base.linear, expected);
         assert_eq!(base.piece_values, v0_piece_values());
-        assert_eq!(base.k.to_bits(), 317.25_f32.to_bits());
+        assert_eq!(base.cp_per_logit.to_bits(), 317.25_f32.to_bits());
         assert_eq!(base.rule_set, "L1,P0,R1,E0");
     }
 }

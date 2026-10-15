@@ -161,7 +161,7 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     assert_eq!(report["bands"].as_array().unwrap().len(), 10);
     assert_eq!(report["rust_agreement"], json!({"base":6,"candidate":6}));
     assert_eq!(report["teacher_comparison_excluded"], 3);
-    assert_eq!(report["teacher_ks"][1], Value::Null);
+    assert_eq!(report["teacher_cp_per_logit"][1], Value::Null);
     assert_eq!(report["bands"][0]["samples"], 2);
     assert_eq!(report["bands"][1]["reason"], "empty band");
     assert!(report["bands"][1]["validation_loss"]["base"].is_null());

@@ -1,7 +1,7 @@
 //! PSTの学習、エポック境界での保存、再開を管理する。
 //! 新規実行の`--output-dir`は存在しないか空でなければならず、入力MNSDの規則名は初期MNPTと一致しなければならない。
 //! 再開時は`--resume`と出力先が同じ場所を指し、`config.json`の`settings`、`inputs`、`preprocessing`が再計算値に一致することを要求する。
-//! `latest.npz`のK、学習率、シード、設定も一致し、保存エポックが`--epochs`以下でなければならない。
+//! `latest.npz`の勝率尺度（1ロジットあたりのcp）、学習率、シード、設定も一致し、保存エポックが`--epochs`以下でなければならない。
 //! 更新回数は`epoch * ceil(訓練局面数 / batch)`に等しいことを検査する。
 //! チェックポイントは[`Checkpoint`]のNPZ形式である。
 //! 各エポックは`training.jsonl`、`latest.npz`、改善時の`best.npz`の順に保存する。
@@ -50,7 +50,7 @@ fn initial_model(base: &Base) -> Result<Model> {
         .iter()
         .map(|row| row.map(|v| f32::from(v) / 8.0))
         .collect();
-    Model::initialize(&initial, base.k)
+    Model::initialize(&initial, base.cp_per_logit)
 }
 
 struct Session {
@@ -58,7 +58,7 @@ struct Session {
     workers: usize,
     dataset: Dataset,
     base: Base,
-    ks: Vec<f64>,
+    teacher_cp_per_logit: Vec<f64>,
     reference: Option<RemovalReference>,
     checkpoint: Checkpoint,
     started: Instant,
@@ -100,8 +100,14 @@ impl Session {
         {
             return Err(Error::Invalid("MNSD rule set differs from initial MNPT"));
         }
-        let ks = dataset.estimate_teacher_ks()?;
-        let mut config = configuration(&args, workers, &dataset, &ks, base.k)?;
+        let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit()?;
+        let mut config = configuration(
+            &args,
+            workers,
+            &dataset,
+            &teacher_cp_per_logit,
+            base.cp_per_logit,
+        )?;
         let mut checkpoint = Checkpoint {
             optimizer: Adam::new(args.lr)?,
             model,
@@ -129,7 +135,7 @@ impl Session {
             restored.progress.check_config(
                 &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             )?;
-            if restored.model.k().to_bits() != base.k.to_bits()
+            if restored.model.cp_per_logit().to_bits() != base.cp_per_logit.to_bits()
                 || restored.optimizer.lr() != args.lr
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
@@ -167,7 +173,7 @@ impl Session {
             workers,
             dataset,
             base,
-            ks,
+            teacher_cp_per_logit,
             reference,
             checkpoint,
             started,
@@ -210,7 +216,11 @@ impl Session {
             self.workers,
             |index| {
                 let batch = Batch::from_indices(&self.dataset, chunks[index])?;
-                let targets = targets(&batch, &self.ks, self.dataset.teacher_lambdas())?;
+                let targets = targets(
+                    &batch,
+                    &self.teacher_cp_per_logit,
+                    self.dataset.teacher_lambdas(),
+                )?;
                 compute::validation_sum(&self.checkpoint.model, &batch, &targets)
             },
             |_, loss| {
@@ -230,13 +240,13 @@ impl Session {
         let mut training = Training::default();
         let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
         let dataset = &self.dataset;
-        let ks = &self.ks;
+        let teacher_cp_per_logit = &self.teacher_cp_per_logit;
         pipeline::ordered::<_, Error>(
             chunks.len(),
             self.workers,
             |index| {
                 let batch = Batch::from_indices(dataset, chunks[index])?;
-                let targets = targets(&batch, ks, dataset.teacher_lambdas())?;
+                let targets = targets(&batch, teacher_cp_per_logit, dataset.teacher_lambdas())?;
                 Ok((batch, targets))
             },
             |_, (batch, targets)| {
@@ -467,12 +477,12 @@ pub fn run(args: Args) -> Result<Summary> {
     session.finish()
 }
 
-fn targets(batch: &Batch, ks: &[f64], lambdas: &[f64]) -> Result<Vec<f32>> {
+fn targets(batch: &Batch, teacher_cp_per_logit: &[f64], lambdas: &[f64]) -> Result<Vec<f32>> {
     Ok(build_targets_from_arrays(
         batch.teacher_scores(),
         batch.teacher_classes(),
         batch.outcomes(),
-        ks,
+        teacher_cp_per_logit,
         lambdas,
     )?)
 }

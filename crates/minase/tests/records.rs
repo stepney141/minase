@@ -181,7 +181,7 @@ fn all_header_game_and_entry_fields_round_trip_for_both_teachers() {
         assert_eq!(got.generation_commit(), h.generation_commit());
         assert_eq!(got.network_checksum(), h.network_checksum());
         assert_eq!(got.teacher_kind(), h.teacher_kind());
-        assert_eq!(got.teacher_scale(), h.teacher_scale());
+        assert_eq!(got.teacher_search_budget(), h.teacher_search_budget());
         assert_eq!(got.seed(), h.seed());
         assert_eq!(got.game_count(), 3);
         assert_eq!(got.entry_count(), 12);

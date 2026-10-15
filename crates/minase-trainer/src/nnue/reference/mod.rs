@@ -279,7 +279,8 @@ pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32
     }
     result
 }
-/// ロジットを`(u0×lin0 + u1×lin1)/K + ((head0 + head1) + bias)`で計算する。
+/// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+/// ロジットを`(u0×lin0 + u1×lin1)/cp_per_logit + ((head0 + head1) + bias)`で計算する。
 /// 出力部の加算順は[`head`]、補間係数は[`phase`]に従う。
 pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> f32 {
     let h = model.shape().width();
@@ -287,7 +288,7 @@ pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> 
     let nonlinear = head(model, 0, |j| f.acc[b * 2 * h + j])
         + head(model, 1, |j| f.acc[(b * 2 + 1) * h + j])
         + model.parameters()[Parameter::OutputBias][0];
-    (u[0] * f.lin[b][0] + u[1] * f.lin[b][1]) / model.shape().k() + nonlinear
+    (u[0] * f.lin[b][0] + u[1] * f.lin[b][1]) / model.shape().cp_per_logit() + nonlinear
 }
 /// 浮動小数点の評価をセンチポーンで返す。学習と同じf32の前進を使う。
 pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {
@@ -295,25 +296,30 @@ pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {
     let weights = fold(model)?;
     let f = forward(model, batch, &weights)?;
     Ok((0..batch.len())
-        .map(|b| logit(model, batch, &f, b) * model.shape().k())
+        .map(|b| logit(model, batch, &f, b) * model.shape().cp_per_logit())
         .collect())
 }
 
 /// 量子化検査用の浮動小数点評価をセンチポーンで返す。
 /// 第1層の畳み込みはf32で行い、その重みを用いた線形和、隠れ値、SCReLU、出力内積はf64で計算する。
-/// 特徴は列順に足し、両半幅の活性化を個別に重み付けし、非線形出力にKを掛ける。
+/// 特徴は列順に足し、両半幅の活性化を個別に重み付けし、非線形出力に勝率尺度を掛ける。
 /// 整数推論の128で割る近似は使わない。
 pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
     let weights = fold(model)?;
-    evaluate_f64_with_weights(model, batch, &weights, f64::from(model.shape().k()))
+    evaluate_f64_with_weights(
+        model,
+        batch,
+        &weights,
+        f64::from(model.shape().cp_per_logit()),
+    )
 }
 
-// 診断では畳み込みを共有し、比較する整数ネットのKを使う。
+// 診断では畳み込みを共有し、比較する整数ネットのcp_per_logitを使う。
 pub(crate) fn evaluate_f64_with_weights(
     model: &Model,
     batch: &BatchSlot,
     weights: &[f32],
-    k: f64,
+    cp_per_logit: f64,
 ) -> Result<Vec<f64>> {
     check_batch(model, batch)?;
     check_weights(model, weights)?;
@@ -349,14 +355,14 @@ pub(crate) fn evaluate_f64_with_weights(
             }
             nonlinear += head;
         }
-        values.push(cp + k * nonlinear);
+        values.push(cp + cp_per_logit * nonlinear);
     }
     Ok(values)
 }
 
 /// 出力と二値交差エントロピー、および後退の局面ごとの寄与を求める。
 /// ロジットxと教師値tに対し、`g = (σ(x)−t)/B`と`loss = max(x,0)−x×t+log1p(exp(−|x|))`をf32で計算する。
-/// 線形係数は`c = g×u/K + Removal::linear`である。
+/// 線形係数は`c = g×u/cp_per_logit + Removal::linear`である。
 /// 活性化fとその微分hを用い、`d_acc = (g−S)×o×h(acc) + d_acc_removal`と`d_output = (g−S)×f(acc) + removal.d_output`はf64で計算してf32へ丸める。
 /// Sは[`Removal::s`]であり、−Sは除去差分`Δ_r = E_r−E`の−Eを通る微分である。
 /// 教師値が有限かつ`[0,1]`でなければエラーを返す。
@@ -417,7 +423,7 @@ fn output_backward_parallel(
             result.loss[local] = x.max(0.0) - x * target + (-x.abs()).exp().ln_1p();
             let u = phase(batch.piece_counts()[b], false);
             for (e, &u_e) in u.iter().enumerate() {
-                result.c[local][e] = g * u_e / model.shape().k() + removal.linear[b][e];
+                result.c[local][e] = g * u_e / model.shape().cp_per_logit() + removal.linear[b][e];
             }
             for (vj, &o_vj) in o.iter().enumerate() {
                 let i = b * 2 * h + vj;
@@ -577,7 +583,7 @@ fn first_layer_backward_parallel(
     Ok(())
 }
 
-/// 手番側の線形逆索引を走査し、`dL[row][e] = Σ(c[b][e] − d_c×u_after[e]/K)`を正準行へ足す。
+/// 手番側の線形逆索引を走査し、`dL[row][e] = Σ(c[b][e] − d_c×u_after[e]/cp_per_logit)`を正準行へ足す。
 /// 半幅回転はせず、CPUはf64で累算する。
 /// GPUは1ワープが1区分を処理し、レーンtが要素t, t+32, …をf32で足して距離16,8,4,2,1の木で縮約する。
 /// 区分間は昇順にf64で足す。
@@ -626,7 +632,7 @@ fn linear_backward_parallel(
                         sum += f64::from(output.c[b][endpoint])
                             - f64::from(d)
                                 * f64::from(phase(batch.piece_counts()[b], true)[endpoint])
-                                / f64::from(model.shape().k());
+                                / f64::from(model.shape().cp_per_logit());
                     }
                     *value = sum as f32;
                 }

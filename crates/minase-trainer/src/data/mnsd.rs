@@ -15,19 +15,20 @@ use serde::Serialize;
 use std::io::BufReader;
 
 use super::{
-    Error, Lookahead, Result, compute_lookahead, estimate_k, is_validation, validate_lambda,
+    Error, Lookahead, Result, compute_lookahead, estimate_cp_per_logit, is_validation,
+    validate_lambda,
 };
 
-/// 教師用Kを共有する分類。
+/// 教師の勝率尺度（1ロジットあたりのcp）を共有する分類。
 ///
-/// 生成コミット（小文字）、重みの検査和、ノード上限、規則セット、由来、先読み条件、適用したλで区別する。
+/// 生成コミット（小文字）、重みの検査和、探索規模、規則セット、由来、先読み条件、適用したλで区別する。
 /// 入力順に番号を付け、適格な局面がないファイルは分類を作らない。
 /// 教師を使う前に[`Dataset::with_lambda`]でλを設定し、教師を使わない診断では`lambda`は`None`である。
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TeacherClass {
     pub(crate) generation_commit: String,
     pub(crate) network_checksum: [u8; 32],
-    pub(crate) nodes: u64,
+    pub(crate) search_budget: u64,
     pub(crate) rule_set: String,
     pub(crate) origin: Origin,
     pub(crate) lookahead: Option<Lookahead>,
@@ -40,9 +41,9 @@ impl TeacherClass {
         &self.network_checksum
     }
 
-    /// 教師探索のノード上限を返す。
-    pub fn nodes(&self) -> u64 {
-        self.nodes
+    /// 教師の探索規模を返す。αβ探索ならノード上限、モンテカルロ木探索なら探索回数である。
+    pub fn search_budget(&self) -> u64 {
+        self.search_budget
     }
 
     /// 先読みの条件を返す。省略時は元の探索値を使う。
@@ -236,7 +237,7 @@ impl Dataset {
                     let class = TeacherClass {
                         generation_commit: file.header.generation_commit().to_ascii_lowercase(),
                         network_checksum: *file.header.network_checksum(),
-                        nodes: file.header.teacher_scale(),
+                        search_budget: file.header.teacher_search_budget(),
                         rule_set: file.header.rule_set().to_owned(),
                         origin,
                         lookahead,
@@ -281,7 +282,7 @@ impl Dataset {
     }
 
     /// 自己対局には指定したλを、実戦対局には0を設定する。
-    /// 教師値やKを計算する呼び手は、有限な0以上1以下の値を明示する必要がある。
+    /// 教師値や教師の勝率尺度を計算する呼び手は、有限な0以上1以下の値を明示する必要がある。
     pub fn with_lambda(mut self, lambda: f64) -> Result<Self> {
         validate_lambda(lambda)?;
         self.lambdas = self
@@ -399,13 +400,13 @@ impl Dataset {
         Ok(GameKey(file, self.files[file].metadata[local].game))
     }
 
-    /// 分類ごとに訓練集合だけを使って教師用Kを推定する。
+    /// 分類ごとに訓練集合だけを使って教師の勝率尺度を推定する。
     /// 保持したf32の教師探索値をf64へ広げて校正し、標本は1分類ずつ確保する。
     /// λが0の分類は探索値を使わないのでNaNを返し、JSONの記録ではnullになる。
     /// 先読みを指定した場合は先読み値を使い、校正、学習、検証で同じ探索値を参照する。
     /// 推定の目標は訓練集合の終局結果だけであり、混合後の教師確率は使わない。
     /// λが0でない分類に訓練局面が1つもなければ[`Error::EmptyTeacherClass`]を返す。
-    pub fn estimate_teacher_ks(&self) -> Result<Vec<f64>> {
+    pub fn estimate_teacher_cp_per_logit(&self) -> Result<Vec<f64>> {
         if self.lambdas.len() != self.classes.len() {
             return Err(Error::TeacherLambda);
         }
@@ -436,7 +437,7 @@ impl Dataset {
             if scores.is_empty() {
                 return Err(Error::EmptyTeacherClass { class });
             }
-            values.push(estimate_k(&scores, &outcomes)?);
+            values.push(estimate_cp_per_logit(&scores, &outcomes)?);
         }
         Ok(values)
     }

@@ -1,7 +1,7 @@
 //! MNUE版5のバイト配置と検証を定める。
 //! 多バイト数値はリトルエンディアンであり、ヘッダは192バイトである。
 //! オフセット0は識別子`MNUE`、4は版u32の5、8はASCIIの構造記述96バイトである。
-//! 104は幅Hのu32で2〜512の偶数、108は出力用Kのf32で正の有限値かつ100,000以下である。
+//! 104は幅Hのu32で2〜512の偶数、108は勝率尺度（1ロジットあたりのcp）のf32で正の有限値かつ100,000以下である。
 //! 112はUTF-8の規則セット名32バイト、144は本体のSHA-256の32バイト、176は0の予約16バイトである。
 //! 文字列の余りはNULで埋める。
 //!
@@ -37,8 +37,8 @@ pub(super) const HEADER_LENGTH: usize = 192;
 pub struct EncodeInput<'a> {
     /// 第1層の幅H。2以上512以下の偶数を指定する。
     pub width: u32,
-    /// 出力用の勝率尺度K。正の有限値で100,000以下を指定する。
-    pub k: f32,
+    /// 勝率尺度。正の有限値で100,000以下を指定する。
+    pub cp_per_logit: f32,
     /// 生成時の規則セット名。NULを含まない32バイト以下のUTF-8文字列を指定する。
     pub rule_set: &'a str,
     /// 駒状態番号順の探索用駒価値。
@@ -62,7 +62,7 @@ pub struct EncodeInput<'a> {
 /// 実数への尺度の乗算と偶数丸めは学習器の`nnue::model::quantize`が行い、書き出し直後に復号して再検査する。
 ///
 /// # Errors
-/// 幅、K、文字列、配列長、駒価値、重みの範囲または鏡映共有が不正ならエラーを返す。
+/// 幅、勝率尺度、文字列、配列長、駒価値、重みの範囲または鏡映共有が不正ならエラーを返す。
 pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> {
     let width = input.width as usize;
     let text = architecture_text::<F, DirectScrelu>(width);
@@ -75,8 +75,8 @@ pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> 
     header[8..8 + text.len()].copy_from_slice(text.as_bytes());
     header[104..108].copy_from_slice(&input.width.to_le_bytes());
     architecture(&header)?;
-    validate_k(input.k)?;
-    header[108..112].copy_from_slice(&input.k.to_le_bytes());
+    validate_cp_per_logit(input.cp_per_logit)?;
+    header[108..112].copy_from_slice(&input.cp_per_logit.to_le_bytes());
     if input.rule_set.len() > 32 || input.rule_set.as_bytes().contains(&0) {
         return Err(Error::InvalidRuleSet);
     }
@@ -188,11 +188,11 @@ pub fn architecture(bytes: &[u8]) -> Result<&str, Error> {
 
 impl<F: FeatureSet, H: Head> Network<F, H> {
     /// MNUE版5を検証して復号する。
-    /// 識別子、版、幅、型から組み立てた構造記述との完全一致、K、予約域0、規則セット名、構造から導いた長さ、本体のSHA-256を検査する。
+    /// 識別子、版、幅、型から組み立てた構造記述との完全一致、勝率尺度、予約域0、規則セット名、構造から導いた長さ、本体のSHA-256を検査する。
     /// 第1層の重みとバイアスは絶対値1,016以下、直接出力部の重みは8,192以下、バイアスは4,161,536以下を要求する。
     /// 全型で線形の鏡映対を検査し、[`Mirror::Shared`]では第1層、バイアス、出力重みの半幅の共有も検査する。
     /// 駒価値には[`Self::piece_value`]の正値性と王駒の条件を課す。
-    /// 換算係数は`round_ties_even(f64(K)×65,536/(127×4,096))`で求める。
+    /// 換算係数は`round_ties_even(f64(cp_per_logit)×65,536/(127×4,096))`で求める。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
         let actual_architecture = architecture(bytes)?;
         let width = read_u32(bytes, 104);
@@ -203,8 +203,9 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
                 actual: actual_architecture.to_owned(),
             });
         }
-        let k = f32::from_le_bytes(bytes[108..112].try_into().expect("checked header length"));
-        validate_k(k)?;
+        let cp_per_logit =
+            f32::from_le_bytes(bytes[108..112].try_into().expect("checked header length"));
+        validate_cp_per_logit(cp_per_logit)?;
         if bytes[176..192].iter().any(|&b| b != 0) {
             return Err(Error::NonZeroReserved);
         }
@@ -268,7 +269,8 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
                 })
             })
             .fold(0, i32::max);
-        let scale = (f64::from(k) * 65_536.0 / (127.0 * 4_096.0)).round_ties_even() as i64;
+        let scale =
+            (f64::from(cp_per_logit) * 65_536.0 / (127.0 * 4_096.0)).round_ties_even() as i64;
         Ok(Self {
             accumulator_stats: Default::default(),
             linear,
@@ -281,15 +283,17 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
             rule_set,
             piece_values,
             max_promotion_gain,
-            k,
+            cp_per_logit,
             checksum,
         })
     }
 }
 
-fn validate_k(k: f32) -> Result<(), Error> {
-    if !k.is_finite() || k <= 0.0 || k > 100_000.0 {
-        return Err(Error::InvalidK { actual: k });
+fn validate_cp_per_logit(cp_per_logit: f32) -> Result<(), Error> {
+    if !cp_per_logit.is_finite() || cp_per_logit <= 0.0 || cp_per_logit > 100_000.0 {
+        return Err(Error::InvalidCpPerLogit {
+            actual: cp_per_logit,
+        });
     }
     Ok(())
 }
@@ -440,8 +444,8 @@ pub enum Error {
     },
     /// 規則セット名欄が32バイトを超えるか、UTF-8またはNUL埋めの規約を満たさない。
     InvalidRuleSet,
-    /// 勝率尺度Kが正の有限値ではないか、100,000を超える。
-    InvalidK {
+    /// 勝率尺度が正の有限値ではないか、100,000を超える。
+    InvalidCpPerLogit {
         /// 読み取った勝率尺度。
         actual: f32,
     },
@@ -515,7 +519,9 @@ impl fmt::Display for Error {
                 "MNUE {parameter}[{index}] violates mirror sharing"
             ),
             Self::InvalidRuleSet => formatter.write_str("invalid MNUE rule-set field"),
-            Self::InvalidK { actual } => write!(formatter, "invalid MNUE K: {actual}"),
+            Self::InvalidCpPerLogit { actual } => {
+                write!(formatter, "invalid MNUE cp_per_logit: {actual}")
+            }
             Self::ChecksumMismatch => formatter.write_str("MNUE weight checksum mismatch"),
             Self::NonPositivePieceValue {
                 kind,

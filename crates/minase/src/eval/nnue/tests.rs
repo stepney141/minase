@@ -512,7 +512,7 @@ fn embedded_metadata_and_search_values_match_baseline() {
     let pst = crate::eval::pst::Pst::decode(include_bytes!("../../../nets/pst.bin")).unwrap();
     assert_eq!(nnue.pawn_value(), pst.pawn_value());
     assert_eq!(nnue.max_promotion_gain(), pst.max_promotion_gain());
-    assert_eq!(nnue.k(), pst.k());
+    assert_eq!(nnue.cp_per_logit(), pst.cp_per_logit());
     for state in 0..PIECE_STATE_COUNT {
         assert_eq!(
             nnue.piece_value_of_state(state),
@@ -535,7 +535,7 @@ fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<
     let zeros = vec![0; net.width()];
     EncodeInput {
         width: net.width() as u32,
-        k: net.k(),
+        cp_per_logit: net.cp_per_logit(),
         rule_set: net.rule_set(),
         piece_values: &net.piece_values,
         linear: &net.linear,
@@ -568,7 +568,7 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
         let decoded = Network::<F, DirectScrelu>::decode(&bytes).unwrap();
         let actual = encoding_input(&decoded);
         assert_eq!(actual.width, input.width);
-        assert_eq!(actual.k.to_bits(), input.k.to_bits());
+        assert_eq!(actual.cp_per_logit.to_bits(), input.cp_per_logit.to_bits());
         assert_eq!(actual.rule_set, input.rule_set);
         assert_eq!(actual.piece_values, input.piece_values);
         assert_eq!(actual.linear, input.linear);
@@ -580,9 +580,9 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
     }
 }
 
-/// MNUE版5のヘッダで定めた幅とKの境界を検査する。
+/// MNUE版5のヘッダで定めた幅と勝率尺度（1ロジットあたりのcp）の境界を検査する。
 #[test]
-fn encode_validates_width_and_k() {
+fn encode_validates_width_and_cp_per_logit() {
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
     for width in [0, 1, 3, 513, 514, u32::MAX] {
@@ -591,7 +591,7 @@ fn encode_validates_width_and_k() {
             Error::InvalidWidth { actual: width }
         );
     }
-    for k in [
+    for cp_per_logit in [
         0.0,
         -0.0,
         -1.0,
@@ -601,18 +601,25 @@ fn encode_validates_width_and_k() {
         100_001.0,
     ] {
         assert!(matches!(
-            encode::<P>(&EncodeInput { k, ..input }),
-            Err(Error::InvalidK { .. })
+            encode::<P>(&EncodeInput {
+                cp_per_logit,
+                ..input
+            }),
+            Err(Error::InvalidCpPerLogit { .. })
         ));
     }
-    for k in [f32::from_bits(1), f32::MIN_POSITIVE, 100_000.0] {
-        let bytes = encode::<P>(&EncodeInput { k, ..input }).unwrap();
+    for cp_per_logit in [f32::from_bits(1), f32::MIN_POSITIVE, 100_000.0] {
+        let bytes = encode::<P>(&EncodeInput {
+            cp_per_logit,
+            ..input
+        })
+        .unwrap();
         assert_eq!(
             Network::<P, DirectScrelu>::decode(&bytes)
                 .unwrap()
-                .k()
+                .cp_per_logit()
                 .to_bits(),
-            k.to_bits()
+            cp_per_logit.to_bits()
         );
     }
     let weights = vec![0; FEATURE_COUNT * 512];
@@ -1041,7 +1048,7 @@ fn header_validation_and_runtime_lengths<F: FeatureSet>() {
             Err(Error::InvalidWidth { .. })
         ));
     }
-    for k in [
+    for cp_per_logit in [
         0.0,
         -1.0,
         f32::NAN,
@@ -1050,15 +1057,15 @@ fn header_validation_and_runtime_lengths<F: FeatureSet>() {
         100_001.0,
     ] {
         let mut bad = a.clone();
-        bad[108..112].copy_from_slice(&k.to_le_bytes());
+        bad[108..112].copy_from_slice(&cp_per_logit.to_le_bytes());
         assert!(matches!(
             Network::<F, DirectScrelu>::decode(&bad),
-            Err(Error::InvalidK { .. })
+            Err(Error::InvalidCpPerLogit { .. })
         ));
     }
-    for k in [f32::MIN_POSITIVE, 100_000.0] {
+    for cp_per_logit in [f32::MIN_POSITIVE, 100_000.0] {
         let mut bytes = a.clone();
-        bytes[108..112].copy_from_slice(&k.to_le_bytes());
+        bytes[108..112].copy_from_slice(&cp_per_logit.to_le_bytes());
         assert!(Network::<F, DirectScrelu>::decode(&bytes).is_ok());
     }
     let mut bad = a.clone();
@@ -1177,11 +1184,11 @@ fn constant_network<F: FeatureSet>(
     activation_input: i32,
     output_weight: i16,
     bias: i32,
-    k: f32,
+    cp_per_logit: f32,
     linear: i16,
 ) -> Network<F, DirectScrelu> {
     let mut bytes = random_bytes::<F>(width);
-    bytes[108..112].copy_from_slice(&k.to_le_bytes());
+    bytes[108..112].copy_from_slice(&cp_per_logit.to_le_bytes());
     for pair in bytes[HEADER_LENGTH..HEADER_LENGTH + FEATURE_COUNT * 4]
         .as_chunks_mut::<2>()
         .0
@@ -1206,7 +1213,7 @@ fn constant_network<F: FeatureSet>(
 both_feature_sets!(integer_activation_and_signed_rounding_follow_the_specification);
 fn integer_activation_and_signed_rounding_follow_the_specification<F: FeatureSet>() {
     let position = Position::initial();
-    // K=127/16によりscale=1。出力重み4096を4成分足すとa/4 cp。
+    // cp_per_logit=127/16によりscale=1。出力重み4096を4成分足すとa/4 cp。
     for (input, expected) in [
         (-1016, 0),
         (0, 0),
@@ -1225,8 +1232,8 @@ fn integer_activation_and_signed_rounding_follow_the_specification<F: FeatureSet
         assert_eq!(evaluate(&net, &position), expected);
     }
     // 0.5と1.5を偶数側に丸め、ヘッダのf32を先に倍精度へ広げる。
-    for (k, expected_scale) in [(3.96875, 0), (11.90625, 2)] {
-        let net = constant_network::<F>(2, 0, 0, 65536, k, 0);
+    for (cp_per_logit, expected_scale) in [(3.96875, 0), (11.90625, 2)] {
+        let net = constant_network::<F>(2, 0, 0, 65536, cp_per_logit, 0);
         assert_eq!(net.scale, expected_scale);
         assert_eq!(evaluate(&net, &position), expected_scale as i32);
     }

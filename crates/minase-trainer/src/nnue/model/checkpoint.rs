@@ -13,7 +13,7 @@
 //! | `weights.head.output_bias`, `m.head.output_bias`, `v.head.output_bias` | `<f4` | `[1]` | 出力バイアスと両モーメント。 |
 //! | `canonical_mask`, `first_layer_mask`, `virtual_mask` | `\|b1` | `[6841]`, `[R]`, `[V]` | 観測マスク。 |
 //! | `initial_linear`, `initial_virtual` | `<f4` | `[6841, 2]`, `[V, H]` | 未観測行を固定する初期値。 |
-//! | `k` | `<f4` | `[]` | 出力用K。 |
+//! | `cp_per_logit` | `<f4` | `[]` | 勝率尺度（1ロジットあたりのcp）。 |
 //! | `width`, `feature_set`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、更新数。 |
 //! | `optimizer_groups` | `<f8` | `[3, 2]` | 線形、第1層、出力部の順の学習率と重み減衰。 |
 //! | `removal_penalty`, `lambda` | `<f8` | `[]` | 駒除去損失係数と教師混合比。 |
@@ -119,7 +119,7 @@ impl Checkpoint {
                 InputFeatureSet::HalfKpHmB8 => 1,
             },
         );
-        w.scalar("k", shape.k());
+        w.scalar("cp_per_logit", shape.cp_per_logit());
         w.scalar("step", self.optimizer.step);
         w.scalar("removal_penalty", self.removal_penalty);
         w.scalar("lambda", self.lambda);
@@ -175,7 +175,7 @@ impl Checkpoint {
             1 => InputFeatureSet::HalfKpHmB8,
             _ => return Err(Error::Format("checkpoint feature set")),
         };
-        let shape = Shape::new(set, width, r.scalar("k")?)?;
+        let shape = Shape::new(set, width, r.scalar("cp_per_logit")?)?;
         let step = r.scalar("step")?;
         let removal_penalty = r.scalar("removal_penalty")?;
         let lambda = r.scalar("lambda")?;

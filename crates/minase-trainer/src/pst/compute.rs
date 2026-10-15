@@ -11,7 +11,7 @@ use crate::nn::{bce_with_logits, bce_with_logits_gradient, parallel};
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,
-    /// 各局面の適格な除去の罰則を平均し、Kで割ってロジット単位にしてからバッチで平均した値。
+    /// 各局面の適格な除去の罰則を平均し、勝率尺度（1ロジットあたりのcp）で割ってロジット単位にしてからバッチで平均した値。
     /// 対象0件の局面は0であり、除去係数はまだ掛けていない。
     pub removal: f64,
 }
@@ -59,11 +59,13 @@ pub fn validation_sum(model: &Model, batch: &Batch, targets: &[f32]) -> Result<f
     Ok(evaluate(model, batch)?
         .into_iter()
         .zip(targets)
-        .map(|(cp, &target)| bce_with_logits(f64::from(cp / model.k()), f64::from(target)))
+        .map(|(cp, &target)| {
+            bce_with_logits(f64::from(cp / model.cp_per_logit()), f64::from(target))
+        })
         .sum())
 }
 
-/// 損失`BCE(E/K) + removal_penalty×removal`の勾配を、局面順を固定して合算する。
+/// 損失`BCE(E/cp_per_logit) + removal_penalty×removal`の勾配を、局面順を固定して合算する。
 /// 除去係数が正であることと参照の指定は同値でなければエラーにし、係数0なら除去計算を省く。
 /// `threads`は結果のビット列を変えない。
 pub fn gradients(
@@ -124,10 +126,11 @@ fn position_gradient(
     let columns = batch.columns_at(b);
     let numerators = batch.phase_numerators()[b];
     let sums = linear::sum_mirrored_f64(model.weights(), columns);
-    let logit = f64::from(linear::blend(sums.map(|v| v as f32), numerators[0]) / model.k());
-    let k = f64::from(model.k());
+    let logit =
+        f64::from(linear::blend(sums.map(|v| v as f32), numerators[0]) / model.cp_per_logit());
+    let cp_per_logit = f64::from(model.cp_per_logit());
     let n = batch.len() as f64;
-    let g = bce_with_logits_gradient(logit, f64::from(target)) / n / k;
+    let g = bce_with_logits_gradient(logit, f64::from(target)) / n / cp_per_logit;
     let u = linear::phase(numerators[0]).map(f64::from);
     let mut losses = Losses {
         bce: bce_with_logits(logit, f64::from(target)),
@@ -156,9 +159,9 @@ fn position_gradient(
             losses.removal += penalty;
             derivatives[col] = derivative;
         }
-        losses.removal /= eligible_count.max(1) as f64 * k;
+        losses.removal /= eligible_count.max(1) as f64 * cp_per_logit;
     }
-    let scale = coefficient / n / eligible_count.max(1) as f64 / k / 90.0;
+    let scale = coefficient / n / eligible_count.max(1) as f64 / cp_per_logit / 90.0;
     let gradient = linear::gradient_rows(columns, numerators, &derivatives, g, u, scale);
     Ok((losses, gradient))
 }

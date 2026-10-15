@@ -1,6 +1,6 @@
 //! PST比較の全検証集合の損失と標本誤差を集計する。
 //! 教師分類と補間係数の帯ごとの二値交差エントロピー、標本の平均絶対誤差と相関、対局ごとの平均損失を求める。
-//! 各出力欄の定義は、この集計を報告へ載せる[`teacher_ks`]、[`validation`]、[`OutcomeMetrics`]、[`ErrorSummary`]と、`pst_compare.rs`の`Report`および`Band`のdocコメントにある。
+//! 各出力欄の定義は、この集計を報告へ載せる[`teacher_cp_per_logit`]、[`validation`]、[`OutcomeMetrics`]、[`ErrorSummary`]と、`pst_compare.rs`の`Report`および`Band`のdocコメントにある。
 
 use super::{
     Result,
@@ -8,17 +8,17 @@ use super::{
     pst_sample::{BANDS, band},
 };
 use crate::{
-    data::{Dataset, GameKey, estimate_k, outcome_code},
+    data::{Dataset, GameKey, estimate_cp_per_logit, outcome_code},
     nn::bce_with_logits,
 };
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// 教師分類ごとの教師用Kを訓練集合だけで推定する。
+/// 教師分類ごとの教師の勝率尺度（1ロジットあたりのcp）を訓練集合だけで推定する。
 /// 呼び手は[`Dataset::diagnostic_teacher_scores`]でf64として再計算した探索値を渡し、先読み指定時は先読み値を使う。
-/// 終局結果だけを目標に[`estimate_k`]で推定し、実効λが0の分類はNaNを返すため、報告では`null`になる。
-/// 訓練集合が空なら失敗し、λが0でない分類に訓練局面がなければ[`estimate_k`]が空標本を拒否する。
-pub(super) fn teacher_ks(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> {
+/// 終局結果だけを目標に[`estimate_cp_per_logit`]で推定し、実効λが0の分類はNaNを返すため、報告では`null`になる。
+/// 訓練集合が空なら失敗し、λが0でない分類に訓練局面がなければ[`estimate_cp_per_logit`]が空標本を拒否する。
+pub(super) fn teacher_cp_per_logit(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> {
     if dataset.training_indices().is_empty() {
         return Err("teacher calibration requires training records".into());
     }
@@ -38,14 +38,14 @@ pub(super) fn teacher_ks(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> 
                     outcomes.push(outcome_code(dataset.record(index)?.outcome()));
                 }
             }
-            Ok(estimate_k(&selected, &outcomes)?)
+            Ok(estimate_cp_per_logit(&selected, &outcomes)?)
         })
         .collect()
 }
 
 /// `report.json`の`outcome_metrics.base`と`.candidate`に保存する終局結果との比較。
-/// 教師の混合比に依存せず、全検証局面の評価値をそのモデルの出力用Kで確率へ変換する。
-/// `records`は検証局面数、`output_k`はモデルの出力用Kである。
+/// 教師の混合比に依存せず、全検証局面の評価値をそのモデルの勝率尺度で確率へ変換する。
+/// `records`は検証局面数、`cp_per_logit`はモデルの勝率尺度である。
 /// `games`は[`Dataset::game_key`]で識別する対局数で、人間の棋譜は棋譜ID、乱数開始の自己対局は生成シードと対局番号で区別する。
 /// 複数ファイルに現れる同じ棋譜IDは1対局と数える。
 ///
@@ -59,7 +59,7 @@ pub(super) fn teacher_ks(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> 
 pub(super) struct OutcomeMetrics {
     records: usize,
     games: usize,
-    output_k: f64,
+    cp_per_logit: f64,
     bce_position_mean: Option<f64>,
     bce_game_mean: Option<f64>,
     sign_agreement: Option<f64>,
@@ -83,8 +83,8 @@ struct Outcomes {
     matches: usize,
 }
 impl Outcomes {
-    fn add(&mut self, key: GameKey, score: i32, outcome: u8, k: f64) {
-        let loss = bce_with_logits(f64::from(score) / k, f64::from(outcome) / 2.0);
+    fn add(&mut self, key: GameKey, score: i32, outcome: u8, cp_per_logit: f64) {
+        let loss = bce_with_logits(f64::from(score) / cp_per_logit, f64::from(outcome) / 2.0);
         self.records += 1;
         self.loss_sum += loss;
         let game = *self.games.entry(key).or_insert_with(|| {
@@ -102,11 +102,11 @@ impl Outcomes {
             self.matches += usize::from((score > 0) == (outcome == 2));
         }
     }
-    fn finish(self, output_k: f64) -> OutcomeMetrics {
+    fn finish(self, cp_per_logit: f64) -> OutcomeMetrics {
         OutcomeMetrics {
             records: self.records,
             games: self.games.len(),
-            output_k,
+            cp_per_logit,
             bce_position_mean: (self.records != 0).then(|| self.loss_sum / self.records as f64),
             bce_game_mean: (!self.totals.is_empty()).then(|| {
                 self.totals
@@ -132,21 +132,21 @@ pub(super) struct Validation {
 }
 
 /// 全検証局面の損失和を教師分類と位相帯ごとに集計し、モデルごとの[`OutcomeMetrics`]も求める。
-/// 教師確率は実効λが0なら`result/2`、それ以外は`λ·σ(score/K_teacher) + (1−λ)·result/2`である。
+/// 教師確率は実効λが0なら`result/2`、それ以外は`λ·σ(score/teacher_cp_per_logit) + (1−λ)·result/2`である。
 /// `score`はf64の教師探索値、`result`は手番側の負け0、引き分け1、勝ち2、`σ(x) = 1/(1+exp(−x))`とする。
 /// 混合はf64で計算して一度f32へ丸め、損失の計算時にf64へ戻す。
 /// 混合後の丸めは学習と同じだが、この診断の探索値はf32へ丸める前の値である。
-/// 各モデルのロジットは独立した整数PST参照の評価値をそのモデルの出力用Kで割った値で、教師確率との二値交差エントロピーを求める。
+/// 各モデルのロジットは独立した整数PST参照の評価値をそのモデルの勝率尺度で割った値で、教師確率との二値交差エントロピーを求める。
 /// `Band.validation_loss`はこの和を分類と帯ごとの検証局面数で割った値である。
 pub(super) fn validation(
     dataset: &Dataset,
     models: &Models<Weights>,
     scores: &[f64],
-    ks: &[f64],
+    teacher_cp_per_logit: &[f64],
 ) -> Result<Validation> {
     let mut losses = Models {
-        base: vec![[0.0; BANDS]; ks.len()],
-        candidate: vec![[0.0; BANDS]; ks.len()],
+        base: vec![[0.0; BANDS]; teacher_cp_per_logit.len()],
+        candidate: vec![[0.0; BANDS]; teacher_cp_per_logit.len()],
     };
     let mut outcomes = Models::<Outcomes>::default();
     for &index in dataset.validation_indices() {
@@ -161,7 +161,8 @@ pub(super) fn validation(
         let target = f64::from(if mix == 0.0 {
             result
         } else {
-            mix / (1.0 + (-scores[index as usize] / ks[class]).exp()) + (1.0 - mix) * result
+            mix / (1.0 + (-scores[index as usize] / teacher_cp_per_logit[class]).exp())
+                + (1.0 - mix) * result
         } as f32);
         let key = dataset.game_key(index)?;
         for (model, sums, outcomes) in [
@@ -173,21 +174,21 @@ pub(super) fn validation(
             ),
         ] {
             let score = model.evaluate(&features);
-            sums[class][b] += bce_with_logits(f64::from(score) / model.k(), target);
-            outcomes.add(key, score, outcome, model.k());
+            sums[class][b] += bce_with_logits(f64::from(score) / model.cp_per_logit(), target);
+            outcomes.add(key, score, outcome, model.cp_per_logit());
         }
     }
     Ok(Validation {
         losses,
         outcomes: Models {
-            base: outcomes.base.finish(models.base.k()),
-            candidate: outcomes.candidate.finish(models.candidate.k()),
+            base: outcomes.base.finish(models.base.cp_per_logit()),
+            candidate: outcomes.candidate.finish(models.candidate.cp_per_logit()),
         },
     })
 }
 
 /// `Band.base`と`Band.candidate`に保存する教師探索値との標本比較。
-/// `mae_scaled_cp`はモデル評価と`raw × 候補の出力用K / 教師用K`に換算した教師探索値との平均絶対誤差である。
+/// `mae_scaled_cp`はモデル評価と`raw × 候補の勝率尺度 / 教師の勝率尺度`に換算した教師探索値との平均絶対誤差である。
 /// `mae_raw_cp`はモデル評価と生の教師探索値との平均絶対誤差で、いずれもセンチポーン単位である。
 /// `correlation`はモデル評価と換算後の教師探索値のPearson相関係数である。
 /// 中心化した積和を両者の平方和の平方根で割り、[−1, 1]へ切り詰める。

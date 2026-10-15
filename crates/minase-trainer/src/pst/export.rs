@@ -98,7 +98,7 @@ pub(crate) fn numpy_sum(values: &[f32]) -> f32 {
 }
 
 /// 1以上の最良エポックの重みを1/8センチポーンへ偶数丸めし、FMの次元0のMNPT版3のpst.binと実数のpst-float.npzを書く。
-/// K、47個の探索用駒価値、規則名は`--init`から引き継ぎ、書いたファイルを読み直して検査する。
+/// 勝率尺度（1ロジットあたりのcp）、47個の探索用駒価値、規則名は`--init`から引き継ぎ、書いたファイルを読み直して検査する。
 /// 標本は検証集合を`epoch_permutation(seed,0)`で並べた先頭`--validation-sample`件である。
 /// 実数側は[`numpy_sum`]のf32和とf32のφで評価し、エンジンの`evaluate_pst`との差の平均が2センチポーン以下なら合格とする。
 /// 不合格でも出力は残し、呼び手が`quantization_error`を記録して終了コード1にする。
@@ -117,7 +117,12 @@ pub(super) fn write_best(
         return Err(Error::Invalid("checkpoint is not a completed best epoch"));
     }
     let quantized = quantize(&checkpoint.model)?;
-    let pst = Pst::from_weights(&quantized, base.piece_values, base.k, &base.rule_set)?;
+    let pst = Pst::from_weights(
+        &quantized,
+        base.piece_values,
+        base.cp_per_logit,
+        &base.rule_set,
+    )?;
     atomic_write(
         &directory.join("pst-float.npz"),
         &encode_pst_npz(&checkpoint.model.expanded())?,
@@ -125,7 +130,7 @@ pub(super) fn write_best(
     atomic_write(&directory.join("pst.bin"), &pst.encode())?;
     let written = Pst::decode(&std::fs::read(directory.join("pst.bin"))?)?;
     if written.weights().as_slice() != quantized
-        || written.k().to_bits() != base.k.to_bits()
+        || written.cp_per_logit().to_bits() != base.cp_per_logit.to_bits()
         || written.rule_set() != base.rule_set
         || (0..base.piece_values.len())
             .any(|state| written.piece_value_of_state(state) != base.piece_values[state])

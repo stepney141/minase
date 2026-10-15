@@ -129,7 +129,7 @@ impl Batch {
     pub fn teacher_scores(&self) -> &[f32] {
         &self.teacher_scores
     }
-    /// 教師用Kとλの分類番号。
+    /// 教師の勝率尺度（1ロジットあたりのcp）とλの分類番号。
     pub fn teacher_classes(&self) -> &[u32] {
         &self.teacher_classes
     }

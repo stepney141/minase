@@ -38,7 +38,8 @@ pub struct Network<F: FeatureSet, H: Head> {
     head: H,
     feature_set: PhantomData<F>,
     width: usize,
-    /// `round_ties_even(f64(K)×65,536/(127×4,096))`で求めた出力換算係数。
+    /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+    /// `round_ties_even(f64(cp_per_logit)×65,536/(127×4,096))`で求めた出力換算係数。
     scale: i64,
     /// 生成時の規則セット名。実行時の規則との一致は要求しない。
     rule_set: [u8; 32],
@@ -47,8 +48,8 @@ pub struct Network<F: FeatureSet, H: Head> {
     piece_values: [i32; PIECE_STATE_COUNT],
     /// 全駒状態の固定駒価値の成り前後の差と0の最大値。
     max_promotion_gain: i32,
-    /// 出力をセンチポーンへ戻す勝率尺度K。
-    k: f32,
+    /// 出力をセンチポーンへ戻す勝率尺度。
+    cp_per_logit: f32,
     /// 重み本体のSHA-256。
     checksum: [u8; 32],
 }
@@ -102,9 +103,9 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         self.max_promotion_gain
     }
 
-    /// 学習時に使った勝率尺度Kを返す。
-    pub const fn k(&self) -> f32 {
-        self.k
+    /// 学習時に使った勝率尺度を返す。
+    pub const fn cp_per_logit(&self) -> f32 {
+        self.cp_per_logit
     }
 
     /// 重み本体のSHA-256を返す。

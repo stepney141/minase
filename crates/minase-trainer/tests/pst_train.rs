@@ -299,7 +299,7 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
             document(args.output_dir.join("summary.json"))["initial_position_score"],
             initial_score
         );
-        assert_eq!(written.k(), 317.25);
+        assert_eq!(written.cp_per_logit(), 317.25);
         assert_eq!(written.rule_set(), "L0,P0,R1,E0");
         for (state, value) in v0_piece_values().into_iter().enumerate() {
             assert_eq!(written.piece_value_of_state(state), value * 2);
@@ -322,7 +322,7 @@ fn training_wires_permutation_and_tail_batches_to_updates_and_logs() {
     )
     .unwrap();
     let dataset = dataset.with_lambda(args.lambda).unwrap();
-    let ks = dataset.estimate_teacher_ks().unwrap();
+    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let mut opt = Adam::new(0.03).unwrap();
     let order = epoch_permutation(dataset.training_indices(), args.seed, 1);
@@ -335,7 +335,7 @@ fn training_wires_permutation_and_tail_batches_to_updates_and_logs() {
             batch.teacher_scores(),
             batch.teacher_classes(),
             batch.outcomes(),
-            &ks,
+            &teacher_cp_per_logit,
             dataset.teacher_lambdas(),
         )
         .unwrap();

@@ -131,10 +131,19 @@ fn report_path(output: &Path, extension: &str) -> Result<PathBuf> {
 fn with_fm(source: &Pst, fm: Option<FmWeights<'_>>) -> Result<Pst> {
     let values = std::array::from_fn(|state| source.piece_value_of_state(state));
     Ok(match fm {
-        Some(fm) => {
-            Pst::from_weights_with_fm(source.weights(), values, source.k(), source.rule_set(), fm)?
-        }
-        None => Pst::from_weights(source.weights(), values, source.k(), source.rule_set())?,
+        Some(fm) => Pst::from_weights_with_fm(
+            source.weights(),
+            values,
+            source.cp_per_logit(),
+            source.rule_set(),
+            fm,
+        )?,
+        None => Pst::from_weights(
+            source.weights(),
+            values,
+            source.cp_per_logit(),
+            source.rule_set(),
+        )?,
     })
 }
 
@@ -169,7 +178,7 @@ fn write_output(
 }
 
 /// 指数を`e + 1`にし、補正を`trunc(N / 2^(2e+3))`へ縮小する。
-/// 埋め込み、符号、PST、K、駒価値、規則名は変えない。
+/// 埋め込み、符号、PST、勝率尺度（1ロジットあたりのcp）、駒価値、規則名は変えない。
 /// 指数30の入力と、出力または拡張子を`.quarter.json`に替えた報告先が既存の場合は拒否する。
 /// 書いた後に読み直し、バイト列と再符号化した結果が一致することを検査する。
 pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
@@ -201,7 +210,7 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
 
 /// 整数倍率`0 ≤ s ≤ 1,024`を`a′ = a * s / 1024`として焼き込み、Vを保って指数を探し直す。
 /// 開始前に実数NPZのPSTとFMを量子化し、それぞれ入力MNPTと完全一致することを要求する。
-/// `s = 0`ではFMの次元0のMNPT版3、`s = 1024`では入力と同じ重みを出力し、PST、K、駒価値、規則名を保つ。
+/// `s = 0`ではFMの次元0のMNPT版3、`s = 1024`では入力と同じ重みを出力し、PST、勝率尺度、駒価値、規則名を保つ。
 /// 倍率を推論時に掛けずに重みへ含めることで、エンジンの評価式を変えず重みファイルだけで評価が定まる。
 /// 検証標本の計算は保存前に完了し、書いたMNPTは読み直して検査する。
 /// 報告は`--output`の拡張子を`.scale.json`に替えたパスへ書く。
@@ -224,7 +233,7 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     if crate::pst::export::quantize_weights(&weights.endpoints)? != source.weights().as_slice() {
         return Err(ContractError::FloatingPstMismatch.into());
     }
-    let expected = quantize(&weights.v, &weights.a, f64::from(source.k()))?;
+    let expected = quantize(&weights.v, &weights.a, f64::from(source.cp_per_logit()))?;
     if expected.as_weights() != before {
         return Err(ContractError::FloatingFmMismatch.into());
     }
@@ -232,7 +241,11 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     let output_fm = if args.fm_scale == 0 {
         None
     } else {
-        Some(quantize(&weights.v, &scaled_a, f64::from(source.k()))?)
+        Some(quantize(
+            &weights.v,
+            &scaled_a,
+            f64::from(source.cp_per_logit()),
+        )?)
     };
     let output = with_fm(&source, output_fm.as_ref().map(|fm| fm.as_weights()))?;
     let validation = if args.data.is_empty() {

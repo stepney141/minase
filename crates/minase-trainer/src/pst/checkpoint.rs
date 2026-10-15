@@ -3,7 +3,7 @@
 //!
 //! | 名前 | dtype | 形状 | 内容 |
 //! | --- | --- | --- | --- |
-//! | `k` | `<f4` | `[]` | 出力用K。 |
+//! | `cp_per_logit` | `<f4` | `[]` | 勝率尺度（1ロジットあたりのcp）。 |
 //! | `step` | `<u8` | `[]` | 最適化器の更新数。 |
 //! | `pst_lr` | `<f8` | `[]` | PSTの学習率。 |
 //! | `pst_weights` | `<f4` | `[CANONICAL_ROWS, 2]` | モデル重み。 |
@@ -56,7 +56,7 @@ impl Checkpoint {
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
         let mut w = Writer::new("pst", &self.progress)?;
-        w.scalar("k", self.model.k());
+        w.scalar("cp_per_logit", self.model.cp_per_logit());
         w.scalar("step", self.optimizer.step());
         w.scalar("pst_lr", self.optimizer.lr());
         w.values("pst_weights", &[CANONICAL_ROWS, 2], self.model.weights());
@@ -68,7 +68,7 @@ impl Checkpoint {
     /// 種別、配列の集合・型・形状とモデルの不変条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         let (mut r, progress) = Reader::new(bytes, "pst")?;
-        let k = r.scalar::<f32>("k")?;
+        let cp_per_logit = r.scalar::<f32>("cp_per_logit")?;
         let step = r.scalar::<u64>("step")?;
         let pst_lr = r.scalar::<f64>("pst_lr")?;
         let pst_weights = r.values::<f32>("pst_weights", &[CANONICAL_ROWS, 2])?;
@@ -76,7 +76,7 @@ impl Checkpoint {
         let pst_v = r.values::<f32>("pst_v", &[CANONICAL_ROWS, 2])?;
         let model = Model {
             weights: pst_weights,
-            k,
+            cp_per_logit,
         };
         let optimizer = Adam {
             m: pst_m,

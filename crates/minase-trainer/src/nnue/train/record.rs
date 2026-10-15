@@ -214,9 +214,9 @@ pub(super) struct Configuration {
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
 /// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
-/// `preprocessing`は`teacher_classes`、`teacher_ks`、`teacher_lambdas`、`teacher_k_source = "training"`、
-/// `output_k`、`training_positions`、`validation_positions`を持つ。
-/// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師用Kは`null`である。
+/// `preprocessing`は`teacher_classes`、`teacher_cp_per_logit`、`teacher_lambdas`、`teacher_cp_per_logit_source = "training"`、
+/// `cp_per_logit`、`training_positions`、`validation_positions`を持つ。
+/// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師の勝率尺度（1ロジットあたりのcp）は`null`である。
 /// `training_indices_sha256`と`validation_indices_sha256`は通算番号をリトルエンディアンu64列にしたSHA-256である。
 /// `observations`は`linear_rows`、`feature_rows`、`virtual_rows`の各`{observed, unobserved}`を持ち、埋め草行を除く。
 /// `canonical_counts_sha256`と`input_counts_sha256`は、それぞれの行の観測回数をリトルエンディアンu64列にしたSHA-256である。
@@ -232,7 +232,7 @@ pub(super) fn configuration(
     workers: usize,
     dataset: &Dataset,
     observations: &Observations,
-    teacher_ks: &[f64],
+    teacher_cp_per_logit: &[f64],
     model: &Model,
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
@@ -278,9 +278,9 @@ pub(super) fn configuration(
         json!({"observed": observed, "unobserved": rows.len()-observed})
     };
     let preprocessing = json!({
-        "teacher_classes": dataset.teacher_classes(), "teacher_ks": teacher_ks,
+        "teacher_classes": dataset.teacher_classes(), "teacher_cp_per_logit": teacher_cp_per_logit,
         "teacher_lambdas": dataset.teacher_lambdas(),
-        "teacher_k_source": "training", "output_k": model.shape().k(),
+        "teacher_cp_per_logit_source": "training", "cp_per_logit": model.shape().cp_per_logit(),
         "training_positions": dataset.training_indices().len(),
         "validation_positions": dataset.validation_indices().len(),
         "training_indices_sha256": hash_u64(dataset.training_indices()),

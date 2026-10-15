@@ -120,8 +120,8 @@ impl Drop for Fixture {
     }
 }
 
-fn checkpoint(set: InputFeatureSet, k: f32, linear_value: f32) -> Checkpoint {
-    let shape = Shape::new(set, 8, k).unwrap();
+fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Checkpoint {
+    let shape = Shape::new(set, 8, cp_per_logit).unwrap();
     let mut model = Model::initialize(
         shape,
         &vec![[0.0; 2]; 13_680],
@@ -157,7 +157,7 @@ fn checkpoint(set: InputFeatureSet, k: f32, linear_value: f32) -> Checkpoint {
 fn check_network<F: FeatureSet>(bytes: &[u8], values: &[i32; PIECE_STATE_COUNT]) {
     let network = Network::<F, DirectScrelu>::decode(bytes).unwrap();
     assert_eq!(network.width(), 8);
-    assert_eq!(network.k(), 1000.0);
+    assert_eq!(network.cp_per_logit(), 1000.0);
     assert_eq!(network.rule_set(), RULE_SET);
     for (state, &value) in values.iter().enumerate() {
         assert_eq!(network.piece_value_of_state(state), value);
@@ -225,7 +225,7 @@ fn error_statistics_use_validation_only_and_include_the_largest_error() {
 fn integer_inference_and_the_float_reference_use_centipawns() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        // 王2枚の線形評価4 cpと、出力バイアス1×K=8 cpの合計は12 cp。
+        // 王2枚の線形評価4 cpと、出力バイアス1×cp_per_logit=8 cpの合計は12 cp。
         // 全項が両形式で厳密に表せるため、整数評価との誤差は0になる。
         let mut checkpoint = checkpoint(set, 8.0, 2.0);
         checkpoint.model.parameter_mut(Parameter::OutputBias)[0] = 1.0;
@@ -242,7 +242,7 @@ fn quantization_error_keeps_the_double_precision_float_evaluation() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let mut checkpoint = checkpoint(set, 1000.0, 0.0);
         checkpoint.model.parameter_mut(Parameter::OutputBias)[0] = 0.04;
-        // 保存値0.04_f32は0.04より小さい。K換算をf32で行うと40へ丸められるが、
+        // 保存値0.04_f32は0.04より小さい。cp_per_logit換算をf32で行うと40へ丸められるが、
         // 倍精度では整数推論の40 cpとの小さな差を検査結果に残す。
         let expected = (f64::from(0.04_f32) * 1000.0 - 40.0).abs();
         assert!(expected > 0.0);
@@ -266,10 +266,10 @@ fn a_fixed_seed_repeats_the_validation_sample_and_caps_its_size() {
 }
 
 #[test]
-fn the_gate_accepts_k_over_40_exactly_and_reports_a_larger_mean() {
+fn the_gate_accepts_cp_per_logit_over_40_exactly_and_reports_a_larger_mean() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        // 王2枚×1/16 cpの誤差は1/8 cp。K=5ならちょうどK/40になる。
+        // 王2枚×1/16 cpの誤差は1/8 cp。cp_per_logit=5ならちょうどcp_per_logit / 40になる。
         let boundary = fixture.export(&checkpoint(set, 5.0, 1.0 / 16.0), 7);
         assert_eq!(boundary.mean_absolute_error_cp, boundary.limit_cp);
         assert!(boundary.passed);

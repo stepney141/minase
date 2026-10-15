@@ -60,8 +60,8 @@ pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    teacher_cp_per_logit: &[f64],
+    cp_per_logit: f32,
     counts: &[u64],
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
@@ -90,8 +90,8 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
-    let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":"training", "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

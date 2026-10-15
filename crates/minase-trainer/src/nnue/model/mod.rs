@@ -123,26 +123,26 @@ impl Parameter {
     }
 }
 
-/// 検査済みの入力特徴集合、幅、出力用K。
+/// 検査済みの入力特徴集合、幅、勝率尺度（1ロジットあたりのcp）。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape {
     feature_set: InputFeatureSet,
     width: usize,
-    k: f32,
+    cp_per_logit: f32,
 }
 impl Shape {
-    /// 幅は2..=512の偶数、Kは有限かつ0より大きく100000以下。
-    pub fn new(feature_set: InputFeatureSet, width: usize, k: f32) -> Result<Self> {
+    /// 幅は2..=512の偶数、勝率尺度は有限かつ0より大きく100000以下。
+    pub fn new(feature_set: InputFeatureSet, width: usize, cp_per_logit: f32) -> Result<Self> {
         if !(2..=512).contains(&width) || !width.is_multiple_of(2) {
             return Err(Error::Invalid("width must be even and in 2..512"));
         }
-        if !k.is_finite() || k <= 0.0 || k > 100_000.0 {
-            return Err(Error::Invalid("K must be in (0, 100000]"));
+        if !cp_per_logit.is_finite() || cp_per_logit <= 0.0 || cp_per_logit > 100_000.0 {
+            return Err(Error::Invalid("cp_per_logit must be in (0, 100000]"));
         }
         Ok(Self {
             feature_set,
             width,
-            k,
+            cp_per_logit,
         })
     }
     /// 入力特徴集合。
@@ -153,9 +153,9 @@ impl Shape {
     pub fn width(self) -> usize {
         self.width
     }
-    /// 出力用K。
-    pub fn k(self) -> f32 {
-        self.k
+    /// 勝率尺度。
+    pub fn cp_per_logit(self) -> f32 {
+        self.cp_per_logit
     }
     /// バイアスと視点ごとの出力重みの自由パラメータ数。
     pub fn units(self) -> usize {
