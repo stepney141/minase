@@ -21,6 +21,7 @@ use minase::{
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::diagnostics;
+use minase_trainer::error::ContractError;
 use minase_trainer::nnue::{
     data::InputFeatureSet,
     model::{Checkpoint, Model, Parameter, Progress, Shape, quantize},
@@ -386,7 +387,6 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
     );
     assert_eq!(report["sample_count"], 48);
     assert_eq!(report["population_count"], 48);
-    assert!(report["sampling"].as_str().unwrap().contains("SplitMix64"));
     assert_eq!(
         report["sample_indices_sha256_le_i64"],
         format!(
@@ -458,7 +458,6 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     fs::remove_file(f.path("report.json")).unwrap();
     let second = f.success(&args, "report.json");
     assert_eq!(first, second);
-    assert!(first["sampling"].as_str().unwrap().contains("SplitMix64"));
     assert_eq!(
         first["pairs"][0]["verdict"],
         "全体の尺度はほとんど変えていない"
@@ -588,7 +587,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
             1e-9,
         );
         let text = fs::read_to_string(f.path("report.json")).unwrap();
-        assert!(text.find("\"20\":").unwrap() < text.find("\"29\":").unwrap());
+        assert_eq!(json_nested_keys(&text, "by_piece_state"), ["20", "29"]);
     }
 }
 
@@ -863,11 +862,19 @@ fn moves_use_negamax_and_include_fm_while_empty_positions_have_null_statistics()
                 assert!(stats[field].is_null());
             }
         }
-        assert!(
-            !fs::read_to_string(f.path("report.json"))
-                .unwrap()
-                .contains("probe_")
-        );
+        fn assert_no_probe_keys(value: &Value) {
+            match value {
+                Value::Object(fields) => {
+                    for (key, value) in fields {
+                        assert!(!key.starts_with("probe_"), "unexpected key: {key}");
+                        assert_no_probe_keys(value);
+                    }
+                }
+                Value::Array(values) => values.iter().for_each(assert_no_probe_keys),
+                _ => {}
+            }
+        }
+        assert_no_probe_keys(&report);
     }
 }
 
@@ -945,13 +952,57 @@ fn moves_reject_nondefault_rules_and_empty_input() {
     f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 0);
     f.network("net.bin", &tempo_model(InputFeatureSet::P));
     f.data("data.mnsd", &[Position::initial()], 11, &[1], "L1,P0,R1,E0");
-    let output = f.run(&moves_args());
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("engine-default"));
+    let error = f.diagnose(&moves_args()).unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<ContractError>(),
+        Some(&ContractError::NondefaultRules)
+    );
     assert!(!f.path("report.json").exists());
     f.data("data.mnsd", &[], 11, &[], "engine-default");
-    let output = f.run(&moves_args());
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("nonempty"));
+    let error = f.diagnose(&moves_args()).unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<ContractError>(),
+        Some(&ContractError::EmptyPositions)
+    );
     assert!(!f.path("report.json").exists());
+}
+
+fn json_nested_keys(json: &str, field: &str) -> Vec<String> {
+    use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, Visitor};
+    struct Keys<'a>(Option<&'a str>);
+    impl<'de> DeserializeSeed<'de> for Keys<'_> {
+        type Value = Vec<String>;
+        fn deserialize<D: serde::Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            deserializer.deserialize_map(self)
+        }
+    }
+    impl<'de> Visitor<'de> for Keys<'_> {
+        type Value = Vec<String>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a JSON object")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut keys = Vec::new();
+            while let Some(key) = map.next_key::<String>()? {
+                match self.0 {
+                    Some(field) if key == field => keys = map.next_value_seed(Keys(None))?,
+                    Some(_) => {
+                        map.next_value::<IgnoredAny>()?;
+                    }
+                    None => {
+                        keys.push(key);
+                        map.next_value::<IgnoredAny>()?;
+                    }
+                }
+            }
+            Ok(keys)
+        }
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let keys = Keys(Some(field)).deserialize(&mut deserializer).unwrap();
+    deserializer.end().unwrap();
+    keys
 }

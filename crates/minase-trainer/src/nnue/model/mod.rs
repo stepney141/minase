@@ -25,6 +25,8 @@ use std::{
 /// モデルと参照計算の失敗。
 #[derive(Debug)]
 pub enum Error {
+    /// 再開条件の不一致。
+    CheckpointMismatch(crate::nn::checkpoint::MismatchField),
     /// ファイルの入出力に失敗した。
     Io(std::io::Error),
     /// サポートしていない、または壊れた保存形式。
@@ -42,6 +44,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CheckpointMismatch(field) => {
+                write!(f, "invalid model input: checkpoint {field} mismatch")
+            }
             Self::Io(e) => write!(f, "{e}"),
             Self::Format(s) => write!(f, "unsupported or invalid model format: {s}"),
             Self::Invalid(s) => write!(f, "invalid model input: {s}"),
@@ -68,6 +73,7 @@ impl From<std::io::Error> for Error {
 impl From<crate::nn::Error> for Error {
     fn from(error: crate::nn::Error) -> Self {
         match error {
+            crate::nn::Error::CheckpointMismatch(field) => Self::CheckpointMismatch(field),
             crate::nn::Error::Io(error) => Self::Io(error),
             crate::nn::Error::Invalid(reason) => Self::Invalid(reason),
             crate::nn::Error::Format(reason) => Self::Format(reason),

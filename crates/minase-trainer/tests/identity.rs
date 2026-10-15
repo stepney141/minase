@@ -12,7 +12,12 @@ struct TempDirectory(PathBuf);
 
 impl TempDirectory {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("minase-identities-{}", std::process::id()));
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "minase-identities-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         fs::create_dir(&path).unwrap();
         Self(path)
     }
@@ -20,7 +25,7 @@ impl TempDirectory {
 
 impl Drop for TempDirectory {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        fs::remove_dir_all(&self.0).unwrap();
     }
 }
 

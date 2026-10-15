@@ -1,8 +1,11 @@
+use crate::error::{Argument, ContractError};
 use std::fmt;
 
 /// PSTの学習、保存、読み込みの失敗。
 #[derive(Debug)]
 pub enum Error {
+    /// 学習または診断の契約違反。
+    Contract(crate::error::ContractError),
     /// 引数、配列または進捗が契約に違反する。
     Invalid(&'static str),
     /// 保存形式が不正である。
@@ -24,6 +27,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(reason) | Self::Format(reason) => f.write_str(reason),
+            Self::Contract(ContractError::InvalidArgument(Argument::Batch)) => {
+                f.write_str("PST batch must be nonempty and fit in a feature array")
+            }
+            Self::Contract(e) => e.fmt(f),
             Self::Io(e) => e.fmt(f),
             Self::Data(e) => e.fmt(f),
             Self::Nn(e) => e.fmt(f),
@@ -37,6 +44,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Invalid(_) | Self::Format(_) => None,
+            Self::Contract(e) => Some(e),
             Self::Io(e) => Some(e),
             Self::Data(e) => Some(e),
             Self::Nn(e) => Some(e),
@@ -64,3 +72,5 @@ from_error!(std::time::SystemTimeError, Time);
 
 /// PSTパイプラインの処理結果。
 pub type Result<T> = std::result::Result<T, Error>;
+
+from_error!(crate::error::ContractError, Contract);

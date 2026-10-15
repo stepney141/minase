@@ -189,7 +189,17 @@ fn both_feature_sets_export_mnue5_without_rewriting_the_best_checkpoint() {
         assert_eq!(json["seed"], 71);
         assert_eq!(json["split"], "validation");
         assert_eq!(json["passed"], true);
-        assert_eq!(json["indices_sha256"].as_str().unwrap().len(), 64);
+        use sha2::{Digest, Sha256};
+        // export::write_bestの契約に従い、seed=71、epoch=0の
+        // Fisher–Yatesを独立な整数演算で求めた検証集合の選択順。
+        let indices: Vec<u8> = [41_u64, 59, 22, 4, 70, 15, 48]
+            .into_iter()
+            .flat_map(u64::to_le_bytes)
+            .collect();
+        assert_eq!(
+            json["indices_sha256"],
+            format!("{:x}", Sha256::digest(&indices))
+        );
     }
 }
 

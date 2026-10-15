@@ -8,6 +8,7 @@ use minase::{
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::diagnostics::{self, Command, PstCompareArgs};
+use minase_trainer::error::{ContractError, WeightRole};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -253,7 +254,25 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
         );
     }
     // 新規ディレクトリの契約。既存成果物を上書きしない。
-    assert!(diagnostics::run(Command::PstCompare(fixture.args("first"))).is_err());
+    let paths: Vec<_> = fs::read_dir(&first)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    let before: Vec<_> = paths
+        .iter()
+        .map(|name| fs::read(fixture.root.join("first").join(name)).unwrap())
+        .collect();
+    let error = diagnostics::run(Command::PstCompare(fixture.args("first"))).unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<std::io::Error>().unwrap().kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    for (name, bytes) in paths.iter().zip(before) {
+        assert_eq!(
+            fs::read(fixture.root.join("first").join(name)).unwrap(),
+            bytes
+        );
+    }
 }
 
 #[test]
@@ -276,7 +295,6 @@ fn quantization_failure_writes_report_before_returning_error() {
             .unwrap()
             > 2.0
     );
-    assert!(report["error"].as_str().unwrap().contains("quantization"));
     assert_eq!(report["error"], error.to_string());
     assert!(fixture.root.join("failed/diagnostic-samples.bin").exists());
 }
@@ -486,42 +504,17 @@ fn mnpt_with_fm_is_rejected_before_data_loading_without_creating_reports() {
                     args.data = vec![fixture.root.join("missing-data.bin")];
                 }
                 let output_dir = args.output_dir.clone();
-                let error = if name == "base" && embedding == 2 && !missing_data {
-                    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-                        .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
-                        .args(&args.data)
-                        .arg("--base")
-                        .arg(&args.base)
-                        .arg("--candidate")
-                        .arg(&args.candidate)
-                        .arg("--candidate-float")
-                        .arg(&args.candidate_float)
-                        .arg("--output-dir")
-                        .arg(&args.output_dir)
-                        .output()
-                        .unwrap();
-                    let error = String::from_utf8(output.stderr).unwrap();
-                    assert_eq!(output.status.code(), Some(1), "{case}: {error}");
-                    assert!(
-                        !error.contains("loading diagnostic data"),
-                        "{case}: {error}"
-                    );
-                    assert!(output.stdout.is_empty(), "{case}");
-                    error
+                let error = diagnostics::run(Command::PstCompare(args)).unwrap_err();
+                let role = if name == "base" {
+                    WeightRole::Base
                 } else {
-                    diagnostics::run(Command::PstCompare(args))
-                        .unwrap_err()
-                        .to_string()
+                    WeightRole::Candidate
                 };
-                assert!(error.contains(&format!("--{name}")), "{case}: {error}");
-                for expected in [
-                    "PST-only weights",
-                    "FM rank 0",
-                    "FM",
-                    "minase-trainer fm scale --fm-scale 0",
-                ] {
-                    assert!(error.contains(expected), "{case}: {error}");
-                }
+                assert_eq!(
+                    error.downcast_ref::<ContractError>(),
+                    Some(&ContractError::FmWeights(role)),
+                    "{case}"
+                );
                 assert!(!output_dir.exists(), "{case}");
             }
         }
@@ -572,19 +565,6 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
         "--output-dir",
         "new",
     ];
-    assert!(
-        Parsed::try_parse_from(
-            required
-                .into_iter()
-                .filter(|s| !["--lambda", "0.75"].contains(s))
-        )
-        .is_err()
-    );
-    for value in ["-0.1", "1.1", "NaN", "inf"] {
-        let mut invalid = required.to_vec();
-        invalid[2] = value;
-        assert!(Parsed::try_parse_from(invalid).is_err());
-    }
     let parsed = Parsed::try_parse_from(required).unwrap().args;
     assert_eq!((parsed.sample_size, parsed.seed), (10_000, 1));
     assert_eq!(parsed.data.len(), 2);

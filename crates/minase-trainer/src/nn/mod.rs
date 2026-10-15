@@ -20,6 +20,8 @@ pub use stopping::{BestEpoch, patience_reached, update_best};
 /// 数値計算または配列の入出力の失敗。
 #[derive(Debug)]
 pub enum Error {
+    /// 再開条件が保存時の値と異なる。
+    CheckpointMismatch(checkpoint::MismatchField),
     /// ファイル操作またはスレッドの起動に失敗した。
     Io(std::io::Error),
     /// 引数が演算の定義域にない。
@@ -30,6 +32,7 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::CheckpointMismatch(field) => write!(f, "checkpoint {field} mismatch"),
             Self::Io(error) => error.fmt(f),
             Self::Invalid(reason) | Self::Format(reason) => f.write_str(reason),
         }

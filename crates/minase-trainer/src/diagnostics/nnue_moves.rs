@@ -1,3 +1,4 @@
+use crate::error::ContractError;
 use std::{collections::BTreeMap, fs::File, io::BufReader, path::PathBuf};
 
 use clap::Args;
@@ -179,10 +180,10 @@ pub(super) fn run(args: &MovesArgs) -> Result<Report> {
     let mut reader = Reader::new(BufReader::new(File::open(&args.positions)?))?;
     let rules = Rules::from_codes(&parse_rule_set(reader.header().rule_set())?)?;
     if rules != Rules::ENGINE_DEFAULT {
-        return Err("diagnostic positions must use engine-default rules".into());
+        return Err(ContractError::NondefaultRules.into());
     }
     if reader.header().game_count() == 0 {
-        return Err("move probe positions must be nonempty".into());
+        return Err(ContractError::EmptyPositions.into());
     }
     let mut reports = Vec::new();
     while let Some(record) = reader.read_game()? {

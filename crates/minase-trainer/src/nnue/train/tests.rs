@@ -1,3 +1,4 @@
+use crate::nn::checkpoint::MismatchField;
 #[path = "../../../tests/common/mnsd.rs"]
 mod mnsd;
 use super::*;
@@ -594,12 +595,23 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             Err(error) => error,
         };
         let expected = match change {
-            "origin" => "checkpoint preprocessing mismatch",
-            "npz" | "base" | "data" => "checkpoint inputs mismatch",
-            _ => "checkpoint settings mismatch",
+            "origin" => MismatchField::Preprocessing,
+            "npz" | "base" | "data" => MismatchField::Inputs,
+            "settings" => MismatchField::Seed,
+            "device" => MismatchField::Device,
+            "lr_linear" => MismatchField::LrLinear,
+            "lr_schedule" => MismatchField::LrSchedule,
+            "weight_decay_linear" => MismatchField::WeightDecayLinear,
+            "lr_ft" => MismatchField::LrFt,
+            "weight_decay_ft" => MismatchField::WeightDecayFt,
+            "lr_head" => MismatchField::LrHead,
+            "weight_decay_head" => MismatchField::WeightDecayHead,
+            "removal_penalty" => MismatchField::RemovalPenalty,
+            "lambda" => MismatchField::Lambda,
+            _ => unreachable!(),
         };
         assert!(
-            matches!(error.downcast_ref::<crate::nn::Error>(), Some(crate::nn::Error::Invalid(reason)) if *reason == expected),
+            matches!(error.downcast_ref::<crate::nn::Error>(), Some(crate::nn::Error::CheckpointMismatch(field)) if *field == expected),
             "{change} reached an unexpected error: {error}"
         );
     }
@@ -1476,9 +1488,9 @@ fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
     let original = fs::read(&path).unwrap();
     let arrays = crate::nn::npz::decode(&original).unwrap();
     for (field, expected) in [
-        ("settings", "checkpoint settings mismatch"),
-        ("inputs", "checkpoint inputs mismatch"),
-        ("preprocessing", "checkpoint preprocessing mismatch"),
+        ("settings", MismatchField::Settings),
+        ("inputs", MismatchField::Inputs),
+        ("preprocessing", MismatchField::Preprocessing),
     ] {
         let mut changed = arrays.clone();
         let meta = changed.get_mut("meta").unwrap();
@@ -1499,7 +1511,7 @@ fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
             Err(error) => error,
         };
         assert!(
-            matches!(error.downcast_ref::<crate::nnue::model::Error>(), Some(crate::nnue::model::Error::Invalid(reason)) if *reason == expected),
+            matches!(error.downcast_ref::<crate::nnue::model::Error>(), Some(crate::nnue::model::Error::CheckpointMismatch(field)) if *field == expected),
             "{field}: {error}"
         );
         assert_eq!(fs::read(&path).unwrap(), bytes);

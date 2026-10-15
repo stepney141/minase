@@ -33,6 +33,7 @@ use super::{
     compute, export,
     record::{append_epoch, configuration, reconcile_log, write_json},
 };
+use crate::error::ContractError;
 use crate::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
     nn::{atomic_write, patience_reached, pipeline, update_best, workers},
@@ -154,9 +155,7 @@ impl Session {
             write_json(&args.output_dir.join("config.json"), &saved)?;
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
-                return Err(Error::Invalid(
-                    "output directory is not empty; use --resume to continue a run",
-                ));
+                return Err(Error::Contract(ContractError::OutputNotEmpty));
             }
             std::fs::create_dir_all(&args.output_dir)?;
             config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
@@ -387,8 +386,7 @@ impl Session {
         };
         summary.quantization = Some(report);
         summary.initial_position_score = Some(initial_score);
-        let failure =
-            Error::Invalid("quantization_error: mean absolute error exceeds 2 centipawns");
+        let failure = Error::Contract(ContractError::Quantization);
         if !passed {
             summary.reason = Some(failure.to_string());
         }

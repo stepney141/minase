@@ -5,6 +5,18 @@ Use the same --output and --state paths to resume. --max-users limits each run.
 The state commits one user's output at a time; an interrupted user's uncommitted
 output is removed on restart and that user is fetched again. Run only one process
 per output/state pair. Seed options apply only when creating a new state.
+
+Behavior table:
+- Connected users are fetched breadth first, with one unchanged record per game.
+- HTTP 429 retries the same request after at least 60 seconds.
+- Other HTTP failures are recorded, and collection continues with other users.
+- Each completed user commits a checkpoint; resuming avoids repeated users.
+- An interrupted user is fetched again without duplicate output.
+- The request interval has a minimum of 1.5 seconds.
+- State replacement occurs only after the complete JSON has been written.
+
+Run the offline acceptance tests with:
+    PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
 """
 
 import argparse
