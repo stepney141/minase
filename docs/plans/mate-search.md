@@ -73,7 +73,7 @@ GUIからの`go mate`、詰め中将棋の作品や保存棋譜の検討、お�
 局面の同一性と反復規則の判定はRULES.md第24条と第31条による。R2とR3は成り権の保留を含めずに判定するのでminase-coreの`zobrist`だけを、R1は含めて判定するので`zobrist`と`rights_zobrist`の組を使う（「反復の扱い」節）。
 USIの状態機械と`go`のライフサイクルは[外部対局接続](archived/engine-connectivity.md)が、サブコマンドの形は[補助ツールのサブコマンド化](archived/cli-subcommands.md)が定める。
 規格先行テストの書き方は[テストスイートのspec-first再構築](archived/spec-first-tests.md)に従う。
-本書は完了済みのマイルストーンだけを前提とし、起案中の[探索部の反復負け回避](search-repetition.md)には依存しない。
+本書は完了済みのマイルストーンだけを前提とし、起案中の[探索部の反復負け回避](archived/search-repetition.md)には依存しない。
 従う教訓は、[外部入力でパニックしない](../lessons/no-panic-on-external-input.md)、[不正状態を作れる公開型を避ける](../lessons/checked-constructors-for-public-types.md)、[エラーを文字列へ失わない](../lessons/typed-errors-over-strings.md)、[スレッドを所有するハンドルはDropで回収する](../lessons/join-threads-on-drop.md)、[回帰テストは修正を外して失敗を確認する](../lessons/confirm-regression-test-fails-without-fix.md)、および[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)である。
 
 ## 設計判断

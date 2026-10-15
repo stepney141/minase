@@ -220,7 +220,7 @@ fn aspiration_normalizes_initial_and_widened_mate_edges() {
     for distance in [49, 50, 51, 100] {
         let mut high = AspirationWindow::initial(5, Some(MATE_THRESHOLD - distance), 50);
         let mut low = AspirationWindow::initial(5, Some(-MATE_THRESHOLD + distance), 50);
-        if distance <= 50 {
+        if distance <= MATE_THRESHOLD - crate::search::REPETITION_BAND_START + 50 {
             assert_eq!(high.beta, INFINITY);
             assert_eq!(low.alpha, -INFINITY);
         } else {

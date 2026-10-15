@@ -5,7 +5,7 @@ use core::cmp::Reverse;
 use crate::eval::Nnue;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::snapshot::search_key;
-use crate::search::{MATE, MAX_PLY};
+use crate::search::{MATE, MAX_PLY, in_repetition_band};
 use minase_core::MoveGenerator;
 use minase_core::board::Bitboard;
 use minase_core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
@@ -31,6 +31,7 @@ impl Searcher<'_> {
     ///
     /// 最大ply、stand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
     /// その後の置換表ヒットによる打ち切りと中断も保存しない。
+    /// 専用の帯の値は対局履歴と探索経路に依存するため、打ち切りには使わず記録手だけを使う。
     /// 通常出口は深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、それ以外は正確な値とする。
     /// stand-patを上回る捕獲手がなければ記録手は持たない。
     /// 深さ0の記録は通常探索の深さ条件を満たさず、カットオフに使われない。
@@ -107,11 +108,12 @@ impl Searcher<'_> {
                 self.stats.quiesce_tt_hits += 1;
             }
             tt_move = hit.best_move;
-            let cutoff = match hit.bound {
-                Bound::Exact => true,
-                Bound::Lower => hit.score >= beta,
-                Bound::Upper => hit.score <= original_alpha,
-            };
+            let cutoff = !in_repetition_band(hit.score)
+                && match hit.bound {
+                    Bound::Exact => true,
+                    Bound::Lower => hit.score >= beta,
+                    Bound::Upper => hit.score <= original_alpha,
+                };
             if cutoff {
                 #[cfg(feature = "search-stats")]
                 {

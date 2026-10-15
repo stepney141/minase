@@ -107,7 +107,7 @@ minaseの王将はこの間に5lから3l、2lへ移り、その後8lへ戻った
 
 minaseの探索は、規則によらず、対局の履歴または探索経路に既に現れた局面へ戻る手を引き分けの値（0）として扱う（`src/search/alphabeta/negamax.rs`の`search_move`）。
 この測定の反復規則R2（RULES.md第31条）では、同じ手番の既出局面を再現する手は不合法であり、引き分けにはならない。
-[反復負け回避の設計書](../plans/search-repetition.md)も、R2とR3の探索内の扱いを既知の歪みとして範囲外にしている。
+[反復負け回避の設計書](../plans/archived/search-repetition.md)も、R2とR3の探索内の扱いを既知の歪みとして範囲外にしている。
 
 再探索が値をちょうど0とした箇所のうち、5局面で読み筋が反復で終わることを確かめた（[zero.py](hachu-losses-2026-10-04/zero.py)、[ttrace.py](hachu-losses-2026-10-04/ttrace.py)）。
 ペア29の287手目と288手目、ペア142の205手目、216手目、218手目である。

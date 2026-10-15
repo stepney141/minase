@@ -1,7 +1,8 @@
 //! 探索の共通試験補助。
 
 // RULES.md第20条から第23条により、最後の王駒の捕獲と合法手なしを負けとし、王駒が残る間は探索を続ける。
-// 探索は捕獲までを含む手数で詰み値を表し、深さ0では静止探索へ移り、反復は引き分け近似する。
+// 探索は捕獲までを含む手数で詰み値を表し、深さ0では静止探索へ移る。
+// 第31条R1の反復は1周で攻撃側の負けを近似し、双方またはどちらも攻撃側でなければ引き分けとする。
 // 近似の理由は docs/adr/approximate-adjudication-inside-search-tree.md にある。
 // 個々の期待値はこの契約と各テストの仕様から求め、期待定数を実装から写さない。
 // 座標は筋段表記（筋1=先手から見て右端、段1=後手側最奥）を
@@ -10,6 +11,7 @@
 mod capture_history;
 mod captures;
 mod correction;
+mod draw_value;
 mod handle;
 mod history;
 mod improving;
@@ -22,7 +24,11 @@ mod ponder;
 mod pruning;
 mod qsearch_move_limit;
 mod quiesce;
+mod repetition_band;
+mod repetition_prohibition;
+mod repetition_tree;
 mod root;
+mod root_repetition;
 mod royal;
 mod scoring;
 #[cfg(feature = "search-stats")]
@@ -58,7 +64,8 @@ use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
-    KILLER_COUNT, PonderIteration, STOP_CHECK_INTERVAL, Searcher, new_searcher,
+    KILLER_COUNT, PathMove, PonderIteration, RepetitionMatch, STOP_CHECK_INTERVAL, Searcher,
+    new_searcher,
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
@@ -76,7 +83,7 @@ use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::handle::SearchHandle;
 use crate::search::limits::{ClockLimits, SearchLimits};
-use crate::search::snapshot::{SearchSnapshot, search_key};
+use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
     DEFAULT_THREADS, DRAW_SCORE, MATE, MATE_THRESHOLD, MAX_PLY, TranspositionTable,
     TranspositionTableError,
@@ -87,7 +94,7 @@ use minase_core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 use minase_core::test_util::{position, position_from_codes, sq};
-use minase_core::{MoveGenerator, Square};
+use minase_core::{MoveGenerator, Square, repetition_key};
 
 // ---------------------------------------------------------------------------
 // ヘルパ
@@ -95,6 +102,78 @@ use minase_core::{MoveGenerator, Square};
 
 fn engine_rules() -> MoveRules {
     MoveRules::standard()
+}
+
+fn step(from: Square, to: Square) -> Move {
+    Move {
+        from,
+        mid: None,
+        to,
+        promote: false,
+    }
+}
+
+/// 黒飛は3筋の白歩、白飛は8筋の黒歩を、それぞれ往復する2升から照準する。
+fn rook_cycle(black_attacks: bool, white_attacks: bool) -> (Position, [Move; 4]) {
+    let mut pieces = vec![
+        (sq(0, 0), Color::Black, PieceKind::King),
+        (sq(3, 3), Color::Black, PieceKind::Rook),
+        (sq(8, 8), Color::White, PieceKind::Rook),
+        (sq(11, 11), Color::White, PieceKind::King),
+    ];
+    if black_attacks {
+        pieces.push((sq(3, 9), Color::White, PieceKind::Pawn));
+    }
+    if white_attacks {
+        pieces.push((sq(8, 1), Color::Black, PieceKind::Pawn));
+    }
+    (
+        position(Color::Black, &pieces),
+        [
+            step(sq(3, 3), sq(3, 4)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(3, 4), sq(3, 3)),
+            step(sq(8, 7), sq(8, 8)),
+        ],
+    )
+}
+
+fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move) -> i32 {
+    let before = current.clone();
+    let keys = searcher.path_keys.clone();
+    let ply = searcher.path_moves.len() as u32;
+    let score = searcher
+        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0)
+        .unwrap();
+    assert_eq!(*current, before);
+    assert_eq!(searcher.path_keys, keys);
+    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
+    score
+}
+
+/// 実着手またはnull moveを適用し、対応する経路と各plyの局面状態を積む。
+fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Option<Move>) {
+    if let Some(mv) = mv {
+        let mut moves = Vec::new();
+        searcher.generator.generate_moves(position, &mut moves);
+        assert!(moves.contains(&mv));
+        position.make_move_unchecked(mv, searcher.rules);
+    } else {
+        position.make_null_move();
+        searcher.null_move_boundary = Some(searcher.path_keys.len());
+        searcher.null_move_ply = Some(searcher.path_keys.len() as u32);
+    }
+    searcher
+        .path_keys
+        .push(repetition_key(searcher.repetition.rule(), position));
+    searcher.path_moves.push(PathMove {
+        mv,
+        attacking: None,
+    });
+    let ply = searcher.path_moves.len();
+    searcher.accumulators[ply] = searcher.nnue.refresh_accumulator(position);
+    searcher.material_keys[ply] = material_key(position);
+    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
 }
 
 /// 筋段表記（筋1〜12、段1〜12）を内部座標へ写す。
@@ -210,6 +289,40 @@ fn with_nnue_root_searcher(
     history: &[u64],
     test: impl FnOnce(&mut Searcher<'_>),
 ) {
+    with_repetition_root_searcher(
+        nnue,
+        position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        history,
+        test,
+    );
+}
+
+/// 着手規則と反復規則を指定し、時間制限のない単一ワーカーで検査する。
+fn with_repetition_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
+    with_draw_value_root_searcher(nnue, position, rules, repetition, DRAW_SCORE, history, test);
+}
+
+/// RULES.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
+fn with_draw_value_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    draw_value: i32,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -227,7 +340,9 @@ fn with_nnue_root_searcher(
     let mut searcher = new_searcher(
         nnue,
         position,
-        engine_rules(),
+        rules,
+        repetition,
+        draw_value,
         history,
         &shared,
         &table,
@@ -246,6 +361,8 @@ fn repeated_root_children(position: &Position, moves: &[Move]) -> Vec<u64> {
             child.make_move_unchecked(mv, engine_rules());
             search_key(&child)
         })
+        // 根を履歴の末尾に含め、どの子についても両対局者の非攻撃的な履歴を含む長さにする。
+        .chain([search_key(position); 2])
         .collect()
 }
 
@@ -277,6 +394,10 @@ fn run_quiesce(
         nnue,
         position,
         engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
         &history,
         &shared,
         table,
@@ -318,6 +439,10 @@ fn run_negamax(
         nnue,
         position,
         engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
         &history,
         &shared,
         table,
@@ -368,6 +493,9 @@ fn run_search(
     let snapshot = SearchSnapshot::from_parts(
         position.clone(),
         rules,
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         history_keys.to_vec(),
         root_moves.to_vec(),
     )
@@ -388,6 +516,9 @@ fn snapshot_for(position: &Position) -> SearchSnapshot {
     SearchSnapshot::from_parts(
         position.clone(),
         engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
         vec![search_key(position)],
         legal_moves(position),
     )

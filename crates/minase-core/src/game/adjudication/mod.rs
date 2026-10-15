@@ -44,6 +44,11 @@ impl AdjudicationState {
         &self.repetition
     }
 
+    /// R1の攻撃連続数を返し、R2とR3では`None`を返す。
+    pub(crate) const fn consecutive_attacking_moves(&self) -> Option<[u32; 2]> {
+        self.repetition.consecutive_attacking_moves()
+    }
+
     /// 駒枯れの1手猶予が進行中かどうかを返す。
     pub(crate) const fn piece_exhaustion_grace(&self) -> bool {
         self.piece_exhaustion_grace

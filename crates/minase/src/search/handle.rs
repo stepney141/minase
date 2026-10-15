@@ -110,7 +110,9 @@ pub fn start_search(
         let outcome = run_search_team(
             &nnue,
             &snapshot.position,
-            snapshot.rules,
+            snapshot.rules(),
+            snapshot.repetition(),
+            snapshot.draw_value(),
             &snapshot.root_moves,
             &snapshot.history_keys,
             &limits,
@@ -172,7 +174,9 @@ pub fn search(
     Ok(run_search_team(
         nnue,
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
+        snapshot.draw_value(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         limits,

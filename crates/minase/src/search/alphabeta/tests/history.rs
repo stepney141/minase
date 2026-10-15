@@ -20,7 +20,9 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
     let outcome = run_search_team(
         test_nnue(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(3),
@@ -232,7 +234,9 @@ pub(super) fn zero_decay_clears_history_between_searches() {
         run_search_team(
             nnue,
             &snapshot.position,
-            snapshot.rules,
+            snapshot.rules(),
+            snapshot.repetition(),
+            DRAW_SCORE,
             &snapshot.root_moves,
             &snapshot.history_keys,
             &depth_limits(3),

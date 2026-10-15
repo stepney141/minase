@@ -4,10 +4,56 @@
 //! 鍵と適用範囲を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
 
 use super::params;
+use super::royal::royal_under_attack;
+use super::searcher::Searcher;
+use super::tt::Bound;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
+use crate::search::REPETITION_BAND_START;
 use minase_core::piece::{COLOR_COUNT, Color, PieceCode};
 use minase_core::position::Undo;
 use minase_core::{Position, Square};
+
+impl Searcher<'_> {
+    /// 詰み帯と専用の帯の外で、最善手が非捕獲手、かつ王駒に疑似利きが届かないノードだけを学習する。
+    /// 反復による勝敗は経路に依存し、静的評価の誤差ではないため補正履歴に取り込まない。
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn update_correction(
+        &mut self,
+        position: &Position,
+        depth: u32,
+        ply: u32,
+        best_score: i32,
+        bound: Bound,
+        best_capture: bool,
+        mut static_eval: Option<i32>,
+        mut royal_attacked: Option<bool>,
+    ) {
+        // 正確な値、静的評価より低い上界、静的評価より高い下界なら補正の向きが確定する。
+        // 捕獲による駒得は静的評価の偏りではないため除外する。理由は
+        // docs/adr/key-correction-history-by-material.md にある。
+        if best_score.abs() < REPETITION_BAND_START && !best_capture {
+            let static_eval = *static_eval.get_or_insert_with(|| {
+                #[cfg(feature = "invariants")]
+                self.nnue
+                    .assert_accumulator(position, &self.accumulators[ply as usize], ply);
+                self.nnue
+                    .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
+            });
+            if (bound == Bound::Exact
+                || (bound == Bound::Upper && best_score < static_eval)
+                || (bound == Bound::Lower && best_score > static_eval))
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            {
+                self.correction.update(
+                    position.side_to_move(),
+                    self.material_keys[ply as usize],
+                    best_score - static_eval,
+                    depth,
+                );
+            }
+        }
+    }
+}
 
 const ENTRY_COUNT: usize = 4096;
 const SCALE: i64 = 1024;

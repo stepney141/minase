@@ -55,7 +55,7 @@ fn snapshot_is_constructed_from_one_game_state() {
 
     assert_eq!(snapshot.position(), game.position());
     assert_eq!(snapshot.rules(), game.rules().moves);
-    assert_eq!(snapshot.history_keys(), game.search_key_history());
+    assert_eq!(snapshot.history_keys(), game.repetition_key_history());
     assert_eq!(snapshot.root_moves(), game.legal_moves());
 
     let empty = minase_core::Game::from_position(

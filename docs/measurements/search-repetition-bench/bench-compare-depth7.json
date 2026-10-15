@@ -1,0 +1,295 @@
+{
+  "reference_commit": "50de0f84b1756f0cad75e573f9e4e3baedaa6740",
+  "baseline_commit": "88655aa317a22111157908c49cdae0a14207f747",
+  "parent_commit": "69e19155ee48929b64eca62635b10e49c2ad862e",
+  "depth": 7,
+  "threads": 1,
+  "repetitions": 3,
+  "rounds": 5,
+  "mismatches": [],
+  "positions": [
+    {
+      "name": "initial",
+      "depth": 7,
+      "nodes": 16402,
+      "best": "8i8h",
+      "score": 39
+    },
+    {
+      "name": "game-2-ply-40",
+      "depth": 7,
+      "nodes": 107045,
+      "best": "3k6h",
+      "score": 1118
+    },
+    {
+      "name": "game-2-ply-60",
+      "depth": 7,
+      "nodes": 27575,
+      "best": "3d4f",
+      "score": 8697
+    },
+    {
+      "name": "game-3-ply-310",
+      "depth": 7,
+      "nodes": 246159,
+      "best": "4l4k",
+      "score": -3951
+    },
+    {
+      "name": "game-3-ply-465",
+      "depth": 7,
+      "nodes": 38789,
+      "best": "8g8i",
+      "score": 6834
+    },
+    {
+      "name": "game-4-ply-164",
+      "depth": 7,
+      "nodes": 18119,
+      "best": "3i4j3j",
+      "score": -1737
+    },
+    {
+      "name": "game-4-ply-246",
+      "depth": 7,
+      "nodes": 98846,
+      "best": "12e11e",
+      "score": -3143
+    },
+    {
+      "name": "game-5-ply-170",
+      "depth": 7,
+      "nodes": 91891,
+      "best": "2j2g",
+      "score": 4165
+    },
+    {
+      "name": "game-5-ply-255",
+      "depth": 7,
+      "nodes": 59170,
+      "best": "2b3c",
+      "score": -8644
+    },
+    {
+      "name": "game-6-ply-51",
+      "depth": 7,
+      "nodes": 124355,
+      "best": "5d3f",
+      "score": 28
+    },
+    {
+      "name": "game-6-ply-77",
+      "depth": 7,
+      "nodes": 95009,
+      "best": "9g7e",
+      "score": 81
+    },
+    {
+      "name": "game-8-ply-183",
+      "depth": 7,
+      "nodes": 77713,
+      "best": "1e3c",
+      "score": -529
+    },
+    {
+      "name": "game-8-ply-275",
+      "depth": 7,
+      "nodes": 12129,
+      "best": "5e2e",
+      "score": -356
+    },
+    {
+      "name": "game-10-ply-277",
+      "depth": 7,
+      "nodes": 19410,
+      "best": "5b12i+",
+      "score": 3187
+    },
+    {
+      "name": "game-10-ply-416",
+      "depth": 7,
+      "nodes": 62943,
+      "best": "6l12l",
+      "score": -3775
+    }
+  ],
+  "rounds_by_label": {
+    "baseline": [
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.764643,
+        "nps": 1425234
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.764029,
+        "nps": 1426380
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.762396,
+        "nps": 1429435
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.76175,
+        "nps": 1430646
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.762453,
+        "nps": 1429328
+      }
+    ],
+    "reference": [
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.767106,
+        "nps": 1428167
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.76702,
+        "nps": 1428327
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.76574,
+        "nps": 1430714
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.765859,
+        "nps": 1430492
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.765984,
+        "nps": 1430258
+      }
+    ],
+    "parent": [
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.760638,
+        "nps": 1432739
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.761632,
+        "nps": 1430868
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.764128,
+        "nps": 1426195
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.764706,
+        "nps": 1425117
+      },
+      {
+        "depth": 7,
+        "nodes": 1089795,
+        "elapsed": 0.763594,
+        "nps": 1427191
+      }
+    ],
+    "candidate": [
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.765364,
+        "nps": 1431417
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.766488,
+        "nps": 1429318
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.766456,
+        "nps": 1429377
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.766817,
+        "nps": 1428704
+      },
+      {
+        "depth": 7,
+        "nodes": 1095555,
+        "elapsed": 0.768278,
+        "nps": 1425987
+      }
+    ]
+  },
+  "speed": {
+    "baseline": {
+      "depth": 7,
+      "nodes": 1089795,
+      "elapsed": 0.762453,
+      "nps": 1429328,
+      "nps_width": 0.003786394725353453
+    },
+    "reference": {
+      "depth": 7,
+      "nodes": 1095555,
+      "elapsed": 0.765984,
+      "nps": 1430258,
+      "nps_width": 0.0017807975903648154
+    },
+    "parent": {
+      "depth": 7,
+      "nodes": 1089795,
+      "elapsed": 0.763594,
+      "nps": 1427191,
+      "nps_width": 0.005340560583692021
+    },
+    "candidate": {
+      "depth": 7,
+      "nodes": 1095555,
+      "elapsed": 0.766488,
+      "nps": 1429318,
+      "nps_width": 0.003799014634951774
+    }
+  },
+  "candidate_vs_baseline": {
+    "nps": 0.9999930037052377,
+    "nodes": 1.0052853977124139,
+    "elapsed": 1.0052921294820794
+  },
+  "candidate_vs_reference": {
+    "nps": 0.9993427759187503,
+    "nodes": 1.0,
+    "elapsed": 1.000657977190124
+  },
+  "candidate_vs_parent": {
+    "nps": 1.0014903401156539,
+    "nodes": 1.0052853977124139,
+    "elapsed": 1.0037899721579793
+  },
+  "parent_nps_width": 0.005340560583692021,
+  "candidate_nps_increment_vs_parent": 0.0014903401156538543,
+  "increment_exceeds_parent_width": false
+}

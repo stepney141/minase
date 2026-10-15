@@ -80,8 +80,16 @@ fn search_apis_use_the_supplied_nnue() {
     let undo = child.make_move_unchecked(root_move, engine_rules());
     let expected = -evaluate(&supplied, &child);
     child.unmake_move(undo);
-    let snapshot =
-        SearchSnapshot::from_parts(position, engine_rules(), Vec::new(), vec![root_move]).unwrap();
+    let snapshot = SearchSnapshot::from_parts(
+        position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        Vec::new(),
+        vec![root_move],
+    )
+    .unwrap();
 
     let synchronous = crate::search::search(
         &supplied,
@@ -194,7 +202,7 @@ fn infinite_limits_stop_only_on_external_request() {
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
     let delta = aspiration_delta(test_nnue().pawn_value());
-    let previous = -MATE_THRESHOLD + 2 * delta + 1;
+    let previous = -crate::search::REPETITION_BAND_START + 2 * delta + 1;
     let table = small_tt();
     // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
     // 深さ3の子の記録は、深さ5の反復では打ち切りに使えない。
@@ -272,7 +280,7 @@ fn join_returns_the_transposition_table_for_reuse() {
     // 探索1と一致する。記録手とカットオフによりノード数は増えない。
     let second = run_search(
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(3),

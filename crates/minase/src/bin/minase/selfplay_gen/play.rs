@@ -195,7 +195,7 @@ pub(super) fn play_game_from_opening(
             candidates.push(CompletedRecord {
                 score,
                 search_key: *game
-                    .search_key_history()
+                    .repetition_key_history()
                     .last()
                     .expect("every game has an initial search key"),
             });

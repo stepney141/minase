@@ -96,6 +96,10 @@ pub struct UsiProtocol {
     threads: NonZeroUsize,
     /// 根の手番側から見たcpに適用する投了閾値。条件は[`Self::should_resign`]に従う。
     resign_value: i32,
+    /// 根が先手番のときに使う、根の手番側から見た引き分けの評価値(cp)。
+    draw_value_black: i32,
+    /// 根が後手番のときに使う、根の手番側から見た引き分けの評価値(cp)。
+    draw_value_white: i32,
     /// 秒読みつき時計の締切に残す余裕(ms)。
     byoyomi_margin_ms: u64,
 }
@@ -195,6 +199,8 @@ impl UsiProtocol {
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
             resign_value: DEFAULT_RESIGN_VALUE,
+            draw_value_black: search::DRAW_SCORE,
+            draw_value_white: search::DRAW_SCORE,
             byoyomi_margin_ms: ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS,
         }
     }
@@ -270,6 +276,7 @@ impl UsiProtocol {
     /// 引数の検査と単位変換は[`parse_go_config`]、時間予算の計算は[`crate::search`]が担う。
     /// 探索は対局の複製から作るスナップショットで行い、返す手を`Engine`へ適用しない。
     /// 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
+    /// 引き分けの評価値は、根が先手番なら`DrawValueBlack`、後手番なら`DrawValueWhite`を使う。
     fn start_go(
         &mut self,
         engine: &Engine,
@@ -306,6 +313,14 @@ impl UsiProtocol {
                 return Ok(None);
             }
         };
+        let snapshot =
+            match snapshot.with_draw_value(self.root_draw_value(game.position().side_to_move())) {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    write_error(output, &error.to_string())?;
+                    return Ok(None);
+                }
+            };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
         let nnue = match crate::eval::weights() {
@@ -756,15 +771,25 @@ impl UsiProtocol {
         }
     }
 
+    /// 根の手番に対応する引き分けの評価値を返す。
+    fn root_draw_value(&self, side: Color) -> i32 {
+        match side {
+            Color::Black => self.draw_value_black,
+            Color::White => self.draw_value_white,
+        }
+    }
+
     /// 完了深さが1以上で、完了した探索値が`-resign_value`以下なら投了する。
     ///
     /// 評価値は根の手番側から見たcpであり、詰み帯も同じ比較を使う。
+    /// 負の専用の帯は`ResignValue`によらず投了から除く。
+    /// 帯の値は1回の再現で判定する近似に基づく見込みであり、実際の裁定より早く負けを確定させないためである。
     /// 深さ0の静的評価や、途中結果として採用した手の下界は判定に使わない。
     /// 通常の完了、的中後の完了、および`stop`による無限探索や外れた先読みの解放に適用する。
     /// 投了しても`Engine`の対局状態は変えない。
     /// 既定の閾値は[`DEFAULT_RESIGN_VALUE`]に従う。
     fn should_resign(&self, score: i32, depth: u32) -> bool {
-        depth >= 1 && score <= -self.resign_value
+        depth >= 1 && score <= -self.resign_value && !search::in_repetition_band(score)
     }
 
     /// `bestmove`を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
@@ -792,6 +817,8 @@ impl UsiProtocol {
     /// option name Threads type spin default 1 min 1 max 256
     /// option name ResignValue type spin default 20000 min 1 max 99999
     /// option name ByoyomiMargin type spin default 30 min 0 max 60000
+    /// option name DrawValueBlack type spin default 0 min -28999 max 28999
+    /// option name DrawValueWhite type spin default 0 min -28999 max 28999
     /// ```
     ///
     /// `tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
@@ -830,6 +857,15 @@ impl UsiProtocol {
             "option name ByoyomiMargin type spin default {} min 0 max 60000",
             ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS
         )?;
+        for name in ["DrawValueBlack", "DrawValueWhite"] {
+            writeln!(
+                output,
+                "option name {name} type spin default {} min {} max {}",
+                search::DRAW_SCORE,
+                -search::DRAW_VALUE_LIMIT,
+                search::DRAW_VALUE_LIMIT
+            )?;
+        }
         #[cfg(feature = "tuning")]
         for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
             writeln!(
@@ -852,6 +888,10 @@ impl UsiProtocol {
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
+    /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
+    /// 先頭ゼロを許す。
+    /// 値が変わった受理では置換表とhistory表を空にする。
+    /// 置換表のキーは根の手番とオプションの値を区別せず、引き分けの値を含めて求めた親の値が次の探索で再利用されるためである。
     ///
     /// 値の欠落または不正では直前の設定を保ち、次の内容を`info string error: `に続ける。
     ///
@@ -863,6 +903,8 @@ impl UsiProtocol {
     /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to 256`を返す。 |
     /// | `ResignValue` | `missing ResignValue value`を返す。 | `invalid ResignValue value`を返す。 |
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
+    /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
+    /// | `DrawValueWhite` | `missing DrawValueWhite value`を返す。 | `invalid DrawValueWhite value`を返す。 |
     ///
     /// `tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
     /// 未知の名前は`USI_Ponder`も含め無応答で無視する。
@@ -982,6 +1024,31 @@ impl UsiProtocol {
                 return write_error(output, "invalid ByoyomiMargin value");
             };
             self.byoyomi_margin_ms = value;
+            Ok(())
+        } else if name.eq_ignore_ascii_case("DrawValueBlack")
+            || name.eq_ignore_ascii_case("DrawValueWhite")
+        {
+            let (name, current) = if name.eq_ignore_ascii_case("DrawValueBlack") {
+                ("DrawValueBlack", &mut self.draw_value_black)
+            } else {
+                ("DrawValueWhite", &mut self.draw_value_white)
+            };
+            let Some(value) = value else {
+                return write_error(output, &format!("missing {name} value"));
+            };
+            let Some(value) = parse_draw_value(value) else {
+                return write_error(output, &format!("invalid {name} value"));
+            };
+            if *current != value {
+                *current = value;
+                self.histories
+                    .as_mut()
+                    .expect("idle protocol must own history tables")
+                    .clear();
+                if let Some(table) = &mut self.transposition_table {
+                    table.clear();
+                }
+            }
             Ok(())
         } else {
             Ok(())
@@ -1727,6 +1794,21 @@ fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
         .and_then(|index| tokens.get(index + 1).copied())
 }
 
+/// 先頭の`-`を1つ許すASCII数字の列を、引き分けの評価値の範囲内で解析する。
+fn parse_draw_value(value: &str) -> Option<i32> {
+    let digits = match value.strip_prefix('-') {
+        Some(digits) => digits,
+        None => value,
+    };
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value
+        .parse::<i32>()
+        .ok()
+        .filter(|value| (-search::DRAW_VALUE_LIMIT..=search::DRAW_VALUE_LIMIT).contains(value))
+}
+
 /// 1以上256以下のワーカー数を解析する。
 fn parse_threads(value: &str) -> Option<NonZeroUsize> {
     value
@@ -2344,6 +2426,278 @@ mod tests {
         assert!(!output.contains("USI_Ponder"));
     }
 
+    /// RULES.md第31条R1の引き分け値は、両手番とも既定値0、範囲±28,999で宣言する。
+    #[test]
+    fn draw_value_r1_handshake_declares_defaults_and_bounds() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(&mut protocol, &mut engine, "usi\n");
+        let lines: Vec<_> = output.lines().collect();
+        let margin = lines
+            .iter()
+            .position(|line| line.starts_with("option name ByoyomiMargin "))
+            .unwrap();
+        let expected = [
+            "option name DrawValueBlack type spin default 0 min -28999 max 28999",
+            "option name DrawValueWhite type spin default 0 min -28999 max 28999",
+        ];
+        assert_eq!(&lines[margin + 1..margin + 3], &expected);
+        assert_eq!(
+            lines
+                .iter()
+                .copied()
+                .filter(|line| line.starts_with("option name DrawValue"))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(protocol.draw_value_black, 0);
+        assert_eq!(protocol.draw_value_white, 0);
+    }
+
+    /// RULES.md第31条R1の引き分け値は、符号と範囲を検査し、もう一方の設定を保つ。
+    #[test]
+    fn draw_value_r1_parsing_accepts_signed_bounds_and_preserves_rejected_values() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        for (name, side) in [
+            ("DrawValueBlack", Color::Black),
+            ("DrawValueWhite", Color::White),
+        ] {
+            let other = match side {
+                Color::Black => Color::White,
+                Color::White => Color::Black,
+            };
+            let other_value = protocol.root_draw_value(other);
+            for (value, expected) in [
+                ("-50", -50),
+                ("50", 50),
+                ("0", 0),
+                ("-28999", -28_999),
+                ("28999", 28_999),
+                ("5 0", 5),
+                ("5\t0", 5),
+                ("-007", -7),
+            ] {
+                let output = run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!(
+                        "setoption NAME {} VALUE {value}\n",
+                        name.to_ascii_lowercase()
+                    ),
+                );
+                assert_eq!(output, "", "{name}: {value}");
+                assert_eq!(protocol.root_draw_value(side), expected);
+                assert_eq!(protocol.root_draw_value(other), other_value);
+                assert!(protocol.transposition_table.is_none());
+            }
+            for value in [
+                "29000",
+                "-29000",
+                "+5",
+                "--5",
+                "1.5",
+                "1e3",
+                "abc",
+                "-",
+                "- 5",
+                "５",
+                "2147483648",
+                "-2147483648",
+                "-2147483649",
+            ] {
+                let output = run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!("setoption name {name} value {value}\n"),
+                );
+                assert_eq!(
+                    output,
+                    format!("info string error: invalid {name} value\n"),
+                    "{value}"
+                );
+                assert_eq!(protocol.root_draw_value(side), -7);
+                assert_eq!(protocol.root_draw_value(other), other_value);
+            }
+            for suffix in ["", " value", " value "] {
+                assert_eq!(
+                    run(
+                        &mut protocol,
+                        &mut engine,
+                        &format!("setoption name {name}{suffix}\n")
+                    ),
+                    format!("info string error: missing {name} value\n")
+                );
+                assert_eq!(protocol.root_draw_value(side), -7);
+                assert_eq!(protocol.root_draw_value(other), other_value);
+            }
+        }
+    }
+
+    /// RULES.md第31条R1の引き分け値が変わった受理だけが、置換表と全ワーカーの履歴を消す。
+    #[test]
+    fn draw_value_r1_clears_tables_only_when_an_accepted_value_changes() {
+        for name in ["DrawValueBlack", "DrawValueWhite"] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine);
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    "setoption name USI_Hash value 1\nsetoption name Threads value 2\nposition startpos\n"
+                ),
+                ""
+            );
+            for (value, clears, error) in [
+                ("-50", true, false),
+                ("-50", false, false),
+                ("29000", false, true),
+            ] {
+                let output = run(&mut protocol, &mut engine, "go depth 1\n");
+                assert!(error_lines(&output).is_empty(), "{output}");
+                // probeは探索層に限定されるため、それを呼ぶinspectで同じ照合を使う。
+                let before = protocol
+                    .transposition_table
+                    .as_ref()
+                    .unwrap()
+                    .inspect(engine.game().position(), 0)
+                    .unwrap();
+                let histories = protocol.histories.as_mut().unwrap();
+                for history in &mut histories.workers {
+                    for value in history.iter_mut().flatten().flatten() {
+                        *value = -100;
+                    }
+                }
+                for history in &mut histories.capture {
+                    history.values_mut().fill(-100);
+                }
+                let output = run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!("setoption name {name} value {value}\n"),
+                );
+                if error {
+                    assert_eq!(output, format!("info string error: invalid {name} value\n"));
+                } else {
+                    assert_eq!(output, "");
+                }
+                let after = protocol
+                    .transposition_table
+                    .as_ref()
+                    .unwrap()
+                    .inspect(engine.game().position(), 0);
+                if clears {
+                    assert!(after.is_none());
+                } else {
+                    let after = after.unwrap();
+                    assert_eq!(
+                        (after.best_move, after.score, after.depth, after.bound),
+                        (before.best_move, before.score, before.depth, before.bound)
+                    );
+                }
+                let histories = protocol.histories.as_ref().unwrap();
+                let expected = if clears { 0 } else { -100 };
+                assert_eq!(histories.workers.len(), 2);
+                assert_eq!(histories.capture.len(), 2);
+                assert!(histories.workers.iter().all(|history| {
+                    history
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .all(|&value| value == expected)
+                }));
+                assert!(
+                    histories
+                        .capture
+                        .iter()
+                        .all(|history| history.values().iter().all(|&value| value == expected))
+                );
+            }
+        }
+    }
+
+    /// RULES.md第31条R1の引き分け値は、根の手番に対応するオプションを選ぶ。
+    #[test]
+    fn draw_value_r1_selects_the_root_side_option() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name DrawValueBlack value -50\nsetoption name DrawValueWhite value 70\n"
+            ),
+            ""
+        );
+        for (position, side, expected) in [
+            ("position startpos", Color::Black, -50),
+            ("position startpos moves 6i6h", Color::White, 70),
+        ] {
+            assert_eq!(run(&mut protocol, &mut engine, position), "");
+            let game = engine.game();
+            assert_eq!(game.position().side_to_move(), side);
+            let snapshot = SearchSnapshot::from_game(game)
+                .unwrap()
+                .with_draw_value(protocol.root_draw_value(game.position().side_to_move()))
+                .unwrap();
+            assert_eq!(snapshot.draw_value(), expected);
+        }
+    }
+
+    /// RULES.md第31条R1の既定値0では、新規対局を挟んだ同じ探索の最善手と最終評価値が一致する。
+    #[test]
+    fn draw_value_r1_default_search_is_deterministic_across_new_games() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        let first = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos\ngo depth 3\n",
+        );
+        let second = run(
+            &mut protocol,
+            &mut engine,
+            "usinewgame\nposition startpos\ngo depth 3\n",
+        );
+        let final_score = |output: &str| -> i32 {
+            assert!(error_lines(output).is_empty(), "{output}");
+            let line = output
+                .lines()
+                .rev()
+                .find(|line| line.starts_with("info depth "))
+                .unwrap();
+            assert!(line.starts_with("info depth 3 "), "{output}");
+            line.split_once(" score cp ")
+                .unwrap()
+                .1
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap()
+        };
+        assert_eq!(bestmoves(&first).len(), 1);
+        assert_eq!(bestmoves(&first), bestmoves(&second));
+        assert_eq!(final_score(&first), final_score(&second));
+    }
+
+    /// RULES.md第31条R1の引き分け値を-ResignValue以下にすると、千日手の手を採用したときに投了し得る。
+    #[test]
+    fn draw_value_r1_resignation_includes_the_negative_threshold() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name ResignValue value 50\nsetoption name DrawValueBlack value -50\nsetoption name DrawValueWhite value -49\n"
+            ),
+            ""
+        );
+        assert!(protocol.should_resign(-50, 2));
+        assert!(!protocol.should_resign(-49, 2));
+    }
+
     // [`UsiProtocol::handle_setoption`]のByoyomiMarginの単位と受理範囲を検査する。
     #[test]
     fn byoyomi_margin_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
@@ -2683,6 +3037,134 @@ mod tests {
                 assert!(!text.contains("bestmove resign"), "{text}");
                 assert_legal_bestmove(&text, &legal);
             }
+        }
+    }
+
+    // RULES.md第31条R1の反復負けは1回の再現による見込みなので、実際の裁定より早く投了しない。
+    // 実行中のstopが受信端から結果を回収する経路には評価値の差し替え口がないため、
+    // その経路も使う共有判定を直接検査する。
+    #[test]
+    fn resignation_repetition_band_is_excluded_at_every_threshold() {
+        let (_, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        for threshold in [0, 1, 20_000, 29_487, 29_743, 99_999] {
+            protocol.resign_value = threshold;
+            for score in [-29_487, -29_740, -29_743] {
+                assert!(!protocol.should_resign(score, 2), "{score}, {threshold}");
+                assert!(!protocol.should_resign(score, 0));
+            }
+        }
+        protocol.resign_value = 20_000;
+        for (score, expected) in [
+            (-29_744, true),
+            (-29_999, true),
+            (-29_486, true),
+            (-20_000, true),
+            (-19_999, false),
+            (29_487, false),
+            (29_743, false),
+        ] {
+            assert_eq!(protocol.should_resign(score, 2), expected);
+            assert!(!protocol.should_resign(score, 0));
+        }
+    }
+
+    /// 探索イベントの評価値を規範値へ差し替え、既定のResignValueで最終出力を検査する。
+    fn check_repetition_band_resignation(score: i32, release: Option<&str>, running_hit: bool) {
+        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        assert_eq!(protocol.resign_value, 20_000);
+        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let mut output = Vec::new();
+        let limits = if release.is_some() || running_hit {
+            vec!["ponder", "depth", "2"]
+        } else {
+            vec!["depth", "2"]
+        };
+        let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+        if running_hit {
+            assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+            protocol
+                .handle_searching_line(
+                    &engine,
+                    &mut active,
+                    &mut VecDeque::new(),
+                    "ponderhit",
+                    &mut output,
+                )
+                .unwrap();
+            assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+        }
+        loop {
+            let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+                panic!("search must be running");
+            };
+            let mut event = handle
+                .events()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            let finished = match &mut event {
+                SearchEvent::Progress {
+                    score: reported, ..
+                } => {
+                    *reported = score;
+                    false
+                }
+                SearchEvent::Finished { score: adopted, .. } => {
+                    *adopted = score;
+                    true
+                }
+            };
+            protocol
+                .handle_search_event(&engine, &mut active, event, &mut output)
+                .unwrap();
+            if finished {
+                break;
+            }
+        }
+        if let Some(command) = release {
+            assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+            assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
+            protocol
+                .handle_searching_line(
+                    &engine,
+                    &mut active,
+                    &mut VecDeque::new(),
+                    command,
+                    &mut output,
+                )
+                .unwrap();
+        }
+        assert!(active.is_none());
+        let text = String::from_utf8(output).unwrap();
+        if score == -29_744 {
+            assert!(text.contains(" score mate -254 "), "{text}");
+            assert_eq!(bestmoves(&text), ["bestmove resign"]);
+        } else {
+            assert!(text.contains(&format!(" score cp {score} ")), "{text}");
+            assert_legal_bestmove(&text, &legal);
+        }
+    }
+
+    #[test]
+    fn resignation_repetition_band_completion_returns_a_legal_move() {
+        for score in [-29_487, -29_740, -29_743, -29_744] {
+            check_repetition_band_resignation(score, None, false);
+        }
+    }
+
+    #[test]
+    fn resignation_repetition_band_held_stop_and_ponderhit_return_a_legal_move() {
+        for command in ["stop", "ponderhit"] {
+            for score in [-29_487, -29_740, -29_743, -29_744] {
+                check_repetition_band_resignation(score, Some(command), false);
+            }
+        }
+    }
+
+    // 実行中のponderhitは探索を継続し、後の完了通知で同じ投了判定を使う。
+    #[test]
+    fn resignation_repetition_band_running_ponderhit_returns_a_legal_move() {
+        for score in [-29_487, -29_740, -29_743, -29_744] {
+            check_repetition_band_resignation(score, None, true);
         }
     }
 

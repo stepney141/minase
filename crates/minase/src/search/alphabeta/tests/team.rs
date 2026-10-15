@@ -142,7 +142,9 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let outcome = run_search_team(
         test_nnue(),
         &snapshot.position,
-        snapshot.rules,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
         &snapshot.root_moves,
         &snapshot.history_keys,
         &limits,

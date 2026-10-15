@@ -19,6 +19,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [前向き枝刈りの第3層に関する既存実装の調査](forward-pruning-prior-art.md)は、棋力向上段階8の4項目（correction history、improving、SEE pruning、history pruning）の更新条件と閾値を、StockfishとYaneuraOuのソースで確認する。
 - [手の順序付けの改善余地に関する調査と議論](move-ordering-discussion.md)は、現行の順序付けでβカットの遅れが件数では置換表の記録手がない残り深さ1のノードに集中する一方、初手βカット率ではノード数の損失を測れないことを示し、Claudeとcodexの議論を経た8候補の順位とStockfishの現行方式を記す。
 - [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
+- [引き分けの評価値（contempt）の既存実装と測定の調査](draw-value-prior-art.md)は、Stockfish、やねうら王、dlshogi、技巧、Lc0などが千日手の引き分けに返す値を設定する仕組みと、その効果を対局で測った記録をまとめる。
 - [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
 - [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
 - [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md)は、雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。
@@ -45,6 +46,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [手作り評価項目の係数を自己対局から学ぶ先行研究](handcrafted-evaluation-selfplay.md)は、Texelと、BealとSmithの1999年の論文を中心に、手作りの評価項目の係数を自己対局から学ぶ先例を確認する。
 - [チェス評価関数の教師と混合比](chess-evaluation-targets.md)は、教師評価値と対局結果の混合比について、Stockfish、Texel、Ethereal、およびViridithasの設定と比較記録を調べる。
 - [チェスと将棋の教師混合比](chess-shogi-teacher-mixing.md)は、Stockfish、elmo、やねうら王、dlshogi、AobaZeroなどの一次資料から、混合比の実採用例、学習器の既定値、およびminaseと係数の定義が異なる場合の換算を確認する。
+- [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](win-rate-scale-k-prior-art.md)は、やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealなどで尺度Kが定数か推定値かを一次資料で確認し、重みと同時に学習する例はなく、実行ごとの推定はTexel系とdlshogiの`--use_evalfix`に限られることを示す。
 - [将棋の教師生成と学習ツールの調査（GenSfenとtatara）](teacher-generation-prior-art.md)は、やねうら王のGenSfenとNNUE学習ツールtataraのソースから、将棋の教師の質を作る要素を整理する。
 - [探索で使う局面に合わせた評価関数の学習](search-aware-evaluation.md)は、過去のNNUEの不採用を踏まえ、候補自身が選ぶ局面の再評価を先に検証し、利きの補助学習とモデル構造を条件付きで比較する案を示す。
 - [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md)は、Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。
@@ -52,6 +54,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [NNUEの再挑戦に向けたアーキテクチャの考察](nnue-architecture-discussion.md)は、P型NNUEの2回の不採用を記録から読み直し、敗因は入力特徴ではなく教師と学習手順にあると判定したうえで、利用者が決定したPST＋FMの完全代替と「現行をずっと上回る」目標について、学習可能な線形経路と浅いSCReLUを内包する単一ネットをPSTで初期化し、NNUE自身を生成器にした世代反復で強くする計画の全体像、先例の一次資料、および自己対局測定の偏りへの疑いを記す。
 - [NNUEの13,680入力を採る根拠と限界](nnue-input-features.md)は、入力が保持する情報と有限幅での学習を区別し、チェスや将棋の入力との特徴数の差が主に王の位置の掛け合わせによることを示し、既存の教師データで太子の頻度、自玉の升の分布、および自玉が動く着手の割合を数えて、王の位置を掛けたHalfKP型が太子とデータ量の面では成り立つことを確かめたうえで、既存の測定とStockfish、やねうら王、Fairy-Stockfishの一次資料から、採用理由と未検証事項を整理する。
 - [NNUE学習器の速度の調査](nnue-trainer-speed.md)は、将棋のNNUE学習器tataraが速い理由をソースと設計記録から解明し（速さはRustではなく、疎なgather、逆索引の後退、融合した最適化器、特徴分解の畳み込みと縮約、非同期の供給に由来する）、bulletとvariant-nnue-pytorchと比べ、minaseの現行Python学習器の1更新をプロファイラで分けて、GPU時間の65〜69%が駒除去差分の補助損失、残りの約半分がスライスの後退であることを示す。
+- [4つの評価関数が駒に与える価値の比較](evaluator-piece-values.md)は、手書き評価v0、単独PST、PST＋FM、およびNNUEの駒除去差分を現行NNUEの自己対局5万局面で駒状態ごとに平均し、学習した3つは成っていない駒の比率がほぼ一致してv0とは大きく違うこと、3つの差は成駒に集中すること、および探索用の固定駒価値が学習した価値から離れていることを示す。
 
 ## 実行速度の改善
 
