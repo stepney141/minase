@@ -1457,7 +1457,7 @@ fn resume_rejects_a_changed_lr_schedule() {
     run(args.clone()).unwrap();
     args.epochs = 2;
     args.resume = Some(args.output_dir.clone());
-    args.lr_schedule = "cosine:3:0.1".parse().unwrap();
+    args.lr_schedule = "constant:1".parse().unwrap();
     let error = run(args).unwrap_err();
     assert!(
         error.to_string().contains("checkpoint settings mismatch"),
@@ -1466,7 +1466,7 @@ fn resume_rejects_a_changed_lr_schedule() {
 }
 
 #[test]
-fn constant_schedule_matches_the_default_bit_for_bit() {
+fn cosine_schedule_matches_the_default_bit_for_bit() {
     use clap::FromArgMatches;
 
     let fixture = Fixture::new();
@@ -1513,10 +1513,13 @@ fn constant_schedule_matches_the_default_bit_for_bit() {
         Args::from_arg_matches(&matches).unwrap()
     };
     let default = parse(&[]);
-    let mut explicit = parse(&["--lr-schedule", "constant:1"]);
+    let mut explicit = parse(&["--lr-schedule", "cosine:3:0.1"]);
     assert_eq!(
         default.lr_schedule,
-        LrSchedule::Constant { multiplier: 1.0 }
+        LrSchedule::Cosine {
+            horizon_epochs: 3.0,
+            floor: 0.1,
+        }
     );
     assert_eq!(explicit.lr_schedule, default.lr_schedule);
     explicit.output_dir = fixture.0.join("explicit");
@@ -1541,7 +1544,7 @@ fn constant_schedule_matches_the_default_bit_for_bit() {
         for key in ["arguments", "settings"] {
             assert_eq!(
                 configuration[key]["lr_schedule"],
-                json!({"kind": "constant", "multiplier": 1.0})
+                json!({"kind": "cosine", "horizon_epochs": 3.0, "floor": 0.1})
             );
         }
     }
@@ -1562,9 +1565,17 @@ fn constant_schedule_matches_the_default_bit_for_bit() {
                 "{key}"
             );
         }
-        for row in [left, right] {
-            for key in ["lr_multiplier_first", "lr_multiplier_last"] {
-                assert_eq!(row.get(key), Some(&json!((epoch > 0).then_some(1.0))));
+        for key in ["lr_multiplier_first", "lr_multiplier_last"] {
+            if epoch == 0 {
+                for row in [left, right] {
+                    assert_eq!(row.get(key), Some(&Value::Null));
+                }
+            } else {
+                assert_eq!(
+                    left[key].as_f64().unwrap().to_bits(),
+                    right[key].as_f64().unwrap().to_bits(),
+                    "{key}"
+                );
             }
         }
     }
@@ -1581,7 +1592,7 @@ fn constant_multiplier_matches_training_with_scaled_base_learning_rates() {
 
     let mut scaled = scheduled.clone();
     scaled.output_dir = fixture.0.join("scaled");
-    scaled.lr_schedule = LrSchedule::default();
+    scaled.lr_schedule = "constant:1".parse().unwrap();
     scaled.training.lr_linear *= 0.25;
     scaled.training.lr_ft *= 0.25;
     scaled.training.lr_head *= 0.25;

@@ -23,7 +23,8 @@ pub struct Args {
     #[serde(flatten)]
     pub training: TrainingOptions,
     /// 更新ごとに学習率へ掛ける倍率。constant:<c>、exponential:<半減期エポック>:<下限>、cosine:<総長エポック>:<下限>。
-    #[arg(long, default_value = "constant:1", value_parser = clap::value_parser!(LrSchedule))]
+    /// 既定値は`cosine:3:0.1`で、総長3エポック、倍率の下限0.1とする。
+    #[arg(long, default_value = "cosine:3:0.1", value_parser = clap::value_parser!(LrSchedule))]
     pub lr_schedule: LrSchedule,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]

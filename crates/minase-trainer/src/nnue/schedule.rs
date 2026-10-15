@@ -7,6 +7,7 @@ use std::{fmt, str::FromStr};
 /// 更新ごとに基準学習率へ掛ける倍率m(t)。tは完了した更新回数で、最初の更新では0。
 /// Uは1エポックの更新回数で、`ceil(訓練局面数 / バッチサイズ)`とする。
 /// 引数は`constant:<c>`、`exponential:<h>:<f>`、`cosine:<T>:<f>`の形で指定する。
+/// 既定値は`cosine:3:0.1`で、総長3エポック、倍率の下限0.1とする。
 /// c、h、Tは有限かつ正、下限fは有限かつ`0 < f ≤ 1`でなければならない。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -34,7 +35,10 @@ pub enum LrSchedule {
 
 impl Default for LrSchedule {
     fn default() -> Self {
-        Self::Constant { multiplier: 1.0 }
+        Self::Cosine {
+            horizon_epochs: 3.0,
+            floor: 0.1,
+        }
     }
 }
 
@@ -154,7 +158,8 @@ mod tests {
     #[test]
     fn parsing_display_and_serialization_round_trip() {
         for (text, expected) in [
-            ("constant:1", LrSchedule::default()),
+            ("cosine:3:0.1", LrSchedule::default()),
+            ("constant:1", LrSchedule::Constant { multiplier: 1.0 }),
             ("constant:0.37", LrSchedule::Constant { multiplier: 0.37 }),
             (
                 "exponential:1:0.1",
