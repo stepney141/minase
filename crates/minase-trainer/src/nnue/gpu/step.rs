@@ -557,3 +557,60 @@ impl Step {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nnue::{
+        data::InputFeatureSet,
+        gpu::equivalence::{random_model, synthetic_batch},
+        model::Shape,
+        reference::AdamWConfig,
+    };
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_enqueue_rejects_invalid_multipliers_without_poisoning_later_updates() {
+        let device = Device::new(0).unwrap();
+        let set = InputFeatureSet::P;
+        let shape = Shape::new(set, 8, 1000.0).unwrap();
+        let model = random_model(shape, 71).unwrap();
+        let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
+        let batch = synthetic_batch(set, 5, 293).unwrap();
+        let targets = vec![0.5; batch.len()];
+        let mut step = Step::new(
+            device.clone(),
+            &model,
+            &optimizer,
+            &RemovalReference::v0(),
+            batch.len(),
+            137.5,
+        )
+        .unwrap();
+        let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
+        let ticket = ring.upload(&batch).unwrap();
+        let before = step.snapshot().unwrap();
+        for multiplier in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                matches!(
+                    step.enqueue(&mut ring, &ticket, &targets, multiplier),
+                    Err(Error::Invalid(
+                        "learning-rate multiplier must be finite and positive"
+                    ))
+                ),
+                "{multiplier}"
+            );
+            assert_eq!(step.snapshot().unwrap(), before, "{multiplier}");
+        }
+        // 拒否後も同じ投入済みバッチを使って正常に更新できる。
+        let metrics = step
+            .enqueue(&mut ring, &ticket, &targets, 1.0)
+            .unwrap()
+            .collect()
+            .unwrap();
+        assert_eq!(metrics.step, 1);
+        let (parameters, after) = step.snapshot().unwrap();
+        assert_eq!(after.step(), 1);
+        assert_ne!(parameters, before.0);
+    }
+}

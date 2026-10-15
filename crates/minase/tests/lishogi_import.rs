@@ -73,7 +73,15 @@ fn success(output: Output) {
 #[test]
 fn games_filter_in_specified_order_and_preserve_details_and_records() {
     let dir = Directory::new();
-    fs::write(dir.path("input.ndjson"), CASES).unwrap();
+    let cases: Vec<Value> = CASES
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let input = ["SNjoPiHz", "Lqyj1bLC", "gZ0HcfLK", "variant", "illegal"]
+        .into_iter()
+        .map(|id| format!("{}\n", cases.iter().find(|game| game["id"] == id).unwrap()))
+        .collect::<String>();
+    fs::write(dir.path("input.ndjson"), input).unwrap();
     success(import(&dir, "games", "one.mnsd", "1"));
     success(import(&dir, "games", "two.mnsd", "2"));
     for suffix in ["", ".report.json"] {
@@ -88,26 +96,12 @@ fn games_filter_in_specified_order_and_preserve_details_and_records() {
         json!(["SNjoPiHz", "Lqyj1bLC", "gZ0HcfLK"])
     );
     assert_eq!(report["accepted"], 3);
-    let expected = BTreeMap::from([
+    for (reason, ids) in [
         ("variant", vec!["variant"]),
-        ("initial_sfen", vec!["initial"]),
-        ("bot", vec!["bot"]),
-        ("unrated", vec!["unrated"]),
-        ("missing_speed", vec!["missing-speed"]),
-        ("rating", vec!["provisional", "missing-rating"]),
-        ("status_outoftime", vec!["time", "opening-prefix-2u7dwJf9"]),
-        ("status_draw", vec!["UUnYczs0"]),
-        ("unknown_status", vec!["unknown"]),
-        ("winner", vec!["missing-winner"]),
-        ("duplicate", vec!["SNjoPiHz"]),
         ("illegal_default_rules", vec!["illegal"]),
-        ("winner_mismatch", vec!["royals-not-lost"]),
-        ("resigner_mismatch", vec!["wrong-winner"]),
-    ]);
-    for (reason, entry) in report["excluded"].as_object().unwrap() {
-        let ids = expected.get(reason.as_str()).cloned().unwrap_or_default();
-        assert_eq!(entry["count"], ids.len(), "{reason}");
-        assert_eq!(entry["ids"], json!(ids), "{reason}");
+    ] {
+        assert_eq!(report["excluded"][reason]["count"], ids.len(), "{reason}");
+        assert_eq!(report["excluded"][reason]["ids"], json!(ids), "{reason}");
     }
     // 入力1、MNSD2、報告2の5ファイルだけを作る。
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 5);
@@ -306,18 +300,27 @@ fn openings_keep_unrated_unfinished_games_and_stop_before_illegal_moves() {
 }
 
 #[test]
-fn invalid_json_reports_line_and_does_not_leave_an_output() {
-    let dir = Directory::new();
-    for invalid in ["{", "{}", "null", "{\"id\":42}"] {
-        fs::write(
-            dir.path("input.ndjson"),
-            format!("{}\n{invalid}\n", CASES.lines().next().unwrap()),
-        )
-        .unwrap();
+fn invalid_input_reports_line_and_does_not_leave_an_output() {
+    for (name, invalid) in [
+        ("incomplete JSON", b"{".as_slice()),
+        ("missing fields", b"{}".as_slice()),
+        ("null", b"null".as_slice()),
+        ("non-string id", b"{\"id\":42}".as_slice()),
+        ("non-UTF-8", &[0xff]),
+    ] {
+        let dir = Directory::new();
+        let mut input = format!("{}\n", CASES.lines().next().unwrap()).into_bytes();
+        input.extend_from_slice(invalid);
+        input.push(b'\n');
+        fs::write(dir.path("input.ndjson"), input).unwrap();
         let output = import(&dir, "games", "bad.mnsd", "1");
-        assert_eq!(output.status.code(), Some(1));
-        assert!(String::from_utf8_lossy(&output.stderr).contains("line 2"));
-        assert!(!dir.path("bad.mnsd").exists());
+        assert_eq!(output.status.code(), Some(1), "{name}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("line 2"),
+            "{name}"
+        );
+        assert!(!dir.path("bad.mnsd").exists(), "{name}");
+        assert!(!dir.path("bad.mnsd.report.json").exists(), "{name}");
     }
 }
 
@@ -362,74 +365,20 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
 }
 
 #[test]
-fn all_terminal_reasons_are_distinct_and_earlier_filters_win() {
+fn terminal_status_precedes_missing_winner_in_the_report() {
     let dir = Directory::new();
-    let base: Value = serde_json::from_str(CASES.lines().nth(3).unwrap()).unwrap();
-    let statuses = [
-        ("outoftime", "status_outoftime"),
-        ("timeout", "status_timeout"),
-        ("aborted", "status_aborted"),
-        ("draw", "status_draw"),
-        ("repetition", "status_repetition"),
-        ("perpetualCheck", "status_perpetual_check"),
-        ("bareKing", "status_bare_king"),
-        ("created", "status_created"),
-        ("started", "status_started"),
-        ("mate", "status_mate"),
-        ("stalemate", "status_stalemate"),
-        ("cheat", "status_cheat"),
-        ("noStart", "status_no_start"),
-        ("unknownFinish", "status_unknown_finish"),
-        ("future-status", "unknown_status"),
-    ];
-    let mut cases = Vec::new();
-    for (status, _) in statuses {
-        let mut case = base.clone();
-        case["id"] = json!(status);
-        case["status"] = json!(status);
-        case["winner"] = Value::Null;
-        cases.push(case);
-    }
-    for (id, field, value) in [
-        ("no-user", "user", Value::Null),
-        ("ai", "aiLevel", json!(1)),
-    ] {
-        let mut case = base.clone();
-        case["id"] = json!(id);
-        case["players"]["sente"][field] = value;
-        cases.push(case);
-    }
-    let mut initial = base.clone();
-    initial["id"] = json!("null-initial");
-    initial["initialSfen"] = Value::Null;
-    cases.push(initial);
-    let mut duplicate = base.clone();
-    duplicate["status"] = json!("draw");
-    cases.extend([base, duplicate]);
-    fs::write(
-        dir.path("input.ndjson"),
-        cases.iter().map(|c| format!("{c}\n")).collect::<String>(),
-    )
-    .unwrap();
+    let mut game: Value = serde_json::from_str(CASES.lines().nth(3).unwrap()).unwrap();
+    game["id"] = json!("draw");
+    game["status"] = json!("draw");
+    game["winner"] = Value::Null;
+    fs::write(dir.path("input.ndjson"), format!("{game}\n")).unwrap();
     success(import(&dir, "games", "statuses.mnsd", "2"));
     let report = json_file(&dir.path("statuses.mnsd.report.json"));
-    for (status, reason) in statuses {
-        assert!(
-            report["excluded"][reason]["ids"]
-                .as_array()
-                .unwrap()
-                .contains(&json!(status))
-        );
-    }
-    assert_eq!(report["accepted"], 1);
-    assert_eq!(report["excluded"]["status_draw"]["count"], 2);
+    assert_eq!(report["accepted"], 0);
+    assert_eq!(report["excluded"]["status_draw"]["ids"], json!(["draw"]));
+    assert_eq!(report["excluded"]["status_draw"]["count"], 1);
     assert_eq!(report["excluded"]["winner"]["count"], 0);
     assert_eq!(report["excluded"]["duplicate"]["count"], 0);
-    assert_eq!(report["excluded"]["bot"]["ids"], json!(["no-user", "ai"]));
-    assert_eq!(
-        report["excluded"]["initial_sfen"]["ids"],
-        json!(["null-initial"])
-    );
 }
 
 #[test]
@@ -452,14 +401,8 @@ fn engine_terminal_winner_is_checked_and_later_moves_are_ignored() {
 }
 
 #[test]
-fn invalid_utf8_has_line_number_and_existing_outputs_are_preserved() {
+fn existing_outputs_are_preserved() {
     let dir = Directory::new();
-    let mut input = format!("{}\n", CASES.lines().next().unwrap()).into_bytes();
-    input.extend([0xff, b'\n']);
-    fs::write(dir.path("input.ndjson"), input).unwrap();
-    let output = import(&dir, "games", "bad.mnsd", "1");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("line 2"));
     fs::write(dir.path("input.ndjson"), CASES).unwrap();
     fs::write(dir.path("existing.mnsd"), b"keep").unwrap();
     assert_eq!(
@@ -521,9 +464,9 @@ fn inspect_accepts_and_displays_synthetic_records() {
     assert!(text.contains("outcome: none"));
 }
 
-/// 検査出力の全行を固定し、先頭N局というdumpの単位と全対局の集計を検査する。
+/// 各欄の意味と、先頭N局というdumpの単位および全対局の集計を検査する。
 #[test]
-fn inspect_dump_has_every_entry_field_in_order() {
+fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
     let dir = Directory::new();
     let path = dir.path("dump.mnsd");
     for kind in [TeacherKind::AlphaBeta, TeacherKind::Mcts] {
@@ -612,23 +555,117 @@ fn inspect_dump_has_every_entry_field_in_order() {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8(output.stdout).unwrap();
-        let visits_line = if kind == TeacherKind::Mcts {
-            "root_visits: 456\n"
-        } else {
-            ""
+        let (header, rest) = text.split_once("entry: 9 0\n").unwrap();
+        let (first_entry, rest) = rest.split_once("entry: 9 1\n").unwrap();
+        let (last_entry, summary) = rest.split_once("summary:\n").unwrap();
+        let fields = |section: &str| -> BTreeMap<String, String> {
+            section
+                .lines()
+                .filter_map(|line| line.split_once(": "))
+                .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                .collect()
         };
-        let expected = format!(
-            "header:\nmagic: MNSD\nformat_version: 2\nrule_set: L0,P0,R1,E0\ngeneration_commit: {}\nnetwork_checksum: {}\nteacher_kind: {kind:?}\nteacher_scale: 42\nseed: 7\ngame_count: 2\nentry_count: 3\n\
-entry: 9 0\nsfen: {}\nside_to_move: Black\nlion_square: none\nlion_by_kirin_promotion: false\nvalue: 123\nexclusion: tactical\npolicy: played\n{visits_line}played_move: 1i1h\noutcome: Win\ngame_number: 9\nply: 4\norigin: HumanGame\n\
-entry: 9 1\nsfen: {}\nside_to_move: White\nlion_square: none\nlion_by_kirin_promotion: false\nvalue: 123\nexclusion: none\npolicy: 1 {}:65535\n{visits_line}played_move: none\noutcome: Loss\ngame_number: 9\nply: 5\norigin: HumanGame\n\
-summary:\ngames: 2\nentries: 3\ngames_origin_0: 0\ngames_origin_1: 0\ngames_origin_2: 1\ngames_origin_3: 1\nexclusion_none: 2\nexclusion_mate_band: 0\nexclusion_tactical: 1\nexclusion_repetition: 0\nvalue_none: 1\npolicy_none: 1\npolicy_played: 1\npolicy_candidates: 1\npolicy_candidate_count_1: 1\neligible_positions: 1\norigin_0: 0\norigin_1: 0\norigin_2: 1\norigin_3: 0\noutcome_loss: 1\noutcome_draw: 0\noutcome_win: 0\nscore_minimum: 123\nscore_maximum: 123\nscore_average: 123.000000\nblack_to_move: 0\nwhite_to_move: 1\n",
-            "1".repeat(40),
-            "ab".repeat(32),
-            minase_core::to_sfen(&initial),
-            minase_core::to_sfen(&last_position),
-            usi::text_generated(&last_position, best)
-        );
-        assert_eq!(text, expected);
+        let header = fields(header);
+        for (key, expected) in [
+            ("magic", "MNSD".to_owned()),
+            ("format_version", "2".to_owned()),
+            ("rule_set", "L0,P0,R1,E0".to_owned()),
+            ("generation_commit", "1".repeat(40)),
+            ("network_checksum", "ab".repeat(32)),
+            ("teacher_kind", format!("{kind:?}")),
+            ("teacher_scale", "42".to_owned()),
+            ("seed", "7".to_owned()),
+            ("game_count", "2".to_owned()),
+            ("entry_count", "3".to_owned()),
+        ] {
+            assert_eq!(header[key], expected, "{kind:?}: header {key}");
+        }
+        for (section, position, side, exclusion, policy, played, outcome, ply) in [
+            (
+                first_entry,
+                &initial,
+                "Black",
+                "tactical",
+                "played".to_owned(),
+                "1i1h",
+                "Win",
+                "4",
+            ),
+            (
+                last_entry,
+                &last_position,
+                "White",
+                "none",
+                format!("1 {}:65535", usi::text_generated(&last_position, best)),
+                "none",
+                "Loss",
+                "5",
+            ),
+        ] {
+            let entry = fields(section);
+            for (key, expected) in [
+                ("sfen", minase_core::to_sfen(position)),
+                ("side_to_move", side.to_owned()),
+                ("lion_square", "none".to_owned()),
+                ("lion_by_kirin_promotion", "false".to_owned()),
+                ("value", "123".to_owned()),
+                ("exclusion", exclusion.to_owned()),
+                ("policy", policy),
+                ("played_move", played.to_owned()),
+                ("outcome", outcome.to_owned()),
+                ("game_number", "9".to_owned()),
+                ("ply", ply.to_owned()),
+                ("origin", "HumanGame".to_owned()),
+            ] {
+                assert_eq!(entry[key], expected, "{kind:?}: ply={ply}, {key}");
+            }
+            assert_eq!(
+                entry.get("root_visits").map(String::as_str),
+                visits.map(|_| "456"),
+                "{kind:?}: ply={ply}"
+            );
+            assert!(
+                !entry.contains_key("entry"),
+                "--dump 1 must omit the second game"
+            );
+        }
+        let summary = fields(summary);
+        for (key, expected) in [
+            ("games", 2),
+            ("entries", 3),
+            ("games_origin_0", 0),
+            ("games_origin_1", 0),
+            ("games_origin_2", 1),
+            ("games_origin_3", 1),
+            ("exclusion_none", 2),
+            ("exclusion_mate_band", 0),
+            ("exclusion_tactical", 1),
+            ("exclusion_repetition", 0),
+            ("value_none", 1),
+            ("policy_none", 1),
+            ("policy_played", 1),
+            ("policy_candidates", 1),
+            ("policy_candidate_count_1", 1),
+            ("eligible_positions", 1),
+            ("origin_0", 0),
+            ("origin_1", 0),
+            ("origin_2", 1),
+            ("origin_3", 0),
+            ("outcome_loss", 1),
+            ("outcome_draw", 0),
+            ("outcome_win", 0),
+            ("score_minimum", 123),
+            ("score_maximum", 123),
+            ("black_to_move", 0),
+            ("white_to_move", 1),
+        ] {
+            assert_eq!(
+                summary[key].parse::<u64>().unwrap(),
+                expected,
+                "{kind:?}: summary {key}"
+            );
+        }
+        assert_eq!(summary["score_average"].parse::<f64>().unwrap(), 123.0);
         // 2局目だけを途中で切り、失敗位置と非0終了を検査する。
         let mut bytes = fs::read(&path).unwrap();
         bytes.pop();

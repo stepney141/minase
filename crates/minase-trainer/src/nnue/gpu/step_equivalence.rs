@@ -591,6 +591,62 @@ mod tests {
 
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_three_updates_with_changing_multipliers_match_cpu_state() {
+        // 学習率スケジュール設計書の3更新の全状態比較。倍率は更新ごとに変える。
+        let device = Device::new(0).unwrap();
+        let removal = RemovalReference::v0();
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let batch = synthetic_batch(set, 5, 71).unwrap();
+            let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
+            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
+            let mut cpu = fixture.model.clone();
+            let mut cpu_optimizer = fixture.optimizer.clone();
+            let mut step = Step::new(
+                device.clone(),
+                &fixture.model,
+                &fixture.optimizer,
+                &removal,
+                batch.len(),
+                137.5,
+            )
+            .unwrap();
+            let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
+            let mut pending = Vec::new();
+            for multiplier in [1.0, 0.37, 0.125] {
+                let gradients = cpu_gradients(&cpu, &batch, &targets, &removal, 137.5).unwrap();
+                cpu_optimizer
+                    .update_parallel(&mut cpu, &gradients.parameters, 1, multiplier)
+                    .unwrap();
+                let ticket = ring.upload(&batch).unwrap();
+                pending.push(
+                    step.enqueue(&mut ring, &ticket, &targets, multiplier)
+                        .unwrap(),
+                );
+                // 読み出し面は2面なので、再利用される前に最古の結果を回収する。
+                if pending.len() == 2 {
+                    pending.remove(0).collect().unwrap();
+                }
+            }
+            for result in pending {
+                result.collect().unwrap();
+            }
+            let (parameters, optimizer) = step.snapshot().unwrap();
+            assert_eq!(optimizer.step(), fixture.optimizer.step() + 3);
+            assert_eq!(optimizer.config(), fixture.optimizer.config());
+            let mut report = Report {
+                device_name: device.name().into(),
+                comparisons: 0,
+                max_absolute_error: 0.0,
+                max_relative_error: 0.0,
+            };
+            compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer).unwrap();
+            frozen_rows(&fixture, &parameters, &optimizer).unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_step_rejects_nonfinite_gradients_with_finite_loss() {
         // 契約: 損失だけが有限でも、勾配が非有限なら回収時に明示的に失敗する。
         // 相殺する大きな出力重みでロジットを有限に保ち、SCReLUの微分で

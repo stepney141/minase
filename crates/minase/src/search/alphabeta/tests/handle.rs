@@ -58,10 +58,10 @@ fn search_apis_use_the_supplied_nnue() {
             (fs(6, 1), Color::White, PieceKind::King),
         ],
     );
-    // 埋め込みネットの出力バイアスだけを変え、注入した重みを区別する。
+    // 固定ネットの出力バイアスだけを変え、注入した重みを区別する。
     use sha2::{Digest, Sha256};
-    let mut bytes = include_bytes!("../../../../nets/nnue.bin").to_vec();
-    let embedded = Nnue::decode(&bytes).unwrap();
+    let mut bytes = epoch_zero_nnue_bytes();
+    let baseline = Nnue::decode(&bytes).unwrap();
     let end = bytes.len();
     bytes[end - 4..].copy_from_slice(&520_192_i32.to_le_bytes());
     let checksum = Sha256::digest(&bytes[192..]);
@@ -72,11 +72,11 @@ fn search_apis_use_the_supplied_nnue() {
         .into_iter()
         .find(|&mv| {
             let undo = child.make_move_unchecked(mv, engine_rules());
-            let differs = evaluate(&supplied, &child) != evaluate(&embedded, &child);
+            let differs = evaluate(&supplied, &child) != evaluate(&baseline, &child);
             child.unmake_move(undo);
             differs
         })
-        .expect("fixture must distinguish the supplied and embedded networks");
+        .expect("fixture must distinguish the supplied and fixed networks");
     let undo = child.make_move_unchecked(root_move, engine_rules());
     let expected = -evaluate(&supplied, &child);
     child.unmake_move(undo);
@@ -154,24 +154,40 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
     assert!(moves.contains(&result.best_move));
 }
 
-// 初期結果は根の先頭の合法手とし、深さ1の完了前に停止しても合法な最善手を返す。
-// 停止までに探索が進む場合もあるので、ここでは返された手が根の合法手に含まれることを検査する。
+// 即時停止でも合法手を返し、Finishedを1回だけ送り、共有表を回収する。
 #[test]
 fn stop_before_depth_one_still_yields_a_legal_best_move() {
     let initial = Position::initial();
-
-    // 最速ケース: 開始直後に停止フラグを立てる。無期限指定のため停止理由は
-    // 外部停止要求しかあり得ない。
-    let snapshot = snapshot_for(&initial);
-    let root_moves = snapshot.root_moves.clone();
-    let handle = start(snapshot, infinite_limits(), 41, DEFAULT_THREADS, small_tt());
-    handle.request_stop();
-    let events = drain_raw(&handle);
-    assert!(events.iter().all(|event| event.search_id() == 41));
-    let (_, finished) = event_reports(events);
-    handle.join().expect("search thread must not panic");
-    assert_eq!(finished.stop_reason, StopReason::ExternalStop);
-    assert!(root_moves.contains(&finished.best_move));
+    for threads in [worker_count(1), worker_count(4)] {
+        let snapshot = snapshot_for(&initial);
+        let root_moves = snapshot.root_moves.clone();
+        let handle = start(snapshot, infinite_limits(), 41, threads, small_tt());
+        handle.request_stop();
+        let events = drain_raw(&handle);
+        assert!(
+            events.iter().all(|event| event.search_id() == 41),
+            "threads={threads}"
+        );
+        let (_, finished) = event_reports(events);
+        assert_eq!(
+            finished.stop_reason,
+            StopReason::ExternalStop,
+            "threads={threads}"
+        );
+        assert!(
+            root_moves.contains(&finished.best_move),
+            "threads={threads}"
+        );
+        assert!(
+            matches!(
+                handle.events().recv_timeout(Duration::from_secs(1)),
+                Err(mpsc::RecvTimeoutError::Disconnected)
+            ),
+            "threads={threads}"
+        );
+        let (table, _) = handle.join().expect("search team must not panic");
+        assert_eq!(table.generation(), 1, "threads={threads}");
+    }
 }
 
 // 無期限ではsoft/hardの両リミットを

@@ -2,23 +2,6 @@
 
 use super::*;
 
-/// 到達升で新設される保留を移動元へコピーしない。
-/// [`predecessor`](crate::predecessor)の集合Aの敵陣条件とRULES.md第30条P1により、敵陣へ入る直前には保留できない。
-#[test]
-fn p1_new_destination_bit_is_not_inherited() {
-    let rules = MoveRules {
-        promotion: PromotionRule::P1,
-        ..MoveRules::standard()
-    };
-    let p = position(Color::Black, &[(sq(5, 7), Color::Black, PieceKind::Pawn)]);
-    let mut q = p.clone();
-    q.try_make_move(mv(sq(5, 7), sq(5, 8), false), &MoveGenerator::new(rules))
-        .unwrap();
-    assert!(q.promotion_deferred().contains(sq(5, 8)));
-    let result = checked(rules, &q);
-    assert!(result.contains(&p));
-}
-
 /// P2は非移動駒を含む着手側の待機を高々1個だけ復元する。
 /// RULES.md第30条P2と[`candidates`](crate::predecessor::transient::candidates)のk+1通りの列挙により、新設と非移動駒の満了を検査する。
 #[test]

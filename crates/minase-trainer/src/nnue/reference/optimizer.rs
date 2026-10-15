@@ -209,37 +209,6 @@ impl AdamW {
     }
 }
 
-/// AdamWの1群を更新する。stepは1から始まり、ゼロ勾配の要素も必ず更新する。
-pub fn adamw(
-    p: &mut [f32],
-    g: &[f32],
-    m: &mut [f32],
-    v: &mut [f32],
-    step: u64,
-    group: AdamWGroup,
-) -> Result<()> {
-    group.validate()?;
-    if step == 0 || p.len() != g.len() || p.len() != m.len() || p.len() != v.len() {
-        return Err(Error::Invalid("AdamW shape or step"));
-    }
-    if p.iter()
-        .chain(g)
-        .chain(m.iter())
-        .chain(v.iter())
-        .any(|x| !x.is_finite())
-        || v.iter().any(|&x| x < 0.0)
-    {
-        return Err(Error::Invalid(
-            "AdamW non-finite values or negative variance",
-        ));
-    }
-    let coefficients = AdamCoefficients::new(step, group)?;
-    for i in 0..p.len() {
-        coefficients.update(&mut p[i], g[i], &mut m[i], &mut v[i]);
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

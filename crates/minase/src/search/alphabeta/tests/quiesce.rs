@@ -78,24 +78,93 @@ fn quiescence_without_captures_matches_static_evaluation() {
     assert_eq!(result.nodes, moves.len() as u64);
 }
 
-// β以上の静的評価は置換表を照合も保存もしない。
+// stand-pat、最大ply、候補なしの出口では置換表を参照も更新もしない。
 #[test]
-fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
-    let position = Position::initial();
-    let stand_pat = evaluate(test_nnue(), &position);
-    let key = search_key(&position);
-    for beta in [stand_pat, stand_pat - 1] {
+fn quiescence_early_exits_do_not_probe_or_store() {
+    let nnue = test_nnue();
+    let initial = Position::initial();
+    let initial_eval = evaluate(nnue, &initial);
+    let kings = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let capture = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let threshold = evaluate(nnue, &capture)
+        + nnue.pawn_value()
+        + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100;
+    for (case, board, alpha, beta, ply, stored, depth) in [
+        (
+            "stand_pat_equal",
+            &initial,
+            -INFINITY,
+            initial_eval,
+            0,
+            initial_eval + 123,
+            4,
+        ),
+        (
+            "stand_pat_above",
+            &initial,
+            -INFINITY,
+            initial_eval - 1,
+            0,
+            initial_eval + 123,
+            4,
+        ),
+        ("max_ply", &kings, -INFINITY, INFINITY, MAX_PLY, 12_345, 8),
+        (
+            "no_captures",
+            &initial,
+            -INFINITY,
+            INFINITY,
+            0,
+            initial_eval + 123,
+            4,
+        ),
+        (
+            "filtered_captures",
+            &capture,
+            threshold,
+            INFINITY,
+            0,
+            evaluate(nnue, &capture) + 123,
+            4,
+        ),
+    ] {
+        let key = search_key(board);
+        let stand_pat = evaluate(nnue, board);
         let table = small_tt();
-        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 0));
-        assert!(table.probe(key, 0).is_none());
-        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
-        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 0));
-        let hit = table.probe(key, 0).unwrap();
         assert_eq!(
-            (hit.score, hit.depth, hit.bound),
-            (stand_pat + 123, 4, Bound::Exact)
+            run_quiesce(board, alpha, beta, ply, &table),
+            (stand_pat, 0),
+            "{case}"
+        );
+        assert!(table.probe(key, ply).is_none(), "{case}");
+        table.store(key, depth, stored, Bound::Exact, None, ply);
+        let raw_before = table.raw_entry(key);
+        assert_eq!(
+            run_quiesce(board, alpha, beta, ply, &table),
+            (stand_pat, 0),
+            "{case}"
+        );
+        assert_ne!(stand_pat, stored, "{case}");
+        assert_eq!(table.raw_entry(key), raw_before, "{case}");
+        let hit = table.probe(key, ply).unwrap();
+        assert_eq!(
+            (hit.score, u32::from(hit.depth), hit.bound),
+            (stored, depth, Bound::Exact),
+            "{case}"
         );
     }
 }
@@ -193,19 +262,31 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
     );
     let key = search_key(&position);
     let stand_pat = evaluate(test_nnue(), &position);
+    let nnue = test_nnue();
+    let mut captures = Vec::new();
+    MoveGenerator::standard().generate_captures(&position, &mut captures);
+    assert!(!captures.is_empty());
+    assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
+        &position,
+        engine_rules(),
+        nnue,
+        mv
+    )));
     let cases = [
-        (stand_pat, INFINITY, Bound::Upper),
-        (stand_pat - 1, stand_pat + 1, Bound::Exact),
+        ("upper", stand_pat, INFINITY, Bound::Upper),
+        ("exact", stand_pat - 1, stand_pat + 1, Bound::Exact),
+        ("all_see_pruned", -INFINITY, INFINITY, Bound::Exact),
     ];
 
-    for (alpha, beta, expected_bound) in cases {
+    for (case, alpha, beta, expected_bound) in cases {
         let table = small_tt();
-        let (score, _) = run_quiesce(&position, alpha, beta, 0, &table);
+        let (score, nodes) = run_quiesce(&position, alpha, beta, 0, &table);
         let hit = table.probe(key, 0).unwrap();
-        assert_eq!(score, stand_pat);
-        assert_eq!(hit.depth, 0);
-        assert_eq!(hit.bound, expected_bound);
-        assert_eq!(hit.best_move, None);
+        assert_eq!((score, nodes), (stand_pat, 0), "{case}");
+        assert_eq!(hit.score, stand_pat, "{case}");
+        assert_eq!(hit.depth, 0, "{case}");
+        assert_eq!(hit.bound, expected_bound, "{case}");
+        assert_eq!(hit.best_move, None, "{case}");
     }
 }
 
@@ -245,101 +326,6 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
             MATE - 1
         );
     }
-}
-
-// 最大ply葉は置換表照会より先に静的評価を返し、既存の
-// エントリを参照も更新もしない。
-#[test]
-fn quiescence_max_ply_leaf_does_not_probe_or_store() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let key = search_key(&position);
-    let table = small_tt();
-    table.store(key, 8, 12_345, Bound::Exact, None, MAX_PLY);
-    let raw_before = table.raw_entry(key);
-
-    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, MAX_PLY, &table);
-    assert_eq!(score, evaluate(test_nnue(), &position));
-    assert_ne!(score, 12_345);
-    assert_eq!(table.raw_entry(key), raw_before);
-}
-
-// 合法な捕獲がない場合と、入口の閾値で
-// 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
-#[test]
-fn quiescence_empty_candidates_do_not_probe_or_store() {
-    let nnue = test_nnue();
-    let capture_position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(3, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 4), Color::White, PieceKind::Pawn),
-        ],
-    );
-    let stand_pat = evaluate(nnue, &capture_position);
-    for (position, alpha) in [
-        (Position::initial(), -INFINITY),
-        (
-            capture_position,
-            stand_pat
-                + nnue.pawn_value()
-                + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
-        ),
-    ] {
-        let key = search_key(&position);
-        let stand_pat = evaluate(nnue, &position);
-        let table = small_tt();
-        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 0));
-        assert!(table.probe(key, 0).is_none());
-        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
-        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 0));
-        let hit = table.probe(key, 0).unwrap();
-        assert_eq!((hit.score, hit.depth), (stand_pat + 123, 4));
-    }
-}
-
-// stand-patは損な捕獲より優先される。
-// 候補があり、SEEで全て捨てるノードは保存する。
-#[test]
-fn quiescence_see_pruned_candidates_still_store() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(3, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 4), Color::White, PieceKind::Pawn),
-            (fs(3, 1), Color::White, PieceKind::Rook),
-        ],
-    );
-    let nnue = test_nnue();
-    let mut captures = Vec::new();
-    MoveGenerator::standard().generate_captures(&position, &mut captures);
-    assert!(!captures.is_empty());
-    assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
-        &position,
-        engine_rules(),
-        nnue,
-        mv
-    )));
-    let table = small_tt();
-    let stand_pat = evaluate(nnue, &position);
-    let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
-    assert_eq!((score, nodes), (stand_pat, 0));
-    let hit = table.probe(search_key(&position), 0).unwrap();
-    assert_eq!(
-        (hit.score, hit.bound, hit.best_move),
-        (stand_pat, Bound::Exact, None)
-    );
 }
 
 fn history_ordering_position() -> (Position, [Move; 6]) {
@@ -389,55 +375,46 @@ fn captures_with_history(
         .collect()
 }
 
-// 生の履歴を優先し、同点なら攻撃駒価値と生成順を保つ。
+// 群内は生の履歴、攻撃駒価値、生成順で並べ、置換表の手を最優先する。
 // 採用理由はdocs/adr/bound-capture-history-and-use-it-in-qsearch.md。
 #[test]
-fn quiescence_capture_history_orders_within_group_using_raw_values() {
+fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
     let (board, moves) = history_ordering_position();
     let nnue = test_nnue();
-    let mut history = CaptureHistory::new();
-    assert_eq!(
-        captures_with_history(&board, nnue, &history, None),
-        [moves[5], moves[0], moves[1], moves[2], moves[3], moves[4]]
-    );
-    history.record_cutoff(&board, nnue, moves[4], &[moves[0]], 1);
-    assert_eq!(history.read(&board, nnue, moves[4]), 1);
-    assert_eq!(history.read(&board, nnue, moves[0]), -1);
-    // 歩兵価値への換算では両方0になる小さな値でも順序が変わる。
-    assert_eq!(history.adjustment(&board, nnue, moves[4]), 0);
-    assert_eq!(history.adjustment(&board, nnue, moves[0]), 0);
-    assert_eq!(
-        captures_with_history(&board, nnue, &history, None),
-        [moves[5], moves[4], moves[1], moves[2], moves[3], moves[0]]
-    );
-}
-
-// 正負の履歴があっても捕獲価値の群を越えない。
-#[test]
-fn quiescence_capture_history_preserves_group_boundaries() {
-    let (board, moves) = history_ordering_position();
-    let nnue = test_nnue();
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, nnue, moves[4], &[moves[5]], 256);
-    assert!(history.read(&board, nnue, moves[4]) > 0);
-    assert!(history.read(&board, nnue, moves[5]) < 0);
-    assert_eq!(
-        captures_with_history(&board, nnue, &history, None),
-        [moves[5], moves[4], moves[0], moves[1], moves[2], moves[3]]
-    );
-}
-
-// 置換表の記録手は群と履歴に優先し、重複しない。
-#[test]
-fn quiescence_capture_history_keeps_tt_capture_first() {
-    let (board, moves) = history_ordering_position();
-    let nnue = test_nnue();
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, nnue, moves[4], &[moves[0]], 256);
-    assert_eq!(
-        captures_with_history(&board, nnue, &history, Some(moves[0])),
-        [moves[0], moves[5], moves[4], moves[1], moves[2], moves[3]]
-    );
+    for (case, cutoff, tt_index, expected) in [
+        ("no_history", None, None, [5, 0, 1, 2, 3, 4]),
+        ("raw_history", Some((4, 0, 1)), None, [5, 4, 1, 2, 3, 0]),
+        (
+            "group_boundary",
+            Some((4, 5, 256)),
+            None,
+            [5, 4, 0, 1, 2, 3],
+        ),
+        (
+            "tt_priority",
+            Some((4, 0, 256)),
+            Some(0),
+            [0, 5, 4, 1, 2, 3],
+        ),
+    ] {
+        let mut history = CaptureHistory::new();
+        if let Some((winner, loser, depth)) = cutoff {
+            history.record_cutoff(&board, nnue, moves[winner], &[moves[loser]], depth);
+            assert!(history.read(&board, nnue, moves[winner]) > 0, "{case}");
+            assert!(history.read(&board, nnue, moves[loser]) < 0, "{case}");
+            if depth == 1 {
+                assert_eq!(history.read(&board, nnue, moves[winner]), 1, "{case}");
+                assert_eq!(history.read(&board, nnue, moves[loser]), -1, "{case}");
+                assert_eq!(history.adjustment(&board, nnue, moves[winner]), 0, "{case}");
+                assert_eq!(history.adjustment(&board, nnue, moves[loser]), 0, "{case}");
+            }
+        }
+        assert_eq!(
+            captures_with_history(&board, nnue, &history, tt_index.map(|index| moves[index])),
+            expected.map(|index| moves[index]),
+            "{case}"
+        );
+    }
 }
 
 // 特殊駒も履歴順で通常駒と合流し、同点は公開生成順を保つ。

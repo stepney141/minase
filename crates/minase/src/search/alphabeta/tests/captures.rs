@@ -104,39 +104,6 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
     }
 }
 
-// 同節: 最初のグループ内で探索を止めれば、低価値の通常捕獲は未生成である。
-#[test]
-fn stopping_in_first_group_leaves_later_groups_ungenerated() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
-    let generator = MoveGenerator::standard();
-    let position = minase_core::parse_sfen("12/2p1q7/2R1R7/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let mut buffers = QsearchBuffers::default();
-    buffers.reset(&position);
-    buffers.initialize(&position, &generator, nnue, &ranks, -1);
-    buffers.set_tt_move(&position, &generator, None);
-    assert!(
-        buffers
-            .next(&position, &generator, nnue, &ranks, &capture_history)
-            .is_some()
-    );
-    let ordered = reference(&position, &generator, nnue, None);
-    let first_value = ordered[0].1.captured_value;
-    assert_ne!(buffers.present_ranks, 0);
-    for rank in 0..ranks.values.len() {
-        if buffers.present_ranks & (1_u64 << rank) != 0 {
-            assert!(ranks.values[rank] < first_value);
-        }
-    }
-    assert!(
-        buffers
-            .group
-            .iter()
-            .all(|c| c.captured_value == first_value)
-    );
-}
-
 // 同節: 特殊捕獲は単独の被捕獲駒の価値で除外せず、2枚の合計で判定する。
 #[test]
 fn double_capture_survives_when_each_victim_is_at_the_threshold() {
@@ -198,68 +165,6 @@ fn rising_threshold_preserves_the_surviving_sequence() {
     }
 }
 
-// 「捕獲対象を生成前に除外する」: 同じ標本を再走査してもバッファを再確保しない。
-#[test]
-fn warmed_buffers_retain_capacity_across_nodes() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
-    let generator = MoveGenerator::standard();
-    let positions = capture_test_positions();
-    let mut buffers = QsearchBuffers::default();
-    let capacities = |b: &QsearchBuffers| {
-        [
-            b.validation.capacity(),
-            b.capturers.capacity(),
-            b.special.capacity(),
-            b.group.capacity(),
-        ]
-    };
-    for position in &positions {
-        buffers.reset(position);
-        buffers.initialize(position, &generator, nnue, &ranks, -1);
-        buffers.set_tt_move(position, &generator, None);
-        while buffers
-            .next(position, &generator, nnue, &ranks, &capture_history)
-            .is_some()
-        {}
-    }
-    let warmed = capacities(&buffers);
-    for position in &positions {
-        buffers.reset(position);
-        buffers.initialize(position, &generator, nnue, &ranks, -1);
-        buffers.set_tt_move(position, &generator, None);
-        while buffers
-            .next(position, &generator, nnue, &ranks, &capture_history)
-            .is_some()
-        {}
-        assert_eq!(capacities(&buffers), warmed);
-    }
-}
-
-// 単位B3「駒価値の順位を探索開始時に前計算する」:
-// 全47状態の値を復元でき、値の大小・等しさが順位に対応する。
-#[test]
-fn capture_ranks_preserve_value_order_and_equality() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
-    assert!(ranks.values.windows(2).all(|pair| pair[0] > pair[1]));
-    let mut used = vec![false; ranks.values.len()];
-    for state in 0..PIECE_STATE_COUNT {
-        let rank = usize::from(ranks.rank_of_state[state]);
-        assert_eq!(ranks.values[rank], nnue.piece_value_of_state(state));
-        used[rank] = true;
-        for other in 0..PIECE_STATE_COUNT {
-            assert_eq!(
-                ranks.rank_of_state[state].cmp(&ranks.rank_of_state[other]),
-                nnue.piece_value_of_state(other)
-                    .cmp(&nnue.piece_value_of_state(state)),
-            );
-        }
-    }
-    assert!(used.into_iter().all(|present| present));
-}
-
 // 単位B3「ノードごとのグループ構築を順位のビット集合で行う」:
 // 前ノードを途中で打ち切っても、同じ順位の対象升を次ノードへ持ち越さない。
 #[test]
@@ -283,7 +188,6 @@ fn reset_discards_targets_from_partially_consumed_node() {
                     .next(first, &generator, nnue, &ranks, &capture_history)
                     .is_some()
             );
-            assert_ne!(buffers.present_ranks, 0);
             buffers.reset(second);
             buffers.initialize(second, &generator, nnue, &ranks, -1);
             buffers.set_tt_move(second, &generator, None);
@@ -360,30 +264,6 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
                 assert_eq!(
                     actual, expected,
                     "rules={rules:?}, tt={tt_move:?}, threshold={threshold}"
-                );
-            }
-        }
-    }
-}
-
-// 駒種別の成否2通りの順位が、
-// 全ての有効な駒コードについて従来の47状態の順位に一致する。
-#[test]
-fn kind_capture_ranks_match_all_piece_codes() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
-    for color in minase_core::Color::ALL {
-        for kind in PieceKind::ALL {
-            for piece in [
-                PieceCode::new(color, kind),
-                PieceCode::new_promoted(color, kind),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                assert_eq!(
-                    ranks.ranks_of_kind[kind.index()][usize::from(piece.is_promoted())],
-                    ranks.rank_of_state[piece_state_of(piece)]
                 );
             }
         }

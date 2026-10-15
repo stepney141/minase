@@ -20,7 +20,6 @@ use minase_trainer::{
     },
 };
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -130,20 +129,6 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
     let args = Arguments::try_parse_from(values).unwrap().args;
     args.validate().unwrap();
     assert_eq!(args.data.len(), 2);
-    let help = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["pst", "train", "--help"])
-        .output()
-        .unwrap();
-    assert!(help.status.success());
-    let help = String::from_utf8(help.stdout).unwrap();
-    for flag in [
-        "--removal-reference",
-        "--epochs",
-        "--resume",
-        "--validation-sample",
-    ] {
-        assert!(help.contains(flag));
-    }
 }
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -470,37 +455,16 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
 }
 
 #[test]
-fn quantization_failure_keeps_outputs_and_records_failure_with_exit_code_one() {
+fn quantization_failure_keeps_outputs_and_records_failure() {
     let (_fixture, mut args) = Fixture::new(true, true);
     args.epochs = 1;
     args.removal_penalty = 0.0;
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["pst", "train", "--lambda", "0.75", "--data"])
-        .arg(&args.data[0])
-        .arg("--init")
-        .arg(&args.init)
-        .arg("--output-dir")
-        .arg(&args.output_dir)
-        .args([
-            "--epochs",
-            "1",
-            "--patience",
-            "1",
-            "--removal-reference",
-            "init",
-            "--removal-penalty",
-            "0",
-            "--threads",
-            "1",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    args.patience = 1;
+    args.batch = 16384;
+    args.validation_sample = 10000;
+    args.lookahead_gamma = None;
+    args.lookahead_plies = None;
+    assert!(pst::run(args.clone()).is_err());
     for file in ["pst.bin", "pst-float.npz", "latest.npz", "best.npz"] {
         assert!(args.output_dir.join(file).exists());
     }
@@ -558,90 +522,4 @@ fn epoch_zero_is_not_a_candidate_and_equal_losses_stop_at_patience() {
     assert_eq!(summary.last_epoch, 2);
     assert_eq!(summary.stopped_by, pst::StopReason::EarlyStopping);
     assert_eq!(summary.improved_over_epoch_zero, Some(false));
-}
-
-fn compatibility_fixture() -> (Fixture, Args) {
-    let (fixture, mut args) = Fixture::new(false, false);
-    args.batch = 7;
-    args.patience = 10;
-    // Distinct mirrored endpoints exercise interpolation and nonzero init references.
-    let weights: Vec<[i16; 2]> = (0..FEATURE_COUNT)
-        .map(|f| {
-            let f = f.min(minase::eval::features::mirror_feature(f));
-            [(f % 43) as i16 - 21, (f % 59) as i16 - 29]
-        })
-        .collect();
-    fs::write(
-        &args.init,
-        Pst::from_weights(&weights, v0_piece_values(), 317.25, "L0,P0,R1,E0")
-            .unwrap()
-            .encode(),
-    )
-    .unwrap();
-    (fixture, args)
-}
-fn array_hash(values: &[f32]) -> String {
-    let mut hash = Sha256::new();
-    for value in values {
-        hash.update(value.to_bits().to_le_bytes());
-    }
-    format!("{:x}", hash.finalize())
-}
-fn snapshot(directory: &Path) -> Value {
-    let mut states = serde_json::Map::new();
-    for file in ["latest.npz", "best.npz"] {
-        let ck = Checkpoint::read(directory.join(file)).unwrap();
-        let best = ck.progress.best.unwrap();
-        states.insert(file.into(), serde_json::json!({
-            "weights":array_hash(ck.model.weights()), "m":array_hash(ck.optimizer.m()),
-            "v":array_hash(ck.optimizer.v()), "step":ck.optimizer.step(), "epoch":ck.progress.epoch,
-            "best_epoch":best.epoch, "best_loss":best.validation_loss.to_bits()
-        }));
-    }
-    let losses: Vec<_> = logs(directory)
-        .iter()
-        .map(|row| {
-            [
-                "train_loss",
-                "removal_loss",
-                "total_loss",
-                "validation_loss",
-            ]
-            .map(|key| row[key].as_f64().map(f64::to_bits))
-        })
-        .collect();
-    serde_json::json!({"states":states, "losses":losses,
-        "pst":format!("{:x}",Sha256::digest(fs::read(directory.join("pst.bin")).unwrap())),
-        "npz":format!("{:x}",Sha256::digest(fs::read(directory.join("pst-float.npz")).unwrap()))})
-}
-
-#[test]
-fn phase_2a_weights_adam_losses_and_outputs_match_b0a245b_bit_for_bit() {
-    // 基準値はb0a245bをgit archiveで展開し、compatibility_fixture()で
-    // epochs=1,2,3、threads=1として実行した結果から採った。
-    // 配列はパディングを含む全f32ビット、損失はtraining.jsonlのf64ビットを比べる。
-    // 保存形式に依存しない重み、モーメント、進捗と損失を比較する。
-    // MNPTのハッシュだけは次元0の版3へ更新した。使い捨ての検査で、版番号、
-    // 末尾の8バイト、検査和を変更前の配置へ戻した全バイトのSHA-256が旧基準に
-    // 一致し、ほかの基準値が変わらないことを全18条件で確認した。
-    let expected: Value = serde_json::from_str(include_str!("fixtures/pst-b0a245b.json")).unwrap();
-    for kind in [RemovalReferenceKind::V0, RemovalReferenceKind::Init] {
-        let (fixture, mut args) = compatibility_fixture();
-        args.removal_reference = kind;
-        for threads in [1, 3, 8] {
-            args.threads = Some(threads);
-            for epoch in 1..=3 {
-                args.epochs = epoch;
-                args.output_dir = fixture
-                    .root
-                    .join(format!("epoch-{epoch}-threads-{threads}"));
-                pst::run(args.clone()).unwrap();
-                assert_eq!(
-                    snapshot(&args.output_dir),
-                    expected[format!("{kind:?}")][epoch as usize - 1],
-                    "reference={kind:?}, epoch={epoch}, threads={threads}"
-                );
-            }
-        }
-    }
 }

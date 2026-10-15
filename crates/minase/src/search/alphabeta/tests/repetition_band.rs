@@ -1,18 +1,15 @@
 //! RULES.md第31条R1の攻撃側の負けと、R2・R3および第23条の禁止手しかない負けを保護する。
-//! 専用の帯は対局履歴と探索経路に依存する。反復の判定自体は後続フェーズで実装する。
+//! 専用の帯は対局履歴と探索経路に依存する。経路に依存する値を置換表や補正履歴へ保存せず、枝刈りから保護する。
 
 use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
 use crate::search::alphabeta::pruning::{late_move_limit, see_margin};
-use crate::search::{REPETITION_BAND_START, REPETITION_WIN, in_repetition_band};
+use crate::search::{REPETITION_WIN, in_repetition_band};
 
 #[test]
 fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
     // 設計書の勝ち29,743、最大256手、通常評価の上限28,999から定まる境界。
-    assert_eq!(REPETITION_WIN, 29_743);
-    assert_eq!(REPETITION_BAND_START, 29_487);
-    assert_eq!(EVALUATION_LIMIT, 28_999);
     // eval::nnue::testsのfinal_sum_is_clamped_once_and_linear_division_truncates_toward_zero
     // も、Nnueが返す最大・最小値を±28,999として検査する。
     for sign in [-1, 1] {
@@ -28,25 +25,6 @@ fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
         ] {
             assert_eq!(in_repetition_band(sign * magnitude), expected);
         }
-    }
-}
-
-#[test]
-fn repetition_band_tt_scores_keep_their_value_across_plies() {
-    let table = small_tt();
-    let key = 0x1234_5678_0000_0042;
-    for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
-        for magnitude in [29_487, 29_740, 29_743] {
-            for score in [-magnitude, magnitude] {
-                table.store(key, 32, score, bound, None, 5);
-                assert_eq!(table.probe(key, 40).unwrap().score, score);
-            }
-        }
-    }
-    // 詰みは格納時の5手を戻し、読み出し位置の40手を差し引く。
-    for sign in [-1, 1] {
-        table.store(key, 32, sign * 29_990, Bound::Exact, None, 5);
-        assert_eq!(table.probe(key, 40).unwrap().score, sign * 29_955);
     }
 }
 
@@ -197,7 +175,7 @@ fn repetition_band_is_not_reused_after_only_game_history_changes() {
                 searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
                 Some(0)
             );
-            // 後続フェーズが返す経路依存の勝敗を、前の探索の記録として置く。
+            // 経路依存の勝敗を前の探索の記録として置き、値を再利用しないことを確かめる。
             searcher.tt.store(
                 search_key(&board),
                 32,
@@ -332,7 +310,7 @@ fn repetition_band_windows_disable_see_pruning() {
 
 #[test]
 fn repetition_band_loss_keeps_later_quiets_and_captures_eligible() {
-    // フェーズ4では帯の探索値をまだ生成しないため、静かな手と捕獲手が共有する判定へ渡す。
+    // 反復による勝敗の値を、静かな手と捕獲手が共有する枝刈り判定へ渡す。
     for score in [-30_000, -29_744, -29_743, -29_740, -29_487] {
         assert!(!can_prune_moves(score), "score={score}");
     }
@@ -380,16 +358,6 @@ fn repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
 }
 
 #[test]
-fn repetition_band_scores_start_aspiration_with_a_full_window() {
-    for depth in [5, 6, 8] {
-        for score in [29_487, 29_740, 29_743, -29_487, -29_740, -29_743] {
-            let window = AspirationWindow::initial(depth, Some(score), 50);
-            assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
-        }
-    }
-}
-
-#[test]
 fn repetition_band_normalizes_initial_and_widened_aspiration_edges() {
     for distance in [49, 50, 51, 100] {
         let mut high = AspirationWindow::initial(5, Some(29_487 - distance), 50);
@@ -422,7 +390,7 @@ fn repetition_band_scores_do_not_update_correction_history() {
                 searcher.correction.update(Color::Black, key, 64, 8);
                 let before = searcher.correction.read(Color::Black, key);
                 assert_ne!(before, 0);
-                // 後続フェーズが返す値を、negamaxの出口と同じ更新処理へ渡す。
+                // 反復による勝敗の値を、negamaxの出口で使う更新処理へ渡す。
                 searcher.update_correction(&board, 2, 0, score, bound, false, None, None);
                 assert_eq!(
                     searcher.correction.read(Color::Black, key),

@@ -92,17 +92,48 @@ mod tests {
     /// 版3でもFMの次元0なら、FMを要する診断の基準には使えない。
     #[test]
     fn baseline_requires_fm_weights() {
-        let nets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../minase/nets");
-        let error = match read_baseline(&nets.join("pst-init.bin")) {
+        use minase::eval::{
+            features::FEATURE_COUNT,
+            pst::{FM_RANK, FmWeights},
+        };
+        struct Directory(std::path::PathBuf);
+        impl Drop for Directory {
+            fn drop(&mut self) {
+                std::fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "diagnostic-baseline-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&path).unwrap();
+        let directory = Directory(path);
+        let weights = vec![[0; 2]; FEATURE_COUNT];
+        let values = crate::pst::v0_piece_values();
+        let without = Pst::from_weights(&weights, values, 1000.0, "engine-default").unwrap();
+        let embeddings = vec![[1; FM_RANK]; FEATURE_COUNT];
+        let with = Pst::from_weights_with_fm(
+            &weights,
+            values,
+            1000.0,
+            "engine-default",
+            FmWeights {
+                embeddings: &embeddings,
+                signs: &[1; FM_RANK],
+                exponent: 1,
+            },
+        )
+        .unwrap();
+        let path = directory.0.join("baseline.bin");
+        std::fs::write(&path, without.encode()).unwrap();
+        let error = match read_baseline(&path) {
             Ok(_) => panic!("PST-only baseline was accepted"),
             Err(error) => error,
         };
         assert!(error.to_string().contains("must contain FM weights"));
-        assert!(
-            read_baseline(&nets.join("pst.bin"))
-                .unwrap()
-                .fm_weights()
-                .is_some()
-        );
+        std::fs::write(&path, with.encode()).unwrap();
+        assert!(read_baseline(&path).unwrap().fm_weights().is_some());
     }
 }

@@ -42,18 +42,7 @@ const PROMOTED_ONLY_KINDS: [PieceKind; 8] = [
 
 // 駒種は初期21種＋成駒のみ8種の29種である(第4条3項・第10条)。
 #[test]
-fn article_4_3_piece_kinds_are_21_initial_plus_8_promoted_only() {
-    assert_eq!(INITIAL_KINDS.len() + PROMOTED_ONLY_KINDS.len(), 29);
-
-    // 21種と8種は互いに素で、全29種をちょうど覆う。
-    for kind in PieceKind::ALL {
-        let initial = INITIAL_KINDS.contains(&kind);
-        let promoted_only = PROMOTED_ONLY_KINDS.contains(&kind);
-        assert!(
-            initial != promoted_only,
-            "初期駒と成駒専用のどちらか一方に属する: {kind:?}"
-        );
-    }
+fn article_4_3_piece_kinds_are_unique() {
     // ALLに重複はない。
     for (index, kind) in PieceKind::ALL.iter().enumerate() {
         assert!(

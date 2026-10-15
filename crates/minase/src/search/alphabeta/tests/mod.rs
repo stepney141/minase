@@ -46,8 +46,8 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
-use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
@@ -679,17 +679,4 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
         crate::search::HistoryTables::new(worker_count(threads)),
         true,
     )
-}
-
-/// 指定した期間に到着する進捗を消費し、終了していないことを確かめる。
-fn assert_ponder_running(handle: &SearchHandle, duration: Duration) {
-    let until = Instant::now() + duration;
-    while let Some(remaining) = until.checked_duration_since(Instant::now()) {
-        match handle.events().recv_timeout(remaining) {
-            Ok(SearchEvent::Progress { .. }) => {}
-            Ok(event) => panic!("ponder ended before its hit: {event:?}"),
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
-            Err(error) => panic!("ponder disconnected: {error}"),
-        }
-    }
 }

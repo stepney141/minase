@@ -38,21 +38,21 @@ fn predecessor_completeness_standard() {
 
 /// L1、L2、L3の組合せで、全順方向辺の逆包含と返却集合の健全性を検査する。
 #[test]
-#[ignore = "ローカルルールの全合法辺を検査する"]
+#[ignore = "ローカルルールの全合法辺を検査する(標準規則版と同程度以上)"]
 fn predecessor_completeness_l1_l2_l3() {
     all_forward_edges(Rules::from_codes(&[L1, L2, L3, P0, R1, E0]).unwrap().moves);
 }
 
 /// L4とP1の組合せで、全順方向辺の逆包含と返却集合の健全性を検査する。
 #[test]
-#[ignore = "ローカルルールの全合法辺を検査する"]
+#[ignore = "ローカルルールの全合法辺を検査する(標準規則版と同程度以上)"]
 fn predecessor_completeness_l4_p1() {
     all_forward_edges(Rules::from_codes(&[L0, L4, P1, R1, E0]).unwrap().moves);
 }
 
 /// P2、P5、P6の組合せで、全順方向辺の逆包含と返却集合の健全性を検査する。
 #[test]
-#[ignore = "ローカルルールの全合法辺を検査する"]
+#[ignore = "ローカルルールの全合法辺を検査する(標準規則版と同程度以上)"]
 fn predecessor_completeness_p2_p5_p6() {
     all_forward_edges(Rules::from_codes(&[L0, P2, P5, P6, R1, E0]).unwrap().moves);
 }

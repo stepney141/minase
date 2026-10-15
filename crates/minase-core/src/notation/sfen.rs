@@ -1037,7 +1037,10 @@ mod tests {
             let setup = parse_extended_sfen(&format!("{EMPTY_BOARD} b - {valid}"), rules).unwrap();
             assert_eq!(setup.next_move_number(), valid);
             // 受理した手数は書き出しで保存される（往復一致）。
-            assert!(to_extended_sfen(&setup).contains(&format!(" {valid} ")));
+            assert_eq!(
+                to_extended_sfen(&setup),
+                format!("{EMPTY_BOARD} b - {valid} -")
+            );
         }
         // `+1`はu32のFromStrが受理するが、この文法では符号を認めないため拒否する。
         for invalid in ["0", "10000", "-1", "+1", "1.5", "x"] {

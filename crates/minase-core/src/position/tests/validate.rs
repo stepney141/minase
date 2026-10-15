@@ -30,97 +30,140 @@ mod invariants {
         panic: Box<dyn std::any::Any + Send>,
         operation: &str,
         mv: Option<Move>,
-        reason: &str,
+        reason: PositionError,
     ) {
         let message = panic.downcast_ref::<String>().unwrap();
-        assert!(message.contains(reason), "{message}");
-        assert!(message.contains(operation), "{message}");
-        assert!(message.contains(&format!("move: {mv:?}")), "{message}");
-        assert!(message.contains(&format!("side to move: {:?}", position.side_to_move())));
-        assert!(message.contains("zobrist: incremental="), "{message}");
-        assert!(
-            message.contains("rights zobrist: incremental="),
-            "{message}"
+        let mut lines = message.lines();
+        // 操作名と原因は同じ診断項目に含まれる。
+        assert_eq!(
+            lines.next(),
+            Some(format!("position invariant failed after {operation}: {reason}").as_str()),
+            "{operation}: reason"
         );
-        assert!(message.contains("recomputed="), "{message}");
-        assert!(message.contains("board raw codes"), "{message}");
-        // validateで拒否された局面はSFEN構築にも失敗するが、主診断は失わない。
-        assert!(!message.contains("extended SFEN:"));
+        assert_eq!(
+            lines.next(),
+            Some(format!("move: {mv:?}").as_str()),
+            "{operation}: move"
+        );
+        assert_eq!(
+            lines.next(),
+            Some(format!("side to move: {:?}", position.side_to_move()).as_str()),
+            "{operation}: side to move"
+        );
+        for (name, incremental, recomputed) in [
+            ("zobrist", position.zobrist(), position.recompute_zobrist()),
+            (
+                "rights zobrist",
+                position.rights_zobrist(),
+                position.recompute_rights_zobrist(),
+            ),
+        ] {
+            assert_eq!(
+                lines.next(),
+                Some(
+                    format!(
+                        "{name}: incremental={incremental:#018x}, recomputed={recomputed:#018x}"
+                    )
+                    .as_str()
+                ),
+                "{operation}: {name}"
+            );
+        }
+        assert_eq!(
+            lines.next(),
+            Some("board raw codes (rank 0..11, file 0..11):"),
+            "{operation}: board header"
+        );
+        for rank in 0..12 {
+            let row: Vec<_> = (0..12)
+                .map(|file| position.board[rank * 16 + file])
+                .collect();
+            assert_eq!(
+                lines.next(),
+                Some(format!("{row:?}").as_str()),
+                "{operation}: rank={rank}"
+            );
+        }
+        // 不正局面からは拡張SFENを構築できず、追加の診断行はない。
+        assert_eq!(
+            lines.next(),
+            None,
+            "{operation}: unexpected diagnostic item"
+        );
     }
 
-    /// [`Position::assert_invariants`]の契約に従い、通常着手後に両キーの破損を詳細診断付きで検出する。
+    /// [`Position::assert_invariants`]の契約に従い、着手と取消しの各操作がキー破損を診断する。
     #[test]
-    fn move_invariants_report_corrupted_keys() {
+    fn move_and_unmake_invariants_report_corrupted_keys() {
         let generator = MoveGenerator::standard();
         let mut moves = Vec::new();
         generator.generate_moves(&Position::initial(), &mut moves);
         let mv = moves[0];
-        for rights in [false, true] {
+        type CorruptingOperation = Box<dyn Fn(&mut Position)>;
+        let cases: [(&str, CorruptingOperation, Option<Move>, PositionError); 6] = [
+            (
+                "make move",
+                Box::new(move |position| {
+                    position.zobrist ^= 1;
+                    position.make_move_unchecked(mv, MoveRules::standard());
+                }),
+                Some(mv),
+                PositionError::ZobristMismatch,
+            ),
+            (
+                "make move",
+                Box::new(move |position| {
+                    position.rights_zobrist ^= 1;
+                    position.make_move_unchecked(mv, MoveRules::standard());
+                }),
+                Some(mv),
+                PositionError::RightsZobristMismatch,
+            ),
+            (
+                "make null move",
+                Box::new(|position| {
+                    position.zobrist ^= 1;
+                    position.make_null_move();
+                }),
+                None,
+                PositionError::ZobristMismatch,
+            ),
+            (
+                "make null move",
+                Box::new(|position| {
+                    position.rights_zobrist ^= 1;
+                    position.make_null_move();
+                }),
+                None,
+                PositionError::RightsZobristMismatch,
+            ),
+            (
+                "unmake move",
+                Box::new(move |position| {
+                    let mut undo = position.make_move_unchecked(mv, MoveRules::standard());
+                    undo.previous_zobrist ^= 1;
+                    position.unmake_move(undo);
+                }),
+                Some(mv),
+                PositionError::ZobristMismatch,
+            ),
+            (
+                "unmake null move",
+                Box::new(|position| {
+                    let undo = position.make_null_move();
+                    position.zobrist ^= 1;
+                    position.unmake_null_move(undo);
+                }),
+                None,
+                PositionError::ZobristMismatch,
+            ),
+        ];
+        for (operation, apply, mv, reason) in cases {
             let mut position = Position::initial();
-            let reason = if rights {
-                position.rights_zobrist ^= 1;
-                "RightsZobristMismatch"
-            } else {
-                position.zobrist ^= 1;
-                "ZobristMismatch"
-            };
-            let panic = catch_unwind(AssertUnwindSafe(|| {
-                position.make_move_unchecked(mv, MoveRules::standard())
-            }))
-            .expect_err("a corrupted position must panic after a move");
-            assert_diagnostic(&position, panic, "make move", Some(mv), reason);
+            let panic = catch_unwind(AssertUnwindSafe(|| apply(&mut position))).expect_err(
+                &format!("{operation}, move={mv:?}, reason={reason:?}: corrupted key must panic"),
+            );
+            assert_diagnostic(&position, panic, operation, mv, reason);
         }
-    }
-
-    /// [`Position::assert_invariants`]の契約に従い、ヌルムーブ後も両キーを検査し、操作名を明示する。
-    #[test]
-    fn null_move_invariants_report_corrupted_keys() {
-        for rights in [false, true] {
-            let mut position = Position::initial();
-            let reason = if rights {
-                position.rights_zobrist ^= 1;
-                "RightsZobristMismatch"
-            } else {
-                position.zobrist ^= 1;
-                "ZobristMismatch"
-            };
-            let panic = catch_unwind(AssertUnwindSafe(|| {
-                position.make_null_move();
-            }))
-            .expect_err("a corrupted position must panic after a null move");
-            assert_diagnostic(&position, panic, "make null move", None, reason);
-        }
-    }
-
-    /// [`Position::assert_invariants`]の契約に従い、通常着手の取り消し後も復元したキーを検査する。
-    #[test]
-    fn unmake_invariants_report_corrupted_restored_key() {
-        let generator = MoveGenerator::standard();
-        let mut position = Position::initial();
-        let mut moves = Vec::new();
-        generator.generate_moves(&position, &mut moves);
-        let mv = moves[0];
-        let mut undo = position.make_move_unchecked(mv, MoveRules::standard());
-        undo.previous_zobrist ^= 1;
-        let panic = catch_unwind(AssertUnwindSafe(|| position.unmake_move(undo)))
-            .expect_err("a corrupted restored key must panic");
-        assert_diagnostic(&position, panic, "unmake move", Some(mv), "ZobristMismatch");
-    }
-
-    /// [`Position::assert_invariants`]の契約に従い、ヌルムーブの取り消し後もキーの破損を検出する。
-    #[test]
-    fn unmake_null_invariants_report_corrupted_key() {
-        let mut position = Position::initial();
-        let undo = position.make_null_move();
-        position.zobrist ^= 1;
-        let panic = catch_unwind(AssertUnwindSafe(|| position.unmake_null_move(undo)))
-            .expect_err("a corrupted key must panic after unmaking a null move");
-        assert_diagnostic(
-            &position,
-            panic,
-            "unmake null move",
-            None,
-            "ZobristMismatch",
-        );
     }
 }

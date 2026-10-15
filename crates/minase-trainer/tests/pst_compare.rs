@@ -169,7 +169,12 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
         "lambda is zero"
     );
     assert!(report["bands"][5]["base"].is_null());
-    assert!(report["rust_promotion_agreement"]["base"].as_u64().unwrap() > 0);
+    // 代表は初期局面、疎局面、初期局面。RULES.md第18条第1項により、
+    // 成れる手は疎局面の先手歩がrank=7から敵陣のrank=8へ進む1手。
+    assert_eq!(
+        report["rust_promotion_agreement"],
+        json!({"base": 1, "candidate": 1})
+    );
     for representative in report["representatives"].as_array().unwrap() {
         if let Some(moves) = representative["promotions"]["base"].as_array() {
             for mv in moves {
@@ -252,7 +257,7 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
 }
 
 #[test]
-fn quantization_failure_writes_report_before_exit_code_one() {
+fn quantization_failure_writes_report_before_returning_error() {
     let fixture = Fixture::new();
     let wrong = vec![[500.0; 2]; FEATURE_COUNT];
     fs::write(
@@ -260,20 +265,10 @@ fn quantization_failure_writes_report_before_exit_code_one() {
         minase_trainer::pst::encode_pst_npz(&wrong).unwrap(),
     )
     .unwrap();
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
-        .args(&fixture.data)
-        .arg("--base")
-        .arg(fixture.root.join("base.bin"))
-        .arg("--candidate")
-        .arg(fixture.root.join("candidate.bin"))
-        .arg("--candidate-float")
-        .arg(fixture.root.join("float.npz"))
-        .arg("--output-dir")
-        .arg(fixture.root.join("failed"))
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1));
+    let mut args = fixture.args("failed");
+    args.lookahead_gamma = None;
+    args.lookahead_plies = None;
+    let error = diagnostics::run(Command::PstCompare(args)).unwrap_err();
     let report = read_report(&fixture.root.join("failed"));
     assert!(
         report["quantization"]["mean_absolute_error_cp"]
@@ -282,6 +277,7 @@ fn quantization_failure_writes_report_before_exit_code_one() {
             > 2.0
     );
     assert!(report["error"].as_str().unwrap().contains("quantization"));
+    assert_eq!(report["error"], error.to_string());
     assert!(fixture.root.join("failed/diagnostic-samples.bin").exists());
 }
 
@@ -302,7 +298,8 @@ fn removal_sign_reversal_is_a_saved_failure() {
     .unwrap();
     assert!(diagnostics::run(Command::PstCompare(fixture.args("reversal"))).is_err());
     let report = read_report(&fixture.root.join("reversal"));
-    assert!(report["pst_removal_sign_reversals"].as_u64().unwrap() > 0);
+    // 非王駒は初期局面の90枚が2組と疎局面の歩2枚。全重みの符号反転で全182件が反転する。
+    assert_eq!(report["pst_removal_sign_reversals"], 182);
     assert!(fixture.root.join("reversal/removals.bin").exists());
 }
 
@@ -462,71 +459,71 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
 }
 
 #[test]
-fn mnpt_with_fm_base_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_with_fm_is_rejected("base");
-}
-
-#[test]
-fn mnpt_with_fm_candidate_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_with_fm_is_rejected("candidate");
-}
-
-fn assert_mnpt_with_fm_is_rejected(name: &str) {
+fn mnpt_with_fm_is_rejected_before_data_loading_without_creating_reports() {
     use minase::eval::pst::{FM_RANK, FmWeights};
-    let fixture = Fixture::new();
-    let signs = [1; FM_RANK];
-    // FM補正が0でも、次元32のFMを持てば拒否する。
-    for embedding in [2, 0] {
-        let u = vec![[embedding; FM_RANK]; FEATURE_COUNT];
-        let model = Pst::from_weights_with_fm(
-            &fixture.weights,
-            piece_values(),
-            100.0,
-            "L0,P0,R1,E0",
-            FmWeights {
-                embeddings: &u,
-                signs: &signs,
-                exponent: 1,
-            },
-        )
-        .unwrap();
-        fs::write(fixture.root.join(format!("{name}.bin")), model.encode()).unwrap();
-        for missing_data in [false, true] {
-            let data = if missing_data {
-                vec![fixture.root.join("missing-data.bin")]
-            } else {
-                fixture.data.clone()
-            };
-            let output_dir = fixture
-                .root
-                .join(format!("rejected-{embedding}-{missing_data}"));
-            let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-                .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
-                .args(&data)
-                .arg("--base")
-                .arg(fixture.root.join("base.bin"))
-                .arg("--candidate")
-                .arg(fixture.root.join("candidate.bin"))
-                .arg("--candidate-float")
-                .arg(fixture.root.join("float.npz"))
-                .arg("--output-dir")
-                .arg(&output_dir)
-                .output()
-                .unwrap();
-            let error = String::from_utf8(output.stderr).unwrap();
-            assert_eq!(output.status.code(), Some(1), "{error}");
-            assert!(error.contains(&format!("--{name}")), "{error}");
-            for expected in [
-                "PST-only weights",
-                "FM rank 0",
-                "FM",
-                "minase-trainer fm scale --fm-scale 0",
-            ] {
-                assert!(error.contains(expected), "{error}");
+    for name in ["base", "candidate"] {
+        let fixture = Fixture::new();
+        // FM補正が0でも、次元32のFMを持てば拒否する。
+        for embedding in [2, 0] {
+            let u = vec![[embedding; FM_RANK]; FEATURE_COUNT];
+            let model = Pst::from_weights_with_fm(
+                &fixture.weights,
+                piece_values(),
+                100.0,
+                "L0,P0,R1,E0",
+                FmWeights {
+                    embeddings: &u,
+                    signs: &[1; FM_RANK],
+                    exponent: 1,
+                },
+            )
+            .unwrap();
+            fs::write(fixture.root.join(format!("{name}.bin")), model.encode()).unwrap();
+            for missing_data in [false, true] {
+                let case = format!("{name}-{embedding}-{missing_data}");
+                let mut args = fixture.args(&case);
+                if missing_data {
+                    args.data = vec![fixture.root.join("missing-data.bin")];
+                }
+                let output_dir = args.output_dir.clone();
+                let error = if name == "base" && embedding == 2 && !missing_data {
+                    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+                        .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
+                        .args(&args.data)
+                        .arg("--base")
+                        .arg(&args.base)
+                        .arg("--candidate")
+                        .arg(&args.candidate)
+                        .arg("--candidate-float")
+                        .arg(&args.candidate_float)
+                        .arg("--output-dir")
+                        .arg(&args.output_dir)
+                        .output()
+                        .unwrap();
+                    let error = String::from_utf8(output.stderr).unwrap();
+                    assert_eq!(output.status.code(), Some(1), "{case}: {error}");
+                    assert!(
+                        !error.contains("loading diagnostic data"),
+                        "{case}: {error}"
+                    );
+                    assert!(output.stdout.is_empty(), "{case}");
+                    error
+                } else {
+                    diagnostics::run(Command::PstCompare(args))
+                        .unwrap_err()
+                        .to_string()
+                };
+                assert!(error.contains(&format!("--{name}")), "{case}: {error}");
+                for expected in [
+                    "PST-only weights",
+                    "FM rank 0",
+                    "FM",
+                    "minase-trainer fm scale --fm-scale 0",
+                ] {
+                    assert!(error.contains(expected), "{case}: {error}");
+                }
+                assert!(!output_dir.exists(), "{case}");
             }
-            assert!(!error.contains("loading diagnostic data"), "{error}");
-            assert!(output.stdout.is_empty());
-            assert!(!output_dir.exists());
         }
     }
 }

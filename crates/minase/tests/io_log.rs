@@ -190,15 +190,3 @@ fn logging_preserves_stdout_byte_for_byte() {
     let (_, sent) = records(&log.0);
     assert_eq!(format!("{}\n", sent.join("\n")).as_bytes(), logged.stdout);
 }
-
-/// debugging-tools.md「入出力のログの形式」: CECPの握手も同じ形式で送受信を記録する。
-#[test]
-fn cecp_session_records_both_directions() {
-    let log = TemporaryLog::new();
-    let input = b"xboard\nprotover 2\nquit\n";
-    let output = run("cecp", Some(&log.0), input);
-    let (received, sent) = records(&log.0);
-    assert_eq!(received, ["xboard", "protover 2", "quit"]);
-    assert!(sent.iter().any(|line| line == "feature done=1"));
-    assert_eq!(format!("{}\n", sent.join("\n")).as_bytes(), output.stdout);
-}

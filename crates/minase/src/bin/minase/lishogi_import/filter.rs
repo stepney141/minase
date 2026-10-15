@@ -283,3 +283,145 @@ pub(super) fn winner(game: &InputGame) -> Option<Color> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    const CASES: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/lishogi_import_cases.ndjson"
+    ));
+
+    // Exclusionのdocコメントに従い、最初に該当する理由へだけ集計する。
+    #[test]
+    fn exclusions_preserve_reason_counts_and_input_order() {
+        let mut report = Report::new(200);
+        let mut seen = HashSet::new();
+        for line in CASES.lines() {
+            let game: InputGame = serde_json::from_str(line).unwrap();
+            let exclusion = metadata_exclusion(&game, false, &mut seen)
+                .or_else(|| super::super::replay::replay(&game, false).err());
+            if let Some(reason) = exclusion {
+                report.exclude(reason, game.id);
+            } else {
+                report.accepted += 1;
+                report.accepted_ids.push(game.id);
+            }
+        }
+        let report = serde_json::to_value(report).unwrap();
+        assert_eq!(report["accepted"], 3);
+        assert_eq!(
+            report["accepted_ids"],
+            json!(["SNjoPiHz", "Lqyj1bLC", "gZ0HcfLK"])
+        );
+        let expected = BTreeMap::from([
+            ("variant", vec!["variant"]),
+            ("initial_sfen", vec!["initial"]),
+            ("bot", vec!["bot"]),
+            ("unrated", vec!["unrated"]),
+            ("missing_speed", vec!["missing-speed"]),
+            ("rating", vec!["provisional", "missing-rating"]),
+            ("status_outoftime", vec!["time", "opening-prefix-2u7dwJf9"]),
+            ("status_draw", vec!["UUnYczs0"]),
+            ("unknown_status", vec!["unknown"]),
+            ("winner", vec!["missing-winner"]),
+            ("duplicate", vec!["SNjoPiHz"]),
+            ("illegal_default_rules", vec!["illegal"]),
+            ("winner_mismatch", vec!["royals-not-lost"]),
+            ("resigner_mismatch", vec!["wrong-winner"]),
+        ]);
+        for (reason, entry) in report["excluded"].as_object().unwrap() {
+            let ids = expected.get(reason.as_str()).cloned().unwrap_or_default();
+            assert_eq!(entry["count"], ids.len(), "{reason}");
+            assert_eq!(entry["ids"], json!(ids), "{reason}");
+        }
+    }
+
+    #[test]
+    fn all_terminal_reasons_are_distinct_and_earlier_filters_win() {
+        let base: Value = serde_json::from_str(CASES.lines().nth(3).unwrap()).unwrap();
+        let mut report = Report::new(200);
+        for (status, reason) in [
+            ("outoftime", "status_outoftime"),
+            ("timeout", "status_timeout"),
+            ("aborted", "status_aborted"),
+            ("draw", "status_draw"),
+            ("repetition", "status_repetition"),
+            ("perpetualCheck", "status_perpetual_check"),
+            ("bareKing", "status_bare_king"),
+            ("created", "status_created"),
+            ("started", "status_started"),
+            ("mate", "status_mate"),
+            ("stalemate", "status_stalemate"),
+            ("cheat", "status_cheat"),
+            ("noStart", "status_no_start"),
+            ("unknownFinish", "status_unknown_finish"),
+            ("future-status", "unknown_status"),
+        ] {
+            let mut case = base.clone();
+            case["id"] = json!(status);
+            case["status"] = json!(status);
+            case["winner"] = Value::Null;
+            let game = serde_json::from_value(case).unwrap();
+            let exclusion = metadata_exclusion(&game, false, &mut HashSet::new()).unwrap();
+            assert_eq!(serde_json::to_value(exclusion).unwrap(), reason, "{status}");
+            report.exclude(exclusion, game.id);
+            let entry = serde_json::to_value(&report.excluded[&exclusion]).unwrap();
+            assert_eq!(entry["ids"], json!([status]), "{status}");
+        }
+        for (name, pointer, value, expected) in [
+            (
+                "no-user",
+                "/players/sente/user",
+                Value::Null,
+                Exclusion::Bot,
+            ),
+            ("ai", "/players/sente/aiLevel", json!(1), Exclusion::Bot),
+            (
+                "null-initial",
+                "/initialSfen",
+                Value::Null,
+                Exclusion::InitialSfen,
+            ),
+        ] {
+            let mut case = base.clone();
+            case["id"] = json!(name);
+            // aiLevelとinitialSfenは省略可能なので、欄を追加してから復号する。
+            if pointer == "/initialSfen" {
+                case["initialSfen"] = value;
+            } else {
+                case["players"]["sente"][pointer.rsplit('/').next().unwrap()] = value;
+            }
+            let game = serde_json::from_value(case).unwrap();
+            assert_eq!(
+                metadata_exclusion(&game, false, &mut HashSet::new()),
+                Some(expected),
+                "{name}"
+            );
+            report.exclude(expected, game.id);
+        }
+        let mut seen = HashSet::new();
+        let game = serde_json::from_value(base.clone()).unwrap();
+        assert_eq!(metadata_exclusion(&game, false, &mut seen), None);
+        report.accepted += 1;
+        let mut duplicate = base;
+        duplicate["status"] = json!("draw");
+        let game = serde_json::from_value(duplicate).unwrap();
+        assert_eq!(
+            metadata_exclusion(&game, false, &mut seen),
+            Some(Exclusion::StatusDraw)
+        );
+        report.exclude(Exclusion::StatusDraw, game.id);
+        let report = serde_json::to_value(report).unwrap();
+        assert_eq!(report["accepted"], 1);
+        assert_eq!(report["excluded"]["status_draw"]["count"], 2);
+        assert_eq!(report["excluded"]["winner"]["count"], 0);
+        assert_eq!(report["excluded"]["duplicate"]["count"], 0);
+        assert_eq!(report["excluded"]["bot"]["ids"], json!(["no-user", "ai"]));
+        assert_eq!(
+            report["excluded"]["initial_sfen"]["ids"],
+            json!(["null-initial"])
+        );
+    }
+}

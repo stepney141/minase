@@ -9,38 +9,32 @@ use std::sync::{
 };
 
 #[test]
-fn adamw_matches_element_arithmetic_and_leaves_selection_to_the_caller() {
-    // 46e03baのCoefficientsを同じ入力で3更新した重みと両モーメントのビット列。
-    // 共通化後も比較先が同じ実装にならないよう、履歴から得た固定値を使う。
-    let expected: [[[u32; 4]; 3]; 6] =
-        serde_json::from_str(include_str!("fixtures/adam-46e03ba.json")).unwrap();
-    for (decay_index, decay) in [0.0, 0.2].into_iter().enumerate() {
-        let group = AdamWGroup {
-            lr: 0.03,
-            weight_decay: decay,
-        };
-        let mut actual = [4095.875_f32, -0.0, -4096.0, 3.125];
-        let mut m = [0.0; 4];
-        let mut v = [0.0; 4];
-        for (step, gradient) in [[-0.7, 0.0, 0.31, 2.0], [0.0; 4], [0.9, -1.1, 0.0, -7.3]]
-            .into_iter()
-            .enumerate()
-        {
-            let step = step as u64 + 1;
-            let coefficients = AdamCoefficients::new(step, group).unwrap();
-            for i in 0..4 {
-                coefficients.update(&mut actual[i], gradient[i], &mut m[i], &mut v[i]);
-            }
-            let [weights, first_moments, second_moments] =
-                expected[decay_index * 3 + step as usize - 1];
-            assert_eq!(actual.map(f32::to_bits), weights);
-            assert_eq!(m.map(f32::to_bits), first_moments);
-            assert_eq!(v.map(f32::to_bits), second_moments);
-        }
-        if decay == 0.0 {
-            assert!(actual[0] > 4095.875);
-        }
-    }
+fn adamw_leaves_selection_and_constraints_to_the_caller_and_validates_coefficients() {
+    // 対象の選択と範囲制約は呼び手の責任であり、共通の要素更新は切り詰めない。
+    let coefficients = AdamCoefficients::new(
+        1,
+        AdamWGroup {
+            lr: 1.0,
+            weight_decay: 0.0,
+        },
+    )
+    .unwrap();
+    let mut weights = [4096.0, -4096.0];
+    let mut m = [0.0; 2];
+    let mut v = [0.0; 2];
+    coefficients.update(&mut weights[0], -1.0, &mut m[0], &mut v[0]);
+    assert_eq!(weights, [4097.0, -4096.0]);
+    assert_eq!(m, [-0.1, 0.0]);
+    assert_eq!(v, [0.001, 0.0]);
+    coefficients.update(&mut weights[1], 1.0, &mut m[1], &mut v[1]);
+    assert_eq!(weights, [4097.0, -4097.0]);
+    assert_eq!(m, [-0.1, 0.1]);
+    assert_eq!(v, [0.001, 0.001]);
+    // 全モーメントと勾配が0なら、f32の乗算と減算は負の0を保つ。
+    let (mut zero, mut zero_m, mut zero_v) = (-0.0_f32, 0.0, 0.0);
+    coefficients.update(&mut zero, 0.0, &mut zero_m, &mut zero_v);
+    assert_eq!(zero.to_bits(), (-0.0_f32).to_bits());
+    assert_eq!((zero_m, zero_v), (0.0, 0.0));
     assert!(
         AdamCoefficients::new(
             0,
@@ -202,13 +196,25 @@ fn npz_rejects_corruption_duplicate_keys_and_mismatched_payloads() {
 
 #[test]
 fn atomic_publication_replaces_the_whole_file_and_leaves_no_temporary_file() {
-    let directory = std::env::temp_dir().join(format!("nn-atomic-{}", std::process::id()));
-    std::fs::create_dir(&directory).unwrap();
+    struct Directory(std::path::PathBuf);
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "nn-atomic-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir(&path).unwrap();
+    let directory = Directory(path);
+    let directory = &directory.0;
     let path = directory.join("state");
     nn::atomic_write(&path, b"first state").unwrap();
     nn::atomic_write(&path, b"next").unwrap();
     assert_eq!(std::fs::read(path).unwrap(), b"next");
-    assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(directory).unwrap().count(), 1);
     assert!(nn::atomic_write(&directory.join("absent/state"), b"error").is_err());
-    std::fs::remove_dir_all(directory).unwrap();
 }

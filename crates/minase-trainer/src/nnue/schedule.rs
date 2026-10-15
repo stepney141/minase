@@ -1,7 +1,7 @@
 //! 完了した更新回数から、3群に共通する学習率の倍率を求める。
 
 use crate::nnue::model::{Error, Result};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{fmt, str::FromStr};
 
 /// 更新ごとに基準学習率へ掛ける倍率m(t)。tは完了した更新回数で、最初の更新では0。
@@ -9,7 +9,7 @@ use std::{fmt, str::FromStr};
 /// 引数は`constant:<c>`、`exponential:<h>:<f>`、`cosine:<T>:<f>`の形で指定する。
 /// 既定値は`cosine:3:0.1`で、総長3エポック、倍率の下限0.1とする。
 /// c、h、Tは有限かつ正、下限fは有限かつ`0 < f ≤ 1`でなければならない。
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LrSchedule {
     /// `m(t) = c`。
@@ -156,7 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parsing_display_and_serialization_round_trip() {
+    fn parsing_and_display_round_trip() {
         for (text, expected) in [
             ("cosine:3:0.1", LrSchedule::default()),
             ("constant:1", LrSchedule::Constant { multiplier: 1.0 }),
@@ -180,8 +180,6 @@ mod tests {
             assert_eq!(parsed, expected);
             assert_eq!(parsed.to_string(), text);
             assert_eq!(parsed.to_string().parse::<LrSchedule>().unwrap(), parsed);
-            let json = serde_json::to_string(&parsed).unwrap();
-            assert_eq!(serde_json::from_str::<LrSchedule>(&json).unwrap(), parsed);
         }
     }
 
@@ -202,6 +200,9 @@ mod tests {
             "cosine:3:0.1:",
             "linear:1:0.1",
             "constant:no",
+            "constant:１",
+            "定数:1",
+            "constant:1e400",
             "exponential:no:0.1",
             "cosine:3:no",
             "constant:NaN",
@@ -215,7 +216,10 @@ mod tests {
             "cosine:3:NaN",
             "cosine:3:1.1",
         ] {
-            assert!(text.parse::<LrSchedule>().is_err(), "{text}");
+            assert!(
+                matches!(text.parse::<LrSchedule>(), Err(Error::Invalid(_))),
+                "{text}"
+            );
         }
     }
 

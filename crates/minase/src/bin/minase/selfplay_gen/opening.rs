@@ -169,7 +169,7 @@ mod tests {
     use super::*;
     use crate::selfplay_gen::{
         play::{PlaySettings, play_game_from_opening},
-        test_support::test_table,
+        test_support::{TemporaryDirectory, epoch_zero_nnue, test_table},
     };
     use std::fs;
 
@@ -180,8 +180,7 @@ mod tests {
             sfen::{SetupPosition, to_extended_sfen},
             usi,
         };
-        let directory = std::env::temp_dir().join(format!("minase-opening-{}", std::process::id()));
-        fs::create_dir(&directory).unwrap();
+        let directory = TemporaryDirectory::new();
         let input: serde_json::Value =
             include_str!("../../../../tests/fixtures/lishogi_import_cases.ndjson")
                 .lines()
@@ -200,7 +199,7 @@ mod tests {
             61,
         )
         .unwrap();
-        let path = directory.join("openings.txt");
+        let path = directory.0.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
         let openings = read_openings(&path).unwrap();
         let (start, moves) = starting_game(
@@ -213,12 +212,12 @@ mod tests {
         assert_eq!(start.ply_count(), 0);
         assert!(moves.is_empty());
         let completed = play_game_from_opening(
-            &minase::eval::weights().unwrap(),
+            &epoch_zero_nnue(),
             Rules::ENGINE_DEFAULT,
             1,
             PlaySettings {
                 base_seed: 42,
-                // 埋め込みの重みで対局が手数上限前に終わる値（Pcでは200ノードだと上限に達する）。
+                // 固定重みで終局まで進め、保存記録の内容を検証する。
                 nodes: 400,
                 random_moves: 0,
                 max_ply: 4000,
@@ -244,6 +243,5 @@ mod tests {
             record.entries().len() as u64,
             completed.stats.total_plies - 60 + 1
         );
-        fs::remove_dir_all(directory).unwrap();
     }
 }

@@ -523,6 +523,46 @@ mod tests {
 
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_optimizer_rejects_invalid_multipliers_without_changing_state() {
+        let device = Device::new(0).unwrap();
+        let kernels = Kernels::compile(&device).unwrap();
+        let shape = Shape::new(InputFeatureSet::P, 8, 1000.0).unwrap();
+        let model = super::super::equivalence::random_model(shape, 71).unwrap();
+        let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
+        let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();
+        let mut expanded = DeviceModel::new(&device, &model, &RemovalReference::v0()).unwrap();
+        let buffers = Buffers::new(&device, shape, 1).unwrap();
+        let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
+        let before = optimizer.snapshot(&device).unwrap();
+        for multiplier in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                matches!(
+                    optimizer.update(
+                        &device,
+                        &kernels,
+                        &mut expanded,
+                        &buffers,
+                        &mut status,
+                        None,
+                        multiplier
+                    ),
+                    Err(Error::Invalid(
+                        "learning-rate multiplier must be finite and positive"
+                    ))
+                ),
+                "{multiplier}"
+            );
+            assert_eq!(optimizer.snapshot(&device).unwrap(), before, "{multiplier}");
+            assert_eq!(
+                device.compute.clone_dtoh(&status).unwrap(),
+                [0],
+                "{multiplier}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_optimizer_checks_every_gradient_group_including_unobserved_rows() {
         let device = Device::new(0).unwrap();
         let kernels = Kernels::compile(&device).unwrap();

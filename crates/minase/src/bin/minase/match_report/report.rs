@@ -825,7 +825,12 @@ mod tests {
     // [`report`]は現行版だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
     fn report_rejects_version_four_before_decoding_new_fields() {
-        let run_dir = std::env::temp_dir().join(format!("minase-report-v4-{}", std::process::id()));
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let run_dir = std::env::temp_dir().join(format!(
+            "minase-report-v4-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         std::fs::create_dir(&run_dir).unwrap();
         File::create(run_dir.join(".match_runner.lock")).unwrap();
         std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":4}"#).unwrap();
