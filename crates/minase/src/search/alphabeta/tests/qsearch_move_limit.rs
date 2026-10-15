@@ -95,7 +95,27 @@ fn single_capture_limit(test: &str) -> bool {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line
+                .starts_with("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured;")),
+        "{stdout}"
+    );
     false
+}
+
+#[cfg(feature = "tuning")]
+macro_rules! single_capture_test {
+    ($name:ident, $body:block) => {
+        #[test]
+        fn $name() {
+            if single_capture_limit(stringify!($name)) {
+                $body
+            }
+        }
+    };
 }
 
 // 最大ply直前で呼び、探索された各捕獲の子を静的評価の葉にする。
@@ -152,11 +172,7 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
 }
 
 #[cfg(feature = "tuning")]
-#[test]
-fn qsearch_limit_reads_last_royal_after_tt_capture() {
-    if !single_capture_limit("qsearch_limit_reads_last_royal_after_tt_capture") {
-        return;
-    }
+single_capture_test!(qsearch_limit_reads_last_royal_after_tt_capture, {
     let board = position(
         Color::Black,
         &[
@@ -186,14 +202,10 @@ fn qsearch_limit_reads_last_royal_after_tt_capture() {
             Some(mate)
         );
     });
-}
+});
 
 #[cfg(feature = "tuning")]
-#[test]
-fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
-    if !single_capture_limit("qsearch_limit_reads_double_lion_capture_after_tt_capture") {
-        return;
-    }
+single_capture_test!(qsearch_limit_reads_double_lion_capture_after_tt_capture, {
     // 香車2枚をこの配置に置き、二重捕獲による評価増分を駒価値とdelta_marginの和に収める。
     let board = position(
         Color::Black,
@@ -259,7 +271,7 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             )
         );
     });
-}
+});
 
 #[cfg(feature = "tuning")]
 fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
@@ -354,29 +366,17 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
 }
 
 #[cfg(feature = "tuning")]
-#[test]
-fn qsearch_limit_recaptures_mid_capture_after_normal_search() {
-    if !single_capture_limit("qsearch_limit_recaptures_mid_capture_after_normal_search") {
-        return;
-    }
+single_capture_test!(qsearch_limit_recaptures_mid_capture_after_normal_search, {
     check_lion_recapture(false, false);
-}
+});
 #[cfg(feature = "tuning")]
-#[test]
-fn qsearch_limit_recaptures_igui_after_quiescence() {
-    if !single_capture_limit("qsearch_limit_recaptures_igui_after_quiescence") {
-        return;
-    }
+single_capture_test!(qsearch_limit_recaptures_igui_after_quiescence, {
     check_lion_recapture(true, true);
-}
+});
 #[cfg(feature = "tuning")]
-#[test]
-fn qsearch_limit_recaptures_mid_capture_after_quiescence() {
-    if !single_capture_limit("qsearch_limit_recaptures_mid_capture_after_quiescence") {
-        return;
-    }
+single_capture_test!(qsearch_limit_recaptures_mid_capture_after_quiescence, {
     check_lion_recapture(false, true);
-}
+});
 
 #[test]
 fn qsearch_limit_counts_exception_as_first_capture() {
@@ -562,7 +562,9 @@ fn qsearch_limit_null_move_clears_previous_capture() {
         let expected = -evaluate(searcher.nnue, &after_null);
         searcher.previous_capture[1] = Some(sq(5, 3));
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 4, expected - 1, expected, 0),
+            // 静的評価との差を大きくし、追加減深を上限3に張り付ける。
+            // IIR後は深さ3なので、NullMoveBase/Slopeの値によらず子は静止探索になる。
+            searcher.negamax(&mut board.clone(), 4, -INFINITY, -10_000, 0),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0, "null moveで打ち切った直後を調べる");

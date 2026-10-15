@@ -169,6 +169,9 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
 /// 非ゼロ履歴は捕獲段だけを変え、TT手を先頭に保ち、合法手の重複を作らない。
 #[test]
 fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
+    assert_eq!(params::capture_history_scale(), 49, "数値例の前提");
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    // 上限での換算は100×49/100=49、下限では−49。
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
         let before = picked(searcher, &board, None);
@@ -198,13 +201,13 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, winner),
-            searcher.nnue.pawn_value() * params::capture_history_scale() / 100
+            49
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, captures[0]),
-            -searcher.nnue.pawn_value() * params::capture_history_scale() / 100
+            -49
         );
         let after = picked(searcher, &board, None);
         assert_eq!(after[0], (winner, true));
@@ -417,7 +420,7 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
         &small_tt(),
         histories,
         None,
-        Instant::now(),
+        &ManualClock::new(Duration::ZERO),
         &AtomicU64::new(0),
         false,
     );
@@ -477,14 +480,15 @@ fn changed_worker_count_resets_capture_history() {
 #[test]
 fn capture_history_decay_boundaries() {
     let mut history = CaptureHistory::new();
-    let values = [-65_536, -7, -1, 0, 1, 7, 65_536];
-    for percent in [0, 23, 100] {
+    let values = [7, -7, 100, -100, -5, 1000];
+    // 23%を掛けると1.61,−1.61,23,−23,−1.15,230。整数除算は0方向へ丸める。
+    for (percent, expected) in [(0, [0; 6]), (23, [1, -1, 23, -23, -1, 230]), (100, values)] {
         for (index, value) in history.values_mut().iter_mut().enumerate() {
             *value = values[index % values.len()];
         }
         history.decay(percent);
         for (index, value) in history.values().iter().enumerate() {
-            assert_eq!(*value, values[index % values.len()] * percent / 100);
+            assert_eq!(*value, expected[index % expected.len()]);
         }
     }
 }
@@ -536,4 +540,34 @@ pub(super) fn capture_decay_probe() -> i64 {
     histories.capture[0].values_mut()[0] = 100;
     stopped_search(&mut histories, DEFAULT_THREADS);
     i64::from(histories.capture[0].values()[0])
+}
+
+/// record_cutoffの加減点は正負の上限を保ち、最大加減点では端点へ達する。
+/// tuningの隔離プロセスでも呼び、許容上限4096と65536の双方で同じ契約を確かめる。
+#[test]
+pub(super) fn capture_history_gravity_stays_bounded_at_limit_extremes() {
+    let board = capture_fixture();
+    let nnue = test_nnue();
+    let winner = capture(sq(5, 5), sq(5, 7));
+    let earlier = capture(sq(5, 5), sq(3, 5));
+    let limit = params::capture_history_limit();
+    let mut history = CaptureHistory::new();
+    for old in [-limit, -limit + 1, -10, 0, 10, limit - 1, limit] {
+        for depth in [0, 1, 3, 64, 256] {
+            history.values_mut().fill(old);
+            history.record_cutoff(&board, nnue, winner, &[earlier], depth);
+            let bonus = history.read(&board, nnue, winner);
+            let malus = history.read(&board, nnue, earlier);
+            assert!((-limit..=limit).contains(&bonus));
+            assert!((-limit..=limit).contains(&malus));
+            if depth == 256 {
+                assert_eq!(bonus, limit);
+                assert_eq!(malus, -limit);
+            }
+            if old == -10 && depth == 3 {
+                // |−10×9/limit|<1なので重力項は0。−10+9=−1、−10−9=−19。
+                assert_eq!((bonus, malus), (-1, -19));
+            }
+        }
+    }
 }

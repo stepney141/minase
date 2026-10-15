@@ -388,7 +388,7 @@ impl Searcher<'_> {
             return true;
         }
         let hit = Duration::from_nanos(hit_ns);
-        let elapsed = self.shared.started.elapsed();
+        let elapsed = self.shared.clock.elapsed();
         let reason = if elapsed.saturating_sub(hit) >= limit.duration {
             Some(StopReason::HardLimit)
         } else if let Some(iteration) = &mut self.ponder_iteration {

@@ -235,35 +235,34 @@ mod tests {
         ((state >> 16) % 201) as i16 - 100
     }
 
-    /// 倍率1は、全指数で通常ビルドの0方向への切り捨てを保存する。
+    /// 補正式の数値例。分子±12を指数0,1,2,30の分母2,8,32,2^61で割る。
     #[test]
-    fn full_scale_matches_unscaled_correction_for_every_exponent() {
-        for exponent in 0..=30 {
-            let denominator = 1_i64 << (2 * exponent + 1);
-            for numerator in [
-                i64::MIN,
-                i64::MIN + 1,
-                -(1_i64 << 62),
-                -3,
-                -2,
-                -1,
-                0,
-                1,
-                2,
-                3,
-                1_i64 << 62,
-                i64::MAX,
-                -3 * (denominator / 2),
-                -denominator / 2,
-                denominator / 2,
-                3 * (denominator / 2),
-            ] {
-                assert_eq!(
-                    scaled_correction(numerator, exponent, 1024),
-                    numerator / denominator,
-                    "numerator={numerator}, exponent={exponent}"
-                );
-            }
+    fn full_scale_correction_truncates_signed_examples() {
+        assert_eq!(
+            crate::search::alphabeta::params::fm_scale(),
+            1024,
+            "数値例の前提"
+        );
+        for (exponent, sign, expected) in [
+            (0, -1, -6),
+            (0, 1, 6),
+            (1, -1, -1),
+            (1, 1, 1),
+            (2, -1, 0),
+            (2, 1, 0),
+            (30, -1, 0),
+            (30, 1, 0),
+        ] {
+            let fm = Fm::decode(&encoded(exponent, [sign; FM_RANK], |i, f| match (i, f) {
+                (0, 0) => 2,
+                (1, 0) => 3,
+                _ => 0,
+            }))
+            .unwrap();
+            let mut accumulator = FmAccumulator::default();
+            fm.add(&mut accumulator, 0);
+            fm.add(&mut accumulator, 1);
+            assert_eq!(fm.correction(&accumulator), expected);
         }
     }
 
@@ -325,7 +324,12 @@ mod tests {
     #[cfg(feature = "tuning")]
     #[test]
     fn tuning_default_correction_matches_full_scale() {
-        for sign in [-1, 1] {
+        assert_eq!(
+            crate::search::alphabeta::params::fm_scale(),
+            1024,
+            "数値例の前提"
+        );
+        for (sign, expected) in [(-1, -1), (1, 1)] {
             let fm = Fm::decode(&encoded(1, [sign; FM_RANK], |i, f| match (i, f) {
                 (0, 0) => 2,
                 (1, 0) => 3,
@@ -335,11 +339,8 @@ mod tests {
             let mut accumulator = FmAccumulator::default();
             fm.add(&mut accumulator, 0);
             fm.add(&mut accumulator, 1);
-            // 2特徴の組による分子は、符号 × 2 × 2 × 3となる。
-            assert_eq!(
-                fm.correction(&accumulator),
-                scaled_correction(i64::from(sign) * 12, 1, 1024)
-            );
+            // ±2×2×3 / 8 = ±1.5を0方向へ丸めて±1。
+            assert_eq!(fm.correction(&accumulator), expected);
         }
     }
 

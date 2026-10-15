@@ -538,10 +538,7 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
 mod tests {
     use super::*;
     use crate::match_report::compare::compare;
-    use std::{
-        fs::File,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs::File;
 
     #[test]
     fn percentile_and_median_follow_fixed_rank_rules() {
@@ -557,16 +554,37 @@ mod tests {
         );
     }
 
-    fn calibration_fixture() -> std::path::PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let run_dir = std::env::temp_dir().join(format!(
-            "minase-match-report-{}-{nonce}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(run_dir.join("pairs")).unwrap();
+    struct Directory(std::path::PathBuf);
+    impl std::ops::Deref for Directory {
+        type Target = std::path::Path;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+    impl AsRef<std::path::Path> for Directory {
+        fn as_ref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            match std::fs::remove_dir_all(&self.0) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("cannot remove {}: {error}", self.0.display()),
+            }
+        }
+    }
+    fn calibration_fixture() -> Directory {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let run_dir = Directory(std::env::temp_dir().join(format!(
+            "minase-match-report-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )));
+        std::fs::create_dir(&run_dir).unwrap();
+        std::fs::create_dir(run_dir.join("pairs")).unwrap();
         File::create(run_dir.join(".match_runner.lock")).unwrap();
         std::fs::write(
             run_dir.join("manifest.json"),
@@ -685,7 +703,6 @@ mod tests {
         invocations = serde_json::json!([]);
         save(&history, &invocations);
         assert!(report(&dir).is_err());
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -819,7 +836,6 @@ mod tests {
         )
         .unwrap();
         assert!(report(&run_dir).is_err());
-        std::fs::remove_dir_all(run_dir).unwrap();
     }
 
     // [`report`]は現行版だけを受理し、それ以外を版のエラーで拒否する。

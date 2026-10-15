@@ -7,7 +7,18 @@ use crate::search::alphabeta::pruning::{futility_margin, late_move_limit};
 // 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
 // 各着手の評価を引き分けより高く保ち、静かな手の上限と探索順序を観測する。
 pub(super) fn quiet_board() -> Position {
-    minase_core::parse_sfen("k11/12/1g8g1/12/12/12/12/12/12/3G5G2/2G9/11K b").unwrap()
+    position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(1, 9), Color::White, PieceKind::GoldGeneral),
+            (sq(10, 9), Color::White, PieceKind::GoldGeneral),
+            (sq(3, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(9, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(2, 1), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    )
 }
 
 // 葉でβ打ち切りが起こらず、親でfutility pruningが発動しない窓を作る。
@@ -52,7 +63,17 @@ fn late_move_pruning_exclusions_search_all_quiets() {
     for (width, mate_window, attacked) in [(2, false, false), (1, true, false), (1, false, true)] {
         let board = if attacked {
             // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
-            minase_core::parse_sfen("k11/12/12/12/12/11r/12/4G7/12/5G2G3/12/11K b").unwrap()
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(11, 6), Color::White, PieceKind::Rook),
+                    (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
+                    (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(8, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                ],
+            )
         } else {
             quiet_board()
         };
@@ -82,11 +103,39 @@ fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
 }
 
 pub(super) fn check_late_move_protected_moves(limit: u64) {
-    for (sfen, promotion) in [
-        ("k11/12/12/12/12/4ppp5/5N6/12/12/2G2G2G3/12/11K b", false),
-        ("k11/12/12/12/5O6/12/12/12/12/2G2G2G3/12/11K b", true),
+    for (board, promotion) in [
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(4, 6), Color::White, PieceKind::Pawn),
+                    (sq(5, 6), Color::White, PieceKind::Pawn),
+                    (sq(6, 6), Color::White, PieceKind::Pawn),
+                    (sq(5, 5), Color::Black, PieceKind::Lion),
+                    (sq(2, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(8, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                ],
+            ),
+            false,
+        ),
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(5, 7), Color::Black, PieceKind::Kirin),
+                    (sq(2, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(8, 2), Color::Black, PieceKind::GoldGeneral),
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                ],
+            ),
+            true,
+        ),
     ] {
-        let board = minase_core::parse_sfen(sfen).unwrap();
         let moves = legal_moves(&board);
         let history = repeated_root_children(&board, &moves);
         assert!(!royal_under_attack(&board));
@@ -149,8 +198,19 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
 // 先頭手の評価が負の詰み帯にあれば、静かな手の数が上限に達しても安全な手を探し続ける。
 #[test]
 pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
-    let board =
-        minase_core::parse_sfen("k11/12/12/12/12/10r1/12/2G9/12/G2G2G2G2/12/11K b").unwrap();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(10, 6), Color::White, PieceKind::Rook),
+            (sq(2, 4), Color::Black, PieceKind::GoldGeneral),
+            (sq(0, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(3, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(6, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(9, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
     let alpha = evaluate(nnue, &board) + 1;
     let losing_move = Move {

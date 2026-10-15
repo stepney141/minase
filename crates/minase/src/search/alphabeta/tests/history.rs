@@ -10,8 +10,8 @@ use crate::search::alphabeta::params;
 fn history_carry_ages_every_worker_once_before_the_first_iteration() {
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(worker_count(4));
-    let mut quiet_values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
-    let mut capture_values = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
+    let quiet_values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
+    let capture_values = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
     for (worker, history) in histories.workers.iter_mut().enumerate() {
         for (index, value) in history.iter_mut().flatten().flatten().enumerate() {
             *value = quiet_values[(index + worker) % quiet_values.len()];
@@ -22,9 +22,21 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             *value = capture_values[(index + worker) % capture_values.len()];
         }
     }
-    for go in 1..=2 {
-        quiet_values = quiet_values.map(|value| value * params::history_decay() / 100);
-        capture_values = capture_values.map(|value| value * params::capture_history_decay() / 100);
+    assert_eq!(params::history_decay(), 23, "数値例の前提");
+    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
+    // 各回で23/100を掛けて0方向へ丸める。65536→15073→3466、100→23→5、7→1→0。
+    for (go, quiet_values, capture_values) in [
+        (
+            1,
+            [-1, 0, 0, 0, 0, 0, 0, 0, 1, 23],
+            [-15073, -23, -1, 0, 0, 0, 0, 0, 1, 23, 15073],
+        ),
+        (
+            2,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
+            [-3466, -5, 0, 0, 0, 0, 0, 0, 0, 5, 3466],
+        ),
+    ] {
         let outcome = run_search_team(
             test_nnue(),
             &snapshot.position,
@@ -39,7 +51,7 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             &small_tt(),
             &mut histories,
             None,
-            Instant::now(),
+            &ManualClock::new(Duration::ZERO),
             &AtomicU64::new(0),
             false,
         );
@@ -68,6 +80,8 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
 // 学習に使われない初期局面の空升→同じ空升を印とし、反復中の再減衰を検出する。
 #[test]
 fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
+    assert_eq!(params::history_decay(), 23, "数値例の前提");
+    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
     let board = position(
         Color::Black,
         &[
@@ -88,23 +102,22 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
         for (worker, history) in histories.workers.iter_mut().enumerate() {
             history[0][60][60] = 160 + worker as i32 * 16;
         }
-        let mut capture_expected = Vec::new();
         for (worker, history) in histories.capture.iter_mut().enumerate() {
             let depth = 30 + worker as u32;
             history.record_cutoff(&board, nnue, mv, &[], depth);
-            capture_expected.push((depth * depth) as i32);
+            // 深さ30,31,32,33の二乗は900,961,1024,1089。
+            assert_eq!(
+                history.read(&board, nnue, mv),
+                [900, 961, 1024, 1089][worker]
+            );
         }
         let mut table = small_tt();
-        let mut expected: Vec<_> = (0..threads.get())
-            .map(|worker| 160 + worker as i32 * 16)
-            .collect();
-        for search_id in [801, 802] {
-            for value in &mut expected {
-                *value = *value * params::history_decay() / 100;
-            }
-            for value in &mut capture_expected {
-                *value = *value * params::capture_history_decay() / 100;
-            }
+        // 160,176,192,208に23%を掛けて丸めると36,40,44,47、次は8,9,10,10。
+        // 900,961,1024,1089は207,221,235,250、次は47,50,54,57。
+        for (search_id, expected, capture_expected) in [
+            (801, [36, 40, 44, 47], [207, 221, 235, 250]),
+            (802, [8, 9, 10, 10], [47, 50, 54, 57]),
+        ] {
             let handle = crate::search::start_search(
                 Arc::clone(shared_test_nnue()),
                 snapshot_for(&Position::initial()),
@@ -162,7 +175,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &table,
                 &mut histories,
                 None,
-                Instant::now(),
+                &ManualClock::new(Duration::ZERO),
                 &AtomicU64::new(0),
                 false,
             );
@@ -173,7 +186,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 stop_reason: AtomicU8::new(0),
                 total_nodes: AtomicU64::new(0),
                 node_limit: None,
-                started: Instant::now(),
+                clock: &ManualClock::new(Duration::ZERO),
                 hard_limit: None,
             };
             let searcher = new_searcher(
@@ -213,7 +226,7 @@ fn history_carry_workers_update_their_own_table() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let mut histories = HistoryTables::new(worker_count(4));
@@ -298,7 +311,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
             &small_tt(),
             &mut histories,
             None,
-            Instant::now(),
+            &ManualClock::new(Duration::ZERO),
             &AtomicU64::new(0),
             false,
         );
@@ -335,6 +348,8 @@ pub(super) fn zero_decay_clears_history_between_searches() {
 /// 候補8の更新式は両端で飽和し、負の重力項も0方向へ丸める。
 #[test]
 fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
+    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
+    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
     let board = Position::initial();
     let moves = legal_moves(&board);
     let winner = moves[0];
@@ -400,6 +415,8 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 /// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
 #[test]
 fn quiet_history_negamax_updates_only_searched_quiets() {
+    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
+    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
     let board = position(
         Color::Black,
         &[

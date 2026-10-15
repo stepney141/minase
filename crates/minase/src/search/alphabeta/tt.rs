@@ -430,22 +430,45 @@ const _: () = assert!(MAX_PLY == 256);
 mod diagnostic_tests {
     use super::*;
     use crate::search::snapshot::search_key;
-    use minase_core::notation::sfen::parse_extended_sfen;
+    use minase_core::position::PositionBuilder;
+    use minase_core::test_util::sq;
+    use minase_core::{Color, PieceCode, PieceKind, RuleCode};
     use minase_core::{MoveGenerator, Rules};
 
     /// 同じ照合関数で有無、全欄、手数0・1の詰み補正を読み、表を変更しない。
     #[test]
     fn diagnostic_probe_preserves_entries_and_corrects_mate_distance() {
-        let rules =
-            Rules::from_codes(&minase_core::rules::parse_rule_set("L1,L2,P1,R1,E2").unwrap())
-                .unwrap();
-        let position = parse_extended_sfen(
-            "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c",
-            rules.moves,
-        )
-        .unwrap()
-        .restore_position()
+        // L1/L2の獅子捕獲状態とP1の成り保留を含む局面を、R1/E2のエンジン規則で照合する。
+        let rules = Rules::from_codes(&[
+            RuleCode::L1,
+            RuleCode::L2,
+            RuleCode::P1,
+            RuleCode::R1,
+            RuleCode::E2,
+        ])
         .unwrap();
+        let mut builder = PositionBuilder::new(Color::Black);
+        for (square, color, kind) in [
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(4, 9), Color::Black, PieceKind::Pawn),
+            (sq(9, 7), Color::White, PieceKind::GoldGeneral),
+            (sq(9, 6), Color::White, PieceKind::Lion),
+            (sq(9, 4), Color::Black, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ] {
+            builder
+                .put(square, PieceCode::new(color, kind).unwrap())
+                .unwrap();
+        }
+        builder
+            .put(
+                sq(5, 6),
+                PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
+            )
+            .unwrap();
+        builder.mark_promotion_deferred(sq(4, 9)).unwrap();
+        let mut position = builder.finish().unwrap();
+        position.set_lion_capture(Some(sq(5, 6))).unwrap();
         let generator = MoveGenerator::new(rules.moves);
         let mut moves = Vec::new();
         generator.generate_moves(&position, &mut moves);

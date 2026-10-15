@@ -449,6 +449,20 @@ pub(super) fn main(arguments: Arguments) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn depth_accepts_only_one_through_max_ply() {
+        for depth in [1, MAX_PLY] {
+            let args = Arguments::try_parse_from(["bench", "--depth", &depth.to_string()]).unwrap();
+            assert_eq!(args.depth, depth);
+        }
+        for depth in [0, MAX_PLY + 1] {
+            let error = Arguments::try_parse_from(["bench", "--depth", &depth.to_string()])
+                .err()
+                .unwrap();
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        }
+    }
+
     /// [`format_stats`]の契約に従い、分母0の比を省き、回数を残す。
     #[cfg(feature = "search-stats")]
     #[test]

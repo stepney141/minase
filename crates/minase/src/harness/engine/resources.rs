@@ -29,21 +29,30 @@ fn process_resource_usage(pid: u32) -> EngineResourceUsage {
     let Ok(process) = Process::new(pid) else {
         return EngineResourceUsage::default();
     };
-    let cpu_time_ns = process.stat().ok().and_then(|stat| {
-        let ticks = u128::from(stat.utime) + u128::from(stat.stime);
+    resource_usage_from_counters(
+        process.stat().ok().map(|stat| (stat.utime, stat.stime)),
+        procfs::ticks_per_second(),
+        process.status().ok().and_then(|status| status.vmhwm),
+    )
+}
+
+/// CPU tickをnsへ、VmHWMのKiBをbyteへ換算する。欠測や桁あふれはNoneとする。
+#[cfg(target_os = "linux")]
+fn resource_usage_from_counters(
+    cpu_ticks: Option<(u64, u64)>,
+    ticks_per_second: u64,
+    peak_rss_kib: Option<u64>,
+) -> EngineResourceUsage {
+    let cpu_time_ns = cpu_ticks.and_then(|(user, system)| {
+        let ticks = u128::from(user) + u128::from(system);
         let nanos = ticks
             .checked_mul(1_000_000_000)?
-            .checked_div(u128::from(procfs::ticks_per_second()))?;
+            .checked_div(u128::from(ticks_per_second))?;
         u64::try_from(nanos).ok()
     });
-    let peak_rss_bytes = process
-        .status()
-        .ok()
-        .and_then(|status| status.vmhwm)
-        .and_then(|kib| kib.checked_mul(1024));
     EngineResourceUsage {
         cpu_time_ns,
-        peak_rss_bytes,
+        peak_rss_bytes: peak_rss_kib.and_then(|kib| kib.checked_mul(1024)),
     }
 }
 
@@ -59,34 +68,25 @@ const fn process_resource_usage(_pid: u32) -> EngineResourceUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(target_os = "linux")]
-    use std::process;
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn linux_resource_probe_reports_current_process_cpu_and_memory() {
-        let current = Process::myself().unwrap();
-        let before_stat = current.stat().unwrap();
-        let before_rss = current.status().unwrap().vmhwm.unwrap() * 1024;
-        let usage = process_resource_usage(process::id());
-        let after_stat = current.stat().unwrap();
-        let after_rss = current.status().unwrap().vmhwm.unwrap() * 1024;
-        // procfsのCPU tickとKiBの契約に照らし、観測前後の単調な値で範囲を定める。
-        let cpu = usage.cpu_time_ns.expect("current process CPU time");
-        let ticks_per_second = u128::from(procfs::ticks_per_second());
-        let scaled_cpu = u128::from(cpu) * ticks_per_second;
-        let before = u128::from(before_stat.utime + before_stat.stime) * 1_000_000_000;
-        let after = u128::from(after_stat.utime + after_stat.stime) * 1_000_000_000;
-        assert!(
-            scaled_cpu + ticks_per_second > before,
-            "CPU time below prior observation"
-        );
-        assert!(scaled_cpu <= after, "CPU time above subsequent observation");
-        let rss = usage.peak_rss_bytes.expect("current process peak RSS");
-        assert!(
-            (before_rss..=after_rss).contains(&rss),
-            "peak RSS {rss} outside [{before_rss}, {after_rss}]"
-        );
-        assert_eq!(rss % 1024, 0, "VmHWM is reported in KiB");
+    fn resource_counters_convert_units_and_preserve_missing_values() {
+        // (7+4) / 3秒をnsへ換算し、0方向へ丸める。123 KiB = 125952 byte。
+        let usage = resource_usage_from_counters(Some((7, 4)), 3, Some(123));
+        assert_eq!(usage.cpu_time_ns, Some(3_666_666_666));
+        assert_eq!(usage.peak_rss_bytes, Some(125_952));
+        let missing = resource_usage_from_counters(None, 100, None);
+        assert_eq!(missing.cpu_time_ns, None);
+        assert_eq!(missing.peak_rss_bytes, None);
+        let invalid = resource_usage_from_counters(Some((1, 1)), 0, Some(u64::MAX));
+        assert_eq!(invalid.cpu_time_ns, None);
+        assert_eq!(invalid.peak_rss_bytes, None);
+        let overflow = resource_usage_from_counters(Some((u64::MAX, u64::MAX)), 1, Some(0));
+        assert_eq!(overflow.cpu_time_ns, None);
+        assert_eq!(overflow.peak_rss_bytes, Some(0));
+        let wide = resource_usage_from_counters(Some((u64::MAX, u64::MAX)), u64::MAX, None);
+        assert_eq!(wide.cpu_time_ns, Some(2_000_000_000));
+        assert_eq!(wide.peak_rss_bytes, None);
     }
 }

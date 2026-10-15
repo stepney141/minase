@@ -300,7 +300,7 @@ fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
         &small_tt(),
         &mut crate::search::HistoryTables::new(worker_count(2)),
         None,
-        Instant::now(),
+        &ManualClock::new(Duration::ZERO),
         &AtomicU64::new(0),
         false,
     );

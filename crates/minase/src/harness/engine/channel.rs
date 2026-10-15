@@ -57,7 +57,7 @@ mod tests {
 
         let (_sender, lines) = mpsc::channel();
         assert_eq!(
-            receive_until(&lines, Duration::from_millis(1), |_| false),
+            receive_until_deadline(&lines, Instant::now(), Duration::ZERO, |_| false),
             Err(EngineFailure::Timeout)
         );
     }

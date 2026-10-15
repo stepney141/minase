@@ -92,6 +92,26 @@ pub(crate) struct Arguments {
 }
 
 impl Arguments {
+    /// 共通の思考制限を各側の明示指定で上書きする。
+    pub(super) fn search_limits(&self) -> (SearchLimit, SearchLimit) {
+        (
+            self.candidate_limit.unwrap_or(self.each),
+            self.baseline_limit.unwrap_or(self.each),
+        )
+    }
+
+    /// 再開では仮説の照合だけをサブコマンドとして許可する。
+    pub(super) fn validate_resume_mode(&self) -> Result<(), clap::Error> {
+        if self.resume.is_some() && self.mode.as_ref().is_some_and(|mode| {
+            !matches!(mode, Mode::Gsprt { max_pairs: None, elo0, elo1 } if elo0.is_some() || elo1.is_some())
+        }) {
+            return Err(crate::subcommand_command(&["match", "run"]).error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "--resume only accepts gsprt hypothesis checks; use --target-pairs to extend a run"));
+        }
+        Ok(())
+    }
+
     /// `--ponder`を両エンジンがUSIかつ時間制御の場合だけ受理する。
     /// 満たさない条件はプロセスの起動前に拒否する。
     pub(super) fn validate_ponder(&self) -> Result<(), String> {
@@ -218,7 +238,78 @@ pub(super) fn time_seed() -> Result<u64, std::time::SystemTimeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase_core::Rules;
+
+    #[test]
+    fn search_limits_resolve_each_and_independent_overrides() {
+        for (extra, candidate, baseline) in [
+            (vec![], 4, 4),
+            (vec!["--candidate-limit", "depth=2"], 2, 4),
+            (vec!["--baseline-limit", "depth=1"], 4, 1),
+            (
+                vec![
+                    "--candidate-limit",
+                    "depth=2",
+                    "--baseline-limit",
+                    "depth=1",
+                ],
+                2,
+                1,
+            ),
+        ] {
+            let args = Arguments::try_parse_from(
+                ["match_runner", "--run-dir", "unused", "--each", "depth=4"]
+                    .into_iter()
+                    .chain(extra),
+            )
+            .unwrap();
+            assert_eq!(
+                args.search_limits(),
+                (
+                    SearchLimit::Fixed {
+                        depth: Some(candidate),
+                        nodes: None
+                    },
+                    SearchLimit::Fixed {
+                        depth: Some(baseline),
+                        nodes: None
+                    }
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn resume_mode_rejects_new_run_budgets_and_bare_subcommands() {
+        for extra in [
+            vec!["elo", "--pairs", "1"],
+            vec!["gsprt"],
+            vec!["gsprt", "--max-pairs", "1"],
+        ] {
+            let args = Arguments::try_parse_from(
+                ["match_runner", "--resume", "unused"]
+                    .into_iter()
+                    .chain(extra),
+            )
+            .unwrap();
+            assert_eq!(
+                args.validate_resume_mode().unwrap_err().kind(),
+                clap::error::ErrorKind::ArgumentConflict
+            );
+        }
+        for extra in [
+            vec![],
+            vec!["gsprt", "--elo0", "20"],
+            vec!["gsprt", "--elo1", "30"],
+        ] {
+            let args = Arguments::try_parse_from(
+                ["match_runner", "--resume", "unused"]
+                    .into_iter()
+                    .chain(extra),
+            )
+            .unwrap();
+            args.validate_resume_mode().unwrap();
+        }
+    }
 
     // docs/guides/sprt.mdに従い、文書化された既定値
     // (--response-timeout 120秒、--max-ply 4096、--max-pairs 100,000)を
@@ -433,7 +524,7 @@ mod tests {
         assert_eq!(default.rules.source, "engine-default");
         assert_eq!(
             default.rules.codes,
-            Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT)
+            vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]
         );
 
         let lishogi = Arguments::try_parse_from([
@@ -446,7 +537,18 @@ mod tests {
         ])
         .expect("preset names must match case-insensitively");
         assert_eq!(lishogi.rules.source, "LISHOGI");
-        assert_eq!(lishogi.rules.codes, Vec::<RuleCode>::from(Rules::LISHOGI));
+        assert_eq!(
+            lishogi.rules.codes,
+            vec![
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P0,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3
+            ]
+        );
         assert!(
             Arguments::try_parse_from([
                 "match_runner",

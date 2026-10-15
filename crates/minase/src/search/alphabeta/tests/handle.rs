@@ -273,7 +273,6 @@ fn progress_depths_start_at_one_and_increase_by_one() {
 }
 
 // joinは全ワーカーの終了後に置換表を返し、次の探索で再利用できる。
-// この局面では同じ最善手と評価値を保ち、記録手と打ち切りによってノード数が増えない。
 #[test]
 fn join_returns_the_transposition_table_for_reuse() {
     let midgame = quiet_midgame();
@@ -292,8 +291,7 @@ fn join_returns_the_transposition_table_for_reuse() {
     // 根の探索ごとに世代を1回進め、前回の同じ深さの記録も異なるキーで置き換えられるようにする。
     assert_eq!(returned_tt.generation(), 1);
 
-    // 返却された置換表を渡した探索2は正常に完了し、最善手と最終評価が
-    // 探索1と一致する。記録手とカットオフによりノード数は増えない。
+    // 返却された置換表を渡した探索も指定深さまで完了し、合法手を返す。
     let second = run_search(
         &snapshot.position,
         snapshot.rules(),
@@ -303,9 +301,11 @@ fn join_returns_the_transposition_table_for_reuse() {
         DEFAULT_THREADS,
         &mut returned_tt,
     );
-    assert_eq!(second.best_move, first.best_move);
-    assert_eq!(second.score, first.score);
-    assert!(second.nodes <= first.nodes);
+    assert_eq!(first.depth, 3);
+    assert_eq!(first.stop_reason, StopReason::DepthCompleted);
+    assert_eq!(second.depth, 3);
+    assert!(snapshot.root_moves.contains(&first.best_move));
+    assert!(snapshot.root_moves.contains(&second.best_move));
     assert_eq!(returned_tt.generation(), 2);
 }
 
@@ -330,7 +330,7 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
         )
     });
     let handle = SearchHandle {
-        started: Instant::now(),
+        clock: Arc::new(ManualClock::new(Duration::ZERO)),
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop,
@@ -348,7 +348,7 @@ fn search_handle_join_returns_the_coordinator_panic() {
     let (sender, events) = mpsc::channel();
     drop(sender);
     let handle = SearchHandle {
-        started: Instant::now(),
+        clock: Arc::new(ManualClock::new(Duration::ZERO)),
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),

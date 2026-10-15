@@ -22,10 +22,10 @@ pub(super) fn ponder_summary(
         let mut opening = Game::new(rules);
         for text in &record.opening.moves {
             let selected = validate_bestmove(&opening, text, Protocol::Usi)
-                .map_err(|_| invalid_pair_record("cannot replay saved opening"))?;
+                .map_err(|_| invalid_pair_record(SavedRecordError::OpeningReplay))?;
             opening
                 .play(selected)
-                .map_err(|_| invalid_pair_record("cannot apply saved opening"))?;
+                .map_err(|_| invalid_pair_record(SavedRecordError::OpeningApply))?;
         }
         for game in &record.games {
             count_ponder_game(game, opening.clone(), ponder, max_ply, &mut counts)?;
@@ -83,14 +83,14 @@ fn validate_saved_game(
     conditions: SavedGameConditions,
 ) -> io::Result<PlayedGame> {
     if record.wall_time_ns == 0 {
-        return Err(invalid_pair_record("saved game wall time is zero"));
+        return Err(invalid_pair_record(SavedRecordError::ZeroWallTime));
     }
     let total_think_time_ns = record.turns.iter().try_fold(0_u128, |total, turn| {
         total.checked_add(u128::from(turn.think_time_ns))
     });
     if total_think_time_ns.is_none_or(|total| total > u128::from(record.wall_time_ns)) {
         return Err(invalid_pair_record(
-            "saved think times exceed the game wall time",
+            SavedRecordError::ThinkTimeExceedsWallTime,
         ));
     }
     let mut game = opening.game.clone();
@@ -102,12 +102,10 @@ fn validate_saved_game(
     );
     for (index, turn) in record.turns.iter().enumerate() {
         if game.ply_count() >= max_ply {
-            return Err(invalid_pair_record("saved turn exceeds the ply limit"));
+            return Err(invalid_pair_record(SavedRecordError::PlyLimit));
         }
         if Duration::from_nanos(turn.think_time_ns) > conditions.response_timeout {
-            return Err(invalid_pair_record(
-                "saved think time exceeds the response timeout",
-            ));
+            return Err(invalid_pair_record(SavedRecordError::ResponseTimeout));
         }
         let side = game.position().side_to_move();
         if turn.side != stored_color(side)
@@ -116,9 +114,7 @@ fn validate_saved_game(
                 .as_ref()
                 .is_some_and(|evaluation| evaluation.perspective != turn.side)
         {
-            return Err(invalid_pair_record(
-                "turn side or evaluation perspective is inconsistent",
-            ));
+            return Err(invalid_pair_record(SavedRecordError::TurnSide));
         }
         let protocol = if side == candidate_color {
             conditions.candidate_protocol
@@ -131,16 +127,12 @@ fn validate_saved_game(
                 || turn.completed_time_ms.is_some()
                 || turn.ponder.is_some())
         {
-            return Err(invalid_pair_record(
-                "CECP turn must not contain USI search information",
-            ));
+            return Err(invalid_pair_record(SavedRecordError::Protocol));
         }
         if turn.ponder.as_ref().is_some_and(|text| {
             text.is_empty() || text.split_whitespace().count() != 1 || text.trim() != text
         }) {
-            return Err(invalid_pair_record(
-                "saved prediction must be one USI token",
-            ));
+            return Err(invalid_pair_record(SavedRecordError::PredictionToken));
         }
         let expects_time_forfeit = matches!(
             turn.response,
@@ -154,15 +146,11 @@ fn validate_saved_game(
                     .update(Duration::from_nanos(turn.think_time_ns))
                     .is_err();
                 if timed_out != expects_time_forfeit {
-                    return Err(invalid_pair_record(
-                        "saved think time does not match the clock result",
-                    ));
+                    return Err(invalid_pair_record(SavedRecordError::Clock));
                 }
             }
             None if expects_time_forfeit => {
-                return Err(invalid_pair_record(
-                    "fixed-limit engine cannot lose on time",
-                ));
+                return Err(invalid_pair_record(SavedRecordError::FixedLimitTimeForfeit));
             }
             _ => {}
         }
@@ -170,27 +158,25 @@ fn validate_saved_game(
         match &turn.response {
             TurnResponse::Move { usi: text } => {
                 let selected = usi::parse(game.position(), text)
-                    .map_err(|_| invalid_pair_record("saved move is not valid USI"))?;
+                    .map_err(|_| invalid_pair_record(SavedRecordError::InvalidUsi))?;
                 if !game.legal_moves().contains(&selected) {
-                    return Err(invalid_pair_record("saved move is illegal"));
+                    return Err(invalid_pair_record(SavedRecordError::IllegalMove));
                 }
                 let canonical = usi::text(
                     game.position(),
                     selected,
                     &MoveGenerator::new(game.rules().moves),
                 )
-                .map_err(|_| invalid_pair_record("saved move cannot be rendered"))?;
+                .map_err(|_| invalid_pair_record(SavedRecordError::RenderMove))?;
                 if canonical != *text {
-                    return Err(invalid_pair_record("saved move is not canonical USI"));
+                    return Err(invalid_pair_record(SavedRecordError::NoncanonicalMove));
                 }
                 if let GameStatus::Finished(result) = game
                     .play(selected)
-                    .map_err(|_| invalid_pair_record("saved move was rejected"))?
+                    .map_err(|_| invalid_pair_record(SavedRecordError::RejectedMove))?
                 {
                     if !is_last || !adjudication_matches(result, &record.termination) {
-                        return Err(invalid_pair_record(
-                            "adjudicated result does not match moves",
-                        ));
+                        return Err(invalid_pair_record(SavedRecordError::Adjudication));
                     }
                     return Ok(PlayedGame::Finished {
                         plies: game.ply_count(),
@@ -205,9 +191,7 @@ fn validate_saved_game(
                             loser: stored_color(side),
                         })
                 {
-                    return Err(invalid_pair_record(
-                        "resignation does not match termination",
-                    ));
+                    return Err(invalid_pair_record(SavedRecordError::Resignation));
                 }
                 return Ok(PlayedGame::Finished {
                     plies: game.ply_count(),
@@ -219,7 +203,7 @@ fn validate_saved_game(
             TurnResponse::Failure { reason } => {
                 if !matches!(reason, FailureKind::IllegalMove | FailureKind::TimeForfeit) {
                     return Err(invalid_pair_record(
-                        "failure without an engine response must not be a turn",
+                        SavedRecordError::FailureWithoutResponse,
                     ));
                 }
                 if !is_last
@@ -229,9 +213,7 @@ fn validate_saved_game(
                             reason: *reason,
                         })
                 {
-                    return Err(invalid_pair_record(
-                        "engine failure does not match termination",
-                    ));
+                    return Err(invalid_pair_record(SavedRecordError::FailureTermination));
                 }
                 return Ok(PlayedGame::Finished {
                     plies: game.ply_count(),
@@ -272,15 +254,79 @@ fn validate_saved_game(
             })
         }
         _ => Err(invalid_pair_record(
-            "termination is not explained by the saved turns",
+            SavedRecordError::UnexplainedTermination,
         )),
     }
 }
 
 /// 破損した対局記録を表すエラーを作る。
-fn invalid_pair_record(message: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message)
+fn invalid_pair_record(error: SavedRecordError) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, error)
 }
+
+/// 保存した棋譜を再開できない理由。
+#[derive(Debug, PartialEq, Eq)]
+enum SavedRecordError {
+    OpeningReplay,
+    OpeningApply,
+    ZeroWallTime,
+    ThinkTimeExceedsWallTime,
+    PlyLimit,
+    ResponseTimeout,
+    TurnSide,
+    Protocol,
+    PredictionToken,
+    Clock,
+    FixedLimitTimeForfeit,
+    InvalidUsi,
+    IllegalMove,
+    RenderMove,
+    NoncanonicalMove,
+    RejectedMove,
+    Adjudication,
+    Resignation,
+    FailureWithoutResponse,
+    FailureTermination,
+    UnexplainedTermination,
+    PairSeed,
+    Opening,
+    CandidateColors,
+    EngineSeed,
+    Category,
+}
+impl std::fmt::Display for SavedRecordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::OpeningReplay => "cannot replay saved opening",
+            Self::OpeningApply => "cannot apply saved opening",
+            Self::ZeroWallTime => "saved game wall time is zero",
+            Self::ThinkTimeExceedsWallTime => "saved think times exceed the game wall time",
+            Self::PlyLimit => "saved turn exceeds the ply limit",
+            Self::ResponseTimeout => "saved think time exceeds the response timeout",
+            Self::TurnSide => "turn side or evaluation perspective is inconsistent",
+            Self::Protocol => "CECP turn must not contain USI search information",
+            Self::PredictionToken => "saved prediction must be one USI token",
+            Self::Clock => "saved think time does not match the clock result",
+            Self::FixedLimitTimeForfeit => "fixed-limit engine cannot lose on time",
+            Self::InvalidUsi => "saved move is not valid USI",
+            Self::IllegalMove => "saved move is illegal",
+            Self::RenderMove => "saved move cannot be rendered",
+            Self::NoncanonicalMove => "saved move is not canonical USI",
+            Self::RejectedMove => "saved move was rejected",
+            Self::Adjudication => "adjudicated result does not match moves",
+            Self::Resignation => "resignation does not match termination",
+            Self::FailureWithoutResponse => "failure without an engine response must not be a turn",
+            Self::FailureTermination => "engine failure does not match termination",
+            Self::UnexplainedTermination => "termination is not explained by the saved turns",
+            Self::PairSeed => "pair seed does not match pair number",
+            Self::Opening => "opening does not match the pair seed",
+            Self::CandidateColors => "candidate colors are not a swapped pair",
+            Self::EngineSeed => "engine seed does not match the pair seed",
+            Self::Category => "pair category does not match the game results",
+        })
+    }
+}
+impl std::error::Error for SavedRecordError {}
 
 /// 保存済みペアを決定的に検証し、番号順集計へ戻す。
 pub(super) fn completed_pair_from_record(
@@ -294,18 +340,16 @@ pub(super) fn completed_pair_from_record(
 ) -> io::Result<CompletedPair> {
     let pair_seed = derive_seed(base_seed, record.pair_number);
     if record.pair_seed != pair_seed.get() {
-        return Err(invalid_pair_record("pair seed does not match pair number"));
+        return Err(invalid_pair_record(SavedRecordError::PairSeed));
     }
     let opening = generate_opening(rules, pair_seed);
     if record.opening.seed != opening.seed.get() || record.opening.moves != opening.usi_moves {
-        return Err(invalid_pair_record("opening does not match the pair seed"));
+        return Err(invalid_pair_record(SavedRecordError::Opening));
     }
     if record.games[0].candidate_color != StoredColor::Black
         || record.games[1].candidate_color != StoredColor::White
     {
-        return Err(invalid_pair_record(
-            "candidate colors are not a swapped pair",
-        ));
+        return Err(invalid_pair_record(SavedRecordError::CandidateColors));
     }
     let expected_seeds = [
         (
@@ -320,9 +364,7 @@ pub(super) fn completed_pair_from_record(
     for (index, game) in record.games.iter().enumerate() {
         let (candidate, baseline) = expected_seeds[index];
         if game.candidate_seed != candidate.get() || game.baseline_seed != baseline.get() {
-            return Err(invalid_pair_record(
-                "engine seed does not match the pair seed",
-            ));
+            return Err(invalid_pair_record(SavedRecordError::EngineSeed));
         }
     }
     let conditions = SavedGameConditions {
@@ -349,9 +391,7 @@ pub(super) fn completed_pair_from_record(
         _ => None,
     };
     if record.category.map(usize::from) != category {
-        return Err(invalid_pair_record(
-            "pair category does not match the game results",
-        ));
+        return Err(invalid_pair_record(SavedRecordError::Category));
     }
     Ok(CompletedPair {
         number: record.pair_number,
@@ -364,6 +404,107 @@ pub(super) fn completed_pair_from_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_saved_error<T>(result: io::Result<T>, expected: SavedRecordError) {
+        let error = result.err().expect("record must be rejected");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.get_ref().unwrap().downcast_ref::<SavedRecordError>(),
+            Some(&expected)
+        );
+    }
+
+    #[test]
+    fn completed_pair_rejects_inconsistent_seed_opening_colors_and_category() {
+        let rules = Rules::ENGINE_DEFAULT;
+        let seed = derive_seed(7, 1);
+        let opening = generate_opening(rules, seed);
+        let loser = stored_color(opening.game.position().side_to_move());
+        let game = |candidate_color, candidate_seed, baseline_seed| GameRecord {
+            candidate_color,
+            candidate_seed,
+            baseline_seed,
+            wall_time_ns: 1,
+            candidate_cpu_time_ns: None,
+            baseline_cpu_time_ns: None,
+            candidate_peak_rss_bytes: None,
+            baseline_peak_rss_bytes: None,
+            turns: vec![TurnRecord {
+                side: loser,
+                think_time_ns: 1,
+                evaluation: None,
+                stop_reason: None,
+                completed_time_ms: None,
+                ponder: None,
+                response: TurnResponse::Resigned,
+            }],
+            termination: TerminationRecord::Resigned { loser },
+        };
+        let record = PairRecord {
+            pair_number: 1,
+            pair_seed: seed.get(),
+            opening: OpeningRecord {
+                seed: opening.seed.get(),
+                moves: opening.usi_moves,
+            },
+            games: [
+                game(
+                    StoredColor::Black,
+                    derive_seed(seed.get(), 1).get(),
+                    derive_seed(seed.get(), 2).get(),
+                ),
+                game(
+                    StoredColor::White,
+                    derive_seed(seed.get(), 3).get(),
+                    derive_seed(seed.get(), 4).get(),
+                ),
+            ],
+            // 同じ側が2局とも投了し、候補は1勝1敗なのでペア得点は2。
+            category: Some(2),
+        };
+        let player = PlayerConfig {
+            text: "random".into(),
+            identity: EngineIdentity::Random,
+            path: "unused".into(),
+            args: vec![],
+            protocol: Protocol::Usi,
+            is_random: true,
+            limit: parse_search_limit("depth=1").unwrap(),
+            hash_mb: None,
+            rules_source: "engine-default".into(),
+            options: vec![],
+        };
+        let validate = |record| {
+            completed_pair_from_record(
+                record,
+                rules,
+                7,
+                u32::MAX,
+                Duration::from_secs(1),
+                &player,
+                &player,
+            )
+        };
+        assert!(validate(record.clone()).is_ok());
+        for expected in [
+            SavedRecordError::PairSeed,
+            SavedRecordError::Opening,
+            SavedRecordError::CandidateColors,
+            SavedRecordError::Category,
+        ] {
+            let mut changed = record.clone();
+            match expected {
+                SavedRecordError::PairSeed => changed.pair_seed ^= 1,
+                SavedRecordError::Opening => changed.opening.moves.clear(),
+                SavedRecordError::CandidateColors => {
+                    changed.games[1].candidate_color = StoredColor::Black
+                }
+                SavedRecordError::Category => changed.category = Some(0),
+                _ => unreachable!(),
+            }
+            assert_saved_error(validate(changed), expected);
+        }
+    }
 
     // [`validate_saved_game`]に従い、着手後に応答が途絶えた側の反則負けを再検証する。
     #[test]
@@ -475,11 +616,18 @@ mod tests {
             }],
             termination: TerminationRecord::Resigned { loser: side },
         };
-        assert!(validate_saved_game(&record, &opening, u32::MAX, fixed_conditions).is_err());
+        assert_saved_error(
+            validate_saved_game(&record, &opening, u32::MAX, fixed_conditions),
+            SavedRecordError::Protocol,
+        );
 
         record.turns[0].evaluation = None;
-        record.turns[0].think_time_ns = u64::MAX;
-        assert!(validate_saved_game(&record, &opening, u32::MAX, fixed_conditions).is_err());
+        record.turns[0].think_time_ns = 1_000_000_001;
+        record.wall_time_ns = 1_000_000_001;
+        assert_saved_error(
+            validate_saved_game(&record, &opening, u32::MAX, fixed_conditions),
+            SavedRecordError::ResponseTimeout,
+        );
 
         record.turns[0].think_time_ns = 1;
         record.turns[0].response = TurnResponse::Failure {
@@ -489,22 +637,23 @@ mod tests {
             loser: side,
             reason: FailureKind::TimeForfeit,
         };
-        assert!(validate_saved_game(&record, &opening, u32::MAX, fixed_conditions).is_err());
+        assert_saved_error(
+            validate_saved_game(&record, &opening, u32::MAX, fixed_conditions),
+            SavedRecordError::FixedLimitTimeForfeit,
+        );
 
-        record.turns.clear();
-        record.termination = TerminationRecord::Forfeit {
-            loser: side,
-            reason: FailureKind::Timeout,
-        };
-        assert!(
+        record.turns[0].response = TurnResponse::Resigned;
+        record.termination = TerminationRecord::Resigned { loser: side };
+        assert_saved_error(
             validate_saved_game(
                 &record,
                 &opening,
                 opening.game.ply_count(),
-                fixed_conditions
-            )
-            .is_err()
+                fixed_conditions,
+            ),
+            SavedRecordError::PlyLimit,
         );
+        assert!(validate_saved_game(&record, &opening, u32::MAX, fixed_conditions).is_ok());
     }
 
     // [`TurnRecord::ponder`]は不合法な予想手も保存する。

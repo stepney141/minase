@@ -44,11 +44,12 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
+use crate::search::alphabeta::clock::SearchClock;
 use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
@@ -81,7 +82,7 @@ use crate::search::alphabeta::tt::{
 };
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
-use crate::search::handle::SearchHandle;
+use crate::search::handle::{SearchHandle, start_search_with_clock};
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
@@ -99,6 +100,17 @@ use minase_core::{MoveGenerator, Square, repetition_key};
 // ---------------------------------------------------------------------------
 // ヘルパ
 // ---------------------------------------------------------------------------
+
+/// 対角の隅に王将だけを置き、先手が指す静穏局面。
+fn bare_kings() -> Position {
+    position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    )
+}
 
 fn engine_rules() -> MoveRules {
     MoveRules::standard()
@@ -251,6 +263,9 @@ fn epoch_zero_nnue() -> Nnue {
     Nnue::decode(&epoch_zero_nnue_bytes()).unwrap()
 }
 
+// NNUE形式のヘッダ長。eval::nnue::formatの定数は非公開なので、探索の試験で共有する。
+pub(super) const NNUE_HEADER_LENGTH: usize = 192;
+
 /// エポック0のP型の行を探索の特徴集合へ複写し、重みを変更するテストにも渡す。
 pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
     use crate::eval::features::FEATURE_COUNT;
@@ -259,7 +274,7 @@ pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
 
     let source = include_bytes!("../../../../nets/nnue-epoch0.bin");
     let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
-    let hidden = 192 + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+    let hidden = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
     let end = hidden + FEATURE_COUNT * width * 2;
     let mut bytes = source[..hidden].to_vec();
     let architecture = format!(
@@ -272,7 +287,7 @@ pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
         bytes.extend_from_slice(&source[hidden..end]);
     }
     bytes.extend_from_slice(&source[end..]);
-    let checksum = Sha256::digest(&bytes[192..]);
+    let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
     bytes[144..176].copy_from_slice(&checksum);
     bytes
 }
@@ -330,7 +345,7 @@ fn with_draw_value_root_searcher(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let table = small_tt();
@@ -381,7 +396,7 @@ fn run_quiesce(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let history: Vec<u64> = Vec::new();
@@ -426,7 +441,7 @@ fn run_negamax(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
     };
     let history: Vec<u64> = Vec::new();
@@ -679,4 +694,29 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
         crate::search::HistoryTables::new(worker_count(threads)),
         true,
     )
+}
+
+/// テストが明示した経過時間だけを返す時計。
+struct ManualClock {
+    nanos: AtomicU64,
+}
+
+impl ManualClock {
+    fn new(elapsed: Duration) -> Self {
+        Self {
+            nanos: AtomicU64::new(elapsed.as_nanos().try_into().unwrap()),
+        }
+    }
+
+    fn set(&self, elapsed: Duration) {
+        let nanos = elapsed.as_nanos().try_into().unwrap();
+        let previous = self.nanos.swap(nanos, AtomicOrdering::Relaxed);
+        assert!(nanos >= previous, "manual clock must be monotonic");
+    }
+}
+
+impl SearchClock for ManualClock {
+    fn elapsed(&self) -> Duration {
+        Duration::from_nanos(self.nanos.load(AtomicOrdering::Relaxed))
+    }
 }

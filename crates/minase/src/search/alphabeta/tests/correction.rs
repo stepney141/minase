@@ -6,21 +6,39 @@ use crate::eval::evaluate;
 use crate::search::alphabeta::params;
 use minase_core::Color;
 
-fn shared(stop: &AtomicBool) -> SharedSearch<'_> {
+fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<'a> {
     SharedSearch {
         external_stop: stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now(),
+        clock,
         hard_limit: None,
     }
 }
 
-const QUIET: &str = "k11/12/12/12/12/12/12/12/12/12/12/11K b";
-const CAPTURE: &str = "k11/12/12/12/12/12/12/5p6/5R6/12/12/11K b";
-const ATTACKED: &str = "k10r/12/12/12/12/12/12/12/12/12/12/11K b";
+fn capture_board() -> Position {
+    position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 4), Color::White, PieceKind::Pawn),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    )
+}
+fn attacked_board() -> Position {
+    position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    )
+}
 
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
@@ -28,23 +46,23 @@ fn correction_negamax_update_conditions() {
     assert_eq!(params::correction_weight(), 37, "数値例の重み");
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
-    for (sfen, delta, bound, expected, capture, depth) in [
-        (QUIET, 320, Bound::Exact, 40, false, 2),
-        (QUIET, -320, Bound::Exact, -5, false, 2),
-        (QUIET, -320, Bound::Upper, -5, false, 2),
-        (QUIET, 320, Bound::Lower, 40, false, 2),
-        (QUIET, 320, Bound::Upper, 18, false, 2),
-        (QUIET, -320, Bound::Lower, 18, false, 2),
-        (QUIET, 0, Bound::Upper, 18, false, 2),
-        (QUIET, 0, Bound::Lower, 18, false, 2),
-        (CAPTURE, 320, Bound::Exact, 18, true, 2),
-        (CAPTURE, -320, Bound::Upper, 18, true, 2),
-        (CAPTURE, 320, Bound::Lower, 18, true, 2),
-        (ATTACKED, 320, Bound::Exact, 18, false, 2),
-        (QUIET, 320, Bound::Exact, 40, false, 3),
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
+    for (mut board, delta, bound, expected, capture, depth) in [
+        (bare_kings(), 320, Bound::Exact, 40, false, 2),
+        (bare_kings(), -320, Bound::Exact, -5, false, 2),
+        (bare_kings(), -320, Bound::Upper, -5, false, 2),
+        (bare_kings(), 320, Bound::Lower, 40, false, 2),
+        (bare_kings(), 320, Bound::Upper, 18, false, 2),
+        (bare_kings(), -320, Bound::Lower, 18, false, 2),
+        (bare_kings(), 0, Bound::Upper, 18, false, 2),
+        (bare_kings(), 0, Bound::Lower, 18, false, 2),
+        (capture_board(), 320, Bound::Exact, 18, true, 2),
+        (capture_board(), -320, Bound::Upper, 18, true, 2),
+        (capture_board(), 320, Bound::Lower, 18, true, 2),
+        (attacked_board(), 320, Bound::Exact, 18, false, 2),
+        (bare_kings(), 320, Bound::Exact, 40, false, 3),
     ] {
-        let mut board = minase_core::parse_sfen(sfen).unwrap();
         let key = material_key(&board);
         let eval = evaluate(nnue, &board);
         let score = eval + delta;
@@ -105,31 +123,35 @@ fn correction_negamax_update_conditions() {
                 .any(Option::is_some),
             capture
         );
-        assert_eq!(royal_under_attack(&board), sfen == ATTACKED);
+        assert_eq!(royal_under_attack(&board), board == attacked_board());
         // 初期の固定小数点値18944に深さ2の重み74/1024を適用する。
         // 差+320なら41255、差−320なら−6105となり、1024で0方向へ丸める。
         assert_eq!(
             searcher.correction.read(Color::Black, key),
             expected,
-            "{sfen}, {delta}, {bound:?}, {depth}"
+            "{board:?}, {delta}, {bound:?}, {depth}"
         );
     }
 }
 
 #[test]
 fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
+    assert_eq!(params::correction_weight(), 37, "数値例の前提");
+    assert_eq!(params::correction_cap(), 220, "数値例の前提");
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let nnue = test_nnue();
-    for (score, update) in [
-        (MATE_THRESHOLD, false),
-        (-MATE_THRESHOLD, false),
-        (MATE - 1, false),
-        (-MATE + 1, false),
-        (29_486, true),
-        (-29_486, true),
+    for (score, expected) in [
+        (MATE_THRESHOLD, 18),
+        (-MATE_THRESHOLD, 18),
+        (MATE - 1, 18),
+        (-MATE + 1, 18),
+        (29_486, 220),
+        (-29_486, -220),
     ] {
         let stop = AtomicBool::new(false);
-        let shared = shared(&stop);
-        let mut board = minase_core::parse_sfen(QUIET).unwrap();
+        let clock = ManualClock::new(Duration::ZERO);
+        let shared = shared(&stop, &clock);
+        let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         let rules = MoveRules::standard();
         let mut moves = Vec::new();
@@ -163,18 +185,22 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             Some(score),
             "article_31_r1 score={score}"
         );
-        let before = 64 * 8 * params::correction_weight() / 1024;
-        let after = searcher.correction.read(Color::Black, key);
-        if update {
-            assert_ne!(after, before, "article_31_r1 score={score}");
-        } else {
-            assert_eq!(after, before, "score={score}");
-        }
+        // 初期値64×8×37=18944、読み出しは18944/1024→18。
+        // |静的評価|≤1000より、差の絶対値は28486以上。
+        // D=28486ならF=2125539、D=−28486ならF=−2090389となる。
+        // 上限220×1024=225280を越えるので、読み出しは±220に飽和する。
+        assert!(evaluate(nnue, &board).abs() <= 1000, "飽和する数値例の前提");
+        assert_eq!(
+            searcher.correction.read(Color::Black, key),
+            expected,
+            "score={score}"
+        );
     }
     for interrupted in [false, true] {
         let stop = AtomicBool::new(interrupted);
-        let shared = shared(&stop);
-        let mut board = minase_core::parse_sfen(QUIET).unwrap();
+        let clock = ManualClock::new(Duration::ZERO);
+        let shared = shared(&stop, &clock);
+        let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         if !interrupted {
             table.store(search_key(&board), 2, 320, Bound::Exact, None, 0);
@@ -202,23 +228,25 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             if interrupted { None } else { Some(320) }
         );
-        assert_eq!(
-            searcher.correction.read(Color::Black, key),
-            64 * 8 * params::correction_weight() / 1024
-        );
+        assert_eq!(searcher.correction.read(Color::Black, key), 18);
     }
 }
 
 #[test]
 fn correction_changes_futility_expansion_at_boundary() {
+    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
+    assert_eq!(params::correction_weight(), 37, "数値例の前提");
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    // 100×165/100=165。差4なら4×8×37/1024=1.15625→1。
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
     let mut nodes = Vec::new();
     for correction in [0, 1] {
-        let mut board = minase_core::parse_sfen(QUIET).unwrap();
+        let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(nnue, &board) + nnue.pawn_value() * params::futility_margin1() / 100;
+        let alpha = evaluate(nnue, &board) + 165;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
@@ -236,13 +264,9 @@ fn correction_changes_futility_expansion_at_boundary() {
             &mut butterfly_history,
             &mut capture_history,
         );
-        searcher.correction.update(
-            Color::Black,
-            material_key(&board),
-            correction * (1024 + 8 * params::correction_weight() - 1)
-                / (8 * params::correction_weight()),
-            8,
-        );
+        searcher
+            .correction
+            .update(Color::Black, material_key(&board), correction * 4, 8);
         assert_eq!(
             searcher.correction.read(Color::Black, material_key(&board)),
             correction
@@ -262,7 +286,8 @@ fn correction_changes_futility_expansion_at_boundary() {
 fn correction_search_move_and_null_move_propagate_material_keys() {
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
     let rules = MoveRules::standard();
     let table = TranspositionTable::new(1).unwrap();
     let mut changed = 0;
@@ -308,7 +333,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         }
     }
     assert!(changed > 0);
-    let mut board = minase_core::parse_sfen(CAPTURE).unwrap();
+    let mut board = capture_board();
     let root_key = material_key(&board);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);

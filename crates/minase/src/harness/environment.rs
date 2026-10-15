@@ -45,7 +45,12 @@ pub fn cpu_model() -> String {
 /// Linuxがオンラインと報告する論理CPU番号を展開する。
 #[cfg(target_os = "linux")]
 fn online_cpu_indices() -> Option<BTreeSet<usize>> {
-    let text = fs::read_to_string("/sys/devices/system/cpu/online").ok()?;
+    parse_online_cpu_indices(&fs::read_to_string("/sys/devices/system/cpu/online").ok()?)
+}
+
+/// sysfsのCPU一覧を展開し、逆順や整数でない範囲を拒否する。
+#[cfg(target_os = "linux")]
+fn parse_online_cpu_indices(text: &str) -> Option<BTreeSet<usize>> {
     let mut indices = BTreeSet::new();
     for range in text.trim().split(',') {
         let (start, end) = range
@@ -65,20 +70,28 @@ fn online_cpu_indices() -> Option<BTreeSet<usize>> {
 #[cfg(target_os = "linux")]
 pub fn physical_core_count() -> Option<usize> {
     let online = online_cpu_indices()?;
+    let topology = online
+        .into_iter()
+        .map(|cpu| {
+            let path = PathBuf::from(format!("/sys/devices/system/cpu/cpu{cpu}/topology"));
+            Some((
+                fs::read_to_string(path.join("physical_package_id")).ok()?,
+                fs::read_to_string(path.join("core_id")).ok()?,
+            ))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    count_physical_cores(&topology)
+}
+
+/// 同じパッケージ内の同じコアを1個として数える。欠測はNoneとする。
+#[cfg(target_os = "linux")]
+fn count_physical_cores(topology: &[(String, String)]) -> Option<usize> {
     let mut cores = BTreeSet::new();
-    for cpu in online {
-        let topology = PathBuf::from(format!("/sys/devices/system/cpu/cpu{cpu}/topology"));
-        let package = fs::read_to_string(topology.join("physical_package_id"))
-            .ok()?
-            .trim()
-            .parse::<u32>()
-            .ok()?;
-        let core = fs::read_to_string(topology.join("core_id"))
-            .ok()?
-            .trim()
-            .parse::<u32>()
-            .ok()?;
-        cores.insert((package, core));
+    for (package, core) in topology {
+        cores.insert((
+            package.trim().parse::<u32>().ok()?,
+            core.trim().parse::<u32>().ok()?,
+        ));
     }
     (!cores.is_empty()).then_some(cores.len())
 }
@@ -92,9 +105,13 @@ pub const fn physical_core_count() -> Option<usize> {
 /// Linuxの`MemTotal`から実メモリ容量を得る。
 #[cfg(target_os = "linux")]
 pub fn physical_memory_bytes() -> Option<u64> {
-    fs::read_to_string("/proc/meminfo")
-        .ok()?
-        .lines()
+    parse_physical_memory_bytes(&fs::read_to_string("/proc/meminfo").ok()?)
+}
+
+/// /proc/meminfoのMemTotalをKiBからbyteへ換算する。
+#[cfg(target_os = "linux")]
+fn parse_physical_memory_bytes(text: &str) -> Option<u64> {
+    text.lines()
         .find_map(|line| line.strip_prefix("MemTotal:"))?
         .split_whitespace()
         .next()?
@@ -147,23 +164,37 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn linux_host_resource_probe_reports_cores_and_memory() {
-        use procfs::Current;
-
-        // /procの独立した観測値で、sysfs由来のコア数の範囲とメモリの単位を検査する。
-        let cpus = procfs::CpuInfo::current().unwrap();
-        let cores = physical_core_count().expect("Linux must report physical cores");
-        assert!(
-            (1..=cpus.num_cores()).contains(&cores),
-            "physical={cores}, logical={}",
-            cpus.num_cores()
+    fn linux_host_resource_text_is_parsed_without_host_dependencies() {
+        assert_eq!(
+            parse_online_cpu_indices("0-2,4,6-7\n"),
+            Some(BTreeSet::from([0, 1, 2, 4, 6, 7]))
         );
-        let memory = physical_memory_bytes().expect("Linux must report MemTotal");
-        assert_eq!(memory, procfs::Meminfo::current().unwrap().mem_total);
-        assert_eq!(memory % 1024, 0, "MemTotal is reported in KiB");
-        assert!(
-            memory >= procfs::page_size(),
-            "physical memory must contain a page"
+        assert_eq!(
+            parse_online_cpu_indices("0-2,1-3"),
+            Some(BTreeSet::from([0, 1, 2, 3]))
         );
+        for invalid in ["", "2-1", "x", "0-1-2"] {
+            assert_eq!(parse_online_cpu_indices(invalid), None);
+        }
+        let topology = [("0\n", "0\n"), ("0", "0"), ("0", "1"), ("1", "0")]
+            .map(|(package, core)| (package.to_owned(), core.to_owned()));
+        assert_eq!(count_physical_cores(&topology), Some(3));
+        assert_eq!(count_physical_cores(&[]), None);
+        assert_eq!(count_physical_cores(&[("bad".into(), "0".into())]), None);
+        assert_eq!(count_physical_cores(&[("0".into(), "bad".into())]), None);
+        // 12345 KiB × 1024 = 12641280 byte。MemFreeではなくMemTotalを読む。
+        assert_eq!(
+            parse_physical_memory_bytes("MemFree: 12 kB\nMemTotal: 12345 kB\n"),
+            Some(12_641_280)
+        );
+        for missing in [
+            "",
+            "MemFree: 12345 kB",
+            "MemTotal:",
+            "MemTotal: bad kB",
+            "MemTotal: 18446744073709551615 kB",
+        ] {
+            assert_eq!(parse_physical_memory_bytes(missing), None);
+        }
     }
 }

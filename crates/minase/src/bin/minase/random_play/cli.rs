@@ -78,7 +78,6 @@ fn parse_positive_u32(text: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase_core::Rules;
 
     /// [`Arguments`]の既定値、必須引数、排他指定、および局番号の契約を検査する。
     #[test]
@@ -95,7 +94,7 @@ mod tests {
         let full = Arguments::try_parse_from([
             "random_play",
             "--rules",
-            "R1",
+            "engine-default",
             "--games",
             "30",
             "--seed",
@@ -136,10 +135,21 @@ mod tests {
 
     // RULES.md第33条: 正常なプリセットと不正な併記で共通parserへの接続を検査する。
     #[test]
-    fn rules_argument_resolves_presets_case_insensitively_and_rejects_combinations() {
+    fn article_33_rules_argument_resolves_presets_case_insensitively_and_rejects_combinations() {
         let preset = Arguments::try_parse_from(["random_play", "--rules", "LISHOGI"])
             .expect("the common rules parser must accept the preset");
-        assert_eq!(preset.rules.0, Vec::<RuleCode>::from(Rules::LISHOGI));
+        assert_eq!(
+            preset.rules.0,
+            vec![
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P0,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3
+            ]
+        );
         assert!(Arguments::try_parse_from(["random_play", "--rules", "lishogi,P1"]).is_err());
     }
 }

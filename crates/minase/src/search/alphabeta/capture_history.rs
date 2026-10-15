@@ -119,31 +119,3 @@ fn update(value: &mut i32, bonus: i32, limit: i32) {
     let bonus = i64::from(bonus);
     *value = (old + bonus - old * bonus.abs() / i64::from(limit)) as i32;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 重力式は上限の許容範囲の両端でも履歴値を±上限以内に保つ。
-    /// 加減点が上限に等しい場合は、その符号側の上限へ達する。
-    #[test]
-    fn capture_history_gravity_stays_bounded_at_limit_extremes() {
-        for limit in [4_096, 65_536] {
-            for old in -limit..=limit {
-                for bonus in [-limit, -limit + 1, -1, 0, 1, limit - 1, limit] {
-                    let mut value = old;
-                    update(&mut value, bonus, limit);
-                    assert!((-limit..=limit).contains(&value));
-                    if bonus == limit {
-                        assert_eq!(value, limit);
-                    } else if bonus == -limit {
-                        assert_eq!(value, -limit);
-                    }
-                }
-            }
-        }
-        let mut value = -10;
-        update(&mut value, 3, 100);
-        assert_eq!(value, -7, "負の積も0方向へ丸める");
-    }
-}

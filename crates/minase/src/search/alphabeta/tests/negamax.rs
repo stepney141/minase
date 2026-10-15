@@ -31,7 +31,7 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
 // 判断の理由は docs/adr/reduce-depth-by-one-without-tt-move.md にある。
 #[test]
 fn iir_preserves_depth_when_tt_has_a_move() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let position = bare_kings();
     let key = search_key(&position);
     let table = small_tt();
     run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
@@ -47,7 +47,7 @@ fn iir_preserves_depth_when_tt_has_a_move() {
 // 内部反復減深は要求深さ3以上に限り、記録手がなくても残り深さ2以下では減深しない。
 #[test]
 fn iir_preserves_depth_below_three() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let position = bare_kings();
     for depth in [1, 2] {
         let table = small_tt();
         run_negamax(&position, depth, -INFINITY, INFINITY, 0, &table);
@@ -61,7 +61,7 @@ fn iir_preserves_depth_below_three() {
 // stand-patに相当する記録手なしのエントリも内部反復減深の対象となり、要求深さ3を2へ減らす。
 #[test]
 fn iir_reduces_depth_when_tt_entry_has_no_move() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let position = bare_kings();
     let key = search_key(&position);
     let table = small_tt();
     table.store(key, 0, 28_000, Bound::Exact, None, 0);
@@ -95,7 +95,7 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
 // 置換表の打ち切りは減深前の要求深さで判定し、深さが足りる場合は内部反復減深より先に返す。
 #[test]
 fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let position = bare_kings();
     let key = search_key(&position);
     for stored_depth in [2, 3] {
         let table = small_tt();
@@ -322,7 +322,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: Some(1),
-            started: Instant::now(),
+            clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,
         };
         let table = small_tt();

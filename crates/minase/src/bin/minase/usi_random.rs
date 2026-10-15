@@ -255,18 +255,29 @@ mod tests {
     #[test]
     fn go_outside_an_active_game_returns_no_bestmove() {
         // 校正用エンジンにも主エンジンと同じライフサイクル契約を適用することを実装契約とする。
-        let input = concat!(
-            "go\n",
-            "position sfen 12/12/12/12/12/12/12/12/12/12/12/12 b - 1\n",
-            "go anything\n",
-            "position sfen 12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b - 1 ",
-            "moves 7g7d\n",
-            "go nodes 1\n",
-            "quit\n",
+        use minase_core::{
+            Color::{Black, White},
+            PieceKind::{King, Rook},
+            test_util::{position, sq},
+            to_sfen,
+        };
+        let empty = position(Black, &[]);
+        let capture = position(
+            Black,
+            &[
+                (sq(5, 8), White, King),
+                (sq(5, 5), Black, Rook),
+                (sq(0, 0), Black, King),
+            ],
+        );
+        let input = format!(
+            "go\nposition sfen {} - 1\ngo anything\nposition sfen {} - 1 moves 7g7d\ngo nodes 1\nquit\n",
+            to_sfen(&empty),
+            to_sfen(&capture)
         );
 
         assert_eq!(
-            run(input),
+            run(&input),
             concat!(
                 "info string error: go requires an active game\n",
                 "info string error: go requires at least one legal move\n",

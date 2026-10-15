@@ -12,7 +12,7 @@ mod summary;
 
 use clap::error::ErrorKind;
 pub(super) use cli::Arguments;
-use cli::{Mode, time_seed};
+use cli::time_seed;
 use manifest::run_manifest;
 use minase::harness::*;
 use minase::stats::{GSPRT_H1_ELO, GsprtDecision};
@@ -40,24 +40,8 @@ pub(super) fn main(arguments: Arguments) {
             .error(ErrorKind::ValueValidation, error)
             .exit();
     }
-    if arguments.resume.is_some()
-        && arguments.mode.as_ref().is_some_and(|mode| {
-            !matches!(
-                mode,
-                Mode::Gsprt {
-                    max_pairs: None,
-                    elo0,
-                    elo1,
-                } if elo0.is_some() || elo1.is_some()
-            )
-        })
-    {
-        crate::subcommand_command(&["match", "run"])
-            .error(
-                ErrorKind::ArgumentConflict,
-                "--resume only accepts gsprt hypothesis checks; use --target-pairs to extend a run",
-            )
-            .exit();
+    if let Err(error) = arguments.validate_resume_mode() {
+        error.exit();
     }
     if arguments.run_dir.is_some() && arguments.mode.is_none() {
         crate::subcommand_command(&["match", "run"])
@@ -112,8 +96,7 @@ pub(super) fn main(arguments: Arguments) {
                     .error(ErrorKind::ValueValidation, error)
                     .exit()
             });
-        let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
-        let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
+        let (candidate_limit, baseline_limit) = arguments.search_limits();
         let candidate = match resolve_player(
             arguments.candidate.clone(),
             candidate_limit,

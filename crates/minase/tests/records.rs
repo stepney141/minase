@@ -922,7 +922,8 @@ fn sorted_keys_are_unique_across_random_play_and_all_lion_power_moves() {
                 .any(|m| m.from == sq(5, 5) && m.mid.is_some() && m.to == m.from),
             "igui {kind:?}"
         );
-        // RULES.md第14条のじっとは、経由できる空升を要する。
+        // RULES.md第3条第13項のじっとは、経由できる空升を要する。
+        // 角鷹・飛鷲は第11条第6項〜第8項、獅子は第12条第9項・第10項に従う。
         // 捕獲用の駒を外した別局面で、3駒種それぞれのじっとを検査する。
         let mut builder = minase_core::PositionBuilder::new(Color::Black);
         for square in minase_core::Square::all().filter(|s| *s != target) {

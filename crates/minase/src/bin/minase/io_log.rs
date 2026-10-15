@@ -138,6 +138,28 @@ impl<W: Write, L: Write> Write for LoggedOutput<W, L> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn input_preserves_spaces_and_removes_only_crlf_or_lf() {
+        let log = IoLog::new(Instant::now(), Vec::new());
+        let (sender, receiver) = mpsc::channel();
+        read_input(
+            "usi  \t\r\nisready\r\n\r\n  未知の入力 \t\nquit\r".as_bytes(),
+            sender,
+            Some(&log),
+        );
+        let commands: Vec<_> = receiver.into_iter().map(Result::unwrap).collect();
+        assert_eq!(commands, ["usi", "isready", "", "  未知の入力", "quit"]);
+        let text = String::from_utf8(log.writer.into_inner().unwrap()).unwrap();
+        let records: Vec<_> = text
+            .split_terminator('\n')
+            .map(|line| line.split_once(" > ").unwrap().1)
+            .collect();
+        assert_eq!(
+            records,
+            ["usi  \t", "isready", "", "  未知の入力 \t", "quit\r"]
+        );
+    }
+
     /// 書き込みまたはフラッシュの失敗を再現するログの書き込み先。
     struct FailingLog {
         /// trueならフラッシュまで書き込みを受理する。

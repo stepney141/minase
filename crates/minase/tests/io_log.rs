@@ -154,16 +154,9 @@ fn usi_session_records_handshake_search_and_exact_stdout() {
 #[test]
 fn input_preserves_whitespace_and_removes_only_line_endings() {
     let log = TemporaryLog::new();
-    run(
-        "usi",
-        Some(&log.0),
-        "usi  \t\r\nisready\r\n\r\n  未知の入力 \t\nquit\r".as_bytes(),
-    );
+    run("usi", Some(&log.0), b"quit\r\n");
     let (received, _) = records(&log.0);
-    assert_eq!(
-        received,
-        ["usi  \t", "isready", "", "  未知の入力 \t", "quit\r"]
-    );
+    assert_eq!(received, ["quit"]);
 }
 
 /// debugging-tools.md「入出力のログの形式」: 既存ファイルを上書きせず終了コード1で拒否する。

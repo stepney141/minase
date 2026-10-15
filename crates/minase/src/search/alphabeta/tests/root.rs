@@ -213,42 +213,30 @@ fn aspiration_initial_window_uses_only_eligible_previous_scores() {
 
 #[test]
 fn aspiration_widens_only_the_failed_side() {
-    let growth = crate::search::alphabeta::params::aspiration_growth();
-    let delta1 = 50 * growth / 100;
-    let delta2 = delta1 * growth / 100;
-    let delta3 = delta2 * growth / 100;
-    let delta4 = delta3 * growth / 100;
-    let delta5 = delta4 * growth / 100;
+    assert_eq!(
+        crate::search::alphabeta::params::aspiration_growth(),
+        190,
+        "数値例の前提"
+    );
+    // 50×190/100=95、95×190/100→180、180×190/100=342、342×190/100→649、649×190/100→1233。
     let mut low = AspirationWindow::initial(5, Some(100), 50);
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, delta1));
+    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 95));
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-delta1, 150, delta2));
+    assert_eq!((low.alpha, low.beta, low.delta), (-95, 150, 180));
 
     let mut high = AspirationWindow::initial(5, Some(100), 50);
     high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, delta1));
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 95));
     high.widen_high();
-    assert_eq!(
-        (high.alpha, high.beta, high.delta),
-        (50, 200 + delta1, delta2)
-    );
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 295, 180));
 
     low.widen_high();
-    assert_eq!(
-        (low.alpha, low.beta, low.delta),
-        (-delta1, 150 + delta2, delta3)
-    );
+    assert_eq!((low.alpha, low.beta, low.delta), (-95, 330, 342));
     low.widen_low();
-    assert_eq!(
-        (low.alpha, low.beta, low.delta),
-        (-delta1 - delta3, 150 + delta2, delta4)
-    );
+    assert_eq!((low.alpha, low.beta, low.delta), (-437, 330, 649));
     low.widen_high();
-    assert_eq!(
-        (low.alpha, low.beta, low.delta),
-        (-delta1 - delta3, 150 + delta2 + delta4, delta5)
-    );
+    assert_eq!((low.alpha, low.beta, low.delta), (-437, 979, 1233));
     // 最小の拡大率でも詰み帯を越える回数だけ両側を広げる。
     for _ in 0..32 {
         low.widen_low();
@@ -375,7 +363,7 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         }
         completed_pv.clone_from(&searcher.pv[0]);
         let (_, prev) = completed.unwrap();
-        let delta = searcher.nnue.pawn_value() / 2;
+        let delta = aspiration_delta(searcher.nnue.pawn_value());
         let (_, score) = searcher
             .search_root(&position, &moves, 5, prev - delta, prev + delta)
             .unwrap();

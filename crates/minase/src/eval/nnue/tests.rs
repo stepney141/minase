@@ -1308,12 +1308,16 @@ fn diagnostic_views_select_both_output_rows_without_removing_lion() {
 /// 絶対升の番号、基準の王駒の優先順位と例外を仕様の値で固定する。
 #[test]
 fn half_kp_anchor_selection_and_dense_indices_follow_the_contract() {
-    use minase_core::Square;
-    for square in Square::all() {
-        assert_eq!(
-            square.dense_index(),
-            usize::from(square.rank()) * 12 + usize::from(square.file())
-        );
+    // Squareの密番号は左下を0として、1段12升の順に並ぶ。
+    for (square, expected) in [
+        (sq(0, 0), 0),
+        (sq(11, 0), 11),
+        (sq(0, 1), 12),
+        (sq(5, 7), 89),
+        (sq(0, 11), 132),
+        (sq(11, 11), 143),
+    ] {
+        assert_eq!(square.dense_index(), expected);
     }
     for side in Color::ALL {
         let king = PieceCode::new(side, PieceKind::King).unwrap();

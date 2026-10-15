@@ -1715,7 +1715,8 @@ mod tests {
         );
         assert!(output.is_empty());
 
-        // 正規化値は引数解析の単体テストで検証する。
+        // CECPは受理した時間値を応答に含めない。探索の所要時間からも厳密な
+        // 換算値は復元できないため、単位の解析は純粋関数の戻り値で検証する。
         assert_eq!(parse_level_base_milliseconds("5"), Some(300_000));
         assert_eq!(parse_level_base_milliseconds("0:30"), Some(30_000));
         assert_eq!(parse_level_base_milliseconds("5:30"), Some(330_000));

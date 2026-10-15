@@ -4,9 +4,9 @@ use core::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::Instant;
 
 use crate::eval::Nnue;
+use crate::search::alphabeta::clock::{MonotonicClock, SearchClock};
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult};
@@ -20,8 +20,8 @@ use crate::search::{HistoryTables, TranspositionTable};
 pub struct SearchHandle {
     /// 探索イベントの受信端。
     pub(super) events: mpsc::Receiver<SearchEvent>,
-    /// スレッド生成前に取得した起点。
-    pub(super) started: Instant,
+    /// 探索チームと同じ起点から測る時計。
+    pub(super) clock: Arc<dyn SearchClock>,
     /// 的中までのナノ秒数。先読み中はu64::MAX。
     pub(super) hit_ns: Arc<AtomicU64>,
     /// 探索チームと共有する外部停止フラグ。
@@ -39,7 +39,7 @@ impl SearchHandle {
     /// 先読みを的中の時点から計時する。重複した通知は無視する。
     pub fn ponderhit(&self) {
         let elapsed = self
-            .started
+            .clock
             .elapsed()
             .as_nanos()
             .min(u128::from(u64::MAX - 1)) as u64;
@@ -97,10 +97,36 @@ pub fn start_search(
     search_id: u64,
     threads: NonZeroUsize,
     tt: TranspositionTable,
-    mut histories: HistoryTables,
+    histories: HistoryTables,
     ponder: bool,
 ) -> SearchHandle {
-    let started = Instant::now();
+    start_search_with_clock(
+        nnue,
+        snapshot,
+        limits,
+        search_id,
+        threads,
+        tt,
+        histories,
+        ponder,
+        Arc::new(MonotonicClock::new()),
+    )
+}
+
+/// 指定した時計を探索チームと的中通知で共有して探索を開始する。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn start_search_with_clock(
+    nnue: Arc<Nnue>,
+    snapshot: SearchSnapshot,
+    limits: SearchLimits,
+    search_id: u64,
+    threads: NonZeroUsize,
+    tt: TranspositionTable,
+    mut histories: HistoryTables,
+    ponder: bool,
+    clock: Arc<dyn SearchClock>,
+) -> SearchHandle {
+    let thread_clock = Arc::clone(&clock);
     let hit_ns = Arc::new(AtomicU64::new(if ponder { u64::MAX } else { 0 }));
     let thread_hit_ns = Arc::clone(&hit_ns);
     let (sender, events) = mpsc::channel();
@@ -121,7 +147,7 @@ pub fn start_search(
             &tt,
             &mut histories,
             Some((&sender, search_id)),
-            started,
+            thread_clock.as_ref(),
             &thread_hit_ns,
             ponder,
         );
@@ -140,7 +166,7 @@ pub fn start_search(
         (tt, histories)
     });
     SearchHandle {
-        started,
+        clock,
         hit_ns,
         events,
         stop,
@@ -185,7 +211,7 @@ pub fn search(
         tt,
         histories,
         None,
-        Instant::now(),
+        &MonotonicClock::new(),
         &AtomicU64::new(0),
         false,
     )

@@ -165,7 +165,6 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use minase_core::Rules;
 
     use super::*;
 
@@ -208,14 +207,14 @@ mod tests {
             vec!["--io-log", "io.log"],
             vec!["--protocol", "usi", "--rules", "engine-default"],
         ] {
-            assert!(
-                Arguments::try_parse_from(
-                    std::iter::once("minase")
-                        .chain(args)
-                        .chain(["dev", "usi-random"])
-                )
-                .is_err()
-            );
+            let error = Arguments::try_parse_from(
+                std::iter::once("minase")
+                    .chain(args)
+                    .chain(["dev", "usi-random"]),
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
         }
     }
 
@@ -272,21 +271,36 @@ mod tests {
         // 既定値と自動判別を設けない。
         assert!(Arguments::try_parse_from(["minase"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
-        assert!(Arguments::try_parse_from(["minase", "--rules", "R1"]).is_err());
+        assert!(Arguments::try_parse_from(["minase", "--rules", "engine-default"]).is_err());
         // --protocolの値はusiとcecpの2値のみ。
         assert!(
-            Arguments::try_parse_from(["minase", "--protocol", "xboard", "--rules", "R1"]).is_err()
+            Arguments::try_parse_from([
+                "minase",
+                "--protocol",
+                "xboard",
+                "--rules",
+                "engine-default"
+            ])
+            .is_err()
         );
         assert!(
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "R1"]).is_ok()
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "engine-default"])
+                .is_ok()
         );
         assert!(
-            Arguments::try_parse_from(["minase", "--protocol", "cecp", "--rules", "R1"]).is_ok()
+            Arguments::try_parse_from([
+                "minase",
+                "--protocol",
+                "cecp",
+                "--rules",
+                "engine-default"
+            ])
+            .is_ok()
         );
     }
 
     #[test]
-    fn rules_argument_shares_the_wire_value_grammar() {
+    fn article_33_rules_argument_shares_the_wire_value_grammar() {
         // --rulesはUSIの規則オプションと同じ文法を[`minase_core::rules::parse_rule_set`]で解析する。
         // RULES.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
         let parse = |value: &str| {
@@ -296,7 +310,15 @@ mod tests {
 
         assert_eq!(
             parse("LISHOGI").unwrap(),
-            Vec::<RuleCode>::from(Rules::LISHOGI)
+            vec![
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P0,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3
+            ]
         );
     }
 }

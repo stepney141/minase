@@ -174,8 +174,26 @@ fn reset_discards_targets_from_partially_consumed_node() {
     let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let positions = [
-        minase_core::parse_sfen("12/2p1q7/2R1R7/12/12/12/12/12/12/12/12/11K b").unwrap(),
-        minase_core::parse_sfen("12/2q1p7/2R1R7/12/12/12/12/12/12/12/12/11K b").unwrap(),
+        position(
+            Color::Black,
+            &[
+                (sq(2, 10), Color::White, PieceKind::Pawn),
+                (sq(4, 10), Color::White, PieceKind::FreeKing),
+                (sq(2, 9), Color::Black, PieceKind::Rook),
+                (sq(4, 9), Color::Black, PieceKind::Rook),
+                (sq(11, 0), Color::Black, PieceKind::King),
+            ],
+        ),
+        position(
+            Color::Black,
+            &[
+                (sq(2, 10), Color::White, PieceKind::FreeKing),
+                (sq(4, 10), Color::White, PieceKind::Pawn),
+                (sq(2, 9), Color::Black, PieceKind::Rook),
+                (sq(4, 9), Color::Black, PieceKind::Rook),
+                (sq(11, 0), Color::Black, PieceKind::King),
+            ],
+        ),
     ];
     let mut buffers = QsearchBuffers::default();
     for first in &positions {

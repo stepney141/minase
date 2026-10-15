@@ -8,7 +8,7 @@ use crate::search::alphabeta::pruning::{late_move_limit, see_margin};
 use crate::search::{REPETITION_WIN, in_repetition_band};
 
 #[test]
-fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
+fn r1_repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
     // 設計書の勝ち29,743、最大256手、通常評価の上限28,999から定まる境界。
     // eval::nnue::testsのfinal_sum_is_clamped_once_and_linear_division_truncates_toward_zero
     // も、Nnueが返す最大・最小値を±28,999として検査する。
@@ -29,8 +29,8 @@ fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
 }
 
 #[test]
-fn repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
+    let board = bare_kings();
     let moves = legal_moves(&board);
     let tt_move = *moves.last().unwrap();
     assert_ne!(tt_move, moves[0]);
@@ -86,7 +86,7 @@ fn capture_board() -> (Position, Move) {
 }
 
 #[test]
-fn repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first() {
+fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first() {
     let (board, tt_move) = capture_board();
     for score in [REPETITION_WIN - 3, -(REPETITION_WIN - 3)] {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
@@ -117,7 +117,7 @@ fn repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first() {
 }
 
 #[test]
-fn repetition_band_protection_keeps_mate_tt_cutoffs() {
+fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
     let (board, tt_move) = capture_board();
     for (score, bound, alpha, beta) in [
         (29_990, Bound::Exact, -INFINITY, INFINITY),
@@ -144,8 +144,8 @@ fn repetition_band_protection_keeps_mate_tt_cutoffs() {
 }
 
 #[test]
-fn repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+fn r1_repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
+    let board = bare_kings();
     for sign in [-1, 1] {
         let table = small_tt();
         table.store(search_key(&board), 32, sign * 29_744, Bound::Exact, None, 5);
@@ -161,7 +161,7 @@ fn repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
 }
 
 #[test]
-fn repetition_band_is_not_reused_after_only_game_history_changes() {
+fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
     let board = repetition_fixture();
     let mut repeated_child = board.clone();
     repeated_child.make_move_unchecked(repetition_move(), engine_rules());
@@ -196,7 +196,7 @@ fn repetition_band_is_not_reused_after_only_game_history_changes() {
 }
 
 #[test]
-fn repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
+fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
     let board = repetition_fixture();
     let mut child = board.clone();
     child.make_move_unchecked(repetition_move(), engine_rules());
@@ -219,8 +219,8 @@ fn repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
 }
 
 #[test]
-fn repetition_band_windows_disable_reverse_futility_and_razoring() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+fn r1_repetition_band_windows_disable_reverse_futility_and_razoring() {
+    let board = bare_kings();
     for depth in [1, 2] {
         for (alpha, beta) in [
             (-29_488, -29_487),
@@ -235,7 +235,7 @@ fn repetition_band_windows_disable_reverse_futility_and_razoring() {
 }
 
 #[test]
-fn repetition_band_windows_disable_futility_and_late_move_pruning() {
+fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
     let board = super::late_move::quiet_board();
     let moves = legal_moves(&board);
     assert!(moves.len() > late_move_limit(3) as usize);
@@ -261,7 +261,7 @@ fn repetition_band_windows_disable_futility_and_late_move_pruning() {
 }
 
 #[test]
-fn repetition_band_windows_disable_see_pruning() {
+fn r1_repetition_band_windows_disable_see_pruning() {
     let board = position(
         Color::Black,
         &[
@@ -309,7 +309,7 @@ fn repetition_band_windows_disable_see_pruning() {
 }
 
 #[test]
-fn repetition_band_loss_keeps_later_quiets_and_captures_eligible() {
+fn r1_repetition_band_loss_keeps_later_quiets_and_captures_eligible() {
     // 反復による勝敗の値を、静かな手と捕獲手が共有する枝刈り判定へ渡す。
     for score in [-30_000, -29_744, -29_743, -29_740, -29_487] {
         assert!(!can_prune_moves(score), "score={score}");
@@ -320,8 +320,15 @@ fn repetition_band_loss_keeps_later_quiets_and_captures_eligible() {
 }
 
 #[test]
-fn repetition_band_beta_disables_null_move() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+fn r1_repetition_band_beta_disables_null_move() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
     for beta in [-29_740, -29_487, 29_487, 29_740] {
@@ -347,7 +354,7 @@ fn repetition_band_beta_disables_null_move() {
 }
 
 #[test]
-fn repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
+fn r1_repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
     // 反復判定の実装前でも、null moveの結果に適用する制限は帯の境界で固定する。
     for score in [29_487, 29_740, 29_743, 29_744, 29_999] {
         assert_eq!(null_move_cutoff_score(score, 123), 123);
@@ -358,7 +365,7 @@ fn repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
 }
 
 #[test]
-fn repetition_band_normalizes_initial_and_widened_aspiration_edges() {
+fn r1_repetition_band_normalizes_initial_and_widened_aspiration_edges() {
     for distance in [49, 50, 51, 100] {
         let mut high = AspirationWindow::initial(5, Some(29_487 - distance), 50);
         let mut low = AspirationWindow::initial(5, Some(-29_487 + distance), 50);
@@ -381,8 +388,8 @@ fn repetition_band_normalizes_initial_and_widened_aspiration_edges() {
 }
 
 #[test]
-fn repetition_band_scores_do_not_update_correction_history() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+fn r1_repetition_band_scores_do_not_update_correction_history() {
+    let board = bare_kings();
     for score in [29_487, 29_740, 29_743, -29_487, -29_740, -29_743] {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
             with_root_searcher(&board, &[], |searcher| {

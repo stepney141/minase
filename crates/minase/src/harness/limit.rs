@@ -90,12 +90,40 @@ impl SearchLimit {
     }
 }
 
+/// 思考制限の構文エラー、または深さの範囲違反。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SearchLimitError {
+    /// 深さは1〜MAX_PLYでなければならない。
+    DepthOutOfRange { depth: u32 },
+    /// 整数または制限の構文が不正。
+    InvalidSyntax(String),
+}
+
+impl From<String> for SearchLimitError {
+    fn from(message: String) -> Self {
+        Self::InvalidSyntax(message)
+    }
+}
+
+impl std::fmt::Display for SearchLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DepthOutOfRange { depth } => {
+                write!(f, "search depth {depth} must be between 1 and {MAX_PLY}")
+            }
+            Self::InvalidSyntax(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for SearchLimitError {}
+
 /// `--each`などへ渡す思考制限を解析する。
 ///
 /// 文法は`depth=N[,nodes=M]`、`nodes=M`、`time=B+I[,byoyomi=ms]`である。
 /// 深さは1〜[`MAX_PLY`]、ノード数は1以上、時間の各値は0以上の整数ミリ秒とする。
 /// `B`は基本時間、`I`は加算時間であり、省略した秒読みは0となる。
-pub fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
+pub fn parse_search_limit(input: &str) -> Result<SearchLimit, SearchLimitError> {
     let mut fields = input.split(',');
     let first = fields.next().expect("split always returns one field");
     if let Some(value) = first.strip_prefix("time=") {
@@ -103,7 +131,7 @@ pub fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
             .split_once('+')
             .ok_or_else(|| "time limit must be 'time=<base_ms>+<inc_ms>'".to_owned())?;
         if increment_ms.contains('+') {
-            return Err("time limit must contain exactly one '+'".to_owned());
+            return Err("time limit must contain exactly one '+'".to_owned().into());
         }
         let base_ms = parse_nonnegative_u64(base_ms)?;
         let increment_ms = parse_nonnegative_u64(increment_ms)?;
@@ -118,7 +146,9 @@ pub fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
             .transpose()?
             .unwrap_or(0);
         if fields.next().is_some() {
-            return Err("limit has too many comma-separated fields".to_owned());
+            return Err("limit has too many comma-separated fields"
+                .to_owned()
+                .into());
         }
         return Ok(SearchLimit::Time(TimeControl {
             base_ms,
@@ -143,11 +173,15 @@ pub fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
         (None, Some(parse_positive_u64(value)?))
     } else {
         return Err(
-            "limit must be 'depth=N', 'nodes=M', 'depth=N,nodes=M', or 'time=B+I'".to_owned(),
+            "limit must be 'depth=N', 'nodes=M', 'depth=N,nodes=M', or 'time=B+I'"
+                .to_owned()
+                .into(),
         );
     };
     if fields.next().is_some() {
-        return Err("limit has too many comma-separated fields".to_owned());
+        return Err("limit has too many comma-separated fields"
+            .to_owned()
+            .into());
     }
     Ok(SearchLimit::Fixed { depth, nodes })
 }
@@ -181,10 +215,12 @@ pub fn parse_positive_u32(text: &str) -> Result<u32, String> {
 }
 
 /// 探索が扱える範囲の深さを解析する。
-fn parse_search_depth(text: &str) -> Result<u32, String> {
-    let depth = parse_positive_u32(text)?;
-    if depth > MAX_PLY {
-        return Err(format!("search depth must not exceed {MAX_PLY}"));
+fn parse_search_depth(text: &str) -> Result<u32, SearchLimitError> {
+    let depth = text
+        .parse::<u32>()
+        .map_err(|error| format!("invalid search depth '{text}': {error}"))?;
+    if depth == 0 || depth > MAX_PLY {
+        return Err(SearchLimitError::DepthOutOfRange { depth });
     }
     Ok(depth)
 }
@@ -235,6 +271,27 @@ mod tests {
                 nodes: Some(400)
             })
         );
+    }
+
+    /// parse_search_limitのdocに定める深さ1〜256の両端を検証する。
+    #[test]
+    fn search_depth_accepts_bounds_and_rejects_adjacent_values() {
+        assert_eq!(MAX_PLY, 256, "数値例の前提");
+        for (text, expected) in [("depth=1", 1), ("depth=256", 256)] {
+            assert_eq!(
+                parse_search_limit(text),
+                Ok(SearchLimit::Fixed {
+                    depth: Some(expected),
+                    nodes: None
+                })
+            );
+        }
+        for (text, depth) in [("depth=0", 0), ("depth=257", 257)] {
+            assert_eq!(
+                parse_search_limit(text),
+                Err(SearchLimitError::DepthOutOfRange { depth })
+            );
+        }
     }
 
     // 規範文書に明文がないため、文法に合致しない制限を拒否することを実装契約とする。

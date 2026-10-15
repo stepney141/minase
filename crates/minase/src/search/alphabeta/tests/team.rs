@@ -16,7 +16,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now(),
+            clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,
         };
         let completed = AtomicU64::new(0);
@@ -114,10 +114,6 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// Threads=1の固定ノード探索は、経過
-// 時間を除く結果、PV、Progress列、ノード数、停止理由が完全に一致する。
-// search_with_node_limit_is_deterministicが同じ観測を中盤局面で固定する。
-
 // ExternalStopはNodeLimitより
 // 優先する。開始時点で両方が成立し得る構成を直接チーム経路へ与える。
 #[test]
@@ -141,7 +137,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
         &table,
         &mut crate::search::HistoryTables::new(worker_count(4)),
         None,
-        Instant::now(),
+        &ManualClock::new(Duration::ZERO),
         &AtomicU64::new(0),
         false,
     );

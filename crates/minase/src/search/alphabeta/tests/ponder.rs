@@ -1,11 +1,17 @@
 //! 先読みを検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 
 // 予測完了時刻は探索開始からの累積時間に比例し、的中までの時間を引いて予算と比べる。
 // 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
 #[test]
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
+    assert_eq!(
+        crate::search::alphabeta::params::iteration_ratio(),
+        263,
+        "数値例の前提"
+    );
     let ms = Duration::from_millis;
     let ns = Duration::from_nanos;
     let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
@@ -144,7 +150,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
         &table,
         &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
         None,
-        Instant::now() - Duration::from_secs(10),
+        &ManualClock::new(Duration::from_secs(10)),
         &hit_ns,
         true,
     );
@@ -169,16 +175,18 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
 #[test]
 fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
     let (_sender, events) = mpsc::channel();
+    let clock = Arc::new(ManualClock::new(Duration::from_millis(300)));
     let handle = SearchHandle {
         events,
-        started: Instant::now() - Duration::from_millis(300),
+        clock: clock.clone(),
         hit_ns: Arc::new(AtomicU64::new(u64::MAX)),
         stop: Arc::new(AtomicBool::new(false)),
         thread: None,
     };
     handle.ponderhit();
     let first = handle.hit_ns.load(AtomicOrdering::Relaxed);
-    assert!(first >= 300_000_000 && first != u64::MAX);
+    assert_eq!(first, 300_000_000);
+    clock.set(Duration::from_millis(600));
     handle.ponderhit();
     assert_eq!(handle.hit_ns.load(AtomicOrdering::Relaxed), first);
     // 通常探索への通知は時間予算の起点を動かさない。
@@ -227,7 +235,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now() - ms(elapsed),
+            clock: &ManualClock::new(ms(elapsed)),
             hard_limit: Some(HardLimit {
                 duration: ms(400),
                 hit_ns: &hit_ns,
@@ -297,65 +305,117 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
         let (_, score) = searcher
             .search_iteration(&position, &legal_moves(&position), 5, Some(20_000))
             .unwrap();
-        assert!(score < 20_000 - searcher.nnue.pawn_value() / 2);
+        assert!(score < 20_000 - aspiration_delta(searcher.nnue.pawn_value()));
         let iteration = searcher.ponder_iteration.as_ref().unwrap();
         assert_eq!(iteration.started, started);
         assert!(iteration.stable);
     });
 }
 
-// 的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
-// 長い反復の開始直後に的中させ、hardまで走り切らずsoftで止まる配線を固定する。
+// 的中前の反復は最初の時計検査点で開始判定を当て直し、完了済みの深さを保つ。
+// 反復開始600 ms、的中1000 ms、hard 300 msなら、600×263=157800 > 1300×100。
 #[test]
 fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
-    let hard_ms = 300;
-    let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
-    // 反復開始Sから的中Hまでの遅延を1000msまで許容する。
-    // S×比 > (H+hard)×100 を満たすよう、S > (1000+hard)×100/(比−100) とする。
-    let minimum_elapsed = Duration::from_millis((1000 + hard_ms) * 100 / (ratio - 100) + 1);
+    assert_eq!(params::iteration_ratio(), 263, "数値例の前提");
     for threads in [1, 2] {
-        let handle = start_ponder(
-            SearchLimits::new(None, None, Some(hard_ms), None).unwrap(),
-            threads,
+        let clock = Arc::new(ManualClock::new(Duration::from_millis(600)));
+        let hit_ns = Arc::new(AtomicU64::new(u64::MAX));
+        let stop = AtomicBool::new(false);
+        let shared = SharedSearch {
+            external_stop: &stop,
+            team_stop: AtomicBool::new(false),
+            stop_reason: AtomicU8::new(0),
+            total_nodes: AtomicU64::new(0),
+            node_limit: None,
+            clock: clock.as_ref(),
+            hard_limit: Some(HardLimit {
+                duration: Duration::from_millis(300),
+                hit_ns: &hit_ns,
+            }),
+        };
+        let position = Position::initial();
+        let roots = legal_moves(&position);
+        let table = small_tt();
+        let completed_depth = AtomicU64::new(0);
+        let outcomes = run_worker_team(
+            &mut crate::search::HistoryTables::new(worker_count(threads)).workers,
+            &shared,
+            |worker_index, history| {
+                let mut captures = crate::search::alphabeta::capture_history::CaptureHistory::new();
+                let completed = run_auxiliary_worker(
+                    test_nnue(),
+                    &position,
+                    engine_rules(),
+                    SearchRepetition::R1 {
+                        consecutive_attacking_moves: [0; 2],
+                    },
+                    DRAW_SCORE,
+                    &roots,
+                    &[],
+                    1,
+                    worker_index.max(1),
+                    &shared,
+                    &table,
+                    history,
+                    &mut captures,
+                );
+                if worker_index != 0 {
+                    return completed;
+                }
+                assert_eq!(completed.result.depth, 1);
+                completed_depth.store(u64::from(completed.result.depth), AtomicOrdering::Relaxed);
+                let mut searcher = new_searcher(
+                    test_nnue(),
+                    &position,
+                    engine_rules(),
+                    SearchRepetition::R1 {
+                        consecutive_attacking_moves: [0; 2],
+                    },
+                    DRAW_SCORE,
+                    &[],
+                    &shared,
+                    &table,
+                    history,
+                    &mut captures,
+                );
+                searcher.ponder_iteration = Some(PonderIteration {
+                    started: clock.elapsed(),
+                    stable: false,
+                    checked: false,
+                    budget: TimeBudget {
+                        byoyomi_period: false,
+                        soft: Duration::from_millis(300),
+                        hard: Duration::from_millis(300),
+                    },
+                });
+                clock.set(Duration::from_millis(1000));
+                let (_sender, events) = mpsc::channel();
+                let notification = SearchHandle {
+                    events,
+                    clock: clock.clone(),
+                    hit_ns: Arc::clone(&hit_ns),
+                    stop: Arc::new(AtomicBool::new(false)),
+                    thread: None,
+                };
+                notification.ponderhit();
+                clock.set(Duration::from_millis(1010));
+                // 的中後も次の検査点までは続け、その検査点でhardを使い切らず止める。
+                searcher.nodes = STOP_CHECK_INTERVAL - 1;
+                assert!(searcher.enter_node());
+                assert!(!searcher.enter_node());
+                assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+                crate::search::alphabeta::deepening::main_worker_outcome(
+                    &searcher,
+                    completed.result,
+                    completed.pv,
+                )
+            },
         );
-        let mut completed_depth = 0;
-        loop {
-            let event = handle
-                .events()
-                .recv_timeout(Duration::from_secs(20))
-                .unwrap();
-            match event {
-                SearchEvent::Progress { depth, elapsed, .. } => {
-                    completed_depth = completed_depth.max(depth);
-                    if elapsed >= minimum_elapsed {
-                        break;
-                    }
-                }
-                event => panic!("ponder ended before hit: {event:?}"),
-            }
-        }
-        // 次の反復が開始済みになるまで進捗を観測する。新しい完了が来たら
-        // その反復から同じ間隔を取り直すため、時計の絶対値は仮定しない。
-        loop {
-            match handle.events().recv_timeout(Duration::from_millis(15)) {
-                Ok(SearchEvent::Progress { depth, .. }) => {
-                    completed_depth = completed_depth.max(depth)
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => break,
-                event => panic!("unexpected ponder event: {event:?}"),
-            }
-        }
-        let hit = Instant::now();
-        handle.ponderhit();
-        let (_, result) = event_reports(drain_raw(&handle));
-        assert_eq!(result.stop_reason, StopReason::SoftLimit);
-        assert!(result.depth >= completed_depth);
+        assert_eq!(shared.reason(), StopReason::SoftLimit);
         assert!(
-            hit.elapsed() < Duration::from_millis(hard_ms),
-            "post-hit elapsed: {:?}",
-            hit.elapsed()
+            u64::from(select_worker_outcome(&outcomes).result.depth)
+                >= completed_depth.load(AtomicOrdering::Relaxed)
         );
-        handle.join().unwrap();
     }
 }
 
@@ -377,7 +437,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now() - Duration::from_secs(1),
+            clock: &ManualClock::new(Duration::from_secs(1)),
             hard_limit: Some(HardLimit {
                 duration: Duration::from_millis(400),
                 hit_ns: &hit_ns,
@@ -496,7 +556,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
         &table,
         &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
         None,
-        Instant::now() - Duration::from_secs(1),
+        &ManualClock::new(Duration::from_secs(1)),
         &hit_ns,
         true,
     );
@@ -534,9 +594,9 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     stop_reason: AtomicU8::new(0),
                     total_nodes: AtomicU64::new(0),
                     node_limit: None,
-                    started: Instant::now()
-                        - ms(100_000)
-                        - if expired { budget.hard } else { ms(1) },
+                    clock: &ManualClock::new(
+                        ms(100_000) + if expired { budget.hard } else { ms(1) },
+                    ),
                     hard_limit: Some(HardLimit {
                         duration: budget.hard,
                         hit_ns: &hit_ns,
@@ -581,9 +641,8 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
 }
 
 // 4ワーカーの秒読み探索でも最善手と予想手は合法であり、時間は先読み的中から測る。
-// 実時間の検査では負荷による締切検出の遅延を許容する。
 #[test]
-fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
+fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_at_deadline() {
     for ponder in [false, true] {
         let initial = Position::initial();
         let limits = SearchLimits::new(
@@ -593,8 +652,8 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
             Some(ClockLimits::new(0, 0, 300, 0).unwrap()),
         )
         .unwrap();
-        let started = Instant::now();
-        let handle = crate::search::start_search(
+        let clock = Arc::new(ManualClock::new(Duration::ZERO));
+        let handle = start_search_with_clock(
             Arc::clone(shared_test_nnue()),
             snapshot_for(&initial),
             limits,
@@ -603,35 +662,32 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
             small_tt(),
             crate::search::HistoryTables::new(worker_count(4)),
             ponder,
+            clock.clone(),
         );
-        let origin = if ponder {
-            assert!(matches!(
-                handle
-                    .events()
-                    .recv_timeout(Duration::from_secs(5))
-                    .unwrap(),
-                SearchEvent::Progress { .. }
-            ));
-            let hit = Instant::now();
+        assert!(matches!(
+            handle
+                .events()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap(),
+            SearchEvent::Progress { .. }
+        ));
+        if ponder {
+            clock.set(Duration::from_millis(1000));
             handle.ponderhit();
-            hit
+            clock.set(Duration::from_millis(1270));
         } else {
-            started
-        };
+            clock.set(Duration::from_millis(270));
+        }
         let (_, result) = event_reports(drain_raw(&handle));
         handle.join().unwrap();
-        // 270 msの締切に、4096ノードごとの検査と負荷下の実行遅延700 msを許容する。
-        assert!(
-            origin.elapsed() <= Duration::from_millis(970),
-            "{:?}",
-            origin.elapsed()
+        assert_eq!(
+            result.elapsed,
+            Duration::from_millis(if ponder { 1270 } else { 270 })
         );
         assert!(matches!(
             result.stop_reason,
             StopReason::HardLimit | StopReason::SoftLimit
         ));
-        // 完了深さは負荷に依存するので、主変化の長さは契約にしない。
-        // 予想手は主変化が2手以上あるときだけ現れ、そのときも合法性を検査する。
         assert_eq!(result.pv[0], result.best_move);
         assert_pv_is_legal(&initial, &result.pv);
     }

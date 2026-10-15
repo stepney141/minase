@@ -1,6 +1,7 @@
 //! 時間管理を検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 
 // 時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
 // 残り時間と秒読みの合計が30 msを超えるとき、hardはその合計から30 msを引いた値以下になる。
@@ -80,7 +81,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        started: Instant::now() - Duration::from_millis(500),
+        clock: &ManualClock::new(Duration::from_millis(500)),
         hard_limit: Some(HardLimit {
             duration: budget.hard,
             hit_ns: &AtomicU64::new(0),
@@ -115,35 +116,42 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     assert!(root_moves.contains(&outcome.result.best_move));
 }
 
-// hardはノード周期の時計チェックで
-// 適用される。上限の許容幅はテスト環境定数であり規範値ではない。
-// 次の反復を開始するかどうかの判断との先着は実時間に依存するため停止理由は2値を許容する。
+// 固定時間に達した時計を渡すと、最初のノード検査点でhard limitとして止まる。
 #[test]
 fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let initial = Position::initial();
-    let handle = start(
+    let clock = Arc::new(ManualClock::new(Duration::from_millis(30)));
+    let handle = start_search_with_clock(
+        Arc::clone(shared_test_nnue()),
         snapshot_for(&initial),
         movetime_limits(30),
         61,
         DEFAULT_THREADS,
         small_tt(),
+        crate::search::HistoryTables::new(DEFAULT_THREADS),
+        false,
+        clock,
     );
     let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
-
-    // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
-    assert!(finished.elapsed <= Duration::from_millis(530));
-    // soft=hardのため、先に到達する検査点によって停止理由が変わる。
-    assert!(matches!(
-        finished.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
+    assert_eq!(finished.elapsed, Duration::from_millis(30));
+    assert_eq!(finished.stop_reason, StopReason::HardLimit);
+    assert_eq!(finished.depth, 0);
+    assert_eq!(finished.nodes, 0);
     assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
 // 深さ・ノード数・固定時間の併用では通常の時計予算を使う。
 #[test]
-fn excluded_clocks_preserve_numeric_budgets_and_iteration_gates() {
+fn excluded_clocks_preserve_numeric_budgets() {
+    assert_eq!(params::expected_plies(), 432, "数値例の前提");
+    assert_eq!(params::min_moves(), 88, "数値例の前提");
+    assert_eq!(params::increment_share(), 76, "数値例の前提");
+    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
+    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
+    // M=432/2=216、soft=60000/216+1000×76/100=277+760=1037 ms。
+    // hard=min(1037×451/100→4676,16200,59970)=4676 ms。固定時間とは各々小さい方を使う。
+    // R=0の秒読み1000 msは800 msを配分し、hardも800 ms。固定時間500 msなら双方500 ms。
     let ms = Duration::from_millis;
     for (name, remaining, increment, byoyomi, depth, nodes, movetime, soft, hard) in [
         ("clock only", 60000, 1000, 0, None, None, None, 1037, 4676),
@@ -242,47 +250,6 @@ fn excluded_clocks_preserve_numeric_budgets_and_iteration_gates() {
             );
         }
     }
-    // 予測比263%で、100msの予測は263ms。等号と1ns超過を固定する。
-    let budget = TimeBudget {
-        byoyomi_period: false,
-        soft: ms(263),
-        hard: ms(526),
-    };
-    for (elapsed, hit, stable, expected) in [
-        (ms(100), ms(0), true, true),
-        (ms(100) + Duration::from_nanos(1), ms(0), true, false),
-        (ms(200), ms(0), false, true),
-        (ms(200) + Duration::from_nanos(1), ms(0), false, false),
-        (ms(150), Duration::from_micros(131500), true, true),
-        (
-            ms(150) + Duration::from_nanos(1),
-            Duration::from_micros(131500),
-            true,
-            false,
-        ),
-        (ms(299), ms(300), false, true),
-    ] {
-        assert_eq!(
-            should_start_next_iteration(elapsed, hit, budget, stable),
-            expected,
-            "elapsed={elapsed:?}, hit={hit:?}, stable={stable}"
-        );
-    }
-    // 不安定時は経過時間がsoft未満であることも必要。
-    let budget = TimeBudget {
-        byoyomi_period: false,
-        soft: ms(100),
-        hard: ms(1000),
-    };
-    for hit in [ms(0), ms(100)] {
-        for (since_hit, expected) in [(ms(99), true), (ms(100), false), (ms(101), false)] {
-            assert_eq!(
-                should_start_next_iteration(hit + since_hit, hit, budget, false),
-                expected,
-                "hit={hit:?}, since_hit={since_hit:?}"
-            );
-        }
-    }
 }
 
 // 秒読み期は加算、手数、最善手の安定性によらず、経過時間が締切max(1 ms, 秒読み−余裕)未満なら次を始める。
@@ -328,6 +295,17 @@ fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
 // 秒読みつき時計では、指定余裕を安全上限から引き、予算の下限は1msとする。
 #[test]
 fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
+    assert_eq!(params::expected_plies(), 432, "数値例の前提");
+    assert_eq!(params::min_moves(), 88, "数値例の前提");
+    assert_eq!(params::increment_share(), 76, "数値例の前提");
+    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
+    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
+    // ply=0: M=216、277+760+80=1117、1117×451/100→5037 ms。
+    // ply=36: M=198、303+760+800=1863、1863×451/100→8402 ms。
+    // 余裕60000では安全上限61000−60000=1000 ms。
+    // R=B=100: soft_raw=0+760+8=768、残り上限27+80=107 ms。
+    // 余裕150なら200−150=50 ms、200以上なら下限1 ms。R=B=1はsoft_raw=0、hard=1 ms。
+    // u64::MAXの3項は、softとhardの最終変換でともにu64::MAXへ飽和する。
     for (remaining, increment, byoyomi, ply, margin, soft, hard) in [
         (60000, 1000, 1000, 0, 0, 1117, 5037),
         (60000, 1000, 1000, 0, 30, 1117, 5037),
@@ -388,7 +366,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             node_limit: None,
-            started: Instant::now() - Duration::from_secs(if ponder { 105 } else { 5 }),
+            clock: &ManualClock::new(Duration::from_secs(if ponder { 105 } else { 5 })),
             hard_limit: Some(HardLimit {
                 duration: budget.hard,
                 hit_ns: &hit_ns,

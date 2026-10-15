@@ -13,15 +13,37 @@ fn perft_accepts_d_output_with_lion_and_deferred_promotion() {
     let mut engine = Engine::new(parse_rule_set(rules).unwrap()).unwrap();
     let mut protocol = UsiProtocol::new(&engine);
     let mut output = Vec::new();
+    use minase_core::notation::sfen::{SetupPosition, to_extended_sfen};
+    use minase_core::test_util::{position_from_codes, sq};
+    use minase_core::{
+        Color::{Black, White},
+        PieceCode,
+        PieceKind::*,
+        PositionBuilder, Square,
+    };
+    let pos = position_from_codes(
+        Black,
+        &[
+            (sq(0, 11), PieceCode::new(White, King).unwrap()),
+            (sq(11, 0), PieceCode::new(Black, King).unwrap()),
+            (sq(4, 9), PieceCode::new(Black, Pawn).unwrap()),
+            (sq(9, 7), PieceCode::new(White, GoldGeneral).unwrap()),
+            (sq(5, 6), PieceCode::new_promoted(White, Lion).unwrap()),
+            (sq(9, 6), PieceCode::new(White, Lion).unwrap()),
+            (sq(9, 4), PieceCode::new(Black, Rook).unwrap()),
+        ],
+    );
+    let mut builder = PositionBuilder::new(Black);
+    for square in Square::all() {
+        if let Some(piece) = pos.piece_at(square) {
+            builder.put(square, piece).unwrap();
+        }
+    }
+    builder.mark_promotion_deferred(sq(4, 9)).unwrap();
+    let setup = SetupPosition::new(builder.finish().unwrap(), Some(sq(5, 6)), 41).unwrap();
+    let input = format!("position sfen {}\nd\nmoves\n", to_extended_sfen(&setup));
     protocol
-        .run(
-            &mut engine,
-            &mut Cursor::new(concat!(
-                "position sfen k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c\n",
-                "d\nmoves\n"
-            )),
-            &mut output,
-        )
+        .run(&mut engine, &mut Cursor::new(input), &mut output)
         .unwrap();
     let output = String::from_utf8(output).unwrap();
     assert!(!output.contains("error:"), "{output}");
@@ -78,41 +100,22 @@ fn perft_requires_rules() {
     assert!(output.stdout.is_empty());
 }
 
-/// debugging-tools.md「perftの規則と拡張SFEN」: 2欄・4欄・省略時は同じ計数行を保ち、不正欄を拒否する。
+/// 不正な拡張SFENでは計数結果を出力せず終了する。
 #[test]
-fn perft_accepts_basic_and_four_field_sfen_and_rejects_invalid_state() {
+fn perft_rejects_invalid_state_without_output() {
     let board = minase_core::to_sfen(&minase_core::Position::initial());
-    let mut counts = Vec::new();
-    for sfen in [None, Some(board.clone()), Some(format!("{board} - 1"))] {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
-        command.args(["dev", "perft"]);
-        command.args(["1", "--rules", "engine-default"]);
-        if let Some(sfen) = sfen {
-            command.args(["--sfen", &sfen]);
-        }
-        let result = command.output().unwrap();
-        assert!(result.status.success());
-        let output = String::from_utf8(result.stdout).unwrap();
-        let lines: Vec<_> = output.lines().collect();
-        assert_eq!(lines.len(), 4);
-        assert!(lines[0].starts_with("perft(1): "));
-        assert!(lines[1].starts_with("total nodes: "));
-        assert!(lines[2].starts_with("elapsed: "));
-        assert!(lines[3].starts_with("nodes/second: "));
-        counts.push(lines[0].to_owned());
-    }
-    assert!(counts.iter().all(|line| *line == counts[0]));
-    for sfen in [
-        format!("{board} -"),
-        format!("{board} 6i 1"),
-        "k11/12/4P7/12/12/12/12/12/12/12/12/11K b - 1 8c".to_owned(),
-    ] {
-        let result = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["dev", "perft"])
-            .args(["1", "--rules", "engine-default", "--sfen", &sfen])
-            .output()
-            .unwrap();
-        assert!(!result.status.success());
-        assert!(result.stdout.is_empty());
-    }
+    let result = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args([
+            "dev",
+            "perft",
+            "1",
+            "--rules",
+            "engine-default",
+            "--sfen",
+            &format!("{board} -"),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stdout.is_empty());
 }

@@ -14,7 +14,8 @@ use crate::harness::records::{
 };
 use crate::harness::referee::ponder_move;
 use minase_core::notation::usi;
-use minase_core::{Color, Game, GameStatus, Move, MoveGenerator, Rules};
+use minase_core::test_util::{position as test_position, sq};
+use minase_core::{Color, Game, GameStatus, Move, MoveGenerator, PieceKind, Rules};
 use std::num::NonZeroU64;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -433,8 +434,14 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
             u64::from(prediction.is_some())
         );
     }
-    let board = minase_core::notation::sfen::parse_sfen("12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b")
-        .unwrap();
+    let board = test_position(
+        Color::Black,
+        &[
+            (sq(5, 8), Color::White, PieceKind::King),
+            (sq(5, 5), Color::Black, PieceKind::Rook),
+            (sq(0, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let game = Game::from_position(Rules::ENGINE_DEFAULT, board);
     assert!(matches!(ponder_move(&game, "7g7d"), Ok((_, false))));
     let a = fake(vec![], "time=1000+0");
@@ -619,9 +626,15 @@ fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
 // [`super::ponder`]の契約を検査する。
 #[test]
 fn ponder_stops_on_opponent_terminal_move_and_never_starts_after_terminal_move() {
-    let board =
-        minase_core::notation::sfen::parse_sfen("12/12/12/p4k6/12/12/5R6/12/12/12/12/K11 w")
-            .unwrap();
+    let board = test_position(
+        Color::White,
+        &[
+            (sq(0, 8), Color::White, PieceKind::Pawn),
+            (sq(5, 8), Color::White, PieceKind::King),
+            (sq(5, 5), Color::Black, PieceKind::Rook),
+            (sq(0, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let game = Game::from_position(Rules::ENGINE_DEFAULT, board);
     let a = fake(
         vec![

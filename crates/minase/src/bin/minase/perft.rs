@@ -32,14 +32,17 @@ fn parse_rules(input: &str) -> Result<Rules, String> {
 }
 
 /// 2欄SFENまたは拡張SFENから着手生成に必要な状態を復元する。
-fn parse_position(input: &str, rules: Rules) -> Result<Position, String> {
+fn parse_position(
+    input: &str,
+    rules: Rules,
+) -> Result<Position, minase_core::notation::sfen::SfenError> {
+    use minase_core::{PositionBuildError, notation::sfen::SfenError};
     if input.split_whitespace().count() == 2 {
-        parse_sfen(input).map_err(|error| error.to_string())
+        parse_sfen(input)
     } else {
-        parse_extended_sfen(input, rules.moves)
-            .map_err(|error| error.to_string())?
+        parse_extended_sfen(input, rules.moves)?
             .restore_position()
-            .map_err(|error| error.to_string())
+            .map_err(|error| SfenError::PositionBuild(PositionBuildError::InvalidPosition(error)))
     }
 }
 
@@ -180,4 +183,62 @@ pub(super) fn main(arguments: Arguments) {
     let elapsed = start.elapsed();
     print_counts(&counts);
     print_summary(counts.last().copied().unwrap_or(1), elapsed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minase_core::{
+        Color, PieceKind,
+        notation::sfen::SfenError,
+        test_util::{position, sq},
+        to_sfen,
+    };
+
+    #[test]
+    fn perft_requires_depth_and_rules() {
+        for args in [
+            vec!["perft"],
+            vec!["perft", "1"],
+            vec!["perft", "--rules", "engine-default"],
+        ] {
+            assert_eq!(
+                Arguments::try_parse_from(args).err().unwrap().kind(),
+                ErrorKind::MissingRequiredArgument
+            );
+        }
+        assert!(Arguments::try_parse_from(["perft", "1", "--rules", "engine-default"]).is_ok());
+    }
+
+    #[test]
+    fn parse_position_accepts_basic_and_extended_and_rejects_invalid_state() {
+        let rules = Rules::ENGINE_DEFAULT;
+        let initial = Position::initial();
+        let board = to_sfen(&initial);
+        assert_eq!(parse_position(&board, rules).unwrap(), initial);
+        assert_eq!(
+            parse_position(&format!("{board} - 1"), rules).unwrap(),
+            initial
+        );
+        assert_eq!(
+            parse_position(&format!("{board} -"), rules).unwrap_err(),
+            SfenError::InvalidExtendedFieldCount { found: 3 }
+        );
+        assert_eq!(
+            parse_position(&format!("{board} 6i 1"), rules).unwrap_err(),
+            SfenError::LionCaptureOccupiedBySideToMove { square: sq(6, 3) }
+        );
+        let pos = position(
+            Color::Black,
+            &[
+                (sq(0, 11), Color::White, PieceKind::King),
+                (sq(11, 0), Color::Black, PieceKind::King),
+                (sq(4, 9), Color::Black, PieceKind::Pawn),
+            ],
+        );
+        assert_eq!(
+            parse_position(&format!("{} - 1 8c", to_sfen(&pos)), rules).unwrap_err(),
+            SfenError::PromotionDeferredRequiresRule
+        );
+    }
 }

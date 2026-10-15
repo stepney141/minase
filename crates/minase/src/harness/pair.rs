@@ -309,10 +309,12 @@ mod tests {
             plies: 12,
             outcome: resignation_win_black,
         };
-        assert_eq!(
-            played_game_text(resigned),
-            "plies=12 result=win winner=Black reason=Resigned"
-        );
+        // played_game_textが表示する対局結果の手数・勝敗・理由を確認する。
+        // 欄の順序と空白は外部契約ではない。
+        let text = played_game_text(resigned);
+        for field in ["plies=12", "result=win", "winner=Black", "reason=Resigned"] {
+            assert!(text.split_whitespace().any(|word| word == field), "{text}");
+        }
         let mut resignation_failures = FailureCounts::default();
         record_game_failure(resigned, &mut resignation_failures);
         assert_eq!(resignation_failures, FailureCounts::default());

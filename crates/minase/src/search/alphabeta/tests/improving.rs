@@ -46,7 +46,7 @@ fn improving_compares_static_evaluations_from_the_current_side() {
 // 比較区間が存在しない場合とnull moveを含む場合は追加の枝刈りを行わない。
 #[test]
 fn improving_preserves_margins_without_two_real_plies() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
         let static_eval = evaluate(searcher.nnue, &board);
         for ply in [0, 1] {
@@ -72,16 +72,24 @@ fn improving_preserves_margins_without_two_real_plies() {
 // 縮めたfutility余裕値の境界では、良化していないノードだけ後続の静かな手を刈る。
 #[test]
 fn futility_prunes_quiets_only_when_not_improving() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let worse = minase_core::parse_sfen("k11/12/12/12/12/5r6/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
+    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
+    // 100×165/100=165、165×71/100=117.15→117。
+    let board = bare_kings();
+    let worse = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 6), Color::White, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let moves = legal_moves(&board);
     for improving in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let static_eval = evaluate(searcher.nnue, &board);
-            let margin = searcher.nnue.pawn_value() * params::futility_margin1() / 100;
-            let reduced = margin * params::non_improving_futility1() / 100;
-            assert!(reduced < margin);
-            let alpha = static_eval + reduced;
+            let alpha = static_eval + 117;
             if improving {
                 assert!(evaluate(searcher.nnue, &worse) < static_eval);
                 searcher.accumulators[0] = searcher.nnue.refresh_accumulator(&worse);
@@ -112,18 +120,18 @@ fn futility_prunes_quiets_only_when_not_improving() {
 // 良化判定にはcorrection historyの補正を含めず、補正前の静的評価を比べる。
 #[test]
 fn improving_uses_raw_evaluation_before_correction() {
-    let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
+    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
+    // 100×165/100=165、165×71/100=117.15→117。
+    let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
         let side = board.side_to_move();
         let key = material_key(&board);
         searcher.correction.update(side, key, 100, 8);
         let correction = searcher.correction.read(side, key);
         assert!(correction > 0);
-        let alpha = evaluate(searcher.nnue, &board)
-            + correction
-            + searcher.nnue.pawn_value() * params::futility_margin1() / 100
-                * params::non_improving_futility1()
-                / 100;
+        let alpha = evaluate(searcher.nnue, &board) + correction + 117;
         let score = searcher
             .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
             .unwrap();
