@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn gold_steps_and_captures_for_both_sides_and_corners() {
+fn article_7_9_gold_steps_and_captures_for_both_sides_and_corners() {
     // RULES.md第7条、第9条に基づき、金将の1升移動、捕獲、および盤端を逆生成する。
     for color in Color::ALL {
         for corner in [false, true] {
@@ -28,7 +28,7 @@ fn gold_steps_and_captures_for_both_sides_and_corners() {
 }
 
 #[test]
-fn rook_slides_short_long_and_captures() {
+fn article_7_9_rook_slides_short_long_and_captures() {
     // 第7・9条: 飛車は縦横に走り、到達升の相手駒を取れるが斜めには動けない。
     for distance in [1, 4] {
         for capture in [false, true] {
@@ -48,7 +48,7 @@ fn rook_slides_short_long_and_captures() {
 }
 
 #[test]
-fn fixed_jumps_ignore_intermediate_occupancy_and_capture_at_destination() {
+fn article_7_6_7_and_9_fixed_jumps_ignore_intermediate_occupancy_and_capture_at_destination() {
     // 第7条6・7項、第9条: 麒麟の縦横2升跳びは中間の駒を残し、到達升だけで捕獲する。
     for blocker in [None, Some(Color::Black)] {
         for capture in [false, true] {

@@ -31,7 +31,7 @@ fn restored_capture(target: &Position, restored: PieceCode) -> Position {
 
 /// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第5条、第9条により、歩兵12枚が残ると歩兵も成金も復元できない。
 #[test]
-fn full_pawn_stock_prevents_restoring_pawn_origin() {
+fn article_5_9_full_pawn_stock_prevents_restoring_pawn_origin() {
     let target = pawn_stock_target(12);
     let result = checked(MoveRules::standard(), &target);
     let native_gold = PieceCode::new(Color::White, PieceKind::GoldGeneral).unwrap();
@@ -46,7 +46,7 @@ fn full_pawn_stock_prevents_restoring_pawn_origin() {
 
 /// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第9条により、不足する1枚の歩兵は不成と成金の両方を取り得る。
 #[test]
-fn missing_pawn_restores_both_unpromoted_and_promoted_forms() {
+fn article_9_missing_pawn_restores_both_unpromoted_and_promoted_forms() {
     let target = pawn_stock_target(11);
     let result = checked(MoveRules::standard(), &target);
     for restored in [

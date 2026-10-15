@@ -42,7 +42,21 @@ const PROMOTED_ONLY_KINDS: [PieceKind; 8] = [
 
 // 駒種は初期21種＋成駒のみ8種の29種である(第4条3項・第10条)。
 #[test]
-fn article_4_3_piece_kinds_are_unique() {
+fn article_4_3_piece_kinds_are_the_disjoint_union_of_initial_and_promoted_only_kinds() {
+    use std::collections::HashSet;
+
+    let initial: HashSet<_> = INITIAL_KINDS.into_iter().collect();
+    let promoted_only: HashSet<_> = PROMOTED_ONLY_KINDS.into_iter().collect();
+    assert_eq!(initial.len(), 21);
+    assert_eq!(promoted_only.len(), 8);
+    assert!(initial.is_disjoint(&promoted_only));
+    assert_eq!(
+        initial
+            .union(&promoted_only)
+            .copied()
+            .collect::<HashSet<_>>(),
+        PieceKind::ALL.into_iter().collect::<HashSet<_>>()
+    );
     // ALLに重複はない。
     for (index, kind) in PieceKind::ALL.iter().enumerate() {
         assert!(
@@ -167,7 +181,7 @@ fn piece_codes_are_injective_over_owner_kind_and_promotion() {
 
 // 第10条。成駒専用8種は未成の盤上駒コードとして構築できない。
 #[test]
-fn promoted_only_kinds_have_no_unpromoted_piece_code() {
+fn article_10_promoted_only_kinds_have_no_unpromoted_piece_code() {
     for color in Color::ALL {
         for kind in PROMOTED_ONLY_KINDS {
             assert_eq!(PieceCode::new(color, kind), None, "{color:?} {kind:?}");

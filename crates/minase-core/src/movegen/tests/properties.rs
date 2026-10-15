@@ -402,7 +402,7 @@ fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) -> (usize, usize
 /// [`Move`]の正準形と[`MoveGenerator::generate_moves`]の契約を検査する。
 /// 併せてRULES.md第6条、第7条、第17条、第18条の性質を到達可能局面で検査する。
 #[test]
-fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
+fn article_6_7_17_18_mc_canonical_move_invariants_hold_in_seeded_playouts() {
     let standard = playout_canonical(MoveRules::standard(), 0x5255_4c45_5345_5401, 96);
     let modified = playout_canonical(
         MoveRules {

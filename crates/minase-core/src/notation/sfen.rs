@@ -663,28 +663,52 @@ mod tests {
     // docs/research/protocols/usi-lishogi.md「座標系」の変換式に従う。
     #[test]
     fn square_names_follow_lishogi_coordinates_and_round_trip_all_144_squares() {
-        for square in Square::all() {
-            // 筋番号 = 12 − 内部file、段英字 = 'a' + (11 − 内部rank)となる
-            // （docs/research/protocols/usi-lishogi.md「座標系」）。
-            let expected = format!(
-                "{}{}",
-                BOARD_FILES - square.file(),
-                char::from(b'a' + (BOARD_RANKS - 1 - square.rank()))
+        use std::collections::HashSet;
+
+        let empty = Position::empty(Color::Black);
+        for (square, name) in [
+            (sq(0, 0), "12l"),
+            (sq(11, 0), "1l"),
+            (sq(0, 11), "12a"),
+            (sq(11, 11), "1a"),
+            (sq(5, 5), "7g"),
+            (sq(8, 8), "4d"),
+            (sq(2, 0), "10l"),
+        ] {
+            let setup = SetupPosition::new(empty.clone(), Some(square), 1).unwrap();
+            let expected = format!("{EMPTY_BOARD} b {name} 1 -");
+            assert_eq!(to_extended_sfen(&setup), expected);
+            assert_eq!(
+                parse_extended_sfen(&expected, MoveRules::standard()),
+                Ok(setup)
             );
-            assert_eq!(square_to_text(square), expected);
-            assert_eq!(parse_square(&expected), Some(square));
         }
 
-        // 12aは先手から見て左上隅であり、2桁筋は1桁筋と混同されない
-        // （docs/research/protocols/usi-lishogi.md「座標系」）。
-        assert_eq!(parse_square("12a"), Some(sq(0, 11)));
-        assert_eq!(parse_square("1a"), Some(sq(11, 11)));
-        assert_eq!(parse_square("10l"), Some(sq(2, 0)));
+        let mut names = HashSet::new();
+        for square in Square::all() {
+            let setup = SetupPosition::new(empty.clone(), Some(square), 1).unwrap();
+            let text = to_extended_sfen(&setup);
+            assert_eq!(parse_extended_sfen(&text, MoveRules::standard()), Ok(setup));
+            assert!(names.insert(text.split_whitespace().nth(2).unwrap().to_owned()));
+        }
+        assert_eq!(names.len(), 144);
 
         // 筋0・筋13以上・段m以降などは升名として不正。
-        for invalid in ["0a", "13a", "7m", "a1", "7", "", "01a"] {
-            assert_eq!(parse_square(invalid), None, "{invalid}");
+        for invalid in ["0a", "13a", "7m", "a1", "7", "01a"] {
+            assert_eq!(
+                parse_extended_sfen(
+                    &format!("{EMPTY_BOARD} b {invalid} 1 -"),
+                    MoveRules::standard()
+                ),
+                Err(SfenError::InvalidLionCaptureSquare),
+                "{invalid}"
+            );
         }
+        // 空の欄は空白で分割されて消えるため、公開構文では欄数不足となる。
+        assert_eq!(
+            parse_extended_sfen(&format!("{EMPTY_BOARD} b  1"), MoveRules::standard()),
+            Err(SfenError::InvalidExtendedFieldCount { found: 3 })
+        );
     }
 
     // 基底駒21文字と先後の大小文字を検査する

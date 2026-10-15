@@ -210,7 +210,7 @@ mod tests {
     // 逐次歩行と一致する。盤端までの升を進行順に含み、最初の駒がある升を含んだ
     // 直後に打ち切られ、その先の升を含まない。
     #[test]
-    fn sliding_control_matches_a_stepwise_walk_with_blockers() {
+    fn article_7_4_5_sliding_control_matches_a_stepwise_walk_with_blockers() {
         /// 第7条4項・5項の文言どおりに、1升ずつ進んで期待利きを構成する対照実装。
         fn walk(from: Square, direction: Direction, occupied: Bitboard) -> Bitboard {
             let mut expected = Bitboard::EMPTY;

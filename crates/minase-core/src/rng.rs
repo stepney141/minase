@@ -76,13 +76,20 @@ impl XorShift64 {
 mod tests {
     use super::*;
 
-    /// [`derive_seed`]の契約により、乱数系列を停止させる0の派生値は非零定数へ置換する。
+    // 参照値の根拠は、このモジュールのdocコメントが定めるsplitmix64の式である。
+    // 実装を実行した出力ではなく、仕様式から計算した値を使う。
     #[test]
-    fn pair_seed_replaces_the_zero_output() {
-        // derive_seedの式を逆算すると、splitmix64の出力0の原像は0x61C8_8646_80B5_83EBである。
-        assert_eq!(
-            derive_seed(0x61C8_8646_80B5_83EB - 5, 5).get(),
-            0x9E37_79B9_7F4A_7C15
-        );
+    fn derive_seed_follows_the_documented_splitmix64_derivation() {
+        assert_eq!(derive_seed(1, 1).get(), 0x9758_35DE_1C97_56CE);
+        assert_eq!(derive_seed(0xDEAD_BEEF, 41).get(), 0xA472_D968_8D97_8A28);
+        // u64::MAX + 3 ≡ 2 ≡ 1 + 1 (mod 2^64)。
+        assert_eq!(derive_seed(u64::MAX, 3).get(), 0x9758_35DE_1C97_56CE);
+        // 仕様式を逆算した出力0の原像は0x61C8_8646_80B5_83EB。
+        for (base, number) in [
+            (0x61C8_8646_80B5_83EB - 3, 3),
+            (0x61C8_8646_80B5_83EB - 5, 5),
+        ] {
+            assert_eq!(derive_seed(base, number).get(), 0x9E37_79B9_7F4A_7C15);
+        }
     }
 }

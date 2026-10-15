@@ -142,11 +142,11 @@ fn article_27_1_rejected_moves_leave_the_game_state_unchanged() {
         IllegalMoveCause::Movement,
     );
 
-    // 駒の動きに反する入力(第26条2号)。
+    // 仲人は前後にしか動けないため、横の空升への入力は第26条2号に反する(第9条)。
     let mut movement = Game::with_default_rules();
     assert_rejection_is_pure(
         &mut movement,
-        step(sq(5, 5), sq(5, 6)),
+        step(sq(3, 4), sq(4, 4)),
         IllegalMoveCause::Movement,
     );
     assert_eq!(

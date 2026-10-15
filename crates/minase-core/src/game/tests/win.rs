@@ -37,23 +37,29 @@ fn article_21_3_b_and_21_4_checked_side_may_capture_the_last_royal_first() {
     // 王手放置は合法(第8条)であり、相手の最後の王駒を先に取る
     // 着手が3項bの回避手段になるため詰みではない。
     // 王手を受けている側が先に取れば、その側の勝ちとなる。
-    let mut game = game(position(
-        Color::White,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(9, 9), piece(Color::Black, PieceKind::Pawn)),
-            (sq(1, 1), piece(Color::White, PieceKind::King)),
-            (sq(5, 5), piece(Color::White, PieceKind::Rook)),
-        ],
-    ));
+    // (1,0)の飛車は白王将の升(1,1)も守るが、最後の王駒の先取りで勝ちは確定する。
+    for (rook_from, checking_square) in [(sq(5, 5), sq(5, 0)), (sq(2, 0), sq(1, 0))] {
+        let mut game = game(position(
+            Color::White,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(9, 9), piece(Color::Black, PieceKind::Pawn)),
+                (sq(1, 1), piece(Color::White, PieceKind::King)),
+                (rook_from, piece(Color::White, PieceKind::Rook)),
+            ],
+        ));
 
-    // 飛車が(5,0)から段0の王手をかける。黒歩の手は捕獲を回避しないため、
-    // 黒の受けは白王将の捕獲だけである。
-    assert_eq!(game.play(step(sq(5, 5), sq(5, 0))), Ok(GameStatus::Ongoing));
-    assert_eq!(
-        game.play(step(sq(0, 0), sq(1, 1))),
-        win(Color::Black, WinReason::RoyalCapture)
-    );
+        // 飛車が段0から王手をかける。黒歩の手は捕獲を回避しないため、
+        // 黒の受けは白王将の捕獲だけである。
+        assert_eq!(
+            game.play(step(rook_from, checking_square)),
+            Ok(GameStatus::Ongoing)
+        );
+        assert_eq!(
+            game.play(step(sq(0, 0), sq(1, 1))),
+            win(Color::Black, WinReason::RoyalCapture)
+        );
+    }
 }
 
 /// 白飛の照準往復(全手が攻撃的着手)で反復履歴を

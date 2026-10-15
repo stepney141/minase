@@ -139,7 +139,15 @@ fn rule_set_parse_errors_preserve_the_failure_kind() {
         unknown,
         RuleSetParseError::UnknownCode(ref error) if error.input() == "unknown"
     ));
-    assert!(std::error::Error::source(&unknown).is_some());
+    let source = std::error::Error::source(&unknown)
+        .unwrap()
+        .downcast_ref::<RuleCodeParseError>()
+        .expect("unknown code must retain RuleCodeParseError as its source");
+    assert_eq!(source.input(), "unknown");
+    let RuleSetParseError::UnknownCode(inner) = &unknown else {
+        panic!("expected an unknown code error");
+    };
+    assert_eq!(source, inner);
 
     // プリセット名と規則コードの併記を拒否する。
     assert_eq!(
@@ -155,19 +163,19 @@ fn rule_set_display_includes_all_four_base_groups() {
 }
 
 #[test]
-fn rules_error_display_identifies_the_missing_group() {
+fn implementation_contract_rules_error_display_identifies_the_missing_group() {
     assert_eq!(
         RulesError::Missing(RuleGroup::Lion).to_string(),
         "missing lion rule"
     );
-    for (group, name) in [
-        (RuleGroup::Promotion, "promotion"),
-        (RuleGroup::Repetition, "repetition"),
-        (RuleGroup::Exhaustion, "exhaustion"),
+    for (group, expected) in [
+        (RuleGroup::Promotion, "missing promotion rule"),
+        (RuleGroup::Repetition, "missing repetition rule"),
+        (RuleGroup::Exhaustion, "missing exhaustion rule"),
     ] {
         assert_eq!(
             RulesError::Missing(group).to_string(),
-            format!("missing {name} rule"),
+            expected,
             "{group:?}"
         );
     }

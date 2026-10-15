@@ -219,19 +219,52 @@ mod tests {
     /// [`parse`]の升名の契約を全144升で検査する。
     #[test]
     fn cecp_squares_cover_all_144_squares_and_correspond_to_usi_names() {
-        for square in Square::all() {
-            // 筋英字 = 'a' + 内部file、段番号 = 内部rank + 1。
-            let expected = format!("{}{}", char::from(b'a' + square.file()), square.rank() + 1);
-            assert_eq!(square_to_text(square), expected);
-            let (parsed, rest) = parse_square_prefix(&expected, 1, 1).unwrap();
-            assert_eq!(parsed, square);
-            assert!(rest.is_empty());
+        use std::collections::HashSet;
+
+        let empty = Position::empty(Color::Black);
+        // 終点を内部(1,1)=b2に固定し、四隅と内部升の文字表記を確かめる。
+        for (square, expected) in [
+            (sq(0, 0), "a1b2"),
+            (sq(11, 0), "l1b2"),
+            (sq(0, 11), "a12b2"),
+            (sq(11, 11), "l12b2"),
+            (sq(5, 5), "f6b2"),
+            (sq(8, 8), "i9b2"),
+        ] {
+            let mv = Move {
+                from: square,
+                mid: None,
+                to: sq(1, 1),
+                promote: false,
+            };
+            assert_eq!(legs(mv), [expected]);
+            assert_eq!(parse(&empty, expected), Ok(mv));
         }
+        let mut names = HashSet::new();
+        for square in Square::all() {
+            // じっと表記を避けるため、b2からだけは別の終点を使う。
+            let to = if square == sq(1, 1) {
+                sq(2, 2)
+            } else {
+                sq(1, 1)
+            };
+            let mv = Move {
+                from: square,
+                mid: None,
+                to,
+                promote: false,
+            };
+            let text = legs(mv);
+            assert_eq!(text.len(), 1);
+            assert_eq!(parse(&empty, &text[0]), Ok(mv));
+            // 終点はいずれも2文字なので、その前が始点の升名である。
+            assert!(names.insert(text[0][..text[0].len() - 2].to_owned()));
+        }
+        assert_eq!(names.len(), 144);
 
         // USI 7g7dとCECP f6f9は同じMoveを表す。
         // docs/research/protocols/cecp.md第5章「筋aの左右の向き」にある
         // HaChu内蔵FENとlishogi初期SFENの盤面文字列の一致から導く。
-        let empty = Position::empty(Color::Black);
         let mv = Move {
             from: sq(5, 5),
             mid: None,

@@ -2,7 +2,7 @@ use super::*;
 
 /// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第5条により、歩兵12枚を超える入力を拒否する。
 #[test]
-fn material_overflow_reports_origin_and_owner() {
+fn article_5_material_overflow_reports_origin_and_owner() {
     for color in Color::ALL {
         let pawns: Vec<_> = (0..13)
             .map(|i| (sq(i % 12, i / 12), color, PieceKind::Pawn))
@@ -22,7 +22,7 @@ fn material_overflow_reports_origin_and_owner() {
 
 /// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第9条により、成獅子は麒麟、成金は歩兵の在庫を使う。
 #[test]
-fn promoted_material_has_its_own_origin() {
+fn article_9_promoted_material_has_its_own_origin() {
     let target = position_from_codes(
         Color::Black,
         &[
@@ -170,10 +170,6 @@ fn lion_record_accepts_empty_square_with_falcon_and_promoted_lion() {
             &[(square, PieceCode::new_promoted(Color::Black, kind).unwrap())],
         );
         target.set_lion_capture(Some(sq(5, 5))).unwrap();
-        assert!(
-            PredecessorGenerator::standard()
-                .generate_predecessors(&target)
-                .is_ok()
-        );
+        checked(MoveRules::standard(), &target);
     }
 }

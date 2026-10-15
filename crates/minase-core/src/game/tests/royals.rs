@@ -84,7 +84,7 @@ fn article_20_3_capturing_the_prince_alone_continues_the_game() {
 /// 第1回として記録する（[`Game::from_position`]の契約）。
 /// 直後の着手完了時からは通常の裁定が働く。
 #[test]
-fn plan_referee_from_position_defers_adjudication_to_the_first_move() {
+fn adjudication_contract_from_position_defers_adjudication_to_the_first_move() {
     let missing_royal = position(
         Color::Black,
         &[

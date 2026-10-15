@@ -6,7 +6,7 @@ use crate::LionRule;
 /// 非獅子の捕獲で先獅子記録が新設されても、以前の記録を復元できる。
 /// RULES.md第15条と[`Position::make_move_with_captures_unchecked`]の契約により、新しい記録升は以前の記録升に依存しない。
 #[test]
-fn lion_capture_restores_previous_records() {
+fn article_15_lion_capture_restores_previous_records() {
     let from = sq(5, 5);
     let to = sq(5, 6);
     let base = position(

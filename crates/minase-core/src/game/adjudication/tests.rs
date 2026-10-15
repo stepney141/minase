@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::board::Square;
-use crate::game::DrawReason;
 use crate::piece::{PieceCode, PieceKind};
 use crate::test_util::{position_from_codes as position, sq};
 
@@ -85,76 +84,6 @@ fn article_21_3_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
     assert_eq!(position, before);
 }
 
-/// 3項b(相手王駒の先取り)が残れば詰みは成立しない。
-/// 仮想着手の評価後に局面は完全に復元される
-/// （[`is_mate`](crate::game::adjudication::mate::is_mate)の復元の契約、RULES.md第21条第3項b）。
-#[test]
-fn article_21_3_b_royal_counter_capture_rescues_mate_and_restores_position() {
-    let generator = MoveGenerator::standard();
-
-    // 3項b境界: 先取りした王駒の升へ相手の取り返しの利き(飛車)が残っていても、
-    // 最後の王駒を取った時点で勝ちが確定する(第21条4項)ため詰みではない。
-    let mut counter_capture_with_retaliation = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(1, 1), piece(Color::White, PieceKind::King)),
-            (sq(1, 11), piece(Color::White, PieceKind::Rook)),
-        ],
-    );
-    let before = counter_capture_with_retaliation.clone();
-    let state = r1_state(&counter_capture_with_retaliation);
-    assert!(!is_mate(
-        &mut counter_capture_with_retaliation,
-        &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
-    ));
-    assert_eq!(counter_capture_with_retaliation, before);
-}
-
-/// 相手の王将と太子の一方を取っても、残る王駒に取り返される場合は引き分けにならない。
-/// その捕獲は第21条第3項dの逃れに当たらない（第22条第8項・第9項）。
-#[test]
-fn article_22_8_defended_royal_capture_is_not_an_immediate_draw() {
-    let mut position = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(1, 0), piece(Color::White, PieceKind::King)),
-            (
-                sq(1, 1),
-                PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
-            ),
-        ],
-    );
-    let rules = Rules::ENGINE_DEFAULT;
-    let generator = MoveGenerator::new(rules.moves);
-    let state = r1_state(&position);
-    let context = AdjudicationContext::new(rules, &state, &generator);
-    let before = position.clone();
-    let mut moves = Vec::new();
-    generator.generate_moves(&position, &mut moves);
-    assert!(!moves.is_empty());
-    for mv in moves {
-        assert!(!mate::captures_last_royal(&position, mv));
-        let captures_royal = position
-            .captured_squares(mv)
-            .into_iter()
-            .any(|square| square.is_some());
-        let undo = position.make_move_unchecked(mv, rules.moves);
-        assert!(mate::can_capture_last_royal(&position, &generator));
-        if captures_royal {
-            assert_eq!(
-                context.candidate_immediate_result(&position, mv, &undo),
-                None
-            );
-        }
-        position.unmake_move(undo);
-    }
-
-    assert!(is_mate(&mut position, &context));
-    assert_eq!(position, before);
-}
-
 /// 4回目の同一局面を作る手が自分の反復負けになる場合、詰みの逃れにはならない
 /// （第21条第3項c・d、第31条R1）。
 #[test]
@@ -211,47 +140,6 @@ fn article_21_3_r1_repetition_loss_does_not_rescue_mate() {
             reason: WinReason::Repetition
         })
     );
-}
-
-/// 王駒が互いに取れなければ、E0・E3とも第21条第3項dの即時引き分けを返す。
-/// 最奥段の歩兵と香車は、いずれの規則でも除外される。
-#[test]
-fn article_22_8_and_32_e3_safe_royals_allow_an_immediate_draw() {
-    for (exhaustion, reason) in [
-        (ExhaustionRule::E0, DrawReason::PieceExhaustion),
-        (ExhaustionRule::E3, DrawReason::BareKing),
-    ] {
-        let mut position = position(
-            Color::Black,
-            &[
-                (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                (sq(5, 11), piece(Color::Black, PieceKind::Pawn)),
-                (sq(0, 1), piece(Color::White, PieceKind::Rook)),
-                (sq(5, 0), piece(Color::White, PieceKind::Lance)),
-                (sq(11, 11), piece(Color::White, PieceKind::King)),
-            ],
-        );
-        let rules = Rules {
-            exhaustion,
-            ..Rules::ENGINE_DEFAULT
-        };
-        let generator = MoveGenerator::new(rules.moves);
-        let state = r1_state(&position);
-        let context = AdjudicationContext::new(rules, &state, &generator);
-        let candidate = step(sq(0, 0), sq(0, 1));
-        let before = position.clone();
-        let expected = GameResult::Draw { reason };
-        let undo = position
-            .try_make_move_with_undo(candidate, &generator)
-            .unwrap();
-        assert_eq!(
-            context.candidate_immediate_result(&position, candidate, &undo),
-            Some(expected)
-        );
-        position.unmake_move(undo);
-        assert!(!is_mate(&mut position, &context));
-        assert_eq!(position, before);
-    }
 }
 
 /// 王駒の捕獲を避けても、その着手で自分の敗北が確定するなら逃れにはならない

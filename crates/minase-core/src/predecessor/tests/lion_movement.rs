@@ -21,7 +21,7 @@ fn fixture(color: Color, kind: PieceKind, from: Square, captured: &[Square]) -> 
 
 /// 獅子の1段階移動と中間の駒を残す直接跳びを検査する。
 #[test]
-fn lion_steps_and_jumps_with_and_without_capture() {
+fn article_12_1_5_7_lion_steps_and_jumps_with_and_without_capture() {
     // RULES.md第12条1・5・7項: 1段階移動と直接跳びの捕獲先は到達升だけ。
     let from = sq(5, 5);
     for to in [sq(6, 5), sq(7, 5)] {
@@ -44,7 +44,7 @@ fn lion_steps_and_jumps_with_and_without_capture() {
 
 /// 居喰い、曲がる2段階移動、および2枚捕獲を検査する。
 #[test]
-fn lion_igui_and_two_stage_captures() {
+fn article_12_2_4_8_lion_igui_and_two_stage_captures() {
     // RULES.md第12条2・4・8項: 経由升で必ず捕獲し、到達升では0枚または1枚取る。
     let from = sq(5, 5);
     let mid = sq(6, 6);
@@ -74,7 +74,7 @@ fn lion_igui_and_two_stage_captures() {
 
 /// 角鷹と飛鷲の向き付き獅子力を先後両方で検査する。
 #[test]
-fn falcon_and_eagle_all_special_moves_for_both_sides() {
+fn article_11_falcon_and_eagle_all_special_moves_for_both_sides() {
     // RULES.md第11条: 後手の前は南。飛鷲は左右両方の前斜めで2段階移動できる。
     for color in Color::ALL {
         let dr = if color == Color::Black { 1 } else { -1 };

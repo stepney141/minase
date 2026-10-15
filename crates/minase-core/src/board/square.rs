@@ -213,36 +213,53 @@ mod tests {
     // 変位は駒の動きに現れる全種(8方向の1升・2升、桂馬型の跳び。第9条・第12条)を覆う。
     #[test]
     fn offset_succeeds_exactly_when_the_target_stays_on_the_board() {
-        let mut deltas = Vec::new();
-        for file_delta in -2_i8..=2 {
-            for rank_delta in -2_i8..=2 {
-                if (file_delta, rank_delta) != (0, 0) {
-                    deltas.push((file_delta, rank_delta));
-                }
-            }
+        use crate::test_util::sq;
+
+        // 四隅と各辺について、盤内へ進む例と盤外へ出る例を対にする。
+        for (from, delta, expected) in [
+            (sq(0, 0), (1, 1), Some(sq(1, 1))),
+            (sq(0, 0), (-1, -1), None),
+            (sq(11, 0), (-1, 1), Some(sq(10, 1))),
+            (sq(11, 0), (1, -1), None),
+            (sq(0, 11), (1, -1), Some(sq(1, 10))),
+            (sq(0, 11), (-1, 1), None),
+            (sq(11, 11), (-1, -1), Some(sq(10, 10))),
+            (sq(11, 11), (1, 1), None),
+            (sq(0, 5), (1, 0), Some(sq(1, 5))),
+            (sq(0, 5), (-1, 0), None),
+            (sq(11, 5), (-1, 0), Some(sq(10, 5))),
+            (sq(11, 5), (1, 0), None),
+            (sq(5, 0), (0, 1), Some(sq(5, 1))),
+            (sq(5, 0), (0, -1), None),
+            (sq(5, 11), (0, -1), Some(sq(5, 10))),
+            (sq(5, 11), (0, 1), None),
+            (sq(1, 5), (-2, 0), None),
+            (sq(10, 5), (2, 0), None),
+            (sq(5, 1), (0, -2), None),
+            (sq(5, 10), (0, 2), None),
+            (sq(5, 5), (2, -1), Some(sq(7, 4))),
+            (sq(5, 5), (-1, 2), Some(sq(4, 7))),
+        ] {
+            assert_eq!(
+                from.offset(delta.0, delta.1),
+                expected,
+                "{from:?}, {delta:?}"
+            );
         }
 
         for square in Square::all() {
-            for &(file_delta, rank_delta) in &deltas {
-                let file = i16::from(square.file()) + i16::from(file_delta);
-                let rank = i16::from(square.rank()) + i16::from(rank_delta);
-                let inside = (0..i16::from(BOARD_FILES)).contains(&file)
-                    && (0..i16::from(BOARD_RANKS)).contains(&rank);
-                match square.offset(file_delta, rank_delta) {
-                    None => assert!(
-                        !inside,
-                        "盤内への変位が拒否された: {square:?} + ({file_delta}, {rank_delta})"
-                    ),
-                    Some(target) => {
-                        assert!(
-                            inside,
-                            "盤外への変位が成功した: {square:?} + ({file_delta}, {rank_delta})"
+            for file_delta in -2_i8..=2 {
+                for rank_delta in -2_i8..=2 {
+                    if let Some(target) = square.offset(file_delta, rank_delta) {
+                        assert_eq!(
+                            i16::from(target.file()) - i16::from(square.file()),
+                            i16::from(file_delta)
                         );
                         assert_eq!(
-                            (i16::from(target.file()), i16::from(target.rank())),
-                            (file, rank),
-                            "回り込みの疑い"
+                            i16::from(target.rank()) - i16::from(square.rank()),
+                            i16::from(rank_delta)
                         );
+                        assert_eq!(target.offset(-file_delta, -rank_delta), Some(square));
                     }
                 }
             }

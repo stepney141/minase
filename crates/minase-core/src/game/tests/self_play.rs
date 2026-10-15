@@ -9,7 +9,7 @@ use std::num::NonZeroU64;
 /// でも余分な駒を持つ側で一致し、駒枯れを先に評価するため終局理由は
 /// 駒枯れとなる（[`adjudicate_after_move`](crate::game::adjudication::adjudicate_after_move)の裁定順序の契約）。
 #[test]
-fn plan_referee_7_piece_exhaustion_evaluates_before_mate() {
+fn adjudication_order_contract_exhaustion_is_evaluated_before_mate() {
     let mut game = game_with_codes(
         position(
             Color::White,

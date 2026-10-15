@@ -33,63 +33,30 @@ mod invariants {
         reason: PositionError,
     ) {
         let message = panic.downcast_ref::<String>().unwrap();
-        let mut lines = message.lines();
-        // 操作名と原因は同じ診断項目に含まれる。
-        assert_eq!(
-            lines.next(),
-            Some(format!("position invariant failed after {operation}: {reason}").as_str()),
-            "{operation}: reason"
-        );
-        assert_eq!(
-            lines.next(),
-            Some(format!("move: {mv:?}").as_str()),
-            "{operation}: move"
-        );
-        assert_eq!(
-            lines.next(),
-            Some(format!("side to move: {:?}", position.side_to_move()).as_str()),
-            "{operation}: side to move"
-        );
-        for (name, incremental, recomputed) in [
-            ("zobrist", position.zobrist(), position.recompute_zobrist()),
-            (
-                "rights zobrist",
-                position.rights_zobrist(),
-                position.recompute_rights_zobrist(),
-            ),
+        // docコメントが列挙する項目の存在だけを検査し、行順や見出し全体は固定しない。
+        for value in [
+            operation.to_owned(),
+            reason.to_string(),
+            format!("{mv:?}"),
+            format!("{:?}", position.side_to_move()),
+            format!("{:#018x}", position.zobrist()),
+            format!("{:#018x}", position.recompute_zobrist()),
+            format!("{:#018x}", position.rights_zobrist()),
+            format!("{:#018x}", position.recompute_rights_zobrist()),
         ] {
-            assert_eq!(
-                lines.next(),
-                Some(
-                    format!(
-                        "{name}: incremental={incremental:#018x}, recomputed={recomputed:#018x}"
-                    )
-                    .as_str()
-                ),
-                "{operation}: {name}"
+            assert!(
+                message.contains(&value),
+                "{operation}: missing diagnostic value {value}"
             );
         }
-        assert_eq!(
-            lines.next(),
-            Some("board raw codes (rank 0..11, file 0..11):"),
-            "{operation}: board header"
-        );
-        for rank in 0..12 {
-            let row: Vec<_> = (0..12)
-                .map(|file| position.board[rank * 16 + file])
-                .collect();
-            assert_eq!(
-                lines.next(),
-                Some(format!("{row:?}").as_str()),
-                "{operation}: rank={rank}"
+        // 駒コードは公開アクセサから取り出し、番兵込み盤配列の配置には依存しない。
+        for square in position.occupied() {
+            let code = position.piece_at(square).unwrap();
+            assert!(
+                message.contains(&format!("{code:?}")),
+                "{operation}: missing board code {code:?}"
             );
         }
-        // 不正局面からは拡張SFENを構築できず、追加の診断行はない。
-        assert_eq!(
-            lines.next(),
-            None,
-            "{operation}: unexpected diagnostic item"
-        );
     }
 
     /// [`Position::assert_invariants`]の契約に従い、着手と取消しの各操作がキー破損を診断する。

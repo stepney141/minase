@@ -33,7 +33,7 @@ fn article_18_and_30_entering_zone_without_promotion_has_its_predecessor() {
 
 /// RULES.md第17条、第18条と[`predecessor`](crate::predecessor)の集合の定義により、不成からの成りと既成駒の移動は別局面になる。
 #[test]
-fn newly_promoted_and_already_promoted_are_distinct_predecessors() {
+fn article_17_18_newly_promoted_and_already_promoted_are_distinct_predecessors() {
     let from = sq(5, 7);
     let to = sq(5, 8);
     let pawn = position(Color::Black, &[(from, Color::Black, PieceKind::Pawn)]);

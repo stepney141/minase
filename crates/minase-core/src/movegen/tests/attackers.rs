@@ -6,10 +6,10 @@
 use crate::board::Bitboard;
 use crate::board::Square;
 use crate::movegen::control::piece_control_with_occupancy;
-use crate::piece::{Color, PieceCode, PieceKind};
+use crate::piece::Color;
 use crate::position::Position;
 use crate::rules::MoveRules;
-use crate::test_util::{bench_positions, position_from_codes, sampled_random_positions, sq};
+use crate::test_util::{bench_positions, sampled_random_positions};
 
 fn assert_attackers_match_piece_controls(position: &Position, occupied: Bitboard) {
     for target in Square::all() {
@@ -65,68 +65,4 @@ fn attackers_to_by_matches_piece_control_on_reference_positions() {
         }
         assert_attackers_match_piece_controls(&position, without_several);
     }
-}
-
-/// [`Position::attackers_to_by`]の占有の契約に従い、除いた駒は攻撃駒として再出現せず、
-/// 遮蔽駒の除去で走りの利きが開通する。
-#[test]
-fn attackers_to_by_respects_removed_pieces_and_opens_xrays() {
-    let rook = sq(2, 2);
-    let first_blocker = sq(2, 4);
-    let second_blocker = sq(2, 6);
-    let target = sq(2, 8);
-    let position = position_from_codes(
-        Color::Black,
-        &[
-            (rook, PieceCode::new(Color::Black, PieceKind::Rook).unwrap()),
-            (
-                first_blocker,
-                PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
-            ),
-            (
-                second_blocker,
-                PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
-            ),
-        ],
-    );
-
-    let mut without_first = position.occupied();
-    without_first.clear(first_blocker);
-    assert!(
-        !position
-            .attackers_to_by(Color::Black, target, without_first)
-            .contains(rook)
-    );
-    assert!(
-        !position
-            .attackers_to_by(Color::Black, target, without_first)
-            .contains(first_blocker)
-    );
-
-    let mut without_both = without_first;
-    without_both.clear(second_blocker);
-    assert!(
-        position
-            .attackers_to_by(Color::Black, target, without_both)
-            .contains(rook)
-    );
-    assert!(
-        !position
-            .attackers_to_by(Color::Black, target, without_both)
-            .contains(second_blocker)
-    );
-
-    let lion = sq(7, 7);
-    let lion_target = sq(9, 9);
-    let special = position_from_codes(
-        Color::Black,
-        &[(lion, PieceCode::new(Color::Black, PieceKind::Lion).unwrap())],
-    );
-    let mut without_lion = special.occupied();
-    without_lion.clear(lion);
-    assert!(
-        !special
-            .attackers_to_by(Color::Black, lion_target, without_lion)
-            .contains(lion)
-    );
 }

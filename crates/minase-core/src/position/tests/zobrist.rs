@@ -359,13 +359,6 @@ fn article_24_3_key_depends_on_the_position_not_on_the_path() {
         mv(sq(6, 11), sq(6, 10)),
     ]);
     assert_eq!(path_long, path_a);
-}
-
-// 実装上の契約として、キーは局面状態の純関数であり、同一の目標局面は
-// 構築経路(配置順序・指し手適用)によらず同一キーになる。
-#[test]
-fn equal_configurations_share_one_key_regardless_of_construction_path() {
-    let generator = MoveGenerator::standard();
 
     // 歩兵の成り(第18条)を経由した局面と、成駒を直接配置した局面。
     let mut played = position_with_pieces(

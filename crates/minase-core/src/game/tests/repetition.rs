@@ -1,13 +1,22 @@
 //! 第24〜25条の同一局面と反復規則の選択、および第31条の反復に関するローカルルールの試験。
 
 use super::*;
-use crate::rules::parse_rule_set;
 use crate::{RepetitionRule, repetition_key};
 
 #[test]
 fn articles_24_31_r2_p2_keys_ignore_waiting_rights_while_r1_distinguishes_them() {
     // 第31条R2の補充規定では第24条第1項dを除く。禁止手しかなければ第23条で負ける。
-    let rules = Rules::from_codes(&parse_rule_set("L1,L3,P2,P5,P6,R2,E1,E2").unwrap()).unwrap();
+    let rules = Rules::from_codes(&[
+        RuleCode::L1,
+        RuleCode::L3,
+        RuleCode::P2,
+        RuleCode::P5,
+        RuleCode::P6,
+        RuleCode::R2,
+        RuleCode::E1,
+        RuleCode::E2,
+    ])
+    .unwrap();
     let mut game = Game::from_position(
         rules,
         position(
@@ -263,30 +272,113 @@ fn article_24_1_occurrences_accumulate_across_different_paths() {
 /// 12手になるまで裁定しない（RULES.md第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
-    let start = position(
-        Color::Black,
-        &[
+    let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
+    for (name, mover, mv, captured) in [
+        (
+            "pawn",
+            piece(Color::White, PieceKind::Pawn),
+            step(sq(6, 8), sq(6, 7)),
+            None,
+        ),
+        (
+            "lance",
+            piece(Color::White, PieceKind::Lance),
+            step(sq(6, 8), sq(6, 6)),
+            None,
+        ),
+        (
+            "promotion",
+            piece(Color::White, PieceKind::SilverGeneral),
+            promoting(sq(6, 4), sq(6, 3)),
+            None,
+        ),
+        (
+            "capture",
+            piece(Color::White, PieceKind::Rook),
+            step(sq(4, 8), sq(4, 7)),
+            Some(piece(Color::Black, PieceKind::Pawn)),
+        ),
+    ] {
+        let mut pieces = vec![
             (sq(0, 0), piece(Color::Black, PieceKind::King)),
             (sq(3, 3), piece(Color::Black, PieceKind::Lion)),
             (sq(8, 8), piece(Color::White, PieceKind::Lion)),
-            (sq(6, 8), piece(Color::White, PieceKind::Pawn)),
             (sq(11, 11), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
-    let mut game = game_with_codes(start, &[RuleCode::R1]);
-    for ply in 1..=11 {
-        assert_eq!(game.play(cycle[(ply - 1) % 2]), Ok(GameStatus::Ongoing));
+            (mv.from, mover),
+        ];
+        if let Some(captured) = captured {
+            pieces.push((mv.to, captured));
+        }
+        let mut game = game_with_codes(position(Color::Black, &pieces), &[RuleCode::R1]);
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % 2]),
+                Ok(GameStatus::Ongoing),
+                "{name}: before ply {ply}"
+            );
+        }
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing), "{name}");
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % 2]),
+                Ok(GameStatus::Ongoing),
+                "{name}: reversible ply {ply}"
+            );
+        }
+        assert_eq!(game.play(cycle[1]), draw(DrawReason::Repetition), "{name}");
     }
-    assert_eq!(game.play(step(sq(6, 8), sq(6, 7))), Ok(GameStatus::Ongoing));
-    for ply in 1..=11 {
-        assert_eq!(
-            game.play(cycle[(ply - 1) % 2]),
-            Ok(GameStatus::Ongoing),
-            "reversible ply {ply} after pawn move"
-        );
+
+    // 可逆手では11手分を失わない。成歩・成香・王将は往復して14手目に既出局面へ戻り、
+    // 獅子のじっとは12手目に同じ局面を再現する（第31条R1）。
+    for (name, mover, mv) in [
+        (
+            "promoted pawn",
+            PieceCode::new_promoted(Color::White, PieceKind::GoldGeneral).unwrap(),
+            step(sq(6, 8), sq(6, 7)),
+        ),
+        (
+            "promoted lance",
+            PieceCode::new_promoted(Color::White, PieceKind::WhiteHorse).unwrap(),
+            step(sq(6, 8), sq(6, 6)),
+        ),
+        (
+            "king",
+            piece(Color::White, PieceKind::King),
+            step(sq(11, 11), sq(10, 11)),
+        ),
+        ("lion pass", piece(Color::White, PieceKind::Lion), cycle[1]),
+    ] {
+        let mut pieces = vec![
+            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+            (sq(3, 3), piece(Color::Black, PieceKind::Lion)),
+        ];
+        if mover.kind() != Some(PieceKind::King) {
+            pieces.push((sq(11, 11), piece(Color::White, PieceKind::King)));
+        }
+        if mover.kind() != Some(PieceKind::Lion) {
+            pieces.push((sq(8, 8), piece(Color::White, PieceKind::Lion)));
+        }
+        pieces.push((mv.from, mover));
+        let mut game = game_with_codes(position(Color::Black, &pieces), &[RuleCode::R1]);
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % 2]),
+                Ok(GameStatus::Ongoing),
+                "{name}: ply {ply}"
+            );
+        }
+        if mv.from == mv.to {
+            assert_eq!(game.play(mv), draw(DrawReason::Repetition), "{name}");
+        } else {
+            assert_eq!(game.play(mv), Ok(GameStatus::Ongoing), "{name}");
+            assert_eq!(game.play(cycle[0]), Ok(GameStatus::Ongoing), "{name}");
+            assert_eq!(
+                game.play(step(mv.to, mv.from)),
+                draw(DrawReason::Repetition),
+                "{name}"
+            );
+        }
     }
-    assert_eq!(game.play(cycle[1]), draw(DrawReason::Repetition));
 }
 
 #[test]
