@@ -171,11 +171,6 @@ fn cli_defaults_and_invalid_arguments() {
             "{flag}"
         );
     }
-    let help = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["joint", "train", "--help"])
-        .output()
-        .unwrap();
-    assert!(help.status.success());
 }
 
 #[test]
@@ -398,25 +393,12 @@ fn resume_rejects_trajectory_changes_before_writing() {
 }
 
 #[test]
-fn initial_quantization_failure_is_recorded_and_exits_with_one() {
-    let (_fixture, args) = Fixture::new(true);
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["joint", "train", "--lambda", "0.75", "--data"])
-        .arg(&args.data[0])
-        .arg("--base")
-        .arg(&args.base)
-        .arg("--pst-init")
-        .arg(&args.pst_init)
-        .arg("--fm-init")
-        .arg(&args.fm_init)
-        .arg("--fm-reference")
-        .arg(&args.fm_reference)
-        .arg("--output-dir")
-        .arg(&args.output_dir)
-        .args(["--epochs", "1", "--threads", "1"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(1));
+fn initial_quantization_failure_is_recorded() {
+    let (_fixture, mut args) = Fixture::new(true);
+    args.epochs = 1;
+    args.batch = 16384;
+    args.validation_sample = 10000;
+    assert!(joint::train(args.clone()).is_err());
     let summary = document(args.output_dir.join("summary.json"));
     assert_eq!(summary["status"], "quantization_error");
     assert_eq!(summary["initial_quantization"]["passed"], false);

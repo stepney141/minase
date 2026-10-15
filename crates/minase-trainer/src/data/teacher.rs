@@ -195,28 +195,96 @@ mod tests {
 
     #[test]
     fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_k() {
-        let targets = build_targets_from_arrays(
-            &[f32::NAN, 0.0, 1000.0],
-            &[0, 1, 1],
-            &[2, 0, 1],
-            &[f64::NAN, 1000.0],
-            &[0.0, 0.75],
-        )
-        .unwrap();
-        assert_eq!(targets[0], 1.0);
-        assert_eq!(targets[1], 0.375);
-        let expected = 0.75 / (1.0 + (-1.0_f64).exp()) + 0.125;
-        assert_eq!(targets[2].to_bits(), (expected as f32).to_bits());
-        for (scores, classes, outcomes) in [
-            (vec![0.0], vec![], vec![1]),
-            (vec![0.0], vec![0], vec![]),
-            (vec![0.0], vec![2], vec![1]),
-            (vec![0.0], vec![0], vec![3]),
-            (vec![f32::NAN], vec![0], vec![1]),
+        // score=0でσ=1/2。λ=3/4なら結果0,1,2に対し3/8,1/2,5/8。
+        let mixed = (0.75 / (1.0 + (-1.0_f64).exp()) + 0.125) as f32;
+        for (name, scores, classes, outcomes, ks, lambdas, expected) in [
+            (
+                "mixed classes",
+                vec![f32::NAN, 0.0, 1000.0],
+                vec![0, 1, 1],
+                vec![2, 0, 1],
+                vec![f64::NAN, 1000.0],
+                vec![0.0, 0.75],
+                vec![1.0, 0.375, mixed],
+            ),
+            (
+                "three outcomes",
+                vec![0.0; 3],
+                vec![0; 3],
+                vec![0, 1, 2],
+                vec![1000.0],
+                vec![0.75],
+                vec![0.375, 0.5, 0.625],
+            ),
+            (
+                "inactive K",
+                vec![0.0; 3],
+                vec![0; 3],
+                vec![0, 1, 2],
+                vec![f64::NAN],
+                vec![0.0],
+                vec![0.0, 0.5, 1.0],
+            ),
+            (
+                "inactive extreme scores",
+                vec![f32::MAX, -f32::MAX, f32::MAX],
+                vec![0; 3],
+                vec![0, 1, 2],
+                vec![f64::NAN],
+                vec![0.0],
+                vec![0.0, 0.5, 1.0],
+            ),
+        ] {
+            let actual = build_targets_from_arrays(&scores, &classes, &outcomes, &ks, &lambdas)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(
+                actual.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                "{name}"
+            );
+        }
+        for (name, scores, classes, outcomes) in [
+            ("missing class", vec![0.0], vec![], vec![1]),
+            ("missing outcome", vec![0.0], vec![0], vec![]),
+            ("unknown class", vec![0.0], vec![2], vec![1]),
+            ("invalid outcome", vec![0.0], vec![0], vec![3]),
+            ("nonfinite active score", vec![f32::NAN], vec![0], vec![1]),
         ] {
             assert!(
-                build_targets_from_arrays(&scores, &classes, &outcomes, &[1.0], &[1.0]).is_err()
+                build_targets_from_arrays(&scores, &classes, &outcomes, &[1.0], &[1.0]).is_err(),
+                "{name}"
             );
+        }
+        for k in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                build_targets_from_arrays(&[0.0], &[0], &[1], &[k], &[0.75]).is_err(),
+                "K={k}"
+            );
+        }
+        for mix in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
+            assert!(
+                build_targets_from_arrays(&[0.0], &[0], &[1], &[1000.0], &[mix]).is_err(),
+                "lambda={mix}"
+            );
+        }
+        for (name, ks, lambdas) in [
+            ("missing teacher classes", vec![], vec![]),
+            ("missing lambda", vec![1000.0], vec![]),
+        ] {
+            assert!(
+                build_targets_from_arrays(&[0.0], &[0], &[1], &ks, &lambdas).is_err(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_lambda_accepts_only_finite_values_in_the_unit_interval() {
+        for (text, expected) in [("0", 0.0), ("0.75", 0.75), ("1", 1.0)] {
+            assert_eq!(parse_lambda(text).unwrap(), expected, "{text}");
+        }
+        for text in ["-0.1", "1.1", "NaN", "inf", "-inf", "", "invalid"] {
+            assert!(parse_lambda(text).is_err(), "{text:?}");
         }
     }
 
@@ -273,16 +341,19 @@ mod tests {
             assert!(Lookahead::new(gamma, plies).is_err());
         }
         let options = Lookahead::new(0.9, 40).unwrap();
-        for (games, plies) in [
-            (vec![2, 1], vec![0, 1]),
-            (vec![1, 1], vec![1, 1]),
-            (vec![1, 1], vec![2, 1]),
-            (vec![1, 2, 1], vec![0, 0, 1]),
+        for (games, plies, index) in [
+            (vec![2, 1], vec![0, 1], 1),
+            (vec![1, 1], vec![1, 1], 1),
+            (vec![1, 1], vec![2, 1], 1),
+            (vec![1, 2, 1], vec![0, 0, 1], 2),
         ] {
-            assert!(matches!(
-                compute_lookahead(&games, &plies, &vec![0.0; games.len()], options),
-                Err(Error::RecordOrder { .. })
-            ));
+            assert!(
+                matches!(
+                    compute_lookahead(&games, &plies, &vec![0.0; games.len()], options),
+                    Err(Error::RecordOrder { index: actual }) if actual == index
+                ),
+                "games={games:?}, plies={plies:?}"
+            );
         }
         assert!(compute_lookahead(&[1], &[], &[0.0], options).is_err());
         assert!(compute_lookahead(&[1], &[0], &[f64::NAN], options).is_err());

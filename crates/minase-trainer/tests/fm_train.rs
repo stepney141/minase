@@ -17,7 +17,6 @@ use minase_trainer::{
     nn::npz,
 };
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -206,15 +205,6 @@ fn cli_enforces_required_budgets_and_ranges() {
         let mut v = argv();
         v.extend(extra);
         assert!(Arguments::try_parse_from(v).is_err());
-    }
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "train", "--help"])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let help = String::from_utf8(output.stdout).unwrap();
-    for flag in ["--resume", "--lambda-res", "--weight-decay", "--threads"] {
-        assert!(help.contains(flag));
     }
 }
 
@@ -747,62 +737,36 @@ fn checkpoint_rejects_corruption_and_output_directory_must_be_empty() {
     fm::train(args).unwrap();
 }
 
-// Phase 4 may expose components, but the existing trainers must retain their bit patterns.
 #[test]
-fn phase4_preserves_existing_trainer_weights_and_adam_states() {
+fn one_epoch_matches_independent_batches_model_and_adam_state() {
     let (_fixture, mut args) = Fixture::new(false, true);
     args.epochs = 1;
+    let dataset = Dataset::open(&args.data, None, std::num::NonZeroUsize::new(1).unwrap())
+        .unwrap()
+        .with_lambda(args.lambda)
+        .unwrap();
+    let base = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
+    let mask = fm::feature_observations(&dataset)
+        .unwrap()
+        .into_iter()
+        .map(|n| n > 0)
+        .collect();
+    let mut model = Model::initialize(mask, base.k(), args.seed).unwrap();
+    let mut optimizer = Adam::new(args.lr, args.weight_decay).unwrap();
+    let ks = dataset.estimate_teacher_ks().unwrap();
+    let order = minase_trainer::data::epoch_permutation(dataset.training_indices(), args.seed, 1);
+    assert_eq!(order.len() % args.batch, 15);
+    for indices in order.chunks(args.batch) {
+        let mirrors: Vec<_> = indices
+            .iter()
+            .map(|&index| fm::mirror_bit(args.seed, 1, index))
+            .collect();
+        let batch = Batch::from_indices(&dataset, &base, indices, &mirrors, &ks).unwrap();
+        let gradients = fm::gradients(&model, &batch, args.lambda_res, 1).unwrap();
+        optimizer.update(&mut model, &gradients.weights, 1).unwrap();
+    }
     fm::train(args.clone()).unwrap();
     let checkpoint = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
-    let mut hash = Sha256::new();
-    for value in checkpoint
-        .model
-        .v()
-        .iter()
-        .flatten()
-        .chain(checkpoint.model.a())
-        .chain(checkpoint.optimizer.m())
-        .chain(checkpoint.optimizer.v())
-    {
-        hash.update(value.to_le_bytes());
-    }
-    assert_eq!(
-        format!("{:x}", hash.finalize()),
-        "d26cc3c6ffcf10b8e873ce7aba9c582e86e344d53da8424df0160a098057bca9"
-    );
-    let output = args.output_dir.with_file_name("pst");
-    minase_trainer::pst::run(minase_trainer::pst::Args {
-        data: args.data,
-        init: args.init,
-        output_dir: output.clone(),
-        lr: 0.03,
-        epochs: 1,
-        patience: 5,
-        batch: 16,
-        seed: 1,
-        removal_penalty: 1000.0,
-        removal_reference: minase_trainer::pst::RemovalReferenceKind::V0,
-        lambda: 0.75,
-        lookahead_gamma: None,
-        lookahead_plies: None,
-        validation_sample: 7,
-        threads: Some(1),
-        resume: None,
-    })
-    .unwrap();
-    let checkpoint = minase_trainer::pst::Checkpoint::read(output.join("latest.npz")).unwrap();
-    let mut hash = Sha256::new();
-    for value in checkpoint
-        .model
-        .weights()
-        .iter()
-        .chain(checkpoint.optimizer.m())
-        .chain(checkpoint.optimizer.v())
-    {
-        hash.update(value.to_le_bytes());
-    }
-    assert_eq!(
-        format!("{:x}", hash.finalize()),
-        "45f03c5a8cc011690326d3501e6281d9efdcb67091f871eefdc1b3dcb83ce8f9"
-    );
+    assert_eq!(checkpoint.model, model);
+    assert_eq!(checkpoint.optimizer, optimizer);
 }

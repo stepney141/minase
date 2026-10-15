@@ -1,4 +1,4 @@
-//! 数値診断の出力契約を、手計算できる合成入力と実コマンドで検査する。
+//! 数値診断の出力契約を手計算できる合成入力で検査し、代表事例で終了コードと標準エラーも確かめる。
 
 use common::mnsd;
 use minase_trainer::data::{Outcome, Sample};
@@ -11,6 +11,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use clap::Parser;
 use minase::{
     eval::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
@@ -19,6 +20,7 @@ use minase::{
     training::records::Header,
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
+use minase_trainer::diagnostics;
 use minase_trainer::nnue::{
     data::InputFeatureSet,
     model::{Checkpoint, Model, Parameter, Progress, Shape, quantize},
@@ -26,6 +28,12 @@ use minase_trainer::nnue::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+#[derive(Parser)]
+struct Arguments {
+    #[command(subcommand)]
+    command: diagnostics::Command,
+}
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -166,13 +174,44 @@ impl Fixture {
             .unwrap()
     }
 
+    fn diagnose(&self, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+        // 相対パスをこのfixtureへ解決する。並列テストの作業ディレクトリは変更しない。
+        let mut values: Vec<_> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let mut index = 1;
+        while index < values.len() {
+            match values[index].as_str() {
+                "--data" => {
+                    index += 1;
+                    while index < values.len() && !values[index].starts_with("--") {
+                        values[index] = self.path(&values[index]).to_str().unwrap().to_owned();
+                        index += 1;
+                    }
+                }
+                "--pair" => {
+                    for offset in [2, 3] {
+                        values[index + offset] = self
+                            .path(&values[index + offset])
+                            .to_str()
+                            .unwrap()
+                            .to_owned();
+                    }
+                    index += 4;
+                }
+                "--float" | "--net" | "--base" | "--positions" | "--output" => {
+                    values[index + 1] = self.path(&values[index + 1]).to_str().unwrap().to_owned();
+                    index += 2;
+                }
+                "--sample" | "--seed" => index += 2,
+                flag => panic!("unexpected diagnostic argument: {flag}"),
+            }
+        }
+        let parsed = Arguments::try_parse_from(std::iter::once("diag".to_owned()).chain(values))
+            .unwrap_or_else(|error| panic!("{args:?}: {error}"));
+        diagnostics::run(parsed.command)
+    }
+
     fn success(&self, args: &[&str], name: &str) -> Value {
-        let output = self.run(args);
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        self.diagnose(args).unwrap();
         serde_json::from_slice(&fs::read(self.path(name)).unwrap()).unwrap()
     }
 }
@@ -214,12 +253,31 @@ fn assert_close(actual: &Value, expected: f64, tolerance: f64) {
 }
 
 fn root_keys(fixture: &Fixture, name: &str) -> Vec<String> {
-    fs::read_to_string(fixture.path(name))
-        .unwrap()
-        .lines()
-        .filter(|line| line.starts_with("  \""))
-        .map(|line| line.split('"').nth(1).unwrap().to_owned())
-        .collect()
+    json_root_keys(&fs::read_to_string(fixture.path(name)).unwrap())
+}
+
+fn json_root_keys(json: &str) -> Vec<String> {
+    use serde::Deserializer;
+    use serde::de::{IgnoredAny, MapAccess, Visitor};
+    struct Keys;
+    impl<'de> Visitor<'de> for Keys {
+        type Value = Vec<String>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a JSON object")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut keys = Vec::new();
+            while let Some(key) = map.next_key::<String>()? {
+                keys.push(key);
+                map.next_value::<IgnoredAny>()?;
+            }
+            Ok(keys)
+        }
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let keys = deserializer.deserialize_map(Keys).unwrap();
+    deserializer.end().unwrap();
+    keys
 }
 
 fn distribution_positions() -> Vec<Position> {
@@ -367,7 +425,7 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         }
     }
     let saved = fs::read(f.path("report.json")).unwrap();
-    assert_eq!(f.run(&args).status.code(), Some(1));
+    assert!(f.diagnose(&args).is_err());
     assert_eq!(fs::read(f.path("report.json")).unwrap(), saved);
 }
 
@@ -408,7 +466,7 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     fs::remove_file(f.path("report.json")).unwrap();
     let mut duplicate = args.to_vec();
     duplicate.extend(["--pair", "same", "base.bin", "net.bin"]);
-    assert_eq!(f.run(&duplicate).status.code(), Some(1));
+    assert!(f.diagnose(&duplicate).is_err());
     assert!(!f.path("report.json").exists());
     // 空の帯や分散0は報告を作成せずに拒否する。
     f.network(
@@ -417,7 +475,7 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     );
     let mut constant = args;
     constant[10] = "constant.bin";
-    assert_eq!(f.run(&constant).status.code(), Some(1));
+    assert!(f.diagnose(&constant).is_err());
     assert!(!f.path("report.json").exists());
 }
 
@@ -658,7 +716,7 @@ fn failed_removal_is_saved_before_the_command_returns_exit_code_one() {
         1e-12,
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains(report["error"].as_str().unwrap()));
-    assert_eq!(f.run(&args).status.code(), Some(1));
+    assert!(f.diagnose(&args).is_err());
     assert_eq!(fs::read(f.path("nested/report.json")).unwrap(), saved);
 }
 
@@ -698,28 +756,27 @@ fn removal_checks_phase_boundaries_and_both_sides_with_nonlinear_weights() {
         let h = m.shape().width();
         let rows = m.parameter_mut(Parameter::FirstLayer);
         let end = rows.len() - h;
-        for (i, value) in rows[..end].iter_mut().enumerate() {
-            *value = (i as i32 % 13 - 6) as f32 * 0.001;
-        }
-        m.parameter_mut(Parameter::Biases).fill(0.13);
-        for (i, value) in m
-            .parameter_mut(Parameter::OutputWeights)
-            .iter_mut()
-            .enumerate()
-        {
-            *value = (i as f32 - 2.0) * 0.1;
-        }
+        rows[..end].fill(0.0625);
+        m.parameter_mut(Parameter::Biases).fill(0.125);
+        m.parameter_mut(Parameter::OutputWeights).fill(0.125);
         m.parameter_mut(Parameter::OutputBias)[0] = 0.125;
-        f.network("net.bin", &m);
+        // 整数側を0にし、実数の除去差分を直接照合する。
+        f.network(
+            "net.bin",
+            &model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),
+        );
         f.checkpoint(m);
         let report = f.success(&removal_args("12"), "report.json");
         assert_eq!(report["removal_count"], 564);
         assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-        assert!(
-            report["float_vs_integer_recomputed"]["max_absolute_cp"]
-                .as_f64()
-                .unwrap()
-                > 0.0
+        // 先獅子を含むn+1特徴により、隠れ値は(n+3)/16、出力係数の総和は1。
+        // 最大は3駒局面の自分の歩の除去。線形差分は-36 cp、非線形差分は
+        // 1000*((5/16)^2-(6/16)^2)=-42.96875 cpで、合計の絶対値は78.96875 cp。
+        // 1,2駒ではそれぞれ63.34375,71.15625 cp以下。91駒以上では活性化が飽和し、差分は40 cp以下。
+        assert_close(
+            &report["float_vs_integer_recomputed"]["max_absolute_cp"],
+            78.96875,
+            1e-9,
         );
         assert!(report["error"].is_null());
     }
@@ -888,9 +945,13 @@ fn moves_reject_nondefault_rules_and_empty_input() {
     f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 0);
     f.network("net.bin", &tempo_model(InputFeatureSet::P));
     f.data("data.mnsd", &[Position::initial()], 11, &[1], "L1,P0,R1,E0");
-    assert!(String::from_utf8_lossy(&f.run(&moves_args()).stderr).contains("engine-default"));
+    let output = f.run(&moves_args());
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("engine-default"));
     assert!(!f.path("report.json").exists());
     f.data("data.mnsd", &[], 11, &[], "engine-default");
-    assert!(String::from_utf8_lossy(&f.run(&moves_args()).stderr).contains("nonempty"));
+    let output = f.run(&moves_args());
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("nonempty"));
     assert!(!f.path("report.json").exists());
 }

@@ -307,11 +307,7 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
         "exponent_after",
         "zero_check",
     ];
-    assert!(
-        keys.map(|k| json.find(k).unwrap())
-            .windows(2)
-            .all(|p| p[0] < p[1])
-    );
+    assert_eq!(json_root_keys(&json), keys);
     assert!(json.ends_with('\n'));
 }
 
@@ -400,11 +396,7 @@ fn scale_identity_zero_and_mismatch_rejections() {
         "exponent_after",
         "max_absolute_embedding",
     ];
-    assert!(
-        keys.map(|k| json.find(k).unwrap())
-            .windows(2)
-            .all(|p| p[0] < p[1])
-    );
+    assert_eq!(json_root_keys(&json), keys);
 }
 
 #[test]
@@ -566,4 +558,28 @@ fn cli_rejects_scale_range() {
             .unwrap();
         assert_eq!(output.status.code(), Some(2));
     }
+}
+
+fn json_root_keys(json: &str) -> Vec<String> {
+    use serde::Deserializer;
+    use serde::de::{IgnoredAny, MapAccess, Visitor};
+    struct Keys;
+    impl<'de> Visitor<'de> for Keys {
+        type Value = Vec<String>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a JSON object")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut keys = Vec::new();
+            while let Some(key) = map.next_key::<String>()? {
+                keys.push(key);
+                map.next_value::<IgnoredAny>()?;
+            }
+            Ok(keys)
+        }
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let keys = deserializer.deserialize_map(Keys).unwrap();
+    deserializer.end().unwrap();
+    keys
 }
