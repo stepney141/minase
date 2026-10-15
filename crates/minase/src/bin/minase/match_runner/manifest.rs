@@ -207,7 +207,7 @@ mod tests {
                     parse_player_spec("cecp:engine").unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     hash_mb,
-                    "R1",
+                    "engine-default",
                     Vec::new(),
                 )
                 .unwrap()
@@ -215,7 +215,7 @@ mod tests {
             let manifest = run_manifest(
                 &player(candidate_hash),
                 &player(baseline_hash),
-                &parse_rule_set_argument("R1").unwrap(),
+                &parse_rule_set_argument("engine-default").unwrap(),
                 ManifestMode::Elo,
                 1,
                 4096,

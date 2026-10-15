@@ -22,7 +22,7 @@ pub(super) use cli::Arguments;
 use cli::{Common, Operation};
 use error::ImportError;
 use filter::{Report, metadata_exclusion};
-use input::{InputGame, time_control};
+use input::time_control;
 use label::{GameDetails, Job, process_job};
 use minase::{
     datagen::{self, data_error},
@@ -48,21 +48,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
         .lines()
         .enumerate()
     {
-        let line = line.map_err(|source| {
-            data_error(ImportError::ReadLine {
-                line: index + 1,
-                source,
-            })
-        })?;
-        let input: InputGame = serde_json::from_str(&line).map_err(|source| {
-            data_error(ImportError::JsonLine {
-                line: index + 1,
-                source,
-            })
-        })?;
-        if input.id.is_empty() || input.id.chars().any(char::is_whitespace) {
-            return Err(data_error(ImportError::InvalidId { line: index + 1 }));
-        }
+        let input = input::parse_line(line, index + 1)?;
         if let Some(reason) = metadata_exclusion(&input, openings, &mut seen) {
             report.exclude(reason, input.id);
             continue;

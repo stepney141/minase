@@ -326,6 +326,44 @@ fn print_generation_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generation_failure_removes_the_created_output() {
+        use crate::selfplay_gen::{
+            cli::{Arguments, Operation},
+            test_support::TemporaryDirectory,
+        };
+        use clap::Parser;
+        let directory = TemporaryDirectory::new();
+        let output = directory.0.join("failed.mnsd");
+        // 正のusizeとしてCLIを通るが、MBからバイトへの変換が生成ワーカーで失敗する。
+        let arguments = Arguments::try_parse_from([
+            "selfplay",
+            "generate",
+            "--output",
+            output.to_str().unwrap(),
+            "--games",
+            "1",
+            "--seed",
+            "7",
+            "--random-moves",
+            "0",
+            "--hash-mb",
+            &usize::MAX.to_string(),
+            "--allow-dirty",
+        ])
+        .unwrap();
+        let Operation::Generate(arguments) = arguments.command else {
+            unreachable!()
+        };
+        assert_eq!(
+            generate(&arguments).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert!(!output.exists());
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
+    }
+
     use minase::datagen::game::CompletedRecord;
     use minase::training::records::{
         Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Reader, Value,
@@ -343,9 +381,24 @@ mod tests {
         fs::create_dir(&output_directory).unwrap();
         let openings = directory.0.join("openings.txt");
         // RULES.md第21条: 7g7dで最後の王駒を捕獲する。飛車2枚により開始時の駒枯れを避ける。
+        use minase_core::{
+            Color::{Black, White},
+            PieceKind::{King, Rook},
+            test_util::{position, sq},
+            to_sfen,
+        };
+        let start = position(
+            Black,
+            &[
+                (sq(5, 8), White, King),
+                (sq(5, 5), Black, Rook),
+                (sq(0, 1), Black, Rook),
+                (sq(0, 0), Black, King),
+            ],
+        );
         fs::write(
             &openings,
-            "royal-capture 60 12/12/12/5k6/12/12/5R6/12/12/12/R11/K11 b - 61\n",
+            format!("royal-capture 60 {} - 61\n", to_sfen(&start)),
         )
         .unwrap();
         let arguments = GenerateArguments {

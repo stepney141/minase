@@ -10,24 +10,55 @@ use std::{io, time::Duration};
 
 /// 再開時の`gsprt --elo0`と`--elo1`を、指定された値だけ保存済み仮説と照合する。
 /// この指定で統計モードや仮説を変更することはできない。
-pub(super) fn verify_mode(requested: Option<&Mode>, recorded: &ManifestMode) -> Result<(), String> {
+pub(super) fn verify_mode(
+    requested: Option<&Mode>,
+    recorded: &ManifestMode,
+) -> Result<(), ModeMismatch> {
     let Some(Mode::Gsprt { elo0, elo1, .. }) = requested else {
         return Ok(());
     };
     let ManifestMode::Gsprt { h0_elo, h1_elo, .. } = recorded else {
-        return Err("gsprt does not match the recorded mode".to_owned());
+        return Err(ModeMismatch::Mode);
     };
     for (name, requested, saved) in [("elo0", elo0, h0_elo), ("elo1", elo1, h1_elo)] {
         if let Some(value) = requested
             && value != saved
         {
-            return Err(format!(
-                "--{name} {value} does not match the recorded value {saved}"
-            ));
+            return Err(ModeMismatch::Hypothesis {
+                name,
+                requested: *value,
+                saved: *saved,
+            });
         }
     }
     Ok(())
 }
+
+#[derive(Debug, PartialEq)]
+pub(super) enum ModeMismatch {
+    Mode,
+    Hypothesis {
+        name: &'static str,
+        requested: f64,
+        saved: f64,
+    },
+}
+impl std::fmt::Display for ModeMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mode => f.write_str("gsprt does not match the recorded mode"),
+            Self::Hypothesis {
+                name,
+                requested,
+                saved,
+            } => write!(
+                f,
+                "--{name} {requested} does not match the recorded value {saved}"
+            ),
+        }
+    }
+}
+impl std::error::Error for ModeMismatch {}
 
 /// 保存した`manifest.json`から規則と両エンジンを復元する。
 ///
@@ -113,6 +144,75 @@ fn restored_hash(recorded: Option<u64>, default: Option<u64>) -> Result<Option<u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_mode_checks_only_explicit_hypotheses() {
+        let recorded = ManifestMode::Gsprt {
+            h0_elo: 20.0,
+            h1_elo: 30.0,
+            alpha: 0.05,
+            beta: 0.05,
+        };
+        assert_eq!(verify_mode(None, &recorded), Ok(()));
+        for (elo0, elo1, expected) in [
+            (None, None, Ok(())),
+            (Some(20.0), None, Ok(())),
+            (None, Some(30.0), Ok(())),
+            (Some(20.0), Some(30.0), Ok(())),
+            (
+                Some(0.0),
+                None,
+                Err(ModeMismatch::Hypothesis {
+                    name: "elo0",
+                    requested: 0.0,
+                    saved: 20.0,
+                }),
+            ),
+            (
+                None,
+                Some(10.0),
+                Err(ModeMismatch::Hypothesis {
+                    name: "elo1",
+                    requested: 10.0,
+                    saved: 30.0,
+                }),
+            ),
+            (
+                Some(21.0),
+                None,
+                Err(ModeMismatch::Hypothesis {
+                    name: "elo0",
+                    requested: 21.0,
+                    saved: 20.0,
+                }),
+            ),
+            (
+                None,
+                Some(31.0),
+                Err(ModeMismatch::Hypothesis {
+                    name: "elo1",
+                    requested: 31.0,
+                    saved: 30.0,
+                }),
+            ),
+        ] {
+            let requested = Mode::Gsprt {
+                max_pairs: None,
+                elo0,
+                elo1,
+            };
+            assert_eq!(verify_mode(Some(&requested), &recorded), expected);
+        }
+        let requested = Mode::Gsprt {
+            max_pairs: None,
+            elo0: Some(0.0),
+            elo1: None,
+        };
+        assert_eq!(
+            verify_mode(Some(&requested), &ManifestMode::Elo),
+            Err(ModeMismatch::Mode)
+        );
+    }
 
     #[test]
     fn resume_rejects_changed_engine_sha256() {

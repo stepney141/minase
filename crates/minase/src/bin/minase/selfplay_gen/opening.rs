@@ -167,6 +167,93 @@ pub(super) fn generate_opening(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_openings_rejects_fields_move_number_deferred_missing_royal_and_empty() {
+        use crate::selfplay_gen::test_support::TemporaryDirectory;
+        use minase_core::{
+            Color::{Black, White},
+            PieceCode,
+            PieceKind::{King, Pawn},
+            PositionBuilder,
+            notation::sfen::{SetupPosition, SfenError, to_extended_sfen},
+            test_util::{position, sq},
+        };
+        let directory = TemporaryDirectory::new();
+        let path = directory.0.join("openings.txt");
+        let start = position(
+            Black,
+            &[
+                (sq(0, 0), Black, King),
+                (sq(11, 11), White, King),
+                (sq(4, 9), Black, Pawn),
+            ],
+        );
+        let setup = SetupPosition::new(start, None, 61).unwrap();
+        for text in [
+            "source\n".to_owned(),
+            format!("source 59 {}\n", to_extended_sfen(&setup)),
+        ] {
+            std::fs::write(&path, text).unwrap();
+            let error = read_openings(&path).err().unwrap();
+            let Some(OpeningError::Line { line: 1, source }) =
+                error.get_ref().unwrap().downcast_ref::<OpeningError>()
+            else {
+                panic!("expected line error")
+            };
+            assert!(matches!(
+                source.downcast_ref::<OpeningError>(),
+                Some(OpeningError::InvalidFields)
+            ));
+        }
+        let mut builder = PositionBuilder::new(Black);
+        for (square, color, kind) in [
+            (sq(0, 0), Black, King),
+            (sq(11, 11), White, King),
+            (sq(4, 9), Black, Pawn),
+        ] {
+            builder
+                .put(square, PieceCode::new(color, kind).unwrap())
+                .unwrap();
+        }
+        builder.mark_promotion_deferred(sq(4, 9)).unwrap();
+        let setup = SetupPosition::new(builder.finish().unwrap(), None, 61).unwrap();
+        std::fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
+        let error = read_openings(&path).err().unwrap();
+        let Some(OpeningError::Line { line: 1, source }) =
+            error.get_ref().unwrap().downcast_ref::<OpeningError>()
+        else {
+            panic!("expected line error")
+        };
+        assert_eq!(
+            source.downcast_ref::<SfenError>(),
+            Some(&SfenError::PromotionDeferredRequiresRule)
+        );
+        for pieces in [
+            vec![(sq(0, 0), Black, King)],
+            vec![(sq(11, 11), White, King)],
+        ] {
+            let setup = SetupPosition::new(position(Black, &pieces), None, 61).unwrap();
+            std::fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
+            let error = read_openings(&path).err().unwrap();
+            let Some(OpeningError::Line { line: 1, source }) =
+                error.get_ref().unwrap().downcast_ref::<OpeningError>()
+            else {
+                panic!("expected line error")
+            };
+            assert!(matches!(
+                source.downcast_ref::<OpeningError>(),
+                Some(OpeningError::InvalidPosition)
+            ));
+        }
+        std::fs::write(&path, "").unwrap();
+        let error = read_openings(&path).err().unwrap();
+        assert!(matches!(
+            error.get_ref().unwrap().downcast_ref::<OpeningError>(),
+            Some(OpeningError::Empty)
+        ));
+    }
+
     use crate::selfplay_gen::{
         play::{PlaySettings, play_game_from_opening},
         test_support::{TemporaryDirectory, epoch_zero_nnue, test_table},

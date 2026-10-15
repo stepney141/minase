@@ -113,6 +113,22 @@ mod tests {
         assert!((comparison.variance_time_reduction_percent - 30.0).abs() < 1e-12);
         assert_eq!(comparison.evidence_per_cpu_ratio, 1.0);
         candidate.comparison_manifest = serde_json::json!({"experiment": 2});
-        assert!(compare(&candidate, &current).is_err());
+        assert_eq!(
+            compare(&candidate, &current).err().unwrap().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        candidate.comparison_manifest = current.comparison_manifest.clone();
+        candidate.pair_numbers = vec![2];
+        assert_eq!(
+            compare(&candidate, &current).err().unwrap().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        candidate.pair_numbers = vec![1];
+        for current in [make(0.0, 4.0), make(10.0, 0.0)] {
+            assert_eq!(
+                compare(&candidate, &current).err().unwrap().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
     }
 }

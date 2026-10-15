@@ -559,17 +559,36 @@ mod tests {
         EvaluationRecord, GameRecord, OpeningRecord, ScoreBound, ScoreRecord, StopReasonRecord,
         StoredColor, TerminationRecord, TurnRecord, TurnResponse,
     };
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temporary_directory(test: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "minase-match-storage-{test}-{}-{nonce}",
-            std::process::id()
-        ))
+    struct Directory(std::path::PathBuf);
+    impl std::ops::Deref for Directory {
+        type Target = std::path::Path;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+    impl AsRef<std::path::Path> for Directory {
+        fn as_ref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            match std::fs::remove_dir_all(&self.0) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("cannot remove {}: {error}", self.0.display()),
+            }
+        }
+    }
+    fn temporary_directory(test: &str) -> Directory {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Directory(std::env::temp_dir().join(format!(
+            "minase-match-storage-{test}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )))
     }
 
     fn manifest() -> RunManifest {
@@ -696,7 +715,6 @@ mod tests {
                 Some(&expected)
             );
         }
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -711,7 +729,6 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert_eq!(history[1].target_pairs, 2);
         assert!(!path.join(".invocations.json.tmp").exists());
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -724,10 +741,9 @@ mod tests {
         drop(store);
 
         let (store, records) = RunStore::resume(&path, Some(2)).unwrap();
-        assert_eq!(store.path(), path);
+        assert_eq!(store.path(), &*path);
         assert_eq!(records.keys().copied().collect::<Vec<_>>(), vec![1, 2]);
         assert_eq!(records[&2], pair(2));
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -752,7 +768,6 @@ mod tests {
         assert_eq!(summary.active_wall_time_ns, 5_000_000_000);
         assert!(summary.interrupted);
         assert!(!summary.invocation_active);
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -781,7 +796,6 @@ mod tests {
         );
         drop(store);
         RunStore::resume(&path, None).unwrap();
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -789,18 +803,20 @@ mod tests {
         let path = temporary_directory("resume-validation");
         let expected = manifest();
         let store = RunStore::create(&path, expected.clone(), 1).unwrap();
+        store.save_pair(&pair(1)).unwrap();
+        drop(store);
+        let error = RunStore::resume(&path, Some(1)).unwrap_err();
+        assert_eq!(
+            error.get_ref().unwrap().downcast_ref::<ResumeError>(),
+            Some(&ResumeError::TargetNotIncreased)
+        );
+        let (store, _) = RunStore::resume(&path, None).unwrap();
         store.save_pair(&pair(2)).unwrap();
         drop(store);
-
-        assert_eq!(
-            RunStore::resume(&path, Some(1)).unwrap_err().kind(),
-            io::ErrorKind::InvalidData
-        );
         assert_eq!(
             RunStore::resume(&path, None).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -837,7 +853,6 @@ mod tests {
             RunStore::resume(&path, Some(2)).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -854,7 +869,6 @@ mod tests {
         store.save_pair(&pair(1)).unwrap();
         assert!(!temporary.exists());
         assert!(path.join(PAIRS_DIRECTORY).join(pair_file_name(1)).exists());
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -876,7 +890,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(saved, original);
-        fs::remove_dir_all(path).unwrap();
     }
 
     // [`RunManifest::ponder`]と[`minase::harness::TurnRecord::ponder`]の欄は省略できない。

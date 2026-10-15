@@ -295,16 +295,29 @@ fn plan_injections_with_rng(rng: &mut XorShift64, opening_ply: u32, maximum: u8)
         })
         .collect::<Vec<_>>();
     plies.sort_unstable();
-    let record_from = plies.last().map_or(opening_ply, |&last| {
+    let record_from = recording_start(opening_ply, &plies);
+    InjectionPlan { plies, record_from }
+}
+
+/// 記録は最後の予定注入の次、注入がなければ開始局面から始める。
+fn recording_start(opening_ply: u32, plies: &[u32]) -> u32 {
+    plies.last().map_or(opening_ply, |&last| {
         last.checked_add(1)
             .expect("a game ply count cannot overflow after an injection")
-    });
-    InjectionPlan { plies, record_from }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recording_starts_after_last_injection_or_at_opening() {
+        assert_eq!(recording_start(12, &[]), 12);
+        assert_eq!(recording_start(12, &[12]), 13);
+        assert_eq!(recording_start(12, &[14, 50, 91]), 92);
+    }
+
     use crate::selfplay_gen::{
         engine_default_rules, opening::generate_opening, test_support::test_table,
     };
@@ -471,7 +484,7 @@ mod tests {
 
     /// 注入計画は0以上80未満の異なるオフセットと予定由来の境界を返す。
     #[test]
-    fn injection_plan_has_unique_offsets_and_planned_boundary() {
+    fn injection_plan_has_unique_offsets() {
         let opening_ply = 12;
         for number in 1..=32 {
             let game_seed = derive_seed(31, number);
@@ -484,10 +497,6 @@ mod tests {
                 plan.plies
                     .iter()
                     .all(|&ply| (opening_ply..opening_ply + 80).contains(&ply))
-            );
-            assert_eq!(
-                plan.record_from,
-                plan.plies.last().map_or(opening_ply, |&last| last + 1)
             );
         }
     }

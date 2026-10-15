@@ -87,3 +87,75 @@ pub(super) struct Player {
 pub(super) struct User {
     pub(super) title: Option<String>,
 }
+
+/// 1行の読み取り結果を、行番号と原因型を保って復号する。
+pub(super) fn parse_line(
+    line: std::io::Result<String>,
+    line_number: usize,
+) -> std::io::Result<InputGame> {
+    use super::ImportError;
+    use minase::datagen::data_error;
+    let line = line.map_err(|source| {
+        data_error(ImportError::ReadLine {
+            line: line_number,
+            source,
+        })
+    })?;
+    let input: InputGame = serde_json::from_str(&line).map_err(|source| {
+        data_error(ImportError::JsonLine {
+            line: line_number,
+            source,
+        })
+    })?;
+    if input.id.is_empty() || input.id.chars().any(char::is_whitespace) {
+        return Err(data_error(ImportError::InvalidId { line: line_number }));
+    }
+    Ok(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ImportError;
+    use super::*;
+    use std::io::BufRead;
+
+    #[test]
+    fn parse_line_rejects_malformed_missing_null_numeric_and_non_utf8_input() {
+        for (bytes, expected) in [
+            (b"{".as_slice(), serde_json::error::Category::Eof),
+            (b"{}".as_slice(), serde_json::error::Category::Data),
+            (b"null".as_slice(), serde_json::error::Category::Data),
+            (
+                br#"{"id":42,"moves":""}"#.as_slice(),
+                serde_json::error::Category::Data,
+            ),
+        ] {
+            let error = parse_line(bytes.lines().next().unwrap(), 2).err().unwrap();
+            let ImportError::JsonLine { line, source } = error
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<ImportError>()
+                .unwrap()
+            else {
+                panic!("expected JSON failure")
+            };
+            assert_eq!(*line, 2);
+            assert_eq!(source.classify(), expected);
+        }
+        let error = parse_line(b"\xff".as_slice().lines().next().unwrap(), 2)
+            .err()
+            .unwrap();
+        let ImportError::ReadLine { line, source } = error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<ImportError>()
+            .unwrap()
+        else {
+            panic!("expected UTF-8 failure")
+        };
+        assert_eq!(*line, 2);
+        assert_eq!(source.kind(), std::io::ErrorKind::InvalidData);
+        let parsed = parse_line(Ok(r#"{"id":"game","moves":""}"#.into()), 1).unwrap();
+        assert_eq!(parsed.id, "game");
+    }
+}

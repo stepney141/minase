@@ -83,3 +83,37 @@ pub(super) fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclus
         result: game.result(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minase_core::{Color, WinReason};
+
+    #[test]
+    fn terminal_winner_is_checked_and_later_moves_are_ignored() {
+        let mut value: serde_json::Value =
+            include_str!("../../../../tests/fixtures/lishogi_import_cases.ndjson")
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|game| game["id"] == "SNjoPiHz")
+                .unwrap();
+        let input: InputGame = serde_json::from_value(value.clone()).unwrap();
+        let original = replay(&input, false).unwrap();
+        assert_eq!(
+            original.result,
+            Some(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::RoyalCapture
+            })
+        );
+        value["moves"] = serde_json::json!(format!("{} 1あ", input.moves));
+        let input = serde_json::from_value(value.clone()).unwrap();
+        let trailing = replay(&input, false).unwrap();
+        assert_eq!(trailing.result, original.result);
+        assert_eq!(trailing.moves, original.moves);
+        assert_eq!(trailing.truncated, None);
+        value["winner"] = serde_json::json!("sente");
+        let input = serde_json::from_value(value).unwrap();
+        assert_eq!(replay(&input, false).err(), Some(Exclusion::WinnerMismatch));
+    }
+}
