@@ -18,6 +18,26 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+/// エポックの経過秒数から途中検証の秒数を除き、局面数から学習速度を求める。
+pub(super) fn training_timing(
+    positions: usize,
+    elapsed_seconds: f64,
+    interval_validation_seconds: f64,
+) -> TrainingTiming {
+    let training_seconds = elapsed_seconds - interval_validation_seconds;
+    TrainingTiming {
+        training_seconds,
+        interval_validation_seconds,
+        training_positions_per_second: positions as f64 / training_seconds,
+    }
+}
+
+pub(super) struct TrainingTiming {
+    pub training_seconds: f64,
+    pub interval_validation_seconds: f64,
+    pub training_positions_per_second: f64,
+}
+
 /// 線形重みの1端点について、現在値と初期値の差の絶対値をセンチポーンで集計する。
 /// 埋め草を除く正準行6,840行の平均が`mean_absolute_cp`、最大が`max_absolute_cp`である。
 #[derive(Debug, Serialize, Deserialize)]
@@ -277,7 +297,7 @@ pub(super) fn configuration(
     })
 }
 
-/// 再開のたびに`config.json`の`resumes`へ1要素を追記して書き直す。
+/// 再開のたびに、呼び出し元から受け取った時刻を`config.json`の`resumes`へ追記して書き直す。
 /// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
 /// 実効ワーカー数`workers`、途中検証の間隔`validation_interval`、再開時点の完了エポック番号`epoch`を持つ。
@@ -287,8 +307,9 @@ pub(super) fn append_resume(
     args: &Args,
     workers: usize,
     epoch: u64,
+    resumed_at: SystemTime,
 ) -> Result<()> {
-    let resumed_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let resumed_at = resumed_at.duration_since(UNIX_EPOCH)?.as_secs();
     let resumes = config
         .as_object_mut()
         .ok_or(Error::Invalid("configuration must be an object"))?

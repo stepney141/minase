@@ -52,7 +52,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     fmt,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 /// 学習を継続できない引数、保存状態、または終了時の検査結果。
@@ -192,6 +192,7 @@ impl Session {
     /// 途中検証のログは[`reconcile_interval_log`]で更新回数の増加を検査し、チェックポイントより後の行と未完の末尾を捨てる。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
+        let resumed_at = SystemTime::now();
         args.validate()?;
         let workers = args.workers()?;
         let base = base::read(&args.base)?;
@@ -349,6 +350,7 @@ impl Session {
                 &session.args,
                 session.workers,
                 session.checkpoint.progress.epoch,
+                resumed_at,
             )?;
         }
         if session.initial_validation_loss.is_none() && !session.expired() {
@@ -493,8 +495,7 @@ impl Session {
         };
         self.gpu_used_bytes = self.gpu_used_bytes.max(training.gpu_used_bytes);
         self.gpu_total_bytes = training.gpu_total_bytes;
-        let training_seconds =
-            training_started.elapsed().as_secs_f64() - training.interval_validation_seconds;
+        let elapsed_seconds = training_started.elapsed().as_secs_f64();
         let (parameters, optimizer) = self.backend.snapshot()?;
         parameters.validate()?;
         let mut candidate = self.checkpoint.model.clone();
@@ -512,7 +513,7 @@ impl Session {
         self.checkpoint.progress.elapsed_seconds = self.elapsed();
         let record = self.epoch_record(
             &validation,
-            Some((&training, training_seconds)),
+            Some((&training, elapsed_seconds)),
             validation_seconds,
         );
         append_epoch(&self.log_path(), &record)?;
@@ -539,6 +540,9 @@ impl Session {
         training: Option<(&pipeline::Training, f64)>,
         validation_seconds: f64,
     ) -> EpochRecord {
+        let timing = training.map(|(t, elapsed)| {
+            record::training_timing(t.positions, elapsed, t.interval_validation_seconds)
+        });
         let saturation = validation.saturation();
         let train_loss = training.map(|(t, _)| t.bce / t.positions as f64);
         let removal_loss = training.map(|(t, _)| t.auxiliary / t.positions as f64);
@@ -558,12 +562,12 @@ impl Session {
                 acc_ge_one: saturation[1],
             },
             linear_movement: linear_movement(&self.checkpoint.model),
-            training_seconds: training.map(|(_, seconds)| seconds),
+            training_seconds: timing.as_ref().map(|t| t.training_seconds),
             validation_seconds,
-            interval_validation_seconds: training
-                .map_or(0.0, |(t, _)| t.interval_validation_seconds),
-            training_positions_per_second: training
-                .map(|(t, seconds)| t.positions as f64 / seconds),
+            interval_validation_seconds: timing
+                .as_ref()
+                .map_or(0.0, |t| t.interval_validation_seconds),
+            training_positions_per_second: timing.as_ref().map(|t| t.training_positions_per_second),
             update_seconds: training.map(|(t, _)| t.compute_seconds / t.steps as f64),
             gpu_memory_used_bytes: self.gpu_used_bytes,
             gpu_memory_total_bytes: self.gpu_total_bytes,

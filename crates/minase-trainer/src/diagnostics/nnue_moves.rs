@@ -250,7 +250,9 @@ mod tests {
     fn move_matching_counts_unmatched_rows_and_preserves_empty_statistics() {
         let c = Components::new(0, 0, -6);
         let candidate = BTreeMap::from([("a".into(), [c]), ("b".into(), [c])]);
-        let baseline = BTreeMap::from([("b".into(), [c, c]), ("c".into(), [c, c])]);
+        let base = Components::new(0, 0, -2);
+        let pst = Components::new(0, 0, -9);
+        let baseline = BTreeMap::from([("b".into(), [base, pst]), ("c".into(), [base, pst])]);
         let report = position_report(0, &candidate, &baseline);
         assert_eq!(
             (
@@ -262,6 +264,33 @@ mod tests {
         );
         assert_eq!(report.candidate.count, 2);
         assert_eq!(report.candidate_minus_baseline.count, 1);
+        // 共通手の差は6−2=4、PSTだけとの差は6−9=−3。
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["candidate_minus_baseline"]["mean_cp"], 4.0);
+        assert_eq!(json["candidate_minus_baseline_pst"]["mean_cp"], -3.0);
+        let empty =
+            serde_json::to_value(position_report(1, &BTreeMap::new(), &BTreeMap::new())).unwrap();
+        for key in [
+            "matched_count",
+            "candidate_only_count",
+            "baseline_only_count",
+        ] {
+            assert_eq!(empty[key], 0);
+        }
+        for key in [
+            "candidate",
+            "baseline",
+            "candidate_minus_baseline",
+            "candidate_minus_baseline_pst",
+        ] {
+            assert_eq!(
+                empty[key],
+                serde_json::json!({
+                    "count": 0, "mean_cp": null, "std_cp": null,
+                    "mean_absolute_cp": null, "max_absolute_cp": null,
+                })
+            );
+        }
         assert_eq!(
             unmatched_error(1, 1).as_deref(),
             Some("unmatched moves: candidate_only=1, baseline_only=1")

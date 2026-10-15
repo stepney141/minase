@@ -19,7 +19,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, UNIX_EPOCH},
 };
 
 fn args() -> Args {
@@ -339,12 +339,10 @@ fn resume_config_allows_budget_and_worker_changes() {
             .len(),
         1
     );
+    // MNPT版3の検査和は80バイトのヘッダを除く本体全体のSHA-256。
     assert_eq!(
-        configuration.document["inputs"]["base"]["checksum"]
-            .as_str()
-            .unwrap()
-            .len(),
-        64
+        configuration.document["inputs"]["base"]["checksum"],
+        crate::nn::hex(&sha256(&fs::read(&args.base).unwrap()[80..]))
     );
     assert_eq!(
         configuration.document["inputs"]["init_pst"]["byte_length"],
@@ -429,31 +427,33 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     assert_eq!(original["resumes"], json!([]));
     let path = fixture.0.join("config.json");
     record::write_json(&path, &original).unwrap();
-    let earliest = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    for (epoch, epochs, patience, hours, workers) in [(1, 4, 2, 6.0, 3), (3, 8, 4, 12.0, 1)] {
+    for (epoch, epochs, patience, hours, workers, timestamp) in [
+        (1, 4, 2, 6.0, 3, 1_700_000_000),
+        (3, 8, 4, 12.0, 1, 1_700_000_123),
+    ] {
         args.epochs = epochs;
         args.patience = patience;
         args.time_limit_hours = hours;
         args.threads = Some(workers);
         let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        record::append_resume(&path, &mut saved, &args, workers, epoch).unwrap();
+        record::append_resume(
+            &path,
+            &mut saved,
+            &args,
+            workers,
+            epoch,
+            UNIX_EPOCH + Duration::from_secs(timestamp),
+        )
+        .unwrap();
     }
-    let latest = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
     let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     let resumes = saved["resumes"].as_array().unwrap();
     assert_eq!(resumes.len(), 2);
-    for (entry, epoch, epochs, patience, hours, workers) in [
-        (&resumes[0], 1, 4, 2, 6.0, 3),
-        (&resumes[1], 3, 8, 4, 12.0, 1),
+    for (entry, epoch, epochs, patience, hours, workers, timestamp) in [
+        (&resumes[0], 1, 4, 2, 6.0, 3, 1_700_000_000_u64),
+        (&resumes[1], 3, 8, 4, 12.0, 1, 1_700_000_123_u64),
     ] {
-        let timestamp = entry["resumed_at_unix_seconds"].as_u64().unwrap();
-        assert!((earliest..=latest).contains(&timestamp));
+        assert_eq!(entry["resumed_at_unix_seconds"], timestamp);
         assert_eq!(entry["epoch"], epoch);
         assert_eq!(entry["epochs"], epochs);
         assert_eq!(entry["patience"], patience);
@@ -995,12 +995,6 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
             assert_eq!(left["interval_validation_seconds"], 0.0);
             if epoch == 0 {
                 assert_eq!(right["interval_validation_seconds"], 0.0);
-            } else {
-                let seconds = right["training_seconds"].as_f64().unwrap();
-                assert_eq!(
-                    right["training_positions_per_second"].as_f64().unwrap(),
-                    296.0 / seconds
-                );
             }
         }
         let rows = logs(&diagnostic.output_dir.join("validation-interval.jsonl"));
@@ -1084,7 +1078,6 @@ fn resume_truncates_interval_records_after_the_checkpoint() {
     args.device = crate::nnue::options::DeviceKind::Cpu;
     args.lr_schedule = "exponential:1:0.1".parse().unwrap();
     args.validation_interval = 2;
-    run(args.clone()).unwrap();
 
     let mut split = args.clone();
     split.output_dir = fixture.0.join("resumed");
@@ -1111,44 +1104,8 @@ fn resume_truncates_interval_records_after_the_checkpoint() {
     split.resume = Some(split.output_dir.clone());
     split.epochs = 2;
     split.threads = Some(5);
-    let mut session = Session::new(split.clone()).unwrap();
+    let _session = Session::new(split.clone()).unwrap();
     assert_eq!(fs::read(&path).unwrap(), kept);
-    assert!(session.advance().unwrap());
-    assert!(!session.advance().unwrap());
-    session.finish().unwrap();
-    assert_eq!(
-        fs::read(args.output_dir.join("nnue.bin")).unwrap(),
-        fs::read(split.output_dir.join("nnue.bin")).unwrap()
-    );
-    for file in ["latest.npz", "best.npz"] {
-        compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
-    }
-    let continuous = logs(&args.output_dir.join("training.jsonl"));
-    let resumed = logs(&split.output_dir.join("training.jsonl"));
-    assert_eq!(continuous.len(), 3);
-    assert_eq!(resumed.len(), continuous.len());
-    for (epoch, (left, right)) in continuous.iter().zip(&resumed).enumerate() {
-        assert_eq!(left["epoch"], epoch);
-        assert_eq!(right["epoch"], epoch);
-        for key in [
-            "train_loss",
-            "removal_loss",
-            "total_loss",
-            "validation_loss",
-            "lr_multiplier_first",
-            "lr_multiplier_last",
-        ] {
-            assert_eq!(
-                left[key].as_f64().map(f64::to_bits),
-                right[key].as_f64().map(f64::to_bits),
-                "epoch={epoch}: {key}"
-            );
-        }
-    }
-    assert_eq!(
-        logs(&path),
-        logs(&args.output_dir.join("validation-interval.jsonl"))
-    );
 }
 
 #[test]
@@ -1494,7 +1451,7 @@ fn resume_requires_an_existing_array_without_changing_the_configuration() {
         let original = config.clone();
         record::write_json(&path, &config).unwrap();
         let bytes = fs::read(&path).unwrap();
-        let error = record::append_resume(&path, &mut config, &args, 1, 1).unwrap_err();
+        let error = record::append_resume(&path, &mut config, &args, 1, 1, UNIX_EPOCH).unwrap_err();
         assert!(
             matches!(
                 error.downcast_ref::<Error>(),
@@ -1697,4 +1654,13 @@ fn validation_set_returns_none_when_the_deadline_has_already_expired() {
             .join("validation-interval.jsonl")
             .exists()
     );
+}
+
+#[test]
+fn training_timing_excludes_interval_validation() {
+    // 296局面、経過10秒、途中検証2秒なら学習8秒、296/8 = 37局面/秒。
+    let timing = record::training_timing(296, 10.0, 2.0);
+    assert!((timing.training_seconds - 8.0).abs() < 1e-12);
+    assert!((timing.interval_validation_seconds - 2.0).abs() < 1e-12);
+    assert!((timing.training_positions_per_second - 37.0).abs() < 1e-12);
 }

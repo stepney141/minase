@@ -154,6 +154,51 @@ impl Kernels {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // CUDAの行コメントとブロックコメントを除き、文字列・文字リテラルは保つ。
+    fn without_comments(source: &str) -> String {
+        let mut chars = source.chars().peekable();
+        let mut code = String::new();
+        while let Some(c) = chars.next() {
+            match (c, chars.peek().copied()) {
+                ('/', Some('/')) => {
+                    chars.next();
+                    for c in chars.by_ref() {
+                        if c == '\n' {
+                            break;
+                        }
+                    }
+                    code.push('\n');
+                }
+                ('/', Some('*')) => {
+                    chars.next();
+                    while let Some(c) = chars.next() {
+                        if c == '*' && chars.peek() == Some(&'/') {
+                            chars.next();
+                            break;
+                        }
+                    }
+                    code.push(' ');
+                }
+                ('"' | '\'', _) => {
+                    code.push(c);
+                    while let Some(next) = chars.next() {
+                        code.push(next);
+                        if next == c {
+                            break;
+                        }
+                        if next == '\\'
+                            && let Some(escaped) = chars.next()
+                        {
+                            code.push(escaped);
+                        }
+                    }
+                }
+                _ => code.push(c),
+            }
+        }
+        code
+    }
+
     #[test]
     fn embedded_sources_and_compiler_options_keep_runtime_dimensions() {
         let src = source();
@@ -181,11 +226,15 @@ mod tests {
                 1
             );
         }
-        assert!(!src.contains("atomicAdd"));
-        assert!(!src.contains("template"));
+        let code = without_comments(&src);
+        assert!(!code.contains("atomicAdd"));
+        assert!(!code.contains("template"));
         let opts = options((8, 6));
         assert_eq!(opts.options, ["--gpu-architecture=sm_86"]);
         assert_eq!(opts.fmad, Some(false));
+        assert_eq!(opts.prec_div, Some(true));
+        assert_eq!(opts.prec_sqrt, Some(true));
+        assert_eq!(opts.ftz, Some(false));
     }
 
     #[test]

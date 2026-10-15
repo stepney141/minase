@@ -149,6 +149,27 @@ struct KernelTotals {
     configurations: Vec<(LaunchConfig, usize)>,
 }
 
+struct KernelAverage {
+    mean_ms: f64,
+    calls: f64,
+    share_percent: Option<f64>,
+    read_bytes: f64,
+    write_bytes: f64,
+}
+
+impl KernelTotals {
+    fn average(&self, steps: usize, total_ms: f64) -> KernelAverage {
+        let updates = steps as f64;
+        KernelAverage {
+            mean_ms: self.total_ms / updates,
+            calls: self.calls as f64 / updates,
+            share_percent: (total_ms != 0.0).then(|| 100.0 * self.total_ms / total_ms),
+            read_bytes: self.read_bytes as f64 / updates,
+            write_bytes: self.write_bytes as f64 / updates,
+        }
+    }
+}
+
 #[derive(Default)]
 struct ProfileMeasurements {
     kernels: Vec<KernelTotals>,
@@ -184,8 +205,16 @@ impl ProfileMeasurements {
         }
     }
 
+    fn total_ms(&self) -> f64 {
+        self.kernels.iter().map(|k| k.total_ms).sum()
+    }
+
+    fn mean_ms(&self, steps: usize) -> f64 {
+        self.total_ms() / steps as f64
+    }
+
     fn table(&self, steps: usize) -> String {
-        let total_ms: f64 = self.kernels.iter().map(|k| k.total_ms).sum();
+        let total_ms = self.total_ms();
         let updates = steps as f64;
         let mut table = format!(
             "カーネル別計測はウォームアップを除く{steps}更新です。平均時間と起動回数は1更新あたり、合計時間は全更新分です。\n\
@@ -208,6 +237,7 @@ impl ProfileMeasurements {
         )
         .unwrap();
         for kernel in &self.kernels {
+            let average = kernel.average(steps, total_ms);
             let grids = kernel
                 .configurations
                 .iter()
@@ -227,30 +257,28 @@ impl ProfileMeasurements {
                 .collect::<Vec<_>>()
                 .join(";");
             // イベント時刻がすべて0なら割合は未定義であり、0%とは表示しない。
-            let share = if total_ms == 0.0 {
-                "n/a".to_owned()
-            } else {
-                format!("{:.1}", 100.0 * kernel.total_ms / total_ms)
-            };
+            let share = average
+                .share_percent
+                .map_or_else(|| "n/a".to_owned(), |share| format!("{share:.1}"));
             writeln!(
                 table,
                 "{:<22} {:>14.3} {:>12.3} {:>12.1} {:>8} {:<38} {:<25} {:>18.0} {:>18.0}",
                 kernel.name,
-                kernel.total_ms / updates,
+                average.mean_ms,
                 kernel.total_ms,
-                kernel.calls as f64 / updates,
+                average.calls,
                 share,
                 grids,
                 blocks,
-                kernel.read_bytes as f64 / updates,
-                kernel.write_bytes as f64 / updates,
+                average.read_bytes,
+                average.write_bytes,
             )
             .unwrap();
         }
         write!(
             table,
             "カーネル時間の合計は1更新平均 {:.3} ms、全{steps}更新で {total_ms:.3} msです。",
-            total_ms / updates
+            self.mean_ms(steps)
         )
         .unwrap();
         table
@@ -594,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_table_sums_launches_and_averages_over_updates() {
+    fn profile_measurements_sum_launches_and_average_over_updates() {
         // 仕様: 同名カーネルをまとめ、起動数ではなく測定した更新数で平均する。
         // 2更新でaは(1+3)+(2+4)=10ms、bは0.5+2=2.5msなので割合は80%と20%。
         let mut measurements = ProfileMeasurements::default();
@@ -603,53 +631,56 @@ mod tests {
             measurements.add(timing("a", a2, 2, bytes * 2));
             measurements.add(timing("b", b, 1, 40));
         }
-        let table = measurements.table(2);
-        let row = |name| {
-            table
-                .lines()
-                .find_map(|line| {
-                    let columns: Vec<_> = line.split_whitespace().collect();
-                    (columns.first().copied() == Some(name)).then_some(columns)
-                })
-                .unwrap()
+        assert_eq!(measurements.kernels.len(), 2);
+        assert!((measurements.total_ms() - 12.5).abs() < 1e-12);
+        assert!((measurements.mean_ms(2) - 6.25).abs() < 1e-12);
+        for (kernel, name, total, calls, read, write, mean, share) in [
+            (&measurements.kernels[0], "a", 10.0, 4, 900, 450, 5.0, 80.0),
+            (&measurements.kernels[1], "b", 2.5, 2, 80, 40, 1.25, 20.0),
+        ] {
+            assert_eq!(kernel.name, name);
+            assert!((kernel.total_ms - total).abs() < 1e-12);
+            assert_eq!(
+                (kernel.calls, kernel.read_bytes, kernel.write_bytes),
+                (calls, read, write)
+            );
+            let average = kernel.average(2, measurements.total_ms());
+            assert!((average.mean_ms - mean).abs() < 1e-12);
+            assert!((average.share_percent.unwrap() - share).abs() < 1e-12);
+        }
+        let a = measurements.kernels[0].average(2, measurements.total_ms());
+        let b = measurements.kernels[1].average(2, measurements.total_ms());
+        for (average, calls, read, write) in [(a, 2.0, 450.0, 225.0), (b, 1.0, 40.0, 20.0)] {
+            assert!((average.calls - calls).abs() < 1e-12);
+            assert!((average.read_bytes - read).abs() < 1e-12);
+            assert!((average.write_bytes - write).abs() < 1e-12);
+        }
+        let configurations = |kernel: &KernelTotals| {
+            kernel
+                .configurations
+                .iter()
+                .map(|(cfg, calls)| (cfg.grid_dim, cfg.block_dim, *calls))
+                .collect::<Vec<_>>()
         };
         assert_eq!(
-            row("a"),
-            [
-                "a",
-                "5.000",
-                "10.000",
-                "2.0",
-                "80.0",
-                "(1,1,1):1.0;(2,1,1):1.0",
-                "(128,1,1);(128,1,1)",
-                "450",
-                "225",
-            ]
+            configurations(&measurements.kernels[0]),
+            [((1, 1, 1), (128, 1, 1), 2), ((2, 1, 1), (128, 1, 1), 2)]
         );
         assert_eq!(
-            row("b"),
-            [
-                "b",
-                "1.250",
-                "2.500",
-                "1.0",
-                "20.0",
-                "(1,1,1):1.0",
-                "(128,1,1)",
-                "40",
-                "20",
-            ]
+            configurations(&measurements.kernels[1]),
+            [((1, 1, 1), (128, 1, 1), 2)]
         );
-        assert!(table.contains("1更新平均 6.250 ms、全2更新で 12.500 ms"));
     }
 
     #[test]
     fn zero_kernel_time_has_no_percentage() {
         let mut measurements = ProfileMeasurements::default();
         measurements.add(timing("a", 0.0, 1, 0));
-        let table = measurements.table(1);
-        let row = table.lines().find(|line| line.starts_with("a ")).unwrap();
-        assert_eq!(row.split_whitespace().nth(4), Some("n/a"));
+        assert!(
+            measurements.kernels[0]
+                .average(1, measurements.total_ms())
+                .share_percent
+                .is_none()
+        );
     }
 }

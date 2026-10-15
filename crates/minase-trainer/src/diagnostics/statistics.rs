@@ -341,12 +341,29 @@ mod tests {
         assert!(compare_scores(&[1.0], &[1.0]).is_err());
         assert!(compare_scores(&[1.0, 1.0], &[1.0, 2.0]).is_err());
         assert!(compare_scores(&[1.0, 2.0], &[1.0, 1.0]).is_err());
-        assert!(compare_intervals(&[0.0, 1.0], &[0.0, 1.0], &[0, 0], &[(1, Some(2))]).is_err());
+        for (upper, expected) in [
+            (
+                Some(2),
+                "interval [1, 2]: cannot summarize an empty evaluation distribution",
+            ),
+            (
+                None,
+                "interval [1, None]: cannot summarize an empty evaluation distribution",
+            ),
+        ] {
+            let error = compare_intervals(&[0.0, 1.0], &[0.0, 1.0], &[0, 0], &[(1, upper)])
+                .err()
+                .unwrap();
+            assert_eq!(error.to_string(), expected);
+        }
         let empty = delta_statistics(&[]);
         assert!(empty.mean_cp.is_none() && empty.std_cp.is_none());
         let r = reversal_statistics([(10, -1), (-4, 2), (0, 1), (9, 0)].into_iter());
         assert_eq!((r.count, r.total), (2, 3));
         close(r.mean_absolute_cp.unwrap(), 7.0);
+        // 反転2件/参照非零3件 = 2/3、反転の絶対値は10と4。
+        close(r.fraction.unwrap(), 0.6666666666666666);
+        close(r.max_absolute_cp.unwrap(), 10.0);
         assert!(reversal_statistics([(9, 0)].into_iter()).fraction.is_none());
         for ratio in [0.9, 1.1] {
             assert_eq!(scale_verdict(ratio), "全体の尺度はほとんど変えていない");
