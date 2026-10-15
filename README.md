@@ -77,6 +77,18 @@ Raise it when the move travels over a network or the machine is busy, especially
 setoption name ByoyomiMargin value 3000
 ```
 
+### Draw value
+
+Under the repetition rule R1, the search scores a repetition draw with the USI options `DrawValueBlack` and `DrawValueWhite` (centipawns, default 0, range -28999 to 28999).
+The option for the side to move at the root is selected when a search starts, and the value applies with a positive sign to that side and a negative sign to the opponent, as in YaneuraOu.
+A negative value makes the engine prefer any move scored above it over a repetition draw; the lishogi bot uses -1 so that only ties are broken against the draw.
+The default leaves the search unchanged.
+
+```text
+setoption name DrawValueBlack value -1
+setoption name DrawValueWhite value -1
+```
+
 ## Using Minase as a library
 
 Add `minase-core` to Cargo.toml to use position handling and legal-move generation from Rust. The library does not depend on the engine.
