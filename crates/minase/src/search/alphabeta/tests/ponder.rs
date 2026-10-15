@@ -6,6 +6,11 @@ use super::*;
 // 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
 #[test]
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
+    assert_eq!(
+        crate::search::alphabeta::params::iteration_ratio(),
+        263,
+        "数値例の前提"
+    );
     let ms = Duration::from_millis;
     let ns = Duration::from_nanos;
     let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
@@ -297,7 +302,7 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
         let (_, score) = searcher
             .search_iteration(&position, &legal_moves(&position), 5, Some(20_000))
             .unwrap();
-        assert!(score < 20_000 - searcher.nnue.pawn_value() / 2);
+        assert!(score < 20_000 - aspiration_delta(searcher.nnue.pawn_value()));
         let iteration = searcher.ponder_iteration.as_ref().unwrap();
         assert_eq!(iteration.started, started);
         assert!(iteration.stable);

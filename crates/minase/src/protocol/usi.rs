@@ -2148,6 +2148,7 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     mod history;
+    mod tuning;
     use std::collections::HashSet;
 
     use super::*;

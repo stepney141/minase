@@ -114,10 +114,6 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// Threads=1の固定ノード探索は、経過
-// 時間を除く結果、PV、Progress列、ノード数、停止理由が完全に一致する。
-// search_with_node_limit_is_deterministicが同じ観測を中盤局面で固定する。
-
 // ExternalStopはNodeLimitより
 // 優先する。開始時点で両方が成立し得る構成を直接チーム経路へ与える。
 #[test]

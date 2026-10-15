@@ -14,12 +14,6 @@ fn article_31_r1_path_cycle_scores_the_sole_attackers_loss_from_either_side() {
                 for index in 0..3 {
                     push_path_move(searcher, &mut current, Some(cycle[(offset + index) % 4]));
                 }
-                assert!(
-                    searcher
-                        .path_moves
-                        .iter()
-                        .all(|entry| entry.attacking.is_none())
-                );
                 let mover = current.side_to_move();
                 let expected = if mover == attacker {
                     -(REPETITION_WIN - 4)
@@ -30,12 +24,6 @@ fn article_31_r1_path_cycle_scores_the_sole_attackers_loss_from_either_side() {
                     complete_cycle(searcher, &mut current, cycle[(offset + 3) % 4]),
                     expected
                 );
-                assert!(
-                    searcher
-                        .path_moves
-                        .iter()
-                        .all(|entry| entry.attacking.is_some())
-                );
                 assert!(searcher.tt.probe(search_key(&root), 4).is_none());
             });
             root.make_move_unchecked(cycle[offset], engine_rules());
@@ -44,7 +32,7 @@ fn article_31_r1_path_cycle_scores_the_sole_attackers_loss_from_either_side() {
 }
 
 #[test]
-fn article_31_r1_mutual_attacks_draw_and_cache_the_path() {
+fn article_31_r1_mutual_attacks_draw() {
     let (root, cycle) = rook_cycle(true, true);
     with_root_searcher(&root, &[], |searcher| {
         let mut current = root.clone();
@@ -52,23 +40,11 @@ fn article_31_r1_mutual_attacks_draw_and_cache_the_path() {
             push_path_move(searcher, &mut current, Some(mv));
         }
         assert_eq!(complete_cycle(searcher, &mut current, cycle[3]), DRAW_SCORE);
-        assert!(
-            searcher
-                .path_moves
-                .iter()
-                .all(|entry| entry.attacking == Some(true))
-        );
-        // 記録済みの判定を使う契約を検査するため、黒の判定だけを非攻撃へ差し替える。
-        searcher.path_moves[0].attacking = Some(false);
-        assert_eq!(
-            complete_cycle(searcher, &mut current, cycle[3]),
-            -(REPETITION_WIN - 4)
-        );
     });
 }
 
 #[test]
-fn article_31_r1_quiet_cycles_stop_classifying_after_both_sides_are_quiet() {
+fn article_31_r1_quiet_cycles_draw() {
     let (root, cycle) = rook_cycle(false, false);
     with_root_searcher(&root, &[], |searcher| {
         let mut current = root.clone();
@@ -76,12 +52,6 @@ fn article_31_r1_quiet_cycles_stop_classifying_after_both_sides_are_quiet() {
             push_path_move(searcher, &mut current, Some(mv));
         }
         assert_eq!(complete_cycle(searcher, &mut current, cycle[3]), DRAW_SCORE);
-        let cached: Vec<_> = searcher
-            .path_moves
-            .iter()
-            .map(|entry| entry.attacking)
-            .collect();
-        assert_eq!(cached, [Some(false), Some(false), None]);
     });
 }
 

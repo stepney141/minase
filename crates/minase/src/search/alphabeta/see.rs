@@ -300,8 +300,9 @@ fn piece_at(position: &Position, square: minase_core::Square) -> PieceCode {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{epoch_zero_nnue_bytes, test_nnue};
+    use super::super::tests::{NNUE_HEADER_LENGTH, epoch_zero_nnue_bytes, test_nnue};
     use super::*;
+    use crate::eval::features::FEATURE_COUNT;
     use minase_core::MoveGenerator;
     use minase_core::position::PositionBuilder;
     use minase_core::rules::Rules;
@@ -408,7 +409,7 @@ mod tests {
         for captured_value in [799_i32, 800, 801, 999, 1000, 1001] {
             // MNUEの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
             let mut bytes = epoch_zero_nnue_bytes();
-            let base = 192 + 13_680 * 4;
+            let base = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4;
             for state in 0..PIECE_STATE_COUNT {
                 bytes[base + state * 4..base + state * 4 + 4]
                     .copy_from_slice(&1000_i32.to_le_bytes());
@@ -424,7 +425,7 @@ mod tests {
             ] {
                 bytes[base + state * 4..base + state * 4 + 4].copy_from_slice(&value.to_le_bytes());
             }
-            let checksum = Sha256::digest(&bytes[192..]);
+            let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
             bytes[144..176].copy_from_slice(&checksum);
             let nnue = Nnue::decode(&bytes).unwrap();
             assert_eq!(nnue.max_promotion_gain(), 900);
@@ -517,9 +518,9 @@ mod tests {
         // 検証用の重みでは成香の価値だけを1へ下げ、強制成りの負の差額を作る。
         let mut bytes = epoch_zero_nnue_bytes();
         let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
-        let offset = 192 + 13_680 * 4 + piece_state_of(promoted_lance) * 4;
+        let offset = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4 + piece_state_of(promoted_lance) * 4;
         bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
-        let checksum = Sha256::digest(&bytes[192..]);
+        let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
         bytes[144..176].copy_from_slice(&checksum);
         let nnue = Nnue::decode(&bytes).unwrap();
         let mover = unpromoted(Color::Black, PieceKind::Lance);
@@ -825,7 +826,7 @@ mod tests {
     // RULES.md第14条第5項: 獅子が非獅子を取る段階は通常の交換とし、
     // 非獅子の取り返しと獅子による取り返しの価値を反映する。
     #[test]
-    fn see_values_lion_captures_of_non_lions() {
+    fn article_14_5_see_values_lion_captures_of_non_lions() {
         let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
@@ -875,7 +876,7 @@ mod tests {
     // RULES.md第11条: 角鷹と飛鷲は、2升目への特殊到達範囲だけで
     // 届く場合も、非獅子を1枚取る取り返しとして評価する。
     #[test]
-    fn see_values_lion_like_special_recaptures() {
+    fn article_11_see_values_lion_like_special_recaptures() {
         let nnue = test_nnue();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
@@ -973,10 +974,10 @@ mod tests {
         );
     }
 
-    // 第32条のP5: 成りを保留した歩兵は、最奥段以外で取り返す場合に
+    // 第30条のP5: 成りを保留した歩兵は、最奥段以外で取り返す場合に
     // 成れないため、交換列へ成りの差額を加えない。
     #[test]
-    fn see_respects_p5_deferred_pawn_on_recapture() {
+    fn p5_see_respects_p5_deferred_pawn_on_recapture() {
         let nnue = test_nnue();
         let target = sq(5, 9);
         let white_rook = unpromoted(Color::White, PieceKind::Rook);
@@ -1005,7 +1006,7 @@ mod tests {
     // RULES.md第11条: 角鷹と飛鷲がmidなしで1枚だけ取る初手は、隣接移動でも
     // 2升目への直接跳びでも通常の交換として扱う。
     #[test]
-    fn see_accepts_single_capture_lion_like_moves_without_mid() {
+    fn article_11_see_accepts_single_capture_lion_like_moves_without_mid() {
         let nnue = test_nnue();
         let rules = MoveRules::standard();
         let victim = unpromoted(Color::White, PieceKind::GoBetween);

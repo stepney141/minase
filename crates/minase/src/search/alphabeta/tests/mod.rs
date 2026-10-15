@@ -100,6 +100,17 @@ use minase_core::{MoveGenerator, Square, repetition_key};
 // ヘルパ
 // ---------------------------------------------------------------------------
 
+/// 対角の隅に王将だけを置き、先手が指す静穏局面。
+fn bare_kings() -> Position {
+    position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    )
+}
+
 fn engine_rules() -> MoveRules {
     MoveRules::standard()
 }
@@ -251,6 +262,9 @@ fn epoch_zero_nnue() -> Nnue {
     Nnue::decode(&epoch_zero_nnue_bytes()).unwrap()
 }
 
+// NNUE形式のヘッダ長。eval::nnue::formatの定数は非公開なので、探索の試験で共有する。
+pub(super) const NNUE_HEADER_LENGTH: usize = 192;
+
 /// エポック0のP型の行を探索の特徴集合へ複写し、重みを変更するテストにも渡す。
 pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
     use crate::eval::features::FEATURE_COUNT;
@@ -259,7 +273,7 @@ pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
 
     let source = include_bytes!("../../../../nets/nnue-epoch0.bin");
     let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
-    let hidden = 192 + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+    let hidden = NNUE_HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
     let end = hidden + FEATURE_COUNT * width * 2;
     let mut bytes = source[..hidden].to_vec();
     let architecture = format!(
@@ -272,7 +286,7 @@ pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
         bytes.extend_from_slice(&source[hidden..end]);
     }
     bytes.extend_from_slice(&source[end..]);
-    let checksum = Sha256::digest(&bytes[192..]);
+    let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
     bytes[144..176].copy_from_slice(&checksum);
     bytes
 }

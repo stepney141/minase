@@ -27,22 +27,20 @@ fn lmr_table_follows_logarithmic_rule() {
 #[test]
 fn lmr_history_adjustment_precedes_clamping() {
     let threshold = params::lmr_history_threshold();
-    let base = i32::from(lmr_table()[4][8]);
-    for (history, adjustment) in [
-        (i32::MIN, 1),
-        (-threshold - 1, 1),
-        (-threshold, 1),
-        (-threshold + 1, 0),
-        (0, 0),
-        (threshold - 1, 0),
-        (threshold, -1),
-        (threshold + 1, -1),
-        (i32::MAX, -1),
+    assert_eq!(params::lmr_divisor(), 156, "数値例の前提");
+    // floor(ln4×ln8/1.56)=1。履歴補正後、深さ4では上限2に収める。
+    for (history, expected) in [
+        (i32::MIN, 2),
+        (-threshold - 1, 2),
+        (-threshold, 2),
+        (-threshold + 1, 1),
+        (0, 1),
+        (threshold - 1, 1),
+        (threshold, 0),
+        (threshold + 1, 0),
+        (i32::MAX, 0),
     ] {
-        assert_eq!(
-            lmr_reduction(4, 8, history),
-            (base + adjustment).clamp(0, 2) as u32
-        );
+        assert_eq!(lmr_reduction(4, 8, history), expected);
     }
     assert_eq!(lmr_reduction(5, 255, i32::MIN), 3);
     assert_eq!(lmr_reduction(5, 255, i32::MAX), 3);
@@ -102,7 +100,7 @@ fn lmr_large_move_indices_use_last_column() {
 // 最善値が負の詰み帯にある間は少なくとも1手を読み、合法手なしの詰みと誤認しない。
 #[test]
 fn futility_reduces_quiet_nodes_without_false_mate() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let position = bare_kings();
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
     let alpha = static_eval + 3 * nnue.pawn_value();
@@ -147,7 +145,14 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
 // 後続の安全な静かな手を読み、返り値にも置換表にも誤った詰み値を残さない。
 #[test]
 fn futility_searches_safe_quiets_after_losing_tt_move() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/10r1/12/12/12/12/12/11K b").unwrap();
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(10, 6), Color::White, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
     let alpha = evaluate(nnue, &position) + 3 * nnue.pawn_value();
     let losing_move = Move {
@@ -198,11 +203,32 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
 // 後続の捕獲手と非捕獲の成る手は展開し、記録手だけの場合より探索ノードが増える。
 #[test]
 fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
-    for (sfen, promotion) in [
-        ("k11/12/12/12/12/12/12/5p6/5R6/12/12/11K b", false),
-        ("k11/12/12/12/5P6/12/12/12/12/12/12/11K b", true),
+    for (board, promotion) in [
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(5, 4), Color::White, PieceKind::Pawn),
+                    (sq(5, 3), Color::Black, PieceKind::Rook),
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                ],
+            ),
+            false,
+        ),
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(5, 7), Color::Black, PieceKind::Pawn),
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                ],
+            ),
+            true,
+        ),
     ] {
-        let position = minase_core::parse_sfen(sfen).unwrap();
+        let position = board;
         let nnue = test_nnue();
         let alpha = evaluate(nnue, &position) + 3 * nnue.pawn_value();
         let tt_move = Move {
@@ -498,10 +524,20 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
 // 王駒への利きを除外する理由は docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
 #[test]
 fn reverse_futility_returns_static_eval_at_margin_without_storing() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
+    // 100×428/100=428。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 1), Color::Black, PieceKind::Pawn),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
+    let beta = static_eval - 428;
     for depth in 1..=3 {
         let table = small_tt();
         let tt_move = legal_moves(&position)[0];
@@ -519,13 +555,23 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
 // 各除外条件と余裕値の境界では子を探索する。
 #[test]
 fn reverse_futility_exclusions_search_children() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
+    // 100×428/100=428。
+    let position = bare_kings();
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
-    let attacked = minase_core::parse_sfen("k11/12/12/12/12/11r/12/12/12/12/5P6/11K b").unwrap();
-    let attacked_beta =
-        evaluate(nnue, &attacked) - nnue.pawn_value() * params::reverse_futility_margin() / 100;
+    let beta = static_eval - 428;
+    let attacked = minase_core::test_util::position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 6), Color::White, PieceKind::Rook),
+            (sq(5, 1), Color::Black, PieceKind::Pawn),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
+    let attacked_beta = evaluate(nnue, &attacked) - 428;
     let cases = [
         (&position, false, 1, beta - 2, beta, "幅2のPV窓"),
         (
@@ -584,10 +630,20 @@ fn reverse_futility_exclusions_search_children() {
 // 置換表の打ち切りをreverse futilityより先に適用する。
 #[test]
 fn reverse_futility_preserves_tt_cutoff_priority() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
+    // 100×428/100=428。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 1), Color::Black, PieceKind::Pawn),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
+    let beta = static_eval - 428;
     let table = small_tt();
     table.store(search_key(&position), 1, beta - 1, Bound::Exact, None, 0);
     let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
@@ -599,16 +655,17 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
 // 捕獲候補のない局面では静的評価を返し、置換表へ保存しない。
 #[test]
 fn razoring_returns_quiescence_at_the_margin_boundary() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
+    assert_eq!(params::razoring_margin2(), 2015, "数値例の前提");
+    // 100×1606/100=1606、100×2015/100=2015。
+    let position = bare_kings();
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
     assert!(!royal_under_attack(&position));
-    for (depth, percent) in [
-        (1, params::razoring_margin1()),
-        (2, params::razoring_margin2()),
-    ] {
+    for (depth, margin) in [(1, 1606), (2, 2015)] {
         for excess in [0, nnue.pawn_value()] {
-            let alpha = static_eval + nnue.pawn_value() * percent / 100 + excess;
+            let alpha = static_eval + margin + excess;
             let (quiet_score, quiet_nodes) =
                 run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
             assert_eq!(quiet_score, static_eval);
@@ -623,7 +680,7 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
                 "捕獲のない静止探索は置換表に保存しない"
             );
         }
-        let alpha = static_eval + nnue.pawn_value() * percent / 100 - 1;
+        let alpha = static_eval + margin - 1;
         let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
         let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
         assert!(nodes > quiet_nodes, "余裕値に1足りなければ通常探索する");
@@ -633,13 +690,22 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
 // 静止探索の上界がαと等しい場合も打ち切る。
 #[test]
 fn razoring_accepts_quiescence_equal_to_alpha() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
+    assert_eq!(params::razoring_margin2(), 2015, "数値例の前提");
+    // 100×1606/100=1606、100×2015/100=2015。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 4), Color::White, PieceKind::FreeKing),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
-    for (depth, percent) in [
-        (1, params::razoring_margin1()),
-        (2, params::razoring_margin2()),
-    ] {
-        let alpha = evaluate(nnue, &position) + nnue.pawn_value() * percent / 100;
+    for (depth, margin) in [(1, 1606), (2, 2015)] {
+        let alpha = evaluate(nnue, &position) + margin;
         let table = small_tt();
         table.store(search_key(&position), 0, alpha, Bound::Upper, None, 0);
         let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
@@ -653,10 +719,13 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
 // PV窓、詰み帯、深さ3では通常探索を行う。
 #[test]
 fn razoring_exclusions_search_children() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
+    assert_eq!(params::razoring_margin2(), 2015, "数値例の前提");
+    // 100×1606/100=1606、100×2015/100=2015、共通の窓には大きい方の2015を使う。
+    let position = bare_kings();
     let nnue = test_nnue();
-    let alpha = evaluate(nnue, &position)
-        + nnue.pawn_value() * params::razoring_margin1().max(params::razoring_margin2()) / 100;
+    let alpha = evaluate(nnue, &position) + 2015;
     let attacked = minase_core::test_util::position(
         Color::Black,
         &[
@@ -680,15 +749,15 @@ fn razoring_exclusions_search_children() {
             &attacked,
             true,
             1,
-            attacked_eval + nnue.pawn_value() * params::razoring_margin1() / 100,
-            attacked_eval + nnue.pawn_value() * params::razoring_margin1() / 100 + 1,
+            attacked_eval + 1606,
+            attacked_eval + 1606 + 1,
         ),
         (
             &attacked,
             true,
             2,
-            attacked_eval + nnue.pawn_value() * params::razoring_margin2() / 100,
-            attacked_eval + nnue.pawn_value() * params::razoring_margin2() / 100 + 1,
+            attacked_eval + 2015,
+            attacked_eval + 2015 + 1,
         ),
     ] {
         let (quiet_score, quiet_nodes) = run_quiesce(position, alpha, beta, 0, &small_tt());
@@ -726,9 +795,20 @@ fn razoring_exclusions_search_children() {
 // 捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
 #[test]
 fn razoring_continues_normal_search_after_recovering_capture() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
+    // 100×1606/100=1606。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 4), Color::White, PieceKind::FreeKing),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
-    let alpha = evaluate(nnue, &position) + nnue.pawn_value() * params::razoring_margin1() / 100;
+    let alpha = evaluate(nnue, &position) + 1606;
     assert!(!royal_under_attack(&position));
     let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
     assert!(quiet_score > alpha, "無防備な奔王の捕獲で余裕値を取り戻す");
@@ -747,14 +827,29 @@ fn razoring_continues_normal_search_after_recovering_capture() {
 // 各整数境界の直前と一致で段階が変わり、深さによる基本量へ加算する。
 #[test]
 fn null_move_reduction_scales_with_eval_surplus_and_depth() {
+    assert_eq!(params::null_move_base(), 3617, "数値例の前提");
+    assert_eq!(params::null_move_slope(), 257, "数値例の前提");
     let beta = 137;
     for pawn_value in [37, 100] {
         let scale = params::null_move_eval_scale();
         assert!(scale > 0);
         let boundary = |extra| (extra * 2 * pawn_value * 100 + scale - 1) / scale;
-        for depth in [3, 5, 6, 11, 12] {
-            let base =
-                (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200;
+        // (3617+d×257)/1200はd=1〜4で3、5〜9で4、10〜12で5。
+        // 境界の分子はd=4で4645、d=5で4902、d=10で6187。
+        for (depth, base) in [
+            (1, 3),
+            (2, 3),
+            (3, 3),
+            (4, 3),
+            (5, 4),
+            (6, 4),
+            (7, 4),
+            (8, 4),
+            (9, 4),
+            (10, 5),
+            (11, 5),
+            (12, 5),
+        ] {
             for (difference, extra) in [
                 (-6 * pawn_value, 0),
                 (-1, 0),
@@ -781,11 +876,19 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
 // 通常探索の実着手を省くためノード数も減る。
 #[test]
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::null_move_eval_scale(), 56, "数値例の前提");
+    // 追加減深1の境界はceil(2×100×100/56)=358。
+    let position = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
     let nnue = test_nnue();
-    let scale = params::null_move_eval_scale();
-    assert!(scale > 0);
-    let beta = evaluate(nnue, &position) - (2 * nnue.pawn_value() * 100 + scale - 1) / scale;
+    let beta = evaluate(nnue, &position) - 358;
     let mut passed = position.clone();
     passed.make_null_move();
     let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
@@ -803,7 +906,11 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
 // reverse futilityとrazoringはcorrection historyを加えず、補正前の静的評価を使う。
 #[test]
 fn revived_pruning_uses_uncorrected_static_evaluation() {
-    let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
+    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
+    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
+    // 100×428/100=428、100×1606/100=1606。
+    let position = bare_kings();
     for reverse in [true, false] {
         with_root_searcher(&position, &[], |searcher| {
             let side = position.side_to_move();
@@ -812,11 +919,7 @@ fn revived_pruning_uses_uncorrected_static_evaluation() {
             searcher.correction.update(side, key, difference, 8);
             assert_ne!(searcher.correction.read(side, key), 0);
             let raw = evaluate(searcher.nnue, &position);
-            let alpha = if reverse {
-                raw - searcher.nnue.pawn_value() * params::reverse_futility_margin() / 100 - 1
-            } else {
-                raw + searcher.nnue.pawn_value() * params::razoring_margin1() / 100
-            };
+            let alpha = if reverse { raw - 428 - 1 } else { raw + 1606 };
             let mut board = position.clone();
             assert_eq!(
                 searcher.negamax(&mut board, 1, alpha, alpha + 1, 0),
