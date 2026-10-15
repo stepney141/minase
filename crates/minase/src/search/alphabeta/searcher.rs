@@ -40,6 +40,7 @@ pub(super) fn new_searcher<'a>(
     position: &Position,
     rules: MoveRules,
     repetition: SearchRepetition,
+    draw_value: i32,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
@@ -58,6 +59,7 @@ pub(super) fn new_searcher<'a>(
         nnue,
         rules,
         repetition,
+        draw_value,
         root_position: position.clone(),
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -134,6 +136,8 @@ pub(super) struct Searcher<'a> {
     pub(super) rules: MoveRules,
     /// 採用中の反復規則と、規則が要する根の時点の状態。
     pub(super) repetition: SearchRepetition,
+    /// 根の手番側から見た、R1の引き分けの再現に返す値。
+    pub(super) draw_value: i32,
     /// 攻撃的着手の判定で探索経路を再生するための、根の局面の写し。
     pub(super) root_position: Position,
     /// 探索ノードでの合法手生成器。
@@ -247,7 +251,9 @@ impl Searcher<'_> {
     /// 第31条R1の攻撃側を最も近い出現から現在の着手までの1周で判定する。
     ///
     /// 一方の着手だけがすべて攻撃的なら、その側の負けを専用の帯で返す。
-    /// 双方が該当する場合、どちらも該当しない場合、およびR2・R3では引き分けを返す。
+    /// 双方が該当する場合とどちらも該当しない場合は、引き分けの値を返す。
+    /// 現在の着手側が根の手番と同じなら`draw_value`、異なれば`-draw_value`とする。
+    /// R2・R3の再現には、周回の損得を表す近似値として設定にかかわらず`DRAW_SCORE`を返す。
     /// 可逆手12手の条件と4回目の出現は調べない探索上の近似であり、値は現在の着手側から見る。
     /// 履歴の部分は根の攻撃連続数で判定し、経路の部分は根から再生して結果を着手ごとに記録する。
     /// null moveは区間より前の局面の再生にだけ使い、双方の非攻撃的着手が見つかれば打ち切る。
@@ -285,7 +291,7 @@ impl Searcher<'_> {
                 .all(|entry| entry.mv.is_some())
         );
         if attackers == [false; 2] {
-            return DRAW_SCORE;
+            return self.r1_draw_score(position.side_to_move().opposite());
         }
 
         let mut replay = self.root_position.clone();
@@ -299,7 +305,7 @@ impl Searcher<'_> {
                     });
                     attackers[mover.index()] &= attacking;
                     if attackers == [false; 2] {
-                        return DRAW_SCORE;
+                        return self.r1_draw_score(position.side_to_move().opposite());
                     }
                 }
             } else {
@@ -315,7 +321,16 @@ impl Searcher<'_> {
         ) {
             (true, false) => -(REPETITION_WIN - (ply + 1) as i32),
             (false, true) => REPETITION_WIN - (ply + 1) as i32,
-            (true, true) | (false, false) => DRAW_SCORE,
+            (true, true) | (false, false) => self.r1_draw_score(mover),
+        }
+    }
+
+    /// RULES.md第31条R1の引き分けの値を、現在の着手側から見た符号で返す。
+    fn r1_draw_score(&self, mover: Color) -> i32 {
+        if mover == self.root_position.side_to_move() {
+            self.draw_value
+        } else {
+            -self.draw_value
         }
     }
 

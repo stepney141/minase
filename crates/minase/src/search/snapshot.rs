@@ -1,6 +1,7 @@
 //! 探索開始時の局面と履歴の写し。
 
 use crate::search::error::SearchError;
+use crate::search::{DRAW_SCORE, DRAW_VALUE_LIMIT};
 use minase_core::game::{Game, GameStatus};
 use minase_core::mv::Move;
 use minase_core::position::Position;
@@ -32,6 +33,10 @@ impl SearchRepetition {
 }
 
 /// 探索スレッドへ渡す不変の入力。
+///
+/// 局面、規則、対局履歴、根の候補手、および根の手番側から見た引き分けの値を持つ。
+/// RULES.md第31条R1の引き分けの値は[`DRAW_SCORE`]で初期化し、
+/// [`Self::with_draw_value`]で範囲を検査して設定する。
 #[derive(Clone)]
 pub struct SearchSnapshot {
     /// 探索を開始する局面。
@@ -40,6 +45,8 @@ pub struct SearchSnapshot {
     pub(super) rules: MoveRules,
     /// 採用中の反復規則と、規則が要する根の時点の状態。
     pub(super) repetition: SearchRepetition,
+    /// 根の手番側から見た、R1の引き分けの再現に返す値。
+    pub(super) draw_value: i32,
     /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: Vec<u64>,
     /// 探索の根で調べる候補手。
@@ -104,7 +111,31 @@ impl SearchSnapshot {
             repetition,
             history_keys,
             root_moves,
+            draw_value: DRAW_SCORE,
         })
+    }
+
+    /// RULES.md第31条R1の引き分けの再現に使う値を設定する。
+    ///
+    /// 値は根の手番側から見たcpであり、`info score cp`と同じ単位である。
+    /// R1の引き分けの再現にだけ適用し、R2とR3では使わない。
+    /// [`crate::search::SearchLimits::new`]の深さと同じく、呼び出し元のUSIが
+    /// 範囲を検査していても、ここでも範囲外の値を拒否する。
+    ///
+    /// # Errors
+    ///
+    /// 絶対値が[`DRAW_VALUE_LIMIT`]を超える場合は[`SearchError::InvalidDrawValue`]を返す。
+    pub fn with_draw_value(mut self, draw_value: i32) -> Result<Self, SearchError> {
+        if !(-DRAW_VALUE_LIMIT..=DRAW_VALUE_LIMIT).contains(&draw_value) {
+            return Err(SearchError::InvalidDrawValue { value: draw_value });
+        }
+        self.draw_value = draw_value;
+        Ok(self)
+    }
+
+    /// 根の手番側から見た、RULES.md第31条R1の引き分けの値を返す。
+    pub const fn draw_value(&self) -> i32 {
+        self.draw_value
     }
 
     /// 探索を開始する局面を返す。

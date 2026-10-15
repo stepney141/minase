@@ -121,6 +121,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &root_moves,
         &history_keys,
         2,
@@ -363,6 +364,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &root_moves,
             &[],
             2,

@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::search::MAX_PLY;
+use crate::search::{DRAW_VALUE_LIMIT, MAX_PLY};
 
 /// 探索入力または探索器の初期化に失敗した理由。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -13,6 +13,11 @@ pub enum SearchError {
     InvalidDepth {
         /// 指定された探索深さ。
         depth: u32,
+    },
+    /// 引き分けの値が`-DRAW_VALUE_LIMIT..=DRAW_VALUE_LIMIT`の範囲外である。
+    InvalidDrawValue {
+        /// 指定された引き分けの値。
+        value: i32,
     },
     /// ノード数上限が0である。
     ZeroNodeLimit,
@@ -35,6 +40,10 @@ impl fmt::Display for SearchError {
             Self::InvalidDepth { depth } => write!(
                 formatter,
                 "search depth must be between 1 and {MAX_PLY}, got {depth}"
+            ),
+            Self::InvalidDrawValue { value } => write!(
+                formatter,
+                "draw value {value} is outside -{DRAW_VALUE_LIMIT}..={DRAW_VALUE_LIMIT}"
             ),
             Self::ZeroNodeLimit => formatter.write_str("search node limit must be non-zero"),
             Self::ZeroMoveTime => formatter.write_str("search movetime must be non-zero"),

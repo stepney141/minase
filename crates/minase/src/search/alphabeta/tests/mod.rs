@@ -11,6 +11,7 @@
 mod capture_history;
 mod captures;
 mod correction;
+mod draw_value;
 mod handle;
 mod history;
 mod improving;
@@ -101,6 +102,53 @@ use minase_core::{MoveGenerator, Square, repetition_key};
 
 fn engine_rules() -> MoveRules {
     MoveRules::standard()
+}
+
+fn step(from: Square, to: Square) -> Move {
+    Move {
+        from,
+        mid: None,
+        to,
+        promote: false,
+    }
+}
+
+/// 黒飛は3筋の白歩、白飛は8筋の黒歩を、それぞれ往復する2升から照準する。
+fn rook_cycle(black_attacks: bool, white_attacks: bool) -> (Position, [Move; 4]) {
+    let mut pieces = vec![
+        (sq(0, 0), Color::Black, PieceKind::King),
+        (sq(3, 3), Color::Black, PieceKind::Rook),
+        (sq(8, 8), Color::White, PieceKind::Rook),
+        (sq(11, 11), Color::White, PieceKind::King),
+    ];
+    if black_attacks {
+        pieces.push((sq(3, 9), Color::White, PieceKind::Pawn));
+    }
+    if white_attacks {
+        pieces.push((sq(8, 1), Color::Black, PieceKind::Pawn));
+    }
+    (
+        position(Color::Black, &pieces),
+        [
+            step(sq(3, 3), sq(3, 4)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(3, 4), sq(3, 3)),
+            step(sq(8, 7), sq(8, 8)),
+        ],
+    )
+}
+
+fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move) -> i32 {
+    let before = current.clone();
+    let keys = searcher.path_keys.clone();
+    let ply = searcher.path_moves.len() as u32;
+    let score = searcher
+        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0)
+        .unwrap();
+    assert_eq!(*current, before);
+    assert_eq!(searcher.path_keys, keys);
+    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
+    score
 }
 
 /// 実着手またはnull moveを適用し、対応する経路と各plyの局面状態を積む。
@@ -247,6 +295,19 @@ fn with_repetition_root_searcher(
     history: &[u64],
     test: impl FnOnce(&mut Searcher<'_>),
 ) {
+    with_draw_value_root_searcher(nnue, position, rules, repetition, DRAW_SCORE, history, test);
+}
+
+/// RULES.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
+fn with_draw_value_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    draw_value: i32,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -266,6 +327,7 @@ fn with_repetition_root_searcher(
         position,
         rules,
         repetition,
+        draw_value,
         history,
         &shared,
         &table,
@@ -320,6 +382,7 @@ fn run_quiesce(
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &history,
         &shared,
         table,
@@ -364,6 +427,7 @@ fn run_negamax(
         SearchRepetition::R1 {
             consecutive_attacking_moves: [0; 2],
         },
+        DRAW_SCORE,
         &history,
         &shared,
         table,

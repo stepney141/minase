@@ -307,6 +307,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             &snapshot.position,
             snapshot.rules(),
             snapshot.repetition(),
+            DRAW_SCORE,
             &snapshot.root_moves,
             &snapshot.history_keys,
             &depth_limits(1),

@@ -336,6 +336,7 @@ fn interrupted_null_move_restores_repetition_scope() {
             SearchRepetition::R1 {
                 consecutive_attacking_moves: [0; 2],
             },
+            DRAW_SCORE,
             &[],
             &shared,
             &table,

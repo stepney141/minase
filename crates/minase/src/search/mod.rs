@@ -65,6 +65,13 @@ pub(crate) fn in_repetition_band(score: i32) -> bool {
 /// 引き分けを表す評価値。
 pub const DRAW_SCORE: i32 = 0;
 
+/// RULES.md第31条R1の引き分けの値の絶対値の上限。
+/// 評価関数の出力の範囲と同じであり、[`REPETITION_BAND_START`]以上の
+/// 反復の勝敗の専用の帯にも、詰みの帯にも入らない。
+pub const DRAW_VALUE_LIMIT: i32 = crate::eval::nnue::EVALUATION_LIMIT;
+
+const _: () = assert!(DRAW_VALUE_LIMIT < REPETITION_BAND_START);
+
 /// 探索に使う既定のワーカー数。
 /// 利用可能なCPU数で暗黙に変えず、並列探索は呼び出し側が明示したときに使う。
 /// 判断の理由は`docs/adr/keep-default-threads-at-one.md`にある。

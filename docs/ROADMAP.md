@@ -95,7 +95,7 @@
 | NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整 | [plans/nnue-search-spsa.md](plans/nnue-search-spsa.md) | 起案 | |
 | 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
 | メモリより大きい教師データの一様シャッフル | [plans/out-of-core-shuffle.md](plans/out-of-core-shuffle.md) | 起案 | |
-| 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 起案 | |
+| 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 
 ## 現在地
 
@@ -109,7 +109,7 @@
 
 ### 次の候補
 
-- 探索部の次の対象は、引き分けの評価値をやねうら王式のオプションで設定する[引き分けの評価値の設定](plans/draw-value.md)である。[探索部の反復負け回避と反復禁止](plans/archived/search-repetition.md)の完了により着手できる。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
+- [引き分けの評価値の設定](plans/draw-value.md)は、千日手の引き分けに返す評価値をやねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにする。オプションと探索の実装は完了し、既定値では探索が変わらないことを`bench`で確かめた。残りは、この版のリリース後にlishogiのBotの設定で両オプションを−1にするフェーズであり、リリースは利用者の判断を待つ。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
 - 探索が使う既定の評価関数は、2026年10月12日に[NNUE](plans/archived/nnue-replacement.md)へ置き換わった。[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](plans/nnue-search-spsa.md)は、`FmScale`を除く38係数（手の順序付けで加わった未調整の3係数と、時間管理の6係数を含む）を現行のネットで調整し直し、起点のmasterとの段階ゲートで採否を決める。測定機の占有は、過去の同規模の記録からの概算で約半日から2日であり、着手は利用者の指示を待つ。PSTとFMを既定としていた時期に挙げたほかの候補（PSTのさらに長い学習、補正なしのPSTを軽い評価として使うlazy evaluation）を、NNUEの採用後も続けるかは決まっていない。
 - [Athénanの計画](plans/athenan.md)は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。PSTを既定の評価関数とする前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - 評価関数の後続3計画（[静止探索の出力](plans/archived/qsearch-output-training.md)、[順位の損失](plans/archived/rank-loss-training.md)、[関係補正項](plans/archived/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
