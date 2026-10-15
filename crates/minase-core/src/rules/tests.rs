@@ -35,79 +35,84 @@ fn article_33_4_from_codes_accepts_complete_rule_sets() {
 
 #[test]
 fn article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_order() {
-    assert_eq!(
-        Rules::from_codes(&[
-            RuleCode::R1,
-            RuleCode::R2,
-            RuleCode::R1,
-            RuleCode::L0,
-            RuleCode::P0,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Duplicate(RuleCode::R1))
-    );
-    assert_eq!(
-        Rules::from_codes(&[
-            RuleCode::L1,
-            RuleCode::L4,
-            RuleCode::P0,
-            RuleCode::R1,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Conflicting {
-            first: RuleCode::L1,
-            second: RuleCode::L4,
-        })
-    );
-    assert_eq!(
-        Rules::from_codes(&[
-            RuleCode::L1,
-            RuleCode::L0,
-            RuleCode::P0,
-            RuleCode::R1,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Conflicting {
-            first: RuleCode::L0,
-            second: RuleCode::L1,
-        })
-    );
-    assert_eq!(
-        Rules::from_codes(&[
-            RuleCode::L0,
-            RuleCode::P0,
-            RuleCode::P1,
-            RuleCode::R1,
-            RuleCode::R2,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Conflicting {
-            first: RuleCode::P0,
-            second: RuleCode::P1,
-        })
-    );
-    // 第30条末尾・第33条9項に従い、P1とP2は排他である。
-    assert_eq!(
-        Rules::from_codes(&[
-            RuleCode::L0,
-            RuleCode::P1,
-            RuleCode::P2,
-            RuleCode::R1,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Conflicting {
-            first: RuleCode::P1,
-            second: RuleCode::P2,
-        })
-    );
-    assert_eq!(
-        Rules::from_codes(&[RuleCode::L4, RuleCode::P0, RuleCode::R1, RuleCode::E0]),
-        Err(RulesError::Missing(RuleGroup::Lion))
-    );
-    assert_eq!(
-        Rules::from_codes(&[]),
-        Err(RulesError::Missing(RuleGroup::Lion))
-    );
+    use RuleCode::*;
+    let cases: &[(&str, &[RuleCode], RulesError)] = &[
+        (
+            "第33条4項: 重複は競合より先",
+            &[R1, R2, R1, L0, P0, E0],
+            RulesError::Duplicate(R1),
+        ),
+        (
+            "第33条4・9項: L1とL4",
+            &[L1, L4, P0, R1, E0],
+            RulesError::Conflicting {
+                first: L1,
+                second: L4,
+            },
+        ),
+        (
+            "第33条4項: 入力順によらずL0とL1",
+            &[L1, L0, P0, R1, E0],
+            RulesError::Conflicting {
+                first: L0,
+                second: L1,
+            },
+        ),
+        (
+            "第33条4項: 成りの競合は反復より先",
+            &[L0, P0, P1, R1, R2, E0],
+            RulesError::Conflicting {
+                first: P0,
+                second: P1,
+            },
+        ),
+        (
+            "第30条・第33条9項: P1とP2",
+            &[L0, P1, P2, R1, E0],
+            RulesError::Conflicting {
+                first: P1,
+                second: P2,
+            },
+        ),
+        (
+            "第33条4項: 修飾規則だけでは獅子規則を満たさない",
+            &[L4, P0, R1, E0],
+            RulesError::Missing(RuleGroup::Lion),
+        ),
+        (
+            "第33条4項: 空入力では獅子規則を先に報告",
+            &[],
+            RulesError::Missing(RuleGroup::Lion),
+        ),
+        (
+            "第25条2項・第33条4項: 反復規則は必須",
+            &[L0, P0, E0],
+            RulesError::Missing(RuleGroup::Repetition),
+        ),
+        (
+            "第25条2項・第33条4項: 反復規則は排他",
+            &[L0, P0, R1, R2, E0],
+            RulesError::Conflicting {
+                first: R1,
+                second: R2,
+            },
+        ),
+        (
+            "第33条9項: E2とE3",
+            &[L0, P0, R1, E2, E3],
+            RulesError::Conflicting {
+                first: E2,
+                second: E3,
+            },
+        ),
+    ];
+    for (article, codes, expected) in cases {
+        assert_eq!(
+            Rules::from_codes(codes),
+            Err(*expected),
+            "{article}: {codes:?}"
+        );
+    }
 }
 
 #[test]
@@ -160,42 +165,10 @@ fn rules_error_display_identifies_the_missing_group() {
         (RuleGroup::Repetition, "repetition"),
         (RuleGroup::Exhaustion, "exhaustion"),
     ] {
-        assert!(RulesError::Missing(group).to_string().contains(name));
+        assert_eq!(
+            RulesError::Missing(group).to_string(),
+            format!("missing {name} rule"),
+            "{group:?}"
+        );
     }
-}
-
-#[test]
-fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
-    // 反復規則はR1・R2・R3のいずれか1つの明示が必須であり、
-    // 未指定は明示的なエラー、2つ以上の同時指定は競合として拒否される。
-    assert_eq!(
-        Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::E0]),
-        Err(RulesError::Missing(RuleGroup::Repetition))
-    );
-
-    assert!(matches!(
-        Rules::from_codes(&[
-            RuleCode::L0,
-            RuleCode::P0,
-            RuleCode::R1,
-            RuleCode::R2,
-            RuleCode::E0,
-        ]),
-        Err(RulesError::Conflicting { .. })
-    ));
-}
-
-#[test]
-fn article_33_9_e2_and_e3_conflict() {
-    // E2とE3は同時に採用できず、有効な規則セットとして扱われない。
-    assert!(matches!(
-        Rules::from_codes(&[
-            RuleCode::L0,
-            RuleCode::P0,
-            RuleCode::R1,
-            RuleCode::E2,
-            RuleCode::E3,
-        ]),
-        Err(RulesError::Conflicting { .. })
-    ));
 }

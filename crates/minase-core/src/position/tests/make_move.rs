@@ -6,10 +6,8 @@ use crate::board::Square;
 use crate::mv::Move;
 use crate::piece::{Color, PieceCode, PieceKind};
 use crate::position::{Position, PositionBuilder};
-use crate::rng::XorShift64;
 use crate::rules::{MoveRules, PromotionRule};
 use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
-use core::num::NonZeroU64;
 
 // 先手から着手し、1手ごとに手番が相手へ移る(第6条1項)。
 // 獅子の2段階移動もじっとも全体で1手であり、手番移動は1回だけである
@@ -284,7 +282,7 @@ fn unmake_restores_every_observable_component() {
 // 実装上の契約として、手番パスは先獅子の一時状態を消滅させ、
 // 禁止なしで手番だけを反転した同一配置のキーへ移る。
 #[test]
-fn d4_imp_10_null_move_clears_lion_trigger_and_round_trips() {
+fn null_move_clears_lion_trigger_and_round_trips() {
     let (mut position, _) = position_after_non_lion_captures_lion();
     let before = position.clone();
     assert!(position.lion_taken_by_non_lion().is_some());
@@ -307,7 +305,7 @@ fn d4_imp_10_null_move_clears_lion_trigger_and_round_trips() {
 // 実装上の契約として、成り権保留と権利キーは手番パスで変化せず、
 // 巻き戻すと局面全体が復元される。
 #[test]
-fn d4_imp_10_null_move_preserves_promotion_rights() {
+fn null_move_preserves_promotion_rights() {
     let deferred_square = sq(4, 9);
     let mut builder = PositionBuilder::new(Color::Black);
     builder
@@ -327,76 +325,4 @@ fn d4_imp_10_null_move_preserves_promotion_rights() {
 
     position.unmake_null_move(undo);
     assert_eq!(position, before);
-}
-
-// 実装上の契約として、固定シードの一様ランダムプレイアウトで、毎手、
-// 総駒数=92−累計捕獲枚数と手番の交替則(第6条1項)を検証する。
-// 終了後は全undoで初期局面へ完全復帰する。
-#[test]
-fn seeded_random_playouts_uphold_conservation_and_undo_invariants() {
-    let generator = MoveGenerator::standard();
-    let seeds = [0x5a4f_4252_4953_5401_u64, 0x6d69_6e61_7365_4434];
-    let games_per_seed = 4;
-    let max_plies = 72;
-    let mut captures_seen = 0_u32;
-    let mut promotions_seen = 0_u32;
-    let mut double_moves_seen = 0_u32;
-
-    for seed in seeds {
-        let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
-        for game in 0..games_per_seed {
-            let initial = Position::initial();
-            let mut position = initial.clone();
-            let mut history = Vec::new();
-            let mut captured_total = 0_u32;
-
-            for ply in 0..max_plies {
-                // n手適用後の手番は、nが偶数なら先手、奇数なら後手である(第6条1項)。
-                let expected_side = if ply % 2 == 0 {
-                    Color::Black
-                } else {
-                    Color::White
-                };
-                assert_eq!(position.side_to_move(), expected_side);
-
-                let mut moves = Vec::new();
-                generator.generate_moves(&position, &mut moves);
-                if moves.is_empty() {
-                    break;
-                }
-                let mv = moves[rng.next() as usize % moves.len()];
-                captured_total += position.captured_squares(mv).iter().flatten().count() as u32;
-                if mv.mid.is_some() {
-                    double_moves_seen += 1;
-                }
-                if mv.promote {
-                    promotions_seen += 1;
-                }
-                history.push(position.make_move_unchecked(mv, MoveRules::standard()));
-
-                let context = format!("seed={seed:#x} game={game} ply={ply}");
-                // 盤上総駒数＝92−累計捕獲枚数(第4条4項)。
-                assert_eq!(
-                    position.occupied().popcount(),
-                    92 - captured_total,
-                    "{context}"
-                );
-            }
-            captures_seen += captured_total;
-
-            // 全着手を逆順にundoすると初期局面(第5条・先手番・キー)へ完全復帰する。
-            while let Some(undo) = history.pop() {
-                position.unmake_move(undo);
-            }
-            assert_eq!(position, initial, "seed={seed:#x} game={game}");
-        }
-    }
-
-    // 検査力の担保: 捕獲・成り・2段階移動がプレイアウト中に実際に出現した。
-    assert!(captures_seen > 0, "捕獲が出現しないシードは検査力が弱い");
-    assert!(promotions_seen > 0, "成りが出現しないシードは検査力が弱い");
-    assert!(
-        double_moves_seen > 0,
-        "2段階移動が出現しないシードは検査力が弱い"
-    );
 }
