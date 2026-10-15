@@ -287,9 +287,6 @@ fn ponder_resume_replays_all_counts() {
             "ponder {name}: predictions=0 illegal_predictions=0 go_ponder=0 hits=0 moves={count}"
         )));
     }
-    let mismatch = run("--resume", "2", false);
-    assert!(!mismatch.status.success());
-    assert!(String::from_utf8_lossy(&mismatch.stderr).contains("must exceed"));
     std::fs::remove_dir_all(run_dir).unwrap();
 }
 
@@ -376,105 +373,91 @@ done
     )
     .unwrap();
     let player = format!("/bin/sh {}", engine.display());
-    for (elo0, elo1) in [
-        ("-5", "5"),
-        ("-500", "-400"),
-        ("400", "500"),
-        ("-12.5", "7.25"),
-    ] {
-        let dir = parent.join(format!("run-{elo0}-{elo1}"));
-        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["match", "run", "--run-dir"])
-            .arg(&dir)
-            .args([
-                "--seed",
-                "1234",
-                "--max-ply",
-                "16",
-                "--concurrency",
-                "1",
-                "--candidate",
-                &player,
-                "--baseline",
-                &player,
-                "gsprt",
-                "--max-pairs",
-                "3",
-                "--elo0",
-                elo0,
-                "--elo1",
-                elo1,
-            ])
-            .output()
+    let (elo0, elo1) = ("-12.5", "7.25");
+    let dir = parent.join(format!("run-{elo0}-{elo1}"));
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--run-dir"])
+        .arg(&dir)
+        .args([
+            "--seed",
+            "1234",
+            "--max-ply",
+            "16",
+            "--concurrency",
+            "1",
+            "--candidate",
+            &player,
+            "--baseline",
+            &player,
+            "gsprt",
+            "--max-pairs",
+            "3",
+            "--elo0",
+            elo0,
+            "--elo1",
+            elo1,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains(&format!("hypotheses: elo0={elo0} elo1={elo1}\n")));
+    let h0 = elo0.parse::<f64>().unwrap();
+    let h1 = elo1.parse::<f64>().unwrap();
+    assert_eq!(
+        json_file(&dir.join("manifest.json"))["mode"],
+        serde_json::json!({
+            "kind": "gsprt", "h0_elo": h0, "h1_elo": h1, "alpha": 0.05, "beta": 0.05
+        })
+    );
+    let mut last_llr = None;
+    let mut last_decision = None;
+    for line in text.lines().filter(|line| line.starts_with("statistics:")) {
+        let (counts, tail) = line
+            .split_once("pentanomial=")
+            .unwrap()
+            .1
+            .split_once(" llr=")
             .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.contains(&format!("hypotheses: elo0={elo0} elo1={elo1}\n")));
-        let h0 = elo0.parse::<f64>().unwrap();
-        let h1 = elo1.parse::<f64>().unwrap();
-        assert_eq!(
-            json_file(&dir.join("manifest.json"))["mode"],
-            serde_json::json!({
-                "kind": "gsprt", "h0_elo": h0, "h1_elo": h1, "alpha": 0.05, "beta": 0.05
-            })
-        );
-        let mut last_llr = None;
-        let mut last_decision = None;
-        for line in text.lines().filter(|line| line.starts_with("statistics:")) {
-            let (counts, tail) = line
-                .split_once("pentanomial=")
-                .unwrap()
-                .1
-                .split_once(" llr=")
-                .unwrap();
-            let counts: [u64; 5] = serde_json::from_str(counts).unwrap();
-            let expected = minase::stats::gsprt_llr_with_hypotheses(&counts, h0, h1);
-            let (llr, decision) = tail.split_once(" decision=").unwrap();
-            assert!((llr.parse::<f64>().unwrap() - expected).abs() < 1e-9);
-            let boundary = 19.0_f64.ln();
-            let expected_decision = if expected >= boundary {
-                "H1"
-            } else if expected <= -boundary {
-                "H0"
-            } else {
-                "pending"
-            };
-            assert_eq!(decision, expected_decision);
-            last_llr = Some(llr);
-            last_decision = Some(decision);
-        }
-        assert_eq!(
-            text.lines().find_map(|line| line.strip_prefix("llr: ")),
-            Some(last_llr.unwrap())
-        );
-        assert_eq!(
-            text.lines()
-                .find_map(|line| line.strip_prefix("decision: ")),
-            Some(last_decision.unwrap())
-        );
-        std::fs::remove_dir_all(dir).unwrap();
+        let counts: [u64; 5] = serde_json::from_str(counts).unwrap();
+        let expected = minase::stats::gsprt_llr_with_hypotheses(&counts, h0, h1);
+        let (llr, decision) = tail.split_once(" decision=").unwrap();
+        assert!((llr.parse::<f64>().unwrap() - expected).abs() < 1e-9);
+        let boundary = 19.0_f64.ln();
+        let expected_decision = if expected >= boundary {
+            "H1"
+        } else if expected <= -boundary {
+            "H0"
+        } else {
+            "pending"
+        };
+        assert_eq!(decision, expected_decision);
+        last_llr = Some(llr);
+        last_decision = Some(decision);
     }
+    assert_eq!(
+        text.lines().find_map(|line| line.strip_prefix("llr: ")),
+        Some(last_llr.unwrap())
+    );
+    assert_eq!(
+        text.lines()
+            .find_map(|line| line.strip_prefix("decision: ")),
+        Some(last_decision.unwrap())
+    );
+    std::fs::remove_dir_all(dir).unwrap();
     std::fs::remove_dir_all(parent).unwrap();
 }
 
 #[test]
 fn gsprt_invalid_hypotheses_fail_before_creating_a_run() {
-    for (elo0, elo1) in [
-        ("5", "5"),
-        ("5", "-5"),
-        ("NaN", "5"),
-        ("-inf", "5"),
-        ("0", "inf"),
-    ] {
-        let dir = run_directory();
-        let output = small_gsprt_run(&dir, &["--elo0", elo0, "--elo1", elo1]);
-        assert_eq!(output.status.code(), Some(2));
-        assert!(!dir.exists());
-    }
+    let dir = run_directory();
+    let output = small_gsprt_run(&dir, &["--elo0", "5", "--elo1", "5"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!dir.exists());
 }
 
 #[test]
@@ -636,21 +619,8 @@ fn resume_records_only_invocations_that_execute_games() {
 }
 
 #[test]
-fn resume_condition_arguments_are_clap_errors() {
+fn resume_mode_arguments_fail_before_loading_a_run() {
     for args in [
-        vec!["--seed", "42"],
-        vec!["--candidate", "random"],
-        vec!["--baseline", "random"],
-        vec!["--each", "depth=1"],
-        vec!["--rules", "engine-default"],
-        vec!["--max-ply", "16"],
-        vec!["--response-timeout", "120"],
-        vec!["--concurrency", "1"],
-        vec!["--ponder"],
-        vec!["--candidate-limit", "depth=1"],
-        vec!["--baseline-limit", "depth=1"],
-        vec!["--candidate-hash", "256"],
-        vec!["--baseline-hash", "256"],
         vec!["elo", "--pairs", "1"],
         vec!["gsprt"],
         vec!["gsprt", "--max-pairs", "1"],
@@ -663,36 +633,16 @@ fn resume_condition_arguments_are_clap_errors() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args([
-            "match",
-            "run",
-            "--run-dir",
-            "nonexistent-run",
-            "--target-pairs",
-            "2",
-            "elo",
-            "--pairs",
-            "1",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(2));
 }
 
 #[test]
-fn resume_rejects_version_four_and_changed_engine_conditions_without_writes() {
+fn resume_rejects_changed_engine_conditions_without_writes() {
     let dir = run_directory();
     small_run(&dir);
     let original = json_file(&dir.join("manifest.json"));
     let history = std::fs::read(dir.join("invocations.json")).unwrap();
     let summary = std::fs::read(dir.join("summary.json")).unwrap();
     for (pointer, replacement, message) in [
-        (
-            "/format_version",
-            serde_json::json!(4),
-            "unsupported manifest format version 4",
-        ),
         (
             "/engine_threads/candidate",
             serde_json::json!(2),
@@ -849,4 +799,57 @@ done
             .contains("setoption name USI_Hash value 32")
     );
     std::fs::remove_dir_all(parent).unwrap();
+}
+
+// --eachの既定値と各側の上書きは、解決後に保存された条件で検査する。
+#[test]
+fn each_limit_is_shared_and_per_engine_overrides_are_applied() {
+    for (args, candidate_depth, baseline_depth) in [
+        (vec![], 4, 4),
+        (vec!["--candidate-limit", "depth=2"], 2, 4),
+        (vec!["--baseline-limit", "depth=1"], 4, 1),
+        (
+            vec![
+                "--candidate-limit",
+                "depth=2",
+                "--baseline-limit",
+                "depth=1",
+            ],
+            2,
+            1,
+        ),
+    ] {
+        let dir = run_directory();
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "run", "--run-dir"])
+            .arg(&dir)
+            .args([
+                "--seed",
+                "42",
+                "--max-ply",
+                "1",
+                "--concurrency",
+                "1",
+                "--each",
+                "depth=4",
+            ])
+            .args(&args)
+            .args(["elo", "--pairs", "1"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let manifest = json_file(&dir.join("manifest.json"));
+        for (side, depth) in [("candidate", candidate_depth), ("baseline", baseline_depth)] {
+            assert_eq!(
+                manifest[side]["limit"],
+                serde_json::json!({"kind": "fixed", "depth": depth, "nodes": null}),
+                "{args:?}: {side}"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

@@ -148,7 +148,22 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn linux_host_resource_probe_reports_cores_and_memory() {
-        assert!(physical_core_count().is_some_and(|cores| cores > 0));
-        assert!(physical_memory_bytes().is_some_and(|bytes| bytes > 0));
+        use procfs::Current;
+
+        // /procの独立した観測値で、sysfs由来のコア数の範囲とメモリの単位を検査する。
+        let cpus = procfs::CpuInfo::current().unwrap();
+        let cores = physical_core_count().expect("Linux must report physical cores");
+        assert!(
+            (1..=cpus.num_cores()).contains(&cores),
+            "physical={cores}, logical={}",
+            cpus.num_cores()
+        );
+        let memory = physical_memory_bytes().expect("Linux must report MemTotal");
+        assert_eq!(memory, procfs::Meminfo::current().unwrap().mem_total);
+        assert_eq!(memory % 1024, 0, "MemTotal is reported in KiB");
+        assert!(
+            memory >= procfs::page_size(),
+            "physical memory must contain a page"
+        );
     }
 }

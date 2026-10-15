@@ -4,11 +4,8 @@
 
 use clap::Parser;
 
-mod simulation;
-
 use super::engine::tuning_spec;
 use super::*;
-use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{Color, DrawReason, GameResult};
 use model::*;
 use params::{Declaration, Parameter, ParameterError};
@@ -645,75 +642,6 @@ fn abnormal_games_keep_opening_and_think_times_without_normal_movelist() {
     assert!(value.get("games").is_none());
 }
 
-// 測定時の22係数の範囲を使い、開始値を中央から範囲幅の20%上に置く。
-// 目的関数は各係数の-60 * (正規化位置 - 0.5)^2の和で、11番目だけ0.1刻みにする。
-// 1,500反復×8ペアを20本のシードで回し、18本以上で最適値へ近づくことを要求する。
-#[test]
-#[ignore]
-fn synthetic_objective_improves_at_least_eighteen_of_twenty_seeds() {
-    // 係数の範囲と順序は[`simulation::ranges`]で固定する。
-    let mut parameters = simulation::ranges();
-    for p in &mut parameters {
-        p.start = f64::from(p.min) + 0.7 * f64::from(p.max - p.min);
-    }
-    let elo = |values: &[i32]| -> f64 {
-        values
-            .iter()
-            .zip(&parameters)
-            .enumerate()
-            .map(|(i, (&x, p))| {
-                let width = f64::from(p.max - p.min);
-                let mut normalized = (f64::from(x) - f64::from(p.min)) / width;
-                if i == 10 {
-                    normalized = (normalized * 10.0).floor() / 10.0;
-                }
-                -60.0 * (normalized - 0.5).powi(2)
-            })
-            .sum()
-    };
-    let mut improved = 0;
-    for seed in 1..=20 {
-        let s = Settings {
-            parameters: parameters.clone(),
-            seed,
-            ..settings(1500, 8, 1)
-        };
-        let summary = runner::run(
-            &s,
-            &BTreeMap::new(),
-            |v, _| {
-                let advantage = elo(&v.plus) - elo(&v.minus);
-                let probability = 1.0 / (1.0 + 10.0_f64.powf(-advantage / 400.0));
-                // ペアごとの独立した系列から2局分を引く。
-                let mut rng = XorShift64::new(derive_seed(seed * 1_000_000, v.number));
-                let signs = std::array::from_fn(|_| {
-                    if uniform(&mut rng) < probability {
-                        1
-                    } else {
-                        -1
-                    }
-                });
-                Ok(Some(pair(v.number, signs)))
-            },
-            |_| Ok(()),
-        )
-        .unwrap();
-        let distance = summary
-            .theta
-            .iter()
-            .zip(&parameters)
-            .map(|(&x, p)| ((x - f64::from(p.min)) / f64::from(p.max - p.min) - 0.5).abs())
-            .sum::<f64>()
-            / 22.0;
-        println!("seed={seed:02} mean_normalized_distance={distance:.12}");
-        if distance < 0.2 {
-            improved += 1;
-        }
-        assert_eq!(summary.valid_pairs, 12_000);
-    }
-    assert!(improved >= 18, "only {improved}/20 improved");
-}
-
 #[test]
 fn command_engine_runs_resumes_and_sets_only_listed_parameters() {
     let directory = Directory::new();
@@ -949,7 +877,7 @@ fn iteration_stream_draws_all_flips_before_per_pair_rounding() {
 }
 
 // 保存記録はrunnerのテストと同じ構築手順で作り、エンジンを起動しない。
-const APPLY_TABLE: &str = "// outside X(x): 250, 100, 400;\nparameters! {\n    /// X の説明。250 は変更しない。\n    X(x): +250, 100, 400;\n    Y(y): -2, -10, 10;\n    Z(z): 9, 0, 20;\n}\n// end\n";
+const APPLY_TABLE: &str = "// outside X(x): 250, 100, 400;\nparameters! {\n    /// X の説明。250 は変更しない。\n    #[cfg_attr(not(feature = \"tuning\"), allow(dead_code))]\n    X(x): +250, 100, 400;\n    Y(y): -2, -10, 10;\n    Z(z): 9, 0, 20;\n}\n// end\n";
 
 fn apply_session(s: Settings, completed: u64, signs: [i8; 2]) -> Directory {
     let directory = Directory::new();
@@ -1120,37 +1048,109 @@ fn apply_validates_manifest_settings_before_reading_iterations() {
 }
 
 #[test]
-fn apply_rejects_missing_and_duplicate_table_parameters() {
+fn apply_rejects_invalid_tables_without_writing() {
+    use apply::ApplyError;
     let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
-    assert!(
-        matches!(apply_error(&directory, &APPLY_TABLE.replace("X(x):", "Other(x):")), apply::ApplyError::MissingParameter(name) if name == "X")
-    );
-    assert!(
-        matches!(apply_error(&directory, &APPLY_TABLE.replace("Y(y):", "X(y):")), apply::ApplyError::DuplicateParameter(name) if name == "X")
-    );
+    let mut fractional_settings = settings(1, 1, 1);
+    fractional_settings.parameters[0].start = 250.25;
+    let fractional = apply_session(fractional_settings, 1, [0, 0]);
+    for (name, session, text, expected) in [
+        (
+            "missing parameter",
+            &directory,
+            APPLY_TABLE.replace("X(x):", "Other(x):"),
+            ApplyError::MissingParameter("X".into()),
+        ),
+        (
+            "duplicate parameter",
+            &directory,
+            APPLY_TABLE.replace("Y(y):", "X(y):"),
+            ApplyError::DuplicateParameter("X".into()),
+        ),
+        (
+            "lower range",
+            &directory,
+            APPLY_TABLE.replace("+250, 100", "+250, 101"),
+            ApplyError::RangeMismatch("X".into()),
+        ),
+        (
+            "upper range",
+            &directory,
+            APPLY_TABLE.replace("+250, 100, 400", "+250, 100, 399"),
+            ApplyError::RangeMismatch("X".into()),
+        ),
+        (
+            "integer start",
+            &directory,
+            APPLY_TABLE.replace("+250", "251"),
+            ApplyError::StartMismatch {
+                name: "X".into(),
+                start: 250.0,
+                default: 251,
+            },
+        ),
+        (
+            "fractional start",
+            &fractional,
+            APPLY_TABLE.to_owned(),
+            ApplyError::StartMismatch {
+                name: "X".into(),
+                start: 250.25,
+                default: 250,
+            },
+        ),
+        (
+            "no invocation",
+            &directory,
+            "// no invocation\n".to_owned(),
+            ApplyError::InvocationCount(0),
+        ),
+        (
+            "duplicate invocation",
+            &directory,
+            format!("{APPLY_TABLE}{APPLY_TABLE}"),
+            ApplyError::InvocationCount(2),
+        ),
+        (
+            "missing closing line",
+            &directory,
+            "parameters! {\nX(x): 250, 100, 400;\n".to_owned(),
+            ApplyError::MissingEnd,
+        ),
+    ] {
+        let actual = apply_error(session, &text);
+        match (actual, expected) {
+            (ApplyError::MissingParameter(a), ApplyError::MissingParameter(e))
+            | (ApplyError::DuplicateParameter(a), ApplyError::DuplicateParameter(e))
+            | (ApplyError::RangeMismatch(a), ApplyError::RangeMismatch(e)) => {
+                assert_eq!(a, e, "{name}")
+            }
+            (
+                ApplyError::StartMismatch {
+                    name: a,
+                    start: a_start,
+                    default: a_default,
+                },
+                ApplyError::StartMismatch {
+                    name: e,
+                    start: e_start,
+                    default: e_default,
+                },
+            ) => {
+                assert_eq!((a, a_start, a_default), (e, e_start, e_default), "{name}");
+            }
+            (ApplyError::InvocationCount(a), ApplyError::InvocationCount(e)) => {
+                assert_eq!(a, e, "{name}")
+            }
+            (ApplyError::MissingEnd, ApplyError::MissingEnd) => {}
+            (actual, expected) => panic!("{name}: expected {expected:?}, got {actual:?}"),
+        }
+    }
 }
 
 #[test]
-fn apply_requires_contained_ranges_and_exact_start_values() {
+fn apply_accepts_a_table_range_containing_the_session_range() {
     let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
-    for text in [
-        APPLY_TABLE.replace("+250, 100", "+250, 101"),
-        APPLY_TABLE.replace("+250, 100, 400", "+250, 100, 399"),
-    ] {
-        assert!(
-            matches!(apply_error(&directory, &text), apply::ApplyError::RangeMismatch(name) if name == "X")
-        );
-    }
-    assert!(
-        matches!(apply_error(&directory, &APPLY_TABLE.replace("+250", "251")), apply::ApplyError::StartMismatch { name, .. } if name == "X")
-    );
-    let mut s = settings(1, 1, 1);
-    s.parameters[0].start = 250.25;
-    let fractional = apply_session(s, 1, [0, 0]);
-    assert!(matches!(
-        apply_error(&fractional, APPLY_TABLE),
-        apply::ApplyError::StartMismatch { .. }
-    ));
     let wider = APPLY_TABLE.replace("+250, 100, 400", "+250, 0, 500");
     let source = apply_source(&directory, &wider);
     assert!(apply::apply(&directory.0, &source).is_ok());
@@ -1182,23 +1182,6 @@ fn apply_rejects_unrecognized_table_lines_without_writing() {
             "{declaration}"
         );
     }
-}
-
-#[test]
-fn apply_requires_one_start_line_and_a_closing_line() {
-    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
-    assert!(matches!(
-        apply_error(&directory, "// no invocation\n"),
-        apply::ApplyError::InvocationCount(0)
-    ));
-    assert!(matches!(
-        apply_error(&directory, &format!("{APPLY_TABLE}{APPLY_TABLE}")),
-        apply::ApplyError::InvocationCount(2)
-    ));
-    assert!(matches!(
-        apply_error(&directory, "parameters! {\nX(x): 250, 100, 400;\n"),
-        apply::ApplyError::MissingEnd
-    ));
 }
 
 #[test]

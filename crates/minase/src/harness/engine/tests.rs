@@ -23,7 +23,11 @@ use std::time::{Duration, Instant};
 // 台本の各要素は受信行の接頭辞、応答前の遅延(ms)、出力行、CPU消費(ms)。
 fn fake(steps: Vec<(&str, u64, String, u64)>, limit: &str) -> PlayerConfig {
     let script = format!(
-        r#"import sys,json,time
+        r#"import sys,json,time,os
+# 資源記録と同じOSのtick単位でCPU時間を待つ。高精度時計との差による過少記録を避ける。
+def cpu_time():
+    usage = os.times()
+    return usage.user + usage.system
 steps = json.loads({steps:?})
 for raw in sys.stdin:
     line = raw.strip()
@@ -43,9 +47,13 @@ for raw in sys.stdin:
         print('expected ' + expected + ', received ' + line, file=sys.stderr, flush=True)
         sys.exit(1)
     time.sleep(delay / 1000)
-    end = time.process_time() + cpu / 1000
-    while time.process_time() < end:
-        pass
+    end = cpu_time() + cpu / 1000
+    remaining = end - cpu_time()
+    while remaining > 0:
+        deadline = time.process_time() + remaining
+        while time.process_time() < deadline:
+            pass
+        remaining = end - cpu_time()
     if '$CHECK_MISS_CLOCK' in output:
         words = line.split()
         assert int(words[words.index('btime') + 1]) <= 880, line
@@ -593,14 +601,18 @@ fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
             seed(),
             &b,
             seed(),
-            Duration::from_millis(500),
+            Duration::from_secs(2),
             true,
             &AtomicBool::new(false),
         )
         .unwrap();
         assert_eq!(result.record.termination, expected);
         #[cfg(target_os = "linux")]
-        assert!(result.record.candidate_cpu_time_ns.unwrap() >= 60_000_000);
+        assert!(
+            result.record.candidate_cpu_time_ns.unwrap() >= 60_000_000,
+            "{expected:?}: candidate CPU time {:?}",
+            result.record.candidate_cpu_time_ns,
+        );
     }
 }
 

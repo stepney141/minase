@@ -3,7 +3,7 @@
 use super::storage::ManifestMode;
 use crate::match_runner::scheduler::continue_after_decision;
 use minase::harness::{CompletedPair, FailureCounts};
-use minase::stats::{GsprtDecision, estimate_elo, gsprt_llr_with_hypotheses};
+use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr_with_hypotheses};
 use std::{sync::atomic::AtomicBool, time::Duration};
 
 impl ManifestMode {
@@ -17,15 +17,10 @@ impl ManifestMode {
     }
 
     fn decision(&self, llr: f64) -> GsprtDecision {
-        if let Self::Gsprt { alpha, beta, .. } = self {
-            if llr >= ((1.0 - beta) / alpha).ln() {
-                return GsprtDecision::AcceptH1;
-            }
-            if llr <= (beta / (1.0 - alpha)).ln() {
-                return GsprtDecision::AcceptH0;
-            }
+        match self {
+            Self::Gsprt { alpha, beta, .. } => gsprt_decision(llr, *alpha, *beta),
+            Self::Elo => GsprtDecision::Continue,
         }
-        GsprtDecision::Continue
     }
 }
 
@@ -147,59 +142,135 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cli_hypotheses_survive_serialization_and_control_synthetic_pair_statistics() {
+    fn recorded_gsprt_hypotheses_and_error_rates_control_statistics() {
         use crate::match_runner::cli::Arguments;
         use clap::Parser;
 
-        let arguments = Arguments::try_parse_from([
-            "match_runner",
-            "--run-dir",
-            "run",
-            "gsprt",
-            "--elo0",
-            "-5",
-            "--elo1",
-            "5",
-        ])
-        .unwrap();
-        let (_, mode) = arguments.mode.unwrap().new_run_settings().unwrap();
-        let recorded: ManifestMode =
-            serde_json::from_str(&serde_json::to_string(&mode).unwrap()).unwrap();
-        for counts in [
-            [10, 20, 40, 20, 10],
-            [10, 20, 40, 30, 20],
-            [20, 30, 40, 20, 10],
-        ] {
-            assert_eq!(
-                recorded.llr(&counts),
-                gsprt_llr_with_hypotheses(&counts, -5.0, 5.0)
-            );
-            assert!((recorded.llr(&counts) - minase::stats::gsprt_llr(&counts)).abs() > 1e-6);
-        }
         let boundary = 19.0_f64.ln();
-        assert_eq!(recorded.decision(boundary + 1e-10), GsprtDecision::AcceptH1);
-        assert_eq!(recorded.decision(boundary - 1e-10), GsprtDecision::Continue);
-        assert_eq!(
-            recorded.decision(-boundary - 1e-10),
-            GsprtDecision::AcceptH0
-        );
-        assert_eq!(
-            recorded.decision(-boundary + 1e-10),
-            GsprtDecision::Continue
-        );
-    }
-
-    #[test]
-    fn recorded_gsprt_hypotheses_and_error_rates_control_statistics() {
-        let mode: ManifestMode = serde_json::from_value(serde_json::json!({
-            "kind": "gsprt", "h0_elo": -5.0, "h1_elo": 5.0, "alpha": 0.1, "beta": 0.2
-        }))
-        .unwrap();
-        // 対称な度数と±5 Eloの仮説では尤度が等しく、LLRは0になる。
-        assert!(mode.llr(&[10, 20, 40, 20, 10]).abs() < 1e-10);
-        assert_eq!(mode.decision(2.1), GsprtDecision::AcceptH1);
-        assert_eq!(mode.decision(-1.6), GsprtDecision::AcceptH0);
-        assert_eq!(mode.decision(0.0), GsprtDecision::Continue);
+        // 対称な度数と±5 EloではLLR=0。0/5 Eloの値はstats.rsと同じfishtest参照値。
+        // 非対称な度数の±1.213888438138128は、多項尤度の制約付き最大化から独立に計算した。
+        // p_i=n_i/(λ+μs_i)、Σp_i=1、Σs_i p_i=s(Elo)の2方程式を65桁の十進演算で解き、
+        // Σn_i ln(p_i(H1)/p_i(H0))を求めた。度数を反転すると符号も反転する。
+        for (alpha, beta, hypotheses, counts, expected_llr, llr, expected) in [
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                boundary + 1e-10,
+                GsprtDecision::AcceptH1,
+            ),
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                boundary - 1e-10,
+                GsprtDecision::Continue,
+            ),
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                -boundary - 1e-10,
+                GsprtDecision::AcceptH0,
+            ),
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                -boundary + 1e-10,
+                GsprtDecision::Continue,
+            ),
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [10, 20, 40, 30, 20],
+                1.213_888_438_138_128,
+                1.213_888_438_138_128,
+                GsprtDecision::Continue,
+            ),
+            (
+                0.05,
+                0.05,
+                ["-5", "5"],
+                [20, 30, 40, 20, 10],
+                -1.213_888_438_138_128,
+                -1.213_888_438_138_128,
+                GsprtDecision::Continue,
+            ),
+            (
+                0.1,
+                0.2,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                2.1,
+                GsprtDecision::AcceptH1,
+            ),
+            (
+                0.1,
+                0.2,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                -1.6,
+                GsprtDecision::AcceptH0,
+            ),
+            (
+                0.1,
+                0.2,
+                ["-5", "5"],
+                [10, 20, 40, 20, 10],
+                0.0,
+                0.0,
+                GsprtDecision::Continue,
+            ),
+            (
+                0.05,
+                0.05,
+                ["0", "5"],
+                [30, 120, 240, 180, 30],
+                1.622_809_170_6,
+                0.0,
+                GsprtDecision::Continue,
+            ),
+        ] {
+            let arguments = Arguments::try_parse_from([
+                "match_runner",
+                "--run-dir",
+                "run",
+                "gsprt",
+                "--elo0",
+                hypotheses[0],
+                "--elo1",
+                hypotheses[1],
+            ])
+            .unwrap();
+            let (_, mode) = arguments.mode.unwrap().new_run_settings().unwrap();
+            let mut value = serde_json::to_value(mode).unwrap();
+            value["alpha"] = serde_json::json!(alpha);
+            value["beta"] = serde_json::json!(beta);
+            let recorded: ManifestMode = serde_json::from_value(value).unwrap();
+            let case = format!("α={alpha}, β={beta}, hypotheses={hypotheses:?}, LLR={llr}");
+            let tolerance = if expected_llr == 0.0 { 1e-10 } else { 1e-6 };
+            assert!(
+                (recorded.llr(&counts) - expected_llr).abs() < tolerance,
+                "{case}"
+            );
+            assert!(
+                (recorded.llr(&counts) - minase::stats::gsprt_llr(&counts)).abs() > 1e-6,
+                "{case}"
+            );
+            assert_eq!(recorded.decision(llr), expected, "{case}");
+        }
     }
 
     // docs/guides/sprt.md測定の種類と標準コマンド節に従い、判定の表示語彙は

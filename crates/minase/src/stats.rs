@@ -20,12 +20,6 @@ const SECULAR_TOLERANCE: f64 = 1e-14;
 /// ペンタノミアル5分類の正規化ペア得点。
 const SCORES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 
-/// α = β = 0.05の下側境界`ln(β / (1 - α))`。約−2.944である。
-/// [`gsprt_decision`]はLLRがこの値以下なら[`GsprtDecision::AcceptH0`]を返す。
-pub const GSPRT_LOWER_BOUND: f64 = -2.944_438_979_166_440_3;
-/// α = β = 0.05の上側境界`ln((1 - β) / α)`。約2.944である。
-/// [`gsprt_decision`]はLLRがこの値以上なら[`GsprtDecision::AcceptH1`]を返す。
-pub const GSPRT_UPPER_BOUND: f64 = 2.944_438_979_166_440_3;
 /// 採否測定で固定する対立仮説H1のロジスティックElo。帰無仮説H0は0である。
 ///
 /// 採否には10 Eloだけを使い、`match run`は実行時の値を`manifest.json`の`h1_elo`へ記録する。
@@ -141,11 +135,12 @@ pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
     gsprt_llr_with_hypotheses(results, 0.0, GSPRT_H1_ELO)
 }
 
-/// LLRを固定境界と比較してGSPRTの判定を返す。
-pub fn gsprt_decision(llr: f64) -> GsprtDecision {
-    if llr >= GSPRT_UPPER_BOUND {
+/// LLRを上側境界`ln((1 - β) / α)`、下側境界`ln(β / (1 - α))`と比較する。
+/// 呼び出し側は0 < α, β < 1かつα + β < 1を保証する。
+pub fn gsprt_decision(llr: f64, alpha: f64, beta: f64) -> GsprtDecision {
+    if llr >= ((1.0 - beta) / alpha).ln() {
         GsprtDecision::AcceptH1
-    } else if llr <= GSPRT_LOWER_BOUND {
+    } else if llr <= (beta / (1.0 - alpha)).ln() {
         GsprtDecision::AcceptH0
     } else {
         GsprtDecision::Continue
@@ -260,7 +255,16 @@ mod tests {
             (upper - 1e-9, GsprtDecision::Continue),
             (upper + 1e-9, GsprtDecision::AcceptH1),
         ] {
-            assert_eq!(gsprt_decision(llr), expected);
+            assert_eq!(gsprt_decision(llr, 0.05, 0.05), expected, "LLR={llr}");
+        }
+        // α=0.1、β=0.2では下側ln(2/9)、上側ln(8)。
+        for (llr, expected) in [
+            (-1.504_077_396_776_274 - 1e-9, GsprtDecision::AcceptH0),
+            (-1.504_077_396_776_274 + 1e-9, GsprtDecision::Continue),
+            (2.079_441_541_679_836 - 1e-9, GsprtDecision::Continue),
+            (2.079_441_541_679_836 + 1e-9, GsprtDecision::AcceptH1),
+        ] {
+            assert_eq!(gsprt_decision(llr, 0.1, 0.2), expected, "LLR={llr}");
         }
     }
 
@@ -333,7 +337,7 @@ mod tests {
             // docs/guides/sprt.md: 1ペア取り込むごとにLLRを再計算し、境界交差で停止する
             for _ in 0..max_pairs {
                 results[sample(pdf, &mut rng)] += 1;
-                decision = gsprt_decision(gsprt_llr(&results));
+                decision = gsprt_decision(gsprt_llr(&results), 0.05, 0.05);
                 if decision != GsprtDecision::Continue {
                     break;
                 }

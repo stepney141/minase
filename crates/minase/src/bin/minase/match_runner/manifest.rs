@@ -125,45 +125,74 @@ mod tests {
     use super::*;
     use crate::match_runner::cli::parse_rule_set_argument;
 
+    // default_concurrencyのdocコメントと物理コア数からの既定値に関するADRに従う。
     #[test]
-    fn default_concurrency_uses_available_cores_and_larger_thread_count() {
-        assert_eq!(
-            default_concurrency(Some(20), Some(1), Some(1), false),
-            Ok(19)
-        );
-        assert_eq!(
-            default_concurrency(Some(20), Some(4), Some(2), false),
-            Ok(4)
-        );
-    }
-
-    #[test]
-    fn default_concurrency_requires_resource_counts() {
-        let error = default_concurrency(None, Some(1), Some(1), false).unwrap_err();
-        assert!(error.contains("physical core count"));
-        assert!(error.contains("--concurrency"));
-
-        let error = default_concurrency(Some(20), None, Some(1), false).unwrap_err();
-        assert!(error.contains("candidate engine Threads"));
-        assert!(error.contains("--concurrency"));
-
-        let error = default_concurrency(Some(20), Some(1), None, false).unwrap_err();
-        assert!(error.contains("baseline engine Threads"));
-        assert!(error.contains("--concurrency"));
-    }
-
-    #[test]
-    fn default_concurrency_rejects_values_below_one() {
-        let error = default_concurrency(Some(1), Some(1), Some(1), false).unwrap_err();
-        assert!(error.contains("--concurrency"));
-
-        let error = default_concurrency(Some(20), Some(0), Some(1), false).unwrap_err();
-        assert!(error.contains("Threads must be at least 1"));
-        assert!(error.contains("--concurrency"));
-
-        let error = default_concurrency(Some(20), Some(1), Some(0), false).unwrap_err();
-        assert!(error.contains("Threads must be at least 1"));
-        assert!(error.contains("--concurrency"));
+    fn default_concurrency_uses_available_resources_or_requires_an_override() {
+        for (cores, candidate, baseline, ponder, expected) in [
+            (Some(20), Some(1), Some(1), false, Ok(19)),
+            (Some(20), Some(4), Some(2), false, Ok(4)),
+            (None, Some(1), Some(1), false, Err("physical core count")),
+            (
+                Some(20),
+                None,
+                Some(1),
+                false,
+                Err("candidate engine Threads"),
+            ),
+            (
+                Some(20),
+                Some(1),
+                None,
+                false,
+                Err("baseline engine Threads"),
+            ),
+            (
+                Some(1),
+                Some(1),
+                Some(1),
+                false,
+                Err("automatic concurrency is less than 1"),
+            ),
+            (
+                Some(20),
+                Some(0),
+                Some(1),
+                false,
+                Err("Threads must be at least 1"),
+            ),
+            (
+                Some(20),
+                Some(1),
+                Some(0),
+                false,
+                Err("Threads must be at least 1"),
+            ),
+            (Some(16), Some(1), Some(1), true, Ok(7)),
+            (Some(16), Some(1), Some(1), false, Ok(15)),
+            (Some(16), Some(2), Some(1), true, Ok(3)),
+            (Some(16), Some(1), Some(2), true, Ok(3)),
+            (Some(16), Some(2), Some(1), false, Ok(7)),
+            (Some(16), Some(1), Some(2), false, Ok(7)),
+            (
+                Some(2),
+                Some(1),
+                Some(1),
+                true,
+                Err("automatic concurrency is less than 1"),
+            ),
+        ] {
+            let case =
+                format!("cores={cores:?}, Threads=({candidate:?}, {baseline:?}), ponder={ponder}");
+            let actual = default_concurrency(cores, candidate, baseline, ponder);
+            match expected {
+                Ok(value) => assert_eq!(actual, Ok(value), "{case}"),
+                Err(message) => {
+                    let error = actual.unwrap_err();
+                    assert!(error.contains(message), "{case}: {error}");
+                    assert!(error.contains("--concurrency"), "{case}: {error}");
+                }
+            }
+        }
     }
 
     // manifestの`hash_mb`: manifestは明示容量を優先し、省略側は既定値を記録する。
@@ -198,23 +227,5 @@ mod tests {
             assert_eq!(manifest.hash_mb.candidate, expected_candidate);
             assert_eq!(manifest.hash_mb.baseline, expected_baseline);
         }
-    }
-
-    // [`default_concurrency`]と`docs/adr/derive-default-concurrency-from-physical-cores.md`に従う。
-    #[test]
-    fn ponder_concurrency_reserves_two_engines_per_game() {
-        for (threads, on, off) in [(1, 7, 15), (2, 3, 7)] {
-            for (a, b) in [(threads, 1), (1, threads)] {
-                assert_eq!(
-                    default_concurrency(Some(16), Some(a), Some(b), true),
-                    Ok(on)
-                );
-                assert_eq!(
-                    default_concurrency(Some(16), Some(a), Some(b), false),
-                    Ok(off)
-                );
-            }
-        }
-        assert!(default_concurrency(Some(2), Some(1), Some(1), true).is_err());
     }
 }
