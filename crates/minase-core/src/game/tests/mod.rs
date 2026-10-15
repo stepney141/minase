@@ -5,6 +5,7 @@ mod illegal_move;
 mod local_rules;
 mod no_legal_move;
 mod repetition;
+mod root_repetition;
 mod royals;
 mod self_play;
 mod win;

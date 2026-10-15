@@ -8,10 +8,12 @@ mod error;
 mod referee;
 mod repetition;
 mod result;
+mod root_repetition;
 
 pub use error::{GameError, IllegalMoveCause};
 pub use referee::Game;
 pub use result::{DrawReason, GameResult, GameStatus, WinReason};
+pub use root_repetition::RepetitionRootMoves;
 
 #[cfg(test)]
 mod tests;

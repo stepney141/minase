@@ -30,7 +30,8 @@ pub use crate::board::Bitboard;
 pub use crate::board::Direction;
 pub use crate::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 pub use crate::game::{
-    DrawReason, Game, GameError, GameResult, GameStatus, IllegalMoveCause, WinReason,
+    DrawReason, Game, GameError, GameResult, GameStatus, IllegalMoveCause, RepetitionRootMoves,
+    WinReason,
 };
 pub use crate::movegen::{IllegalMove, MoveGenerator};
 pub use crate::mv::Move;
