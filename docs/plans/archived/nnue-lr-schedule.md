@@ -14,10 +14,10 @@
 ## 状態
 
 完了（採用）。2026年10月12日に起案し、2026年10月14日に着手し、2026年10月16日に完了した。
-5つの学習率の設定のうち、一定の1倍以外の4本はすべて最良の検証損失が一定の1倍を下回り（場合分け (a)）、最も低いcosine annealing（総長3エポック、下限0.1）のネットを候補に選んだ（[学習の記録](../../measurements/nnue-lr-schedule-training.md)）。
-候補は、同じデータで学んだ一定の1倍のネットに対するSTCで`H1`（[記録](../../measurements/nnue-lr-schedule-cosine-stc.md)）、現行masterのネットに対するSTCとLTCで`H1`であり（[STC](../../measurements/nnue-cosine-vs-master-stc.md)、[LTC](../../measurements/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用し、学習器の既定の`--lr-schedule`を`cosine:3:0.1`に変えた。
+5つの学習率の設定のうち、一定の1倍以外の4つの設定はいずれも最良の検証損失が一定の1倍を下回り（「設計判断」の場合分け (a)）、検証損失が最も低かったcosine annealing（総長3エポック、下限0.1）のネットを候補に選んだ（[学習の記録](../../measurements/nnue-lr-schedule-training.md)）。
+候補は、同じデータで学習させた一定の1倍のネットに対するSTCで`H1`（[記録](../../measurements/nnue-lr-schedule-cosine-stc.md)）、現行masterのネットに対するSTCとLTCで`H1`であり（[STC](../../measurements/nnue-cosine-vs-master-stc.md)、[LTC](../../measurements/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用し、学習器の既定の`--lr-schedule`を`cosine:3:0.1`に変更した。
 学習率の効果だけを分離するLTCは、利用者の判断で省略した。
-設計判断は[NNUEの学習率をcosine annealingで減らす](../../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)に移した。
+設計判断は[NNUEの学習率をcosine annealingで減らす](../../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)に記録した。
 
 ## 目的
 

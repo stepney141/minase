@@ -2,7 +2,7 @@
 
 ## 目的
 
-[STC](nnue-cosine-vs-master-stc.md)で`H1`となった、cosine annealing（総長3エポック、下限0.1）で学んだNNUEを埋め込んだ候補を、現行masterのネットを埋め込んだ基準に対して長時間の時間制御のGSPRTで測り、採否を決める。
+[STC](nnue-cosine-vs-master-stc.md)で`H1`となった、cosine annealing（総長3エポック、下限0.1）で学習させたNNUEを埋め込んだ候補を、現行masterのネットを埋め込んだ基準に対して長時間の持ち時間条件のGSPRTで対局させ、採否を決める。
 
 ## コマンドライン
 
@@ -16,12 +16,12 @@ target/release/minase match run \
 ## エンジン
 
 STCと同じである。
-候補は`a8a7b7fd`（master `446c6e19`に対し、`crates/minase/nets/nnue.bin`をcosineのネット（SHA-256 `311be801…`）へ差し替えただけのコミット）、基準は`446c6e19`（master、埋め込みのネットのSHA-256は`3679bebf…`）、規則セットは`L0,P0,R1,E0`、`USI_Hash`は両者256 MB、`Threads`は両者1である。
+候補は`a8a7b7fd`（master `446c6e19`に対し、`crates/minase/nets/nnue.bin`をcosineのネット（SHA-256 `311be801…`）へ差し替えたコミット）、基準は`446c6e19`（master、埋め込みのネットのSHA-256は`3679bebf…`）、規則セットは`L0,P0,R1,E0`、`USI_Hash`は両者256 MB、`Threads`は両者1である。
 
 ## 環境
 
 作業機（Core Ultra 7 265KF、物理20コア、論理20コア、メモリ30 GB）、同時16ペア、runnerはminase 2.4.0。
-測定の間、lishogiのBotが同じ機械で動いていた。
+測定中、同じ機械でlishogiのBotが稼働していた。
 
 ## 結果
 
@@ -37,4 +37,4 @@ STCと同じである。
 
 ## 結論
 
-候補はLTCで`H1`であり、異常、時間切れ、拒否着手が0件なので、cosineのネットをエンジンの埋め込みネットとして採用する。
+候補はLTCで`H1`であり、異常、時間切れ、拒否着手が0件であるため、cosineのネットをエンジンの埋め込みネットとして採用する。
