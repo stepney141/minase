@@ -1,16 +1,13 @@
-//! 駒の配置と除去の基本操作の試験。
+//! 公開ビルダーによる駒の配置の試験。
 
 use crate::board::Square;
 use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::zobrist::zobrist_keys;
-use crate::position::{Position, PositionBuildError, PositionBuilder};
+use crate::position::{PositionBuildError, PositionBuilder};
 use crate::test_util::sq;
 
-// 実装上の契約として、空盤への1枚配置と同じ升の除去は互いに逆操作であり、
-// 全144升×全盤上駒コード(未成21種＋成駒18種×両所有者)で空盤へ完全に戻る。
+// PositionBuilder::putとfinishの契約を、全144升×全盤上駒コードで検査する。
 #[test]
-fn placing_then_removing_any_piece_restores_the_empty_position() {
-    let pristine = Position::empty(Color::Black);
+fn builder_places_any_piece_on_any_square() {
     let mut codes = Vec::new();
     for color in Color::ALL {
         for kind in PieceKind::ALL {
@@ -23,13 +20,20 @@ fn placing_then_removing_any_piece_restores_the_empty_position() {
         }
     }
 
-    let mut position = pristine.clone();
     for square in Square::all() {
         for &code in &codes {
-            position.put_piece(square, code, zobrist_keys()).unwrap();
-            assert!(position.occupied().contains(square));
-            assert_eq!(position.remove_piece(square, zobrist_keys()), code);
-            assert_eq!(position, pristine, "{square:?} {code:?}");
+            let mut builder = PositionBuilder::new(Color::Black);
+            builder
+                .put(square, code)
+                .unwrap_or_else(|error| panic!("{square:?} {code:?}: {error:?}"));
+            let position = builder
+                .finish()
+                .unwrap_or_else(|error| panic!("{square:?} {code:?}: {error:?}"));
+            assert_eq!(position.piece_at(square), Some(code), "{square:?} {code:?}");
+            assert_eq!(position.occupied().popcount(), 1, "{square:?} {code:?}");
+            assert!(position.occupied().contains(square), "{square:?} {code:?}");
+            assert_eq!(position.side_to_move(), Color::Black, "{square:?} {code:?}");
+            assert_eq!(position.validate(), Ok(()), "{square:?} {code:?}");
         }
     }
 

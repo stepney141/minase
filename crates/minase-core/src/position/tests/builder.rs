@@ -5,8 +5,8 @@ use crate::piece::Color;
 use crate::position::{PositionBuildError, PositionBuilder, PositionError};
 
 #[test]
-fn builder_finish_preserves_consistent_incremental_zobrist_values() {
-    // PositionBuilder::finishは増分更新した両Zobrist値を検査し、そのまま返す。
+fn set_lion_capture_preserves_consistent_incremental_zobrist_values() {
+    // set_lion_captureによる増分更新が、手番・成り権保留によらず再計算値と一致する。
     for position in positions_with_distinct_temporary_states() {
         assert_eq!(position.validate(), Ok(()));
     }

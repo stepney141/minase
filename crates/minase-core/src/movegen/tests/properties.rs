@@ -376,7 +376,10 @@ fn assert_application_effects(before: &Position, mv: Move, rules: MoveRules, ply
 }
 
 /// シード固定プレイアウトで正準形不変条件と適用効果を検査する。
-fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
+fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) -> (usize, usize, usize) {
+    let mut captures_seen = 0;
+    let mut promotions_seen = 0;
+    let mut double_moves_seen = 0;
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
     let mut position = Position::initial();
@@ -388,16 +391,20 @@ fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
         assert_canonical_invariants(&position, &moves, ply);
         let mv = moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())];
         assert_application_effects(&position, mv, rules, ply);
+        captures_seen += expected_captures(&position, mv).len();
+        promotions_seen += usize::from(mv.promote);
+        double_moves_seen += usize::from(mv.mid.is_some());
         position.make_move_unchecked(mv, rules);
     }
+    (captures_seen, promotions_seen, double_moves_seen)
 }
 
 /// [`Move`]の正準形と[`MoveGenerator::generate_moves`]の契約を検査する。
 /// 併せてRULES.md第6条、第7条、第17条、第18条の性質を到達可能局面で検査する。
 #[test]
 fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
-    playout_canonical(MoveRules::standard(), 0x5255_4c45_5345_5401, 96);
-    playout_canonical(
+    let standard = playout_canonical(MoveRules::standard(), 0x5255_4c45_5345_5401, 96);
+    let modified = playout_canonical(
         MoveRules {
             promotion: PromotionRule::P1,
             p3: true,
@@ -406,6 +413,18 @@ fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
         },
         0x5255_4c45_5345_5402,
         96,
+    );
+    assert!(
+        standard.0 + modified.0 > 0,
+        "捕獲が出現しないシードは検査力が弱い"
+    );
+    assert!(
+        standard.1 + modified.1 > 0,
+        "成りが出現しないシードは検査力が弱い"
+    );
+    assert!(
+        standard.2 + modified.2 > 0,
+        "2段階移動が出現しないシードは検査力が弱い"
     );
 }
 

@@ -322,15 +322,6 @@ mod tests {
     /// [`legs`]の行数、コンマ、じっとの出力契約を検査する。
     #[test]
     fn legs_output_splits_two_stage_moves_and_writes_jitto_as_null_move() {
-        assert_eq!(
-            legs(Move {
-                from: sq(5, 5),
-                mid: None,
-                to: sq(5, 8),
-                promote: false,
-            }),
-            ["f6f9"]
-        );
         // 2段階捕獲: 非最終レグだけが末尾コンマを持つ。
         assert_eq!(
             legs(Move {

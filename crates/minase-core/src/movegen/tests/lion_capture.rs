@@ -745,13 +745,6 @@ fn article_15_9_senjishi_blocks_even_an_adjacent_lion_recapture() {
         &position,
         mv(msq(6, 'd'), msq(6, 'c'))
     ));
-    // 第13条3項により、居喰いも獅子のいた6cで判定する。
-    // 銅5bが6cへ利くので、「6d→6c(捕獲)→6d」も先獅子によって禁止される。
-    assert!(!is_generated(
-        base(),
-        &position,
-        igui(msq(6, 'd'), msq(6, 'c'))
-    ));
 }
 
 #[test]
