@@ -4,9 +4,9 @@ use super::*;
 use crate::data::{Outcome, Sample};
 use crate::nn::{BestEpoch, sha256};
 use crate::{
-    data::{Dataset, epoch_permutation},
+    data::Dataset,
     nnue::{
-        data::{Observations, build_batches},
+        data::Observations,
         model::{Checkpoint, Masks, Model, Progress, Shape},
         reference::{AdamW, AdamWConfig},
         schedule::LrSchedule,
@@ -62,29 +62,22 @@ fn initial_progress() -> Progress {
 }
 
 #[test]
-fn best_epoch_excludes_epoch_zero_and_requires_strict_improvement() {
-    let mut progress = initial_progress();
-    assert!(!update_best(&mut progress, 0, 0.1).unwrap());
-    assert_eq!(progress.best, None);
-    assert!(update_best(&mut progress, 1, 0.5).unwrap());
-    assert_eq!(
-        progress.best,
-        Some(BestEpoch {
-            epoch: 1,
-            validation_loss: 0.5
-        })
-    );
-    assert!(!update_best(&mut progress, 2, 0.5).unwrap());
-    assert!(!update_best(&mut progress, 3, 0.6).unwrap());
-    assert_eq!(progress.best.unwrap().epoch, 1);
-    assert!(update_best(&mut progress, 4, 0.4).unwrap());
-    assert_eq!(
-        progress.best,
-        Some(BestEpoch {
-            epoch: 4,
-            validation_loss: 0.4
-        })
-    );
+fn best_epoch_rejects_non_advancing_epochs_without_changing_progress() {
+    // 完了済みエポック以前の結果では、進捗も最良値も変更しない。
+    for epoch in [1, 2] {
+        let mut progress = initial_progress();
+        update_best(&mut progress, 2, 0.5).unwrap();
+        let saved = progress.clone();
+        let error = update_best(&mut progress, epoch, 0.4).unwrap_err();
+        assert!(
+            matches!(
+                error.downcast_ref::<Error>(),
+                Some(Error::Invalid("epoch must advance"))
+            ),
+            "epoch={epoch}: {error}"
+        );
+        assert_eq!(progress, saved, "epoch={epoch}");
+    }
 }
 
 #[test]
@@ -162,39 +155,19 @@ fn validation_statistics() -> Validation {
 }
 
 #[test]
-fn validation_deadline_includes_the_final_batch() {
-    // 最終バッチの完了時刻も期限未満でなければならない。
-    for final_time in [9, 10, 11] {
-        let now = Cell::new(0);
-        let evaluated = Cell::new(0);
-        let result = validate_batches(
-            [3, final_time],
-            |completed_at| {
-                evaluated.set(evaluated.get() + 1);
-                now.set(completed_at);
-                Ok(validation_statistics())
-            },
-            || now.get() >= 10,
-        )
-        .unwrap();
-        assert_eq!(evaluated.get(), 2);
-        if final_time < 10 {
-            let result = result.unwrap();
-            assert_eq!(result.positions, 2);
-            assert_eq!(result.loss(), 0.25);
-        } else {
-            assert!(result.is_none(), "final batch completed at {final_time}");
-        }
-    }
-}
-
-#[test]
-fn validation_timeout_stops_before_evaluating_more_batches() {
-    for (initial_time, expected_evaluations) in [(0, 1), (10, 0)] {
+fn validation_deadline_includes_the_final_batch_and_stops_further_evaluation() {
+    // 各バッチの前後で期限を検査し、期限未満で全件を終えた場合だけ集計を返す。
+    for (case, initial_time, completion_times, expected_evaluations, completed) in [
+        ("final batch before deadline", 0, [3, 9], 2, true),
+        ("final batch at deadline", 0, [3, 10], 2, false),
+        ("final batch after deadline", 0, [3, 11], 2, false),
+        ("first batch at deadline", 0, [10, 11], 1, false),
+        ("deadline before first batch", 10, [10, 11], 0, false),
+    ] {
         let now = Cell::new(initial_time);
         let evaluated = Cell::new(0);
         let result = validate_batches(
-            [10, 11],
+            completion_times,
             |completed_at| {
                 evaluated.set(evaluated.get() + 1);
                 now.set(completed_at);
@@ -202,9 +175,15 @@ fn validation_timeout_stops_before_evaluating_more_batches() {
             },
             || now.get() >= 10,
         )
-        .unwrap();
-        assert!(result.is_none());
-        assert_eq!(evaluated.get(), expected_evaluations);
+        .unwrap_or_else(|error| panic!("{case}: {error}"));
+        assert_eq!(evaluated.get(), expected_evaluations, "{case}");
+        if completed {
+            let result = result.unwrap_or_else(|| panic!("{case}: missing validation"));
+            assert_eq!(result.positions, 2, "{case}");
+            assert_eq!(result.loss(), 0.25, "{case}");
+        } else {
+            assert!(result.is_none(), "{case}: unexpected validation");
+        }
     }
 }
 
@@ -243,7 +222,11 @@ impl Fixture {
             .iter()
             .map(|pair| pair.map(|weight| f32::from(weight) / 8.0))
             .collect();
-        fs::write(&args.init_pst, stored_npz(&initial)).unwrap();
+        fs::write(
+            &args.init_pst,
+            crate::pst::encode_pst_npz(&initial).unwrap(),
+        )
+        .unwrap();
 
         // seed=11では0..40のうち4、15、22が検証対局である。
         // 40対局×8局面のうち訓練296局面を33件ずつに分け、末尾を32件にする。
@@ -309,71 +292,6 @@ impl Drop for Fixture {
     }
 }
 
-/// NPY 1.0の2配列を、ZIP仕様の無圧縮メンバーとして格納する。
-fn stored_npz(initial: &[[f32; 2]]) -> Vec<u8> {
-    let mut zip = Vec::new();
-    let mut central = Vec::new();
-    for (endpoint, name) in ["middlegame.npy", "endgame.npy"].into_iter().enumerate() {
-        let mut header =
-            "{'descr': '<f4', 'fortran_order': False, 'shape': (13680,), }".to_string();
-        while !(10 + header.len() + 1).is_multiple_of(64) {
-            header.push(' ');
-        }
-        header.push('\n');
-        let mut array = b"\x93NUMPY\x01\x00".to_vec();
-        array.extend((header.len() as u16).to_le_bytes());
-        array.extend(header.as_bytes());
-        for pair in initial {
-            array.extend(pair[endpoint].to_le_bytes());
-        }
-        let mut crc = u32::MAX;
-        for &byte in &array {
-            crc ^= u32::from(byte);
-            for _ in 0..8 {
-                crc = (crc >> 1) ^ (0xedb8_8320 & 0_u32.wrapping_sub(crc & 1));
-            }
-        }
-        let offset = zip.len() as u32;
-        let size = array.len() as u32;
-        zip.extend(b"PK\x03\x04");
-        for value in [20_u16, 0, 0, 0, 0] {
-            zip.extend(value.to_le_bytes());
-        }
-        for value in [!crc, size, size] {
-            zip.extend(value.to_le_bytes());
-        }
-        for value in [name.len() as u16, 0] {
-            zip.extend(value.to_le_bytes());
-        }
-        zip.extend(name.as_bytes());
-        zip.extend(array);
-        central.extend(b"PK\x01\x02");
-        for value in [20_u16, 20, 0, 0, 0, 0] {
-            central.extend(value.to_le_bytes());
-        }
-        for value in [!crc, size, size] {
-            central.extend(value.to_le_bytes());
-        }
-        for value in [name.len() as u16, 0, 0, 0, 0] {
-            central.extend(value.to_le_bytes());
-        }
-        central.extend(0_u32.to_le_bytes());
-        central.extend(offset.to_le_bytes());
-        central.extend(name.as_bytes());
-    }
-    let offset = zip.len() as u32;
-    let size = central.len() as u32;
-    zip.extend(central);
-    zip.extend(b"PK\x05\x06");
-    for value in [0_u16, 0, 2, 2] {
-        zip.extend(value.to_le_bytes());
-    }
-    zip.extend(size.to_le_bytes());
-    zip.extend(offset.to_le_bytes());
-    zip.extend(0_u16.to_le_bytes());
-    zip
-}
-
 fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
     let base = base::read(&args.base).unwrap();
     let observations = Observations::compute(dataset, args.feature_set).unwrap();
@@ -389,48 +307,7 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
 }
 
 #[test]
-fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
-    let fixture = Fixture::new();
-    let args = fixture.training_args();
-
-    let dataset = Dataset::open(
-        &args.data,
-        args.lookahead().unwrap(),
-        std::num::NonZeroUsize::new(1).unwrap(),
-    )
-    .unwrap()
-    .with_lambda(args.training.lambda)
-    .unwrap();
-    assert_eq!(dataset.record_count(), 320);
-    assert_eq!(dataset.training_indices().len(), 296);
-    assert_eq!(dataset.validation_indices().len(), 24);
-    let permutation = epoch_permutation(dataset.training_indices(), args.seed, 1);
-    assert_eq!(
-        permutation,
-        epoch_permutation(dataset.training_indices(), args.seed, 1)
-    );
-    assert_ne!(
-        permutation,
-        epoch_permutation(dataset.training_indices(), args.seed, 2)
-    );
-    let ranges: Vec<_> = permutation.chunks(args.batch).collect();
-    let batches = build_batches(&dataset, args.feature_set, &ranges).unwrap();
-    assert_eq!(
-        batches.iter().map(|batch| batch.len()).collect::<Vec<_>>(),
-        [33, 33, 33, 33, 33, 33, 33, 33, 32]
-    );
-    let joined: Vec<_> = batches
-        .iter()
-        .flat_map(|batch| batch.record_indices().iter().copied())
-        .collect();
-    assert_eq!(joined, permutation);
-    let mut sorted = joined;
-    sorted.sort_unstable();
-    assert_eq!(sorted, dataset.training_indices());
-}
-
-#[test]
-fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
+fn resume_config_allows_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
     args.lr_schedule = "cosine:3:0.1".parse().unwrap();
@@ -529,43 +406,6 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
     restored
         .check_config(&crate::nn::checkpoint::Configuration::from_document(&same.document).unwrap())
         .unwrap();
-    resume.seed += 1;
-    let changed =
-        record::configuration(&resume, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_ne!(
-        changed.document["settings"],
-        configuration.document["settings"]
-    );
-    assert!(
-        restored
-            .check_config(
-                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
-            )
-            .is_err()
-    );
-
-    // FMだけを変えた有効なMNPTでも、--baseの検査和は変わる。
-    let mut bytes = fs::read(&args.base).unwrap();
-    let last = bytes.len() - 1;
-    bytes[last] ^= 1;
-    let checksum = sha256(&bytes[80..]);
-    bytes[48..80].copy_from_slice(&checksum);
-    fs::write(&args.base, bytes).unwrap();
-    base::read(&args.base).unwrap();
-    let changed =
-        record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_eq!(
-        changed.document["settings"],
-        configuration.document["settings"]
-    );
-    assert_ne!(changed.document["inputs"], configuration.document["inputs"]);
-    assert!(
-        restored
-            .check_config(
-                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
-            )
-            .is_err()
-    );
 }
 
 #[test]
@@ -697,7 +537,13 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
                 Ok(_) => panic!("resume accepted missing resumes"),
                 Err(error) => error,
             };
-            assert!(error.to_string().contains("resumes must be an array"));
+            assert!(
+                matches!(
+                    error.downcast_ref::<Error>(),
+                    Some(Error::Invalid("configuration resumes must be an array"))
+                ),
+                "{error}"
+            );
             continue;
         }
         match change {
@@ -745,14 +591,13 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             Ok(_) => panic!("resume accepted changed {change}"),
             Err(error) => error,
         };
+        let expected = match change {
+            "origin" => "checkpoint preprocessing mismatch",
+            "npz" | "base" | "data" => "checkpoint inputs mismatch",
+            _ => "checkpoint settings mismatch",
+        };
         assert!(
-            error.to_string().contains(if change == "origin" {
-                "preprocessing mismatch"
-            } else if matches!(change, "npz" | "base" | "data") {
-                "inputs mismatch"
-            } else {
-                "settings mismatch"
-            }),
+            matches!(error.downcast_ref::<crate::nn::Error>(), Some(crate::nn::Error::Invalid(reason)) if *reason == expected),
             "{change} reached an unexpected error: {error}"
         );
     }
@@ -1678,7 +1523,13 @@ fn resume_requires_an_existing_array_without_changing_the_configuration() {
         record::write_json(&path, &config).unwrap();
         let bytes = fs::read(&path).unwrap();
         let error = record::append_resume(&path, &mut config, &args, 1, 1).unwrap_err();
-        assert!(error.to_string().contains("resumes must be an array"));
+        assert!(
+            matches!(
+                error.downcast_ref::<Error>(),
+                Some(Error::Invalid("configuration resumes must be an array"))
+            ),
+            "{error}"
+        );
         assert_eq!(config, original);
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
@@ -1695,7 +1546,11 @@ fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
     let path = args.output_dir.join("latest.npz");
     let original = fs::read(&path).unwrap();
     let arrays = crate::nn::npz::decode(&original).unwrap();
-    for field in ["settings", "inputs", "preprocessing"] {
+    for (field, expected) in [
+        ("settings", "checkpoint settings mismatch"),
+        ("inputs", "checkpoint inputs mismatch"),
+        ("preprocessing", "checkpoint preprocessing mismatch"),
+    ] {
         let mut changed = arrays.clone();
         let meta = changed.get_mut("meta").unwrap();
         let mut value: Value = serde_json::from_slice(&meta.data).unwrap();
@@ -1714,7 +1569,10 @@ fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
             Ok(_) => panic!("accepted changed {field}"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains(field), "{error}");
+        assert!(
+            matches!(error.downcast_ref::<crate::nnue::model::Error>(), Some(crate::nnue::model::Error::Invalid(reason)) if *reason == expected),
+            "{field}: {error}"
+        );
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
 }

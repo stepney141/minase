@@ -6,13 +6,28 @@ use minase_core::Position;
 use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::identity::file_identity;
 use serde_json::json;
-use std::fs;
+use std::{fs, path::PathBuf};
+
+struct TempDirectory(PathBuf);
+
+impl TempDirectory {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("minase-identities-{}", std::process::id()));
+        fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for TempDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn identities_use_paths_lengths_and_header_fields() {
-    let directory = std::env::temp_dir().join(format!("minase-identities-{}", std::process::id()));
-    fs::create_dir(&directory).unwrap();
-    let path = directory.join("data.bin");
+    let directory = TempDirectory::new();
+    let path = directory.0.join("data.bin");
     let header = Header::new(
         "L0,P0,R1,E0".into(),
         "a".repeat(40),
@@ -69,5 +84,4 @@ fn identities_use_paths_lengths_and_header_fields() {
     assert!(file_identity(&path).is_err());
     fs::write(&path, b"????").unwrap();
     assert!(file_identity(&path).is_err());
-    fs::remove_dir_all(directory).unwrap();
 }

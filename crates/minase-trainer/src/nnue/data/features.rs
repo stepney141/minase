@@ -118,17 +118,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn p_rotation_and_canonical_rows_match_python_for_every_base() {
-        // data.features.canonical_feature_indicesの正準番号と、NNUEの筋による回転。
+    fn p_features_round_trip_every_base_and_preserve_the_sentinel() {
         for base in 0..FEATURE_COUNT as u32 {
-            let file = base % 12;
-            let expected_row = base / 144 * 72 + (base % 144) / 12 * 6 + file.min(11 - file);
             let packed = encode_p_feature(base);
-            assert_eq!(packed / 2, expected_row);
-            assert_eq!(packed & 1, u32::from(file >= 6));
             assert_eq!(decode_p_feature(packed).unwrap(), base);
         }
         assert_eq!(decode_p_feature(SENTINEL).unwrap(), SENTINEL);
         assert!(decode_p_feature(FEATURE_COUNT as u32).is_err());
+    }
+
+    /// 筋0〜11を左右対称に0〜5へ折り、右半分の筋に回転ビットを立てる。
+    /// 期待値は「駒×72＋段×6＋min(筋, 11−筋)」の2倍に回転ビットを足して手で求めた。
+    #[test]
+    fn p_features_fold_files_symmetrically_into_canonical_rows() {
+        for (base, packed) in [
+            (0, 0),           // 駒0、段0、筋0
+            (5, 10),          // 筋5は折り返さない最後の筋
+            (6, 11),          // 筋6は筋5の行に回転ビット1
+            (11, 1),          // 筋11は筋0の行に回転ビット1
+            (157, 158),       // 駒1、段1、筋1
+            (13_679, 13_669), // 駒94、段11、筋11
+        ] {
+            assert_eq!(encode_p_feature(base), packed, "base={base}");
+        }
     }
 }
