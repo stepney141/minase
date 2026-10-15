@@ -102,3 +102,34 @@ fn python_integer_definitions_match_engine_for_both_sides_lion_and_clipping() {
         }
     }
 }
+
+#[test]
+fn numpy_f64_sum_preserves_the_documented_pairwise_order() {
+    // A=2^54ではA+1と−A+1がともに偶数丸めで±Aになる。
+    // 規定の木は(A−A)+(0+1)=1、前からの逐次加算は2、逆順の逐次加算は4。
+    let block = [
+        18_014_398_509_481_984.0,
+        1.0,
+        -18_014_398_509_481_984.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ];
+    assert_eq!(numpy_sum(&block[..7]).to_bits(), 1.0_f64.to_bits());
+    assert_eq!(numpy_sum(&block).to_bits(), 1.0_f64.to_bits());
+    // 8本の部分和を2倍にすると木の和は2。末尾0.5は木の後に足す。
+    assert_eq!(numpy_sum(&block.repeat(2)).to_bits(), 2.0_f64.to_bits());
+    for count in [9, 129, 145] {
+        let mut values = vec![0.0; count];
+        values[..8].copy_from_slice(&block);
+        values[count - 1] = 0.5;
+        // 128超では先頭側の再帰和1と後半の再帰和0.5を足して1.5。
+        assert_eq!(
+            numpy_sum(&values).to_bits(),
+            1.5_f64.to_bits(),
+            "count={count}"
+        );
+    }
+}

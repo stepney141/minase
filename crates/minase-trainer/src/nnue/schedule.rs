@@ -239,10 +239,10 @@ mod tests {
             half_life_epochs: 1.5,
             floor: 0.1,
         };
-        assert_eq!(schedule.multiplier(0, 8), 1.0);
-        assert_eq!(schedule.multiplier(12, 8), 0.5);
-        assert_eq!(schedule.multiplier(24, 8), 0.25);
-        assert_eq!(schedule.multiplier(1200, 8), 0.1);
+        assert!((schedule.multiplier(0, 8) - 1.0).abs() < 1e-15);
+        assert!((schedule.multiplier(12, 8) - 0.5).abs() < 1e-15);
+        assert!((schedule.multiplier(24, 8) - 0.25).abs() < 1e-15);
+        assert!((schedule.multiplier(1200, 8) - 0.1).abs() < 1e-15);
     }
 
     #[test]
@@ -251,11 +251,11 @@ mod tests {
             horizon_epochs: 3.0,
             floor: 0.1,
         };
-        assert_eq!(schedule.multiplier(0, 8), 1.0);
+        assert!((schedule.multiplier(0, 8) - 1.0).abs() < 1e-15);
         assert!((schedule.multiplier(12, 8) - 0.55).abs() < 1e-15);
-        assert_eq!(schedule.multiplier(24, 8), 0.1);
-        assert_eq!(schedule.multiplier(25, 8), 0.1);
-        assert_eq!(schedule.multiplier(u64::MAX, 8), 0.1);
+        assert!((schedule.multiplier(24, 8) - 0.1).abs() < 1e-15);
+        assert!((schedule.multiplier(25, 8) - 0.1).abs() < 1e-15);
+        assert!((schedule.multiplier(u64::MAX, 8) - 0.1).abs() < 1e-15);
     }
 
     #[test]

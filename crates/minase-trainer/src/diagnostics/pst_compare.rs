@@ -249,12 +249,12 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
         if let Ok(weights) = model
             && weights.engine.fm_weights().is_some()
         {
-            return Err(format!(
-                "--{name}: PST comparison diagnostics require PST-only weights (FM rank 0); \
-                 remove FM with \
-                 `minase-trainer fm scale --fm-scale 0` before comparing."
-            )
-            .into());
+            let role = match name {
+                "base" => crate::error::WeightRole::Base,
+                "candidate" => crate::error::WeightRole::Candidate,
+                _ => unreachable!(),
+            };
+            return Err(crate::error::ContractError::FmWeights(role).into());
         }
     }
     fs::create_dir(&args.output_dir)?;

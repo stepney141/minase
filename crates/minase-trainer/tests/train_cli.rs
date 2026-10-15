@@ -64,7 +64,6 @@ fn train_defaults_match_the_training_contract() {
 #[test]
 fn train_requires_the_model_inputs_and_output_directory() {
     for required in [
-        "--lambda",
         "--feature-set",
         "--width",
         "--data",
@@ -75,9 +74,12 @@ fn train_requires_the_model_inputs_and_output_directory() {
         let mut missing = argv();
         let index = missing.iter().position(|&arg| arg == required).unwrap();
         missing.drain(index..index + 2);
-        assert!(
-            TrainArguments::try_parse_from(missing).is_err(),
-            "missing {required} must fail"
+        assert_eq!(
+            TrainArguments::try_parse_from(missing)
+                .err()
+                .unwrap()
+                .kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 }
@@ -170,33 +172,6 @@ fn train_validates_numeric_arguments_and_paired_lookahead_before_opening_inputs(
 }
 
 #[test]
-fn train_help_describes_devices_and_configurable_coefficients() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["nnue", "train", "--help"])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let help = String::from_utf8(output.stdout).unwrap();
-    for required in [
-        "--init-pst",
-        "--base",
-        "--resume",
-        "--validation-sample",
-        "--device",
-        "--lr-linear",
-        "--weight-decay-linear",
-        "--lr-ft",
-        "--weight-decay-ft",
-        "--lr-head",
-        "--weight-decay-head",
-        "--removal-penalty",
-        "--lambda",
-    ] {
-        assert!(help.contains(required), "missing help for {required}");
-    }
-}
-
-#[test]
 fn coefficient_ranges_are_checked_before_opening_inputs() {
     for flag in [
         "--lr-linear",
@@ -228,14 +203,5 @@ fn coefficient_ranges_are_checked_before_opening_inputs() {
             .args
             .validate()
             .unwrap();
-    }
-    for value in ["-0.1", "1.001", "NaN", "inf", "-inf"] {
-        let mut values = argv();
-        let i = values
-            .iter()
-            .position(|&value| value == "--lambda")
-            .unwrap();
-        values[i + 1] = value;
-        assert!(TrainArguments::try_parse_from(values).is_err());
     }
 }

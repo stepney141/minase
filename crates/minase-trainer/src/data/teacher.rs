@@ -196,7 +196,8 @@ mod tests {
     #[test]
     fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_k() {
         // score=0でσ=1/2。λ=3/4なら結果0,1,2に対し3/8,1/2,5/8。
-        let mixed = (0.75 / (1.0 + (-1.0_f64).exp()) + 0.125) as f32;
+        // 0.75×σ(1)+0.125 = 0.6732939339725037（Python mathのf64計算）をf32へ丸める。
+        let mixed = 0.6732939339725037_f64 as f32;
         for (name, scores, classes, outcomes, ks, lambdas, expected) in [
             (
                 "mixed classes",
@@ -299,7 +300,10 @@ mod tests {
             Lookahead::new(0.5, 3).unwrap(),
         )
         .unwrap();
-        assert_eq!(actual, [-1.8, 1.0, 1.0, 99.0, -5.0, -5.0]);
+        assert_eq!(actual.len(), 6);
+        for (actual, expected) in actual.iter().zip([-1.8, 1.0, 1.0, 99.0, -5.0, -5.0]) {
+            assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}");
+        }
     }
 
     #[test]

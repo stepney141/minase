@@ -1,17 +1,16 @@
 //! pst trainの引数、端数バッチ、再開と成果物を合成MNSDで検証する。
-use common::mnsd;
-use minase_trainer::data::{Outcome, Sample};
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
 mod common;
 use clap::Parser;
+use common::training::{compare_checkpoints, document, logs};
 use minase::eval::{
     features::FEATURE_COUNT,
     pst::{FM_RANK, Pst},
 };
-use minase::training::records::Header;
-use minase_core::{Color, PieceKind};
+use minase_trainer::error::ContractError;
+use minase_trainer::nn::checkpoint::MismatchField;
 use minase_trainer::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
     pst::{
@@ -19,10 +18,9 @@ use minase_trainer::{
         v0_piece_values,
     },
 };
-use serde_json::Value;
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -83,7 +81,10 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         let mut values = argv();
         let i = values.iter().position(|&v| v == flag).unwrap();
         values.drain(i..i + 2);
-        assert!(Arguments::try_parse_from(values).is_err(), "{flag}");
+        assert_eq!(
+            Arguments::try_parse_from(values).err().unwrap().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
     for (flag, value) in [
         ("--epochs", "0"),
@@ -103,22 +104,36 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         } else {
             values.push(format!("{flag}={value}"));
         }
-        let result = Arguments::try_parse_from(values);
-        assert!(
-            result.is_err() || result.unwrap().args.validate().is_err(),
-            "{flag}={value}"
-        );
+        let args = Arguments::try_parse_from(values).unwrap().args;
+        let error = args.validate().unwrap_err();
+        common::training::assert_invalid_argument(&error, flag);
     }
     for extra in [
         vec!["--lookahead-gamma", "0.9"],
         vec!["--lookahead-plies", "40"],
-        vec!["--lookahead-gamma", "1", "--lookahead-plies", "40"],
     ] {
-        let mut values = argv();
-        values.extend(extra);
-        let result = Arguments::try_parse_from(values);
-        assert!(result.is_err() || result.unwrap().args.validate().is_err());
+        assert_eq!(
+            Arguments::try_parse_from(argv().into_iter().chain(extra))
+                .err()
+                .unwrap()
+                .kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
+    let args = Arguments::try_parse_from(argv().into_iter().chain([
+        "--lookahead-gamma",
+        "1",
+        "--lookahead-plies",
+        "40",
+    ]))
+    .unwrap()
+    .args;
+    assert!(matches!(
+        args.validate(),
+        Err(pst::Error::Data(
+            minase_trainer::data::Error::LookaheadParameters
+        ))
+    ));
     let mut values = argv();
     values[8] = "200";
     values.insert(
@@ -190,75 +205,13 @@ impl Fixture {
             .encode();
         }
         fs::write(&args.init, initial).unwrap();
-        let header = Header::new(
-            "L0,P0,R1,E0".into(),
-            "1".repeat(40),
-            [2; 32],
-            minase::training::records::TeacherKind::AlphaBeta,
-            200,
-            11,
+        fs::write(
+            &args.data[0],
+            common::training::records(large_evaluation, false),
         )
         .unwrap();
-        let mut samples = Vec::new();
-        for game in 0..40 {
-            for ply in 0..3 {
-                let side = if ply % 2 == 0 {
-                    Color::Black
-                } else {
-                    Color::White
-                };
-                let mut pieces = vec![
-                    (4, 0, Color::Black, PieceKind::King),
-                    (7, 11, Color::White, PieceKind::King),
-                    ((game % 12) as u8, 3, Color::Black, PieceKind::Pawn),
-                    (((game + 6) % 12) as u8, 8, Color::White, PieceKind::Pawn),
-                    (((game + 3) % 12) as u8, 6, Color::Black, PieceKind::Rook),
-                ];
-                if large_evaluation {
-                    pieces.extend([
-                        (0, 2, Color::Black, PieceKind::Pawn),
-                        (1, 2, Color::Black, PieceKind::Pawn),
-                        (2, 2, Color::Black, PieceKind::Pawn),
-                    ]);
-                }
-                let p = common::position(&pieces, side, None);
-                samples.push(
-                    Sample::from_position(
-                        &p,
-                        if side == Color::Black { 300 } else { -300 },
-                        if game % 3 == 0 {
-                            Outcome::Draw
-                        } else {
-                            Outcome::Win
-                        },
-                        game,
-                        ply,
-                        minase::training::records::Origin::RandomSelfplay,
-                    )
-                    .unwrap(),
-                );
-            }
-        }
-        fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
         (fixture, args)
     }
-}
-fn logs(directory: &Path) -> Vec<Value> {
-    fs::read_to_string(directory.join("training.jsonl"))
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect()
-}
-fn document(path: impl AsRef<Path>) -> Value {
-    serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
-}
-fn compare_checkpoints(left: &Path, right: &Path) {
-    let mut left = Checkpoint::read(left).unwrap();
-    let mut right = Checkpoint::read(right).unwrap();
-    left.progress.elapsed_seconds = 0.0;
-    right.progress.elapsed_seconds = 0.0;
-    assert_eq!(left.encode().unwrap(), right.encode().unwrap());
 }
 
 #[test]
@@ -356,7 +309,8 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
 }
 
 #[test]
-fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term() {
+fn training_wires_permutation_and_tail_batches_to_updates_and_logs() {
+    // 共有の数値部品を組み合わせ、順列・端数バッチ・更新への配線を検査する。
     let (_fixture, mut args) = Fixture::new(false, false);
     args.epochs = 1;
     args.removal_reference = RemovalReferenceKind::V0;
@@ -419,35 +373,38 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
     args.resume = Some(args.output_dir.clone());
     let before = fs::read(args.output_dir.join("latest.npz")).unwrap();
     checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
-        pst::run(args.clone()).unwrap_err().to_string()
+        pst::run(args.clone()).unwrap_err().into()
     });
-    let changes: Vec<fn(&mut Args)> = vec![
-        |a| a.lr = 0.02,
-        |a| a.batch = 17,
-        |a| a.seed = 2,
-        |a| a.removal_penalty = 0.0,
-        |a| a.removal_reference = RemovalReferenceKind::V0,
-        |a| a.lambda = 0.5,
-        |a| a.lookahead_gamma = Some(0.8),
-        |a| a.lookahead_plies = Some(20),
-        |a| a.validation_sample = 8,
+    type Change = fn(&mut Args);
+    let changes: Vec<(MismatchField, Change)> = vec![
+        (MismatchField::Lr, |a| a.lr = 0.02),
+        (MismatchField::Batch, |a| a.batch = 17),
+        (MismatchField::Seed, |a| a.seed = 2),
+        (MismatchField::RemovalPenalty, |a| a.removal_penalty = 0.0),
+        (MismatchField::RemovalReference, |a| {
+            a.removal_reference = RemovalReferenceKind::V0
+        }),
+        (MismatchField::Lambda, |a| a.lambda = 0.5),
+        (MismatchField::LookaheadGamma, |a| {
+            a.lookahead_gamma = Some(0.8)
+        }),
+        (MismatchField::LookaheadPlies, |a| {
+            a.lookahead_plies = Some(20)
+        }),
+        (MismatchField::ValidationSample, |a| a.validation_sample = 8),
     ];
-    for change in changes {
+    for (field, change) in changes {
         let mut changed = args.clone();
         change(&mut changed);
-        let error = pst::run(changed).unwrap_err().to_string();
-        assert!(error.contains("mismatch"), "{error}");
+        let error = pst::run(changed).unwrap_err();
+        checkpoint_contract::assert_mismatch(&error, field);
     }
     let base = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
     let modified =
         Pst::from_weights(base.weights(), v0_piece_values(), 318.0, base.rule_set()).unwrap();
     fs::write(&args.init, modified.encode()).unwrap();
-    assert!(
-        pst::run(args.clone())
-            .unwrap_err()
-            .to_string()
-            .contains("mismatch")
-    );
+    let error = pst::run(args.clone()).unwrap_err();
+    checkpoint_contract::assert_mismatch(&error, MismatchField::Inputs);
     assert_eq!(
         fs::read(args.output_dir.join("latest.npz")).unwrap(),
         before
@@ -494,12 +451,10 @@ fn asymmetric_init_is_averaged_except_when_positive_init_reference_requires_symm
             .encode(),
     )
     .unwrap();
-    assert!(
-        pst::run(args.clone())
-            .unwrap_err()
-            .to_string()
-            .contains("mirror sharing")
-    );
+    assert!(matches!(
+        pst::run(args.clone()).unwrap_err(),
+        pst::Error::Contract(ContractError::AsymmetricReference)
+    ));
     args.removal_penalty = 0.0;
     pst::run(args.clone()).unwrap();
     let ck = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();

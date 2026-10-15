@@ -12,6 +12,7 @@
 
 pub mod data;
 pub mod diagnostics;
+pub mod error;
 pub mod fm;
 pub mod joint;
 pub mod nn;

@@ -5,25 +5,27 @@ mod algebra;
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
+mod common;
 #[path = "joint_train/fixture.rs"]
 mod support;
 use clap::Parser;
+use common::position;
+use common::training::{compare_checkpoints, document, logs};
 use minase::eval::{
     features::FEATURE_COUNT,
     pst::{self, FM_RANK, Pst},
 };
-use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
+use minase_core::{Color, PieceCode, PieceKind, Square};
+use minase_trainer::error::{ContractError, GradientGroup};
+use minase_trainer::nn::checkpoint::MismatchField;
 use minase_trainer::{
     data::Dataset,
     fm,
     joint::{self, Args, Checkpoint, Model},
     nn::npz,
 };
-use serde_json::{Value, json};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use serde_json::json;
+use std::{fs, path::PathBuf};
 use support::*;
 
 #[derive(Parser)]
@@ -49,23 +51,6 @@ fn argv() -> Vec<&'static str> {
         "--output-dir",
         "output",
     ]
-}
-fn position(
-    pieces: &[(u8, u8, Color, PieceKind)],
-    side: Color,
-    lion: Option<(u8, u8)>,
-) -> Position {
-    let mut b = PositionBuilder::new(side);
-    for &(f, r, c, p) in pieces {
-        b.put(Square::new(f, r).unwrap(), PieceCode::new(c, p).unwrap())
-            .unwrap();
-    }
-    let mut p = b.finish().unwrap();
-    if let Some((f, r)) = lion {
-        p.set_lion_capture(Some(Square::new(f, r).unwrap()))
-            .unwrap();
-    }
-    p
 }
 fn float_array(values: &[f32], shape: &[usize]) -> npz::Array {
     npz::Array {
@@ -148,7 +133,10 @@ fn cli_defaults_and_invalid_arguments() {
         let mut v = argv();
         let i = v.iter().position(|&v| v == flag).unwrap();
         v.drain(i..i + 2);
-        assert!(Arguments::try_parse_from(v).is_err());
+        assert_eq!(
+            Arguments::try_parse_from(v).err().unwrap().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
     for (flag, value) in [
         ("--epochs", "201"),
@@ -165,11 +153,9 @@ fn cli_defaults_and_invalid_arguments() {
     ] {
         let mut v: Vec<_> = argv().into_iter().map(str::to_owned).collect();
         v.push(format!("{flag}={value}"));
-        let result = Arguments::try_parse_from(v);
-        assert!(
-            result.is_err() || result.unwrap().args.validate().is_err(),
-            "{flag}"
-        );
+        let args = Arguments::try_parse_from(v).unwrap().args;
+        let error = args.validate().unwrap_err();
+        common::training::assert_invalid_argument(error.as_ref(), flag);
     }
 }
 
@@ -323,21 +309,16 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
     assert_eq!(arrays.len(), 5);
     assert_eq!(arrays["V"].shape, [FEATURE_COUNT, FM_RANK]);
     assert_eq!(arrays["mask"].shape, [FEATURE_COUNT]);
-    let mut previous = 0;
-    for key in [
-        "middlegame.npy",
-        "endgame.npy",
-        "V.npy",
-        "a.npy",
-        "mask.npy",
-    ] {
-        let offset = bytes
-            .windows(key.len())
-            .position(|b| b == key.as_bytes())
-            .unwrap();
-        assert!(offset > previous);
-        previous = offset;
-    }
+    assert_eq!(
+        common::training::npz_names(&bytes),
+        [
+            "middlegame.npy",
+            "endgame.npy",
+            "V.npy",
+            "a.npy",
+            "mask.npy"
+        ]
+    );
     let config = document(args.output_dir.join("config.json"));
     assert_eq!(config["preprocessing"]["teacher_lambdas"], json!([0.75]));
     assert!(config["preprocessing"]["mask_mismatches"].as_u64().unwrap() > 0);
@@ -353,34 +334,31 @@ fn resume_rejects_trajectory_changes_before_writing() {
     let original = fs::read(args.output_dir.join("latest.npz")).unwrap();
     let config = fs::read(args.output_dir.join("config.json")).unwrap();
     checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
-        joint::train(args.clone()).unwrap_err().to_string()
+        joint::train(args.clone()).unwrap_err()
     });
     let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
     checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
-    let changes: Vec<fn(&mut Args)> = vec![
-        |a| a.pst_lr = 0.04,
-        |a| a.fm_lr = 0.02,
-        |a| a.fm_weight_decay = 0.0,
-        |a| a.lambda_res = 0.0,
-        |a| a.removal_penalty = 0.0,
-        |a| a.batch = 17,
-        |a| a.seed = 2,
-        |a| a.lambda = 0.5,
-        |a| a.validation_sample = 8,
-        |a| {
+    type Change = fn(&mut Args);
+    let changes: Vec<(MismatchField, Change)> = vec![
+        (MismatchField::PstLr, |a| a.pst_lr = 0.04),
+        (MismatchField::FmLr, |a| a.fm_lr = 0.02),
+        (MismatchField::FmWeightDecay, |a| a.fm_weight_decay = 0.0),
+        (MismatchField::LambdaRes, |a| a.lambda_res = 0.0),
+        (MismatchField::RemovalPenalty, |a| a.removal_penalty = 0.0),
+        (MismatchField::Batch, |a| a.batch = 17),
+        (MismatchField::Seed, |a| a.seed = 2),
+        (MismatchField::Lambda, |a| a.lambda = 0.5),
+        (MismatchField::ValidationSample, |a| a.validation_sample = 8),
+        (MismatchField::LookaheadGamma, |a| {
             a.lookahead_gamma = Some(0.9);
             a.lookahead_plies = Some(40);
-        },
+        }),
     ];
-    for change in changes {
+    for (field, change) in changes {
         let mut changed = args.clone();
         change(&mut changed);
-        assert!(
-            joint::train(changed)
-                .unwrap_err()
-                .to_string()
-                .contains("mismatch")
-        );
+        let error = joint::train(changed).unwrap_err();
+        checkpoint_contract::assert_mismatch(error.as_ref(), field);
     }
     assert_eq!(
         original,
@@ -489,8 +467,12 @@ fn five_zero_coefficient_gradients_fail_with_norms_preserved() {
     args.fm_lr = f64::MIN_POSITIVE;
     args.fm_weight_decay = 0.0;
     args.epochs = 1;
-    let error = joint::train(args.clone()).unwrap_err().to_string();
-    assert!(error.contains("a loss gradient stayed zero"), "{error}");
+    assert_eq!(
+        joint::train(args.clone())
+            .unwrap_err()
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::ZeroGradient(GradientGroup::Coefficient))
+    );
     let summary = document(args.output_dir.join("summary.json"));
     assert_eq!(summary["status"], "error");
     assert_eq!(summary["gradients"].as_array().unwrap().len(), 5);

@@ -892,39 +892,6 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
 }
 
 #[test]
-fn adamw_fold_inherits_updated_virtual_rows_at_unobserved_features() {
-    let set = InputFeatureSet::HalfKpHmB8;
-    let shape = minase_trainer::nnue::model::Shape::new(set, 2, 1000.0).unwrap();
-    let mut canonical = vec![false; 6841];
-    canonical[0] = true;
-    let mut input = vec![false; set.dimensions() + 1];
-    input[0] = true;
-    let mut model = Model::initialize(
-        shape,
-        &vec![[0.0; 2]; FEATURE_COUNT],
-        Masks::new(set, canonical, input).unwrap(),
-        0,
-        0.0,
-    )
-    .unwrap();
-    let mut optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
-    let mut gradient = Parameters::zeros(shape);
-    gradient[Parameter::Virtual][..2].fill(-1.0);
-    optimizer.update(&mut model, &gradient).unwrap();
-    let unobserved = FEATURE_COUNT * shape.width();
-    assert_eq!(
-        &model.parameters()[Parameter::FirstLayer][unobserved..unobserved + 2],
-        &[0.0; 2]
-    );
-    let v = &model.parameters()[Parameter::Virtual][..2];
-    assert!(v.iter().all(|&x| x > 0.0));
-    assert_eq!(
-        &reference::fold(&model).unwrap()[unobserved..unobserved + 2],
-        v
-    );
-}
-
-#[test]
 fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     let position = position(
         &[

@@ -1,4 +1,5 @@
 use super::Result;
+use crate::error::{Argument, ContractError};
 use crate::fm::batch::check_size;
 use crate::{
     data::{Lookahead, validate_lambda},
@@ -91,24 +92,29 @@ impl Args {
         }
         .validate()?;
         if !self.removal_penalty.is_finite() || self.removal_penalty < 0.0 {
-            return Err("--removal-penalty must be finite and nonnegative".into());
+            return Err(ContractError::InvalidArgument(Argument::RemovalPenalty).into());
         }
         validate_lambda(self.lambda)?;
         if self.data.is_empty() {
-            return Err("--data requires at least one file".into());
+            return Err(ContractError::InvalidArgument(Argument::Data).into());
         }
         if !(1..=200).contains(&self.epochs) {
-            return Err("--epochs must be in 1..200".into());
+            return Err(ContractError::InvalidArgument(Argument::Epochs).into());
         }
         if self.patience == 0 {
-            return Err("--patience must be positive".into());
+            return Err(ContractError::InvalidArgument(Argument::Patience).into());
         }
         check_size(self.batch)?;
-        if self.validation_sample == 0 || self.threads == Some(0) {
-            return Err("--validation-sample and --threads must be positive".into());
+        for (invalid, argument) in [
+            (self.validation_sample == 0, Argument::ValidationSample),
+            (self.threads == Some(0), Argument::Threads),
+        ] {
+            if invalid {
+                return Err(ContractError::InvalidArgument(argument).into());
+            }
         }
         if !self.lambda_res.is_finite() || self.lambda_res < 0.0 {
-            return Err("--lambda-res must be finite and nonnegative".into());
+            return Err(ContractError::InvalidArgument(Argument::LambdaRes).into());
         }
         self.lookahead()?;
         Ok(())

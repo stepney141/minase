@@ -1,4 +1,23 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+pub(super) enum Error {
+    MissingFmWeights(PathBuf),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingFmWeights(path) => write!(
+                f,
+                "{}: baseline must contain FM weights (rank 32)",
+                path.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 use minase::eval::{
     nnue::{
@@ -76,11 +95,7 @@ pub(super) fn read_baseline(path: &Path) -> Result<Pst> {
     let bytes = std::fs::read(path)?;
     let pst = Pst::decode(&bytes)?;
     if pst.fm_weights().is_none() {
-        return Err(format!(
-            "{}: baseline must contain FM weights (rank 32)",
-            path.display()
-        )
-        .into());
+        return Err(Error::MissingFmWeights(path.to_owned()).into());
     }
     Ok(pst)
 }
@@ -132,7 +147,9 @@ mod tests {
             Ok(_) => panic!("PST-only baseline was accepted"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains("must contain FM weights"));
+        assert!(
+            matches!(error.downcast_ref::<Error>(), Some(Error::MissingFmWeights(rejected)) if rejected == &path)
+        );
         std::fs::write(&path, with.encode()).unwrap();
         assert!(read_baseline(&path).unwrap().fm_weights().is_some());
     }

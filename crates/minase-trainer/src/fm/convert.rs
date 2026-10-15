@@ -8,6 +8,7 @@ use super::{
     report::{ValidationReport, scale_report},
     zero_correction_report,
 };
+use crate::error::ContractError;
 use crate::identity::{FileIdentity, file_identity};
 use clap::{Args, Subcommand};
 use minase::eval::pst::{FmWeights, Pst};
@@ -221,11 +222,11 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     let float_bytes = fs::read(&args.float)?;
     let weights = FloatWeights::decode(&float_bytes)?;
     if crate::pst::export::quantize_weights(&weights.endpoints)? != source.weights().as_slice() {
-        return Err("floating PST does not quantize to the input MNPT endpoints".into());
+        return Err(ContractError::FloatingPstMismatch.into());
     }
     let expected = quantize(&weights.v, &weights.a, f64::from(source.k()))?;
     if expected.as_weights() != before {
-        return Err("floating FM does not quantize to the input MNPT FM".into());
+        return Err(ContractError::FloatingFmMismatch.into());
     }
     let scaled_a = weights.a.map(|a| a * f64::from(args.fm_scale) / 1024.0);
     let output_fm = if args.fm_scale == 0 {

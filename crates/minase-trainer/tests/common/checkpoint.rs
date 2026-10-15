@@ -1,3 +1,4 @@
+use minase_trainer::nn::checkpoint::MismatchField;
 use minase_trainer::nn::npz::{self, Array};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
@@ -69,12 +70,19 @@ pub fn rejects_invalid_schema(bytes: &[u8], accepts: impl Fn(&[u8]) -> bool) {
 }
 
 /// config.jsonを変えずmetaの各欄を変え、再開が欄名付きエラーになり保存物を更新しないことを確かめる。
-pub fn rejects_changed_meta(directory: &Path, resume: impl Fn() -> String) {
+pub fn rejects_changed_meta(
+    directory: &Path,
+    resume: impl Fn() -> Box<dyn std::error::Error + Send + Sync>,
+) {
     let path = directory.join("latest.npz");
     let original = fs::read(&path).unwrap();
     let document = fs::read(directory.join("config.json")).unwrap();
     let arrays = npz::decode(&original).unwrap();
-    for field in ["settings", "inputs", "preprocessing"] {
+    for (field, expected) in [
+        ("settings", MismatchField::Settings),
+        ("inputs", MismatchField::Inputs),
+        ("preprocessing", MismatchField::Preprocessing),
+    ] {
         let mut changed = arrays.clone();
         change_meta(&mut changed, |meta| {
             meta["config"][field] = json!({"changed": true})
@@ -82,9 +90,21 @@ pub fn rejects_changed_meta(directory: &Path, resume: impl Fn() -> String) {
         let changed = encode(changed);
         fs::write(&path, &changed).unwrap();
         let error = resume();
-        assert!(error.contains(field), "{field}: {error}");
+        assert_mismatch(error.as_ref(), expected);
         assert_eq!(fs::read(&path).unwrap(), changed);
         assert_eq!(fs::read(directory.join("config.json")).unwrap(), document);
     }
     fs::write(path, original).unwrap();
+}
+
+pub fn assert_mismatch(mut error: &(dyn std::error::Error + 'static), expected: MismatchField) {
+    loop {
+        if let Some(minase_trainer::nn::Error::CheckpointMismatch(field)) = error.downcast_ref() {
+            assert_eq!(*field, expected);
+            return;
+        }
+        error = error
+            .source()
+            .expect("expected a typed checkpoint mismatch");
+    }
 }

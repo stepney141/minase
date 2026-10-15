@@ -8,6 +8,94 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+/// 再開時に不一致だった設定欄。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MismatchField {
+    /// `device` の値。
+    Device,
+    /// `lr_linear` の値。
+    LrLinear,
+    /// `lr_schedule` の値。
+    LrSchedule,
+    /// `weight_decay_linear` の値。
+    WeightDecayLinear,
+    /// `lr_ft` の値。
+    LrFt,
+    /// `weight_decay_ft` の値。
+    WeightDecayFt,
+    /// `lr_head` の値。
+    LrHead,
+    /// `weight_decay_head` の値。
+    WeightDecayHead,
+
+    /// 設定全体の構造またはモデル定義。
+    Settings,
+    /// 入力の識別情報。
+    Inputs,
+    /// 前処理結果。
+    Preprocessing,
+    /// `lr` の値。
+    Lr,
+    /// `weight_decay` の値。
+    WeightDecay,
+    /// `lambda_res` の値。
+    LambdaRes,
+    /// `batch` の値。
+    Batch,
+    /// `seed` の値。
+    Seed,
+    /// `lambda` の値。
+    Lambda,
+    /// `lookahead_gamma` の値。
+    LookaheadGamma,
+    /// `lookahead_plies` の値。
+    LookaheadPlies,
+    /// `validation_sample` の値。
+    ValidationSample,
+    /// `pst_lr` の値。
+    PstLr,
+    /// `fm_lr` の値。
+    FmLr,
+    /// `fm_weight_decay` の値。
+    FmWeightDecay,
+    /// `removal_penalty` の値。
+    RemovalPenalty,
+    /// `removal_reference` の値。
+    RemovalReference,
+}
+
+impl std::fmt::Display for MismatchField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Device
+            | Self::LrLinear
+            | Self::LrSchedule
+            | Self::WeightDecayLinear
+            | Self::LrFt
+            | Self::WeightDecayFt
+            | Self::LrHead
+            | Self::WeightDecayHead
+            | Self::Settings
+            | Self::Lr
+            | Self::WeightDecay
+            | Self::LambdaRes
+            | Self::Batch
+            | Self::Seed
+            | Self::Lambda
+            | Self::LookaheadGamma
+            | Self::LookaheadPlies
+            | Self::ValidationSample
+            | Self::PstLr
+            | Self::FmLr
+            | Self::FmWeightDecay
+            | Self::RemovalPenalty
+            | Self::RemovalReference => "settings",
+            Self::Inputs => "inputs",
+            Self::Preprocessing => "preprocessing",
+        })
+    }
+}
+
 /// 再開時に照合する`config.json`の3欄。予算と並列度は設定作成時に除外する。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,21 +127,48 @@ impl Configuration {
     }
     /// 欄ごとに照合し、不一致の欄名をエラーに含める。
     pub fn check(&self, current: &Self) -> Result<()> {
-        for (saved, current, reason) in [
-            (
-                &self.settings,
-                &current.settings,
-                "checkpoint settings mismatch",
-            ),
-            (&self.inputs, &current.inputs, "checkpoint inputs mismatch"),
+        for (key, field) in [
+            ("device", MismatchField::Device),
+            ("lr_linear", MismatchField::LrLinear),
+            ("lr_schedule", MismatchField::LrSchedule),
+            ("weight_decay_linear", MismatchField::WeightDecayLinear),
+            ("lr_ft", MismatchField::LrFt),
+            ("weight_decay_ft", MismatchField::WeightDecayFt),
+            ("lr_head", MismatchField::LrHead),
+            ("weight_decay_head", MismatchField::WeightDecayHead),
+            ("lr", MismatchField::Lr),
+            ("weight_decay", MismatchField::WeightDecay),
+            ("lambda_res", MismatchField::LambdaRes),
+            ("batch", MismatchField::Batch),
+            ("seed", MismatchField::Seed),
+            ("lambda", MismatchField::Lambda),
+            ("lookahead_gamma", MismatchField::LookaheadGamma),
+            ("lookahead_plies", MismatchField::LookaheadPlies),
+            ("validation_sample", MismatchField::ValidationSample),
+            ("pst_lr", MismatchField::PstLr),
+            ("fm_lr", MismatchField::FmLr),
+            ("fm_weight_decay", MismatchField::FmWeightDecay),
+            ("removal_penalty", MismatchField::RemovalPenalty),
+            ("removal_reference", MismatchField::RemovalReference),
+        ] {
+            if let (Some(saved), Some(current)) =
+                (self.settings.get(key), current.settings.get(key))
+                && saved != current
+            {
+                return Err(Error::CheckpointMismatch(field));
+            }
+        }
+        for (saved, current, field) in [
+            (&self.settings, &current.settings, MismatchField::Settings),
+            (&self.inputs, &current.inputs, MismatchField::Inputs),
             (
                 &self.preprocessing,
                 &current.preprocessing,
-                "checkpoint preprocessing mismatch",
+                MismatchField::Preprocessing,
             ),
         ] {
             if saved != current {
-                return Err(Error::Invalid(reason));
+                return Err(Error::CheckpointMismatch(field));
             }
         }
         Ok(())

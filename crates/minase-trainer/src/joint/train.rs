@@ -8,6 +8,7 @@ use super::{
     Adam, Args, Batch, Checkpoint, Distribution, EpochRecord, GradientNorm, Progress, Result,
     StopReason, Summary, compute, export, initialize, record::configuration,
 };
+use crate::error::{ContractError, GradientGroup};
 use crate::{
     data::{Dataset, epoch_permutation},
     fm::{
@@ -127,7 +128,7 @@ impl Session {
             write_json(&args.output_dir.join("config.json"), &saved)?;
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
-                return Err("output directory is not empty; use --resume to continue a run".into());
+                return Err(ContractError::OutputNotEmpty.into());
             }
             std::fs::create_dir_all(&args.output_dir)?;
             config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
@@ -283,16 +284,17 @@ impl Session {
                         &gradients,
                     ));
                     if self.checkpoint.gradients.len() == 5 {
-                        for group in ["pst", "embedding", "a"] {
+                        for group in [
+                            GradientGroup::Pst,
+                            GradientGroup::Embedding,
+                            GradientGroup::Coefficient,
+                        ] {
                             if self.checkpoint.gradients.iter().all(|g| match group {
-                                "pst" => g.pst == 0.0,
-                                "embedding" => g.embedding == 0.0,
-                                _ => g.a == 0.0,
+                                GradientGroup::Pst => g.pst == 0.0,
+                                GradientGroup::Embedding => g.embedding == 0.0,
+                                GradientGroup::Coefficient => g.a == 0.0,
                             }) {
-                                return Err(format!(
-                                    "{group} loss gradient stayed zero for 5 steps"
-                                )
-                                .into());
+                                return Err(ContractError::ZeroGradient(group).into());
                             }
                         }
                     }
@@ -452,8 +454,7 @@ impl Session {
         };
         summary.quantization = Some(quantization);
         summary.initial_position_score = Some(initial_score);
-        let failure: Box<dyn std::error::Error + Send + Sync> =
-            "quantization_error: mean absolute error exceeds 2 centipawns".into();
+        let failure: Box<dyn std::error::Error + Send + Sync> = ContractError::Quantization.into();
         if !passed {
             summary.reason = Some(failure.to_string());
         }

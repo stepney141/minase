@@ -127,3 +127,36 @@ impl From<crate::data::Error> for Error {
         Self::Data(error.into())
     }
 }
+
+/// 学習率の倍率は有限かつ正でなければならない。
+fn validate_multiplier(multiplier: f64) -> Result<()> {
+    if !multiplier.is_finite() || multiplier <= 0.0 {
+        return Err(Error::Invalid(
+            "learning-rate multiplier must be finite and positive",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multiplier_requires_a_positive_finite_value() {
+        for multiplier in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                matches!(
+                    validate_multiplier(multiplier),
+                    Err(Error::Invalid(
+                        "learning-rate multiplier must be finite and positive"
+                    ))
+                ),
+                "{multiplier}"
+            );
+        }
+        for multiplier in [f64::MIN_POSITIVE, 0.5, 1.0, f64::MAX] {
+            validate_multiplier(multiplier).unwrap();
+        }
+    }
+}

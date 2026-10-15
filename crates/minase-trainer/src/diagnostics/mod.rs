@@ -59,7 +59,11 @@ pub fn run(command: Command) -> Result<()> {
         Command::NnueMoves(args) => &args.output,
     };
     if path.try_exists()? {
-        return Err(format!("{}: diagnostic output already exists", path.display()).into());
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("{}: diagnostic output already exists", path.display()),
+        )
+        .into());
     }
     match command {
         Command::PstCompare(args) => pst_compare::run(&args),

@@ -9,6 +9,7 @@ use super::{
     Result, StopReason, Summary, compute, export, feature_observations, mirror_bit,
     record::{append_epoch, configuration, reconcile_log, write_json},
 };
+use crate::error::{ContractError, GradientGroup};
 use crate::{
     data::{Dataset, epoch_permutation},
     nn::{atomic_write, patience_reached, pipeline, update_best, workers},
@@ -112,7 +113,7 @@ impl Session {
             write_json(&args.output_dir.join("config.json"), &saved)?;
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
-                return Err("output directory is not empty; use --resume to continue a run".into());
+                return Err(ContractError::OutputNotEmpty.into());
             }
             std::fs::create_dir_all(&args.output_dir)?;
             config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
@@ -244,7 +245,7 @@ impl Session {
                     if self.checkpoint.gradients.len() == 5
                         && self.checkpoint.gradients.iter().all(|g| g.embedding == 0.0)
                     {
-                        return Err("embedding loss gradient stayed zero for 5 steps".into());
+                        return Err(ContractError::ZeroGradient(GradientGroup::Embedding).into());
                     }
                 }
                 self.checkpoint.optimizer.update(
@@ -402,8 +403,7 @@ impl Session {
         summary.quarter_zero_check = Some(report.zero);
         summary.correction_cp = Some(report.correction);
         summary.initial_position_score = Some(report.initial_position_score);
-        let failure: Box<dyn std::error::Error + Send + Sync> =
-            "quantization_error: mean absolute error exceeds 2 centipawns".into();
+        let failure: Box<dyn std::error::Error + Send + Sync> = ContractError::Quantization.into();
         if !passed {
             summary.reason = Some(failure.to_string());
         } else if summary.status == "excluded_zero_correction" {

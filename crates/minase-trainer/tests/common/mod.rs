@@ -2,6 +2,7 @@
 
 #[path = "mnsd.rs"]
 pub mod mnsd;
+pub mod training;
 use minase::training::records::Header;
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::data::{Outcome, Sample};

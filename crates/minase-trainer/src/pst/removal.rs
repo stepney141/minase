@@ -4,6 +4,7 @@ use super::{
     batch::{FEATURE_COLUMNS, SENTINEL},
     model::{CANONICAL_ROWS, canonical},
 };
+use crate::error::ContractError;
 use minase::eval::{
     features::{FEATURE_COUNT, PIECE_STATE_COUNT, mirror_feature, piece_state},
     handcrafted,
@@ -54,7 +55,7 @@ impl RemovalReference {
         let mut rows = vec![[0; 2]; CANONICAL_ROWS];
         for base in 0..FEATURE_COUNT {
             if endpoints[base] != endpoints[mirror_feature(base)] {
-                return Err(Error::Invalid("removal reference mirror sharing"));
+                return Err(Error::Contract(ContractError::AsymmetricReference));
             }
             rows[canonical(base)] = endpoints[base].map(i64::from);
         }

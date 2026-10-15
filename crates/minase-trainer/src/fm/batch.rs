@@ -3,6 +3,7 @@
 use super::Result;
 use crate::data::{Dataset, build_targets_from_arrays};
 use crate::data::{Outcome, Sample};
+use crate::error::{Argument, ContractError};
 use minase::eval::{
     features::{FEATURE_COUNT, feature_index, lion_feature_index, mirror_feature},
     pst::{Pst, evaluate_pst_features},
@@ -20,7 +21,7 @@ pub(crate) fn check_size(size: usize) -> Result<()> {
             .checked_mul(FEATURE_COLUMNS * size_of::<u32>())
             .is_none_or(|n| n > isize::MAX as usize)
     {
-        return Err("FM batch must be nonempty and fit in a feature array".into());
+        return Err(ContractError::InvalidArgument(Argument::Batch).into());
     }
     Ok(())
 }

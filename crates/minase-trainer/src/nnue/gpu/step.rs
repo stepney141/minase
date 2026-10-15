@@ -415,11 +415,7 @@ impl Step {
         if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
         }
-        if !multiplier.is_finite() || multiplier <= 0.0 {
-            return Err(Error::Invalid(
-                "learning-rate multiplier must be finite and positive",
-            ));
-        }
+        super::validate_multiplier(multiplier)?;
         ring.validate_device(&self.device, self.model.shape)?;
         let n = ring.input(ticket)?.len;
         if n == 0

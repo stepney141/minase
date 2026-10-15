@@ -3,6 +3,7 @@
 use super::{Error, Result, model::canonical};
 use crate::data::Dataset;
 use crate::data::{Outcome, Sample};
+use crate::error::{Argument, ContractError};
 use minase::eval::features::{feature_index, lion_feature_index};
 use minase_core::Square;
 
@@ -17,9 +18,7 @@ pub(super) fn check_size(size: usize) -> Result<()> {
             .checked_mul(FEATURE_COLUMNS * size_of::<u32>())
             .is_none_or(|bytes| bytes > isize::MAX as usize)
     {
-        return Err(Error::Invalid(
-            "PST batch must be nonempty and fit in a feature array",
-        ));
+        return Err(ContractError::InvalidArgument(Argument::Batch).into());
     }
     Ok(())
 }

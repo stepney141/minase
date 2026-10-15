@@ -3,24 +3,26 @@ use minase_trainer::data::{Outcome, Sample};
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
+mod common;
 #[path = "fm_train/fixture.rs"]
 mod support;
 use clap::Parser;
+use common::training::{compare_checkpoints, document, logs};
+use common::{mirror, position};
 use minase::eval::{
     features::{FEATURE_COUNT, active_features, mirror_feature},
     pst::{self, FM_RANK, Pst},
 };
-use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
+use minase_core::{Color, PieceKind, Position};
+use minase_trainer::error::{ContractError, GradientGroup};
+use minase_trainer::nn::checkpoint::MismatchField;
 use minase_trainer::{
     data::Dataset,
     fm::{self, Adam, Args, Batch, Checkpoint, Model, batch::PADDING},
     nn::npz,
 };
-use serde_json::{Value, json};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use serde_json::json;
+use std::{fs, path::PathBuf};
 use support::*;
 
 #[derive(Parser)]
@@ -44,47 +46,6 @@ fn argv() -> Vec<&'static str> {
         "--patience",
         "5",
     ]
-}
-fn position(
-    pieces: &[(u8, u8, Color, PieceKind)],
-    side: Color,
-    lion: Option<(u8, u8)>,
-) -> Position {
-    let mut builder = PositionBuilder::new(side);
-    for &(f, r, c, p) in pieces {
-        builder
-            .put(Square::new(f, r).unwrap(), PieceCode::new(c, p).unwrap())
-            .unwrap();
-    }
-    let mut position = builder.finish().unwrap();
-    if let Some((f, r)) = lion {
-        position
-            .set_lion_capture(Some(Square::new(f, r).unwrap()))
-            .unwrap();
-    }
-    position
-}
-fn mirror(position: &Position) -> Position {
-    let mut builder = PositionBuilder::new(position.side_to_move());
-    for square in Square::all() {
-        if let Some(piece) = position.piece_at(square) {
-            builder
-                .put(
-                    Square::new(11 - square.file(), square.rank()).unwrap(),
-                    piece,
-                )
-                .unwrap();
-        }
-    }
-    let mut mirrored = builder.finish().unwrap();
-    if let Some(lion) = position.lion_taken_by_non_lion() {
-        mirrored
-            .set_lion_capture(Some(
-                Square::new(11 - lion.square.file(), lion.square.rank()).unwrap(),
-            ))
-            .unwrap();
-    }
-    mirrored
 }
 fn small_positions() -> Vec<Position> {
     [Color::Black, Color::White]
@@ -160,18 +121,14 @@ fn cli_enforces_required_budgets_and_ranges() {
         (4096, 1, 1e-3, 1e-4, 1e-4, 10000)
     );
     assert_eq!(args.lambda, 0.75);
-    for flag in [
-        "--data",
-        "--init",
-        "--output-dir",
-        "--epochs",
-        "--patience",
-        "--lambda",
-    ] {
+    for flag in ["--data", "--init", "--output-dir", "--epochs", "--patience"] {
         let mut v = argv();
         let i = v.iter().position(|&v| v == flag).unwrap();
         v.drain(i..i + 2);
-        assert!(Arguments::try_parse_from(v).is_err());
+        assert_eq!(
+            Arguments::try_parse_from(v).err().unwrap().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
     for (flag, value) in [
         ("--epochs", "0"),
@@ -191,11 +148,9 @@ fn cli_enforces_required_budgets_and_ranges() {
         } else {
             v.push(format!("{flag}={value}"));
         }
-        let result = Arguments::try_parse_from(v);
-        assert!(
-            result.is_err() || result.unwrap().args.validate().is_err(),
-            "{flag}"
-        );
+        let args = Arguments::try_parse_from(v).unwrap().args;
+        let error = args.validate().unwrap_err();
+        common::training::assert_invalid_argument(error.as_ref(), flag);
     }
     for extra in [
         vec!["--rank", "16"],
@@ -203,8 +158,13 @@ fn cli_enforces_required_budgets_and_ranges() {
         vec!["--lookahead-plies", "40"],
     ] {
         let mut v = argv();
+        let expected = if extra[0] == "--rank" {
+            clap::error::ErrorKind::UnknownArgument
+        } else {
+            clap::error::ErrorKind::MissingRequiredArgument
+        };
         v.extend(extra);
-        assert!(Arguments::try_parse_from(v).is_err());
+        assert_eq!(Arguments::try_parse_from(v).err().unwrap().kind(), expected);
     }
 }
 
@@ -535,27 +495,39 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
     checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
-        fm::train(args.clone()).unwrap_err().to_string()
+        fm::train(args.clone()).unwrap_err()
     });
     let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
     checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
-    let changes: Vec<fn(&mut Args)> = vec![
-        |a| a.lr = 0.02,
-        |a| a.weight_decay = 0.0,
-        |a| a.lambda_res = 0.0,
-        |a| a.batch = 17,
-        |a| a.seed = 2,
-        |a| a.lambda = 0.5,
-        |a| a.lookahead_gamma = Some(0.8),
-        |a| a.lookahead_plies = Some(20),
-        |a| a.validation_sample = 8,
+    type Change = fn(&mut Args);
+    let changes: Vec<(MismatchField, Change)> = vec![
+        (MismatchField::Lr, |a| a.lr = 0.02),
+        (MismatchField::WeightDecay, |a| a.weight_decay = 0.0),
+        (MismatchField::LambdaRes, |a| a.lambda_res = 0.0),
+        (MismatchField::Batch, |a| a.batch = 17),
+        (MismatchField::Seed, |a| a.seed = 2),
+        (MismatchField::Lambda, |a| a.lambda = 0.5),
+        (MismatchField::LookaheadGamma, |a| {
+            a.lookahead_gamma = Some(0.8)
+        }),
+        (MismatchField::LookaheadPlies, |a| {
+            a.lookahead_plies = Some(20)
+        }),
+        (MismatchField::ValidationSample, |a| a.validation_sample = 8),
     ];
-    for change in changes {
+    for (field, change) in changes {
         let mut changed = args.clone();
         change(&mut changed);
-        let error = fm::train(changed).unwrap_err().to_string();
-        assert!(error.contains("mismatch"), "{error}");
+        let error = fm::train(changed).unwrap_err();
+        checkpoint_contract::assert_mismatch(error.as_ref(), field);
     }
+    let mut changed = args.clone();
+    changed.init = args.init.with_file_name("copied-init.bin");
+    fs::copy(&args.init, &changed.init).unwrap();
+    checkpoint_contract::assert_mismatch(
+        fm::train(changed).unwrap_err().as_ref(),
+        MismatchField::Inputs,
+    );
     let init = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
     fs::write(
         &args.init,
@@ -569,12 +541,9 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
         .encode(),
     )
     .unwrap();
-    assert!(
-        fm::train(args.clone())
-            .unwrap_err()
-            .to_string()
-            .contains("mismatch")
-    );
+    // MNPTのKはペイロードの検査和に含まれず、前処理のoutput_kで照合する。
+    let error = fm::train(args.clone()).unwrap_err();
+    checkpoint_contract::assert_mismatch(error.as_ref(), MismatchField::Preprocessing);
     assert_eq!(
         before,
         fs::read(args.output_dir.join("latest.npz")).unwrap()
@@ -630,11 +599,11 @@ fn equal_losses_keep_epoch_one_and_stop_at_patience_with_zero_output_exclusion()
 fn five_zero_embedding_gradients_fail_and_preserve_their_record() {
     let (_fixture, mut args) = Fixture::new(false, false);
     args.lr = 1e-300;
-    assert!(
+    assert_eq!(
         fm::train(args.clone())
             .unwrap_err()
-            .to_string()
-            .contains("stayed zero for 5")
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::ZeroGradient(GradientGroup::Embedding))
     );
     let summary = document(args.output_dir.join("summary.json"));
     assert_eq!(summary["status"], "error");
@@ -650,7 +619,7 @@ fn five_zero_embedding_gradients_fail_and_preserve_their_record() {
 }
 
 #[test]
-fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
+fn quantization_failure_keeps_both_exports_and_records_failure() {
     let (_fixture, mut args) = Fixture::new(true, false);
     args.epochs = 1;
     fm::train(args.clone()).unwrap();
@@ -666,34 +635,12 @@ fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
     for name in ["latest.npz", "best.npz"] {
         fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
     }
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "train", "--lambda", "0.75", "--data"])
-        .args(&args.data)
-        .arg("--init")
-        .arg(&args.init)
-        .arg("--output-dir")
-        .arg(&args.output_dir)
-        .arg("--resume")
-        .arg(&args.output_dir)
-        .args([
-            "--batch",
-            "16",
-            "--epochs",
-            "1",
-            "--patience",
-            "5",
-            "--validation-sample",
-            "7",
-            "--threads",
-            "1",
-        ])
-        .output()
-        .unwrap();
+    args.resume = Some(args.output_dir.clone());
     assert_eq!(
-        output.status.code(),
-        Some(1),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        fm::train(args.clone())
+            .unwrap_err()
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::Quantization)
     );
     for file in ["fm.bin", "fm-float.npz", "latest.npz", "best.npz"] {
         assert!(args.output_dir.join(file).exists(), "{file}");
@@ -726,19 +673,35 @@ fn checkpoint_rejects_corruption_and_output_directory_must_be_empty() {
         assert!(Checkpoint::decode(&bytes[..end]).is_err());
     }
     assert!(minase_trainer::pst::Checkpoint::decode(&bytes).is_err());
-    assert!(
+    let artifacts: Vec<_> = [
+        "latest.npz",
+        "best.npz",
+        "config.json",
+        "fm.bin",
+        "fm-float.npz",
+        "summary.json",
+        "training.jsonl",
+    ]
+    .into_iter()
+    .map(|name| (name, fs::read(args.output_dir.join(name)).unwrap()))
+    .collect();
+    assert_eq!(
         fm::train(args.clone())
             .unwrap_err()
-            .to_string()
-            .contains("not empty")
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::OutputNotEmpty)
     );
+    for (name, before) in artifacts {
+        assert_eq!(fs::read(args.output_dir.join(name)).unwrap(), before);
+    }
     args.output_dir = fixture.root.join("empty");
     fs::create_dir(&args.output_dir).unwrap();
     fm::train(args).unwrap();
 }
 
 #[test]
-fn one_epoch_matches_independent_batches_model_and_adam_state() {
+fn one_epoch_wires_permutation_tail_batches_and_mirror_bits_to_updates() {
+    // 共有の数値部品を組み合わせ、順列・端数バッチ・更新への配線を検査する。
     let (_fixture, mut args) = Fixture::new(false, true);
     args.epochs = 1;
     let dataset = Dataset::open(&args.data, None, std::num::NonZeroUsize::new(1).unwrap())

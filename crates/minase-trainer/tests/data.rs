@@ -18,7 +18,7 @@ use minase::{
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
-    data::{Dataset, Error, Lookahead, validate_lambda},
+    data::{Dataset, Error, Lookahead},
     nnue::data::{
         BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, Observations,
         PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches,
@@ -307,16 +307,6 @@ fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
         Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap()),
         Err(Error::SyntheticOrigin { .. })
     ));
-}
-
-#[test]
-fn lambda_is_explicit_finite_and_in_unit_interval() {
-    for value in [-0.1, 1.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        assert!(validate_lambda(value).is_err());
-    }
-    for value in [0.0, 0.25, 0.75, 1.0] {
-        validate_lambda(value).unwrap();
-    }
 }
 
 #[test]

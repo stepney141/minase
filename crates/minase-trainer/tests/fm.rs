@@ -7,6 +7,7 @@ use minase::eval::{
     pst::{FM_RANK, FmWeights, Pst},
 };
 use minase_trainer::data::{Outcome, Sample};
+use minase_trainer::error::ContractError;
 use minase_trainer::{
     fm::{self, QuarterArgs, ScaleArgs},
     nn::npz::{self, Array},
@@ -265,18 +266,7 @@ fn f64_array(shape: &[usize], values: &[f64]) -> Array {
 fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
     let fixture = Fixture::new();
     fixture.inputs(13);
-    let result = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "quarter", "--input"])
-        .arg(fixture.path("input.bin"))
-        .arg("--output")
-        .arg(fixture.path("output.bin"))
-        .output()
-        .unwrap();
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
+    fm::quarter(&fixture.quarter()).unwrap();
     let input = fs::read(fixture.path("input.bin")).unwrap();
     let output = fs::read(fixture.path("output.bin")).unwrap();
     let exponent_offset = 80 + FEATURE_COUNT * 4 + 47 * 4 + 4;
@@ -287,11 +277,6 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
     assert_eq!(output, expected);
     let json = fs::read_to_string(fixture.path("output.quarter.json")).unwrap();
     let report: Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::from_slice::<Value>(&result.stdout).unwrap(),
-        report
-    );
-    assert_eq!(String::from_utf8(result.stdout).unwrap().lines().count(), 1);
     assert_eq!(
         report["input"]["checksum"],
         format!("{:x}", Sha256::digest(&input[80..]))
@@ -309,6 +294,31 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
     ];
     assert_eq!(json_root_keys(&json), keys);
     assert!(json.ends_with('\n'));
+}
+
+#[test]
+fn quarter_stdout_is_one_saved_report_line() {
+    let fixture = Fixture::new();
+    fixture.inputs(13);
+    let result = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+        .args(["fm", "quarter", "--input"])
+        .arg(fixture.path("input.bin"))
+        .arg("--output")
+        .arg(fixture.path("output.bin"))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let stdout = String::from_utf8(result.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    assert_eq!(
+        serde_json::from_str::<Value>(&stdout).unwrap(),
+        serde_json::from_slice::<Value>(&fs::read(fixture.path("output.quarter.json")).unwrap())
+            .unwrap()
+    );
 }
 
 #[test]
@@ -350,18 +360,18 @@ fn scale_identity_zero_and_mismatch_rejections() {
     args.validation_sample = 0;
     assert!(fm::scale(&args).is_err());
     f.write_npz(&v_with(&[1.0; 3]), true);
-    assert!(
+    assert_eq!(
         fm::scale(&f.scale(0))
             .unwrap_err()
-            .to_string()
-            .contains("floating PST")
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::FloatingPstMismatch)
     );
     f.write_npz(&v_with(&[2.0, 1.0, 1.0]), false);
-    assert!(
+    assert_eq!(
         fm::scale(&f.scale(0))
             .unwrap_err()
-            .to_string()
-            .contains("floating FM")
+            .downcast_ref::<ContractError>(),
+        Some(&ContractError::FloatingFmMismatch)
     );
     assert!(!f.path("output.bin").exists());
     f.inputs(13);
@@ -494,27 +504,13 @@ impl Fixture {
 }
 
 #[test]
-fn scale_validation_matches_hand_computed_values_and_cli_stdout() {
+fn scale_validation_matches_hand_computed_values() {
     let f = Fixture::new();
     let data = f.validation_data();
-    let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "scale", "--input"])
-        .arg(f.path("input.bin"))
-        .arg("--float")
-        .arg(f.path("float.npz"))
-        .args(["--fm-scale", "768", "--output"])
-        .arg(f.path("output.bin"))
-        .arg("--data")
-        .arg(&data)
-        .args(["--batch", "1"])
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let mut args = f.scale(768);
+    args.data = vec![data.clone()];
+    args.batch = 1;
+    let report = serde_json::to_value(fm::scale(&args).unwrap()).unwrap();
     let saved: Value =
         serde_json::from_slice(&fs::read(f.path("output.scale.json")).unwrap()).unwrap();
     assert_eq!(report, saved);
@@ -548,15 +544,19 @@ fn scale_validation_matches_hand_computed_values_and_cli_stdout() {
 
 #[test]
 fn cli_rejects_scale_range() {
+    use clap::Parser;
+    #[derive(Parser)]
+    struct Arguments {
+        #[command(flatten)]
+        args: fm::ScaleArgs,
+    }
     for scale in ["--fm-scale=-1", "--fm-scale=1025"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-            .args([
-                "fm", "scale", "--input", "unused", "--float", "unused", "--output", "unused",
-                scale,
-            ])
-            .output()
-            .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        let error = Arguments::try_parse_from([
+            "scale", "--input", "unused", "--float", "unused", "--output", "unused", scale,
+        ])
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 }
 
