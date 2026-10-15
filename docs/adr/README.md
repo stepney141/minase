@@ -241,3 +241,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月15日 [R2とR3が禁じる着手を探索木の中で読まず、禁止手しかない局面を負けとする](skip-forbidden-repetition-moves-inside-the-tree.md)
 - 2026年10月15日 [R1の反復負けは根の候補手の選別で避け、探索木の中の周回は攻撃側の負けとして読む](avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)
 - 2026年10月15日 [探索木の中では駒枯れ、裸玉、および詰みの裁定を近似し、厳密な裁定を審判層に委ねる](approximate-exhaustion-and-mate-inside-search-tree.md)
+- 2026年10月15日 [千日手の引き分けの値は利用者がUSIオプションで固定値を与え、根の手番側に＋、相手側に−の符号で返す](set-the-draw-value-by-usi-option-signed-from-the-root-side.md)
