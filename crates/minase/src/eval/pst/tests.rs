@@ -553,11 +553,43 @@ fn stored_piece_values_are_validated_independently_of_weights() {
     }
 }
 
-/// 埋め込み重みが復号でき、初期局面評価が固定した参照値と一致することを検査する。
+/// 学習器との整数評価の契約を、固定重みと手計算した参照値で検査する。
 #[test]
-fn embedded_pst_matches_python_initial_position_evaluation() {
-    // fm-scale-spsa-candidate の、J75のFMの補正に倍率611/1024を焼き込んだ候補を学習器の整数参照評価で評価した値。
-    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 53);
+fn fixed_pst_matches_integer_reference_evaluation() {
+    let mut bytes = valid_bytes();
+    // 全特徴をmg=8、eg=−24とする。総駒数3ならq=1で、
+    // 分子は3×(8−89×24)=−6384、720で0方向に除算すると−8。
+    for feature in 0..FEATURE_COUNT {
+        set_weight(&mut bytes, 0, feature, 8);
+        set_weight(&mut bytes, 1, feature, -24);
+    }
+    refresh_checksum(&mut bytes);
+    let pst = Pst::decode(&bytes).unwrap();
+    // 固定FMの1組あたりの寄与は(3²−2²)/4。全組を足してから0方向に丸める。
+    let mut row = [0; FM_RANK];
+    row[..2].copy_from_slice(&[3, 2]);
+    let mut signs = [1; FM_RANK];
+    signs[1] = -1;
+    let with_fm = Pst::from_weights_with_fm(
+        pst.weights(),
+        pst.piece_values,
+        pst.k(),
+        pst.rule_set(),
+        FmWeights {
+            embeddings: &vec![row; FEATURE_COUNT],
+            signs: &signs,
+            exponent: 1,
+        },
+    )
+    .unwrap();
+    // Python整数参照でも、PSTとFMを個別に0方向へ丸めてから合算する。
+    for (count, linear, combined) in [(2, -6, -5), (3, -8, -5), (47, -47, 1304), (92, 92, 5324)] {
+        for side in Color::ALL {
+            let position = position_with_count(count, side);
+            assert_evaluation(&pst, &position, linear);
+            assert_evaluation(&with_fm, &position, combined);
+        }
+    }
 }
 
 /// `breakdown`の契約に従い、特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。

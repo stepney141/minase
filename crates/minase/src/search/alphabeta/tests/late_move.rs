@@ -38,10 +38,11 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
 // 数える手の範囲を選んだ理由は docs/adr/count-only-quiet-moves-for-late-move-pruning.md にある。
 #[test]
 fn late_move_limits_follow_quadratic_depth_rule() {
-    assert_eq!(
-        [late_move_limit(1), late_move_limit(2), late_move_limit(3)],
-        [1, 2, 3].map(|depth| (params::lmp_base() + params::lmp_slope() * depth * depth) / 100)
-    );
+    // 基数382、傾き133では分子が515、914、1579になり、100で整数除算する。
+    assert_eq!((params::lmp_base(), params::lmp_slope()), (382, 133));
+    for (depth, expected) in [(1, 5), (2, 9), (3, 15)] {
+        assert_eq!(late_move_limit(depth), expected, "depth={depth}");
+    }
 }
 
 // PV、詰み帯、王駒への利きがある場合は静かな手を省かない。

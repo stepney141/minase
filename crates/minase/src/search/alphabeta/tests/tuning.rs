@@ -1,6 +1,7 @@
 //! 探索係数の既定値と設定を検査する。
 
 use super::*;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
@@ -12,92 +13,53 @@ use crate::search::alphabeta::{
     root::grow_aspiration_delta,
 };
 
-/// 持ち時間の分担、加算の割合、序盤係数つきの秒読みを足し、hardをsoftの倍率、残り時間の割合、安全余裕で抑える。
-/// 各項の整数除算を済ませてから合算し、最後に`u64`のミリ秒へ飽和させる。
-pub(super) fn reference_clock_budget(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
-    let remaining = u128::from(clock.remaining_ms);
-    let increment = u128::from(clock.increment_ms);
-    let byoyomi = u128::from(clock.byoyomi_ms);
-    let moves = u128::from(
-        (params::min_moves() as u32)
-            .max((params::expected_plies() as u32).saturating_sub(clock.ply) / 2),
-    );
-    let opening = if remaining > 0 {
-        u128::from(clock.ply.saturating_add(4).min(40))
-    } else {
-        40
-    };
-    let soft = remaining / moves
-        + increment * params::increment_share() as u128 / 100
-        + byoyomi * 8 * opening / 400;
-    let hard = (soft * params::hard_soft_ratio() as u128 / 100)
-        .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi * 8 / 10)
-        .min(
-            (remaining + byoyomi)
-                .saturating_sub(u128::from(margin_ms))
-                .max(1),
-        )
-        .max(1);
-    TimeBudget {
-        byoyomi_period: false,
-        soft: Duration::from_millis(soft.min(hard).min(u128::from(u64::MAX)) as u64),
-        hard: Duration::from_millis(hard.min(u128::from(u64::MAX)) as u64),
-    }
-}
-
-/// 時間予算は[`reference_clock_budget`]の整数演算と同じ値を返す。
-/// 各除算、残り手数の下限、序盤係数の上限、安全余裕、飽和変換の境界を含む入力で照合する。
+/// 時計のdocコメントの式から手計算した例。各項の丸めと上限を個別に検査する。
 #[test]
-fn tuning_default_clock_budget_matches_reference_grid() {
-    let expected_plies = params::expected_plies() as u32;
-    let min_moves = params::min_moves() as u32;
-    let initial_moves = u64::from(min_moves.max(expected_plies / 2));
-    let floor_ply = expected_plies.saturating_sub(2 * min_moves);
-    for remaining in [
-        0,
-        1,
-        3,
-        4,
-        29,
-        30,
-        31,
-        99,
-        100,
-        101,
-        initial_moves - 1,
-        initial_moves,
-        initial_moves + 1,
-        10_000,
-        u64::MAX,
+fn tuning_default_clock_budget_matches_numeric_examples() {
+    // R/M、加算76%、秒読みの序盤係数を別々に丸め、hardは451%、残り27%、安全余裕で抑える。
+    for (name, remaining, increment, byoyomi, ply, soft, hard) in [
+        ("initial division below", 215, 0, 0, 0, 0, 1),
+        ("initial division exact", 216, 0, 0, 0, 1, 4),
+        ("initial division above", 217, 0, 0, 0, 1, 4),
+        ("increment rounds down", 216, 1, 0, 0, 1, 4),
+        ("increment fraction", 216, 9, 0, 0, 7, 31),
+        ("increment next integer", 216, 10, 0, 0, 8, 36),
+        ("increment above integer", 216, 11, 0, 0, 9, 40),
+        ("separate truncations", 217, 1, 12, 0, 1, 4),
+        ("opening fraction reaches integer", 216, 0, 13, 0, 2, 9),
+        ("opening below cap", 19800, 0, 1000, 35, 880, 3968),
+        ("opening at cap", 19800, 0, 1000, 36, 900, 4059),
+        ("opening after cap", 19700, 0, 1000, 37, 900, 4059),
+        ("moves before floor", 17800, 0, 0, 254, 200, 902),
+        ("moves at floor", 17600, 0, 0, 255, 200, 902),
+        ("moves after floor", 17600, 0, 0, 256, 200, 902),
+        ("moves beyond game", 17600, 0, 0, u32::MAX, 200, 902),
+        ("remaining cap", 1000, 1000, 0, 0, 270, 270),
+        ("safety cap", 31, 1000, 0, 0, 1, 1),
+        ("safety below zero", 29, 1000, 0, 0, 1, 1),
+        ("byoyomi without main time", 0, 100, 1000, 0, 800, 800),
+        ("movetime base", 60000, 1000, 0, 0, 1037, 4676),
+        ("large increment is capped", 1000, u64::MAX, 0, 0, 270, 270),
+        (
+            "final duration saturates",
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            432,
+            u64::MAX,
+            u64::MAX,
+        ),
     ] {
-        for increment in [0, 1, 9, 10, 11, 100, u64::MAX] {
-            for byoyomi in [0, 1, 4, 5, 6, 30, 31, 1000, u64::MAX] {
-                for ply in [
-                    0,
-                    1,
-                    35,
-                    36,
-                    37,
-                    floor_ply.saturating_sub(1),
-                    floor_ply,
-                    floor_ply + 1,
-                    expected_plies - 1,
-                    expected_plies,
-                    expected_plies + 1,
-                    u32::MAX,
-                ] {
-                    if remaining == 0 && increment == 0 && byoyomi == 0 {
-                        continue;
-                    }
-                    let clock = clock_at_ply(remaining, increment, byoyomi, ply);
-                    assert_eq!(
-                        clock_budget(clock),
-                        reference_clock_budget(clock, 30),
-                        "{clock:?}"
-                    );
-                }
-            }
-        }
+        let actual = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+        assert_eq!(
+            actual,
+            TimeBudget {
+                byoyomi_period: false,
+                soft: Duration::from_millis(soft),
+                hard: Duration::from_millis(hard),
+            },
+            "{name}"
+        );
     }
 }
 
@@ -122,6 +84,9 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             "lmp base",
             "lmp slope",
             "lmp zero limit",
+            "r2 lmp zero limit",
+            "r2 lmp small limit",
+            "r2 lmp large limit",
             "reverse futility margin",
             "razoring margin 1",
             "razoring margin 2",
@@ -171,6 +136,18 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     if scenario == "disabled capture history decay" {
         params::set("CaptureHistoryDecay", 0).unwrap();
         super::capture_history::zero_decay_clears_capture_history_between_searches();
+        return;
+    }
+
+    if let Some(limit) = match scenario.as_str() {
+        "r2 lmp zero limit" => Some(0),
+        "r2 lmp small limit" => Some(3),
+        "r2 lmp large limit" => Some(20),
+        _ => None,
+    } {
+        params::set("LmpBase", limit * 100).unwrap();
+        params::set("LmpSlope", 0).unwrap();
+        super::repetition_prohibition::articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_ranks_or_nodes();
         return;
     }
 

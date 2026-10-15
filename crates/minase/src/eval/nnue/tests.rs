@@ -156,6 +156,66 @@ fn assert_move_accumulator<F: FeatureSet>(
     assert_eq!(before, nnue.refresh_accumulator(position));
 }
 
+both_feature_sets!(quiet_move_pst_delta_matches_refreshed_linear_numerator);
+/// 静かな手の差分は同じ視点の線形分子差に等しく、非線形評価と720での除算を含まない。
+fn quiet_move_pst_delta_matches_refreshed_linear_numerator<F: FeatureSet>() {
+    let sparse = minase_core::test_util::position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::Black, PieceKind::King),
+            (sq(11, 0), Color::White, PieceKind::King),
+            (sq(5, 7), Color::Black, PieceKind::Pawn),
+            (sq(5, 6), Color::Black, PieceKind::Lion),
+        ],
+    );
+    let generator = MoveGenerator::new(MoveRules::standard());
+    for nnue in networks::<F>() {
+        let numerator = |position: &Position, side: Color| {
+            let accumulator = nnue.refresh_accumulator(position);
+            let q = i64::from(accumulator.piece_count.clamp(2, 92) - 2);
+            let [mg, eg] = accumulator.sums[side.index()].map(i64::from);
+            q * mg + (90 - q) * eg
+        };
+        for side in Color::ALL {
+            let mut saw_promotion = false;
+            let mut saw_jitto = false;
+            let mut saw_nonzero_delta = false;
+            for mut position in [Position::initial(), sparse.clone()] {
+                if side == Color::White {
+                    position = minase_core::test_util::reflect_ranks_and_swap_colors(&position);
+                }
+                assert_eq!(position.side_to_move(), side);
+                let before = numerator(&position, side);
+                let mut moves = Vec::new();
+                generator.generate_moves(&position, &mut moves);
+                for mv in moves {
+                    if position
+                        .captured_squares(mv)
+                        .into_iter()
+                        .any(|sq| sq.is_some())
+                    {
+                        continue;
+                    }
+                    saw_promotion |= mv.promote;
+                    saw_jitto |= mv.from == mv.to;
+                    let delta = nnue.quiet_move_pst_delta(&position, mv);
+                    saw_nonzero_delta |= delta != 0;
+                    let undo = position.make_move_unchecked(mv, generator.rules());
+                    assert_eq!(
+                        delta,
+                        numerator(&position, side) - before,
+                        "side={side:?}, move={mv:?}"
+                    );
+                    position.unmake_move(undo);
+                }
+            }
+            assert!(saw_promotion, "side={side:?}");
+            assert!(saw_jitto, "side={side:?}");
+            assert!(saw_nonzero_delta, "side={side:?}");
+        }
+    }
+}
+
 both_feature_sets!(accumulator_updates_match_full_refresh_across_move_shapes);
 /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
 fn accumulator_updates_match_full_refresh_across_move_shapes<F: FeatureSet>() {

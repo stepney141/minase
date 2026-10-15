@@ -1,5 +1,5 @@
 //! RULES.md第31条R1の攻撃側の負けと、R2・R3および第23条の禁止手しかない負けを保護する。
-//! 専用の帯は対局履歴と探索経路に依存する。反復の判定自体は後続フェーズで実装する。
+//! 専用の帯は対局履歴と探索経路に依存する。経路に依存する値を置換表や補正履歴へ保存せず、枝刈りから保護する。
 
 use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
@@ -175,7 +175,7 @@ fn repetition_band_is_not_reused_after_only_game_history_changes() {
                 searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
                 Some(0)
             );
-            // 後続フェーズが返す経路依存の勝敗を、前の探索の記録として置く。
+            // 経路依存の勝敗を前の探索の記録として置き、値を再利用しないことを確かめる。
             searcher.tt.store(
                 search_key(&board),
                 32,
@@ -310,7 +310,7 @@ fn repetition_band_windows_disable_see_pruning() {
 
 #[test]
 fn repetition_band_loss_keeps_later_quiets_and_captures_eligible() {
-    // フェーズ4では帯の探索値をまだ生成しないため、静かな手と捕獲手が共有する判定へ渡す。
+    // 反復による勝敗の値を、静かな手と捕獲手が共有する枝刈り判定へ渡す。
     for score in [-30_000, -29_744, -29_743, -29_740, -29_487] {
         assert!(!can_prune_moves(score), "score={score}");
     }
@@ -390,7 +390,7 @@ fn repetition_band_scores_do_not_update_correction_history() {
                 searcher.correction.update(Color::Black, key, 64, 8);
                 let before = searcher.correction.read(Color::Black, key);
                 assert_ne!(before, 0);
-                // 後続フェーズが返す値を、negamaxの出口と同じ更新処理へ渡す。
+                // 反復による勝敗の値を、negamaxの出口で使う更新処理へ渡す。
                 searcher.update_correction(&board, 2, 0, score, bound, false, None, None);
                 assert_eq!(
                     searcher.correction.read(Color::Black, key),

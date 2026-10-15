@@ -387,10 +387,11 @@ fn check_no_generated_moves_keep_the_mate_score() {
 }
 
 #[test]
-fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_ranks_or_nodes() {
+pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_ranks_or_nodes()
+ {
     let nnue = epoch_zero_nnue();
     // 白の候補は王3手、金6手、歩1手であり、金の戻り1手だけが禁止される。
-    // 残る9手を深さ2のlate move pruningの上限に合わせ、禁止手の誤算入を検出する。
+    // 禁止手を除いた候補数と、現在の静かな手の上限から探索件数を求める。
     let mut game = Game::from_position(
         rules("L0,P0,R2,E1,E2"),
         position(
@@ -419,7 +420,7 @@ fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_rank
         .filter(|&mv| mv != forbidden)
         .collect();
     assert_eq!(allowed, game.legal_moves());
-    assert_eq!(allowed.len(), late_move_limit(2) as usize);
+    assert_eq!(allowed.len(), 9);
     let reference = SearchSnapshot::from_parts(
         snapshot.position().clone(),
         snapshot.rules(),
@@ -481,7 +482,19 @@ fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_rank
                     }
                     let (best_move, score) = if is_reference {
                         searcher
-                            .search_root(&current, input.root_moves(), depth, alpha, beta)
+                            .search_root(
+                                &current,
+                                if mode == "lmp" {
+                                    // 根では枝刈りしないので、内部ノードが読む候補だけを対照へ渡す。
+                                    &input.root_moves()
+                                        [..allowed.len().min(late_move_limit(2).max(1) as usize)]
+                                } else {
+                                    input.root_moves()
+                                },
+                                depth,
+                                alpha,
+                                beta,
+                            )
                             .unwrap()
                     } else {
                         let score = searcher
@@ -501,7 +514,11 @@ fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_consume_rank
                     } else if mode != "full" {
                         assert_eq!(
                             searcher.nodes,
-                            allowed.len() as u64,
+                            if mode == "lmp" {
+                                allowed.len().min(late_move_limit(2).max(1) as usize) as u64
+                            } else {
+                                allowed.len() as u64
+                            },
                             "source={source}, mode={mode}"
                         );
                     }
