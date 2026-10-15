@@ -40,40 +40,6 @@ fn article_31_r1_draw_value_rejects_outside_limits_without_overflow() {
     }
 }
 
-fn step(from: Square, to: Square) -> Move {
-    Move {
-        from,
-        mid: None,
-        to,
-        promote: false,
-    }
-}
-
-/// 飛車の往復する2升から同じ相手の歩を狙える場合だけ、攻撃が連続する。
-fn rook_cycle(black_attacks: bool, white_attacks: bool) -> (Position, [Move; 4]) {
-    let mut pieces = vec![
-        (sq(0, 0), Color::Black, PieceKind::King),
-        (sq(3, 3), Color::Black, PieceKind::Rook),
-        (sq(8, 8), Color::White, PieceKind::Rook),
-        (sq(11, 11), Color::White, PieceKind::King),
-    ];
-    if black_attacks {
-        pieces.push((sq(3, 9), Color::White, PieceKind::Pawn));
-    }
-    if white_attacks {
-        pieces.push((sq(8, 1), Color::Black, PieceKind::Pawn));
-    }
-    (
-        position(Color::Black, &pieces),
-        [
-            step(sq(3, 3), sq(3, 4)),
-            step(sq(8, 8), sq(8, 7)),
-            step(sq(3, 4), sq(3, 3)),
-            step(sq(8, 7), sq(8, 8)),
-        ],
-    )
-}
-
 fn play(game: &mut Game, moves: &[Move]) {
     for &mv in moves {
         assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
@@ -100,19 +66,6 @@ fn rotated_cycle(black_attacks: bool, white_attacks: bool, offset: usize) -> (Po
     }
     cycle.rotate_left(offset);
     (root, cycle)
-}
-
-fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move) -> i32 {
-    let before = current.clone();
-    let keys = searcher.path_keys.clone();
-    let ply = searcher.path_moves.len() as u32;
-    let score = searcher
-        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0)
-        .unwrap();
-    assert_eq!(*current, before);
-    assert_eq!(searcher.path_keys, keys);
-    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
-    score
 }
 
 #[test]
