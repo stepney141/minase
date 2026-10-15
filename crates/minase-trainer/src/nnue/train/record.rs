@@ -27,6 +27,8 @@ pub(super) struct Movement {
 }
 
 /// 完了した1エポックの記録。学習前のエポック0では訓練の欄はnull。
+/// `training.jsonl`へ1エポック1行で保存し、最初と最後の更新で使った倍率を
+/// `lr_multiplier_first`と`lr_multiplier_last`に記録する。エポック0では両欄ともnull。
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EpochRecord {
     /// 学習を実行したデバイス。
@@ -53,11 +55,14 @@ pub struct EpochRecord {
     pub saturation: Saturation,
     /// 初期線形重みからの絶対移動量、センチポーン。
     pub linear_movement: LinearMovement,
-    /// 当該エポックの学習秒数。順列作成と供給、転送を含む。
+    /// 当該エポックの学習秒数。順列作成と供給、転送を含み、途中検証の秒数は除く。
     pub training_seconds: Option<f64>,
-    /// 当該エポックの検証秒数。
+    /// 当該エポックの終了時の検証秒数。
     pub validation_seconds: f64,
-    /// 訓練集合の局面数を学習秒数で割った値。
+    /// 当該エポックの途中検証に要した秒数の合計。パラメータの回収とログ保存を含む。
+    /// 途中検証がなければ0であり、エポック0でも0である。
+    pub interval_validation_seconds: f64,
+    /// 訓練集合の局面数を、途中検証を除いた学習秒数で割った値。
     pub training_positions_per_second: Option<f64>,
     /// 1更新の平均秒数。CUDAではイベント、CPUではホストの経過時間を用いる。
     pub update_seconds: Option<f64>,
@@ -76,6 +81,30 @@ pub struct EpochRecord {
     pub steps: u64,
     /// 全エポックの更新回数。
     pub total_steps: u64,
+    /// このエポックの最初の更新で学習率に掛けた倍率。エポック0ではnull。
+    pub lr_multiplier_first: Option<f64>,
+    /// このエポックの最後の更新で学習率に掛けた倍率。エポック0ではnull。
+    pub lr_multiplier_last: Option<f64>,
+}
+
+/// エポック途中の全検証集合の評価を`validation-interval.jsonl`へ1行ずつ保存する。
+/// エポック境界では記録せず、最良モデルの選択やチェックポイントの更新には使わない。
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct IntervalRecord {
+    /// 完了した更新回数の累計。[`EpochRecord::total_steps`]と同じ数え方である。
+    pub step: u64,
+    /// 進行中のエポック番号。1以上である。
+    pub epoch: u64,
+    /// エポック内の進捗率。1エポックの更新回数をUとして`(step − (epoch − 1) × U) / U`。
+    pub epoch_fraction: f64,
+    /// 全検証集合のBCE。[`EpochRecord::validation_loss`]と同じ定義である。
+    pub validation_loss: f64,
+    /// 引き分けを除いた符号一致率。分母が0ならnull。
+    pub sign_accuracy: Option<f64>,
+    /// 検証局面数。
+    pub samples: usize,
+    /// 引き分けでない検証局面数。
+    pub decisive_samples: u64,
 }
 
 /// 累算器が0以下と1以上であった要素の割合。
@@ -157,8 +186,10 @@ pub(super) struct Configuration {
 /// 最上位の`device`は`"cuda"`または`"cpu"`、`arguments`は新規実行時の全引数[`Args`]、
 /// `resolved_threads`は実効ワーカー数である。
 /// `settings`は引数から`output_dir`、`resume`、`data`、`init_pst`、`base`、`epochs`、
-/// `patience`、`time_limit_hours`、`threads`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
+/// `patience`、`time_limit_hours`、`threads`、`validation_interval`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
+/// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
+/// 学習の軌跡を変える設定なので、再開時の照合に含める。
 ///
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
@@ -174,7 +205,8 @@ pub(super) struct Configuration {
 /// 新規実行時だけ、呼び手が`device_name`、`gpu_memory_used_bytes`、`gpu_memory_total_bytes`、`preprocessing_seconds`を加える。
 /// `device_name`はCUDAのデバイス名または`"CPU"`、メモリはバックエンド確保後の値でCPUでは`null`である。
 /// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
-/// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`だけである。
+/// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`、`validation_interval`である。
+/// `validation_interval`は学習の軌跡を変えない診断用の予算なので、再開時に変更できる。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
@@ -188,7 +220,7 @@ pub(super) fn configuration(
         .as_object_mut()
         .ok_or(Error::Invalid("arguments are not an object"))?;
     // 保存先と再開操作は数値計算の設定ではない。入力パスは別途正規化して照合する。
-    // エポック数、改善なしの許容数、時間の上限、ワーカー数は予算と並列度であり、
+    // エポック数、改善なしの許容数、時間の上限、ワーカー数、途中検証の間隔は予算と並列度であり、
     // 学習の軌跡を変えないので、再開時に変えてよい（比較に含めない）。
     for key in [
         "output_dir",
@@ -200,6 +232,7 @@ pub(super) fn configuration(
         "patience",
         "time_limit_hours",
         "threads",
+        "validation_interval",
     ] {
         object.remove(key);
     }
@@ -247,7 +280,7 @@ pub(super) fn configuration(
 /// 再開のたびに`config.json`の`resumes`へ1要素を追記して書き直す。
 /// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
-/// 実効ワーカー数`workers`、再開時点の完了エポック番号`epoch`を持つ。
+/// 実効ワーカー数`workers`、途中検証の間隔`validation_interval`、再開時点の完了エポック番号`epoch`を持つ。
 pub(super) fn append_resume(
     path: &Path,
     config: &mut Value,
@@ -268,6 +301,7 @@ pub(super) fn append_resume(
         "patience": args.patience,
         "time_limit_hours": args.time_limit_hours,
         "workers": workers,
+        "validation_interval": args.validation_interval,
         "epoch": epoch,
     }));
     write_json(path, config)
@@ -280,6 +314,16 @@ pub(super) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
 }
 
 pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
+    append_record(path, record)
+}
+
+/// 完了した途中検証を1行追記し、`sync_all`で永続化する。
+/// 呼び手は間隔が正で、エポック境界以外の検証を期限内に完了したときだけ呼ぶ。
+pub(super) fn append_interval(path: &Path, record: &IntervalRecord) -> Result<()> {
+    append_record(path, record)
+}
+
+fn append_record(path: &Path, record: &impl Serialize) -> Result<()> {
     let mut bytes = serde_json::to_vec(record)?;
     bytes.push(b'\n');
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
@@ -321,4 +365,36 @@ pub(super) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
         atomic_write(path, &bytes[..keep])?;
     }
     initial.ok_or_else(|| Error::Invalid("training log has no epoch zero").into())
+}
+
+/// 途中検証のログを、`latest.npz`で確定した更新回数`step`以下の行だけに切り詰める。
+/// 改行で完結した全行の更新回数が厳密に増加することを要求し、不一致なら書き換えずに拒否する。
+/// チェックポイントより後の行と、改行で終わらない末尾を捨てる。ファイルがなければ何もしない。
+/// 途中検証の間隔を変更した場合や無効にした場合も、再開前に同じ処理を行う。
+pub(super) fn reconcile_interval_log(path: &Path, step: u64) -> Result<()> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut keep = 0;
+    let mut previous = None;
+    for line in bytes.split_inclusive(|&b| b == b'\n') {
+        if line.last() != Some(&b'\n') {
+            break;
+        }
+        let record: IntervalRecord = serde_json::from_slice(line)?;
+        if previous.is_some_and(|previous| record.step <= previous) {
+            return Err(Error::Invalid("interval validation steps must strictly increase").into());
+        }
+        previous = Some(record.step);
+        if record.step <= step {
+            keep += line.len();
+        }
+    }
+    if keep != bytes.len() {
+        eprintln!("discarding interval validation records after checkpoint step {step}");
+        atomic_write(path, &bytes[..keep])?;
+    }
+    Ok(())
 }

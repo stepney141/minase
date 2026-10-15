@@ -228,7 +228,7 @@ fn article_31_r1_search_can_switch_to_a_quiet_move_inside_the_tree() {
         )
         .unwrap();
         let result = crate::search::search(
-            &weights().unwrap(),
+            test_nnue(),
             &snapshot,
             &depth_limits(3),
             DEFAULT_THREADS,
@@ -378,11 +378,11 @@ fn article_31_r1_two_workers_score_the_path_cycle_ten_times() {
         vec![attack],
     )
     .unwrap();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     for attempt in 0..10 {
         let threads = worker_count(2);
         let result = crate::search::search(
-            &nnue,
+            nnue,
             &snapshot,
             &depth_limits(2),
             threads,

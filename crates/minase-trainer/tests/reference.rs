@@ -1050,7 +1050,7 @@ fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_u
                 );
                 assert_parameter_bits(&actual.parameters, &expected.parameters);
                 optimizer
-                    .update_parallel(model, &actual.parameters, *threads)
+                    .update_parallel(model, &actual.parameters, *threads, 1.0)
                     .unwrap();
                 assert_eq!(optimizer.step(), serial_optimizer.step());
                 assert_parameter_bits(model.parameters(), serial.parameters());
@@ -1091,7 +1091,11 @@ fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() 
     let unchanged = model.clone();
     let before = optimizer.clone();
     let gradient = Parameters::zeros(model.shape());
-    assert!(optimizer.update_parallel(&mut model, &gradient, 0).is_err());
+    assert!(
+        optimizer
+            .update_parallel(&mut model, &gradient, 0, 1.0)
+            .is_err()
+    );
     assert_eq!(model, unchanged);
     assert_eq!(optimizer, before);
 }
@@ -1165,7 +1169,7 @@ fn lambda_one_preserves_default_score_only_losses_and_three_update_state_bits() 
                 .update(&mut score_only, &expected.parameters)
                 .unwrap();
             mixed_optimizer
-                .update_parallel(&mut mixed, &actual.parameters, 5)
+                .update_parallel(&mut mixed, &actual.parameters, 5, 1.0)
                 .unwrap();
             assert_parameter_bits(mixed.parameters(), score_only.parameters());
             assert_parameter_bits(mixed_optimizer.m(), score_optimizer.m());

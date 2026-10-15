@@ -404,14 +404,21 @@ impl Step {
     /// 更新と読み出しは計算ストリーム順に進み、ここではホストで計算完了を待たない。
     /// 転送と計算の投入開始後に失敗した場合は、一部の群だけが更新された可能性があるので、以後の投入とsnapshotを拒否する。
     /// 投入前の引数検査による拒否は失敗状態を設定しない。
+    /// multiplierはこの更新で3群の基準学習率へ掛ける、有限かつ正の倍率。
     pub fn enqueue(
         &mut self,
         ring: &mut HostRing,
         ticket: &BatchTicket,
         targets: &[f32],
+        multiplier: f64,
     ) -> Result<StepResult> {
         if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
+        }
+        if !multiplier.is_finite() || multiplier <= 0.0 {
+            return Err(Error::Invalid(
+                "learning-rate multiplier must be finite and positive",
+            ));
         }
         ring.validate_device(&self.device, self.model.shape)?;
         let n = ring.input(ticket)?.len;
@@ -499,6 +506,7 @@ impl Step {
                 &self.buffers,
                 &mut self.nonfinite,
                 profile.as_mut(),
+                multiplier,
             )?;
             readback.end.record(&self.device.compute)?;
             // PinnedHostSlice自体を渡すと、cudarcは転送完了をイベントで追跡する。

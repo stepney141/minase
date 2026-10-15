@@ -131,7 +131,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     let stop = AtomicBool::new(false);
     let hit_ns = AtomicU64::new(u64::MAX);
     let outcome = run_search_team(
-        &weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -224,7 +224,7 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
 fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let ms = Duration::from_millis;
     let position = Position::initial();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let table = small_tt();
     let stop = AtomicBool::new(false);
     for (t, hit, elapsed, stable, expected) in [
@@ -257,7 +257,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &nnue,
+            nnue,
             &position,
             engine_rules(),
             SearchRepetition::R1 {
@@ -387,7 +387,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
     for targeted_with_remaining_time in [false, true] {
         let position = Position::initial();
         let roots = legal_moves(&position);
-        let nnue = weights().unwrap();
+        let nnue = test_nnue();
         let table = small_tt();
         let stop = AtomicBool::new(false);
         let hit_ns = AtomicU64::new(u64::MAX);
@@ -410,7 +410,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             |worker_index, history| {
                 if worker_index == 1 {
                     let outcome = run_auxiliary_worker(
-                        &nnue,
+                        nnue,
                         &position,
                         engine_rules(),
                         SearchRepetition::R1 {
@@ -434,7 +434,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 let mut capture_history =
                     crate::search::alphabeta::capture_history::CaptureHistory::new();
                 let mut searcher = new_searcher(
-                    &nnue,
+                    nnue,
                     &position,
                     engine_rules(),
                     SearchRepetition::R1 {
@@ -503,7 +503,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     let stop = AtomicBool::new(false);
     let hit_ns = AtomicU64::new(0);
     let outcome = run_search_team(
-        &weights().unwrap(),
+        test_nnue(),
         &snapshot.position,
         snapshot.rules(),
         snapshot.repetition(),
@@ -531,7 +531,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
 fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     let ms = Duration::from_millis;
     let position = Position::initial();
-    let nnue = weights().unwrap();
+    let nnue = test_nnue();
     let table = small_tt();
     let stop = AtomicBool::new(false);
     for (remaining, byoyomi, depth, nodes, movetime, recheck) in [
@@ -567,7 +567,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                 let mut capture_history =
                     crate::search::alphabeta::capture_history::CaptureHistory::new();
                 let mut searcher = new_searcher(
-                    &nnue,
+                    nnue,
                     &position,
                     engine_rules(),
                     SearchRepetition::R1 {
@@ -615,7 +615,7 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
         .unwrap();
         let started = Instant::now();
         let handle = crate::search::start_search(
-            weights().unwrap(),
+            Arc::clone(shared_test_nnue()),
             snapshot_for(&initial),
             limits,
             910,

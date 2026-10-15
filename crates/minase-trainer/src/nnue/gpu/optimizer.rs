@@ -95,6 +95,8 @@ impl Optimizer {
     /// 補正係数はCPUと同じ`powf`で`1/(1−0.9^t)`と`1/(1−0.999^t)`を求める。
     /// 出力部は`gradient_sums`の位置0から出力重み、2Uからバイアス、3Uから出力バイアスをf32にして使う。
     /// ホストへの転送は行わない。
+    /// multiplierは有限かつ正で、3群の基準学習率に掛ける。保存する基準係数は変えない。
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         d: &Device,
@@ -103,7 +105,15 @@ impl Optimizer {
         b: &Buffers,
         nonfinite: &mut CudaSlice<u32>,
         mut profile: Option<&mut KernelProfile>,
+        multiplier: f64,
     ) -> Result<()> {
+        if !multiplier.is_finite() || multiplier <= 0.0 {
+            return Err(Error::Invalid(
+                "learning-rate multiplier must be finite and positive",
+            ));
+        }
+        let config = self.config.scaled(multiplier);
+        config.validate()?;
         let step = self
             .step
             .checked_add(1)
@@ -114,7 +124,6 @@ impl Optimizer {
         let correction1 = 1.0 / (1.0 - 0.9_f64.powf(step as f64));
         let correction2 = 1.0 / (1.0 - 0.999_f64.powf(step as f64));
         let shape = self.shape;
-        let config = self.config;
         self.group_mut(Parameter::Linear)?.rows(
             d,
             k,
@@ -569,6 +578,7 @@ mod tests {
                         &buffers,
                         &mut status,
                         None,
+                        1.0,
                     )
                     .unwrap();
                 assert_ne!(
@@ -607,6 +617,7 @@ mod tests {
                 &buffers,
                 &mut status,
                 None,
+                1.0,
             )
             .unwrap();
         let bits = device.compute.clone_dtoh(&status).unwrap()[0];
