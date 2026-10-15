@@ -19,6 +19,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [前向き枝刈りの第3層に関する既存実装の調査](forward-pruning-prior-art.md)は、棋力向上段階8の4項目（correction history、improving、SEE pruning、history pruning）の更新条件と閾値を、StockfishとYaneuraOuのソースで確認する。
 - [手の順序付けの改善余地に関する調査と議論](move-ordering-discussion.md)は、現行の順序付けでβカットの遅れが件数では置換表の記録手がない残り深さ1のノードに集中する一方、初手βカット率ではノード数の損失を測れないことを示し、Claudeとcodexの議論を経た8候補の順位とStockfishの現行方式を記す。
 - [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
+- [引き分けの評価値（contempt）の既存実装と測定の調査](draw-value-prior-art.md)は、Stockfish、やねうら王、dlshogi、技巧、Lc0などが千日手の引き分けに返す値を設定する仕組みと、その効果を対局で測った記録をまとめる。
 - [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
 - [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
 - [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md)は、雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。
