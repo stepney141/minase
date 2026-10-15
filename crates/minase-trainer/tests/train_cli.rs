@@ -109,63 +109,63 @@ fn train_accepts_both_feature_sets_multiple_files_and_paired_lookahead() {
 }
 
 #[test]
-fn train_rejects_invalid_numeric_arguments_before_opening_inputs() {
-    for (flag, value) in [
-        ("--width", "0"),
-        ("--width", "3"),
-        ("--width", "514"),
-        ("--batch", "0"),
-        ("--batch", "4194305"),
-        ("--epochs", "0"),
-        ("--epochs", "51"),
-        ("--patience", "0"),
-        ("--time-limit-hours", "0"),
-        ("--time-limit-hours", "25"),
-        ("--time-limit-hours", "NaN"),
-        ("--time-limit-hours", "inf"),
-        ("--validation-sample", "0"),
-        ("--threads", "0"),
-    ] {
+fn train_validates_numeric_arguments_and_paired_lookahead_before_opening_inputs() {
+    let max_batch = minase_trainer::nnue::data::MAX_BATCH_SIZE.to_string();
+    let oversized_batch = (minase_trainer::nnue::data::MAX_BATCH_SIZE + 1).to_string();
+    let cases: &[(&[&str], bool)] = &[
+        (&["--width", "0"], false),
+        (&["--width", "3"], false),
+        (&["--width", "514"], false),
+        (&["--batch", "0"], false),
+        (&["--batch", "32769"], true),
+        (&["--batch", &max_batch], true),
+        (&["--batch", &oversized_batch], false),
+        (&["--epochs", "0"], false),
+        (&["--epochs", "51"], false),
+        (&["--patience", "0"], false),
+        (&["--time-limit-hours", "0"], false),
+        (&["--time-limit-hours", "25"], false),
+        (&["--time-limit-hours", "NaN"], false),
+        (&["--time-limit-hours", "inf"], false),
+        (&["--validation-sample", "0"], false),
+        (&["--threads", "0"], false),
+        (&["--lookahead-gamma", "0.9"], false),
+        (&["--lookahead-plies", "40"], false),
+        (
+            &["--lookahead-gamma", "0", "--lookahead-plies", "40"],
+            false,
+        ),
+        (
+            &["--lookahead-gamma", "1", "--lookahead-plies", "40"],
+            false,
+        ),
+        (
+            &["--lookahead-gamma", "NaN", "--lookahead-plies", "40"],
+            false,
+        ),
+        (
+            &["--lookahead-gamma", "0.9", "--lookahead-plies", "0"],
+            false,
+        ),
+        (
+            &["--lookahead-gamma", "0.9", "--lookahead-plies", "4097"],
+            false,
+        ),
+    ];
+    for &(arguments, accepted) in cases {
         let mut values = argv();
-        if let Some(index) = values.iter().position(|&arg| arg == flag) {
-            values[index + 1] = value;
-        } else {
-            values.extend([flag, value]);
+        for &[flag, value] in arguments.as_chunks::<2>().0 {
+            if let Some(index) = values.iter().position(|&arg| arg == flag) {
+                values[index + 1] = value;
+            } else {
+                values.extend([flag, value]);
+            }
         }
-        let parsed = TrainArguments::try_parse_from(values);
-        assert!(
-            parsed.is_err() || parsed.unwrap().args.validate().is_err(),
-            "{flag} {value} must fail"
-        );
-    }
-}
-
-#[test]
-fn train_batch_bound_uses_the_packed_occurrence_limit() {
-    let mut args = TrainArguments::try_parse_from(argv()).unwrap().args;
-    for batch in [32_769, minase_trainer::nnue::data::MAX_BATCH_SIZE] {
-        args.batch = batch;
-        args.validate().unwrap();
-    }
-    args.batch = minase_trainer::nnue::data::MAX_BATCH_SIZE + 1;
-    assert!(args.validate().is_err());
-}
-
-#[test]
-fn train_rejects_unpaired_or_invalid_lookahead() {
-    for extra in [
-        vec!["--lookahead-gamma", "0.9"],
-        vec!["--lookahead-plies", "40"],
-        vec!["--lookahead-gamma", "0", "--lookahead-plies", "40"],
-        vec!["--lookahead-gamma", "1", "--lookahead-plies", "40"],
-        vec!["--lookahead-gamma", "NaN", "--lookahead-plies", "40"],
-        vec!["--lookahead-gamma", "0.9", "--lookahead-plies", "0"],
-        vec!["--lookahead-gamma", "0.9", "--lookahead-plies", "4097"],
-    ] {
-        let mut values = argv();
-        values.extend(extra);
-        let parsed = TrainArguments::try_parse_from(values);
-        assert!(parsed.is_err() || parsed.unwrap().args.validate().is_err());
+        let valid = match TrainArguments::try_parse_from(values) {
+            Ok(parsed) => parsed.args.validate().is_ok(),
+            Err(_) => false,
+        };
+        assert_eq!(valid, accepted, "arguments={arguments:?}");
     }
 }
 
