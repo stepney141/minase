@@ -6,6 +6,7 @@
 - 設計書の「先に読む要約」「状態」と ROADMAP.md の「現在地」は追記せず上書きする。着手ログ、レビュー記録、コミットハッシュは書かず、過去の経緯は git 履歴に任せる。
 - 棋力測定の記録は docs/measurements/ に測定名ごとに置き、設計書からは測定名でリンクする。
 - 作業で得た汎用的な教訓は docs/lessons/ に集約する。作業を始める前に docs/lessons/README.md の索引に目を通す。
+- テストの目的、書く範囲、検証の層、およびマージ前のローカル検査は [docs/guides/testing.md](docs/guides/testing.md) に従う。
 - docs/ 直下には ROADMAP.md と README.md だけを置く。手引き、監査報告、調査メモなどその他の文書は docs/README.md の分類表に従って下位ディレクトリへ置く。
 
 ## コミットとリリース
