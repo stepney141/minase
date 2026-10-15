@@ -24,7 +24,7 @@ use std::sync::{Arc, OnceLock};
 
 /// 静的評価の絶対値の上限。単位はセンチポーンである。
 /// [`crate::search::MATE_THRESHOLD`]未満に保ち、詰み帯と区別するとともに置換表の`i16`へ収まる範囲に制限する。
-const EVALUATION_LIMIT: i32 = 28_999;
+pub(crate) const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 検証済みのMNUE整数重みと探索用駒価値。
 pub struct Network<F: FeatureSet, H: Head> {

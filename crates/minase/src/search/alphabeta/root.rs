@@ -1,6 +1,6 @@
 //! 根の探索と探索窓の拡大。
 
-use crate::search::MATE_THRESHOLD;
+use crate::search::REPETITION_BAND_START;
 use crate::search::events::StopReason;
 use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
@@ -22,11 +22,11 @@ pub(super) struct AspirationWindow {
 }
 
 impl AspirationWindow {
-    /// 深さ5以上で同じワーカーの直前の完了値が詰み帯の外なら、その値±`delta`を初期窓にする。
-    /// それ以外は全窓とし、詰み帯に達した端は無限へ置き換える。
+    /// 深さ5以上で同じワーカーの直前の完了値が詰み帯と専用の帯の外なら、その値±`delta`を初期窓にする。
+    /// それ以外は全窓とし、詰み帯または専用の帯に達した端は無限へ置き換える。
     pub(super) fn initial(depth: u32, prev: Option<i32>, delta: i32) -> Self {
         let (alpha, beta) = match prev {
-            Some(score) if depth >= 5 && score.abs() < MATE_THRESHOLD => {
+            Some(score) if depth >= 5 && score.abs() < REPETITION_BAND_START => {
                 (score - delta, score + delta)
             }
             _ => (-INFINITY, INFINITY),
@@ -54,12 +54,12 @@ impl AspirationWindow {
         self.delta = grow_aspiration_delta(self.delta);
     }
 
-    /// 詰み帯の閾値へ達した端を無限へ置き換える。
+    /// 詰み帯または専用の帯へ達した端を無限へ置き換える。
     fn normalize(&mut self) {
-        if self.alpha <= -MATE_THRESHOLD {
+        if self.alpha <= -REPETITION_BAND_START {
             self.alpha = -INFINITY;
         }
-        if self.beta >= MATE_THRESHOLD {
+        if self.beta >= REPETITION_BAND_START {
             self.beta = INFINITY;
         }
     }

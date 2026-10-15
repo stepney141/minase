@@ -399,6 +399,7 @@ pub(super) fn unpack_move(packed: u32) -> Option<Option<Move>> {
 ///
 /// 詰みの評価値は根からの手数を含むため、現在ノードからの手数基準へ
 /// 直してから格納し、別の深さでの再利用時に正しく戻せるようにする。
+/// 反復による勝敗の専用の帯は`MATE_THRESHOLD`未満なので、手数補正をしない。
 fn score_to_tt(score: i32, ply: u32) -> i16 {
     let score = if score >= MATE_THRESHOLD {
         score + ply as i32
@@ -411,6 +412,7 @@ fn score_to_tt(score: i32, ply: u32) -> i16 {
 }
 
 /// 格納形式の評価値を、現在ノードの根からの手数基準へ戻す。
+/// 反復による勝敗の専用の帯は手数補正をせず、格納した値のまま返す。
 fn score_from_tt(score: i16, ply: u32) -> i32 {
     let score = i32::from(score);
     if score >= MATE_THRESHOLD {

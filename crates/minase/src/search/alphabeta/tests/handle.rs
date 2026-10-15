@@ -194,7 +194,7 @@ fn infinite_limits_stop_only_on_external_request() {
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
     let delta = aspiration_delta(weights().unwrap().pawn_value());
-    let previous = -MATE_THRESHOLD + 2 * delta + 1;
+    let previous = -crate::search::REPETITION_BAND_START + 2 * delta + 1;
     let table = small_tt();
     // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
     // 深さ3の子の記録は、深さ5の反復では打ち切りに使えない。

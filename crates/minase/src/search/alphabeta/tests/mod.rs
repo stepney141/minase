@@ -22,6 +22,7 @@ mod ponder;
 mod pruning;
 mod qsearch_move_limit;
 mod quiesce;
+mod repetition_band;
 mod root;
 mod root_repetition;
 mod royal;

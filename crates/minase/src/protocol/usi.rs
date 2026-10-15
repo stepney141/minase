@@ -759,12 +759,14 @@ impl UsiProtocol {
     /// 完了深さが1以上で、完了した探索値が`-resign_value`以下なら投了する。
     ///
     /// 評価値は根の手番側から見たcpであり、詰み帯も同じ比較を使う。
+    /// 負の専用の帯は`ResignValue`によらず投了から除く。
+    /// 帯の値は1回の再現で判定する近似に基づく見込みであり、実際の裁定より早く負けを確定させないためである。
     /// 深さ0の静的評価や、途中結果として採用した手の下界は判定に使わない。
     /// 通常の完了、的中後の完了、および`stop`による無限探索や外れた先読みの解放に適用する。
     /// 投了しても`Engine`の対局状態は変えない。
     /// 既定の閾値は[`DEFAULT_RESIGN_VALUE`]に従う。
     fn should_resign(&self, score: i32, depth: u32) -> bool {
-        depth >= 1 && score <= -self.resign_value
+        depth >= 1 && score <= -self.resign_value && !search::in_repetition_band(score)
     }
 
     /// `bestmove`を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
@@ -2683,6 +2685,134 @@ mod tests {
                 assert!(!text.contains("bestmove resign"), "{text}");
                 assert_legal_bestmove(&text, &legal);
             }
+        }
+    }
+
+    // RULES.md第31条R1の反復負けは1回の再現による見込みなので、実際の裁定より早く投了しない。
+    // 実行中のstopが受信端から結果を回収する経路には評価値の差し替え口がないため、
+    // その経路も使う共有判定を直接検査する。
+    #[test]
+    fn resignation_repetition_band_is_excluded_at_every_threshold() {
+        let (_, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        for threshold in [0, 1, 20_000, 29_487, 29_743, 99_999] {
+            protocol.resign_value = threshold;
+            for score in [-29_487, -29_740, -29_743] {
+                assert!(!protocol.should_resign(score, 2), "{score}, {threshold}");
+                assert!(!protocol.should_resign(score, 0));
+            }
+        }
+        protocol.resign_value = 20_000;
+        for (score, expected) in [
+            (-29_744, true),
+            (-29_999, true),
+            (-29_486, true),
+            (-20_000, true),
+            (-19_999, false),
+            (29_487, false),
+            (29_743, false),
+        ] {
+            assert_eq!(protocol.should_resign(score, 2), expected);
+            assert!(!protocol.should_resign(score, 0));
+        }
+    }
+
+    /// 探索イベントの評価値を規範値へ差し替え、既定のResignValueで最終出力を検査する。
+    fn check_repetition_band_resignation(score: i32, release: Option<&str>, running_hit: bool) {
+        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        assert_eq!(protocol.resign_value, 20_000);
+        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let mut output = Vec::new();
+        let limits = if release.is_some() || running_hit {
+            vec!["ponder", "depth", "2"]
+        } else {
+            vec!["depth", "2"]
+        };
+        let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+        if running_hit {
+            assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+            protocol
+                .handle_searching_line(
+                    &engine,
+                    &mut active,
+                    &mut VecDeque::new(),
+                    "ponderhit",
+                    &mut output,
+                )
+                .unwrap();
+            assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+        }
+        loop {
+            let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+                panic!("search must be running");
+            };
+            let mut event = handle
+                .events()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            let finished = match &mut event {
+                SearchEvent::Progress {
+                    score: reported, ..
+                } => {
+                    *reported = score;
+                    false
+                }
+                SearchEvent::Finished { score: adopted, .. } => {
+                    *adopted = score;
+                    true
+                }
+            };
+            protocol
+                .handle_search_event(&engine, &mut active, event, &mut output)
+                .unwrap();
+            if finished {
+                break;
+            }
+        }
+        if let Some(command) = release {
+            assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+            assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
+            protocol
+                .handle_searching_line(
+                    &engine,
+                    &mut active,
+                    &mut VecDeque::new(),
+                    command,
+                    &mut output,
+                )
+                .unwrap();
+        }
+        assert!(active.is_none());
+        let text = String::from_utf8(output).unwrap();
+        if score == -29_744 {
+            assert!(text.contains(" score mate -254 "), "{text}");
+            assert_eq!(bestmoves(&text), ["bestmove resign"]);
+        } else {
+            assert!(text.contains(&format!(" score cp {score} ")), "{text}");
+            assert_legal_bestmove(&text, &legal);
+        }
+    }
+
+    #[test]
+    fn resignation_repetition_band_completion_returns_a_legal_move() {
+        for score in [-29_487, -29_740, -29_743, -29_744] {
+            check_repetition_band_resignation(score, None, false);
+        }
+    }
+
+    #[test]
+    fn resignation_repetition_band_held_stop_and_ponderhit_return_a_legal_move() {
+        for command in ["stop", "ponderhit"] {
+            for score in [-29_487, -29_740, -29_743, -29_744] {
+                check_repetition_band_resignation(score, Some(command), false);
+            }
+        }
+    }
+
+    // 実行中のponderhitは探索を継続し、後の完了通知で同じ投了判定を使う。
+    #[test]
+    fn resignation_repetition_band_running_ponderhit_returns_a_legal_move() {
+        for score in [-29_487, -29_740, -29_743, -29_744] {
+            check_repetition_band_resignation(score, None, true);
         }
     }
 
