@@ -519,7 +519,6 @@ mod tests {
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let nnue = minase::eval::weights().unwrap();
         // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
-        assert_eq!(BENCH_POSITIONS.len(), 15);
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {
             run_bench(

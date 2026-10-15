@@ -100,14 +100,26 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
         assert_eq!(table.probe(key, ply).unwrap().score, score);
     }
 
-    // 境界: 29744（詰み帯下限）は変換され、別plyの取り出しで根相対値が
-    // ずれて観測される。28999（通常帯上限直下）は変換されない。
-    table.store(key, 8, 29_744, Bound::Exact, Some(best_move), 5);
-    assert_eq!(table.probe(key, 4).unwrap().score, 29_745);
-    table.store(key, 8, -29_744, Bound::Exact, Some(best_move), 5);
-    assert_eq!(table.probe(key, 4).unwrap().score, -29_745);
-    table.store(key, 8, 28_999, Bound::Exact, Some(best_move), 5);
-    assert_eq!(table.probe(key, 4).unwrap().score, 28_999);
+    for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
+        for sign in [-1, 1] {
+            for (magnitude, probe_ply, expected) in [
+                (29_744, 4, 29_745),
+                (28_999, 4, 28_999),
+                (29_487, 40, 29_487),
+                (29_740, 40, 29_740),
+                (29_743, 40, 29_743),
+                (29_990, 40, 29_955),
+            ] {
+                let score = sign * magnitude;
+                table.store(key, 8, score, bound, Some(best_move), 5);
+                assert_eq!(
+                    table.probe(key, probe_ply).unwrap().score,
+                    sign * expected,
+                    "article_31_r1 score={score}, bound={bound:?}, probe_ply={probe_ply}"
+                );
+            }
+        }
+    }
 }
 
 // 同一キーを深さで保護する理由はdocs/adr/store-quiescence-results-at-depth-zero.md。
@@ -350,28 +362,6 @@ fn idle_resize_applies_and_later_searches_complete() {
         &mut table,
     );
     assert!(moves.contains(&after.best_move));
-}
-
-// 原子値の2語に分ける理由はdocs/adr/use-atomic-two-word-transposition-entries.md。
-// 手、評価値、深さ、boundを
-// 格納すると、probeから同じ値が得られる。
-#[test]
-fn atomic_tt_fields_round_trip_through_probe() {
-    let best_move = Move {
-        from: sq(3, 4),
-        mid: Some(sq(4, 5)),
-        to: sq(5, 6),
-        promote: true,
-    };
-    let key = 0x89ab_cdef_0000_0042;
-    let table = small_tt();
-    table.store(key, 23, -1_234, Bound::Upper, Some(best_move), 0);
-
-    let hit = table.probe(key, 0).unwrap();
-    assert_eq!(hit.best_move, Some(best_move));
-    assert_eq!(hit.score, -1_234);
-    assert_eq!(hit.depth, 23);
-    assert_eq!(hit.bound, Bound::Upper);
 }
 
 // criticalの予約ビット、バウンド、

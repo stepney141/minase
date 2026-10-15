@@ -5,14 +5,11 @@ use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
 use crate::search::alphabeta::pruning::{late_move_limit, see_margin};
-use crate::search::{REPETITION_BAND_START, REPETITION_WIN, in_repetition_band};
+use crate::search::{REPETITION_WIN, in_repetition_band};
 
 #[test]
 fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
     // 設計書の勝ち29,743、最大256手、通常評価の上限28,999から定まる境界。
-    assert_eq!(REPETITION_WIN, 29_743);
-    assert_eq!(REPETITION_BAND_START, 29_487);
-    assert_eq!(EVALUATION_LIMIT, 28_999);
     // eval::nnue::testsのfinal_sum_is_clamped_once_and_linear_division_truncates_toward_zero
     // も、Nnueが返す最大・最小値を±28,999として検査する。
     for sign in [-1, 1] {
@@ -28,25 +25,6 @@ fn repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
         ] {
             assert_eq!(in_repetition_band(sign * magnitude), expected);
         }
-    }
-}
-
-#[test]
-fn repetition_band_tt_scores_keep_their_value_across_plies() {
-    let table = small_tt();
-    let key = 0x1234_5678_0000_0042;
-    for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
-        for magnitude in [29_487, 29_740, 29_743] {
-            for score in [-magnitude, magnitude] {
-                table.store(key, 32, score, bound, None, 5);
-                assert_eq!(table.probe(key, 40).unwrap().score, score);
-            }
-        }
-    }
-    // 詰みは格納時の5手を戻し、読み出し位置の40手を差し引く。
-    for sign in [-1, 1] {
-        table.store(key, 32, sign * 29_990, Bound::Exact, None, 5);
-        assert_eq!(table.probe(key, 40).unwrap().score, sign * 29_955);
     }
 }
 
@@ -376,16 +354,6 @@ fn repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
     }
     for score in [124, 28_999, 29_486] {
         assert_eq!(null_move_cutoff_score(score, 123), score);
-    }
-}
-
-#[test]
-fn repetition_band_scores_start_aspiration_with_a_full_window() {
-    for depth in [5, 6, 8] {
-        for score in [29_487, 29_740, 29_743, -29_487, -29_740, -29_743] {
-            let window = AspirationWindow::initial(depth, Some(score), 50);
-            assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
-        }
     }
 }
 

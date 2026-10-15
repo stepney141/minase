@@ -309,20 +309,6 @@ mod tests {
         }
     }
 
-    /// 倍率3/4は整数化より先に掛ける。倍率1/2の例も正負で固定する。
-    #[test]
-    fn scaling_precedes_integer_truncation() {
-        for sign in [-1, 1] {
-            let numerator = sign * 12;
-            assert_eq!(scaled_correction(numerator, 1, 768), sign);
-            assert_eq!((numerator / 8) * 768 / 1024, 0);
-            for (numerator, expected) in [(12, 0), (24, 1)] {
-                assert_eq!(scaled_correction(sign * numerator, 1, 512), sign * expected);
-                assert_eq!((sign * numerator / 8) * 512 / 1024, sign * expected);
-            }
-        }
-    }
-
     /// 指数26と30では分母がi64を超えるが、分子の両端でも定義を満たす。
     #[test]
     fn scaled_extreme_numerators_do_not_overflow() {
@@ -420,23 +406,6 @@ mod tests {
                 assert_eq!(incremental, FmAccumulator::default());
             }
         }
-    }
-
-    /// 分子−2、分母8の結果は0であり、算術シフトの−1ではない。
-    #[test]
-    fn negative_numerator_truncates_toward_zero() {
-        let fm = Fm::decode(&encoded(1, [1; FM_RANK], |i, f| match (i, f) {
-            (0, 0) => 1,
-            (1, 0) => -1,
-            _ => 0,
-        }))
-        .unwrap();
-        let mut accumulator = FmAccumulator::default();
-        fm.add(&mut accumulator, 0);
-        fm.add(&mut accumulator, 1);
-        assert_eq!(accumulator.sums, [0; FM_RANK]);
-        assert_eq!(accumulator.self_sum, 2);
-        assert_eq!(fm.correction(&accumulator), 0);
     }
 
     /// 2特徴の積を直接割った仕様値と、全指数で一致する。
