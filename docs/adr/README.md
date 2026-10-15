@@ -237,3 +237,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
 - 2026年10月14日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を、除外の理由を付けて教師データに記録する](record-excluded-positions-with-a-reason.md)
 - 2026年10月14日 [`unsafe`は学習器のGPUの処理だけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-gpu-code.md)
+- 2026年10月16日 [NNUEの学習率をcosine annealingで減らす](anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)

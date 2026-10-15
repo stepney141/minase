@@ -19,7 +19,7 @@ RustのCPUの学習器は、PythonのGPUの学習器より1エポックあたり
 フェーズ2の途中で、PSTの学習器をNNUEの学習器の部品とバッチ供給の仕組みに相乗りさせる当初の設計を、利用者の判断で評価関数ごとのパイプラインへ改め、NNUE側はフェーズ1完了時の形へ戻した。
 完了前の通しの検査で、PSTの比較診断がPSTだけの重み（MNPT版2）を前提にしていることが分かったので、FMを含む版3の入力は開始時に明示的なエラーで拒否するようにした。
 2026年10月13日に利用者の許可を得て、ブランチ`python-trainer-retirement`をmasterへマージした。
-[学習率スケジュール](../nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)の実装は、本書の改名後のクレートに対して始められる。
+[学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)の実装は、本書の改名後のクレートに対して始められる。
 
 ## 目的
 
@@ -84,7 +84,7 @@ AlphaZero型探索の計画（[設計書](../alphazero.md)）は`tools/train/zer
 
 | 項目 | 判断 |
 |---|---|
-| クレートの名前と構成 | `crates/nnue-trainer`を`crates/minase-trainer`へ改名し、実行ファイルを`minase-trainer`とする。サブコマンドは`nnue`（`train`、`check-equivalence`、`bench-step`）、`pst train`、`fm`（`train`、`quarter`、`scale`）、`joint train`、`diag`（`nnue-removal`、`nnue-distribution`、`nnue-moves`、`pst-compare`）とする。NNUE、PST、FMはまったく異なる評価関数なので、学習のパイプライン（特徴とバッチの作り方、モデル、順伝播と後退の組み立て、駒除去差分、チェックポイント、学習ループ）は評価関数ごとに持つ。同時学習はPSTとFMの部品を組み合わせて作る。すべての学習器で共有するのは、データの読み込み（MNSD、検証分割、先読み教師、教師用K、教師値）と、PyTorchのようにライブラリとして呼び出す汎用の機械学習の部品（Adamの更新、ロジットに対する二値交差エントロピーとその勾配、加算の順序を固定した並列の和など）だけとする（2026年10月13日の利用者の決定）。PSTとFMの学習を別のクレートに分ける案は、これらの共有部品を二重に持つか、さらに共有のクレートを切り出すことになるので採らず、1つの実行ファイル`minase-trainer`のサブコマンドとして呼び分ける。改名は、学習器を変える[学習率スケジュール](../nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)の実装と差分が衝突するので、最初のフェーズで行う。 |
+| クレートの名前と構成 | `crates/nnue-trainer`を`crates/minase-trainer`へ改名し、実行ファイルを`minase-trainer`とする。サブコマンドは`nnue`（`train`、`check-equivalence`、`bench-step`）、`pst train`、`fm`（`train`、`quarter`、`scale`）、`joint train`、`diag`（`nnue-removal`、`nnue-distribution`、`nnue-moves`、`pst-compare`）とする。NNUE、PST、FMはまったく異なる評価関数なので、学習のパイプライン（特徴とバッチの作り方、モデル、順伝播と後退の組み立て、駒除去差分、チェックポイント、学習ループ）は評価関数ごとに持つ。同時学習はPSTとFMの部品を組み合わせて作る。すべての学習器で共有するのは、データの読み込み（MNSD、検証分割、先読み教師、教師用K、教師値）と、PyTorchのようにライブラリとして呼び出す汎用の機械学習の部品（Adamの更新、ロジットに対する二値交差エントロピーとその勾配、加算の順序を固定した並列の和など）だけとする（2026年10月13日の利用者の決定）。PSTとFMの学習を別のクレートに分ける案は、これらの共有部品を二重に持つか、さらに共有のクレートを切り出すことになるので採らず、1つの実行ファイル`minase-trainer`のサブコマンドとして呼び分ける。改名は、学習器を変える[学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)の実装と差分が衝突するので、最初のフェーズで行う。 |
 | PSTの学習器の実現 | `pst train`は、PST専用のパイプライン（手番側の13,680特徴を鏡映共有の行へ写したバッチ、2端点の補間、駒除去差分の損失、チェックポイント、学習ループ）として書き、NNUEの学習器のモデル、参照計算、バッチ、パイプラインには相乗りしない。データの読み込みと汎用の機械学習の部品だけを共有する。NNUEの線形経路はPSTと同じ形の式を持つが、評価関数ごとに経路を分ける方針により、式の重複は受け入れる。当初は、NNUEの学習器に線形経路だけのモデルを加える案を採ったが、評価関数の異なる学習器のパイプラインを共通化しすぎるため、2026年10月13日に利用者の判断で改めた。 |
 | PSTの除去の参照 | `--removal-reference v0`と`--removal-reference init`を設ける。候補Lは`--init`のMNPT（Pc）を参照にし、J75とNNUEはv0を参照にしたので、現行の手順に両方が要る。 |
 | λとエポックの上限 | `pst`、`fm`、`joint`では`--lambda-override`を省略可能とし、省略時は来歴のλを使う（候補Lの動作）。`nnue`は現行どおり既定1.0とする。エポックの上限は、`nnue`は50のまま、`pst`、`fm`、`joint`は200とする。候補Lが200エポック目で最良だったので、50では再現できないからである。 |
@@ -207,7 +207,7 @@ Pythonの同時学習器は、ブランチ`pst-fm-joint-training`のコミット
 
 ## 参考資料
 
-- [Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[学習率スケジュール](../nnue-lr-schedule.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)
+- [Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[学習率スケジュール](nnue-lr-schedule.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)
 - [PSTとFMの同時学習](pst-fm-joint-training.md)、[FMの倍率のSPSA調整](fm-scale-spsa.md)、[補正1/4のFMの再学習](fm-quarter-current-pst.md)、[PSTのエポック数の延長](pst-longer-training.md)
 - [PSTの学習の手引き](../../guides/pst-training.md)
 - [同時学習の記録](../../measurements/pst-fm-joint-training-training.md)、[倍率の焼き込みの検査](../../measurements/fm-scale-spsa-candidate.md)

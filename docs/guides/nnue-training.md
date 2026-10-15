@@ -93,7 +93,7 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 `--lr-schedule`に、一定の倍率`constant:<c>`、半減期をエポック数で与える指数減衰`exponential:<半減期>:<下限>`、または総長をエポック数で与えるcosine annealing `cosine:<総長>:<下限>`を指定する。
 倍率は3つのパラメータ群の学習率に同じ値で掛かり、重み減衰にも学習率を通じて掛かる。
 式と引数の範囲は`crates/minase-trainer/src/nnue/schedule.rs`の`LrSchedule`のdocコメントにある。
-既定値は`constant:1`であり、このときの学習は倍率を加える前の学習器とビット単位で同じである。
+既定値は、学習率スケジュールの計画で採用した`cosine:3:0.1`である。`constant:1`を指定した学習は、倍率を加える前の学習器とビット単位で同じである。
 倍率は学習の軌跡を変えるので、再開時に変えることはできない。
 
 `--validation-interval <更新回数>`を正の値で指定すると、その更新回数ごとに検証集合全体を評価し、`validation-interval.jsonl`へ1行ずつ記録する。

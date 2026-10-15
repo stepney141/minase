@@ -18,5 +18,5 @@
 
 ## 出典
 
-- [plans/nnue-lr-schedule.md](../plans/nnue-lr-schedule.md)（段階ゲートのためのネットの差し替え）
+- [plans/nnue-lr-schedule.md](../plans/archived/nnue-lr-schedule.md)（段階ゲートのためのネットの差し替え）
 - `crates/minase/src/search/alphabeta/tests/mod.rs`の`test_nnue`

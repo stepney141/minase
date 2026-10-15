@@ -2,7 +2,7 @@
 
 ## 目的
 
-[NNUE学習器の学習率スケジュール](../plans/nnue-lr-schedule.md)で選んだcosine annealing（総長3エポック、下限0.1）のNNUEを、現行masterのネット（以前の教師データで学習率を一定にして学んだネット）の代わりにエンジンへ埋め込んでよいかを、短時間の時間制御のGSPRTで選別する。
+[NNUE学習器の学習率スケジュール](../plans/archived/nnue-lr-schedule.md)で選んだcosine annealing（総長3エポック、下限0.1）のNNUEを、現行masterのネット（以前の教師データで学習率を一定にして学んだネット）の代わりにエンジンへ埋め込んでよいかを、短時間の時間制御のGSPRTで選別する。
 学習率スケジュール計画の段階ゲート（cosineのネット対一定1倍のネット、[STC](nnue-lr-schedule-cosine-stc.md)）は、学習率の効果だけを測るものであり、現行のネットとの比較を含まなかった。
 
 ## コマンドライン
