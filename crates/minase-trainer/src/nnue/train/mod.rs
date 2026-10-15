@@ -219,7 +219,10 @@ impl Session {
         {
             return Err(Error::Invalid("MNSD rule set differs from baseline MNPT").into());
         }
-        let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit()?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit)?;
+        let teacher_cp_per_logit = calibration.target_values();
         let observations = Observations::compute(&dataset, args.feature_set)?;
         let model = Model::initialize(
             Shape::new(args.feature_set, args.width, base.cp_per_logit)?,
@@ -234,7 +237,7 @@ impl Session {
             workers,
             &dataset,
             &observations,
-            &teacher_cp_per_logit,
+            &calibration,
             &model,
         )?;
         let mut checkpoint = Checkpoint {

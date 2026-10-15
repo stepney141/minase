@@ -59,12 +59,15 @@ impl Session {
         let counts = feature_observations(&dataset)?;
         let mask: Vec<_> = counts.iter().map(|&n| n > 0).collect();
         let model = Model::initialize(mask, base.cp_per_logit(), args.seed)?;
-        let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit()?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit())?;
+        let teacher_cp_per_logit = calibration.target_values();
         let mut config = configuration(
             &args,
             workers,
             &dataset,
-            &teacher_cp_per_logit,
+            &calibration,
             base.cp_per_logit(),
             &counts,
         )?;

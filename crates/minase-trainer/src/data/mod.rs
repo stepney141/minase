@@ -9,20 +9,23 @@
 //! 検証集合は対局単位で約5%（20分の1）を固定し、同じ対局の局面を訓練と検証に分けない。
 //! 分割の規則は[`Dataset::open`]にある。
 
+mod calibration;
 mod error;
 mod mnsd;
 mod sample;
 mod shuffle;
 mod teacher;
 
+pub(crate) use calibration::TeacherCalibration;
+pub use calibration::{CalibrateArgs, TeacherCpPerLogitSource, calibrate};
 pub use error::Error;
 pub use mnsd::{Dataset, TeacherClass};
 pub(crate) use mnsd::{GameKey, outcome_code};
 pub use sample::{Outcome, Sample};
 pub use shuffle::{epoch_permutation, hash64, is_validation};
 pub use teacher::{
-    Lookahead, build_targets_from_arrays, compute_lookahead, estimate_cp_per_logit, parse_lambda,
-    validate_lambda,
+    CpPerLogitEstimate, Lookahead, build_targets_from_arrays, compute_lookahead,
+    estimate_cp_per_logit, parse_lambda, validate_lambda,
 };
 
 /// 共有データの読み込み、検証または教師値の構築結果。

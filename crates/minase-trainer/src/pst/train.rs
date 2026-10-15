@@ -100,14 +100,11 @@ impl Session {
         {
             return Err(Error::Invalid("MNSD rule set differs from initial MNPT"));
         }
-        let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit()?;
-        let mut config = configuration(
-            &args,
-            workers,
-            &dataset,
-            &teacher_cp_per_logit,
-            base.cp_per_logit,
-        )?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit)?;
+        let teacher_cp_per_logit = calibration.target_values();
+        let mut config = configuration(&args, workers, &dataset, &calibration, base.cp_per_logit)?;
         let mut checkpoint = Checkpoint {
             optimizer: Adam::new(args.lr)?,
             model,

@@ -246,7 +246,7 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
     assert_eq!(dataset.training_indices(), [0, 2, 4]);
     assert_eq!(dataset.validation_indices(), [1, 3, 5]);
     assert_eq!(dataset.teacher_classes().len(), 3);
-    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[2].is_nan());
+    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[2].is_none());
     // 実戦入力は内容が同一の別ファイルも受理し、分類を共有する。
     let copy = fixture.0.join("copy.bin");
     fs::copy(&paths[2], &copy).unwrap();
@@ -335,7 +335,11 @@ fn teacher_cp_per_logit_is_unchanged_by_positive_lambda_and_absent_for_zero_lamb
         .unwrap()
         .with_lambda(mix)
         .unwrap();
-        estimates.push(dataset.estimate_teacher_cp_per_logit().unwrap()[0]);
+        estimates.push(
+            dataset.estimate_teacher_cp_per_logit().unwrap()[0]
+                .unwrap()
+                .value,
+        );
     }
     assert!((estimates[0] - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
     assert!(
@@ -348,7 +352,7 @@ fn teacher_cp_per_logit_is_unchanged_by_positive_lambda_and_absent_for_zero_lamb
         .unwrap()
         .with_lambda(0.0)
         .unwrap();
-    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[0].is_nan());
+    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[0].is_none());
 }
 
 #[test]
@@ -463,9 +467,9 @@ fn teacher_classes_use_header_keys_and_cp_per_logit_uses_only_training() {
     assert_eq!(dataset.validation_indices(), [1]);
     let dataset = dataset.with_lambda(0.75).unwrap();
     let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
-    assert!((teacher_cp_per_logit[0] - 50.0).abs() < 1e-8);
-    assert!((teacher_cp_per_logit[1] - 4000.0).abs() < 1e-8);
-    assert!((teacher_cp_per_logit[2] - 4000.0).abs() < 1e-8);
+    assert!((teacher_cp_per_logit[0].unwrap().value - 50.0).abs() < 1e-8);
+    assert!((teacher_cp_per_logit[1].unwrap().value - 4000.0).abs() < 1e-8);
+    assert!((teacher_cp_per_logit[2].unwrap().value - 4000.0).abs() < 1e-8);
 
     let future = Dataset::open(
         &paths,
@@ -1130,11 +1134,11 @@ fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positi
         assert_eq!(
             serial_teacher_cp_per_logit
                 .iter()
-                .map(|cp_per_logit| cp_per_logit.to_bits())
+                .map(|estimate| estimate.map(|value| (value.value.to_bits(), value.at_search_bound)))
                 .collect::<Vec<_>>(),
             parallel_teacher_cp_per_logit
                 .iter()
-                .map(|cp_per_logit| cp_per_logit.to_bits())
+                .map(|estimate| estimate.map(|value| (value.value.to_bits(), value.at_search_bound)))
                 .collect::<Vec<_>>()
         );
         for index in 0..serial.record_count() {
@@ -1151,35 +1155,43 @@ fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positi
                 parallel.teacher_class(index).unwrap()
             );
         }
-        let targets = |dataset: &Dataset, teacher_cp_per_logit: &[f64]| {
-            let indices = 0..dataset.record_count();
-            let scores: Vec<_> = indices
-                .clone()
-                .map(|i| dataset.teacher_score(i).unwrap())
-                .collect();
-            let classes: Vec<_> = indices
-                .clone()
-                .map(|i| dataset.teacher_class(i).unwrap())
-                .collect();
-            let outcomes: Vec<_> = indices
-                .map(|i| match dataset.record(i).unwrap().outcome() {
-                    Outcome::Loss => 0,
-                    Outcome::Draw => 1,
-                    Outcome::Win => 2,
-                })
-                .collect();
-            build_targets_from_arrays(
-                &scores,
-                &classes,
-                &outcomes,
-                teacher_cp_per_logit,
-                dataset.teacher_lambdas(),
-            )
-            .unwrap()
-            .into_iter()
-            .map(f32::to_bits)
-            .collect::<Vec<_>>()
-        };
+        let targets =
+            |dataset: &Dataset, estimates: &[Option<minase_trainer::data::CpPerLogitEstimate>]| {
+                let teacher_cp_per_logit: Vec<_> = estimates
+                    .iter()
+                    .map(|estimate| match estimate {
+                        Some(estimate) => estimate.value,
+                        None => f64::NAN,
+                    })
+                    .collect();
+                let indices = 0..dataset.record_count();
+                let scores: Vec<_> = indices
+                    .clone()
+                    .map(|i| dataset.teacher_score(i).unwrap())
+                    .collect();
+                let classes: Vec<_> = indices
+                    .clone()
+                    .map(|i| dataset.teacher_class(i).unwrap())
+                    .collect();
+                let outcomes: Vec<_> = indices
+                    .map(|i| match dataset.record(i).unwrap().outcome() {
+                        Outcome::Loss => 0,
+                        Outcome::Draw => 1,
+                        Outcome::Win => 2,
+                    })
+                    .collect();
+                build_targets_from_arrays(
+                    &scores,
+                    &classes,
+                    &outcomes,
+                    &teacher_cp_per_logit,
+                    dataset.teacher_lambdas(),
+                )
+                .unwrap()
+                .into_iter()
+                .map(f32::to_bits)
+                .collect::<Vec<_>>()
+            };
         assert_eq!(
             targets(&serial, &serial_teacher_cp_per_logit),
             targets(&parallel, &parallel_teacher_cp_per_logit)

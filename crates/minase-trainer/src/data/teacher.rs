@@ -14,6 +14,9 @@ pub fn validate_lambda(value: f64) -> Result<()> {
 /// 分類ごとの教師の勝率尺度（1ロジットあたりのcp）を`teacher_cp_per_logit`で指定する。
 /// `λ / (1 + exp(-score / teacher_cp_per_logit)) + (1 - λ) * result / 2`をf64で
 /// 計算してf32へ丸める。λが0の分類では教師の勝率尺度と探索値を参照しない。
+/// 尺度補正係数を`f = cp_per_logit / teacher_cp_per_logit`とすると、実数では
+/// `σ(score / teacher_cp_per_logit) = σ((score × f) / cp_per_logit)`である。
+/// 丸めを保つため補正係数は記録だけに使い、教師値の計算式には掛けない。
 pub fn build_targets_from_arrays(
     scores: &[f32],
     classes: &[u32],
@@ -149,13 +152,16 @@ fn binary_cross_entropy_sum(scores: &[f64], results: &[u8], cp_per_logit: f64) -
 ///
 /// `[50, 4000]`で、探索値から終局結果を予測する二値交差エントロピーを最小化する。
 /// `results`は手番側の負け0、引き分け1、勝ち2。計算はすべてf64で行う。
-pub fn estimate_cp_per_logit(scores: &[f64], results: &[u8]) -> Result<f64> {
+pub fn estimate_cp_per_logit(scores: &[f64], results: &[u8]) -> Result<CpPerLogitEstimate> {
     if scores.is_empty()
         || scores.len() != results.len()
         || scores.iter().any(|value| !value.is_finite())
         || results.iter().any(|&value| value > 2)
     {
         return Err(Error::TeacherSamples);
+    }
+    if scores.iter().all(|&value| value == 0.0) {
+        return Err(Error::UndeterminedScale);
     }
     let (mut lower, mut upper) = (50.0, 4000.0);
     let ratio = (5.0_f64.sqrt() - 1.0) / 2.0;
@@ -178,7 +184,19 @@ pub fn estimate_cp_per_logit(scores: &[f64], results: &[u8]) -> Result<f64> {
             right_loss = binary_cross_entropy_sum(scores, results, right);
         }
     }
-    Ok((lower + upper) / 2.0)
+    Ok(CpPerLogitEstimate {
+        value: (lower + upper) / 2.0,
+        at_search_bound: lower == 50.0 || upper == 4000.0,
+    })
+}
+
+/// 黄金分割探索で推定した教師の勝率尺度と探索範囲の端への到達状況。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CpPerLogitEstimate {
+    /// 教師の勝率尺度（1ロジットあたりのcp）。
+    pub value: f64,
+    /// 64回の反復で下限50または上限4000が一度も動かなかった場合に真となる。
+    pub at_search_bound: bool,
 }
 
 /// コマンドラインのλを有限な0以上1以下に制限する。
@@ -375,17 +393,42 @@ mod tests {
     fn teacher_cp_per_logit_matches_python_reference() {
         // 同じ標本の二値交差エントロピーを独立に最小化した参照値である。
         // 最初の例は解析解1000/ln(3)も持ち、平坦な最小点での丸めだけを許す。
-        let actual = estimate_cp_per_logit(&[1000.0; 4], &[2, 2, 2, 0]).unwrap();
+        let estimate = estimate_cp_per_logit(&[1000.0; 4], &[2, 2, 2, 0]).unwrap();
+        assert!(!estimate.at_search_bound);
+        let actual = estimate.value;
         assert!((actual - 910.2392016071356).abs() < 1e-4, "{actual}");
         assert!((actual - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
         assert!(
-            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[0, 2]).unwrap() - 50.00000000008325).abs()
+            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[0, 2])
+                .unwrap()
+                .value
+                - 50.00000000008325)
+                .abs()
                 < 1e-10
         );
         assert!(
-            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[2, 0]).unwrap() - 3999.999999999917).abs()
+            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[2, 0])
+                .unwrap()
+                .value
+                - 3999.999999999917)
+                .abs()
                 < 1e-10
         );
+    }
+
+    #[test]
+    fn teacher_cp_per_logit_reports_search_bounds_and_undetermined_scale() {
+        for results in [[0, 2], [2, 0]] {
+            assert!(
+                estimate_cp_per_logit(&[-1000.0, 1000.0], &results)
+                    .unwrap()
+                    .at_search_bound
+            );
+        }
+        assert!(matches!(
+            estimate_cp_per_logit(&[0.0, -0.0], &[0, 2]),
+            Err(Error::UndeterminedScale)
+        ));
     }
 
     #[test]
@@ -394,6 +437,7 @@ mod tests {
             (vec![], vec![]),
             (vec![1.0], vec![]),
             (vec![f64::INFINITY], vec![1]),
+            (vec![f64::NAN], vec![1]),
             (vec![0.0], vec![3]),
         ] {
             assert!(matches!(

@@ -1,6 +1,6 @@
 //! PST比較の全検証集合の損失と標本誤差を集計する。
 //! 教師分類と補間係数の帯ごとの二値交差エントロピー、標本の平均絶対誤差と相関、対局ごとの平均損失を求める。
-//! 各出力欄の定義は、この集計を報告へ載せる[`teacher_cp_per_logit`]、[`validation`]、[`OutcomeMetrics`]、[`ErrorSummary`]と、`pst_compare.rs`の`Report`および`Band`のdocコメントにある。
+//! 各出力欄の定義は、この集計を報告へ載せる[`validation`]、[`OutcomeMetrics`]、[`ErrorSummary`]と、`pst_compare.rs`の`Report`および`Band`のdocコメントにある。
 
 use super::{
     Result,
@@ -8,40 +8,11 @@ use super::{
     pst_sample::{BANDS, band},
 };
 use crate::{
-    data::{Dataset, GameKey, estimate_cp_per_logit, outcome_code},
+    data::{Dataset, GameKey, outcome_code},
     nn::bce_with_logits,
 };
 use serde::Serialize;
 use std::collections::HashMap;
-
-/// 教師分類ごとの教師の勝率尺度（1ロジットあたりのcp）を訓練集合だけで推定する。
-/// 呼び手は[`Dataset::diagnostic_teacher_scores`]でf64として再計算した探索値を渡し、先読み指定時は先読み値を使う。
-/// 終局結果だけを目標に[`estimate_cp_per_logit`]で推定し、実効λが0の分類はNaNを返すため、報告では`null`になる。
-/// 訓練集合が空なら失敗し、λが0でない分類に訓練局面がなければ[`estimate_cp_per_logit`]が空標本を拒否する。
-pub(super) fn teacher_cp_per_logit(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> {
-    if dataset.training_indices().is_empty() {
-        return Err("teacher calibration requires training records".into());
-    }
-    dataset
-        .teacher_lambdas()
-        .iter()
-        .enumerate()
-        .map(|(class, &mix)| {
-            if mix == 0.0 {
-                return Ok(f64::NAN);
-            }
-            let mut selected = Vec::new();
-            let mut outcomes = Vec::new();
-            for &index in dataset.training_indices() {
-                if dataset.teacher_class(index)? as usize == class {
-                    selected.push(scores[index as usize]);
-                    outcomes.push(outcome_code(dataset.record(index)?.outcome()));
-                }
-            }
-            Ok(estimate_cp_per_logit(&selected, &outcomes)?)
-        })
-        .collect()
-}
 
 /// `report.json`の`outcome_metrics.base`と`.candidate`に保存する終局結果との比較。
 /// 教師の混合比に依存せず、全検証局面の評価値をそのモデルの勝率尺度で確率へ変換する。

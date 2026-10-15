@@ -214,7 +214,7 @@ pub(super) struct Configuration {
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
 /// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
-/// `preprocessing`は`teacher_classes`、`teacher_cp_per_logit`、`teacher_lambdas`、`teacher_cp_per_logit_source = "training"`、
+/// `preprocessing`は`teacher_classes`、`teacher_cp_per_logit`、`teacher_lambdas`、`teacher_cp_per_logit_source`、
 /// `cp_per_logit`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師の勝率尺度（1ロジットあたりのcp）は`null`である。
 /// `training_indices_sha256`と`validation_indices_sha256`は通算番号をリトルエンディアンu64列にしたSHA-256である。
@@ -227,12 +227,15 @@ pub(super) struct Configuration {
 /// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
 /// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`、`validation_interval`である。
 /// `validation_interval`は学習の軌跡を変えない診断用の予算なので、再開時に変更できる。
+/// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
+/// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
+/// 両配列とも分類順で、λが0の分類は`null`とする。引数の`teacher_cp_per_logit`は`settings`から除く。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
     observations: &Observations,
-    teacher_cp_per_logit: &[f64],
+    calibration: &crate::data::TeacherCalibration,
     model: &Model,
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
@@ -246,6 +249,7 @@ pub(super) fn configuration(
         "output_dir",
         "resume",
         "data",
+        "teacher_cp_per_logit",
         "init_pst",
         "base",
         "epochs",
@@ -278,9 +282,11 @@ pub(super) fn configuration(
         json!({"observed": observed, "unobserved": rows.len()-observed})
     };
     let preprocessing = json!({
-        "teacher_classes": dataset.teacher_classes(), "teacher_cp_per_logit": teacher_cp_per_logit,
+        "teacher_classes": dataset.teacher_classes(), "teacher_cp_per_logit": calibration.teacher_cp_per_logit,
         "teacher_lambdas": dataset.teacher_lambdas(),
-        "teacher_cp_per_logit_source": "training", "cp_per_logit": model.shape().cp_per_logit(),
+        "teacher_cp_per_logit_source": calibration.source,
+        "teacher_score_multiplier": calibration.teacher_score_multiplier,
+        "teacher_cp_per_logit_at_search_bound": calibration.at_search_bound, "cp_per_logit": model.shape().cp_per_logit(),
         "training_positions": dataset.training_indices().len(),
         "validation_positions": dataset.validation_indices().len(),
         "training_indices_sha256": hash_u64(dataset.training_indices()),

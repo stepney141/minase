@@ -33,6 +33,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "0.75",
         "--data",
@@ -734,7 +736,15 @@ fn one_epoch_wires_permutation_tail_batches_and_mirror_bits_to_updates() {
         .collect();
     let mut model = Model::initialize(mask, base.cp_per_logit(), args.seed).unwrap();
     let mut optimizer = Adam::new(args.lr, args.weight_decay).unwrap();
-    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    let teacher_cp_per_logit: Vec<_> = dataset
+        .estimate_teacher_cp_per_logit()
+        .unwrap()
+        .into_iter()
+        .map(|value| match value {
+            Some(value) => value.value,
+            None => f64::NAN,
+        })
+        .collect();
     let order = minase_trainer::data::epoch_permutation(dataset.training_indices(), args.seed, 1);
     assert_eq!(order.len() % args.batch, 15);
     for indices in order.chunks(args.batch) {

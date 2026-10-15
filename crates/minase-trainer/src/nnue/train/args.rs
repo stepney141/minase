@@ -35,6 +35,9 @@ pub struct Args {
     /// MNSDファイルを、全体のレコード順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
+    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
+    #[arg(long, value_name = "calibrate|FILE")]
+    pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
     /// 浮動小数点の初期駒配置評価表（PST）を格納した無圧縮NPZファイルを指定する。
     #[arg(long)]
     pub init_pst: PathBuf,

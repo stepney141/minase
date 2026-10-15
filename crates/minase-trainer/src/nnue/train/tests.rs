@@ -25,6 +25,7 @@ use std::{
 
 fn args() -> Args {
     Args {
+        teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource::Calibrate,
         device: crate::nnue::options::DeviceKind::Cuda,
         training: crate::nnue::options::TrainingOptions::new(1.0),
         lr_schedule: LrSchedule::default(),
@@ -322,7 +323,10 @@ fn resume_config_allows_budget_and_worker_changes() {
     .with_lambda(args.training.lambda)
     .unwrap();
     let (model, observations) = initialized(&args, &dataset);
-    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    let teacher_cp_per_logit = args
+        .teacher_cp_per_logit
+        .resolve(&dataset, model.shape().cp_per_logit())
+        .unwrap();
     let configuration = record::configuration(
         &args,
         2,
@@ -435,7 +439,10 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     .with_lambda(args.training.lambda)
     .unwrap();
     let (model, observations) = initialized(&args, &dataset);
-    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    let teacher_cp_per_logit = args
+        .teacher_cp_per_logit
+        .resolve(&dataset, model.shape().cp_per_logit())
+        .unwrap();
     let configuration = record::configuration(
         &args,
         2,
@@ -519,7 +526,10 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             .with_lambda(args.training.lambda)
             .unwrap();
             let (model, observations) = initialized(&args, &dataset);
-            let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+            let teacher_cp_per_logit = args
+                .teacher_cp_per_logit
+                .resolve(&dataset, model.shape().cp_per_logit())
+                .unwrap();
             let configuration = record::configuration(
                 &args,
                 2,
@@ -1342,6 +1352,8 @@ fn parse_training_args(extra: &[&str]) -> std::result::Result<Args, clap::Error>
             "P",
             "--width",
             "8",
+            "--teacher-cp-per-logit",
+            "calibrate",
             "--lambda",
             "1",
             "--data",

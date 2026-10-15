@@ -15,8 +15,8 @@ use serde::Serialize;
 use std::io::BufReader;
 
 use super::{
-    Error, Lookahead, Result, compute_lookahead, estimate_cp_per_logit, is_validation,
-    validate_lambda,
+    CpPerLogitEstimate, Error, Lookahead, Result, compute_lookahead, estimate_cp_per_logit,
+    is_validation, validate_lambda,
 };
 
 /// 教師の勝率尺度（1ロジットあたりのcp）を共有する分類。
@@ -401,19 +401,39 @@ impl Dataset {
     }
 
     /// 分類ごとに訓練集合だけを使って教師の勝率尺度を推定する。
-    /// 保持したf32の教師探索値をf64へ広げて校正し、標本は1分類ずつ確保する。
-    /// λが0の分類は探索値を使わないのでNaNを返し、JSONの記録ではnullになる。
-    /// 先読みを指定した場合は先読み値を使い、校正、学習、検証で同じ探索値を参照する。
+    /// 保持したf32の教師探索値をf64へ広げて較正し、標本は1分類ずつ確保する。
+    /// λが0の分類は探索値を使わないので`None`を返す。
+    /// 先読みを指定した場合は先読み値を使い、較正、学習、検証で同じ探索値を参照する。
     /// 推定の目標は訓練集合の終局結果だけであり、混合後の教師確率は使わない。
     /// λが0でない分類に訓練局面が1つもなければ[`Error::EmptyTeacherClass`]を返す。
-    pub fn estimate_teacher_cp_per_logit(&self) -> Result<Vec<f64>> {
+    pub fn estimate_teacher_cp_per_logit(&self) -> Result<Vec<Option<CpPerLogitEstimate>>> {
+        self.estimate_teacher_scales(|file, local, _| f64::from(file.scores[local]))
+    }
+
+    /// 外部で計算したf64の探索値で、分類ごとの訓練集合を較正する。
+    /// `scores`は全適格局面の通し番号順で、長さは[`Self::record_count`]と一致させる。
+    /// 分類と標本の順序、λが0の分類、空の分類の扱いは[`Self::estimate_teacher_cp_per_logit`]と同じ。
+    pub fn estimate_teacher_cp_per_logit_with_scores(
+        &self,
+        scores: &[f64],
+    ) -> Result<Vec<Option<CpPerLogitEstimate>>> {
+        if scores.len() as u64 != self.record_count() {
+            return Err(Error::TeacherSamples);
+        }
+        self.estimate_teacher_scales(|_, _, index| scores[index as usize])
+    }
+
+    fn estimate_teacher_scales(
+        &self,
+        score: impl Fn(&LoadedFile, usize, u64) -> f64,
+    ) -> Result<Vec<Option<CpPerLogitEstimate>>> {
         if self.lambdas.len() != self.classes.len() {
             return Err(Error::TeacherLambda);
         }
         let mut values = Vec::with_capacity(self.classes.len());
         for class in 0..self.classes.len() {
             if self.lambdas[class] == 0.0 {
-                values.push(f64::NAN);
+                values.push(None);
                 continue;
             }
             let mut scores = Vec::new();
@@ -430,14 +450,14 @@ impl Dataset {
                 let last = self.training_indices.partition_point(|&index| index < end);
                 for &index in &self.training_indices[first..last] {
                     let local = (index - start) as usize;
-                    scores.push(f64::from(file.scores[local]));
+                    scores.push(score(file, local, index));
                     outcomes.push(outcome_code(file.metadata[local].outcome));
                 }
             }
             if scores.is_empty() {
                 return Err(Error::EmptyTeacherClass { class });
             }
-            values.push(estimate_cp_per_logit(&scores, &outcomes)?);
+            values.push(Some(estimate_cp_per_logit(&scores, &outcomes)?));
         }
         Ok(values)
     }

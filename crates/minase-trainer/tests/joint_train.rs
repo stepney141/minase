@@ -36,6 +36,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "0.75",
         "--data",

@@ -16,6 +16,9 @@ pub struct Args {
     /// MNSDを、学習中に変更しない入力として指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
+    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
+    #[arg(long, value_name = "calibrate|FILE")]
+    pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
     /// 初期PST、探索用駒価値、勝率尺度（1ロジットあたりのcp）、規則名と次元32のFMを持つMNPT版3。
     #[arg(long)]
     pub base: PathBuf,

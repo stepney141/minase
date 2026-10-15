@@ -66,12 +66,15 @@ impl Session {
         let (model, mask_mismatches) =
             initialize(&base, &args.pst_init, &args.fm_init, &reference, mask)?;
         let initial_model = model.clone();
-        let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit()?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit())?;
+        let teacher_cp_per_logit = calibration.target_values();
         let mut config = configuration(
             &args,
             workers,
             &dataset,
-            &teacher_cp_per_logit,
+            &calibration,
             base.cp_per_logit(),
             (&counts, mask_mismatches),
         )?;

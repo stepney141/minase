@@ -15,6 +15,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 教師データの勝率尺度を較正する。
+    #[command(subcommand)]
+    Data(DataCommand),
     /// NNUEの学習と検証を行う。
     #[command(subcommand)]
     Nnue(NnueCommand),
@@ -30,6 +33,12 @@ enum Command {
     /// 評価分布、駒除去、合法手の評価差を診断する。
     #[command(subcommand)]
     Diag(minase_trainer::diagnostics::Command),
+}
+
+#[derive(Subcommand)]
+enum DataCommand {
+    /// 訓練集合から分類ごとに教師の勝率尺度を推定し、JSONへ保存する。
+    Calibrate(minase_trainer::data::CalibrateArgs),
 }
 
 #[derive(Subcommand)]
@@ -71,6 +80,7 @@ enum NnueCommand {
 
 fn main() -> std::process::ExitCode {
     let result = match Cli::parse().command {
+        Command::Data(DataCommand::Calibrate(args)) => minase_trainer::data::calibrate(args),
         Command::Joint(JointCommand::Train(args)) => minase_trainer::joint::train(args)
             .map(|summary| {
                 println!(

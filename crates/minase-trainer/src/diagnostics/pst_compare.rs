@@ -18,11 +18,14 @@ use serde::Serialize;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 /// 教師分類・位相帯の損失、整数一致、量子化と局面操作を診断する引数。
-#[derive(Args)]
+#[derive(Args, Serialize)]
 pub struct PstCompareArgs {
     /// MNSD。実行中は元ファイルを変更・切り詰めしないこと。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
+    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
+    #[arg(long, value_name = "calibrate|FILE")]
+    pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
     /// 自己対局の教師の混合比を有限な0以上1以下で指定する。実戦対局には0を適用する。
     #[arg(long, value_parser = crate::data::parse_lambda)]
     pub lambda: f64,
@@ -164,6 +167,8 @@ struct Inputs {
 /// 教師分類の番号は欄名で`generation`とも呼ぶ。
 #[derive(Serialize)]
 struct Report {
+    /// 実行時の引数。尺度の指定も保存する。
+    arguments: serde_json::Value,
     /// 入力順のMNSDと比較する重みの識別情報。
     #[serde(skip_serializing_if = "Option::is_none")]
     inputs: Option<Inputs>,
@@ -187,6 +192,13 @@ struct Report {
     cp_per_logit: Option<Models<f64>>,
     /// 分類順の教師の勝率尺度。λが0の分類は`null`。
     teacher_cp_per_logit: Vec<Option<f64>>,
+    /// 候補の勝率尺度を教師の勝率尺度で割った分類順の係数。λが0ならnull。
+    teacher_score_multiplier: Vec<Option<f64>>,
+    /// 推定が探索範囲の端へ到達したかの分類順の配列。λが0ならnull。
+    teacher_cp_per_logit_at_search_bound: Vec<Option<bool>>,
+    /// calibrate、または正規化した較正ファイルのパスと内容。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    teacher_cp_per_logit_source: Option<serde_json::Value>,
     /// 分類順の教師ネットの検査和。各分類の`network_checksum`と同じ小文字16進文字列。
     generation_checksums: Vec<String>,
     /// 基準MNPTの駒状態0〜46の探索用駒価値47個。成功時は候補との全件一致を検査済み。
@@ -260,6 +272,7 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     }
     fs::create_dir(&args.output_dir)?;
     let mut report = Report {
+        arguments: serde_json::to_value(args)?,
         inputs: None,
         sample_size: args.sample_size,
         seed: args.seed,
@@ -270,6 +283,9 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
         teacher_comparison_excluded: 0,
         cp_per_logit: None,
         teacher_cp_per_logit: Vec::new(),
+        teacher_score_multiplier: Vec::new(),
+        teacher_cp_per_logit_at_search_bound: Vec::new(),
+        teacher_cp_per_logit_source: None,
         generation_checksums: Vec::new(),
         piece_values: Vec::new(),
         bands: Vec::new(),
@@ -286,11 +302,8 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     if let Err(error) = &result {
         report.error = Some(error.to_string());
     }
-    super::save(
-        &args.output_dir.join("report.json"),
-        &report,
-        report.error.as_deref(),
-    )?;
+    super::save(&args.output_dir.join("report.json"), &report, None)?;
+    // 報告には表示文を保存し、呼び手には失敗の分類を持つ元のエラーを返す。
     result
 }
 
@@ -352,13 +365,18 @@ fn diagnose(
         .iter()
         .map(|class| class.network_checksum.clone())
         .collect();
-    eprintln!("recomputing f64 teacher scores and calibrating teacher cp_per_logit");
+    eprintln!("recomputing f64 teacher scores and resolving teacher cp_per_logit");
     let teacher_scores = dataset.diagnostic_teacher_scores()?;
-    let teacher_cp_per_logit = pst_statistics::teacher_cp_per_logit(&dataset, &teacher_scores)?;
-    report.teacher_cp_per_logit = teacher_cp_per_logit
-        .iter()
-        .map(|&cp_per_logit| cp_per_logit.is_finite().then_some(cp_per_logit))
-        .collect();
+    let calibration = args.teacher_cp_per_logit.resolve_with_scores(
+        &dataset,
+        &teacher_scores,
+        models.candidate.engine.cp_per_logit(),
+    )?;
+    let teacher_cp_per_logit = calibration.target_values();
+    report.teacher_cp_per_logit = calibration.teacher_cp_per_logit;
+    report.teacher_score_multiplier = calibration.teacher_score_multiplier;
+    report.teacher_cp_per_logit_at_search_bound = calibration.at_search_bound;
+    report.teacher_cp_per_logit_source = Some(calibration.source);
     eprintln!("selecting phase-band samples and computing validation statistics");
     let sampling = pst_sample::select(&dataset, args.sample_size, args.seed)?;
     let validation =
