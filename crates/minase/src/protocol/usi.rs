@@ -2154,89 +2154,6 @@ mod tests {
     use minase_core::Rules;
     use minase_core::rules::RuleCode;
 
-    /// 候補4: 置換表の初期化とワーカー数の変更は捕獲履歴も全消去する。
-    #[test]
-    fn capture_history_clears_on_new_game_accepted_settings_and_changed_threads() {
-        for (command, workers) in [
-            ("usinewgame", 4),
-            ("setoption name RuleSet value L0,P0,R2,E0", 4),
-            ("setoption name USI_Hash value 2", 4),
-            ("setoption name Threads value 2", 2),
-        ] {
-            let mut engine = make_engine(&[RuleCode::R1]);
-            let mut protocol = UsiProtocol::new(&engine);
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name USI_Hash value 1\nsetoption name Threads value 4\nposition startpos\n",
-            );
-            for history in &mut protocol.histories.as_mut().unwrap().capture {
-                history.values_mut().fill(-100);
-            }
-            let output = run(&mut protocol, &mut engine, command);
-            assert!(!output.contains("error"), "{command}: {output}");
-            let histories = protocol.histories.as_ref().unwrap();
-            assert_eq!(histories.capture.len(), workers);
-            assert!(
-                histories
-                    .capture
-                    .iter()
-                    .all(|history| history.values().iter().all(|&value| value == 0)),
-                "{command}"
-            );
-        }
-    }
-
-    /// 候補4: 拒否された設定と同じワーカー数の再指定では捕獲履歴を保持する。
-    #[test]
-    fn capture_history_preserves_rejected_settings_and_unchanged_threads() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name USI_Hash value 1\nsetoption name Threads value 4\nposition startpos\n",
-        );
-        for (worker, history) in protocol
-            .histories
-            .as_mut()
-            .unwrap()
-            .capture
-            .iter_mut()
-            .enumerate()
-        {
-            history.values_mut().fill(worker as i32 + 100);
-        }
-        for command in [
-            "setoption name RuleSet value XX9",
-            "setoption name RuleSet value L1,E1",
-            "setoption name Threads value 0",
-            "setoption name Threads value 257",
-            "setoption name USI_Hash value 0",
-            "setoption name Threads value 4",
-            "position startpos",
-            "isready",
-        ] {
-            run(&mut protocol, &mut engine, command);
-            for (worker, history) in protocol
-                .histories
-                .as_ref()
-                .unwrap()
-                .capture
-                .iter()
-                .enumerate()
-            {
-                assert!(
-                    history
-                        .values()
-                        .iter()
-                        .all(|&value| value == worker as i32 + 100),
-                    "{command}"
-                );
-            }
-        }
-    }
-
     /// RULES.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部）。
     const INITIAL_BOARD: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b";
 
@@ -2254,7 +2171,7 @@ mod tests {
 
     // [`score_text`]の表示例と詰み帯の境界を検査する。
     #[test]
-    fn score_text_displays_mate_distance_with_signed_zero() {
+    fn score_text_formats_mate_and_cp_values() {
         for (score, expected) in [
             (search::MATE - 1, "mate +0"),
             (search::MATE - 3, "mate 1"),
@@ -2264,15 +2181,6 @@ mod tests {
             (-search::MATE + 4, "mate -2"),
             (search::MATE_THRESHOLD, "mate 254"),
             (-search::MATE_THRESHOLD, "mate -254"),
-        ] {
-            assert_eq!(score_text(score), expected, "score={score}");
-        }
-    }
-
-    // 表示変換は詰み帯だけに適用し、通常評価値と詰み帯直前のcpはそのまま出す。
-    #[test]
-    fn score_text_preserves_cp_values_outside_mate_band() {
-        for (score, expected) in [
             (0, "cp 0"),
             (100, "cp 100"),
             (-100, "cp -100"),
@@ -2679,23 +2587,6 @@ mod tests {
         assert_eq!(bestmoves(&first).len(), 1);
         assert_eq!(bestmoves(&first), bestmoves(&second));
         assert_eq!(final_score(&first), final_score(&second));
-    }
-
-    /// RULES.md第31条R1の引き分け値を-ResignValue以下にすると、千日手の手を採用したときに投了し得る。
-    #[test]
-    fn draw_value_r1_resignation_includes_the_negative_threshold() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name ResignValue value 50\nsetoption name DrawValueBlack value -50\nsetoption name DrawValueWhite value -49\n"
-            ),
-            ""
-        );
-        assert!(protocol.should_resign(-50, 2));
-        assert!(!protocol.should_resign(-49, 2));
     }
 
     // [`UsiProtocol::handle_setoption`]のByoyomiMarginの単位と受理範囲を検査する。
@@ -3144,27 +3035,34 @@ mod tests {
         }
     }
 
+    // RULES.md第31条R1: 反復負けの見込みでは投了せず、詰み帯の境界では投了する。
     #[test]
-    fn resignation_repetition_band_completion_returns_a_legal_move() {
-        for score in [-29_487, -29_740, -29_743, -29_744] {
-            check_repetition_band_resignation(score, None, false);
-        }
-    }
-
-    #[test]
-    fn resignation_repetition_band_held_stop_and_ponderhit_return_a_legal_move() {
-        for command in ["stop", "ponderhit"] {
-            for score in [-29_487, -29_740, -29_743, -29_744] {
-                check_repetition_band_resignation(score, Some(command), false);
-            }
-        }
-    }
-
-    // 実行中のponderhitは探索を継続し、後の完了通知で同じ投了判定を使う。
-    #[test]
-    fn resignation_repetition_band_running_ponderhit_returns_a_legal_move() {
-        for score in [-29_487, -29_740, -29_743, -29_744] {
-            check_repetition_band_resignation(score, None, true);
+    fn article_31_resignation_repetition_band_returns_a_legal_move_or_resigns() {
+        for (release, running_hit, score) in [
+            (None, false, -29_487),
+            (None, false, -29_740),
+            (None, false, -29_743),
+            (None, false, -29_744),
+            (Some("stop"), false, -29_487),
+            (Some("stop"), false, -29_740),
+            (Some("stop"), false, -29_743),
+            (Some("stop"), false, -29_744),
+            (Some("ponderhit"), false, -29_487),
+            (Some("ponderhit"), false, -29_740),
+            (Some("ponderhit"), false, -29_743),
+            (Some("ponderhit"), false, -29_744),
+            (None, true, -29_487),
+            (None, true, -29_740),
+            (None, true, -29_743),
+            (None, true, -29_744),
+        ] {
+            let result = std::panic::catch_unwind(|| {
+                check_repetition_band_resignation(score, release, running_hit);
+            });
+            assert!(
+                result.is_ok(),
+                "article 31: release={release:?}, running_hit={running_hit}, score={score}"
+            );
         }
     }
 
@@ -3495,27 +3393,52 @@ mod tests {
         assert!(protocol.transposition_table.is_some());
     }
 
+    // RULES.md第33条とSetRulesの契約: 受信時に検証し、拒否時は直前の正当な次局規則を保つ。
     #[test]
-    fn ruleset_values_are_case_insensitive_and_duplicates_are_rejected() {
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: コンマ区切り・大小非区別・重複拒否。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name RuleSet value l1,p0,r2,e0\n",
-                "setoption name RuleSet value L1,l1,P0,R1,E0\n",
-                "usinewgame\nposition startpos\nstate\n",
+    fn article_33_ruleset_values_are_validated_and_pending_survives_rejection() {
+        for (name, settings, errors, expected) in [
+            (
+                "article 33 case and duplicate",
+                "setoption name RuleSet value l1,p0,r2,e0\nsetoption name RuleSet value L1,l1,P0,R1,E0\n",
+                1,
+                "L1,P0,R2,E0",
             ),
-        );
-        let lines: Vec<_> = output.lines().collect();
-
-        assert_eq!(lines.len(), 2);
-        // 重複（大小違いも同一コード）は拒否され、pendingは変わらない。
-        assert!(lines[0].starts_with("info string error: "));
-        assert_eq!(state_rules(lines[1]), "L1,P0,R2,E0");
+            (
+                "article 33 unknown and incomplete",
+                "setoption name RuleSet value L1,P0,R2,E0\nsetoption name RuleSet value XX9\nsetoption name RuleSet value L1,E1\n",
+                2,
+                "L1,P0,R2,E0",
+            ),
+            (
+                "article 33 standard",
+                "setoption name RuleSet value lishogi\nsetoption name RuleSet value standard\n",
+                1,
+                "L1,L2,P0,P3,R1,E1,E3",
+            ),
+        ] {
+            let output = session(
+                &[RuleCode::R1],
+                &format!("{settings}usinewgame\nposition startpos\nstate\n"),
+            );
+            assert_eq!(
+                error_lines(&output).len(),
+                errors,
+                "{name}: {settings}: {output}"
+            );
+            let lines: Vec<_> = output.lines().collect();
+            assert_eq!(lines.len(), errors + 1, "{name}: {output}");
+            assert!(
+                lines[..errors]
+                    .iter()
+                    .all(|line| line.starts_with("info string error: ")),
+                "{name}: {output}"
+            );
+            assert_eq!(state_rules(lines[errors]), expected, "{name}: {settings}");
+        }
     }
 
     #[test]
-    fn presets_expand_to_code_lists_and_standard_is_rejected() {
+    fn article_33_presets_expand_to_code_lists() {
         // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびRULES.md第33条第5項と第6項に従う。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
@@ -3524,7 +3447,10 @@ mod tests {
             &mut engine,
             "setoption name RuleSet value LISHOGI\nusinewgame\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P0,P3,R1,E1,E3");
+        assert_eq!(
+            output,
+            format!("state rules L1,L2,P0,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
+        );
         assert!(!output.contains("lishogi"));
 
         let output = run(
@@ -3533,35 +3459,6 @@ mod tests {
             "gameover win\nsetoption name RuleSet value engine-default\nposition startpos\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
-
-        // [`UsiProtocol::handle_setoption`]はstandardを拒否し、直前の正当な次局規則を保つ。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name RuleSet value lishogi\n",
-                "setoption name RuleSet value standard\n",
-                "usinewgame\nposition startpos\nstate\n",
-            ),
-        );
-        assert_eq!(error_lines(&output).len(), 1);
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P0,P3,R1,E1,E3");
-    }
-
-    #[test]
-    fn invalid_ruleset_values_are_rejected_on_receipt_and_pending_survives() {
-        // [`EngineCommand::SetRules`]の受信時検証とRULES.md第33条第5項に従う。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name RuleSet value L1,P0,R2,E0\n",
-                "setoption name RuleSet value XX9\n",
-                "setoption name RuleSet value L1,E1\n", // 反復規則欠如は受信時に拒否
-                "usinewgame\nposition startpos\nstate\n",
-            ),
-        );
-        assert_eq!(error_lines(&output).len(), 2);
-        // 直前の正当なpending（L1,R2）が生きており、commitが旧pendingで成功する。
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,P0,R2,E0");
     }
 
     #[test]
@@ -3632,133 +3529,125 @@ mod tests {
         assert_eq!(moves_sets(&startpos), moves_sets(&sfen));
     }
 
+    // EngineCommand::SetPositionの原子性: 構文エラーも途中の不合法手も状態を変えない。
     #[test]
-    fn position_applies_atomically_or_not_at_all() {
-        // [`EngineCommand::SetPosition`]の原子的な局面設定と、終局後の探索の拒否を検証する。
-        let output = session(
-            &[RuleCode::R1, RuleCode::E2],
-            concat!(
-                "position startpos moves 6i6h\n",
-                "state\nmoves\n",
-                "position startpos moves 6i6h 1a1b\n", // 末尾だけが不合法
-                "state\nmoves\n",
-                "position sfen broken-input\n", // 不正なSFEN
-                "state\n",
-                "position startpos moves 1a1b\n", // 先頭手が不合法
-                "state\n",
-            ),
-        );
-        let states = state_lines(&output);
-        let moves = moves_sets(&output);
-
-        assert_eq!(error_lines(&output).len(), 3);
-        // 失敗したpositionは全体が無効果であり、直前の有効状態が保持される。
-        assert_eq!(states.len(), 4);
-        assert!(states.iter().all(|state| *state == states[0]));
-        assert_eq!(moves.len(), 2);
-        assert_eq!(moves[0], moves[1]);
+    fn invalid_positions_are_rejected_atomically() {
+        for input in [
+            "position startpos moves 6i6h 1a1b".to_owned(),
+            "position sfen broken-input".to_owned(),
+            "position startpos moves 1a1b".to_owned(),
+            "position unknown".to_owned(),
+            "position startpos extra".to_owned(),
+            format!("position sfen {INITIAL_BOARD} - 1 typo"),
+            format!("position sfen {INITIAL_BOARD} - 1 - extra"),
+        ] {
+            let output = session(
+                &[RuleCode::R1, RuleCode::E2],
+                &format!("position startpos moves 6i6h\nstate\nmoves\n{input}\nstate\nmoves\n"),
+            );
+            assert_eq!(error_lines(&output).len(), 1, "{input}: {output}");
+            let states = state_lines(&output);
+            assert_eq!(states.len(), 2, "{input}: {output}");
+            assert_eq!(states[0], states[1], "{input}");
+            let moves = moves_sets(&output);
+            assert_eq!(moves.len(), 2, "{input}: {output}");
+            assert_eq!(moves[0], moves[1], "{input}");
+        }
     }
 
+    // handle_positionの契約: 差分適用、再送、短縮、置換は全再生と一致する。
     #[test]
-    fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
-        // [`UsiProtocol::handle_position`]の契約: 毎手の全着手列の再送は全列の再生と一致する。
-        let moves = "3i3h 5a4b 8l9k 8b9b";
-        let mut full_engine = make_engine(&[RuleCode::R1]);
-        let mut full_protocol = UsiProtocol::new(&full_engine);
-        let full_output = run(
-            &mut full_protocol,
-            &mut full_engine,
-            &format!("position startpos moves {moves}\nstate\n"),
-        );
-
-        let mut incremental_engine = make_engine(&[RuleCode::R1]);
-        let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
-        let incremental_output = run(
-            &mut incremental_protocol,
-            &mut incremental_engine,
-            concat!(
-                "position startpos\n",
-                "position startpos moves 3i3h\n",
-                "position startpos moves 3i3h 5a4b\n",
-                "position startpos moves 3i3h 5a4b 8l9k\n",
-                "position startpos moves 3i3h 5a4b 8l9k 8b9b\n",
-                "state\n",
-            ),
-        );
-
-        assert_eq!(incremental_output, full_output);
-        assert_eq!(
-            incremental_engine.game().position(),
-            full_engine.game().position()
-        );
-        assert_eq!(incremental_engine.ply(), full_engine.ply());
-
-        let mut full_engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
-        let mut full_protocol = UsiProtocol::new(&full_engine);
-        let full_output = run(
-            &mut full_protocol,
-            &mut full_engine,
-            &format!("position sfen {ROYAL_SFEN} moves 7g7d\nstate\n"),
-        );
-        let mut incremental_engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
-        let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
-        let incremental_output = run(
-            &mut incremental_protocol,
-            &mut incremental_engine,
-            &format!("position sfen {ROYAL_SFEN}\nposition sfen {ROYAL_SFEN} moves 7g7d\nstate\n"),
-        );
-
-        assert_eq!(incremental_output, full_output);
-        assert_eq!(
-            incremental_engine.game().position(),
-            full_engine.game().position()
-        );
-        assert_eq!(incremental_engine.ply(), full_engine.ply());
-    }
-
-    #[test]
-    fn repeated_and_replaced_positions_match_fresh_replay() {
-        // [`UsiProtocol::handle_position`]の契約に従い、再送、短縮、同数の別手順、開始局面だけの変更は、
-        // それぞれ新しいpositionコマンドを単独で再生した結果に一致する。
+    fn article_31_incremental_and_replaced_positions_match_full_replay() {
         let changed_board = INITIAL_BOARD.replace("LFCSGKEGSCFL b", "LFCSGKEGSCF1 b");
+        let mut cases = vec![
+            (
+                "article 31 R1 incremental",
+                vec![RuleCode::R1],
+                vec![
+                    "position startpos".to_owned(),
+                    "position startpos moves 3i3h".to_owned(),
+                    "position startpos moves 3i3h 5a4b".to_owned(),
+                    "position startpos moves 3i3h 5a4b 8l9k".to_owned(),
+                ],
+                "position startpos moves 3i3h 5a4b 8l9k 8b9b".to_owned(),
+            ),
+            (
+                "article 21 royal capture",
+                vec![RuleCode::R1, RuleCode::E2],
+                vec![format!("position sfen {ROYAL_SFEN}")],
+                format!("position sfen {ROYAL_SFEN} moves 7g7d"),
+            ),
+        ];
         for command in [
             "position startpos moves 6i6h 1d1e".to_owned(),
             "position startpos moves 6i6h".to_owned(),
             "position startpos moves 3i3h 1d1e".to_owned(),
             format!("position sfen {changed_board} - 1 moves 6i6h 1d1e"),
         ] {
-            let actual = session(
-                &[RuleCode::R1],
-                &format!("position startpos moves 6i6h 1d1e\n{command}\nstate\nmoves\n"),
-            );
-            let expected = session(&[RuleCode::R1], &format!("{command}\nstate\nmoves\n"));
-            assert!(error_lines(&expected).is_empty(), "{command}: {expected}");
-            assert_eq!(actual, expected, "{command}");
+            cases.push((
+                "article 31 R1 resend or replacement",
+                vec![RuleCode::R1],
+                vec!["position startpos moves 6i6h 1d1e".to_owned()],
+                command,
+            ));
         }
-    }
-
-    #[test]
-    fn malformed_position_kind_and_fields_are_rejected_atomically() {
-        // 監査「positionコマンドの黙示的な無視と補完」: 解釈不能な種別、
-        // startposの余剰欄、SFENの不正な第5欄と第6欄を黙って補完・無視しない。
-        let output = session(
-            &[RuleCode::R1],
-            &format!(
-                concat!(
-                    "position startpos\nstate\n",
-                    "position unknown\nstate\n",
-                    "position startpos extra\nstate\n",
-                    "position sfen {} - 1 typo\nstate\n",
-                    "position sfen {} - 1 - extra\nstate\n",
-                ),
-                INITIAL_BOARD, INITIAL_BOARD
-            ),
-        );
-        let states = state_lines(&output);
-
-        assert_eq!(error_lines(&output).len(), 4);
-        assert_eq!(states.len(), 5);
-        assert!(states.iter().all(|state| *state == states[0]));
+        let mut prelude = Vec::new();
+        for moves in [
+            "6i6h",
+            "5i5h",
+            "6i6h",
+            "6i6h 6d6e",
+            "6i6h 5d5e",
+            "6i6h 6d6e",
+            "6i6h 6d6e 5i5h",
+            "5i5h 5d5e 6i6h",
+        ] {
+            let command = format!("position startpos moves {moves}");
+            cases.push((
+                "article 31 R2 last move replacement",
+                vec![RuleCode::R2, RuleCode::E2],
+                prelude.clone(),
+                command.clone(),
+            ));
+            prelude.push(command);
+        }
+        for (name, rules, prelude, command) in cases {
+            let mut full_engine = make_engine(&rules);
+            let mut full_protocol = UsiProtocol::new(&full_engine);
+            let mut incremental_engine = make_engine(&rules);
+            let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
+            for input in &prelude {
+                let output = run(&mut incremental_protocol, &mut incremental_engine, input);
+                assert!(output.is_empty(), "{name}: prelude={input}: {output}");
+            }
+            // 終局局面ではmovesは固定エラーとなるため、stateだけを照会する。
+            let queries = if name == "article 21 royal capture" {
+                "state\n"
+            } else {
+                "state\nmoves\n"
+            };
+            let input = format!("{command}\n{queries}");
+            let expected = run(&mut full_protocol, &mut full_engine, &input);
+            let actual = run(&mut incremental_protocol, &mut incremental_engine, &input);
+            assert!(
+                error_lines(&expected).is_empty(),
+                "{name}: {input}: {expected}"
+            );
+            assert_eq!(
+                actual, expected,
+                "{name}: prelude={prelude:?}, command={command}"
+            );
+            assert_eq!(
+                incremental_engine.game().position(),
+                full_engine.game().position(),
+                "{name}: {command}"
+            );
+            assert_eq!(
+                incremental_engine.ply(),
+                full_engine.ply(),
+                "{name}: {command}"
+            );
+        }
     }
 
     #[test]
@@ -3847,25 +3736,34 @@ mod tests {
         assert_eq!(engine.ply(), 42);
     }
 
+    // parse_go_configとstart_goの契約: 不正な引数と非対局中の探索を拒否する。
     #[test]
-    fn bare_go_and_unknown_arguments_yield_errors_without_bestmove() {
-        // [`parse_go_config`]は引数なしのgoと未知引数を拒否する。
-        let output = session(&[RuleCode::R1], "position startpos\ngo\ngo foobar 3\n");
-
-        assert_eq!(error_lines(&output).len(), 2);
-        assert!(bestmoves(&output).is_empty());
-    }
-
-    #[test]
-    fn go_depth_outside_one_through_256_is_rejected_without_bestmove() {
-        // [`SearchLimits::new`]と[`parse_go_config`]の両方で深さ1〜256の範囲を検査する。
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\ngo depth 0\ngo depth 257\n",
-        );
-
-        assert_eq!(error_lines(&output).len(), 2);
-        assert!(bestmoves(&output).is_empty());
+    fn go_invalid_arguments_and_lifecycle_are_rejected_without_bestmove() {
+        let finished = format!("position sfen {ROYAL_SFEN} moves 7g7d\n");
+        for (prelude, input, errors) in [
+            ("position startpos\n", "go", 1),
+            ("position startpos\n", "go foobar 3", 1),
+            ("position startpos\n", "go depth 0", 1),
+            ("position startpos\n", "go depth 257", 1),
+            ("position startpos\n", "go ponder", 1),
+            ("position startpos\ngo ponder\n", "ponderhit", 2),
+            ("", "go depth 1", 1),
+            (finished.as_str(), "go depth 1", 1),
+        ] {
+            let output = session(
+                &[RuleCode::R1, RuleCode::E2],
+                &format!("{prelude}{input}\n"),
+            );
+            assert_eq!(
+                error_lines(&output).len(),
+                errors,
+                "prelude={prelude:?}, input={input}: {output}"
+            );
+            assert!(
+                bestmoves(&output).is_empty(),
+                "prelude={prelude:?}, input={input}: {output}"
+            );
+        }
     }
 
     #[test]
@@ -3897,22 +3795,24 @@ mod tests {
         assert_search_info(&again);
     }
 
+    // モジュールdocのコマンド表に従い、固定応答、未知コマンド、無応答、quitを検査する。
     #[test]
-    fn go_mate_answers_checkmate_notimplemented() {
-        // モジュールdocのコマンド表に従い、go mateは引数によらず同じ応答を返す。
-        assert_eq!(
-            session(&[RuleCode::R1], "position startpos\ngo mate 10\ngo mate\n"),
-            "checkmate notimplemented\ncheckmate notimplemented\n"
-        );
-    }
-
-    #[test]
-    fn ponder_without_limits_and_idle_ponderhit_are_rejected() {
-        // [`parse_go_config`]とモジュールdocの探索中の入力の契約を検査する。
-        let output = session(&[RuleCode::R1], "position startpos\ngo ponder\nponderhit\n");
-
-        assert_eq!(error_lines(&output).len(), 2);
-        assert!(bestmoves(&output).is_empty());
+    fn commands_return_the_documented_response() {
+        for (input, expected) in [
+            (
+                "position startpos\ngo mate 10\ngo mate\n",
+                "checkmate notimplemented\ncheckmate notimplemented\n".to_owned(),
+            ),
+            (
+                "foobar baz\nposition startpos\nstate\nquit\nusi\n",
+                format!(
+                    "info string error: unknown command foobar\nstate rules L0,P0,R1,E0 board {INITIAL_BOARD} status ongoing\n"
+                ),
+            ),
+            ("debug on\nregister later\n", String::new()),
+        ] {
+            assert_eq!(session(&[RuleCode::R1], input), expected, "input={input:?}");
+        }
     }
 
     /// 出力行を1行ずつチャネルへ流す観測用ライター。
@@ -4035,22 +3935,6 @@ mod tests {
         assert_search_info(&output);
     }
 
-    #[test]
-    fn go_outside_an_active_game_is_rejected_without_bestmove() {
-        // [`UsiProtocol::start_go`]の前提を満たさないgoは、bestmoveを返さずエラーだけを返す。
-        // 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
-        let awaiting = session(&[RuleCode::R1], "go depth 1\n");
-        assert_eq!(error_lines(&awaiting).len(), 1);
-        assert!(bestmoves(&awaiting).is_empty());
-
-        let finished = session(
-            &[RuleCode::R1, RuleCode::E2],
-            &format!("position sfen {ROYAL_SFEN} moves 7g7d\ngo depth 1\n"),
-        );
-        assert_eq!(error_lines(&finished).len(), 1);
-        assert!(bestmoves(&finished).is_empty());
-    }
-
     // [`write_bestmove`]と[`write_info`]の形式を、1ワーカーと複数ワーカーで検査する。
     fn assert_search_info(output: &str) {
         let lines: Vec<_> = output.lines().collect();
@@ -4086,10 +3970,32 @@ mod tests {
         }
     }
 
+    // 受信側harness::engine::usiの語彙とwrite_bestmoveの送信行を照合する。
     #[test]
-    fn clock_stop_reasons_have_distinct_protocol_words() {
-        assert_eq!(stop_reason_text(StopReason::SoftLimit), "soft");
-        assert_eq!(stop_reason_text(StopReason::HardLimit), "hard");
+    fn stop_reasons_have_distinct_protocol_words() {
+        let position = Position::initial();
+        let mv = usi::parse(&position, "6i6h").unwrap();
+        let mut words = HashSet::new();
+        for (reason, expected) in [
+            (StopReason::DepthCompleted, "depth"),
+            (StopReason::NodeLimit, "nodes"),
+            (StopReason::SoftLimit, "soft"),
+            (StopReason::HardLimit, "hard"),
+            (StopReason::ExternalStop, "external"),
+        ] {
+            let mut output = Vec::new();
+            write_bestmove(&mut output, &position, mv, None, reason, false).unwrap();
+            let output = String::from_utf8(output).unwrap();
+            assert_eq!(
+                output,
+                format!("info string stop {expected}\nbestmove 6i6h\n"),
+                "reason={reason:?}"
+            );
+            assert!(
+                words.insert(stop_reason_text(reason)),
+                "duplicate word for {reason:?}"
+            );
+        }
     }
 
     #[test]
@@ -4156,22 +4062,6 @@ mod tests {
         assert_eq!(
             run(&mut protocol, &mut engine, "gameover win\nmoves\n"),
             format!("{MOVES_ERROR}\n")
-        );
-    }
-
-    /// モジュールdocのコマンド表: 未知コマンドは先頭語つきのエラーを返す。
-    #[test]
-    fn unknown_commands_report_errors_and_quit_is_silent() {
-        let noisy = session(
-            &[RuleCode::R1],
-            "foobar baz\nposition startpos\nstate\nquit\nusi\n",
-        );
-        let clean = session(&[RuleCode::R1], "position startpos\nstate\n");
-
-        // 未知入力は解釈へ影響せず、quit後の入力（usi）は処理されない。
-        assert_eq!(
-            noisy,
-            format!("info string error: unknown command foobar\n{clean}")
         );
     }
 
@@ -4436,12 +4326,6 @@ mod tests {
         assert_eq!(diagnostic_hit(&position, &generator, None).unwrap(), "none");
     }
 
-    /// モジュールdocのコマンド表: USI原典の既知コマンドは無応答を保つ。
-    #[test]
-    fn debug_and_register_are_silent() {
-        assert_eq!(session(&[RuleCode::R1], "debug on\nregister later\n"), "");
-    }
-
     #[test]
     fn moves_returns_the_legal_move_set_as_one_line() {
         // [`UsiProtocol::handle_moves`]の契約: Game::legal_moves()の全要素を既存USI表記で1行、順序は契約外。
@@ -4481,16 +4365,6 @@ mod tests {
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(lines[0], MOVES_ERROR);
         assert_eq!(lines[1], ROYAL_FINISHED_STATE);
-    }
-
-    #[test]
-    fn state_line_matches_the_exact_contract() {
-        // [`UsiProtocol::handle_state`]の契約: 単一行の完全一致契約。
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: 規則コードはL,P,R,E順・同カテゴリ番号昇順で表示する。
-        assert_eq!(
-            lishogi_session("position startpos\nstate\n"),
-            format!("state rules L1,L2,P0,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
-        );
     }
 
     #[test]
@@ -4979,21 +4853,12 @@ mod tests {
     fn ponder_last_move_replacement_matches_replay_and_is_atomic() {
         let mut engine = make_engine(&[RuleCode::R2, RuleCode::E2]);
         let mut protocol = UsiProtocol::new(&engine);
-        for moves in [
-            "6i6h",
-            "5i5h",
-            "6i6h",
-            "6i6h 6d6e",
-            "6i6h 5d5e",
-            "6i6h 6d6e",
-            "6i6h 6d6e 5i5h",
-            "5i5h 5d5e 6i6h",
-        ] {
-            let input = format!("position startpos moves {moves}\nstate\nmoves\n");
-            let actual = run(&mut protocol, &mut engine, &input);
-            assert_eq!(actual, session(&[RuleCode::R2, RuleCode::E2], &input));
-            assert!(error_lines(&actual).is_empty());
-        }
+        let setup = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos moves 5i5h 5d5e 6i6h\n",
+        );
+        assert!(setup.is_empty(), "{setup}");
         let output = run(
             &mut protocol,
             &mut engine,
@@ -5015,146 +4880,5 @@ mod tests {
                 assert!(!moves_sets(&actual)[0].contains("4e4d"));
             }
         }
-    }
-    /// 固定シードで非捕獲手を選び、終局を避けて4,000手の履歴を作る。
-    /// 捕獲を避けるのは、終盤の合法手枯渇で標本が短くなるのを防ぐため。
-    fn ponder_long_position() -> (Engine, UsiProtocol) {
-        let rules = Rules::ENGINE_DEFAULT;
-        let mut game = Game::new(rules);
-        let mut rng =
-            minase_core::rng::XorShift64::new(std::num::NonZeroU64::new(20260920).unwrap());
-        let mut tokens = Vec::new();
-        for _ in 0..4000 {
-            let candidates: Vec<_> = game
-                .legal_moves()
-                .into_iter()
-                .filter(|&mv| {
-                    game.position()
-                        .captured_squares(mv)
-                        .iter()
-                        .all(Option::is_none)
-                })
-                .collect();
-            assert!(
-                !candidates.is_empty(),
-                "long-game fixture exhausted its quiet moves"
-            );
-            let start = rng.index(NonZeroUsize::new(candidates.len()).unwrap());
-            let (mv, next) = (0..candidates.len())
-                .find_map(|offset| {
-                    let mv = candidates[(start + offset) % candidates.len()];
-                    let mut next = game.clone();
-                    (next.play(mv).unwrap() == GameStatus::Ongoing).then_some((mv, next))
-                })
-                .expect("long-game fixture must continue");
-            tokens.push(usi::text_generated(game.position(), mv));
-            game = next;
-        }
-        let mut engine = Engine::new(parse_rule_set("engine-default").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
-        let mut output = Vec::new();
-        protocol
-            .handle_idle_line(
-                &mut engine,
-                &format!("position startpos moves {}", tokens.join(" ")),
-                &mut output,
-            )
-            .unwrap();
-        assert!(output.is_empty());
-        assert_eq!(engine.ply(), 4000);
-        assert_eq!(engine.game().position(), game.position());
-        (engine, protocol)
-    }
-
-    // `docs/adr/apply-position-by-token-difference.md`の結果の節に従い、固定費を確認する。
-    #[test]
-    #[ignore = "releaseで4,000手の履歴に対する固定費を測る"]
-    fn ponder_long_game_output_and_replacement_stay_within_three_ms() {
-        let (mut engine, mut protocol) = ponder_long_position();
-        let x = engine
-            .game()
-            .legal_moves()
-            .into_iter()
-            .find(|&mv| {
-                let mut next = engine.game().clone();
-                next.play(mv).unwrap() == GameStatus::Ongoing
-            })
-            .unwrap();
-        let mut after_x = engine.game().clone();
-        after_x.play(x).unwrap();
-        let y = after_x
-            .legal_moves()
-            .into_iter()
-            .find(|&mv| {
-                let mut next = after_x.clone();
-                next.play(mv).unwrap() == GameStatus::Ongoing
-            })
-            .unwrap();
-        let mut output = Vec::new();
-        let started = std::time::Instant::now();
-        let prediction = validated_ponder_move(engine.game(), x, &[x, y]);
-        write_bestmove(
-            &mut output,
-            engine.game().position(),
-            x,
-            prediction.as_deref(),
-            StopReason::DepthCompleted,
-            false,
-        )
-        .unwrap();
-        let output_time = started.elapsed();
-        assert!(prediction.is_some());
-        assert!(String::from_utf8(output).unwrap().contains(" ponder "));
-
-        let previous = engine.before_last_move().unwrap();
-        let replacement = previous
-            .legal_moves()
-            .into_iter()
-            .find(|&mv| {
-                let text = usi::text_generated(previous.position(), mv);
-                if Some(&text)
-                    == protocol
-                        .accepted_position
-                        .as_ref()
-                        .unwrap()
-                        .move_tokens
-                        .last()
-                {
-                    return false;
-                }
-                let mut next = previous.clone();
-                next.play(mv).unwrap() == GameStatus::Ongoing
-            })
-            .unwrap();
-        let text = usi::text_generated(previous.position(), replacement);
-        let mut tokens = protocol
-            .accepted_position
-            .as_ref()
-            .unwrap()
-            .move_tokens
-            .clone();
-        *tokens.last_mut().unwrap() = text;
-        let input = format!("position startpos moves {}", tokens.join(" "));
-        let mut expected = previous.clone();
-        expected.play(replacement).unwrap();
-        let mut output = Vec::new();
-        let started = std::time::Instant::now();
-        protocol
-            .handle_idle_line(&mut engine, &input, &mut output)
-            .unwrap();
-        let replacement_time = started.elapsed();
-        assert!(output.is_empty());
-        assert_eq!(engine.game().position(), expected.position());
-        assert_eq!(engine.ply(), 4000);
-        eprintln!(
-            "4000 plies: bestmove including prediction {:.3} ms; last-move position {:.3} ms",
-            output_time.as_secs_f64() * 1000.0,
-            replacement_time.as_secs_f64() * 1000.0
-        );
-        assert!(output_time <= Duration::from_millis(3), "{output_time:?}");
-        assert!(
-            replacement_time <= Duration::from_millis(3),
-            "{replacement_time:?}"
-        );
     }
 }

@@ -333,31 +333,58 @@ mod tests {
     use minase_core::{DrawReason, Game, GameResult};
     use std::{io::Cursor, num::NonZeroUsize};
 
+    // 王駒を1手で捕獲できる局面を使い、埋め込み重みの棋力によらず保存を検証する。
+    // RandomSelfplayの出自はplay_game_is_deterministic_for_same_seed_and_argumentsで検査する。
     #[test]
-    fn generate_writes_random_origins_and_only_mnsd() {
-        let directory =
-            std::env::temp_dir().join(format!("minase-generate-{}", std::process::id()));
-        fs::create_dir(&directory).unwrap();
+    fn generate_writes_completed_openings_and_only_mnsd() {
+        use crate::selfplay_gen::test_support::TemporaryDirectory;
+        let directory = TemporaryDirectory::new();
+        let output_directory = directory.0.join("output");
+        fs::create_dir(&output_directory).unwrap();
+        let openings = directory.0.join("openings.txt");
+        // RULES.md第21条: 7g7dで最後の王駒を捕獲する。飛車2枚により開始時の駒枯れを避ける。
+        fs::write(
+            &openings,
+            "royal-capture 60 12/12/12/5k6/12/12/5R6/12/12/12/R11/K11 b - 61\n",
+        )
+        .unwrap();
         let arguments = GenerateArguments {
-            output: directory.join("generated.mnsd"),
-            games: Some(1),
-            openings: None,
+            output: output_directory.join("generated.mnsd"),
+            games: None,
+            openings: Some(openings),
             seed: 7,
             nodes: 100,
             random_moves: 0,
             concurrency: NonZeroUsize::new(1).unwrap(),
-            max_ply: 1200,
+            max_ply: 64,
             hash_mb: NonZeroUsize::new(1).unwrap(),
             allow_dirty: true,
         };
         generate(&arguments).unwrap();
         let mut reader = Reader::new(File::open(&arguments.output).unwrap()).unwrap();
-        assert!(reader.header().game_count() > 0);
-        while let Some(decoded) = reader.read_game().unwrap() {
-            assert_eq!(decoded.record().origin(), Origin::RandomSelfplay);
-        }
-        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
-        fs::remove_dir_all(directory).unwrap();
+        assert_eq!(reader.header().game_count(), 1);
+        let decoded = reader
+            .read_game()
+            .unwrap()
+            .expect("the finished game is saved");
+        let record = decoded.record();
+        assert_eq!(record.origin(), Origin::HumanOpeningSelfplay);
+        assert_eq!(record.start_ply(), 60);
+        assert_eq!(record.entries().len(), 2);
+        assert_eq!(
+            record.outcome(),
+            Outcome::Game(GameResult::Win {
+                winner: minase_core::Color::Black,
+                reason: minase_core::WinReason::RoyalCapture,
+            })
+        );
+        assert_eq!(
+            record.entries()[0].played_move(),
+            Some(minase_core::notation::usi::parse(record.start_position(), "7g7d").unwrap())
+        );
+        assert_eq!(record.entries()[1].played_move(), None);
+        assert!(reader.read_game().unwrap().is_none());
+        assert_eq!(fs::read_dir(&output_directory).unwrap().count(), 1);
     }
 
     /// テスト用の完了対局を1レコード付きで作る。

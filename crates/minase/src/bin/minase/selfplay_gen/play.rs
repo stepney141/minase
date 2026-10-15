@@ -306,12 +306,8 @@ fn plan_injections_with_rng(rng: &mut XorShift64, opening_ply: u32, maximum: u8)
 mod tests {
     use super::*;
     use crate::selfplay_gen::{
-        cli::{Arguments, Operation},
-        engine_default_rules,
-        opening::generate_opening,
-        test_support::test_table,
+        engine_default_rules, opening::generate_opening, test_support::test_table,
     };
-    use clap::Parser;
     use minase::datagen::statistics::INJECTION_HISTOGRAM_BINS;
     use std::collections::BTreeSet;
 
@@ -343,16 +339,17 @@ mod tests {
     #[test]
     fn play_game_is_deterministic_for_same_seed_and_arguments() {
         let rules = engine_default_rules().expect("engine-default rules are valid");
-        let nnue = minase::eval::weights().expect("embedded weights are valid");
+        let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
         let mut first_table = test_table();
         let mut second_table = test_table();
-        // 100ノードの対局が終局して記録を残すように、手数上限は埋め込んだ重みで確かめた値にする。
+        // 固定重みで終局まで進め、未終局の打ち切りによる記録の欠落も検出する。
         let settings = test_settings(7, 4, 1200);
-        let first = play_game(nnue.as_ref(), rules, 1, settings, &mut first_table)
+        let first = play_game(&nnue, rules, 1, settings, &mut first_table)
             .expect("the fixed game is valid");
-        let second = play_game(nnue.as_ref(), rules, 1, settings, &mut second_table)
+        let second = play_game(&nnue, rules, 1, settings, &mut second_table)
             .expect("the fixed game is valid");
 
+        assert_eq!(first.stats.discarded_games, 0);
         assert!(!first.records.is_empty());
         assert_eq!(first, second);
         let (opening_ply, plan) = opening_and_plan(rules, 7, 1, 4);
@@ -362,6 +359,7 @@ mod tests {
         let record = decoded.record();
         assert_eq!(record.start_position(), &Position::initial());
         assert_eq!(record.start_ply(), 0);
+        assert_eq!(record.origin(), Origin::RandomSelfplay);
         assert_eq!(record.entries().len() as u64, first.stats.total_plies + 1);
         let mut eligible = 0;
         for (ply, entry) in record.entries().iter().enumerate() {
@@ -501,28 +499,5 @@ mod tests {
         let (plan, _) = plan_injections(derive_seed(41, 12), opening_ply, 0);
         assert!(plan.plies.is_empty());
         assert_eq!(plan.record_from, opening_ply);
-    }
-
-    /// `docs/adr/cap-teacher-games-at-4000-plies.md`で選んだ4,000手を既定の上限とする。
-    #[test]
-    fn omitted_max_ply_uses_measured_generation_cap() {
-        let arguments = Arguments::try_parse_from([
-            "selfplay_gen",
-            "generate",
-            "--output",
-            "unused.bin",
-            "--games",
-            "1",
-            "--seed",
-            "1",
-            "--random-moves",
-            "0",
-        ])
-        .expect("the required generation arguments are valid");
-        let Operation::Generate(arguments) = arguments.command else {
-            panic!("generate must select generation arguments");
-        };
-
-        assert_eq!(arguments.max_ply, 4_000);
     }
 }

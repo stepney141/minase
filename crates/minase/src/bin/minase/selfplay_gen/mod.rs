@@ -63,6 +63,42 @@ fn engine_default_rules() -> io::Result<Rules> {
 #[cfg(test)]
 mod test_support {
     use minase::search::TranspositionTable;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// 各テストが所有し、巻き戻し時にも削除する一時ディレクトリ。
+    pub(super) struct TemporaryDirectory(pub(super) PathBuf);
+
+    impl TemporaryDirectory {
+        pub(super) fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "minase-selfplay-test-{}-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed),
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TemporaryDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).expect("remove the test directory");
+        }
+    }
+
+    /// 学習前の固定重みを使い、埋め込みネットの更新から切り離す。
+    pub(super) fn epoch_zero_nnue() -> minase::eval::Nnue {
+        minase::eval::Nnue::decode(include_bytes!("../../../../nets/nnue-epoch0.bin"))
+            .expect("epoch-zero weights are valid")
+    }
+
     pub(super) fn round_trip(
         record: &minase::training::records::GameRecord,
     ) -> minase::training::records::DecodedGame {

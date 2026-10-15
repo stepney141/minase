@@ -16,20 +16,29 @@ fn setup() -> (Engine, UsiProtocol) {
 }
 
 fn seed(protocol: &mut UsiProtocol) {
-    for (worker, history) in protocol
-        .histories
-        .as_mut()
-        .unwrap()
-        .workers
-        .iter_mut()
-        .enumerate()
-    {
+    let histories = protocol.histories.as_mut().unwrap();
+    for (worker, history) in histories.capture.iter_mut().enumerate() {
+        history.values_mut().fill(worker as i32 + 100);
+    }
+    for (worker, history) in histories.workers.iter_mut().enumerate() {
         history[0][60][60] = 160 + worker as i32 * 16;
         history[1][10][11] = -7;
     }
 }
 
-fn assert_seed(protocol: &UsiProtocol) {
+fn assert_seed(protocol: &UsiProtocol, command: &str) {
+    let histories = protocol.histories.as_ref().unwrap();
+    assert_eq!(histories.workers.len(), 4, "{command}");
+    assert_eq!(histories.capture.len(), 4, "{command}");
+    for (worker, history) in histories.capture.iter().enumerate() {
+        assert!(
+            history
+                .values()
+                .iter()
+                .all(|&value| value == worker as i32 + 100),
+            "{command}: capture worker {worker}"
+        );
+    }
     for (worker, history) in protocol
         .histories
         .as_ref()
@@ -38,8 +47,12 @@ fn assert_seed(protocol: &UsiProtocol) {
         .iter()
         .enumerate()
     {
-        assert_eq!(history[0][60][60], 160 + worker as i32 * 16);
-        assert_eq!(history[1][10][11], -7);
+        assert_eq!(
+            history[0][60][60],
+            160 + worker as i32 * 16,
+            "{command}: quiet worker {worker}"
+        );
+        assert_eq!(history[1][10][11], -7, "{command}: quiet worker {worker}");
     }
 }
 
@@ -62,7 +75,7 @@ fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
     ] {
         let output = run(&mut protocol, &mut engine, command);
         assert!(output.contains("info string error:"), "{command}: {output}");
-        assert_seed(&protocol);
+        assert_seed(&protocol, command);
     }
     for command in [
         "setoption name Threads value 4",
@@ -70,17 +83,18 @@ fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
         "isready",
     ] {
         run(&mut protocol, &mut engine, command);
-        assert_seed(&protocol);
+        assert_seed(&protocol, command);
     }
 }
 
 #[test]
-fn history_carry_usi_clears_new_games_accepted_rules_and_changed_threads() {
-    for command in [
-        "usinewgame",
-        "setoption name RuleSet value L0,P0,R2,E0",
-        "setoption name Threads value 2",
-        "setoption name USI_Hash value 1",
+fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
+    for (command, workers) in [
+        ("usinewgame", 4),
+        ("setoption name RuleSet value L0,P0,R2,E0", 4),
+        ("setoption name Threads value 2", 2),
+        ("setoption name USI_Hash value 1", 4),
+        ("setoption name USI_Hash value 2", 4),
     ] {
         let (mut engine, mut protocol) = setup();
         run(
@@ -92,16 +106,22 @@ fn history_carry_usi_clears_new_games_accepted_rules_and_changed_threads() {
         let output = run(&mut protocol, &mut engine, command);
         assert!(!output.contains("error"), "{command}: {output}");
         let histories = protocol.histories.as_ref().unwrap();
-        assert_eq!(
-            histories.workers.len(),
-            if command.ends_with('2') { 2 } else { 4 }
+        assert_eq!(histories.workers.len(), workers, "{command}");
+        assert_eq!(histories.capture.len(), workers, "{command}");
+        assert!(
+            histories
+                .capture
+                .iter()
+                .all(|history| history.values().iter().all(|&value| value == 0)),
+            "{command}: capture history"
         );
         assert!(
             histories.workers.iter().all(|history| history
                 .iter()
                 .flatten()
                 .flatten()
-                .all(|&v| v == 0))
+                .all(|&v| v == 0)),
+            "{command}: quiet history"
         );
     }
 }

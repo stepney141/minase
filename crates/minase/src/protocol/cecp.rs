@@ -1811,53 +1811,26 @@ mod tests {
         );
     }
 
+    // モジュールdocのコマンド表: 無視、未対応、未知コマンド、quitの応答。
     #[test]
-    fn ignored_commands_produce_no_output_or_state_change() {
-        // モジュールdocのコマンド表にある、状態を変えずに無視する集合
-        // （easy・hard・post・nopost・random・computer・name・hint・draw）。
-        assert_eq!(
-            session(
-                &[RuleCode::R1],
+    fn commands_return_the_documented_response() {
+        for (input, expected) in [
+            (
                 "ping a\neasy\nhard\npost\nnopost\nrandom\ncomputer\nname foo\nhint\ndraw\nping b\n",
+                "pong a\npong b\n",
             ),
-            "pong a\npong b\n"
-        );
-    }
-
-    #[test]
-    fn undo_remove_and_analyze_report_command_not_supported() {
-        // モジュールdocのコマンド表: 無視すると不整合を生む3コマンドだけがエラーになる。
-        assert_eq!(
-            session(
-                &[RuleCode::R1],
-                "new\nforce\nundo\nremove\nanalyze\nusermove g4g5\n"
+            (
+                "new\nforce\nundo\nremove\nanalyze\nusermove g4g5\n",
+                "Error (command not supported): undo\nError (command not supported): remove\nError (command not supported): analyze\n",
             ),
-            concat!(
-                "Error (command not supported): undo\n",
-                "Error (command not supported): remove\n",
-                "Error (command not supported): analyze\n",
-            )
-        );
-    }
-
-    #[test]
-    fn unknown_commands_echo_only_the_first_token() {
-        // モジュールdocのコマンド表と`docs/research/protocols/cecp.md`第3章: 未知の行はError (unknown command): <第1トークン>
-        // で通知し、未知の行の先頭語を含める。
-        assert_eq!(
-            session(
-                &[RuleCode::R1],
-                "foobar baz qux\nnew\nforce\nusermove g4g5\n"
+            (
+                "foobar baz qux\nnew\nforce\nusermove g4g5\n",
+                "Error (unknown command): foobar\n",
             ),
-            "Error (unknown command): foobar\n"
-        );
-    }
-
-    #[test]
-    fn xboard_is_ignored_and_quit_ends_the_session_silently() {
-        // モジュールdocのコマンド表: xboardは無視、quitは無応答で終了。
-        // quit後の入力は処理されない。
-        assert_eq!(session(&[RuleCode::R1], "xboard\nquit\nping 1\n"), "");
+            ("xboard\nquit\nping 1\n", ""),
+        ] {
+            assert_eq!(session(&[RuleCode::R1], input), expected, "input={input:?}");
+        }
     }
 
     #[test]
