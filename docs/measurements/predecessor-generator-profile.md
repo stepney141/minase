@@ -12,6 +12,9 @@
 cargo test --release predecessor_profile -- --ignored --nocapture
 ```
 
+計測テスト`predecessor_profile`は、合否の基準を持たない計測であるため、2026年10月15日にテストから削除した。
+再現するには、削除の前のコミット9d40f954のソースで上のコマンドを実行する。
+
 列挙だけの時間と検証込みの時間の分割は、同じテストモジュールに一時的な計測テストを置き、`reverse::enumerate_candidates`だけを呼ぶ時間と`generate_predecessors`全体の時間をそれぞれ21回測って中央値を取った。関数別の自己時間は、releaseビルドのテストバイナリを`perf record -g`で採取し、`perf report --no-children`で読んだ。
 
 ## エンジン

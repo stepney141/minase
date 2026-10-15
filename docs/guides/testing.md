@@ -296,13 +296,17 @@ SPRTの再現性の契約は[棋力測定の手引き](sprt.md)の「ペア対�
 
 **マージの前にローカルの検査を通す。**
 minaseには継続的インテグレーションの環境がなく、検査はマージする人またはエージェントが手元で実行する。
-masterへマージする前に、次の3つを通す。
+masterへマージする前に、次の4つを通す。
 
 ```console
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo test -p minase --lib --features search-stats,tuning
 ```
+
+4つ目は、フィーチャ`search-stats`と`tuning`を有効にしたときだけコンパイルされるテストを実行する。
+これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
 
 一般には、マージ前の検査は手動の申し合わせではなく仕組みで止めるのが原則である（付録G）。
 minaseはCIを持たず、gitのフックによる強制も置いていないので、この規則は手順として守る。
@@ -326,6 +330,15 @@ masterのテストが赤くなったら、原因の変更を直すか戻す。
 GPUを要するテスト、約100秒かかる全列挙、および検定式を変えたときだけ回すモンテカルロ検証は、`#[ignore]`で通常の実行から外している。
 除外するテストには、理由の文字列と、実行する条件および標準コマンドを記した手引きの両方を要する。
 現在の例は、[NNUEの学習の手引き](nnue-training.md)の`gpu_`テストと、[SPRTの手引き](sprt.md)のモンテカルロ検証である。
+直前局面の生成器の全列挙も除外の例であり、直前局面の生成器または合法手生成を変えたときに次のコマンドで実行する。
+releaseビルドでの所要時間は、前者が約6分、後者が約9分である。
+後者は最大で約6 GBのメモリを使う（[計測記録](../measurements/predecessor-generator-profile.md)）。
+
+```console
+cargo test -p minase-core --release predecessor_completeness -- --ignored --test-threads=1
+cargo test -p minase-core --release predecessor_oracle -- --ignored --test-threads=1
+```
+
 理由も実行手順もない`#[ignore]`は、見かけだけの成功であり、有効化するか削除する。
 GPUやファイルがないときに早期に`return`して成功させる書き方は、実質的に飛ばしたテストを成功に見せるので書かず、`#[ignore]`か失敗にする。
 除外や`#[ignore]`の対象でも、純粋なロジックを抽出した部分は通常のユニットテストで守る。
