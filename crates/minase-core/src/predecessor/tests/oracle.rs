@@ -147,21 +147,21 @@ fn predecessor_oracle_standard() {
 
 /// P1の保留状態も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
-#[ignore = "ローカルルールの有限状態全列挙"]
+#[ignore = "ローカルルールの有限状態全列挙(標準規則版と同程度以上)"]
 fn predecessor_oracle_p1() {
     compare_oracle(Rules::from_codes(&[L0, P1, R1, E0]).unwrap().moves);
 }
 
 /// P2の待機状態も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
-#[ignore = "ローカルルールの有限状態全列挙"]
+#[ignore = "ローカルルールの有限状態全列挙(標準規則版と同程度以上)"]
 fn predecessor_oracle_p2() {
     compare_oracle(Rules::from_codes(&[L0, P2, R1, E0]).unwrap().moves);
 }
 
 /// P5の歩兵保留も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
-#[ignore = "ローカルルールの有限状態全列挙"]
+#[ignore = "ローカルルールの有限状態全列挙(標準規則版と同程度以上)"]
 fn predecessor_oracle_p0_p5() {
     compare_oracle(Rules::from_codes(&[L0, P0, P5, R1, E0]).unwrap().moves);
 }

@@ -1,12 +1,34 @@
 use super::*;
 
 #[test]
-fn entering_zone_without_promotion_has_its_predecessor() {
-    // 第18条1・5項: 敵陣入りで不成を選んだ結果から直前局面を復元できる。
+fn article_18_and_30_entering_zone_without_promotion_has_its_predecessor() {
+    // 第18条第1・5項、第30条P1。敵陣入りで新設した保留は移動元へ引き継がない。
     let from = sq(5, 7);
     let to = sq(5, 8);
     let predecessor = position(Color::Black, &[(from, Color::Black, PieceKind::Pawn)]);
-    round_trip(MoveRules::standard(), &predecessor, mv(from, to, false));
+    for promotion in [PromotionRule::P0, PromotionRule::P1] {
+        let rules = MoveRules {
+            promotion,
+            ..MoveRules::standard()
+        };
+        let movement = mv(from, to, false);
+        let mut target = predecessor.clone();
+        assert_eq!(
+            target.try_make_move(movement, &MoveGenerator::new(rules)),
+            Ok(()),
+            "18_1_5_and_30_{promotion:?}: {movement:?}"
+        );
+        assert_eq!(
+            target.promotion_deferred().contains(to),
+            promotion == PromotionRule::P1,
+            "18_1_5_and_30_{promotion:?}: {movement:?}"
+        );
+        let result = checked(rules, &target);
+        assert!(
+            result.contains(&predecessor),
+            "18_1_5_and_30_{promotion:?}: {movement:?}"
+        );
+    }
 }
 
 /// RULES.md第17条、第18条と[`predecessor`](crate::predecessor)の集合の定義により、不成からの成りと既成駒の移動は別局面になる。

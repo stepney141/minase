@@ -218,7 +218,7 @@ fn article_21_6_resignation_ends_the_game() {
 /// 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、
 /// R1では継続だがR2では詰みになる（RULES.md第31条R2、[`is_mate`](crate::game::adjudication::mate::is_mate)の契約）。
 #[test]
-fn article_21_10_r2_mate_judgement_uses_the_filtered_move_set() {
+fn articles_21_3_and_31_r2_mate_judgement_uses_the_filtered_move_set() {
     let pieces = [
         (sq(0, 1), piece(Color::Black, PieceKind::King)),
         (sq(11, 0), piece(Color::White, PieceKind::Rook)),
@@ -246,4 +246,35 @@ fn article_21_10_r2_mate_judgement_uses_the_filtered_move_set() {
     assert_eq!(r2.play(sequence[0]), Ok(GameStatus::Ongoing));
     assert_eq!(r2.play(sequence[1]), Ok(GameStatus::Ongoing));
     assert_eq!(r2.play(sequence[2]), win(Color::White, WinReason::Mate));
+}
+
+/// 第21条第3項c、第22条第2項・第5項。王手した飛車を成って取れば駒枯れ勝ちとなり、詰みを免れる。
+#[test]
+fn article_21_3_c_promotion_exhaustion_win_rescues_mate() {
+    let setup = |pawn_square| {
+        position(
+            Color::White,
+            &[
+                (sq(0, 11), piece(Color::Black, PieceKind::King)),
+                (pawn_square, piece(Color::Black, PieceKind::Pawn)),
+                (sq(2, 10), piece(Color::White, PieceKind::King)),
+                (sq(1, 8), piece(Color::White, PieceKind::Rook)),
+            ],
+        )
+    };
+    let check = step(sq(1, 8), sq(0, 8));
+    // 黒王の移動先はすべて白王または白飛の利きに入る。
+    // 歩兵が隣の筋にあれば飛車を取れず、同じ王手で詰む。
+    let mut trapped = game(setup(sq(1, 7)));
+    assert_eq!(trapped.play(check), win(Color::White, WinReason::Mate));
+
+    let mut rescued = game(setup(sq(0, 7)));
+    assert_eq!(rescued.play(check), Ok(GameStatus::Ongoing));
+    let promotion = promoting(sq(0, 7), sq(0, 8));
+    assert!(rescued.legal_moves().contains(&promotion));
+    // 白王は成歩も黒王も取れないので、取り返しの猶予なしで終局する。
+    assert_eq!(
+        rescued.play(promotion),
+        win(Color::Black, WinReason::PieceExhaustion)
+    );
 }

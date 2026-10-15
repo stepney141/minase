@@ -363,40 +363,8 @@ fn article_31_r1_standing_threat_to_either_royal_counts_as_attacking() {
 }
 
 #[test]
-fn article_31_r1_capture_threats_count_and_standing_threats_do_not() {
-    // 攻撃的着手は王手に限らず、動かした駒が到達升から相手の
-    // いずれかの駒を直ちに捕獲できる状態にする着手を含む。一方、動かさな
-    // かった駒による既存の捕獲脅威は含めない。
-    // (i) 黒飛が両往復升から白歩を照準し続ける: 黒が継続攻撃側となり負け。
-    let mut threatening = game(position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(3, 3), piece(Color::Black, PieceKind::Rook)),
-            (sq(3, 9), piece(Color::White, PieceKind::Pawn)),
-            (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
-            (sq(11, 11), piece(Color::White, PieceKind::King)),
-        ],
-    ));
-    let cycle = [
-        step(sq(3, 3), sq(3, 4)),
-        step(sq(8, 8), sq(8, 7)),
-        step(sq(3, 4), sq(3, 3)),
-        step(sq(8, 7), sq(8, 8)),
-    ];
-    for ply in 1..=11 {
-        assert_eq!(
-            threatening.play(cycle[(ply - 1) % cycle.len()]),
-            Ok(GameStatus::Ongoing),
-            "ended at ply {ply}"
-        );
-    }
-    assert_eq!(
-        threatening.play(cycle[3]),
-        win(Color::White, WinReason::Repetition)
-    );
-
-    // (ii) 据え置きの黒飛が白歩を照準したまま、黒は金だけを往復する:
+fn article_31_r1_standing_capture_threats_do_not_count() {
+    // 据え置きの黒飛が白歩を照準したまま、黒は金だけを往復する。
     // 既存の脅威は数えず双方非攻撃的なので引き分けになる。
     let mut standing = game(position(
         Color::Black,

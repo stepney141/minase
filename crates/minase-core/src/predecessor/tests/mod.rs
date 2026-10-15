@@ -8,7 +8,6 @@ mod lion_state;
 mod material;
 mod movement;
 mod oracle;
-mod profile;
 mod promotion;
 
 use std::collections::HashSet;

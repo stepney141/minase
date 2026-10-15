@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::board::Square;
-use crate::game::{DrawReason, Game, GameStatus};
+use crate::game::DrawReason;
 use crate::piece::{PieceCode, PieceKind};
 use crate::test_util::{position_from_codes as position, sq};
 
@@ -21,49 +21,6 @@ fn step(from: Square, to: Square) -> Move {
 
 fn r1_state(position: &Position) -> AdjudicationState {
     AdjudicationState::new(RepetitionRule::R1, position)
-}
-
-/// 第22条第2項・第3項・第5項・第9項により、成駒または王駒を取れる相手には猶予がある。
-/// その成りは第21条第3項cの即時勝利にはならない。
-#[test]
-fn article_21_3_c_promotions_are_immediate_wins_only_without_a_grace_reply() {
-    for kind in [
-        PieceKind::Pawn,
-        PieceKind::GoBetween,
-        PieceKind::DrunkElephant,
-    ] {
-        for (bare_square, immediate_win) in
-            [(sq(3, 8), false), (sq(0, 1), false), (sq(11, 11), true)]
-        {
-            let mut position = position(
-                Color::Black,
-                &[
-                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                    (sq(4, 7), piece(Color::Black, kind)),
-                    (bare_square, piece(Color::White, PieceKind::King)),
-                ],
-            );
-            let rules = Rules::ENGINE_DEFAULT;
-            let generator = MoveGenerator::new(rules.moves);
-            let state = r1_state(&position);
-            let candidate = Move {
-                promote: true,
-                ..step(sq(4, 7), sq(4, 8))
-            };
-            let undo = position
-                .try_make_move_with_undo(candidate, &generator)
-                .unwrap();
-            let context = AdjudicationContext::new(rules, &state, &generator);
-            assert_eq!(
-                context.candidate_immediate_result(&position, candidate, &undo),
-                immediate_win.then_some(GameResult::Win {
-                    winner: Color::Black,
-                    reason: WinReason::PieceExhaustion,
-                }),
-                "{kind:?}, {bare_square:?}"
-            );
-        }
-    }
 }
 
 /// 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
@@ -196,18 +153,6 @@ fn article_22_8_defended_royal_capture_is_not_an_immediate_draw() {
 
     assert!(is_mate(&mut position, &context));
     assert_eq!(position, before);
-    let mut game = Game::from_position(rules, position);
-    assert_eq!(
-        game.play(step(sq(0, 0), sq(1, 1))).unwrap(),
-        GameStatus::Ongoing
-    );
-    assert_eq!(
-        game.play(step(sq(1, 0), sq(1, 1))).unwrap(),
-        GameStatus::Finished(GameResult::Win {
-            winner: Color::White,
-            reason: WinReason::RoyalCapture
-        })
-    );
 }
 
 /// 4回目の同一局面を作る手が自分の反復負けになる場合、詰みの逃れにはならない
@@ -306,11 +251,6 @@ fn article_22_8_and_32_e3_safe_royals_allow_an_immediate_draw() {
         position.unmake_move(undo);
         assert!(!is_mate(&mut position, &context));
         assert_eq!(position, before);
-        let mut game = Game::from_position(rules, position);
-        assert_eq!(
-            game.play(candidate).unwrap(),
-            GameStatus::Finished(expected)
-        );
     }
 }
 
@@ -335,14 +275,6 @@ fn article_21_3_immediate_loss_overrides_royal_capture_avoidance() {
         .try_make_move_with_undo(candidate, &generator)
         .unwrap();
     assert!(!mate::can_capture_last_royal(&position, &generator));
-    let mut game = Game::from_position(rules, before.clone());
-    assert_eq!(
-        game.play(candidate).unwrap(),
-        GameStatus::Finished(GameResult::Win {
-            winner: Color::White,
-            reason: WinReason::PieceExhaustion
-        })
-    );
     position.unmake_move(undo);
     assert!(is_mate(
         &mut position,

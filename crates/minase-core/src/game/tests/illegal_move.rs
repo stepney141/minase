@@ -102,6 +102,12 @@ fn article_27_4_r2_r3_reject_before_acceptance() {
     for mv in cycle.into_iter().take(3) {
         assert_eq!(r2.play(mv), Ok(GameStatus::Ongoing));
     }
+    assert!(!r2.legal_moves().is_empty(), "27_4_r2");
+    assert!(
+        !r2.legal_moves().contains(&cycle[3]),
+        "27_4_r2: {:?}",
+        cycle[3]
+    );
     assert_rejection_is_pure(&mut r2, cycle[3], IllegalMoveCause::Repetition);
     assert_eq!(r2.play(alternative), Ok(GameStatus::Ongoing));
 
@@ -113,6 +119,12 @@ fn article_27_4_r2_r3_reject_before_acceptance() {
             "R3 ply {ply}"
         );
     }
+    assert!(!r3.legal_moves().is_empty(), "27_4_r3");
+    assert!(
+        !r3.legal_moves().contains(&cycle[3]),
+        "27_4_r3: {:?}",
+        cycle[3]
+    );
     assert_rejection_is_pure(&mut r3, cycle[3], IllegalMoveCause::Repetition);
     assert_eq!(r3.play(alternative), Ok(GameStatus::Ongoing));
 }

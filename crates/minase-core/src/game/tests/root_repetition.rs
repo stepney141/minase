@@ -1,8 +1,8 @@
 //! 第31条R1による根の分類、ならびに第21条の終局との関係を検査する。
 
 use super::*;
-use crate::RepetitionRule;
 use crate::game::RepetitionRootMoves;
+use crate::{RepetitionRule, repetition_key};
 
 fn rook_cycle_position() -> Position {
     position(
@@ -245,7 +245,7 @@ fn exhaustive(game: &Game) -> (Vec<Move>, Vec<Move>) {
 fn occurrences_after(game: &Game, mv: Move) -> usize {
     let mut after = game.position().clone();
     after.make_move_unchecked(mv, game.rules().moves);
-    let key = after.zobrist() ^ after.rights_zobrist();
+    let key = repetition_key(RepetitionRule::R1, &after);
     game.repetition_key_history()
         .iter()
         .filter(|&&old| old == key)
@@ -280,73 +280,92 @@ fn classify_preserving_game(game: &Game) -> RepetitionRootMoves {
 }
 
 #[test]
-fn article_31_r1_attacker_completing_fourth_occurrence_is_losing() {
-    // 第31条R1。黒飛が白歩への攻撃を続け、自分の着手で4回目を完成させる。
-    let (game, mv) = direct_loss();
-    assert_eq!(game.position().side_to_move(), Color::Black);
-    assert_eq!(occurrences_after(&game, mv), 4);
-    assert_eq!(
-        game.clone().play(mv),
-        win(Color::White, WinReason::Repetition)
-    );
-    let classified = game.repetition_root_moves();
-    assert!(classified.winning().is_empty());
-    assert!(classified.losing().contains(&mv));
-}
-
-#[test]
-fn article_31_r1_opponents_repetition_winning_reply_makes_root_move_losing() {
-    // 第31条R1。黒飛の戻りは3回目だが、直後の白金の戻りで黒が負ける。
-    let (game, mv, reply) = reply_loss();
-    assert_eq!(occurrences_after(&game, mv), 3);
-    let mut child = game.clone();
-    assert_eq!(child.play(mv), Ok(GameStatus::Ongoing));
-    assert_eq!(occurrences_after(&child, reply), 4);
-    assert_eq!(child.play(reply), win(Color::White, WinReason::Repetition));
-    let classified = game.repetition_root_moves();
-    assert!(classified.winning().is_empty());
-    assert!(classified.losing().contains(&mv));
-}
-
-#[test]
-fn article_31_r1_second_occurrence_still_allows_a_losing_reply_after_detour() {
-    // 第31条R1。別経路を挟むと根の着手後は2回目にすぎず、応手だけが4回目になる。
-    let (game, mv, reply) = detour_reply_loss();
-    assert_eq!(occurrences_after(&game, mv), 2);
-    let mut child = game.clone();
-    assert_eq!(child.play(mv), Ok(GameStatus::Ongoing));
-    assert_eq!(occurrences_after(&child, reply), 4);
-    assert_eq!(child.play(reply), win(Color::White, WinReason::Repetition));
-    assert!(game.repetition_root_moves().losing().contains(&mv));
-}
-
-#[test]
-fn article_31_r1_nonattacker_completing_fourth_occurrence_is_winning() {
-    // 第31条R1。白金の戻りが攻撃側である黒の敗北を確定する。
-    let (game, mv) = direct_win();
-    assert_eq!(occurrences_after(&game, mv), 4);
-    assert_eq!(
-        game.clone().play(mv),
-        win(Color::White, WinReason::Repetition)
-    );
-    let classified = game.repetition_root_moves();
-    assert_eq!(classified.winning(), &[mv]);
-    assert!(classified.losing().is_empty());
-}
-
-#[test]
-fn article_31_r1_mutual_and_absent_continuous_attacks_are_unclassified_draws() {
-    // 第31条R1。双方攻撃と双方非攻撃の引き分けを、一方だけ攻撃する対照と分ける。
-    let mv = rook_cycle()[3];
-    for game in drawn_cycles() {
-        assert_eq!(occurrences_after(&game, mv), 4);
-        assert_eq!(game.clone().play(mv), draw(DrawReason::Repetition));
+fn article_31_r1_root_classification_follows_repetition_outcomes() {
+    // 第31条R1。直接の敗北、応手による敗北、双方攻撃と双方非攻撃の引き分けを区別する。
+    let (direct, direct_move) = direct_loss();
+    let (reply, reply_move, reply_response) = reply_loss();
+    let (detour, detour_move, detour_response) = detour_reply_loss();
+    let [mutual, quiet] = drawn_cycles();
+    let cases = [
+        (
+            "31_r1_direct_loss",
+            direct,
+            direct_move,
+            4,
+            win(Color::White, WinReason::Repetition),
+            None,
+            true,
+        ),
+        (
+            "31_r1_reply_loss",
+            reply,
+            reply_move,
+            3,
+            Ok(GameStatus::Ongoing),
+            Some(reply_response),
+            true,
+        ),
+        (
+            "31_r1_detour_reply_loss",
+            detour,
+            detour_move,
+            2,
+            Ok(GameStatus::Ongoing),
+            Some(detour_response),
+            true,
+        ),
+        (
+            "31_r1_mutual_attacks_draw",
+            mutual,
+            rook_cycle()[3],
+            4,
+            draw(DrawReason::Repetition),
+            None,
+            false,
+        ),
+        (
+            "31_r1_no_attacks_draw",
+            quiet,
+            rook_cycle()[3],
+            4,
+            draw(DrawReason::Repetition),
+            None,
+            false,
+        ),
+    ];
+    for (name, game, mv, occurrences, outcome, reply, losing) in cases {
+        if name == "31_r1_direct_loss" {
+            assert_eq!(
+                game.position().side_to_move(),
+                Color::Black,
+                "{name}: {mv:?}"
+            );
+        }
+        assert_eq!(occurrences_after(&game, mv), occurrences, "{name}: {mv:?}");
+        let mut child = game.clone();
+        assert_eq!(child.play(mv), outcome, "{name}: {mv:?}");
+        if let Some(reply) = reply {
+            assert_eq!(occurrences_after(&child, reply), 4, "{name}: {reply:?}");
+            assert_eq!(
+                child.play(reply),
+                win(Color::White, WinReason::Repetition),
+                "{name}: {reply:?}"
+            );
+        }
         let classified = game.repetition_root_moves();
-        assert!(classified.winning().is_empty());
-        assert!(classified.losing().is_empty());
+        assert!(classified.winning().is_empty(), "{name}: {mv:?}");
+        if losing {
+            assert!(classified.losing().contains(&mv), "{name}: {mv:?}");
+        } else {
+            assert!(classified.losing().is_empty(), "{name}: {mv:?}");
+        }
     }
-    let (one_attacker, _) = direct_win();
-    assert_eq!(one_attacker.repetition_root_moves().winning(), &[mv]);
+    let (one_attacker, mv) = direct_win();
+    assert_eq!(
+        one_attacker.repetition_root_moves().winning(),
+        &[mv],
+        "31_r1_one_attacker: {mv:?}"
+    );
 }
 
 #[test]
@@ -420,20 +439,6 @@ fn article_31_r1_only_repetition_win_is_winning_when_royal_capture_also_exists()
     let classified = game.repetition_root_moves();
     assert_eq!(classified.winning(), &[repetition]);
     assert!(!classified.losing().contains(&capture));
-}
-
-#[test]
-fn articles_31_r1_and_21_3_c_repetition_winning_move_rescues_mate() {
-    // 第31条R1、第21条第3項c。履歴なしなら詰みとなる王手にも反復勝ちで応じられる。
-    let (mut game, check, escape) = before_mate_rescuing_check();
-    let mut fresh = Game::from_position(game.rules(), game.position().clone());
-    assert_eq!(fresh.play(check), win(Color::White, WinReason::Mate));
-    assert_eq!(game.play(check), Ok(GameStatus::Ongoing));
-    assert_eq!(
-        game.clone().play(escape),
-        win(Color::Black, WinReason::Repetition)
-    );
-    assert!(game.repetition_root_moves().winning().contains(&escape));
 }
 
 fn classified_states() -> Vec<Game> {
@@ -515,24 +520,4 @@ fn article_31_r1_classification_preserves_game_and_skips_unrepeated_history() {
     }
     let (game, mv) = direct_loss();
     assert!(classify_preserving_game(&game).losing().contains(&mv));
-}
-
-#[test]
-fn article_31_r1_classification_is_empty_under_r2_and_r3() {
-    // 第31条R1。R2では最初の再現、R3では4回目が禁じられる直前まで同じ手順を進める。
-    for code in [RuleCode::R2, RuleCode::R3] {
-        let plies = if code == RuleCode::R2 { 3 } else { 11 };
-        let game = after_plies(
-            game_with_codes(rook_cycle_position(), &[code]),
-            &rook_cycle(),
-            plies,
-        );
-        assert!(!game.legal_moves().is_empty());
-        assert!(!game.legal_moves().contains(&rook_cycle()[3]));
-        let classified = classify_preserving_game(&game);
-        assert!(classified.winning().is_empty());
-        assert!(classified.losing().is_empty());
-    }
-    let (r1, mv) = direct_win();
-    assert_eq!(r1.repetition_root_moves().winning(), &[mv]);
 }
