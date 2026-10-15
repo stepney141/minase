@@ -25,23 +25,24 @@ const ATTACKED: &str = "k10r/12/12/12/12/12/12/12/12/12/12/11K b";
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
+    assert_eq!(params::correction_weight(), 37, "数値例の重み");
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
-    for (sfen, delta, bound, update, capture, depth) in [
-        (QUIET, 320, Bound::Exact, true, false, 2),
-        (QUIET, -320, Bound::Exact, true, false, 2),
-        (QUIET, -320, Bound::Upper, true, false, 2),
-        (QUIET, 320, Bound::Lower, true, false, 2),
-        (QUIET, 320, Bound::Upper, false, false, 2),
-        (QUIET, -320, Bound::Lower, false, false, 2),
-        (QUIET, 0, Bound::Upper, false, false, 2),
-        (QUIET, 0, Bound::Lower, false, false, 2),
-        (CAPTURE, 320, Bound::Exact, false, true, 2),
-        (CAPTURE, -320, Bound::Upper, false, true, 2),
-        (CAPTURE, 320, Bound::Lower, false, true, 2),
-        (ATTACKED, 320, Bound::Exact, false, false, 2),
-        (QUIET, 320, Bound::Exact, true, false, 3),
+    for (sfen, delta, bound, expected, capture, depth) in [
+        (QUIET, 320, Bound::Exact, 40, false, 2),
+        (QUIET, -320, Bound::Exact, -5, false, 2),
+        (QUIET, -320, Bound::Upper, -5, false, 2),
+        (QUIET, 320, Bound::Lower, 40, false, 2),
+        (QUIET, 320, Bound::Upper, 18, false, 2),
+        (QUIET, -320, Bound::Lower, 18, false, 2),
+        (QUIET, 0, Bound::Upper, 18, false, 2),
+        (QUIET, 0, Bound::Lower, 18, false, 2),
+        (CAPTURE, 320, Bound::Exact, 18, true, 2),
+        (CAPTURE, -320, Bound::Upper, 18, true, 2),
+        (CAPTURE, 320, Bound::Lower, 18, true, 2),
+        (ATTACKED, 320, Bound::Exact, 18, false, 2),
+        (QUIET, 320, Bound::Exact, 40, false, 3),
     ] {
         let mut board = minase_core::parse_sfen(sfen).unwrap();
         let key = material_key(&board);
@@ -88,10 +89,7 @@ fn correction_negamax_update_conditions() {
         );
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
-        assert_eq!(
-            searcher.correction.read(Color::Black, key),
-            64 * 8 * params::correction_weight() / 1024
-        );
+        assert_eq!(searcher.correction.read(Color::Black, key), 18);
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0),
             Some(score)
@@ -108,13 +106,8 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), sfen == ATTACKED);
-        let weight = params::correction_weight();
-        let initial = 64 * 8 * weight;
-        let expected = if update {
-            (initial + (delta * 1024 - initial) * 2 * weight / 1024) / 1024
-        } else {
-            initial / 1024
-        };
+        // 初期の固定小数点値18944に深さ2の重み74/1024を適用する。
+        // 差+320なら41255、差−320なら−6105となり、1024で0方向へ丸める。
         assert_eq!(
             searcher.correction.read(Color::Black, key),
             expected,

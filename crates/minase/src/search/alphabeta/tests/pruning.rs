@@ -13,11 +13,13 @@ fn lmr_table_follows_logarithmic_rule() {
         assert_eq!(row[0], 0);
         assert_eq!(row[1], 0);
     }
-    for (depth, index) in [(3, 3), (4, 8), (5, 255)] {
-        let expected = ((depth as f64).ln() * (index as f64).ln()
-            / (f64::from(params::lmr_divisor()) / 100.0))
-            .floor() as u8;
-        assert_eq!(table[depth][index], expected);
+    // 除数1.56で対数積を割ると約0.774、1.848、5.717となり、切り捨てる。
+    assert_eq!(params::lmr_divisor(), 156, "数値例の除数");
+    for (depth, index, expected) in [(3, 3, 0), (4, 8, 1), (5, 255, 5)] {
+        assert_eq!(
+            table[depth][index], expected,
+            "depth={depth}, index={index}"
+        );
     }
     assert!(table[5][255] > 3);
 }

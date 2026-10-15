@@ -291,8 +291,14 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
         capture(sq(5, 5), sq(7, 5)),
     ];
     let untouched = capture(sq(5, 5), sq(5, 3));
-    let limit = i64::from(params::capture_history_limit());
-    for depth in [0, 3, 64, 256] {
+    // 上限16950の重力式。4096×9/16950は2、4096²/16950は989へ丸める。
+    assert_eq!(params::capture_history_limit(), 16_950, "数値例の上限");
+    for (depth, expected) in [
+        (0, [4096, -4096, 0]),
+        (3, [4085, -4103, -9]),
+        (64, [-989, -7203, -4096]),
+        (256, [-16_950; 3]),
+    ] {
         let mut history = CaptureHistory::new();
         history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
         history.record_cutoff(&board, nnue, untouched, &[], 3);
@@ -301,16 +307,11 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
 
         history.record_quiet_cutoff(&board, nnue, &earlier, depth);
 
-        let malus = -i64::from(depth).pow(2).min(limit);
-        for (mv, old) in earlier.into_iter().zip(before) {
-            let old = i64::from(old);
-            let expected = old + malus - old * malus.abs() / limit;
-            assert_eq!(
-                i64::from(history.read(&board, nnue, mv)),
-                expected,
-                "depth={depth}, old={old}"
-            );
-        }
+        assert_eq!(
+            earlier.map(|mv| history.read(&board, nnue, mv)),
+            expected,
+            "depth={depth}, before={before:?}"
+        );
         assert_eq!(history.read(&board, nnue, untouched), 9);
     }
 }

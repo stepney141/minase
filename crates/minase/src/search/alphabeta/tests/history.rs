@@ -8,8 +8,6 @@ use crate::search::alphabeta::params;
 // 停止済みでも根の開始は1回。両方の履歴を全要素、各ワーカーで検査する。
 #[test]
 fn history_carry_ages_every_worker_once_before_the_first_iteration() {
-    #[cfg(not(feature = "tuning"))]
-    assert_eq!(params::capture_history_decay(), 23);
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(worker_count(4));
     let mut quiet_values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
@@ -137,75 +135,72 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
     }
 }
 
-// 持ち越しの影響を置換表の影響から分離し、同一局面の新品の表と比較する。
+// 持ち越した履歴は根の次回開始時に減衰した後も、静かな手の優先順位を決める。
 #[test]
-fn history_carry_changes_the_second_search_with_a_fresh_transposition_table() {
-    const CHILD: &str = "MINASE_HISTORY_CARRY_FRESH_PROCESS";
-    let snapshot = snapshot_for(&quiet_midgame());
-    if std::env::var_os(CHILD).is_some() {
-        let fresh = crate::search::search(
-            test_nnue(),
-            &snapshot,
-            &depth_limits(4),
-            DEFAULT_THREADS,
-            &mut small_tt(),
-            &mut HistoryTables::new(DEFAULT_THREADS),
-        )
-        .unwrap();
-        println!("fresh_nodes={}", fresh.nodes);
-        return;
+fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
+    let board = Position::initial();
+    let snapshot = snapshot_for(&board);
+    let moves = legal_moves(&board);
+    let [first, second] = [moves[0], moves[1]];
+    for preferred in [first, second] {
+        let mut histories = HistoryTables::new(DEFAULT_THREADS);
+        histories.workers[0][board.side_to_move().index()][preferred.from.dense_index()]
+            [preferred.to.dense_index()] = 10_000;
+        for go in 1..=2 {
+            let table = small_tt();
+            run_search_team(
+                test_nnue(),
+                &board,
+                snapshot.rules(),
+                snapshot.repetition(),
+                DRAW_SCORE,
+                snapshot.root_moves(),
+                &snapshot.history_keys,
+                &depth_limits(1),
+                &AtomicBool::new(true),
+                DEFAULT_THREADS,
+                &table,
+                &mut histories,
+                None,
+                Instant::now(),
+                &AtomicU64::new(0),
+                false,
+            );
+            let stop = AtomicBool::new(false);
+            let shared = SharedSearch {
+                external_stop: &stop,
+                team_stop: AtomicBool::new(false),
+                stop_reason: AtomicU8::new(0),
+                total_nodes: AtomicU64::new(0),
+                node_limit: None,
+                started: Instant::now(),
+                hard_limit: None,
+            };
+            let searcher = new_searcher(
+                test_nnue(),
+                &board,
+                snapshot.rules(),
+                snapshot.repetition(),
+                DRAW_SCORE,
+                &[],
+                &shared,
+                &table,
+                &mut histories.workers[0],
+                &mut histories.capture[0],
+            );
+            assert!(
+                searcher.history[board.side_to_move().index()][preferred.from.dense_index()]
+                    [preferred.to.dense_index()]
+                    > 0,
+                "go={go}"
+            );
+            // 入力順を同じに保ち、履歴を仕込んだ手だけが先頭になることを確認する。
+            let mut ordered = [first, second];
+            searcher.order_moves(&board, &mut ordered, None, 0);
+            assert_eq!(ordered[0], preferred, "go={go}, preferred={preferred:?}");
+            assert_eq!(ordered[1], if preferred == first { second } else { first });
+        }
     }
-    let mut histories = HistoryTables::new(DEFAULT_THREADS);
-    let mut table = small_tt();
-    let mut nodes = Vec::new();
-    for search_id in [810, 811] {
-        let handle = crate::search::start_search(
-            Arc::clone(shared_test_nnue()),
-            snapshot.clone(),
-            depth_limits(4),
-            search_id,
-            DEFAULT_THREADS,
-            table,
-            histories,
-            false,
-        );
-        let (_, result) = event_reports(drain_raw(&handle));
-        nodes.push(result.nodes);
-        (table, histories) = handle.join().unwrap();
-        assert!(
-            histories.workers[0]
-                .iter()
-                .flatten()
-                .flatten()
-                .any(|&v| v != 0)
-        );
-        table.clear();
-    }
-    let child = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "search::alphabeta::tests::history::history_carry_changes_the_second_search_with_a_fresh_transposition_table", "--nocapture"])
-        .env(CHILD, "1")
-        .output().unwrap();
-    assert!(
-        child.status.success(),
-        "{}",
-        String::from_utf8_lossy(&child.stderr)
-    );
-    let stdout = String::from_utf8(child.stdout).unwrap();
-    let fresh_nodes: u64 = stdout
-        .lines()
-        .find_map(|line| line.strip_prefix("fresh_nodes="))
-        .unwrap()
-        .parse()
-        .unwrap();
-    assert_eq!(nodes[0], fresh_nodes);
-    assert_ne!(
-        nodes[1], fresh_nodes,
-        "carried history must influence search"
-    );
-    eprintln!(
-        "history carry: first={} carried={} fresh_process={}",
-        nodes[0], nodes[1], fresh_nodes
-    );
 }
 
 // ワーカーへ貸す表は番号で固定され、書き込みも同じ表へ返る。

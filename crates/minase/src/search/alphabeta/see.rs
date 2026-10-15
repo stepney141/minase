@@ -859,15 +859,16 @@ mod tests {
                 (sq(7, 7), black_lion),
             ],
         );
-        // 凍結駒価値は歩100、金378、飛750。金が歩を取った後に飛車が
-        // 金を取ると獅子が飛車を取り返し、先手は100−378+750=472を得る。
-        // 後手は取り返さず歩100の損で止められるため、交換評価は100となる。
+        // 飛車は金より高価なので、獅子に飛車を取られる応酬は後手の損を増やす。
+        // 後手は取り返さず、歩1枚の損で交換を止める。
+        assert!(value(nnue, white_rook) > value(nnue, black_gold));
+        assert!(value(nnue, black_gold) > value(nnue, white_pawn));
         assert_prune_contract(
             &lion_recaptures,
             rules,
             nnue,
             capture(sq(4, 4), target),
-            Some(100),
+            Some(value(nnue, white_pawn)),
         );
     }
 
