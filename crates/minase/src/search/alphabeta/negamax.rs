@@ -210,27 +210,10 @@ impl Searcher<'_> {
             self.history,
             self.capture_history,
         ) {
-            #[cfg(test)]
-            if self
-                .move_loop_probe
-                .as_ref()
-                .is_some_and(|probe| probe.ply == ply && probe.excluded.contains(&mv))
-            {
-                continue;
-            }
             // 禁止手は探索順位、枝刈りの静かな手数、履歴の更新対象、ノード数に含めない。
             if self.move_is_forbidden(position, mv) {
                 had_forbidden_move = true;
                 continue;
-            }
-            #[cfg(test)]
-            if let Some(probe) = &mut self.move_loop_probe
-                && probe.ply == ply
-            {
-                if probe.visits.is_empty() {
-                    probe.path_keys.clone_from(&self.path_keys);
-                }
-                probe.visits.push((mv, index, counted_quiets));
             }
             // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
             // killer手はこの制限から除くが、futilityの対象にはなり得る。

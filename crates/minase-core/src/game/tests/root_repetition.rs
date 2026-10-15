@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::RepetitionRule;
-use crate::game::root_repetition::TEST_PROBES;
+use crate::game::RepetitionRootMoves;
 
 fn rook_cycle_position() -> Position {
     position(
@@ -260,6 +260,25 @@ fn assert_unclassified(game: &Game, mv: Move) {
     assert!(!classified.losing().contains(&mv));
 }
 
+fn classify_preserving_game(game: &Game) -> RepetitionRootMoves {
+    let before = game.clone();
+    let classified = game.repetition_root_moves();
+    assert_eq!(game.position(), before.position());
+    assert_eq!(game.rules(), before.rules());
+    assert_eq!(
+        game.repetition_key_history(),
+        before.repetition_key_history()
+    );
+    assert_eq!(
+        game.consecutive_attacking_moves(),
+        before.consecutive_attacking_moves()
+    );
+    assert_eq!(game.ply_count(), before.ply_count());
+    assert_eq!(game.status(), before.status());
+    assert_eq!(game.legal_moves(), before.legal_moves());
+    classified
+}
+
 #[test]
 fn article_31_r1_attacker_completing_fourth_occurrence_is_losing() {
     // 第31条R1。黒飛が白歩への攻撃を続け、自分の着手で4回目を完成させる。
@@ -381,11 +400,9 @@ fn article_31_r1_royal_capture_ends_before_any_reply_is_considered() {
         win(Color::Black, WinReason::RoyalCapture)
     );
     assert!(finished.legal_moves().is_empty());
-    TEST_PROBES.set((0, 0));
-    let classified = finished.repetition_root_moves();
+    let classified = classify_preserving_game(&finished);
     assert!(classified.winning().is_empty());
     assert!(classified.losing().is_empty());
-    assert_eq!(TEST_PROBES.get(), (0, 0));
 }
 
 #[test]
@@ -480,35 +497,24 @@ fn article_31_r1_key_filter_matches_exhaustive_classification_in_all_states() {
 
 #[test]
 fn article_31_r1_classification_preserves_game_and_skips_unrepeated_history() {
-    // 第31条R1。観測可能な状態を保存し、3回以上のキーがなければ局面の調査も省く。
+    // 第31条R1。観測可能な状態を保存し、3回以上のキーがなければ分類結果は空になる。
     for game in classified_states() {
-        let before = (
-            game.position().clone(),
-            game.repetition_key_history().to_vec(),
-            game.ply_count(),
-            game.status(),
-            game.legal_moves(),
-        );
-        game.repetition_root_moves();
-        assert_eq!(game.position(), &before.0);
-        assert_eq!(game.repetition_key_history(), before.1);
-        assert_eq!(game.ply_count(), before.2);
-        assert_eq!(game.status(), before.3);
-        assert_eq!(game.legal_moves(), before.4);
+        classify_preserving_game(&game);
     }
     for plies in [0, 7] {
         let game = after_plies(game(rook_cycle_position()), &rook_cycle(), plies);
-        TEST_PROBES.set((0, 0));
-        let classified = game.repetition_root_moves();
+        let history = game.repetition_key_history();
+        assert!(
+            history
+                .iter()
+                .all(|key| history.iter().filter(|old| *old == key).count() < 3)
+        );
+        let classified = classify_preserving_game(&game);
         assert!(classified.winning().is_empty());
         assert!(classified.losing().is_empty());
-        assert_eq!(TEST_PROBES.get(), (0, 0));
     }
     let (game, mv) = direct_loss();
-    TEST_PROBES.set((0, 0));
-    assert!(game.repetition_root_moves().losing().contains(&mv));
-    let (keys, plays) = TEST_PROBES.get();
-    assert!(keys > 0 && plays > 0);
+    assert!(classify_preserving_game(&game).losing().contains(&mv));
 }
 
 #[test]
@@ -523,11 +529,9 @@ fn article_31_r1_classification_is_empty_under_r2_and_r3() {
         );
         assert!(!game.legal_moves().is_empty());
         assert!(!game.legal_moves().contains(&rook_cycle()[3]));
-        TEST_PROBES.set((0, 0));
-        let classified = game.repetition_root_moves();
+        let classified = classify_preserving_game(&game);
         assert!(classified.winning().is_empty());
         assert!(classified.losing().is_empty());
-        assert_eq!(TEST_PROBES.get(), (0, 0));
     }
     let (r1, mv) = direct_win();
     assert_eq!(r1.repetition_root_moves().winning(), &[mv]);

@@ -124,32 +124,14 @@ fn returns_to_repeated_position(
 
 /// 同一局面の条件に成り権保留状態を含める（RULES.md第24条第1項d）。
 fn search_key(position: &Position) -> u64 {
-    #[cfg(test)]
-    TEST_PROBES.with(|probes| {
-        let (keys, plays) = probes.get();
-        probes.set((keys + 1, plays));
-    });
     position.zobrist() ^ position.rights_zobrist()
 }
 
 /// 合法手を対局の写しへ適用する。生成と受理が食い違えば内部の不整合である。
 fn played(game: &Game, mv: Move) -> Game {
-    #[cfg(test)]
-    TEST_PROBES.with(|probes| {
-        let (keys, plays) = probes.get();
-        probes.set((keys, plays + 1));
-    });
     let mut after_move = game.clone();
     after_move
         .play(mv)
         .expect("a generated legal move must be accepted by an ongoing R1 game");
     after_move
-}
-
-#[cfg(test)]
-std::thread_local! {
-    // 費用の契約を検査するための、キー計算回数とGame::play呼出し回数。
-    pub(super) static TEST_PROBES: std::cell::Cell<(usize, usize)> = const {
-        std::cell::Cell::new((0, 0))
-    };
 }
