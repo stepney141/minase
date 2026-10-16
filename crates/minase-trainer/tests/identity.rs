@@ -58,7 +58,7 @@ fn identities_use_paths_lengths_and_header_fields() {
         json!({
             "path": path.canonicalize().unwrap(), "byte_length": 320,
             "header": {"rule_set": "L0,P0,R1,E0", "generation_commit": "a".repeat(40),
-                "network_checksum": "07".repeat(32), "teacher_kind": 0, "teacher_scale": 200, "seed": 11, "game_count": 1, "entry_count": 1}
+                "network_checksum": "07".repeat(32), "teacher_kind": 0, "teacher_search_budget": 200, "seed": 11, "game_count": 1, "entry_count": 1}
         })
     );
     let mut bytes = fs::read(&path).unwrap();

@@ -32,6 +32,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "minase-trainer",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "0.75",
         "--data",
@@ -135,7 +137,11 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         ))
     ));
     let mut values = argv();
-    values[8] = "200";
+    let index = values
+        .iter()
+        .position(|&value| value == "--epochs")
+        .unwrap();
+    values[index + 1] = "200";
     values.insert(
         values.iter().position(|&arg| arg == "--data").unwrap() + 2,
         "second.bin",
@@ -299,7 +305,7 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
             document(args.output_dir.join("summary.json"))["initial_position_score"],
             initial_score
         );
-        assert_eq!(written.k(), 317.25);
+        assert_eq!(written.cp_per_logit(), 317.25);
         assert_eq!(written.rule_set(), "L0,P0,R1,E0");
         for (state, value) in v0_piece_values().into_iter().enumerate() {
             assert_eq!(written.piece_value_of_state(state), value * 2);
@@ -322,7 +328,15 @@ fn training_wires_permutation_and_tail_batches_to_updates_and_logs() {
     )
     .unwrap();
     let dataset = dataset.with_lambda(args.lambda).unwrap();
-    let ks = dataset.estimate_teacher_ks().unwrap();
+    let teacher_cp_per_logit: Vec<_> = dataset
+        .estimate_teacher_cp_per_logit()
+        .unwrap()
+        .into_iter()
+        .map(|value| match value {
+            Some(value) => value.value,
+            None => f64::NAN,
+        })
+        .collect();
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let mut opt = Adam::new(0.03).unwrap();
     let order = epoch_permutation(dataset.training_indices(), args.seed, 1);
@@ -335,7 +349,7 @@ fn training_wires_permutation_and_tail_batches_to_updates_and_logs() {
             batch.teacher_scores(),
             batch.teacher_classes(),
             batch.outcomes(),
-            &ks,
+            &teacher_cp_per_logit,
             dataset.teacher_lambdas(),
         )
         .unwrap();

@@ -394,7 +394,7 @@ fn decode_rejects_invalid_header_fields() {
         Version(u32),
         FeatureCount,
         RuleSet,
-        K(f32),
+        CpPerLogit(f32),
     }
     use Field::*;
     for (name, field) in [
@@ -405,11 +405,11 @@ fn decode_rejects_invalid_header_fields() {
         ("version=max", Version(u32::MAX)),
         ("feature_count", FeatureCount),
         ("rule_set", RuleSet),
-        ("k=0", K(0.0)),
-        ("k=-1", K(-1.0)),
-        ("k=NaN", K(f32::NAN)),
-        ("k=+inf", K(f32::INFINITY)),
-        ("k=-inf", K(f32::NEG_INFINITY)),
+        ("cp_per_logit=0", CpPerLogit(0.0)),
+        ("cp_per_logit=-1", CpPerLogit(-1.0)),
+        ("cp_per_logit=NaN", CpPerLogit(f32::NAN)),
+        ("cp_per_logit=+inf", CpPerLogit(f32::INFINITY)),
+        ("cp_per_logit=-inf", CpPerLogit(f32::NEG_INFINITY)),
     ] {
         let mut bytes = valid_bytes();
         match field {
@@ -417,7 +417,7 @@ fn decode_rejects_invalid_header_fields() {
             Version(value) => bytes[4..8].copy_from_slice(&value.to_le_bytes()),
             FeatureCount => bytes[8] ^= 1,
             RuleSet => bytes[47] = b'x',
-            K(value) => bytes[12..16].copy_from_slice(&value.to_le_bytes()),
+            CpPerLogit(value) => bytes[12..16].copy_from_slice(&value.to_le_bytes()),
         }
         let error = Pst::decode(&bytes).err().expect(name);
         let expected = match field {
@@ -427,7 +427,7 @@ fn decode_rejects_invalid_header_fields() {
             }
             FeatureCount => matches!(error, Error::UnexpectedFeatureCount { .. }),
             RuleSet => matches!(error, Error::InvalidRuleSet),
-            K(_) => matches!(error, Error::InvalidK { .. }),
+            CpPerLogit(_) => matches!(error, Error::InvalidCpPerLogit { .. }),
         };
         assert!(expected, "field={name}, error={error:?}");
     }
@@ -552,7 +552,7 @@ fn checksum_covers_both_endpoints_and_piece_values() {
     let expected: [u8; 32] = Sha256::digest(&bytes[80..]).into();
     assert_eq!(pst.checksum(), &expected);
     assert_eq!(
-        pst.k(),
+        pst.cp_per_logit(),
         f32::from_le_bytes(bytes[12..16].try_into().unwrap())
     );
     for offset in [80, 80 + 13_680 * 2, 80 + 13_680 * 4, bytes.len() - 1] {
@@ -606,7 +606,7 @@ fn fixed_pst_matches_integer_reference_evaluation() {
     let with_fm = Pst::from_weights_with_fm(
         pst.weights(),
         pst.piece_values,
-        pst.k(),
+        pst.cp_per_logit(),
         pst.rule_set(),
         FmWeights {
             embeddings: &vec![row; FEATURE_COUNT],
@@ -1120,9 +1120,14 @@ fn zero_rank_requires_zero_exponent_and_checksums_the_fm_section() {
     assert_eq!(&bytes[offset..], &[0; 8]);
     let pst = Pst::decode(&bytes).unwrap();
     assert!(pst.fm_weights().is_none());
-    let encoded = Pst::from_weights(pst.weights(), pst.piece_values, pst.k(), pst.rule_set())
-        .unwrap()
-        .encode();
+    let encoded = Pst::from_weights(
+        pst.weights(),
+        pst.piece_values,
+        pst.cp_per_logit(),
+        pst.rule_set(),
+    )
+    .unwrap()
+    .encode();
     assert_eq!(encoded, bytes);
     for exponent in [1_u32, 30, 31, u32::MAX] {
         let mut corrupt = bytes.clone();

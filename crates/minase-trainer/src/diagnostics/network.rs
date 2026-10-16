@@ -71,11 +71,11 @@ impl IntegerNetwork {
         }
     }
 
-    /// 重みファイルの出力用Kをf64へ広げて返す。
-    pub(super) fn k(&self) -> f64 {
+    /// 重みファイルの勝率尺度（1ロジットあたりのcp）をf64へ広げて返す。
+    pub(super) fn cp_per_logit(&self) -> f64 {
         match self {
-            Self::P(net) => f64::from(net.k()),
-            Self::HalfKp(net) => f64::from(net.k()),
+            Self::P(net) => f64::from(net.cp_per_logit()),
+            Self::HalfKp(net) => f64::from(net.cp_per_logit()),
         }
     }
 

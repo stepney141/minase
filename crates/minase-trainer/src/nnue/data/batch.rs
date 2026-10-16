@@ -8,14 +8,14 @@ use crate::data::{Dataset, build_targets_from_arrays, outcome_code};
 /// バッチの教師値を[`build_targets_from_arrays`]の混合式で構築する。
 pub fn build_targets(
     batch: &BatchSlot,
-    teacher_ks: &[f64],
+    teacher_cp_per_logit: &[f64],
     teacher_lambdas: &[f64],
 ) -> Result<Vec<f32>> {
     build_targets_from_arrays(
         batch.teacher_scores(),
         batch.teacher_classes(),
         batch.outcomes(),
-        teacher_ks,
+        teacher_cp_per_logit,
         teacher_lambdas,
     )
     .map_err(Into::into)
@@ -260,7 +260,7 @@ impl BatchSlot {
     pub fn teacher_scores(&self) -> &[f32] {
         &self.teacher_scores
     }
-    /// 教師用Kを引く分類番号`[B]`を返す。
+    /// 教師の勝率尺度（1ロジットあたりのcp）を引く分類番号`[B]`を返す。
     pub fn teacher_classes(&self) -> &[u32] {
         &self.teacher_classes
     }

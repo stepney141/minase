@@ -18,11 +18,14 @@ use serde::Serialize;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 /// 教師分類・位相帯の損失、整数一致、量子化と局面操作を診断する引数。
-#[derive(Args)]
+#[derive(Args, Serialize)]
 pub struct PstCompareArgs {
     /// MNSD。実行中は元ファイルを変更・切り詰めしないこと。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
+    /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
+    #[arg(long, value_name = "calibrate|FILE")]
+    pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
     /// 自己対局の教師の混合比を有限な0以上1以下で指定する。実戦対局には0を適用する。
     #[arg(long, value_parser = crate::data::parse_lambda)]
     pub lambda: f64,
@@ -59,7 +62,7 @@ pub struct PstCompareArgs {
 struct ClassMetadata {
     generation_commit: String,
     network_checksum: String,
-    nodes: u64,
+    search_budget: u64,
     rule_set: String,
     origin: Origin,
     lookahead_gamma: Option<f64>,
@@ -75,7 +78,7 @@ impl ClassMetadata {
                 .iter()
                 .map(|b| format!("{b:02x}"))
                 .collect(),
-            nodes: class.nodes,
+            search_budget: class.search_budget,
             rule_set: class.rule_set.clone(),
             origin: class.origin,
             lookahead_gamma: class.lookahead.map(Lookahead::gamma),
@@ -98,7 +101,8 @@ impl ClassMetadata {
 /// 標本が空でなくλが0の帯だけ`teacher_comparison_reason = "lambda is zero"`も持つ。
 /// `base`と`candidate`は教師探索値との[`ErrorSummary`]で、空の帯とλが0の分類では`null`とする。
 /// 標本の教師探索値を`raw`とし、先読み指定時はf64で再計算した先読み値を使う。
-/// 換算値は`raw × (候補の出力用K / その分類の教師用K)`で、基準の比較にも候補のKを使う。
+/// 勝率尺度の単位は1ロジットあたりのcpである。
+/// 換算値は`raw × (候補のcp_per_logit / その分類のteacher_cp_per_logit)`で、基準の比較にも候補の勝率尺度を使う。
 /// モデル評価は独立した整数PST参照による手番側視点のセンチポーンである。
 /// 検証損失、量子化検査、整数評価の照合にはλが0の分類も含める。
 #[derive(Serialize)]
@@ -163,6 +167,8 @@ struct Inputs {
 /// 教師分類の番号は欄名で`generation`とも呼ぶ。
 #[derive(Serialize)]
 struct Report {
+    /// 実行時の引数。尺度の指定も保存する。
+    arguments: serde_json::Value,
     /// 入力順のMNSDと比較する重みの識別情報。
     #[serde(skip_serializing_if = "Option::is_none")]
     inputs: Option<Inputs>,
@@ -181,11 +187,18 @@ struct Report {
     outcome_metrics: Option<Models<OutcomeMetrics>>,
     /// 実効λが0の分類に属する全検証局面数。抽出標本数ではない。
     teacher_comparison_excluded: usize,
-    /// 基準と候補のMNPTの出力用Kを持つ`{base: f64, candidate: f64}`。
+    /// 基準と候補のMNPTの勝率尺度を持つ`{base: f64, candidate: f64}`。
     #[serde(skip_serializing_if = "Option::is_none")]
-    k: Option<Models<f64>>,
-    /// 分類順の教師用K。λが0の分類は`null`。
-    teacher_ks: Vec<Option<f64>>,
+    cp_per_logit: Option<Models<f64>>,
+    /// 分類順の教師の勝率尺度。λが0の分類は`null`。
+    teacher_cp_per_logit: Vec<Option<f64>>,
+    /// 候補の勝率尺度を教師の勝率尺度で割った分類順の係数。λが0ならnull。
+    teacher_score_multiplier: Vec<Option<f64>>,
+    /// 推定が探索範囲の端へ到達したかの分類順の配列。λが0ならnull。
+    teacher_cp_per_logit_at_search_bound: Vec<Option<bool>>,
+    /// calibrate、または正規化した較正ファイルのパスと内容。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    teacher_cp_per_logit_source: Option<serde_json::Value>,
     /// 分類順の教師ネットの検査和。各分類の`network_checksum`と同じ小文字16進文字列。
     generation_checksums: Vec<String>,
     /// 基準MNPTの駒状態0〜46の探索用駒価値47個。成功時は候補との全件一致を検査済み。
@@ -230,7 +243,7 @@ struct Report {
 /// 報告自体の入出力エラーでは保存に失敗することがある。
 ///
 /// `--sample-size = 0`、先読み条件の片方だけの指定、重みと実数PSTの読み込み失敗、
-/// 基準と候補の47個の探索用駒価値の不一致、データ読み込みと教師用K推定の失敗を拒否する。
+/// 基準と候補の47個の探索用駒価値の不一致、データ読み込みと教師の勝率尺度の推定の失敗を拒否する。
 /// 全帯の標本が空の場合も停止する。
 /// 標本、代表局面、復元できる除去局面、成り手について、エンジンと独立した整数PST参照が不一致なら失敗する。
 /// 量子化の平均絶対誤差が2 cpを超えるか非有限の場合、またはPST除去差分の厳密な符号反転が1件以上の場合も不合格である。
@@ -259,6 +272,7 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     }
     fs::create_dir(&args.output_dir)?;
     let mut report = Report {
+        arguments: serde_json::to_value(args)?,
         inputs: None,
         sample_size: args.sample_size,
         seed: args.seed,
@@ -267,8 +281,11 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
         lambda: args.lambda,
         outcome_metrics: None,
         teacher_comparison_excluded: 0,
-        k: None,
-        teacher_ks: Vec::new(),
+        cp_per_logit: None,
+        teacher_cp_per_logit: Vec::new(),
+        teacher_score_multiplier: Vec::new(),
+        teacher_cp_per_logit_at_search_bound: Vec::new(),
+        teacher_cp_per_logit_source: None,
         generation_checksums: Vec::new(),
         piece_values: Vec::new(),
         bands: Vec::new(),
@@ -285,11 +302,8 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     if let Err(error) = &result {
         report.error = Some(error.to_string());
     }
-    super::save(
-        &args.output_dir.join("report.json"),
-        &report,
-        report.error.as_deref(),
-    )?;
+    super::save(&args.output_dir.join("report.json"), &report, None)?;
+    // 報告には表示文を保存し、呼び手には失敗の分類を持つ元のエラーを返す。
     result
 }
 
@@ -316,9 +330,9 @@ fn diagnose(
     if (0..47).any(|s| report.piece_values[s] != models.candidate.engine.piece_value_of_state(s)) {
         return Err("candidate piece values differ from the base".into());
     }
-    report.k = Some(Models {
-        base: models.base.k(),
-        candidate: models.candidate.k(),
+    report.cp_per_logit = Some(Models {
+        base: models.base.cp_per_logit(),
+        candidate: models.candidate.cp_per_logit(),
     });
     let float = FloatWeights::read(&args.candidate_float)?;
     report.inputs = Some(Inputs {
@@ -351,16 +365,22 @@ fn diagnose(
         .iter()
         .map(|class| class.network_checksum.clone())
         .collect();
-    eprintln!("recomputing f64 teacher scores and calibrating teacher K");
+    eprintln!("recomputing f64 teacher scores and resolving teacher cp_per_logit");
     let teacher_scores = dataset.diagnostic_teacher_scores()?;
-    let teacher_ks = pst_statistics::teacher_ks(&dataset, &teacher_scores)?;
-    report.teacher_ks = teacher_ks
-        .iter()
-        .map(|&k| k.is_finite().then_some(k))
-        .collect();
+    let calibration = args.teacher_cp_per_logit.resolve_with_scores(
+        &dataset,
+        &teacher_scores,
+        models.candidate.engine.cp_per_logit(),
+    )?;
+    let teacher_cp_per_logit = calibration.target_values();
+    report.teacher_cp_per_logit = calibration.teacher_cp_per_logit;
+    report.teacher_score_multiplier = calibration.teacher_score_multiplier;
+    report.teacher_cp_per_logit_at_search_bound = calibration.at_search_bound;
+    report.teacher_cp_per_logit_source = Some(calibration.source);
     eprintln!("selecting phase-band samples and computing validation statistics");
     let sampling = pst_sample::select(&dataset, args.sample_size, args.seed)?;
-    let validation = pst_statistics::validation(&dataset, &models, &teacher_scores, &teacher_ks)?;
+    let validation =
+        pst_statistics::validation(&dataset, &models, &teacher_scores, &teacher_cp_per_logit)?;
     report.outcome_metrics = Some(validation.outcomes);
     report.teacher_comparison_excluded = sampling
         .validation
@@ -418,10 +438,14 @@ fn diagnose(
                         .iter()
                         .map(|&index| teacher_scores[index as usize])
                         .collect();
-                    // 換算尺度は基準の比較にも候補のKを使う。
+                    // 換算尺度は基準の比較にも候補のcp_per_logitを使う。
                     let scaled: Vec<_> = raw
                         .iter()
-                        .map(|score| score * (models.candidate.k() / teacher_ks[generation]))
+                        .map(|score| {
+                            score
+                                * (models.candidate.cp_per_logit()
+                                    / teacher_cp_per_logit[generation])
+                        })
                         .collect();
                     let mut base = Vec::with_capacity(indices.len());
                     let mut candidate = Vec::with_capacity(indices.len());

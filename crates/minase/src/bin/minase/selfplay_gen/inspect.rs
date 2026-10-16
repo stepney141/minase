@@ -85,7 +85,7 @@ pub(super) fn inspect(arguments: &InspectArguments) -> io::Result<()> {
     println!("generation_commit: {}", header.generation_commit());
     println!("network_checksum: {}", hex(header.network_checksum()));
     println!("teacher_kind: {:?}", header.teacher_kind());
-    println!("teacher_scale: {}", header.teacher_scale());
+    println!("teacher_search_budget: {}", header.teacher_search_budget());
     println!("seed: {}", header.seed());
     println!("game_count: {}", header.game_count());
     println!("entry_count: {}", header.entry_count());

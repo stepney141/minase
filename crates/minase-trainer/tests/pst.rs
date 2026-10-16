@@ -103,7 +103,7 @@ fn oracle(
             ((numerator / 720).clamp(-28999, 28999), numerator)
         };
         let before = evaluate(None);
-        let z = before / f64::from(model.k());
+        let z = before / f64::from(model.cp_per_logit());
         loss += z.max(0.0) - z * f64::from(target) + (-z.abs()).exp().ln_1p();
         let (integer_before, numerator_before) = base(None);
         let mut removal = 0.0;
@@ -130,7 +130,7 @@ fn oracle(
             upper_count += usize::from(upper > 0.0);
             removal += lower + upper;
         }
-        loss += penalty * removal / eligible.max(1) as f64 / f64::from(model.k());
+        loss += penalty * removal / eligible.max(1) as f64 / f64::from(model.cp_per_logit());
     }
     (loss / positions.len() as f64, lower_count, upper_count)
 }
@@ -378,7 +378,7 @@ fn ties_to_even_mnpt_rank_zero_and_npz_preserve_endpoints_and_metadata() {
     assert_eq!(&bytes[80 + 13_680 * 4 + 47 * 4..], &[0; 8]);
     let written = Pst::decode(&bytes).unwrap();
     assert_eq!(written.weights().as_slice(), quantized);
-    assert_eq!(written.k(), 317.25);
+    assert_eq!(written.cp_per_logit(), 317.25);
     assert_eq!(written.rule_set(), "L1,P0,R1,E0");
     for (state, value) in values.into_iter().enumerate() {
         assert_eq!(written.piece_value_of_state(state), value);

@@ -55,15 +55,46 @@ pub enum Error {
     LookaheadSamples,
     /// 教師の混合比が有限な0以上1以下の値ではない。
     TeacherLambda,
-    /// 教師値の構築に必要な分類番号、Kまたは探索値が不正。
+    /// 教師値の構築に必要な分類番号、教師の勝率尺度（1ロジットあたりのcp）または探索値が不正。
     TeacherTargets,
     /// 対局番号または同じ対局内の手数が順序規則に違反した。
     RecordOrder {
         /// 最初に違反したファイル内の記録番号。
         index: usize,
     },
-    /// K推定の標本が空、長さが不一致、または値が定義域外にある。
+    /// 教師の勝率尺度の推定に使う標本が空、長さが不一致、または値が定義域外にある。
     TeacherSamples,
+    /// 探索値がすべて0で、教師の勝率尺度を決められない。
+    UndeterminedScale,
+    /// 較正ファイルのJSON構造または構文が不正である。
+    CalibrationJson(serde_json::Error),
+    /// 較正ファイルの形式識別子が一致しない。
+    CalibrationFormat,
+    /// 較正ファイルの教師の勝率尺度が有限で正の数ではない。
+    CalibrationScale {
+        /// 較正ファイル内の項目番号。
+        entry: usize,
+    },
+    /// λが0でない教師分類に対応する較正項目がない。
+    MissingCalibrationClass {
+        /// 教師の分類番号。
+        class: usize,
+    },
+    /// 較正項目に対応する教師分類が入力にない。
+    UnexpectedCalibrationClass {
+        /// 較正ファイル内の項目番号。
+        entry: usize,
+    },
+    /// 同じ6属性を持つ較正項目が複数ある。
+    DuplicateCalibrationClass {
+        /// 重複した後の項目番号。
+        entry: usize,
+    },
+    /// 較正の出力先が既に存在する。
+    CalibrationOutputExists {
+        /// 出力先のパス。
+        path: PathBuf,
+    },
     /// 指定した教師の分類に訓練局面がない。
     EmptyTeacherClass {
         /// 教師の分類番号。
@@ -94,15 +125,23 @@ impl fmt::Display for Error {
             }
             Self::TeacherLambda => f.write_str("teacher lambda must be finite and in 0..=1"),
             Self::TeacherTargets => {
-                f.write_str("teacher targets require matching classes, finite positive active K values and finite active scores")
+                f.write_str("teacher targets require matching classes, finite positive active teacher cp_per_logit values and finite active scores")
             }
             Self::RecordOrder { index } => write!(
                 f,
                 "record {index}: games must be nondecreasing and plies strictly increasing within a game"
             ),
             Self::TeacherSamples => f.write_str(
-                "K estimation requires nonempty matching finite scores and results in 0..=2",
+                "teacher cp_per_logit estimation requires nonempty matching finite scores and results in 0..=2",
             ),
+            Self::UndeterminedScale => f.write_str("teacher cp_per_logit is undetermined: all training scores are zero"),
+            Self::CalibrationJson(error) => write!(f, "invalid teacher calibration JSON: {error}"),
+            Self::CalibrationFormat => f.write_str("invalid teacher calibration format"),
+            Self::CalibrationScale { entry } => write!(f, "calibration entry {entry}: teacher_cp_per_logit must be finite and positive"),
+            Self::MissingCalibrationClass { class } => write!(f, "teacher class {class} has no calibration entry"),
+            Self::UnexpectedCalibrationClass { entry } => write!(f, "calibration entry {entry} has no matching teacher class"),
+            Self::DuplicateCalibrationClass { entry } => write!(f, "calibration entry {entry} duplicates a teacher class"),
+            Self::CalibrationOutputExists { path } => write!(f, "calibration output already exists: {}", path.display()),
             Self::EmptyTeacherClass { class } => {
                 write!(f, "teacher class {class} has no training records")
             }
@@ -118,6 +157,7 @@ impl std::error::Error for Error {
             Self::Position(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Mnsd(error) => Some(error),
+            Self::CalibrationJson(error) => Some(error),
             _ => None,
         }
     }
@@ -132,5 +172,11 @@ impl From<io::Error> for Error {
 impl From<records::Error> for Error {
     fn from(error: records::Error) -> Self {
         Self::Mnsd(error)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self::CalibrationJson(error)
     }
 }

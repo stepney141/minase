@@ -292,7 +292,7 @@ fn quantized_mnue_v5_round_trip_has_small_mean_integer_evaluation_error() {
             .sum::<f64>()
             / positions.len() as f64;
         assert!(mean < 1.0, "{set:?} mean absolute error={mean}cp");
-        assert!(mean < f64::from(m.shape().k()) / 40.0);
+        assert!(mean < f64::from(m.shape().cp_per_logit()) / 40.0);
     }
 }
 
@@ -375,15 +375,15 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
 }
 
 #[test]
-fn model_rejects_invalid_width_k_initial_and_mask_shapes() {
+fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
     for width in [0, 1, 3, 513, usize::MAX] {
         assert!(Shape::new(InputFeatureSet::P, width, 1000.0).is_err());
     }
     for width in [2, 6, 512] {
         assert!(Shape::new(InputFeatureSet::P, width, 1000.0).is_ok());
     }
-    for k in [0.0, -1.0, f32::NAN, f32::INFINITY, 100001.0] {
-        assert!(Shape::new(InputFeatureSet::P, 4, k).is_err());
+    for cp_per_logit in [0.0, -1.0, f32::NAN, f32::INFINITY, 100001.0] {
+        assert!(Shape::new(InputFeatureSet::P, 4, cp_per_logit).is_err());
     }
     assert!(Masks::new(InputFeatureSet::P, vec![false; 6840], vec![false; 13681]).is_err());
     assert!(

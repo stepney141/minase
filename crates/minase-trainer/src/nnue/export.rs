@@ -108,7 +108,8 @@ pub struct QuantizationReport {
     pub mean_absolute_error_cp: f64,
     /// 最大絶対誤差、センチポーン。
     pub max_absolute_error_cp: f64,
-    /// 平均絶対誤差に許す上限K/40、センチポーン。
+    /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+    /// 平均絶対誤差に許す上限`cp_per_logit / 40`、センチポーン。
     pub limit_cp: f64,
     /// 平均絶対誤差が上限以下なら真。
     pub passed: bool,
@@ -132,7 +133,7 @@ fn validation_sample(dataset: &Dataset, requested: usize, seed: u64) -> Result<V
 /// `checkpoint`は`best.npz`に保存した1以上の最良エポックそのものを渡す。
 /// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
 /// 標本は検証集合を`epoch_permutation(seed, 0)`で並べた先頭`--validation-sample`件で、既定は10,000件である。
-/// 平均絶対誤差がK/40を超えても重みと測定値は保持し、`passed = false`を返す。
+/// 平均絶対誤差が`cp_per_logit / 40`を超えても重みと測定値は保持し、`passed = false`を返す。
 /// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
 pub fn write_best(
     dataset: &Dataset,
@@ -161,8 +162,8 @@ pub fn write_best(
 }
 
 /// 浮動小数点の`reference::evaluate_f64`と、復号したファイルの`nnue::evaluate`の平均絶対誤差と最大誤差を記録する。
-/// 閾値は書き出したMNUEヘッダのf32のKを使ったK/40であり、等しい場合は合格とする。
-/// K/40は旧NNUEから引き継いだ基準であり、棋力に対する安全性は確認されていない。
+/// 閾値は書き出したMNUEヘッダのf32の勝率尺度を使った`cp_per_logit / 40`であり、等しい場合は合格とする。
+/// `cp_per_logit / 40`は旧NNUEから引き継いだ基準であり、棋力に対する安全性は確認されていない。
 fn measure<F: FeatureSet>(
     dataset: &Dataset,
     checkpoint: &Checkpoint,
@@ -198,7 +199,7 @@ fn measure<F: FeatureSet>(
         }
     }
     let mean = sum / indices.len() as f64;
-    let limit = f64::from(network.k()) / 40.0;
+    let limit = f64::from(network.cp_per_logit()) / 40.0;
     Ok(QuantizationReport {
         samples: indices.len(),
         seed: checkpoint.progress.seed,

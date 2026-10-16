@@ -72,11 +72,11 @@ pub(super) struct Exported {
 }
 
 /// 最良モデルをMNPT版3の`fm.bin`と実数の`fm-float.npz`へ書く。
-/// PST、K、47個の探索用駒価値、規則名を初期MNPTから保ち、書いた後に読み直して一致を検査する。
+/// PST、勝率尺度（1ロジットあたりのcp）、47個の探索用駒価値、規則名を初期MNPTから保ち、書いた後に読み直して一致を検査する。
 /// 全特徴の`v * a`が0なら指数0、埋め込み全0のFMを書く。
 /// 1/4にした補正が恒等的に0と上界から判定できれば`excluded_zero_correction`とし、指数30でその判定ができなければ拒否する。
 /// 標本は検証集合の`epoch_permutation(seed, 0)`の先頭`validation_sample`件である。
-/// 誤差は`abs(PST + K * Φ / m − clamp(PST + trunc(N / 2^(2e+1)) / m, ±28,999))`で、整数側の`/ m`も0方向へ切り捨てる。
+/// 誤差は`abs(PST + cp_per_logit * Φ / m − clamp(PST + trunc(N / 2^(2e+1)) / m, ±28,999))`で、整数側の`/ m`も0方向へ切り捨てる。
 /// `m = 1`と`m = 4`の両方で平均2センチポーン以下を合格とする。
 /// `m = 4`の整数補正は指数を1増やした補正に等しい。
 pub(super) fn write_best(
@@ -101,7 +101,7 @@ pub(super) fn write_best(
             exponent: 0,
         }
     } else {
-        quantize(&v, &a, f64::from(base.k()))?
+        quantize(&v, &a, f64::from(base.cp_per_logit()))?
     };
     let zero = zero_correction_report(&fm.embeddings, &fm.signs, fm.exponent + 1)?;
     if fm.exponent == 30 && !zero.identically_zero {
@@ -110,14 +110,14 @@ pub(super) fn write_best(
     let output = Pst::from_weights_with_fm(
         base.weights(),
         std::array::from_fn(|s| base.piece_value_of_state(s)),
-        base.k(),
+        base.cp_per_logit(),
         base.rule_set(),
         fm.as_weights(),
     )?;
     atomic_write(&directory.join("fm.bin"), &output.encode())?;
     let written = Pst::decode(&std::fs::read(directory.join("fm.bin"))?)?;
     if written.weights() != base.weights()
-        || written.k().to_bits() != base.k().to_bits()
+        || written.cp_per_logit().to_bits() != base.cp_per_logit().to_bits()
         || written.rule_set() != base.rule_set()
         || (0..pst::PIECE_STATE_COUNT)
             .any(|s| written.piece_value_of_state(s) != base.piece_value_of_state(s))
@@ -141,7 +141,7 @@ pub(super) fn write_best(
         let mut features = Vec::with_capacity(145);
         active_features(&position, |f| features.push(f));
         let baseline = i64::from(pst::evaluate_pst(base, &position));
-        let floating = f64::from(base.k()) * phi(&v, &a, &features);
+        let floating = f64::from(base.cp_per_logit()) * phi(&v, &a, &features);
         let integer = correction(fm.as_weights(), &features);
         for (i, divisor) in [1_i64, 4].into_iter().enumerate() {
             let value = integer / divisor;

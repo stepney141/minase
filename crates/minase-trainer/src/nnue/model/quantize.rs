@@ -32,7 +32,7 @@ impl Quantized {
     ) -> Result<Vec<u8>> {
         let input = EncodeInput {
             width: self.shape.width() as u32,
-            k: self.shape.k(),
+            cp_per_logit: self.shape.cp_per_logit(),
             rule_set,
             piece_values,
             linear: &self.linear,

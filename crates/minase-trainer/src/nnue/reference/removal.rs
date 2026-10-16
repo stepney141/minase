@@ -128,7 +128,8 @@ pub struct Removal {
     pub wrong_r: Vec<bool>,
     /// 適格な除去の罰則pen_r`[B,144]`、センチポーン。
     pub pen_r: Vec<f64>,
-    /// K∂L_aux/∂Δ_r、`[B,144]`。
+    /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+    /// `cp_per_logit∂L_aux/∂Δ_r`、`[B,144]`。
     pub d_r: Vec<f32>,
     /// S=Σ_r d_r、`[B]`。
     pub s: Vec<f32>,
@@ -136,7 +137,7 @@ pub struct Removal {
     pub d_acc_removal: Vec<f32>,
     /// Σ_r d_r f(acc_v-W_r)、`[B,2,H]`。
     pub d_output: Vec<f32>,
-    /// 線形係数S(u_r-u)/K、`[B,2]`。
+    /// 線形係数`S(u_r-u)/cp_per_logit`、`[B,2]`。
     pub linear: Vec<[f32; 2]>,
     /// 局面ごとの補助損失。指定した係数を含み、バッチ平均前。
     pub loss: Vec<f64>,
@@ -192,11 +193,11 @@ fn removal_head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -
 }
 
 /// 両視点の同じ升を除き、罰則と後退用の部分和を求める。
-/// 差分Δの線形部分は補間分子の`(after_lin−before_lin)/90`をf64で、非線形部分は各視点の`K×(after−before)`を加える。
+/// 差分Δの線形部分は補間分子の`(after_lin−before_lin)/90`をf64で、非線形部分は各視点の`cp_per_logit×(after−before)`を加える。
 /// 非線形のafter−beforeはf32で求めてからf64へ広げる。
 /// 参照の符号sと大きさmagに対し、`pen = relu(min(mag,0.25)−s×Δ) + wrong×relu(s×Δ−mag)`とする。
 /// 適格列数を最小1のcountとし、`d_r = removal_penalty/(B×count)×傾き`で、傾きは下限未満なら−s、逆向きかつ上限超過なら+s、それ以外は0である。
-/// 局面損失は`removal_penalty×Σpen/count/K`、`S = Σd_r`、線形係数は`S×(u_after−u)/K`である。
+/// 局面損失は`removal_penalty×Σpen/count/cp_per_logit`、`S = Σd_r`、線形係数は`S×(u_after−u)/cp_per_logit`である。
 /// (B,144,H)の中間配列は作らない。
 pub fn removal_forward(
     model: &Model,
@@ -236,7 +237,7 @@ pub(super) fn removal_forward_parallel(
     let n = batch.len();
     let h = model.shape().width();
     forward.check_shape(n, h)?;
-    let k = f64::from(model.shape().k());
+    let cp_per_logit = f64::from(model.shape().cp_per_logit());
     let o = model.expanded_output_weights();
     let chunks = parallel::map::<_, _, Error, _>(parallel::ranges(n, threads)?, |range| {
         let length = range.len();
@@ -293,9 +294,10 @@ pub(super) fn removal_forward_parallel(
             let nonlinear =
                 before_head[0] + before_head[1] + model.parameters()[Parameter::OutputBias][0];
             let before_e = f64::from(
-                (u[0] * forward.lin[b][0] + u[1] * forward.lin[b][1]) / model.shape().k()
+                (u[0] * forward.lin[b][0] + u[1] * forward.lin[b][1])
+                    / model.shape().cp_per_logit()
                     + nonlinear,
-            ) * k;
+            ) * cp_per_logit;
             let mut d_acc = vec![0.0_f64; 2 * h];
             let mut d_output = vec![0.0_f64; 2 * h];
             let mut s = 0.0_f64;
@@ -313,7 +315,7 @@ pub(super) fn removal_forward_parallel(
                     let after = removal_head(model, v, |j| {
                         forward.acc[(b * 2 + v) * h + j] - row_value(model, weights, feature, j)
                     });
-                    delta += k * f64::from(after - before);
+                    delta += cp_per_logit * f64::from(after - before);
                 }
                 result.delta_r[i] = delta;
                 result.e_r[i] = before_e + delta;
@@ -327,7 +329,8 @@ pub(super) fn removal_forward_parallel(
                         0.0
                     };
                 result.pen_r[i] = penalty;
-                result.loss[local] += removal_penalty * penalty / count.max(1) as f64 / k;
+                result.loss[local] +=
+                    removal_penalty * penalty / count.max(1) as f64 / cp_per_logit;
                 let derivative = if signed < lower {
                     -sign
                 } else if result.wrong_r[i] && signed > magnitude {
@@ -360,7 +363,7 @@ pub(super) fn removal_forward_parallel(
             }
             let after_u = phase(batch.piece_counts()[b], true);
             for e in 0..2 {
-                result.linear[local][e] = (s * f64::from(after_u[e] - u[e]) / k) as f32;
+                result.linear[local][e] = (s * f64::from(after_u[e] - u[e]) / cp_per_logit) as f32;
             }
         }
         if result

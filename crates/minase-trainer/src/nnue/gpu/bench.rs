@@ -54,9 +54,9 @@ pub struct Args {
     /// 更新を実行するデバイスを指定する。
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     device: DeviceKind,
-    /// この測定で固定する出力用Kと教師用Kの共通値を指定する。
+    /// この測定で固定する勝率尺度（1ロジットあたりのcp）と教師の勝率尺度の共通値を指定する。
     #[arg(long, default_value_t = 1000.0)]
-    k: f32,
+    cp_per_logit: f32,
     /// 学習率、重み減衰、補助損失の係数、および教師値の混合比。
     #[command(flatten)]
     training: TrainingOptions,
@@ -83,8 +83,8 @@ pub struct Report {
     pub steps: usize,
     /// 1更新の局面数。
     pub batch: usize,
-    /// 出力と全教師分類に共通のK。
-    pub k: f32,
+    /// 出力と全教師分類に共通の勝率尺度。
+    pub cp_per_logit: f32,
     /// 1更新の平均ミリ秒。CUDAではイベント、CPUではホストの経過時間を使う。
     pub compute_ms: f64,
     /// 転送ストリームのイベントから得た1バッチの平均ミリ秒。
@@ -287,12 +287,12 @@ impl ProfileMeasurements {
 
 /// 1回のウォームアップ後に、2以上の`--steps`回の更新を実データで測る。
 /// シードの既定値71とエポック0の順列から`(steps+1)×batch`局面を重複なく使う。
-/// モデルは`benchmark_model`で作り、出力と全教師分類に同じKを使う。Kの既定値は1000である。
+/// モデルは`benchmark_model`で作り、出力と全教師分類に同じ勝率尺度を使う。勝率尺度の既定値は1000である。
 /// CPUでは転送時間を0とし、`--profile`との併用を拒否する。
-/// 教師Kの推定や学習の検証は行わない。
+/// 教師の勝率尺度の推定や学習の検証は行わない。
 pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
     args.training.validate()?;
-    let shape = Shape::new(args.feature_set, args.width, args.k)?;
+    let shape = Shape::new(args.feature_set, args.width, args.cp_per_logit)?;
     if !(1..=MAX_BATCH_SIZE).contains(&args.batch) {
         return Err(Error::Invalid("--batch must be in 1..=MAX_BATCH_SIZE").into());
     }
@@ -325,7 +325,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
     }
     let mut indices = epoch_permutation(dataset.training_indices(), args.seed, 0);
     indices.truncate(required);
-    let teacher_ks = vec![f64::from(args.k); dataset.teacher_classes().len()];
+    let teacher_cp_per_logit = vec![f64::from(args.cp_per_logit); dataset.teacher_classes().len()];
     let model = benchmark_model(shape, args.seed)?;
     if args.device == DeviceKind::Cpu {
         return Ok(run_cpu(&args, &dataset, &indices, threads, model)?);
@@ -333,7 +333,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
     let warmup = build_batches(&dataset, args.feature_set, &[&indices[..args.batch]])?
         .pop()
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
-    let warmup_targets = build_targets(&warmup, &teacher_ks, dataset.teacher_lambdas())?;
+    let warmup_targets = build_targets(&warmup, &teacher_cp_per_logit, dataset.teacher_lambdas())?;
     let optimizer = AdamW::new(shape, args.training.optimizer())?;
     let device = Device::new(0)?;
     let (free_before, _) = device.memory_info()?;
@@ -365,7 +365,14 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         let producer = std::thread::Builder::new()
             .name("nnue-bench-supply".into())
             .spawn_scoped(scope, || {
-                supply_batches(&dataset, &args, remaining, &teacher_ks, workers, sender)
+                supply_batches(
+                    &dataset,
+                    &args,
+                    remaining,
+                    &teacher_cp_per_logit,
+                    workers,
+                    sender,
+                )
             })
             .map_err(crate::nnue::data::Error::Io)?;
         let measurements = consume_batches(&mut ring, &mut step, &receiver, args.steps);
@@ -391,7 +398,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         threads,
         steps: args.steps,
         batch: args.batch,
-        k: args.k,
+        cp_per_logit: args.cp_per_logit,
         compute_ms: measurements.compute_ms / steps,
         transfer_ms: measurements.transfer_ms / steps,
         transfer_bytes,
@@ -412,7 +419,7 @@ fn supply_batches(
     dataset: &Dataset,
     args: &Args,
     indices: &[u64],
-    teacher_ks: &[f64],
+    teacher_cp_per_logit: &[f64],
     workers: usize,
     sender: SyncSender<PreparedBatch>,
 ) -> Result<SupplyStats> {
@@ -429,7 +436,8 @@ fn supply_batches(
         let prepared = batches
             .into_iter()
             .map(|batch| {
-                let targets = build_targets(&batch, teacher_ks, dataset.teacher_lambdas())?;
+                let targets =
+                    build_targets(&batch, teacher_cp_per_logit, dataset.teacher_lambdas())?;
                 Ok(PreparedBatch { batch, targets })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -480,7 +488,7 @@ fn run_cpu(
 ) -> Result<Report> {
     let mut optimizer = AdamW::new(model.shape(), args.training.optimizer())?;
     let removal = RemovalReference::v0();
-    let teacher_ks = vec![f64::from(args.k); dataset.teacher_classes().len()];
+    let teacher_cp_per_logit = vec![f64::from(args.cp_per_logit); dataset.teacher_classes().len()];
     let workers = threads.min(args.steps);
     let mut update = |prepared: &PreparedBatch| -> Result<Losses> {
         let gradients = reference::loss_and_gradients_parallel(
@@ -497,7 +505,7 @@ fn run_cpu(
     let warmup = build_batches(dataset, args.feature_set, &[&indices[..args.batch]])?
         .pop()
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
-    let warmup_targets = build_targets(&warmup, &teacher_ks, dataset.teacher_lambdas())?;
+    let warmup_targets = build_targets(&warmup, &teacher_cp_per_logit, dataset.teacher_lambdas())?;
     update(&PreparedBatch {
         batch: warmup,
         targets: warmup_targets,
@@ -513,7 +521,7 @@ fn run_cpu(
                     dataset,
                     args,
                     &indices[args.batch..],
-                    &teacher_ks,
+                    &teacher_cp_per_logit,
                     workers,
                     sender,
                 )
@@ -553,7 +561,7 @@ fn run_cpu(
         threads,
         steps: args.steps,
         batch: args.batch,
-        k: args.k,
+        cp_per_logit: args.cp_per_logit,
         compute_ms: measurements.compute_ms / steps,
         transfer_ms: 0.0,
         transfer_bytes: 0,

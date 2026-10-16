@@ -73,7 +73,7 @@ impl Batch {
         base: &Pst,
         indices: &[u64],
         mirror: &[u8],
-        ks: &[f64],
+        teacher_cp_per_logit: &[f64],
     ) -> Result<Self> {
         let records = indices
             .iter()
@@ -95,8 +95,13 @@ impl Batch {
                 Outcome::Win => 2,
             })
             .collect();
-        let targets =
-            build_targets_from_arrays(&scores, &classes, &outcomes, ks, dataset.teacher_lambdas())?;
+        let targets = build_targets_from_arrays(
+            &scores,
+            &classes,
+            &outcomes,
+            teacher_cp_per_logit,
+            dataset.teacher_lambdas(),
+        )?;
         Self::from_records(base, &records, mirror, &targets)
     }
 

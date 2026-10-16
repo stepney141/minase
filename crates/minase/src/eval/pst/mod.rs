@@ -33,7 +33,7 @@ pub fn piece_state_of(piece: PieceCode) -> usize {
 /// 静的評価値の絶対値上限。
 const EVALUATION_LIMIT: i32 = 28_999;
 
-/// 学習PSTの量子化重みと勝率尺度。
+/// 学習PSTの量子化重みと勝率尺度（1ロジットあたりのcp）。
 pub struct Pst {
     /// 特徴ごとの序中盤用と終盤用の重みを隣接させ、1回の読み込みで両端点を得る。
     /// 整数和なので、この配置によって評価値は変わらない。
@@ -46,8 +46,8 @@ pub struct Pst {
     piece_values: [i32; PIECE_STATE_COUNT],
     /// [`Self::max_promotion_gain`]が返す、使用中の駒価値表の成り益の非負上限。
     max_promotion_gain: i32,
-    /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
-    k: f32,
+    /// 学習時に使った勝率尺度。
+    cp_per_logit: f32,
     /// 重み本体のSHA-256。学習データのヘッダに生成元のネットとして記録する。
     checksum: [u8; 32],
 }
@@ -126,9 +126,9 @@ impl Pst {
         self.max_promotion_gain
     }
 
-    /// 学習時に使った勝率尺度Kを返す。
-    pub const fn k(&self) -> f32 {
-        self.k
+    /// 学習時に使った勝率尺度を返す。
+    pub const fn cp_per_logit(&self) -> f32 {
+        self.cp_per_logit
     }
 
     /// 重み本体のSHA-256を返す。

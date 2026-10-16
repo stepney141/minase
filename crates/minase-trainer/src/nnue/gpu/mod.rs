@@ -6,7 +6,7 @@
 //! 幅と特徴集合は起動引数で渡し、テンプレートやソース置換で変えない。
 //! GPUが使えなければエラーを返し、CPUへ切り替えない。
 //! GPUを要するテストは`gpu_`で始め、`#[ignore]`を付けて明示実行する。
-//! 理由は`docs/adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md`と`docs/adr/allow-unsafe-only-in-the-trainer-crate.md`にある。
+//! 理由は`docs/adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md`と`docs/adr/archive/allow-unsafe-only-in-the-trainer-crate.md`にある。
 
 pub mod bench;
 mod device;

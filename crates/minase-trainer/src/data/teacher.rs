@@ -11,16 +11,20 @@ pub fn validate_lambda(value: f64) -> Result<()> {
 }
 
 /// 探索値、分類番号、結果の配列から教師値を構築する。すべて局面順で同じ長さを要求する。
-/// 分類ごとに`λ / (1 + exp(-score / K)) + (1 - λ) * result / 2`をf64で
-/// 計算してf32へ丸める。λが0の分類ではKと探索値を参照しない。
+/// 分類ごとの教師の勝率尺度（1ロジットあたりのcp）を`teacher_cp_per_logit`で指定する。
+/// `λ / (1 + exp(-score / teacher_cp_per_logit)) + (1 - λ) * result / 2`をf64で
+/// 計算してf32へ丸める。λが0の分類では教師の勝率尺度と探索値を参照しない。
+/// 尺度補正係数を`f = cp_per_logit / teacher_cp_per_logit`とすると、実数では
+/// `σ(score / teacher_cp_per_logit) = σ((score × f) / cp_per_logit)`である。
+/// 丸めを保つため補正係数は記録だけに使い、教師値の計算式には掛けない。
 pub fn build_targets_from_arrays(
     scores: &[f32],
     classes: &[u32],
     outcomes: &[u8],
-    teacher_ks: &[f64],
+    teacher_cp_per_logit: &[f64],
     teacher_lambdas: &[f64],
 ) -> Result<Vec<f32>> {
-    if teacher_ks.len() != teacher_lambdas.len()
+    if teacher_cp_per_logit.len() != teacher_lambdas.len()
         || scores.len() != classes.len()
         || scores.len() != outcomes.len()
         || outcomes.iter().any(|&outcome| outcome > 2)
@@ -40,12 +44,12 @@ pub fn build_targets_from_arrays(
             if mix == 0.0 {
                 return Ok(result as f32);
             }
-            let k = teacher_ks[class];
+            let cp_per_logit = teacher_cp_per_logit[class];
             let score = f64::from(scores[position]);
-            if !k.is_finite() || k <= 0.0 || !score.is_finite() {
+            if !cp_per_logit.is_finite() || cp_per_logit <= 0.0 || !score.is_finite() {
                 return Err(Error::TeacherTargets);
             }
-            Ok((mix / (1.0 + (-score / k).exp()) + (1.0 - mix) * result) as f32)
+            Ok((mix / (1.0 + (-score / cp_per_logit).exp()) + (1.0 - mix) * result) as f32)
         })
         .collect()
 }
@@ -132,29 +136,32 @@ pub fn compute_lookahead(
     Ok(result)
 }
 
-fn binary_cross_entropy_sum(scores: &[f64], results: &[u8], k: f64) -> f64 {
+fn binary_cross_entropy_sum(scores: &[f64], results: &[u8], cp_per_logit: f64) -> f64 {
     scores
         .iter()
         .zip(results)
         .map(|(&score, &result)| {
-            let logit = score / k;
+            let logit = score / cp_per_logit;
             // np.logaddexp(0, logit)の安定な評価式。
             logit.max(0.0) + (-logit.abs()).exp().ln_1p() - f64::from(result) / 2.0 * logit
         })
         .sum()
 }
 
-/// 教師Kの推定に黄金分割探索を64回使う。
+/// 教師の勝率尺度の推定に黄金分割探索を64回使う。
 ///
 /// `[50, 4000]`で、探索値から終局結果を予測する二値交差エントロピーを最小化する。
 /// `results`は手番側の負け0、引き分け1、勝ち2。計算はすべてf64で行う。
-pub fn estimate_k(scores: &[f64], results: &[u8]) -> Result<f64> {
+pub fn estimate_cp_per_logit(scores: &[f64], results: &[u8]) -> Result<CpPerLogitEstimate> {
     if scores.is_empty()
         || scores.len() != results.len()
         || scores.iter().any(|value| !value.is_finite())
         || results.iter().any(|&value| value > 2)
     {
         return Err(Error::TeacherSamples);
+    }
+    if scores.iter().all(|&value| value == 0.0) {
+        return Err(Error::UndeterminedScale);
     }
     let (mut lower, mut upper) = (50.0, 4000.0);
     let ratio = (5.0_f64.sqrt() - 1.0) / 2.0;
@@ -177,7 +184,19 @@ pub fn estimate_k(scores: &[f64], results: &[u8]) -> Result<f64> {
             right_loss = binary_cross_entropy_sum(scores, results, right);
         }
     }
-    Ok((lower + upper) / 2.0)
+    Ok(CpPerLogitEstimate {
+        value: (lower + upper) / 2.0,
+        at_search_bound: lower == 50.0 || upper == 4000.0,
+    })
+}
+
+/// 黄金分割探索で推定した教師の勝率尺度と探索範囲の端への到達状況。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CpPerLogitEstimate {
+    /// 教師の勝率尺度（1ロジットあたりのcp）。
+    pub value: f64,
+    /// 64回の反復で下限50または上限4000が一度も動かなかった場合に真となる。
+    pub at_search_bound: bool,
 }
 
 /// コマンドラインのλを有限な0以上1以下に制限する。
@@ -194,11 +213,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_k() {
+    fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_cp_per_logit() {
         // score=0でσ=1/2。λ=3/4なら結果0,1,2に対し3/8,1/2,5/8。
         // 0.75×σ(1)+0.125 = 0.6732939339725037（Python mathのf64計算）をf32へ丸める。
         let mixed = 0.6732939339725037_f64 as f32;
-        for (name, scores, classes, outcomes, ks, lambdas, expected) in [
+        for (name, scores, classes, outcomes, teacher_cp_per_logit, lambdas, expected) in [
             (
                 "mixed classes",
                 vec![f32::NAN, 0.0, 1000.0],
@@ -218,7 +237,7 @@ mod tests {
                 vec![0.375, 0.5, 0.625],
             ),
             (
-                "inactive K",
+                "inactive cp_per_logit",
                 vec![0.0; 3],
                 vec![0; 3],
                 vec![0, 1, 2],
@@ -236,8 +255,14 @@ mod tests {
                 vec![0.0, 0.5, 1.0],
             ),
         ] {
-            let actual = build_targets_from_arrays(&scores, &classes, &outcomes, &ks, &lambdas)
-                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let actual = build_targets_from_arrays(
+                &scores,
+                &classes,
+                &outcomes,
+                &teacher_cp_per_logit,
+                &lambdas,
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
             assert_eq!(
                 actual.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
                 expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
@@ -256,10 +281,10 @@ mod tests {
                 "{name}"
             );
         }
-        for k in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        for cp_per_logit in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert!(
-                build_targets_from_arrays(&[0.0], &[0], &[1], &[k], &[0.75]).is_err(),
-                "K={k}"
+                build_targets_from_arrays(&[0.0], &[0], &[1], &[cp_per_logit], &[0.75]).is_err(),
+                "cp_per_logit={cp_per_logit}"
             );
         }
         for mix in [-0.1, 1.1, f64::NAN, f64::INFINITY] {
@@ -268,12 +293,13 @@ mod tests {
                 "lambda={mix}"
             );
         }
-        for (name, ks, lambdas) in [
+        for (name, teacher_cp_per_logit, lambdas) in [
             ("missing teacher classes", vec![], vec![]),
             ("missing lambda", vec![1000.0], vec![]),
         ] {
             assert!(
-                build_targets_from_arrays(&[0.0], &[0], &[1], &ks, &lambdas).is_err(),
+                build_targets_from_arrays(&[0.0], &[0], &[1], &teacher_cp_per_logit, &lambdas)
+                    .is_err(),
                 "{name}"
             );
         }
@@ -364,30 +390,58 @@ mod tests {
     }
 
     #[test]
-    fn teacher_k_matches_python_reference() {
+    fn teacher_cp_per_logit_matches_python_reference() {
         // 同じ標本の二値交差エントロピーを独立に最小化した参照値である。
         // 最初の例は解析解1000/ln(3)も持ち、平坦な最小点での丸めだけを許す。
-        let actual = estimate_k(&[1000.0; 4], &[2, 2, 2, 0]).unwrap();
+        let estimate = estimate_cp_per_logit(&[1000.0; 4], &[2, 2, 2, 0]).unwrap();
+        assert!(!estimate.at_search_bound);
+        let actual = estimate.value;
         assert!((actual - 910.2392016071356).abs() < 1e-4, "{actual}");
         assert!((actual - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
         assert!(
-            (estimate_k(&[-1000.0, 1000.0], &[0, 2]).unwrap() - 50.00000000008325).abs() < 1e-10
+            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[0, 2])
+                .unwrap()
+                .value
+                - 50.00000000008325)
+                .abs()
+                < 1e-10
         );
         assert!(
-            (estimate_k(&[-1000.0, 1000.0], &[2, 0]).unwrap() - 3999.999999999917).abs() < 1e-10
+            (estimate_cp_per_logit(&[-1000.0, 1000.0], &[2, 0])
+                .unwrap()
+                .value
+                - 3999.999999999917)
+                .abs()
+                < 1e-10
         );
     }
 
     #[test]
-    fn teacher_k_rejects_invalid_samples() {
+    fn teacher_cp_per_logit_reports_search_bounds_and_undetermined_scale() {
+        for results in [[0, 2], [2, 0]] {
+            assert!(
+                estimate_cp_per_logit(&[-1000.0, 1000.0], &results)
+                    .unwrap()
+                    .at_search_bound
+            );
+        }
+        assert!(matches!(
+            estimate_cp_per_logit(&[0.0, -0.0], &[0, 2]),
+            Err(Error::UndeterminedScale)
+        ));
+    }
+
+    #[test]
+    fn teacher_cp_per_logit_rejects_invalid_samples() {
         for (scores, results) in [
             (vec![], vec![]),
             (vec![1.0], vec![]),
             (vec![f64::INFINITY], vec![1]),
+            (vec![f64::NAN], vec![1]),
             (vec![0.0], vec![3]),
         ] {
             assert!(matches!(
-                estimate_k(&scores, &results),
+                estimate_cp_per_logit(&scores, &results),
                 Err(Error::TeacherSamples)
             ));
         }

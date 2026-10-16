@@ -100,10 +100,15 @@ fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
 /// `q′ = min(max(n−3, 0), 90)/90`とし、除去後から除去前を引く。
 ///
 /// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
+/// `cp_per_logit`には整数ネットの勝率尺度（1ロジットあたりのcp）を使う。
 /// 活性化を`a(x) = clamp(x, 0, 1)²`、出力重みを`w_{v,j}`とし、各視点の
-/// `K·(Σ_j a(h_j − 除いた駒の行_j)·w_{v,j} − Σ_j a(h_j)·w_{v,j})`を線形差分へ加える。
-/// Kは整数ネットの出力用Kである。
-fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f64) -> Vec<f64> {
+/// `cp_per_logit·(Σ_j a(h_j − 除いた駒の行_j)·w_{v,j} − Σ_j a(h_j)·w_{v,j})`を線形差分へ加える。
+fn float_removal_deltas(
+    model: &Model,
+    weights: &[f32],
+    batch: &BatchSlot,
+    cp_per_logit: f64,
+) -> Vec<f64> {
     let h = model.shape().width();
     let rows: Vec<_> = batch.linear_features()[..FEATURE_COLUMNS]
         .iter()
@@ -142,7 +147,7 @@ fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f6
                         * f64::from(output[v * h + j])
                 })
                 .sum();
-            *value += k * (after - before);
+            *value += cp_per_logit * (after - before);
         }
     }
     delta
@@ -156,7 +161,7 @@ fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f6
 /// 除ける駒がない局面は飛ばし、標本全体で除去が0件なら報告を作らずにエラーにする。
 ///
 /// 実数の差分は[`reference::evaluate_f64_with_weights`]による除去後の評価から除去前の評価を引く。
-/// 整数の差分も整数ネットの除去後から除去前を引き、実数計算の出力用Kには整数ネットのKを使う。
+/// 整数の差分も整数ネットの除去後から除去前を引き、実数計算にも整数ネットの勝率尺度を使う。
 /// 参照差分は[`RemovalReference::v0`]から得る。
 /// 除去差分の比較に非有限値が現れた場合は、報告を作らずにエラーにする。
 pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
@@ -199,8 +204,9 @@ pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
             &positions,
             perspective,
         )?;
-        let batched = float_removal_deltas(&model, &weights, &batch, net.k());
-        let floating = reference::evaluate_f64_with_weights(&model, &batch, &weights, net.k())?;
+        let batched = float_removal_deltas(&model, &weights, &batch, net.cp_per_logit());
+        let floating =
+            reference::evaluate_f64_with_weights(&model, &batch, &weights, net.cp_per_logit())?;
         let integer_before = net.evaluate(&positions[0], perspective);
         let (references, _) = v0.deltas(&batch, 0)?;
         for (j, &(square, state)) in squares.iter().enumerate() {

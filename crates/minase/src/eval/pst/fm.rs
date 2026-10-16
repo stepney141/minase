@@ -19,14 +19,14 @@ pub struct FmWeights<'a> {
 }
 
 impl Pst {
-    /// 学習済みのPST、駒価値、K、規則名とFM配列を検査し、MNPT版3を作る。
+    /// 学習済みのPST、駒価値、勝率尺度（1ロジットあたりのcp）、規則名とFM配列を検査し、MNPT版3を作る。
     ///
     /// PST側は`from_weights`と同じ検査を行い、FMの行数、符号、指数は読み手の
     /// 契約で検査する。埋め込みはi16の全範囲を受け入れ、自己項と検査和を再計算する。
     pub fn from_weights_with_fm(
         weights: &[[i16; 2]],
         piece_values: [i32; PIECE_STATE_COUNT],
-        k: f32,
+        cp_per_logit: f32,
         rule_set: &str,
         fm: FmWeights<'_>,
     ) -> Result<Self, Error> {
@@ -35,7 +35,7 @@ impl Pst {
                 actual: fm.embeddings.len() as u32,
             });
         }
-        let mut candidate = Self::from_weights(weights, piece_values, k, rule_set)?;
+        let mut candidate = Self::from_weights(weights, piece_values, cp_per_logit, rule_set)?;
         candidate.fm = Some(Fm {
             embeddings: fm.embeddings.into(),
             // 自己項は保存しない。復号時に検査済みの整数表から求める。

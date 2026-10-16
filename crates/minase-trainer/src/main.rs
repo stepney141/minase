@@ -15,6 +15,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 教師データの勝率尺度を較正する。
+    #[command(subcommand)]
+    Data(DataCommand),
     /// NNUEの学習と検証を行う。
     #[command(subcommand)]
     Nnue(NnueCommand),
@@ -30,6 +33,12 @@ enum Command {
     /// 評価分布、駒除去、合法手の評価差を診断する。
     #[command(subcommand)]
     Diag(minase_trainer::diagnostics::Command),
+}
+
+#[derive(Subcommand)]
+enum DataCommand {
+    /// 訓練集合から分類ごとに教師の勝率尺度を推定し、JSONへ保存する。
+    Calibrate(minase_trainer::data::CalibrateArgs),
 }
 
 #[derive(Subcommand)]
@@ -71,6 +80,7 @@ enum NnueCommand {
 
 fn main() -> std::process::ExitCode {
     let result = match Cli::parse().command {
+        Command::Data(DataCommand::Calibrate(args)) => minase_trainer::data::calibrate(args),
         Command::Joint(JointCommand::Train(args)) => minase_trainer::joint::train(args)
             .map(|summary| {
                 println!(
@@ -123,7 +133,7 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
                 if let (Some(used), Some(total), Some(allocated)) = (r.gpu_used_bytes, r.gpu_total_bytes, r.gpu_allocation_bytes) {
                     println!("GPUメモリ使用量は {used} / {total} bytes、入力面と更新器の確保前後の差は {allocated} bytesでした。");
                 }
-                println!("平均損失は {:.8}、補助損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の K={} を使いました。", r.losses.total(), r.losses.auxiliary, r.k);
+                println!("平均損失は {:.8}、補助損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.total(), r.losses.auxiliary, r.cp_per_logit);
                 if let Some(profile) = r.profile {
                     println!("{profile}");
                 }

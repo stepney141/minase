@@ -28,6 +28,8 @@ fn argv() -> Vec<&'static str> {
         "pst.bin",
         "--output-dir",
         "output",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "1.0",
     ]

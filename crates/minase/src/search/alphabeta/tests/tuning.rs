@@ -349,7 +349,7 @@ fn tuning_parameters_in_isolated_process() {
             Pst::from_weights_with_fm(
                 &vec![[0; 2]; FEATURE_COUNT],
                 std::array::from_fn(|state| test_nnue().piece_value_of_state(state)),
-                test_nnue().k(),
+                test_nnue().cp_per_logit(),
                 "engine-default",
                 FmWeights {
                     embeddings: &vec![embedding; FEATURE_COUNT],

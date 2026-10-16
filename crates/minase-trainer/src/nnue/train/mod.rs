@@ -62,7 +62,8 @@ pub enum Error {
     Invalid(&'static str),
     /// 1エポックも検証を完了せず時間の上限に達した。
     NoCompletedEpoch,
-    /// 量子化した推論の平均絶対誤差がK/40を超えた。
+    /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
+    /// 量子化した推論の平均絶対誤差が`cp_per_logit / 40`を超えた。
     QuantizationError,
 }
 impl fmt::Display for Error {
@@ -70,7 +71,7 @@ impl fmt::Display for Error {
         match self {
             Self::Invalid(reason) => f.write_str(reason),
             Self::NoCompletedEpoch => f.write_str("time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"),
-            Self::QuantizationError => f.write_str("quantization_error: mean absolute error exceeds K/40"),
+            Self::QuantizationError => f.write_str("quantization_error: mean absolute error exceeds cp_per_logit / 40"),
         }
     }
 }
@@ -93,8 +94,8 @@ pub enum StopReason {
 /// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
 ///
 /// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
-/// 平均絶対誤差がK/40を超えると`"quantization_error"`となり、`nnue.bin`と`best.npz`を残して終了コード1を返す。
-/// このとき`reason`は`"quantization_error: mean absolute error exceeds K/40"`である。
+/// 平均絶対誤差が`cp_per_logit / 40`を超えると`"quantization_error"`となり、`nnue.bin`と`best.npz`を残して終了コード1を返す。
+/// このとき`reason`は`"quantization_error: mean absolute error exceeds cp_per_logit / 40"`である。
 /// 1エポックも検証を終えず時間切れになった場合と、最良重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
 /// 前者の`reason`は`"time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"`である。
 /// `stopped_by = "time_limit"`なら`convergence`は`"予算の上限で終了し、収束は未確認"`、それ以外は`null`である。
@@ -165,7 +166,7 @@ struct Session {
     workers: usize,
     dataset: Dataset,
     base: base::Base,
-    teacher_ks: Vec<f64>,
+    teacher_cp_per_logit: Vec<f64>,
     checkpoint: Checkpoint,
     backend: Backend,
     started: Instant,
@@ -180,7 +181,7 @@ impl Session {
     /// `--init-pst`の2端点を[`validate_initial`]で`--base`のMNPTと照合し、初期化したモデルの
     /// [`Model::expanded_linear`]も同じ検査に通す。不一致なら学習を始めない。
     /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
-    /// 出力用K、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、Kを[`Shape`]へ渡す。
+    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
     /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
     /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_intervalを除く。
@@ -218,18 +219,27 @@ impl Session {
         {
             return Err(Error::Invalid("MNSD rule set differs from baseline MNPT").into());
         }
-        let teacher_ks = dataset.estimate_teacher_ks()?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit)?;
+        let teacher_cp_per_logit = calibration.target_values();
         let observations = Observations::compute(&dataset, args.feature_set)?;
         let model = Model::initialize(
-            Shape::new(args.feature_set, args.width, base.k)?,
+            Shape::new(args.feature_set, args.width, base.cp_per_logit)?,
             &initial,
             Masks::from_observations(args.feature_set, &observations)?,
             args.seed,
             0.05,
         )?;
         validate_initial(&model.expanded_linear(), &base.linear)?;
-        let mut config =
-            configuration(&args, workers, &dataset, &observations, &teacher_ks, &model)?;
+        let mut config = configuration(
+            &args,
+            workers,
+            &dataset,
+            &observations,
+            &calibration,
+            &model,
+        )?;
         let mut checkpoint = Checkpoint {
             removal_penalty: args.training.removal_penalty,
             lambda: args.training.lambda,
@@ -331,7 +341,7 @@ impl Session {
             workers,
             dataset,
             base,
-            teacher_ks,
+            teacher_cp_per_logit,
             checkpoint,
             backend,
             started,
@@ -405,7 +415,7 @@ impl Session {
             dataset: &self.dataset,
             feature_set: self.args.feature_set,
             indices: self.dataset.validation_indices(),
-            teacher_ks: &self.teacher_ks,
+            teacher_cp_per_logit: &self.teacher_cp_per_logit,
             batch: self.args.batch,
             removal_penalty: self.args.training.removal_penalty,
             deadline: self.deadline(),
@@ -434,7 +444,7 @@ impl Session {
                 feature_set: self.args.feature_set,
                 indices: &indices,
                 validation_indices: self.dataset.validation_indices(),
-                teacher_ks: &self.teacher_ks,
+                teacher_cp_per_logit: &self.teacher_cp_per_logit,
                 batch: self.args.batch,
                 removal_penalty: self.args.training.removal_penalty,
                 validation_interval: self.args.validation_interval,
@@ -459,7 +469,7 @@ impl Session {
                     dataset: supply.dataset,
                     feature_set: supply.feature_set,
                     indices: supply.validation_indices,
-                    teacher_ks: supply.teacher_ks,
+                    teacher_cp_per_logit: supply.teacher_cp_per_logit,
                     batch: supply.batch,
                     removal_penalty: supply.removal_penalty,
                     deadline: supply.deadline,
@@ -664,7 +674,7 @@ struct ValidationSet<'a> {
     dataset: &'a Dataset,
     feature_set: InputFeatureSet,
     indices: &'a [u64],
-    teacher_ks: &'a [f64],
+    teacher_cp_per_logit: &'a [f64],
     batch: usize,
     removal_penalty: f64,
     deadline: Instant,
@@ -692,8 +702,11 @@ impl ValidationSet<'_> {
             self.indices.chunks(self.batch),
             |indices| {
                 let batch = build_batches(self.dataset, self.feature_set, &[indices])?.remove(0);
-                let values =
-                    build_targets(&batch, self.teacher_ks, self.dataset.teacher_lambdas())?;
+                let values = build_targets(
+                    &batch,
+                    self.teacher_cp_per_logit,
+                    self.dataset.teacher_lambdas(),
+                )?;
                 evaluator.validate(&batch, &values)
             },
             || Instant::now() >= self.deadline,

@@ -1,6 +1,6 @@
 //! 固定したPSTに加えるFMを学習し、NPZで保存する。
 //! 新規出力先、入力規則名、再開ディレクトリ、設定とハッシュ、エポックと更新回数、保存順と最良モデルの復旧は[`pst::train`](../../pst/train/index.html)と同じ契約である。
-//! 再開時はK、学習率、重み減衰、シードに加え、観測マスクの一致を要求する。
+//! 再開時は勝率尺度（1ロジットあたりのcp）、学習率、重み減衰、シードに加え、観測マスクの一致を要求する。
 //! 最初の5更新の勾配ノルムを記録し、埋め込みの勾配が5回とも0なら停止する。
 //! aを0で初期化するため、初回の埋め込みの勾配が0であることは許す。
 
@@ -26,7 +26,7 @@ struct Session {
     workers: usize,
     dataset: Dataset,
     base: Pst,
-    ks: Vec<f64>,
+    teacher_cp_per_logit: Vec<f64>,
     checkpoint: Checkpoint,
     started: Instant,
     previous_elapsed: f64,
@@ -58,9 +58,19 @@ impl Session {
         }
         let counts = feature_observations(&dataset)?;
         let mask: Vec<_> = counts.iter().map(|&n| n > 0).collect();
-        let model = Model::initialize(mask, base.k(), args.seed)?;
-        let ks = dataset.estimate_teacher_ks()?;
-        let mut config = configuration(&args, workers, &dataset, &ks, base.k(), &counts)?;
+        let model = Model::initialize(mask, base.cp_per_logit(), args.seed)?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit())?;
+        let teacher_cp_per_logit = calibration.target_values();
+        let mut config = configuration(
+            &args,
+            workers,
+            &dataset,
+            &calibration,
+            base.cp_per_logit(),
+            &counts,
+        )?;
         let mut checkpoint = Checkpoint {
             gradients: Vec::new(),
             optimizer: Adam::new(args.lr, args.weight_decay)?,
@@ -87,7 +97,7 @@ impl Session {
             restored.progress.check_config(
                 &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             )?;
-            if restored.model.k().to_bits() != base.k().to_bits()
+            if restored.model.cp_per_logit().to_bits() != base.cp_per_logit().to_bits()
                 || restored.optimizer.group.lr != args.lr
                 || restored.optimizer.group.weight_decay != args.weight_decay
                 || restored.model.mask() != checkpoint.model.mask()
@@ -125,7 +135,7 @@ impl Session {
             workers,
             dataset,
             base,
-            ks,
+            teacher_cp_per_logit,
             checkpoint,
             started,
             previous_elapsed,
@@ -174,7 +184,7 @@ impl Session {
                     &self.base,
                     chunks[index],
                     &vec![0; chunks[index].len()],
-                    &self.ks,
+                    &self.teacher_cp_per_logit,
                 )?;
                 compute::validation(&self.checkpoint.model, &batch)
             },
@@ -213,7 +223,7 @@ impl Session {
         let mut training = Training::default();
         let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
         let dataset = &self.dataset;
-        let ks = &self.ks;
+        let teacher_cp_per_logit = &self.teacher_cp_per_logit;
         let base = &self.base;
         let batch_size = self.args.batch;
         pipeline::ordered::<_, Box<dyn std::error::Error + Send + Sync>>(
@@ -226,7 +236,7 @@ impl Session {
                     base,
                     chunks[index],
                     &mirrors[start..start + chunks[index].len()],
-                    ks,
+                    teacher_cp_per_logit,
                 )
             },
             |_, batch| {

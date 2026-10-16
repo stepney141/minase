@@ -60,19 +60,22 @@ pub struct EpochRecord {
 /// `preprocessing.teacher_classes`は分類順の[`crate::data::TeacherClass`]の配列である。
 /// 検査和は32個の数値の配列、`lookahead`は`{gamma, plies}`または`null`、
 /// `lambda`は分類へ適用した値であり、実戦対局では0である。`settings.lambda`は利用者が指定した値である。
-/// `teacher_ks`は分類順の教師用Kでλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
-/// `teacher_k_source = "training"`、`output_k`は初期MNPTから引き継いだ出力用Kである。
+/// `teacher_cp_per_logit`は分類順の教師の勝率尺度（1ロジットあたりのcp）でλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
+/// `cp_per_logit`は初期MNPTから引き継いだ勝率尺度である。
 /// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
 /// `validation_indices_sha256`は入力を連結した0始まりの通算番号をリトルエンディアンu64列にしたSHA-256である。
 ///
 /// `resumes`は新規実行では空で、再開のたびに`{resumed_at_unix_seconds, epochs, patience, workers, epoch}`を追記する。
 /// 時刻は整数のUnix秒、`workers`は実効ワーカー数、`epoch`は再開時点の完了済みエポック番号である。
+/// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
+/// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
+/// 両配列とも分類順で、λが0の分類は`null`とする。引数の`teacher_cp_per_logit`は`settings`から除く。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    calibration: &crate::data::TeacherCalibration,
+    cp_per_logit: f32,
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
     let object = settings
@@ -83,6 +86,7 @@ pub(super) fn configuration(
         "output_dir",
         "resume",
         "data",
+        "teacher_cp_per_logit",
         "init",
         "epochs",
         "patience",
@@ -100,8 +104,10 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
-    let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":calibration.teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":calibration.source,
+        "teacher_score_multiplier":calibration.teacher_score_multiplier,
+        "teacher_cp_per_logit_at_search_bound":calibration.at_search_bound, "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

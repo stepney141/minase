@@ -36,6 +36,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "0.75",
         "--data",
@@ -299,7 +301,10 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
     let base = Pst::decode(&fs::read(&args.base).unwrap()).unwrap();
     let output = Pst::decode(&fs::read(args.output_dir.join("pst.bin")).unwrap()).unwrap();
     assert!(output.fm_weights().is_some());
-    assert_eq!(base.k().to_bits(), output.k().to_bits());
+    assert_eq!(
+        base.cp_per_logit().to_bits(),
+        output.cp_per_logit().to_bits()
+    );
     assert_eq!(base.rule_set(), output.rule_set());
     for s in 0..pst::PIECE_STATE_COUNT {
         assert_eq!(base.piece_value_of_state(s), output.piece_value_of_state(s));
@@ -457,7 +462,7 @@ fn five_zero_coefficient_gradients_fail_with_norms_preserved() {
     let reference = Pst::from_weights_with_fm(
         base.weights(),
         std::array::from_fn(|s| base.piece_value_of_state(s)),
-        base.k(),
+        base.cp_per_logit(),
         base.rule_set(),
         q.as_weights(),
     )

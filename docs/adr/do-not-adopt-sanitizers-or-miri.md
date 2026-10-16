@@ -27,4 +27,4 @@ AddressSanitizer、valgrind、およびMiriが主に検出するのは、unsafe�
 整合検査は[重い整合検査をフィーチャ`invariants`に置く](enable-invariant-checks-in-tests-by-feature.md)に従い、並行処理の確認は[並行処理の回帰テストの教訓](../lessons/repeat-concurrency-regression-tests.md)に従う。
 グローバルアロケータのmimallocなど、依存ライブラリの安全性は`unsafe_code = "forbid"`の宣言の対象外である。
 依存ライブラリの不具合が疑われる場面が現れた時点で、この決定を見直す。
-学習器のcrate`minase-trainer`はGPUの呼び出しと教師データのメモリ写像にunsafeなコードを使う（[`unsafe`は学習器のクレートだけに許す](allow-unsafe-only-in-the-trainer-crate.md)）ので、この決定の前提はそのcrateには当てはまらない。
+学習器のcrate`minase-trainer`はGPUの呼び出しと教師データのメモリ写像にunsafeなコードを使う（[`unsafe`は学習器のクレートだけに許す](archive/allow-unsafe-only-in-the-trainer-crate.md)）ので、この決定の前提はそのcrateには当てはまらない。

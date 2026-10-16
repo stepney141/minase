@@ -1,6 +1,6 @@
 //! PSTとFMを同時に学習し、NPZで保存する。
 //! 新規出力先、入力規則名、再開ディレクトリ、設定とハッシュ、エポックと更新回数、保存順と最良モデルの復旧は[`pst::train`](../../pst/train/index.html)と同じ契約である。
-//! 規則名を照合する基準は`--base`であり、再開時はK、両群の学習率、FMの重み減衰、シード、観測マスクの一致を要求する。
+//! 規則名を照合する基準は`--base`であり、再開時は勝率尺度（1ロジットあたりのcp）、両群の学習率、FMの重み減衰、シード、観測マスクの一致を要求する。
 //! 開始時に初期値を量子化して検査し、平均誤差が2センチポーンを超えれば`quantization_error`を記録して停止する。
 //! 最初の5更新の勾配ノルムを記録し、PST、埋め込み、aのどれかが5回とも0なら停止する。
 
@@ -29,7 +29,7 @@ struct Session {
     workers: usize,
     dataset: Dataset,
     base: Pst,
-    ks: Vec<f64>,
+    teacher_cp_per_logit: Vec<f64>,
     checkpoint: Checkpoint,
     started: Instant,
     previous_elapsed: f64,
@@ -66,13 +66,16 @@ impl Session {
         let (model, mask_mismatches) =
             initialize(&base, &args.pst_init, &args.fm_init, &reference, mask)?;
         let initial_model = model.clone();
-        let ks = dataset.estimate_teacher_ks()?;
+        let calibration = args
+            .teacher_cp_per_logit
+            .resolve(&dataset, base.cp_per_logit())?;
+        let teacher_cp_per_logit = calibration.target_values();
         let mut config = configuration(
             &args,
             workers,
             &dataset,
-            &ks,
-            base.k(),
+            &calibration,
+            base.cp_per_logit(),
             (&counts, mask_mismatches),
         )?;
         let mut checkpoint = Checkpoint {
@@ -101,7 +104,7 @@ impl Session {
             restored.progress.check_config(
                 &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             )?;
-            if restored.model.pst.k().to_bits() != base.k().to_bits()
+            if restored.model.pst.cp_per_logit().to_bits() != base.cp_per_logit().to_bits()
                 || restored.optimizer.pst.lr() != args.pst_lr
                 || restored.optimizer.fm.group.lr != args.fm_lr
                 || restored.optimizer.fm.group.weight_decay != args.fm_weight_decay
@@ -140,7 +143,7 @@ impl Session {
             workers,
             dataset,
             base,
-            ks,
+            teacher_cp_per_logit,
             checkpoint,
             started,
             previous_elapsed,
@@ -213,7 +216,7 @@ impl Session {
                     &self.dataset,
                     chunks[index],
                     &vec![0; chunks[index].len()],
-                    &self.ks,
+                    &self.teacher_cp_per_logit,
                 )?;
                 compute::evaluate(&self.checkpoint.model, &batch)
             },
@@ -245,7 +248,7 @@ impl Session {
                 samples,
                 unit: "logit",
                 std_cp: (squares / samples as f64 - mean * mean).max(0.0).sqrt()
-                    * f64::from(self.base.k()),
+                    * f64::from(self.base.cp_per_logit()),
             },
         ))
     }
@@ -255,7 +258,7 @@ impl Session {
         let mut training = Training::default();
         let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
         let dataset = &self.dataset;
-        let ks = &self.ks;
+        let teacher_cp_per_logit = &self.teacher_cp_per_logit;
         let batch_size = self.args.batch;
         pipeline::ordered::<_, Box<dyn std::error::Error + Send + Sync>>(
             chunks.len(),
@@ -266,7 +269,7 @@ impl Session {
                     dataset,
                     chunks[index],
                     &mirrors[start..start + chunks[index].len()],
-                    ks,
+                    teacher_cp_per_logit,
                 )
             },
             |_, batch| {

@@ -35,7 +35,7 @@ pub fn file_identity(path: &Path) -> io::Result<FileIdentity> {
             let header = reader.header();
             json!({"byte_length": length, "header": {
                 "rule_set": header.rule_set(), "generation_commit": header.generation_commit(),
-                "network_checksum": hex(header.network_checksum()), "teacher_kind": header.teacher_kind() as u8, "teacher_scale": header.teacher_scale(),
+                "network_checksum": hex(header.network_checksum()), "teacher_kind": header.teacher_kind() as u8, "teacher_search_budget": header.teacher_search_budget(),
                 "seed": header.seed(), "game_count": header.game_count(), "entry_count": header.entry_count()
             }})
         }

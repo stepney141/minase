@@ -56,12 +56,15 @@ pub struct EpochRecord {
 /// `{lr, weight_decay, betas: [0.9, 0.999], epsilon: 1e-8}`で、`weight_decay`には`--weight-decay`を使う。
 /// `preprocessing`に、訓練集合とその全鏡映で数えた全13,680特徴の観測回数`feature_observations`を特徴番号順で加える。
 /// `unobserved_features`は観測回数0の特徴数である。
+/// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
+/// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
+/// 両配列とも分類順で、λが0の分類は`null`とする。引数の`teacher_cp_per_logit`は`settings`から除く。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    calibration: &crate::data::TeacherCalibration,
+    cp_per_logit: f32,
     counts: &[u64],
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
@@ -73,6 +76,7 @@ pub(super) fn configuration(
         "output_dir",
         "resume",
         "data",
+        "teacher_cp_per_logit",
         "init",
         "epochs",
         "patience",
@@ -90,8 +94,10 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
-    let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":calibration.teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":calibration.source,
+        "teacher_score_multiplier":calibration.teacher_score_multiplier,
+        "teacher_cp_per_logit_at_search_bound":calibration.at_search_bound, "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

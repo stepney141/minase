@@ -11,7 +11,7 @@ use minase::eval::{
 };
 use std::{collections::BTreeMap, path::Path};
 
-/// 実数PSTとFM。両者は同じ出力用Kを使う。
+/// 実数PSTとFM。両者は同じ勝率尺度（1ロジットあたりのcp）を使う。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Model {
     /// 鏡映共有の2端点。
@@ -20,12 +20,12 @@ pub struct Model {
     pub fm: fm::Model,
 }
 impl Model {
-    /// 有限性、マスク、埋め草と両モデルのKの一致を検査する。
+    /// 有限性、マスク、埋め草と両モデルの勝率尺度の一致を検査する。
     pub fn validate(&self) -> Result<()> {
         self.pst.validate()?;
         self.fm.validate()?;
-        if self.pst.k().to_bits() != self.fm.k().to_bits() {
-            return Err("joint PST and FM K differ".into());
+        if self.pst.cp_per_logit().to_bits() != self.fm.cp_per_logit().to_bits() {
+            return Err("joint PST and FM cp_per_logit differ".into());
         }
         Ok(())
     }
@@ -64,7 +64,7 @@ pub(super) fn read_mask(arrays: &mut BTreeMap<String, npz::Array>) -> Result<Vec
 
 /// MNPT版3の基準と実数の初期値を照合し、鏡映共有と訓練集合のマスクを適用する。
 /// `--base`と`--fm-reference`はともに次元32のFMを要求する。
-/// `--pst-init`の量子化結果は基準のPSTに、`--fm-init`を基準のKで量子化した結果は参照FMに完全一致しなければならない。
+/// `--pst-init`の量子化結果は基準のPSTに、`--fm-init`を基準の勝率尺度で量子化した結果は参照FMに完全一致しなければならない。
 /// PSTの鏡映対は平均し、FMは数え直したマスクで未観測の行を0に戻す。
 /// 戻り値の件数は入力NPZのマスクとの不一致数である。
 /// aを縮小せず、補正1/4の変換や推論時の倍率は加えない。
@@ -98,7 +98,7 @@ pub fn initialize(
         .expect("checked rank");
     let initial_mask = read_mask(&mut arrays)?;
     let v = v.as_chunks::<FM_RANK>().0.to_vec();
-    let quantized = fm::quantize(&v, &a, f64::from(base.k()))?;
+    let quantized = fm::quantize(&v, &a, f64::from(base.cp_per_logit()))?;
     if Some(quantized.as_weights()) != reference.fm_weights() {
         return Err("quantized initial FM disagrees with --fm-reference".into());
     }
@@ -121,8 +121,8 @@ pub fn initialize(
         }
     }
     let model = Model {
-        pst: pst::Model::from_endpoints(&endpoints, base.k())?,
-        fm: fm::Model::from_weights(&v, a, mask, base.k())?,
+        pst: pst::Model::from_endpoints(&endpoints, base.cp_per_logit())?,
+        fm: fm::Model::from_weights(&v, a, mask, base.cp_per_logit())?,
     };
     model.validate()?;
     Ok((model, mismatches))

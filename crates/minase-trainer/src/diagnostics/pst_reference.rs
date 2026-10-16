@@ -44,8 +44,9 @@ impl Weights {
         })
     }
 
-    pub fn k(&self) -> f64 {
-        f64::from(self.engine.k())
+    /// 重みファイルの勝率尺度（1ロジットあたりのcp）をf64へ広げて返す。
+    pub fn cp_per_logit(&self) -> f64 {
+        f64::from(self.engine.cp_per_logit())
     }
 
     /// 独立した整数PST参照による、手番側視点のセンチポーン評価。

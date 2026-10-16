@@ -112,6 +112,7 @@ impl Fixture {
     }
     fn args(&self, name: &str) -> PstCompareArgs {
         PstCompareArgs {
+            teacher_cp_per_logit: minase_trainer::data::TeacherCpPerLogitSource::Calibrate,
             data: self.data.clone(),
             lambda: 0.75,
             lookahead_gamma: Some(0.9),
@@ -154,6 +155,15 @@ fn sparse() -> Position {
 fn read_report(directory: &Path) -> Value {
     serde_json::from_slice(&fs::read(directory.join("report.json")).unwrap()).unwrap()
 }
+// 診断結果は同じで、記録された出力先だけが実行ごとに異なる。
+fn assert_same_report(first: &Path, second: &Path) {
+    let left = read_report(first);
+    let mut right = read_report(second);
+    assert_eq!(left["arguments"]["output_dir"], json!(first));
+    assert_eq!(right["arguments"]["output_dir"], json!(second));
+    right["arguments"]["output_dir"] = left["arguments"]["output_dir"].clone();
+    assert_eq!(left, right);
+}
 #[test]
 fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output() {
     let fixture = Fixture::new();
@@ -161,7 +171,7 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     assert_eq!(report["bands"].as_array().unwrap().len(), 10);
     assert_eq!(report["rust_agreement"], json!({"base":6,"candidate":6}));
     assert_eq!(report["teacher_comparison_excluded"], 3);
-    assert_eq!(report["teacher_ks"][1], Value::Null);
+    assert_eq!(report["teacher_cp_per_logit"][1], Value::Null);
     assert_eq!(report["bands"][0]["samples"], 2);
     assert_eq!(report["bands"][1]["reason"], "empty band");
     assert!(report["bands"][1]["validation_loss"]["base"].is_null());
@@ -248,10 +258,14 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     diagnostics::run(Command::PstCompare(fixture.args("repeated"))).unwrap();
     for entry in fs::read_dir(&first).unwrap() {
         let entry = entry.unwrap();
-        assert_eq!(
-            fs::read(entry.path()).unwrap(),
-            fs::read(fixture.root.join("repeated").join(entry.file_name())).unwrap()
-        );
+        if entry.file_name() == "report.json" {
+            assert_same_report(&first, &fixture.root.join("repeated"));
+        } else {
+            assert_eq!(
+                fs::read(entry.path()).unwrap(),
+                fs::read(fixture.root.join("repeated").join(entry.file_name())).unwrap()
+            );
+        }
     }
     // 新規ディレクトリの契約。既存成果物を上書きしない。
     let paths: Vec<_> = fs::read_dir(&first)
@@ -399,10 +413,7 @@ fn seeded_sampling_is_without_replacement_and_applies_the_cap_per_band() {
         args.sample_size = 1;
         diagnostics::run(Command::PstCompare(args)).unwrap();
     }
-    assert_eq!(
-        fs::read(fixture.root.join("small1/report.json")).unwrap(),
-        fs::read(fixture.root.join("small2/report.json")).unwrap()
-    );
+    assert_same_report(&fixture.root.join("small1"), &fixture.root.join("small2"));
     let report = read_report(&fixture.root.join("small1"));
     assert_eq!(report["quantization"]["samples"], 4);
     for band in report["bands"].as_array().unwrap() {
@@ -551,6 +562,8 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
     }
     let required = [
         "pst-compare",
+        "--teacher-cp-per-logit",
+        "calibrate",
         "--lambda",
         "0.75",
         "--data",
@@ -589,4 +602,86 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
     invalid.sample_size = 0;
     assert!(diagnostics::run(Command::PstCompare(invalid)).is_err());
     assert!(read_report(&fixture.root.join("zero-sample"))["error"].is_string());
+}
+
+#[test]
+fn comparison_records_calibration_source_multiplier_bounds_and_inactive_classes() {
+    use minase_trainer::data::{CalibrateArgs, TeacherCpPerLogitSource, calibrate};
+    let fixture = Fixture::new();
+    let estimated = fixture.run("estimated");
+    assert_eq!(estimated["teacher_cp_per_logit_source"], "calibrate");
+    assert_eq!(estimated["arguments"]["teacher_cp_per_logit"], "calibrate");
+    assert!(estimated["teacher_cp_per_logit_at_search_bound"][1].is_null());
+    assert!(estimated["teacher_score_multiplier"][1].is_null());
+    let value = estimated["teacher_cp_per_logit"][0].as_f64().unwrap();
+    assert_eq!(
+        estimated["teacher_score_multiplier"][0],
+        json!(100.0 / value)
+    );
+    let path = fixture.root.join("calibration.json");
+    calibrate(CalibrateArgs {
+        data: fixture.data.clone(),
+        lookahead_gamma: Some(0.9),
+        lookahead_plies: Some(40),
+        output: path.clone(),
+        threads: Some(1),
+    })
+    .unwrap();
+    let mut calibration: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // 診断が求めたf64の尺度を固定し、較正ファイルの経路でも同じ報告値を得る。
+    calibration["classes"][0]["teacher_cp_per_logit"] = json!(value);
+    calibration["classes"][0]["at_search_bound"] =
+        estimated["teacher_cp_per_logit_at_search_bound"][0].clone();
+    fs::write(&path, serde_json::to_vec(&calibration).unwrap()).unwrap();
+    let mut args = fixture.args("fixed");
+    args.teacher_cp_per_logit = TeacherCpPerLogitSource::File(path.clone());
+    diagnostics::run(Command::PstCompare(args)).unwrap();
+    let fixed = read_report(&fixture.root.join("fixed"));
+    for key in [
+        "teacher_cp_per_logit",
+        "teacher_score_multiplier",
+        "teacher_cp_per_logit_at_search_bound",
+        "cp_per_logit",
+        "bands",
+        "outcome_metrics",
+    ] {
+        assert_eq!(fixed[key], estimated[key], "{key}");
+    }
+    assert_eq!(
+        fixed["teacher_cp_per_logit_source"],
+        json!({"calibration_file": path.canonicalize().unwrap(), "calibration": calibration})
+    );
+}
+
+#[test]
+fn invalid_calibration_keeps_its_typed_error_and_is_saved_before_sampling() {
+    use minase_trainer::data::{CalibrateArgs, Error, TeacherCpPerLogitSource, calibrate};
+    let fixture = Fixture::new();
+    let path = fixture.root.join("calibration.json");
+    calibrate(CalibrateArgs {
+        data: fixture.data.clone(),
+        lookahead_gamma: Some(0.9),
+        lookahead_plies: Some(40),
+        output: path.clone(),
+        threads: Some(1),
+    })
+    .unwrap();
+    let mut calibration: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    calibration["classes"] = json!([]);
+    fs::write(&path, serde_json::to_vec(&calibration).unwrap()).unwrap();
+    let mut args = fixture.args("invalid-calibration");
+    args.teacher_cp_per_logit = TeacherCpPerLogitSource::File(path);
+    let error = diagnostics::run(Command::PstCompare(args)).unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<Error>(),
+        Some(Error::MissingCalibrationClass { class: 0 })
+    ));
+    let report = read_report(&fixture.root.join("invalid-calibration"));
+    assert!(report["error"].is_string());
+    assert!(
+        !fixture
+            .root
+            .join("invalid-calibration/diagnostic-samples.bin")
+            .exists()
+    );
 }

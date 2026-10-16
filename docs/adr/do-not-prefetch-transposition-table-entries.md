@@ -9,7 +9,7 @@
 [第2期の高速化の起案時の診断](../measurements/movegen-speedup-2-diagnostics-depth5.md)では、置換表の照合が探索中の自己時間の13.9%を占める最大の項目だった。
 照合は1ノードあたり約58ナノ秒で、DRAMの遅延に相当する。
 この待ちを隠す方法として、着手を適用した直後に子局面の置換表の行をプリフェッチ命令で読み込み、照合までの間に取得を済ませる方式が考えられた。
-minaseのエンジンとライブラリはworkspaceのlintで`unsafe_code = "forbid"`を定めている（[`unsafe`は学習器のクレートだけに許す](allow-unsafe-only-in-the-trainer-crate.md)）。
+minaseのエンジンとライブラリはworkspaceのlintで`unsafe_code = "forbid"`を定めている（[`unsafe`は学習器のクレートだけに許す](archive/allow-unsafe-only-in-the-trainer-crate.md)）。
 `_mm_prefetch`は`#[target_feature]`つきの関数なので、呼び出し側に`unsafe`を要する。
 [合法手生成と利き計算の高速化（第2期）](../plans/archived/movegen-speedup-2.md)では、この制約の下で置換表の待ちを減らす方法を検討した。
 

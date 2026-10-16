@@ -1,7 +1,7 @@
 //! MNPT版3のバイト配置と検証を定める。
 //! 多バイト数値はリトルエンディアンで、ヘッダは80バイトである。
 //! ヘッダの`0..4`は識別子`MNPT`、`4..8`は版u32の3、`8..12`は特徴数u32の13,680である。
-//! `12..16`は勝率尺度Kのf32で正の有限値、`16..48`はUTF-8の規則セット名である。
+//! `12..16`は勝率尺度（1ロジットあたりのcp）のf32で正の有限値、`16..48`はUTF-8の規則セット名である。
 //! 規則名はNULを含まない最大32バイトの文字列で、空文字列も認め、不足分を0で埋める。
 //! `48..80`はFM節を含む本体全体（オフセット80から末尾まで）のSHA-256の32バイトである。
 //!
@@ -40,12 +40,12 @@ impl Pst {
     /// 学習済みの2端点と探索用駒価値から、FM補正を持たないMNPT版3を作る。
     ///
     /// 重みは特徴番号順、各行は序中盤・終盤の順で、単位は1/8センチポーン。
-    /// 配列長、駒価値、正の有限なK、32バイト以内でNULを含まない規則名を検査する。
+    /// 配列長、駒価値、正の有限な勝率尺度、32バイト以内でNULを含まない規則名を検査する。
     /// 鏡映対称性は要求しない。検査和と探索用の派生値は復号時と同じ方法で求める。
     pub fn from_weights(
         weights: &[[i16; 2]],
         piece_values: [i32; PIECE_STATE_COUNT],
-        k: f32,
+        cp_per_logit: f32,
         rule_set: &str,
     ) -> Result<Self, Error> {
         let weights = weights
@@ -64,7 +64,7 @@ impl Pst {
             rule_set: rules,
             piece_values,
             max_promotion_gain: 0,
-            k,
+            cp_per_logit,
             checksum: [0; 32],
         };
         Self::decode(&candidate.encode())
@@ -76,7 +76,7 @@ impl Pst {
         bytes.extend_from_slice(b"MNPT");
         bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
         bytes.extend_from_slice(&(FEATURE_COUNT as u32).to_le_bytes());
-        bytes.extend_from_slice(&self.k.to_le_bytes());
+        bytes.extend_from_slice(&self.cp_per_logit.to_le_bytes());
         bytes.extend_from_slice(&self.rule_set);
         bytes.extend_from_slice(&[0; 32]);
         for endpoint in 0..2 {
@@ -137,9 +137,12 @@ impl Pst {
                 actual: feature_count,
             });
         }
-        let k = f32::from_le_bytes(bytes[12..16].try_into().expect("slice length is fixed"));
-        if !k.is_finite() || k <= 0.0 {
-            return Err(Error::InvalidK { actual: k });
+        let cp_per_logit =
+            f32::from_le_bytes(bytes[12..16].try_into().expect("slice length is fixed"));
+        if !cp_per_logit.is_finite() || cp_per_logit <= 0.0 {
+            return Err(Error::InvalidCpPerLogit {
+                actual: cp_per_logit,
+            });
         }
         let rule_set = &bytes[16..48];
         let rule_end = rule_set.iter().position(|&byte| byte == 0).unwrap_or(32);
@@ -201,7 +204,7 @@ impl Pst {
             max_promotion_gain,
             weights,
             piece_values,
-            k,
+            cp_per_logit,
             checksum,
         })
     }
@@ -251,8 +254,8 @@ pub enum Error {
     },
     /// 規則セット名欄がUTF-8またはNUL埋めの規約を満たさない。
     InvalidRuleSet,
-    /// 勝率尺度Kが正の有限値ではない。
-    InvalidK {
+    /// 勝率尺度が正の有限値ではない。
+    InvalidCpPerLogit {
         /// 読み取った勝率尺度。
         actual: f32,
     },
@@ -315,7 +318,9 @@ impl fmt::Display for Error {
                 "invalid MNPT FM sign at dimension {dimension}: {actual}"
             ),
             Self::InvalidRuleSet => formatter.write_str("invalid MNPT rule-set field"),
-            Self::InvalidK { actual } => write!(formatter, "invalid MNPT K: {actual}"),
+            Self::InvalidCpPerLogit { actual } => {
+                write!(formatter, "invalid MNPT cp_per_logit: {actual}")
+            }
             Self::ChecksumMismatch => formatter.write_str("MNPT weight checksum mismatch"),
             Self::NonPositivePieceValue {
                 kind,

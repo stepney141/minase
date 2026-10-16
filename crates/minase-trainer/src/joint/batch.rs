@@ -18,7 +18,7 @@ impl Batch {
         dataset: &Dataset,
         indices: &[u64],
         mirrors: &[u8],
-        ks: &[f64],
+        teacher_cp_per_logit: &[f64],
     ) -> Result<Self> {
         let records = indices
             .iter()
@@ -37,7 +37,7 @@ impl Batch {
             &scores,
             &classes,
             pst.outcomes(),
-            ks,
+            teacher_cp_per_logit,
             dataset.teacher_lambdas(),
         )?;
         Self::assemble(pst, &records, mirrors, &targets)

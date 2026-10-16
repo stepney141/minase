@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[学習器のクレートだけに`unsafe`を許す決定](allow-unsafe-only-in-the-trainer-crate.md)は、cudarcによるカーネルの起動とページ固定メモリの確保のためにGPUの処理`nnue::gpu`で、教師データをmemmap2でメモリへ写像するために`data`モジュールの`Dataset::open`で、`unsafe`を許していた。
+[学習器のクレートだけに`unsafe`を許す決定](archive/allow-unsafe-only-in-the-trainer-crate.md)は、cudarcによるカーネルの起動とページ固定メモリの確保のためにGPUの処理`nnue::gpu`で、教師データをmemmap2でメモリへ写像するために`data`モジュールの`Dataset::open`で、`unsafe`を許していた。
 [教師データを対局単位の連鎖で記録する決定](record-teacher-data-as-chained-games.md)により、学習器は教師データを先頭から順に読んで手順を再生し、復元した局面をメモリ上に保持するようになった。
 写像したファイルの内容を読み続ける必要はなくなり、`Dataset::open`はmemmap2を使わなくなった。
 

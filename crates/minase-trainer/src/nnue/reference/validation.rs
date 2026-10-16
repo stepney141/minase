@@ -106,7 +106,7 @@ pub fn validation_forward(
         let nonlinear = head(model, 0, |j| f.acc[b * 2 * h + j])
             + head(model, 1, |j| f.acc[(b * 2 + 1) * h + j])
             + model.parameters()[crate::nnue::model::Parameter::OutputBias][0];
-        let cp = f64::from(nonlinear) * f64::from(model.shape().k());
+        let cp = f64::from(nonlinear) * f64::from(model.shape().cp_per_logit());
         sums[3] += cp;
         sums[4] += cp * cp;
     }

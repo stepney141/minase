@@ -32,7 +32,7 @@ fn v_with(values: &[f64]) -> Vec<[f64; FM_RANK]> {
 
 #[test]
 fn quantization_selects_largest_exponent_and_rounds_ties_even() {
-    // K=1、a=1なので吸収後はV。e=1で32766となり、e=0の16383を選ぶ。
+    // cp_per_logit=1、a=1なので吸収後はV。e=1で32766となり、e=0の16383を選ぶ。
     let a = [1.0; FM_RANK];
     let q = fm::quantize(
         &v_with(&[16383.0, 0.5, 1.5, 2.5, -0.5, -1.5, -2.5]),
@@ -76,8 +76,8 @@ fn quantization_checks_inputs_and_preserves_absorption_order_and_signs() {
     let q = fm::quantize(&v_with(&[2.0]), &a, 9.0).unwrap();
     assert_eq!((q.exponent, q.embeddings[0][0]), (10, 12288));
     assert_eq!(&q.signs[..2], &[-1, 1]);
-    for k in [0.0, -1.0, f64::INFINITY, f64::NAN] {
-        assert!(fm::quantize(&v_with(&[1.0]), &a, k).is_err());
+    for cp_per_logit in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+        assert!(fm::quantize(&v_with(&[1.0]), &a, cp_per_logit).is_err());
     }
     assert!(fm::quantize(&[], &a, 1.0).is_err());
     assert!(fm::quantize(&v_with(&[]), &a, 1.0).is_err());
@@ -88,7 +88,7 @@ fn quantization_checks_inputs_and_preserves_absorption_order_and_signs() {
         invalid_a[0] = value;
         assert!(fm::quantize(&v_with(&[1.0]), &invalid_a, 1.0).is_err());
     }
-    // sqrt(K)*Vが先にoverflowする。sqrt(K)*(V*sqrt(a))なら有限なので順序の検査になる。
+    // sqrt(cp_per_logit)*Vが先にoverflowする。sqrt(cp_per_logit)*(V*sqrt(a))なら有限なので順序の検査になる。
     assert!(fm::quantize(&v_with(&[1e200]), &[1e-300; FM_RANK], 1e300).is_err());
 }
 
@@ -150,7 +150,7 @@ fn v3_constructor_round_trip_and_validation() {
     let decoded = Pst::decode(&bytes).unwrap();
     assert_eq!(decoded.weights().as_slice(), weights);
     assert_eq!(decoded.fm_weights(), Some(fm));
-    assert_eq!(decoded.k().to_bits(), 1000.25_f32.to_bits());
+    assert_eq!(decoded.cp_per_logit().to_bits(), 1000.25_f32.to_bits());
     assert_eq!(decoded.rule_set(), "規則");
     assert_eq!(
         std::array::from_fn::<_, 47, _>(|i| decoded.piece_value_of_state(i)),
@@ -194,7 +194,7 @@ impl Fixture {
         self.root.join(name)
     }
     fn inputs(&self, exponent: u32) {
-        // K=1、Vの先頭3行の第1成分が1、aが1なので、最大指数13、u=8192。
+        // cp_per_logit=1、Vの先頭3行の第1成分が1、aが1なので、最大指数13、u=8192。
         let mut u = vec![[0; FM_RANK]; FEATURE_COUNT];
         for row in &mut u[..3] {
             row[0] = 8192;

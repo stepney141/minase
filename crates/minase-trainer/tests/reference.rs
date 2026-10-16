@@ -90,7 +90,7 @@ fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
         }
         let mut logit = (q * linear_sums[0] + (90.0 - q) * linear_sums[1])
             / 90.0
-            / f64::from(model.shape().k())
+            / f64::from(model.shape().cp_per_logit())
             + f64::from(model.parameters()[Parameter::OutputBias][0]);
         for (v, hidden) in hidden.iter().enumerate() {
             for j in 0..width {
@@ -130,14 +130,15 @@ fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
                 continue;
             }
             count += 1;
-            let signed = sign * (value(b, Some(col)) - before) * f64::from(model.shape().k());
+            let signed =
+                sign * (value(b, Some(col)) - before) * f64::from(model.shape().cp_per_logit());
             let magnitude = ((numerator_after - numerator_before) as f64 / 720.0).abs();
             penalties += (magnitude.min(0.25) - signed).max(0.0);
             if (f < 6768 && sign > 0.0) || (f >= 6768 && sign < 0.0) {
                 penalties += (signed - magnitude).max(0.0);
             }
         }
-        loss += 1000.0 * penalties / f64::from(model.shape().k()) / count.max(1) as f64;
+        loss += 1000.0 * penalties / f64::from(model.shape().cp_per_logit()) / count.max(1) as f64;
     }
     loss / batch.len() as f64
 }
@@ -281,7 +282,7 @@ fn removal_uses_lane_partials_then_descending_shuffle_distances() {
                     1000.0,
                 )
                 .unwrap();
-                let expected_e = f64::from(expected) * f64::from(model.shape().k());
+                let expected_e = f64::from(expected) * f64::from(model.shape().cp_per_logit());
                 for ((&delta, &e), &eligible) in removal
                     .delta_r
                     .iter()
@@ -323,7 +324,7 @@ fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
     )
     .unwrap();
     let paired = (0.3_f32 * 0.3 + 0.7_f32 * 0.7) * 0.11;
-    let expected_e = f64::from(paired) * f64::from(model.shape().k());
+    let expected_e = f64::from(paired) * f64::from(model.shape().cp_per_logit());
     for ((&delta, &e), &eligible) in removal
         .delta_r
         .iter()
@@ -448,7 +449,7 @@ fn quantization_evaluation_uses_double_precision_at_every_stage() {
         nonlinear.parameter_mut(Parameter::Biases).fill(0.3);
         nonlinear.parameter_mut(Parameter::OutputWeights).fill(0.11);
         nonlinear.parameter_mut(Parameter::OutputBias)[0] = 0.04;
-        // 2視点×2ユニットについて、活性化・出力積・バイアス・K換算をf64で行う。
+        // 2視点×2ユニットについて、活性化・出力積・バイアス・cp_per_logit換算をf64で行う。
         let head = 2.0 * f64::from(0.3_f32).powi(2) * f64::from(0.11_f32);
         let expected = ((f64::from(0.04_f32) + head) + head) * 1000.0;
         assert_eq!(

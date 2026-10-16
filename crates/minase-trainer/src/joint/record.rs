@@ -8,7 +8,7 @@ use serde_json::json;
 
 /// 同時学習の1エポックの記録。
 /// 損失は局面数で重み付けした平均で、端数バッチも含める。
-/// `removal_loss`は係数適用前の駒除去損失をKで割ったロジット単位の値で、参照は常にv0の駒価値である。
+/// `removal_loss`は係数適用前の駒除去損失を勝率尺度（1ロジットあたりのcp）で割ったロジット単位の値で、参照は常にv0の駒価値である。
 /// `--removal-penalty 0`でも計算して記録し、損失全体と勾配へ掛ける係数だけが0になる。
 /// `phi_squared_mean`は係数適用前の`mean(Φ²)`である。
 /// `total_loss = train_loss + lambda_res * phi_squared_mean + removal_penalty * removal_loss`とする。
@@ -58,12 +58,15 @@ pub struct EpochRecord {
 /// パスは正規化し、MNSDの欄は[`crate::identity`]に従う。`settings.lambda`は指定した混合比である。
 /// `preprocessing`には[`fm::record::configuration`](../../fm/record/fn.configuration.html)と同じ`feature_observations`と`unobserved_features`を加える。
 /// 加えて、`--fm-init`のマスクと数え直したマスクの不一致数`mask_mismatches`、および`removal_reference = "v0"`を保存する。
+/// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
+/// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
+/// 両配列とも分類順で、λが0の分類は`null`とする。引数の`teacher_cp_per_logit`は`settings`から除く。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
     dataset: &Dataset,
-    ks: &[f64],
-    k: f32,
+    calibration: &crate::data::TeacherCalibration,
+    cp_per_logit: f32,
     observations: (&[u64], usize),
 ) -> Result<Configuration> {
     let (counts, mask_mismatches) = observations;
@@ -76,6 +79,7 @@ pub(super) fn configuration(
         "output_dir",
         "resume",
         "data",
+        "teacher_cp_per_logit",
         "base",
         "pst_init",
         "fm_init",
@@ -96,8 +100,10 @@ pub(super) fn configuration(
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "base":file_record(&args.base)?, "pst_init":file_record(&args.pst_init)?, "fm_init":file_record(&args.fm_init)?, "fm_reference":file_record(&args.fm_reference)?});
-    let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
-        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
+    let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_cp_per_logit":calibration.teacher_cp_per_logit,
+        "teacher_lambdas":dataset.teacher_lambdas(), "teacher_cp_per_logit_source":calibration.source,
+        "teacher_score_multiplier":calibration.teacher_score_multiplier,
+        "teacher_cp_per_logit_at_search_bound":calibration.at_search_bound, "cp_per_logit":cp_per_logit,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
     Ok(Configuration {

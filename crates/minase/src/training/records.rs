@@ -287,19 +287,20 @@ pub struct Header {
     generation_commit: String,
     network_checksum: [u8; 32],
     teacher_kind: TeacherKind,
-    teacher_scale: u64,
+    teacher_search_budget: u64,
     seed: u64,
     game_count: u64,
     entry_count: u64,
 }
 impl Header {
     /// 規則セットと来歴を検査し、件数0のヘッダを作る。
+    /// `teacher_search_budget`は教師の探索規模で、αβ探索ならノード上限、モンテカルロ木探索なら探索回数を表す。
     pub fn new(
         rule_set: String,
         generation_commit: String,
         network_checksum: [u8; 32],
         teacher_kind: TeacherKind,
-        teacher_scale: u64,
+        teacher_search_budget: u64,
         seed: u64,
     ) -> Result<Self, Error> {
         if rule_set.len() > 32 || rule_set.as_bytes().contains(&0) {
@@ -318,7 +319,7 @@ impl Header {
             generation_commit,
             network_checksum,
             teacher_kind,
-            teacher_scale,
+            teacher_search_budget,
             seed,
             game_count: 0,
             entry_count: 0,
@@ -344,9 +345,9 @@ impl Header {
     pub fn teacher_kind(&self) -> TeacherKind {
         self.teacher_kind
     }
-    /// 教師の探索規模を返す。
-    pub fn teacher_scale(&self) -> u64 {
-        self.teacher_scale
+    /// 教師の探索規模を返す。αβ探索ならノード上限、モンテカルロ木探索なら探索回数である。
+    pub fn teacher_search_budget(&self) -> u64 {
+        self.teacher_search_budget
     }
     /// 基本シードを返す。
     pub fn seed(&self) -> u64 {
@@ -374,7 +375,7 @@ impl Header {
         w.write_all(&[self.teacher_kind as u8])?;
         w.write_all(&[0; 7])?;
         for value in [
-            self.teacher_scale,
+            self.teacher_search_budget,
             self.seed,
             self.game_count,
             self.entry_count,
@@ -419,9 +420,16 @@ impl Header {
         if input::<7>(&mut r, Section::Header)? != [0; 7] {
             return Err(Error::NonzeroReservedBytes);
         }
-        let scale = u64::from_le_bytes(input(&mut r, Section::Header)?);
+        let teacher_search_budget = u64::from_le_bytes(input(&mut r, Section::Header)?);
         let seed = u64::from_le_bytes(input(&mut r, Section::Header)?);
-        let mut header = Self::new(rule_set, commit, checksum, kind, scale, seed)?;
+        let mut header = Self::new(
+            rule_set,
+            commit,
+            checksum,
+            kind,
+            teacher_search_budget,
+            seed,
+        )?;
         header.game_count = u64::from_le_bytes(input(&mut r, Section::Header)?);
         header.entry_count = u64::from_le_bytes(input(&mut r, Section::Header)?);
         Ok(header)

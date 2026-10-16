@@ -104,7 +104,7 @@ pub struct Configuration {
     pub settings: Value,
     /// 正規化したパスと入力の識別情報。
     pub inputs: Value,
-    /// 分割、教師用K、観測回数などの前処理結果。
+    /// 分割、教師の勝率尺度（1ロジットあたりのcp）、観測回数などの前処理結果。
     pub preprocessing: Value,
 }
 impl Configuration {
@@ -367,7 +367,7 @@ mod tests {
         let config = Configuration {
             settings: json!({"lr": f64::from_bits(0x3f73_1f58_aefe_dac3)}),
             inputs: json!({"files": []}),
-            preprocessing: json!({"k": f64::from_bits(0x4082_3456_789a_bcde)}),
+            preprocessing: json!({"cp_per_logit": f64::from_bits(0x4082_3456_789a_bcde)}),
         };
         let progress = Progress {
             epoch: 2,

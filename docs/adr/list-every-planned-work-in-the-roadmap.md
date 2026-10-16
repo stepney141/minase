@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[独立したリファクタリングをマイルストーンにしない](fold-refactoring-into-milestones.md)という決定に従い、ソースの配置を変えた5つの作業は、設計書を持ちながら[ROADMAP.md](../ROADMAP.md)の状態表に行を置いていなかった。
+[独立したリファクタリングをマイルストーンにしない](archive/fold-refactoring-into-milestones.md)という決定に従い、ソースの配置を変えた5つの作業は、設計書を持ちながら[ROADMAP.md](../ROADMAP.md)の状態表に行を置いていなかった。
 5つは、[src構成の整理](../plans/archived/src-layout.md)、[探索部と評価関数のモジュール再編](../plans/archived/search-eval-layout.md)、[中核モジュールの再編](../plans/archived/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/archived/bin-harness-layout.md)、および[学習ツールの再編](../plans/archived/train-tools-layout.md)である。
 2026年10月13日の文書の棚卸しで、設計書が状態表から辿れないと、どの設計書が完了して凍結されたかを状態表だけでは判別できないことが分かった。
 

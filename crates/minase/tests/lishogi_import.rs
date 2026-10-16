@@ -107,7 +107,7 @@ fn games_filter_in_specified_order_and_preserve_details_and_records() {
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 5);
     let mut reader = Reader::new(File::open(dir.path("one.mnsd")).unwrap()).unwrap();
     assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
-    assert_eq!(reader.header().teacher_scale(), 200);
+    assert_eq!(reader.header().teacher_search_budget(), 200);
     let mut counts = [0; 3];
     let mut last_game = 0;
     while let Some(decoded) = reader.read_game().unwrap() {
@@ -514,7 +514,7 @@ fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
             ("generation_commit", "1".repeat(40)),
             ("network_checksum", "ab".repeat(32)),
             ("teacher_kind", format!("{kind:?}")),
-            ("teacher_scale", "42".to_owned()),
+            ("teacher_search_budget", "42".to_owned()),
             ("seed", "7".to_owned()),
             ("game_count", "2".to_owned()),
             ("entry_count", "3".to_owned()),

@@ -246,7 +246,7 @@ fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
     assert_eq!(dataset.training_indices(), [0, 2, 4]);
     assert_eq!(dataset.validation_indices(), [1, 3, 5]);
     assert_eq!(dataset.teacher_classes().len(), 3);
-    assert!(dataset.estimate_teacher_ks().unwrap()[2].is_nan());
+    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[2].is_none());
     // 実戦入力は内容が同一の別ファイルも受理し、分類を共有する。
     let copy = fixture.0.join("copy.bin");
     fs::copy(&paths[2], &copy).unwrap();
@@ -310,7 +310,7 @@ fn dataset_rejects_mixed_and_synthetic_origins_with_path() {
 }
 
 #[test]
-fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
+fn teacher_cp_per_logit_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
     let fixture = Fixture::new();
     let pos = Position::initial();
     let path = fixture.write(
@@ -335,7 +335,11 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
         .unwrap()
         .with_lambda(mix)
         .unwrap();
-        estimates.push(dataset.estimate_teacher_ks().unwrap()[0]);
+        estimates.push(
+            dataset.estimate_teacher_cp_per_logit().unwrap()[0]
+                .unwrap()
+                .value,
+        );
     }
     assert!((estimates[0] - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
     assert!(
@@ -348,13 +352,13 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
         .unwrap()
         .with_lambda(0.0)
         .unwrap();
-    assert!(dataset.estimate_teacher_ks().unwrap()[0].is_nan());
+    assert!(dataset.estimate_teacher_cp_per_logit().unwrap()[0].is_none());
 }
 
 #[test]
 fn lambda_one_preserves_previous_sigmoid_target_bits() {
     let scores = [-1000.0, -120.0, 0.0, 75.0, 900.0];
-    // λ=1の教師式σ(探索値/K)を独立に計算し、f32へ丸めたビット列である。
+    // λ=1の教師式σ(探索値/teacher_cp_per_logit)を独立に計算し、f32へ丸めたビット列である。
     let expected = [
         0x3d2e_0193,
         0x3ed0_b2f9,
@@ -418,10 +422,10 @@ fn lookahead_is_file_local() {
 }
 
 #[test]
-fn teacher_classes_use_header_keys_and_k_uses_only_training() {
+fn teacher_classes_use_header_keys_and_cp_per_logit_uses_only_training() {
     let fixture = Fixture::new();
     let pos = Position::initial();
-    // seed=11のgame=4は検証。符号と結果が逆の検証標本をKの校正に混ぜない。
+    // seed=11のgame=4は検証。符号と結果が逆の検証標本を教師の勝率尺度の推定に混ぜない。
     let first = fixture.write(
         "first.bin",
         11,
@@ -462,10 +466,10 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     assert_eq!(dataset.teacher_class(4).unwrap(), 2);
     assert_eq!(dataset.validation_indices(), [1]);
     let dataset = dataset.with_lambda(0.75).unwrap();
-    let ks = dataset.estimate_teacher_ks().unwrap();
-    assert!((ks[0] - 50.0).abs() < 1e-8);
-    assert!((ks[1] - 4000.0).abs() < 1e-8);
-    assert!((ks[2] - 4000.0).abs() < 1e-8);
+    let teacher_cp_per_logit = dataset.estimate_teacher_cp_per_logit().unwrap();
+    assert!((teacher_cp_per_logit[0].unwrap().value - 50.0).abs() < 1e-8);
+    assert!((teacher_cp_per_logit[1].unwrap().value - 4000.0).abs() < 1e-8);
+    assert!((teacher_cp_per_logit[2].unwrap().value - 4000.0).abs() < 1e-8);
 
     let future = Dataset::open(
         &paths,
@@ -490,7 +494,7 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         .unwrap()
         .with_lambda(0.75)
         .unwrap()
-        .estimate_teacher_ks(),
+        .estimate_teacher_cp_per_logit(),
         Err(Error::EmptyTeacherClass { class: 0 })
     ));
 }
@@ -949,7 +953,7 @@ fn only_eligible_positions_receive_indices_and_share_the_game_split() {
     assert_eq!(dataset.record_count(), 4);
     assert_eq!(dataset.training_indices(), [0, 1]);
     assert_eq!(dataset.validation_indices(), [2, 3]);
-    assert_eq!(dataset.teacher_classes()[0].nodes(), 1_u64 << 40);
+    assert_eq!(dataset.teacher_classes()[0].search_budget(), 1_u64 << 40);
     let mut reader = Reader::new(bytes.as_slice()).unwrap();
     for (offset, number, ply) in [(0, 1, 10), (2, 4, 20)] {
         let decoded = reader.read_game().unwrap().unwrap();
@@ -1125,11 +1129,17 @@ fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positi
         assert_eq!(serial.teacher_classes().len(), 3);
         assert_eq!(serial.teacher_classes(), parallel.teacher_classes());
         assert_eq!(serial.teacher_lambdas(), parallel.teacher_lambdas());
-        let serial_ks = serial.estimate_teacher_ks().unwrap();
-        let parallel_ks = parallel.estimate_teacher_ks().unwrap();
+        let serial_teacher_cp_per_logit = serial.estimate_teacher_cp_per_logit().unwrap();
+        let parallel_teacher_cp_per_logit = parallel.estimate_teacher_cp_per_logit().unwrap();
         assert_eq!(
-            serial_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>(),
-            parallel_ks.iter().map(|k| k.to_bits()).collect::<Vec<_>>()
+            serial_teacher_cp_per_logit
+                .iter()
+                .map(|estimate| estimate.map(|value| (value.value.to_bits(), value.at_search_bound)))
+                .collect::<Vec<_>>(),
+            parallel_teacher_cp_per_logit
+                .iter()
+                .map(|estimate| estimate.map(|value| (value.value.to_bits(), value.at_search_bound)))
+                .collect::<Vec<_>>()
         );
         for index in 0..serial.record_count() {
             let sample = serial.record(index).unwrap();
@@ -1145,32 +1155,46 @@ fn parallel_dataset_loading_preserves_indices_teachers_classes_splits_and_positi
                 parallel.teacher_class(index).unwrap()
             );
         }
-        let targets = |dataset: &Dataset, ks: &[f64]| {
-            let indices = 0..dataset.record_count();
-            let scores: Vec<_> = indices
-                .clone()
-                .map(|i| dataset.teacher_score(i).unwrap())
-                .collect();
-            let classes: Vec<_> = indices
-                .clone()
-                .map(|i| dataset.teacher_class(i).unwrap())
-                .collect();
-            let outcomes: Vec<_> = indices
-                .map(|i| match dataset.record(i).unwrap().outcome() {
-                    Outcome::Loss => 0,
-                    Outcome::Draw => 1,
-                    Outcome::Win => 2,
-                })
-                .collect();
-            build_targets_from_arrays(&scores, &classes, &outcomes, ks, dataset.teacher_lambdas())
+        let targets =
+            |dataset: &Dataset, estimates: &[Option<minase_trainer::data::CpPerLogitEstimate>]| {
+                let teacher_cp_per_logit: Vec<_> = estimates
+                    .iter()
+                    .map(|estimate| match estimate {
+                        Some(estimate) => estimate.value,
+                        None => f64::NAN,
+                    })
+                    .collect();
+                let indices = 0..dataset.record_count();
+                let scores: Vec<_> = indices
+                    .clone()
+                    .map(|i| dataset.teacher_score(i).unwrap())
+                    .collect();
+                let classes: Vec<_> = indices
+                    .clone()
+                    .map(|i| dataset.teacher_class(i).unwrap())
+                    .collect();
+                let outcomes: Vec<_> = indices
+                    .map(|i| match dataset.record(i).unwrap().outcome() {
+                        Outcome::Loss => 0,
+                        Outcome::Draw => 1,
+                        Outcome::Win => 2,
+                    })
+                    .collect();
+                build_targets_from_arrays(
+                    &scores,
+                    &classes,
+                    &outcomes,
+                    &teacher_cp_per_logit,
+                    dataset.teacher_lambdas(),
+                )
                 .unwrap()
                 .into_iter()
                 .map(f32::to_bits)
                 .collect::<Vec<_>>()
-        };
+            };
         assert_eq!(
-            targets(&serial, &serial_ks),
-            targets(&parallel, &parallel_ks)
+            targets(&serial, &serial_teacher_cp_per_logit),
+            targets(&parallel, &parallel_teacher_cp_per_logit)
         );
     }
 }
