@@ -78,7 +78,7 @@
 | 中核モジュールの再編 | [plans/archived/core-layout.md](plans/archived/core-layout.md) | 完了（採用） | 2026年9月27日 |
 | 実行ファイルと対局ハーネスのモジュール再編 | [plans/archived/bin-harness-layout.md](plans/archived/bin-harness-layout.md) | 完了（採用） | 2026年9月27日 |
 | 学習ツールの再編 | [plans/archived/train-tools-layout.md](plans/archived/train-tools-layout.md) | 完了（採用） | 2026年10月3日 |
-| 勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名） | [plans/win-rate-scale.md](plans/win-rate-scale.md) | 進行中 | |
+| 勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名） | [plans/archived/win-rate-scale.md](plans/archived/win-rate-scale.md) | 完了（採用） | 2026年10月16日 |
 | ライブラリとエンジンのcrate分割 | [plans/archived/crate-split.md](plans/archived/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/archived/cli-subcommands.md](plans/archived/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/archived/match-resume-simplification.md](plans/archived/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
@@ -102,11 +102,11 @@
 
 ### 直近の完了
 
+- [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/archived/win-rate-scale.md)は2026年10月16日に、採用で完了した。学習器が「K」と呼んでいた2つの勝率尺度を、重みファイルのヘッダが持つ勝率尺度`cp_per_logit`と教師の分類ごとの教師の勝率尺度`teacher_cp_per_logit`に改名し、両者の比を尺度補正係数`teacher_score_multiplier`として記録するようにした。教師の勝率尺度は、学習の必須の引数`--teacher-cp-per-logit`で、訓練集合から推定する`calibrate`か、新設の`minase-trainer data calibrate`が書き出す較正ファイルのパスを指定する。計算する値は変えず、NNUE、PST、FM、同時学習、および診断の学習結果と、較正コマンドの出力が変更前の学習器と文字列として一致した（[照合の記録](measurements/win-rate-scale-equivalence.md)、[ADR](adr/hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)）。
 - [NNUE学習器の学習率スケジュール](plans/archived/nnue-lr-schedule.md)は2026年10月16日に、採用で完了した。学習器に更新回数の関数である学習率の倍率（一定、指数減衰、cosine annealing）とエポック途中の検証を加え、評価関数がNNUEになったmasterで生成し直した30ファイル（訓練約7,946万局面）で5つの設定を学んだ。一定の1倍以外の4本はすべて最良の検証損失が1倍を下回ったが差は0.03%で、最良点が後ろへずれる一方で頭打ちは残った。最も低いcosine（総長3エポック、下限0.1）のネットは、一定の1倍のネットに対するSTCで`H1`、現行masterのネットに対するSTC `H1`（[5, 0, 56, 1, 61]）とLTC `H1`（[13, 0, 43, 1, 86]、異常0件）であり（[学習の記録](measurements/nnue-lr-schedule-training.md)、[LTC](measurements/nnue-cosine-vs-master-ltc.md)）、埋め込みネットとして採用し、学習器の既定の倍率をcosineにした。あわせて、探索の単体テストが埋め込みネットの評価値に依存していた問題を、固定のエポック0のネットで評価する形に直した。
 - [探索部の反復負け回避と反復禁止](plans/archived/search-repetition.md)は2026年10月15日に、採用で完了した。反復規則R1の千日手で攻撃側として負ける手は、根の合法手を審判層の裁定で分類して候補から除き、探索木の中の周回は攻撃側の負けを詰み帯の内側の専用の帯の値で返すようにした。R2とR3が禁じる着手は探索木の中で読まないようにした。3項目をまとめた候補は段階開始版に対してSTC `H1`（[40, 3, 152, 3, 91]）、LTC `H1`（[58, 9, 190, 10, 110]、異常0件）となり、候補の反復負けはSTCとLTCの計1,348局で0局、段階開始版の反復負けはLTCの762局中277局であった（[STC](measurements/search-repetition-stc.md)、[LTC](measurements/search-repetition-ltc.md)）。
 - [教師データ形式の統一](plans/archived/unified-teacher-format.md)は2026年10月14日に、採用で完了した。教師データの形式を、1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位のMNSDの版2の1つにまとめ、AlphaZeroの計画が予定していた別の形式MNZTは作らなかった。生成器はこれまで捨てていた局面にも除外の理由を付けて書き、学習器は手順を再生して局面を復元する。同じ条件で生成した版1と版2のデータで、学習器が読む局面の列と、NNUEとPSTの学習結果がビット単位で一致することを確かめ（[照合の記録](measurements/unified-teacher-format-equivalence.md)）、生のバイナリは版1の約11分の1から17分の1になった。版1のデータは利用者の判断で生成し直さず、`data/`の44ファイル（約18.3 GB）を削除した。
 - [ファイル形式の整理と形式の仕様の整備](plans/archived/file-format-consolidation.md)は2026年10月13日に、採用で完了した。各形式の版を1つにし、過去のファイルを読み続けない原則で形式を整理した。教師データの局面の由来をMNSDのレコードに置いて来歴JSONと付け直し（MNRS）を撤去し、MNPTを版3だけにし、学習器のチェックポイントをNPZに置き換えて、`MN`の独自形式を7から3へ減らした。残った全形式の仕様はそれを書き出すモジュールのdocコメントに、一覧は[ファイル形式の一覧](guides/file-formats.md)にある。変更の前後で学習の結果がビット単位で一致することを確かめ（[照合の記録](measurements/file-format-consolidation-equivalence.md)）、使えなくなった`data/`のファイル594件（約30 GB）を削除した。学習器の引数`--lambda-override`は必須の`--lambda`に変わった。
-- [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/archived/nnue-replacement.md)は2026年10月12日に、採用で完了した。現行PSTを線形経路として内包する幅128のP型NNUEを、既存の約2,920万局面と新規の約5,100万局面（1局面2万ノード）から[Rust製NNUE学習器](plans/archived/nnue-trainer-rust.md)で学び、基準M（PST＋FM）に対する段階ゲートでSTC `H1`（[0, 0, 24, 0, 80]）、LTC `H1`（[0, 0, 17, 0, 87]、異常0件）となった（[STC](measurements/nnue-replacement-stc.md)、[LTC](measurements/nnue-replacement-ltc.md)）。同じデータのHalfKP-hm-b8はP型に対するSTCで`H0`だった。探索が使う既定の評価関数はNNUEになり、同日にmasterへマージした。
 
 ### 次の候補
 
@@ -119,6 +119,5 @@
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたもので、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。比較の起点は、[学習率スケジュール](plans/archived/nnue-lr-schedule.md)が採用したcosineの学習率で、生成し直した30ファイル（`data/nnue-lr-schedule-gen/`）から学ぶネットである。学習率の計画では、学習率を下げても検証損失の頭打ちが残ったので、表現力か対局の多様性の側の問いが残っている。着手は利用者の指示を待つ。
 - [メモリより大きい教師データの一様シャッフル](plans/out-of-core-shuffle.md)は、教師データが測定機のメモリに収まらない規模でも、NNUEの学習で毎エポック全体を一様に並べ替えられるようにする。学習の開始時に版2を再生して局面を実行専用の一時ファイルへ書き、エポックごとに各局面へ無作為にbucketを振って、bucketごとに並べ替えて流す（Rao–Sandelius方式）。方式は[予備測定](measurements/shuffle-order-preliminary.md)で、混ぜる範囲が狭い並べ方ほど検証損失が悪くなる兆候を見て選んだ。着手は利用者の指示を待つ。
-- [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/win-rate-scale.md)は、学習器が「K」と呼ぶ2つの勝率尺度（評価値をロジットへ直す尺度）を、重みファイルの1つの定数と教師の分類ごとの補正係数に組み替え、教師の尺度は必須の引数で「この学習の訓練集合から推定する」か「較正コマンドで求めた明示値」かを選ぶ形にし、コードと文書の名前を統一する。計算する値は変えないので、採否は変更前の学習器との学習結果のビット単位の一致で判定する。2026年10月16日に着手し、改名の照合に通った（[照合の記録](measurements/win-rate-scale-equivalence.md)）。較正コマンドと引数の明示を含む実装と照合を終え、masterへの統合の許可を待っている。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。

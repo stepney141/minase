@@ -9,7 +9,7 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 学習器は、自己対局で各局面を探索して得た探索値と対局結果を混ぜた教師値に、評価関数（NNUEと呼ぶニューラルネット、または比較用に残すPST）の出力が近づくように重みを学習する。
 現行の学習器は、ネットの出力に使う勝率尺度（出力K、1072.6529541015625の定数、以下1072.65と略す）と、教師の探索値に使う勝率尺度（教師K、教師の分類ごとに学習のたびに訓練集合から推定）を別々に持つ。
 教師の分類とは、探索値を出した評価関数、探索のノード数、局面の由来（自己対局か実戦の棋譜か）、および先読み条件が同じ教師データの集まりである。
-2つの値は同じ単位の量だが、前者はエンジンの評価値の単位を定める取り決め、後者は各教師の探索値が勝率とどう対応するかの測定値であり、この違いが名前に現れていないために理解を妨げている（[既存実装の調査](../research/win-rate-scale-k-prior-art.md)）。
+2つの値は同じ単位の量だが、前者はエンジンの評価値の単位を定める取り決め、後者は各教師の探索値が勝率とどう対応するかの測定値であり、この違いが名前に現れていないために理解を妨げている（[既存実装の調査](../../research/win-rate-scale-k-prior-art.md)）。
 本書は、勝率尺度を重みファイルのヘッダが持つ1つの定数とし、教師の探索値は分類ごとの**尺度補正係数**（勝率尺度を教師の勝率尺度で割った値）でその定数の単位へ換算したものとして説明と記録を組み替える。
 補正係数で換算してから1つの定数で割る計算と、探索値を教師の勝率尺度で割る現行の計算は実数演算では同じ値になるが、浮動小数点では丸めが変わり得るので、実装の計算式は変えず、補正係数は無次元の導出量として記録する。
 教師の勝率尺度は、学習の必須の引数 `--teacher-cp-per-logit` で与える。値には、この学習の訓練集合から推定させる `calibrate` か、分類ごとの値を持つ較正ファイルのパスのどちらかを指定し、既定値は置かない。
@@ -19,10 +19,8 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 
 ## 状態
 
-進行中。2026年10月15日に起案し、2026年10月16日に着手した。
-[学習率スケジュール](archived/nnue-lr-schedule.md)のブランチはmasterへ統合済みだったので、その統合後のmasterからブランチ`win-rate-scale`を切った。
-フェーズ1（改名）、フェーズ2（較正コマンドと引数の明示）、およびフェーズ3（文書とADR）は完了し、「検証」の5項目に通った（[照合の記録](../measurements/win-rate-scale-equivalence.md)）。
-次の一手は、利用者の許可を得てブランチ`win-rate-scale`をmasterへ統合し、本書を凍結して docs/plans/archived/ へ移すことである。
+完了（採用）。2026年10月15日に起案し、2026年10月16日に着手して同日に完了した。
+改名、較正コマンド、必須の引数、文書、およびADRがそろい、改名の前後と2つの較正の経路で学習結果が変更前の学習器と文字列として一致した（[照合の記録](../../measurements/win-rate-scale-equivalence.md)）。
 
 ## 目的
 
@@ -32,13 +30,13 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 さらに、教師データMNSDのヘッダの `teacher_scale` は探索ノード数を指し、「尺度」という語が勝率尺度と衝突している。
 
 命名が混乱している背景には、2つのKが別の性質の量であるのに同じ型の名前で呼ばれているという事情がある。
-出力Kは、[学習する評価関数の出力Kを固定するADR](../adr/archive/fix-the-output-k-of-trained-weights.md)により、評価値の単位を定める定数として固定されている。
+出力Kは、[学習する評価関数の出力Kを固定するADR](../../adr/archive/fix-the-output-k-of-trained-weights.md)により、評価値の単位を定める定数として固定されている。
 教師Kは、教師の分類ごとに、探索値から終局結果を最もよく予測する値として、学習のたびに訓練集合から推定している（`crates/minase-trainer/src/data/mnsd.rs` の `estimate_teacher_ks`）。
 分類は、生成コミット、評価関数の重みの検査和、探索のノード数、規則セット、局面の由来、先読み条件、および混合比λの組で決まる（`TeacherClass`）。
 混合比λは、教師値のうち探索値の占める割合であり、残りの1−λは対局結果の占める割合である。実戦の棋譜の局面は探索値を持たないのでλ=0とする。
 記録された教師K（単位はcp/ロジット）は、1局面10万ノードで生成した世代2と世代3で758と766、1局面2万ノードの教師で1218であり、浅い探索の教師ほど大きい。同じcpの探索値が分類ごとに違う勝率を意味するので、分類ごとの値には根拠がある。
 一方、学習のたびに推定し直す方式では、教師値の定義が訓練集合の分割や間引き方に左右される。
-[学習率スケジュールの設計書](archived/nnue-lr-schedule.md)は、訓練局面を間引く比較で教師値まで変わらないように、間引く前の訓練集合全体から推定する規定を置き、[out-of-coreシャッフルの設計書](out-of-core-shuffle.md)は、局面を並べ替える単位の数によらず推定値を一致させる条件を課している。
+[学習率スケジュールの設計書](nnue-lr-schedule.md)は、訓練局面を間引く比較で教師値まで変わらないように、間引く前の訓練集合全体から推定する規定を置き、[out-of-coreシャッフルの設計書](../out-of-core-shuffle.md)は、局面を並べ替える単位の数によらず推定値を一致させる条件を課している。
 調べた既存実装13件のうち、学習のたびに推定するのはEtherealのチューナーとdlshogiの `--use_evalfix`（既定では無効）の2件だけであり、残りは手で決めた定数か、一度推定して定数化した値である。
 
 本書の目的は次の2つである。
@@ -65,11 +63,11 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 
 ## 依存関係
 
-- [NNUE学習器の学習率スケジュール](archived/nnue-lr-schedule.md)は、起案時にはブランチ `nnue-lr-schedule` で `crates/minase-trainer/src/nnue/train/` を編集中であり、本書の改名と同じファイルに触れていた。着手時にはそのブランチがmasterへ統合済みだったので、統合後のmasterから本書のブランチを切った。
+- [NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)は、起案時にはブランチ `nnue-lr-schedule` で `crates/minase-trainer/src/nnue/train/` を編集中であり、本書の改名と同じファイルに触れていた。着手時にはそのブランチがmasterへ統合済みだったので、統合後のmasterから本書のブランチを切った。
 - 学習率スケジュールの学習が測定機で進行中の間は、本書のビルドと照合を `nice 19` で行い、GPUを使う照合はその学習の完了後に行う。
-- [out-of-coreシャッフルの設計書](out-of-core-shuffle.md)は、学習時の教師の勝率尺度の推定を前提に一時ファイルの構成を定めている。`calibrate` 指定の学習はこの前提を保つので、同設計書の用語だけを本書のフェーズ3で置き換える。
-- [既存実装の調査](../research/win-rate-scale-k-prior-art.md)が、設計判断の根拠である。
-- [学習する評価関数の出力Kを固定するADR](../adr/archive/fix-the-output-k-of-trained-weights.md)は、本書の完了時に新しいADRで置き換える。
+- [out-of-coreシャッフルの設計書](../out-of-core-shuffle.md)は、学習時の教師の勝率尺度の推定を前提に一時ファイルの構成を定めている。`calibrate` 指定の学習はこの前提を保つので、同設計書の用語だけを本書のフェーズ3で置き換える。
+- [既存実装の調査](../../research/win-rate-scale-k-prior-art.md)が、設計判断の根拠である。
+- [学習する評価関数の出力Kを固定するADR](../../adr/archive/fix-the-output-k-of-trained-weights.md)は、本書の完了時に新しいADRで置き換える。
 
 ## 設計判断
 
@@ -83,7 +81,7 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 | 較正の値の記録 | 学習の `config.json` に、`calibrate` と較正ファイルのどちらを使ったか（現行の `teacher_k_source` の後継）、較正ファイルの内容、分類ごとの教師の勝率尺度、および導出した補正係数を記録する。再開の照合はこれらを含む。チェックポイント（NPZ）の配列名 `k` も `cp_per_logit` に改める。 | 旧キー `teacher_ks` や旧配列名 `k` を読む互換経路は作らない。改名前の実行ディレクトリとチェックポイントは新しい学習器で再開できず、それでよい。 |
 | 改名の範囲 | Rustの識別子、`config.json` のキー、CLIの引数、rustdoc、docs/guides/、docs/plans/ 直下の設計書、docs/ROADMAP.md。日本語の用語は「勝率尺度」「教師の勝率尺度」「尺度補正係数」の3語に統一し、初出で単位（1ロジットあたりのcp）を添える。 | 凍結した設計書、測定記録、監査報告、調査メモ、および既存のADRは記録なので書き換えない。 |
 | 推定コードの扱い | 探索値と結果の配列から1つの勝率尺度を推定する関数 `estimate_k` は `estimate_cp_per_logit` に、分類ごとに訓練集合を集めて推定する関数 `estimate_teacher_ks` は `estimate_teacher_cp_per_logit` に改名し、較正コマンドと `calibrate` 指定の学習の両方がこの1つの関数を呼ぶ。探索値がすべて0のように尺度を決められない標本は拒否し、推定値が探索範囲（50から4000）の端に達した場合はその旨を出力と記録に残す。 | 較正を別ツールに書く案は、同じ計算を2か所に持つことになる。 |
-| コミットの種別 | エンジンクレート `minase` の公開アクセサ（`Weights::k`、`Network::k`、`Header::teacher_scale`）を改名するコミットは、クレートの公開APIの互換性を壊すので `refactor!` とし、`BREAKING CHANGE:` フッターを書く。較正コマンドと引数の追加は `feat(trainer)` とする。[MNSDの由来の導入](../adr/archive/record-the-origin-in-mnsd-records.md)のコミットと同じ扱いである。`config.json` のキーと学習器の引数は開発者向けなので互換性の対象ではないが、フッターに改名の事実を併記する。 | 公開APIの改名を `refactor` だけで済ませる案は、CONTRIBUTING.md の規約に反する。 |
+| コミットの種別 | エンジンクレート `minase` の公開アクセサ（`Weights::k`、`Network::k`、`Header::teacher_scale`）を改名するコミットは、クレートの公開APIの互換性を壊すので `refactor!` とし、`BREAKING CHANGE:` フッターを書く。較正コマンドと引数の追加は `feat(trainer)` とする。[MNSDの由来の導入](../../adr/archive/record-the-origin-in-mnsd-records.md)のコミットと同じ扱いである。`config.json` のキーと学習器の引数は開発者向けなので互換性の対象ではないが、フッターに改名の事実を併記する。 | 公開APIの改名を `refactor` だけで済ませる案は、CONTRIBUTING.md の規約に反する。 |
 
 ## 用語と識別子の対応
 
@@ -108,9 +106,9 @@ FMの `fm scale` と `fm_scale` は、FMの補正の出力倍率であり勝率�
 ## 較正コマンドと学習の引数
 
 較正コマンドは `minase-trainer data calibrate --data <MNSD>... [--lookahead-gamma <γ> --lookahead-plies <n>]` とする。
-先読みとは、各局面の探索値を、同じ対局の将来n手の探索値から減衰率γで計算した幾何加重平均で置き換える教師の作り方であり（[先読み教師のADR](../adr/use-lookahead-teacher-values.md)）、学習と同じ引数で指定する。
+先読みとは、各局面の探索値を、同じ対局の将来n手の探索値から減衰率γで計算した幾何加重平均で置き換える教師の作り方であり（[先読み教師のADR](../../adr/use-lookahead-teacher-values.md)）、学習と同じ引数で指定する。
 較正は、学習と同じ検証分割で訓練集合を選び、先読み条件を指定した場合は先読み値から、分類ごとに教師の勝率尺度を推定する。
-出力は較正ファイル（JSON）で、較正の条件（入力ファイルの一覧。各ファイルは学習の記録と同じ識別情報、すなわち正規化したパス、バイト長、およびヘッダの内容で表し、[MNSD全体の検査和をやめた決定](../adr/archive/record-the-origin-in-mnsd-records.md)に合わせてファイル全体の検査和は持たせない。ほかに検証分割の規則、先読み条件、計算の精度、推定の探索範囲、較正コマンドの版）と、分類ごとの生成コミット、検査和の全体、探索の規模、規則セット、由来、先読み条件、訓練局面数、教師の勝率尺度（f64の値を精度を落とさず復元できる形式で）、および推定値が探索範囲の端に達したかどうかを持つ。
+出力は較正ファイル（JSON）で、較正の条件（入力ファイルの一覧。各ファイルは学習の記録と同じ識別情報、すなわち正規化したパス、バイト長、およびヘッダの内容で表し、[MNSD全体の検査和をやめた決定](../../adr/archive/record-the-origin-in-mnsd-records.md)に合わせてファイル全体の検査和は持たせない。ほかに検証分割の規則、先読み条件、計算の精度、推定の探索範囲、較正コマンドの版）と、分類ごとの生成コミット、検査和の全体、探索の規模、規則セット、由来、先読み条件、訓練局面数、教師の勝率尺度（f64の値を精度を落とさず復元できる形式で）、および推定値が探索範囲の端に達したかどうかを持つ。
 実戦対局の由来の分類は探索値を持たないので出力しない。
 
 学習コマンド（`nnue train`、`pst train`、`fm train`、`joint train`）と教師値を使う診断は、`--teacher-cp-per-logit` を必須とし、既定値を置かない。
@@ -129,14 +127,14 @@ FMの `fm scale` と `fm_scale` は、FMの補正の出力倍率であり勝率�
 
 1. **改名（計算と出力の重みは不変、`config.json` のキー名だけ変更）**。「用語と識別子の対応」の表に従ってRustの識別子、rustdoc、`config.json` のキー、および `bench-step` の引数を改め、現行の文書の用語を統一する。完了条件は、`cargo fmt`、`cargo clippy`、`cargo test` が通り、「検証」の照合1に通ることである。
 2. **較正コマンドと引数の明示**。`data calibrate` を新設し、学習と診断の引数に必須の `--teacher-cp-per-logit` を加え、`calibrate` と較正ファイルの両方の経路を実装する。完了条件は、照合2と照合3に通ることである。
-3. **文書とADR**。新しいADR「勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える」を書き、[出力Kを固定するADR](../adr/archive/fix-the-output-k-of-trained-weights.md)のステータスを置き換え済みにする。docs/guides/ の評価関数の解説と学習手順、docs/ROADMAP.md、および本書を更新する。
+3. **文書とADR**。新しいADR「勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える」を書き、[出力Kを固定するADR](../../adr/archive/fix-the-output-k-of-trained-weights.md)のステータスを置き換え済みにする。docs/guides/ の評価関数の解説と学習手順、docs/ROADMAP.md、および本書を更新する。
 
 フェーズ1と2は別のコミットにし、照合は各フェーズの直後に行う。
-実装はcodexへ委任し、GPUを使う照合は委任元が本環境で行う（[GPUを要する学習はcodexへ委任しない](../lessons/run-gpu-training-outside-codex-sandbox.md)）。
+実装はcodexへ委任し、GPUを使う照合は委任元が本環境で行う（[GPUを要する学習はcodexへ委任しない](../../lessons/run-gpu-training-outside-codex-sandbox.md)）。
 
 ## 検証
 
-照合は、[ファイル形式の整理の照合記録](../measurements/file-format-consolidation-equivalence.md)と同じ手順で行う。ただし同記録の2ファイルは削除済みなので、現存するMNSD版2のデータ（`data/nnue-lr-schedule-gen/` の先頭2ファイル）を使い、変更前の基準は着手時のmaster（学習率スケジュールのブランチを統合した後のコミット）で取り直す。
+照合は、[ファイル形式の整理の照合記録](../../measurements/file-format-consolidation-equivalence.md)と同じ手順で行う。ただし同記録の2ファイルは削除済みなので、現存するMNSD版2のデータ（`data/nnue-lr-schedule-gen/` の先頭2ファイル）を使い、変更前の基準は着手時のmaster（学習率スケジュールのブランチを統合した後のコミット）で取り直す。
 NNUEは2エポックで約200秒、PSTは約30秒である。
 比べる値は、訓練局面数、検証局面数、分類ごとの教師の勝率尺度、訓練と検証に振り分けた局面の通し番号の列のSHA-256、各エポックの訓練損失、補助損失（駒を1つ除いた局面との評価の差に課す損失）、総損失、検証損失、および書き出した重みのSHA-256である。
 一致はすべて、`config.json` と学習ログに書かれた値の文字列としての一致で判定する。
@@ -157,8 +155,8 @@ NNUEは2エポックで約200秒、PSTは約30秒である。
 
 ## 参考資料
 
-- [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](../research/win-rate-scale-k-prior-art.md)。やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealの比較。
-- [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](../adr/archive/fix-the-output-k-of-trained-weights.md)。本書が置き換えるADR。
-- [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](../adr/archive/record-the-origin-in-mnsd-records.md)。教師の分類の現行の定義。
-- [ファイル形式の整理の前後で学習結果が一致することの照合記録](../measurements/file-format-consolidation-equivalence.md)。照合の手順の先例。
+- [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](../../research/win-rate-scale-k-prior-art.md)。やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealの比較。
+- [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](../../adr/archive/fix-the-output-k-of-trained-weights.md)。本書が置き換えるADR。
+- [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](../../adr/archive/record-the-origin-in-mnsd-records.md)。教師の分類の現行の定義。
+- [ファイル形式の整理の前後で学習結果が一致することの照合記録](../../measurements/file-format-consolidation-equivalence.md)。照合の手順の先例。
 - dlshogiの `--use_evalfix`（[data_loader.py](https://github.com/TadaoYamaoka/DeepLearningShogi/blob/master/dlshogi/data_loader.py)）。教師ファイルごとに係数を推定して基準へ換算する先例。
