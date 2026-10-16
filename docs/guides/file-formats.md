@@ -76,6 +76,7 @@ MNSDは1局ごとに開始局面を1回だけ書き、以後は1手ごとに指�
 | 合法手の評価差の診断の報告（`--output`で指定） | なし | `minase-trainer diag nnue-moves` | なし | `crates/minase-trainer/src/diagnostics/nnue_moves.rs`の`Report` |
 | FMの補正を縮める変換の報告`<出力の拡張子を除いた名前>.quarter.json` | なし | `minase-trainer fm quarter` | なし | `crates/minase-trainer/src/fm/convert.rs`の`QuarterReport` |
 | FMの倍率を焼き込む変換の報告`<出力の拡張子を除いた名前>.scale.json` | なし | `minase-trainer fm scale` | なし | `crates/minase-trainer/src/fm/convert.rs`の`ScaleReport` |
+| 教師の勝率尺度の較正ファイル（`--output`で指定） | `format = "minase-trainer-teacher-calibration"` | `minase-trainer data calibrate` | `nnue train`、`pst train`、`fm train`、`joint train`、`diag pst-compare`（`--teacher-cp-per-logit`） | `crates/minase-trainer/src/data/calibration.rs` |
 
 ## 対局ハーネスとSPSAの実行ディレクトリ
 

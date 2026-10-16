@@ -30,7 +30,7 @@ Stockfishの測定記録では、0以外の引き分け値は自己対局で中�
 ## 目的
 
 現行の探索は、探索木の中で同一局面が再現すると、規則によらず定数`DRAW_SCORE`（0）を返す（`crates/minase/src/search/alphabeta/negamax.rs`の`search_move`）。
-探索木の中で引き分けの値を返すのはこの1か所だけであり、駒枯れ（RULES.md第22条）と、規則コードE3（RULES.md第32条）の裸玉裁定の引き分けは木の中で判定しない（[探索木の中の裁定の近似のADR](../adr/approximate-adjudication-inside-search-tree.md)）。
+探索木の中で引き分けの値を返すのはこの1か所だけであり、駒枯れ（RULES.md第22条）と、規則コードE3（RULES.md第32条）の裸玉裁定の引き分けは木の中で判定しない（[探索木の中の裁定の近似のADR](../adr/archive/approximate-adjudication-inside-search-tree.md)）。
 したがってエンジンは、千日手の引き分けを評価値0の通常の局面と同じ価値とみなし、ほかの手の評価値が0よりわずかに低いだけでも千日手を選ぶ。
 対局の相手が自分より弱いと分かっている場合などに、利用者がこの価値づけを変えられるようにすることが本書の目的である。
 
@@ -120,5 +120,5 @@ USIのオプションの一覧（`crates/minase/src/protocol/usi.rs`のdocコメ
 - [引き分けの評価値（contempt）の既存実装と測定の調査](../research/draw-value-prior-art.md)：Stockfish（コミット`17a6c8f1`までの履歴）、やねうら王（コミット`c1b80eaa`）、dlshogi、技巧、Apery、Fairy-Stockfish、およびLc0の実装と測定の記録。
 - [探索内の反復の扱いに関する既存実装の調査](../research/search-repetition-prior-art.md)：引き分け値の揺らぎと反復の判定。
 - [探索部の反復負け回避と反復禁止](archived/search-repetition.md)：本書の前提となる反復の扱い。
-- [探索木の中の裁定の近似のADR](../adr/approximate-adjudication-inside-search-tree.md)：探索木の中で引き分けを返す場合の現行の決定。
+- [探索木の中の裁定の近似のADR](../adr/archive/approximate-adjudication-inside-search-tree.md)：探索木の中で引き分けを返す場合の現行の決定。
 - RULES.md第31条（反復規則）。

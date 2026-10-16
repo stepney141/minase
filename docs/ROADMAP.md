@@ -78,7 +78,7 @@
 | 中核モジュールの再編 | [plans/archived/core-layout.md](plans/archived/core-layout.md) | 完了（採用） | 2026年9月27日 |
 | 実行ファイルと対局ハーネスのモジュール再編 | [plans/archived/bin-harness-layout.md](plans/archived/bin-harness-layout.md) | 完了（採用） | 2026年9月27日 |
 | 学習ツールの再編 | [plans/archived/train-tools-layout.md](plans/archived/train-tools-layout.md) | 完了（採用） | 2026年10月3日 |
-| 勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名） | [plans/win-rate-scale.md](plans/win-rate-scale.md) | 起案 | |
+| 勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名） | [plans/win-rate-scale.md](plans/win-rate-scale.md) | 進行中 | |
 | ライブラリとエンジンのcrate分割 | [plans/archived/crate-split.md](plans/archived/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/archived/cli-subcommands.md](plans/archived/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/archived/match-resume-simplification.md](plans/archived/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
@@ -119,6 +119,6 @@
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたもので、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。比較の起点は、[学習率スケジュール](plans/archived/nnue-lr-schedule.md)が採用したcosineの学習率で、生成し直した30ファイル（`data/nnue-lr-schedule-gen/`）から学ぶネットである。学習率の計画では、学習率を下げても検証損失の頭打ちが残ったので、表現力か対局の多様性の側の問いが残っている。着手は利用者の指示を待つ。
 - [メモリより大きい教師データの一様シャッフル](plans/out-of-core-shuffle.md)は、教師データが測定機のメモリに収まらない規模でも、NNUEの学習で毎エポック全体を一様に並べ替えられるようにする。学習の開始時に版2を再生して局面を実行専用の一時ファイルへ書き、エポックごとに各局面へ無作為にbucketを振って、bucketごとに並べ替えて流す（Rao–Sandelius方式）。方式は[予備測定](measurements/shuffle-order-preliminary.md)で、混ぜる範囲が狭い並べ方ほど検証損失が悪くなる兆候を見て選んだ。着手は利用者の指示を待つ。
-- [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/win-rate-scale.md)は、学習器が「K」と呼ぶ2つの勝率尺度（評価値をロジットへ直す尺度）を、重みファイルの1つの定数と教師の分類ごとの補正係数に組み替え、教師の尺度は必須の引数で「この学習の訓練集合から推定する」か「較正コマンドで求めた明示値」かを選ぶ形にし、コードと文書の名前を統一する。計算する値は変えないので、採否は変更前の学習器との学習結果のビット単位の一致で判定する。着手は利用者の指示を待つ。
+- [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/win-rate-scale.md)は、学習器が「K」と呼ぶ2つの勝率尺度（評価値をロジットへ直す尺度）を、重みファイルの1つの定数と教師の分類ごとの補正係数に組み替え、教師の尺度は必須の引数で「この学習の訓練集合から推定する」か「較正コマンドで求めた明示値」かを選ぶ形にし、コードと文書の名前を統一する。計算する値は変えないので、採否は変更前の学習器との学習結果のビット単位の一致で判定する。2026年10月16日に着手し、改名の照合に通った（[照合の記録](measurements/win-rate-scale-equivalence.md)）。較正コマンドと引数の明示を実装中である。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。

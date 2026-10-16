@@ -58,7 +58,7 @@ pub(super) fn play_game(
 /// 手数上限で終局しなかった対局は書かず、終局した対局には結果と終局理由を付ける。
 /// 実戦の開始局面では呼び手が注入回数0を指定し、乱数手を入れず次の局面から価値を記録する。
 /// 注入の予定と乱数列は[`plan_injections`]に従う。
-/// 理由は`docs/adr/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
+/// 理由は`docs/adr/archive/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
 pub(super) fn play_game_from_opening(
     nnue: &Nnue,
     rules: Rules,

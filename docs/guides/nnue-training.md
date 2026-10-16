@@ -50,7 +50,7 @@ done
 読み込みはファイル単位で`--threads`のスレッドに分けて行い、その時間は`config.json`の`preprocessing_seconds`に含まれる。
 
 線形の経路の初期値には、PSTとFMの同時学習が書き出した圧縮なしのNPZ（`pst-float.npz`）を`--init-pst`に与える。
-評価値を勝率へ変換する尺度である出力用のK、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNPT形式）から引き継ぐ。
+評価値を勝率へ変換する勝率尺度（1ロジットあたりのcp）、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNPT形式）から引き継ぐ。
 学習器は開始時に、`--init-pst`の左右の鏡映対が一致することと、`--init-pst`を量子化すると`--base`のPSTの部分に一致することを検査し、一致しなければ停止する。
 したがって、`--init-pst`と`--base`には同じ学習から得た組を与える。
 学習データの規則セットも、`--base`の規則セットと一致していなければならない。
@@ -58,6 +58,20 @@ done
 教師値で探索値と対局結果を混ぜる比λは`--lambda`で必ず指定し、NNUEの学習では探索値だけを教師とする1.0を指定する。
 λは自己対局のデータにだけ適用され、実戦対局のデータでは常に0である。
 先読み教師を使う場合は、`--lookahead-gamma`と`--lookahead-plies`を同時に指定する。
+教師の探索値を勝率へ換算する教師の勝率尺度は、必須の引数`--teacher-cp-per-logit`で与える。
+値は、この学習の訓練集合から教師の分類ごとに推定する`calibrate`か、較正コマンド`minase-trainer data calibrate`が書き出した較正ファイル（JSON）のパスのどちらかであり、既定値はない。
+通常の学習では`calibrate`を指定する。
+訓練集合の間引きや分割の変更のように、入力を変えても教師値を固定したい比較では、間引く前の全入力から較正ファイルを作り、それぞれの学習に同じファイルを渡す。
+較正コマンドは学習と同じ`--data`、`--lookahead-gamma`、`--lookahead-plies`を受け、学習と同じ検証分割で訓練集合を選んで較正する。
+学習器は較正ファイルの項目を分類の属性（生成コミット、重みの検査和、探索の規模、規則セット、由来、先読み条件）で突き合わせ、λが0でない分類に項目がなければ学習を始めずに停止する。
+`config.json`の`preprocessing`には、教師の勝率尺度`teacher_cp_per_logit`、勝率尺度を教師の勝率尺度で割った尺度補正係数`teacher_score_multiplier`、および出所`teacher_cp_per_logit_source`（`calibrate`か、較正ファイルのパスと内容）が残る。
+
+```sh
+cargo run --release --offline -j 2 -p minase-trainer -- data calibrate \
+  --data "$TRAIN_DATA_ROOT/nnue-lr-schedule-gen/generated-"*.bin \
+  --lookahead-gamma 0.9 --lookahead-plies 40 \
+  --output /tmp/teacher-calibration.json
+```
 
 ## 3. 試走する
 
@@ -74,7 +88,8 @@ for FEATURE_SET in P HalfKP-hm-b8; do
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
     --init-pst "$TRAIN_DATA_ROOT/pst-fm-joint-training/j75/pst-float.npz" \
     --base crates/minase/nets/pst.bin \
-    --lambda 1.0 --lookahead-gamma 0.9 --lookahead-plies 40 \
+    --lambda 1.0 --teacher-cp-per-logit calibrate \
+    --lookahead-gamma 0.9 --lookahead-plies 40 \
     --batch 16384 --epochs 1 --seed 1 \
     --output-dir "/tmp/nnue-rust-phase3-${FEATURE_SET}"
 done

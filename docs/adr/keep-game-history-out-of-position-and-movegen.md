@@ -30,5 +30,5 @@ R2とR3の禁止を`MoveGenerator`に組み込む案も採らなかった。
 
 `Position::try_make_move`は局面合法性だけを検査し、`Game::play`と`Game::legal_moves`は対局合法性を検査する。
 同じ局面でも、反復の履歴によって対局合法手と終局の結果が変わる。
-探索は`Game`を経由せず、対局開始から現局面までの局面キーの履歴だけを受け取る（[探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](approximate-adjudication-inside-search-tree.md)）。
+探索は`Game`を経由せず、対局開始から現局面までの局面キーの履歴だけを受け取る（[探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](archive/approximate-adjudication-inside-search-tree.md)）。
 直前局面生成器は`Position`と着手規則だけで動き、履歴の逆生成を扱わない。

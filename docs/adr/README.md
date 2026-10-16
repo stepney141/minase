@@ -59,7 +59,9 @@ ADRは次の見出しを順に持つ。
 ## 不変性
 
 承認済みのADRは、ステータスの行を除いて本文を書き換えない。
-決定を変えるときは、新しいADRを書き、そのコンテキストで古いADRにリンクしたうえで、古いADRのステータスを置き換え済みに書き換える。
+決定を変えるときは、新しいADRを書き、そのコンテキストで古いADRにリンクしたうえで、古いADRのステータスを置き換え済みに書き換え、古いADRを [archive/](archive/) へ移す。
+移したADRは本書の索引に「（置き換え済み）」の印をつけて残し、他の文書からのリンクは archive/ のパスへ直す。
+現行の決定だけが adr/ 直下に並ぶので、読者は置き換え済みの決定を現行と取り違えずに済む。
 誤字とリンク切れの修正だけは、この規則の例外とする。
 本文を後から追記して更新し続ける運用は、記述が時系列に積み重なって現在の決定が読み取れなくなるので採らない。
 
@@ -102,7 +104,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年7月30日 [経由升で取った歩兵と仲人の足は、取られる前の利きで判定する](judge-pawn-foot-by-control-before-capture.md)
 - 2026年7月31日 [perftの数値を合法手生成の正しさの基準にしない](verify-movegen-without-perft-counts.md)
 - 2026年7月31日 [着手を経由升の捕獲だけを区別する正準形で表す](represent-moves-in-canonical-form.md)
-- 2026年8月2日 [独立したリファクタリングをマイルストーンにしない](fold-refactoring-into-milestones.md)
+- 2026年8月2日 [独立したリファクタリングをマイルストーンにしない](archive/fold-refactoring-into-milestones.md)（置き換え済み）
 - 2026年8月9日 [局面と合法手生成器を対局の履歴から独立させる](keep-game-history-out-of-position-and-movegen.md)
 - 2026年8月9日 [日本中将棋連盟式の千日手（R0）を実装せず、既定の反復規則をR1にする](do-not-implement-r0-repetition.md)
 - 2026年8月10日 [次局の規則を、対局開始前に受理した最初の局面設定で確定する](commit-pending-rules-on-first-position.md)
@@ -115,7 +117,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年8月22日 [`try_make_move`は全合法手との照合で検査する](check-try-make-move-against-all-legal-moves.md)
 - 2026年8月22日 [実行ファイルでmimallocを使う](use-mimalloc-in-executables.md)
 - 2026年8月22日 [採否はペア単位のペンタノミアルGSPRTで判定する](judge-adoption-by-pentanomial-gsprt.md)
-- 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](approximate-adjudication-inside-search-tree.md)（置き換え済み）
+- 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](archive/approximate-adjudication-inside-search-tree.md)（置き換え済み）
 - 2026年8月22日 [王手延長を実装しない](omit-check-extension.md)
 - 2026年8月23日 [探索ワーカー数の既定値を1にする](keep-default-threads-at-one.md)
 - 2026年8月23日 [置換表のエントリを2語の原子値にする](use-atomic-two-word-transposition-entries.md)
@@ -124,7 +126,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年8月25日 [規則セットを排他群ごとの列挙型で表し、着手規則と対局規則の2層に分ける](represent-rule-sets-as-algebraic-data-types.md)
 - 2026年8月26日 [教師値の探索は深さではなくノード数で打ち切る](use-fixed-node-searches-for-teacher-values.md)
 - 2026年8月26日 [評価関数に王と2駒の組の表（KPP）を使わない](omit-kpp-tables-from-evaluation.md)
-- 2026年8月26日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を教師データに記録しない](exclude-mate-tactical-and-repeated-positions-from-teacher-data.md)
+- 2026年8月26日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を教師データに記録しない](archive/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md)（置き換え済み）
 - 2026年8月29日 [教師データの自己対局にランダム着手を注入しない](skip-random-move-injection-in-teacher-games.md)
 - 2026年9月1日 [同時対局数の既定値を物理コア数から計算する](derive-default-concurrency-from-physical-cores.md)
 - 2026年9月1日 [機能採否はSTCで選別し、LTCだけで採用を決める](screen-at-stc-and-decide-at-ltc.md)
@@ -146,7 +148,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月12日 [置換表の記録手がないノードを1だけ浅く読む](reduce-depth-by-one-without-tt-move.md)
 - 2026年9月12日 [置換表を1スロット1エントリの直接マップのまま保つ](keep-transposition-table-direct-mapped.md)
 - 2026年9月12日 [静的評価を置換表に保存しない](do-not-store-static-eval-in-tt.md)
-- 2026年9月14日 [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](fix-the-output-k-of-trained-weights.md)
+- 2026年9月14日 [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](archive/fix-the-output-k-of-trained-weights.md)（置き換え済み）
 - 2026年9月14日 [教師データの自己対局の手数上限を4,000手にする](cap-teacher-games-at-4000-plies.md)
 - 2026年9月14日 [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](penalize-wrong-signed-piece-removal-differences.md)
 - 2026年9月15日 [プロファイル誘導最適化（PGO）でビルドしない](do-not-build-with-pgo.md)
@@ -171,7 +173,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月22日 [SPSAの結果は係数表の既定値のリテラルだけを書き換えて反映する](apply-spsa-results-by-rewriting-default-literals.md)
 - 2026年9月23日 [升ごとの利き数の表を差分更新で持たず、利きに基づく評価特徴を入れない](omit-the-incremental-attack-count-table.md)
 - 2026年9月23日 [教師の探索値を同じ対局の将来の探索値の幾何加重平均に置き換える](use-lookahead-teacher-values.md)
-- 2026年9月23日 [教師データを来歴ファイルで分類し、MNSDの形式は変えない](classify-teacher-data-by-provenance-files.md)
+- 2026年9月23日 [教師データを来歴ファイルで分類し、MNSDの形式は変えない](archive/classify-teacher-data-by-provenance-files.md)（置き換え済み）
 - 2026年9月23日 [深い探索の付け直し、人間の棋譜の局面、および棋譜から始めた自己対局を教師に加えない](keep-deep-rescoring-and-human-games-out-of-the-teacher.md)
 - 2026年9月25日 [SPSAの値は1組の候補として段階ゲートで採否を決め、調整はSTCで行う](adopt-spsa-values-only-through-the-staged-gate.md)
 - 2026年9月25日 [SPSAの反復はθ+とθ−の8ペアの直接対局とし、確率的な丸めと非同期の更新を使う](play-theta-plus-against-theta-minus-in-eight-pair-iterations.md)
@@ -223,14 +225,14 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-lookahead-teachers.md)
 - 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](parameterize-the-nnue-by-feature-set-and-head-types.md)
 - 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](share-p-type-mirror-weights-by-half-width-rotation.md)
-- 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-crate.md)
+- 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](archive/allow-unsafe-only-in-the-trainer-crate.md)（置き換え済み）
 - 2026年10月12日 [学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](use-pytorch-adamw-with-bias-correction.md)
 - 2026年10月12日 [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](use-nnue-as-the-only-search-evaluation.md)
 - 2026年10月13日 [PST、FM、および同時学習の学習器はCPUで動かし、測定なしにGPUのカーネルを書かない](train-pst-and-fm-on-the-cpu.md)
 - 2026年10月13日 [Pythonの学習器は一度だけ照合した後に撤去し、Rustの学習器だけを正とする](retire-the-python-trainer-after-a-one-time-cross-check.md)
 - 2026年10月13日 [学習器は評価関数ごとに独立したパイプラインを持ち、データの読み込みと汎用の部品だけを共有する](split-training-pipelines-by-evaluation-function.md)
 - 2026年10月13日 [設計書を持つ作業はすべてROADMAPの状態表に載せる](list-every-planned-work-in-the-roadmap.md)
-- 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](record-the-origin-in-mnsd-records.md)
+- 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](archive/record-the-origin-in-mnsd-records.md)（置き換え済み）
 - 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](keep-one-version-per-file-format.md)
 - 2026年10月13日 [学習器のチェックポイントをNPZに置き、設定そのものを収めて比べる](store-trainer-checkpoints-as-npz.md)
 - 2026年10月14日 [教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-as-chained-games.md)
@@ -243,3 +245,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月15日 [探索木の中では駒枯れ、裸玉、および詰みの裁定を近似し、厳密な裁定を審判層に委ねる](approximate-exhaustion-and-mate-inside-search-tree.md)
 - 2026年10月15日 [千日手の引き分けの値は利用者がUSIオプションで固定値を与え、根の手番側に＋、相手側に−の符号で返す](set-the-draw-value-by-usi-option-signed-from-the-root-side.md)
 - 2026年10月16日 [NNUEの学習率をcosine annealingで減らす](anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)
+- 2026年10月16日 [勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)

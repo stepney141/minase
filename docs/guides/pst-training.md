@@ -102,13 +102,26 @@ minase-trainer pst train \
   --output-dir data/<実験名>/training \
   --lr 0.03 --epochs 200 --patience 5 --batch 16384 --seed 1 \
   --removal-penalty 1000 --removal-reference init --lambda 0.75 \
+  --teacher-cp-per-logit calibrate \
   --lookahead-gamma 0.9 --lookahead-plies 40 \
   2>&1 | tee data/<実験名>/train.log
 ```
 
 学習器は、`--init`のPSTを初期値として、左右の鏡映対で重みを共有する2端点（序中盤用と終盤用）のPSTを学習する。
-評価値を勝率へ変換する尺度である出力用K、探索用駒価値、および規則セット名は`--init`から引き継ぐ。
+評価値を勝率へ変換する勝率尺度（1ロジットあたりのcp）、探索用駒価値、および規則セット名は`--init`から引き継ぐ。
 `--lambda`は2節で述べたとおり自己対局のデータにだけ適用され、実戦対局のデータでは0が使われる。
+`--teacher-cp-per-logit`は、教師の探索値を勝率へ換算する教師の勝率尺度を指定する必須の引数である。
+値には、この学習の訓練集合から教師の分類ごとに推定する`calibrate`か、`minase-trainer data calibrate`が書き出した較正ファイルのパスを指定する。
+通常の学習では`calibrate`を指定し、訓練集合の間引きや分割の変更のように教師値を固定したい比較では、次のコマンドで作った較正ファイルを渡す。
+較正ファイルは教師の分類ごとの値を持ち、学習器は分類の属性（生成コミット、重みの検査和、探索の規模、規則セット、由来、先読み条件）で突き合わせるので、学習時と較正時で`--data`に指定するファイルの集合は一致していなくてもよい。
+学習の記録`config.json`の`preprocessing`には、使った教師の勝率尺度`teacher_cp_per_logit`、導出した尺度補正係数`teacher_score_multiplier`（勝率尺度を教師の勝率尺度で割った値）、および出所`teacher_cp_per_logit_source`（`calibrate`か、較正ファイルのパスと内容）が残る。
+
+```bash
+minase-trainer data calibrate \
+  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --lookahead-gamma 0.9 --lookahead-plies 40 \
+  --output data/<実験名>/teacher-calibration.json
+```
 `--lookahead-gamma`と`--lookahead-plies`は、同じ対局の将来の探索値を割り引いて平均した先読み教師を使う指定であり、両方を同時に与える。
 `--removal-reference`は、駒を1枚除いたときの評価の変化が同じ向きになることを求める補助損失の参照であり、`init`は`--init`の整数PST、`v0`は学習を始める前の手書きの評価関数v0の駒価値を参照にする。
 エポック数の上限は200である。
@@ -136,7 +149,8 @@ minase-trainer pst train \
 ```bash
 minase-trainer diag pst-compare \
   --data <既存データ...> data/<実験名>/generated-*.bin \
-  --lambda 0.75 --lookahead-gamma 0.9 --lookahead-plies 40 \
+  --lambda 0.75 --teacher-cp-per-logit calibrate \
+  --lookahead-gamma 0.9 --lookahead-plies 40 \
   --base data/<実験名>/pst-base.bin \
   --candidate data/<実験名>/training/pst.bin \
   --candidate-float data/<実験名>/training/pst-float.npz \
@@ -171,7 +185,7 @@ FMの補正は、PSTを固定してFMだけを学習する`fm train`か、PSTと
 minase-trainer fm train \
   --data <既存データ...> data/<実験名>/generated-*.bin --init data/<実験名>/training/pst.bin \
   --output-dir data/<実験名>/fm \
-  --epochs 200 --patience 3 --lambda 1.0 \
+  --epochs 200 --patience 3 --lambda 1.0 --teacher-cp-per-logit calibrate \
   --lookahead-gamma 0.9 --lookahead-plies 40
 
 minase-trainer fm quarter --input data/<実験名>/fm/fm.bin --output data/<実験名>/fm-quarter.bin
@@ -180,7 +194,7 @@ minase-trainer joint train \
   --data <既存データ...> data/<実験名>/generated-*.bin --base data/<実験名>/fm-quarter.bin \
   --pst-init data/<実験名>/training/pst-float.npz --fm-init data/<実験名>/fm/fm-float.npz \
   --fm-reference data/<実験名>/fm/fm.bin \
-  --output-dir data/<実験名>/joint --lambda 0.75 \
+  --output-dir data/<実験名>/joint --lambda 0.75 --teacher-cp-per-logit calibrate \
   --lookahead-gamma 0.9 --lookahead-plies 40
 ```
 
