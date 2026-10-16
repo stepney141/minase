@@ -147,7 +147,6 @@ impl Fixture {
         Checkpoint {
             optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
             model,
-            removal_penalty: 0.0,
             lambda: 1.0,
             progress: Progress {
                 epoch: 0,

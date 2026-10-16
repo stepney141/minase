@@ -47,7 +47,6 @@ fn train_defaults_match_the_training_contract() {
     assert_eq!(args.training.weight_decay_ft, 1e-4);
     assert_eq!(args.training.lr_head, 1e-3);
     assert_eq!(args.training.weight_decay_head, 1e-4);
-    assert_eq!(args.training.removal_penalty, 1000.0);
     assert_eq!(args.training.lambda, 1.0);
     assert_eq!(args.feature_set, InputFeatureSet::P);
     assert_eq!(args.width, 128);
@@ -182,7 +181,6 @@ fn coefficient_ranges_are_checked_before_opening_inputs() {
         "--weight-decay-linear",
         "--weight-decay-ft",
         "--weight-decay-head",
-        "--removal-penalty",
     ] {
         for value in ["NaN", "inf", "-0.1", "0"] {
             let mut values = argv().into_iter().map(str::to_owned).collect::<Vec<_>>();

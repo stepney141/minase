@@ -133,7 +133,7 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
                 if let (Some(used), Some(total), Some(allocated)) = (r.gpu_used_bytes, r.gpu_total_bytes, r.gpu_allocation_bytes) {
                     println!("GPUメモリ使用量は {used} / {total} bytes、入力面と更新器の確保前後の差は {allocated} bytesでした。");
                 }
-                println!("平均損失は {:.8}、補助損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.total(), r.losses.auxiliary, r.cp_per_logit);
+                println!("平均損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の cp_per_logit={} を使いました。", r.losses.bce, r.cp_per_logit);
                 if let Some(profile) = r.profile {
                     println!("{profile}");
                 }

@@ -1,5 +1,5 @@
-//! CUDAによるNNUEの前進、補助損失、後退、およびAdamW更新。
-//! `kernels/forward.cu`が特徴の和、`head.cu`が出力と検証、`removal.cu`が駒除去差分、`backward.cu`が逆索引による後退を担う。
+//! CUDAによるNNUEの前進、後退、およびAdamW更新。
+//! `kernels/forward.cu`が特徴の和、`head.cu`が出力と検証、`backward.cu`が逆索引による後退を担う。
 //! `reduce.cu`は部分和の縮約、`optimizer.cu`はパラメータとモーメントの更新を担う。
 //! 計算と転送に別々のストリームを使い、全起動は1ブロック128スレッドとする。
 //! `atomicAdd`は使わず、`atomicOr`は異常フラグにだけ使う。

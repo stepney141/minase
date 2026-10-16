@@ -1,6 +1,5 @@
 //! NNUEの数式を、独立なf64の密な評価と有限差分で検証する。
-//! 逆索引や後退の中間値を使わず、行を1本ずつ消したネット全体を再評価する。
-//! 歩の符号を反転したPSTも用い、罰則の下限、上限、および不適格の各区分を検査する。
+//! 逆索引や後退の中間値を使わず、ネット全体を再評価する。
 
 use minase_trainer::nn::AdamWGroup;
 mod common;
@@ -42,9 +41,8 @@ fn nonzero_model(set: InputFeatureSet) -> Model {
     result
 }
 
-// 独立な損失の定義: 行を1本ずつ消してからネット全体をf64で再評価し、
-// BCEと片側絶対値損失を足す。逆索引、d_r、A_vは使わない。
-fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
+// 独立な損失の定義: ネット全体をf64で再評価し、二値交差エントロピーを求める。
+fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
     let width = model.shape().width();
     let table = model.expanded_first_layer();
     let linear = model.expanded_linear();
@@ -59,15 +57,11 @@ fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
             row / 72 * 144 + row % 72 / 6 * 12 + row % 6
         }
     };
-    let value = |b: usize, removed: Option<usize>| {
-        let q = (i32::from(batch.piece_counts()[b]) - 2 - i32::from(removed.is_some())).clamp(0, 90)
-            as f64;
+    let value = |b: usize| {
+        let q = (i32::from(batch.piece_counts()[b]) - 2).clamp(0, 90) as f64;
         let mut linear_sums = [0.0; 2];
         let mut hidden = vec![bias.iter().map(|&v| f64::from(v)).collect::<Vec<_>>(); 2];
         for col in 0..145 {
-            if removed == Some(col) {
-                continue;
-            }
             if base(b, col) != FEATURE_COUNT {
                 for (sum, w) in linear_sums.iter_mut().zip(linear[base(b, col)]) {
                     *sum += f64::from(w);
@@ -99,296 +93,59 @@ fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
         }
         logit
     };
-    let integer_reference = |b: usize, removed: Option<usize>| {
-        let q =
-            (i64::from(batch.piece_counts()[b]) - 2 - i64::from(removed.is_some())).clamp(0, 90);
-        let mut numerator = 0_i64;
-        for col in 0..145 {
-            if removed != Some(col) && base(b, col) != FEATURE_COUNT {
-                let w = endpoints[base(b, col)];
-                numerator += q * i64::from(w[0]) + (90 - q) * i64::from(w[1]);
-            }
-        }
-        ((numerator / 720).clamp(-28999, 28999), numerator)
-    };
     let targets = build_targets(batch, &[700.0], &[1.0]).unwrap();
     let mut loss = 0.0;
     for (b, &target) in targets.iter().enumerate() {
-        let before = value(b, None);
+        let before = value(b);
         loss += before.max(0.0) - before * f64::from(target) + (-before.abs()).exp().ln_1p();
-        let (reference_before, numerator_before) = integer_reference(b, None);
-        let mut penalties = 0.0;
-        let mut count = 0;
-        for col in 0..144 {
-            let f = base(b, col);
-            if f >= 13536 || [11, 21].contains(&(f / 144 % 47)) {
-                continue;
-            }
-            let (reference_after, numerator_after) = integer_reference(b, Some(col));
-            let sign = (reference_after - reference_before).signum() as f64;
-            if sign == 0.0 {
-                continue;
-            }
-            count += 1;
-            let signed =
-                sign * (value(b, Some(col)) - before) * f64::from(model.shape().cp_per_logit());
-            let magnitude = ((numerator_after - numerator_before) as f64 / 720.0).abs();
-            penalties += (magnitude.min(0.25) - signed).max(0.0);
-            if (f < 6768 && sign > 0.0) || (f >= 6768 && sign < 0.0) {
-                penalties += (signed - magnitude).max(0.0);
-            }
-        }
-        loss += 1000.0 * penalties / f64::from(model.shape().cp_per_logit()) / count.max(1) as f64;
     }
     loss / batch.len() as f64
 }
 
-fn v0_endpoints() -> Vec<[i16; 2]> {
-    let values = reference::v0_piece_values();
-    (0..FEATURE_COUNT)
-        .map(|f| {
-            if f < 13536 {
-                let sign = if f < 6768 { 1 } else { -1 };
-                [(sign * values[f / 144 % 47] * 8) as i16; 2]
-            } else {
-                [0; 2]
-            }
-        })
-        .collect()
-}
-
 #[test]
-fn finite_differences_cover_all_parameter_groups_and_penalty_regions() {
+fn finite_differences_cover_all_parameter_groups() {
     let fixture = Fixture::new(&positions());
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = fixture.batch(set, &[0, 1, 2]);
         let mut model = nonzero_model(set);
-        for inverted in [false, true] {
-            let mut endpoints = v0_endpoints();
-            if inverted {
-                // v0は全駒が正なので上限制約は発火しない。反転した1cpの参照を
-                // 用意し、3cpの候補差分で上限の独立な試験を作る。
-                for color in 0..2 {
-                    endpoints[(color * 47 + 29) * 144..(color * 47 + 30) * 144]
-                        .fill([if color == 0 { -8 } else { 8 }; 2]);
-                }
-                for row in 29 * 72..30 * 72 {
-                    model.parameter_mut(Parameter::Linear)[2 * row..2 * row + 2].fill(-3.0);
-                }
-            }
-            let reference = RemovalReference::new(&endpoints).unwrap();
-            let gradients = loss_and_gradients(
-                &model,
-                &batch,
-                &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
-                &reference,
-                1000.0,
-            )
-            .unwrap();
-            close(
-                gradients.losses.total(),
-                dense_loss(&model, &batch, &endpoints),
-                3e-5,
-            );
-            let weights = reference::fold(&model).unwrap();
-            let forward = reference::forward(&model, &batch, &weights).unwrap();
-            let removal =
-                reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
-                    .unwrap();
-            assert!(removal.eligible.iter().any(|&x| !x));
-            assert!(removal.pen_r.iter().any(|&x| x > 0.0));
-            if inverted {
-                assert!(
-                    (0..removal.d_r.len())
-                        .any(|i| removal.wrong_r[i] && removal.d_r[i] * removal.s_r[i] > 0.0)
-                );
-            } else {
-                assert!((0..removal.d_r.len()).any(|i| removal.d_r[i] * removal.s_r[i] < 0.0));
-            }
-            for p in Parameter::ALL {
-                let mut indices: Vec<_> = gradients.parameters[p]
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, g)| g.abs() > 1e-7)
-                    .map(|(i, _)| i)
-                    .collect();
-                if indices.len() > 16 {
-                    let step = indices.len() / 16;
-                    indices = indices.into_iter().step_by(step).take(16).collect();
-                }
-                if !model.parameters()[p].is_empty() {
-                    assert!(!indices.is_empty(), "no tested gradient in {p:?}");
-                    indices.push(model.parameters()[p].len() - 1);
-                }
-                for i in indices {
-                    let original = model.parameters()[p][i];
-                    let epsilon = if p == Parameter::Linear { 1e-3 } else { 1e-4 };
-                    model.parameter_mut(p)[i] = original + epsilon;
-                    let plus_value = model.parameters()[p][i];
-                    let plus = dense_loss(&model, &batch, &endpoints);
-                    model.parameter_mut(p)[i] = original - epsilon;
-                    let minus_value = model.parameters()[p][i];
-                    let minus = dense_loss(&model, &batch, &endpoints);
-                    model.parameter_mut(p)[i] = original;
-                    let expected = (plus - minus) / f64::from(plus_value - minus_value);
-                    let actual = f64::from(gradients.parameters[p][i]);
-                    assert!(
-                        (actual - expected).abs() <= 8e-5 + expected.abs() * 3e-4,
-                        "{set:?} inverted={inverted} {p:?}[{i}] actual={actual}, finite difference={expected}"
-                    );
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn removal_uses_lane_partials_then_descending_shuffle_distances() {
-    let fixture = Fixture::new(&positions()[..1]);
-    // 2^-24は1.0と次のf32値との差の半分なので、1.0 + epsilonは偶数丸めで1.0になる。
-    let epsilon = 2.0_f32.powi(-24);
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let batch = fixture.batch(set, &[0]);
-        let mut model = model(set, 130);
+        let gradients = loss_and_gradients(
+            &model,
+            &batch,
+            &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
+        )
+        .unwrap();
+        close(gradients.losses.bce, dense_loss(&model, &batch), 3e-5);
         for p in Parameter::ALL {
-            model.parameter_mut(p).fill(0.0);
-        }
-        model.parameter_mut(Parameter::Biases).fill(1.0);
-        let weights = reference::fold(&model).unwrap();
-        let forward = reference::forward(&model, &batch, &weights).unwrap();
-        let units = model.shape().units();
-        for (terms, expected) in [
-            // 距離16で1と-1が先に消え、距離1でepsilonが残る。
-            (vec![(0, 1.0), (1, epsilon), (16, -1.0)], epsilon),
-            // レーン0は(1 + epsilon) + epsilon = 1、レーン1は-1。
-            (vec![(0, 1.0), (1, -1.0), (32, epsilon), (64, epsilon)], 0.0),
-            // 32の倍数でない単位数でも最後の単位を含める。
-            (vec![(units - 1, 0.25)], 0.25),
-        ] {
-            for v in 0..2 {
-                let output = model.parameter_mut(Parameter::OutputWeights);
-                output.fill(0.0);
-                for &(j, term) in &terms {
-                    // P型は両半幅の活性化が1なので、共有重みを半分にする。
-                    output[v * units + j] =
-                        term * if set == InputFeatureSet::P { 0.5 } else { 1.0 };
-                }
-                let removal = reference::removal_forward(
-                    &model,
-                    &batch,
-                    &weights,
-                    &forward,
-                    &RemovalReference::v0(),
-                    1000.0,
-                )
-                .unwrap();
-                let expected_e = f64::from(expected) * f64::from(model.shape().cp_per_logit());
-                for ((&delta, &e), &eligible) in removal
-                    .delta_r
-                    .iter()
-                    .zip(&removal.e_r)
-                    .zip(&removal.eligible)
-                {
-                    // 全埋め込みが0なので、適格な除去ではE_r = Eとなる。
-                    assert_eq!(delta.to_bits(), 0.0_f64.to_bits(), "{set:?} view={v}");
-                    let expected = if eligible { expected_e } else { 0.0 };
-                    assert_eq!(e.to_bits(), expected.to_bits(), "{set:?} view={v}");
-                }
+            let mut indices: Vec<_> = gradients.parameters[p]
+                .iter()
+                .enumerate()
+                .filter(|(_, g)| g.abs() > 1e-7)
+                .map(|(i, _)| i)
+                .collect();
+            if indices.len() > 16 {
+                let step = indices.len() / 16;
+                indices = indices.into_iter().step_by(step).take(16).collect();
             }
-        }
-    }
-}
-
-#[test]
-fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
-    let fixture = Fixture::new(&positions()[..1]);
-    let batch = fixture.batch(InputFeatureSet::P, &[0]);
-    let mut model = model(InputFeatureSet::P, 2);
-    for p in Parameter::ALL {
-        model.parameter_mut(p).fill(0.0);
-    }
-    model.parameter_mut(Parameter::OutputWeights)[0] = 0.11;
-    let weights = reference::fold(&model).unwrap();
-    // 両半幅の活性化を異なる値にして、共有重みを掛ける前の丸めを検査する。
-    let forward = reference::Forward {
-        acc: vec![0.3, 0.7, 0.0, 0.0],
-        lin: vec![[0.0; 2]],
-    };
-    let removal = reference::removal_forward(
-        &model,
-        &batch,
-        &weights,
-        &forward,
-        &RemovalReference::v0(),
-        1000.0,
-    )
-    .unwrap();
-    let paired = (0.3_f32 * 0.3 + 0.7_f32 * 0.7) * 0.11;
-    let expected_e = f64::from(paired) * f64::from(model.shape().cp_per_logit());
-    for ((&delta, &e), &eligible) in removal
-        .delta_r
-        .iter()
-        .zip(&removal.e_r)
-        .zip(&removal.eligible)
-    {
-        assert_eq!(delta.to_bits(), 0.0_f64.to_bits());
-        let expected = if eligible { expected_e } else { 0.0 };
-        assert_eq!(e.to_bits(), expected.to_bits());
-    }
-}
-
-#[test]
-fn ineligible_removals_zero_diagnostics_and_preserve_reference_fields() {
-    let fixture = Fixture::new(&[position(
-        &[
-            (0, 0, Color::Black, PieceKind::King),
-            (1, 2, Color::Black, PieceKind::Pawn),
-            (2, 3, Color::White, PieceKind::Pawn),
-        ],
-        Color::Black,
-        None,
-    )]);
-    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let batch = fixture.batch(set, &[0]);
-        let model = nonzero_model(set);
-        let weights = reference::fold(&model).unwrap();
-        let forward = reference::forward(&model, &batch, &weights).unwrap();
-        for zero_reference in [false, true] {
-            let reference = if zero_reference {
-                RemovalReference::new(&vec![[0; 2]; FEATURE_COUNT]).unwrap()
-            } else {
-                RemovalReference::v0()
-            };
-            let result =
-                reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
-                    .unwrap();
-            for col in 0..144 {
-                let expected_reference = if zero_reference {
-                    0
-                } else {
-                    match col {
-                        0 => -2600,
-                        25 => -100,
-                        38 => 100,
-                        _ => 0,
-                    }
-                };
-                let eligible = !zero_reference && [25, 38].contains(&col);
-                assert_eq!(result.ref_r[col], expected_reference);
-                assert_eq!(result.s_r[col], expected_reference.signum() as f32);
-                assert_eq!(result.eligible[col], eligible);
-                assert!(!result.wrong_r[col]);
-                if !eligible {
-                    assert_eq!(result.e_r[col].to_bits(), 0.0_f64.to_bits());
-                    assert_eq!(result.delta_r[col].to_bits(), 0.0_f64.to_bits());
-                    assert_eq!(result.pen_r[col].to_bits(), 0.0_f64.to_bits());
-                    assert_eq!(result.d_r[col].to_bits(), 0.0_f32.to_bits());
-                }
+            if !model.parameters()[p].is_empty() {
+                assert!(!indices.is_empty(), "no tested gradient in {p:?}");
+                indices.push(model.parameters()[p].len() - 1);
             }
-            if zero_reference {
-                assert_eq!(result.loss, [0.0]);
-                assert!(result.d_acc_removal.iter().all(|&value| value == 0.0));
-                assert!(result.d_output.iter().all(|&value| value == 0.0));
+            for i in indices {
+                let original = model.parameters()[p][i];
+                let epsilon = if p == Parameter::Linear { 1e-3 } else { 1e-4 };
+                model.parameter_mut(p)[i] = original + epsilon;
+                let plus_value = model.parameters()[p][i];
+                let plus = dense_loss(&model, &batch);
+                model.parameter_mut(p)[i] = original - epsilon;
+                let minus_value = model.parameters()[p][i];
+                let minus = dense_loss(&model, &batch);
+                model.parameter_mut(p)[i] = original;
+                let expected = (plus - minus) / f64::from(plus_value - minus_value);
+                let actual = f64::from(gradients.parameters[p][i]);
+                assert!(
+                    (actual - expected).abs() <= 8e-5 + expected.abs() * 3e-4,
+                    "{set:?} {p:?}[{i}] actual={actual}, finite difference={expected}"
+                );
             }
         }
     }
@@ -485,87 +242,18 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         let weights = reference::fold(&model).unwrap();
         let mut forward = reference::forward(&model, &batch, &weights).unwrap();
         let reference = RemovalReference::v0();
-        let mut removal =
-            reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
-                .unwrap();
-        let mut output =
-            reference::output_backward(&model, &batch, &forward, &removal, &[0.5]).unwrap();
+        let mut output = reference::output_backward(&model, &batch, &forward, &[0.5]).unwrap();
         let mut gradient = Parameters::zeros(model.shape());
         let unchanged = gradient.clone();
-        let mut check_forward = |bad: &reference::Forward| {
-            assert!(
-                reference::removal_forward(&model, &batch, &weights, bad, &reference, 1000.0)
-                    .is_err()
-            );
-            assert!(reference::output_backward(&model, &batch, bad, &removal, &[0.5]).is_err());
+        let check_forward = |bad: &reference::Forward| {
+            assert!(reference::output_backward(&model, &batch, bad, &[0.5]).is_err());
             assert!(reference::validation_forward(&model, &batch, bad, &[0.5]).is_err());
-            assert!(
-                reference::first_layer_backward(
-                    &model,
-                    &batch,
-                    &weights,
-                    bad,
-                    &removal,
-                    &output,
-                    &mut gradient
-                )
-                .is_err()
-            );
         };
         malformed_fields!(forward, check_forward, acc, lin);
-        let mut check_removal = |bad: &reference::Removal| {
-            assert!(reference::output_backward(&model, &batch, &forward, bad, &[0.5]).is_err());
-            assert!(reference::reduce_partials(&model, &output, bad, &mut gradient).is_err());
-            assert!(
-                reference::first_layer_backward(
-                    &model,
-                    &batch,
-                    &weights,
-                    &forward,
-                    bad,
-                    &output,
-                    &mut gradient
-                )
-                .is_err()
-            );
-            assert!(
-                reference::linear_backward(&model, &batch, bad, &output, &mut gradient).is_err()
-            );
-        };
-        malformed_fields!(
-            removal,
-            check_removal,
-            e_r,
-            delta_r,
-            ref_r,
-            s_r,
-            eligible,
-            wrong_r,
-            pen_r,
-            d_r,
-            s,
-            d_acc_removal,
-            d_output,
-            linear,
-            loss
-        );
         let mut check_output = |bad: &reference::Output| {
-            assert!(reference::reduce_partials(&model, bad, &removal, &mut gradient).is_err());
-            assert!(
-                reference::first_layer_backward(
-                    &model,
-                    &batch,
-                    &weights,
-                    &forward,
-                    &removal,
-                    bad,
-                    &mut gradient
-                )
-                .is_err()
-            );
-            assert!(
-                reference::linear_backward(&model, &batch, &removal, bad, &mut gradient).is_err()
-            );
+            assert!(reference::reduce_partials(&model, bad, &mut gradient).is_err());
+            assert!(reference::first_layer_backward(&model, &batch, bad, &mut gradient).is_err());
+            assert!(reference::linear_backward(&model, &batch, bad, &mut gradient).is_err());
         };
         malformed_fields!(
             output,
@@ -583,51 +271,19 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
 
         let short_weights = &weights[..weights.len() - 1];
         assert!(reference::forward(&model, &batch, short_weights).is_err());
-        assert!(
-            reference::removal_forward(&model, &batch, short_weights, &forward, &reference, 1000.0)
-                .is_err()
-        );
-        assert!(
-            reference::first_layer_backward(
-                &model,
-                &batch,
-                short_weights,
-                &forward,
-                &removal,
-                &output,
-                &mut gradient
-            )
-            .is_err()
-        );
         for targets in [vec![], vec![0.5; 2]] {
-            assert!(
-                reference::output_backward(&model, &batch, &forward, &removal, &targets).is_err()
-            );
+            assert!(reference::output_backward(&model, &batch, &forward, &targets).is_err());
             assert!(reference::validation_forward(&model, &batch, &forward, &targets).is_err());
         }
         assert!(build_targets(&batch, &[], &[1.0]).is_err());
         assert!(reference.deltas(&batch, batch.len()).is_err());
         let shape = minase_trainer::nnue::model::Shape::new(set, 4, 1000.0).unwrap();
         let mut wrong_gradient = Parameters::zeros(shape);
+        assert!(reference::reduce_partials(&model, &output, &mut wrong_gradient).is_err());
         assert!(
-            reference::reduce_partials(&model, &output, &removal, &mut wrong_gradient).is_err()
+            reference::first_layer_backward(&model, &batch, &output, &mut wrong_gradient).is_err()
         );
-        assert!(
-            reference::first_layer_backward(
-                &model,
-                &batch,
-                &weights,
-                &forward,
-                &removal,
-                &output,
-                &mut wrong_gradient
-            )
-            .is_err()
-        );
-        assert!(
-            reference::linear_backward(&model, &batch, &removal, &output, &mut wrong_gradient)
-                .is_err()
-        );
+        assert!(reference::linear_backward(&model, &batch, &output, &mut wrong_gradient).is_err());
     }
 }
 
@@ -649,14 +305,11 @@ fn p_mirror_preserves_evaluation_and_canonical_gradients() {
         let derivatives = |batch: &BatchSlot| {
             let w = reference::fold(&model).unwrap();
             let f = reference::forward(&model, batch, &w).unwrap();
-            let r =
-                reference::removal_forward(&model, batch, &w, &f, &RemovalReference::v0(), 1000.0)
-                    .unwrap();
-            let o = reference::output_backward(&model, batch, &f, &r, &[0.7]).unwrap();
+            let o = reference::output_backward(&model, batch, &f, &[0.7]).unwrap();
             let mut g = minase_trainer::nnue::model::Parameters::zeros(model.shape());
-            reference::reduce_partials(&model, &o, &r, &mut g).unwrap();
-            reference::first_layer_backward(&model, batch, &w, &f, &r, &o, &mut g).unwrap();
-            reference::linear_backward(&model, batch, &r, &o, &mut g).unwrap();
+            reference::reduce_partials(&model, &o, &mut g).unwrap();
+            reference::first_layer_backward(&model, batch, &o, &mut g).unwrap();
+            reference::linear_backward(&model, batch, &o, &mut g).unwrap();
             g
         };
         let a = derivatives(&first);
@@ -893,7 +546,7 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
 }
 
 #[test]
-fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
+fn integer_reference_uses_material_and_phase_truncation() {
     let position = position(
         &[
             (0, 0, Color::Black, PieceKind::King),
@@ -909,15 +562,6 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     assert_eq!(delta[25], -100);
     assert_eq!(delta[38], 100);
     assert_eq!(delta[0], -2600);
-    let m = model(InputFeatureSet::P, 4);
-    let w = reference::fold(&m).unwrap();
-    let f = reference::forward(&m, &batch, &w).unwrap();
-    let r =
-        reference::removal_forward(&m, &batch, &w, &f, &RemovalReference::v0(), 1000.0).unwrap();
-    assert!(!r.eligible[0]);
-    assert!(!r.eligible[1]);
-    assert!(r.eligible[25]);
-    assert_eq!(r.eligible.iter().filter(|&&x| x).count(), 2);
     let mut endpoints = vec![[0; 2]; FEATURE_COUNT];
     // 3駒なので除去前q=1、除去後q=0。mg=8,eg=1の歩を1枚だけ置く。
     let p = fixture.dataset.record(0).unwrap().to_position().unwrap();
@@ -931,17 +575,6 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
         .unwrap();
     assert_eq!(delta[25], 0);
     close(magnitudes[25], 97.0 / 720.0, 1e-15);
-    let full = Fixture::new(&[common::position(&[], Color::Black, None)]); // 空局面の全除去は不適格。
-    let empty = full.batch(InputFeatureSet::P, &[0]);
-    let g = loss_and_gradients(
-        &m,
-        &empty,
-        &build_targets(&empty, &[700.0], &[1.0]).unwrap(),
-        &RemovalReference::v0(),
-        1000.0,
-    )
-    .unwrap();
-    assert_eq!(g.losses.auxiliary, 0.0);
 }
 
 #[test]
@@ -1027,7 +660,6 @@ fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_u
             weight_decay: 0.009,
         },
     };
-    let reference = RemovalReference::v0();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let mut serial = nonzero_model(set);
         let mut serial_optimizer = AdamW::new(serial.shape(), config).unwrap();
@@ -1042,21 +674,15 @@ fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_u
         ] {
             let batch = fixture.batch(set, &indices);
             let targets = build_targets(&batch, &[700.0], &[0.75]).unwrap();
-            let expected =
-                loss_and_gradients(&serial, &batch, &targets, &reference, 317.0).unwrap();
+            let expected = loss_and_gradients(&serial, &batch, &targets).unwrap();
             serial_optimizer
                 .update(&mut serial, &expected.parameters)
                 .unwrap();
             for (threads, model, optimizer) in &mut parallel {
-                let actual = reference::loss_and_gradients_parallel(
-                    model, &batch, &targets, &reference, 317.0, *threads,
-                )
-                .unwrap();
+                let actual =
+                    reference::loss_and_gradients_parallel(model, &batch, &targets, *threads)
+                        .unwrap();
                 assert_eq!(actual.losses.bce.to_bits(), expected.losses.bce.to_bits());
-                assert_eq!(
-                    actual.losses.auxiliary.to_bits(),
-                    expected.losses.auxiliary.to_bits()
-                );
                 assert_parameter_bits(&actual.parameters, &expected.parameters);
                 optimizer
                     .update_parallel(model, &actual.parameters, *threads, 1.0)
@@ -1071,8 +697,7 @@ fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_u
 }
 
 #[test]
-fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() {
-    // 参照と同じ向きの差分が0のとき、1枚の歩の罰則はmin(100,0.25)=0.25 cp。
+fn cpu_rejects_zero_threads_without_changing_state() {
     let fixture = Fixture::new(&[position(
         &[(1, 2, Color::Black, PieceKind::Pawn)],
         Color::Black,
@@ -1083,19 +708,7 @@ fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() 
     for parameter in Parameter::ALL {
         model.parameter_mut(parameter).fill(0.0);
     }
-    let reference = RemovalReference::v0();
-    for penalty in [0.0, 173.0, 1000.0] {
-        let actual = loss_and_gradients(&model, &batch, &[0.5], &reference, penalty).unwrap();
-        close(actual.losses.bce, f64::from(2.0_f32.ln()), 0.0);
-        close(actual.losses.auxiliary, penalty * 0.25 / 1000.0, 1e-14);
-    }
-    for penalty in [-0.01, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
-        assert!(loss_and_gradients(&model, &batch, &[0.5], &reference, penalty).is_err());
-    }
-    assert!(
-        reference::loss_and_gradients_parallel(&model, &batch, &[0.5], &reference, 1000.0, 0)
-            .is_err()
-    );
+    assert!(reference::loss_and_gradients_parallel(&model, &batch, &[0.5], 0).is_err());
     let mut optimizer = AdamW::new(model.shape(), AdamWConfig::default()).unwrap();
     let unchanged = model.clone();
     let before = optimizer.clone();

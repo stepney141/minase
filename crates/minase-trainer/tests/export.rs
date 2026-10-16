@@ -59,6 +59,7 @@ impl Fixture {
                     let mut pieces = vec![
                         (4, 0, Color::Black, PieceKind::King),
                         (7, 11, Color::White, PieceKind::King),
+                        (3, 5, Color::White, PieceKind::Pawn),
                     ];
                     if extra_pawn_game == Some(game) {
                         pieces.push((2, 5, Color::Black, PieceKind::Pawn));
@@ -111,6 +112,7 @@ impl Fixture {
             sample,
         )
         .unwrap()
+        .0
     }
 }
 
@@ -133,7 +135,6 @@ fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Che
     model.parameter_mut(Parameter::Linear).fill(linear_value);
     model.constrain().unwrap();
     Checkpoint {
-        removal_penalty: 1000.0,
         lambda: 1.0,
         model,
         optimizer: AdamW::new(shape, AdamWConfig::default()).unwrap(),
@@ -207,16 +208,16 @@ fn both_feature_sets_export_mnue5_without_rewriting_the_best_checkpoint() {
 fn error_statistics_use_validation_only_and_include_the_largest_error() {
     let fixture = Fixture::new(0..80, Some(15));
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        // 各線形値1/16は尺度8の偶数丸めで0になる。王2枚なら1/8 cp、
-        // 歩兵が加わる1局面だけ3/16 cp。訓練集合の初期局面は含めない。
+        // 各線形値1/16は尺度8の偶数丸めで0になる。3枚なら3/16 cp、
+        // 歩兵が加わる1局面だけ1/4 cp。訓練集合の初期局面は含めない。
         let checkpoint = checkpoint(set, 8.0, 1.0 / 16.0);
         let report = fixture.export(&checkpoint, 10_000);
         assert_eq!(report.samples, 7);
         assert_eq!(
             report.mean_absolute_error_cp,
-            (6.0 / 8.0 + 3.0 / 16.0) / 7.0
+            (6.0 * 3.0 / 16.0 + 1.0 / 4.0) / 7.0
         );
-        assert_eq!(report.max_absolute_error_cp, 3.0 / 16.0);
+        assert_eq!(report.max_absolute_error_cp, 1.0 / 4.0);
         assert!(report.passed);
     }
 }
@@ -225,7 +226,7 @@ fn error_statistics_use_validation_only_and_include_the_largest_error() {
 fn integer_inference_and_the_float_reference_use_centipawns() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        // 王2枚の線形評価4 cpと、出力バイアス1×cp_per_logit=8 cpの合計は12 cp。
+        // 3枚の線形評価6 cpと、出力バイアス1×cp_per_logit=8 cpの合計は14 cp。
         // 全項が両形式で厳密に表せるため、整数評価との誤差は0になる。
         let mut checkpoint = checkpoint(set, 8.0, 2.0);
         checkpoint.model.parameter_mut(Parameter::OutputBias)[0] = 1.0;
@@ -269,13 +270,13 @@ fn a_fixed_seed_repeats_the_validation_sample_and_caps_its_size() {
 fn the_gate_accepts_cp_per_logit_over_40_exactly_and_reports_a_larger_mean() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        // 王2枚×1/16 cpの誤差は1/8 cp。cp_per_logit=5ならちょうどcp_per_logit / 40になる。
-        let boundary = fixture.export(&checkpoint(set, 5.0, 1.0 / 16.0), 7);
+        // 3枚×1/16 cpの誤差は3/16 cp。cp_per_logit=7.5ならちょうどcp_per_logit / 40になる。
+        let boundary = fixture.export(&checkpoint(set, 7.5, 1.0 / 16.0), 7);
         assert_eq!(boundary.mean_absolute_error_cp, boundary.limit_cp);
         assert!(boundary.passed);
         let failed_checkpoint = checkpoint(set, 4.0, 1.0 / 16.0);
         let failed = fixture.export(&failed_checkpoint, 7);
-        assert_eq!(failed.mean_absolute_error_cp, 1.0 / 8.0);
+        assert_eq!(failed.mean_absolute_error_cp, 3.0 / 16.0);
         assert_eq!(failed.limit_cp, 1.0 / 10.0);
         assert!(!failed.passed);
         assert!(!fixture.root.join("output/best.npz").exists());
@@ -348,4 +349,197 @@ fn invalid_weights_fail_explicitly_before_exporting() {
         Err(export::Error::Model(_))
     ));
     assert!(!output.exists());
+}
+
+fn sign_fixture(positions: &[Position]) -> Fixture {
+    let mut fixture = Fixture::new(0..80, None);
+    let path = fixture.root.join("sign.mnsd");
+    let samples: Vec<_> = positions
+        .iter()
+        .enumerate()
+        .map(|(ply, position)| {
+            Sample::from_position(
+                position,
+                0,
+                Outcome::Draw,
+                4,
+                ply as u16,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+            .unwrap()
+        })
+        .collect();
+    let header = Header::new(
+        RULE_SET.into(),
+        "1".repeat(40),
+        [2; 32],
+        minase::training::records::TeacherKind::AlphaBeta,
+        200,
+        11,
+    )
+    .unwrap();
+    fs::write(&path, mnsd::independent(header, &samples)).unwrap();
+    fixture.dataset = Dataset::open(&[path], None, std::num::NonZeroUsize::new(1).unwrap())
+        .unwrap()
+        .with_lambda(1.0)
+        .unwrap();
+    fixture
+}
+
+#[test]
+fn removal_sign_uses_integer_deltas_recorded_perspective_and_shared_sampling() {
+    use minase::eval::features::feature_index;
+    use minase_core::{PieceCode, PositionBuilder, Square};
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut positions = Vec::new();
+        for side in [Color::Black, Color::White] {
+            let mut builder = PositionBuilder::new(side);
+            for (index, color, kind, promoted) in [
+                (0, Color::Black, PieceKind::King, false),
+                (143, Color::White, PieceKind::King, false),
+                (1, Color::Black, PieceKind::CrownPrince, true),
+                (50, Color::Black, PieceKind::Pawn, false),
+                (60, Color::White, PieceKind::Pawn, false),
+                (70, side.opposite(), PieceKind::Lion, true),
+            ] {
+                let piece = if promoted {
+                    PieceCode::new_promoted(color, kind)
+                } else {
+                    PieceCode::new(color, kind)
+                }
+                .unwrap();
+                builder
+                    .put(Square::from_dense(index).unwrap(), piece)
+                    .unwrap();
+            }
+            let mut position = builder.finish().unwrap();
+            position.set_lion_capture(Square::from_dense(70)).unwrap();
+            positions.push(position);
+        }
+        let fixture = sign_fixture(&positions);
+        let mut checkpoint = checkpoint(set, 1000.0, 0.0);
+        // 自駒の歩を-10 cp、相手駒の歩を+4 cpにする。
+        // 太子の負値は除外、先獅子の特徴の値は駒を除いても残る。
+        for perspective in [Color::Black, Color::White] {
+            for (index, value) in [(1, -30.0), (50, -10.0), (60, 4.0)] {
+                let square = Square::from_dense(index).unwrap();
+                let piece = positions[0].piece_at(square).unwrap();
+                let feature = feature_index(perspective, piece, square);
+                let row = feature / 144 * 72
+                    + feature % 144 / 12 * 6
+                    + (feature % 12).min(11 - feature % 12);
+                let value = if perspective == Color::Black {
+                    value
+                } else {
+                    -value
+                };
+                checkpoint.model.parameter_mut(Parameter::Linear)[row * 2..row * 2 + 2].fill(value);
+            }
+        }
+        checkpoint.model.parameter_mut(Parameter::Linear)[6768 * 2..6840 * 2].fill(50.0);
+        let (quantization, report) = write_best(
+            &fixture.dataset,
+            &checkpoint,
+            &fixture.root.join("sign-output"),
+            &v0_piece_values(),
+            RULE_SET,
+            2,
+        )
+        .unwrap();
+        assert_eq!(report.positions, quantization.samples);
+        let json = serde_json::to_value(&report).unwrap();
+        // 2局面×3枚。歩2枚が反転し、値0の獅子は反転しない。
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "positions": 2, "removals": 6,
+                "reversals": { "count": 4, "total": 6, "fraction": 2.0 / 3.0,
+                    "mean_absolute_cp": 7.0, "max_absolute_cp": 10.0 }
+            })
+        );
+        assert!(quantization.passed);
+        // 標本を1局面に縮めると、両検査とも同じ1局面だけを扱う。
+        let (quantization, report) = write_best(
+            &fixture.dataset,
+            &checkpoint,
+            &fixture.root.join("sign-output"),
+            &v0_piece_values(),
+            RULE_SET,
+            1,
+        )
+        .unwrap();
+        assert_eq!(report.positions, quantization.samples);
+        assert_eq!(report.removals, 3);
+    }
+}
+
+#[test]
+fn removal_sign_rejects_royals_only_and_zero_reference_denominators() {
+    let royals = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+        ],
+        Color::Black,
+        None,
+    );
+    // v0では42枚の飛車が評価上限を超え、1枚除いても整数参照差分は0になる。
+    let pieces: Vec<_> = (0..42)
+        .map(|i| (i % 12, i / 12, Color::Black, PieceKind::Rook))
+        .collect();
+    let saturated = common::position(&pieces, Color::Black, None);
+    for position in [royals, saturated] {
+        let fixture = sign_fixture(&[position]);
+        let checkpoint = checkpoint(InputFeatureSet::P, 1000.0, 0.0);
+        assert!(matches!(
+            write_best(
+                &fixture.dataset,
+                &checkpoint,
+                &fixture.root.join("output"),
+                &v0_piece_values(),
+                RULE_SET,
+                10
+            ),
+            Err(export::Error::Invalid(_))
+        ));
+    }
+}
+
+#[test]
+fn removal_sign_counts_quantized_zero_as_no_reversal_and_excludes_zero_references() {
+    let pawn = common::position(&[(1, 2, Color::Black, PieceKind::Pawn)], Color::Black, None);
+    let pieces: Vec<_> = (0..42)
+        .map(|i| (i % 12, i / 12, Color::Black, PieceKind::Rook))
+        .collect();
+    let saturated = common::position(&pieces, Color::Black, None);
+    let royals = common::position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (11, 11, Color::White, PieceKind::King),
+        ],
+        Color::Black,
+        None,
+    );
+    let fixture = sign_fixture(&[pawn, saturated, royals]);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        // -1/16 cpは尺度8の偶数丸めで0。実数では反転するが整数差分は0。
+        let checkpoint = checkpoint(set, 1000.0, -1.0 / 16.0);
+        let (_, report) = write_best(
+            &fixture.dataset,
+            &checkpoint,
+            &fixture.root.join("output"),
+            &v0_piece_values(),
+            RULE_SET,
+            3,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(report).unwrap(),
+            serde_json::json!({
+                "positions": 3, "removals": 1,
+                "reversals": { "count": 0, "total": 1, "fraction": 0.0,
+                    "mean_absolute_cp": null, "max_absolute_cp": null }
+            })
+        );
+    }
 }

@@ -17,7 +17,7 @@ pub struct Args {
     /// 実行デバイスを明示する。CUDAが使えない場合はエラーにする。
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     pub device: DeviceKind,
-    /// 学習率、重み減衰、補助損失係数と教師の混合比。
+    /// 学習率、重み減衰と教師の混合比。
     /// 必須の`--lambda`の適用範囲は[`TrainingOptions::lambda`]に従う。
     #[command(flatten)]
     #[serde(flatten)]

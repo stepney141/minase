@@ -1,8 +1,8 @@
 // 1ワープが1局面、128スレッドの1ブロックが4局面を担当し、ブロック数Wはceil(B/4)である。
-// 損失の部分和[W,2]は二値交差エントロピーと補助損失で、ワープ順にf64で足す。
+// 損失の部分和[W]は二値交差エントロピーで、ワープ順にf64で足す。
 // 検証の7列は二値交差エントロピー、正答数、勝敗局面数、非線形出力の和と2乗和、下限と上限の飽和数である。
 // 飽和数は整数の固定木で縮約し、ロジット0は勝ち予測に含めず、引き分けは正答率の分母から除く。
-// 共有メモリは出力後退が2×4個、検証が7×4個のf64を使う。
+// 共有メモリは出力後退が4個、検証が7×4個のf64を使う。
 __device__ float screlu(float x) {
     float c = fminf(1.0f, fmaxf(0.0f, x));
     return c * c;
@@ -58,8 +58,6 @@ __device__ float bce(float x, float target) {
 extern "C" __global__ void output_backward(
     const float* acc, const float* lin, const unsigned char* counts,
     const float* output, const float* bias, const float* targets,
-    const float* S, const float* removal_acc, const float* removal_output,
-    const float* removal_linear, const double* removal_loss,
     float* f, float* h, float* logits,
     float* loss, float* g, float* d_acc, float* d_output, float* c,
     double* loss_partials, unsigned B, unsigned H, unsigned p, float K) {
@@ -81,32 +79,30 @@ extern "C" __global__ void output_backward(
             l = bce(x, targets[b]);
             loss[b] = l;
             g[b] = grad;
-            c[b * 2] = grad * u / K + removal_linear[b * 2];
-            c[b * 2 + 1] = grad * (1.0f - u) / K + removal_linear[b * 2 + 1];
+            c[b * 2] = grad * u / K;
+            c[b * 2 + 1] = grad * (1.0f - u) / K;
         }
         grad = __shfl_sync(0xffffffffu, grad, 0);
         // CPU reference computes these small products in double precision.
-        double difference = (double)grad - (double)S[b];
         for (unsigned vj = lane; vj < 2 * H; vj += 32) {
             unsigned long long i = offset + vj;
             float a = screlu(acc[i]);
             float dh = derivative(acc[i]);
             f[i] = a;
             h[i] = dh;
-            d_acc[i] = (float)(difference * (double)output[vj] * (double)dh + (double)removal_acc[i]);
-            d_output[i] = (float)(difference * (double)a + (double)removal_output[i]);
+            d_acc[i] = (float)((double)grad * (double)output[vj] * (double)dh);
+            d_output[i] = (float)((double)grad * (double)a);
         }
     }
     if (lane == 0) {
         shared[warp] = (double)l;
-        shared[warps + warp] = b < B ? removal_loss[b] : 0.0;
     }
     __syncthreads();
-    if (threadIdx.x < 2) {
+    if (threadIdx.x == 0) {
         double sum = 0;
         for (unsigned w = 0; w < warps; ++w)
-            sum += shared[threadIdx.x * warps + w];
-        loss_partials[blockIdx.x * 2 + threadIdx.x] = sum;
+            sum += shared[w];
+        loss_partials[blockIdx.x] = sum;
     }
 }
 

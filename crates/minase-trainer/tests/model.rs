@@ -303,7 +303,6 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
         let model = model(set, 4);
         let optimizer = AdamW::new(model.shape(), AdamWConfig::default()).unwrap();
         let mut state = Checkpoint {
-            removal_penalty: 250.0,
             lambda: 0.75,
             model,
             optimizer,
@@ -328,8 +327,6 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
                 &state.model,
                 &batch,
                 &minase_trainer::nnue::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
-                &reference::RemovalReference::v0(),
-                state.removal_penalty,
             )
             .unwrap();
             state
@@ -354,8 +351,6 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
             &state.model,
             &batch,
             &minase_trainer::nnue::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
-            &reference::RemovalReference::v0(),
-            state.removal_penalty,
         )
         .unwrap();
         state
@@ -522,4 +517,52 @@ fn load_initial_rejects_wrong_dtype_or_shape_and_preserves_bits() {
         }
         arrays[endpoint].1 = valid;
     }
+}
+
+#[test]
+fn checkpoint_rejects_the_removed_penalty_scalar() {
+    use minase_trainer::nn::npz::{self, Array};
+    let model = model(InputFeatureSet::P, 4);
+    let checkpoint = Checkpoint {
+        optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
+        model,
+        lambda: 1.0,
+        progress: Progress {
+            epoch: 0,
+            best: None,
+            elapsed_seconds: 0.0,
+            seed: 71,
+            config: minase_trainer::nn::checkpoint::Configuration {
+                settings: serde_json::json!({}),
+                inputs: serde_json::json!({}),
+                preprocessing: serde_json::json!({}),
+            },
+        },
+    };
+    let bytes = checkpoint.encode().unwrap();
+    assert!(Checkpoint::decode(&bytes).is_ok());
+    let mut arrays = npz::decode(&bytes).unwrap();
+    assert!(!arrays.contains_key("removal_penalty"));
+    arrays.insert(
+        "removal_penalty".into(),
+        Array {
+            dtype: "<f8".into(),
+            shape: vec![],
+            data: 1000.0_f64.to_le_bytes().to_vec(),
+        },
+    );
+    let entries: Vec<_> = arrays.into_iter().collect();
+    let bytes = npz::encode(
+        &entries
+            .iter()
+            .map(|(name, array)| (name.as_str(), array.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    assert!(matches!(
+        Checkpoint::decode(&bytes),
+        Err(minase_trainer::nnue::model::Error::Format(
+            "unexpected checkpoint array"
+        ))
+    ));
 }

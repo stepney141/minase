@@ -8,7 +8,7 @@ use super::{
 use crate::nnue::{
     data::{CANONICAL_ROWS, FEATURE_COLUMNS, MAX_BATCH_SIZE},
     model::{Model, Parameter, Parameters, Shape},
-    reference::{AdamW, Losses, RemovalReference},
+    reference::{AdamW, Losses},
 };
 use cudarc::driver::{
     CudaEvent, CudaSlice, LaunchArgs, LaunchConfig, PinnedHostSlice, sys::CUevent_flags,
@@ -22,7 +22,6 @@ use std::sync::{
 pub(super) enum Kernel {
     ForwardAcc,
     ForwardLinear,
-    RemovalForward,
     OutputBackward,
     GradientPartials,
     ReducePartials { blocks: usize, columns: usize },
@@ -42,7 +41,6 @@ impl Kernel {
         match self {
             Self::ForwardAcc => "forward_acc",
             Self::ForwardLinear => "forward_linear",
-            Self::RemovalForward => "removal_forward",
             Self::OutputBackward => "output_backward",
             Self::GradientPartials => "gradient_partials",
             Self::ReducePartials { .. } => "reduce_partials",
@@ -115,7 +113,7 @@ impl KernelProfile {
     }
 
     // キャッシュと共有メモリを含まない、主要配列の論理アクセス量の概算。
-    // 逆索引の長さは実バッチの値。除去の有効列とAdamWの観測行は上限で数える。
+    // 逆索引の長さは実バッチの値。AdamWの観測行は上限で数える。
     fn array_bytes(&self, kernel: Kernel) -> (u64, u64) {
         let b = self.batch as u64;
         let h = self.shape.width() as u64;
@@ -130,34 +128,27 @@ impl KernelProfile {
         let head_blocks = b.div_ceil(WARPS_PER_BLOCK as u64);
         let l = CANONICAL_ROWS as u64;
         let columns = FEATURE_COLUMNS as u64;
-        let squares = columns - 1;
         let parameter_len = |p| self.shape.len(p) as u64;
         match kernel {
             Kernel::ForwardAcc => (4 * (2 * b * columns * g + f * h + 2 * b * h), 8 * b * h),
             Kernel::ForwardLinear => (8 * (b * columns + e), 8 * b),
-            // 除去前と全144列のacc/output、除去時weights、有効列の微分を数える。
-            // 小さいlinear/reference等は除外し、有効列数を駒の出現数で上限化する。
-            Kernel::RemovalForward => (
-                8 * b * columns * (h + u) + 4 * f * h + 32 * e.min(squares * b) * h,
-                b * (squares * 38 + 16 * h + 20),
-            ),
             Kernel::OutputBackward => (
-                40 * b * h + 8 * b * u + 37 * b,
-                32 * b * h + 20 * b + 16 * head_blocks,
+                24 * b * h + 8 * b * u + 17 * b,
+                32 * b * h + 20 * b + 8 * head_blocks,
             ),
             Kernel::GradientPartials => (4 * b * (4 * h + 1), 8 * q * (3 * u + 1)),
             Kernel::ReducePartials { blocks, columns } => {
                 (8 * blocks as u64 * columns as u64, 8 * columns as u64)
             }
             Kernel::FirstLayerBackwardPartials => (
-                8 * first_segments * THREADS as u64 + 28 * f * h,
+                8 * first_segments * THREADS as u64 + 8 * f * h,
                 8 * first_segments * h,
             ),
             Kernel::FirstLayerBackwardReduce => {
                 (8 * (r - 1) * h + 8 * first_segments * h, 4 * r * h)
             }
             Kernel::LinearBackwardPartials => {
-                (8 * linear_segments * 32 + 17 * e, 16 * linear_segments)
+                (8 * linear_segments * 32 + 12 * e, 16 * linear_segments)
             }
             Kernel::LinearBackwardReduce => (8 * l + 16 * linear_segments, 8 * l),
             Kernel::ReduceVirtual => (4 * (r - 1) * h, 4 * parameter_len(Parameter::Virtual)),
@@ -223,7 +214,7 @@ struct Readback {
 impl Readback {
     fn new(device: &Device) -> Result<Self> {
         Ok(Self {
-            losses: pinned_zeros(device, 2)?,
+            losses: pinned_zeros(device, 1)?,
             nonfinite: pinned_zeros(device, 1)?,
             start: device
                 .context
@@ -303,7 +294,6 @@ impl StepResult {
         Ok(StepMetrics {
             losses: Losses {
                 bce: values[0] / self.batch_len as f64,
-                auxiliary: values[1] / self.batch_len as f64,
             },
             compute_ms: self.readback.start.elapsed_ms(&self.readback.end)?,
             target_transfer_ms: self
@@ -333,32 +323,19 @@ pub struct Step {
     readbacks: [Arc<Readback>; 2],
     next_readback: usize,
     capacity: usize,
-    removal_penalty: f64,
     failed: Arc<AtomicBool>,
     profile: bool,
 }
 impl Step {
     /// モデルと最適化器を一度だけ転送し、最大バッチ分の配列を確保する。
-    pub fn new(
-        device: Device,
-        model: &Model,
-        optimizer: &AdamW,
-        reference: &RemovalReference,
-        capacity: usize,
-        removal_penalty: f64,
-    ) -> Result<Self> {
+    pub fn new(device: Device, model: &Model, optimizer: &AdamW, capacity: usize) -> Result<Self> {
         if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
             return Err(Error::Invalid("step capacity"));
-        }
-        if !removal_penalty.is_finite() || removal_penalty < 0.0 {
-            return Err(Error::Invalid(
-                "removal penalty must be finite and nonnegative",
-            ));
         }
         let optimizer = Optimizer::new(&device, model, optimizer)?;
         let kernels = Kernels::compile(&device)?;
         let buffers = Buffers::new(&device, model.shape(), capacity)?;
-        let model = DeviceModel::new(&device, model, reference)?;
+        let model = DeviceModel::new(&device, model)?;
         let spare_targets = device.compute.alloc_zeros(capacity)?;
         let nonfinite = device.compute.alloc_zeros(1)?;
         let spare_host_targets = pinned_zeros(&device, capacity)?;
@@ -378,7 +355,6 @@ impl Step {
             readbacks,
             next_readback: 0,
             capacity,
-            removal_penalty,
             failed: Arc::new(AtomicBool::new(false)),
             profile: false,
         })
@@ -398,7 +374,7 @@ impl Step {
         self.profile = true;
     }
 
-    /// 入力面を受け取り、前進、補助損失、出力部、縮約、後退、AdamWを順に投入する。
+    /// 入力面を受け取り、前進、出力部、縮約、後退、AdamWを順に投入する。
     /// 環には`device()`と同じストリームと特徴集合を要求し、入力面の完了を後退の直後に記録する。
     /// 教師値は2面を交互に使い、回収用の面も2つとするため、3つ目の投入前に最古の結果を回収する。
     /// 更新と読み出しは計算ストリーム順に進み、ここではホストで計算完了を待たない。
@@ -458,15 +434,6 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
-                profile.as_mut(),
-            )?;
-            engine::removal_forward(
-                &self.device,
-                &self.kernels,
-                &self.model,
-                input,
-                &mut self.buffers,
-                self.removal_penalty,
                 profile.as_mut(),
             )?;
             engine::output_backward(
@@ -574,15 +541,7 @@ mod tests {
         let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
         let batch = synthetic_batch(set, 5, 293).unwrap();
         let targets = vec![0.5; batch.len()];
-        let mut step = Step::new(
-            device.clone(),
-            &model,
-            &optimizer,
-            &RemovalReference::v0(),
-            batch.len(),
-            137.5,
-        )
-        .unwrap();
+        let mut step = Step::new(device.clone(), &model, &optimizer, batch.len()).unwrap();
         let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
         let ticket = ring.upload(&batch).unwrap();
         let before = step.snapshot().unwrap();

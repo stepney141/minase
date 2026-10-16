@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use clap::Args;
 use minase::eval::features::piece_state;
-use minase_core::{Position, PositionBuilder, Square};
+use minase_core::Square;
 use serde::Serialize;
 
 use super::{
@@ -14,7 +14,7 @@ use super::{
 use crate::nnue::{
     data::{BatchSlot, FEATURE_COLUMNS},
     model::{Checkpoint, Model},
-    reference::{self, RemovalReference, linear_row, row_value},
+    reference::{self, RemovalReference, linear_row, remove_piece, row_value},
 };
 
 /// 検証集合の駒除去診断の引数。
@@ -74,21 +74,6 @@ pub(super) struct Report {
     by_piece_state: BTreeMap<usize, Reversals>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) error: Option<String>,
-}
-
-// 除いた駒が先獅子の升にいても、升そのものは変えない。
-fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
-    let mut builder = PositionBuilder::new(position.side_to_move());
-    for square in Square::all() {
-        if square != removed
-            && let Some(piece) = position.piece_at(square)
-        {
-            builder.put(square, piece)?;
-        }
-    }
-    let mut after = builder.finish()?;
-    after.set_lion_capture(position.lion_capture_square())?;
-    Ok(after)
 }
 
 /// 1局面の全駒の除去差分を、局面を作り直さずに累算器からの行の減算で一括して求める。

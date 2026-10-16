@@ -515,7 +515,6 @@ fn copy_to_host(device: &Device, src: &CudaSlice<f32>, dst: &mut [f32]) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nnue::reference::RemovalReference;
 
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
@@ -531,8 +530,7 @@ mod tests {
                     continue;
                 }
                 let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();
-                let mut expanded =
-                    DeviceModel::new(&device, &model, &RemovalReference::v0()).unwrap();
+                let mut expanded = DeviceModel::new(&device, &model).unwrap();
                 let mut buffers = Buffers::new(&device, shape, 1).unwrap();
                 let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
                 match parameter {
@@ -594,7 +592,7 @@ mod tests {
         let model = super::super::equivalence::random_model(shape, 71).unwrap();
         let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
         let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();
-        let mut expanded = DeviceModel::new(&device, &model, &RemovalReference::v0()).unwrap();
+        let mut expanded = DeviceModel::new(&device, &model).unwrap();
         let mut buffers = Buffers::new(&device, shape, 1).unwrap();
         let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
         device

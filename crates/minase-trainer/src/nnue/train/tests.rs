@@ -387,7 +387,6 @@ fn resume_config_allows_budget_and_worker_changes() {
         );
     }
     let checkpoint = Checkpoint {
-        removal_penalty: args.training.removal_penalty,
         lambda: args.training.lambda,
         optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
         model: model.clone(),
@@ -507,7 +506,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         "weight_decay_ft",
         "lr_head",
         "weight_decay_head",
-        "removal_penalty",
         "lambda",
         "npz",
         "base",
@@ -551,7 +549,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             )
             .unwrap();
             Checkpoint {
-                removal_penalty: args.training.removal_penalty,
                 lambda: args.training.lambda,
                 optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
                 model,
@@ -595,7 +592,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             "weight_decay_ft" => args.training.weight_decay_ft *= 2.0,
             "lr_head" => args.training.lr_head *= 2.0,
             "weight_decay_head" => args.training.weight_decay_head *= 2.0,
-            "removal_penalty" => args.training.removal_penalty *= 2.0,
             "lambda" => args.training.lambda = 0.75,
             "npz" => {
                 let replacement = fixture.0.join("other.npz");
@@ -643,7 +639,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             "weight_decay_ft" => MismatchField::WeightDecayFt,
             "lr_head" => MismatchField::LrHead,
             "weight_decay_head" => MismatchField::WeightDecayHead,
-            "removal_penalty" => MismatchField::RemovalPenalty,
             "lambda" => MismatchField::Lambda,
             _ => unreachable!(),
         };
@@ -659,8 +654,6 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
         device: crate::nnue::options::DeviceKind::Cuda,
         epoch,
         train_loss: (epoch > 0).then_some(0.5),
-        removal_loss: (epoch > 0).then_some(0.1),
-        total_loss: (epoch > 0).then_some(0.6),
         validation_loss: 0.4,
         sign_accuracy: Some(0.75),
         samples: 24,
@@ -710,14 +703,15 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let rows = logs(&path);
     assert_eq!(rows[0]["epoch"], 0);
     assert!(rows[0]["train_loss"].is_null());
-    assert!(rows[0]["removal_loss"].is_null());
     assert_eq!(rows[0].get("lr_multiplier_first"), Some(&Value::Null));
     assert_eq!(rows[0].get("lr_multiplier_last"), Some(&Value::Null));
     assert_eq!(rows[1]["epoch"], 1);
+    for row in &rows {
+        assert!(row.get("removal_loss").is_none());
+        assert!(row.get("total_loss").is_none());
+    }
     for (key, expected) in [
         ("train_loss", 0.5),
-        ("removal_loss", 0.1),
-        ("total_loss", 0.6),
         ("validation_loss", 0.4),
         ("sign_accuracy", 0.75),
         ("nonlinear_std_cp", 3.5),
@@ -850,7 +844,6 @@ fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoin
     optimizer.m[Parameter::OutputBias][0] = epoch as f32 / 32.0;
     optimizer.v[Parameter::OutputBias][0] = epoch as f32 / 64.0;
     Checkpoint {
-        removal_penalty: 1000.0,
         lambda: 1.0,
         model,
         optimizer,
@@ -995,7 +988,6 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
         args.feature_set = feature_set;
         args.lr_schedule = "exponential:1:0.1".parse().unwrap();
         args.training.lambda = 0.75;
-        args.training.removal_penalty = 250.0;
         // 途中検証は量子化検査の標本数にかかわらず全24局面を使う。
         args.validation_sample = 1;
         run(args.clone()).unwrap();
@@ -1021,12 +1013,7 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
         assert_eq!(baseline.len(), 3);
         assert_eq!(measured.len(), baseline.len());
         for (epoch, (left, right)) in baseline.iter().zip(&measured).enumerate() {
-            for key in [
-                "train_loss",
-                "removal_loss",
-                "total_loss",
-                "validation_loss",
-            ] {
+            for key in ["train_loss", "validation_loss"] {
                 assert_eq!(
                     left[key].as_f64().map(f64::to_bits),
                     right[key].as_f64().map(f64::to_bits),
@@ -1205,7 +1192,6 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         args.feature_set = feature_set;
         args.device = device;
         args.training.lambda = 0.75;
-        args.training.removal_penalty = 250.0;
         args.training.lr_linear = 0.012;
         args.training.weight_decay_linear = 1e-5;
         args.training.lr_ft = 0.002;
@@ -1237,7 +1223,19 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
             serde_json::to_value(device).unwrap()
         );
         assert_eq!(configuration["settings"]["lambda"], 0.75);
-        assert_eq!(configuration["settings"]["removal_penalty"], 250.0);
+        assert!(configuration["settings"].get("removal_penalty").is_none());
+        let summary: Value =
+            serde_json::from_slice(&fs::read(args.output_dir.join("summary.json")).unwrap())
+                .unwrap();
+        let resumed_summary: Value =
+            serde_json::from_slice(&fs::read(split.output_dir.join("summary.json")).unwrap())
+                .unwrap();
+        assert_eq!(summary["removal_sign"], resumed_summary["removal_sign"]);
+        let sign = &summary["removal_sign"];
+        assert_eq!(sign["positions"], summary["quantization"]["samples"]);
+        assert!(sign["removals"].as_u64().unwrap() > 0);
+        assert_eq!(sign["removals"], sign["reversals"]["total"]);
+        assert_eq!(summary["status"], "candidate");
 
         for file in ["latest.npz", "best.npz"] {
             compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
@@ -1271,8 +1269,6 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
             for key in [
                 "epoch",
                 "train_loss",
-                "removal_loss",
-                "total_loss",
                 "validation_loss",
                 "steps",
                 "total_steps",
@@ -1290,12 +1286,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
             }
             assert!(left["validation_loss"].as_f64().unwrap().is_finite());
             if left["epoch"] != 0 {
-                for key in ["train_loss", "removal_loss", "total_loss"] {
-                    assert!(
-                        left[key].as_f64().unwrap().is_finite(),
-                        "{feature_set:?}: {key}"
-                    );
-                }
+                assert!(left["train_loss"].as_f64().unwrap().is_finite());
             }
         }
     }
@@ -1651,7 +1642,6 @@ fn interrupted_interval_validation_discards_the_epoch_without_appending_logs() {
             validation_indices: session.dataset.validation_indices(),
             teacher_cp_per_logit: &session.teacher_cp_per_logit,
             batch: args.batch,
-            removal_penalty: args.training.removal_penalty,
             validation_interval: args.validation_interval,
             schedule: args.lr_schedule,
             steps_per_epoch: 9,
@@ -1690,7 +1680,6 @@ fn validation_set_returns_none_when_the_deadline_has_already_expired() {
         indices: session.dataset.validation_indices(),
         teacher_cp_per_logit: &session.teacher_cp_per_logit,
         batch: session.args.batch,
-        removal_penalty: session.args.training.removal_penalty,
         deadline: Instant::now(),
     }
     .evaluate(

@@ -57,10 +57,6 @@ pub struct EpochRecord {
     pub epoch: u64,
     /// 訓練集合の局面数で重み付けしたBCE。
     pub train_loss: Option<f64>,
-    /// 指定された係数を含む補助損失の局面平均。
-    pub removal_loss: Option<f64>,
-    /// BCEと補助損失の和。
-    pub total_loss: Option<f64>,
     /// 全検証集合のBCE。
     pub validation_loss: f64,
     /// 引き分けを除いた符号一致率。分母が0ならnull。
@@ -211,6 +207,7 @@ pub(super) struct Configuration {
 /// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
 /// 学習の軌跡を変える設定なので、再開時の照合に含める。
 ///
+/// 教師と最適化の係数は[`crate::nnue::options::TrainingOptions`]に従う。
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
 /// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。

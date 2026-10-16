@@ -2,11 +2,10 @@
 //! 配列は局面、視点、ユニットの順で行優先とし、Bは局面数、Hは展開後の幅である。
 //! Uは共有後の幅で、P型ではH/2、それ以外ではHに等しい。
 //! BCEは二値交差エントロピーを表す。
-//! 処理番号は1が[`forward`]、2が[`removal_forward`]、3が[`output_backward`]、4が[`reduce_partials`]、5が[`first_layer_backward`]である。
-//! 続いて6が[`linear_backward`]、7が[`reduce_virtual`]、8が[`AdamW::update`]、9が[`validation_forward`]である。
-//! 前進と出力部はGPUと同じ加算順のf32で計算し、補助損失の累算と後退の縮約はf64で計算する。
+//! 処理番号は1が[`forward`]、2が[`output_backward`]、3が[`reduce_partials`]、4が[`first_layer_backward`]である。
+//! 続いて5が[`linear_backward`]、6が[`reduce_virtual`]、7が[`AdamW::update`]、8が[`validation_forward`]である。
+//! 前進と出力部はGPUと同じ加算順のf32で計算し、後退の積と縮約はf64で計算する。
 //! GPUとの照合は`|GPU−CPU| ≤ 1e-6 + 1e-5×|CPU|`を許容する。
-//! 駒除去の計算では文脈と先獅子を変えない。
 //! 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
 
 mod optimizer;
@@ -16,8 +15,8 @@ use rows::rows_mut;
 mod removal;
 mod validation;
 pub use optimizer::{AdamW, AdamWConfig};
-use removal::removal_forward_parallel;
-pub use removal::{Removal, RemovalReference, removal_forward, v0_piece_values};
+pub(crate) use removal::remove_piece;
+pub use removal::{RemovalReference, v0_piece_values};
 pub use validation::{Validation, validation_forward};
 
 use crate::nnue::{
@@ -57,7 +56,7 @@ pub struct Output {
     pub loss: Vec<f32>,
     /// バッチ平均BCEのロジット微分g`[B]`。
     pub g: Vec<f32>,
-    /// A_v = (g-S)o_v h(acc_v) + d_acc_removal、`[B, 2, H]`。
+    /// A_v = g×o_v×h(acc_v)、`[B, 2, H]`。
     pub d_acc: Vec<f32>,
     /// 出力重みへの全幅の寄与`[B, 2, H]`。
     pub d_output: Vec<f32>,
@@ -85,18 +84,10 @@ impl Output {
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,
-    /// 指定した係数を掛けた補助損失。
-    pub auxiliary: f64,
-}
-impl Losses {
-    /// 学習する損失の和。
-    pub fn total(self) -> f64 {
-        self.bce + self.auxiliary
-    }
 }
 /// 1バッチの参照計算。パラメータは変更しない。
 pub struct Gradients {
-    /// 二値交差エントロピーと補助損失。
+    /// 二値交差エントロピー。
     pub losses: Losses,
     /// 全パラメータの勾配。
     pub parameters: Parameters,
@@ -115,10 +106,9 @@ pub fn screlu_derivative(x: f32) -> f32 {
     }
 }
 /// 盤上総駒数Nから`φ = min(90, max(0, N−2))/90`、`u = (φ, 1−φ)`をf32で求める。
-/// 先獅子の列はNに含めず、除去後はN−3を使う。
-/// CUDAの`phase`と除去後の係数も同じ式と精度で計算する。
-pub(crate) fn phase(count: u8, removed: bool) -> [f32; 2] {
-    let phi = f32::from(count.saturating_sub(if removed { 3 } else { 2 }).min(90)) / 90.0;
+/// 先獅子の列はNに含めない。CUDAの`phase`も同じ式と精度で計算する。
+pub(crate) fn phase(count: u8) -> [f32; 2] {
+    let phi = f32::from(count.saturating_sub(2).min(90)) / 90.0;
     [phi, 1.0 - phi]
 }
 
@@ -284,7 +274,7 @@ pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32
 /// 出力部の加算順は[`head`]、補間係数は[`phase`]に従う。
 pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> f32 {
     let h = model.shape().width();
-    let u = phase(batch.piece_counts()[b], false);
+    let u = phase(batch.piece_counts()[b]);
     let nonlinear = head(model, 0, |j| f.acc[b * 2 * h + j])
         + head(model, 1, |j| f.acc[(b * 2 + 1) * h + j])
         + model.parameters()[Parameter::OutputBias][0];
@@ -362,25 +352,22 @@ pub(crate) fn evaluate_f64_with_weights(
 
 /// 出力と二値交差エントロピー、および後退の局面ごとの寄与を求める。
 /// ロジットxと教師値tに対し、`g = (σ(x)−t)/B`と`loss = max(x,0)−x×t+log1p(exp(−|x|))`をf32で計算する。
-/// 線形係数は`c = g×u/cp_per_logit + Removal::linear`である。
-/// 活性化fとその微分hを用い、`d_acc = (g−S)×o×h(acc) + d_acc_removal`と`d_output = (g−S)×f(acc) + removal.d_output`はf64で計算してf32へ丸める。
-/// Sは[`Removal::s`]であり、−Sは除去差分`Δ_r = E_r−E`の−Eを通る微分である。
+/// 線形係数は`c = g×u/cp_per_logit`である。
+/// 活性化fとその微分hを用い、`d_acc = g×o×h(acc)`と`d_output = g×f(acc)`はf64で計算してf32へ丸める。
 /// 教師値が有限かつ`[0,1]`でなければエラーを返す。
 pub fn output_backward(
     model: &Model,
     batch: &BatchSlot,
     forward: &Forward,
-    removal: &Removal,
     targets: &[f32],
 ) -> Result<Output> {
-    output_backward_parallel(model, batch, forward, removal, targets, 1)
+    output_backward_parallel(model, batch, forward, targets, 1)
 }
 
 fn output_backward_parallel(
     model: &Model,
     batch: &BatchSlot,
     forward: &Forward,
-    removal: &Removal,
     targets: &[f32],
     threads: usize,
 ) -> Result<Output> {
@@ -388,7 +375,6 @@ fn output_backward_parallel(
     let h = model.shape().width();
     let n = batch.len();
     forward.check_shape(n, h)?;
-    removal.check_shape(n, h)?;
     if targets.len() != n
         || targets
             .iter()
@@ -421,21 +407,16 @@ fn output_backward_parallel(
             result.logits[local] = x;
             result.g[local] = g;
             result.loss[local] = x.max(0.0) - x * target + (-x.abs()).exp().ln_1p();
-            let u = phase(batch.piece_counts()[b], false);
+            let u = phase(batch.piece_counts()[b]);
             for (e, &u_e) in u.iter().enumerate() {
-                result.c[local][e] = g * u_e / model.shape().cp_per_logit() + removal.linear[b][e];
+                result.c[local][e] = g * u_e / model.shape().cp_per_logit();
             }
             for (vj, &o_vj) in o.iter().enumerate() {
-                let i = b * 2 * h + vj;
-                result.d_acc[local * 2 * h + vj] = ((f64::from(g) - f64::from(removal.s[b]))
-                    * f64::from(o_vj)
-                    * f64::from(result.h[local * 2 * h + vj])
-                    + f64::from(removal.d_acc_removal[i]))
-                    as f32;
-                result.d_output[local * 2 * h + vj] = ((f64::from(g) - f64::from(removal.s[b]))
-                    * f64::from(result.f[local * 2 * h + vj])
-                    + f64::from(removal.d_output[i]))
-                    as f32;
+                result.d_acc[local * 2 * h + vj] =
+                    (f64::from(g) * f64::from(o_vj) * f64::from(result.h[local * 2 * h + vj]))
+                        as f32;
+                result.d_output[local * 2 * h + vj] =
+                    (f64::from(g) * f64::from(result.f[local * 2 * h + vj])) as f32;
             }
         }
         Ok(result)
@@ -465,12 +446,11 @@ fn output_backward_parallel(
 
 /// バイアスと出力重みの勾配を局面方向にf64で足してf32へ丸める。
 /// P型では単位jとj+Uの勾配を合算し、出力バイアスの勾配はΣgとする。
-/// 損失は`bce = Σloss/B`、`auxiliary = Σremoval.loss/B`である。
+/// 損失は`bce = Σloss/B`である。
 /// GPUは`gradient_partials`で連続する128局面ごとの部分和を作り、`reduce_partials`でブロック番号順に足す。
 pub fn reduce_partials(
     model: &Model,
     output: &Output,
-    removal: &Removal,
     gradient: &mut Parameters,
 ) -> Result<Losses> {
     let s = model.shape();
@@ -480,7 +460,6 @@ pub fn reduce_partials(
     check_parameters(model.parameters(), s)?;
     check_parameters(gradient, s)?;
     output.check_shape(n, h)?;
-    removal.check_shape(n, h)?;
     for j in 0..units {
         let mut bias = 0.0_f64;
         for v in 0..2 {
@@ -499,48 +478,35 @@ pub fn reduce_partials(
     gradient[Parameter::OutputBias][0] = output.g.iter().map(|&v| f64::from(v)).sum::<f64>() as f32;
     Ok(Losses {
         bce: output.loss.iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64,
-        auxiliary: removal.loss.iter().sum::<f64>() / n as f64,
     })
 }
 
 /// 第1層の勾配を逆索引の要素順で求める。
-/// 要素の局面b、視点v、列cに対する単位jの寄与は`A_v[u] − d_c×o_v[u]×h(acc_v[u] − W[f_c][u])`である。
-/// Aは[`Output::d_acc`]、hはSCReLUの微分、uはP型の回転ビットが立つ場合だけ`(j+H/2) mod H`とし、列144ではd=0とする。
-/// 第2項は除去した行自身が除去後の評価に現れないことを補正する。
+/// 要素の局面b、視点vに対する単位jの寄与は`A_v[u]`である。
+/// Aは[`Output::d_acc`]、uはP型の回転ビットが立つ場合だけ`(j+H/2) mod H`とする。
 /// CPUは行全体をf64で足し、GPUは128要素以下の区分内をf32、区分間を昇順にf64で足す。
 /// アトミック加算は使わない。
 /// 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
 pub fn first_layer_backward(
     model: &Model,
     batch: &BatchSlot,
-    weights: &[f32],
-    forward: &Forward,
-    removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
 ) -> Result<()> {
-    first_layer_backward_parallel(model, batch, weights, forward, removal, output, gradient, 1)
+    first_layer_backward_parallel(model, batch, output, gradient, 1)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn first_layer_backward_parallel(
     model: &Model,
     batch: &BatchSlot,
-    weights: &[f32],
-    forward: &Forward,
-    removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
     threads: usize,
 ) -> Result<()> {
     check_batch(model, batch)?;
-    check_weights(model, weights)?;
     check_parameters(gradient, model.shape())?;
     let h = model.shape().width();
-    forward.check_shape(batch.len(), h)?;
-    removal.check_shape(batch.len(), h)?;
     output.check_shape(batch.len(), h)?;
-    let o = model.expanded_output_weights();
     let inverse = batch.first_layer_inverse();
     gradient[Parameter::FirstLayer].fill(0.0);
     let rows = inverse.starts().len() - 1;
@@ -558,21 +524,9 @@ fn first_layer_backward_parallel(
                             PackedOccurrence::from_word(word).expect("validated reverse index");
                         let b = entry.position();
                         let v = entry.perspective() as usize;
-                        let col = entry.column() as usize;
                         let unit = rotated_unit(entry.rotated(), j, h);
                         let i = (b * 2 + v) * h + unit;
-                        let d = if col < 144 {
-                            removal.d_r[b * 144 + col]
-                        } else {
-                            0.0
-                        };
-                        let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
-                        sum += f64::from(output.d_acc[i])
-                            - f64::from(d)
-                                * f64::from(o[v * h + unit])
-                                * f64::from(screlu_derivative(
-                                    forward.acc[i] - row_value(model, weights, feature, unit),
-                                ));
+                        sum += f64::from(output.d_acc[i]);
                     }
                     *value = sum as f32;
                 }
@@ -583,31 +537,28 @@ fn first_layer_backward_parallel(
     Ok(())
 }
 
-/// 手番側の線形逆索引を走査し、`dL[row][e] = Σ(c[b][e] − d_c×u_after[e]/cp_per_logit)`を正準行へ足す。
+/// 手番側の線形逆索引を走査し、`dL[row][e] = Σc[b][e]`を正準行へ足す。
 /// 半幅回転はせず、CPUはf64で累算する。
 /// GPUは1ワープが1区分を処理し、レーンtが要素t, t+32, …をf32で足して距離16,8,4,2,1の木で縮約する。
 /// 区分間は昇順にf64で足す。
 pub fn linear_backward(
     model: &Model,
     batch: &BatchSlot,
-    removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
 ) -> Result<()> {
-    linear_backward_parallel(model, batch, removal, output, gradient, 1)
+    linear_backward_parallel(model, batch, output, gradient, 1)
 }
 
 fn linear_backward_parallel(
     model: &Model,
     batch: &BatchSlot,
-    removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
     threads: usize,
 ) -> Result<()> {
     check_batch(model, batch)?;
     check_parameters(gradient, model.shape())?;
-    removal.check_shape(batch.len(), model.shape().width())?;
     output.check_shape(batch.len(), model.shape().width())?;
     let inverse = batch.linear_inverse();
     parallel::map::<_, _, Error, _>(
@@ -623,16 +574,7 @@ fn linear_backward_parallel(
                         let entry =
                             PackedOccurrence::from_word(word).expect("validated reverse index");
                         let b = entry.position();
-                        let col = entry.column() as usize;
-                        let d = if col < 144 {
-                            removal.d_r[b * 144 + col]
-                        } else {
-                            0.0
-                        };
-                        sum += f64::from(output.c[b][endpoint])
-                            - f64::from(d)
-                                * f64::from(phase(batch.piece_counts()[b], true)[endpoint])
-                                / f64::from(model.shape().cp_per_logit());
+                        sum += f64::from(output.c[b][endpoint]);
                     }
                     *value = sum as f32;
                 }
@@ -677,25 +619,17 @@ fn reduce_virtual_parallel(gradient: &mut Parameters, threads: usize) -> Result<
 
 /// 前進から仮想行の勾配縮約までを1回実行する。
 /// 更新は[`AdamW::update`]で別に行う。
-pub fn loss_and_gradients(
-    model: &Model,
-    batch: &BatchSlot,
-    targets: &[f32],
-    reference: &RemovalReference,
-    removal_penalty: f64,
-) -> Result<Gradients> {
-    loss_and_gradients_parallel(model, batch, targets, reference, removal_penalty, 1)
+pub fn loss_and_gradients(model: &Model, batch: &BatchSlot, targets: &[f32]) -> Result<Gradients> {
+    loss_and_gradients_parallel(model, batch, targets, 1)
 }
 
-/// 局面方向の前進、除去、出力部と、行方向の第1層、線形、仮想行を[`parallel::ranges`]で分割する。
+/// 局面方向の前進、出力部と、行方向の第1層、線形、仮想行を[`parallel::ranges`]で分割する。
 /// 各要素の縮約順は単一スレッドと同じなので、正の`threads`の値によらずビット単位で同じ結果になる。
 /// パラメータ、勾配、および損失の有限性を検査する。
 pub fn loss_and_gradients_parallel(
     model: &Model,
     batch: &BatchSlot,
     targets: &[f32],
-    reference: &RemovalReference,
-    removal_penalty: f64,
     threads: usize,
 ) -> Result<Gradients> {
     check_batch(model, batch)?;
@@ -703,32 +637,14 @@ pub fn loss_and_gradients_parallel(
     model.parameters().validate()?;
     let weights = fold(model)?;
     let forward = forward_parallel(model, batch, &weights, threads)?;
-    let removal = removal_forward_parallel(
-        model,
-        batch,
-        &weights,
-        &forward,
-        reference,
-        removal_penalty,
-        threads,
-    )?;
-    let output = output_backward_parallel(model, batch, &forward, &removal, targets, threads)?;
+    let output = output_backward_parallel(model, batch, &forward, targets, threads)?;
     let mut parameters = Parameters::zeros(model.shape());
-    let losses = reduce_partials(model, &output, &removal, &mut parameters)?;
-    first_layer_backward_parallel(
-        model,
-        batch,
-        &weights,
-        &forward,
-        &removal,
-        &output,
-        &mut parameters,
-        threads,
-    )?;
-    linear_backward_parallel(model, batch, &removal, &output, &mut parameters, threads)?;
+    let losses = reduce_partials(model, &output, &mut parameters)?;
+    first_layer_backward_parallel(model, batch, &output, &mut parameters, threads)?;
+    linear_backward_parallel(model, batch, &output, &mut parameters, threads)?;
     reduce_virtual_parallel(&mut parameters, threads)?;
     parameters.validate()?;
-    if !losses.total().is_finite() {
+    if !losses.bce.is_finite() {
         return Err(Error::Invalid("non-finite loss"));
     }
     Ok(Gradients { losses, parameters })

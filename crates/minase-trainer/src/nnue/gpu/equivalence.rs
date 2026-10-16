@@ -8,14 +8,11 @@
 use super::{Device, Error, Evaluation, Evaluator, Result};
 use crate::data::{Outcome, Sample};
 use crate::nnue::{
-    data::{
-        BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, build_targets,
-    },
+    data::{BatchSlot, CANONICAL_ROWS, InputFeatureSet, MAX_BATCH_SIZE, build_targets},
     model::{Masks, Model, Parameter, Parameters, Shape},
     options::TrainingOptions,
-    reference::{self, RemovalReference},
+    reference,
 };
-use minase::eval::features::{FEATURE_COUNT, feature_index};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 
 /// CPUとの比較に使う相対許容誤差。
@@ -45,24 +42,6 @@ impl Report {
         }
         Ok(())
     }
-    fn compare_f64(&mut self, name: &str, expected: &[f64], actual: &[f64]) -> Result<()> {
-        if expected.len() != actual.len() {
-            return Err(Error::Equivalence(format!("{name}: length")));
-        }
-        for (i, (&a, &b)) in expected.iter().zip(actual).enumerate() {
-            self.number(name, i, a, b)?;
-        }
-        Ok(())
-    }
-    fn exact<T: PartialEq + std::fmt::Debug>(
-        &mut self,
-        name: &str,
-        expected: &[T],
-        actual: &[T],
-    ) -> Result<()> {
-        self.comparisons += expected.len();
-        exact(name, expected, actual)
-    }
     pub(super) fn number(
         &mut self,
         name: &str,
@@ -91,7 +70,7 @@ impl Report {
 }
 
 /// 指定条件の合成入力を作り、GPUで2回実行してCPU参照と照合する。
-/// 前進、補助損失、全勾配、検証、1・3更新後の全状態と反復のビット一致を検査する。
+/// 前進、全勾配、検証、1・3更新後の全状態と反復のビット一致を検査する。
 pub fn run(
     set: InputFeatureSet,
     width: usize,
@@ -107,31 +86,16 @@ pub fn run(
     // GPU不在は大きな合成モデルを作る前に報告する。
     let device = Device::new(0)?;
     let model = random_model(shape, seed)?;
-    let removal_reference = RemovalReference::v0();
-    let mut evaluator = Evaluator::new(
-        device.clone(),
-        &model,
-        &removal_reference,
-        batch,
-        training.removal_penalty,
-    )?;
+    let mut evaluator = Evaluator::new(device.clone(), &model, batch)?;
     let input = synthetic_batch(set, batch, seed)?;
     let mut report = check(
         &mut evaluator,
         &model,
-        &removal_reference,
         &input,
         &build_targets(&input, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?,
-        training.removal_penalty,
     )?;
     drop(evaluator);
     drop(model);
-    report.merge(check_removal_partitions(
-        device.clone(),
-        shape,
-        seed,
-        &training,
-    )?);
     report.merge(super::step_equivalence::run(
         device, shape, &input, seed, &training,
     )?);
@@ -142,39 +106,20 @@ pub fn run(
 pub fn check(
     evaluator: &mut Evaluator,
     model: &Model,
-    removal_reference: &RemovalReference,
     batch: &BatchSlot,
     targets: &[f32],
-    removal_penalty: f64,
 ) -> Result<Report> {
     let weights = reference::fold(model)?;
     let f = reference::forward(model, batch, &weights)?;
-    let removal = reference::removal_forward(
-        model,
-        batch,
-        &weights,
-        &f,
-        removal_reference,
-        removal_penalty,
-    )?;
-    let output = reference::output_backward(model, batch, &f, &removal, targets)?;
+    let output = reference::output_backward(model, batch, &f, targets)?;
     let mut gradients = Parameters::zeros(model.shape());
-    let losses = reference::reduce_partials(model, &output, &removal, &mut gradients)?;
-    reference::first_layer_backward(
-        model,
-        batch,
-        &weights,
-        &f,
-        &removal,
-        &output,
-        &mut gradients,
-    )?;
-    reference::linear_backward(model, batch, &removal, &output, &mut gradients)?;
+    let losses = reference::reduce_partials(model, &output, &mut gradients)?;
+    reference::first_layer_backward(model, batch, &output, &mut gradients)?;
+    reference::linear_backward(model, batch, &output, &mut gradients)?;
     reference::reduce_virtual(&mut gradients)?;
     let validation = reference::validation_forward(model, batch, &f, targets)?;
     let expected = Evaluation {
         forward: f,
-        removal,
         output,
         losses,
         first_layer: gradients[Parameter::FirstLayer].to_vec(),
@@ -205,46 +150,6 @@ pub fn check(
             )));
         }
     }
-    for ((name, cpu), (_, gpu)) in arrays_f64(&expected).into_iter().zip(arrays_f64(&first)) {
-        report.compare_f64(name, cpu, gpu)?;
-    }
-    for ((name, a), (_, b)) in arrays_f64(&first).into_iter().zip(arrays_f64(&second)) {
-        if a.len() != b.len() || a.iter().zip(b).any(|(a, b)| a.to_bits() != b.to_bits()) {
-            return Err(Error::Equivalence(format!(
-                "{name}: repeated GPU executions differ in bits"
-            )));
-        }
-    }
-    report.exact(
-        "removal ref_r",
-        &expected.removal.ref_r,
-        &first.removal.ref_r,
-    )?;
-    report.exact(
-        "removal eligible",
-        &expected.removal.eligible,
-        &first.removal.eligible,
-    )?;
-    report.exact(
-        "removal wrong_r",
-        &expected.removal.wrong_r,
-        &first.removal.wrong_r,
-    )?;
-    exact(
-        "repeated removal ref_r",
-        &first.removal.ref_r,
-        &second.removal.ref_r,
-    )?;
-    exact(
-        "repeated removal eligible",
-        &first.removal.eligible,
-        &second.removal.eligible,
-    )?;
-    exact(
-        "repeated removal wrong_r",
-        &first.removal.wrong_r,
-        &second.removal.wrong_r,
-    )?;
     for (i, (a, b)) in statistics(&expected)
         .into_iter()
         .zip(statistics(&first))
@@ -284,12 +189,6 @@ fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
     vec![
         ("acc", &e.forward.acc),
         ("lin", e.forward.lin.as_flattened()),
-        ("removal s_r", &e.removal.s_r),
-        ("removal d_r", &e.removal.d_r),
-        ("removal S", &e.removal.s),
-        ("removal d_acc", &e.removal.d_acc_removal),
-        ("removal d_output", &e.removal.d_output),
-        ("removal linear", e.removal.linear.as_flattened()),
         ("f", &e.output.f),
         ("h", &e.output.h),
         ("logits", &e.output.logits),
@@ -306,27 +205,8 @@ fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
         ("output bias", std::slice::from_ref(&e.output_bias)),
     ]
 }
-fn arrays_f64(e: &Evaluation) -> [(&'static str, &[f64]); 4] {
-    [
-        ("removal E_r", &e.removal.e_r),
-        ("removal delta_r", &e.removal.delta_r),
-        ("removal pen_r", &e.removal.pen_r),
-        ("removal loss", &e.removal.loss),
-    ]
-}
-fn exact<T: PartialEq + std::fmt::Debug>(name: &str, expected: &[T], actual: &[T]) -> Result<()> {
-    if expected.len() != actual.len() {
-        return Err(Error::Equivalence(format!("{name}: length")));
-    }
-    for (i, (a, b)) in expected.iter().zip(actual).enumerate() {
-        if a != b {
-            return Err(Error::Equivalence(format!("{name}[{i}]: {a:?} != {b:?}")));
-        }
-    }
-    Ok(())
-}
 fn statistics(e: &Evaluation) -> Vec<f64> {
-    let mut values = vec![e.losses.bce, e.losses.auxiliary];
+    let mut values = vec![e.losses.bce];
     values.extend(e.validation.sums());
     values.push(e.validation.loss());
     values.push(e.validation.nonlinear_std_cp());
@@ -386,121 +266,6 @@ pub(super) fn random_model(shape: Shape, seed: u64) -> Result<Model> {
     }
     model.fix_unobserved();
     Ok(model)
-}
-
-const REMOVAL_COLUMNS: [usize; 4] = [50, 56, 52, 55];
-
-// v0の正の駒価値ではwrong_rが成立しない。鏡映共有した独立PSTを与え、
-// 参照+1cpに対して候補差分を約-1、+3、+0.5cpにして各区分を固定する。
-fn removal_partitions(shape: Shape, seed: u64) -> Result<(Model, BatchSlot, RemovalReference)> {
-    let mut model = random_model(shape, seed)?;
-    for p in [Parameter::FirstLayer, Parameter::Virtual] {
-        for x in model.parameter_mut(p) {
-            *x *= 0.001;
-        }
-    }
-    model.parameter_mut(Parameter::Linear).fill(0.0);
-    model.parameter_mut(Parameter::Biases).fill(0.5);
-    model
-        .parameter_mut(Parameter::OutputWeights)
-        .fill(0.01 / shape.width() as f32);
-    let mut endpoints = vec![[0_i16; 2]; FEATURE_COUNT];
-    for color in [Color::Black, Color::White] {
-        let sign = if color == Color::Black { 1 } else { -1 };
-        for (piece, value) in [
-            (PieceCode::new(color, PieceKind::Pawn), -8),
-            (PieceCode::new(color, PieceKind::King), 16),
-            (PieceCode::new_promoted(color, PieceKind::CrownPrince), 16),
-        ] {
-            let piece = piece.ok_or(Error::Invalid("partition piece"))?;
-            for square in Square::all() {
-                endpoints[feature_index(Color::Black, piece, square)] = [sign * value; 2];
-            }
-        }
-    }
-    let removal_reference = RemovalReference::new(&endpoints)?;
-    let scores = [600.0, -300.0, 0.0, 120.0];
-    let classes = [0, 1, 2, 0];
-    let mut records = Vec::new();
-    for (b, &column) in REMOVAL_COLUMNS.iter().enumerate() {
-        let kind = if b == 3 {
-            PieceKind::Rook
-        } else {
-            PieceKind::Pawn
-        };
-        let mut builder = PositionBuilder::new(Color::Black);
-        for (dense, color, kind) in [
-            (0, Color::Black, PieceKind::King),
-            (143, Color::White, PieceKind::King),
-            (column, Color::Black, kind),
-        ] {
-            builder
-                .put(
-                    Square::from_dense(dense).ok_or(Error::Invalid("partition square"))?,
-                    PieceCode::new(color, kind).ok_or(Error::Invalid("partition piece"))?,
-                )
-                .map_err(|_| Error::Invalid("partition placement"))?;
-        }
-        if b == 3 {
-            builder
-                .put(
-                    Square::from_dense(132).ok_or(Error::Invalid("partition prince square"))?,
-                    PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince)
-                        .ok_or(Error::Invalid("partition prince"))?,
-                )
-                .map_err(|_| Error::Invalid("partition prince placement"))?;
-        }
-        let mut position = builder
-            .finish()
-            .map_err(|_| Error::Invalid("partition position"))?;
-        position
-            .set_lion_capture(Some(
-                Square::from_dense(143).ok_or(Error::Invalid("partition lion square"))?,
-            ))
-            .map_err(|_| Error::Invalid("partition lion capture"))?;
-        records.push(Sample::from_position(
-            &position,
-            scores[b] as i16,
-            Outcome::Draw,
-            0,
-            b as u16,
-            minase::training::records::Origin::RandomSelfplay,
-        )?);
-    }
-    let batch = BatchSlot::from_records(shape.feature_set(), &records, &scores, &classes)?;
-    for (b, (&column, value)) in REMOVAL_COLUMNS
-        .iter()
-        .zip([1.0, -3.0, -0.5, 1.0])
-        .enumerate()
-    {
-        let row = batch.linear_features()[b * FEATURE_COLUMNS + column] as usize;
-        model.parameter_mut(Parameter::Linear)[2 * row..2 * row + 2].fill(value);
-    }
-    Ok((model, batch, removal_reference))
-}
-
-fn check_removal_partitions(
-    device: Device,
-    shape: Shape,
-    seed: u64,
-    training: &TrainingOptions,
-) -> Result<Report> {
-    let (model, batch, removal_reference) = removal_partitions(shape, seed)?;
-    let mut evaluator = Evaluator::new(
-        device,
-        &model,
-        &removal_reference,
-        batch.len(),
-        training.removal_penalty,
-    )?;
-    check(
-        &mut evaluator,
-        &model,
-        &removal_reference,
-        &batch,
-        &build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?,
-        training.removal_penalty,
-    )
 }
 
 pub(super) fn synthetic_batch(set: InputFeatureSet, n: usize, seed: u64) -> Result<BatchSlot> {
@@ -641,102 +406,19 @@ mod tests {
             assert!(r.number("x", 0, 1.0, x).is_err());
         }
     }
-    #[test]
-    fn removal_inputs_cover_lower_upper_inactive_and_all_ineligible_reasons() {
-        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            for width in [2, 6, 8, 128] {
-                let shape = Shape::new(set, width, 1000.0).unwrap();
-                let (model, batch, removal_reference) = removal_partitions(shape, 71).unwrap();
-                let weights = reference::fold(&model).unwrap();
-                let forward = reference::forward(&model, &batch, &weights).unwrap();
-                let removal = reference::removal_forward(
-                    &model,
-                    &batch,
-                    &weights,
-                    &forward,
-                    &removal_reference,
-                    1000.0,
-                )
-                .unwrap();
-                for (b, &column) in REMOVAL_COLUMNS.iter().enumerate() {
-                    let i = b * 144 + column;
-                    if b < 3 {
-                        assert_eq!(removal.ref_r[i], 1);
-                        assert!(removal.eligible[i]);
-                        assert!(removal.wrong_r[i]);
-                        assert_eq!(
-                            removal.eligible[b * 144..(b + 1) * 144]
-                                .iter()
-                                .filter(|&&e| e)
-                                .count(),
-                            1
-                        );
-                    } else {
-                        assert_eq!(removal.ref_r[i], 0);
-                        assert!(!removal.eligible[i]);
-                        assert!(removal.eligible[b * 144..(b + 1) * 144].iter().all(|&e| !e));
-                    }
-                    match b {
-                        0 => {
-                            assert!(removal.delta_r[i] < 0.25);
-                            assert!(removal.pen_r[i] > 0.0);
-                            assert!(removal.d_r[i] < 0.0);
-                        }
-                        1 => {
-                            assert!(removal.delta_r[i] > 1.0);
-                            assert!(removal.pen_r[i] > 0.0);
-                            assert!(removal.d_r[i] > 0.0);
-                        }
-                        2 => {
-                            assert!((0.25..1.0).contains(&removal.delta_r[i]));
-                            assert_eq!(removal.pen_r[i], 0.0);
-                            assert_eq!(removal.d_r[i], 0.0);
-                        }
-                        3 => {
-                            assert_eq!(removal.pen_r[i], 0.0);
-                            assert_eq!(removal.d_r[i], 0.0);
-                        }
-                        _ => unreachable!(),
-                    }
-                    for royal in [0, 143] {
-                        assert_ne!(removal.ref_r[b * 144 + royal], 0);
-                        assert!(!removal.eligible[b * 144 + royal]);
-                        assert_eq!(removal.d_r[b * 144 + royal], 0.0);
-                    }
-                    assert!(!removal.eligible[b * 144 + 1]);
-                    assert_eq!(removal.d_r[b * 144 + 1], 0.0);
-                }
-                assert_ne!(removal.ref_r[3 * 144 + 132], 0);
-                assert!(!removal.eligible[3 * 144 + 132]);
-                assert_eq!(removal.d_r[3 * 144 + 132], 0.0);
-                assert!(removal.d_acc_removal.iter().any(|&d| d != 0.0));
-                assert!(removal.linear.iter().flatten().any(|&d| d != 0.0));
-            }
-        }
-    }
+
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
         let shape = Shape::new(set, width, 1000.0).unwrap();
         let model = random_model(shape, 71).unwrap();
-        let removal_reference = RemovalReference::v0();
-        let mut evaluator =
-            Evaluator::new(device.clone(), &model, &removal_reference, 4096, 1000.0).unwrap();
+        let mut evaluator = Evaluator::new(device.clone(), &model, 4096).unwrap();
         for n in [64, 4096, 100, 1, 129] {
             let batch = synthetic_batch(set, n, 43 + n as u64).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
-            check(
-                &mut evaluator,
-                &model,
-                &removal_reference,
-                &batch,
-                &targets,
-                1000.0,
-            )
-            .unwrap();
+            check(&mut evaluator, &model, &batch, &targets).unwrap();
         }
         drop(evaluator);
         drop(model);
-        check_removal_partitions(device, shape, 71, &TrainingOptions::new(1.0)).unwrap();
     }
 
     #[test]
@@ -750,7 +432,6 @@ mod tests {
             weight_decay_ft: 0.0002,
             lr_head: 0.0004,
             weight_decay_head: 0.0003,
-            removal_penalty: 137.5,
             lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {

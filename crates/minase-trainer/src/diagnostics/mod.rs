@@ -13,7 +13,7 @@ mod pst_reference;
 mod pst_sample;
 mod pst_statistics;
 mod sample;
-mod statistics;
+pub(crate) mod statistics;
 
 use std::{fs, io::Write, path::Path};
 

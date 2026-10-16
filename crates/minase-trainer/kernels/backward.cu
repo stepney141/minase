@@ -2,11 +2,9 @@
 // 第1層は1ブロックが128要素以下の区分を担当し、隣接スレッドが隣接単位を計算する。
 // 区分内はf32、区分間は昇順にf64で足し、空行と埋め草には0を書く。
 // 線形は1ワープが1区分を担当し、回転せず正準行へ縮約する。
-// 特徴の番兵0xffffffffはfeature_weightが重み0として読む。
 extern "C" __global__ void first_layer_backward_partials(
     const unsigned* first_segment_offsets, const unsigned* first_entries,
-    const unsigned* features, const float* weights, const float* acc,
-    const float* output, const float* d_r, const float* d_acc,
+    const float* d_acc,
     double* first_partials, unsigned H, unsigned p) {
     unsigned segment = blockIdx.x;
     unsigned begin = first_segment_offsets[segment];
@@ -19,15 +17,10 @@ extern "C" __global__ void first_layer_backward_partials(
             unsigned word = first_entries[e];
             unsigned b = word >> 10;
             unsigned v = (word >> 9) & 1;
-            unsigned col = (word >> 1) & 255;
             unsigned bv = b * 2 + v;
-            float d = col < 144 ? d_r[(unsigned long long)b * 144 + col] : 0.0f;
-            unsigned feature = features[(unsigned long long)bv * 145 + col];
             unsigned unit = p && (word & 1) ? (j + H / 2) % H : j;
             unsigned long long i = (unsigned long long)bv * H + unit;
-            float removed = acc[i] - feature_weight(weights, feature, unit, H, p);
-            // Inverse rotation applies to A, the accumulator, and output weights.
-            sum += d_acc[i] - d * output[v * H + unit] * derivative(removed);
+            sum += d_acc[i];
         }
         first_partials[(unsigned long long)segment * H + j] = sum;
     }
@@ -53,8 +46,8 @@ extern "C" __global__ void first_layer_backward_reduce(
 
 extern "C" __global__ void linear_backward_partials(
     const unsigned* linear_segment_offsets, const unsigned* linear_entries,
-    const unsigned char* counts, const float* d_r, const float* c,
-    double* linear_partials, unsigned segments, float K) {
+    const float* c,
+    double* linear_partials, unsigned segments) {
     unsigned lane = threadIdx.x % 32;
     unsigned segment = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32;
     // The branch is uniform within each warp, including the final block.
@@ -65,12 +58,8 @@ extern "C" __global__ void linear_backward_partials(
     for (unsigned e = begin + lane; e < end; e += 32) {
         unsigned word = linear_entries[e];
         unsigned b = word >> 10;
-        unsigned col = (word >> 1) & 255;
-        float d = col < 144 ? d_r[(unsigned long long)b * 144 + col] : 0.0f;
-        float phi = (float)min(90, max(0, (int)counts[b] - 3)) / 90.0f;
-        float u[2] = {phi, 1.0f - phi};
         for (unsigned endpoint = 0; endpoint < 2; ++endpoint) {
-            sums[endpoint] += c[b * 2 + endpoint] - d * u[endpoint] / K;
+            sums[endpoint] += c[b * 2 + endpoint];
         }
     }
     // Every lane participates, with zero for an incomplete interval. This fixed

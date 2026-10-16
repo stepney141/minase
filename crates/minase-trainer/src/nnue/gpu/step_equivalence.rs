@@ -5,7 +5,7 @@ use crate::nnue::{
     data::{BatchSlot, CANONICAL_ROWS, InputFeatureSet, build_targets},
     model::{Masks, Model, Parameter, Parameters, Shape},
     options::TrainingOptions,
-    reference::{self, AdamW, AdamWConfig, Losses, RemovalReference},
+    reference::{self, AdamW, AdamWConfig, Losses},
 };
 use minase::eval::features::{FEATURE_COUNT, mirror_feature};
 
@@ -33,13 +33,7 @@ pub(super) fn run(
 ) -> Result<Report> {
     let fixture = fixture(shape, batch, seed, training.optimizer())?;
     let targets = build_targets(batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?;
-    let mut report = check(
-        device.clone(),
-        &fixture,
-        batch,
-        &targets,
-        training.removal_penalty,
-    )?;
+    let mut report = check(device.clone(), &fixture, batch, &targets)?;
     drop(fixture);
     report.merge(check_clipping(device, shape, seed, training)?);
     Ok(report)
@@ -176,34 +170,13 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64, config: AdamWConfig) -> R
     })
 }
 
-fn check(
-    device: Device,
-    fixture: &Fixture,
-    batch: &BatchSlot,
-    targets: &[f32],
-    removal_penalty: f64,
-) -> Result<Report> {
+fn check(device: Device, fixture: &Fixture, batch: &BatchSlot, targets: &[f32]) -> Result<Report> {
     let initial = &fixture.model;
     let shape = initial.shape();
-    let removal = RemovalReference::v0();
     let mut cpu = initial.clone();
     let mut cpu_optimizer = fixture.optimizer.clone();
-    let mut first = Step::new(
-        device.clone(),
-        initial,
-        &fixture.optimizer,
-        &removal,
-        batch.len(),
-        removal_penalty,
-    )?;
-    let mut repeated = Step::new(
-        device.clone(),
-        initial,
-        &fixture.optimizer,
-        &removal,
-        batch.len(),
-        removal_penalty,
-    )?;
+    let mut first = Step::new(device.clone(), initial, &fixture.optimizer, batch.len())?;
+    let mut repeated = Step::new(device.clone(), initial, &fixture.optimizer, batch.len())?;
     let mut first_ring = HostRing::new(&device, shape.feature_set(), batch.len())?;
     let mut repeated_ring = HostRing::new(&device, shape.feature_set(), batch.len())?;
     let mut report = Report {
@@ -214,7 +187,7 @@ fn check(
     };
     let mut pending = None;
     for update in 0..3 {
-        let gradients = cpu_gradients(&cpu, batch, targets, &removal, removal_penalty)?;
+        let gradients = cpu_gradients(&cpu, batch, targets)?;
         cpu_optimizer.update(&mut cpu, &gradients.parameters)?;
         let first_ticket = first_ring.upload(batch)?;
         let first_result = first.enqueue(&mut first_ring, &first_ticket, targets, 1.0)?;
@@ -251,32 +224,14 @@ fn cpu_gradients(
     model: &Model,
     batch: &BatchSlot,
     targets: &[f32],
-    removal_reference: &RemovalReference,
-    removal_penalty: f64,
 ) -> Result<reference::Gradients> {
     let weights = reference::fold(model)?;
     let forward = reference::forward(model, batch, &weights)?;
-    let removal = reference::removal_forward(
-        model,
-        batch,
-        &weights,
-        &forward,
-        removal_reference,
-        removal_penalty,
-    )?;
-    let output = reference::output_backward(model, batch, &forward, &removal, targets)?;
+    let output = reference::output_backward(model, batch, &forward, targets)?;
     let mut parameters = Parameters::zeros(model.shape());
-    let losses = reference::reduce_partials(model, &output, &removal, &mut parameters)?;
-    reference::first_layer_backward(
-        model,
-        batch,
-        &weights,
-        &forward,
-        &removal,
-        &output,
-        &mut parameters,
-    )?;
-    reference::linear_backward(model, batch, &removal, &output, &mut parameters)?;
+    let losses = reference::reduce_partials(model, &output, &mut parameters)?;
+    reference::first_layer_backward(model, batch, &output, &mut parameters)?;
+    reference::linear_backward(model, batch, &output, &mut parameters)?;
     reference::reduce_virtual(&mut parameters)?;
     Ok(reference::Gradients { losses, parameters })
 }
@@ -375,22 +330,10 @@ fn check_clipping(
     let batch = super::equivalence::synthetic_batch(shape.feature_set(), 3, seed)?;
     let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?;
     let positive = clipping_fixture(shape, &batch, seed, 1.0, training.optimizer())?;
-    let mut report = check(
-        device.clone(),
-        &positive,
-        &batch,
-        &targets,
-        training.removal_penalty,
-    )?;
+    let mut report = check(device.clone(), &positive, &batch, &targets)?;
     drop(positive);
     let negative = clipping_fixture(shape, &batch, seed, -1.0, training.optimizer())?;
-    report.merge(check(
-        device,
-        &negative,
-        &batch,
-        &targets,
-        training.removal_penalty,
-    )?);
+    report.merge(check(device, &negative, &batch, &targets)?);
     Ok(report)
 }
 
@@ -401,26 +344,11 @@ fn collect(report: &mut Report, pending: (StepResult, StepResult, Losses, u64)) 
     if first.step != step || repeated.step != step {
         return Err(Error::Equivalence("collected update number".into()));
     }
-    for (name, expected, actual, again) in [
-        (
-            "step BCE",
-            expected.bce,
-            first.losses.bce,
-            repeated.losses.bce,
-        ),
-        (
-            "step auxiliary",
-            expected.auxiliary,
-            first.losses.auxiliary,
-            repeated.losses.auxiliary,
-        ),
-    ] {
-        report.number(name, step as usize, expected, actual)?;
-        if actual.to_bits() != again.to_bits() {
-            return Err(Error::Equivalence(format!(
-                "{name}: repeated updates differ in bits"
-            )));
-        }
+    report.number("step BCE", step as usize, expected.bce, first.losses.bce)?;
+    if first.losses.bce.to_bits() != repeated.losses.bce.to_bits() {
+        return Err(Error::Equivalence(
+            "step BCE: repeated updates differ in bits".into(),
+        ));
     }
     Ok(())
 }
@@ -594,7 +522,6 @@ mod tests {
     fn gpu_three_updates_with_changing_multipliers_match_cpu_state() {
         // 学習率スケジュール設計書の3更新の全状態比較。倍率は更新ごとに変える。
         let device = Device::new(0).unwrap();
-        let removal = RemovalReference::v0();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape = Shape::new(set, 6, 1000.0).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
@@ -606,15 +533,13 @@ mod tests {
                 device.clone(),
                 &fixture.model,
                 &fixture.optimizer,
-                &removal,
                 batch.len(),
-                137.5,
             )
             .unwrap();
             let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
             let mut pending = Vec::new();
             for multiplier in [1.0, 0.37, 0.125] {
-                let gradients = cpu_gradients(&cpu, &batch, &targets, &removal, 137.5).unwrap();
+                let gradients = cpu_gradients(&cpu, &batch, &targets).unwrap();
                 cpu_optimizer
                     .update_parallel(&mut cpu, &gradients.parameters, 1, multiplier)
                     .unwrap();
@@ -650,9 +575,8 @@ mod tests {
     fn gpu_step_rejects_nonfinite_gradients_with_finite_loss() {
         // 契約: 損失だけが有限でも、勾配が非有限なら回収時に明示的に失敗する。
         // 相殺する大きな出力重みでロジットを有限に保ち、SCReLUの微分で
-        // 第1層の勾配だけをオーバーフローさせる。補助損失の参照はすべて0。
+        // 第1層の勾配だけをオーバーフローさせる。
         let device = Device::new(0).unwrap();
-        let removal = RemovalReference::new(&vec![[0; 2]; FEATURE_COUNT]).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape = Shape::new(set, 8, 1000.0).unwrap();
             let batch = synthetic_batch(set, 1, 71).unwrap();
@@ -674,8 +598,7 @@ mod tests {
             }
             model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
             let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
-            let mut step =
-                Step::new(device.clone(), &model, &optimizer, &removal, 1, 1000.0).unwrap();
+            let mut step = Step::new(device.clone(), &model, &optimizer, 1).unwrap();
             let mut ring = HostRing::new(&device, set, 1).unwrap();
             let ticket = ring.upload(&batch).unwrap();
             let result = step.enqueue(&mut ring, &ticket, &[1.0], 1.0).unwrap();
@@ -697,7 +620,7 @@ mod tests {
             let batch = synthetic_batch(set, batch_size, 137 + batch_size as u64).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
-            check(device.clone(), &fixture, &batch, &targets, 1000.0).unwrap();
+            check(device.clone(), &fixture, &batch, &targets).unwrap();
         }
         check_clipping(device, shape, 293, &TrainingOptions::new(1.0)).unwrap();
     }
@@ -709,15 +632,7 @@ mod tests {
             let batch = synthetic_batch(set, 129, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
-            let gradients = cpu_gradients(
-                &fixture.model,
-                &batch,
-                &targets,
-                &RemovalReference::v0(),
-                1000.0,
-            )
-            .unwrap();
-            assert!(gradients.losses.auxiliary > 0.0);
+            let gradients = cpu_gradients(&fixture.model, &batch, &targets).unwrap();
             assert!(
                 gradients.parameters[Parameter::FirstLayer]
                     .iter()
@@ -780,7 +695,6 @@ mod tests {
             weight_decay_ft: 0.0002,
             lr_head: 0.0004,
             weight_decay_head: 0.0003,
-            removal_penalty: 137.5,
             lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
@@ -789,66 +703,47 @@ mod tests {
             let fixture = fixture(shape, &batch, 293, training.optimizer()).unwrap();
             let targets =
                 build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3]).unwrap();
-            let removal = RemovalReference::v0();
-            // 0もruntime引数として通し、補助損失を無効にした境界を保護する。
-            for penalty in [0.0, training.removal_penalty] {
-                for multiplier in [1.0, 0.37] {
-                    let mut cpu = fixture.model.clone();
-                    let mut cpu_optimizer = fixture.optimizer.clone();
-                    let gradients = reference::loss_and_gradients_parallel(
-                        &cpu, &batch, &targets, &removal, penalty, 5,
+
+            for multiplier in [1.0, 0.37] {
+                let mut cpu = fixture.model.clone();
+                let mut cpu_optimizer = fixture.optimizer.clone();
+                let gradients =
+                    reference::loss_and_gradients_parallel(&cpu, &batch, &targets, 5).unwrap();
+                cpu_optimizer
+                    .update_parallel(&mut cpu, &gradients.parameters, 5, multiplier)
+                    .unwrap();
+                let mut step = Step::new(
+                    device.clone(),
+                    &fixture.model,
+                    &fixture.optimizer,
+                    batch.len(),
+                )
+                .unwrap();
+                let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
+                let ticket = ring.upload(&batch).unwrap();
+                let metrics = step
+                    .enqueue(&mut ring, &ticket, &targets, multiplier)
+                    .unwrap()
+                    .collect()
+                    .unwrap();
+                let (parameters, optimizer) = step.snapshot().unwrap();
+                assert_eq!(optimizer.config(), training.optimizer());
+                assert_eq!(cpu_optimizer.config(), training.optimizer());
+                let mut report = Report {
+                    device_name: device.name().into(),
+                    comparisons: 0,
+                    max_absolute_error: 0.0,
+                    max_relative_error: 0.0,
+                };
+                report
+                    .number(
+                        "parallel CPU BCE",
+                        0,
+                        gradients.losses.bce,
+                        metrics.losses.bce,
                     )
                     .unwrap();
-                    cpu_optimizer
-                        .update_parallel(&mut cpu, &gradients.parameters, 5, multiplier)
-                        .unwrap();
-                    let mut step = Step::new(
-                        device.clone(),
-                        &fixture.model,
-                        &fixture.optimizer,
-                        &removal,
-                        batch.len(),
-                        penalty,
-                    )
-                    .unwrap();
-                    let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
-                    let ticket = ring.upload(&batch).unwrap();
-                    let metrics = step
-                        .enqueue(&mut ring, &ticket, &targets, multiplier)
-                        .unwrap()
-                        .collect()
-                        .unwrap();
-                    let (parameters, optimizer) = step.snapshot().unwrap();
-                    assert_eq!(optimizer.config(), training.optimizer());
-                    assert_eq!(cpu_optimizer.config(), training.optimizer());
-                    let mut report = Report {
-                        device_name: device.name().into(),
-                        comparisons: 0,
-                        max_absolute_error: 0.0,
-                        max_relative_error: 0.0,
-                    };
-                    report
-                        .number(
-                            "parallel CPU BCE",
-                            0,
-                            gradients.losses.bce,
-                            metrics.losses.bce,
-                        )
-                        .unwrap();
-                    report
-                        .number(
-                            "parallel CPU auxiliary",
-                            0,
-                            gradients.losses.auxiliary,
-                            metrics.losses.auxiliary,
-                        )
-                        .unwrap();
-                    compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer)
-                        .unwrap();
-                    if penalty == 0.0 {
-                        assert_eq!(metrics.losses.auxiliary, 0.0);
-                    }
-                }
+                compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer).unwrap();
             }
         }
     }
@@ -869,26 +764,18 @@ mod tests {
                 .map(|(batch, value)| vec![value; batch.len()])
                 .collect();
             let fixture = fixture(shape, &batches[0], 293, fixture_config()).unwrap();
-            let removal = RemovalReference::v0();
             let mut cpu = fixture.model.clone();
             let mut cpu_optimizer = fixture.optimizer.clone();
             let mut expected = Vec::new();
             for (batch, targets) in batches.iter().zip(&targets) {
-                let gradient = cpu_gradients(&cpu, batch, targets, &removal, 1000.0).unwrap();
+                let gradient = cpu_gradients(&cpu, batch, targets).unwrap();
                 cpu_optimizer
                     .update(&mut cpu, &gradient.parameters)
                     .unwrap();
                 expected.push(gradient.losses);
             }
-            let mut step = Step::new(
-                device.clone(),
-                &fixture.model,
-                &fixture.optimizer,
-                &removal,
-                129,
-                1000.0,
-            )
-            .unwrap();
+            let mut step =
+                Step::new(device.clone(), &fixture.model, &fixture.optimizer, 129).unwrap();
             let mut ring = HostRing::new(&device, set, 129).unwrap();
             let first_ticket = ring.upload(&batches[0]).unwrap();
             let first = step
@@ -919,14 +806,6 @@ mod tests {
                 assert_eq!(actual.step, fixture.optimizer.step() + index as u64 + 1);
                 report
                     .number("queued BCE", index, expected.bce, actual.losses.bce)
-                    .unwrap();
-                report
-                    .number(
-                        "queued auxiliary",
-                        index,
-                        expected.auxiliary,
-                        actual.losses.auxiliary,
-                    )
                     .unwrap();
             }
             let (parameters, optimizer) = step.snapshot().unwrap();

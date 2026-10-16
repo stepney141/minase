@@ -16,7 +16,7 @@
 //! | `cp_per_logit` | `<f4` | `[]` | 勝率尺度（1ロジットあたりのcp）。 |
 //! | `width`, `feature_set`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、更新数。 |
 //! | `optimizer_groups` | `<f8` | `[3, 2]` | 線形、第1層、出力部の順の学習率と重み減衰。 |
-//! | `removal_penalty`, `lambda` | `<f8` | `[]` | 駒除去損失係数と教師混合比。 |
+//! | `lambda` | `<f8` | `[]` | 教師混合比。 |
 //! | `meta` | `\|u1` | `[JSONのバイト長]` | UTF-8のJSON。 |
 //!
 //! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
@@ -40,14 +40,13 @@ use std::path::Path;
 /// パラメータ、固定行の初期値とマスク、AdamWの状態、進捗を保存する。
 /// 配列の配置はこのモジュールの表に定める。
 /// 復号時の受理条件は[`Self::decode`]に従う。
+/// `removal_penalty`を持つ以前のチェックポイントは余分な配列として拒否される。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
     /// f32モデル。
     pub model: Model,
     /// AdamWの全状態。
     pub optimizer: AdamW,
-    /// 駒除去差分の補助損失係数。
-    pub removal_penalty: f64,
     /// 自己対局の教師混合比。
     pub lambda: f64,
     /// 学習の進捗と再開条件。
@@ -55,11 +54,7 @@ pub struct Checkpoint {
 }
 impl Checkpoint {
     fn validate(&self) -> Result<()> {
-        if !self.removal_penalty.is_finite()
-            || self.removal_penalty < 0.0
-            || !self.lambda.is_finite()
-            || !(0.0..=1.0).contains(&self.lambda)
-        {
+        if !self.lambda.is_finite() || !(0.0..=1.0).contains(&self.lambda) {
             return Err(Error::Invalid("checkpoint loss coefficients"));
         }
         if self.model.shape() != self.optimizer.m.shape()
@@ -121,7 +116,6 @@ impl Checkpoint {
         );
         w.scalar("cp_per_logit", shape.cp_per_logit());
         w.scalar("step", self.optimizer.step);
-        w.scalar("removal_penalty", self.removal_penalty);
         w.scalar("lambda", self.lambda);
         let groups = [
             self.optimizer.config.linear,
@@ -177,7 +171,6 @@ impl Checkpoint {
         };
         let shape = Shape::new(set, width, r.scalar("cp_per_logit")?)?;
         let step = r.scalar("step")?;
-        let removal_penalty = r.scalar("removal_penalty")?;
         let lambda = r.scalar("lambda")?;
         let groups = r.values::<f64>("optimizer_groups", &[3, 2])?;
         let group = |i: usize| AdamWGroup {
@@ -227,7 +220,6 @@ impl Checkpoint {
                 initial_virtual,
             },
             optimizer: AdamW { m, v, step, config },
-            removal_penalty,
             lambda,
             progress,
         };

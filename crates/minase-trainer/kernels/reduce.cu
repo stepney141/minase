@@ -24,6 +24,7 @@ extern "C" __global__ void gradient_partials(
     }
 }
 
+// Training loss has one BCE column; validation has seven statistics columns.
 extern "C" __global__ void reduce_partials(
     const double* partials, double* sums, unsigned blocks, unsigned values) {
     unsigned j = blockIdx.x * blockDim.x + threadIdx.x;
