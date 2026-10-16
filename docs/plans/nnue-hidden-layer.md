@@ -18,7 +18,7 @@
 
 進行中。2026年10月12日に起案し、2026年10月16日に着手した。
 フェーズ0（補助損失の削除と符号反転の検査）、フェーズ1（基準D0の学習）、およびフェーズ2（推論の3つの出力部と速度の測定）は2026年10月16日に完了し、ブランチ`nnue-hidden-layer`にある（[検査の記録](../measurements/nnue-trainer-rust-checks.md)、[学習の記録](../measurements/nnue-hidden-layer-training.md)、[速度の記録](../measurements/nnue-hidden-layer-bench.md)）。
-フェーズ3（学習器の出力部）は、フェーズ2の速度を利用者が見て学習器へ進むことを認めた場合に始める。
+フェーズ3（学習器の出力部）は、本書の遂行を求める利用者の指示（2026年10月16日）を承認に代わるものとみなして同日に始めた。フェーズ2の速度（隠れ層つきで探索時間が約18%増、位相補間だけならほぼ増えない）は[速度の記録](../measurements/nnue-hidden-layer-bench.md)にあり、本書は速度に閾値を置かないので、利用者が止める判断をしない限り段階ゲートまで進める。
 比較の起点は、[学習率スケジュール](archived/nnue-lr-schedule.md)が採用し、masterに埋め込まれているcosineのネット（SHA-256 `311be801…`）である。
 学習に使う教師データは、同書で版2の生成器により生成し直した30ファイル（`data/nnue-lr-schedule-gen/`）である。
 着手時のmaster（`62b53b82`）の学習器が、同書の学習器と同じ条件（1ファイル、1エポック、`--lr-schedule constant:1`、`--teacher-cp-per-logit calibrate`）で同じ`nnue.bin`（SHA-256 `5e22b452…`）を出すことを確かめてから始めた。
