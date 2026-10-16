@@ -3,6 +3,7 @@
 use super::accumulator::Accumulator;
 use super::feature_set::{HalfKpContext, HalfKpHmB8, Mirror, P};
 use super::format::HEADER_LENGTH;
+use super::head::{DirectScreluPhase2, ScreluHidden16, ScreluHidden16Phase2, from_direct};
 use super::*;
 use crate::eval::features::mirror_feature;
 use minase_core::test_util::{position_from_codes, sq};
@@ -23,6 +24,47 @@ macro_rules! both_feature_sets {
             #[test]
             fn half_kp() {
                 super::$name::<super::HalfKpHmB8>();
+            }
+        }
+    };
+}
+
+/// 2つの特徴集合と4つの出力部の直積で同じ契約を検査する。
+macro_rules! all_network_types {
+    ($name:ident) => {
+        mod $name {
+            use super::*;
+            #[test]
+            fn p_direct() {
+                super::$name::<P, DirectScrelu>();
+            }
+            #[test]
+            fn p_phase() {
+                super::$name::<P, DirectScreluPhase2>();
+            }
+            #[test]
+            fn p_hidden() {
+                super::$name::<P, ScreluHidden16>();
+            }
+            #[test]
+            fn p_hidden_phase() {
+                super::$name::<P, ScreluHidden16Phase2>();
+            }
+            #[test]
+            fn half_kp_direct() {
+                super::$name::<HalfKpHmB8, DirectScrelu>();
+            }
+            #[test]
+            fn half_kp_phase() {
+                super::$name::<HalfKpHmB8, DirectScreluPhase2>();
+            }
+            #[test]
+            fn half_kp_hidden() {
+                super::$name::<HalfKpHmB8, ScreluHidden16>();
+            }
+            #[test]
+            fn half_kp_hidden_phase() {
+                super::$name::<HalfKpHmB8, ScreluHidden16Phase2>();
             }
         }
     };
@@ -130,6 +172,94 @@ fn random_bytes<F: FeatureSet>(width: usize) -> Vec<u8> {
     bytes
 }
 
+/// バイト配置は設計書の区画表から定め、推論の符号化処理を使わず生成する。
+fn random_head_bytes<F: FeatureSet, H: Head>(width: usize) -> Vec<u8> {
+    let mut bytes = random_bytes::<F>(width);
+    let offset = HEADER_LENGTH
+        + FEATURE_COUNT * 4
+        + PIECE_STATE_COUNT * 4
+        + F::DIMENSIONS * width * 2
+        + width * 4;
+    bytes.truncate(offset);
+    let text = format!(
+        "features={};ft={width};linear=tapered2;head={}",
+        F::NAME,
+        H::NAME
+    );
+    bytes[8..104].fill(0);
+    bytes[8..8 + text.len()].copy_from_slice(text.as_bytes());
+    let (endpoints, hidden) = match H::NAME {
+        DirectScrelu::NAME => (1, false),
+        DirectScreluPhase2::NAME => (2, false),
+        ScreluHidden16::NAME => (1, true),
+        ScreluHidden16Phase2::NAME => (2, true),
+        _ => panic!("unsupported test head"),
+    };
+    let mut state = 193;
+    for _ in 0..endpoints {
+        for _ in 0..2 {
+            let mut row: Vec<i16> = (0..width)
+                .map(|_| (next(&mut state) % 16385) as i16 - 8192)
+                .collect();
+            if F::MIRROR == Mirror::Shared {
+                for j in 0..width / 2 {
+                    row[j + width / 2] = row[j];
+                }
+            }
+            for value in row {
+                bytes.extend(value.to_le_bytes());
+            }
+        }
+        bytes.extend(((next(&mut state) % 8_323_073) as i32 - 4_161_536).to_le_bytes());
+    }
+    if hidden {
+        for _ in 0..32 {
+            let mut row: Vec<i8> = (0..width)
+                .map(|_| ((next(&mut state) % 255) as i16 - 127) as i8)
+                .collect();
+            if F::MIRROR == Mirror::Shared {
+                for j in 0..width / 2 {
+                    row[j + width / 2] = row[j];
+                }
+            }
+            bytes.extend(row.into_iter().map(|v| v as u8));
+        }
+        for _ in 0..16 {
+            bytes.extend(((next(&mut state) % 130_049) as i32 - 65_024).to_le_bytes());
+        }
+        for _ in 0..16 * endpoints {
+            bytes.extend(((next(&mut state) % 16385) as i16 - 8192).to_le_bytes());
+        }
+    }
+    refresh_checksum(&mut bytes);
+    bytes
+}
+
+fn equivalent_head_bytes<F: FeatureSet, H: Head>(source: &[u8]) -> Vec<u8> {
+    let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
+    let mut bytes = copy_p_rows::<F>(source);
+    let offset = bytes.len() - DirectScrelu::byte_len(width);
+    let head = from_direct::<H>(&bytes[offset..], width, F::MIRROR == Mirror::Shared).unwrap();
+    bytes.truncate(offset);
+    bytes.extend(head.to_bytes());
+    let text = format!(
+        "features={};ft={width};linear=tapered2;head={}",
+        F::NAME,
+        H::NAME
+    );
+    bytes[8..104].fill(0);
+    bytes[8..8 + text.len()].copy_from_slice(text.as_bytes());
+    refresh_checksum(&mut bytes);
+    bytes
+}
+
+fn networks_with_head<F: FeatureSet, H: Head>() -> [Network<F, H>; 2] {
+    [
+        Network::decode(&equivalent_head_bytes::<F, H>(EPOCH_ZERO)).unwrap(),
+        Network::decode(&random_head_bytes::<F, H>(4)).unwrap(),
+    ]
+}
+
 fn networks<F: FeatureSet>() -> [Network<F, DirectScrelu>; 2] {
     [
         Network::decode(&copy_p_rows::<F>(EPOCH_ZERO)).unwrap(),
@@ -138,8 +268,8 @@ fn networks<F: FeatureSet>() -> [Network<F, DirectScrelu>; 2] {
 }
 
 /// 着手前後の差分累算値が完全再計算と一致し、親累算値を変更しないことを検査する。
-fn assert_move_accumulator<F: FeatureSet>(
-    nnue: &Network<F, DirectScrelu>,
+fn assert_move_accumulator<F: FeatureSet, H: Head>(
+    nnue: &Network<F, H>,
     position: &mut Position,
     mv: Move,
 ) {
@@ -216,10 +346,10 @@ fn quiet_move_pst_delta_matches_refreshed_linear_numerator<F: FeatureSet>() {
     }
 }
 
-both_feature_sets!(accumulator_updates_match_full_refresh_across_move_shapes);
+all_network_types!(accumulator_updates_match_full_refresh_across_move_shapes);
 /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
-fn accumulator_updates_match_full_refresh_across_move_shapes<F: FeatureSet>() {
-    for nnue in &networks::<F>() {
+fn accumulator_updates_match_full_refresh_across_move_shapes<F: FeatureSet, H: Head>() {
+    for nnue in &networks_with_head::<F, H>() {
         let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
         let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
         let black_pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
@@ -386,6 +516,34 @@ fn accumulator_updates_match_full_refresh_across_move_shapes<F: FeatureSet>() {
     }
 }
 
+/// P型は全局面、正規化型は両視点の基準王駒が一意な局面で鏡映不変になる。
+fn assert_mirror_when_defined<F: FeatureSet, H: Head>(net: &Network<F, H>, position: &Position) {
+    let unique = Color::ALL.into_iter().all(|side| {
+        let mut kings = 0;
+        let mut princes = 0;
+        for square in position.occupied() {
+            let piece = position.piece_at(square).unwrap();
+            if piece.color() != Some(side) {
+                continue;
+            }
+            match piece.kind() {
+                Some(PieceKind::King) => kings += 1,
+                Some(PieceKind::CrownPrince) => princes += 1,
+                _ => {}
+            }
+        }
+        kings == 1 || (kings == 0 && princes == 1)
+    });
+    if F::MIRROR == Mirror::Shared || unique {
+        for side in Color::ALL {
+            assert_eq!(
+                evaluate_for_diagnostics(net, position, side),
+                evaluate_for_diagnostics(net, &mirror(position), side)
+            );
+        }
+    }
+}
+
 fn mirror(position: &Position) -> Position {
     let pieces: Vec<_> = position
         .occupied()
@@ -408,10 +566,10 @@ fn mirror(position: &Position) -> Position {
     reflected
 }
 
-both_feature_sets!(random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation);
+all_network_types!(random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation);
 /// 4,096局面以上で差分、null move、取消、左右鏡映とエポック0のPST一致を検査する。
-fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: FeatureSet>() {
-    let nets = networks::<F>();
+fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: FeatureSet, H: Head>() {
+    let nets = networks_with_head::<F, H>();
     let pst =
         crate::eval::pst::Pst::decode(include_bytes!("../../../nets/nnue-epoch0-pst.bin")).unwrap();
     let generator = MoveGenerator::standard();
@@ -531,8 +689,7 @@ fn embedded_metadata_and_search_values_match_baseline() {
 }
 
 /// 出力部へ零の累算値を渡すと、仕様上は出力バイアスだけが残る。
-fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<'_> {
-    let zeros = vec![0; net.width()];
+fn encoding_input<F: FeatureSet, H: Head>(net: &Network<F, H>) -> EncodeInput<'_, H> {
     EncodeInput {
         width: net.width() as u32,
         cp_per_logit: net.cp_per_logit(),
@@ -541,8 +698,7 @@ fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<
         linear: &net.linear,
         weights: &net.weights,
         biases: &net.biases,
-        output_weights: &net.head.weights,
-        output_bias: net.head.output(&zeros, &zeros),
+        head: &net.head,
     }
 }
 
@@ -551,21 +707,21 @@ fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<
 fn embedded_encode_round_trip_is_byte_identical() {
     let net = Nnue::decode(EMBEDDED).unwrap();
     assert_eq!(
-        encode::<ActiveFeatureSet>(&encoding_input(&net)).unwrap(),
+        encode::<ActiveFeatureSet, _>(&encoding_input(&net)).unwrap(),
         EMBEDDED
     );
 }
 
-both_feature_sets!(encode_round_trip_preserves_random_parameters);
-fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
+all_network_types!(encode_round_trip_preserves_random_parameters);
+fn encode_round_trip_preserves_random_parameters<F: FeatureSet, H: Head>() {
     for width in [2, 4] {
         // 独立した既存の符号化で作った重みを参照値とする。
-        let original = random_bytes::<F>(width);
-        let net = Network::<F, DirectScrelu>::decode(&original).unwrap();
+        let original = random_head_bytes::<F, H>(width);
+        let net = Network::<F, H>::decode(&original).unwrap();
         let input = encoding_input(&net);
-        let bytes = encode::<F>(&input).unwrap();
+        let bytes = encode::<F, _>(&input).unwrap();
         assert_eq!(bytes, original);
-        let decoded = Network::<F, DirectScrelu>::decode(&bytes).unwrap();
+        let decoded = Network::<F, H>::decode(&bytes).unwrap();
         let actual = encoding_input(&decoded);
         assert_eq!(actual.width, input.width);
         assert_eq!(actual.cp_per_logit.to_bits(), input.cp_per_logit.to_bits());
@@ -574,9 +730,8 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
         assert_eq!(actual.linear, input.linear);
         assert_eq!(actual.weights, input.weights);
         assert_eq!(actual.biases, input.biases);
-        assert_eq!(actual.output_weights, input.output_weights);
-        assert_eq!(actual.output_bias, input.output_bias);
-        assert_eq!(encode::<F>(&actual).unwrap(), bytes);
+        assert_eq!(actual.head.to_bytes(), input.head.to_bytes());
+        assert_eq!(encode::<F, _>(&actual).unwrap(), bytes);
     }
 }
 
@@ -587,7 +742,7 @@ fn encode_validates_width_and_cp_per_logit() {
     let input = encoding_input(&net);
     for width in [0, 1, 3, 513, 514, u32::MAX] {
         assert_eq!(
-            encode::<P>(&EncodeInput { width, ..input }).unwrap_err(),
+            encode::<P, _>(&EncodeInput { width, ..input }).unwrap_err(),
             Error::InvalidWidth { actual: width }
         );
     }
@@ -601,7 +756,7 @@ fn encode_validates_width_and_cp_per_logit() {
         100_001.0,
     ] {
         assert!(matches!(
-            encode::<P>(&EncodeInput {
+            encode::<P, _>(&EncodeInput {
                 cp_per_logit,
                 ..input
             }),
@@ -609,7 +764,7 @@ fn encode_validates_width_and_cp_per_logit() {
         ));
     }
     for cp_per_logit in [f32::from_bits(1), f32::MIN_POSITIVE, 100_000.0] {
-        let bytes = encode::<P>(&EncodeInput {
+        let bytes = encode::<P, _>(&EncodeInput {
             cp_per_logit,
             ..input
         })
@@ -623,11 +778,11 @@ fn encode_validates_width_and_cp_per_logit() {
         );
     }
     let weights = vec![0; FEATURE_COUNT * 512];
-    let bytes = encode::<P>(&EncodeInput {
+    let bytes = encode::<P, _>(&EncodeInput {
         width: 512,
         weights: &weights,
         biases: &[0; 512],
-        output_weights: &[0; 1024],
+        head: &DirectScrelu::new(512, &[0; 1024], 0, true).unwrap(),
         ..input
     })
     .unwrap();
@@ -644,10 +799,10 @@ fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
     let extra_linear = vec![[0; 2]; input.linear.len() + 1];
     let extra_weights = vec![0; input.weights.len() + 1];
     let extra_biases = vec![0; input.biases.len() + 1];
-    let extra_output = vec![0; input.output_weights.len() + 1];
+    let extra_output = [0; 5];
     for length in [0, input.linear.len() - 1, input.linear.len() + 1] {
         assert!(matches!(
-            encode::<F>(&EncodeInput {
+            encode::<F, _>(&EncodeInput {
                 linear: &extra_linear[..length],
                 ..input
             }),
@@ -659,7 +814,7 @@ fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
     }
     for length in [0, input.weights.len() - 1, input.weights.len() + 1] {
         assert!(matches!(
-            encode::<F>(&EncodeInput {
+            encode::<F, _>(&EncodeInput {
                 weights: &extra_weights[..length],
                 ..input
             }),
@@ -671,7 +826,7 @@ fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
     }
     for length in [0, input.biases.len() - 1, input.biases.len() + 1] {
         assert!(matches!(
-            encode::<F>(&EncodeInput {
+            encode::<F, _>(&EncodeInput {
                 biases: &extra_biases[..length],
                 ..input
             }),
@@ -681,16 +836,9 @@ fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
             })
         ));
     }
-    for length in [
-        0,
-        input.output_weights.len() - 1,
-        input.output_weights.len() + 1,
-    ] {
+    for length in [0, 3, 5] {
         assert!(matches!(
-            encode::<F>(&EncodeInput {
-                output_weights: &extra_output[..length],
-                ..input
-            }),
+            DirectScrelu::new(2, &extra_output[..length], 0, F::MIRROR == Mirror::Shared),
             Err(Error::InvalidParameterLength {
                 parameter: "output_weights",
                 ..
@@ -707,7 +855,7 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
     for value in [-1017, 1017, i16::MIN, i16::MAX] {
         weights[0] = value;
         assert_eq!(
-            encode::<F>(&EncodeInput {
+            encode::<F, _>(&EncodeInput {
                 weights: &weights,
                 ..input
             })
@@ -723,7 +871,7 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
     for value in [-1017, 1017, i32::MIN, i32::MAX] {
         biases[0] = value;
         assert_eq!(
-            encode::<F>(&EncodeInput {
+            encode::<F, _>(&EncodeInput {
                 biases: &biases,
                 ..input
             })
@@ -735,15 +883,13 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
             }
         );
     }
-    let mut output_weights = input.output_weights.to_vec();
+    let mut output_weights = vec![0; 4];
     for value in [-8193, 8193, i16::MIN, i16::MAX] {
         output_weights[0] = value;
         assert_eq!(
-            encode::<F>(&EncodeInput {
-                output_weights: &output_weights,
-                ..input
-            })
-            .unwrap_err(),
+            DirectScrelu::new(2, &output_weights, 0, F::MIRROR == Mirror::Shared)
+                .err()
+                .unwrap(),
             Error::ParameterOutOfRange {
                 parameter: "output_weights",
                 index: 0,
@@ -753,11 +899,9 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
     }
     for value in [-4_161_537, 4_161_537, i32::MIN, i32::MAX] {
         assert_eq!(
-            encode::<F>(&EncodeInput {
-                output_bias: value,
-                ..input
-            })
-            .unwrap_err(),
+            DirectScrelu::new(2, &[0; 4], value, F::MIRROR == Mirror::Shared)
+                .err()
+                .unwrap(),
             Error::ParameterOutOfRange {
                 parameter: "output_bias",
                 index: 0,
@@ -771,12 +915,17 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
         weights.fill(sign * 1016);
         biases.fill(i32::from(sign) * 1016);
         output_weights.fill(sign * 8192);
-        let bytes = encode::<F>(&EncodeInput {
+        let bytes = encode::<F, _>(&EncodeInput {
             linear: &linear,
             weights: &weights,
             biases: &biases,
-            output_weights: &output_weights,
-            output_bias: i32::from(sign) * 4_161_536,
+            head: &DirectScrelu::new(
+                2,
+                &output_weights,
+                i32::from(sign) * 4_161_536,
+                F::MIRROR == Mirror::Shared,
+            )
+            .unwrap(),
             ..input
         })
         .unwrap();
@@ -791,7 +940,7 @@ fn encode_validates_mirror_sharing<F: FeatureSet>() {
     let mut linear = input.linear.to_vec();
     linear[0][0] ^= 1;
     assert!(matches!(
-        encode::<F>(&EncodeInput {
+        encode::<F, _>(&EncodeInput {
             linear: &linear,
             ..input
         }),
@@ -804,10 +953,12 @@ fn encode_validates_mirror_sharing<F: FeatureSet>() {
     weights[0] ^= 1;
     let mut biases = input.biases.to_vec();
     biases[0] ^= 1;
-    let mut us = input.output_weights.to_vec();
+    let mut us = vec![0; 8];
     us[0] ^= 1;
-    let mut them = input.output_weights.to_vec();
+    let mut them = vec![0; 8];
     them[net.width()] ^= 1;
+    let us = DirectScrelu::new(4, &us, 0, false).unwrap();
+    let them = DirectScrelu::new(4, &them, 0, false).unwrap();
     for (parameter, altered) in [
         (
             "weights",
@@ -823,22 +974,16 @@ fn encode_validates_mirror_sharing<F: FeatureSet>() {
                 ..input
             },
         ),
+        ("output_weights", EncodeInput { head: &us, ..input }),
         (
             "output_weights",
             EncodeInput {
-                output_weights: &us,
-                ..input
-            },
-        ),
-        (
-            "output_weights",
-            EncodeInput {
-                output_weights: &them,
+                head: &them,
                 ..input
             },
         ),
     ] {
-        let result = encode::<F>(&altered);
+        let result = encode::<F, _>(&altered);
         if F::MIRROR == Mirror::Shared {
             assert!(
                 matches!(result, Err(Error::MirrorMismatch { parameter: found, .. }) if found == parameter)
@@ -859,7 +1004,7 @@ fn encode_validates_rule_set_names() {
         "x".repeat(32),
         format!("{}ab", "あ".repeat(10)),
     ] {
-        let bytes = encode::<P>(&EncodeInput {
+        let bytes = encode::<P, _>(&EncodeInput {
             rule_set: &rule_set,
             ..input
         })
@@ -878,7 +1023,7 @@ fn encode_validates_rule_set_names() {
         "a\0".to_owned(),
     ] {
         assert_eq!(
-            encode::<P>(&EncodeInput {
+            encode::<P, _>(&EncodeInput {
                 rule_set: &rule_set,
                 ..input
             })
@@ -936,22 +1081,22 @@ fn encode_validates_feature_set_metadata() {
 
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
-    let bytes = encode::<FullName>(&input).unwrap();
+    let bytes = encode::<FullName, _>(&input).unwrap();
     assert_eq!(architecture(&bytes).unwrap().len(), 96);
     assert!(Network::<FullName, DirectScrelu>::decode(&bytes).is_ok());
     for result in [
-        encode::<LongName>(&input),
-        encode::<NonAsciiName>(&input),
-        encode::<NulName>(&input),
+        encode::<LongName, _>(&input),
+        encode::<NonAsciiName, _>(&input),
+        encode::<NulName, _>(&input),
     ] {
         assert_eq!(result.unwrap_err(), Error::InvalidArchitecture);
     }
     assert_eq!(
-        encode::<OversizedDimensions>(&input).unwrap_err(),
+        encode::<OversizedDimensions, _>(&input).unwrap_err(),
         Error::InvalidDimensions { actual: usize::MAX }
     );
     assert_eq!(
-        encode::<ShortDimensions>(&EncodeInput {
+        encode::<ShortDimensions, _>(&EncodeInput {
             weights: &[],
             ..input
         })
@@ -969,7 +1114,7 @@ fn encode_rejects_invalid_piece_values() {
         let mut piece_values = *input.piece_values;
         piece_values[0] = value;
         assert!(matches!(
-            encode::<P>(&EncodeInput {
+            encode::<P, _>(&EncodeInput {
                 piece_values: &piece_values,
                 ..input
             }),
@@ -980,7 +1125,7 @@ fn encode_rejects_invalid_piece_values() {
         let mut piece_values = *input.piece_values;
         piece_values[kind.index()] = 0;
         assert!(matches!(
-            encode::<P>(&EncodeInput {
+            encode::<P, _>(&EncodeInput {
                 piece_values: &piece_values,
                 ..input
             }),
@@ -990,7 +1135,7 @@ fn encode_rejects_invalid_piece_values() {
     let mut piece_values = *input.piece_values;
     piece_values[29] = 0;
     assert!(matches!(
-        encode::<P>(&EncodeInput {
+        encode::<P, _>(&EncodeInput {
             piece_values: &piece_values,
             ..input
         }),
@@ -1302,7 +1447,7 @@ fn diagnostic_views_select_both_output_rows_without_removing_lion() {
     for f in [feature, mirror_feature(feature)] {
         net.weights[f * 2..f * 2 + 2].fill(64);
     }
-    net.head.weights.copy_from_slice(&[4096, 4096, 8192, 8192]);
+    net.head = DirectScrelu::new(2, &[4096, 4096, 8192, 8192], 0, true).unwrap();
     // 黒視点の線形成分は8/16。駒数2なので終盤の16/8=2cp。
     for f in [feature, mirror_feature(feature)] {
         net.linear[f] = [8, 16];
@@ -1451,9 +1596,9 @@ fn half_kp_buckets_and_feature_indices_follow_the_contract() {
     }
 }
 
-both_feature_sets!(royal_context_changes_preserve_incremental_evaluation);
-fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
-    for (network, net) in networks::<F>().iter().enumerate() {
+all_network_types!(royal_context_changes_preserve_incremental_evaluation);
+fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet, H: Head>() {
+    for (network, net) in networks_with_head::<F, H>().iter().enumerate() {
         for side in Color::ALL {
             let king = PieceCode::new(side, PieceKind::King).unwrap();
             let enemy_king = PieceCode::new(side.opposite(), PieceKind::King).unwrap();
@@ -1565,6 +1710,7 @@ fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
             ));
             for (case, pieces, mv) in cases {
                 let mut position = position_from_codes(side, &pieces);
+                assert_mirror_when_defined(net, &position);
                 let before = net.refresh_accumulator(&position);
                 let undo = position.make_move_unchecked(mv, MoveRules::standard());
                 let mut after = Accumulator::new(net.width());
@@ -1579,6 +1725,7 @@ fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
                     evaluate(net, &position),
                     "{case}, network={network}, side={side:?}"
                 );
+                assert_mirror_when_defined(net, &position);
                 position.unmake_move(undo);
                 assert_eq!(
                     before,
@@ -1737,4 +1884,614 @@ fn accumulator_invariant_includes_contexts() {
     assert!(
         std::panic::catch_unwind(|| net.assert_accumulator(&position, &accumulator, 0)).is_err()
     );
+}
+
+all_network_types!(head_sections_reject_invalid_lengths_ranges_and_mirrors);
+/// 区画表の位置から異常値を注入し、範囲を鏡映共有より先に検査する契約も守る。
+fn head_sections_reject_invalid_lengths_ranges_and_mirrors<F: FeatureSet, H: Head>() {
+    let width = 4;
+    let bytes = random_head_bytes::<F, H>(width);
+    let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4 + F::DIMENSIONS * 8 + 16;
+    let (endpoints, hidden) = match H::NAME {
+        DirectScrelu::NAME => (1, false),
+        DirectScreluPhase2::NAME => (2, false),
+        ScreluHidden16::NAME => (1, true),
+        ScreluHidden16Phase2::NAME => (2, true),
+        _ => panic!("unsupported test head"),
+    };
+    let section_length = endpoints * 20 + if hidden { 128 + 64 + endpoints * 32 } else { 0 };
+    assert_eq!(H::byte_len(width), section_length);
+    assert_eq!(bytes.len(), offset + section_length);
+    let section = &bytes[offset..];
+    for invalid_width in [0, 1, 3, 513, 514] {
+        assert!(matches!(
+            H::decode(section, invalid_width, false),
+            Err(Error::InvalidWidth { .. })
+        ));
+    }
+    for length in [0, section_length - 1, section_length + 1] {
+        let mut bad = bytes.clone();
+        bad.resize(offset + length, 0);
+        refresh_checksum(&mut bad);
+        assert!(matches!(
+            Network::<F, H>::decode(&bad),
+            Err(Error::InvalidLength { .. })
+        ));
+        assert!(matches!(
+            H::decode(&bad[offset..], width, false),
+            Err(Error::InvalidLength { .. })
+        ));
+    }
+    let mut invalid = Vec::new();
+    let mut mirrors = Vec::new();
+    for endpoint in 0..endpoints {
+        for view in 0..2 {
+            let location = endpoint * 20 + view * 8;
+            mirrors.push((location, "output_weights"));
+            for value in [-8193_i16, 8193, i16::MIN, i16::MAX] {
+                invalid.push((location, value.to_le_bytes().to_vec(), "output_weights"));
+            }
+        }
+        for value in [-4_161_537_i32, 4_161_537, i32::MIN, i32::MAX] {
+            invalid.push((
+                endpoint * 20 + 16,
+                value.to_le_bytes().to_vec(),
+                "output_bias",
+            ));
+        }
+    }
+    if hidden {
+        let start = endpoints * 20;
+        for row in 0..16 {
+            for view in 0..2 {
+                let location = start + row * 8 + view * 4;
+                invalid.push((location, vec![128], "hidden_weights"));
+                mirrors.push((location, "hidden_weights"));
+            }
+            for value in [-65_025_i32, 65_025, i32::MIN, i32::MAX] {
+                invalid.push((
+                    start + 128 + row * 4,
+                    value.to_le_bytes().to_vec(),
+                    "hidden_biases",
+                ));
+            }
+            for endpoint in 0..endpoints {
+                for value in [-8193_i16, 8193, i16::MIN, i16::MAX] {
+                    invalid.push((
+                        start + 192 + endpoint * 32 + row * 2,
+                        value.to_le_bytes().to_vec(),
+                        "hidden_output",
+                    ));
+                }
+            }
+        }
+    }
+    for (location, value, parameter) in invalid {
+        let mut bad = bytes.clone();
+        bad[offset + location..offset + location + value.len()].copy_from_slice(&value);
+        // 値域違反があれば、先頭の出力重みの共有違反より先に返す。
+        if location >= 20 {
+            bad[offset] ^= 1;
+        }
+        refresh_checksum(&mut bad);
+        assert!(
+            matches!(Network::<F, H>::decode(&bad), Err(Error::ParameterOutOfRange { parameter: actual, .. }) if actual == parameter),
+            "{} {parameter} at {location}",
+            H::NAME
+        );
+    }
+    for (location, parameter) in mirrors {
+        let mut bad = bytes.clone();
+        // 0と1は両方とも許容値で、元の共有相手と必ず異なる方を選ぶ。
+        let size = if parameter == "hidden_weights" { 1 } else { 2 };
+        let original = &section[location..location + size];
+        let replacement = if original.iter().all(|&b| b == 0) {
+            1
+        } else {
+            0
+        };
+        bad[offset + location..offset + location + size].fill(0);
+        bad[offset + location] = replacement;
+        refresh_checksum(&mut bad);
+        let decoded = Network::<F, H>::decode(&bad);
+        if F::MIRROR == Mirror::Shared {
+            assert!(
+                matches!(decoded, Err(Error::MirrorMismatch { parameter: actual, .. }) if actual == parameter)
+            );
+        } else {
+            assert!(decoded.is_ok());
+        }
+    }
+    for other in [
+        DirectScrelu::NAME,
+        DirectScreluPhase2::NAME,
+        ScreluHidden16::NAME,
+        ScreluHidden16Phase2::NAME,
+        "unknown",
+    ] {
+        if other == H::NAME {
+            continue;
+        }
+        let mut bad = bytes.clone();
+        let text = format!("features={};ft=4;linear=tapered2;head={other}", F::NAME);
+        bad[8..104].fill(0);
+        bad[8..8 + text.len()].copy_from_slice(text.as_bytes());
+        assert!(matches!(
+            Network::<F, H>::decode(&bad),
+            Err(Error::UnexpectedArchitecture { .. })
+        ));
+    }
+}
+
+#[test]
+fn phase_interpolation_uses_floor_and_exact_endpoints() {
+    for (open, end, middle) in [(-1, 0, -1), (1, 0, 0), (-91, 4, -44)] {
+        let direct = DirectScreluPhase2::new(2, [&[0; 4]; 2], [open, end], true).unwrap();
+        let hidden = ScreluHidden16Phase2::new(
+            2,
+            [&[0; 4]; 2],
+            [open, end],
+            &[0; 64],
+            [0; 16],
+            [[0; 16]; 2],
+            true,
+        )
+        .unwrap();
+        for (q, expected) in [(0, end), (45, middle), (90, open)] {
+            assert_eq!(direct.output(&[0; 2], &[0; 2], q), expected);
+            assert_eq!(hidden.output(&[0; 2], &[0; 2], q), expected);
+        }
+    }
+}
+
+#[test]
+fn hidden_activation_shift_saturation_and_row_order_follow_specification() {
+    // zの算術右シフト後にclampする。端点とその両隣を含む。
+    for (z, expected) in [
+        (-65_024, 0),
+        (-65, 0),
+        (-1, 0),
+        (0, 0),
+        (63, 0),
+        (64, 1),
+        (8127, 126),
+        (8128, 127),
+        (8192, 127),
+        (65_024, 127),
+    ] {
+        let mut biases = [0; 16];
+        biases[0] = z;
+        let mut output = [0; 16];
+        output[0] = 1;
+        let single =
+            ScreluHidden16::new(2, [&[0; 4]], [0], &[0; 64], biases, [output], false).unwrap();
+        let phase = ScreluHidden16Phase2::new(
+            2,
+            [&[0; 4]; 2],
+            [0; 2],
+            &[0; 64],
+            biases,
+            [output, output.map(|w| -w)],
+            false,
+        )
+        .unwrap();
+        assert_eq!(single.output(&[0; 2], &[0; 2], 45), expected);
+        assert_eq!(phase.output(&[0; 2], &[0; 2], 90), expected);
+        assert_eq!(phase.output(&[0; 2], &[0; 2], 0), -expected);
+    }
+    // SCReLU([64,127,0,32]) = [32,126,0,8]。
+    // 行0: (2×32−1)>>6 = 0、行1: (126+2)>>6 = 2、行15: (8×8)>>6 = 1。
+    // 直接経路は32+2×126+3×0+4×8+5 = 321、隠れ層の寄与は0+20+100 = 120。
+    let mut weights = [0; 64];
+    weights[0] = 2;
+    weights[5] = 1;
+    weights[63] = 8;
+    let mut biases = [0; 16];
+    biases[0] = -1;
+    biases[1] = 2;
+    let mut output = [0; 16];
+    output[0] = 1;
+    output[1] = 10;
+    output[15] = 100;
+    let single =
+        ScreluHidden16::new(2, [&[1, 2, 3, 4]], [5], &weights, biases, [output], false).unwrap();
+    let phase = ScreluHidden16Phase2::new(
+        2,
+        [&[1, 2, 3, 4], &[0; 4]],
+        [5, -1],
+        &weights,
+        biases,
+        [output, [0; 16]],
+        false,
+    )
+    .unwrap();
+    assert_eq!(single.output(&[64, 127], &[0, 32], 45), 441);
+    assert_eq!(phase.output(&[64, 127], &[0, 32], 45), 220);
+}
+
+#[test]
+fn all_heads_fit_i32_at_width_512_parameter_limits() {
+    for sign in [-1, 1] {
+        let weights = [sign * 8192; 1024];
+        let bias = i32::from(sign) * 4_161_536;
+        let direct = DirectScrelu::new(512, &weights, bias, true).unwrap();
+        let phase = DirectScreluPhase2::new(512, [&weights; 2], [bias; 2], true).unwrap();
+        let hidden = ScreluHidden16::new(
+            512,
+            [&weights],
+            [bias],
+            &[127; 16 * 1024],
+            [65_024; 16],
+            [[sign * 8192; 16]],
+            true,
+        )
+        .unwrap();
+        let hidden_phase = ScreluHidden16Phase2::new(
+            512,
+            [&weights; 2],
+            [bias; 2],
+            &[127; 16 * 1024],
+            [65_024; 16],
+            [[sign * 8192; 16]; 2],
+            true,
+        )
+        .unwrap();
+        for q in 0..=90 {
+            assert_eq!(
+                direct.output(&[127; 512], &[127; 512], q),
+                i32::from(sign) * 1_061_126_144
+            );
+            assert_eq!(
+                phase.output(&[127; 512], &[127; 512], q),
+                i32::from(sign) * 1_061_126_144
+            );
+            assert_eq!(
+                hidden.output(&[127; 512], &[127; 512], q),
+                i32::from(sign) * 1_077_772_288
+            );
+            assert_eq!(
+                hidden_phase.output(&[127; 512], &[127; 512], q),
+                i32::from(sign) * 1_077_772_288
+            );
+        }
+        // zの負側の上界でもオーバーフローせず、隠れ層は0へ飽和する。
+        let hidden = ScreluHidden16::new(
+            512,
+            [&weights],
+            [bias],
+            &[-127; 16 * 1024],
+            [-65_024; 16],
+            [[sign * 8192; 16]],
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            hidden.output(&[127; 512], &[127; 512], 45),
+            i32::from(sign) * 1_061_126_144
+        );
+    }
+}
+
+#[test]
+fn zero_hidden_output_and_equal_endpoints_preserve_direct_output_for_all_phases() {
+    let mut state = 173;
+    for _ in 0..16 {
+        let weights = std::array::from_fn::<_, 8, _>(|_| (next(&mut state) % 16385) as i16 - 8192);
+        let hidden_weights =
+            std::array::from_fn::<_, 128, _>(|_| ((next(&mut state) % 255) as i16 - 127) as i8);
+        let biases = std::array::from_fn(|_| (next(&mut state) % 130_049) as i32 - 65_024);
+        let us = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i32 - 100);
+        let them = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i32 - 100);
+        let direct = DirectScrelu::new(4, &weights, -731, false).unwrap();
+        let phase = DirectScreluPhase2::new(4, [&weights; 2], [-731; 2], false).unwrap();
+        let hidden = ScreluHidden16::new(
+            4,
+            [&weights],
+            [-731],
+            &hidden_weights,
+            biases,
+            [[0; 16]],
+            false,
+        )
+        .unwrap();
+        let hidden_phase = ScreluHidden16Phase2::new(
+            4,
+            [&weights; 2],
+            [-731; 2],
+            &hidden_weights,
+            biases,
+            [[0; 16]; 2],
+            false,
+        )
+        .unwrap();
+        for q in 0..=90 {
+            let expected = direct.output(&us, &them, q);
+            assert_eq!(phase.output(&us, &them, q), expected);
+            assert_eq!(hidden.output(&us, &them, q), expected);
+            assert_eq!(hidden_phase.output(&us, &them, q), expected);
+        }
+    }
+}
+
+all_network_types!(direct_fixture_conversion_preserves_position_evaluations);
+fn direct_fixture_conversion_preserves_position_evaluations<F: FeatureSet, H: Head>() {
+    // エポック0に加え、非零の直接出力も変換して端点の複写を検証する。
+    for source in [EPOCH_ZERO, &random_bytes::<P>(4)] {
+        let direct = Network::<F, DirectScrelu>::decode(&copy_p_rows::<F>(source)).unwrap();
+        let converted = Network::<F, H>::decode(&equivalent_head_bytes::<F, H>(source)).unwrap();
+        let sparse = position_from_codes(
+            Color::Black,
+            &[
+                (
+                    sq(0, 0),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(11, 11),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
+            ],
+        );
+        for position in [Position::initial(), sparse] {
+            for side in Color::ALL {
+                assert_eq!(
+                    evaluate_for_diagnostics(&direct, &position, side),
+                    evaluate_for_diagnostics(&converted, &position, side)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn checked_head_constructors_validate_lengths_ranges_and_mirror_sharing() {
+    // すべての公開コンストラクタから、同じ入力で区画を作る。
+    let construct = |width, output: &[i16], bias, hidden: &[i8], biases, second, shared| {
+        [
+            DirectScrelu::new(width, output, bias, shared).map(|h| h.to_bytes()),
+            DirectScreluPhase2::new(width, [output; 2], [bias; 2], shared).map(|h| h.to_bytes()),
+            ScreluHidden16::new(width, [output], [bias], hidden, biases, [second], shared)
+                .map(|h| h.to_bytes()),
+            ScreluHidden16Phase2::new(
+                width,
+                [output; 2],
+                [bias; 2],
+                hidden,
+                biases,
+                [second; 2],
+                shared,
+            )
+            .map(|h| h.to_bytes()),
+        ]
+    };
+    for width in [0, 1, 3, 513, 514] {
+        for result in construct(width, &[0; 4], 0, &[0; 64], [0; 16], [0; 16], true) {
+            assert!(matches!(result, Err(Error::InvalidWidth { .. })));
+        }
+    }
+    for length in [0, 3, 5] {
+        for result in construct(2, &vec![0; length], 0, &[0; 64], [0; 16], [0; 16], true) {
+            assert!(matches!(
+                result,
+                Err(Error::InvalidParameterLength {
+                    parameter: "output_weights",
+                    ..
+                })
+            ));
+        }
+    }
+    for length in [0, 63, 65] {
+        for result in construct(2, &[0; 4], 0, &vec![0; length], [0; 16], [0; 16], true)
+            .into_iter()
+            .skip(2)
+        {
+            assert!(matches!(
+                result,
+                Err(Error::InvalidParameterLength {
+                    parameter: "hidden_weights",
+                    ..
+                })
+            ));
+        }
+    }
+    for sign in [-1_i16, 1] {
+        for result in construct(2, &[sign * 8193; 4], 0, &[0; 64], [0; 16], [0; 16], true) {
+            assert!(matches!(
+                result,
+                Err(Error::ParameterOutOfRange {
+                    parameter: "output_weights",
+                    ..
+                })
+            ));
+        }
+        for result in construct(
+            2,
+            &[0; 4],
+            i32::from(sign) * 4_161_537,
+            &[0; 64],
+            [0; 16],
+            [0; 16],
+            true,
+        ) {
+            assert!(matches!(
+                result,
+                Err(Error::ParameterOutOfRange {
+                    parameter: "output_bias",
+                    ..
+                })
+            ));
+        }
+        for (biases, second, parameter) in [
+            ([i32::from(sign) * 65_025; 16], [0; 16], "hidden_biases"),
+            ([0; 16], [sign * 8193; 16], "hidden_output"),
+        ] {
+            for result in construct(2, &[0; 4], 0, &[0; 64], biases, second, true)
+                .into_iter()
+                .skip(2)
+            {
+                assert!(
+                    matches!(result, Err(Error::ParameterOutOfRange { parameter: actual, .. }) if actual == parameter)
+                );
+            }
+        }
+    }
+    for result in construct(2, &[0; 4], 0, &[-128; 64], [0; 16], [0; 16], true)
+        .into_iter()
+        .skip(2)
+    {
+        assert!(matches!(
+            result,
+            Err(Error::ParameterOutOfRange {
+                parameter: "hidden_weights",
+                ..
+            })
+        ));
+    }
+    for shared in [false, true] {
+        for view in 0..2 {
+            let mut output = [0; 4];
+            output[view * 2] = 1;
+            for result in construct(2, &output, 0, &[0; 64], [0; 16], [0; 16], shared) {
+                if shared {
+                    assert!(matches!(
+                        result,
+                        Err(Error::MirrorMismatch {
+                            parameter: "output_weights",
+                            ..
+                        })
+                    ));
+                } else {
+                    assert!(result.is_ok());
+                }
+            }
+            let mut hidden = [0; 64];
+            hidden[60 + view * 2] = 1;
+            for result in construct(2, &[0; 4], 0, &hidden, [0; 16], [0; 16], shared)
+                .into_iter()
+                .skip(2)
+            {
+                if shared {
+                    assert!(matches!(
+                        result,
+                        Err(Error::MirrorMismatch {
+                            parameter: "hidden_weights",
+                            ..
+                        })
+                    ));
+                } else {
+                    assert!(result.is_ok());
+                }
+            }
+        }
+    }
+}
+
+all_network_types!(encode_rechecks_head_width_and_feature_sharing);
+fn encode_rechecks_head_width_and_feature_sharing<F: FeatureSet, H: Head>() {
+    let net = Network::<F, H>::decode(&random_head_bytes::<F, H>(4)).unwrap();
+    let wrong_width = Network::<F, H>::decode(&random_head_bytes::<F, H>(2)).unwrap();
+    assert!(matches!(
+        encode::<F, _>(&EncodeInput {
+            head: &wrong_width.head,
+            ..encoding_input(&net)
+        }),
+        Err(Error::InvalidLength { .. })
+    ));
+    // 正規化型で作った出力部でも、共有型への符号化時には再検査する。
+    let mut bytes = net.head.to_bytes();
+    bytes[..2].copy_from_slice(&1_i16.to_le_bytes());
+    bytes[4..6].copy_from_slice(&0_i16.to_le_bytes());
+    let head = H::decode(&bytes, 4, false).unwrap();
+    let encoded = encode::<F, _>(&EncodeInput {
+        head: &head,
+        ..encoding_input(&net)
+    });
+    if F::MIRROR == Mirror::Shared {
+        assert!(matches!(
+            encoded,
+            Err(Error::MirrorMismatch {
+                parameter: "output_weights",
+                ..
+            })
+        ));
+    } else {
+        assert!(encoded.is_ok());
+    }
+}
+
+both_feature_sets!(network_passes_piece_count_phase_to_output);
+fn network_passes_piece_count_phase_to_output<F: FeatureSet>() {
+    let direct = constant_network::<F>(2, 0, 0, 0, 7.9375, 0);
+    let phase = DirectScreluPhase2::new(2, [&[0; 4]; 2], [90 * 65_536 / 2, 0], true).unwrap();
+    let hidden = ScreluHidden16Phase2::new(
+        2,
+        [&[0; 4]; 2],
+        [90 * 65_536 / 2, 0],
+        &[0; 64],
+        [0; 16],
+        [[0; 16]; 2],
+        true,
+    )
+    .unwrap();
+    // scale=1なので非線形のセンチポーン値はround(q/2)。
+    // 最大92枚を超えた場合もq=90に制限する。
+    let phase_net = Network::<F, DirectScreluPhase2>::decode(
+        &encode::<F, _>(&EncodeInput {
+            head: &phase,
+            width: direct.width() as u32,
+            cp_per_logit: direct.cp_per_logit(),
+            rule_set: direct.rule_set(),
+            piece_values: &direct.piece_values,
+            linear: &direct.linear,
+            weights: &direct.weights,
+            biases: &direct.biases,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let hidden_net = Network::<F, ScreluHidden16Phase2>::decode(
+        &encode::<F, _>(&EncodeInput {
+            head: &hidden,
+            width: direct.width() as u32,
+            cp_per_logit: direct.cp_per_logit(),
+            rule_set: direct.rule_set(),
+            piece_values: &direct.piece_values,
+            linear: &direct.linear,
+            weights: &direct.weights,
+            biases: &direct.biases,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    for (count, expected) in [
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (3, 1),
+        (47, 23),
+        (91, 45),
+        (92, 45),
+        (100, 45),
+    ] {
+        let pieces: Vec<_> = minase_core::Square::all()
+            .take(count)
+            .map(|square| {
+                (
+                    square,
+                    PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
+                )
+            })
+            .collect();
+        let position = position_from_codes(Color::Black, &pieces);
+        for side in Color::ALL {
+            assert_eq!(
+                evaluate_for_diagnostics(&phase_net, &position, side),
+                expected
+            );
+            assert_eq!(
+                evaluate_for_diagnostics(&hidden_net, &position, side),
+                expected
+            );
+        }
+    }
 }

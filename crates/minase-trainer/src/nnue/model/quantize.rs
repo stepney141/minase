@@ -5,6 +5,7 @@ use minase::eval::{
     nnue::{
         self, EncodeInput,
         feature_set::{HalfKpHmB8, P},
+        head::DirectScrelu,
     },
 };
 
@@ -30,6 +31,13 @@ impl Quantized {
         piece_values: &[i32; PIECE_STATE_COUNT],
         rule_set: &str,
     ) -> Result<Vec<u8>> {
+        let head = DirectScrelu::new(
+            self.shape.width(),
+            &self.output_weights,
+            self.output_bias,
+            self.shape.feature_set() == InputFeatureSet::P,
+        )
+        .map_err(Error::Mnue)?;
         let input = EncodeInput {
             width: self.shape.width() as u32,
             cp_per_logit: self.shape.cp_per_logit(),
@@ -38,12 +46,11 @@ impl Quantized {
             linear: &self.linear,
             weights: &self.weights,
             biases: &self.biases,
-            output_weights: &self.output_weights,
-            output_bias: self.output_bias,
+            head: &head,
         };
         match self.shape.feature_set() {
-            InputFeatureSet::P => nnue::encode::<P>(&input),
-            InputFeatureSet::HalfKpHmB8 => nnue::encode::<HalfKpHmB8>(&input),
+            InputFeatureSet::P => nnue::encode::<P, _>(&input),
+            InputFeatureSet::HalfKpHmB8 => nnue::encode::<HalfKpHmB8, _>(&input),
         }
         .map_err(Error::Mnue)
     }
