@@ -1,7 +1,8 @@
 //! CUDAまたはCPUによるNNUEの学習と、全検証集合の評価、保存と再開。
 //! CUDAでは供給スレッドがワーカー数ぶんのバッチを並列に作り、順列の順に3面へ書く。
 //! 各更新の結果は次の更新を投入してから回収し、CPUでは単一スレッドとビット一致する並列参照計算を使う。
-//! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.npz、改善時のbest.npzの順に進む。
+//! 各エポックはB=1なら`epoch_permutation(train, seed, epoch)`、B≥2ならbucketへの振り分けで始める。
+//! 更新、snapshot、全検証、最良値更新、ログ、latest.npz、改善時のbest.npzの順に進む。
 //! `latest.npz`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
 //!
 //! `--output-dir`には次のファイルを保存する。
@@ -29,13 +30,16 @@ mod backend;
 mod base;
 mod pipeline;
 mod record;
+mod spill_calibration;
+mod store;
+use store::Store;
 #[cfg(test)]
 mod tests;
 
 use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
-        data::{InputFeatureSet, Observations, build_batches, build_targets},
+        data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
         export::{self, QuantizationReport, RemovalSignReport},
         model::{Checkpoint, Masks, Model, Parameter, Progress, Shape, load_initial},
         reference::{AdamW, Validation},
@@ -166,7 +170,7 @@ fn stop_reason(progress: &Progress, args: &Args) -> Option<StopReason> {
 struct Session {
     args: Args,
     workers: usize,
-    dataset: Dataset,
+    dataset: Store,
     base: base::Base,
     teacher_cp_per_logit: Vec<f64>,
     checkpoint: Checkpoint,
@@ -186,7 +190,7 @@ impl Session {
     /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
     /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
-    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_intervalを除く。
+    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
     /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
     /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
@@ -202,30 +206,16 @@ impl Session {
         let initial = load_initial(&args.init_pst)?;
         validate_initial(&initial, &base.linear)?;
 
-        // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
-        let dataset = Dataset::open(
-            &args.data,
-            args.lookahead()?,
-            std::num::NonZeroUsize::new(workers)
-                .ok_or(crate::nn::Error::Invalid("worker count must be positive"))?,
-        )?
-        .with_lambda(args.training.lambda)?;
-        if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
+        let dataset = Store::open(&args, workers)?;
+        if dataset.training_count() == 0 || dataset.validation_count() == 0 {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),
             );
         }
-        if dataset
-            .headers()
-            .any(|header| header.rule_set() != base.rule_set)
-        {
-            return Err(Error::Invalid("MNSD rule set differs from baseline MNPT").into());
-        }
-        let calibration = args
-            .teacher_cp_per_logit
-            .resolve(&dataset, base.cp_per_logit)?;
+        dataset.check_rules(&base.rule_set)?;
+        let calibration = dataset.calibration(&args.teacher_cp_per_logit, base.cp_per_logit)?;
         let teacher_cp_per_logit = calibration.target_values();
-        let observations = Observations::compute(&dataset, args.feature_set)?;
+        let observations = dataset.observations(args.feature_set)?;
         let model = Model::initialize(
             Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head)?,
             &initial,
@@ -283,7 +273,7 @@ impl Session {
                 || restored.progress.epoch > args.epochs
                 || restored.optimizer.step()
                     != restored.progress.epoch
-                        * dataset.training_indices().len().div_ceil(args.batch) as u64
+                        * dataset.training_count().div_ceil(args.batch as u64)
             {
                 return Err(Error::Invalid(
                     "checkpoint state differs from recomputed initialization or progress",
@@ -409,10 +399,9 @@ impl Session {
     }
 
     fn validate(&mut self, model: &Model) -> Result<Option<Validation>> {
-        ValidationSet {
-            dataset: &self.dataset,
+        StoreValidation {
+            store: &self.dataset,
             feature_set: self.args.feature_set,
-            indices: self.dataset.validation_indices(),
             teacher_cp_per_logit: &self.teacher_cp_per_logit,
             batch: self.args.batch,
             deadline: self.deadline(),
@@ -433,68 +422,93 @@ impl Session {
         self.memory()?;
         let epoch = self.checkpoint.progress.epoch + 1;
         let training_started = Instant::now();
-        let indices = epoch_permutation(self.dataset.training_indices(), self.args.seed, epoch);
         let deadline = self.deadline();
-        let training = pipeline::train_epoch(
-            pipeline::Supply {
-                dataset: &self.dataset,
+        let steps_per_epoch = self
+            .dataset
+            .training_count()
+            .div_ceil(self.args.batch as u64);
+        let mut interval_validation = |backend: &Backend| {
+            let (parameters, _) = backend.snapshot()?;
+            parameters.validate()?;
+            let mut candidate = self.checkpoint.model.clone();
+            for p in Parameter::ALL {
+                candidate.parameter_mut(p).copy_from_slice(&parameters[p]);
+            }
+            let Some(validation) = (StoreValidation {
+                store: &self.dataset,
                 feature_set: self.args.feature_set,
-                indices: &indices,
-                validation_indices: self.dataset.validation_indices(),
                 teacher_cp_per_logit: &self.teacher_cp_per_logit,
                 batch: self.args.batch,
-                validation_interval: self.args.validation_interval,
-                schedule: self.args.lr_schedule,
-                steps_per_epoch: self
-                    .dataset
-                    .training_indices()
-                    .len()
-                    .div_ceil(self.args.batch) as u64,
-                workers: self.workers,
                 deadline,
-            },
-            &mut self.backend,
-            |supply, backend| {
-                let (parameters, _) = backend.snapshot()?;
-                parameters.validate()?;
-                let mut candidate = self.checkpoint.model.clone();
-                for p in Parameter::ALL {
-                    candidate.parameter_mut(p).copy_from_slice(&parameters[p]);
-                }
-                let Some(validation) = (ValidationSet {
-                    dataset: supply.dataset,
-                    feature_set: supply.feature_set,
-                    indices: supply.validation_indices,
-                    teacher_cp_per_logit: supply.teacher_cp_per_logit,
-                    batch: supply.batch,
-                    deadline: supply.deadline,
-                })
-                .evaluate(
-                    backend,
-                    &candidate,
-                    &mut self.gpu_used_bytes,
-                    &mut self.gpu_total_bytes,
+            })
+            .evaluate(
+                backend,
+                &candidate,
+                &mut self.gpu_used_bytes,
+                &mut self.gpu_total_bytes,
+            )?
+            else {
+                return Ok(false);
+            };
+            let step = backend.step();
+            append_interval(
+                &self.args.output_dir.join("validation-interval.jsonl"),
+                &IntervalRecord {
+                    step,
+                    epoch,
+                    epoch_fraction: (step - (epoch - 1) * steps_per_epoch) as f64
+                        / steps_per_epoch as f64,
+                    validation_loss: validation.loss(),
+                    sign_accuracy: validation.sign_accuracy(),
+                    samples: validation.positions,
+                    decisive_samples: validation.decisive,
+                },
+            )?;
+            Ok(true)
+        };
+        let training = match &self.dataset {
+            Store::Memory(dataset) => {
+                let indices = epoch_permutation(dataset.training_indices(), self.args.seed, epoch);
+                pipeline::train_epoch(
+                    pipeline::Supply {
+                        dataset,
+                        feature_set: self.args.feature_set,
+                        indices: &indices,
+                        teacher_cp_per_logit: &self.teacher_cp_per_logit,
+                        batch: self.args.batch,
+                        validation_interval: self.args.validation_interval,
+                        schedule: self.args.lr_schedule,
+                        steps_per_epoch,
+                        workers: self.workers,
+                        deadline,
+                    },
+                    &mut self.backend,
+                    |_, backend| interval_validation(backend),
                 )?
-                else {
+            }
+            Store::Spill(store) => {
+                let Some(reader) = store.epoch(self.args.seed, epoch, deadline)? else {
                     return Ok(false);
                 };
-                let step = backend.step();
-                append_interval(
-                    &self.args.output_dir.join("validation-interval.jsonl"),
-                    &IntervalRecord {
-                        step,
-                        epoch,
-                        epoch_fraction: (step - (epoch - 1) * supply.steps_per_epoch) as f64
-                            / supply.steps_per_epoch as f64,
-                        validation_loss: validation.loss(),
-                        sign_accuracy: validation.sign_accuracy(),
-                        samples: validation.positions,
-                        decisive_samples: validation.decisive,
+                pipeline::train_spill_epoch(
+                    store,
+                    reader,
+                    self.workers,
+                    &self.teacher_cp_per_logit,
+                    pipeline::EpochOptions {
+                        feature_set: self.args.feature_set,
+                        batch: self.args.batch,
+                        validation_interval: self.args.validation_interval,
+                        schedule: self.args.lr_schedule,
+                        steps_per_epoch,
+                        deadline,
                     },
-                )?;
-                Ok(true)
-            },
-        )?;
+                    &mut self.backend,
+                    interval_validation,
+                )?
+            }
+        };
+
         let Some(training) = training else {
             return Ok(false);
         };
@@ -632,14 +646,25 @@ impl Session {
             return Err(Error::NoCompletedEpoch.into());
         }
         let checkpoint = self.best_checkpoint()?;
-        let (quantization, removal_sign) = match export::write_best(
-            &self.dataset,
-            &checkpoint,
-            &self.args.output_dir,
-            &self.base.piece_values,
-            &self.base.rule_set,
-            self.args.validation_sample,
-        ) {
+        let exported = match &self.dataset {
+            Store::Memory(dataset) => export::write_best(
+                dataset,
+                &checkpoint,
+                &self.args.output_dir,
+                &self.base.piece_values,
+                &self.base.rule_set,
+                self.args.validation_sample,
+            ),
+            Store::Spill(store) => export::write_best(
+                store,
+                &checkpoint,
+                &self.args.output_dir,
+                &self.base.piece_values,
+                &self.base.rule_set,
+                self.args.validation_sample,
+            ),
+        };
+        let (quantization, removal_sign) = match exported {
             Ok(report) => report,
             Err(error) => {
                 summary.reason = Some(error.to_string());
@@ -663,6 +688,60 @@ impl Session {
             return Err(Error::QuantizationError.into());
         }
         Ok(summary)
+    }
+}
+
+/// 供給元に応じて検証バッチを読み、共通の順序で集計する。
+struct StoreValidation<'a> {
+    store: &'a Store,
+    feature_set: InputFeatureSet,
+    teacher_cp_per_logit: &'a [f64],
+    batch: usize,
+    deadline: Instant,
+}
+impl StoreValidation<'_> {
+    /// 各バッチの前後で期限を確認し、時間切れなら未完了として返す。
+    fn evaluate(
+        &self,
+        backend: &Backend,
+        model: &Model,
+        gpu_used_bytes: &mut Option<usize>,
+        gpu_total_bytes: &mut Option<usize>,
+    ) -> Result<Option<Validation>> {
+        match self.store {
+            Store::Memory(dataset) => ValidationSet {
+                dataset,
+                feature_set: self.feature_set,
+                indices: dataset.validation_indices(),
+                teacher_cp_per_logit: self.teacher_cp_per_logit,
+                batch: self.batch,
+                deadline: self.deadline,
+            }
+            .evaluate(backend, model, gpu_used_bytes, gpu_total_bytes),
+            Store::Spill(store) => {
+                if Instant::now() >= self.deadline {
+                    return Ok(None);
+                }
+                let mut evaluator = backend.evaluator(model, self.batch)?;
+                if let Some((used, total)) = backend.memory()? {
+                    *gpu_used_bytes = (*gpu_used_bytes).max(Some(used));
+                    *gpu_total_bytes = Some(total);
+                }
+                validate_batches(
+                    store.validation_chunks(self.batch),
+                    |records| {
+                        let batch = BatchSlot::from_spill_records(self.feature_set, &records?)?;
+                        let values = build_targets(
+                            &batch,
+                            self.teacher_cp_per_logit,
+                            store.teacher_lambdas(),
+                        )?;
+                        evaluator.validate(&batch, &values)
+                    },
+                    || Instant::now() >= self.deadline,
+                )
+            }
+        }
     }
 }
 
@@ -816,7 +895,7 @@ fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> 
 /// `elapsed_seconds`の4欄だけを`summary.json`へ書き、コマンドは終了コード1で終わる。
 /// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.npz`へ保存する。
 /// 最良エポックがあれば`best.npz`から`nnue.bin`を書き出す。
-/// 再開後も同じシードとエポック番号から[`epoch_permutation`]で順列を再生成する。
+/// 再開後も同じシード、エポック番号とbucket数から順列を再生成する。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;
     loop {

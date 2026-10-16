@@ -205,3 +205,29 @@ fn coefficient_ranges_are_checked_before_opening_inputs() {
             .unwrap();
     }
 }
+
+#[test]
+fn bucket_defaults_and_explicit_limits_are_preserved_by_clap() {
+    // 仕様1: B=1が既定で、容量と作業ディレクトリには既定値を補わない。
+    let default = TrainArguments::try_parse_from(argv()).unwrap().args;
+    assert_eq!(default.buckets, 1);
+    assert_eq!(default.bucket_positions, None);
+    assert_eq!(default.scratch_dir, None);
+    let mut input = argv();
+    input.extend([
+        "--buckets",
+        "3",
+        "--bucket-positions",
+        "1000000",
+        "--scratch-dir",
+        "/tmp",
+    ]);
+    let explicit = TrainArguments::try_parse_from(input).unwrap().args;
+    explicit.validate().unwrap();
+    assert_eq!(explicit.buckets, 3);
+    assert_eq!(explicit.bucket_positions, Some(1_000_000));
+    assert_eq!(
+        explicit.scratch_dir.as_deref(),
+        Some(std::path::Path::new("/tmp"))
+    );
+}

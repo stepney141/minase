@@ -1,13 +1,10 @@
 use super::{Args, Error, Result};
 use crate::nn::{Sha256Hasher, atomic_write, hex};
-use crate::{
-    data::Dataset,
-    nnue::{
-        data::Observations,
-        model::{Model, Parameter},
-        options::DeviceKind,
-        reference::Validation,
-    },
+use crate::nnue::{
+    data::Observations,
+    model::{Model, Parameter},
+    options::DeviceKind,
+    reference::Validation,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -206,7 +203,7 @@ pub(super) struct Configuration {
 /// 最上位の`device`は`"cuda"`または`"cpu"`、`arguments`は新規実行時の全引数[`Args`]、
 /// `resolved_threads`は実効ワーカー数である。
 /// `settings`は引数から`output_dir`、`resume`、`data`、`init_pst`、`base`、`epochs`、
-/// `patience`、`time_limit_hours`、`threads`、`validation_interval`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
+/// `patience`、`time_limit_hours`、`threads`、`validation_interval`、`bucket_positions`、`scratch_dir`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
 /// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
 /// 学習の軌跡を変える設定なので、再開時の照合に含める。
@@ -228,17 +225,19 @@ pub(super) struct Configuration {
 /// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
 /// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`、`validation_interval`である。
 /// `validation_interval`は学習の軌跡を変えない診断用の予算なので、再開時に変更できる。
+/// `buckets`は順列を決めるので照合する。`bucket_positions`と`scratch_dir`は再開時に変更できる。
 /// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
 /// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
 /// 両配列とも分類順で、λが0の分類は`null`とする。引数の`teacher_cp_per_logit`は`settings`から除く。
-pub(super) fn configuration(
+pub(super) fn configuration<'a>(
     args: &Args,
     workers: usize,
-    dataset: &Dataset,
+    dataset: impl Into<super::store::DatasetInfo<'a>>,
     observations: &Observations,
     calibration: &crate::data::TeacherCalibration,
     model: &Model,
 ) -> Result<Configuration> {
+    let dataset = dataset.into();
     let mut settings = serde_json::to_value(args)?;
     let object = settings
         .as_object_mut()
@@ -258,6 +257,8 @@ pub(super) fn configuration(
         "time_limit_hours",
         "threads",
         "validation_interval",
+        "bucket_positions",
+        "scratch_dir",
     ] {
         object.remove(key);
     }
@@ -268,7 +269,8 @@ pub(super) fn configuration(
     );
     object.insert("initial_standard_deviation".into(), json!(0.05));
     let files = dataset
-        .paths()
+        .paths
+        .into_iter()
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files": files, "init_pst": file_record(&args.init_pst)?, "base": file_record(&args.base)?});
@@ -283,15 +285,15 @@ pub(super) fn configuration(
         json!({"observed": observed, "unobserved": rows.len()-observed})
     };
     let preprocessing = json!({
-        "teacher_classes": dataset.teacher_classes(), "teacher_cp_per_logit": calibration.teacher_cp_per_logit,
-        "teacher_lambdas": dataset.teacher_lambdas(),
+        "teacher_classes": dataset.classes, "teacher_cp_per_logit": calibration.teacher_cp_per_logit,
+        "teacher_lambdas": dataset.lambdas,
         "teacher_cp_per_logit_source": calibration.source,
         "teacher_score_multiplier": calibration.teacher_score_multiplier,
         "teacher_cp_per_logit_at_search_bound": calibration.at_search_bound, "cp_per_logit": model.shape().cp_per_logit(),
-        "training_positions": dataset.training_indices().len(),
-        "validation_positions": dataset.validation_indices().len(),
-        "training_indices_sha256": hash_u64(dataset.training_indices()),
-        "validation_indices_sha256": hash_u64(dataset.validation_indices()),
+        "training_positions": dataset.training,
+        "validation_positions": dataset.validation,
+        "training_indices_sha256": dataset.training_hash,
+        "validation_indices_sha256": dataset.validation_hash,
         "observations": {"linear_rows": count(model.masks().canonical()),
             "feature_rows": count(model.masks().first_layer()), "virtual_rows": count(model.masks().virtual_rows())},
         "canonical_counts_sha256": hash_u64(observations.canonical_counts()),
@@ -307,7 +309,8 @@ pub(super) fn configuration(
 /// 再開のたびに、呼び出し元から受け取った時刻を`config.json`の`resumes`へ追記して書き直す。
 /// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
-/// 実効ワーカー数`workers`、途中検証の間隔`validation_interval`、再開時点の完了エポック番号`epoch`を持つ。
+/// 実効ワーカー数`workers`、途中検証の間隔`validation_interval`、再開時点の完了エポック番号`epoch`、
+/// bucketの上限`bucket_positions`と作業ディレクトリ`scratch_dir`を持つ。
 pub(super) fn append_resume(
     path: &Path,
     config: &mut Value,
@@ -331,6 +334,8 @@ pub(super) fn append_resume(
         "workers": workers,
         "validation_interval": args.validation_interval,
         "epoch": epoch,
+        "bucket_positions": args.bucket_positions,
+        "scratch_dir": args.scratch_dir,
     }));
     write_json(path, config)
 }

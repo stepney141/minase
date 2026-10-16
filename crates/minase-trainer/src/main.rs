@@ -56,7 +56,7 @@ enum PstCommand {
 #[derive(Subcommand)]
 enum NnueCommand {
     /// CUDAまたはCPUで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
-    Train(minase_trainer::nnue::train::Args),
+    Train(Box<minase_trainer::nnue::train::Args>),
     /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
     CheckEquivalence {
         #[command(flatten)]
@@ -119,7 +119,7 @@ fn main() -> std::process::ExitCode {
 
 fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
-        NnueCommand::Train(args) => minase_trainer::nnue::train::run(args).map(|summary| {
+        NnueCommand::Train(args) => minase_trainer::nnue::train::run(*args).map(|summary| {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
         }),

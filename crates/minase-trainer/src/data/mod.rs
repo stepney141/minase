@@ -17,6 +17,7 @@ mod error;
 mod mnsd;
 mod sample;
 mod shuffle;
+pub mod spill;
 pub(crate) mod stream;
 mod teacher;
 
@@ -26,7 +27,11 @@ pub use error::Error;
 pub use mnsd::{Dataset, TeacherClass};
 pub(crate) use mnsd::{GameKey, outcome_code};
 pub use sample::{Outcome, Sample};
-pub use shuffle::{epoch_permutation, hash64, is_validation};
+pub use shuffle::{
+    BucketAssigner, bucket_permutation, epoch_permutation, floyd_sample, hash64, is_validation,
+    rao_sandelius_order,
+};
+pub use spill::{EpochReader, SpillRecord, SpillStore};
 pub use teacher::{
     CpPerLogitEstimate, Lookahead, build_targets_from_arrays, compute_lookahead,
     estimate_cp_per_logit, parse_lambda, validate_lambda,

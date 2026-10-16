@@ -5,6 +5,26 @@ use minase::training::records;
 /// データ経路の失敗。下位の復号・入出力エラーは原因を保持する。
 #[derive(Debug)]
 pub enum Error {
+    /// 一時ファイルまたは標本抽出の引数が不正である。
+    Invalid(&'static str),
+    /// 一時ファイルの長さまたは内容が契約に違反する。
+    Spill {
+        /// 問題の一時ファイル。
+        path: PathBuf,
+        /// 検出した不整合。
+        reason: String,
+    },
+    /// 振り分け後のbucketが局面数の上限を超えた。
+    BucketOverflow {
+        /// 上限を超えたbucket番号。
+        bucket: u32,
+        /// 実際の局面数。
+        positions: u64,
+        /// 指定された局面数の上限。
+        limit: u64,
+        /// bucketの総数。
+        buckets: u32,
+    },
     /// ファイル操作またはワーカーの起動に失敗した。
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
@@ -105,6 +125,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Invalid(reason) => f.write_str(reason),
+            Self::Spill { path, reason } => write!(f, "{}: {reason}", path.display()),
+            Self::BucketOverflow { bucket, positions, limit, buckets } => write!(f, "bucket {bucket}: {positions} positions exceed limit {limit} (B={buckets})"),
             Self::MctsTeacher { path } => write!(f, "{}: MCTS teacher data is not supported", path.display()),
             Self::PositionBuild(error) => write!(f, "cannot restore position: {error}"),
             Self::Position(error) => write!(f, "restored position is invalid: {error}"),
