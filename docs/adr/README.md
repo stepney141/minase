@@ -249,3 +249,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
 - 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
+- 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
