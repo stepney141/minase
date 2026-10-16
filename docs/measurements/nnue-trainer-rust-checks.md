@@ -214,6 +214,32 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 
 `removal`、`distribution`、`moves`の引数は`tools/train/src/minase_train/diagnostics/nnue.py`の`main`に定義がある。フェーズ5の型の比較には、`ActiveFeatureSet`と`nets/nnue.bin`だけが異なる2つのコミットが要る。
 
+## 隠れ層計画のフェーズ0　駒除去差分の補助損失の削除
+
+[NNUEの隠れ層と位相補間の出力](../plans/nnue-hidden-layer.md)のフェーズ0で、学習器から駒除去差分の補助損失（CUDAカーネル`removal.cu`、CPU参照の`removal_forward`、`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`、チェックポイントの`removal_penalty`）を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を`summary.json`の`removal_sign`に記録するようにした（2026年10月16日、ブランチ`nnue-hidden-layer`）。
+検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、検査の間、同じ機械でlishogiのBot（4スレッド）が対局していた。
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 静的検査とCPUのテスト | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p minase-trainer`（246件） | 通過。補助損失だけを検査していた4件（`removal_uses_lane_partials_then_descending_shuffle_distances`、`removal_p_adds_both_activations_before_multiplying_the_shared_weight`、`ineligible_removals_zero_diagnostics_and_preserve_reference_fields`、`removal_inputs_cover_lower_upper_inactive_and_all_ineligible_reasons`）を削除し、旧チェックポイントの拒否など4件を加えた |
+| GPUとCPU参照の等価性 | `cargo test -p minase-trainer -- --ignored gpu_`（33件）と`check-equivalence`（両方の型、幅6のバッチ100と幅128のバッチ4,096）。数値微分、1更新と連続3更新、再開の一致、混合教師と係数変更を含む | すべて一致。幅128・バッチ4,096の最大絶対誤差はP型1.144×10⁻⁵、HalfKP-hm-b8で4.843×10⁻⁶（許容誤差`1e-6+1e-5×|CPU|`以内）、2回実行はビット単位で一致 |
+| 旧チェックポイントの拒否 | `removal_penalty`スカラーを含むNPZを`decode` | 余分な配列として拒否（版数は増やしていない） |
+
+1更新の時間とワーカーの供給速度は、`bench-step`（幅128、バッチ16,384、20更新、`--profile`）を再生成した教師データの1本目（`generated-7100000.bin`）で測った。
+削除前の値は、本書の「フェーズ2e」の表（P型27.3 ms、HalfKP-hm-b8 31.6 ms）である。
+
+| 項目 | P型 | HalfKP-hm-b8 |
+|---|---:|---:|
+| 1更新（計算ストリーム） | 4.7 ms | 8.6 ms |
+| カーネル時間の内訳の上位 | 第1層の後退1.8 ms（39%）、第1層の前進1.4 ms（31%） | 第1層の最適化器4.1 ms（48%）、第1層の後退1.7 ms（20%） |
+| ワーカーの供給速度（6ワーカー） | 659,725局面/秒 | 712,661局面/秒 |
+| ワーカーの供給速度（12ワーカー） | 1,286,215局面/秒 | 1,304,419局面/秒 |
+| 実効速度（6ワーカー / 12ワーカー） | 601,669 / 950,635局面/秒 | 616,423 / 833,889局面/秒 |
+
+1更新の時間は設計書の見込み（P型約7 ms、HalfKP-hm-b8約11 ms）より短い。
+ワーカーの供給は6から12でほぼ2倍に伸び、12ワーカーでは1バッチの転送（約2.7 ms）と更新（4.7 ms）の和が律速になる。
+設計書が見込んだ1エポック（約8,000万局面）の時間は、12ワーカーの実効速度では約85秒である。
+
 ## 結論
 
 （完了後に書く。）
