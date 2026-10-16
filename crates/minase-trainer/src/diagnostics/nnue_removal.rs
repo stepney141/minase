@@ -86,8 +86,8 @@ pub(super) struct Report {
 ///
 /// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
 /// `cp_per_logit`には整数ネットの勝率尺度（1ロジットあたりのcp）を使う。
-/// 活性化を`a(x) = clamp(x, 0, 1)²`、出力重みを`w_{v,j}`とし、各視点の
-/// `cp_per_logit·(Σ_j a(h_j − 除いた駒の行_j)·w_{v,j} − Σ_j a(h_j)·w_{v,j})`を線形差分へ加える。
+/// 除去後のSCReLU活性化を作り、参照実装の共通出力部へ除去後の位相とともに渡す。
+/// 除去前後の非線形出力の差へ勝率尺度を掛け、線形差分へ加える。
 fn float_removal_deltas(
     model: &Model,
     weights: &[f32],
@@ -109,31 +109,36 @@ fn float_removal_deltas(
         .map(|row| after_q * (sums[0] - row[0]) + (1.0 - after_q) * (sums[1] - row[1]) - before)
         .collect();
     let biases = model.expanded_biases();
-    let output = model.expanded_output_weights();
-    for v in 0..2 {
-        let features = &batch.features()[v * FEATURE_COLUMNS..(v + 1) * FEATURE_COLUMNS];
-        let hidden: Vec<_> = (0..h)
-            .map(|j| {
-                features
-                    .iter()
-                    .map(|&feature| f64::from(row_value(model, weights, feature, j)))
-                    .sum::<f64>()
-                    + f64::from(biases[j])
+    let acc: Vec<_> = (0..2 * h)
+        .map(|i| {
+            let features =
+                &batch.features()[i / h * FEATURE_COLUMNS..(i / h + 1) * FEATURE_COLUMNS];
+            features
+                .iter()
+                .map(|&feature| f64::from(row_value(model, weights, feature, i % h)))
+                .sum::<f64>()
+                + f64::from(biases[i % h])
+        })
+        .collect();
+    let activation = |x: f64| x.clamp(0.0, 1.0).powi(2);
+    let before_s: Vec<_> = acc.iter().copied().map(activation).collect();
+    let before_head = reference::head_f64(model, &before_s, q);
+    for (col, value) in delta.iter_mut().enumerate() {
+        let after_s: Vec<_> = acc
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| {
+                activation(
+                    x - f64::from(row_value(
+                        model,
+                        weights,
+                        batch.features()[i / h * FEATURE_COLUMNS + col],
+                        i % h,
+                    )),
+                )
             })
             .collect();
-        let activation = |value: f64| value.clamp(0.0, 1.0).powi(2);
-        let before: f64 = (0..h)
-            .map(|j| activation(hidden[j]) * f64::from(output[v * h + j]))
-            .sum();
-        for (col, value) in delta.iter_mut().enumerate() {
-            let after: f64 = (0..h)
-                .map(|j| {
-                    activation(hidden[j] - f64::from(row_value(model, weights, features[col], j)))
-                        * f64::from(output[v * h + j])
-                })
-                .sum();
-            *value += cp_per_logit * (after - before);
-        }
+        *value += cp_per_logit * (reference::head_f64(model, &after_s, after_q) - before_head);
     }
     delta
 }

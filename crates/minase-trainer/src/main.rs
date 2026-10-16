@@ -64,7 +64,10 @@ enum NnueCommand {
         /// 入力の特徴集合を指定する。
         #[arg(long, value_enum)]
         feature_set: minase_trainer::nnue::data::InputFeatureSet,
-        /// 隠れ層の幅を2以上512以下の偶数で指定する。
+        /// 出力部を指定する。
+        #[arg(long, value_enum, default_value = "direct-screlu")]
+        head: minase_trainer::nnue::model::HeadKind,
+        /// 第1層の幅を2以上512以下の偶数で指定する。
         #[arg(long)]
         width: usize,
         /// バッチの局面数を指定する。
@@ -120,8 +123,8 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
         }),
-        NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training } => {
-            minase_trainer::nnue::gpu::equivalence::run(feature_set, width, batch, seed, training)
+        NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training, head } => {
+            minase_trainer::nnue::gpu::equivalence::run(feature_set, width, batch, seed, training, head)
                 .map(|r| println!("一致: {feature_set:?}, 幅{width}, バッチ{batch}, GPU={}, 比較数={}, 最大絶対誤差={:.3e}, 最大相対誤差={:.3e}, 許容誤差=1e-6+1e-5×|CPU|, 全勾配、1更新と連続3更新の全状態、反復ビット一致", r.device_name, r.comparisons, r.max_absolute_error, r.max_relative_error))
                 .map_err(Into::into)
         }

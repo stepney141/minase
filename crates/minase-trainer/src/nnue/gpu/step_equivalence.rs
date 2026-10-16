@@ -523,7 +523,8 @@ mod tests {
         // 学習率スケジュール設計書の3更新の全状態比較。倍率は更新ごとに変える。
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
@@ -578,7 +579,8 @@ mod tests {
         // 第1層の勾配だけをオーバーフローさせる。
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 8, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let batch = synthetic_batch(set, 1, 71).unwrap();
             let mut model = super::super::equivalence::random_model(shape, 293).unwrap();
             for parameter in Parameter::ALL {
@@ -615,7 +617,13 @@ mod tests {
     // 複数の幅と、縮約ブロックに満たないバッチや複数ブロックにまたがるバッチで同じ契約を検査する。
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
-        let shape = Shape::new(set, width, 1000.0).unwrap();
+        let shape = Shape::new(
+            set,
+            width,
+            1000.0,
+            crate::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         for batch_size in [1, 64, 129, 4096] {
             let batch = synthetic_batch(set, batch_size, 137 + batch_size as u64).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
@@ -628,7 +636,8 @@ mod tests {
     #[test]
     fn step_inputs_cover_zero_gradients_and_unobserved_moments() {
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let batch = synthetic_batch(set, 129, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
@@ -698,7 +707,8 @@ mod tests {
             lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, training.optimizer()).unwrap();
             let targets =
@@ -753,7 +763,8 @@ mod tests {
     fn gpu_step_queues_distinct_targets_and_preserves_uncollected_losses() {
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let batches: Vec<_> = [129, 64, 3]
                 .into_iter()
                 .map(|n| synthetic_batch(set, n, 71 + n as u64).unwrap())

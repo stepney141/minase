@@ -5,9 +5,13 @@
 //! 処理番号は1が[`forward`]、2が[`output_backward`]、3が[`reduce_partials`]、4が[`first_layer_backward`]である。
 //! 続いて5が[`linear_backward`]、6が[`reduce_virtual`]、7が[`AdamW::update`]、8が[`validation_forward`]である。
 //! 前進と出力部はGPUと同じ加算順のf32で計算し、後退の積と縮約はf64で計算する。
+//! D0=o·s+b、D2=φ×D0_open+(1−φ)×D0_end、s=clamp(acc,0,1)²。
+//! S1/S2は各端点へw2·hを加え、h=clamp(W1s+b1,0,1)とする。
 //! GPUとの照合は`|GPU−CPU| ≤ 1e-6 + 1e-5×|CPU|`を許容する。
 //! 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
 
+mod head;
+pub(crate) use head::{head, head_f64};
 mod optimizer;
 mod rows;
 use crate::nn::parallel;
@@ -56,15 +60,30 @@ pub struct Output {
     pub loss: Vec<f32>,
     /// バッチ平均BCEのロジット微分g`[B]`。
     pub g: Vec<f32>,
-    /// A_v = g×o_v×h(acc_v)、`[B, 2, H]`。
+    /// A_v = g×(Σ_e φ_e o_e + Σ_k dz_k W1_k)×screlu′(acc_v)、`[B, 2, H]`。
     pub d_acc: Vec<f32>,
     /// 出力重みへの全幅の寄与`[B, 2, H]`。
     pub d_output: Vec<f32>,
+    /// 序盤端点の出力バイアスへの寄与`[B]`。
+    pub d_output_bias: Vec<f32>,
+    /// 終盤端点の出力重みへの寄与`[B, 2, H]`。存在しない区画は空。
+    pub d_output_end: Vec<f32>,
+    /// 終盤端点の出力バイアスへの寄与`[B]`。存在しない区画は空。
+    pub d_output_bias_end: Vec<f32>,
+    /// W1への全幅の寄与`[B, 16, 2H]`。存在しない区画は空。
+    pub d_hidden_weights: Vec<f32>,
+    /// b1への寄与`[B, 16]`。存在しない区画は空。
+    pub d_hidden_biases: Vec<f32>,
+    /// 序盤端点のw2への寄与`[B, 16]`。存在しない区画は空。
+    pub d_hidden_output: Vec<f32>,
+    /// 終盤端点のw2への寄与`[B, 16]`。存在しない区画は空。
+    pub d_hidden_output_end: Vec<f32>,
     /// 線形係数c`[B, 2]`。
     pub c: Vec<[f32; 2]>,
 }
 impl Output {
-    fn check_shape(&self, n: usize, h: usize) -> Result<()> {
+    fn check_shape(&self, n: usize, shape: Shape) -> Result<()> {
+        let h = shape.width();
         if n == 0
             || [&self.f, &self.h, &self.d_acc, &self.d_output]
                 .iter()
@@ -73,6 +92,24 @@ impl Output {
                 .iter()
                 .any(|values| values.len() != n)
             || self.c.len() != n
+            || [
+                (Parameter::OutputBias, &self.d_output_bias, false),
+                (Parameter::OutputWeightsEnd, &self.d_output_end, true),
+                (Parameter::OutputBiasEnd, &self.d_output_bias_end, false),
+                (Parameter::HiddenWeights, &self.d_hidden_weights, true),
+                (Parameter::HiddenBiases, &self.d_hidden_biases, false),
+                (Parameter::HiddenOutput, &self.d_hidden_output, false),
+                (Parameter::HiddenOutputEnd, &self.d_hidden_output_end, false),
+            ]
+            .iter()
+            .any(|&(p, values, expanded)| {
+                let length = if expanded {
+                    shape.len(p) / shape.units() * h
+                } else {
+                    shape.len(p)
+                };
+                Some(values.len()) != n.checked_mul(length)
+            })
         {
             return Err(Error::Invalid("reference output shape"));
         }
@@ -254,30 +291,17 @@ fn forward_parallel(
     Ok(result)
 }
 
-/// 1視点の出力をj=0〜U−1の順にf32で足す。
-/// 各項は`f(acc_j)×o_j`で、P型では重みを掛ける前に`f(acc_(j+U))`も加える。
-/// GPUではレーン0が単位順に加算して同じ丸めを再現し、0付近のロジットの符号を保つ。
-pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -> f32 {
-    let s = model.shape();
-    let mut result = 0.0;
-    for j in 0..s.units() {
-        let mut activation = screlu(hidden(j));
-        if s.feature_set() == InputFeatureSet::P {
-            activation += screlu(hidden(j + s.units()));
-        }
-        result += activation * model.parameters()[Parameter::OutputWeights][v * s.units() + j];
-    }
-    result
-}
 /// 勝率尺度（1ロジットあたりのcp）を`cp_per_logit`とする。
-/// ロジットを`(u0×lin0 + u1×lin1)/cp_per_logit + ((head0 + head1) + bias)`で計算する。
+/// ロジットを`(u0×lin0 + u1×lin1)/cp_per_logit + head(s, u0)`で計算する。
 /// 出力部の加算順は[`head`]、補間係数は[`phase`]に従う。
 pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> f32 {
     let h = model.shape().width();
     let u = phase(batch.piece_counts()[b]);
-    let nonlinear = head(model, 0, |j| f.acc[b * 2 * h + j])
-        + head(model, 1, |j| f.acc[(b * 2 + 1) * h + j])
-        + model.parameters()[Parameter::OutputBias][0];
+    let activations: Vec<_> = f.acc[b * 2 * h..(b + 1) * 2 * h]
+        .iter()
+        .map(|&x| screlu(x))
+        .collect();
+    let nonlinear = head(model, &activations, u[0]).value;
     (u[0] * f.lin[b][0] + u[1] * f.lin[b][1]) / model.shape().cp_per_logit() + nonlinear
 }
 /// 浮動小数点の評価をセンチポーンで返す。学習と同じf32の前進を使う。
@@ -315,7 +339,6 @@ pub(crate) fn evaluate_f64_with_weights(
     check_weights(model, weights)?;
     let h = model.shape().width();
     let biases = model.expanded_biases();
-    let output = model.expanded_output_weights();
     let mut values = Vec::with_capacity(batch.len());
     for b in 0..batch.len() {
         let mut linear = [0.0_f64; 2];
@@ -327,9 +350,8 @@ pub(crate) fn evaluate_f64_with_weights(
         }
         let ratio = f64::from(batch.piece_counts()[b].saturating_sub(2).min(90)) / 90.0;
         let cp = ratio * linear[0] + (1.0 - ratio) * linear[1];
-        let mut nonlinear = f64::from(model.parameters()[Parameter::OutputBias][0]);
+        let mut activations = vec![0.0; 2 * h];
         for v in 0..2 {
-            let mut head = 0.0_f64;
             for j in 0..h {
                 let mut hidden = 0.0_f64;
                 for col in 0..FEATURE_COLUMNS {
@@ -341,11 +363,10 @@ pub(crate) fn evaluate_f64_with_weights(
                     ));
                 }
                 hidden += f64::from(biases[j]);
-                head += hidden.clamp(0.0, 1.0).powi(2) * f64::from(output[v * h + j]);
+                activations[v * h + j] = hidden.clamp(0.0, 1.0).powi(2);
             }
-            nonlinear += head;
         }
-        values.push(cp + cp_per_logit * nonlinear);
+        values.push(cp + cp_per_logit * head_f64(model, &activations, ratio));
     }
     Ok(values)
 }
@@ -353,7 +374,9 @@ pub(crate) fn evaluate_f64_with_weights(
 /// 出力と二値交差エントロピー、および後退の局面ごとの寄与を求める。
 /// ロジットxと教師値tに対し、`g = (σ(x)−t)/B`と`loss = max(x,0)−x×t+log1p(exp(−|x|))`をf32で計算する。
 /// 線形係数は`c = g×u/cp_per_logit`である。
-/// 活性化fとその微分hを用い、`d_acc = g×o×h(acc)`と`d_output = g×f(acc)`はf64で計算してf32へ丸める。
+/// 端点の勾配を位相で重み付けし、隠れ層の勾配を直接経路へ加える。
+/// clipped ReLUの微分は0≤z≤1で1、範囲外で0とする。
+/// パラメータへの局面ごとの寄与とd_accの積はf64で計算してf32へ丸める。
 /// 教師値が有限かつ`[0,1]`でなければエラーを返す。
 pub fn output_backward(
     model: &Model,
@@ -382,7 +405,13 @@ fn output_backward_parallel(
     {
         return Err(Error::Invalid("targets"));
     }
+    let shape = model.shape();
+    let p = model.parameters();
     let o = model.expanded_output_weights();
+    let o_end = model.expanded_output_weights_end();
+    let w1 = model.expanded_hidden_weights();
+    let phase2 = usize::from(shape.head().phase2());
+    let hidden = usize::from(shape.head().hidden()) * 16;
     let chunks = parallel::map::<_, _, Error, _>(parallel::ranges(n, threads)?, |range| {
         let length = range.len();
         let begin = range.start * 2 * h;
@@ -398,6 +427,13 @@ fn output_backward_parallel(
             g: vec![0.0; length],
             d_acc: vec![0.0; length * 2 * h],
             d_output: vec![0.0; length * 2 * h],
+            d_output_bias: vec![0.0; length],
+            d_output_end: vec![0.0; length * phase2 * 2 * h],
+            d_output_bias_end: vec![0.0; length * phase2],
+            d_hidden_weights: vec![0.0; length * hidden * 2 * h],
+            d_hidden_biases: vec![0.0; length * hidden],
+            d_hidden_output: vec![0.0; length * hidden],
+            d_hidden_output_end: vec![0.0; length * hidden * phase2],
             c: vec![[0.0; 2]; length],
         };
         for (local, b) in range.enumerate() {
@@ -411,12 +447,48 @@ fn output_backward_parallel(
             for (e, &u_e) in u.iter().enumerate() {
                 result.c[local][e] = g * u_e / model.shape().cp_per_logit();
             }
-            for (vj, &o_vj) in o.iter().enumerate() {
-                result.d_acc[local * 2 * h + vj] =
-                    (f64::from(g) * f64::from(o_vj) * f64::from(result.h[local * 2 * h + vj]))
-                        as f32;
-                result.d_output[local * 2 * h + vj] =
-                    (f64::from(g) * f64::from(result.f[local * 2 * h + vj])) as f32;
+            let phi = if shape.head().phase2() { u } else { [1.0, 0.0] };
+            let activations = &result.f[local * 2 * h..(local + 1) * 2 * h];
+            let head = head(model, activations, u[0]);
+            result.d_output_bias[local] = g * phi[0];
+            if phase2 != 0 {
+                result.d_output_bias_end[local] = g * phi[1];
+            }
+            let mut dz = vec![0.0_f64; hidden];
+            for k in 0..hidden {
+                let mut dh = f64::from(phi[0]) * f64::from(p[Parameter::HiddenOutput][k]);
+                if phase2 != 0 {
+                    dh += f64::from(phi[1]) * f64::from(p[Parameter::HiddenOutputEnd][k]);
+                    result.d_hidden_output_end[local * hidden + k] =
+                        (f64::from(g) * f64::from(phi[1]) * f64::from(head.h[k])) as f32;
+                }
+                dz[k] = if (0.0..=1.0).contains(&head.z[k]) {
+                    dh
+                } else {
+                    0.0
+                };
+                result.d_hidden_biases[local * hidden + k] = (f64::from(g) * dz[k]) as f32;
+                result.d_hidden_output[local * hidden + k] =
+                    (f64::from(g) * f64::from(phi[0]) * f64::from(head.h[k])) as f32;
+                for (i, &activation) in activations.iter().enumerate() {
+                    result.d_hidden_weights[(local * hidden + k) * 2 * h + i] =
+                        (f64::from(g) * dz[k] * f64::from(activation)) as f32;
+                }
+            }
+            for (i, &activation) in activations.iter().enumerate() {
+                let mut ds = f64::from(phi[0]) * f64::from(o[i]);
+                if phase2 != 0 {
+                    ds += f64::from(phi[1]) * f64::from(o_end[i]);
+                    result.d_output_end[local * 2 * h + i] =
+                        (f64::from(g) * f64::from(phi[1]) * f64::from(activation)) as f32;
+                }
+                for k in 0..hidden {
+                    ds += dz[k] * f64::from(w1[k * 2 * h + i]);
+                }
+                result.d_acc[local * 2 * h + i] =
+                    (f64::from(g) * ds * f64::from(result.h[local * 2 * h + i])) as f32;
+                result.d_output[local * 2 * h + i] =
+                    (f64::from(g) * f64::from(phi[0]) * f64::from(activation)) as f32;
             }
         }
         Ok(result)
@@ -429,6 +501,13 @@ fn output_backward_parallel(
         g: Vec::with_capacity(n),
         d_acc: Vec::with_capacity(n * 2 * h),
         d_output: Vec::with_capacity(n * 2 * h),
+        d_output_bias: Vec::new(),
+        d_output_end: Vec::new(),
+        d_output_bias_end: Vec::new(),
+        d_hidden_weights: Vec::new(),
+        d_hidden_biases: Vec::new(),
+        d_hidden_output: Vec::new(),
+        d_hidden_output_end: Vec::new(),
         c: Vec::with_capacity(n),
     };
     for chunk in chunks {
@@ -439,13 +518,20 @@ fn output_backward_parallel(
         result.g.extend(chunk.g);
         result.d_acc.extend(chunk.d_acc);
         result.d_output.extend(chunk.d_output);
+        result.d_output_bias.extend(chunk.d_output_bias);
+        result.d_output_end.extend(chunk.d_output_end);
+        result.d_output_bias_end.extend(chunk.d_output_bias_end);
+        result.d_hidden_weights.extend(chunk.d_hidden_weights);
+        result.d_hidden_biases.extend(chunk.d_hidden_biases);
+        result.d_hidden_output.extend(chunk.d_hidden_output);
+        result.d_hidden_output_end.extend(chunk.d_hidden_output_end);
         result.c.extend(chunk.c);
     }
     Ok(result)
 }
 
 /// バイアスと出力重みの勾配を局面方向にf64で足してf32へ丸める。
-/// P型では単位jとj+Uの勾配を合算し、出力バイアスの勾配はΣgとする。
+/// P型では直接出力とW1の単位jとj+Uの勾配を合算し、各端点のバイアスはΣ(g×φ_e)とする。
 /// 損失は`bce = Σloss/B`である。
 /// GPUは`gradient_partials`で連続する128局面ごとの部分和を作り、`reduce_partials`でブロック番号順に足す。
 pub fn reduce_partials(
@@ -459,7 +545,7 @@ pub fn reduce_partials(
     let units = s.units();
     check_parameters(model.parameters(), s)?;
     check_parameters(gradient, s)?;
-    output.check_shape(n, h)?;
+    output.check_shape(n, s)?;
     for j in 0..units {
         let mut bias = 0.0_f64;
         for v in 0..2 {
@@ -475,7 +561,35 @@ pub fn reduce_partials(
         }
         gradient[Parameter::Biases][j] = bias as f32;
     }
-    gradient[Parameter::OutputBias][0] = output.g.iter().map(|&v| f64::from(v)).sum::<f64>() as f32;
+    for (p, values) in [
+        (Parameter::OutputBias, &output.d_output_bias),
+        (Parameter::OutputWeightsEnd, &output.d_output_end),
+        (Parameter::OutputBiasEnd, &output.d_output_bias_end),
+        (Parameter::HiddenWeights, &output.d_hidden_weights),
+        (Parameter::HiddenBiases, &output.d_hidden_biases),
+        (Parameter::HiddenOutput, &output.d_hidden_output),
+        (Parameter::HiddenOutputEnd, &output.d_hidden_output_end),
+    ] {
+        let shared = matches!(p, Parameter::OutputWeightsEnd | Parameter::HiddenWeights);
+        let full_len = if shared {
+            s.len(p) / units * h
+        } else {
+            s.len(p)
+        };
+        for i in 0..s.len(p) {
+            let mut sum = 0.0_f64;
+            for b in 0..n {
+                if shared {
+                    for j in (i % units..h).step_by(units) {
+                        sum += f64::from(values[b * full_len + i / units * h + j]);
+                    }
+                } else {
+                    sum += f64::from(values[b * full_len + i]);
+                }
+            }
+            gradient[p][i] = sum as f32;
+        }
+    }
     Ok(Losses {
         bce: output.loss.iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64,
     })
@@ -506,7 +620,7 @@ fn first_layer_backward_parallel(
     check_batch(model, batch)?;
     check_parameters(gradient, model.shape())?;
     let h = model.shape().width();
-    output.check_shape(batch.len(), h)?;
+    output.check_shape(batch.len(), model.shape())?;
     let inverse = batch.first_layer_inverse();
     gradient[Parameter::FirstLayer].fill(0.0);
     let rows = inverse.starts().len() - 1;
@@ -559,7 +673,7 @@ fn linear_backward_parallel(
 ) -> Result<()> {
     check_batch(model, batch)?;
     check_parameters(gradient, model.shape())?;
-    output.check_shape(batch.len(), model.shape().width())?;
+    output.check_shape(batch.len(), model.shape())?;
     let inverse = batch.linear_inverse();
     parallel::map::<_, _, Error, _>(
         rows_mut(&mut gradient[Parameter::Linear], 2, threads)?,

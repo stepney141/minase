@@ -227,7 +227,7 @@ impl Session {
         let teacher_cp_per_logit = calibration.target_values();
         let observations = Observations::compute(&dataset, args.feature_set)?;
         let model = Model::initialize(
-            Shape::new(args.feature_set, args.width, base.cp_per_logit)?,
+            Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head)?,
             &initial,
             Masks::from_observations(args.feature_set, &observations)?,
             args.seed,
@@ -558,6 +558,10 @@ impl Session {
             samples: validation.positions,
             decisive_samples: validation.decisive,
             nonlinear_std_cp: validation.nonlinear_std_cp(),
+            hidden_saturation: validation.hidden_saturation().map(|s| Saturation {
+                acc_le_zero: s[0],
+                acc_ge_one: s[1],
+            }),
             saturation: Saturation {
                 acc_le_zero: saturation[0],
                 acc_ge_one: saturation[1],
@@ -731,6 +735,9 @@ fn validate_batches<T>(
             total.upper += statistics.upper;
             total.positions += statistics.positions;
             total.activations += statistics.activations;
+            total.hidden_lower += statistics.hidden_lower;
+            total.hidden_upper += statistics.hidden_upper;
+            total.hidden_activations += statistics.hidden_activations;
         } else {
             total = Some(statistics);
         }

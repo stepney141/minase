@@ -69,6 +69,9 @@ pub struct EpochRecord {
     pub nonlinear_std_cp: f64,
     /// 活性化の飽和率。
     pub saturation: Saturation,
+    /// 隠れ層hの0以下・1以上の割合。隠れ層がない場合はnull。
+    /// Saturationのacc_le_zeroとacc_ge_oneに、ここではhの割合を記録する。
+    pub hidden_saturation: Option<Saturation>,
     /// 初期線形重みからの絶対移動量、センチポーン。
     pub linear_movement: LinearMovement,
     /// 当該エポックの学習秒数。順列作成と供給、転送を含み、途中検証の秒数は除く。
@@ -174,6 +177,7 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
         || v.nonlinear_square_sum < 0.0
         || v.correct > v.decisive
         || v.decisive > v.positions as u64
+        || v.hidden_lower + v.hidden_upper > v.hidden_activations as u64
         || v.lower + v.upper > v.activations as u64
     {
         return Err(Error::Invalid("non-finite or invalid validation statistics").into());

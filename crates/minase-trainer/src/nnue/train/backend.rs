@@ -87,6 +87,9 @@ impl Backend {
         capacity: usize,
         threads: usize,
     ) -> Result<Self> {
+        if kind == DeviceKind::Cuda {
+            gpu::check_head(model.shape().head())?;
+        }
         Ok(match kind {
             DeviceKind::Cuda => Self::Cuda(Box::new(gpu::Step::new(
                 Device::new(0)?,

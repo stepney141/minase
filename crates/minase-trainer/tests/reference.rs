@@ -8,7 +8,7 @@ use minase::eval::features::{FEATURE_COUNT, feature_index, mirror_feature};
 use minase_core::{Color, PieceKind, Square};
 use minase_trainer::nnue::{
     data::{BatchSlot, InputFeatureSet, SENTINEL, build_targets, decode_p_feature},
-    model::{Masks, Model, Parameter, Parameters},
+    model::{HeadKind, Masks, Model, Parameter, Parameters},
     reference::{self, AdamW, AdamWConfig, RemovalReference, loss_and_gradients},
 };
 
@@ -20,7 +20,10 @@ fn close(actual: f64, expected: f64, tolerance: f64) {
     );
 }
 fn nonzero_model(set: InputFeatureSet) -> Model {
-    let mut result = model(set, 4);
+    nonzero_model_with_head(set, HeadKind::DirectScrelu)
+}
+fn nonzero_model_with_head(set: InputFeatureSet, head: HeadKind) -> Model {
+    let mut result = model_with_head(set, 4, head);
     result
         .parameter_mut(Parameter::FirstLayer)
         .iter_mut()
@@ -38,6 +41,16 @@ fn nonzero_model(set: InputFeatureSet) -> Model {
         *v = if i % 2 == 0 { 0.017 } else { -0.011 };
     }
     result.parameter_mut(Parameter::OutputBias)[0] = 0.04;
+    for (p, value) in [
+        (Parameter::OutputWeightsEnd, -0.013),
+        (Parameter::OutputBiasEnd, -0.02),
+        (Parameter::HiddenWeights, 0.07),
+        (Parameter::HiddenBiases, 0.2),
+        (Parameter::HiddenOutput, 0.03),
+        (Parameter::HiddenOutputEnd, -0.01),
+    ] {
+        result.parameter_mut(p).fill(value);
+    }
     result
 }
 
@@ -47,7 +60,7 @@ fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
     let table = model.expanded_first_layer();
     let linear = model.expanded_linear();
     let bias = model.expanded_biases();
-    let output = model.expanded_output_weights();
+
     let base = |b: usize, col: usize| {
         let row = batch.linear_features()[b * 145 + col];
         if row == SENTINEL {
@@ -82,16 +95,57 @@ fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
                 }
             }
         }
-        let mut logit = (q * linear_sums[0] + (90.0 - q) * linear_sums[1])
+        let s: Vec<_> = hidden
+            .iter()
+            .flatten()
+            .map(|x| x.clamp(0.0, 1.0).powi(2))
+            .collect();
+        let p = model.parameters();
+        let u = model.shape().units();
+        let index = |i: usize| i / width * u + i % width % u;
+        let hidden: Vec<_> = (0..if model.shape().head().hidden() { 16 } else { 0 })
+            .map(|k| {
+                (s.iter()
+                    .enumerate()
+                    .map(|(i, &x)| x * f64::from(p[Parameter::HiddenWeights][k * 2 * u + index(i)]))
+                    .sum::<f64>()
+                    + f64::from(p[Parameter::HiddenBiases][k]))
+                .clamp(0.0, 1.0)
+            })
+            .collect();
+        let endpoint = |o, w, b| {
+            f64::from(p[b][0])
+                + s.iter()
+                    .enumerate()
+                    .map(|(i, &x)| x * f64::from(p[o][index(i)]))
+                    .sum::<f64>()
+                + hidden
+                    .iter()
+                    .zip(&p[w])
+                    .map(|(&x, &w)| x * f64::from(w))
+                    .sum::<f64>()
+        };
+        let open = endpoint(
+            Parameter::OutputWeights,
+            Parameter::HiddenOutput,
+            Parameter::OutputBias,
+        );
+        let nonlinear = if model.shape().head().phase2() {
+            (q * open
+                + (90.0 - q)
+                    * endpoint(
+                        Parameter::OutputWeightsEnd,
+                        Parameter::HiddenOutputEnd,
+                        Parameter::OutputBiasEnd,
+                    ))
+                / 90.0
+        } else {
+            open
+        };
+        (q * linear_sums[0] + (90.0 - q) * linear_sums[1])
             / 90.0
             / f64::from(model.shape().cp_per_logit())
-            + f64::from(model.parameters()[Parameter::OutputBias][0]);
-        for (v, hidden) in hidden.iter().enumerate() {
-            for j in 0..width {
-                logit += hidden[j].clamp(0.0, 1.0).powi(2) * f64::from(output[v * width + j]);
-            }
-        }
-        logit
+            + nonlinear
     };
     let targets = build_targets(batch, &[700.0], &[1.0]).unwrap();
     let mut loss = 0.0;
@@ -107,45 +161,51 @@ fn finite_differences_cover_all_parameter_groups() {
     let fixture = Fixture::new(&positions());
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = fixture.batch(set, &[0, 1, 2]);
-        let mut model = nonzero_model(set);
-        let gradients = loss_and_gradients(
-            &model,
-            &batch,
-            &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
-        )
-        .unwrap();
-        close(gradients.losses.bce, dense_loss(&model, &batch), 3e-5);
-        for p in Parameter::ALL {
-            let mut indices: Vec<_> = gradients.parameters[p]
-                .iter()
-                .enumerate()
-                .filter(|(_, g)| g.abs() > 1e-7)
-                .map(|(i, _)| i)
-                .collect();
-            if indices.len() > 16 {
-                let step = indices.len() / 16;
-                indices = indices.into_iter().step_by(step).take(16).collect();
-            }
-            if !model.parameters()[p].is_empty() {
-                assert!(!indices.is_empty(), "no tested gradient in {p:?}");
-                indices.push(model.parameters()[p].len() - 1);
-            }
-            for i in indices {
-                let original = model.parameters()[p][i];
-                let epsilon = if p == Parameter::Linear { 1e-3 } else { 1e-4 };
-                model.parameter_mut(p)[i] = original + epsilon;
-                let plus_value = model.parameters()[p][i];
-                let plus = dense_loss(&model, &batch);
-                model.parameter_mut(p)[i] = original - epsilon;
-                let minus_value = model.parameters()[p][i];
-                let minus = dense_loss(&model, &batch);
-                model.parameter_mut(p)[i] = original;
-                let expected = (plus - minus) / f64::from(plus_value - minus_value);
-                let actual = f64::from(gradients.parameters[p][i]);
-                assert!(
-                    (actual - expected).abs() <= 8e-5 + expected.abs() * 3e-4,
-                    "{set:?} {p:?}[{i}] actual={actual}, finite difference={expected}"
-                );
+        for head in HeadKind::ALL {
+            let mut model = nonzero_model_with_head(set, head);
+            let gradients = loss_and_gradients(
+                &model,
+                &batch,
+                &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
+            )
+            .unwrap();
+            close(gradients.losses.bce, dense_loss(&model, &batch), 3e-5);
+            for p in Parameter::ALL {
+                let mut indices: Vec<_> = gradients.parameters[p]
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, g)| g.abs() > 1e-7)
+                    .map(|(i, _)| i)
+                    .collect();
+                if matches!(
+                    p,
+                    Parameter::Linear | Parameter::FirstLayer | Parameter::Virtual
+                ) && indices.len() > 16
+                {
+                    let step = indices.len() / 16;
+                    indices = indices.into_iter().step_by(step).take(16).collect();
+                }
+                if !model.parameters()[p].is_empty() {
+                    assert!(!indices.is_empty(), "no tested gradient in {p:?}");
+                    indices.push(model.parameters()[p].len() - 1);
+                }
+                for i in indices {
+                    let original = model.parameters()[p][i];
+                    let epsilon = if p == Parameter::Linear { 1e-3 } else { 1e-4 };
+                    model.parameter_mut(p)[i] = original + epsilon;
+                    let plus_value = model.parameters()[p][i];
+                    let plus = dense_loss(&model, &batch);
+                    model.parameter_mut(p)[i] = original - epsilon;
+                    let minus_value = model.parameters()[p][i];
+                    let minus = dense_loss(&model, &batch);
+                    model.parameter_mut(p)[i] = original;
+                    let expected = (plus - minus) / f64::from(plus_value - minus_value);
+                    let actual = f64::from(gradients.parameters[p][i]);
+                    assert!(
+                        (actual - expected).abs() <= 8e-5 + expected.abs() * 3e-4,
+                        "{set:?} {head:?} {p:?}[{i}] actual={actual}, finite difference={expected}"
+                    );
+                }
             }
         }
     }
@@ -238,7 +298,7 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
     let fixture = Fixture::new(&positions()[..1]);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = fixture.batch(set, &[0]);
-        let model = model(set, 2);
+        let model = model_with_head(set, 2, HeadKind::ScreluHidden16Phase2);
         let weights = reference::fold(&model).unwrap();
         let mut forward = reference::forward(&model, &batch, &weights).unwrap();
         let reference = RemovalReference::v0();
@@ -265,6 +325,13 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
             g,
             d_acc,
             d_output,
+            d_output_bias,
+            d_output_end,
+            d_output_bias_end,
+            d_hidden_weights,
+            d_hidden_biases,
+            d_hidden_output,
+            d_hidden_output_end,
             c
         );
         assert_eq!(gradient, unchanged);
@@ -277,7 +344,13 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         }
         assert!(build_targets(&batch, &[], &[1.0]).is_err());
         assert!(reference.deltas(&batch, batch.len()).is_err());
-        let shape = minase_trainer::nnue::model::Shape::new(set, 4, 1000.0).unwrap();
+        let shape = minase_trainer::nnue::model::Shape::new(
+            set,
+            4,
+            1000.0,
+            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         let mut wrong_gradient = Parameters::zeros(shape);
         assert!(reference::reduce_partials(&model, &output, &mut wrong_gradient).is_err());
         assert!(

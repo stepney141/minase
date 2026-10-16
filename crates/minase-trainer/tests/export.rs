@@ -123,7 +123,13 @@ impl Drop for Fixture {
 }
 
 fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Checkpoint {
-    let shape = Shape::new(set, 8, cp_per_logit).unwrap();
+    let shape = Shape::new(
+        set,
+        8,
+        cp_per_logit,
+        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+    )
+    .unwrap();
     let mut model = Model::initialize(
         shape,
         &vec![[0.0; 2]; 13_680],

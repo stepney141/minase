@@ -77,9 +77,11 @@ pub fn run(
     batch: usize,
     seed: u64,
     training: TrainingOptions,
+    head: crate::nnue::model::HeadKind,
 ) -> Result<Report> {
+    super::check_head(head)?;
     training.validate()?;
-    let shape = Shape::new(set, width, 1000.0)?;
+    let shape = Shape::new(set, width, 1000.0, head)?;
     if !(1..=MAX_BATCH_SIZE).contains(&batch) {
         return Err(Error::Invalid("equivalence batch size"));
     }
@@ -373,7 +375,8 @@ mod tests {
                         == 144
                 }));
             }
-            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
             assert!(super::super::engine::validate_inputs(shape, 100, &batch, &targets).is_ok());
             assert!(super::super::engine::validate_inputs(shape, 99, &batch, &targets).is_err());
@@ -409,7 +412,13 @@ mod tests {
 
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
-        let shape = Shape::new(set, width, 1000.0).unwrap();
+        let shape = Shape::new(
+            set,
+            width,
+            1000.0,
+            crate::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         let model = random_model(shape, 71).unwrap();
         let mut evaluator = Evaluator::new(device.clone(), &model, 4096).unwrap();
         for n in [64, 4096, 100, 1, 129] {
@@ -435,7 +444,15 @@ mod tests {
             lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            run(set, 6, 5, 293, training).unwrap();
+            run(
+                set,
+                6,
+                5,
+                293,
+                training,
+                crate::nnue::model::HeadKind::DirectScrelu,
+            )
+            .unwrap();
         }
     }
 

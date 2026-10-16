@@ -2,14 +2,11 @@
 
 use std::{fmt, fs, path::Path};
 
+use crate::diagnostics::network::IntegerNetwork;
 use crate::diagnostics::statistics::{Reversals, reversal_statistics};
 use minase::eval::{
     features::{PIECE_STATE_COUNT, piece_state},
-    nnue::{
-        self, Network,
-        feature_set::{FeatureSet, HalfKpHmB8, P},
-        head::DirectScrelu,
-    },
+    nnue,
 };
 use minase_core::Square;
 use serde::Serialize;
@@ -18,7 +15,7 @@ use crate::{
     data::{Dataset, epoch_permutation},
     nn::{Sha256Hasher, hex},
     nnue::{
-        data::{self, BatchSlot, InputFeatureSet, build_batches},
+        data::{self, BatchSlot, build_batches},
         model::{self, Checkpoint, quantize},
         reference,
     },
@@ -169,24 +166,19 @@ pub fn write_best(
     let path = output_dir.join("nnue.bin");
     fs::write(&path, quantized)?;
     let written = fs::read(path)?;
-    match checkpoint.model.shape().feature_set() {
-        InputFeatureSet::P => measure::<P>(dataset, checkpoint, &written, &indices),
-        InputFeatureSet::HalfKpHmB8 => {
-            measure::<HalfKpHmB8>(dataset, checkpoint, &written, &indices)
-        }
-    }
+    measure(dataset, checkpoint, &written, &indices)
 }
 
 /// 浮動小数点の`reference::evaluate_f64`と、復号したファイルの`nnue::evaluate`の平均絶対誤差と最大誤差を記録する。
 /// 閾値は書き出したMNUEヘッダのf32の勝率尺度を使った`cp_per_logit / 40`であり、等しい場合は合格とする。
 /// `cp_per_logit / 40`は旧NNUEから引き継いだ基準であり、棋力に対する安全性は確認されていない。
-fn measure<F: FeatureSet>(
+fn measure(
     dataset: &Dataset,
     checkpoint: &Checkpoint,
     written: &[u8],
     indices: &[u64],
 ) -> Result<(QuantizationReport, RemovalSignReport)> {
-    let network = Network::<F, DirectScrelu>::decode(written).map_err(Error::Mnue)?;
+    let network = IntegerNetwork::decode(written).map_err(Error::Mnue)?;
     let mut sum = 0.0;
     let mut maximum = 0.0_f64;
     let mut checksum = Sha256Hasher::default();
@@ -204,7 +196,7 @@ fn measure<F: FeatureSet>(
                 .record(index)?
                 .to_position()
                 .map_err(data::Error::from)?;
-            let integer_cp = nnue::evaluate(&network, &position);
+            let integer_cp = network.evaluate(&position, position.side_to_move());
             let error = (floating_cp - f64::from(integer_cp)).abs();
             if !error.is_finite() {
                 return Err(Error::NonFinite { record: index });
@@ -215,7 +207,7 @@ fn measure<F: FeatureSet>(
         }
     }
     let mean = sum / indices.len() as f64;
-    let limit = f64::from(network.cp_per_logit()) / 40.0;
+    let limit = network.cp_per_logit() / 40.0;
     let removal_sign = measure_removal_sign(dataset, checkpoint, &network, indices)?;
     Ok((
         QuantizationReport {
@@ -239,10 +231,10 @@ impl From<crate::data::Error> for Error {
 }
 
 /// 整数ネットを除去前後で全再計算し、診断と共通の規則で反転を数える。
-fn measure_removal_sign<F: FeatureSet>(
+fn measure_removal_sign(
     dataset: &Dataset,
     checkpoint: &Checkpoint,
-    network: &Network<F, DirectScrelu>,
+    network: &IntegerNetwork,
     indices: &[u64],
 ) -> Result<RemovalSignReport> {
     let reference = reference::RemovalReference::v0();
@@ -260,7 +252,7 @@ fn measure_removal_sign<F: FeatureSet>(
         if magnitudes.iter().any(|value| !value.is_finite()) {
             return Err(Error::NonFinite { record: index });
         }
-        let before = nnue::evaluate_for_diagnostics(network, &position, perspective);
+        let before = network.evaluate(&position, perspective);
         for square in Square::all() {
             let Some(piece) = position.piece_at(square) else {
                 continue;
@@ -269,7 +261,7 @@ fn measure_removal_sign<F: FeatureSet>(
                 continue;
             }
             let after = reference::remove_piece(&position, square)?;
-            let delta = nnue::evaluate_for_diagnostics(network, &after, perspective) - before;
+            let delta = network.evaluate(&after, perspective) - before;
             pairs.push((delta, deltas[square.dense_index()]));
         }
     }

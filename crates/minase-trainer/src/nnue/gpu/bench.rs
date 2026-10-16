@@ -30,7 +30,10 @@ pub struct Args {
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
-    /// 隠れ層の幅を2以上512以下の偶数で指定する。
+    /// 出力部を指定する。CPUでは全4種類を使える。
+    #[arg(long, value_enum, default_value = "direct-screlu")]
+    head: crate::nnue::model::HeadKind,
+    /// 第1層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     width: usize,
     /// 測定する1バッチの局面数を指定する。
@@ -290,7 +293,7 @@ impl ProfileMeasurements {
 /// 教師の勝率尺度の推定や学習の検証は行わない。
 pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
     args.training.validate()?;
-    let shape = Shape::new(args.feature_set, args.width, args.cp_per_logit)?;
+    let shape = Shape::new(args.feature_set, args.width, args.cp_per_logit, args.head)?;
     if !(1..=MAX_BATCH_SIZE).contains(&args.batch) {
         return Err(Error::Invalid("--batch must be in 1..=MAX_BATCH_SIZE").into());
     }
@@ -333,6 +336,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
     let warmup_targets = build_targets(&warmup, &teacher_cp_per_logit, dataset.teacher_lambdas())?;
     let optimizer = AdamW::new(shape, args.training.optimizer())?;
+    super::check_head(args.head)?;
     let device = Device::new(0)?;
     let (free_before, _) = device.memory_info()?;
     let mut ring = HostRing::new(&device, args.feature_set, args.batch)?;

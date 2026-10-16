@@ -338,8 +338,9 @@ impl BatchSlot {
         )
     }
 
-    // 数値診断では配置の内部手番とは独立に評価視点を指定する。特徴抽出と逆索引は学習と共有する。
-    pub(crate) fn from_evaluation_positions(
+    /// 配置の内部手番とは独立に評価視点を指定する。特徴抽出と逆索引は学習と共有する。
+    /// 教師値は0、分類は0、結果は引き分けとして数値評価用のバッチを作る。
+    pub fn from_evaluation_positions(
         feature_set: InputFeatureSet,
         positions: &[Position],
         perspective: Color,

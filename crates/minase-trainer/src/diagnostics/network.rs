@@ -33,7 +33,7 @@ use super::Result;
 use crate::nnue::data::InputFeatureSet;
 
 /// MNUE版5の2つの入力特徴集合と4つの出力部を扱う診断用整数ネット。
-pub(super) struct IntegerNetwork {
+pub(crate) struct IntegerNetwork {
     network: Box<dyn DiagnosticNetwork>,
     feature_set: InputFeatureSet,
 }
@@ -60,7 +60,10 @@ impl IntegerNetwork {
     /// 入力特徴集合と出力部を選び、構造記述全体と本体を`Network::decode`で検査する。
     pub(super) fn read(path: &Path) -> Result<Self> {
         let bytes = std::fs::read(path)?;
-        let architecture = nnue::architecture(&bytes)?;
+        Ok(Self::decode(&bytes)?)
+    }
+    pub(crate) fn decode(bytes: &[u8]) -> std::result::Result<Self, nnue::Error> {
+        let architecture = nnue::architecture(bytes)?;
         let feature = architecture.split(';').next();
         let head = architecture.rsplit(';').next();
         let feature_set = match feature {
@@ -69,13 +72,12 @@ impl IntegerNetwork {
             _ => {
                 return Err(nnue::Error::UnexpectedArchitecture {
                     actual: architecture.into(),
-                }
-                .into());
+                });
             }
         };
         let network = match feature_set {
-            InputFeatureSet::P => Self::decode_head::<P>(&bytes, head)?,
-            InputFeatureSet::HalfKpHmB8 => Self::decode_head::<HalfKpHmB8>(&bytes, head)?,
+            InputFeatureSet::P => Self::decode_head::<P>(bytes, head)?,
+            InputFeatureSet::HalfKpHmB8 => Self::decode_head::<HalfKpHmB8>(bytes, head)?,
         };
         Ok(Self {
             network,
@@ -86,7 +88,7 @@ impl IntegerNetwork {
     fn decode_head<F: FeatureSet + 'static>(
         bytes: &[u8],
         head: Option<&str>,
-    ) -> Result<Box<dyn DiagnosticNetwork>> {
+    ) -> std::result::Result<Box<dyn DiagnosticNetwork>, nnue::Error> {
         Ok(match head {
             Some("head=direct-screlu") => Box::new(Network::<F, DirectScrelu>::decode(bytes)?),
             Some("head=direct-screlu-phase2") => {
@@ -99,24 +101,23 @@ impl IntegerNetwork {
             _ => {
                 return Err(nnue::Error::UnexpectedArchitecture {
                     actual: nnue::architecture(bytes)?.into(),
-                }
-                .into());
+                });
             }
         })
     }
 
-    pub(super) fn feature_set(&self) -> InputFeatureSet {
+    pub(crate) fn feature_set(&self) -> InputFeatureSet {
         self.feature_set
     }
-    pub(super) fn width(&self) -> usize {
+    pub(crate) fn width(&self) -> usize {
         self.network.width()
     }
     /// 重みファイルの勝率尺度（1ロジットあたりのcp）をf64へ広げて返す。
-    pub(super) fn cp_per_logit(&self) -> f64 {
+    pub(crate) fn cp_per_logit(&self) -> f64 {
         self.network.cp_per_logit()
     }
     /// 累算器を局面から作り直し、指定した視点の評価をセンチポーンで返す。
-    pub(super) fn evaluate(&self, position: &Position, side: Color) -> i32 {
+    pub(crate) fn evaluate(&self, position: &Position, side: Color) -> i32 {
         self.network.evaluate(position, side)
     }
 }

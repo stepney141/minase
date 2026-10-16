@@ -536,7 +536,7 @@ mod tests {
     fn gpu_enqueue_rejects_invalid_multipliers_without_poisoning_later_updates() {
         let device = Device::new(0).unwrap();
         let set = InputFeatureSet::P;
-        let shape = Shape::new(set, 8, 1000.0).unwrap();
+        let shape = Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
         let model = random_model(shape, 71).unwrap();
         let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
         let batch = synthetic_batch(set, 5, 293).unwrap();

@@ -47,6 +47,7 @@ pub(super) struct DeviceModel {
 }
 impl DeviceModel {
     pub(super) fn new(device: &Device, model: &Model) -> Result<Self> {
+        super::check_head(model.shape().head())?;
         model.parameters().validate()?;
         let s = &device.compute;
         Ok(Self {
@@ -141,6 +142,7 @@ pub struct Evaluator {
 impl Evaluator {
     /// CPUのモデルをアップロードし、カーネルと3面・2面の環を用意する。
     pub fn new(device: Device, model: &Model, capacity: usize) -> Result<Self> {
+        super::check_head(model.shape().head())?;
         let ring = HostRing::new(&device, model.shape().feature_set(), capacity)?;
         let kernels = Kernels::compile(&device)?;
         let buffers = Buffers::new(&device, model.shape(), capacity)?;
@@ -243,7 +245,9 @@ impl Evaluator {
         self.read_validation(batch.len())
     }
     fn read_validation(&self, n: usize) -> Result<Validation> {
-        let sums = read(&self.device, &self.buffers.validation_sums, 7)?;
+        // direct-screluには隠れ層がないので末尾3統計は厳密に0。
+        let mut sums = [0.0; 10];
+        sums[..7].copy_from_slice(&read(&self.device, &self.buffers.validation_sums, 7)?);
         // 符号一致数と飽和数を整数に変換する前に、生の縮約値を検査する。
         // NaNを整数へ変換してもエラーにならず、異常を隠してしまうため。
         if sums.iter().any(|value| !value.is_finite()) {
@@ -279,6 +283,13 @@ impl Evaluator {
                 g: read(&self.device, &b.g, n)?,
                 d_acc: read(&self.device, &b.d_acc, a)?,
                 d_output: read(&self.device, &b.d_output, a)?,
+                d_output_bias: read(&self.device, &b.g, n)?,
+                d_output_end: Vec::new(),
+                d_output_bias_end: Vec::new(),
+                d_hidden_weights: Vec::new(),
+                d_hidden_biases: Vec::new(),
+                d_hidden_output: Vec::new(),
+                d_hidden_output_end: Vec::new(),
                 c: pairs(read(&self.device, &b.c, n * 2)?),
             },
             losses: Losses {

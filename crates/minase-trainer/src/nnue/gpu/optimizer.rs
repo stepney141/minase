@@ -32,12 +32,13 @@ struct Update<'a> {
 /// 自由パラメータ、観測マスク、AdamWの状態をデバイス上に保持する。
 pub(super) struct Optimizer {
     shape: Shape,
-    groups: [Option<Group>; 6],
+    groups: [Option<Group>; 12],
     step: u64,
     config: AdamWConfig,
 }
 impl Optimizer {
     pub fn new(device: &Device, model: &Model, optimizer: &AdamW) -> Result<Self> {
+        super::check_head(model.shape().head())?;
         let shape = model.shape();
         if shape != optimizer.m().shape() || shape != optimizer.v().shape() {
             return Err(Error::Invalid("AdamW parameter shape"));
@@ -522,7 +523,8 @@ mod tests {
         let device = Device::new(0).unwrap();
         let kernels = Kernels::compile(&device).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape = Shape::new(set, 8, 1000.0).unwrap();
+            let shape =
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
             let model = super::super::equivalence::random_model(shape, 71).unwrap();
             let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
             for parameter in Parameter::ALL {
@@ -563,6 +565,7 @@ mod tests {
                             )
                             .unwrap();
                     }
+                    _ => panic!("nonempty unsupported head parameter"),
                 }
                 optimizer
                     .update(
@@ -588,7 +591,13 @@ mod tests {
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_optimizer_rejects_nonfinite_moment_from_finite_gradient() {
         let device = Device::new(0).unwrap();
-        let shape = Shape::new(InputFeatureSet::P, 8, 1000.0).unwrap();
+        let shape = Shape::new(
+            InputFeatureSet::P,
+            8,
+            1000.0,
+            crate::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         let model = super::super::equivalence::random_model(shape, 71).unwrap();
         let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
         let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();

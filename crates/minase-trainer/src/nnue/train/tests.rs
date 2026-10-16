@@ -30,6 +30,7 @@ fn args() -> Args {
         training: crate::nnue::options::TrainingOptions::new(1.0),
         lr_schedule: LrSchedule::default(),
         feature_set: crate::nnue::data::InputFeatureSet::P,
+        head: crate::nnue::model::HeadKind::DirectScrelu,
         width: 8,
         data: vec!["records.bin".into()],
         init_pst: "pst-float.npz".into(),
@@ -153,6 +154,9 @@ fn validation_statistics() -> Validation {
         upper: 0,
         positions: 1,
         activations: 16,
+        hidden_lower: 0,
+        hidden_upper: 0,
+        hidden_activations: 0,
     }
 }
 
@@ -298,7 +302,7 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
     let base = base::read(&args.base).unwrap();
     let observations = Observations::compute(dataset, args.feature_set).unwrap();
     let model = Model::initialize(
-        Shape::new(args.feature_set, args.width, base.cp_per_logit).unwrap(),
+        Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head).unwrap(),
         &crate::nnue::model::load_initial(&args.init_pst).unwrap(),
         Masks::from_observations(args.feature_set, &observations).unwrap(),
         args.seed,
@@ -501,6 +505,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         "device",
         "lr_linear",
         "lr_schedule",
+        "head",
         "weight_decay_linear",
         "lr_ft",
         "weight_decay_ft",
@@ -583,6 +588,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             continue;
         }
         match change {
+            "head" => args.head = crate::nnue::model::HeadKind::ScreluHidden16,
             "settings" => args.seed += 1,
             "device" => args.device = crate::nnue::options::DeviceKind::Cpu,
             "lr_linear" => args.training.lr_linear *= 2.0,
@@ -630,6 +636,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         let expected = match change {
             "origin" => MismatchField::Preprocessing,
             "npz" | "base" | "data" => MismatchField::Inputs,
+            "head" => MismatchField::Settings,
             "settings" => MismatchField::Seed,
             "device" => MismatchField::Device,
             "lr_linear" => MismatchField::LrLinear,
@@ -659,6 +666,7 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
         samples: 24,
         decisive_samples: 16,
         nonlinear_std_cp: 3.5,
+        hidden_saturation: None,
         saturation: Saturation {
             acc_le_zero: 0.25,
             acc_ge_one: 0.125,
@@ -961,12 +969,17 @@ fn compare_checkpoint(left: &Path, right: &Path) {
 #[test]
 #[ignore = "CUDAが必要。学習環境で明示的に実行する"]
 fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
-    training_two_epochs_match_resume(crate::nnue::options::DeviceKind::Cuda);
+    training_two_epochs_match_resume(
+        crate::nnue::options::DeviceKind::Cuda,
+        crate::nnue::model::HeadKind::DirectScrelu,
+    );
 }
 
 #[test]
 fn cpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
-    training_two_epochs_match_resume(crate::nnue::options::DeviceKind::Cpu);
+    for head in crate::nnue::model::HeadKind::ALL {
+        training_two_epochs_match_resume(crate::nnue::options::DeviceKind::Cpu, head);
+    }
 }
 
 #[test]
@@ -1182,7 +1195,10 @@ fn resume_allows_a_changed_validation_interval() {
 /// 320局面の合成MNSDで両特徴集合を2エポック学習し、連続実行とエポック境界での再開を比べる。
 /// 累積秒数を除いたチェックポイントのバイト列と整数ネットが一致することを検査する。
 /// CUDA版の呼び出し元には`#[ignore]`を付ける。
-fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
+fn training_two_epochs_match_resume(
+    device: crate::nnue::options::DeviceKind,
+    head: crate::nnue::model::HeadKind,
+) {
     for feature_set in [
         crate::nnue::data::InputFeatureSet::P,
         crate::nnue::data::InputFeatureSet::HalfKpHmB8,
@@ -1190,6 +1206,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         args.feature_set = feature_set;
+        args.head = head;
         args.device = device;
         args.training.lambda = 0.75;
         args.training.lr_linear = 0.012;
@@ -1222,6 +1239,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
             configuration["device"],
             serde_json::to_value(device).unwrap()
         );
+        assert_eq!(configuration["settings"]["head"], head.name());
         assert_eq!(configuration["settings"]["lambda"], 0.75);
         assert!(configuration["settings"].get("removal_penalty").is_none());
         let summary: Value =
@@ -1261,12 +1279,14 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         for (left, right) in continuous.iter().zip(&resumed) {
             for row in [left, right] {
                 assert_eq!(row["device"], serde_json::to_value(device).unwrap());
+                assert_eq!(row["hidden_saturation"].is_null(), !head.hidden());
                 if device == crate::nnue::options::DeviceKind::Cpu {
                     assert!(row["gpu_memory_used_bytes"].is_null());
                     assert!(row["gpu_memory_total_bytes"].is_null());
                 }
             }
             for key in [
+                "hidden_saturation",
                 "epoch",
                 "train_loss",
                 "validation_loss",

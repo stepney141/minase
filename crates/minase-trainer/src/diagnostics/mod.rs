@@ -3,7 +3,7 @@
 //! 報告を`--output`に指定したJSONファイル1つへ保存する。
 //! 既存出力の扱いと失敗時の保存条件は[`run`]に定める。
 
-mod network;
+pub(crate) mod network;
 mod nnue_distribution;
 mod nnue_moves;
 mod nnue_removal;

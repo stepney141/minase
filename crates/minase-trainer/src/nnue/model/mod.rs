@@ -83,7 +83,49 @@ impl From<crate::nn::Error> for Error {
 /// モデルと参照計算の結果。
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// パラメータ配列の種類。P型の仮想行は長さ0。
+/// MNUEの構造記述と一致する出力部。保存値は宣言順の0〜3。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[repr(u64)]
+pub enum HeadKind {
+    /// 直接内積。
+    DirectScrelu,
+    /// 2端点の直接内積を位相で補間する。
+    DirectScreluPhase2,
+    /// 16ユニットの隠れ層を直接内積へ加える。
+    ScreluHidden16,
+    /// 隠れ層を共有した2端点を位相で補間する。
+    ScreluHidden16Phase2,
+}
+impl HeadKind {
+    /// 保存順の4出力部。
+    pub const ALL: [Self; 4] = [
+        Self::DirectScrelu,
+        Self::DirectScreluPhase2,
+        Self::ScreluHidden16,
+        Self::ScreluHidden16Phase2,
+    ];
+    /// MNUEとCLIで使う名前。
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::DirectScrelu => "direct-screlu",
+            Self::DirectScreluPhase2 => "direct-screlu-phase2",
+            Self::ScreluHidden16 => "screlu-hidden16",
+            Self::ScreluHidden16Phase2 => "screlu-hidden16-phase2",
+        }
+    }
+    /// 位相補間の有無。
+    pub fn phase2(self) -> bool {
+        matches!(self, Self::DirectScreluPhase2 | Self::ScreluHidden16Phase2)
+    }
+    /// 隠れ層の有無。
+    pub fn hidden(self) -> bool {
+        matches!(self, Self::ScreluHidden16 | Self::ScreluHidden16Phase2)
+    }
+}
+
+/// パラメータ配列の種類。存在しない区画とP型の仮想行は長さ0。
+/// Uは共有後の幅（P型H/2、HalfKP型H）である。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum Parameter {
@@ -99,16 +141,34 @@ pub enum Parameter {
     OutputWeights,
     /// ロジット単位の出力バイアス`[1]`。
     OutputBias,
+    /// 終盤端点の直接出力重み`[2, U]`。
+    OutputWeightsEnd,
+    /// 終盤端点の出力バイアス`[1]`。
+    OutputBiasEnd,
+    /// 隠れ層の自由重み`[16, 2U]`。
+    HiddenWeights,
+    /// 隠れ層のバイアス`[16]`。
+    HiddenBiases,
+    /// 序盤端点の隠れ層出力重み`[16]`。
+    HiddenOutput,
+    /// 終盤端点の隠れ層出力重み`[16]`。
+    HiddenOutputEnd,
 }
 impl Parameter {
     /// 保存順の全パラメータ。
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 12] = [
         Self::Linear,
         Self::FirstLayer,
         Self::Virtual,
         Self::Biases,
         Self::OutputWeights,
         Self::OutputBias,
+        Self::OutputWeightsEnd,
+        Self::OutputBiasEnd,
+        Self::HiddenWeights,
+        Self::HiddenBiases,
+        Self::HiddenOutput,
+        Self::HiddenOutputEnd,
     ];
     /// 検査メッセージに使うパラメータ名。
     pub fn name(self) -> &'static str {
@@ -119,20 +179,32 @@ impl Parameter {
             Self::Biases => "head.biases",
             Self::OutputWeights => "head.output_weights",
             Self::OutputBias => "head.output_bias",
+            Self::OutputWeightsEnd => "head.output_weights_end",
+            Self::OutputBiasEnd => "head.output_bias_end",
+            Self::HiddenWeights => "head.hidden_weights",
+            Self::HiddenBiases => "head.hidden_biases",
+            Self::HiddenOutput => "head.hidden_output",
+            Self::HiddenOutputEnd => "head.hidden_output_end",
         }
     }
 }
 
-/// 検査済みの入力特徴集合、幅、勝率尺度（1ロジットあたりのcp）。
+/// 検査済みの入力特徴集合、出力部、幅、勝率尺度（1ロジットあたりのcp）。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shape {
     feature_set: InputFeatureSet,
     width: usize,
     cp_per_logit: f32,
+    head: HeadKind,
 }
 impl Shape {
     /// 幅は2..=512の偶数、勝率尺度は有限かつ0より大きく100000以下。
-    pub fn new(feature_set: InputFeatureSet, width: usize, cp_per_logit: f32) -> Result<Self> {
+    pub fn new(
+        feature_set: InputFeatureSet,
+        width: usize,
+        cp_per_logit: f32,
+        head: HeadKind,
+    ) -> Result<Self> {
         if !(2..=512).contains(&width) || !width.is_multiple_of(2) {
             return Err(Error::Invalid("width must be even and in 2..512"));
         }
@@ -143,7 +215,12 @@ impl Shape {
             feature_set,
             width,
             cp_per_logit,
+            head,
         })
+    }
+    /// 出力部の種類。
+    pub fn head(self) -> HeadKind {
+        self.head
     }
     /// 入力特徴集合。
     pub fn feature_set(self) -> InputFeatureSet {
@@ -188,6 +265,15 @@ impl Shape {
             Parameter::Biases => self.units(),
             Parameter::OutputWeights => 2 * self.units(),
             Parameter::OutputBias => 1,
+            Parameter::OutputWeightsEnd => usize::from(self.head.phase2()) * 2 * self.units(),
+            Parameter::OutputBiasEnd => usize::from(self.head.phase2()),
+            Parameter::HiddenWeights => usize::from(self.head.hidden()) * 16 * 2 * self.units(),
+            Parameter::HiddenBiases | Parameter::HiddenOutput => {
+                usize::from(self.head.hidden()) * 16
+            }
+            Parameter::HiddenOutputEnd => {
+                usize::from(self.head.hidden() && self.head.phase2()) * 16
+            }
         }
     }
     /// MNUE版5と同じ構造記述文字列。
@@ -197,8 +283,9 @@ impl Shape {
             InputFeatureSet::HalfKpHmB8 => "HalfKP-hm-b8",
         };
         format!(
-            "features={name};ft={};linear=tapered2;head=direct-screlu",
-            self.width
+            "features={name};ft={};linear=tapered2;head={}",
+            self.width,
+            self.head.name()
         )
     }
 }
@@ -207,7 +294,7 @@ impl Shape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parameters {
     shape: Shape,
-    values: [Vec<f32>; 6],
+    values: [Vec<f32>; 12],
 }
 impl Parameters {
     /// 全要素を0で確保する。
@@ -311,6 +398,7 @@ impl Model {
     /// 全基底特徴の2端点に鏡映対称性を要求し、観測済みの正準行だけを行番号順に初期化する。
     /// SplitMix64の上位53ビットkを`(k+1)/(2^53+2)`へ写し、Box–Muller法でcos、sinの順に正規乱数を使う。
     /// P型では第1層へ置き、HalfKPではVirtual`[base]`へ正準行を回転して置いて特徴行を0にするため、同じ初期値とシードでは両型の初期評価が一致する。
+    /// 続く同じ乱数列からW1の自由重み、b1の順に一様分布±1/√(2H)で引き、各端点の直接重み、w2、出力バイアスは0とする。
     /// `init_std`は有限かつ非負の標準偏差で、学習時は0.05を使う。
     /// 選び方は`docs/lessons/nnue-first-layer-init-saturation.md`にある。
     pub fn initialize(
@@ -358,6 +446,12 @@ impl Model {
                 }
             }
         }
+        let bound = 1.0 / (2.0 * shape.width as f64).sqrt();
+        for p in [Parameter::HiddenWeights, Parameter::HiddenBiases] {
+            for value in &mut parameters[p] {
+                *value = ((2.0 * random.uniform() - 1.0) * bound) as f32;
+            }
+        }
         parameters.validate()?;
         Ok(Self {
             initial_linear: parameters[Parameter::Linear].to_vec(),
@@ -398,12 +492,20 @@ impl Model {
     }
     /// 出力重みを`[2, H]`に展開する。
     pub fn expanded_output_weights(&self) -> Vec<f32> {
+        self.expanded_head_weights(Parameter::OutputWeights)
+    }
+    /// 終盤の出力重みを`[2, H]`へ展開する。端点が1つなら空。
+    pub fn expanded_output_weights_end(&self) -> Vec<f32> {
+        self.expanded_head_weights(Parameter::OutputWeightsEnd)
+    }
+    /// W1を`[16, 2H]`へ展開する。P型は各視点のjとj+H/2を共有する。
+    pub fn expanded_hidden_weights(&self) -> Vec<f32> {
+        self.expanded_head_weights(Parameter::HiddenWeights)
+    }
+    fn expanded_head_weights(&self, p: Parameter) -> Vec<f32> {
         let s = self.shape();
-        (0..2 * s.width)
-            .map(|i| {
-                self.parameters[Parameter::OutputWeights]
-                    [i / s.width * s.units() + i % s.width % s.units()]
-            })
+        (0..self.parameters[p].len() / s.units() * s.width)
+            .map(|i| self.parameters[p][i / s.width * s.units() + i % s.width % s.units()])
             .collect()
     }
     /// 全基底特徴の線形`[13680, 2]`を展開する。
@@ -438,9 +540,10 @@ impl Model {
         }
         result
     }
-    /// 線形、仮想行、第1層、バイアス、出力重み、出力バイアスの順に保存範囲へ制限する。
+    /// 線形、仮想行、第1層、出力部の順に保存範囲へ制限する。
     /// 線形は[−4096,4095.875]、仮想行は±8、第1層はP型なら±8、HalfKPなら[−8−V,8−V]とする。
-    /// バイアスと出力バイアスは±8、出力重みは±1.98とし、最後に[`Self::fix_unobserved`]で未観測行を復元する。
+    /// W1は±127/64、各バイアスは±8、両端点の直接出力重みとw2は±1.98とする。
+    /// 最後に[`Self::fix_unobserved`]で未観測行を復元する。
     /// ±8は第1層の量子化値を±1,016に収める範囲であり、線形成分には適用しない。
     pub fn constrain(&mut self) -> Result<()> {
         self.parameters.validate()?;
@@ -469,11 +572,20 @@ impl Model {
             Parameter::Biases,
             Parameter::OutputWeights,
             Parameter::OutputBias,
+            Parameter::OutputWeightsEnd,
+            Parameter::OutputBiasEnd,
+            Parameter::HiddenWeights,
+            Parameter::HiddenBiases,
+            Parameter::HiddenOutput,
+            Parameter::HiddenOutputEnd,
         ] {
-            let limit = if p == Parameter::OutputWeights {
-                1.98
-            } else {
-                8.0
+            let limit = match p {
+                Parameter::OutputWeights
+                | Parameter::OutputWeightsEnd
+                | Parameter::HiddenOutput
+                | Parameter::HiddenOutputEnd => 1.98,
+                Parameter::HiddenWeights => 127.0 / 64.0,
+                _ => 8.0,
             };
             for value in &mut self.parameters[p] {
                 *value = value.clamp(-limit, limit);

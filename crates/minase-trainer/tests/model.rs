@@ -28,7 +28,13 @@ fn initialization_is_seeded_and_consumes_only_observed_canonical_rows() {
         }
         Masks::new(InputFeatureSet::P, canonical, vec![false; 13681]).unwrap()
     };
-    let shape = Shape::new(InputFeatureSet::P, 4, 1000.0).unwrap();
+    let shape = Shape::new(
+        InputFeatureSet::P,
+        4,
+        1000.0,
+        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+    )
+    .unwrap();
     let a = Model::initialize(shape, &initial, masks(&[3, 5]), 7, 0.05).unwrap();
     let b = Model::initialize(shape, &initial, masks(&[0, 3, 5]), 7, 0.05).unwrap();
     assert_eq!(&a.parameters()[Parameter::Linear][..2], &[10.0, 20.0]);
@@ -77,7 +83,13 @@ fn initialization_is_seeded_and_consumes_only_observed_canonical_rows() {
 fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
     // Model::initializeは未観測行も含む全特徴の左右一致を要求する。
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let shape = Shape::new(set, 2, 1000.0).unwrap();
+        let shape = Shape::new(
+            set,
+            2,
+            1000.0,
+            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         let masks = Masks::new(set, vec![false; 6841], vec![false; set.dimensions() + 1]).unwrap();
         for (left, right) in [(0, 11), (5, 6), (12, 23), (13668, 13679)] {
             for endpoint in 0..2 {
@@ -98,7 +110,13 @@ fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
 #[test]
 fn initialization_standard_deviation_scales_first_layer_and_virtual_rows() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let shape = Shape::new(set, 6, 1000.0).unwrap();
+        let shape = Shape::new(
+            set,
+            6,
+            1000.0,
+            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap();
         let initial = vec![[17.0, -23.0]; 13680];
         let make = |std| Model::initialize(shape, &initial, all_observed(set), 71, std);
         let a = make(0.05).unwrap();
@@ -128,7 +146,13 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
         let masks = Masks::from_observations(set, &observed).unwrap();
         for sign in [-1.0, 1.0] {
             let mut model = Model::initialize(
-                Shape::new(set, 4, 1000.0).unwrap(),
+                Shape::new(
+                    set,
+                    4,
+                    1000.0,
+                    minase_trainer::nnue::model::HeadKind::DirectScrelu,
+                )
+                .unwrap(),
                 &vec![[100.0, 120.0]; 13680],
                 masks.clone(),
                 41,
@@ -196,7 +220,13 @@ fn halfkp_unobserved_feature_inherits_updated_virtual_row() {
     input[0] = true;
     let masks = Masks::new(InputFeatureSet::HalfKpHmB8, canonical, input).unwrap();
     let mut model = Model::initialize(
-        Shape::new(InputFeatureSet::HalfKpHmB8, 4, 1000.0).unwrap(),
+        Shape::new(
+            InputFeatureSet::HalfKpHmB8,
+            4,
+            1000.0,
+            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        )
+        .unwrap(),
         &vec![[0.0; 2]; 13680],
         masks,
         5,
@@ -372,18 +402,48 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
 #[test]
 fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
     for width in [0, 1, 3, 513, usize::MAX] {
-        assert!(Shape::new(InputFeatureSet::P, width, 1000.0).is_err());
+        assert!(
+            Shape::new(
+                InputFeatureSet::P,
+                width,
+                1000.0,
+                minase_trainer::nnue::model::HeadKind::DirectScrelu
+            )
+            .is_err()
+        );
     }
     for width in [2, 6, 512] {
-        assert!(Shape::new(InputFeatureSet::P, width, 1000.0).is_ok());
+        assert!(
+            Shape::new(
+                InputFeatureSet::P,
+                width,
+                1000.0,
+                minase_trainer::nnue::model::HeadKind::DirectScrelu
+            )
+            .is_ok()
+        );
     }
     for cp_per_logit in [0.0, -1.0, f32::NAN, f32::INFINITY, 100001.0] {
-        assert!(Shape::new(InputFeatureSet::P, 4, cp_per_logit).is_err());
+        assert!(
+            Shape::new(
+                InputFeatureSet::P,
+                4,
+                cp_per_logit,
+                minase_trainer::nnue::model::HeadKind::DirectScrelu
+            )
+            .is_err()
+        );
     }
     assert!(Masks::new(InputFeatureSet::P, vec![false; 6840], vec![false; 13681]).is_err());
     assert!(
         Model::initialize(
-            Shape::new(InputFeatureSet::P, 4, 1000.0).unwrap(),
+            Shape::new(
+                InputFeatureSet::P,
+                4,
+                1000.0,
+                minase_trainer::nnue::model::HeadKind::DirectScrelu
+            )
+            .unwrap(),
             &[],
             all_observed(InputFeatureSet::P),
             7,
@@ -397,7 +457,15 @@ fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
         optimizer
             .update(
                 &mut m,
-                &Parameters::zeros(Shape::new(InputFeatureSet::P, 6, 1000.0).unwrap())
+                &Parameters::zeros(
+                    Shape::new(
+                        InputFeatureSet::P,
+                        6,
+                        1000.0,
+                        minase_trainer::nnue::model::HeadKind::DirectScrelu
+                    )
+                    .unwrap()
+                )
             )
             .is_err()
     );
