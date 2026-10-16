@@ -138,43 +138,9 @@ fn validate_multiplier(multiplier: f64) -> Result<()> {
     Ok(())
 }
 
-/// フェーズ3bで実装する出力部を、デバイス確保・学習開始前に拒否する。
-pub(crate) fn check_head(head: crate::nnue::model::HeadKind) -> Result<()> {
-    if head != crate::nnue::model::HeadKind::DirectScrelu {
-        return Err(Error::Invalid(
-            "CUDA backend does not implement this head yet",
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn unsupported_heads_are_rejected_before_cuda_is_loaded() {
-        use crate::nnue::{model::HeadKind, options::TrainingOptions};
-        for head in [
-            HeadKind::DirectScreluPhase2,
-            HeadKind::ScreluHidden16,
-            HeadKind::ScreluHidden16Phase2,
-        ] {
-            assert!(matches!(
-                equivalence::run(
-                    crate::nnue::data::InputFeatureSet::P,
-                    4,
-                    1,
-                    1,
-                    TrainingOptions::new(1.0),
-                    head
-                ),
-                Err(Error::Invalid(
-                    "CUDA backend does not implement this head yet"
-                ))
-            ));
-        }
-    }
 
     #[test]
     fn multiplier_requires_a_positive_finite_value() {

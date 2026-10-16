@@ -30,7 +30,7 @@ pub struct Args {
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
-    /// 出力部を指定する。CPUでは全4種類を使える。
+    /// 出力部を指定する。CPUとCUDAで全4種類を使える。
     #[arg(long, value_enum, default_value = "direct-screlu")]
     head: crate::nnue::model::HeadKind,
     /// 第1層の幅を2以上512以下の偶数で指定する。
@@ -336,7 +336,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
     let warmup_targets = build_targets(&warmup, &teacher_cp_per_logit, dataset.teacher_lambdas())?;
     let optimizer = AdamW::new(shape, args.training.optimizer())?;
-    super::check_head(args.head)?;
+
     let device = Device::new(0)?;
     let (free_before, _) = device.memory_info()?;
     let mut ring = HostRing::new(&device, args.feature_set, args.batch)?;

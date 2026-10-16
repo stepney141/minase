@@ -115,6 +115,17 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64, config: AdamWConfig) -> R
         *value = random.centered() * 0.003 / shape.width() as f32;
     }
     model.parameter_mut(Parameter::OutputBias)[0] = random.centered() * 0.1;
+    for parameter in [
+        Parameter::OutputWeightsEnd,
+        Parameter::OutputBiasEnd,
+        Parameter::HiddenOutput,
+        Parameter::HiddenOutputEnd,
+    ] {
+        for value in model.parameter_mut(parameter) {
+            *value = random.centered() * 0.01;
+        }
+    }
+
     model.fix_unobserved();
 
     let mut optimizer = AdamW::new(shape, config)?;
@@ -277,15 +288,14 @@ fn clipping_fixture(
             *value = if j % 2 == 0 { 9.0 } else { -9.0 };
         }
     }
-    for parameter in [
-        Parameter::Biases,
-        Parameter::OutputWeights,
-        Parameter::OutputBias,
-    ] {
-        let limit = if parameter == Parameter::OutputWeights {
-            2.5
-        } else {
-            9.0
+    for parameter in super::engine::HEAD_PARAMETERS {
+        let limit = match parameter {
+            Parameter::OutputWeights
+            | Parameter::OutputWeightsEnd
+            | Parameter::HiddenWeights
+            | Parameter::HiddenOutput
+            | Parameter::HiddenOutputEnd => 2.5,
+            _ => 9.0,
         };
         for (j, value) in model.parameter_mut(parameter).iter_mut().enumerate() {
             *value = sign * if j % 2 == 0 { limit } else { -limit };
@@ -402,28 +412,35 @@ fn compare_state_bits(a: &Parameters, a_opt: &AdamW, b: &Parameters, b_opt: &Ada
 }
 
 fn compare_expanded(report: &mut Report, cpu: &Model, first: &Step, repeated: &Step) -> Result<()> {
-    let (weights, biases, output) = first.snapshot_expanded()?;
-    let (again_weights, again_biases, again_output) = repeated.snapshot_expanded()?;
-    for (name, expected, actual, again) in [
+    let expected = [
+        ("folded first layer", reference::fold(cpu)?),
+        ("expanded biases", cpu.expanded_biases()),
+        ("expanded output", cpu.expanded_output_weights()),
         (
-            "folded first layer",
-            reference::fold(cpu)?,
-            weights,
-            again_weights,
+            "output bias",
+            cpu.parameters()[Parameter::OutputBias].to_vec(),
+        ),
+        ("expanded end output", cpu.expanded_output_weights_end()),
+        (
+            "end bias",
+            cpu.parameters()[Parameter::OutputBiasEnd].to_vec(),
+        ),
+        ("expanded W1", cpu.expanded_hidden_weights()),
+        ("b1", cpu.parameters()[Parameter::HiddenBiases].to_vec()),
+        (
+            "w2 open",
+            cpu.parameters()[Parameter::HiddenOutput].to_vec(),
         ),
         (
-            "expanded biases",
-            cpu.expanded_biases(),
-            biases,
-            again_biases,
+            "w2 end",
+            cpu.parameters()[Parameter::HiddenOutputEnd].to_vec(),
         ),
-        (
-            "expanded output weights",
-            cpu.expanded_output_weights(),
-            output,
-            again_output,
-        ),
-    ] {
+    ];
+    for (((name, expected), actual), again) in expected
+        .into_iter()
+        .zip(first.snapshot_expanded()?)
+        .zip(repeated.snapshot_expanded()?)
+    {
         report.compare(name, &expected, &actual)?;
         bits(name, &actual, &again)?;
     }
@@ -509,6 +526,129 @@ mod tests {
     use super::*;
     use crate::nnue::gpu::equivalence::synthetic_batch;
 
+    struct ResumeDirectory(std::path::PathBuf);
+    impl ResumeDirectory {
+        fn new() -> Self {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "minase-gpu-head-resume-{}-{nonce}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for ResumeDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).expect("remove GPU resume fixture");
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_all_heads_two_epochs_checkpoint_resume_matches_state_and_network() {
+        use crate::nn::checkpoint::Configuration;
+        use crate::nnue::model::{Checkpoint, HeadKind, Progress, quantize};
+        // Two epochs of three distinct batches. Restore every saved parameter and
+        // moment through the actual NPZ format at the first epoch boundary.
+        let directory = ResumeDirectory::new();
+        let device = Device::new(0).unwrap();
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            for head in HeadKind::ALL {
+                let shape = Shape::new(set, 8, 1000.0, head).unwrap();
+                let batches: Vec<_> = [1, 64, 129]
+                    .into_iter()
+                    .map(|n| synthetic_batch(set, n, 71 + n as u64).unwrap())
+                    .collect();
+                let model = super::super::equivalence::random_model(shape, 293).unwrap();
+                let optimizer = AdamW::new(shape, fixture_config()).unwrap();
+                let mut continuous = Step::new(device.clone(), &model, &optimizer, 129).unwrap();
+                let mut split = Step::new(device.clone(), &model, &optimizer, 129).unwrap();
+                let mut continuous_ring = HostRing::new(&device, set, 129).unwrap();
+                let mut split_ring = HostRing::new(&device, set, 129).unwrap();
+                for epoch in 1..=2 {
+                    for batch in &batches {
+                        let targets =
+                            build_targets(batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
+                        for (step, ring) in [
+                            (&mut continuous, &mut continuous_ring),
+                            (&mut split, &mut split_ring),
+                        ] {
+                            let ticket = ring.upload(batch).unwrap();
+                            step.enqueue(ring, &ticket, &targets, 1.0)
+                                .unwrap()
+                                .collect()
+                                .unwrap();
+                        }
+                    }
+                    let checkpoint = |step: &Step| {
+                        let (parameters, optimizer) = step.snapshot().unwrap();
+                        let mut saved = model.clone();
+                        for parameter in Parameter::ALL {
+                            saved
+                                .parameter_mut(parameter)
+                                .copy_from_slice(&parameters[parameter]);
+                        }
+                        Checkpoint {
+                            model: saved,
+                            optimizer,
+                            lambda: 0.75,
+                            progress: Progress {
+                                epoch,
+                                best: None,
+                                elapsed_seconds: 0.0,
+                                seed: 293,
+                                config: Configuration {
+                                    settings: serde_json::json!({"head": head.name()}),
+                                    inputs: serde_json::json!({}),
+                                    preprocessing: serde_json::json!({}),
+                                },
+                            },
+                        }
+                    };
+                    let first = checkpoint(&continuous);
+                    let second = checkpoint(&split);
+                    assert_eq!(first.optimizer.step(), epoch * 3);
+                    let latest = directory.0.join("latest.npz");
+                    first.write(directory.0.join("continuous.npz")).unwrap();
+                    second.write(&latest).unwrap();
+                    assert_eq!(
+                        std::fs::read(directory.0.join("continuous.npz")).unwrap(),
+                        std::fs::read(&latest).unwrap()
+                    );
+                    if epoch == 1 {
+                        let restored = Checkpoint::read(&latest).unwrap();
+                        drop(split);
+                        drop(split_ring);
+                        split =
+                            Step::new(device.clone(), &restored.model, &restored.optimizer, 129)
+                                .unwrap();
+                        split_ring = HostRing::new(&device, set, 129).unwrap();
+                    } else {
+                        let values = reference::v0_piece_values();
+                        let network = |model| {
+                            quantize(model)
+                                .unwrap()
+                                .encode(&values, "L0,P0,R1,E0")
+                                .unwrap()
+                        };
+                        std::fs::write(directory.0.join("continuous.bin"), network(&first.model))
+                            .unwrap();
+                        std::fs::write(directory.0.join("nnue.bin"), network(&second.model))
+                            .unwrap();
+                        assert_eq!(
+                            std::fs::read(directory.0.join("continuous.bin")).unwrap(),
+                            std::fs::read(directory.0.join("nnue.bin")).unwrap()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     fn fixture_config() -> AdamWConfig {
         TrainingOptions {
             weight_decay_linear: 0.02,
@@ -592,11 +732,7 @@ mod tests {
                 .iter_mut()
                 .enumerate()
             {
-                *weight = if index.is_multiple_of(2) {
-                    f32::MAX
-                } else {
-                    -f32::MAX
-                };
+                *weight = if index % 4 < 2 { f32::MAX } else { -f32::MAX };
             }
             model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
             let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
@@ -617,20 +753,16 @@ mod tests {
     // 複数の幅と、縮約ブロックに満たないバッチや複数ブロックにまたがるバッチで同じ契約を検査する。
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
-        let shape = Shape::new(
-            set,
-            width,
-            1000.0,
-            crate::nnue::model::HeadKind::DirectScrelu,
-        )
-        .unwrap();
-        for batch_size in [1, 64, 129, 4096] {
-            let batch = synthetic_batch(set, batch_size, 137 + batch_size as u64).unwrap();
-            let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
-            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
-            check(device.clone(), &fixture, &batch, &targets).unwrap();
+        for head in crate::nnue::model::HeadKind::ALL {
+            let shape = Shape::new(set, width, 1000.0, head).unwrap();
+            for batch_size in [1, 64, 129, 4096] {
+                let batch = synthetic_batch(set, batch_size, 137 + batch_size as u64).unwrap();
+                let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
+                let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
+                check(device.clone(), &fixture, &batch, &targets).unwrap();
+            }
+            check_clipping(device.clone(), shape, 293, &TrainingOptions::new(1.0)).unwrap();
         }
-        check_clipping(device, shape, 293, &TrainingOptions::new(1.0)).unwrap();
     }
 
     #[test]

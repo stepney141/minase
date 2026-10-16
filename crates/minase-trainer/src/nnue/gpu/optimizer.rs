@@ -1,7 +1,7 @@
 use super::{
     Device, Error, Result,
     device::{Kernels, pinned_zeros},
-    engine::{Buffers, DeviceModel},
+    engine::{Buffers, DeviceModel, expanded_len, gradient_columns, gradient_offset},
     launch_config, require_len,
     step::{Kernel, KernelProfile, launch_kernel},
 };
@@ -38,7 +38,6 @@ pub(super) struct Optimizer {
 }
 impl Optimizer {
     pub fn new(device: &Device, model: &Model, optimizer: &AdamW) -> Result<Self> {
-        super::check_head(model.shape().head())?;
         let shape = model.shape();
         if shape != optimizer.m().shape() || shape != optimizer.v().shape() {
             return Err(Error::Invalid("AdamW parameter shape"));
@@ -92,7 +91,7 @@ impl Optimizer {
         self.step
     }
 
-    /// 全群をLinear、P型ならFirstLayer、HalfKPならVirtual→FirstLayer、Biases、OutputWeights、OutputBiasの順に計算ストリームへ投入する。
+    /// 全群をLinear、P型ならFirstLayer、HalfKPならVirtual→FirstLayer、出力部の全区画の順に計算ストリームへ投入する。
     /// 補正係数はCPUと同じ`powf`で`1/(1−0.9^t)`と`1/(1−0.999^t)`を求める。
     /// 出力部は`gradient_sums`の位置0から出力重み、2Uからバイアス、3Uから出力バイアスをf32にして使う。
     /// ホストへの転送は行わない。
@@ -193,48 +192,36 @@ impl Optimizer {
                     )?;
             }
         }
-        self.group_mut(Parameter::Biases)?.head(
-            d,
-            k,
-            &b.gradient_sums,
-            &mut model.bias,
-            shape,
-            Update {
-                correction1,
-                correction2,
-                group: config.head,
-                nonfinite,
-                profile: profile.as_deref_mut(),
-            },
-        )?;
-        self.group_mut(Parameter::OutputWeights)?.head(
-            d,
-            k,
-            &b.gradient_sums,
-            &mut model.output,
-            shape,
-            Update {
-                correction1,
-                correction2,
-                group: config.head,
-                nonfinite,
-                profile: profile.as_deref_mut(),
-            },
-        )?;
-        self.group_mut(Parameter::OutputBias)?.head(
-            d,
-            k,
-            &b.gradient_sums,
-            &mut model.output_bias,
-            shape,
-            Update {
-                correction1,
-                correction2,
-                group: config.head,
-                nonfinite,
-                profile,
-            },
-        )?;
+        for (parameter, expanded) in [
+            (Parameter::Biases, &mut model.bias),
+            (Parameter::OutputWeights, &mut model.output),
+            (Parameter::OutputBias, &mut model.output_bias),
+            (Parameter::OutputWeightsEnd, &mut model.output_end),
+            (Parameter::OutputBiasEnd, &mut model.bias_end),
+            (Parameter::HiddenWeights, &mut model.w1),
+            (Parameter::HiddenBiases, &mut model.b1),
+            (Parameter::HiddenOutput, &mut model.w2),
+            (Parameter::HiddenOutputEnd, &mut model.w2_end),
+        ] {
+            if shape.len(parameter) == 0 {
+                continue;
+            }
+            require_len(expanded.len(), expanded_len(shape, parameter))?;
+            self.group_mut(parameter)?.head(
+                d,
+                k,
+                &b.gradient_sums,
+                expanded,
+                shape,
+                Update {
+                    correction1,
+                    correction2,
+                    group: config.head,
+                    nonfinite,
+                    profile: profile.as_deref_mut(),
+                },
+            )?;
+        }
         self.step = step;
         Ok(())
     }
@@ -283,7 +270,7 @@ impl Optimizer {
         require_len(model.output_bias.len(), 1)?;
         require_len(b.d_linear.len(), s.len(Parameter::Linear))?;
         require_len(b.d_first.len(), s.len(Parameter::FirstLayer))?;
-        require_len(b.gradient_sums.len(), 3 * s.units() + 1)?;
+        require_len(b.gradient_sums.len(), gradient_columns(s))?;
         if s.feature_set() == InputFeatureSet::HalfKpHmB8 {
             require_len(
                 b.d_virtual
@@ -466,13 +453,30 @@ impl Group {
         update: Update<'_>,
     ) -> Result<()> {
         let count = self.values.len() as u32;
-        let (gradient_offset, units, h, limit) = match self.parameter {
-            Parameter::Biases => (2 * shape.units(), shape.units(), shape.width(), 8.0_f32),
-            Parameter::OutputWeights => (0, shape.units(), shape.width(), 1.98_f32),
-            Parameter::OutputBias => (3 * shape.units(), 1, 1, 8.0_f32),
+        let limit = match self.parameter {
+            Parameter::Biases
+            | Parameter::OutputBias
+            | Parameter::OutputBiasEnd
+            | Parameter::HiddenBiases => 8.0_f32,
+            Parameter::OutputWeights
+            | Parameter::OutputWeightsEnd
+            | Parameter::HiddenOutput
+            | Parameter::HiddenOutputEnd => 1.98_f32,
+            Parameter::HiddenWeights => 127.0_f32 / 64.0,
             _ => return Err(Error::Invalid("optimizer head parameter")),
         };
-        let gradient_offset = gradient_offset as u32;
+        let (units, h) = if matches!(
+            self.parameter,
+            Parameter::Biases
+                | Parameter::OutputWeights
+                | Parameter::OutputWeightsEnd
+                | Parameter::HiddenWeights
+        ) {
+            (shape.units(), shape.width())
+        } else {
+            (1, 1)
+        };
+        let gradient_offset = gradient_offset(shape, self.parameter) as u32;
         let units = units as u32;
         let h = h as u32;
         let mut args = d.compute.launch_builder(&k.optimizer_head);
@@ -491,7 +495,7 @@ impl Group {
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay)
             .arg(update.nonfinite);
-        // SAFETY: 3×units+1個の勾配と各群の自由・展開配列を検査済み。Pの両半分は
+        // SAFETY: 出力部の全区画の勾配と各群の自由・展開配列を検査済み。Pの両半分は
         // 同じスレッドが書く。unitsはHまたはH/2で正であり、全要素の書込先は重ならない。
         // 非有限フラグの1要素だけは全スレッドがatomicOrで共有する。
         unsafe {
@@ -523,66 +527,61 @@ mod tests {
         let device = Device::new(0).unwrap();
         let kernels = Kernels::compile(&device).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let shape =
-                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
-            let model = super::super::equivalence::random_model(shape, 71).unwrap();
-            let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
-            for parameter in Parameter::ALL {
-                if shape.len(parameter) == 0 {
-                    continue;
-                }
-                let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();
-                let mut expanded = DeviceModel::new(&device, &model).unwrap();
-                let mut buffers = Buffers::new(&device, shape, 1).unwrap();
-                let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
-                match parameter {
-                    Parameter::Linear | Parameter::FirstLayer | Parameter::Virtual => {
-                        let gradient = match parameter {
-                            Parameter::Linear => &mut buffers.d_linear,
-                            Parameter::FirstLayer => &mut buffers.d_first,
-                            Parameter::Virtual => buffers.d_virtual.as_mut().unwrap(),
-                            _ => unreachable!(),
-                        };
-                        // 最後の埋め草行は未観測。更新しない行でも勾配を検査する。
-                        let last = gradient.len() - 1;
-                        device
-                            .compute
-                            .memcpy_htod(&[f32::NAN], &mut gradient.slice_mut(last..))
-                            .unwrap();
+            for head in crate::nnue::model::HeadKind::ALL {
+                let shape = Shape::new(set, 8, 1000.0, head).unwrap();
+                let model = super::super::equivalence::random_model(shape, 71).unwrap();
+                let adamw = AdamW::new(shape, AdamWConfig::default()).unwrap();
+                for parameter in Parameter::ALL {
+                    if shape.len(parameter) == 0 {
+                        continue;
                     }
-                    Parameter::Biases | Parameter::OutputWeights | Parameter::OutputBias => {
-                        let offset = match parameter {
-                            Parameter::OutputWeights => 0,
-                            Parameter::Biases => 2 * shape.units(),
-                            Parameter::OutputBias => 3 * shape.units(),
-                            _ => unreachable!(),
-                        };
-                        device
-                            .compute
-                            .memcpy_htod(
-                                &[f64::INFINITY],
-                                &mut buffers.gradient_sums.slice_mut(offset..offset + 1),
-                            )
-                            .unwrap();
+                    let mut optimizer = Optimizer::new(&device, &model, &adamw).unwrap();
+                    let mut expanded = DeviceModel::new(&device, &model).unwrap();
+                    let mut buffers = Buffers::new(&device, shape, 1).unwrap();
+                    let mut status = device.compute.alloc_zeros::<u32>(1).unwrap();
+                    match parameter {
+                        Parameter::Linear | Parameter::FirstLayer | Parameter::Virtual => {
+                            let gradient = match parameter {
+                                Parameter::Linear => &mut buffers.d_linear,
+                                Parameter::FirstLayer => &mut buffers.d_first,
+                                Parameter::Virtual => buffers.d_virtual.as_mut().unwrap(),
+                                _ => unreachable!(),
+                            };
+                            // 最後の埋め草行は未観測。更新しない行でも勾配を検査する。
+                            let last = gradient.len() - 1;
+                            device
+                                .compute
+                                .memcpy_htod(&[f32::NAN], &mut gradient.slice_mut(last..))
+                                .unwrap();
+                        }
+                        _ => {
+                            let offset = gradient_offset(shape, parameter);
+                            device
+                                .compute
+                                .memcpy_htod(
+                                    &[f64::INFINITY],
+                                    &mut buffers.gradient_sums.slice_mut(offset..offset + 1),
+                                )
+                                .unwrap();
+                        }
                     }
-                    _ => panic!("nonempty unsupported head parameter"),
+                    optimizer
+                        .update(
+                            &device,
+                            &kernels,
+                            &mut expanded,
+                            &buffers,
+                            &mut status,
+                            None,
+                            1.0,
+                        )
+                        .unwrap();
+                    assert_ne!(
+                        device.compute.clone_dtoh(&status).unwrap()[0] & 1,
+                        0,
+                        "{parameter:?}"
+                    );
                 }
-                optimizer
-                    .update(
-                        &device,
-                        &kernels,
-                        &mut expanded,
-                        &buffers,
-                        &mut status,
-                        None,
-                        1.0,
-                    )
-                    .unwrap();
-                assert_ne!(
-                    device.compute.clone_dtoh(&status).unwrap()[0] & 1,
-                    0,
-                    "{parameter:?}"
-                );
             }
         }
     }

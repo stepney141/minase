@@ -79,7 +79,6 @@ pub fn run(
     training: TrainingOptions,
     head: crate::nnue::model::HeadKind,
 ) -> Result<Report> {
-    super::check_head(head)?;
     training.validate()?;
     let shape = Shape::new(set, width, 1000.0, head)?;
     if !(1..=MAX_BATCH_SIZE).contains(&batch) {
@@ -113,13 +112,32 @@ pub fn check(
 ) -> Result<Report> {
     let weights = reference::fold(model)?;
     let f = reference::forward(model, batch, &weights)?;
-    let output = reference::output_backward(model, batch, &f, targets)?;
+    let mut output = reference::output_backward(model, batch, &f, targets)?;
     let mut gradients = Parameters::zeros(model.shape());
     let losses = reference::reduce_partials(model, &output, &mut gradients)?;
     reference::first_layer_backward(model, batch, &output, &mut gradients)?;
     reference::linear_backward(model, batch, &output, &mut gradients)?;
     reference::reduce_virtual(&mut gradients)?;
     let validation = reference::validation_forward(model, batch, &f, targets)?;
+    // GPU stores W1 contributions in the free (mirror-folded) layout.
+    // Fold the independently computed CPU contributions for comparison only.
+    if model.shape().units() != model.shape().width() {
+        let h = model.shape().width();
+        let u = model.shape().units();
+        output.d_hidden_weights = output
+            .d_hidden_weights
+            .chunks_exact(h)
+            .flat_map(|row| (0..u).map(move |j| row[j] + row[j + u]))
+            .collect();
+    }
+    let mut hidden_z = Vec::new();
+    let mut hidden_h = Vec::new();
+    for (b, activations) in output.f.chunks_exact(2 * model.shape().width()).enumerate() {
+        let phi = reference::phase(batch.piece_counts()[b])[0];
+        let hidden = reference::head(model, activations, phi);
+        hidden_z.extend(hidden.z);
+        hidden_h.extend(hidden.h);
+    }
     let expected = Evaluation {
         forward: f,
         output,
@@ -130,6 +148,11 @@ pub fn check(
         output_weights: gradients[Parameter::OutputWeights].to_vec(),
         biases: gradients[Parameter::Biases].to_vec(),
         output_bias: gradients[Parameter::OutputBias][0],
+        hidden_z,
+        hidden_h,
+        head_gradients: std::array::from_fn(|i| {
+            gradients[super::engine::HEAD_PARAMETERS[i + 3]].to_vec()
+        }),
         validation,
     };
     drop(gradients);
@@ -188,7 +211,9 @@ pub fn check(
     Ok(report)
 }
 fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
-    vec![
+    let mut arrays: Vec<(&'static str, &[f32])> = vec![
+        ("hidden z", &e.hidden_z),
+        ("hidden h", &e.hidden_h),
         ("acc", &e.forward.acc),
         ("lin", e.forward.lin.as_flattened()),
         ("f", &e.output.f),
@@ -198,6 +223,13 @@ fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
         ("g", &e.output.g),
         ("d_acc", &e.output.d_acc),
         ("d_output", &e.output.d_output),
+        ("d_output_bias", &e.output.d_output_bias),
+        ("d_output_end", &e.output.d_output_end),
+        ("d_output_bias_end", &e.output.d_output_bias_end),
+        ("d_hidden_weights (folded)", &e.output.d_hidden_weights),
+        ("d_hidden_biases", &e.output.d_hidden_biases),
+        ("d_hidden_output", &e.output.d_hidden_output),
+        ("d_hidden_output_end", &e.output.d_hidden_output_end),
         ("c", e.output.c.as_flattened()),
         ("first layer", &e.first_layer),
         ("linear", &e.linear),
@@ -205,7 +237,14 @@ fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
         ("output weights", &e.output_weights),
         ("biases", &e.biases),
         ("output bias", std::slice::from_ref(&e.output_bias)),
-    ]
+    ];
+    for (i, values) in e.head_gradients.iter().enumerate() {
+        arrays.push((
+            super::engine::HEAD_PARAMETERS[i + 3].name(),
+            values.as_slice(),
+        ));
+    }
+    arrays
 }
 fn statistics(e: &Evaluation) -> Vec<f64> {
     let mut values = vec![e.losses.bce];
@@ -248,6 +287,12 @@ pub(super) fn random_model(shape: Shape, seed: u64) -> Result<Model> {
         Parameter::Linear,
         Parameter::OutputWeights,
         Parameter::OutputBias,
+        Parameter::OutputWeightsEnd,
+        Parameter::OutputBiasEnd,
+        Parameter::HiddenWeights,
+        Parameter::HiddenBiases,
+        Parameter::HiddenOutput,
+        Parameter::HiddenOutputEnd,
     ] {
         let scale = if p == Parameter::Linear { 12.0 } else { 0.3 };
         for x in model.parameter_mut(p) {
@@ -412,22 +457,18 @@ mod tests {
 
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
-        let shape = Shape::new(
-            set,
-            width,
-            1000.0,
-            crate::nnue::model::HeadKind::DirectScrelu,
-        )
-        .unwrap();
-        let model = random_model(shape, 71).unwrap();
-        let mut evaluator = Evaluator::new(device.clone(), &model, 4096).unwrap();
-        for n in [64, 4096, 100, 1, 129] {
-            let batch = synthetic_batch(set, n, 43 + n as u64).unwrap();
-            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
-            check(&mut evaluator, &model, &batch, &targets).unwrap();
+        for head in crate::nnue::model::HeadKind::ALL {
+            let shape = Shape::new(set, width, 1000.0, head).unwrap();
+            let model = random_model(shape, 71).unwrap();
+            let mut evaluator = Evaluator::new(device.clone(), &model, 4096).unwrap();
+            for n in [64, 4096, 100, 1, 129] {
+                let batch = synthetic_batch(set, n, 43 + n as u64).unwrap();
+                let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
+                check(&mut evaluator, &model, &batch, &targets).unwrap();
+            }
+            drop(evaluator);
+            drop(model);
         }
-        drop(evaluator);
-        drop(model);
     }
 
     #[test]
@@ -453,6 +494,35 @@ mod tests {
                 crate::nnue::model::HeadKind::DirectScrelu,
             )
             .unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_hidden_clipping_boundaries_match_reference() {
+        // The head contract includes both z=0 and z=1 in the derivative.
+        // Values outside the interval must contribute zero to W1 and b1.
+        let device = Device::new(0).unwrap();
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            for head in [
+                crate::nnue::model::HeadKind::ScreluHidden16,
+                crate::nnue::model::HeadKind::ScreluHidden16Phase2,
+            ] {
+                let shape = Shape::new(set, 8, 1000.0, head).unwrap();
+                let mut model = random_model(shape, 71).unwrap();
+                model.parameter_mut(Parameter::HiddenWeights).fill(0.0);
+                for (k, value) in model
+                    .parameter_mut(Parameter::HiddenBiases)
+                    .iter_mut()
+                    .enumerate()
+                {
+                    *value = [-0.25, 0.0, 0.25, 1.0, 1.25][k % 5];
+                }
+                let batch = synthetic_batch(set, 129, 43).unwrap();
+                let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
+                let mut evaluator = Evaluator::new(device.clone(), &model, batch.len()).unwrap();
+                check(&mut evaluator, &model, &batch, &targets).unwrap();
+            }
         }
     }
 

@@ -7,29 +7,27 @@ pub(crate) struct HeadOutput {
     pub h: Vec<f32>,
 }
 
-/// 各視点の内積を単位順にf32で加算し、2視点の和を返す。
-/// P型は各視点のjとj+Uの活性化を先に足す。
-fn dot(model: &Model, weights: &[f32], s: &[f32]) -> f32 {
-    let shape = model.shape();
-    let mut views = [0.0; 2];
-    for v in 0..2 {
-        for j in 0..shape.units() {
-            let i = v * shape.width() + j;
-            let activation = if shape.units() == shape.width() {
-                s[i]
-            } else {
-                s[i] + s[i + shape.units()]
-            };
-            views[v] += activation * weights[v * shape.units() + j];
+/// 32レーンの各レーンが添字lane, lane+32, ...をf32で足し、
+/// 距離16、8、4、2、1の固定木で縮約する。末尾の空レーンは0とする。
+/// CUDAのhead_warp_sumと同じ順序で、積和は融合しない。
+fn warp_dot(weights: &[f32], activations: &[f32]) -> f32 {
+    let mut lanes = [0.0_f32; 32];
+    for (i, (&weight, &activation)) in weights.iter().zip(activations).enumerate() {
+        lanes[i % 32] += weight * activation;
+    }
+    for distance in [16, 8, 4, 2, 1] {
+        for lane in 0..distance {
+            lanes[lane] += lanes[lane + distance];
         }
     }
-    views[0] + views[1]
+    lanes[0]
 }
 
 /// SCReLU済みの2H成分から出力部を計算する。phiは序盤端点の係数。
 /// D0=o·s+b、D2=phi×D0_open+(1−phi)×D0_end。
 /// S1/S2は各端点へw2·clamp(W1s+b1,0,1)を加える。
-/// W1の各行は手番側から相手側へ自由成分順に、w2は0〜15の順にf32で足す。
+/// 直接内積は各視点をwarp_dotで縮約して足す。W1は2視点を連結してwarp_dotで縮約する。
+/// w2は0〜15の順にf32で足す。
 /// 各端点は(直接内積+w2内積)+バイアスの順とし、最後に位相で補間する。
 pub(crate) fn head(model: &Model, s: &[f32], phi: f32) -> HeadOutput {
     let shape = model.shape();
@@ -47,7 +45,7 @@ pub(crate) fn head(model: &Model, s: &[f32], phi: f32) -> HeadOutput {
     let z: Vec<_> = p[Parameter::HiddenWeights]
         .chunks_exact(2 * shape.units())
         .zip(&p[Parameter::HiddenBiases])
-        .map(|(w, &b)| w.iter().zip(&folded).fold(0.0, |sum, (&w, &x)| sum + w * x) + b)
+        .map(|(w, &b)| warp_dot(w, &folded) + b)
         .collect();
     let h: Vec<_> = z.iter().map(|&x| x.clamp(0.0, 1.0)).collect();
     let endpoint = |o, w, b| {
@@ -55,7 +53,10 @@ pub(crate) fn head(model: &Model, s: &[f32], phi: f32) -> HeadOutput {
         for (&activation, &weight) in h.iter().zip(&p[w]) {
             hidden += activation * weight;
         }
-        dot(model, &p[o], s) + hidden + p[b][0]
+        (warp_dot(&p[o][..shape.units()], &folded[..shape.units()])
+            + warp_dot(&p[o][shape.units()..], &folded[shape.units()..]))
+            + hidden
+            + p[b][0]
     };
     let open = endpoint(
         Parameter::OutputWeights,

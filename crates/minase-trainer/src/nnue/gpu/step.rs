@@ -129,14 +129,26 @@ impl KernelProfile {
         let l = CANONICAL_ROWS as u64;
         let columns = FEATURE_COLUMNS as u64;
         let parameter_len = |p| self.shape.len(p) as u64;
+        let phase2 = u64::from(self.shape.head().phase2());
+        let hidden = self.shape.len(Parameter::HiddenBiases) as u64;
+        let extra_contributions = phase2 * (2 * h + 1) + hidden * (2 * u + 2 + phase2);
+        let gradient_columns = super::engine::gradient_columns(self.shape) as u64;
         match kernel {
             Kernel::ForwardAcc => (4 * (2 * b * columns * g + f * h + 2 * b * h), 8 * b * h),
             Kernel::ForwardLinear => (8 * (b * columns + e), 8 * b),
             Kernel::OutputBackward => (
-                24 * b * h + 8 * b * u + 17 * b,
-                32 * b * h + 20 * b + 8 * head_blocks,
+                24 * b * h
+                    + 8 * b * u
+                    + 17 * b
+                    + 4 * b
+                        * (phase2 * (2 * u + 1 + 4 * h)
+                            + hidden * (6 * h + 2 * u + 3 + 2 * phase2)),
+                32 * b * h + 24 * b + 4 * b * (extra_contributions + 2 * hidden) + 8 * head_blocks,
             ),
-            Kernel::GradientPartials => (4 * b * (4 * h + 1), 8 * q * (3 * u + 1)),
+            Kernel::GradientPartials => (
+                4 * b * (4 * h + 1 + extra_contributions),
+                8 * q * gradient_columns,
+            ),
             Kernel::ReducePartials { blocks, columns } => {
                 (8 * blocks as u64 * columns as u64, 8 * columns as u64)
             }
@@ -163,11 +175,7 @@ impl KernelProfile {
             ),
             Kernel::OptimizerHead(p) => {
                 let n = parameter_len(p);
-                let expanded = if p == Parameter::OutputBias {
-                    1
-                } else {
-                    n * h / u
-                };
+                let expanded = super::engine::expanded_len(self.shape, p) as u64;
                 (20 * n, 12 * n + 4 * expanded)
             }
         }
@@ -509,15 +517,31 @@ impl Step {
     }
 
     // 等価性検査では、次の前進が読む合成重みと共有パラメータの展開も照合する。
-    pub(super) fn snapshot_expanded(&self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
+    pub(super) fn snapshot_expanded(&self) -> Result<Vec<Vec<f32>>> {
         if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
         }
-        Ok((
-            self.device.compute.clone_dtoh(&self.model.weights)?,
-            self.device.compute.clone_dtoh(&self.model.bias)?,
-            self.device.compute.clone_dtoh(&self.model.output)?,
-        ))
+        [
+            &self.model.weights,
+            &self.model.bias,
+            &self.model.output,
+            &self.model.output_bias,
+            &self.model.output_end,
+            &self.model.bias_end,
+            &self.model.w1,
+            &self.model.b1,
+            &self.model.w2,
+            &self.model.w2_end,
+        ]
+        .into_iter()
+        .map(|values| {
+            if values.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Ok(self.device.compute.clone_dtoh(values)?)
+            }
+        })
+        .collect()
     }
 }
 

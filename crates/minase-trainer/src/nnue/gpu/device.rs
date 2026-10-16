@@ -52,6 +52,26 @@ impl Device {
     }
 }
 
+/// Absent head sections use cudarc's zero-length allocation without a transfer.
+/// Kernels receive the pointer but never dereference it when the section is absent.
+pub(super) fn head_upload(
+    device: &Device,
+    values: &[f32],
+) -> Result<cudarc::driver::CudaSlice<f32>> {
+    if values.is_empty() {
+        Ok(device.compute.null()?)
+    } else {
+        Ok(device.compute.clone_htod(values)?)
+    }
+}
+pub(super) fn head_zeros(device: &Device, len: usize) -> Result<cudarc::driver::CudaSlice<f32>> {
+    if len == 0 {
+        Ok(device.compute.null()?)
+    } else {
+        Ok(device.compute.alloc_zeros(len)?)
+    }
+}
+
 pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     device: &Device,
     len: usize,

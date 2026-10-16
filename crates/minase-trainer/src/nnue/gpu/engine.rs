@@ -1,6 +1,6 @@
 use super::{
     Device, Error, HostRing, Result, THREADS, WARPS_PER_BLOCK,
-    device::{Kernels, pinned_zeros},
+    device::{Kernels, head_upload, head_zeros, pinned_zeros},
     launch_config, require_len,
     ring::DeviceInput,
     step::{Kernel, KernelProfile, launch_kernel},
@@ -17,7 +17,7 @@ use minase::eval::features::FEATURE_COUNT;
 pub struct Evaluation {
     /// CPU参照と同じ配置の前進の出力。
     pub forward: Forward,
-    /// CPU参照と同じ配置の出力部の寄与。
+    /// 出力部の局面ごとの寄与。W1だけは鏡映共有を合算した`[B,16,2U]`で返す。
     pub output: Output,
     /// バッチ平均の二値交差エントロピー。
     pub losses: Losses,
@@ -33,8 +33,51 @@ pub struct Evaluation {
     pub biases: Vec<f32>,
     /// 出力バイアスの勾配。
     pub output_bias: f32,
+    /// 隠れ層の活性化前の値`[B,16]`。隠れ層がなければ空。
+    pub hidden_z: Vec<f32>,
+    /// 隠れ層の活性化後の値`[B,16]`。隠れ層がなければ空。
+    pub hidden_h: Vec<f32>,
+    /// 終盤の直接重み・バイアス、W1、b1、w2_open、w2_endの自由パラメータの勾配。
+    pub head_gradients: [Vec<f32>; 6],
     /// 検証の統計量。
     pub validation: Validation,
+}
+
+/// CUDA gradient columns: direct output, accumulator biases, output bias,
+/// then the six optional head sections in Parameter order.
+pub(super) const HEAD_PARAMETERS: [Parameter; 9] = [
+    Parameter::OutputWeights,
+    Parameter::Biases,
+    Parameter::OutputBias,
+    Parameter::OutputWeightsEnd,
+    Parameter::OutputBiasEnd,
+    Parameter::HiddenWeights,
+    Parameter::HiddenBiases,
+    Parameter::HiddenOutput,
+    Parameter::HiddenOutputEnd,
+];
+pub(super) fn gradient_columns(shape: Shape) -> usize {
+    HEAD_PARAMETERS.iter().map(|&p| shape.len(p)).sum()
+}
+pub(super) fn gradient_offset(shape: Shape, parameter: Parameter) -> usize {
+    HEAD_PARAMETERS
+        .iter()
+        .take_while(|&&p| p != parameter)
+        .map(|&p| shape.len(p))
+        .sum()
+}
+pub(super) fn expanded_len(shape: Shape, parameter: Parameter) -> usize {
+    if matches!(
+        parameter,
+        Parameter::Biases
+            | Parameter::OutputWeights
+            | Parameter::OutputWeightsEnd
+            | Parameter::HiddenWeights
+    ) {
+        shape.len(parameter) / shape.units() * shape.width()
+    } else {
+        shape.len(parameter)
+    }
 }
 
 pub(super) struct DeviceModel {
@@ -44,10 +87,15 @@ pub(super) struct DeviceModel {
     pub bias: CudaSlice<f32>,
     pub output: CudaSlice<f32>,
     pub output_bias: CudaSlice<f32>,
+    pub output_end: CudaSlice<f32>,
+    pub bias_end: CudaSlice<f32>,
+    pub w1: CudaSlice<f32>,
+    pub b1: CudaSlice<f32>,
+    pub w2: CudaSlice<f32>,
+    pub w2_end: CudaSlice<f32>,
 }
 impl DeviceModel {
     pub(super) fn new(device: &Device, model: &Model) -> Result<Self> {
-        super::check_head(model.shape().head())?;
         model.parameters().validate()?;
         let s = &device.compute;
         Ok(Self {
@@ -57,6 +105,12 @@ impl DeviceModel {
             bias: s.clone_htod(&model.expanded_biases())?,
             output: s.clone_htod(&model.expanded_output_weights())?,
             output_bias: s.clone_htod(&model.parameters()[Parameter::OutputBias])?,
+            output_end: head_upload(device, &model.expanded_output_weights_end())?,
+            bias_end: head_upload(device, &model.parameters()[Parameter::OutputBiasEnd])?,
+            w1: head_upload(device, &model.expanded_hidden_weights())?,
+            b1: head_upload(device, &model.parameters()[Parameter::HiddenBiases])?,
+            w2: head_upload(device, &model.parameters()[Parameter::HiddenOutput])?,
+            w2_end: head_upload(device, &model.parameters()[Parameter::HiddenOutputEnd])?,
         })
     }
 }
@@ -71,6 +125,15 @@ pub(super) struct Buffers {
     d_acc: CudaSlice<f32>,
     d_output: CudaSlice<f32>,
     c: CudaSlice<f32>,
+    d_output_bias: CudaSlice<f32>,
+    d_output_end: CudaSlice<f32>,
+    d_output_bias_end: CudaSlice<f32>,
+    d_hidden_weights: CudaSlice<f32>,
+    d_hidden_biases: CudaSlice<f32>,
+    d_hidden_output: CudaSlice<f32>,
+    d_hidden_output_end: CudaSlice<f32>,
+    hidden_z: CudaSlice<f32>,
+    hidden_h: CudaSlice<f32>,
     pub targets: CudaSlice<f32>,
     pub host_targets: PinnedHostSlice<f32>,
     pub d_first: CudaSlice<f32>,
@@ -91,7 +154,7 @@ impl Buffers {
         let activations = capacity * 2 * shape.width();
         let blocks = capacity.div_ceil(THREADS);
         let head_blocks = capacity.div_ceil(WARPS_PER_BLOCK);
-        let columns = 3 * shape.units() + 1;
+        let columns = gradient_columns(shape);
         Ok(Self {
             acc: s.alloc_zeros(activations)?,
             lin: s.alloc_zeros(capacity * 2)?,
@@ -103,6 +166,21 @@ impl Buffers {
             d_acc: s.alloc_zeros(activations)?,
             d_output: s.alloc_zeros(activations)?,
             c: s.alloc_zeros(capacity * 2)?,
+            d_output_bias: head_zeros(device, capacity * shape.len(Parameter::OutputBias))?,
+            d_output_end: head_zeros(
+                device,
+                capacity * expanded_len(shape, Parameter::OutputWeightsEnd),
+            )?,
+            d_output_bias_end: head_zeros(device, capacity * shape.len(Parameter::OutputBiasEnd))?,
+            d_hidden_weights: head_zeros(device, capacity * shape.len(Parameter::HiddenWeights))?,
+            d_hidden_biases: head_zeros(device, capacity * shape.len(Parameter::HiddenBiases))?,
+            d_hidden_output: head_zeros(device, capacity * shape.len(Parameter::HiddenOutput))?,
+            d_hidden_output_end: head_zeros(
+                device,
+                capacity * shape.len(Parameter::HiddenOutputEnd),
+            )?,
+            hidden_z: head_zeros(device, capacity * shape.len(Parameter::HiddenBiases))?,
+            hidden_h: head_zeros(device, capacity * shape.len(Parameter::HiddenBiases))?,
             targets: s.alloc_zeros(capacity)?,
             host_targets: pinned_zeros(device, capacity)?,
             d_first: s.alloc_zeros(shape.len(Parameter::FirstLayer))?,
@@ -121,10 +199,10 @@ impl Buffers {
                 .alloc_zeros(max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) * 2)?,
             loss_partials: s.alloc_zeros(head_blocks)?,
             gradient_partials: s.alloc_zeros(blocks * columns)?,
-            validation_partials: s.alloc_zeros(head_blocks * 7)?,
+            validation_partials: s.alloc_zeros(head_blocks * 10)?,
             loss_sum: s.alloc_zeros(1)?,
             gradient_sums: s.alloc_zeros(columns)?,
-            validation_sums: s.alloc_zeros(7)?,
+            validation_sums: s.alloc_zeros(10)?,
         })
     }
 }
@@ -142,7 +220,6 @@ pub struct Evaluator {
 impl Evaluator {
     /// CPUのモデルをアップロードし、カーネルと3面・2面の環を用意する。
     pub fn new(device: Device, model: &Model, capacity: usize) -> Result<Self> {
-        super::check_head(model.shape().head())?;
         let ring = HostRing::new(&device, model.shape().feature_set(), capacity)?;
         let kernels = Kernels::compile(&device)?;
         let buffers = Buffers::new(&device, model.shape(), capacity)?;
@@ -245,9 +322,8 @@ impl Evaluator {
         self.read_validation(batch.len())
     }
     fn read_validation(&self, n: usize) -> Result<Validation> {
-        // direct-screluには隠れ層がないので末尾3統計は厳密に0。
         let mut sums = [0.0; 10];
-        sums[..7].copy_from_slice(&read(&self.device, &self.buffers.validation_sums, 7)?);
+        sums.copy_from_slice(&read(&self.device, &self.buffers.validation_sums, 10)?);
         // 符号一致数と飽和数を整数に変換する前に、生の縮約値を検査する。
         // NaNを整数へ変換してもエラーにならず、異常を隠してしまうため。
         if sums.iter().any(|value| !value.is_finite()) {
@@ -260,7 +336,16 @@ impl Evaluator {
         let h = self.model.shape.width();
         let u = self.model.shape.units();
         let a = n * 2 * h;
-        let sums = read(&self.device, &b.gradient_sums, 3 * u + 1)?;
+        let shape = self.model.shape;
+        let sums = read(&self.device, &b.gradient_sums, gradient_columns(shape))?;
+        let head_gradients = std::array::from_fn(|i| {
+            let p = HEAD_PARAMETERS[i + 3];
+            let offset = gradient_offset(shape, p);
+            sums[offset..offset + shape.len(p)]
+                .iter()
+                .map(|&x| x as f32)
+                .collect()
+        });
         let losses = read(&self.device, &b.loss_sum, 1)?;
         let virtual_rows = match &b.d_virtual {
             Some(values) => read(
@@ -283,13 +368,41 @@ impl Evaluator {
                 g: read(&self.device, &b.g, n)?,
                 d_acc: read(&self.device, &b.d_acc, a)?,
                 d_output: read(&self.device, &b.d_output, a)?,
-                d_output_bias: read(&self.device, &b.g, n)?,
-                d_output_end: Vec::new(),
-                d_output_bias_end: Vec::new(),
-                d_hidden_weights: Vec::new(),
-                d_hidden_biases: Vec::new(),
-                d_hidden_output: Vec::new(),
-                d_hidden_output_end: Vec::new(),
+                d_output_bias: read(
+                    &self.device,
+                    &b.d_output_bias,
+                    n * shape.len(Parameter::OutputBias),
+                )?,
+                d_output_end: read(
+                    &self.device,
+                    &b.d_output_end,
+                    n * expanded_len(shape, Parameter::OutputWeightsEnd),
+                )?,
+                d_output_bias_end: read(
+                    &self.device,
+                    &b.d_output_bias_end,
+                    n * shape.len(Parameter::OutputBiasEnd),
+                )?,
+                d_hidden_weights: read(
+                    &self.device,
+                    &b.d_hidden_weights,
+                    n * shape.len(Parameter::HiddenWeights),
+                )?,
+                d_hidden_biases: read(
+                    &self.device,
+                    &b.d_hidden_biases,
+                    n * shape.len(Parameter::HiddenBiases),
+                )?,
+                d_hidden_output: read(
+                    &self.device,
+                    &b.d_hidden_output,
+                    n * shape.len(Parameter::HiddenOutput),
+                )?,
+                d_hidden_output_end: read(
+                    &self.device,
+                    &b.d_hidden_output_end,
+                    n * shape.len(Parameter::HiddenOutputEnd),
+                )?,
                 c: pairs(read(&self.device, &b.c, n * 2)?),
             },
             losses: Losses {
@@ -309,6 +422,17 @@ impl Evaluator {
             output_weights: sums[..2 * u].iter().map(|&x| x as f32).collect(),
             biases: sums[2 * u..3 * u].iter().map(|&x| x as f32).collect(),
             output_bias: sums[3 * u] as f32,
+            hidden_z: read(
+                &self.device,
+                &b.hidden_z,
+                n * shape.len(Parameter::HiddenBiases),
+            )?,
+            hidden_h: read(
+                &self.device,
+                &b.hidden_h,
+                n * shape.len(Parameter::HiddenBiases),
+            )?,
+            head_gradients,
             validation: self.read_validation(n)?,
         })
     }
@@ -322,6 +446,9 @@ fn read<T: DeviceRepr + ValidAsZeroBits + Copy>(
     len: usize,
 ) -> Result<Vec<T>> {
     require_len(src.len(), len)?;
+    if len == 0 {
+        return Ok(Vec::new());
+    }
     let mut host = pinned_zeros(device, len)?;
     device.compute.memcpy_dtoh(&src.slice(..len), &mut host)?;
     Ok(host.as_slice()?.to_vec())
@@ -406,6 +533,22 @@ fn check_head(m: &DeviceModel, input: &DeviceInput, b: &Buffers) -> Result<()> {
     require_len(m.output.len(), 2 * m.shape.width())?;
     require_len(m.output_bias.len(), 1)?;
     require_len(b.targets.len(), n)?;
+    require_len(
+        m.output_end.len(),
+        expanded_len(m.shape, Parameter::OutputWeightsEnd),
+    )?;
+    require_len(
+        m.bias_end.len(),
+        expanded_len(m.shape, Parameter::OutputBiasEnd),
+    )?;
+    require_len(m.w1.len(), expanded_len(m.shape, Parameter::HiddenWeights))?;
+    require_len(m.b1.len(), expanded_len(m.shape, Parameter::HiddenBiases))?;
+    require_len(m.w2.len(), expanded_len(m.shape, Parameter::HiddenOutput))?;
+    require_len(
+        m.w2_end.len(),
+        expanded_len(m.shape, Parameter::HiddenOutputEnd),
+    )?;
+
     Ok(())
 }
 pub(super) fn output_backward(
@@ -425,18 +568,56 @@ pub(super) fn output_backward(
         require_len(array.len(), n)?;
     }
     require_len(b.c.len(), n * 2)?;
+    require_len(
+        b.d_output_bias.len(),
+        n * m.shape.len(Parameter::OutputBias),
+    )?;
+    require_len(
+        b.d_output_end.len(),
+        n * expanded_len(m.shape, Parameter::OutputWeightsEnd),
+    )?;
+    require_len(
+        b.d_output_bias_end.len(),
+        n * m.shape.len(Parameter::OutputBiasEnd),
+    )?;
+    require_len(
+        b.d_hidden_weights.len(),
+        n * m.shape.len(Parameter::HiddenWeights),
+    )?;
+    require_len(
+        b.d_hidden_biases.len(),
+        n * m.shape.len(Parameter::HiddenBiases),
+    )?;
+    require_len(
+        b.d_hidden_output.len(),
+        n * m.shape.len(Parameter::HiddenOutput),
+    )?;
+    require_len(
+        b.d_hidden_output_end.len(),
+        n * m.shape.len(Parameter::HiddenOutputEnd),
+    )?;
+    require_len(b.hidden_z.len(), n * m.shape.len(Parameter::HiddenBiases))?;
+    require_len(b.hidden_h.len(), n * m.shape.len(Parameter::HiddenBiases))?;
     let blocks = n.div_ceil(WARPS_PER_BLOCK);
     require_len(b.loss_partials.len(), blocks)?;
     let mut cfg = launch_config(blocks * THREADS)?;
     cfg.shared_mem_bytes = (WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n, h, p) = scalars(m.shape, n);
     let scale = m.shape.cp_per_logit();
+    let phase2 = u32::from(m.shape.head().phase2());
+    let hidden = m.shape.len(Parameter::HiddenBiases) as u32;
     let mut args = d.compute.launch_builder(&k.head);
     args.arg(&b.acc)
         .arg(&b.lin)
         .arg(&input.piece_counts)
         .arg(&m.output)
         .arg(&m.output_bias)
+        .arg(&m.output_end)
+        .arg(&m.bias_end)
+        .arg(&m.w1)
+        .arg(&m.b1)
+        .arg(&m.w2)
+        .arg(&m.w2_end)
         .arg(&b.targets)
         .arg(&mut b.f)
         .arg(&mut b.h)
@@ -446,10 +627,21 @@ pub(super) fn output_backward(
         .arg(&mut b.d_acc)
         .arg(&mut b.d_output)
         .arg(&mut b.c)
+        .arg(&mut b.d_output_bias)
+        .arg(&mut b.d_output_end)
+        .arg(&mut b.d_output_bias_end)
+        .arg(&mut b.d_hidden_weights)
+        .arg(&mut b.d_hidden_biases)
+        .arg(&mut b.d_hidden_output)
+        .arg(&mut b.d_hidden_output_end)
+        .arg(&mut b.hidden_z)
+        .arg(&mut b.hidden_h)
         .arg(&mut b.loss_partials)
         .arg(&n)
         .arg(&h)
         .arg(&p)
+        .arg(&phase2)
+        .arg(&hidden)
         .arg(&scale);
     // SAFETY: 全配列の範囲と共有メモリ4×f64を上で検査・指定済み。
     // 1ワープが1局面を書き、末尾の未使用ワープもブロック同期に参加する。
@@ -609,7 +801,7 @@ pub(super) fn gradients(
     b: &mut Buffers,
     mut profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
-    let columns = 3 * shape.units() + 1;
+    let columns = gradient_columns(shape);
     require_len(b.d_acc.len(), n * 2 * shape.width())?;
     require_len(b.d_output.len(), n * 2 * shape.width())?;
     require_len(b.g.len(), n)?;
@@ -618,15 +810,25 @@ pub(super) fn gradients(
     let (n32, h, _) = scalars(shape, n);
     let units = shape.units() as u32;
     let chunk = THREADS as u32;
+    let phase2 = u32::from(shape.head().phase2());
+    let hidden = shape.len(Parameter::HiddenBiases) as u32;
     let mut args = d.compute.launch_builder(&k.gradients);
     args.arg(&b.d_acc)
         .arg(&b.d_output)
-        .arg(&b.g)
+        .arg(&b.d_output_bias)
+        .arg(&b.d_output_end)
+        .arg(&b.d_output_bias_end)
+        .arg(&b.d_hidden_weights)
+        .arg(&b.d_hidden_biases)
+        .arg(&b.d_hidden_output)
+        .arg(&b.d_hidden_output_end)
         .arg(&mut b.gradient_partials)
         .arg(&n32)
         .arg(&h)
         .arg(&units)
-        .arg(&chunk);
+        .arg(&chunk)
+        .arg(&phase2)
+        .arg(&hidden);
     // SAFETY: 入出力の長さを検査済み。unitsは検査済みShapeのHまたはH/2で0ではない。
     // 各ブロックは独立した部分和を書き、末尾の局面はBで打ち切る。
     unsafe {
@@ -689,11 +891,13 @@ fn validation(
     let n = input.len;
     require_len(input.outcomes.len(), n)?;
     let blocks = n.div_ceil(WARPS_PER_BLOCK);
-    require_len(b.validation_partials.len(), blocks * 7)?;
+    require_len(b.validation_partials.len(), blocks * 10)?;
     let mut cfg = launch_config(blocks * THREADS)?;
-    cfg.shared_mem_bytes = (7 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
+    cfg.shared_mem_bytes = (10 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n32, h, p) = scalars(m.shape, n);
     let scale = m.shape.cp_per_logit();
+    let phase2 = u32::from(m.shape.head().phase2());
+    let hidden = m.shape.len(Parameter::HiddenBiases) as u32;
     let mut args = d.compute.launch_builder(&k.validation);
     args.arg(&b.acc)
         .arg(&b.lin)
@@ -701,13 +905,21 @@ fn validation(
         .arg(&input.outcomes)
         .arg(&m.output)
         .arg(&m.output_bias)
+        .arg(&m.output_end)
+        .arg(&m.bias_end)
+        .arg(&m.w1)
+        .arg(&m.b1)
+        .arg(&m.w2)
+        .arg(&m.w2_end)
         .arg(&b.targets)
         .arg(&mut b.validation_partials)
         .arg(&n32)
         .arg(&h)
         .arg(&p)
+        .arg(&phase2)
+        .arg(&hidden)
         .arg(&scale);
-    // SAFETY: 入出力の長さを検査済み。共有メモリは7×4個のf64を確保。
+    // SAFETY: 入出力の長さを検査済み。共有メモリは10×4個のf64を確保。
     // 1ワープが1局面を担当し、末尾の未使用ワープもブロック同期に参加する。
     // ブロック内で各出力列を1スレッドだけが書く。
     unsafe {
@@ -719,7 +931,7 @@ fn validation(
         &b.validation_partials,
         &mut b.validation_sums,
         blocks,
-        7,
+        10,
         None,
     )
 }

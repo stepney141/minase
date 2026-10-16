@@ -64,7 +64,7 @@ enum NnueCommand {
         /// 入力の特徴集合を指定する。
         #[arg(long, value_enum)]
         feature_set: minase_trainer::nnue::data::InputFeatureSet,
-        /// 出力部を指定する。
+        /// CUDAで検査する出力部を4種類から指定する。
         #[arg(long, value_enum, default_value = "direct-screlu")]
         head: minase_trainer::nnue::model::HeadKind,
         /// 第1層の幅を2以上512以下の偶数で指定する。
