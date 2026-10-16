@@ -225,7 +225,7 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 | GPUとCPU参照の等価性 | `cargo test -p minase-trainer -- --ignored gpu_`（33件）と`check-equivalence`（両方の型、幅6のバッチ100と幅128のバッチ4,096）。数値微分、1更新と連続3更新、再開の一致、混合教師と係数変更を含む | すべて一致。幅128・バッチ4,096の最大絶対誤差はP型1.144×10⁻⁵、HalfKP-hm-b8で4.843×10⁻⁶（許容誤差`1e-6+1e-5×|CPU|`以内）、2回実行はビット単位で一致 |
 | 旧チェックポイントの拒否 | `removal_penalty`スカラーを含むNPZを`decode` | 余分な配列として拒否（版数は増やしていない） |
 
-1更新の時間とワーカーの供給速度は、`bench-step`（幅128、バッチ16,384、20更新、`--profile`）を再生成した教師データの1本目（`generated-7100000.bin`）で測った。
+1更新の時間とワーカーの供給速度は、`bench-step`（幅128、バッチ16,384、20更新、`--profile`つき）を再生成した教師データの1本目（`generated-7100000.bin`）で測った。`--profile`はカーネルごとの計測イベントを挿入するので1更新の時間をわずかに長く見せるが、削除前の値も同じ条件で測ったものである。
 削除前の値は、本書の「フェーズ2e」の表（P型27.3 ms、HalfKP-hm-b8 31.6 ms）である。
 
 | 項目 | P型 | HalfKP-hm-b8 |
