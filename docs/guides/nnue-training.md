@@ -105,6 +105,14 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 学習率、重み減衰、およびλは共通の引数で変えられ、既定値と値域は`crates/minase-trainer/src/nnue/options.rs`のdocコメントにある。
 エポック数、時間、および打ち切りの上限と既定値は`crates/minase-trainer/src/nnue/train/args.rs`の`Args`のdocコメントにある。
 
+ネットの出力部は`--head`で選ぶ。
+`direct-screlu`（既定。両視点の活性化と出力重みの直接内積）、`direct-screlu-phase2`（序盤用と終盤用の2つの出力を盤上総駒数で補間する）、`screlu-hidden16`（幅16の隠れ層の寄与を直接内積に加える）、および`screlu-hidden16-phase2`（隠れ層を共有した2端点の補間）の4つであり、名前は重みファイルの構造記述文字列の`head=`と同じである。
+出力部ごとの式、パラメータの配列、初期値、および切り詰めは`crates/minase-trainer/src/nnue/model/mod.rs`の`HeadKind`と`Parameter`、`crates/minase-trainer/src/nnue/reference/head.rs`のdocコメントにある。
+出力部は学習の軌跡を変えるので、再開時に変えることはできない。
+`check-equivalence`と`bench-step`にも同じ`--head`がある。
+隠れ層を持つ出力部では、`training.jsonl`の`hidden_saturation`に隠れ層の活性化が0以下と1以上であった割合が記録され、他の出力部では`null`である。
+エンジンは`crates/minase/src/eval/nnue/mod.rs`の`ActiveHead`に決めた出力部の重みだけを読むので、別の出力部で学んだ`nnue.bin`を埋め込むには`ActiveHead`も合わせて変える。
+
 学習率は、更新ごとに倍率を掛けて変えられる。
 `--lr-schedule`に、一定の倍率`constant:<c>`、半減期をエポック数で与える指数減衰`exponential:<半減期>:<下限>`、または総長をエポック数で与えるcosine annealing `cosine:<総長>:<下限>`を指定する。
 倍率は3つのパラメータ群の学習率に同じ値で掛かり、重み減衰にも学習率を通じて掛かる。
