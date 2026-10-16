@@ -52,6 +52,26 @@ impl Device {
     }
 }
 
+/// Absent head sections use cudarc's zero-length allocation without a transfer.
+/// Kernels receive the pointer but never dereference it when the section is absent.
+pub(super) fn head_upload(
+    device: &Device,
+    values: &[f32],
+) -> Result<cudarc::driver::CudaSlice<f32>> {
+    if values.is_empty() {
+        Ok(device.compute.null()?)
+    } else {
+        Ok(device.compute.clone_htod(values)?)
+    }
+}
+pub(super) fn head_zeros(device: &Device, len: usize) -> Result<cudarc::driver::CudaSlice<f32>> {
+    if len == 0 {
+        Ok(device.compute.null()?)
+    } else {
+        Ok(device.compute.alloc_zeros(len)?)
+    }
+}
+
 pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     device: &Device,
     len: usize,
@@ -72,13 +92,12 @@ pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     Ok(result)
 }
 
-/// forward、head、removal、backward、reduce、optimizerの順にCUDAソースを連結する。
+/// forward、head、backward、reduce、optimizerの順にCUDAソースを連結する。
 /// 後のファイルが前の`feature_weight`、`screlu`、`phase`、`logit_value`を参照するため、この順序を保つ。
 pub(super) fn source() -> String {
     [
         include_str!("../../../kernels/forward.cu"),
         include_str!("../../../kernels/head.cu"),
-        include_str!("../../../kernels/removal.cu"),
         include_str!("../../../kernels/backward.cu"),
         include_str!("../../../kernels/reduce.cu"),
         include_str!("../../../kernels/optimizer.cu"),
@@ -107,7 +126,6 @@ pub(super) struct Kernels {
     pub acc: CudaFunction,
     pub linear: CudaFunction,
     pub head: CudaFunction,
-    pub removal: CudaFunction,
     pub first_backward_partials: CudaFunction,
     pub first_backward_reduce: CudaFunction,
     pub linear_backward_partials: CudaFunction,
@@ -134,7 +152,6 @@ impl Kernels {
             acc: module.load_function("forward_acc")?,
             linear: module.load_function("forward_linear")?,
             head: module.load_function("output_backward")?,
-            removal: module.load_function("removal_forward")?,
             first_backward_partials: module.load_function("first_layer_backward_partials")?,
             first_backward_reduce: module.load_function("first_layer_backward_reduce")?,
             linear_backward_partials: module.load_function("linear_backward_partials")?,
@@ -206,7 +223,6 @@ mod tests {
             "forward_acc",
             "forward_linear",
             "output_backward",
-            "removal_forward",
             "first_layer_backward_partials",
             "first_layer_backward_reduce",
             "linear_backward_partials",
@@ -245,7 +261,6 @@ mod tests {
             ("forward_acc", "acc"),
             ("forward_linear", "linear"),
             ("output_backward", "head"),
-            ("removal_forward", "removal"),
             ("first_layer_backward_partials", "first_backward_partials"),
             ("first_layer_backward_reduce", "first_backward_reduce"),
             ("linear_backward_partials", "linear_backward_partials"),
@@ -294,7 +309,6 @@ mod tests {
                         (_, "scale") => "K",
                         (_, "piece_counts") => "counts",
                         (_, "output_bias") => "bias",
-                        (_, "removal_s") => "S",
                         (_, "gradient_partials" | "validation_partials") => "partials",
                         ("forward_linear", "linear_features") => "features",
                         ("forward_linear", "linear") => "weights",

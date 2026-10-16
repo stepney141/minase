@@ -82,6 +82,8 @@ extern "C" __global__ void optimizer_first(
 
 // gradient_sums already contains the sum of both P halves. Keep one free
 // parameter per unit and expand both copies from the same updated value.
+// This also expands every W1 row. Unshared biases and w2 use units=H=1.
+// The host passes limits from Model::constrain: W1=127/64, biases=8, outputs=1.98.
 extern "C" __global__ void optimizer_head(
     float* values, const double* gradient_sums, float* moment, float* variance,
     float* expanded, unsigned gradient_offset, unsigned count, unsigned units,

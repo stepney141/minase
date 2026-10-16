@@ -36,9 +36,9 @@ use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
         data::{InputFeatureSet, Observations, build_batches, build_targets},
-        export::{self, QuantizationReport},
+        export::{self, QuantizationReport, RemovalSignReport},
         model::{Checkpoint, Masks, Model, Parameter, Progress, Shape, load_initial},
-        reference::{AdamW, RemovalReference, Validation},
+        reference::{AdamW, Validation},
     },
 };
 pub use args::Args;
@@ -91,7 +91,7 @@ pub enum StopReason {
     TimeLimit,
 }
 
-/// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
+/// 終了理由、最良エポック、量子化検査と符号反転の集計を`summary.json`へ保存する。
 ///
 /// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
 /// 平均絶対誤差が`cp_per_logit / 40`を超えると`"quantization_error"`となり、`nnue.bin`と`best.npz`を残して終了コード1を返す。
@@ -126,6 +126,8 @@ pub struct Summary {
     pub elapsed_seconds: f64,
     /// 量子化誤差の検査結果。
     pub quantization: Option<QuantizationReport>,
+    /// 量子化検査と同じ標本の駒除去差分の符号反転。閾値は設けずstatusに影響しない。
+    pub removal_sign: Option<RemovalSignReport>,
 }
 
 fn update_best(progress: &mut Progress, epoch: u64, validation_loss: f64) -> Result<bool> {
@@ -225,7 +227,7 @@ impl Session {
         let teacher_cp_per_logit = calibration.target_values();
         let observations = Observations::compute(&dataset, args.feature_set)?;
         let model = Model::initialize(
-            Shape::new(args.feature_set, args.width, base.cp_per_logit)?,
+            Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head)?,
             &initial,
             Masks::from_observations(args.feature_set, &observations)?,
             args.seed,
@@ -241,7 +243,6 @@ impl Session {
             &model,
         )?;
         let mut checkpoint = Checkpoint {
-            removal_penalty: args.training.removal_penalty,
             lambda: args.training.lambda,
             optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
             model,
@@ -277,7 +278,6 @@ impl Session {
                 || restored.model.initial_linear() != checkpoint.model.initial_linear()
                 || restored.model.initial_virtual() != checkpoint.model.initial_virtual()
                 || restored.optimizer.config() != args.training.optimizer()
-                || restored.removal_penalty != args.training.removal_penalty
                 || restored.lambda != args.training.lambda
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
@@ -313,9 +313,7 @@ impl Session {
             args.device,
             &checkpoint.model,
             &checkpoint.optimizer,
-            &RemovalReference::v0(),
             args.batch,
-            args.training.removal_penalty,
             workers,
         )?;
         let name = backend.name();
@@ -417,7 +415,6 @@ impl Session {
             indices: self.dataset.validation_indices(),
             teacher_cp_per_logit: &self.teacher_cp_per_logit,
             batch: self.args.batch,
-            removal_penalty: self.args.training.removal_penalty,
             deadline: self.deadline(),
         }
         .evaluate(
@@ -446,7 +443,6 @@ impl Session {
                 validation_indices: self.dataset.validation_indices(),
                 teacher_cp_per_logit: &self.teacher_cp_per_logit,
                 batch: self.args.batch,
-                removal_penalty: self.args.training.removal_penalty,
                 validation_interval: self.args.validation_interval,
                 schedule: self.args.lr_schedule,
                 steps_per_epoch: self
@@ -471,7 +467,6 @@ impl Session {
                     indices: supply.validation_indices,
                     teacher_cp_per_logit: supply.teacher_cp_per_logit,
                     batch: supply.batch,
-                    removal_penalty: supply.removal_penalty,
                     deadline: supply.deadline,
                 })
                 .evaluate(
@@ -536,9 +531,8 @@ impl Session {
             )?;
         }
         eprintln!(
-            "epoch {epoch}: train_loss={:.9} removal_loss={:.9} validation_loss={:.9}",
+            "epoch {epoch}: train_loss={:.9} validation_loss={:.9}",
             training.bce / training.positions as f64,
-            training.auxiliary / training.positions as f64,
             validation.loss()
         );
         Ok(true)
@@ -555,18 +549,19 @@ impl Session {
         });
         let saturation = validation.saturation();
         let train_loss = training.map(|(t, _)| t.bce / t.positions as f64);
-        let removal_loss = training.map(|(t, _)| t.auxiliary / t.positions as f64);
         EpochRecord {
             device: self.args.device,
             epoch: self.checkpoint.progress.epoch,
             train_loss,
-            removal_loss,
-            total_loss: train_loss.zip(removal_loss).map(|(a, b)| a + b),
             validation_loss: validation.loss(),
             sign_accuracy: validation.sign_accuracy(),
             samples: validation.positions,
             decisive_samples: validation.decisive,
             nonlinear_std_cp: validation.nonlinear_std_cp(),
+            hidden_saturation: validation.hidden_saturation().map(|s| Saturation {
+                acc_le_zero: s[0],
+                acc_ge_one: s[1],
+            }),
             saturation: Saturation {
                 acc_le_zero: saturation[0],
                 acc_ge_one: saturation[1],
@@ -629,6 +624,7 @@ impl Session {
             total_steps: self.checkpoint.optimizer.step(),
             elapsed_seconds: self.checkpoint.progress.elapsed_seconds,
             quantization: None,
+            removal_sign: None,
         };
         if best.is_none() {
             summary.reason = Some(Error::NoCompletedEpoch.to_string());
@@ -636,7 +632,7 @@ impl Session {
             return Err(Error::NoCompletedEpoch.into());
         }
         let checkpoint = self.best_checkpoint()?;
-        let quantization = match export::write_best(
+        let (quantization, removal_sign) = match export::write_best(
             &self.dataset,
             &checkpoint,
             &self.args.output_dir,
@@ -658,6 +654,7 @@ impl Session {
             "quantization_error"
         };
         summary.quantization = Some(quantization);
+        summary.removal_sign = Some(removal_sign);
         if !passed {
             summary.reason = Some(Error::QuantizationError.to_string());
         }
@@ -676,7 +673,6 @@ struct ValidationSet<'a> {
     indices: &'a [u64],
     teacher_cp_per_logit: &'a [f64],
     batch: usize,
-    removal_penalty: f64,
     deadline: Instant,
 }
 
@@ -693,7 +689,7 @@ impl ValidationSet<'_> {
         if Instant::now() >= self.deadline {
             return Ok(None);
         }
-        let mut evaluator = backend.evaluator(model, self.batch, self.removal_penalty)?;
+        let mut evaluator = backend.evaluator(model, self.batch)?;
         if let Some((used, total)) = backend.memory()? {
             *gpu_used_bytes = (*gpu_used_bytes).max(Some(used));
             *gpu_total_bytes = Some(total);
@@ -739,6 +735,9 @@ fn validate_batches<T>(
             total.upper += statistics.upper;
             total.positions += statistics.positions;
             total.activations += statistics.activations;
+            total.hidden_lower += statistics.hidden_lower;
+            total.hidden_upper += statistics.hidden_upper;
+            total.hidden_activations += statistics.hidden_activations;
         } else {
             total = Some(statistics);
         }

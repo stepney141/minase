@@ -258,16 +258,16 @@ pub(super) fn delta_statistics(values: &[f64]) -> DeltaStatistics {
 /// `mean_absolute_cp`と`max_absolute_cp`は反転した対のdの絶対値の平均と最大で、単位はセンチポーンである。
 /// 反転が0件なら、この2欄は`null`にする。
 #[derive(Debug, Serialize)]
-pub(super) struct Reversals {
+pub struct Reversals {
     count: usize,
-    total: usize,
+    pub(crate) total: usize,
     fraction: Option<f64>,
     mean_absolute_cp: Option<f64>,
     max_absolute_cp: Option<f64>,
 }
 
 /// 差分と参照差分の対を[`Reversals`]の規則で集計する。
-pub(super) fn reversal_statistics(pairs: impl Iterator<Item = (i32, i32)>) -> Reversals {
+pub(crate) fn reversal_statistics(pairs: impl Iterator<Item = (i32, i32)>) -> Reversals {
     let mut total = 0;
     let mut wrong = Vec::new();
     for (delta, reference) in pairs {

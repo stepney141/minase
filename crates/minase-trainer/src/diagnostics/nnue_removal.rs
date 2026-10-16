@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use clap::Args;
 use minase::eval::features::piece_state;
-use minase_core::{Position, PositionBuilder, Square};
+use minase_core::Square;
 use serde::Serialize;
 
 use super::{
@@ -14,7 +14,7 @@ use super::{
 use crate::nnue::{
     data::{BatchSlot, FEATURE_COLUMNS},
     model::{Checkpoint, Model},
-    reference::{self, RemovalReference, linear_row, row_value},
+    reference::{self, RemovalReference, linear_row, remove_piece, row_value},
 };
 
 /// 検証集合の駒除去診断の引数。
@@ -76,21 +76,6 @@ pub(super) struct Report {
     pub(super) error: Option<String>,
 }
 
-// 除いた駒が先獅子の升にいても、升そのものは変えない。
-fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
-    let mut builder = PositionBuilder::new(position.side_to_move());
-    for square in Square::all() {
-        if square != removed
-            && let Some(piece) = position.piece_at(square)
-        {
-            builder.put(square, piece)?;
-        }
-    }
-    let mut after = builder.finish()?;
-    after.set_lion_capture(position.lion_capture_square())?;
-    Ok(after)
-}
-
 /// 1局面の全駒の除去差分を、局面を作り直さずに累算器からの行の減算で一括して求める。
 /// 渡されたf32の重みをf64へ広げて計算し、学習用のf32計算は使わない。
 ///
@@ -101,8 +86,8 @@ fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
 ///
 /// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
 /// `cp_per_logit`には整数ネットの勝率尺度（1ロジットあたりのcp）を使う。
-/// 活性化を`a(x) = clamp(x, 0, 1)²`、出力重みを`w_{v,j}`とし、各視点の
-/// `cp_per_logit·(Σ_j a(h_j − 除いた駒の行_j)·w_{v,j} − Σ_j a(h_j)·w_{v,j})`を線形差分へ加える。
+/// 除去後のSCReLU活性化を作り、参照実装の共通出力部へ除去後の位相とともに渡す。
+/// 除去前後の非線形出力の差へ勝率尺度を掛け、線形差分へ加える。
 fn float_removal_deltas(
     model: &Model,
     weights: &[f32],
@@ -124,31 +109,36 @@ fn float_removal_deltas(
         .map(|row| after_q * (sums[0] - row[0]) + (1.0 - after_q) * (sums[1] - row[1]) - before)
         .collect();
     let biases = model.expanded_biases();
-    let output = model.expanded_output_weights();
-    for v in 0..2 {
-        let features = &batch.features()[v * FEATURE_COLUMNS..(v + 1) * FEATURE_COLUMNS];
-        let hidden: Vec<_> = (0..h)
-            .map(|j| {
-                features
-                    .iter()
-                    .map(|&feature| f64::from(row_value(model, weights, feature, j)))
-                    .sum::<f64>()
-                    + f64::from(biases[j])
+    let acc: Vec<_> = (0..2 * h)
+        .map(|i| {
+            let features =
+                &batch.features()[i / h * FEATURE_COLUMNS..(i / h + 1) * FEATURE_COLUMNS];
+            features
+                .iter()
+                .map(|&feature| f64::from(row_value(model, weights, feature, i % h)))
+                .sum::<f64>()
+                + f64::from(biases[i % h])
+        })
+        .collect();
+    let activation = |x: f64| x.clamp(0.0, 1.0).powi(2);
+    let before_s: Vec<_> = acc.iter().copied().map(activation).collect();
+    let before_head = reference::head_f64(model, &before_s, q);
+    for (col, value) in delta.iter_mut().enumerate() {
+        let after_s: Vec<_> = acc
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| {
+                activation(
+                    x - f64::from(row_value(
+                        model,
+                        weights,
+                        batch.features()[i / h * FEATURE_COLUMNS + col],
+                        i % h,
+                    )),
+                )
             })
             .collect();
-        let activation = |value: f64| value.clamp(0.0, 1.0).powi(2);
-        let before: f64 = (0..h)
-            .map(|j| activation(hidden[j]) * f64::from(output[v * h + j]))
-            .sum();
-        for (col, value) in delta.iter_mut().enumerate() {
-            let after: f64 = (0..h)
-                .map(|j| {
-                    activation(hidden[j] - f64::from(row_value(model, weights, features[col], j)))
-                        * f64::from(output[v * h + j])
-                })
-                .sum();
-            *value += cp_per_logit * (after - before);
-        }
+        *value += cp_per_logit * (reference::head_f64(model, &after_s, after_q) - before_head);
     }
     delta
 }

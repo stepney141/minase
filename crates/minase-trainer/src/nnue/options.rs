@@ -40,9 +40,6 @@ pub struct TrainingOptions {
     /// 出力部の重み減衰を非負の有限値で指定する。
     #[arg(long, default_value_t = 1e-4)]
     pub weight_decay_head: f64,
-    /// 駒除去差分の補助損失係数を非負の有限値で指定する。
-    #[arg(long, default_value_t = 1000.0)]
-    pub removal_penalty: f64,
     /// 自己対局の教師の混合比を有限な0以上1以下の値で指定する。実戦対局では0を使う。
     #[arg(long, value_parser = crate::data::parse_lambda)]
     pub lambda: f64,
@@ -59,7 +56,6 @@ impl TrainingOptions {
             weight_decay_ft: config.ft.weight_decay,
             lr_head: config.head.lr,
             weight_decay_head: config.head.weight_decay,
-            removal_penalty: 1000.0,
             lambda,
         }
     }
@@ -69,11 +65,6 @@ impl TrainingOptions {
     /// 全係数の有限性と範囲を検査する。
     pub fn validate(&self) -> Result<()> {
         self.optimizer().validate()?;
-        if !self.removal_penalty.is_finite() || self.removal_penalty < 0.0 {
-            return Err(Error::Invalid(
-                "--removal-penalty must be finite and nonnegative",
-            ));
-        }
         if !self.lambda.is_finite() || !(0.0..=1.0).contains(&self.lambda) {
             return Err(Error::Invalid("--lambda must be finite and in 0..1"));
         }

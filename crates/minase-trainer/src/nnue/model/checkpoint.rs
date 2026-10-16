@@ -11,21 +11,29 @@
 //! | `weights.head.biases`, `m.head.biases`, `v.head.biases` | `<f4` | `[U]` | バイアスと両モーメント。 |
 //! | `weights.head.output_weights`, `m.head.output_weights`, `v.head.output_weights` | `<f4` | `[2, U]` | 出力重みと両モーメント。 |
 //! | `weights.head.output_bias`, `m.head.output_bias`, `v.head.output_bias` | `<f4` | `[1]` | 出力バイアスと両モーメント。 |
+//! | `weights.head.output_weights_end`, `m.head.output_weights_end`, `v.head.output_weights_end` | `<f4` | `[2, U]` | 終盤端点の直接出力重みと両モーメント。 |
+//! | `weights.head.output_bias_end`, `m.head.output_bias_end`, `v.head.output_bias_end` | `<f4` | `[1]` | 終盤端点の出力バイアスと両モーメント。 |
+//! | `weights.head.hidden_weights`, `m.head.hidden_weights`, `v.head.hidden_weights` | `<f4` | `[16, 2U]` | 隠れ層の自由重みと両モーメント。 |
+//! | `weights.head.hidden_biases`, `m.head.hidden_biases`, `v.head.hidden_biases` | `<f4` | `[16]` | 隠れ層のバイアスと両モーメント。 |
+//! | `weights.head.hidden_output`, `m.head.hidden_output`, `v.head.hidden_output` | `<f4` | `[16]` | 序盤端点の隠れ層出力重みと両モーメント。 |
+//! | `weights.head.hidden_output_end`, `m.head.hidden_output_end`, `v.head.hidden_output_end` | `<f4` | `[16]` | 終盤端点の隠れ層出力重みと両モーメント。 |
 //! | `canonical_mask`, `first_layer_mask`, `virtual_mask` | `\|b1` | `[6841]`, `[R]`, `[V]` | 観測マスク。 |
 //! | `initial_linear`, `initial_virtual` | `<f4` | `[6841, 2]`, `[V, H]` | 未観測行を固定する初期値。 |
 //! | `cp_per_logit` | `<f4` | `[]` | 勝率尺度（1ロジットあたりのcp）。 |
-//! | `width`, `feature_set`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、更新数。 |
+//! | `width`, `feature_set`, `head`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、出力部（宣言順0〜3）、更新数。 |
 //! | `optimizer_groups` | `<f8` | `[3, 2]` | 線形、第1層、出力部の順の学習率と重み減衰。 |
-//! | `removal_penalty`, `lambda` | `<f8` | `[]` | 駒除去損失係数と教師混合比。 |
+//! | `lambda` | `<f8` | `[]` | 教師混合比。 |
 //! | `meta` | `\|u1` | `[JSONのバイト長]` | UTF-8のJSON。 |
 //!
+//! 出力部が持たない区画も保存し、表の形の先頭次元を0とする。
+//! `head`の値はdirect-screlu=0、direct-screlu-phase2=1、screlu-hidden16=2、screlu-hidden16-phase2=3である。
 //! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
 //! `meta`は`kind = "nnue"`、`epoch`、`best`、`elapsed_seconds`、`seed`、`config`を持つ。
 //! `best`は`{epoch, validation_loss}`で更新前はnull。時間は秒である。
 //! `config`は`config.json`の`settings`、`inputs`、`preprocessing`をそのまま保持する。
 //! GPUの状態は学習バックエンドのスナップショットでホストへ集めてから保存する。
 
-use super::{Error, Masks, Model, Parameter, Parameters, Result, Shape};
+use super::{Error, HeadKind, Masks, Model, Parameter, Parameters, Result, Shape};
 pub use crate::nn::checkpoint::Progress;
 use crate::nn::{
     AdamWGroup,
@@ -40,14 +48,13 @@ use std::path::Path;
 /// パラメータ、固定行の初期値とマスク、AdamWの状態、進捗を保存する。
 /// 配列の配置はこのモジュールの表に定める。
 /// 復号時の受理条件は[`Self::decode`]に従う。
+/// `removal_penalty`を持つ以前のチェックポイントは余分な配列として拒否される。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
     /// f32モデル。
     pub model: Model,
     /// AdamWの全状態。
     pub optimizer: AdamW,
-    /// 駒除去差分の補助損失係数。
-    pub removal_penalty: f64,
     /// 自己対局の教師混合比。
     pub lambda: f64,
     /// 学習の進捗と再開条件。
@@ -55,11 +62,7 @@ pub struct Checkpoint {
 }
 impl Checkpoint {
     fn validate(&self) -> Result<()> {
-        if !self.removal_penalty.is_finite()
-            || self.removal_penalty < 0.0
-            || !self.lambda.is_finite()
-            || !(0.0..=1.0).contains(&self.lambda)
-        {
+        if !self.lambda.is_finite() || !(0.0..=1.0).contains(&self.lambda) {
             return Err(Error::Invalid("checkpoint loss coefficients"));
         }
         if self.model.shape() != self.optimizer.m.shape()
@@ -111,6 +114,7 @@ impl Checkpoint {
         self.validate()?;
         let shape = self.model.shape();
         let mut w = Writer::new("nnue", &self.progress)?;
+        w.scalar("head", shape.head() as u64);
         w.scalar("width", shape.width() as u64);
         w.scalar(
             "feature_set",
@@ -121,7 +125,6 @@ impl Checkpoint {
         );
         w.scalar("cp_per_logit", shape.cp_per_logit());
         w.scalar("step", self.optimizer.step);
-        w.scalar("removal_penalty", self.removal_penalty);
         w.scalar("lambda", self.lambda);
         let groups = [
             self.optimizer.config.linear,
@@ -175,9 +178,15 @@ impl Checkpoint {
             1 => InputFeatureSet::HalfKpHmB8,
             _ => return Err(Error::Format("checkpoint feature set")),
         };
-        let shape = Shape::new(set, width, r.scalar("cp_per_logit")?)?;
+        let head = match r.scalar::<u64>("head")? {
+            0 => HeadKind::DirectScrelu,
+            1 => HeadKind::DirectScreluPhase2,
+            2 => HeadKind::ScreluHidden16,
+            3 => HeadKind::ScreluHidden16Phase2,
+            _ => return Err(Error::Format("checkpoint head")),
+        };
+        let shape = Shape::new(set, width, r.scalar("cp_per_logit")?, head)?;
         let step = r.scalar("step")?;
-        let removal_penalty = r.scalar("removal_penalty")?;
         let lambda = r.scalar("lambda")?;
         let groups = r.values::<f64>("optimizer_groups", &[3, 2])?;
         let group = |i: usize| AdamWGroup {
@@ -227,7 +236,6 @@ impl Checkpoint {
                 initial_virtual,
             },
             optimizer: AdamW { m, v, step, config },
-            removal_penalty,
             lambda,
             progress,
         };
@@ -255,5 +263,14 @@ fn dimensions(shape: Shape, parameter: Parameter) -> Vec<usize> {
         Parameter::Biases => vec![shape.units()],
         Parameter::OutputWeights => vec![2, shape.units()],
         Parameter::OutputBias => vec![1],
+        Parameter::OutputWeightsEnd => vec![shape.len(parameter) / shape.units(), shape.units()],
+        Parameter::HiddenWeights => vec![
+            shape.len(parameter) / (2 * shape.units()),
+            2 * shape.units(),
+        ],
+        Parameter::OutputBiasEnd
+        | Parameter::HiddenBiases
+        | Parameter::HiddenOutput
+        | Parameter::HiddenOutputEnd => vec![shape.len(parameter)],
     }
 }

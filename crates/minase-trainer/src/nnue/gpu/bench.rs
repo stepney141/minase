@@ -12,7 +12,7 @@ use crate::{
         },
         model::{Masks, Model, Parameter, Shape},
         options::{self, DeviceKind, TrainingOptions},
-        reference::{self, AdamW, Losses, RemovalReference, v0_piece_values},
+        reference::{self, AdamW, Losses, v0_piece_values},
     },
 };
 use cudarc::driver::LaunchConfig;
@@ -30,7 +30,10 @@ pub struct Args {
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
-    /// 隠れ層の幅を2以上512以下の偶数で指定する。
+    /// 出力部を指定する。CPUとCUDAで全4種類を使える。
+    #[arg(long, value_enum, default_value = "direct-screlu")]
+    head: crate::nnue::model::HeadKind,
+    /// 第1層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     width: usize,
     /// 測定する1バッチの局面数を指定する。
@@ -57,7 +60,7 @@ pub struct Args {
     /// この測定で固定する勝率尺度（1ロジットあたりのcp）と教師の勝率尺度の共通値を指定する。
     #[arg(long, default_value_t = 1000.0)]
     cp_per_logit: f32,
-    /// 学習率、重み減衰、補助損失の係数、および教師値の混合比。
+    /// 学習率、重み減衰、および教師値の混合比。
     #[command(flatten)]
     training: TrainingOptions,
 }
@@ -122,7 +125,6 @@ struct Measurements {
     compute_ms: f64,
     transfer_ms: f64,
     binary_cross_entropy: f64,
-    auxiliary: f64,
     profile: ProfileMeasurements,
 }
 
@@ -132,7 +134,6 @@ impl Measurements {
         self.compute_ms += f64::from(result.compute_ms);
         self.transfer_ms += f64::from(pending.1.collect()?) + f64::from(result.target_transfer_ms);
         self.binary_cross_entropy += result.losses.bce;
-        self.auxiliary += result.losses.auxiliary;
         for timing in profile {
             self.profile.add(timing);
         }
@@ -292,7 +293,7 @@ impl ProfileMeasurements {
 /// 教師の勝率尺度の推定や学習の検証は行わない。
 pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
     args.training.validate()?;
-    let shape = Shape::new(args.feature_set, args.width, args.cp_per_logit)?;
+    let shape = Shape::new(args.feature_set, args.width, args.cp_per_logit, args.head)?;
     if !(1..=MAX_BATCH_SIZE).contains(&args.batch) {
         return Err(Error::Invalid("--batch must be in 1..=MAX_BATCH_SIZE").into());
     }
@@ -335,17 +336,11 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
     let warmup_targets = build_targets(&warmup, &teacher_cp_per_logit, dataset.teacher_lambdas())?;
     let optimizer = AdamW::new(shape, args.training.optimizer())?;
+
     let device = Device::new(0)?;
     let (free_before, _) = device.memory_info()?;
     let mut ring = HostRing::new(&device, args.feature_set, args.batch)?;
-    let mut step = Step::new(
-        device.clone(),
-        &model,
-        &optimizer,
-        &RemovalReference::v0(),
-        args.batch,
-        args.training.removal_penalty,
-    )?;
+    let mut step = Step::new(device.clone(), &model, &optimizer, args.batch)?;
     if args.profile {
         step.enable_profiling();
     }
@@ -409,7 +404,6 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         gpu_allocation_bytes: Some(free_before as i128 - free_after as i128),
         losses: Losses {
             bce: measurements.binary_cross_entropy / steps,
-            auxiliary: measurements.auxiliary / steps,
         },
         profile: args.profile.then(|| measurements.profile.table(args.steps)),
     })
@@ -487,7 +481,6 @@ fn run_cpu(
     mut model: Model,
 ) -> Result<Report> {
     let mut optimizer = AdamW::new(model.shape(), args.training.optimizer())?;
-    let removal = RemovalReference::v0();
     let teacher_cp_per_logit = vec![f64::from(args.cp_per_logit); dataset.teacher_classes().len()];
     let workers = threads.min(args.steps);
     let mut update = |prepared: &PreparedBatch| -> Result<Losses> {
@@ -495,8 +488,6 @@ fn run_cpu(
             &model,
             &prepared.batch,
             &prepared.targets,
-            &removal,
-            args.training.removal_penalty,
             threads,
         )?;
         optimizer.update_parallel(&mut model, &gradients.parameters, threads, 1.0)?;
@@ -537,7 +528,6 @@ fn run_cpu(
                 let losses = update(&prepared)?;
                 measurements.compute_ms += compute_started.elapsed().as_secs_f64() * 1000.0;
                 measurements.binary_cross_entropy += losses.bce;
-                measurements.auxiliary += losses.auxiliary;
             }
             Ok(measurements)
         })();
@@ -572,7 +562,6 @@ fn run_cpu(
         gpu_allocation_bytes: None,
         losses: Losses {
             bce: measurements.binary_cross_entropy / steps,
-            auxiliary: measurements.auxiliary / steps,
         },
         profile: None,
     })

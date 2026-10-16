@@ -4,7 +4,7 @@ use crate::nnue::{
     gpu::{self, Device, HostBuffer, HostRing},
     model::{Model, Parameters},
     options::DeviceKind,
-    reference::{self, AdamW, RemovalReference, Validation},
+    reference::{self, AdamW, Validation},
 };
 use std::time::Instant;
 
@@ -20,8 +20,6 @@ pub(super) enum Backend {
 pub(super) struct Cpu {
     model: Model,
     optimizer: AdamW,
-    reference: RemovalReference,
-    removal_penalty: f64,
     threads: usize,
 }
 
@@ -86,9 +84,7 @@ impl Backend {
         kind: DeviceKind,
         model: &Model,
         optimizer: &AdamW,
-        reference: &RemovalReference,
         capacity: usize,
-        removal_penalty: f64,
         threads: usize,
     ) -> Result<Self> {
         Ok(match kind {
@@ -96,15 +92,11 @@ impl Backend {
                 Device::new(0)?,
                 model,
                 optimizer,
-                reference,
                 capacity,
-                removal_penalty,
             )?)),
             DeviceKind::Cpu => Self::Cpu(Box::new(Cpu {
                 model: model.clone(),
                 optimizer: optimizer.clone(),
-                reference: reference.clone(),
-                removal_penalty,
                 threads,
             })),
         })
@@ -168,20 +160,12 @@ impl Backend {
                 let Cpu {
                     model,
                     optimizer,
-                    reference,
-                    removal_penalty,
                     threads,
                 } = cpu.as_mut();
                 let batch = slot.take().ok_or(Error::Invalid("missing CPU batch"))?;
                 let started = Instant::now();
-                let gradient = reference::loss_and_gradients_parallel(
-                    model,
-                    &batch,
-                    targets,
-                    reference,
-                    *removal_penalty,
-                    *threads,
-                )?;
+                let gradient =
+                    reference::loss_and_gradients_parallel(model, &batch, targets, *threads)?;
                 optimizer.update_parallel(model, &gradient.parameters, *threads, multiplier)?;
                 Ok(StepResult::Cpu(gpu::StepMetrics {
                     losses: gradient.losses,
@@ -202,19 +186,12 @@ impl Backend {
         }
     }
 
-    pub fn evaluator<'a>(
-        &self,
-        model: &'a Model,
-        capacity: usize,
-        removal_penalty: f64,
-    ) -> Result<Evaluator<'a>> {
+    pub fn evaluator<'a>(&self, model: &'a Model, capacity: usize) -> Result<Evaluator<'a>> {
         match self {
             Self::Cuda(step) => Ok(Evaluator::Cuda(Box::new(gpu::Evaluator::new(
                 step.device().clone(),
                 model,
-                &RemovalReference::v0(),
                 capacity,
-                removal_penalty,
             )?))),
             Self::Cpu(_) => Ok(Evaluator::Cpu {
                 model,

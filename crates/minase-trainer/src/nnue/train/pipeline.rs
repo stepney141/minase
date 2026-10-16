@@ -31,7 +31,6 @@ struct Prepared {
 #[derive(Default)]
 pub(super) struct Training {
     pub bce: f64,
-    pub auxiliary: f64,
     pub compute_seconds: f64,
     /// 途中検証の秒数の合計。パラメータの回収とログ保存を含み、学習秒数から除く。
     pub interval_validation_seconds: f64,
@@ -48,11 +47,10 @@ pub(super) struct Training {
 impl Training {
     fn collect(&mut self, result: StepResult, positions: usize) -> gpu::Result<()> {
         let metrics = result.collect()?;
-        if !metrics.losses.bce.is_finite() || !metrics.losses.auxiliary.is_finite() {
+        if !metrics.losses.bce.is_finite() {
             return Err(gpu::Error::Invalid("non-finite training loss"));
         }
         self.bce += metrics.losses.bce * positions as f64;
-        self.auxiliary += metrics.losses.auxiliary * positions as f64;
         self.compute_seconds += f64::from(metrics.compute_ms) / 1000.0;
         self.steps += 1;
         self.positions += positions;
@@ -68,8 +66,6 @@ pub(super) struct Supply<'a> {
     pub validation_indices: &'a [u64],
     pub teacher_cp_per_logit: &'a [f64],
     pub batch: usize,
-    /// 検証用の評価器へ渡す補助損失の係数。
-    pub removal_penalty: f64,
     /// 累積更新回数に対する途中検証の間隔。0なら無効で、エポック境界は除く。
     pub validation_interval: u64,
     /// 完了済み更新回数から学習率の倍率を求める規則。

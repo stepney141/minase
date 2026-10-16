@@ -17,7 +17,7 @@ pub struct Args {
     /// 実行デバイスを明示する。CUDAが使えない場合はエラーにする。
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     pub device: DeviceKind,
-    /// 学習率、重み減衰、補助損失係数と教師の混合比。
+    /// 学習率、重み減衰と教師の混合比。
     /// 必須の`--lambda`の適用範囲は[`TrainingOptions::lambda`]に従う。
     #[command(flatten)]
     #[serde(flatten)]
@@ -29,7 +29,10 @@ pub struct Args {
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
-    /// 隠れ層の幅を2以上512以下の偶数で指定する。
+    /// 出力部を指定する。学習の再開時にも一致を要求する。
+    #[arg(long, value_enum, default_value = "direct-screlu")]
+    pub head: crate::nnue::model::HeadKind,
+    /// 第1層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     pub width: usize,
     /// MNSDファイルを、全体のレコード順に指定する。
@@ -87,7 +90,7 @@ impl Args {
     pub fn validate(&self) -> Result<()> {
         self.training.validate()?;
         self.lr_schedule.validate()?;
-        Shape::new(self.feature_set, self.width, 1.0)?;
+        Shape::new(self.feature_set, self.width, 1.0, self.head)?;
         if self.data.is_empty() {
             return Err(Error::Invalid("--data requires at least one file").into());
         }

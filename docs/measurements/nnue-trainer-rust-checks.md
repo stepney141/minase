@@ -214,6 +214,53 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 
 `removal`、`distribution`、`moves`の引数は`tools/train/src/minase_train/diagnostics/nnue.py`の`main`に定義がある。フェーズ5の型の比較には、`ActiveFeatureSet`と`nets/nnue.bin`だけが異なる2つのコミットが要る。
 
+## 隠れ層計画のフェーズ0　駒除去差分の補助損失の削除
+
+[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)のフェーズ0で、学習器から駒除去差分の補助損失（CUDAカーネル`removal.cu`、CPU参照の`removal_forward`、`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`、チェックポイントの`removal_penalty`）を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を`summary.json`の`removal_sign`に記録するようにした（2026年10月16日、ブランチ`nnue-hidden-layer`）。
+検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、検査の間、同じ機械でlishogiのBot（4スレッド）が対局していた。
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 静的検査とCPUのテスト | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p minase-trainer`（246件） | 通過。補助損失だけを検査していた4件（`removal_uses_lane_partials_then_descending_shuffle_distances`、`removal_p_adds_both_activations_before_multiplying_the_shared_weight`、`ineligible_removals_zero_diagnostics_and_preserve_reference_fields`、`removal_inputs_cover_lower_upper_inactive_and_all_ineligible_reasons`）を削除し、旧チェックポイントの拒否など4件を加えた |
+| GPUとCPU参照の等価性 | `cargo test -p minase-trainer -- --ignored gpu_`（33件）と`check-equivalence`（両方の型、幅6のバッチ100と幅128のバッチ4,096）。数値微分、1更新と連続3更新、再開の一致、混合教師と係数変更を含む | すべて一致。幅128・バッチ4,096の最大絶対誤差はP型1.144×10⁻⁵、HalfKP-hm-b8で4.843×10⁻⁶（許容誤差`1e-6+1e-5×|CPU|`以内）、2回実行はビット単位で一致 |
+| 旧チェックポイントの拒否 | `removal_penalty`スカラーを含むNPZを`decode` | 余分な配列として拒否（版数は増やしていない） |
+
+1更新の時間とワーカーの供給速度は、`bench-step`（幅128、バッチ16,384、20更新、`--profile`つき）を再生成した教師データの1本目（`generated-7100000.bin`）で測った。`--profile`はカーネルごとの計測イベントを挿入するので1更新の時間をわずかに長く見せるが、削除前の値も同じ条件で測ったものである。
+削除前の値は、本書の「フェーズ2e」の表（P型27.3 ms、HalfKP-hm-b8 31.6 ms）である。
+
+| 項目 | P型 | HalfKP-hm-b8 |
+|---|---:|---:|
+| 1更新（計算ストリーム） | 4.7 ms | 8.6 ms |
+| カーネル時間の内訳の上位 | 第1層の後退1.8 ms（39%）、第1層の前進1.4 ms（31%） | 第1層の最適化器4.1 ms（48%）、第1層の後退1.7 ms（20%） |
+| ワーカーの供給速度（6ワーカー） | 659,725局面/秒 | 712,661局面/秒 |
+| ワーカーの供給速度（12ワーカー） | 1,286,215局面/秒 | 1,304,419局面/秒 |
+| 実効速度（6ワーカー / 12ワーカー） | 601,669 / 950,635局面/秒 | 616,423 / 833,889局面/秒 |
+
+1更新の時間は設計書の見込み（P型約7 ms、HalfKP-hm-b8約11 ms）より短い。
+ワーカーの供給は6から12でほぼ2倍に伸び、12ワーカーでは1バッチの転送（約2.7 ms）と更新（4.7 ms）の和が律速になる。
+設計書が見込んだ1エポック（約8,000万局面）の時間は、12ワーカーの実効速度では約85秒である。
+## 隠れ層計画のフェーズ3　学習器の出力部
+
+[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)のフェーズ3で、学習器に3つの出力部（`direct-screlu-phase2`、`screlu-hidden16`、`screlu-hidden16-phase2`）と`--head`を加えた（2026年10月16日、ブランチ`nnue-hidden-layer`。CPU側のコミットとCUDA側のコミットに分けた）。
+検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、同じ機械でlishogiのBot（4スレッド）が動いていた。
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 静的検査とCPUのテスト | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p minase-trainer`（255件） | 通過。4出力部の数値微分、同じシードでのエポック0の一致、CPUの再開の一致、`--head`を変えた再開の拒否、量子化の範囲外の拒否、仕様から書いた整数参照と推論側の評価の一致（両特徴集合×4出力部、境界の例を含む）を含む |
+| GPUとCPU参照の等価性 | `cargo test -p minase-trainer -- --ignored gpu_`（35件）と`check-equivalence`（4出力部×両特徴集合×{幅6のバッチ100、幅128のバッチ4,096}の16条件） | すべて一致。幅128・バッチ4,096の最大絶対誤差は1.144×10⁻⁴（P型`direct-screlu-phase2`）以下で許容誤差`1e-6+1e-5×|CPU|`以内、2回実行はビット単位で一致 |
+| 直接内積の不変 | 1本目の教師データ（`generated-7100000.bin`）の1エポック学習（`constant:1`、シード1）の`nnue.bin`をフェーズ0の学習器と比較 | CPU側の変更（フェーズ3a）まではSHA-256 `6e3fe265…`で一致。CUDA側の変更（フェーズ3b）で、出力部の内積の縮約を直列の順からワープ内の固定の木に改めたため、`direct-screlu`の学習結果も`348625a9…`へ変わった。CPU参照も同じ順に合わせてあり、等価性は上の16条件で確認した。フェーズ4の4本は、この学習器で学び直した基準D0と比べる |
+
+出力部ごとの1更新の時間は`bench-step`（P型、幅128、バッチ16,384、20更新、12ワーカー、`--profile`つき）で測った。隠れ層つきでは、局面ごとの隠れ層の計算と勾配の寄与を書く`output_backward`が1更新の4割を占める。
+
+| 出力部 | 1更新 | `output_backward` | `gradient_partials` | 実効速度（局面/秒） | GPUメモリ |
+|---|---:|---:|---:|---:|---:|
+| `direct-screlu` | 4.83 ms | 0.36 ms | 0.30 ms | 803,090 | 508 MB |
+| `direct-screlu-phase2` | 5.15 ms | 0.56 ms | 0.41 ms | 922,666 | 508 MB |
+| `screlu-hidden16` | 8.72 ms | 3.50 ms | 1.23 ms | 825,685 | 642 MB |
+| `screlu-hidden16-phase2` | 9.72 ms | 4.21 ms | 1.41 ms | 795,524 | 676 MB |
+
+実効速度は1バッチの転送（約2.7 ms）とワーカーの供給（約103万〜129万局面/秒）を含む値であり、1更新の差ほどには開かない。
+
 ## 結論
 
 （完了後に書く。）

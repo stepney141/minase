@@ -5,14 +5,26 @@
 //! 112はUTF-8の規則セット名32バイト、144は本体のSHA-256の32バイト、176は0の予約16バイトである。
 //! 文字列の余りはNULで埋める。
 //!
-//! 本体は線形`i16[13680][2]`、探索用駒価値`i32[47]`、第1層`i16[D][H]`、バイアス`i32[H]`、出力重み`i16[2H]`、出力バイアスi32の順である。
-//! Dは入力特徴数であり、直接出力部のファイル長は`192 + 13,680×4 + 47×4 + D×2H + 4H + 4H + 4`となる。
-//! 長さはヘッダの幅と型の構造から導いて検査し、固定のファイルサイズとは比較しない。
-//! 版1〜4は受理しない。
+//! 本体は線形`i16[13680][2]`、探索用駒価値`i32[47]`、第1層`i16[D][H]`、バイアス`i32[H]`、出力区画の順である。
+//! Dは入力特徴数であり、ファイル長は`192 + 13,680×4 + 47×4 + D×2H + 4H + Head::byte_len(H)`となる。
+//! 長さはヘッダの幅と型の構造から導いて検査し、版1〜4は受理しない。
 //!
-//! 本体の先頭を0としたバイト位置は、線形重みが0、第1層より前の駒価値が54,720、
-//! 第1層が54,908、バイアスが`54,908 + 2DH`、出力重みが`54,908 + 2DH + 4H`、
-//! 出力バイアスが`54,908 + 2DH + 8H`であり、ファイル先頭からはそれぞれ192を足す。
+//! 本体の先頭を0としたバイト位置は、線形重みが0、駒価値が54,720、第1層が54,908、
+//! バイアスが`54,908 + 2DH`、出力区画が`54,908 + 2DH + 4H`である。
+//! ファイル先頭からの位置は、それぞれ192を足す。
+//! 出力区画は次の順に並ぶ。`o`は`i16[2H]`、`b`は`i32`であり、端点1組は`4H + 4`バイトである。
+//! `W1`は行優先の`i8[16][2H]`、`b1`は`i32[16]`、`w2`は`i16[16]`である。
+//!
+//! | head | 区画の順序 |
+//! |---|---|
+//! | `direct-screlu` | `o, b` |
+//! | `direct-screlu-phase2` | `o_open, b_open, o_end, b_end` |
+//! | `screlu-hidden16` | `o, b, W1, b1, w2` |
+//! | `screlu-hidden16-phase2` | `o_open, b_open, o_end, b_end, W1, b1, w2_open, w2_end` |
+//!
+//! 端点数をEとすると、出力区画内の`W1`の位置は`E(4H + 4)`、`b1`はそこから`32H`後、
+//! `w2`はさらに64バイト後であり、端点別の`w2`は32バイトずつ並ぶ。
+//! `W1`は絶対値127以下、`b1`は65,024以下、`w2`は8,192以下とする。
 //! 線形重みは特徴番号順に序中盤、終盤の順で並び、尺度は1/8センチポーンである。
 //! 第1層は特徴番号ごとにH個を連続して置き、重みとバイアスの絶対値は1,016以下とする。
 //! 直接出力部の重みは手番側H個、相手側H個の順で、絶対値は8,192以下とする。
@@ -22,7 +34,7 @@
 //! 線形の鏡映共有、特徴集合ごとの共有条件、および駒価値の値域は[`Network::decode`]で検査する。
 
 use super::feature_set::{FeatureSet, Mirror};
-use super::head::{DirectScrelu, Head};
+use super::head::Head;
 use super::{EVALUATION_LIMIT, FEATURE_COUNT, Network, PIECE_STATE_COUNT};
 use crate::eval::features::{mirror_feature, piece_state};
 use core::fmt;
@@ -34,7 +46,7 @@ pub(super) const HEADER_LENGTH: usize = 192;
 
 /// MNUE版5へ書き出す量子化済みの重みとメタデータ。
 #[derive(Clone, Copy)]
-pub struct EncodeInput<'a> {
+pub struct EncodeInput<'a, H: Head> {
     /// 第1層の幅H。2以上512以下の偶数を指定する。
     pub width: u32,
     /// 勝率尺度。正の有限値で100,000以下を指定する。
@@ -49,23 +61,21 @@ pub struct EncodeInput<'a> {
     pub weights: &'a [i16],
     /// 第1層のバイアス。要素数はH。
     pub biases: &'a [i32],
-    /// 手番側視点のH個に相手側視点のH個が続く出力重み。
-    pub output_weights: &'a [i16],
-    /// 出力バイアス。
-    pub output_bias: i32,
+    /// 検査済みの出力部。幅と特徴集合の共有条件は符号化時にも検査する。
+    pub head: &'a H,
 }
 
-/// 入力特徴集合`F`と直接出力部の重みを検証し、MNUE版5へ符号化する。
+/// 入力特徴集合`F`と出力部`H`の重みを検証し、MNUE版5へ符号化する。
 ///
-/// 構造記述文字列は`F`の名前と幅から組み立て、本体のSHA-256をヘッダへ格納する。
+/// 構造記述文字列は`F`と`H`の名前と幅から組み立て、本体のSHA-256をヘッダへ格納する。
 /// 量子化済み整数を受け取り、復号と同じ範囲と鏡映共有を検査する。
 /// 実数への尺度の乗算と偶数丸めは学習器の`nnue::model::quantize`が行い、書き出し直後に復号して再検査する。
 ///
 /// # Errors
 /// 幅、勝率尺度、文字列、配列長、駒価値、重みの範囲または鏡映共有が不正ならエラーを返す。
-pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> {
+pub fn encode<F: FeatureSet, H: Head>(input: &EncodeInput<'_, H>) -> Result<Vec<u8>, Error> {
     let width = input.width as usize;
-    let text = architecture_text::<F, DirectScrelu>(width);
+    let text = architecture_text::<F, H>(width);
     if text.len() > 96 {
         return Err(Error::InvalidArchitecture);
     }
@@ -92,7 +102,6 @@ pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> 
         ("linear", FEATURE_COUNT, input.linear.len()),
         ("weights", weight_count, input.weights.len()),
         ("biases", width, input.biases.len()),
-        ("output_weights", 2 * width, input.output_weights.len()),
     ] {
         if actual != expected {
             return Err(Error::InvalidParameterLength {
@@ -106,7 +115,11 @@ pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> 
         .checked_mul(2)
         .and_then(|bytes| {
             bytes.checked_add(
-                HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4 + 8 * width + 4,
+                HEADER_LENGTH
+                    + FEATURE_COUNT * 4
+                    + PIECE_STATE_COUNT * 4
+                    + 4 * width
+                    + H::byte_len(width),
             )
         })
         .filter(|&bytes| bytes <= isize::MAX as usize)
@@ -114,13 +127,8 @@ pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> 
     validate_piece_values(input.piece_values)?;
     validate_features::<F>(width, input.linear, input.weights, input.biases)?;
 
-    // 出力区画は最大2,052バイト。既存の復号と同じ範囲・共有条件で検査する。
-    let mut output = Vec::with_capacity(DirectScrelu::byte_len(width));
-    for value in input.output_weights {
-        output.extend_from_slice(&value.to_le_bytes());
-    }
-    output.extend_from_slice(&input.output_bias.to_le_bytes());
-    DirectScrelu::decode(&output, width, F::MIRROR == Mirror::Shared)?;
+    let output = input.head.to_bytes();
+    H::decode(&output, width, F::MIRROR == Mirror::Shared)?;
 
     let mut bytes = Vec::with_capacity(length);
     bytes.extend_from_slice(&header);

@@ -147,7 +147,6 @@ impl Fixture {
         Checkpoint {
             optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
             model,
-            removal_penalty: 0.0,
             lambda: 1.0,
             progress: Progress {
                 epoch: 0,
@@ -224,8 +223,21 @@ impl Drop for Fixture {
 }
 
 fn model(set: InputFeatureSet, linear: &[[f32; 2]], cp_per_logit: f32) -> Model {
+    model_with_head(
+        set,
+        linear,
+        cp_per_logit,
+        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+    )
+}
+fn model_with_head(
+    set: InputFeatureSet,
+    linear: &[[f32; 2]],
+    cp_per_logit: f32,
+    head: minase_trainer::nnue::model::HeadKind,
+) -> Model {
     Model::initialize(
-        Shape::new(set, 4, cp_per_logit).unwrap(),
+        Shape::new(set, 4, cp_per_logit, head).unwrap(),
         linear,
         common::all_observed(set),
         1,
@@ -1005,4 +1017,72 @@ fn json_nested_keys(json: &str, field: &str) -> Vec<String> {
     let keys = Keys(Some(field)).deserialize(&mut deserializer).unwrap();
     deserializer.end().unwrap();
     keys
+}
+
+#[test]
+fn all_heads_support_distribution_moves_and_float_removal_diagnostics() {
+    use minase_trainer::nnue::model::HeadKind;
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        for head in HeadKind::ALL {
+            let fixture = Fixture::new();
+            let positions = common::positions();
+            fixture.data("data.mnsd", &positions, 11, &[4; 3], "L0,P0,R1,E0");
+            fixture.baseline("base.bin", &pawn_linear(50.0), 0);
+            fixture.data(
+                "distribution.mnsd",
+                &distribution_positions(),
+                22,
+                &[4; 24],
+                "L0,P0,R1,E0",
+            );
+            let mut model = model_with_head(set, &pawn_linear(100.0), 1016.0, head);
+            model.parameter_mut(Parameter::FirstLayer).fill(0.01);
+            model.fix_unobserved();
+            model.parameter_mut(Parameter::Biases).fill(0.3);
+            model.parameter_mut(Parameter::HiddenWeights).fill(0.01);
+            model.parameter_mut(Parameter::HiddenBiases).fill(0.2);
+            for (p, value) in [
+                (Parameter::OutputWeights, 0.02),
+                (Parameter::OutputWeightsEnd, -0.01),
+                (Parameter::OutputBias, 0.03),
+                (Parameter::OutputBiasEnd, -0.02),
+                (Parameter::HiddenOutput, 0.01),
+                (Parameter::HiddenOutputEnd, -0.01),
+            ] {
+                model.parameter_mut(p).fill(value);
+            }
+            fixture.network("net.bin", &model);
+            fixture.checkpoint(model);
+            let removal = fixture.success(&removal_args("3"), "report.json");
+            assert_eq!(
+                removal["float_batch_vs_recomputed"]["passed"], true,
+                "{set:?} {head:?}"
+            );
+            let distribution = fixture.success(
+                &[
+                    "nnue-distribution",
+                    "--data",
+                    "distribution.mnsd",
+                    "--sample",
+                    "24",
+                    "--seed",
+                    "7",
+                    "--pair",
+                    "candidate",
+                    "base.bin",
+                    "net.bin",
+                    "--output",
+                    "distribution.json",
+                ],
+                "distribution.json",
+            );
+            assert_eq!(distribution["sample_count"], 24);
+            let mut args = moves_args();
+            args[8] = "moves.json";
+            let moves = fixture.success(&args, "moves.json");
+            assert_eq!(moves["position_count"], 3);
+            assert_eq!(moves["candidate_only_count"], 0);
+            assert_eq!(moves["baseline_only_count"], 0);
+        }
+    }
 }

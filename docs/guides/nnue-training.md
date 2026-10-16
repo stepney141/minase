@@ -102,8 +102,16 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 
 本番の学習は、試走と同じコマンドの`--data`に全入力を並べ、`--epochs`、`--patience`、および`--time-limit-hours`で上限を決めて実行する。
 `--output-dir`には、存在しないパスか空のディレクトリを指定する。
-学習率、重み減衰、補助損失の係数、およびλは共通の引数で変えられ、既定値と値域は`crates/minase-trainer/src/nnue/options.rs`のdocコメントにある。
+学習率、重み減衰、およびλは共通の引数で変えられ、既定値と値域は`crates/minase-trainer/src/nnue/options.rs`のdocコメントにある。
 エポック数、時間、および打ち切りの上限と既定値は`crates/minase-trainer/src/nnue/train/args.rs`の`Args`のdocコメントにある。
+
+ネットの出力部は`--head`で選ぶ。
+`direct-screlu`（既定。両視点の活性化と出力重みの直接内積）、`direct-screlu-phase2`（序盤用と終盤用の2つの出力を盤上総駒数で補間する）、`screlu-hidden16`（幅16の隠れ層の寄与を直接内積に加える）、および`screlu-hidden16-phase2`（隠れ層を共有した2端点の補間）の4つであり、名前は重みファイルの構造記述文字列の`head=`と同じである。
+出力部ごとの式、パラメータの配列、初期値、および切り詰めは`crates/minase-trainer/src/nnue/model/mod.rs`の`HeadKind`と`Parameter`、`crates/minase-trainer/src/nnue/reference/head.rs`のdocコメントにある。
+出力部は学習の軌跡を変えるので、再開時に変えることはできない。
+`check-equivalence`と`bench-step`にも同じ`--head`がある。
+隠れ層を持つ出力部では、`training.jsonl`の`hidden_saturation`に隠れ層の活性化が0以下と1以上であった割合が記録され、他の出力部では`null`である。
+エンジンは`crates/minase/src/eval/nnue/mod.rs`の`ActiveHead`に決めた出力部の重みだけを読むので、別の出力部で学んだ`nnue.bin`を埋め込むには`ActiveHead`も合わせて変える。
 
 学習率は、更新ごとに倍率を掛けて変えられる。
 `--lr-schedule`に、一定の倍率`constant:<c>`、半減期をエポック数で与える指数減衰`exponential:<半減期>:<下限>`、または総長をエポック数で与えるcosine annealing `cosine:<総長>:<下限>`を指定する。
@@ -125,7 +133,9 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 
 ## 5. 結果を確認する
 
-学習が終わったら、`--output-dir`の`summary.json`で停止理由、最良エポック、および量子化検査の結果を確かめる。
+学習が終わったら、`--output-dir`の`summary.json`で停止理由、最良エポック、量子化検査の結果、および駒除去差分の符号反転の割合を確かめる。
+符号反転の割合（`removal_sign`）は、量子化検査と同じ検証標本について、王駒以外の盤上の駒を1枚ずつ除いた局面を書き出した整数ネットで評価し直し、評価差の符号が手書きの評価関数v0の駒価値の差と逆になる除去の割合である。
+閾値はなく、学習の成否には影響しない。駒損を有利と評価する傾向の目安として、採否の測定で負けた場合の原因の手がかりに使う。
 エンジンが読む重みは`nnue.bin`であり、`latest.npz`と`best.npz`は再開用のチェックポイントである。
 `best.npz`は量子化前の最良モデルを兼ねる。
 各ファイルの欄は、`crates/minase-trainer/src/nnue/train/record.rs`の各記録のdocコメントに、チェックポイントの形式は`crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint`のdocコメントにある。
@@ -140,7 +150,7 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 時間の上限で終わった学習は、`summary.json`に収束を確認していない旨が記録されるので、測定記録にもそのことを書く。
 
 学習曲線は`training.jsonl`で確認する。
-エポック0は学習前の検証であり、以後の行で訓練損失、補助損失、検証損失、符号一致率、非線形出力の標準偏差、飽和率、および線形重みの移動量を読み、更新の不足や過学習がないか点検する。
+エポック0は学習前の検証であり、以後の行で訓練損失、検証損失、符号一致率、非線形出力の標準偏差、飽和率、および線形重みの移動量を読み、更新の不足や過学習がないか点検する。
 各行には、そのエポックの最初と最後の更新で学習率に掛けた倍率も記録される。
 GPUメモリ使用量の欄はGPU全体の使用量であり、他のプロセスの確保も含むので、他の作業と並行した学習ではその分を差し引いて読む。
 `--validation-interval`を指定した学習では、`validation-interval.jsonl`の各行で、完了した更新回数の累計、進行中のエポック番号とその中での位置、検証損失、および符号一致率を読み、エポックの途中のどこで検証損失が最良になるかを確かめる。

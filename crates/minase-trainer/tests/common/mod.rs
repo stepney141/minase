@@ -166,8 +166,19 @@ pub fn all_observed(set: InputFeatureSet) -> Masks {
     Masks::new(set, canonical, input).unwrap()
 }
 pub fn model(set: InputFeatureSet, width: usize) -> Model {
+    model_with_head(
+        set,
+        width,
+        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+    )
+}
+pub fn model_with_head(
+    set: InputFeatureSet,
+    width: usize,
+    head: minase_trainer::nnue::model::HeadKind,
+) -> Model {
     Model::initialize(
-        Shape::new(set, width, 1000.0).unwrap(),
+        Shape::new(set, width, 1000.0, head).unwrap(),
         &vec![[0.0; 2]; 13680],
         all_observed(set),
         71,
