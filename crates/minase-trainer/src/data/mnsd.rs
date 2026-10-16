@@ -1,23 +1,21 @@
+//! 逐次読み込みの受け手が全局面を圧縮列へ集める、B=1のデータ集合。
+//! 分類番号と通し番号は、各ファイルの読み込み後に入力順で割り当てる。
+
 use crate::data::{Outcome, Sample};
 use std::{
     collections::HashSet,
-    fs::File,
     num::NonZeroUsize,
     path::{Path, PathBuf},
     thread,
 };
 
 use super::sample::Metadata;
-use minase::training::records::{
-    Exclusion, Header, Origin, Outcome as GameOutcome, Reader, TeacherKind, Value,
-};
+use super::stream::{FileSummary, read_file};
+use super::teacher::estimate_cp_per_logit_by_passes;
+use minase::training::records::{Header, Origin};
 use serde::Serialize;
-use std::io::BufReader;
 
-use super::{
-    CpPerLogitEstimate, Error, Lookahead, Result, compute_lookahead, estimate_cp_per_logit,
-    is_validation, validate_lambda,
-};
+use super::{CpPerLogitEstimate, Error, Lookahead, Result, compute_lookahead, validate_lambda};
 
 /// 教師の勝率尺度（1ロジットあたりのcp）を共有する分類。
 ///
@@ -52,15 +50,15 @@ impl TeacherClass {
     }
 }
 
+/// 1ファイルから受け取った全局面と教師情報をメモリに保持する。
 struct LoadedFile {
-    path: PathBuf,
-    header: Header,
-    origin: Option<Origin>,
+    summary: FileSummary,
     positions: Vec<u8>,
     position_offsets: Vec<usize>,
     metadata: Vec<Metadata>,
     class: u32,
     scores: Vec<f32>,
+    validation: Vec<bool>,
 }
 
 fn invalid(path: &Path, reason: &'static str) -> Error {
@@ -71,79 +69,47 @@ fn invalid(path: &Path, reason: &'static str) -> Error {
 }
 
 impl LoadedFile {
-    fn open(path: &Path) -> Result<Self> {
-        let mut reader = Reader::new(BufReader::new(File::open(path)?))?;
-        if reader.header().teacher_kind() == TeacherKind::Mcts {
-            return Err(Error::MctsTeacher {
-                path: path.to_owned(),
-            });
-        }
-        let mut file = Self {
-            path: path.to_owned(),
-            header: reader.header().clone(),
-            origin: None,
-            positions: Vec::new(),
-            position_offsets: vec![0],
-            metadata: Vec::new(),
+    /// 逐次読み込みの受け手で圧縮列、索引、教師情報を集める。
+    fn open(path: &Path, lookahead: Option<Lookahead>) -> Result<Self> {
+        let mut positions = Vec::new();
+        let mut position_offsets = vec![0];
+        let mut metadata = Vec::new();
+        let mut scores = Vec::new();
+        let mut validation = Vec::new();
+        let summary = read_file(path, lookahead, &mut |emitted| {
+            let sample = emitted.sample;
+            let occupied = sample
+                .board_codes()
+                .iter()
+                .filter(|&&code| code != 0)
+                .count();
+            let length = positions
+                .len()
+                .checked_add(21 + occupied)
+                .filter(|&n| n <= isize::MAX as usize)
+                .ok_or_else(|| invalid(path, "compact positions exceed address space"))?;
+            sample.append_compact(&mut positions);
+            position_offsets.push(length);
+            metadata.push(sample.metadata);
+            scores.push(emitted.teacher_score);
+            validation.push(emitted.validation);
+            Ok(())
+        })?;
+        Ok(Self {
+            summary,
+            positions,
+            position_offsets,
+            metadata,
             class: 0,
-            scores: Vec::new(),
-        };
-        while let Some(game) = reader.read_game()? {
-            let record = game.record();
-            if record.origin() == Origin::Synthetic {
-                return Err(Error::SyntheticOrigin {
-                    path: path.to_owned(),
-                });
-            }
-            if file.origin.is_some_and(|origin| origin != record.origin()) {
-                return Err(Error::MixedOrigins {
-                    path: path.to_owned(),
-                });
-            }
-            file.origin = Some(record.origin());
-            let GameOutcome::Game(result) = record.outcome() else {
-                return Err(Error::SyntheticOrigin {
-                    path: path.to_owned(),
-                });
-            };
-            for (index, (entry, position)) in
-                record.entries().iter().zip(game.positions()).enumerate()
-            {
-                if entry.exclusion() != Exclusion::None {
-                    continue;
-                }
-                let Value::AlphaBeta(score) = entry.value() else {
-                    continue;
-                };
-                let ply = u16::try_from(index)
-                    .ok()
-                    .and_then(|i| record.start_ply().checked_add(i))
-                    .ok_or_else(|| invalid(path, "sample ply exceeds u16"))?;
-                let sample = Sample::from_position(
-                    position,
-                    score,
-                    Outcome::from_game_result(result, position.side_to_move()),
-                    record.game_number(),
-                    ply,
-                    record.origin(),
-                )?;
-                let length = file
-                    .positions
-                    .len()
-                    .checked_add(21 + position.occupied().popcount() as usize)
-                    .filter(|&n| n <= isize::MAX as usize)
-                    .ok_or_else(|| invalid(path, "compact positions exceed address space"))?;
-                sample.append_compact(&mut file.positions);
-                file.position_offsets.push(length);
-                file.metadata.push(sample.metadata);
-            }
-        }
-        Ok(file)
+            scores,
+            validation,
+        })
     }
     fn record(&self, local: usize) -> Result<Sample> {
         let origin = self
+            .summary
             .origin
-            .ok_or_else(|| invalid(&self.path, "sample has no game origin"))?;
+            .ok_or_else(|| invalid(&self.summary.path, "sample has no game origin"))?;
         Ok(Sample::from_compact(
             &self.positions[self.position_offsets[local]..self.position_offsets[local + 1]],
             self.metadata[local],
@@ -152,7 +118,8 @@ impl LoadedFile {
     }
 }
 
-/// 適格な局面だけを圧縮したバイト列に保持し、選別後の通し番号で参照する。
+/// B=1用に、逐次読み込みの受け手が適格な全局面をメモリへ集めたデータ集合。
+/// 局面は圧縮したバイト列に保持し、選別後の通し番号で参照する。
 /// 局面は18バイトの占有集合、手番・先獅子の3バイト、駒ごとの1バイトからなる。
 /// ファイルごとのusize索引と教師情報を別の配列に保持する。
 pub struct Dataset {
@@ -165,7 +132,7 @@ pub struct Dataset {
 }
 
 impl Dataset {
-    /// ファイル長と全記録を検査し、シードと対局番号で訓練・検証集合へ分ける。
+    /// 1局ずつ再生して受け手へ渡し、シードと対局番号で訓練・検証集合へ分ける。
     /// 先読み指定時は対局・手数の順序も検証する。
     /// 正規化したパスの重複、乱数開始の自己対局のシード重複、由来の混在、合成の入力を拒否する。
     /// 教師値を使う場合は、返されたデータへ[`Self::with_lambda`]で混合比を設定する。
@@ -196,7 +163,7 @@ impl Dataset {
                     .map(|path| {
                         thread::Builder::new().spawn_scoped(scope, move || {
                             let path = path.canonicalize()?;
-                            let file = LoadedFile::open(&path);
+                            let file = LoadedFile::open(&path, lookahead);
                             Ok::<_, Error>((path, file))
                         })
                     })
@@ -225,20 +192,25 @@ impl Dataset {
                 let mut file = file?;
                 let start = dataset.record_count();
                 let end = start
-                    .checked_add(file.metadata.len() as u64)
+                    .checked_add(file.summary.count)
                     .filter(|&count| count <= i64::MAX as u64)
                     .ok_or_else(|| invalid(&path, "combined record count exceeds i64"))?;
                 let count = file.metadata.len();
-                if file.origin == Some(Origin::RandomSelfplay) && !seeds.insert(file.header.seed())
+                if file.summary.origin == Some(Origin::RandomSelfplay)
+                    && !seeds.insert(file.summary.header.seed())
                 {
                     return Err(invalid(&path, "random-selfplay file seeds must be unique"));
                 }
-                if let Some(origin) = file.origin.filter(|_| count > 0) {
+                if let Some(origin) = file.summary.origin.filter(|_| count > 0) {
                     let class = TeacherClass {
-                        generation_commit: file.header.generation_commit().to_ascii_lowercase(),
-                        network_checksum: *file.header.network_checksum(),
-                        search_budget: file.header.teacher_search_budget(),
-                        rule_set: file.header.rule_set().to_owned(),
+                        generation_commit: file
+                            .summary
+                            .header
+                            .generation_commit()
+                            .to_ascii_lowercase(),
+                        network_checksum: *file.summary.header.network_checksum(),
+                        search_budget: file.summary.header.teacher_search_budget(),
+                        rule_set: file.summary.header.rule_set().to_owned(),
                         origin,
                         lookahead,
                         lambda: None,
@@ -253,15 +225,9 @@ impl Dataset {
                     file.class = u32::try_from(class_index)
                         .map_err(|_| invalid(&path, "teacher class count exceeds u32"))?;
                 }
-                let mut games = Vec::with_capacity(count);
-                let mut plies = Vec::with_capacity(count);
-                let mut scores = Vec::with_capacity(count);
-                for local in 0..count {
-                    let metadata = file.metadata[local];
-                    games.push(metadata.game);
-                    plies.push(metadata.ply);
-                    scores.push(f64::from(metadata.score));
-                    let validation = is_validation(file.header.seed(), metadata.game);
+                for (local, validation) in
+                    std::mem::take(&mut file.validation).into_iter().enumerate()
+                {
                     let indices = if validation {
                         &mut dataset.validation_indices
                     } else {
@@ -269,11 +235,6 @@ impl Dataset {
                     };
                     indices.push(start + local as u64);
                 }
-                let scores = match lookahead {
-                    Some(options) => compute_lookahead(&games, &plies, &scores, options)?,
-                    None => scores,
-                };
-                file.scores = scores.into_iter().map(|value| value as f32).collect();
                 dataset.files.push(file);
                 dataset.offsets.push(end);
             }
@@ -308,16 +269,16 @@ impl Dataset {
 
     /// 入力順の絶対パスを返す。
     pub fn paths(&self) -> impl Iterator<Item = &Path> {
-        self.files.iter().map(|file| file.path.as_path())
+        self.files.iter().map(|file| file.summary.path.as_path())
     }
 
     pub(crate) fn file_sample_counts(&self) -> impl Iterator<Item = u64> {
-        self.files.iter().map(|file| file.metadata.len() as u64)
+        self.files.iter().map(|file| file.summary.count)
     }
 
     /// 入力順の復号済みヘッダを返す。
     pub fn headers(&self) -> impl Iterator<Item = &Header> {
-        self.files.iter().map(|file| &file.header)
+        self.files.iter().map(|file| &file.summary.header)
     }
 
     /// 訓練局面の通し番号を元のファイル順で返す。
@@ -401,7 +362,8 @@ impl Dataset {
     }
 
     /// 分類ごとに訓練集合だけを使って教師の勝率尺度を推定する。
-    /// 保持したf32の教師探索値をf64へ広げて較正し、標本は1分類ずつ確保する。
+    /// 保持したf32の教師探索値をf64へ広げ、分類ごとに入力順で逐次加算する。
+    /// 標本の列を検査で1回、損失評価で66回なぞり、推定用の標本配列は作らない。
     /// λが0の分類は探索値を使わないので`None`を返す。
     /// 先読みを指定した場合は先読み値を使い、較正、学習、検証で同じ探索値を参照する。
     /// 推定の目標は訓練集合の終局結果だけであり、混合後の教師確率は使わない。
@@ -436,28 +398,33 @@ impl Dataset {
                 values.push(None);
                 continue;
             }
-            let mut scores = Vec::new();
-            let mut outcomes = Vec::new();
-            for (file_index, file) in self.files.iter().enumerate() {
-                if file.class as usize != class {
-                    continue;
+            let estimate = estimate_cp_per_logit_by_passes(|visit| {
+                let mut count = 0_u64;
+                for (file_index, file) in self.files.iter().enumerate() {
+                    if file.class as usize != class {
+                        continue;
+                    }
+                    let start = self.offsets[file_index];
+                    let end = self.offsets[file_index + 1];
+                    let first = self
+                        .training_indices
+                        .partition_point(|&index| index < start);
+                    let last = self.training_indices.partition_point(|&index| index < end);
+                    for &index in &self.training_indices[first..last] {
+                        let local = (index - start) as usize;
+                        visit(
+                            score(file, local, index),
+                            outcome_code(file.metadata[local].outcome),
+                        );
+                        count += 1;
+                    }
                 }
-                let start = self.offsets[file_index];
-                let end = self.offsets[file_index + 1];
-                let first = self
-                    .training_indices
-                    .partition_point(|&index| index < start);
-                let last = self.training_indices.partition_point(|&index| index < end);
-                for &index in &self.training_indices[first..last] {
-                    let local = (index - start) as usize;
-                    scores.push(score(file, local, index));
-                    outcomes.push(outcome_code(file.metadata[local].outcome));
+                if count == 0 {
+                    return Err(Error::EmptyTeacherClass { class });
                 }
-            }
-            if scores.is_empty() {
-                return Err(Error::EmptyTeacherClass { class });
-            }
-            values.push(Some(estimate_cp_per_logit(&scores, &outcomes)?));
+                Ok(())
+            })?;
+            values.push(Some(estimate));
         }
         Ok(values)
     }

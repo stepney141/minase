@@ -1,5 +1,8 @@
 //! 評価関数に依存しないMNSDの読み込み、教師値の構築とデータの分割。
 //!
+//! MNSDを1局ずつ再生して受け手へ渡す。B=1の[`Dataset`]は、受け手が全局面をメモリへ集めたものである。
+//! 教師の勝率尺度は標本の列を検査で1回、損失評価で66回なぞって推定する。
+//!
 //! 教師探索値は手番側視点のセンチポーンで保持する。
 //! 終局結果は手番側の負け0、引き分け1、勝ち2である。
 //! [`build_targets_from_arrays`]は教師の勝率尺度（1ロジットあたりのcp）で探索値を確率へ変換し、分類ごとの混合比λで終局結果と混ぜる。
@@ -14,6 +17,7 @@ mod error;
 mod mnsd;
 mod sample;
 mod shuffle;
+pub(crate) mod stream;
 mod teacher;
 
 pub(crate) use calibration::TeacherCalibration;
