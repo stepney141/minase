@@ -239,6 +239,27 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 1更新の時間は設計書の見込み（P型約7 ms、HalfKP-hm-b8約11 ms）より短い。
 ワーカーの供給は6から12でほぼ2倍に伸び、12ワーカーでは1バッチの転送（約2.7 ms）と更新（4.7 ms）の和が律速になる。
 設計書が見込んだ1エポック（約8,000万局面）の時間は、12ワーカーの実効速度では約85秒である。
+## 隠れ層計画のフェーズ3　学習器の出力部
+
+[NNUEの隠れ層と位相補間の出力](../plans/nnue-hidden-layer.md)のフェーズ3で、学習器に3つの出力部（`direct-screlu-phase2`、`screlu-hidden16`、`screlu-hidden16-phase2`）と`--head`を加えた（2026年10月16日、ブランチ`nnue-hidden-layer`。CPU側のコミットとCUDA側のコミットに分けた）。
+検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、同じ機械でlishogiのBot（4スレッド）が動いていた。
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 静的検査とCPUのテスト | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p minase-trainer`（255件） | 通過。4出力部の数値微分、同じシードでのエポック0の一致、CPUの再開の一致、`--head`を変えた再開の拒否、量子化の範囲外の拒否、仕様から書いた整数参照と推論側の評価の一致（両特徴集合×4出力部、境界の例を含む）を含む |
+| GPUとCPU参照の等価性 | `cargo test -p minase-trainer -- --ignored gpu_`（35件）と`check-equivalence`（4出力部×両特徴集合×{幅6のバッチ100、幅128のバッチ4,096}の16条件） | すべて一致。幅128・バッチ4,096の最大絶対誤差は1.144×10⁻⁴（P型`direct-screlu-phase2`）以下で許容誤差`1e-6+1e-5×|CPU|`以内、2回実行はビット単位で一致 |
+| 直接内積の不変 | 1本目の教師データ（`generated-7100000.bin`）の1エポック学習（`constant:1`、シード1）の`nnue.bin`をフェーズ0の学習器と比較 | CPU側の変更（フェーズ3a）まではSHA-256 `6e3fe265…`で一致。CUDA側の変更（フェーズ3b）で、出力部の内積の縮約を直列の順からワープ内の固定の木に改めたため、`direct-screlu`の学習結果も`348625a9…`へ変わった。CPU参照も同じ順に合わせてあり、等価性は上の16条件で確認した。フェーズ4の4本は、この学習器で学び直した基準D0と比べる |
+
+出力部ごとの1更新の時間は`bench-step`（P型、幅128、バッチ16,384、20更新、12ワーカー、`--profile`つき）で測った。隠れ層つきでは、局面ごとの隠れ層の計算と勾配の寄与を書く`output_backward`が1更新の4割を占める。
+
+| 出力部 | 1更新 | `output_backward` | `gradient_partials` | 実効速度（局面/秒） | GPUメモリ |
+|---|---:|---:|---:|---:|---:|
+| `direct-screlu` | 4.83 ms | 0.36 ms | 0.30 ms | 803,090 | 508 MB |
+| `direct-screlu-phase2` | 5.15 ms | 0.56 ms | 0.41 ms | 922,666 | 508 MB |
+| `screlu-hidden16` | 8.72 ms | 3.50 ms | 1.23 ms | 825,685 | 642 MB |
+| `screlu-hidden16-phase2` | 9.72 ms | 4.21 ms | 1.41 ms | 795,524 | 676 MB |
+
+実効速度は1バッチの転送（約2.7 ms）とワーカーの供給（約103万〜129万局面/秒）を含む値であり、1更新の差ほどには開かない。
 
 ## 結論
 
