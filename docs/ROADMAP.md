@@ -96,16 +96,16 @@
 | ファイル形式の整理と形式の仕様の整備 | [plans/archived/file-format-consolidation.md](plans/archived/file-format-consolidation.md) | 完了（採用） | 2026年10月13日 |
 | NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整 | [plans/nnue-search-spsa.md](plans/nnue-search-spsa.md) | 起案 | |
 | 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
-| メモリより大きい教師データの一様シャッフル | [plans/out-of-core-shuffle.md](plans/out-of-core-shuffle.md) | 起案 | |
+| メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 
 ## 現在地
 
 ### 直近の完了
 
+- [メモリより大きい教師データの一様シャッフル](plans/archived/out-of-core-shuffle.md)は2026年10月17日に、採用で完了した。NNUEの学習器に、MNSDを1局ずつ再生して局面を実行専用の一時ファイルへ書き、エポックごとに各訓練局面を一様にB個のbucketへ振り分けてbucketごとに並べ替える経路（`--buckets`）を加えた。`--buckets 1`は変更前とビット単位で同じ結果を出し、B=16は10ファイル（訓練約2,650万局面）の学習をメモリの上限2 GBの中で最大常駐0.91 GBで完走し、所要時間はB=1を上回らなかった（[照合記録](measurements/out-of-core-shuffle-equivalence.md)、[時間とメモリの記録](measurements/out-of-core-shuffle-time-memory.md)）。
 - [NNUEの隠れ層と位相補間の出力](plans/archived/nnue-hidden-layer.md)は2026年10月16日に、一部不採用で完了した。学習器から駒除去差分の補助損失を外し、代わりに書き出し時に駒除去差分の符号反転の割合を記録するようにした。これによりGPUの1更新はP型で27.3 msから4.7 msに縮んだが、補助損失なしで学んだネットは検証1万局面の除去の1.7%で符号が反転し（補助損失ありでは5件）、罰則の発火率の低さは補助損失が不要であることを意味しなかった（[教訓](lessons/low-penalty-activation-does-not-mean-the-penalty-is-unneeded.md)）。推論と学習器に加えた3つの出力部（位相補間、幅16の隠れ層、その両方）は、同じ条件で学んでも検証損失が補助損失なしの直接内積を下回らず（隠れ層つきは訓練損失だけが下がる過学習の側）、段階ゲートに出す候補はなかった（[学習の記録](measurements/nnue-hidden-layer-training.md)、[速度の記録](measurements/nnue-hidden-layer-bench.md)）。埋め込みネットと`ActiveHead`は変えず、出力部のコードは汎用の層積みを設計する次の設計書へ引き継ぐ。
 - [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/archived/win-rate-scale.md)は2026年10月16日に、採用で完了した。学習器が「K」と呼んでいた2つの勝率尺度を、重みファイルのヘッダが持つ勝率尺度`cp_per_logit`と教師の分類ごとの教師の勝率尺度`teacher_cp_per_logit`に改名し、両者の比を尺度補正係数`teacher_score_multiplier`として記録するようにした。教師の勝率尺度は、学習の必須の引数`--teacher-cp-per-logit`で、訓練集合から推定する`calibrate`か、新設の`minase-trainer data calibrate`が書き出す較正ファイルのパスを指定する。計算する値は変えず、NNUE、PST、FM、同時学習、および診断の学習結果と、較正コマンドの出力が変更前の学習器と文字列として一致した（[照合の記録](measurements/win-rate-scale-equivalence.md)、[ADR](adr/hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)）。
-- [NNUE学習器の学習率スケジュール](plans/archived/nnue-lr-schedule.md)は2026年10月16日に、採用で完了した。学習器に更新回数の関数である学習率の倍率（一定、指数減衰、cosine annealing）とエポック途中の検証を加え、評価関数がNNUEになったmasterで生成し直した30ファイル（訓練約7,946万局面）で5つの設定を学んだ。一定の1倍以外の4本はすべて最良の検証損失が1倍を下回ったが差は0.03%で、最良点が後ろへずれる一方で頭打ちは残った。最も低いcosine（総長3エポック、下限0.1）のネットは、一定の1倍のネットに対するSTCで`H1`、現行masterのネットに対するSTC `H1`（[5, 0, 56, 1, 61]）とLTC `H1`（[13, 0, 43, 1, 86]、異常0件）であり（[学習の記録](measurements/nnue-lr-schedule-training.md)、[LTC](measurements/nnue-cosine-vs-master-ltc.md)）、埋め込みネットとして採用し、学習器の既定の倍率をcosineにした。あわせて、探索の単体テストが埋め込みネットの評価値に依存していた問題を、固定のエポック0のネットで評価する形に直した。
 
 ### 次の候補
 
@@ -117,6 +117,5 @@
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
-- [メモリより大きい教師データの一様シャッフル](plans/out-of-core-shuffle.md)は、教師データが測定機のメモリに収まらない規模でも、NNUEの学習で毎エポック全体を一様に並べ替えられるようにする。学習の開始時に版2を再生して局面を実行専用の一時ファイルへ書き、エポックごとに各局面へ無作為にbucketを振って、bucketごとに並べ替えて流す（Rao–Sandelius方式）。方式は[予備測定](measurements/shuffle-order-preliminary.md)で、混ぜる範囲が狭い並べ方ほど検証損失が悪くなる兆候を見て選んだ。着手は利用者の指示を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。
