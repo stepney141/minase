@@ -1045,8 +1045,7 @@ fn resume_rejects_a_changed_bucket_count() {
         let mut extra = changed.clone();
         extra.extend(["--epochs", "2", "--resume", &output]);
         let error = minase_trainer::nnue::train::run(training.args("output", &extra))
-            .err()
-            .expect("a changed bucket count must be rejected");
+            .expect_err("a changed bucket count must be rejected");
         assert!(
             matches!(
                 find_source::<minase_trainer::nn::Error>(error.as_ref()),
@@ -1110,8 +1109,7 @@ fn training_removes_its_run_directory_after_a_bucket_overflow() {
             "1",
         ],
     ))
-    .err()
-    .expect("one position per bucket cannot hold the training set");
+    .expect_err("one position per bucket cannot hold the training set");
     assert!(
         matches!(
             find_source::<Error>(error.as_ref()),
