@@ -1,7 +1,14 @@
 //! MNUE版5の復号、差分更新、および線形と非線形の和による整数評価。
 //! 線形の経路は[`crate::eval::features`]の13,680個の基底特徴に載る序中盤用と終盤用のi16重みを、手番側視点で足す。
 //! 重みの単位は1/8センチポーンであり、王駒を含む盤上総駒数Nから`q = min(90, max(0, N − 2))`を求め、`(q×mg + (90−q)×eg)/720`で補間する。
-//! 非線形の経路は両視点の幅Hの第1層を、値を制限してから2乗する活性化関数SCReLUに通し、[`DirectScrelu`]で出力重みとの直接内積を取る。
+//! 非線形の経路は両視点の幅Hの第1層を、値を制限してから2乗する活性化関数SCReLUに通す。
+//! 出力部は`direct-screlu`（直接内積）、`direct-screlu-phase2`（2端点補間）、
+//! `screlu-hidden16`（幅16の隠れ層を加算）、`screlu-hidden16-phase2`（隠れ層を共有する2端点補間）を扱う。
+//! 各端点の区画は出力重み`i16[2H]`とバイアス`i32`で、序盤、終盤の順に置く。
+//! 隠れ層つきでは、続いて行優先の`W1: i8[16][2H]`、`b1: i32[16]`、各端点の`w2: i16[16]`を置く。
+//! 出力区画はファイル先頭から`192 + 13,680×4 + 47×4 + D×2H + 4H`バイト目に始まり、
+//! 全長はその位置に`Head::byte_len(H)`を足した値となる。Dは入力特徴数、Hは第1層の幅である。
+//! 補間は線形経路と同じqを使い、負値も床方向へ丸める。
 //! PST＋FMを置き換えた理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
 //! 構造の理由は`docs/adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md`、型引数を使う理由は`docs/adr/parameterize-the-nnue-by-feature-set-and-head-types.md`にある。
 
@@ -209,7 +216,7 @@ pub(crate) fn breakdown(nnue: &Nnue, position: &Position) -> Breakdown {
         q,
         board: [0; 144],
         lion: 0,
-        nonlinear: nnue.nonlinear_cp(&accumulator, side),
+        nonlinear: nnue.nonlinear_cp(&accumulator, side, q as i32),
     };
     for square in position.occupied() {
         let piece = position

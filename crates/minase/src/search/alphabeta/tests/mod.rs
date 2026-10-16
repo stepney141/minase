@@ -269,7 +269,11 @@ pub(super) const NNUE_HEADER_LENGTH: usize = 192;
 /// エポック0のP型の行を探索の特徴集合へ複写し、重みを変更するテストにも渡す。
 pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
     use crate::eval::features::FEATURE_COUNT;
-    use crate::eval::nnue::{ActiveFeatureSet, feature_set::FeatureSet};
+    use crate::eval::nnue::{
+        ActiveFeatureSet, ActiveHead,
+        feature_set::{FeatureSet, Mirror},
+        head::{Head, from_direct},
+    };
     use sha2::{Digest, Sha256};
 
     let source = include_bytes!("../../../../nets/nnue-epoch0.bin");
@@ -278,15 +282,23 @@ pub(super) fn epoch_zero_nnue_bytes() -> Vec<u8> {
     let end = hidden + FEATURE_COUNT * width * 2;
     let mut bytes = source[..hidden].to_vec();
     let architecture = format!(
-        "features={};ft={width};linear=tapered2;head=direct-screlu",
-        ActiveFeatureSet::NAME
+        "features={};ft={width};linear=tapered2;head={}",
+        ActiveFeatureSet::NAME,
+        ActiveHead::NAME
     );
     bytes[8..104].fill(0);
     bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
     for _ in 0..ActiveFeatureSet::DIMENSIONS / FEATURE_COUNT {
         bytes.extend_from_slice(&source[hidden..end]);
     }
-    bytes.extend_from_slice(&source[end..]);
+    bytes.extend_from_slice(&source[end..end + width * 4]);
+    let head = from_direct::<ActiveHead>(
+        &source[end + width * 4..],
+        width,
+        ActiveFeatureSet::MIRROR == Mirror::Shared,
+    )
+    .unwrap();
+    bytes.extend(head.to_bytes());
     let checksum = Sha256::digest(&bytes[NNUE_HEADER_LENGTH..]);
     bytes[144..176].copy_from_slice(&checksum);
     bytes

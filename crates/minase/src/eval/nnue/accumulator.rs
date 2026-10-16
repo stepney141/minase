@@ -200,10 +200,11 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     /// 尺度127×4,096の非線形出力を`(out×scale + 32,768) >> 16`でセンチポーンへ換算する。
     /// i64で計算し、最近接へ丸め、中間値は正の方向へ丸める。
     /// 負数の右シフトは床方向に働く。
-    pub(super) fn nonlinear_cp(&self, accumulator: &Accumulator<F>, side: Color) -> i64 {
+    pub(super) fn nonlinear_cp(&self, accumulator: &Accumulator<F>, side: Color, q: i32) -> i64 {
         let out = self.head.output(
             &accumulator.hidden[side.index()],
             &accumulator.hidden[side.opposite().index()],
+            q,
         );
         (i64::from(out) * self.scale + 32_768) >> 16
     }
@@ -219,7 +220,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         let q = i64::from(accumulator.piece_count.saturating_sub(2)).min(90);
         let [mg, eg] = accumulator.sums[side_to_move.index()].map(i64::from);
         let linear = (q * mg + (90 - q) * eg) / 720;
-        (linear + self.nonlinear_cp(accumulator, side_to_move))
+        (linear + self.nonlinear_cp(accumulator, side_to_move, q as i32))
             .clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
     }
 }
