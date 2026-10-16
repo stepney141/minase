@@ -20,5 +20,5 @@ NNUEの学習では、駒除去差分の符号を保たせる補助損失の罰�
 
 ## 出典
 
-- [plans/nnue-hidden-layer.md](../plans/nnue-hidden-layer.md)（フェーズ0とフェーズ1）
+- [plans/nnue-hidden-layer.md](../plans/archived/nnue-hidden-layer.md)（フェーズ0とフェーズ1）
 - [measurements/nnue-hidden-layer-training.md](../measurements/nnue-hidden-layer-training.md)

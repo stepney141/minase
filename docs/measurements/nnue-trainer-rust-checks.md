@@ -216,7 +216,7 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 
 ## 隠れ層計画のフェーズ0　駒除去差分の補助損失の削除
 
-[NNUEの隠れ層と位相補間の出力](../plans/nnue-hidden-layer.md)のフェーズ0で、学習器から駒除去差分の補助損失（CUDAカーネル`removal.cu`、CPU参照の`removal_forward`、`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`、チェックポイントの`removal_penalty`）を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を`summary.json`の`removal_sign`に記録するようにした（2026年10月16日、ブランチ`nnue-hidden-layer`）。
+[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)のフェーズ0で、学習器から駒除去差分の補助損失（CUDAカーネル`removal.cu`、CPU参照の`removal_forward`、`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`、チェックポイントの`removal_penalty`）を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を`summary.json`の`removal_sign`に記録するようにした（2026年10月16日、ブランチ`nnue-hidden-layer`）。
 検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、検査の間、同じ機械でlishogiのBot（4スレッド）が対局していた。
 
 | 検査 | 方法 | 結果 |
@@ -241,7 +241,7 @@ taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
 設計書が見込んだ1エポック（約8,000万局面）の時間は、12ワーカーの実効速度では約85秒である。
 ## 隠れ層計画のフェーズ3　学習器の出力部
 
-[NNUEの隠れ層と位相補間の出力](../plans/nnue-hidden-layer.md)のフェーズ3で、学習器に3つの出力部（`direct-screlu-phase2`、`screlu-hidden16`、`screlu-hidden16-phase2`）と`--head`を加えた（2026年10月16日、ブランチ`nnue-hidden-layer`。CPU側のコミットとCUDA側のコミットに分けた）。
+[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)のフェーズ3で、学習器に3つの出力部（`direct-screlu-phase2`、`screlu-hidden16`、`screlu-hidden16-phase2`）と`--head`を加えた（2026年10月16日、ブランチ`nnue-hidden-layer`。CPU側のコミットとCUDA側のコミットに分けた）。
 検査は作業機（RTX 3060 Ti、CUDA 13.4、Rust 1.98.0）で行い、同じ機械でlishogiのBot（4スレッド）が動いていた。
 
 | 検査 | 方法 | 結果 |
