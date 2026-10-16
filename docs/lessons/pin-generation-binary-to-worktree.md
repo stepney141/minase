@@ -13,7 +13,9 @@
 ## 以後の規則
 
 数時間を超える生成や測定は、対象コミットを固定したgit worktreeでビルドしたバイナリから実行し、本ツリーの編集とコミットを生成から遮断する。
+短い生成でも、実装を進めているツリー（codexなどのサブエージェントが編集するworktreeを含む）からは実行せず、生成のためだけに切り離したworktreeを作る。生成器は起動のたびに作業ツリーの汚れを検査するので、並行する編集が1つでもあれば後続のファイルの生成が止まる。
 
 ## 出典
 
 - [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「学習の構成」
+- [measurements/out-of-core-shuffle-equivalence.md](../measurements/out-of-core-shuffle-equivalence.md) の「入力」（実装中のworktreeから起動した生成が2ファイル目で止まった）

@@ -95,3 +95,134 @@ mod tests {
         assert_eq!(repeated, [1, 5, 5]);
     }
 }
+
+/// SplitMix64の状態を進め、棄却法で0以上bound未満の整数を得る。
+fn bounded(state: &mut u64, bound: u64) -> u64 {
+    let threshold = bound.wrapping_neg() % bound;
+    loop {
+        *state = state.wrapping_add(STEP);
+        let value = mix64(*state);
+        if value >= threshold {
+            return value % bound;
+        }
+    }
+}
+
+/// 各訓練局面に独立で一様なbucket番号を割り当てる乱数列。
+pub struct BucketAssigner {
+    state: u64,
+    buckets: u32,
+}
+
+impl BucketAssigner {
+    /// シード、エポック番号と正のbucket数から割り当て列を作る。
+    pub fn new(seed: u64, epoch: u64, buckets: u32) -> Self {
+        assert!(buckets > 0, "bucket count must be positive");
+        Self {
+            state: mix64(seed ^ epoch.wrapping_mul(STEP) ^ 0x6275_636B_6574_7300),
+            buckets,
+        }
+    }
+
+    /// 次の局面のbucket番号を返す。
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> u32 {
+        bounded(&mut self.state, u64::from(self.buckets)) as u32
+    }
+}
+
+/// bucket内の0..lenを、用途とbucket番号で分離した乱数列で並べ替える。
+/// 返り値`order`のj番目は、bucket内でj番目に渡す局面の元の位置である（呼び手は`group[order[j]]`と読む）。
+pub fn bucket_permutation(len: usize, seed: u64, epoch: u64, bucket: u32) -> Vec<usize> {
+    let mut state = mix64(
+        mix64(seed ^ epoch.wrapping_mul(STEP) ^ 0x7065_726D_7574_6500)
+            ^ (u64::from(bucket) + 1).wrapping_mul(STEP),
+    );
+    let mut order: Vec<_> = (0..len).collect();
+    for end in (1..len).rev() {
+        let selected = bounded(&mut state, end as u64 + 1) as usize;
+        order.swap(end, selected);
+    }
+    order
+}
+
+/// 訓練局面0..nをRao–Sandelius方式で並べる、検証用の純関数。
+/// 割り当てたbucket内を並べ替え、bucket番号順に連結する。
+pub fn rao_sandelius_order(n: usize, buckets: u32, seed: u64, epoch: u64) -> Vec<usize> {
+    let mut assigner = BucketAssigner::new(seed, epoch, buckets);
+    let mut groups = vec![Vec::new(); buckets as usize];
+    for i in 0..n {
+        groups[assigner.next() as usize].push(i);
+    }
+    groups
+        .iter()
+        .enumerate()
+        .flat_map(|(k, group)| {
+            bucket_permutation(group.len(), seed, epoch, k as u32)
+                .into_iter()
+                .map(|i| group[i])
+        })
+        .collect()
+}
+
+/// Floydの方法で0..populationからk件を重複なく選び、昇順で返す。
+/// kが母集団を超えた場合はエラーにする。
+pub fn floyd_sample(population: u64, k: usize, seed: u64) -> super::Result<Vec<u64>> {
+    if k as u64 > population {
+        return Err(super::Error::Invalid("sample size exceeds population"));
+    }
+    let mut state = mix64(seed ^ 0x7361_6D70_6C65_0000);
+    let mut selected = std::collections::BTreeSet::new();
+    for j in population - k as u64..population {
+        let value = bounded(&mut state, j + 1);
+        if !selected.insert(value) {
+            selected.insert(j);
+        }
+    }
+    Ok(selected.into_iter().collect())
+}
+
+#[cfg(test)]
+mod bucket_tests {
+    use super::*;
+
+    #[test]
+    fn direct_assignment_matches_reference_order() {
+        // 仕様2.5: 学習経路の2つの操作と参照順列は同じ列を作る。
+        for n in [0, 1, 5, 31] {
+            for buckets in [1, 3, 64] {
+                for epoch in 0..8 {
+                    let mut assigner = BucketAssigner::new(7, epoch, buckets);
+                    let mut groups = vec![Vec::new(); buckets as usize];
+                    for i in 0..n {
+                        groups[assigner.next() as usize].push(i);
+                    }
+                    let mut actual = Vec::new();
+                    for (k, group) in groups.iter().enumerate() {
+                        for i in bucket_permutation(group.len(), 7, epoch, k as u32) {
+                            actual.push(group[i]);
+                        }
+                    }
+                    assert_eq!(actual, rao_sandelius_order(n, buckets, 7, epoch));
+                    actual.sort_unstable();
+                    assert_eq!(actual, (0..n).collect::<Vec<_>>());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn floyd_samples_are_sorted_unique_and_bounded() {
+        // 仕様2.5: 0件と全件も許し、母集団を超える要求は拒否する。
+        for population in [0, 1, 5, 100, u64::MAX] {
+            for k in 0..=population.min(20) as usize {
+                let selected = floyd_sample(population, k, 17).unwrap();
+                assert_eq!(selected.len(), k);
+                assert!(selected.windows(2).all(|w| w[0] < w[1]));
+                assert!(selected.iter().all(|&i| i < population));
+                assert_eq!(selected, floyd_sample(population, k, 17).unwrap());
+            }
+        }
+        assert!(floyd_sample(3, 4, 0).is_err());
+    }
+}

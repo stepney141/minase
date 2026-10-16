@@ -15,10 +15,24 @@ impl Observations {
     /// 訓練集合だけを1回走査し、手番側の正準行と両視点の入力特徴の出現回数を求める。
     /// 正準行は鏡映込みの回数の左半分に相当し、入力特徴は鏡映を追加せず数える。
     pub fn compute(dataset: &Dataset, feature_set: InputFeatureSet) -> Result<Self> {
+        Self::from_positions(
+            dataset
+                .training_indices()
+                .iter()
+                .map(|&index| Ok(dataset.record(index)?.to_position()?)),
+            feature_set,
+        )
+    }
+
+    /// ファイル順の訓練局面の列を1回走査して観測回数を求める。
+    pub fn from_positions(
+        positions: impl Iterator<Item = Result<minase_core::Position>>,
+        feature_set: InputFeatureSet,
+    ) -> Result<Self> {
         let mut canonical_counts = vec![0; CANONICAL_ROWS];
         let mut input_counts = vec![0; feature_set.dimensions()];
-        for &index in dataset.training_indices() {
-            let position = dataset.record(index)?.to_position()?;
+        for position in positions {
+            let position = position?;
             let bases = base_features(&position, position.side_to_move());
             for &base in &bases[0] {
                 if base != SENTINEL {

@@ -140,15 +140,66 @@ fn validation_sample(dataset: &Dataset, requested: usize, seed: u64) -> Result<V
     Ok(indices)
 }
 
+/// 量子化の検証標本を取り出す供給元。
+/// メモリ経路は従来の順列、一時ファイル経路はFloydの方法で標本を選ぶ。
+pub enum ValidationSource<'a> {
+    /// 全局面をメモリに持つデータ集合。
+    Memory(&'a Dataset),
+    /// 検証局面を逐次読み込みする一時ファイル。
+    Spill(&'a crate::data::SpillStore),
+}
+
+impl<'a> From<&'a Dataset> for ValidationSource<'a> {
+    fn from(dataset: &'a Dataset) -> Self {
+        Self::Memory(dataset)
+    }
+}
+
+impl<'a> From<&'a crate::data::SpillStore> for ValidationSource<'a> {
+    fn from(store: &'a crate::data::SpillStore) -> Self {
+        Self::Spill(store)
+    }
+}
+
 /// 最良モデルを`nnue.bin`へ書き、同じ検証標本の量子化誤差と駒除去差分の符号反転を求める。
 ///
 /// `checkpoint`は`best.npz`に保存した1以上の最良エポックそのものを渡す。
 /// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
-/// 標本は検証集合を`epoch_permutation(seed, 0)`で並べた先頭`--validation-sample`件で、既定は10,000件である。
+/// B=1では検証集合を`epoch_permutation(seed, 0)`で並べた先頭から、B≥2ではFloydの方法で標本を取る。
+/// 標本数の上限は`--validation-sample`であり、既定は10,000件である。
 /// 平均絶対誤差が`cp_per_logit / 40`を超えても重みと測定値は保持し、`passed = false`を返す。
 /// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
 /// 符号反転は参照差分が非零の除去を母数とし、閾値を設けない。母数0や非有限値はエラーにする。
-pub fn write_best(
+pub fn write_best<'a>(
+    source: impl Into<ValidationSource<'a>>,
+    checkpoint: &Checkpoint,
+    output_dir: &Path,
+    piece_values: &[i32; PIECE_STATE_COUNT],
+    rule_set: &str,
+    validation_sample_size: usize,
+) -> Result<(QuantizationReport, RemovalSignReport)> {
+    match source.into() {
+        ValidationSource::Memory(dataset) => write_best_memory(
+            dataset,
+            checkpoint,
+            output_dir,
+            piece_values,
+            rule_set,
+            validation_sample_size,
+        ),
+        ValidationSource::Spill(store) => write_best_spill(
+            store,
+            checkpoint,
+            output_dir,
+            piece_values,
+            rule_set,
+            validation_sample_size,
+        ),
+    }
+}
+
+/// メモリ経路の標本抽出、書き出しと検査を同じ順で実行する。
+fn write_best_memory(
     dataset: &Dataset,
     checkpoint: &Checkpoint,
     output_dir: &Path,
@@ -178,24 +229,40 @@ fn measure(
     written: &[u8],
     indices: &[u64],
 ) -> Result<(QuantizationReport, RemovalSignReport)> {
+    measure_sample(
+        checkpoint,
+        written,
+        indices,
+        |batch_indices| {
+            Ok(build_batches(
+                dataset,
+                checkpoint.model.shape().feature_set(),
+                &[batch_indices],
+            )?
+            .pop()
+            .expect("one batch was requested"))
+        },
+        |index| Ok(dataset.record(index)?),
+    )
+}
+
+/// バッチ構築と標本の取り出し以外の量子化検査を、同じ計算順で共有する。
+fn measure_sample(
+    checkpoint: &Checkpoint,
+    written: &[u8],
+    indices: &[u64],
+    build: impl Fn(&[u64]) -> Result<BatchSlot>,
+    sample: impl Fn(u64) -> Result<crate::data::Sample>,
+) -> Result<(QuantizationReport, RemovalSignReport)> {
     let network = IntegerNetwork::decode(written).map_err(Error::Mnue)?;
     let mut sum = 0.0;
     let mut maximum = 0.0_f64;
     let mut checksum = Sha256Hasher::default();
     for batch_indices in indices.chunks(REFERENCE_BATCH) {
-        let batch = build_batches(
-            dataset,
-            checkpoint.model.shape().feature_set(),
-            &[batch_indices],
-        )?
-        .pop()
-        .expect("one batch was requested");
+        let batch = build(batch_indices)?;
         let floating = reference::evaluate_f64(&checkpoint.model, &batch)?;
         for (&index, &floating_cp) in batch_indices.iter().zip(&floating) {
-            let position = dataset
-                .record(index)?
-                .to_position()
-                .map_err(data::Error::from)?;
+            let position = sample(index)?.to_position().map_err(data::Error::from)?;
             let integer_cp = network.evaluate(&position, position.side_to_move());
             let error = (floating_cp - f64::from(integer_cp)).abs();
             if !error.is_finite() {
@@ -208,7 +275,7 @@ fn measure(
     }
     let mean = sum / indices.len() as f64;
     let limit = network.cp_per_logit() / 40.0;
-    let removal_sign = measure_removal_sign(dataset, checkpoint, &network, indices)?;
+    let removal_sign = measure_removal_sign(checkpoint, &network, indices, sample)?;
     Ok((
         QuantizationReport {
             samples: indices.len(),
@@ -232,15 +299,15 @@ impl From<crate::data::Error> for Error {
 
 /// 整数ネットを除去前後で全再計算し、診断と共通の規則で反転を数える。
 fn measure_removal_sign(
-    dataset: &Dataset,
     checkpoint: &Checkpoint,
     network: &IntegerNetwork,
     indices: &[u64],
+    sample: impl Fn(u64) -> Result<crate::data::Sample>,
 ) -> Result<RemovalSignReport> {
     let reference = reference::RemovalReference::v0();
     let mut pairs = Vec::new();
     for &index in indices {
-        let sample = dataset.record(index)?;
+        let sample = sample(index)?;
         let position = sample.to_position()?;
         let perspective = sample.side_to_move();
         let batch = BatchSlot::from_evaluation_positions(
@@ -276,4 +343,53 @@ fn measure_removal_sign(
         removals: reversals.total,
         reversals,
     })
+}
+
+/// 一時ファイルからFloydの方法で検証標本を選び、最良モデルを書き出して検査する。
+/// 標本の通し番号は昇順であり、検査の演算と判定基準はメモリ経路と共通である。
+fn write_best_spill(
+    store: &crate::data::SpillStore,
+    checkpoint: &Checkpoint,
+    output_dir: &Path,
+    piece_values: &[i32; PIECE_STATE_COUNT],
+    rule_set: &str,
+    validation_sample_size: usize,
+) -> Result<(QuantizationReport, RemovalSignReport)> {
+    match checkpoint.progress.best {
+        Some(best) if best.epoch > 0 && best.epoch == checkpoint.progress.epoch => {}
+        _ => return Err(Error::Invalid("checkpoint is not a completed best epoch")),
+    }
+    if validation_sample_size == 0 {
+        return Err(Error::Invalid("validation sample must be positive"));
+    }
+    if store.validation_count() == 0 {
+        return Err(Error::Invalid("validation set is empty"));
+    }
+    let records = store.validation_sample(validation_sample_size, checkpoint.progress.seed)?;
+    let indices: Vec<_> = records.iter().map(|record| record.index).collect();
+    let quantized = quantize(&checkpoint.model)?.encode(piece_values, rule_set)?;
+    fs::create_dir_all(output_dir)?;
+    let path = output_dir.join("nnue.bin");
+    fs::write(&path, quantized)?;
+    let written = fs::read(path)?;
+    measure_sample(
+        checkpoint,
+        &written,
+        &indices,
+        |chunk| {
+            let start = indices
+                .binary_search(&chunk[0])
+                .expect("selected sample index");
+            Ok(BatchSlot::from_spill_records(
+                checkpoint.model.shape().feature_set(),
+                &records[start..start + chunk.len()],
+            )?)
+        },
+        |index| {
+            let i = indices
+                .binary_search(&index)
+                .expect("selected sample index");
+            Ok(records[i].sample.clone())
+        },
+    )
 }

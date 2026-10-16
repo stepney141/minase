@@ -317,6 +317,28 @@ impl BatchSlot {
         )
     }
 
+    /// 読み戻した記録の通し番号を保ち、指定順に面を構築する。
+    pub fn from_spill_records(
+        feature_set: InputFeatureSet,
+        records: &[crate::data::SpillRecord],
+    ) -> Result<Self> {
+        let indices: Vec<_> = records.iter().map(|record| record.index).collect();
+        Self::assemble(
+            feature_set,
+            &indices,
+            records.iter().map(|record| {
+                if !record.teacher_score.is_finite() {
+                    return Err(crate::data::Error::TeacherSamples.into());
+                }
+                Ok((
+                    record.sample.clone(),
+                    record.teacher_score,
+                    record.teacher_class,
+                ))
+            }),
+        )
+    }
+
     fn assemble(
         feature_set: InputFeatureSet,
         indices: &[u64],

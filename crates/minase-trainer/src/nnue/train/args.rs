@@ -14,6 +14,15 @@ use std::path::PathBuf;
 /// 学習の入力、係数と実行条件。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
+    /// bucket数を1以上4096以下で指定する。1は全局面をメモリに保持する。
+    #[arg(long, default_value_t = 1)]
+    pub buckets: u32,
+    /// Bが2以上のときに必須の、1つのbucketの局面数の上限。
+    #[arg(long)]
+    pub bucket_positions: Option<u64>,
+    /// Bが2以上のときに必須の、実行専用の一時ファイルを置く既存ディレクトリ。
+    #[arg(long)]
+    pub scratch_dir: Option<PathBuf>,
     /// 実行デバイスを明示する。CUDAが使えない場合はエラーにする。
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     pub device: DeviceKind,
@@ -88,6 +97,29 @@ pub struct Args {
 impl Args {
     /// ファイルやGPUに触れる前に値と引数の組合せを検査する。
     pub fn validate(&self) -> Result<()> {
+        if !(1..=4096).contains(&self.buckets) {
+            return Err(Error::Invalid("--buckets must be in 1..=4096").into());
+        }
+        if self.buckets == 1 {
+            if self.bucket_positions.is_some() || self.scratch_dir.is_some() {
+                return Err(Error::Invalid(
+                    "--bucket-positions and --scratch-dir require --buckets >= 2",
+                )
+                .into());
+            }
+        } else {
+            if !self.bucket_positions.is_some_and(|n| n > 0) {
+                return Err(
+                    Error::Invalid("--buckets >= 2 requires positive --bucket-positions").into(),
+                );
+            }
+            if !self.scratch_dir.as_ref().is_some_and(|path| path.is_dir()) {
+                return Err(Error::Invalid(
+                    "--buckets >= 2 requires an existing --scratch-dir directory",
+                )
+                .into());
+            }
+        }
         self.training.validate()?;
         self.lr_schedule.validate()?;
         Shape::new(self.feature_set, self.width, 1.0, self.head)?;

@@ -25,6 +25,9 @@ use std::{
 
 fn args() -> Args {
     Args {
+        buckets: 1,
+        bucket_positions: None,
+        scratch_dir: None,
         teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource::Calibrate,
         device: crate::nnue::options::DeviceKind::Cuda,
         training: crate::nnue::options::TrainingOptions::new(1.0),
@@ -1064,10 +1067,14 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
         let (mut queue, mut buffers) = stopped.backend.queue(feature_set, args.batch).unwrap();
         let mut batches = (1..=2)
             .flat_map(|epoch| {
-                epoch_permutation(stopped.dataset.training_indices(), args.seed, epoch)
-                    .chunks(args.batch)
-                    .map(<[u64]>::to_vec)
-                    .collect::<Vec<_>>()
+                epoch_permutation(
+                    memory_dataset(&stopped.dataset).training_indices(),
+                    args.seed,
+                    epoch,
+                )
+                .chunks(args.batch)
+                .map(<[u64]>::to_vec)
+                .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>()
             .into_iter();
@@ -1078,13 +1085,14 @@ fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::optio
             // 記録とは独立に、指定更新まで進めて停止した重みを全検証集合で評価する。
             while stopped.backend.step() < step {
                 let indices = batches.next().unwrap();
-                let batch = build_batches(&stopped.dataset, feature_set, &[&indices])
-                    .unwrap()
-                    .remove(0);
+                let batch =
+                    build_batches(memory_dataset(&stopped.dataset), feature_set, &[&indices])
+                        .unwrap()
+                        .remove(0);
                 let targets = build_targets(
                     &batch,
                     &stopped.teacher_cp_per_logit,
-                    stopped.dataset.teacher_lambdas(),
+                    memory_dataset(&stopped.dataset).teacher_lambdas(),
                 )
                 .unwrap();
                 buffers[0].fill(batch).unwrap();
@@ -1652,14 +1660,17 @@ fn interrupted_interval_validation_discards_the_epoch_without_appending_logs() {
     let checkpoint = fs::read(args.output_dir.join("latest.npz")).unwrap();
     let epoch_log = fs::read(session.log_path()).unwrap();
     let interval_path = args.output_dir.join("validation-interval.jsonl");
-    let indices = epoch_permutation(session.dataset.training_indices(), args.seed, 1);
+    let indices = epoch_permutation(
+        memory_dataset(&session.dataset).training_indices(),
+        args.seed,
+        1,
+    );
     let mut interrupted_at = None;
     let training = pipeline::train_epoch(
         pipeline::Supply {
-            dataset: &session.dataset,
+            dataset: memory_dataset(&session.dataset),
             feature_set: args.feature_set,
             indices: &indices,
-            validation_indices: session.dataset.validation_indices(),
             teacher_cp_per_logit: &session.teacher_cp_per_logit,
             batch: args.batch,
             validation_interval: args.validation_interval,
@@ -1695,9 +1706,9 @@ fn validation_set_returns_none_when_the_deadline_has_already_expired() {
     args.device = crate::nnue::options::DeviceKind::Cpu;
     let mut session = Session::new(args).unwrap();
     let validation = ValidationSet {
-        dataset: &session.dataset,
+        dataset: memory_dataset(&session.dataset),
         feature_set: session.args.feature_set,
-        indices: session.dataset.validation_indices(),
+        indices: memory_dataset(&session.dataset).validation_indices(),
         teacher_cp_per_logit: &session.teacher_cp_per_logit,
         batch: session.args.batch,
         deadline: Instant::now(),
@@ -1726,4 +1737,206 @@ fn training_timing_excludes_interval_validation() {
     assert!((timing.training_seconds - 8.0).abs() < 1e-12);
     assert!((timing.interval_validation_seconds - 2.0).abs() < 1e-12);
     assert!((timing.training_positions_per_second - 37.0).abs() < 1e-12);
+}
+
+/// B=1を指定した既存テストの供給元を取り出す。
+fn memory_dataset(store: &Store) -> &Dataset {
+    match store {
+        Store::Memory(dataset) => dataset,
+        Store::Spill(_) => panic!("test requires memory store"),
+    }
+}
+
+#[test]
+fn bucket_arguments_validate_before_reading_inputs() {
+    // 仕様1: Bの範囲、容量と作業ディレクトリの組合せを学習前に検査する。
+    let fixture = Fixture::new();
+    let scratch = fixture.0.to_str().unwrap();
+    for extra in [
+        vec!["--buckets", "0"],
+        vec!["--buckets", "4097"],
+        vec!["--bucket-positions", "1"],
+        vec!["--scratch-dir", scratch],
+        vec!["--buckets", "2"],
+        vec!["--buckets", "2", "--bucket-positions", "10"],
+        vec!["--buckets", "2", "--scratch-dir", scratch],
+        vec![
+            "--buckets",
+            "2",
+            "--bucket-positions",
+            "0",
+            "--scratch-dir",
+            scratch,
+        ],
+        vec![
+            "--buckets",
+            "2",
+            "--bucket-positions",
+            "10",
+            "--scratch-dir",
+            "/missing-phase2-directory",
+        ],
+    ] {
+        assert!(
+            parse_training_args(&extra).unwrap().validate().is_err(),
+            "{extra:?}"
+        );
+    }
+    for buckets in ["2", "3", "4096"] {
+        parse_training_args(&[
+            "--buckets",
+            buckets,
+            "--bucket-positions",
+            "10",
+            "--scratch-dir",
+            scratch,
+        ])
+        .unwrap()
+        .validate()
+        .unwrap();
+    }
+}
+
+#[test]
+fn cpu_spill_resume_preserves_training_and_rejects_changed_bucket_count() {
+    // 仕様3.2、検証5: 再開時に容量と場所を変更でき、B変更はSettingsで拒否する。
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    args.buckets = 3;
+    args.bucket_positions = Some(200);
+    let scratch = fixture.0.join("scratch");
+    fs::create_dir(&scratch).unwrap();
+    args.scratch_dir = Some(scratch.clone());
+    run(args.clone()).unwrap();
+    assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+    let mut resumed = args.clone();
+    resumed.output_dir = fixture.0.join("resumed-spill");
+    let mut session = Session::new(resumed.clone()).unwrap();
+    assert!(session.advance().unwrap());
+    drop(session);
+    assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+    resumed.resume = Some(resumed.output_dir.clone());
+    let mut changed = resumed.clone();
+    changed.buckets = 2;
+    let error = match Session::new(changed) {
+        Err(error) => error,
+        Ok(_) => panic!("changed B accepted"),
+    };
+    assert!(matches!(
+        error.downcast_ref::<crate::nn::Error>(),
+        Some(crate::nn::Error::CheckpointMismatch(
+            MismatchField::Settings
+        ))
+    ));
+    assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+    let scratch2 = fixture.0.join("scratch2");
+    fs::create_dir(&scratch2).unwrap();
+    resumed.scratch_dir = Some(scratch2.clone());
+    resumed.bucket_positions = Some(300);
+    run(resumed.clone()).unwrap();
+    assert_eq!(fs::read_dir(&scratch2).unwrap().count(), 0);
+    for file in ["latest.npz", "best.npz"] {
+        compare_checkpoint(&args.output_dir.join(file), &resumed.output_dir.join(file));
+    }
+    assert_eq!(
+        fs::read(args.output_dir.join("nnue.bin")).unwrap(),
+        fs::read(resumed.output_dir.join("nnue.bin")).unwrap()
+    );
+    for (left, right) in logs(&args.output_dir.join("training.jsonl"))
+        .iter()
+        .zip(logs(&resumed.output_dir.join("training.jsonl")))
+    {
+        for key in [
+            "epoch",
+            "train_loss",
+            "validation_loss",
+            "steps",
+            "total_steps",
+            "lr_multiplier_first",
+            "lr_multiplier_last",
+        ] {
+            assert_eq!(left[key], right[key], "{key}");
+        }
+    }
+    let config: Value =
+        serde_json::from_slice(&fs::read(resumed.output_dir.join("config.json")).unwrap()).unwrap();
+    assert_eq!(config["settings"]["buckets"], 3);
+    assert!(config["settings"].get("bucket_positions").is_none());
+    assert!(config["settings"].get("scratch_dir").is_none());
+    assert_eq!(config["resumes"][0]["bucket_positions"], 300);
+    assert_eq!(config["resumes"][0]["scratch_dir"], json!(scratch2));
+}
+
+#[test]
+fn spill_calibration_files_obey_the_same_contract_as_memory() {
+    // 仕様2.3と3.1: 保存済み較正ファイルの照合も、B=1と同じ値とエラーになる。
+    let fixture = Fixture::new();
+    let args = fixture.training_args();
+    let path = fixture.0.join("calibration.json");
+    crate::data::calibrate(crate::data::CalibrateArgs {
+        data: args.data.clone(),
+        lookahead_gamma: args.lookahead_gamma,
+        lookahead_plies: args.lookahead_plies,
+        output: path.clone(),
+        threads: Some(1),
+    })
+    .unwrap();
+    let memory = Dataset::open(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_lambda(0.75)
+    .unwrap();
+    let spill = crate::data::SpillStore::create(
+        &args.data,
+        args.lookahead().unwrap(),
+        std::num::NonZeroUsize::new(1).unwrap(),
+        &fixture.0,
+        3,
+        200,
+    )
+    .unwrap()
+    .with_lambda(0.75)
+    .unwrap();
+    let source = crate::data::TeacherCpPerLogitSource::File(path.clone());
+    let expected = source.resolve(&memory, 1000.0).unwrap();
+    let actual = spill_calibration::resolve(&spill, &source, 1000.0).unwrap();
+    assert_eq!(actual.teacher_cp_per_logit, expected.teacher_cp_per_logit);
+    assert_eq!(
+        actual.teacher_score_multiplier,
+        expected.teacher_score_multiplier
+    );
+    assert_eq!(actual.at_search_bound, expected.at_search_bound);
+    assert_eq!(actual.source, expected.source);
+    let original: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for invalid in 0..6 {
+        let mut document = original.clone();
+        match invalid {
+            0 => document["classes"][0]["teacher_cp_per_logit"] = json!(0.0),
+            1 => {
+                let duplicate = document["classes"][0].clone();
+                document["classes"].as_array_mut().unwrap().push(duplicate);
+            }
+            2 => document["classes"] = json!([]),
+            3 => document["classes"][0]["search_budget"] = json!(u64::MAX),
+            4 => document["format"] = json!("invalid"),
+            5 => {
+                document.as_object_mut().unwrap().remove("conditions");
+            }
+            _ => unreachable!(),
+        }
+        fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        let error_text = |result: crate::data::Result<crate::data::TeacherCalibration>| match result
+        {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("invalid calibration accepted"),
+        };
+        assert_eq!(
+            error_text(source.resolve(&memory, 1000.0)),
+            error_text(spill_calibration::resolve(&spill, &source, 1000.0))
+        );
+    }
 }

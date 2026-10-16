@@ -17,7 +17,7 @@ minaseのコードがディスクに読み書きするファイル形式は36種
 完了（採用）。2026年10月13日に起案と着手をし、同日に完了した。
 教師データの来歴JSON、付け直し（MNRS）、3種のチェックポイントのマジック、およびMNPTの版2を廃止して、`MN`の独自形式をMNSD、MNUE、MNPTの3つにし、残った全形式の仕様を書き手のdocコメントに、形式の一覧を[ファイル形式の一覧](../../guides/file-formats.md)に置いた。
 変更の前後で学習の局面数、教師用K、および損失がビット単位で一致し、チェックポイントの中断と再開も中断しない学習と一致することを[照合の記録](../../measurements/file-format-consolidation-equivalence.md)で確かめ、使えなくなった`data/`のファイル594件（約30 GB）を削除した。
-設計判断は[由来の欄](../../adr/archive/record-the-origin-in-mnsd-records.md)、[版を1つにする原則](../../adr/keep-one-version-per-file-format.md)、および[NPZのチェックポイント](../../adr/store-trainer-checkpoints-as-npz.md)のADRへ移した。
+設計判断は[由来の欄](../../adr/archive/record-the-origin-in-mnsd-records.md)、[版を1つにする原則](../../adr/archive/keep-one-version-per-file-format.md)、および[NPZのチェックポイント](../../adr/store-trainer-checkpoints-as-npz.md)のADRへ移した。
 
 ## 目的
 

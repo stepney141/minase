@@ -136,52 +136,72 @@ pub fn compute_lookahead(
     Ok(result)
 }
 
-fn binary_cross_entropy_sum(scores: &[f64], results: &[u8], cp_per_logit: f64) -> f64 {
-    scores
-        .iter()
-        .zip(results)
-        .map(|(&score, &result)| {
-            let logit = score / cp_per_logit;
-            // np.logaddexp(0, logit)の安定な評価式。
-            logit.max(0.0) + (-logit.abs()).exp().ln_1p() - f64::from(result) / 2.0 * logit
-        })
-        .sum()
-}
-
 /// 教師の勝率尺度の推定に黄金分割探索を64回使う。
 ///
 /// `[50, 4000]`で、探索値から終局結果を予測する二値交差エントロピーを最小化する。
 /// `results`は手番側の負け0、引き分け1、勝ち2。計算はすべてf64で行う。
 pub fn estimate_cp_per_logit(scores: &[f64], results: &[u8]) -> Result<CpPerLogitEstimate> {
-    if scores.is_empty()
-        || scores.len() != results.len()
-        || scores.iter().any(|value| !value.is_finite())
-        || results.iter().any(|&value| value > 2)
-    {
+    if scores.len() != results.len() {
         return Err(Error::TeacherSamples);
     }
-    if scores.iter().all(|&value| value == 0.0) {
+    estimate_cp_per_logit_by_passes(|visit| {
+        for (&score, &result) in scores.iter().zip(results) {
+            visit(score, result);
+        }
+        Ok(())
+    })
+}
+
+/// 呼び出しのたびに同じ順で標本を渡す`pass`から教師の勝率尺度を推定する。
+/// 最初の1回で件数、有限性、結果の値域、全探索値が0かどうかを検査する。
+/// その後は標本の列を66回なぞり、二値交差エントロピーを入力順に加算する。
+/// 黄金分割探索は区間`[50, 4000]`で64回反復し、途中の読み込みエラーはそのまま返す。
+pub(crate) fn estimate_cp_per_logit_by_passes(
+    mut pass: impl FnMut(&mut dyn FnMut(f64, u8)) -> Result<()>,
+) -> Result<CpPerLogitEstimate> {
+    let mut count = 0_u64;
+    let mut valid = true;
+    let mut all_zero = true;
+    pass(&mut |score, result| {
+        count += 1;
+        valid &= score.is_finite() && result <= 2;
+        all_zero &= score == 0.0;
+    })?;
+    if count == 0 || !valid {
+        return Err(Error::TeacherSamples);
+    }
+    if all_zero {
         return Err(Error::UndeterminedScale);
     }
+    let mut loss = |cp_per_logit: f64| -> Result<f64> {
+        // Iterator::sum::<f64>と同じ初期値と逐次加算の順序を保つ。
+        let mut sum = -0.0;
+        pass(&mut |score, result| {
+            let logit = score / cp_per_logit;
+            // np.logaddexp(0, logit)の安定な評価式。
+            sum += logit.max(0.0) + (-logit.abs()).exp().ln_1p() - f64::from(result) / 2.0 * logit;
+        })?;
+        Ok(sum)
+    };
     let (mut lower, mut upper) = (50.0, 4000.0);
     let ratio = (5.0_f64.sqrt() - 1.0) / 2.0;
     let mut left = upper - ratio * (upper - lower);
     let mut right = lower + ratio * (upper - lower);
-    let mut left_loss = binary_cross_entropy_sum(scores, results, left);
-    let mut right_loss = binary_cross_entropy_sum(scores, results, right);
+    let mut left_loss = loss(left)?;
+    let mut right_loss = loss(right)?;
     for _ in 0..64 {
         if left_loss <= right_loss {
             upper = right;
             right = left;
             right_loss = left_loss;
             left = upper - ratio * (upper - lower);
-            left_loss = binary_cross_entropy_sum(scores, results, left);
+            left_loss = loss(left)?;
         } else {
             lower = left;
             left = right;
             left_loss = right_loss;
             right = lower + ratio * (upper - lower);
-            right_loss = binary_cross_entropy_sum(scores, results, right);
+            right_loss = loss(right)?;
         }
     }
     Ok(CpPerLogitEstimate {
@@ -211,6 +231,88 @@ pub fn parse_lambda(text: &str) -> std::result::Result<f64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passes_repeat_order_and_match_array_estimate_bits() {
+        // 入力検査1回と、初期2点および64反復の損失評価を同じ標本順で行う契約。
+        for (scores, results) in [
+            (vec![1000.0; 4], vec![2, 2, 2, 0]),
+            (vec![-1000.0, 1000.0], vec![0, 2]),
+            (vec![-1000.0, 1000.0], vec![2, 0]),
+            (vec![0.0, -0.0, 0.25, -32768.0, 12.7], vec![1, 0, 2, 0, 1]),
+        ] {
+            let expected = estimate_cp_per_logit(&scores, &results).unwrap();
+            let mut passes = Vec::new();
+            let actual = estimate_cp_per_logit_by_passes(|visit| {
+                let mut seen = Vec::new();
+                for (&score, &result) in scores.iter().zip(&results) {
+                    visit(score, result);
+                    seen.push((score.to_bits(), result));
+                }
+                passes.push(seen);
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(actual.value.to_bits(), expected.value.to_bits());
+            assert_eq!(actual.at_search_bound, expected.at_search_bound);
+            assert_eq!(passes.len(), 67);
+            let expected_order: Vec<_> = scores
+                .iter()
+                .zip(&results)
+                .map(|(&score, &result)| (score.to_bits(), result))
+                .collect();
+            assert!(passes.iter().all(|seen| *seen == expected_order));
+        }
+    }
+
+    #[test]
+    fn passes_reject_invalid_samples_before_loss_evaluation() {
+        for samples in [
+            vec![],
+            vec![(f64::NAN, 1)],
+            vec![(f64::INFINITY, 1)],
+            vec![(f64::NEG_INFINITY, 1)],
+            vec![(0.0, 3)],
+            vec![(1.0, 2), (0.0, 255)],
+        ] {
+            let mut calls = 0;
+            let result = estimate_cp_per_logit_by_passes(|visit| {
+                calls += 1;
+                for &(score, result) in &samples {
+                    visit(score, result);
+                }
+                Ok(())
+            });
+            assert!(matches!(result, Err(Error::TeacherSamples)));
+            assert_eq!(calls, 1);
+        }
+        let mut calls = 0;
+        let result = estimate_cp_per_logit_by_passes(|visit| {
+            calls += 1;
+            visit(0.0, 0);
+            visit(-0.0, 2);
+            Ok(())
+        });
+        assert!(matches!(result, Err(Error::UndeterminedScale)));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn passes_propagate_read_errors_during_validation_and_search() {
+        for fail_at in [1, 2, 3, 67] {
+            let mut calls = 0;
+            let result = estimate_cp_per_logit_by_passes(|visit| {
+                calls += 1;
+                visit(1000.0, 2);
+                if calls == fail_at {
+                    return Err(Error::Io(std::io::Error::from_raw_os_error(5)));
+                }
+                Ok(())
+            });
+            assert!(matches!(result, Err(Error::Io(error)) if error.raw_os_error() == Some(5)));
+            assert_eq!(calls, fail_at);
+        }
+    }
 
     #[test]
     fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_cp_per_logit() {

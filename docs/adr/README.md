@@ -233,7 +233,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月13日 [学習器は評価関数ごとに独立したパイプラインを持ち、データの読み込みと汎用の部品だけを共有する](split-training-pipelines-by-evaluation-function.md)
 - 2026年10月13日 [設計書を持つ作業はすべてROADMAPの状態表に載せる](list-every-planned-work-in-the-roadmap.md)
 - 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](archive/record-the-origin-in-mnsd-records.md)（置き換え済み）
-- 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](keep-one-version-per-file-format.md)
+- 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](archive/keep-one-version-per-file-format.md)（置き換え済み）
 - 2026年10月13日 [学習器のチェックポイントをNPZに置き、設定そのものを収めて比べる](store-trainer-checkpoints-as-npz.md)
 - 2026年10月14日 [教師データを対局単位の連鎖で記録するMNSDの1形式にまとめる](record-teacher-data-as-chained-games.md)
 - 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
@@ -248,3 +248,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)
 - 2026年10月16日 [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
+- 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
+- 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
