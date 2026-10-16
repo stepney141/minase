@@ -132,6 +132,7 @@ impl BucketAssigner {
 }
 
 /// bucket内の0..lenを、用途とbucket番号で分離した乱数列で並べ替える。
+/// 返り値`order`のj番目は、bucket内でj番目に渡す局面の元の位置である（呼び手は`group[order[j]]`と読む）。
 pub fn bucket_permutation(len: usize, seed: u64, epoch: u64, bucket: u32) -> Vec<usize> {
     let mut state = mix64(
         mix64(seed ^ epoch.wrapping_mul(STEP) ^ 0x7065_726D_7574_6500)
