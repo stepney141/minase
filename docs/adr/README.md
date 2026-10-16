@@ -246,3 +246,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月15日 [千日手の引き分けの値は利用者がUSIオプションで固定値を与え、根の手番側に＋、相手側に−の符号で返す](set-the-draw-value-by-usi-option-signed-from-the-root-side.md)
 - 2026年10月16日 [NNUEの学習率をcosine annealingで減らす](anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)
 - 2026年10月16日 [勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)
+- 2026年10月16日 [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
