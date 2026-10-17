@@ -152,7 +152,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             searcher.tt.store(
                 search_key(&board),
                 0,
-                0,
+                evaluate(searcher.nnue, &board),
                 Bound::Upper,
                 Some(tt_move),
                 0,

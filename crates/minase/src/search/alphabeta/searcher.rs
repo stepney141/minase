@@ -83,6 +83,7 @@ pub(super) fn new_searcher<'a>(
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
+        static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(nnue.pawn_value()),
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
@@ -180,6 +181,8 @@ pub(super) struct Searcher<'a> {
     pub(super) accumulators: Vec<NnueAccumulator>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
+    /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
+    pub(super) static_evals: [i32; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。
     pub(super) correction: CorrectionTable,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。

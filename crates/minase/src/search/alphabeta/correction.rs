@@ -1,7 +1,8 @@
 //! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
 //!
-//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値をfutility pruningの判定にだけ加える。
-//! 鍵と適用範囲を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
+//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値を通常探索の各ノードの静的評価に加える。
+//! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
+//! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
 
 use super::params;
 use super::royal::royal_under_attack;

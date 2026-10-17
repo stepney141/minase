@@ -669,7 +669,8 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
                 2,
                 false,
             );
-            assert!(!searcher.improving(evaluate(nnue, &board), board.side_to_move(), 2));
+            searcher.static_evals[0] = evaluate(nnue, &board);
+            assert!(!searcher.improving(evaluate(nnue, &board), 2));
             assert_eq!(
                 searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 2, false),
                 Some(DRAW_SCORE)

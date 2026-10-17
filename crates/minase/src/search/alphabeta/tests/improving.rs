@@ -1,70 +1,35 @@
-//! 補正前の静的評価による良化判定を検査する。
+//! 補正後の静的評価による良化判定を検査する。
 
 use super::*;
 use crate::search::alphabeta::params;
+use crate::search::alphabeta::pruning::is_improving;
 
-// 同じ手番の2手前の静的評価と比べ、上昇だけを真とし、同値と下降は偽とする。
-// 適用範囲の理由は docs/adr/use-improving-only-for-futility-margins.md にある。
+// Stockfish src/search.cpp:883。等号と比較相手がない場合は偽とする。
 #[test]
-fn improving_compares_static_evaluations_from_the_current_side() {
-    for side in [Color::Black, Color::White] {
-        let bare = position(
-            side,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(11, 11), Color::White, PieceKind::King),
-            ],
-        );
-        let richer = position(
-            side,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(11, 11), Color::White, PieceKind::King),
-                (sq(5, 5), side, PieceKind::Rook),
-            ],
-        );
-        with_root_searcher(&bare, &[], |searcher| {
-            let bare_acc = searcher.nnue.refresh_accumulator(&bare);
-            let richer_acc = searcher.nnue.refresh_accumulator(&richer);
-            assert!(evaluate(searcher.nnue, &richer) > evaluate(searcher.nnue, &bare));
-            for (previous, current, expected) in [
-                (&bare_acc, &richer_acc, true),
-                (&bare_acc, &bare_acc, false),
-                (&richer_acc, &bare_acc, false),
-            ] {
-                let ply = 4;
-                searcher.accumulators[2] = previous.clone();
-                searcher.accumulators[3] = current.clone();
-                searcher.accumulators[4] = current.clone();
-                let static_eval = searcher.nnue.evaluate_accumulator(current, side);
-                assert_eq!(searcher.improving(static_eval, side, ply), expected);
-            }
-        });
+fn improving_requires_a_strict_increase_from_two_plies_ago() {
+    for (current, previous, expected) in [
+        (101, Some(100), true),
+        (100, Some(100), false),
+        (99, Some(100), false),
+        (100, None, false),
+    ] {
+        assert_eq!(is_improving(current, previous), expected);
     }
 }
 
-// 比較区間が存在しない場合とnull moveを含む場合は追加の枝刈りを行わない。
 #[test]
-fn improving_preserves_margins_without_two_real_plies() {
+fn improving_compares_stored_evaluations_across_null_moves() {
     let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
-        let static_eval = evaluate(searcher.nnue, &board);
         for ply in [0, 1] {
-            assert!(searcher.improving(static_eval, board.side_to_move(), ply));
+            assert!(!searcher.improving(100, ply));
         }
-        let ply = 4;
-        for (null_move_ply, expected) in [
-            (None, false),
-            (Some(ply), true),
-            (Some(ply - 1), true),
-            (Some(ply - 2), false),
-        ] {
+        searcher.static_evals[2] = 100;
+        for null_move_ply in [None, Some(4), Some(3), Some(2)] {
             searcher.null_move_ply = null_move_ply;
-            assert_eq!(
-                searcher.improving(static_eval, board.side_to_move(), ply),
-                expected,
-                "null_move_ply={null_move_ply:?}"
-            );
+            for (current, expected) in [(101, true), (100, false), (99, false)] {
+                assert_eq!(searcher.improving(current, 4), expected);
+            }
         }
     });
 }
@@ -77,27 +42,13 @@ fn futility_prunes_quiets_only_when_not_improving() {
     assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
     // 100×165/100=165、165×71/100=117.15→117。
     let board = bare_kings();
-    let worse = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 6), Color::White, PieceKind::Rook),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
     let moves = legal_moves(&board);
     for improving in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let static_eval = evaluate(searcher.nnue, &board);
             let alpha = static_eval + 117;
-            if improving {
-                assert!(evaluate(searcher.nnue, &worse) < static_eval);
-                searcher.accumulators[0] = searcher.nnue.refresh_accumulator(&worse);
-            }
-            assert_eq!(
-                searcher.improving(static_eval, board.side_to_move(), 2),
-                improving
-            );
+            searcher.static_evals[0] = static_eval - i32::from(improving);
+            assert_eq!(searcher.improving(static_eval, 2), improving);
             assert!(!royal_under_attack(&board));
             for &mv in &moves {
                 assert!(!mv.promote && move_order_key(&board, searcher.nnue, mv).is_none());
@@ -117,25 +68,68 @@ fn futility_prunes_quiets_only_when_not_improving() {
     }
 }
 
-// 良化判定にはcorrection historyの補正を含めず、補正前の静的評価を比べる。
+// Stockfish src/search.cpp:846-884。現在と2手前の双方に補正を含めて比べる。
 #[test]
-fn improving_uses_raw_evaluation_before_correction() {
+fn improving_uses_corrected_evaluations() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     assert_eq!(params::futility_margin1(), 165, "数値例の前提");
     assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
     // 100×165/100=165、165×71/100=117.15→117。
     let board = bare_kings();
-    with_root_searcher(&board, &[], |searcher| {
-        let side = board.side_to_move();
-        let key = material_key(&board);
-        searcher.correction.update(side, key, 100, 8);
-        let correction = searcher.correction.read(side, key);
-        assert!(correction > 0);
-        let alpha = evaluate(searcher.nnue, &board) + correction + 117;
-        let score = searcher
-            .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
-            .unwrap();
-        assert!(score < alpha && score.abs() < MATE_THRESHOLD);
-        assert_eq!(searcher.nodes, 1);
-    });
+    for (previous_correction, expected_improving) in [(0, true), (100, false)] {
+        with_root_searcher(&board, &[], |searcher| {
+            let side = board.side_to_move();
+            let key = material_key(&board);
+            searcher.correction.update(side, key, 100, 8);
+            let correction = searcher.correction.read(side, key);
+            assert!(correction > 0 && correction < 100);
+            let raw = evaluate(searcher.nnue, &board);
+            searcher.static_evals[0] = raw + previous_correction;
+            let alpha = raw + correction + 117;
+            let score = searcher
+                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
+                .unwrap();
+            assert_eq!(searcher.static_evals[2], raw + correction);
+            assert!(score < alpha && score.abs() < MATE_THRESHOLD);
+            assert_eq!(
+                searcher.nodes,
+                if expected_improving {
+                    legal_moves(&board).len() as u64
+                } else {
+                    1
+                }
+            );
+        });
+    }
+}
+
+// 根と浅い枝刈りの対象外の通常ノードも、補正後の値を保持する。
+#[test]
+fn root_and_full_window_nodes_store_corrected_evaluation() {
+    let board = bare_kings();
+    for root in [false, true] {
+        with_root_searcher(&board, &[], |searcher| {
+            let side = board.side_to_move();
+            searcher
+                .correction
+                .update(side, material_key(&board), 64, 8);
+            assert_eq!(searcher.correction.read(side, material_key(&board)), 18);
+            let raw = evaluate(searcher.nnue, &board);
+            searcher.static_evals[0] = i32::MIN;
+            if root {
+                assert!(
+                    searcher
+                        .search_root(&board, &legal_moves(&board), 2, -INFINITY, INFINITY)
+                        .is_some()
+                );
+            } else {
+                assert!(
+                    searcher
+                        .negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false)
+                        .is_some()
+                );
+            }
+            assert_eq!(searcher.static_evals[0], raw + 18);
+        });
+    }
 }

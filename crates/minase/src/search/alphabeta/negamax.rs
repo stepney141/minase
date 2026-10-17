@@ -5,15 +5,14 @@ use crate::search::{
     MATE, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition, in_repetition_band,
 };
 use minase_core::mv::Move;
-use minase_core::piece::Color;
 use minase_core::position::Position;
 use minase_core::repetition_key;
 
 use super::INFINITY;
 use super::correction::key_after_move;
 use super::pruning::{
-    futility_margin, late_move_limit, lmr_reduction, null_move_reduction, razoring_margin,
-    reverse_futility_margin, see_margin,
+    corrected_static_eval, futility_margin, is_improving, late_move_limit, lmr_reduction,
+    null_move_reduction, pruning_eval, razoring_margin, reverse_futility_margin, see_margin,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -21,17 +20,13 @@ use super::see::see_prunes;
 use super::tt::Bound;
 
 impl Searcher<'_> {
-    /// 同じ手番の2手前より補正前の静的評価が上がったかを返す。
-    ///
-    /// 2手前がない場合と比較区間にnull moveを含む場合は余裕値を縮めない。
-    pub(super) fn improving(&self, static_eval: i32, side: Color, ply: u32) -> bool {
-        ply < 2
-            || self.null_move_ply == Some(ply)
-            || self.null_move_ply == Some(ply - 1)
-            || static_eval
-                > self
-                    .nnue
-                    .evaluate_accumulator(&self.accumulators[(ply - 2) as usize], side)
+    /// 保持した2手前の静的評価と比べる（Stockfish src/search.cpp:883）。
+    pub(super) fn improving(&self, static_eval: i32, ply: u32) -> bool {
+        is_improving(
+            static_eval,
+            ply.checked_sub(2)
+                .map(|previous| self.static_evals[previous as usize]),
+        )
     }
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
@@ -50,6 +45,11 @@ impl Searcher<'_> {
     /// 置換表で打ち切れず、要求深さ3以上で記録手がなければ、内部反復減深（IIR）として1だけ浅く読む。
     /// stand-patだけの記録も「記録手なし」に含める。
     /// 判断の理由は`docs/adr/reduce-depth-by-one-without-tt-move.md`にある。
+    ///
+    /// IIRの後に補正後の静的評価を1回求め、手数ごとに保持する（Stockfish src/search.cpp:832, 846-884）。
+    /// reverse futilityとrazoringには置換表の値を条件つきで採る判定用の評価値を使い、
+    /// null moveの減深量、improving、およびfutilityには静的評価を使う。
+    /// 補正表の更新には補正前の評価を渡す。
     ///
     /// 前向き枝刈りはreverse futility、razoring、null move、futility、late move pruning、SEE、LMRの順で判定する。
     /// このうちreverse futility、razoring、futility、late move pruning、SEEは、IIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という共通条件を持つ。
@@ -118,32 +118,39 @@ impl Searcher<'_> {
             depth
         };
 
-        // 浅い枝刈りの共通条件を判定し、累算値から補正前の静的評価を1回だけ求める。
+        // 補正はノードの最初に1回読み、すべての静的評価の判定で共有する。
+        // Stockfish src/search.cpp:832, 846-884。
+        let side = position.side_to_move();
+        #[cfg(feature = "invariants")]
+        self.nnue
+            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
+        let raw = self
+            .nnue
+            .evaluate_accumulator(&self.accumulators[ply as usize], side);
+        let correction = self.correction.read(side, self.material_keys[ply as usize]);
+        let static_eval = corrected_static_eval(raw, correction);
+        self.static_evals[ply as usize] = static_eval;
+        let mut improving = self.improving(static_eval, ply);
+        let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
+
         // 王駒への利きは個々の枝刈りが発動し得る場合に調べる。
         let pruning_node = depth <= 3
             && beta - alpha == 1
             && alpha.abs() < REPETITION_BAND_START
             && beta.abs() < REPETITION_BAND_START;
-        let mut static_eval = pruning_node.then(|| {
-            #[cfg(feature = "invariants")]
-            self.nnue
-                .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-            self.nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
-        });
         let mut royal_attacked = None;
-        // reverse futilityは「静的評価 − 余裕値 ≥ β」で静的評価を返し、置換表へ保存しない。
-        // razoringは深さ2以下で「静的評価 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
+        // reverse futilityは「判定用の評価値 − 余裕値 ≥ β」で判定用の評価値を返し、置換表へ保存しない。
+        // razoringは深さ2以下で「判定用の評価値 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
         // 両者とも王駒に疑似利きが届くノードを除く理由は
         // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
-        if let Some(value) = static_eval {
-            if value - reverse_futility_margin(self.nnue.pawn_value()) >= beta
+        if pruning_node {
+            if eval - reverse_futility_margin(self.nnue.pawn_value()) >= beta
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
             {
-                return Some(value);
+                return Some(eval);
             }
             if depth <= 2
-                && value + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
+                && eval + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
             {
                 let value = self.quiesce(position, alpha, beta, ply)?;
@@ -153,7 +160,6 @@ impl Searcher<'_> {
             }
         }
 
-        let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
         // 深さ3以上、直前がnull moveでない、βが詰み帯と専用の帯の外、王駒以外の自駒がある場合に試す。
@@ -164,14 +170,7 @@ impl Searcher<'_> {
             && beta.abs() < REPETITION_BAND_START
             && has_non_royal_piece
         {
-            let value = *static_eval.get_or_insert_with(|| {
-                #[cfg(feature = "invariants")]
-                self.nnue
-                    .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-                self.nnue
-                    .evaluate_accumulator(&self.accumulators[ply as usize], side)
-            });
-            let reduction = null_move_reduction(depth, value, beta, self.nnue.pawn_value());
+            let reduction = null_move_reduction(depth, static_eval, beta, self.nnue.pawn_value());
             let score =
                 self.search_null_move(position, depth.saturating_sub(1 + reduction), beta, ply)?;
             if score >= beta {
@@ -179,17 +178,10 @@ impl Searcher<'_> {
             }
         }
 
-        // futilityだけにcorrection historyの補正を加え、余裕値との和を1回だけ求める。
-        let futility_bound = pruning_node.then(|| {
-            let value = static_eval.expect("eligible pruning node has a static evaluation");
-            value
-                + self.correction.read(side, self.material_keys[ply as usize])
-                + futility_margin(
-                    self.nnue.pawn_value(),
-                    depth,
-                    self.improving(value, side, ply),
-                )
-        });
+        // null moveを試さなかった場合も更新する（Stockfish src/search.cpp:1080）。
+        improving |= static_eval >= beta;
+        let futility_bound = pruning_node
+            .then(|| static_eval + futility_margin(self.nnue.pawn_value(), depth, improving));
         let late_move_limit = pruning_node.then(|| late_move_limit(depth));
         // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
@@ -363,7 +355,7 @@ impl Searcher<'_> {
             best_score,
             bound,
             best_capture,
-            static_eval,
+            Some(raw),
             royal_attacked,
         );
         // Stockfish src/search.cpp:1651-1657。α以下なら、直前のノードの印も継ぐ。

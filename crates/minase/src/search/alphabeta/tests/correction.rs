@@ -1,5 +1,5 @@
-//! correction historyはfutilityの判定だけに加え、詰み帯の外で最善手が非捕獲のときに更新する。
-//! 採用理由はdocs/adr/key-correction-history-by-material.md。
+//! correction historyは静的評価に加える（Stockfish src/search.cpp:832, 846-870）。
+//! 詰み帯の外で最善手が非捕獲のときに、補正前の評価との差で更新する。
 
 use super::*;
 use crate::eval::evaluate;
@@ -245,7 +245,8 @@ fn correction_changes_futility_expansion_at_boundary() {
     assert_eq!(params::futility_margin1(), 165, "数値例の前提");
     assert_eq!(params::correction_weight(), 37, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 100×165/100=165。差4なら4×8×37/1024=1.15625→1。
+    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
+    // 手数0ではimprovingは偽。165×71/100→117。差4なら4×8×37/1024→1。
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
@@ -254,7 +255,7 @@ fn correction_changes_futility_expansion_at_boundary() {
     for correction in [0, 1] {
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(nnue, &board) + 165;
+        let alpha = evaluate(nnue, &board) + 117;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();

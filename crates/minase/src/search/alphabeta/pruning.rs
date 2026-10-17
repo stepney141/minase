@@ -3,13 +3,40 @@
 use std::sync::OnceLock;
 
 use crate::eval::Nnue;
-use crate::search::MAX_PLY;
+use crate::eval::nnue::EVALUATION_LIMIT;
+use crate::search::{MAX_PLY, REPETITION_BAND_START};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
 use super::params;
 use super::see::see_prunes;
+use super::tt::Bound;
+
+/// 補正後の静的評価を評価関数の出力範囲に収める（Stockfish src/search.cpp:113-118）。
+pub(super) fn corrected_static_eval(raw: i32, correction: i32) -> i32 {
+    (raw + correction).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT)
+}
+
+/// 同じ手番の2手前より静的評価が上がったかを返す（Stockfish src/search.cpp:883）。
+/// 2手前がなければ偽とし、null moveの区間も通常どおり比較する。
+pub(super) fn is_improving(static_eval: i32, previous: Option<i32>) -> bool {
+    previous.is_some_and(|value| static_eval > value)
+}
+
+/// 静的評価を、方向の合う置換表の値で置き換える（Stockfish src/search.cpp:862-865）。
+/// 経路に依存する専用の帯と詰み帯の値は、判定用の評価値に使わない。
+pub(super) fn pruning_eval(static_eval: i32, tt_hit: Option<(i32, Bound)>) -> i32 {
+    if let Some((value, bound)) = tt_hit
+        && value.abs() < REPETITION_BAND_START
+        && (bound == Bound::Exact
+            || (value > static_eval && bound == Bound::Lower)
+            || (value <= static_eval && bound == Bound::Upper))
+    {
+        return value;
+    }
+    static_eval
+}
 
 /// LMRの減深量表に保持する手番号の列数。
 /// 256手を超える局面は稀で、後方の減深量は上限で抑えるため、それ以降は最終列を使う。

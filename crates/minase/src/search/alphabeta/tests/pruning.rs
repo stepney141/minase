@@ -125,7 +125,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
             .iter()
             .all(|&mv| { !mv.promote && move_order_key(&position, nnue, mv).is_none() })
     );
-    // ply=2では2手前と同じ評価なので、良化していないノードの保護も検査する。
+    // 根付近とply=2の両方で、最初の手を保護することを検査する。
     for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
         let table = small_tt();
         let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, ply, &table);
@@ -271,7 +271,7 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
         table.store(
             search_key(&position),
             0,
-            0,
+            evaluate(nnue, &position),
             Bound::Upper,
             Some(tt_move),
             0,
@@ -517,7 +517,7 @@ fn see_pruning_searches_rule_dependent_capture() {
     table.store(
         search_key(&board),
         0,
-        0,
+        static_eval,
         Bound::Upper,
         Some(quiet),
         0,
@@ -565,7 +565,7 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     table.store(
         search_key(&board),
         0,
-        0,
+        evaluate(test_nnue(), &board),
         Bound::Upper,
         Some(quiet),
         ply,
@@ -603,7 +603,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
         table.store(
             search_key(&position),
             0,
-            0,
+            static_eval,
             Bound::Upper,
             Some(tt_move),
             0,
@@ -614,7 +614,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
         assert_eq!(nodes, 0, "子を探索せずに返す: depth={depth}");
         let hit = table.probe(search_key(&position), 0).unwrap();
         assert_eq!(hit.depth, 0);
-        assert_eq!(hit.score, 0);
+        assert_eq!(hit.score, static_eval);
         assert_eq!(hit.best_move, Some(tt_move));
     }
 }
@@ -988,9 +988,9 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     );
 }
 
-// reverse futilityとrazoringはcorrection historyを加えず、補正前の静的評価を使う。
+// 補正が判定用の評価値を動かすと、補正前の値では成立した枝刈りも抑止する。
 #[test]
-fn revived_pruning_uses_uncorrected_static_evaluation() {
+fn correction_can_prevent_reverse_futility_and_razoring() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
     assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
@@ -1006,12 +1006,191 @@ fn revived_pruning_uses_uncorrected_static_evaluation() {
             let raw = evaluate(searcher.nnue, &position);
             let alpha = if reverse { raw - 428 - 1 } else { raw + 1606 };
             let mut board = position.clone();
-            assert_eq!(
-                searcher.negamax(&mut board, 1, alpha, alpha + 1, 0, false),
-                Some(raw)
+            let score = searcher
+                .negamax(&mut board, 1, alpha, alpha + 1, 0, false)
+                .unwrap();
+            assert!(searcher.nodes > 0, "補正により通常探索へ進む");
+            let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+            assert_eq!(hit.depth, 1);
+            assert_eq!(hit.score, score);
+        });
+    }
+}
+
+// F2の数値例。補正後の評価は詰み帯と専用の帯へ入れない。
+#[test]
+fn corrected_static_eval_clamps_to_evaluation_limit() {
+    use crate::eval::nnue::EVALUATION_LIMIT;
+    use crate::search::alphabeta::pruning::corrected_static_eval;
+    assert_eq!(EVALUATION_LIMIT, 28_999);
+    for (raw, correction, expected) in [
+        (100, 30, 130),
+        (0, -30, -30),
+        (28_990, 50, 28_999),
+        (-28_990, -50, -28_999),
+    ] {
+        assert_eq!(corrected_static_eval(raw, correction), expected);
+    }
+}
+
+#[test]
+fn pruning_eval_selects_only_directional_bounds_outside_decisive_bands() {
+    use crate::search::REPETITION_BAND_START as B;
+    use crate::search::alphabeta::pruning::pruning_eval;
+    for (hit, expected) in [
+        (None, 100),
+        (Some((150, Bound::Lower)), 150),
+        (Some((150, Bound::Exact)), 150),
+        (Some((150, Bound::Upper)), 100),
+        (Some((50, Bound::Upper)), 50),
+        (Some((50, Bound::Exact)), 50),
+        (Some((50, Bound::Lower)), 100),
+        (Some((100, Bound::Upper)), 100),
+        (Some((B - 1, Bound::Lower)), B - 1),
+        (Some((B, Bound::Lower)), 100),
+        (Some((-B, Bound::Upper)), 100),
+        (Some((MATE - 5, Bound::Lower)), 100),
+        (Some((-(MATE - 5), Bound::Upper)), 100),
+    ] {
+        assert_eq!(pruning_eval(100, hit), expected, "{hit:?}");
+    }
+}
+
+#[test]
+fn reverse_futility_uses_corrected_static_eval() {
+    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(params::reverse_futility_margin(), 428);
+    let board = bare_kings();
+    for corrected in [false, true] {
+        with_root_searcher(&board, &[], |searcher| {
+            let raw = evaluate(searcher.nnue, &board);
+            if corrected {
+                searcher
+                    .correction
+                    .update(board.side_to_move(), material_key(&board), 64, 8);
+                assert_eq!(
+                    searcher
+                        .correction
+                        .read(board.side_to_move(), material_key(&board)),
+                    18
+                );
+            }
+            // rawでは余裕値に1足りず、補正18を足すと打ち切れる。
+            let beta = raw - 427;
+            let score = searcher
+                .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
+                .unwrap();
+            if corrected {
+                assert_eq!(score, raw + 18);
+                assert_eq!(searcher.nodes, 0);
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
+    }
+}
+
+#[test]
+fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
+    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(params::reverse_futility_margin(), 428);
+    let board = bare_kings();
+    for bound in [Bound::Lower, Bound::Upper] {
+        with_root_searcher(&board, &[], |searcher| {
+            let raw = evaluate(searcher.nnue, &board);
+            let value = raw + 500;
+            let beta = raw + 72;
+            searcher
+                .tt
+                .store(search_key(&board), 0, value, bound, None, 0, false);
+            let score = searcher
+                .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
+                .unwrap();
+            if bound == Bound::Lower {
+                assert_eq!(score, value);
+                assert_eq!(searcher.nodes, 0);
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
+    }
+}
+
+#[test]
+fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
+    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(params::razoring_margin1(), 1606);
+    let board = bare_kings();
+    for bound in [Bound::Upper, Bound::Lower] {
+        with_root_searcher(&board, &[], |searcher| {
+            let raw = evaluate(searcher.nnue, &board);
+            // 静的評価では余裕値に1足りず、低い上界を採れば静止探索へ移る。
+            let alpha = raw + 1605;
+            searcher
+                .tt
+                .store(search_key(&board), 0, raw - 18, bound, None, 0, false);
+            let score = searcher
+                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
+                .unwrap();
+            if bound == Bound::Upper {
+                assert_eq!(searcher.nodes, 0);
+                assert_eq!(score, raw, "捕獲のない静止探索は補正前の評価を返す");
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
+    }
+}
+
+#[test]
+fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
+    assert_eq!(test_nnue().pawn_value(), 100);
+    assert_eq!(params::null_move_base(), 3617);
+    assert_eq!(params::null_move_slope(), 257);
+    assert_eq!(params::null_move_eval_scale(), 56);
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
+    for corrected in [false, true] {
+        with_root_searcher(&board, &[], |searcher| {
+            let raw = evaluate(searcher.nnue, &board);
+            let beta = raw - 357;
+            if corrected {
+                searcher
+                    .correction
+                    .update(board.side_to_move(), material_key(&board), 64, 8);
+                assert_eq!(
+                    searcher
+                        .correction
+                        .read(board.side_to_move(), material_key(&board)),
+                    18
+                );
+            }
+            // IIR後の深さ6で基本量は4。差358から追加1となり、補正18で境界を越す。
+            // 判定用の評価値はβ未満だが、null moveの減深量には使わない。
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                raw - 500,
+                Bound::Upper,
+                None,
+                0,
+                false,
             );
-            assert_eq!(searcher.nodes, 0);
-            assert!(searcher.tt.probe(search_key(&position), 0).is_none());
+            let score = searcher
+                .negamax(&mut board.clone(), 7, beta - 1, beta, 0, false)
+                .unwrap();
+            assert!(score >= beta);
+            if corrected {
+                assert_eq!(searcher.nodes, 0, "null moveの子は深さ0となる");
+            } else {
+                assert!(searcher.nodes > 0, "null moveの子は深さ1となる");
+            }
         });
     }
 }

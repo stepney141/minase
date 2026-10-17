@@ -6,6 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
+use super::pruning::corrected_static_eval;
 use super::searcher::Searcher;
 use super::tt::Bound;
 use super::{INFINITY, params};
@@ -215,6 +216,14 @@ impl Searcher<'_> {
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
         self.order_root_moves(&position, &mut moves);
+        // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
+        #[cfg(feature = "invariants")]
+        self.nnue
+            .assert_accumulator(&position, &self.accumulators[0], 0);
+        let side = position.side_to_move();
+        let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
+        let correction = self.correction.read(side, self.material_keys[0]);
+        self.static_evals[0] = corrected_static_eval(raw, correction);
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
