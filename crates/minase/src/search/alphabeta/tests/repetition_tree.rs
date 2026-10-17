@@ -397,7 +397,8 @@ fn article_31_r1_path_stacks_restore_after_moves_and_interruptions() {
                 INFINITY,
                 0,
                 true,
-                0,
+                2,
+                None,
                 false,
             );
             assert_eq!(

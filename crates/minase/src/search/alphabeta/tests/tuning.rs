@@ -241,9 +241,9 @@ fn tuning_parameters_in_isolated_process() {
     }
 
     if scenario == "lmr table" {
-        // 表の生成前に除数1.0を設定する。floor(ln4×ln3)=1。
+        // 表の生成前に除数1.0を設定する。floor(100×ln4×ln3)=152。
         params::set("LmrDivisor", 100).unwrap();
-        assert_eq!(lmr_reduction(4, 3, 0), 1);
+        assert_eq!(lmr_table()[4][3], 152);
         return;
     }
     assert_eq!(scenario, "parameters");
@@ -375,15 +375,149 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 46] = [
+    let cases: [Case; 69] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
         ("LmrHistoryThreshold", 512, || {
-            i64::from(lmr_reduction(4, 8, 256))
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                history: Some(256),
+                ..super::pruning::lmr_context()
+            }))
         }),
         ("LmrMaxReduction", 1, || {
-            i64::from(lmr_reduction(MAX_PLY, 255, 0))
+            i64::from(super::super::pruning::lmr_depth(8, 469, false, 0, 8))
+        }),
+        ("LmrBase", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrOffset", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrNonImproving", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrPvReduction", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                pv_node: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPv", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPvBase", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPvPv", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                pv_node: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPvValue", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                tt_hit: Some((1, 8)),
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPvDepth", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                tt_hit: Some((0, 8)),
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtPvDepthCutNode", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_pv: true,
+                tt_hit: Some((0, 8)),
+                cut_node: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrMoveCount", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCutNode", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                cut_node: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCutNodeNoTtMove", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                cut_node: true,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtCapture", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                tt_capture: Some(true),
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCutoffCount", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                cutoff_count: 3,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCutoffCountMany", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                cutoff_count: 3,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCutoffCountAllNode", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                cutoff_count: 3,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrTtMove", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                is_tt_move: true,
+                tt_capture: Some(false),
+                history: None,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrAlphaEval", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                alpha: 20,
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrNoTtMove", 0, || {
+            i64::from(super::super::pruning::non_lmr_depth(5, 450, false))
+        }),
+        ("LmrAllNode", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrDeeperMargin", 100, || {
+            i64::from(super::super::pruning::lmr_research_depth(7, 4, 80, 50, 100))
+        }),
+        ("LmrShallowerMargin", 0, || {
+            i64::from(super::super::pruning::lmr_research_depth(7, 4, 52, 50, 100))
         }),
         ("FutilityMargin1", 100, || {
             i64::from(futility_margin(101, 1, true))

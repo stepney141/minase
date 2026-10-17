@@ -451,13 +451,14 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 0,
                 false,
             );
+            // F4では深さ2のPVノードのLMRも子を深さ2まで読む。
             for &(mv, _) in &moves {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 let score = if mv == winner { 20 } else { 0 };
                 searcher
                     .tt
-                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1, false);
+                    .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
             }
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
@@ -527,13 +528,14 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             0,
             false,
         );
+        // F4のfail-high後の再探索は通常深さ2から3へ深くなる。
         for &(mv, _) in &moves {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if mv == winner { 10_001 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
+                .store(search_key(&child), 3, -score, Bound::Exact, None, 1, false);
         }
         searcher.null_move_ply = Some(0);
         assert_eq!(

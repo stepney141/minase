@@ -57,8 +57,9 @@ macro_rules! parameters {
 
 parameters! {
     /// 後順位の静かな手の減深（LMR）に使う対数積の除数を百分率で表す。
-    /// 値はSPSAで調整した。
-    LmrDivisor(lmr_divisor): 156, 100, 400;
+    /// 既定値はStockfishの表の積が約0.49 × ln d × ln m手となることから換算した値である
+    /// （src/search.cpp:80-82, 1917-1920）。この式の形での値はSPSAで未調整である。
+    LmrDivisor(lmr_divisor): 203, 100, 400;
     /// LMRの減深量を1増減するbutterfly historyの閾値。単位は履歴点である。
     /// 値はSPSAで調整した。
     LmrHistoryThreshold(lmr_history_threshold): 146, 0, 512;
@@ -67,6 +68,98 @@ parameters! {
     /// 範囲の上限8は暫定の値である。SPSAの調整対象であり、この係数としての値は未調整である。
     /// 上限を設けた判断の根拠は`docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md`にある。
     LmrMaxReduction(lmr_max_reduction): 3, 1, 8;
+    /// LMRの基数。単位は1/100手である。
+    /// Stockfishは948/1024で93（src/search.cpp:1919）、YaneuraOuは1133/1024で111。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrBase(lmr_base): 93, 0, 200;
+    /// LMRの後半の加算量。単位は1/100手である。
+    /// Stockfishは697/1024で68（src/search.cpp:1350）、YaneuraOuは691/1024で67。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrOffset(lmr_offset): 68, 0, 200;
+    /// LMRの良化していない場合の表の値の増分。単位は百分率である。
+    /// Stockfishは197/512で38（src/search.cpp:1919）、YaneuraOuは206/512で40。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrNonImproving(lmr_non_improving): 38, 0, 100;
+    /// LMRのPVノードの減算量。単位は1/100手である。
+    /// Stockfishは512/1024で50（src/search.cpp:1186-1187）、YaneuraOuは窓の幅とttPvに依存するため単一の対応値がない。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrPvReduction(lmr_pv_reduction): 50, 0, 200;
+    /// LMRのttPvの前半の加算量。単位は1/100手である。
+    /// Stockfishは929/1024で91（src/search.cpp:1191-1192）、YaneuraOuは1013/1024で99。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPv(lmr_tt_pv): 91, 0, 200;
+    /// LMRのttPvの後半の減算量の基数。単位は1/100手である。
+    /// Stockfishは3023/1024で295（src/search.cpp:1346）、YaneuraOuは2819/1024で275。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPvBase(lmr_tt_pv_base): 295, 0, 500;
+    /// LMRのttPvかつPVノードの減算量。単位は1/100手である。
+    /// Stockfishは1004/1024で98（src/search.cpp:1346）、YaneuraOuは973/1024で95。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPvPv(lmr_tt_pv_pv): 98, 0, 200;
+    /// LMRのttPvかつ置換表の値がαを超える場合の減算量。単位は1/100手である。
+    /// Stockfishは885/1024で86（src/search.cpp:1346）、YaneuraOuは905/1024で88。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPvValue(lmr_tt_pv_value): 86, 0, 200;
+    /// LMRのttPvかつ置換表の深さが足りる場合の減算量。単位は1/100手である。
+    /// Stockfishは816/1024で80（src/search.cpp:1347）、YaneuraOuは935/1024で91。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPvDepth(lmr_tt_pv_depth): 80, 0, 200;
+    /// LMRのttPvかつ置換表の深さが足りるcutNodeの減算量。単位は1/100手である。
+    /// Stockfishは940/1024で92（src/search.cpp:1347）、YaneuraOuは959/1024で94。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtPvDepthCutNode(lmr_tt_pv_depth_cut_node): 92, 0, 200;
+    /// LMRの手番号1つあたりの減算量。単位は1/100手である。
+    /// Stockfishは65/1024で6（src/search.cpp:1352）、YaneuraOuは65/1024で6。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrMoveCount(lmr_move_count): 6, 0, 20;
+    /// LMRのcutNodeの加算量。単位は1/100手である。
+    /// Stockfishは4026/1024で393（src/search.cpp:1356-1357）、YaneuraOuは3611/1024で353。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrCutNode(lmr_cut_node): 393, 0, 600;
+    /// LMRの置換表の手がないcutNodeの加算量。単位は1/100手である。
+    /// Stockfishは933/1024で91（src/search.cpp:1356-1357）、YaneuraOuは985/1024で96。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrCutNodeNoTtMove(lmr_cut_node_no_tt_move): 91, 0, 200;
+    /// LMRの置換表の手が捕獲手の場合の加算量。単位は1/100手である。
+    /// Stockfishは1079/1024で105（src/search.cpp:1360-1361）、YaneuraOuは1054/1024で103。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtCapture(lmr_tt_capture): 105, 0, 250;
+    /// LMRの子のβ打ち切り数が1より多い場合の加算量。単位は1/100手である。
+    /// Stockfishは264/1024で26（src/search.cpp:1364-1365）、YaneuraOuは251/1024で25。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrCutoffCount(lmr_cutoff_count): 26, 0, 100;
+    /// LMRの子のβ打ち切り数が2より多い場合の追加量。単位は1/100手である。
+    /// Stockfishは1095/1024で107（src/search.cpp:1364-1365）、YaneuraOuは1124/1024で110。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrCutoffCountMany(lmr_cutoff_count_many): 107, 0, 250;
+    /// LMRの子のβ打ち切り数が1より多いallNodeの追加量。単位は1/100手である。
+    /// Stockfishは1138/1024で111（src/search.cpp:1364-1365）、YaneuraOuは1042/1024で102。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrCutoffCountAllNode(lmr_cutoff_count_all_node): 111, 0, 250;
+    /// LMRの子のβ打ち切り数が1以下の置換表の手の減算量。単位は1/100手である。
+    /// Stockfishは2179/1024で213（src/search.cpp:1368-1369）、YaneuraOuは2239/1024で219。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrTtMove(lmr_tt_move): 213, 0, 500;
+    /// LMRのαと判定用の評価値の差が歩兵価値1枚分の場合の加算量。単位は1/100手である。
+    /// Stockfishは3 × 208/1024で61（src/search.cpp:1383-1384）、YaneuraOuはこの項を持たず0。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrAlphaEval(lmr_alpha_eval): 61, 0, 150;
+    /// LMRの分岐を通らず置換表の手がない場合の加算量。単位は1/100手である。
+    /// Stockfishは1127/1024で110（src/search.cpp:1431-1432）、YaneuraOuは1057/1024で103。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrNoTtMove(lmr_no_tt_move): 110, 0, 250;
+    /// LMRのallNodeで減深量に掛けて足す割合の分子。単位は百分率である。
+    /// Stockfishは276/256で108（src/search.cpp:1387-1388）、YaneuraOuは273/256で107。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrAllNode(lmr_all_node): 108, 0, 200;
+    /// LMRの再探索を1手深くするための余裕値。単位は歩兵価値に対する百分率である。
+    /// Stockfishは53/208で25（src/search.cpp:1414）、YaneuraOuは48/90で53。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrDeeperMargin(lmr_deeper_margin): 25, 0, 100;
+    /// LMRの再探索を1手浅くするための余裕値。単位は歩兵価値に対する百分率である。
+    /// Stockfishは8/208で4（src/search.cpp:1415）、YaneuraOuは9/90で10。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmrShallowerMargin(lmr_shallower_margin): 4, 0, 40;
     /// 残り深さ1で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
     /// 良化していないノードでは[`non_improving_futility1()`]の倍率で縮める。
     /// 値はSPSAで調整した。

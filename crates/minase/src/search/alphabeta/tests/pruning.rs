@@ -1,115 +1,332 @@
 //! 枝刈りと深さの削減を検査する。
 
 use super::*;
+use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{is_opponent_worsening, reverse_futility_margin};
 
-// LMR表は1/100手単位で `floor(100 × ln(深さ) × ln(手番号) / (LmrDivisor / 100))` とし、0番の行と列は0にする。
-// 式の理由は docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md にある。
+use crate::search::alphabeta::pruning::{LmrContext, lmr_depth, lmr_research_depth, non_lmr_depth};
+
+/// F4の数値例Aの入力。期待値は指示書の独立した計算による。
+pub(super) fn lmr_context() -> LmrContext {
+    LmrContext {
+        depth: 8,
+        index: 10,
+        improving: false,
+        pv_node: false,
+        tt_pv: false,
+        cut_node: false,
+        tt_hit: None,
+        tt_capture: None,
+        is_tt_move: false,
+        capture: false,
+        history: Some(0),
+        cutoff_count: 0,
+        alpha: 0,
+        eval: 0,
+        pawn: 100,
+    }
+}
+
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
     let table = lmr_table();
+    assert_eq!(params::lmr_divisor(), 203);
+    // 延長後の深さはnegamaxの入口で制限し、表はMAX_PLY + 1行に保つ。
+    assert_eq!(table.len(), MAX_PLY as usize + 1);
     assert!(table[0].iter().all(|&value| value == 0));
     for row in table {
         assert_eq!(row[0], 0);
         assert_eq!(row[1], 0);
     }
-    // 除数1.56で対数積を割ると約0.774、1.848、5.717、3.069となり、100倍して切り捨てる。
-    assert_eq!(params::lmr_divisor(), 156, "数値例の除数");
-    for (depth, index, expected) in [(3, 3, 77), (4, 8, 184), (5, 255, 571), (8, 10, 306)] {
+    // 除数2.03で対数積を割り、100倍して切り捨てる。
+    for (depth, index, expected) in [(3, 3, 59), (4, 8, 142), (5, 255, 439), (8, 10, 235)] {
+        assert_eq!(table[depth][index], expected);
+    }
+}
+
+#[test]
+fn lmr_reduction_matches_f4_examples() {
+    let a = lmr_context();
+    for (case, context, reduction, depth) in [
+        ("A", a, 469, 4),
+        (
+            "B",
+            LmrContext {
+                cut_node: true,
+                tt_capture: Some(false),
+                ..a
+            },
+            812,
+            4,
+        ),
+        (
+            "C",
+            LmrContext {
+                cut_node: true,
+                ..a
+            },
+            903,
+            4,
+        ),
+        (
+            "D",
+            LmrContext {
+                pv_node: true,
+                tt_pv: true,
+                tt_hit: Some((1, 8)),
+                tt_capture: Some(false),
+                ..a
+            },
+            -99,
+            8,
+        ),
+        (
+            "E",
+            LmrContext {
+                cut_node: true,
+                tt_pv: true,
+                tt_hit: Some((0, 8)),
+                tt_capture: Some(false),
+                ..a
+            },
+            436,
+            4,
+        ),
+        (
+            "F",
+            LmrContext {
+                cutoff_count: 3,
+                ..a
+            },
+            742,
+            4,
+        ),
+        (
+            "G",
+            LmrContext {
+                cutoff_count: 2,
+                cut_node: true,
+                tt_capture: Some(false),
+                ..a
+            },
+            838,
+            4,
+        ),
+        ("H", LmrContext { alpha: 80, ..a }, 500, 4),
+        ("I", LmrContext { alpha: -50, ..a }, 448, 4),
+        ("J", LmrContext { alpha: 20, ..a }, 482, 4),
+        (
+            "K",
+            LmrContext {
+                improving: true,
+                history: Some(params::lmr_history_threshold()),
+                ..a
+            },
+            257,
+            5,
+        ),
+        (
+            "L",
+            LmrContext {
+                tt_capture: Some(true),
+                ..a
+            },
+            586,
+            4,
+        ),
+        (
+            "M",
+            LmrContext {
+                depth: 2,
+                index: 1,
+                pv_node: true,
+                tt_pv: true,
+                tt_capture: Some(false),
+                ..a
+            },
+            -203,
+            4,
+        ),
+    ] {
+        assert_eq!(lmr_reduction(context), reduction, "{case}");
         assert_eq!(
-            table[depth][index], expected,
-            "depth={depth}, index={index}"
+            lmr_depth(context.depth, reduction, context.pv_node, 0, 8),
+            depth,
+            "{case}"
         );
     }
-    assert!(table[5][255] > 300);
+    assert_eq!(lmr_depth(2, -203, true, 16, 8), 2, "延長を許す範囲の境界");
+    assert_eq!(lmr_depth(2, -203, true, 15, 8), 4);
+    assert_eq!(lmr_depth(2, -203, true, 0, 0), 2, "反復深さの初期値0");
 }
 
-// 係数を変更する検査はtuningの子プロセスから呼び、並列テストへ設定を漏らさない。
+#[test]
+fn non_lmr_depth_matches_f4_examples() {
+    let a = LmrContext {
+        depth: 6,
+        index: 0,
+        ..lmr_context()
+    };
+    for (case, context, reduction, depth) in [
+        (
+            "N",
+            LmrContext {
+                cut_node: true,
+                is_tt_move: true,
+                tt_capture: Some(false),
+                history: None,
+                ..a
+            },
+            335,
+            5,
+        ),
+        (
+            "O",
+            LmrContext {
+                cut_node: true,
+                ..a
+            },
+            639,
+            3,
+        ),
+        ("P", a, 178, 5),
+        (
+            "Q",
+            LmrContext {
+                is_tt_move: true,
+                tt_capture: Some(false),
+                history: None,
+                ..a
+            },
+            -66,
+            5,
+        ),
+        (
+            "S",
+            LmrContext {
+                cut_node: true,
+                is_tt_move: true,
+                tt_capture: Some(false),
+                history: None,
+                cutoff_count: 2,
+                ..a
+            },
+            574,
+            3,
+        ),
+    ] {
+        assert_eq!(lmr_reduction(context), reduction, "{case}");
+        assert_eq!(
+            non_lmr_depth(5, reduction, context.tt_capture.is_some()),
+            depth,
+            "{case}"
+        );
+    }
+    assert_eq!(
+        non_lmr_depth(2, 639, false),
+        1,
+        "通常深さ2では2手減らさない"
+    );
+    for (normal, reduction, expected) in [
+        (5, 511, 5),
+        (5, 512, 4),
+        (5, 536, 4),
+        (5, 537, 3),
+        (0, 749, 0),
+        (1, 749, 0),
+    ] {
+        assert_eq!(non_lmr_depth(normal, reduction, true), expected);
+    }
+}
+
+#[test]
+fn lmr_research_depth_matches_f4_examples() {
+    for (reduced, value, expected) in [
+        (4, 80, 8),
+        (4, 60, 7),
+        (4, 52, 6),
+        (7, 80, 7),
+        (4, 75, 7),
+        (4, 54, 7),
+    ] {
+        assert_eq!(lmr_research_depth(7, reduced, value, 50, 100), expected);
+    }
+}
+
+#[test]
+fn lmr_history_and_alpha_eval_respect_eligibility() {
+    let a = lmr_context();
+    let threshold = params::lmr_history_threshold();
+    // Aのr0=419に±100を足してからallNodeの項を加える。
+    for (history, expected) in [
+        (-threshold, 580),
+        (-threshold + 1, 469),
+        (threshold - 1, 469),
+        (threshold, 357),
+    ] {
+        assert_eq!(
+            lmr_reduction(LmrContext {
+                history: Some(history),
+                ..a
+            }),
+            expected
+        );
+    }
+    assert_eq!(lmr_reduction(LmrContext { history: None, ..a }), 469);
+    assert_eq!(
+        lmr_reduction(LmrContext {
+            capture: true,
+            alpha: 80,
+            ..a
+        }),
+        469
+    );
+    for alpha in [-REPETITION_BAND_START, REPETITION_BAND_START] {
+        assert_eq!(lmr_reduction(LmrContext { alpha, ..a }), 469);
+    }
+    assert_eq!(
+        lmr_reduction(LmrContext {
+            cutoff_count: 1,
+            ..a
+        }),
+        469
+    );
+}
+
+#[test]
+fn lmr_large_move_indices_clamp_only_table_column() {
+    // 表の255列と256列は同じ。手番号の項だけ6減り、cutNodeにはallNodeの丸めがない。
+    let a = LmrContext {
+        index: 255,
+        cut_node: true,
+        ..lmr_context()
+    };
+    assert_eq!(
+        lmr_reduction(LmrContext { index: 256, ..a }),
+        lmr_reduction(a) - 6
+    );
+}
+
+// 係数の変更はtuningの子プロセス内に閉じ込める。
 #[cfg(feature = "tuning")]
 pub(super) fn lmr_max_reduction_parameter_sets_cap() {
-    let default = params::lmr_max_reduction();
-    assert_eq!(default, 3);
-    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 3);
+    let reduction = lmr_reduction(lmr_context());
+    assert_eq!(lmr_depth(8, reduction, false, 0, 8), 4);
     params::set("LmrMaxReduction", 1).unwrap();
-    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 1);
+    assert_eq!(lmr_depth(8, reduction, false, 0, 8), 6);
+    assert_eq!(
+        lmr_depth(2, -203, true, 0, 8),
+        4,
+        "減深の上限は延長に掛けない"
+    );
     params::set("LmrMaxReduction", 8).unwrap();
-    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 8);
-    assert_eq!(lmr_reduction(4, 255, 0), 2, "深さによる上限も守る");
-    params::set("LmrMaxReduction", default).unwrap();
-    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 3);
-}
-
-#[test]
-fn lmr_history_adjustment_precedes_clamping() {
-    let threshold = params::lmr_history_threshold();
-    assert_eq!(params::lmr_divisor(), 156, "数値例の前提");
-    // floor(ln4×ln8/1.56)=1。履歴補正後、深さ4では上限2に収める。
-    for (history, expected) in [
-        (i32::MIN, 2),
-        (-threshold - 1, 2),
-        (-threshold, 2),
-        (-threshold + 1, 1),
-        (0, 1),
-        (threshold - 1, 1),
-        (threshold, 0),
-        (threshold + 1, 0),
-        (i32::MAX, 0),
-    ] {
-        assert_eq!(lmr_reduction(4, 8, history), expected);
-    }
-    assert_eq!(lmr_reduction(5, 255, i32::MIN), 3);
-    assert_eq!(lmr_reduction(5, 255, i32::MAX), 3);
-    // 表の値が0でも負のhistoryなら減深し、負の補正結果は0で切る。
-    assert_eq!(lmr_reduction(4, 1, -threshold), 1);
-    assert_eq!(lmr_reduction(4, 1, threshold), 0);
-}
-
-#[test]
-fn lmr_reduction_preserves_remaining_depth() {
-    let threshold = params::lmr_history_threshold();
-    for depth in [0, 1, 2, 3, 4, MAX_PLY] {
-        for index in [0, 1, 8, 255] {
-            for history in [
-                i32::MIN,
-                -threshold,
-                -threshold + 1,
-                0,
-                threshold - 1,
-                threshold,
-                i32::MAX,
-            ] {
-                let reduction = lmr_reduction(depth, index, history);
-                assert!(reduction <= 3);
-                match depth {
-                    0..=2 => assert_eq!(reduction, 0),
-                    3 => assert!(reduction <= 1),
-                    _ => {}
-                }
-                if depth >= 2 {
-                    assert!(depth - 1 - reduction >= 1);
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn lmr_large_move_indices_use_last_column() {
-    for depth in [0, 1, 2, 3, 4, MAX_PLY] {
-        for history in [
-            -params::lmr_history_threshold(),
-            0,
-            params::lmr_history_threshold(),
-        ] {
-            for index in [256, usize::MAX] {
-                assert_eq!(
-                    lmr_reduction(depth, index, history),
-                    lmr_reduction(depth, 255, history)
-                );
-            }
-        }
-    }
+    assert_eq!(lmr_depth(8, reduction, false, 0, 8), 3, "例Aの上限8");
+    params::set("LmrMaxReduction", 3).unwrap();
+    params::set("LmrDeeperMargin", 0).unwrap();
+    // 値52はbest50より高く、浅くする閾値54より低い。独立な両条件が相殺する。
+    assert_eq!(lmr_research_depth(7, 4, 52, 50, 100), 7);
+    params::set("LmrDeeperMargin", 25).unwrap();
 }
 
 // futilityは補正後の静的評価と余裕値の和がα以下なら後続の静かな手を飛ばす。

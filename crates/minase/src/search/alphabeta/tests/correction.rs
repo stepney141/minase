@@ -332,7 +332,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             searcher.material_keys[1] = !expected;
             assert!(
                 searcher
-                    .search_move(&mut board, mv, 1, 10_000, 10_001, 0, true, 0, false)
+                    .search_move(&mut board, mv, 1, 10_000, 10_001, 0, true, 0, None, false)
                     .is_some()
             );
             assert_eq!(searcher.material_keys[1], expected);

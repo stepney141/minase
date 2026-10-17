@@ -72,6 +72,8 @@ pub(super) fn new_searcher<'a>(
         shared,
         stop_reason: None,
         ponder_iteration: None,
+        root_depth: 0,
+        cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
@@ -169,6 +171,10 @@ pub(super) struct Searcher<'a> {
     pub(super) ponder_iteration: Option<PonderIteration>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pub(super) pv: Vec<Vec<Move>>,
+    /// 現在の反復の深さ。LMRの延長を許すplyの範囲に使う（Stockfish src/search.cpp:1402）。
+    pub(super) root_depth: u32,
+    /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。
+    pub(super) cutoff_counts: [u32; MAX_PLY as usize + 3],
     /// plyごとのttPv。PVノードまたは照合した印で立て、α以下なら親の印も継ぐ。
     pub(super) tt_pv: [bool; MAX_PLY as usize + 1],
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。

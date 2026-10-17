@@ -179,26 +179,132 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
     (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200 + extra
 }
 
-/// butterfly historyの値で対数表を補正し、LMRの減深量を手数で返す。
+/// LMRの式へ渡す、その手を読む直前のノードと手の情報。
+#[derive(Clone, Copy)]
+pub(super) struct LmrContext {
+    pub(super) depth: u32,
+    pub(super) index: usize,
+    pub(super) improving: bool,
+    pub(super) pv_node: bool,
+    pub(super) tt_pv: bool,
+    pub(super) cut_node: bool,
+    /// 置換表で照合した値と深さ。記録手の合法性とは独立である。
+    pub(super) tt_hit: Option<(i32, u32)>,
+    /// 合法性を確認した置換表の手の捕獲判定。手がなければNone。
+    pub(super) tt_capture: Option<bool>,
+    pub(super) is_tt_move: bool,
+    pub(super) capture: bool,
+    /// 置換表の手、捕獲手、killer手以外の非捕獲手だけが持つ履歴値。
+    pub(super) history: Option<i32>,
+    pub(super) cutoff_count: u32,
+    pub(super) alpha: i32,
+    pub(super) eval: i32,
+    pub(super) pawn: i32,
+}
+
+/// ノードと手の情報から、符号つきのLMR減深量を1/100手単位で返す。
 ///
-/// 手番号は0始まりで、0の表要素は0とし、列数以上なら最後の列を使う。
-/// historyが閾値以上なら表の値から100を引き、その条件に当てはまらず負の閾値以下なら100を加える。
-/// それ以外は変えず、100で割って負の値も切り捨て、手数に戻す。
-/// 結果を `0..=min(LmrMaxReduction, 深さ − 2)` に収めるため、残り深さ2以下では減深しない。
-/// 深さ3以上では着手による1手の消費も含めて、減深後の深さを1以上に保つ。
-/// 呼び出し側は置換表の記録手、捕獲手、killer手を対象から除く。
-pub(super) fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
-    let base = i32::from(lmr_table()[depth as usize][index.min(LMR_MOVE_COUNT - 1)]);
+/// Stockfish src/search.cpp:1183-1192, 1345-1388, 1917-1920の各項を個別に0方向へ丸める。
+/// 表の手番号は0始まりで、256以上なら表だけ最終列を使う。手番号の減算項は実際の番号を使う。
+/// historyの補正は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
+/// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
+pub(super) fn lmr_reduction(context: LmrContext) -> i32 {
+    let c = context;
+    let all_node = !c.pv_node && !c.cut_node;
+    let table = i64::from(lmr_table()[c.depth as usize][c.index.min(LMR_MOVE_COUNT - 1)]);
+    let r_pre = table * (100 + i64::from(params::lmr_non_improving()) * i64::from(!c.improving))
+        / 100
+        + i64::from(params::lmr_base())
+        - i64::from(params::lmr_pv_reduction()) * i64::from(c.pv_node)
+        + i64::from(params::lmr_tt_pv()) * i64::from(c.tt_pv);
     let threshold = params::lmr_history_threshold();
-    let adjustment = if history >= threshold {
-        -1
-    } else if history <= -threshold {
-        1
-    } else {
-        0
+    let history = match c.history {
+        Some(value) if value >= threshold => -100,
+        Some(value) if value <= -threshold => 100,
+        _ => 0,
     };
-    let upper = params::lmr_max_reduction().min(depth.saturating_sub(2) as i32);
-    (base + 100 * adjustment).div_euclid(100).clamp(0, upper) as u32
+    let mut r = r_pre + i64::from(params::lmr_offset())
+        - i64::from(params::lmr_move_count()) * (c.index as i64 + 1)
+        + history;
+    if c.tt_pv {
+        r -= i64::from(params::lmr_tt_pv_base())
+            + i64::from(params::lmr_tt_pv_pv()) * i64::from(c.pv_node)
+            + i64::from(params::lmr_tt_pv_value())
+                * i64::from(c.tt_hit.is_some_and(|(value, _)| value > c.alpha))
+            + (i64::from(params::lmr_tt_pv_depth())
+                + i64::from(params::lmr_tt_pv_depth_cut_node()) * i64::from(c.cut_node))
+                * i64::from(c.tt_hit.is_some_and(|(_, depth)| depth >= c.depth));
+    }
+    if c.cut_node {
+        r += i64::from(params::lmr_cut_node())
+            + i64::from(params::lmr_cut_node_no_tt_move()) * i64::from(c.tt_capture.is_none());
+    }
+    r += i64::from(params::lmr_tt_capture()) * i64::from(c.tt_capture == Some(true));
+    // 子のβ打ち切り数の閾値1と2はStockfish src/search.cpp:1364-1369と同じ。
+    if c.cutoff_count > 1 {
+        r += i64::from(params::lmr_cutoff_count())
+            + i64::from(params::lmr_cutoff_count_many()) * i64::from(c.cutoff_count > 2)
+            + i64::from(params::lmr_cutoff_count_all_node()) * i64::from(all_node);
+    } else if c.is_tt_move {
+        r -= i64::from(params::lmr_tt_move());
+    }
+    if !c.capture && c.alpha.abs() < REPETITION_BAND_START {
+        let pawn = i64::from(c.pawn);
+        // −64と96を歩兵価値208で換算した−31%と46%（Stockfish src/search.cpp:1383-1384）。
+        let difference =
+            (i64::from(c.alpha) - i64::from(c.eval)).clamp(-31 * pawn / 100, 46 * pawn / 100);
+        r += i64::from(params::lmr_alpha_eval()) * difference / pawn;
+    }
+    if all_node {
+        // 分母の定数105は268/256の換算値（Stockfish src/search.cpp:1387-1388）。
+        r += r * i64::from(params::lmr_all_node()) / (100 * i64::from(c.depth) + 105);
+    }
+    r as i32
+}
+
+/// 減深量を0方向へ丸め、正の減深だけを係数の上限で抑えて子の深さを求める。
+/// 延長の上限はplyが反復深さの2倍未満なら2、それ以外は0である。
+/// 最低1手を確保した後、PVノードでは1手足す（Stockfish src/search.cpp:1402）。
+pub(super) fn lmr_depth(
+    depth: u32,
+    reduction: i32,
+    pv_node: bool,
+    ply: u32,
+    root_depth: u32,
+) -> u32 {
+    let extension = if ply < 2 * root_depth { 2 } else { 0 };
+    let reduction = (reduction / 100).clamp(-extension, params::lmr_max_reduction());
+    (depth as i32 - 1 - reduction).max(1) as u32 + u32::from(pv_node)
+}
+
+/// αを超えたLMRの結果に応じて、再探索の通常深さを調整する。
+/// 深い探索と浅い探索の条件は独立に判定する（Stockfish src/search.cpp:1414-1417）。
+pub(super) fn lmr_research_depth(
+    normal: u32,
+    reduced: u32,
+    value: i32,
+    best: i32,
+    pawn: i32,
+) -> u32 {
+    let deeper = reduced < normal
+        && i64::from(value)
+            > i64::from(best) + i64::from(params::lmr_deeper_margin()) * i64::from(pawn) / 100;
+    let shallower = i64::from(value)
+        < i64::from(best) + i64::from(params::lmr_shallower_margin()) * i64::from(pawn) / 100;
+    normal + u32::from(deeper) - u32::from(shallower)
+}
+
+/// LMRの分岐を通らない零窓の先頭手の深さを求める。
+/// 置換表の手がなければ加算した後、511と536で1手ずつ減らす。2手目は通常深さが2より深い場合だけとする。
+/// 閾値は5234/1024と5487/1024の換算値である（Stockfish src/search.cpp:1428-1436）。
+pub(super) fn non_lmr_depth(normal: u32, reduction: i32, has_tt_move: bool) -> u32 {
+    let reduction = reduction
+        + if has_tt_move {
+            0
+        } else {
+            params::lmr_no_tt_move()
+        };
+    normal.saturating_sub(u32::from(reduction > 511) + u32::from(reduction > 536 && normal > 2))
 }
 
 /// 静的交換評価で損と判定できる捕獲手かを返す。

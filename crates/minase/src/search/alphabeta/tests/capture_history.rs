@@ -240,13 +240,14 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
         let moves = picked(searcher, &board, None);
         let winner_index = if quiet_cutoff { 4 } else { 2 };
         assert_eq!(moves[winner_index].1, !quiet_cutoff);
+        // F4のPVノードのLMRが読む深さ2まで、子の値を固定する。
         for (index, &(mv, _)) in moves.iter().enumerate() {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if index == winner_index { 20 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 1, -score, Bound::Exact, None, 1, false);
+                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
         }
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),

@@ -310,7 +310,18 @@ fn jitto_repetition_without_null_move_uses_history_and_path() {
             let path = searcher.path_keys.clone();
             let mut current = root.clone();
             assert_eq!(
-                searcher.search_move(&mut current, mv, 1, -INFINITY, INFINITY, 0, true, 0, false),
+                searcher.search_move(
+                    &mut current,
+                    mv,
+                    1,
+                    -INFINITY,
+                    INFINITY,
+                    0,
+                    true,
+                    0,
+                    None,
+                    false
+                ),
                 Some(DRAW_SCORE)
             );
             assert_eq!(searcher.nodes, 1);
@@ -364,6 +375,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
                 2,
                 true,
                 0,
+                None,
                 false
             ),
             Some(DRAW_SCORE)
@@ -529,6 +541,161 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
                 Some(expected)
             );
             assert_eq!(current, board);
+        });
+    }
+}
+
+/// 2手先だけを、静止探索への分岐後かつ置換表の照合前に初期化する（F4）。
+#[test]
+fn cutoff_counts_reset_two_plies_ahead_before_tt_probe() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        assert_eq!(searcher.root_depth, 0);
+        assert!(searcher.cutoff_counts.iter().all(|&count| count == 0));
+        searcher.cutoff_counts.fill(7);
+        searcher
+            .tt
+            .store(search_key(&board), 3, 123, Bound::Exact, None, 1, false);
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 2, 0, 1, 1, false),
+            Some(123)
+        );
+        assert_eq!(&searcher.cutoff_counts[..5], &[7, 7, 7, 0, 7]);
+        searcher.cutoff_counts[3] = 9;
+        searcher
+            .negamax(&mut board.clone(), 0, -INFINITY, INFINITY, 1, false)
+            .unwrap();
+        assert_eq!(
+            searcher.cutoff_counts[3], 9,
+            "静止探索へ移る場合は初期化しない"
+        );
+    });
+}
+
+/// β打ち切りを起こした手数の数を増やし、兄弟の探索で参照する子の数を保つ（F4）。
+#[test]
+fn cutoff_counts_accumulate_at_cutoff_ply() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.cutoff_counts[1] = 4;
+        searcher.cutoff_counts[2] = 6;
+        searcher.cutoff_counts[3] = 8;
+        assert!(
+            searcher
+                .negamax(&mut board.clone(), 1, -INFINITY, -INFINITY + 1, 1, false)
+                .unwrap()
+                > -INFINITY
+        );
+        assert_eq!(&searcher.cutoff_counts[1..4], &[5, 6, 0]);
+        searcher
+            .tt
+            .store(search_key(&board), 2, 0, Bound::Upper, None, 1, false);
+        searcher
+            .negamax(&mut board.clone(), 1, -INFINITY, -INFINITY + 1, 1, false)
+            .unwrap();
+        assert_eq!(searcher.cutoff_counts[1], 6);
+    });
+}
+
+#[test]
+fn root_resets_cutoff_counts_and_records_iteration_depth() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.cutoff_counts[2] = 7;
+        searcher
+            .search_root(&board, &legal_moves(&board), 1, -INFINITY, -INFINITY + 1)
+            .unwrap();
+        assert_eq!(searcher.cutoff_counts[2], 0);
+        assert_eq!(searcher.cutoff_counts[0], 1);
+        assert_eq!(searcher.root_depth, 1);
+    });
+}
+
+/// 延長後の深さを255以下に制限してから置換表の深さを比較する（Stockfish src/search.cpp:752）。
+#[test]
+fn extended_depth_is_capped_before_tt_probe() {
+    let board = bare_kings();
+    for (requested, recorded, expected) in [
+        (254, 254, Some(123)),
+        (255, 254, None),
+        (255, 255, Some(123)),
+        (256, 255, Some(123)),
+        (258, 255, Some(123)),
+    ] {
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.tt.store(
+                search_key(&board),
+                recorded,
+                123,
+                Bound::Exact,
+                Some(legal_moves(&board)[0]),
+                0,
+                false,
+            );
+            // 深さ不足なら実着手の前で止め、置換表の値を返さないことを検査する。
+            searcher.null_move_ply = Some(0);
+            searcher.interrupt_at = Some((0, StopReason::ExternalStop));
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), requested, -INFINITY, INFINITY, 0, false),
+                expected,
+                "要求深さ{requested}、記録深さ{recorded}"
+            );
+        });
+    }
+}
+
+/// LMRの延長が最大手数へ達しても、静止探索の終端評価で止める。
+#[test]
+fn extended_search_stops_at_max_ply() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        let value = evaluate(test_nnue(), &board);
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, MAX_PLY, false),
+            Some(value)
+        );
+        assert_eq!(searcher.nodes, 0);
+    });
+}
+
+/// F4の数値例で初回の値を固定し、零窓と全窓の再探索が調整後の深さを使うことを確かめる。
+#[test]
+fn lmr_search_move_researches_at_adjusted_depth() {
+    let board = bare_kings();
+    let mv = legal_moves(&board)[0];
+    let mut child = board.clone();
+    child.make_move_unchecked(mv, engine_rules());
+    let reply = legal_moves(&child)[0];
+    for (reduced, value, expected) in [(4, 80, 8), (4, 60, 7), (4, 52, 6), (7, 80, 7)] {
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.tt.store(
+                search_key(&child),
+                reduced,
+                -value,
+                Bound::Exact,
+                Some(reply),
+                1,
+                false,
+            );
+            let score = searcher
+                .search_move(
+                    &mut board.clone(),
+                    mv,
+                    8,
+                    -INFINITY,
+                    INFINITY,
+                    0,
+                    false,
+                    reduced,
+                    Some(50),
+                    false,
+                )
+                .unwrap();
+            let hit = searcher.tt.probe(search_key(&child), 1).unwrap();
+            assert_eq!(hit.depth, expected, "初回深さ{reduced}、値{value}");
+            // 全窓の再探索を経た値は正確な値として記録される。
+            assert_eq!(hit.bound, Bound::Exact);
+            assert_eq!(hit.score, -score);
         });
     }
 }

@@ -347,6 +347,7 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
                         ply,
                         true,
                         0,
+                        None,
                         false
                     )
                     .is_some()
@@ -546,6 +547,7 @@ fn qsearch_limit_quiet_move_clears_previous_capture() {
                     0,
                     true,
                     0,
+                    None,
                     false
                 )
                 .is_some()

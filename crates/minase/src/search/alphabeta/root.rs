@@ -196,7 +196,7 @@ impl Searcher<'_> {
     /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
     /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
-    /// [`Self::search_move`]へ減深量0を渡すので根の各手にはLMRを適用しないが、子ノードの枝刈りは通常どおり行う。
+    /// 根の各手は通常深さで読み、LMRを適用しない。子ノードの枝刈りは通常どおり行う。
     /// 中断された場合は`None`を返し、停止条件を記録する。
     pub(super) fn search_root(
         &mut self,
@@ -206,6 +206,9 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
+        self.root_depth = depth;
+        // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
+        self.cutoff_counts[2] = 0;
         if let Some(results) = &mut self.root_results {
             results.begin_window(alpha);
         }
@@ -238,7 +241,8 @@ impl Searcher<'_> {
                 beta,
                 0,
                 index == 0,
-                0,
+                depth - 1,
+                None,
                 false,
             );
             let nodes = self.nodes - before;
@@ -258,6 +262,7 @@ impl Searcher<'_> {
             }
             alpha = alpha.max(score);
             if best_score >= beta {
+                self.cutoff_counts[0] += 1;
                 break;
             }
         }

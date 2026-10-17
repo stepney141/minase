@@ -155,7 +155,9 @@ fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move)
     let keys = searcher.path_keys.clone();
     let ply = searcher.path_moves.len() as u32;
     let score = searcher
-        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0, false)
+        .search_move(
+            current, mv, 1, -INFINITY, INFINITY, ply, true, 0, None, false,
+        )
         .unwrap();
     assert_eq!(*current, before);
     assert_eq!(searcher.path_keys, keys);

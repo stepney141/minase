@@ -1,10 +1,10 @@
 //! 内部ノードのαβ探索。
 
-use std::cell::LazyCell;
+use std::cell::OnceCell;
 
 use crate::search::snapshot::search_key;
 use crate::search::{
-    MATE, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition, in_repetition_band,
+    MATE, MAX_PLY, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition, in_repetition_band,
 };
 use minase_core::mv::Move;
 use minase_core::position::Position;
@@ -14,9 +14,10 @@ use super::INFINITY;
 use super::correction::key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
-    REVERSE_FUTILITY_MAX_DEPTH, corrected_static_eval, futility_margin, is_improving,
-    is_opponent_worsening, late_move_limit, lmr_reduction, null_move_reduction, pruning_eval,
-    razoring_margin, reverse_futility_margin, see_margin,
+    LmrContext, REVERSE_FUTILITY_MAX_DEPTH, corrected_static_eval, futility_margin, is_improving,
+    is_opponent_worsening, late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth,
+    non_lmr_depth, null_move_reduction, pruning_eval, razoring_margin, reverse_futility_margin,
+    see_margin,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -35,7 +36,8 @@ impl Searcher<'_> {
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
-    /// 深さ0では[`Self::quiesce`]へ移り、合法手のない局面は第23条により`-MATE + ply`を返す。
+    /// 深さ0または最大手数では[`Self::quiesce`]へ移り、合法手のない局面は第23条により`-MATE + ply`を返す。
+    /// 静止探索へ移らない場合は、延長後の残り深さを`MAX_PLY - 1`以下に抑える（Stockfish src/search.cpp:752）。
     /// R2・R3で全合法手が禁止手なら`-(REPETITION_WIN - ply)`を返し、どちらも置換表へ保存しない。
     /// 禁止は履歴と経路に依存するため、別の経路で負けの値が再利用される詰みの帯を使わない。
     /// `cut_node`は、このノードがcutNode（親がβ打ち切りを見込んで零窓で読ませる子）かを表す。
@@ -75,16 +77,21 @@ impl Searcher<'_> {
         assert!(!(beta - alpha > 1 && cut_node));
         self.pv[ply as usize].clear();
 
-        if depth == 0 {
+        if depth == 0 || ply >= MAX_PLY {
             return self.quiesce(position, alpha, beta, ply);
         }
+        let depth = depth.min(MAX_PLY - 1);
         #[cfg(feature = "search-stats")]
         {
             self.stats.normal_nodes += 1;
         }
 
+        // 2手先だけを初期化し、子の手数の数は兄弟の探索と再探索の間で保持する。
+        // Stockfish src/search.cpp:829。
+        self.cutoff_counts[(ply + 2) as usize] = 0;
         let key = search_key(position);
         let original_alpha = alpha;
+        let pv_node = beta - alpha > 1;
         let mut tt_move = None;
         // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
@@ -94,7 +101,7 @@ impl Searcher<'_> {
         }
         let tt_hit = self.tt.probe(key, ply);
         // Stockfish src/search.cpp:842。PVの印をreverse futilityの適用条件に使う。
-        self.tt_pv[ply as usize] = beta - alpha > 1 || tt_hit.is_some_and(|hit| hit.is_pv);
+        self.tt_pv[ply as usize] = pv_node || tt_hit.is_some_and(|hit| hit.is_pv);
         if let Some(hit) = tt_hit {
             #[cfg(feature = "search-stats")]
             {
@@ -147,14 +154,7 @@ impl Searcher<'_> {
         let mut royal_attacked = None;
         // 合法性を確かめた手だけをMovePickerのTt段階と同じ基準で分類する。
         // 他の条件が揃うまで生成を遅らせ、必要になればノード内で結果を再利用する。
-        let tt_capture = LazyCell::new(|| {
-            tt_move
-                .filter(|&mv| {
-                    self.generator
-                        .is_legal_move(position, mv, &mut Vec::new(), &mut Vec::new())
-                })
-                .map(|mv| move_order_key(position, self.nnue, mv).is_some())
-        });
+        let tt_capture = OnceCell::new();
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
         // 返す判定用の評価値は置換表へ保存しない。
         if depth <= REVERSE_FUTILITY_MAX_DEPTH
@@ -177,7 +177,9 @@ impl Searcher<'_> {
                 )
                 >= beta
             && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-            && tt_capture.is_none_or(|capture| capture)
+            && tt_capture
+                .get_or_init(|| self.legal_tt_capture(position, tt_move))
+                .is_none_or(|capture| capture)
         {
             return Some(eval);
         }
@@ -295,15 +297,39 @@ impl Searcher<'_> {
                 index += 1;
                 continue;
             }
-            let reduction = if Some(mv) != tt_move
-                && !capture
-                && !self.killers[ply as usize][..].contains(&Some(mv))
-            {
-                let history =
-                    self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
-                lmr_reduction(depth, index, history)
+            let quiet_candidate =
+                Some(mv) != tt_move && !capture && !self.killers[ply as usize].contains(&Some(mv));
+            // 残り深さ2以上、2手目以降に適用する（Stockfish src/search.cpp:1395）。
+            let lmr = depth >= 2 && index >= 1 && quiet_candidate;
+            let first_depth = if lmr || (index == 0 && !pv_node) {
+                let tt_capture =
+                    *tt_capture.get_or_init(|| self.legal_tt_capture(position, tt_move));
+                let reduction = lmr_reduction(LmrContext {
+                    depth,
+                    index,
+                    improving,
+                    pv_node,
+                    tt_pv: self.tt_pv[ply as usize],
+                    cut_node,
+                    tt_hit: tt_hit.map(|hit| (hit.score, u32::from(hit.depth))),
+                    tt_capture,
+                    is_tt_move: tt_capture.is_some() && Some(mv) == tt_move,
+                    capture,
+                    history: quiet_candidate.then(|| {
+                        self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()]
+                    }),
+                    cutoff_count: self.cutoff_counts[(ply + 1) as usize],
+                    alpha,
+                    eval,
+                    pawn: self.nnue.pawn_value(),
+                });
+                if lmr {
+                    lmr_depth(depth, reduction, pv_node, ply, self.root_depth)
+                } else {
+                    non_lmr_depth(depth - 1, reduction, tt_capture.is_some())
+                }
             } else {
-                0
+                depth - 1
             };
             let score = self.search_move(
                 position,
@@ -313,7 +339,8 @@ impl Searcher<'_> {
                 beta,
                 ply,
                 index == 0,
-                reduction,
+                first_depth,
+                lmr.then_some(best_score),
                 cut_node,
             )?;
             #[cfg(feature = "search-stats")]
@@ -338,6 +365,8 @@ impl Searcher<'_> {
                         self.stats.first_move_beta_cutoffs += 1;
                     }
                 }
+                // 延長の有無による重み付けは行わない（Stockfish src/search.cpp:1562）。
+                self.cutoff_counts[ply as usize] += 1;
                 beta_cutoff = true;
                 if capture {
                     self.capture_history.record_cutoff(
@@ -409,6 +438,16 @@ impl Searcher<'_> {
         Some(best_score)
     }
 
+    /// 置換表の手が合法な場合だけ捕獲かを返す。ノード内の遅延評価で1回だけ呼ぶ。
+    fn legal_tt_capture(&self, position: &Position, tt_move: Option<Move>) -> Option<bool> {
+        tt_move
+            .filter(|&mv| {
+                self.generator
+                    .is_legal_move(position, mv, &mut Vec::new(), &mut Vec::new())
+            })
+            .map(|mv| move_order_key(position, self.nnue, mv).is_some())
+    }
+
     /// null moveの部分木を探索し、局面と探索状態を復元してから値を返す。
     pub(super) fn search_null_move(
         &mut self,
@@ -467,8 +506,11 @@ impl Searcher<'_> {
     /// R2の禁止手は呼び出し前に除く。null moveの部分木では照合範囲より前の再現を検出しない。
     /// その子局面自体は置換表へ保存しないが、反復の値を含めて求めた親の値は保存する。
     /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
-    /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
-    /// さらに窓内なら全窓で再探索する。
+    /// 初回の子の深さは`first_depth`とし、2手目以降は零窓で探索する。
+    /// `lmr_best`はLMR対象の手を読む直前の最善値であり、対象外ではNoneとする。
+    /// LMRの値がαを超えたら通常深さを調整し、初回より深い場合だけ零窓で再探索する。
+    /// さらに窓内なら、調整した深さで全窓の再探索を行う（Stockfish src/search.cpp:1410-1455）。
+    /// LMR対象外の全窓の再探索は通常深さのままとする。
     /// `cut_node`は親ノードの値であり、子へは[`child_cut_node`]の規則で渡す。
     #[allow(clippy::too_many_arguments)]
     pub(super) fn search_move(
@@ -480,7 +522,8 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
         first: bool,
-        reduction: u32,
+        first_depth: u32,
+        lmr_best: Option<i32>,
         cut_node: bool,
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
@@ -527,7 +570,7 @@ impl Searcher<'_> {
         let mut score = if first {
             self.negamax(
                 position,
-                depth - 1,
+                first_depth,
                 -beta,
                 -alpha,
                 ply + 1,
@@ -542,7 +585,7 @@ impl Searcher<'_> {
         } else {
             self.negamax(
                 position,
-                depth - 1 - reduction,
+                first_depth,
                 -alpha - 1,
                 -alpha,
                 ply + 1,
@@ -550,23 +593,36 @@ impl Searcher<'_> {
             )
             .map(|value| -value)
         };
-        if !first && reduction > 0 && score.is_some_and(|value| value > alpha) {
-            score = self
-                .negamax(
-                    position,
-                    depth - 1,
-                    -alpha - 1,
-                    -alpha,
-                    ply + 1,
-                    child_cut_node(ChildSearch::ZeroWindowResearch, cut_node),
-                )
-                .map(|value| -value);
+        let mut research_depth = depth - 1;
+        if let Some(best) = lmr_best
+            && let Some(value) = score
+            && value > alpha
+        {
+            research_depth = lmr_research_depth(
+                research_depth,
+                first_depth,
+                value,
+                best,
+                self.nnue.pawn_value(),
+            );
+            if research_depth > first_depth {
+                score = self
+                    .negamax(
+                        position,
+                        research_depth,
+                        -alpha - 1,
+                        -alpha,
+                        ply + 1,
+                        child_cut_node(ChildSearch::ZeroWindowResearch, cut_node),
+                    )
+                    .map(|value| -value);
+            }
         }
         if !first && score.is_some_and(|value| value > alpha && value < beta) {
             score = self
                 .negamax(
                     position,
-                    depth - 1,
+                    research_depth,
                     -beta,
                     -alpha,
                     ply + 1,

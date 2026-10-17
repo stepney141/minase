@@ -183,6 +183,7 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                             ply,
                             true,
                             0,
+                            None,
                             false
                         ),
                         Some(DRAW_SCORE)
@@ -358,7 +359,8 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
                     INFINITY,
                     0,
                     true,
-                    0,
+                    1,
+                    None,
                     false
                 ),
                 Some(expected)
@@ -476,7 +478,8 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                     }
                     let static_eval = evaluate(&nnue, &current);
                     let (depth, alpha, beta, child_score) = match mode {
-                        "full" => (2, -INFINITY, INFINITY, 0),
+                        // 根はLMRを行わないため、全窓の対照は双方でLMRのない深さ1とする。
+                        "full" => (1, -INFINITY, INFINITY, 0),
                         "lmp" => (2, static_eval + 1, static_eval + 2, -(static_eval + 1)),
                         "lmr" => (5, -INFINITY, INFINITY, -static_eval),
                         "cutoff" => (2, -INFINITY, 100, -200),
@@ -610,6 +613,7 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
                         0,
                         true,
                         0,
+                        None,
                         false
                     ),
                     Some(DRAW_SCORE)
@@ -664,7 +668,8 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
                                 INFINITY,
                                 0,
                                 true,
-                                0,
+                                1,
+                                None,
                                 false
                             )
                             .is_some()
