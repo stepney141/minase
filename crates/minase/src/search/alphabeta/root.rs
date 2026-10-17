@@ -6,7 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
-use super::pruning::corrected_static_eval;
+use super::pruning::{corrected_static_eval, is_seek_mate};
 use super::searcher::Searcher;
 use super::tt::Bound;
 use super::{INFINITY, params};
@@ -168,6 +168,7 @@ impl Searcher<'_> {
         depth: u32,
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
+        self.seek_mate = is_seek_mate(prev, depth, self.nnue.pawn_value());
         self.previous_pv.clone_from(&self.pv[0]);
         let mut window =
             AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));

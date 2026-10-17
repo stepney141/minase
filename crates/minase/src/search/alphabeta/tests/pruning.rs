@@ -3,9 +3,87 @@
 use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
-use crate::search::alphabeta::pruning::{is_opponent_worsening, reverse_futility_margin};
+use crate::search::alphabeta::pruning::{
+    is_opponent_worsening, is_seek_mate, reverse_futility_margin, seek_mate_null_move_reduction,
+};
 
 use crate::search::alphabeta::pruning::{LmrContext, lmr_depth, lmr_research_depth, non_lmr_depth};
+
+#[test]
+fn seek_mate_threshold_matches_numeric_examples() {
+    // F6の数値表。閾値と、その直前を両符号で検査する。
+    for (depth, threshold) in [(2, 26803), (10, 1418), (20, 625), (100, 371)] {
+        for sign in [-1, 1] {
+            assert!(is_seek_mate(Some(sign * threshold), depth, 100));
+            assert!(!is_seek_mate(Some(sign * (threshold - 1)), depth, 100));
+        }
+    }
+    // 深さによる除算を先に切り捨て、歩兵価値で換算した後にも切り捨てる。
+    for (pawn, threshold) in [(1000, 14180), (37, 524)] {
+        assert!(is_seek_mate(Some(threshold), 10, pawn));
+        assert!(!is_seek_mate(Some(threshold - 1), 10, pawn));
+    }
+}
+
+#[test]
+fn seek_mate_requires_previous_iteration_score() {
+    for depth in 1..=MAX_PLY {
+        assert!(!is_seek_mate(None, depth, 100));
+    }
+}
+
+#[test]
+fn seek_mate_null_move_reduction_subtracts_half_of_total() {
+    for (total, reduced) in [(1, 1), (4, 2), (5, 3)] {
+        assert_eq!(seek_mate_null_move_reduction(total, true), reduced);
+        assert_eq!(seek_mate_null_move_reduction(total, false), total);
+    }
+}
+
+#[test]
+fn seek_mate_limits_reverse_futility_to_depth_five() {
+    let board = bare_kings();
+    let value = evaluate(test_nnue(), &board);
+    // 置換表なしの深さ5,6の余裕値は102,136なので、どちらも200で足りる。
+    let beta = value - 200;
+    for (seek_mate, depth, pruned) in [(true, 5, true), (true, 6, false), (false, 6, true)] {
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.seek_mate = seek_mate;
+            let score = searcher
+                .negamax(&mut board.clone(), depth, beta - 1, beta, 0, false)
+                .unwrap();
+            if pruned {
+                assert_eq!((score, searcher.nodes), (value, 0));
+                assert!(searcher.tt.probe(search_key(&board), 0).is_none());
+            } else {
+                assert!(searcher.nodes > 0, "残り深さ6では子を展開する");
+            }
+        });
+    }
+}
+
+#[test]
+fn seek_mate_disables_razoring() {
+    let board = bare_kings();
+    let value = evaluate(test_nnue(), &board);
+    for (depth, margin) in [(1, 1606), (2, 2015)] {
+        let alpha = value + margin;
+        let (quiet_score, quiet_nodes) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
+        for seek_mate in [false, true] {
+            with_root_searcher(&board, &[], |searcher| {
+                searcher.seek_mate = seek_mate;
+                let score = searcher
+                    .negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false)
+                    .unwrap();
+                if seek_mate {
+                    assert!(searcher.nodes > quiet_nodes, "通常探索の子を展開する");
+                } else {
+                    assert_eq!((score, searcher.nodes), (quiet_score, quiet_nodes));
+                }
+            });
+        }
+    }
+}
 
 /// F4の数値例Aの入力。期待値は指示書の独立した計算による。
 pub(super) fn lmr_context() -> LmrContext {

@@ -13,6 +13,31 @@ use super::params;
 use super::see::see_prunes;
 use super::tt::Bound;
 
+/// 詰みを探す局面の閾値の切片。歩兵価値に対する百分率。
+/// Stockfishの750を歩兵価値208で換算した固定値（src/search.cpp:394-395）。
+const SEEK_MATE_BASE: i64 = 361;
+
+/// 詰みを探す局面の閾値で反復深さの2乗で割る項。歩兵価値に対する百分率。
+/// Stockfishの220000を歩兵価値208で換算した固定値（src/search.cpp:394-395）。
+const SEEK_MATE_DEPTH_FACTOR: i64 = 105769;
+
+/// 前の反復の確定値から詰みを探す局面かを判定する。反復深さは1以上とする。
+/// 深さの2乗による除算を先に切り捨て、歩兵価値で換算した閾値も切り捨てる。
+pub(super) fn is_seek_mate(previous: Option<i32>, depth: u32, pawn: i32) -> bool {
+    let depth = i64::from(depth);
+    previous.is_some_and(|score| {
+        let threshold =
+            i64::from(pawn) * (SEEK_MATE_BASE + SEEK_MATE_DEPTH_FACTOR / (depth * depth)) / 100;
+        i64::from(score).abs() >= threshold
+    })
+}
+
+/// 着手1手分を含むnull moveの減深量から、詰みを探す場合は半分を切り捨てて引く。
+/// Stockfishの`R -= seekMate * R / 2`に対応する（src/search.cpp:1045）。
+pub(super) fn seek_mate_null_move_reduction(reduction: u32, seek_mate: bool) -> u32 {
+    reduction - u32::from(seek_mate) * (reduction / 2)
+}
+
 /// 置換表の打ち切りでcutNodeと値の方向の一致を要求する深さの上限。
 /// Stockfishの`depth > 4`に対応する（src/search.cpp:899）。
 const TT_CUTOFF_NODE_TYPE_MAX_DEPTH: u32 = 4;
@@ -156,6 +181,10 @@ pub(super) fn see_margin(pawn: i32, depth: u32) -> i32 {
 /// reverse futilityの残り深さの上限。Stockfishの`depth < (seekMate ? 6 : 19)`に対応する。
 /// 詰みを探す場合を除く18手を使う（Stockfish src/search.cpp:1022）。
 pub(super) const REVERSE_FUTILITY_MAX_DEPTH: u32 = 18;
+
+/// 詰みを探す局面でのreverse futilityの残り深さの上限。
+/// Stockfishの`depth < (seekMate ? 6 : 19)`に対応する固定値（src/search.cpp:1021-1022）。
+pub(super) const SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH: u32 = 5;
 
 /// reverse futilityの`mult`の上限。単位は歩兵価値に対する百分率である。
 /// Stockfishの85を歩兵価値208で換算した41%（Stockfish src/search.cpp:1025）。

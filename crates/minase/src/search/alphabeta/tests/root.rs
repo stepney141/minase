@@ -2,6 +2,35 @@
 
 use super::*;
 
+#[test]
+fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        assert!(!searcher.seek_mate);
+        assert_eq!(searcher.nnue.pawn_value(), 100);
+        // D=2の閾値は26803、D=5は105769/25を切り捨てて4591。
+        // 王将だけの局面では±4591に届かず、D=5では窓を読み直す。
+        for (depth, previous, expected) in [
+            (1, None, false),
+            (2, Some(4591), false),
+            (5, Some(4591), true),
+            (5, Some(4590), false),
+            (5, Some(-4591), true),
+            (1, None, false),
+        ] {
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, depth, previous)
+                .unwrap();
+            assert!(score.abs() < 4590);
+            assert_eq!(
+                searcher.seek_mate, expected,
+                "depth={depth}, prev={previous:?}"
+            );
+        }
+    });
+}
+
 // 部分木ノード数は完了反復だけを保存し、次の反復では先頭手を保って残りをノード数の降順に安定整列する。
 // 判断の理由は docs/adr/order-root-moves-by-previous-subtree-nodes.md にある。
 #[test]

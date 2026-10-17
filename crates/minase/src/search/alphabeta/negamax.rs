@@ -15,10 +15,11 @@ use super::INFINITY;
 use super::correction::key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
-    LmrContext, REVERSE_FUTILITY_MAX_DEPTH, corrected_static_eval, futility_margin, is_improving,
-    is_opponent_worsening, late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth,
-    non_lmr_depth, null_move_reduction, pruning_eval, razoring_margin, reverse_futility_margin,
-    see_margin, zero_window_tt_cutoff,
+    LmrContext, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
+    corrected_static_eval, futility_margin, is_improving, is_opponent_worsening, late_move_limit,
+    lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth, null_move_reduction, pruning_eval,
+    razoring_margin, reverse_futility_margin, see_margin, seek_mate_null_move_reduction,
+    zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -67,6 +68,7 @@ impl Searcher<'_> {
     /// このうちrazoring、futility、late move pruning、SEEは、IIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という共通条件を持つ。
     /// さらに手番側のどの王駒にも相手の疑似利きが届かない場合に限り、razoringは残り深さ2以下に限る。
     /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
+    /// 詰みを探す反復では上限を5に下げ、razoringを行わない（Stockfish src/search.cpp:1017, 1022）。
     /// αとβの帯と王駒への利きの条件は、reverse futilityにも適用する。
     /// null moveとLMRの条件はそれぞれの判定箇所と[`super::pruning::lmr_reduction`]に従う。
     pub(super) fn negamax(
@@ -194,7 +196,12 @@ impl Searcher<'_> {
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
         // 返す判定用の評価値は置換表へ保存しない。
-        if depth <= REVERSE_FUTILITY_MAX_DEPTH
+        let reverse_futility_max_depth = if self.seek_mate {
+            SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH
+        } else {
+            REVERSE_FUTILITY_MAX_DEPTH
+        };
+        if depth <= reverse_futility_max_depth
             && !self.tt_pv[ply as usize]
             && alpha.abs() < REPETITION_BAND_START
             && beta.abs() < REPETITION_BAND_START
@@ -224,6 +231,7 @@ impl Searcher<'_> {
         // 王駒に疑似利きが届くノードを除く理由は
         // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
         if pruning_node
+            && !self.seek_mate
             && depth <= 2
             && eval + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
             && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
@@ -238,15 +246,19 @@ impl Searcher<'_> {
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
         // 深さ3以上、直前がnull moveでない、βが詰み帯と専用の帯の外、王駒以外の自駒がある場合に試す。
         // 王駒への利き、零窓、静的評価がβ以上という条件は加えない。
-        // null_move_reductionで求めた減深量と着手相当の1手を引き、深さ0で飽和させる。
+        // 着手相当の1手を含む減深量を、詰みを探す場合は半減してから引き、深さ0で飽和させる。
+        // Stockfish src/search.cpp:1044-1045。
         if depth >= 3
             && self.null_move_ply != Some(ply)
             && beta.abs() < REPETITION_BAND_START
             && has_non_royal_piece
         {
-            let reduction = null_move_reduction(depth, static_eval, beta, self.nnue.pawn_value());
+            let reduction = seek_mate_null_move_reduction(
+                1 + null_move_reduction(depth, static_eval, beta, self.nnue.pawn_value()),
+                self.seek_mate,
+            );
             let score =
-                self.search_null_move(position, depth.saturating_sub(1 + reduction), beta, ply)?;
+                self.search_null_move(position, depth.saturating_sub(reduction), beta, ply)?;
             if score >= beta {
                 return Some(null_move_cutoff_score(score, beta));
             }
