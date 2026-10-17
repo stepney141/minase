@@ -9,7 +9,7 @@
 PythonのPST、FM、および同時学習の学習器はPyTorchでGPUを使っていた。
 [Python学習器のRustへの移植と撤去](../plans/archived/python-trainer-retirement.md)は、これらをRustへ移すにあたり、計算の場所を決める必要があった。
 PSTの順伝播は1局面あたり発火した特徴（最大145個）の重みの和であり、FMも同じ特徴について32成分の和を取るだけなので、幅128のNNUEの第1層と補助損失より1局面あたりの計算が桁違いに少ない。
-移植した学習器の1エポックを同じ1ファイルで測ると、18スレッドのRustのCPUは、PythonのGPUに対してPSTで約7倍、FMで約2.6倍、同時学習で約4倍速かった（[照合の記録](../measurements/python-trainer-retirement-checks.md)）。
+移植した学習器の1エポックを同じ1ファイルで測ると、18スレッドのRustのCPUは、PythonのGPUに対してPSTで約7倍、FMで約2.6倍、同時学習で約4倍速かった（[照合の記録](../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)）。
 
 ## 決定
 

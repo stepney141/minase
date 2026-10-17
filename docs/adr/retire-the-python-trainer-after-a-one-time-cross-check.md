@@ -23,7 +23,7 @@ Pythonの学習器を独立した照合役として残す案は、2つの言語�
 
 ## 結果
 
-照合は、Pythonが使った初期値と局面の学習順を一時的にRustへ与えて行い、3回の更新の後の状態、短縮した学習の各エポックの検証損失と最良エポック、および書き出した整数の重みが一致した（[照合の記録](../measurements/python-trainer-retirement-checks.md)）。
+照合は、Pythonが使った初期値と局面の学習順を一時的にRustへ与えて行い、3回の更新の後の状態、短縮した学習の各エポックの検証損失と最良エポック、および書き出した整数の重みが一致した（[照合の記録](../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)）。
 `fm scale --fm-scale 611`は、当時の既定の重みファイル`crates/minase/nets/pst.bin`をバイト単位で再生成した。
 照合のための一時的な引数は照合の後に削除したので、Pythonと同じシードを与えても、Rustの学習器の順列と乱数はPythonと一致しない。
 `docs/measurements/`と`docs/research/`に残る`minase_train`を読み込むスクリプトは過去の測定の記録であり、現在は実行できない。

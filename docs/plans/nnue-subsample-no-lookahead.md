@@ -20,7 +20,7 @@
 
 前計画の間引きの学習は、先読み教師で学んだ場合についてだけ、対局数の少なさが検証損失に効くことを示した。
 先読み教師は同じ対局の後続の値を混ぜるので、教師そのものが対局ごとに相関した成分を持ち、対局数の効果を強めていた可能性がある。
-前計画の記録でも、先読み教師で学んだネットは訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前のネットと区別できなくなった（[学習の記録](../measurements/nnue-no-lookahead-training.md)）。
+前計画の記録でも、先読み教師で学んだネットは訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前のネットと区別できなくなった（[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)）。
 もし対局数の効果が先読み教師に由来するなら、標準の教師では対局を増やしても検証損失は改善せず、教師生成で対局数を増やす計画は根拠を失う。
 本書の目的は、先読みなしの教師での対局数の効果の有無と、2つの要因が独立に働くかを確かめ、教師生成の計画に根拠を与えることである。
 
@@ -97,7 +97,7 @@
 ### フェーズ1　集計道具の拡張
 
 `teacherstat`に、ネットの組（`--group`）の平均の差と、2つの差の差をブートストラップで求める機能と、訓練側の評価を省く機能を加え、ソースを`data/nnue-subsample-no-lookahead/tools/`に置く。
-拡張後の道具で、前計画の[学習の記録](../measurements/nnue-no-lookahead-training.md)の検証の結果の損失（D0bの0.450913など）を再現することを確かめる。
+拡張後の道具で、前計画の[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)の検証の結果の損失（D0bの0.450913など）を再現することを確かめる。
 
 ### フェーズ2　先読みなしの間引きの学習
 
@@ -128,7 +128,7 @@
 ## 参考資料
 
 - [NNUEの検証損失が早く頭打ちになる原因の切り分け](archived/nnue-early-best-epoch.md)
-- [対局単位と局面単位の間引きによるNNUEの学習の記録](../measurements/nnue-train-subsample.md)
-- [先読みなしの教師によるNNUEの学習の記録](../measurements/nnue-no-lookahead-training.md)
+- [対局単位と局面単位の間引きによるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)
+- [先読みなしの教師によるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)
 - [NNUEの訓練集合は学習時にハッシュの剰余で間引くADR](../adr/thin-the-nnue-training-set-at-training-time-by-hash.md)
 - [ネットの汎化の差は対局単位の対応のある比較で測るという教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)

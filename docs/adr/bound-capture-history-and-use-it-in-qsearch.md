@@ -9,15 +9,15 @@
 捕獲履歴（capture history）は、動かす駒、到達升、および取られる駒種ごとに捕獲手の成績を学習し、捕獲手の順序に使う表である。
 MVV-LVA順は駒の価値だけで順序を決め、その局面でその捕獲が実際に良かったかを考慮しない。
 [棋力向上段階12](../plans/archived/strength-stage12.md)では、捕獲手がβ打ち切りを起こしたときにその手へ加点し、先に読んだ捕獲手を減点する表を通常探索に加えた。
-[bench](../measurements/strength-stage12-capture-history-bench.md)では深さ6のノード数が4.41%減り、NPSは1.93%下がったが、STCは750有効ペア、得点率47.6%の`H0`だった（[測定記録](../measurements/strength-stage12-capture-history-stc.md)）。
+[bench](../measurements/strength-stage12/strength-stage12-capture-history-bench.md)では深さ6のノード数が4.41%減り、NPSは1.93%下がったが、STCは750有効ペア、得点率47.6%の`H0`だった（[測定記録](../measurements/strength-stage12/strength-stage12-capture-history-stc.md)）。
 2026年10月4日に、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)が上限と尺度をSPSAで調整し直し、捕獲履歴を一括で採用した8項目の1つとして採用した（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
 2026年10月10日に完了した[手の順序付けの改善](../plans/archived/move-ordering.md)は、手の順序付けを変える7つの変更を実装し、一括で採否を決めた。
 7つの変更は、静かな手のβ打ち切りでも捕獲履歴を減点する変更、先頭の捕獲手のSEE判定によるkiller手の前置き、静止探索の群内の順序への捕獲履歴の適用、捕獲履歴の持ち越し、静かな手の同点破り、根の手の前回反復の部分木ノード数による整列、およびhistory malusであり、以下では7候補と呼ぶ。
 このうち捕獲履歴に関わるのは、静かな手がβ打ち切りを起こしたときにも探索済みの捕獲手を減点する変更と、静止探索の群内の順序に表を使う変更である。
-[診断](../measurements/move-ordering-diag.md)では、前者は捕獲手の段（手選択器が捕獲手をまとめて返す区切り）の順序を変える場合が16.47%あったが、βカットした捕獲手を後ろへ動かす件数が前へ動かす件数の約2倍だった。
+[診断](../measurements/move-ordering/move-ordering-diag.md)では、前者は捕獲手の段（手選択器が捕獲手をまとめて返す区切り）の順序を変える場合が16.47%あったが、βカットした捕獲手を後ろへ動かす件数が前へ動かす件数の約2倍だった。
 後者は群の先頭を20.48%で変えた。
-両者を含む7候補の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering-all-ltc.md)）。
-静止探索の群内の順序、静かな手の同点破り、およびhistory malusの3候補を外した構成は、全7候補の構成との直接対局で得点率48.2%の`H0`だった（[測定記録](../measurements/move-ordering-no358-vs-all-stc.md)）。
+両者を含む7候補の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering/move-ordering-all-ltc.md)）。
+静止探索の群内の順序、静かな手の同点破り、およびhistory malusの3候補を外した構成は、全7候補の構成との直接対局で得点率48.2%の`H0`だった（[測定記録](../measurements/move-ordering/move-ordering-no358-vs-all-stc.md)）。
 この直接対局は−5 Eloと+5 Eloを仮説とする対称なGSPRTであり、`H0`は全7候補の構成が5 Elo以上強いことを意味する。
 本ADRは、10月4日に採用した捕獲履歴を、10月10日の2つの変更で広げた現行の形を記録する。
 

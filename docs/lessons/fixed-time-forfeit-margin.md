@@ -17,5 +17,5 @@ HaChuは`st`のとき`time`の0.98倍で探索を中断するので、時間切�
 
 ## 出典
 
-- [measurements/hachu-grid-fixed1-2.md](../measurements/hachu-grid-fixed1-2.md)
+- [measurements/hachu-condition-grid/hachu-grid-fixed1-2.md](../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md)
 - [plans/hachu-condition-grid.md](../plans/archived/hachu-condition-grid.md)

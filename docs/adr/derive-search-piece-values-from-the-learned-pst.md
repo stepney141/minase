@@ -14,7 +14,7 @@
 導いた値は、成っていない龍王がv0の表の1,000に対して1,180、角鷹が1,250に対して1,603となるなど、v0の表と一致しなかった。
 王将、玉将、および太子は教師局面に常に両側1枚ずつあり、その重みは勝敗を説明しないので学習で定まらない。
 そこで王駒の値は導出せず、非王駒の最大値に歩兵の値を加えた値とした。
-導いた駒価値は、[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)でともに`H1`となった。
+導いた駒価値は、[STC](../measurements/strength-stage3/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3/strength-stage3-values-ltc.md)でともに`H1`となった。
 続く[PSTの序中盤と終盤の補間](../plans/archived/tapered-pst.md)は、開始版の重みから導いた47個の値を重みファイルに固定し、PSTの再学習後も導き直さないことにした。
 [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)も、基準の重みファイルの47個の値をNNUEの重みファイルへ写して固定した。
 

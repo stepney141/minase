@@ -17,4 +17,4 @@
 
 ## 出典
 
-[Magic bitboard試作の実現可能性と速度](../measurements/magic-bitboard-prototype.md)
+[Magic bitboard試作の実現可能性と速度](../measurements/adhoc/magic-bitboard-prototype.md)

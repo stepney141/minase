@@ -22,18 +22,18 @@ AとBでは、PSTの構造、初期重み、教師への問い合わせ回数と
 基点S0は着手時のmasterであり、従来の採用PST（混合比計画の基点と同じ重み）を使った。
 
 教師の診断は続行条件を満たした。
-校正で差mを142.1センチポーンに固定し（[search-aware-teacher-calibration](../../measurements/search-aware-teacher-calibration.md)）、確認128根では安定支持と小差の合計が112根、基準手の安定支持が9根であった（[search-aware-teacher-confirmation](../../measurements/search-aware-teacher-confirmation.md)）。
+校正で差mを142.1センチポーンに固定し（[search-aware-teacher-calibration](../../measurements/search-aware-evaluation/search-aware-teacher-calibration.md)）、確認128根では安定支持と小差の合計が112根、基準手の安定支持が9根であった（[search-aware-teacher-confirmation](../../measurements/search-aware-evaluation/search-aware-teacher-confirmation.md)）。
 
-フェーズ3では、自己対局5,600局から訓練32,768組、モデル選択4,096組、最終診断256組を確保し、10,000,000ノードの教師でラベルを付けた（[search-aware-data](../../measurements/search-aware-data.md)）。
+フェーズ3では、自己対局5,600局から訓練32,768組、モデル選択4,096組、最終診断256組を確保し、10,000,000ノードの教師でラベルを付けた（[search-aware-data](../../measurements/search-aware-evaluation/search-aware-data.md)）。
 採取した探索局面の9.5%で教師が詰みを示す値を返したため、訓練で使える組は28,947組（予定数の88.3%）であった。
 当初の規則は訓練にも予定数の90%以上を求めていたが、学習の開始前に、利用者の判断で訓練の受理条件を「受理した組で総更新回数が2,000回を超えること」に改めた。
 90%の基準は総更新回数の下限を保証するために置いたものであり、28,947組でも計2,280回の更新を確保できる。
 この改訂により、結論の範囲は「教師が詰みを示す局面を除いた探索局面」を学習分布に加える効果に限られる。
 
-フェーズ4では、AとBを同じ28,947組で学習し（[search-aware-pst-training](../../measurements/search-aware-pst-training.md)）、事前に固定した規則による採否前の診断で両者とも対局へ進めると判定した（[search-aware-pst-diagnostics](../../measurements/search-aware-pst-diagnostics.md)）。
+フェーズ4では、AとBを同じ28,947組で学習し（[search-aware-pst-training](../../measurements/search-aware-evaluation/search-aware-pst-training.md)）、事前に固定した規則による採否前の診断で両者とも対局へ進めると判定した（[search-aware-pst-diagnostics](../../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)）。
 ただし最終診断では、Bの着手の損失と通常局面の評価誤差がS0とAより大きく、深さ8までの探索ノード数もS0の約12倍になった。
 
-フェーズ5では、B対AのSTCが101ペアで`H0`（得点率6.9%、[search-aware-pst-b-vs-a-stc](../../measurements/search-aware-pst-b-vs-a-stc.md)）、A対S0のSTCが276ペアで`H0`（得点率41.8%、[search-aware-pst-a-vs-base-stc](../../measurements/search-aware-pst-a-vs-base-stc.md)）となった。
+フェーズ5では、B対AのSTCが101ペアで`H0`（得点率6.9%、[search-aware-pst-b-vs-a-stc](../../measurements/search-aware-evaluation/search-aware-pst-b-vs-a-stc.md)）、A対S0のSTCが276ペアで`H0`（得点率41.8%、[search-aware-pst-a-vs-base-stc](../../measurements/search-aware-evaluation/search-aware-pst-a-vs-base-stc.md)）となった。
 事前登録の経路に従い、LTCとB対S0は行わず、AとBをともに不採用とした。
 
 この結果が示すのは、今回の標本の定義と固定したPSTの下では、探索局面を学習分布へ混ぜる変更も、深い教師で通常局面を学び直す変更も、棋力を上げなかったことである。
@@ -47,7 +47,7 @@ PSTは局面が戦術的に動いている最中かどうかを表せないの�
 ## 目的
 
 本書は、学習時と探索時に評価する局面の分布が異なることを、評価改善の独立した仮説として検証する。
-[NNUEの固定ノード測定](../../measurements/nnue-gen1-nodes100k.md)と[時間制御測定](../../measurements/nnue-gen1-tc.md)は、初期化を修正した非線形モデルも、教師への適合の改善だけでは強くならなかったことを示す。
+[NNUEの固定ノード測定](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)と[時間制御測定](../../measurements/evaluation-gen1/nnue-gen1-tc.md)は、初期化を修正した非線形モデルも、教師への適合の改善だけでは強くならなかったことを示す。
 2駒関係を低ランクの因子で表すFM（factorization machine）についても、[相対2駒評価の計画](relative-pair-eval.md)が、候補が自ら選ぶ局面で補正が偏る現象を記録している。
 ただし、これらだけでは失敗の原因を学習分布に確定できないため、表現と推論費用を固定した対照実験を行う。
 
@@ -122,7 +122,7 @@ PSTの評価、量子化、駒除去診断は、[評価関数](evaluation.md)、
 教師の予算を増やす追加試行は、本書では行わない。
 費用は校正標本で実測し、学習ラベルの生成と3組の棋力測定の見積りを測定記録へ残してから大量生成へ進む。
 着手前の桁は次のとおりである。
-[係数の表の速度測定](../../measurements/bench-spsa-params-nps.md)の深さ8のNPSは約212万なので、1,000万ノードの教師は1局面約5秒を要する。
+[係数の表の速度測定](../../measurements/spsa/bench-spsa-params-nps.md)の深さ8のNPSは約212万なので、1,000万ノードの教師は1局面約5秒を要する。
 訓練の3局面組と選択集合を合わせた約10万局面のラベル生成は単一スレッドで約140時間、同時16で約9時間になる。
 訓練、選択、最終診断に必要な約7万根を集めるには約5,000局の自己対局が要り、1手10万ノードで同時16なら約3時間である。
 この概算は、1局から上限の16根を採取できること、自己対局が平均640手であること、および性能コア1個で測った単一スレッドのNPSが同時16でも保たれることを仮定する。
@@ -162,7 +162,7 @@ PSTの評価、量子化、駒除去診断は、[評価関数](evaluation.md)、
 
 校正用64根と、別の対局群に由来する確認用128根を、教師探索の前に固定する。
 各集合の半分を旧NNUE、半分を旧FMの資料に割り当て、1つの先後対局ペアからは1根までにする。
-旧NNUEの資料は[世代1の固定ノード測定](../../measurements/nnue-gen1-nodes100k.md)と[時間制御測定](../../measurements/nnue-gen1-tc.md)の実行ディレクトリ `data/matches/nnue-gen1-nodes100k` と `data/matches/nnue-gen1-tc`、旧FMの資料は補正1/4版の実行ディレクトリ `data/matches/fm-quarter-vs-original-stc`、`data/matches/fm-quarter-vs-pst-stc`、および `data/matches/fm-quarter-vs-pst-ltc` とする。
+旧NNUEの資料は[世代1の固定ノード測定](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)と[時間制御測定](../../measurements/evaluation-gen1/nnue-gen1-tc.md)の実行ディレクトリ `data/matches/nnue-gen1-nodes100k` と `data/matches/nnue-gen1-tc`、旧FMの資料は補正1/4版の実行ディレクトリ `data/matches/fm-quarter-vs-original-stc`、`data/matches/fm-quarter-vs-pst-stc`、および `data/matches/fm-quarter-vs-pst-ltc` とする。
 校正集合は `nnue-gen1-nodes100k` と `fm-quarter-vs-original-stc` から、確認集合は `nnue-gen1-tc` と `fm-quarter-vs-pst-stc` から取り、後者で不足する場合だけ `fm-quarter-vs-pst-ltc` を確認集合に加える。
 全FMの採否測定は実行ディレクトリが残っていないので使わない。
 補正1/4版は当時のPSTに対する採否測定を通過しているため、その手が基準手と異なることを誤りとは推定せず、後述の分類で両方向の支持を数える。
@@ -311,7 +311,7 @@ K0、探索用駒価値、特徴の定義、鏡映共有、2端点補間をAとB
 同じ教師TとK0を両群に使うため、教師値の尺度の推定による違いは入れない。
 
 最適化はAdam、学習率0.03、40エポック、バッチ1,024、学習シード1とする。
-学習率0.03と駒除去損失の係数1000は、[段階7の予備比較](../../measurements/strength-stage7-removal-absolute.md)で選び現行の学習手順が用いる組をそのまま使う。
+学習率0.03と駒除去損失の係数1000は、[段階7の予備比較](../../measurements/strength-stage7/strength-stage7-removal-absolute.md)で選び現行の学習手順が用いる組をそのまま使う。
 予定数なら1エポック64更新、全体2,560更新となり、90%以上の組を受理した場合も2,000更新を超えることを確認する。
 段階7の再学習の約6分の1の更新回数だが、両群ともS0の重みから始める追加学習であり、[教訓](../../lessons/check-steps-per-epoch-before-training.md)が求める数千回の下限を満たし、比較の目的は同じ日程の下でのAとBの差なので、この回数で固定する。
 収束を主張するための回数ではないため、両群の選択がエポック0に留まった場合は学習で変更を得られなかったとして記録する。

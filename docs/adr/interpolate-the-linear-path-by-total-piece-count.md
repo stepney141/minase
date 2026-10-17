@@ -11,7 +11,7 @@
 進行度の候補には、盤上総駒数、手数、閾値で表を一斉に切り替える方式、および駒種別の重みで駒数を数える方式があった。
 中将棋には駒打ちがないので、盤上総駒数は捕獲でだけ減り、成りでは変わらない。
 王駒2枚は常に盤上に残り、初期配置は92枚である。
-2組の重みを補間する候補は、開始版に対して[STC](../measurements/pst-tapered-adoption-stc.md)と[LTC](../measurements/pst-tapered-adoption-ltc.md)の両方で`H1`となった。
+2組の重みを補間する候補は、開始版に対して[STC](../measurements/tapered-pst/pst-tapered-adoption-stc.md)と[LTC](../measurements/tapered-pst/pst-tapered-adoption-ltc.md)の両方で`H1`となった。
 LTCは187有効ペア、ペンタノミアル度数[21, 2, 84, 0, 80]、LLR +2.970で、異常は0件だった。
 
 ## 決定
@@ -24,7 +24,7 @@ LTCは187有効ペア、ペンタノミアル度数[21, 2, 84, 0, 80]、LLR +2.9
 閾値で表を一斉に切り替える案は、境界で評価値が飛ぶので採らなかった。
 駒種別の重みで進行度を数える案は、重みの調整が別に要るので最初の比較から外した。
 3組以上の表や、駒数で出力の重みを切り替える案は、[棋力向上段階7](../plans/archived/strength-stage7.md)が見送った。
-[端点の識別性の診断](../measurements/pst-tapered-identifiability.md)では、2組の重みすらデータから別々に決められない特徴があり、表を増やしても分離できない特徴が増えるだけだからである。
+[端点の識別性の診断](../measurements/tapered-pst/pst-tapered-identifiability.md)では、2組の重みすらデータから別々に決められない特徴があり、表を増やしても分離できない特徴が増えるだけだからである。
 
 ## 結果
 

@@ -17,9 +17,9 @@ SPSA中の対局結果は採用の根拠にしない。
 ## 状態
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
-完了。基盤の実装と[調整手順](../../guides/spsa.md)を整え、[最初の調整セッション](../../measurements/spsa-stage9-20260923.md)で1,500反復×8ペアを実施した。
-[時間切れ事前確認](../../measurements/spsa-stage9-20260923-safety.md)と[候補の事前対局](../../measurements/spsa-stage9-20260923-smoke.md)では、時間切れとエンジン異常が0件だった。
-[STCの採否測定](../../measurements/spsa-stage9-20260923-stc.md)と[LTCの採否測定](../../measurements/spsa-stage9-20260923-ltc.md)は2026年9月25日にいずれも`H1`で終了し、エンジン異常、時間切れ、および拒否着手は0件だった。
+完了。基盤の実装と[調整手順](../../guides/spsa.md)を整え、[最初の調整セッション](../../measurements/spsa/spsa-stage9-20260923.md)で1,500反復×8ペアを実施した。
+[時間切れ事前確認](../../measurements/spsa/spsa-stage9-20260923-safety.md)と[候補の事前対局](../../measurements/spsa/spsa-stage9-20260923-smoke.md)では、時間切れとエンジン異常が0件だった。
+[STCの採否測定](../../measurements/spsa/spsa-stage9-20260923-stc.md)と[LTCの採否測定](../../measurements/spsa/spsa-stage9-20260923-ltc.md)は2026年9月25日にいずれも`H1`で終了し、エンジン異常、時間切れ、および拒否着手は0件だった。
 候補の20係数を採用し、係数を定める設計書の現行値を更新した。
 
 ## 目的
@@ -148,7 +148,7 @@ delta pruningは、静止探索（捕獲手だけを読む末端の探索）で�
 | 時間管理 | hardを残り時間の何%までとするか | 27 | 10〜50 |
 | 時間管理 | 次の反復の所要時間を見積もる比の百分率 | 263 | 150〜400 |
 
-現行値の欄は、[不採用だった探索部の改良の再調整のLTCの採否測定](../../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の値である。
+現行値の欄は、[不採用だった探索部の改良の再調整のLTCの採否測定](../../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)を通過した後の値である。
 `params.rs`の係数の表には、本節の22係数のほかに[不採用だった探索部の改良の再調整](search-revival-spsa.md)が加えた13係数と、[手の順序付けの改善](move-ordering.md)が加えた3係数（候補4の捕獲履歴の持ち越しの減衰率`CaptureHistoryDecay`は既定23、範囲0〜100で、0は探索ごとに捕獲履歴を消す。候補8のhistoryの加点と減点の尺度`HistoryBonusScale`と`HistoryMalusScale`は百分率で既定100、範囲0〜400）があり（合計38係数）、その意味、範囲、および現行値はそれぞれの設計書が定める。
 百分率で表す余裕値は、埋め込みPSTの歩兵価値に対する割合である。
 historyの更新量`depth²`は対象にしない。
@@ -209,10 +209,10 @@ D     = 反復内の全局にわたる（θ+側の勝ち数 − θ+側の負け�
 
 標準のセッションは、総ペア数3,000（375反復×8ペア）、時間制御STC、`Threads=1`、`USI_Hash`は既定の256 MB、同時対局数16とする。
 所要時間は約8時間と見積もる。
-根拠は、[strength-stage8-see-capture-stc](../../measurements/strength-stage8-see-capture-stc.md)が同じ測定機の同時対局数16で496ペアに4,697秒を要したことであり、1時間あたり約380ペアになる。
+根拠は、[strength-stage8-see-capture-stc](../../measurements/strength-stage8/strength-stage8-see-capture-stc.md)が同じ測定機の同時対局数16で496ペアに4,697秒を要したことであり、1時間あたり約380ペアになる。
 総ペア数は開始時に固定し、途中で延長しない。
 
-この規模は、[利得の模擬比較](../../measurements/spsa-gain-simulation.md)で選定規則が選んだ予算である。
+この規模は、[利得の模擬比較](../../measurements/spsa-gain-calibration/spsa-gain-simulation.md)で選定規則が選んだ予算である。
 `c_end`を範囲の1/6とした3,000ペアのセッションは、模擬比較の8通りの場面のすべてで、旧設定（範囲の1/20）の12,000ペアに劣らなかった。
 最初のセッションは旧設定の12,000ペアで実行し、約30時間を要した。
 模擬比較の損失は、2次関数と実測の信号を仮定した目的関数での値であり、22個の係数の収束を保証しない。

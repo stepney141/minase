@@ -110,7 +110,7 @@ hardに対する予測や安全上限には同じ変更を及ぼさず、通常�
 
 本時間中の秒読み項を全面的に外す方式と、hardを直接縮める方式は後回しにする。
 [既存の設計判断](../plans/archived/time-management-efficiency.md)が扱う時計では、本時間を使い切るまで秒読みを利用できず、温存によって1局の総探索時間が減る場合がある。
-[過去のD2測定](../measurements/time-management-decomposition-d2-stc.md)は途中停止と予算変更を含む構成が加算方式で劣った結果であり、本時間の温存だけを棄却する証拠にはならない。
+[過去のD2測定](../measurements/time-management-efficiency/time-management-decomposition-d2-stc.md)は途中停止と予算変更を含む構成が加算方式で劣った結果であり、本時間の温存だけを棄却する証拠にはならない。
 [hard倍率を変えたK1の診断](../lessons/simulate-acceptance-criteria-on-the-candidate.md)では、候補式と判定条件が整合しなかったため、今回は各候補の式へ判定条件を先に当てる。
 
 ## 採否を決める検証

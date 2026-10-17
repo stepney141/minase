@@ -16,7 +16,7 @@
 
 起案。2026年10月16日に起案した。
 着手は利用者の指示を待つ。
-前計画の出力部のコードが実装の土台であり、[補助損失なしのネット対masterの段階ゲート](../measurements/nnue-no-removal-loss-stc.md)の結果には依存しない。
+前計画の出力部のコードが実装の土台であり、[補助損失なしのネット対masterの段階ゲート](../measurements/adhoc/nnue-no-removal-loss-stc.md)の結果には依存しない。
 
 ## 目的
 
@@ -156,7 +156,7 @@
 ## 参考資料
 
 - [NNUEの隠れ層と位相補間の出力](archived/nnue-hidden-layer.md)、[NNUEの共通土台と初代のネット](archived/nnue-replacement.md)、[Rust製NNUE学習器（GPU）](archived/nnue-trainer-rust.md)
-- [速度の記録](../measurements/nnue-hidden-layer-bench.md)、[学習の記録](../measurements/nnue-hidden-layer-training.md)、[検査の記録](../measurements/nnue-trainer-rust-checks.md)
+- [速度の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)、[学習の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-training.md)、[検査の記録](../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)
 - Stockfish（コミット`17a6c8f1`）: `src/nnue/nnue_architecture.h`（L1、L2、L3の幅を定数で与える固定の並び）、`src/nnue/layers/affine_transform.h`
 - やねうら王（コミット`c1b80eaa`）: `source/eval/nnue/architectures/`（構成ごとのヘッダで幅を与える）
 - tatara（コミット`db08ed2`）: `bins/nnue_train/src/arch.rs`（`--ft-out`、`--l1`、`--l2`、`--num-buckets`で幅とバケット数を与える固定の層の並び）、`crates/nnue-format/src/layerstack_weights.rs`

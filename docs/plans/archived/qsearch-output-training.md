@@ -17,19 +17,19 @@ QとQcは、その時点の重みで静止探索の値を決めた末端を区�
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（不採用）。2026年9月27日に起案し、9月28日に着手して、9月30日に完了した。
-学習目標を静止探索の出力へ変えた候補Qは[Q対RのSTC](../../measurements/qsearch-output-q-vs-r-stc.md)で`H0`となり、捕獲局面を加えた候補Qcは[Qc対QのSTC](../../measurements/qsearch-output-qc-vs-q-stc.md)で上限3,000ペアに達した時点のLLRが負だったので、どちらもS0との採否測定へ進まず、採用候補なしとして完了した。
-QとQcは、[整合性の検査と採否前の診断](../../measurements/qsearch-output-diagnostics.md)では除外されておらず、比較用のSTCで除外された。
+学習目標を静止探索の出力へ変えた候補Qは[Q対RのSTC](../../measurements/qsearch-output-training/qsearch-output-q-vs-r-stc.md)で`H0`となり、捕獲局面を加えた候補Qcは[Qc対QのSTC](../../measurements/qsearch-output-training/qsearch-output-qc-vs-q-stc.md)で上限3,000ペアに達した時点のLLRが負だったので、どちらもS0との採否測定へ進まず、採用候補なしとして完了した。
+QとQcは、[整合性の検査と採否前の診断](../../measurements/qsearch-output-training/qsearch-output-diagnostics.md)では除外されておらず、比較用のSTCで除外された。
 新しい世代のデータで学んだ対照RがS0より強いかは測っていない。
-フェーズ0の[探索の追跡](../../measurements/qsearch-output-search-trace.md)では、6根の誤りはいずれも特定の枝刈りに帰属できず、探索の後続計画への引き渡しはない。
-取り出しの費用は[小標本](../../measurements/qsearch-output-leaf-sample.md)と[学習](../../measurements/qsearch-output-training.md)の両方で基準を大きく下回った。
+フェーズ0の[探索の追跡](../../measurements/qsearch-output-training/qsearch-output-search-trace.md)では、6根の誤りはいずれも特定の枝刈りに帰属できず、探索の後続計画への引き渡しはない。
+取り出しの費用は[小標本](../../measurements/qsearch-output-training/qsearch-output-leaf-sample.md)と[学習](../../measurements/qsearch-output-training/qsearch-output-training.md)の両方で基準を大きく下回った。
 本書のコードと測定用のコミットはブランチ`qsearch-output-training`、`qsearch-output-r`、`qsearch-output-q`、`qsearch-output-qc`に残し、masterへは入れない。
-[順位の損失の計画](rank-loss-training.md)には、[15,000局のデータ](../../measurements/qsearch-output-data.md)全体と元の分割を渡し、値の回帰には採用PSTの学習と同じ静的値の回帰を使う。
+[順位の損失の計画](rank-loss-training.md)には、[15,000局のデータ](../../measurements/qsearch-output-training/qsearch-output-data.md)全体と元の分割を渡し、値の回帰には採用PSTの学習と同じ静的値の回帰を使う。
 
 ## 目的
 
 本書は、同じPSTについて、静かな局面の学習目標を静的値から静止探索出力へ変える効果と、その学習へ捕獲局面を追加する効果を別に検証する。
 [探索局面の計画](search-aware-evaluation.md)の候補Bは、静止探索の途中で静的評価を呼んだ局面をそのまま学んだ。
-Bはそれらの局面の過小評価を半分以下に減らした代わりに、通常の局面を平均251センチポーン高く見積もるようになり、対照Aに対して得点率6.9%で不採用となった（[診断](../../measurements/search-aware-pst-diagnostics.md)）。
+Bはそれらの局面の過小評価を半分以下に減らした代わりに、通常の局面を平均251センチポーン高く見積もるようになり、対照Aに対して得点率6.9%で不採用となった（[診断](../../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)）。
 Bのデータには取り合いの途中局面が含まれ、配置ごとの危険性を区別できないPSTが、通常局面にも同じ補正を及ぼした可能性がある。
 本書では静止探索の出力を決めた末端へ勾配を渡し、入力局面と学習目標を分けて検証する。
 末端には合法な捕獲が残る場合もあるため、取り合いが完全に解消した局面とは仮定しない。
@@ -78,8 +78,8 @@ PSTの評価、量子化、駒除去の診断、および学習の手順は、[�
 棋力の採否は[SPRTの手引き](../../guides/sprt.md)に従う。
 
 S0は着手時のmasterに固定し、本書の完了まで更新しない。
-起案時のmasterの探索と採用PSTは、探索局面の計画の基点と同じ挙動であり、[相対2駒評価の準備記録](../../measurements/relative-pair-prep.md)が12の子局面の再探索値の一致で確かめている。
-そのため、探索局面の計画が[校正](../../measurements/search-aware-teacher-calibration.md)で固定した判定の差m=142.1センチポーンをフェーズ3でも使う。
+起案時のmasterの探索と採用PSTは、探索局面の計画の基点と同じ挙動であり、[相対2駒評価の準備記録](../../measurements/relative-pair-eval/relative-pair-prep.md)が12の子局面の再探索値の一致で確かめている。
+そのため、探索局面の計画が[校正](../../measurements/search-aware-evaluation/search-aware-teacher-calibration.md)で固定した判定の差m=142.1センチポーンをフェーズ3でも使う。
 着手までに[段階12](strength-stage12.md)などの採用で探索またはPSTが変わった場合は、同じ校正の手順でmを測り直してから診断へ進む。
 実験の途中では、他の計画の変更をブランチへ取り込まない。
 
@@ -123,7 +123,7 @@ S0、A、Bの既存の値は参考として並べ、比較の基準にはしな�
 
 ## 探索の見落としを追跡する
 
-フェーズ0では、[相対2駒評価の準備記録](../../measurements/relative-pair-prep.md)の6根で、S0の100,000ノードの探索が教師の手順をどこで失うかを調べる。
+フェーズ0では、[相対2駒評価の準備記録](../../measurements/relative-pair-eval/relative-pair-prep.md)の6根で、S0の100,000ノードの探索が教師の手順をどこで失うかを調べる。
 準備記録によれば、6根すべてで、S0の提案探索の名目深さの内側に、2つの読み筋の駒の損得がm以上離れる位置があった。
 最初の3根ではS0の提案手の後に相手の応手で駒を失い、次の2根では教師の最善手が6手以内に駒を得る。
 前者では提案手の過大評価、後者では教師の最善手の過小評価が疑われるため、それぞれの手順と、浅い探索が返した値を照合する。
@@ -398,8 +398,8 @@ Qcを実施せずQが採否測定へ進む経路ではSTC 2本とLTC 1本にな�
 - [評価関数の表現と更新費用の候補](../../research/evaluation-architecture-candidates.md)
 - [評価モデル、教師生成、学習方法の一次資料](../../research/evaluation-learning-primary-sources-2026-09.md)
 - [探索局面を用いた評価関数の学習](search-aware-evaluation.md)
-- [相対2駒評価の準備記録](../../measurements/relative-pair-prep.md)
-- [対照Aと候補Bの採否前の診断](../../measurements/search-aware-pst-diagnostics.md)
+- [相対2駒評価の準備記録](../../measurements/relative-pair-eval/relative-pair-prep.md)
+- [対照Aと候補Bの採否前の診断](../../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)
 - [先読み教師値](lookahead-teacher.md)
 - [elmoの学習コード（確認版`f825ff0`）](https://github.com/mk-takizawa/elmo_for_learn/blob/f825ff057165826c421d2d7ca9a841bdac2b9088/src/usi.cpp#L691-L724)
 - [やねうら王の`qsearch_psv`（確認版`c1b80ea`）](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/engine/yaneuraou-engine/yaneuraou-search.cpp#L377-L435)

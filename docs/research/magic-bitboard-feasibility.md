@@ -1,13 +1,13 @@
 # 12×12盤へのmagic bitboardの適用
 
 斜線のmagic bitboardを現在の盤表現へ実装し、必要な定数の生成と規則との一致を確認できた。
-しかし、横線の小表と斜線のmagicをそれぞれ探索へ組み込んだ[試作比較](../measurements/magic-bitboard-prototype.md)では、どちらも現行方式を上回らなかった。
+しかし、横線の小表と斜線のmagicをそれぞれ探索へ組み込んだ[試作比較](../measurements/adhoc/magic-bitboard-prototype.md)では、どちらも現行方式を上回らなかった。
 今回の構成は採用候補へ進めず、現在の算術方式を維持することを勧める。
 飛車4方向を一括で列挙して24バイトの利きを保存する約1.15 GiBの構成は試作対象から外し、分割した表で実装可能性と実行時の費用を確認した。
 
 調査対象は2026年9月21日のコミット`1633f534cf0e8c96738b11158e68f31f0f144f01`である。
 試作は独立cloneのブランチで行い、本体の実装とマイルストーンの状態は変更していない。
-外部実装の根拠は[一次資料メモ](magic-bitboard-primary-sources.md)、現行版の負荷は[プロファイル](../measurements/magic-bitboard-profile-depth5.md)、試作の差分と再現手順は[測定記録](../measurements/magic-bitboard-prototype.md)にまとめた。
+外部実装の根拠は[一次資料メモ](magic-bitboard-primary-sources.md)、現行版の負荷は[プロファイル](../measurements/adhoc/magic-bitboard-profile-depth5.md)、試作の差分と再現手順は[測定記録](../measurements/adhoc/magic-bitboard-prototype.md)にまとめた。
 
 ## 現行方式との比較
 
@@ -98,7 +98,7 @@ PEXT（Parallel Bits Extract）は、マスクが指定したビットを下位�
 3語から抽出した結果を各マスクのビット数に応じて連結すれば密な添字を得られ、その後のmagic乗算は不要になる。
 しかし、現在の`unsafe_code = "forbid"`のもとでは、`target-cpu=native`だけでRustのintrinsicを通常の関数から直接呼べるとは限らない。
 今回のコンパイル確認ではその呼び出しは拒否されたため、直接PEXTを使う方式は現在の方針で直ちに実装できる候補から外す。
-根拠と再現方法は[測定記録](../measurements/magic-bitboard-profile-depth5.md)と[Rustの呼び出し制約](https://doc.rust-lang.org/reference/attributes/codegen.html#attributes.codegen.target_feature.safety-restrictions)を参照する。
+根拠と再現方法は[測定記録](../measurements/adhoc/magic-bitboard-profile-depth5.md)と[Rustの呼び出し制約](https://doc.rust-lang.org/reference/attributes/codegen.html#attributes.codegen.target_feature.safety-restrictions)を参照する。
 
 ## 試作から得た判断
 

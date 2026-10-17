@@ -58,7 +58,7 @@ P型の文脈は1種類なので、この全再計算は起きない。
 この文脈は、王将または太子の移動、醉象の成り、および王駒の捕獲のときだけ求め直される（`crates/minase/src/eval/nnue/feature_set.rs`）。
 全再計算の回数は`AccumulatorStats`が数え、`minase dev bench`の`accumulators:`行が`refresh_fraction`として出力する。
 `invariants`機能を有効にしたビルドでは、探索中に静的評価を求める局面で、差分更新の累算値を全再計算と照合する（`Network::assert_accumulator`）。
-現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/halfkp-retrain-stc.md)）。
+現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
 探索木を変えない高速化のNPSの比較には、`scripts/bench_compare.py`を使う。
 
 ## 設計判断
@@ -66,7 +66,7 @@ P型の文脈は1種類なので、この全再計算は起きない。
 | 判断 | 採った方式 | 棄却した代案 | 理由 |
 |---|---|---|---|
 | 導入の時期 | 全再計算が起きる構成を候補にするときまで待機する | 現在のP型のエンジンに入れる | P型と現在の更新方式では探索中に全再計算が起きず、効果が0である。使われないコードを置かない方針にも反する。 |
-| HalfKP-hm-b8の再挑戦との関係 | Finny tablesを再挑戦の根拠にしない | Finny tablesを入れたHalfKP-hm-b8を測り直す | 2回の比較で、HalfKP-hm-b8はP型におよそ−200 Elo、−340 Elo相当の差で負けた。初回の記録では、NPSの差は約5%であり、この差では負けを説明できないと結論づけている。[持ち時間2倍の感度測定](../measurements/sensitivity-time2x.md)の約216 Eloを目安に対数で換算すると、P型と同じ速度に戻す`1/0.95`倍の速度向上は`log2(1/0.95) × 216`で約16 Eloにとどまる。Finny tablesだけで負けを覆せることを示す記録はない。 |
+| HalfKP-hm-b8の再挑戦との関係 | Finny tablesを再挑戦の根拠にしない | Finny tablesを入れたHalfKP-hm-b8を測り直す | 2回の比較で、HalfKP-hm-b8はP型におよそ−200 Elo、−340 Elo相当の差で負けた。初回の記録では、NPSの差は約5%であり、この差では負けを説明できないと結論づけている。[持ち時間2倍の感度測定](../measurements/evaluation-gen1/sensitivity-time2x.md)の約216 Eloを目安に対数で換算すると、P型と同じ速度に戻す`1/0.95`倍の速度向上は`log2(1/0.95) × 216`で約16 Eloにとどまる。Finny tablesだけで負けを覆せることを示す記録はない。 |
 | 表のキー | 視点と文脈`FeatureSet::Context`の組 | 自玉の升（Stockfishとやねうら王の方式） | StockfishのHalfKA型は自玉の移動のたびに全再計算するので、升をキーにするのが自然である。minaseの全再計算は文脈の変化でだけ起き、同じ文脈なら特徴の番号付けが同じなので、1つの項目を共有できる。升をキーにすると、同じ文脈の升ごとに別の項目ができ、それぞれを初めて使うときに全特徴を足す回数が増える。HalfKP-hm-b8の文脈は8区分と鏡映の有無の組の16通りである。 |
 | 保存する駒配置 | 144升の駒コードと先獅子の升 | 特徴番号の列（やねうら王の方式）、駒種ごとのビットボード（Stockfishの導入時の方式） | minaseの基底特徴は升ごとの駒コードと先獅子の升だけで決まるので、升ごとに駒コードを比べれば引く特徴と足す特徴が直接得られる。Stockfishも2025年10月に、ビットボードから升ごとの駒の配列へ変えた。やねうら王の特徴番号の列は、取った駒が持ち駒として列に残る将棋の表現を前提に位置ごとに比べるので、取った駒が盤から消えて列が短くなる中将棋では、遅い照合に切り替わる。 |
 | 表の所有者と寿命 | 探索スレッドごとに持ち、探索の開始時にバイアスと空の駒配置で初期化する | 探索をまたいで持ち越す（Stockfishは新規対局、置換表の消去、およびネットの読み込みのときだけ消す） | minaseの探索状態は探索ごとに作り直される。初期化した項目を初めて使うときは全特徴を足すことになり、その費用は現在の全再計算と同じなので、探索の開始時に表を初期化しても、増える費用は探索1回、探索スレッド1本につき最大32回の全再計算にとどまる。探索をまたいで持ち越すには、探索状態の外に表の所有者を新しく設ける必要があり、それで省けるのはこの最大32回だけである。 |
@@ -149,14 +149,14 @@ minaseのP型では、どちらの要因による全再計算も起きない。�
 
 P型では、`P::context_after_move`が常に同じ文脈を返すので、`update_accumulator_after_move`の全再計算の経路は実行されない。
 全再計算は、探索スレッドが根の局面の累算器を作るときの`refresh_accumulator`だけで起き、探索1回につきスレッドごとに1回である。
-深さ9のbench（15局面）で全再計算が15回、すなわち局面ごとに1回だったのは、このためである（[記録](../measurements/nnue-hidden-layer-bench.md)）。
+深さ9のbench（15局面）で全再計算が15回、すなわち局面ごとに1回だったのは、このためである（[記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)）。
 
 HalfKP-hm-b8では、文脈を変える着手のたびに、その視点の第1層を全再計算する。
 文脈を変え得る着手は王将または太子の移動、醉象の成り、および王駒の捕獲であり、そのうち区分か鏡映の有無が実際に変わる着手だけが全再計算になる。
 [入力特徴の調査](../research/nnue-input-features.md)で教師データの隣接局面26,225,953組を集計すると、着手した側の王将が動いた着手は全体の7.54%だった。手数で分けると、この割合は150手目より前では0.15%以下、150手目以降では10.63%である。
 また、太子が現れた対局は同じ教師データの1.77%であり、太子のない側の王駒の捕獲は対局の終わりなので、太子の移動、醉象の成り、および王駒の捕獲による文脈の変化は少なく、王将の移動の割合がおおよその上限になる。
 王将の移動がどれだけ文脈を変えるかは局面による。自陣の最下段から3段目より前の升はすべて同じ区分だが、盤の中央の筋をまたぐ移動は鏡映の有無を変える。
-[HalfKP-hm-b8の初回の比較](../measurements/nnue-replacement-features-stc.md)では、HalfKP-hm-b8の側が232局のそれぞれで自分の最初の40手として指した9,280手のうち、王将の着手は228手であり、その86%が文脈を変えた。
+[HalfKP-hm-b8の初回の比較](../measurements/nnue-replacement/nnue-replacement-features-stc.md)では、HalfKP-hm-b8の側が232局のそれぞれで自分の最初の40手として指した9,280手のうち、王将の着手は228手であり、その86%が文脈を変えた。
 探索中の全再計算の割合は、探索が読む局面の分布によって対局の着手の割合と異なるので、再開後にフェーズ1で`bench`から直接測る。
 
 全再計算の費用は、既存の記録からは決まらない。
@@ -256,7 +256,7 @@ scripts/bench_compare.py --reference <表を入れる前の候補> --baseline <�
 - やねうら王の作者による解説記事[「finny tables、やねうら王に実装される」](https://yaneuraou.yaneu.com/2026/08/11/finny-tables-implemented-in-yaneuraou/)（2026年8月11日）。
 - Fairy-Stockfish（`https://github.com/fairy-stockfish/Fairy-Stockfish`、確認したmasterは`2e591089558a5afa72ab5a22192208e71848a30c`）。移植はブランチ`sf19-merge`の`5d78e936281f0f7c69770afe7de3a0a31b949634`である。
 - [NNUEの13,680入力を採る根拠と限界](../research/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数え、Finny tablesに触れている。
-- [NNUEの入力特徴集合の比較（HalfKP-hm-b8対P型、幅128、STC）](../measurements/nnue-replacement-features-stc.md)と[再学習したHalfKP-hm-b8のSTC](../measurements/halfkp-retrain-stc.md)は、HalfKP-hm-b8が負けた記録である。
+- [NNUEの入力特徴集合の比較（HalfKP-hm-b8対P型、幅128、STC）](../measurements/nnue-replacement/nnue-replacement-features-stc.md)と[再学習したHalfKP-hm-b8のSTC](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)は、HalfKP-hm-b8が負けた記録である。
 - [P型を採るADR](../adr/use-p-type-input-features-for-the-nnue.md)は、入力特徴集合の決定と、HalfKP型を再提案する前の条件を記す。
-- [NNUEの出力部の計算時間の記録](../measurements/nnue-hidden-layer-bench.md)は、深さ9のbenchの累算器の更新回数と全再計算の回数を含む。
-- [持ち時間2倍の感度測定](../measurements/sensitivity-time2x.md)は、自己対局で持ち時間2倍が約216 Elo（95%信頼区間181〜257）に相当することを示す。別のコミットで得た目安であり、線形性は仮定しない。
+- [NNUEの出力部の計算時間の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)は、深さ9のbenchの累算器の更新回数と全再計算の回数を含む。
+- [持ち時間2倍の感度測定](../measurements/evaluation-gen1/sensitivity-time2x.md)は、自己対局で持ち時間2倍が約216 Elo（95%信頼区間181〜257）に相当することを示す。別のコミットで得た目安であり、線形性は仮定しない。

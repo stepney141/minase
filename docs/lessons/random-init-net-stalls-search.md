@@ -17,4 +17,4 @@
 ## 出典
 
 - [plans/evaluation.md](../plans/archived/evaluation.md)（「差分更新」と「実装フェーズ」のフェーズ3）
-- [measurements/bench-nnue-gen0-nps.md](../measurements/bench-nnue-gen0-nps.md)
+- [measurements/evaluation/bench-nnue-gen0-nps.md](../measurements/evaluation/bench-nnue-gen0-nps.md)

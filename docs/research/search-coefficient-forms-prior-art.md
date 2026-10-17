@@ -52,7 +52,7 @@ Stockfishの歩兵価値は208（`src/types.h:199`）、YaneuraOuは90（`source
 
 StockfishとYaneuraOuは、reverse futility pruningとrazoringの判定に、補正後の評価を置換表の値で上書きした値を使い、null move pruningを試す条件と減深量には補正後の静的評価を使う（Stockfish `search.cpp:860-865, 1037-1044`、YaneuraOu `yaneuraou-search.cpp:3236`）。
 minaseのreverse futility pruning、razoring、null move、およびimprovingの判定は、補正前の評価を使う（`negamax.rs:24-35, 119-166`）。
-[段階4の診断](../measurements/strength-stage4-pruning-bench.md)では、reverse futility pruningの深さ別の余裕値が3つの深さとも候補の最小値になっており、共通の余裕値は深さごとの差を測れないまま決まった可能性がある。
+[段階4の診断](../measurements/strength-stage4/strength-stage4-pruning-bench.md)では、reverse futility pruningの深さ別の余裕値が3つの深さとも候補の最小値になっており、共通の余裕値は深さごとの差を測れないまま決まった可能性がある。
 
 ## late move reductions、aspiration windows、静止探索
 
@@ -97,7 +97,7 @@ butterfly historyの学習率が小さいため、minaseでは重力式による
 | 探索の不安定さによる伸縮（係数なし） | 最善手が4反復続いたら判定を厳しくする二値の短縮だけ（`time.rs:33-65`） | 目安時間に、評価値の下落、最善手の変化回数、最善手の変化からの深さ、最善手のノード占有率の4因子を掛け、両方向に連続で伸縮させる（Stockfish `search.cpp:592-613`、YaneuraOu `yaneuraou-search.cpp:1969-1990`） | 依存変数の欠落 | 埋まらない |
 
 minaseは秒読みのない時計では上限時間で中断した反復の結果を捨てるので（`team.rs:246`、`root.rs:116-118`）、上限時間の倍率は、中断した反復の結果も使うStockfishの倍率と同じ意味の値ではない。
-延長方向の時間配分は、[ADR](../adr/stop-early-on-stable-best-move-without-extensions.md)に記録された二値の延長がSTCで`H0`だった。4因子の積は、[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の第3段階でStockfishの定数に正規化定数0.48を掛けた形で実装した（[事前判定](../measurements/time-management-efficiency-stage3-bench.md)）。ただし、途中結果の採用と予算の再定義を積んだ再構成の一部としてSTCで`H0`となったものであり、単独では測っていない。続く分解測定は、負けの原因を途中結果の採用と予算の再定義に絞っている。
+延長方向の時間配分は、[ADR](../adr/stop-early-on-stable-best-move-without-extensions.md)に記録された二値の延長がSTCで`H0`だった。4因子の積は、[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の第3段階でStockfishの定数に正規化定数0.48を掛けた形で実装した（[事前判定](../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)）。ただし、途中結果の採用と予算の再定義を積んだ再構成の一部としてSTCで`H0`となったものであり、単独では測っていない。続く分解測定は、負けの原因を途中結果の採用と予算の再定義に絞っている。
 Stockfishは相手との持ち時間の差でも目安時間を下げるが（`src/timeman.cpp:151-156`）、minaseの時計の入力には相手の残り時間がない（`crates/minase/src/search/limits.rs:145-155`）。
 
 ## 候補の扱い

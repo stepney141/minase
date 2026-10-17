@@ -20,7 +20,7 @@ Minaseは、変更前後のエンジンを同じ条件で対局させて棋力�
 本マイルストーンは完了である。
 2026年8月27日に起案し、2026年8月28日に完了した。
 並列枠の補充、原子的な保存と再開、監査可能な資源記録、および保存記録の再集計を採用し、棋力の採否方法は変更しなかった。
-根拠は、「検証」節の煙試験と、校正カードの正例[measurements/calibration-positive-current.md](../../measurements/calibration-positive-current.md)と負例[measurements/calibration-negative-current.md](../../measurements/calibration-negative-current.md)である。
+根拠は、「検証」節の煙試験と、校正カードの正例[measurements/match-harness-efficiency/calibration-positive-current.md](../../measurements/match-harness-efficiency/calibration-positive-current.md)と負例[measurements/match-harness-efficiency/calibration-negative-current.md](../../measurements/match-harness-efficiency/calibration-negative-current.md)である。
 時間制御の標準化は、校正方式の不成立を経て[棋力測定の段階ゲート](match-staged-gate.md)が進行中として引き継ぎ、早期投了は[早期投了の導入判定](../match-early-resignation.md)が待機中として扱う。
 
 ## 目的
@@ -150,8 +150,8 @@ RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features
 実データの確認は、煙試験2件と校正カード2件で行った。
 ランダムエンジン同士の4ペア煙試験は15.41秒で完走し、保存記録だけから総CPU時間14.80秒、物理コア数20、実メモリ容量33,218,965,504バイト、および異常0件を再集計できた。
 Lazy SMPの深さ1の1ペア煙試験は、コミット93bccd9を2ワーカー、コミット4ec0b1dを1ワーカーとして実効ワーカー数を記録し、各局のCPU時間と最大常駐メモリが保存記録に残ることを確認した。
-校正カードの正例[measurements/calibration-positive-current.md](../../measurements/calibration-positive-current.md)は、現行時間制御200ペアの保存、再集計、および異常検査が実データで機能することを確認した。
-校正カードの負例[measurements/calibration-negative-current.md](../../measurements/calibration-negative-current.md)は、分散0に対する算出不能の拒否が機能する一方でカード自体が校正に不適切であることを示したため、測定条件の判断は[棋力測定の段階ゲート](match-staged-gate.md)へ移した。
+校正カードの正例[measurements/match-harness-efficiency/calibration-positive-current.md](../../measurements/match-harness-efficiency/calibration-positive-current.md)は、現行時間制御200ペアの保存、再集計、および異常検査が実データで機能することを確認した。
+校正カードの負例[measurements/match-harness-efficiency/calibration-negative-current.md](../../measurements/match-harness-efficiency/calibration-negative-current.md)は、分散0に対する算出不能の拒否が機能する一方でカード自体が校正に不適切であることを示したため、測定条件の判断は[棋力測定の段階ゲート](match-staged-gate.md)へ移した。
 
 ## 完了条件
 

@@ -374,7 +374,7 @@ $`\omega`$ は、基準自身の向きが駒の持ち主から期待される向
 v0の表では各駒の寄与が100 cp以上の正の値なので、$`\omega`$ は常に0であり、最小の幅は常に0.25 cpである。
 したがって $`R`$ は「自駒を除けば少なくとも0.25 cp下がり、相手の駒を除けば少なくとも0.25 cp上がる」ことを求める片側の罰則として働く。
 学習器の試走（世代3の1ファイル、幅128、1エポック）では、この罰則が発火した除去は対象の除去の10万分の1未満であり、補助損失は学習をほとんど束縛しない安全装置として働いた。
-試走の内訳は[学習の記録](../measurements/nnue-replacement-training.md)にある。
+試走の内訳は[学習の記録](../measurements/nnue-replacement/nnue-replacement-training.md)にある。
 補助損失を選んだ理由は[駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)にあり、計算の契約は `crates/minase-trainer/src/nnue/reference/removal.rs` のdocコメントにある。
 
 ### 初期値
@@ -431,11 +431,11 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 ### 採用したネットの学習
 
 探索が使う `nnue.bin` は、2026年10月17日に学習した幅128のP型のネットであり、先読み教師を使わずに学んだものである。
-学習データは、初代のNNUEを埋め込んだmaster `31c2a46`のエンジンが1局面2万ノードで生成した30ファイルであり（[学習率スケジュールの学習の記録](../measurements/nnue-lr-schedule-training.md)）、訓練は79,458,082局面、検証は4,153,303局面だった。
+学習データは、初代のNNUEを埋め込んだmaster `31c2a46`のエンジンが1局面2万ノードで生成した30ファイルであり（[学習率スケジュールの学習の記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）、訓練は79,458,082局面、検証は4,153,303局面だった。
 教師の勝率尺度 $`K_g`$ は1,039.6だった。
 検証損失はエポック17で最良の0.4575547（学習前は0.4643992）となり、22エポックで早期終了した。
 量子化誤差は平均15.66 cp、最大162.9 cpだった。
-数値の詳細は[学習の記録](../measurements/nnue-no-lookahead-training.md)にあり、先読み教師で学んだ前のネットに対して[STC](../measurements/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-no-lookahead-ltc.md)の両方で有意に強いと判定された。
+数値の詳細は[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)にあり、先読み教師で学んだ前のネットに対して[STC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)の両方で有意に強いと判定された。
 
 ## 損失で決めないもの
 
@@ -445,8 +445,8 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 評価関数の採否は、検証損失ではなく対局の勝敗で決める。
 新しい評価関数は、短時間条件のSTCで選別してから長時間条件のLTCで最終判定する段階ゲートにかける。
 STCは持ち時間10秒と1手ごとの加算0.1秒、LTCは持ち時間60秒と1手ごとの加算0.2秒であり、手順は[棋力測定の手引き](sprt.md)にある。
-採用したネットは、置き換え前のPST＋FM（コミット`8d0e382`）に対して、[STC](../measurements/nnue-replacement-stc.md)と[LTC](../measurements/nnue-replacement-ltc.md)の両方で有意に強いと判定された。
-入力特徴集合の選択も、検証損失ではなく、P型とHalfKP-hm-b8の直接対局で決めた（[記録](../measurements/nnue-replacement-features-stc.md)）。
+採用したネットは、置き換え前のPST＋FM（コミット`8d0e382`）に対して、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)と[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)の両方で有意に強いと判定された。
+入力特徴集合の選択も、検証損失ではなく、P型とHalfKP-hm-b8の直接対局で決めた（[記録](../measurements/nnue-replacement/nnue-replacement-features-stc.md)）。
 
 ## 学習器の使い方
 
@@ -468,6 +468,6 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)
-- [NNUEの初代のネットの学習と診断](../measurements/nnue-replacement-training.md)
+- [NNUEの初代のネットの学習と診断](../measurements/nnue-replacement/nnue-replacement-training.md)
 - [NNUEの学習と診断の手順](nnue-training.md)
 - [棋力測定の手引き](sprt.md)

@@ -139,4 +139,4 @@ HalfKP-hm-b8がP型より177 ms遅い内訳は、numpyの特徴番号の計算�
 - tatara: `README.ja.md`、`docs/decisions/2026-05-09-cuda-oxide-adoption.md`、`2026-05-09-fused-kernel-strategy.md`、`2026-06-12-ft-factorizer.md`、`2026-07-18-native-cuda-backend.md`、`2026-07-30-native-backend-default.md`、`2026-08-09-windowed-teacher-shuffle.md`、`crates/nnue-train/src/dataloader.rs`、`crates/cuda-native-runtime/kernels/native_kernels.cu`、`bins/nnue_train/src/trainer_common.rs`、`bins/nnue_train/src/trainer_layerstack.rs`、`bins/nnue_train/src/trainer_simple.rs`
 - bullet（BulletOu同梱のフォーク、HEAD `cc202f3`）: `crates/gpu/src/pointwise/write.rs`、`crates/gpu/src/runtime/cuda.rs`、`crates/trainer/src/optimiser/adam.rs`、`crates/trainer/src/run.rs`、`crates/bulletou_lib/src/value/loader.rs`
 - variant-nnue-pytorch（HEAD `749db94`、作業ツリーに未コミットの変更あり）: `feature_transformer.py`、`training_data_loader.cpp`、`docs/nnue.md`
-- minase: `tools/train/src/minase_train/nnue/train.py`、`nnue/model.py`、`pst/removal.py`、[学習の記録](../measurements/nnue-replacement-training.md)
+- minase: `tools/train/src/minase_train/nnue/train.py`、`nnue/model.py`、`pst/removal.py`、[学習の記録](../measurements/nnue-replacement/nnue-replacement-training.md)

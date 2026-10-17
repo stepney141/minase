@@ -16,8 +16,8 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。
 2026年9月7日に起案と着手、2026年9月8日に完了した。
-2端点PSTを採用する。根拠は[LTC](../../measurements/pst-tapered-adoption-ltc.md)の`H1`（187有効ペア、ペンタノミアル[21, 2, 84, 0, 80]、LLR +2.970、異常0件）であり、[STC](../../measurements/pst-tapered-adoption-stc.md)も`H1`であった。
-学習と診断は[学習と診断の記録](../../measurements/pst-tapered-training.md)、端点の識別性は[識別性の記録](../../measurements/pst-tapered-identifiability.md)、探索速度は[benchの記録](../../measurements/bench-pst-tapered-depth5.md)にある。
+2端点PSTを採用する。根拠は[LTC](../../measurements/tapered-pst/pst-tapered-adoption-ltc.md)の`H1`（187有効ペア、ペンタノミアル[21, 2, 84, 0, 80]、LLR +2.970、異常0件）であり、[STC](../../measurements/tapered-pst/pst-tapered-adoption-stc.md)も`H1`であった。
+学習と診断は[学習と診断の記録](../../measurements/tapered-pst/pst-tapered-training.md)、端点の識別性は[識別性の記録](../../measurements/tapered-pst/pst-tapered-identifiability.md)、探索速度は[benchの記録](../../measurements/tapered-pst/bench-pst-tapered-depth5.md)にある。
 
 ## 目的
 
@@ -100,7 +100,7 @@ E(p)=
 正準特徴は盤面の6,768個と先獅子の対象升72個を合わせた6,840個で、学習器はpadding行を加えた`nn.Embedding(6840 + 1, 2)`を持つ。
 両端点をそれぞれ初期MNPTの鏡映対の平均で初期化し、鏡映によるデータ拡張は行わない。
 保存時に各端点を全13,680特徴へ展開してから量子化するため、上記の補間式とRust側の評価処理は共通である。
-重み共有の採用根拠は、段階7の[短時間測定](../../measurements/strength-stage7-mirror-stc.md)と[長時間測定](../../measurements/strength-stage7-mirror-ltc.md)にある。
+重み共有の採用根拠は、段階7の[短時間測定](../../measurements/strength-stage7/strength-stage7-mirror-stc.md)と[長時間測定](../../measurements/strength-stage7/strength-stage7-mirror-ltc.md)にある。
 
 重みを共有しない`tapered`で単一PSTを2端点化する際は、単一の表を両端点へ複製して開始時の評価を保つ。
 既に2端点を持つMNPTからは各端点をそのまま初期値にする。
@@ -231,7 +231,7 @@ PSTの学習更新には、`single`、`tapered`、`mirrored`に共通の範囲�
 除去ごとの違反量の和を出力Kで割り、局面内の対象を等重みで平均してから全訓練局面を等重みで平均し、対象がない局面の寄与は0とする。
 係数は教師混合係数と区別し、汎用設定例では追加損失を無効にする0を明示する。
 実験では、訓練集合内の予備比較で採用した係数と、その比較で固定した学習率を一組として転記する。
-[段階7の片側絶対値型の予備比較](../../measurements/strength-stage7-removal-absolute.md)では学習率0.03で係数1000を選び、本学習もこの組で10エポック学習する。
+[段階7の片側絶対値型の予備比較](../../measurements/strength-stage7/strength-stage7-removal-absolute.md)では学習率0.03で係数1000を選び、本学習もこの組で10エポック学習する。
 予備比較には既存の検証集合や診断352件を使わず、本学習の最良エポックは追加損失を含めない検証集合の二値交差エントロピーで選ぶ。
 `train_loss`、係数を掛ける前の`removal_loss`、合成後の`total_loss`を別に記録し、範囲射影、出力K、固定駒価値47個、およびMNPTバージョン2の評価処理を維持する。
 係数0では追加損失を計算せず、`removal_loss`を0、`total_loss`を`train_loss`と同じ値にする。
@@ -312,7 +312,7 @@ Rustの全テスト、フォーマット検査、Clippy、およびPST関連のP
 不採用の場合は候補を実験ブランチに保持し、開始版の評価実装と重みを変更しない。
 資源の都合で測定を中断した場合は不採用へ読み替えず、状態を待機中とし、測定機を専有できる時点で同じ実行ディレクトリを再開する。
 
-所要時間の目安は、[段階5のLMRのSTC](../../measurements/strength-stage5-lmr-stc.md)と[同LTC](../../measurements/strength-stage5-lmr-ltc.md)の1ペアあたりの実測から、STCの上限3,000ペアが約8時間、10 Elo付近のLTCが約22時間であり、1連鎖で約1.3日、2連鎖で約2.5日である。
+所要時間の目安は、[段階5のLMRのSTC](../../measurements/strength-stage5/strength-stage5-lmr-stc.md)と[同LTC](../../measurements/strength-stage5/strength-stage5-lmr-ltc.md)の1ペアあたりの実測から、STCの上限3,000ペアが約8時間、10 Elo付近のLTCが約22時間であり、1連鎖で約1.3日、2連鎖で約2.5日である。
 着手前にこの目安と第3フェーズの判定から連鎖数を確定する。
 
 検証結果、測定記録、および採否の結論を保存し、設計書とロードマップを更新した時点で完了する。

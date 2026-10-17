@@ -9,7 +9,7 @@
 
 [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)では、採用の候補のコミット`90280a0`の直後に、入力特徴集合を比べる測定の候補として、既定の入力特徴集合とネットを切り替えるコミット`3dc5e9e`を同じブランチに積んだ。
 コミット対コミットの測定では、比較する設定をコミットとして確定させる必要があるため、比較の候補は既定値を書き換えたコミットになる。
-この候補は[型の比較の測定](../measurements/nnue-replacement-features-stc.md)で`H0`となったが、切り替えを戻さないままブランチをmasterへマージした。
+この候補は[型の比較の測定](../measurements/nnue-replacement/nnue-replacement-features-stc.md)で`H0`となったが、切り替えを戻さないままブランチをmasterへマージした。
 採否の記録はすべて正しかったので、記録を読むだけでは食い違いに気づけなかった。
 
 ## 以後の規則
@@ -20,4 +20,4 @@
 
 ## 出典
 
-[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)、[採用のLTC](../measurements/nnue-replacement-ltc.md)、[型の比較のSTC](../measurements/nnue-replacement-features-stc.md)、および修正のコミット`230ea92`。
+[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)、[採用のLTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)、[型の比較のSTC](../measurements/nnue-replacement/nnue-replacement-features-stc.md)、および修正のコミット`230ea92`。

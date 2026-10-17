@@ -21,5 +21,5 @@
 ## 出典
 
 - [plans/strength-stage12.md](../plans/archived/strength-stage12.md) の「項目4　静止探索の手数制限」節
-- [measurements/strength-stage12-activation-diag.md](../measurements/strength-stage12-activation-diag.md)
-- [measurements/strength-stage12-qsearch-limit-stc.md](../measurements/strength-stage12-qsearch-limit-stc.md)
+- [measurements/strength-stage12/strength-stage12-activation-diag.md](../measurements/strength-stage12/strength-stage12-activation-diag.md)
+- [measurements/strength-stage12/strength-stage12-qsearch-limit-stc.md](../measurements/strength-stage12/strength-stage12-qsearch-limit-stc.md)

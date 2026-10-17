@@ -83,7 +83,7 @@ minaseの[`sliding_control`](../../crates/minase-core/src/attacks/tables.rs)は�
 反転によって減る方向を増える方向へ変えるので、1回の減算で両方向を処理できる。
 角は、SIMD（1命令で複数の値を処理する命令群）の256ビット型で4方向をまとめて計算する。
 minaseの減る方向は、最上位ビットの探索と2回目の表引きに依存する。
-第2期の高速化の段階4では、減る方向を`leading_zeros`と番兵表で書き直す案を試したが、親比1.0039倍で採用しなかった（[第2期の設計書](../plans/archived/movegen-speedup-2.md)、[段階4の測定](../measurements/movegen-speedup-2-stage4-bench-depth5.md)）。
+第2期の高速化の段階4では、減る方向を`leading_zeros`と番兵表で書き直す案を試したが、親比1.0039倍で採用しなかった（[第2期の設計書](../plans/archived/movegen-speedup-2.md)、[段階4の測定](../measurements/movegen-speedup-2/movegen-speedup-2-stage4-bench-depth5.md)）。
 バイト反転による案は試しておらず、効果は測定していない。
 
 計算の単位も異なる。
@@ -100,7 +100,7 @@ Stockfishの`attackers_to`は`rookAttacks & pieces(ROOK, QUEEN)`の形で書か�
 minaseの利き計算の表は、利き線表が36 KiB、固定利き表と遮蔽なしの到達範囲表が2色×28定義×192升×24バイトで各252 KiB、5×5の近傍表と獅子の跳び先表が各4.5 KiBであり、合計は約549 KiBになる。
 
 minaseでも、マジックと小さな表の試作は済んでいる。
-どちらも現行の算術方式（1方向あたり中央値6.21 ns）を上回らず、主な原因は関数のインライン展開が失われたことだった（[試作の測定](../measurements/magic-bitboard-prototype.md)、[magic bitboardの適用の調査](magic-bitboard-feasibility.md)）。
+どちらも現行の算術方式（1方向あたり中央値6.21 ns）を上回らず、主な原因は関数のインライン展開が失われたことだった（[試作の測定](../measurements/adhoc/magic-bitboard-prototype.md)、[magic bitboardの適用の調査](magic-bitboard-feasibility.md)）。
 したがって、minaseが算術系統に属するのは192ビットの盤で表が大きくなるという消極的な理由だけによるのではなく、実測に基づく選択である。
 
 ## 局面の表現と派生構造

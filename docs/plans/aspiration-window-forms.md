@@ -79,7 +79,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 採用した場合は、完了時に、起点の時点で有効なADR（先行の設計書が置き換えていればその後継）を確認し、新しいADRで置き換える。
 本書が変えない決定、つまり窓外れの途中経過を出力しないこと、および補助ワーカーが自分の探索の記録だけで窓を置くことも、新しいADRへ引き継ぐ。
 
-- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../measurements/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](archived/strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../measurements/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
+- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](archived/strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
 
 [深さを飛ばすADR](../adr/diversify-lazy-smp-workers-by-skipping-depths.md)による補助ワーカーの多様化は変えず、A2のワーカー番号の項はそれに加わる。
 [反復の結果の帯のADR](../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が定めた窓の端の保護、つまり詰み帯または専用の帯に達した端を無限へ置き換える扱いは変えない。
@@ -357,6 +357,6 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 - [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。減深の回数と持ち越しの宣言は335〜336行、初期の窓は389〜392行、減深は403〜411行と461〜462行、窓外れの処理は437〜455行、完了した反復の深さの記録は534行、`increaseDepth`は634行、根の手の平均の更新は1466〜1501行。`src/search.h`の154〜158行（根の手の記録）、`src/thread.cpp`の306〜318行（根の手の表の作成）、`src/types.h`の199行（歩兵価値）。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。初期の窓は1670〜1673行。
-- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../measurements/strength-stage6-aspiration-stc.md)および[段階12のSTC](../measurements/strength-stage12-aspiration-stc.md)。
+- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)および[段階12のSTC](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)。
 - [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。

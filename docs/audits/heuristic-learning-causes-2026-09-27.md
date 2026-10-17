@@ -32,7 +32,7 @@
 この加算形式では、敵歩の有無によって走り駒の追加効果を変える交互作用を直接表せない。
 
 項目2から項目7の見送りは、この係数学習の結果とは区別する。
-これらは[利き数の表の速度測定](../measurements/strength-stage9-table-bench.md)で、土台の速度が基準版の0.816倍となり、事前条件の0.90倍を満たさなかったために見送られた。
+これらは[利き数の表の速度測定](../measurements/strength-stage9/strength-stage9-table-bench.md)で、土台の速度が基準版の0.816倍となり、事前条件の0.90倍を満たさなかったために見送られた。
 これらすべてについて係数学習の失敗が実証されたわけではない。
 
 今回の追加特徴は、元の24特徴を残し、遮蔽物を考慮した6特徴を加えたものである。
@@ -46,7 +46,7 @@
 以下ではセンチポーンをcpと表す。
 教師は探索値から較正した確率を $s$、手番側の対局結果を $r$ とし、混合教師を $y_\lambda=\lambda s+(1-\lambda)r$ と定める。
 基本教師はλ=0.75である。
-先読み教師は[当時の設定](../measurements/lookahead-teacher-shelter-training.md)を再現し、将来の探索値の利用に加えて教師尺度の再推定も含む。
+先読み教師は[当時の設定](../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)を再現し、将来の探索値の利用に加えて教師尺度の再推定も含む。
 
 11ファイルの計25,120,683局面を復元し、訓練23,879,611局面と検証1,241,072局面に分けた。
 検証集合は3,676対局に由来する。
@@ -150,7 +150,7 @@ $w_1$ と $w_0$ を、それぞれλ=1とλ=0の教師に対する最適係数�
 
 当時使われた露出1,000局面と対照1,000局面は、保存されたファイル名と行番号から全件を対応付けられた。
 元ファイルの対局番号と特徴の先頭24列を照合し、両群とも全件が訓練分割であることを確認した。
-当時の量子化済み係数と位相計算による検算では、[過去の測定記録](../measurements/lookahead-teacher-shelter-training.md)の値を丸めまで再現した。
+当時の量子化済み係数と位相計算による検算では、[過去の測定記録](../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)の値を丸めまで再現した。
 
 | 当時の量子化済み係数 | 露出群の平均補正 | 対照群の平均補正 |
 |---|---:|---:|
@@ -194,7 +194,7 @@ $w_1$ と $w_0$ を、それぞれλ=1とλ=0の教師に対する最適係数�
 
 ## 根拠と再現資料
 
-元の特徴定義は[段階9の設計](../plans/archived/strength-stage9.md)、当時の学習条件は[項目1の学習記録](../measurements/strength-stage9-shelter-training.md)と[先読み教師の測定記録](../measurements/lookahead-teacher-shelter-training.md)にある。
+元の特徴定義は[段階9の設計](../plans/archived/strength-stage9.md)、当時の学習条件は[項目1の学習記録](../measurements/strength-stage9/strength-stage9-shelter-training.md)と[先読み教師の測定記録](../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)にある。
 元の特徴に遮蔽が含まれないことと、実際の利きを別項目が受け持つことは、設計書に明記されている。
 したがって、今回確認した制約は、その定義どおりに実装された特徴の適用範囲に関するものである。
 

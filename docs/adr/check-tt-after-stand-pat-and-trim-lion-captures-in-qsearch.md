@@ -6,18 +6,18 @@
 
 ## コンテキスト
 
-[第2期の高速化の起案時の診断](../measurements/movegen-speedup-2-diagnostics-depth5.md)では、置換表の照合が探索中の自己時間の最大の項目だった。
+[第2期の高速化の起案時の診断](../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)では、置換表の照合が探索中の自己時間の最大の項目だった。
 静止探索のノードの28.1%は静的評価で打ち切られ、そのノードの照合は99.6%が外れていた。
 置換表で打ち切ったノードの42%は静的評価でも打ち切れ、照合全体の的中率は11.0%だった。
 また獅子は、隣接する相手駒を第1段階で取ってから第2段階で空升へ進む手を、取る駒が同じで到達升だけが異なる手として経由升ごとに最大7通り持ち、設計書の見積もりでは獅子のある局面で候補を数倍にしていた。
 [合法手生成と利き計算の高速化（第2期）](../plans/archived/movegen-speedup-2.md)は、探索木を変えるこれらの変更を、stand-patによる先行の打ち切りを段階7、獅子の候補の除外を段階8、候補のないノードでの置換表の省略を段階9とし、固定深さの経過時間で事前に選別した。
-[事前選別の記録](../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)では、3段階はいずれも親より経過時間が短く、合わせて経過時間を0.880倍にした。
+[事前選別の記録](../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-prescreen-depth5.md)では、3段階はいずれも親より経過時間が短く、合わせて経過時間を0.880倍にした。
 
 ## 決定
 
 静止探索は、stand-patがβ以上のノードと、入口のdelta pruningの後に読む捕獲が残らないノードでは、置換表を照会も保存もせずに返す。
 獅子が経由升で相手駒を取り、移動元と異なる空升へ進む手を、静止探索の候補と置換表の手の検査から除く。
-エンジンの開発者は、3つの変更を1コミットにまとめて1回のSTCとLTCで判定する方式を選び、[STC](../measurements/movegen-speedup-2-stage7-9-stc.md)と[LTC](../measurements/movegen-speedup-2-stage7-9-ltc.md)はいずれも`H1`かつ異常0件だった。
+エンジンの開発者は、3つの変更を1コミットにまとめて1回のSTCとLTCで判定する方式を選び、[STC](../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-stc.md)と[LTC](../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-ltc.md)はいずれも`H1`かつ異常0件だった。
 
 ## 検討した代案
 

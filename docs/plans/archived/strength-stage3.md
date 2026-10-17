@@ -19,8 +19,8 @@ SEEの前提として、ある升を取れる駒の集合を幾何だけで求�
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 本マイルストーンは2026年9月5日に起案して同日に着手し、同日に完了した。
 駒価値の再調整と`attackers_to_by`とSEEを採用し、静止探索の深さ上限は発動しない改良として見送った。
-駒価値の再調整は[STC](../../measurements/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3-values-ltc.md)、SEEは[STC](../../measurements/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3-see-ltc.md)がいずれも`H1`かつ異常0件であり、深さ上限は[深さ分布のbench](../../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上が0.82%と基準を下回った。
-[固定自己対局](../../measurements/strength-stage3-elo200.md)は段階開始版に対してSTCで+41.8 Elo、[HaChu戦](../../measurements/strength-stage3-hachu-elo200.md)は+125.0 Eloを進捗指標として記録した。
+駒価値の再調整は[STC](../../measurements/strength-stage3/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-values-ltc.md)、SEEは[STC](../../measurements/strength-stage3/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-see-ltc.md)がいずれも`H1`かつ異常0件であり、深さ上限は[深さ分布のbench](../../measurements/strength-stage3/strength-stage3-qsearch-depth-bench.md)で深さ8以上が0.82%と基準を下回った。
+[固定自己対局](../../measurements/strength-stage3/strength-stage3-elo200.md)は段階開始版に対してSTCで+41.8 Elo、[HaChu戦](../../measurements/strength-stage3/strength-stage3-hachu-elo200.md)は+125.0 Eloを進捗指標として記録した。
 
 ## 目的
 
@@ -174,7 +174,7 @@ benchの各局面を標準時間制御の到達深さに近い深さ5で探索�
 上限はstand-patで探索結果を変えるので、上位計画が探索挙動を変えない高速化に課す3%のNPS基準とは無関係であり、実装する場合は棋力で採否を決める。
 1%以上なら、分布の99パーセンタイルの深さを上限とし、上限に達したノードはstand-patを返す実装を1項目として測る。
 上限の値は診断で1つに決め、STCまでに別の値へ変えない。
-[深さ分布のbench](../../measurements/strength-stage3-qsearch-depth-bench.md)では、深さ5の探索で静止探索ノードの99.2%が深さ7以内にあり、深さ8以上は0.82%であったため、上限は見送った。
+[深さ分布のbench](../../measurements/strength-stage3/strength-stage3-qsearch-depth-bench.md)では、深さ5の探索で静止探索ノードの99.2%が深さ7以内にあり、深さ8以上は0.82%であったため、上限は見送った。
 
 ## 実装フェーズ
 
@@ -190,7 +190,7 @@ benchの各局面を標準時間制御の到達深さに近い深さ5で探索�
 `Pst`に駒価値の表を持たせ、復号時に正値性を検査し、`move_order_key`と`DELTA_MARGIN`をその表に基づく値へ改める。
 単体テストで、埋め込みPSTの表が非王駒で正であること、王駒の値が非王駒の最大値を上回ること、余裕値が歩兵の2倍であること、および非王駒の導出値が正でない重みを`decode`が専用のエラーで拒否することを固定する。
 benchの総ノード数が変わることを確認し（順序と枝刈りが変わるため）、段階開始版とのSTCとLTCで採否を決める。
-benchの総ノード数は深さ3で607,322から773,071へ変わり、[STC](../../measurements/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3-values-ltc.md)がともに`H1`かつ異常0件となったため採用した。
+benchの総ノード数は深さ3で607,322から773,071へ変わり、[STC](../../measurements/strength-stage3/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-values-ltc.md)がともに`H1`かつ異常0件となったため採用した。
 
 ### フェーズ3　`attackers_to_by`とSEE
 
@@ -200,19 +200,19 @@ benchでSEEにより除かれる捕獲手の割合を数えて発動を確認し
 フェーズ2が不採用なら、SEEはv0の駒価値の表を使い、段階開始版を基準にする。
 `attackers_to_by`とSEEは1つの項目であり、採否も一体で決める。
 benchの深さ3では、delta pruningを通過した捕獲手のうち38.7%をSEEが負として除き、25.0%が判定不能であった。
-駒価値の採用コミットを基準とする[STC](../../measurements/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3-see-ltc.md)がともに`H1`かつ異常0件となったため採用した。
+駒価値の採用コミットを基準とする[STC](../../measurements/strength-stage3/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-see-ltc.md)がともに`H1`かつ異常0件となったため採用した。
 
 ### フェーズ4　静止探索の深さ上限
 
 benchで深さ分布を測り、見送るか実装するかを本書の基準で決める。
 実装する場合は、上限に達したノードがstand-patを返すことを単体テストで固定し、直前の採用構成とのSTCとLTCで採否を決める。
-[深さ分布のbench](../../measurements/strength-stage3-qsearch-depth-bench.md)は深さ8以上が0.82%であり、基準により見送った。
+[深さ分布のbench](../../measurements/strength-stage3/strength-stage3-qsearch-depth-bench.md)は深さ8以上が0.82%であり、基準により見送った。
 
 ### フェーズ5　進捗指標の記録
 
 全項目の採否が確定した後に、段階開始版との固定200ペアEloをSTCで、HaChu戦の固定200ペアEloを`time=60000+1000`で記録する。
 採用項目が1つもなく最終構成が段階開始版と同一の場合は、同一バイナリの自己比較に意味がないので段階開始版との比較を省略し、HaChu戦だけを記録する。
-[固定自己対局](../../measurements/strength-stage3-elo200.md)は+41.8 Elo（95%信頼区間+6.9〜+77.6）、[HaChu戦](../../measurements/strength-stage3-hachu-elo200.md)は+125.0 Elo（95%信頼区間+92.0〜+160.3）であった。
+[固定自己対局](../../measurements/strength-stage3/strength-stage3-elo200.md)は+41.8 Elo（95%信頼区間+6.9〜+77.6）、[HaChu戦](../../measurements/strength-stage3/strength-stage3-hachu-elo200.md)は+125.0 Elo（95%信頼区間+92.0〜+160.3）であった。
 
 ## 検証
 
@@ -244,7 +244,7 @@ benchで深さ分布を測り、見送るか実装するかを本書の基準で
 - [検証損失の近さは駒価値の正しさを保証しない](../../lessons/validation-loss-hides-material-distortion.md)：駒価値の診断の根拠。
 - [不正状態を作れる公開型を避ける](../../lessons/checked-constructors-for-public-types.md)：正値性を復号時に検査する根拠。
 - [置換表なしの静止探索は捕獲木の重複を全列挙する](../../lessons/qsearch-dag-without-tt.md)：静止探索のノード構成の背景。
-- [駒価値のSTC](../../measurements/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3-values-ltc.md)：駒価値の再調整の採用根拠。
-- [SEEのSTC](../../measurements/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3-see-ltc.md)：`attackers_to_by`とSEEの採用根拠。
-- [深さ分布のbench](../../measurements/strength-stage3-qsearch-depth-bench.md)：深さ上限を見送った根拠。
-- [固定自己対局](../../measurements/strength-stage3-elo200.md)と[HaChu戦](../../measurements/strength-stage3-hachu-elo200.md)：段階間の進捗指標。
+- [駒価値のSTC](../../measurements/strength-stage3/strength-stage3-values-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-values-ltc.md)：駒価値の再調整の採用根拠。
+- [SEEのSTC](../../measurements/strength-stage3/strength-stage3-see-stc.md)と[LTC](../../measurements/strength-stage3/strength-stage3-see-ltc.md)：`attackers_to_by`とSEEの採用根拠。
+- [深さ分布のbench](../../measurements/strength-stage3/strength-stage3-qsearch-depth-bench.md)：深さ上限を見送った根拠。
+- [固定自己対局](../../measurements/strength-stage3/strength-stage3-elo200.md)と[HaChu戦](../../measurements/strength-stage3/strength-stage3-hachu-elo200.md)：段階間の進捗指標。

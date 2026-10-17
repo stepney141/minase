@@ -20,6 +20,6 @@ LTC側の時間切れとエンジン異常は0件だった。
 
 ## 出典
 
-- [measurements/spsa-gain-simulation.md](../measurements/spsa-gain-simulation.md)
-- [measurements/spsa-stage9-20260923-ltc.md](../measurements/spsa-stage9-20260923-ltc.md)
-- [measurements/byoyomi-a-short.md](../measurements/byoyomi-a-short.md)
+- [measurements/spsa-gain-calibration/spsa-gain-simulation.md](../measurements/spsa-gain-calibration/spsa-gain-simulation.md)
+- [measurements/spsa/spsa-stage9-20260923-ltc.md](../measurements/spsa/spsa-stage9-20260923-ltc.md)
+- [measurements/byoyomi-time-usage/byoyomi-a-short.md](../measurements/byoyomi-time-usage/byoyomi-a-short.md)

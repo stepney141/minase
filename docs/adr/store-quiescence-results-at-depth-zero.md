@@ -7,12 +7,12 @@
 ## コンテキスト
 
 [探索部](../plans/archived/search.md)の初版では、静止探索は置換表を使っていなかった。
-[Lazy SMP](../plans/archived/lazy-smp.md)の初版が速くならなかった原因を調べると、単一ワーカーの深さ5の探索で、置換表を照会する残り深さ1以上のノードは、12.76Mノードのうち242Kで、全ノードの約2%しかなかった（[測定記録](../measurements/lazy-smp-v1-diversification-bench.md)）。
+[Lazy SMP](../plans/archived/lazy-smp.md)の初版が速くならなかった原因を調べると、単一ワーカーの深さ5の探索で、置換表を照会する残り深さ1以上のノードは、12.76Mノードのうち242Kで、全ノードの約2%しかなかった（[測定記録](../measurements/lazy-smp/lazy-smp-v1-diversification-bench.md)）。
 残りは置換表を使わない深さ0のノードと静止探索であり、置換表の共有が減らせる部分木はごく一部であった（[教訓](../lessons/qsearch-dag-without-tt.md)）。
 初版の置換表は、同じ局面への書き込みを常に受け入れていた。
 静止探索が深さ0の記録を書くようになると、この規則では通常探索の深い記録が消える。
 そこでLazy SMPの第2版は、静止探索で置換表を照会・記録し、同じ局面への書き込みを深さで制限した。
-`--each nodes=100000`のGSPRTは有効445ペアでLLR 2.958の`H1`となり、固定深さ5の経過時間は11.1秒から4.2秒へ短縮した（[測定記録](../measurements/qsearch-tt-nodes100k.md)）。
+`--each nodes=100000`のGSPRTは有効445ペアでLLR 2.958の`H1`となり、固定深さ5の経過時間は11.1秒から4.2秒へ短縮した（[測定記録](../measurements/lazy-smp/qsearch-tt-nodes100k.md)）。
 
 ## 決定
 

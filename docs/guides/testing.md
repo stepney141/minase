@@ -340,7 +340,7 @@ GPUを要するテスト、約100秒かかる全列挙、および検定式を�
 現在の例は、[NNUEの学習の手引き](nnue-training.md)の`gpu_`テストと、[SPRTの手引き](sprt.md)のモンテカルロ検証である。
 直前局面の生成器の全列挙も除外の例であり、直前局面の生成器または合法手生成を変えたときに次のコマンドで実行する。
 releaseビルドでの所要時間は、前者が約6分、後者が約9分である。
-後者は最大で約6 GBのメモリを使う（[計測記録](../measurements/predecessor-generator-profile.md)）。
+後者は最大で約6 GBのメモリを使う（[計測記録](../measurements/predecessor-generator/predecessor-generator-profile.md)）。
 
 ```console
 cargo test -p minase-core --release predecessor_completeness -- --ignored --test-threads=1

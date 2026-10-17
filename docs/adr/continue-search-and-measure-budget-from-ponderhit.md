@@ -29,7 +29,7 @@ minaseの予算は加算と秒読みの項が大半を占め、残り時間の�
 ## 結果
 
 先読みでない探索では的中までの時間が0なので、判定は先読みのない式と一致し、固定深さのbench総ノード数は変わらない。
-先読みは、STCが有効208ペアでLLR 2.9505、LTCが有効215ペアでLLR 2.9512の`H1`であり、的中率はSTCで49.5%、LTCで52.0%だった（[STC](../measurements/ponder-stc.md)、[LTC](../measurements/ponder-ltc.md)）。
+先読みは、STCが有効208ペアでLLR 2.9505、LTCが有効215ペアでLLR 2.9512の`H1`であり、的中率はSTCで49.5%、LTCで52.0%だった（[STC](../measurements/ponder/ponder-stc.md)、[LTC](../measurements/ponder/ponder-ltc.md)）。
 候補は相手の手番中にもCPUを使うので、CPU時間の合計は基準の約2.0倍であり、この測定が示すのは同じ時計の下での強さである。
 予算がUSIオプション`USI_Ponder`の値に依存しないので、minaseは`USI_Ponder`を宣言せず、受け取っても無視する。
 測定は評価関数がPSTとFMだった時期の構成で行ったので、起点や再判定の方式を変える提案には現行の構成での再測定が要る。

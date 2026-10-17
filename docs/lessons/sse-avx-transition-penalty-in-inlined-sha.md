@@ -22,4 +22,4 @@ SHA専用命令のように、SSE形式しかない命令で計算するクレ�
 
 ## 出典
 
-[Python学習器の移植と撤去の照合の記録](../measurements/python-trainer-retirement-checks.md)の「NNUEの学習の速度」の節、2026年10月13日。
+[Python学習器の移植と撤去の照合の記録](../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)の「NNUEの学習の速度」の節、2026年10月13日。

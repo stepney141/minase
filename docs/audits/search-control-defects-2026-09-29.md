@@ -82,7 +82,7 @@ python3 docs/audits/search-control-defects-2026-09-29/reproduce.py
 手番を仮に相手へ渡すnull moveをまたいだ反復判定は、[修正計画の完了記録](../plans/archived/search-bug-fixes.md)と基準コミットのコードから、修正済みであることを確認した。
 
 成り益を含めない静止探索の枝刈りは、[既存の修正計画](../plans/archived/search-bug-fixes.md#設計判断)で不具合として記録されている。
-修正版との[対局測定](../measurements/search-bug-fixes-delta-promotion-diag-stc.md#結果)は判定未了で、修正前の版が強い方向の結果となり、利用者の決定で修正が取り込まれなかった。
+修正版との[対局測定](../measurements/search-bug-fixes/search-bug-fixes-delta-promotion-diag-stc.md#結果)は判定未了で、修正前の版が強い方向の結果となり、利用者の決定で修正が取り込まれなかった。
 この既存の分類を記録したうえで、終了性と失敗処理を対象とする本監査では再判定しない。
 
 補助ワーカーが指定深さを完了した際の停止方針は、設計書の間で記述が一致しない。

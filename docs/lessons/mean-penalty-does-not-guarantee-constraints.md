@@ -23,5 +23,5 @@
 
 ## 出典
 
-- [二乗型の予備比較](../measurements/strength-stage7-removal-pilot.md)に、下限と上限の二乗項、および境界近傍の勾配を記録した。
-- [片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)に、標本内0件の適用範囲と、旧二乗型候補の全訓練集合に対する監査を記録した。
+- [二乗型の予備比較](../measurements/strength-stage7/strength-stage7-removal-pilot.md)に、下限と上限の二乗項、および境界近傍の勾配を記録した。
+- [片側絶対値型の予備比較](../measurements/strength-stage7/strength-stage7-removal-absolute.md)に、標本内0件の適用範囲と、旧二乗型候補の全訓練集合に対する監査を記録した。

@@ -7,15 +7,15 @@
 ## コンテキスト
 
 通常探索の静かな手は、butterfly historyの値の降順に並ぶ。
-[棋力向上段階5](../plans/archived/strength-stage5.md)のmalusは、β打ち切りを起こした静かな手に加点し、同じノードで先に探索した静かな手を同じ大きさで減点したが、STCが上限3,000ペアでLLR −1.578の判定保留となり不採用だった（[測定記録](../measurements/strength-stage5-malus-stc.md)）。
+[棋力向上段階5](../plans/archived/strength-stage5.md)のmalusは、β打ち切りを起こした静かな手に加点し、同じノードで先に探索した静かな手を同じ大きさで減点したが、STCが上限3,000ペアでLLR −1.578の判定保留となり不採用だった（[測定記録](../measurements/strength-stage5/strength-stage5-malus-stc.md)）。
 当時のLMRはhistory値を参照していなかった。
 [手の順序付けの改善](../plans/archived/move-ordering.md)は、malusを加点と減点の別の尺度で再導入した。
-[診断](../measurements/move-ordering-root-diag.md)は、本番の順序を変えずに減点つきの更新だけを並行して行う比較用の表（影の表）を使った。
+[診断](../measurements/move-ordering/move-ordering-root-diag.md)は、本番の順序を変えずに減点つきの更新だけを並行して行う比較用の表（影の表）を使った。
 この影の表で静かな手の順序が変わるノードは深さ6で92.3%あり、負のhistory値でLMRの減深が1増える経路に入る手は3.9〜20.0%だった。
 同じ設計書は、history値が同じ手の同点を、駒の移動による評価の線形部分の差で破る候補を立てた。
-[診断](../measurements/move-ordering-diag.md)では、この同点破りで先頭の静かな手が変わるノードが深さ6で12.41%あり、β打ち切りを起こすかαを上げた手の順位は、前進538件が後退393件を上回った。
-両候補を含む[手の順序付けの改善の7候補](bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering-all-ltc.md)）。
-同点破り、malus、および静止探索の群内の捕獲履歴の3候補を外した構成は、全7候補の構成との直接対局で得点率48.2%の`H0`であり、全7候補の構成が5 Elo以上強いと判定された（[測定記録](../measurements/move-ordering-no358-vs-all-stc.md)）。
+[診断](../measurements/move-ordering/move-ordering-diag.md)では、この同点破りで先頭の静かな手が変わるノードが深さ6で12.41%あり、β打ち切りを起こすかαを上げた手の順位は、前進538件が後退393件を上回った。
+両候補を含む[手の順序付けの改善の7候補](bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering/move-ordering-all-ltc.md)）。
+同点破り、malus、および静止探索の群内の捕獲履歴の3候補を外した構成は、全7候補の構成との直接対局で得点率48.2%の`H0`であり、全7候補の構成が5 Elo以上強いと判定された（[測定記録](../measurements/move-ordering/move-ordering-no358-vs-all-stc.md)）。
 
 ## 決定
 

@@ -11,8 +11,8 @@
 [静止探索の出力を学ぶPSTの学習](../plans/archived/qsearch-output-training.md)は、入力の局面と学習目標を分けて調べた。
 対照Rは静かな局面の静的評価を教師値へ近づけ、候補Qは同じ局面から静止探索した値を同じ教師値へ近づけ、損失の勾配を値を決めた末端の局面へ渡した。
 候補QcはQと同じ学習目標に捕獲局面を加え、3者は着手時の採用版S0を初期値に、同じ教師と更新回数で独立に学習した。
-[Q対RのSTC](../measurements/qsearch-output-q-vs-r-stc.md)は640有効ペア、ペンタノミアル度数[150, 26, 326, 22, 116]、LLR −2.986で`H0`となった。
-[Qc対QのSTC](../measurements/qsearch-output-qc-vs-q-stc.md)は上限3,000ペアに達し、2,816有効ペアでLLR −1.166と負だった。
+[Q対RのSTC](../measurements/qsearch-output-training/qsearch-output-q-vs-r-stc.md)は640有効ペア、ペンタノミアル度数[150, 26, 326, 22, 116]、LLR −2.986で`H0`となった。
+[Qc対QのSTC](../measurements/qsearch-output-training/qsearch-output-qc-vs-q-stc.md)は上限3,000ペアに達し、2,816有効ペアでLLR −1.166と負だった。
 
 ## 決定
 

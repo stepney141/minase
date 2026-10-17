@@ -9,8 +9,8 @@
 `Cargo.toml`のreleaseプロファイルは、リンク時最適化（`lto = true`）を有効にしている。
 rustcは既定でcrateを複数のコード生成単位に分けて並列にコンパイルし、単位をまたぐインライン化と最適化の機会を一部失う。
 [合法手生成と利き計算の高速化（第2期）](../plans/archived/movegen-speedup-2.md)の段階1で、探索結果を変えないビルド設定の変更を比べた。
-[起案時の診断](../measurements/movegen-speedup-2-diagnostics-depth5.md)では、`codegen-units = 1`のNPS比は1.014倍から1.025倍であり、そこへ`panic = "abort"`を加えても追加の差はなかった。
-[段階1のbench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)では、`codegen-units = 1`は15局面の探索結果を保ったまま、NPSを直前の採用版である親コミットの1.0296倍にし、増分は親を繰り返し測ったときのばらつきの幅0.45%を超えた。
+[起案時の診断](../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)では、`codegen-units = 1`のNPS比は1.014倍から1.025倍であり、そこへ`panic = "abort"`を加えても追加の差はなかった。
+[段階1のbench比較](../measurements/movegen-speedup-2/movegen-speedup-2-stage1-bench-depth5.md)では、`codegen-units = 1`は15局面の探索結果を保ったまま、NPSを直前の採用版である親コミットの1.0296倍にし、増分は親を繰り返し測ったときのばらつきの幅0.45%を超えた。
 
 ## 決定
 

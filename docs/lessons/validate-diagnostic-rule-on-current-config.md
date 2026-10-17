@@ -16,4 +16,4 @@ LMRの減深量の係数を「失う良い結果が10%以下」という段階4�
 
 ## 出典
 
-[棋力向上段階5](../plans/archived/strength-stage5.md)の「係数と閾値の決め方」と[試行診断](../measurements/strength-stage5-lmr-trial-bench.md)。
+[棋力向上段階5](../plans/archived/strength-stage5.md)の「係数と閾値の決め方」と[試行診断](../measurements/strength-stage5/strength-stage5-lmr-trial-bench.md)。

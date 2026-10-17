@@ -27,7 +27,7 @@
 ## 結果
 
 `cargo install`が導入する実行ファイルは`minase`の1つになり、`minase --help`から全ツールを辿れる。
-エンジンの実行ファイルに補助ツールのコードが加わったが、探索の局面別のノード数は変わらず、NPSの中央値は移動前の0.9955倍だった（[速度の測定記録](../measurements/cli-subcommands-bench-depth5.md)）。
+エンジンの実行ファイルに補助ツールのコードが加わったが、探索の局面別のノード数は変わらず、NPSの中央値は移動前の0.9955倍だった（[速度の測定記録](../measurements/cli-subcommands/cli-subcommands-bench-depth5.md)）。
 ツールの実行ファイルのSHA-256は、探索や評価だけを変えたコミットでも変わるので、生成用の実行ファイルは専用のworktreeに固定する（[教訓](../lessons/pin-generation-binary-to-worktree.md)）。
 補助ツールはすべて`minase`のプロセスとして動くので、進行中の測定はプロセス名ではなく引数を含めて探す（[教訓](../lessons/check-running-measurements-before-cpu-load.md)）。
 グローバルアロケータは`main.rs`の1つの宣言がすべてのツールに適用される（[実行ファイルでmimallocを使う](use-mimalloc-in-executables.md)）。

@@ -85,22 +85,22 @@ Ethereal式に探索の終端局面を静的評価する場合も、現在の元
 ## 既存の測定から言えること
 
 現在のデータで、全係数を独立に決められるわけではない。
-[118列の診断](../measurements/strength-stage9-activation-diag-b.md)では、手番側の獅子が敵王から距離2以内にいる列が発火せず、獅子の孤立と支えのない獅子への脅威の列は同一である。
+[118列の診断](../measurements/strength-stage9/strength-stage9-activation-diag-b.md)では、手番側の獅子が敵王から距離2以内にいる列が発火せず、獅子の孤立と支えのない獅子への脅威の列は同一である。
 常に0の特徴の係数はデータから決まらず、同一の2列があれば、それぞれの係数を独立に決めることはできない。
 特徴の除外や統合が必要になる理由はここにあり、学習方式を替えてもこの識別性の問題は残る。
 
-[教師成分ごとの残差診断](../measurements/teacher-quality-residual-diag.md)は、探索値だけ、75:25の混合、および対局結果だけについて、固定した位置評価表との残差相関を測ったものである。
+[教師成分ごとの残差診断](../measurements/strength-stage9/teacher-quality-residual-diag.md)は、探索値だけ、75:25の混合、および対局結果だけについて、固定した位置評価表との残差相関を測ったものである。
 項目1の一部では、探索値側で正だった相関が結果側では負になっているが、絶対値は小さい。
 これは結果側の情報を調べる動機にはなるが、係数学習後の棋力向上を示すものではない。
 逆に、単独の特徴と残差との相関が小さいことだけから、複数の特徴や局面の進行度を含む学習が無効だとも結論できない。
 
-実戦棋譜を扱う[診断B](../measurements/strength-stage9-human-signal.md)などには、補助的なロジスティックモデルの学習がある。
+実戦棋譜を扱う[診断B](../measurements/strength-stage9/strength-stage9-human-signal.md)などには、補助的なロジスティックモデルの学習がある。
 それとは区別して、自己対局結果100%でエンジンの評価関数を学習し、その重みを組み込んで対局採否を測った記録は、今回確認した資料にはない。
-項目1の実際の学習は \(\lambda=0.75\) である。[項目1の学習記録](../measurements/strength-stage9-shelter-training.md)
+項目1の実際の学習は \(\lambda=0.75\) である。[項目1の学習記録](../measurements/strength-stage9/strength-stage9-shelter-training.md)
 
 計算費用も独立した制約である。
 段階9は、利き数の表が速度条件を満たさず、項目2〜7を見送っている。
-特徴を事前計算して係数を学ぶことはできても、その特徴を対局中に毎回計算する費用は残る。[段階9の状態](../plans/archived/strength-stage9.md)、[速度の測定](../measurements/strength-stage9-table-bench.md)
+特徴を事前計算して係数を学ぶことはできても、その特徴を対局中に毎回計算する費用は残る。[段階9の状態](../plans/archived/strength-stage9.md)、[速度の測定](../measurements/strength-stage9/strength-stage9-table-bench.md)
 
 ## 最初の比較候補
 

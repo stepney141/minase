@@ -8,9 +8,9 @@
 
 それまでの機能採否は、秒読みを含む1つの時間制御のGSPRTで行っていた。
 [棋力測定の段階ゲート](../plans/archived/match-staged-gate.md)の旧案は、真の効果が既知のエンジンの組（比較カード）で候補の時間制御の効率を校正してから標準を決める方式だった。
-初回の校正では、負例の比較カードで候補が400局全敗してペア得点の分散が0になり、指標を算出できなかった（[負例の記録](../measurements/calibration-negative-current.md)）。
-正例の比較カードは200ペアでEloの95%信頼区間が40.43〜108.02と粗く（[正例の記録](../measurements/calibration-positive-current.md)）、閾値の判定には本測定より大きい標本が要った。
-一方、固定ノード数の条件と時間制御の条件が同じ優劣の向きを示した組は3つあり（[PST世代0](../measurements/pst-gen0-tc.md)、[PST世代1](../measurements/pst-gen1-tc.md)、[P型NNUE世代1](../measurements/nnue-gen1-tc.md)）、向きが反転した例は記録になかった。
+初回の校正では、負例の比較カードで候補が400局全敗してペア得点の分散が0になり、指標を算出できなかった（[負例の記録](../measurements/match-harness-efficiency/calibration-negative-current.md)）。
+正例の比較カードは200ペアでEloの95%信頼区間が40.43〜108.02と粗く（[正例の記録](../measurements/match-harness-efficiency/calibration-positive-current.md)）、閾値の判定には本測定より大きい標本が要った。
+一方、固定ノード数の条件と時間制御の条件が同じ優劣の向きを示した組は3つあり（[PST世代0](../measurements/evaluation/pst-gen0-tc.md)、[PST世代1](../measurements/evaluation-gen1/pst-gen1-tc.md)、[P型NNUE世代1](../measurements/evaluation-gen1/nnue-gen1-tc.md)）、向きが反転した例は記録になかった。
 真の効果がH0とH1の中間にある変更は、GSPRTの決着までに多くのペアを要し、必要なペア数の分布の裾も長い。
 
 ## 決定
@@ -26,7 +26,7 @@ STCは3,000ペアで打ち切り、上限に達した判定保留は停止時点
 STCの判定保留を一律に不通過とする案は、H0とH1の中間にある実在の改善が構造的に選別で止まるので採らなかった。
 STCを上限なしで決着まで回す案は、境界付近の変更で選別が最終測定より重くなるので採らなかった。
 STCを省ける変更の種類を列挙する案は、列挙の外にある正当な理由を扱えないので採らず、理由の事前記録を歯止めとした。
-同一コミット同士の零差の煙試験を新設する案は、既存の10ペアの煙試験2件の信頼区間が0を含み（[探索部フェーズ5](../measurements/search-phase5-time-control-smoke.md)、[フェーズ6](../measurements/search-phase6-time-control-smoke.md)）、異常件数を全測定で採用条件にするので採らなかった。
+同一コミット同士の零差の煙試験を新設する案は、既存の10ペアの煙試験2件の信頼区間が0を含み（[探索部フェーズ5](../measurements/search/search-phase5-time-control-smoke.md)、[フェーズ6](../measurements/search/search-phase6-time-control-smoke.md)）、異常件数を全測定で採用条件にするので採らなかった。
 
 ## 結果
 

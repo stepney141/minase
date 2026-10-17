@@ -1,6 +1,6 @@
 # HaChu戦の敗局の原因調査
 
-本書は、SPSAの調整を採用した後の版（コミット`df0c75e`）がHaChuとの固定200ペア（[strength-stage12-hachu-elo200](../measurements/strength-stage12-hachu-elo200.md)）で負けた18局について、負けに至った局面と原因を切り分けた調査報告である。
+本書は、SPSAの調整を採用した後の版（コミット`df0c75e`）がHaChuとの固定200ペア（[strength-stage12-hachu-elo200](../measurements/strength-stage12/strength-stage12-hachu-elo200.md)）で負けた18局について、負けに至った局面と原因を切り分けた調査報告である。
 対局はdf0c75eで行い、局面の再生と再探索はmaster（コミット`1ce8490`）のminaseで行った。
 1ce8490は、df0c75eにデバッグ用のUSIコマンドと既定では無効の計測フィーチャを加えたものであり、既定のビルドの探索と評価関数はdf0c75eと同じである。
 規則は測定と同じ`L1,L3,P0,P5,P6,R2,E1,E2`である。

@@ -68,7 +68,7 @@ SPSAの更新則、30,000ペアの規模、および`minase spsa`のコードは
 
 SPSAの手順と規模は[SPSAの手引き](../guides/spsa.md)と[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
 同時対局数を物理コア数から1を引いた数とする規則は、[同時対局数のADR](../adr/derive-default-concurrency-from-physical-cores.md)に従う。
-vast.aiの機械の借り方、起動時スクリプトによる自己停止、`vastai copy`による取得、および停止と削除の確認は、[vast.aiでの教師生成](vast-selfplay.md)の方式とフェーズ0の[試走の記録](../measurements/vast-selfplay-trial.md)に従い、本書には違いだけを書く。
+vast.aiの機械の借り方、起動時スクリプトによる自己停止、`vastai copy`による取得、および停止と削除の確認は、[vast.aiでの教師生成](vast-selfplay.md)の方式とフェーズ0の[試走の記録](../measurements/vast-selfplay/vast-selfplay-trial.md)に従い、本書には違いだけを書く。
 2つの計画のスクリプトに共通する処理は、先に実装する側が`scripts/vast/common.sh`に置き、後から実装する側はそれを使う。
 
 ### サブタスク間の依存
@@ -132,7 +132,7 @@ vast.aiの機械の借り方、起動時スクリプトによる自己停止、`
 3. `f`は測定機の値を調整機の値で割った比とし、小数第2位に丸める。持ち時間は`time=<10000×f>+<100×f>`（ミリ秒、整数に丸める）とする。たとえば`f`が2.31なら`time=23100+231`である。
 
 教師生成の試走の値から見積もると、EPYC 9654の2基構成で同時に192局を探索したときの全体の速度は約1億NPS、1スレッドあたりでは約52万NPSである。
-測定機の同時16局での値は測っていない。Pコア1本だけのbenchは約145万〜148万NPSであり（[記録](../measurements/nnue-hidden-layer-bench.md)）、16局のうち8局はEコアで動き、全コアの負荷でクロックも下がるので、平均は下がる。下限は仮にPコア単独の約7割の約105万NPSと置き、約105万〜145万NPSと見込む。
+測定機の同時16局での値は測っていない。Pコア1本だけのbenchは約145万〜148万NPSであり（[記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)）、16局のうち8局はEコアで動き、全コアの負荷でクロックも下がるので、平均は下がる。下限は仮にPコア単独の約7割の約105万NPSと置き、約105万〜145万NPSと見込む。
 したがって`f`は約2.0〜2.8である。
 SPSAでは1局の時間が持ち時間で決まるので、同時対局数を`c`とすると、調整機の処理量は測定機の`c ÷ (16 × f)`倍、セッションの所要時間は約`75 × 16 × f ÷ c`時間になる。
 EPYC 9654の2基構成で`c`が191なら、処理量は約4.3〜6.0倍、所要時間は約13〜18時間である。
@@ -147,7 +147,7 @@ fishtestも同じ近似で持ち時間を伸ばしている。
 
 同時対局数`c`は、調整機の物理コア数とメモリの両方から決める。
 `minase spsa`は、先後を入れ替えた1ペアの2局を順に指すので、同時に動く局の数は同時対局数に等しく、1局につき2つのエンジンのプロセスが置換表を確保する。
-測定機の記録では1局あたりの最大常駐メモリは約613 MBであり（[記録](../measurements/strength-stage8-elo200.md)）、同時191局で約117 GBになる。
+測定機の記録では1局あたりの最大常駐メモリは約613 MBであり（[記録](../measurements/strength-stage8/strength-stage8-elo200.md)）、同時191局で約117 GBになる。
 サブタスクが進むと、1局あたりのメモリは増える。たとえば[historyの形](history-forms.md)はエンジン1つあたり約157 MB、[correction historyの表](correction-history-tables.md)は約37 MBを加えるので、両方を採用した後の1局は約1.0 GB、同時191局で約191 GBになる。
 このため、メモリの条件は固定の値にせず、セッションごとに決める。
 セッションの準備で、測定機で調整対象のコミットの調整用ビルド同士の1ペアをSTCで指し、各局の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和を求め、2局のうち大きい方の値を1局あたりの最大常駐メモリとする。
@@ -214,7 +214,7 @@ EPYC 7763などの1基構成やThreadripper PRO 5995WX（Zen 3、物理64コア�
 
 ## 所要時間と費用
 
-SPSAのセッションは、測定機の同時対局数16で3,000ペアに27,138秒かかった記録（[セッションの記録](../measurements/spsa-stage9-20260925-c5.md)）から、測定機では30,000ペアで約75時間かかる。
+SPSAのセッションは、測定機の同時対局数16で3,000ペアに27,138秒かかった記録（[セッションの記録](../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)）から、測定機では30,000ペアで約75時間かかる。
 調整機では、EPYC 9654またはEPYC 9K84の2基構成で`c`を191とすると約13〜18時間と見込み、ビルド、負荷時の速度の測定、および時間切れの事前確認に約45分を加える。
 1時間1.87米ドルのEPYC 9K84の2基構成では、1セッションの費用は約25〜35米ドル、7本で約175〜245米ドルになる。
 1時間1.01米ドルのEPYC 9654の2基構成は、メモリの制限で`c`が下がる分だけ所要時間が延びるが、`c`が約164なら1セッションは約15〜21時間、約16〜22米ドルと見込まれる。
@@ -239,7 +239,7 @@ SPSAのセッションは、測定機の同時対局数16で3,000ペアに27,138
 ### フェーズ0　試走と持ち時間の換算の確定
 
 選定の規則に従って候補を試し、所要時間の見込みが上限に収まった最初の調整機を約3時間借りて、現行のmasterで次を測る。以下では、その調整機の同時対局数を`c`と書く。
-スクリプトはまだないので、[試走の記録](../measurements/vast-selfplay-trial.md)と同じく、SSHで接続して手作業で実行する。
+スクリプトはまだないので、[試走の記録](../measurements/vast-selfplay/vast-selfplay-trial.md)と同じく、SSHで接続して手作業で実行する。
 
 1. 測定機と調整機の負荷時の速度を、それぞれ3回ずつ測り、`f`と繰り返しのばらつきを求める。
 2. 同じ基本シード5,600,000,000で、現行のmasterの調整用ビルド同士を`minase match run`で対局させる。測定機ではSTCと同時対局数16で`c`ペア、調整機では換算した持ち時間と同時対局数`c`で`2c`ペアを指す。調整用ビルドは、各機で負荷時の速度の測定に使った実行ファイルを、起動コマンドの形式（`"<パス> --protocol usi --rules engine-default"`）で両側に指定する。`commit:`の形式は通常のビルドを作るので使わない。同じシードを使い、同じ開始局面で両機の探索の深さを比べる。調整機で2巡分を指せば、ペア番号1〜`c`の対局は対局の枠が埋まった負荷の下で指される。
@@ -296,8 +296,8 @@ SPSAのセッションは、測定機の同時対局数16で3,000ペアに27,138
 ## 参考資料
 
 - fishtest（コミット5a8a229a、2026年10月17日参照）の`worker/games.py`は、`run_parallel_benches`（502〜518行）と`get_bench_nps`（521〜555行）で同時対局数と同じ本数のbenchを走らせて1スレッドあたりのNPSを測り、`factor = 672000 / base_nps`（1659行）を`adjust_tc`（995〜1025行）で基本時間と加算の両方に掛ける。SPSAでは、1回の要求で同時対局数の4倍に持ち時間に応じた倍数を掛けた局数（持ち時間10秒＋0.1秒では同時対局数の12倍）を同じ摂動で指す（1718〜1727行）。`server/fishtest/spsa_handler.py`の`__update_spsa_data`（127〜173行）は、要求時の反復番号から歩幅を作り、結果を更新時点の現在のθへ加える。基準のNPSは、コミット0ace932e（2026年10月11日）で628,000から672,000へ改められた。
-- [vast.aiでの教師生成](vast-selfplay.md)と[試走の記録](../measurements/vast-selfplay-trial.md)は、vast.aiの操作の方式、出品の選定条件、およびEPYC 9654の2基構成の負荷時の速度の根拠である。
-- [SPSAの調整の記録](../measurements/spsa-stage9-20260925-c5.md)は、測定機の同時対局数16での1ペアあたりの時間の根拠である。
-- [段階8のElo測定の記録](../measurements/strength-stage8-elo200.md)は、1局あたりの最大常駐メモリの根拠である。
-- [NNUEの隠れ層の速度の記録](../measurements/nnue-hidden-layer-bench.md)は、測定機のPコア1本のbenchの速度の根拠である。
+- [vast.aiでの教師生成](vast-selfplay.md)と[試走の記録](../measurements/vast-selfplay/vast-selfplay-trial.md)は、vast.aiの操作の方式、出品の選定条件、およびEPYC 9654の2基構成の負荷時の速度の根拠である。
+- [SPSAの調整の記録](../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)は、測定機の同時対局数16での1ペアあたりの時間の根拠である。
+- [段階8のElo測定の記録](../measurements/strength-stage8/strength-stage8-elo200.md)は、1局あたりの最大常駐メモリの根拠である。
+- [NNUEの隠れ層の速度の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)は、測定機のPコア1本のbenchの速度の根拠である。
 - [利得の較正の設計書](archived/spsa-gain-calibration.md)は、同時対局数16での更新の遅れを1〜2反復と見積もり、小さいと判断した。
