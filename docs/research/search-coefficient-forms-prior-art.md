@@ -97,15 +97,21 @@ butterfly historyの学習率が小さいため、minaseでは重力式による
 | 探索の不安定さによる伸縮（係数なし） | 最善手が4反復続いたら判定を厳しくする二値の短縮だけ（`time.rs:33-65`） | 目安時間に、評価値の下落、最善手の変化回数、最善手の変化からの深さ、最善手のノード占有率の4因子を掛け、両方向に連続で伸縮させる（Stockfish `search.cpp:592-613`、YaneuraOu `yaneuraou-search.cpp:1969-1990`） | 依存変数の欠落 | 埋まらない |
 
 minaseは秒読みのない時計では上限時間で中断した反復の結果を捨てるので（`team.rs:246`、`root.rs:116-118`）、上限時間の倍率は、中断した反復の結果も使うStockfishの倍率と同じ意味の値ではない。
-延長方向の時間配分は、[ADR](../adr/stop-early-on-stable-best-move-without-extensions.md)に記録された二値の延長がSTCで`H0`だったが、4因子の連続量の積の形は測っていない。
+延長方向の時間配分は、[ADR](../adr/stop-early-on-stable-best-move-without-extensions.md)に記録された二値の延長がSTCで`H0`だった。4因子の積は、[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の第3段階でStockfishの定数に正規化定数0.48を掛けた形で実装した（[事前判定](../measurements/time-management-efficiency-stage3-bench.md)）。ただし、途中結果の採用と予算の再定義を積んだ再構成の一部としてSTCで`H0`となったものであり、単独では測っていない。続く分解測定は、負けの原因を途中結果の採用と予算の再定義に絞っている。
 Stockfishは相手との持ち時間の差でも目安時間を下げるが（`src/timeman.cpp:151-156`）、minaseの時計の入力には相手の残り時間がない（`crates/minase/src/search/limits.rs:145-155`）。
 
 ## 候補の扱い
 
 構造の差のうち、[探索の枝刈りとLMRの関数形の見直し](../plans/search-pruning-forms.md)が扱うのは、reverse futility pruningの形と深さの上限、補正後の評価の適用先、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限である。
 これらは、新しい係数の開始値を現行と同じ挙動になる値に設定できるので、形だけを変えたコミットを探索ノード数の一致で検証できる。
-butterfly historyの更新量の形とcontinuation historyは、手の並べ替え全体を変え、同じ候補に含めると採否の解釈が難しくなるので、別の設計書で扱う。
-futility pruning、late move pruning、SEEによる枝刈りの深さの上限の拡張、null moveを試す条件、静止探索の補正と手数の数え方、aspiration windows、および時間管理の連続的な伸縮は、未起案の候補として残る。
+残りの差は、次の6本の設計書がこの順の連鎖として扱う。順序は提案であり、各設計書は1つ前の設計書の完了後のmasterを起点とする。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、futility pruning、late move pruning、SEEによる枝刈り、およびrazoringの深さの上限、捕獲手のfutility pruningと静かな手のSEEによる枝刈り、SEEの余裕値のcapture historyの項、null moveを試す条件、およびreverse futility pruningの返り値を扱う。
+[historyの更新量の形とcontinuation history](../plans/history-forms.md)は、butterfly historyの更新量と更新の条件、continuation history、LMRのhistory補正の連続化、およびLMRの捕獲手とkiller手への拡張を扱う。
+[correction historyの表の追加と持ち越し](../plans/correction-history-tables.md)は、駒配置を鍵にした表、continuation correction history、表の持ち越し、および補正量の余裕値とLMRへの利用を扱う。
+[静止探索の補正と枝刈りの形](../plans/qsearch-forms.md)は、stand-patへの補正、delta pruningの余裕値のSEEへの利用、手数の数え方、および取り返しの例外を扱う。
+[aspiration windowsの幅と窓の移し方](../plans/aspiration-window-forms.md)は、初期の幅、窓の中心、窓を使い始める深さ、および外れたときの窓の移し方を扱う。
+[探索の不安定さに応じた持ち時間の伸縮](../plans/time-instability-scaling.md)は、評価値の下落、最善手の安定と変化、最善手のノード占有率、および相手との持ち時間の差による目安時間の伸縮を扱う。
+王駒に相手の利きが届くノードを枝刈りから除く条件は、関数形の差ではなく中将棋の規則から来る判断なので、どの設計書でも変えない。
 
 ## 参考資料
 

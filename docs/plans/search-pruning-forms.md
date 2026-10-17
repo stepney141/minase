@@ -49,14 +49,14 @@ Stockfishの余裕値は深さに比例して増え、improvingのときは深�
 - late move pruningのimprovingの項（F3）。
 - late move reductionsの定数項、improvingの項、PVノードの項、および上限（F4）。
 
-次の事項は対象外とし、[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)に未起案の候補として残す。
+次の事項は対象外とする。王駒への利きの条件を除き、本書に続く設計書が扱う（[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)の「候補の扱い」の節に一覧がある）。
 
-- butterfly historyの更新量の形とcontinuation history（直前の手を文脈とするhistory）の変更。手の並べ替え全体を変えるので、同じ候補に含めると採否の解釈が難しくなる。別の設計書で扱う。
-- futility pruning、late move pruning、およびSEE（static exchange evaluation、駒の取り合いの損得の見積り）による枝刈りの深さの上限の拡張。これらの余裕値と上限は深さ1〜3の深さ別の係数で表されているので、深さ4以上へ広げるには、深さ別の係数を深さの式へ改める必要がある。
-- null move pruningを試す条件に静的評価の余裕を加えること。条件を加えると試すノードが減るので、余裕を範囲の端まで大きくしない限り現行と同じ挙動にならず、開始値を範囲の内側に置けない。
-- reverse futility pruningの返り値を、βと静的評価の重み付き平均にすること。[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)は返り値の扱いを決めており、本書の4項目とは独立に測れる。
-- 静止探索のstand-patへの補正、静止探索の手数の数え方、aspiration windows、および時間管理の形。
-- late move reductionsを捕獲手、killer手、および根へ広げること、およびhistory補正を連続量にすること。後者は[ADR](../adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)が棄却している。
+- butterfly historyの更新量の形とcontinuation history（直前の手を文脈とするhistory）の変更。手の並べ替え全体を変えるので、同じ候補に含めると採否の解釈が難しくなる。[history-forms.md](history-forms.md)で扱う。
+- futility pruning、late move pruning、およびSEE（static exchange evaluation、駒の取り合いの損得の見積り）による枝刈りの深さの上限の拡張。これらの余裕値と上限は深さ1〜3の深さ別の係数で表されているので、深さ4以上へ広げるには、深さ別の係数を深さの式へ改める必要がある。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)で扱う。
+- null move pruningを試す条件に静的評価の余裕を加えること。条件を加えると試すノードが減るので、余裕を範囲の端まで大きくしない限り現行と同じ挙動にならず、開始値を範囲の内側に置けない。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)で扱う。
+- reverse futility pruningの返り値を、βと静的評価の重み付き平均にすること。[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)は返り値の扱いを決めており、本書の4項目とは独立に測れる。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)で扱う。
+- 静止探索のstand-patへの補正と手数の数え方（[qsearch-forms.md](qsearch-forms.md)）、aspiration windows（[aspiration-window-forms.md](aspiration-window-forms.md)）、および時間管理の形（[time-instability-scaling.md](time-instability-scaling.md)）。
+- late move reductionsを捕獲手、killer手、および根へ広げること、およびhistory補正を連続量にすること。後者は[ADR](../adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)が棄却しているが、[history-forms.md](history-forms.md)がSPSAで係数を決める形で扱う。根でのLMRはどの設計書も扱わない。
 - 王駒に相手の利きが届くノードを枝刈りから除く条件。王駒が取られ得る局面の静的評価は探索値から大きく外れるので、除外を続ける（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)）。
 
 ## 依存関係
@@ -69,7 +69,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
 
 本書は次のADRの決定の一部を変える。
-採用した場合は、完了時に新しいADRを書き、置き換えた旧ADRを`docs/adr/archive/`へ移す。
+採用した場合は、完了時に、起点の時点で有効なADRを確かめたうえで新しいADRで置き換え、置き換えた旧ADRを`docs/adr/archive/`へ移す。決定の一部だけを変える場合は、残る決定も新しいADRへ引き継ぐ。
 
 - [correction historyの鍵と適用先のADR](../adr/key-correction-history-by-material.md)は、補正をfutility pruningの判定にだけ使うと決めた。根拠となった表の持ち越しの診断は、補正をfutility pruningだけに使う前提で測ったものであり、適用先の拡大は測っていない。
 - [improvingのADR](../adr/use-improving-only-for-futility-margins.md)は、improvingの判定に補正前の静的評価を使い、LMRの減深量をimprovingで変えないと決めた。補正後の評価で比べる案は、correction historyの学習につれて比較の基準が動くとして棄却している。F2は、比べる2つの局面の補正を同じ時点で同じ表から読むので、2つの値の間で表の状態がずれない。LMRに減深を1手加える案は、良い結果を失う割合の診断で棄却されたが、F4は増分を開始値0の係数にしてSPSAに選ばせる。
@@ -81,11 +81,11 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 4項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたりSPSAの約6時間半にSTCとLTCを加えた約8〜45時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
+| 候補の束ね方 | 4項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたりSPSAの約7.5時間にSTCとLTCを加えた約9〜46時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
 | 新しい係数の開始値 | 開始値で現行と同じ探索になる値とする（深さの傾き0、improvingの減算0、倍率100%、定数項0、上限は現行の3）。人が選んだ値や両エンジンの値の換算を開始値にすると、その値の根拠を別に示す必要がある。現行と同じ挙動から始めれば、形の変更のコミットが探索を変えていないことを探索ノード数の一致で検証でき、最終値はSPSAが決める。補正の適用先の拡大（F2）だけは係数を持たず、開始時点から探索を変える。 |
 | 新しい係数の範囲 | 両エンジンの対応する値を範囲に含め、開始値を範囲の内側に置く。minaseの余裕値は歩兵価値に対する百分率で、現行の`ReverseFutilityMargin`は428、`RazoringMargin2`は2015である。Stockfishの深さ1の余裕値（歩兵価値の約14〜41%）よりはるかに大きいので、範囲の上限は両エンジンの換算値ではなく、minaseの現行の値の数倍まで届くように取る。中将棋の歩兵は他の駒に比べて価値が小さく、歩兵価値で測った余裕値は大きな数になるからである。SPSAの最初の反復の摂動幅は最後の反復の約1.82倍（375^0.101、`crates/minase/src/bin/minase/spsa_runner/model.rs`）なので、`ReverseFutilityDepth`、`ReverseFutilityMaxDepth`、`LmrNonImproving`、および`LmrMaxReduction`は、序盤の摂動が範囲の下側で切り詰められる。[利得のADR](../adr/decay-spsa-gains-from-one-sixth-of-the-range.md)はこの切り詰めを許容しており、係数ごとの摂動幅の設定は加えない。 |
 | SPSAの対象 | 起点の調整対象の38係数（`FmScale`を除く）に新しい8係数を加えた46係数とする。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の6係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。375反復、1反復8ペア（計3,000ペア）、持ち時間10秒＋0.1秒、同時対局数16、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。係数が38から46へ増えても総ペア数は変えない。3,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。 |
+| SPSAの設定 | 既定の設定を流用する。375反復、1反復8ペア（計3,000ペア）、持ち時間10秒＋0.1秒、同時対局数16、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。係数が38から46へ増えても総ペア数は変えない。3,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。3,000ペアで46係数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
 | reverse futility pruningの深さの上限 | 係数`ReverseFutilityMaxDepth`とし、他の枝刈りの上限（残り深さ3）とは切り離す。余裕値が深さに比例すれば深いノードでは余裕値が大きくなるので、上限を広げても深いノードを安易に打ち切らない。Stockfishは詰みの発見のためとして`depth < (seekMate ? 6 : 19)`に固定し（`src/search.cpp:1021-1022`）、YaneuraOuは`depth < 15`（残り深さ14まで、`yaneuraou-search.cpp:3225`）とする。どちらもチェスと本将棋で決めた値なので、範囲を1〜15としてSPSAに選ばせる。15はYaneuraOuより1手広い。 |
 | reverse futility pruningの条件 | 「静的評価 − 余裕値 ≥ β」に加えて、「静的評価 ≥ β」を独立した条件とする。両エンジンも同じ条件を持つ（Stockfish `src/search.cpp:1022`、YaneuraOu `yaneuraou-search.cpp:3225`）。余裕値は深さの傾きやimprovingの減算で負になり得るので、この条件がないとβ未満の値を返して打ち切ることになる。現行の余裕値は0以上なので、この条件を加えても開始値では探索が変わらない。 |
 | improvingのときの余裕値 | 余裕値から歩兵価値の`ReverseFutilityImproving`%を引く。両エンジンは、improvingのとき余裕値から深さによらない量を引く形を持つ（Stockfishは`2789 × mult/1024`、YaneuraOuは`2686 × mult/1024`）。余裕値に倍率を掛ける形は、倍率0で深いノードの余裕値まで0にするので採らない。 |
@@ -151,23 +151,23 @@ r = \left\lfloor \frac{t \times (100 + \mathrm{LmrNonImproving} \times [\text{im
 ## 所要時間の見積り
 
 時間は、同時対局数16の測定機での見積りである。
-SPSAは、2026年10月17日に中止した同じ規模の調整（38係数、375反復×8ペア）が1反復あたり約1分で進んだことから、約6時間半と見込む。
+SPSAは、同時対局数16で同じ規模の調整を完走した記録（[SPSAの手引き](../guides/spsa.md)の27,138秒）から、約7.5時間と見込む。2026年10月17日に中止した38係数の調整は1反復あたり約1分で進んでおり、これより短く終わる可能性がある。
 段階ゲートの時間は、判定までのペア数が強さの差で変わるので、幅を持たせた。
 
 | 段階 | 内容 | 見積り |
 |---|---|---|
 | 1 | 形の変更の実装と検証（codexへ委任） | 半日程度 |
 | 2 | 時間切れの事前確認（13反復、104ペア） | 約15分 |
-| 3 | SPSA（3,000ペア） | 約6時間半 |
+| 3 | SPSA（3,000ペア） | 約7.5時間 |
 | 4 | 反映、テスト、および事前対局（32ペア） | 約1時間 |
 | 5 | 候補のSTC | 約1〜8時間 |
 | 6 | 通過した場合のLTC | 約5〜30時間 |
 
-測定機の占有は、STCで棄却される場合の約半日から、LTCまで進む場合の約2日までとなる。
+測定機の占有は、段階2〜5の和でSTCで棄却される場合の約10〜17時間、段階6まで進む場合の約15〜47時間となる。
 
 ## 実装フェーズ
 
-基本シードは、時間切れの事前確認を3200000000、セッションを3250000000、事前対局を3300000000、STCを3350000000、LTCを3400000000と仮に定める。
+基本シードは、時間切れの事前確認を3200000000、セッションを3250000000、事前対局を3310000000、STCを3350000000、LTCを3400000000と仮に定める。
 これらは起案時点で、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値である（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
 着手時に同じ方法で未使用であることを確かめ直し、使われていれば設計書を書き換える。
 各測定の開始前に、測定機でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
@@ -233,7 +233,7 @@ F4はLMRを適用するノードで静的評価を求めるので、`taskset -c 
 
 ```console
 <固定したminase> match run \
-  --run-dir data/matches/search-pruning-forms-smoke --seed 3300000000 \
+  --run-dir data/matches/search-pruning-forms-smoke --seed 3310000000 \
   --candidate commit:<候補> --baseline commit:<起点> \
   --each time=10000+100 --concurrency 16 elo --pairs 32
 ```
