@@ -17,9 +17,8 @@ vast.aiは、個人や事業者が貸し出す計算機を時間単位で借り�
 
 状態は起案であり、起案日は2026年10月16日、調達先をvast.aiとする改訂は2026年10月17日である。
 実装には未着手であり、作業機にはvastai CLI 1.8.3が入っている。
-いま詰まっている点は、作業機に設定したAPIキーで`vastai show user`と`vastai show ssh-keys`を実行すると、HTTP 401と「Your key lacks proper privileges to perform this action as it requires you to have logged in using Two Factor Authentication」が返ることである。
-このキーでは、生成機の作成と削除も拒まれる可能性がある。
-次の一手は、必要な権限を持つAPIキーを用意し、作業機のSSH公開鍵をアカウントに登録して前払い残高を入れてから、フェーズ0の試走で機種を確定することである。
+作業機のAPIキーで`vastai show user`と`vastai show ssh-keys`が通ることを2026年10月17日に確かめ、アカウントにはSSH公開鍵がまだ登録されていない。
+次の一手は、作業機のSSH公開鍵をアカウントに登録してから、フェーズ0の試走で機種を確定することである。
 
 ## 目的
 
