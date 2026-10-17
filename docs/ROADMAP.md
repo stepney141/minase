@@ -99,7 +99,9 @@
 | メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 | AWSのEC2での教師生成 | [plans/aws-selfplay.md](plans/aws-selfplay.md) | 起案 | |
+| 探索の枝刈りとLMRの関数形の見直し | [plans/search-pruning-forms.md](plans/search-pruning-forms.md) | 起案 | |
 | NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/archived/nnue-early-best-epoch.md](plans/archived/nnue-early-best-epoch.md) | 完了（採用） | 2026年10月17日 |
+| 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
 
 ## 現在地
 
@@ -113,6 +115,7 @@
 ### 次の候補
 
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、前計画が残した4つの固定の出力部を、隠れ層の段数と各幅、端点数を名前で与える1つの出力部（`stack-h16-e2`のような構成名）に置き換え、現行の直接内積を`stack-e1`として同じ型で表す。構造の整理であり段階ゲートは持たず、ノード数の一致と前計画の学習結果のビット単位の再現で挙動が変わっていないことを確かめる。以後のアーキテクチャの実験は、構成名を変えて学び段階ゲートで測るだけになる。着手は利用者の指示を待つ。
+- [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は、Stockfishとやねうら王がNNUEの高速化に使う表をminaseに当てはめられるかを調べ、待機中とした。この表は、自玉の位置で条件付ける入力特徴集合や、差分の連鎖が途切れる更新方式が生む第1層の全再計算を速くするものであり、現行のP型と着手ごとの差分更新では探索中に全再計算が起きない（深さ9のbenchで累算器の更新6,400,021回のうち15回で、いずれも探索の開始時）。自玉の位置で条件付けるネットを時間制御の対局で測り直すか、更新方式を変えて全再計算が起きるようになった時点で再開する。
 - [引き分けの評価値の設定](plans/draw-value.md)は、千日手の引き分けに返す評価値をやねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにする。オプションと探索の実装は完了し、既定値では探索が変わらないことを`bench`で確かめた。残りは、この版のリリース後にlishogiのBotの設定で両オプションを−1にするフェーズであり、リリースは利用者の判断を待つ。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
 - 探索が使う既定の評価関数は、2026年10月12日に[NNUE](plans/archived/nnue-replacement.md)へ置き換わった。[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](plans/nnue-search-spsa.md)は、`FmScale`を除く38係数（手の順序付けで加わった未調整の3係数と、時間管理の6係数を含む）を現行のネットで調整し直し、起点のmasterとの段階ゲートで採否を決める。測定機の占有は、過去の同規模の記録からの概算で約半日から2日であり、着手は利用者の指示を待つ。PSTとFMを既定としていた時期に挙げたほかの候補（PSTのさらに長い学習、補正なしのPSTを軽い評価として使うlazy evaluation）を、NNUEの採用後も続けるかは決まっていない。
 - [Athénanの計画](plans/athenan.md)は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。PSTを既定の評価関数とする前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
@@ -120,6 +123,7 @@
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
+- [探索の枝刈りとLMRの関数形の見直し](plans/search-pruning-forms.md)は、[係数の関数形の比較](research/search-coefficient-forms-prior-art.md)が示した構造の差のうち、reverse futility pruningの深さ比例の余裕値と深さの上限、correction historyの補正の適用先の拡大、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限の4項目を、現行と同じ探索になる開始値から既存の係数とまとめてSPSAで調整し、1つの候補として段階ゲートで判定する。butterfly historyの更新量の形とcontinuation historyは別の設計書で扱う。着手は、[NNUEに合わせたSPSAの調整](plans/nnue-search-spsa.md)の完了と利用者の指示を待つ。
 - [AWSのEC2での教師生成](plans/aws-selfplay.md)は、自己対局の教師生成をAWSのEC2へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、検査に通ったファイルをS3へ送ってその存在を完了の記録とする。機種はEPYC Turinの物理192コアを持つc8a.48xlarge、リージョンは米国東部、購入方式はオンデマンドを既定とし、30ファイルの生成を約3時間、約30米ドルと見積もる。着手は利用者の許可を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。
