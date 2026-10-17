@@ -265,7 +265,7 @@ fn r1_repetition_band_windows_disable_reverse_futility_and_razoring() {
 fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
     let board = super::late_move::quiet_board();
     let moves = legal_moves(&board);
-    assert!(moves.len() > late_move_limit(3) as usize);
+    assert!(moves.len() > late_move_limit(3, false) as usize);
     let history = repeated_root_children(&board, &moves);
     for depth in [1, 2, 3] {
         for alpha in [29_486, 29_487, 29_740] {

@@ -89,11 +89,18 @@ parameters! {
     /// 値はSPSAで調整した。
     NonImprovingFutility3(non_improving_futility3): 86, 0, 100;
     /// late move pruningで数える静かな手の上限の切片。単位は1/100手である。
-    /// 値はSPSAで調整した。
-    LmpBase(lmp_base): 382, 0, 8600;
+    /// 既定値はStockfishとYaneuraOuの`3 + d²`（Stockfish src/search.cpp:1199、YaneuraOu yaneuraou-search.cpp:3593）を換算した値であり、
+    /// この式の形での値はSPSAで未調整である。
+    LmpBase(lmp_base): 300, 0, 8600;
     /// late move pruningの上限に残り深さの2乗を掛けて加える傾き。単位は残り深さの2乗あたり1/100手である。
-    /// 値はSPSAで調整した。
-    LmpSlope(lmp_slope): 133, 0, 3600;
+    /// 既定値はStockfishとYaneuraOuの`3 + d²`（Stockfish src/search.cpp:1199、YaneuraOu yaneuraou-search.cpp:3593）を換算した値であり、
+    /// この式の形での値はSPSAで未調整である。
+    LmpSlope(lmp_slope): 100, 0, 3600;
+    /// improvingでないときにlate move pruningの上限へ掛ける倍率。単位は百分率である。
+    /// StockfishとYaneuraOuの`/(2 − improving)`（Stockfish src/search.cpp:1199、YaneuraOu yaneuraou-search.cpp:3593）に当たり、
+    /// 両エンジンとも50に相当する。倍率を掛けない現行の式は100に相当する。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    LmpNonImproving(lmp_non_improving): 50, 25, 150;
     /// reverse futilityのmultの定数。単位は歩兵価値に対する百分率である。
     /// Stockfishは45/208で22（src/search.cpp:1025）、YaneuraOuは76/90で84である。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。

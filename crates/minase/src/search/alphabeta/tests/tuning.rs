@@ -100,6 +100,7 @@ fn tuning_parameters_in_isolated_process() {
             "non improving futility 3",
             "lmp base",
             "lmp slope",
+            "lmp non improving",
             "lmp zero limit",
             "r2 lmp zero limit",
             "r2 lmp small limit",
@@ -199,6 +200,10 @@ fn tuning_parameters_in_isolated_process() {
         }
         "lmp slope" => {
             late_move_parameter_changes_search("LmpSlope");
+            return;
+        }
+        "lmp non improving" => {
+            super::late_move::late_move_non_improving_parameter_scales_limit();
             return;
         }
         "lmp zero limit" => {
@@ -370,7 +375,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 45] = [
+    let cases: [Case; 46] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -398,8 +403,11 @@ fn tuning_parameters_in_isolated_process() {
         ("NonImprovingFutility3", 100, || {
             i64::from(futility_margin(101, 3, false))
         }),
-        ("LmpBase", 600, || i64::from(late_move_limit(1))),
-        ("LmpSlope", 400, || i64::from(late_move_limit(1))),
+        ("LmpBase", 600, || i64::from(late_move_limit(1, false))),
+        ("LmpSlope", 400, || i64::from(late_move_limit(1, false))),
+        ("LmpNonImproving", 150, || {
+            i64::from(late_move_limit(1, false))
+        }),
         ("ReverseFutilityMultBase", 0, || {
             i64::from(reverse_futility_margin(101, 1, true, false, false, 0))
         }),
@@ -753,18 +761,18 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
 #[cfg(feature = "tuning")]
 fn late_move_parameter_changes_search(name: &str) {
     let board = super::late_move::quiet_board();
-    assert_eq!(params::lmp_base(), 382, "数値例の前提");
-    assert_eq!(params::lmp_slope(), 133, "数値例の前提");
-    // 深さ1の上限は(382+133)/100→5。467+133または382+218で600となり上限6。
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 5);
+    assert_eq!(params::lmp_base(), 300, "数値例の前提");
+    assert_eq!(params::lmp_slope(), 100, "数値例の前提");
+    // 深さ1でimprovingは偽。400×50/10000=2、分子の基数が600なら上限3。
+    assert_eq!(super::late_move::search_quiet_board(&board).1, 2);
     let boundary = match name {
-        "LmpBase" => 467,
-        "LmpSlope" => 218,
+        "LmpBase" => 500,
+        "LmpSlope" => 300,
         _ => unreachable!(),
     };
     params::set(name, boundary).unwrap();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 6);
-    // 境界より1小さい599では599/100→5。
+    assert_eq!(super::late_move::search_quiet_board(&board).1, 3);
+    // 境界より1小さい599では599×50/10000→2。
     params::set(name, boundary - 1).unwrap();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 5);
+    assert_eq!(super::late_move::search_quiet_board(&board).1, 2);
 }

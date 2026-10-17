@@ -87,6 +87,7 @@ fn tuning_usi_contract_in_isolated_process() {
             ),
             ("LmpBase", params::lmp_base as fn() -> i32),
             ("LmpSlope", params::lmp_slope as fn() -> i32),
+            ("LmpNonImproving", params::lmp_non_improving as fn() -> i32),
             (
                 "ReverseFutilityMultBase",
                 params::reverse_futility_mult_base as fn() -> i32,

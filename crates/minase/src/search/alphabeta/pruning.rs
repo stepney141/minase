@@ -93,13 +93,22 @@ pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
 
 /// 深さ1〜3で数える静かな手の数の上限を整数除算で求める。
 ///
-/// 式は `(LmpBase + LmpSlope × 深さ²) / 100` であり、端数は切り捨てる。
+/// improvingなら `(LmpBase + LmpSlope × 深さ²) / 100`、
+/// それ以外は `(LmpBase + LmpSlope × 深さ²) × LmpNonImproving / 10000` とする。
+/// 深さはIIR適用後、improvingはnull move後の更新後の値を使い、端数は最後に1回だけ切り捨てる。
 /// 手番号ではなく、現在の手より前に返った非捕獲手のうち、置換表の手、成る手、killer手を除いた数と比べる。
 /// 枝刈りで展開しなかった手もこの数に含める。
 /// 捕獲手に静かな手の枠を消費させない理由は`docs/adr/count-only-quiet-moves-for-late-move-pruning.md`にある。
-pub(super) fn late_move_limit(depth: u32) -> i32 {
-    let depth = depth as i32;
-    (params::lmp_base() + params::lmp_slope() * depth * depth) / 100
+pub(super) fn late_move_limit(depth: u32, improving: bool) -> i32 {
+    let depth = i64::from(depth);
+    let scale = if improving {
+        100
+    } else {
+        params::lmp_non_improving()
+    };
+    ((i64::from(params::lmp_base()) + i64::from(params::lmp_slope()) * depth * depth)
+        * i64::from(scale)
+        / 10000) as i32
 }
 
 /// 深さ1〜3のSEE余裕値を求める。

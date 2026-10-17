@@ -505,8 +505,9 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 &current,
                                 if mode == "lmp" {
                                     // 根では枝刈りしないので、内部ノードが読む候補だけを対照へ渡す。
-                                    &input.root_moves()
-                                        [..allowed.len().min(late_move_limit(2).max(1) as usize)]
+                                    &input.root_moves()[..allowed
+                                        .len()
+                                        .min(late_move_limit(2, false).max(1) as usize)]
                                 } else {
                                     input.root_moves()
                                 },
@@ -534,7 +535,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                         assert_eq!(
                             searcher.nodes,
                             if mode == "lmp" {
-                                allowed.len().min(late_move_limit(2).max(1) as usize) as u64
+                                allowed.len().min(late_move_limit(2, false).max(1) as usize) as u64
                             } else {
                                 allowed.len() as u64
                             },

@@ -217,7 +217,7 @@ impl Searcher<'_> {
         improving |= static_eval >= beta;
         let futility_bound = pruning_node
             .then(|| static_eval + futility_margin(self.nnue.pawn_value(), depth, improving));
-        let late_move_limit = pruning_node.then(|| late_move_limit(depth));
+        let late_move_limit = pruning_node.then(|| late_move_limit(depth, improving));
         // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
             tt_move,

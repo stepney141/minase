@@ -45,14 +45,102 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
 }
 
-// 静かな手の上限は `(LmpBase + LmpSlope × 深さ²) / 100` を整数除算した値である。
+// 既定の上限は3 + 深さ²、improvingでないときはその半分を切り捨てる。
 // 数える手の範囲を選んだ理由は docs/adr/count-only-quiet-moves-for-late-move-pruning.md にある。
 #[test]
 fn late_move_limits_follow_quadratic_depth_rule() {
-    // 基数382、傾き133では分子が515、914、1579になり、100で整数除算する。
-    assert_eq!((params::lmp_base(), params::lmp_slope()), (382, 133));
-    for (depth, expected) in [(1, 5), (2, 9), (3, 15)] {
-        assert_eq!(late_move_limit(depth), expected, "depth={depth}");
+    assert_eq!(
+        (
+            params::lmp_base(),
+            params::lmp_slope(),
+            params::lmp_non_improving()
+        ),
+        (300, 100, 50)
+    );
+    for (depth, improving, expected) in [
+        (1, true, 4),
+        (1, false, 2),
+        (2, true, 7),
+        (2, false, 3),
+        (3, true, 12),
+        (3, false, 6),
+    ] {
+        assert_eq!(
+            late_move_limit(depth, improving),
+            expected,
+            "depth={depth}, improving={improving}"
+        );
+    }
+}
+
+// 調整値は専用の子プロセスで変更し、呼び出し元へ戻る前に既定値へ戻す。
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_non_improving_parameter_scales_limit() {
+    let default_scale = params::lmp_non_improving();
+    let default_base = params::lmp_base();
+    params::set("LmpNonImproving", 150).unwrap();
+    assert_eq!(late_move_limit(1, false), 6);
+    assert_eq!(late_move_limit(1, true), 4);
+    assert_eq!(search_quiet_board(&quiet_board()).1, 6);
+    // 499×150/10000→7。先に499/100を切り捨てると6になってしまう。
+    params::set("LmpBase", 399).unwrap();
+    assert_eq!(late_move_limit(1, false), 7);
+    assert_eq!(late_move_limit(1, true), 4);
+    params::set("LmpBase", default_base).unwrap();
+    params::set("LmpNonImproving", default_scale).unwrap();
+}
+
+// Stockfish src/search.cpp:1080, 1199。比較で良化していなくても静的評価がβ以上なら上限4を使う。
+#[test]
+fn late_move_pruning_uses_improving_updated_after_null_move() {
+    let nnue = test_nnue();
+    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    let board = quiet_board();
+    let moves = legal_moves(&board);
+    assert!(moves.len() > 4);
+    assert!(!royal_under_attack(&board));
+    for (beta_offset, expected_nodes) in [(-1, 4), (0, 4), (1, 2)] {
+        with_nnue_root_searcher(nnue, &board, &[], |searcher| {
+            let side = board.side_to_move();
+            let key = material_key(&board);
+            searcher.correction.update(side, key, 1000, 8);
+            let correction = searcher.correction.read(side, key);
+            assert!(correction > 0);
+            let static_eval = evaluate(nnue, &board) + correction;
+            searcher.accumulators[2] = searcher.accumulators[0].clone();
+            searcher.material_keys[2] = key;
+            searcher.static_evals[0] = static_eval + 1000;
+            searcher.static_evals[1] = -static_eval;
+            assert!(!searcher.improving(static_eval, 2));
+            let beta = static_eval + beta_offset;
+            let alpha = beta - 1;
+            let margin = crate::search::alphabeta::pruning::reverse_futility_margin(
+                100, 1, false, false, false, correction,
+            );
+            assert!(static_eval - margin < beta, "reverse futilityは発動しない");
+            assert!(alpha < static_eval + futility_margin(100, 1, false));
+            for &mv in &moves {
+                assert!(!mv.promote && move_order_key(&board, nnue, mv).is_none());
+                let mut child = board.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                assert_eq!(
+                    searcher
+                        .correction
+                        .read(child.side_to_move(), material_key(&child)),
+                    0
+                );
+                assert!(-evaluate(nnue, &child) < alpha, "子の値は窓を下回る");
+                assert!(legal_moves(&child).iter().all(|&reply| {
+                    !reply.promote && move_order_key(&child, nnue, reply).is_none()
+                }));
+            }
+            let score = searcher
+                .negamax(&mut board.clone(), 1, alpha, beta, 2, false)
+                .unwrap();
+            assert_eq!(searcher.static_evals[2], static_eval);
+            assert!(score < alpha && score.abs() < MATE_THRESHOLD);
+            assert_eq!(searcher.nodes, expected_nodes, "beta_offset={beta_offset}");
+        });
     }
 }
 
@@ -99,7 +187,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
 // 保護する手は静かな手の枠を消費しない。上限0の調整テストでも同じ保護を確かめる。
 #[test]
 fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
-    check_late_move_protected_moves(late_move_limit(1) as u64);
+    check_late_move_protected_moves(2);
 }
 
 pub(super) fn check_late_move_protected_moves(limit: u64) {
@@ -243,7 +331,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
                 .any(|reply| captures_last_royal(&child, reply))
         })
         .count();
-    assert!(safe_moves > late_move_limit(2) as usize);
+    assert!(safe_moves > late_move_limit(2, false) as usize);
     let ply = 5;
     let mut child = board.clone();
     child.make_move_unchecked(losing_move, engine_rules());
@@ -295,7 +383,7 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
             ordered.push(mv);
         }
     });
-    let limit = late_move_limit(1) as usize;
+    let limit = 2;
     assert!(ordered.len() > limit);
     for (index, &target) in ordered.iter().enumerate() {
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();
