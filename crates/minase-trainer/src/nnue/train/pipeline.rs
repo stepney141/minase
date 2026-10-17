@@ -68,7 +68,7 @@ pub(super) struct Supply<'a> {
     pub validation_interval: u64,
     /// 完了済み更新回数から学習率の倍率を求める規則。
     pub schedule: LrSchedule,
-    /// `ceil(訓練局面数 / バッチサイズ)`。1以上である。
+    /// `ceil(抽出後の訓練局面数 / バッチサイズ)`。1以上である。
     pub steps_per_epoch: u64,
     pub workers: usize,
     pub deadline: Instant,
@@ -160,7 +160,7 @@ pub(super) struct EpochOptions {
     pub validation_interval: u64,
     /// 学習率を決める規則。
     pub schedule: LrSchedule,
-    /// 1エポックの更新回数。
+    /// 抽出後の訓練局面数から求めた1エポックの更新回数。
     pub steps_per_epoch: u64,
     /// エポックを完了する期限。
     pub deadline: Instant,

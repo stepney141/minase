@@ -216,6 +216,12 @@ pub(super) struct Configuration {
 /// `cp_per_logit`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師の勝率尺度（1ロジットあたりのcp）は`null`である。
 /// `training_indices_sha256`と`validation_indices_sha256`は通算番号をリトルエンディアンu64列にしたSHA-256である。
+/// `--train-subsample`指定時は`arguments.train_subsample`と`settings.train_subsample`に正規化したspecを保存する。
+/// `preprocessing.train_subsample`は`training_positions_before`、`training_positions_after`、
+/// `training_games_after`、`training_indices_sha256`を持つ。対局は入力ファイル番号と対局番号で区別する。
+/// ここでのSHA-256は、間引く前の訓練集合内での0始まり番号を昇順に並べ、各u64を
+/// リトルエンディアン8バイトにした列から計算する。省略時は追加欄を保存しない。
+/// specと抽出記録は既存のsettings、preprocessing照合によって再開時にも一致を要求する。
 /// `observations`は`linear_rows`、`feature_rows`、`virtual_rows`の各`{observed, unobserved}`を持ち、埋め草行を除く。
 /// `canonical_counts_sha256`と`input_counts_sha256`は、それぞれの行の観測回数をリトルエンディアンu64列にしたSHA-256である。
 ///
@@ -284,7 +290,7 @@ pub(super) fn configuration<'a>(
         let observed = rows.iter().filter(|&&v| v).count();
         json!({"observed": observed, "unobserved": rows.len()-observed})
     };
-    let preprocessing = json!({
+    let mut preprocessing = json!({
         "teacher_classes": dataset.classes, "teacher_cp_per_logit": calibration.teacher_cp_per_logit,
         "teacher_lambdas": dataset.lambdas,
         "teacher_cp_per_logit_source": calibration.source,
@@ -299,6 +305,9 @@ pub(super) fn configuration<'a>(
         "canonical_counts_sha256": hash_u64(observations.canonical_counts()),
         "input_counts_sha256": hash_u64(observations.input_counts()),
     });
+    if let Some(subsample) = dataset.subsample {
+        preprocessing["train_subsample"] = serde_json::to_value(subsample)?;
+    }
     Ok(Configuration {
         document: json!({"device": args.device, "arguments": args, "resolved_threads": resolved_threads, "settings": settings,
         "inputs": inputs, "preprocessing": preprocessing,

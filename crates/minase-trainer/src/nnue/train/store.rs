@@ -44,7 +44,7 @@ impl Store {
         })
     }
 
-    /// 訓練局面数を返す。
+    /// 前処理に使う、間引く前の全訓練局面数を返す。
     pub(super) fn training_count(&self) -> u64 {
         match self {
             Self::Memory(d) => d.training_indices().len() as u64,
@@ -113,6 +113,8 @@ pub(super) struct DatasetInfo<'a> {
     pub training_hash: String,
     /// 検証局面のファイル順の通し番号の検査和。
     pub validation_hash: String,
+    /// 指定時だけ保存する、更新用の抽出集合の記録。
+    pub subsample: Option<&'a super::subsample::Summary>,
 }
 impl<'a> From<&'a Dataset> for DatasetInfo<'a> {
     fn from(d: &'a Dataset) -> Self {
@@ -131,6 +133,7 @@ impl<'a> From<&'a Dataset> for DatasetInfo<'a> {
             validation: d.validation_indices().len() as u64,
             training_hash: hash(d.training_indices()),
             validation_hash: hash(d.validation_indices()),
+            subsample: None,
         }
     }
 }
@@ -146,6 +149,7 @@ impl<'a> From<&'a Store> for DatasetInfo<'a> {
                 validation: d.validation_count(),
                 training_hash: d.training_indices_sha256().to_owned(),
                 validation_hash: d.validation_indices_sha256().to_owned(),
+                subsample: None,
             },
         }
     }
