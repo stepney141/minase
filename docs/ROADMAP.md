@@ -106,6 +106,8 @@
 | aspiration windowsの幅と窓の移し方の見直し | [plans/aspiration-window-forms.md](plans/aspiration-window-forms.md) | 起案 | |
 | 探索の不安定さに応じた持ち時間の伸縮 | [plans/time-instability-scaling.md](plans/time-instability-scaling.md) | 起案 | |
 | NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/archived/nnue-early-best-epoch.md](plans/archived/nnue-early-best-epoch.md) | 完了（採用） | 2026年10月17日 |
+| 先読みなしの教師での対局単位と局面単位の間引きの比較 | [plans/nnue-subsample-no-lookahead.md](plans/nnue-subsample-no-lookahead.md) | 起案 | |
+| 教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す | [plans/sparse-teacher-recording.md](plans/sparse-teacher-recording.md) | 起案 | |
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
 
 ## 現在地
@@ -115,10 +117,11 @@
 - [NNUEの検証損失が早く頭打ちになる原因の切り分け](plans/archived/nnue-early-best-epoch.md)は2026年10月17日に、採用で完了した。同じ対局の後続40手の探索値を教師に混ぜる先読み教師を外して学び直したNNUEが、STCとLTCで現行のネットに対して`H1`となったので、埋め込みのネットを差し替え、NNUEの学習の標準から先読み教師を外した（[ADR](adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。先読み教師が訓練の対局への適合を強めるという仮説と、独立な対局の数の少なさが検証損失の頭打ちの一因であるという仮説は、事前に定めた基準でともに「支持」となった。同じ約2,000万局面で、多数の対局から疎に採った学習は少数の対局から全局面を採った学習より検証損失が約0.0009低く、学習器にはこの比較のための`--train-subsample`を加えた。
 - [メモリより大きい教師データの一様シャッフル](plans/archived/out-of-core-shuffle.md)は2026年10月17日に、採用で完了した。NNUEの学習器に、MNSDを1局ずつ再生して局面を実行専用の一時ファイルへ書き、エポックごとに各訓練局面を一様にB個のbucketへ振り分けてbucketごとに並べ替える経路（`--buckets`）を加えた。`--buckets 1`は変更前とビット単位で同じ結果を出し、B=16は10ファイル（訓練約2,650万局面）の学習をメモリの上限2 GBの中で最大常駐0.91 GBで完走し、所要時間はB=1を上回らなかった（[照合記録](measurements/out-of-core-shuffle-equivalence.md)、[時間とメモリの記録](measurements/out-of-core-shuffle-time-memory.md)）。
 - [NNUEの隠れ層と位相補間の出力](plans/archived/nnue-hidden-layer.md)は2026年10月16日に、一部不採用で完了した。学習器から駒除去差分の補助損失を外し、代わりに書き出し時に駒除去差分の符号反転の割合を記録するようにした。これによりGPUの1更新はP型で27.3 msから4.7 msに縮んだが、補助損失なしで学んだネットは検証1万局面の除去の1.7%で符号が反転し（補助損失ありでは5件）、罰則の発火率の低さは補助損失が不要であることを意味しなかった（[教訓](lessons/low-penalty-activation-does-not-mean-the-penalty-is-unneeded.md)）。推論と学習器に加えた3つの出力部（位相補間、幅16の隠れ層、その両方）は、同じ条件で学んでも検証損失が補助損失なしの直接内積を下回らず（隠れ層つきは訓練損失だけが下がる過学習の側）、段階ゲートに出す候補はなかった（[学習の記録](measurements/nnue-hidden-layer-training.md)、[速度の記録](measurements/nnue-hidden-layer-bench.md)）。埋め込みネットと`ActiveHead`は変えず、出力部のコードは汎用の層積みを設計する次の設計書へ引き継ぐ。
-- [勝率尺度の1定数化と教師の尺度補正係数の明示（Kの改名）](plans/archived/win-rate-scale.md)は2026年10月16日に、採用で完了した。学習器が「K」と呼んでいた2つの勝率尺度を、重みファイルのヘッダが持つ勝率尺度`cp_per_logit`と教師の分類ごとの教師の勝率尺度`teacher_cp_per_logit`に改名し、両者の比を尺度補正係数`teacher_score_multiplier`として記録するようにした。教師の勝率尺度は、学習の必須の引数`--teacher-cp-per-logit`で、訓練集合から推定する`calibrate`か、新設の`minase-trainer data calibrate`が書き出す較正ファイルのパスを指定する。計算する値は変えず、NNUE、PST、FM、同時学習、および診断の学習結果と、較正コマンドの出力が変更前の学習器と文字列として一致した（[照合の記録](measurements/win-rate-scale-equivalence.md)、[ADR](adr/hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)）。
 
 ### 次の候補
 
+- [先読みなしの教師での対局単位と局面単位の間引きの比較](plans/nnue-subsample-no-lookahead.md)は、前計画が先読み教師だけで示した「多数の対局から疎に採るほうが検証損失が低い」という結果を、標準の先読みなしの教師でやり直し、対局数の効果が残るかと、効果の大きさが教師によって変わるかを、事前に定めた基準で判定する。学習器の変更はなく、測定機のGPUで約5時間かかる。結論は次の教師生成の計画の着手の前提になる。着手は利用者の指示を待つ。
+- [教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す](plans/sparse-teacher-recording.md)は、KataGoのplayout cap randomizationにならい、手ごとの抽選で4手に1手だけを2万ノードで探索して記録し、残りを4,000ノードで指す生成を加え、同じ計算時間で約2.5倍の対局を生成した教師で学んだNNUEを段階ゲートにかける。着手は、前項の判定1が「支持」となった後とし、生成を作業機とvast.aiのどちらで行うかは着手時に利用者が決める。
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、前計画が残した4つの固定の出力部を、隠れ層の段数と各幅、端点数を名前で与える1つの出力部（`stack-h16-e2`のような構成名）に置き換え、現行の直接内積を`stack-e1`として同じ型で表す。構造の整理であり段階ゲートは持たず、ノード数の一致と前計画の学習結果のビット単位の再現で挙動が変わっていないことを確かめる。以後のアーキテクチャの実験は、構成名を変えて学び段階ゲートで測るだけになる。着手は利用者の指示を待つ。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は、Stockfishとやねうら王がNNUEの高速化に使う表をminaseに当てはめられるかを調べ、待機中とした。この表は、自玉の位置で条件付ける入力特徴集合や、差分の連鎖が途切れる更新方式が生む第1層の全再計算を速くするものであり、現行のP型と着手ごとの差分更新では探索中に全再計算が起きない（深さ9のbenchで累算器の更新6,400,021回のうち15回で、いずれも探索の開始時）。自玉の位置で条件付けるネットを時間制御の対局で測り直すか、更新方式を変えて全再計算が起きるようになった時点で再開する。
 - [引き分けの評価値の設定](plans/draw-value.md)は、千日手の引き分けに返す評価値をやねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにする。オプションと探索の実装は完了し、既定値では探索が変わらないことを`bench`で確かめた。残りは、この版のリリース後にlishogiのBotの設定で両オプションを−1にするフェーズであり、リリースは利用者の判断を待つ。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。

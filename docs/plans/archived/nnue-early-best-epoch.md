@@ -17,8 +17,9 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月17日に起案し、同日に着手して完了した。
-先読みなしのネットを採用し、2つの仮説はともに「支持」となった。
+先読みなしのネットを段階ゲートで採用し（[LTC](../../measurements/nnue-no-lookahead-ltc.md)）、先読み教師の仮説（[学習の記録](../../measurements/nnue-no-lookahead-training.md)）と対局数の仮説（[間引きの記録](../../measurements/nnue-train-subsample.md)）はともに「支持」となった。
 
 ## 目的
 
