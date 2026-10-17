@@ -9,14 +9,17 @@ source "$SCRIPT_DIR/../vast/common.sh"
 # shellcheck source=scripts/vast-spsa/remote.sh
 source "$SCRIPT_DIR/remote.sh"
 
-# 引数: 出品JSONのファイル、要求した出品ID。raw出力のdurationは秒単位。
+# 引数: 出品一覧のJSONファイル、要求した出品ID。raw出力のdurationは秒単位。
 spsa_check_offer() {
     python3 - "$@" <<'PY'
 import json, math, sys
 offers = json.load(open(sys.argv[1]))
-if len(offers) != 1 or str(offers[0]["id"]) != sys.argv[2]:
-    sys.exit("指定した出品を一意に取得できません")
-offer = offers[0]
+matches = [offer for offer in offers if str(offer["id"]) == sys.argv[2]]
+if not matches:
+    sys.exit("選定条件を満たす出品の中に、指定した出品が見つかりません")
+if len(matches) != 1:
+    sys.exit("指定した出品のIDが照会結果に重複しています")
+offer = matches[0]
 errors = []
 for key, expected in (("cpu_arch", "amd64"), ("verification", "verified")):
     if key not in offer or offer[key] != expected:
@@ -58,7 +61,10 @@ spsa_launch_main() (
     local temporary instance='' cleanup_instance=no
     temporary=$(mktemp -d "$directory/.launch.XXXXXX")
     trap 'rc=$?; trap - EXIT; if [[ $cleanup_instance == yes ]]; then if ! vast_destroy "$instance"; then rc=1; fi; fi; rm -rf "$temporary"; exit "$rc"' EXIT
-    vast_call 600 search offers "id=$offer" --raw > "$temporary/offer.json"
+    # 検索条件のdurationは日単位で指定し、取得後は秒単位で再検査する。
+    vast_call 600 search offers \
+        'cpu_cores>=192 verified=true reliability>=0.95 inet_up>=100 disk_space>=50 rentable=true gpu_frac=1 duration>=2 direct_port_count>=1' \
+        --type on-demand --raw --limit 1000 > "$temporary/offer.json"
     spsa_check_offer "$temporary/offer.json" "$offer"
     local ids
     ids=$(vast_ids "$label")
