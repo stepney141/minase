@@ -253,3 +253,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月17日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を30,000ペアにする](decay-spsa-gains-over-30000-pair-sessions.md)
 - 2026年10月17日 [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-teachers-without-lookahead.md)
 - 2026年10月17日 [NNUEの訓練集合は学習時にハッシュの剰余で間引き、前処理は間引く前の全体で行う](thin-the-nnue-training-set-at-training-time-by-hash.md)
+- 2026年10月18日 [測定記録は測定を計画した設計書ごとのディレクトリに置き、凍結した文書の中でもリンクのパスだけは書き換える](group-measurement-records-by-commissioning-plan.md)
