@@ -21,6 +21,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
 - [引き分けの評価値（contempt）の既存実装と測定の調査](draw-value-prior-art.md)は、Stockfish、やねうら王、dlshogi、技巧、Lc0などが千日手の引き分けに返す値を設定する仕組みと、その効果を対局で測った記録をまとめる。
 - [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](search-coefficient-forms-prior-art.md)は、SPSAで調整する探索と時間管理の係数の関数形と適用条件をStockfishとYaneuraOuのソースで照合し、reverse futility pruningの余裕値が深さに比例しないこと、浅い枝刈りが残り深さ3以下に限られること、correction historyの補正がfutility pruningにしか使われないことなど、係数の値の調整では埋まらない構造の差を示す。
 - [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
 - [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md)は、雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。
 - [SPSAの反復予算の決め方](spsa-iteration-budget.md)は、対局予算から反復数を決め、停止後に原因と採否を分けて扱う方法をまとめる。
