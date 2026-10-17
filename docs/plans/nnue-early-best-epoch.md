@@ -71,8 +71,8 @@ NNUEの学習が早く頭打ちになる現象は、[NNUEの完全代替](archiv
 集計とブートストラップは、[分割の検査](../measurements/nnue-validation-split-check.md)で学習器の規則を移植した使い捨てのプログラムを拡張して行う。
 このプログラムは、学習器の局面数と3つのネットの検証損失を再現している。リポジトリには含めず、ソースを`data/nnue-early-best-epoch/tools/`に出力とともに保存する。
 
-測定機（Intel Core Ultra 7 265KF、20コア、RTX 3060 Ti）では、[NNUEに合わせた探索係数のSPSA](nnue-search-spsa.md)が動いており、その後も同計画の段階ゲートが続く。
-本書の学習はGPUで行い、`systemd-run`のscope（nice値19、CPUスレッド4本、メモリ上限12 GB）で動かして、SPSAの対局への影響を抑える。
+測定機（Intel Core Ultra 7 265KF、20コア、RTX 3060 Ti）では、探索の対局測定やSPSAが動くことがある。
+本書の学習はGPUで行い、`systemd-run`のscope（nice値19、CPUスレッド4本、メモリ上限12 GB）で動かして、対局への影響を抑える。
 段階ゲートは、ryzen0（Threadripper 2990WX、物理32コア）で行い、同時対局数は`--concurrency 30`と明示する。対局を進める`minase match run`は、自動ではこのCPUの物理コア数を8と判定し、同時対局数を7にするからである（[HalfKPの再学習の記録](../measurements/halfkp-retrain-stc.md)）。
 本書のSTCとLTCは、時間制御の条件を揃えるため、すべてryzen0で行う。
 

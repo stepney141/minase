@@ -16,7 +16,7 @@ minaseがSPSAで調整する探索と時間管理の係数（`crates/minase/src/
 
 違いのうち、late move reductionsのhistory補正を段差にしたこと、aspiration windowsで外れた側だけを広げること、correction historyを駒種別の枚数で引いて探索ごとに初期化することは、ADRで意図して選んだ形である。
 ただし、それらの判断の多くはPSTとFMを既定の評価関数としていた時期のもので、STCの到達深さが今より浅い条件で測られている。
-この比較は、[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](../plans/nnue-search-spsa.md)の調整中に`ReverseFutilityMargin`が下限0の近くまで動いたことを受けて行った。
+この比較は、2026年10月17日に現行の形のまま探索と時間管理の38係数をNNUEに合わせてSPSAで調整し直したとき、`ReverseFutilityMargin`が開始値428から下限0まで動き、`RazoringMargin1`と`RazoringMargin2`が範囲の上限（razoringが事実上働かない値）の近くまで動いたことを受けて行った。この調整は、後続の関数形の見直しで全係数を調整し直すので、反映せずに中止した。
 形を変える候補は[探索の枝刈りとLMRの関数形の見直し](../plans/search-pruning-forms.md)が扱う。
 
 ## 調査の範囲
