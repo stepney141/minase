@@ -222,7 +222,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月12日 [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)
 - 2026年10月12日 [NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](backpropagate-the-first-layer-through-a-reverse-index.md)
 - 2026年10月12日 [NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
-- 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-lookahead-teachers.md)
+- 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)（置き換え済み）
 - 2026年10月12日 [NNUEを入力特徴集合と出力部の型引数で組み立てる](parameterize-the-nnue-by-feature-set-and-head-types.md)
 - 2026年10月12日 [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](share-p-type-mirror-weights-by-half-width-rotation.md)
 - 2026年10月12日 [`unsafe`は学習器のクレートだけに許し、エンジンとライブラリでは禁じ続ける](archive/allow-unsafe-only-in-the-trainer-crate.md)（置き換え済み）
@@ -250,3 +250,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
 - 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
 - 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
+- 2026年10月17日 [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-teachers-without-lookahead.md)

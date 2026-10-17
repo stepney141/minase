@@ -32,4 +32,4 @@
 先読み教師は、実際に指された着手列と生成時の除外条件に依存する教師であり、不偏な推定ではない。
 採用は[SPRTの手引き](../guides/sprt.md)が定める手順から外れて決められたので、LTCで改善を示した証拠はない。
 採用した重みと[SPSAの結果の適用](../plans/archived/spsa.md)の係数の組合せは、測られていない。
-NNUEの教師も同じγとnを使い、その判断は[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-lookahead-teachers.md)が扱う。
+NNUEの教師も同じγとnを使い、その判断は[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)が扱う。

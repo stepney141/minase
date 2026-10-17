@@ -210,7 +210,7 @@ D0bと同じ学習コマンドに`--train-subsample`、`--epochs 8 --patience 8`
 
 - 2つの仮説のそれぞれに、「仮説ごとの判定」の基準で「支持」「不支持」「判定不能」のいずれかの結論が付き、測定記録に書かれている。
 - 決着局面の集計が測定記録に書かれている。
-- 先読みなしの候補の採否が段階ゲートで決まっている。LTCで`H1`となり、異常件数、時間切れ、および拒否着手が0件なら、そのネットを埋め込んでmasterへ取り込み（マージは利用者の許可を得てから行う）、学習の手引きの標準コマンドと[NNUEの教師のADR](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)を改める。
+- 先読みなしの候補の採否が段階ゲートで決まっている。LTCで`H1`となり、異常件数、時間切れ、および拒否着手が0件なら、そのネットを埋め込んでmasterへ取り込み（マージは利用者の許可を得てから行う）、学習の手引きの標準コマンドと[NNUEの教師のADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)を改める。
 - 状態は、先読みなしの候補を採用すれば完了（採用）、採用しなければ完了（一部不採用）とする。仮説の結論と`--train-subsample`の実装は、採否によらず成果として残す。
 
 ## 参考資料
@@ -220,7 +220,7 @@ D0bと同じ学習コマンドに`--train-subsample`、`--epochs 8 --patience 8`
 - [学習率スケジュールの学習の記録](../measurements/nnue-lr-schedule-training.md)
 - [学習率スケジュールの設計書](archived/nnue-lr-schedule.md)（間引きの原設計）
 - [教師の探索値を同じ対局の将来の探索値の幾何加重平均に置き換えるADR](../adr/use-lookahead-teacher-values.md)
-- [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶADR](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)
+- [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)
 - [対局内で一定な教師成分は関係を表せるモデルに記憶されるという教訓](../lessons/game-constant-target-memorization.md)
 - [将棋の教師生成と学習ツールの調査](../research/teacher-generation-prior-art.md)
 - variant-nnue-pytorch（コミット`749db94f8682c95d66204e7b921e4e47f57579bb`）の`train.py`と`README.md`

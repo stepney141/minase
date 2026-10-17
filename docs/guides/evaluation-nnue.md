@@ -299,40 +299,27 @@ z_\theta(p) = \frac{ \phi(p) \sum_{i \in \mathcal{A}_0(p)} w_i^{\mathrm{mg}} + \
 
 学習データは、自己対局で現れた各局面について、盤面、手番側が着手を選ぶために行った探索の値（cp、手番側から見た値）、および対局の最終結果を記録したものである。
 NNUEの教師値は、探索値だけを使い、最終結果を混ぜない。
-対局結果は同じ対局の全ての局面で同じ値を取るので、非線形の経路が結果を対局ごとの記憶として学ぶおそれがあるからである（[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)）。
+対局結果は同じ対局の全ての局面で同じ値を取るので、非線形の経路が結果を対局ごとの記憶として学ぶおそれがあるからである（[NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
 
-探索値には、記録した局面自身の値ではなく、同じ対局の後続40手以内の局面の探索値を、手数が離れるほど小さい重みで平均した先読み値 $`\hat{s}_t`$ を使う。
-添字 $`t`$ は対局の何手目の局面かを表し、$`s_{t'}`$ は手数 $`t'`$ の局面の探索値である。
-手数 $`t`$ の局面について、$`t < t' \le t + 40`$ の範囲で記録が残っている手数 $`t'`$ の集合を $`\mathcal{L}_t`$ とすると、先読み値は次の式で定める。
+探索値には、記録した局面自身の値 $`s_t`$ をそのまま使い、PSTとFMの学習で使う先読み値（[PSTとFMの解説の「先読み教師」](evaluation-pst-fm.md#先読み教師)）には置き換えない。
+添字 $`t`$ は対局の何手目の局面かを表す。
+先読み値で学んだネットより、局面自身の探索値で学んだネットのほうが対局で強かったからである（同じADR）。
 
-```math
-\hat{s}_t =
-\begin{cases}
-\dfrac{ \sum_{t' \in \mathcal{L}_t} \gamma^{\,t' - t - 1} \, (-1)^{\,t' - t}\, s_{t'} }{ \sum_{t' \in \mathcal{L}_t} \gamma^{\,t' - t - 1} }, & \mathcal{L}_t \neq \varnothing,\\
-s_t, & \mathcal{L}_t = \varnothing,
-\end{cases}
-\qquad
-\gamma = 0.9.
-```
-
-因子 $`(-1)^{t'-t}`$ は、奇数手後の局面の値を局面 $`t`$ の手番側の視点へそろえる。
-先読み値の意味と、記録しない局面の扱いは、[PSTとFMの解説の「先読み教師」](evaluation-pst-fm.md#先読み教師)と同じである。
-
-教師値 $`\tau_t`$ は、先読み値を分類 $`g`$ ごとの教師の勝率尺度 $`K_g`$（識別子は `teacher_cp_per_logit`）で勝率へ換算したものである。
+教師値 $`\tau_t`$ は、探索値を分類 $`g`$ ごとの教師の勝率尺度 $`K_g`$（識別子は `teacher_cp_per_logit`）で勝率へ換算したものである。
 
 ```math
-\tau_t = \sigma\!\left( \frac{\hat{s}_t}{K_g} \right).
+\tau_t = \sigma\!\left( \frac{s_t}{K_g} \right).
 ```
 
-これは、PSTとFMの学習で使う混合式 $`\lambda\, \sigma(\hat{s}_t / K_g) + (1 - \lambda)\, \rho_t`$ に、混合比 $`\lambda = 1`$ を入れたものに当たり、$`\rho_t`$ は最終結果である。
+これは、PSTとFMの学習で使う混合式 $`\lambda\, \sigma(\hat{s}_t / K_g) + (1 - \lambda)\, \rho_t`$ の先読み値 $`\hat{s}_t`$ を探索値 $`s_t`$ に替え、混合比 $`\lambda = 1`$ を入れたものに当たり、$`\rho_t`$ は最終結果である。
 学習ではこの混合比を、学習器の必須の引数 `--lambda` に1.0を与えて指定する。
 教師の分類とは、教師を作った探索のコミット、重み、探索の局面数、局面の由来などの組であり、学習データのヘッダと対局ヘッダに記録されている。
-教師の勝率尺度 $`K_g`$ は、分類ごとに訓練局面の先読み値から最終結果を最もよく予測する尺度として較正するので、最終結果は教師値には入らないが尺度の較正には使う。
+教師の勝率尺度 $`K_g`$ は、分類ごとに訓練局面の探索値から最終結果を最もよく予測する尺度として較正するので、最終結果は教師値には入らないが尺度の較正には使う。
 推定の式は[PSTとFMの解説の「教師値」](evaluation-pst-fm.md#教師値)と同じである。
 教師の勝率尺度 $`K_g`$ は教師値を作るときだけに使い、モデルの出力をロジットへ直すときは常に $`K`$ を使う。
 教師の勝率尺度は、学習の必須の引数 `--teacher-cp-per-logit` に、この学習の訓練集合から推定する `calibrate` か、較正コマンド `minase-trainer data calibrate` が書き出した較正ファイルのパスのどちらかを指定して与える（[NNUEの学習手順](nnue-training.md)）。
 学習器は、比 $`K / K_g`$ を尺度補正係数（識別子は `teacher_score_multiplier`）として `config.json` に記録する。
-教師の探索値にこの係数を掛けると勝率尺度 $`K`$ の目盛りの評価値になり、$`\sigma(\hat{s}_t / K_g)`$ は $`\sigma\bigl((\hat{s}_t K / K_g) / K\bigr)`$ と同じ値である。
+教師の探索値にこの係数を掛けると勝率尺度 $`K`$ の目盛りの評価値になり、$`\sigma(s_t / K_g)`$ は $`\sigma\bigl((s_t K / K_g) / K\bigr)`$ と同じ値である。
 
 ### 損失
 
@@ -466,7 +453,7 @@ STCは持ち時間10秒と1手ごとの加算0.1秒、LTCは持ち時間60秒と
 
 学習は `minase-trainer nnue train` で行い、標準ではGPU（CUDA）を使う。
 入力には、minase独自形式MNSDの学習データ、線形の経路の初期値となる浮動小数点のPST（圧縮しないNPZ形式）、および勝率尺度 $`K`$、探索用駒価値、規則セット名を引き継ぐ基準の重みファイル `pst.bin` を指定する。
-先読み教師を使うには、`--lookahead-gamma 0.9 --lookahead-plies 40` を指定する。
+標準の学習では、先読み教師の引数 `--lookahead-gamma` と `--lookahead-plies` を指定しない。
 試走と本番の学習のコマンド、中断した学習の再開、およびGPUとCPUの実装の一致の検査は[NNUEの学習と診断の手順](nnue-training.md)にある。
 学習した重みの評価値の分布、駒除去差分、および着手前後の評価差を調べる診断の手順は[同書の「学習した重みを診断する」](nnue-training.md#8-学習した重みを診断する)にある。
 GPUの学習器を設計した理由は、[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)と[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)にある。
@@ -478,7 +465,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../adr/use-p-type-input-features-for-the-nnue.md)
 - [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](../adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)
-- [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)
+- [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
 - [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)
