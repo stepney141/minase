@@ -5,6 +5,23 @@ set -euo pipefail
 
 vast_error() { printf '%s\n' "$*" >&2; return 1; }
 
+# 引数: ロックファイル、スクリプトのパス、スクリプトの引数。
+# flockだけがロックを保持し、再実行するスクリプトと子孫には記述子を渡さない。
+vast_session_lock() {
+    local lock=$1 script=$2
+    shift 2
+    if [[ -v MINASE_VAST_SESSION_LOCK ]]; then
+        [[ $MINASE_VAST_SESSION_LOCK == "$lock" ]] || { vast_error '再実行時のセッションロックが一致しません'; return 1; }
+        unset MINASE_VAST_SESSION_LOCK
+        return 0
+    fi
+    # --verboseの競合通知だけを従来の日本語へ変換する。
+    # flockの成功時の出力を捨て、実処理の標準出力は記述子3から元へ戻す。
+    exec env MINASE_VAST_SESSION_LOCK="$lock" LC_ALL=C flock -n -o --verbose "$lock" \
+        bash -c 'exec bash "$@" >&3 3>&-' bash "$script" "$@" \
+        3>&1 > /dev/null 2> >(sed -u 's/^flock: failed to get lock$/同じセッションの起動または取得が実行中です/' >&2)
+}
+
 # 引数: 秒数、vastaiの引数。通信の失敗と時間超過を成功扱いしない。
 vast_call() {
     local seconds=$1

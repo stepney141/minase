@@ -60,7 +60,7 @@ spsa_fetch_retry() {
     sleep 600
 }
 
-spsa_fetch_main() (
+spsa_fetch_main() {
     [[ $# == 1 ]] || { spsa_error '使い方: fetch.sh <セッション名>'; exit 1; }
     spsa_name "$1"
     local session=$1 root directory ids id state deadline ended exit_status source_file failures=0
@@ -71,8 +71,7 @@ spsa_fetch_main() (
     [[ -f $directory/deadline ]] || { spsa_error 'deadlineがありません'; exit 1; }
     deadline=$(cat "$directory/deadline")
     [[ $deadline =~ ^[1-9][0-9]*$ ]] || { spsa_error 'deadlineが不正です'; exit 1; }
-    exec 8> "$directory/.operation.lock"
-    flock -n 8 || { spsa_error '同じセッションの起動または取得が実行中です'; exit 1; }
+    vast_session_lock "$directory/.operation.lock" "$SCRIPT_DIR/fetch.sh" "$@"
     cd "$root"
     while :; do
         if ! ids=$(vast_ids "minase-spsa-$session"); then
@@ -142,6 +141,6 @@ spsa_fetch_main() (
             exit 1
         fi
     done
-)
+}
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then spsa_fetch_main "$@"; fi

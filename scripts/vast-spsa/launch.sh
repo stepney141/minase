@@ -36,7 +36,7 @@ if errors:
 PY
 }
 
-spsa_launch_main() (
+spsa_launch_main() {
     [[ $# == 3 ]] || { spsa_error '使い方: launch.sh <セッション名> <出品ID> <期限までの分数>'; exit 1; }
     spsa_name "$1"
     [[ $2 =~ ^[1-9][0-9]*$ && $3 =~ ^[1-9][0-9]*$ ]] || { spsa_error '出品IDと期限までの分数には正の整数が必要です'; exit 1; }
@@ -56,8 +56,7 @@ spsa_launch_main() (
     done
     [[ -r $HOME/.ssh/id_vastai ]] || { spsa_error "$HOME/.ssh/id_vastaiがありません"; exit 1; }
     # 起動と取得による、同一セッションのローカル記録の競合を防ぐ。
-    exec 8> "$directory/.operation.lock"
-    flock -n 8 || { spsa_error '同じセッションの起動または取得が実行中です'; exit 1; }
+    vast_session_lock "$directory/.operation.lock" "$SCRIPT_DIR/launch.sh" "$@"
     local temporary instance='' cleanup_instance=no
     temporary=$(mktemp -d "$directory/.launch.XXXXXX")
     trap 'rc=$?; trap - EXIT; if [[ $cleanup_instance == yes ]]; then if ! vast_destroy "$instance"; then rc=1; fi; fi; rm -rf "$temporary"; exit "$rc"' EXIT
@@ -129,7 +128,9 @@ SH
     fi
     vast_ssh "$host" "$port" 'touch /workspace/job/started'
     cleanup_instance=no
+    rm -rf "$temporary"
+    trap - EXIT
     printf 'セッション %s を開始しました。インスタンスID: %s\n' "$session" "$instance"
-)
+}
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then spsa_launch_main "$@"; fi
