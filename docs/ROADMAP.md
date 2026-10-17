@@ -98,7 +98,7 @@
 | 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
 | メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
-| AWSのEC2での教師生成 | [plans/aws-selfplay.md](plans/aws-selfplay.md) | 起案 | |
+| vast.aiでの教師生成 | [plans/vast-selfplay.md](plans/vast-selfplay.md) | 起案 | |
 | 探索の枝刈りとLMRの関数形の見直し | [plans/search-pruning-forms.md](plans/search-pruning-forms.md) | 起案 | |
 | NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/nnue-early-best-epoch.md](plans/nnue-early-best-epoch.md) | 起案 | |
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
@@ -124,6 +124,6 @@
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [探索の枝刈りとLMRの関数形の見直し](plans/search-pruning-forms.md)は、[係数の関数形の比較](research/search-coefficient-forms-prior-art.md)が示した構造の差のうち、reverse futility pruningの深さ比例の余裕値と深さの上限、correction historyの補正の適用先の拡大、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限の4項目を、現行と同じ探索になる開始値から既存の係数とまとめてSPSAで調整し、1つの候補として段階ゲートで判定する。butterfly historyの更新量の形とcontinuation historyは別の設計書で扱う。着手は、[NNUEに合わせたSPSAの調整](plans/nnue-search-spsa.md)の完了と利用者の指示を待つ。
-- [AWSのEC2での教師生成](plans/aws-selfplay.md)は、自己対局の教師生成をAWSのEC2へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、検査に通ったファイルをS3へ送ってその存在を完了の記録とする。機種はEPYC Turinの物理192コアを持つc8a.48xlarge、リージョンは米国東部、購入方式はオンデマンドを既定とし、30ファイルの生成を約3時間、約30米ドルと見積もる。着手は利用者の許可を待つ。
+- [vast.aiでの教師生成](plans/vast-selfplay.md)は、自己対局の教師生成をvast.aiで借りる計算機へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、生成機のディスクに置いたファイルを作業機が10分ごとに取得して検査し、検査済みのファイルが作業機にあることを完了の記録とする。機種はZen 4以降のEPYCを2基積んだ384スレッドの機械を条件で選び、30ファイルの生成を約3〜4時間、約11〜18米ドルと見積もる。作業機のvast.aiのAPIキーが2段階認証を理由に一部の操作を拒まれており、その解消が先に要る。着手は利用者の許可を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。
