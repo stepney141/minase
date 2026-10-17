@@ -11,18 +11,30 @@ source "$SCRIPT_DIR/remote.sh"
 
 # 引数: ID、セッション名、測定機のセッションディレクトリ。
 # 転送先を毎回新しくし、run/と共有するinodeへの上書きを防ぐ。
+# 開始時の状態で取得方法を固定し、失敗時に別の方法では取り直さない。
 spsa_fetch_once() (
-    local id=$1 session=$2 directory=$3 temporary rc
+    local id=$1 session=$2 directory=$3 temporary rc state transfer method
     temporary=$(mktemp -d "$directory/.fetch.XXXXXX") || return 1
     trap 'rm -rf "$temporary"' EXIT
     mkdir -p "$directory/logs" "$temporary/incoming" "$temporary/logs" || return 1
     rm -f "$directory/logs/exit-status" || return 1
-    vast_copy "$id" "/workspace/job/$session" "$temporary/incoming/" || return 1
+    state=$(vast_instance "$id" 600) || return 1
+    state=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["actual_status"])' "$state") || return 1
+    if [[ $state == running ]]; then
+        transfer=vast_rsync
+        method=ssh-rsync
+    else
+        transfer=vast_copy
+        method=vastai-copy
+    fi
+    printf '%s instance=%s status=%s method=%s\n' "$(date -u +%FT%TZ)" "$id" "$state" "$method" \
+        >> "$directory/logs/fetch.log" || return 1
+    "$transfer" "$id" "/workspace/job/$session" "$temporary/incoming/" || return 1
     if [[ $PRECHECK == yes ]]; then
         mkdir "$temporary/safety" || return 1
-        vast_copy "$id" "/workspace/job/$session-safety" "$temporary/safety/" || return 1
+        "$transfer" "$id" "/workspace/job/$session-safety" "$temporary/safety/" || return 1
     fi
-    vast_copy "$id" /workspace/job/logs/ "$temporary/logs/" || return 1
+    "$transfer" "$id" /workspace/job/logs/ "$temporary/logs/" || return 1
     # 前のincomingを除いても、runのハードリンクは残る。
     if [[ -d $directory/incoming ]]; then mv "$directory/incoming" "$temporary/old-incoming" || return 1; fi
     mv "$temporary/incoming" "$directory/incoming" || return 1

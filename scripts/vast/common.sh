@@ -170,6 +170,19 @@ vast_scp() {
 }
 
 # 引数: ID、調整機のパス、測定機の絶対パス。
+# コンテナのSSH経由で取得する。再起動に備え、接続先は転送ごとに照会する。
+vast_rsync() {
+    [[ $3 == /* ]] || { vast_error "取得先は絶対パスで指定してください: $3"; return 1; }
+    local address host port ssh_command
+    address=$(vast_ssh_address "$1" 600) || return 1
+    read -r host port <<< "$address"
+    if [[ $host == *:* ]]; then host="[$host]"; fi
+    printf -v ssh_command 'ssh -i "%s" -p %s -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30' \
+        "$HOME/.ssh/id_vastai" "$port"
+    timeout --kill-after=5s 3600s rsync -a -e "$ssh_command" "root@$host:$2" "$3"
+}
+
+# 引数: ID、調整機のパス、測定機の絶対パス。
 vast_copy() (
     [[ $3 == /* ]] || { vast_error "取得先は絶対パスで指定してください: $3"; return 1; }
     local output rc=0
