@@ -105,7 +105,8 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 - [historyの更新量の形とcontinuation historyの設計書](history-forms.md)は、ply `q`のノードで指した手について、その`Move`と着手前の駒種をplyごとに記録する（null moveと根より前は記録を持たない）。この記録が起点にあれば、C3はそれを再利用する。なければ、C3で同じ定義の記録を加える。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
-測定機はlishogiのBotと共用するので、同時対局数は16を上限とする。
+測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
 実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
 
 本書は次のADRの決定の一部を変える。
@@ -123,13 +124,13 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 5項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたりSPSAの約75時間にSTCとLTCを加えた約81〜113時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
+| 候補の束ね方 | 5項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
 | 準拠する形 | 利用者の決定により、Stockfishの形に合わせる。YaneuraOuは将棋向けに小駒の区分を定め直し（`source/position.cpp:27-36`）、continuation correction historyを2手前と4手前の2つに限るが（`yaneuraou-search.cpp:732-737`）、これらのYaneuraOuだけの形は採らない。 |
 | 新しい係数の開始値 | 利用者の決定により、Stockfishの値を換算した値とする。換算は、評価値の差を歩兵価値の比で直す（Stockfishの歩兵価値は208、`src/types.h:199`）。材料表の重みはStockfishに対応する値がないので、現行の補正の上限に当たる値から始める（材料表の行を参照）。新しい開始値では探索が現行と一致しなくなるので、各項目のコミットで探索ノード数の変化を記録する。 |
 | 新しい係数の範囲 | 利用者の決定により、Stockfishの換算値、YaneuraOuの換算値（歩兵価値90、`source/evaluate.h:78`）、およびminaseの現行の対応する値の3つをすべて含める。現行に表や項がない係数は、現行の値を0とする。3つの値は次の行に示す。 |
 | 3つの値と開始値の隔たり | 重みは、pawnがStockfish 52、YaneuraOu 105、現行0、minorが36、75、0、non-pawnが44、107、0、2手前と4手前の文脈が30、69、0、6手前の文脈が24、なし、0である。更新量は、上界でないノードが20、9、なし、上界のノードが30、12、なしである。LMRの項は101、45、0である。材料表の重みは、StockfishにもYaneuraOuにもなく、起点の`CorrectionCap`の値（現行の既定値なら220）である。重みの開始値はYaneuraOuの換算値の約半分であり、更新量とLMRの項の開始値はYaneuraOuの換算値の2倍を超える。補正の表と項を持たない現行からは、いずれも離れた値から始まる。 |
 | SPSAの対象 | 利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値（表の重み、更新量、LMRの項）だけとし、残した材料表の重みも調整する。上下限、表ごとの更新の倍率、初期値などはStockfishの値で固定し、固定する定数の節に行番号とともにまとめる。起点の表の調整対象の全係数（`FmScale`を除く）から、新しい形では使わなくなる`CorrectionCap`と`CorrectionWeight`を除き、新しい9係数を加える。係数の数は起点の時点で数え直す。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、持ち時間10秒＋0.1秒、同時対局数16、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。連鎖の先行案をすべて採用した場合、本書の時点の調整対象は88係数前後になる（起点の表で数え直す）。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は調整機の物理コア数から1を引いた数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。連鎖の先行案をすべて採用した場合、本書の時点の調整対象は88係数前後になる（起点の表で数え直す）。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
 | 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)がpawn historyのために導入する双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。history-formsが採用されていなければ、同じ定義の鍵を本書で導入する。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。先手と後手のnon-pawnの鍵は、それぞれの歩兵と仲人以外の全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:516, 947-957`）。pawnとnon-pawnの鍵の定義は[段階12の診断](../measurements/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
 | 材料表を残すこと | 利用者の決定により残す。Stockfishに材料表はないが、中将棋の[診断](../adr/key-correction-history-by-material.md)で鍵の候補のうち最も予測を改善した表である。他の表と同じ形に改め、Stockfishの表と並べて足す。重み`CorrectionMaterialWeight`の開始値は、起点の`CorrectionCap`の値とする（現行の既定値なら220）。新しい形では、要素が上限1024に達したときの補正量が重みの百分率×歩兵価値になるので、起点の補正の上限と同じ大きさになる値である。更新量の倍率は、Stockfishで基準になるpawnの表と同じ128/128とする。 |
 | 表の合成 | Stockfishと同じく、各表の要素に表ごとの重みを掛けて足し合わせ、補正後の評価を評価関数の出力の範囲に収める（Stockfish `src/search.cpp:95-118`）。補正量の全体の上限`CorrectionCap`は、Stockfishにないので除く。先手と後手のnon-pawnの表には同じ重みを使う。2手前と4手前の文脈にも同じ重みを使い、6手前には別の重みを使う。1手前の手がnull moveのときは、Stockfishと同じくcontinuation correction historyの代わりに定数を加える。この定数は換算すると歩兵価値の約0.3%である。 |
@@ -252,20 +253,21 @@ history-formsのhistoryの項も同じ位置で引く。
 
 ## 所要時間の見積り
 
-時間は、同時対局数16の測定機での見積りである。
-SPSAは、3,000ペア（同時対局数16）の[セッション](../measurements/spsa-stage9-20260925-c5.md)が27,138秒（1ペア約9秒）を要したことから、30,000ペアを約75時間（約3日）と見込む。
+時間は、時間切れの事前確認とSPSAが調整機、それ以外が同時対局数16の測定機での見積りである。
+SPSAは、[統括計画](search-forms.md#所要時間と費用)の見積りにより、調整機で約13〜18時間と見込み、時間切れの事前確認を含む1セッションの費用は約25〜35米ドルである。
 段階ゲートの時間は、判定までのペア数が強さの差で変わるので幅を持たせた。
 
 | 段階 | 内容 | 見積り |
 |---|---|---|
 | 1 | 形の変更の実装と検証（codexへ委任） | 1日程度 |
-| 2 | 時間切れの事前確認（13反復、104ペア） | 約15分 |
-| 3 | SPSA（30,000ペア） | 約75時間 |
+| 2 | 時間切れの事前確認（調整機） | 約35分 |
+| 3 | SPSA（調整機、30,000ペア） | 約13〜18時間 |
 | 4 | 反映、テスト、および事前対局（32ペア） | 約1時間 |
 | 5 | 候補のSTC | 約1〜8時間 |
 | 6 | 通過した場合のLTC | 約5〜30時間 |
 
-実装を除く測定機の占有は、STCで棄却される場合は段階2から5までの和の約77〜84時間（約3.2〜3.5日）、LTCまで進む場合は段階2から6までの和の約82〜114時間（約3.4〜4.8日）となる。
+測定機の占有は、反映と事前対局、STC、およびLTCの和であり、STCで棄却される場合に約2〜9時間、LTCまで進む場合に約7〜39時間となる。
+調整機は、時間切れの事前確認とSPSAで約13〜18時間使う。
 
 ## 実装フェーズ
 
@@ -297,19 +299,20 @@ C1はbenchのノード数を変えない（benchは局面ごとに表を初期�
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/correction-history-tables-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後のフェーズはこのrunnerで実行する。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/correction-history-tables.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、13反復（104ペア）を実行する。
+写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア）を調整機で実行する。
 起点で時間管理の係数の名前や範囲が変わっていれば、手引きの第3節の値を起点の表に合わせて読み替える。
 
 ```console
-<固定したminase> spsa \
+<調整機のminase> spsa \
   --run-dir data/spsa/correction-history-tables-safety --seed 4100000000 \
   --engine commit:<形の変更> --params data/spsa/correction-history-tables-safety.params \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 13 --pairs-per-iteration 8
+  --rules engine-default --each <換算した持ち時間> --concurrency <調整機の同時対局数> \
+  --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
 `time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
@@ -319,13 +322,14 @@ C1はbenchのノード数を変えない（benchは局面ごとに表を初期�
 ### フェーズ3　SPSAによる調整
 
 ```console
-<固定したminase> spsa \
+<調整機のminase> spsa \
   --run-dir data/spsa/correction-history-tables --seed 4150000000 \
   --engine commit:<形の変更> --params data/spsa/correction-history-tables.params \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
+  --rules engine-default --each <換算した持ち時間> --concurrency <調整機の同時対局数> \
   --iterations 3750 --pairs-per-iteration 8
 ```
 
+このコマンドは調整機で実行し、実行ディレクトリは測定機の`data/spsa/correction-history-tables`へ取得してから反映に使う。
 最終のθ（調整中の係数の中心値の組）を整数に丸めた値を調整の結果とし、途中の値を対局の成績で選び直さない。
 結果は測定記録`correction-history-tables`に、手引きの第6節の項目とともに残す。
 最終値を丸めた整数が範囲の上限または下限になった係数を示す。

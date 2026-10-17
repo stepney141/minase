@@ -97,7 +97,8 @@ capture historyの表の上限は、historyの形の見直しがStockfishの1069
 連鎖の順序は、前の設計書の後に本書、その後にhistoryの形の見直しと続く提案であり、最終的な順序は利用者が決める。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
-測定機はlishogiのBotと共用するので、同時対局数は16を上限とする。
+測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
 実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
 
 本書は、次のADR（設計判断の記録、`docs/adr/`）の決定の一部を変える。
@@ -128,11 +129,11 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 9項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたりSPSAの約75時間にSTCとLTCを加えた約81〜113時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
+| 候補の束ね方 | 9項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
 | 開始値と検証 | 新しい係数と、Stockfishに同じ形の値がある既存の係数の開始値は、Stockfishの値を換算した値とする。評価値の単位を持つ値は歩兵価値208で百分率に換算する。各項目のコミットで、`minase dev bench`（固定の15局面を指定の深さまで探索するコマンド）の深さ3、5、7の全15局面の探索ノード数の変化を記録する。挙動を変えない移行（M1とM2）だけは、探索ノード数、評価値、および最善手が起点と一致することで検証する。 |
 | 3つの値の比較 | 評価値の単位を持つ係数ごとに、Stockfishの換算値（÷208）、YaneuraOuの換算値（÷90）、およびminaseの現行の対応する値を、新しい係数の表に並べる。YaneuraOuは同じ形で定数を将棋向けに調整し直しており、歩兵価値で見るとStockfishの2〜4倍の大きさになることが多く、minaseの現行の値もその大きさに近い。開始値が他の2つから大きく離れる係数は`RazoringDepthMargin`であり、開始値164はYaneuraOuの約900、現行の約1000〜1600の数分の1である。`NullMoveEvalScale`の開始値163も現行の56の約3倍で、YaneuraOuはこの項を持たない。 |
 | SPSAの対象 | 起点の調整対象の係数（`FmScale`を除く全係数）から、形を置き換える11係数を除き、新しい14係数を加える。除く係数は、`FutilityMargin1`〜`3`、`NonImprovingFutility1`〜`3`、`SeeMargin1`〜`3`、および`RazoringMargin1`〜`2`である。既存の係数のうち`NullMoveBase`、`NullMoveSlope`、および`NullMoveEvalScale`は、Stockfishの換算値へ開始値を置き直す。`LmpBase`と`LmpSlope`の開始値は前の設計書のF3が置き直すので、本書は起点の既定値を継承する。前の設計書の候補の係数の数は同書の表で確かめ、着手時に起点の表で数え直す。前の設計書の候補を採用した場合、本書の時点の係数の数は70前後になる。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の6係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペアで計30,000ペアとする。ペアは同じ開始局面から先後を入れ替えて指す2局の組である。持ち時間は10秒＋0.1秒、同時対局数は16とし、`c_end`を範囲の1/6、`r_end`を0.002とする。`c_end`は最後の反復の摂動幅、`r_end`は最後の反復の学習率であり、値は[SPSAの手引き](../guides/spsa.md)の既定による。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで全係数を十分に調整できるかは未検証であり、不採用は、この予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペアで計30,000ペアとする。ペアは同じ開始局面から先後を入れ替えて指す2局の組である。SPSAは調整機で行い、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は調整機の物理コア数から1を引いた数とし、`c_end`を範囲の1/6、`r_end`を0.002とする。`c_end`は最後の反復の摂動幅、`r_end`は最後の反復の学習率であり、値は[SPSAの手引き](../guides/spsa.md)の既定による。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで全係数を十分に調整できるかは未検証であり、不採用は、この予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
 | 固定する定数 | 上下限、平均の重み、検証探索を行う残り深さの下限などは、後述の固定の定数の表のとおりStockfishの値で固定し、SPSAで調整しない。 |
 | 枝刈りの条件を手法ごとに分ける（M1） | 現行は、「残り深さ3以下の零窓のノード」という1つの判定（`negamax.rs`の`pruning_node`）で、futility pruning、late move pruning、SEEによる捕獲手の枝刈り、reverse futility pruning、およびrazoringの対象ノードを決めている。本書は最初に、この判定を手法ごとの条件へ分ける挙動を変えない移行を置き、その後の各項目で手法ごとの条件をStockfishの形に改める。静的評価は、前の設計書のF2が通常探索の各ノードで1回求めて保持するので、本書はその値を使う。F2が不採用なら、静的評価を使う枝刈りのいずれかが働き得るノードで求める。correction historyは、探索値と静的評価のずれを学習して静的評価を補正する表である。静的評価を求めるノードが増えても、`update_correction`は静的評価がなければその場で求めるので、この表の更新は変わらない。静的評価と王駒への利きを調べるノードが増える費用は、探索速度（NPS、1秒あたりの探索ノード数）の低下として測る。 |
 | lmrDepthの定義 | Stockfishは、各手について枝刈りの前に`r = reduction(improving, depth, moveCount) − 512 × [PVノード] + 929 × [ttPv]`を1/1024手単位で求め、`lmrDepth = newDepth − r/1024`とする（`src/search.cpp:1183-1203, 1917-1920`）。`reduction()`は表の積、improvingでないときの増分、および定数948からなる。前の設計書のF4は、この部分に当たる減深量を、1/100手単位の前半`r_pre`として後半と分けて定める。本書は`lmrDepth = d − 1 − r_pre/100`（0方向へ丸める整数除算）とする。historyによる補正、cutNodeとallNodeの項、上限の切り詰めなど、Stockfishが枝刈りの後に加える項は`r_pre`に含まれない。Stockfishと同じく、捕獲手とkiller手を含む全ての手について`r_pre`を求める。F4が不採用で起点に`r_pre`がない場合は、起点のLMRの表の値を100倍して`r_pre`の代わりにする。 |
@@ -305,22 +306,22 @@ null moveの子は`max(0, d − R)`の深さで読む。
 
 ## 所要時間の見積り
 
-時間は、同時対局数16の測定機での見積りである。
-SPSAは、同時対局数16で3,000ペアを完走した実績（[SPSAの手引き](../guides/spsa.md)の27,138秒、1ペア約9秒）に基づき、30,000ペアを約75時間（約3日）と見込む。
-2026年10月17日に中止した現行の形でのSPSAでは1反復あたり約1分で進んだが、これは暫定の観測である。
+時間は、時間切れの事前確認とSPSAが調整機、それ以外が同時対局数16の測定機での見積りである。
+SPSAは、[統括計画](search-forms.md#所要時間と費用)の見積りにより、調整機で約13〜18時間と見込み、時間切れの事前確認を含む1セッションの費用は約25〜35米ドルである。
 段階ゲートの時間は、判定までのペア数が強さの差で変わるので、前の設計書と同じ幅を持たせた。
 
 | 段階 | 内容 | 見積り |
 |---|---|---|
 | 1 | 移行と9項目の実装と検証（codexへ委任） | 2日程度 |
-| 2 | 時間切れの事前確認（13反復、104ペア） | 約15分 |
-| 3 | SPSA（30,000ペア） | 約75時間 |
+| 2 | 時間切れの事前確認（調整機） | 約35分 |
+| 3 | SPSA（調整機、30,000ペア） | 約13〜18時間 |
 | 4 | 反映、テスト、および事前対局（32ペア） | 約1時間 |
 | 5 | 候補のSTC | 約1〜8時間 |
 | 6 | 通過した場合のLTC | 約5〜30時間 |
 
 実装が前の設計書より長いのは、王手の判定の前計算、静かな手のSEEの判定、lmrDepthの計算、futility pruningの手ごとの判定、および検証探索を加えるからである。
-実装を除く測定機の占有は、表の段階2〜5の和で、STCで棄却される場合に約77〜84時間（約3.2〜3.5日）、段階6まで進む場合に約82〜114時間（約3.4〜4.8日）となる。
+測定機の占有は、反映と事前対局、STC、およびLTCの和であり、STCで棄却される場合に約2〜9時間、LTCまで進む場合に約7〜39時間となる。
+調整機は、時間切れの事前確認とSPSAで約13〜18時間使う。
 
 ## 実装フェーズ
 
@@ -351,19 +352,20 @@ benchの深さでは検証探索が働かないので、矛盾率は、STCの事
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/shallow-pruning-extensions-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後のフェーズはこのrunnerで実行する。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/shallow-pruning-extensions.params`とする。
 行数は、起点の調整対象の係数から11を除き14を加えた数である。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の6係数のうち手引きが指定する4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/shallow-pruning-extensions-safety.params`で、13反復（104ペア）を実行する。
+写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/shallow-pruning-extensions-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア）を調整機で実行する。
 
 ```console
-<固定したminase> spsa \
+<調整機のminase> spsa \
   --run-dir data/spsa/shallow-pruning-extensions-safety --seed 3500000000 \
   --engine commit:<形の変更> --params data/spsa/shallow-pruning-extensions-safety.params \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 13 --pairs-per-iteration 8
+  --rules engine-default --each <換算した持ち時間> --concurrency <調整機の同時対局数> \
+  --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
 `time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
@@ -373,13 +375,14 @@ benchの深さでは検証探索が働かないので、矛盾率は、STCの事
 ### フェーズ3　SPSAによる調整
 
 ```console
-<固定したminase> spsa \
+<調整機のminase> spsa \
   --run-dir data/spsa/shallow-pruning-extensions --seed 3550000000 \
   --engine commit:<形の変更> --params data/spsa/shallow-pruning-extensions.params \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
+  --rules engine-default --each <換算した持ち時間> --concurrency <調整機の同時対局数> \
   --iterations 3750 --pairs-per-iteration 8
 ```
 
+このコマンドは調整機で実行し、実行ディレクトリは測定機の`data/spsa/shallow-pruning-extensions`へ取得してから反映に使う。
 最終のθ（調整中の係数の中心値の組）を整数に丸めた値を調整の結果とし、途中の値を対局の成績で選び直さない。
 結果は測定記録`shallow-pruning-extensions`に、手引きの第6節の項目とともに残す。
 測定記録には、最終値を丸めた整数が範囲の上限または下限になった係数を明記する。
