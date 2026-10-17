@@ -4,7 +4,7 @@
 //!
 //! JSONにはマジックも版欄もなく、UTF-8で各構造体のフィールド名をキーとして保存する。
 //! `manifest.json`は[`Manifest`]を1個保存する。
-//! `engine`は[`EngineIdentity`]、`engine_sha256`は起動する実行ファイル全体のSHA-256文字列である。
+//! `engine`は[`EngineIdentity`]、`engine_sha256`はセッションの開始時の実行ファイル全体のSHA-256文字列である。
 //! `settings`は`parameters`、`alpha`、`gamma`、`a`、`iterations`、`pairs_per_iteration`、`seed`、`concurrency`を持つ。
 //! `parameters`は係数順の配列で、各要素の`name`、`start`、`min`、`max`、`c_end`、`r_end`は[`super::params::Parameter`]に従う。
 //! `alpha`と`gamma`は利得の減衰指数、`a`は安定化定数、`iterations`は総反復数である。
@@ -44,12 +44,14 @@ use std::{
 };
 
 /// 新規作成時に固定する実行条件。再開の条件はこの`manifest.json`だけから読む。
-/// 調整対象のエンジンは、任意の起動コマンドも含めて`engine_sha256`と照合する。
-/// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
+/// 調整対象がコミット指定なら完全コミットハッシュを照合し、再ビルドによるSHA-256の変化を認める。
+/// 起動コマンド指定なら、セッションの開始時の実行ファイルのSHA-256である`engine_sha256`と照合する。
+/// manifestを再開条件の正とする理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Manifest {
     pub engine: EngineIdentity,
+    /// セッションの開始時の実行ファイルのSHA-256。
     pub engine_sha256: String,
     pub settings: Settings,
     pub each: String,

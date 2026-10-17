@@ -1406,6 +1406,119 @@ fn resume_rejects_missing_or_empty_invocations() {
 }
 
 #[test]
+fn resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change() {
+    const CHILD: &str = "MINASE_TEST_RESUME_REBUILT_COMMIT";
+    if let Some(run) = std::env::var_os(CHILD) {
+        let m = storage::read_manifest(Path::new(&run)).unwrap();
+        let player = restore_engine(&m).unwrap();
+        let EngineIdentity::Commit { hash, .. } = &m.engine else {
+            panic!("expected a commit engine");
+        };
+        assert_eq!(
+            player.identity,
+            EngineIdentity::Commit {
+                hash: hash.clone(),
+                sha256: sha256_file(&player.path).unwrap(),
+            }
+        );
+        return;
+    }
+
+    let repository = Directory::new();
+    let clone = std::process::Command::new("git")
+        .args(["clone", "--shared", "--no-checkout"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .arg(&repository.0)
+        .output()
+        .unwrap();
+    assert!(
+        clone.status.success(),
+        "{}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+    let revision = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repository.0)
+        .output()
+        .unwrap();
+    assert!(revision.status.success());
+    let hash = String::from_utf8(revision.stdout)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let cache = repository
+        .0
+        .join("target/match-cache")
+        .join(format!("{hash}-tuning"));
+    fs::create_dir_all(&cache).unwrap();
+    let binary = cache.join(format!("minase{}", std::env::consts::EXE_SUFFIX));
+    // 解決器のキャッシュは正しい検査和を持ち、エンジンの起動やビルドは行わない。
+    fs::write(&binary, b"must never be executed").unwrap();
+    let digest = sha256_file(&binary).unwrap();
+    fs::write(binary.with_extension("sha256"), &digest).unwrap();
+    let run = repository.0.join("run");
+    let mut m = manifest(settings(1, 1, 1));
+    m.engine = EngineIdentity::Commit {
+        hash,
+        sha256: digest.clone(),
+    };
+    m.engine_sha256 = digest.clone();
+    drop(Store::create(&run, &m).unwrap());
+    let history = fs::read(run.join("invocations.json")).unwrap();
+
+    for (changed, identity_changed) in [(false, false), (true, false), (true, true)] {
+        if changed {
+            m.engine_sha256 = "0".repeat(64);
+        }
+        if identity_changed && let EngineIdentity::Commit { sha256, .. } = &mut m.engine {
+            *sha256 = m.engine_sha256.clone();
+        }
+        let saved = serde_json::to_vec(&m).unwrap();
+        fs::write(run.join("manifest.json"), &saved).unwrap();
+        // 作業ディレクトリの変更を子プロセスに限定し、並列のテストから隔離する。
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "spsa_runner::tests::resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change", "--nocapture"])
+            .env(CHILD, &run)
+            .current_dir(&repository.0)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(output.status.success(), "{stderr}");
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("1 passed")
+        );
+        let notices: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("notice:"))
+            .collect();
+        if changed {
+            assert_eq!(notices.len(), 1);
+            assert!(notices[0].contains(&m.engine_sha256));
+            assert!(notices[0].contains(&digest));
+        } else {
+            assert!(notices.is_empty());
+        }
+        assert_eq!(fs::read(run.join("manifest.json")).unwrap(), saved);
+        assert_eq!(fs::read(run.join("invocations.json")).unwrap(), history);
+    }
+}
+
+#[test]
+fn resume_rejects_different_commit_even_with_matching_engine_digest() {
+    let m = manifest(settings(1, 1, 1));
+    let resolved = EngineIdentity::Commit {
+        hash: "c".repeat(40),
+        sha256: m.engine_sha256.clone(),
+    };
+    assert_eq!(
+        engine::check_engine_identity(&m, &resolved, &m.engine_sha256),
+        Err(ResumeError::EngineIdentityMismatch)
+    );
+}
+
+#[test]
 fn resume_rejects_changed_engine_hash_and_working_directory_without_appending() {
     for change in ["hash", "directory"] {
         let directory = Directory::new();
