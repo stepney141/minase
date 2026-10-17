@@ -3,7 +3,7 @@
 use super::*;
 use crate::search::alphabeta::params;
 
-// LMR表は `floor(ln(深さ) × ln(手番号) / (LmrDivisor / 100))` とし、0番の行と列は0にする。
+// LMR表は1/100手単位で `floor(100 × ln(深さ) × ln(手番号) / (LmrDivisor / 100))` とし、0番の行と列は0にする。
 // 式の理由は docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md にある。
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
@@ -13,15 +13,30 @@ fn lmr_table_follows_logarithmic_rule() {
         assert_eq!(row[0], 0);
         assert_eq!(row[1], 0);
     }
-    // 除数1.56で対数積を割ると約0.774、1.848、5.717となり、切り捨てる。
+    // 除数1.56で対数積を割ると約0.774、1.848、5.717、3.069となり、100倍して切り捨てる。
     assert_eq!(params::lmr_divisor(), 156, "数値例の除数");
-    for (depth, index, expected) in [(3, 3, 0), (4, 8, 1), (5, 255, 5)] {
+    for (depth, index, expected) in [(3, 3, 77), (4, 8, 184), (5, 255, 571), (8, 10, 306)] {
         assert_eq!(
             table[depth][index], expected,
             "depth={depth}, index={index}"
         );
     }
-    assert!(table[5][255] > 3);
+    assert!(table[5][255] > 300);
+}
+
+// 係数を変更する検査はtuningの子プロセスから呼び、並列テストへ設定を漏らさない。
+#[cfg(feature = "tuning")]
+pub(super) fn lmr_max_reduction_parameter_sets_cap() {
+    let default = params::lmr_max_reduction();
+    assert_eq!(default, 3);
+    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 3);
+    params::set("LmrMaxReduction", 1).unwrap();
+    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 1);
+    params::set("LmrMaxReduction", 8).unwrap();
+    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 8);
+    assert_eq!(lmr_reduction(4, 255, 0), 2, "深さによる上限も守る");
+    params::set("LmrMaxReduction", default).unwrap();
+    assert_eq!(lmr_reduction(MAX_PLY, 255, 0), 3);
 }
 
 #[test]

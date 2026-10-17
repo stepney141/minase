@@ -11,18 +11,13 @@ use minase_core::rules::MoveRules;
 use super::params;
 use super::see::see_prunes;
 
-/// LMRの減深量の上限。単位は手である。
-/// 減深後の深さが1になる頻度を抑えるため3に制限する。
-/// 判断の根拠は`docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md`にある。
-const LMR_MAX_REDUCTION: u32 = 3;
-
 /// LMRの減深量表に保持する手番号の列数。
 /// 256手を超える局面は稀で、後方の減深量は上限で抑えるため、それ以降は最終列を使う。
 const LMR_MOVE_COUNT: usize = 256;
 
-/// 残り深さと手番号から引く、切り詰め前のLMR減深量表を1回だけ生成する。
-pub(super) fn lmr_table() -> &'static [[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1] {
-    static TABLE: OnceLock<[[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1]> = OnceLock::new();
+/// 残り深さと手番号から引く、上限適用前のLMR減深量表を1/100手単位で1回だけ生成する。
+pub(super) fn lmr_table() -> &'static [[u16; LMR_MOVE_COUNT]; MAX_PLY as usize + 1] {
+    static TABLE: OnceLock<[[u16; LMR_MOVE_COUNT]; MAX_PLY as usize + 1]> = OnceLock::new();
     TABLE.get_or_init(|| {
         let divisor = params::lmr_divisor();
         let mut table = [[0; LMR_MOVE_COUNT]; MAX_PLY as usize + 1];
@@ -35,9 +30,10 @@ pub(super) fn lmr_table() -> &'static [[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 
     })
 }
 
-/// LMR表の1要素を、百分率の除数から計算する。
-pub(super) fn lmr_base(depth: usize, index: usize, divisor: i32) -> u8 {
-    ((depth as f64).ln() * (index as f64).ln() / (f64::from(divisor) / 100.0)).floor() as u8
+/// LMR表の1要素を、百分率の除数から1/100手単位で計算し、端数を切り捨てる。
+pub(super) fn lmr_base(depth: usize, index: usize, divisor: i32) -> u16 {
+    let reduction = (depth as f64).ln() * (index as f64).ln() / (f64::from(divisor) / 100.0);
+    (100.0 * reduction).floor() as u16
 }
 
 /// 深さ1〜3のfutility余裕値を求める。
@@ -117,8 +113,9 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
 /// butterfly historyの値で対数表を補正し、LMRの減深量を手数で返す。
 ///
 /// 手番号は0始まりで、0の表要素は0とし、列数以上なら最後の列を使う。
-/// historyが閾値以上なら表の値から1を引き、その条件に当てはまらず負の閾値以下なら1を加える。
-/// それ以外は変えず、結果を `0..=min(3, 深さ − 2)` に収めるため、残り深さ2以下では減深しない。
+/// historyが閾値以上なら表の値から100を引き、その条件に当てはまらず負の閾値以下なら100を加える。
+/// それ以外は変えず、100で割って負の値も切り捨て、手数に戻す。
+/// 結果を `0..=min(LmrMaxReduction, 深さ − 2)` に収めるため、残り深さ2以下では減深しない。
 /// 深さ3以上では着手による1手の消費も含めて、減深後の深さを1以上に保つ。
 /// 呼び出し側は置換表の記録手、捕獲手、killer手を対象から除く。
 pub(super) fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
@@ -131,8 +128,8 @@ pub(super) fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
     } else {
         0
     };
-    let upper = LMR_MAX_REDUCTION.min(depth.saturating_sub(2)) as i32;
-    (base + adjustment).clamp(0, upper) as u32
+    let upper = params::lmr_max_reduction().min(depth.saturating_sub(2) as i32);
+    (base + 100 * adjustment).div_euclid(100).clamp(0, upper) as u32
 }
 
 /// 静的交換評価で損と判定できる捕獲手かを返す。

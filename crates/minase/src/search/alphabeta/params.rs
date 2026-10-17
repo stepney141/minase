@@ -62,6 +62,11 @@ parameters! {
     /// LMRの減深量を1増減するbutterfly historyの閾値。単位は履歴点である。
     /// 値はSPSAで調整した。
     LmrHistoryThreshold(lmr_history_threshold): 146, 0, 512;
+    /// LMRの減深量の上限。単位は手である。
+    /// StockfishとYaneuraOuには減深量の上限がなく、換算する元がないので、従来の定数と同じ3を既定値とする。
+    /// 範囲の上限8は暫定の値である。SPSAの調整対象であり、この係数としての値は未調整である。
+    /// 上限を設けた判断の根拠は`docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md`にある。
+    LmrMaxReduction(lmr_max_reduction): 3, 1, 8;
     /// 残り深さ1で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
     /// 良化していないノードでは[`non_improving_futility1()`]の倍率で縮める。
     /// 値はSPSAで調整した。

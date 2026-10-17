@@ -88,6 +88,7 @@ fn tuning_parameters_in_isolated_process() {
     if scenario.is_err() {
         for scenario in [
             "lmr table",
+            "lmr max reduction",
             "parameters",
             "capture history limits",
             "disabled capture history",
@@ -176,6 +177,10 @@ fn tuning_parameters_in_isolated_process() {
     }
 
     match scenario.as_str() {
+        "lmr max reduction" => {
+            super::pruning::lmr_max_reduction_parameter_sets_cap();
+            return;
+        }
         "non improving futility 1" => {
             non_improving_parameter_changes_search(1, "NonImprovingFutility1");
             return;
@@ -365,12 +370,15 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 39] = [
+    let cases: [Case; 40] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
         ("LmrHistoryThreshold", 512, || {
             i64::from(lmr_reduction(4, 8, 256))
+        }),
+        ("LmrMaxReduction", 1, || {
+            i64::from(lmr_reduction(MAX_PLY, 255, 0))
         }),
         ("FutilityMargin1", 100, || {
             i64::from(futility_margin(101, 1, true))

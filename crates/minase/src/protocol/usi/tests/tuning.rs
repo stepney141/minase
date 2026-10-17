@@ -69,6 +69,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 "LmrHistoryThreshold",
                 params::lmr_history_threshold as fn() -> i32,
             ),
+            ("LmrMaxReduction", params::lmr_max_reduction as fn() -> i32),
             ("FutilityMargin1", params::futility_margin1 as fn() -> i32),
             ("FutilityMargin2", params::futility_margin2 as fn() -> i32),
             ("FutilityMargin3", params::futility_margin3 as fn() -> i32),
