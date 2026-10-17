@@ -39,6 +39,7 @@ impl Searcher<'_> {
     /// 深さ0では[`Self::quiesce`]へ移り、合法手のない局面は第23条により`-MATE + ply`を返す。
     /// R2・R3で全合法手が禁止手なら`-(REPETITION_WIN - ply)`を返し、どちらも置換表へ保存しない。
     /// 禁止は履歴と経路に依存するため、別の経路で負けの値が再利用される詰みの帯を使わない。
+    /// `cut_node`は、このノードがcutNode（親がβ打ち切りを見込んで零窓で読ませる子）かを表す。
     /// 中断された場合は`None`を返す。
     ///
     /// 置換表の専用の帯の値は経路に依存するため打ち切りに使わず、記録手だけを使う。
@@ -61,7 +62,11 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
         ply: u32,
+        cut_node: bool,
     ) -> Option<i32> {
+        // PVノードはcutNodeにしない（Stockfish src/search.cpp:766）。
+        #[cfg(feature = "invariants")]
+        assert!(!(beta - alpha > 1 && cut_node));
         self.pv[ply as usize].clear();
 
         if depth == 0 {
@@ -270,8 +275,17 @@ impl Searcher<'_> {
             } else {
                 0
             };
-            let score =
-                self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
+            let score = self.search_move(
+                position,
+                mv,
+                depth,
+                alpha,
+                beta,
+                ply,
+                index == 0,
+                reduction,
+                cut_node,
+            )?;
             #[cfg(feature = "search-stats")]
             {
                 searched_moves += 1;
@@ -384,7 +398,14 @@ impl Searcher<'_> {
             attacking: None,
         });
         let score = self
-            .negamax(position, depth, -beta, -beta + 1, ply + 1)
+            .negamax(
+                position,
+                depth,
+                -beta,
+                -beta + 1,
+                ply + 1,
+                child_cut_node(ChildSearch::NullMove, false),
+            )
             .map(|value| -value);
         self.path_keys.pop();
         self.path_moves.pop();
@@ -407,6 +428,7 @@ impl Searcher<'_> {
     /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
     /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
     /// さらに窓内なら全窓で再探索する。
+    /// `cut_node`は親ノードの値であり、子へは[`child_cut_node`]の規則で渡す。
     #[allow(clippy::too_many_arguments)]
     pub(super) fn search_move(
         &mut self,
@@ -418,6 +440,7 @@ impl Searcher<'_> {
         ply: u32,
         first: bool,
         reduction: u32,
+        cut_node: bool,
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
         self.previous_capture[(ply + 1) as usize] = position
@@ -461,20 +484,53 @@ impl Searcher<'_> {
             attacking: None,
         });
         let mut score = if first {
-            self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
-                .map(|value| -value)
+            self.negamax(
+                position,
+                depth - 1,
+                -beta,
+                -alpha,
+                ply + 1,
+                child_cut_node(
+                    ChildSearch::First {
+                        pv_node: beta - alpha > 1,
+                    },
+                    cut_node,
+                ),
+            )
+            .map(|value| -value)
         } else {
-            self.negamax(position, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1)
-                .map(|value| -value)
+            self.negamax(
+                position,
+                depth - 1 - reduction,
+                -alpha - 1,
+                -alpha,
+                ply + 1,
+                child_cut_node(ChildSearch::Later { depth }, cut_node),
+            )
+            .map(|value| -value)
         };
         if !first && reduction > 0 && score.is_some_and(|value| value > alpha) {
             score = self
-                .negamax(position, depth - 1, -alpha - 1, -alpha, ply + 1)
+                .negamax(
+                    position,
+                    depth - 1,
+                    -alpha - 1,
+                    -alpha,
+                    ply + 1,
+                    child_cut_node(ChildSearch::ZeroWindowResearch, cut_node),
+                )
                 .map(|value| -value);
         }
         if !first && score.is_some_and(|value| value > alpha && value < beta) {
             score = self
-                .negamax(position, depth - 1, -beta, -alpha, ply + 1)
+                .negamax(
+                    position,
+                    depth - 1,
+                    -beta,
+                    -alpha,
+                    ply + 1,
+                    child_cut_node(ChildSearch::FullWindowResearch, cut_node),
+                )
                 .map(|value| -value);
         }
         self.path_keys.pop();
@@ -495,5 +551,40 @@ pub(super) fn null_move_cutoff_score(score: i32, beta: i32) -> i32 {
         beta
     } else {
         score
+    }
+}
+
+/// 子のcutNodeを決める探索の呼び出し箇所。
+///
+/// 行番号はStockfishのsrc/search.cppに対応する。
+pub(super) enum ChildSearch {
+    /// null moveの子は偽にする（1048行）。
+    NullMove,
+    /// 先頭手の子は親がPVなら偽、それ以外なら親の値の否定にする（1455行、1428〜1436行）。
+    First { pv_node: bool },
+    /// 後続手の最初の零窓は親の残り深さ2以上で真、1で親の値の否定にする（1395行、1405行、1428〜1436行）。
+    /// `depth`はIIR適用後の親の残り深さであり、1以上とする。
+    Later { depth: u32 },
+    /// 減深後の通常深さでの零窓の再探索は親の値の否定にする（1410〜1420行）。
+    ZeroWindowResearch,
+    /// 全窓の再探索は偽にする（1442〜1455行）。
+    FullWindowResearch,
+}
+
+/// 子に渡すcutNodeを、親の値と呼び出し箇所から決める。
+///
+/// Stockfishのsrc/search.cppの受け渡しに従う。
+/// null moveは偽（1048行）、先頭手は親がPVなら偽（1455行）、零窓なら親の値の否定（1428〜1436行）とする。
+/// 後続手の最初の零窓は親の残り深さ2以上なら真（1395行、1405行）、1なら親の値の否定（1428〜1436行）とする。
+/// 通常深さでの零窓の再探索は親の値の否定（1410〜1420行）、全窓の再探索は偽（1442〜1455行）とする。
+pub(super) fn child_cut_node(search: ChildSearch, parent_cut_node: bool) -> bool {
+    match search {
+        ChildSearch::NullMove => false,
+        ChildSearch::First { pv_node: true } => false,
+        ChildSearch::First { pv_node: false } => !parent_cut_node,
+        ChildSearch::Later { depth } if depth >= 2 => true,
+        ChildSearch::Later { .. } => !parent_cut_node,
+        ChildSearch::ZeroWindowResearch => !parent_cut_node,
+        ChildSearch::FullWindowResearch => false,
     }
 }

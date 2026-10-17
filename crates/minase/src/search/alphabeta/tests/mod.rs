@@ -155,7 +155,7 @@ fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move)
     let keys = searcher.path_keys.clone();
     let ply = searcher.path_moves.len() as u32;
     let score = searcher
-        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0)
+        .search_move(current, mv, 1, -INFINITY, INFINITY, ply, true, 0, false)
         .unwrap();
     assert_eq!(*current, before);
     assert_eq!(searcher.path_keys, keys);
@@ -477,7 +477,7 @@ fn run_negamax(
         &mut capture_history,
     );
     let score = searcher
-        .negamax(&mut current, depth, alpha, beta, ply)
+        .negamax(&mut current, depth, alpha, beta, ply, false)
         .expect("unlimited negamax search must complete");
     (score, searcher.nodes)
 }

@@ -340,7 +340,8 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
                         INFINITY,
                         ply,
                         true,
-                        0
+                        0,
+                        false
                     )
                     .is_some()
             );
@@ -538,7 +539,8 @@ fn qsearch_limit_quiet_move_clears_previous_capture() {
                     INFINITY,
                     0,
                     true,
-                    0
+                    0,
+                    false
                 )
                 .is_some()
         );
@@ -564,7 +566,7 @@ fn qsearch_limit_null_move_clears_previous_capture() {
         assert_eq!(
             // 静的評価との差を大きくし、追加減深を上限3に張り付ける。
             // IIR後は深さ3なので、NullMoveBase/Slopeの値によらず子は静止探索になる。
-            searcher.negamax(&mut board.clone(), 4, -INFINITY, -10_000, 0),
+            searcher.negamax(&mut board.clone(), 4, -INFINITY, -10_000, 0, false),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0, "null moveで打ち切った直後を調べる");

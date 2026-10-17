@@ -1,6 +1,54 @@
 //! 内部ノードの探索を検査する。
 
+use super::super::negamax::{ChildSearch, child_cut_node};
 use super::*;
+
+// F0の受け渡し表を期待値とし、親の値に依存する行は真と偽の両方を検査する。
+#[test]
+fn null_move_child_is_not_cut_node() {
+    for parent in [false, true] {
+        assert!(!child_cut_node(ChildSearch::NullMove, parent));
+    }
+}
+
+#[test]
+fn first_child_of_pv_node_is_not_cut_node() {
+    assert!(!child_cut_node(ChildSearch::First { pv_node: true }, false));
+}
+
+#[test]
+fn first_child_of_zero_window_node_inverts_cut_node() {
+    assert!(child_cut_node(ChildSearch::First { pv_node: false }, false));
+    assert!(!child_cut_node(ChildSearch::First { pv_node: false }, true));
+}
+
+#[test]
+fn later_child_at_depth_two_or_more_is_cut_node() {
+    for depth in [2, 5] {
+        for parent in [false, true] {
+            assert!(child_cut_node(ChildSearch::Later { depth }, parent));
+        }
+    }
+}
+
+#[test]
+fn later_child_at_depth_one_inverts_cut_node() {
+    assert!(child_cut_node(ChildSearch::Later { depth: 1 }, false));
+    assert!(!child_cut_node(ChildSearch::Later { depth: 1 }, true));
+}
+
+#[test]
+fn zero_window_research_inverts_cut_node() {
+    assert!(child_cut_node(ChildSearch::ZeroWindowResearch, false));
+    assert!(!child_cut_node(ChildSearch::ZeroWindowResearch, true));
+}
+
+#[test]
+fn full_window_research_is_not_cut_node() {
+    for parent in [false, true] {
+        assert!(!child_cut_node(ChildSearch::FullWindowResearch, parent));
+    }
+}
 
 // 深さ0のExact記録は通常探索の深さ1条件を満たさず、
 // 通常探索の評価値カットオフには使われない。
@@ -249,7 +297,7 @@ fn jitto_repetition_without_null_move_uses_history_and_path() {
             let path = searcher.path_keys.clone();
             let mut current = root.clone();
             assert_eq!(
-                searcher.search_move(&mut current, mv, 1, -INFINITY, INFINITY, 0, true, 0),
+                searcher.search_move(&mut current, mv, 1, -INFINITY, INFINITY, 0, true, 0, false),
                 Some(DRAW_SCORE)
             );
             assert_eq!(searcher.nodes, 1);
@@ -301,7 +349,8 @@ fn nested_null_move_restores_outer_repetition_scope() {
                 INFINITY,
                 2,
                 true,
-                0
+                0,
+                false
             ),
             Some(DRAW_SCORE)
         );
@@ -456,7 +505,7 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             }
             let mut current = board.clone();
             assert_eq!(
-                searcher.negamax(&mut current, depth, alpha, beta, 0),
+                searcher.negamax(&mut current, depth, alpha, beta, 0, false),
                 Some(if expected == killer { beta } else { beta + 100 }),
                 "depth={depth}, width={width}, tt_move={tt_move:?}",
             );

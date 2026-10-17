@@ -454,7 +454,7 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                     .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
             }
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+                searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
                 Some(20)
             );
             assert_eq!(searcher.nodes, cutoff_index as u64 + 1);
@@ -525,7 +525,7 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         }
         searcher.null_move_ply = Some(0);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
+            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0, false),
             Some(10_001)
         );
         let searched: Vec<_> = moves[..=cutoff_index]

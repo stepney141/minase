@@ -54,7 +54,7 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
                 };
                 // 子を1手だけ読ませ、2手目の適用前に中断して先頭の主変化を観測する。
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0);
+                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0, false);
                 assert_eq!(actual, if beta <= 0 { Some(0) } else { None });
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(searcher.pv[0], [tt_move], "{score}, {bound:?}");
@@ -131,7 +131,7 @@ fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
                 .store(search_key(&board), 32, score, bound, Some(tt_move), 5);
             let expected = if score > 0 { 29_955 } else { -29_955 };
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, alpha, beta, 40),
+                searcher.negamax(&mut board.clone(), 2, alpha, beta, 40, false),
                 Some(expected)
             );
             assert_eq!(
@@ -172,7 +172,7 @@ fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
     for score in [29_740, -29_740, -29_487] {
         with_root_searcher(&board, &history, |searcher| {
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
                 Some(0)
             );
             // 経路依存の勝敗を前の探索の記録として置き、値を再利用しないことを確かめる。
@@ -187,7 +187,7 @@ fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
             searcher.history_keys = &[];
             searcher.nodes = 0;
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
                 Some(expected)
             );
             assert!(searcher.nodes > 0);
@@ -203,7 +203,7 @@ fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
     let history = [search_key(&child), search_key(&board)];
     with_root_searcher(&board, &history, |searcher| {
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
             Some(0)
         );
         searcher.history_keys = &[];
@@ -211,7 +211,7 @@ fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
         // DRAW_SCOREの0は通常評価と区別できない。履歴を変えても祖先に保存された0を
         // 再利用し得ることは、RULES.md第31条R1を探索で近似する際の既知の制約である。
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
             Some(DRAW_SCORE)
         );
         assert_eq!(searcher.nodes, 0);
@@ -247,7 +247,7 @@ fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
                     .tt
                     .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 0);
                 assert_eq!(
-                    searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0),
+                    searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false),
                     Some(0)
                 );
                 assert_eq!(
@@ -300,7 +300,7 @@ fn r1_repetition_band_windows_disable_see_pruning() {
                 .tt
                 .store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
             assert_eq!(
-                searcher.negamax(&mut board.clone(), depth, 29_486, 29_487, 0),
+                searcher.negamax(&mut board.clone(), depth, 29_486, 29_487, 0, false),
                 Some(0)
             );
             assert_eq!(searcher.nodes, moves.len() as u64);
@@ -342,7 +342,7 @@ fn r1_repetition_band_beta_disables_null_move() {
                 .tt
                 .store(search_key(&passed), 32, -29_990, Bound::Exact, None, 1);
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 8, beta - 1, beta, 0),
+                searcher.negamax(&mut board.clone(), 8, beta - 1, beta, 0, false),
                 Some(0)
             );
             assert_eq!(

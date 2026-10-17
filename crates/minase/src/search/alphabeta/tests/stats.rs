@@ -43,7 +43,7 @@ fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
     with_root_searcher(&position, &[], |searcher| {
         let mut current = position.clone();
         searcher
-            .negamax(&mut current, 0, -INFINITY, INFINITY, 0)
+            .negamax(&mut current, 0, -INFINITY, INFINITY, 0, false)
             .unwrap();
         searcher
             .quiesce(&mut current, -INFINITY, -INFINITY + 1, 0)
@@ -69,7 +69,7 @@ fn normal_tt_repeat_counts_probe_hit_and_cutoff() {
     with_root_searcher(&position, &[], |searcher| {
         let mut current = position.clone();
         let first = searcher
-            .negamax(&mut current, 1, -INFINITY, INFINITY, 0)
+            .negamax(&mut current, 1, -INFINITY, INFINITY, 0, false)
             .unwrap();
         assert_eq!(searcher.stats.normal_nodes, 1);
         assert_eq!(searcher.stats.tt_probes, 1);
@@ -78,7 +78,7 @@ fn normal_tt_repeat_counts_probe_hit_and_cutoff() {
         assert_eq!(ranks(searcher.stats).iter().sum::<u64>(), 1);
         searcher.stats = SearchStats::default();
         assert_eq!(
-            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0, false),
             Some(first)
         );
         assert_eq!(
@@ -103,7 +103,7 @@ fn insufficient_tt_depth_is_a_hit_without_a_cutoff() {
             .tt
             .store(search_key(&position), 0, 0, Bound::Exact, None, 0);
         searcher
-            .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0)
+            .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
             .unwrap();
         assert_eq!(searcher.stats.tt_probes, 1);
         assert_eq!(searcher.stats.tt_hits, 1);
@@ -157,7 +157,7 @@ fn first_searched_move_beta_cutoff_is_counted() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
         searcher
-            .negamax(&mut position.clone(), 1, -INFINITY, -INFINITY + 1, 0)
+            .negamax(&mut position.clone(), 1, -INFINITY, -INFINITY + 1, 0, false)
             .unwrap();
         assert_eq!(searcher.stats.beta_cutoffs, 1);
         assert_eq!(searcher.stats.first_move_beta_cutoffs, 1);
@@ -175,7 +175,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     let expected = -evaluate(test_nnue(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
         assert_eq!(
-            searcher.negamax(&mut position.clone(), 4, expected - 1, expected, 0),
+            searcher.negamax(&mut position.clone(), 4, expected - 1, expected, 0, false),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0);
@@ -227,7 +227,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;
             }
             assert_eq!(
-                searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false),
                 Some(best.1)
             );
             let mut expected = [0; 4];
@@ -248,7 +248,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;
             }
             assert_eq!(
-                searcher.negamax(&mut position.clone(), 1, -INFINITY, best.1, 0),
+                searcher.negamax(&mut position.clone(), 1, -INFINITY, best.1, 0, false),
                 Some(best.1)
             );
             assert_eq!(searcher.stats.beta_cutoffs, 1);
@@ -264,7 +264,7 @@ fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
         searcher
-            .negamax(&mut position.clone(), 1, INFINITY - 1, INFINITY, 0)
+            .negamax(&mut position.clone(), 1, INFINITY - 1, INFINITY, 0, false)
             .unwrap();
         assert_eq!(ranks(searcher.stats), [0; 4]);
     });
@@ -274,7 +274,7 @@ fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
             .external_stop
             .store(true, AtomicOrdering::Relaxed);
         assert_eq!(
-            searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false),
             None
         );
         assert_eq!(ranks(searcher.stats), [0; 4]);

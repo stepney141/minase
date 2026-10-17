@@ -106,7 +106,7 @@ fn futility_prunes_quiets_only_when_not_improving() {
                 assert!(-evaluate(searcher.nnue, &child) < alpha, "全手が窓を下回る");
             }
             let score = searcher
-                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
+                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
                 .unwrap();
             assert!(score < alpha && score.abs() < MATE_THRESHOLD);
             assert_eq!(
@@ -133,7 +133,7 @@ fn improving_uses_raw_evaluation_before_correction() {
         assert!(correction > 0);
         let alpha = evaluate(searcher.nnue, &board) + correction + 117;
         let score = searcher
-            .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
+            .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
             .unwrap();
         assert!(score < alpha && score.abs() < MATE_THRESHOLD);
         assert_eq!(searcher.nodes, 1);

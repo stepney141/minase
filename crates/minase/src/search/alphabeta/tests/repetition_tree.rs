@@ -373,8 +373,17 @@ fn article_31_r1_path_stacks_restore_after_moves_and_interruptions() {
         with_root_searcher(&root, &[], |searcher| {
             let mut current = root.clone();
             searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
-            let score =
-                searcher.search_move(&mut current, cycle[0], 3, -INFINITY, INFINITY, 0, true, 0);
+            let score = searcher.search_move(
+                &mut current,
+                cycle[0],
+                3,
+                -INFINITY,
+                INFINITY,
+                0,
+                true,
+                0,
+                false,
+            );
             assert_eq!(
                 score.is_none(),
                 interrupt.is_some(),

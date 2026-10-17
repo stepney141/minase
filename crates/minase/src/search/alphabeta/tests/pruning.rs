@@ -922,7 +922,7 @@ fn revived_pruning_uses_uncorrected_static_evaluation() {
             let alpha = if reverse { raw - 428 - 1 } else { raw + 1606 };
             let mut board = position.clone();
             assert_eq!(
-                searcher.negamax(&mut board, 1, alpha, alpha + 1, 0),
+                searcher.negamax(&mut board, 1, alpha, alpha + 1, 0, false),
                 Some(raw)
             );
             assert_eq!(searcher.nodes, 0);

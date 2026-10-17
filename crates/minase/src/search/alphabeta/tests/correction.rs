@@ -109,7 +109,7 @@ fn correction_negamax_update_conditions() {
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(searcher.correction.read(Color::Black, key), 18);
         assert_eq!(
-            searcher.negamax(&mut board, depth, alpha, beta, 0),
+            searcher.negamax(&mut board, depth, alpha, beta, 0, false),
             Some(score)
         );
         let hit = table.probe(search_key(&board), 0).unwrap();
@@ -181,7 +181,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
-            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             Some(score),
             "article_31_r1 score={score}"
         );
@@ -225,7 +225,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
-            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             if interrupted { None } else { Some(320) }
         );
         assert_eq!(searcher.correction.read(Color::Black, key), 18);
@@ -272,7 +272,7 @@ fn correction_changes_futility_expansion_at_boundary() {
             correction
         );
         let score = searcher
-            .negamax(&mut board, 1, alpha, alpha + 1, 0)
+            .negamax(&mut board, 1, alpha, alpha + 1, 0, false)
             .unwrap();
         assert!(score < alpha);
         assert!(score.abs() < MATE_THRESHOLD);
@@ -323,7 +323,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             searcher.material_keys[1] = !expected;
             assert!(
                 searcher
-                    .search_move(&mut board, mv, 1, 10_000, 10_001, 0, true, 0)
+                    .search_move(&mut board, mv, 1, 10_000, 10_001, 0, true, 0, false)
                     .is_some()
             );
             assert_eq!(searcher.material_keys[1], expected);
@@ -354,7 +354,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     );
     searcher.material_keys[1] = !root_key;
     let score = searcher
-        .negamax(&mut board, 4, -INFINITY, -10_000, 0)
+        .negamax(&mut board, 4, -INFINITY, -10_000, 0, false)
         .unwrap();
     assert!(score >= -10_000);
     assert_eq!(searcher.material_keys[1], root_key);

@@ -88,7 +88,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
             };
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 1, alpha, alpha + width, 0),
+                searcher.negamax(&mut board.clone(), 1, alpha, alpha + width, 0, false),
                 Some(DRAW_SCORE)
             );
             assert_eq!(searcher.nodes, moves.len() as u64);
@@ -183,7 +183,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             let alpha = evaluate(searcher.nnue, &board) + 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 1, alpha, alpha + 1, 0),
+                searcher.negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false),
                 Some(DRAW_SCORE)
             );
             assert_eq!(
@@ -299,7 +299,7 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
             let target_score = -evaluate(searcher.nnue, &child);
             assert!(target_score > DRAW_SCORE && target_score < alpha);
             let score = searcher
-                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0)
+                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
                 .unwrap();
             assert_eq!(
                 score,

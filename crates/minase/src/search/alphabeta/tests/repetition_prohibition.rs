@@ -119,7 +119,7 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
                 assert!(expected < DRAW_SCORE);
                 let nodes = searcher.nodes;
                 assert_eq!(
-                    searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
+                    searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply, false),
                     Some(expected)
                 );
                 // 捕獲のない1手読みでは、禁止手を除いた各候補だけが1ノードを使う。
@@ -182,7 +182,8 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                             INFINITY,
                             ply,
                             true,
-                            0
+                            0,
+                            false
                         ),
                         Some(DRAW_SCORE)
                     );
@@ -198,7 +199,7 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                     let before = current.clone();
                     let nodes = searcher.nodes;
                     assert_eq!(
-                        searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
+                        searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply, false),
                         Some(expected)
                     );
                     assert_eq!(
@@ -267,7 +268,7 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
                 best_allowed_leaf(searcher, &current, cycle[3])
             };
             assert_eq!(
-                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0, false),
                 Some(expected)
             );
             assert_eq!(result.score, expected);
@@ -343,14 +344,24 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
         with_snapshot(&snapshot, &nnue, |searcher| {
             let mut current = snapshot.position().clone();
             assert_eq!(
-                searcher.search_move(&mut current, cycle[2], 2, -INFINITY, INFINITY, 0, true, 0),
+                searcher.search_move(
+                    &mut current,
+                    cycle[2],
+                    2,
+                    -INFINITY,
+                    INFINITY,
+                    0,
+                    true,
+                    0,
+                    false
+                ),
                 Some(expected)
             );
             push_path_move(searcher, &mut current, Some(cycle[2]));
             assert_eq!(legal_moves(&current), vec![cycle[3]]);
             let nodes = searcher.nodes;
             assert_eq!(
-                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1),
+                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1, false),
                 Some(-(REPETITION_WIN - 1))
             );
             assert_eq!(searcher.nodes, nodes);
@@ -379,7 +390,7 @@ fn check_no_generated_moves_keep_the_mate_score() {
         push_path_move(searcher, &mut current, Some(step(sq(10, 0), sq(10, 1))));
         assert!(legal_moves(&current).is_empty());
         assert_eq!(
-            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1),
+            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1, false),
             Some(-MATE + 1)
         );
         assert!(searcher.tt.probe(search_key(&current), 1).is_none());
@@ -498,7 +509,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                             .unwrap()
                     } else {
                         let score = searcher
-                            .negamax(&mut current, depth, alpha, beta, 0)
+                            .negamax(&mut current, depth, alpha, beta, 0, false)
                             .unwrap();
                         assert_eq!(
                             searcher.history[current.side_to_move().index()]
@@ -589,7 +600,8 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
                         INFINITY,
                         0,
                         true,
-                        0
+                        0,
+                        false
                     ),
                     Some(DRAW_SCORE)
                 );
@@ -635,7 +647,17 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
                 } else {
                     assert!(
                         searcher
-                            .search_move(&mut current, mv, 2, -INFINITY, INFINITY, 0, true, 0)
+                            .search_move(
+                                &mut current,
+                                mv,
+                                2,
+                                -INFINITY,
+                                INFINITY,
+                                0,
+                                true,
+                                0,
+                                false
+                            )
                             .is_some()
                     );
                 }

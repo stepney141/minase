@@ -249,7 +249,7 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
                 .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
         }
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+            searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
             Some(20)
         );
         assert_eq!(searcher.nodes, winner_index as u64 + 1);
@@ -388,7 +388,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
         // このテストでは実着手による打ち切りだけを検査する。
         searcher.null_move_ply = Some(0);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
+            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0, false),
             Some(10_001)
         );
         assert_eq!(searcher.nodes, 2);
