@@ -158,7 +158,7 @@ target/stats/release/minase dev bench --depth 5
 速度は計測コードなしのバイナリで測り直す（[教訓](../lessons/shared-probe-counter-distorts-threads.md)）。
 特定の改良の発動回数のように固定項目にない回数は、`crates/minase/src/search/stats.rs`の項目の宣言へ項目を1つ足し、該当箇所に加算を書いたパッチで数える。
 合算と出力は宣言から自動で生成される。
-パッチは`docs/measurements/<測定名>/diagnostic.patch`として記録に残し、masterへは入れない。
+パッチは、その診断を計画した設計書の名前のディレクトリへ`docs/measurements/<設計書名>/<測定名>/diagnostic.patch`として記録に残し、masterへは入れない。
 記録の例は[段階8の発動率の診断](../measurements/strength-stage8/strength-stage8-activation-diag.md)にある。
 改良を採否測定に出す前の発動率の確認は、[教訓](../lessons/measure-feature-activation-before-sprt.md)に従う。
 

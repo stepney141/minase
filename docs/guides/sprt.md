@@ -300,7 +300,9 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 
 ## 測定結果の記録
 
-測定は、終了した時点で直ちに`docs/measurements/<測定名>.md`へ1測定1ファイルで記録し、設計書からは測定名でリンクする（見出しの順序は docs/plans/README.md が定める）。
+測定は、終了した時点で直ちに`docs/measurements/<設計書名>/<測定名>.md`へ1測定1ファイルで記録し、設計書からは測定名でリンクする。
+`<設計書名>`はその測定を計画した設計書のファイル名から`.md`を除いたものであり、どの設計書も計画していない測定は`docs/measurements/adhoc/`に置く。
+置き場所の決め方と見出しの順序は、docs/plans/README.md の「測定記録」節が定める。
 記録には、シードを含むコマンドライン全体、両エンジンのコミットハッシュ、ペンタノミアル度数、LLRと判定、破棄ペア数と異常件数、および経過時間を含める。
 固定局数Eloの測定では、LLRと判定の代わりにEloと信頼区間を記録する。
 実行条件とエンジンバイナリのSHA-256は`manifest.json`、起動ごとのrunnerと測定機は`invocations.json`、確定済みの結果と異常分類は`pairs/`、再開を含む累計実行時間は`summary.json`を正とする。

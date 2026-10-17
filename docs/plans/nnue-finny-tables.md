@@ -201,7 +201,7 @@ null moveは文脈を変えないので、表を使わない。
 `add_hidden`は差分更新と全再計算の両方から呼ばれ、関数ごとの集計では2つを分けられないので、計測用のブランチで全再計算の経路を`#[inline(never)]`の関数へ切り出し、その関数と呼び出し先の関数を合わせた時間を全再計算の時間とする。このブランチは計測にだけ使い、masterへ入れない。
 benchは[性能コアへ固定](../lessons/pin-bench-to-performance-core.md)して`perf record`で採り、[計測区間の処理だけで正規化する手順](../lessons/perf-hybrid-cpu-normalize-search-samples.md)に従って、benchの計測区間外の置換表の消去を除いてからpを求める。
 表の処理の時間を0とし、ほかの処理の時間が変わらないと仮定すると、NPSの向上はアムダールの法則により1/(1−p)倍を超えない。
-測定記録`docs/measurements/nnue-finny-tables-ceiling.md`に上限を書き、利用者が実装に進むかを決める。
+測定記録`docs/measurements/nnue-finny-tables/nnue-finny-tables-ceiling.md`に上限を書き、利用者が実装に進むかを決める。
 進まない場合は、本書を完了（不採用）とする。
 完了条件は、測定記録が書かれ、実装に進むかどうかが決まっていることである。
 
