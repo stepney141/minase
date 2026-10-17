@@ -110,6 +110,7 @@
 | 先読みなしの教師での対局単位と局面単位の間引きの比較 | [plans/nnue-subsample-no-lookahead.md](plans/nnue-subsample-no-lookahead.md) | 起案 | |
 | 教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す | [plans/sparse-teacher-recording.md](plans/sparse-teacher-recording.md) | 起案 | |
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
+| 測定記録の再配置 | [plans/measurements-layout.md](plans/measurements-layout.md) | 起案 | |
 
 ## 現在地
 
@@ -134,5 +135,6 @@
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - 探索の関数形を両エンジンの形へ寄せる7本の設計書を、[統括計画](plans/search-forms.md)のサブタスクとして束ねた。[係数の関数形の比較](research/search-coefficient-forms-prior-art.md)が、minaseの探索と時間管理の係数の多くはStockfishとYaneuraOuと違う形で使われ、その差は係数の値の調整では埋まらないことを示したためである。提案する順は、[枝刈りとLMRの関数形](plans/search-pruning-forms.md)、[浅い枝刈りの拡張](plans/shallow-pruning-extensions.md)、[history](plans/history-forms.md)、[correction historyの表](plans/correction-history-tables.md)、[静止探索](plans/qsearch-forms.md)、[aspiration windows](plans/aspiration-window-forms.md)、[持ち時間の伸縮](plans/time-instability-scaling.md)である。各サブタスクは1つ前のサブタスクの完了後のmasterを起点とし、全項目を1つの候補にまとめて全係数を30,000ペアのSPSAで調整してから段階ゲートで判定する。測定機では1本あたり約75時間かかるSPSAを、統括計画はvast.aiで借りる物理コアの多い機械で実行し、両機の負荷時の探索速度の比で持ち時間を伸ばして1手あたりの探索量をそろえ、物理192コアの機械なら1本あたり約13〜18時間（約25〜35米ドル）に縮める。機械はCPUの世代ではなく、実測した機械全体の速さと時間単価から見込む1回の費用で選ぶ。測定機の占有は、事前対局と段階ゲートの1本あたり約2〜39時間になる。係数の数は全部を採用すると約100になる。順序と取捨、および費用の上限は利用者が決め、着手は利用者の指示を待つ。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、自己対局の教師生成をvast.aiで借りる計算機へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、生成機のディスクに置いたファイルを作業機が10分ごとに取得して検査し、検査済みのファイルが作業機にあることを完了の記録とする。機種はZen 4以降のEPYCを2基積んだ384スレッドの機械を条件で選ぶ。フェーズ0の生成機での試走では、EPYC 9654の2基構成が同時384局で1ファイルを653秒で生成し、30ファイルは約5.5時間、約5.6米ドルと見込む（[試走の記録](measurements/vast-selfplay-trial.md)）。作業機での同じ条件の測定は、作業機で動いている別の学習が終わるのを待っている。
+- [測定記録の再配置](plans/measurements-layout.md)は、docs/measurements/ の直下に並ぶ記録411件と付随ディレクトリ42個を、その測定を計画した設計書ごとのディレクトリへ移し、どの設計書も計画していない測定だけを`adhoc/`に置く。記録を指すリンクは、凍結したADRや設計書を含めて、移動前と同じファイルを指すように書き換える。文書だけの変更で測定機を使わないので、ほかの計画と並行して進められる。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち。
