@@ -251,3 +251,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
 - 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
 - 2026年10月17日 [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-teachers-without-lookahead.md)
+- 2026年10月17日 [NNUEの訓練集合は学習時にハッシュの剰余で間引き、前処理は間引く前の全体で行う](thin-the-nnue-training-set-at-training-time-by-hash.md)
