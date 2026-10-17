@@ -71,7 +71,7 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 - reverse futility pruningの返り値をβと判定用の評価値の重み付き平均にすること（Stockfish `src/search.cpp:1033`）。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱い、F1は返り値の混合を加えない。
 - 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
 - null move pruningの減深量の既存の係数（`NullMoveBase`、`NullMoveSlope`、`NullMoveEvalScale`）の開始値をStockfishの換算値へ置き直すこと。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱う。
-- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](correction-history-tables.md)のC6が扱う。
+- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
 - 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](qsearch-forms.md)が扱う。
 - 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](qsearch-forms.md)、[aspiration-window-forms.md](aspiration-window-forms.md)、および[time-instability-scaling.md](time-instability-scaling.md)で扱う。
 - 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)）。
@@ -225,52 +225,68 @@ improvingのときの上限は変えない。
 F4も2つのコミットで入れる。
 1つ目のコミット（F4の準備）は、表を1/100手単位に改め、上限の定数3を係数`LmrMaxReduction`にする。
 `LmrMaxReduction`の開始値は現行と同じ3なので、このコミットは探索を変えない。
-2つ目のコミットで、1/100手単位の減深量を次のように求める。
-前半`r_pre`はStockfishの1183〜1192行に当たり、後半はStockfishの1345〜1388行に当たる。
+2つ目のコミットで、1/100手単位の減深量と、減深を適用した後の探索の深さを、次の式で求める。
+この式は、LMRの項を加える後続の設計書が共有する正本である。
+[history-forms.md](history-forms.md)、[correction-history-tables.md](correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
+`trunc`は0方向への丸めであり、丸めを要する項は個別に丸めてから加減算する。
+前半`r_pre`はStockfishの1183〜1192行に当たり、`F4_r0`の残りの項はStockfishの1345〜1384行に当たる。
 
 ```math
-r_{\mathrm{pre}} = \left\lfloor \frac{t \times (100 + \mathrm{LmrNonImproving} \times [\text{improvingでない}])}{100} \right\rfloor + \mathrm{LmrBase} - \mathrm{LmrPvReduction} \times [\text{PVノード}] + \mathrm{LmrTtPv} \times [\text{ttPv}]
+r_{\mathrm{pre}} = \mathrm{trunc}\left(\frac{t \times (100 + \mathrm{LmrNonImproving} \times [\text{improvingでない}])}{100}\right) + \mathrm{LmrBase} - \mathrm{LmrPvReduction} \times [\text{PVノード}] + \mathrm{LmrTtPv} \times [\text{ttPv}]
 ```
 
 ```math
 \begin{aligned}
-r_0 = r_{\mathrm{pre}} &+ \mathrm{LmrOffset} - \mathrm{LmrMoveCount} \times (m + 1) + 100h \\
+F4\_r_0 = r_{\mathrm{pre}} &+ \mathrm{LmrOffset} - \mathrm{LmrMoveCount} \times (m + 1) + 100h \\
 &- \left(\mathrm{LmrTtPvBase} + \mathrm{LmrTtPvPv} \times [\text{PVノード}] + \mathrm{LmrTtPvValue} \times [v > \alpha] + (\mathrm{LmrTtPvDepth} + \mathrm{LmrTtPvDepthCutNode} \times [\text{cutNode}]) \times [d_{\mathrm{tt}} \ge d]\right) \times [\text{ttPv}] \\
 &+ (\mathrm{LmrCutNode} + \mathrm{LmrCutNodeNoTtMove} \times [\text{置換表の手がない}]) \times [\text{cutNode}] + \mathrm{LmrTtCapture} \times [\text{置換表の手が捕獲手}] \\
 &+ (\mathrm{LmrCutoffCount} + \mathrm{LmrCutoffCountMany} \times [k > 2] + \mathrm{LmrCutoffCountAllNode} \times [\text{allNode}]) \times [k > 1] \\
-&+ \left\lfloor \frac{\mathrm{LmrAlphaEval} \times \mathrm{clamp}(\alpha - e,\ -0.31P,\ 0.46P)}{P} \right\rfloor \times [\alpha \text{が詰み帯と専用の帯の外}]
+&+ \mathrm{trunc}\left(\frac{\mathrm{LmrAlphaEval} \times \mathrm{clamp}(\alpha - e,\ -\mathrm{trunc}(31P/100),\ \mathrm{trunc}(46P/100))}{P}\right) \times [\text{非捕獲手で、}\alpha\text{が詰み帯と専用の帯の外}]
 \end{aligned}
 ```
 
 ```math
-r = r_0 + \left\lfloor \frac{r_0 \times \mathrm{LmrAllNode} \times [\text{allNode}]}{100d + 105} \right\rfloor
+r_0 = F4\_r_0 - q_{\mathrm{corr}} - q_{\mathrm{hist}}
 ```
 
-ここで`t`は表の値`floor(100 × ln d × ln m/(LmrDivisor/100))`、`m`は0から数えた手番号であり、`m + 1`がStockfishの`moveCount`に当たる。
+```math
+r = r_0 + \mathrm{trunc}\left(\frac{r_0 \times \mathrm{LmrAllNode} \times [\text{allNode}]}{100d + 105}\right) + q_{\mathrm{mate}}
+```
+
+```math
+d' = \max\left(1,\ d - 1 - \mathrm{clamp}\left(\mathrm{trunc}(r/100),\ -E,\ \mathrm{LmrMaxReduction}\right)\right) + [\text{PVノード}]
+```
+
+ここで`t`は、`m = 0`では0、`m ≥ 1`では表の値`floor(100 × ln d × ln m/(LmrDivisor/100))`であり、`m`は0から数えた手番号である。
+`m = 0`を0とするのは、後述のLMRの分岐を通らない探索で先頭の手にも同じ式を使い、`ln 0`を避けるためである。
+`m + 1`がStockfishの`moveCount`に当たる。
 `h`は現行のhistory補正であり、butterfly historyの値が`LmrHistoryThreshold`以上なら−1、`−LmrHistoryThreshold`以下なら+1、それ以外なら0である。
 `v`と`d_tt`は置換表の値と深さであり、照合に失敗したときは`[v > α]`と`[d_tt ≥ d]`を0とする。
 `k`は子の手数のノードで起きたβ打ち切りの数であり、Stockfishの`(ss + 1)->cutoffCnt`（`src/search.cpp:829, 1562`）と同じく、手数ごとの数をノードの最初に2手先の分だけ0に戻し、ノードがβ打ち切りを起こすたびに1を足して数える。
 置換表の手が捕獲手かの判定は、F1と同じく合法手であることを確かめてから行う。
-`clamp`の上下限は、Stockfishの−64と96（`src/search.cpp:1384`）を歩兵価値208で換算した歩兵価値の−31%と46%である。
-
-減深した探索の深さは、`r/100`を0方向へ丸めた整数`R`から次のように求める。
+αと判定用の評価値の差の項は、Stockfishの`!capture && !is_decisive(alpha)`（`src/search.cpp:1383`）と同じく非捕獲手だけに掛ける。`clamp`の上下限は、Stockfishの−64と96（同1384行）を歩兵価値208で換算した歩兵価値の−31%と46%である。
 `E`は、根からの手数が反復の深さの2倍未満なら2、それ以外なら0である。
+PVノードの1手は、Stockfishの1402行と同じく`max`の外で足す。
 
-```math
-d' = \max\left(1,\ d - 1 - \min(\max(R, -E),\ \mathrm{LmrMaxReduction})\right) + [\text{PVノード}]
-```
+後続の設計書の追加項は、次の位置に入る。
+`q_corr`は補正量の項であり、[correction-history-tables.md](correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
+`q_hist`はstatScoreの項であり、[history-forms.md](history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
+`q_mate`は詰みを探す局面で王手になる手とならない手の減深量を変える項であり、[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9が定め、allNodeの項を足した後に足す（同1391-1392行）。
+本書の範囲では、3つの追加項はいずれも0である。
+`r`は負にもなり得るので、減深量を0以上へ切り詰めることはしない。負の減深量は`E`を限度とする延長になる。
 
 LMRは、残り深さ2以上のノードで、対象の手（置換表の手、捕獲手、およびkiller手を除く非捕獲手）に適用する。対象の手の範囲と、根でLMRを行わないことは変えない。
 LMRを捕獲手、killer手、および根へ広げるのは、[history-forms.md](history-forms.md)のM5である。
 減深した零窓の探索の値がαを超えたら、通常深さ`d − 1`を、`d' < d − 1`かつ値が最善値より歩兵価値の`LmrDeeperMargin`%を超えて高ければ1手深く、値が最善値に歩兵価値の`LmrShallowerMargin`%を足した値より低ければ1手浅く調整する。
 調整した深さが`d'`より深ければ、その深さで零窓の再探索を行う。
 全窓の再探索も、調整した深さで行う（Stockfish `src/search.cpp:1414-1455`）。
-既存の`LmrDivisor`は、Stockfishの表の積`reductions[d] × reductions[mn]`（`src/search.cpp:82, 1918`）が約0.49 × ln d × ln m手であることから、除数203から始める。
+既存の`LmrDivisor`は、Stockfishの表の積`reductions[d] × reductions[mn]`（`src/search.cpp:82, 1918`）が約0.49 × ln d × ln m手であることから、除数203（100/0.49）から始める。
 Stockfishの手番号は1から数えるので、表の手番号はminaseと1つずれるが、表の引き方は変えない。
 
 LMRの分岐を通らない零窓の探索、つまり零窓のノードの先頭の手と、残り深さ1のノードの2手目以降の手では、同じ式で`r`を求める。
 このとき`h`は、置換表の手、捕獲手、およびkiller手のいずれでもない非捕獲手なら現行どおりとし、それ以外の手では0とする。
 置換表の手がなければ`r`に`LmrNoTtMove`を足し、`r`が511を超えれば通常深さ`d − 1`から1手、さらに`r`が536を超えて`d − 1`が2より深ければもう1手減らして読む（Stockfish `src/search.cpp:1428-1436`）。
+511と536は、Stockfishの閾値5234と5487を1/1024手から1/100手へ換算した値である。
 
 ### F5　置換表の打ち切りとIIR
 

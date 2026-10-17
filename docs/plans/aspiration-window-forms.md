@@ -57,7 +57,7 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 
 次の事項は対象外とする。
 
-- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、[連鎖の次の設計書](time-instability-scaling.md)はこの仕組みを対象外としている。minaseでは回数が常に0になるので、項を置かない。
+- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
 - 評価値の平均から評価関数の楽観度（optimism）を調整する項（Stockfish `src/search.cpp:397-399`）。評価関数の側の変更であり、minaseのNNUEは楽観度の入力を持たない。
 - fail lowのときに先読みの的中で止める指示を取り消す処理（Stockfish `src/search.cpp:443-444`の`stopOnPonderhit`）。先読みの扱いは時間管理の側の仕組みであり、本書の範囲外である。
 - 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
@@ -179,6 +179,7 @@ fail highで元のαが負の無限でも、`β − δ`が`−REPETITION_BAND_ST
 各ワーカーは、`go`ごとに0から始める持ち越し`r`を持つ。
 深さ`d`の反復を始めるとき、`r ← max(0, r − 2)`とし、fail highの回数`h`を0にする。
 窓で読むたびに、読む深さを`max(1, d − h − r)`とする。
+Stockfishの式には読み直しの回数の項`3 × (searchAgainCounter + 1)/4`もあるが、回数が0なら値は0なので、本書では置かず、[時間管理の設計書](time-instability-scaling.md)のT7がこの式へ追加する。
 fail highのたびに`h`を1増やし、fail lowのたびに`h`を0に戻す。
 窓外れの読み直しを経た場合も含め、窓の内側で反復を完了したとき、`h > 0`なら`r ← (h + 1)/2 + 2`とする。
 完了した反復は、読んだ深さによらず深さ`d`の反復として記録する。
