@@ -734,6 +734,7 @@ fn null_move_eval_scale_changes_search() {
     // 追加減深1の境界はceil(2×100×100/56)=358。
     let beta = evaluate(nnue, &board) - 358;
     // 浅い上界でreverse futilityを避け、null moveの減深量だけを比較する。
+    // F5ではallNodeにIIRを適用しないので、要求深さを6とする。
     let run = || {
         let table = small_tt();
         table.store(
@@ -745,7 +746,7 @@ fn null_move_eval_scale_changes_search() {
             0,
             false,
         );
-        run_negamax(&board, 7, beta - 1, beta, 0, &table)
+        run_negamax(&board, 6, beta - 1, beta, 0, &table)
     };
     let (_, default_nodes) = run();
     params::set("NullMoveEvalScale", 0).unwrap();
@@ -797,7 +798,7 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     let beta = evaluate(nnue, &board) - 200;
-    // 記録手なしの深さ7は6となる。基本量5159/1200→4、子の深さ6−1−4=1。
+    // F5でIIRを行わないallNodeを深さ6で読む。基本量5159/1200→4、子の深さ6−1−4=1。
     let child_depth = 1;
     let mut passed = board.clone();
     passed.make_null_move();
@@ -816,7 +817,7 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
         false,
     );
     assert_eq!(
-        run_negamax(&board, 7, beta - 1, beta, 0, &table),
+        run_negamax(&board, 6, beta - 1, beta, 0, &table),
         (-reply, nodes)
     );
     let hit = table.probe(search_key(&board), 0).unwrap();

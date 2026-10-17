@@ -628,3 +628,128 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
         assert!(table.probe(key, 0).is_none());
     }
 }
+
+// F5では要求深さ7から着手後の値の方向を確かめ、専用の帯は値なしとして扱う。
+#[test]
+fn zero_window_tt_cutoff_checks_child_from_depth_seven() {
+    use crate::search::REPETITION_BAND_START;
+    let position = bare_kings();
+    let mv = legal_moves(&position)[0];
+    for depth in [6, 7] {
+        for (child_score, consistent) in [
+            (None, true),
+            (Some(-100), true),
+            (Some(-99), false),
+            (Some(0), false),
+            (Some(REPETITION_BAND_START), true),
+            (Some(-REPETITION_BAND_START), true),
+        ] {
+            with_root_searcher(&position, &[], |searcher| {
+                let mut current = position.clone();
+                let undo = current.make_move_unchecked(mv, engine_rules());
+                let child_key = search_key(&current);
+                current.unmake_move(undo);
+                if let Some(score) = child_score {
+                    searcher
+                        .tt
+                        .store(child_key, 8, score, Bound::Exact, None, 1, false);
+                }
+                searcher.tt.store(
+                    search_key(&position),
+                    8,
+                    150,
+                    Bound::Lower,
+                    Some(mv),
+                    0,
+                    false,
+                );
+                let score = searcher
+                    .negamax(&mut current, depth, 99, 100, 0, true)
+                    .unwrap();
+                assert_eq!(current, position);
+                assert_eq!(searcher.path_keys, vec![search_key(&position)]);
+                if depth == 6 || consistent {
+                    assert_eq!((score, searcher.nodes), (150, 0));
+                } else {
+                    assert!(
+                        searcher.nodes > 0,
+                        "深さ7で値の方向が不一致なら子を探索する"
+                    );
+                }
+            });
+        }
+    }
+}
+
+#[test]
+fn zero_window_tt_cutoff_skips_child_check_without_legal_move_or_with_mate() {
+    let position = bare_kings();
+    let legal = legal_moves(&position)[0];
+    let illegal = step(sq(5, 5), sq(5, 6));
+    for (mv, value) in [
+        (None, 150),
+        (Some(illegal), 150),
+        (Some(legal), MATE_THRESHOLD),
+    ] {
+        with_root_searcher(&position, &[], |searcher| {
+            let mut current = position.clone();
+            let undo = current.make_move_unchecked(legal, engine_rules());
+            searcher
+                .tt
+                .store(search_key(&current), 8, 0, Bound::Exact, None, 1, false);
+            current.unmake_move(undo);
+            searcher
+                .tt
+                .store(search_key(&position), 8, value, Bound::Lower, mv, 0, false);
+            assert_eq!(
+                searcher.negamax(&mut current, 7, 99, 100, 0, true),
+                Some(value)
+            );
+            assert_eq!(searcher.nodes, 0);
+            assert_eq!(current, position);
+        });
+    }
+}
+
+#[test]
+fn zero_window_tt_child_probe_uses_child_ply_and_checks_upper_bound() {
+    let position = bare_kings();
+    let mv = legal_moves(&position)[0];
+    // -MATE_THRESHOLDをply=0で保存すると、ply=1では専用の帯へ入り、値なしとして扱う。
+    for (child_score, stored_ply, cutoff) in
+        [(-99, 1, true), (-100, 1, false), (-MATE_THRESHOLD, 0, true)]
+    {
+        with_root_searcher(&position, &[], |searcher| {
+            let mut current = position.clone();
+            let undo = current.make_move_unchecked(mv, engine_rules());
+            searcher.tt.store(
+                search_key(&current),
+                8,
+                child_score,
+                Bound::Exact,
+                None,
+                stored_ply,
+                false,
+            );
+            current.unmake_move(undo);
+            searcher.tt.store(
+                search_key(&position),
+                8,
+                50,
+                Bound::Upper,
+                Some(mv),
+                0,
+                false,
+            );
+            let score = searcher
+                .negamax(&mut current, 7, 99, 100, 0, false)
+                .unwrap();
+            assert_eq!(current, position);
+            if cutoff {
+                assert_eq!((score, searcher.nodes), (50, 0));
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
+    }
+}

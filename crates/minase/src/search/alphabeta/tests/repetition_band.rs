@@ -60,7 +60,8 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
                 };
                 // 子を1手だけ読ませ、2手目の適用前に中断して先頭の主変化を観測する。
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0, false);
+                // F5で子の値0を返せる種別にする。親がfail-highする窓では子をallNodeにする。
+                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0, beta <= 0);
                 assert_eq!(actual, if beta <= 0 { Some(0) } else { None });
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(searcher.pv[0], [tt_move], "{score}, {bound:?}");

@@ -409,9 +409,10 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
 
     let table = small_tt();
     // 子の全窓探索で確認した詰み値を固定し、親で後続手を読む条件だけを検査する。
+    // F5ではβを超える値に要求深さより1深い記録が要る。
     table.store(
         search_key(&child),
-        1,
+        2,
         opponent_score,
         Bound::Exact,
         None,
@@ -584,9 +585,10 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert!(opponent_score >= MATE_THRESHOLD);
     let table = small_tt();
     // 子の全窓探索で確認した詰み値を固定し、親で後続手を読む条件だけを検査する。
+    // F5ではβを超える値に要求深さより1深い記録が要る。
     table.store(
         search_key(&child),
-        1,
+        2,
         opponent_score,
         Bound::Exact,
         None,
@@ -851,7 +853,8 @@ fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
 fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
-    for (requested_depth, margin) in [(1, 9), (2, 26), (5, 73), (19, 547)] {
+    // F5ではallNodeにIIRを適用しないので、要求深さをそのまま使う。
+    for (requested_depth, margin) in [(1, 9), (2, 26), (4, 73), (18, 547)] {
         let table = small_tt();
         let beta = value - margin;
         assert_eq!(
@@ -862,7 +865,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     }
 }
 
-// 王駒への利き、窓の幅、帯の境界、余裕値不足、およびIIR後の深さ19では子を展開する。
+// 王駒への利き、窓の幅、帯の境界、余裕値不足、および残り深さ19では子を展開する。
 #[test]
 fn reverse_futility_exclusions_search_children() {
     use crate::search::REPETITION_BAND_START as B;
@@ -900,7 +903,7 @@ fn reverse_futility_exclusions_search_children() {
         (&board, false, 1, -B, -B + 1, "αだけが専用帯"),
         (&board, false, 1, B - 1, B, "βが正の専用帯"),
         (&board, false, 1, beta, beta + 1, "余裕値に1不足"),
-        (&board, false, 20, value - 579, value - 578, "IIR後の深さ19"),
+        (&board, false, 19, value - 579, value - 578, "残り深さ19"),
         (
             &attacked,
             true,
@@ -1240,7 +1243,7 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
     }
 }
 
-// 記録手なしの要求深さ7は6へ減深され、静的評価の余裕による追加減深でnull move後の探索が静止探索まで縮む。
+// F5でIIRを行わないallNodeを深さ6で読み、静的評価の余裕による追加減深でnull move後の探索が静止探索まで縮む。
 // 通常探索の実着手を省くためノード数も減る。
 #[test]
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
@@ -1272,7 +1275,7 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
         0,
         false,
     );
-    let (score, nodes) = run_negamax(&position, 7, beta - 1, beta, 0, &table);
+    let (score, nodes) = run_negamax(&position, 6, beta - 1, beta, 0, &table);
     assert!(score >= beta && score.abs() < MATE_THRESHOLD);
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(
@@ -1468,7 +1471,7 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                     18
                 );
             }
-            // IIR後の深さ6で基本量は4。差358から追加1となり、補正18で境界を越す。
+            // F5でIIRを行わないallNodeの深さ6で基本量は4。差358から追加1となり、補正18で境界を越す。
             // 判定用の評価値はβ未満だが、null moveの減深量には使わない。
             searcher.tt.store(
                 search_key(&board),
@@ -1480,7 +1483,7 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                 false,
             );
             let score = searcher
-                .negamax(&mut board.clone(), 7, beta - 1, beta, 0, false)
+                .negamax(&mut board.clone(), 6, beta - 1, beta, 0, false)
                 .unwrap();
             assert!(score >= beta);
             if corrected {
@@ -1489,5 +1492,36 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                 assert!(searcher.nodes > 0, "null moveの子は深さ1となる");
             }
         });
+    }
+}
+
+// F5の指示書の数値例。零窓のβは100とする。
+#[test]
+fn zero_window_tt_cutoff_matches_f5_examples() {
+    use super::super::pruning::zero_window_tt_cutoff;
+    let cases = [
+        (150, Bound::Lower, 5, 5, true, false),
+        (150, Bound::Lower, 6, 5, true, true),
+        (150, Bound::Lower, 6, 5, false, true),
+        (150, Bound::Lower, 6, 4, false, false),
+        (150, Bound::Lower, 5, 4, true, true),
+        (100, Bound::Lower, 5, 5, true, true),
+        (50, Bound::Upper, 5, 5, false, true),
+        (50, Bound::Upper, 4, 4, true, false),
+        (50, Bound::Upper, 5, 5, true, true),
+        (50, Bound::Lower, 9, 5, false, false),
+        (150, Bound::Upper, 9, 5, true, false),
+        (150, Bound::Exact, 9, 5, true, true),
+        (REPETITION_BAND_START, Bound::Lower, 9, 5, true, false),
+        (-REPETITION_BAND_START, Bound::Upper, 9, 5, false, false),
+        (50, Bound::Exact, 5, 5, false, true),
+        (50, Bound::Upper, 4, 5, false, false),
+    ];
+    for (value, bound, tt_depth, depth, cut_node, expected) in cases {
+        assert_eq!(
+            zero_window_tt_cutoff(value, bound, tt_depth, depth, 100, cut_node),
+            expected,
+            "v={value}, bound={bound:?}, d_tt={tt_depth}, d={depth}, cutNode={cut_node}"
+        );
     }
 }

@@ -168,6 +168,7 @@ impl Searcher<'_> {
         depth: u32,
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
+        self.previous_pv.clone_from(&self.pv[0]);
         let mut window =
             AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));
         loop {
@@ -207,6 +208,7 @@ impl Searcher<'_> {
         beta: i32,
     ) -> Option<(Move, i32)> {
         self.root_depth = depth;
+        self.follow_pv[0] = true;
         // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
         self.cutoff_counts[2] = 0;
         if let Some(results) = &mut self.root_results {

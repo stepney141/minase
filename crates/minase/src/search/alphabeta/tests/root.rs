@@ -407,3 +407,24 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
     assert_eq!(last.4, finished.pv);
     assert!(last.2 < finished.nodes);
 }
+
+#[test]
+fn iteration_snapshots_previous_pv_before_window_research() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        searcher
+            .search_iteration(&position, &moves, 1, None)
+            .unwrap();
+        assert!(searcher.previous_pv.is_empty());
+        assert!(searcher.follow_pv[0]);
+        let previous = searcher.pv[0].clone();
+        assert!(!previous.is_empty());
+        // 王将だけの局面では到達しない前回値を与え、窓の読み直しを起こす。
+        searcher
+            .search_iteration(&position, &moves, 5, Some(10_000))
+            .unwrap();
+        assert_eq!(searcher.previous_pv, previous);
+        assert!(searcher.follow_pv[0]);
+    });
+}

@@ -431,6 +431,8 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
     );
     for winner_index in [0, 2, 4] {
         with_root_searcher(&board, &[], |searcher| {
+            // F5の浅いcutNodeでfail-lowの打ち切りが制限されるため、子を十分深く読む。
+            searcher.null_move_ply = Some(0);
             let quiets: Vec<_> = legal_moves(&board)
                 .into_iter()
                 .filter(|&mv| board.captured_squares(mv).iter().all(Option::is_none))
@@ -451,17 +453,17 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 0,
                 false,
             );
-            // F4では深さ2のPVノードのLMRも子を深さ2まで読む。
+            // 深さ10の履歴更新だけを検査し、子の値は十分深い記録で固定する。
             for &(mv, _) in &moves {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 let score = if mv == winner { 20 } else { 0 };
                 searcher
                     .tt
-                    .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
+                    .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
             }
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
+                searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
                 Some(20)
             );
             assert_eq!(searcher.nodes, cutoff_index as u64 + 1);
@@ -470,9 +472,9 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 let expected = if capture || index > cutoff_index {
                     0
                 } else if mv == winner {
-                    4
+                    100
                 } else {
-                    -4
+                    -100
                 };
                 assert_eq!(
                     searcher.history[board.side_to_move().index()][mv.from.dense_index()]
@@ -493,9 +495,10 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         &[
             (sq(0, 0), Color::Black, PieceKind::King),
             (sq(11, 11), Color::White, PieceKind::King),
-            (sq(5, 7), Color::Black, PieceKind::Rook),
+            (sq(5, 7), Color::Black, PieceKind::Kirin),
         ],
     );
+    let ply = MAX_PLY - 1;
     with_root_searcher(&board, &[], |searcher| {
         let tt_move = Move {
             from: sq(0, 0),
@@ -511,13 +514,20 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         let moves = history_moves(searcher, &board, Some(tt_move));
         assert_eq!(moves[1], (pruned_move, false));
         assert!(moves.iter().all(|&(_, capture)| !capture));
-        let cutoff_index = moves.iter().rposition(|&(mv, _)| mv.promote).unwrap();
+        let cutoff_index = moves.iter().position(|&(mv, _)| mv.promote).unwrap();
         let winner = moves[cutoff_index].0;
+        let leaf_value = |mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(test_nnue(), &child)
+        };
+        let beta = leaf_value(winner);
+        assert!(leaf_value(tt_move) < beta);
         assert!(!royal_under_attack(&board));
         assert!(
             evaluate(searcher.nnue, &board)
-                + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, true)
-                < 10_000
+                + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, false)
+                < beta - 1
         );
         searcher.tt.store(
             search_key(&board),
@@ -525,22 +535,14 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             0,
             Bound::Upper,
             Some(tt_move),
-            0,
+            ply,
             false,
         );
-        // F4のfail-high後の再探索は通常深さ2から3へ深くなる。
-        for &(mv, _) in &moves {
-            let mut child = board.clone();
-            child.make_move_unchecked(mv, engine_rules());
-            let score = if mv == winner { 10_001 } else { 0 };
-            searcher
-                .tt
-                .store(search_key(&child), 3, -score, Bound::Exact, None, 1, false);
-        }
-        searcher.null_move_ply = Some(0);
+        // 子は最大手数の静的評価で固定する。麒麟の成りはfutilityの余裕値より大きく評価を上げる。
+        searcher.null_move_ply = Some(ply);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0, false),
-            Some(10_001)
+            searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
+            Some(beta)
         );
         let searched: Vec<_> = moves[..=cutoff_index]
             .iter()

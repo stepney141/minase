@@ -243,13 +243,14 @@ fn null_move_two_jittos_repeat_post_null_position() {
 
     with_root_searcher(&root, &[], |searcher| {
         // じっと以外の応手は後手から見て負と固定し、反復の引き分けを最善にする。
+        // 子の値1はβ=0より大きいので、F5の要求深さ1に対して記録深さ2を用いる。
         for mv in legal_moves(&after_null) {
             if mv != white_jitto {
                 let mut child = after_null.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 searcher
                     .tt
-                    .store(search_key(&child), 1, 1, Bound::Exact, None, 2, false);
+                    .store(search_key(&child), 2, 1, Bound::Exact, None, 2, false);
             }
         }
 
@@ -492,6 +493,7 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
     let killer = killers[0].unwrap();
     let mut killer_child = board.clone();
     killer_child.make_move_unchecked(killer, engine_rules());
+    // 零窓の親をcutNodeにし、先頭の子のfail-lowをF5でも打ち切れるようにする。
     // 深さは要求値。4はIIR後に3となり対象、5は4となり対象外である。
     for (depth, width, tt_move, expected) in [
         (1, 1, None, killer),
@@ -531,7 +533,7 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             }
             let mut current = board.clone();
             assert_eq!(
-                searcher.negamax(&mut current, depth, alpha, beta, 0, false),
+                searcher.negamax(&mut current, depth, alpha, beta, 0, width == 1),
                 Some(if expected == killer { beta } else { beta + 100 }),
                 "depth={depth}, width={width}, tt_move={tt_move:?}",
             );
@@ -666,7 +668,8 @@ fn lmr_search_move_researches_at_adjusted_depth() {
     let mut child = board.clone();
     child.make_move_unchecked(mv, engine_rules());
     let reply = legal_moves(&child)[0];
-    for (reduced, value, expected) in [(4, 80, 8), (4, 60, 7), (4, 52, 6), (7, 80, 7)] {
+    // F5のcutNodeでfail-lowの値を固定するため、初回深さは4より深くする。
+    for (reduced, value, expected) in [(5, 80, 8), (5, 60, 7), (5, 52, 6), (7, 80, 7)] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.tt.store(
                 search_key(&child),
@@ -698,4 +701,83 @@ fn lmr_search_move_researches_at_adjusted_depth() {
             assert_eq!(hit.score, -score);
         });
     }
+}
+
+// F5のIIR条件を、探索後に保存される深さで確かめる。
+// 詰み帯の窓で静的評価による枝刈りを避け、王将だけの局面でnull moveを避ける。
+#[test]
+fn iir_respects_node_type_and_follow_pv() {
+    let position = bare_kings();
+    for (alpha, beta, cut_node, follow_pv, expected_depth) in [
+        (INFINITY - 1, INFINITY, false, false, 3),
+        (INFINITY - 1, INFINITY, true, false, 2),
+        (-INFINITY, INFINITY, false, false, 2),
+        (INFINITY - 1, INFINITY, true, true, 3),
+        (-INFINITY, INFINITY, false, true, 3),
+    ] {
+        with_root_searcher(&position, &[], |searcher| {
+            searcher.follow_pv[0] = follow_pv;
+            searcher
+                .negamax(&mut position.clone(), 3, alpha, beta, 0, cut_node)
+                .unwrap();
+            assert_eq!(
+                searcher.tt.probe(search_key(&position), 0).unwrap().depth,
+                expected_depth
+            );
+        });
+    }
+}
+
+#[test]
+fn follow_pv_requires_parent_and_matching_move_at_same_ply() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    for ply in [0, 1, 2] {
+        for parent in [false, true] {
+            for mv in [moves[0], moves[1]] {
+                with_root_searcher(&position, &[], |searcher| {
+                    searcher.previous_pv = vec![moves[1], moves[0]];
+                    searcher.follow_pv[ply as usize] = parent;
+                    // 子の古い値は毎回上書きされなければならない。
+                    searcher.follow_pv[(ply + 1) as usize] = true;
+                    searcher
+                        .search_move(
+                            &mut position.clone(),
+                            mv,
+                            1,
+                            -INFINITY,
+                            INFINITY,
+                            ply,
+                            true,
+                            0,
+                            None,
+                            false,
+                        )
+                        .unwrap();
+                    let expected = parent
+                        && match ply {
+                            0 => mv == moves[1],
+                            1 => mv == moves[0],
+                            _ => false,
+                        };
+                    assert_eq!(searcher.follow_pv[(ply + 1) as usize], expected);
+                });
+            }
+        }
+    }
+}
+
+#[test]
+fn null_move_child_never_follows_pv() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        searcher.follow_pv[0] = true;
+        searcher.follow_pv[1] = true;
+        searcher.previous_pv = legal_moves(&position);
+        searcher
+            .search_null_move(&mut position.clone(), 0, 100, 0)
+            .unwrap();
+        assert!(!searcher.follow_pv[1]);
+        assert!(searcher.follow_pv[0]);
+    });
 }

@@ -237,20 +237,23 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
 fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
+        // F5の浅いcutNodeでfail-lowの打ち切りが制限されるため、子の要求深さを5より深く保つ。
+        searcher.follow_pv[0] = true;
+        searcher.null_move_ply = Some(0);
         let moves = picked(searcher, &board, None);
         let winner_index = if quiet_cutoff { 4 } else { 2 };
         assert_eq!(moves[winner_index].1, !quiet_cutoff);
-        // F4のPVノードのLMRが読む深さ2まで、子の値を固定する。
+        // 深さ10の履歴更新だけを検査し、子の値は十分深い記録で固定する。
         for (index, &(mv, _)) in moves.iter().enumerate() {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if index == winner_index { 20 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
+                .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
         }
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
+            searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
             Some(20)
         );
         assert_eq!(searcher.nodes, winner_index as u64 + 1);
@@ -259,9 +262,9 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
                 let expected = if index > winner_index {
                     0
                 } else if index == winner_index {
-                    4
+                    100
                 } else {
-                    -4
+                    -100
                 };
                 assert_eq!(
                     searcher.capture_history.read(&board, searcher.nnue, mv),
@@ -354,6 +357,14 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
     let quiet = capture(sq(11, 0), sq(10, 0));
     let pruned = capture(sq(5, 3), sq(5, 4));
     let winner = capture(sq(3, 3), sq(3, 4));
+    let ply = MAX_PLY - 1;
+    let leaf_value = |mv| {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        -evaluate(test_nnue(), &child)
+    };
+    let beta = leaf_value(winner);
+    assert!(leaf_value(quiet) < beta);
     with_root_searcher(&board, &[], |searcher| {
         let moves = picked(searcher, &board, Some(quiet));
         assert_eq!(
@@ -382,21 +393,14 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             0,
             Bound::Upper,
             Some(quiet),
-            0,
+            ply,
             false,
         );
-        for (mv, score) in [(quiet, 0), (winner, 10_001)] {
-            let mut child = board.clone();
-            child.make_move_unchecked(mv, engine_rules());
-            searcher
-                .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
-        }
-        // このテストでは実着手による打ち切りだけを検査する。
-        searcher.null_move_ply = Some(0);
+        // 子は最大手数の静的評価で固定し、F5の浅い零窓の打ち切りに依存しない。
+        searcher.null_move_ply = Some(ply);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0, false),
-            Some(10_001)
+            searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
+            Some(beta)
         );
         assert_eq!(searcher.nodes, 2);
         assert_eq!(

@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use crate::eval::Nnue;
 use crate::eval::nnue::EVALUATION_LIMIT;
-use crate::search::{MAX_PLY, REPETITION_BAND_START};
+use crate::search::{MAX_PLY, REPETITION_BAND_START, in_repetition_band};
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
@@ -12,6 +12,37 @@ use minase_core::rules::MoveRules;
 use super::params;
 use super::see::see_prunes;
 use super::tt::Bound;
+
+/// 置換表の打ち切りでcutNodeと値の方向の一致を要求する深さの上限。
+/// Stockfishの`depth > 4`に対応する（src/search.cpp:899）。
+const TT_CUTOFF_NODE_TYPE_MAX_DEPTH: u32 = 4;
+
+/// 零窓で置換表の値、深さ、種別、およびノードの種別が打ち切りを許すかを返す。
+/// 深さはIIR適用前とし、`d_tt > d - [v <= beta]`を判定する（Stockfish src/search.cpp:894-899）。
+pub(super) fn zero_window_tt_cutoff(
+    value: i32,
+    bound: Bound,
+    tt_depth: u32,
+    depth: u32,
+    beta: i32,
+    cut_node: bool,
+) -> bool {
+    let deep_enough = if value <= beta {
+        tt_depth >= depth
+    } else {
+        tt_depth > depth
+    };
+    let fail_high = value >= beta;
+    let required_bound = if fail_high {
+        Bound::Lower
+    } else {
+        Bound::Upper
+    };
+    !in_repetition_band(value)
+        && deep_enough
+        && (bound == Bound::Exact || bound == required_bound)
+        && (cut_node == fail_high || depth > TT_CUTOFF_NODE_TYPE_MAX_DEPTH)
+}
 
 /// 補正後の静的評価を評価関数の出力範囲に収める（Stockfish src/search.cpp:113-118）。
 pub(super) fn corrected_static_eval(raw: i32, correction: i32) -> i32 {

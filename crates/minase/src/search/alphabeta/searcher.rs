@@ -75,6 +75,8 @@ pub(super) fn new_searcher<'a>(
         root_depth: 0,
         cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
+        previous_pv: Vec::new(),
+        follow_pv: [false; MAX_PLY as usize + 1],
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -171,6 +173,10 @@ pub(super) struct Searcher<'a> {
     pub(super) ponder_iteration: Option<PonderIteration>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pub(super) pv: Vec<Vec<Move>>,
+    /// 前の完了反復の主変化。反復開始時に写し、窓の読み直しでは更新しない（Stockfish src/search.cpp:383）。
+    pub(super) previous_pv: Vec<Move>,
+    /// plyごとに、前の反復の主変化を辿っているかを保持する（Stockfish src/search.cpp:791-794）。
+    pub(super) follow_pv: [bool; MAX_PLY as usize + 1],
     /// 現在の反復の深さ。LMRの延長を許すplyの範囲に使う（Stockfish src/search.cpp:1402）。
     pub(super) root_depth: u32,
     /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。

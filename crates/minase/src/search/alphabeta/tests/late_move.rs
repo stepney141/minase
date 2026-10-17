@@ -339,9 +339,10 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     assert!(opponent_score >= MATE_THRESHOLD);
     let table = small_tt();
     // 先頭手の負けを固定し、親が後続の安全な手を読むかを検査する。
+    // F5ではβを超える値に要求深さより1深い記録が要る。
     table.store(
         search_key(&child),
-        1,
+        2,
         opponent_score,
         Bound::Exact,
         None,
