@@ -99,7 +99,7 @@
 | メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 | AWSのEC2での教師生成 | [plans/aws-selfplay.md](plans/aws-selfplay.md) | 起案 | |
-| NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/nnue-early-best-epoch.md](plans/nnue-early-best-epoch.md) | 起案 | |
+| NNUEの検証損失が早く頭打ちになる原因の切り分け | [plans/nnue-early-best-epoch.md](plans/nnue-early-best-epoch.md) | 進行中 | |
 
 ## 現在地
 
@@ -111,7 +111,7 @@
 
 ### 次の候補
 
-- [NNUEの検証損失が早く頭打ちになる原因の切り分け](plans/nnue-early-best-epoch.md)は、現行のNNUEの学習で検証損失が学習率の与え方によらず約0.4489で頭打ちになる原因を、教師の側の要因に切り分ける。同じ対局の後続40手を混ぜる先読み教師については先読みを外した学習との汎化差で、対局数の少なさについては局数と局面数を入れ替えた間引きの学習で、事前に定めた基準により判定し、決着局面の多さは集計で記述する。先読みを外したネットは段階ゲートで採否を決める。[分割の検査](measurements/nnue-validation-split-check.md)では分割と局面の重複に不具合はなかった。着手は利用者の指示を待つ。
+- [NNUEの検証損失が早く頭打ちになる原因の切り分け](plans/nnue-early-best-epoch.md)は、現行のNNUEの学習で検証損失が学習率の与え方によらず約0.4489で頭打ちになる原因を、教師の側の要因に切り分ける。同じ対局の後続40手を混ぜる先読み教師については先読みを外した学習との汎化差で、対局数の少なさについては局数と局面数を入れ替えた間引きの学習で、事前に定めた基準により判定し、決着局面の多さは集計で記述する。先読みを外したネットは段階ゲートで採否を決める。[分割の検査](measurements/nnue-validation-split-check.md)では分割と局面の重複に不具合はなかった。2026年10月17日に着手した。
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、前計画が残した4つの固定の出力部を、隠れ層の段数と各幅、端点数を名前で与える1つの出力部（`stack-h16-e2`のような構成名）に置き換え、現行の直接内積を`stack-e1`として同じ型で表す。構造の整理であり段階ゲートは持たず、ノード数の一致と前計画の学習結果のビット単位の再現で挙動が変わっていないことを確かめる。以後のアーキテクチャの実験は、構成名を変えて学び段階ゲートで測るだけになる。着手は利用者の指示を待つ。
 - [引き分けの評価値の設定](plans/draw-value.md)は、千日手の引き分けに返す評価値をやねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにする。オプションと探索の実装は完了し、既定値では探索が変わらないことを`bench`で確かめた。残りは、この版のリリース後にlishogiのBotの設定で両オプションを−1にするフェーズであり、リリースは利用者の判断を待つ。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
 - 探索が使う既定の評価関数は、2026年10月12日に[NNUE](plans/archived/nnue-replacement.md)へ置き換わった。[NNUEに合わせた探索係数と時間管理係数のSPSAによる再調整](plans/nnue-search-spsa.md)は、`FmScale`を除く38係数（手の順序付けで加わった未調整の3係数と、時間管理の6係数を含む）を現行のネットで調整し直し、起点のmasterとの段階ゲートで採否を決める。測定機の占有は、過去の同規模の記録からの概算で約半日から2日であり、着手は利用者の指示を待つ。PSTとFMを既定としていた時期に挙げたほかの候補（PSTのさらに長い学習、補正なしのPSTを軽い評価として使うlazy evaluation）を、NNUEの採用後も続けるかは決まっていない。
