@@ -32,6 +32,7 @@ mod pipeline;
 mod record;
 mod spill_calibration;
 mod store;
+mod subsample;
 use store::Store;
 #[cfg(test)]
 mod tests;
@@ -171,6 +172,7 @@ struct Session {
     args: Args,
     workers: usize,
     dataset: Store,
+    selection: subsample::Selection,
     base: base::Base,
     teacher_cp_per_logit: Vec<f64>,
     checkpoint: Checkpoint,
@@ -193,7 +195,9 @@ impl Session {
     /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
     /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
-    /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
+    /// 教師の勝率尺度、先読み教師、観測マスクと初期値は全訓練集合から作り、その後で更新用の集合を間引く。
+    /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は
+    /// `epoch×ceil(抽出後の訓練局面数/batch)`、epochは指定上限以下でなければならない。
     /// 記録されたdevice_nameも一致を要求する。
     /// best.npzの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.npzから復元できる。
     /// 途中検証のログは[`reconcile_interval_log`]で更新回数の増加を検査し、チェックポイントより後の行と未完の末尾を捨てる。
@@ -206,7 +210,7 @@ impl Session {
         let initial = load_initial(&args.init_pst)?;
         validate_initial(&initial, &base.linear)?;
 
-        let dataset = Store::open(&args, workers)?;
+        let mut dataset = Store::open(&args, workers)?;
         if dataset.training_count() == 0 || dataset.validation_count() == 0 {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),
@@ -224,10 +228,13 @@ impl Session {
             0.05,
         )?;
         validate_initial(&model.expanded_linear(), &base.linear)?;
+        let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
+        let mut dataset_info = store::DatasetInfo::from(&dataset);
+        dataset_info.subsample = selection.summary.as_ref();
         let mut config = configuration(
             &args,
             workers,
-            &dataset,
+            dataset_info,
             &observations,
             &calibration,
             &model,
@@ -272,8 +279,7 @@ impl Session {
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
                 || restored.optimizer.step()
-                    != restored.progress.epoch
-                        * dataset.training_count().div_ceil(args.batch as u64)
+                    != restored.progress.epoch * selection.positions.div_ceil(args.batch as u64)
             {
                 return Err(Error::Invalid(
                     "checkpoint state differs from recomputed initialization or progress",
@@ -328,6 +334,7 @@ impl Session {
             args,
             workers,
             dataset,
+            selection,
             base,
             teacher_cp_per_logit,
             checkpoint,
@@ -423,10 +430,7 @@ impl Session {
         let epoch = self.checkpoint.progress.epoch + 1;
         let training_started = Instant::now();
         let deadline = self.deadline();
-        let steps_per_epoch = self
-            .dataset
-            .training_count()
-            .div_ceil(self.args.batch as u64);
+        let steps_per_epoch = self.selection.positions.div_ceil(self.args.batch as u64);
         let mut interval_validation = |backend: &Backend| {
             let (parameters, _) = backend.snapshot()?;
             parameters.validate()?;
@@ -468,7 +472,8 @@ impl Session {
         };
         let training = match &self.dataset {
             Store::Memory(dataset) => {
-                let indices = epoch_permutation(dataset.training_indices(), self.args.seed, epoch);
+                let indices =
+                    epoch_permutation(self.selection.indices(dataset), self.args.seed, epoch);
                 pipeline::train_epoch(
                     pipeline::Supply {
                         dataset,

@@ -28,4 +28,4 @@ PSTの学習では、自己対局の教師の分類のλを来歴ファイルの
 
 負け越しが大きかったので重みの入出力、符号、および埋め込みの不具合を点検したが、見つからなかった。
 この結果はPST全体を学び直す条件に限られ、PSTを凍結した補正やNNUEの教師の混合比を決めるものではない。
-NNUEがλ=1.0を採った判断は、[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-lookahead-teachers.md)が扱う。
+NNUEがλ=1.0を採った判断は、[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)が扱う。

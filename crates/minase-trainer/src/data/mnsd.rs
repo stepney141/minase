@@ -330,6 +330,13 @@ impl Dataset {
         Ok(self.files[file].class)
     }
 
+    /// 抽出の鍵を、局面の復元をせずに取り出す。
+    pub(crate) fn subsample_key(&self, index: u64) -> Result<(GameKey, u16)> {
+        let (file, local) = self.locate(index)?;
+        let metadata = self.files[file].metadata[local];
+        Ok((GameKey(file, metadata.game), metadata.ply))
+    }
+
     /// 診断用に元の探索値から先読みを再計算し、f32へ丸めずに返す。
     pub(crate) fn diagnostic_teacher_scores(&self) -> Result<Vec<f64>> {
         let mut scores = Vec::with_capacity(self.record_count() as usize);

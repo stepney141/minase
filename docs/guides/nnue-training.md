@@ -7,7 +7,7 @@ NNUEの計算式と学習の目的関数は[NNUEによる評価関数と学習�
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
 引数の既定値と値域、保存物の各欄、チェックポイントの形式、および検査の許容誤差は、`crates/minase-trainer/src/nnue/`と`crates/minase-trainer/src/diagnostics/`の各項目のdocコメントにあり、本書の各節で該当する項目を示す。
 学習データの形式と対局の由来、教師の分類、教師値、および検証集合の分け方は、駒の種類と位置に応じた評価表PSTと、2駒の組の関係を補う補正FMの学習器と共通であり、`crates/minase/src/training/`と`crates/minase-trainer/src/data/`のdocコメントにある。
-方式を選んだ理由は、ADRの[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)、および[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)にある。
+方式を選んだ理由は、ADRの[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)、および[NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md)に従って目的と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md)に状態を登録する。
 学習した重みの採否は[棋力測定の手引き](sprt.md)に従う。
@@ -57,7 +57,7 @@ done
 
 教師値で探索値と対局結果を混ぜる比λは`--lambda`で必ず指定し、NNUEの学習では探索値だけを教師とする1.0を指定する。
 λは自己対局のデータにだけ適用され、実戦対局のデータでは常に0である。
-先読み教師を使う場合は、`--lookahead-gamma`と`--lookahead-plies`を同時に指定する。
+NNUEの標準の学習は先読み教師を使わない。比較のために先読み教師を使う場合は、`--lookahead-gamma`と`--lookahead-plies`を同時に指定する。
 教師の探索値を勝率へ換算する教師の勝率尺度は、必須の引数`--teacher-cp-per-logit`で与える。
 値は、この学習の訓練集合から教師の分類ごとに推定する`calibrate`か、較正コマンド`minase-trainer data calibrate`が書き出した較正ファイル（JSON）のパスのどちらかであり、既定値はない。
 通常の学習では`calibrate`を指定する。
@@ -69,7 +69,6 @@ done
 ```sh
 cargo run --release --offline -j 2 -p minase-trainer -- data calibrate \
   --data "$TRAIN_DATA_ROOT/nnue-lr-schedule-gen/generated-"*.bin \
-  --lookahead-gamma 0.9 --lookahead-plies 40 \
   --output /tmp/teacher-calibration.json
 ```
 
@@ -89,7 +88,6 @@ for FEATURE_SET in P HalfKP-hm-b8; do
     --init-pst "$TRAIN_DATA_ROOT/pst-fm-joint-training/j75/pst-float.npz" \
     --base crates/minase/nets/pst.bin \
     --lambda 1.0 --teacher-cp-per-logit calibrate \
-    --lookahead-gamma 0.9 --lookahead-plies 40 \
     --batch 16384 --epochs 1 --seed 1 \
     --output-dir "/tmp/nnue-rust-phase3-${FEATURE_SET}"
 done
@@ -126,6 +124,14 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 既定値の0では記録しない。
 `--threads`の既定値は物理コア数から2を引いた数である。
 測定機を他の作業と共用する場合は、`--threads`を明示して他の作業の分のコアを残す。
+
+`--train-subsample games:<k>:<r>`または`--train-subsample positions:<k>:<r>`を指定すると、更新に使う訓練集合を対局単位または局面単位で間引く（kは2以上、rは0以上k未満）。
+`games`は対局ごとのハッシュをkで割った余りがrの対局の全局面を残し、`positions`は局面ごとのハッシュで1局面ずつ選ぶ。
+同じ局面数で「少数の対局から全局面」と「多数の対局から疎に」を比べるための引数であり、ハッシュの式は`crates/minase-trainer/src/data/subsample.rs`の`TrainSubsample`にある。
+教師の勝率尺度の推定、先読み教師、観測マスク、および初期値は間引く前の訓練集合全体から作り、検証集合は間引かない。
+1エポックの更新回数、学習率の倍率、および`--validation-interval`は抽出後の局面数から決まる。
+指定した値と抽出後の局面数、対局数、および局面の番号列の検査和は`config.json`に記録され、再開時には変更できない。
+省略した学習は、この引数を加える前の学習器とビット単位で同じである。
 
 学習は、検証損失が改善しないエポックが`--patience`回続くか、エポック数または時間の上限に達すると止まる。
 時間には前処理と検証を含み、再開前の累積時間も数える。

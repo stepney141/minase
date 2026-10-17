@@ -1,6 +1,8 @@
 use crate::nn::checkpoint::MismatchField;
 #[path = "../../../tests/common/mnsd.rs"]
 mod mnsd;
+#[path = "tests_subsample.rs"]
+mod subsample_tests;
 use super::*;
 use crate::data::{Outcome, Sample};
 use crate::nn::{BestEpoch, sha256};
@@ -36,6 +38,7 @@ fn args() -> Args {
         head: crate::nnue::model::HeadKind::DirectScrelu,
         width: 8,
         data: vec!["records.bin".into()],
+        train_subsample: None,
         init_pst: "pst-float.npz".into(),
         base: "pst.bin".into(),
         output_dir: "output".into(),

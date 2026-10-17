@@ -47,6 +47,11 @@ pub struct Args {
     /// MNSDファイルを、全体のレコード順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
+    /// 更新に使う訓練集合を`games:<k>:<r>`または`positions:<k>:<r>`で間引く。k >= 2、0 <= r < k。
+    /// 省略時は全件を使う。前処理と検証集合には適用しない。
+    #[arg(long, value_name = "SPEC")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub train_subsample: Option<crate::data::TrainSubsample>,
     /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
     #[arg(long, value_name = "calibrate|FILE")]
     pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,

@@ -99,6 +99,7 @@ pub struct SpillStore {
     bucket_positions: u64,
     training_hash: String,
     validation_hash: String,
+    train_subsample: Option<super::TrainSubsample>,
 }
 
 /// パスを付けた一時ファイルの不整合を作る。
@@ -243,6 +244,7 @@ impl SpillStore {
             bucket_positions,
             training_hash: String::new(),
             validation_hash: String::new(),
+            train_subsample: None,
         };
         let mut unique_paths = HashSet::new();
         let mut seeds = HashSet::new();
@@ -468,6 +470,21 @@ impl SpillStore {
     pub fn training_records(&self) -> impl Iterator<Item = Result<SpillRecord>> {
         self.records(false)
     }
+    /// 全訓練局面の抽出鍵を元のファイル順に返す。前処理用の記録は間引かない。
+    pub(crate) fn training_subsample_keys(
+        &self,
+    ) -> impl Iterator<Item = Result<(super::GameKey, u16)>> {
+        RawRecords::new(self, false).map(|record| {
+            let (bytes, file) = record?;
+            Ok(subsample_key(&bytes, file))
+        })
+    }
+
+    /// 前処理の完了後に、エポックの振り分けにだけ適用する条件を設定する。
+    pub(crate) fn set_train_subsample(&mut self, spec: super::TrainSubsample) {
+        self.train_subsample = Some(spec);
+    }
+
     /// 訓練局面をファイル順に1つずつ受け手へ渡す。
     pub fn for_each_training(&self, mut f: impl FnMut(SpillRecord) -> Result<()>) -> Result<()> {
         for record in self.training_records() {
@@ -547,6 +564,7 @@ impl SpillStore {
             .collect()
     }
     /// 訓練局面をbucketへ振り分け、期限内ならエポックの読み手を返す。
+    /// 抽出条件の指定時は、保持する局面だけを振り分ける。前処理用の一時ファイルは変えない。
     /// 期限は振り分けの開始時、65,536局面ごと、および振り分けの終了時に確かめ、過ぎていれば`Ok(None)`を返す。
     /// 上限を超えたbucketが複数あれば、番号が最も小さいものを[`Error::BucketOverflow`]で報告する。
     pub fn epoch(
@@ -572,7 +590,13 @@ impl SpillStore {
             if i % 65_536 == 0 && Instant::now() >= deadline {
                 return Ok(None);
             }
-            let (bytes, _) = record?;
+            let (bytes, file) = record?;
+            if let Some(spec) = self.train_subsample {
+                let (key, ply) = subsample_key(&bytes, file);
+                if !spec.keeps(key.0 as u64, key.1, ply) {
+                    continue;
+                }
+            }
             let bucket = assigner.next() as usize;
             if buffers[bucket].len() + RECORD_LEN > WRITE_BUFFER {
                 flush_bucket(&directory, bucket, &mut buffers[bucket])?;
@@ -629,6 +653,13 @@ impl SpillStore {
         }
         Ok(result)
     }
+}
+
+/// 固定長記録の手数と対局番号を読み、入力順のファイル番号と組み合わせる。
+fn subsample_key(bytes: &[u8; RECORD_LEN], file: usize) -> (super::GameKey, u16) {
+    let ply = u16::from_le_bytes(bytes[120..122].try_into().expect("fixed field"));
+    let game = u32::from_le_bytes(bytes[122..126].try_into().expect("fixed field"));
+    (super::GameKey(file, game), ply)
 }
 
 /// bucketのバッファを追記し、ファイルを閉じてから呼び手へ戻る。

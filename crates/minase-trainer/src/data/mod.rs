@@ -19,6 +19,7 @@ mod sample;
 mod shuffle;
 pub mod spill;
 pub(crate) mod stream;
+mod subsample;
 mod teacher;
 
 pub(crate) use calibration::TeacherCalibration;
@@ -32,6 +33,7 @@ pub use shuffle::{
     rao_sandelius_order,
 };
 pub use spill::{EpochReader, SpillRecord, SpillStore};
+pub use subsample::TrainSubsample;
 pub use teacher::{
     CpPerLogitEstimate, Lookahead, build_targets_from_arrays, compute_lookahead,
     estimate_cp_per_logit, parse_lambda, validate_lambda,
