@@ -13,7 +13,7 @@
 //! それ以外で宣言の文法に合わない行があれば失敗する。
 //!
 //! manifestのうち調整の設定だけを読むため、`invocations.json`のない旧形式のセッションも反映できる。
-//! この読み取り範囲の理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
+//! この読み取り範囲の理由は`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`にある。
 //!
 //! # 書き戻す係数表の構文
 //!

@@ -2,16 +2,16 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月5日。
+置き換え済み。決定日は2026年10月5日。[再開は実行条件を`manifest.json`だけから読み、SPSAではコミット指定の調整対象のビルドし直しを受け入れる](../resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)によって置き換えられた。
 
 ## コンテキスト
 
 `minase match run`と`minase spsa`は、中断した実行を`--resume`で再開できる。
 以前の再開は、利用者に全条件を指定し直させ、保存済みの`manifest.json`と完全一致で照合していた。
 照合の対象には、対局を進める実行ファイル（runner）自身のSHA-256と、測定機のCPUの情報も含まれていた。
-2026年10月5日の[補助ツールのサブコマンド化](../plans/archived/cli-subcommands.md)でrunnerはエンジンと同じ`minase`になったので、探索や評価だけの変更でもSHA-256が変わり、作業ツリーを再ビルドすると測定を再開できなくなった。
-fishtest、fastchess、cutechess-cli、およびAyaneは、いずれも再開時にrunner自身のハッシュを照合しない（[再開条件の簡素化の参考資料](../plans/archived/match-resume-simplification.md#参考資料)）。
-fastchessは、中断時に保存した設定ファイルだけを読んで再開する（[再開条件の簡素化の参考資料](../plans/archived/match-resume-simplification.md#参考資料)）。
+2026年10月5日の[補助ツールのサブコマンド化](../../plans/archived/cli-subcommands.md)でrunnerはエンジンと同じ`minase`になったので、探索や評価だけの変更でもSHA-256が変わり、作業ツリーを再ビルドすると測定を再開できなくなった。
+fishtest、fastchess、cutechess-cli、およびAyaneは、いずれも再開時にrunner自身のハッシュを照合しない（[再開条件の簡素化の参考資料](../../plans/archived/match-resume-simplification.md#参考資料)）。
+fastchessは、中断時に保存した設定ファイルだけを読んで再開する（[再開条件の簡素化の参考資料](../../plans/archived/match-resume-simplification.md#参考資料)）。
 審判層、開始局面の生成、および時計の裁定の意味の変化は、審判層の試験、perft、および固定シードの出力の一致で検証している。
 実行ディレクトリの記録形式は版で区別され、この決定より前の版4は起動ごとの記録`invocations.json`を持たない。
 

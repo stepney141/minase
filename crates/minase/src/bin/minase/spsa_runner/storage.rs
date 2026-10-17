@@ -46,7 +46,7 @@ use std::{
 /// 新規作成時に固定する実行条件。再開の条件はこの`manifest.json`だけから読む。
 /// 調整対象がコミット指定なら完全コミットハッシュを照合し、再ビルドによるSHA-256の変化を認める。
 /// 起動コマンド指定なら、セッションの開始時の実行ファイルのSHA-256である`engine_sha256`と照合する。
-/// manifestを再開条件の正とする理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
+/// manifestを再開条件の正とする理由は`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`にある。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Manifest {

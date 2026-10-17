@@ -1338,7 +1338,7 @@ fn apply_preserves_source_and_existing_temporary_file_on_write_failure() {
     assert_eq!(fs::read(temporary).unwrap(), b"existing temporary file");
 }
 
-// [`super::cli::Arguments::resume`]と`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`に従う。
+// [`super::cli::Arguments::resume`]と`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`に従う。
 #[test]
 fn resume_cli_accepts_only_the_run_directory() {
     assert!(Arguments::try_parse_from(["spsa_runner", "--resume", "run"]).is_ok());

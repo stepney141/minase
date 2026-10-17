@@ -268,7 +268,7 @@ impl RunStore {
     /// `requested_target`を指定する場合は直前の起動の目標より大きい値を要求し、
     /// 省略時は直前の目標を使う。条件は保存済みの`manifest.json`から読む。
     /// 未実行のペアがある場合だけ、呼び出し側が[`Self::begin_invocation`]へ進む。
-    /// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
+    /// 理由は`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`にある。
     pub(super) fn resume(
         path: &Path,
         requested_target: Option<u64>,

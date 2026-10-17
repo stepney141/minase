@@ -29,4 +29,4 @@
 物理20コアの測定機で両エンジンが`Threads=1`なら、同時対局数は19になる。
 `Threads`を報告しないCECPエンジンとの測定では、`--concurrency`を明示する必要がある。
 計算は物理コアだけを見るので、置換表容量が大きい測定では、測定者がメモリ量から同時対局数を下げて明示する（[HaChuとの条件格子測定](../plans/archived/hachu-condition-grid.md)）。
-再開の前後で同時対局数を変えないので、物理コア数の少ない測定機で再開すると同時対局数がコア数を超えることがあり、その影響は`time_forfeits`に現れる（[再開のADR](resume-from-the-manifest-without-checking-the-runner.md)）。
+再開の前後で同時対局数を変えないので、物理コア数の少ない測定機で再開すると同時対局数がコア数を超えることがあり、その影響は`time_forfeits`に現れる（[再開のADR](resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)）。
