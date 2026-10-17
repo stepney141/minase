@@ -84,7 +84,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 - 表ごとの更新量の倍率と、表の初期値の調整。Stockfishの値を固定の定数として使い、SPSAの対象にしない。固定する定数の節を参照。
 - 置換表の値で補正後の評価を置き換えること（Stockfish `src/search.cpp:862-865`）。search-pruning-formsが扱う。
 - singular extensionの余裕値への補正量の利用（Stockfish `src/search.cpp:1288`）と、singular extensionの探索の結果による表の更新（Stockfish `src/search.cpp:1306-1316`）。minaseはsingular extension（置換表の手だけが良い手かを浅い探索で確かめて延長する手法）を持たない。
-- null move pruningを試す条件に補正後の評価を使う変更を、本書で新たに加えること。この条件は[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS6が扱う。S6とF2がともに採用されていれば、条件には既に補正後の評価が使われており、本書の補正量もその条件に入る（依存関係の節を参照）。
+- null move pruningを試す条件に補正後の評価を使う変更を、本書で新たに加えること。この条件は[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS7が扱う。S7とF2がともに採用されていれば、条件には既に補正後の評価が使われており、本書の補正量もその条件に入る（依存関係の節を参照）。
 
 ## 依存関係
 
@@ -99,7 +99,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 フェーズ1の最初に起点のコードを読み、どれに当たるかを確かめる。
 
 - [探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)が採用されていれば、補正後の静的評価はreverse futility pruning、razoring、null move pruningの減深量、改良の判定、およびfutility pruningに使われている。本書の補正量は、それらすべての判定に入る。
-- さらに[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS6（null move pruningを試す条件に、減深量の計算と同じ静的評価を使う変更）も採用されていれば、本書の補正量はnull move pruningを試すかどうかの判定にも入る。
+- さらに[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS7（null move pruningを試す条件に、減深量の計算と同じ静的評価を使う変更）も採用されていれば、本書の補正量はnull move pruningを試すかどうかの判定にも入る。
 - [探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)が採用されていなければ、補正後の静的評価はfutility pruningにだけ使われている。本書は適用先を広げない。一括で不採用となった項目群から一部だけを選び直して再測定することになるからである。この場合、新しい表と持ち越しが探索に及ぶ範囲はfutility pruningとC5だけになり、効果は小さいと見込まれる。この場合に着手するかは、着手時に利用者が決める。
 - C5が補正項を引く位置と単位は、先行案の採否ではなく起点の実装で決める。起点のLMRが手の端数を持つ単位（F4またはhistory-formsの1/100手）で減深量を計算していれば、その単位を使う。手単位の整数で計算していれば、F4の設計判断「LMRの減深量の単位」と同じ方法で表を1/100手単位に改める。この変更は、整数`h`について`floor((floor(100x) + 100h)/100) = floor(x) + h`が成り立つので、探索を変えない。起点の単位が1/100手以外なら、`LmrCorrection`はその単位で定め、新しい係数の表の範囲と換算値もその単位へ直す。
 - [historyの更新量の形とcontinuation historyの設計書](history-forms.md)は、ply `q`のノードで指した手について、その`Move`と着手前の駒種をplyごとに記録する（null moveと根より前は記録を持たない）。この記録が起点にあれば、C3はそれを再利用する。なければ、C3で同じ定義の記録を加える。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
