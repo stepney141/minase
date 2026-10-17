@@ -16,4 +16,4 @@
 
 ## 出典
 
-[先読みなしの教師によるNNUEの学習](../measurements/nnue-no-lookahead-training.md)、[決着局面の集計](../measurements/nnue-teacher-decided-positions.md)、[NNUEの検証損失の頭打ちの切り分け](../plans/nnue-early-best-epoch.md)。
+[先読みなしの教師によるNNUEの学習](../measurements/nnue-no-lookahead-training.md)、[決着局面の集計](../measurements/nnue-teacher-decided-positions.md)、[NNUEの検証損失の頭打ちの切り分け](../plans/archived/nnue-early-best-epoch.md)。

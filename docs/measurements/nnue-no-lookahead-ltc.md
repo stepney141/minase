@@ -2,7 +2,7 @@
 
 ## 目的
 
-[NNUEの検証損失の頭打ちの切り分け](../plans/nnue-early-best-epoch.md)のフェーズ3として、[STC](nnue-no-lookahead-stc.md)で`H1`となった先読みなしのネット（候補）を、長時間条件（LTC）のGSPRTで現行のmasterと比べ、採否を決める。
+[NNUEの検証損失の頭打ちの切り分け](../plans/archived/nnue-early-best-epoch.md)のフェーズ3として、[STC](nnue-no-lookahead-stc.md)で`H1`となった先読みなしのネット（候補）を、長時間条件（LTC）のGSPRTで現行のmasterと比べ、採否を決める。
 
 ## コマンドライン
 
