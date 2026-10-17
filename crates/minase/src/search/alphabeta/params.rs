@@ -94,9 +94,30 @@ parameters! {
     /// late move pruningの上限に残り深さの2乗を掛けて加える傾き。単位は残り深さの2乗あたり1/100手である。
     /// 値はSPSAで調整した。
     LmpSlope(lmp_slope): 133, 0, 3600;
-    /// 深さ1〜3共通のreverse futility余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    ReverseFutilityMargin(reverse_futility_margin): 428, 0, 1938;
+    /// reverse futilityのmultの定数。単位は歩兵価値に対する百分率である。
+    /// Stockfishは45/208で22（src/search.cpp:1025）、YaneuraOuは76/90で84である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityMultBase(reverse_futility_mult_base): 22, 0, 450;
+    /// reverse futilityのmultの深さ1あたりの増分。単位は歩兵価値に対する百分率である。
+    /// Stockfishは4/208で2（src/search.cpp:1025）、YaneuraOuは深さの項を持たず0である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityMultSlope(reverse_futility_mult_slope): 2, 0, 12;
+    /// reverse futilityの置換表の照合に失敗した場合のmultの減算。単位は歩兵価値に対する百分率である。
+    /// Stockfishは20/208で10（src/search.cpp:1026）、YaneuraOuは21/90で23である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityNoTtHit(reverse_futility_no_tt_hit): 10, 0, 50;
+    /// reverse futilityのimprovingによる減算。単位はmultに対する百分率である。
+    /// Stockfishは2789/1024で272（src/search.cpp:1029）、YaneuraOuは2686/1024で262である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityImproving(reverse_futility_improving): 272, 0, 400;
+    /// reverse futilityのopponentWorseningによる減算。単位はmultに対する百分率である。
+    /// Stockfishは335/1024で33（src/search.cpp:1029）、YaneuraOuは362/1024で35である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityOpponentWorsening(reverse_futility_opponent_worsening): 33, 0, 100;
+    /// reverse futilityの補正による加算。単位は補正の値の絶対値に対する百分率である。
+    /// Stockfishは131072/198435で66（src/search.cpp:1030）、YaneuraOuは131072/180600で73である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    ReverseFutilityCorrection(reverse_futility_correction): 66, 0, 200;
     /// 残り深さ1で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     RazoringMargin1(razoring_margin1): 1606, 0, 2668;

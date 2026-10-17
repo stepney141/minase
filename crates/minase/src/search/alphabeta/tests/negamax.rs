@@ -499,17 +499,17 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             // 子の評価を親の手番へ戻し、子の静止探索が置換表を読む窓にする。
             let alpha = static_eval.min(-evaluate(searcher.nnue, &killer_child)) - 1;
             let beta = alpha + width;
-            assert!(
-                static_eval
-                    - super::super::pruning::reverse_futility_margin(searcher.nnue.pawn_value())
-                    < beta,
-                "親のreverse futilityが働かない窓で検査する"
+            // 浅い上界で判定用の評価値をαに置き、reverse futilityを避ける。
+            // 記録手の有無と窓は保ち、killerを先に読む条件を変えない。
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                alpha,
+                Bound::Upper,
+                tt_move,
+                0,
+                false,
             );
-            if let Some(mv) = tt_move {
-                searcher
-                    .tt
-                    .store(search_key(&board), 0, 0, Bound::Upper, Some(mv), 0, false);
-            }
             for (mv, score) in [(killer, beta), (capture, beta + 100)] {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());

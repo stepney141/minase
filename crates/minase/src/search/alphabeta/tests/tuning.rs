@@ -370,7 +370,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 40] = [
+    let cases: [Case; 45] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -400,8 +400,23 @@ fn tuning_parameters_in_isolated_process() {
         }),
         ("LmpBase", 600, || i64::from(late_move_limit(1))),
         ("LmpSlope", 400, || i64::from(late_move_limit(1))),
-        ("ReverseFutilityMargin", 100, || {
-            i64::from(reverse_futility_margin(101))
+        ("ReverseFutilityMultBase", 0, || {
+            i64::from(reverse_futility_margin(101, 1, true, false, false, 0))
+        }),
+        ("ReverseFutilityMultSlope", 0, || {
+            i64::from(reverse_futility_margin(101, 1, true, false, false, 0))
+        }),
+        ("ReverseFutilityNoTtHit", 0, || {
+            i64::from(reverse_futility_margin(101, 1, false, false, false, 0))
+        }),
+        ("ReverseFutilityImproving", 0, || {
+            i64::from(reverse_futility_margin(101, 1, true, true, false, 0))
+        }),
+        ("ReverseFutilityOpponentWorsening", 0, || {
+            i64::from(reverse_futility_margin(101, 1, true, false, true, 0))
+        }),
+        ("ReverseFutilityCorrection", 0, || {
+            i64::from(reverse_futility_margin(101, 1, true, false, false, 100))
         }),
         ("RazoringMargin1", 100, || {
             i64::from(razoring_margin(101, 1))
@@ -512,19 +527,20 @@ fn reverse_futility_parameter_changes_search() {
     );
     let nnue = test_nnue();
     let value = evaluate(nnue, &board);
-    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
+    assert_eq!(params::reverse_futility_mult_base(), 22, "数値例の前提");
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 100×428/100=428。変更後は137×528/100=723.36→723。
-    let beta = value - 428;
+    // 置換表なし、opponentWorseningあり。余裕値は100×14×67/10000→9。
+    // 基数32へ変更後は100×24×67/10000→16。
+    let beta = value - 9;
     assert_eq!(
         run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
         (value, 0)
     );
-    params::set("ReverseFutilityMargin", 528).unwrap();
+    params::set("ReverseFutilityMultBase", 32).unwrap();
     assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
     assert_eq!(
-        reverse_futility_margin(137),
-        723,
+        reverse_futility_margin(137, 1, false, false, true, 0),
+        22,
         "百分率は乗算してから割る"
     );
 }
@@ -575,9 +591,23 @@ fn null_move_eval_scale_changes_search() {
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     // 追加減深1の境界はceil(2×100×100/56)=358。
     let beta = evaluate(nnue, &board) - 358;
-    let (_, default_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    // 浅い上界でreverse futilityを避け、null moveの減深量だけを比較する。
+    let run = || {
+        let table = small_tt();
+        table.store(
+            search_key(&board),
+            0,
+            beta - 1,
+            Bound::Upper,
+            None,
+            0,
+            false,
+        );
+        run_negamax(&board, 7, beta - 1, beta, 0, &table)
+    };
+    let (_, default_nodes) = run();
     params::set("NullMoveEvalScale", 0).unwrap();
-    let (score, changed_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    let (score, changed_nodes) = run();
     assert!(score >= beta);
     assert!(changed_nodes > default_nodes);
     params::set("NullMoveEvalScale", 50).unwrap();
@@ -633,11 +663,26 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
     assert!(-reply >= beta);
     assert!(nodes > 0);
     let table = small_tt();
+    // 判定用の評価値をβ未満にして、reverse futilityによる早期終了を避ける。
+    table.store(
+        search_key(&board),
+        0,
+        beta - 1,
+        Bound::Upper,
+        None,
+        0,
+        false,
+    );
     assert_eq!(
         run_negamax(&board, 7, beta - 1, beta, 0, &table),
         (-reply, nodes)
     );
-    assert!(table.probe(search_key(&board), 0).is_none());
+    let hit = table.probe(search_key(&board), 0).unwrap();
+    assert_eq!(
+        (hit.depth, hit.score),
+        (0, beta - 1),
+        "null moveの打ち切りは保存しない"
+    );
 }
 
 // 子が反復で引き分けになる局面では、親の枝刈りの条件だけで展開数が決まる。

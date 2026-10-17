@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::search::alphabeta::params;
+use crate::search::alphabeta::pruning::{is_opponent_worsening, reverse_futility_margin};
 
 // LMR表は1/100手単位で `floor(100 × ln(深さ) × ln(手番号) / (LmrDivisor / 100))` とし、0番の行と列は0にする。
 // 式の理由は docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md にある。
@@ -579,94 +580,110 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     assert_eq!(hit.best_move, Some(capture));
 }
 
-// 深さ1〜3の零窓で、王駒に利きがなく、静的評価とβの差が余裕値に等しければ静的評価を返し、置換表には保存しない。
-// 王駒への利きを除外する理由は docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
+// F1の仕様表の数値例。2項の独立した丸めとi64の積も検査する。
 #[test]
-fn reverse_futility_returns_static_eval_at_margin_without_storing() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
-    // 100×428/100=428。
-    let position = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 1), Color::Black, PieceKind::Pawn),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
-    let nnue = test_nnue();
-    let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - 428;
-    for depth in 1..=3 {
-        let table = small_tt();
-        let tt_move = legal_moves(&position)[0];
-        table.store(
-            search_key(&position),
-            0,
-            static_eval,
-            Bound::Upper,
-            Some(tt_move),
-            0,
-            false,
+fn reverse_futility_margin_matches_numeric_examples() {
+    let pawn = test_nnue().pawn_value();
+    assert_eq!(pawn, 100);
+    for (depth, tt_hit, improving, opponent_worsening, correction, expected) in [
+        (1, true, false, false, 0, 24),
+        (1, false, false, false, 0, 14),
+        (2, true, false, true, 0, 43),
+        (3, true, true, false, 0, 7),
+        (1, true, true, false, 0, -41),
+        (10, true, false, false, 0, 410),
+        (18, false, false, false, 0, 558),
+        (1, true, false, false, -50, 57),
+        (1, true, false, false, 7, 28),
+        (1, true, true, false, 7, -37),
+    ] {
+        assert_eq!(
+            reverse_futility_margin(
+                pawn,
+                depth,
+                tt_hit,
+                improving,
+                opponent_worsening,
+                correction
+            ),
+            expected,
+            "depth={depth}, tt_hit={tt_hit}, improving={improving}, opponent_worsening={opponent_worsening}, correction={correction}"
         );
-        let (score, nodes) = run_negamax(&position, depth, beta - 1, beta, 0, &table);
-        assert_eq!(score, static_eval, "depth={depth}");
-        assert_eq!(nodes, 0, "子を探索せずに返す: depth={depth}");
-        let hit = table.probe(search_key(&position), 0).unwrap();
-        assert_eq!(hit.depth, 0);
-        assert_eq!(hit.score, static_eval);
-        assert_eq!(hit.best_move, Some(tt_move));
+    }
+    // 1,000,000×41×1767/10000=7,244,700。積72,447,000,000はi32の範囲を超える。
+    assert_eq!(
+        reverse_futility_margin(1_000_000, 18, true, false, true, 0),
+        7_244_700
+    );
+}
+
+#[test]
+fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
+    for (previous, expected) in [
+        (Some(-5), true),
+        (Some(-10), false),
+        (Some(-20), false),
+        (None, true),
+    ] {
+        assert_eq!(is_opponent_worsening(10, previous), expected);
     }
 }
 
-// 各除外条件と余裕値の境界では子を探索する。
+// 根ではopponentWorseningが真。置換表なしの深さ1,2,4,18の余裕値は9,26,73,547。
+#[test]
+fn reverse_futility_returns_static_eval_at_margin_without_storing() {
+    let board = bare_kings();
+    let value = evaluate(test_nnue(), &board);
+    for (requested_depth, margin) in [(1, 9), (2, 26), (5, 73), (19, 547)] {
+        let table = small_tt();
+        let beta = value - margin;
+        assert_eq!(
+            run_negamax(&board, requested_depth, beta - 1, beta, 0, &table),
+            (value, 0)
+        );
+        assert!(table.probe(search_key(&board), 0).is_none());
+    }
+}
+
+// 王駒への利き、窓の幅、帯の境界、余裕値不足、およびIIR後の深さ19では子を展開する。
 #[test]
 fn reverse_futility_exclusions_search_children() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
-    // 100×428/100=428。
-    let position = bare_kings();
-    let nnue = test_nnue();
-    let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - 428;
-    let attacked = minase_core::test_util::position(
+    use crate::search::REPETITION_BAND_START as B;
+    let board = bare_kings();
+    let value = evaluate(test_nnue(), &board);
+    let beta = value - 9;
+    let attacked = position(
         Color::Black,
         &[
             (sq(0, 11), Color::White, PieceKind::King),
             (sq(11, 6), Color::White, PieceKind::Rook),
-            (sq(5, 1), Color::Black, PieceKind::Pawn),
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     );
-    let attacked_beta = evaluate(nnue, &attacked) - 428;
-    let cases = [
-        (&position, false, 1, beta - 2, beta, "幅2のPV窓"),
+    let attacked_beta = evaluate(test_nnue(), &attacked) - 9;
+    for (position, attacked, depth, alpha, beta, reason) in [
+        (&board, false, 1, beta - 2, beta, "幅2のPV窓"),
         (
-            &position,
+            &board,
             false,
             1,
             -MATE_THRESHOLD - 1,
             -MATE_THRESHOLD,
-            "βが負の詰み帯",
+            "負の詰み帯",
         ),
         (
-            &position,
-            false,
-            1,
-            -MATE_THRESHOLD,
-            -MATE_THRESHOLD + 1,
-            "αだけが詰み帯",
-        ),
-        (
-            &position,
+            &board,
             false,
             1,
             MATE_THRESHOLD - 1,
             MATE_THRESHOLD,
-            "βが正の詰み帯",
+            "正の詰み帯",
         ),
-        (&position, false, 1, beta, beta + 1, "余裕値に1不足"),
-        (&position, false, 4, beta - 1, beta, "深さ4"),
+        (&board, false, 1, -B - 1, -B, "βが負の専用帯"),
+        (&board, false, 1, -B, -B + 1, "αだけが専用帯"),
+        (&board, false, 1, B - 1, B, "βが正の専用帯"),
+        (&board, false, 1, beta, beta + 1, "余裕値に1不足"),
+        (&board, false, 20, value - 579, value - 578, "IIR後の深さ19"),
         (
             &attacked,
             true,
@@ -675,46 +692,94 @@ fn reverse_futility_exclusions_search_children() {
             attacked_beta,
             "王駒への利き",
         ),
-    ];
-    for (position, attacked, depth, alpha, beta, reason) in cases {
-        let table = small_tt();
+    ] {
         assert_eq!(royal_under_attack(position), attacked, "{reason}");
-        if !attacked {
-            table.store(
-                search_key(position),
-                0,
-                0,
-                Bound::Upper,
-                Some(legal_moves(position)[0]),
-                0,
-                false,
-            );
+        assert!(
+            run_negamax(position, depth, alpha, beta, 0, &small_tt()).1 > 0,
+            "{reason}"
+        );
+    }
+}
+
+#[test]
+fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 3), Color::White, PieceKind::Pawn),
+            (sq(5, 1), Color::Black, PieceKind::Rook),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
+    let capture = step(sq(5, 1), sq(5, 3));
+    let quiet = step(sq(5, 1), sq(5, 2));
+    // 敵駒が移動先にあっても、空升からの手は合法性の検査で除かれる。
+    let invalid = step(sq(3, 3), sq(5, 3));
+    let invalid_quiet = step(sq(3, 3), sq(3, 4));
+    assert!(legal_moves(&board).contains(&capture));
+    assert!(legal_moves(&board).contains(&quiet));
+    assert!(!legal_moves(&board).contains(&invalid));
+    assert!(!legal_moves(&board).contains(&invalid_quiet));
+    assert!(!royal_under_attack(&board));
+    let value = evaluate(test_nnue(), &board);
+    // 深さ1、照合成功、opponentWorseningありで100×24×67/10000→16。
+    let beta = value - 16;
+    for (mv, is_pv, pruned) in [
+        (None, false, true),
+        (None, true, false),
+        (Some(capture), false, true),
+        (Some(capture), true, false),
+        (Some(quiet), false, false),
+        (Some(invalid), false, true),
+        (Some(invalid_quiet), false, true),
+    ] {
+        let table = small_tt();
+        table.store(search_key(&board), 0, value, Bound::Upper, mv, 0, is_pv);
+        let (score, nodes) = run_negamax(&board, 1, beta - 1, beta, 0, &table);
+        if pruned {
+            assert_eq!((score, nodes), (value, 0));
+            let hit = table.probe(search_key(&board), 0).unwrap();
+            assert_eq!((hit.depth, hit.score, hit.best_move), (0, value, mv));
+        } else {
+            assert!(nodes > 0, "mv={mv:?}, is_pv={is_pv}");
         }
-        let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);
-        assert!(nodes > 0, "{reason}");
+    }
+}
+
+#[test]
+fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
+    let board = bare_kings();
+    for at_beta in [false, true] {
+        with_root_searcher(&board, &[], |searcher| {
+            let value = evaluate(searcher.nnue, &board);
+            searcher.accumulators[2] = searcher.accumulators[0].clone();
+            searcher.material_keys[2] = searcher.material_keys[0];
+            searcher.static_evals[0] = value - 1;
+            searcher.static_evals[1] = -value;
+            // improvingだけが真で、置換表なしの余裕値は100×14×(-172)/10000→-24。
+            let beta = value + i32::from(!at_beta);
+            assert!(value + 24 >= beta);
+            let score = searcher
+                .negamax(&mut board.clone(), 1, beta - 1, beta, 2, false)
+                .unwrap();
+            if at_beta {
+                assert_eq!((score, searcher.nodes), (value, 0));
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
     }
 }
 
 // 置換表の打ち切りをreverse futilityより先に適用する。
 #[test]
 fn reverse_futility_preserves_tt_cutoff_priority() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
-    // 100×428/100=428。
-    let position = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 1), Color::Black, PieceKind::Pawn),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
-    let nnue = test_nnue();
-    let static_eval = evaluate(nnue, &position);
-    let beta = static_eval - 428;
+    let board = bare_kings();
+    let beta = evaluate(test_nnue(), &board) - 16;
     let table = small_tt();
     table.store(
-        search_key(&position),
+        search_key(&board),
         1,
         beta - 1,
         Bound::Exact,
@@ -722,9 +787,10 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
         0,
         false,
     );
-    let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
-    assert_eq!(score, beta - 1);
-    assert_eq!(nodes, 0);
+    assert_eq!(
+        run_negamax(&board, 1, beta - 1, beta, 0, &table),
+        (beta - 1, 0)
+    );
 }
 
 // razoringは深さ1〜2で「静的評価 + 余裕値 ≤ α」なら静止探索を試し、その値もα以下なら通常探索を省く。
@@ -979,9 +1045,24 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
     assert!(-reply_score >= beta);
     let table = small_tt();
+    // 判定用の評価値だけをβ未満にしてreverse futilityを避け、null moveの減深を検査する。
+    table.store(
+        search_key(&position),
+        0,
+        beta - 1,
+        Bound::Upper,
+        None,
+        0,
+        false,
+    );
     let (score, nodes) = run_negamax(&position, 7, beta - 1, beta, 0, &table);
     assert!(score >= beta && score.abs() < MATE_THRESHOLD);
-    assert!(table.probe(search_key(&position), 0).is_none());
+    let hit = table.probe(search_key(&position), 0).unwrap();
+    assert_eq!(
+        (hit.depth, hit.score),
+        (0, beta - 1),
+        "null moveの打ち切りは保存しない"
+    );
     assert!(
         nodes < reply_nodes,
         "nodes={nodes}, base_nodes={reply_nodes}"
@@ -992,9 +1073,8 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
 #[test]
 fn correction_can_prevent_reverse_futility_and_razoring() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::reverse_futility_margin(), 428, "数値例の前提");
     assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
-    // 100×428/100=428、100×1606/100=1606。
+    // reverse futilityの余裕値は100×14×67/10000→9、razoringは100×1606/100=1606。
     let position = bare_kings();
     for reverse in [true, false] {
         with_root_searcher(&position, &[], |searcher| {
@@ -1004,7 +1084,7 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
             searcher.correction.update(side, key, difference, 8);
             assert_ne!(searcher.correction.read(side, key), 0);
             let raw = evaluate(searcher.nnue, &position);
-            let alpha = if reverse { raw - 428 - 1 } else { raw + 1606 };
+            let alpha = if reverse { raw - 9 - 1 } else { raw + 1606 };
             let mut board = position.clone();
             let score = searcher
                 .negamax(&mut board, 1, alpha, alpha + 1, 0, false)
@@ -1059,7 +1139,6 @@ fn pruning_eval_selects_only_directional_bounds_outside_decisive_bands() {
 #[test]
 fn reverse_futility_uses_corrected_static_eval() {
     assert_eq!(test_nnue().pawn_value(), 100);
-    assert_eq!(params::reverse_futility_margin(), 428);
     let board = bare_kings();
     for corrected in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
@@ -1075,8 +1154,9 @@ fn reverse_futility_uses_corrected_static_eval() {
                     18
                 );
             }
-            // rawでは余裕値に1足りず、補正18を足すと打ち切れる。
-            let beta = raw - 427;
+            // 補正なしの余裕値9に1足りない。補正18では余裕値が9+11=20になり、
+            // 判定用の評価値raw+18から引いてもβ以上になる。
+            let beta = raw - 8;
             let score = searcher
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
                 .unwrap();
@@ -1093,13 +1173,13 @@ fn reverse_futility_uses_corrected_static_eval() {
 #[test]
 fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
     assert_eq!(test_nnue().pawn_value(), 100);
-    assert_eq!(params::reverse_futility_margin(), 428);
     let board = bare_kings();
     for bound in [Bound::Lower, Bound::Upper] {
         with_root_searcher(&board, &[], |searcher| {
             let raw = evaluate(searcher.nnue, &board);
             let value = raw + 500;
-            let beta = raw + 72;
+            // 照合成功の余裕値は16。下界を採る場合だけβに達する。
+            let beta = value - 16;
             searcher
                 .tt
                 .store(search_key(&board), 0, value, bound, None, 0, false);

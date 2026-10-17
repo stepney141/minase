@@ -1,5 +1,7 @@
 //! 内部ノードのαβ探索。
 
+use std::cell::LazyCell;
+
 use crate::search::snapshot::search_key;
 use crate::search::{
     MATE, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition, in_repetition_band,
@@ -10,9 +12,11 @@ use minase_core::repetition_key;
 
 use super::INFINITY;
 use super::correction::key_after_move;
+use super::ordering::move_order_key;
 use super::pruning::{
-    corrected_static_eval, futility_margin, is_improving, late_move_limit, lmr_reduction,
-    null_move_reduction, pruning_eval, razoring_margin, reverse_futility_margin, see_margin,
+    REVERSE_FUTILITY_MAX_DEPTH, corrected_static_eval, futility_margin, is_improving,
+    is_opponent_worsening, late_move_limit, lmr_reduction, null_move_reduction, pruning_eval,
+    razoring_margin, reverse_futility_margin, see_margin,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -52,8 +56,10 @@ impl Searcher<'_> {
     /// 補正表の更新には補正前の評価を渡す。
     ///
     /// 前向き枝刈りはreverse futility、razoring、null move、futility、late move pruning、SEE、LMRの順で判定する。
-    /// このうちreverse futility、razoring、futility、late move pruning、SEEは、IIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という共通条件を持つ。
+    /// このうちrazoring、futility、late move pruning、SEEは、IIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という共通条件を持つ。
     /// さらに手番側のどの王駒にも相手の疑似利きが届かない場合に限り、razoringは残り深さ2以下に限る。
+    /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
+    /// αとβの帯と王駒への利きの条件は、reverse futilityにも適用する。
     /// null moveとLMRの条件はそれぞれの判定箇所と[`super::pruning::lmr_reduction`]に従う。
     pub(super) fn negamax(
         &mut self,
@@ -87,7 +93,7 @@ impl Searcher<'_> {
             self.stats.tt_probes += 1;
         }
         let tt_hit = self.tt.probe(key, ply);
-        // Stockfish src/search.cpp:842。印は探索窓や打ち切りの判定には使わない。
+        // Stockfish src/search.cpp:842。PVの印をreverse futilityの適用条件に使う。
         self.tt_pv[ply as usize] = beta - alpha > 1 || tt_hit.is_some_and(|hit| hit.is_pv);
         if let Some(hit) = tt_hit {
             #[cfg(feature = "search-stats")]
@@ -139,24 +145,53 @@ impl Searcher<'_> {
             && alpha.abs() < REPETITION_BAND_START
             && beta.abs() < REPETITION_BAND_START;
         let mut royal_attacked = None;
-        // reverse futilityは「判定用の評価値 − 余裕値 ≥ β」で判定用の評価値を返し、置換表へ保存しない。
+        // 合法性を確かめた手だけをMovePickerのTt段階と同じ基準で分類する。
+        // 他の条件が揃うまで生成を遅らせ、必要になればノード内で結果を再利用する。
+        let tt_capture = LazyCell::new(|| {
+            tt_move
+                .filter(|&mv| {
+                    self.generator
+                        .is_legal_move(position, mv, &mut Vec::new(), &mut Vec::new())
+                })
+                .map(|mv| move_order_key(position, self.nnue, mv).is_some())
+        });
+        // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
+        // 返す判定用の評価値は置換表へ保存しない。
+        if depth <= REVERSE_FUTILITY_MAX_DEPTH
+            && !self.tt_pv[ply as usize]
+            && alpha.abs() < REPETITION_BAND_START
+            && beta.abs() < REPETITION_BAND_START
+            && eval >= beta
+            && eval
+                - reverse_futility_margin(
+                    self.nnue.pawn_value(),
+                    depth,
+                    tt_hit.is_some(),
+                    improving,
+                    is_opponent_worsening(
+                        static_eval,
+                        ply.checked_sub(1)
+                            .map(|previous| self.static_evals[previous as usize]),
+                    ),
+                    correction,
+                )
+                >= beta
+            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            && tt_capture.is_none_or(|capture| capture)
+        {
+            return Some(eval);
+        }
         // razoringは深さ2以下で「判定用の評価値 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
-        // 両者とも王駒に疑似利きが届くノードを除く理由は
+        // 王駒に疑似利きが届くノードを除く理由は
         // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
-        if pruning_node {
-            if eval - reverse_futility_margin(self.nnue.pawn_value()) >= beta
-                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-            {
-                return Some(eval);
-            }
-            if depth <= 2
-                && eval + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
-                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-            {
-                let value = self.quiesce(position, alpha, beta, ply)?;
-                if value <= alpha {
-                    return Some(value);
-                }
+        if pruning_node
+            && depth <= 2
+            && eval + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
+            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+        {
+            let value = self.quiesce(position, alpha, beta, ply)?;
+            if value <= alpha {
+                return Some(value);
             }
         }
 

@@ -105,6 +105,16 @@ fn negamax_inherits_parent_pv_flag_when_score_equals_alpha() {
         .unwrap();
     with_root_searcher(&position, &[], |searcher| {
         searcher.tt_pv[0] = true;
+        // 浅い上界でreverse futilityを避け、印のないノードが親の印を継ぐ経路を読む。
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            alpha,
+            Bound::Upper,
+            None,
+            1,
+            false,
+        );
         let score = searcher
             .negamax(&mut position.clone(), 1, alpha, alpha + 1, 1, false)
             .unwrap();

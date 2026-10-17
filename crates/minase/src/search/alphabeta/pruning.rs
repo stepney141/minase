@@ -24,6 +24,12 @@ pub(super) fn is_improving(static_eval: i32, previous: Option<i32>) -> bool {
     previous.is_some_and(|value| static_eval > value)
 }
 
+/// 相手から見た静的評価が直前の手で悪化したかを返す（Stockfish src/search.cpp:884）。
+/// 根では1手前の番兵値の符号反転との比較に相当する真を返す。
+pub(super) fn is_opponent_worsening(static_eval: i32, previous: Option<i32>) -> bool {
+    previous.is_none_or(|value| static_eval > -value)
+}
+
 /// 静的評価を、方向の合う置換表の値で置き換える（Stockfish src/search.cpp:862-865）。
 /// 経路に依存する専用の帯と詰み帯の値は、判定用の評価値に使わない。
 pub(super) fn pruning_eval(static_eval: i32, tt_hit: Option<(i32, Bound)>) -> i32 {
@@ -107,9 +113,36 @@ pub(super) fn see_margin(pawn: i32, depth: u32) -> i32 {
     pawn * percent / 100
 }
 
-/// 深さ1〜3共通のreverse futility余裕値を求める。
-pub(super) fn reverse_futility_margin(pawn: i32) -> i32 {
-    pawn * params::reverse_futility_margin() / 100
+/// reverse futilityの残り深さの上限。Stockfishの`depth < (seekMate ? 6 : 19)`に対応する。
+/// 詰みを探す場合を除く18手を使う（Stockfish src/search.cpp:1022）。
+pub(super) const REVERSE_FUTILITY_MAX_DEPTH: u32 = 18;
+
+/// reverse futilityの`mult`の上限。単位は歩兵価値に対する百分率である。
+/// Stockfishの85を歩兵価値208で換算した41%（Stockfish src/search.cpp:1025）。
+const REVERSE_FUTILITY_MULT_MAX: i64 = 41;
+
+/// reverse futilityの余裕値を求める（Stockfish src/search.cpp:1025-1030）。
+/// 深さはIIR適用後、improvingはnull move後の更新前、補正はノードの最初に読んだ値とする。
+/// 深さと良化による項、補正の絶対値による項を別々に0方向へ丸めて足す。
+pub(super) fn reverse_futility_margin(
+    pawn: i32,
+    depth: u32,
+    tt_hit: bool,
+    improving: bool,
+    opponent_worsening: bool,
+    correction: i32,
+) -> i32 {
+    let depth = i64::from(depth);
+    let mult = (i64::from(params::reverse_futility_mult_base())
+        + i64::from(params::reverse_futility_mult_slope()) * depth)
+        .min(REVERSE_FUTILITY_MULT_MAX)
+        - i64::from(params::reverse_futility_no_tt_hit()) * i64::from(!tt_hit);
+    let scaled_depth = 100 * depth
+        - i64::from(params::reverse_futility_improving()) * i64::from(improving)
+        - i64::from(params::reverse_futility_opponent_worsening()) * i64::from(opponent_worsening);
+    (i64::from(pawn) * mult * scaled_depth / 10000
+        + i64::from(params::reverse_futility_correction()) * i64::from(correction).abs() / 100)
+        as i32
 }
 
 /// 深さ1〜2のrazoring余裕値を求める。

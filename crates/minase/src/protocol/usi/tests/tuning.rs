@@ -88,8 +88,28 @@ fn tuning_usi_contract_in_isolated_process() {
             ("LmpBase", params::lmp_base as fn() -> i32),
             ("LmpSlope", params::lmp_slope as fn() -> i32),
             (
-                "ReverseFutilityMargin",
-                params::reverse_futility_margin as fn() -> i32,
+                "ReverseFutilityMultBase",
+                params::reverse_futility_mult_base as fn() -> i32,
+            ),
+            (
+                "ReverseFutilityMultSlope",
+                params::reverse_futility_mult_slope as fn() -> i32,
+            ),
+            (
+                "ReverseFutilityNoTtHit",
+                params::reverse_futility_no_tt_hit as fn() -> i32,
+            ),
+            (
+                "ReverseFutilityImproving",
+                params::reverse_futility_improving as fn() -> i32,
+            ),
+            (
+                "ReverseFutilityOpponentWorsening",
+                params::reverse_futility_opponent_worsening as fn() -> i32,
+            ),
+            (
+                "ReverseFutilityCorrection",
+                params::reverse_futility_correction as fn() -> i32,
             ),
             ("RazoringMargin1", params::razoring_margin1 as fn() -> i32),
             ("RazoringMargin2", params::razoring_margin2 as fn() -> i32),
