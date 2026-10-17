@@ -183,6 +183,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
         Bound::Exact,
         None,
         ply + 1,
+        false,
     );
     table.store(
         search_key(&position),
@@ -191,6 +192,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
         Bound::Upper,
         Some(losing_move),
         ply,
+        false,
     );
     let (score, _) = run_negamax(&position, 2, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
@@ -251,7 +253,15 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
             .collect();
         assert!(!protected.is_empty());
         let table = small_tt();
-        table.store(search_key(&position), 0, 0, Bound::Upper, Some(tt_move), 0);
+        table.store(
+            search_key(&position),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            false,
+        );
         let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
         assert!(score.abs() < MATE_THRESHOLD);
         assert!(nodes > 1, "記録手の後にも探索する");
@@ -348,6 +358,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
         Bound::Exact,
         None,
         ply + 1,
+        false,
     );
     table.store(
         search_key(&board),
@@ -356,6 +367,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
         Bound::Upper,
         Some(losing_move),
         ply,
+        false,
     );
     let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
@@ -415,7 +427,15 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
         let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
         let table = small_tt();
         let tt_move = if capture_is_tt { capture } else { quiet };
-        table.store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+        table.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            false,
+        );
         let (score, _) = run_negamax(&board, depth, alpha, alpha + width, 0, &table);
         assert!(score.abs() < MATE_THRESHOLD);
         let mut child = board.clone();
@@ -468,10 +488,26 @@ fn see_pruning_searches_rule_dependent_capture() {
         let mut child = board.clone();
         child.make_move_unchecked(mv, engine_rules());
         if search_key(&child) != search_key(&target) {
-            table.store(search_key(&child), 1, -static_eval, Bound::Exact, None, 1);
+            table.store(
+                search_key(&child),
+                1,
+                -static_eval,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
         }
     }
-    table.store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
+    table.store(
+        search_key(&board),
+        0,
+        0,
+        Bound::Upper,
+        Some(quiet),
+        0,
+        false,
+    );
     let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, 0, &table);
     assert!(score > static_eval);
     let hit = table.probe(search_key(&board), 0).unwrap();
@@ -511,7 +547,15 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     assert!(captures_last_royal(&board, capture));
     let ply = 5;
     let table = small_tt();
-    table.store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), ply);
+    table.store(
+        search_key(&board),
+        0,
+        0,
+        Bound::Upper,
+        Some(quiet),
+        ply,
+        false,
+    );
     let alpha = evaluate(test_nnue(), &board) + 3 * test_nnue().pawn_value();
     let (score, _) = run_negamax(&board, 1, alpha, alpha + 1, ply, &table);
     assert_eq!(score, MATE - (ply + 1) as i32);
@@ -541,7 +585,15 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     for depth in 1..=3 {
         let table = small_tt();
         let tt_move = legal_moves(&position)[0];
-        table.store(search_key(&position), 0, 0, Bound::Upper, Some(tt_move), 0);
+        table.store(
+            search_key(&position),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            false,
+        );
         let (score, nodes) = run_negamax(&position, depth, beta - 1, beta, 0, &table);
         assert_eq!(score, static_eval, "depth={depth}");
         assert_eq!(nodes, 0, "子を探索せずに返す: depth={depth}");
@@ -620,6 +672,7 @@ fn reverse_futility_exclusions_search_children() {
                 Bound::Upper,
                 Some(legal_moves(position)[0]),
                 0,
+                false,
             );
         }
         let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);
@@ -645,7 +698,15 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
     let static_eval = evaluate(nnue, &position);
     let beta = static_eval - 428;
     let table = small_tt();
-    table.store(search_key(&position), 1, beta - 1, Bound::Exact, None, 0);
+    table.store(
+        search_key(&position),
+        1,
+        beta - 1,
+        Bound::Exact,
+        None,
+        0,
+        false,
+    );
     let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
     assert_eq!(score, beta - 1);
     assert_eq!(nodes, 0);
@@ -707,7 +768,15 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
     for (depth, margin) in [(1, 1606), (2, 2015)] {
         let alpha = evaluate(nnue, &position) + margin;
         let table = small_tt();
-        table.store(search_key(&position), 0, alpha, Bound::Upper, None, 0);
+        table.store(
+            search_key(&position),
+            0,
+            alpha,
+            Bound::Upper,
+            None,
+            0,
+            false,
+        );
         let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
         assert_eq!(quiet_score, alpha);
         let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
@@ -781,6 +850,7 @@ fn razoring_exclusions_search_children() {
                 Bound::Upper,
                 Some(legal_moves(position)[0]),
                 0,
+                false,
             );
         }
         let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);

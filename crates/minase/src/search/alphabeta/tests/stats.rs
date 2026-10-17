@@ -101,7 +101,7 @@ fn insufficient_tt_depth_is_a_hit_without_a_cutoff() {
     with_root_searcher(&position, &[], |searcher| {
         searcher
             .tt
-            .store(search_key(&position), 0, 0, Bound::Exact, None, 0);
+            .store(search_key(&position), 0, 0, Bound::Exact, None, 0, false);
         searcher
             .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
             .unwrap();

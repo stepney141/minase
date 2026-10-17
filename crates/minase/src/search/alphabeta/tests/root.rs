@@ -60,9 +60,15 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
     for previous_best in [None, Some(moves[1])] {
         with_root_searcher(&position, &[], |searcher| {
             let tt_move = *moves.last().unwrap();
-            searcher
-                .tt
-                .store(search_key(&position), 1, 0, Bound::Exact, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&position),
+                1,
+                0,
+                Bound::Exact,
+                Some(tt_move),
+                0,
+                false,
+            );
             if let Some(previous) = previous_best {
                 let mut results = crate::search::alphabeta::root::RootResults::default();
                 results.previous_best = Some(previous);
@@ -322,7 +328,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         let key = search_key(&position);
         searcher
             .tt
-            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0);
+            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0, false);
         let (best_move, score) = searcher
             .search_root(&position, &moves, 1, MATE, INFINITY)
             .unwrap();

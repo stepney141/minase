@@ -149,9 +149,15 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             let tt_move = quiets[0];
             let killers = [Some(quiets[1]), Some(quiets[2])];
             searcher.killers[0] = killers;
-            searcher
-                .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(tt_move),
+                0,
+                false,
+            );
             // 捕獲手はSEEでも切られず、子はすべて反復引き分けになる。
             let protected = moves
                 .iter()
@@ -252,6 +258,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
         Bound::Exact,
         None,
         ply + 1,
+        false,
     );
     table.store(
         search_key(&board),
@@ -260,6 +267,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
         Bound::Upper,
         Some(losing_move),
         ply,
+        false,
     );
     let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");

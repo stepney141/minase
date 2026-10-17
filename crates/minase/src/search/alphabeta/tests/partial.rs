@@ -108,9 +108,15 @@ fn byoyomi_root_order_moves_only_previous_best_ahead_of_existing_order() {
     for (limits, eligible) in clock_cases() {
         with_root_searcher(&position, &[], |searcher| {
             let tt_move = *roots.last().unwrap();
-            searcher
-                .tt
-                .store(search_key(&position), 1, 0, Bound::Exact, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&position),
+                1,
+                0,
+                Bound::Exact,
+                Some(tt_move),
+                0,
+                false,
+            );
             let mut expected = roots.clone();
             searcher.order_moves(&position, &mut expected, Some(tt_move), 0);
             searcher.root_results = byoyomi_clock(&limits).map(|_| RootResults::default());

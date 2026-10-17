@@ -65,7 +65,7 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     );
     let key = search_key(&position);
     let table = small_tt();
-    table.store(key, 0, 28_000, Bound::Exact, None, 0);
+    table.store(key, 0, 28_000, Bound::Exact, None, 0, false);
     assert_eq!(table.probe(key, 0).unwrap().depth, 0);
 
     let (score, nodes) = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
@@ -112,7 +112,7 @@ fn iir_reduces_depth_when_tt_entry_has_no_move() {
     let position = bare_kings();
     let key = search_key(&position);
     let table = small_tt();
-    table.store(key, 0, 28_000, Bound::Exact, None, 0);
+    table.store(key, 0, 28_000, Bound::Exact, None, 0, false);
     assert!(table.probe(key, 0).unwrap().best_move.is_none());
 
     let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
@@ -147,7 +147,7 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     let key = search_key(&position);
     for stored_depth in [2, 3] {
         let table = small_tt();
-        table.store(key, stored_depth, 28_000, Bound::Exact, None, 0);
+        table.store(key, stored_depth, 28_000, Bound::Exact, None, 0, false);
         let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
         if stored_depth == 3 {
             assert_eq!((score, nodes), (28_000, 0));
@@ -198,9 +198,15 @@ fn null_move_jitto_does_not_repeat_pre_null_position() {
 
     with_root_searcher(&root, &history, |searcher| {
         // 深さ0の記録は手順の優先にだけ使い、後手のじっとを最初に読む。
-        searcher
-            .tt
-            .store(search_key(&after_null), 0, 0, Bound::Upper, Some(reply), 1);
+        searcher.tt.store(
+            search_key(&after_null),
+            0,
+            0,
+            Bound::Upper,
+            Some(reply),
+            1,
+            false,
+        );
         let mut current = root.clone();
         let path = searcher.path_keys.clone();
         let score = searcher.search_null_move(&mut current, 1, 1, 0).unwrap();
@@ -243,7 +249,7 @@ fn null_move_two_jittos_repeat_post_null_position() {
                 child.make_move_unchecked(mv, engine_rules());
                 searcher
                     .tt
-                    .store(search_key(&child), 1, 1, Bound::Exact, None, 2);
+                    .store(search_key(&child), 1, 1, Bound::Exact, None, 2, false);
             }
         }
 
@@ -256,10 +262,17 @@ fn null_move_two_jittos_repeat_post_null_position() {
             Bound::Upper,
             Some(white_jitto),
             1,
+            false,
         );
-        searcher
-            .tt
-            .store(search_key(&root), 0, 1, Bound::Lower, Some(black_jitto), 2);
+        searcher.tt.store(
+            search_key(&root),
+            0,
+            1,
+            Bound::Lower,
+            Some(black_jitto),
+            2,
+            false,
+        );
         let mut current = root.clone();
         let path = searcher.path_keys.clone();
         let score = searcher.search_null_move(&mut current, 2, 0, 0).unwrap();
@@ -330,6 +343,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
             Bound::Upper,
             Some(jitto(&after_null)),
             3,
+            false,
         );
         let path = searcher.path_keys.clone();
         let mut current = root.clone();
@@ -494,14 +508,14 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             if let Some(mv) = tt_move {
                 searcher
                     .tt
-                    .store(search_key(&board), 0, 0, Bound::Upper, Some(mv), 0);
+                    .store(search_key(&board), 0, 0, Bound::Upper, Some(mv), 0, false);
             }
             for (mv, score) in [(killer, beta), (capture, beta + 100)] {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 searcher
                     .tt
-                    .store(search_key(&child), 5, -score, Bound::Exact, None, 1);
+                    .store(search_key(&child), 5, -score, Bound::Exact, None, 1, false);
             }
             let mut current = board.clone();
             assert_eq!(

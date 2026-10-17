@@ -72,6 +72,7 @@ pub(super) fn new_searcher<'a>(
         shared,
         stop_reason: None,
         ponder_iteration: None,
+        tt_pv: [false; MAX_PLY as usize + 1],
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -167,6 +168,8 @@ pub(super) struct Searcher<'a> {
     pub(super) ponder_iteration: Option<PonderIteration>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pub(super) pv: Vec<Vec<Move>>,
+    /// plyごとのttPv。PVノードまたは照合した印で立て、α以下なら親の印も継ぐ。
+    pub(super) tt_pv: [bool; MAX_PLY as usize + 1],
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     pub(super) qsearch: Vec<QsearchBuffers>,
     /// 通常探索の候補と整列領域をplyごとに再利用する。

@@ -102,7 +102,10 @@ impl Searcher<'_> {
         {
             self.stats.quiesce_tt_probes += 1;
         }
-        if let Some(hit) = self.tt.probe(key, ply) {
+        let tt_hit = self.tt.probe(key, ply);
+        // Stockfish src/search.cpp:1741, 1908。静止探索は照合した印だけを引き継ぐ。
+        let pv_hit = tt_hit.is_some_and(|hit| hit.is_pv);
+        if let Some(hit) = tt_hit {
             #[cfg(feature = "search-stats")]
             {
                 self.stats.quiesce_tt_hits += 1;
@@ -203,7 +206,7 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
-        self.tt.store(key, 0, best, bound, best_move, ply);
+        self.tt.store(key, 0, best, bound, best_move, ply, pv_hit);
         Some(best)
     }
 }

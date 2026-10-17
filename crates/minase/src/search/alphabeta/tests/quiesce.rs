@@ -156,7 +156,7 @@ fn quiescence_early_exits_do_not_probe_or_store() {
             "{case}"
         );
         assert!(table.probe(key, ply).is_none(), "{case}");
-        table.store(key, depth, stored, Bound::Exact, None, ply);
+        table.store(key, depth, stored, Bound::Exact, None, ply, false);
         let raw_before = table.raw_entry(key);
         assert_eq!(
             run_quiesce(board, alpha, beta, ply, &table),
@@ -207,7 +207,7 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
 
     for (bound, score, alpha, beta) in cases {
         let table = small_tt();
-        table.store(key, 0, score, bound, None, 0);
+        table.store(key, 0, score, bound, None, 0, false);
         let (actual, _) = run_quiesce(&position, alpha, beta, 0, &table);
         assert_eq!(actual, score);
     }

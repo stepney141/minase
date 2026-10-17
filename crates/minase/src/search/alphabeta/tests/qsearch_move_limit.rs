@@ -21,9 +21,15 @@ fn first_capture() -> Move {
 fn seed_first(searcher: &Searcher<'_>, board: &Position, mv: Move, ply: u32) {
     assert!(legal_moves(board).contains(&mv));
     // 窓を打ち切らないUpper記録で、対象外の捕獲を先頭に指定する。
-    searcher
-        .tt
-        .store(search_key(board), 0, INFINITY, Bound::Upper, Some(mv), ply);
+    searcher.tt.store(
+        search_key(board),
+        0,
+        INFINITY,
+        Bound::Upper,
+        Some(mv),
+        ply,
+        false,
+    );
 }
 
 fn two_captures(victim: PieceKind) -> Position {

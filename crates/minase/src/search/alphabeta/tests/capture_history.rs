@@ -246,7 +246,7 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
             let score = if index == winner_index { 20 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+                .store(search_key(&child), 1, -score, Bound::Exact, None, 1, false);
         }
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
@@ -375,15 +375,21 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             winner,
             margin
         ));
-        searcher
-            .tt
-            .store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(quiet),
+            0,
+            false,
+        );
         for (mv, score) in [(quiet, 0), (winner, 10_001)] {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             searcher
                 .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
+                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
         }
         // このテストでは実着手による打ち切りだけを検査する。
         searcher.null_move_ply = Some(0);

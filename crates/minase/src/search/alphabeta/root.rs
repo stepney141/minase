@@ -209,6 +209,7 @@ impl Searcher<'_> {
             results.begin_window(alpha);
         }
         self.pv[0].clear();
+        self.tt_pv[0] = true;
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
@@ -259,7 +260,7 @@ impl Searcher<'_> {
             Bound::Exact
         };
         self.tt
-            .store(key, depth, best_score, bound, Some(best_move), 0);
+            .store(key, depth, best_score, bound, Some(best_move), 0, true);
         Some((best_move, best_score))
     }
 }

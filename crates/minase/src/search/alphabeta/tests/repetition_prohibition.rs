@@ -259,9 +259,15 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
         let result = search_snapshot(&snapshot, &nnue, 1);
         with_snapshot(&snapshot, &nnue, |searcher| {
             let mut current = snapshot.position().clone();
-            searcher
-                .tt
-                .store(search_key(&current), 0, 0, Bound::Upper, Some(cycle[3]), 0);
+            searcher.tt.store(
+                search_key(&current),
+                0,
+                0,
+                Bound::Upper,
+                Some(cycle[3]),
+                0,
+                false,
+            );
             let expected = if rule == RepetitionRule::R1 {
                 DRAW_SCORE
             } else {
@@ -463,6 +469,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                             Bound::Upper,
                             Some(forbidden),
                             0,
+                            false,
                         );
                     } else if source == "killer" {
                         searcher.killers[0][0] = Some(forbidden);
@@ -488,6 +495,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 Bound::Exact,
                                 None,
                                 1,
+                                false,
                             );
                         }
                     }

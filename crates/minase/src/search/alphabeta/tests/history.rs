@@ -442,16 +442,22 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
             assert!(moves.iter().any(|&(_, capture)| capture));
             let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
             assert!(cutoff_index + 1 < moves.len());
-            searcher
-                .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(tt_move),
+                0,
+                false,
+            );
             for &(mv, _) in &moves {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 let score = if mv == winner { 20 } else { 0 };
                 searcher
                     .tt
-                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1, false);
             }
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
@@ -512,16 +518,22 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
                 + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, true)
                 < 10_000
         );
-        searcher
-            .tt
-            .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            false,
+        );
         for &(mv, _) in &moves {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if mv == winner { 10_001 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
+                .store(search_key(&child), 2, -score, Bound::Exact, None, 1, false);
         }
         searcher.null_move_ply = Some(0);
         assert_eq!(

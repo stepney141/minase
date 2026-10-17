@@ -86,7 +86,10 @@ impl Searcher<'_> {
         {
             self.stats.tt_probes += 1;
         }
-        if let Some(hit) = self.tt.probe(key, ply) {
+        let tt_hit = self.tt.probe(key, ply);
+        // Stockfish src/search.cpp:842。印は探索窓や打ち切りの判定には使わない。
+        self.tt_pv[ply as usize] = beta - alpha > 1 || tt_hit.is_some_and(|hit| hit.is_pv);
+        if let Some(hit) = tt_hit {
             #[cfg(feature = "search-stats")]
             {
                 self.stats.tt_hits += 1;
@@ -363,8 +366,19 @@ impl Searcher<'_> {
             static_eval,
             royal_attacked,
         );
-        self.tt
-            .store(key, depth, best_score, bound, Some(best_move), ply);
+        // Stockfish src/search.cpp:1651-1657。α以下なら、直前のノードの印も継ぐ。
+        if best_score <= original_alpha {
+            self.tt_pv[ply as usize] |= ply > 0 && self.tt_pv[(ply - 1) as usize];
+        }
+        self.tt.store(
+            key,
+            depth,
+            best_score,
+            bound,
+            Some(best_move),
+            ply,
+            self.tt_pv[ply as usize],
+        );
         Some(best_score)
     }
 

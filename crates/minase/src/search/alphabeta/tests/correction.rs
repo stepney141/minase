@@ -81,11 +81,19 @@ fn correction_negamax_update_conditions() {
             .unwrap();
         // 深さ3は記録手なしでIIRを通し、保存深さ2の重みになることを検査する。
         if depth == 2 {
-            table.store(search_key(&board), 0, 0, Bound::Upper, Some(first), 0);
+            table.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(first),
+                0,
+                false,
+            );
         }
         for mv in moves {
             let undo = board.make_move_unchecked(mv, rules);
-            table.store(search_key(&board), 8, -score, Bound::Exact, None, 1);
+            table.store(search_key(&board), 8, -score, Bound::Exact, None, 1, false);
             board.unmake_move(undo);
         }
         let mut butterfly_history =
@@ -158,7 +166,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         MoveGenerator::new(rules).generate_moves(&board, &mut moves);
         for mv in moves {
             let undo = board.make_move_unchecked(mv, rules);
-            table.store(search_key(&board), 2, -score, Bound::Exact, None, 1);
+            table.store(search_key(&board), 2, -score, Bound::Exact, None, 1, false);
             board.unmake_move(undo);
         }
         let key = material_key(&board);
@@ -203,7 +211,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         if !interrupted {
-            table.store(search_key(&board), 2, 320, Bound::Exact, None, 0);
+            table.store(search_key(&board), 2, 320, Bound::Exact, None, 0, false);
         }
         let key = material_key(&board);
         let mut butterfly_history =
