@@ -32,7 +32,7 @@ target/release/minase spsa params \
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
 `c_end` は最後の反復での摂動幅であり、既定は範囲の1/6である。
 `r_end` は最後の反復での学習率を `c_end²` に対する比で表した値であり、既定は0.002である。
-摂動幅と学習率は反復とともに縮み、最後の反復でこの値になる（既定値を選んだ理由は[利得のADR](../adr/decay-spsa-gains-from-one-sixth-of-the-range.md)にある）。
+摂動幅と学習率は反復とともに縮み、最後の反復でこの値になる（既定値を選んだ理由は[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)にある）。
 空行と `#` で始まる行は無視される。
 ファイルから行を削除した係数は調整されず、エンジンの既定値のまま動く。
 秒読みを使わない時間制御では、秒読みに関わる係数は勝敗に影響しないので調整の対象にしない（理由は[秒読みの項の係数のADR](../adr/exclude-byoyomi-terms-and-safety-margin-from-spsa.md)にある）。
@@ -53,7 +53,7 @@ target/release/minase spsa \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 375 --pairs-per-iteration 8
+  --iterations 3750 --pairs-per-iteration 8
 ```
 
 `--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、通常ビルドとは別のキーで `target/match-cache/` へキャッシュする。
@@ -61,8 +61,9 @@ target/release/minase spsa \
 θ+とθ−は同じバイナリを同じ思考制限で動かし、`Threads` と `USI_Hash` はエンジンの既定値を使う。
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
 総反復数は摂動幅と学習率の計算式に使われるので、セッションの途中で変更できない。
-標準の規模は上のコマンドの375反復×8ペア（3,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-from-one-sixth-of-the-range.md)にある。
-同じ規模で同時対局数16の[セッション](../measurements/spsa-stage9-20260925-c5.md)は、27,138秒を要した。
+標準の規模は上のコマンドの3,750反復×8ペア（30,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)にある。
+同時対局数16の3,000ペアの[セッション](../measurements/spsa-stage9-20260925-c5.md)は27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。
+2026年10月16日までのセッションは、旧標準の375反復×8ペア（3,000ペア）で行った。
 
 各ペアは `minase match run` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
 対局のシードは基本シードとペアの通し番号から派生するので、基本シードはほかの測定の基本シードから総ペア数以上離す（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。

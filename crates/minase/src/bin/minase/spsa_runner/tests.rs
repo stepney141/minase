@@ -148,7 +148,7 @@ fn pair(number: u64, signs: [i8; 2]) -> CompletedPair {
 
 #[test]
 fn params_generate_calibrated_defaults() {
-    // [`super::summary::parameter_line`]と`docs/adr/decay-spsa-gains-from-one-sixth-of-the-range.md`の終端利得に従う。
+    // [`super::summary::parameter_line`]と`docs/adr/decay-spsa-gains-over-30000-pair-sessions.md`の終端利得に従う。
     for (min, max, default, expected) in [
         (100, 400, 250, "X, 250, 100, 400, 50, 0.002"),
         (-20, 55, 10, "X, 10, -20, 55, 12.5, 0.002"),

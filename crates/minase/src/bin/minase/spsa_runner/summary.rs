@@ -11,7 +11,7 @@ pub(super) fn print_theta(settings: &Settings, theta: &[f64]) {
 
 /// `params`サブコマンド用の6欄をエンジンの宣言から生成する。
 /// 開始値は宣言の既定値、`c_end`は範囲幅の1/6、`r_end`は0.002とする。
-/// 理由は`docs/adr/decay-spsa-gains-from-one-sixth-of-the-range.md`にある。
+/// 理由は`docs/adr/decay-spsa-gains-over-30000-pair-sessions.md`にある。
 pub(super) fn parameter_line(d: &params::Declaration) -> String {
     format!(
         "{}, {}, {}, {}, {}, 0.002",

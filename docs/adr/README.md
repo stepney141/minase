@@ -183,7 +183,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月25日 [秒読みの項の係数と時計の安全余裕はSPSAで調整しない](exclude-byoyomi-terms-and-safety-margin-from-spsa.md)
 - 2026年9月25日 [調整する係数は調整用ビルドでだけ外から変えられるようにする](expose-tunable-coefficients-only-in-tuning-builds.md)
 - 2026年9月26日 [PST全体を学び直すときは、教師の混合比を0.75に保つ](keep-the-mixing-ratio-at-0-75-for-pst-retraining.md)
-- 2026年9月26日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を3,000ペアにする](decay-spsa-gains-from-one-sixth-of-the-range.md)
+- 2026年9月26日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を3,000ペアにする](archive/decay-spsa-gains-from-one-sixth-of-the-range.md)（置き換え済み）
 - 2026年9月26日 [モジュールを関心事ごとのファイルに分け、非公開の欄を使える範囲をディレクトリの親子で表す](split-modules-by-concern-and-scope-privacy-by-nesting.md)
 - 2026年9月26日 [探索中に静的評価を呼んだ局面を学習の局面に混ぜない](do-not-train-on-search-tree-positions.md)
 - 2026年9月26日 [移動した項目を旧パスで再公開しない](do-not-re-export-moved-items-at-old-paths.md)
@@ -250,3 +250,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
 - 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
 - 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
+- 2026年10月17日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を30,000ペアにする](decay-spsa-gains-over-30000-pair-sessions.md)
