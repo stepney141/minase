@@ -305,6 +305,22 @@ class WorkflowTests(unittest.TestCase):
             else:
                 self.fake.add('vastai', ['copy'], 'total size is 123 speedup is 1.0\n', transfer=str(self.source))
 
+    def prepare_complete_fetch(self) -> None:
+        """全反復を取得してapplyの検査に通るまでの応答を予約する。"""
+        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
+        self.transfers('running')
+        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
+        self.transfers('running')
+        manifest_path = self.source / 'trial/manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        manifest['settings']['iterations'] = 2
+        manifest_path.write_text(json.dumps(manifest))
+        self.fake.add('git', ['show', CONFIG['commit'] + ':crates/minase/src/search/alphabeta/params.rs'], 'source')
+        binary = self.root / 'target/release/minase'
+        binary.parent.mkdir(parents=True)
+        binary.symlink_to(self.fake.bin / 'minase')
+        self.fake.add('minase', ['spsa', 'apply', '--run-dir', str(self.directory / 'run')])
+
     def test_running_fetch_uses_ssh_rsync(self) -> None:
         """稼働中の取得はSSH経由で行い、ログと再開用の写しを保存する。"""
         self.transfers('running', True)
@@ -349,7 +365,7 @@ class WorkflowTests(unittest.TestCase):
         for _ in range(6):
             self.fake.add('vastai', ['show'], code=1)
         with self.assertRaisesRegex(ValueError, '6回連続'):
-            fetch.fetch_loop('trial', self.root, self.directory, CONFIG, 1800000000)
+            fetch.fetch_loop('trial', self.root, self.directory, CONFIG, 1800000000, False)
         self.assertEqual(len(self.fake.calls()), 6)
         self.assertFalse(self.fake.remaining())
 
@@ -381,25 +397,50 @@ class WorkflowTests(unittest.TestCase):
 
     def test_complete_fetch_validates_before_destroying(self) -> None:
         """全反復を再取得してapplyが通った場合だけ調整機を削除する。"""
-        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
-        self.transfers('running')
-        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
-        self.transfers('running')
-        manifest_path = self.source / 'trial/manifest.json'
-        manifest = json.loads(manifest_path.read_text())
-        manifest['settings']['iterations'] = 2
-        manifest_path.write_text(json.dumps(manifest))
-        self.fake.add('git', ['show', CONFIG['commit'] + ':crates/minase/src/search/alphabeta/params.rs'], 'source')
-        binary = self.root / 'target/release/minase'
-        binary.parent.mkdir(parents=True)
-        binary.symlink_to(self.fake.bin / 'minase')
-        self.fake.add('minase', ['spsa', 'apply', '--run-dir', str(self.directory / 'run')])
+        self.prepare_complete_fetch()
         self.fake.add('vastai', ['destroy', 'instance', '17', '-y'])
         self.fake.add('vastai', ['show'], '[]')
         self.assertEqual(fetch.fetch_loop('trial', self.root, self.directory,
-                                         {**CONFIG, 'iterations': 2}, 2**63), 0)
+                                         {**CONFIG, 'iterations': 2}, 2**63, False), 0)
         self.assertFalse(self.fake.remaining())
         self.assertFalse(list(self.directory.glob('.params.*.rs')))
+
+    def test_complete_fetch_with_keep_preserves_instance(self) -> None:
+        """--keepでは検査後も調整機を残し、IDを表示して0を返す。"""
+        with patch.object(fetch, 'fetch', return_value=0) as fetch_session:
+            with patch.object(sys, 'argv', ['fetch.py', 'trial', '--keep']):
+                self.assertEqual(fetch.main(), 0)
+        fetch_session.assert_called_once_with('trial', True)
+
+        self.prepare_complete_fetch()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = fetch.fetch_loop('trial', self.root, self.directory,
+                                      {**CONFIG, 'iterations': 2}, 2**63, True)
+        self.assertEqual(result, 0)
+        self.assertIn('調整機を残しました。インスタンスID: 17\n', output.getvalue())
+        self.assertFalse(any(call[1:3] == ['destroy', 'instance'] for call in self.fake.calls()))
+        self.assertFalse(self.fake.remaining())
+
+    def test_keep_still_destroys_machine_over_time_limit(self) -> None:
+        """--keepでも所要時間の見込みが24時間を超えた調整機は削除する。"""
+        (self.source / 'logs/exit-status').write_text('3\n')
+        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('stopped'), 'label': 'minase-spsa-trial'}]))
+        self.transfers('stopped')
+        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('stopped'), 'label': 'minase-spsa-trial'}]))
+        self.transfers('stopped')
+        self.fake.add('vastai', ['destroy', 'instance', '17', '-y'])
+        self.fake.add('vastai', ['show'], '[]')
+        self.assertEqual(fetch.fetch_loop('trial', self.root, self.directory,
+                                         CONFIG, 2**63, True), 3)
+        self.assertTrue(any(call[1:3] == ['destroy', 'instance'] for call in self.fake.calls()))
+        self.assertFalse(self.fake.remaining())
+
+    def test_fetch_rejects_unknown_argument_before_vastai(self) -> None:
+        """不明な引数を終了コード1で拒否し、vastaiを呼ばない。"""
+        with patch.object(sys, 'argv', ['fetch.py', 'trial', '--unknown']):
+            self.assertEqual(fetch.main(), 1)
+        self.assertFalse(self.fake.calls())
 
     def test_failed_production_stops_and_slow_machine_is_destroyed(self) -> None:
         """本番失敗では停止し、見込み時間の超過では削除して3を返す。"""
@@ -415,10 +456,12 @@ class WorkflowTests(unittest.TestCase):
                 states = [] if action == 'destroy' else [test_common.state('stopped', 'stopped')]
                 self.fake.add('vastai', ['show'], json.dumps(states))
                 if exit_status == '3':
-                    self.assertEqual(fetch.fetch_loop('trial', self.root, self.directory, CONFIG, 2**63), 3)
+                    self.assertEqual(fetch.fetch_loop('trial', self.root, self.directory,
+                                                      CONFIG, 2**63, False), 3)
                 else:
                     with self.assertRaisesRegex(ValueError, '未完了'):
-                        fetch.fetch_loop('trial', self.root, self.directory, CONFIG, 2**63)
+                        fetch.fetch_loop('trial', self.root, self.directory,
+                                         CONFIG, 2**63, False)
                 self.assertFalse(self.fake.remaining())
 
     def test_launch_transfers_resolved_toml_before_starting(self) -> None:

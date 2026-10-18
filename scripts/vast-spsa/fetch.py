@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """10分ごとに実行記録を取得し、終了時に検査して調整機を削除または停止する。
 
-使い方: python3 scripts/vast-spsa/fetch.py <セッション名>
+使い方: python3 scripts/vast-spsa/fetch.py <セッション名> [--keep]
+--keepを指定すると、全反復の取得と検査に成功した後も調整機を削除しない。
 """
 
+import argparse
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -92,7 +94,8 @@ def validate_result(root: Path, directory: Path, config: remote.Session, instanc
         raise
 
 
-def fetch_loop(session: str, root: Path, directory: Path, config: remote.Session, deadline: int) -> int:
+def fetch_loop(session: str, root: Path, directory: Path, config: remote.Session,
+               deadline: int, keep: bool) -> int:
     """取得を繰り返し、終了状態と記録の整合性に応じて調整機を片付ける。"""
     failures = 0
     while True:
@@ -156,8 +159,12 @@ def fetch_loop(session: str, root: Path, directory: Path, config: remote.Session
                 print(f'再開用の写しの処理が失敗しました: {error}', file=sys.stderr)
         if complete:
             validate_result(root, directory, config, instance_id)
-            common.destroy(instance_id)
-            print(f'セッション {session} の全反復を取得し、検査と調整機の削除を完了しました')
+            if keep:
+                print(f'セッション {session} の全反復を取得して検査し、'
+                      f'調整機を残しました。インスタンスID: {instance_id}')
+            else:
+                common.destroy(instance_id)
+                print(f'セッション {session} の全反復を取得し、検査と調整機の削除を完了しました')
             return 0
         if exit_status == '3':
             sizing = directory / 'logs/sizing.txt'
@@ -170,7 +177,7 @@ def fetch_loop(session: str, root: Path, directory: Path, config: remote.Session
         raise ValueError(f'セッション {session} は未完了です。終了コード: {exit_status}。インスタンス {instance_id} は停止しました')
 
 
-def fetch(session: str) -> int:
+def fetch(session: str, keep: bool) -> int:
     """ローカル設定と期限を検査し、セッションのロック中に取得する。"""
     remote.check_name(session)
     root = Path(subprocess.run(['git', '-C', str(SCRIPT_DIR.parent.parent), 'rev-parse', '--show-toplevel'],
@@ -187,16 +194,21 @@ def fetch(session: str) -> int:
     if not re.fullmatch(r'[1-9][0-9]*', deadline):
         raise ValueError('deadlineが不正です')
     with common.session_lock(directory / '.operation.lock'):
-        return fetch_loop(session, root, directory, config, int(deadline))
+        return fetch_loop(session, root, directory, config, int(deadline), keep)
 
 
 def main() -> int:
     """取得引数と実行時エラーを処理する。"""
-    if len(sys.argv) != 2:
-        print('使い方: fetch.py <セッション名>', file=sys.stderr)
-        return 1
+    parser = argparse.ArgumentParser(usage='fetch.py <セッション名> [--keep]',
+                                     add_help=False, allow_abbrev=False)
+    parser.add_argument('session', metavar='セッション名')
+    parser.add_argument('--keep', action='store_true')
     try:
-        return fetch(sys.argv[1])
+        options = parser.parse_args()
+    except SystemExit as error:
+        return 0 if error.code == 0 else 1
+    try:
+        return fetch(options.session, options.keep)
     except FAILURES as error:
         return common.cli_error(error)
 
