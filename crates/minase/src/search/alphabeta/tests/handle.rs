@@ -225,7 +225,15 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     for mv in legal_moves(&midgame) {
         let mut child = midgame.clone();
         child.make_move_unchecked(mv, engine_rules());
-        table.store(search_key(&child), 3, -previous, Bound::Exact, None, 1);
+        table.store(
+            search_key(&child),
+            3,
+            -previous,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
     }
     let handle = start(
         snapshot_for(&midgame),

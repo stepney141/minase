@@ -72,6 +72,12 @@ pub(super) fn new_searcher<'a>(
         shared,
         stop_reason: None,
         ponder_iteration: None,
+        root_depth: 0,
+        seek_mate: false,
+        cutoff_counts: [0; MAX_PLY as usize + 3],
+        tt_pv: [false; MAX_PLY as usize + 1],
+        previous_pv: Vec::new(),
+        follow_pv: [false; MAX_PLY as usize + 1],
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -82,6 +88,7 @@ pub(super) fn new_searcher<'a>(
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
+        static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(nnue.pawn_value()),
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
@@ -167,6 +174,18 @@ pub(super) struct Searcher<'a> {
     pub(super) ponder_iteration: Option<PonderIteration>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pub(super) pv: Vec<Vec<Move>>,
+    /// 前の完了反復の主変化。反復開始時に写し、窓の読み直しでは更新しない（Stockfish src/search.cpp:383）。
+    pub(super) previous_pv: Vec<Move>,
+    /// plyごとに、前の反復の主変化を辿っているかを保持する（Stockfish src/search.cpp:791-794）。
+    pub(super) follow_pv: [bool; MAX_PLY as usize + 1],
+    /// 現在の反復の深さ。LMRの延長を許すplyの範囲に使う（Stockfish src/search.cpp:1402）。
+    pub(super) root_depth: u32,
+    /// 前の反復の確定値から決めた、現在の反復で詰みを探すかの印（Stockfish src/search.cpp:395）。
+    pub(super) seek_mate: bool,
+    /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。
+    pub(super) cutoff_counts: [u32; MAX_PLY as usize + 3],
+    /// plyごとのttPv。PVノードまたは照合した印で立て、α以下なら親の印も継ぐ。
+    pub(super) tt_pv: [bool; MAX_PLY as usize + 1],
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     pub(super) qsearch: Vec<QsearchBuffers>,
     /// 通常探索の候補と整列領域をplyごとに再利用する。
@@ -177,6 +196,8 @@ pub(super) struct Searcher<'a> {
     pub(super) accumulators: Vec<NnueAccumulator>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
+    /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
+    pub(super) static_evals: [i32; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。
     pub(super) correction: CorrectionTable,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。

@@ -14,7 +14,7 @@ STCは470有効ペアでLLR +2.9685の`H1`、LTCは791有効ペアでLLR +2.9905
 
 ## 決定
 
-[浅いノードの前向き枝刈りの適用条件](skip-static-eval-pruning-when-a-royal-is-attacked.md)を満たすノードで、SEEの値が深さ別の余裕値の符号を反転した値を下回る捕獲手を展開しない。
+[浅いノードの前向き枝刈りの適用条件](archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)を満たすノードで、SEEの値が深さ別の余裕値の符号を反転した値を下回る捕獲手を展開しない。
 置換表の記録手と相手の最後の王駒を取る手は対象にせず、獅子の捕獲規則に依存してSEEが判定不能になる手は展開する。
 
 ## 検討した代案

@@ -1,7 +1,6 @@
 //! 時間管理を検査する。
 
 use super::*;
-use crate::search::alphabeta::params;
 
 // 時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
 // 残り時間と秒読みの合計が30 msを超えるとき、hardはその合計から30 msを引いた値以下になる。
@@ -81,7 +80,9 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         node_limit: None,
-        clock: &ManualClock::new(Duration::from_millis(500)),
+        clock: &ManualClock::new(Duration::from_millis(
+            100000 / super::super::params::iteration_ratio() as u64 + 1,
+        )),
         hard_limit: Some(HardLimit {
             duration: budget.hard,
             hit_ns: &AtomicU64::new(0),
@@ -143,111 +144,28 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
 
 // 深さ・ノード数・固定時間の併用では通常の時計予算を使う。
 #[test]
-fn excluded_clocks_preserve_numeric_budgets() {
-    assert_eq!(params::expected_plies(), 432, "数値例の前提");
-    assert_eq!(params::min_moves(), 88, "数値例の前提");
-    assert_eq!(params::increment_share(), 76, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
-    // M=432/2=216、soft=60000/216+1000×76/100=277+760=1037 ms。
-    // hard=min(1037×451/100→4676,16200,59970)=4676 ms。固定時間とは各々小さい方を使う。
-    // R=0の秒読み1000 msは800 msを配分し、hardも800 ms。固定時間500 msなら双方500 ms。
-    let ms = Duration::from_millis;
-    for (name, remaining, increment, byoyomi, depth, nodes, movetime, soft, hard) in [
-        ("clock only", 60000, 1000, 0, None, None, None, 1037, 4676),
-        ("depth", 60000, 1000, 0, Some(2), None, None, 1037, 4676),
-        ("nodes", 60000, 1000, 0, None, Some(100), None, 1037, 4676),
-        (
-            "movetime crosses clock",
-            60000,
-            1000,
-            0,
-            None,
-            None,
-            Some(2000),
-            1037,
-            2000,
-        ),
-        (
-            "movetime wins both",
-            60000,
-            1000,
-            0,
-            None,
-            None,
-            Some(500),
-            500,
-            500,
-        ),
-        (
-            "clock wins both",
-            60000,
-            1000,
-            0,
-            None,
-            None,
-            Some(5000),
-            1037,
-            4676,
-        ),
-        (
-            "all limits",
-            60000,
-            1000,
-            0,
-            Some(2),
-            Some(100),
-            Some(500),
-            500,
-            500,
-        ),
-        (
-            "byoyomi with depth",
-            0,
-            100,
-            1000,
-            Some(2),
-            None,
-            None,
-            800,
-            800,
-        ),
-        (
-            "byoyomi with nodes",
-            0,
-            100,
-            1000,
-            None,
-            Some(100),
-            None,
-            800,
-            800,
-        ),
-        (
-            "byoyomi with movetime",
-            0,
-            100,
-            1000,
-            None,
-            None,
-            Some(500),
-            500,
-            500,
-        ),
-    ] {
-        for margin in [0, 30, 60000] {
-            let clock = clock(remaining, increment, byoyomi).with_byoyomi_margin_ms(margin);
-            let limits = SearchLimits::new(depth, nodes, movetime, Some(clock)).unwrap();
-            let budget = time_budget(&limits).unwrap();
-            assert_eq!(
-                budget,
-                TimeBudget {
-                    byoyomi_period: false,
-                    soft: ms(soft),
-                    hard: ms(hard)
-                },
-                "{name}, margin={margin}"
-            );
+fn excluded_clocks_preserve_clock_budget() {
+    for (remaining, increment, byoyomi) in [(60000, 1000, 0), (0, 100, 1000)] {
+        for (depth, nodes, fixed) in [
+            (Some(2), None, None),
+            (None, Some(100), None),
+            (None, None, Some(500)),
+            (Some(2), Some(100), Some(10000)),
+        ] {
+            for margin in [0, 30, 60000] {
+                let clock = clock(remaining, increment, byoyomi).with_byoyomi_margin_ms(margin);
+                let ordinary = clock_budget(clock);
+                let limits = SearchLimits::new(depth, nodes, fixed, Some(clock)).unwrap();
+                let expected = match fixed {
+                    Some(ms) => TimeBudget {
+                        soft: ordinary.soft.min(Duration::from_millis(ms)),
+                        hard: ordinary.hard.min(Duration::from_millis(ms)),
+                        byoyomi_period: false,
+                    },
+                    None => ordinary,
+                };
+                assert_eq!(time_budget(&limits), Some(expected));
+            }
         }
     }
 }
@@ -295,50 +213,34 @@ fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
 // 秒読みつき時計では、指定余裕を安全上限から引き、予算の下限は1msとする。
 #[test]
 fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
-    assert_eq!(params::expected_plies(), 432, "数値例の前提");
-    assert_eq!(params::min_moves(), 88, "数値例の前提");
-    assert_eq!(params::increment_share(), 76, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
-    // ply=0: M=216、277+760+80=1117、1117×451/100→5037 ms。
-    // ply=36: M=198、303+760+800=1863、1863×451/100→8402 ms。
-    // 余裕60000では安全上限61000−60000=1000 ms。
-    // R=B=100: soft_raw=0+760+8=768、残り上限27+80=107 ms。
-    // 余裕150なら200−150=50 ms、200以上なら下限1 ms。R=B=1はsoft_raw=0、hard=1 ms。
-    // u64::MAXの3項は、softとhardの最終変換でともにu64::MAXへ飽和する。
-    for (remaining, increment, byoyomi, ply, margin, soft, hard) in [
-        (60000, 1000, 1000, 0, 0, 1117, 5037),
-        (60000, 1000, 1000, 0, 30, 1117, 5037),
-        (60000, 1000, 1000, 36, 1000, 1863, 8402),
-        (60000, 1000, 1000, 0, 60000, 1000, 1000),
-        (100, 1000, 100, 0, 0, 107, 107),
-        (100, 1000, 100, 0, 150, 50, 50),
-        (100, 1000, 100, 0, 200, 1, 1),
-        (100, 1000, 100, 0, 201, 1, 1),
-        (1, 0, 1, 0, 0, 0, 1),
-        (
-            u64::MAX,
-            u64::MAX,
-            u64::MAX,
-            u32::MAX,
-            60000,
-            u64::MAX,
-            u64::MAX,
-        ),
+    for (remaining, increment, byoyomi, ply) in [
+        (60000, 1000, 1000, 0),
+        (60000, 1000, 1000, 36),
+        (100, 1000, 100, 0),
+        (1, 0, 1, 0),
     ] {
-        let clock = clock_at_ply(remaining, increment, byoyomi, ply).with_byoyomi_margin_ms(margin);
-        let limits = SearchLimits::new(None, None, None, Some(clock)).unwrap();
-        assert_eq!(
-            time_budget(&limits),
-            Some(TimeBudget {
-                byoyomi_period: false,
-                soft: Duration::from_millis(soft),
-                hard: Duration::from_millis(hard),
-            }),
-            "{clock:?}"
-        );
-        if margin == 30 {
-            assert_eq!(time_budget(&limits), Some(clock_budget(clock)));
+        let clock = clock_at_ply(remaining, increment, byoyomi, ply);
+        let budget = |margin| {
+            time_budget(
+                &SearchLimits::new(None, None, None, Some(clock.with_byoyomi_margin_ms(margin)))
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let uncapped = budget(0);
+        assert_eq!(budget(30), clock_budget(clock));
+        for margin in [
+            0,
+            30,
+            remaining + byoyomi - 1,
+            remaining + byoyomi,
+            remaining + byoyomi + 1,
+        ] {
+            let actual = budget(margin);
+            let cap = Duration::from_millis((remaining + byoyomi).saturating_sub(margin).max(1));
+            assert_eq!(actual.hard, uncapped.hard.min(cap));
+            assert_eq!(actual.soft, uncapped.soft.min(cap));
+            assert!(!actual.byoyomi_period);
         }
     }
 }

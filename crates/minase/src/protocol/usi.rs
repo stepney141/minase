@@ -4352,6 +4352,7 @@ mod tests {
                 score: 123,
                 depth: 7,
                 bound,
+                is_pv: false,
             };
             assert_eq!(
                 diagnostic_hit(&position, &generator, Some(hit)).unwrap(),

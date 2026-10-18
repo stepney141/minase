@@ -2,6 +2,216 @@
 
 use super::*;
 
+// F1の準備: PVの印は他の欄と独立して保存・復号される。
+#[test]
+fn tt_pv_flag_round_trips_without_changing_other_fields() {
+    let key = 0x1234_5678_0000_0042;
+    let table = small_tt();
+    for is_pv in [false, true] {
+        for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
+            for best_move in [None, Some(step(sq(0, 0), sq(0, 1)))] {
+                table.store(key, 255, -1234, bound, best_move, 0, is_pv);
+                let hit = table.probe(key, 0).unwrap();
+                assert_eq!(hit.is_pv, is_pv);
+                assert_eq!(hit.score, -1234);
+                assert_eq!(hit.depth, 255);
+                assert_eq!(hit.bound, bound);
+                assert_eq!(hit.best_move, best_move);
+            }
+        }
+    }
+}
+
+// 同じキーでは印によらず、同深さなら置換し、浅ければ元の記録を保つ。
+#[test]
+fn tt_pv_flag_does_not_affect_same_key_replacement() {
+    let key = 0x1234_5678_0000_0042;
+    for first_pv in [false, true] {
+        for second_depth in [7, 8] {
+            let table = small_tt();
+            table.store(key, 8, 100, Bound::Exact, None, 0, first_pv);
+            table.store(key, second_depth, 100, Bound::Exact, None, 0, !first_pv);
+            let hit = table.probe(key, 0).unwrap();
+            assert_eq!(
+                hit.is_pv,
+                if second_depth == 8 {
+                    !first_pv
+                } else {
+                    first_pv
+                }
+            );
+            assert_eq!(hit.depth, 8);
+        }
+    }
+}
+
+// PVノードは、置換表に記録がなくても印を立てて保存する。
+#[test]
+fn negamax_pv_node_stores_pv_flag() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        assert!(searcher.tt_pv.iter().all(|&is_pv| !is_pv));
+        searcher
+            .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
+            .unwrap();
+        let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+        assert_eq!(hit.depth, 1);
+        assert!(hit.is_pv);
+        assert!(searcher.tt_pv[0]);
+    });
+}
+
+// 零窓でα以下なら親との論理和を保存する。詰み帯の窓で浅い枝刈りを除く。
+#[test]
+fn negamax_fail_low_inherits_parent_pv_flag() {
+    let position = bare_kings();
+    for parent_pv in [false, true] {
+        for stored_pv in [false, true] {
+            with_root_searcher(&position, &[], |searcher| {
+                searcher.tt_pv[0] = parent_pv;
+                searcher.tt_pv[1] = !stored_pv;
+                let key = search_key(&position);
+                searcher
+                    .tt
+                    .store(key, 0, 0, Bound::Upper, None, 1, stored_pv);
+                let score = searcher
+                    .negamax(&mut position.clone(), 1, INFINITY - 1, INFINITY, 1, false)
+                    .unwrap();
+                assert!(score < INFINITY);
+                let hit = searcher.tt.probe(key, 1).unwrap();
+                assert_eq!(hit.depth, 1);
+                assert_eq!(hit.bound, Bound::Upper);
+                assert_eq!(hit.is_pv, parent_pv || stored_pv);
+                assert_eq!(searcher.tt_pv[1], parent_pv || stored_pv);
+            });
+        }
+    }
+}
+
+// 捕獲のない王将だけの深さ1では、各子の静的評価の最大値が最善値になる。
+// αとの等号でも親の印を継ぐことを、この独立した期待値で確かめる。
+#[test]
+fn negamax_inherits_parent_pv_flag_when_score_equals_alpha() {
+    let mut position = bare_kings();
+    let alpha = legal_moves(&position)
+        .into_iter()
+        .map(|mv| {
+            let undo = position.make_move_unchecked(mv, engine_rules());
+            let score = -evaluate(test_nnue(), &position);
+            position.unmake_move(undo);
+            score
+        })
+        .max()
+        .unwrap();
+    with_root_searcher(&position, &[], |searcher| {
+        searcher.tt_pv[0] = true;
+        // 浅い上界でreverse futilityを避け、印のないノードが親の印を継ぐ経路を読む。
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            alpha,
+            Bound::Upper,
+            None,
+            1,
+            false,
+        );
+        let score = searcher
+            .negamax(&mut position.clone(), 1, alpha, alpha + 1, 1, false)
+            .unwrap();
+        assert_eq!(score, alpha);
+        let hit = searcher.tt.probe(search_key(&position), 1).unwrap();
+        assert_eq!(hit.bound, Bound::Upper);
+        assert!(hit.is_pv);
+    });
+}
+
+// 手数0には親がいない。β打ち切りでは、親がいてもその印を継がない。
+#[test]
+fn negamax_pv_flag_respects_missing_parent_and_fail_high() {
+    let position = bare_kings();
+    for (ply, alpha, beta, bound) in [
+        (0, INFINITY - 1, INFINITY, Bound::Upper),
+        (1, -INFINITY, -INFINITY + 1, Bound::Lower),
+    ] {
+        with_root_searcher(&position, &[], |searcher| {
+            searcher.tt_pv.fill(true);
+            searcher
+                .negamax(&mut position.clone(), 1, alpha, beta, ply, false)
+                .unwrap();
+            let hit = searcher.tt.probe(search_key(&position), ply).unwrap();
+            assert_eq!(hit.bound, bound);
+            assert!(!hit.is_pv);
+            assert!(!searcher.tt_pv[ply as usize]);
+        });
+    }
+}
+
+// null move直後のノードも、直前の手数の印を継ぐ。
+#[test]
+fn null_move_child_inherits_parent_pv_flag_on_fail_low() {
+    let position = bare_kings();
+    let mut child = position.clone();
+    child.make_null_move();
+    for parent_pv in [false, true] {
+        with_root_searcher(&position, &[], |searcher| {
+            searcher.tt_pv[0] = parent_pv;
+            searcher
+                .search_null_move(&mut position.clone(), 1, -INFINITY + 1, 0)
+                .unwrap();
+            let hit = searcher.tt.probe(search_key(&child), 1).unwrap();
+            assert_eq!(hit.bound, Bound::Upper);
+            assert_eq!(hit.is_pv, parent_pv);
+        });
+    }
+}
+
+// 根では手数0と置換表の両方に印を立てる。
+#[test]
+fn root_stores_pv_flag() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        searcher
+            .search_root(&position, &legal_moves(&position), 1, -INFINITY, INFINITY)
+            .unwrap();
+        assert!(searcher.tt_pv[0]);
+        assert!(searcher.tt.probe(search_key(&position), 0).unwrap().is_pv);
+    });
+}
+
+// 静止探索は照合した印だけを保存し、手数ごとの配列には触れない。
+#[test]
+fn quiescence_preserves_hit_pv_flag_without_changing_ply_flags() {
+    let position = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 0), Color::Black, PieceKind::Rook),
+            (sq(0, 2), Color::White, PieceKind::Pawn),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ],
+    );
+    for stored_pv in [None, Some(false), Some(true)] {
+        for ply_pv in [false, true] {
+            with_root_searcher(&position, &[], |searcher| {
+                let key = search_key(&position);
+                if let Some(is_pv) = stored_pv {
+                    searcher.tt.store(key, 0, 0, Bound::Lower, None, 0, is_pv);
+                }
+                searcher.tt_pv.fill(ply_pv);
+                let score = searcher
+                    .quiesce(&mut position.clone(), -INFINITY, INFINITY, 0)
+                    .unwrap();
+                let hit = searcher.tt.probe(key, 0).unwrap();
+                assert_eq!(hit.depth, 0);
+                assert_eq!(hit.bound, Bound::Exact);
+                assert_eq!(hit.score, score);
+                assert_eq!(hit.is_pv, stored_pv == Some(true));
+                assert!(searcher.tt_pv.iter().all(|&value| value == ply_pv));
+            });
+        }
+    }
+}
+
 // 監査「置換表サイズのオーバーフロー」: 容量は外部設定値なので、0と
 // MiBからbyteへの変換不能をpanicではなく呼び出し側が処理できるエラーにする。
 #[test]
@@ -24,7 +234,7 @@ fn invalid_table_sizes_are_reported_without_panicking() {
         to: sq(0, 1),
         promote: false,
     };
-    table.store(key, 4, 321, Bound::Exact, Some(stored_move), 0);
+    table.store(key, 4, 321, Bound::Exact, Some(stored_move), 0, false);
     assert_eq!(
         table.resize(usize::MAX),
         Err(TranspositionTableError::SizeOverflow)
@@ -67,7 +277,7 @@ fn packed_moves_round_trip_across_field_boundaries() {
     assert_eq!(unpack_move(0x01ff_ffff), Some(None));
     let table = small_tt();
     let key = 0x0fed_cba9_0000_0042;
-    table.store(key, 0, 321, Bound::Exact, None, 0);
+    table.store(key, 0, 321, Bound::Exact, None, 0, false);
     let hit = table.probe(key, 0).unwrap();
     assert_eq!(hit.best_move, None);
     assert_eq!(hit.score, 321);
@@ -96,7 +306,7 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
         (0, 0),
         (-500, 256),
     ] {
-        table.store(key, 8, score, Bound::Exact, Some(best_move), ply);
+        table.store(key, 8, score, Bound::Exact, Some(best_move), ply, false);
         assert_eq!(table.probe(key, ply).unwrap().score, score);
     }
 
@@ -111,7 +321,7 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
                 (29_990, 40, 29_955),
             ] {
                 let score = sign * magnitude;
-                table.store(key, 8, score, bound, Some(best_move), 5);
+                table.store(key, 8, score, bound, Some(best_move), 5, false);
                 assert_eq!(
                     table.probe(key, probe_ply).unwrap().score,
                     sign * expected,
@@ -142,13 +352,13 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     // (1) 空きスロットへは書き込まれる。
     let mut table = small_tt();
     table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0, false);
     let hit = table.probe(key_a, 0).unwrap();
     assert_eq!(hit.score, 100);
     assert_eq!(hit.depth, 8);
 
     // (2a) 同一キー・同世代の浅い結果は既存値を保持する。
-    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0);
+    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0, false);
     let hit = table.probe(key_a, 0).unwrap();
     assert_eq!(hit.score, 100);
     assert_eq!(hit.depth, 8);
@@ -156,14 +366,14 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
 
     // (2b) 同一キー・同深さは最終書き込み優先とし、バウンド種別を問わず
     //      置換する。`>`への変異を検出する境界でもある。
-    table.store(key_a, 8, 333, Bound::Lower, Some(best_move), 0);
+    table.store(key_a, 8, 333, Bound::Lower, Some(best_move), 0, false);
     let hit = table.probe(key_a, 0).unwrap();
     assert_eq!(hit.score, 333);
     assert_eq!(hit.depth, 8);
     assert_eq!(hit.bound, Bound::Lower);
 
     // (2c) 同一キーの深い結果は置換する。
-    table.store(key_a, 9, 444, Bound::Upper, Some(best_move), 0);
+    table.store(key_a, 9, 444, Bound::Upper, Some(best_move), 0, false);
     let hit = table.probe(key_a, 0).unwrap();
     assert_eq!(hit.score, 444);
     assert_eq!(hit.depth, 9);
@@ -172,10 +382,10 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     // (3) 同一キーは過去世代でも浅い結果を保持し、保持時は世代を更新しない。
     table.clear();
     table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0, false);
     let (_, advisory_before) = table.raw_entry(key_a);
     table.new_search();
-    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0);
+    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0, false);
     let hit = table.probe(key_a, 0).unwrap();
     let (_, advisory_after) = table.raw_entry(key_a);
     assert_eq!(hit.score, 100);
@@ -189,33 +399,33 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     // (4) 異キーでも既存世代が古ければ深さによらず置換する。
     table.clear();
     table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0, false);
     table.new_search();
-    table.store(key_b, 1, 300, Bound::Exact, Some(best_move), 0);
+    table.store(key_b, 1, 300, Bound::Exact, Some(best_move), 0, false);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 300);
 
     // (5a) 異キー・同世代: 既存depth=3へdepth=5は置換する。
     table.clear();
     table.new_search();
-    table.store(key_a, 3, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 400, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 3, 100, Bound::Exact, Some(best_move), 0, false);
+    table.store(key_b, 5, 400, Bound::Exact, Some(best_move), 0, false);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 400);
 
     // (5b) 異キー・同世代・同深さ: 既存を保持する（`<`と`<=`の変異検出）。
     table.clear();
     table.new_search();
-    table.store(key_a, 5, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 500, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 5, 100, Bound::Exact, Some(best_move), 0, false);
+    table.store(key_b, 5, 500, Bound::Exact, Some(best_move), 0, false);
     assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
     assert!(table.probe(key_b, 0).is_none());
 
     // (5c) 異キー・同世代: 既存depth=7へdepth=5は保持する。
     table.clear();
     table.new_search();
-    table.store(key_a, 7, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 600, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 7, 100, Bound::Exact, Some(best_move), 0, false);
+    table.store(key_b, 5, 600, Bound::Exact, Some(best_move), 0, false);
     assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
     assert!(table.probe(key_b, 0).is_none());
 
@@ -225,9 +435,9 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     for _ in 0..255 {
         table.new_search();
     }
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0, false);
     table.new_search();
-    table.store(key_b, 1, 700, Bound::Exact, Some(best_move), 0);
+    table.store(key_b, 1, 700, Bound::Exact, Some(best_move), 0, false);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 700);
 }
@@ -258,7 +468,15 @@ fn illegal_transposition_table_move_is_ignored_at_the_root() {
     );
 
     let mut contaminated_table = small_tt();
-    contaminated_table.store(search_key(&root), 32, MATE, Bound::Exact, Some(illegal), 0);
+    contaminated_table.store(
+        search_key(&root),
+        32,
+        MATE,
+        Bound::Exact,
+        Some(illegal),
+        0,
+        false,
+    );
     let actual = run_search(
         &root,
         engine_rules(),
@@ -319,13 +537,13 @@ fn tt_clear_is_skipped_until_a_search_uses_the_table() {
     let key = 0x4444_4444_0000_0004_u64;
     let mut table = small_tt();
     table.new_search();
-    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0, false);
     table.clear();
     assert!(table.probe(key, 0).is_none());
     assert_eq!(table.generation(), 0);
 
     // 消去後に探索を始めずに書いた内容は、次の消去で消えない。
-    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0, false);
     table.clear();
     assert!(table.probe(key, 0).is_some());
 
@@ -347,7 +565,7 @@ fn idle_resize_applies_and_later_searches_complete() {
     let mut table = TranspositionTable::new(4).unwrap();
 
     let key = search_key(&midgame);
-    table.store(key, 2, 100, Bound::Exact, Some(moves[0]), 0);
+    table.store(key, 2, 100, Bound::Exact, Some(moves[0]), 0, false);
     assert!(table.probe(key, 0).is_some());
     table.resize(1).unwrap();
     assert!(table.probe(key, 0).is_none());
@@ -377,11 +595,19 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
     let key = 0x1234_5678_0000_0042;
     let table = small_tt();
     table.new_search();
-    table.store(key, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key, 8, 100, Bound::Exact, Some(best_move), 0, false);
     let (critical, advisory) = table.raw_entry(key);
 
     table.write_raw(key, critical | CRITICAL_RESERVED_MASK, advisory);
     assert!(table.probe(key, 0).is_none());
+
+    // F1の準備で予約領域は59〜63ビットとなり、58ビットはPVの印になる。
+    for bit in 59..=63 {
+        table.write_raw(key, critical | (1_u64 << bit), advisory);
+        assert!(table.probe(key, 0).is_none(), "reserved bit {bit}");
+    }
+    table.write_raw(key, critical | (1_u64 << 58), advisory);
+    assert!(table.probe(key, 0).unwrap().is_pv);
 
     table.write_raw(key, critical & !CRITICAL_BOUND_MASK, advisory);
     assert!(table.probe(key, 0).is_none());
@@ -400,5 +626,130 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
         let invalid_advisory = (advisory & !ADVISORY_MOVE_MASK) | u64::from(invalid_move);
         table.write_raw(key, critical, invalid_advisory);
         assert!(table.probe(key, 0).is_none());
+    }
+}
+
+// F5では要求深さ7から着手後の値の方向を確かめ、専用の帯は値なしとして扱う。
+#[test]
+fn zero_window_tt_cutoff_checks_child_from_depth_seven() {
+    use crate::search::REPETITION_BAND_START;
+    let position = bare_kings();
+    let mv = legal_moves(&position)[0];
+    for depth in [6, 7] {
+        for (child_score, consistent) in [
+            (None, true),
+            (Some(-100), true),
+            (Some(-99), false),
+            (Some(0), false),
+            (Some(REPETITION_BAND_START), true),
+            (Some(-REPETITION_BAND_START), true),
+        ] {
+            with_root_searcher(&position, &[], |searcher| {
+                let mut current = position.clone();
+                let undo = current.make_move_unchecked(mv, engine_rules());
+                let child_key = search_key(&current);
+                current.unmake_move(undo);
+                if let Some(score) = child_score {
+                    searcher
+                        .tt
+                        .store(child_key, 8, score, Bound::Exact, None, 1, false);
+                }
+                searcher.tt.store(
+                    search_key(&position),
+                    8,
+                    150,
+                    Bound::Lower,
+                    Some(mv),
+                    0,
+                    false,
+                );
+                let score = searcher
+                    .negamax(&mut current, depth, 99, 100, 0, true)
+                    .unwrap();
+                assert_eq!(current, position);
+                assert_eq!(searcher.path_keys, vec![search_key(&position)]);
+                if depth == 6 || consistent {
+                    assert_eq!((score, searcher.nodes), (150, 0));
+                } else {
+                    assert!(
+                        searcher.nodes > 0,
+                        "深さ7で値の方向が不一致なら子を探索する"
+                    );
+                }
+            });
+        }
+    }
+}
+
+#[test]
+fn zero_window_tt_cutoff_skips_child_check_without_legal_move_or_with_mate() {
+    let position = bare_kings();
+    let legal = legal_moves(&position)[0];
+    let illegal = step(sq(5, 5), sq(5, 6));
+    for (mv, value) in [
+        (None, 150),
+        (Some(illegal), 150),
+        (Some(legal), MATE_THRESHOLD),
+    ] {
+        with_root_searcher(&position, &[], |searcher| {
+            let mut current = position.clone();
+            let undo = current.make_move_unchecked(legal, engine_rules());
+            searcher
+                .tt
+                .store(search_key(&current), 8, 0, Bound::Exact, None, 1, false);
+            current.unmake_move(undo);
+            searcher
+                .tt
+                .store(search_key(&position), 8, value, Bound::Lower, mv, 0, false);
+            assert_eq!(
+                searcher.negamax(&mut current, 7, 99, 100, 0, true),
+                Some(value)
+            );
+            assert_eq!(searcher.nodes, 0);
+            assert_eq!(current, position);
+        });
+    }
+}
+
+#[test]
+fn zero_window_tt_child_probe_uses_child_ply_and_checks_upper_bound() {
+    let position = bare_kings();
+    let mv = legal_moves(&position)[0];
+    // -MATE_THRESHOLDをply=0で保存すると、ply=1では専用の帯へ入り、値なしとして扱う。
+    for (child_score, stored_ply, cutoff) in
+        [(-99, 1, true), (-100, 1, false), (-MATE_THRESHOLD, 0, true)]
+    {
+        with_root_searcher(&position, &[], |searcher| {
+            let mut current = position.clone();
+            let undo = current.make_move_unchecked(mv, engine_rules());
+            searcher.tt.store(
+                search_key(&current),
+                8,
+                child_score,
+                Bound::Exact,
+                None,
+                stored_ply,
+                false,
+            );
+            current.unmake_move(undo);
+            searcher.tt.store(
+                search_key(&position),
+                8,
+                50,
+                Bound::Upper,
+                Some(mv),
+                0,
+                false,
+            );
+            let score = searcher
+                .negamax(&mut current, 7, 99, 100, 0, false)
+                .unwrap();
+            assert_eq!(current, position);
+            if cutoff {
+                assert_eq!((score, searcher.nodes), (50, 0));
+            } else {
+                assert!(searcher.nodes > 0);
+            }
+        });
     }
 }

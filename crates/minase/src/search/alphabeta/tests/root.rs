@@ -2,6 +2,35 @@
 
 use super::*;
 
+#[test]
+fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        assert!(!searcher.seek_mate);
+        assert_eq!(searcher.nnue.pawn_value(), 100);
+        // D=2の閾値は26803、D=5は105769/25を切り捨てて4591。
+        // 王将だけの局面では±4591に届かず、D=5では窓を読み直す。
+        for (depth, previous, expected) in [
+            (1, None, false),
+            (2, Some(4591), false),
+            (5, Some(4591), true),
+            (5, Some(4590), false),
+            (5, Some(-4591), true),
+            (1, None, false),
+        ] {
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, depth, previous)
+                .unwrap();
+            assert!(score.abs() < 4590);
+            assert_eq!(
+                searcher.seek_mate, expected,
+                "depth={depth}, prev={previous:?}"
+            );
+        }
+    });
+}
+
 // 部分木ノード数は完了反復だけを保存し、次の反復では先頭手を保って残りをノード数の降順に安定整列する。
 // 判断の理由は docs/adr/order-root-moves-by-previous-subtree-nodes.md にある。
 #[test]
@@ -60,9 +89,15 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
     for previous_best in [None, Some(moves[1])] {
         with_root_searcher(&position, &[], |searcher| {
             let tt_move = *moves.last().unwrap();
-            searcher
-                .tt
-                .store(search_key(&position), 1, 0, Bound::Exact, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&position),
+                1,
+                0,
+                Bound::Exact,
+                Some(tt_move),
+                0,
+                false,
+            );
             if let Some(previous) = previous_best {
                 let mut results = crate::search::alphabeta::root::RootResults::default();
                 results.previous_best = Some(previous);
@@ -213,30 +248,22 @@ fn aspiration_initial_window_uses_only_eligible_previous_scores() {
 
 #[test]
 fn aspiration_widens_only_the_failed_side() {
-    assert_eq!(
-        crate::search::alphabeta::params::aspiration_growth(),
-        190,
-        "数値例の前提"
-    );
-    // 50×190/100=95、95×190/100→180、180×190/100=342、342×190/100→649、649×190/100→1233。
     let mut low = AspirationWindow::initial(5, Some(100), 50);
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 95));
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-95, 150, 180));
-
-    let mut high = AspirationWindow::initial(5, Some(100), 50);
-    high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 95));
-    high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 295, 180));
-
-    low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-95, 330, 342));
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-437, 330, 649));
-    low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-437, 979, 1233));
+    for high_side in [false, false, true, false, true] {
+        let before = (low.alpha, low.beta, low.delta);
+        if high_side {
+            low.widen_high();
+        } else {
+            low.widen_low();
+        }
+        assert_eq!(low.alpha, before.0 - if high_side { 0 } else { before.2 });
+        assert_eq!(low.beta, before.1 + if high_side { before.2 } else { 0 });
+        assert_truncated_ratio(
+            i64::from(low.delta),
+            i64::from(before.2) * i64::from(crate::search::alphabeta::params::aspiration_growth()),
+            100,
+        );
+    }
     // 最小の拡大率でも詰み帯を越える回数だけ両側を広げる。
     for _ in 0..32 {
         low.widen_low();
@@ -322,7 +349,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         let key = search_key(&position);
         searcher
             .tt
-            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0);
+            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0, false);
         let (best_move, score) = searcher
             .search_root(&position, &moves, 1, MATE, INFINITY)
             .unwrap();
@@ -341,8 +368,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
     });
 }
 
-// 深さ5の最初の窓外れを実測してノード予算を
-// 決め、読み直しで1手を適用した後に中断させる。経過時間やスケジューリングに依存しない。
+// 深さ4の完了時点から1手だけ読む予算にし、次の反復の中断で完了結果を保持する。
 #[test]
 fn aspiration_interruption_preserves_the_last_completed_iteration() {
     let position = quiet_midgame();
@@ -362,19 +388,6 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
             assert!(completed.is_some());
         }
         completed_pv.clone_from(&searcher.pv[0]);
-        let (_, prev) = completed.unwrap();
-        let delta = aspiration_delta(searcher.nnue.pawn_value());
-        let (_, score) = searcher
-            .search_root(&position, &moves, 5, prev - delta, prev + delta)
-            .unwrap();
-        assert!(
-            score >= prev + delta,
-            "fixture must fail high before the interruption"
-        );
-        assert_eq!(
-            searcher.tt.probe(search_key(&position), 0).unwrap().bound,
-            Bound::Lower
-        );
         node_limit = searcher.nodes + 1;
     });
 
@@ -400,4 +413,47 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
     assert_eq!(last.1, finished.score);
     assert_eq!(last.4, finished.pv);
     assert!(last.2 < finished.nodes);
+}
+
+#[test]
+fn iteration_snapshots_previous_pv_before_window_research() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        searcher
+            .search_iteration(&position, &moves, 1, None)
+            .unwrap();
+        assert!(searcher.previous_pv.is_empty());
+        assert!(searcher.follow_pv[0]);
+        let previous = searcher.pv[0].clone();
+        assert!(!previous.is_empty());
+        // 王将だけの局面では到達しない前回値を与え、窓の読み直しを起こす。
+        searcher
+            .search_iteration(&position, &moves, 5, Some(10_000))
+            .unwrap();
+        assert_eq!(searcher.previous_pv, previous);
+        assert!(searcher.follow_pv[0]);
+    });
+}
+
+// 窓外れと再探索中断は、反復間の評価変動に頼らず反復引き分けで作る。
+#[test]
+fn aspiration_retry_interruption_keeps_fail_high_bound() {
+    let board = quiet_midgame();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    with_root_searcher(&board, &history, |searcher| {
+        let delta = aspiration_delta(searcher.nnue.pawn_value());
+        searcher.interrupt_at = Some((1, StopReason::NodeLimit));
+        assert!(
+            searcher
+                .search_iteration(&board, &moves, 5, Some(-delta - 1))
+                .is_none()
+        );
+        assert_eq!(searcher.nodes, 1);
+        assert_eq!(searcher.stop_reason, Some(StopReason::NodeLimit));
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.score, DRAW_SCORE);
+    });
 }

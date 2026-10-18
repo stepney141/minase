@@ -4,7 +4,7 @@
 use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
-use crate::search::alphabeta::pruning::{late_move_limit, see_margin};
+use crate::search::alphabeta::pruning::see_margin;
 use crate::search::{REPETITION_WIN, in_repetition_band};
 
 #[test]
@@ -37,15 +37,21 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
     for score in [REPETITION_WIN - 3, -(REPETITION_WIN - 3)] {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
             with_root_searcher(&board, &[], |searcher| {
-                searcher
-                    .tt
-                    .store(search_key(&board), 32, score, bound, Some(tt_move), 0);
+                searcher.tt.store(
+                    search_key(&board),
+                    32,
+                    score,
+                    bound,
+                    Some(tt_move),
+                    0,
+                    false,
+                );
                 for &mv in &moves {
                     let mut child = board.clone();
                     child.make_move_unchecked(mv, engine_rules());
                     searcher
                         .tt
-                        .store(search_key(&child), 32, 0, Bound::Exact, None, 1);
+                        .store(search_key(&child), 32, 0, Bound::Exact, None, 1, false);
                 }
                 let (alpha, beta) = match bound {
                     Bound::Exact => (-INFINITY, INFINITY),
@@ -54,7 +60,8 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
                 };
                 // 子を1手だけ読ませ、2手目の適用前に中断して先頭の主変化を観測する。
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0);
+                // F5で子の値0を返せる種別にする。親がfail-highする窓では子をallNodeにする。
+                let actual = searcher.negamax(&mut board.clone(), 2, alpha, beta, 0, beta <= 0);
                 assert_eq!(actual, if beta <= 0 { Some(0) } else { None });
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(searcher.pv[0], [tt_move], "{score}, {bound:?}");
@@ -91,9 +98,15 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
     for score in [REPETITION_WIN - 3, -(REPETITION_WIN - 3)] {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
             with_root_searcher(&board, &[], |searcher| {
-                searcher
-                    .tt
-                    .store(search_key(&board), 32, score, bound, Some(tt_move), 0);
+                searcher.tt.store(
+                    search_key(&board),
+                    32,
+                    score,
+                    bound,
+                    Some(tt_move),
+                    0,
+                    false,
+                );
                 let (alpha, beta) = match bound {
                     Bound::Exact => (-INFINITY, INFINITY),
                     Bound::Lower if score > 0 => (-INFINITY, score),
@@ -104,7 +117,12 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
                 // 高いαでも候補を残し、置換表と順序付けの契約をdelta pruningから独立に検査する。
                 searcher.delta_margin = INFINITY;
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-                assert_eq!(searcher.quiesce(&mut board.clone(), alpha, beta, 0), None);
+                let result = searcher.quiesce(&mut board.clone(), alpha, beta, 0);
+                if super::super::params::qsearch_move_limit() > 1 {
+                    assert_eq!(result, None);
+                } else {
+                    assert!(result.is_some());
+                }
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(
                     searcher.previous_capture[1],
@@ -126,12 +144,18 @@ fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
         (-29_990, Bound::Upper, -29_955, INFINITY),
     ] {
         with_root_searcher(&board, &[], |searcher| {
-            searcher
-                .tt
-                .store(search_key(&board), 32, score, bound, Some(tt_move), 5);
+            searcher.tt.store(
+                search_key(&board),
+                32,
+                score,
+                bound,
+                Some(tt_move),
+                5,
+                false,
+            );
             let expected = if score > 0 { 29_955 } else { -29_955 };
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, alpha, beta, 40),
+                searcher.negamax(&mut board.clone(), 2, alpha, beta, 40, false),
                 Some(expected)
             );
             assert_eq!(
@@ -148,7 +172,15 @@ fn r1_repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
     let board = bare_kings();
     for sign in [-1, 1] {
         let table = small_tt();
-        table.store(search_key(&board), 32, sign * 29_744, Bound::Exact, None, 5);
+        table.store(
+            search_key(&board),
+            32,
+            sign * 29_744,
+            Bound::Exact,
+            None,
+            5,
+            false,
+        );
         // 保存距離251手に読み出し位置40手を足すと291手となり、専用の帯へ入る。
         assert_eq!(
             table.probe(search_key(&board), 40).unwrap().score,
@@ -172,7 +204,7 @@ fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
     for score in [29_740, -29_740, -29_487] {
         with_root_searcher(&board, &history, |searcher| {
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
                 Some(0)
             );
             // 経路依存の勝敗を前の探索の記録として置き、値を再利用しないことを確かめる。
@@ -183,11 +215,12 @@ fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
                 Bound::Exact,
                 Some(repetition_move()),
                 0,
+                false,
             );
             searcher.history_keys = &[];
             searcher.nodes = 0;
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
                 Some(expected)
             );
             assert!(searcher.nodes > 0);
@@ -203,7 +236,7 @@ fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
     let history = [search_key(&child), search_key(&board)];
     with_root_searcher(&board, &history, |searcher| {
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
             Some(0)
         );
         searcher.history_keys = &[];
@@ -211,7 +244,7 @@ fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
         // DRAW_SCOREの0は通常評価と区別できない。履歴を変えても祖先に保存された0を
         // 再利用し得ることは、RULES.md第31条R1を探索で近似する際の既知の制約である。
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0),
+            searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
             Some(DRAW_SCORE)
         );
         assert_eq!(searcher.nodes, 0);
@@ -238,16 +271,22 @@ fn r1_repetition_band_windows_disable_reverse_futility_and_razoring() {
 fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
     let board = super::late_move::quiet_board();
     let moves = legal_moves(&board);
-    assert!(moves.len() > late_move_limit(3) as usize);
+    assert!(moves.len() > 1);
     let history = repeated_root_children(&board, &moves);
     for depth in [1, 2, 3] {
         for alpha in [29_486, 29_487, 29_740] {
             with_root_searcher(&board, &history, |searcher| {
-                searcher
-                    .tt
-                    .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 0);
+                searcher.tt.store(
+                    search_key(&board),
+                    0,
+                    0,
+                    Bound::Upper,
+                    Some(moves[0]),
+                    0,
+                    false,
+                );
                 assert_eq!(
-                    searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0),
+                    searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false),
                     Some(0)
                 );
                 assert_eq!(
@@ -296,11 +335,17 @@ fn r1_repetition_band_windows_disable_see_pruning() {
                 capture,
                 see_margin(searcher.nnue.pawn_value(), depth)
             ));
-            searcher
-                .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(quiet),
+                0,
+                false,
+            );
             assert_eq!(
-                searcher.negamax(&mut board.clone(), depth, 29_486, 29_487, 0),
+                searcher.negamax(&mut board.clone(), depth, 29_486, 29_487, 0, false),
                 Some(0)
             );
             assert_eq!(searcher.nodes, moves.len() as u64);
@@ -333,16 +378,28 @@ fn r1_repetition_band_beta_disables_null_move() {
     let history = repeated_root_children(&board, &moves);
     for beta in [-29_740, -29_487, 29_487, 29_740] {
         with_root_searcher(&board, &history, |searcher| {
-            searcher
-                .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 0);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(moves[0]),
+                0,
+                false,
+            );
             let mut passed = board.clone();
             passed.make_null_move();
-            searcher
-                .tt
-                .store(search_key(&passed), 32, -29_990, Bound::Exact, None, 1);
+            searcher.tt.store(
+                search_key(&passed),
+                32,
+                -29_990,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 8, beta - 1, beta, 0),
+                searcher.negamax(&mut board.clone(), 8, beta - 1, beta, 0, false),
                 Some(0)
             );
             assert_eq!(

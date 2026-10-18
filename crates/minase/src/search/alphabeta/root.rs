@@ -6,6 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
+use super::pruning::{corrected_static_eval, is_seek_mate};
 use super::searcher::Searcher;
 use super::tt::Bound;
 use super::{INFINITY, params};
@@ -167,6 +168,8 @@ impl Searcher<'_> {
         depth: u32,
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
+        self.seek_mate = is_seek_mate(prev, depth, self.nnue.pawn_value());
+        self.previous_pv.clone_from(&self.pv[0]);
         let mut window =
             AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));
         loop {
@@ -194,7 +197,8 @@ impl Searcher<'_> {
     ///
     /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
-    /// [`Self::search_move`]へ減深量0を渡すので根の各手にはLMRを適用しないが、子ノードの枝刈りは通常どおり行う。
+    /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
+    /// 根の各手は通常深さで読み、LMRを適用しない。子ノードの枝刈りは通常どおり行う。
     /// 中断された場合は`None`を返し、停止条件を記録する。
     pub(super) fn search_root(
         &mut self,
@@ -204,22 +208,46 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
+        self.root_depth = depth;
+        self.follow_pv[0] = true;
+        // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
+        self.cutoff_counts[2] = 0;
         if let Some(results) = &mut self.root_results {
             results.begin_window(alpha);
         }
         self.pv[0].clear();
+        self.tt_pv[0] = true;
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
         self.order_root_moves(&position, &mut moves);
+        // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
+        #[cfg(feature = "invariants")]
+        self.nnue
+            .assert_accumulator(&position, &self.accumulators[0], 0);
+        let side = position.side_to_move();
+        let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
+        let correction = self.correction.read(side, self.material_keys[0]);
+        self.static_evals[0] = corrected_static_eval(raw, correction);
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
 
         for (index, mv) in moves.into_iter().enumerate() {
             let before = self.nodes;
-            let score = self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0);
+            let score = self.search_move(
+                &mut position,
+                mv,
+                depth,
+                alpha,
+                beta,
+                0,
+                index == 0,
+                depth - 1,
+                None,
+                false,
+            );
             let nodes = self.nodes - before;
             if let Some((_, total)) = self.current_root_nodes.iter_mut().find(|(m, _)| *m == mv) {
                 *total += nodes;
@@ -237,6 +265,7 @@ impl Searcher<'_> {
             }
             alpha = alpha.max(score);
             if best_score >= beta {
+                self.cutoff_counts[0] += 1;
                 break;
             }
         }
@@ -248,7 +277,7 @@ impl Searcher<'_> {
             Bound::Exact
         };
         self.tt
-            .store(key, depth, best_score, bound, Some(best_move), 0);
+            .store(key, depth, best_score, bound, Some(best_move), 0, true);
         Some((best_move, best_score))
     }
 }

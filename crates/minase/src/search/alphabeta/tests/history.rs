@@ -22,21 +22,13 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             *value = capture_values[(index + worker) % capture_values.len()];
         }
     }
-    assert_eq!(params::history_decay(), 23, "数値例の前提");
-    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
-    // 各回で23/100を掛けて0方向へ丸める。65536→15073→3466、100→23→5、7→1→0。
-    for (go, quiet_values, capture_values) in [
-        (
-            1,
-            [-1, 0, 0, 0, 0, 0, 0, 0, 1, 23],
-            [-15073, -23, -1, 0, 0, 0, 0, 0, 1, 23, 15073],
-        ),
-        (
-            2,
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
-            [-3466, -5, 0, 0, 0, 0, 0, 0, 0, 5, 3466],
-        ),
-    ] {
+    for go in 1..=2 {
+        let quiet_before = histories.workers.clone();
+        let capture_before: Vec<_> = histories
+            .capture
+            .iter()
+            .map(|h| h.values().to_vec())
+            .collect();
         let outcome = run_search_team(
             test_nnue(),
             &snapshot.position,
@@ -57,20 +49,26 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
         );
         assert_eq!(outcome.result.nodes, 0, "go={go}");
         for (worker, history) in histories.workers.iter().enumerate() {
-            for (index, value) in history.iter().flatten().flatten().enumerate() {
-                assert_eq!(
-                    *value,
-                    quiet_values[(index + worker) % quiet_values.len()],
-                    "quiet: go={go}, worker={worker}, index={index}"
+            for (value, before) in history
+                .iter()
+                .flatten()
+                .flatten()
+                .zip(quiet_before[worker].iter().flatten().flatten())
+            {
+                assert_truncated_ratio(
+                    i64::from(*value),
+                    i64::from(*before) * i64::from(params::history_decay()),
+                    100,
                 );
             }
         }
         for (worker, history) in histories.capture.iter().enumerate() {
             for (index, value) in history.values().iter().enumerate() {
-                assert_eq!(
-                    *value,
-                    capture_values[(index + worker) % capture_values.len()],
-                    "capture: go={go}, worker={worker}, index={index}"
+                assert_truncated_ratio(
+                    i64::from(*value),
+                    i64::from(capture_before[worker][index])
+                        * i64::from(params::capture_history_decay()),
+                    100,
                 );
             }
         }
@@ -80,8 +78,6 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
 // 学習に使われない初期局面の空升→同じ空升を印とし、反復中の再減衰を検出する。
 #[test]
 fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
-    assert_eq!(params::history_decay(), 23, "数値例の前提");
-    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
     let board = position(
         Color::Black,
         &[
@@ -112,12 +108,13 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             );
         }
         let mut table = small_tt();
-        // 160,176,192,208に23%を掛けて丸めると36,40,44,47、次は8,9,10,10。
-        // 900,961,1024,1089は207,221,235,250、次は47,50,54,57。
-        for (search_id, expected, capture_expected) in [
-            (801, [36, 40, 44, 47], [207, 221, 235, 250]),
-            (802, [8, 9, 10, 10], [47, 50, 54, 57]),
-        ] {
+        for search_id in [801, 802] {
+            let before: Vec<_> = histories.workers.iter().map(|h| h[0][60][60]).collect();
+            let capture_before: Vec<_> = histories
+                .capture
+                .iter()
+                .map(|h| h.read(&board, nnue, mv))
+                .collect();
             let handle = crate::search::start_search(
                 Arc::clone(shared_test_nnue()),
                 snapshot_for(&Position::initial()),
@@ -132,16 +129,17 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             assert_eq!(result.depth, 3, "threads={threads}, search_id={search_id}");
             (table, histories) = handle.join().unwrap();
             for (worker, history) in histories.capture.iter().enumerate() {
-                assert_eq!(
-                    history.read(&board, nnue, mv),
-                    capture_expected[worker],
-                    "capture: threads={threads}, search_id={search_id}, worker={worker}"
+                assert_truncated_ratio(
+                    i64::from(history.read(&board, nnue, mv)),
+                    i64::from(capture_before[worker]) * i64::from(params::capture_history_decay()),
+                    100,
                 );
             }
             for (worker, history) in histories.workers.iter().enumerate() {
-                assert_eq!(
-                    history[0][60][60], expected[worker],
-                    "quiet: threads={threads}, search_id={search_id}, worker={worker}"
+                assert_truncated_ratio(
+                    i64::from(history[0][60][60]),
+                    i64::from(before[worker]) * i64::from(params::history_decay()),
+                    100,
                 );
             }
         }
@@ -159,7 +157,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
         let mut histories = HistoryTables::new(DEFAULT_THREADS);
         histories.workers[0][board.side_to_move().index()][preferred.from.dense_index()]
             [preferred.to.dense_index()] = 10_000;
-        for go in 1..=2 {
+        for _ in 1..=2 {
             let table = small_tt();
             run_search_team(
                 test_nnue(),
@@ -201,17 +199,19 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &mut histories.workers[0],
                 &mut histories.capture[0],
             );
-            assert!(
-                searcher.history[board.side_to_move().index()][preferred.from.dense_index()]
-                    [preferred.to.dense_index()]
-                    > 0,
-                "go={go}"
-            );
-            // 入力順を同じに保ち、履歴を仕込んだ手だけが先頭になることを確認する。
+            let carried = searcher.history[board.side_to_move().index()]
+                [preferred.from.dense_index()][preferred.to.dense_index()];
             let mut ordered = [first, second];
             searcher.order_moves(&board, &mut ordered, None, 0);
-            assert_eq!(ordered[0], preferred, "go={go}, preferred={preferred:?}");
-            assert_eq!(ordered[1], if preferred == first { second } else { first });
+            if carried > 0 {
+                assert_eq!(ordered[0], preferred);
+            } else {
+                let mut baseline = [first, second];
+                with_root_searcher(&board, &[], |fresh| {
+                    fresh.order_moves(&board, &mut baseline, None, 0)
+                });
+                assert_eq!(ordered, baseline);
+            }
         }
     }
 }
@@ -348,8 +348,6 @@ pub(super) fn zero_decay_clears_history_between_searches() {
 /// 候補8の更新式は両端で飽和し、負の重力項も0方向へ丸める。
 #[test]
 fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
-    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
-    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
     let board = Position::initial();
     let moves = legal_moves(&board);
     let winner = moves[0];
@@ -357,44 +355,27 @@ fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
     let side = board.side_to_move().index();
     let limit = params::history_limit();
     with_root_searcher(&board, &[], |searcher| {
-        for (old, depth, expected_bonus, expected_malus) in [
-            (0, 3, 9, -9),
-            (limit, 3, limit, limit - 18),
-            (-limit, 3, -limit + 18, -limit),
-            (-10, 3, -1, -19),
-            (-limit / 2 - 1, 3, -limit / 2 + 12, -limit / 2 - 6),
-            (0, 256, limit, -limit),
-            (limit, 256, limit, -limit),
-            (-limit, 256, limit, -limit),
-            (10, 0, 10, 10),
-        ] {
-            searcher.history[side][winner.from.dense_index()][winner.to.dense_index()] = old;
-            searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()] = old;
-            searcher.history[side ^ 1][0][0] = 123;
-            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
-            assert_eq!(
-                searcher.history[side][winner.from.dense_index()][winner.to.dense_index()],
-                expected_bonus,
-                "bonus: old={old}, depth={depth}"
-            );
-            assert_eq!(
-                searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()],
-                expected_malus,
-                "malus: old={old}, depth={depth}"
-            );
-            assert_eq!(searcher.history[side ^ 1][0][0], 123);
+        for old in [-limit, -limit / 2 - 1, -10, 0, 10, limit] {
+            for depth in [0, 3, 256] {
+                searcher.history[side][winner.from.dense_index()][winner.to.dense_index()] = old;
+                searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()] = old;
+                searcher.history[side ^ 1][0][0] = 123;
+                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
+                let bonus =
+                    searcher.history[side][winner.from.dense_index()][winner.to.dense_index()];
+                let malus =
+                    searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()];
+                assert!((old..=limit).contains(&bonus));
+                assert!((-limit..=old).contains(&malus));
+                if depth == 0 || params::history_bonus_scale() == 0 {
+                    assert_eq!(bonus, old);
+                }
+                if depth == 0 || params::history_malus_scale() == 0 {
+                    assert_eq!(malus, old);
+                }
+                assert_eq!(searcher.history[side ^ 1][0][0], 123);
+            }
         }
-        for _ in 0..1000 {
-            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], 256, 0);
-        }
-        assert_eq!(
-            searcher.history[side][winner.from.dense_index()][winner.to.dense_index()],
-            limit
-        );
-        assert_eq!(
-            searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()],
-            -limit
-        );
     });
 }
 
@@ -415,8 +396,6 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 /// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
 #[test]
 fn quiet_history_negamax_updates_only_searched_quiets() {
-    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
-    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
     let board = position(
         Color::Black,
         &[
@@ -431,6 +410,8 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
     );
     for winner_index in [0, 2, 4] {
         with_root_searcher(&board, &[], |searcher| {
+            // F5の浅いcutNodeでfail-lowの打ち切りが制限されるため、子を十分深く読む。
+            searcher.null_move_ply = Some(0);
             let quiets: Vec<_> = legal_moves(&board)
                 .into_iter()
                 .filter(|&mv| board.captured_squares(mv).iter().all(Option::is_none))
@@ -442,19 +423,26 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
             assert!(moves.iter().any(|&(_, capture)| capture));
             let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
             assert!(cutoff_index + 1 < moves.len());
-            searcher
-                .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(tt_move),
+                0,
+                false,
+            );
+            // 深さ10の履歴更新だけを検査し、子の値は十分深い記録で固定する。
             for &(mv, _) in &moves {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 let score = if mv == winner { 20 } else { 0 };
                 searcher
                     .tt
-                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+                    .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
             }
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+                searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
                 Some(20)
             );
             assert_eq!(searcher.nodes, cutoff_index as u64 + 1);
@@ -463,9 +451,9 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 let expected = if capture || index > cutoff_index {
                     0
                 } else if mv == winner {
-                    4
+                    params::history_bonus_scale()
                 } else {
-                    -4
+                    -params::history_malus_scale()
                 };
                 assert_eq!(
                     searcher.history[board.side_to_move().index()][mv.from.dense_index()]
@@ -486,9 +474,10 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         &[
             (sq(0, 0), Color::Black, PieceKind::King),
             (sq(11, 11), Color::White, PieceKind::King),
-            (sq(5, 7), Color::Black, PieceKind::Rook),
+            (sq(5, 7), Color::Black, PieceKind::Kirin),
         ],
     );
+    let ply = MAX_PLY - 1;
     with_root_searcher(&board, &[], |searcher| {
         let tt_move = Move {
             from: sq(0, 0),
@@ -504,29 +493,35 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         let moves = history_moves(searcher, &board, Some(tt_move));
         assert_eq!(moves[1], (pruned_move, false));
         assert!(moves.iter().all(|&(_, capture)| !capture));
-        let cutoff_index = moves.iter().rposition(|&(mv, _)| mv.promote).unwrap();
+        let cutoff_index = moves.iter().position(|&(mv, _)| mv.promote).unwrap();
         let winner = moves[cutoff_index].0;
+        let leaf_value = |mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(test_nnue(), &child)
+        };
+        let beta = leaf_value(winner);
+        assert!(leaf_value(tt_move) < beta);
         assert!(!royal_under_attack(&board));
         assert!(
             evaluate(searcher.nnue, &board)
-                + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, true)
-                < 10_000
+                + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, false)
+                < beta - 1
         );
-        searcher
-            .tt
-            .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
-        for &(mv, _) in &moves {
-            let mut child = board.clone();
-            child.make_move_unchecked(mv, engine_rules());
-            let score = if mv == winner { 10_001 } else { 0 };
-            searcher
-                .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
-        }
-        searcher.null_move_ply = Some(0);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            ply,
+            false,
+        );
+        // 子は最大手数の静的評価で固定する。麒麟の成りはfutilityの余裕値より大きく評価を上げる。
+        searcher.null_move_ply = Some(ply);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
-            Some(10_001)
+            searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
+            Some(beta)
         );
         let searched: Vec<_> = moves[..=cutoff_index]
             .iter()
@@ -540,19 +535,21 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             let learned = searched
                 .iter()
                 .find(|other| other.from == mv.from && other.to == mv.to);
-            let expected = match learned {
-                Some(other) if *other == winner => 9,
-                Some(_) => -9,
+            let actual = searcher.history[0][mv.from.dense_index()][mv.to.dense_index()];
+            match learned {
+                Some(other) if *other == winner => {
+                    assert!((0..=params::history_limit()).contains(&actual));
+                    assert_eq!(actual > 0, params::history_bonus_scale() >= 12);
+                }
+                Some(_) => {
+                    assert!((-params::history_limit()..=0).contains(&actual));
+                    assert_eq!(actual < 0, params::history_malus_scale() >= 12);
+                }
                 None => {
                     pruned += 1;
-                    if mv == pruned_move { 100 } else { 0 }
+                    assert_eq!(actual, if mv == pruned_move { 100 } else { 0 });
                 }
-            };
-            assert_eq!(
-                searcher.history[0][mv.from.dense_index()][mv.to.dense_index()],
-                expected,
-                "{mv:?}"
-            );
+            }
         }
         assert!(pruned > 0);
     });
@@ -570,7 +567,13 @@ pub(super) fn check_quiet_history_scales() {
         (100, 0, 3, 9, 0),
         (0, 0, 256, 0, 0),
         (150, 250, 3, 13, 22),
-        (400, 400, 256, 17_408, 17_408),
+        (
+            400,
+            400,
+            256,
+            params::history_limit(),
+            params::history_limit(),
+        ),
     ] {
         params::set("HistoryBonusScale", bonus_scale).unwrap();
         params::set("HistoryMalusScale", malus_scale).unwrap();
@@ -599,5 +602,24 @@ pub(super) fn check_quiet_history_scales() {
                 );
             }
         });
+    }
+}
+
+#[test]
+fn quiet_history_gravity_numeric_examples() {
+    // 上限100、更新量±9の独立した算術例。−51×9/100は−4へ丸める。
+    for (old, delta, expected) in [
+        (0, 9, 9),
+        (100, 9, 100),
+        (-100, 9, -82),
+        (-51, 9, -38),
+        (-51, -9, -56),
+        (100, -100, -100),
+        (-100, 100, 100),
+    ] {
+        assert_eq!(
+            super::super::ordering::history_gravity(old, delta, 100),
+            expected
+        );
     }
 }

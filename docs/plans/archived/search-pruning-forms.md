@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本書は、探索の前向き枝刈り（読む価値が低いと見込んだ手やノードを読まずに済ませる枝刈り）と減深の式を、チェスのStockfishの形へ寄せ、現行のmasterより強くなるかを確かめる。
-[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)によれば、minaseの探索の係数の多くはStockfishや将棋のYaneuraOu（やねうら王）と違う形で使われている。
+[係数の関数形の比較](../../research/search-coefficient-forms-prior-art.md)によれば、minaseの探索の係数の多くはStockfishや将棋のYaneuraOu（やねうら王）と違う形で使われている。
 その差は、係数の値をSPSA（simultaneous perturbation stochastic approximation、全係数を同時に少しずらした2つの設定を対局させて係数を動かす調整法）で選び直しても埋まらない。
 2026年10月17日の利用者の決定により、Stockfishにある項目は入れ、式の形や値はStockfishに合わせ、係数はStockfishの値を換算した値から始める。
 中将棋の診断や測定で決めたminaseの既存の仕組みは残し、Stockfishの仕組みを並べて足す。
@@ -20,9 +20,11 @@ F5は置換表による打ち切りと内部反復減深（IIR）にノードの
 
 ## 状態
 
-起案。2026年10月17日に起案した。
-着手は利用者の指示による。
-次の一手は、利用者の指示を受けて起点を確定し、フェーズ1（形の変更の実装）を始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年10月17日に起案して着手し、2026年10月18日に完了した。
+ノードの種別の受け渡しから詰みを探す局面の扱いまでの7項目（F0〜F6）の形の変更と、68個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。STCは`H0`だったが、2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+測定の記録は、[benchのノード数と探索速度](../../measurements/search-pruning-forms/search-pruning-forms-bench.md)、[時間切れの事前確認](../../measurements/search-pruning-forms/search-pruning-forms-safety.md)、[SPSA](../../measurements/search-pruning-forms/search-pruning-forms.md)、[事前対局](../../measurements/search-pruning-forms/search-pruning-forms-smoke.md)、および[STC](../../measurements/search-pruning-forms/search-pruning-forms-stc.md)にある。STCの記録には、弱くなった原因の手がかりを残した。
+7本を通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
 
 ## 目的
 
@@ -42,7 +44,7 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 - **起点**は、フェーズ1を始める時点のmasterの先頭のコミットである。
 - **形の変更**は、本書の項目を実装したコミット列であり、新しい係数を開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で表（`crates/minase/src/search/alphabeta/params.rs`）の既定値へ書き込んだコミットである。
-- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../guides/sprt.md)）。
+- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../../guides/sprt.md)）。
 - **PVノード**は、探索窓（αからβまでの区間）の幅が1より大きいノードである。窓の幅が1のノードを零窓のノードという。
 - **cutNode**は、親がβ打ち切りを見込んで零窓で読ませる子のノードであり、**allNode**は、PVノードでもcutNodeでもないノードである。どちらもF0が定める受け渡しの規則で決まる予測であり、実際にβ打ち切りが起きるかとは別である。
 - **静的評価**は、F2の後は、NNUEの出力に補正を足して評価関数の出力の範囲に収めた値を指す。各ノードで1回だけ求め、手数ごとに保持する。
@@ -66,15 +68,15 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 
 次の事項は対象外とする。
 
-- LMRのstatScore（historyの値による増減）の項、continuation history、LMRの捕獲手と根への拡大、および根でのhistoryの更新。[history-forms.md](history-forms.md)で扱う。
-- futility pruning、late move pruning、およびSEE（static exchange evaluation、駒の取り合いの損得の見積り）による枝刈りの深さの拡張と余裕値の形、razoringの形、およびnull move pruningを試す条件。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)で扱う。
-- reverse futility pruningの返り値をβと判定用の評価値の重み付き平均にすること（Stockfish `src/search.cpp:1033`）。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱い、F1は返り値の混合を加えない。
-- 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
-- null move pruningの減深量の既存の係数（`NullMoveBase`、`NullMoveSlope`、`NullMoveEvalScale`）の開始値をStockfishの換算値へ置き直すこと。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱う。
-- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
-- 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](qsearch-forms.md)が扱う。
-- 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](qsearch-forms.md)、[aspiration-window-forms.md](aspiration-window-forms.md)、および[time-instability-scaling.md](time-instability-scaling.md)で扱う。
-- 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)）。
+- LMRのstatScore（historyの値による増減）の項、continuation history、LMRの捕獲手と根への拡大、および根でのhistoryの更新。[history-forms.md](../history-forms.md)で扱う。
+- futility pruning、late move pruning、およびSEE（static exchange evaluation、駒の取り合いの損得の見積り）による枝刈りの深さの拡張と余裕値の形、razoringの形、およびnull move pruningを試す条件。[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)で扱う。
+- reverse futility pruningの返り値をβと判定用の評価値の重み付き平均にすること（Stockfish `src/search.cpp:1033`）。[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)が扱い、F1は返り値の混合を加えない。
+- 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
+- null move pruningの減深量の既存の係数（`NullMoveBase`、`NullMoveSlope`、`NullMoveEvalScale`）の開始値をStockfishの換算値へ置き直すこと。[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)が扱う。
+- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](../correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
+- 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](../qsearch-forms.md)が扱う。
+- 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](../qsearch-forms.md)、[aspiration-window-forms.md](../aspiration-window-forms.md)、および[time-instability-scaling.md](../time-instability-scaling.md)で扱う。
+- 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../../adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）。
 
 ## 依存関係
 
@@ -82,26 +84,27 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 本書は、探索の関数形をStockfishの形へ寄せる一連の設計書の最初であり、後続の設計書は本書の完了後のmasterを起点とする。
 連鎖の順序は提案であり、最終的な順序は利用者が決める。
 
-SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
+SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、採否の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 測定機はlishogiのBotと計算資源を共用するので、測定機での対局の同時対局数は16を上限とする。
-時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
-実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
+事前対局と採否測定も、統括計画に従い、SPSAを終えた同じ調整機で、時間制御を換算せずに行う。
+実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 後続の設計書とは、次のように分担する。
 F0が導入するcutNodeとallNode、およびF1の準備が導入するttPvは、後続の設計書がそれぞれの範囲で使う。
-reverse futility pruningの余裕値の補正量の項はF1が持ち、[correction-history-tables.md](correction-history-tables.md)は持たない。
-[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が使う減深後の深さ（lmrDepth）の基になる減深量は、F4の`r_pre`とする。
+reverse futility pruningの余裕値の補正量の項はF1が持ち、[correction-history-tables.md](../correction-history-tables.md)は持たない。
+[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)が使う減深後の深さ（lmrDepth）の基になる減深量は、F4の`r_pre`とする。
 
 本書は次のADRの決定の一部を変える。
 採用した場合は、完了時に、起点の時点で有効なADRを確かめたうえで新しいADRで置き換え、置き換えた旧ADRを`docs/adr/archive/`へ移す。決定の一部だけを変える場合は、残る決定も新しいADRへ引き継ぐ。
 
-- [correction historyの鍵と適用先のADR](../adr/key-correction-history-by-material.md)は、補正をfutility pruningの判定にだけ使うと決めた。根拠となった表の持ち越しの診断は、補正をfutility pruningだけに使う前提で測ったものであり、適用先の拡大は測っていない。F2は、補正をノードごとに1回読み、静的評価を使うすべての判定に使う。
-- [improvingのADR](../adr/use-improving-only-for-futility-margins.md)は、improvingの判定に補正前の静的評価を使い、2手前がない場合と比較の区間にnull moveがある場合をimprovingとみなし、LMRの減深量をimprovingで変えないと決めた。F2は補正後の静的評価で比べ、例外をStockfishの扱いに合わせる。F4はLMRにimprovingの項を加える。
-- [浅いノードの前向き枝刈りの適用条件のADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)は、reverse futility pruningを残り深さ3以下に限ると決めた。F1は上限をStockfishと同じ残り深さ18にし、ttPvと置換表の手の条件を加える。王駒への利きによる除外は変えない。
-- [late move reductionsの式のADR](../adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、上限を3とし、それを超える案を棄却した。同じADRは、この判断をSTCの到達深さが5〜6だった時期のものとしている。F4は上限を係数として残し、Stockfishの項を加え、負の減深量による延長を許す。
-- [late move pruningの数え方のADR](../adr/count-only-quiet-moves-for-late-move-pruning.md)は、上限式にimprovingの項を含めず、静かな手だけを数えると決めた。F3は数え方を残し、両エンジンの上限式`(3 + d²)/(2 − improving)`（Stockfish `src/search.cpp:1199`、YaneuraOu `yaneuraou-search.cpp:3593`）に合わせてimprovingの項を加え、既存の係数をStockfishの値から始める。
-- [null moveと置換表の打ち切りをPVノードでも行うADR](../adr/allow-null-move-and-tt-cutoff-at-pv-nodes.md)は、置換表の値による打ち切りをノードの種別によらずに行うと決めた。F5は、PVノードでの打ち切りを残したうえで、零窓のノードにStockfishの打ち切りの条件を当てる。F6は、詰みを探す局面でnull moveの減深を半分にする。
-- [記録手のないノードを1手浅く読むADR](../adr/reduce-depth-by-one-without-tt-move.md)は、要求深さ3以上で記録手がなければ1手浅く読むと決めた。F5は、この規則を残したうえで、allNodeと前の反復の主変化を辿るノードでは行わない条件を加える。
+- [correction historyの鍵と適用先のADR](../../adr/archive/key-correction-history-by-material.md)は、補正をfutility pruningの判定にだけ使うと決めた。根拠となった表の持ち越しの診断は、補正をfutility pruningだけに使う前提で測ったものであり、適用先の拡大は測っていない。F2は、補正をノードごとに1回読み、静的評価を使うすべての判定に使う。
+- [improvingのADR](../../adr/archive/use-improving-only-for-futility-margins.md)は、improvingの判定に補正前の静的評価を使い、2手前がない場合と比較の区間にnull moveがある場合をimprovingとみなし、LMRの減深量をimprovingで変えないと決めた。F2は補正後の静的評価で比べ、例外をStockfishの扱いに合わせる。F4はLMRにimprovingの項を加える。
+- [浅いノードの前向き枝刈りの適用条件のADR](../../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)は、reverse futility pruningを残り深さ3以下に限ると決めた。F1は上限をStockfishと同じ残り深さ18にし、ttPvと置換表の手の条件を加える。王駒への利きによる除外は変えない。
+- [late move reductionsの式のADR](../../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、上限を3とし、それを超える案を棄却した。同じADRは、この判断をSTCの到達深さが5〜6だった時期のものとしている。F4は上限を係数として残し、Stockfishの項を加え、負の減深量による延長を許す。
+- [late move pruningの数え方のADR](../../adr/archive/count-only-quiet-moves-for-late-move-pruning.md)は、上限式にimprovingの項を含めず、静かな手だけを数えると決めた。F3は数え方を残し、両エンジンの上限式`(3 + d²)/(2 − improving)`（Stockfish `src/search.cpp:1199`、YaneuraOu `yaneuraou-search.cpp:3593`）に合わせてimprovingの項を加え、既存の係数をStockfishの値から始める。
+- [null moveと置換表の打ち切りをPVノードでも行うADR](../../adr/archive/allow-null-move-and-tt-cutoff-at-pv-nodes.md)は、置換表の値による打ち切りをノードの種別によらずに行うと決めた。F5は、PVノードでの打ち切りを残したうえで、零窓のノードにStockfishの打ち切りの条件を当てる。F6は、詰みを探す局面でnull moveの減深を半分にする。
+- [記録手のないノードを1手浅く読むADR](../../adr/archive/reduce-depth-by-one-without-tt-move.md)は、要求深さ3以上で記録手がなければ1手浅く読むと決めた。F5は、この規則を残したうえで、allNodeと前の反復の主変化を辿るノードでは行わない条件を加える。
 
 ## 設計判断
 
@@ -109,18 +112,18 @@ reverse futility pruningの余裕値の補正量の項はF1が持ち、[correcti
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
+| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。不採用のときに一部の項目だけを選び直して再測定しない。 |
 | 合わせる先 | 2026年10月17日の利用者の決定により、両エンジンで形や値が違う場合はStockfishに合わせる。YaneuraOuにだけある項目は入れず、Stockfishにある項目は入れる。YaneuraOuの値は、新しい係数の表に参考として併記する。 |
 | 残す既存の仕組み | 2026年10月17日の利用者の決定により、minaseにあってStockfishにない仕組みのうち、中将棋の診断や測定で決めたものは残し、Stockfishの仕組みを並べて足す。本書の範囲では、LMRの減深量の上限（係数`LmrMaxReduction`）、静かな手だけを数えるlate move pruning、成る手を枝刈りから外す保護、PVノードでの置換表の打ち切り、およびIIRの深さ3の条件を残す。王駒への利きの除外は中将棋の規則から来るので残す。 |
 | 新しい係数の開始値 | 2026年10月17日の利用者の決定により、Stockfishの値をminaseの単位へ換算した値とする。評価値の単位を持つ値はStockfishの歩兵価値208（`src/types.h:199`）に対する百分率へ、Stockfishの1/1024手の減深量は1/100手へ、1/1024などの比は百分率へ換算し、整数に四捨五入する。両エンジンに対応する値がない`LmrMaxReduction`は、現行と同じ3から始める。両エンジンには減深量の上限がなく、換算する元がないからである。 |
 | 既存の係数の開始値 | 2026年10月17日の利用者の決定により、本書の範囲の既存の係数のうちStockfishに同じ形の値があるものは、換算値を開始値に置き直す。`LmrDivisor`は156から203へ、`LmpBase`は382から300へ、`LmpSlope`は133から100へ移る。その他の既存の係数は、起点の表の値から始める。 |
-| 新しい係数の範囲 | 2026年10月17日の利用者の決定により、範囲は開始値、両エンジンの値、および現行の値をすべて含むように取る。評価値の単位を持つ係数では、Stockfishの換算値（歩兵価値208で割る）、YaneuraOuの換算値（歩兵価値90で割る）、およびminaseの現行の対応する値の3つを含める。現行に対応する項がない係数では、項が働かない値を現行の値とする。SPSAの最後の反復の摂動幅は範囲の1/6、最初の反復はその約2.30倍（3,750^0.101、`crates/minase/src/bin/minase/spsa_runner/model.rs`）なので、開始値が下限に近い係数では序盤の摂動が下限で切り詰められる。[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)はこの切り詰めを許容しており、係数ごとの摂動幅の設定は加えない。 |
+| 新しい係数の範囲 | 2026年10月17日の利用者の決定により、範囲は開始値、両エンジンの値、および現行の値をすべて含むように取る。評価値の単位を持つ係数では、Stockfishの換算値（歩兵価値208で割る）、YaneuraOuの換算値（歩兵価値90で割る）、およびminaseの現行の対応する値の3つを含める。現行に対応する項がない係数では、項が働かない値を現行の値とする。SPSAの最後の反復の摂動幅は範囲の1/6、最初の反復はその約2.30倍（3,750^0.101、`crates/minase/src/bin/minase/spsa_runner/model.rs`）なので、開始値が下限に近い係数では序盤の摂動が下限で切り詰められる。[利得のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)はこの切り詰めを許容しており、係数ごとの摂動幅の設定は加えない。 |
 | 開始値が他の値から遠い係数 | 評価値の単位を持つ係数の3つの値は次の表に並べる。`ReverseFutilityMultBase`は、開始値22がYaneuraOuの84の約1/4、現行の428の約1/19であり、開始値が他の2つから最も遠い。固定する`mult`の上限41も、現行の428の約1/10である。YaneuraOuは同じ形の定数を将棋向けに調整し直しており、歩兵価値で見るとStockfishの2〜4倍になることが多く、minaseの現行の値もその大きさに近い。最終値はminaseのSPSAが決める。 |
 | SPSAで調整する値と固定する値 | 2026年10月17日の利用者の決定により、SPSAで調整するのは、余裕値の切片と傾き、重み、および倍率のように各仕組みの強さを決める値だけとする。上下限、比べる回数の閾値、深さの条件などはStockfishの値で固定し、固定の定数の表にまとめる。ただし、LMRの減深量の上限は残す既存の仕組みなので係数として調整する。 |
 | 検証の方法 | 2026年10月17日の利用者の決定により、探索を変えない移行の3コミットだけは、`minase dev bench`の全15局面を深さ3、5、7で探索して、探索ノード数、評価値、および最善手が直前のコミットと一致することを確かめる。探索を変えるコミットでは、同じbenchの探索ノード数の直前のコミットからの変化を記録する。開始値で現行と同じ探索になることは求めない。 |
 | cutNodeとallNodeの区別（F0） | 2026年10月17日の利用者の決定により、探索の再帰でcutNodeを受け渡し、Stockfishの受け渡しの規則に従う。F0は区別を受け渡すだけで、F0のコミットではどの判定も区別を使わないので、探索ノード数の一致で検証できる。Stockfishは`search`のテンプレート引数でPVノードを区別するが、minaseは窓の幅で区別する。このため、窓の幅が1になったPVノードを、StockfishはPVノードのまま扱って先頭の子をPVノードとして読み、minaseは零窓のノードとして扱って子に零窓の規則を当てる。この差は起こる頻度が低いので、規則を変えて合わせることはしない。 |
-| SPSAの対象 | 起点の調整対象の38係数（`FmScale`を除く）から廃する`ReverseFutilityMargin`を除き、新しい30係数を加えた67係数とする。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の6係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | [SPSAの手引き](../guides/spsa.md)の既定の設定を流用する。3,750反復、1反復8ペアの計30,000ペアを、調整機で行う。持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数とする。最後の反復の摂動幅`c_end`は範囲の1/6、最後の反復の学習率`r_end`は0.002である。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで67係数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
+| SPSAの対象 | 起点の調整対象の38係数（`FmScale`を除く）から廃する`ReverseFutilityMargin`を除き、新しい31係数を加えた68係数とする。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の6係数を含めるので、本番の前に時間切れの事前確認を行う。 |
+| SPSAの設定 | [SPSAの手引き](../../guides/spsa.md)の既定の設定を流用する。3,750反復、1反復8ペアの計30,000ペアを、調整機で行う。持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数とする。最後の反復の摂動幅`c_end`は範囲の1/6、最後の反復の学習率`r_end`は0.002である。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで68係数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
 | reverse futility pruningの余裕値の形（F1） | 2026年10月17日の利用者の決定により、Stockfishの`mult × depth − (2789 × improving + 335 × opponentWorsening) × mult/1024 + std::abs(correctionValue)/198435`と`mult = min(45 + 4 × depth, 85) − 20 × [置換表にない]`の形（`src/search.cpp:1025-1030`）を、歩兵価値で換算した係数で表す。`mult`の定数は評価値の単位なので歩兵価値に対する百分率へ換算する。improvingとopponentWorseningの項は`mult`の倍数なので、`mult`に対する百分率へ換算する。補正量の項は、`correctionValue`を131072で割ったものが評価値の補正量なので（`src/search.cpp:116-117`）、補正量の絶対値に対する百分率66（131072/198435）へ換算する。`mult`の上限85は上限なので、歩兵価値の41%に固定する。深さの傾き4/208は1.92%を2%に丸めるので約4%ずれるが、SPSAで調整するので許容する。 |
 | reverse futility pruningの条件（F1） | 2026年10月17日の利用者の決定により、Stockfishの条件（`src/search.cpp:1022-1023`）に合わせる。「判定用の評価値 ≥ β」を独立の条件として持つ。余裕値はimprovingの項で負になり得るので、この条件がないとβ未満の値を返して打ち切ることになる。ttPvでないノードに限り、置換表の手がないか、置換表の手が捕獲手であるノードに限る。深さの上限はStockfishの`depth < (seekMate ? 6 : 19)`と同じく、残り深さ18以下、詰みを探す局面では5以下に固定する。Stockfishはこの値を詰みの発見のために調整しない値としている（`src/search.cpp:1021`）。αとβが詰み帯と専用の帯の外であること、および王駒に利きが届かないことという現行の条件は残す。前者はStockfishの`!is_loss(beta) && !is_win(eval)`に当たる。返り値は判定用の評価値とし、βとの混合はshallow-pruning-extensions.mdが加える。 |
 | ttPvの導入（F1の準備） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、置換表のエントリにPVの印を加え、F1とF4で使う。印は、エントリの2つの64ビット値のうち`critical`の予約領域（58〜63ビット）の1ビットに置くので、エントリの大きさ16バイトは変わらない。置換表へ保存する3か所（`negamax.rs`、`root.rs`、`quiesce.rs`）に印を渡し、手数ごとのttPvを探索器に持つ。印の付け方はStockfishに従う（`src/search.cpp:842, 1651-1652, 1657, 1741, 1908`）。印を読む判定はF1とF4だけなので、印を記録するコミットは探索を変えず、探索ノード数の一致で検証する。 |
@@ -128,13 +131,13 @@ reverse futility pruningの余裕値の補正量の項はF1が持ち、[correcti
 | improvingとopponentWorsening（F2） | 2026年10月17日の利用者の決定により、improvingの例外をStockfishの扱いに合わせる。Stockfishは`ss->staticEval > (ss - 2)->staticEval`で比べ（`src/search.cpp:883`）、2手前がない根の近くでは比較の相手を`VALUE_NONE`（32002、同309行）とするのでimprovingは偽になる。null moveの区間にも例外を置かない。minaseも、手数2未満ではimprovingを偽とし、null moveの例外を廃する。opponentWorseningは`ss->staticEval > -(ss - 1)->staticEval`（同884行）に合わせ、保持した1手前の静的評価と比べる。null moveの前後は同じ盤面なので、null moveの直後のノードでは、1手前の値はnull moveをした局面の静的評価になり、Stockfishと同じ比較になる。null move pruningの後、静的評価がβ以上ならimprovingを真にする（Stockfish `src/search.cpp:1080`）。 |
 | 判定用の評価値（F2） | 2026年10月17日の利用者の決定により、reverse futility pruning、razoring、およびLMRのαとの差の項には、Stockfishの`eval`と同じく、置換表の値が静的評価より良い方向の下界か悪い方向の上界なら置換表の値を使う（`src/search.cpp:862-865`）。置換表の値は、詰み帯と専用の帯の外にある場合に限って使う。専用の帯の値は経路に依存するので打ち切りに使わない現行の規則に揃え、詰み帯の値を返り値に持ち込まないためである。これは本書の判断である。 |
 | LMRの減深量の単位（F4の準備） | 減深量を1/100手単位の整数で計算し、最後に100で割る。現行の表は`floor(ln d × ln m/(LmrDivisor/100))`の整数を持つので、定数項や倍率を足すと、表の段階で切り捨てた端数が失われる。表に`floor(100x)`（xは切り捨て前の値）を持てば、整数`h`について`floor((floor(100x) + 100h)/100) = floor(x) + h`が成り立つので、単位の変更だけのコミットは探索を変えず、探索ノード数の一致で検証できる。両エンジンは1/1024手単位を使うが（Stockfish `src/search.cpp:1402-1403`）、minaseの表の係数は百分率で揃えているので1/100手とする。 |
-| LMRの項（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの減深量の項のうち、statScoreの項と補正量の項を除くすべてを入れる（`src/search.cpp:1183-1192, 1345-1388`）。ttPvの項、手番号の項、置換表の手が捕獲の項、子のβ打ち切り数の項、αと判定用の評価値の差の項、cutNodeとallNodeの項がこれに当たる。Stockfishが置換表の手の減深を減らす項（同1368-1369行）は、minaseが置換表の手をLMRの対象にしないので働かず、係数を置かない。減深量の前半`r_pre`（同1183-1192行）は、shallow-pruning-extensions.mdのlmrDepthの基にもなるので、後半と分けて定める。 |
+| LMRの項（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの減深量の項のうち、statScoreの項と補正量の項を除くすべてを入れる（`src/search.cpp:1183-1192, 1345-1388`）。ttPvの項、手番号の項、置換表の手が捕獲の項、子のβ打ち切り数の項、置換表の手の減深を減らす項、αと判定用の評価値の差の項、cutNodeとallNodeの項がこれに当たる。置換表の手の減深を減らす項（同1368-1369行）は、minaseが置換表の手をLMRの対象にしないのでLMRの分岐では働かないが、LMRの分岐を通らない探索で先頭に読む置換表の手の減深量を約2.1手減らすので、係数`LmrTtMove`として入れる。この項を除くと、cutNodeで先頭に読む置換表の手が、cutNodeの増分によって1手か2手浅く読まれる。減深量の前半`r_pre`（同1183-1192行）は、shallow-pruning-extensions.mdのlmrDepthの基にもなるので、後半と分けて定める。 |
 | LMRの減深後の深さ（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの`max(1, newDepth + min(-r/1024, ply < 2 × rootDepth ? 2 : 0)) + PvNode`（`src/search.cpp:1402`）に合わせる。負の減深量による延長を、根からの手数が反復の深さの2倍未満なら2手まで許し、PVノードでは減深後の深さに1を足す。減深の上限`LmrMaxReduction`は残す既存の仕組みなので、正の減深量の上限としてだけ掛け、延長には掛けない。減深した探索がαを超えたら、Stockfishと同じく、その値が最善値より十分に高ければ1手深く、最善値に届かなければ1手浅く、通常深さを調整してから再探索する（同1414-1420行）。 |
-| LMRをしない手の減深（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、LMRの分岐を通らない零窓の探索でも、置換表の手がなければ減深量に`LmrNoTtMove`を足し、減深量が大きければ通常深さから1手または2手減らして読む（`src/search.cpp:1428-1436`）。Stockfishがこの分岐を通るのは、零窓のノードの先頭の手と残り深さ1のノードの2手目以降だけなので、minaseも同じ手に限る。LMRの対象でない2手目以降の手（捕獲手とkiller手）は、Stockfishでは減深の分岐で読まれる手なので、この分岐には含めず、LMRを広げる[history-forms.md](history-forms.md)のM5に委ねる。 |
+| LMRをしない手の減深（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、LMRの分岐を通らない零窓の探索でも、置換表の手がなければ減深量に`LmrNoTtMove`を足し、減深量が大きければ通常深さから1手または2手減らして読む（`src/search.cpp:1428-1436`）。Stockfishがこの分岐を通るのは、零窓のノードの先頭の手と残り深さ1のノードの2手目以降だけなので、minaseも同じ手に限る。LMRの対象でない2手目以降の手（捕獲手とkiller手）は、Stockfishでは減深の分岐で読まれる手なので、この分岐には含めず、LMRを広げる[history-forms.md](../history-forms.md)のM5に委ねる。 |
 | LMRのcutNodeの増分と上限の釣り合い（F4） | cutNodeの増分の開始値は約3.9手、置換表の手がなければ約4.8手であり（`src/search.cpp:1356-1357`）、Stockfishでは多くの減算の項と釣り合っている。上限`LmrMaxReduction`の開始値3では、cutNodeで減深の対象となる手の多くが上限で減深される。2026年10月17日の利用者の決定により上限は係数として残すので、上限と増分の釣り合いはSPSAに選ばせる。上限に張り付いた最終値は、測定記録に残して解釈する。 |
 | allNodeの項の分母（F4） | Stockfishの`r × 276/(256 × depth + 268)`（`src/search.cpp:1387-1388`）の分子を係数`LmrAllNode`とし、分母の定数268/256は105に換算して固定する。2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により入れる。 |
-| 置換表の打ち切り（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、零窓のノードでは、置換表の値による打ち切りに「cutNodeで値がβ以上か、allNodeで値がβ未満か、残り深さが4より深い」というStockfishの条件（`src/search.cpp:899`）を加える。同じ決定により、打ち切りの深さの条件（同894-895行）と、残り深さ7以上で置換表の手を指した後の局面を置換表で確かめる処理（同917-931行）も入れる。PVノードでの打ち切りは、[ADR](../adr/allow-null-move-and-tt-cutoff-at-pv-nodes.md)が測定で決めた既存の仕組みなので残し、現行の条件のままとする。50手規則で打ち切りを止める条件（同915行）は、中将棋に50手規則がないので持たない。着手後の局面の値が専用の帯にある場合は、経路に依存する値を打ち切りに使わない現行の規則に揃えて、値がないものとして扱う。これは本書の判断である。 |
-| IIR（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、allNodeではIIRを行わない（`src/search.cpp:1085`）。深さ3以上の条件は、[ADR](../adr/reduce-depth-by-one-without-tt-move.md)が測定で決めた既存の仕組みなので残し、Stockfishの深さ6には変えない。同じ決定により、前の反復の主変化を辿るノードでもIIRを行わない条件（Stockfishの`followPV`、同791-794行と1085行）を入れる。根は主変化を辿るノードとし、子は、親がそうであり、親から子への手が前の反復で確定した主変化の同じ手数の手と一致するときに限って、主変化を辿るノードとする。 |
+| 置換表の打ち切り（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、零窓のノードでは、置換表の値による打ち切りに「cutNodeで値がβ以上か、allNodeで値がβ未満か、残り深さが4より深い」というStockfishの条件（`src/search.cpp:899`）を加える。同じ決定により、打ち切りの深さの条件（同894-895行）と、残り深さ7以上で置換表の手を指した後の局面を置換表で確かめる処理（同917-931行）も入れる。PVノードでの打ち切りは、[ADR](../../adr/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が測定で決めた既存の仕組みなので残し、現行の条件のままとする。50手規則で打ち切りを止める条件（同915行）は、中将棋に50手規則がないので持たない。着手後の局面の値が専用の帯にある場合は、経路に依存する値を打ち切りに使わない現行の規則に揃えて、値がないものとして扱う。これは本書の判断である。 |
+| IIR（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、allNodeではIIRを行わない（`src/search.cpp:1085`）。深さ3以上の条件は、[ADR](../../adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)が測定で決めた既存の仕組みなので残し、Stockfishの深さ6には変えない。同じ決定により、前の反復の主変化を辿るノードでもIIRを行わない条件（Stockfishの`followPV`、同791-794行と1085行）を入れる。根は主変化を辿るノードとし、子は、親がそうであり、親から子への手が前の反復で確定した主変化の同じ手数の手と一致するときに限って、主変化を辿るノードとする。 |
 | 詰みを探す局面（F6） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの`seekMate`（`src/search.cpp:395`）を入れる。前の反復で確定した根の評価値の絶対値が、歩兵価値の`361 + 105769/D²`%以上なら詰みを探す局面とする。ここで`D`は反復の深さであり、2つの定数はStockfishの750と220000を歩兵価値208で換算した値である。Stockfishはこの値を棋力のための値ではないとして調整しない（同394行）ので、固定する。詰みを探す局面では、reverse futility pruningの深さの上限を5にし、razoringを行わず（同1017行）、null moveの減深を半分にする（同1045行）。 |
 
 ## 変更の内容
@@ -228,7 +231,7 @@ F4も2つのコミットで入れる。
 `LmrMaxReduction`の開始値は現行と同じ3なので、このコミットは探索を変えない。
 2つ目のコミットで、1/100手単位の減深量と、減深を適用した後の探索の深さを、次の式で求める。
 この式は、LMRの項を加える後続の設計書が共有する正本である。
-[history-forms.md](history-forms.md)、[correction-history-tables.md](correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
+[history-forms.md](../history-forms.md)、[correction-history-tables.md](../correction-history-tables.md)、および[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
 `trunc`は0方向への丸めであり、丸めを要する項は個別に丸めてから加減算する。
 前半`r_pre`はStockfishの1183〜1192行に当たり、`F4_r0`の残りの項はStockfishの1345〜1384行に当たる。
 
@@ -241,7 +244,7 @@ r_{\mathrm{pre}} = \mathrm{trunc}\left(\frac{t \times (100 + \mathrm{LmrNonImpro
 F4\_r_0 = r_{\mathrm{pre}} &+ \mathrm{LmrOffset} - \mathrm{LmrMoveCount} \times (m + 1) + 100h \\
 &- \left(\mathrm{LmrTtPvBase} + \mathrm{LmrTtPvPv} \times [\text{PVノード}] + \mathrm{LmrTtPvValue} \times [v > \alpha] + (\mathrm{LmrTtPvDepth} + \mathrm{LmrTtPvDepthCutNode} \times [\text{cutNode}]) \times [d_{\mathrm{tt}} \ge d]\right) \times [\text{ttPv}] \\
 &+ (\mathrm{LmrCutNode} + \mathrm{LmrCutNodeNoTtMove} \times [\text{置換表の手がない}]) \times [\text{cutNode}] + \mathrm{LmrTtCapture} \times [\text{置換表の手が捕獲手}] \\
-&+ (\mathrm{LmrCutoffCount} + \mathrm{LmrCutoffCountMany} \times [k > 2] + \mathrm{LmrCutoffCountAllNode} \times [\text{allNode}]) \times [k > 1] \\
+&+ (\mathrm{LmrCutoffCount} + \mathrm{LmrCutoffCountMany} \times [k > 2] + \mathrm{LmrCutoffCountAllNode} \times [\text{allNode}]) \times [k > 1] - \mathrm{LmrTtMove} \times [k \le 1\text{で、置換表の手}] \\
 &+ \mathrm{trunc}\left(\frac{\mathrm{LmrAlphaEval} \times \mathrm{clamp}(\alpha - e,\ -\mathrm{trunc}(31P/100),\ \mathrm{trunc}(46P/100))}{P}\right) \times [\text{非捕獲手で、}\alpha\text{が詰み帯と専用の帯の外}]
 \end{aligned}
 ```
@@ -264,20 +267,21 @@ d' = \max\left(1,\ d - 1 - \mathrm{clamp}\left(\mathrm{trunc}(r/100),\ -E,\ \mat
 `h`は現行のhistory補正であり、butterfly historyの値が`LmrHistoryThreshold`以上なら−1、`−LmrHistoryThreshold`以下なら+1、それ以外なら0である。
 `v`と`d_tt`は置換表の値と深さであり、照合に失敗したときは`[v > α]`と`[d_tt ≥ d]`を0とする。
 `k`は子の手数のノードで起きたβ打ち切りの数であり、Stockfishの`(ss + 1)->cutoffCnt`（`src/search.cpp:829, 1562`）と同じく、手数ごとの数をノードの最初に2手先の分だけ0に戻し、ノードがβ打ち切りを起こすたびに1を足して数える。
+`[k ≤ 1で、置換表の手]`は、`k`が1以下で、読む手が合法手であることを確かめた置換表の手であれば1とする。Stockfishの`else if (move == ttData.move)`（`src/search.cpp:1368-1369`）に当たり、minaseでは置換表の手をLMRの対象にしないので、後述のLMRの分岐を通らない探索でだけ働く。
 置換表の手が捕獲手かの判定は、F1と同じく合法手であることを確かめてから行う。
 αと判定用の評価値の差の項は、Stockfishの`!capture && !is_decisive(alpha)`（`src/search.cpp:1383`）と同じく非捕獲手だけに掛ける。`clamp`の上下限は、Stockfishの−64と96（同1384行）を歩兵価値208で換算した歩兵価値の−31%と46%である。
 `E`は、根からの手数が反復の深さの2倍未満なら2、それ以外なら0である。
 PVノードの1手は、Stockfishの1402行と同じく`max`の外で足す。
 
 後続の設計書の追加項は、次の位置に入る。
-`q_corr`は補正量の項であり、[correction-history-tables.md](correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
-`q_hist`はstatScoreの項であり、[history-forms.md](history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
-`q_mate`は詰みを探す局面で王手になる手とならない手の減深量を変える項であり、[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9が定め、allNodeの項を足した後に足す（同1391-1392行）。
+`q_corr`は補正量の項であり、[correction-history-tables.md](../correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
+`q_hist`はstatScoreの項であり、[history-forms.md](../history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
+`q_mate`は詰みを探す局面で王手になる手とならない手の減深量を変える項であり、[shallow-pruning-extensions.md](../shallow-pruning-extensions.md)のS9が定め、allNodeの項を足した後に足す（同1391-1392行）。
 本書の範囲では、3つの追加項はいずれも0である。
 `r`は負にもなり得るので、減深量を0以上へ切り詰めることはしない。負の減深量は`E`を限度とする延長になる。
 
 LMRは、残り深さ2以上のノードで、対象の手（置換表の手、捕獲手、およびkiller手を除く非捕獲手）に適用する。対象の手の範囲と、根でLMRを行わないことは変えない。
-LMRを捕獲手、killer手、および根へ広げるのは、[history-forms.md](history-forms.md)のM5である。
+LMRを捕獲手、killer手、および根へ広げるのは、[history-forms.md](../history-forms.md)のM5である。
 減深した零窓の探索の値がαを超えたら、通常深さ`d − 1`を、`d' < d − 1`かつ値が最善値より歩兵価値の`LmrDeeperMargin`%を超えて高ければ1手深く、値が最善値に歩兵価値の`LmrShallowerMargin`%を足した値より低ければ1手浅く調整する。
 調整した深さが`d'`より深ければ、その深さで零窓の再探索を行う。
 全窓の再探索も、調整した深さで行う（Stockfish `src/search.cpp:1414-1455`）。
@@ -347,6 +351,7 @@ Stockfishの行番号は`src/search.cpp`、YaneuraOuの行番号は`yaneuraou-se
 | `LmrCutoffCount`（1/100手） | 26 | 0〜100 | SFは264/1024で26（1364-1365行）、YOは251/1024で25（3915-3916行）、現行は0 |
 | `LmrCutoffCountMany`（1/100手） | 107 | 0〜250 | SFは1095/1024で107、YOは1124/1024で110、現行は0 |
 | `LmrCutoffCountAllNode`（1/100手） | 111 | 0〜250 | SFは1138/1024で111、YOは1042/1024で102、現行は0 |
+| `LmrTtMove`（置換表の手の減深量の減算、1/100手） | 213 | 0〜500 | SFは2179/1024で213（1368-1369行）、YOは2239/1024で219（3921-3922行）、現行は0 |
 | `LmrAlphaEval`（αと判定用の評価値の差が歩兵価値1枚分のときの増分、1/100手） | 61 | 0〜150 | SFは3 × 208/1024で61（1383-1384行）。YOと現行はこの項を持たないので0 |
 | `LmrNoTtMove`（LMRをしない手で置換表の手がないときの増分、1/100手） | 110 | 0〜250 | SFは1127/1024で110（1431-1432行）、YOは1057/1024で103（4022-4023行）、現行は0 |
 | `LmrAllNode`（allNodeで減深量に掛けて足す割合の分子、百分率） | 108 | 0〜200 | SFは276/256で108（1387-1388行）、YOは273/256で107（3940-3941行）、現行は0 |
@@ -362,7 +367,7 @@ Stockfishの行番号は`src/search.cpp`、YaneuraOuの行番号は`yaneuraou-se
 | `LmpSlope`（1/100手） | 133 | 100 | 0〜3600 | SFとYOの`3 + d²`の係数1 |
 
 廃する係数は`ReverseFutilityMargin`である。
-SPSAの対象は、起点の38係数から1つを除き30を加えた67係数となる。
+SPSAの対象は、起点の38係数から1つを除き31を加えた68係数となる。
 
 ### 固定の定数
 
@@ -390,8 +395,8 @@ SPSAの対象は、起点の38係数から1つを除き30を加えた67係数と
 
 ## 所要時間の見積り
 
-時間は、時間切れの事前確認とSPSAが調整機、それ以外が同時対局数16の測定機での見積りである。
-SPSAは、[統括計画](search-forms.md#所要時間と費用)の見積りにより、調整機で約13〜18時間と見込み、時間切れの事前確認を含む1セッションの費用は約25〜35米ドルである。
+時間は、反映とテストが測定機、それ以外が調整機での見積りである。事前対局と採否測定は、試走の調整機の同時対局数95での見積りである。
+SPSAは、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、調整機で約13〜18時間と見込み、時間切れの事前確認を含む1セッションの費用は約25〜35米ドルである。
 段階ゲートの時間は、判定までのペア数が強さの差で変わるので、幅を持たせた。
 
 | 段階 | 内容 | 見積り |
@@ -399,19 +404,19 @@ SPSAは、[統括計画](search-forms.md#所要時間と費用)の見積りに�
 | 1 | 形の変更の実装と検証（codexへ委任） | 2日程度 |
 | 2 | 時間切れの事前確認（調整機） | 約35分 |
 | 3 | SPSA（調整機、30,000ペア） | 約13〜18時間 |
-| 4 | 反映、テスト、および事前対局（32ペア） | 約1時間 |
-| 5 | 候補のSTC | 約1〜8時間 |
-| 6 | 通過した場合のLTC | 約5〜30時間 |
+| 4 | 反映とテスト（測定機）、および事前対局（調整機、32ペア） | 約1時間 |
+| 5 | 候補のSTC（調整機） | 約0.2〜1.3時間 |
+| 6 | 通過した場合のLTC（調整機） | 約1〜5時間 |
 
-測定機の占有は、反映と事前対局、STC、およびLTCの和であり、STCで棄却される場合に約2〜9時間、LTCまで進む場合に約7〜39時間となる。
-調整機は、時間切れの事前確認とSPSAで約13〜18時間使う。
+測定機の占有は、反映とテストの約1時間だけである。
+調整機は、時間切れの事前確認とSPSAで約13〜18時間、事前対局と採否測定で約0.3〜7時間使い、反映とテストの間も止めずに待たせる。
 
 ## 実装フェーズ
 
 基本シードは、時間切れの事前確認を3200000000、セッションを3250000000、事前対局を3310000000、STCを3350000000、LTCを3400000000と仮に定める。
-これらは起案時点で、`data/matches/`と`data/spsa/`の`manifest.json`に残る保存済みの基本シード、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値である（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
+これらは起案時点で、`data/matches/`と`data/spsa/`の`manifest.json`に残る保存済みの基本シード、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値である（[教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 着手時に同じ方法で未使用であることを確かめ直し、使われていれば設計書を書き換える。
-各測定の開始前に、測定機でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
+各測定の開始前に、その測定を行う機械でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
 
 ### フェーズ1　形の変更の実装
 
@@ -421,23 +426,23 @@ F0、F1の準備、F4の準備、F2、F1、F3、F4、F5、F6の順に、1つを1
 F2をF1より前に置くのは、F1が静的評価、判定用の評価値、および補正の値をF2の定義で使うからである。
 探索を変えない移行の3コミットでは、`minase dev bench`の全15局面を深さ3、5、7のそれぞれで探索し、探索ノード数、評価値、および最善手が直前のコミットと一致することを確かめる。
 F2からF6までの各コミットでは、同じbenchの探索ノード数の直前のコミットからの変化を、局面ごとと合計で記録する。
-F2は全ノードで静的評価を求め、F1とF4は置換表の手の合法性を確かめるので、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更の最後のコミットで交互に3回ずつ測り、探索速度の変化を記録する（[教訓](../lessons/pin-bench-to-performance-core.md)）。
+F2は全ノードで静的評価を求め、F1とF4は置換表の手の合法性を確かめるので、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更の最後のコミットで交互に3回ずつ測り、探索速度の変化を記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。
 ノード数の変化と探索速度は、測定記録`search-pruning-forms-bench`に残す。
 新しい係数と開始値を置き直す既存の係数は`params.rs`の表へ反映し、調整用ビルド（`--features tuning`つきのビルド）が`Tune_<係数名>`のUSIオプションとして宣言することを確かめる。
 固定の定数は、`pruning.rs`などの使う箇所の定数とし、docコメントにStockfishの値と行を書く。
-新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../guides/testing.md)）。
+新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../../guides/testing.md)）。
 F0のテストは、受け渡しの表の各行について、子に渡る値を確かめる。
 完了条件は、`cargo test`（通常ビルドと調整用ビルド）、`cargo clippy -- -D warnings`、および`cargo fmt --check`の通過、探索を変えない移行のノード数の一致、探索を変えるコミットのノード数の変化の記録、および探索速度の記録である。
 
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 F6まで入った形の変更の最後のコミットでビルドした`minase`を`data/spsa/search-pruning-forms-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後のフェーズはこのrunnerで実行する。
-ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
-`minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除した67行のファイルを`data/spsa/search-pruning-forms.params`とする。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
+`minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除した68行のファイルを`data/spsa/search-pruning-forms.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/search-pruning-forms-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/search-pruning-forms-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 
 ```console
 <調整機のminase> spsa \
@@ -447,7 +452,7 @@ F6まで入った形の変更の最後のコミットでビルドした`minase`�
   --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
-`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
+`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
 結果は測定記録`search-pruning-forms-safety`に残す。
 完了条件は、時間切れとエンジン異常が0件であることと、測定記録の保存である。
 
@@ -465,7 +470,7 @@ F6まで入った形の変更の最後のコミットでビルドした`minase`�
 最終のθ（調整中の係数の中心値の組）を整数に丸めた値を調整の結果とし、途中の値を対局の成績で選び直さない。
 結果は測定記録`search-pruning-forms`に、手引きの第6節の項目とともに残す。
 最終値を丸めた整数が範囲の上限または下限になった係数を示す。
-新しい30係数と開始値を置き直した3係数については、最終値が開始値（Stockfishの換算値）と現行の値からそれぞれどれだけ離れたかを、`c_end`に対する比で示す。
+新しい31係数と開始値を置き直した3係数については、最終値が開始値（Stockfishの換算値）と現行の値からそれぞれどれだけ離れたかを、`c_end`に対する比で示す。
 この比は、SPSAがStockfishの値と現行の挙動のどちらへ寄ったかを読むための目安であり、採否には使わない。
 完了条件は、セッションの完了と測定記録の保存である。
 
@@ -477,12 +482,13 @@ F6まで入った形の変更の最後のコミットでビルドした`minase`�
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 採否測定の前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
+事前対局と採否測定は、SPSAを終えた調整機で行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数（試走の調整機では95）とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
   --run-dir data/matches/search-pruning-forms-smoke --seed 3310000000 \
   --candidate commit:<候補> --baseline commit:<起点> \
-  --each time=10000+100 --concurrency 16 elo --pairs 32
+  --each time=10000+100 --concurrency <調整機の同時対局数> elo --pairs 32
 ```
 
 候補と起点の総思考時間の比、終局時の残り時間、手数帯ごとの完了深さ（反復深化で読み終えた深さ）、および探索を止めた理由の分布を集計して、測定記録`search-pruning-forms-smoke`に残す。
@@ -496,14 +502,20 @@ F6まで入った形の変更の最後のコミットでビルドした`minase`�
 <固定したminase> match run \
   --run-dir data/matches/search-pruning-forms-stc --seed 3350000000 \
   --candidate commit:<候補> --baseline commit:<起点> \
-  --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
+  --each time=10000+100 --concurrency <調整機の同時対局数> gsprt --max-pairs 3000
 ```
 
-STCの判定は[SPRTの手引き](../guides/sprt.md)の振分け規則に従う。
+STCの判定は[SPRTの手引き](../../guides/sprt.md)の振分け規則に従う。
 候補が有意に強い`H1`ならLTCへ進み、改善を示せない`H0`なら不採用とし、3,000ペアで判定保留ならその時点の対数尤度比の符号でLTCへ進むかを決める。
 LTCは測定名の接尾辞を`-ltc`、基本シードを3400000000、持ち時間を`time=60000+200`とし、`--max-pairs`を付けない。
 LTCで`H1`となり、エンジン異常、時間切れ、および拒否着手が0件なら採用し、`H0`なら不採用とする。
 LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延長する。
+
+2026年10月18日、STCの実行中に利用者は、後続のサブタスクで強さが改善される可能性があるので、STCで不合格となっても本書の変更を採用すると決めた。
+この決定の下では、採否はSTCの判定によらない。
+同じ日に利用者は、各サブタスクではSPRTを行わなくてもよいとして、STCを採否に使わない記録として残し、LTCは行わないと決めた（統括計画の設計判断「各サブタスクの採否」）。本書もこれに従い、STCの判定にかかわらずLTCは行わない。
+採用はLTCの`H1`だけが決めるという[SPRTの手引き](../../guides/sprt.md)の原則の例外なので、masterへの統合のときにADRへ記録する。
+7本を通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
 結果は測定名ごとの測定記録に残す。
 完了条件は、採否の確定と測定記録の保存である。
 
@@ -512,7 +524,7 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 - F0、F1の準備、およびF4の準備の各コミットで、`minase dev bench`の全15局面の深さ3、5、7の探索ノード数、評価値、および最善手が直前のコミットと一致すること。
 - F2からF6までの各コミットで、同じbenchの探索ノード数の直前のコミットからの変化が、測定記録`search-pruning-forms-bench`に記録されていること。
 - `cargo test`では`invariants`機能が常に有効になるので、PVノードがcutNodeにならないという検査が`cargo test`の全探索で失敗しないこと。
-- 新しい30係数が調整用ビルドの`Tune_`オプションとして宣言され、`ReverseFutilityMargin`の宣言がなくなり、開始値を置き直した3係数を含めて、パラメーターファイルの開始値と範囲が表と一致すること。
+- 新しい31係数が調整用ビルドの`Tune_`オプションとして宣言され、`ReverseFutilityMargin`の宣言がなくなり、開始値を置き直した3係数を含めて、パラメーターファイルの開始値と範囲が表と一致すること。
 - 固定の定数の表の各値が、コードの定数とdocコメントに書かれていること。
 - 候補の`params.rs`の差分が既定値の書き換えだけであり、調整用ビルドの宣言の既定値が`apply`の出力と一致すること。
 - `cargo test`（通常ビルドと調整用ビルド）、`cargo clippy -- -D warnings`、および`cargo fmt --check`が通過すること。
@@ -527,8 +539,8 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 
 ## 参考資料
 
-- [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。LMRの表は80〜82行、補正の値は95〜118行と832行、反復の初期化は309行、`seekMate`は394〜395行、根の呼び出しは412行、cutNodeとallNodeの定義は742〜766行、ttPvは842行と1651〜1657行、静的評価と判定用の評価値は846〜870行、improvingとopponentWorseningは883〜884行、置換表の打ち切りは894〜934行、razoringは1017〜1018行、reverse futility pruningは1020〜1033行、null moveは1045〜1048行、improvingの更新は1080行、IIRは1085行、late move pruningは1199行、LMRは1183〜1192行、1345〜1420行、および1917〜1920行、LMRをしない手の減深は1428〜1436行、前の反復の主変化を辿るノードは791〜794行、子への受け渡しは1395〜1455行、子のβ打ち切り数は829行と1562行、静止探索のPVの印は1741行と1908行。歩兵価値208は`src/types.h:199`。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。LMRの表は2169行、reverse futility pruningは3217〜3227行、late move pruningは3593行、LMRは3573〜3574行、3879〜3941行、3978〜4000行、4017〜4029行、および5148〜5151行。歩兵価値90は`source/evaluate.h:78`。
-- [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
-- [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。
+- [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
+- [SPSAによる係数調整の手引き](../../guides/spsa.md)と[SPRTによる棋力測定の手引き](../../guides/sprt.md)。

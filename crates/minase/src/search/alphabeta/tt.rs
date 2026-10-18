@@ -66,8 +66,12 @@ pub(super) const CRITICAL_DEPTH_MASK: u64 = 0xff << CRITICAL_DEPTH_SHIFT;
 pub(super) const CRITICAL_BOUND_SHIFT: u32 = 56;
 /// `critical`のバウンドマスク。
 pub(super) const CRITICAL_BOUND_MASK: u64 = 0b11 << CRITICAL_BOUND_SHIFT;
-/// `critical`の予約領域はbit 58..=63に置き、常に0にする。
-pub(super) const CRITICAL_RESERVED_MASK: u64 = 0b11_1111 << 58;
+/// `critical`のPVの印はbit 58に置く。
+pub(super) const CRITICAL_PV_SHIFT: u32 = 58;
+/// `critical`のPVの印のマスク。
+pub(super) const CRITICAL_PV_MASK: u64 = 1 << CRITICAL_PV_SHIFT;
+/// `critical`の予約領域はbit 59..=63に置き、常に0にする。
+pub(super) const CRITICAL_RESERVED_MASK: u64 = 0b1_1111 << 59;
 
 /// `advisory`の指し手はbit 0..=24に置く。
 pub(super) const ADVISORY_MOVE_SHIFT: u32 = 0;
@@ -85,7 +89,7 @@ pub(super) const NO_MOVE: u32 = 0x01ff_ffff;
 /// 置換表の1エントリ。2個の64ビット原子値で厳密に16バイトを占める。
 #[repr(C)]
 struct Entry {
-    /// 検証キー、評価値、深さ、バウンド、および予約領域。
+    /// 検証キー、評価値、深さ、バウンド、PVの印、および予約領域。
     critical: AtomicU64,
     /// 指し手、世代、および予約領域。
     advisory: AtomicU64,
@@ -113,6 +117,8 @@ struct CriticalFields {
     depth: u8,
     /// 評価値と探索窓の関係。
     bound: Bound,
+    /// 主変化の木に属するノードとして保存した印。
+    is_pv: bool,
 }
 
 /// 置換表の照合に成功したエントリの内容。
@@ -122,7 +128,7 @@ pub(crate) struct Hit {
     ///
     /// 記録手の有無は[`super::searcher::Searcher::negamax`]の内部反復減深の判断にも使う。
     /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
-    /// 生成済み合法手との一致を確認せず、着手や枝刈りに使ってはならない。
+    /// 合法手であることを確認してから着手に使い、枝刈りのための捕獲手かの判定にも使ってよい。
     pub(crate) best_move: Option<Move>,
     /// 現在の手数基準へ戻した評価値。
     pub(crate) score: i32,
@@ -130,6 +136,8 @@ pub(crate) struct Hit {
     pub(crate) depth: u8,
     /// 評価値と探索窓の関係。
     pub(crate) bound: Bound,
+    /// 主変化の木に属するノードとして保存した印。
+    pub(crate) is_pv: bool,
 }
 
 /// 1スロット1エントリの直接マップ型置換表。
@@ -216,7 +224,7 @@ impl TranspositionTable {
 
     /// 局面キーに対応するエントリを照合して返す。
     ///
-    /// 照合対象は評価値、深さ、バウンドであり、[`Hit::best_move`]は別の
+    /// 照合対象は評価値、深さ、バウンド、PVの印であり、[`Hit::best_move`]は別の
     /// 原子語にある助言値である。呼出し側は合法手との一致を検証して使う。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
         let entry = &self.entries[key as usize & self.mask];
@@ -232,6 +240,7 @@ impl TranspositionTable {
             score: score_from_tt(fields.score, ply),
             depth: fields.depth,
             bound: fields.bound,
+            is_pv: fields.is_pv,
         })
     }
 
@@ -242,10 +251,12 @@ impl TranspositionTable {
     /// 異なる検証キーでは、過去世代または既存より深い結果だけが置き換える。
     /// 同一キーの深さ制限は、静止探索の深さ0の記録が通常探索の深い記録を消すことを防ぐ。
     /// 理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    /// `is_pv`はPVの印として保存し、置換の判断には使わない。
     ///
     /// 2ワーカーが同じ既存値から書き込み可と判断すると、浅い結果が後から公開されることも許容する。
     /// 比較交換で再判定せず、助言語をRelaxedで書いた後に評価値の語をReleaseで公開する。
     /// この競合の扱いは`docs/adr/use-atomic-two-word-transposition-entries.md`に従う。
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn store(
         &self,
         key: u64,
@@ -254,6 +265,7 @@ impl TranspositionTable {
         bound: Bound,
         best_move: Option<Move>,
         ply: u32,
+        is_pv: bool,
     ) {
         let index = key as usize & self.mask;
         let entry = &self.entries[index];
@@ -276,7 +288,7 @@ impl TranspositionTable {
         }
 
         let advisory = pack_advisory(best_move, generation);
-        let critical = pack_critical(key, score_to_tt(score, ply), depth, bound);
+        let critical = pack_critical(key, score_to_tt(score, ply), depth, bound, is_pv);
         entry.advisory.store(advisory, Ordering::Relaxed);
         entry.critical.store(critical, Ordering::Release);
     }
@@ -319,11 +331,12 @@ fn verification_key(key: u64) -> u32 {
 }
 
 /// 探索値を`critical`のビット配置へ詰め込む。
-fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound) -> u64 {
+fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound, is_pv: bool) -> u64 {
     (u64::from(key) << CRITICAL_KEY_SHIFT)
         | (u64::from(score as u16) << CRITICAL_SCORE_SHIFT)
         | (u64::from(depth) << CRITICAL_DEPTH_SHIFT)
         | ((bound as u64) << CRITICAL_BOUND_SHIFT)
+        | (u64::from(is_pv) << CRITICAL_PV_SHIFT)
 }
 
 /// `critical`を探索値へ復号する。予約領域またはバウンドが不正なら失敗する。
@@ -342,6 +355,7 @@ fn unpack_critical(critical: u64) -> Option<CriticalFields> {
         score: ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
         depth: ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
         bound,
+        is_pv: critical & CRITICAL_PV_MASK != 0,
     })
 }
 
@@ -486,7 +500,7 @@ mod diagnostic_tests {
                         let table = TranspositionTable::new(1).unwrap();
                         let key = search_key(board);
                         assert!(table.inspect(board, ply).is_none());
-                        table.store(key, 7, score, bound, best_move, 5);
+                        table.store(key, 7, score, bound, best_move, 5, false);
                         let raw = table.raw_entry(key);
                         let generation = table.generation();
                         let hit = table.inspect(board, ply).unwrap();
@@ -497,7 +511,7 @@ mod diagnostic_tests {
                         assert_eq!(table.raw_entry(key), raw);
                         assert_eq!(table.generation(), generation);
                         // 同じスロットでも検証キーが違えば項目なしになる。
-                        table.store(key ^ (1_u64 << 32), 8, 456, bound, None, 0);
+                        table.store(key ^ (1_u64 << 32), 8, 456, bound, None, 0, false);
                         assert!(table.inspect(board, ply).is_none());
                     }
                 }

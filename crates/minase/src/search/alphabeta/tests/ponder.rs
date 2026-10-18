@@ -7,11 +7,6 @@ use crate::search::alphabeta::params;
 // 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
 #[test]
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
-    assert_eq!(
-        crate::search::alphabeta::params::iteration_ratio(),
-        263,
-        "数値例の前提"
-    );
     let ms = Duration::from_millis;
     let ns = Duration::from_nanos;
     let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
@@ -215,11 +210,25 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let nnue = test_nnue();
     let table = small_tt();
     let stop = AtomicBool::new(false);
+    let stable_boundary = 1100 * 100 / params::iteration_ratio() as u64;
+    let hard_boundary = 1400 * 100 / params::iteration_ratio() as u64;
     for (t, hit, elapsed, stable, expected) in [
-        (600, 1000, 1010, false, Some(StopReason::SoftLimit)),
-        (500, 1000, 1010, false, None),
-        (500, 1000, 1010, true, Some(StopReason::SoftLimit)),
-        (400, 1000, 1010, true, None),
+        (
+            hard_boundary + 1,
+            1000,
+            1010,
+            false,
+            Some(StopReason::SoftLimit),
+        ),
+        (hard_boundary, 1000, 1010, false, None),
+        (
+            stable_boundary + 1,
+            1000,
+            1010,
+            true,
+            Some(StopReason::SoftLimit),
+        ),
+        (stable_boundary, 1000, 1010, true, None),
         (600, 1000, 1500, false, Some(StopReason::HardLimit)),
         (1001, 1000, 1010, true, None),
         (600, u64::MAX, 1010, true, None),
@@ -313,12 +322,12 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
 }
 
 // 的中前の反復は最初の時計検査点で開始判定を当て直し、完了済みの深さを保つ。
-// 反復開始600 ms、的中1000 ms、hard 300 msなら、600×263=157800 > 1300×100。
+// 的中1000 msとhard 300 msに対し、反復の予測完了が1300 msを超える開始時刻を使う。
 #[test]
 fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
-    assert_eq!(params::iteration_ratio(), 263, "数値例の前提");
+    let started_ms = 1300 * 100 / params::iteration_ratio() as u64 + 1;
     for threads in [1, 2] {
-        let clock = Arc::new(ManualClock::new(Duration::from_millis(600)));
+        let clock = Arc::new(ManualClock::new(Duration::from_millis(started_ms)));
         let hit_ns = Arc::new(AtomicU64::new(u64::MAX));
         let stop = AtomicBool::new(false);
         let shared = SharedSearch {
@@ -493,7 +502,9 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         Some(crate::search::alphabeta::root::RootResults::default());
                 }
                 searcher.ponder_iteration = Some(PonderIteration {
-                    started: Duration::from_millis(600),
+                    started: Duration::from_millis(
+                        1400 * 100 / params::iteration_ratio() as u64 + 1,
+                    ),
                     stable: false,
                     checked: false,
                     budget: TimeBudget {

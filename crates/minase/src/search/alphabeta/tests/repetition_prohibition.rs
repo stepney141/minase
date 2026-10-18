@@ -119,7 +119,7 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
                 assert!(expected < DRAW_SCORE);
                 let nodes = searcher.nodes;
                 assert_eq!(
-                    searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
+                    searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply, false),
                     Some(expected)
                 );
                 // 捕獲のない1手読みでは、禁止手を除いた各候補だけが1ノードを使う。
@@ -182,7 +182,9 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                             INFINITY,
                             ply,
                             true,
-                            0
+                            0,
+                            None,
+                            false
                         ),
                         Some(DRAW_SCORE)
                     );
@@ -198,7 +200,7 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                     let before = current.clone();
                     let nodes = searcher.nodes;
                     assert_eq!(
-                        searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply),
+                        searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply, false),
                         Some(expected)
                     );
                     assert_eq!(
@@ -258,16 +260,22 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
         let result = search_snapshot(&snapshot, &nnue, 1);
         with_snapshot(&snapshot, &nnue, |searcher| {
             let mut current = snapshot.position().clone();
-            searcher
-                .tt
-                .store(search_key(&current), 0, 0, Bound::Upper, Some(cycle[3]), 0);
+            searcher.tt.store(
+                search_key(&current),
+                0,
+                0,
+                Bound::Upper,
+                Some(cycle[3]),
+                0,
+                false,
+            );
             let expected = if rule == RepetitionRule::R1 {
                 DRAW_SCORE
             } else {
                 best_allowed_leaf(searcher, &current, cycle[3])
             };
             assert_eq!(
-                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0),
+                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 0, false),
                 Some(expected)
             );
             assert_eq!(result.score, expected);
@@ -343,14 +351,25 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
         with_snapshot(&snapshot, &nnue, |searcher| {
             let mut current = snapshot.position().clone();
             assert_eq!(
-                searcher.search_move(&mut current, cycle[2], 2, -INFINITY, INFINITY, 0, true, 0),
+                searcher.search_move(
+                    &mut current,
+                    cycle[2],
+                    2,
+                    -INFINITY,
+                    INFINITY,
+                    0,
+                    true,
+                    1,
+                    None,
+                    false
+                ),
                 Some(expected)
             );
             push_path_move(searcher, &mut current, Some(cycle[2]));
             assert_eq!(legal_moves(&current), vec![cycle[3]]);
             let nodes = searcher.nodes;
             assert_eq!(
-                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1),
+                searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1, false),
                 Some(-(REPETITION_WIN - 1))
             );
             assert_eq!(searcher.nodes, nodes);
@@ -379,7 +398,7 @@ fn check_no_generated_moves_keep_the_mate_score() {
         push_path_move(searcher, &mut current, Some(step(sq(10, 0), sq(10, 1))));
         assert!(legal_moves(&current).is_empty());
         assert_eq!(
-            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1),
+            searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1, false),
             Some(-MATE + 1)
         );
         assert!(searcher.tt.probe(search_key(&current), 1).is_none());
@@ -437,6 +456,11 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
             for (is_reference, input) in [(false, &snapshot), (true, &reference)] {
                 with_snapshot(input, &nnue, |searcher| {
                     let mut current = snapshot.position().clone();
+                    searcher.seek_mate = true;
+                    searcher.null_move_ply = Some(0);
+                    searcher
+                        .tt
+                        .store(search_key(&current), 0, 0, Bound::Upper, None, 0, true);
                     // 履歴値を異ならせ、根と内部ノードの整列の違いに左右されない順序を与える。
                     for (index, mv) in allowed.iter().enumerate() {
                         searcher.history[current.side_to_move().index()][mv.from.dense_index()]
@@ -452,14 +476,17 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                             Bound::Upper,
                             Some(forbidden),
                             0,
+                            false,
                         );
                     } else if source == "killer" {
                         searcher.killers[0][0] = Some(forbidden);
                     }
                     let static_eval = evaluate(&nnue, &current);
                     let (depth, alpha, beta, child_score) = match mode {
-                        "full" => (2, -INFINITY, INFINITY, 0),
-                        "lmp" => (2, static_eval + 1, static_eval + 2, -(static_eval + 1)),
+                        // 根はLMRを行わないため、全窓の対照は双方でLMRのない深さ1とする。
+                        "full" => (1, -INFINITY, INFINITY, 0),
+                        // 静的評価より低いalphaでfutilityを避け、improving側の上限を使う。
+                        "lmp" => (2, static_eval - 1, static_eval, -(static_eval - 1)),
                         "lmr" => (5, -INFINITY, INFINITY, -static_eval),
                         "cutoff" => (2, -INFINITY, 100, -200),
                         _ => unreachable!(),
@@ -477,6 +504,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 Bound::Exact,
                                 None,
                                 1,
+                                false,
                             );
                         }
                     }
@@ -486,8 +514,9 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 &current,
                                 if mode == "lmp" {
                                     // 根では枝刈りしないので、内部ノードが読む候補だけを対照へ渡す。
-                                    &input.root_moves()
-                                        [..allowed.len().min(late_move_limit(2).max(1) as usize)]
+                                    &input.root_moves()[..allowed
+                                        .len()
+                                        .min(late_move_limit(2, true).max(1) as usize)]
                                 } else {
                                     input.root_moves()
                                 },
@@ -498,7 +527,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                             .unwrap()
                     } else {
                         let score = searcher
-                            .negamax(&mut current, depth, alpha, beta, 0)
+                            .negamax(&mut current, depth, alpha, beta, 0, false)
                             .unwrap();
                         assert_eq!(
                             searcher.history[current.side_to_move().index()]
@@ -515,7 +544,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                         assert_eq!(
                             searcher.nodes,
                             if mode == "lmp" {
-                                allowed.len().min(late_move_limit(2).max(1) as usize) as u64
+                                allowed.len().min(late_move_limit(2, true).max(1) as usize) as u64
                             } else {
                                 allowed.len() as u64
                             },
@@ -589,7 +618,9 @@ fn articles_31_r2_r3_and_23_p2_waiting_rights_do_not_hide_a_repetition() {
                         INFINITY,
                         0,
                         true,
-                        0
+                        0,
+                        None,
+                        false
                     ),
                     Some(DRAW_SCORE)
                 );
@@ -635,7 +666,18 @@ fn articles_31_r2_r3_and_23_p2_live_paths_use_repetition_keys_and_tt_keeps_right
                 } else {
                     assert!(
                         searcher
-                            .search_move(&mut current, mv, 2, -INFINITY, INFINITY, 0, true, 0)
+                            .search_move(
+                                &mut current,
+                                mv,
+                                2,
+                                -INFINITY,
+                                INFINITY,
+                                0,
+                                true,
+                                1,
+                                None,
+                                false
+                            )
                             .is_some()
                     );
                 }

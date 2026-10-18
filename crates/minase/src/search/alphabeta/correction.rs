@@ -1,7 +1,8 @@
 //! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
 //!
-//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値をfutility pruningの判定にだけ加える。
-//! 鍵と適用範囲を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
+//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値を通常探索の各ノードの静的評価に加える。
+//! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
+//! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
 
 use super::params;
 use super::royal::royal_under_attack;
@@ -30,7 +31,7 @@ impl Searcher<'_> {
     ) {
         // 正確な値、静的評価より低い上界、静的評価より高い下界なら補正の向きが確定する。
         // 捕獲による駒得は静的評価の偏りではないため除外する。理由は
-        // docs/adr/key-correction-history-by-material.md にある。
+        // docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md にある。
         if best_score.abs() < REPETITION_BAND_START && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
@@ -88,12 +89,20 @@ impl CorrectionTable {
     /// 更新後のFは、歩兵価値×`CorrectionCap`%の1024倍を正負の上限として切り詰める。
     pub(super) fn update(&mut self, side: Color, key: u64, difference: i32, depth: u32) {
         let fixed = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
-        *fixed += (i64::from(difference) * SCALE - *fixed)
-            * i64::from(depth.min(8))
-            * i64::from(params::correction_weight())
-            / 1024;
-        *fixed = (*fixed).clamp(-self.cap * SCALE, self.cap * SCALE);
+        *fixed = updated_correction(
+            *fixed,
+            difference,
+            depth,
+            params::correction_weight(),
+            self.cap,
+        );
     }
+}
+
+fn updated_correction(mut fixed: i64, difference: i32, depth: u32, weight: i32, cap: i64) -> i64 {
+    fixed += (i64::from(difference) * SCALE - fixed) * i64::from(depth.min(8)) * i64::from(weight)
+        / 1024;
+    fixed.clamp(-cap * SCALE, cap * SCALE)
 }
 
 /// 位置に依存しない駒種別枚数のハッシュ。加算なので同種の複数枚も区別する。
@@ -146,33 +155,33 @@ mod tests {
 
     #[test]
     fn correction_fixed_point_weights_rounding_caps_and_sides() {
+        // f7c0925cの数値例で使った重み76、上限181を固定する。
+        // 13×76=988、次回は1902。
+        for sign in [-1, 1] {
+            let first = updated_correction(0, sign * 13, 1, 76, 181);
+            assert_eq!(first, i64::from(sign) * 988);
+            let second = updated_correction(first, sign * 13, 1, 76, 181);
+            assert_eq!(second, i64::from(sign) * 1902);
+            for depth in [8, 9, 256] {
+                assert_eq!(
+                    updated_correction(0, sign * 100, depth, 76, 181),
+                    i64::from(sign) * 60800
+                );
+            }
+        }
         let mut table = CorrectionTable::new(100);
-        assert_eq!(params::correction_weight(), 37, "数値例の前提");
-        // 初回は1未満、2回目は1以上となる差を選び、正負とも端数を保持する。
-        // 27×37=999、2回目は999+(27648−999)×37/1024=1961。
-        let difference = 27;
-        assert_eq!(table.read(Color::Black, 7), 0);
-        table.update(Color::Black, 7, difference, 1);
-        assert_eq!(table.read(Color::Black, 7), 0);
-        table.update(Color::Black, 7, difference, 1);
-        assert_eq!(table.read(Color::Black, 7), 1);
-        table.update(Color::White, 7, -difference, 1);
-        assert_eq!(table.read(Color::White, 7), 0);
-        table.update(Color::White, 7, -difference, 1);
-        assert_eq!(table.read(Color::White, 7), -1);
-        for depth in [8, 9, 256] {
-            table.update(Color::Black, depth as u64, 100, depth);
-            assert_eq!(
-                table.read(Color::Black, depth as u64),
-                28 // 100×8×37/1024=28.90625を0方向へ丸める。
-            );
+        for (side, sign) in [(Color::Black, 1), (Color::White, -1)] {
+            assert_eq!(table.read(side, 7), 0);
+            table.values[side.index()][7] = i64::from(sign) * 988;
+            assert_eq!(table.read(side, 7), 0);
+            table.values[side.index()][7] = i64::from(sign) * 1902;
+            assert_eq!(table.read(side, 7), sign);
         }
         table.update(Color::Black, 0, 100_000, 1);
         table.update(Color::White, 0, -100_000, 1);
         let cap = params::correction_cap();
         assert_eq!(table.read(Color::Black, 0), cap);
         assert_eq!(table.read(Color::White, 0), -cap);
-        // 下位12ビットだけで引く。
         assert_eq!(table.read(Color::Black, 4096), cap);
     }
 

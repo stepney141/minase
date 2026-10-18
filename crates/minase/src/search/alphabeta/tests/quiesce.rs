@@ -101,13 +101,10 @@ fn quiescence_early_exits_do_not_probe_or_store() {
         ],
     );
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(
-        crate::search::alphabeta::params::delta_margin(),
-        355,
-        "数値例の前提"
-    );
-    // 捕獲価値100と余裕100×355/100=355の和は455。
-    let threshold = evaluate(nnue, &capture) + 455;
+    // 捕獲する歩兵の価値と、現在のdelta余裕値の和を境界にする。
+    let threshold = evaluate(nnue, &capture)
+        + nnue.pawn_value()
+        + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100;
     for (case, board, alpha, beta, ply, stored, depth) in [
         (
             "stand_pat_equal",
@@ -156,7 +153,7 @@ fn quiescence_early_exits_do_not_probe_or_store() {
             "{case}"
         );
         assert!(table.probe(key, ply).is_none(), "{case}");
-        table.store(key, depth, stored, Bound::Exact, None, ply);
+        table.store(key, depth, stored, Bound::Exact, None, ply, false);
         let raw_before = table.raw_entry(key);
         assert_eq!(
             run_quiesce(board, alpha, beta, ply, &table),
@@ -207,7 +204,7 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
 
     for (bound, score, alpha, beta) in cases {
         let table = small_tt();
-        table.store(key, 0, score, bound, None, 0);
+        table.store(key, 0, score, bound, None, 0, false);
         let (actual, _) = run_quiesce(&position, alpha, beta, 0, &table);
         assert_eq!(actual, score);
     }

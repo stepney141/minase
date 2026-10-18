@@ -21,9 +21,15 @@ fn first_capture() -> Move {
 fn seed_first(searcher: &Searcher<'_>, board: &Position, mv: Move, ply: u32) {
     assert!(legal_moves(board).contains(&mv));
     // 窓を打ち切らないUpper記録で、対象外の捕獲を先頭に指定する。
-    searcher
-        .tt
-        .store(search_key(board), 0, INFINITY, Bound::Upper, Some(mv), ply);
+    searcher.tt.store(
+        search_key(board),
+        0,
+        INFINITY,
+        Bound::Upper,
+        Some(mv),
+        ply,
+        false,
+    );
 }
 
 fn two_captures(victim: PieceKind) -> Position {
@@ -221,6 +227,8 @@ single_capture_test!(qsearch_limit_reads_double_lion_capture_after_tt_capture, {
     );
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        // 手数上限の例外だけを検査し、delta pruningの閾値を全二重捕獲より大きくする。
+        searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, first_capture(), ply);
         let doubles: Vec<_> = legal_moves(&board)
             .into_iter()
@@ -340,7 +348,9 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
                         INFINITY,
                         ply,
                         true,
-                        0
+                        0,
+                        None,
+                        false
                     )
                     .is_some()
             );
@@ -416,6 +426,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, captures[0], ply);
         assert!(capture_is_pruned_by_see(
             &board,
@@ -425,6 +436,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
         ));
         let expected = captures[1..]
             .iter()
+            .take(params::qsearch_move_limit() as usize)
             .map(|&mv| {
                 assert!(!capture_is_pruned_by_see(
                     &board,
@@ -476,6 +488,8 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_nnue_root_searcher(nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        // 固定したdelta境界で手数の算入を検査する。
+        searcher.delta_margin = 500;
         seed_first(searcher, &board, captures[0], ply);
         let alpha = evaluate(searcher.nnue, &board)
             + searcher.delta_margin
@@ -538,7 +552,9 @@ fn qsearch_limit_quiet_move_clears_previous_capture() {
                     INFINITY,
                     0,
                     true,
-                    0
+                    0,
+                    None,
+                    false
                 )
                 .is_some()
         );
@@ -564,7 +580,7 @@ fn qsearch_limit_null_move_clears_previous_capture() {
         assert_eq!(
             // 静的評価との差を大きくし、追加減深を上限3に張り付ける。
             // IIR後は深さ3なので、NullMoveBase/Slopeの値によらず子は静止探索になる。
-            searcher.negamax(&mut board.clone(), 4, -INFINITY, -10_000, 0),
+            searcher.negamax(&mut board.clone(), 4, -INFINITY, -10_000, 0, false),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0, "null moveで打ち切った直後を調べる");

@@ -183,10 +183,26 @@ fn article_31_r1_search_can_switch_to_a_quiet_move_inside_the_tree() {
             if mv.from != mv.to {
                 let mut other = child.clone();
                 other.make_move_unchecked(mv, engine_rules());
-                table.store(search_key(&other), 8, MATE - 32, Bound::Exact, None, 2);
+                table.store(
+                    search_key(&other),
+                    8,
+                    MATE - 32,
+                    Bound::Exact,
+                    None,
+                    2,
+                    false,
+                );
             }
         }
-        table.store(search_key(&child), 0, 0, Bound::Upper, Some(attacking), 1);
+        table.store(
+            search_key(&child),
+            0,
+            0,
+            Bound::Upper,
+            Some(attacking),
+            1,
+            false,
+        );
         let snapshot = SearchSnapshot::from_parts(
             root.clone(),
             engine_rules(),
@@ -373,8 +389,18 @@ fn article_31_r1_path_stacks_restore_after_moves_and_interruptions() {
         with_root_searcher(&root, &[], |searcher| {
             let mut current = root.clone();
             searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
-            let score =
-                searcher.search_move(&mut current, cycle[0], 3, -INFINITY, INFINITY, 0, true, 0);
+            let score = searcher.search_move(
+                &mut current,
+                cycle[0],
+                3,
+                -INFINITY,
+                INFINITY,
+                0,
+                true,
+                2,
+                None,
+                false,
+            );
             assert_eq!(
                 score.is_none(),
                 interrupt.is_some(),

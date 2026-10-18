@@ -176,14 +176,7 @@ impl Fm {
 
     /// 2駒関係の補正をセンチポーンへ換算し、負値も0方向へ切り捨てる。
     pub(super) fn correction(&self, accumulator: &FmAccumulator) -> i64 {
-        // 最大145特徴でも|a|は4,751,360以下なので、符号は32ビットのまま掛けられる。
-        let square_sum: i64 = accumulator
-            .sums
-            .iter()
-            .zip(self.signs)
-            .map(|(&a, d)| i64::from(a * i32::from(d)) * i64::from(a))
-            .sum();
-        let numerator = square_sum - accumulator.self_sum;
+        let numerator = self.numerator(accumulator);
         #[cfg(not(feature = "tuning"))]
         let correction = numerator / (1_i64 << (2 * self.exponent + 1));
         #[cfg(feature = "tuning")]
@@ -193,6 +186,21 @@ impl Fm {
             crate::search::alphabeta::params::fm_scale(),
         );
         correction
+    }
+    fn numerator(&self, accumulator: &FmAccumulator) -> i64 {
+        // 最大145特徴でも|a|は4,751,360以下なので、符号は32ビットのまま掛けられる。
+        let square_sum: i64 = accumulator
+            .sums
+            .iter()
+            .zip(self.signs)
+            .map(|(&a, d)| i64::from(a * i32::from(d)) * i64::from(a))
+            .sum();
+        square_sum - accumulator.self_sum
+    }
+
+    #[cfg(test)]
+    fn correction_with_scale(&self, accumulator: &FmAccumulator, scale: i32) -> i64 {
+        scaled_correction(self.numerator(accumulator), self.exponent, scale)
     }
 }
 
@@ -238,11 +246,6 @@ mod tests {
     /// 補正式の数値例。分子±12を指数0,1,2,30の分母2,8,32,2^61で割る。
     #[test]
     fn full_scale_correction_truncates_signed_examples() {
-        assert_eq!(
-            crate::search::alphabeta::params::fm_scale(),
-            1024,
-            "数値例の前提"
-        );
         for (exponent, sign, expected) in [
             (0, -1, -6),
             (0, 1, 6),
@@ -262,7 +265,7 @@ mod tests {
             let mut accumulator = FmAccumulator::default();
             fm.add(&mut accumulator, 0);
             fm.add(&mut accumulator, 1);
-            assert_eq!(fm.correction(&accumulator), expected);
+            assert_eq!(fm.correction_with_scale(&accumulator, 1024), expected);
         }
     }
 
@@ -323,13 +326,8 @@ mod tests {
     /// 調整用ビルドの既定倍率が、実際のFM補正の計算にも適用される。
     #[cfg(feature = "tuning")]
     #[test]
-    fn tuning_default_correction_matches_full_scale() {
-        assert_eq!(
-            crate::search::alphabeta::params::fm_scale(),
-            1024,
-            "数値例の前提"
-        );
-        for (sign, expected) in [(-1, -1), (1, 1)] {
+    fn tuning_correction_uses_current_scale() {
+        for sign in [-1, 1] {
             let fm = Fm::decode(&encoded(1, [sign; FM_RANK], |i, f| match (i, f) {
                 (0, 0) => 2,
                 (1, 0) => 3,
@@ -339,8 +337,14 @@ mod tests {
             let mut accumulator = FmAccumulator::default();
             fm.add(&mut accumulator, 0);
             fm.add(&mut accumulator, 1);
-            // ±2×2×3 / 8 = ±1.5を0方向へ丸めて±1。
-            assert_eq!(fm.correction(&accumulator), expected);
+            // 積6を指数1で4除算する。商を写さず剰余の幅と符号で検査する。
+            let product =
+                i64::from(sign) * 6 * i64::from(crate::search::alphabeta::params::fm_scale());
+            let value = fm.correction(&accumulator);
+            let residual = product - value * 4096;
+            assert!(residual.abs() < 4096);
+            assert!(value == 0 || value.signum() == product.signum());
+            assert!(residual == 0 || residual.signum() == product.signum());
         }
     }
 
@@ -395,7 +399,10 @@ mod tests {
                     }
                 }
                 let full = fm.refresh(perspective, &position);
-                assert_eq!(fm.correction(&full), pairs / (1_i64 << (2 * exponent)));
+                assert_eq!(
+                    fm.correction_with_scale(&full, 1024),
+                    pairs / (1_i64 << (2 * exponent))
+                );
                 let mut incremental = FmAccumulator::default();
                 for &i in &features {
                     fm.add(&mut incremental, i);
@@ -438,7 +445,7 @@ mod tests {
                     fm.add(&mut accumulator, values.len() + j);
                     let expected = i64::from(left) * i64::from(right) / (1_i64 << (2 * exponent));
                     assert_eq!(
-                        fm.correction(&accumulator),
+                        fm.correction_with_scale(&accumulator, 1024),
                         expected,
                         "exponent={exponent}, left={left}, right={right}"
                     );
@@ -460,7 +467,7 @@ mod tests {
                 assert_eq!(accumulator.sums, [145 * i32::from(u); FM_RANK]);
                 let expected =
                     i64::from(sign) * FM_RANK as i64 * (145 * 144 / 2) * i64::from(u).pow(2);
-                assert_eq!(fm.correction(&accumulator), expected);
+                assert_eq!(fm.correction_with_scale(&accumulator, 1024), expected);
                 assert!(expected.abs() > i64::from(i32::MAX));
                 for i in 0..145 {
                     fm.remove(&mut accumulator, i);
@@ -481,8 +488,8 @@ mod tests {
                 for feature in 0..145 {
                     original.add(&mut accumulator, feature);
                     assert_eq!(
-                        quarter.correction(&accumulator),
-                        original.correction(&accumulator) / 4
+                        quarter.correction_with_scale(&accumulator, 1024),
+                        original.correction_with_scale(&accumulator, 1024) / 4
                     );
                 }
             }

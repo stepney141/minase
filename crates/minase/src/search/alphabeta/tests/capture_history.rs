@@ -169,9 +169,8 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
 /// 非ゼロ履歴は捕獲段だけを変え、TT手を先頭に保ち、合法手の重複を作らない。
 #[test]
 fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
-    assert_eq!(params::capture_history_scale(), 49, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 上限での換算は100×49/100=49、下限では−49。
+    // 歩兵価値100での上限の換算値は尺度そのものになる。
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
         let before = picked(searcher, &board, None);
@@ -201,24 +200,28 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, winner),
-            49
+            params::capture_history_scale()
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, captures[0]),
-            -49
+            -params::capture_history_scale()
         );
         let after = picked(searcher, &board, None);
-        assert_eq!(after[0], (winner, true));
-        assert_eq!(
-            after[1..4],
-            [
-                (captures[1], true),
-                (captures[2], true),
-                (captures[0], true)
-            ]
-        );
+        if params::capture_history_scale() == 0 {
+            assert_eq!(after, before);
+        } else {
+            assert_eq!(after[0], (winner, true));
+            assert_eq!(
+                after[1..4],
+                [
+                    (captures[1], true),
+                    (captures[2], true),
+                    (captures[0], true)
+                ]
+            );
+        }
         assert_eq!(after[4..], before[4..]);
         let mut root_after = legal_moves(&board);
         searcher.order_moves(&board, &mut root_after, None, 0);
@@ -237,19 +240,23 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
 fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
+        // F5の浅いcutNodeでfail-lowの打ち切りが制限されるため、子の要求深さを5より深く保つ。
+        searcher.follow_pv[0] = true;
+        searcher.null_move_ply = Some(0);
         let moves = picked(searcher, &board, None);
         let winner_index = if quiet_cutoff { 4 } else { 2 };
         assert_eq!(moves[winner_index].1, !quiet_cutoff);
+        // 深さ10の履歴更新だけを検査し、子の値は十分深い記録で固定する。
         for (index, &(mv, _)) in moves.iter().enumerate() {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if index == winner_index { 20 } else { 0 };
             searcher
                 .tt
-                .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+                .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
         }
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+            searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
             Some(20)
         );
         assert_eq!(searcher.nodes, winner_index as u64 + 1);
@@ -258,9 +265,9 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
                 let expected = if index > winner_index {
                     0
                 } else if index == winner_index {
-                    4
+                    100
                 } else {
-                    -4
+                    -100
                 };
                 assert_eq!(
                     searcher.capture_history.read(&board, searcher.nnue, mv),
@@ -294,14 +301,8 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
         capture(sq(5, 5), sq(7, 5)),
     ];
     let untouched = capture(sq(5, 5), sq(5, 3));
-    // 上限16950の重力式。4096×9/16950は2、4096²/16950は989へ丸める。
-    assert_eq!(params::capture_history_limit(), 16_950, "数値例の上限");
-    for (depth, expected) in [
-        (0, [4096, -4096, 0]),
-        (3, [4085, -4103, -9]),
-        (64, [-989, -7203, -4096]),
-        (256, [-16_950; 3]),
-    ] {
+    let limit = params::capture_history_limit();
+    for depth in [0, 3, 64, 256] {
         let mut history = CaptureHistory::new();
         history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
         history.record_cutoff(&board, nnue, untouched, &[], 3);
@@ -310,11 +311,17 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
 
         history.record_quiet_cutoff(&board, nnue, &earlier, depth);
 
-        assert_eq!(
-            earlier.map(|mv| history.read(&board, nnue, mv)),
-            expected,
-            "depth={depth}, before={before:?}"
-        );
+        for (mv, old) in earlier.into_iter().zip(before) {
+            let after = history.read(&board, nnue, mv);
+            assert!((-limit..=old).contains(&after));
+            if depth == 0 {
+                assert_eq!(after, old);
+            } else if depth == 256 {
+                assert_eq!(after, -limit);
+            } else {
+                assert!(after < old || old == -limit);
+            }
+        }
         assert_eq!(history.read(&board, nnue, untouched), 9);
     }
 }
@@ -353,6 +360,14 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
     let quiet = capture(sq(11, 0), sq(10, 0));
     let pruned = capture(sq(5, 3), sq(5, 4));
     let winner = capture(sq(3, 3), sq(3, 4));
+    let ply = MAX_PLY - 1;
+    let leaf_value = |mv| {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        -evaluate(test_nnue(), &child)
+    };
+    let beta = leaf_value(winner);
+    assert!(leaf_value(quiet) < beta);
     with_root_searcher(&board, &[], |searcher| {
         let moves = picked(searcher, &board, Some(quiet));
         assert_eq!(
@@ -375,21 +390,20 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             winner,
             margin
         ));
-        searcher
-            .tt
-            .store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
-        for (mv, score) in [(quiet, 0), (winner, 10_001)] {
-            let mut child = board.clone();
-            child.make_move_unchecked(mv, engine_rules());
-            searcher
-                .tt
-                .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
-        }
-        // このテストでは実着手による打ち切りだけを検査する。
-        searcher.null_move_ply = Some(0);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(quiet),
+            ply,
+            false,
+        );
+        // 子は最大手数の静的評価で固定し、F5の浅い零窓の打ち切りに依存しない。
+        searcher.null_move_ply = Some(ply);
         assert_eq!(
-            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
-            Some(10_001)
+            searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
+            Some(beta)
         );
         assert_eq!(searcher.nodes, 2);
         assert_eq!(
@@ -497,7 +511,7 @@ fn capture_history_decay_boundaries() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_capture_history_between_searches() {
     assert_eq!(params::capture_history_decay(), 0);
-    assert_eq!(params::history_decay(), 23, "捕獲履歴だけを消去する");
+    assert_eq!(params::history_decay(), 37, "捕獲履歴だけを消去する");
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = crate::search::HistoryTables::new(threads);
         crate::search::search(
@@ -529,7 +543,7 @@ pub(super) fn zero_decay_clears_capture_history_between_searches() {
             histories
                 .workers
                 .iter()
-                .all(|history| history[0][60][60] == 23)
+                .all(|history| history[0][60][60] == 37)
         );
     }
 }

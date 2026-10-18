@@ -17,7 +17,7 @@ minaseがSPSAで調整する探索と時間管理の係数（`crates/minase/src/
 違いのうち、late move reductionsのhistory補正を段差にしたこと、aspiration windowsで外れた側だけを広げること、correction historyを駒種別の枚数で引いて探索ごとに初期化することは、ADRで意図して選んだ形である。
 ただし、それらの判断の多くはPSTとFMを既定の評価関数としていた時期のもので、STCの到達深さが今より浅い条件で測られている。
 この比較は、2026年10月17日に現行の形のまま探索と時間管理の38係数をNNUEに合わせてSPSAで調整し直したとき、`ReverseFutilityMargin`が開始値428から下限0まで動き、`RazoringMargin1`と`RazoringMargin2`が範囲の上限（razoringが事実上働かない値）の近くまで動いたことを受けて行った。この調整は、後続の関数形の見直しで全係数を調整し直すので、反映せずに中止した。
-形を変える候補は[探索の枝刈りとLMRの関数形の見直し](../plans/search-pruning-forms.md)が扱う。
+形を変える候補は[探索の枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)が扱う。
 
 ## 調査の範囲
 
@@ -67,7 +67,7 @@ minaseのreverse futility pruning、razoring、null move、およびimprovingの
 
 aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
 返った値を基準に窓を移す形は、そのADRの代案に含まれていない。
-history補正を連続量にする案は、[late move reductionsのADR](../adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)が自由度の増加を理由に棄却している。
+history補正を連続量にする案は、[late move reductionsのADR](../adr/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が自由度の増加を理由に棄却している。
 同じADRは、上限3と段差の補正をSTCの到達深さが5〜6だった時期の判断としている。
 
 ## historyとcorrection history
@@ -80,7 +80,7 @@ history補正を連続量にする案は、[late move reductionsのADR](../adr/r
 | capture history（`CaptureHistoryLimit`、`CaptureHistoryScale`） | 並べ替えで駒価値に最大で歩兵価値の4倍ぶんを加える。静止探索では同じ価値の群の中だけで使う（`capture_history.rs:59-120`、`ordering.rs:232-241`、`quiesce.rs:472-493`） | 並べ替えの点数は`capture history + 7×駒価値`。捕獲手のfutility、SEEの余裕値、およびLMRにも使う（Stockfish `movepick.cpp:225-226`、`search.cpp:1208-1225, 1371-1373`） | 同型（加算）、対応なし（並べ替え以外の用途） | 加算の大きさは範囲を広げれば埋まる。用途は埋まらない |
 | correction history（`CorrectionCap`、`CorrectionWeight`） | 駒種別の枚数の鍵1つで、探索ごとに初期化する。補正はfutility pruningの判定にだけ加える（`correction.rs:31-104`、`negamax.rs:174-184`） | pawn、minor、非pawn、continuationの複数の表の重み付き和を、すべての枝刈り、improving、静止探索に使い、補正量の大きさで余裕値とLMRも変える。表は対局内で持ち越す（Stockfish `search.cpp:95-143, 860-1034, 1353, 1754-1776`、`history.h:152-214`） | 適用条件の違い、依存変数の欠落 | 上限と重みの水準は埋まる。適用先、鍵、寿命は埋まらない |
 
-correction historyを駒種別の枚数で引き、futility pruningにだけ使い、探索ごとに初期化することは、[ADR](../adr/key-correction-history-by-material.md)が診断に基づいて決めた。
+correction historyを駒種別の枚数で引き、futility pruningにだけ使い、探索ごとに初期化することは、[ADR](../adr/archive/key-correction-history-by-material.md)が診断に基づいて決めた。
 ただし、表の持ち越しを見送った根拠の発動率（STC相当で0.69%）は、補正をfutility pruningにだけ使う前提で測った値であり、補正の適用先を広げれば結論が変わり得る。
 複数の表の補正を足し合わせる形は、同じADRが未測定と記している。
 butterfly historyの学習率が小さいため、minaseでは重力式による忘却がほとんど働かず、根の探索ごとの減衰が忘却の役割をほぼ担っていると推測される。
@@ -102,7 +102,7 @@ Stockfishは相手との持ち時間の差でも目安時間を下げるが（`s
 
 ## 候補の扱い
 
-構造の差のうち、[探索の枝刈りとLMRの関数形の見直し](../plans/search-pruning-forms.md)が扱うのは、reverse futility pruningの形と深さの上限、補正後の評価の適用先、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限である。
+構造の差のうち、[探索の枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)が扱うのは、reverse futility pruningの形と深さの上限、補正後の評価の適用先、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限である。
 これらは、新しい係数の開始値を現行と同じ挙動になる値に設定できるので、形だけを変えたコミットを探索ノード数の一致で検証できる。
 残りの差は、次の6本の設計書がこの順の連鎖として扱う。順序は提案であり、各設計書は1つ前の設計書の完了後のmasterを起点とする。
 [浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、futility pruning、late move pruning、SEEによる枝刈り、およびrazoringの深さの上限、捕獲手のfutility pruningと静かな手のSEEによる枝刈り、SEEの余裕値のcapture historyの項、null moveを試す条件、およびreverse futility pruningの返り値を扱う。

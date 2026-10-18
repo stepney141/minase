@@ -84,21 +84,68 @@ pub(super) fn iteration_prediction_fits(
         && (!stable || predicted <= (hit.as_nanos() + budget.soft.as_nanos()) * 100)
 }
 
-/// 現在の手数から、手番側が今後指すと見込む手数を返す。
-pub(super) fn moves_to_go(ply: u32) -> u128 {
-    (params::min_moves() as u128)
-        .max((params::expected_plies() as u128).saturating_sub(u128::from(ply)) / 2)
-}
-
 /// [`clock_budget_with_margin`]を安全余裕30 msで適用する。
 /// 秒読みだけの特別な締切や、指定された秒読み余裕の適用は[`time_budget`]で選ぶ。
 pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
     clock_budget_with_margin(clock, 30)
 }
 
+/// 持ち時間から探索時間を配分する式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct ClockCoefficients {
+    pub(super) expected_plies: i32,
+    pub(super) min_moves: i32,
+    pub(super) increment_share: i32,
+    pub(super) hard_soft_ratio: i32,
+    pub(super) hard_remaining_share: i32,
+}
+
+impl ClockCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            expected_plies: params::expected_plies(),
+            min_moves: params::min_moves(),
+            increment_share: params::increment_share(),
+            hard_soft_ratio: params::hard_soft_ratio(),
+            hard_remaining_share: params::hard_remaining_share(),
+        }
+    }
+    fn moves_to_go(self, ply: u32) -> u128 {
+        (self.min_moves as u128)
+            .max((self.expected_plies as u128).saturating_sub(u128::from(ply)) / 2)
+    }
+    pub(super) fn budget(self, clock: ClockLimits, margin_ms: u64) -> TimeBudget {
+        let remaining = u128::from(clock.remaining_ms);
+        let increment = u128::from(clock.increment_ms);
+        let byoyomi = u128::from(clock.byoyomi_ms);
+        let byoyomi_share = byoyomi * 8 / 10;
+        let opening = if remaining > 0 {
+            u128::from(clock.ply.saturating_add(4).min(40))
+        } else {
+            40
+        };
+        let soft_raw = remaining / self.moves_to_go(clock.ply)
+            + increment * self.increment_share as u128 / 100
+            + byoyomi * 8 * opening / 400;
+        let safe_hard = remaining
+            .saturating_add(byoyomi)
+            .saturating_sub(u128::from(margin_ms))
+            .max(1);
+        let hard = (soft_raw * self.hard_soft_ratio as u128 / 100)
+            .min(remaining * self.hard_remaining_share as u128 / 100 + byoyomi_share)
+            .min(safe_hard)
+            .max(1);
+        TimeBudget {
+            soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
+            hard: Duration::from_millis(to_u64_ms(hard)),
+            byoyomi_period: false,
+        }
+    }
+}
+
 /// 残り時間R、加算I、秒読みB、余裕mをミリ秒で受け、softとhardを求める。
 ///
-/// 残り着手数Mは[`moves_to_go`]で求め、序盤係数の分子wはRが正なら`min(ply + 4, 40)`、0なら40とする。
+/// 残り着手数Mは[`ClockCoefficients::moves_to_go`]で求め、序盤係数の分子wはRが正なら`min(ply + 4, 40)`、0なら40とする。
 /// `soft_raw = R / M + I × IncrementShare / 100 + B × 8 × w / 400` を各項ごとの整数除算で求める。
 /// `safe_hard = max(1, R + B − m)` とし、減算は0で飽和させる。
 /// `hard = max(1, min(soft_raw × HardSoftRatio / 100, R × HardRemainingShare / 100 + B × 8 / 10, safe_hard))` とする。
@@ -111,31 +158,7 @@ pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
 /// 秒読みのない時計でhardを残り時間の割合でも抑え、途中結果を使わない理由は
 /// `docs/adr/reject-fair-share-budget-with-partial-results.md`にある。
 fn clock_budget_with_margin(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
-    let remaining = u128::from(clock.remaining_ms);
-    let increment = u128::from(clock.increment_ms);
-    let byoyomi = u128::from(clock.byoyomi_ms);
-    let byoyomi_share = byoyomi * 8 / 10;
-    let opening = if remaining > 0 {
-        u128::from(clock.ply.saturating_add(4).min(40))
-    } else {
-        40
-    };
-    let soft_raw = remaining / moves_to_go(clock.ply)
-        + increment * params::increment_share() as u128 / 100
-        + byoyomi * 8 * opening / 400;
-    let safe_hard = remaining
-        .saturating_add(byoyomi)
-        .saturating_sub(u128::from(margin_ms))
-        .max(1);
-    let hard = (soft_raw * params::hard_soft_ratio() as u128 / 100)
-        .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi_share)
-        .min(safe_hard)
-        .max(1);
-    TimeBudget {
-        soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
-        hard: Duration::from_millis(to_u64_ms(hard)),
-        byoyomi_period: false,
-    }
+    ClockCoefficients::current().budget(clock, margin_ms)
 }
 
 /// 秒読み用の時間配分と途中結果の採用を適用する時計を返す。
