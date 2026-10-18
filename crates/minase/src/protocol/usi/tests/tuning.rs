@@ -174,6 +174,22 @@ fn tuning_usi_contract_in_isolated_process() {
                 "NullMoveEvalScale",
                 params::null_move_eval_scale as fn() -> i32,
             ),
+            (
+                "NullMoveEvalMargin",
+                params::null_move_eval_margin as fn() -> i32,
+            ),
+            (
+                "NullMoveEvalDepth",
+                params::null_move_eval_depth as fn() -> i32,
+            ),
+            (
+                "NullMoveEvalImproving",
+                params::null_move_eval_improving as fn() -> i32,
+            ),
+            (
+                "NullMoveFailHighBonus",
+                params::null_move_fail_high_bonus as fn() -> i32,
+            ),
             ("HistoryLimit", params::history_limit as fn() -> i32),
             (
                 "HistoryBonusScale",

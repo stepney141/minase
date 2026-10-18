@@ -224,6 +224,11 @@ fn format_stats(stats: &minase::search::SearchStats) -> String {
             stats.first_move_beta_cutoffs,
             stats.beta_cutoffs,
         ),
+        (
+            "null_move_verification_failure_fraction",
+            stats.null_move_verification_failures,
+            stats.null_move_verifications,
+        ),
         ("best_move_rank_1_fraction", stats.best_move_rank_1, ranked),
         ("best_move_rank_2_fraction", stats.best_move_rank_2, ranked),
         ("best_move_rank_3_fraction", stats.best_move_rank_3, ranked),
@@ -481,6 +486,9 @@ mod tests {
         assert!(nonzero.contains("tt_hit_rate=0.500000"));
         assert!(nonzero.contains("tt_cutoff_per_hit=0.500000"));
         assert!(!nonzero.contains("quiesce_tt_hit_rate="));
+        stats.null_move_verifications = 4;
+        stats.null_move_verification_failures = 1;
+        assert!(format_stats(&stats).contains("null_move_verification_failure_fraction=0.250000"));
     }
 
     #[test]

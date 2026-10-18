@@ -2029,139 +2029,30 @@ fn razoring_returns_quiescence_above_alpha() {
     );
 }
 
-// null moveの追加減深は `(静的評価 − β) × NullMoveEvalScale / 100 / (2 × 歩兵価値)` を0〜3に制限する。
-// 各整数境界の直前と一致で段階が変わり、深さによる基本量へ加算する。
+// S7の数値例。調整中の既定値とは独立した固定係数で、2段階の整数除算と上限を持たない加算を検査する。
 #[test]
-fn null_move_reduction_scales_with_eval_surplus_and_depth() {
-    let beta = 137;
-    for pawn_value in [37, 100] {
-        let scale = null_coefficients().null_move_eval_scale;
-        assert!(scale > 0);
-        let boundary = |extra| (extra * 2 * pawn_value * 100 + scale - 1) / scale;
-        // (4799+d×393)/1200はd=1〜3で4、4〜6で5、7〜9で6、10〜12で7。
-        for (depth, base) in [
-            (1, 4),
-            (2, 4),
-            (3, 4),
-            (4, 5),
-            (5, 5),
-            (6, 5),
-            (7, 6),
-            (8, 6),
-            (9, 6),
-            (10, 7),
-            (11, 7),
-            (12, 7),
-        ] {
-            for (difference, extra) in [
-                (-6 * pawn_value, 0),
-                (-1, 0),
-                (0, 0),
-                (boundary(1) - 1, 0),
-                (boundary(1), 1),
-                (boundary(2) - 1, 1),
-                (boundary(2), 2),
-                (boundary(3) - 1, 2),
-                (boundary(3), 3),
-                (boundary(4), 3),
-            ] {
-                assert_eq!(
-                    null_coefficients().null_move_reduction(
-                        depth,
-                        beta + difference,
-                        beta,
-                        pawn_value
-                    ),
-                    base + extra,
-                    "depth={depth}, difference={difference}, pawn_value={pawn_value}"
-                );
-            }
-        }
+fn null_move_reduction_matches_s7_numeric_examples() {
+    let coefficients = null_coefficients();
+    for (depth, difference, expected) in [(16, 0, 11), (16, 500, 15), (3, 2000, 23)] {
+        assert_eq!(
+            coefficients.null_move_reduction(depth, difference, 0, 100),
+            expected,
+            "depth={depth}, difference={difference}"
+        );
     }
+    assert_eq!(coefficients.null_move_reduction(16, -1, 0, 100), 11);
 }
 
-// F5でIIRを行わないallNodeを、null move後に深さ1を残す深さで読む。
-// 静的評価の余裕による追加減深で、静止探索まで縮む。
-// 通常探索の実着手を省くためノード数も減る。
+// S7の試行条件の数値例。余裕値151とimprovingの減算23、先行する打ち切り2回の加算48を検査する。
 #[test]
-fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
-    if params::null_move_eval_scale() == 0 {
-        for depth in [3, 8, 18] {
-            assert_eq!(
-                null_move_reduction(depth, 10000, 0, 100),
-                null_move_reduction(depth, 0, 0, 100)
-            );
-            assert_eq!(
-                null_move_reduction(depth, -10000, 0, 100),
-                null_move_reduction(depth, 0, 0, 100)
-            );
-        }
-        return;
-    }
-    let boundary = (20000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
-    let depth = (3..=18)
-        .find(|&d| d - 1 - (params::null_move_base() + d * params::null_move_slope()) / 1200 == 1)
-        .unwrap() as u32;
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 追加減深1の境界を現在の尺度から作る。
-    let position = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
-    let nnue = test_nnue();
-    let beta = evaluate(nnue, &position) - boundary;
-    let mut passed = position.clone();
-    passed.make_null_move();
-    let table = small_tt();
-    // null move先の入口では他の枝刈りを避け、実着手の有無を深さだけで決める。
-    table.store(
-        search_key(&passed),
-        0,
-        -beta + 1,
-        Bound::Lower,
-        None,
-        1,
-        true,
-    );
-    let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &table);
-    assert!(-reply_score >= beta);
-    // 対照の探索が保存した値を消し、同じ入口条件から比較する。
-    let table = small_tt();
-    table.store(
-        search_key(&passed),
-        0,
-        -beta + 1,
-        Bound::Lower,
-        None,
-        1,
-        true,
-    );
-    // 判定用の評価値だけをβ未満にしてreverse futilityを避け、null moveの減深を検査する。
-    table.store(
-        search_key(&position),
-        0,
-        beta - 1,
-        Bound::Upper,
-        None,
-        0,
-        false,
-    );
-    let (score, nodes) = run_negamax(&position, depth, beta - 1, beta, 0, &table);
-    assert!(score >= beta && score.abs() < MATE_THRESHOLD);
-    let hit = table.probe(search_key(&position), 0).unwrap();
-    assert_eq!(
-        (hit.depth, hit.score),
-        (0, beta - 1),
-        "null moveの打ち切りは保存しない"
-    );
-    assert!(
-        nodes < reply_nodes,
-        "nodes={nodes}, base_nodes={reply_nodes}"
-    );
+fn null_move_condition_matches_s7_numeric_examples() {
+    let coefficients = null_coefficients();
+    assert!(coefficients.allows_null_move(4, 151, 0, 100, false, 0));
+    assert!(!coefficients.allows_null_move(4, 150, 0, 100, false, 0));
+    assert!(coefficients.allows_null_move(4, 128, 0, 100, true, 0));
+    assert!(!coefficients.allows_null_move(4, 127, 0, 100, true, 0));
+    assert!(coefficients.allows_null_move(4, 103, 0, 100, false, 2));
+    assert!(!coefficients.allows_null_move(4, 102, 0, 100, false, 2));
 }
 
 // 補正が判定用の評価値を動かすと、補正前の値では成立した枝刈りも抑止する。
@@ -2330,24 +2221,9 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
 
 #[test]
 fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
-    if params::null_move_eval_scale() == 0 {
-        for depth in [3, 8, 18] {
-            assert_eq!(
-                null_move_reduction(depth, 10000, 0, 100),
-                null_move_reduction(depth, 0, 0, 100)
-            );
-            assert_eq!(
-                null_move_reduction(depth, -10000, 0, 100),
-                null_move_reduction(depth, 0, 0, 100)
-            );
-        }
-        return;
-    }
-    let boundary = (20000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
-    let depth = (3..=18)
-        .find(|&d| d - 1 - (params::null_move_base() + d * params::null_move_slope()) / 1200 == 1)
-        .unwrap() as u32;
     assert_eq!(test_nnue().pawn_value(), 100);
+    let boundary = (20_000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
+    let depth: u32 = 15;
     let board = position(
         Color::Black,
         &[
@@ -2360,6 +2236,10 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
         with_root_searcher(&board, &[], |searcher| {
             let raw = evaluate(searcher.nnue, &board);
             let beta = raw - (boundary - 1);
+            let base_child_depth = depth.saturating_sub(
+                1 + null_move_reduction(depth, beta, beta, searcher.nnue.pawn_value()),
+            );
+            assert!(base_child_depth >= 1, "対照ではnull moveの子を1手以上読む");
             if corrected {
                 searcher
                     .correction
@@ -2371,37 +2251,32 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                         > 0
                 );
             }
-            // 基本減深では子が深さ1、補正で追加減深の境界を越せば深さ0になる。
-            // 判定用の評価値はβ未満だが、null moveの減深量には使わない。
-            searcher.tt.store(
-                search_key(&board),
-                0,
-                beta - 1,
-                Bound::Upper,
-                None,
-                0,
-                false,
-            );
+            // 判定用の評価値だけをβ未満にしてreverse futilityを避ける。
+            // 減深量は、この値ではなく補正後の静的評価から求める。
+            searcher
+                .tt
+                .store(search_key(&board), 0, beta - 1, Bound::Upper, None, 0, true);
+            searcher.follow_pv[0] = true;
             let mut passed = board.clone();
             passed.make_null_move();
-            // 子の深さ1でreverse futilityとrazoringが先に終わらないようにする。
+            // 補正なしの子には1手だけ深さが足りず、補正で追加減深が1増えた場合だけ打ち切れる上界を置く。
             searcher.tt.store(
                 search_key(&passed),
-                0,
-                -beta + 1,
-                Bound::Lower,
+                base_child_depth - 1,
+                -beta,
+                Bound::Upper,
                 None,
                 1,
-                true,
+                false,
             );
             let score = searcher
-                .negamax(&mut board.clone(), depth, beta - 1, beta, 0, false)
+                .negamax(&mut board.clone(), depth, beta - 1, beta, 0, true)
                 .unwrap();
-            assert!(score >= beta);
             if corrected {
-                assert_eq!(searcher.nodes, 0, "null moveの子は深さ0となる");
+                assert_eq!(score, beta);
+                assert_eq!(searcher.nodes, 0, "追加減深後の深さで置換表が打ち切る");
             } else {
-                assert!(searcher.nodes > 0, "null moveの子は深さ1となる");
+                assert!(searcher.nodes > 0, "基本減深の子では置換表の深さが足りない");
             }
         });
     }
@@ -2459,9 +2334,13 @@ pub(super) fn reverse_coefficients() -> super::super::pruning::ReverseFutilityCo
 }
 pub(super) fn null_coefficients() -> super::super::pruning::NullMoveCoefficients {
     super::super::pruning::NullMoveCoefficients {
-        null_move_eval_scale: 133,
-        null_move_base: 4799,
-        null_move_slope: 393,
+        null_move_base: 7200,
+        null_move_slope: 400,
+        null_move_eval_scale: 163,
+        null_move_eval_margin: 175,
+        null_move_eval_depth: 6,
+        null_move_eval_improving: 23,
+        null_move_fail_high_bonus: 24,
     }
 }
 pub(super) fn lmr_coefficients() -> super::super::pruning::LmrCoefficients {

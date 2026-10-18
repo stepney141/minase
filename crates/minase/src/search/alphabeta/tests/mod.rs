@@ -18,6 +18,7 @@ mod improving;
 mod late_move;
 mod limits;
 mod negamax;
+mod null_move;
 mod ordering;
 mod partial;
 mod ponder;
@@ -58,6 +59,8 @@ use crate::search::alphabeta::history::HistoryTable;
 use crate::search::alphabeta::ordering::{
     MoveOrderKey, MovePicker, MovePickerStage, move_order_key, order_captures,
 };
+#[cfg(feature = "tuning")]
+use crate::search::alphabeta::pruning::allows_null_move;
 use crate::search::alphabeta::pruning::{
     capture_is_pruned_by_see, lmr_reduction, lmr_table, null_move_reduction,
 };

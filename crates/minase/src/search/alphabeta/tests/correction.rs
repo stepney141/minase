@@ -378,11 +378,11 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &mut capture_history,
     );
     searcher.material_keys[1] = !root_key;
-    let score = searcher
-        .negamax(&mut board, 4, -INFINITY, -10_000, 0, false)
-        .unwrap();
-    assert!(score >= -10_000);
+    assert!(
+        searcher
+            .search_null_move(&mut board, 0, INFINITY, 0)
+            .is_some()
+    );
     assert_eq!(searcher.material_keys[1], root_key);
     assert_eq!(material_key(&board), root_key);
-    assert_eq!(searcher.nodes, 0, "null moveで打ち切る");
 }

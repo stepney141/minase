@@ -175,9 +175,13 @@ fn tuning_parameters_in_isolated_process() {
         ("CaptureFutilityHistory", 134),
         ("AspirationDelta", 57),
         ("AspirationGrowth", 168),
-        ("NullMoveBase", 4799),
-        ("NullMoveSlope", 393),
-        ("NullMoveEvalScale", 133),
+        ("NullMoveBase", 7200),
+        ("NullMoveSlope", 400),
+        ("NullMoveEvalScale", 163),
+        ("NullMoveEvalMargin", 175),
+        ("NullMoveEvalDepth", 6),
+        ("NullMoveEvalImproving", 23),
+        ("NullMoveFailHighBonus", 24),
         ("HistoryLimit", 5808),
         ("HistoryBonusScale", 207),
         ("HistoryMalusScale", 110),
@@ -279,11 +283,11 @@ fn tuning_parameters_in_isolated_process() {
             return;
         }
         "null move eval scale" => {
-            null_move_eval_scale_changes_search();
+            null_move_eval_scale_changes_reduction();
             return;
         }
         "disabled null move eval scale" => {
-            zero_null_move_eval_scale_matches_base_reduction_search();
+            zero_null_move_eval_scale_matches_base_reduction();
             return;
         }
         _ => {}
@@ -424,7 +428,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 68] = [
+    let cases: [Case; 72] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -634,6 +638,18 @@ fn tuning_parameters_in_isolated_process() {
         ("NullMoveEvalScale", 0, || {
             i64::from(null_move_reduction(12, 800, 0, 100))
         }),
+        ("NullMoveEvalMargin", -1000, || {
+            i64::from(allows_null_move(4, 150, 0, 100, false, 0))
+        }),
+        ("NullMoveEvalDepth", 100, || {
+            i64::from(allows_null_move(4, 0, 0, 100, false, 0))
+        }),
+        ("NullMoveEvalImproving", 400, || {
+            i64::from(allows_null_move(4, 0, 0, 100, true, 0))
+        }),
+        ("NullMoveFailHighBonus", 200, || {
+            i64::from(allows_null_move(4, 0, 0, 100, false, 1))
+        }),
         ("HistoryLimit", 65536, history),
         ("HistoryBonusScale", 200, history),
         ("HistoryMalusScale", 200, || {
@@ -766,117 +782,31 @@ fn razoring_parameter_changes_search() {
 }
 
 #[cfg(feature = "tuning")]
-fn null_move_eval_scale_changes_search() {
-    let board = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
-    let nnue = test_nnue();
-    assert_eq!(params::null_move_eval_scale(), 133, "数値例の前提");
-    assert_eq!(params::null_move_base(), 4799, "数値例の前提");
-    assert_eq!(params::null_move_slope(), 393, "数値例の前提");
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 追加減深1の境界はceil(2×100×100/133)=151。
-    let beta = evaluate(nnue, &board) - 151;
-    // 浅い上界でreverse futilityを避け、null moveの減深量だけを比較する。
-    // F5ではallNodeにIIRを適用しないので、要求深さを8とする。
-    let run = || {
-        let table = small_tt();
-        table.store(
-            search_key(&board),
-            0,
-            beta - 1,
-            Bound::Upper,
-            None,
-            0,
-            false,
-        );
-        run_negamax(&board, 8, beta - 1, beta, 0, &table)
-    };
-    let (_, default_nodes) = run();
+fn null_move_eval_scale_changes_reduction() {
+    let before = null_move_reduction(16, 500, 0, 100);
     params::set("NullMoveEvalScale", 0).unwrap();
-    let (score, changed_nodes) = run();
-    assert!(score >= beta);
-    assert!(changed_nodes > default_nodes);
+    let without_eval_term = null_move_reduction(16, 500, 0, 100);
+    assert!(without_eval_term < before);
     params::set("NullMoveEvalScale", 50).unwrap();
-    // 深さ6の基本量は(4799+6×393)/1200=7157/1200→5。
-    // 147×50/100→73、148×50/100=74。歩兵37の2倍74で割ると追加0,1。
-    // 尺度400では19×400/100=76で追加1、最大の差は追加上限3。
-    assert_eq!(null_move_reduction(6, 147, 0, 37), 5);
-    assert_eq!(null_move_reduction(6, 148, 0, 37), 6);
+    let base = null_move_reduction(6, 0, 0, 37);
+    assert_eq!(null_move_reduction(6, 147, 0, 37), base);
+    assert_eq!(null_move_reduction(6, 148, 0, 37), base + 1);
     params::set("NullMoveEvalScale", 400).unwrap();
-    assert_eq!(null_move_reduction(6, 19, 0, 37), 6);
-    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), 8);
+    assert!(null_move_reduction(6, 1000, 0, 37) > base + 3);
 }
 
 #[cfg(feature = "tuning")]
-fn zero_null_move_eval_scale_matches_base_reduction_search() {
+fn zero_null_move_eval_scale_matches_base_reduction() {
     params::set("NullMoveEvalScale", 0).unwrap();
-    // null moveの子に加わったrazoringを除外し、減深後の深さだけを比較する。
-    params::set("RazoringDepthMargin", 3000).unwrap();
-    assert_eq!(params::null_move_base(), 4799, "数値例の前提");
-    assert_eq!(params::null_move_slope(), 393, "数値例の前提");
-    assert_eq!(MAX_PLY, 256, "数値例の前提");
-    // 尺度0なら追加0。基本量(4799+d×393)/1200はd=0で3、1で4、4,5で5、9で6、10,12で7、256で87。
-    for (depth, expected) in [
-        (0, 3),
-        (1, 4),
-        (4, 5),
-        (5, 5),
-        (9, 6),
-        (10, 7),
-        (12, 7),
-        (256, 87),
-    ] {
+    for depth in [0, 1, 4, 16, MAX_PLY] {
+        let expected =
+            (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200;
         for value in [i32::MIN, -1000, 0, 1000, i32::MAX] {
             for beta in [-MATE_THRESHOLD + 1, 0, MATE_THRESHOLD - 1] {
                 assert_eq!(null_move_reduction(depth, value, beta, 37), expected);
             }
         }
     }
-    let board = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 1), Color::Black, PieceKind::GoldGeneral),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
-    let nnue = test_nnue();
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    let beta = evaluate(nnue, &board) - 200;
-    // F5でIIRを行わないallNodeを深さ8で読む。基本量7943/1200→6、子の深さ8−1−6=1。
-    let child_depth = 1;
-    let mut passed = board.clone();
-    passed.make_null_move();
-    let (reply, nodes) = run_negamax(&passed, child_depth, -beta, -beta + 1, 1, &small_tt());
-    assert!(-reply >= beta);
-    assert!(nodes > 0);
-    let table = small_tt();
-    // 判定用の評価値をβ未満にして、reverse futilityによる早期終了を避ける。
-    table.store(
-        search_key(&board),
-        0,
-        beta - 1,
-        Bound::Upper,
-        None,
-        0,
-        false,
-    );
-    assert_eq!(
-        run_negamax(&board, 8, beta - 1, beta, 0, &table),
-        (-reply, nodes)
-    );
-    let hit = table.probe(search_key(&board), 0).unwrap();
-    assert_eq!(
-        (hit.depth, hit.score),
-        (0, beta - 1),
-        "null moveの打ち切りは保存しない"
-    );
 }
 
 #[cfg(feature = "tuning")]

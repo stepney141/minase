@@ -47,6 +47,10 @@ search_stats! {
     quiesce_tt_hits,
     /// 静止探索で置換表の値により打ち切った回数。
     quiesce_tt_cutoffs,
+    /// 完了したnull move検証探索の回数。中断した呼び出しは含めない。
+    null_move_verifications,
+    /// 完了したnull move検証探索のうち、値がβ未満だった回数。
+    null_move_verification_failures,
     /// 通常探索で着手の探索結果によって手の走査を打ち切った回数。
     beta_cutoffs,
     /// 通常探索のβカットのうち、最初に探索した手による回数。

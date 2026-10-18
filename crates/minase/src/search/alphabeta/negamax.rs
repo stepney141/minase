@@ -15,12 +15,14 @@ use super::INFINITY;
 use super::correction::key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
-    CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, REVERSE_FUTILITY_MAX_DEPTH,
-    SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH, capture_futility_value, corrected_static_eval,
-    futility_pruning_value, is_improving, is_opponent_worsening, late_move_limit, lmr_depth,
-    lmr_reduction, lmr_research_depth, non_lmr_depth, null_move_reduction, pruning_eval,
-    pruning_lmr_depth, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
-    seek_mate_null_move_reduction, should_raise_futility_best_score, zero_window_tt_cutoff,
+    CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
+    NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
+    NullMoveCoefficients, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
+    capture_futility_value, corrected_static_eval, futility_pruning_value, is_improving,
+    is_opponent_worsening, late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth,
+    non_lmr_depth, pruning_eval, pruning_lmr_depth, quiet_see_margin, razoring_margin,
+    reverse_futility_margin, see_margin, seek_mate_null_move_reduction,
+    should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -106,6 +108,9 @@ impl Searcher<'_> {
         // 2手先だけを初期化し、子の手数の数は兄弟の探索と再探索の間で保持する。
         // Stockfish src/search.cpp:829。
         self.cutoff_counts[(ply + 2) as usize] = 0;
+        // 子のnull move打ち切り回数は、兄弟とその再探索の間だけ保持する。
+        // Stockfish src/search.cpp:830。
+        self.prior_nmp_fail_high[(ply + 1) as usize] = 0;
         let key = search_key(position);
         let original_alpha = alpha;
         let pv_node = beta - alpha > 1;
@@ -249,23 +254,45 @@ impl Searcher<'_> {
 
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
-        // 深さ3以上、直前がnull moveでない、βが詰み帯と専用の帯の外、王駒以外の自駒がある場合に試す。
-        // 王駒への利き、零窓、静的評価がβ以上という条件は加えない。
-        // 着手相当の1手を含む減深量を、詰みを探す場合は半減してから引き、深さ0で飽和させる。
-        // Stockfish src/search.cpp:1044-1045。
-        if depth >= 3
+        // Stockfish src/search.cpp:1037-1076。王駒への利きは、ほかの条件がすべて成立した後に調べる。
+        let null_move_coefficients = NullMoveCoefficients::current();
+        if cut_node
             && self.null_move_ply != Some(ply)
-            && beta.abs() < REPETITION_BAND_START
+            && window_outside_bands
             && has_non_royal_piece
+            && self.nmp_min_ply.is_none_or(|minimum| ply >= minimum)
+            && null_move_coefficients.allows_null_move(
+                depth,
+                static_eval,
+                beta,
+                self.nnue.pawn_value(),
+                improving,
+                self.prior_nmp_fail_high[ply as usize],
+            )
+            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
         {
             let reduction = seek_mate_null_move_reduction(
-                1 + null_move_reduction(depth, static_eval, beta, self.nnue.pawn_value()),
+                1 + null_move_coefficients.null_move_reduction(
+                    depth,
+                    static_eval,
+                    beta,
+                    self.nnue.pawn_value(),
+                ),
                 self.seek_mate,
             );
-            let score =
-                self.search_null_move(position, depth.saturating_sub(reduction), beta, ply)?;
+            let child_depth = depth.saturating_sub(reduction);
+            let score = self.search_null_move(position, child_depth, beta, ply)?;
             if score >= beta {
-                return Some(null_move_cutoff_score(score, beta));
+                if self.nmp_min_ply.is_some() || depth < NULL_MOVE_VERIFICATION_MIN_DEPTH {
+                    self.prior_nmp_fail_high[ply as usize] += 1;
+                    return Some(null_move_cutoff_score(score, beta));
+                }
+                let verification =
+                    self.search_null_move_verification(position, child_depth, beta, ply)?;
+                if verification >= beta {
+                    self.prior_nmp_fail_high[ply as usize] += 1;
+                    return Some(null_move_cutoff_score(score, beta));
+                }
             }
         }
 
@@ -660,6 +687,37 @@ impl Searcher<'_> {
         self.null_move_ply = previous_null_move_ply;
         position.unmake_null_move(undo);
         score
+    }
+
+    /// 同じ局面を零窓で検証し、同一plyの外側の状態を復元してから値を返す。
+    ///
+    /// 検証中は`ply + 3 * depth / 4`へ達するまでnull moveを禁じる
+    /// （Stockfish src/search.cpp:1061-1070）。中断時も状態を復元し、完了した探索だけを統計へ数える。
+    pub(super) fn search_null_move_verification(
+        &mut self,
+        position: &mut Position,
+        depth: u32,
+        beta: i32,
+        ply: u32,
+    ) -> Option<i32> {
+        let previous_static_eval = self.static_evals[ply as usize];
+        let previous_tt_pv = self.tt_pv[ply as usize];
+        let previous_nmp_min_ply = self.nmp_min_ply.replace(
+            ply + NULL_MOVE_VERIFICATION_PLY_NUMERATOR * depth
+                / NULL_MOVE_VERIFICATION_PLY_DENOMINATOR,
+        );
+        let score = self.negamax(position, depth, beta - 1, beta, ply, false);
+        self.nmp_min_ply = previous_nmp_min_ply;
+        self.static_evals[ply as usize] = previous_static_eval;
+        self.tt_pv[ply as usize] = previous_tt_pv;
+        self.pv[ply as usize].clear();
+        let score = score?;
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.null_move_verifications += 1;
+            self.stats.null_move_verification_failures += u64::from(score < beta);
+        }
+        Some(score)
     }
 
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。

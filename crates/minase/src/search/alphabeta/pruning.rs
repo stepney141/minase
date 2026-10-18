@@ -21,6 +21,22 @@ const SEEK_MATE_BASE: i64 = 361;
 /// Stockfishの220000を歩兵価値208で換算した固定値（src/search.cpp:394-395）。
 const SEEK_MATE_DEPTH_FACTOR: i64 = 105769;
 
+/// null moveを試すβの下限に使うStockfishの評価値。
+/// Stockfishの`beta >= -2000`に対応する（src/search.cpp:1039）。
+const NULL_MOVE_BETA_LIMIT: i64 = 2000;
+
+/// null moveの検証探索を行う、IIR適用後の残り深さの下限。
+/// Stockfishの`depth < 16`なら検証せず打ち切る条件に対応する（src/search.cpp:1055）。
+pub(super) const NULL_MOVE_VERIFICATION_MIN_DEPTH: u32 = 16;
+
+/// 検証探索中にnull moveを禁じる手数へ掛ける分子。
+/// Stockfishの`3 * (depth - R) / 4`に対応する（src/search.cpp:1066）。
+pub(super) const NULL_MOVE_VERIFICATION_PLY_NUMERATOR: u32 = 3;
+
+/// 検証探索中にnull moveを禁じる手数を求める除数。
+/// Stockfishの`3 * (depth - R) / 4`に対応する（src/search.cpp:1066）。
+pub(super) const NULL_MOVE_VERIFICATION_PLY_DENOMINATOR: u32 = 4;
+
 /// 前の反復の確定値から詰みを探す局面かを判定する。反復深さは1以上とする。
 /// 深さの2乗による除算を先に切り捨て、歩兵価値で換算した閾値も切り捨てる。
 pub(super) fn is_seek_mate(previous: Option<i32>, depth: u32, pawn: i32) -> bool {
@@ -260,7 +276,7 @@ pub(super) fn late_move_limit(depth: u32, improving: bool) -> i32 {
     LateMoveCoefficients::current().late_move_limit(depth, improving)
 }
 
-/// capture historyの換算元にするStockfishの歩兵価値。
+/// 評価値の換算元にするStockfishの歩兵価値。
 /// `PawnValue` 208に対応する（Stockfish src/types.h:199）。
 const STOCKFISH_PAWN_VALUE: i64 = 208;
 
@@ -448,21 +464,56 @@ pub(super) fn razoring_margin_with_coefficient(pawn: i32, depth: u32, coefficien
     (i64::from(pawn) * i64::from(coefficient) * i64::from(depth) / 100) as i32
 }
 
-/// null moveの減深量の式に渡す調整係数。
+/// null moveを試す静的評価の条件と減深量の式に渡す調整係数。
 #[derive(Clone, Copy)]
 pub(super) struct NullMoveCoefficients {
-    pub(super) null_move_eval_scale: i32,
     pub(super) null_move_base: i32,
     pub(super) null_move_slope: i32,
+    pub(super) null_move_eval_scale: i32,
+    pub(super) null_move_eval_margin: i32,
+    pub(super) null_move_eval_depth: i32,
+    pub(super) null_move_eval_improving: i32,
+    pub(super) null_move_fail_high_bonus: i32,
 }
 
 impl NullMoveCoefficients {
     pub(super) fn current() -> Self {
         Self {
-            null_move_eval_scale: params::null_move_eval_scale(),
             null_move_base: params::null_move_base(),
             null_move_slope: params::null_move_slope(),
+            null_move_eval_scale: params::null_move_eval_scale(),
+            null_move_eval_margin: params::null_move_eval_margin(),
+            null_move_eval_depth: params::null_move_eval_depth(),
+            null_move_eval_improving: params::null_move_eval_improving(),
+            null_move_fail_high_bonus: params::null_move_fail_high_bonus(),
         }
+    }
+
+    /// βの下限と、補正後の静的評価に対する条件を満たすかを返す。
+    ///
+    /// 深さはIIR適用後、improvingはnull move後の更新前とする。
+    /// Stockfishの`staticEval + 50 * priorNMPFailHigh >= beta - 13 * depth
+    /// - 47 * improving + 365`と`beta >= -2000`に対応する（src/search.cpp:1037-1039）。
+    pub(super) fn allows_null_move(
+        &self,
+        depth: u32,
+        static_eval: i32,
+        beta: i32,
+        pawn: i32,
+        improving: bool,
+        prior_fail_high: u32,
+    ) -> bool {
+        let beta_minimum = null_move_beta_minimum(pawn);
+        let pawn = i64::from(pawn);
+        let beta = i64::from(beta);
+        let fail_high_bonus =
+            pawn * i64::from(self.null_move_fail_high_bonus) * i64::from(prior_fail_high) / 100;
+        let margin = pawn
+            * (i64::from(self.null_move_eval_margin)
+                - i64::from(self.null_move_eval_depth) * i64::from(depth)
+                - i64::from(self.null_move_eval_improving) * i64::from(improving))
+            / 100;
+        beta >= i64::from(beta_minimum) && i64::from(static_eval) + fail_high_bonus >= beta + margin
     }
 
     pub(super) fn null_move_reduction(
@@ -476,17 +527,47 @@ impl NullMoveCoefficients {
             * i64::from(self.null_move_eval_scale)
             / 100)
             / (2 * i64::from(pawn)))
-        .clamp(0, 3) as u32;
-        (self.null_move_base as u32 + depth * self.null_move_slope as u32) / 1200 + extra
+        .max(0);
+        let reduction = (i64::from(self.null_move_base)
+            + i64::from(depth) * i64::from(self.null_move_slope))
+            / 1200
+            + extra;
+        u32::try_from(reduction).expect("null move reduction coefficients must yield a u32")
     }
+}
+
+/// null moveを試すβの下限を、探索用の歩兵価値へ換算して返す。
+pub(super) fn null_move_beta_minimum(pawn: i32) -> i32 {
+    i32::try_from(-(i64::from(pawn) * NULL_MOVE_BETA_LIMIT / STOCKFISH_PAWN_VALUE))
+        .expect("converted null move beta minimum must fit in i32")
+}
+
+/// 補正後の静的評価、深さ、improving、および先行する打ち切り回数から、null moveを試す数値条件を判定する。
+#[cfg(all(test, feature = "tuning"))]
+pub(super) fn allows_null_move(
+    depth: u32,
+    static_eval: i32,
+    beta: i32,
+    pawn: i32,
+    improving: bool,
+    prior_fail_high: u32,
+) -> bool {
+    NullMoveCoefficients::current().allows_null_move(
+        depth,
+        static_eval,
+        beta,
+        pawn,
+        improving,
+        prior_fail_high,
+    )
 }
 
 /// 深さと静的評価のβに対する余裕からnull moveの減深量を求める。
 ///
 /// 基本量は `(NullMoveBase + 深さ × NullMoveSlope) / 1200` 手である。
-/// `(静的評価 − β) × NullMoveEvalScale` を100、歩兵価値の2倍で順に整数除算し、0〜3手に制限して加える。
-/// 縮めた深さが0になり静止探索だけで打ち切りを判定する頻度を抑えるため、加算に上限を設ける。
+/// `(静的評価 − β) × NullMoveEvalScale` を100、歩兵価値の2倍で順に整数除算し、0以上に切り詰めて加える。
 /// 尺度0では基本量と一致する。
+#[cfg(test)]
 pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn: i32) -> u32 {
     NullMoveCoefficients::current().null_move_reduction(depth, static_eval, beta, pawn)
 }

@@ -24,6 +24,7 @@ fn ranks(stats: SearchStats) -> [u64; 4] {
 }
 
 fn assert_relations(stats: SearchStats) {
+    assert!(stats.null_move_verification_failures <= stats.null_move_verifications);
     assert!(stats.first_move_beta_cutoffs <= stats.beta_cutoffs);
     assert!(stats.beta_cutoffs <= stats.normal_nodes);
     assert!(stats.tt_cutoffs <= stats.tt_hits);

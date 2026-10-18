@@ -244,14 +244,35 @@ parameters! {
     /// 値はSPSAで調整した。
     AspirationGrowth(aspiration_growth): 168, 125, 400;
     /// null moveの基本減深量 `(切片 + 深さ × 傾き) / 1200` の切片。単位は1/1200手である。
-    /// 値はSPSAで調整した。
-    NullMoveBase(null_move_base): 4799, 1200, 4800;
+    /// StockfishとYaneuraOuは、子の1手を除いて6手に相当する7200である
+    /// （Stockfish src/search.cpp:1044、YaneuraOu yaneuraou-search.cpp:3252）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveBase(null_move_base): 7200, 1200, 10000;
     /// null moveの基本減深量の傾き。単位は残り深さ1手あたり1/1200手である。
-    /// 値はSPSAで調整した。
-    NullMoveSlope(null_move_slope): 393, 100, 400;
+    /// StockfishとYaneuraOuは1/3手に相当する400である
+    /// （Stockfish src/search.cpp:1044、YaneuraOu yaneuraou-search.cpp:3252）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveSlope(null_move_slope): 400, 100, 600;
     /// 静的評価とβの差から求めるnull moveの追加減深の倍率。単位は百分率である。
-    /// 値はSPSAで調整した。
-    NullMoveEvalScale(null_move_eval_scale): 133, 0, 400;
+    /// Stockfishの`(staticEval - beta) / 256`は163に相当し（src/search.cpp:1044）、YaneuraOuはこの項を持たず0である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveEvalScale(null_move_eval_scale): 163, 0, 400;
+    /// null moveを試す静的評価の余裕値の切片。単位は歩兵価値に対する百分率である。
+    /// Stockfishは365/208で175（src/search.cpp:1037-1038）、YaneuraOuは378/90で420（yaneuraou-search.cpp:3236-3237）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveEvalMargin(null_move_eval_margin): 175, -1000, 1000;
+    /// null moveを試す余裕値から残り深さ1手ごとに引く量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは13/208で6（src/search.cpp:1037-1038）、YaneuraOuは16/90で18（yaneuraou-search.cpp:3236-3237）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveEvalDepth(null_move_eval_depth): 6, -50, 100;
+    /// improvingのときにnull moveを試す余裕値から引く量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは47/208で23（src/search.cpp:1037-1038）、YaneuraOuは53/90で59（yaneuraou-search.cpp:3236-3237）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveEvalImproving(null_move_eval_improving): 23, -200, 400;
+    /// 同じ親の先行するnull move打ち切り1回あたり、静的評価へ加える量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは50/208で24（src/search.cpp:1037-1038）、YaneuraOuはこの項を持たず0である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    NullMoveFailHighBonus(null_move_fail_high_bonus): 24, 0, 200;
     /// butterfly historyの絶対値の上限。単位は履歴点であり、重力式の除数にも使う。
     /// 値はSPSAで調整した。
     HistoryLimit(history_limit): 5808, 4096, 65536;

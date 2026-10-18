@@ -66,6 +66,8 @@ pub(super) fn new_searcher<'a>(
         path_keys: vec![repetition_key(repetition.rule(), position)],
         path_moves: Vec::new(),
         null_move_ply: None,
+        nmp_min_ply: None,
+        prior_nmp_fail_high: [0; MAX_PLY as usize + 1],
         previous_capture: [None; MAX_PLY as usize + 1],
         null_move_boundary: None,
         nodes: 0,
@@ -158,6 +160,10 @@ pub(super) struct Searcher<'a> {
     pub(super) path_moves: Vec<PathMove>,
     /// null moveで到達した直後のノードのply。
     pub(super) null_move_ply: Option<u32>,
+    /// 検証探索中にnull moveを再開できる最小のply。検証探索の外では`None`。
+    pub(super) nmp_min_ply: Option<u32>,
+    /// plyごとのnull move打ち切り回数。同じ親が探索した子とその再探索の間で保持する。
+    pub(super) prior_nmp_fail_high: [u32; MAX_PLY as usize + 1],
     /// 直前の捕獲手の到達升。居喰いでも捕獲した駒の最終位置を使う。
     /// 根とnull moveの直後は取り返しの対象を持たない。
     pub(super) previous_capture: [Option<Square>; MAX_PLY as usize + 1],
