@@ -4,7 +4,7 @@
 本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
 対局ハーネスと統計の仕様は、`crates/minase/src/harness/`、`crates/minase/src/bin/minase/match_runner/`、`crates/minase/src/bin/minase/match_report/`、および`crates/minase/src/stats.rs`のdocコメントにある。
 方式を選んだ理由と棄却した代案は[ADR](../adr/README.md)にある。
-本書の手順に関わる主なADRは、[コミット対コミットの測定](../adr/compare-commits-as-separate-engine-processes.md)、[ペンタノミアルGSPRT](../adr/judge-adoption-by-pentanomial-gsprt.md)、[段階ゲート](../adr/screen-at-stc-and-decide-at-ltc.md)、[H1の値](../adr/set-gsprt-h1-to-10-elo.md)、および[再開](../adr/resume-from-the-manifest-without-checking-the-runner.md)である。
+本書の手順に関わる主なADRは、[コミット対コミットの測定](../adr/compare-commits-as-separate-engine-processes.md)、[ペンタノミアルGSPRT](../adr/judge-adoption-by-pentanomial-gsprt.md)、[段階ゲート](../adr/screen-at-stc-and-decide-at-ltc.md)、[H1の値](../adr/set-gsprt-h1-to-10-elo.md)、および[再開](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)である。
 
 ## 原則
 

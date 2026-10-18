@@ -72,7 +72,7 @@ impl std::error::Error for ModeMismatch {}
 ///
 /// 各エンジンを1回起動して読んだ`Threads`の既定値が記録と異なればエラーとする。
 /// 置換表容量は記録値と既定値が等しければ送らず、異なれば記録値を送る。
-/// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
+/// 理由は`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`にある。
 pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig, PlayerConfig)> {
     let codes = parse_rule_set(&manifest.rules_source)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
