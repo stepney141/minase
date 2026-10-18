@@ -19,5 +19,5 @@ NPSや実行時間を測るbenchでは、置換表など大容量メモリの確
 ## 出典
 
 - [plans/search.md](../plans/archived/search.md) の測定基盤のbench節
-- [measurements/tt-nodes100k-gsprt.md](../measurements/tt-nodes100k-gsprt.md)（訂正後のbench値）
+- [measurements/search/tt-nodes100k-gsprt.md](../measurements/search/tt-nodes100k-gsprt.md)（訂正後のbench値）
 - 訂正を含むコミット090839d

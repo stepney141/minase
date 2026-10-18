@@ -18,8 +18,8 @@ NNUEの学習が停滞していた主因は教師不足ではなく学習器の�
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年8月27日に起案し、同日に着手して、2026年8月29日に完了した。
 世代0と世代1を合わせた1,106万局面で再学習した学習PSTを採用し、同じデータで学習したP型NNUEは不採用とした。
-根拠は、再学習PSTの時間制御GSPRTの`H1`と、NNUEの固定ノードと時間制御の両方の`H0`であり、測定記録は [measurements/pst-gen1-tc.md](../../measurements/pst-gen1-tc.md)、[measurements/pst-gen1-nodes100k.md](../../measurements/pst-gen1-nodes100k.md)、[measurements/nnue-gen1-nodes100k.md](../../measurements/nnue-gen1-nodes100k.md)、および [measurements/nnue-gen1-tc.md](../../measurements/nnue-gen1-tc.md) にある。
-採用PSTのHaChu比較の固定局数Eloは−111で、前回の−282から改善した（[measurements/hachu-pst-gen1.md](../../measurements/hachu-pst-gen1.md)）。
+根拠は、再学習PSTの時間制御GSPRTの`H1`と、NNUEの固定ノードと時間制御の両方の`H0`であり、測定記録は [measurements/evaluation-gen1/pst-gen1-tc.md](../../measurements/evaluation-gen1/pst-gen1-tc.md)、[measurements/evaluation-gen1/pst-gen1-nodes100k.md](../../measurements/evaluation-gen1/pst-gen1-nodes100k.md)、[measurements/evaluation-gen1/nnue-gen1-nodes100k.md](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、および [measurements/evaluation-gen1/nnue-gen1-tc.md](../../measurements/evaluation-gen1/nnue-gen1-tc.md) にある。
+採用PSTのHaChu比較の固定局数Eloは−111で、前回の−282から改善した（[measurements/evaluation-gen1/hachu-pst-gen1.md](../../measurements/evaluation-gen1/hachu-pst-gen1.md)）。
 NNUEは分岐`nnue-gen1`に保持し、次期候補は採用PSTによる世代2の反復（Kを固定した尺度効果の切り分けを含む）、NNUEの教師値の質と過学習対策、および静止探索の効率化である。
 
 ## 目的
@@ -221,9 +221,9 @@ PyTorchの既定初期値N(0, 1)では、1局面あたり平均約55個（設計
 測定は docs/guides/sprt.md の標準手順に従い、`Threads=1`、同時対局数16、シードを明示して行う。
 固定ノードGSPRTは`--each nodes=100000`、時間制御GSPRTは`--each time=30000+300,byoyomi=500`である。
 各候補について、bench NPS（深さ5、3回の中央値）と、評価呼び出し1回と差分更新1回の時間の単体計測を診断指標として記録する。
-再学習PSTは固定ノードで`H1`（[measurements/pst-gen1-nodes100k.md](../../measurements/pst-gen1-nodes100k.md)）、時間制御で`H1`（[measurements/pst-gen1-tc.md](../../measurements/pst-gen1-tc.md)）となり採用した。
-NNUEは固定ノードで`H0`（[measurements/nnue-gen1-nodes100k.md](../../measurements/nnue-gen1-nodes100k.md)）、時間制御で`H0`（[measurements/nnue-gen1-tc.md](../../measurements/nnue-gen1-tc.md)）となり不採用とした。
-bench NPSは採用PSTが前マイルストーンの学習PSTと同じ水準（[measurements/bench-pst-gen1-depth5.md](../../measurements/bench-pst-gen1-depth5.md)）、NNUEは採用PSTより18.5%低い（[measurements/bench-nnue-gen1-depth5.md](../../measurements/bench-nnue-gen1-depth5.md)）。
+再学習PSTは固定ノードで`H1`（[measurements/evaluation-gen1/pst-gen1-nodes100k.md](../../measurements/evaluation-gen1/pst-gen1-nodes100k.md)）、時間制御で`H1`（[measurements/evaluation-gen1/pst-gen1-tc.md](../../measurements/evaluation-gen1/pst-gen1-tc.md)）となり採用した。
+NNUEは固定ノードで`H0`（[measurements/evaluation-gen1/nnue-gen1-nodes100k.md](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)）、時間制御で`H0`（[measurements/evaluation-gen1/nnue-gen1-tc.md](../../measurements/evaluation-gen1/nnue-gen1-tc.md)）となり不採用とした。
+bench NPSは採用PSTが前マイルストーンの学習PSTと同じ水準（[measurements/evaluation-gen1/bench-pst-gen1-depth5.md](../../measurements/evaluation-gen1/bench-pst-gen1-depth5.md)）、NNUEは採用PSTより18.5%低い（[measurements/evaluation-gen1/bench-nnue-gen1-depth5.md](../../measurements/evaluation-gen1/bench-nnue-gen1-depth5.md)）。
 
 測定用のコミットは、採用済みの基準を直接の親に置く。
 学習PSTの再学習は、現行の学習PST（master）を親にコミットし、固定ノードGSPRTと時間制御GSPRTを行い、時間制御で`H1`ならmasterへ取り込む。
@@ -236,11 +236,11 @@ NNUEは、再学習した学習PSTが採用されればそのコミット、さ�
 現行のコミット同士で、候補側に`time=60000+600,byoyomi=1000`、基準側に`time=30000+300,byoyomi=500`を与えた固定200ペアのEloと95%信頼区間、`time_forfeits`を記録する。
 この値は設計判断第6の事前見積りを自己対局の条件で置き換えるためのものであり、採否には使わず、線形性も仮定しない。
 時間制御対局は実時間に依存するので、学習や生成と並行させず単独で実施する。
-結果は持ち時間2倍あたり約+216 Eloであり、事前見積りの約1.7倍であった（[measurements/sensitivity-time2x.md](../../measurements/sensitivity-time2x.md)）。
+結果は持ち時間2倍あたり約+216 Eloであり、事前見積りの約1.7倍であった（[measurements/evaluation-gen1/sensitivity-time2x.md](../../measurements/evaluation-gen1/sensitivity-time2x.md)）。
 
 採用した評価関数については、docs/guides/sprt.md の外部エンジン比較の手順でHaChuとの固定局数Elo（200ペア）を記録する。
 この結果は採否の条件ではないが、採用した評価関数がある場合、その実施と記録は完了条件に含める。
-採用PSTのHaChu戦はElo −111で、前マイルストーンの学習PSTの−282から約170 Elo改善した（[measurements/hachu-pst-gen1.md](../../measurements/hachu-pst-gen1.md)）。
+採用PSTのHaChu戦はElo −111で、前マイルストーンの学習PSTの−282から約170 Elo改善した（[measurements/evaluation-gen1/hachu-pst-gen1.md](../../measurements/evaluation-gen1/hachu-pst-gen1.md)）。
 
 ## 教師不足の判定の検証結果と次期候補
 
@@ -248,7 +248,7 @@ NNUEは、再学習した学習PSTが採用されればそのコミット、さ�
 本マイルストーンで教師局面を1桁増やした結果、その判定は主因としては成り立たない。
 同じ学習器で1,106万局面を20エポック学習しても検証損失は0.509899から0.509853へ0.00005しか動かず、原因は第1層の初期化がclipped ReLUを94.5%飽和させて勾配を止めていたことにあった（[lessons/nnue-first-layer-init-saturation.md](../../lessons/nnue-first-layer-init-saturation.md)）。
 初期化を修正すると学習は成立し、6エポックで最良に達した後に過学習へ転じたので、1,106万局面がネットの学習を制約する量であることは修正後に初めて観測された。
-しかし修正後でも再学習PSTに対する検証損失の改善は0.00018（0.509899から0.509715）にとどまり、対局では固定ノードでも時間制御でも有意に劣った（[measurements/nnue-gen1-nodes100k.md](../../measurements/nnue-gen1-nodes100k.md)、[measurements/nnue-gen1-tc.md](../../measurements/nnue-gen1-tc.md)）。
+しかし修正後でも再学習PSTに対する検証損失の改善は0.00018（0.509899から0.509715）にとどまり、対局では固定ノードでも時間制御でも有意に劣った（[measurements/evaluation-gen1/nnue-gen1-nodes100k.md](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[measurements/evaluation-gen1/nnue-gen1-tc.md](../../measurements/evaluation-gen1/nnue-gen1-tc.md)）。
 過学習が6エポックで始まる以上、データをさらに増やせば検証損失が下がる余地はある。
 しかし1桁の増量で得た改善が0.00018であり、その状態で対局に劣る以上、増量だけで劣勢を覆せると考える根拠はない。
 したがって、前マイルストーンの「教師不足が主因」という判定は成り立たず、第1の課題は学習器の欠陥であり、データ量は制約の一つではあるが、次に扱うべき課題は教師値と評価の質であると判断する（[lessons/check-learning-before-blaming-data.md](../../lessons/check-learning-before-blaming-data.md)）。

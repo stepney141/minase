@@ -56,13 +56,16 @@ target/release/minase spsa \
   --iterations 3750 --pairs-per-iteration 8
 ```
 
+上のコマンドは、開発と棋力測定に使う手元の機械（以下、測定機）で実行する場合のものであり、同時対局数16は測定機の上限である。
+vast.aiで借りる物理コアの多い計算機（以下、調整機）で実行する手順は第8節にある。
+
 `--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、通常ビルドとは別のキーで `target/match-cache/` へキャッシュする。
 起動コマンド（パスと空白区切りの引数）も指定でき、作業ツリーの調整用ビルドの煙試験に使う。
 θ+とθ−は同じバイナリを同じ思考制限で動かし、`Threads` と `USI_Hash` はエンジンの既定値を使う。
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
 総反復数は摂動幅と学習率の計算式に使われるので、セッションの途中で変更できない。
 標準の規模は上のコマンドの3,750反復×8ペア（30,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)にある。
-同時対局数16の3,000ペアの[セッション](../measurements/spsa-stage9-20260925-c5.md)は27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。
+測定機の同時対局数16では、3,000ペアの[セッション](../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)が27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。
 2026年10月16日までのセッションは、旧標準の375反復×8ペア（3,000ペア）で行った。
 
 各ペアは `minase match run` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
@@ -89,7 +92,7 @@ target/release/minase spsa --resume data/spsa/<セッション名>
 
 再開時に照合するのは調整対象のエンジンであり、runnerのSHA-256は照合しない。
 起動コマンドで指定したエンジンは、作業ディレクトリが記録と異なると再開できない。
-runnerの版とSHA-256、および測定機は起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（理由は[再開のADR](../adr/resume-from-the-manifest-without-checking-the-runner.md)にある）。
+runnerの版とSHA-256、および測定機は起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（理由は[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)にある）。
 このため、セッションの途中で作業ツリーの `minase` を再ビルドしても再開できる。
 起動の記録に複数のrunnerが現れたセッションは、そのことをセッションの記録に書く。
 `invocations.json` を持たない以前の形式の実行ディレクトリは、変更後の`minase`では再開できない。
@@ -101,7 +104,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 `engine_failures:` の件数が0でない場合は、採否の測定へ進む前に、反復のファイルに保存された異常局の記録（開始局面、着手列、および各手の思考時間）から原因を調べる。
 時間切れの原因は、[デバッグの手引き](debugging.md#時間切れと時間管理)の手順で時計を再構成して調べる。
 
-セッションの記録は `docs/measurements/<セッション名>.md` へ置き、コマンドライン全体、調整対象とrunnerのコミット（`invocations.json` に複数のrunnerがあればそのすべて）、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
+セッションの記録は、そのセッションを計画した設計書の名前のディレクトリ（どの設計書も計画していなければ `adhoc/`）へ `docs/measurements/<設計書名>/<セッション名>.md` として置き、コマンドライン全体、調整対象とrunnerのコミット（`invocations.json` に複数のrunnerがあればそのすべて）、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
 θの履歴が終盤に動かないことだけを、収束の証拠として扱わない。
 
 ## 7. 値の採否を判定する
@@ -141,3 +144,124 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 不採用のときに一部の係数だけを選び直して再測定することはしない。
 これは、[sprt.md](sprt.md#機能採否の段階ゲートstcとltc) が禁止する「LTCの結果を見てから同じ主張へ追加すること」に当たる。
 採用した場合も、係数の現行の値の正は`params.rs`の表の既定値であり、凍結した設計書の値は改訂しない。
+
+## 8. vast.aiの調整機で実行する
+
+30,000ペアのセッションは、測定機では約75時間かかる。
+計算機を時間単位で借りられる市場vast.aiで物理コアの多い調整機を借りると、1手あたりの探索量を測定機にそろえたまま、約20時間で終えられる。
+この節は、その手順をまとめる。
+方式を選んだ理由は[調整機のADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)にあり、実測の値は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)と[スクリプトの検証の記録](../measurements/search-forms/vast-spsa-scripts.md)にある。
+
+### 準備
+
+測定機には、vast.aiのCLI`vastai`とAPIキー、vast.ai専用のSSHの鍵`~/.ssh/id_vastai`（公開鍵をアカウントに登録したもの）、および通常の開発環境が必要である。
+vast.aiの残高は、セッションの見積もりに余裕を加えた額にしておく。
+残高が尽きると調整機はvast.aiに止められる。自動補充は設定せず、入金した額を費用の上限とする。
+
+セッションごとに、測定機の`data/vast-spsa/<セッション名>/`へ次の3つを置く。
+セッション名は、調整機で作る実行ディレクトリの名前と同じにし、終了後に`data/spsa/<セッション名>`へ移す名前にもする。
+
+- `session.toml`：TOMLのキーを1行に1つずつ書く。`commit`（調整対象のコミット、文字列）、`runner_commit`（`minase spsa`を実行するrunnerのコミット、文字列）、`seed`、`iterations`、`pairs_per_iteration`（いずれも整数）、`rules`（文字列）、`precheck`（時間切れの事前確認を行うなら`true`）、`precheck_seed`（`precheck = true`のときだけ書く整数）、`local_nps`（測定機の負荷時の速度）、および`game_rss_bytes`（1局あたりの最大常駐メモリ、整数）である。`precheck_seed`のほかはすべて必須であり、既定値はない。未知のキーや型の違う値は拒否される。
+- `params`：第2節のパラメーターファイル。
+- `safety.params`：`precheck = true`のとき、第3節の時間切れの事前確認用のファイル。
+
+```toml
+commit = "388c5244"
+runner_commit = "master"
+seed = 3250000000
+iterations = 3750
+pairs_per_iteration = 8
+rules = "engine-default"
+precheck = true
+precheck_seed = 3200000000
+local_nps = 1264584
+game_rss_bytes = 630000000
+```
+
+`commit`と`runner_commit`には、ブランチ名や省略したハッシュも書ける。`launch.py`は、完全なハッシュへ解決した設定を調整機へ送る。
+
+`runner_commit`には、調整機で別の機械へ移って再開できる版の`minase`を含むコミット（2026年10月18日以降のmaster）を指定する。
+調整対象のコミットがそれより古い場合も、runnerだけを新しくすれば再開できる。
+
+`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に`dev bench --depth 9 --repetitions 3`で走らせた平均NPSである。
+`scripts/vast-spsa/bench.py`で測れる。調整機の`remote.py`も、同じ関数で調整機の負荷時の速度を測る。
+
+```console
+python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ>
+```
+
+`game_rss_bytes`は、測定機で調整用ビルド同士の1ペア（2局）をSTCで指し、`pairs/`の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和を局ごとに求めて、2局のうち大きい方の値とする。
+
+### 機械を選ぶ
+
+候補は、次の条件で照会したオンデマンドの出品から選ぶ。
+
+```console
+vastai search offers 'cpu_cores>=192 verified=true reliability>=0.95 inet_up>=100 disk_space>=50 rentable=true gpu_frac=1 duration>=2 direct_port_count>=1' \
+  --type on-demand --raw --limit 1000
+```
+
+このうち、`cpu_arch`が`amd64`で、`cpu_cores_effective`が`cpu_cores`と等しい出品を、見込みの1回の費用の安い順に試す。
+過去のセッションの記録に負荷時の速度があるCPU型は、その速度から求めた所要時間に時間単価を掛け、記録のないCPU型は時間単価に24時間を掛けて、1回の費用を見積もる。
+`remote.py`は、開始時に測った負荷時の速度から所要時間を見込み、24時間を超えれば本番を始めずに止まる。
+その場合、`fetch.py`は調整機を削除するので、次の候補で起動し直す。
+出品は貸し手の都合で入れ替わるので、照会してから時間を置かずに起動する。
+
+### 起動する
+
+```console
+python3 scripts/vast-spsa/launch.py <セッション名> <出品のID> <期限までの分数>
+```
+
+期限までの分数は、所要時間の見込みの上限に1.3を掛け、ビルド、速度の測定、および事前確認の45分を足した値とする。
+調整機は、起動時スクリプトが予約した処理により、この期限に自動で停止する。
+`launch.py`は、出品が条件を満たすこと、同じラベル（`minase-spsa-<セッション名>`）の調整機がないこと、および`session.toml`の必須のキーがそろっていることを確かめてから調整機を作る。
+調整機が10分以内に稼働しない場合や、SSHが5分以内に使えるようにならない場合は、その調整機を削除して止まる。
+
+調整機では`scripts/vast-spsa/remote.py`が、runnerと調整用ビルドのビルド、同時対局数`c`と換算係数`f`の決定、時間切れの事前確認、および本番のセッションを順に実行する。
+同時対局数は、物理コア数から1を引いた数と、実メモリを`game_rss_bytes`の1.25倍で割った数の小さい方である。
+持ち時間は、STCの`time=10000+100`の基本時間と加算の両方に`f`（`local_nps`を調整機の負荷時の速度で割った比）を掛けた値になる。
+事前確認の反復数は`⌈13 × c ÷ 16⌉`であり、異常が1件でもあれば本番を始めずに止まる。
+
+### 取得する
+
+起動したら、測定機で`fetch.py`を動かし続ける。
+
+```console
+nohup python3 scripts/vast-spsa/fetch.py <セッション名> > data/vast-spsa/<セッション名>/fetch.log 2>&1 &
+```
+
+`fetch.py`は10分ごとに、調整機の実行ディレクトリを`incoming/`へ、ログを`logs/`へ取得し、適用番号が1から欠けずにそろっていれば、再開用の写し`run/`を更新する。
+動いている調整機からはコンテナのSSHを通したrsyncで、停止した調整機からは`vastai copy`で取得する。
+`vastai copy`は貸し手の機械のrsyncを通るので、貸し手によっては失敗する。
+取得や状態の照会に失敗したときは次の回に再試行し、6回続けて失敗したときは、調整機は止めずに、`fetch.py`だけが0以外の終了コードで終わる。
+セッションが全反復を終えると、`fetch.py`は測定機のrunnerで`minase spsa apply`を`params.rs`の一時的な写しに対して実行して記録の整合性を検査し、検査に通れば調整機を削除して終了コード0で終わる。
+事前確認や本番が失敗した場合は調整機を停止し、所要時間の見込みが上限を超えた場合は調整機を削除して、どちらも0以外の終了コードで止まる。
+
+### 再開する
+
+コンテナが再起動した場合は、起動時スクリプトが`remote.py`を起動し直し、`remote.py`は実行ディレクトリを見つけて`--resume`で再開する。
+調整機が失われた場合、または止めて別の機械へ移る場合は、残っている調整機を`vastai destroy instance <ID>`で削除してから、別の出品で`launch.py`を同じセッション名で実行する。
+`launch.py`は`run/`を調整機へ送り、`remote.py`はその機械で調整用ビルドを作り直して`--resume`で再開する。
+`commit:`の形式の調整対象は、コミットが記録と一致すれば、ビルドし直して実行ファイルのSHA-256が変わっても再開できる（[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)）。
+持ち時間と同時対局数は最初の記録のまま変わらない。
+最後の取得以後に完了した反復と、並走していた反復は失われる。
+
+コンテナが期限の後に再起動すると、起動時スクリプトは直ちに停止を要求する。
+この場合も、別の出品で`launch.py`をやり直して再開する。
+
+### 結果を反映する
+
+`fetch.py`が終了コード0で終わったら、`data/vast-spsa/<セッション名>/run/`を`data/spsa/<セッション名>`へ移し、第6節と第7節の手順で確認と反映を行う。
+反映した候補の事前対局と段階ゲートは、[統括計画](../plans/search-forms.md)の決定により、SPSAを終えた同じ調整機で、時間制御を換算せずに行う。ただし、スクリプトはまだこの手順に対応しておらず、`fetch.py`は検査に通ると調整機を削除する。対応は、統括計画のサブタスク1の事前対局と段階ゲートを手作業で行った後に加える。
+セッションの記録には、第6節の項目に加えて、出品と機械のID、CPU型、物理コア数、時間単価と費用の合計、`f`と換算した持ち時間、同時対局数、および調整機を作り直した場合の回数と各機械の記録を書く。
+
+### 費用を確かめて片付ける
+
+```console
+vastai show user --raw     # 残高（credit）
+vastai show instances --raw  # 動いている調整機
+```
+
+セッションが終わったら、ラベル`minase-spsa-<セッション名>`の調整機が一覧に残っていないことを確かめる。
+停止した調整機もディスクの課金が続くので、取得を終えたら削除する。

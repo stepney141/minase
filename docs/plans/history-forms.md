@@ -28,7 +28,7 @@ killer手や段差のように中将棋の診断と測定で決めた既存の�
 現行の加点は`min(深さ² × HistoryBonusScale/100, HistoryLimit)`であり、起案時点の既定値（尺度100%、上限17408）では、深さ10の加点は上限の約0.6%にとどまる。
 Stockfishの加点は深さ10で表の上限7183の約15%であり（`src/search.cpp:2004-2006, 2015`）、値が上限に近づくほど更新量を小さくする重力式（後述）による忘却が働く。
 minaseでは1回の更新が小さいので、重力式による忘却はほとんど働かず、根の探索ごとの減衰（`HistoryDecay`）が忘却の役割をほぼ担っていると推測される。
-また、直前の手を文脈とする表は、[手の順序付けの改善](archived/move-ordering.md)の診断で、表を対局内で持ち越し、根の探索ごとに23%へ減衰させる条件で、静かな手の順序を変えるノードがSTC相当で44.6%（1手前）と61.3%（2手前）あると分かったが、表の大きさの設計が残っていた（[診断の記録](../measurements/move-ordering-diag.md)）。
+また、直前の手を文脈とする表は、[手の順序付けの改善](archived/move-ordering.md)の診断で、表を対局内で持ち越し、根の探索ごとに23%へ減衰させる条件で、静かな手の順序を変えるノードがSTC相当で44.6%（1手前）と61.3%（2手前）あると分かったが、表の大きさの設計が残っていた（[診断の記録](../measurements/move-ordering/move-ordering-diag.md)）。
 2026年10月17日の利用者の決定により、形や値は両エンジンで違えばStockfishに合わせ、Stockfishにだけある項目は含める。
 同じ日の利用者の決定により、minaseにあってStockfishにない既存の仕組みのうち、中将棋の診断や測定で決めたものは残し、Stockfishの仕組みを並べて足す。
 本書は、historyに関わるStockfishの仕組みを1つの候補にまとめ、係数を調整し直して測る。
@@ -451,6 +451,8 @@ LMRのテストは、`q_hist`がallNodeの拡大の前に引かれること、�
 
 ### フェーズ5　採否測定
 
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。この節のSTCは採否に使わない記録として行い、LTCは行わない。以下の判定の規則は、この決定より前に書いたものであり、統括計画の決定が優先する。
+
 ```console
 <固定したminase> match run \
   --run-dir data/matches/history-forms-stc --seed 3950000000 \
@@ -488,8 +490,8 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 ## 参考資料
 
 - [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
-- [手の順序付けの改善](archived/move-ordering.md)と、counter move historyとcontinuation historyの再診断を含む[診断の記録](../measurements/move-ordering-diag.md)。
-- 根の探索ごとに初期化する表での発動率の記録（[counter move history](../measurements/strength-stage5-cmh-bench.md)、[continuation history](../measurements/strength-stage5-continuation-bench.md)）と、その表の設計を記した[棋力向上段階5](archived/strength-stage5.md)。
+- [手の順序付けの改善](archived/move-ordering.md)と、counter move historyとcontinuation historyの再診断を含む[診断の記録](../measurements/move-ordering/move-ordering-diag.md)。
+- 根の探索ごとに初期化する表での発動率の記録（[counter move history](../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[continuation history](../measurements/strength-stage5/strength-stage5-continuation-bench.md)）と、その表の設計を記した[棋力向上段階5](archived/strength-stage5.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。lmrDepthの除数は55〜58行、low ply historyの初期化は339行、butterfly historyの根ごとの減衰は341〜343行、文脈の表の設定は688〜700行、表の初期化は713〜727行、静的評価の変化による更新は1002〜1012行、置換表の打ち切りでの更新は902〜910行、文脈の表の配列は1140〜1142行、continuation historyによる枝刈りとlmrDepthへの項は1227〜1240行、statScoreとLMRの補正は1371〜1381行、LMRの適用条件は1395行、最善手があるときの更新は1602〜1608行、fail lowの加点は1611〜1642行、加点と減点は2004〜2041行、continuation historyの更新は2049〜2073行、静かな手の表の更新は2077〜2089行。`src/movepick.cpp`の静かな手の並べ替えは233〜251行。`src/history.h`の重力式は70〜76行、表の型と上限は128〜146行、共有の表は198〜225行。`src/types.h`の歩兵価値は199行。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。low ply historyの初期化は1540行、置換表の打ち切りでの更新は2735〜2748行、静的評価の変化による更新は3126〜3132行、continuation historyによる枝刈りは3646〜3661行、LMRのhistory補正は3925〜3937行、fail lowの加点は4311〜4339行、加点と減点は5308〜5350行。
 - [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。

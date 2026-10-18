@@ -9,10 +9,10 @@
 棋力向上の段階計画では、探索の改良を実装する前に、採否測定の条件でその改良が働くノードや手の割合（発動率）を診断し、5%未満なら見送る。
 発動しない改良は自己対局で効果を検出できず、測定の時間だけを費やすからである。
 ProbCutは、浅い探索の値が予想される境界を十分に超えるノードを、本来の深さで読まずに打ち切る手法である。
-[棋力向上段階8](../plans/archived/strength-stage8.md)の[起案時の発動率診断](../measurements/strength-stage8-activation-diag.md)では、ProbCutの対象になり得る残り深さ5以上の非PVノードが、benchの深さ6で0.4%だった。
-段階8の最終構成で測り直した[診断](../measurements/strength-stage8-probcut-diag.md)では、対象になり得るノードは深さ6で0.74%、LTCの到達深さに相当する深さ8で1.47%だった。
+[棋力向上段階8](../plans/archived/strength-stage8.md)の[起案時の発動率診断](../measurements/strength-stage8/strength-stage8-activation-diag.md)では、ProbCutの対象になり得る残り深さ5以上の非PVノードが、benchの深さ6で0.4%だった。
+段階8の最終構成で測り直した[診断](../measurements/strength-stage8/strength-stage8-probcut-diag.md)では、対象になり得るノードは深さ6で0.74%、LTCの到達深さに相当する深さ8で1.47%だった。
 mate distance pruningは、詰みまでの手数から窓を狭め、窓が空になったノードを打ち切る手法である。
-2026年9月12日に完了した[棋力向上段階6](../plans/archived/strength-stage6.md)の[置換表の対局再生診断](../measurements/strength-stage6-tt-replay.md)では、打ち切られる通常探索のノードがSTC相当で1.08%、LTC相当で1.65%だった。
+2026年9月12日に完了した[棋力向上段階6](../plans/archived/strength-stage6.md)の[置換表の対局再生診断](../measurements/strength-stage6/strength-stage6-tt-replay.md)では、打ち切られる通常探索のノードがSTC相当で1.08%、LTC相当で1.65%だった。
 
 ## 決定
 

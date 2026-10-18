@@ -6,7 +6,7 @@
 NNUE（着手ごとに第1層の出力を差分更新できる小さなニューラルネット）の学習器は既にRustで書き直されており、PST（駒と升の組ごとの点数表）の学習器、FM（2駒の位置関係を表す補正の2次モデル、Factorization Machine）の学習器、PSTとFMを同時に学ぶ同時学習器、および学習の前後に使う診断を、現行の手順で使う機能だけ移植した。
 学習器のクレートは`crates/minase-trainer`（実行ファイル`minase-trainer`）に改め、`nnue`、`pst`、`fm`、`joint`、`diag`のサブコマンドにまとめた。
 NNUE、PST、FMはまったく異なる評価関数なので、学習のパイプラインは評価関数ごとに分け、共有するのはデータの読み込みと汎用の機械学習の部品だけにした（利用者の決定）。
-移植した学習器は、Pythonが使った初期値と局面の学習順を一時的に与えて、3回の更新の後の状態、短縮した学習の各エポックの検証損失と最良エポック、書き出した整数の重み（PSTはバイト単位、FMは±1単位以内）がPythonと一致することを一度だけ確かめ、`fm scale --fm-scale 611`で現行の`crates/minase/nets/pst.bin`をバイト単位で再生成した（[照合の記録](../../measurements/python-trainer-retirement-checks.md)）。
+移植した学習器は、Pythonが使った初期値と局面の学習順を一時的に与えて、3回の更新の後の状態、短縮した学習の各エポックの検証損失と最良エポック、書き出した整数の重み（PSTはバイト単位、FMは±1単位以内）がPythonと一致することを一度だけ確かめ、`fm scale --fm-scale 611`で現行の`crates/minase/nets/pst.bin`をバイト単位で再生成した（[照合の記録](../../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)）。
 RustのCPUの学習器は、PythonのGPUの学習器より1エポックあたりPSTで約7倍、FMで約2.6倍、同時学習で約4倍速いので、GPUのカーネルは加えなかった。
 確かめた後に、Pythonの学習ツール、照合の経路、`minase dev pst-probe`と`minase dev nnue-probe`を削除し、[PSTとFMの学習手順](../../guides/pst-training.md)をRustのコマンドの列で書き直した。
 エンジンの評価関数と探索は変えないので、棋力の測定は行っていない。
@@ -73,9 +73,9 @@ Adamに重み減衰を掛けない更新は、重み減衰0のAdamWと同じ式�
 
 Pythonの学習器の仕様と現行の使い方は次のとおりである。
 
-- PSTの学習器（`minase_train.pst.train`）: 候補Lは、10ファイル（訓練27,745,843局面）、鏡映共有モデル、学習率0.03、200エポック、改善なし5エポックで停止、除去損失の係数1000（参照は`--init`のMNPT）、先読み教師γ=0.9・n=40、来歴のλ（0.75）で学び、GPUで1エポック約2分だった（[記録](../../measurements/pst-longer-training-training.md)）。出力はMNPT版2、`pst-float.npz`、`pst.training.json`である。
-- FMの学習器（`minase_train.fm.train`）: 整数PSTを固定し、手番側の視点だけの13,680特徴に対して`Φ = ½ Σ_f a_f[(Σ_i v_if)² − Σ_i v_if²]`（ランク32）を学ぶ。訓練では局面ごとに確率0.5で左右鏡映し、観測マスクは訓練集合とその全鏡映から全特徴の空間で数える。損失は二値交差エントロピーに`10⁻⁴·mean(Φ²)`を加え、1群のAdamW（学習率10⁻³、重み減衰10⁻⁴、バッチ4,096）で学ぶ。候補FaはGPUで1エポック約2分、最良エポック8だった（[記録](../../measurements/fm-quarter-current-pst-training.md)）。出力はMNPT版3と`fm-float.npz`であり、量子化は、指数eを30から1ずつ下げ、整数にした埋め込みの絶対値が16,383以下に収まる最大のeを選ぶ。`quarter`は指数を1増やし、`scale`は係数aに倍率を掛けて量子化し直す。
-- 同時学習器（ブランチ`pst-fm-joint-training`の`minase_train.joint.train`）: 鏡映共有のPSTとFMを、1つのλの二値交差エントロピー、`10⁻⁴·mean(Φ²)`、係数1000の駒除去差分の損失（参照はv0、FMの寄与を含む）で同時に学ぶ。AdamWを2群（PST: 学習率0.03、重み減衰0。FM: 学習率10⁻³、重み減衰10⁻⁴）で使い、訓練では確率0.5で鏡映する。J75は10ファイル、λ=0.75、最良エポック2、7エポックで停止し、全体で3,881秒だった（[記録](../../measurements/pst-fm-joint-training-training.md)）。出力はMNPT版3と、PSTとFMの実数の重みをまとめた`pst-float.npz`である。
+- PSTの学習器（`minase_train.pst.train`）: 候補Lは、10ファイル（訓練27,745,843局面）、鏡映共有モデル、学習率0.03、200エポック、改善なし5エポックで停止、除去損失の係数1000（参照は`--init`のMNPT）、先読み教師γ=0.9・n=40、来歴のλ（0.75）で学び、GPUで1エポック約2分だった（[記録](../../measurements/pst-longer-training/pst-longer-training-training.md)）。出力はMNPT版2、`pst-float.npz`、`pst.training.json`である。
+- FMの学習器（`minase_train.fm.train`）: 整数PSTを固定し、手番側の視点だけの13,680特徴に対して`Φ = ½ Σ_f a_f[(Σ_i v_if)² − Σ_i v_if²]`（ランク32）を学ぶ。訓練では局面ごとに確率0.5で左右鏡映し、観測マスクは訓練集合とその全鏡映から全特徴の空間で数える。損失は二値交差エントロピーに`10⁻⁴·mean(Φ²)`を加え、1群のAdamW（学習率10⁻³、重み減衰10⁻⁴、バッチ4,096）で学ぶ。候補FaはGPUで1エポック約2分、最良エポック8だった（[記録](../../measurements/fm-quarter-current-pst/fm-quarter-current-pst-training.md)）。出力はMNPT版3と`fm-float.npz`であり、量子化は、指数eを30から1ずつ下げ、整数にした埋め込みの絶対値が16,383以下に収まる最大のeを選ぶ。`quarter`は指数を1増やし、`scale`は係数aに倍率を掛けて量子化し直す。
+- 同時学習器（ブランチ`pst-fm-joint-training`の`minase_train.joint.train`）: 鏡映共有のPSTとFMを、1つのλの二値交差エントロピー、`10⁻⁴·mean(Φ²)`、係数1000の駒除去差分の損失（参照はv0、FMの寄与を含む）で同時に学ぶ。AdamWを2群（PST: 学習率0.03、重み減衰0。FM: 学習率10⁻³、重み減衰10⁻⁴）で使い、訓練では確率0.5で鏡映する。J75は10ファイル、λ=0.75、最良エポック2、7エポックで停止し、全体で3,881秒だった（[記録](../../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)）。出力はMNPT版3と、PSTとFMの実数の重みをまとめた`pst-float.npz`である。
 - 乱数: Pythonは`torch.randperm`と`torch.rand`で順列と鏡映を決める。Rustの順列はSplitMix64なので、同じシードでも学習の結果はバイト単位では一致しない。
 
 AlphaZero型探索の計画（[設計書](../alphazero.md)）は`tools/train/zero/`に`minase_train`を読み込まない独立のPythonプロジェクトを置くので、本書の削除と衝突しない。
@@ -89,7 +89,7 @@ AlphaZero型探索の計画（[設計書](../alphazero.md)）は`tools/train/zer
 | PSTの除去の参照 | `--removal-reference v0`と`--removal-reference init`を設ける。候補Lは`--init`のMNPT（Pc）を参照にし、J75とNNUEはv0を参照にしたので、現行の手順に両方が要る。 |
 | λとエポックの上限 | `pst`、`fm`、`joint`では`--lambda-override`を省略可能とし、省略時は来歴のλを使う（候補Lの動作）。`nnue`は現行どおり既定1.0とする。エポックの上限は、`nnue`は50のまま、`pst`、`fm`、`joint`は200とする。候補Lが200エポック目で最良だったので、50では再現できないからである。 |
 | FMと同時学習のモデル | FMの学習器は`src/fm/`に、FMの補正`Φ`を手番側の視点だけの13,680特徴に対する符号つき二乗の項として持つ専用のパイプラインとして書く。`fm train`は整数PSTを固定してFMだけを学ぶ。同時学習器は`src/joint/`に置き、PSTとFMの部品（モデル、順伝播と勾配、量子化と書き出し）を組み合わせ、両方を2群のAdamWで同時に学ぶ。訓練時の確率0.5の左右鏡映、訓練集合とその全鏡映から全特徴の空間で数える観測マスク、`10⁻⁴·mean(Φ²)`の正則化はPythonと同じにする。FMの量子化（指数の探索）は`fm train`、`fm quarter`、`fm scale`、`joint train`で同じ手順なので、`src/fm/`の1か所に置いて同時学習から呼ぶ。NNUEの部品は使わない。 |
-| 計算の場所 | PST、FM、同時学習は、まずCPUの並列実装で動かす。型はNNUEの学習器のCPU参照と同じく、重み、勾配、AdamWの状態をf32とし、局面方向とバッチ方向の和と損失の集計は、加算の順序による結果の揺れを避けるため、f64で固定の順に行う。Pythonの学習器も重みと状態をf32で持つ。そのうえで、フェーズ2から4で1エポックの時間を測る。PSTの順伝播は1局面あたり発火した特徴（最大145個）の重みの行の和であり、除去損失は1局面あたり平均約61件の除去で行の差を取るだけである。FMは同じ特徴について32成分の和を取る。どちらも、NNUEの幅128の第1層と補助損失（CPUで約6,600局面/秒、[検査の記録](../../measurements/nnue-trainer-rust-checks.md)）より1局面あたりの計算が桁違いに少ないので、CPUで足りる見込みがある。測った1エポックの時間が、Pythonの学習器のGPUでの時間（同じ局面数に換算した値）を超えた学習器に限り、GPUのカーネルを別のフェーズとして加える。測定なしにGPUのカーネルを書く案は採らない。 |
+| 計算の場所 | PST、FM、同時学習は、まずCPUの並列実装で動かす。型はNNUEの学習器のCPU参照と同じく、重み、勾配、AdamWの状態をf32とし、局面方向とバッチ方向の和と損失の集計は、加算の順序による結果の揺れを避けるため、f64で固定の順に行う。Pythonの学習器も重みと状態をf32で持つ。そのうえで、フェーズ2から4で1エポックの時間を測る。PSTの順伝播は1局面あたり発火した特徴（最大145個）の重みの行の和であり、除去損失は1局面あたり平均約61件の除去で行の差を取るだけである。FMは同じ特徴について32成分の和を取る。どちらも、NNUEの幅128の第1層と補助損失（CPUで約6,600局面/秒、[検査の記録](../../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)）より1局面あたりの計算が桁違いに少ないので、CPUで足りる見込みがある。測った1エポックの時間が、Pythonの学習器のGPUでの時間（同じ局面数に換算した値）を超えた学習器に限り、GPUのカーネルを別のフェーズとして加える。測定なしにGPUのカーネルを書く案は採らない。 |
 | 一度きりの照合 | Pythonの学習器を、リポジトリにコミットしない一時的な改変で、照合用の再生ファイルを書き出すようにする。Rustの学習器には、それを読む一時的な引数`--replay <ディレクトリ>`を加える。再生ファイルは、入力ファイルの並びとSHA-256、エポックごとの訓練局面の列（各局面を（入力ファイルの番号、ファイル内の記録の番号）の組で表す）、各局面の鏡映の有無、学習前の実数の重み（PST、FMの埋め込みとa）、観測マスクを持つ。バッチは列をバッチの大きさで先頭から区切ったものとする。Rustは、ファイルの並びと検査和の不一致、列の不足、重複、訓練集合の外の局面、重みとマスクの形の不一致を拒否する。照合は次の3段で行う。(1) 最適化器の更新を3回行った後の損失、全パラメータ、AdamWの状態が、`|Rust − Python| ≤ 10⁻⁵ + 10⁻⁴·|Python|`で一致する。この許容誤差はNNUEの学習器をPyTorchと照合したときと同じ式である。(2) 再生ファイルで短縮した本学習を両方で行い、各エポックの検証損失が同じ式で一致し、最良エポックと停止エポックが一致する。(3) (2) で書き出した整数の重みの差がすべて±1単位以内で、FMの指数が一致する。`--replay`とPython側の改変は、照合の後に削除する。 |
 | 焼き込みと書き出しのバイト一致 | `fm scale --fm-scale 611`をJ75の出力に適用して、現行の`crates/minase/nets/pst.bin`がバイト単位で再生成されることを確かめる。J75の`pst-float.npz`を量子化し直すとJ75の`pst.bin`にバイト単位で一致することと、`fm quarter`がPythonの出力とバイト単位で一致することも確かめる。これらは固定した実数の重みからの書き出しであり、乱数を含まないので、照合(3)の±1単位ではなくバイト単位の一致を求める。 |
 | 診断の移植 | NNUEの`removal`、`distribution`、`moves`と、PSTの比較診断（教師の分類と盤上総駒数の5等分の帯ごとの損失、整数評価の一致、量子化誤差、代表局面の除去差分の符号反転、成り手の照合、導出した駒価値）を、`minase`のライブラリを直接呼ぶRustのコマンドにする。Pythonの診断のうちNNUEの`moves`とPSTの比較診断は`minase dev nnue-probe`と`minase dev pst-probe`を子プロセスとして呼んでいたが、Rustからはライブラリの評価関数を直接呼べるので、両コマンドは利用者がいなくなって削除する。移植の一致は、同じネットに対するPythonとRustの出力を比べて一度だけ確かめる。PythonはNumPyの乱数で診断の標本を選ぶので、照合のときだけPythonが選んだ標本の番号を一時的な引数`--replay-sample`でRustへ渡し、標本の番号の検査和が一致することを確かめてから値を比べる。整数の値は完全な一致、実数の値は照合(1)と同じ式で比べ、入力のパス、実行環境、実行時間の欄は比較から除く。`--replay-sample`は照合の後に削除する。 |
@@ -146,7 +146,7 @@ GPUのカーネルが要る学習器が出た場合は、その学習器ごと�
 [NNUEの完全代替](nnue-replacement.md)のフェーズ4の2つのネットについて、Pythonの`nnue-diagnostics`の出力とRustの出力を比べ、整数の値は完全に、実数の値は「設計判断」の照合(1)と同じ式で一致することを確かめる。
 一致を確かめた後、PythonのNNUEの学習器（`minase_train.nnue`）、`nnue-diagnostics`、`scripts/crosscheck_reference.py`、`scripts/crosscheck_batch.py`、`scripts/rust_float_to_npz.py`、`dump-batch`サブコマンドを削除する。
 
-完了条件は、診断の一致が[照合の記録](../../measurements/python-trainer-retirement-checks.md)に書かれ、削除後のワークスペースのテストが通ることである。
+完了条件は、診断の一致が[照合の記録](../../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)に書かれ、削除後のワークスペースのテストが通ることである。
 
 ### フェーズ2　PSTの学習器
 
@@ -154,7 +154,7 @@ PST専用のパイプライン、`--removal-reference`、`--lambda-override`の�
 一時的な`--replay`を加え、Python側の一時的な改変で書き出した再生ファイルを使って、候補Lの条件を1ファイルと数エポックに短縮した学習を両方で行い、「設計判断」の照合(1)から(3)を確かめる。
 1エポックの時間を測り、Pythonの時間と比べる。
 
-完了条件は、照合の結果と時間が[照合の記録](../../measurements/python-trainer-retirement-checks.md)に書かれ、連続2エポックの学習と1エポックで止めて再開した学習の重みとAdamWの状態がビット単位で一致することである。フェーズ3と4にも同じ再開の条件を課す。
+完了条件は、照合の結果と時間が[照合の記録](../../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)に書かれ、連続2エポックの学習と1エポックで止めて再開した学習の重みとAdamWの状態がビット単位で一致することである。フェーズ3と4にも同じ再開の条件を課す。
 
 ### フェーズ3　FMの学習器、縮小、倍率の焼き込み
 
@@ -210,4 +210,4 @@ Pythonの同時学習器は、ブランチ`pst-fm-joint-training`のコミット
 - [Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[学習率スケジュール](nnue-lr-schedule.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)
 - [PSTとFMの同時学習](pst-fm-joint-training.md)、[FMの倍率のSPSA調整](fm-scale-spsa.md)、[補正1/4のFMの再学習](fm-quarter-current-pst.md)、[PSTのエポック数の延長](pst-longer-training.md)
 - [PSTの学習の手引き](../../guides/pst-training.md)
-- [同時学習の記録](../../measurements/pst-fm-joint-training-training.md)、[倍率の焼き込みの検査](../../measurements/fm-scale-spsa-candidate.md)
+- [同時学習の記録](../../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)、[倍率の焼き込みの検査](../../measurements/fm-scale-spsa/fm-scale-spsa-candidate.md)

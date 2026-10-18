@@ -44,15 +44,15 @@ minaseの二値の短縮は安定な手を短くするだけであり、短縮�
 測定まで進んだ候補はいずれも、改善を示せない判定`H0`か、判定前の中止に終わった。
 本書はそれぞれと次の点で異なる。
 
-[棋力向上段階6](archived/strength-stage6.md)は、2つの二値の延長をSTCで測り、いずれも`H0`だった（[fail-lowによる延長](../measurements/strength-stage6-faillow-stc.md)、[最善手交替時の延長](../measurements/strength-stage6-bmchange-stc.md)）。
+[棋力向上段階6](archived/strength-stage6.md)は、2つの二値の延長をSTCで測り、いずれも`H0`だった（[fail-lowによる延長](../measurements/strength-stage6/strength-stage6-faillow-stc.md)、[最善手交替時の延長](../measurements/strength-stage6/strength-stage6-bmchange-stc.md)）。
 fail-lowとは、aspiration windows（直前の反復の評価値の周りに狭い窓を置いて根を読む手法）で、評価値が窓の下限を割り込むことであり、最善手が崩れた兆候とされる。
 2つの延長はどちらも、信号が立った反復の境界ではsoftの条件を外し、hardの予測だけで次の反復を始めるかを決める形であり、伸ばす量は信号の大きさによらなかった。
 本書の因子は信号の大きさに応じてsoftを伸縮させ、縮める方向も持ち、強さはSPSAで調整する。
 
 [持ち時間の効率的な使用](archived/time-management-efficiency.md)の第3段階は、本書と同じ4因子の積を、各因子の定数をStockfishのまま実装し、積全体に正規化の定数0.48を掛けた。
-同じ設計書の第2段階は`increaseDepth`に当たる深さの抑制を実装したが、[事前判定](../measurements/time-management-efficiency-stage2-bench.md)で抑えた反復が置換表の照会だけで終わる空費と判定して見送った。
-第3段階は単独では測られず、予算の再定義と途中結果の採用（第1段階）を積んだ最終候補としてSTCで`H0`となった（[測定記録](../measurements/time-management-efficiency-stc.md)）。
-事前の[ベンチ](../measurements/time-management-efficiency-stage3-bench.md)では、Stockfishの定数はminaseの深さ6〜8の探索で積を系統的に大きくし、正規化前の積の中央値は2.08であり、最善手の安定による因子（Stockfishの`reduction`、本書のT2）は240局面中180局面以上で上限に張り付いた。
+同じ設計書の第2段階は`increaseDepth`に当たる深さの抑制を実装したが、[事前判定](../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)で抑えた反復が置換表の照会だけで終わる空費と判定して見送った。
+第3段階は単独では測られず、予算の再定義と途中結果の採用（第1段階）を積んだ最終候補としてSTCで`H0`となった（[測定記録](../measurements/time-management-efficiency/time-management-efficiency-stc.md)）。
+事前の[ベンチ](../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)では、Stockfishの定数はminaseの深さ6〜8の探索で積を系統的に大きくし、正規化前の積の中央値は2.08であり、最善手の安定による因子（Stockfishの`reduction`、本書のT2）は240局面中180局面以上で上限に張り付いた。
 事後分析は、`H0`となった主因を、係数つきの予算が持ち時間を200手目までに使い切らせ、中終盤で浅くなったことと結論した。
 同じ候補は、hardから残り時間の割合の項を外していたので、時間切れも2件出した。
 本書の開始値は第3段階の正規化前の定数とほぼ同じであり、開始時点の積が大きくなる見込みは同じである。
@@ -68,8 +68,8 @@ B0は消費の水準を現行に保つ候補、B1は持ち時間を早く使い�
 3候補は共通の二値の「難しさの信号」を使った。
 この信号は、深さ6以上の反復を終えるたびに、その反復か直前の反復で最善手が変わったか、評価値が深さd − 2の反復より歩兵1枚以上下がったときに真となる。
 softは、信号が真なら基準時間の`r/v̄`倍、偽なら`1/v̄`倍とした（rとv̄は実戦のログから事前に求めた定数）。
-B1は短い条件で`H0`となった（[測定記録](../measurements/byoyomi-b1-short-r2.md)）。
-B0は判定前に利用者の判断で止め（[記録](../measurements/byoyomi-b0-short-r2.md)）、B2は[煙試験](../measurements/byoyomi-b-smoke.md)だけで選別の測定をせずに不採用とした。
+B1は短い条件で`H0`となった（[測定記録](../measurements/byoyomi-time-usage/byoyomi-b1-short-r2.md)）。
+B0は判定前に利用者の判断で止め（[記録](../measurements/byoyomi-time-usage/byoyomi-b0-short-r2.md)）、B2は[煙試験](../measurements/byoyomi-time-usage/byoyomi-b-smoke.md)だけで選別の測定をせずに不採用とした。
 本書の因子は、2段階ではなく連続の量であり、深さ6以上という発動の条件を持たずに毎反復で働き、強さを実戦のログからの定数ではなくSPSAで決める。
 また、段階Bは基準時間の式そのものを候補ごとに変えたが、本書は`soft_raw`（残り時間、加算、および秒読みから求める目安時間）の式を変えない。
 B1の`H0`は基準時間の変更と信号を併せた結果なので、信号による伸縮だけの効果を示すものではない。
@@ -153,12 +153,12 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | 候補の束ね方 | 10項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回の段階ゲートで採否を決める。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとの寄与は測らず、不採用のときに一部の項目だけを選び直して再測定しない。 |
 | 伸縮の形（time management by search instability） | Stockfishと同じく、完了反復ごとにT1〜T4の4因子の積を求めて目安時間に掛け、hardで抑える（`src/search.cpp:612-613, 622-623`）。minaseでは、次の反復を始めるかの判定に使うsoftを`min(soft × 積, hard)`に置き換え、合法手が1つならさらにT6で抑える。T1〜T4とT6はhardを変えない。T5は予算を求める時点で`soft_raw`に掛ける。各因子の式の形はStockfishに合わせる（2026年10月17日の利用者の決定）。 |
 | 調整する値と固定する値 | 各因子の強さを決める切片、傾き、および倍率の11個と、二値の短縮の反復数の計12個を係数にする。上下限、平均の重み、前の探索の値の初期値、深さを減らす式、詰みの手数、および先読みの増分はStockfishの値で固定する（2026年10月17日の利用者の決定）。固定する定数は「固定する定数」の表にまとめる。Stockfishの`interpolate(x, x0, x1, y0, y1)`（2点を通る直線）は、直線の切片と傾きの2つの係数で表し、`clamp`の上下限は固定する。2点の座標の4つを係数にすると、同じ直線を表す組が無数にあり、SPSAが直線を変えない方向にも係数を動かしてしまうからである。 |
-| 開始値 | 新しい係数は、Stockfishの値を千分率と歩兵価値で換算した値とする（2026年10月17日の利用者の決定）。評価値の差に掛かる係数は、Stockfishの歩兵価値208（`src/types.h:199`）で歩兵1枚あたりの値に換算する。[第3段階のベンチ](../measurements/time-management-efficiency-stage3-bench.md)によれば、この開始値ではminaseの深さで積が系統的に大きくなる。積の水準は、T2の分母（`TimeReductionScale`）や各因子の切片の係数を通してSPSAが動かせるので、正規化の定数は加えない。開始時点の時間の使い方は、フェーズ2の事前対局で記録する。 |
+| 開始値 | 新しい係数は、Stockfishの値を千分率と歩兵価値で換算した値とする（2026年10月17日の利用者の決定）。評価値の差に掛かる係数は、Stockfishの歩兵価値208（`src/types.h:199`）で歩兵1枚あたりの値に換算する。[第3段階のベンチ](../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)によれば、この開始値ではminaseの深さで積が系統的に大きくなる。積の水準は、T2の分母（`TimeReductionScale`）や各因子の切片の係数を通してSPSAが動かせるので、正規化の定数は加えない。開始時点の時間の使い方は、フェーズ2の事前対局で記録する。 |
 | 評価値の単位を持つ係数の3つの値 | 評価値の差に掛かる`TimeFallingPrevious`と`TimeFallingIteration`は、範囲にStockfishの換算値（÷208）、YaneuraOuの換算値（÷90）、およびminaseの現行の値（項がないので0）をすべて含める（2026年10月17日の利用者の決定）。歩兵1枚あたり千分率で、`TimeFallingPrevious`はStockfishが4784、YaneuraOuが約1904、現行が0、`TimeFallingIteration`はStockfishが2288、YaneuraOuが約888、現行が0である。どちらも開始値がYaneuraOuの約2.5倍であり、現行の0から最も遠い。YaneuraOuの歩兵価値は小さいので、歩兵1枚で見ると評価値の下落への反応はStockfishより弱い。中将棋の歩兵は他の駒に比べてさらに価値が小さく、歩兵単位の評価値の振れが大きいので、開始時点ではわずかな下落でT1が上限に張り付く見込みがある。 |
 | 既存の係数の開始値 | 時間管理の既存の6係数は、起点の表の値のまま始める。`HardRemainingShare`（hardを残り時間の割合で抑える項）は、Stockfishの0.8097（`src/timeman.cpp:161`）と式の形は似ているが、意味が違うので、2026年10月17日の利用者の決定にいう「同じ形の値」には当たらないと判断した。Stockfishの上限時間は、中断した反復でも探索を終えた手の結果を使う前提の安全弁であり、上限まで使っても計算は着手に反映される。minaseは秒読みのない時計でhardで中断した反復の結果を捨てる（[ADR](../adr/reject-fair-share-budget-with-partial-results.md)）ので、この項は使い捨てになり得る長考を抑え、残り時間の少ない局面での時間切れを防ぐ働きを持つ（[打ち切り上限の教訓](../lessons/cap-hard-limit-by-remaining-fraction.md)）。このため開始値は現行の27%、範囲も現行の10〜50%のままとする。`ExpectedPlies`、`MinMoves`、`IncrementShare`、`HardSoftRatio`、および`IterationRatio`は、Stockfishの式の形が違うか対応する項がないので、起点の表の値のままとする。 |
 | 前の探索の値の持ち越し | Stockfishと同じく、前の探索が選んだ手の評価値（`bestPreviousScore`）、その手の平均値（`bestPreviousAverageScore`）、および前の探索の最後の`timeReduction`（`previousTimeReduction`）を次の探索へ持ち越す（`src/search.cpp:259-260, 644`）。値は対局の開始で消し、先読みの探索の結果でも更新する。Stockfishも`ucinewgame`でだけ初期化し（`src/thread.cpp:270-275`）、局面が対局の続きかどうかを確かめない。minaseが現在探索をまたいで持ち越すのは置換表とhistory表だけなので、探索の開始と終了の関数に、持ち越す値の組を受け取って返す引数を加える。この変更は公開API（`start_search`と`SearchHandle::join`）の互換性を壊すので、該当のコミットは`feat!`と`BREAKING CHANGE:`のフッターで書く（[CONTRIBUTING.md](../../CONTRIBUTING.md)）。 |
 | 対局の最初の探索 | Stockfishは前の値を`VALUE_INFINITE`で初期化するので、対局の最初の探索ではT1の前の探索の項が非常に大きくなり、因子が上限に張り付く。反復の値の環状配列は0で埋める（`src/search.cpp:319-322`）。本書はこの挙動を写し、前の探索がないときはT1の因子を上限の1728‰とし、環状配列を0で埋める。lishogiのBotは各対局の最初の1手を`movetime`で探索させるので、Botではこの規則が働かない。 |
-| 二値の短縮との関係（T10） | 二値の短縮を残し、T2の因子と併用する（2026年10月17日の利用者の決定）。二値の短縮は中将棋での[反復深化の診断](../measurements/strength-stage6-iteration-diag.md)から反復数4を選び、STCとLTCで`H1`となった規則である（[STC](../measurements/strength-stage6-stable-stc.md)、[LTC](../measurements/strength-stage6-stable-ltc.md)）。softとの比べ方を経過時間から予測完了時刻へ切り替える規則なので、softに掛ける倍率では表せない。反復数は定数`STABLE_ITERATIONS`から係数`StableIterations`に改め、現行の4から始めて他の係数と一緒に調整する。 |
+| 二値の短縮との関係（T10） | 二値の短縮を残し、T2の因子と併用する（2026年10月17日の利用者の決定）。二値の短縮は中将棋での[反復深化の診断](../measurements/strength-stage6/strength-stage6-iteration-diag.md)から反復数4を選び、STCとLTCで`H1`となった規則である（[STC](../measurements/strength-stage6/strength-stage6-stable-stc.md)、[LTC](../measurements/strength-stage6/strength-stage6-stable-ltc.md)）。softとの比べ方を経過時間から予測完了時刻へ切り替える規則なので、softに掛ける倍率では表せない。反復数は定数`STABLE_ITERATIONS`から係数`StableIterations`に改め、現行の4から始めて他の係数と一緒に調整する。 |
 | 評価値の比較 | Stockfishと同じく、T1は完了反復の値を、前の探索の平均値と、4反復前の完了反復の値（`iterValue`の4要素の環状配列）の両方と比べる（`src/search.cpp:594-596, 637-638`）。評価値が詰み帯と専用の帯にある場合を特別に扱わない点もStockfishと同じであり、大きな差は因子の上下限で抑えられる。 |
 | 最善手の変化の数え方 | 根の探索で、2手目以降の手の値がその時点のαを上回って最善手が入れ替わった回数を、各ワーカーが数える（`src/search.cpp:1531-1532`）。aspiration windowsの読み直しの中の入れ替わりも数える。主ワーカーは反復を始めるたびに累計を半分にし、完了反復のたびに全ワーカーの回数を足してワーカーの回数を0に戻す（`src/search.cpp:354, 583-587`）。因子では累計をワーカー数で割る（`src/search.cpp:607`）。採否測定は`Threads=1`なので主ワーカーの回数だけになり、Botの4スレッドでは補助ワーカーの回数も加わる。 |
 | ノード占有率 | Stockfishと同じく、主ワーカーの探索の開始からの累計で、最善手の部分木に使ったノード数が主ワーカーの全ノード数に占める割合を求め、直線と上下限で因子にする（`src/search.cpp:592, 609-610, 1474`）。YaneuraOuの階段状の形と深さ10以上の条件（`yaneuraou-search.cpp:1987`）は採らない。根の手ごとの累計は、aspiration windowsの設計書のM2が主ワーカーに持たせる`E(m)`を再利用し、二重に持たない。 |
@@ -166,10 +166,10 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | T5を秒読みが0の時計に限る | 秒読みはStockfishにない仕組みなので、秒読みつきの時計ではYaneuraOuに合わせる（2026年10月17日の利用者の決定）。YaneuraOuの`source/timeman.cpp`は相手の残り時間を使わない。秒読みが正の時計では、持ち時間を使い切っても毎手の秒読みで指せるので、持ち時間の差は時間が足りないことを表さず、不利なときに消費を減らせば持ち時間を後の手に残す温存にもなる。 |
 | T5の入力 | `ClockLimits`に相手の残り時間を持たせる。T5を使う時計（秒読みが0で`movetime`を併用しない時計）では相手の残り時間を必須とし、届いていなければ0などで代えずに明確なエラーにする。T5を使わない時計（秒読みつきの時計、`movetime`を併用する時計）では相手の残り時間を要求しない。USIでは、`go`の`btime`と`wtime`のうち手番でない側の値を渡し、T5を使う時計でその値がない`go`は、現行の不正な`go`と同じくエラーの文を返して拒否する。CECP（XBoardの通信規約）では、現行で検査だけして捨てている`otim`を保持し、T5を使う時計で`otim`が届いていなければエラーを返す。探索のAPIでは、相手の残り時間がないT5を使う時計を`SearchLimits::new`が`SearchError`で拒否する。これまで受理していた入力を拒否するので、互換性を壊す変更として書く。対局ハーネスは両側の時計を毎手送っているので（`crates/minase/src/harness/clock.rs`）、測定には影響しない。 |
 | 合法手が1つの局面（T6） | Stockfishと同じく、合法手が1つなら目安時間を500 msで抑える（`src/search.cpp:615-617`）。中将棋では王手を放置する着手も、王駒を相手の利きへ移す着手も合法であり（[RULES.md](../rules/RULES.md)第8条第3項から第5項）、合法手が1つになるのは動ける駒が1枚でその行き先も1升に限られる局面だけなので、対局中にほぼ発動しない。発動しないのでSPSAで値を調整できず、500 msは固定する。 |
-| 深さを増やさない規則（T7、increaseDepth） | Stockfishと同じく、時間で止めなかった反復の境界で、経過時間が伸縮後の目安時間の50%を超えていれば、全ワーカーが共有する「深さを増やさない」フラグをセットする（`src/search.cpp:634`）。各ワーカーは反復を始めるときにフラグがセットされていれば読み直しの回数kを1増やし、aspiration windowsの設計書のA5が定める窓の読む深さの式に、減深の項`3 × (k + 1) / 4`を1つ加える（`src/search.cpp:369-370, 410-411`）。先読みの間は常に深さを増やす。[第2段階の事前判定](../measurements/time-management-efficiency-stage2-bench.md)は、PSTを既定の評価関数としていた時期の深さで、浅くした反復が置換表の照会だけで終わる空費になると判定した。本書はこの規則をStockfishの方針により含め、効果は段階ゲートで判定する。閾値50%は、softのさらに半分という境界の位置であり、強さを決める倍率ではないので固定する。 |
+| 深さを増やさない規則（T7、increaseDepth） | Stockfishと同じく、時間で止めなかった反復の境界で、経過時間が伸縮後の目安時間の50%を超えていれば、全ワーカーが共有する「深さを増やさない」フラグをセットする（`src/search.cpp:634`）。各ワーカーは反復を始めるときにフラグがセットされていれば読み直しの回数kを1増やし、aspiration windowsの設計書のA5が定める窓の読む深さの式に、減深の項`3 × (k + 1) / 4`を1つ加える（`src/search.cpp:369-370, 410-411`）。先読みの間は常に深さを増やす。[第2段階の事前判定](../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)は、PSTを既定の評価関数としていた時期の深さで、浅くした反復が置換表の照会だけで終わる空費になると判定した。本書はこの規則をStockfishの方針により含め、効果は段階ゲートで判定する。閾値50%は、softのさらに半分という境界の位置であり、強さを決める倍率ではないので固定する。 |
 | 詰みでの早期停止（T8） | Stockfishと同じく、時間で止めるかを判定する反復の境界で、最善手の値が3手以内に詰ます値以上であるか、2手で詰まされる値であれば、目安時間を待たずに止める（`src/search.cpp:622-623`）。手数は、どちらの対局者の着手も1手と数える（1手は片側の1着手）。2手で詰まされる値だけを等号で判定するのもStockfishと同じである。minaseの評価値の詰み帯は詰みまでの手数を表すので、同じ判定ができる。先読みの間は止めず、的中の時点で止める。YaneuraOuの既定の経路の停止の判定（`yaneuraou-search.cpp:2041`）はこの条件を持たないが、秒読みに関わらない項目なのでStockfishに合わせる。 |
 | 先読み中の25%増し（T9） | Stockfishは先読みを有効にした対局のすべての探索で、目安時間を25%増やす（`src/timeman.cpp:164-165`）。Stockfishは先読みの探索の経過時間を探索の開始から数えるので、的中した手では相手の手番中の時間まで目安時間から差し引かれ、時計に対して時間を使い残す。25%増しは、その使い残しを他の手で使う働きを持つ。minaseは的中の時点から予算を測るので、的中した手で使い残しが生じない（[ADR](../adr/continue-search-and-measure-budget-from-ponderhit.md)）。的中した手にも25%を足すと、同じ目減りを2回補うことになる。そこで、25%増しは先読みを使う対局の先読みでない探索（先読みが外れた後の探索など）にだけ掛け、的中から予算を測る探索には掛けない。minaseはUSIの`USI_Ponder`を宣言しないので、「先読みを使う対局」は、同じ対局で`go ponder`を1回以上受けたことで判定する。25%は、SPSAと段階ゲートの対局が先読みを使わないので調整できず、固定する。 |
-| 秒読みつきの時計 | T1〜T4、T6、T7、およびT8は、秒読みつきの時計の持ち時間期にも働かせる（2026年10月17日の利用者の決定、案A）。秒読みはStockfishにない仕組みであり、YaneuraOuは秒読みつきの時計でも4因子の積を目安時間に掛けるからである（`yaneuraou-search.cpp:1989-1996`）。秒読み期は現行のままとする。SPSAは秒読みのない時計で係数を選ぶので、秒読みつきの持ち時間期での値の妥当性は調整の外にある。そこで、段階ゲートを通った候補を、秒読みつきの2条件（短い条件`time=6000+0,byoyomi=300`と長い条件`time=45000+0,byoyomi=300`）のGSPRTで起点と比べる。両方が`H1`なら統合する。どちらかが`H1`でなければ、本書の項目を秒読みが0の時計に限るコミットを加えてから統合する。この後始末は測定の前に定める規則であり、秒読みが0の時計の予算を変えないので、段階ゲートの判定はそのまま有効である。人間との対局で棋力が落ちる変更を許容せず、非劣性の検定（候補が基準より一定の幅以上は弱くないことを示す検定）で落ちていないとみなす扱いも採らないことは、利用者の方針として記録されているので、秒読みつきの時計を変えるには`H1`を要求する。費用は、[段階Aの短い条件](../measurements/byoyomi-a-short-c10.md)が1ペア約30秒、[長い条件](../measurements/byoyomi-a-long-c10.md)が約39秒（いずれも同時対局数10）なので、判定までの130〜3,000ペアに対して短い条件が約1〜25時間、長い条件が約2〜33時間、合わせて約3〜58時間である。 |
+| 秒読みつきの時計 | T1〜T4、T6、T7、およびT8は、秒読みつきの時計の持ち時間期にも働かせる（2026年10月17日の利用者の決定、案A）。秒読みはStockfishにない仕組みであり、YaneuraOuは秒読みつきの時計でも4因子の積を目安時間に掛けるからである（`yaneuraou-search.cpp:1989-1996`）。秒読み期は現行のままとする。SPSAは秒読みのない時計で係数を選ぶので、秒読みつきの持ち時間期での値の妥当性は調整の外にある。そこで、段階ゲートを通った候補を、秒読みつきの2条件（短い条件`time=6000+0,byoyomi=300`と長い条件`time=45000+0,byoyomi=300`）のGSPRTで起点と比べる。両方が`H1`なら統合する。どちらかが`H1`でなければ、本書の項目を秒読みが0の時計に限るコミットを加えてから統合する。この後始末は測定の前に定める規則であり、秒読みが0の時計の予算を変えないので、段階ゲートの判定はそのまま有効である。人間との対局で棋力が落ちる変更を許容せず、非劣性の検定（候補が基準より一定の幅以上は弱くないことを示す検定）で落ちていないとみなす扱いも採らないことは、利用者の方針として記録されているので、秒読みつきの時計を変えるには`H1`を要求する。費用は、[段階Aの短い条件](../measurements/byoyomi-time-usage/byoyomi-a-short-c10.md)が1ペア約30秒、[長い条件](../measurements/byoyomi-time-usage/byoyomi-a-long-c10.md)が約39秒（いずれも同時対局数10）なので、判定までの130〜3,000ペアに対して短い条件が約1〜25時間、長い条件が約2〜33時間、合わせて約3〜58時間である。 |
 | STCを省略しない | [SPRTの手引き](../guides/sprt.md)は、短時間条件では効果が原理的に現れない時間管理の変更に限り、STCを省略してLTCへ直行することを認める。本書の因子は深さによらず毎反復で働き、SPSAもSTCの持ち時間で係数を選ぶので、効果はSTCに現れる。第3段階のベンチでも、深さ6〜8の探索で因子は大きく振れていた。このため手引きの段階ゲートを省略せずに使う。 |
 | SPSAの対象 | 起点の調整対象の全係数に新しい12係数を加える。調整対象は、`FmScale`（調整用ビルドだけが参照する、因子分解機（factorization machine）による評価の補正の倍率）を除く表の全係数である。起案時のmasterの表は38係数であり、連鎖の先行の設計書がすべて採用されると、本書の12係数を含めて約103になる。数は着手時に起点の表で数え直す。時間管理の係数を含むので、本番の前に時間切れの事前確認を行う。 |
 | SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。約100の係数を30,000ペアで十分に調整できるかは未検証であり、不採用は「この予算と設定で改善を示さなかった」ことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
@@ -298,7 +298,7 @@ YaneuraOuの値は、形が同じ係数について記す。
 | `TimeEffortIntercept`（‰） | 1642 | 500〜2500 | 1642 | 形が違う | 項なし | `interpolate(e, 75800, 104510, 0.969, 0.714)`（`src/search.cpp:609-610`）の直線の`e = 0`での値。0.969 + 75800 × 0.255 / 28710 |
 | `TimeEffortSlope`（占有率100%あたり‰） | −888 | −2000〜500 | −888 | 形が違う | 項なし（0） | 同じ直線の傾き −0.255 / 28710 × 100000。YaneuraOuは階段状 |
 | `TimeAdvantage`（‰） | 900 | 0〜1000 | 900 | 項なし | 項なし（0） | `src/timeman.cpp:155`の0.9。上限1000は、差の割合が−1に近づいても因子が負にならない値である |
-| `StableIterations`（反復） | 4 | 2〜8 | 項なし | 項なし | 4 | 現行の`STABLE_ITERATIONS`。範囲は、4反復を選んだ[診断](../measurements/strength-stage6-iteration-diag.md)が比べた3〜5を含む |
+| `StableIterations`（反復） | 4 | 2〜8 | 項なし | 項なし | 4 | 現行の`STABLE_ITERATIONS`。範囲は、4反復を選んだ[診断](../measurements/strength-stage6/strength-stage6-iteration-diag.md)が比べた3〜5を含む |
 
 SPSAの摂動幅は反復とともに`(3750 / k)^0.101`に比例して縮み（kは反復番号）、最初の反復では最後の反復の`3750^0.101 ≈ 2.30`倍になる（`crates/minase/src/bin/minase/spsa_runner/model.rs`）。
 `c_end`は範囲の幅の1/6なので、最初の反復の摂動幅は範囲の幅の約0.38倍（2.30 ÷ 6）である。
@@ -466,6 +466,8 @@ hardには残り時間の割合の項と、残り時間から余裕を引いた�
 
 ### フェーズ5　採否測定
 
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。この節のSTCは採否に使わない記録として行い、LTCは行わない。以下の判定の規則は、この決定より前に書いたものであり、統括計画の決定が優先する。秒読みつきの確認の扱いは、本書に着手するときに決める。
+
 ```console
 <固定したminase> match run \
   --run-dir data/matches/time-instability-scaling-stc --seed 5150000000 \
@@ -485,7 +487,7 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 ### フェーズ6　秒読みつきの時計での確認
 
 LTCで採用が決まった候補を、秒読みつきの短い条件で起点と比べる。
-同時対局数は、16で行った秒読みつきの測定が過負荷による時間切れで無効になった先例（[段階Aの短い条件](../measurements/byoyomi-a-short-c10.md)）に従い10とする。
+同時対局数は、16で行った秒読みつきの測定が過負荷による時間切れで無効になった先例（[段階Aの短い条件](../measurements/byoyomi-time-usage/byoyomi-a-short-c10.md)）に従い10とする。
 
 ```console
 <固定したminase> match run \
@@ -524,7 +526,7 @@ LTCで採用が決まった候補を、秒読みつきの短い条件で起点�
 - [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`、`src/search.h`、`src/thread.cpp`、`src/timeman.cpp`、および`src/types.h`。前の探索の値の記録は`search.cpp`の259〜260行と644行、反復の値の初期化は319〜322行、変化回数の累計の減衰は354行、深さを増やさない回数は369〜370行、反復の深さの式は410〜411行、最善手が変わった深さの記録は533〜534行、4因子と積は592〜613行、合法手が1つの上限は615〜617行、停止と詰みの判定は622〜634行、根の手の平均値とノード数の累計は1474〜1495行、変化回数の計数は1531〜1532行。前の探索の値の初期化は`thread.cpp`の270〜275行。相手との残り時間の差は`timeman.cpp`の151〜156行、上限時間は159〜162行、先読みの25%増しは164〜165行。歩兵価値は`types.h`の199行。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`と`source/timeman.cpp`。4因子と積は1969〜1990行、合法手が1つの上限は1995〜1996行、停止の判定は2041行。`timeman.cpp`は相手の残り時間を参照しない。
-- [持ち時間の効率的な使用](archived/time-management-efficiency.md)の「棄却した再構成の各段階」、[第2段階の事前判定](../measurements/time-management-efficiency-stage2-bench.md)、および[第3段階のベンチ](../measurements/time-management-efficiency-stage3-bench.md)。
+- [持ち時間の効率的な使用](archived/time-management-efficiency.md)の「棄却した再構成の各段階」、[第2段階の事前判定](../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)、および[第3段階のベンチ](../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)。
 - [棋力向上段階6](archived/strength-stage6.md)と[秒読みつき時計での持ち時間と秒読みの活用](byoyomi-time-usage.md)。
 - [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../guides/spsa.md)、[SPRTによる棋力測定の手引き](../guides/sprt.md)、および[反復予算の調査](../research/spsa-iteration-budget.md)。

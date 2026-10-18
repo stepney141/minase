@@ -17,7 +17,7 @@ Bを1にした場合は一時ファイルを使わず、現行の学習器と同
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月14日に起案し、2026年10月16日に着手し、2026年10月17日に完了した。
-`--buckets 1`の学習は変更前とビット単位で同じ結果を出し（[照合記録](../../measurements/out-of-core-shuffle-equivalence.md)）、B=16の学習は、各訓練局面をちょうど1回ずつ一様な順列で流し、一時ファイルの全体が収まらないメモリの上限2 GBの中で書き出しと再開まで完走し、所要時間は共用の負荷の下でB=1を上回らなかった（[煙試験と時間・メモリの記録](../../measurements/out-of-core-shuffle-time-memory.md)）。
+`--buckets 1`の学習は変更前とビット単位で同じ結果を出し（[照合記録](../../measurements/out-of-core-shuffle/out-of-core-shuffle-equivalence.md)）、B=16の学習は、各訓練局面をちょうど1回ずつ一様な順列で流し、一時ファイルの全体が収まらないメモリの上限2 GBの中で書き出しと再開まで完走し、所要時間は共用の負荷の下でB=1を上回らなかった（[煙試験と時間・メモリの記録](../../measurements/out-of-core-shuffle/out-of-core-shuffle-time-memory.md)）。
 設計判断は[毎エポック訓練集合全体を一様に並べ替えるADR](../../adr/shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)と[実行専用の一時ファイルのADR](../../adr/keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)へ、Bと上限の選び方は[NNUEの学習の手引き](../../guides/nnue-training.md)へ移した。
 
 ## 目的
@@ -27,7 +27,7 @@ Bを1にした場合は一時ファイルを使わず、現行の学習器と同
 
 現行の学習器は、学習に使う局面を1局面約100バイトの圧縮表現でメモリに持つ（`crates/minase-trainer/src/data/mnsd.rs`）。
 この圧縮表現だけなら30 GBで約3億局面になる。
-一方、版2の4ファイル（811万局面）の学習の最大常駐メモリは2.32 GB（1局面あたり約286バイト）であり（[教師データ形式の統一の照合記録](../../measurements/unified-teacher-format-equivalence.md)）、ネットや作業領域などの固定のメモリと、局面数に比例するメモリを分けて測っていない。
+一方、版2の4ファイル（811万局面）の学習の最大常駐メモリは2.32 GB（1局面あたり約286バイト）であり（[教師データ形式の統一の照合記録](../../measurements/unified-teacher-format/unified-teacher-format-equivalence.md)）、ネットや作業領域などの固定のメモリと、局面数に比例するメモリを分けて測っていない。
 したがって、現行の学習器が30 GBで扱える上限は1億局面から3億局面のあいだのどこかである。
 
 本書で使う語を次のように定める。
@@ -59,7 +59,7 @@ Bを1にした場合は一時ファイルを使わず、現行の学習器と同
 ## 依存関係
 
 前提は、完了した[教師データ形式の統一](unified-teacher-format.md)である。
-方式の選択は、[学習時の局面の並べ方の予備測定](../../measurements/shuffle-order-preliminary.md)の結果に基づく。
+方式の選択は、[学習時の局面の並べ方の予備測定](../../measurements/out-of-core-shuffle/shuffle-order-preliminary.md)の結果に基づく。
 
 NNUEの学習率スケジュールと隠れ層の計画も、NNUEの学習の経路を変える。
 本書を先に行えば、両計画は本書の後の学習器の上に実装する。
@@ -84,7 +84,7 @@ Stockfishの学習器nnue-pytorchは事前のシャッフルを行わない。
 
 ## 予備測定の要点
 
-[予備測定](../../measurements/shuffle-order-preliminary.md)は、版2の4ファイル（811万局面、1局面1,000ノードの浅い探索で作った教師）でNNUEを学習し、4つの並べ方の最良エポックの検証損失（検証集合での二値交差エントロピー）をシード3つで比べた。
+[予備測定](../../measurements/out-of-core-shuffle/shuffle-order-preliminary.md)は、版2の4ファイル（811万局面、1局面1,000ノードの浅い探索で作った教師）でNNUEを学習し、4つの並べ方の最良エポックの検証損失（検証集合での二値交差エントロピー）をシード3つで比べた。
 次の表はシード3つの平均であり、シードごとの値と同じシードどうしの差は測定記録にある。
 
 | 並べ方 | 既定の学習率、5エポック | 学習率1/10、10エポック |

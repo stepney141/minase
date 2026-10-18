@@ -17,4 +17,4 @@
 
 ## 出典
 
-[第2期高速化の最終の残存負荷](../measurements/movegen-speedup-2-final-profile-depth5.md)。
+[第2期高速化の最終の残存負荷](../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)。

@@ -10,8 +10,8 @@
 既定の評価関数が置き換わってきた経緯は、[評価関数の設計書](../plans/archived/evaluation.md)から続く凍結した設計書にある。
 FMの補正は、入力の線形和を二乗する活性化を持つ隠れ層と線形の項の組合せとして書けるので、浅いNNUEがPST＋FMに勝てないという証拠はなかった。
 [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)は、現行のPSTを線形の経路として内包する幅128のNNUEを学習した。
-このNNUEは、基準のPST＋FM（コミット`8d0e382`）に対する段階ゲートで、[STC](../measurements/nnue-replacement-stc.md)が104有効ペアのペンタノミアル度数[0, 0, 24, 0, 80]で`H1`となった。
-[LTC](../measurements/nnue-replacement-ltc.md)も104有効ペアの[0, 0, 17, 0, 87]で`H1`となり、異常は0件だった。
+このNNUEは、基準のPST＋FM（コミット`8d0e382`）に対する段階ゲートで、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)が104有効ペアのペンタノミアル度数[0, 0, 24, 0, 80]で`H1`となった。
+[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)も104有効ペアの[0, 0, 17, 0, 87]で`H1`となり、異常は0件だった。
 PSTとFMのコードは、最初の手書きの駒得評価v0と同じく、学習した評価関数を比べる基準としての役割を持っていた。
 
 ## 決定

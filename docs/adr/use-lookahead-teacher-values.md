@@ -11,8 +11,8 @@
 [先読み教師値](../plans/archived/lookahead-teacher.md)は、探索を深くする代わりに、対局が実際に進んだ先の探索値を使う仮説を立てた。
 攻めの準備が整った局面ではその後の十数手で探索値が下がるので、将来の値を混ぜた教師はその局面を低く評価する、という仮説である。
 この形はKnightCapのTD(λ)の目標値に着想を得ており、追加の探索を要せず、既存の教師データの対局番号と手数だけから計算できる（[先読み教師値の設計書](../plans/archived/lookahead-teacher.md)の参考資料）。
-学習PSTを先読み教師で学び直した候補は、段階開始版に対する[STC](../measurements/lookahead-teacher-pst-stc.md)で325有効ペア、ペンタノミアル度数[44, 10, 166, 14, 91]、LLR 2.958の`H1`となった。
-[LTC](../measurements/lookahead-teacher-pst-ltc.md)は104有効ペア、LLR +1.06の判定保留の時点でエンジンの開発者の指示により中止され、採用はLTCの`H1`を待たずに決められた。
+学習PSTを先読み教師で学び直した候補は、段階開始版に対する[STC](../measurements/lookahead-teacher/lookahead-teacher-pst-stc.md)で325有効ペア、ペンタノミアル度数[44, 10, 166, 14, 91]、LLR 2.958の`H1`となった。
+[LTC](../measurements/lookahead-teacher/lookahead-teacher-pst-ltc.md)は104有効ペア、LLR +1.06の判定保留の時点でエンジンの開発者の指示により中止され、採用はLTCの`H1`を待たずに決められた。
 
 ## 決定
 

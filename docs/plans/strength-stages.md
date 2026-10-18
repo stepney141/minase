@@ -71,16 +71,16 @@
 
 段階の順序は次の実測に基づく。
 
-HaChuとの対等な時間制御の固定局数Eloは−111である（[measurements/hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md)）。
-同一持ち時間での探索実測（[measurements/hachu-vs-search-nps.md](../measurements/hachu-vs-search-nps.md)）では、minaseが公称深さ（全幅で読み切る手数）8〜11、約140万〜270万NPS、HaChuが全幅相当の深さ10〜11、約80万〜95万NPSであり、探索量ではminaseが劣っていない。
+HaChuとの対等な時間制御の固定局数Eloは−111である（[measurements/evaluation-gen1/hachu-pst-gen1.md](../measurements/evaluation-gen1/hachu-pst-gen1.md)）。
+同一持ち時間での探索実測（[measurements/match-harness/hachu-vs-search-nps.md](../measurements/match-harness/hachu-vs-search-nps.md)）では、minaseが公称深さ（全幅で読み切る手数）8〜11、約140万〜270万NPS、HaChuが全幅相当の深さ10〜11、約80万〜95万NPSであり、探索量ではminaseが劣っていない。
 このminaseのNPSは2026年9月19日より前の定義のノード数に基づき、現行の定義では約0.66倍（約90万〜180万NPS）に相当するが、換算後もHaChuを下回らない（[research/node-count-definition.md](../research/node-count-definition.md)）。
-minaseの持ち時間だけを4倍にした固定局数Eloは統計的に互角に達した（[measurements/hachu-vs-search-tc-handicap-4x.md](../measurements/hachu-vs-search-tc-handicap-4x.md)）。
+minaseの持ち時間だけを4倍にした固定局数Eloは統計的に互角に達した（[measurements/match-harness/hachu-vs-search-tc-handicap-4x.md](../measurements/match-harness/hachu-vs-search-tc-handicap-4x.md)）。
 対局ハーネス設計書はこの差の主因を、HaChuが全ノードで計算する利きマップ由来の評価知識（モビリティすなわち駒が動ける升の数、王安全度すなわち王駒の周辺に届く利きの数、および獅子関連項）による1ノードあたりの質と位置づけている。
 
-自己対局の持ち時間感度は、候補側だけ持ち時間を2倍にした固定200ペアで+216 Elo（95%信頼区間+181〜+257、[measurements/sensitivity-time2x.md](../measurements/sensitivity-time2x.md)）である。
+自己対局の持ち時間感度は、候補側だけ持ち時間を2倍にした固定200ペアで+216 Elo（95%信頼区間+181〜+257、[measurements/evaluation-gen1/sensitivity-time2x.md](../measurements/evaluation-gen1/sensitivity-time2x.md)）である。
 線形性は仮定できないが、目安として1.3倍の高速化は+80 Elo程度に相当し、純粋な高速化の価値は大きい。
 
-探索ノードの内訳は、深さ5の単一ワーカー探索で置換表を照会する残り深さ1以上のノードが全体の約2%（242K／12.76M）であり、残りは静止探索と深さ0ノードである（[measurements/lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp-v1-diversification-bench.md)）。
+探索ノードの内訳は、深さ5の単一ワーカー探索で置換表を照会する残り深さ1以上のノードが全体の約2%（242K／12.76M）であり、残りは静止探索と深さ0ノードである（[measurements/lazy-smp/lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp/lazy-smp-v1-diversification-bench.md)）。
 静止探索は全手を生成してから捕獲手を濾し、通常探索と静止探索はノードごとにVecを確保し、反復検出は対局履歴と探索経路の線形走査、評価は毎ノードの全駒走査であり、いずれも探索挙動を変えずに除ける費用である。
 
 時間管理は、soft limitを反復の完了時にしか照合せず、次の反復が予算内に収まるかも予測しないため、実消費が常にsoft limitを超えて主時間を序盤で使い切る。
@@ -102,8 +102,8 @@ minaseの持ち時間だけを4倍にした固定局数Eloは統計的に互角�
 - 評価値の差分更新を採用した。先手視点と後手視点の2つの累算値を持ち、通常手、特殊移動、取り消し、およびnull moveの後も全再計算との一致を保つ。
 - 段階的な手選択を採用した。置換表の記録手、捕獲手、killer手、静かな手の順に必要な段階だけを生成し、各合法手を正確に1回だけ返す。
 
-個別の採否は[捕獲専用生成](../measurements/bench-capture-generation.md)、[ply別手配列](../measurements/bench-ply-move-buffers.md)、[反復回数表](../measurements/bench-repetition-occurrences.md)、[評価値の差分更新](../measurements/bench-incremental-pst.md)、および[段階的な手選択](../measurements/strength-stage1-staged-picker-ltc.md)の測定記録に基づく。
-最終構成は段階開始版との[LTC](../measurements/strength-stage1-final-ltc.md)が`H1`かつ異常0件となり、[固定自己対局](../measurements/strength-stage1-elo200.md)と[HaChu戦](../measurements/strength-stage1-hachu-elo200.md)を進捗指標として記録したため、段階1を完了した。
+個別の採否は[捕獲専用生成](../measurements/strength-stage1/bench-capture-generation.md)、[ply別手配列](../measurements/strength-stage1/bench-ply-move-buffers.md)、[反復回数表](../measurements/strength-stage1/bench-repetition-occurrences.md)、[評価値の差分更新](../measurements/strength-stage1/bench-incremental-pst.md)、および[段階的な手選択](../measurements/strength-stage1/strength-stage1-staged-picker-ltc.md)の測定記録に基づく。
+最終構成は段階開始版との[LTC](../measurements/strength-stage1/strength-stage1-final-ltc.md)が`H1`かつ異常0件となり、[固定自己対局](../measurements/strength-stage1/strength-stage1-elo200.md)と[HaChu戦](../measurements/strength-stage1/strength-stage1-hachu-elo200.md)を進捗指標として記録したため、段階1を完了した。
 
 ## 段階2　時間管理の構造修正
 
@@ -123,11 +123,11 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 最終判断は次のとおりである。
 
-- 予算式を採用した。段階開始コミットとの[STC](../measurements/strength-stage2-budget-stc.md)と[LTC](../measurements/strength-stage2-budget-ltc.md)がともに`H1`であった。
-- 反復継続の判断を採用した。予算式を基準とする[STC](../measurements/strength-stage2-iteration-stc.md)と[LTC](../measurements/strength-stage2-iteration-ltc.md)がともに`H1`であった。
+- 予算式を採用した。段階開始コミットとの[STC](../measurements/strength-stage2/strength-stage2-budget-stc.md)と[LTC](../measurements/strength-stage2/strength-stage2-budget-ltc.md)がともに`H1`であった。
+- 反復継続の判断を採用した。予算式を基準とする[STC](../measurements/strength-stage2/strength-stage2-iteration-stc.md)と[LTC](../measurements/strength-stage2/strength-stage2-iteration-ltc.md)がともに`H1`であった。
 - `position`再生の差分適用を安全性の修正として採用した。STCで超長手数の対局に時間切れが1件生じ、原因が着手数に比例する全手再生の固定費だったためで、benchの総ノード数の一致と処理時間の計測で確認した。
 
-[秒読みの煙試験](../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件であり、[固定自己対局](../measurements/strength-stage2-elo200.md)は段階開始コミットに対してSTCで+113.9 Elo、[HaChu戦](../measurements/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録したため、段階2を完了した。
+[秒読みの煙試験](../measurements/strength-stage2/strength-stage2-byoyomi-smoke.md)は時間切れ0件であり、[固定自己対局](../measurements/strength-stage2/strength-stage2-elo200.md)は段階開始コミットに対してSTCで+113.9 Elo、[HaChu戦](../measurements/strength-stage2/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録したため、段階2を完了した。
 
 ## 段階3　静止探索の質
 
@@ -148,11 +148,11 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 最終判断は次のとおりである。
 
-- 駒価値の再調整を採用した。学習PSTの重みから復号時に導出した駒価値（自駒と相手駒の144升平均の対称化、王駒は非王駒の最大値に歩兵を加えた固定値、余裕値は歩兵の2倍。2端点PSTの採用後は同じ値を重みファイルに固定して格納する）で、段階開始版との[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`であった。
-- `attackers_to`とSEEを採用した。判定不能の条件を経由升のある2段階移動と獅子が獅子を取る段階に絞り、駒価値の採用コミットを基準とする[STC](../measurements/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3-see-ltc.md)がともに`H1`であった。
-- 静止探索の深さ上限は見送った。[深さ分布のbench](../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上のノードが0.82%と事前基準の1%を下回った。
+- 駒価値の再調整を採用した。学習PSTの重みから復号時に導出した駒価値（自駒と相手駒の144升平均の対称化、王駒は非王駒の最大値に歩兵を加えた固定値、余裕値は歩兵の2倍。2端点PSTの採用後は同じ値を重みファイルに固定して格納する）で、段階開始版との[STC](../measurements/strength-stage3/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3/strength-stage3-values-ltc.md)がともに`H1`であった。
+- `attackers_to`とSEEを採用した。判定不能の条件を経由升のある2段階移動と獅子が獅子を取る段階に絞り、駒価値の採用コミットを基準とする[STC](../measurements/strength-stage3/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3/strength-stage3-see-ltc.md)がともに`H1`であった。
+- 静止探索の深さ上限は見送った。[深さ分布のbench](../measurements/strength-stage3/strength-stage3-qsearch-depth-bench.md)で深さ8以上のノードが0.82%と事前基準の1%を下回った。
 
-[固定自己対局](../measurements/strength-stage3-elo200.md)は段階開始版に対してSTCで+41.8 Elo、[HaChu戦](../measurements/strength-stage3-hachu-elo200.md)は+125.0 Eloを進捗指標として記録したため、段階3を完了した。
+[固定自己対局](../measurements/strength-stage3/strength-stage3-elo200.md)は段階開始版に対してSTCで+41.8 Elo、[HaChu戦](../measurements/strength-stage3/strength-stage3-hachu-elo200.md)は+125.0 Eloを進捗指標として記録したため、段階3を完了した。
 
 ## 段階4　前向き枝刈りの第2層
 
@@ -172,15 +172,15 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 最終判断は次のとおりである。
 
-- futility pruningを採用した。残り深さ3以下の非PVノードで、静的評価に余裕値（深さ1で歩兵の半分、深さ2と3で歩兵の1.5倍）を加えてもαに届かないとき、置換表の記録手、捕獲手、成る手を除く静かな手を展開しない。王駒に相手の利きが届くノードと、探索済みの最善値が負の詰み帯にある間は行わない。段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`であった。
-- reverse futility pruningは不採用とした。余裕値を歩兵の半分とした実装の[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`であった。
-- late move pruningは不採用とした。手数上限を深さ順に12、23、13とした実装の[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`であった。
-- null move pruningの減深量を静的評価とβの差に依存させる変更は不採用とした。[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり、効果は検出できる大きさになかった。
-- verification searchは見送った。[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で、null moveの打ち切りが縮めた深さの通常探索で覆される割合が0%であった。
-- razoringは不採用とした。余裕値を歩兵の4倍とした実装の[STC](../measurements/strength-stage4-razoring-stc.md)が`H0`であった。
+- futility pruningを採用した。残り深さ3以下の非PVノードで、静的評価に余裕値（深さ1で歩兵の半分、深さ2と3で歩兵の1.5倍）を加えてもαに届かないとき、置換表の記録手、捕獲手、成る手を除く静かな手を展開しない。王駒に相手の利きが届くノードと、探索済みの最善値が負の詰み帯にある間は行わない。段階開始版との[STC](../measurements/strength-stage4/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4/strength-stage4-futility-ltc.md)がともに`H1`であった。
+- reverse futility pruningは不採用とした。余裕値を歩兵の半分とした実装の[STC](../measurements/strength-stage4/strength-stage4-rfp-stc.md)が`H0`であった。
+- late move pruningは不採用とした。手数上限を深さ順に12、23、13とした実装の[STC](../measurements/strength-stage4/strength-stage4-lmp-stc.md)が`H0`であった。
+- null move pruningの減深量を静的評価とβの差に依存させる変更は不採用とした。[STC](../measurements/strength-stage4/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり、効果は検出できる大きさになかった。
+- verification searchは見送った。[診断bench](../measurements/strength-stage4/strength-stage4-nmp-verify-bench.md)で、null moveの打ち切りが縮めた深さの通常探索で覆される割合が0%であった。
+- razoringは不採用とした。余裕値を歩兵の4倍とした実装の[STC](../measurements/strength-stage4/strength-stage4-razoring-stc.md)が`H0`であった。
 
-余裕値と手数上限は[診断bench](../measurements/strength-stage4-pruning-bench.md)で「失う良い結果の割合が10%以下になる最小値」として決めた。起案時の条件付き不一致率の規則は基礎率の低さで縮退したため、最初のSTCより前に置き換えた（教訓は [lessons/select-thresholds-by-recall-loss.md](../lessons/select-thresholds-by-recall-loss.md)）。
-[固定自己対局](../measurements/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../measurements/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録したため、段階4を完了した。
+余裕値と手数上限は[診断bench](../measurements/strength-stage4/strength-stage4-pruning-bench.md)で「失う良い結果の割合が10%以下になる最小値」として決めた。起案時の条件付き不一致率の規則は基礎率の低さで縮退したため、最初のSTCより前に置き換えた（教訓は [lessons/select-thresholds-by-recall-loss.md](../lessons/select-thresholds-by-recall-loss.md)）。
+[固定自己対局](../measurements/strength-stage4/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../measurements/strength-stage4/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録したため、段階4を完了した。
 
 ## 段階5　指し手順序付けとLMRの近代化
 
@@ -202,14 +202,14 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 最終判断は次のとおりである。
 
-- 順序付けキーの重複計算の除去を採用した。手選択器が捕獲手かどうかを手とともに返す変更で、[bench](../measurements/strength-stage5-order-key-bench.md)の総ノード数が段階開始版と一致し、NPSは低下しなかった。
-- LMRの減深量を採用した。残り深さ`d`と手番号`m`から`floor(ln(d) · ln(m) / 2.0)`で減深量を求め、history値が128以上なら1減らし、`[0, min(3, d − 2)]`に切り詰める。係数と閾値は[診断bench](../measurements/strength-stage5-lmr-bench.md)で「同じ標本で現行の規則より失う良い結果が増えず、減深量の平均が最大」の規則により決め、段階開始版に重複計算の除去を加えた構成との[STC](../measurements/strength-stage5-lmr-stc.md)と[LTC](../measurements/strength-stage5-lmr-ltc.md)がともに`H1`であった。
-- 駒種と到達升で引くhistoryは不採用とした。butterfly表との合計で順序付けする実装の[STC](../measurements/strength-stage5-piece-history-stc.md)が`H0`であった。
-- counter move historyとcontinuation historyは見送った。根探索ごとに初期化する`[29][144][29][144]`の表は1回の探索では埋まらず、順序付けで値が0でない手の割合が[0.73%](../measurements/strength-stage5-cmh-bench.md)と[0.62%](../measurements/strength-stage5-continuation-bench.md)で、事前基準の5%を下回った。
-- malusは不採用とした。benchの総ノード数は17.9%減ったが、[STC](../measurements/strength-stage5-malus-stc.md)が上限3,000ペアでLLR −1.58の判定保留となり、振分け規則によりLTCへ進めなかった。
+- 順序付けキーの重複計算の除去を採用した。手選択器が捕獲手かどうかを手とともに返す変更で、[bench](../measurements/strength-stage5/strength-stage5-order-key-bench.md)の総ノード数が段階開始版と一致し、NPSは低下しなかった。
+- LMRの減深量を採用した。残り深さ`d`と手番号`m`から`floor(ln(d) · ln(m) / 2.0)`で減深量を求め、history値が128以上なら1減らし、`[0, min(3, d − 2)]`に切り詰める。係数と閾値は[診断bench](../measurements/strength-stage5/strength-stage5-lmr-bench.md)で「同じ標本で現行の規則より失う良い結果が増えず、減深量の平均が最大」の規則により決め、段階開始版に重複計算の除去を加えた構成との[STC](../measurements/strength-stage5/strength-stage5-lmr-stc.md)と[LTC](../measurements/strength-stage5/strength-stage5-lmr-ltc.md)がともに`H1`であった。
+- 駒種と到達升で引くhistoryは不採用とした。butterfly表との合計で順序付けする実装の[STC](../measurements/strength-stage5/strength-stage5-piece-history-stc.md)が`H0`であった。
+- counter move historyとcontinuation historyは見送った。根探索ごとに初期化する`[29][144][29][144]`の表は1回の探索では埋まらず、順序付けで値が0でない手の割合が[0.73%](../measurements/strength-stage5/strength-stage5-cmh-bench.md)と[0.62%](../measurements/strength-stage5/strength-stage5-continuation-bench.md)で、事前基準の5%を下回った。
+- malusは不採用とした。benchの総ノード数は17.9%減ったが、[STC](../measurements/strength-stage5/strength-stage5-malus-stc.md)が上限3,000ペアでLLR −1.58の判定保留となり、振分け規則によりLTCへ進めなかった。
 
-LMRの減深量の選択規則は、当初の「失う良い結果が10%以下」という段階4と同じ絶対基準では、良い結果の基礎率が0.6%と低く現行構成すら適格にならなかったため、[試行診断](../measurements/strength-stage5-lmr-trial-bench.md)の後、本診断の前に相対基準へ置き換えた。
-[固定自己対局](../measurements/strength-stage5-elo200.md)は段階開始版に対してSTCで+35.6 Elo、[HaChu戦](../measurements/strength-stage5-hachu-elo200.md)は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）を進捗指標として記録したため、段階5を完了した。
+LMRの減深量の選択規則は、当初の「失う良い結果が10%以下」という段階4と同じ絶対基準では、良い結果の基礎率が0.6%と低く現行構成すら適格にならなかったため、[試行診断](../measurements/strength-stage5/strength-stage5-lmr-trial-bench.md)の後、本診断の前に相対基準へ置き換えた。
+[固定自己対局](../measurements/strength-stage5/strength-stage5-elo200.md)は段階開始版に対してSTCで+35.6 Elo、[HaChu戦](../measurements/strength-stage5/strength-stage5-hachu-elo200.md)は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）を進捗指標として記録したため、段階5を完了した。
 
 ## 段階6　aspiration windowsと置換表の改良
 
@@ -230,33 +230,33 @@ aspiration windowsの再開条件は「深さ5以上が常用域になった時�
 
 最終判断は次のとおりである。
 
-- aspiration windowsを採用した。深さ5以上の反復で前回の評価値を中心に半幅50（歩兵の駒価値の半分）の窓を使い、外れた側を倍々に広げて読み直し、根にβ打ち切りと保存種別の分類を加えた。段階開始版との[STC](../measurements/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6-aspiration-ltc.md)がともに`H1`であった。
-- internal iterative reductionを採用した。残り深さ3以上で置換表の記録手がないノードの残り深さを1減らす。[STC](../measurements/strength-stage6-iir-stc.md)と[LTC](../measurements/strength-stage6-iir-ltc.md)がともに`H1`であったが、LTCは外部のOOMによる約33秒の停止で時間切れ11件（候補側6件、基準側5件）を伴い、該当ペアを除いても`H1`であることから、利用者が規則からの逸脱を記録したうえで採用すると決定した。
-- 最善手安定時の早期終了を採用した。直近4反復の最善手が同じなら、次の反復へ入る条件を「経過時間に固定比2.5を掛けた予測完了時刻がsoft以下」に置き換える。反復数4は時間条件を含めた模擬で失う良い結果の割合が10%以下になる最小値であり、[STC](../measurements/strength-stage6-stable-stc.md)と[LTC](../measurements/strength-stage6-stable-ltc.md)がともに`H1`であった。
-- fail-lowによる延長は不採用とした。窓外れのfail-lowを保持する間softの条件を外す実装の[STC](../measurements/strength-stage6-faillow-stc.md)が`H0`であった。
-- 最善手交替時の延長は不採用とした。交替の直後の判断1回だけsoftの条件を外す実装の[STC](../measurements/strength-stage6-bmchange-stc.md)が`H0`であった。
-- 係数の再調整は、最終構成で[再導出](../measurements/strength-stage6-coefficients-diag.md)した固定比（2.13）と`EXPECTED_PLIES`（520）が現行値との差20%以内、終局時の残り時間が基本時間の25%未満で変更の対象にならず、唯一基準を超えた`MIN_MOVES = 130`は[STC](../measurements/strength-stage6-coefficients-stc.md)が`H0`で不採用とした。盤上駒数に基づく残り手数見積りは本段階で扱わなかった。
-- 置換表のクラスタ化は、対局再生で浅い記録による過去の深い記録の上書きが全保存の7.1%あったため実装したが、[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かず、採否測定へ進めずに外した。
-- 静的評価の置換表保存は、評価1回の費用が処理時間の0.24%（[bench](../measurements/strength-stage6-eval-cost-bench.md)）で高速化の事前ゲートに届かないため見送った。
-- mate distance pruningは、[対局再生](../measurements/strength-stage6-tt-replay.md)で探索内部の打ち切りが通常探索のノードの1.08〜1.65%であり、発動率の基準を下回るため見送った。
+- aspiration windowsを採用した。深さ5以上の反復で前回の評価値を中心に半幅50（歩兵の駒価値の半分）の窓を使い、外れた側を倍々に広げて読み直し、根にβ打ち切りと保存種別の分類を加えた。段階開始版との[STC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)がともに`H1`であった。
+- internal iterative reductionを採用した。残り深さ3以上で置換表の記録手がないノードの残り深さを1減らす。[STC](../measurements/strength-stage6/strength-stage6-iir-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-iir-ltc.md)がともに`H1`であったが、LTCは外部のOOMによる約33秒の停止で時間切れ11件（候補側6件、基準側5件）を伴い、該当ペアを除いても`H1`であることから、利用者が規則からの逸脱を記録したうえで採用すると決定した。
+- 最善手安定時の早期終了を採用した。直近4反復の最善手が同じなら、次の反復へ入る条件を「経過時間に固定比2.5を掛けた予測完了時刻がsoft以下」に置き換える。反復数4は時間条件を含めた模擬で失う良い結果の割合が10%以下になる最小値であり、[STC](../measurements/strength-stage6/strength-stage6-stable-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-stable-ltc.md)がともに`H1`であった。
+- fail-lowによる延長は不採用とした。窓外れのfail-lowを保持する間softの条件を外す実装の[STC](../measurements/strength-stage6/strength-stage6-faillow-stc.md)が`H0`であった。
+- 最善手交替時の延長は不採用とした。交替の直後の判断1回だけsoftの条件を外す実装の[STC](../measurements/strength-stage6/strength-stage6-bmchange-stc.md)が`H0`であった。
+- 係数の再調整は、最終構成で[再導出](../measurements/strength-stage6/strength-stage6-coefficients-diag.md)した固定比（2.13）と`EXPECTED_PLIES`（520）が現行値との差20%以内、終局時の残り時間が基本時間の25%未満で変更の対象にならず、唯一基準を超えた`MIN_MOVES = 130`は[STC](../measurements/strength-stage6/strength-stage6-coefficients-stc.md)が`H0`で不採用とした。盤上駒数に基づく残り手数見積りは本段階で扱わなかった。
+- 置換表のクラスタ化は、対局再生で浅い記録による過去の深い記録の上書きが全保存の7.1%あったため実装したが、[固定深さの対局再生](../measurements/strength-stage6/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かず、採否測定へ進めずに外した。
+- 静的評価の置換表保存は、評価1回の費用が処理時間の0.24%（[bench](../measurements/strength-stage6/strength-stage6-eval-cost-bench.md)）で高速化の事前ゲートに届かないため見送った。
+- mate distance pruningは、[対局再生](../measurements/strength-stage6/strength-stage6-tt-replay.md)で探索内部の打ち切りが通常探索のノードの1.08〜1.65%であり、発動率の基準を下回るため見送った。
 
-[固定自己対局](../measurements/strength-stage6-elo200.md)は段階開始版に対してSTCで+129.2 Elo、[HaChu戦](../measurements/strength-stage6-hachu-elo200.md)は+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）を進捗指標として記録したため、段階6を完了した。
+[固定自己対局](../measurements/strength-stage6/strength-stage6-elo200.md)は段階開始版に対してSTCで+129.2 Elo、[HaChu戦](../measurements/strength-stage6/strength-stage6-hachu-elo200.md)は+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）を進捗指標として記録したため、段階6を完了した。
 
 ## 段階7　評価関数の世代2と線形モデルの拡張
 
 段階7は2026年9月14日に完了し、探索部を変更せずに評価関数の学習を改めた。
 現行の方式、検証範囲、および見送りの判断は[棋力向上段階7](archived/strength-stage7.md)が定める。
 
-- 左右鏡映を学習器の重み共有として課し、重み表の行数を13,680から6,840へ半減させるモデルを、[短時間](../measurements/strength-stage7-mirror-stc.md)と[長時間](../measurements/strength-stage7-mirror-ltc.md)の自己対局測定で採用した。
-- [試行生成](../measurements/strength-stage7-plycap-trial.md)で探索1局面あたりの記録局面数を比較し、生成器の手数上限を600手から4,000手へ変更した。
-- 採用済みの評価関数で[世代2の14,057,872局面](../measurements/strength-stage7-gen2-generation.md)を生成し、世代0から世代2を合わせて再学習した。勝率尺度は1,072.6529541015625に固定し、更新後の射影と片側絶対値型の追加損失を用いた候補を、[短時間](../measurements/strength-stage7-gen2-stc.md)と[長時間](../measurements/strength-stage7-gen2-ltc.md)の測定で採用した。
-- 最終採用重みから[探索用駒価値を再導出](../measurements/strength-stage7-gen2-values-diag.md)し、到達可能な37状態の差が最大8%で更新基準の20%を超えなかったため、47個の固定値と探索の余裕値を維持した。
+- 左右鏡映を学習器の重み共有として課し、重み表の行数を13,680から6,840へ半減させるモデルを、[短時間](../measurements/strength-stage7/strength-stage7-mirror-stc.md)と[長時間](../measurements/strength-stage7/strength-stage7-mirror-ltc.md)の自己対局測定で採用した。
+- [試行生成](../measurements/strength-stage7/strength-stage7-plycap-trial.md)で探索1局面あたりの記録局面数を比較し、生成器の手数上限を600手から4,000手へ変更した。
+- 採用済みの評価関数で[世代2の14,057,872局面](../measurements/strength-stage7/strength-stage7-gen2-generation.md)を生成し、世代0から世代2を合わせて再学習した。勝率尺度は1,072.6529541015625に固定し、更新後の射影と片側絶対値型の追加損失を用いた候補を、[短時間](../measurements/strength-stage7/strength-stage7-gen2-stc.md)と[長時間](../measurements/strength-stage7/strength-stage7-gen2-ltc.md)の測定で採用した。
+- 最終採用重みから[探索用駒価値を再導出](../measurements/strength-stage7/strength-stage7-gen2-values-diag.md)し、到達可能な37状態の差が最大8%で更新基準の20%を超えなかったため、47個の固定値と探索の余裕値を維持した。
 
 勝率尺度を固定した比較は、本段階の再学習が勝率尺度を固定するので尺度の交絡が今後生じないことと、遡及的な切り分けがどの採否も変えないことから行わない。
 線形モデルの出力バケットは、盤上総駒数で2組の重み表を補間する[PSTの序中盤と終盤の補間](archived/tapered-pst.md)が同じ情報源で既に採用した設計であり、端点の識別性の診断が3組以上を支持しないため見送る。
 
-最終構成の[段階開始版との固定200ペア](../measurements/strength-stage7-gen2-elo200.md)は+113.19 Elo、95%信頼区間[+77.64, +151.19]となった。
-[HaChuとの固定200ペア](../measurements/strength-stage7-hachu-elo200.md)は+391.57 Elo、95%信頼区間[+339.80, +460.03]であり、HaChu側の不正着手1件とクラッシュ1件を調査し、反則負けとして集計した。
+最終構成の[段階開始版との固定200ペア](../measurements/strength-stage7/strength-stage7-gen2-elo200.md)は+113.19 Elo、95%信頼区間[+77.64, +151.19]となった。
+[HaChuとの固定200ペア](../measurements/strength-stage7/strength-stage7-hachu-elo200.md)は+391.57 Elo、95%信頼区間[+339.80, +460.03]であり、HaChu側の不正着手1件とクラッシュ1件を調査し、反則負けとして集計した。
 これらは進捗指標であり、各項目の採否を決めた短時間と長時間の測定とは区別する。
 
 ## 段階8　前向き枝刈りの第3層
@@ -397,7 +397,7 @@ FMの再利用は相対2駒表と比較する代替候補であり、NNUEの再�
 
 - 高速化の項目は、benchの総ノード数が段階開始時と一致することで探索挙動の不変を確認し、NPSは3回の中央値で比較する。
 - 探索挙動を変える項目は、実装前にbenchで標準時間制御の到達深さでの発動を確認し、時間制御GSPRTで判定する。
-- 段階の完了時に、段階開始コミットとの固定200ペアのEloと、HaChu比較の固定200ペアのEloを記録し、強さの積み上がりを系列として残す。HaChu比較は採否に使わない進捗指標であり、条件は [measurements/hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md) と同じ規則`L1,L3,P0,P5,P6,R2,E1,E2`、時間制御`time=60000+1000`、シード固定とする。docs/guides/sprt.md の外部エンジン比較のGSPRTは、採否の判断が必要になった場合にだけ使う。
+- 段階の完了時に、段階開始コミットとの固定200ペアのEloと、HaChu比較の固定200ペアのEloを記録し、強さの積み上がりを系列として残す。HaChu比較は採否に使わない進捗指標であり、条件は [measurements/evaluation-gen1/hachu-pst-gen1.md](../measurements/evaluation-gen1/hachu-pst-gen1.md) と同じ規則`L1,L3,P0,P5,P6,R2,E1,E2`、時間制御`time=60000+1000`、シード固定とする。docs/guides/sprt.md の外部エンジン比較のGSPRTは、採否の判断が必要になった場合にだけ使う。
 - `attackers_to`、評価値の差分更新、および捕獲専用生成は、全升と全駒種について既存の生成と一致するテストで固定する。
 
 ## 完了条件
@@ -410,5 +410,5 @@ FMの再利用は相対2駒表と比較する代替候補であり、NNUEの再�
 
 - 設計書：[search.md](archived/search.md)、[lazy-smp.md](archived/lazy-smp.md)、[evaluation.md](archived/evaluation.md)、[evaluation-gen1.md](archived/evaluation-gen1.md)、[match-harness.md](archived/match-harness.md)
 - 測定手順：[docs/guides/sprt.md](../guides/sprt.md)
-- 測定記録：[hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md)、[hachu-vs-search-nps.md](../measurements/hachu-vs-search-nps.md)、[sensitivity-time2x.md](../measurements/sensitivity-time2x.md)、[lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp-v1-diversification-bench.md)、[lazy-smp-v2-threads2-tc.md](../measurements/lazy-smp-v2-threads2-tc.md)
+- 測定記録：[hachu-pst-gen1.md](../measurements/evaluation-gen1/hachu-pst-gen1.md)、[hachu-vs-search-nps.md](../measurements/match-harness/hachu-vs-search-nps.md)、[sensitivity-time2x.md](../measurements/evaluation-gen1/sensitivity-time2x.md)、[lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp/lazy-smp-v1-diversification-bench.md)、[lazy-smp-v2-threads2-tc.md](../measurements/lazy-smp/lazy-smp-v2-threads2-tc.md)
 - 教訓：[measure-feature-activation-before-sprt.md](../lessons/measure-feature-activation-before-sprt.md)、[qsearch-dag-without-tt.md](../lessons/qsearch-dag-without-tt.md)、[derive-seed-adjacent-collision.md](../lessons/derive-seed-adjacent-collision.md)

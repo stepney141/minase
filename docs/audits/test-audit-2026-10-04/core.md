@@ -381,7 +381,7 @@ C36では、計測用のコーパスの検証が通常実行に含まれ、計�
 
 統合対象は [src/core/predecessor/tests/profile.rs:92](../../../src/core/predecessor/tests/profile.rs:92) `predecessor_profile_corpus_has_documented_transitions` であり、統合先は ignored の [profile.rs:209](../../../src/core/predecessor/tests/profile.rs:209) `predecessor_profile` である。一部削除の対象は、profile.rs:209 の234行（`assert_eq!(結果集合, expected)`）と221行（`membership(..).is_ok()`）である。
 
-:92 は生成器を一度も呼ばず、計測コーパスの拡張SFENが記録した着手列と分類から再現できることだけを検証している。それでも通常実行に含まれ、bench[9]（src/test_util.rs）にも依存する。計測時に限って意味があるので、計測テストへ移すのが適当である。:234 の expected は `verify_candidates(enumerate_candidates(..))` の結果であり、これは reverse.rs:16-20 の `reverse::generate` そのものなので f(x)==f(x) の比較になっている。:221 は非公開関数の呼出し順を固定している。profile.rs:209 自体は、[docs/measurements/predecessor-generator-profile.md](../../measurements/predecessor-generator-profile.md) の9行目と12行目、および設計書「検証コマンド」が名指しする再現手順なので保持する。
+:92 は生成器を一度も呼ばず、計測コーパスの拡張SFENが記録した着手列と分類から再現できることだけを検証している。それでも通常実行に含まれ、bench[9]（src/test_util.rs）にも依存する。計測時に限って意味があるので、計測テストへ移すのが適当である。:234 の expected は `verify_candidates(enumerate_candidates(..))` の結果であり、これは reverse.rs:16-20 の `reverse::generate` そのものなので f(x)==f(x) の比較になっている。:221 は非公開関数の呼出し順を固定している。profile.rs:209 自体は、[docs/measurements/predecessor-generator/predecessor-generator-profile.md](../../measurements/predecessor-generator/predecessor-generator-profile.md) の9行目と12行目、および設計書「検証コマンド」が名指しする再現手順なので保持する。
 
 失う現実的な検出力はない。計測記録の9行目にあるテスト名の記述を統合先へ書き換える。
 

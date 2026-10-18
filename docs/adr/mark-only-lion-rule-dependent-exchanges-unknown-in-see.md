@@ -12,7 +12,7 @@
 ただし、規則が捕獲の可否を変えるのは、獅子が獅子を取る場合と、麒麟が獅子を取って成った直後の取り返しだけである。
 非獅子が獅子を取る手と獅子が非獅子を取る手は常に合法であり（第14条第5項）、先獅子は到達升での取り合いには働かない。
 設計書の記録では、獅子が絡む捕獲をすべて判定不能とすると、benchの深さ3で捕獲手の約70%が判定不能になった。
-規則に依存する段階だけを判定不能としたSEEは、[STC](../measurements/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3-see-ltc.md)でともに`H1`となった。
+規則に依存する段階だけを判定不能としたSEEは、[STC](../measurements/strength-stage3/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3/strength-stage3-see-ltc.md)でともに`H1`となった。
 
 ## 決定
 

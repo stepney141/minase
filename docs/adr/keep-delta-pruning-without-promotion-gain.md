@@ -12,7 +12,7 @@ delta pruningは、静止探索で、stand-patに取る駒の価値と余裕値�
 成り益を無視すると、αに届く捕獲まで省くことがあるので、これは契約に反する不具合である。
 [探索部の不具合修正](../plans/archived/search-bug-fixes.md)は、取る駒の価値と成り益の和で判定する修正を実装した。
 成り益は、到達升での駒の取り合いの見積り（SEE）と同じ計算で求めた。
-親コミットと比べる診断のSTCは、上限3,000ペアで判定に達しなかった（[測定記録](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)）。
+親コミットと比べる診断のSTCは、上限3,000ペアで判定に達しなかった（[測定記録](../measurements/search-bug-fixes/search-bug-fixes-delta-promotion-diag-stc.md)）。
 修正版に対する親コミットの得点率は51.0%（約+6.7 Elo）、LLRは0.932であり、LLRは有効1,209ペアの時点で1.95まで上がっていた。
 修正前の版がわずかに強い方向の証拠が残ったので、エンジンの開発者がこの修正を取り込まないと決めた。
 

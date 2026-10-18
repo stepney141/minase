@@ -309,11 +309,15 @@ cargo test -p minase --lib --features search-stats,tuning
 これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
 
 `scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。
-現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストだけがあり、外部と通信せずに再試行と待機の規則を検査する。
-`scripts/fetch_lishogi_games.py`を変更したときは、マージの前にリポジトリのルートで次を実行する。
+現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストと、vast.aiの調整機でSPSAを実行する`scripts/vast/`と`scripts/vast-spsa/`のテストがある。
+前者は外部と通信せずに再試行と待機の規則を検査し、後者は偽の`vastai`、`ssh`、`scp`、および`rsync`を使って、機械の作成から取得と削除までの判定を検査する。
+これらのスクリプトを変更したときは、マージの前にリポジトリのルートで、変更したスクリプトのテストを実行する。
+調整機のPythonは3.11なので、`scripts/vast/`と`scripts/vast-spsa/`のテストは、手元のPythonに加えて3.11でも実行する。
 
 ```console
 PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
+python3 scripts/vast/test_common.py
+python3 scripts/vast-spsa/test_spsa.py
 ```
 
 一般には、マージ前の検査は手動の申し合わせではなく仕組みで止めるのが原則である（付録G）。
@@ -340,7 +344,7 @@ GPUを要するテスト、約100秒かかる全列挙、および検定式を�
 現在の例は、[NNUEの学習の手引き](nnue-training.md)の`gpu_`テストと、[SPRTの手引き](sprt.md)のモンテカルロ検証である。
 直前局面の生成器の全列挙も除外の例であり、直前局面の生成器または合法手生成を変えたときに次のコマンドで実行する。
 releaseビルドでの所要時間は、前者が約6分、後者が約9分である。
-後者は最大で約6 GBのメモリを使う（[計測記録](../measurements/predecessor-generator-profile.md)）。
+後者は最大で約6 GBのメモリを使う（[計測記録](../measurements/predecessor-generator/predecessor-generator-profile.md)）。
 
 ```console
 cargo test -p minase-core --release predecessor_completeness -- --ignored --test-threads=1

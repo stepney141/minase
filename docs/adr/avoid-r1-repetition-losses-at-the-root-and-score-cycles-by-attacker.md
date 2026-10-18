@@ -8,9 +8,9 @@
 
 反復規則R1（RULES.md第31条）は、同一局面の4回目の出現を原則として引き分けとするが、最初の出現から裁定までの自分の着手がすべて攻撃的着手であった対局者が一方だけなら、その攻撃側の負けとする。
 [探索木の中では規則の裁定を近似する決定](archive/approximate-adjudication-inside-search-tree.md)に基づき、探索は同一局面の再現を規則によらず引き分けとして打ち切っていたので、攻撃側が負けになる周回を引き分けと見込んで選んでいた。
-2026年9月20日の[診断](../measurements/search-repetition-outcome-diag.md)では、保存済みの自己対局94,466局の4.2%が攻撃側の反復負けで終わり、負けた側は全局で直前の評価値に0を出力していた。
+2026年9月20日の[診断](../measurements/search-repetition/search-repetition-outcome-diag.md)では、保存済みの自己対局94,466局の4.2%が攻撃側の反復負けで終わり、負けた側は全局で直前の評価値に0を出力していた。
 これらの負けは、自分の着手が4回目の出現を生じさせたか、自分の着手の直後に相手が4回目の出現を完成させたかのどちらかであり、根から2手以内で確定する。
-NNUE同士の採否測定では頻度はさらに高く、[STC](../measurements/search-repetition-stc.md)では段階開始版が586局中195局を反復負けで落とした。
+NNUE同士の採否測定では頻度はさらに高く、[STC](../measurements/search-repetition/search-repetition-stc.md)では段階開始版が586局中195局を反復負けで落とした。
 [既存実装の調査](../research/search-repetition-prior-art.md)によれば、将棋エンジン（やねうら王、Apery、技巧、dlshogi）とシャンチーのエンジン（ElephantEye）は、探索木の中の1回の再現で連続王手や長将の側の負けを返し、Fairy-Stockfishだけが規定回数の成立を待つ。
 根で禁じ手を除く先例は、シャンチーの通信規約UCCIの`banmoves`と、根でだけ規則どおりの回数で判定するElephantEyeにある。
 決定の経緯は[探索部の反復負け回避と反復禁止](../plans/archived/search-repetition.md)の設計書にある。
@@ -38,11 +38,11 @@ Pikafishのように2回目の出現での勝敗を同じ周回がもう1回起�
 ## 結果
 
 根の選別は、根に反復負けに直結しない合法手が1つでもあれば、根から2手以内の反復負けを避ける。
-保存記録の反復負け184局で、分類関数は総当たりの参照実装と一致し、負けた側が実際に指した手をすべて反復負けに直結する手として検出した（[記録局面での照合](../measurements/search-repetition-replay-diag.md)）。
+保存記録の反復負け184局で、分類関数は総当たりの参照実装と一致し、負けた側が実際に指した手をすべて反復負けに直結する手として検出した（[記録局面での照合](../measurements/search-repetition/search-repetition-replay-diag.md)）。
 分類の所要時間は1局面あたり最大0.76ミリ秒であり、STCの1手あたりの思考時間の1%以下である。
 探索木の中の判定は、対局履歴の局面へ戻った後に攻撃的でない着手へ切り替える手順を読まないので、履歴の局面へ戻る手を実際より悪く評価することがある。
 周回の区間は最も近い出現までとし、可逆手12手の前提条件と出現回数は見ないので、裁定の直前の局面での判定の正確さは根の選別が担う。
 専用の帯の値は近似に基づく見込みなので、USIの投了判定には使わない。
-`bench`では、探索木の中の判定は深さ7以上で発動し、NPSは専用の帯だけを入れた版と比べて+0.15%であった（[bench照合](../measurements/search-repetition-bench.md)）。
-採否は、[STC](../measurements/search-repetition-stc.md)と[LTC](../measurements/search-repetition-ltc.md)の段階ゲートで判定した。
+`bench`では、探索木の中の判定は深さ7以上で発動し、NPSは専用の帯だけを入れた版と比べて+0.15%であった（[bench照合](../measurements/search-repetition/search-repetition-bench.md)）。
+採否は、[STC](../measurements/search-repetition/search-repetition-stc.md)と[LTC](../measurements/search-repetition/search-repetition-ltc.md)の段階ゲートで判定した。
 根の選別は`crates/minase/src/search/snapshot.rs`の`from_game`と`crates/minase-core/src/game/root_repetition.rs`に、探索木の中の判定は`crates/minase/src/search/alphabeta/searcher.rs`の`find_repetition`と`repetition_score`にある。

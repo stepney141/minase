@@ -16,10 +16,10 @@ futility pruningだけをSTCとLTCがともに`H1`で採用し、reverse futilit
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 本マイルストーンは2026年9月5日に起案して同日に着手し、2026年9月6日に完了した。
 futility pruningを採用し、reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringは不採用、verification searchは見送った。
-futility pruningは段階開始版との[STC](../../measurements/strength-stage4-futility-stc.md)と[LTC](../../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件であり、不採用の4項目は[reverse futility](../../measurements/strength-stage4-rfp-stc.md)、[late move pruning](../../measurements/strength-stage4-lmp-stc.md)、[null move pruningの減深量](../../measurements/strength-stage4-nmp-r-stc.md)、[razoring](../../measurements/strength-stage4-razoring-stc.md)のSTCがいずれも`H0`であった。
-verification searchは[診断bench](../../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%であった。
+futility pruningは段階開始版との[STC](../../measurements/strength-stage4/strength-stage4-futility-stc.md)と[LTC](../../measurements/strength-stage4/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件であり、不採用の4項目は[reverse futility](../../measurements/strength-stage4/strength-stage4-rfp-stc.md)、[late move pruning](../../measurements/strength-stage4/strength-stage4-lmp-stc.md)、[null move pruningの減深量](../../measurements/strength-stage4/strength-stage4-nmp-r-stc.md)、[razoring](../../measurements/strength-stage4/strength-stage4-razoring-stc.md)のSTCがいずれも`H0`であった。
+verification searchは[診断bench](../../measurements/strength-stage4/strength-stage4-nmp-verify-bench.md)で矛盾率が0%であった。
 不採用の4項目は、2026年10月4日に[不採用だった探索部の改良の再調整](search-revival-spsa.md)が係数をSPSAで調整し直して採用し、late move pruningは数える手の定義を改めて戻した。
-[固定自己対局](../../measurements/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../../measurements/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録した。
+[固定自己対局](../../measurements/strength-stage4/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../../measurements/strength-stage4/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録した。
 
 ## 目的
 
@@ -48,7 +48,7 @@ LMRの減深量の式とhistoryの拡張は段階5が扱う。
 | 項目の順序 | reverse futility pruning、futility pruning、late move pruning、null move pruningの減深量、verification search、razoringの順に進める。上位計画の順序を保ち、各項目は直前に採用した構成を基準に測る。静的評価に基づく3項目を先に置くのは、最も広く使われ効果の見込みが大きいためであり、verification searchとrazoringを最後に置くのは、診断で見送りになり得るためである。 |
 | 静的評価の取得 | 各ノードの静的評価は、[段階1](strength-stage1.md)で採用した評価値の差分更新（着手のたびに評価値の内部和を差分で更新する仕組み）の累算値から`evaluate_accumulator`で求める。累算値は探索が既にplyごとに保持しているので計算は定数時間であり、置換表への保存（段階6）を待たずに導入できる。 |
 | 余裕値と手数の単位 | 余裕値は歩兵の駒価値`p`（学習PST、すなわち駒種と升の組ごとの重みを学習した線形評価関数から導出した成っていない歩兵の値。現行の埋め込みPSTでは100）の倍数で表し、`p / 2`の刻みで丸める。駒価値は評価関数の重みファイルを読み込む時点で`Pst`型が導出するので、余裕値もコードに定数を書かず`Pst`から導く。 |
-| 余裕値と手数の決め方 | チェスや本将棋の値を流用せず、診断benchで測る。各項目について「参照探索で枝刈りの見込みと逆の結果になった良い結果」（reverse futilityとrazoringでは探索値が境界を下回ったノード、futilityとlate move pruningでは探索値がαを上回った手）を定義し、候補値を適用したときに失う良い結果の割合が10%以下になる最小の余裕値または手数を、深さごとに1つ選ぶ（手続きは「診断による余裕値の決定」節）。参照探索は診断時点の現行探索であり、null moveやLMRの枝刈りを含むので、この割合は完全探索に対する損失ではなく、現行探索の結果に対する損失である。候補値以上の対象に占める食い違いの割合（条件付き不一致率）で選ぶ案は、良い結果の基礎率が零窓ノードでは1%から10%程度しかなく、候補値によらず10%を下回って最小候補を選んでしまうため採らない（[診断bench](../../measurements/strength-stage4-pruning-bench.md)）。10%は理論から導いた値ではなく、失う良い結果と探索木の縮小の釣り合いを1点に固定するために本書が最初のSTCより前に決める基準であり、STCの結果を見てから余裕値を変えない。同じ項目の余裕値違いをSTCの後に追加することは[docs/guides/sprt.md](../../guides/sprt.md)が禁じる。 |
+| 余裕値と手数の決め方 | チェスや本将棋の値を流用せず、診断benchで測る。各項目について「参照探索で枝刈りの見込みと逆の結果になった良い結果」（reverse futilityとrazoringでは探索値が境界を下回ったノード、futilityとlate move pruningでは探索値がαを上回った手）を定義し、候補値を適用したときに失う良い結果の割合が10%以下になる最小の余裕値または手数を、深さごとに1つ選ぶ（手続きは「診断による余裕値の決定」節）。参照探索は診断時点の現行探索であり、null moveやLMRの枝刈りを含むので、この割合は完全探索に対する損失ではなく、現行探索の結果に対する損失である。候補値以上の対象に占める食い違いの割合（条件付き不一致率）で選ぶ案は、良い結果の基礎率が零窓ノードでは1%から10%程度しかなく、候補値によらず10%を下回って最小候補を選んでしまうため採らない（[診断bench](../../measurements/strength-stage4/strength-stage4-pruning-bench.md)）。10%は理論から導いた値ではなく、失う良い結果と探索木の縮小の釣り合いを1点に固定するために本書が最初のSTCより前に決める基準であり、STCの結果を見てから余裕値を変えない。同じ項目の余裕値違いをSTCの後に追加することは[docs/guides/sprt.md](../../guides/sprt.md)が禁じる。 |
 | 適用するノード | 静的評価に基づく枝刈り（reverse futility、futility、late move pruning、razoring）は、探索窓の幅が1の非PVノードであること、αとβがいずれも詰み帯（絶対値が`MATE_THRESHOLD`以上）になく、王駒に相手の疑似利きが届かないことのすべてを満たすノードに限る。根ノードは常にPVノードなので対象にならない。 |
 | 王駒への利きの判定 | 手番側のいずれかの王駒（王将、玉将、太子）の升に相手駒の疑似利きが届くノードでは、静的評価に基づく枝刈りを行わない。判定は相手側を指定した`attackers_to_by`で行い、増分更新は持たない。王駒が取られる局面の静的評価は、最後の王駒の捕獲が詰みの値になる探索値から大きく外れるためである。王駒の捕獲を禁じる規則はなく王手放置も合法（RULES.md第8条）なので、王駒の升については疑似利きと実際に捕獲できる駒の集合が一致し、判定に過不足はない。王駒を2枚持つ側は1枚を失っても負けないが、その場合も枝刈りを控える側に倒す。診断で除外率が対象ノードの半数を超える場合は、判定を最後の王駒に限る変種と比較する。null move pruningには現行どおりこの判定を加えない。 |
 | 展開しない手の範囲 | futility pruningとlate move pruningは、置換表の記録手、捕獲手（`move_order_key`が`Some`を返す手）、および成る手を対象にせず、そのノードで探索済みの最善値が負の詰み帯にある間（1手も探索していない状態を含む）は行わない。成る手を除くのは、麒麟が獅子に成る手のように非捕獲でも評価が大きく動く手があるためである。最善値が負の詰み帯にある間に枝刈りしないのは、2つの誤りを防ぐためである。第1に、現行の`negamax`は「探索した手が1つもない」ことを合法手なしの負け（RULES.md第23条）の根拠にして詰みの値を返すので、全手を枝刈りしたノードが詰みと区別できなくなる。第2に、最初に探索した手が王駒を失う手で負の詰み帯の値になった場合、残りの安全な手を枝刈りすると、その詰み値が上界として置換表へ保存され、親には勝ちの詰み値が伝わる。 |
@@ -76,7 +76,7 @@ LMRは、深さ3以上で、置換表の記録手、捕獲手、killer手を除�
 合法手がない局面は`−MATE + ply`を返し、この値は最善手が1つも見つからなかったことを根拠にする。
 静的評価は静止探索のstand-patにだけ使われ、通常探索では参照されていない。
 
-標準時間制御の到達深さは、STCで4〜6、LTCで6〜7である（[LTCの煙試験](../../measurements/match-cost-ltc-smoke.md)）。
+標準時間制御の到達深さは、STCで4〜6、LTCで6〜7である（[LTCの煙試験](../../measurements/match-cost-reduction/match-cost-ltc-smoke.md)）。
 根の深さが`D`の探索は、根から`D − d`手進んだノードを残り深さ`d`で探索するので、根の深さが4以上なら残り深さ3以下のノードは必ず現れる。
 したがって本書の枝刈りは、残り深さ3以下のノードを対象にすれば、両方の時間制御で発動する。
 
@@ -111,7 +111,7 @@ LMRは、深さ3以上で、置換表の記録手、捕獲手、killer手を除�
 
 ## 採用した余裕値
 
-フェーズ1の[診断bench](../../measurements/strength-stage4-pruning-bench.md)で確定した値は次のとおりである。
+フェーズ1の[診断bench](../../measurements/strength-stage4/strength-stage4-pruning-bench.md)で確定した値は次のとおりである。
 `p`は現行の埋め込みPSTの歩兵価値100であり、実装は`p`の倍率で保持する。
 
 | 残り深さ | reverse futility の余裕値 | futility の余裕値 | late move pruning の手数上限 |
@@ -121,16 +121,16 @@ LMRは、深さ3以上で、置換表の記録手、捕獲手、killer手を除�
 | 3 | 50（`p / 2`） | 150（`3p / 2`） | 13 |
 
 この表と以下の発動率は、段階4の診断と採否測定で用いた値を記録する。
-[最初のSPSAの長時間測定](../../measurements/spsa-stage9-20260923-ltc.md)を通過した後のfutility余裕値は、残り深さ1、2、3の順に歩兵価値の51%、158%、175%であった。
-[2回目のSPSAの長時間測定](../../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後のfutility余裕値は、同じ順に歩兵価値の101%、196%、207%であった。
-[不採用だった探索部の改良の再調整の長時間測定](../../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の現行のfutility余裕値は、同じ順に歩兵価値の165%、239%、283%である。
+[最初のSPSAの長時間測定](../../measurements/spsa/spsa-stage9-20260923-ltc.md)を通過した後のfutility余裕値は、残り深さ1、2、3の順に歩兵価値の51%、158%、175%であった。
+[2回目のSPSAの長時間測定](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5-ltc.md)を通過した後のfutility余裕値は、同じ順に歩兵価値の101%、196%、207%であった。
+[不採用だった探索部の改良の再調整の長時間測定](../../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)を通過した後の現行のfutility余裕値は、同じ順に歩兵価値の165%、239%、283%である。
 null moveの減深量は、最初のSPSAの後に切片2,888、傾き210、2回目のSPSAの後に切片3,529、傾き238となり、現行は切片3,617、傾き257を1,200分率で表して、`R = (3617 + depth × 257) / 1200`を整数除算で求める。
 現行の減深量には、[不採用だった探索部の改良の再調整](search-revival-spsa.md)が戻した静的評価の余裕による加算をさらに足す。
 
 発動率はreverse futilityが深さ順に67.6%、55.4%、38.2%、futilityが91.7%、63.0%、65.1%、late move pruningが92.3%、80.5%、93.4%であり、いずれも5%以上である。
 王駒への利きの判定による除外率は1.6%から3.0%で、いずれかの王駒に利きが届けば枝刈りを控える方式を採用した。
-verification searchは、futility pruningの採用構成の[診断bench](../../measurements/strength-stage4-nmp-verify-bench.md)で、縮めた深さが1以上のnull moveの打ち切り723回（深さ7では7,455回）に矛盾が0件であり、見送った。
-razoringの余裕値は、同じ構成の[診断bench](../../measurements/strength-stage4-razoring-bench.md)で深さ1と2とも400（`4p`）とし、静止探索の値で打ち切られる発動率は深さ順に13.6%と6.0%であった。
+verification searchは、futility pruningの採用構成の[診断bench](../../measurements/strength-stage4/strength-stage4-nmp-verify-bench.md)で、縮めた深さが1以上のnull moveの打ち切り723回（深さ7では7,455回）に矛盾が0件であり、見送った。
+razoringの余裕値は、同じ構成の[診断bench](../../measurements/strength-stage4/strength-stage4-razoring-bench.md)で深さ1と2とも400（`4p`）とし、静止探索の値で打ち切られる発動率は深さ順に13.6%と6.0%であった。
 
 ## 各項目の実装
 
@@ -178,7 +178,7 @@ reverse futility pruningの後に判定する。
 
 段階開始版のbenchへ一時的な計測を入れて「診断による余裕値の決定」節の分布を採り、王駒への利きの判定の除外率を確かめたうえで、reverse futility pruning、futility pruning、late move pruningの余裕値と手数の上限を決める。
 発動率が5%未満の項目、および全深さで枝刈りを行わない項目は見送る。
-結果は[strength-stage4-pruning-bench](../../measurements/strength-stage4-pruning-bench.md)へ記録し、余裕値は「採用した余裕値」節へ書く。
+結果は[strength-stage4-pruning-bench](../../measurements/strength-stage4/strength-stage4-pruning-bench.md)へ記録し、余裕値は「採用した余裕値」節へ書く。
 完了条件は、この3項目について実装するか見送るかが確定していることである。
 見送った項目のフェーズは実行しない。
 
@@ -205,12 +205,12 @@ futility pruningと同じ単体テストの対象に加える。
 
 ### フェーズ6　verification search
 
-フェーズ5の採否が確定した構成のbenchで矛盾率を診断し、[strength-stage4-nmp-verify-bench](../../measurements/strength-stage4-nmp-verify-bench.md)へ記録する。
+フェーズ5の採否が確定した構成のbenchで矛盾率を診断し、[strength-stage4-nmp-verify-bench](../../measurements/strength-stage4/strength-stage4-nmp-verify-bench.md)へ記録する。
 矛盾率が1%以上の場合に限り、実装して直前の採用構成とのSTCとLTCで採否を決める。
 
 ### フェーズ7　razoring
 
-futility pruningを採用した場合に限り、フェーズ6までの採否が確定した構成のbenchで余裕値と発動率を診断し、[strength-stage4-razoring-bench](../../measurements/strength-stage4-razoring-bench.md)へ記録する。
+futility pruningを採用した場合に限り、フェーズ6までの採否が確定した構成のbenchで余裕値と発動率を診断し、[strength-stage4-razoring-bench](../../measurements/strength-stage4/strength-stage4-razoring-bench.md)へ記録する。
 発動率が5%以上の場合に限り、実装して直前の採用構成とのSTCとLTCで採否を決める。
 
 ### フェーズ8　進捗指標の記録

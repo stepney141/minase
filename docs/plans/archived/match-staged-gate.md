@@ -55,17 +55,17 @@
 ### 校正方式の廃止と既存記録による事後検証
 
 旧設計は、真の効果が既知の比較カード4種で候補時間制御の効率を校正してから標準化する方式だった。
-初回校正は、負例カードのP型NNUEが学習PSTに400局全敗してペア得点分散が0となり、主指標を算出できずに不成立となった（[calibration-negative-current](../../measurements/calibration-negative-current.md)）。
+初回校正は、負例カードのP型NNUEが学習PSTに400局全敗してペア得点分散が0となり、主指標を算出できずに不成立となった（[calibration-negative-current](../../measurements/match-harness-efficiency/calibration-negative-current.md)）。
 加えて、200ペア規模の校正は正例のElo信頼区間が40〜108（幅約68）と粗く、改善率の閾値判定にはさらに大きい標本が要るため、校正というメタ測定に本測定以上の資源を割く構図になる。
 この2点から、校正方式そのものを廃止する。
-初回校正の測定値は[calibration-positive-current](../../measurements/calibration-positive-current.md)と[calibration-negative-current](../../measurements/calibration-negative-current.md)が、カード選定の規則は教訓[効果量が極端な対は測定条件の比較情報を持たない](../../lessons/calibration-card-needs-contested-pair.md)が保持する。
+初回校正の測定値は[calibration-positive-current](../../measurements/match-harness-efficiency/calibration-positive-current.md)と[calibration-negative-current](../../measurements/match-harness-efficiency/calibration-negative-current.md)が、カード選定の規則は教訓[効果量が極端な対は測定条件の比較情報を持たない](../../lessons/calibration-card-needs-contested-pair.md)が保持する。
 代わりに、条件の妥当性は既存の測定記録の事後検証で根拠づける。
 事後検証で確かめる性質は、安価な測定条件が現行の時間制御と同じ優劣の向きを与えることである。
 符号の一致は3例ある。
-学習PSTの世代0は固定ノードと時間制御の双方で優位（[pst-gen0-nodes100k](../../measurements/pst-gen0-nodes100k.md)、[pst-gen0-tc](../../measurements/pst-gen0-tc.md)）、世代1も双方で優位（[pst-gen1-nodes100k](../../measurements/pst-gen1-nodes100k.md)、[pst-gen1-tc](../../measurements/pst-gen1-tc.md)）、P型NNUE世代1は双方で劣位（[nnue-gen1-nodes100k](../../measurements/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../../measurements/nnue-gen1-tc.md)）である。
+学習PSTの世代0は固定ノードと時間制御の双方で優位（[pst-gen0-nodes100k](../../measurements/evaluation/pst-gen0-nodes100k.md)、[pst-gen0-tc](../../measurements/evaluation/pst-gen0-tc.md)）、世代1も双方で優位（[pst-gen1-nodes100k](../../measurements/evaluation-gen1/pst-gen1-nodes100k.md)、[pst-gen1-tc](../../measurements/evaluation-gen1/pst-gen1-tc.md)）、P型NNUE世代1は双方で劣位（[nnue-gen1-nodes100k](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../../measurements/evaluation-gen1/nnue-gen1-tc.md)）である。
 浅い条件が変更の優劣の符号を反転させた実例は、記録にない。
 零差の煙試験も新設しない。
-同一コミット同士の10ペア煙試験2件（[search-phase5-time-control-smoke](../../measurements/search-phase5-time-control-smoke.md)、[search-phase6-time-control-smoke](../../measurements/search-phase6-time-control-smoke.md)）が信頼区間に0を含むことを確認済みであり、以後の全測定でも異常件数と時間切れが記録され採用条件に含まれるからである。
+同一コミット同士の10ペア煙試験2件（[search-phase5-time-control-smoke](../../measurements/search/search-phase5-time-control-smoke.md)、[search-phase6-time-control-smoke](../../measurements/search/search-phase6-time-control-smoke.md)）が信頼区間に0を含むことを確認済みであり、以後の全測定でも異常件数と時間切れが記録され採用条件に含まれるからである。
 同一コミット対局にしかない測定系の偏りの検出精度は既存の10ペア（信頼区間の幅約130 Elo）にとどまるが、この粗さを承知のうえで省略を選んだ。
 その代わり、新条件で開始する最初の測定で時間切れ、エンジン異常、または拒否着手が1件でも出た場合は、測定を停止して原因を調査する。
 
@@ -191,5 +191,5 @@ STCとLTCの結果の合算、シードを変えた再試行、および信頼�
 - [棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)：保存、再開、および集計機能。
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)：フェーズ3で改訂する現行の標準手順。
 - [探索部](search.md)：GSPRTの統計方式。
-- [calibration-positive-current](../../measurements/calibration-positive-current.md)および[calibration-negative-current](../../measurements/calibration-negative-current.md)：廃止した校正方式の測定値。
+- [calibration-positive-current](../../measurements/match-harness-efficiency/calibration-positive-current.md)および[calibration-negative-current](../../measurements/match-harness-efficiency/calibration-negative-current.md)：廃止した校正方式の測定値。
 - [Fishtestのテスト作成の手引き](https://official-stockfish.github.io/docs/fishtest-wiki/Creating-my-first-test.html)：STCとLTCの標準値の出典。

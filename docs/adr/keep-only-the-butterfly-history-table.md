@@ -9,7 +9,7 @@
 historyは、βカットを起こした静かな手の統計であり、静かな手の順序付けとLMRの減深量の増減に使う。
 minaseのhistoryは、手番側、移動元、および移動先で引くbutterfly表である。
 [棋力向上段階5](../plans/archived/strength-stage5.md)は、手番側、駒種、および到達升で引くpiece-to表を加え、両表の値の合計をhistory値とする案を測った。
-この案は[STC](../measurements/strength-stage5-piece-history-stc.md)で`H0`となった。
+この案は[STC](../measurements/strength-stage5/strength-stage5-piece-history-stc.md)で`H0`となった。
 同じ段階では、移動元を駒種に置き換える案と、手番側、駒種、移動元、および移動先の4次元表も検討した。
 前者は144升の盤で移動元の情報を失い、後者は約120万要素になって、1回の探索で各要素が受ける更新が少なすぎると判断した。
 [不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、piece-to表が数値係数を持たないことを理由に対象から外した。

@@ -55,14 +55,38 @@ pub(super) fn resolve_engine(
     }
 }
 
-/// 保存された条件で調整エンジンを復元し、実行ファイルの同一性を検査する。
+/// 保存された条件で調整エンジンを復元し、コミットまたは実行ファイルの同一性を検査する。
 pub(super) fn restore_engine(manifest: &super::storage::Manifest) -> io::Result<PlayerConfig> {
     let spec = restore_player_spec(&manifest.engine)?;
     let each = parse_search_limit(&manifest.each)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     let player = resolve_engine(spec, each, &manifest.rules_source)?;
-    if sha256_file(&player.path)? != manifest.engine_sha256 {
-        return Err(ResumeError::EngineIdentityMismatch.into());
+    let sha256 = sha256_file(&player.path)?;
+    check_engine_identity(manifest, &player.identity, &sha256)?;
+    if matches!(manifest.engine, EngineIdentity::Commit { .. }) && sha256 != manifest.engine_sha256
+    {
+        eprintln!(
+            "notice: engine SHA-256 differs from the session start: recorded={}, current={sha256}",
+            manifest.engine_sha256
+        );
     }
     Ok(player)
+}
+
+/// コミット指定は完全ハッシュ、それ以外は開始時の実行ファイルのSHA-256で照合する。
+pub(super) fn check_engine_identity(
+    manifest: &super::storage::Manifest,
+    identity: &EngineIdentity,
+    sha256: &str,
+) -> Result<(), ResumeError> {
+    let matches = match &manifest.engine {
+        EngineIdentity::Commit { hash, .. } => {
+            matches!(identity, EngineIdentity::Commit { hash: resolved, .. } if resolved == hash)
+        }
+        _ => sha256 == manifest.engine_sha256,
+    };
+    if !matches {
+        return Err(ResumeError::EngineIdentityMismatch);
+    }
+    Ok(())
 }

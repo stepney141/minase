@@ -19,4 +19,4 @@
 
 ## 出典
 
-[段階7の再学習記録](../measurements/strength-stage7-gen2-training.md)と[途中で停止した固定200ペア測定](../measurements/strength-stage7-elo200.md)に、未充足の要求と保存記録を示した。
+[段階7の再学習記録](../measurements/strength-stage7/strength-stage7-gen2-training.md)と[途中で停止した固定200ペア測定](../measurements/strength-stage7/strength-stage7-elo200.md)に、未充足の要求と保存記録を示した。

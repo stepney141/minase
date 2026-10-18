@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本マイルストーンでは、探索結果を保ったまま、探索が1秒間に処理する局面数（NPS、ノード数を経過時間で割った値）を基準コミットの2倍以上にすることを目標とし、1.5倍以上を最低受入条件とする。
-基準コミットは、[局面別の比較の測定記録](../../measurements/bench-movegen-oneside-depth5.md)が記録するmasterのコミットである。
+基準コミットは、[局面別の比較の測定記録](../../measurements/movegen-speedup/bench-movegen-oneside-depth5.md)が記録するmasterのコミットである。
 負荷の大半は静止探索（駒を取る手だけを読み進める探索の末端）にあるので、静止探索が結局捨てる捕獲を生成前に除き、必要な捕獲だけを価値の高い順に段階的に生成する。
 静的交換評価（SEE、到達升での駒の取り合いを見積もる評価）は、枝刈りしないと確定した時点で残りの計算を省く。
 指定升へ届く駒を求める利き逆引きの片側化（単位A）は採用済みであり、固定局面を固定深さで探索する測定プログラム`bench`の15局面で照合参照コミットとノード数、最善手、探索値が一致し、NPSは基準比1.319倍である。
@@ -19,16 +19,16 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。
 2026年9月13日に起案と着手し、2026年9月15日に完了した。
-採用版（コミット`888bd10`、単位AからCまで）は照合参照コミットと15局面のノード数、最善手、探索値で一致し、NPSは基準比1.500倍で最低受入条件1.5倍を満たすが、目標の2倍には届かず、残る差と残存負荷は[単位Eの記録](../../measurements/movegen-speedup-unit-e-bench-depth5.md)にある。
+採用版（コミット`888bd10`、単位AからCまで）は照合参照コミットと15局面のノード数、最善手、探索値で一致し、NPSは基準比1.500倍で最低受入条件1.5倍を満たすが、目標の2倍には届かず、残る差と残存負荷は[単位Eの記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)にある。
 単位D（PGO）はNPS約1.19倍の効果を確認したが、再生成を要する運用の複雑さを理由に利用者の判断で採用せず、実装を取り消した。
-最終のSPRTは、PGOを含む構成（コミット`5a67d41`）で[STC](../../measurements/movegen-speedup-final-stc.md)と[LTC](../../measurements/movegen-speedup-final-ltc.md)がいずれも`H1`かつ異常0件だった。PGOを外した採用版そのものの自己対局は行っていない。
-各単位の記録は[回転](../../measurements/movegen-speedup-rotation-bench-depth5.md)、[単位A](../../measurements/movegen-speedup-unit-a-bench-depth5.md)、[単位B](../../measurements/movegen-speedup-unit-b-bench-depth5.md)、[単位C](../../measurements/movegen-speedup-unit-c-bench-depth5.md)、[単位D](../../measurements/movegen-speedup-pgo-bench-depth5.md)にある。
+最終のSPRTは、PGOを含む構成（コミット`5a67d41`）で[STC](../../measurements/movegen-speedup/movegen-speedup-final-stc.md)と[LTC](../../measurements/movegen-speedup/movegen-speedup-final-ltc.md)がいずれも`H1`かつ異常0件だった。PGOを外した採用版そのものの自己対局は行っていない。
+各単位の記録は[回転](../../measurements/movegen-speedup/movegen-speedup-rotation-bench-depth5.md)、[単位A](../../measurements/movegen-speedup/movegen-speedup-unit-a-bench-depth5.md)、[単位B](../../measurements/movegen-speedup/movegen-speedup-unit-b-bench-depth5.md)、[単位C](../../measurements/movegen-speedup/movegen-speedup-unit-c-bench-depth5.md)、[単位D](../../measurements/movegen-speedup/movegen-speedup-pgo-bench-depth5.md)にある。
 
 ## 目的
 
 合法手生成と利き計算の費用を減らし、同じ時間でより深く探索できるようにする。
 速度比の基準は基準コミットであり、以後の測定はこのコミットを`git archive`で展開したビルドと比較する。
-[プロファイルの測定記録](../../measurements/bench-movegen-profile-depth5.md)では、基準の`bench`（深さ5、1スレッド、3回の中央値）は0.845秒、片側化を含む試作は0.639秒であり、その比が約1.32倍である。
+[プロファイルの測定記録](../../measurements/movegen-speedup/bench-movegen-profile-depth5.md)では、基準の`bench`（深さ5、1スレッド、3回の中央値）は0.845秒、片側化を含む試作は0.639秒であり、その比が約1.32倍である。
 同じ探索木で基準比2倍を達成するには0.4225秒以下、すなわち試作からさらに33.9%の時間削減が必要であり、1.5倍には0.5633秒以下、試作から11.8%の削減で足りる。
 この時間目標は後述の回転の前の参考値であり、回転で探索木が変わった後は、基準のノード数を`N_B`、照合参照コミットのノード数を`N_R`、基準の経過時間を`T_B`として、NPSを`k`倍にする時間条件を`T ≤ T_B × (N_R / N_B) / k`で再計算する。
 削減する処理の件数と実行時間を分けて測り、効果が重なる案の改善率を加算しない。
@@ -78,13 +78,13 @@ SEEを正確な値として計算する経路には、値と判定不能を表�
 捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が定め、`crates/minase-core/src/movegen/tests/properties.rs`が、捕獲だけを生成した列が全手の列から捕獲を抜き出した列と順序まで一致することを検査する。
 これらの公開生成契約は維持し、探索専用の部分生成とSEEの判定契約は、該当する実装を採用するときに参照先の設計書へ反映する。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../../lessons/bench-allocation-outside-timing.md)に従い、診断の件数は[独立した参照値と照合する規則](../../lessons/compare-diagnostics-with-independent-reference.md)に従う。
-最終のSPRTは[SPRTの手引き](../../guides/sprt.md)に従い、速度とEloの換算の目安には[持ち時間2倍の感度測定](../../measurements/sensitivity-time2x.md)を使う。
+最終のSPRTは[SPRTの手引き](../../guides/sprt.md)に従い、速度とEloの換算の目安には[持ち時間2倍の感度測定](../../measurements/evaluation-gen1/sensitivity-time2x.md)を使う。
 
 ## 設計判断
 
 ### 処理を省く順に着手する
 
-基準コミットのプロファイル（[測定記録](../../measurements/bench-movegen-profile-depth5.md)）では、静止探索配下が性能コアの標本の76.2%、SEEの利き逆引きの自己時間が合計29.8%、捕獲生成配下が31.2%であった。
+基準コミットのプロファイル（[測定記録](../../measurements/movegen-speedup/bench-movegen-profile-depth5.md)）では、静止探索配下が性能コアの標本の76.2%、SEEの利き逆引きの自己時間が合計29.8%、捕獲生成配下が31.2%であった。
 主探索の全手生成配下は5.1%なので、静止探索を先に改修する。
 片側化の試作後は捕獲生成配下が40.5%へ増え、走りの利きを求める計算（`piece_control_without_special`と`sliding_control`）が逆引きと捕獲生成の両方に残る。
 これらの割合は計測区間外の置換表クリアと起動を含み、包含時間にも重複があるため、そのまま探索全体の速度倍率へ換算しない。
@@ -153,7 +153,7 @@ SEEを正確な値として計算する経路には、値と判定不能を表�
 枝刈りでノードの探索が終わったら、後続グループは生成しない。
 価値グループごとの打ち切り位置も数え、同じグループ内で既に生成済みとなる分を削減見込みから除く。
 
-生成は、対象升から取り手を逆引きする方式と、対象升を使う駒別生成を比較し、駒別生成を採った（[単位Bの記録](../../measurements/movegen-speedup-unit-b-bench-depth5.md)）。
+生成は、対象升から取り手を逆引きする方式と、対象升を使う駒別生成を比較し、駒別生成を採った（[単位Bの記録](../../measurements/movegen-speedup/movegen-speedup-unit-b-bench-depth5.md)）。
 駒別生成では、通常駒の利きをノードの初期化で1回だけ求めて対象升との積を保持し、各グループでは保持した集合とグループの対象升の積だけを出力する。
 駒価値の降順の順位は探索中に変わらないので探索ワーカーの生成時に前計算し、ノードごとのグループ構築は順位のビット集合で行い、整列と線形探索を置かない（[段階生成の固定費](../../lessons/staged-generation-fixed-cost.md)）。
 逆引きの結果は疑似利きなので、それだけで合法手として出力しない。
@@ -179,7 +179,7 @@ SEEを正確な値として計算する経路には、値と判定不能を表�
 呼び出しごとの費用が等しいと仮定すると、試作後の逆引きの自己時間（標本全体の約10%）との単純積は約1.3%であり、探索時間の削減率はこの仮定なしには決まらないので、同じ構成での件数と探索区間内の包含時間を測って見積もる。
 いずれにせよ数%の規模なので、この単位は局面別一致とNPSで採否を決める方式でなければ判定の費用に見合わない。
 早期終了を単独で比較した後、残る反復の費用を測り、占有集合から除いた駒によって開く走りだけを計算し直す差分更新と、占有に依存しない利きの事前計算を単位Cの後続比較として加えるか決める。
-測定では3回目以降の逆引きが全体の約21%で、後続比較で省ける時間は全体の1〜2%にとどまるため、どちらも実施しない（[単位Cの記録](../../measurements/movegen-speedup-unit-c-bench-depth5.md)）。
+測定では3回目以降の逆引きが全体の約21%で、後続比較で省ける時間は全体の1〜2%にとどまるため、どちらも実施しない（[単位Cの記録](../../measurements/movegen-speedup/movegen-speedup-unit-c-bench-depth5.md)）。
 
 ### 探索木を変えない変更は局面別一致と速度で採否を決める
 
@@ -189,7 +189,7 @@ SEEを正確な値として計算する経路には、値と判定不能を表�
 Stockfishの開発でも、`bench`の結果が変わらない高速化は原則としてfishtestへ出すが、検定で検出できない微小な高速化は速度測定などの別の証拠で扱う例外がある。
 
 単位ごとにSPRTを行う方式は、微小な高速化の判定に費用がかかりすぎる。
-自己対局では持ち時間2倍が約216 Eloに相当する（[感度測定](../../measurements/sensitivity-time2x.md)、別コミットで得た値であり線形性は仮定しない目安）。
+自己対局では持ち時間2倍が約216 Eloに相当する（[感度測定](../../measurements/evaluation-gen1/sensitivity-time2x.md)、別コミットで得た値であり線形性は仮定しない目安）。
 持ち時間の倍率を対数で換算すると、2%の高速化は`log2(1.02) × 216`で約6 Eloであり、SPRTの仮説H0（0 Elo）とH1（10 Elo）の谷に落ちる。
 [SPRTの手引き](../../guides/sprt.md)の期待ペア数では、谷の中央の5 Eloで約4,200ペアを要し、長時間条件（LTC、1局あたり約216秒）では同時16対局でも30時間規模になるうえ、正しい変更がH0で棄却され得る。
 SEEの早期終了のような数%の単位は、この方式では現実的な費用で採否を判定できない。
@@ -222,7 +222,7 @@ PGOの採用後に上記の照合対象（ソース、評価データ、依存�
 再生成時間、プロファイル容量、複数回更新した場合のgitオブジェクトの増分を測り、速度の利益と併記したうえで採否測定へ進むか決める。
 ハーネスへPGOの有無を切り替える機能比較スイッチは追加しない。
 
-手動ビルドの比較ではNPSが約1.19倍となり判断値を超えたため、rustcラッパーで適用しreleaseビルドで照合記録を検証する再現基盤を一度実装したが、ソースを変えるたびにプロファイルの再生成を要する運用とビルド手順の追加がコードベースを複雑にしすぎるという利用者の判断で採用しなかった（[PGOの記録](../../measurements/movegen-speedup-pgo-bench-depth5.md)、[ラッパーで適用する教訓](../../lessons/pgo-profile-path-via-wrapper.md)）。
+手動ビルドの比較ではNPSが約1.19倍となり判断値を超えたため、rustcラッパーで適用しreleaseビルドで照合記録を検証する再現基盤を一度実装したが、ソースを変えるたびにプロファイルの再生成を要する運用とビルド手順の追加がコードベースを複雑にしすぎるという利用者の判断で採用しなかった（[PGOの記録](../../measurements/movegen-speedup/movegen-speedup-pgo-bench-depth5.md)、[ラッパーで適用する教訓](../../lessons/pgo-profile-path-via-wrapper.md)）。
 測定と実装の経緯は記録に残し、再検討する場合は同じ判断規則と再現条件を出発点にする。
 
 ### 残存負荷に応じて代替方式を比べる
@@ -241,7 +241,7 @@ PGOの採用後に上記の照合対象（ソース、評価データ、依存�
 | 獅子系の生成と列挙を整理する。 | 獅子、角鷹、飛鷲の生成が主要な自己時間として残っている。 | 仮想盤面、ビットボードの列挙、色を反映した動きの定義の巻き上げを比較し、NPSが増えた変更だけを残す。 |
 | 置換表行をプリフェッチする。 | 置換表の照合にメモリ待ちが残ることをプロファイルで示せる。 | 探索結果が一致し、命令数と取得データの使用率も測る。 |
 
-単位Dまでの採用版で候補表を判定した結果、置換表行の先読み（E1）と公開生成の判定省略（E2）は試して速度が上がらず、残る候補は測った残存負荷から見込みが数%以下だったので、いずれも実装しない（[単位Eの記録](../../measurements/movegen-speedup-unit-e-bench-depth5.md)）。
+単位Dまでの採用版で候補表を判定した結果、置換表行の先読み（E1）と公開生成の判定省略（E2）は試して速度が上がらず、残る候補は測った残存負荷から見込みが数%以下だったので、いずれも実装しない（[単位Eの記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)）。
 
 主探索の着手選択の変更は、探索順を変える棋力向上の課題であり、本設計書の範囲外とする。
 
@@ -267,7 +267,7 @@ Eで互いに独立した候補を複数試す場合は、E1、E2のように分
 
 1. 計測基盤を整える。
    `bench`の局面別出力に最善手と探索値を計測区間外で加え、照合参照コミット（探索の差分は回転だけ、出力拡張を含む）を作る。
-   処理件数は既存の[診断差分](../../measurements/movegen-speedup-ideas-counts/diagnostic.patch)を再利用して数え、価値グループごとの打ち切り位置を追加する。
+   処理件数は既存の[診断差分](../../measurements/movegen-speedup/movegen-speedup-ideas-counts/diagnostic.patch)を再利用して数え、価値グループごとの打ち切り位置を追加する。
    生成数、入口で棄却できる手数、価値グループ別の未訪問数、およびSEEの逆引きと早期終了の件数は独立した参照と突き合わせ、不一致なら診断を停止して原因を調べる。
    完了条件は、照合参照コミットとの局面別比較が1コマンドで実行でき、診断用と速度用のビルドが分離されていることである。
 2. 単位Aを確定する。
@@ -333,11 +333,11 @@ PGOは入力分割、プロファイル、および候補コミットからの�
 
 ## 参考資料
 
-- [片側化の基準に対する局面別のbench比較](../../measurements/bench-movegen-oneside-depth5.md)
-- [基準プロファイルと試作の速度](../../measurements/bench-movegen-profile-depth5.md)
+- [片側化の基準に対する局面別のbench比較](../../measurements/movegen-speedup/bench-movegen-oneside-depth5.md)
+- [基準プロファイルと試作の速度](../../measurements/movegen-speedup/bench-movegen-profile-depth5.md)
 - [追加候補と処理件数診断](../../research/movegen-speedup-ideas.md)
-- [追加候補の集計値](../../measurements/movegen-speedup-ideas-counts/totals.json)
-- [持ち時間2倍の感度測定](../../measurements/sensitivity-time2x.md)
+- [追加候補の集計値](../../measurements/movegen-speedup/movegen-speedup-ideas-counts/totals.json)
+- [持ち時間2倍の感度測定](../../measurements/evaluation-gen1/sensitivity-time2x.md)
 - [棋力向上段階1](strength-stage1.md)
 - [棋力向上段階3](strength-stage3.md)
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)

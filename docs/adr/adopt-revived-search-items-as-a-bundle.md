@@ -9,11 +9,11 @@
 段階4、段階8、および段階12で、数値係数を持つ探索の改良8項目が、1項目ずつ当時の基準へ足したSTCでいずれも負け越して不採用になった。
 8項目は、reverse futility pruning、late move pruning、静的評価の余裕によるnull moveの減深の加算、razoring、improving、捕獲履歴、静止探索の手数制限、およびbutterfly historyの持ち越しである。
 それらの係数は、先行エンジンの値を中将棋の尺度へ換算したものか、固定局面集で良手を失う割合から選んだものだった。
-[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、負けの原因が手法ではなく係数の値にあったという仮説を検証するため、8項目を現行のmasterへ戻し、既存の探索係数16個と新しい係数13個をまとめてSPSAで調整した（[調整の記録](../measurements/search-revival-t.md)）。
+[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、負けの原因が手法ではなく係数の値にあったという仮説を検証するため、8項目を現行のmasterへ戻し、既存の探索係数16個と新しい係数13個をまとめてSPSAで調整した（[調整の記録](../measurements/search-revival-spsa/search-revival-t.md)）。
 late move pruningだけは、元の定義の欠陥を診断で確かめたので、定義を改めて戻した（[ADR](count-only-quiet-moves-for-late-move-pruning.md)）。
 各係数の範囲には改良を事実上無効にする値を含めたが、調整後に厳密な無効値へ達した係数はなかった。
-調整した版T\*は、測定開始時のmaster Mに対して、STCが147有効ペアで得点率67.5%、LTCが162有効ペアで得点率67.4%の`H1`だった（[STC](../measurements/search-revival-tstar-vs-m-stc.md)、[LTC](../measurements/search-revival-tstar-vs-m-ltc.md)）。
-既存の係数を調整後の値に揃えたまま8項目だけを除いた版T\*′に対しても、STCが222有効ペアで得点率62.7%の`H1`だった（[測定記録](../measurements/search-revival-tstar-vs-tprime-stc.md)）。
+調整した版T\*は、測定開始時のmaster Mに対して、STCが147有効ペアで得点率67.5%、LTCが162有効ペアで得点率67.4%の`H1`だった（[STC](../measurements/search-revival-spsa/search-revival-tstar-vs-m-stc.md)、[LTC](../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)）。
+既存の係数を調整後の値に揃えたまま8項目だけを除いた版T\*′に対しても、STCが222有効ペアで得点率62.7%の`H1`だった（[測定記録](../measurements/search-revival-spsa/search-revival-tstar-vs-tprime-stc.md)）。
 すべての測定で異常は0件だった。
 
 ## 決定

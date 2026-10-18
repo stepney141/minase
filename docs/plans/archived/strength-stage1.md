@@ -15,7 +15,7 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 本マイルストーンは2026年9月1日に起案して同日に着手し、2026年9月2日に完了した。
 捕獲専用生成、評価値の差分更新、および段階的な手選択を採用し、手配列の再利用と反復回数表は不採用とした。
-最終構成は[最終LTC](../../measurements/strength-stage1-final-ltc.md)で`H1`かつ異常0件となり、[固定自己対局](../../measurements/strength-stage1-elo200.md)と[HaChu戦](../../measurements/strength-stage1-hachu-elo200.md)を進捗指標として記録した。
+最終構成は[最終LTC](../../measurements/strength-stage1/strength-stage1-final-ltc.md)で`H1`かつ異常0件となり、[固定自己対局](../../measurements/strength-stage1/strength-stage1-elo200.md)と[HaChu戦](../../measurements/strength-stage1/strength-stage1-hachu-elo200.md)を進捗指標として記録した。
 
 ## 目的
 
@@ -95,31 +95,31 @@
 
 捕獲専用生成と同値性テストを追加し、静止探索だけを新しい入口へ切り替える。
 全手から捕獲を選んだ列との完全一致とテストスイートの成功を確認し、bench総ノード数が不変かつNPS中央値が3%以上改善すれば仮採用する。
-基準を満たしたため採用し、結果は[捕獲専用生成のbench](../../measurements/bench-capture-generation.md)に記録する。
+基準を満たしたため採用し、結果は[捕獲専用生成のbench](../../measurements/strength-stage1/bench-capture-generation.md)に記録する。
 
 ### フェーズ2　手配列の再利用
 
 通常探索と静止探索の手配列をplyごとのバッファへ移す。
 テストスイートの成功を確認し、bench総ノード数が不変かつNPS中央値が3%以上改善すれば仮採用する。
-基準に届かなかったため実装を除去し、結果は[ply別手配列のbench](../../measurements/bench-ply-move-buffers.md)に記録する。
+基準に届かなかったため実装を除去し、結果は[ply別手配列のbench](../../measurements/strength-stage1/bench-ply-move-buffers.md)に記録する。
 
 ### フェーズ3　反復検出
 
 探索履歴の線形走査を出現回数表へ置き換える。
 現行判定との一致とテストスイートの成功を確認し、bench総ノード数が不変かつNPS中央値が3%以上改善すれば仮採用する。
-NPSが低下したため実装を除去し、結果は[反復回数表のbench](../../measurements/bench-repetition-occurrences.md)に記録する。
+NPSが低下したため実装を除去し、結果は[反復回数表のbench](../../measurements/strength-stage1/bench-repetition-occurrences.md)に記録する。
 
 ### フェーズ4　評価値の差分更新
 
 先手視点と後手視点の累算器を導入し、全再計算との一致を固定する。
 通常手、特殊移動、先獅子状態、取り消し、およびnull moveの同値性とテストスイートの成功を確認し、bench総ノード数が不変かつNPS中央値が3%以上改善すれば仮採用する。
-基準を満たしたため採用し、結果は[評価値の差分更新のbench](../../measurements/bench-incremental-pst.md)に記録する。
+基準を満たしたため採用し、結果は[評価値の差分更新のbench](../../measurements/strength-stage1/bench-incremental-pst.md)に記録する。
 
 ### フェーズ5　段階的な手選択
 
 探索の完全ソートを段階的な生成と選択へ置き換える。
 合法手の一意な列挙とテストスイートの成功を確認し、探索順が変わらない場合はbench基準、変わる場合は標準のSTCとLTCで採否を決める。
-STCとLTCがともに`H1`となったため採用し、結果は[STC](../../measurements/strength-stage1-staged-picker-stc.md)と[LTC](../../measurements/strength-stage1-staged-picker-ltc.md)に記録する。
+STCとLTCがともに`H1`となったため採用し、結果は[STC](../../measurements/strength-stage1/strength-stage1-staged-picker-stc.md)と[LTC](../../measurements/strength-stage1/strength-stage1-staged-picker-ltc.md)に記録する。
 
 ### フェーズ6　段階ゲート
 
@@ -128,7 +128,7 @@ STCが`H0`またはLLRが負の`pending`なら、NPS改善が最も小さい高�
 LTCが`H0`なら同じ順序で項目を除き、STCから再測定する。
 高速化4項を除いた後に段階的な手選択だけが残って不通過となった場合は、その項目も除く。
 LTCが`H1`で異常が0件になるか、採用項目がなくなるまで続ける。
-最終構成は段階開始版との[STC](../../measurements/strength-stage1-final-stc.md)と[LTC](../../measurements/strength-stage1-final-ltc.md)がともに`H1`となり、異常0件で完了した。
+最終構成は段階開始版との[STC](../../measurements/strength-stage1/strength-stage1-final-stc.md)と[LTC](../../measurements/strength-stage1/strength-stage1-final-ltc.md)がともに`H1`となり、異常0件で完了した。
 
 ## 検証
 
@@ -156,10 +156,10 @@ LTCが`H1`で異常が0件になるか、採用項目がなくなるまで続け
 - [探索部](search.md)：静止探索、手順序付け、およびbenchの現行契約。
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)：時間制御GSPRTの標準手順。
 - [指し手正準化](move-canonicalization.md)：2段階移動と捕獲升の正準形。
-- [捕獲専用生成のbench](../../measurements/bench-capture-generation.md)：捕獲専用生成の採用根拠。
-- [ply別手配列のbench](../../measurements/bench-ply-move-buffers.md)：手配列再利用の不採用根拠。
-- [反復回数表のbench](../../measurements/bench-repetition-occurrences.md)：反復回数表の不採用根拠。
-- [評価値の差分更新のbench](../../measurements/bench-incremental-pst.md)：評価値の差分更新の採用根拠。
-- [段階的な手選択のSTC](../../measurements/strength-stage1-staged-picker-stc.md)と[LTC](../../measurements/strength-stage1-staged-picker-ltc.md)：段階的な手選択の採用根拠。
-- [段階ゲートのSTC](../../measurements/strength-stage1-final-stc.md)と[LTC](../../measurements/strength-stage1-final-ltc.md)：最終構成の採用根拠。
-- [固定自己対局](../../measurements/strength-stage1-elo200.md)と[HaChu戦](../../measurements/strength-stage1-hachu-elo200.md)：段階間の進捗指標。
+- [捕獲専用生成のbench](../../measurements/strength-stage1/bench-capture-generation.md)：捕獲専用生成の採用根拠。
+- [ply別手配列のbench](../../measurements/strength-stage1/bench-ply-move-buffers.md)：手配列再利用の不採用根拠。
+- [反復回数表のbench](../../measurements/strength-stage1/bench-repetition-occurrences.md)：反復回数表の不採用根拠。
+- [評価値の差分更新のbench](../../measurements/strength-stage1/bench-incremental-pst.md)：評価値の差分更新の採用根拠。
+- [段階的な手選択のSTC](../../measurements/strength-stage1/strength-stage1-staged-picker-stc.md)と[LTC](../../measurements/strength-stage1/strength-stage1-staged-picker-ltc.md)：段階的な手選択の採用根拠。
+- [段階ゲートのSTC](../../measurements/strength-stage1/strength-stage1-final-stc.md)と[LTC](../../measurements/strength-stage1/strength-stage1-final-ltc.md)：最終構成の採用根拠。
+- [固定自己対局](../../measurements/strength-stage1/strength-stage1-elo200.md)と[HaChu戦](../../measurements/strength-stage1/strength-stage1-hachu-elo200.md)：段階間の進捗指標。

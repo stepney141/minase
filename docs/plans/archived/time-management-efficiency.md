@@ -17,7 +17,7 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（一部不採用）。2026年9月16日に起案し、2026年9月17日に着手し、2026年9月18日に完了した。
-再構成の最終候補はSTCで`H0`となり不採用であった（[time-management-efficiency-stc](../../measurements/time-management-efficiency-stc.md)）。分解測定の候補D1とD2もSTCで`H0`となり、残せる構成はなかった（[D1](../../measurements/time-management-decomposition-d1-stc.md)、[D2](../../measurements/time-management-decomposition-d2-stc.md)）。序盤の係数は時計の診断で採用し、issueの条件の初手は11.9秒から4.0秒になり、hardの超過は最大14 ms、時間切れは0件であった（[time-management-opening-coefficient-diag](../../measurements/time-management-opening-coefficient-diag.md)）。秒読みつきの条件の参考測定（[time-management-opening-coefficient-elo](../../measurements/time-management-opening-coefficient-elo.md)、固定290ペア）では点推定−1.2 Elo、95%信頼区間−28〜+26 Eloで差は検出されず、masterを候補にした非劣性のGSPRT（[time-management-opening-coefficient-noninferiority](../../measurements/time-management-opening-coefficient-noninferiority.md)、3,574有効ペア）は`H0`で、10 Elo規模の低下は検出されなかった。成果は2026年9月18日にmasterへ統合した。issue #7への報告は利用者の指示により行わない。
+再構成の最終候補はSTCで`H0`となり不採用であった（[time-management-efficiency-stc](../../measurements/time-management-efficiency/time-management-efficiency-stc.md)）。分解測定の候補D1とD2もSTCで`H0`となり、残せる構成はなかった（[D1](../../measurements/time-management-efficiency/time-management-decomposition-d1-stc.md)、[D2](../../measurements/time-management-efficiency/time-management-decomposition-d2-stc.md)）。序盤の係数は時計の診断で採用し、issueの条件の初手は11.9秒から4.0秒になり、hardの超過は最大14 ms、時間切れは0件であった（[time-management-opening-coefficient-diag](../../measurements/time-management-efficiency/time-management-opening-coefficient-diag.md)）。秒読みつきの条件の参考測定（[time-management-opening-coefficient-elo](../../measurements/time-management-efficiency/time-management-opening-coefficient-elo.md)、固定290ペア）では点推定−1.2 Elo、95%信頼区間−28〜+26 Eloで差は検出されず、masterを候補にした非劣性のGSPRT（[time-management-opening-coefficient-noninferiority](../../measurements/time-management-efficiency/time-management-opening-coefficient-noninferiority.md)、3,574有効ペア）は`H0`で、10 Elo規模の低下は検出されなかった。成果は2026年9月18日にmasterへ統合した。issue #7への報告は利用者の指示により行わない。
 
 ## 目的
 
@@ -57,8 +57,8 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 plyは初形を0とする局面の手数である。
 
 以下の表は2026年9月18日にissue #7の対策を採用したときの判断と測定値を記録する。
-[最初のSPSAの長時間測定](../../measurements/spsa-stage9-20260923-ltc.md)を通過した後の値は、`EXPECTED_PLIES = 435`、`MIN_MOVES = 94`、加算の使用率73%、hardとsoftの比394%、反復継続の予測比2.44であった。
-[2回目のSPSAの長時間測定](../../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行値は、`EXPECTED_PLIES = 432`、`MIN_MOVES = 88`、加算の使用率76%、hardとsoftの比451%、hardに使える残り時間の割合27%である。
+[最初のSPSAの長時間測定](../../measurements/spsa/spsa-stage9-20260923-ltc.md)を通過した後の値は、`EXPECTED_PLIES = 435`、`MIN_MOVES = 94`、加算の使用率73%、hardとsoftの比394%、反復継続の予測比2.44であった。
+[2回目のSPSAの長時間測定](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行値は、`EXPECTED_PLIES = 432`、`MIN_MOVES = 88`、加算の使用率76%、hardとsoftの比451%、hardに使える残り時間の割合27%である。
 現行の予算式では、`moves_to_go = max(88, 432.saturating_sub(ply) / 2)`、`soft_raw = remaining / moves_to_go + increment × 76 / 100 + byoyomi × 8 × opening / 400`、`hard = max(1 ms, min(soft_raw × 451 / 100, remaining × 27 / 100 + byoyomi × 8 / 10, safe_hard))`、`soft = min(soft_raw, hard)`とし、各整数除算の端数を切り捨てる。
 `opening`は残り時間が正なら`min(40, ply.saturating_add(4))`、残り時間が0なら40であり、`safe_hard`は本マイルストーンで採用した定義を保つ。
 反復継続の予測比は2.63である。
@@ -66,7 +66,7 @@ plyは初形を0とする局面の手数である。
 
 | 判断 | 内容 |
 |---|---|
-| 原因の特定 | 症状は3つの機構から生じる。第1に、反復継続の判断（`should_start_next_iteration`）は、最善手が安定していなければ「経過時間がsoft未満、かつ経過時間の2.5倍がhard以下」で次の反復を始め、始めた反復は完了まで走る。hardは`4·soft_raw`なのでhard側の条件は拘束せず、soft未満で始めた最後の反復がsoftを超えて完了する。[初形の実測](../../measurements/time-management-efficiency-probe.md)では、issueの条件の初手（soft 9,333 ms、hard 37,332 ms）で深さ11が6.8秒に完了して深さ12へ入り、13.4秒でsoft停止した。第2に、秒読み局面ではsoftとhardが一致し、予測の規則が経過時間0.4·hard以降の反復開始を禁じるため、残り0・秒読み10秒で4.1秒しか使わない。第3に、探索の途中でhardに達した反復は全体が捨てられる（`search_root`が`None`を返す）ので、hardを予算へ近づけるだけでは捨てる計算が増える。issueの主症状である最初の数手の長考は、このうち第1の機構と、issueの条件の予算9,333 msのうち8,000 msを占める秒読みの項の組合せで起こる。 |
+| 原因の特定 | 症状は3つの機構から生じる。第1に、反復継続の判断（`should_start_next_iteration`）は、最善手が安定していなければ「経過時間がsoft未満、かつ経過時間の2.5倍がhard以下」で次の反復を始め、始めた反復は完了まで走る。hardは`4·soft_raw`なのでhard側の条件は拘束せず、soft未満で始めた最後の反復がsoftを超えて完了する。[初形の実測](../../measurements/time-management-efficiency/time-management-efficiency-probe.md)では、issueの条件の初手（soft 9,333 ms、hard 37,332 ms）で深さ11が6.8秒に完了して深さ12へ入り、13.4秒でsoft停止した。第2に、秒読み局面ではsoftとhardが一致し、予測の規則が経過時間0.4·hard以降の反復開始を禁じるため、残り0・秒読み10秒で4.1秒しか使わない。第3に、探索の途中でhardに達した反復は全体が捨てられる（`search_root`が`None`を返す）ので、hardを予算へ近づけるだけでは捨てる計算が増える。issueの主症状である最初の数手の長考は、このうち第1の機構と、issueの条件の予算9,333 msのうち8,000 msを占める秒読みの項の組合せで起こる。 |
 | 参照実装との比較 | Stockfish（`search.cpp`、`timeman.cpp`）とYaneuraOu（`yaneuraou-search.cpp`、`timeman.cpp`）の骨格はminaseと同じ二段構えだが、根の各手の結果を保持して途中で止めても完了した手の中の最善手を採ること、予算の半分を過ぎたら次の反復の深さを抑えること、停止の閾値を局面の信号（評価値の下落、最善手の入替など）の乗算で決めることの3点が異なる。YaneuraOuの予算式は概略で`optimum = minimumTime + (time + inc·MTG + byoyomi·MTG) / MTG`であり、秒読み全額に持ち時間の分担を足すminaseの`soft_raw`と同じ構造で、持ち時間を序盤から使う配分は参照実装でも同じである。この3点を導入する再構成は試みたうえで棄却した（「棄却した再構成の各段階」）。 |
 | 採用した方式 | `soft_raw = remaining / moves_to_go + 0.7·increment + 0.8·byoyomi·w`、`w = min(1, (ply + 4) / 40)`とし、整数演算では秒読みの項を`byoyomi·8·min(40, ply + 4) / 400`で求める。hardは現行どおり`max(1 ms, min(4·soft_raw, remaining / 4 + 0.8·byoyomi, safe_hard))`であり、`remaining / 4 + 0.8·byoyomi`の項には係数を掛けない（歯止めは現行のまま）。`soft = min(soft_raw, hard)`。残り時間0の手には係数を掛けない（`w = 1`）。未使用の秒読みは持ち越せず、秒読みだけの時計で序盤を絞る利益がないからである。`movetime`だけの探索にも掛けない。秒読みのない時間制御では`byoyomi = 0`なので式が現行と一致し、着手と時間が変わらない。したがって利用者の制約（人間向けの変更で棋力を落とさない）を測定ではなく式の同一性で満たす。 |
 | 序盤の係数の値 | 既存エンジンの調査（[秒読みつき時間制御における既存エンジンの持ち時間配分](../../research/time-management-byoyomi-survey.md)）では、Apery、技巧、dlshogiが序盤の消費をplyに応じた係数または除数で絞り、Aperyは20手目まで秒読みの項を加えない。理由を明記するのはYaneuraOuのコメント（序盤は定跡で進み、勝負どころではない）だけである。本書はAperyの方式を連続な係数にしたもので、自分の1手目（ply 0）で0.1、9手目（ply 16）で0.5、19手目（ply 36）以降で1になる。始値0.1はAperyが10手目未満の手の重要度に掛ける係数、長さ40 plyはAperyの立ち上げの長さと同じ値を借りた。中将棋は将棋より長いが、Minaseには定跡がなく初手から探索するので、立ち上げを将棋より長くする根拠はないと判断した。これらは測定で調整した値ではなく設計上の判断値であり、パラメータ違いは追加しない。棄却した代案は、Aperyのように序盤で秒読みの項を外す方式である。秒読み項の有無を切り替える分岐が増える一方、序盤の絞りという効果は係数1つで足りるため採らない。 |
@@ -80,8 +80,8 @@ plyは初形を0とする局面の手数である。
 
 ## 現行の時間消費
 
-[初形の実測](../../measurements/time-management-efficiency-probe.md)では、持ち時間局面の1手がsoftの1.4〜1.7倍、秒読み局面の1手が秒読みの0.41〜0.45であり、停止理由はすべてsoftリミットであった。
-[現行の診断](../../measurements/time-management-efficiency-diag.md)では、`time=9000+0,byoyomi=300`の10ペア自己対局で、持ち時間局面の思考時間とsoftの比の中央値が0.93〜0.94、90パーセンタイルが1.9〜2.0、hardによる中断が2〜2.4%、秒読み局面の利用率の中央値が0.51であり、持ち時間は25〜39手目（中央値31手目）に尽きた。5分＋10秒の先手60手自己対局では、初手の実測思考時間が11,891 ms、持ち時間局面のsoftとの比の中央値が0.73〜0.78、90パーセンタイルが1.5〜1.8、最大が2.73であり、持ち時間は先手37手目と後手36手目に尽きた。
+[初形の実測](../../measurements/time-management-efficiency/time-management-efficiency-probe.md)では、持ち時間局面の1手がsoftの1.4〜1.7倍、秒読み局面の1手が秒読みの0.41〜0.45であり、停止理由はすべてsoftリミットであった。
+[現行の診断](../../measurements/time-management-efficiency/time-management-efficiency-diag.md)では、`time=9000+0,byoyomi=300`の10ペア自己対局で、持ち時間局面の思考時間とsoftの比の中央値が0.93〜0.94、90パーセンタイルが1.9〜2.0、hardによる中断が2〜2.4%、秒読み局面の利用率の中央値が0.51であり、持ち時間は25〜39手目（中央値31手目）に尽きた。5分＋10秒の先手60手自己対局では、初手の実測思考時間が11,891 ms、持ち時間局面のsoftとの比の中央値が0.73〜0.78、90パーセンタイルが1.5〜1.8、最大が2.73であり、持ち時間は先手37手目と後手36手目に尽きた。
 係数の導入後も持ち時間局面と秒読み局面の機構は変わらないので、この分布はply 36以降で保たれ、変わるのは最初の18手の予算だけである。
 
 ## 診断の指標
@@ -102,7 +102,7 @@ plyは初形を0とする局面の手数である。
 ## 棄却した再構成の各段階
 
 再構成は次の4段階を1段階1コミットで順に積み、第2段階は事前判定で見送り、最終コミットを着手前のコミットと標準のSTCで比べた。
-本節は各段階の方式と棄却の理由を残す。中断の条件や係数の定数の全文は、不採用のコミットのrustdocと[STC](../../measurements/time-management-efficiency-stc.md)が参照するコミットにある。
+本節は各段階の方式と棄却の理由を残す。中断の条件や係数の定数の全文は、不採用のコミットのrustdocと[STC](../../measurements/time-management-efficiency/time-management-efficiency-stc.md)が参照するコミットにある。
 
 ### 根の探索結果の保持（第0段階）
 
@@ -118,7 +118,7 @@ plyは初形を0とする局面の手数である。
 YaneuraOuに倣い、秒読みが正で残り時間が0より大きく秒読みの1.2倍未満の手では`target = safe_hard`とし、残り時間と秒読みを1手で使う（最終押し込み）。残り時間0の手には適用せず、秒読みの8割の規定を保つ。序盤の係数も残り時間が0より大きく最終押し込みが働かない手にだけ掛ける。
 反復継続の判断から予測による上限の項を外し、softを超えた反復はhardの探索中検査で中断して途中結果を採用する。
 時計または`movetime`による探索で合法手が1つの局面では深さ1の完了時に停止し、固定深さ、ノード数、無期限の探索には適用しない。
-煙試験と初手の確認の記録は[stage1-smoke](../../measurements/time-management-efficiency-stage1-smoke.md)にある。
+煙試験と初手の確認の記録は[stage1-smoke](../../measurements/time-management-efficiency/time-management-efficiency-stage1-smoke.md)にある。
 棄却の理由は分解測定で判明した。予算を公平な分担そのものにして探索中の中断で止める方式は、旧式の反復完了による超過で使っていた時間を約14%使い残し、中断した反復の時間が着手に反映されないために劣る（[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../../lessons/compare-total-time-usage-before-sprt.md)）。
 `remaining / 4 + 0.8·byoyomi`の項を外したことは、残り時間が少ない加算つきの局面で上限を`remaining / 4`から`0.7·increment`前後へ引き上げる変更であり、第3段階との組合せで時間切れの原因になった（[打ち切り上限は残り時間の割合でも抑える](../../lessons/cap-hard-limit-by-remaining-fraction.md)）。
 
@@ -126,7 +126,7 @@ YaneuraOuに倣い、秒読みが正で残り時間が0より大きく秒読み�
 
 Stockfishの`increaseDepth`と`searchAgainCounter`に倣い、反復の完了時に経過時間がsoftの半分を超えていれば抑制回数kを1増やし、次の反復を`search_depth = max(1, root_depth − (3·(k + 1)) / 4)`で読む方式である。
 読み直しが置換表の即時打ち切りだけで終わって時間を空費する可能性があるので、実装後、採否測定の前に、代表局面で置換表を局面ごとに空にし、softを完了反復の経過時間の1.2倍に固定して抑制した反復の所要時間を測り、直前の全深さの反復の所要時間で割った比の中央値が0.05未満なら空費と判定して見送ると事前に定めた。
-[事前判定](../../measurements/time-management-efficiency-stage2-bench.md)で空費と判定し、見送った。
+[事前判定](../../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)で空費と判定し、見送った。
 
 ### 局面適応の係数（第3段階）
 
@@ -134,10 +134,10 @@ Stockfishの`totalTime`に倣い、softは第1段階のまま、hardを`max(1 ms
 係数5はYaneuraOuの`max_ratio`を借りた値で、秒読み分を5倍しないのは秒読みの安全余裕（2割）を保つためである。
 最終押し込みが働く手ではこの式を適用せず`soft = hard = safe_hard`とし、`total`は残り時間が0より大きく最終押し込みでない手にだけ適用して、残り時間0の手はhardまで読む。
 4係数はStockfishの現行の定数をそのまま使い、評価値の差は歩兵の価値で内部単位へ換算した。
-cは4係数の積の正規化定数で、[事前判定](../../measurements/time-management-efficiency-stage3-bench.md)で得た積の中央値2.08の逆数0.48とした。
+cは4係数の積の正規化定数で、[事前判定](../../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)で得た積の中央値2.08の逆数0.48とした。
 事前判定では、代表局面で係数の積が0.9以上1.1以下の手が90%を超える場合は発動していないと判定し、定数の見直しはSTCの開始前の1回に限り、STCの開始後は定数を変えず、LTCの結果を見て定数違いを追加しないと定めた。
 この段階は直近4反復の最善手の一致による早期終了を置き換える。
-[最終診断](../../measurements/time-management-efficiency-after.md)は全項目を満たした（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）が、[STC](../../measurements/time-management-efficiency-stc.md)で`H0`となり、候補側に2件の時間切れが出た。
+[最終診断](../../measurements/time-management-efficiency/time-management-efficiency-after.md)は全項目を満たした（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）が、[STC](../../measurements/time-management-efficiency/time-management-efficiency-stc.md)で`H0`となり、候補側に2件の時間切れが出た。
 事後分析で、負け越しの主因は係数つきの予算が持ち時間を200手目までに使い切らせ、中終盤で候補が浅くなることと分かった。
 時間切れは、hardが残り時間の割合で抑えられず持ち時間を使い切った後に起きた。
 
@@ -146,9 +146,9 @@ cは4係数の積の正規化定数で、[事前判定](../../measurements/time-
 再構成の構成要素のうちどれを残せるかを分けて測るため、置換表の2修正を共通に持つ基準B′に対し、第0段階と第1段階を加えた構成D1と、D1から序盤の係数を外した（`w = 1`とした）構成D2を標準のSTCで比べた。
 STCの事後分析では、0〜50手の帯で候補の思考時間は基準より15%短いが到達深さは同等（6.88対6.91）であり、序盤の係数がSTCで不利に働いた証拠はなかった。
 このためD1を本命とし、D1が`H0`または保留でLLRが負の場合に限りD2を測り、D2も通らなければ第1段階の予算の再定義と途中結果の採用のいずれかが不利であると結論すると事前に定めた。
-各候補は採否測定と同じ`time=10000+100`、同じ同時対局数、同じ負荷の10ペア煙試験で時間切れ0件を確かめてからSTCへ進め、時間切れ、エンジン異常、または拒否着手が1件でも出た測定は棋力の結論に使わず、原因を調べてから同じ候補を測り直すと定めた（[D1の煙試験](../../measurements/time-management-decomposition-d1-smoke.md)）。
+各候補は採否測定と同じ`time=10000+100`、同じ同時対局数、同じ負荷の10ペア煙試験で時間切れ0件を確かめてからSTCへ進め、時間切れ、エンジン異常、または拒否着手が1件でも出た測定は棋力の結論に使わず、原因を調べてから同じ候補を測り直すと定めた（[D1の煙試験](../../measurements/time-management-efficiency/time-management-decomposition-d1-smoke.md)）。
 分解測定は各構成の採否を決めるものであり、棋力低下の原因を一意に証明するものではない。D1は第1段階の複数の機構を分けずに含むので、D1の結果を予算の再定義だけに帰属することはできない。
-結果は[D1](../../measurements/time-management-decomposition-d1-stc.md)と[D2](../../measurements/time-management-decomposition-d2-stc.md)がいずれも`H0`であり、両候補の度数がほぼ一致したので序盤の係数は判定に影響せず、残る仮説は第1段階の中核（予算を公平な分担そのものにして探索中の中断で止め、途中結果を採用する方式）が劣るという1つに絞れた。
+結果は[D1](../../measurements/time-management-efficiency/time-management-decomposition-d1-stc.md)と[D2](../../measurements/time-management-efficiency/time-management-decomposition-d2-stc.md)がいずれも`H0`であり、両候補の度数がほぼ一致したので序盤の係数は判定に影響せず、残る仮説は第1段階の中核（予算を公平な分担そのものにして探索中の中断で止め、途中結果を採用する方式）が劣るという1つに絞れた。
 この結論と、人間向けの変更で棋力を落とさないという利用者の制約を受け、現行の機構を変えずに秒読みの項にだけ序盤の係数を掛ける方式へ移った。
 
 ## 実装フェーズ
@@ -156,7 +156,7 @@ STCの事後分析では、0〜50手の帯で候補の思考時間は基準よ�
 ### フェーズ1　診断基盤の復元と現行の診断
 
 削除済みブランチから診断スクリプト3本と教訓ファイルを復元し、予算の再計算に候補の式と停止理由別の集計を加える。
-現行構成どうしを`time=9000+0,byoyomi=300`の10ペアと、issueの条件の先手60手の自己対局にかけ、「診断の指標」の6項目を[現行の診断](../../measurements/time-management-efficiency-diag.md)へ記録する。
+現行構成どうしを`time=9000+0,byoyomi=300`の10ペアと、issueの条件の先手60手の自己対局にかけ、「診断の指標」の6項目を[現行の診断](../../measurements/time-management-efficiency/time-management-efficiency-diag.md)へ記録する。
 完了条件は、指標の記録と、削除済みブランチの診断と同じ基本シードで現行の値が再現することである。
 
 ### フェーズ2　再構成の実装と採否測定
@@ -174,7 +174,7 @@ STCの事後分析では、0〜50手の帯で候補の思考時間は基準よ�
 
 B′を親に、`soft_raw`の秒読みの項へ係数を掛けるコミットを作る。
 単体テスト（「予算値」の各値）とD7-TIME群を更新し、`scripts/clock_budget_stats.py`へ`byoyomi-opening`の式を加え、固定深さのbench総ノード数が親と一致することを確認する。
-issueの条件の先手60手自己対局と`time=9000+0,byoyomi=300`の10ペア煙試験で「採否の判定方法」の(b)を確かめ、[時計の診断](../../measurements/time-management-opening-coefficient-diag.md)へ記録する。
+issueの条件の先手60手自己対局と`time=9000+0,byoyomi=300`の10ペア煙試験で「採否の判定方法」の(b)を確かめ、[時計の診断](../../measurements/time-management-efficiency/time-management-opening-coefficient-diag.md)へ記録する。
 完了条件は、判定(a)と(b)の通過である。
 
 ### フェーズ5　文書の更新
@@ -199,7 +199,7 @@ issueの条件の先手60手自己対局と`time=9000+0,byoyomi=300`の10ペア�
 ## 参考資料
 
 - [GitHub issue #7](https://github.com/stepney141/minase/issues/7)
-- [初形の実測](../../measurements/time-management-efficiency-probe.md)（削除済みブランチの成果物の参照先を含む）
+- [初形の実測](../../measurements/time-management-efficiency/time-management-efficiency-probe.md)（削除済みブランチの成果物の参照先を含む）
 - [秒読みつき時間制御における既存エンジンの持ち時間配分](../../research/time-management-byoyomi-survey.md)（YaneuraOu、Apery、技巧、dlshogi、Stockfish、KataGo、Leela Zeroの予算式と序盤の扱い）
 - [探索部](search.md)の「時間管理」節
 - [棋力向上段階6](strength-stage6.md)の「fail-lowによる延長」「最善手交替時の延長」「最善手安定時の早期終了」

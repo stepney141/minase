@@ -17,9 +17,9 @@ G23もPcも、10エポック目まで検証損失が下がり続けていたの�
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月5日に起案と着手をし、10月6日に完了した。
-学習器に早期終了の打ち切りを加え、最良エポックの選択を一般的な定義に合わせた（[回帰テスト](../../measurements/pst-longer-training-trainer-regression.md)）。
-Pcを初期値に上限200エポックで学習した候補Lは、検証損失が最後まで下がり続けて最良エポックが200となり、Pcに比べて評価値の尺度が約14%大きくなった（[学習の記録](../../measurements/pst-longer-training-training.md)）。
-候補Lは、[STC](../../measurements/pst-longer-training-stc.md)（175ペア、得点率65.9%）と[LTC](../../measurements/pst-longer-training-ltc.md)（117ペア、得点率73.5%）のいずれも`H1`となり、異常は0件だったので採用した。LTCの後半には別の作業の対局が重なり、測定機のコアが上限まで使われたことを記録に残した。
+学習器に早期終了の打ち切りを加え、最良エポックの選択を一般的な定義に合わせた（[回帰テスト](../../measurements/pst-longer-training/pst-longer-training-trainer-regression.md)）。
+Pcを初期値に上限200エポックで学習した候補Lは、検証損失が最後まで下がり続けて最良エポックが200となり、Pcに比べて評価値の尺度が約14%大きくなった（[学習の記録](../../measurements/pst-longer-training/pst-longer-training-training.md)）。
+候補Lは、[STC](../../measurements/pst-longer-training/pst-longer-training-stc.md)（175ペア、得点率65.9%）と[LTC](../../measurements/pst-longer-training/pst-longer-training-ltc.md)（117ペア、得点率73.5%）のいずれも`H1`となり、異常は0件だったので採用した。LTCの後半には別の作業の対局が重なり、測定機のコアが上限まで使われたことを記録に残した。
 最良エポックが上限に達したので、さらに長い学習で伸びる余地がある。また、候補Lは評価値の尺度を変えたまま探索係数と探索用駒価値を据え置いているので、探索係数の再調整で伸びる余地もある。どちらを試すかは利用者が決める。
 
 ## 目的
@@ -30,7 +30,7 @@ PSTの学習は、これまで世代ごとに10エポックで行ってきた。
 本書は、Pcから同じ操作をより多くのエポックで行った候補が強いかを確かめ、強ければその候補を採用する。
 結論はこの候補の棋力についてのものであり、エポック数だけの効果や最適なエポック数は確定しない。
 
-Pcの学習では、検証損失はエポックごとに約1.1〜1.5×10⁻⁴ずつ下がり、10エポック目の下げ幅は1エポック目の約7割だった（[学習の記録](../../measurements/eval-coadaptation-lambda075-training.md)）。
+Pcの学習では、検証損失はエポックごとに約1.1〜1.5×10⁻⁴ずつ下がり、10エポック目の下げ幅は1エポック目の約7割だった（[学習の記録](../../measurements/eval-search-coadaptation/eval-coadaptation-lambda075-training.md)）。
 下げ幅は1エポックあたり約0.965倍の割合で縮んでいた。新しい学習の下げ幅が、Pcの10エポック目の続きとして同じ割合で縮むと仮定すると、残る改善の合計は約3.0×10⁻³と見込まれ、そのうち40エポックで約76%、80エポックで約94%、120エポックで約99%を得る。
 10点からの粗い外挿であり、最適化器の状態の作り直しで下げ方が変わることもあるが、最良のエポックが40を超える可能性は高い。
 学習器は実行ごとに最適化器の状態を作り直すので、上限が足りなかった結果から学習を続けても、1本の学習の延長にはならない。途切れない1本の学習で最小値まで行くには、最初から十分な上限を置く必要がある。
@@ -74,7 +74,7 @@ Pcの学習では、検証損失はエポックごとに約1.1〜1.5×10⁻⁴�
 
 Mからブランチ`pst-longer-training`とworktreeを作り、「早期終了」と「打ち切りの指定」の節のとおり、学習器とワークフローを改める。
 テストでは、改善が指定数のエポック続けて止まったときに止まること、止まった後の出力が学習したエポックの中の最良の重みであること、学習前の重みが出力の候補にならないこと、およびエポック0の検証損失が記録され続けることを固定する。
-変更していない部分を壊していないことは、回帰テストとして、[G23の再現](../../measurements/eval-coadaptation-trainer-reproduction.md)と同じ引数で打ち切りを指定せずに学習し、出力をG23と比べて確かめる。G23の最良エポックは10なので、変更後も同じ重みが出るはずである。
+変更していない部分を壊していないことは、回帰テストとして、[G23の再現](../../measurements/eval-search-coadaptation/eval-coadaptation-trainer-reproduction.md)と同じ引数で打ち切りを指定せずに学習し、出力をG23と比べて確かめる。G23の最良エポックは10なので、変更後も同じ重みが出るはずである。
 この比較は決定性を保証するためのものではない。一致しなかった場合も統合は止めず、検証損失の推移と最良エポックがG23の記録と同等なら差の原因を記録して進め、同等でなければコード変更の誤りを疑って調べる。
 [PSTの学習手順](../../guides/pst-training.md)に`train.patience`を記載する。
 完了条件は、`tools/train`の全テストが通り、回帰テストの結果が記録され、実装がmasterへ統合されることである。
@@ -128,7 +128,7 @@ LTCは、同じ形で`--run-dir data/matches/pst-longer-training-ltc --seed 2200
 
 ## 参考資料
 
-- [共適応の検証](eval-search-coadaptation.md)と、Pcの[学習の記録](../../measurements/eval-coadaptation-lambda075-training.md)、[STC](../../measurements/eval-coadaptation-lambda075-stc.md)、[LTC](../../measurements/eval-coadaptation-lambda075-ltc.md)。
+- [共適応の検証](eval-search-coadaptation.md)と、Pcの[学習の記録](../../measurements/eval-search-coadaptation/eval-coadaptation-lambda075-training.md)、[STC](../../measurements/eval-search-coadaptation/eval-coadaptation-lambda075-stc.md)、[LTC](../../measurements/eval-search-coadaptation/eval-coadaptation-lambda075-ltc.md)。
 - [世代3の教師データによるPSTの再学習](pst-gen3.md)。G23の学習条件と学習曲線を記す。
 - [PSTの学習手順](../../guides/pst-training.md)。
 - [学習前に1エポックのステップ数を確認する](../../lessons/check-steps-per-epoch-before-training.md)と[検証損失の近さは駒価値の正しさを保証しない](../../lessons/validation-loss-hides-material-distortion.md)。

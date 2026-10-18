@@ -8,7 +8,7 @@
 
 lishogiと対局ハーネスの時計は、持ち時間が残る間は思考時間の全額を持ち時間から引き、持ち時間が尽きた手から秒読みを与え、使わなかった秒読みを持ち越さない（[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)）。
 minaseの予算式は、秒読みの分担を毎手の土台とし、持ち時間の分担を序盤から上乗せする。
-[現行の診断](../measurements/time-management-efficiency-diag.md)では、5分と秒読み10秒の自己対局で、持ち時間は先手が37手目、後手が36手目に尽きた。
+[現行の診断](../measurements/time-management-efficiency/time-management-efficiency-diag.md)では、5分と秒読み10秒の自己対局で、持ち時間は先手が37手目、後手が36手目に尽きた。
 issue #7を受けて、持ち時間が秒読みを十分に上回る間は予算から秒読みの項を外し、残り時間が秒読みに近づいてから秒読みの予算へ移る温存の方式が代案に挙がった。
 既存エンジンの調査では、対局全体で持ち時間を温存するエンジンは調べた7本に1本もなく、対数の価値モデルから配分を導くKataGoはminaseより速い消費を最適としていた（[秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)）。
 

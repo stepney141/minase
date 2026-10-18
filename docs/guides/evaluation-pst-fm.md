@@ -249,7 +249,7 @@ E_{\mathrm{FM}}^{\mathrm{tuning}}(p) = \mathrm{trunc}\left( \frac{\mathrm{FmScal
 ```
 
 $`\mathrm{FmScale} = 1024`$ が学習したままの補正、0が補正なしに当たる。
-焼き込みでは量子化をやり直すので、焼き込んだ補正と調整中の補正は完全には一致しないが、検証集合から選んだ1万局面での差は平均0.13 cp、最大1 cpであり、PSTの量子化の合格基準2 cpを十分下回った（[焼き込んだ候補の記録](../measurements/fm-scale-spsa-candidate.md)）。
+焼き込みでは量子化をやり直すので、焼き込んだ補正と調整中の補正は完全には一致しないが、検証集合から選んだ1万局面での差は平均0.13 cp、最大1 cpであり、PSTの量子化の合格基準2 cpを十分下回った（[焼き込んだ候補の記録](../measurements/fm-scale-spsa/fm-scale-spsa-candidate.md)）。
 倍率を学習の損失ではなく対局の勝敗から決めた理由は、「損失で決めないもの」の節で述べる。
 
 ## 探索用駒価値
@@ -282,7 +282,7 @@ NNUEへの置き換えでは、この47個の値を `pst.bin` からNNUEの重�
 学習とは、目的関数（損失）と呼ぶ1つの数値を定め、それが小さくなる方向へ重みを少しずつ動かすことを繰り返す計算である。
 採用時の重みは、PSTとFMを1つの損失で同時に学習した候補J75（教師の混合比 $`\lambda = 0.75`$ で学習した候補）に、前述の倍率を焼き込んだものである（[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)、[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 J75はPythonの同時学習器（ブランチ `pst-fm-joint-training` にだけあった）で学んだ。
-その数式は、Rustへ移植した同時学習器 `minase-trainer joint train`（`crates/minase-trainer/src/joint/`）と同じであり、移植時に短縮した条件で同じ結果になることを確かめた（[照合の記録](../measurements/python-trainer-retirement-checks.md)）。
+その数式は、Rustへ移植した同時学習器 `minase-trainer joint train`（`crates/minase-trainer/src/joint/`）と同じであり、移植時に短縮した条件で同じ結果になることを確かめた（[照合の記録](../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)）。
 教師値の構成、教師の勝率尺度の較正、および先読み教師は、すべての学習器が共有するデータ層（`crates/minase-trainer/src/data/`）にある。
 
 ### 勝率のモデル
@@ -372,7 +372,7 @@ $`\mathrm{arg\,min}`$ は、右の式を最小にする $`\kappa`$ の値を表�
 最小化には、区間を黄金比で縮めながら最小点を挟み込む黄金分割探索を使い、区間 $`[50, 4000]`$ から始めて64回縮め、残った区間の中点を採る。
 64回で区間は元の約 $`10^{-13}`$ 倍になるので、推定値の精度には十分である。
 検証集合はこの推定にも使わない。
-採用時の重みの学習では、世代2と世代3の $`K_g`$ はそれぞれ758.35と765.95だった（[学習の記録](../measurements/pst-fm-joint-training-training.md)）。
+採用時の重みの学習では、世代2と世代3の $`K_g`$ はそれぞれ758.35と765.95だった（[学習の記録](../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)）。
 教師の勝率尺度を分類ごとに較正するのは、探索の深さや評価関数が異なれば探索値の目盛りも変わり、同じcpが同じ勝率を意味しないからである。
 $`K_g`$ は教師値を作るときだけに使い、モデルの出力をロジットへ直すときは常に $`K`$ を使う。
 このため教師の勝率尺度を較正し直しても、モデルのcpとロジットの換算は変わらない。
@@ -528,7 +528,7 @@ SPSAは、係数を正負に少し揺らした2つの設定を対局させ、勝
 STCで375回の更新（各8ペア、計3,000ペアの対局）を行い、$`\mathrm{FmScale}`$ を0から1024の範囲で調整して611を得た。
 
 学習の損失と対局の強さは、異なる倍率を支持した。
-同じ教師で、整数の評価から検証集合の二値交差エントロピーを測ると、倍率1（焼き込む前のJ75）が0.429550、611/1024を焼き込んだ候補が0.429709であり、損失の上では補正を縮めない方が良い（[焼き込んだ候補の記録](../measurements/fm-scale-spsa-candidate.md)）。
+同じ教師で、整数の評価から検証集合の二値交差エントロピーを測ると、倍率1（焼き込む前のJ75）が0.429550、611/1024を焼き込んだ候補が0.429709であり、損失の上では補正を縮めない方が良い（[焼き込んだ候補の記録](../measurements/fm-scale-spsa/fm-scale-spsa-candidate.md)）。
 一方、倍率1のJ75は、当時のmaster（候補LのPSTに、候補Faの補正を1/4に縮めて足した評価）にSTCで約8 Elo負けた（95%信頼区間 −21〜+5）。
 611/1024を焼き込んだ候補は、当時のmasterにLTCで得点率66.6%、約120 Elo勝ち、採用された（[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 この1件では、損失を基準にすると対局で強い倍率が選ばれなかったことになる。
@@ -565,7 +565,7 @@ FMの学習器 `minase-trainer fm train`（`crates/minase-trainer/src/fm/`）は
 - [先読み教師](../plans/archived/lookahead-teacher.md)
 - [PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)
 - [FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)
-- [PSTとFMの同時学習の学習記録](../measurements/pst-fm-joint-training-training.md)
-- [焼き込んだ候補の記録](../measurements/fm-scale-spsa-candidate.md)
+- [PSTとFMの同時学習の学習記録](../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)
+- [焼き込んだ候補の記録](../measurements/fm-scale-spsa/fm-scale-spsa-candidate.md)
 - [PSTの学習手順](pst-training.md)
 - [棋力測定の手引き](sprt.md)

@@ -19,4 +19,4 @@
 ## 出典
 
 - [持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の「分解測定」。
-- [time-management-decomposition-d1-stc](../measurements/time-management-decomposition-d1-stc.md)、[time-management-decomposition-d2-stc](../measurements/time-management-decomposition-d2-stc.md)。
+- [time-management-decomposition-d1-stc](../measurements/time-management-efficiency/time-management-decomposition-d1-stc.md)、[time-management-decomposition-d2-stc](../measurements/time-management-efficiency/time-management-decomposition-d2-stc.md)。

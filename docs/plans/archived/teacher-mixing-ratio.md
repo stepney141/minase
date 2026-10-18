@@ -16,8 +16,8 @@
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（不採用）。2026年9月26日に完了した。
-基点の採用PSTをλ=1.0の先読み教師で学習し直した候補は、学習後の診断を通過した（[teacher-mixing-ratio-training](../../measurements/teacher-mixing-ratio-training.md)）。
-しかし、STCで`H0`となり（[teacher-mixing-ratio-100-stc](../../measurements/teacher-mixing-ratio-100-stc.md)、123ペアで得点率28.0%）、振分け規則に従ってLTCへ進めずに不採用とした。
+基点の採用PSTをλ=1.0の先読み教師で学習し直した候補は、学習後の診断を通過した（[teacher-mixing-ratio-training](../../measurements/teacher-mixing-ratio/teacher-mixing-ratio-training.md)）。
+しかし、STCで`H0`となり（[teacher-mixing-ratio-100-stc](../../measurements/teacher-mixing-ratio/teacher-mixing-ratio-100-stc.md)、123ペアで得点率28.0%）、振分け規則に従ってLTCへ進めずに不採用とした。
 負けの幅が大きかったので、重みの入出力、符号、埋め込みの共通する不具合を点検したが、見つからなかった。
 後続の[探索局面の学習](search-aware-evaluation.md)には、従来の採用PSTを引き継ぐ。
 評価関数のλは0.75のまま変えない。

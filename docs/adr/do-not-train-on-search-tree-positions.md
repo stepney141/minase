@@ -10,9 +10,9 @@
 [探索局面を用いた評価関数の学習](../plans/archived/search-aware-evaluation.md)は、この分布の差が評価の改善を妨げているという仮説を、PSTの構造と推論費用を固定した対照実験で調べた。
 対照Aは自己対局の局面だけを使い、候補Bはその半数を静止探索で静的評価を呼んだ局面に置き換えて学び、どちらも10,000,000ノードの探索値だけを教師にした。
 AとBは、局面数、教師への問い合わせ回数、および学習方法をそろえ、着手時の採用版をS0とした。
-[B対AのSTC](../measurements/search-aware-pst-b-vs-a-stc.md)は101有効ペア、ペンタノミアル度数[86, 2, 13, 0, 0]、LLR −2.949で`H0`となり、Bの得点率は6.9%だった。
-[A対S0のSTC](../measurements/search-aware-pst-a-vs-base-stc.md)は276有効ペア、ペンタノミアル度数[85, 6, 142, 0, 43]、LLR −2.970で`H0`となった。
-[最終診断](../measurements/search-aware-pst-diagnostics.md)では、Bは探索局面の過小評価を半分以下に減らした代わりに、通常の局面を平均251センチポーン高く見積もった。
+[B対AのSTC](../measurements/search-aware-evaluation/search-aware-pst-b-vs-a-stc.md)は101有効ペア、ペンタノミアル度数[86, 2, 13, 0, 0]、LLR −2.949で`H0`となり、Bの得点率は6.9%だった。
+[A対S0のSTC](../measurements/search-aware-evaluation/search-aware-pst-a-vs-base-stc.md)は276有効ペア、ペンタノミアル度数[85, 6, 142, 0, 43]、LLR −2.970で`H0`となった。
+[最終診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)では、Bは探索局面の過小評価を半分以下に減らした代わりに、通常の局面を平均251センチポーン高く見積もった。
 
 ## 決定
 

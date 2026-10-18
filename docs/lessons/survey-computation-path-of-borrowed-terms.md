@@ -23,5 +23,5 @@ minaseにはこれらの土台がなく、1回22 nsから33 nsの逆引きを1�
 ## 出典
 
 - [plans/strength-stage9.md](../plans/archived/strength-stage9.md) の目的の節の第1の発見と、設計判断の土台の表。
-- [measurements/strength-stage9-cost-bench.md](../measurements/strength-stage9-cost-bench.md)
+- [measurements/strength-stage9/strength-stage9-cost-bench.md](../measurements/strength-stage9/strength-stage9-cost-bench.md)
 - [research/evaluation-terms-survey.md](../research/evaluation-terms-survey.md)

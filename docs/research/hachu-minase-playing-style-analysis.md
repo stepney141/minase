@@ -17,7 +17,7 @@ HaChuの内部評価値が保存されておらず、共通の十分深い参照
 
 分析には、同じ200個の開始手順から先後を入れ替えた400局の保存棋譜を用いた。
 条件は持ち時間60秒、1手ごとに1秒加算、ハッシュ256 MB、規則集合`L1,L3,P0,P5,P6,R2,E1,E2`であり、Minaseは1スレッド、HaChuはワーカー数を報告しない。
-実行条件とバイナリ識別子は[manifest](../../data/matches/strength-stage2-hachu-elo200/manifest.json)に、公式結果は[棋力測定記録](../measurements/strength-stage2-hachu-elo200.md)に保存されている。
+実行条件とバイナリ識別子は[manifest](../../data/matches/strength-stage2-hachu-elo200/manifest.json)に、公式結果は[棋力測定記録](../measurements/strength-stage2/strength-stage2-hachu-elo200.md)に保存されている。
 
 測定対象のMinaseはコミット`ce654d93ab9130df2168fbd883b0910d61133e62`である。
 このコミットから分析時のHEAD `2d1831eb0c912abf0d2c059783b812e0cc98b4aa`まで、局面処理、評価、探索、プロトコル、埋め込み重み、およびMinase本体に差分がないことを確認した。

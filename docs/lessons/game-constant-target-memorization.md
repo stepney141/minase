@@ -17,4 +17,4 @@
 
 ## 出典
 
-[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)、[学習記録](../measurements/fm-phase1-training.md)。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)、[学習記録](../measurements/factorization-machine/fm-phase1-training.md)。

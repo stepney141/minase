@@ -5,7 +5,7 @@
 本書は、[PSTとFMの同時学習](pst-fm-joint-training.md)で作った候補J75の評価関数について、FMの補正に掛ける倍率bを自己対局の勝敗から決め、現行のmasterより強くなるかを確かめる。
 評価関数は、駒の種類と升ごとの点数を足すPST（piece-square table）と、2駒の位置関係から評価を補うFM（Factorization Machine）の補正の和であり、本書はこれを、PSTの係数aを1に固定したa·PST＋b·FMとみなす。
 J75は補正を縮めずに使ったので、自己対局の短時間条件でmasterに約8 Elo負け、採用しなかった。
-同時学習の出発点（補正を縮めない評価）がmasterに約67 Elo負けたことから、補正の過大を不採用の有力な原因と考える（[出発点の測定](../../measurements/pst-fm-joint-training-e0-stc.md)）。
+同時学習の出発点（補正を縮めない評価）がmasterに約67 Elo負けたことから、補正の過大を不採用の有力な原因と考える（[出発点の測定](../../measurements/pst-fm-joint-training/pst-fm-joint-training-e0-stc.md)）。
 倍率bは、FMの重みと同じ学習の損失では決められないので、自己対局の勝敗から係数を調整するSPSA（simultaneous perturbation stochastic approximation、同時摂動確率近似）で決める。
 J75のPSTとFMの重みは固定し、bだけを0から1の範囲で調整する（2026年10月8日の利用者の決定）。
 決まったbはFMの重みの整数化に焼き込み、エンジンの評価式は変えない。
@@ -16,7 +16,7 @@ J75のPSTとFMの重みは固定し、bだけを0から1の範囲で調整する
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月8日に起案し、同日に着手して完了した。
-J75の重みを固定して`FmScale`だけを調整した[SPSA](../../measurements/fm-scale-spsa.md)は611（b≈0.597）を与え、焼き込んだ[候補](../../measurements/fm-scale-spsa-candidate.md)は[STC](../../measurements/fm-scale-spsa-stc.md)と[LTC](../../measurements/fm-scale-spsa-ltc.md)でともに`H1`（LTCの得点率66.6%、Elo換算で約+120）となり採用した。
+J75の重みを固定して`FmScale`だけを調整した[SPSA](../../measurements/fm-scale-spsa/fm-scale-spsa.md)は611（b≈0.597）を与え、焼き込んだ[候補](../../measurements/fm-scale-spsa/fm-scale-spsa-candidate.md)は[STC](../../measurements/fm-scale-spsa/fm-scale-spsa-stc.md)と[LTC](../../measurements/fm-scale-spsa/fm-scale-spsa-ltc.md)でともに`H1`（LTCの得点率66.6%、Elo換算で約+120）となり採用した。
 
 ## 目的
 
@@ -35,7 +35,7 @@ J75の補正の大きさを対局に合わせて縮めれば、masterを上回�
 本書は、J75の重みを変えずに倍率bだけを対局で決め、その候補がmasterより強いかを確かめる。
 
 倍率を対局で決めるのは、学習の損失がこの判断に使えないからである。
-現行のPST（候補L）に、縮小前の現行のFM（候補Fa）の補正をs倍して足した評価の検証損失（検証用に分けた146万局面での二値交差エントロピー）は、s=1/4で0.431323、s=1で0.430257であり、損失はs=1を好む（[同時学習の学習記録](../../measurements/pst-fm-joint-training-training.md)の倍率の走査）。
+現行のPST（候補L）に、縮小前の現行のFM（候補Fa）の補正をs倍して足した評価の検証損失（検証用に分けた146万局面での二値交差エントロピー）は、s=1/4で0.431323、s=1で0.430257であり、損失はs=1を好む（[同時学習の学習記録](../../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)の倍率の走査）。
 一方、対局ではs=1の出発点が、s=1/4のmasterより約67 Elo弱かった。
 J75についても、比較した3点（FMを1/4、1/2、1倍）の検証損失は0.430391、0.429845、0.429552であり、1倍が最良だった。
 同じ損失で倍率を選ぶと、対局で強い倍率にならない見込みが高い。
@@ -105,7 +105,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 ## 所要時間の見積り
 
 時間は、同時対局数16の測定機での見積りである。
-SPSAの所要時間は、同じ規模の過去の2回のセッション（3,000ペア、約7時間32分と7時間43分、[測定記録](../../measurements/spsa-stage9-20260925-c5.md)と[評価変更後の探索調整](../../measurements/eval-coadaptation-spsa.md)）に基づく。
+SPSAの所要時間は、同じ規模の過去の2回のセッション（3,000ペア、約7時間32分と7時間43分、[測定記録](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)と[評価変更後の探索調整](../../measurements/eval-search-coadaptation/eval-coadaptation-spsa.md)）に基づく。
 
 | 段階 | 内容 | 見積り |
 |---|---|---|
@@ -200,7 +200,7 @@ LTCは測定名の接尾辞を`-ltc`、基本シードを103000000、持ち時�
 
 ## 参考資料
 
-- [PSTとFMの同時学習](pst-fm-joint-training.md)と、その[学習記録](../../measurements/pst-fm-joint-training-training.md)、[J75のSTC](../../measurements/pst-fm-joint-training-j75-stc.md)、[出発点のSTC](../../measurements/pst-fm-joint-training-e0-stc.md)。
+- [PSTとFMの同時学習](pst-fm-joint-training.md)と、その[学習記録](../../measurements/pst-fm-joint-training/pst-fm-joint-training-training.md)、[J75のSTC](../../measurements/pst-fm-joint-training/pst-fm-joint-training-j75-stc.md)、[出発点のSTC](../../measurements/pst-fm-joint-training/pst-fm-joint-training-e0-stc.md)。
 - [SPSAの設計書](spsa.md)、[利得の較正](spsa-gain-calibration.md)、[SPSAによる係数調整の手引き](../../guides/spsa.md)。
 - [補正1/4のFMの現行PSTへの再学習](fm-quarter-current-pst.md)。補正を1/4に縮めた変換と、その採用の記録である。
 - やねうら王の`source/eval/nnue/evaluate_nnue.cpp`（コミット`c1b80eaa`）とStockfishのコミット`025da6a0`と`60888387`。

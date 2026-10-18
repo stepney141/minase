@@ -19,5 +19,5 @@ StockfishとYaneuraOuは、最善手が捕獲手であるノードと王手を�
 ## 出典
 
 - [plans/strength-stage8.md](../plans/archived/strength-stage8.md) の設計判断「静的評価の補正（correction history）」
-- [measurements/strength-stage8-correction-bench.md](../measurements/strength-stage8-correction-bench.md)
+- [measurements/strength-stage8/strength-stage8-correction-bench.md](../measurements/strength-stage8/strength-stage8-correction-bench.md)
 - [research/forward-pruning-prior-art.md](../research/forward-pruning-prior-art.md)

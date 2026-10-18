@@ -27,6 +27,6 @@ v0を相手にした対局は、評価関数を実行時に切り替えないと
 ## 結果
 
 世代1の生成は、分布収縮への対策を前の世代のデータとの併用だけにした。
-世代1以降、[世代2](../measurements/strength-stage7-gen2-generation.md)、[世代3](../measurements/pst-gen3-generation.md)、および[NNUEの教師データ](../measurements/nnue-replacement-generation.md)の生成は、いずれも`--random-moves 0`で行われた。
+世代1以降、[世代2](../measurements/strength-stage7/strength-stage7-gen2-generation.md)、[世代3](../measurements/pst-gen3/pst-gen3-generation.md)、および[NNUEの教師データ](../measurements/nnue-replacement/nnue-replacement-generation.md)の生成は、いずれも`--random-moves 0`で行われた。
 パイロットの基準では、記録の開始が最後の注入の後へ遅れて序盤から中盤への移行部が記録から外れる効果と、分布の歪みとを区別できない。
 注入を再検討する場合は、対照の側も同じ手数から記録する比較で基準を作り直す必要がある。

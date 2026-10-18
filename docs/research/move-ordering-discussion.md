@@ -5,7 +5,7 @@
 minaseの通常探索の手の順序付けには改善の余地がある。βカットの遅れは、件数で見ると「置換表（探索済み局面の結果を保存して再利用する表）の記録手がなく、残り深さが1で、最初の捕獲手が静的交換評価（SEE、到達升での駒の取り合いを見積もる計算で、正なら得、負なら損）で負になる」というノードに集中するが、その遅れが探索ノード数としてどれほどの損失に当たるかは測られておらず、これまでの指標では換算できない。
 2026年10月9日に、Claude（本書の書き手）とcodexが現行のソースと測定記録を読み合わせ、2巡の反論を経て次の結論に達した。
 
-- 初手βカット率（通常探索のβカットのうち最初に探索した手によるものの割合）は、現行masterで深さ5では66.4%、深さ8では70.1%である（[move-ordering-baseline-bench](../measurements/move-ordering-baseline-bench.md)）。この値は、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
+- 初手βカット率（通常探索のβカットのうち最初に探索した手によるものの割合）は、現行masterで深さ5では66.4%、深さ8では70.1%である（[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)）。この値は、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
 - この指標はβカットを件数で集計するので、件数の83〜87%を占める残り深さ1のノード（[2026年9月27日の監査](../audits/beta-cutoff-first-move-2026-09-27.md)の値であり、現行masterでは再測定していない）に支配される。残り深さ1でβカットが遅れたときに無駄になるのは静止探索（読みの末端で捕獲手だけを読み進める探索）の部分木であり、残り深さの大きいノードで遅れたときに無駄になるのは通常探索の部分木である。両者の大きさの差は未測定であり、件数の指標ではこの差を区別できない。したがって順序付けの損失をノード数で測るには、βカットした手より前に読んだ手の部分木ノード数の和（以下、先行費用W）を残り深さ別・先頭手の種別別に集計する診断が必要であり、これが設計書の最初のフェーズになる。
 - 各枝刈りはいずれも「探索済みの最善値が詰み帯（詰みを表す評価値の範囲）の外である」ことを適用条件にするので、手のループの最初の手は決して枝刈りされない。置換表の記録手がないノードではMVV-LVA順（取る駒の価値の降順、取る側の駒の価値の昇順）の先頭がSEEで負になる捕獲手であることが多く、その手だけは枝刈りの対象にならずに必ず読まれる。
 - history表（βカットを起こした静かな手の統計。静かな手とは相手の駒を取らない手）の値は、加点、半減、減衰の更新しか行われないので負にならない。したがってLMR（late move reductions、順序付けの後方の静かな手を浅く読む手法）の減深量を決める`pruning.rs`の`lmr_reduction`にある「history値が−146以下なら減深を1増やす」分岐は、現行では発動しない。
@@ -50,7 +50,7 @@ history表は根の探索ごとに`HistoryDecay`（現行23%）だけを残し�
 
 ## 現状の測定
 
-[move-ordering-baseline-bench](../measurements/move-ordering-baseline-bench.md)の値は次のとおりである。
+[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)の値は次のとおりである。
 
 | 深さ | βカット | 初手βカット | 初手βカット率 | 全手走査ノードの最善手順位 1位 / 4位以降 |
 |---:|---:|---:|---:|---|
@@ -111,5 +111,5 @@ codexは追加の候補として、静かな手がβカットしたときにも�
 - Chess Programming Wiki「Move Ordering」: <https://www.chessprogramming.org/Move_Ordering>。初手βカット率の目安の出典である。
 - [最初の手でβカットが起きる割合の原因調査](../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日、コミットdb716df）。
 - [棋力向上段階5](../plans/archived/strength-stage5.md)、[棋力向上段階12](../plans/archived/strength-stage12.md)、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)。
-- 測定記録: [strength-stage5-malus-stc](../measurements/strength-stage5-malus-stc.md)、[strength-stage5-malus-bench](../measurements/strength-stage5-malus-bench.md)、[strength-stage5-piece-history-stc](../measurements/strength-stage5-piece-history-stc.md)、[strength-stage5-cmh-bench](../measurements/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../measurements/strength-stage5-continuation-bench.md)、[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../measurements/strength-stage12-bad-captures-bench.md)、[strength-stage6-iteration-diag](../measurements/strength-stage6-iteration-diag.md)、[move-ordering-baseline-bench](../measurements/move-ordering-baseline-bench.md)。
+- 測定記録: [strength-stage5-malus-stc](../measurements/strength-stage5/strength-stage5-malus-stc.md)、[strength-stage5-malus-bench](../measurements/strength-stage5/strength-stage5-malus-bench.md)、[strength-stage5-piece-history-stc](../measurements/strength-stage5/strength-stage5-piece-history-stc.md)、[strength-stage5-cmh-bench](../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../measurements/strength-stage5/strength-stage5-continuation-bench.md)、[strength-stage12-bad-captures-stc](../measurements/strength-stage12/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../measurements/strength-stage12/strength-stage12-bad-captures-bench.md)、[strength-stage6-iteration-diag](../measurements/strength-stage6/strength-stage6-iteration-diag.md)、[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)。
 - 教訓: [不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../lessons/retune-rejected-pruning-before-discarding.md)、[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../lessons/recall-loss-does-not-bound-recursive-pruning.md)。

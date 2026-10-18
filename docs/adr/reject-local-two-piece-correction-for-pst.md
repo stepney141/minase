@@ -8,11 +8,11 @@
 
 PSTは駒の種類と升ごとの点数を足すので、同じ升の駒の価値を周囲の駒によって変えられない。
 [残存誤りに対応する関係補正項](../plans/archived/relational-correction.md)は、深い探索が安定して判定した根の局面のうち浅い探索が大きく誤った局面を集め、駒の関係で配置の違いを説明できる局面が基準の件数に達した場合だけ補正項を1つ加える計画だった。
-新しい自己対局の根の局面1,974件では、探索の変更で解消を確認できなかった大きな誤り62件のうち、互いの結果を知らない2つのエージェントによる分類が一致した局面は近接2駒の15件が最多で、着手の基準の21件に届かなかった（[準備記録](../measurements/relational-correction-prep.md)）。
+新しい自己対局の根の局面1,974件では、探索の変更で解消を確認できなかった大きな誤り62件のうち、互いの結果を知らない2つのエージェントによる分類が一致した局面は近接2駒の15件が最多で、着手の基準の21件に届かなかった（[準備記録](../measurements/relational-correction/relational-correction-prep.md)）。
 エンジンの開発者の指示で基準を外し、近くの2駒の種類と間隔を採点する半径1の局所2駒表を実装して測った。
-表の値をすべて零にした構成でも探索速度は基準の0.775倍で、速度の条件の0.85倍に届かなかった（[速度の記録](../measurements/relational-correction-speed.md)）。
-学習で検証損失は下がったが、基準に対する[STC](../measurements/relational-correction-stc.md)は207有効ペアの得点率39.3%（約−75 Elo）で`H0`となった。
-同じノード数で比べた[200ペアの測定](../measurements/relational-correction-nodes200.md)はElo +9.4（95%信頼区間 −26.4〜+45.4）であり、STCの負けは主に探索速度の低下による。
+表の値をすべて零にした構成でも探索速度は基準の0.775倍で、速度の条件の0.85倍に届かなかった（[速度の記録](../measurements/relational-correction/relational-correction-speed.md)）。
+学習で検証損失は下がったが、基準に対する[STC](../measurements/relational-correction/relational-correction-stc.md)は207有効ペアの得点率39.3%（約−75 Elo）で`H0`となった。
+同じノード数で比べた[200ペアの測定](../measurements/relational-correction/relational-correction-nodes200.md)はElo +9.4（95%信頼区間 −26.4〜+45.4）であり、STCの負けは主に探索速度の低下による。
 
 ## 決定
 

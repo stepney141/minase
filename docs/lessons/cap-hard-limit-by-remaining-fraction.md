@@ -20,4 +20,4 @@
 ## 出典
 
 - [持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の「棄却した再構成の各段階」の「途中結果の採用と予算の再定義（第1段階）」「局面適応の係数（第3段階）」。
-- [time-management-efficiency-stc](../measurements/time-management-efficiency-stc.md)。
+- [time-management-efficiency-stc](../measurements/time-management-efficiency/time-management-efficiency-stc.md)。

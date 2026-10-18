@@ -36,7 +36,7 @@ runnerは、調整機で同じコミットをビルドした通常のminase（2.
 runnerが記録したCPUの数は、物理96コア、論理184スレッドである。論理スレッドが192より少ないのは、コンテナのCPU時間の上限による。
 `Threads`は1、`USI_Hash`は既定の256 MB、同時対局数は95である。
 測定機（Intel Core Ultra 7 265KF）の負荷時の速度は1,264,584 NPS、調整機の負荷時の速度は868,714 NPSであり、`f`は1.46である（[試走の記録](../search-forms/vast-spsa-trial.md)）。
-時間切れの事前確認は同じ調整機で78反復を行い、`time_forfeits`を含む異常は0件だった（[記録](../search-pruning-forms-safety.md)）。
+時間切れの事前確認は同じ調整機で78反復を行い、`time_forfeits`を含む異常は0件だった（[記録](search-pruning-forms-safety.md)）。
 調整機を作り直して再開したことはない。
 
 セッションは2026年10月18日1時16分（日本時間）に始まり、17時28分に終わった。

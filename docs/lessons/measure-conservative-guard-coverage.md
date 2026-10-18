@@ -16,4 +16,4 @@
 ## 出典
 
 - [plans/strength-stage3.md](../plans/archived/strength-stage3.md) の「SEEの契約」行と「静的交換評価」節
-- [measurements/strength-stage3-see-stc.md](../measurements/strength-stage3-see-stc.md)
+- [measurements/strength-stage3/strength-stage3-see-stc.md](../measurements/strength-stage3/strength-stage3-see-stc.md)

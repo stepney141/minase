@@ -20,7 +20,7 @@ Kとは、評価値（センチポーン、cp）を勝率へ換算する尺度�
 ## 状態
 
 完了（採用）。2026年10月15日に起案し、2026年10月16日に着手して同日に完了した。
-改名、較正コマンド、必須の引数、文書、およびADRがそろい、改名の前後と2つの較正の経路で学習結果が変更前の学習器と文字列として一致した（[照合の記録](../../measurements/win-rate-scale-equivalence.md)）。
+改名、較正コマンド、必須の引数、文書、およびADRがそろい、改名の前後と2つの較正の経路で学習結果が変更前の学習器と文字列として一致した（[照合の記録](../../measurements/win-rate-scale/win-rate-scale-equivalence.md)）。
 
 ## 目的
 
@@ -134,7 +134,7 @@ FMの `fm scale` と `fm_scale` は、FMの補正の出力倍率であり勝率�
 
 ## 検証
 
-照合は、[ファイル形式の整理の照合記録](../../measurements/file-format-consolidation-equivalence.md)と同じ手順で行う。ただし同記録の2ファイルは削除済みなので、現存するMNSD版2のデータ（`data/nnue-lr-schedule-gen/` の先頭2ファイル）を使い、変更前の基準は着手時のmaster（学習率スケジュールのブランチを統合した後のコミット）で取り直す。
+照合は、[ファイル形式の整理の照合記録](../../measurements/file-format-consolidation/file-format-consolidation-equivalence.md)と同じ手順で行う。ただし同記録の2ファイルは削除済みなので、現存するMNSD版2のデータ（`data/nnue-lr-schedule-gen/` の先頭2ファイル）を使い、変更前の基準は着手時のmaster（学習率スケジュールのブランチを統合した後のコミット）で取り直す。
 NNUEは2エポックで約200秒、PSTは約30秒である。
 比べる値は、訓練局面数、検証局面数、分類ごとの教師の勝率尺度、訓練と検証に振り分けた局面の通し番号の列のSHA-256、各エポックの訓練損失、補助損失（駒を1つ除いた局面との評価の差に課す損失）、総損失、検証損失、および書き出した重みのSHA-256である。
 一致はすべて、`config.json` と学習ログに書かれた値の文字列としての一致で判定する。
@@ -158,5 +158,5 @@ NNUEは2エポックで約200秒、PSTは約30秒である。
 - [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](../../research/win-rate-scale-k-prior-art.md)。やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealの比較。
 - [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](../../adr/archive/fix-the-output-k-of-trained-weights.md)。本書が置き換えるADR。
 - [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](../../adr/archive/record-the-origin-in-mnsd-records.md)。教師の分類の現行の定義。
-- [ファイル形式の整理の前後で学習結果が一致することの照合記録](../../measurements/file-format-consolidation-equivalence.md)。照合の手順の先例。
+- [ファイル形式の整理の前後で学習結果が一致することの照合記録](../../measurements/file-format-consolidation/file-format-consolidation-equivalence.md)。照合の手順の先例。
 - dlshogiの `--use_evalfix`（[data_loader.py](https://github.com/TadaoYamaoka/DeepLearningShogi/blob/master/dlshogi/data_loader.py)）。教師ファイルごとに係数を推定して基準へ換算する先例。

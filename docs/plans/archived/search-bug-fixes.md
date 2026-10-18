@@ -16,9 +16,9 @@ null moveの件は探索の正しさの修正なので、利用者の決定に�
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（一部不採用）。2026年9月28日に起案して着手し、2026年9月29日に完了した。
-null moveをまたぐ反復の修正は、非劣性のSTC（[search-bug-fixes-null-move-noninferiority-stc](../../measurements/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）とLTC（[search-bug-fixes-null-move-noninferiority-ltc](../../measurements/search-bug-fixes-null-move-noninferiority-ltc.md)、masterの得点率48.0%）でともに`H0`となり、採用してmasterへ統合した。
-delta pruningの件の修正は、診断のSTCで修正前の版がわずかに強い方向の結果（[search-bug-fixes-delta-promotion-diag-stc](../../measurements/search-bug-fixes-delta-promotion-diag-stc.md)、判定なし）となり、利用者の決定により取り込まなかった。
-stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bug-fixes-noninferiority-stc](../../measurements/search-bug-fixes-noninferiority-stc.md)）の不合格の主因であり（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)）、不具合ではなく静止探索の近似と分類し直して対象から外した。
+null moveをまたぐ反復の修正は、非劣性のSTC（[search-bug-fixes-null-move-noninferiority-stc](../../measurements/search-bug-fixes/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）とLTC（[search-bug-fixes-null-move-noninferiority-ltc](../../measurements/search-bug-fixes/search-bug-fixes-null-move-noninferiority-ltc.md)、masterの得点率48.0%）でともに`H0`となり、採用してmasterへ統合した。
+delta pruningの件の修正は、診断のSTCで修正前の版がわずかに強い方向の結果（[search-bug-fixes-delta-promotion-diag-stc](../../measurements/search-bug-fixes/search-bug-fixes-delta-promotion-diag-stc.md)、判定なし）となり、利用者の決定により取り込まなかった。
+stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bug-fixes-noninferiority-stc](../../measurements/search-bug-fixes/search-bug-fixes-noninferiority-stc.md)）の不合格の主因であり（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes/search-bug-fixes-qsearch-evasion-diag-stc.md)）、不具合ではなく静止探索の近似と分類し直して対象から外した。
 
 ## 目的
 
@@ -49,7 +49,7 @@ stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bu
 
 | 判断事項 | 採った方式と理由 |
 |---|---|
-| 不具合の判定基準 | 不具合とは、実装がその手法自身の契約に反し、契約上起こらないはずの値を返すことをいう。反復検出の契約は「対局上の同一局面の再現を引き分けとする」ことであり、実際の対局に現れないnull moveを挟んだ再現を引き分けとするのは、これに反する。delta pruningの契約は「最善の場合でもαに届かない捕獲だけを省く」ことであり、成り益を無視するとαに届く捕獲まで省くので、これも不具合である。一方、stand-patは「現局面の評価値を下回らない手がある」とみなす楽観的な近似であり、王駒が詰んでいる局面での誤りは、両取りのように避けられない脅威すべてに共通する誤りの一例である。監査の再現例で深さ1が詰みを見落とし深さ2で見つけたのも、固定深さの探索に伴う地平線効果である。したがって、stand-patの件は不具合ではなく近似の限界であり、変えるなら通常の段階ゲート（+10 Eloの向上を要求するSTCとLTC）で判定すべき探索の改良である。王駒がすべて狙われた静止探索の局面で全合法手を読む方式は、親コミットに対する診断のSTCで約120 Elo弱かった（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)）。 |
+| 不具合の判定基準 | 不具合とは、実装がその手法自身の契約に反し、契約上起こらないはずの値を返すことをいう。反復検出の契約は「対局上の同一局面の再現を引き分けとする」ことであり、実際の対局に現れないnull moveを挟んだ再現を引き分けとするのは、これに反する。delta pruningの契約は「最善の場合でもαに届かない捕獲だけを省く」ことであり、成り益を無視するとαに届く捕獲まで省くので、これも不具合である。一方、stand-patは「現局面の評価値を下回らない手がある」とみなす楽観的な近似であり、王駒が詰んでいる局面での誤りは、両取りのように避けられない脅威すべてに共通する誤りの一例である。監査の再現例で深さ1が詰みを見落とし深さ2で見つけたのも、固定深さの探索に伴う地平線効果である。したがって、stand-patの件は不具合ではなく近似の限界であり、変えるなら通常の段階ゲート（+10 Eloの向上を要求するSTCとLTC）で判定すべき探索の改良である。王駒がすべて狙われた静止探索の局面で全合法手を読む方式は、親コミットに対する診断のSTCで約120 Elo弱かった（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes/search-bug-fixes-qsearch-evasion-diag-stc.md)）。 |
 | delta pruningの件の扱い | 取る駒の価値と成り益の和で捕獲を判定する修正（成り益はSEE、すなわち到達升での駒の取り合いの見積りと同じ計算）を実装し、親コミットと比べる診断のSTCを行った。3,000ペアの上限で判定に達せず、親の得点率は51.0%（約+7 Elo）、LLRは0.93で、修正前の版がわずかに強い方向の証拠が残った。利用者の決定により、この修正は取り込まない。修正により静止探索の候補が増える費用が、成りの読み落としを減らす利益を上回った可能性がある。この件を再び扱う場合は、棋力を下げない判定方式を別の計画で探す。 |
 | 採否の判定 | 利用者の決定により非劣性で判定する。null moveの件は探索が返す値の誤りの修正であり、棋力に中立でも取り込む価値がある。通常の段階ゲートは+10 Eloの向上（`H1`）を要求するので、中立の修正は不採用となり不具合が残る。非劣性は、ハーネスへ比較のスイッチを足さずに、候補と基準を入れ替えた標準のGSPRTで判定する。masterを候補、修正のコミットを基準にすると、修正から見た比較点は0 Eloと−10 Eloになる。判定が`H0`なら「masterが10 Elo強い」が棄却され、10 Eloを非劣性の限界とする測定を通過したとして採用する。`H1`なら不採用とする。`H0`は10 Elo未満の小さな低下までは否定しない。この入れ替えは[持ち時間の効率的な使用](time-management-efficiency.md)の非劣性の測定と同じ手続きである。 |
 | 測定の単位と回数 | 採否を決める検定は、修正のコミットとmasterの1組を、短時間（STC）と長時間（LTC）で1回ずつとする。当初は3件の修正を積んだ1組を測り、不合格となった後に各コミットをその親と比べる診断のSTCで原因を調べた。診断は採否を決めず、修正を外す判断はいずれも本書の改訂として利用者が決めた。null moveの件の修正の親はmasterなので、その診断は本書の非劣性のSTCと同じ比較になり、別には行わない。同じ候補を別のシードで再試行することはしない。 |
@@ -69,7 +69,7 @@ LTCへ進む前に、STCの結果とこの見積りを利用者へ示して進�
 
 設計判断の「null moveの件の検出範囲」を実装した。
 null moveの直後に相手がじっとを指してnull moveの前の局面へ戻る場合は引き分けとしないこと、部分木の中で双方がじっとを指してnull move直後の局面へ戻る場合は引き分けとすること、null moveの外の反復検出が変わらないこと、および入れ子のnull moveから戻る場合と中断した場合に探索経路と境界が元に戻ることを、テストで固定した。
-`bench`の深さ9の総ノード数は16,519,597から15,195,794へ8.0%減った（[search-bug-fixes-bench](../../measurements/search-bug-fixes-bench.md)）。
+`bench`の深さ9の総ノード数は16,519,597から15,195,794へ8.0%減った（[search-bug-fixes-bench](../../measurements/search-bug-fixes/search-bug-fixes-bench.md)）。
 
 ### フェーズ2　非劣性の測定（完了）
 

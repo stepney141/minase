@@ -209,7 +209,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月4日 [単独で不採用だった探索の8項目を、SPSAで再調整して一括で採用する](adopt-revived-search-items-as-a-bundle.md)
 - 2026年10月4日 [規則と表記をライブラリ`minase-core`に置き、探索と評価をエンジン`minase`に置く](split-rules-library-from-engine.md)
 - 2026年10月4日 [静止探索は実際に読んだ捕獲手の数で打ち切る](limit-searched-captures-in-qsearch.md)
-- 2026年10月5日 [再開は実行条件を`manifest.json`だけから読み、runnerと測定機を照合しない](resume-from-the-manifest-without-checking-the-runner.md)
+- 2026年10月5日 [再開は実行条件を`manifest.json`だけから読み、runnerと測定機を照合しない](archive/resume-from-the-manifest-without-checking-the-runner.md)（置き換え済み）
 - 2026年10月5日 [補助ツールを実行ファイル`minase`のサブコマンドにし、エンジンはサブコマンドなしで起動する](run-developer-tools-as-engine-subcommands.md)
 - 2026年10月5日 [評価関数の候補は探索係数を調整し直さずに採否を測る](judge-evaluation-candidates-without-retuning-search-coefficients.md)
 - 2026年10月10日 [butterfly historyと捕獲履歴を対局内で減衰させて持ち越す](carry-history-tables-within-a-game.md)
@@ -253,3 +253,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月17日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を30,000ペアにする](decay-spsa-gains-over-30000-pair-sessions.md)
 - 2026年10月17日 [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](train-the-nnue-on-search-value-teachers-without-lookahead.md)
 - 2026年10月17日 [NNUEの訓練集合は学習時にハッシュの剰余で間引き、前処理は間引く前の全体で行う](thin-the-nnue-training-set-at-training-time-by-hash.md)
+- 2026年10月18日 [測定記録は測定を計画した設計書ごとのディレクトリに置き、凍結した文書の中でもリンクのパスだけは書き換える](group-measurement-records-by-commissioning-plan.md)
+- 2026年10月18日 [SPSAは借りた計算機で、負荷時の速度の比で伸ばした持ち時間で実行する](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)
+- 2026年10月18日 [再開は実行条件を`manifest.json`だけから読み、SPSAではコミット指定の調整対象のビルドし直しを受け入れる](resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)

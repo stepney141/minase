@@ -7,9 +7,9 @@
 ## コンテキスト
 
 [旧ADR](archive/decay-spsa-gains-from-one-sixth-of-the-range.md)は、SPSAの摂動幅と学習率の減衰を定め、標準のセッションを375反復×8ペアの3,000ペアとした。
-3,000ペアの根拠は、22係数の調整を仮定した模擬比較である（[模擬比較の記録](../measurements/spsa-gain-simulation.md)）。
+3,000ペアの根拠は、22係数の調整を仮定した模擬比較である（[模擬比較の記録](../measurements/spsa-gain-calibration/spsa-gain-simulation.md)）。
 この模擬比較は、係数ごとの2次関数で交互作用のない目的関数を仮定していた。
-実対局での裏付けは、22係数のセッション（[記録](../measurements/spsa-stage9-20260925-c5.md)）と29係数のセッション（[記録](../measurements/search-revival-t.md)）の値が、それぞれ段階ゲートで`H1`となった2例だけである。
+実対局での裏付けは、22係数のセッション（[記録](../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)）と29係数のセッション（[記録](../measurements/search-revival-spsa/search-revival-t.md)）の値が、それぞれ段階ゲートで`H1`となった2例だけである。
 
 2026年10月17日に、探索の関数形をStockfishとYaneuraOuの形へ寄せる7本の設計書を起案した（[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)）。
 これらをすべて採用すると、調整する係数の数は約95になり、3,000ペアで足りることを示す材料はない。

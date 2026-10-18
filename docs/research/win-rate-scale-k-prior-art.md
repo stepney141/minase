@@ -29,7 +29,7 @@ minaseのKは2つある。
 - 出力Kは、ネットの出力（勝率のロジット）をセンチポーンへ換算する尺度である。学習の初期値として与えた重みファイルのヘッダの値を使い、データから推定し直さない（[ADR](../adr/archive/fix-the-output-k-of-trained-weights.md)）。
 - 教師Kは、教師の探索値を勝率へ換算する尺度である。教師の分類ごとに、訓練集合の探索値から終局結果を予測する二値交差エントロピーを黄金分割探索で最小化して求める（`crates/minase-trainer/src/data/teacher.rs` の `estimate_k`、分類ごとの呼び出しは `crates/minase-trainer/src/data/mnsd.rs` の `estimate_teacher_ks`）。推定は学習の前に1回行い、勾配計算の対象には含まれない。
 
-記録された教師Kは次のとおりである（単位はセンチポーン/ロジット、[先読み教師の診断](../measurements/lookahead-teacher-diag.md)、[世代3の学習](../measurements/pst-gen3-training.md)、[形式統一の照合](../measurements/file-format-consolidation-equivalence.md)）。
+記録された教師Kは次のとおりである（単位はセンチポーン/ロジット、[先読み教師の診断](../measurements/lookahead-teacher/lookahead-teacher-diag.md)、[世代3の学習](../measurements/pst-gen3/pst-gen3-training.md)、[形式統一の照合](../measurements/file-format-consolidation/file-format-consolidation-equivalence.md)）。
 
 | 教師の分類 | 探索値のK | 先読み教師のK |
 |---|---:|---:|

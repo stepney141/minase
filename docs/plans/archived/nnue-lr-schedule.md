@@ -14,8 +14,8 @@
 ## 状態
 
 完了（採用）。2026年10月12日に起案し、2026年10月14日に着手し、2026年10月16日に完了した。
-5つの学習率の設定のうち、一定の1倍以外の4つの設定はいずれも最良の検証損失が一定の1倍を下回り（「設計判断」の場合分け (a)）、検証損失が最も低かったcosine annealing（総長3エポック、下限0.1）のネットを候補に選んだ（[学習の記録](../../measurements/nnue-lr-schedule-training.md)）。
-候補は、同じデータで学習させた一定の1倍のネットに対するSTCで`H1`（[記録](../../measurements/nnue-lr-schedule-cosine-stc.md)）、現行masterのネットに対するSTCとLTCで`H1`であり（[STC](../../measurements/nnue-cosine-vs-master-stc.md)、[LTC](../../measurements/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用し、学習器の既定の`--lr-schedule`を`cosine:3:0.1`に変更した。
+5つの学習率の設定のうち、一定の1倍以外の4つの設定はいずれも最良の検証損失が一定の1倍を下回り（「設計判断」の場合分け (a)）、検証損失が最も低かったcosine annealing（総長3エポック、下限0.1）のネットを候補に選んだ（[学習の記録](../../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）。
+候補は、同じデータで学習させた一定の1倍のネットに対するSTCで`H1`（[記録](../../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)）、現行masterのネットに対するSTCとLTCで`H1`であり（[STC](../../measurements/nnue-lr-schedule/nnue-cosine-vs-master-stc.md)、[LTC](../../measurements/nnue-lr-schedule/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用し、学習器の既定の`--lr-schedule`を`cosine:3:0.1`に変更した。
 学習率の効果だけを分離するLTCは、利用者の判断で省略した。
 設計判断は[NNUEの学習率をcosine annealingで減らす](../../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)に記録した。
 
@@ -26,7 +26,7 @@
 全訓練局面を並べ替えた順列を1回通すことを1エポックといい、学習前の評価をエポック0、e回目の順列を終えた時点をエポックeと呼ぶ。
 検証損失が5エポック続けて改善しなければ止め、検証損失が最良のエポックの重みを書き出す。
 前計画は、将棋のNNUE学習器tataraの既定の減衰（約1億局面ごとに0.992倍）を採らず、学習率を一定とした。前計画の予算（約8,000万局面を20エポック前後、約16億局面）では減衰が16回程度しか起きず、学習率が0.992¹⁶ ≈ 0.88倍にしか下がらないからである。
-前計画のフェーズ4の本学習（訓練82,712,114局面、1エポック5,049更新）では、両型とも最良がエポック1で、エポック2以降は訓練損失が下がり続ける一方で検証損失が単調に悪化し、改善なしが5エポック続いたエポック6で止まった（[学習の記録](../../measurements/nnue-replacement-training.md)）。
+前計画のフェーズ4の本学習（訓練82,712,114局面、1エポック5,049更新）では、両型とも最良がエポック1で、エポック2以降は訓練損失が下がり続ける一方で検証損失が単調に悪化し、改善なしが5エポック続いたエポック6で止まった（[学習の記録](../../measurements/nnue-replacement/nnue-replacement-training.md)）。
 
 この症状には2つの説明がある。
 第1は、学習率が大きすぎて、1エポックの間に検証損失の最良点を通り過ぎ、その後は訓練集合の細部へ移っていくという説明である。
@@ -154,7 +154,7 @@ GPUの学習器は、更新の損失をGPUからホストへ1更新遅れて読�
 一定の1/10倍は最良点が遅くなり、最良がエポック10前後に移れば早期終了まで約15エポック、約2時間かかると見込む。
 5本の合計は約4〜7時間である。
 
-完了条件は、5本の学習記録（エポック境界の最良エポックと最良の検証損失、エポック途中の検証損失の推移、量子化誤差の平均と最大）が[学習の記録](../../measurements/nnue-lr-schedule-training.md)に書かれ、「設計判断」の場合分け (a) と (b) のどちらに当たるかが確定していることである。
+完了条件は、5本の学習記録（エポック境界の最良エポックと最良の検証損失、エポック途中の検証損失の推移、量子化誤差の平均と最大）が[学習の記録](../../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)に書かれ、「設計判断」の場合分け (a) と (b) のどちらに当たるかが確定していることである。
 
 ### フェーズ3　段階ゲート
 
@@ -191,7 +191,7 @@ STCが`H1`、または上限に達してLLRが0以上なら、LTC（`time=60000+
 
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)
 - 手引き[NNUEの学習](../../guides/nnue-training.md)
-- [NNUEの学習の記録](../../measurements/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../../measurements/nnue-trainer-rust-checks.md)
+- [NNUEの学習の記録](../../measurements/nnue-replacement/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)
 - tatara（[SH11235/tatara](https://github.com/SH11235/tatara)、コミット`db08ed2`）: `crates/nnue-train/src/schedule.rs`（7種類の形、warmup）、`docs/decisions/2026-05-31-ckpt-lr-horizon.md`（総長のチェックポイント保存）、`bins/nnue_train/src/cli.rs`（既定値: 8.75×10⁻⁴、step、0.992、1 superbatch = 6,104更新）
 - やねうら王（コミット`15c1cc6a`の`source/learn/learner.cpp`）: newbob型の巻き戻しと減衰（既定では無効）
 - variant-nnue-pytorch（コミット`749db94`）: `model.py`（Ranger、エポックごとに0.987倍、出力層は1/10）

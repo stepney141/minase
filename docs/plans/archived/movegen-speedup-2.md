@@ -6,7 +6,7 @@
 変更は、探索木（探索が訪れる局面の集合）を変えないものと変えるものの2種類に分ける。
 探索木を変えない変更（段階1から段階6）は、固定局面を固定深さで探索する測定プログラム`bench`のNPS（1秒あたりに処理する局面数）で採否を決め、まとめて1回の自己対局の逐次確率比検定（SPRT）にかけ、NPSを基準比1.3倍以上にすることを目標とし、1.15倍以上を最低受入条件とする。
 探索木を変える変更（段階7から段階9）は、`bench`の固定深さの経過時間で事前に選別したうえで、SPRTで採否を決める。
-[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)では、探索時間の約7割が静止探索（駒を取る手だけを読み進める探索の末端）にあり、静止探索ノードの初期化で自駒の利きを求める走り計算、置換表（探索済み局面の結果を保存する表）の照合で生じるメモリ待ち、および静的交換評価（SEE、到達升での駒の取り合いを見積もる評価）の利き逆引きが3大負荷である。
+[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)では、探索時間の約7割が静止探索（駒を取る手だけを読み進める探索の末端）にあり、静止探索ノードの初期化で自駒の利きを求める走り計算、置換表（探索済み局面の結果を保存する表）の照合で生じるメモリ待ち、および静的交換評価（SEE、到達升での駒の取り合いを見積もる評価）の利き逆引きが3大負荷である。
 走り計算の78%は捕獲対象へ届かない駒に属し、対象升が4升以下のノードが3分の1あるので、利き線を対象升で事前に選別する変更と、対象升が少ないノードだけ対象升から取り手を逆引きする変更を先に行い、続いて走り計算の書き換え、SEE逆引きの近傍走査、静止探索と主探索の固定費の削減を1段階1測定単位で判定する。
 静止探索の置換表は照合の的中率が11%しかないので、探索木を変える変更として静的評価の打ち切りを照合より先に行う変更と捕獲対象がないノードで置換表へ触れない変更を、静止探索の獅子の候補を絞る変更とともにSPRTへ出す。
 置換表のメモリ待ちそのものを隠すプリフェッチ命令は`unsafe`を要し、利用者が`unsafe`を許可しないと決めたため使わず、ビットボード（144升の集合を3個の64ビット整数で表す型）の微最適化も試作で効果がなかったので扱わない。
@@ -16,10 +16,10 @@
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年9月15日に起案し、2026年9月16日に着手して2026年9月17日に完了した。
-探索木を変えない段階1、2、4、5、6を採用してNPSは基準比1.3854倍（[段階6のbench比較](../../measurements/movegen-speedup-2-stage6-bench-depth5.md)）となり、第1期の採用版との[STC](../../measurements/movegen-speedup-2-stage6-stc.md)と[LTC](../../measurements/movegen-speedup-2-stage6-ltc.md)はいずれも`H1`かつ異常0件だった。
-探索木を変える段階7、8、9は[事前選別](../../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)を通過し、1コミットに固定した構成の段階6までの採用版との[STC](../../measurements/movegen-speedup-2-stage7-9-stc.md)と[LTC](../../measurements/movegen-speedup-2-stage7-9-ltc.md)がいずれも`H1`かつ異常0件で採用した。
-最終の採用版は第1期の採用版に対して[固定200ペア](../../measurements/movegen-speedup-2-elo200.md)で+117 Elo（95%信頼区間[+83, +153]）であり、残存負荷は[最終の残存負荷](../../measurements/movegen-speedup-2-final-profile-depth5.md)に記録した。
-段階3は[測り直し](../../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手せず、段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しなかった。
+探索木を変えない段階1、2、4、5、6を採用してNPSは基準比1.3854倍（[段階6のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-bench-depth5.md)）となり、第1期の採用版との[STC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-stc.md)と[LTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-ltc.md)はいずれも`H1`かつ異常0件だった。
+探索木を変える段階7、8、9は[事前選別](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-prescreen-depth5.md)を通過し、1コミットに固定した構成の段階6までの採用版との[STC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-stc.md)と[LTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-ltc.md)がいずれも`H1`かつ異常0件で採用した。
+最終の採用版は第1期の採用版に対して[固定200ペア](../../measurements/movegen-speedup-2/movegen-speedup-2-elo200.md)で+117 Elo（95%信頼区間[+83, +153]）であり、残存負荷は[最終の残存負荷](../../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)に記録した。
+段階3は[測り直し](../../measurements/movegen-speedup-2/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手せず、段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しなかった。
 
 ## 目的
 
@@ -115,21 +115,21 @@
 
 置換表の照合は、第1期のE1（着手適用の直後に行を`black_box`で読む方式）で差がなかった。
 通常の読み込みは値が届くまでリタイアできず、後続の命令がリオーダバッファを埋めた時点で停止するので、非同期のプリフェッチ命令でなければ待ちを隠せない。
-本機で`_mm_prefetch`を着手適用の直後に置く試作はNPS比約1.03倍で局面別の出力も一致した（[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)）。
+本機で`_mm_prefetch`を着手適用の直後に置く試作はNPS比約1.03倍で局面別の出力も一致した（[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)）。
 この命令は`#[target_feature]`つきの関数であり、`-C target-cpu=native`で機能が有効でも呼出側に`unsafe`を要する（rustc 1.98.0で確認、`unsafe`なしの包み関数でも同じエラーになる）。
 現行の`Cargo.toml`は`unsafe_code = "forbid"`であり、利用者は`unsafe`を許可しないと決めたので、置換表の先読みは実施せず、試作の測定値だけをここに残す。
 `unsafe`を使わない早期の読み込みは、読み込み命令がリオーダバッファの先頭に達した時点で後続の実行が止まり、隠せる待ちがバッファの容量（本機では約170サイクル分の命令）に限られるため、SEEの前に置いてもE1と同じく効果がない。
 したがって置換表の照合の自己時間13.9%は、探索木を変えない段階では残る負荷として扱い、照合の回数を減らす変更を探索木を変える段階7と段階9で判定する。
 置換表の既定容量を3次キャッシュに収まる値へ下げる案は、対局条件そのものを変えるので本書では扱わない。
 
-ビットボードの型そのものについては、走査で見つけた升を再検証せずに作る変更と、3語の走査を条件分岐のない語選択に置き換えて語添字の境界検査を飽和で消す変更を試作した（[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)）。
+ビットボードの型そのものについては、走査で見つけた升を再検証せずに作る変更と、3語の走査を条件分岐のない語選択に置き換えて語添字の境界検査を飽和で消す変更を試作した（[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)）。
 前者は増分がなく、後者は約17%遅くなった。
 3語の走査は分岐予測がよく当たる短いループであり、分岐を消すと3語をすべて読んで添字で選び直す分だけ命令が増える。
 また探索全体のIPCが約3.4と高く、集合演算そのものは3命令で終わるので、4語化してAVX2の1命令にまとめる変更や、番兵の列を除いた密な配置への変更は、表の容量を増やすか升の変換を増やすだけで見込みがない。
 したがってビットボードの表現と基本演算は変えず、ビットボード演算の回数を減らす段階（段階2、3、5、6）と、走り計算で2回の依存する表引きと走査を減らす段階4に絞る。
 段階4は、分岐を消すこと自体ではなく表引きと走査の回数を減らすことを目的とし、試作で速くならなければ採用しない。
 
-ビルド設定では、`codegen-units = 1`がNPS比1.014倍から1.025倍の効果を示し（[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)）、`panic = "abort"`は追加の差がなく、探索ワーカーのパニックを閉じ込める`catch_unwind`の契約にも反するので採らない。
+ビルド設定では、`codegen-units = 1`がNPS比1.014倍から1.025倍の効果を示し（[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)）、`panic = "abort"`は追加の差がなく、探索ワーカーのパニックを閉じ込める`catch_unwind`の契約にも反するので採らない。
 
 ### 探索木を変えない段階の採否
 
@@ -147,7 +147,7 @@ SPRTへ出す前に、`bench`の固定深さの経過時間（15局面の合計�
 NPSは探索木が変わる変更の指標にならないので使わない。
 同じ着想のパラメータ違いは事前選別で1つに絞り、SPRTの結果を見てから追加しない。
 
-試作した5変種の固定深さの経過時間と局面別のノード数は[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)にある。
+試作した5変種の固定深さの経過時間と局面別のノード数は[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)にある。
 静的評価の先行打ち切りはノードが1.8%増えて経過が約2%縮み、静止探索の獅子候補の絞り込みはノードが1.2%減って経過が約4%縮んだので、それぞれ段階7と段階8の候補にする。
 静止探索の置換表を全く使わない変種も基準より速いが、ノードが9.2%増えて先行打ち切りより短縮量が小さいので、候補を先行打ち切りに絞る。
 先行打ち切りに最善手のない結果の保存省略を加えた変種は増分がなく、取る駒の価値が動かす駒の価値以上ならSEEを省く変種は経過が約6%延びたので、いずれも採らない。
@@ -160,7 +160,7 @@ NPSは探索木が変わる変更の指標にならないので使わない。
 SPRTの所要時間は次のとおり見積もる。
 STC（10秒＋0.1秒）は1ペアが約136秒、同時16対局で1ペアあたり約8.5秒、LTC（60秒＋0.2秒）は1ペアが約432秒、同時16対局で1ペアあたり約27秒である。
 [SPRTの手引き](../../guides/sprt.md)の期待ペア数から、真の効果が10 Eloなら約2,600ペアでSTC約6時間とLTC約20時間、20 Eloなら約950ペアでSTC約2時間とLTC約7時間、40 Eloなら約410ペアでSTC約1時間とLTC約3時間になる。
-持ち時間2倍が約216 Eloに相当する[感度測定](../../measurements/sensitivity-time2x.md)の目安では、固定深さの経過時間の4%の短縮は約12 Elo、2%は約6 Eloであり、段階ごとのSPRTは判定保留になりやすく1件あたり1日規模の測定を要する。
+持ち時間2倍が約216 Eloに相当する[感度測定](../../measurements/evaluation-gen1/sensitivity-time2x.md)の目安では、固定深さの経過時間の4%の短縮は約12 Elo、2%は約6 Eloであり、段階ごとのSPRTは判定保留になりやすく1件あたり1日規模の測定を要する。
 [SPRTの手引き](../../guides/sprt.md)は同じコミット対についてSTCを通過してからLTCへ進むことを求めるので、STCを通過した段階だけを寄せ集めて1回のLTCにかける方式は採れない。
 採れる方式は、段階ごとに直前の採用版とのSTCと同じコミット対のLTCで判定する方式と、事前選別を通過した3段階を1コミットに固定してその構成全体について1回のSTCとLTCで判定する方式の2つである。
 利用者は後者を選んだ。
@@ -174,7 +174,7 @@ STC（10秒＋0.1秒）は1ペアが約136秒、同時16対局で1ペアあた�
 
 `scripts/bench_compare.py`に、段階の親コミットを指定して候補と親を交互に測る`--parent`を加え、速度の基準（`--baseline`）は第1期の採用版、参照（`--reference`）は照合参照コミットのまま使う。
 局面別一致は参照に対して、累積の速度比は基準に対して、段階の採否は親に対して報告する。
-第1期の[処理件数診断の差分](../../measurements/movegen-speedup-ideas-counts/diagnostic.patch)（`crates/minase/src/search/mod.rs`と`crates/minase-core/src/movegen/`へ件数の出力を加える差分で、診断用のターゲットディレクトリにだけ当てる）へ、静止探索の初期化における対象升数、自駒の利き計算回数、走り計算回数、対象升と交わらない利き線の方向数、対象升へ届く自駒数、置換表の照合の的中率、SEEで逆引きなしに早期終了できる呼出し数（段階6）、および静止探索ノードの終わり方（静的評価の打ち切り、置換表の打ち切り、候補が空、候補あり）の分布（段階7と段階9）の集計を加える。
+第1期の[処理件数診断の差分](../../measurements/movegen-speedup/movegen-speedup-ideas-counts/diagnostic.patch)（`crates/minase/src/search/mod.rs`と`crates/minase-core/src/movegen/`へ件数の出力を加える差分で、診断用のターゲットディレクトリにだけ当てる）へ、静止探索の初期化における対象升数、自駒の利き計算回数、走り計算回数、対象升と交わらない利き線の方向数、対象升へ届く自駒数、置換表の照合の的中率、SEEで逆引きなしに早期終了できる呼出し数（段階6）、および静止探索ノードの終わり方（静的評価の打ち切り、置換表の打ち切り、候補が空、候補あり）の分布（段階7と段階9）の集計を加える。
 各件数には独立した参照を定める。
 対象升数は、相手駒を独立に走査して価値の閾値と王駒の条件から再構成した集合の大きさと一致しなければならない。
 対象升へ届く自駒数は、特殊駒を除く自駒について合法性判定前の利きを独立に求め、対象升と交わる駒を数えた値と一致しなければならない。
@@ -184,7 +184,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 差分と入力は測定記録の付属ディレクトリへ保存する。
 `Cargo.toml`のreleaseプロファイルへ`codegen-units = 1`を加える。
 完了条件は、参照、基準、親との比較が1コマンドで実行でき、診断ビルドと速度ビルドが分離され、診断の各件数が参照と一致し、`codegen-units = 1`の採否が局面別一致とNPSで確定していることである。
-診断の結果は[段階1の件数診断](../../measurements/movegen-speedup-2-stage1-counts.md)、`codegen-units = 1`の採否は[段階1のbench比較](../../measurements/movegen-speedup-2-stage1-bench-depth5.md)にある。
+診断の結果は[段階1の件数診断](../../measurements/movegen-speedup-2/movegen-speedup-2-stage1-counts.md)、`codegen-units = 1`の採否は[段階1のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage1-bench-depth5.md)にある。
 
 ### 段階2　通常駒の捕獲生成における利き線の事前選別
 
@@ -195,7 +195,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 見込みは、走り計算の自己時間のうち静止探索の初期化に属する約11ポイントに、段階1で数える「対象升と交わらない方向」の割合を掛け、選別の費用を差し引いた値とする。
 参考として、届かない駒に属する走り計算の割合77.7%をそのまま当てはめると約8.6ポイントになるが、これは方向単位の値ではないので見込みには使わない。
 検証は、`crates/minase/src/search/alphabeta/tests/captures.rs`の残存手順一致、`crates/minase-core/src/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
-結果は[段階2のbench比較](../../measurements/movegen-speedup-2-stage2-bench-depth5.md)にある。
+結果は[段階2のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage2-bench-depth5.md)にある。
 
 ### 段階3　対象升が少ないノードの逆引き生成
 
@@ -205,7 +205,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 見込みは、対象升が4升以下のノードが33.4%あることから、初期化の走査費用のうち該当ノード分の大半、探索時間の3%から6%である。
 段階2と削減対象が重なるので、段階2の採用後に対象升数ごとの演算数を測り直してから着手し、閾値が1未満になるか、NPSの増分が親の中央値の幅を超えなければ採用しない。
 検証は段階2と同じ契約テストと局面別一致に加え、閾値の両側で同じ残存手順になることを固定シードの局面で検査する。
-段階2の採用後の[測り直し](../../measurements/movegen-speedup-2-stage3-counts.md)では、逆引きの走り計算だけで対象升1升あたり8回を要するのに対し、現行の走査は1升のノードで利き計算と走り計算の合計が0.82回であり、閾値が1未満になるので着手しない。
+段階2の採用後の[測り直し](../../measurements/movegen-speedup-2/movegen-speedup-2-stage3-counts.md)では、逆引きの走り計算だけで対象升1升あたり8回を要するのに対し、現行の走査は1升のノードで利き計算と走り計算の合計が0.82回であり、閾値が1未満になるので着手しない。
 
 ### 段階4　走り計算の書き換えとSEE逆引きの近傍走査
 
@@ -228,7 +228,7 @@ SEEの逆引きの固定利きも本段階に含める。
 `lion_has_foot_after_capture`が使う`square_is_controlled`は、獅子を取った駒の升に対して、取られた側（獅子の所有者）の全駒の利きを仮想盤面で順方向に計算しているので、仮想盤面の占有と取られた側を与えた`attackers_to_by`へ置き換える。
 見込みは、逆引きの自己時間9.1ポイントのうち固定利きの逆引きに当たる部分の半分、探索時間の1%から3%である。
 検証は`crates/minase-core/src/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`crates/minase/src/search/alphabeta/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
-変種ごとの測定と採否は[段階4のbench比較](../../measurements/movegen-speedup-2-stage4-bench-depth5.md)にあり、減算方式は親比1.0904倍、近傍走査と足判定の逆引き化は1.0507倍で採用し、減少方向の`leading_zeros`と番兵表への書き換え（1.0039倍）と在席マスク（0.9952倍）は親の幅内で採用しなかった。
+変種ごとの測定と採否は[段階4のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage4-bench-depth5.md)にあり、減算方式は親比1.0904倍、近傍走査と足判定の逆引き化は1.0507倍で採用し、減少方向の`leading_zeros`と番兵表への書き換え（1.0039倍）と在席マスク（0.9952倍）は親の幅内で採用しなかった。
 
 ### 段階5　静止探索の候補処理の簡素化
 
@@ -254,7 +254,7 @@ SEEの逆引きの固定利きも本段階に含める。
 候補ごとの重複計算の見込みは探索時間の2%から3%であり、初期化とグループ構築の見込みと合わせて段階全体を一括で測る。
 検証は、`captured_squares`の新旧実装の一致を全規則セットの固定シード局面の全合法手で検査し、残存手順一致と局面別一致で確かめる。
 新旧実装の比較テストは段階5の検証を終えた後、2026年10月4日のテスト監査で削除した。
-結果は[段階5のbench比較](../../measurements/movegen-speedup-2-stage5-bench-depth5.md)にある。
+結果は[段階5のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage5-bench-depth5.md)にある。
 
 ### 段階6　主探索の手生成と探索ノードの固定費
 
@@ -284,7 +284,7 @@ SEEの逆引きの固定利きも本段階に含める。
 各項目の見込みは1%前後で交互測定の幅に近いため、単独では採否を判定できず、1単位にまとめて合計で探索時間の3%から5%を見込む。
 作業領域や集合など状態を追加する項目は、対象処理の実行頻度と費用を確認してから着手し、一括測定で採用候補になった後にその項目だけを外した比較を行い、効果を確認できない状態は残さない。
 検証は、着手の復元が観測可能な全成分を戻すテスト、累算値と全再計算の一致テスト、SEEの参照実装との一致、ノード上限のテスト、固定ノード数の探索結果の一致、および局面別一致による。
-結果は[段階6のbench比較](../../measurements/movegen-speedup-2-stage6-bench-depth5.md)にあり、SEEの作業領域、ノード数の一括反映、および対局履歴の`HashSet`は、その項目だけを外した比較（履歴は300手の履歴を与えた探索の経過を含む）で効果を確認できず外した。
+結果は[段階6のbench比較](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-bench-depth5.md)にあり、SEEの作業領域、ノード数の一括反映、および対局履歴の`HashSet`は、その項目だけを外した比較（履歴は300手の履歴を与えた探索の経過を含む）で効果を確認できず外した。
 
 ### 段階7　静止探索における静的評価の先行打ち切り（探索木を変える）
 
@@ -296,10 +296,10 @@ SEEの逆引きの固定利きも本段階に含める。
 静止探索の照合は深さを問わず既存の項目を受け入れるので、主探索が保存した項目の値と最善手をそのノードで参照しなくなる。
 保存を省いた分だけ置換表の置換と既存の最善手の保持が変わり、主探索が浅い項目の最善手を着手順と深さ短縮の判断に使う経路にも影響する。
 `enter_node`、主変化の消去、`MAX_PLY`の判定は現行の順序を保ち、打ち切らないノードでは照合した置換表の手を候補生成へ渡す。
-試作では総ノード数が1.8%増え、固定深さの経過時間は約2%縮んだ（[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)）。
+試作では総ノード数が1.8%増え、固定深さの経過時間は約2%縮んだ（[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)）。
 着手時には試作差分、比較条件、局面別出力、および終わり方別の件数を測定記録に残す。
 事前選別の条件は固定深さの経過時間が親より短いことであり、採否はSTC、続いてLTCで決める。
-段階7から段階9の事前選別の結果は[事前選別の記録](../../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)にある。
+段階7から段階9の事前選別の結果は[事前選別の記録](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-prescreen-depth5.md)にある。
 
 ### 段階8　静止探索の獅子候補の絞り込み（探索木を変える）
 
@@ -312,7 +312,7 @@ SEEの逆引きの固定利きも本段階に含める。
 公開の生成と主探索の候補は変えない。
 この除外には戦術上の見落としの危険がある。
 移動元と経由升が攻撃されていて、駒を取ってから安全な到達升へ移る手だけが損失を避けられる局面では、静止探索がその手を見ないため評価が悪化し得る。
-試作では総ノード数が1.2%減り、固定深さの経過時間は約4%縮んだが、局面によってはノードが増える（1局面で+54%）ので（[起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)）、棋力への影響はSTCとLTCで判定する。
+試作では総ノード数が1.2%減り、固定深さの経過時間は約4%縮んだが、局面によってはノードが増える（1局面で+54%）ので（[起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)）、棋力への影響はSTCとLTCで判定する。
 本段階を採用した場合、段階5で導入した獅子候補の圧縮は対象が減るので、有効性を測り直して効果がなければ取り除く。
 
 ### 段階9　捕獲対象が空のノードでの置換表アクセスの省略（探索木を変える）
@@ -333,7 +333,7 @@ SEEの逆引きの固定利きも本段階に含める。
 第1期の採用版を基準にするのは、第1期の最終SPRTがPGOを含む構成で行われ、PGOを外した採用版の自己対局が未実施だからでもある。
 段階7から段階9の採否が確定した後、最終の採用版と第1期の採用版の固定200ペアのEloを進捗記録として測る。
 併せて、段階1と同じ方法で残存負荷のプロファイルと件数を測り直し、記録する。
-結果は[段階6までのSTC](../../measurements/movegen-speedup-2-stage6-stc.md)、[LTC](../../measurements/movegen-speedup-2-stage6-ltc.md)、[段階7から段階9のSTC](../../measurements/movegen-speedup-2-stage7-9-stc.md)、[LTC](../../measurements/movegen-speedup-2-stage7-9-ltc.md)、[固定200ペアのElo](../../measurements/movegen-speedup-2-elo200.md)、および[最終の残存負荷](../../measurements/movegen-speedup-2-final-profile-depth5.md)にある。
+結果は[段階6までのSTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-stc.md)、[LTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage6-ltc.md)、[段階7から段階9のSTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-stc.md)、[LTC](../../measurements/movegen-speedup-2/movegen-speedup-2-stage7-9-ltc.md)、[固定200ペアのElo](../../measurements/movegen-speedup-2/movegen-speedup-2-elo200.md)、および[最終の残存負荷](../../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)にある。
 
 ## 実装フェーズ
 
@@ -383,9 +383,9 @@ SPRTは測定名`movegen-speedup-2-<段階名>-stc`および`-ltc`で`docs/measu
 ## 参考資料
 
 - [第1期の設計書](movegen-speedup.md)は、照合参照コミット、探索専用生成の契約、およびSEEの判定契約を定める。
-- [起案時の診断](../../measurements/movegen-speedup-2-diagnostics-depth5.md)は、本書の残存負荷の内訳、静止探索の件数、および試作の速度の根拠である。
-- [単位Eの残存負荷の記録](../../measurements/movegen-speedup-unit-e-bench-depth5.md)は、第1期の完了時点の残存負荷と着手しなかった候補の理由を記録する。
-- [単位Cの記録](../../measurements/movegen-speedup-unit-c-bench-depth5.md)は、SEEの逆引き回数の分布を記録する。
+- [起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)は、本書の残存負荷の内訳、静止探索の件数、および試作の速度の根拠である。
+- [単位Eの残存負荷の記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)は、第1期の完了時点の残存負荷と着手しなかった候補の理由を記録する。
+- [単位Cの記録](../../measurements/movegen-speedup/movegen-speedup-unit-c-bench-depth5.md)は、SEEの逆引き回数の分布を記録する。
 - [処理件数診断](../../research/movegen-speedup-ideas.md)は、第1期の起案時に数えた捕獲生成とSEEの件数であり、段階9の仮説の根拠に使う。
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)は、段階ゲートの手順と禁止事項を定める。
 - [段階生成の固定費の教訓](../../lessons/staged-generation-fixed-cost.md)は、段階ごとの固定費を包含時間で測る規則を定める。

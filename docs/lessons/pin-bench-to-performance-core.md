@@ -18,4 +18,4 @@
 
 ## 出典
 
-[段階9の評価特徴の費用](../measurements/strength-stage9-cost-bench.md)（固定前は1.56Mから1.95M、固定後は3回のばらつきが1%以内）。
+[段階9の評価特徴の費用](../measurements/strength-stage9/strength-stage9-cost-bench.md)（固定前は1.56Mから1.95M、固定後は3回のばらつきが1%以内）。

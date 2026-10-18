@@ -78,7 +78,7 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 - Stockfishの浅い枝刈りの前提条件`pos.non_pawn_material(us)`と、捕獲手のSEEによる枝刈りにある最後の駒を捨てる手の除外（`src/search.cpp:1196, 1223-1224`）。前者はポーンだけの終盤、後者は合法手のない側を引き分けとするステイルメイトのための条件であり、中将棋には相当する仕組みがない（RULES.md第23条）。2026年10月17日の利用者の決定は、Stockfishに相当する仕組みがない事項はYaneuraOuに合わせるとしており、YaneuraOuも前者を外している（`yaneuraou-search.cpp:3585-3588`）。
 - YaneuraOuにだけある項。静かな手のfutility pruningの`151 × !bestMove`、捕獲手のSEEの`α ≥ 引き分けの値`の条件、およびrazoringの深さの2乗の余裕値である。2026年10月17日の利用者の決定により入れない。
 - 詰みを探す局面の判定（Stockfishの`seekMate`）。seekMate本体は前の設計書が導入する。
-- 損な先頭の捕獲手よりkiller手を先に返す手の順序。killer手は、同じ手数の別のノードでβ打ち切りを起こした静かな手である。対象は`ordering.rs`の`MovePicker::reset`の`killers_before_losing_capture`である。残り深さ3以下という条件は、手の順序付けの[診断](../measurements/move-ordering-diag.md)で決めたものであり（[ADR](../adr/try-killers-before-a-losing-first-capture.md)）、本書は変えない。
+- 損な先頭の捕獲手よりkiller手を先に返す手の順序。killer手は、同じ手数の別のノードでβ打ち切りを起こした静かな手である。対象は`ordering.rs`の`MovePicker::reset`の`killers_before_losing_capture`である。残り深さ3以下という条件は、手の順序付けの[診断](../measurements/move-ordering/move-ordering-diag.md)で決めたものであり（[ADR](../adr/try-killers-before-a-losing-first-capture.md)）、本書は変えない。
 - 手の並べ替えで王手になる手に加点すること（Stockfish `src/movepick.cpp:242`）。[historyの形の見直し](history-forms.md)が、本書のM2の判定を使って扱う。
 
 ## 依存関係
@@ -411,6 +411,8 @@ benchの深さでは検証探索が働かないので、矛盾率は、STCの事
 完了条件は、テストの通過、事前対局での時間切れとエンジン異常が0件であること、および測定記録の保存である。
 
 ### フェーズ5　採否測定
+
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。この節のSTCは採否に使わない記録として行い、LTCは行わない。以下の判定の規則は、この決定より前に書いたものであり、統括計画の決定が優先する。
 
 ```console
 <固定したminase> match run \

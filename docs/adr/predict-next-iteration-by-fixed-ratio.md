@@ -24,7 +24,7 @@ softの一定割合を超えたら次の反復を始めない案は、係数が1
 
 ## 結果
 
-採用済みの予算式を基準に、STCが有効1,111ペアでLLR +2.958、LTCが有効1,551ペアでLLR +2.949の`H1`だった（[STC](../measurements/strength-stage2-iteration-stc.md)、[LTC](../measurements/strength-stage2-iteration-ltc.md)）。
+採用済みの予算式を基準に、STCが有効1,111ペアでLLR +2.958、LTCが有効1,551ペアでLLR +2.949の`H1`だった（[STC](../measurements/strength-stage2/strength-stage2-iteration-stc.md)、[LTC](../measurements/strength-stage2/strength-stage2-iteration-ltc.md)）。
 STCでは基準側に時間切れが1件出たが、原因は`position`の全着手の再生の固定費であり、[`position`の着手列は、前回受理した列との差分だけを適用する](apply-position-by-token-difference.md)の決定につながった。
 固定比の当初値は2.5であり、現行値は後にSPSAで調整した値である。
 予測が過大なら時間が時計に残って後の手へ回り、過小ならhardで打ち切られるので、どちらの誤りも時間切れを生まない。

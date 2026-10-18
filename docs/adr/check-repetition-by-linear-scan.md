@@ -10,10 +10,10 @@
 現行の判定は、対局の履歴キーの配列と探索経路のキーの配列を線形に走査する。
 履歴は対局の手数に比例して長くなるので、この走査を別のデータ構造へ置き換える案が2回出た。
 1回目は[棋力向上段階1](../plans/archived/strength-stage1.md)で、対局の履歴と探索経路をワーカー固有の出現回数表へまとめ、着手と取り消しに合わせて回数を更新する案である。
-[benchの比較](../measurements/bench-repetition-occurrences.md)では、総ノード数は変わらず判定も一致したが、NPSの中央値が2.96%低下した。
+[benchの比較](../measurements/strength-stage1/bench-repetition-occurrences.md)では、総ノード数は変わらず判定も一致したが、NPSの中央値が2.96%低下した。
 ただし標準benchの局面は対局の履歴が根局面の1件だけなので、長い履歴の走査を減らす効果はこの比較に現れない。
 2回目は[合法手生成と利き計算の高速化（第2期）](../plans/archived/movegen-speedup-2.md)の段階6で、対局の履歴だけを探索開始時に`HashSet`へ変換し、探索経路は配列のまま残す案である。
-[段階6のbench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)では、benchの差は測定の幅に収まった。
+[段階6のbench比較](../measurements/movegen-speedup-2/movegen-speedup-2-stage6-bench-depth5.md)では、benchの差は測定の幅に収まった。
 300手の履歴を与えた`go depth 9`の経過時間も、`HashSet`版の中央値0.3215秒に対し線形走査版は0.3202秒で、差がなかった。
 
 ## 決定

@@ -12,12 +12,12 @@ scripts と docs/ のPythonテストは、各ファイルの文書に書かれ�
 | ファイル | 件数 |
 |---|---:|
 | [docs/audits/third-party-code-provenance-2026-09-28/mechanical/test_checks.py](../../../docs/audits/third-party-code-provenance-2026-09-28/mechanical/test_checks.py) | 10 |
-| [docs/measurements/qsearch-output-diagnostics/test_diagnose.py](../../../docs/measurements/qsearch-output-diagnostics/test_diagnose.py) | 25 |
-| [docs/measurements/qsearch-output-leaf-sample/test_leaf_sample.py](../../../docs/measurements/qsearch-output-leaf-sample/test_leaf_sample.py) | 21 |
-| [docs/measurements/qsearch-output-search-trace/test_trace_roots.py](../../../docs/measurements/qsearch-output-search-trace/test_trace_roots.py) | 35 |
-| [docs/measurements/relational-correction-prep/prep/test_phase3.py](../../../docs/measurements/relational-correction-prep/prep/test_phase3.py) | 8 |
-| [docs/measurements/relational-correction-prep/prep/test_prep.py](../../../docs/measurements/relational-correction-prep/prep/test_prep.py) | 3 |
-| [docs/measurements/relational-correction-prep/test_phase0.py](../../../docs/measurements/relational-correction-prep/test_phase0.py) | 28 |
+| [docs/measurements/qsearch-output-training/qsearch-output-diagnostics/test_diagnose.py](../../measurements/qsearch-output-training/qsearch-output-diagnostics/test_diagnose.py) | 25 |
+| [docs/measurements/qsearch-output-training/qsearch-output-leaf-sample/test_leaf_sample.py](../../measurements/qsearch-output-training/qsearch-output-leaf-sample/test_leaf_sample.py) | 21 |
+| [docs/measurements/qsearch-output-training/qsearch-output-search-trace/test_trace_roots.py](../../measurements/qsearch-output-training/qsearch-output-search-trace/test_trace_roots.py) | 35 |
+| [docs/measurements/relational-correction/relational-correction-prep/prep/test_phase3.py](../../measurements/relational-correction/relational-correction-prep/prep/test_phase3.py) | 8 |
+| [docs/measurements/relational-correction/relational-correction-prep/prep/test_prep.py](../../measurements/relational-correction/relational-correction-prep/prep/test_prep.py) | 3 |
+| [docs/measurements/relational-correction/relational-correction-prep/test_phase0.py](../../measurements/relational-correction/relational-correction-prep/test_phase0.py) | 28 |
 | [scripts/test_fetch_lishogi_games.py](../../../scripts/test_fetch_lishogi_games.py) | 13 |
 | [src/bin/bench.rs](../../../src/bin/bench.rs) | 5 |
 | [src/bin/match_report/compare.rs](../../../src/bin/match_report/compare.rs) | 1 |

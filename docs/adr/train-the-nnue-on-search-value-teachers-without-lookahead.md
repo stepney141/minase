@@ -10,8 +10,8 @@ NNUEの教師値は、教師局面の探索値を教師の勝率尺度で勝率�
 [以前の決定](archive/train-the-nnue-on-search-value-lookahead-teachers.md)は、λ=1.0で対局結果を混ぜず、各局面の探索値を同じ対局の後続40手の探索値の加重平均（減衰率0.9）に置き換える先読み教師で学ぶとしていた。
 先読み教師は[PSTの学習で採用した](use-lookahead-teacher-values.md)方式であり、NNUEでの効果は測られていなかった。
 NNUEの検証損失が学習の条件によらず早く頭打ちになる原因を調べた[計画](../plans/archived/nnue-early-best-epoch.md)では、先読みの引数だけを外して学び直したネットを段階ゲートにかけた。
-このネットは、先読み教師で学んだ当時のネット（D0b）に対して[STC](../measurements/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-no-lookahead-ltc.md)の両方で`H1`となった。
-同じ計画の[学習の記録](../measurements/nnue-no-lookahead-training.md)では、先読み教師で学んだネットは学習前のネットより訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前と区別できなくなった。
+このネットは、先読み教師で学んだ当時のネット（D0b）に対して[STC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)の両方で`H1`となった。
+同じ計画の[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)では、先読み教師で学んだネットは学習前のネットより訓練の対局の結果に強く適合し、先読みを外すとこの適合は学習前と区別できなくなった。
 
 ## 決定
 

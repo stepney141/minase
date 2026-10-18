@@ -10,7 +10,7 @@
 ## 2倍に必要な削減量
 
 100%以上の高速化を、同じ探索を半分以下の時間で終えることと解釈する。
-[既存測定](../measurements/bench-movegen-profile-depth5.md)では、基準コミット`0e3dfa6`の0.845秒に対して試作が0.639秒なので、基準比2倍の目標は0.422秒である。
+[既存測定](../measurements/movegen-speedup/bench-movegen-profile-depth5.md)では、基準コミット`0e3dfa6`の0.845秒に対して試作が0.639秒なので、基準比2倍の目標は0.422秒である。
 試作からさらに0.216秒、すなわち33.8%の時間削減が必要であり、速度では約51.2%の上積みに相当する。
 既存試作の約1.32倍に追加案を重ねて基準比2倍を狙う余地はあるが、追加案だけで試作をさらに2倍にできる根拠はまだない。
 
@@ -42,7 +42,7 @@
 生成後のループでは、評価値による棄却、静的交換評価、子局面の探索の順に処理する。
 したがって「ループ内で検査した手」も、すべて子局面を探索したわけではない。
 上表の割合は削減候補の件数であり、各手の費用が等しいとも、同じ割合の時間を削れるとも仮定していない。
-生データと再現用差分は[診断資料](../measurements/movegen-speedup-ideas-counts/totals.json)に付属する。
+生データと再現用差分は[診断資料](../measurements/movegen-speedup/movegen-speedup-ideas-counts/totals.json)に付属する。
 
 ## 評価値で捕獲対象を生成前に絞る
 
@@ -156,7 +156,7 @@ SEEの早期終了とPGOをそれぞれ比較し、共有、固定利きの一�
 各案の削減対象は重なるため、直前の採用版に対する増分を測る。
 
 今回の診断の入力は、当時のmaster（`d0d3c52`）に作業ツリーの差分を適用したものとして保存した。
-[環境情報](../measurements/movegen-speedup-ideas-counts/environment.json)、[入力差分](../measurements/movegen-speedup-ideas-counts/input.patch)、[診断差分](../measurements/movegen-speedup-ideas-counts/diagnostic.patch)、[元ファイルのSHA-256](../measurements/movegen-speedup-ideas-counts/source-sha256.json)、[局面別件数](../measurements/movegen-speedup-ideas-counts/counts.log)、[比較結果](../measurements/movegen-speedup-ideas-counts/comparison.json)を保存している。
+[環境情報](../measurements/movegen-speedup/movegen-speedup-ideas-counts/environment.json)、[入力差分](../measurements/movegen-speedup/movegen-speedup-ideas-counts/input.patch)、[診断差分](../measurements/movegen-speedup/movegen-speedup-ideas-counts/diagnostic.patch)、[元ファイルのSHA-256](../measurements/movegen-speedup/movegen-speedup-ideas-counts/source-sha256.json)、[局面別件数](../measurements/movegen-speedup/movegen-speedup-ideas-counts/counts.log)、[比較結果](../measurements/movegen-speedup/movegen-speedup-ideas-counts/comparison.json)を保存している。
 再現するときは新規の一時ディレクトリへ当時のmasterを展開し、入力差分と診断差分を順に適用する。
 
 ```console

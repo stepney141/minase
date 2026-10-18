@@ -15,10 +15,10 @@ aspiration windowsは採否測定の条件で発動しないため本マイル�
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年8月10日に起案し、2026年8月11日に着手し、2026年8月22日に完了した。
-置換表、静止探索、killer手とhistory、null move pruning、late move reductions、および静止探索のdelta pruningは、いずれも同一ノード数の対等条件のGSPRTで採用した（[measurements/tt-nodes100k-gsprt.md](../../measurements/tt-nodes100k-gsprt.md)、[measurements/qsearch-nodes100k-gsprt.md](../../measurements/qsearch-nodes100k-gsprt.md)、[measurements/killer-history-nodes100k-gsprt.md](../../measurements/killer-history-nodes100k-gsprt.md)、[measurements/null-move-nodes100k-gsprt.md](../../measurements/null-move-nodes100k-gsprt.md)、[measurements/lmr-nodes100k-gsprt.md](../../measurements/lmr-nodes100k-gsprt.md)、[measurements/delta-pruning-nodes100k-gsprt.md](../../measurements/delta-pruning-nodes100k-gsprt.md)）。
-mimallocと合法手生成器のVec巻き上げはbenchの実測で両方採用した（[measurements/bench-mimalloc-vec-hoist.md](../../measurements/bench-mimalloc-vec-hoist.md)）。
-完了条件は、凍結ベースラインへの有意な勝ち越し（[measurements/search-frozen-baseline-gate.md](../../measurements/search-frozen-baseline-gate.md)）と時間制御つき自己対局の完走（[measurements/search-phase6-time-control-smoke.md](../../measurements/search-phase6-time-control-smoke.md)）で満たした。
-強さの積み上がりは、置換表で+114.5 Elo、静止探索で+435.5 Elo、第2層の4改良で+277.0 Eloである（[measurements/tt-nodes100k-elo200.md](../../measurements/tt-nodes100k-elo200.md)、[measurements/qsearch-nodes100k-elo200.md](../../measurements/qsearch-nodes100k-elo200.md)、[measurements/search-phase6-vs-phase4-elo200.md](../../measurements/search-phase6-vs-phase4-elo200.md)）。
+置換表、静止探索、killer手とhistory、null move pruning、late move reductions、および静止探索のdelta pruningは、いずれも同一ノード数の対等条件のGSPRTで採用した（[measurements/search/tt-nodes100k-gsprt.md](../../measurements/search/tt-nodes100k-gsprt.md)、[measurements/search/qsearch-nodes100k-gsprt.md](../../measurements/search/qsearch-nodes100k-gsprt.md)、[measurements/search/killer-history-nodes100k-gsprt.md](../../measurements/search/killer-history-nodes100k-gsprt.md)、[measurements/search/null-move-nodes100k-gsprt.md](../../measurements/search/null-move-nodes100k-gsprt.md)、[measurements/search/lmr-nodes100k-gsprt.md](../../measurements/search/lmr-nodes100k-gsprt.md)、[measurements/search/delta-pruning-nodes100k-gsprt.md](../../measurements/search/delta-pruning-nodes100k-gsprt.md)）。
+mimallocと合法手生成器のVec巻き上げはbenchの実測で両方採用した（[measurements/search/bench-mimalloc-vec-hoist.md](../../measurements/search/bench-mimalloc-vec-hoist.md)）。
+完了条件は、凍結ベースラインへの有意な勝ち越し（[measurements/search/search-frozen-baseline-gate.md](../../measurements/search/search-frozen-baseline-gate.md)）と時間制御つき自己対局の完走（[measurements/search/search-phase6-time-control-smoke.md](../../measurements/search/search-phase6-time-control-smoke.md)）で満たした。
+強さの積み上がりは、置換表で+114.5 Elo、静止探索で+435.5 Elo、第2層の4改良で+277.0 Eloである（[measurements/search/tt-nodes100k-elo200.md](../../measurements/search/tt-nodes100k-elo200.md)、[measurements/search/qsearch-nodes100k-elo200.md](../../measurements/search/qsearch-nodes100k-elo200.md)、[measurements/search/search-phase6-vs-phase4-elo200.md](../../measurements/search/search-phase6-vs-phase4-elo200.md)）。
 aspiration windowsは、深さ5以上が常用域になった[棋力向上段階6](strength-stage6.md)で再実装して採用した。
 
 ## 目的
@@ -81,7 +81,7 @@ HaChuはプロトコル層の検証で基準として不成立と判定済みで
 | 時間管理 | soft/hard二段リミット。softはイテレーション境界、hardはノード周期の時計チェックで適用する。 |
 | スレッド構成 | 呼び出し側と探索スレッド1本を`AtomicBool`停止フラグで接続する。探索結果は探索ID付きでチャネルへ返し、プロトコル出力は生成しない。 |
 | 測定 | ペア対局＋ペンタノミアルGSPRTを採否判定に、固定局数（ペア数固定）のElo推定を進捗記録に使う。ベースラインは凍結構成の自分自身とし、別実装しない。 |
-| アロケータと割当 | mimallocと、合法手生成器のVec巻き上げ（駒ごとの`Vec`を関数先頭で1回確保し`clear()`で再利用する）を採用する。アロケータの宣言はライブラリ利用者へ強制しないよう実行ファイル（minase・bench・perft）側で行う。根拠は [measurements/bench-mimalloc-vec-hoist.md](../../measurements/bench-mimalloc-vec-hoist.md)。 |
+| アロケータと割当 | mimallocと、合法手生成器のVec巻き上げ（駒ごとの`Vec`を関数先頭で1回確保し`clear()`で再利用する）を採用する。アロケータの宣言はライブラリ利用者へ強制しないよう実行ファイル（minase・bench・perft）側で行う。根拠は [measurements/search/bench-mimalloc-vec-hoist.md](../../measurements/search/bench-mimalloc-vec-hoist.md)。 |
 
 ## 探索骨格
 
@@ -226,7 +226,7 @@ fail-softとは、探索窓の外へ出た値も窓の端に切り詰めずに�
 stand-patは「現局面の評価値を下回らない手がある」とみなす楽観的な近似であり、両取りのように避けられない脅威はすべて無視する。王駒が詰んでいる局面での誤りは、その一例である。
 チェスが王手中のstand-patを禁じるのは、応手が少なく評価値を保てる手がないことが多いからであり、王手放置が合法かどうかとは関係がない。
 中将棋では王手を受けても逃げ方が多いので、この特例を置かない。
-王駒がすべて狙われた局面でstand-patを使わず全合法手を読む方式は、診断のSTCで約120 Elo弱かった（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)）。
+王駒がすべて狙われた局面でstand-patを使わず全合法手を読む方式は、診断のSTCで約120 Elo弱かった（[search-bug-fixes-qsearch-evasion-diag-stc](../../measurements/search-bug-fixes/search-bug-fixes-qsearch-evasion-diag-stc.md)）。
 
 展開する手は捕獲手のみとする。
 王手をかける静かな手と非捕獲の成りは展開せず、捕獲を伴う成り（第18条第2項a・b）は捕獲手として自然に含まれる。
@@ -318,10 +318,10 @@ hard limitが深さ1の完了前に到来した場合でも、常に合法な`be
 各改良の設計は次のとおりとし、採否の測定記録は状態節から参照する。
 
 - 指し手順序付けの拡張（killer・history）：順序は置換表の記録手、捕獲手のMVV-LVA順、killer手（plyごとに2手、β打ち切りを起こした非捕獲手を新しい順に保持）、残りの非捕獲手のhistory降順とする。historyは手番側・移動元・移動先で引く表とし、β打ち切りを起こした非捕獲手へ`depth²`を加算し、値が上限を超えたら表全体を半減する。表はルート探索の開始時に初期化していたが、現行は[不採用だった探索部の改良の再調整](search-revival-spsa.md)が戻した持ち越しにより、探索ごとに係数`HistoryDecay`の割合だけを残す。
-- null move pruning：深さ3以上、直前がnull moveでなく、βが詰み帯になく、手番側に王駒以外の駒がある局面で、手番を渡した局面を`depth − 1 − R`の零窓で探索し、値がβ以上なら打ち切る。採用時の`R = 2 + depth / 6`は[最初のSPSAの長時間測定](../../measurements/spsa-stage9-20260923-ltc.md)後に`R = (2888 + depth × 210) / 1200`へ更新し、[2回目のSPSAの長時間測定](../../measurements/spsa-stage9-20260925-c5-ltc.md)後に`R = (3529 + depth × 238) / 1200`へ更新した。[不採用だった探索部の改良の再調整の長時間測定](../../measurements/search-revival-tstar-vs-m-ltc.md)後の現行は`R = (3617 + depth × 257) / 1200`を整数除算で求め、[同計画の設計書](search-revival-spsa.md)が戻した静的評価の余裕による加算をさらに足す。null moveは`Position`の手番反転として実装し、先獅子の一時状態（相手の直後の1手だけに適用される捕獲禁止）は手番を渡した時点で消滅させる。null move後の局面は反復検出の経路（探索中に通過した局面キーのスタック。「探索内の終局と規則処理」節）へ加えない。手番を渡しただけの局面は実際の対局では現れないため、同一局面の再現と誤認させないためである。
+- null move pruning：深さ3以上、直前がnull moveでなく、βが詰み帯になく、手番側に王駒以外の駒がある局面で、手番を渡した局面を`depth − 1 − R`の零窓で探索し、値がβ以上なら打ち切る。採用時の`R = 2 + depth / 6`は[最初のSPSAの長時間測定](../../measurements/spsa/spsa-stage9-20260923-ltc.md)後に`R = (2888 + depth × 210) / 1200`へ更新し、[2回目のSPSAの長時間測定](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5-ltc.md)後に`R = (3529 + depth × 238) / 1200`へ更新した。[不採用だった探索部の改良の再調整の長時間測定](../../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)後の現行は`R = (3617 + depth × 257) / 1200`を整数除算で求め、[同計画の設計書](search-revival-spsa.md)が戻した静的評価の余裕による加算をさらに足す。null moveは`Position`の手番反転として実装し、先獅子の一時状態（相手の直後の1手だけに適用される捕獲禁止）は手番を渡した時点で消滅させる。null move後の局面は反復検出の経路（探索中に通過した局面キーのスタック。「探索内の終局と規則処理」節）へ加えない。手番を渡しただけの局面は実際の対局では現れないため、同一局面の再現と誤認させないためである。
 - late move reductions：深さ3以上で、置換表の記録手・捕獲手・killer手を除く非捕獲手のうち4手目以降を深さ1減らした零窓で探索し、αを超えた場合だけ通常深さで再探索する。
 - aspiration windows：深さ5以上の反復で、前回の評価値を中心に±50の窓で探索し、窓を外れた側の幅を倍々に広げて再探索する。前回の評価値が詰み帯にある場合は全窓を使う。設計どおり実装しレビューまで行ったが、静止探索後のbenchではdepth=4に局面あたり約30万ノードを要し、採否測定の対等条件`nodes=100000`では反復深化が深さ5へ届かず本改良が一度も発動しないため、採用を見送った。発動する水準（局面あたり数百万ノード）の測定は1回が半日以上になり本マイルストーンの予算に見合わないため、未採用の改良をコードに残さない方針（YAGNI）に従いコミットせず、設計本文だけを保持する。探索速度または評価関数の改良で深さ5以上が常用域になった時点で再実装と測定を行う（教訓は [lessons/measure-feature-activation-before-sprt.md](../../lessons/measure-feature-activation-before-sprt.md)）。その後、[棋力向上段階6](strength-stage6.md)で半幅を歩兵の駒価値の半分（50）とし、根にβ打ち切りと保存種別の分類を加えた形で再実装し、STCとLTCの`H1`で採用した。現行の仕様は同書が所有する。
-- 静止探索のdelta pruning：静止探索で、stand-patに捕獲価値の合計と余裕値355（歩兵価値の355%）を加えてもαに届かない捕獲手は展開しない。最後の王駒を取る手は対象外とする。現行の静止探索には、[不採用だった探索部の改良の再調整](search-revival-spsa.md)が戻した手数制限も掛かる。フェーズ4の実測（benchの総ノード数が34〜45倍、[measurements/qsearch-nodes100k-gsprt.md](../../measurements/qsearch-nodes100k-gsprt.md)）を受け、初期の余裕値200で導入した。
+- 静止探索のdelta pruning：静止探索で、stand-patに捕獲価値の合計と余裕値355（歩兵価値の355%）を加えてもαに届かない捕獲手は展開しない。最後の王駒を取る手は対象外とする。現行の静止探索には、[不採用だった探索部の改良の再調整](search-revival-spsa.md)が戻した手数制限も掛かる。フェーズ4の実測（benchの総ノード数が34〜45倍、[measurements/search/qsearch-nodes100k-gsprt.md](../../measurements/search/qsearch-nodes100k-gsprt.md)）を受け、初期の余裕値200で導入した。
 - check extension：見送る。中将棋の「王手」は王駒が複数あり得ること、王手放置が合法であること、獅子・角鷹・飛鷲の2段階移動を含む利き判定の費用が高いことから延長条件の設計と検証に見合う利益が見込めず、完了基準は他の改良で満たせるためである。評価関数の本格化後に必要が生じれば別途起案する。
 
 ## 測定基盤
@@ -361,7 +361,7 @@ LLRの計算はfishtestの`LLR_logistic`（statistic="expectation"のMLE法）�
 
 検定の健全性は、合成した対局結果によるモンテカルロで検証する。
 既知の分布から5分類の結果を生成して検定全体を数千回反復し、elo=0のとき誤採用率が名目αと整合すること、真の効果がH1と同じとき検出率が1−βと整合することを確認する。
-実際のランダム対ランダム対局は、ハーネス全体の煙試験として1回実行するにとどめる（[measurements/selfplay-random-smoke.md](../../measurements/selfplay-random-smoke.md)）。
+実際のランダム対ランダム対局は、ハーネス全体の煙試験として1回実行するにとどめる（[measurements/search/selfplay-random-smoke.md](../../measurements/search/selfplay-random-smoke.md)）。
 
 ### ベースラインの凍結
 
@@ -390,7 +390,7 @@ benchコマンドは、固定局面集（初期局面とlishogiリプレイ棋�
 ### フェーズ2　評価関数v0と探索骨格
 
 駒割（Muller系の種、王駒を含む）、簡易piece-square table、反復深化＋negamax αβ＋PVS、MVV-LVA順序付け、探索設定によるプレイヤー抽象のエンジン実装、benchコマンドを実装する。
-深さ固定・単一スレッドで動く状態までとし、完成時にランダム着手への勝率とEloを測定する（[measurements/search-depth1-vs-random.md](../../measurements/search-depth1-vs-random.md)）。
+深さ固定・単一スレッドで動く状態までとし、完成時にランダム着手への勝率とEloを測定する（[measurements/search/search-depth1-vs-random.md](../../measurements/search/search-depth1-vs-random.md)）。
 完了時に凍結ベースライン構成を確定する。
 
 ### フェーズ3　置換表
@@ -409,7 +409,7 @@ stand-patと捕獲手のみの静止探索を実装する。
 
 soft/hard二段リミット、`SearchSnapshot`、`SearchLimits`、探索スレッド、停止フラグ、探索ID付き`Progress`・`Finished`返却を本実装する。
 固定時間、深さ、ノード数、無期限と外部停止要求を単体試験で検証する。
-match_runnerの`--each`へ時間制御の思考制限を追加し、残り時間、加算時間、秒読みからsoft/hard予算を計算する自己対局を実施し、時間切れなしで完走することを確認する（[measurements/search-phase5-time-control-smoke.md](../../measurements/search-phase5-time-control-smoke.md)）。
+match_runnerの`--each`へ時間制御の思考制限を追加し、残り時間、加算時間、秒読みからsoft/hard予算を計算する自己対局を実施し、時間切れなしで完走することを確認する（[measurements/search/search-phase5-time-control-smoke.md](../../measurements/search/search-phase5-time-control-smoke.md)）。
 USI・CECPへの接続、`USI_Hash`・`memory`オプション、実GUI接続は外部対局接続マイルストーンで実装する。
 本フェーズはフェーズ4より先に実施する。
 外部対局接続の着手条件はフェーズ5の完了だけに依存し、静止探索は探索呼び出し境界と独立した棋力改良であるためである。

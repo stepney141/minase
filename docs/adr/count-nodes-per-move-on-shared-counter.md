@@ -15,7 +15,7 @@ Stockfishとやねうら王は、探索中に実際の着手を盤面へ適用�
 8月23日のLazy SMPでは、全ワーカーのノード数を1個の共有の`AtomicU64`で数え、上限があるときは比較交換で1ノードずつ予約する。
 上限があるときの一括予約は、単一の共有カウンタでは`Finished.nodes`の正確さと決定性を両立できないので、設計の段階で採らなかった。
 同じ8月23日には、停止フラグとの偽共有を避けるキャッシュラインの分離と、上限がないときの1024ノード単位の一括反映を試した。
-ワーカーあたりNPSの変化は`Threads=1`で−0.3%、2で+0.2%、4で+2.3%であり、採用の条件とした3%の改善に届かなかった（[測定記録](../measurements/lazy-smp-counter-nps-gate.md)）。
+ワーカーあたりNPSの変化は`Threads=1`で−0.3%、2で+0.2%、4で+2.3%であり、採用の条件とした3%の改善に届かなかった（[測定記録](../measurements/lazy-smp/lazy-smp-counter-nps-gate.md)）。
 
 ## 決定
 
@@ -27,7 +27,7 @@ Stockfishとやねうら王は、探索中に実際の着手を盤面へ適用�
 
 探索関数の入口で数える旧方式は、末端の局面を二重に数えるので採らなかった。
 キャッシュラインの分離と1024ノード単位の一括反映は、NPSのゲートに届かなかったので採らなかった。
-一括反映は[合法手生成の高速化の第2期](../plans/archived/movegen-speedup-2.md)の段階6でも試したが、毎ノードの反映へ戻した版との差がNPSの測定の幅に収まったので外した（[測定記録](../measurements/movegen-speedup-2-stage6-bench-depth5.md)）。
+一括反映は[合法手生成の高速化の第2期](../plans/archived/movegen-speedup-2.md)の段階6でも試したが、毎ノードの反映へ戻した版との差がNPSの測定の幅に収まったので外した（[測定記録](../measurements/movegen-speedup-2/movegen-speedup-2-stage6-bench-depth5.md)）。
 
 ## 結果
 

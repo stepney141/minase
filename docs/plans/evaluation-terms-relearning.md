@@ -23,7 +23,7 @@
 
 本書は、「王駒の安全度と駒の利きの関係を表す線形の項を、採用中の教師で学んだ係数で評価値へ加えると、土台の費用を払っても同じ持ち時間で棋力が上がる」という仮説を、項目ごとに検証する。
 [lishogiの敗局](../research/lishogi-game-yO464dzl-loss-analysis.md)では、玉の正面の筋が開いて敵の走り駒が集まる間も、評価関数は+1000センチポーンを超える評価値を返し続けた。
-段階9の[118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)では、この敗局の180手目までに、項目1の開いた筋に加えて、項目2の王駒から距離2の升への攻める側の高い利き数と、項目7の支えのない駒への脅威が発火しており、特徴としては危険を表現できていた。
+段階9の[118列の発火率診断](../measurements/strength-stage9/strength-stage9-activation-diag-b.md)では、この敗局の180手目までに、項目1の開いた筋に加えて、項目2の王駒から距離2の升への攻める側の高い利き数と、項目7の支えのない駒への脅威が発火しており、特徴としては危険を表現できていた。
 
 段階9の見送りの理由は、項目によって異なる。
 
@@ -40,7 +40,7 @@
 −30センチポーンは、段階9の診断Aが深い探索の感度に対して置いた値を、係数の寄与の平均へ転用したものであり、損失の最小化とは別の条件だった。
 
 項目2から項目7は、係数を一度も学習していない。
-項目2、項目3、項目6、項目7は、升ごとの利き数を差分更新する表（利き数の表）を土台とするが、[利き数の表の速度](../measurements/strength-stage9-table-bench.md)が段階開始版の0.816倍で土台の条件0.90倍を満たさず、見送られた。
+項目2、項目3、項目6、項目7は、升ごとの利き数を差分更新する表（利き数の表）を土台とするが、[利き数の表の速度](../measurements/strength-stage9/strength-stage9-table-bench.md)が段階開始版の0.816倍で土台の条件0.90倍を満たさず、見送られた。
 項目4と項目5は、駒ごとの到達升の集合（全駒の利き集合）も要し、利き数の表の見送りに伴って見送られた。
 つまり、これらの項目が予測や棋力に役立つかは、まだ誰も確かめていない。
 
@@ -70,7 +70,7 @@
 
 本書は、着手時のmasterの採用構成を基準とする。
 基準に含まれるのは、学習PSTの重み、探索用駒価値、勝率尺度、SPSAで調整した探索係数、およびその学習PSTの学習に使った教師の設定である。
-2026年9月27日時点の学習PSTは、先読み教師（γ=0.9、n=40、λ=0.75）を世代0から世代2の11ファイルへ適用して学習したものである（[学習記録](../measurements/lookahead-teacher-pst-training.md)）。
+2026年9月27日時点の学習PSTは、先読み教師（γ=0.9、n=40、λ=0.75）を世代0から世代2の11ファイルへ適用して学習したものである（[学習記録](../measurements/lookahead-teacher/lookahead-teacher-pst-training.md)）。
 着手までに評価関数の他の計画が採用され、学習PSTや教師の設定が変わった場合は、変わった後の構成を基準とし、本書の数値の見積もりをその構成で確かめ直す。
 
 本書は段階9の成果物を移植して使う。
@@ -170,7 +170,7 @@
 ## 試験用の対局
 
 試験集合は、着手時の採用版を生成器で動かした新しい自己対局である。
-生成器の設定は、局面ごとの探索ノード数、乱数の序盤、規則セット、置換表、および保存時の除外を含めて、[世代2の生成](../measurements/strength-stage7-gen2-generation.md)と同じにする。
+生成器の設定は、局面ごとの探索ノード数、乱数の序盤、規則セット、置換表、および保存時の除外を含めて、[世代2の生成](../measurements/strength-stage7/strength-stage7-gen2-generation.md)と同じにする。
 生成の前に、解決済みの実行設定、実行する全コマンド、生成コミット、および実行バイナリのSHA-256を測定記録へ書き、生成は[来歴固定のworktree](../lessons/pin-generation-binary-to-worktree.md)から行う。
 
 生成のシードは、予備生成を含めて、過去のすべての生成と測定が使ったシードの区間と重ならない値とする。
@@ -246,7 +246,7 @@
 2. 高速版の特徴値が全計算と一致することを検証する。
 3. 候補の学習で、その段で通過した項目の係数を同時に学ぶ。最新の採用版が持つ追加係数と学習PSTは固定する。
 4. 候補は、最新の採用版へ、その段の土台、通過した項目の計算、特徴数の定数、および学習済みの重みを加えたコミットとする。
-5. 新しい係数を0とした候補と最新の採用版の `bench` のNPSを、Pコアへ固定した `taskset` で交互に各5回測り、中央値の比rと、速度の損失の目安216×log2(1/r) Eloを記録する。この目安は、持ち時間を2倍にすると棋力が216 Elo上がった自己対局の測定（[sensitivity-time2x](../measurements/sensitivity-time2x.md)）から、NPSの比を持ち時間の比とみなし、棋力が持ち時間の対数に比例すると仮定して求める近似であり、段階9の設計書と同じである。
+5. 新しい係数を0とした候補と最新の採用版の `bench` のNPSを、Pコアへ固定した `taskset` で交互に各5回測り、中央値の比rと、速度の損失の目安216×log2(1/r) Eloを記録する。この目安は、持ち時間を2倍にすると棋力が216 Elo上がった自己対局の測定（[sensitivity-time2x](../measurements/evaluation-gen1/sensitivity-time2x.md)）から、NPSの比を持ち時間の比とみなし、棋力が持ち時間の対数に比例すると仮定して求める近似であり、段階9の設計書と同じである。
 6. 候補を最新の採用版と[手引き](../guides/sprt.md)の段階ゲートで比べる。STCは `time=10000+100` で上限3,000ペア、LTCは `time=60000+200` とし、振分けと採用の規則は手引きに従う。採用するのは、LTCが `H1` であり、エンジン異常、時間切れ、および拒否着手が0件の場合だけである。STCを省略する理由はないので、STCから始める。
 
 測定名は、段ごとに `evaluation-terms-relearning-tier<段>-stc` と `evaluation-terms-relearning-tier<段>-ltc` とし、それぞれ独立した測定記録に残す。
@@ -335,9 +335,9 @@ LTCのシードは、STCの基本シードからペア数以上離れた未使�
 - [ヒューリスティック評価の係数学習に関する原因調査](../audits/heuristic-learning-causes-2026-09-27.md)。本書が直す問題点と、項目1の部分群の効果量の出典である。
 - 原因調査の対照実験の記録は、ブランチ `heuristic-learning-diagnosis` の `docs/measurements/heuristic-learning-diagnosis.md` にあり、射線の特徴の診断コード `shelter_features.py` を含む。
 - [棋力向上段階9](archived/strength-stage9.md)。7項目の定義、追加特徴の共通の基盤、土台の設計、特徴の除外と端点の共有の規則、および速度の換算の出典である。
-- [118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)と[利き数の表の速度](../measurements/strength-stage9-table-bench.md)。
-- [項目1の学習記録](../measurements/strength-stage9-shelter-training.md)と[先読み教師での項目1の学習記録](../measurements/lookahead-teacher-shelter-training.md)。
-- [先読み教師値](archived/lookahead-teacher.md)と[先読み教師での学習PSTの学習記録](../measurements/lookahead-teacher-pst-training.md)。採用中の教師と学習の設定である。
-- [世代2の生成記録](../measurements/strength-stage7-gen2-generation.md)。試験用の対局の生成設定の出典である。
+- [118列の発火率診断](../measurements/strength-stage9/strength-stage9-activation-diag-b.md)と[利き数の表の速度](../measurements/strength-stage9/strength-stage9-table-bench.md)。
+- [項目1の学習記録](../measurements/strength-stage9/strength-stage9-shelter-training.md)と[先読み教師での項目1の学習記録](../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)。
+- [先読み教師値](archived/lookahead-teacher.md)と[先読み教師での学習PSTの学習記録](../measurements/lookahead-teacher/lookahead-teacher-pst-training.md)。採用中の教師と学習の設定である。
+- [世代2の生成記録](../measurements/strength-stage7/strength-stage7-gen2-generation.md)。試験用の対局の生成設定の出典である。
 - [lishogi対局 yO464dzl の敗因分析](../research/lishogi-game-yO464dzl-loss-analysis.md)。
 - [SPRTによる棋力測定の手引き](../guides/sprt.md)。

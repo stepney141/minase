@@ -21,6 +21,6 @@ late move pruningは、捕獲手も数える手番号を上限と比べ、killer
 ## 出典
 
 - [plans/search-revival-spsa.md](../plans/archived/search-revival-spsa.md)
-- [measurements/search-revival-lmp-diag.md](../measurements/search-revival-lmp-diag.md)
-- [measurements/search-revival-tstar-vs-m-ltc.md](../measurements/search-revival-tstar-vs-m-ltc.md)
-- [measurements/search-revival-tstar-vs-tprime-stc.md](../measurements/search-revival-tstar-vs-tprime-stc.md)
+- [measurements/search-revival-spsa/search-revival-lmp-diag.md](../measurements/search-revival-spsa/search-revival-lmp-diag.md)
+- [measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md](../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)
+- [measurements/search-revival-spsa/search-revival-tstar-vs-tprime-stc.md](../measurements/search-revival-spsa/search-revival-tstar-vs-tprime-stc.md)

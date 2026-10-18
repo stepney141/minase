@@ -21,14 +21,14 @@
 | 既存の試行 | 記録が支持する結論 | 今回の提案との関係 |
 |---|---|---|
 | [初期NNUEと世代反復](../plans/archived/evaluation-gen1.md) | 初期化を修正した残差線形項つきのNNUEも、固定ノードと時間制御の両方で不採用となった。 | 表現可能性だけでは再導入を支持できず、教師、表現、探索との整合を切り分ける必要がある。 |
-| [Factorization Machineの学習](../measurements/fm-phase1-training.md)と[採否測定](../measurements/fm-adoption-stc.md) | 2駒関係を表すモデルは教師への適合を改善しても、対局で弱くなった。 | 平均的な教師誤差を下げるだけでは、着手選択の改善を保証できない。 |
+| [Factorization Machineの学習](../measurements/factorization-machine/fm-phase1-training.md)と[採否測定](../measurements/factorization-machine/fm-adoption-stc.md) | 2駒関係を表すモデルは教師への適合を改善しても、対局で弱くなった。 | 平均的な教師誤差を下げるだけでは、着手選択の改善を保証できない。 |
 | [FMの縮小版と自己選択の診断](../plans/archived/relative-pair-eval.md) | 補正を1/4にした版は当時の基準に対する短時間と長時間の検定を通過し、masterには未統合である。 | 関係評価の有用性を示す対照候補になるが、現行masterへの効果は再確認が必要である。 |
-| [利き表の差分更新](../measurements/strength-stage9-table-bench.md) | 費用に関する事前条件を満たさず、関連する評価項目の対局測定へ進まなかった。 | 全盤利き表の費用は確認済みだが、利きの情報が棋力に寄与しないとは判定していない。 |
-| [王の露出と教師探索量](../measurements/strength-stage9-depth-sensitivity.md) | 深い教師による特定の特徴の効果が事前条件に届かなかった。 | 候補手の順位や探索末端の誤りを改善できるかは未検証である。 |
+| [利き表の差分更新](../measurements/strength-stage9/strength-stage9-table-bench.md) | 費用に関する事前条件を満たさず、関連する評価項目の対局測定へ進まなかった。 | 全盤利き表の費用は確認済みだが、利きの情報が棋力に寄与しないとは判定していない。 |
+| [王の露出と教師探索量](../measurements/strength-stage9/strength-stage9-depth-sensitivity.md) | 深い教師による特定の特徴の効果が事前条件に届かなかった。 | 候補手の順位や探索末端の誤りを改善できるかは未検証である。 |
 | [先読み教師](../plans/archived/lookahead-teacher.md) | 将来の実戦経路の評価を混ぜる方式は実装済みで、PSTの再学習は採用された。長時間の検定は保留のまま中止された。 | 同じ局面から別の手を指した場合の結果を比較する教師とは異なる。 |
 
 過去のNNUEは、初期化を修正し、再学習PSTで残差線形項を初期化した後にも棋力で劣った。
-[固定ノードの測定](../measurements/nnue-gen1-nodes100k.md)でも改善しなかったため、[速度低下](../measurements/bench-nnue-gen1-depth5.md)だけを解けばよいとは判断できない。
+[固定ノードの測定](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)でも改善しなかったため、[速度低下](../measurements/evaluation-gen1/bench-nnue-gen1-depth5.md)だけを解けばよいとは判断できない。
 駒単位の入力から非線形層で複数駒の関係を表す能力も、既に試した構成が持っていた。
 以下に示す表現可能性は原理の説明であり、再試行の成功を予測する新しい証拠ではない。
 

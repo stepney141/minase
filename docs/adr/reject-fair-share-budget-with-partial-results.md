@@ -11,9 +11,9 @@
 第0段階は根の各手の探索結果を保持する表である。
 第1段階は、打ち切りの上限hardで中断した反復でも、その反復で探索を終えた手の中の最善手を指す途中結果の採用と、標準予算softとhardを、持ち時間の1手あたりの分担そのものにする予算の再定義である。
 第2段階はsoftの半分を過ぎた後の反復の深さを抑える方式、第3段階は局面の信号の積でsoftを伸縮させる方式である。
-第2段階は、[事前判定](../measurements/time-management-efficiency-stage2-bench.md)で抑えた反復の所要時間の比の中央値が0.0であり、置換表の照会だけで終わる空費と分かったので見送った。
-第2段階を除く残りの段階を加えた最終候補は、STCで有効665ペアでLLR −2.958の`H0`となり、候補側に時間切れが2件出た（[記録](../measurements/time-management-efficiency-stc.md)）。
-構成要素を分けた分解測定では、第0段階と第1段階を加えた構成D1が有効260ペアでLLR −2.954、D1から序盤の係数を外したD2が有効259ペアでLLR −2.962であり、どちらも`H0`だった（[D1](../measurements/time-management-decomposition-d1-stc.md)、[D2](../measurements/time-management-decomposition-d2-stc.md)）。
+第2段階は、[事前判定](../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)で抑えた反復の所要時間の比の中央値が0.0であり、置換表の照会だけで終わる空費と分かったので見送った。
+第2段階を除く残りの段階を加えた最終候補は、STCで有効665ペアでLLR −2.958の`H0`となり、候補側に時間切れが2件出た（[記録](../measurements/time-management-efficiency/time-management-efficiency-stc.md)）。
+構成要素を分けた分解測定では、第0段階と第1段階を加えた構成D1が有効260ペアでLLR −2.954、D1から序盤の係数を外したD2が有効259ペアでLLR −2.962であり、どちらも`H0`だった（[D1](../measurements/time-management-efficiency/time-management-decomposition-d1-stc.md)、[D2](../measurements/time-management-efficiency/time-management-decomposition-d2-stc.md)）。
 D1の1局の総思考時間の中央値は基準の27.6秒に対して23.7秒であり、旧式が最後の反復をsoftを超えて完了させるために使っていた時間を、D1は使い残していた。
 
 ## 決定
