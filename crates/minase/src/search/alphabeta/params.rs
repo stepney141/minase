@@ -172,6 +172,10 @@ parameters! {
     /// Stockfishは90/208で43（src/search.cpp:1242-1243）、YaneuraOuは86/90で96（yaneuraou-search.cpp:3663-3664）。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     FutilityAboveAlpha(futility_above_alpha): 43, -100, 300;
+    /// 静かな手のSEEでlmrDepthの2乗あたりに許容する損。単位は歩兵価値に対する百分率である。
+    /// Stockfishは23/208で11、YaneuraOuは25/90で28である（Stockfish src/search.cpp:1255-1258、YaneuraOu yaneuraou-search.cpp:3691-3697）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    QuietSeeMargin(quiet_see_margin): 11, 0, 100;
     /// late move pruningで数える静かな手の上限の切片。単位は1/100手である。
     /// 既定値はStockfishとYaneuraOuの`3 + d²`（Stockfish src/search.cpp:1199、YaneuraOu yaneuraou-search.cpp:3593）を換算した値であり、
     /// この式の形での値はSPSAで未調整である。

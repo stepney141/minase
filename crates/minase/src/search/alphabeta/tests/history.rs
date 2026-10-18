@@ -394,6 +394,7 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 }
 
 /// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
+/// 静かな手のSEEで飛ばした手も探索済みの手に含めない。
 #[test]
 fn quiet_history_negamax_updates_only_searched_quiets() {
     let board = position(
@@ -423,6 +424,58 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
             assert!(moves.iter().any(|&(_, capture)| capture));
             let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
             assert!(cutoff_index + 1 < moves.len());
+            assert!(!royal_under_attack(&board));
+            let static_eval = evaluate(searcher.nnue, &board);
+            let quiet_see_pruned: Vec<_> = moves
+                .iter()
+                .enumerate()
+                .map(|(index, &(mv, capture))| {
+                    if index == 0 || capture || mv.promote || mv.mid.is_some() {
+                        return false;
+                    }
+                    let lmr_depth =
+                        super::super::pruning::pruning_lmr_depth(10, index, false, true, true);
+                    let gives_check = board.gives_check(&searcher.generator, mv);
+                    if gives_check {
+                        assert!(!see_prunes(
+                            &board,
+                            engine_rules(),
+                            searcher.nnue,
+                            mv,
+                            super::super::pruning::see_margin(searcher.nnue.pawn_value(), 10, 0),
+                        ));
+                        return false;
+                    }
+                    assert_eq!(
+                        super::super::pruning::futility_pruning_value(
+                            searcher.nnue.pawn_value(),
+                            static_eval,
+                            -10,
+                            lmr_depth,
+                        ),
+                        None,
+                        "SEEより前のfutility pruningをこの局面から除外する: {mv:?}"
+                    );
+                    see_prunes(
+                        &board,
+                        engine_rules(),
+                        searcher.nnue,
+                        mv,
+                        super::super::pruning::quiet_see_margin(
+                            searcher.nnue.pawn_value(),
+                            lmr_depth,
+                        ),
+                    )
+                })
+                .collect();
+            if winner_index == 4 {
+                assert!(
+                    quiet_see_pruned[..=cutoff_index]
+                        .iter()
+                        .any(|&pruned| pruned)
+                );
+            }
+            assert!(!quiet_see_pruned[cutoff_index]);
             searcher.tt.store(
                 search_key(&board),
                 0,
@@ -445,10 +498,14 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
                 Some(20)
             );
-            assert_eq!(searcher.nodes, cutoff_index as u64 + 1);
+            let searched = quiet_see_pruned[..=cutoff_index]
+                .iter()
+                .filter(|&&pruned| !pruned)
+                .count();
+            assert_eq!(searcher.nodes, searched as u64);
             assert_eq!(searcher.killers[0][0], Some(winner));
             for (index, &(mv, capture)) in moves.iter().enumerate() {
-                let expected = if capture || index > cutoff_index {
+                let expected = if capture || index > cutoff_index || quiet_see_pruned[index] {
                     0
                 } else if mv == winner {
                     params::history_bonus_scale()

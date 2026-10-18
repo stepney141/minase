@@ -296,9 +296,9 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 Color::Black,
                 &[
                     (sq(0, 11), Color::White, PieceKind::King),
-                    (sq(4, 6), Color::White, PieceKind::Pawn),
-                    (sq(5, 6), Color::White, PieceKind::Pawn),
-                    (sq(6, 6), Color::White, PieceKind::Pawn),
+                    (sq(4, 4), Color::White, PieceKind::Pawn),
+                    (sq(5, 4), Color::White, PieceKind::Pawn),
+                    (sq(6, 4), Color::White, PieceKind::Pawn),
                     (sq(5, 5), Color::Black, PieceKind::Lion),
                     (sq(2, 2), Color::Black, PieceKind::GoldGeneral),
                     (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
@@ -367,6 +367,20 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 searcher.capture_history,
             ) {
                 ordered.push((mv, capture));
+            }
+            let mut counted_quiets = 0;
+            for &(mv, capture) in &ordered {
+                let counted_quiet =
+                    mv != tt_move && !capture && !mv.promote && !killers.contains(&Some(mv));
+                let late_move_pruned = counted_quiet && counted_quiets >= limit;
+                counted_quiets += u64::from(counted_quiet);
+                if !late_move_pruned && mv != tt_move && !capture && !mv.promote {
+                    assert!(mv.mid.is_none());
+                    assert!(
+                        !see_prunes(&board, engine_rules(), searcher.nnue, mv, 0),
+                        "静かな手のSEEによる枝刈りをこの局面から除外する: {mv:?}"
+                    );
+                }
             }
             assert!(ordered.iter().any(|&(mv, capture)| if promotion {
                 mv.promote

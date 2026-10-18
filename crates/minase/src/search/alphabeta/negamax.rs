@@ -19,7 +19,7 @@ use super::pruning::{
     SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH, capture_futility_value, corrected_static_eval,
     futility_pruning_value, is_improving, is_opponent_worsening, late_move_limit, lmr_depth,
     lmr_reduction, lmr_research_depth, non_lmr_depth, null_move_reduction, pruning_eval,
-    pruning_lmr_depth, razoring_margin, reverse_futility_margin, see_margin,
+    pruning_lmr_depth, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
     seek_mate_null_move_reduction, should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
@@ -397,8 +397,8 @@ impl Searcher<'_> {
                         continue;
                     }
                 } else if !mv.promote && window_outside_bands {
-                    // futility pruningは、成る手を対象にしない。
-                    // 成る手は、麒麟が獅子に成るように評価が大きく動くため保護する。
+                    // Stockfishの「捕獲手か王手ならS3、それ以外ならS1、S5」と同じ結果になるよう、
+                    // S1で王手と判明した手はS5を通さずS3へ進める（src/search.cpp:1205, 1227-1259）。
                     let mut gives_check = None;
                     if !(self.follow_pv[ply as usize] && pv_node) {
                         // 枝刈り用のlmrDepthは、この判定に到達した手についてだけ求める。
@@ -428,9 +428,27 @@ impl Searcher<'_> {
                                 continue;
                             }
                         }
+                        // S1で飛ばさなかった王手でない静かな手は、lmrDepthの2乗に応じた
+                        // SEEの損がある場合に飛ばす。成る手と2段階移動は対象外である。
+                        if gives_check != Some(true)
+                            && mv.mid.is_none()
+                            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                            && see_prunes(
+                                position,
+                                self.rules,
+                                self.nnue,
+                                mv,
+                                quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
+                            )
+                            && !*gives_check
+                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                        {
+                            index += 1;
+                            continue;
+                        }
                     }
-                    // Stockfish src/search.cpp:1205, 1220-1225。静かな手はSEEで損と
-                    // 判定した後にだけ王手かを求め、王手になる手だけを飛ばす。
+                    // 王手になる静かな手にはS3の余裕値を使う。王手か未判定なら、
+                    // S3のSEEで枝刈りできる場合にだけ判定する（Stockfish src/search.cpp:1205, 1220-1225）。
                     if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                         && see_prunes(
                             position,

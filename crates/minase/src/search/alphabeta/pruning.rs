@@ -193,6 +193,22 @@ pub(super) fn futility_pruning_value(
     FutilityCoefficients::current().futility_pruning_value(pawn, static_eval, alpha, lmr_depth)
 }
 
+/// 静かな手のSEEで許容する損を、lmrDepthを0以上に切り詰めて求める。
+pub(super) fn quiet_see_margin(pawn: i32, lmr_depth: i32) -> i32 {
+    quiet_see_margin_with_coefficient(pawn, lmr_depth, params::quiet_see_margin())
+}
+
+/// 静かな手のSEEで許容する損を、指定した係数で求める。
+/// 積は`i64`で計算し、最後に1回だけ100で割る（Stockfish src/search.cpp:1255-1258）。
+pub(super) fn quiet_see_margin_with_coefficient(
+    pawn: i32,
+    lmr_depth: i32,
+    coefficient: i32,
+) -> i32 {
+    let lmr_depth = i64::from(lmr_depth.max(0));
+    (i64::from(pawn) * i64::from(coefficient) * lmr_depth * lmr_depth / 100) as i32
+}
+
 /// 枝刈りした手の見積りで最善値だけを上げてよいかを返す。
 /// Stockfishの最善値の更新に対応する（src/search.cpp:1249-1251）。
 pub(super) fn should_raise_futility_best_score(best_score: i32, futility_value: i32) -> bool {

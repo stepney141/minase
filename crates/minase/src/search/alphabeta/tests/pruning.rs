@@ -5,7 +5,8 @@ use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
-    is_seek_mate, late_move_limit, reverse_futility_margin, seek_mate_null_move_reduction,
+    is_seek_mate, late_move_limit, pruning_lmr_depth, quiet_see_margin,
+    quiet_see_margin_with_coefficient, reverse_futility_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score,
 };
 
@@ -235,6 +236,16 @@ fn see_margin_matches_numeric_examples() {
     };
     for (depth, history, expected) in [(1, 0, 85), (3, 1024, 271), (1, -8000, 0)] {
         assert_eq!(coefficients.see_margin(100, depth, history), expected);
+    }
+}
+
+#[test]
+fn quiet_see_margin_matches_numeric_examples() {
+    for (lmr_depth, expected) in [(-3, 0), (0, 0), (3, 99), (5, 275)] {
+        assert_eq!(
+            quiet_see_margin_with_coefficient(100, lmr_depth, 11),
+            expected
+        );
     }
 }
 
@@ -1337,16 +1348,23 @@ fn see_pruning_applies_without_depth_or_zero_window_limits() {
 
 /// 先頭の置換表の手で枝刈りを可能にし、`target`が読まれた場合だけβ打ち切りを起こす。
 /// 子の値は固定ネットの局面評価から作る窓に対する相対値とし、係数の既定値に依存させない。
-fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool, searched: bool) {
+fn assert_quiet_see_search(
+    board: &Position,
+    target: Move,
+    expected_check: bool,
+    follow_pv: bool,
+    target_is_tt_move: bool,
+    searched: bool,
+) {
     let nnue = test_nnue();
     let moves = legal_moves(board);
-    let tt_move = Move {
+    let leading_quiet = Move {
         from: sq(11, 0),
         mid: None,
         to: sq(10, 0),
         promote: false,
     };
-    assert!(moves.contains(&tt_move));
+    assert!(moves.contains(&leading_quiet));
     assert!(moves.contains(&target));
     assert!(
         moves
@@ -1365,6 +1383,16 @@ fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool,
         target,
         super::super::pruning::see_margin(nnue.pawn_value(), 1, 0),
     ));
+    let lmr_depth = pruning_lmr_depth(1, usize::from(!target_is_tt_move), false, true, true);
+    if !expected_check && !target.promote && target.mid.is_none() {
+        assert!(see_prunes(
+            board,
+            engine_rules(),
+            nnue,
+            target,
+            quiet_see_margin(nnue.pawn_value(), lmr_depth),
+        ));
+    }
 
     let minimum_child_value = moves
         .iter()
@@ -1378,6 +1406,18 @@ fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool,
     let alpha = minimum_child_value - 1;
     let beta = alpha + 2;
     assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
+    if !follow_pv && !target_is_tt_move && !target.promote {
+        assert_eq!(
+            super::super::pruning::futility_pruning_value(
+                nnue.pawn_value(),
+                evaluate(nnue, board),
+                alpha,
+                lmr_depth,
+            ),
+            None,
+            "対象手はS1でなくSEEの判定へ進む"
+        );
+    }
 
     let table = TranspositionTable::new(16).unwrap();
     for &mv in &moves {
@@ -1397,6 +1437,11 @@ fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool,
             false,
         );
     }
+    let tt_move = if target_is_tt_move {
+        target
+    } else {
+        leading_quiet
+    };
     table.store(
         search_key(board),
         0,
@@ -1407,7 +1452,7 @@ fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool,
         false,
     );
     let (score, _) = run_configured_negamax(board, 1, alpha, beta, 0, &table, |searcher| {
-        searcher.follow_pv[0] = true;
+        searcher.follow_pv[0] = follow_pv;
         searcher.killers[0][0] = Some(target);
     });
     let hit = table.probe(search_key(board), 0).unwrap();
@@ -1441,12 +1486,10 @@ fn see_pruning_skips_losing_quiet_check() {
         to: sq(5, 4),
         promote: false,
     };
-    assert_quiet_see_search(&board, target, true, false);
+    assert_quiet_see_search(&board, target, true, true, false, false);
 }
 
-// 王手にならない静かな飛車移動はSEEが負でも、S5の導入前なので読む。
-#[test]
-fn see_pruning_searches_losing_quiet_non_check() {
+fn losing_quiet_non_check() -> (Position, Move) {
     let board = position(
         Color::Black,
         &[
@@ -1464,7 +1507,28 @@ fn see_pruning_searches_losing_quiet_non_check() {
         to: sq(5, 4),
         promote: false,
     };
-    assert_quiet_see_search(&board, target, false, true);
+    (board, target)
+}
+
+// 王手にならない静かな飛車移動は、斜めの角行に取られるSEEの損により読まない。
+#[test]
+fn quiet_see_pruning_skips_losing_non_check() {
+    let (board, target) = losing_quiet_non_check();
+    assert_quiet_see_search(&board, target, false, false, false, false);
+}
+
+// followPVのPVノードでは、同じ王手にならない静かな手を読む。
+#[test]
+fn quiet_see_pruning_searches_follow_pv_move() {
+    let (board, target) = losing_quiet_non_check();
+    assert_quiet_see_search(&board, target, false, true, false, true);
+}
+
+// 置換表の手では、同じ王手にならない静かな手を読む。
+#[test]
+fn quiet_see_pruning_searches_tt_move() {
+    let (board, target) = losing_quiet_non_check();
+    assert_quiet_see_search(&board, target, false, false, true, true);
 }
 
 // 成る角行の静かな手は王手になりSEEが負でも、成る手の保護により読む。
@@ -1486,7 +1550,7 @@ fn see_pruning_searches_promoting_quiet_check() {
         to: sq(5, 8),
         promote: true,
     };
-    assert_quiet_see_search(&board, target, true, true);
+    assert_quiet_see_search(&board, target, true, false, false, true);
 }
 
 // 経由升を持つ獅子の捕獲は規則依存なので展開する。

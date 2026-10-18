@@ -117,6 +117,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 "FutilityAboveAlpha",
                 params::futility_above_alpha as fn() -> i32,
             ),
+            ("QuietSeeMargin", params::quiet_see_margin as fn() -> i32),
             ("LmpBase", params::lmp_base as fn() -> i32),
             ("LmpSlope", params::lmp_slope as fn() -> i32),
             ("LmpNonImproving", params::lmp_non_improving as fn() -> i32),

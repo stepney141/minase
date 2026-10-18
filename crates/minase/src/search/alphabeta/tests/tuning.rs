@@ -7,8 +7,8 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     pruning::{
-        capture_futility_value, futility_value, late_move_limit, lmr_base, razoring_margin,
-        reverse_futility_margin, see_margin,
+        capture_futility_value, futility_value, late_move_limit, lmr_base, quiet_see_margin,
+        razoring_margin, reverse_futility_margin, see_margin,
     },
     root::grow_aspiration_delta,
 };
@@ -158,6 +158,7 @@ fn tuning_parameters_in_isolated_process() {
         ("FutilityBase", 79),
         ("FutilityLmrDepth", 57),
         ("FutilityAboveAlpha", 43),
+        ("QuietSeeMargin", 11),
         ("LmpBase", 1799),
         ("LmpSlope", 48),
         ("LmpNonImproving", 31),
@@ -429,7 +430,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 68] = [
+    let cases: [Case; 69] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -583,6 +584,9 @@ fn tuning_parameters_in_isolated_process() {
         }),
         ("FutilityAboveAlpha", 100, || {
             i64::from(futility_value(100, 60, 50, 0))
+        }),
+        ("QuietSeeMargin", 100, || {
+            i64::from(quiet_see_margin(100, 3))
         }),
         ("LmpBase", 600, || i64::from(late_move_limit(1, false))),
         ("LmpSlope", 400, || i64::from(late_move_limit(1, false))),
