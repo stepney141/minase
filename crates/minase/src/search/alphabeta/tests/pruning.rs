@@ -6,8 +6,8 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
     is_seek_mate, late_move_limit, pruning_lmr_depth, quiet_see_margin,
-    quiet_see_margin_with_coefficient, reverse_futility_margin, seek_mate_null_move_reduction,
-    should_raise_futility_best_score,
+    quiet_see_margin_with_coefficient, razoring_margin, razoring_margin_with_coefficient,
+    reverse_futility_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::LmrContext;
@@ -60,6 +60,13 @@ fn seek_mate_null_move_reduction_subtracts_half_of_total() {
 }
 
 #[test]
+fn razoring_margin_matches_numeric_examples() {
+    for (depth, expected) in [(1, 164), (4, 656)] {
+        assert_eq!(razoring_margin_with_coefficient(100, depth, 164), expected);
+    }
+}
+
+#[test]
 fn seek_mate_limits_reverse_futility_to_depth_five() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
@@ -88,11 +95,8 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
 fn seek_mate_disables_razoring() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
-    for (depth, margin) in [
-        (1, params::razoring_margin1()),
-        (2, params::razoring_margin2()),
-    ] {
-        let alpha = value + margin;
+    for depth in [1, 4] {
+        let alpha = value + razoring_margin(test_nnue().pawn_value(), depth) + 1;
         let (quiet_score, quiet_nodes) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
         for seek_mate in [false, true] {
             with_root_searcher(&board, &[], |searcher| {
@@ -1905,105 +1909,80 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
     );
 }
 
-// razoringは深さ1〜2で「静的評価 + 余裕値 ≤ α」なら静止探索を試し、その値もα以下なら通常探索を省く。
+// 判定用の評価値が閾値と等しければ通常探索し、1小さければ深さの上限なく静止探索の値を返す。
 // 捕獲候補のない局面では静的評価を返し、置換表へ保存しない。
 #[test]
-fn razoring_returns_quiescence_at_the_margin_boundary() {
+fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let position = bare_kings();
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
     assert!(!royal_under_attack(&position));
-    for (depth, margin) in [
-        (1, params::razoring_margin1()),
-        (2, params::razoring_margin2()),
-    ] {
-        for excess in [0, nnue.pawn_value()] {
-            let alpha = static_eval + margin + excess;
-            let (quiet_score, quiet_nodes) =
-                run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-            assert_eq!(quiet_score, static_eval);
-            let table = small_tt();
-            let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
-            let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
-            assert_eq!(score, quiet_score);
-            assert_eq!(nodes, quiet_nodes, "通常探索の手を展開しない");
-            assert!(nodes < full_nodes);
-            assert!(
-                table.probe(search_key(&position), 0).is_none(),
-                "捕獲のない静止探索は置換表に保存しない"
-            );
-        }
-        let alpha = static_eval + margin - 1;
-        let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-        let table = small_tt();
-        table.store(
-            search_key(&position),
+    for depth in [1, 2, 4] {
+        let margin = razoring_margin(nnue.pawn_value(), depth);
+        let boundary_alpha = static_eval + margin;
+        let (_, quiet_nodes) = run_quiesce(
+            &position,
+            boundary_alpha,
+            boundary_alpha + 1,
             0,
-            static_eval,
-            Bound::Lower,
-            None,
-            0,
-            true,
+            &small_tt(),
         );
-        let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
-        assert!(nodes > quiet_nodes, "余裕値に1足りなければ通常探索する");
+        let (_, boundary_nodes) = run_negamax(
+            &position,
+            depth,
+            boundary_alpha,
+            boundary_alpha + 1,
+            0,
+            &small_tt(),
+        );
+        assert!(
+            boundary_nodes > quiet_nodes,
+            "evalが閾値と等しい場合は通常探索する: depth={depth}"
+        );
+
+        let alpha = boundary_alpha + 1;
+        let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+        assert_eq!(quiet_score, static_eval);
+        let table = small_tt();
+        let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
+        assert_eq!((score, nodes), (quiet_score, quiet_nodes));
+        assert!(nodes < boundary_nodes);
+        assert!(
+            table.probe(search_key(&position), 0).is_none(),
+            "捕獲のない静止探索は置換表に保存しない"
+        );
     }
 }
 
-// 静止探索の上界がαと等しい場合も打ち切る。
+// allNodeだけが対象であり、同じ零窓でもcutNodeは対象にしない。
 #[test]
-fn razoring_accepts_quiescence_equal_to_alpha() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    let position = position(
-        Color::Black,
-        &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 4), Color::White, PieceKind::Lion),
-            (sq(5, 3), Color::Black, PieceKind::Rook),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
+fn razoring_only_applies_to_all_nodes() {
+    let position = bare_kings();
     let nnue = test_nnue();
-    for (depth, margin) in [
-        (1, params::razoring_margin1()),
-        (2, params::razoring_margin2()),
-    ] {
-        let alpha = evaluate(nnue, &position) + margin;
+    let depth = 1;
+    let alpha = evaluate(nnue, &position) + razoring_margin(nnue.pawn_value(), depth) + 1;
+    let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+    assert_eq!(
+        run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt()),
+        (quiet_score, quiet_nodes),
+        "allNodeでは静止探索へ移る"
+    );
+    for (name, beta, cut_node) in [("PV", alpha + 2, false), ("cut", alpha + 1, true)] {
         with_root_searcher(&position, &[], |searcher| {
-            // delta pruningによる候補なしの早期終了を避け、置換表の上界を読む。
-            searcher.delta_margin = INFINITY;
-            searcher.tt.store(
-                search_key(&position),
-                0,
-                alpha,
-                Bound::Upper,
-                None,
-                0,
-                false,
-            );
-            let quiet_score = searcher
-                .quiesce(&mut position.clone(), alpha, alpha + 1, 0)
+            searcher
+                .negamax(&mut position.clone(), depth, alpha, beta, 0, cut_node)
                 .unwrap();
-            assert_eq!(quiet_score, alpha);
-            let quiet_nodes = searcher.nodes;
-            let score = searcher
-                .negamax(&mut position.clone(), depth, alpha, alpha + 1, 0, false)
-                .unwrap();
-            assert_eq!(score, alpha);
-            assert_eq!(searcher.nodes, quiet_nodes);
+            assert!(searcher.nodes > quiet_nodes, "{name}Nodeでは通常探索する");
         });
     }
 }
 
-// PV窓、詰み帯、深さ3では通常探索を行う。
+// 王駒に相手の疑似利きが届く場合は通常探索を行う。
 #[test]
-fn razoring_exclusions_search_children() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    let position = bare_kings();
+fn razoring_does_not_run_when_a_royal_is_attacked() {
     let nnue = test_nnue();
-    let alpha = evaluate(nnue, &position) + params::razoring_margin2();
-    let attacked = minase_core::test_util::position(
+    let position = minase_core::test_util::position(
         Color::Black,
         &[
             (sq(0, 11), Color::White, PieceKind::King),
@@ -2011,92 +1990,43 @@ fn razoring_exclusions_search_children() {
             (sq(11, 6), Color::White, PieceKind::Rook),
         ],
     );
-    let attacked_eval = evaluate(nnue, &attacked);
-    for (position, attacked, depth, alpha, beta) in [
-        (&position, false, 1, alpha, alpha + 2),
-        (&position, false, 2, alpha, alpha + 2),
-        (&position, false, 1, MATE_THRESHOLD - 1, MATE_THRESHOLD),
-        (&position, false, 2, MATE_THRESHOLD - 1, MATE_THRESHOLD),
-        (&position, false, 1, MATE_THRESHOLD, MATE_THRESHOLD + 1),
-        (&position, false, 2, MATE_THRESHOLD, MATE_THRESHOLD + 1),
-        (&position, false, 1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
-        (&position, false, 2, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
-        (&position, false, 3, alpha, alpha + 1),
-        (
-            &attacked,
-            true,
-            1,
-            attacked_eval + params::razoring_margin1(),
-            attacked_eval + params::razoring_margin1() + 1,
-        ),
-        (
-            &attacked,
-            true,
-            2,
-            attacked_eval + params::razoring_margin2(),
-            attacked_eval + params::razoring_margin2() + 1,
-        ),
-    ] {
-        let (quiet_score, quiet_nodes) = run_quiesce(position, alpha, beta, 0, &small_tt());
-        assert_eq!(
-            royal_under_attack(position),
-            attacked,
-            "depth={depth}, alpha={alpha}, attacked={attacked}"
-        );
-        if attacked {
-            assert!(
-                quiet_score <= alpha,
-                "depth={depth}, alpha={alpha}, attacked={attacked}"
-            );
-        }
-        let table = small_tt();
-        if !attacked {
-            table.store(
-                search_key(position),
-                0,
-                0,
-                Bound::Upper,
-                Some(legal_moves(position)[0]),
-                0,
-                false,
-            );
-        }
-        let (_, nodes) = run_negamax(position, depth, alpha, beta, 0, &table);
-        assert!(
-            nodes > quiet_nodes,
-            "depth={depth}, alpha={alpha}, beta={beta}, attacked={attacked}: {nodes} <= {}",
-            quiet_nodes
-        );
-    }
+    assert!(royal_under_attack(&position));
+    let depth = 1;
+    let alpha = evaluate(nnue, &position) + razoring_margin(nnue.pawn_value(), depth) + 1;
+    let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+    let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+    assert!(nodes > quiet_nodes, "王駒への利きがあれば通常探索する");
 }
 
-// 捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
+// 静止探索の値がαを超えても、その値をそのまま返して通常探索の深さでは保存しない。
 #[test]
-fn razoring_continues_normal_search_after_recovering_capture() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    let position = position(
-        Color::Black,
-        &[
-            // 最後の王駒の捕獲なら、許容される最大余裕値でもalphaを上回る。
-            (sq(5, 4), Color::White, PieceKind::King),
-            (sq(5, 3), Color::Black, PieceKind::Rook),
-            (sq(11, 0), Color::Black, PieceKind::King),
-        ],
-    );
+fn razoring_returns_quiescence_above_alpha() {
+    let position = bare_kings();
     let nnue = test_nnue();
-    let alpha = evaluate(nnue, &position) + params::razoring_margin1();
+    let raw = evaluate(nnue, &position);
+    let depth = 1;
+    let alpha = raw - 1;
+    let beta = raw;
+    let tt_eval = alpha - razoring_margin(nnue.pawn_value(), depth) - 1;
     assert!(!royal_under_attack(&position));
-    let (quiet_score, _) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-    assert!(quiet_score > alpha, "最後の王駒の捕獲で余裕値を取り戻す");
-    // 深さ1なら子は静止探索となり、子ノードでの枝刈りの差を比較へ持ち込まない。
     let table = small_tt();
-    let (score, _) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
-    let (full_score, _) = run_negamax(&position, 1, alpha, alpha + 2, 0, &small_tt());
-    assert_eq!(score, full_score);
-    // 王駒の捕獲は着手ノードに数えないため、保存深さで通常探索への継続を確かめる。
+    table.store(
+        search_key(&position),
+        0,
+        tt_eval,
+        Bound::Upper,
+        None,
+        0,
+        false,
+    );
+    let (score, nodes) = run_negamax(&position, depth, alpha, beta, 0, &table);
+    assert_eq!((score, nodes), (raw, 0));
+    assert!(score > alpha);
     let hit = table.probe(search_key(&position), 0).unwrap();
-    assert_eq!(hit.depth, 1);
-    assert!(hit.best_move.is_some());
+    assert_eq!(
+        (hit.depth, hit.score, hit.bound),
+        (0, tt_eval, Bound::Upper)
+    );
 }
 
 // null moveの追加減深は `(静的評価 − β) × NullMoveEvalScale / 100 / (2 × 歩兵価値)` を0〜3に制限する。
@@ -2262,7 +2192,7 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
             let alpha = if reverse {
                 raw - root_reverse_margin(1, false) - 1
             } else {
-                raw + params::razoring_margin1()
+                raw + razoring_margin(searcher.nnue.pawn_value(), 1) + 1
             };
             let mut board = position.clone();
             let score = searcher
@@ -2380,7 +2310,7 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
         with_root_searcher(&board, &[], |searcher| {
             let raw = evaluate(searcher.nnue, &board);
             // 静的評価では余裕値に1足りず、低い上界を採れば静止探索へ移る。
-            let alpha = raw + (params::razoring_margin1() - 1);
+            let alpha = raw + razoring_margin(searcher.nnue.pawn_value(), 1) - 1;
             searcher
                 .tt
                 .store(search_key(&board), 0, raw - 18, bound, None, 0, true);

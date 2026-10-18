@@ -96,8 +96,7 @@ fn tuning_parameters_in_isolated_process() {
             "r2 lmp small limit",
             "r2 lmp large limit",
             "reverse futility margin",
-            "razoring margin 1",
-            "razoring margin 2",
+            "razoring depth margin",
             "null move eval scale",
             "disabled null move eval scale",
         ] {
@@ -168,8 +167,7 @@ fn tuning_parameters_in_isolated_process() {
         ("ReverseFutilityImproving", 144),
         ("ReverseFutilityOpponentWorsening", 20),
         ("ReverseFutilityCorrection", 124),
-        ("RazoringMargin1", 2622),
-        ("RazoringMargin2", 2885),
+        ("RazoringDepthMargin", 164),
         ("SeeDepthMargin", 85),
         ("SeeCaptureHistory", 34),
         ("CaptureFutilityBase", 113),
@@ -276,12 +274,8 @@ fn tuning_parameters_in_isolated_process() {
             reverse_futility_parameter_changes_search();
             return;
         }
-        "razoring margin 1" => {
-            razoring_parameter_changes_search(1, "RazoringMargin1");
-            return;
-        }
-        "razoring margin 2" => {
-            razoring_parameter_changes_search(2, "RazoringMargin2");
+        "razoring depth margin" => {
+            razoring_parameter_changes_search();
             return;
         }
         "null move eval scale" => {
@@ -430,7 +424,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 69] = [
+    let cases: [Case; 68] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -611,10 +605,7 @@ fn tuning_parameters_in_isolated_process() {
         ("ReverseFutilityCorrection", 0, || {
             i64::from(reverse_futility_margin(101, 1, true, false, false, 100))
         }),
-        ("RazoringMargin1", 100, || {
-            i64::from(razoring_margin(101, 1))
-        }),
-        ("RazoringMargin2", 100, || {
+        ("RazoringDepthMargin", 100, || {
             i64::from(razoring_margin(101, 2))
         }),
         ("SeeDepthMargin", 100, || i64::from(see_margin(101, 2, 0))),
@@ -757,31 +748,20 @@ fn reverse_futility_parameter_changes_search() {
 }
 
 #[cfg(feature = "tuning")]
-fn razoring_parameter_changes_search(depth: u32, name: &str) {
+fn razoring_parameter_changes_search() {
     let board = bare_kings();
     let nnue = test_nnue();
     let value = evaluate(nnue, &board);
-    assert_eq!(params::razoring_margin1(), 2622, "数値例の前提");
-    assert_eq!(params::razoring_margin2(), 2885, "数値例の前提");
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 100×2622/100=2622、100×2885/100=2885。
-    // 変更後の137×2522/100→3455、137×2785/100→3815は、先に割ると2522と2785になる。
-    let (margin, changed, expected) = match depth {
-        1 => (2622, 2522, 3455),
-        2 => (2885, 2785, 3815),
-        _ => unreachable!(),
-    };
-    let alpha = value + margin - 1;
+    let depth = 1;
+    let original = params::razoring_depth_margin();
+    let changed = original - 1;
+    let alpha = value + changed + 1;
     assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
-    params::set(name, changed).unwrap();
+    params::set("RazoringDepthMargin", changed).unwrap();
     assert_eq!(
         run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
         (value, 0)
-    );
-    assert_eq!(
-        razoring_margin(137, depth),
-        expected,
-        "百分率は乗算してから割る"
     );
 }
 
@@ -836,6 +816,8 @@ fn null_move_eval_scale_changes_search() {
 #[cfg(feature = "tuning")]
 fn zero_null_move_eval_scale_matches_base_reduction_search() {
     params::set("NullMoveEvalScale", 0).unwrap();
+    // null moveの子に加わったrazoringを除外し、減深後の深さだけを比較する。
+    params::set("RazoringDepthMargin", 3000).unwrap();
     assert_eq!(params::null_move_base(), 4799, "数値例の前提");
     assert_eq!(params::null_move_slope(), 393, "数値例の前提");
     assert_eq!(MAX_PLY, 256, "数値例の前提");

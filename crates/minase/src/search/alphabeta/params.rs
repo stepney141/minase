@@ -213,12 +213,10 @@ parameters! {
     /// Stockfishは131072/198435で66（src/search.cpp:1030）、YaneuraOuは131072/180600で73である。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     ReverseFutilityCorrection(reverse_futility_correction): 124, 0, 200;
-    /// 残り深さ1で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    RazoringMargin1(razoring_margin1): 2622, 0, 2668;
-    /// 残り深さ2で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    RazoringMargin2(razoring_margin2): 2885, 0, 2885;
+    /// razoring余裕値の残り深さ1あたりの量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは342/208で164（src/search.cpp:1017-1018）、YaneuraOuは`502 + 306 × depth²`で形が異なる
+    /// （yaneuraou-search.cpp:3182-3191）。開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    RazoringDepthMargin(razoring_depth_margin): 164, 0, 3000;
     /// 静的交換評価（SEE）で許容する損の残り深さ1あたりの余裕値。単位は歩兵価値に対する百分率である。
     /// Stockfishは177/208で85、YaneuraOuは167/90で186である（Stockfish src/search.cpp:1222、YaneuraOu yaneuraou-search.cpp:3631）。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。

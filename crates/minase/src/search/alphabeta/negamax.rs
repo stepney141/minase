@@ -74,7 +74,8 @@ impl Searcher<'_> {
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことは要求する。
     /// SEEは深さと零窓の条件を持たず、PVノードにも適用する。
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことは要求する。
-    /// razoringはIIR後の残り深さ2以下の零窓で、同じ帯と王駒への利きの条件を要求する。
+    /// razoringはallNodeで、判定用の評価値がIIR後の残り深さに比例する余裕値を引いたαより小さい場合に行う。
+    /// 深さの上限は持たず、同じ帯と王駒への利きの条件を要求する。
     /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
     /// 詰みを探す反復では上限を5に下げ、razoringを行わない（Stockfish src/search.cpp:1017, 1022）。
     /// αとβの帯と王駒への利きの条件は、reverse futilityにも適用する。
@@ -199,7 +200,10 @@ impl Searcher<'_> {
         // 王駒への利きは個々の枝刈りが発動し得る場合に調べる。
         let window_outside_bands =
             alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START;
-        let razoring_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
+        let razoring_node = all_node
+            && !self.seek_mate
+            && window_outside_bands
+            && eval < alpha - razoring_margin(self.nnue.pawn_value(), depth);
         let late_move_node = window_outside_bands;
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
@@ -234,19 +238,13 @@ impl Searcher<'_> {
         {
             return Some(eval);
         }
-        // razoringは深さ2以下で「判定用の評価値 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
+        // allNodeで判定用の評価値が深さ比例の余裕値を引いたαより小さければ、静止探索の値をそのまま返す。
+        // Stockfish src/search.cpp:1015-1018。
         // 王駒に疑似利きが届くノードを除く理由は
         // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md にある。
-        if razoring_node
-            && !self.seek_mate
-            && depth <= 2
-            && eval + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
-            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-        {
+        if razoring_node && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position)) {
             let value = self.quiesce(position, alpha, beta, ply)?;
-            if value <= alpha {
-                return Some(value);
-            }
+            return Some(value);
         }
 
         let has_non_royal_piece =

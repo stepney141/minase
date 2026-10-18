@@ -437,14 +437,15 @@ pub(super) fn reverse_futility_margin(
     )
 }
 
-/// 深さ1〜2のrazoring余裕値を求める。
+/// IIR適用後の残り深さに比例するrazoring余裕値を求める。
 pub(super) fn razoring_margin(pawn: i32, depth: u32) -> i32 {
-    let percent = match depth {
-        1 => params::razoring_margin1(),
-        2 => params::razoring_margin2(),
-        _ => unreachable!("razoring applies only at depths 1 to 2"),
-    };
-    pawn * percent / 100
+    razoring_margin_with_coefficient(pawn, depth, params::razoring_depth_margin())
+}
+
+/// IIR適用後の残り深さに比例するrazoring余裕値を、指定した係数で求める。
+/// 積は`i64`で計算し、最後に1回だけ100で割る（Stockfish src/search.cpp:1017-1018）。
+pub(super) fn razoring_margin_with_coefficient(pawn: i32, depth: u32, coefficient: i32) -> i32 {
+    (i64::from(pawn) * i64::from(coefficient) * i64::from(depth) / 100) as i32
 }
 
 /// null moveの減深量の式に渡す調整係数。

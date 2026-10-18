@@ -501,7 +501,8 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             ply,
             false,
         );
-        // 子は最大手数の静的評価で固定し、F5の浅い零窓の打ち切りに依存しない。
+        // seek_mateで入口のrazoringを除外し、子は最大手数の静的評価で固定する。
+        searcher.seek_mate = true;
         searcher.null_move_ply = Some(ply);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),

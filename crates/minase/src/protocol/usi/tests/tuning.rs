@@ -145,8 +145,10 @@ fn tuning_usi_contract_in_isolated_process() {
                 "ReverseFutilityCorrection",
                 params::reverse_futility_correction as fn() -> i32,
             ),
-            ("RazoringMargin1", params::razoring_margin1 as fn() -> i32),
-            ("RazoringMargin2", params::razoring_margin2 as fn() -> i32),
+            (
+                "RazoringDepthMargin",
+                params::razoring_depth_margin as fn() -> i32,
+            ),
             ("SeeDepthMargin", params::see_depth_margin as fn() -> i32),
             (
                 "SeeCaptureHistory",
