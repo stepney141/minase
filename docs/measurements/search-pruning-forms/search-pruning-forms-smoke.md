@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索の枝刈りとLMRの関数形の見直し](../../plans/search-pruning-forms.md)のフェーズ4として、[SPSA](search-pruning-forms.md)の最終値を反映した候補と起点を、STCの条件で32ペア対局させる。
+[探索の枝刈りとLMRの関数形の見直し](../../plans/archived/search-pruning-forms.md)のフェーズ4として、[SPSA](search-pruning-forms.md)の最終値を反映した候補と起点を、STCの条件で32ペア対局させる。
 時間切れとエンジン異常が出ないことを確かめ、時間の使い方の変化を記録する。
 採否には使わない。
 

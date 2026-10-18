@@ -2,18 +2,18 @@
 
 ## ステータス
 
-承認済み。決定日は2026年9月12日。
+置き換え済み。決定日は2026年9月12日。[置換表の記録手がないノードを1だけ浅く読み、allNodeと前の反復の主変化を辿るノードでは浅くしない](../reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)によって置き換えられた。
 
 ## コンテキスト
 
 internal iterative reduction（IIR）は、置換表に記録手がないノードを浅く読み、次の反復で記録手を得てから本来の深さで読む手法である。
-[棋力向上段階6](../plans/archived/strength-stage6.md)の[置換表と記録手の診断bench](../measurements/strength-stage6/strength-stage6-tt-bench.md)では、深さ6の残り深さ3以上のノードのうち7.7%に記録手がなかった。
+[棋力向上段階6](../../plans/archived/strength-stage6.md)の[置換表と記録手の診断bench](../../measurements/strength-stage6/strength-stage6-tt-bench.md)では、深さ6の残り深さ3以上のノードのうち7.7%に記録手がなかった。
 記録手は置換表の助言的な情報であり、それまでは順序付けにだけ使っていた。
 IIRは、その有無を残り深さの決定にも使う点で、置換表の契約を広げる変更である。
-STCは1,419有効ペアでLLR +2.965の`H1`だった（[測定記録](../measurements/strength-stage6/strength-stage6-iir-stc.md)）。
-LTCは2,831有効ペアでLLR +2.971の`H1`だったが、外部のメモリ圧迫による停止で、候補6件と基準5件の計11件の時間切れが出た（[測定記録](../measurements/strength-stage6/strength-stage6-iir-ltc.md)）。
+STCは1,419有効ペアでLLR +2.965の`H1`だった（[測定記録](../../measurements/strength-stage6/strength-stage6-iir-stc.md)）。
+LTCは2,831有効ペアでLLR +2.971の`H1`だったが、外部のメモリ圧迫による停止で、候補6件と基準5件の計11件の時間切れが出た（[測定記録](../../measurements/strength-stage6/strength-stage6-iir-ltc.md)）。
 該当ペアを除いてもLLRは+3.114で判定は変わらなかったので、エンジンの開発者は、時間切れが0件であることを求めるLTCの採用条件から外れることを記録したうえで採用を決めた。
-この判断は、後に[棋力測定の手引き](../guides/sprt.md)の「異常時の裁定」の節に先例として記された。
+この判断は、後に[棋力測定の手引き](../../guides/sprt.md)の「異常時の裁定」の節に先例として記された。
 
 ## 決定
 

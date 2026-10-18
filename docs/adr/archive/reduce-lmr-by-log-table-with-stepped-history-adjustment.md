@@ -2,18 +2,18 @@
 
 ## ステータス
 
-承認済み。決定日は2026年9月7日。
+置き換え済み。決定日は2026年9月7日。[LMRの減深量は対数表と3段階のhistory補正にStockfishの項を1/100手単位で加えて求め、上限を係数として残す](../reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)によって置き換えられた。
 
 ## コンテキスト
 
 LMR（late move reductions）は、順序付けの後方にある静かな手を浅く読み、αを上回ったときだけ本来の深さで読み直す手法である。
-[棋力向上段階5](../plans/archived/strength-stage5.md)の前のLMRは、残り深さ3以上で4手目以降の静かな手を一律に1だけ浅く読んでいた。
+[棋力向上段階5](../../plans/archived/strength-stage5.md)の前のLMRは、残り深さ3以上で4手目以降の静かな手を一律に1だけ浅く読んでいた。
 中将棋は1局面の合法手が100手を超えるので、後方の手をより大きく減深する余地がある。
 段階5は、減深量を残り深さと手番号の対数の積から求め、history値で増減する式に改めた。
-[診断bench](../measurements/strength-stage5/strength-stage5-lmr-bench.md)は、減深によって失う良い結果の割合が当時の規則を超えない係数の組のうち、減深量の平均が最大の組を選んだ。
+[診断bench](../../measurements/strength-stage5/strength-stage5-lmr-bench.md)は、減深によって失う良い結果の割合が当時の規則を超えない係数の組のうち、減深量の平均が最大の組を選んだ。
 選んだ組では、失う割合は全体で27.9%、減深量の平均は1.557だった。
 同じ標本に当時の規則を当てはめると、失う割合は35.5%、減深量の平均は0.999だった。
-この式は[STC](../measurements/strength-stage5/strength-stage5-lmr-stc.md)と[LTC](../measurements/strength-stage5/strength-stage5-lmr-ltc.md)でともに`H1`となった。
+この式は[STC](../../measurements/strength-stage5/strength-stage5-lmr-stc.md)と[LTC](../../measurements/strength-stage5/strength-stage5-lmr-ltc.md)でともに`H1`となった。
 係数の値は、その後のSPSAの調整セッションで変わったが、式と増減の規則は変わっていない。
 
 ## 決定
@@ -26,7 +26,7 @@ LMRの減深量は、残り深さ`d`と手番号`m`から`floor(ln(d)·ln(m)/c)`
 
 history値に比例して減深量を連続的に増減する案（`r −= history / K`）は、比例係数と切り詰めの2つの自由度を持ち込み、それぞれを1つに絞る診断が要るので採らなかった。
 減深量の上限を3より大きくする案は、標準時間制御の到達深さで減深後の深さが1になる頻度が増え、誤った読み直しが増えるので採らなかった。
-失う良い結果の割合に10%以下という絶対基準を課す案は、[試行診断](../measurements/strength-stage5/strength-stage5-lmr-trial-bench.md)で当時の規則自体が良い結果の31.5%を失っていて基準を満たさなかったので採らなかった。
+失う良い結果の割合に10%以下という絶対基準を課す案は、[試行診断](../../measurements/strength-stage5/strength-stage5-lmr-trial-bench.md)で当時の規則自体が良い結果の31.5%を失っていて基準を満たさなかったので採らなかった。
 
 ## 結果
 

@@ -76,7 +76,7 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
 }
 
 // 深さ不足の記録でも記録手があれば、内部反復減深を行わず要求深さ3を保つ。
-// 判断の理由は docs/adr/reduce-depth-by-one-without-tt-move.md にある。
+// 判断の理由は docs/adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md にある。
 #[test]
 fn iir_preserves_depth_when_tt_has_a_move() {
     let position = bare_kings();

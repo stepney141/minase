@@ -8,7 +8,7 @@ use minase_core::position::Position;
 ///
 /// 第8条では王手放置も合法であり、王駒の捕獲を禁じる規則もないため、王駒の升では疑似利きと捕獲可能性が一致する。
 /// 王将または玉将と太子の両方がある場合も、どちらか1枚に利きが届けば真とする。
-/// 枝刈りから除く範囲の理由は`docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md`にある。
+/// 枝刈りから除く範囲の理由は`docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md`にある。
 pub(super) fn royal_under_attack(position: &Position) -> bool {
     let side = position.side_to_move();
     position.royal_pieces(side).into_iter().any(|square| {

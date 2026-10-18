@@ -2,18 +2,18 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月4日。
+置き換え済み。決定日は2026年10月4日。[late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](../count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)によって置き換えられた。
 
 ## コンテキスト
 
 late move pruningは、浅いノードで順序付けの後方にある静かな手を読まずに済ませる手法である。
-[棋力向上段階4](../plans/archived/strength-stage4.md)の方式は、捕獲手も含めた手番号が深さ1、2、3で12、23、13に達した後の静かな手を切り、STCが114有効ペアでLLR −2.947の`H0`だった（[測定記録](../measurements/strength-stage4/strength-stage4-lmp-stc.md)）。
-[棋力向上段階8](../plans/archived/strength-stage8.md)は、履歴値の低い手だけを切るhistory pruningを診断したが、21組の候補のどれも、良い結果を失う割合が10%以下にならなかった（[診断](../measurements/strength-stage8/strength-stage8-pruning-bench.md)）。
-[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、元の実装を[診断](../measurements/search-revival-spsa/search-revival-lmp-diag.md)した。
+[棋力向上段階4](../../plans/archived/strength-stage4.md)の方式は、捕獲手も含めた手番号が深さ1、2、3で12、23、13に達した後の静かな手を切り、STCが114有効ペアでLLR −2.947の`H0`だった（[測定記録](../../measurements/strength-stage4/strength-stage4-lmp-stc.md)）。
+[棋力向上段階8](../../plans/archived/strength-stage8.md)は、履歴値の低い手だけを切るhistory pruningを診断したが、21組の候補のどれも、良い結果を失う割合が10%以下にならなかった（[診断](../../measurements/strength-stage8/strength-stage8-pruning-bench.md)）。
+[不採用だった探索部の改良の再調整](../../plans/archived/search-revival-spsa.md)は、元の実装を[診断](../../measurements/search-revival-spsa/search-revival-lmp-diag.md)した。
 残り深さ1では、手を切るまでに探索した手が平均で捕獲手8.1手、静かな手4.5手であり、上限の枠の約3分の2を捕獲手が占めた。
 残り深さ1で手を切ったノードの約36%は、静かな手を1手も探索しないうちに切り始めており、killer手もノードあたり平均0.56手が切られていた。
 中将棋はチェスや本将棋より捕獲手が多いので、捕獲手を数えると静かな手の枠が捕獲手で埋まる。
-2026年10月2日にエンジンの開発者が定義の変更を決め、改めた定義で戻した版を既存の係数とまとめてSPSAで調整して採用した（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
+2026年10月2日にエンジンの開発者が定義の変更を決め、改めた定義で戻した版を既存の係数とまとめてSPSAで調整して採用した（[採用のADR](../adopt-revived-search-items-as-a-bundle.md)）。
 
 ## 決定
 
@@ -32,5 +32,5 @@ late move pruningは、浅いノードで順序付けの後方にある静かな
 
 基数と傾きは`crates/minase/src/search/alphabeta/params.rs`の`LmpBase`と`LmpSlope`であり、数え方の詳細は`pruning.rs`の`late_move_limit`と`negamax.rs`の`negamax`のdocコメントにある。
 killer手は数える対象にならないので、枝刈りもされない。
-StockfishとYaneuraOuの上限式にあるimprovingの項は、improvingを別の項目として戻したので含めていない（[既存実装の調査](../research/forward-pruning-prior-art.md)）。
+StockfishとYaneuraOuの上限式にあるimprovingの項は、improvingを別の項目として戻したので含めていない（[既存実装の調査](../../research/forward-pruning-prior-art.md)）。
 全深さへ適用を広げる変更は、未測定の候補として残る。

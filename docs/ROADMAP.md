@@ -99,7 +99,7 @@
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 | vast.aiでの教師生成 | [plans/vast-selfplay.md](plans/vast-selfplay.md) | 起案 | |
 | 探索の関数形の見直しの統括 | [plans/search-forms.md](plans/search-forms.md) | 進行中 | |
-| 探索の枝刈りとLMRの関数形の見直し | [plans/search-pruning-forms.md](plans/search-pruning-forms.md) | 進行中 | |
+| 探索の枝刈りとLMRの関数形の見直し | [plans/archived/search-pruning-forms.md](plans/archived/search-pruning-forms.md) | 完了（採用） | 2026年10月18日 |
 | 浅い前向き枝刈りの深さと対象の拡張 | [plans/shallow-pruning-extensions.md](plans/shallow-pruning-extensions.md) | 起案 | |
 | historyの更新量の形とcontinuation history | [plans/history-forms.md](plans/history-forms.md) | 起案 | |
 | correction historyの表の追加と持ち越し | [plans/correction-history-tables.md](plans/correction-history-tables.md) | 起案 | |
@@ -116,9 +116,9 @@
 
 ### 直近の完了
 
+- [探索の枝刈りとLMRの関数形の見直し](plans/archived/search-pruning-forms.md)は2026年10月18日に、採用で完了した。reverse futility pruning、補正後の静的評価、late move pruning、LMR、置換表の打ち切り、およびIIRの式をStockfishの形へ寄せ、68個の係数を30,000ペアのSPSAでvast.aiの計算機を使って約16時間で調整した。同じ計算機で持ち時間を換算せずに行ったSTCは776ペアで`H0`（約−17 Elo）だったが、後続のサブタスクで強さが改善する可能性があるので、[統括計画](plans/search-forms.md)のサブタスクはSTCの結果によらず採用するという利用者の決定に従った（[ADR](adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。弱くなった原因の手がかりは[STCの記録](measurements/search-pruning-forms/search-pruning-forms-stc.md)にあり、調査は統括計画を終えてから判断する。
 - [測定記録の再配置](plans/archived/measurements-layout.md)は2026年10月18日に、採用で完了した。docs/measurements/ の直下に並んでいた記録411件、付随ディレクトリ42個、および直下の JSON 1個を、その測定を計画した設計書の名前のディレクトリ59個と、どの設計書も計画していない測定を置く`adhoc/`へ移した。記録を指すリンクは、凍結したADRや設計書の中のものも含めて参照先1,804本と表示文字列のパス111本を書き換え、すべてが移動前と同じファイルを指すことを確かめた（[ADR](adr/group-measurement-records-by-commissioning-plan.md)）。新しい記録の置き場所は[設計書の書き方](plans/README.md)の「測定記録」節が定める。masterに統合していない12本のブランチは、統合のときに記録の移動とリンクの書き換えが必要になる。
 - [NNUEの検証損失が早く頭打ちになる原因の切り分け](plans/archived/nnue-early-best-epoch.md)は2026年10月17日に、採用で完了した。同じ対局の後続40手の探索値を教師に混ぜる先読み教師を外して学び直したNNUEが、STCとLTCで現行のネットに対して`H1`となったので、埋め込みのネットを差し替え、NNUEの学習の標準から先読み教師を外した（[ADR](adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。先読み教師が訓練の対局への適合を強めるという仮説と、独立な対局の数の少なさが検証損失の頭打ちの一因であるという仮説は、事前に定めた基準でともに「支持」となった。同じ約2,000万局面で、多数の対局から疎に採った学習は少数の対局から全局面を採った学習より検証損失が約0.0009低く、学習器にはこの比較のための`--train-subsample`を加えた。
-- [メモリより大きい教師データの一様シャッフル](plans/archived/out-of-core-shuffle.md)は2026年10月17日に、採用で完了した。NNUEの学習器に、MNSDを1局ずつ再生して局面を実行専用の一時ファイルへ書き、エポックごとに各訓練局面を一様にB個のbucketへ振り分けてbucketごとに並べ替える経路（`--buckets`）を加えた。`--buckets 1`は変更前とビット単位で同じ結果を出し、B=16は10ファイル（訓練約2,650万局面）の学習をメモリの上限2 GBの中で最大常駐0.91 GBで完走し、所要時間はB=1を上回らなかった（[照合記録](measurements/out-of-core-shuffle/out-of-core-shuffle-equivalence.md)、[時間とメモリの記録](measurements/out-of-core-shuffle/out-of-core-shuffle-time-memory.md)）。
 
 ### 次の候補
 
@@ -133,7 +133,7 @@
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
-- 探索の関数形を両エンジンの形へ寄せる7本の設計書を、[統括計画](plans/search-forms.md)のサブタスクとして束ねた。[係数の関数形の比較](research/search-coefficient-forms-prior-art.md)が、minaseの探索と時間管理の係数の多くはStockfishとYaneuraOuと違う形で使われ、その差は係数の値の調整では埋まらないことを示したためである。提案する順は、[枝刈りとLMRの関数形](plans/search-pruning-forms.md)、[浅い枝刈りの拡張](plans/shallow-pruning-extensions.md)、[history](plans/history-forms.md)、[correction historyの表](plans/correction-history-tables.md)、[静止探索](plans/qsearch-forms.md)、[aspiration windows](plans/aspiration-window-forms.md)、[持ち時間の伸縮](plans/time-instability-scaling.md)である。各サブタスクは1つ前のサブタスクの完了後のmasterを起点とし、全項目を1つの候補にまとめて全係数を30,000ペアのSPSAで調整してから段階ゲートで判定する。測定機では1本あたり約75時間かかるSPSAを、統括計画はvast.aiで借りる物理コアの多い機械で実行し、両機の負荷時の探索速度の比で持ち時間を伸ばして1手あたりの探索量をそろえ、物理192コアの機械なら1本あたり約13〜18時間（約25〜35米ドル）に縮める。機械はCPUの世代ではなく、実測した機械全体の速さと時間単価から見込む1回の費用で選ぶ。測定機の占有は、事前対局と段階ゲートの1本あたり約2〜39時間になる。係数の数は全部を採用すると約100になる。順序と取捨、および費用の上限は利用者が決め、着手は利用者の指示を待つ。
+- [探索の関数形の見直しの統括計画](plans/search-forms.md)は、探索の関数形をStockfishとYaneuraOuの形へ寄せる7本の設計書をサブタスクとして束ねる。サブタスク1（[枝刈りとLMRの関数形](plans/archived/search-pruning-forms.md)）を終え、残りの6本は起案のままである。各サブタスクは、1つ前の完了後のmasterを起点に全係数を30,000ペアのSPSAでvast.aiの計算機を使って調整し、同じ計算機で事前対局とSTCを持ち時間を換算せずに行う。2026年10月18日の利用者の決定により、各サブタスクはSTCの結果によらず採用し、STCは記録として残し、LTCは行わない。7本を通して元のmasterより強くなったかは、最後のフェーズ10で、7本を終えた版と統括計画を始める前のmaster（`99ccc6bb`）をLTCで対局させて確かめる。次のサブタスクの着手と、その費用は利用者が決める。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、自己対局の教師生成をvast.aiで借りる計算機へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、生成機のディスクに置いたファイルを作業機が10分ごとに取得して検査し、検査済みのファイルが作業機にあることを完了の記録とする。機種はZen 4以降のEPYCを2基積んだ384スレッドの機械を条件で選ぶ。フェーズ0の生成機での試走では、EPYC 9654の2基構成が同時384局で1ファイルを653秒で生成し、30ファイルは約5.5時間、約5.6米ドルと見込む（[試走の記録](measurements/vast-selfplay/vast-selfplay-trial.md)）。作業機での同じ条件の測定は、作業機で動いている別の学習が終わるのを待っている。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習と強化学習の自己対局を、利用者が契約したGoogle Colabの有料プランの仮想機械（公式CLI `colab` で作業機から操作し、費用は月次付与の計算単位で払う。強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、教師データ形式の版2への統一、およびレンタルGPUサーバからColabへの変更を反映して改訂した。実装はまだなく、追加購入の上限は1万円、教師データの保管先は作業機にマウントしたNASと決まり、着手は利用者の許可を待ち。

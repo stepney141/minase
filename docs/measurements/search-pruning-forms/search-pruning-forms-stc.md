@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索の枝刈りとLMRの関数形の見直し](../../plans/search-pruning-forms.md)のフェーズ5として、[SPSA](search-pruning-forms.md)の最終値を反映した候補が起点より短時間条件で強いかを、GSPRTで測る。
+[探索の枝刈りとLMRの関数形の見直し](../../plans/archived/search-pruning-forms.md)のフェーズ5として、[SPSA](search-pruning-forms.md)の最終値を反映した候補が起点より短時間条件で強いかを、GSPRTで測る。
 2026年10月18日、この測定の実行中に利用者は、後続のサブタスクで強さが改善される可能性があるので、本書の変更をSTCの結果によらず採用すると決めた。続けて、各サブタスクのSTCは採否に使わない記録とし、LTCは行わないと決めた（[統括計画](../../plans/search-forms.md)の設計判断「各サブタスクの採否」）。
 したがって、この測定の判定は採否に使わない。
 

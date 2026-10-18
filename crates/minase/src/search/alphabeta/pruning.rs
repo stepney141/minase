@@ -183,7 +183,7 @@ impl LateMoveCoefficients {
 /// 深さはIIR適用後、improvingはnull move後の更新後の値を使い、端数は最後に1回だけ切り捨てる。
 /// 手番号ではなく、現在の手より前に返った非捕獲手のうち、置換表の手、成る手、killer手を除いた数と比べる。
 /// 枝刈りで展開しなかった手もこの数に含める。
-/// 捕獲手に静かな手の枠を消費させない理由は`docs/adr/count-only-quiet-moves-for-late-move-pruning.md`にある。
+/// 捕獲手に静かな手の枠を消費させない理由は`docs/adr/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md`にある。
 pub(super) fn late_move_limit(depth: u32, improving: bool) -> i32 {
     LateMoveCoefficients::current().late_move_limit(depth, improving)
 }

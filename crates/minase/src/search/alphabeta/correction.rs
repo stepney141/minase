@@ -2,7 +2,7 @@
 //!
 //! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値を通常探索の各ノードの静的評価に加える。
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
-//! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
+//! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
 
 use super::params;
 use super::royal::royal_under_attack;
@@ -31,7 +31,7 @@ impl Searcher<'_> {
     ) {
         // 正確な値、静的評価より低い上界、静的評価より高い下界なら補正の向きが確定する。
         // 捕獲による駒得は静的評価の偏りではないため除外する。理由は
-        // docs/adr/key-correction-history-by-material.md にある。
+        // docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md にある。
         if best_score.abs() < REPETITION_BAND_START && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]

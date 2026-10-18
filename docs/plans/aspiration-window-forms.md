@@ -67,7 +67,7 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 起点は、[連鎖の1つ前の設計書](qsearch-forms.md)が完了した後のmasterの先頭である。
 前計画の候補が採用されたかどうかにかかわらず、起点の表の既定値をSPSAの開始値とし、本書が形を変える係数だけを本書の開始値に置き換える。
 前計画の候補がmasterへ統合されると`params.rs`の既定値が変わり、本書の検証の基準も変わるので、実装を含めて前計画の完了後に始める。
-探索の関数形をStockfishとYaneuraOuの形へ寄せる設計書は、[枝刈りとLMRの関数形](search-pruning-forms.md)、浅い枝刈り、history、correction history、静止探索、本書、および時間管理の順の連鎖として起案している。
+探索の関数形をStockfishとYaneuraOuの形へ寄せる設計書は、[枝刈りとLMRの関数形](archived/search-pruning-forms.md)、浅い枝刈り、history、correction history、静止探索、本書、および時間管理の順の連鎖として起案している。
 この順序は提案であり、最終的な順序は利用者が決める。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
@@ -220,7 +220,7 @@ SPSAで調整する3係数を次に示す。
 
 時間は、時間切れの事前確認とSPSAが調整機、それ以外が同時対局数16の測定機での見積りである。
 SPSAは、[統括計画](search-forms.md#所要時間と費用)の見積りにより、調整機で約13〜18時間と見込み、時間切れの事前確認を含む1セッションの費用は約25〜35米ドルである。
-段階ゲートの時間は、判定までのペア数が強さの差で変わるので、[枝刈りとLMRの関数形の設計書](search-pruning-forms.md)と同じ幅を持たせた。
+段階ゲートの時間は、判定までのペア数が強さの差で変わるので、[枝刈りとLMRの関数形の設計書](archived/search-pruning-forms.md)と同じ幅を持たせた。
 
 | 段階 | 内容 | 見積り |
 |---|---|---|
@@ -263,7 +263,7 @@ M2の重み、窓の移し方、減深と持ち越しの推移、初期の半幅
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/aspiration-window-forms-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後のフェーズはこのrunnerで実行する。
 ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/aspiration-window-forms.params`とする。
-開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、[枝刈りとLMRの関数形の設計書](search-pruning-forms.md)と同じく使い捨てのスクリプトで機械的に突き合わせる。
+開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、[枝刈りとLMRの関数形の設計書](archived/search-pruning-forms.md)と同じく使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
 パラメーターファイルの写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/aspiration-window-forms-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
@@ -314,7 +314,7 @@ M2の重み、窓の移し方、減深と持ち越しの推移、初期の半幅
   --each time=10000+100 --concurrency 16 elo --pairs 32
 ```
 
-候補と起点の総思考時間の比、終局時の残り時間、手数帯ごとの完了深さ（反復深化で読み終えた深さ）、および探索を止めた理由の分布を、[枝刈りとLMRの関数形の設計書](search-pruning-forms.md)の事前対局と同じ方法で集計して、測定記録`aspiration-window-forms-smoke`に残す。
+候補と起点の総思考時間の比、終局時の残り時間、手数帯ごとの完了深さ（反復深化で読み終えた深さ）、および探索を止めた理由の分布を、[枝刈りとLMRの関数形の設計書](archived/search-pruning-forms.md)の事前対局と同じ方法で集計して、測定記録`aspiration-window-forms-smoke`に残す。
 完了条件は、テストの通過、事前対局での時間切れとエンジン異常が0件であること、および測定記録の保存である。
 
 ### フェーズ5　採否測定

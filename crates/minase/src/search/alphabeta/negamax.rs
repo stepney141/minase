@@ -57,7 +57,7 @@ impl Searcher<'_> {
     /// 置換表で打ち切れず、要求深さ3以上で記録手がなければ、内部反復減深（IIR）として1だけ浅く読む。
     /// ただしallNodeと前の反復の主変化を辿るノードは除く（Stockfish src/search.cpp:1085）。
     /// stand-patだけの記録も「記録手なし」に含める。
-    /// 判断の理由は`docs/adr/reduce-depth-by-one-without-tt-move.md`にある。
+    /// 判断の理由は`docs/adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md`にある。
     ///
     /// IIRの後に補正後の静的評価を1回求め、手数ごとに保持する（Stockfish src/search.cpp:832, 846-884）。
     /// reverse futilityとrazoringには置換表の値を条件つきで採る判定用の評価値を使い、
@@ -229,7 +229,7 @@ impl Searcher<'_> {
         }
         // razoringは深さ2以下で「判定用の評価値 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
         // 王駒に疑似利きが届くノードを除く理由は
-        // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
+        // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md にある。
         if pruning_node
             && !self.seek_mate
             && depth <= 2

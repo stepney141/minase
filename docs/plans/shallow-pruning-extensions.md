@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本書は、探索の浅いノードで働く前向き枝刈り（読む価値が低いと見込んだ手やノードを読まずに済ませる枝刈り）とnull move pruningを、チェスのStockfishの形へそろえて深いノードと新しい対象へ広げ、着手時点のmasterである起点より強くなるかを確かめる。
-起点は、探索の関数形をStockfishとYaneuraOu（やねうら王）の形へ寄せる一連の設計書で1つ前に当たる[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)が完了した後のmasterである。
+起点は、探索の関数形をStockfishとYaneuraOu（やねうら王）の形へ寄せる一連の設計書で1つ前に当たる[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)が完了した後のmasterである。
 futility pruningは、静的評価に余裕値を足してもαに届かない手を読まない枝刈りであり、late move pruningは、後方の静かな手を読まない枝刈りである。
 SEE（static exchange evaluation）は、着手の到達升での駒の取り合いの損得の見積りである。
 minaseでは、これらを残り深さ3以下の零窓のノードに限っている。
@@ -21,7 +21,7 @@ null move pruningは、手番を相手に渡しても打ち切れるノードを
 ## 状態
 
 起案。2026年10月17日に起案した。
-[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)の完了を待って着手し、着手は利用者の指示による。
+[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)の完了を待って着手し、着手は利用者の指示による。
 次の一手は、前の設計書の完了後に起点を確定し、フェーズ1（移行と9項目の実装）を始めることである。
 
 ## 目的
@@ -31,7 +31,7 @@ minaseの浅い前向き枝刈りの深さの上限3は、[棋力向上段階4](
 いずれも、評価関数がPSTとFMだった時期の判断である。
 PSTは駒の種類と升ごとの点数の表、FMは2駒の関係の補正である。
 Stockfishのlate move pruningとSEEによる捕獲手の枝刈りには深さの上限がなく、静かな手のfutility pruningはLMRの減深量を引いた深さであるlmrDepthが12未満のときに働き、いずれもPVノードでも働く（`src/search.cpp:1196-1259`）。
-[late move pruningのADR](../adr/count-only-quiet-moves-for-late-move-pruning.md)も、全深さへ適用を広げる変更を未測定の候補として残している。
+[late move pruningのADR](../adr/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)も、全深さへ適用を広げる変更を未測定の候補として残している。
 razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で、`RazoringMargin2`が範囲の上限に達し、`RazoringMargin1`も上限に近づいた。
 余裕値が大きいほどrazoringは働かないので、これは、SPSAが範囲の中で最もrazoringが働かない値を選ぼうとした動きであり、NNUEの下で現行の形のrazoringが役に立っていない兆候と読める。
 2026年10月17日の利用者の決定により、razoringのコードは残し、Stockfishの形に改めて調整し直す。
@@ -40,8 +40,8 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 
 本書の用語を次のように定める。
 
-- **前の設計書**は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)であり、F0からF6はその項目の記号である。F0はcutNodeとallNodeの区別、F1はreverse futility pruningとttPv、F2は静的評価と判定用の評価値の求め方、F3はlate move pruningのimprovingの倍率、F4はLMRの減深量の項、F6は詰みを探す局面の判定（Stockfishの`seekMate`）である。
-- **起点**は、[前の設計書](search-pruning-forms.md)が完了した後、フェーズ1を始める時点のmasterの先頭のコミットである。前の設計書の候補が採用されていれば、その項目と調整値を含む。
+- **前の設計書**は[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)であり、F0からF6はその項目の記号である。F0はcutNodeとallNodeの区別、F1はreverse futility pruningとttPv、F2は静的評価と判定用の評価値の求め方、F3はlate move pruningのimprovingの倍率、F4はLMRの減深量の項、F6は詰みを探す局面の判定（Stockfishの`seekMate`）である。
+- **起点**は、[前の設計書](archived/search-pruning-forms.md)が完了した後、フェーズ1を始める時点のmasterの先頭のコミットである。前の設計書の候補が採用されていれば、その項目と調整値を含む。
 - **形の変更**は、本書の移行と9項目を実装したコミット列であり、新しい係数と開始値を置き直した既存の係数を、表の開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で表（`crates/minase/src/search/alphabeta/params.rs`）の既定値へ書き込んだコミットである。
 - **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../guides/sprt.md)）。
@@ -54,7 +54,7 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 - **王手**は、RULES.md第8条の定義による。着手の後に、相手が王駒を1枚だけ持つならその王駒を手番側が次の着手で取れる状態、相手が王将または玉将と太子を併せ持つなら手番側の獅子が1手で両方を取れる状態（同条第7項）をいう。**王手になる手**は、着手の後にこの状態を作る手であり、Stockfishの`givesCheck`に当たる。
 - **詰み帯と専用の帯**は、詰みまでの手数を表す評価値の範囲と、千日手などの反復の結果を表す評価値の範囲（`crates/minase/src/search/mod.rs`の`MATE_THRESHOLD`と`REPETITION_BAND_START`）である。
 - **improving**は、起点の`negamax.rs`の`improving`が定める判定であり、同じ手番の2手前の局面より静的評価が上がったことをいう。
-- **minaseの安全条件**は、αとβが詰み帯と専用の帯の外にあること、手番側のどの王駒にも相手の疑似利きが届かないこと（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)）、および手を飛ばす枝刈りではそのノードで探索済みの最善値が負の詰み帯と専用の帯の外にあることをいう。2つ目はStockfishの`!ss->inCheck`、3つ目は`!is_loss(bestValue)`に当たる。本書のどの枝刈りも、この安全条件を要求する。
+- **minaseの安全条件**は、αとβが詰み帯と専用の帯の外にあること、手番側のどの王駒にも相手の疑似利きが届かないこと（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）、および手を飛ばす枝刈りではそのノードで探索済みの最善値が負の詰み帯と専用の帯の外にあることをいう。2つ目はStockfishの`!ss->inCheck`、3つ目は`!is_loss(bestValue)`に当たる。本書のどの枝刈りも、この安全条件を要求する。
 
 対象は、2つの移行と9項目である。
 
@@ -72,7 +72,7 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 
 次の事項は対象外とする。
 
-- 王駒に相手の利きが届くノードを浅い枝刈りから除く条件と、獅子の規則に依存してSEEが判定不能な手を枝刈りしない規則。いずれも中将棋の規則に由来するので残す（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)、[SEEのADR](../adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)）。
+- 王駒に相手の利きが届くノードを浅い枝刈りから除く条件と、獅子の規則に依存してSEEが判定不能な手を枝刈りしない規則。いずれも中将棋の規則に由来するので残す（[ADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[SEEのADR](../adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)）。
 - lmrDepthをhistoryの値で増減する項と、continuation historyの値が低い静かな手を読まない枝刈り（Stockfish `src/search.cpp:1229-1240`）。continuation historyは直前の手を文脈とするhistoryであり、minaseはまだこの表を持たない。次の[historyの形の見直し](history-forms.md)が、表とともにStockfishの重みでこれらを加える。
 - reverse futility pruningとrazoringに使う静的評価を置換表の値で置き換える処理（Stockfish `src/search.cpp:862-865`）。前の設計書が扱う。
 - Stockfishの浅い枝刈りの前提条件`pos.non_pawn_material(us)`と、捕獲手のSEEによる枝刈りにある最後の駒を捨てる手の除外（`src/search.cpp:1196, 1223-1224`）。前者はポーンだけの終盤、後者は合法手のない側を引き分けとするステイルメイトのための条件であり、中将棋には相当する仕組みがない（RULES.md第23条）。2026年10月17日の利用者の決定は、Stockfishに相当する仕組みがない事項はYaneuraOuに合わせるとしており、YaneuraOuも前者を外している（`yaneuraou-search.cpp:3585-3588`）。
@@ -83,7 +83,7 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 
 ## 依存関係
 
-起点は、[前の設計書](search-pruning-forms.md)が完了した後のmasterの先頭である。
+起点は、[前の設計書](archived/search-pruning-forms.md)が完了した後のmasterの先頭である。
 前の設計書の候補が採用されたかどうかにかかわらず、起点の表の既定値を、開始値を置き直さない既存の係数のSPSAの開始値とする。
 本書は、前の設計書が導入する次のものを使う。
 F0が導入するcutNodeとallNodeの区別はS6とS7で使い、F1とF4が導入するttPvとLMRの減深量の前半`r_pre`はlmrDepthの計算で使い、F2が定める判定用の評価値はS6で使う。
@@ -106,11 +106,11 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 採用した場合は、完了時に、起点の時点で有効なADR（先行の設計書が置き換えていればその後継）を確認し、新しいADRで置き換える。
 部分的に変える場合は、残る決定も新しいADRへ引き継ぐ。
 
-- [浅いノードの前向き枝刈りの適用条件のADR](../adr/skip-static-eval-pruning-when-a-royal-is-attacked.md)は、2026年9月6日に、futility pruning、late move pruning、SEEによる捕獲手の枝刈り、およびreverse futility pruningを残り深さ3以下の零窓のノードに、razoringを残り深さ2以下に限り、reverse futility pruningは静的評価をそのまま返すと決めた。返り値をβへ丸める案は、上位ノードが得る情報を減らすとして棄却している。S1からS5は深さの上限と零窓の条件をStockfishの形に改め、S6はrazoringの形を、S8は返り値を改める。王駒への利きによる除外は残す。ADRは再測定を留保していないが、返り値の正しさは確かめておらず、窓の外の値もそのまま返すfail-softの近似として扱う、と記している。
-- [improvingの使い道のADR](../adr/use-improving-only-for-futility-margins.md)は、2026年10月4日に、improvingをfutility pruningの余裕値にだけ使うと決めた。S1はStockfishと同じくfutility pruningからimprovingを外し、S7はnull move pruningを試す条件にimprovingを使う。前の設計書も適用先を広げる。ADRは再測定を留保していない。
+- [浅いノードの前向き枝刈りの適用条件のADR](../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)は、2026年9月6日に、futility pruning、late move pruning、SEEによる捕獲手の枝刈り、およびreverse futility pruningを残り深さ3以下の零窓のノードに、razoringを残り深さ2以下に限り、reverse futility pruningは静的評価をそのまま返すと決めた。返り値をβへ丸める案は、上位ノードが得る情報を減らすとして棄却している。S1からS5は深さの上限と零窓の条件をStockfishの形に改め、S6はrazoringの形を、S8は返り値を改める。王駒への利きによる除外は残す。ADRは再測定を留保していないが、返り値の正しさは確かめておらず、窓の外の値もそのまま返すfail-softの近似として扱う、と記している。
+- [improvingの使い道のADR](../adr/archive/use-improving-only-for-futility-margins.md)は、2026年10月4日に、improvingをfutility pruningの余裕値にだけ使うと決めた。S1はStockfishと同じくfutility pruningからimprovingを外し、S7はnull move pruningを試す条件にimprovingを使う。前の設計書も適用先を広げる。ADRは再測定を留保していない。
 - [SEEによる捕獲手の枝刈りのADR](../adr/prune-losing-captures-by-see-at-shallow-nodes.md)は、2026年9月21日に、対象を捕獲手に限り、余裕値を深さ1〜3の深さ別の値にすると決めた。深さによらず1つの余裕値にする案は、診断で深さごとに適格な値が異なったとして棄却している。S3は深さに比例する余裕値とcapture historyの項に改め、王手になる静かな手も対象にし、S5は静かな手を対象に加える。ADRは再測定を留保していない。
-- [late move pruningの数え方のADR](../adr/count-only-quiet-moves-for-late-move-pruning.md)は、2026年10月4日に、静かな手だけを数える上限式を決めた。全深さへ適用を広げる変更は未測定の候補として残すと、ADR自身が記している。S2は深さの上限を外し、PVノードにも適用する。上限式と、静かな手だけを数える決定は残す。
-- [null moveをPVノードでも行うADR](../adr/allow-null-move-and-tt-cutoff-at-pv-nodes.md)は、2026年9月28日に、null move pruningをノードの種別と静的評価のβとの大小によらずに試すと決めた。棄却したのは「非PVノードに限り、かつ補正後の静的評価がβ以上」を全深さに課す案である。S7は、cutNodeに限ったうえでStockfishの静的評価の条件を課す。ADRは、ノード種別の予測を持ったうえで条件を加える方式を未測定と記している。
+- [late move pruningの数え方のADR](../adr/archive/count-only-quiet-moves-for-late-move-pruning.md)は、2026年10月4日に、静かな手だけを数える上限式を決めた。全深さへ適用を広げる変更は未測定の候補として残すと、ADR自身が記している。S2は深さの上限を外し、PVノードにも適用する。上限式と、静かな手だけを数える決定は残す。
+- [null moveをPVノードでも行うADR](../adr/archive/allow-null-move-and-tt-cutoff-at-pv-nodes.md)は、2026年9月28日に、null move pruningをノードの種別と静的評価のβとの大小によらずに試すと決めた。棄却したのは「非PVノードに限り、かつ補正後の静的評価がβ以上」を全深さに課す案である。S7は、cutNodeに限ったうえでStockfishの静的評価の条件を課す。ADRは、ノード種別の予測を持ったうえで条件を加える方式を未測定と記している。
 - [null moveの検証探索を実装しないADR](../adr/omit-null-move-verification-search.md)は、2026年9月6日に、検証探索がβを下回る割合（矛盾率）が深さ5と7で0件だったとして、検証探索を入れないと決めた。同じADRは、減深量が大きくなるほど縮めた探索は浅くなるので、再提案するときは現行の構成で矛盾率を測り直す必要があると記している。S7はStockfishと同じく残り深さ16以上で検証探索を行い、減深量もStockfishの値から始めるので、フェーズ1で矛盾率を測って記録する。
 - [capture historyのADR](../adr/bound-capture-history-and-use-it-in-qsearch.md)は、2026年10月10日に、capture historyを通常探索と静止探索の手の順序に使うと決めた。決定は他の用途を禁じていないが、S3とS4は枝刈りの判定にも使うので、新しいADRに用途を記録する。
 - [一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)は、2026年10月4日に、razoringと、静的評価の余裕によるnull moveの減深の加算を含む8項目を採用した。S6はrazoringを外さずに形を改め、S7は減深の加算の上限3を外してStockfishの形にする。
@@ -139,7 +139,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | lmrDepthの定義 | Stockfishは、各手について枝刈りの前に`r = reduction(improving, depth, moveCount) − 512 × [PVノード] + 929 × [ttPv]`を1/1024手単位で求め、`lmrDepth = newDepth − r/1024`とする（`src/search.cpp:1183-1203, 1917-1920`）。`reduction()`は表の積、improvingでないときの増分、および定数948からなる。前の設計書のF4は、この部分に当たる減深量を、1/100手単位の前半`r_pre`として後半と分けて定める。本書は`lmrDepth = d − 1 − r_pre/100`（0方向へ丸める整数除算）とする。historyによる補正、cutNodeとallNodeの項、上限の切り詰めなど、Stockfishが枝刈りの後に加える項は`r_pre`に含まれない。Stockfishと同じく、捕獲手とkiller手を含む全ての手について`r_pre`を求める。F4が不採用で起点に`r_pre`がない場合は、起点のLMRの表の値を100倍して`r_pre`の代わりにする。 |
 | 王手の判定の前計算（M2） | Stockfishは、ノードごとに相手の王の升へ利く升を駒種ごとに`check_squares`として、相手の王への走り駒の利きを遮る駒を`blockers_for_king`として前計算し、`gives_check`で着手が王手になるかを判定する（`src/position.cpp:731-774`）。本書は、同じ役割の前計算を中将棋の王手の定義（RULES.md第8条）に合わせて導入する。相手が王駒を1枚だけ持つ局面では、その王駒の升へ利く升の集合を手番側の駒種ごとに求め、手番側の駒のうち、動けば別の手番側の駒の利きがその王駒へ通る駒の集合を求める。着手後の駒が到達升から王駒へ利くか、遮っていた駒が線の外へ動くなら、王手になる手とする。前計算で判定できない着手は、着手後の局面の利きで判定する。これは、獅子、角鷹、および飛鷲の2段階移動で経由升の駒を取る手と、相手が王将または玉将と太子を併せ持つ局面（第8条第7項の獅子の場合）である。この2つの経路は判定の対象で決まり、どちらの経路でも結果は同じ定義の王手であることを、着手後の局面の利きによる参照実装と照合する単体テストで確かめる。王手になる手の判定を使うのはS1、S3からS5、およびS9であり、M2のコミットは判定を求めるだけで探索を変えない。 |
 | 静かな手のfutility pruningの形（S1） | Stockfishの`staticEval + 164 + 119 × lmrDepth + 90 × [staticEval > α] ≤ α`を、lmrDepthが12未満の手に適用する形にする（`src/search.cpp:1242-1252`）。これはノードごとに1回求める現行の境界値を、手ごとの判定に改めることである。深さ別の余裕値`FutilityMargin1`〜`3`と、improvingでないときの倍率`NonImprovingFutility1`〜`3`は除く。Stockfishの静かな手のfutility pruningはimprovingを使わないからである。静的評価は、起点のfutility pruningと同じくcorrection historyで補正した値を使う。Stockfishと同じく、枝刈りした手の見積り`futilityValue`が最善値より大きければ最善値を上げる。最善値と見積りの両方が詰み帯と専用の帯の外にある場合に限る点は、Stockfishの`!is_decisive(bestValue) && !is_win(futilityValue)`に当たる。見積りはα以下なので、上げた最善値もα以下に留まり、他の手がαを超えない限り置換表に保存する種別は上界のままである。対象は捕獲手でも王手になる手でもない手であり、followPVのPVノードでは行わない（同1205、1227行）。 |
-| late move pruningの範囲（S2） | Stockfishには深さの上限がないので（`src/search.cpp:1199`）、深さの上限3を外し、PVノードにも適用する。S2が変えるのは適用範囲だけであり、前の設計書のF3の`LmpNonImproving`を含む起点の上限式と数え方は維持する。`LmpBase`と`LmpSlope`の開始値は、F3が置き直した起点の既定値を継承する。静かな手だけを数え、成る手とkiller手を数えない決定は、中将棋では捕獲手が多く静かな手の枠を捕獲手が埋めるという診断に基づくので、利用者の決定により残す（[ADR](../adr/count-only-quiet-moves-for-late-move-pruning.md)）。 |
+| late move pruningの範囲（S2） | Stockfishには深さの上限がないので（`src/search.cpp:1199`）、深さの上限3を外し、PVノードにも適用する。S2が変えるのは適用範囲だけであり、前の設計書のF3の`LmpNonImproving`を含む起点の上限式と数え方は維持する。`LmpBase`と`LmpSlope`の開始値は、F3が置き直した起点の既定値を継承する。静かな手だけを数え、成る手とkiller手を数えない決定は、中将棋では捕獲手が多く静かな手の枠を捕獲手が埋めるという診断に基づくので、利用者の決定により残す（[ADR](../adr/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)）。 |
 | SEEによる捕獲手の枝刈り（S3） | Stockfishの`177 × depth + captHist × 34/1024`（`src/search.cpp:1222`）に合わせ、余裕値を残り深さに比例する項とcapture historyの項の和にする。深さの上限は外し、PVノードにも適用する。深さ別の`SeeMargin1`〜`3`は除く。Stockfishは捕獲手と王手になる手を同じ枝で扱うので（同1205行）、王手になる静かな手にも同じ余裕値で判定する。その手のcapture historyの項は0とする。minaseの表は取る駒の種類で引き、取る駒のない手の欄を持たないからである。capture historyの項は、表の値に重み/1024を掛けたStockfishの評価値の単位の量を、歩兵価値208で換算して足す。historyの形の見直しが表の上限をStockfishの10692に固定した後は、重みはStockfishの値のまま同じ意味になる。Stockfishは余裕値を切り詰めないが、minaseの`see_prunes`は非負の余裕値を契約とするので、本書のS3とS5は現行の契約で書き、S3の余裕値を0以上に切り詰める。後続の[静止探索の補正と枝刈りの形の見直し](qsearch-forms.md)は、引数を符号付きの閾値`T`へ移す挙動を変えない移行（S3は`T = −max(0, 余裕値)`、S5は`T = −余裕値`）の後、Q2の挙動を変えるコミットでS3の0での切り詰めを外す。本書は切り詰めを外さない。 |
 | 捕獲手のfutility pruningの形（S4） | Stockfishの`staticEval + 234 + 247 × lmrDepth + PieceValue[captured] + 134 × captHist/1024 ≤ α`を、王手にならない捕獲手でlmrDepthが8未満のものに適用する（`src/search.cpp:1208-1217`）。定数と傾きは静かな手と別の係数にする。獅子の2段階移動で2枚を取る手は、取る駒の価値を合計する（手の順序付けと同じ量）。置換表の手と相手の最後の王駒を取る手は対象にしない。成る捕獲手も、利用者の決定により残す成る手の保護に従って対象にしない。 |
 | 静かな手のSEEによる枝刈り（S5） | Stockfishの`SEE < −23 × max(lmrDepth, 0)²`（`src/search.cpp:1255-1259`）の手を読まない。S1の後に判定し、followPVのPVノードでは行わない。深さの上限は持たない。対象は捕獲手でも王手になる手でもない手である。静かな手のSEEは、動かした駒が到達升で取られて損をする手を見つけるための判定である。現行の`see_prunes`は到達升に駒があることを前提にするので、取る駒の価値を0として交換列を作る判定を`see.rs`に加える。2段階移動の手、成る手、および置換表の手は対象にしない。2段階移動の手は現行のSEEでも判定不能として扱い、成る手は保護する。YaneuraOuは、将棋ではSEEが負の手でもその後に詰む場合があるので慎重に扱うべきだと注記している（`yaneuraou-search.cpp:3685-3686`）が、利用者の決定によりこの項目を含める。 |
