@@ -144,19 +144,18 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
 // 深さ・ノード数・固定時間の併用では通常の時計予算を使う。
 #[test]
 fn excluded_clocks_preserve_numeric_budgets() {
-    assert_eq!(params::expected_plies(), 432, "数値例の前提");
-    assert_eq!(params::min_moves(), 88, "数値例の前提");
-    assert_eq!(params::increment_share(), 76, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
-    // M=432/2=216、soft=60000/216+1000×76/100=277+760=1037 ms。
-    // hard=min(1037×451/100→4676,16200,59970)=4676 ms。固定時間とは各々小さい方を使う。
-    // R=0の秒読み1000 msは800 msを配分し、hardも800 ms。固定時間500 msなら双方500 ms。
+    assert_eq!(params::expected_plies(), 458, "数値例の前提");
+    assert_eq!(params::min_moves(), 40, "数値例の前提");
+    assert_eq!(params::increment_share(), 87, "数値例の前提");
+    assert_eq!(params::hard_soft_ratio(), 730, "数値例の前提");
+    assert_eq!(params::hard_remaining_share(), 39, "数値例の前提");
+    // M=229、soft=60000/229+870=1132 ms、hard=1132×730/100→8263 ms。
+    // 固定時間との小さい方を採る。
     let ms = Duration::from_millis;
     for (name, remaining, increment, byoyomi, depth, nodes, movetime, soft, hard) in [
-        ("clock only", 60000, 1000, 0, None, None, None, 1037, 4676),
-        ("depth", 60000, 1000, 0, Some(2), None, None, 1037, 4676),
-        ("nodes", 60000, 1000, 0, None, Some(100), None, 1037, 4676),
+        ("clock only", 60000, 1000, 0, None, None, None, 1132, 8263),
+        ("depth", 60000, 1000, 0, Some(2), None, None, 1132, 8263),
+        ("nodes", 60000, 1000, 0, None, Some(100), None, 1132, 8263),
         (
             "movetime crosses clock",
             60000,
@@ -165,7 +164,7 @@ fn excluded_clocks_preserve_numeric_budgets() {
             None,
             None,
             Some(2000),
-            1037,
+            1132,
             2000,
         ),
         (
@@ -186,9 +185,9 @@ fn excluded_clocks_preserve_numeric_budgets() {
             0,
             None,
             None,
-            Some(5000),
-            1037,
-            4676,
+            Some(10000),
+            1132,
+            8263,
         ),
         (
             "all limits",
@@ -295,23 +294,20 @@ fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
 // 秒読みつき時計では、指定余裕を安全上限から引き、予算の下限は1msとする。
 #[test]
 fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
-    assert_eq!(params::expected_plies(), 432, "数値例の前提");
-    assert_eq!(params::min_moves(), 88, "数値例の前提");
-    assert_eq!(params::increment_share(), 76, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
-    // ply=0: M=216、277+760+80=1117、1117×451/100→5037 ms。
-    // ply=36: M=198、303+760+800=1863、1863×451/100→8402 ms。
-    // 余裕60000では安全上限61000−60000=1000 ms。
-    // R=B=100: soft_raw=0+760+8=768、残り上限27+80=107 ms。
-    // 余裕150なら200−150=50 ms、200以上なら下限1 ms。R=B=1はsoft_raw=0、hard=1 ms。
-    // u64::MAXの3項は、softとhardの最終変換でともにu64::MAXへ飽和する。
+    assert_eq!(params::expected_plies(), 458, "数値例の前提");
+    assert_eq!(params::min_moves(), 40, "数値例の前提");
+    assert_eq!(params::increment_share(), 87, "数値例の前提");
+    assert_eq!(params::hard_soft_ratio(), 730, "数値例の前提");
+    assert_eq!(params::hard_remaining_share(), 39, "数値例の前提");
+    // ply=0: 262+870+80=1212、hardは8847 ms。
+    // ply=36: 284+870+800=1954、hardは14264 ms。
+    // R=B=100では残り上限39+80=119 ms。安全余裕の境界も検査する。
     for (remaining, increment, byoyomi, ply, margin, soft, hard) in [
-        (60000, 1000, 1000, 0, 0, 1117, 5037),
-        (60000, 1000, 1000, 0, 30, 1117, 5037),
-        (60000, 1000, 1000, 36, 1000, 1863, 8402),
+        (60000, 1000, 1000, 0, 0, 1212, 8847),
+        (60000, 1000, 1000, 0, 30, 1212, 8847),
+        (60000, 1000, 1000, 36, 1000, 1954, 14264),
         (60000, 1000, 1000, 0, 60000, 1000, 1000),
-        (100, 1000, 100, 0, 0, 107, 107),
+        (100, 1000, 100, 0, 0, 119, 119),
         (100, 1000, 100, 0, 150, 50, 50),
         (100, 1000, 100, 0, 200, 1, 1),
         (100, 1000, 100, 0, 201, 1, 1),

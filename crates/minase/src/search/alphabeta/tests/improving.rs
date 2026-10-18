@@ -38,15 +38,16 @@ fn improving_compares_stored_evaluations_across_null_moves() {
 #[test]
 fn futility_prunes_quiets_only_when_not_improving() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
-    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
-    // 100×165/100=165、165×71/100=117.15→117。
+    // 良化していない深さ1の余裕値をαに合わせる。
+    let margin = test_nnue().pawn_value() * params::futility_margin1() / 100
+        * params::non_improving_futility1()
+        / 100;
     let board = bare_kings();
     let moves = legal_moves(&board);
     for improving in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let static_eval = evaluate(searcher.nnue, &board);
-            let alpha = static_eval + 117;
+            let alpha = static_eval + margin;
             searcher.static_evals[0] = static_eval - i32::from(improving);
             assert_eq!(searcher.improving(static_eval, 2), improving);
             assert!(!royal_under_attack(&board));
@@ -72,9 +73,10 @@ fn futility_prunes_quiets_only_when_not_improving() {
 #[test]
 fn improving_uses_corrected_evaluations() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
-    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
-    // 100×165/100=165、165×71/100=117.15→117。
+    // 良化していない深さ1の余裕値をαに合わせる。
+    let margin = test_nnue().pawn_value() * params::futility_margin1() / 100
+        * params::non_improving_futility1()
+        / 100;
     let board = bare_kings();
     for (previous_correction, expected_improving) in [(0, true), (100, false)] {
         with_root_searcher(&board, &[], |searcher| {
@@ -85,7 +87,7 @@ fn improving_uses_corrected_evaluations() {
             assert!(correction > 0 && correction < 100);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = raw + previous_correction;
-            let alpha = raw + correction + 117;
+            let alpha = raw + correction + margin;
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
                 .unwrap();
@@ -113,7 +115,8 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
             searcher
                 .correction
                 .update(side, material_key(&board), 64, 8);
-            assert_eq!(searcher.correction.read(side, material_key(&board)), 18);
+            let correction = searcher.correction.read(side, material_key(&board));
+            assert!(correction > 0);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = i32::MIN;
             if root {
@@ -129,7 +132,7 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
                         .is_some()
                 );
             }
-            assert_eq!(searcher.static_evals[0], raw + 18);
+            assert_eq!(searcher.static_evals[0], raw + correction);
         });
     }
 }

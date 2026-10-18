@@ -663,13 +663,20 @@ fn extended_search_stops_at_max_ply() {
 /// F4の数値例で初回の値を固定し、零窓と全窓の再探索が調整後の深さを使うことを確かめる。
 #[test]
 fn lmr_search_move_researches_at_adjusted_depth() {
+    let deeper = 50 + crate::search::alphabeta::params::lmr_deeper_margin();
+    let shallower = 50 + crate::search::alphabeta::params::lmr_shallower_margin();
     let board = bare_kings();
     let mv = legal_moves(&board)[0];
     let mut child = board.clone();
     child.make_move_unchecked(mv, engine_rules());
     let reply = legal_moves(&child)[0];
     // F5のcutNodeでfail-lowの値を固定するため、初回深さは4より深くする。
-    for (reduced, value, expected) in [(5, 80, 8), (5, 60, 7), (5, 52, 6), (7, 80, 7)] {
+    for (reduced, value, expected) in [
+        (5, deeper + 1, 8),
+        (5, shallower, 7),
+        (5, shallower - 1, 6),
+        (7, deeper + 1, 7),
+    ] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.tt.store(
                 search_key(&child),

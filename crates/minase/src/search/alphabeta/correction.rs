@@ -148,10 +148,10 @@ mod tests {
     #[test]
     fn correction_fixed_point_weights_rounding_caps_and_sides() {
         let mut table = CorrectionTable::new(100);
-        assert_eq!(params::correction_weight(), 37, "数値例の前提");
+        assert_eq!(params::correction_weight(), 76, "数値例の前提");
         // 初回は1未満、2回目は1以上となる差を選び、正負とも端数を保持する。
-        // 27×37=999、2回目は999+(27648−999)×37/1024=1961。
-        let difference = 27;
+        // 13×76=988、2回目は988+(13312−988)×76/1024=1902。
+        let difference = 13;
         assert_eq!(table.read(Color::Black, 7), 0);
         table.update(Color::Black, 7, difference, 1);
         assert_eq!(table.read(Color::Black, 7), 0);
@@ -165,7 +165,7 @@ mod tests {
             table.update(Color::Black, depth as u64, 100, depth);
             assert_eq!(
                 table.read(Color::Black, depth as u64),
-                28 // 100×8×37/1024=28.90625を0方向へ丸める。
+                59 // 100×8×76/1024=59.375を0方向へ丸める。
             );
         }
         table.update(Color::Black, 0, 100_000, 1);

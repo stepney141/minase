@@ -43,25 +43,25 @@ fn attacked_board() -> Position {
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
-    assert_eq!(params::correction_weight(), 37, "数値例の重み");
+    assert_eq!(params::correction_weight(), 76, "数値例の重み");
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
     for (mut board, delta, bound, expected, capture, depth) in [
-        (bare_kings(), 320, Bound::Exact, 40, false, 2),
-        (bare_kings(), -320, Bound::Exact, -5, false, 2),
-        (bare_kings(), -320, Bound::Upper, -5, false, 2),
-        (bare_kings(), 320, Bound::Lower, 40, false, 2),
-        (bare_kings(), 320, Bound::Upper, 18, false, 2),
-        (bare_kings(), -320, Bound::Lower, 18, false, 2),
-        (bare_kings(), 0, Bound::Upper, 18, false, 2),
-        (bare_kings(), 0, Bound::Lower, 18, false, 2),
-        (capture_board(), 320, Bound::Exact, 18, true, 2),
-        (capture_board(), -320, Bound::Upper, 18, true, 2),
-        (capture_board(), 320, Bound::Lower, 18, true, 2),
-        (attacked_board(), 320, Bound::Exact, 18, false, 2),
-        (bare_kings(), 320, Bound::Exact, 40, false, 3),
+        (bare_kings(), 320, Bound::Exact, 79, false, 2),
+        (bare_kings(), -320, Bound::Exact, -15, false, 2),
+        (bare_kings(), -320, Bound::Upper, -15, false, 2),
+        (bare_kings(), 320, Bound::Lower, 79, false, 2),
+        (bare_kings(), 320, Bound::Upper, 38, false, 2),
+        (bare_kings(), -320, Bound::Lower, 38, false, 2),
+        (bare_kings(), 0, Bound::Upper, 38, false, 2),
+        (bare_kings(), 0, Bound::Lower, 38, false, 2),
+        (capture_board(), 320, Bound::Exact, 38, true, 2),
+        (capture_board(), -320, Bound::Upper, 38, true, 2),
+        (capture_board(), 320, Bound::Lower, 38, true, 2),
+        (attacked_board(), 320, Bound::Exact, 38, false, 2),
+        (bare_kings(), 320, Bound::Exact, 79, false, 3),
     ] {
         let key = material_key(&board);
         let eval = evaluate(nnue, &board);
@@ -115,7 +115,7 @@ fn correction_negamax_update_conditions() {
         );
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
-        assert_eq!(searcher.correction.read(Color::Black, key), 18);
+        assert_eq!(searcher.correction.read(Color::Black, key), 38);
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0, false),
             Some(score)
@@ -132,8 +132,8 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), board == attacked_board());
-        // 初期の固定小数点値18944に深さ2の重み74/1024を適用する。
-        // 差+320なら41255、差−320なら−6105となり、1024で0方向へ丸める。
+        // 初期の固定小数点値38912に深さ2の重み152/1024を適用する。
+        // 差+320なら81776、差−320なら−15504となり、1024で0方向へ丸める。
         assert_eq!(
             searcher.correction.read(Color::Black, key),
             expected,
@@ -144,17 +144,17 @@ fn correction_negamax_update_conditions() {
 
 #[test]
 fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
-    assert_eq!(params::correction_weight(), 37, "数値例の前提");
-    assert_eq!(params::correction_cap(), 220, "数値例の前提");
+    assert_eq!(params::correction_weight(), 76, "数値例の前提");
+    assert_eq!(params::correction_cap(), 181, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let nnue = test_nnue();
     for (score, expected) in [
-        (MATE_THRESHOLD, 18),
-        (-MATE_THRESHOLD, 18),
-        (MATE - 1, 18),
-        (-MATE + 1, 18),
-        (29_486, 220),
-        (-29_486, -220),
+        (MATE_THRESHOLD, 38),
+        (-MATE_THRESHOLD, 38),
+        (MATE - 1, 38),
+        (-MATE + 1, 38),
+        (29_486, 181),
+        (-29_486, -181),
     ] {
         let stop = AtomicBool::new(false);
         let clock = ManualClock::new(Duration::ZERO);
@@ -193,10 +193,10 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             Some(score),
             "article_31_r1 score={score}"
         );
-        // 初期値64×8×37=18944、読み出しは18944/1024→18。
+        // 初期値64×8×76=38912、読み出しは38912/1024=38。
         // |静的評価|≤1000より、差の絶対値は28486以上。
-        // D=28486ならF=2125539、D=−28486ならF=−2090389となる。
-        // 上限220×1024=225280を越えるので、読み出しは±220に飽和する。
+        // 深さ2の重み152/1024で、固定小数点の絶対値は4,000,000を超える。
+        // 上限181×1024=185344を越えるので、読み出しは±181に飽和する。
         assert!(evaluate(nnue, &board).abs() <= 1000, "飽和する数値例の前提");
         assert_eq!(
             searcher.correction.read(Color::Black, key),
@@ -236,17 +236,17 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             if interrupted { None } else { Some(320) }
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), 18);
+        assert_eq!(searcher.correction.read(Color::Black, key), 38);
     }
 }
 
 #[test]
 fn correction_changes_futility_expansion_at_boundary() {
-    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
-    assert_eq!(params::correction_weight(), 37, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
-    // 手数0ではimprovingは偽。165×71/100→117。差4なら4×8×37/1024→1。
+    // 良化していない深さ1の余裕値をαに合わせる。
+    let margin = test_nnue().pawn_value() * params::futility_margin1() / 100
+        * params::non_improving_futility1()
+        / 100;
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
@@ -255,7 +255,7 @@ fn correction_changes_futility_expansion_at_boundary() {
     for correction in [0, 1] {
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(nnue, &board) + 117;
+        let alpha = evaluate(nnue, &board) + margin;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
@@ -273,9 +273,13 @@ fn correction_changes_futility_expansion_at_boundary() {
             &mut butterfly_history,
             &mut capture_history,
         );
-        searcher
-            .correction
-            .update(Color::Black, material_key(&board), correction * 4, 8);
+        searcher.correction.update(
+            Color::Black,
+            material_key(&board),
+            correction * (1024 + 8 * params::correction_weight() - 1)
+                / (8 * params::correction_weight()),
+            8,
+        );
         assert_eq!(
             searcher.correction.read(Color::Black, material_key(&board)),
             correction

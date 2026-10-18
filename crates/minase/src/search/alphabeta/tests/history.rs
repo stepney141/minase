@@ -22,19 +22,19 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             *value = capture_values[(index + worker) % capture_values.len()];
         }
     }
-    assert_eq!(params::history_decay(), 23, "数値例の前提");
-    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
-    // 各回で23/100を掛けて0方向へ丸める。65536→15073→3466、100→23→5、7→1→0。
+    assert_eq!(params::history_decay(), 37, "数値例の前提");
+    assert_eq!(params::capture_history_decay(), 13, "数値例の前提");
+    // 静かな手は37%、捕獲は13%を各回で掛けて0方向へ丸める。
     for (go, quiet_values, capture_values) in [
         (
             1,
-            [-1, 0, 0, 0, 0, 0, 0, 0, 1, 23],
-            [-15073, -23, -1, 0, 0, 0, 0, 0, 1, 23, 15073],
+            [-2, -1, -1, 0, 0, 0, 1, 1, 2, 37],
+            [-8519, -13, 0, 0, 0, 0, 0, 0, 0, 13, 8519],
         ),
         (
             2,
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
-            [-3466, -5, 0, 0, 0, 0, 0, 0, 0, 5, 3466],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 13],
+            [-1107, -1, 0, 0, 0, 0, 0, 0, 0, 1, 1107],
         ),
     ] {
         let outcome = run_search_team(
@@ -80,8 +80,8 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
 // 学習に使われない初期局面の空升→同じ空升を印とし、反復中の再減衰を検出する。
 #[test]
 fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
-    assert_eq!(params::history_decay(), 23, "数値例の前提");
-    assert_eq!(params::capture_history_decay(), 23, "数値例の前提");
+    assert_eq!(params::history_decay(), 37, "数値例の前提");
+    assert_eq!(params::capture_history_decay(), 13, "数値例の前提");
     let board = position(
         Color::Black,
         &[
@@ -112,11 +112,11 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             );
         }
         let mut table = small_tt();
-        // 160,176,192,208に23%を掛けて丸めると36,40,44,47、次は8,9,10,10。
-        // 900,961,1024,1089は207,221,235,250、次は47,50,54,57。
+        // 160,176,192,208に37%を掛けて丸めると59,65,71,76、次は21,24,26,28。
+        // 捕獲の900,961,1024,1089は13%で117,124,133,141、次は15,16,17,18。
         for (search_id, expected, capture_expected) in [
-            (801, [36, 40, 44, 47], [207, 221, 235, 250]),
-            (802, [8, 9, 10, 10], [47, 50, 54, 57]),
+            (801, [59, 65, 71, 76], [117, 124, 133, 141]),
+            (802, [21, 24, 26, 28], [15, 16, 17, 18]),
         ] {
             let handle = crate::search::start_search(
                 Arc::clone(shared_test_nnue()),
@@ -348,8 +348,8 @@ pub(super) fn zero_decay_clears_history_between_searches() {
 /// 候補8の更新式は両端で飽和し、負の重力項も0方向へ丸める。
 #[test]
 fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
-    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
-    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
+    assert_eq!(params::history_bonus_scale(), 207, "数値例の前提");
+    assert_eq!(params::history_malus_scale(), 110, "数値例の前提");
     let board = Position::initial();
     let moves = legal_moves(&board);
     let winner = moves[0];
@@ -358,11 +358,11 @@ fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
     let limit = params::history_limit();
     with_root_searcher(&board, &[], |searcher| {
         for (old, depth, expected_bonus, expected_malus) in [
-            (0, 3, 9, -9),
+            (0, 3, 18, -9),
             (limit, 3, limit, limit - 18),
-            (-limit, 3, -limit + 18, -limit),
-            (-10, 3, -1, -19),
-            (-limit / 2 - 1, 3, -limit / 2 + 12, -limit / 2 - 6),
+            (-limit, 3, -limit + 36, -limit),
+            (-10, 3, 8, -19),
+            (-limit / 2 - 1, 3, -limit / 2 + 26, -limit / 2 - 6),
             (0, 256, limit, -limit),
             (limit, 256, limit, -limit),
             (-limit, 256, limit, -limit),
@@ -415,8 +415,8 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 /// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
 #[test]
 fn quiet_history_negamax_updates_only_searched_quiets() {
-    assert_eq!(params::history_bonus_scale(), 100, "数値例の前提");
-    assert_eq!(params::history_malus_scale(), 100, "数値例の前提");
+    assert_eq!(params::history_bonus_scale(), 207, "数値例の前提");
+    assert_eq!(params::history_malus_scale(), 110, "数値例の前提");
     let board = position(
         Color::Black,
         &[
@@ -472,9 +472,9 @@ fn quiet_history_negamax_updates_only_searched_quiets() {
                 let expected = if capture || index > cutoff_index {
                     0
                 } else if mv == winner {
-                    100
+                    207
                 } else {
-                    -100
+                    -110
                 };
                 assert_eq!(
                     searcher.history[board.side_to_move().index()][mv.from.dense_index()]
@@ -557,7 +557,7 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
                 .iter()
                 .find(|other| other.from == mv.from && other.to == mv.to);
             let expected = match learned {
-                Some(other) if *other == winner => 9,
+                Some(other) if *other == winner => 18,
                 Some(_) => -9,
                 None => {
                     pruned += 1;
@@ -586,7 +586,13 @@ pub(super) fn check_quiet_history_scales() {
         (100, 0, 3, 9, 0),
         (0, 0, 256, 0, 0),
         (150, 250, 3, 13, 22),
-        (400, 400, 256, 17_408, 17_408),
+        (
+            400,
+            400,
+            256,
+            params::history_limit(),
+            params::history_limit(),
+        ),
     ] {
         params::set("HistoryBonusScale", bonus_scale).unwrap();
         params::set("HistoryMalusScale", malus_scale).unwrap();

@@ -169,9 +169,9 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
 /// 非ゼロ履歴は捕獲段だけを変え、TT手を先頭に保ち、合法手の重複を作らない。
 #[test]
 fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
-    assert_eq!(params::capture_history_scale(), 49, "数値例の前提");
+    assert_eq!(params::capture_history_scale(), 155, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 上限での換算は100×49/100=49、下限では−49。
+    // 上限での換算は100×155/100=155、下限では−155。
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
         let before = picked(searcher, &board, None);
@@ -201,13 +201,13 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, winner),
-            49
+            155
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, captures[0]),
-            -49
+            -155
         );
         let after = picked(searcher, &board, None);
         assert_eq!(after[0], (winner, true));
@@ -298,13 +298,13 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
         capture(sq(5, 5), sq(7, 5)),
     ];
     let untouched = capture(sq(5, 5), sq(5, 3));
-    // 上限16950の重力式。4096×9/16950は2、4096²/16950は989へ丸める。
-    assert_eq!(params::capture_history_limit(), 16_950, "数値例の上限");
+    // 上限8376の重力式。4096×9/8376は4、4096²/8376は2003へ丸める。
+    assert_eq!(params::capture_history_limit(), 8376, "数値例の上限");
     for (depth, expected) in [
         (0, [4096, -4096, 0]),
-        (3, [4085, -4103, -9]),
-        (64, [-989, -7203, -4096]),
-        (256, [-16_950; 3]),
+        (3, [4083, -4101, -9]),
+        (64, [-2003, -6189, -4096]),
+        (256, [-8376; 3]),
     ] {
         let mut history = CaptureHistory::new();
         history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
@@ -508,7 +508,7 @@ fn capture_history_decay_boundaries() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_capture_history_between_searches() {
     assert_eq!(params::capture_history_decay(), 0);
-    assert_eq!(params::history_decay(), 23, "捕獲履歴だけを消去する");
+    assert_eq!(params::history_decay(), 37, "捕獲履歴だけを消去する");
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = crate::search::HistoryTables::new(threads);
         crate::search::search(
@@ -540,7 +540,7 @@ pub(super) fn zero_decay_clears_capture_history_between_searches() {
             histories
                 .workers
                 .iter()
-                .all(|history| history[0][60][60] == 23)
+                .all(|history| history[0][60][60] == 37)
         );
     }
 }

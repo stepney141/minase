@@ -45,7 +45,7 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
 }
 
-// 既定の上限は3 + 深さ²、improvingでないときはその半分を切り捨てる。
+// 上限は基数と深さ²の項の和を百分率で換算し、improvingでなければ倍率を掛ける。
 // 数える手の範囲を選んだ理由は docs/adr/count-only-quiet-moves-for-late-move-pruning.md にある。
 #[test]
 fn late_move_limits_follow_quadratic_depth_rule() {
@@ -55,14 +55,14 @@ fn late_move_limits_follow_quadratic_depth_rule() {
             params::lmp_slope(),
             params::lmp_non_improving()
         ),
-        (300, 100, 50)
+        (1799, 48, 31)
     );
     for (depth, improving, expected) in [
-        (1, true, 4),
-        (1, false, 2),
-        (2, true, 7),
-        (2, false, 3),
-        (3, true, 12),
+        (1, true, 18),
+        (1, false, 5),
+        (2, true, 19),
+        (2, false, 6),
+        (3, true, 22),
         (3, false, 6),
     ] {
         assert_eq!(
@@ -78,6 +78,9 @@ fn late_move_limits_follow_quadratic_depth_rule() {
 pub(super) fn late_move_non_improving_parameter_scales_limit() {
     let default_scale = params::lmp_non_improving();
     let default_base = params::lmp_base();
+    let default_slope = params::lmp_slope();
+    params::set("LmpBase", 300).unwrap();
+    params::set("LmpSlope", 100).unwrap();
     params::set("LmpNonImproving", 150).unwrap();
     assert_eq!(late_move_limit(1, false), 6);
     assert_eq!(late_move_limit(1, true), 4);
@@ -87,19 +90,27 @@ pub(super) fn late_move_non_improving_parameter_scales_limit() {
     assert_eq!(late_move_limit(1, false), 7);
     assert_eq!(late_move_limit(1, true), 4);
     params::set("LmpBase", default_base).unwrap();
+    params::set("LmpSlope", default_slope).unwrap();
     params::set("LmpNonImproving", default_scale).unwrap();
 }
 
-// Stockfish src/search.cpp:1080, 1199。比較で良化していなくても静的評価がβ以上なら上限4を使う。
+// Stockfish src/search.cpp:1080, 1199。比較で良化していなくても静的評価がβ以上ならimproving側の上限を使う。
 #[test]
 fn late_move_pruning_uses_improving_updated_after_null_move() {
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     let board = quiet_board();
     let moves = legal_moves(&board);
-    assert!(moves.len() > 4);
+    let improved_limit = (params::lmp_base() + params::lmp_slope()) / 100;
+    let other_limit =
+        (params::lmp_base() + params::lmp_slope()) * params::lmp_non_improving() / 10000;
+    assert!(moves.len() > improved_limit as usize);
     assert!(!royal_under_attack(&board));
-    for (beta_offset, expected_nodes) in [(-1, 4), (0, 4), (1, 2)] {
+    for (beta_offset, expected_nodes) in [
+        (-1, improved_limit as u64),
+        (0, improved_limit as u64),
+        (1, other_limit as u64),
+    ] {
         with_nnue_root_searcher(nnue, &board, &[], |searcher| {
             let side = board.side_to_move();
             let key = material_key(&board);
@@ -187,7 +198,9 @@ fn late_move_pruning_exclusions_search_all_quiets() {
 // 保護する手は静かな手の枠を消費しない。上限0の調整テストでも同じ保護を確かめる。
 #[test]
 fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
-    check_late_move_protected_moves(2);
+    check_late_move_protected_moves(
+        ((params::lmp_base() + params::lmp_slope()) * params::lmp_non_improving() / 10000) as u64,
+    );
 }
 
 pub(super) fn check_late_move_protected_moves(limit: u64) {
@@ -384,7 +397,8 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
             ordered.push(mv);
         }
     });
-    let limit = 2;
+    let limit =
+        ((params::lmp_base() + params::lmp_slope()) * params::lmp_non_improving() / 10000) as usize;
     assert!(ordered.len() > limit);
     for (index, &target) in ordered.iter().enumerate() {
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();

@@ -15,52 +15,41 @@ use crate::search::alphabeta::{
 /// 時計のdocコメントの式から手計算した例。各項の丸めと上限を個別に検査する。
 #[test]
 fn tuning_default_clock_budget_matches_numeric_examples() {
-    assert_eq!(params::expected_plies(), 432, "数値例の前提");
-    assert_eq!(params::min_moves(), 88, "数値例の前提");
-    assert_eq!(params::increment_share(), 76, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 451, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 27, "数値例の前提");
-    // R/M、加算76%、秒読みの序盤係数を別々に丸め、hardは451%、残り27%、安全余裕で抑える。
+    assert_eq!(params::expected_plies(), 458, "数値例の前提");
+    assert_eq!(params::min_moves(), 40, "数値例の前提");
+    assert_eq!(params::increment_share(), 87, "数値例の前提");
+    assert_eq!(params::hard_soft_ratio(), 730, "数値例の前提");
+    assert_eq!(params::hard_remaining_share(), 39, "数値例の前提");
+    // Mの初期値229と下限40の境界、加算87%、hard倍率730%、残り39%を検査する。
+    // 秒読みの序盤係数は変わらず、各項の除算を先に行ってから合算する。
     for (name, remaining, increment, byoyomi, ply, soft, hard) in [
-        // M=432/2=216。215/216→0、hardは下限1 ms。216/216=217/216→1、1×451/100→4 ms。
-        ("initial division below", 215, 0, 0, 0, 0, 1),
-        ("initial division exact", 216, 0, 0, 0, 1, 4),
-        ("initial division above", 217, 0, 0, 0, 1, 4),
-        // 加算1,9,10,11の76%は0,6,7,8。基礎1との和は1,7,8,9、451%は4,31,36,40。
-        ("increment rounds down", 216, 1, 0, 0, 1, 4),
-        ("increment fraction", 216, 9, 0, 0, 7, 31),
-        ("increment next integer", 216, 10, 0, 0, 8, 36),
-        ("increment above integer", 216, 11, 0, 0, 9, 40),
-        // 217/216→1、1×76/100→0、12×8×4/400→0。和1、hard4 ms。
-        ("separate truncations", 217, 1, 12, 0, 1, 4),
-        // 216/216=1、13×8×4/400→1。和2、2×451/100→9 ms。
-        ("opening fraction reaches integer", 216, 0, 13, 0, 2, 9),
-        // ply35ではM198、19800/198=100、1000×8×39/400=780。和880、451%→3968。
-        ("opening below cap", 19800, 0, 1000, 35, 880, 3968),
-        // ply36ではM198、ply37ではM197。いずれもR/M=100、秒読み800。900×451/100=4059。
-        ("opening at cap", 19800, 0, 1000, 36, 900, 4059),
-        ("opening after cap", 19700, 0, 1000, 37, 900, 4059),
-        // ply254はM89、ply255以後は下限88。R/M=200、200×451/100=902。
-        ("moves before floor", 17800, 0, 0, 254, 200, 902),
-        ("moves at floor", 17600, 0, 0, 255, 200, 902),
-        ("moves after floor", 17600, 0, 0, 256, 200, 902),
-        ("moves beyond game", 17600, 0, 0, u32::MAX, 200, 902),
-        // 1000×27/100=270がhardを制限し、softも270 msになる。
-        ("remaining cap", 1000, 1000, 0, 0, 270, 270),
-        // 残り31−余裕30=1 ms。残り29では減算を0に飽和させ、hard下限1 ms。
+        ("initial division below", 228, 0, 0, 0, 0, 1),
+        ("initial division exact", 229, 0, 0, 0, 1, 7),
+        ("initial division above", 230, 0, 0, 0, 1, 7),
+        ("increment rounds down", 229, 1, 0, 0, 1, 7),
+        ("increment fraction", 229, 9, 0, 0, 8, 58),
+        ("increment next integer", 229, 10, 0, 0, 9, 65),
+        ("increment above integer", 229, 11, 0, 0, 10, 73),
+        ("separate truncations", 230, 1, 12, 0, 1, 7),
+        ("opening fraction reaches integer", 229, 0, 13, 0, 2, 14),
+        ("opening below cap", 21100, 0, 1000, 35, 880, 6424),
+        ("opening at cap", 21100, 0, 1000, 36, 900, 6570),
+        ("opening after cap", 21000, 0, 1000, 37, 900, 6570),
+        ("moves before floor", 8200, 0, 0, 376, 200, 1460),
+        ("moves at floor", 8000, 0, 0, 377, 200, 1460),
+        ("moves after floor", 8000, 0, 0, 378, 200, 1460),
+        ("moves beyond game", 8000, 0, 0, u32::MAX, 200, 1460),
+        ("remaining cap", 1000, 1000, 0, 0, 390, 390),
         ("safety cap", 31, 1000, 0, 0, 1, 1),
         ("safety below zero", 29, 1000, 0, 0, 1, 1),
-        // R=0では秒読みの80%=800 ms。加算76 msを含むsoft_raw876もhard800へ収める。
         ("byoyomi without main time", 0, 100, 1000, 0, 800, 800),
-        // 加算が最大でも残り1000の27%=270 msで両予算を抑える。
-        ("large increment is capped", 1000, u64::MAX, 0, 0, 270, 270),
-        // 各項をu128で合算しても、最後のDuration変換ではu64::MAX msに飽和する。
+        ("large increment is capped", 1000, u64::MAX, 0, 0, 390, 390),
         (
             "final duration saturates",
             u64::MAX,
             u64::MAX,
             u64::MAX,
-            432,
+            458,
             u64::MAX,
             u64::MAX,
         ),
@@ -450,7 +439,7 @@ fn tuning_parameters_in_isolated_process() {
                 ..super::pruning::lmr_context()
             }))
         }),
-        ("LmrMoveCount", 0, || {
+        ("LmrMoveCount", 6, || {
             i64::from(lmr_reduction(super::super::pruning::LmrContext {
                 ..super::pruning::lmr_context()
             }))
@@ -467,7 +456,7 @@ fn tuning_parameters_in_isolated_process() {
                 ..super::pruning::lmr_context()
             }))
         }),
-        ("LmrTtCapture", 0, || {
+        ("LmrTtCapture", 100, || {
             i64::from(lmr_reduction(super::super::pruning::LmrContext {
                 tt_capture: Some(true),
                 ..super::pruning::lmr_context()
@@ -506,7 +495,7 @@ fn tuning_parameters_in_isolated_process() {
             }))
         }),
         ("LmrNoTtMove", 0, || {
-            i64::from(super::super::pruning::non_lmr_depth(5, 450, false))
+            i64::from(super::super::pruning::non_lmr_depth(5, 500, false))
         }),
         ("LmrAllNode", 0, || {
             i64::from(lmr_reduction(super::super::pruning::LmrContext {
@@ -514,7 +503,9 @@ fn tuning_parameters_in_isolated_process() {
             }))
         }),
         ("LmrDeeperMargin", 100, || {
-            i64::from(super::super::pruning::lmr_research_depth(7, 4, 80, 50, 100))
+            i64::from(super::super::pruning::lmr_research_depth(
+                7, 4, 133, 50, 100,
+            ))
         }),
         ("LmrShallowerMargin", 0, || {
             i64::from(super::super::pruning::lmr_research_depth(7, 4, 52, 50, 100))
@@ -548,7 +539,7 @@ fn tuning_parameters_in_isolated_process() {
         ("ReverseFutilityMultSlope", 0, || {
             i64::from(reverse_futility_margin(101, 1, true, false, false, 0))
         }),
-        ("ReverseFutilityNoTtHit", 0, || {
+        ("ReverseFutilityNoTtHit", 20, || {
             i64::from(reverse_futility_margin(101, 1, false, false, false, 0))
         }),
         ("ReverseFutilityImproving", 0, || {
@@ -573,10 +564,10 @@ fn tuning_parameters_in_isolated_process() {
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))
         }),
-        ("NullMoveBase", 4800, || {
+        ("NullMoveBase", 1200, || {
             i64::from(null_move_reduction(12, 0, 0, 100))
         }),
-        ("NullMoveSlope", 400, || {
+        ("NullMoveSlope", 100, || {
             i64::from(null_move_reduction(12, 0, 0, 100))
         }),
         ("NullMoveEvalScale", 0, || {
@@ -613,7 +604,7 @@ fn tuning_parameters_in_isolated_process() {
         ("ExpectedPlies", 250, || {
             clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64
         }),
-        ("MinMoves", 40, || {
+        ("MinMoves", 200, || {
             clock_budget(clock_at_ply(100_000, 0, 0, 500))
                 .soft
                 .as_millis() as i64
@@ -635,6 +626,11 @@ fn tuning_parameters_in_isolated_process() {
         cases.into_iter().zip(params::PARAMETERS)
     {
         assert_eq!(name, expected_name);
+        // multの上限で傾きが隠れない入力を、この係数の検査に限って用意する。
+        let mult_base = params::reverse_futility_mult_base();
+        if name == "ReverseFutilityMultSlope" {
+            params::set("ReverseFutilityMultBase", 0).unwrap();
+        }
         let before = observe();
         params::set(name, value).unwrap();
         assert_ne!(observe(), before, "{name} must affect its calculation");
@@ -650,6 +646,9 @@ fn tuning_parameters_in_isolated_process() {
         params::set(name, max).unwrap();
         params::set(name, default).unwrap();
         assert_eq!(observe(), before);
+        if name == "ReverseFutilityMultSlope" {
+            params::set("ReverseFutilityMultBase", mult_base).unwrap();
+        }
     }
     assert!(
         matches!(params::set("Unknown", 0), Err(params::Error::UnknownName(name)) if name == "Unknown")
@@ -669,20 +668,19 @@ fn reverse_futility_parameter_changes_search() {
     );
     let nnue = test_nnue();
     let value = evaluate(nnue, &board);
-    assert_eq!(params::reverse_futility_mult_base(), 22, "数値例の前提");
+    assert_eq!(params::reverse_futility_mult_base(), 235, "数値例の前提");
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 置換表なし、opponentWorseningあり。余裕値は100×14×67/10000→9。
-    // 基数32へ変更後は100×24×67/10000→16。
-    let beta = value - 9;
+    // 既定の余裕値32に1足りない窓。基数0なら余裕値は3となり枝刈りする。
+    let beta = value - 31;
+    assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
+    params::set("ReverseFutilityMultBase", 0).unwrap();
     assert_eq!(
         run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
         (value, 0)
     );
-    params::set("ReverseFutilityMultBase", 32).unwrap();
-    assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
     assert_eq!(
         reverse_futility_margin(137, 1, false, false, true, 0),
-        22,
+        4,
         "百分率は乗算してから割る"
     );
 }
@@ -692,23 +690,23 @@ fn razoring_parameter_changes_search(depth: u32, name: &str) {
     let board = bare_kings();
     let nnue = test_nnue();
     let value = evaluate(nnue, &board);
-    assert_eq!(params::razoring_margin1(), 1606, "数値例の前提");
-    assert_eq!(params::razoring_margin2(), 2015, "数値例の前提");
+    assert_eq!(params::razoring_margin1(), 2622, "数値例の前提");
+    assert_eq!(params::razoring_margin2(), 2885, "数値例の前提");
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 100×1606/100=1606、100×2015/100=2015。
-    // 変更後の137×1706/100→2337、137×2115/100→2897は、先に割ると1706と2115になる。
+    // 100×2622/100=2622、100×2885/100=2885。
+    // 変更後の137×2522/100→3455、137×2785/100→3815は、先に割ると2522と2785になる。
     let (margin, changed, expected) = match depth {
-        1 => (1606, 1706, 2337),
-        2 => (2015, 2115, 2897),
+        1 => (2622, 2522, 3455),
+        2 => (2885, 2785, 3815),
         _ => unreachable!(),
     };
-    let alpha = value + margin;
+    let alpha = value + margin - 1;
+    assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
+    params::set(name, changed).unwrap();
     assert_eq!(
         run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
         (value, 0)
     );
-    params::set(name, changed).unwrap();
-    assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
     assert_eq!(
         razoring_margin(137, depth),
         expected,
@@ -727,14 +725,14 @@ fn null_move_eval_scale_changes_search() {
         ],
     );
     let nnue = test_nnue();
-    assert_eq!(params::null_move_eval_scale(), 56, "数値例の前提");
-    assert_eq!(params::null_move_base(), 3617, "数値例の前提");
-    assert_eq!(params::null_move_slope(), 257, "数値例の前提");
+    assert_eq!(params::null_move_eval_scale(), 133, "数値例の前提");
+    assert_eq!(params::null_move_base(), 4799, "数値例の前提");
+    assert_eq!(params::null_move_slope(), 393, "数値例の前提");
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 追加減深1の境界はceil(2×100×100/56)=358。
-    let beta = evaluate(nnue, &board) - 358;
+    // 追加減深1の境界はceil(2×100×100/133)=151。
+    let beta = evaluate(nnue, &board) - 151;
     // 浅い上界でreverse futilityを避け、null moveの減深量だけを比較する。
-    // F5ではallNodeにIIRを適用しないので、要求深さを6とする。
+    // F5ではallNodeにIIRを適用しないので、要求深さを8とする。
     let run = || {
         let table = small_tt();
         table.store(
@@ -746,7 +744,7 @@ fn null_move_eval_scale_changes_search() {
             0,
             false,
         );
-        run_negamax(&board, 6, beta - 1, beta, 0, &table)
+        run_negamax(&board, 8, beta - 1, beta, 0, &table)
     };
     let (_, default_nodes) = run();
     params::set("NullMoveEvalScale", 0).unwrap();
@@ -754,32 +752,32 @@ fn null_move_eval_scale_changes_search() {
     assert!(score >= beta);
     assert!(changed_nodes > default_nodes);
     params::set("NullMoveEvalScale", 50).unwrap();
-    // 深さ6の基本量は(3617+6×257)/1200=5159/1200→4。
+    // 深さ6の基本量は(4799+6×393)/1200=7157/1200→5。
     // 147×50/100→73、148×50/100=74。歩兵37の2倍74で割ると追加0,1。
     // 尺度400では19×400/100=76で追加1、最大の差は追加上限3。
-    assert_eq!(null_move_reduction(6, 147, 0, 37), 4);
-    assert_eq!(null_move_reduction(6, 148, 0, 37), 5);
+    assert_eq!(null_move_reduction(6, 147, 0, 37), 5);
+    assert_eq!(null_move_reduction(6, 148, 0, 37), 6);
     params::set("NullMoveEvalScale", 400).unwrap();
-    assert_eq!(null_move_reduction(6, 19, 0, 37), 5);
-    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), 7);
+    assert_eq!(null_move_reduction(6, 19, 0, 37), 6);
+    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), 8);
 }
 
 #[cfg(feature = "tuning")]
 fn zero_null_move_eval_scale_matches_base_reduction_search() {
     params::set("NullMoveEvalScale", 0).unwrap();
-    assert_eq!(params::null_move_base(), 3617, "数値例の前提");
-    assert_eq!(params::null_move_slope(), 257, "数値例の前提");
+    assert_eq!(params::null_move_base(), 4799, "数値例の前提");
+    assert_eq!(params::null_move_slope(), 393, "数値例の前提");
     assert_eq!(MAX_PLY, 256, "数値例の前提");
-    // 尺度0なら追加0。基本量(3617+d×257)/1200はd=0,4で3、5,9で4、10,12で5、256で57。
+    // 尺度0なら追加0。基本量(4799+d×393)/1200はd=0で3、1で4、4,5で5、9で6、10,12で7、256で87。
     for (depth, expected) in [
         (0, 3),
-        (1, 3),
-        (4, 3),
-        (5, 4),
-        (9, 4),
-        (10, 5),
-        (12, 5),
-        (256, 57),
+        (1, 4),
+        (4, 5),
+        (5, 5),
+        (9, 6),
+        (10, 7),
+        (12, 7),
+        (256, 87),
     ] {
         for value in [i32::MIN, -1000, 0, 1000, i32::MAX] {
             for beta in [-MATE_THRESHOLD + 1, 0, MATE_THRESHOLD - 1] {
@@ -798,7 +796,7 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     let beta = evaluate(nnue, &board) - 200;
-    // F5でIIRを行わないallNodeを深さ6で読む。基本量5159/1200→4、子の深さ6−1−4=1。
+    // F5でIIRを行わないallNodeを深さ8で読む。基本量7943/1200→6、子の深さ8−1−6=1。
     let child_depth = 1;
     let mut passed = board.clone();
     passed.make_null_move();
@@ -817,7 +815,7 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
         false,
     );
     assert_eq!(
-        run_negamax(&board, 6, beta - 1, beta, 0, &table),
+        run_negamax(&board, 8, beta - 1, beta, 0, &table),
         (-reply, nodes)
     );
     let hit = table.probe(search_key(&board), 0).unwrap();
@@ -836,14 +834,14 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     let history = repeated_root_children(&board, &moves);
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::futility_margin1(), 165, "数値例の前提");
-    assert_eq!(params::futility_margin2(), 239, "数値例の前提");
-    assert_eq!(params::futility_margin3(), 283, "数値例の前提");
-    assert_eq!(params::non_improving_futility1(), 71, "数値例の前提");
-    assert_eq!(params::non_improving_futility2(), 72, "数値例の前提");
-    assert_eq!(params::non_improving_futility3(), 86, "数値例の前提");
-    // 100×百分率/100の後に倍率を掛ける。165×71/100→117、239×72/100→172、283×86/100→243。
-    let reduced = [117, 172, 243][depth as usize - 1];
+    assert_eq!(params::futility_margin1(), 317, "数値例の前提");
+    assert_eq!(params::futility_margin2(), 264, "数値例の前提");
+    assert_eq!(params::futility_margin3(), 315, "数値例の前提");
+    assert_eq!(params::non_improving_futility1(), 82, "数値例の前提");
+    assert_eq!(params::non_improving_futility2(), 81, "数値例の前提");
+    assert_eq!(params::non_improving_futility3(), 84, "数値例の前提");
+    // 100×百分率/100の後に倍率を掛ける。317×82/100→259、264×81/100→213、315×84/100→264。
+    let reduced = [259, 213, 264][depth as usize - 1];
     let alpha = evaluate(nnue, &board) + reduced;
     let search = || {
         let mut nodes = 0;
@@ -871,13 +869,13 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     params::set(name, 100).unwrap();
     assert_eq!(search(), moves.len() as u64);
     // 尺度100では、端数を含めて現行の余裕値と完全に一致する。
-    // 歩兵価値×165,239,283%を0方向へ丸める。例: 137×239/100=327.43→327。
+    // 歩兵価値×317,264,315%を0方向へ丸める。例: 137×264/100=361.68→361。
     for (pawn, expected) in [
-        (1, [1, 2, 2]),
-        (37, [61, 88, 104]),
-        (100, [165, 239, 283]),
-        (137, [226, 327, 387]),
-        (999, [1648, 2387, 2827]),
+        (1, [3, 2, 3]),
+        (37, [117, 97, 116]),
+        (100, [317, 264, 315]),
+        (137, [434, 361, 431]),
+        (999, [3166, 2637, 3146]),
     ] {
         assert_eq!(
             futility_margin(pawn, depth, false),
@@ -896,18 +894,22 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
 #[cfg(feature = "tuning")]
 fn late_move_parameter_changes_search(name: &str) {
     let board = super::late_move::quiet_board();
-    assert_eq!(params::lmp_base(), 300, "数値例の前提");
-    assert_eq!(params::lmp_slope(), 100, "数値例の前提");
-    // 深さ1でimprovingは偽。400×50/10000=2、分子の基数が600なら上限3。
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 2);
+    let base = params::lmp_base();
+    let slope = params::lmp_slope();
+    let scale = params::lmp_non_improving();
+    let limit = (base + slope) * scale / 10000;
+    assert_eq!(super::late_move::search_quiet_board(&board).1, limit as u64);
+    let numerator = ((limit + 1) * 10000 + scale - 1) / scale;
     let boundary = match name {
-        "LmpBase" => 500,
-        "LmpSlope" => 300,
+        "LmpBase" => numerator - slope,
+        "LmpSlope" => numerator - base,
         _ => unreachable!(),
     };
     params::set(name, boundary).unwrap();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 3);
-    // 境界より1小さい599では599×50/10000→2。
+    assert_eq!(
+        super::late_move::search_quiet_board(&board).1,
+        (limit + 1) as u64
+    );
     params::set(name, boundary - 1).unwrap();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 2);
+    assert_eq!(super::late_move::search_quiet_board(&board).1, limit as u64);
 }
