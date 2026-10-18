@@ -309,11 +309,15 @@ cargo test -p minase --lib --features search-stats,tuning
 これらは既定のビルドに含まれないので、`cargo test --workspace`では走らない。
 
 `scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。
-現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストだけがあり、外部と通信せずに再試行と待機の規則を検査する。
-`scripts/fetch_lishogi_games.py`を変更したときは、マージの前にリポジトリのルートで次を実行する。
+現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストと、vast.aiの調整機でSPSAを実行する`scripts/vast/`と`scripts/vast-spsa/`のテストがある。
+前者は外部と通信せずに再試行と待機の規則を、後者は偽の`vastai`、`ssh`、`scp`、および`rsync`を使って、機械の作成から取得と削除までの判定を検査する。
+これらのスクリプトを変更したときは、マージの前にリポジトリのルートで、変更したスクリプトのテストを実行する。
+調整機のPythonは3.11なので、`scripts/vast/`と`scripts/vast-spsa/`のテストは3.11でも実行する。
 
 ```console
 PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
+python3 scripts/vast/test_common.py
+python3 scripts/vast-spsa/test_spsa.py
 ```
 
 一般には、マージ前の検査は手動の申し合わせではなく仕組みで止めるのが原則である（付録G）。

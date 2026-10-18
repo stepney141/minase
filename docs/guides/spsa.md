@@ -161,21 +161,36 @@ vast.aiの残高は、セッションの見積もりに余裕を加えた額に�
 セッションごとに、測定機の`data/vast-spsa/<セッション名>/`へ次の3つを置く。
 セッション名は、調整機で作る実行ディレクトリの名前と同じにし、終了後に`data/spsa/<セッション名>`へ移す名前にもする。
 
-- `session.env`：シェル変数を1行に1つずつ書く。`COMMIT`（調整対象のコミット）、`RUNNER_COMMIT`（`minase spsa`を実行するrunnerのコミット）、`SEED`、`ITERATIONS`、`PAIRS_PER_ITERATION`、`RULES`、`PRECHECK`（時間切れの事前確認を行うなら`yes`）、`PRECHECK_SEED`（`PRECHECK=yes`のとき）、`LOCAL_NPS`（測定機の負荷時の速度）、および`GAME_RSS_BYTES`（1局あたりの最大常駐メモリ）である。すべて必須であり、既定値はない。
+- `session.toml`：TOMLのキーを1行に1つずつ書く。`commit`（調整対象のコミット、文字列）、`runner_commit`（`minase spsa`を実行するrunnerのコミット、文字列）、`seed`、`iterations`、`pairs_per_iteration`（いずれも整数）、`rules`（文字列）、`precheck`（時間切れの事前確認を行うなら`true`）、`precheck_seed`（`precheck = true`のときだけ書く整数）、`local_nps`（測定機の負荷時の速度）、および`game_rss_bytes`（1局あたりの最大常駐メモリ、整数）である。`precheck_seed`のほかはすべて必須であり、既定値はない。未知のキーや型の違う値は拒否される。
 - `params`：第2節のパラメーターファイル。
-- `safety.params`：`PRECHECK=yes`のとき、第3節の時間切れの事前確認用のファイル。
+- `safety.params`：`precheck = true`のとき、第3節の時間切れの事前確認用のファイル。
 
-`RUNNER_COMMIT`には、調整機で別の機械へ移って再開できる版の`minase`を含むコミット（2026年10月18日以降のmaster）を指定する。
-調整対象のコミットがそれより古い場合も、runnerだけを新しくすれば再開できる。
-
-`LOCAL_NPS`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に`dev bench --depth 9 --repetitions 3`で走らせた平均NPSである。
-`scripts/vast-spsa/remote.sh`の関数で測れる。
-
-```console
-bash -c 'source scripts/vast-spsa/remote.sh; spsa_bench target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ>'
+```toml
+commit = "388c5244"
+runner_commit = "master"
+seed = 3250000000
+iterations = 3750
+pairs_per_iteration = 8
+rules = "engine-default"
+precheck = true
+precheck_seed = 3200000000
+local_nps = 1264584
+game_rss_bytes = 630000000
 ```
 
-`GAME_RSS_BYTES`は、測定機で調整用ビルド同士の1ペアをSTCで指し、`pairs/`の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和の、2局のうち大きい方とする。
+`commit`と`runner_commit`には、ブランチ名や省略したハッシュも書ける。`launch.py`は、完全なハッシュへ解決した設定を調整機へ送る。
+
+`runner_commit`には、調整機で別の機械へ移って再開できる版の`minase`を含むコミット（2026年10月18日以降のmaster）を指定する。
+調整対象のコミットがそれより古い場合も、runnerだけを新しくすれば再開できる。
+
+`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に`dev bench --depth 9 --repetitions 3`で走らせた平均NPSである。
+`scripts/vast-spsa/bench.py`で測れる。調整機の`remote.py`も、同じ関数で調整機の負荷時の速度を測る。
+
+```console
+python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/minase 16 <ログのディレクトリ>
+```
+
+`game_rss_bytes`は、測定機で調整用ビルド同士の1ペア（2局）をSTCで指し、`pairs/`の記録の`candidate_peak_rss_bytes`と`baseline_peak_rss_bytes`の和を局ごとに求めて、2局のうち大きい方の値とする。
 
 ### 機械を選ぶ
 
@@ -188,56 +203,57 @@ vastai search offers 'cpu_cores>=192 verified=true reliability>=0.95 inet_up>=10
 
 このうち、`cpu_arch`が`amd64`で、`cpu_cores_effective`が`cpu_cores`と等しい出品を、見込みの1回の費用の安い順に試す。
 過去のセッションの記録に負荷時の速度があるCPU型は、その速度から求めた所要時間に時間単価を掛け、記録のないCPU型は時間単価に24時間を掛けて、1回の費用を見積もる。
-`remote.sh`は、開始時に測った負荷時の速度から所要時間を見込み、24時間を超えれば本番を始めずに止まる。
-その場合、`fetch.sh`は調整機を削除するので、次の候補で起動し直す。
+`remote.py`は、開始時に測った負荷時の速度から所要時間を見込み、24時間を超えれば本番を始めずに止まる。
+その場合、`fetch.py`は調整機を削除するので、次の候補で起動し直す。
 出品は貸し手の都合で入れ替わるので、照会してから時間を置かずに起動する。
 
 ### 起動する
 
 ```console
-bash scripts/vast-spsa/launch.sh <セッション名> <出品のID> <期限までの分数>
+python3 scripts/vast-spsa/launch.py <セッション名> <出品のID> <期限までの分数>
 ```
 
 期限までの分数は、所要時間の見込みの上限に1.3を掛け、ビルド、速度の測定、および事前確認の45分を足した値とする。
 調整機は、起動時スクリプトが予約した処理により、この期限に自動で停止する。
-`launch.sh`は、出品が条件を満たすこと、同じラベル（`minase-spsa-<セッション名>`）の調整機がないこと、および`session.env`の必須の変数がそろっていることを確かめてから調整機を作る。
+`launch.py`は、出品が条件を満たすこと、同じラベル（`minase-spsa-<セッション名>`）の調整機がないこと、および`session.toml`の必須のキーがそろっていることを確かめてから調整機を作る。
 調整機が10分以内に稼働しない場合や、SSHが5分以内に使えるようにならない場合は、その調整機を削除して止まる。
 
-調整機では`scripts/vast-spsa/remote.sh`が、runnerと調整用ビルドのビルド、同時対局数`c`と換算係数`f`の決定、時間切れの事前確認、および本番のセッションを順に実行する。
-同時対局数は、物理コア数から1を引いた数と、実メモリを`GAME_RSS_BYTES`の1.25倍で割った数の小さい方である。
-持ち時間は、STCの`time=10000+100`の基本時間と加算の両方に`f`（`LOCAL_NPS`を調整機の負荷時の速度で割った比）を掛けた値になる。
+調整機では`scripts/vast-spsa/remote.py`が、runnerと調整用ビルドのビルド、同時対局数`c`と換算係数`f`の決定、時間切れの事前確認、および本番のセッションを順に実行する。
+同時対局数は、物理コア数から1を引いた数と、実メモリを`game_rss_bytes`の1.25倍で割った数の小さい方である。
+持ち時間は、STCの`time=10000+100`の基本時間と加算の両方に`f`（`local_nps`を調整機の負荷時の速度で割った比）を掛けた値になる。
 事前確認の反復数は`⌈13 × c ÷ 16⌉`であり、異常が1件でもあれば本番を始めずに止まる。
 
 ### 取得する
 
-起動したら、測定機で`fetch.sh`を動かし続ける。
+起動したら、測定機で`fetch.py`を動かし続ける。
 
 ```console
-nohup bash scripts/vast-spsa/fetch.sh <セッション名> > data/vast-spsa/<セッション名>/fetch.log 2>&1 &
+nohup python3 scripts/vast-spsa/fetch.py <セッション名> > data/vast-spsa/<セッション名>/fetch.log 2>&1 &
 ```
 
-`fetch.sh`は10分ごとに、調整機の実行ディレクトリを`incoming/`へ、ログを`logs/`へ取得し、適用番号が1から欠けずにそろっていれば、再開用の写し`run/`を更新する。
+`fetch.py`は10分ごとに、調整機の実行ディレクトリを`incoming/`へ、ログを`logs/`へ取得し、適用番号が1から欠けずにそろっていれば、再開用の写し`run/`を更新する。
 動いている調整機からはコンテナのSSHを通したrsyncで、停止した調整機からは`vastai copy`で取得する。
 `vastai copy`は貸し手の機械のrsyncを通るので、貸し手によっては失敗する。
-取得や状態の照会に失敗したときは次の回に再試行し、6回続けて失敗したときは、調整機は止めずに、`fetch.sh`だけが0以外の終了コードで終わる。
-セッションが全反復を終えると、`fetch.sh`は測定機のrunnerで`minase spsa apply`を`params.rs`の一時的な写しに対して実行して記録の整合性を検査し、検査に通れば調整機を削除して終了コード0で終わる。
+取得や状態の照会に失敗したときは次の回に再試行し、6回続けて失敗したときは、調整機は止めずに、`fetch.py`だけが0以外の終了コードで終わる。
+セッションが全反復を終えると、`fetch.py`は測定機のrunnerで`minase spsa apply`を`params.rs`の一時的な写しに対して実行して記録の整合性を検査し、検査に通れば調整機を削除して終了コード0で終わる。
 事前確認や本番が失敗した場合は調整機を停止し、所要時間の見込みが上限を超えた場合は調整機を削除して、どちらも0以外の終了コードで止まる。
 
 ### 再開する
 
-コンテナが再起動した場合は、起動時スクリプトが`remote.sh`を起動し直し、`remote.sh`は実行ディレクトリを見つけて`--resume`で再開する。
-調整機が失われた場合、または止めて別の機械へ移る場合は、残っている調整機を`vastai destroy instance <ID>`で削除してから、別の出品で`launch.sh`を同じセッション名で実行する。
-`launch.sh`は`run/`を調整機へ送り、`remote.sh`はその機械で調整用ビルドを作り直して`--resume`で再開する。
+コンテナが再起動した場合は、起動時スクリプトが`remote.py`を起動し直し、`remote.py`は実行ディレクトリを見つけて`--resume`で再開する。
+調整機が失われた場合、または止めて別の機械へ移る場合は、残っている調整機を`vastai destroy instance <ID>`で削除してから、別の出品で`launch.py`を同じセッション名で実行する。
+`launch.py`は`run/`を調整機へ送り、`remote.py`はその機械で調整用ビルドを作り直して`--resume`で再開する。
 `commit:`の形式の調整対象は、コミットが記録と一致すれば、ビルドし直して実行ファイルのSHA-256が変わっても再開できる（[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)）。
 持ち時間と同時対局数は最初の記録のまま変わらない。
 最後の取得以後に完了した反復と、並走していた反復は失われる。
 
 コンテナが期限の後に再起動すると、起動時スクリプトは直ちに停止を要求する。
-この場合も、別の出品で`launch.sh`をやり直して再開する。
+この場合も、別の出品で`launch.py`をやり直して再開する。
 
 ### 結果を反映する
 
-`fetch.sh`が終了コード0で終わったら、`data/vast-spsa/<セッション名>/run/`を`data/spsa/<セッション名>`へ移し、第6節と第7節の手順で確認と反映を行う。
+`fetch.py`が終了コード0で終わったら、`data/vast-spsa/<セッション名>/run/`を`data/spsa/<セッション名>`へ移し、第6節と第7節の手順で確認と反映を行う。
+反映した候補の事前対局と段階ゲートは、[統括計画](../plans/search-forms.md)の決定により、SPSAを終えた同じ調整機で、時間制御を換算せずに行う。ただし、スクリプトはまだこの手順に対応しておらず、`fetch.py`は検査に通ると調整機を削除する。対応は、統括計画のサブタスク1の事前対局と段階ゲートを手作業で行った後に加える。
 セッションの記録には、第6節の項目に加えて、出品と機械のID、CPU型、物理コア数、時間単価と費用の合計、`f`と換算した持ち時間、同時対局数、および調整機を作り直した場合の回数と各機械の記録を書く。
 
 ### 費用を確かめて片付ける
