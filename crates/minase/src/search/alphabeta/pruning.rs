@@ -203,7 +203,7 @@ pub(super) fn should_raise_futility_best_score(best_score: i32, futility_value: 
         && futility_value < REPETITION_BAND_START
 }
 
-/// 静かな手の上限の式に渡す調整係数。
+/// 残り深さによらず適用するlate move pruningで、静かな手の上限の式に渡す調整係数。
 #[derive(Clone, Copy)]
 pub(super) struct LateMoveCoefficients {
     pub(super) lmp_non_improving: i32,
@@ -232,7 +232,7 @@ impl LateMoveCoefficients {
     }
 }
 
-/// 深さ1〜3で数える静かな手の数の上限を整数除算で求める。
+/// late move pruningで数える静かな手の数の上限を、残り深さによらず整数除算で求める。
 ///
 /// improvingなら `(LmpBase + LmpSlope × 深さ²) / 100`、
 /// それ以外は `(LmpBase + LmpSlope × 深さ²) × LmpNonImproving / 10000` とする。

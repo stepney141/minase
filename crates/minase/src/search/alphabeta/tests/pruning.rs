@@ -4,8 +4,8 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    FutilityCoefficients, is_opponent_worsening, is_seek_mate, reverse_futility_margin,
-    seek_mate_null_move_reduction, should_raise_futility_best_score,
+    FutilityCoefficients, is_opponent_worsening, is_seek_mate, late_move_limit,
+    reverse_futility_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::LmrContext;
@@ -573,8 +573,9 @@ fn futility_prunes_pv_quiets_without_false_mate_except_on_follow_pv() {
     }
 }
 
+// late move pruningの上限まではfutilityが王手になる静かな手を保護し、上限後は王手でも先に省く。
 #[test]
-fn futility_does_not_prune_quiet_checks() {
+fn futility_protects_quiet_checks_before_late_move_limit() {
     let board = position(
         Color::Black,
         &[
@@ -607,6 +608,33 @@ fn futility_does_not_prune_quiet_checks() {
     assert!(!checking.is_empty());
     let history = repeated_root_children(&board, &moves);
     with_root_searcher(&board, &history, |searcher| {
+        let limit = usize::try_from(late_move_limit(1, false)).unwrap();
+        let mut picker = MovePicker::new(Some(tt_move), [None; KILLER_COUNT]);
+        let mut ordered = Vec::new();
+        while let Some((mv, capture)) = picker.next(
+            &board,
+            searcher.nnue,
+            &searcher.generator,
+            searcher.history,
+            searcher.capture_history,
+        ) {
+            assert!(!capture && !mv.promote);
+            ordered.push(mv);
+        }
+        assert_eq!(ordered[0], tt_move);
+        let counted = &ordered[1..];
+        assert!(counted.len() > limit);
+        let checking_before_limit = counted[..limit]
+            .iter()
+            .filter(|&&mv| board.gives_check(&searcher.generator, mv))
+            .count();
+        assert!(checking_before_limit > 0);
+        assert!(
+            counted[limit..]
+                .iter()
+                .any(|&mv| board.gives_check(&searcher.generator, mv)),
+            "late move pruningが王手になる静かな手も対象にする局面"
+        );
         searcher.tt.store(
             search_key(&board),
             0,
@@ -621,7 +649,7 @@ fn futility_does_not_prune_quiet_checks() {
             .negamax(&mut board.clone(), 1, alpha, alpha + 2, 0, false)
             .unwrap();
         assert!(score.abs() < MATE_THRESHOLD);
-        assert_eq!(searcher.nodes, 1 + checking.len() as u64);
+        assert_eq!(searcher.nodes, 1 + checking_before_limit as u64);
     });
 }
 

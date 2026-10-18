@@ -69,8 +69,10 @@ impl Searcher<'_> {
     /// 手のループではlate move pruningの後、捕獲手にはSEE、それ以外の手にはfutilityを判定し、残った手にLMRを適用する。
     /// 静かな手のfutilityはlmrDepthが12未満ならPVノードにも適用し、followPVのPVノード、成る手、および王手になる手を除く。
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことも要求する。
-    /// razoring、late move pruning、およびSEEは、それぞれIIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という条件を持つ。
-    /// さらに手番側のどの王駒にも相手の疑似利きが届かない場合に限り、razoringは残り深さ2以下に限る。
+    /// late move pruningはIIR後の残り深さに上限を設けず、零窓とPVノードの両方に適用する。
+    /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことは要求する。
+    /// razoringとSEEは、IIR後の残り深さ3以下の零窓で、同じ帯と王駒への利きの条件を要求する。
+    /// razoringは、さらに残り深さ2以下に限る。
     /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
     /// 詰みを探す反復では上限を5に下げ、razoringを行わない（Stockfish src/search.cpp:1017, 1022）。
     /// αとβの帯と王駒への利きの条件は、reverse futilityにも適用する。
@@ -196,7 +198,7 @@ impl Searcher<'_> {
         let window_outside_bands =
             alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START;
         let razoring_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
-        let late_move_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
+        let late_move_node = window_outside_bands;
         let capture_see_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。

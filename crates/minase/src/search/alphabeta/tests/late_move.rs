@@ -1,6 +1,7 @@
 //! 静かな手だけを数えるlate move pruningを検査する。
 
 use super::*;
+use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{futility_value, late_move_limit, pruning_lmr_depth};
 
@@ -71,6 +72,10 @@ fn late_move_limits_follow_quadratic_depth_rule() {
         (2, false, 6),
         (3, true, 22),
         (3, false, 6),
+        (4, true, 25),
+        (4, false, 7),
+        (MAX_PLY, true, 31_475),
+        (MAX_PLY, false, 9_757),
     ] {
         assert_eq!(
             super::pruning::late_move_coefficients().late_move_limit(depth, improving),
@@ -171,44 +176,111 @@ fn late_move_pruning_uses_improving_updated_after_null_move() {
     }
 }
 
-// PV、詰み帯、王駒への利きがある場合は静かな手を省かない。
+// 深さ4の零窓と、前の反復の主変化を辿るPVノードでも上限後の静かな手を省く。
 #[test]
-fn late_move_pruning_exclusions_search_all_quiets() {
+fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
     let nnue = test_nnue();
-    for (width, mate_window, attacked) in [(2, false, false), (1, true, false), (1, false, true)] {
-        let board = if attacked {
-            // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
-            position(
-                Color::Black,
-                &[
-                    (sq(0, 11), Color::White, PieceKind::King),
-                    (sq(11, 6), Color::White, PieceKind::Rook),
-                    (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
-                    (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
-                    (sq(8, 2), Color::Black, PieceKind::GoldGeneral),
-                    (sq(11, 0), Color::Black, PieceKind::King),
-                ],
-            )
-        } else {
-            quiet_board()
-        };
-        assert_eq!(royal_under_attack(&board), attacked);
-        let moves = legal_moves(&board);
-        let history = repeated_root_children(&board, &moves);
+    let board = quiet_board();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    let depth = 4;
+    let expected_nodes = u64::try_from(late_move_limit(depth, false)).unwrap();
+    assert!(!royal_under_attack(&board));
+    assert!(
+        moves
+            .iter()
+            .all(|&mv| !mv.promote && move_order_key(&board, nnue, mv).is_none())
+    );
+    assert!(expected_nodes > 0 && expected_nodes < moves.len() as u64);
+
+    for (case, width, follow_pv) in [("zero-window", 1, false), ("PV", 2, true)] {
         with_nnue_root_searcher(nnue, &board, &history, |searcher| {
-            let alpha = if mate_window {
-                MATE_THRESHOLD - 1
-            } else {
-                evaluate(searcher.nnue, &board) + 1
-            };
+            searcher.seek_mate = true;
+            searcher.null_move_ply = Some(0);
+            searcher.follow_pv[0] = follow_pv;
+            let alpha = evaluate(searcher.nnue, &board) + 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 1, alpha, alpha + width, 0, false),
+                searcher.negamax(&mut board.clone(), depth, alpha, alpha + width, 0, false),
                 Some(DRAW_SCORE)
             );
-            assert_eq!(searcher.nodes, moves.len() as u64);
+            assert_eq!(searcher.nodes, expected_nodes, "case={case}");
         });
     }
+}
+
+// αまたはβが詰み帯と専用の帯に達する場合は、浅いノードでも深いノードでも静かな手を省かない。
+#[test]
+fn late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band() {
+    let board = quiet_board();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+
+    for depth in [1, 4] {
+        let limit = u64::try_from(late_move_limit(depth, false)).unwrap();
+        assert!(limit < moves.len() as u64);
+        for (case, alpha, beta) in [
+            ("alpha", -REPETITION_BAND_START, 1),
+            ("beta", 0, REPETITION_BAND_START),
+        ] {
+            assert!(alpha < beta);
+            assert_eq!(alpha.abs() >= REPETITION_BAND_START, case == "alpha");
+            assert_eq!(beta.abs() >= REPETITION_BAND_START, case == "beta");
+            with_root_searcher(&board, &history, |searcher| {
+                searcher.seek_mate = true;
+                searcher.null_move_ply = Some(0);
+                searcher.follow_pv[0] = true;
+                assert_eq!(
+                    searcher.negamax(&mut board.clone(), depth, alpha, beta, 0, false),
+                    Some(DRAW_SCORE)
+                );
+                assert_eq!(
+                    searcher.nodes,
+                    moves.len() as u64,
+                    "case={case}, depth={depth}"
+                );
+            });
+        }
+    }
+}
+
+// 手番側の王駒に相手の疑似利きが届く場合は、深さ4でも静かな手を省かない。
+#[test]
+fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
+    // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(11, 6), Color::White, PieceKind::Rook),
+            (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
+            (sq(5, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(8, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(11, 0), Color::Black, PieceKind::King),
+        ],
+    );
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    let depth = 4;
+    let limit = usize::try_from(late_move_limit(depth, false)).unwrap();
+    let counted_quiets = moves
+        .iter()
+        .filter(|&&mv| !mv.promote && move_order_key(&board, test_nnue(), mv).is_none())
+        .count();
+    assert!(royal_under_attack(&board));
+    assert!(counted_quiets > limit);
+
+    with_root_searcher(&board, &history, |searcher| {
+        searcher.seek_mate = true;
+        searcher.null_move_ply = Some(0);
+        let alpha = evaluate(searcher.nnue, &board) + 1;
+        assert!(alpha > DRAW_SCORE);
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false),
+            Some(DRAW_SCORE)
+        );
+        assert_eq!(searcher.nodes, moves.len() as u64);
+    });
 }
 
 // 保護する手は静かな手の枠を消費しない。上限0の調整テストでも同じ保護を確かめる。
