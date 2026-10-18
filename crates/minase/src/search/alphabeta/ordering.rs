@@ -78,9 +78,7 @@ impl Searcher<'_> {
         // 負の履歴値にも同じ重力式を適用する。
         let mut update = |mv: Move, delta: i32| {
             let value = &mut self.history[color][mv.from.dense_index()][mv.to.dense_index()];
-            let old = i64::from(*value);
-            let delta = i64::from(delta);
-            *value = (old + delta - old * delta.abs() / limit) as i32;
+            *value = history_gravity(*value, delta, limit);
         };
         update(mv, bonus);
         for &mv in earlier {
@@ -359,4 +357,11 @@ pub(super) fn piece_at_for_ordering(position: &Position, square: minase_core::Sq
     position
         .piece_at(square)
         .expect("move ordering square must contain a piece")
+}
+
+/// 符号つきの重力更新。除算は0方向へ丸める。
+pub(super) fn history_gravity(old: i32, delta: i32, limit: i64) -> i32 {
+    let old = i64::from(old);
+    let delta = i64::from(delta);
+    (old + delta - old * delta.abs() / limit) as i32
 }

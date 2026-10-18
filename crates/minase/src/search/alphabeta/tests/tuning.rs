@@ -1,6 +1,7 @@
-//! 探索係数の既定値と設定を検査する。
+//! 固定係数での算術と、調整オプションの反映を検査する。
 
 use super::*;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
@@ -15,11 +16,14 @@ use crate::search::alphabeta::{
 /// 時計のdocコメントの式から手計算した例。各項の丸めと上限を個別に検査する。
 #[test]
 fn tuning_default_clock_budget_matches_numeric_examples() {
-    assert_eq!(params::expected_plies(), 458, "数値例の前提");
-    assert_eq!(params::min_moves(), 40, "数値例の前提");
-    assert_eq!(params::increment_share(), 87, "数値例の前提");
-    assert_eq!(params::hard_soft_ratio(), 730, "数値例の前提");
-    assert_eq!(params::hard_remaining_share(), 39, "数値例の前提");
+    // f7c0925cの時間配分の算術例で使った係数を固定する。
+    let coefficients = super::super::time::ClockCoefficients {
+        expected_plies: 458,
+        min_moves: 40,
+        increment_share: 87,
+        hard_soft_ratio: 730,
+        hard_remaining_share: 39,
+    };
     // Mの初期値229と下限40の境界、加算87%、hard倍率730%、残り39%を検査する。
     // 秒読みの序盤係数は変わらず、各項の除算を先に行ってから合算する。
     for (name, remaining, increment, byoyomi, ply, soft, hard) in [
@@ -54,7 +58,7 @@ fn tuning_default_clock_budget_matches_numeric_examples() {
             u64::MAX,
         ),
     ] {
-        let actual = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+        let actual = coefficients.budget(clock_at_ply(remaining, increment, byoyomi, ply), 30);
         assert_eq!(
             actual,
             TimeBudget {
@@ -125,6 +129,83 @@ fn tuning_parameters_in_isolated_process() {
         return;
     }
     let scenario = scenario.unwrap();
+    // 各Tuneオプションの効果を独立に比較するための固定入力。
+    // f7c0925cの算術例と同じ係数を子プロセス内だけで設定する。
+    let fixture = [
+        ("LmrDivisor", 147),
+        ("LmrHistoryThreshold", 35),
+        ("LmrMaxReduction", 3),
+        ("LmrBase", 127),
+        ("LmrOffset", 106),
+        ("LmrNonImproving", 3),
+        ("LmrPvReduction", 6),
+        ("LmrTtPv", 70),
+        ("LmrTtPvBase", 337),
+        ("LmrTtPvPv", 13),
+        ("LmrTtPvValue", 95),
+        ("LmrTtPvDepth", 77),
+        ("LmrTtPvDepthCutNode", 90),
+        ("LmrMoveCount", 0),
+        ("LmrCutNode", 164),
+        ("LmrCutNodeNoTtMove", 59),
+        ("LmrTtCapture", 0),
+        ("LmrCutoffCount", 48),
+        ("LmrCutoffCountMany", 232),
+        ("LmrCutoffCountAllNode", 129),
+        ("LmrTtMove", 269),
+        ("LmrAlphaEval", 46),
+        ("LmrNoTtMove", 57),
+        ("LmrAllNode", 142),
+        ("LmrDeeperMargin", 82),
+        ("LmrShallowerMargin", 26),
+        ("FutilityMargin1", 317),
+        ("FutilityMargin2", 264),
+        ("FutilityMargin3", 315),
+        ("NonImprovingFutility1", 82),
+        ("NonImprovingFutility2", 81),
+        ("NonImprovingFutility3", 84),
+        ("LmpBase", 1799),
+        ("LmpSlope", 48),
+        ("LmpNonImproving", 31),
+        ("ReverseFutilityMultBase", 235),
+        ("ReverseFutilityMultSlope", 4),
+        ("ReverseFutilityNoTtHit", 0),
+        ("ReverseFutilityImproving", 144),
+        ("ReverseFutilityOpponentWorsening", 20),
+        ("ReverseFutilityCorrection", 124),
+        ("RazoringMargin1", 2622),
+        ("RazoringMargin2", 2885),
+        ("SeeMargin1", 15),
+        ("SeeMargin2", 97),
+        ("SeeMargin3", 3),
+        ("AspirationDelta", 57),
+        ("AspirationGrowth", 168),
+        ("NullMoveBase", 4799),
+        ("NullMoveSlope", 393),
+        ("NullMoveEvalScale", 133),
+        ("HistoryLimit", 5808),
+        ("HistoryBonusScale", 207),
+        ("HistoryMalusScale", 110),
+        ("HistoryDecay", 37),
+        ("CaptureHistoryDecay", 13),
+        ("CaptureHistoryLimit", 8376),
+        ("CaptureHistoryScale", 155),
+        ("CorrectionCap", 181),
+        ("CorrectionWeight", 76),
+        ("DeltaMargin", 500),
+        ("QsearchMoveLimit", 6),
+        ("ExpectedPlies", 458),
+        ("MinMoves", 40),
+        ("IncrementShare", 87),
+        ("HardSoftRatio", 730),
+        ("HardRemainingShare", 39),
+        ("IterationRatio", 277),
+        ("FmScale", 1024),
+    ];
+    for (name, value) in fixture {
+        params::set(name, value).unwrap();
+    }
+
     if scenario == "capture history limits" {
         for limit in [4096, 65536] {
             params::set("CaptureHistoryLimit", limit).unwrap();
@@ -622,7 +703,7 @@ fn tuning_parameters_in_isolated_process() {
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());
-    for ((name, value, observe), &(expected_name, default, min, max)) in
+    for ((name, value, observe), &(expected_name, _default, min, max)) in
         cases.into_iter().zip(params::PARAMETERS)
     {
         assert_eq!(name, expected_name);
@@ -631,6 +712,7 @@ fn tuning_parameters_in_isolated_process() {
         if name == "ReverseFutilityMultSlope" {
             params::set("ReverseFutilityMultBase", 0).unwrap();
         }
+        let original = fixture.iter().find(|&&(n, _)| n == name).unwrap().1;
         let before = observe();
         params::set(name, value).unwrap();
         assert_ne!(observe(), before, "{name} must affect its calculation");
@@ -644,7 +726,7 @@ fn tuning_parameters_in_isolated_process() {
         ));
         params::set(name, min).unwrap();
         params::set(name, max).unwrap();
-        params::set(name, default).unwrap();
+        params::set(name, original).unwrap();
         assert_eq!(observe(), before);
         if name == "ReverseFutilityMultSlope" {
             params::set("ReverseFutilityMultBase", mult_base).unwrap();

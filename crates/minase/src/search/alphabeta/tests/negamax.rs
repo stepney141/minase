@@ -135,9 +135,13 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
     let mut after_null = position.clone();
     after_null.make_null_move();
     let expected = -evaluate(test_nnue(), &after_null);
-    let table = small_tt();
-    let (score, nodes) = run_negamax(&position, 4, expected - 1, expected, 0, &table);
-    assert_eq!((score, nodes), (expected, 0));
+    with_root_searcher(&position, &[], |searcher| {
+        assert_eq!(
+            searcher.search_null_move(&mut position.clone(), 0, expected, 0),
+            Some(expected)
+        );
+        assert_eq!(searcher.nodes, 0);
+    });
 }
 
 // 置換表の打ち切りは減深前の要求深さで判定し、深さが足りる場合は内部反復減深より先に返す。
@@ -419,6 +423,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             &mut butterfly_history,
             &mut capture_history,
         );
+        searcher.seek_mate = true;
         if nested {
             set_outer_null_path(&mut searcher, &root);
         }
@@ -426,8 +431,19 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
         let null_ply = searcher.null_move_ply;
         let boundary = searcher.null_move_boundary;
         let mut current = root.clone();
-        // 静的評価付近の窓で枝刈りを避け、実着手を1手積んだ後にノード上限で中断する。
-        let beta = evaluate(nnue, &root);
+        // 専用帯の窓で入口の枝刈りを避け、実着手を1手積んだ後に中断する。
+        let beta = -crate::search::REPETITION_BAND_START;
+        let mut passed = root.clone();
+        passed.make_null_move();
+        table.store(
+            search_key(&passed),
+            0,
+            -beta,
+            Bound::Exact,
+            None,
+            if nested { 3 } else { 1 },
+            true,
+        );
         assert_eq!(
             searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
             None,
@@ -454,9 +470,15 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
     let (root, _) = rook_cycle(true, false);
     for interrupt in [None, Some(0), Some(1), Some(2)] {
         with_root_searcher(&root, &[], |searcher| {
+            searcher.seek_mate = true;
             let mut current = root.clone();
             searcher.interrupt_at = interrupt.map(|node| (node, StopReason::ExternalStop));
-            let beta = evaluate(searcher.nnue, &root);
+            let beta = -crate::search::REPETITION_BAND_START;
+            let mut passed = root.clone();
+            passed.make_null_move();
+            searcher
+                .tt
+                .store(search_key(&passed), 0, -beta, Bound::Exact, None, 1, true);
             let score = searcher.search_null_move(&mut current, 2, beta, 0);
             assert_eq!(
                 score.is_none(),
@@ -672,10 +694,9 @@ fn lmr_search_move_researches_at_adjusted_depth() {
     let reply = legal_moves(&child)[0];
     // F5のcutNodeでfail-lowの値を固定するため、初回深さは4より深くする。
     for (reduced, value, expected) in [
-        (5, deeper + 1, 8),
-        (5, shallower, 7),
-        (5, shallower - 1, 6),
-        (7, deeper + 1, 7),
+        (5, deeper.max(shallower) + 1, 8),
+        (5, deeper.min(shallower) - 1, 6),
+        (7, deeper.max(shallower) + 1, 7),
     ] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.tt.store(

@@ -227,6 +227,8 @@ single_capture_test!(qsearch_limit_reads_double_lion_capture_after_tt_capture, {
     );
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        // 手数上限の例外だけを検査し、delta pruningの閾値を全二重捕獲より大きくする。
+        searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, first_capture(), ply);
         let doubles: Vec<_> = legal_moves(&board)
             .into_iter()
@@ -424,6 +426,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, captures[0], ply);
         assert!(capture_is_pruned_by_see(
             &board,
@@ -433,6 +436,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
         ));
         let expected = captures[1..]
             .iter()
+            .take(params::qsearch_move_limit() as usize)
             .map(|&mv| {
                 assert!(!capture_is_pruned_by_see(
                     &board,
@@ -484,6 +488,8 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_nnue_root_searcher(nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        // 固定したdelta境界で手数の算入を検査する。
+        searcher.delta_margin = 500;
         seed_first(searcher, &board, captures[0], ply);
         let alpha = evaluate(searcher.nnue, &board)
             + searcher.delta_margin

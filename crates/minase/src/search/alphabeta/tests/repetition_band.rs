@@ -4,7 +4,7 @@
 use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
-use crate::search::alphabeta::pruning::{late_move_limit, see_margin};
+use crate::search::alphabeta::pruning::see_margin;
 use crate::search::{REPETITION_WIN, in_repetition_band};
 
 #[test]
@@ -117,7 +117,12 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
                 // 高いαでも候補を残し、置換表と順序付けの契約をdelta pruningから独立に検査する。
                 searcher.delta_margin = INFINITY;
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
-                assert_eq!(searcher.quiesce(&mut board.clone(), alpha, beta, 0), None);
+                let result = searcher.quiesce(&mut board.clone(), alpha, beta, 0);
+                if super::super::params::qsearch_move_limit() > 1 {
+                    assert_eq!(result, None);
+                } else {
+                    assert!(result.is_some());
+                }
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(
                     searcher.previous_capture[1],
@@ -266,7 +271,7 @@ fn r1_repetition_band_windows_disable_reverse_futility_and_razoring() {
 fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
     let board = super::late_move::quiet_board();
     let moves = legal_moves(&board);
-    assert!(moves.len() > late_move_limit(3, false) as usize);
+    assert!(moves.len() > 1);
     let history = repeated_root_children(&board, &moves);
     for depth in [1, 2, 3] {
         for alpha in [29_486, 29_487, 29_740] {

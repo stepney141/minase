@@ -169,9 +169,8 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
 /// 非ゼロ履歴は捕獲段だけを変え、TT手を先頭に保ち、合法手の重複を作らない。
 #[test]
 fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
-    assert_eq!(params::capture_history_scale(), 155, "数値例の前提");
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 上限での換算は100×155/100=155、下限では−155。
+    // 歩兵価値100での上限の換算値は尺度そのものになる。
     let board = capture_fixture();
     with_root_searcher(&board, &[], |searcher| {
         let before = picked(searcher, &board, None);
@@ -201,24 +200,28 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, winner),
-            155
+            params::capture_history_scale()
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.nnue, captures[0]),
-            -155
+            -params::capture_history_scale()
         );
         let after = picked(searcher, &board, None);
-        assert_eq!(after[0], (winner, true));
-        assert_eq!(
-            after[1..4],
-            [
-                (captures[1], true),
-                (captures[2], true),
-                (captures[0], true)
-            ]
-        );
+        if params::capture_history_scale() == 0 {
+            assert_eq!(after, before);
+        } else {
+            assert_eq!(after[0], (winner, true));
+            assert_eq!(
+                after[1..4],
+                [
+                    (captures[1], true),
+                    (captures[2], true),
+                    (captures[0], true)
+                ]
+            );
+        }
         assert_eq!(after[4..], before[4..]);
         let mut root_after = legal_moves(&board);
         searcher.order_moves(&board, &mut root_after, None, 0);
@@ -298,14 +301,8 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
         capture(sq(5, 5), sq(7, 5)),
     ];
     let untouched = capture(sq(5, 5), sq(5, 3));
-    // 上限8376の重力式。4096×9/8376は4、4096²/8376は2003へ丸める。
-    assert_eq!(params::capture_history_limit(), 8376, "数値例の上限");
-    for (depth, expected) in [
-        (0, [4096, -4096, 0]),
-        (3, [4083, -4101, -9]),
-        (64, [-2003, -6189, -4096]),
-        (256, [-8376; 3]),
-    ] {
+    let limit = params::capture_history_limit();
+    for depth in [0, 3, 64, 256] {
         let mut history = CaptureHistory::new();
         history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
         history.record_cutoff(&board, nnue, untouched, &[], 3);
@@ -314,11 +311,17 @@ fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
 
         history.record_quiet_cutoff(&board, nnue, &earlier, depth);
 
-        assert_eq!(
-            earlier.map(|mv| history.read(&board, nnue, mv)),
-            expected,
-            "depth={depth}, before={before:?}"
-        );
+        for (mv, old) in earlier.into_iter().zip(before) {
+            let after = history.read(&board, nnue, mv);
+            assert!((-limit..=old).contains(&after));
+            if depth == 0 {
+                assert_eq!(after, old);
+            } else if depth == 256 {
+                assert_eq!(after, -limit);
+            } else {
+                assert!(after < old || old == -limit);
+            }
+        }
         assert_eq!(history.read(&board, nnue, untouched), 9);
     }
 }

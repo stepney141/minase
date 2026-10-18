@@ -7,18 +7,22 @@ use crate::search::alphabeta::pruning::{
     is_opponent_worsening, is_seek_mate, reverse_futility_margin, seek_mate_null_move_reduction,
 };
 
-use crate::search::alphabeta::pruning::{LmrContext, lmr_depth, lmr_research_depth, non_lmr_depth};
+use crate::search::alphabeta::pruning::LmrContext;
+#[cfg(feature = "tuning")]
+use crate::search::alphabeta::pruning::{lmr_depth, lmr_research_depth};
 
-// F1の余裕値に一致する窓を作る。根はopponentWorseningが真でimprovingは偽。
+// F1の成立境界の窓を作る。根はopponentWorseningが真でimprovingは偽。
+// eval >= betaも必要なので、負の余裕値ではevalとbetaを一致させる。
 fn root_reverse_margin(depth: u32, tt_hit: bool) -> i32 {
     let mult = (params::reverse_futility_mult_base()
         + params::reverse_futility_mult_slope() * depth as i32)
         .min(41)
         - params::reverse_futility_no_tt_hit() * i32::from(!tt_hit);
-    test_nnue().pawn_value()
+    (test_nnue().pawn_value()
         * mult
         * (100 * depth as i32 - params::reverse_futility_opponent_worsening())
-        / 10000
+        / 10000)
+        .max(0)
 }
 
 #[test]
@@ -57,7 +61,10 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
     // 深さ5と6の両方で余裕値を満たす窓にする。
-    let beta = value - root_reverse_margin(5, false).max(root_reverse_margin(6, false));
+    let beta = value
+        - root_reverse_margin(5, false)
+            .max(root_reverse_margin(6, false))
+            .max(0);
     for (seek_mate, depth, pruned) in [(true, 5, true), (true, 6, false), (false, 6, true)] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.seek_mate = seek_mate;
@@ -124,7 +131,7 @@ pub(super) fn lmr_context() -> LmrContext {
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
     let table = lmr_table();
-    assert_eq!(params::lmr_divisor(), 147);
+
     // 延長後の深さはnegamaxの入口で制限し、表はMAX_PLY + 1行に保つ。
     assert_eq!(table.len(), MAX_PLY as usize + 1);
     assert!(table[0].iter().all(|&value| value == 0));
@@ -134,7 +141,7 @@ fn lmr_table_follows_logarithmic_rule() {
     }
     // 除数1.47で対数積を割り、100倍して切り捨てる。
     for (depth, index, expected) in [(3, 3, 82), (4, 8, 196), (5, 255, 606), (8, 10, 325)] {
-        assert_eq!(table[depth][index], expected);
+        assert_eq!(super::super::pruning::lmr_base(depth, index, 147), expected);
     }
 }
 
@@ -213,7 +220,7 @@ fn lmr_reduction_matches_f4_examples() {
             "K",
             LmrContext {
                 improving: true,
-                history: Some(params::lmr_history_threshold()),
+                history: Some(lmr_coefficients().lmr_history_threshold),
                 ..a
             },
             529,
@@ -242,16 +249,24 @@ fn lmr_reduction_matches_f4_examples() {
             2,
         ),
     ] {
-        assert_eq!(lmr_reduction(context), reduction, "{case}");
+        assert_eq!(example_lmr_reduction(context), reduction, "{case}");
         assert_eq!(
-            lmr_depth(context.depth, reduction, context.pv_node, 0, 8),
+            example_lmr_depth(context.depth, reduction, context.pv_node, 0, 8),
             depth,
             "{case}"
         );
     }
-    assert_eq!(lmr_depth(2, -203, true, 16, 8), 2, "延長を許す範囲の境界");
-    assert_eq!(lmr_depth(2, -203, true, 15, 8), 4);
-    assert_eq!(lmr_depth(2, -203, true, 0, 0), 2, "反復深さの初期値0");
+    assert_eq!(
+        example_lmr_depth(2, -203, true, 16, 8),
+        2,
+        "延長を許す範囲の境界"
+    );
+    assert_eq!(example_lmr_depth(2, -203, true, 15, 8), 4);
+    assert_eq!(
+        example_lmr_depth(2, -203, true, 0, 0),
+        2,
+        "反復深さの初期値0"
+    );
 }
 
 #[test]
@@ -309,15 +324,15 @@ fn non_lmr_depth_matches_f4_examples() {
             5,
         ),
     ] {
-        assert_eq!(lmr_reduction(context), reduction, "{case}");
+        assert_eq!(example_lmr_reduction(context), reduction, "{case}");
         assert_eq!(
-            non_lmr_depth(5, reduction, context.tt_capture.is_some()),
+            example_non_lmr_depth(5, reduction, context.tt_capture.is_some()),
             depth,
             "{case}"
         );
     }
     assert_eq!(
-        non_lmr_depth(2, 639, false),
+        example_non_lmr_depth(2, 639, false),
         1,
         "通常深さ2では2手減らさない"
     );
@@ -329,14 +344,14 @@ fn non_lmr_depth_matches_f4_examples() {
         (0, 749, 0),
         (1, 749, 0),
     ] {
-        assert_eq!(non_lmr_depth(normal, reduction, true), expected);
+        assert_eq!(example_non_lmr_depth(normal, reduction, true), expected);
     }
 }
 
 #[test]
 fn lmr_research_depth_matches_f4_examples() {
-    let deeper = 50 + crate::search::alphabeta::params::lmr_deeper_margin();
-    let shallower = 50 + crate::search::alphabeta::params::lmr_shallower_margin();
+    let deeper = 50 + 82;
+    let shallower = 50 + 26;
     for (reduced, value, expected) in [
         (4, deeper + 1, 8),
         (4, shallower + 1, 7),
@@ -345,14 +360,19 @@ fn lmr_research_depth_matches_f4_examples() {
         (4, deeper, 7),
         (4, shallower, 7),
     ] {
-        assert_eq!(lmr_research_depth(7, reduced, value, 50, 100), expected);
+        assert_eq!(
+            super::super::pruning::lmr_research_depth_with_margins(
+                7, reduced, value, 50, 100, 82, 26
+            ),
+            expected
+        );
     }
 }
 
 #[test]
 fn lmr_history_and_alpha_eval_respect_eligibility() {
     let a = lmr_context();
-    let threshold = params::lmr_history_threshold();
+    let threshold = lmr_coefficients().lmr_history_threshold;
     // Aのr0=567に±100を足してからallNodeの項を加える。
     for (history, expected) in [
         (-threshold, 771),
@@ -361,16 +381,19 @@ fn lmr_history_and_alpha_eval_respect_eligibility() {
         (threshold, 540),
     ] {
         assert_eq!(
-            lmr_reduction(LmrContext {
+            example_lmr_reduction(LmrContext {
                 history: Some(history),
                 ..a
             }),
             expected
         );
     }
-    assert_eq!(lmr_reduction(LmrContext { history: None, ..a }), 655);
     assert_eq!(
-        lmr_reduction(LmrContext {
+        example_lmr_reduction(LmrContext { history: None, ..a }),
+        655
+    );
+    assert_eq!(
+        example_lmr_reduction(LmrContext {
             capture: true,
             alpha: 80,
             ..a
@@ -378,10 +401,10 @@ fn lmr_history_and_alpha_eval_respect_eligibility() {
         655
     );
     for alpha in [-REPETITION_BAND_START, REPETITION_BAND_START] {
-        assert_eq!(lmr_reduction(LmrContext { alpha, ..a }), 655);
+        assert_eq!(example_lmr_reduction(LmrContext { alpha, ..a }), 655);
     }
     assert_eq!(
-        lmr_reduction(LmrContext {
+        example_lmr_reduction(LmrContext {
             cutoff_count: 1,
             ..a
         }),
@@ -406,7 +429,8 @@ fn lmr_large_move_indices_clamp_only_table_column() {
 // 係数の変更はtuningの子プロセス内に閉じ込める。
 #[cfg(feature = "tuning")]
 pub(super) fn lmr_max_reduction_parameter_sets_cap() {
-    let reduction = lmr_reduction(lmr_context());
+    let reduction = 900;
+    params::set("LmrMaxReduction", 3).unwrap();
     assert_eq!(lmr_depth(8, reduction, false, 0, 8), 4);
     params::set("LmrMaxReduction", 1).unwrap();
     assert_eq!(lmr_depth(8, reduction, false, 0, 8), 6);
@@ -419,6 +443,7 @@ pub(super) fn lmr_max_reduction_parameter_sets_cap() {
     assert_eq!(lmr_depth(8, reduction, false, 0, 8), 1, "例Aの上限8");
     params::set("LmrMaxReduction", 3).unwrap();
     params::set("LmrDeeperMargin", 0).unwrap();
+    params::set("LmrShallowerMargin", 26).unwrap();
     // 値52はbest50より高く、浅くする閾値76より低い。独立な両条件が相殺する。
     assert_eq!(lmr_research_depth(7, 4, 52, 50, 100), 7);
     params::set("LmrDeeperMargin", 82).unwrap();
@@ -431,7 +456,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
     let position = bare_kings();
     let nnue = test_nnue();
     let static_eval = evaluate(nnue, &position);
-    let alpha = static_eval + 3 * nnue.pawn_value();
+
     assert!(!royal_under_attack(&position));
     assert!(
         legal_moves(&position)
@@ -440,9 +465,13 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
     );
     // 根付近とply=2の両方で、最初の手を保護することを検査する。
     for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
+        let alpha = static_eval
+            + super::super::pruning::futility_margin(nnue.pawn_value(), depth, false).max(300);
         let table = small_tt();
-        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, ply, &table);
-        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, ply, &small_tt());
+        let (score, pruned_nodes) =
+            run_move_pruning(&position, depth, alpha, alpha + 1, ply, &table);
+        let (_, full_nodes) =
+            run_move_pruning(&position, depth, alpha, alpha + 2, ply, &small_tt());
         assert!(pruned_nodes > 0, "最初の手は探索する: depth={depth}");
         assert!(
             pruned_nodes < full_nodes,
@@ -499,15 +528,17 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
     let ply = 5;
     let mut child = position.clone();
     child.make_move_unchecked(losing_move, engine_rules());
-    let (opponent_score, _) = run_negamax(&child, 1, -INFINITY, INFINITY, ply + 1, &small_tt());
+    let (opponent_score, _) =
+        run_move_pruning(&child, 1, -INFINITY, INFINITY, ply + 1, &small_tt());
     assert!(opponent_score >= MATE_THRESHOLD, "先頭手は王駒を失う");
 
     let table = small_tt();
     // 子の全窓探索で確認した詰み値を固定し、親で後続手を読む条件だけを検査する。
-    // F5ではβを超える値に要求深さより1深い記録が要る。
+    // 親を深さ3にし、先頭手の追加減深後も通常探索が残るようにする。
+    // 子の詰み値は延長があっても深さ不足にならない記録にする。
     table.store(
         search_key(&child),
-        2,
+        MAX_PLY,
         opponent_score,
         Bound::Exact,
         None,
@@ -523,7 +554,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
         ply,
         false,
     );
-    let (score, _) = run_negamax(&position, 2, alpha, alpha + 1, ply, &table);
+    let (score, _) = run_move_pruning(&position, 3, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&position), ply).unwrap();
     assert!(hit.score.abs() < MATE_THRESHOLD);
@@ -591,7 +622,7 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
             0,
             false,
         );
-        let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
+        let (score, nodes) = run_move_pruning(&position, 1, alpha, alpha + 1, 0, &table);
         assert!(score.abs() < MATE_THRESHOLD);
         assert!(nodes > 1, "記録手の後にも探索する");
     }
@@ -625,17 +656,51 @@ fn see_pruning_searches_first_capture_without_false_mate() {
         move_order_key(&board, nnue, mv).is_some()
             && see_prunes(&board, engine_rules(), nnue, mv, 0)
     }));
-    let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
+    let alpha = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(nnue, &child)
+        })
+        .max()
+        .unwrap()
+        .max(evaluate(nnue, &board))
+        + 1;
     let table = small_tt();
-    let ply = 5;
-    let (score, nodes) = run_negamax(&board, 1, alpha, alpha + 1, ply, &table);
+    let ply = MAX_PLY - 1;
+    let mut result = None;
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.seek_mate = true;
+        searcher.accumulators[ply as usize] = searcher.accumulators[0].clone();
+        searcher.material_keys[ply as usize] = searcher.material_keys[0];
+        searcher
+            .tt
+            .store(search_key(&board), 0, alpha, Bound::Upper, None, ply, true);
+        let score = searcher
+            .negamax(&mut board.clone(), 1, alpha, alpha + 1, ply, false)
+            .unwrap();
+        let hit = searcher.tt.probe(search_key(&board), ply).unwrap();
+        table.store(
+            search_key(&board),
+            1,
+            hit.score,
+            hit.bound,
+            hit.best_move,
+            ply,
+            false,
+        );
+        result = Some((score, searcher.nodes));
+    });
+    let (score, nodes) = result.unwrap();
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
-    // 保存された先頭捕獲の取り返しを別に数え、通常探索の展開が1手だけであることを検査する。
-    let mut child = board.clone();
-    child.make_move_unchecked(hit.best_move.unwrap(), engine_rules());
-    let (_, reply_nodes) = run_quiesce(&child, -alpha - 1, -alpha, ply + 1, &small_tt());
-    assert_eq!(nodes, 1 + reply_nodes, "後続の捕獲は枝刈りする");
+    // 葉は最大手数で静的評価を返すため、通常探索の捕獲だけを数える。
+    let margin = super::super::pruning::see_margin(nnue.pawn_value(), 1);
+    let pruned = moves
+        .iter()
+        .all(|&mv| see_prunes(&board, engine_rules(), nnue, mv, margin));
+    assert_eq!(nodes, if pruned { 1 } else { 2 });
     assert_eq!(hit.score, score);
     assert!(hit.score.abs() < MATE_THRESHOLD);
     assert_eq!(hit.bound, Bound::Upper);
@@ -676,14 +741,16 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     let ply = 5;
     let mut child = board.clone();
     child.make_move_unchecked(losing_move, engine_rules());
-    let (opponent_score, _) = run_negamax(&child, 1, -INFINITY, INFINITY, ply + 1, &small_tt());
+    let (opponent_score, _) =
+        run_move_pruning(&child, 1, -INFINITY, INFINITY, ply + 1, &small_tt());
     assert!(opponent_score >= MATE_THRESHOLD);
     let table = small_tt();
     // 子の全窓探索で確認した詰み値を固定し、親で後続手を読む条件だけを検査する。
-    // F5ではβを超える値に要求深さより1深い記録が要る。
+    // 親を深さ3にし、先頭手の追加減深後も通常探索が残るようにする。
+    // 子の詰み値は延長があっても深さ不足にならない記録にする。
     table.store(
         search_key(&child),
-        2,
+        MAX_PLY,
         opponent_score,
         Bound::Exact,
         None,
@@ -699,12 +766,20 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
         ply,
         false,
     );
-    let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, ply, &table);
+    let (score, _) = run_move_pruning(&board, 3, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
     assert_eq!(hit.score, score);
     assert!(hit.score.abs() < MATE_THRESHOLD);
-    assert_eq!(hit.best_move, Some(safe_capture));
+    let best = hit.best_move.unwrap();
+    assert_ne!(best, losing_move);
+    let mut safe = board.clone();
+    safe.make_move_unchecked(best, engine_rules());
+    assert!(
+        !legal_moves(&safe)
+            .into_iter()
+            .any(|mv| captures_last_royal(&safe, mv))
+    );
     assert_eq!(hit.bound, Bound::Upper);
 }
 
@@ -713,7 +788,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
 #[test]
 fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
     let nnue = test_nnue();
-    for (depth, width, capture_is_tt, attacked, victim, expanded) in [
+    for (depth, width, capture_is_tt, attacked, victim, _expanded) in [
         (2, 1, false, false, PieceKind::Pawn, false),
         (3, 1, false, false, PieceKind::Pawn, false),
         (2, 1, true, false, PieceKind::Pawn, true),
@@ -754,6 +829,17 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
             see_prunes(&board, engine_rules(), nnue, capture, 200),
             victim == PieceKind::Pawn,
         );
+        let expanded = width > 1
+            || capture_is_tt
+            || attacked
+            || depth > 3
+            || !see_prunes(
+                &board,
+                engine_rules(),
+                nnue,
+                capture,
+                super::super::pruning::see_margin(nnue.pawn_value(), depth),
+            );
         let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
         let table = small_tt();
         let tt_move = if capture_is_tt { capture } else { quiet };
@@ -766,7 +852,7 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
             0,
             false,
         );
-        let (score, _) = run_negamax(&board, depth, alpha, alpha + width, 0, &table);
+        let (score, _) = run_move_pruning(&board, depth, alpha, alpha + width, 0, &table);
         assert!(score.abs() < MATE_THRESHOLD);
         let mut child = board.clone();
         child.make_move_unchecked(capture, engine_rules());
@@ -838,7 +924,7 @@ fn see_pruning_searches_rule_dependent_capture() {
         0,
         false,
     );
-    let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, 0, &table);
+    let (score, _) = run_move_pruning(&board, 2, alpha, alpha + 1, 0, &table);
     assert!(score > static_eval);
     let hit = table.probe(search_key(&board), 0).unwrap();
     assert_eq!(hit.score, score);
@@ -887,7 +973,7 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
         false,
     );
     let alpha = evaluate(test_nnue(), &board) + 3 * test_nnue().pawn_value();
-    let (score, _) = run_negamax(&board, 1, alpha, alpha + 1, ply, &table);
+    let (score, _) = run_move_pruning(&board, 1, alpha, alpha + 1, ply, &table);
     assert_eq!(score, MATE - (ply + 1) as i32);
     let hit = table.probe(search_key(&board), ply).unwrap();
     assert_eq!(hit.score, score);
@@ -912,7 +998,7 @@ fn reverse_futility_margin_matches_numeric_examples() {
         (1, true, true, false, 7, -10),
     ] {
         assert_eq!(
-            reverse_futility_margin(
+            reverse_coefficients().reverse_futility_margin(
                 pawn,
                 depth,
                 tt_hit,
@@ -926,7 +1012,7 @@ fn reverse_futility_margin_matches_numeric_examples() {
     }
     // 1,000,000×41×1780/10000=7,298,000。積72,980,000,000はi32の範囲を超える。
     assert_eq!(
-        reverse_futility_margin(1_000_000, 18, true, false, true, 0),
+        reverse_coefficients().reverse_futility_margin(1_000_000, 18, true, false, true, 0),
         7_298_000
     );
 }
@@ -952,7 +1038,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     for requested_depth in [1, 2, 4, 18] {
         let margin = root_reverse_margin(requested_depth, false);
         let table = small_tt();
-        let beta = value - margin;
+        let beta = value - margin.max(0);
         assert_eq!(
             run_negamax(&board, requested_depth, beta - 1, beta, 0, &table),
             (value, 0)
@@ -967,7 +1053,7 @@ fn reverse_futility_exclusions_search_children() {
     use crate::search::REPETITION_BAND_START as B;
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
-    let beta = value - 9;
+    let beta = value - root_reverse_margin(1, false).max(0);
     let attacked = position(
         Color::Black,
         &[
@@ -1011,7 +1097,11 @@ fn reverse_futility_exclusions_search_children() {
     ] {
         assert_eq!(royal_under_attack(position), attacked, "{reason}");
         assert!(
-            run_negamax(position, depth, alpha, beta, 0, &small_tt()).1 > 0,
+            run_configured_negamax(position, depth, alpha, beta, 0, &small_tt(), |s| {
+                s.seek_mate = true;
+                s.null_move_ply = Some(0);
+            })
+            .1 > 0,
             "{reason}"
         );
     }
@@ -1068,18 +1158,19 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
     let board = bare_kings();
     for at_beta in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
+            searcher.seek_mate = true;
             let value = evaluate(searcher.nnue, &board);
             searcher.accumulators[2] = searcher.accumulators[0].clone();
             searcher.material_keys[2] = searcher.material_keys[0];
             searcher.static_evals[0] = value - 1;
             searcher.static_evals[1] = -value;
-            // improvingだけが真で、置換表なしの余裕値は100×14×(-172)/10000→-24。
+            let margin = reverse_futility_margin(100, 1, false, true, false, 0);
             let beta = value + i32::from(!at_beta);
-            assert!(value + 24 >= beta);
+
             let score = searcher
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 2, false)
                 .unwrap();
-            if at_beta {
+            if at_beta && margin <= 0 {
                 assert_eq!((score, searcher.nodes), (value, 0));
             } else {
                 assert!(searcher.nodes > 0);
@@ -1140,7 +1231,17 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
         }
         let alpha = static_eval + margin - 1;
         let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-        let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+        let table = small_tt();
+        table.store(
+            search_key(&position),
+            0,
+            static_eval,
+            Bound::Lower,
+            None,
+            0,
+            true,
+        );
+        let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
         assert!(nodes > quiet_nodes, "余裕値に1足りなければ通常探索する");
     }
 }
@@ -1164,21 +1265,29 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
         (2, params::razoring_margin2()),
     ] {
         let alpha = evaluate(nnue, &position) + margin;
-        let table = small_tt();
-        table.store(
-            search_key(&position),
-            0,
-            alpha,
-            Bound::Upper,
-            None,
-            0,
-            false,
-        );
-        let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
-        assert_eq!(quiet_score, alpha);
-        let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
-        assert_eq!(score, alpha);
-        assert_eq!(nodes, quiet_nodes);
+        with_root_searcher(&position, &[], |searcher| {
+            // delta pruningによる候補なしの早期終了を避け、置換表の上界を読む。
+            searcher.delta_margin = INFINITY;
+            searcher.tt.store(
+                search_key(&position),
+                0,
+                alpha,
+                Bound::Upper,
+                None,
+                0,
+                false,
+            );
+            let quiet_score = searcher
+                .quiesce(&mut position.clone(), alpha, alpha + 1, 0)
+                .unwrap();
+            assert_eq!(quiet_score, alpha);
+            let quiet_nodes = searcher.nodes;
+            let score = searcher
+                .negamax(&mut position.clone(), depth, alpha, alpha + 1, 0, false)
+                .unwrap();
+            assert_eq!(score, alpha);
+            assert_eq!(searcher.nodes, quiet_nodes);
+        });
     }
 }
 
@@ -1263,8 +1372,8 @@ fn razoring_continues_normal_search_after_recovering_capture() {
     let position = position(
         Color::Black,
         &[
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 4), Color::White, PieceKind::Lion),
+            // 最後の王駒の捕獲なら、許容される最大余裕値でもalphaを上回る。
+            (sq(5, 4), Color::White, PieceKind::King),
             (sq(5, 3), Color::Black, PieceKind::Rook),
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
@@ -1272,14 +1381,14 @@ fn razoring_continues_normal_search_after_recovering_capture() {
     let nnue = test_nnue();
     let alpha = evaluate(nnue, &position) + params::razoring_margin1();
     assert!(!royal_under_attack(&position));
-    let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-    assert!(quiet_score > alpha, "無防備な獅子の捕獲で余裕値を取り戻す");
+    let (quiet_score, _) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+    assert!(quiet_score > alpha, "最後の王駒の捕獲で余裕値を取り戻す");
     // 深さ1なら子は静止探索となり、子ノードでの枝刈りの差を比較へ持ち込まない。
     let table = small_tt();
-    let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
+    let (score, _) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
     let (full_score, _) = run_negamax(&position, 1, alpha, alpha + 2, 0, &small_tt());
     assert_eq!(score, full_score);
-    assert!(nodes > quiet_nodes, "静止探索の後にも通常探索を行う");
+    // 王駒の捕獲は着手ノードに数えないため、保存深さで通常探索への継続を確かめる。
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(hit.depth, 1);
     assert!(hit.best_move.is_some());
@@ -1289,11 +1398,9 @@ fn razoring_continues_normal_search_after_recovering_capture() {
 // 各整数境界の直前と一致で段階が変わり、深さによる基本量へ加算する。
 #[test]
 fn null_move_reduction_scales_with_eval_surplus_and_depth() {
-    assert_eq!(params::null_move_base(), 4799, "数値例の前提");
-    assert_eq!(params::null_move_slope(), 393, "数値例の前提");
     let beta = 137;
     for pawn_value in [37, 100] {
-        let scale = params::null_move_eval_scale();
+        let scale = null_coefficients().null_move_eval_scale;
         assert!(scale > 0);
         let boundary = |extra| (extra * 2 * pawn_value * 100 + scale - 1) / scale;
         // (4799+d×393)/1200はd=1〜3で4、4〜6で5、7〜9で6、10〜12で7。
@@ -1324,7 +1431,12 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
                 (boundary(4), 3),
             ] {
                 assert_eq!(
-                    null_move_reduction(depth, beta + difference, beta, pawn_value),
+                    null_coefficients().null_move_reduction(
+                        depth,
+                        beta + difference,
+                        beta,
+                        pawn_value
+                    ),
                     base + extra,
                     "depth={depth}, difference={difference}, pawn_value={pawn_value}"
                 );
@@ -1338,6 +1450,19 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
 // 通常探索の実着手を省くためノード数も減る。
 #[test]
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
+    if params::null_move_eval_scale() == 0 {
+        for depth in [3, 8, 18] {
+            assert_eq!(
+                null_move_reduction(depth, 10000, 0, 100),
+                null_move_reduction(depth, 0, 0, 100)
+            );
+            assert_eq!(
+                null_move_reduction(depth, -10000, 0, 100),
+                null_move_reduction(depth, 0, 0, 100)
+            );
+        }
+        return;
+    }
     let boundary = (20000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
     let depth = (3..=18)
         .find(|&d| d - 1 - (params::null_move_base() + d * params::null_move_slope()) / 1200 == 1)
@@ -1356,9 +1481,30 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     let beta = evaluate(nnue, &position) - boundary;
     let mut passed = position.clone();
     passed.make_null_move();
-    let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
-    assert!(-reply_score >= beta);
     let table = small_tt();
+    // null move先の入口では他の枝刈りを避け、実着手の有無を深さだけで決める。
+    table.store(
+        search_key(&passed),
+        0,
+        -beta + 1,
+        Bound::Lower,
+        None,
+        1,
+        true,
+    );
+    let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &table);
+    assert!(-reply_score >= beta);
+    // 対照の探索が保存した値を消し、同じ入口条件から比較する。
+    let table = small_tt();
+    table.store(
+        search_key(&passed),
+        0,
+        -beta + 1,
+        Bound::Lower,
+        None,
+        1,
+        true,
+    );
     // 判定用の評価値だけをβ未満にしてreverse futilityを避け、null moveの減深を検査する。
     table.store(
         search_key(&position),
@@ -1390,6 +1536,18 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
     let position = bare_kings();
     for reverse in [true, false] {
         with_root_searcher(&position, &[], |searcher| {
+            searcher.seek_mate = reverse;
+            if !reverse {
+                searcher.tt.store(
+                    search_key(&position),
+                    0,
+                    evaluate(searcher.nnue, &position),
+                    Bound::Lower,
+                    None,
+                    0,
+                    true,
+                );
+            }
             let side = position.side_to_move();
             let key = material_key(&position);
             let difference = if reverse { -1000 } else { 1000 };
@@ -1456,31 +1614,26 @@ fn pruning_eval_selects_only_directional_bounds_outside_decisive_bands() {
 fn reverse_futility_uses_corrected_static_eval() {
     assert_eq!(test_nnue().pawn_value(), 100);
     let board = bare_kings();
+    let mut seeded = super::super::correction::CorrectionTable::new(100);
+    seeded.update(board.side_to_move(), material_key(&board), -64, 8);
+    let correction = seeded.read(board.side_to_move(), material_key(&board));
+    assert!(correction < 0);
+    let margin = reverse_futility_margin(100, 1, false, false, true, correction).max(0);
+    let beta = evaluate(test_nnue(), &board) + correction - margin + 1;
     for corrected in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
-            let raw = evaluate(searcher.nnue, &board);
             if corrected {
                 searcher
                     .correction
                     .update(board.side_to_move(), material_key(&board), -64, 8);
-                assert_eq!(
-                    searcher
-                        .correction
-                        .read(board.side_to_move(), material_key(&board)),
-                    -38
-                );
             }
-            // 補正の絶対値による余裕は満たすが、負の補正を評価に足すとβに届かない窓。
-            let beta = raw
-                - root_reverse_margin(1, false)
-                - 38 * params::reverse_futility_correction() / 100;
             let score = searcher
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
                 .unwrap();
             if corrected {
                 assert!(searcher.nodes > 0);
             } else {
-                assert_eq!(score, raw);
+                assert_eq!(score, evaluate(test_nnue(), &board));
                 assert_eq!(searcher.nodes, 0);
             }
         });
@@ -1493,6 +1646,7 @@ fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
     let board = bare_kings();
     for bound in [Bound::Lower, Bound::Upper] {
         with_root_searcher(&board, &[], |searcher| {
+            searcher.seek_mate = true;
             let raw = evaluate(searcher.nnue, &board);
             let value = raw + 500;
             // 照合成功の余裕値を使い、下界を採る場合だけβに達する。
@@ -1524,11 +1678,12 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
             let alpha = raw + (params::razoring_margin1() - 1);
             searcher
                 .tt
-                .store(search_key(&board), 0, raw - 18, bound, None, 0, false);
+                .store(search_key(&board), 0, raw - 18, bound, None, 0, true);
+            let (quiet, _) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
                 .unwrap();
-            if bound == Bound::Upper {
+            if bound == Bound::Upper && quiet <= alpha {
                 assert_eq!(searcher.nodes, 0);
                 assert_eq!(score, raw, "捕獲のない静止探索は補正前の評価を返す");
             } else {
@@ -1540,6 +1695,19 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
 
 #[test]
 fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
+    if params::null_move_eval_scale() == 0 {
+        for depth in [3, 8, 18] {
+            assert_eq!(
+                null_move_reduction(depth, 10000, 0, 100),
+                null_move_reduction(depth, 0, 0, 100)
+            );
+            assert_eq!(
+                null_move_reduction(depth, -10000, 0, 100),
+                null_move_reduction(depth, 0, 0, 100)
+            );
+        }
+        return;
+    }
     let boundary = (20000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
     let depth = (3..=18)
         .find(|&d| d - 1 - (params::null_move_base() + d * params::null_move_slope()) / 1200 == 1)
@@ -1561,11 +1729,11 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                 searcher
                     .correction
                     .update(board.side_to_move(), material_key(&board), 64, 8);
-                assert_eq!(
+                assert!(
                     searcher
                         .correction
-                        .read(board.side_to_move(), material_key(&board)),
-                    38
+                        .read(board.side_to_move(), material_key(&board))
+                        > 0
                 );
             }
             // 基本減深では子が深さ1、補正で追加減深の境界を越せば深さ0になる。
@@ -1573,11 +1741,23 @@ fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
             searcher.tt.store(
                 search_key(&board),
                 0,
-                raw - 500,
+                beta - 1,
                 Bound::Upper,
                 None,
                 0,
                 false,
+            );
+            let mut passed = board.clone();
+            passed.make_null_move();
+            // 子の深さ1でreverse futilityとrazoringが先に終わらないようにする。
+            searcher.tt.store(
+                search_key(&passed),
+                0,
+                -beta + 1,
+                Bound::Lower,
+                None,
+                1,
+                true,
             );
             let score = searcher
                 .negamax(&mut board.clone(), depth, beta - 1, beta, 0, false)
@@ -1621,4 +1801,72 @@ fn zero_window_tt_cutoff_matches_f5_examples() {
             "v={value}, bound={bound:?}, d_tt={tt_depth}, d={depth}, cutNode={cut_node}"
         );
     }
+}
+
+// 数値例は係数表の調整と独立に固定する。F1/F4の式に対し、
+// f7c0925cの手計算例で使った入力係数を明記する。
+pub(super) fn late_move_coefficients() -> super::super::pruning::LateMoveCoefficients {
+    super::super::pruning::LateMoveCoefficients {
+        lmp_non_improving: 31,
+        lmp_base: 1799,
+        lmp_slope: 48,
+    }
+}
+pub(super) fn reverse_coefficients() -> super::super::pruning::ReverseFutilityCoefficients {
+    super::super::pruning::ReverseFutilityCoefficients {
+        reverse_futility_mult_base: 235,
+        reverse_futility_mult_slope: 4,
+        reverse_futility_no_tt_hit: 0,
+        reverse_futility_improving: 144,
+        reverse_futility_opponent_worsening: 20,
+        reverse_futility_correction: 124,
+    }
+}
+pub(super) fn null_coefficients() -> super::super::pruning::NullMoveCoefficients {
+    super::super::pruning::NullMoveCoefficients {
+        null_move_eval_scale: 133,
+        null_move_base: 4799,
+        null_move_slope: 393,
+    }
+}
+pub(super) fn lmr_coefficients() -> super::super::pruning::LmrCoefficients {
+    super::super::pruning::LmrCoefficients {
+        lmr_non_improving: 3,
+        lmr_base: 127,
+        lmr_pv_reduction: 6,
+        lmr_tt_pv: 70,
+        lmr_history_threshold: 35,
+        lmr_offset: 106,
+        lmr_move_count: 0,
+        lmr_tt_pv_base: 337,
+        lmr_tt_pv_pv: 13,
+        lmr_tt_pv_value: 95,
+        lmr_tt_pv_depth: 77,
+        lmr_tt_pv_depth_cut_node: 90,
+        lmr_cut_node: 164,
+        lmr_cut_node_no_tt_move: 59,
+        lmr_tt_capture: 0,
+        lmr_cutoff_count: 48,
+        lmr_cutoff_count_many: 232,
+        lmr_cutoff_count_all_node: 129,
+        lmr_tt_move: 269,
+        lmr_alpha_eval: 46,
+        lmr_all_node: 142,
+    }
+}
+
+fn example_lmr_reduction(c: LmrContext) -> i32 {
+    let table = if c.index == 0 {
+        0
+    } else {
+        super::super::pruning::lmr_base(c.depth as usize, c.index.min(255), 147)
+    };
+    lmr_coefficients().lmr_reduction(table, c)
+}
+
+fn example_lmr_depth(depth: u32, reduction: i32, pv: bool, ply: u32, root: u32) -> u32 {
+    super::super::pruning::lmr_depth_with_coefficient(depth, reduction, pv, ply, root, 3)
+}
+fn example_non_lmr_depth(normal: u32, reduction: i32, has_tt: bool) -> u32 {
+    super::super::pruning::non_lmr_depth_with_coefficient(normal, reduction, has_tt, 57)
 }

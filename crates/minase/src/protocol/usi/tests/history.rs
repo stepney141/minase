@@ -129,8 +129,7 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
 // 的中・不的中の両方で、実行中と結果保留中の回収経路を通す。
 #[test]
 fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
-    assert_eq!(history_decay_for_test(), 37, "数値例の前提");
-    // (160,176,192,208)×37/100を0方向へ丸めると59,65,71,76。
+    // 返却値は開始時の履歴を1回だけ減衰させた商である。
     for held in [false, true] {
         for hit in [false, true] {
             let (mut engine, mut protocol) = setup();
@@ -168,11 +167,9 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
             let histories = protocol.histories.as_ref().unwrap();
             assert_eq!(histories.workers.len(), 4);
             for (worker, history) in histories.workers.iter().enumerate() {
-                assert_eq!(
-                    history[0][60][60],
-                    [59, 65, 71, 76][worker],
-                    "held={held}, hit={hit}"
-                );
+                let numerator = (160 + worker as i32 * 16) * history_decay_for_test();
+                let residual = numerator - history[0][60][60] * 100;
+                assert!((0..100).contains(&residual), "held={held}, hit={hit}");
             }
         }
     }

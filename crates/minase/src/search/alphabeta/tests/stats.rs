@@ -175,11 +175,11 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     let expected = -evaluate(test_nnue(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
         assert_eq!(
-            searcher.negamax(&mut position.clone(), 4, expected - 1, expected, 0, false),
+            searcher.search_null_move(&mut position.clone(), 0, expected, 0),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0);
-        assert_eq!(searcher.stats.normal_nodes, 1);
+        assert_eq!(searcher.stats.normal_nodes, 0);
         assert_eq!(searcher.stats.quiesce_nodes, 1);
         assert_eq!(searcher.stats.beta_cutoffs, 0);
         assert_eq!(ranks(searcher.stats), [0; 4]);

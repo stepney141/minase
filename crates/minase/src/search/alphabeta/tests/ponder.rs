@@ -211,10 +211,23 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let table = small_tt();
     let stop = AtomicBool::new(false);
     let stable_boundary = 1100 * 100 / params::iteration_ratio() as u64;
+    let hard_boundary = 1400 * 100 / params::iteration_ratio() as u64;
     for (t, hit, elapsed, stable, expected) in [
-        (600, 1000, 1010, false, Some(StopReason::SoftLimit)),
-        (500, 1000, 1010, false, None),
-        (500, 1000, 1010, true, Some(StopReason::SoftLimit)),
+        (
+            hard_boundary + 1,
+            1000,
+            1010,
+            false,
+            Some(StopReason::SoftLimit),
+        ),
+        (hard_boundary, 1000, 1010, false, None),
+        (
+            stable_boundary + 1,
+            1000,
+            1010,
+            true,
+            Some(StopReason::SoftLimit),
+        ),
         (stable_boundary, 1000, 1010, true, None),
         (600, 1000, 1500, false, Some(StopReason::HardLimit)),
         (1001, 1000, 1010, true, None),
@@ -489,7 +502,9 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         Some(crate::search::alphabeta::root::RootResults::default());
                 }
                 searcher.ponder_iteration = Some(PonderIteration {
-                    started: Duration::from_millis(600),
+                    started: Duration::from_millis(
+                        1400 * 100 / params::iteration_ratio() as u64 + 1,
+                    ),
                     stable: false,
                     checked: false,
                     budget: TimeBudget {

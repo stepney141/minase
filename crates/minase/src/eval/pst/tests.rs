@@ -616,11 +616,18 @@ fn fixed_pst_matches_integer_reference_evaluation() {
     )
     .unwrap();
     // Python整数参照でも、PSTとFMを個別に0方向へ丸めてから合算する。
-    for (count, linear, combined) in [(2, -6, -5), (3, -8, -5), (47, -47, 1304), (92, 92, 5324)] {
+    for (count, linear, fm_numerator) in [(2, -6, 5), (3, -8, 15), (47, -47, 5405), (92, 92, 20930)]
+    {
         for side in Color::ALL {
             let position = position_with_count(count, side);
             assert_evaluation(&pst, &position, linear);
-            assert_evaluation(&with_fm, &position, combined);
+            let actual = evaluate(&with_fm, &position);
+            assert_fm_quotient(
+                i64::from(actual - linear),
+                fm_numerator * fm_scale_for_test(),
+                4096,
+            );
+            assert_evaluation(&with_fm, &position, actual);
         }
     }
 }
@@ -885,7 +892,15 @@ mod fm_tests {
                 }
                 refresh_checksum(&mut bytes);
                 let pst = Pst::decode(&bytes).unwrap();
-                assert_evaluation(&pst, &position, i32::from(sign) * 28_999);
+                assert_evaluation(
+                    &pst,
+                    &position,
+                    if fm_scale_for_test() == 0 {
+                        evaluate_for_diagnostics(&pst, &position, Color::Black).1
+                    } else {
+                        i32::from(sign) * 28_999
+                    },
+                );
             }
         }
         // PST自体を先に切り詰める契約。生PSTは上限を大きく超えるが、FMは−1cp。
@@ -904,7 +919,15 @@ mod fm_tests {
                 .copy_from_slice(&u.to_le_bytes());
         }
         refresh_checksum(&mut bytes);
-        assert_evaluation(&Pst::decode(&bytes).unwrap(), &position, 28_998);
+        assert_evaluation(
+            &Pst::decode(&bytes).unwrap(),
+            &position,
+            if fm_scale_for_test() == 1024 {
+                28_998
+            } else {
+                28_999
+            },
+        );
     }
 
     /// 太子への成りと王・太子の捕獲でも、累算値と取消が全再計算に一致する。
@@ -1057,16 +1080,17 @@ mod fm_tests {
         }
         refresh_checksum(&mut bytes);
         let pst = Pst::decode(&bytes).unwrap();
+        for (side, linear, pair) in [(Color::Black, 100, 6), (Color::White, 200, 20)] {
+            let (actual, raw) = evaluate_for_diagnostics(&pst, &position, side);
+            assert_eq!(raw, linear);
+            assert_fm_quotient(i64::from(actual - linear), pair * fm_scale_for_test(), 1024);
+        }
+        let breakdown = breakdown(&pst, &position);
         assert_eq!(
-            evaluate_for_diagnostics(&pst, &position, Color::Black),
-            (106, 100)
+            breakdown.score,
+            evaluate_for_diagnostics(&pst, &position, Color::Black).0
         );
-        assert_eq!(
-            evaluate_for_diagnostics(&pst, &position, Color::White),
-            (220, 200)
-        );
-        assert_eq!(breakdown(&pst, &position).score, 106);
-        assert_eq!(breakdown(&pst, &position).fm, Some(6));
+        assert_fm_quotient(breakdown.fm.unwrap(), 6 * fm_scale_for_test(), 1024);
         assert_eq!(position.side_to_move(), Color::Black);
         assert_eq!(position.zobrist(), original_hash);
         assert_eq!(position.lion_taken_by_non_lion().unwrap().square, sq(5, 3));
@@ -1141,4 +1165,22 @@ fn zero_rank_requires_zero_exponent_and_checksums_the_fm_section() {
             matches!(Pst::decode(&corrupt), Err(Error::InvalidFmExponent { actual }) if actual == exponent)
         );
     }
+}
+
+// 補正倍率は通常ビルドでは等倍、調整ビルドでは現在の係数を使う。
+fn fm_scale_for_test() -> i64 {
+    #[cfg(feature = "tuning")]
+    {
+        i64::from(crate::search::alphabeta::params::fm_scale())
+    }
+    #[cfg(not(feature = "tuning"))]
+    {
+        1024
+    }
+}
+fn assert_fm_quotient(actual: i64, numerator: i64, denominator: i64) {
+    let residual = numerator - actual * denominator;
+    assert!(residual.abs() < denominator);
+    assert!(actual == 0 || actual.signum() == numerator.signum());
+    assert!(residual == 0 || residual.signum() == numerator.signum());
 }

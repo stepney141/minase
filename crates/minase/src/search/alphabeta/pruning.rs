@@ -147,6 +147,35 @@ pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
     margin * scale / 100
 }
 
+/// 静かな手の上限の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct LateMoveCoefficients {
+    pub(super) lmp_non_improving: i32,
+    pub(super) lmp_base: i32,
+    pub(super) lmp_slope: i32,
+}
+
+impl LateMoveCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            lmp_non_improving: params::lmp_non_improving(),
+            lmp_base: params::lmp_base(),
+            lmp_slope: params::lmp_slope(),
+        }
+    }
+
+    pub(super) fn late_move_limit(&self, depth: u32, improving: bool) -> i32 {
+        let depth = i64::from(depth);
+        let scale = if improving {
+            100
+        } else {
+            self.lmp_non_improving
+        };
+        ((i64::from(self.lmp_base) + i64::from(self.lmp_slope) * depth * depth) * i64::from(scale)
+            / 10000) as i32
+    }
+}
+
 /// 深さ1〜3で数える静かな手の数の上限を整数除算で求める。
 ///
 /// improvingなら `(LmpBase + LmpSlope × 深さ²) / 100`、
@@ -156,15 +185,7 @@ pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
 /// 枝刈りで展開しなかった手もこの数に含める。
 /// 捕獲手に静かな手の枠を消費させない理由は`docs/adr/count-only-quiet-moves-for-late-move-pruning.md`にある。
 pub(super) fn late_move_limit(depth: u32, improving: bool) -> i32 {
-    let depth = i64::from(depth);
-    let scale = if improving {
-        100
-    } else {
-        params::lmp_non_improving()
-    };
-    ((i64::from(params::lmp_base()) + i64::from(params::lmp_slope()) * depth * depth)
-        * i64::from(scale)
-        / 10000) as i32
+    LateMoveCoefficients::current().late_move_limit(depth, improving)
 }
 
 /// 深さ1〜3のSEE余裕値を求める。
@@ -190,6 +211,52 @@ pub(super) const SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH: u32 = 5;
 /// Stockfishの85を歩兵価値208で換算した41%（Stockfish src/search.cpp:1025）。
 const REVERSE_FUTILITY_MULT_MAX: i64 = 41;
 
+/// reverse futilityの余裕値の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct ReverseFutilityCoefficients {
+    pub(super) reverse_futility_mult_base: i32,
+    pub(super) reverse_futility_mult_slope: i32,
+    pub(super) reverse_futility_no_tt_hit: i32,
+    pub(super) reverse_futility_improving: i32,
+    pub(super) reverse_futility_opponent_worsening: i32,
+    pub(super) reverse_futility_correction: i32,
+}
+
+impl ReverseFutilityCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            reverse_futility_mult_base: params::reverse_futility_mult_base(),
+            reverse_futility_mult_slope: params::reverse_futility_mult_slope(),
+            reverse_futility_no_tt_hit: params::reverse_futility_no_tt_hit(),
+            reverse_futility_improving: params::reverse_futility_improving(),
+            reverse_futility_opponent_worsening: params::reverse_futility_opponent_worsening(),
+            reverse_futility_correction: params::reverse_futility_correction(),
+        }
+    }
+
+    pub(super) fn reverse_futility_margin(
+        &self,
+        pawn: i32,
+        depth: u32,
+        tt_hit: bool,
+        improving: bool,
+        opponent_worsening: bool,
+        correction: i32,
+    ) -> i32 {
+        let depth = i64::from(depth);
+        let mult = (i64::from(self.reverse_futility_mult_base)
+            + i64::from(self.reverse_futility_mult_slope) * depth)
+            .min(REVERSE_FUTILITY_MULT_MAX)
+            - i64::from(self.reverse_futility_no_tt_hit) * i64::from(!tt_hit);
+        let scaled_depth = 100 * depth
+            - i64::from(self.reverse_futility_improving) * i64::from(improving)
+            - i64::from(self.reverse_futility_opponent_worsening) * i64::from(opponent_worsening);
+        (i64::from(pawn) * mult * scaled_depth / 10000
+            + i64::from(self.reverse_futility_correction) * i64::from(correction).abs() / 100)
+            as i32
+    }
+}
+
 /// reverse futilityの余裕値を求める（Stockfish src/search.cpp:1025-1030）。
 /// 深さはIIR適用後、improvingはnull move後の更新前、補正はノードの最初に読んだ値とする。
 /// 深さと良化による項、補正の絶対値による項を別々に0方向へ丸めて足す。
@@ -201,17 +268,14 @@ pub(super) fn reverse_futility_margin(
     opponent_worsening: bool,
     correction: i32,
 ) -> i32 {
-    let depth = i64::from(depth);
-    let mult = (i64::from(params::reverse_futility_mult_base())
-        + i64::from(params::reverse_futility_mult_slope()) * depth)
-        .min(REVERSE_FUTILITY_MULT_MAX)
-        - i64::from(params::reverse_futility_no_tt_hit()) * i64::from(!tt_hit);
-    let scaled_depth = 100 * depth
-        - i64::from(params::reverse_futility_improving()) * i64::from(improving)
-        - i64::from(params::reverse_futility_opponent_worsening()) * i64::from(opponent_worsening);
-    (i64::from(pawn) * mult * scaled_depth / 10000
-        + i64::from(params::reverse_futility_correction()) * i64::from(correction).abs() / 100)
-        as i32
+    ReverseFutilityCoefficients::current().reverse_futility_margin(
+        pawn,
+        depth,
+        tt_hit,
+        improving,
+        opponent_worsening,
+        correction,
+    )
 }
 
 /// 深さ1〜2のrazoring余裕値を求める。
@@ -224,6 +288,39 @@ pub(super) fn razoring_margin(pawn: i32, depth: u32) -> i32 {
     pawn * percent / 100
 }
 
+/// null moveの減深量の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct NullMoveCoefficients {
+    pub(super) null_move_eval_scale: i32,
+    pub(super) null_move_base: i32,
+    pub(super) null_move_slope: i32,
+}
+
+impl NullMoveCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            null_move_eval_scale: params::null_move_eval_scale(),
+            null_move_base: params::null_move_base(),
+            null_move_slope: params::null_move_slope(),
+        }
+    }
+
+    pub(super) fn null_move_reduction(
+        &self,
+        depth: u32,
+        static_eval: i32,
+        beta: i32,
+        pawn: i32,
+    ) -> u32 {
+        let extra = (((i64::from(static_eval) - i64::from(beta))
+            * i64::from(self.null_move_eval_scale)
+            / 100)
+            / (2 * i64::from(pawn)))
+        .clamp(0, 3) as u32;
+        (self.null_move_base as u32 + depth * self.null_move_slope as u32) / 1200 + extra
+    }
+}
+
 /// 深さと静的評価のβに対する余裕からnull moveの減深量を求める。
 ///
 /// 基本量は `(NullMoveBase + 深さ × NullMoveSlope) / 1200` 手である。
@@ -231,12 +328,7 @@ pub(super) fn razoring_margin(pawn: i32, depth: u32) -> i32 {
 /// 縮めた深さが0になり静止探索だけで打ち切りを判定する頻度を抑えるため、加算に上限を設ける。
 /// 尺度0では基本量と一致する。
 pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn: i32) -> u32 {
-    let extra = (((i64::from(static_eval) - i64::from(beta))
-        * i64::from(params::null_move_eval_scale())
-        / 100)
-        / (2 * i64::from(pawn)))
-    .clamp(0, 3) as u32;
-    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200 + extra
+    NullMoveCoefficients::current().null_move_reduction(depth, static_eval, beta, pawn)
 }
 
 /// LMRの式へ渡す、その手を読む直前のノードと手の情報。
@@ -262,6 +354,114 @@ pub(super) struct LmrContext {
     pub(super) pawn: i32,
 }
 
+/// LMRの符号つき減深量の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct LmrCoefficients {
+    pub(super) lmr_non_improving: i32,
+    pub(super) lmr_base: i32,
+    pub(super) lmr_pv_reduction: i32,
+    pub(super) lmr_tt_pv: i32,
+    pub(super) lmr_history_threshold: i32,
+    pub(super) lmr_offset: i32,
+    pub(super) lmr_move_count: i32,
+    pub(super) lmr_tt_pv_base: i32,
+    pub(super) lmr_tt_pv_pv: i32,
+    pub(super) lmr_tt_pv_value: i32,
+    pub(super) lmr_tt_pv_depth: i32,
+    pub(super) lmr_tt_pv_depth_cut_node: i32,
+    pub(super) lmr_cut_node: i32,
+    pub(super) lmr_cut_node_no_tt_move: i32,
+    pub(super) lmr_tt_capture: i32,
+    pub(super) lmr_cutoff_count: i32,
+    pub(super) lmr_cutoff_count_many: i32,
+    pub(super) lmr_cutoff_count_all_node: i32,
+    pub(super) lmr_tt_move: i32,
+    pub(super) lmr_alpha_eval: i32,
+    pub(super) lmr_all_node: i32,
+}
+
+impl LmrCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            lmr_non_improving: params::lmr_non_improving(),
+            lmr_base: params::lmr_base(),
+            lmr_pv_reduction: params::lmr_pv_reduction(),
+            lmr_tt_pv: params::lmr_tt_pv(),
+            lmr_history_threshold: params::lmr_history_threshold(),
+            lmr_offset: params::lmr_offset(),
+            lmr_move_count: params::lmr_move_count(),
+            lmr_tt_pv_base: params::lmr_tt_pv_base(),
+            lmr_tt_pv_pv: params::lmr_tt_pv_pv(),
+            lmr_tt_pv_value: params::lmr_tt_pv_value(),
+            lmr_tt_pv_depth: params::lmr_tt_pv_depth(),
+            lmr_tt_pv_depth_cut_node: params::lmr_tt_pv_depth_cut_node(),
+            lmr_cut_node: params::lmr_cut_node(),
+            lmr_cut_node_no_tt_move: params::lmr_cut_node_no_tt_move(),
+            lmr_tt_capture: params::lmr_tt_capture(),
+            lmr_cutoff_count: params::lmr_cutoff_count(),
+            lmr_cutoff_count_many: params::lmr_cutoff_count_many(),
+            lmr_cutoff_count_all_node: params::lmr_cutoff_count_all_node(),
+            lmr_tt_move: params::lmr_tt_move(),
+            lmr_alpha_eval: params::lmr_alpha_eval(),
+            lmr_all_node: params::lmr_all_node(),
+        }
+    }
+
+    pub(super) fn lmr_reduction(&self, table: u16, context: LmrContext) -> i32 {
+        let c = context;
+        let all_node = !c.pv_node && !c.cut_node;
+        let table = i64::from(table);
+        let r_pre = table * (100 + i64::from(self.lmr_non_improving) * i64::from(!c.improving))
+            / 100
+            + i64::from(self.lmr_base)
+            - i64::from(self.lmr_pv_reduction) * i64::from(c.pv_node)
+            + i64::from(self.lmr_tt_pv) * i64::from(c.tt_pv);
+        let threshold = self.lmr_history_threshold;
+        let history = match c.history {
+            Some(value) if value >= threshold => -100,
+            Some(value) if value <= -threshold => 100,
+            _ => 0,
+        };
+        let mut r = r_pre + i64::from(self.lmr_offset)
+            - i64::from(self.lmr_move_count) * (c.index as i64 + 1)
+            + history;
+        if c.tt_pv {
+            r -= i64::from(self.lmr_tt_pv_base)
+                + i64::from(self.lmr_tt_pv_pv) * i64::from(c.pv_node)
+                + i64::from(self.lmr_tt_pv_value)
+                    * i64::from(c.tt_hit.is_some_and(|(value, _)| value > c.alpha))
+                + (i64::from(self.lmr_tt_pv_depth)
+                    + i64::from(self.lmr_tt_pv_depth_cut_node) * i64::from(c.cut_node))
+                    * i64::from(c.tt_hit.is_some_and(|(_, depth)| depth >= c.depth));
+        }
+        if c.cut_node {
+            r += i64::from(self.lmr_cut_node)
+                + i64::from(self.lmr_cut_node_no_tt_move) * i64::from(c.tt_capture.is_none());
+        }
+        r += i64::from(self.lmr_tt_capture) * i64::from(c.tt_capture == Some(true));
+        // 子のβ打ち切り数の閾値1と2はStockfish src/search.cpp:1364-1369と同じ。
+        if c.cutoff_count > 1 {
+            r += i64::from(self.lmr_cutoff_count)
+                + i64::from(self.lmr_cutoff_count_many) * i64::from(c.cutoff_count > 2)
+                + i64::from(self.lmr_cutoff_count_all_node) * i64::from(all_node);
+        } else if c.is_tt_move {
+            r -= i64::from(self.lmr_tt_move);
+        }
+        if !c.capture && c.alpha.abs() < REPETITION_BAND_START {
+            let pawn = i64::from(c.pawn);
+            // −64と96を歩兵価値208で換算した−31%と46%（Stockfish src/search.cpp:1383-1384）。
+            let difference =
+                (i64::from(c.alpha) - i64::from(c.eval)).clamp(-31 * pawn / 100, 46 * pawn / 100);
+            r += i64::from(self.lmr_alpha_eval) * difference / pawn;
+        }
+        if all_node {
+            // 分母の定数105は268/256の換算値（Stockfish src/search.cpp:1387-1388）。
+            r += r * i64::from(self.lmr_all_node) / (100 * i64::from(c.depth) + 105);
+        }
+        r as i32
+    }
+}
+
 /// ノードと手の情報から、符号つきのLMR減深量を1/100手単位で返す。
 ///
 /// Stockfish src/search.cpp:1183-1192, 1345-1388, 1917-1920の各項を個別に0方向へ丸める。
@@ -269,57 +469,10 @@ pub(super) struct LmrContext {
 /// historyの補正は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
 /// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
 pub(super) fn lmr_reduction(context: LmrContext) -> i32 {
-    let c = context;
-    let all_node = !c.pv_node && !c.cut_node;
-    let table = i64::from(lmr_table()[c.depth as usize][c.index.min(LMR_MOVE_COUNT - 1)]);
-    let r_pre = table * (100 + i64::from(params::lmr_non_improving()) * i64::from(!c.improving))
-        / 100
-        + i64::from(params::lmr_base())
-        - i64::from(params::lmr_pv_reduction()) * i64::from(c.pv_node)
-        + i64::from(params::lmr_tt_pv()) * i64::from(c.tt_pv);
-    let threshold = params::lmr_history_threshold();
-    let history = match c.history {
-        Some(value) if value >= threshold => -100,
-        Some(value) if value <= -threshold => 100,
-        _ => 0,
-    };
-    let mut r = r_pre + i64::from(params::lmr_offset())
-        - i64::from(params::lmr_move_count()) * (c.index as i64 + 1)
-        + history;
-    if c.tt_pv {
-        r -= i64::from(params::lmr_tt_pv_base())
-            + i64::from(params::lmr_tt_pv_pv()) * i64::from(c.pv_node)
-            + i64::from(params::lmr_tt_pv_value())
-                * i64::from(c.tt_hit.is_some_and(|(value, _)| value > c.alpha))
-            + (i64::from(params::lmr_tt_pv_depth())
-                + i64::from(params::lmr_tt_pv_depth_cut_node()) * i64::from(c.cut_node))
-                * i64::from(c.tt_hit.is_some_and(|(_, depth)| depth >= c.depth));
-    }
-    if c.cut_node {
-        r += i64::from(params::lmr_cut_node())
-            + i64::from(params::lmr_cut_node_no_tt_move()) * i64::from(c.tt_capture.is_none());
-    }
-    r += i64::from(params::lmr_tt_capture()) * i64::from(c.tt_capture == Some(true));
-    // 子のβ打ち切り数の閾値1と2はStockfish src/search.cpp:1364-1369と同じ。
-    if c.cutoff_count > 1 {
-        r += i64::from(params::lmr_cutoff_count())
-            + i64::from(params::lmr_cutoff_count_many()) * i64::from(c.cutoff_count > 2)
-            + i64::from(params::lmr_cutoff_count_all_node()) * i64::from(all_node);
-    } else if c.is_tt_move {
-        r -= i64::from(params::lmr_tt_move());
-    }
-    if !c.capture && c.alpha.abs() < REPETITION_BAND_START {
-        let pawn = i64::from(c.pawn);
-        // −64と96を歩兵価値208で換算した−31%と46%（Stockfish src/search.cpp:1383-1384）。
-        let difference =
-            (i64::from(c.alpha) - i64::from(c.eval)).clamp(-31 * pawn / 100, 46 * pawn / 100);
-        r += i64::from(params::lmr_alpha_eval()) * difference / pawn;
-    }
-    if all_node {
-        // 分母の定数105は268/256の換算値（Stockfish src/search.cpp:1387-1388）。
-        r += r * i64::from(params::lmr_all_node()) / (100 * i64::from(c.depth) + 105);
-    }
-    r as i32
+    LmrCoefficients::current().lmr_reduction(
+        lmr_table()[context.depth as usize][context.index.min(LMR_MOVE_COUNT - 1)],
+        context,
+    )
 }
 
 /// 減深量を0方向へ丸め、正の減深だけを係数の上限で抑えて子の深さを求める。
@@ -332,8 +485,26 @@ pub(super) fn lmr_depth(
     ply: u32,
     root_depth: u32,
 ) -> u32 {
+    lmr_depth_with_coefficient(
+        depth,
+        reduction,
+        pv_node,
+        ply,
+        root_depth,
+        params::lmr_max_reduction(),
+    )
+}
+
+pub(super) fn lmr_depth_with_coefficient(
+    depth: u32,
+    reduction: i32,
+    pv_node: bool,
+    ply: u32,
+    root_depth: u32,
+    lmr_max_reduction: i32,
+) -> u32 {
     let extension = if ply < 2 * root_depth { 2 } else { 0 };
-    let reduction = (reduction / 100).clamp(-extension, params::lmr_max_reduction());
+    let reduction = (reduction / 100).clamp(-extension, lmr_max_reduction);
     (depth as i32 - 1 - reduction).max(1) as u32 + u32::from(pv_node)
 }
 
@@ -346,11 +517,30 @@ pub(super) fn lmr_research_depth(
     best: i32,
     pawn: i32,
 ) -> u32 {
+    lmr_research_depth_with_margins(
+        normal,
+        reduced,
+        value,
+        best,
+        pawn,
+        params::lmr_deeper_margin(),
+        params::lmr_shallower_margin(),
+    )
+}
+
+pub(super) fn lmr_research_depth_with_margins(
+    normal: u32,
+    reduced: u32,
+    value: i32,
+    best: i32,
+    pawn: i32,
+    deeper_margin: i32,
+    shallower_margin: i32,
+) -> u32 {
     let deeper = reduced < normal
-        && i64::from(value)
-            > i64::from(best) + i64::from(params::lmr_deeper_margin()) * i64::from(pawn) / 100;
-    let shallower = i64::from(value)
-        < i64::from(best) + i64::from(params::lmr_shallower_margin()) * i64::from(pawn) / 100;
+        && i64::from(value) > i64::from(best) + i64::from(deeper_margin) * i64::from(pawn) / 100;
+    let shallower =
+        i64::from(value) < i64::from(best) + i64::from(shallower_margin) * i64::from(pawn) / 100;
     normal + u32::from(deeper) - u32::from(shallower)
 }
 
@@ -358,12 +548,16 @@ pub(super) fn lmr_research_depth(
 /// 置換表の手がなければ加算した後、511と536で1手ずつ減らす。2手目は通常深さが2より深い場合だけとする。
 /// 閾値は5234/1024と5487/1024の換算値である（Stockfish src/search.cpp:1428-1436）。
 pub(super) fn non_lmr_depth(normal: u32, reduction: i32, has_tt_move: bool) -> u32 {
-    let reduction = reduction
-        + if has_tt_move {
-            0
-        } else {
-            params::lmr_no_tt_move()
-        };
+    non_lmr_depth_with_coefficient(normal, reduction, has_tt_move, params::lmr_no_tt_move())
+}
+
+pub(super) fn non_lmr_depth_with_coefficient(
+    normal: u32,
+    reduction: i32,
+    has_tt_move: bool,
+    lmr_no_tt_move: i32,
+) -> u32 {
+    let reduction = reduction + if has_tt_move { 0 } else { lmr_no_tt_move };
     normal.saturating_sub(u32::from(reduction > 511) + u32::from(reduction > 536 && normal > 2))
 }
 

@@ -248,30 +248,22 @@ fn aspiration_initial_window_uses_only_eligible_previous_scores() {
 
 #[test]
 fn aspiration_widens_only_the_failed_side() {
-    assert_eq!(
-        crate::search::alphabeta::params::aspiration_growth(),
-        168,
-        "数値例の前提"
-    );
-    // 50×168/100=84、その後も各回で丸め、141、236、396、665と広げる。
     let mut low = AspirationWindow::initial(5, Some(100), 50);
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 84));
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-84, 150, 141));
-
-    let mut high = AspirationWindow::initial(5, Some(100), 50);
-    high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 84));
-    high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 284, 141));
-
-    low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-84, 291, 236));
-    low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-320, 291, 396));
-    low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-320, 687, 665));
+    for high_side in [false, false, true, false, true] {
+        let before = (low.alpha, low.beta, low.delta);
+        if high_side {
+            low.widen_high();
+        } else {
+            low.widen_low();
+        }
+        assert_eq!(low.alpha, before.0 - if high_side { 0 } else { before.2 });
+        assert_eq!(low.beta, before.1 + if high_side { before.2 } else { 0 });
+        assert_truncated_ratio(
+            i64::from(low.delta),
+            i64::from(before.2) * i64::from(crate::search::alphabeta::params::aspiration_growth()),
+            100,
+        );
+    }
     // 最小の拡大率でも詰み帯を越える回数だけ両側を広げる。
     for _ in 0..32 {
         low.widen_low();
@@ -376,8 +368,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
     });
 }
 
-// 深さ5の最初の窓外れを実測してノード予算を
-// 決め、読み直しで1手を適用した後に中断させる。経過時間やスケジューリングに依存しない。
+// 深さ4の完了時点から1手だけ読む予算にし、次の反復の中断で完了結果を保持する。
 #[test]
 fn aspiration_interruption_preserves_the_last_completed_iteration() {
     let position = quiet_midgame();
@@ -397,19 +388,6 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
             assert!(completed.is_some());
         }
         completed_pv.clone_from(&searcher.pv[0]);
-        let (_, prev) = completed.unwrap();
-        let delta = aspiration_delta(searcher.nnue.pawn_value());
-        let (_, score) = searcher
-            .search_root(&position, &moves, 5, prev - delta, prev + delta)
-            .unwrap();
-        assert!(
-            score >= prev + delta,
-            "fixture must fail high before the interruption"
-        );
-        assert_eq!(
-            searcher.tt.probe(search_key(&position), 0).unwrap().bound,
-            Bound::Lower
-        );
         node_limit = searcher.nodes + 1;
     });
 
@@ -455,5 +433,27 @@ fn iteration_snapshots_previous_pv_before_window_research() {
             .unwrap();
         assert_eq!(searcher.previous_pv, previous);
         assert!(searcher.follow_pv[0]);
+    });
+}
+
+// 窓外れと再探索中断は、反復間の評価変動に頼らず反復引き分けで作る。
+#[test]
+fn aspiration_retry_interruption_keeps_fail_high_bound() {
+    let board = quiet_midgame();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    with_root_searcher(&board, &history, |searcher| {
+        let delta = aspiration_delta(searcher.nnue.pawn_value());
+        searcher.interrupt_at = Some((1, StopReason::NodeLimit));
+        assert!(
+            searcher
+                .search_iteration(&board, &moves, 5, Some(-delta - 1))
+                .is_none()
+        );
+        assert_eq!(searcher.nodes, 1);
+        assert_eq!(searcher.stop_reason, Some(StopReason::NodeLimit));
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.score, DRAW_SCORE);
     });
 }

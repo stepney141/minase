@@ -448,6 +448,18 @@ fn run_negamax(
     ply: u32,
     table: &TranspositionTable,
 ) -> (i32, u64) {
+    run_configured_negamax(position, depth, alpha, beta, ply, table, |_| {})
+}
+
+fn run_configured_negamax(
+    position: &Position,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+    ply: u32,
+    table: &TranspositionTable,
+    configure: impl FnOnce(&mut Searcher<'_>),
+) -> (i32, u64) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -478,6 +490,7 @@ fn run_negamax(
         &mut butterfly_history,
         &mut capture_history,
     );
+    configure(&mut searcher);
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply, false)
         .expect("unlimited negamax search must complete");
@@ -733,4 +746,34 @@ impl SearchClock for ManualClock {
     fn elapsed(&self) -> Duration {
         Duration::from_nanos(self.nanos.load(AtomicOrdering::Relaxed))
     }
+}
+
+/// 0方向への整数丸めを、商を再計算せず剰余の符号と幅で検査する。
+fn assert_truncated_ratio(actual: i64, numerator: i64, denominator: i64) {
+    let residual = numerator - actual * denominator;
+    assert!(
+        residual.abs() < denominator,
+        "actual={actual}, numerator={numerator}, denominator={denominator}"
+    );
+    assert!(residual == 0 || residual.signum() == numerator.signum());
+    assert!(actual == 0 || actual.signum() == numerator.signum());
+}
+
+// 手を展開した後の枝刈りを検査するため、ノード入口の枝刈りを条件で除外する。
+fn run_move_pruning(
+    position: &Position,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+    ply: u32,
+    table: &TranspositionTable,
+) -> (i32, u64) {
+    let mv = table
+        .probe(search_key(position), ply)
+        .and_then(|h| h.best_move);
+    table.store(search_key(position), 0, alpha, Bound::Upper, mv, ply, true);
+    run_configured_negamax(position, depth, alpha, beta, ply, table, |s| {
+        s.seek_mate = true;
+        s.null_move_ply = Some(ply);
+    })
 }

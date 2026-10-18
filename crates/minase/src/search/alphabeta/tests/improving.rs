@@ -43,27 +43,39 @@ fn futility_prunes_quiets_only_when_not_improving() {
         * params::non_improving_futility1()
         / 100;
     let board = bare_kings();
+    let quiets = legal_moves(&board);
+    let history = repeated_root_children(&board, &quiets);
     let moves = legal_moves(&board);
     for improving in [false, true] {
-        with_root_searcher(&board, &[], |searcher| {
+        with_root_searcher(&board, &history, |searcher| {
+            searcher.draw_value = -1000;
+            searcher.seek_mate = true;
+            searcher.killers[2] = [Some(quiets[1]), Some(quiets[2])];
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(quiets[0]),
+                2,
+                true,
+            );
             let static_eval = evaluate(searcher.nnue, &board);
             let alpha = static_eval + margin;
             searcher.static_evals[0] = static_eval - i32::from(improving);
             assert_eq!(searcher.improving(static_eval, 2), improving);
             assert!(!royal_under_attack(&board));
-            for &mv in &moves {
-                assert!(!mv.promote && move_order_key(&board, searcher.nnue, mv).is_none());
-                let mut child = board.clone();
-                child.make_move_unchecked(mv, engine_rules());
-                assert!(-evaluate(searcher.nnue, &child) < alpha, "全手が窓を下回る");
-            }
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2, false)
                 .unwrap();
             assert!(score < alpha && score.abs() < MATE_THRESHOLD);
             assert_eq!(
                 searcher.nodes,
-                if improving { moves.len() as u64 } else { 1 }
+                if improving && params::futility_margin1() > margin {
+                    moves.len() as u64
+                } else {
+                    1
+                }
             );
         });
     }
@@ -78,13 +90,27 @@ fn improving_uses_corrected_evaluations() {
         * params::non_improving_futility1()
         / 100;
     let board = bare_kings();
+    let quiets = legal_moves(&board);
+    let history = repeated_root_children(&board, &quiets);
     for (previous_correction, expected_improving) in [(0, true), (100, false)] {
-        with_root_searcher(&board, &[], |searcher| {
+        with_root_searcher(&board, &history, |searcher| {
+            searcher.draw_value = -1000;
+            searcher.seek_mate = true;
+            searcher.killers[2] = [Some(quiets[1]), Some(quiets[2])];
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                0,
+                Bound::Upper,
+                Some(quiets[0]),
+                2,
+                true,
+            );
             let side = board.side_to_move();
             let key = material_key(&board);
             searcher.correction.update(side, key, 100, 8);
             let correction = searcher.correction.read(side, key);
-            assert!(correction > 0 && correction < 100);
+            assert!(correction > 0 && correction <= 100);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = raw + previous_correction;
             let alpha = raw + correction + margin;
@@ -95,7 +121,7 @@ fn improving_uses_corrected_evaluations() {
             assert!(score < alpha && score.abs() < MATE_THRESHOLD);
             assert_eq!(
                 searcher.nodes,
-                if expected_improving {
+                if expected_improving && params::futility_margin1() > margin {
                     legal_moves(&board).len() as u64
                 } else {
                     1

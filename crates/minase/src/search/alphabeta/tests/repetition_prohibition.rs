@@ -456,6 +456,11 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
             for (is_reference, input) in [(false, &snapshot), (true, &reference)] {
                 with_snapshot(input, &nnue, |searcher| {
                     let mut current = snapshot.position().clone();
+                    searcher.seek_mate = true;
+                    searcher.null_move_ply = Some(0);
+                    searcher
+                        .tt
+                        .store(search_key(&current), 0, 0, Bound::Upper, None, 0, true);
                     // 履歴値を異ならせ、根と内部ノードの整列の違いに左右されない順序を与える。
                     for (index, mv) in allowed.iter().enumerate() {
                         searcher.history[current.side_to_move().index()][mv.from.dense_index()]
@@ -480,7 +485,8 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                     let (depth, alpha, beta, child_score) = match mode {
                         // 根はLMRを行わないため、全窓の対照は双方でLMRのない深さ1とする。
                         "full" => (1, -INFINITY, INFINITY, 0),
-                        "lmp" => (2, static_eval + 1, static_eval + 2, -(static_eval + 1)),
+                        // 静的評価より低いalphaでfutilityを避け、improving側の上限を使う。
+                        "lmp" => (2, static_eval - 1, static_eval, -(static_eval - 1)),
                         "lmr" => (5, -INFINITY, INFINITY, -static_eval),
                         "cutoff" => (2, -INFINITY, 100, -200),
                         _ => unreachable!(),
@@ -510,7 +516,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                     // 根では枝刈りしないので、内部ノードが読む候補だけを対照へ渡す。
                                     &input.root_moves()[..allowed
                                         .len()
-                                        .min(late_move_limit(2, false).max(1) as usize)]
+                                        .min(late_move_limit(2, true).max(1) as usize)]
                                 } else {
                                     input.root_moves()
                                 },
@@ -538,7 +544,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                         assert_eq!(
                             searcher.nodes,
                             if mode == "lmp" {
-                                allowed.len().min(late_move_limit(2, false).max(1) as usize) as u64
+                                allowed.len().min(late_move_limit(2, true).max(1) as usize) as u64
                             } else {
                                 allowed.len() as u64
                             },
