@@ -358,6 +358,8 @@ C1はbenchのノード数を変えない（benchは局面ごとに表を初期�
 
 ### フェーズ5　採否測定
 
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。この節のSTCは採否に使わない記録として行い、LTCは行わない。以下の判定の規則は、この決定より前に書いたものであり、統括計画の決定が優先する。
+
 ```console
 <固定したminase> match run \
   --run-dir data/matches/correction-history-tables-stc --seed 4250000000 \
