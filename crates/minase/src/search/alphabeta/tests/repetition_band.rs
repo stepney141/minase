@@ -333,7 +333,7 @@ fn r1_repetition_band_windows_disable_see_pruning() {
                 engine_rules(),
                 searcher.nnue,
                 capture,
-                see_margin(searcher.nnue.pawn_value(), depth)
+                see_margin(searcher.nnue.pawn_value(), depth, 0)
             ));
             searcher.tt.store(
                 search_key(&board),

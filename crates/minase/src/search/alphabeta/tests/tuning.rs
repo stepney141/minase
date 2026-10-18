@@ -169,9 +169,8 @@ fn tuning_parameters_in_isolated_process() {
         ("ReverseFutilityCorrection", 124),
         ("RazoringMargin1", 2622),
         ("RazoringMargin2", 2885),
-        ("SeeMargin1", 15),
-        ("SeeMargin2", 97),
-        ("SeeMargin3", 3),
+        ("SeeDepthMargin", 85),
+        ("SeeCaptureHistory", 34),
         ("AspirationDelta", 57),
         ("AspirationGrowth", 168),
         ("NullMoveBase", 4799),
@@ -427,7 +426,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 66] = [
+    let cases: [Case; 65] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -611,9 +610,10 @@ fn tuning_parameters_in_isolated_process() {
         ("RazoringMargin2", 100, || {
             i64::from(razoring_margin(101, 2))
         }),
-        ("SeeMargin1", 100, || i64::from(see_margin(101, 1))),
-        ("SeeMargin2", 100, || i64::from(see_margin(101, 2))),
-        ("SeeMargin3", 100, || i64::from(see_margin(101, 3))),
+        ("SeeDepthMargin", 100, || i64::from(see_margin(101, 2, 0))),
+        ("SeeCaptureHistory", 100, || {
+            i64::from(see_margin(208, 1, 1024))
+        }),
         ("AspirationDelta", 100, || i64::from(aspiration_delta(101))),
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))

@@ -342,6 +342,105 @@ fn capture_history_adjustment_truncates_toward_zero() {
     assert_eq!(history.adjustment(&board, nnue, loser), 0);
 }
 
+/// S3は整列用の駒価値への換算値ではなく、capture historyの生の値を余裕値に使う。
+#[test]
+fn see_pruning_uses_raw_capture_history_in_margin() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::GoBetween),
+            (sq(5, 4), Color::White, PieceKind::Pawn),
+            (sq(5, 5), Color::White, PieceKind::Pawn),
+            (sq(0, 11), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let target = capture(sq(5, 3), sq(5, 4));
+    let tt_move = capture(sq(11, 0), sq(10, 0));
+    let nnue = test_nnue();
+    let moves = legal_moves(&board);
+    assert!(moves.contains(&target));
+    assert!(moves.contains(&tt_move));
+    assert!(!royal_under_attack(&board));
+
+    let mut penalized = CaptureHistory::new();
+    penalized.record_quiet_cutoff(&board, nnue, &[target], 100);
+    let raw = penalized.read(&board, nnue, target);
+    let adjustment = penalized.adjustment(&board, nnue, target);
+    let base_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
+    let raw_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, raw);
+    let adjusted_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, adjustment);
+    assert!(!see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        target,
+        base_margin
+    ));
+    assert!(see_prunes(&board, engine_rules(), nnue, target, raw_margin));
+    assert!(!see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        target,
+        adjusted_margin
+    ));
+
+    let minimum_child_value = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(nnue, &child)
+        })
+        .min()
+        .unwrap();
+    let alpha = minimum_child_value - 1;
+    let beta = alpha + 2;
+    let run = |penalize: bool| {
+        let table = TranspositionTable::new(16).unwrap();
+        for &mv in &moves {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let parent_score = if mv == target { beta } else { alpha - 1 };
+            table.store(
+                search_key(&child),
+                MAX_PLY,
+                -parent_score,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        table.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            false,
+        );
+        run_configured_negamax(&board, 1, alpha, beta, 0, &table, |searcher| {
+            searcher.follow_pv[0] = true;
+            if penalize {
+                searcher
+                    .capture_history
+                    .record_quiet_cutoff(&board, searcher.nnue, &[target], 100);
+            }
+        });
+        table.probe(search_key(&board), 0).unwrap()
+    };
+
+    let hit = run(false);
+    assert_eq!(hit.best_move, Some(target));
+    let hit = run(true);
+    assert_ne!(hit.best_move, Some(target));
+}
+
 /// SEEで飛ばした捕獲手と先行する静かなTT手は、捕獲打ち切り時にも減点しない。
 #[test]
 fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
@@ -375,7 +474,9 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             &[(quiet, false), (pruned, true), (winner, true)]
         );
         assert!(!royal_under_attack(&board));
-        let margin = crate::search::alphabeta::pruning::see_margin(searcher.nnue.pawn_value(), 3);
+        let history = searcher.capture_history.read(&board, searcher.nnue, pruned);
+        let margin =
+            crate::search::alphabeta::pruning::see_margin(searcher.nnue.pawn_value(), 3, history);
         assert!(see_prunes(
             &board,
             engine_rules(),

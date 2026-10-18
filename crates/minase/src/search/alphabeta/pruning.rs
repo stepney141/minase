@@ -244,15 +244,42 @@ pub(super) fn late_move_limit(depth: u32, improving: bool) -> i32 {
     LateMoveCoefficients::current().late_move_limit(depth, improving)
 }
 
-/// 深さ1〜3のSEE余裕値を求める。
-pub(super) fn see_margin(pawn: i32, depth: u32) -> i32 {
-    let percent = match depth {
-        1 => params::see_margin1(),
-        2 => params::see_margin2(),
-        3 => params::see_margin3(),
-        _ => unreachable!("SEE pruning applies only at depths 1 to 3"),
-    };
-    pawn * percent / 100
+/// capture historyの換算元にするStockfishの歩兵価値。
+/// `PawnValue` 208に対応する（Stockfish src/types.h:199）。
+const STOCKFISH_PAWN_VALUE: i64 = 208;
+
+/// SEEの余裕値の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct SeeCoefficients {
+    pub(super) see_depth_margin: i32,
+    pub(super) see_capture_history: i32,
+}
+
+impl SeeCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            see_depth_margin: params::see_depth_margin(),
+            see_capture_history: params::see_capture_history(),
+        }
+    }
+
+    /// 残り深さとcapture historyからSEEで許容する損の余裕値を求める。
+    /// Stockfishの深さと履歴の項に対応する（src/search.cpp:1222）。
+    pub(super) fn see_margin(&self, pawn: i32, depth: u32, capture_history: i32) -> i32 {
+        let depth_margin =
+            i64::from(pawn) * i64::from(self.see_depth_margin) * i64::from(depth) / 100;
+        let weighted_history =
+            i64::from(capture_history) * i64::from(self.see_capture_history) / 1024;
+        let history_margin = weighted_history * i64::from(pawn) / STOCKFISH_PAWN_VALUE;
+        // see_prunesの現行の契約に合わせる。後続の設計書は符号付き閾値へ移し、
+        // この切り詰めを外す。
+        (depth_margin + history_margin).max(0) as i32
+    }
+}
+
+/// 残り深さとcapture historyからSEEで許容する損の余裕値を求める。
+pub(super) fn see_margin(pawn: i32, depth: u32, capture_history: i32) -> i32 {
+    SeeCoefficients::current().see_margin(pawn, depth, capture_history)
 }
 
 /// reverse futilityの残り深さの上限。Stockfishの`depth < (seekMate ? 6 : 19)`に対応する。

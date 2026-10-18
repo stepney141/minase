@@ -1,5 +1,7 @@
 //! 到達升での駒の取り合いを見積もる静的交換評価（SEE）。
 //!
+//! 合法な捕獲手と、経由升を持たない合法な静かな手を対象とする。
+//! 静かな手は初手の捕獲価値を0とし、動かした駒が到達升で取られる交換列を見積もる。
 //! 経由升を持つ着手と、獅子を獅子または成れる麒麟が取る段階を
 //! 含む交換列は、捕獲規則に依存するため判定不能とする。非獅子が獅子を
 //! 取る手、獅子が非獅子を取る手、および角鷹と飛鷲が到達升だけで取る手は
@@ -22,10 +24,12 @@ use minase_core::rules::MoveRules;
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。
 const MAX_GAINS: usize = 93;
 
-/// 捕獲の交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
+/// 交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
 ///
 /// `margin`は駒価値と同じ単位の非負の余裕値であり、等号では枝刈りしない。
-/// 呼び出し側は合法な捕獲手だけを渡し、相手の最後の王駒を取る手は除く。
+/// 呼び出し側は合法な捕獲手、または経由升を持たない合法な静かな手を渡す。
+/// 捕獲手では、相手の最後の王駒を取る手を呼び出し側で除く。
+/// 捕獲の有無は[`Position::captured_squares`]で決め、移動元と到達升が同じじっとも静かな手として扱う。
 /// 交換列を最後まで逆算した値が得られる場合と同じ閾値判定を返し、規則依存で判定不能なら偽を返す。
 /// 最初の取り返しで損が余裕値以下と確定したら、残る逆引きと逆算を省く。
 pub(super) fn see_prunes(
@@ -41,11 +45,14 @@ pub(super) fn see_prunes(
 
     let moving_piece = piece_at(position, mv.from);
     let moving_kind = moving_piece.kind().expect("moving piece has a kind");
-    let captured_piece = piece_at(position, mv.to);
-    let captured_kind = captured_piece.kind().expect("captured piece has a kind");
-    if moving_kind == PieceKind::Kirin && mv.promote && captured_kind == PieceKind::Lion {
+    let captured_piece = position.captured_squares(mv)[1].map(|square| piece_at(position, square));
+    if moving_kind == PieceKind::Kirin
+        && mv.promote
+        && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+    {
         return false;
     }
+    let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
 
     let piece_after_move = if mv.promote {
         moving_piece
@@ -55,13 +62,10 @@ pub(super) fn see_prunes(
         moving_piece
     };
     let mut gains = [0_i32; MAX_GAINS];
-    gains[0] = nnue.piece_value(captured_piece) + nnue.piece_value(piece_after_move)
-        - nnue.piece_value(moving_piece);
+    gains[0] = captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
     // 相手の成り益を最大に見積もっても損が余裕値以下なら、取り返しの列挙を省く。
     if gains[0] >= -margin
-        && nnue.piece_value(moving_piece) - nnue.piece_value(captured_piece)
-            + nnue.max_promotion_gain()
-            <= margin
+        && nnue.piece_value(moving_piece) - captured_value + nnue.max_promotion_gain() <= margin
     {
         return false;
     }
@@ -141,12 +145,13 @@ pub(super) fn see_prunes(
     gains[0] < -margin
 }
 
-/// 捕獲手について、到達升での駒の取り合いを手番側視点で見積もる。
+/// 捕獲手または経由升のない静かな手について、到達升での駒の取り合いを手番側視点で見積もる。
 ///
 /// 経由升を持つ着手、麒麟が獅子を取って成る着手、および到達升の
 /// 獅子を獅子または成れる麒麟が取る段階を含む場合は`None`を返す。
 /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
-/// その他の捕獲は最も安い攻撃駒で交互に取り返す利得列を作り、末尾から取り返さない選択肢と比較して逆算する。
+/// 静かな手では初手の捕獲価値を0とする。その他は最も安い攻撃駒で交互に取り返す利得列を作り、
+/// 末尾から取り返さない選択肢と比較して逆算する。
 /// 初手と取り返しの成り益はモジュールの契約に従って利得へ加える。
 #[cfg(test)]
 fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -> Option<i32> {
@@ -156,11 +161,14 @@ fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -
 
     let moving_piece = piece_at(position, mv.from);
     let moving_kind = moving_piece.kind().expect("moving piece has a kind");
-    let captured_piece = piece_at(position, mv.to);
-    let captured_kind = captured_piece.kind().expect("captured piece has a kind");
-    if moving_kind == PieceKind::Kirin && mv.promote && captured_kind == PieceKind::Lion {
+    let captured_piece = position.captured_squares(mv)[1].map(|square| piece_at(position, square));
+    if moving_kind == PieceKind::Kirin
+        && mv.promote
+        && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+    {
         return None;
     }
+    let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
 
     let piece_after_move = if mv.promote {
         moving_piece
@@ -170,8 +178,7 @@ fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -
         moving_piece
     };
     let mut gains = [0_i32; MAX_GAINS];
-    gains[0] = nnue.piece_value(captured_piece) + nnue.piece_value(piece_after_move)
-        - nnue.piece_value(moving_piece);
+    gains[0] = captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
     let mut piece_value = nnue.piece_value(piece_after_move);
     let mut lion_on_square =
         moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
@@ -369,6 +376,95 @@ mod tests {
             }
             assert!(checked > 0);
         }
+    }
+
+    // 経由升のない全静穏手の枝刈り判断を、
+    // benchの15局面と各規則32局面の固定シード対局で参照値と照合する。
+    #[test]
+    fn see_prunes_matches_reference_on_bench_and_random_quiets() {
+        let nnue = test_nnue();
+        for rules in [Rules::ENGINE_DEFAULT.moves, Rules::LISHOGI.moves] {
+            let generator = MoveGenerator::new(rules);
+            let mut checked = 0;
+            let mut negative = 0;
+            let mut promotions = 0;
+            let mut jittos = 0;
+            for (index, board) in bench_positions()
+                .into_iter()
+                .chain(sampled_random_positions(rules))
+                .enumerate()
+            {
+                let mut moves = Vec::new();
+                generator.generate_moves(&board, &mut moves);
+                for mv in moves.into_iter().filter(|&mv| {
+                    mv.mid.is_none() && board.captured_squares(mv).iter().all(Option::is_none)
+                }) {
+                    let reference = see_reference(&board, rules, nnue, mv);
+                    for margin in [0, 200] {
+                        assert_eq!(
+                            see_prunes(&board, rules, nnue, mv, margin),
+                            reference.is_some_and(|value| value < -margin),
+                            "rules={rules:?}, position={index}, move={mv:?}, margin={margin}"
+                        );
+                    }
+                    checked += 1;
+                    negative += usize::from(reference.is_some_and(|value| value < 0));
+                    promotions += usize::from(mv.promote);
+                    jittos += usize::from(mv.from == mv.to);
+                }
+            }
+            assert!(checked > 0, "rules={rules:?}");
+            assert!(negative > 0, "rules={rules:?}");
+            assert!(promotions > 0, "rules={rules:?}");
+            assert!(jittos > 0, "rules={rules:?}");
+        }
+    }
+
+    // 静かな手は捕獲価値0から交換列を始める。
+    // 取り返される飛車、取り返されない歩兵、およびじっとを手計算と照合する。
+    #[test]
+    fn see_values_match_hand_calculated_quiet_moves_and_jitto() {
+        let nnue = test_nnue();
+        let rules = MoveRules::standard();
+        let rook = unpromoted(Color::Black, PieceKind::Rook);
+        let white_pawn = unpromoted(Color::White, PieceKind::Pawn);
+        let losing = position(Color::Black, &[(sq(5, 4), rook), (sq(5, 6), white_pawn)]);
+        assert_prune_contract(
+            &losing,
+            rules,
+            nnue,
+            quiet(sq(5, 4), sq(5, 5)),
+            Some(-value(nnue, rook)),
+        );
+
+        let black_pawn = unpromoted(Color::Black, PieceKind::Pawn);
+        let safe = position(Color::Black, &[(sq(5, 4), black_pawn)]);
+        assert_prune_contract(&safe, rules, nnue, quiet(sq(5, 4), sq(5, 5)), Some(0));
+
+        let lion = unpromoted(Color::Black, PieceKind::Lion);
+        let waiting = position(Color::Black, &[(sq(5, 5), lion)]);
+        assert_prune_contract(&waiting, rules, nnue, quiet(sq(5, 5), sq(5, 5)), Some(0));
+    }
+
+    // 静かな手で獅子を相手獅子の利きへ進める場合も、
+    // 到達升の獅子捕獲規則に依存するため判定不能とする。
+    #[test]
+    fn see_returns_none_for_quiet_lion_move_into_rule_dependent_attack() {
+        let nnue = test_nnue();
+        let board = position(
+            Color::Black,
+            &[
+                (sq(5, 4), unpromoted(Color::Black, PieceKind::Lion)),
+                (sq(7, 7), unpromoted(Color::White, PieceKind::Lion)),
+            ],
+        );
+        assert_prune_contract(
+            &board,
+            MoveRules::standard(),
+            nnue,
+            quiet(sq(5, 4), sq(5, 5)),
+            None,
+        );
     }
 
     // 飛車で角行を取り、歩兵に
@@ -602,6 +698,15 @@ mod tests {
     }
 
     fn capture(from: minase_core::Square, to: minase_core::Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        }
+    }
+
+    fn quiet(from: minase_core::Square, to: minase_core::Square) -> Move {
         Move {
             from,
             mid: None,

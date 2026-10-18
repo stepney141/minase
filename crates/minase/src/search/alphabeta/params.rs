@@ -215,15 +215,14 @@ parameters! {
     /// 残り深さ2で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     RazoringMargin2(razoring_margin2): 2885, 0, 2885;
-    /// 残り深さ1の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    SeeMargin1(see_margin1): 15, 0, 400;
-    /// 残り深さ2の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    SeeMargin2(see_margin2): 97, 0, 400;
-    /// 残り深さ3の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    SeeMargin3(see_margin3): 3, 0, 400;
+    /// 静的交換評価（SEE）で許容する損の残り深さ1あたりの余裕値。単位は歩兵価値に対する百分率である。
+    /// Stockfishは177/208で85、YaneuraOuは167/90で186である（Stockfish src/search.cpp:1222、YaneuraOu yaneuraou-search.cpp:3631）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    SeeDepthMargin(see_depth_margin): 85, 0, 400;
+    /// SEEの余裕値に加えるcapture historyの重み。単位は履歴値に対する1/1024である。
+    /// StockfishとYaneuraOuはともに34である（Stockfish src/search.cpp:1222、YaneuraOu yaneuraou-search.cpp:3631）。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    SeeCaptureHistory(see_capture_history): 34, -50, 200;
     /// aspiration windowの初期半幅。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     AspirationDelta(aspiration_delta): 57, 10, 200;

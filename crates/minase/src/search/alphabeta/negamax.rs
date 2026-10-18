@@ -66,13 +66,14 @@ impl Searcher<'_> {
     /// 補正表の更新には補正前の評価を渡す。
     ///
     /// 前向き枝刈りはreverse futility、razoring、null moveの順で判定する。
-    /// 手のループではlate move pruningの後、捕獲手にはSEE、それ以外の手にはfutilityを判定し、残った手にLMRを適用する。
+    /// 手のループではlate move pruningの後、捕獲手と王手になる手にはSEE、それ以外の手にはfutilityを判定し、残った手にLMRを適用する。
     /// 静かな手のfutilityはlmrDepthが12未満ならPVノードにも適用し、followPVのPVノード、成る手、および王手になる手を除く。
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことも要求する。
     /// late move pruningはIIR後の残り深さに上限を設けず、零窓とPVノードの両方に適用する。
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことは要求する。
-    /// razoringとSEEは、IIR後の残り深さ3以下の零窓で、同じ帯と王駒への利きの条件を要求する。
-    /// razoringは、さらに残り深さ2以下に限る。
+    /// SEEは深さと零窓の条件を持たず、PVノードにも適用する。
+    /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことは要求する。
+    /// razoringはIIR後の残り深さ2以下の零窓で、同じ帯と王駒への利きの条件を要求する。
     /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
     /// 詰みを探す反復では上限を5に下げ、razoringを行わない（Stockfish src/search.cpp:1017, 1022）。
     /// αとβの帯と王駒への利きの条件は、reverse futilityにも適用する。
@@ -199,7 +200,6 @@ impl Searcher<'_> {
             alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START;
         let razoring_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let late_move_node = window_outside_bands;
-        let capture_see_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
         // 返す判定用の評価値は置換表へ保存しない。
@@ -333,10 +333,10 @@ impl Searcher<'_> {
                 }
 
                 if capture {
-                    // SEEの損が深さ別の余裕値を超える捕獲手を飛ばす。
+                    // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
                     // docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。
-                    if capture_see_node
+                    if window_outside_bands
                         && !captures_last_royal(position, mv)
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                         && see_prunes(
@@ -344,19 +344,21 @@ impl Searcher<'_> {
                             self.rules,
                             self.nnue,
                             mv,
-                            see_margin(self.nnue.pawn_value(), depth),
+                            see_margin(
+                                self.nnue.pawn_value(),
+                                depth,
+                                self.capture_history.read(position, self.nnue, mv),
+                            ),
                         )
                     {
                         index += 1;
                         continue;
                     }
-                } else {
+                } else if !mv.promote && window_outside_bands {
                     // futility pruningは、成る手を対象にしない。
                     // 成る手は、麒麟が獅子に成るように評価が大きく動くため保護する。
-                    if !mv.promote
-                        && !(self.follow_pv[ply as usize] && pv_node)
-                        && window_outside_bands
-                    {
+                    let mut gives_check = None;
+                    if !(self.follow_pv[ply as usize] && pv_node) {
                         // 枝刈り用のlmrDepthは、この判定に到達した手についてだけ求める。
                         let lmr_depth = pruning_lmr_depth(
                             depth,
@@ -373,7 +375,9 @@ impl Searcher<'_> {
                         ) {
                             // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
                             if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                                && !position.gives_check(&self.generator, mv)
+                                && !*gives_check.get_or_insert_with(|| {
+                                    position.gives_check(&self.generator, mv)
+                                })
                             {
                                 if should_raise_futility_best_score(best_score, futility_value) {
                                     best_score = futility_value;
@@ -382,6 +386,22 @@ impl Searcher<'_> {
                                 continue;
                             }
                         }
+                    }
+                    // Stockfish src/search.cpp:1205, 1220-1225。静かな手はSEEで損と
+                    // 判定した後にだけ王手かを求め、王手になる手だけを飛ばす。
+                    if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                        && see_prunes(
+                            position,
+                            self.rules,
+                            self.nnue,
+                            mv,
+                            see_margin(self.nnue.pawn_value(), depth, 0),
+                        )
+                        && *gives_check
+                            .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                    {
+                        index += 1;
+                        continue;
                     }
                 }
             }

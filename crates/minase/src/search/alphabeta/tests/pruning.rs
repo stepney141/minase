@@ -4,7 +4,7 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    FutilityCoefficients, is_opponent_worsening, is_seek_mate, late_move_limit,
+    FutilityCoefficients, SeeCoefficients, is_opponent_worsening, is_seek_mate, late_move_limit,
     reverse_futility_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
@@ -222,6 +222,18 @@ fn futility_best_score_raise_requires_strict_order_and_values_inside_bands() {
             expected,
             "best_score={best_score}, futility_value={futility_value}"
         );
+    }
+}
+
+// S3の数値例。2回の除算の独立した0方向の丸めと、0での切り詰めを検査する。
+#[test]
+fn see_margin_matches_numeric_examples() {
+    let coefficients = SeeCoefficients {
+        see_depth_margin: 85,
+        see_capture_history: 34,
+    };
+    for (depth, history, expected) in [(1, 0, 85), (3, 1024, 271), (1, -8000, 0)] {
+        assert_eq!(coefficients.see_margin(100, depth, history), expected);
     }
 }
 
@@ -851,7 +863,7 @@ fn see_pruning_searches_first_capture_without_false_mate() {
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
     // 葉は最大手数で静的評価を返すため、通常探索の捕獲だけを数える。
-    let margin = super::super::pruning::see_margin(nnue.pawn_value(), 1);
+    let margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
     let pruned = moves
         .iter()
         .all(|&mv| see_prunes(&board, engine_rules(), nnue, mv, margin));
@@ -938,25 +950,39 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert_eq!(hit.bound, Bound::Upper);
 }
 
-// 深さ2以上では、展開した捕獲の子局面に
-// 通常探索の値が保存される。先頭の静かな記録手で負の詰み帯を脱した後を検査する。
+// 展開した捕獲の子局面に通常探索の値が保存されることを使い、
+// SEEがPVノードと残り深さ4にも適用され、記録手と王駒への利きは除かれることを検査する。
 #[test]
-fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
+fn see_pruning_applies_without_depth_or_zero_window_limits() {
     let nnue = test_nnue();
-    for (depth, width, capture_is_tt, attacked, victim, _expanded) in [
-        (2, 1, false, false, PieceKind::Pawn, false),
-        (3, 1, false, false, PieceKind::Pawn, false),
-        (2, 1, true, false, PieceKind::Pawn, true),
-        (2, 2, false, false, PieceKind::Pawn, true),
-        (4, 1, false, false, PieceKind::Pawn, true),
-        (2, 1, false, true, PieceKind::Pawn, true),
-        (2, 1, false, false, PieceKind::GoldGeneral, true),
-        (3, 1, false, false, PieceKind::GoldGeneral, false),
+    for (depth, width, capture_is_tt, attacked, attacker, victim) in [
+        (2, 1, false, false, PieceKind::Phoenix, PieceKind::Pawn),
+        (3, 1, false, false, PieceKind::Phoenix, PieceKind::Pawn),
+        (2, 1, true, false, PieceKind::Phoenix, PieceKind::Pawn),
+        (2, 2, false, false, PieceKind::Phoenix, PieceKind::Pawn),
+        (4, 1, false, false, PieceKind::Rook, PieceKind::Pawn),
+        (2, 1, false, true, PieceKind::Phoenix, PieceKind::Pawn),
+        (
+            2,
+            1,
+            false,
+            false,
+            PieceKind::Phoenix,
+            PieceKind::GoldGeneral,
+        ),
+        (
+            3,
+            1,
+            false,
+            false,
+            PieceKind::Phoenix,
+            PieceKind::GoldGeneral,
+        ),
     ] {
         let mut pieces = vec![
             (sq(11, 0), Color::Black, PieceKind::King),
             (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 3), Color::Black, PieceKind::Phoenix),
+            (sq(5, 3), Color::Black, attacker),
             (sq(5, 4), Color::White, victim),
             (sq(5, 5), Color::White, PieceKind::Pawn),
         ];
@@ -984,16 +1010,14 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
             see_prunes(&board, engine_rules(), nnue, capture, 200),
             victim == PieceKind::Pawn,
         );
-        let expanded = width > 1
-            || capture_is_tt
+        let expanded = capture_is_tt
             || attacked
-            || depth > 3
             || !see_prunes(
                 &board,
                 engine_rules(),
                 nnue,
                 capture,
-                super::super::pruning::see_margin(nnue.pawn_value(), depth),
+                super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
             );
         let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
         let table = small_tt();
@@ -1014,10 +1038,164 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
         assert_eq!(
             table.probe(search_key(&child), 1).is_some(),
             expanded,
-            "depth={depth}, width={width}, capture_is_tt={capture_is_tt}, attacked={attacked}, victim={victim:?}"
+            "depth={depth}, width={width}, capture_is_tt={capture_is_tt}, attacked={attacked}, attacker={attacker:?}, victim={victim:?}"
         );
         assert_eq!(table.probe(search_key(&board), 0).unwrap().score, score);
     }
+}
+
+/// 先頭の置換表の手で枝刈りを可能にし、`target`が読まれた場合だけβ打ち切りを起こす。
+/// 子の値は固定ネットの局面評価から作る窓に対する相対値とし、係数の既定値に依存させない。
+fn assert_quiet_see_search(board: &Position, target: Move, expected_check: bool, searched: bool) {
+    let nnue = test_nnue();
+    let moves = legal_moves(board);
+    let tt_move = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    assert!(moves.contains(&tt_move));
+    assert!(moves.contains(&target));
+    assert!(
+        moves
+            .iter()
+            .all(|&mv| move_order_key(board, nnue, mv).is_none())
+    );
+    assert!(!royal_under_attack(board));
+    assert_eq!(
+        board.gives_check(&MoveGenerator::new(engine_rules()), target),
+        expected_check
+    );
+    assert!(see_prunes(
+        board,
+        engine_rules(),
+        nnue,
+        target,
+        super::super::pruning::see_margin(nnue.pawn_value(), 1, 0),
+    ));
+
+    let minimum_child_value = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(nnue, &child)
+        })
+        .min()
+        .unwrap();
+    let alpha = minimum_child_value - 1;
+    let beta = alpha + 2;
+    assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
+
+    let table = TranspositionTable::new(16).unwrap();
+    for &mv in &moves {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        let mut captures = Vec::new();
+        MoveGenerator::new(engine_rules()).generate_captures(&child, &mut captures);
+        assert!(!captures.is_empty(), "move={mv:?}");
+        let parent_score = if mv == target { beta } else { alpha - 1 };
+        table.store(
+            search_key(&child),
+            MAX_PLY,
+            -parent_score,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
+    }
+    table.store(
+        search_key(board),
+        0,
+        0,
+        Bound::Upper,
+        Some(tt_move),
+        0,
+        false,
+    );
+    let (score, _) = run_configured_negamax(board, 1, alpha, beta, 0, &table, |searcher| {
+        searcher.follow_pv[0] = true;
+        searcher.killers[0][0] = Some(target);
+    });
+    let hit = table.probe(search_key(board), 0).unwrap();
+    if searched {
+        assert_eq!(score, beta);
+        assert_eq!(hit.best_move, Some(target));
+        assert_eq!(hit.bound, Bound::Lower);
+    } else {
+        // targetを読めばその場でβ打ち切りになる。後続手の値は問わない。
+        assert_ne!(hit.best_move, Some(target));
+    }
+}
+
+// 王手になる静かな飛車移動は、斜めの角行に取られるSEEの損により読まない。
+#[test]
+fn see_pruning_skips_losing_quiet_check() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(5, 8), Color::White, PieceKind::King),
+            (sq(4, 4), Color::Black, PieceKind::Rook),
+            (sq(6, 3), Color::White, PieceKind::Bishop),
+            (sq(0, 11), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let target = Move {
+        from: sq(4, 4),
+        mid: None,
+        to: sq(5, 4),
+        promote: false,
+    };
+    assert_quiet_see_search(&board, target, true, false);
+}
+
+// 王手にならない静かな飛車移動はSEEが負でも、S5の導入前なので読む。
+#[test]
+fn see_pruning_searches_losing_quiet_non_check() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(4, 4), Color::Black, PieceKind::Rook),
+            (sq(6, 3), Color::White, PieceKind::Bishop),
+            (sq(0, 11), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let target = Move {
+        from: sq(4, 4),
+        mid: None,
+        to: sq(5, 4),
+        promote: false,
+    };
+    assert_quiet_see_search(&board, target, false, true);
+}
+
+// 成る角行の静かな手は王手になりSEEが負でも、成る手の保護により読む。
+#[test]
+fn see_pruning_searches_promoting_quiet_check() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(6, 8), Color::White, PieceKind::King),
+            (sq(4, 7), Color::Black, PieceKind::Bishop),
+            (sq(0, 11), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let target = Move {
+        from: sq(4, 7),
+        mid: None,
+        to: sq(5, 8),
+        promote: true,
+    };
+    assert_quiet_see_search(&board, target, true, true);
 }
 
 // 経由升を持つ獅子の捕獲は規則依存なので展開する。
