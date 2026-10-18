@@ -33,7 +33,8 @@ CONFIG = {'commit': 'a' * 40, 'runner_commit': 'b' * 40, 'seed': 0, 'iterations'
           'local_nps': 1264584, 'game_rss_bytes': 613000000}
 OFFER = {'id': 42, 'cpu_arch': 'amd64', 'verification': 'verified', 'cpu_cores': 192,
          'duration': 172800, 'reliability2': 0.95, 'direct_port_count': 1, 'inet_up': 100,
-         'disk_space': 50, 'gpu_frac': 1, 'cpu_cores_effective': 192}
+         'disk_space': 50, 'gpu_frac': 1, 'cpu_cores_effective': 192,
+         'cpu_name': 'AMD EPYC 7B13', 'dph_total': 0.9}
 
 
 def make_run(path: Path, applications: list[int]) -> None:
@@ -75,6 +76,7 @@ class SpsaTests(unittest.TestCase):
 
     def test_offer_accepts_all_boundaries(self) -> None:
         """選定条件の下限をすべて満たす出品を受け入れる。"""
+        self.assertEqual(launch.offer_errors(OFFER), [])
         launch.check_offer([OFFER], '42')
 
     def test_offer_rejects_every_condition_and_missing_field(self) -> None:
@@ -90,6 +92,7 @@ class SpsaTests(unittest.TestCase):
                         del offer[key]
                     else:
                         offer[key] = value
+                    self.assertTrue(launch.offer_errors(offer))
                     with self.assertRaises(ValueError):
                         launch.check_offer([offer], '42')
         for offers in ([], [OFFER, OFFER]):
@@ -295,6 +298,39 @@ class WorkflowTests(unittest.TestCase):
         (self.source / 'logs').mkdir()
         (self.source / 'logs/exit-status').write_text('0\n')
 
+    def prepare_launch(self) -> tuple[Path, Path]:
+        """起動用の設定、SSH鍵とgit応答を準備する。"""
+        directory = self.root / 'data/vast-spsa/trial'
+        directory.mkdir(parents=True)
+        (directory / 'params').write_text('parameter 1\n')
+        config = {**CONFIG, 'commit': 'topic', 'runner_commit': 'runner'}
+        launch.write_session(directory / 'session.toml', config)
+        key = self.root / '.ssh/id_vastai'
+        key.parent.mkdir()
+        key.touch()
+        base = str(SCRIPT_DIR.parent.parent)
+        self.fake.add('git', ['-C', base, 'rev-parse', '--show-toplevel'], str(self.root) + '\n')
+        self.fake.add('git', ['-C', str(self.root), 'rev-parse', '--verify', '--end-of-options',
+                              'topic^{commit}'], CONFIG['commit'] + '\n')
+        self.fake.add('git', ['-C', str(self.root), 'rev-parse', '--verify', '--end-of-options',
+                              'runner^{commit}'], CONFIG['runner_commit'] + '\n')
+        return directory, self.root / 'uploaded'
+
+    def queue_successful_launch(self, offer_id: int, uploaded: Path) -> None:
+        """指定出品の作成から転送完了までの応答を予約する。"""
+        self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
+        self.fake.add('vastai', ['create', 'instance', str(offer_id)], '{"new_contract": 17}')
+        running = {**test_common.state('running'), 'label': 'minase-spsa-trial'}
+        self.fake.add('vastai', ['show'], json.dumps([running]))
+        self.fake.add('vastai', ['show'], json.dumps([running]))
+        self.fake.add('git', ['init', '--bare'])
+        self.fake.add('git', [])
+        self.fake.add('git', [])
+        self.fake.add('ssh', ['-i'])
+        self.fake.add('ssh', ['-i'])
+        self.fake.add('scp', ['-r'], upload=str(uploaded))
+        self.fake.add('ssh', ['-i'])
+
     def transfers(self, status: str, precheck: bool = False) -> None:
         """1回の取得に必要な状態応答と転送を予約する。"""
         self.fake.add('vastai', ['show'], json.dumps([test_common.state(status)]))
@@ -466,40 +502,140 @@ class WorkflowTests(unittest.TestCase):
 
     def test_launch_transfers_resolved_toml_before_starting(self) -> None:
         """完全ハッシュの設定とPythonジョブを送り、転送後に開始を通知する。"""
-        directory = self.root / 'data/vast-spsa/trial'
-        directory.mkdir(parents=True)
-        (directory / 'params').write_text('parameter 1\n')
-        config = {**CONFIG, 'commit': 'topic', 'runner_commit': 'runner'}
-        launch.write_session(directory / 'session.toml', config)
-        uploaded = self.root / 'uploaded'
-        key = self.root / '.ssh/id_vastai'
-        key.parent.mkdir()
-        key.touch()
-        base = str(SCRIPT_DIR.parent.parent)
-        self.fake.add('git', ['-C', base, 'rev-parse', '--show-toplevel'], str(self.root) + '\n')
-        self.fake.add('git', ['-C', str(self.root), 'rev-parse', '--verify', '--end-of-options', 'topic^{commit}'], CONFIG['commit'] + '\n')
-        self.fake.add('git', ['-C', str(self.root), 'rev-parse', '--verify', '--end-of-options', 'runner^{commit}'], CONFIG['runner_commit'] + '\n')
-        self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
+        directory, uploaded = self.prepare_launch()
         self.fake.add('vastai', ['show'], '[]')
-        self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
-        self.fake.add('vastai', ['create', 'instance', '42'], '{"new_contract": 17}')
-        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
-        self.fake.add('vastai', ['show'], json.dumps([{**test_common.state('running'), 'label': 'minase-spsa-trial'}]))
-        self.fake.add('git', ['init', '--bare'])
-        self.fake.add('git', [])
-        self.fake.add('git', [])
-        self.fake.add('ssh', ['-i'])
-        self.fake.add('ssh', ['-i'])
-        self.fake.add('scp', ['-r'], upload=str(uploaded))
-        self.fake.add('ssh', ['-i'])
-        with patch.object(Path, 'home', return_value=self.root):
-            launch.launch('trial', '42', '1449')
+        self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
+        self.queue_successful_launch(42, uploaded)
+        with patch.object(Path, 'home', return_value=self.root), \
+                patch.object(sys, 'argv', ['launch.py', 'trial', '1449', '--offer', '42']):
+            self.assertEqual(launch.main(), 0)
         self.assertEqual(tomllib.loads((uploaded / 'session.toml').read_text()), CONFIG)
         self.assertTrue((uploaded / 'remote.py').is_file())
         self.assertEqual(self.fake.calls()[-1][-1], 'touch /workspace/job/started')
         self.assertEqual((directory / 'instance-id').read_text(), '17\n')
         self.assertFalse(list(directory.glob('.launch.*')))
         self.assertFalse(self.fake.remaining())
+
+    def test_launch_selects_cheapest_matching_offer(self) -> None:
+        """全条件を満たす最安値のうち、IDが最小の出品で作成する。"""
+        directory, uploaded = self.prepare_launch()
+        offers = [
+            {**OFFER, 'id': 10, 'cpu_arch': 'arm64', 'cpu_cores': 256,
+             'cpu_cores_effective': 256, 'dph_total': 0.1},
+            {**OFFER, 'id': 20, 'cpu_cores': 223, 'cpu_cores_effective': 223,
+             'dph_total': 0.2},
+            {**OFFER, 'id': 30, 'cpu_cores': 256, 'cpu_cores_effective': 256,
+             'cpu_name': 'Intel Xeon', 'dph_total': 0.3},
+            {**OFFER, 'id': 40, 'cpu_cores': 256, 'cpu_cores_effective': 256,
+             'dph_total': 1.1},
+            {**OFFER, 'id': 52, 'cpu_cores': 256, 'cpu_cores_effective': 256,
+             'dph_total': 0.4},
+            {**OFFER, 'id': 51, 'cpu_cores': 256, 'cpu_cores_effective': 256,
+             'dph_total': 0.4},
+            {**OFFER, 'id': 60, 'cpu_cores': 256, 'cpu_cores_effective': 256,
+             'dph_total': 0.5},
+        ]
+        response = json.dumps(offers)
+        self.fake.add('vastai', ['show'], '[]')
+        self.fake.add('vastai', ['search', 'offers'], response)
+        self.queue_successful_launch(51, uploaded)
+        output = io.StringIO()
+        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+                     '--min-cpu-cores', '224', '--cpu', 'EPYC', '--cpu', 'Ryzen', '--wait', '2']
+        with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
+                redirect_stdout(output):
+            self.assertEqual(launch.main(), 0)
+        creates = [call[3] for call in self.fake.calls()
+                   if call[0:3] == ['vastai', 'create', 'instance']]
+        self.assertEqual(creates, ['51'])
+        self.assertEqual((directory / 'offer.json').read_text(), response)
+        self.assertIn('出品ID: 51', output.getvalue())
+        self.assertIn('cpu_name: AMD EPYC 7B13', output.getvalue())
+        self.assertIn('dph_total: 0.4', output.getvalue())
+        self.assertFalse(self.fake.remaining())
+
+    def test_launch_tries_next_offer_without_searching_again(self) -> None:
+        """最安の出品を借りられなければ、同じ照会の次候補を試す。"""
+        _, uploaded = self.prepare_launch()
+        offers = [{**OFFER, 'id': 41, 'dph_total': 0.4},
+                  {**OFFER, 'id': 42, 'dph_total': 0.5}]
+        self.fake.add('vastai', ['show'], '[]')
+        self.fake.add('vastai', ['search', 'offers'], json.dumps(offers))
+        self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
+        self.fake.add('vastai', ['create', 'instance', '41'], code=1)
+        self.fake.add('vastai', ['show'], '[]')
+        self.queue_successful_launch(42, uploaded)
+        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '2']
+        with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments):
+            self.assertEqual(launch.main(), 0)
+        calls = self.fake.calls()
+        self.assertEqual(sum(call[1:3] == ['search', 'offers'] for call in calls), 1)
+        self.assertEqual([call[3] for call in calls
+                          if call[0:3] == ['vastai', 'create', 'instance']], ['41', '42'])
+        self.assertFalse(self.fake.remaining())
+
+    def test_launch_waits_before_searching_again(self) -> None:
+        """候補がない場合は30秒待ち、次の照会の候補で作成する。"""
+        _, uploaded = self.prepare_launch()
+        self.fake.add('vastai', ['show'], '[]')
+        self.fake.add('vastai', ['search', 'offers'], '[]')
+        self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
+        self.queue_successful_launch(42, uploaded)
+        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '2']
+        with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
+                patch.object(launch, 'time', wraps=launch.time) as clock:
+            clock.sleep.return_value = None
+            self.assertEqual(launch.main(), 0)
+        clock.sleep.assert_called_once_with(30)
+        self.assertEqual(sum(call[1:3] == ['search', 'offers']
+                             for call in self.fake.calls()), 2)
+        self.assertFalse(self.fake.remaining())
+
+    def test_launch_timeout_does_not_create_instance(self) -> None:
+        """待機期限を過ぎた後は候補があっても作成せず、終了コード1を返す。"""
+        self.prepare_launch()
+        self.fake.add('vastai', ['show'], '[]')
+        self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
+        self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
+        arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
+                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1']
+        errors = io.StringIO()
+        with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
+                patch.object(launch.time, 'monotonic', side_effect=[0, 0, 0, 61]), \
+                redirect_stderr(errors):
+            self.assertEqual(launch.main(), 1)
+        self.assertIn('待機時間', errors.getvalue())
+        self.assertFalse(any(call[1:3] == ['create', 'instance'] for call in self.fake.calls()))
+        self.assertFalse(self.fake.remaining())
+
+    def test_launch_rejects_invalid_arguments_before_vastai(self) -> None:
+        """競合、欠落、旧形式、未知の引数と不正な数値を作成前に拒否する。"""
+        complete = ['launch.py', 'trial', '60', '--max-price', '1',
+                    '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1']
+        cases = [
+            ['launch.py', 'trial', '60', '--offer', '42', '--max-price', '1',
+             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--offer', '42', '--min-cpu-cores', '192'],
+            *[complete[:index] + complete[index + 2:] for index in (3, 5, 7, 9)],
+            ['launch.py', 'trial', '42', '60'],
+            ['launch.py', 'trial', '60', '--offer', '42', '--unknown'],
+            ['launch.py', 'trial', '0', '--offer', '42'],
+            ['launch.py', 'trial', '60', '--offer', '0'],
+            ['launch.py', 'trial', '60', '--max-price', '0',
+             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--max-price', 'inf',
+             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--max-price', '1',
+             '--min-cpu-cores', '0', '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--max-price', '1',
+             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '0'],
+        ]
+        for arguments in cases:
+            with self.subTest(arguments=arguments), patch.object(sys, 'argv', arguments):
+                self.assertEqual(launch.main(), 1)
+        self.assertFalse(self.fake.calls())
 
     def test_remote_execution_and_failure_codes(self) -> None:
         """事前確認成功時だけ本番へ進み、異常と時間超過の終了コードを保存する。"""
