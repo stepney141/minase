@@ -65,7 +65,7 @@ vast.aiで借りる物理コアの多い計算機（以下、調整機）で実�
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
 総反復数は摂動幅と学習率の計算式に使われるので、セッションの途中で変更できない。
 標準の規模は上のコマンドの3,750反復×8ペア（30,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)にある。
-測定機の同時対局数16では、3,000ペアの[セッション](../measurements/spsa-stage9-20260925-c5.md)が27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。
+測定機の同時対局数16では、3,000ペアの[セッション](../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)が27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。
 2026年10月16日までのセッションは、旧標準の375反復×8ペア（3,000ペア）で行った。
 
 各ペアは `minase match run` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
@@ -104,7 +104,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 `engine_failures:` の件数が0でない場合は、採否の測定へ進む前に、反復のファイルに保存された異常局の記録（開始局面、着手列、および各手の思考時間）から原因を調べる。
 時間切れの原因は、[デバッグの手引き](debugging.md#時間切れと時間管理)の手順で時計を再構成して調べる。
 
-セッションの記録は `docs/measurements/<セッション名>.md` へ置き、コマンドライン全体、調整対象とrunnerのコミット（`invocations.json` に複数のrunnerがあればそのすべて）、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
+セッションの記録は、そのセッションを計画した設計書の名前のディレクトリ（どの設計書も計画していなければ `adhoc/`）へ `docs/measurements/<設計書名>/<セッション名>.md` として置き、コマンドライン全体、調整対象とrunnerのコミット（`invocations.json` に複数のrunnerがあればそのすべて）、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
 θの履歴が終盤に動かないことだけを、収束の証拠として扱わない。
 
 ## 7. 値の採否を判定する
@@ -144,26 +144,13 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 不採用のときに一部の係数だけを選び直して再測定することはしない。
 これは、[sprt.md](sprt.md#機能採否の段階ゲートstcとltc) が禁止する「LTCの結果を見てから同じ主張へ追加すること」に当たる。
 採用した場合も、係数の現行の値の正は`params.rs`の表の既定値であり、凍結した設計書の値は改訂しない。
-p='docs/guides/spsa.md'
-s=open(p).read()
-a="""`--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、"""
-b="""上のコマンドは、開発と棋力測定に使う手元の機械（以下、測定機）で実行する場合のものであり、同時対局数16は測定機の上限である。
-vast.aiで借りる物理コアの多い計算機（以下、調整機）で実行する手順は第8節にある。
-
-`--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、"""
-assert s.count(a)==1; s=s.replace(a,b)
-a2="同時対局数16の3,000ペアの[セッション](../measurements/spsa-stage9-20260925-c5.md)は27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。"
-b2="測定機の同時対局数16では、3,000ペアの[セッション](../measurements/spsa-stage9-20260925-c5.md)が27,138秒（1ペア約9秒）を要したので、30,000ペアは約75時間（約3日）を要する見込みである。"
-assert s.count(a2)==1; s=s.replace(a2,b2)
-s=s.rstrip('\n')+"\n"+open('/dev/stdin').read()
-open(p,'w').write(s)
 
 ## 8. vast.aiの調整機で実行する
 
 30,000ペアのセッションは、測定機では約75時間かかる。
 計算機を時間単位で借りられる市場vast.aiで物理コアの多い調整機を借りると、1手あたりの探索量を測定機にそろえたまま、約20時間で終えられる。
 この節は、その手順をまとめる。
-方式を選んだ理由は[調整機のADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)にあり、実測の値は[試走の記録](../measurements/vast-spsa-trial.md)と[スクリプトの検証の記録](../measurements/vast-spsa-scripts.md)にある。
+方式を選んだ理由は[調整機のADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)にあり、実測の値は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)と[スクリプトの検証の記録](../measurements/search-forms/vast-spsa-scripts.md)にある。
 
 ### 準備
 

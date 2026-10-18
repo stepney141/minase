@@ -8,12 +8,12 @@
 
 [棋力向上段階9](../plans/archived/strength-stage9.md)は、王の遮蔽、王の周囲の攻撃域、守備駒、安全な可動性、成りと侵入、獅子の接近と退路、および駒への脅威の7項目を、線形の評価に加える特徴として測る計画だった。
 このうち6項目は、升ごとの先後の利き数があれば定義どおりに計算できる。
-升ごとに「その升へ届く駒」を逆引きして3項目を計算した構成は、重みがすべて0でも[段階開始版の0.18倍の速度](../measurements/strength-stage9-cost-bench.md)だった。
+升ごとに「その升へ届く駒」を逆引きして3項目を計算した構成は、重みがすべて0でも[段階開始版の0.18倍の速度](../measurements/strength-stage9/strength-stage9-cost-bench.md)だった。
 [土台の調査](../research/evaluation-infrastructure-survey.md)によれば、やねうら王は着手のたびに升ごとの利き数の表を差分更新して同種の項目の費用を抑えている。
 段階9は、評価特徴の計算に使う土台だけを入れて特徴を持たない構成の速度が段階開始版の0.90倍以上であることを土台の条件とし、新しい項目の重みだけを0にした候補の速度が直前の採用版の0.85倍以上であることを項目の条件とした。
-利き数の表と、升へ届いている走り駒の利きの方向の表を差分更新し、王手の判定と静的交換評価にも使った構成は、[利き数の表の速度](../measurements/strength-stage9-table-bench.md)で段階開始版の0.816倍だった。
-代替として王駒の近傍25升へ届き得る駒だけの利き集合で計算する構成は、[土台の費用の診断](../measurements/strength-stage9-foundation-diag.md)で0.293倍だった。
-利きを使わない王の遮蔽の項目は、[先読み教師で学んでも](../measurements/lookahead-teacher-shelter-training.md)露出局面への寄与の平均が−22.6センチポーンで、事前の基準−30に届かなかった。
+利き数の表と、升へ届いている走り駒の利きの方向の表を差分更新し、王手の判定と静的交換評価にも使った構成は、[利き数の表の速度](../measurements/strength-stage9/strength-stage9-table-bench.md)で段階開始版の0.816倍だった。
+代替として王駒の近傍25升へ届き得る駒だけの利き集合で計算する構成は、[土台の費用の診断](../measurements/strength-stage9/strength-stage9-foundation-diag.md)で0.293倍だった。
+利きを使わない王の遮蔽の項目は、[先読み教師で学んでも](../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)露出局面への寄与の平均が−22.6センチポーンで、事前の基準−30に届かなかった。
 
 ## 決定
 

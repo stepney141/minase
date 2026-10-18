@@ -12,11 +12,11 @@ reverse futility pruning、futility pruning、およびrazoringは静的評価�
 王駒が取られ得る局面の静的評価は、最後の王駒の捕獲を詰みの値とする探索値から大きく外れる。
 [棋力向上段階4](../plans/archived/strength-stage4.md)は、reverse futility pruning、futility pruning、late move pruning、およびrazoringの4項目に共通する適用条件と、reverse futility pruningの返り値を定めた。
 王駒の捕獲を禁じる規則はないので、王駒の升では、相手駒の疑似利きと実際に捕獲できる駒の集合が一致する。
-[段階4の診断bench](../measurements/strength-stage4-pruning-bench.md)では、非PVかつ詰み帯でないノードのうち、いずれかの王駒に利きが届くノードは残り深さ1、2、3で1.56%、1.87%、2.99%だった。
+[段階4の診断bench](../measurements/strength-stage4/strength-stage4-pruning-bench.md)では、非PVかつ詰み帯でないノードのうち、いずれかの王駒に利きが届くノードは残り深さ1、2、3で1.56%、1.87%、2.99%だった。
 最後の王駒だけに限ると1.52%、1.80%、2.99%であり、差は小さかった。
-段階4ではfutility pruningだけが[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)で`H1`となり、reverse futility pruningは[STC](../measurements/strength-stage4-rfp-stc.md)で`H0`だった。
+段階4ではfutility pruningだけが[STC](../measurements/strength-stage4/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4/strength-stage4-futility-ltc.md)で`H1`となり、reverse futility pruningは[STC](../measurements/strength-stage4/strength-stage4-rfp-stc.md)で`H0`だった。
 2026年9月21日には、[棋力向上段階8](../plans/archived/strength-stage8.md)がSEEによる捕獲手の枝刈りを同じ対象ノードに加えた（[ADR](prune-losing-captures-by-see-at-shallow-nodes.md)）。
-2026年10月4日には、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)が、reverse futility pruning、razoring、および定義を改めたlate move pruningを同じ適用条件のまま戻して係数を調整し直し、[LTC](../measurements/search-revival-tstar-vs-m-ltc.md)で`H1`となって採用した（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
+2026年10月4日には、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)が、reverse futility pruning、razoring、および定義を改めたlate move pruningを同じ適用条件のまま戻して係数を調整し直し、[LTC](../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)で`H1`となって採用した（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
 本ADRは、この拡張を含む現行の適用条件を記録する。
 
 ## 決定

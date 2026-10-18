@@ -7,12 +7,12 @@
 ## コンテキスト
 
 最初のセッションの設定C0は、Stockfishの`tune.cpp`の既定値に倣って終了時の摂動幅`c_end`を範囲の1/20とした（[SPSAの設計書の参考資料](../../plans/archived/spsa.md#参考資料)）。
-このセッションは12,000ペアに109,266秒を要した（[最初のセッション](../../measurements/spsa-stage9-20260923.md)）。
+このセッションは12,000ペアに109,266秒を要した（[最初のセッション](../../measurements/spsa/spsa-stage9-20260923.md)）。
 その記録では1反復の勝敗差の揺れが係数ごとの信号よりはるかに大きく、[SPSAの対局数を減らす手法の調査](../../research/spsa-acceleration-methods.md)は、更新則を替えても対局数の削減は定数倍にとどまり、改善の余地は摂動幅と学習率の較正にあると結論した。
 同じ調査によれば、fishtestのAutoselectは摂動幅を範囲の1/6とし、利得を一定にする（[SPSAの対局数を減らす手法の調査](../../research/spsa-acceleration-methods.md)）。
 [SPSAの摂動幅と学習率の較正](../../plans/archived/spsa-gain-calibration.md)は、実測の勝敗の揺れに合わせた模擬実験で候補を比べ、事前に固定した規則で選ぶ計画をとった。
 候補の比較では、終了時のθが模擬の目的関数の最適値から失うEloを損失とした。
-規則は、摂動幅を範囲の1/6に固定した一定の利得C2と3,000ペアを選び、3,000ペアのC2は8通りの場面のすべてで12,000ペアのC0に劣らなかった（[模擬比較の記録](../../measurements/spsa-gain-simulation.md)）。
+規則は、摂動幅を範囲の1/6に固定した一定の利得C2と3,000ペアを選び、3,000ペアのC2は8通りの場面のすべてで12,000ペアのC0に劣らなかった（[模擬比較の記録](../../measurements/spsa-gain-calibration/spsa-gain-simulation.md)）。
 その後の追加の診断で、終了時の値をC2に揃えて減衰させるC5は、3,000ペアでC2に対する損失比の幾何平均が0.775だった。
 Spallの指数で減衰させるC6は0.643だったが、最適値が範囲の下限にある場面でC0に劣った。
 
@@ -32,7 +32,7 @@ C6は、最適値が範囲の下限にある場面でC0に劣り、実際の係�
 
 ## 結果
 
-C5による3,000ペアのセッション（[記録](../../measurements/spsa-stage9-20260925-c5.md)）の値は、[STC](../../measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](../../measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、異常0件で採用された。
+C5による3,000ペアのセッション（[記録](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md)）の値は、[STC](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5-stc.md)と[LTC](../../measurements/spsa-gain-calibration/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、異常0件で採用された。
 新しい設定が少ない対局数でよい値に届くという主張の根拠は模擬比較だけであり、実対局で設定どうしを直接比べてはいない。
 模擬比較は係数ごとの2次関数で交互作用のない目的関数を仮定し、実セッションで約2反復が並走する更新の遅れを無視している。
 信号のない係数を外す選別は、同じセッションの結果で選ぶと選択の偏りが入るので、この決定には含めていない。

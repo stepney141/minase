@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[第2期の高速化の起案時の診断](../measurements/movegen-speedup-2-diagnostics-depth5.md)では、置換表の照合が探索中の自己時間の13.9%を占める最大の項目だった。
+[第2期の高速化の起案時の診断](../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)では、置換表の照合が探索中の自己時間の13.9%を占める最大の項目だった。
 照合は1ノードあたり約58ナノ秒で、DRAMの遅延に相当する。
 この待ちを隠す方法として、着手を適用した直後に子局面の置換表の行をプリフェッチ命令で読み込み、照合までの間に取得を済ませる方式が考えられた。
 minaseのエンジンとライブラリはworkspaceのlintで`unsafe_code = "forbid"`を定めている（[`unsafe`は学習器のクレートだけに許す](archive/allow-unsafe-only-in-the-trainer-crate.md)）。
@@ -23,7 +23,7 @@ minaseのエンジンとライブラリはworkspaceのlintで`unsafe_code = "for
 
 `unsafe_code`を緩めて`_mm_prefetch`を着手の適用の直後に置く試作は、局面別の探索結果が一致し、NPSの比は1.026倍から1.029倍だったが、`unsafe`を許さない決定により採らなかった。
 `unsafe`なしでは、ラッパー関数を経由してもコンパイルできなかった（rustc 1.98.0）。
-着手の適用の直後に子局面の行を通常の読み込みで先に読む方式は、[第1期の単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)で一貫した差がなかった。
+着手の適用の直後に子局面の行を通常の読み込みで先に読む方式は、[第1期の単位Eの記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)で一貫した差がなかった。
 [第2期の設計書](../plans/archived/movegen-speedup-2.md)の分析では、通常の読み込みでは後続の命令がリオーダバッファを埋めた時点で実行が止まり、隠せる待ちがバッファの容量に限られるので、待ちを隠すには非同期のプリフェッチ命令が要る。
 置換表の既定の容量を3次キャッシュに収まる大きさへ下げる案は、対局条件そのものを変えるので扱わなかった。
 

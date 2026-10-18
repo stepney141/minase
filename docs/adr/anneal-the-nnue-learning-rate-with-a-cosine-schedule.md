@@ -6,9 +6,9 @@
 
 ## コンテキスト
 
-[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)のネットは、3つのパラメータ群（線形経路、第1層、出力部）に一定の学習率を与えるAdamWで学習させたところ、検証損失が最初の訓練エポックの直後で最良となり、以降は訓練損失だけが下がった（[学習の記録](../measurements/nnue-replacement-training.md)）。
+[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)のネットは、3つのパラメータ群（線形経路、第1層、出力部）に一定の学習率を与えるAdamWで学習させたところ、検証損失が最初の訓練エポックの直後で最良となり、以降は訓練損失だけが下がった（[学習の記録](../measurements/nnue-replacement/nnue-replacement-training.md)）。
 この症状は、学習率が大きすぎて最良点を通り過ぎる場合にも、同じ対局の局面の相関で実質の標本数が少なく過学習する場合にも生じる。
-[NNUE学習器の学習率スケジュール](../plans/archived/nnue-lr-schedule.md)では、学習器に更新回数の関数である学習率の倍率を加え、一定の1倍、1/3倍、1/10倍、指数減衰（半減期1エポック、下限0.1）、cosine annealing（総長3エポック、下限0.1）の5つの設定を、同じデータ、初期値、シードで学習させて比較した（[学習の記録](../measurements/nnue-lr-schedule-training.md)）。
+[NNUE学習器の学習率スケジュール](../plans/archived/nnue-lr-schedule.md)では、学習器に更新回数の関数である学習率の倍率を加え、一定の1倍、1/3倍、1/10倍、指数減衰（半減期1エポック、下限0.1）、cosine annealing（総長3エポック、下限0.1）の5つの設定を、同じデータ、初期値、シードで学習させて比較した（[学習の記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）。
 教師データは、データ形式の統一に伴い以前のデータを削除したため、評価関数がNNUEになったmasterで生成し直した30ファイル（訓練79,458,082局面）である。
 
 ## 決定
@@ -29,7 +29,7 @@ warmupは、学習の初期に不安定さが観測されていないので対�
 
 5つの設定のうち、一定の1倍以外の4つの設定はいずれも最良の検証損失が一定の1倍を下回ったが、差は0.000129（0.03%）と小さく、最良点がエポック3から10へ後ろにずれる一方で、検証損失が0.4489付近で止まる頭打ちはどの設定でも解消されなかった。
 したがって学習率の大きさは頭打ちの主因ではなく、対局データの多様性やモデルの表現力に関する課題は、[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)などの後続の計画で扱う。
-cosineのネットは、同じデータで学習させた一定の1倍のネットに対してSTCで`H1`（[記録](../measurements/nnue-lr-schedule-cosine-stc.md)）、以前の教師データで学習させた現行のネットに対してSTCとLTCで`H1`であり（[STC](../measurements/nnue-cosine-vs-master-stc.md)、[LTC](../measurements/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用した。
+cosineのネットは、同じデータで学習させた一定の1倍のネットに対してSTCで`H1`（[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-cosine-stc.md)）、以前の教師データで学習させた現行のネットに対してSTCとLTCで`H1`であり（[STC](../measurements/nnue-lr-schedule/nnue-cosine-vs-master-stc.md)、[LTC](../measurements/nnue-lr-schedule/nnue-cosine-vs-master-ltc.md)）、エンジンの埋め込みネットとして採用した。
 後者の比較は学習率の違いと教師データの世代の違いを合わせて測ったものであり、学習率の効果だけを分離したLTCはエンジンの開発者の判断で省略した。
 倍率は再開時の設定の照合に含まれるので、学習の途中で倍率の形を変えることはできない。
 エポック途中の検証（`--validation-interval`）は診断用であり、最良の重みの選択と早期終了はエポック境界のままである。

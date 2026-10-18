@@ -9,7 +9,7 @@ PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PS
 学習データの形式と対局の由来は`crates/minase/src/training/records.rs`、教師の分類、教師値、先読み教師、および検証分割は`crates/minase-trainer/src/data/`のdocコメントにある。
 学習器が書き出すファイルの各欄は`crates/minase-trainer/src/`の`pst/record.rs`、`fm/record.rs`、`fm/report.rs`、および`joint/record.rs`に、PSTの比較診断の報告の各欄は`crates/minase-trainer/src/diagnostics/pst_compare.rs`の`Report`と`pst_statistics.rs`の各項目のdocコメントにある。
 教師値、損失、量子化、および重みの範囲の式は [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
-学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/archived/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
+学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/archived/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement/python-trainer-retirement-checks.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
 学習後の採否は [棋力測定の標準手順](sprt.md) に従う。
@@ -248,7 +248,7 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
 | `training/`、`fm/`、`joint/` | 学習の条件と入力の識別（`config.json`）、各エポックの記録、重み、量子化前の重み、チェックポイント、停止理由と検査の結果を保持する。 |
 | `diagnostics/` | 基準との比較結果、教師の分類と盤上総駒数の帯ごとの診断用標本、標本と代表局面のMNSDファイルを保持する。 |
 
-生成と学習の結果を `docs/measurements/<実験名>-training.md` にまとめ、設計書からリンクする。
+生成と学習の結果は、それを計画した設計書の名前のディレクトリ（どの設計書も計画していなければ `adhoc/`）へ `docs/measurements/<設計書名>/<実験名>-training.md` としてまとめ、設計書からリンクする。
 記録には、学習器のコミット、実行したコマンドライン全体、入力の学習データのパスと記録数、および重みのSHA-256を書く。
 対局測定は、短時間条件のSTCと長時間条件のLTCを別の測定名で記録し、`sprt.md` の記録項目を満たす。
 採用または不採用が決まったら、設計書とROADMAPの状態を更新する。

@@ -18,4 +18,4 @@
 ## 出典
 
 - [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「学習の構成」
-- [measurements/out-of-core-shuffle-equivalence.md](../measurements/out-of-core-shuffle-equivalence.md) の「入力」（実装中のworktreeから起動した生成が2ファイル目で止まった）
+- [measurements/out-of-core-shuffle/out-of-core-shuffle-equivalence.md](../measurements/out-of-core-shuffle/out-of-core-shuffle-equivalence.md) の「入力」（実装中のworktreeから起動した生成が2ファイル目で止まった）

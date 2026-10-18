@@ -28,6 +28,6 @@ GSPRTの観測単位はペアなので、片方の局に決着がなければ、
 
 採否の判定の前に異常の件数を確かめ、0でなければ原因を調べる運用が必要になる。
 手順と、測定機の外部要因による時間切れの扱いは[棋力測定の手引き](../guides/sprt.md)の「異常時の裁定」にある。
-HaChuとの測定では、規則の実装差による拒否と、棋譜配列の上限による2,001手目前後のクラッシュがHaChuの負けとして入る（[等時間GSPRTの記録](../measurements/hachu-vs-search-tc60.md)）。
+HaChuとの測定では、規則の実装差による拒否と、棋譜配列の上限による2,001手目前後のクラッシュがHaChuの負けとして入る（[等時間GSPRTの記録](../measurements/match-harness/hachu-vs-search-tc60.md)）。
 このため外部エンジンとの測定では、`rejected_moves`と`crashes`の内訳を結果とともに記録する。
 手数上限を下げて測定を短くする案は、破棄されるペアを増やすので[別のADR](reject-measurement-shortcuts-that-lose-accuracy.md)で採らないと決めた。

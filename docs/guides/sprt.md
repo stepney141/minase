@@ -219,7 +219,7 @@ HaChuのようにUSIに対応していない外部エンジンとの比較には
 1手固定時間は、基本時間と加算が0で秒読みが整数秒の時間制御として指定する。
 `nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。
 HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
-測定の詳細は[1手固定時間の測定記録](../measurements/hachu-grid-fixed1-2.md)にある。
+測定の詳細は[1手固定時間の測定記録](../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md)にある。
 規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
@@ -296,11 +296,13 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 測定記録には、思考時間とエンジンが報告した完了時刻の乖離、候補側と基準側の時間切れの件数、および該当ペアを除いて計算し直したLLR（`minase::stats::gsprt_llr`）を書く。
 外部要因が両側に対称に及び、該当ペアを除いてもLLRが判定境界を越えている場合は、測定をやり直さずに採用してよいかをプロジェクトとして判断し、その結論をADRに記録する。
 判断を待つ間は、暫定の基準として後続の測定を進めてよい。
-先例は [棋力向上段階6のIIRのLTC](../measurements/strength-stage6-iir-ltc.md) であり、約33秒の停止で時間切れが11件（候補6件、基準5件）出たが、該当ペアを除いてもLLRは+3.11で判定境界を越えていたため、採用した。
+先例は [棋力向上段階6のIIRのLTC](../measurements/strength-stage6/strength-stage6-iir-ltc.md) であり、約33秒の停止で時間切れが11件（候補6件、基準5件）出たが、該当ペアを除いてもLLRは+3.11で判定境界を越えていたため、採用した。
 
 ## 測定結果の記録
 
-測定は、終了した時点で直ちに`docs/measurements/<測定名>.md`へ1測定1ファイルで記録し、設計書からは測定名でリンクする（見出しの順序は docs/plans/README.md が定める）。
+測定は、終了した時点で直ちに`docs/measurements/<設計書名>/<測定名>.md`へ1測定1ファイルで記録し、設計書からは測定名でリンクする。
+`<設計書名>`はその測定を計画した設計書のファイル名から`.md`を除いたものであり、どの設計書も計画していない測定は`docs/measurements/adhoc/`に置く。
+置き場所の決め方と見出しの順序は、docs/plans/README.md の「測定記録」節が定める。
 記録には、シードを含むコマンドライン全体、両エンジンのコミットハッシュ、ペンタノミアル度数、LLRと判定、破棄ペア数と異常件数、および経過時間を含める。
 固定局数Eloの測定では、LLRと判定の代わりにEloと信頼区間を記録する。
 実行条件とエンジンバイナリのSHA-256は`manifest.json`、起動ごとのrunnerと測定機は`invocations.json`、確定済みの結果と異常分類は`pairs/`、再開を含む累計実行時間は`summary.json`を正とする。

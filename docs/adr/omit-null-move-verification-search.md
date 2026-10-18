@@ -11,7 +11,7 @@ null move pruningは、手番を相手へ渡しても縮めた深さの探索の
 verification searchは、null moveの打ち切りを、null moveを禁じた縮めた深さの通常探索で確かめ、値がβを下回れば通常の探索へ戻す機構である。
 [棋力向上段階4](../plans/archived/strength-stage4.md)は、確かめた探索がβを下回る割合を矛盾率とし、1%未満なら実装しないという基準を測定前に定めた。
 中将棋は駒数が多くzugzwangが稀なので、見送りになる見込みが高いと考えていた。
-[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)は、futility pruningを採用した構成で、縮めた深さが1以上のnull moveの打ち切りを数えた。
+[診断bench](../measurements/strength-stage4/strength-stage4-nmp-verify-bench.md)は、futility pruningを採用した構成で、縮めた深さが1以上のnull moveの打ち切りを数えた。
 根の深さ5では723回、根の深さ7では7,455回の打ち切りがあり、矛盾はどちらも0件だった。
 
 ## 決定

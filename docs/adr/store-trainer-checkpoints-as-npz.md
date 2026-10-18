@@ -29,5 +29,5 @@ NPZには、現行の状態（モデルの重み、最適化器のモーメン�
 
 `MN`の独自形式から3種のチェックポイントが消えた。
 チェックポイントはNumPyなど学習器以外のツールでも読める。
-実データでNNUEとPSTを1エポックで止めて2エポック目を再開した学習は、中断しない学習と損失の列も最終の重みも一致した（[照合の記録](../measurements/file-format-consolidation-equivalence.md)）。
+実データでNNUEとPSTを1エポックで止めて2エポック目を再開した学習は、中断しない学習と損失の列も最終の重みも一致した（[照合の記録](../measurements/file-format-consolidation/file-format-consolidation-equivalence.md)）。
 旧形式のチェックポイントからは再開できないので、変更前に始めた学習は変更前のコミットで完了させる。

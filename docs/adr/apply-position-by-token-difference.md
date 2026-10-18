@@ -8,7 +8,7 @@
 
 USIのGUIとLishogi-Botは、毎手、開始局面からの全着手列を`position`で送る。
 全着手列を開始局面から適用し直す処理は、手数に比例して時間がかかる。
-[棋力向上段階2](../plans/archived/strength-stage2.md)の反復継続の判断のSTCでは、2,873plyの対局の2,864手目に基準側が時間切れになった（[測定記録](../measurements/strength-stage2-iteration-stc.md)）。
+[棋力向上段階2](../plans/archived/strength-stage2.md)の反復継続の判断のSTCでは、2,873plyの対局の2,864手目に基準側が時間切れになった（[測定記録](../measurements/strength-stage2/strength-stage2-iteration-stc.md)）。
 原因は、全着手の再生の固定費が2,860手で約65 msに達し、予算式の安全余裕30 msを超えたことだった。
 段階2は、2026年9月4日に、接頭辞が一致する`position`の差分適用を採用した。
 [USI先読み](../plans/archived/ponder.md)では、先読みが外れた後の`position`がこの条件に当たらない問題が生じた。

@@ -19,4 +19,4 @@
 
 ## 出典
 
-起点は[段階7の世代2追加後の再学習](../measurements/strength-stage7-gen2-training.md)に記録した量子化失敗と独立診断である。
+起点は[段階7の世代2追加後の再学習](../measurements/strength-stage7/strength-stage7-gen2-training.md)に記録した量子化失敗と独立診断である。

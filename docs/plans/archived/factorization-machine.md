@@ -20,8 +20,8 @@ NNUEは着手ごとの差分更新の後に第2層以降の行列計算を毎回
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。
 2026年9月9日に起案し、同日に着手して完了した。
-FM候補（潜在次元32、教師値λ=1.0、λres=1e-4）は不採用とする。根拠は開始版に対する[STC](../../measurements/fm-adoption-stc.md)の`H0`（115有効ペア、ペンタノミアル[75, 0, 35, 0, 5]、LLR −2.949、異常0件）であり、段階ゲートの振分け規則によりLTCへ進めない。
-学習と診断は[学習記録](../../measurements/fm-phase1-training.md)と[候補の診断](../../measurements/fm-candidate-diagnostics.md)、速度は[第3フェーズの速度改善](../../measurements/fm-phase3-speed.md)にある。
+FM候補（潜在次元32、教師値λ=1.0、λres=1e-4）は不採用とする。根拠は開始版に対する[STC](../../measurements/factorization-machine/fm-adoption-stc.md)の`H0`（115有効ペア、ペンタノミアル[75, 0, 35, 0, 5]、LLR −2.949、異常0件）であり、段階ゲートの振分け規則によりLTCへ進めない。
+学習と診断は[学習記録](../../measurements/factorization-machine/fm-phase1-training.md)と[候補の診断](../../measurements/factorization-machine/fm-candidate-diagnostics.md)、速度は[第3フェーズの速度改善](../../measurements/factorization-machine/fm-phase3-speed.md)にある。
 候補の実装と重みはブランチ`fm-eval`に保持し、masterの評価実装と重みファイルは変更しない。
 その後、補正を1/4に縮めたFMを現行の採用PSTの上で学び直した[補正1/4のFMの再学習](fm-quarter-current-pst.md)が2026年10月7日に採用で完了し、FMの補正はmasterの評価関数に加わった。
 
@@ -89,7 +89,7 @@ E(s)=E_0(s)+K_0\,\Phi(x(s)),\qquad
 
 PSTを固定するのは、改善または悪化の原因をFMの2駒関係に帰属させるためである。
 PSTの重みも同時に学習する案は、線形部分の変化とFMの効果を切り分けられなくなるので初回は採らない。
-同じデータでの単一PSTの再学習が検証損失を下げられなかった記録（[学習と診断の記録](../../measurements/pst-tapered-training.md)）は、線形部分に残る余地が小さいことを示唆するが、現行の2端点PSTを固定して線形補正を学習した実験ではないので、これを根拠に線形補正の効果を否定はしない。
+同じデータでの単一PSTの再学習が検証損失を下げられなかった記録（[学習と診断の記録](../../measurements/tapered-pst/pst-tapered-training.md)）は、線形部分に残る余地が小さいことを示唆するが、現行の2端点PSTを固定して線形補正を学習した実験ではないので、これを根拠に線形補正の効果を否定はしない。
 PSTへ線形補正だけを追加した対照モデルは、実験範囲を2駒関係の効果の有無に限定するため置かない。
 FMが採用された場合の同時学習は、世代2の再学習に引き継ぐ。
 
@@ -123,7 +123,7 @@ FMだけに制約を課す利点はなく、評価時の二乗計算が2倍に�
 ### FMの補正項は局面段階で補間しない
 
 PSTは序中盤用と終盤用の2端点を総駒数で補間するが、FMの埋め込み表は1組とする。
-2組にするとパラメータが倍になり、端点の識別性の診断（[識別性の記録](../../measurements/pst-tapered-identifiability.md)）を2駒の組について繰り返す必要が生じる。
+2組にするとパラメータが倍になり、端点の識別性の診断（[識別性の記録](../../measurements/tapered-pst/pst-tapered-identifiability.md)）を2駒の組について繰り返す必要が生じる。
 初回は補間なしで効果の有無を確定し、補間は結果を見て判断する。
 
 ### 未観測の特徴の埋め込みは0に固定する
@@ -154,7 +154,7 @@ PSTは序中盤用と終盤用の2端点を総駒数で補間するが、FMの�
 教師値は、探索値 \(v\) をシグモイド関数 \(\sigma\) で勝率へ換算した \(t=\sigma(v/K_g)\) だけとし、既存の学習器が0.25の比率で混ぜている対局結果 \(z\)（勝ち1、引き分け0.5、負け0）は使わない（λ=1.0）。
 \(K_g\) は世代 \(g\) の教師探索値を勝率へ換算する尺度で、世代0と世代1でそれぞれ約804と約1,100を訓練集合から推定した既存の値を使う。
 対局結果は同じ対局のすべての局面で同じ値を取り、2駒関係は対局中に動かない駒の組で対局を識別できるので、FMは結果の成分を局面の評価ではなく対局の記憶として学ぶ。
-既存と同じλ=0.75では潜在次元16、32、64のすべてで訓練損失が1エポック目から下がる一方で検証損失が上がり、正則化係数を100倍にしても解消しなかったのに対し、λ=1.0では検証損失が単調に下がった（[学習記録](../../measurements/fm-phase1-training.md)）。
+既存と同じλ=0.75では潜在次元16、32、64のすべてで訓練損失が1エポック目から下がる一方で検証損失が上がり、正則化係数を100倍にしても解消しなかったのに対し、λ=1.0では検証損失が単調に下がった（[学習記録](../../measurements/factorization-machine/fm-phase1-training.md)）。
 線形のPSTは動かない駒の組を対局の識別に使えないため、PSTの学習ではこの問題が顕在化しない。
 λ=1.0の教師値は勝率ではなく教師探索の勝率換算値であり、FMはPSTが残した探索値との差だけを補正する。
 モデルのロジットを \(\ell(s)=E_0(s)/K_0+\Phi(x(s))\) とし、損失を次式で定める。
@@ -253,7 +253,7 @@ null moveでは先獅子特徴の消去だけを反映し、着手取消では�
 更新APIは親の読み取り専用参照と子の可変参照を受け取り、通常着手では親の値と移動元、移動先の埋め込みから子を1回の走査で計算する。
 null moveでは親を子へ複写して先獅子特徴を除き、評価APIは累算値を参照で受け取る。
 静止探索は置換表で打ち切られなかった各ノードでstand-pat評価を計算するため、二乗の計算はそれらのノードすべてで発生する。
-第3フェーズの[速度測定](../../measurements/fm-phase3-speed.md)では、更新と複写の費用を下げて候補のNPSを改善した。
+第3フェーズの[速度測定](../../measurements/factorization-machine/fm-phase3-speed.md)では、更新と複写の費用を下げて候補のNPSを改善した。
 補正の二乗は、累算値に符号を32ビットで掛けてから64ビットへ拡張し、元の累算値との積を取る。
 埋め込みの32ビット保持とバイアス付きシフトは、最終構成で速度の改善を確認できなかったため採らない。
 
@@ -358,5 +358,5 @@ STCが`H0`、またはSTCが上限3,000ペアで判定保留かつLLRが負の�
 - 起案の材料とした検討: [ChatGPTでの中将棋評価関数案の会話](https://chatgpt.com/share/6aa028f9-2cdc-83e8-abb4-117e4b1bd8d9)。同会話が挙げる通常将棋でのFM評価の先行例は本書では確認しておらず、典拠として使わない。
 - 設計書: [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、[PSTの序中盤と終盤の補間](tapered-pst.md)、[棋力向上の段階計画](../strength-stages.md)。
 - 運用: [PSTの学習手順](../../guides/pst-training.md)、[SPRTの標準手順](../../guides/sprt.md)。
-- 測定記録: [nnue-gen1-tc.md](../../measurements/nnue-gen1-tc.md)、[bench-nnue-gen1-depth5.md](../../measurements/bench-nnue-gen1-depth5.md)、[sensitivity-time2x.md](../../measurements/sensitivity-time2x.md)、[pst-tapered-training.md](../../measurements/pst-tapered-training.md)。
+- 測定記録: [nnue-gen1-tc.md](../../measurements/evaluation-gen1/nnue-gen1-tc.md)、[bench-nnue-gen1-depth5.md](../../measurements/evaluation-gen1/bench-nnue-gen1-depth5.md)、[sensitivity-time2x.md](../../measurements/evaluation-gen1/sensitivity-time2x.md)、[pst-tapered-training.md](../../measurements/tapered-pst/pst-tapered-training.md)。
 - 教訓: [nnue-first-layer-init-saturation.md](../../lessons/nnue-first-layer-init-saturation.md)、[check-steps-per-epoch-before-training.md](../../lessons/check-steps-per-epoch-before-training.md)、[validation-loss-hides-material-distortion.md](../../lessons/validation-loss-hides-material-distortion.md)、[run-gpu-training-outside-codex-sandbox.md](../../lessons/run-gpu-training-outside-codex-sandbox.md)、[bench-allocation-outside-timing.md](../../lessons/bench-allocation-outside-timing.md)。

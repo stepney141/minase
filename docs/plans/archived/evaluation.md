@@ -17,8 +17,8 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 本マイルストーンは完了である。
 2026年8月25日に起案し、2026年8月26日に着手して同日に完了した。
-最終採用は学習PSTであり、v0基準に対する時間制御GSPRTは`H1`（[measurements/pst-gen0-tc.md](../../measurements/pst-gen0-tc.md)）、世代0の100万局面で学習したP型NNUEは学習PSTに対する固定ノードGSPRTで`H0`（[measurements/nnue-gen0-nodes100k.md](../../measurements/nnue-gen0-nodes100k.md)）であった。
-速度差を除いた診断の固定ノードGSPRT（[measurements/pst-gen0-nodes100k.md](../../measurements/pst-gen0-nodes100k.md)）、bench NPS（[measurements/bench-pst-gen0-nps.md](../../measurements/bench-pst-gen0-nps.md)、[measurements/bench-nnue-gen0-nps.md](../../measurements/bench-nnue-gen0-nps.md)）、およびHaChu比較の固定局数Elo −282（[measurements/hachu-pst-gen0.md](../../measurements/hachu-pst-gen0.md)）も記録した。
+最終採用は学習PSTであり、v0基準に対する時間制御GSPRTは`H1`（[measurements/evaluation/pst-gen0-tc.md](../../measurements/evaluation/pst-gen0-tc.md)）、世代0の100万局面で学習したP型NNUEは学習PSTに対する固定ノードGSPRTで`H0`（[measurements/evaluation/nnue-gen0-nodes100k.md](../../measurements/evaluation/nnue-gen0-nodes100k.md)）であった。
+速度差を除いた診断の固定ノードGSPRT（[measurements/evaluation/pst-gen0-nodes100k.md](../../measurements/evaluation/pst-gen0-nodes100k.md)）、bench NPS（[measurements/evaluation/bench-pst-gen0-nps.md](../../measurements/evaluation/bench-pst-gen0-nps.md)、[measurements/evaluation/bench-nnue-gen0-nps.md](../../measurements/evaluation/bench-nnue-gen0-nps.md)）、およびHaChu比較の固定局数Elo −282（[measurements/evaluation/hachu-pst-gen0.md](../../measurements/evaluation/hachu-pst-gen0.md)）も記録した。
 次期候補として残した世代反復は評価関数の世代反復（plans/evaluation-gen1.md）として完了しており、同書は本書がNNUE不採用の主因とした教師不足の判定を検証し、主因を学習器の第1層の初期化に改めた。
 2026年10月12日に、[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)が、P型の幅128のNNUE（現行PSTを線形経路として内包し、両視点のSCReLUの直接内積を加えたもの）をPST＋FMに対する段階ゲートで採用し、探索が使う既定の評価関数はNNUEになった。本書が定めたPST＋FMの設計は、比較用に残る`eval/pst/`の記述として保守する。
 
@@ -487,7 +487,7 @@ NPS低下そのものは採否の条件にせず、時間制御GSPRTが吸収す
 リポジトリの肥大が問題になった時点でGit LFSへの移行を別途決める。
 
 世代0のネットでは、第2層以降の推論が1回あたり0.68マイクロ秒、通常手の差分更新が0.068マイクロ秒であり、探索1ノードあたり約0.77マイクロ秒（学習PSTでのNPS 1.30M）に対して推論の費用が支配的である。
-benchのNPSは学習PST比−31%で、SIMDを追加する予算（現行比40%）の内側にある（[measurements/bench-nnue-gen0-nps.md](../../measurements/bench-nnue-gen0-nps.md)）。
+benchのNPSは学習PST比−31%で、SIMDを追加する予算（現行比40%）の内側にある（[measurements/evaluation/bench-nnue-gen0-nps.md](../../measurements/evaluation/bench-nnue-gen0-nps.md)）。
 
 ### 世代0の学習結果と診断
 
@@ -495,7 +495,7 @@ benchのNPSは学習PST比−31%で、SIMDを追加する予算（現行比40%�
 量子化誤差は平均11.5センチポーン、最大71.3センチポーンで、平均絶対誤差の基準`K/40`（約20センチポーン）を満たす。
 検証損失は学習PSTの0.3946より悪く、訓練損失との差0.015は過学習の兆候である。
 世代0の100万局面は第1層の350万重みに対して少なく、この段階では表現力不足、学習不足、教師不足を識別できないという本書の予想どおりの結果であり、棋力はGSPRTで判定した。
-学習PSTに対する固定ノードGSPRTは`H0`であり、先後を入れ替えた2局を1ペアとする204ペア（408局）のうち196ペアでNNUEは2局とも負け（残り8ペアは1勝1敗で、全体で勝ち8、負け400）、終局はすべて詰みであった（[measurements/nnue-gen0-nodes100k.md](../../measurements/nnue-gen0-nodes100k.md)）。
+学習PSTに対する固定ノードGSPRTは`H0`であり、先後を入れ替えた2局を1ペアとする204ペア（408局）のうち196ペアでNNUEは2局とも負け（残り8ペアは1勝1敗で、全体で勝ち8、負け400）、終局はすべて詰みであった（[measurements/evaluation/nnue-gen0-nodes100k.md](../../measurements/evaluation/nnue-gen0-nodes100k.md)）。
 
 検証損失の差が0.01しかないのにこれほど負けた原因を、検証データ上で教師探索値との一致を測って調べた。
 教師探索値に対する平均絶対誤差は学習PSTが193センチポーン（相関0.994）であるのに対し、NNUEは404センチポーン（相関0.972）であった。
@@ -520,7 +520,7 @@ NNUE部分にAdamWの重み減衰0.1および1.0を掛けても最良は1エポ�
 世代0の設計では、100万局面で学習率の候補を1エポックずつ比較して選び、以後の比較でその値を固定する方針とした。
 世代0の検証損失が1エポック目以降ほぼ横ばいだったことを、この比較方法の根拠としていた。
 現行PSTの学習率は有限の正値を必須設定として明示し、実験ごとに固定する。
-[段階7の片側絶対値型の予備比較](../../measurements/strength-stage7-removal-absolute.md)では学習率0.03で追加損失の係数1000を選び、本学習でもこの組を用いる。
+[段階7の片側絶対値型の予備比較](../../measurements/strength-stage7/strength-stage7-removal-absolute.md)では学習率0.03で追加損失の係数1000を選び、本学習でもこの組を用いる。
 段階2の学習では、一定学習率で停滞していた終盤に余弦減衰（学習率をエポックとともに余弦曲線で0へ近づける方式）を入れる。
 バッチサイズ、エポック数（訓練データ全体を通した回数）、重みの切り詰め範囲はネットファイルのヘッダではなく学習ログに記録する。
 学習の出力はfloat32の重みと量子化済みネットファイルの両方とし、量子化前後の評価一致を学習器側で検査する。
@@ -539,7 +539,7 @@ NNUE部分にAdamWの重み減衰0.1および1.0を掛けても最良は1エポ�
 
 HaChuとの比較は、最終採用ネットについて docs/guides/sprt.md の外部エンジン比較（`L1,L3,P0,P5,P6,R2,E1,E2`、`time=60000+1000`）で固定局数Eloを記録する。
 これは完了基準ではなく、学習分布外の規則で測る参考値である。
-学習PSTの結果は−282 Elo（95%信頼区間[−330, −241]）であり、v0のHaChu戦（plans/match-harness.md、等時間で−252 Elo）と信頼区間が重なるため、自己対局で得た改善はHaChu戦の成績には表れていない（[measurements/hachu-pst-gen0.md](../../measurements/hachu-pst-gen0.md)）。
+学習PSTの結果は−282 Elo（95%信頼区間[−330, −241]）であり、v0のHaChu戦（plans/match-harness.md、等時間で−252 Elo）と信頼区間が重なるため、自己対局で得た改善はHaChu戦の成績には表れていない（[measurements/evaluation/hachu-pst-gen0.md](../../measurements/evaluation/hachu-pst-gen0.md)）。
 学習データがv0同士の自己対局（規則`engine-default`）から生成されているため、学習PSTはv0の弱点を突く評価を学んだ可能性が高く、HaChu戦の規則（L1、L3、P5、P6、R2、E1、E2）も学習分布外である。
 この結果は完了基準には含めないが、次期マイルストーンでは固定基準相手（HaChuまたはv0）との混在データや世代反復による分布収縮対策が必要であることを示している。
 

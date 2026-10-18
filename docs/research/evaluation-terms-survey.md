@@ -326,7 +326,7 @@ NNUEの入力特徴であるHalfKPとHalfKPE9は、段階10の先行例として
 範囲外にした理由は、Minaseでの2回の実測にある。
 世代0の100万局面で学習したP型NNUEは、固定ノードのGSPRTで学習PSTに `H0` となった。
 世代1では1,106万局面へ増やし、第1層の初期化がclipped ReLUを94.5%飽和させていた欠陥も直したが、再学習PSTに対する検証損失の改善は0.00018にとどまった（[設計書](../plans/archived/evaluation-gen1.md)）。
-対局の得点率は固定ノードで46.1%、時間制御で29.6%であり、どちらも `H0` だった（[nnue-gen1-nodes100k](../measurements/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../measurements/nnue-gen1-tc.md)）。
+対局の得点率は固定ノードで46.1%、時間制御で29.6%であり、どちらも `H0` だった（[nnue-gen1-nodes100k](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../measurements/evaluation-gen1/nnue-gen1-tc.md)）。
 benchの毎秒の探索ノード数は、採用PSTより18.5%低かった。
 
 同設計書は、劣った理由を教師値に求めている。

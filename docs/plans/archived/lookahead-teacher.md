@@ -15,8 +15,8 @@
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年9月22日に起案し、2026年9月23日に完了した。
-結論は採用である。項目1の候補は[事前の判定](../../measurements/lookahead-teacher-shelter-training.md)で見送ったが、利用者の指示で学習PSTを先読み教師（γ=0.9、n=40）で学習し直した候補（項目1を含まない）を測り、[STC](../../measurements/lookahead-teacher-pst-stc.md)はH1（有効325ペア、五分類[44, 10, 166, 14, 91]、LLR 2.96、異常0件）だった。
-LTC（`lookahead-teacher-pst-ltc`）の完了を待たずに採用したのは利用者の決定であり、[SPRTの手引き](../../guides/sprt.md)が定める採用の手順（LTCのH1）からの逸脱として記す。LTCは記録のために走らせていたが、利用者の指示で104ペア（LLR +1.06、判定保留）の時点で[中止した](../../measurements/lookahead-teacher-pst-ltc.md)。
+結論は採用である。項目1の候補は[事前の判定](../../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)で見送ったが、利用者の指示で学習PSTを先読み教師（γ=0.9、n=40）で学習し直した候補（項目1を含まない）を測り、[STC](../../measurements/lookahead-teacher/lookahead-teacher-pst-stc.md)はH1（有効325ペア、五分類[44, 10, 166, 14, 91]、LLR 2.96、異常0件）だった。
+LTC（`lookahead-teacher-pst-ltc`）の完了を待たずに採用したのは利用者の決定であり、[SPRTの手引き](../../guides/sprt.md)が定める採用の手順（LTCのH1）からの逸脱として記す。LTCは記録のために走らせていたが、利用者の指示で104ペア（LLR +1.06、判定保留）の時点で[中止した](../../measurements/lookahead-teacher/lookahead-teacher-pst-ltc.md)。
 採用した重みは `lookahead-pst` の `a7e32a8` としてmasterへ入れた。統合の時点でmasterには[SPSAの結果の適用](spsa.md)が先に入っており、候補の測定は段階開始版 `6c5c559` に対するものなので、SPSAの係数と本重みの組合せは測っていない。
 第2の候補（学習PSTと項目1の同時学習）は測らない。項目1は事前の判定で見送ったためである。
 
@@ -40,7 +40,7 @@ LTC（`lookahead-teacher-pst-ltc`）の完了を待たずに採用したのは�
 - **先読み値** `v̂_t` は、同じ対局のt+1手からt+n手までに記録された局面の探索値を、局面tの手番側の視点へそろえ、手数の差kに重み `γ^(k−1)` を掛けて平均した実数値を指す。記録されていない手数は平均に含めず、重みは含めた手数だけで正規化する。t+1手からt+n手までに記録された局面がなければ `v̂_t = v_t` とする（退避）。
 - **先読み教師値**は、現行の教師値の探索値を先読み値に置き換えた値 `λ · sigmoid(v̂_t / K) + (1 − λ) · result`（λ=0.75）を指す。教師Kは先読み値から教師の分類ごとに推定する。
 - **急落局面**は、`v̂_t − v_t` が−300センチポーン以下の局面を指す。−300は、王手を伴わない大駒1枚分の損失に当たる値として本書が置く目安であり、記録にだけ使う。
-- **露出局面の集合**は、[診断A](../../measurements/strength-stage9-depth-sensitivity.md)の予備標本の露出局面1,000局面（`data/strength-stage9/diag-a/pilot/sample.json`）を指し、事前の判定に使う。この集合は本書の着手前に固定されている。
+- **露出局面の集合**は、[診断A](../../measurements/strength-stage9/strength-stage9-depth-sensitivity.md)の予備標本の露出局面1,000局面（`data/strength-stage9/diag-a/pilot/sample.json`）を指し、事前の判定に使う。この集合は本書の着手前に固定されている。
 - **項目1の寄与**は、ある局面について、手番側の視点の項目1の24列の特徴値と重みの積の和を補間係数φで補間した値（センチポーン）を指す。
 
 ## 依存関係
@@ -129,6 +129,6 @@ v̂_t = Σ_{s} γ^(s−t−1) u_s / Σ_{s} γ^(s−t−1)   （sは同じ対局�
 
 - Jonathan Baxter, Andrew Tridgell, Lex Weaver, "TDLeaf(λ): Combining Temporal Difference Learning with Game-Tree Search," 1998（arXiv cs/9901001）。TD(λ)の更新則 `w := w + α Σ_t ∇J(x_t, w) Σ_{j≥t} λ^(j−t) d_j`（`d_t = J(x_{t+1}) − J(x_t)`）を主変化の末端の評価に適用し、KnightCapではλ=0.7を用いた。同論文は、λ=0が次の局面の予測値へ、λ=1が終局の報酬へ近づける更新であり、その間のλが両者を補間すると説明する。
 - nnue-pytorch `docs/nnue.md`。教師値を `lambda_ * wdl_space_eval + (1 - lambda_) * game_result` と定め、将来の局面の値は使わない。本書の方式との差は、置き換える探索値の側だけである。
-- [棋力向上段階9](strength-stage9.md)の教師の柱の診断（[診断A](../../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../../measurements/strength-stage9-human-signal.md)、[診断C](../../measurements/strength-stage9-human-start-signal.md)）と[118列の発火率診断](../../measurements/strength-stage9-activation-diag-b.md)。
+- [棋力向上段階9](strength-stage9.md)の教師の柱の診断（[診断A](../../measurements/strength-stage9/strength-stage9-depth-sensitivity.md)、[診断B](../../measurements/strength-stage9/strength-stage9-human-signal.md)、[診断C](../../measurements/strength-stage9/strength-stage9-human-start-signal.md)）と[118列の発火率診断](../../measurements/strength-stage9/strength-stage9-activation-diag-b.md)。
 - [評価関数](evaluation.md)の「教師値と損失」。
 - 教訓。[採否の判定条件は候補の式にも事前に当てて試算する](../../lessons/simulate-acceptance-criteria-on-the-candidate.md)。

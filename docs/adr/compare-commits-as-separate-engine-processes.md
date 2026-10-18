@@ -11,7 +11,7 @@
 測定の道具が、測定する差分の内容に依存していたことになる。
 Stockfishの測定基盤fishtestは、テストを2つのgitリビジョンで定義し、ワーカーが両方をビルドし、対局ランナーは差分の内容を知らない（[対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md#fishtestとの構造対応)）。
 [対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md)は、この構造をminaseへ移したマイルストーンである。
-移行の際には、旧方式で得た2件の測定を新方式で再現した（[凍結ベースライン対random](../measurements/frozen-baseline-vs-random-depth1.md)、[深さ2対深さ1](../measurements/depth2-vs-depth1-migration-gsprt.md)）。
+移行の際には、旧方式で得た2件の測定を新方式で再現した（[凍結ベースライン対random](../measurements/match-harness/frozen-baseline-vs-random-depth1.md)、[深さ2対深さ1](../measurements/match-harness/depth2-vs-depth1-migration-gsprt.md)）。
 
 ## 決定
 

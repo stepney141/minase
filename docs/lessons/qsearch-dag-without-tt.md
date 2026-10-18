@@ -19,6 +19,6 @@ Lazy SMP初版では、補助ワーカーを増やすとノード毎秒は比例
 ## 出典
 
 - [plans/lazy-smp.md](../plans/archived/lazy-smp.md) の探索チームと共有置換表の各節。
-- [measurements/lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp-v1-diversification-bench.md)
-- [measurements/qsearch-tt-nodes100k.md](../measurements/qsearch-tt-nodes100k.md)
+- [measurements/lazy-smp/lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp/lazy-smp-v1-diversification-bench.md)
+- [measurements/lazy-smp/qsearch-tt-nodes100k.md](../measurements/lazy-smp/qsearch-tt-nodes100k.md)
 - コミットc817f79（静止探索で置換表を照会・記録し、置換規則と手なし符号を導入）

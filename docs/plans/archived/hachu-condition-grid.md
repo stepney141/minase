@@ -24,16 +24,16 @@ Eloは勝率をロジスティック関数で写した強さの差であり、10
 
 | セル | minase持ち時間 | minase置換表 | HaChu置換表 | Elo | 95%信頼区間 | 異常 |
 |---|---|---|---|---|---|---|
-| [time1](../../measurements/hachu-grid-time1.md) | 60000+1000 | 256 MB | 256 MB | +207.5 | +168.8〜+251.4 | 0件 |
-| [time1of2](../../measurements/hachu-grid-time1of2.md) | 30000+500 | 256 MB | 256 MB | +105.6 | +73.6〜+139.5 | 0件 |
-| [time1of4](../../measurements/hachu-grid-time1of4.md) | 15000+250 | 256 MB | 256 MB | −26.1 | −58.9〜+6.2 | クラッシュ2件、拒否1件 |
-| [time1of8](../../measurements/hachu-grid-time1of8.md) | 7500+125 | 256 MB | 256 MB | −205.0 | −248.0〜−167.1 | クラッシュ1件 |
-| [hash16-256](../../measurements/hachu-grid-hash16-256.md) | 60000+1000 | 16 MB | 256 MB | +230.2 | +192.0〜+274.0 | 0件 |
-| [hash1024-256](../../measurements/hachu-grid-hash1024-256.md) | 60000+1000 | 1,024 MB | 256 MB | +214.8 | +178.1〜+256.5 | 拒否1件 |
-| [hash256-16](../../measurements/hachu-grid-hash256-16.md) | 60000+1000 | 256 MB | 16 MB | +227.6 | +190.2〜+270.2 | 0件 |
-| [hash256-1024](../../measurements/hachu-grid-hash256-1024.md) | 60000+1000 | 256 MB | 1,024 MB | +227.6 | +190.2〜+270.2 | クラッシュ1件 |
-| [fixed1-2](../../measurements/hachu-grid-fixed1-2.md) | 1手1秒 / HaChu 1手2秒 | 256 MB | 256 MB | +166.2 | +131.4〜+204.5 | 時間切れ12件、クラッシュ1件 |
-| [fixed1-1](../../measurements/hachu-grid-fixed1-1.md) | 1手1秒 / HaChu 1手1秒 | 256 MB | 256 MB | +322.7 | +277.0〜+379.3 | 時間切れ64件、クラッシュ2件 |
+| [time1](../../measurements/hachu-condition-grid/hachu-grid-time1.md) | 60000+1000 | 256 MB | 256 MB | +207.5 | +168.8〜+251.4 | 0件 |
+| [time1of2](../../measurements/hachu-condition-grid/hachu-grid-time1of2.md) | 30000+500 | 256 MB | 256 MB | +105.6 | +73.6〜+139.5 | 0件 |
+| [time1of4](../../measurements/hachu-condition-grid/hachu-grid-time1of4.md) | 15000+250 | 256 MB | 256 MB | −26.1 | −58.9〜+6.2 | クラッシュ2件、拒否1件 |
+| [time1of8](../../measurements/hachu-condition-grid/hachu-grid-time1of8.md) | 7500+125 | 256 MB | 256 MB | −205.0 | −248.0〜−167.1 | クラッシュ1件 |
+| [hash16-256](../../measurements/hachu-condition-grid/hachu-grid-hash16-256.md) | 60000+1000 | 16 MB | 256 MB | +230.2 | +192.0〜+274.0 | 0件 |
+| [hash1024-256](../../measurements/hachu-condition-grid/hachu-grid-hash1024-256.md) | 60000+1000 | 1,024 MB | 256 MB | +214.8 | +178.1〜+256.5 | 拒否1件 |
+| [hash256-16](../../measurements/hachu-condition-grid/hachu-grid-hash256-16.md) | 60000+1000 | 256 MB | 16 MB | +227.6 | +190.2〜+270.2 | 0件 |
+| [hash256-1024](../../measurements/hachu-condition-grid/hachu-grid-hash256-1024.md) | 60000+1000 | 256 MB | 1,024 MB | +227.6 | +190.2〜+270.2 | クラッシュ1件 |
+| [fixed1-2](../../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md) | 1手1秒 / HaChu 1手2秒 | 256 MB | 256 MB | +166.2 | +131.4〜+204.5 | 時間切れ12件、クラッシュ1件 |
+| [fixed1-1](../../measurements/hachu-condition-grid/hachu-grid-fixed1-1.md) | 1手1秒 / HaChu 1手1秒 | 256 MB | 256 MB | +322.7 | +277.0〜+379.3 | 時間切れ64件、クラッシュ2件 |
 
 持ち時間2倍あたりのEloは、時間比が隣り合うセルの差として1と1/2の間で101.9、1/2と1/4の間で131.7、1/4と1/8の間で178.9であり、持ち時間が短いほど1段の差が大きい。
 この値は参考値であり、採否の根拠には使わない。
@@ -50,8 +50,8 @@ hash1024-256の大部分とhash256-1024の冒頭では、別worktreeでの生成
 ## 目的
 
 HaChuに対するminaseの強さは、段階ごとの進捗指標として対等条件の固定200ペアEloで記録してきた。
-直近の[段階5の記録](../../measurements/strength-stage5-hachu-elo200.md)では+188.5 Elo（95%信頼区間+153.1〜+228.0）である。
-一方、[非対称時間の要因分析](../../measurements/hachu-vs-search-tc-handicap-4x.md)では、minaseに120秒＋2秒加算、HaChuに30秒＋1秒加算を与えると、当時の等時間の−252 Eloが+14 Eloまで回復しており、持ち時間の比が強さの差に大きく影響することが分かっている。
+直近の[段階5の記録](../../measurements/strength-stage5/strength-stage5-hachu-elo200.md)では+188.5 Elo（95%信頼区間+153.1〜+228.0）である。
+一方、[非対称時間の要因分析](../../measurements/match-harness/hachu-vs-search-tc-handicap-4x.md)では、minaseに120秒＋2秒加算、HaChuに30秒＋1秒加算を与えると、当時の等時間の−252 Eloが+14 Eloまで回復しており、持ち時間の比が強さの差に大きく影響することが分かっている。
 ただしこの測定は基本時間4倍、加算2倍の非対称条件であり、今回の比例縮小と同じ倍率効果ではない。
 本測定は、持ち時間の比と置換表容量の比を系統的に変え、どの条件でどちらがどれだけ強いかをEloで示す。
 持ち時間の比については、minaseの持ち時間をどこまで縮めるとEloが0付近まで下がるかを見る。
@@ -102,7 +102,7 @@ docs/guides/sprt.mdが禁じるのは差分の内容を知るスイッチであ�
 
 結果の正は実行ディレクトリの`pairs/`、累計実行時間の正は`summary.json`の`active_wall_time_ns`である。
 時間制御が等しいtime1と置換表比の4セルは、docs/guides/sprt.mdの定めどおり`match_report`で保存記録から再集計したJSONを記録の値とする。
-`match_report`は候補と基準の時間制御が等しい測定だけを受け付けるため、minaseの持ち時間を縮めた3セルは、[自己対局の持ち時間感度](../../measurements/sensitivity-time2x.md)と同じく`match_runner`の標準出力の要約（ペンタノミアル度数、Elo、信頼区間、異常件数）を記録の値とする。
+`match_report`は候補と基準の時間制御が等しい測定だけを受け付けるため、minaseの持ち時間を縮めた3セルは、[自己対局の持ち時間感度](../../measurements/evaluation-gen1/sensitivity-time2x.md)と同じく`match_runner`の標準出力の要約（ペンタノミアル度数、Elo、信頼区間、異常件数）を記録の値とする。
 
 全セルで同じ基本シードを使い、同じ200個の開始局面で戦わせる。
 開始局面はペア番号ごとにシードから決定的に派生するので、シードを揃えればセル間の差に開始局面の違いが混ざらない。
@@ -186,7 +186,7 @@ minase match run --run-dir data/matches/hachu-grid-hash16-256 --seed 20560903 \
 各セルの終了時に、標準出力の要約から`engine_failures`の理由別件数、`time_forfeits`、および`rejected_moves`を確認する。
 `time_forfeits`は規約どおり当該局の負けとして算入するが、0でなければ原因を調べ、そのセルのElo低下を探索量の減少だけの効果とは解釈しない。
 `rejected_moves`は、審判層が合法とした着手を相手エンジンが拒否した件数であり、0でなければ規則の不一致が疑われる。
-HaChuには、敵陣入域時に不成を選んだ歩兵が最奥段へ非捕獲で到達する成りを拒否する既知の規則差（RULES.md第30条P5の典拠欄、[等時間GSPRTの記録](../../measurements/hachu-vs-search-tc60.md)）があるので、当該局の着手列を再現してこの既知差かどうかを判定してから記録する。
+HaChuには、敵陣入域時に不成を選んだ歩兵が最奥段へ非捕獲で到達する成りを拒否する既知の規則差（RULES.md第30条P5の典拠欄、[等時間GSPRTの記録](../../measurements/match-harness/hachu-vs-search-tc60.md)）があるので、当該局の着手列を再現してこの既知差かどうかを判定してから記録する。
 HaChuは2,000手を超える対局で棋譜配列の上限により異常終了することが分かっており、これは当該局のHaChuの負けとして算入される既知の挙動なので、件数を記録して結論の感度を確認する。
 置換表1,024 MBのセルでは、測定中の実メモリ使用量を確認し、スワップが発生していないことを記録する。
 
@@ -199,8 +199,8 @@ HaChuは2,000手を超える対局で棋譜配列の上限により異常終了�
 ## 参考資料
 
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)
-- [段階5のHaChu戦の記録](../../measurements/strength-stage5-hachu-elo200.md)
-- [HaChu対minaseの等時間GSPRT](../../measurements/hachu-vs-search-tc60.md)
-- [HaChu対minaseの持ち時間4倍の固定局数Elo](../../measurements/hachu-vs-search-tc-handicap-4x.md)
-- [自己対局の持ち時間感度](../../measurements/sensitivity-time2x.md)
+- [段階5のHaChu戦の記録](../../measurements/strength-stage5/strength-stage5-hachu-elo200.md)
+- [HaChu対minaseの等時間GSPRT](../../measurements/match-harness/hachu-vs-search-tc60.md)
+- [HaChu対minaseの持ち時間4倍の固定局数Elo](../../measurements/match-harness/hachu-vs-search-tc-handicap-4x.md)
+- [自己対局の持ち時間感度](../../measurements/evaluation-gen1/sensitivity-time2x.md)
 - [HaChu調査](../../research/protocols/hachu.md)

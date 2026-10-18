@@ -18,7 +18,7 @@
 完了。
 2026年8月11日に起案し、同日に着手して、同期版goとランダムUSIエンジン、プロセス供給層への差し替え、コミット指定と並列実行の全3フェーズを同日に完了した。
 in-processのエンジン対局経路を削除して測定経路をプロセス方式へ一本化し、凍結ベースラインを「凍結ベースラインの再定義」の節のとおり確定した。
-移行検証は、凍結ベースライン対random（[measurements/frozen-baseline-vs-random-depth1.md](../../measurements/frozen-baseline-vs-random-depth1.md)）とdepth=2対depth=1のGSPRT（[measurements/depth2-vs-depth1-migration-gsprt.md](../../measurements/depth2-vs-depth1-migration-gsprt.md)）の2件が旧方式と同じ結果を再現したことによる。
+移行検証は、凍結ベースライン対random（[measurements/match-harness/frozen-baseline-vs-random-depth1.md](../../measurements/match-harness/frozen-baseline-vs-random-depth1.md)）とdepth=2対depth=1のGSPRT（[measurements/match-harness/depth2-vs-depth1-migration-gsprt.md](../../measurements/match-harness/depth2-vs-depth1-migration-gsprt.md)）の2件が旧方式と同じ結果を再現したことによる。
 2026年8月24日にCECPエンジン指定を追加し、HaChuとの初回比較と要因分析を「HaChuとの比較」の節のとおり行った。
 本ハーネスの保存、再開、および集計基盤は[match-harness-efficiency.md](match-harness-efficiency.md)が、測定の段階ゲートは[match-staged-gate.md](match-staged-gate.md)が引き継ぐ。
 
@@ -191,8 +191,8 @@ minase match run --candidate target/release/minase --baseline random \
 
 CECP指定の初回運用として、2026年8月24日と25日に、CECP対応を加えたコミットのminaseとHaChu（Debianパッケージ収録のオリジナル版、コミットdf26f4a）を比較した。
 規則はHaChuの既定設定に合わせた`L1,L3,P5,P6,R2,E1,E2`（RULES.md第13版当時の表記）であり、第14版が各規則群から1コードずつの明示を必須としたため、第14版以後に同じ条件を新たに指定する場合は、成り規則群の基底コードP0を加えた`L1,L3,P0,P5,P6,R2,E1,E2`を用いる。
-等時間（60秒＋1秒加算）のGSPRT（[measurements/hachu-vs-search-tc60.md](../../measurements/hachu-vs-search-tc60.md)）では、HaChuがminaseより252 Elo強かった。
-要因分析として、同一持ち時間での探索実測（[measurements/hachu-vs-search-nps.md](../../measurements/hachu-vs-search-nps.md)）はminaseが探索深さとNPSで劣っていないことを示し、minaseの持ち時間を4倍にした固定局数Elo（[measurements/hachu-vs-search-tc-handicap-4x.md](../../measurements/hachu-vs-search-tc-handicap-4x.md)）は統計的に互角へ達した。
+等時間（60秒＋1秒加算）のGSPRT（[measurements/match-harness/hachu-vs-search-tc60.md](../../measurements/match-harness/hachu-vs-search-tc60.md)）では、HaChuがminaseより252 Elo強かった。
+要因分析として、同一持ち時間での探索実測（[measurements/match-harness/hachu-vs-search-nps.md](../../measurements/match-harness/hachu-vs-search-nps.md)）はminaseが探索深さとNPSで劣っていないことを示し、minaseの持ち時間を4倍にした固定局数Elo（[measurements/match-harness/hachu-vs-search-tc-handicap-4x.md](../../measurements/match-harness/hachu-vs-search-tc-handicap-4x.md)）は統計的に互角へ達した。
 したがって、差の主因は規則やプロトコルの不利ではなく、HaChuが全ノードで計算する利きマップ由来の評価知識（モビリティ・王安全度・獅子関連項）による1ノードあたりの質であると位置づける。
 
 HaChuとの対局には既知の規則差が1つある。

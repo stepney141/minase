@@ -6,7 +6,7 @@
 Minaseの既定の反復規則R1（RULES.md第31条）は、同一局面の4回目の出現を原則として引き分けとするが、最初の出現から4回目の出現までの自分の着手がすべて攻撃的着手（王手、または動かした駒が相手の駒に当たる着手）であった対局者が一方だけなら、その攻撃側の負けとする（将棋の連続王手の千日手、perpetual checkに相当する）。
 R2は同じ手番の既出局面を再現する着手を、R3は4回目の出現を生じさせる着手を、それぞれ不合法とする規則である。
 着手前の探索は、探索木の中で同一局面が再現した時点で、規則によらず評価値0の引き分けとして読みを打ち切っていた。このため、R1ではどちらが攻撃側かを調べず、R2とR3では規則が禁じる着手を引き分けになる手として読んでいた。
-2026年9月20日に行った[保存済みの自己対局記録の診断](../../measurements/search-repetition-outcome-diag.md)では、94,466局の4.2%が攻撃側の反復負けで終わり、負けた側は3,938局のすべてで直前の評価値に0を出力していた。
+2026年9月20日に行った[保存済みの自己対局記録の診断](../../measurements/search-repetition/search-repetition-outcome-diag.md)では、94,466局の4.2%が攻撃側の反復負けで終わり、負けた側は3,938局のすべてで直前の評価値に0を出力していた。
 本書は3つの項目を定めた。
 項目1（根の反復負け回避）は、探索を始める前に、根の合法手と相手の応手を対局の写しへ実際に適用して審判層（対局の終局を裁定する層）の裁定を確かめ、反復負けに直結する手を根の候補手から除く。
 項目2（木の中の反復の勝敗）は、探索木の中で同一局面が1回再現した時点で、その周回の攻撃的着手が一方だけなら攻撃側の負けを専用の評価値で返す。
@@ -17,8 +17,8 @@ R2は同じ手番の既出局面を再現する着手を、R3は4回目の出現
 ## 状態
 
 完了（採用）。2026年9月20日に起案し、2026年10月15日に着手して同日に完了した。
-3項目をまとめた候補（コミットbb9d412）が、段階開始版（コミット88655aa）に対して[STC](../../measurements/search-repetition-stc.md)で有効289ペアの`H1`、[LTC](../../measurements/search-repetition-ltc.md)で有効377ペアの`H1`（いずれも異常0件）となったので、項目1と項目2を採用した。
-項目3は、R1の探索を変えないことを[bench照合](../../measurements/search-repetition-bench.md)で確かめ、テストで採用した。
+3項目をまとめた候補（コミットbb9d412）が、段階開始版（コミット88655aa）に対して[STC](../../measurements/search-repetition/search-repetition-stc.md)で有効289ペアの`H1`、[LTC](../../measurements/search-repetition/search-repetition-ltc.md)で有効377ペアの`H1`（いずれも異常0件）となったので、項目1と項目2を採用した。
+項目3は、R1の探索を変えないことを[bench照合](../../measurements/search-repetition/search-repetition-bench.md)で確かめ、テストで採用した。
 設計判断は[根の反復負け回避と探索木の中の周回の勝敗](../../adr/avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)、[反復の勝敗の専用の帯](../../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)、および[R2とR3の禁止手の処理](../../adr/skip-forbidden-repetition-moves-inside-the-tree.md)のADRへ移した。
 
 ## 目的
@@ -228,15 +228,15 @@ NPSの低下が1%を超えた場合は、攻撃的着手の判定を計算した
 フェーズ6の最終のコミットを候補、段階開始版を基準として、STC（`time=10000+100`、上限3,000ペア）とLTC（`time=60000+200`）の段階ゲート（STCで選別し、LTCで採否を決める2段階の測定。[docs/guides/sprt.md](../../guides/sprt.md)）を標準コマンドで1組だけ実行する。
 測定名は`search-repetition-stc`と`search-repetition-ltc`とし、LTCのシードはSTCの基本シードから3,000以上離す。
 所要時間は、同じ測定機で行った直近の測定の経過時間から単純比例で見積もる。
-実行したペアの数で換算すると、同時対局数16の[手の順序付けの改善のSTC](../../measurements/move-ordering-all-stc.md)（実行306ペア、2,780秒）からはSTCの上限3,000ペアで約7.6時間、同じく[LTC](../../measurements/move-ordering-all-ltc.md)（実行584ペア、16,182秒）からはLTCの1,000ペアあたり約7.7時間となる。
-NNUE採用後の同時対局数12の[STC](../../measurements/nnue-replacement-stc.md)と[LTC](../../measurements/nnue-replacement-ltc.md)（いずれも実行105ペア）からは、それぞれ約7.8時間と約8.3時間であり、規模は変わらない。
+実行したペアの数で換算すると、同時対局数16の[手の順序付けの改善のSTC](../../measurements/move-ordering/move-ordering-all-stc.md)（実行306ペア、2,780秒）からはSTCの上限3,000ペアで約7.6時間、同じく[LTC](../../measurements/move-ordering/move-ordering-all-ltc.md)（実行584ペア、16,182秒）からはLTCの1,000ペアあたり約7.7時間となる。
+NNUE採用後の同時対局数12の[STC](../../measurements/nnue-replacement/nnue-replacement-stc.md)と[LTC](../../measurements/nnue-replacement/nnue-replacement-ltc.md)（いずれも実行105ペア）からは、それぞれ約7.8時間と約8.3時間であり、規模は変わらない。
 いずれも棋力差や対局の長さで変わる暫定値である。
 検定に必要なペアの数は、手数上限で破棄されたペアを除く有効ペアで数えるので、LTCの所要時間は有効566ペアで換算する。
 [docs/guides/sprt.md](../../guides/sprt.md)のWald近似（ペア得点の分散を0.10に固定）では、真の差がH1と同じ10 Eloの場合の期待ペア数は約2,600有効ペア（LTCで約21時間）である。
 2026年9月20日の診断の件数では、各測定の候補側（新しいコミットの側）が攻撃側として負けていた局は全局の2%から3%だった。
 仮にこれらの局が互角に近い勝負へ戻るなら、得点率の改善は1ポイント前後と見積もられる。
 現行のNNUE同士の頻度が同程度なら、真の差はH1と同程度かそれを下回る可能性があり、その場合はSTCが上限まで走り、LTCは4,000有効ペア（約32時間）を超え得る。
-測定の終了後、[集計スクリプト](../../measurements/search-repetition-outcome-diag/count.py)で候補と基準の反復負けと反復による引き分けの件数を数え、測定記録へ併記する。
+測定の終了後、[集計スクリプト](../../measurements/search-repetition/search-repetition-outcome-diag/count.py)で候補と基準の反復負けと反復による引き分けの件数を数え、測定記録へ併記する。
 候補の反復負けは、全部の合法手が反復負けに直結した局を除いて0件のはずであり、0件でなければ採否の前に原因を調べる。
 
 ### フェーズ8　文書の更新
@@ -323,7 +323,7 @@ STCは候補をLTCへ進めるかどうかの振分けだけを行い、採用�
 
 ## 参考資料
 
-- [反復による終局の件数と直前の評価値の診断](../../measurements/search-repetition-outcome-diag.md)：着手の根拠となる件数。
+- [反復による終局の件数と直前の評価値の診断](../../measurements/search-repetition/search-repetition-outcome-diag.md)：着手の根拠となる件数。
 - [探索内の反復の扱いに関する既存実装の調査](../../research/search-repetition-prior-art.md)：チェス、将棋、シャンチー、および中将棋の13実装の方式と、設計への含意。
 - RULES.md第23条（合法手がない場合）、第24条（同一局面）、第26条と第27条（不合法な着手）、第31条R1（4回反復の裁定）、R2（既出局面の再現禁止）、R3（4回目の出現の禁止）、第33条（規則セット）。
 - [探索木の中の裁定の近似のADR](../../adr/archive/approximate-adjudication-inside-search-tree.md)：本書の採用時に一部を置き換える現行の決定。

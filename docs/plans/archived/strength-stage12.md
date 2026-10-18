@@ -16,24 +16,24 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（不採用）。2026年9月27日に段階開始版をコミット`df0c75e`に固定して着手し、2026年9月28日に完了した。
 段階開始版は、SPSAの2回目の調整結果（22係数）を採用した後のmasterの先頭である。
-フェーズ1の診断（[strength-stage12-activation-diag](../../measurements/strength-stage12-activation-diag.md)）では、項目6を除く7項目が発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
+フェーズ1の診断（[strength-stage12-activation-diag](../../measurements/strength-stage12/strength-stage12-activation-diag.md)）では、項目6を除く7項目が発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
 7項目はいずれも採用しなかった。
 
 | 項目 | STCの判定 | 有効ペア | 得点率 |
 |---|---|---:|---:|
-| 1　aspiration windowsのfail-high時の減深 | [`H0`](../../measurements/strength-stage12-aspiration-stc.md) | 1,360 | 49.1% |
-| 2　負の捕獲手を後回しにする段 | [`H0`](../../measurements/strength-stage12-bad-captures-stc.md) | 430 | 45.7% |
-| 3　捕獲履歴 | [`H0`](../../measurements/strength-stage12-capture-history-stc.md) | 750 | 47.6% |
-| 4　静止探索の手数制限（`N=1`） | [`H0`](../../measurements/strength-stage12-qsearch-limit-stc.md) | 147 | 27.0% |
-| 5　butterfly historyの持ち越し | [`H0`](../../measurements/strength-stage12-history-carry-stc.md) | 2,539 | 49.8% |
-| 7　null move pruningの前提条件 | [上限到達時にLLRが負](../../measurements/strength-stage12-null-move-stc.md) | 2,853 | 50.0% |
-| 8　PVノードでの置換表の打ち切りの停止 | [`H0`](../../measurements/strength-stage12-pv-tt-cutoff-stc.md) | 1,346 | 49.1% |
+| 1　aspiration windowsのfail-high時の減深 | [`H0`](../../measurements/strength-stage12/strength-stage12-aspiration-stc.md) | 1,360 | 49.1% |
+| 2　負の捕獲手を後回しにする段 | [`H0`](../../measurements/strength-stage12/strength-stage12-bad-captures-stc.md) | 430 | 45.7% |
+| 3　捕獲履歴 | [`H0`](../../measurements/strength-stage12/strength-stage12-capture-history-stc.md) | 750 | 47.6% |
+| 4　静止探索の手数制限（`N=1`） | [`H0`](../../measurements/strength-stage12/strength-stage12-qsearch-limit-stc.md) | 147 | 27.0% |
+| 5　butterfly historyの持ち越し | [`H0`](../../measurements/strength-stage12/strength-stage12-history-carry-stc.md) | 2,539 | 49.8% |
+| 7　null move pruningの前提条件 | [上限到達時にLLRが負](../../measurements/strength-stage12/strength-stage12-null-move-stc.md) | 2,853 | 50.0% |
+| 8　PVノードでの置換表の打ち切りの停止 | [`H0`](../../measurements/strength-stage12/strength-stage12-pv-tt-cutoff-stc.md) | 1,346 | 49.1% |
 
 いずれもLTCへは進まず、実装はコードから外したので、探索コードは段階開始版と同一である。
 このうち捕獲履歴、静止探索の手数制限、およびbutterfly historyの持ち越しは、2026年10月4日に[不採用だった探索部の改良の再調整](search-revival-spsa.md)が係数をSPSAで調整し直して採用した。
 項目4の大敗から、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](../../lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。
 フェーズ10の進捗指標のうち、段階開始版に対する固定200ペアは、最終構成が段階開始版と同じバイナリなので測らない。
-HaChuに対する固定200ペアは、利用者の決定により段階12の完了とは切り離して測り、SPSAの調整を採用した後の版として+530.7 Elo（95%信頼区間[+463.6, +635.2]）だった（[strength-stage12-hachu-elo200](../../measurements/strength-stage12-hachu-elo200.md)）。
+HaChuに対する固定200ペアは、利用者の決定により段階12の完了とは切り離して測り、SPSAの調整を採用した後の版として+530.7 Elo（95%信頼区間[+463.6, +635.2]）だった（[strength-stage12-hachu-elo200](../../measurements/strength-stage12/strength-stage12-hachu-elo200.md)）。
 
 ## 目的
 
@@ -77,7 +77,7 @@ aspiration windowsの仕様は[段階6](strength-stage6.md)が、LMRと手の成
 | 項目の順序 | aspiration windowsのfail-high時の減深、負の捕獲手を後回しにする段、捕獲履歴、静止探索の手数制限、表の持ち越し、補正表の鍵の追加、null moveの前提条件、PVノードでの置換表の打ち切りの停止の順に測る。複数のエンジンでの測定値が大きく、変更が根や手選択に閉じる項目を先にした。捕獲手の段の構成を先に決めてから、その段の中の順序を捕獲履歴で改める。表の持ち越しは捕獲履歴の採否が決まった後に行い、持ち越す表の範囲を確定させる。項目7と項目8は分離した測定値がないので最後に置く。 |
 | 項目の間の依存 | 項目3の適用先は、項目2を採用した場合は良い捕獲手の段、採用しなかった場合は現行の全捕獲手の段とし、どちらの場合もその構成で発動率を測り直してから実装する。項目5が持ち越す表は、その時点で採用済みの表に限る。 |
 | 基準と採否 | 各項目は直前に採用した構成を基準に1項目1コミットで測り、STCで`H1`、または上限3,000ペアで対数尤度比（LLR）が0以上ならLTCへ進め、LTCが`H1`かつ異常0件なら採用する（[docs/guides/sprt.md](../../guides/sprt.md)の段階ゲート）。STCを省略してLTCへ直行する項目はない。 |
-| 発動の事前確認 | 各項目は実装前の診断で、発動率（判断を変えた割合）が5%以上であることを確かめる。同じ局面の同じ判断の時点で現行と候補の判断を並べて比べ、分母と分子は項目ごとに各論の節で定める。値の非ゼロ率のような指標は補助として記録するが、判定には使わない。1回の探索の中で完結する項目は`bench`（固定局面集を固定深さで探索する計測コマンド）の深さ6で数え、根の反復に関わる項目1は標準の時間制御の予算で、探索をまたぐ状態に依存する項目5は保存済みの対局の着手列に沿った再生で数える。benchは局面ごとに表を初期化するので、探索をまたぐ効果を見られないからである（[段階6の置換表の対局再生診断](../../measurements/strength-stage6-tt-replay.md)と同じ理由）。5%に届かない項目は見送る。 |
+| 発動の事前確認 | 各項目は実装前の診断で、発動率（判断を変えた割合）が5%以上であることを確かめる。同じ局面の同じ判断の時点で現行と候補の判断を並べて比べ、分母と分子は項目ごとに各論の節で定める。値の非ゼロ率のような指標は補助として記録するが、判定には使わない。1回の探索の中で完結する項目は`bench`（固定局面集を固定深さで探索する計測コマンド）の深さ6で数え、根の反復に関わる項目1は標準の時間制御の予算で、探索をまたぐ状態に依存する項目5は保存済みの対局の着手列に沿った再生で数える。benchは局面ごとに表を初期化するので、探索をまたぐ効果を見られないからである（[段階6の置換表の対局再生診断](../../measurements/strength-stage6/strength-stage6-tt-replay.md)と同じ理由）。5%に届かない項目は見送る。 |
 | 閾値の決め方 | 閾値を持つ項目（項目4の手数の上限）は、診断で候補ごとに「失う良い結果の割合」を求め、10%以下の候補のうち枝刈りが最も多いものを選ぶ。分母は候補によらない良い結果の全体とし、良い結果が0件の場合は損失0%とせず診断不足として扱う。規則は本診断の前に段階開始版へ当て、現行構成が構造上適格にならない規則でないことを確かめてから固定する。閾値はSTCの前に固定し、STCの結果を見てから変えない。10%は段階4から段階8で使ってきた基準であり、本段階も同じ基準で比べられるようにする。 |
 | 係数の扱い | 新しい係数（捕獲履歴の上限と尺度、持ち越しの減衰率）は、他エンジンの値を中将棋の尺度へ換算した初期値で`params.rs`に置く。値の最適化は本段階では行わず、採用した係数は次のSPSAの調整セッションで調整する。係数ごとにGSPRTで候補値を比べると、1件のLTCに数十時間を要するからである。 |
 | 規則依存の除外 | 最後の王駒を取る手と、獅子が1手で2枚を取る手は、手数制限や後回しの対象から外す。SEEが規則上判定不能の捕獲手は、段階8と同じく損と判定しない側に置く。除外は実装直後にbenchで除外件数を数え、規則が実際に働く場合だけに限定されていることを確かめてから採否測定へ進む。 |
@@ -106,7 +106,7 @@ Stockfishは複数スレッドでの退行を避けるためにこの限定を�
 発動率の分母は、aspiration windowsの窓を実際に使った反復（深さ5以上で、詰み帯のため全窓になった反復を除く）、分子はその中でfail-highによる読み直しが1回以上起きた反復とする。
 読み直しは`info`出力に現れないので、[段階6](strength-stage6.md)の標準の時間制御の予算での計数と同じく、一時的な計数器で数える。
 
-STCで`H0`（1,360有効ペア、得点率49.1%、LLR −2.97）となったので、本項目は採用しない（[strength-stage12-aspiration-stc](../../measurements/strength-stage12-aspiration-stc.md)）。
+STCで`H0`（1,360有効ペア、得点率49.1%、LLR −2.97）となったので、本項目は採用しない（[strength-stage12-aspiration-stc](../../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。
 
 ### 項目2　負の捕獲手を後回しにする段（bad-capture stage）
 
@@ -122,8 +122,8 @@ SEEの計算は、現行では浅い非PVノードの枝刈りでだけ行うの
 発動率の分母は、通常探索で捕獲手の段を開いたノード、分子は、そのうちSEEが負の捕獲手の後ろに、静かな手またはSEEが負でない捕獲手が1手以上あり、返す順序が現行と変わるノードとする。
 手選択器が各合法手を正確に1回だけ返すことは、既存のテストの対象に新しい段を加えて固定する。
 
-STCで`H0`（430有効ペア、得点率45.7%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-bad-captures-stc](../../measurements/strength-stage12-bad-captures-stc.md)）。
-bench深さ6ではノード数が3.54%減った一方で、全捕獲手へのSEEの計算によりNPSが約9.7%下がっていた（[strength-stage12-bad-captures-bench](../../measurements/strength-stage12-bad-captures-bench.md)）。
+STCで`H0`（430有効ペア、得点率45.7%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-bad-captures-stc](../../measurements/strength-stage12/strength-stage12-bad-captures-stc.md)）。
+bench深さ6ではノード数が3.54%減った一方で、全捕獲手へのSEEの計算によりNPSが約9.7%下がっていた（[strength-stage12-bad-captures-bench](../../measurements/strength-stage12/strength-stage12-bad-captures-bench.md)）。
 
 ### 項目3　捕獲履歴（capture history）
 
@@ -149,8 +149,8 @@ MVV-LVAは取る駒と取られる駒の価値だけで順序を決め、その�
 
 発動率の分母は、通常探索で適用先の段に2手以上の捕獲手があるノード、分子は、捕獲履歴によって返す順序が現行と変わったノードとする。
 
-STCで`H0`（750有効ペア、得点率47.6%、LLR −2.99）となったので、本項目は採用しない（[strength-stage12-capture-history-stc](../../measurements/strength-stage12-capture-history-stc.md)）。
-bench深さ6ではノード数が4.41%減り、NPSの低下は1.93%だった（[strength-stage12-capture-history-bench](../../measurements/strength-stage12-capture-history-bench.md)）。
+STCで`H0`（750有効ペア、得点率47.6%、LLR −2.99）となったので、本項目は採用しない（[strength-stage12-capture-history-stc](../../measurements/strength-stage12/strength-stage12-capture-history-stc.md)）。
+bench深さ6ではノード数が4.41%減り、NPSの低下は1.93%だった（[strength-stage12-capture-history-bench](../../measurements/strength-stage12/strength-stage12-capture-history-bench.md)）。
 項目3を採用しなかったので、項目5で捕獲履歴を持ち越す判定は行わない。
 
 ### 項目4　静止探索の手数制限（qsearch move-count pruning）
@@ -175,10 +175,10 @@ null moveの直後は記録を空にする。
 発動率の分母は探索した静止探索のノード、分子は選んだ`N`で1手以上を読まなくなるノードとする。
 最後の王駒を取る手、居喰いと経由升だけで取る手への取り返し、および2枚取りの手を読み落とさないことを、手数の上限を超えた位置にそれらの手がある局面のテストで固定する。
 
-フェーズ1の診断で、`N=1`は失う良い結果の割合が4.83%、発動率が14.42%であり、基準を満たす最小の候補だったので、`N=1`とする（[strength-stage12-activation-diag](../../measurements/strength-stage12-activation-diag.md)）。
+フェーズ1の診断で、`N=1`は失う良い結果の割合が4.83%、発動率が14.42%であり、基準を満たす最小の候補だったので、`N=1`とする（[strength-stage12-activation-diag](../../measurements/strength-stage12/strength-stage12-activation-diag.md)）。
 
-`N=1`の実装はbench深さ6のノード数を21.03%、探索時間を15.9%減らした（[strength-stage12-qsearch-limit-bench](../../measurements/strength-stage12-qsearch-limit-bench.md)）。
-しかしSTCは147有効ペアで`H0`となり、得点率27.0%（約−173 Elo）だったので、本項目は採用しない（[strength-stage12-qsearch-limit-stc](../../measurements/strength-stage12-qsearch-limit-stc.md)）。
+`N=1`の実装はbench深さ6のノード数を21.03%、探索時間を15.9%減らした（[strength-stage12-qsearch-limit-bench](../../measurements/strength-stage12/strength-stage12-qsearch-limit-bench.md)）。
+しかしSTCは147有効ペアで`H0`となり、得点率27.0%（約−173 Elo）だったので、本項目は採用しない（[strength-stage12-qsearch-limit-stc](../../measurements/strength-stage12/strength-stage12-qsearch-limit-stc.md)）。
 診断が示した失う良い結果の割合（4.83%）は、自己対局での損失の大きさを予測しなかった。
 閾値はSTCの前に固定する規則なので、`N`を変えた再測定は本段階では行わない。
 この結果から、閾値の選び方の規則を静止探索に使えないことを教訓にした（[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。
@@ -219,7 +219,7 @@ butterfly historyは、静かな手の段を整列したノードの順序と、
 捕獲履歴の持ち越しは、項目3の採否が決まった後に同じ再生診断で判定する。
 
 butterfly historyだけを持ち越す形で実装し、表は置換表と同じ経路で受け渡して、置換表を初期化する時点（新規対局、受理された規則変更、受理された`USI_Hash`の変更）とワーカー数の変更で初期化した。
-STCは2,539有効ペアで`H0`（得点率49.8%、LLR −3.00）となったので、本項目は採用しない（[strength-stage12-history-carry-stc](../../measurements/strength-stage12-history-carry-stc.md)）。
+STCは2,539有効ペアで`H0`（得点率49.8%、LLR −3.00）となったので、本項目は採用しない（[strength-stage12-history-carry-stc](../../measurements/strength-stage12/strength-stage12-history-carry-stc.md)）。
 項目5を採用しなかったので、counter move historyとcontinuation historyの持ち越し状態での再生診断（フェーズ10）は行わない。
 
 ### 項目6　補正表の鍵の追加（multi-key correction history）
@@ -233,14 +233,14 @@ Stockfishは、この鍵に当たる材料の鍵を導入後に中立として�
 候補の鍵は、(a) 歩兵と仲人の配置、(b) 先手の歩兵と仲人以外の駒の配置、(c) 後手の歩兵と仲人以外の駒の配置の3つとする。
 (a)はチェスの歩兵の構造に当たる前線の配置、(b)と(c)は色別の非歩兵の鍵に当たる。
 各鍵は駒と升ごとの固定の64ビット値の排他的論理和で表し、着手の適用時に差分更新する。
-診断は[段階8の補正表の再診断](../../measurements/strength-stage8-correction-bench.md)と同じく、探索の進行に沿って表を実際に更新しながら、更新前の表による次の観測の予測誤差を求める。
+診断は[段階8の補正表の再診断](../../measurements/strength-stage8/strength-stage8-correction-bench.md)と同じく、探索の進行に沿って表を実際に更新しながら、更新前の表による次の観測の予測誤差を求める。
 現行の鍵だけの補正に対して、候補の鍵の表を加えた加重和が予測誤差を10%以上改善し、かつ加えた表の非ゼロ補正の参照率が5%以上である鍵だけを候補に残す。
 10%と5%は段階8が補正表の採否に使った基準である。
 加重和の重みは等分とし、最適化はSPSAに委ねる。
 残った鍵について、futility pruningを判定した静かな手のうち、枝刈りの可否が現行と変わった手の割合を発動率として数え、5%に届かなければ見送る。
 
 フェーズ1の診断で、3つの鍵はいずれも、単独で加えても3つを合わせて加えても、共通の評価集合の平均絶対誤差を0.20〜7.77%悪化させた。
-改善率の基準10%に届かないので、本項目は見送る（[strength-stage12-activation-diag](../../measurements/strength-stage12-activation-diag.md)）。
+改善率の基準10%に届かないので、本項目は見送る（[strength-stage12-activation-diag](../../measurements/strength-stage12/strength-stage12-activation-diag.md)）。
 
 ### 項目7　null move pruningの前提条件（null move preconditions）
 
@@ -258,7 +258,7 @@ Stockfishは、β打ち切りが予想されるノード（cut node）に限っ�
 発動率の分母は現行の条件でnull moveを試すノード、分子は新しい条件で試さなくなるノードとする。
 
 実装はbench深さ6の総ノード数を0.67%減らし、NPSは段階開始版と同程度だった。
-STCは上限の3,000ペア（2,853有効ペア、得点率50.0%）でLLR −2.81の`pending`となり、停止時点のLLRが負なので、本項目は採用しない（[strength-stage12-null-move-stc](../../measurements/strength-stage12-null-move-stc.md)）。
+STCは上限の3,000ペア（2,853有効ペア、得点率50.0%）でLLR −2.81の`pending`となり、停止時点のLLRが負なので、本項目は採用しない（[strength-stage12-null-move-stc](../../measurements/strength-stage12/strength-stage12-null-move-stc.md)）。
 
 ### 項目8　PVノードでの置換表の打ち切りの停止（TT cutoff conditions）
 
@@ -274,12 +274,12 @@ StockfishとYaneuraOuは打ち切りを非PVノードに限っている。
 発動率の分母はPVノード、分子は置換表の値で打ち切っていたPVノードとする。
 
 実装はbench深さ6の総ノード数を1.47%減らし、NPSは段階開始版と同程度だった。
-STCは1,346有効ペアで`H0`（得点率49.1%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-pv-tt-cutoff-stc](../../measurements/strength-stage12-pv-tt-cutoff-stc.md)）。
+STCは1,346有効ペアで`H0`（得点率49.1%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-pv-tt-cutoff-stc](../../measurements/strength-stage12/strength-stage12-pv-tt-cutoff-stc.md)）。
 
 ## 測定の所要時間
 
 段階8の実績（同時対局数16）では、STCが1ペアあたり約9.5秒、LTCが約27秒であった。
-`H1`に達した測定は、STCが約420〜500ペア（約1.1〜1.3時間）、LTCが約720〜830ペア（約5.5〜6.2時間）であった（[SEE pruningのLTC](../../measurements/strength-stage8-see-capture-ltc.md)、[補正表のLTC](../../measurements/strength-stage8-correction-ltc.md)）。
+`H1`に達した測定は、STCが約420〜500ペア（約1.1〜1.3時間）、LTCが約720〜830ペア（約5.5〜6.2時間）であった（[SEE pruningのLTC](../../measurements/strength-stage8/strength-stage8-see-capture-ltc.md)、[補正表のLTC](../../measurements/strength-stage8/strength-stage8-correction-ltc.md)）。
 したがって、1項目が段階8と同程度の効果でSTCとLTCを通れば約7時間、STCで早く`H0`となれば2時間程度で済む。
 一方、真の差が5 Elo前後の項目は、[docs/guides/sprt.md](../../guides/sprt.md)のWald近似でLTCの判定まで約4,200ペアを要し、1ペア27秒ではLTCだけで約32時間になる。
 8項目の合計は、効果の大きさにより約1日から約2週間の幅を持つ。
@@ -290,7 +290,7 @@ STCは1,346有効ペアで`H0`（得点率49.1%、LLR −2.95）となったの�
 ### フェーズ1　診断
 
 段階開始版で、各項目の発動率と、項目4の失う良い結果の割合を測る。
-項目1は標準の時間制御の予算で、項目5は段階開始版のSTCとLTCの保存記録から着手列を取り、置換表と表を保持したまま`go nodes`で再生して数える（[段階6の置換表の対局再生診断](../../measurements/strength-stage6-tt-replay.md)の手順）。
+項目1は標準の時間制御の予算で、項目5は段階開始版のSTCとLTCの保存記録から着手列を取り、置換表と表を保持したまま`go nodes`で再生して数える（[段階6の置換表の対局再生診断](../../measurements/strength-stage6/strength-stage6-tt-replay.md)の手順）。
 結果は測定記録`strength-stage12-activation-diag`へ残し、見送る項目と項目4の`N`を本書へ書く。
 後のフェーズの項目は、直前に採用した構成で発動率を測り直してから実装する。
 

@@ -18,14 +18,14 @@
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年9月21日に起案して同日に着手し、2026年9月23日に完了した。
 結論は、7項目のいずれも採用せず、教師の構成は基本の教師のままとし、後続の[先読み教師値](lookahead-teacher.md)の学習PSTの再学習を利用者の決定で採用した、である。
-土台は、[土台の費用の診断](../../measurements/strength-stage9-foundation-diag.md)と[利き数の表の速度](../../measurements/strength-stage9-table-bench.md)により、更新の費用を下げた後も段階開始版の0.816倍で条件0.90倍を満たさず見送りとし、代替の近傍の構成も0.293倍で項目の条件を満たさないので、項目2から項目7は見送りとした。表の実装はブランチ `strength-stage9-table`、118列の診断は `strength-stage9-diag-b` に保持し、masterへは入れない。
-教師は、[診断A](../../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../../measurements/strength-stage9-human-signal.md)、[診断C](../../measurements/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../../measurements/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
-項目1は、基本の教師と[先読み教師](../../measurements/lookahead-teacher-shelter-training.md)のどちらでも露出局面への寄与が事前の基準に届かず、見送りとした。
+土台は、[土台の費用の診断](../../measurements/strength-stage9/strength-stage9-foundation-diag.md)と[利き数の表の速度](../../measurements/strength-stage9/strength-stage9-table-bench.md)により、更新の費用を下げた後も段階開始版の0.816倍で条件0.90倍を満たさず見送りとし、代替の近傍の構成も0.293倍で項目の条件を満たさないので、項目2から項目7は見送りとした。表の実装はブランチ `strength-stage9-table`、118列の診断は `strength-stage9-diag-b` に保持し、masterへは入れない。
+教師は、[診断A](../../measurements/strength-stage9/strength-stage9-depth-sensitivity.md)、[診断B](../../measurements/strength-stage9/strength-stage9-human-signal.md)、[診断C](../../measurements/strength-stage9/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../../measurements/strength-stage9/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
+項目1は、基本の教師と[先読み教師](../../measurements/lookahead-teacher/lookahead-teacher-shelter-training.md)のどちらでも露出局面への寄与が事前の基準に届かず、見送りとした。
 評価の償却は探索木を変えずに採用し、フェーズ4とフェーズ5の道具（付け直し、来歴ファイル、実戦棋譜の変換、実戦開始の生成）と、先読み教師値および混合比の上書きの学習器の変更は、後続の設計の基盤として残す。
 見送った項目1の評価側の実装と追加特徴の学習経路はコードから外した。
 フェーズ7（世代3の生成と同時学習）は、採用した項目がないので実行しない。
-進捗指標は、先読み教師の重みとSPSAの係数を含む最終構成で、[段階開始版](../../measurements/strength-stage9-elo200.md)に対して+16.7 Elo（95%区間[−16.9, +50.7]）、[HaChu](../../measurements/strength-stage9-hachu-elo200.md)に対して+449.4 Elo（95%区間[+389.6, +534.7]、HaChu側の異常5件は反則負けとして算入）であった。
-[118列の発火率診断](../../measurements/strength-stage9-activation-diag-b.md)と教師データ（`data/strength-stage9/`）は後続の研究の入力として保持する。
+進捗指標は、先読み教師の重みとSPSAの係数を含む最終構成で、[段階開始版](../../measurements/strength-stage9/strength-stage9-elo200.md)に対して+16.7 Elo（95%区間[−16.9, +50.7]）、[HaChu](../../measurements/strength-stage9/strength-stage9-hachu-elo200.md)に対して+449.4 Elo（95%区間[+389.6, +534.7]、HaChu側の異常5件は反則負けとして算入）であった。
+[118列の発火率診断](../../measurements/strength-stage9/strength-stage9-activation-diag-b.md)と教師データ（`data/strength-stage9/`）は後続の研究の入力として保持する。
 
 ## 目的
 
@@ -42,7 +42,7 @@
 逆引きは1回あたり約22 nsから33 nsかかり、現行の1ノードの時間は約0.47 μsなので、低下を10%以内に収めるには逆引きを1評価あたり2回程度までしか使えない。
 [土台の調査](../../research/evaluation-infrastructure-survey.md)によれば、先行エンジンは同じ項目を費用なしで得ているのではなく、Fairy-Stockfishは評価の中で駒ごとの利きを1回ずつ作って複数の項で使い回し、やねうら王は着手のたびに升ごとの利き数の表を差分更新し、HaChuは1手ごとに利きマップを作り直して手生成と共有する。
 minaseにはこのどれもない。
-自己対局の測定では、持ち時間を2倍にすると棋力が216 Elo上がった（[sensitivity-time2x](../../measurements/sensitivity-time2x.md)）。
+自己対局の測定では、持ち時間を2倍にすると棋力が216 Elo上がった（[sensitivity-time2x](../../measurements/evaluation-gen1/sensitivity-time2x.md)）。
 同じ持ち時間で探索できるノード数はNPSに比例するので、NPSがr倍になることを持ち時間がr倍になることと同じとみなし、棋力が持ち時間の対数に比例すると仮定すると、損失は216×log2(1/r) Eloと換算できる。
 たとえばr=0.85ではlog2(1/0.85)が約0.234なので約51 Eloであり、同じ式で0.9倍は約33 Elo、0.8倍は約70 Eloに当たる。
 この換算は本書が目安として置く近似である。
@@ -565,7 +565,7 @@ Gだけで判定すると、両方の群で予測が悪化していても、悪�
 - [将棋の教師生成と学習ツールの調査](../../research/teacher-generation-prior-art.md)。やねうら王の教師生成の道具GenSfenと、NNUEの学習器tataraについて、開始局面の取り方、実戦棋譜の教師への変換、付け直した値を別ファイルで持つ方式、利きの入力特徴、および検証の指標を記す。
 - [lishogi対局 yO464dzl の敗因分析](../../research/lishogi-game-yO464dzl-loss-analysis.md)。検証局面と再現手順を記す。
 - [HaChuとMinaseの勝ち方・負け方](../../research/hachu-minase-playing-style-analysis.md)。
-- 前提とする測定の記録。[発火率の診断](../../measurements/strength-stage9-activation-diag.md)、[逆引きの費用の測定](../../measurements/strength-stage9-cost-bench.md)、[項目1の学習と診断](../../measurements/strength-stage9-shelter-training.md)、[教師値の成分ごとの残差の診断](../../measurements/teacher-quality-residual-diag.md)。
+- 前提とする測定の記録。[発火率の診断](../../measurements/strength-stage9/strength-stage9-activation-diag.md)、[逆引きの費用の測定](../../measurements/strength-stage9/strength-stage9-cost-bench.md)、[項目1の学習と診断](../../measurements/strength-stage9/strength-stage9-shelter-training.md)、[教師値の成分ごとの残差の診断](../../measurements/strength-stage9/teacher-quality-residual-diag.md)。
 - [評価関数](evaluation.md)と[評価関数の世代反復](evaluation-gen1.md)。教師値の定義、ノード数100,000の根拠、および教師値の質を次期の候補とした結論を記す。
 - [Factorization Machineによる2駒関係評価](factorization-machine.md)。学習で関係を表す方式が検証損失を改善しながら対局で劣った実績を記す。
 - [やねうら王 long_effect.cpp](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/extra/long_effect.cpp)。利き数の表と走りの方向の表の差分更新の先行実装である。

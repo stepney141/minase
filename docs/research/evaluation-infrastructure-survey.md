@@ -3,7 +3,7 @@
 ## 結論
 
 [評価項目の調査](evaluation-terms-survey.md)が順位づけた10段階の評価項目について、先行エンジンがその項目をどのデータ構造の上で、どの時点の費用として得ているかを調べ、minaseの現状と照合した。
-調査の動機は、[棋力向上段階9](../plans/archived/strength-stage9.md)が王の周囲の攻撃域と守備駒を升ごとの利きの逆引きで実装し、毎秒の探索ノード数が82.2%下がったことである（[費用の測定](../measurements/strength-stage9-cost-bench.md)）。
+調査の動機は、[棋力向上段階9](../plans/archived/strength-stage9.md)が王の周囲の攻撃域と守備駒を升ごとの利きの逆引きで実装し、毎秒の探索ノード数が82.2%下がったことである（[費用の測定](../measurements/strength-stage9/strength-stage9-cost-bench.md)）。
 
 結論は4点ある。
 
@@ -138,11 +138,11 @@ Cが持つのは升ごとの利きの数であり、利いている駒の識別�
 | 量 | 値 | 出典 |
 |---|---|---|
 | `sliding_control` 1回 | 中央値6.21 ns | masterの測定記録 magic-bitboard-prototype |
-| `attackers_to_by` 1回 | 約22 nsから33 ns | [strength-stage9-cost-bench](../measurements/strength-stage9-cost-bench.md) |
+| `attackers_to_by` 1回 | 約22 nsから33 ns | [strength-stage9-cost-bench](../measurements/strength-stage9/strength-stage9-cost-bench.md) |
 | 1ノードの時間 | 約0.47 μs | 同上 |
-| 静的評価1回（追加特徴なし） | ノードの時間の0.24% | [strength-stage6-eval-cost-bench](../measurements/strength-stage6-eval-cost-bench.md) |
+| 静的評価1回（追加特徴なし） | ノードの時間の0.24% | [strength-stage6-eval-cost-bench](../measurements/strength-stage6/strength-stage6-eval-cost-bench.md) |
 | 静的交換評価の逆引きの空振り | 8方向の90.1%に該当する走り駒がいない | [movegen-speedup-3](../plans/movegen-speedup-3.md) |
-| 置換表の照合 | 約58 ns | [movegen-speedup-2-diagnostics-depth5](../measurements/movegen-speedup-2-diagnostics-depth5.md) |
+| 置換表の照合 | 約58 ns | [movegen-speedup-2-diagnostics-depth5](../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md) |
 
 マジックビットボードの試作は、横の利きで現行比−11.26%、斜めの利きで−9.26%であり、関数が大きくなってインライン展開が失われたことが原因だった（masterの調査メモ magic-bitboard-feasibility）。
 `unsafe` は不許可であり、PEXTの命令は通常の関数から呼べない。
@@ -189,7 +189,7 @@ minaseで土台Bを使うには、評価値の保存や、王の近傍へ届き�
 この2つにより、探索の側の費用を減らす余地がある。
 この余地も未測定である。
 
-持ち時間2倍で+216 Eloという感度（[sensitivity-time2x](../measurements/sensitivity-time2x.md)）を目安にすると、速度が0.9倍になる損失は約33 Elo、0.8倍は約70 Elo、0.7倍は約111 Eloに当たる。
+持ち時間2倍で+216 Eloという感度（[sensitivity-time2x](../measurements/evaluation-gen1/sensitivity-time2x.md)）を目安にすると、速度が0.9倍になる損失は約33 Elo、0.8倍は約70 Elo、0.7倍は約111 Eloに当たる。
 土台と特徴を合わせた速度の低下は、特徴がもたらす棋力の向上がこの損失を上回る範囲に収める必要がある。
 
 ## 設計への含意

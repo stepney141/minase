@@ -43,18 +43,18 @@ PSTは、局面進行度を固定すると各駒の寄与を加算するため�
 成りを伴う着手の前後で静的評価を比べると、評価を下げる手はS0の368件中1件からBの294件へ増え、評価差の中央値は+477から−361センチポーンへ変わった。
 駒1枚を除いた前後の評価差から導いた駒価値はS0とBで±4センチポーン以内で一致し、変化は主に敵陣奥の升の評価へ現れた。
 これは、取られる侵入と安全な侵入をPSTが区別できず、両方の升を低く評価したという仮説と整合する。
-少ない標本への追加学習や、駒価値の変化を抑える駒除去損失の制約も関与し得るため、表現力だけを原因として特定するには追加の比較が必要である。[診断](../measurements/search-aware-pst-diagnostics.md)、[学習記録](../measurements/search-aware-pst-training.md)
+少ない標本への追加学習や、駒価値の変化を抑える駒除去損失の制約も関与し得るため、表現力だけを原因として特定するには追加の比較が必要である。[診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)、[学習記録](../measurements/search-aware-evaluation/search-aware-pst-training.md)
 
 PSTより表現力を増したモデルの対局結果は、学習と補正量の設定によって異なった。
 2026年8月の世代1NNUEは、初期化を修正して学習した後も、同じデータで再学習したPSTに対し、固定100,000ノードで得点率46.1%、時間制御で29.6%となった。
 2駒関係を低ランクで表すFactorization MachineであるFMをPSTへ加えた実験では、教師誤差が改善し、速度費用も約1.2%だったが、補正倍率1の短時間対局の得点率は、実験開始時のPSTに対して19.6%だった。
 一方、倍率1/4のFMは同じ基準に対して短時間54.63%、長時間53.40%で両検定を通過した。
-この結果は、表現の追加と、その寄与の大きさを分けて評価する必要性を示す。[NNUE固定ノード](../measurements/nnue-gen1-nodes100k.md)、[NNUE時間制御](../measurements/nnue-gen1-tc.md)、[FM診断](../measurements/fm-candidate-diagnostics.md)、[FM採否](../measurements/fm-adoption-stc.md)[^fm]
+この結果は、表現の追加と、その寄与の大きさを分けて評価する必要性を示す。[NNUE固定ノード](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[NNUE時間制御](../measurements/evaluation-gen1/nnue-gen1-tc.md)、[FM診断](../measurements/factorization-machine/fm-candidate-diagnostics.md)、[FM採否](../measurements/factorization-machine/fm-adoption-stc.md)[^fm]
 
 駒の種類と相対位置を使う局所2駒表の計画は、実装前の診断で終了した。
 診断では、PSTを使う浅い探索の誤選択6根を、探索内の見落としと、局所配置の評価不足に事前規則で分類した。
 6根すべてが前者に入り、後者は実装開始の条件である3根に届かなかったため、表の実装と学習は行われていない。
-この停止判断の根拠は対象標本の分類であり、局所2駒表の棋力は未検証である。[準備記録](../measurements/relative-pair-prep.md)
+この停止判断の根拠は対象標本の分類であり、局所2駒表の棋力は未検証である。[準備記録](../measurements/relative-pair-eval/relative-pair-prep.md)
 
 ### 有望な方法
 
@@ -95,7 +95,7 @@ PSTより表現力を増したモデルの対局結果は、学習と補正量�
 探索局面を用いたPST再学習では、通常の自己対局局面だけを使う対照Aと、半数を探索局面へ置換する候補Bを比較した。
 Aは採用版S0に対して得点率41.8%、BはAに対して6.9%で、ともに短時間対局で不採用となった。
 AとBは共通の28,947組からそれぞれ2局面、計57,894局面を使い、教師予算、初期値、更新回数をそろえていた。
-この比較は当該分布変更の失敗を示すが、A自体も弱くなったため、探索局面の追加だけで再学習全体の悪化を説明できない。[A対S0](../measurements/search-aware-pst-a-vs-base-stc.md)、[B対A](../measurements/search-aware-pst-b-vs-a-stc.md)、[学習](../measurements/search-aware-pst-training.md)
+この比較は当該分布変更の失敗を示すが、A自体も弱くなったため、探索局面の追加だけで再学習全体の悪化を説明できない。[A対S0](../measurements/search-aware-evaluation/search-aware-pst-a-vs-base-stc.md)、[B対A](../measurements/search-aware-evaluation/search-aware-pst-b-vs-a-stc.md)、[学習](../measurements/search-aware-evaluation/search-aware-pst-training.md)
 
 Bは学習対象に近い局面への適合と引き換えに、通常局面を悪化させた。
 次の表では、実対局から取った根局面と、そこからの探索中に採取した局面を分け、静的評価と深い教師の一致を比べている。
@@ -109,7 +109,7 @@ Bは学習対象に近い局面への適合と引き換えに、通常局面を�
 | 教師が安定した203根の平均選択損失 | 26.4 | 50.5 |
 
 平均誤差は静的評価から教師値を引いた値であり、選択損失は候補集合の教師最善値と選んだ手の教師値との差である。
-この結果は、探索局面の誤差だけを直しても、探索全体の判断が改善するとは限らないことを示す。[最終診断](../measurements/search-aware-pst-diagnostics.md)
+この結果は、探索局面の誤差だけを直しても、探索全体の判断が改善するとは限らないことを示す。[最終診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)
 
 教師の安定性は、1,000,000ノードと10,000,000ノードの両予算で、候補手間の評価差を比べて判定する。
 両予算で差の絶対値が142.1センチポーン未満なら「小差」とし、同じ手を同閾値以上の差で支持し、差の変動も同閾値以内なら「安定した支持」とする。
@@ -120,7 +120,7 @@ Bは学習対象に近い局面への適合と引き換えに、通常局面を�
 この件数は計画の続行条件を満たしたが、教師が明確に区別した誤りの範囲は限られていた。
 同じPSTを使う探索の予算を増やしても、共通する評価の盲点は残り得る。
 この盲点の留保は、深い診断教師が候補手を識別した場合にも残る。
-さらに、探索採取局面の9.5%は教師が詰みを示したため通常値の回帰から除かれ、危険な局面全体を学んだ結果ではない。[教師確認](../measurements/search-aware-teacher-confirmation.md)、[データ生成](../measurements/search-aware-data.md)
+さらに、探索採取局面の9.5%は教師が詰みを示したため通常値の回帰から除かれ、危険な局面全体を学んだ結果ではない。[教師確認](../measurements/search-aware-evaluation/search-aware-teacher-confirmation.md)、[データ生成](../measurements/search-aware-evaluation/search-aware-data.md)
 
 ### 有望な方法
 
@@ -141,7 +141,7 @@ NNUEと将棋の駒関係表の両方に先例がある。
 候補自身の提案手、基準の提案手、教師の提案手を同じ予算で比較し、安定した差がある例を学習に追加する。
 教師の順位が予算で変わる根は、確定した悪手として強く学ばせず、追加診断へ回す。
 PST再学習後の診断では、比較可能な245根のうち42根で教師の判定が不安定だった。
-この群での採用版S0の平均選択損失は194.0センチポーンに達したため、追加の教師予算を配る対象として残す。[最終診断](../measurements/search-aware-pst-diagnostics.md)
+この群での採用版S0の平均選択損失は194.0センチポーンに達したため、追加の教師予算を配る対象として残す。[最終診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)
 候補の誤りに応じた教師予算の重点配分と、この不安定な根の追加診断は、2026年9月27日に起案した3計画（[静止探索の出力](../plans/archived/qsearch-output-training.md)、[順位の損失](../plans/archived/rank-loss-training.md)、[関係補正項](../plans/archived/relational-correction.md)）のいずれも扱わず、担当計画が未定の後続課題として残す。
 順位の損失の計画は、安定した差のある候補手の組を順位の損失へ加えるので、安定した例の追加の一部だけを担う。
 
@@ -160,7 +160,7 @@ PST再学習後の診断では、比較可能な245根のうち42根で教師の
 
 生成費用も小標本で測る。
 棋力向上段階9の測定では、10,000,000ノードで1局面6.7秒を要し、対象全体の再評価を10並列でも約66日と見積もった。
-所要時間は使用する版と局面分布に依存するため、新しい教師についても、識別できる誤りと生成費用を小標本で測って予算を決める。[深さ感度の測定](../measurements/strength-stage9-depth-sensitivity.md)
+所要時間は使用する版と局面分布に依存するため、新しい教師についても、識別できる誤りと生成費用を小標本で測って予算を決める。[深さ感度の測定](../measurements/strength-stage9/strength-stage9-depth-sensitivity.md)
 
 ## 3. 学習目標と更新方法
 
@@ -173,11 +173,11 @@ PST再学習後の診断では、比較可能な245根のうち42根で教師の
 Bのモデル選択損失は0.530834から0.518454へ下がったが、その集合の半数は追加した探索局面と同種であり、手の選択と棋力は悪化した。
 40エポック、2,280回の更新後も損失は下がり続け、収束したとは言えない。
 同時に、学習を延長すれば棋力が回復する根拠もない。
-量子化、RustとPythonの一致、駒除去差分の検査は必要な整合性確認だが、学習目的の妥当性を保証しない。[学習](../measurements/search-aware-pst-training.md)、[診断](../measurements/search-aware-pst-diagnostics.md)
+量子化、RustとPythonの一致、駒除去差分の検査は必要な整合性確認だが、学習目的の妥当性を保証しない。[学習](../measurements/search-aware-evaluation/search-aware-pst-training.md)、[診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)
 
 教師の混合比を変更する実験では、探索値と対局結果を混ぜた従来の教師から、探索値だけの教師へ切り替えてPSTを追加学習した。
 教師への損失は改善したが、学習開始時のPSTに対する短時間123ペアの得点率は28.0%で不採用となり、10エポックでも未収束だった。
-元の混合比で同量だけ追加学習する対照がないため、勝敗を混ぜなかったことだけが原因とは確定できない。[学習](../measurements/teacher-mixing-ratio-training.md)、[対局](../measurements/teacher-mixing-ratio-100-stc.md)
+元の混合比で同量だけ追加学習する対照がないため、勝敗を混ぜなかったことだけが原因とは確定できない。[学習](../measurements/teacher-mixing-ratio/teacher-mixing-ratio-training.md)、[対局](../measurements/teacher-mixing-ratio/teacher-mixing-ratio-100-stc.md)
 
 ### 有望な方法
 
@@ -248,7 +248,7 @@ $\sigma$をロジスティック関数、$K_g>0$を教師値の換算尺度、$K
 このため、教師尺度の較正を変えるだけでも、枝刈りの閾値と評価の関係が変わり得る。
 混合比や尺度を同時に変えず、補正の縮小も候補選択用の集合で決める。
 教師尺度を共有する候補どうしの比較は要因を分離できるが、新しいデータと尺度の更新を含む採用版との比較は工程全体の比較であり、個別の寄与を分離できない。
-FMの実験で有効だった補正倍率1/4を比較候補に含め、新しいモデルでも通常局面と候補手順位への影響を測る。[尺度の診断](../measurements/teacher-mixing-ratio-training.md)
+FMの実験で有効だった補正倍率1/4を比較候補に含め、新しいモデルでも通常局面と候補手順位への影響を測る。[尺度の診断](../measurements/teacher-mixing-ratio/teacher-mixing-ratio-training.md)
 
 静かな手による評価差の大きさは、まず診断指標として扱う。
 非捕獲手でも射線や支えが変わるため、差を一律に小さくする正則化は必要な戦術判断も消し得る。
@@ -260,7 +260,7 @@ FMの実験で有効だった補正倍率1/4を比較候補に含め、新しい
 6根は教師が安定した203根のうち損失142.1センチポーン以上を選んだ標本であり、誤り全体の無作為標本ではない。
 12子局面の再探索値は保存記録と一致し、名目深さ5〜6手までの駒の損得の差で事前分類が決まった。
 ただし、名目深さは全枝の到達深さではなく、6根のうち1根では教師推奨手の駒の損得がその時点で408センチポーン、読み筋末端でも98センチポーン悪かった。
-通常の読み筋には静止探索の手も含まれないため、この分類だけで枝刈りの原因や取り合いの決着を確定しない。[準備記録](../measurements/relative-pair-prep.md)、[保存データ](../measurements/relative-pair-prep/residual_pv.json)
+通常の読み筋には静止探索の手も含まれないため、この分類だけで枝刈りの原因や取り合いの決着を確定しない。[準備記録](../measurements/relative-pair-eval/relative-pair-prep.md)、[保存データ](../measurements/relative-pair-eval/relative-pair-prep/residual_pv.json)
 
 探索順、削減前後の深さ、枝を省いた理由、返した値の種類、静止探索で値を決めた局面を対応付ける。
 疑われる処理を1種類ずつ変え、同じ深さを完了する条件で機構を調べた後、固定ノードと固定時間で効果を測る。
@@ -285,7 +285,7 @@ FMの実験で有効だった補正倍率1/4を比較候補に含め、新しい
 採否では、評価の計算費用と探索木の変化を分ける。
 BはS0に比べ、深さ8でNPSが約2.5倍でも、ノード数が約12倍、所要時間が4.01秒から18.83秒へ増えた。
 一方、全盤の利き表は速度が0.816倍となって見送られた結果であり、利きを使うモデルの棋力を否定した実験ではない。
-速度条件は既存計画に従い、最終判断は同じ持ち時間で行う。[探索局面の診断](../measurements/search-aware-pst-diagnostics.md)、[利き表の測定](../measurements/strength-stage9-table-bench.md)
+速度条件は既存計画に従い、最終判断は同じ持ち時間で行う。[探索局面の診断](../measurements/search-aware-evaluation/search-aware-pst-diagnostics.md)、[利き表の測定](../measurements/strength-stage9/strength-stage9-table-bench.md)
 
 評価急落の診断では、同じ側の視点で、急落前の同一局面から実際の手と代案を比較する。
 完全な最善応手によるゲーム理論的価値と、有限探索の値や実戦の勝敗は区別し、後で負けたという理由だけで前の全局面を負けと学ばせない。

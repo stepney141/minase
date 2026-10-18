@@ -21,4 +21,4 @@
 
 - [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「学習の構成」節と「教師不足の判定の検証結果と次期候補」節。
 - 修正コミット`eca5276`（分岐`nnue-gen1`、rebase後は`82aa0e6`）。
-- [measurements/nnue-gen1-nodes100k.md](../measurements/nnue-gen1-nodes100k.md) と [measurements/nnue-gen1-tc.md](../measurements/nnue-gen1-tc.md)。
+- [measurements/evaluation-gen1/nnue-gen1-nodes100k.md](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md) と [measurements/evaluation-gen1/nnue-gen1-tc.md](../measurements/evaluation-gen1/nnue-gen1-tc.md)。

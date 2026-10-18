@@ -5,7 +5,7 @@
 本マイルストーンでは、通常探索と静止探索の手の順序付け（move ordering。同じノードの合法手を有望な順に並べて探索する手順）について、損失の所在を測ったうえで1項目ずつ改める。
 αβ探索では、良い手を先に読むほどβカット（ある手の結果が相手の許容上限βに達したため、残りの手を読まずに済ませること）が早く起こり、同じ時間でより深く読める。
 現行の順序は、置換表（探索済み局面の結果を保存して再利用する表）の記録手、捕獲手、killer手、残りの静かな手の順である。静かな手とは相手の駒を取らない手をいい、killer手は根からの同じ手数のノードで直前にβカットを起こした静かな手をいう。捕獲手はMVV-LVA順（取る駒の価値の降順、取る側の駒の価値の昇順）に捕獲履歴（capture history、捕獲手の成績を学習する表）の補正を加えた順で並び、残りの静かな手はhistory（βカットを起こした静かな手の統計）の降順で並ぶ。
-βカットのうち最初に探索した手によるものの割合（初手βカット率）は、現行masterの`bench`で深さ5が66.4%、深さ8が70.1%であり（[move-ordering-baseline-bench](../../measurements/move-ordering-baseline-bench.md)）、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
+βカットのうち最初に探索した手によるものの割合（初手βカット率）は、現行masterの`bench`で深さ5が66.4%、深さ8が70.1%であり（[move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)）、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
 ただしこの割合はβカットを件数で集計するので、βカットの件数の83〜87%を占める残り深さ1のノード（[2026年9月27日の監査](../../audits/beta-cutoff-first-move-2026-09-27.md)の値）に支配される。残り深さ1でβカットが遅れたときに失う部分木と、残り深さ5で遅れたときに失う部分木は大きさが違うはずだが、件数の指標はこの差を区別できず、費用の分布はまだ測っていない。
 そこで最初のフェーズでは、βカットした手より前に読んだ手の部分木ノード数の和（先行費用W）を残り深さ別・先頭手の種別別に数える診断を入れ、損失の所在をノード数で測る。
 候補は8件あり、静かな手がβカットしたときにも探索済み捕獲手の捕獲履歴を減点する変更を先頭に、実装費用が小さい順に1主張1測定で短時間（STC）と長時間（LTC）の自己対局GSPRT（勝敗から強さの差を逐次判定する統計検定）にかける。
@@ -14,7 +14,7 @@
 ## 状態
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
-完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../../measurements/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../../measurements/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../../measurements/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
+完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../../measurements/move-ordering/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../../measurements/move-ordering/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../../measurements/move-ordering/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
 
 ## 目的
 
@@ -36,7 +36,7 @@
 history表とLMRの現行設計は[棋力向上段階5](strength-stage5.md)、捕獲履歴と表の持ち越しは[棋力向上段階12](strength-stage12.md)と[再調整](search-revival-spsa.md)が所有し、本書はそれらの表の更新規則と寿命だけを変える。
 探索統計のフィーチャ`search-stats`は[デバッグ機能の整備](debugging-tools.md)が定め、本書の診断はこの統計に項目を加える形で行う。
 SEEの契約（経由升を持つ手と獅子の捕獲規則に依存する交換列は判定不能とする）は[棋力向上段階8](strength-stage8.md)と[合法手生成の高速化](movegen-speedup.md)が定める。
-対局再生による診断の手順は[段階6の置換表の対局再生診断](../../measurements/strength-stage6-tt-replay.md)に従う。
+対局再生による診断の手順は[段階6の置換表の対局再生診断](../../measurements/strength-stage6/strength-stage6-tt-replay.md)に従う。
 教訓[不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../../lessons/retune-rejected-pruning-before-discarding.md)と[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../../lessons/recall-loss-does-not-bound-recursive-pruning.md)を前提にする。
 
 ## 設計判断
@@ -48,7 +48,7 @@ SEEの契約（経由升を持つ手と獅子の捕獲規則に依存する交�
 | 診断の実施方法 | 診断は1本の`search-stats`パッチで行い、候補1から7の発動率をその1本で数える。1回の探索で完結する項目は`bench`の深さ6で、表の持ち越しに依存する候補4と候補6は保存済みの対局の着手列に沿った再生で数える。`bench`は局面ごとに置換表とhistory表を消すので、持ち越しの効果を見られないからである。再生では、持ち越す表と根ごとに初期化する影の表の2組を同じ探索の観測で更新し、順序を決める時点で両方の表から順序を求めて比べる。計数はワーカーごとに保持し、診断パッチを当てても固定深さの総ノード数と探索結果が変わらないことを確かめる。速度は診断コードを外した構成で測り、追加のSEEや影の表を含む診断版のNPSを候補の費用とみなさない。 |
 | 候補の順序 | 候補1（捕獲履歴の減点の拡張）、候補2（先頭捕獲のSEE判定によるkiller手の前置）、候補3（静止探索への捕獲履歴）、候補4（捕獲履歴の持ち越し）、候補5（静かな手の同点破り）、候補6（counter move historyとcontinuation historyの再診断）、候補7（根の整列）、候補8（malusの再測定）の順に進める。順位は実装費用と既存の土台で決めた。候補1は探索済み捕獲手の列と表が既にあり、新しいSEEも手生成も要らない。候補2は追加のSEEがノードあたり最大1回で済む。候補3と候補4は候補1で確定した捕獲履歴の更新規則を前提にするので、その後に置く。候補6は表2枚で約70 MBを使い、診断を通っても表の大きさと初期化の費用の設計が別に必要になる。候補7と候補8は効果の根拠が最も薄い。効果の大きさの順ではない。 |
 | 候補の単位 | 2026年10月10日の利用者の決定により、候補1から候補8までを順に実装し、全候補を含む構成を1回のSTCと1回のLTCで判定する。起案時の方式（1候補を1主張とし、候補ごとにSTCとLTCで判定する）は、候補1のSTCが約2時間で820ペアを消化してもLLRが+0.08にとどまったことを受けて、測定時間の節約のためにやめた。この方式では、測定で分かるのは組合せ全体の効果だけであり、どの候補が効いたかは特定できない。全体が`H0`となった場合に、候補を1つずつ外した版との対局で帰属を調べるかどうかは、その時点で利用者が決める。候補は引き続き1候補1コミットで実装し、`git revert`で個別に外せる形を保つ。対象深さ、SEEの走査範囲、減点の尺度、群内の比較キーなどの変種は、実装前に診断で1つへ絞る。 |
-| 基準と採否 | 全候補を含む構成を候補、段階開始版（master `b784fe5`。コードは`cd081f4`と同一）を基準として、`move-ordering-all-stc`と`move-ordering-all-ltc`の名前で測る。途中でmasterが進んでも基準は変えない。STCで`H1`、または上限3,000ペアでLLRが0以上ならLTCへ進め、LTCが`H1`かつ異常0件なら全候補を採用する。候補1だけを対象に始めたSTC（[move-ordering-capture-malus-stc](../../measurements/move-ordering-capture-malus-stc.md)）は、820ペアでLLR +0.08の判定保留のまま利用者の判断で停止し、再開しない。 |
+| 基準と採否 | 全候補を含む構成を候補、段階開始版（master `b784fe5`。コードは`cd081f4`と同一）を基準として、`move-ordering-all-stc`と`move-ordering-all-ltc`の名前で測る。途中でmasterが進んでも基準は変えない。STCで`H1`、または上限3,000ペアでLLRが0以上ならLTCへ進め、LTCが`H1`かつ異常0件なら全候補を採用する。候補1だけを対象に始めたSTC（[move-ordering-capture-malus-stc](../../measurements/move-ordering/move-ordering-capture-malus-stc.md)）は、820ペアでLLR +0.08の判定保留のまま利用者の判断で停止し、再開しない。 |
 | 発動の事前確認 | 各候補は、実装前の診断で発動率（同じ判断の時点で現行と候補の判断を並べて比べ、判断が変わった割合）が5%以上であることを確かめる。候補1から候補5までの発動率はフェーズ1で段階開始版について測った。候補2から候補5までは、機構が候補1の減点と独立であり、候補3と候補4は候補1の更新規則を前提にすると定めたうえで候補1が積み上げに含まれているので、積み上げた構成での測り直しは省く。候補7と候補8は、候補5までを積み上げた構成で診断してから実装する。5%は段階5以降の探索の設計書が発動の事前確認に使ってきた基準であり、分母と分子は候補ごとに各論の節で定める。発動率だけでは進める根拠にならない候補には、各論の節で追加の条件を定める。候補2では回避できる先行費用が追加のSEEと静かな手の生成の費用を上回ること、候補5では同点群の成功手の順位が改善すること、候補7では前回反復の情報によって新しい最善手の順位が改善することを条件とする。値の非ゼロ率のような指標は補助として記録するが、判定には使わない。基準に届かない候補は見送りを提案し、対局で測るかどうかは利用者が決める。 |
 | 過去の不採用との関係 | 候補2は、段階12の項目2（全捕獲手のSEEを生成時に計算し、負の捕獲手を静かな手の後ろへ回す段、STC `H0`）の狭い変種であり、再測定として扱う。項目2の敗因が追加のSEEの費用（NPS約−9.7%）か順序の変更そのものかは記録から判定できないので、候補2では費用を最大1回のSEEに抑え、負の捕獲手はkiller手の後ろ、静かな手の前に置く。候補8は段階5のmalus（STC上限到達時のLLR −1.58）の再測定であり、教訓に従って係数を既存の係数と調整し直してから判定する。候補6は段階12が「項目5を採用した場合」に定めた再診断であり、持ち越しが再調整で採用されたので条件が成立している。 |
 | 新しい係数 | 候補1、候補2、候補3、候補5は係数を追加しない。候補4の減衰率は`params.rs`に置き、採否測定の中では動かさず、採用後に次のSPSAの調整セッションで調整する。係数ごとにGSPRTで候補値を比べると1件のLTCに数十時間を要するからである。候補8の加点と減点の尺度も、2026年10月10日の利用者の決定（全候補を実装してから1回で測る）に従い、既定の100%のまま採否測定にかけ、SPSAによる調整は候補4の減衰率とまとめて次の調整セッションで行う。 |
@@ -77,7 +77,7 @@ SEEの契約（経由升を持つ手と獅子の捕獲規則に依存する交�
 
 ## 各候補
 
-フェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering-diag.md)）による各候補の判断は次のとおりである。発動率は`bench`深さ6の値であり、候補4と候補6は対局再生のSTC相当の値である。
+フェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering/move-ordering-diag.md)）による各候補の判断は次のとおりである。発動率は`bench`深さ6の値であり、候補4と候補6は対局再生のSTC相当の値である。
 
 | 候補 | 発動率 | 判断 |
 |---|---:|---|
@@ -87,7 +87,7 @@ SEEの契約（経由升を持つ手と獅子の捕獲規則に依存する交�
 | 候補4　捕獲履歴の持ち越し | 10.4% | 進める。 |
 | 候補5　静かな手の同点破り | 12.4% | 進める。成功手の前進（538件、幅計12,694）が後退（393件、幅計9,879）を上回る。 |
 | 候補6　counter move historyとcontinuation historyの再診断 | 44.6%、61.3% | 再診断を通過した。設計は別の設計書に委ねる。 |
-| 候補7　根の整列 | 交替した反復のノード比53.6%（STC）、53.8%（LTC） | 進める（実装済み）。新しい最善手の順位の合計は候補の整列の方が小さいが、反復ごとには後になる反復がやや多い（[move-ordering-root-diag](../../measurements/move-ordering-root-diag.md)）。 |
+| 候補7　根の整列 | 交替した反復のノード比53.6%（STC）、53.8%（LTC） | 進める（実装済み）。新しい最善手の順位の合計は候補の整列の方が小さいが、反復ごとには後になる反復がやや多い（[move-ordering-root-diag](../../measurements/move-ordering/move-ordering-root-diag.md)）。 |
 | 候補8　malusの再測定 | 影の表で順序が変わるノード92.3%（`bench`深さ6） | 進める（実装済み）。減深量の変更は0.6〜3.6%で、負のhistoryによる増深はLMRを計算した手の3.9〜20.0%で動く。尺度の係数は既定100%のままとし、SPSAによる調整は採否測定の後に回す。 |
 
 ### 候補1　静かな手のβカット時の捕獲履歴の減点（capture history malus）
@@ -172,7 +172,7 @@ late move pruningは静かな手の順位に基づいて読む手を制限する
 根では、手を通常の順序付けキーで整列したうえで置換表の記録手を先頭に置き、さらに直前の反復の最善手をその前に置く。
 2手目以降の手は零窓で読み、値がαを超えてβを下回れば全窓で読み直す。
 順序の効果として最も大きいと見込むのは、最善手が交替する反復で新しい最善手を早く見つけてαを上げ、残りの零窓探索のノード数を抑えることである。先に読んだ部分木が置換表とhistoryを更新する効果は他の反復にもあり得るが、本候補の診断は交替する反復の利得を優先して測る。
-旧版の診断では、直前の反復と最善手が異なる反復の割合は深さ5から8で33.3%、33.8%、32.1%、27.9%だった（[strength-stage6-iteration-diag](../../measurements/strength-stage6-iteration-diag.md)）。
+旧版の診断では、直前の反復と最善手が異なる反復の割合は深さ5から8で33.3%、33.8%、32.1%、27.9%だった（[strength-stage6-iteration-diag](../../measurements/strength-stage6/strength-stage6-iteration-diag.md)）。
 本候補は、直前の最善手を先頭に保ち、残りの手を前回反復の各手の部分木ノード数の降順で並べる。
 零窓で得た値は上界または下界であり正確な評価値ではないので、評価値では並べない。部分木ノード数は前回反復で実際に払った探索量であり、値の種類を区別せずに使える。
 
@@ -192,8 +192,8 @@ Stockfishは加点と減点を、それぞれ上限付きの深さの一次式�
 
 ## 測定の所要時間
 
-段階8の実績（同時対局数16）では、STCが1ペアあたり約9.5秒、LTCが約27秒であり、`H1`に達した測定はSTCが約420〜500ペア（約1.1〜1.3時間）、LTCが約720〜830ペア（約5.5〜6.2時間）であった（[SEE pruningのLTC](../../measurements/strength-stage8-see-capture-ltc.md)、[補正表のLTC](../../measurements/strength-stage8-correction-ltc.md)）。
-段階5のmalusのSTCは、上限の3,000ペアに達するまで約8時間を要した（同時対局数14、[strength-stage5-malus-stc](../../measurements/strength-stage5-malus-stc.md)）。
+段階8の実績（同時対局数16）では、STCが1ペアあたり約9.5秒、LTCが約27秒であり、`H1`に達した測定はSTCが約420〜500ペア（約1.1〜1.3時間）、LTCが約720〜830ペア（約5.5〜6.2時間）であった（[SEE pruningのLTC](../../measurements/strength-stage8/strength-stage8-see-capture-ltc.md)、[補正表のLTC](../../measurements/strength-stage8/strength-stage8-correction-ltc.md)）。
+段階5のmalusのSTCは、上限の3,000ペアに達するまで約8時間を要した（同時対局数14、[strength-stage5-malus-stc](../../measurements/strength-stage5/strength-stage5-malus-stc.md)）。
 現行の評価関数はFMの補正で約14%遅いので、同じペア数でも時間は段階8よりやや長くなる。
 したがって、1候補が明確な効果を持てばSTCとLTCで約7時間、STCで早く`H0`となれば2時間程度、上限まで走る判定保留では8時間を超える。
 真の差が5 Elo前後の候補は、LTCだけで約32時間になり得る。
@@ -247,8 +247,8 @@ Stockfishは加点と減点を、それぞれ上限付きの深さの一次式�
 
 - [手の順序付けの改善余地に関する調査と議論](../../research/move-ordering-discussion.md)（2026年10月9日）。本書の候補と順位の根拠である。
 - [最初の手でβカットが起きる割合の原因調査](../../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日）。
-- [move-ordering-baseline-bench](../../measurements/move-ordering-baseline-bench.md)。起案時点の探索統計。
+- [move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)。起案時点の探索統計。
 - Stockfish `src/movepick.cpp`、`src/search.cpp`、`src/history.h`（コミット17a6c8f1、2026年9月19日取得、GPL-3.0-or-later）: [movepick.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/movepick.cpp)、[search.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp)。
 - Chess Programming Wiki「Move Ordering」: <https://www.chessprogramming.org/Move_Ordering>。
 - [棋力向上段階5](strength-stage5.md)、[棋力向上段階12](strength-stage12.md)、[不採用だった探索部の改良の再調整](search-revival-spsa.md)。
-- 測定記録: [strength-stage5-malus-stc](../../measurements/strength-stage5-malus-stc.md)、[strength-stage12-bad-captures-stc](../../measurements/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../../measurements/strength-stage12-bad-captures-bench.md)、[strength-stage5-cmh-bench](../../measurements/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../../measurements/strength-stage5-continuation-bench.md)、[strength-stage6-iteration-diag](../../measurements/strength-stage6-iteration-diag.md)。
+- 測定記録: [strength-stage5-malus-stc](../../measurements/strength-stage5/strength-stage5-malus-stc.md)、[strength-stage12-bad-captures-stc](../../measurements/strength-stage12/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../../measurements/strength-stage12/strength-stage12-bad-captures-bench.md)、[strength-stage5-cmh-bench](../../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../../measurements/strength-stage5/strength-stage5-continuation-bench.md)、[strength-stage6-iteration-diag](../../measurements/strength-stage6/strength-stage6-iteration-diag.md)。

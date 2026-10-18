@@ -24,7 +24,7 @@ T01では、合成目的関数と利得較正の模擬比較が、係数の件�
 係数表は2659bfbで26個、c3ca7c0で30個、a2e35d7で35個に増えたため、単独で実行すると `left: 35, right: 22` で即座にpanicする。
 さらに、階段状の係数として扱う添字10は、22個の表では NullMoveBase を指していたが、現在は ReverseFutilityMargin を指しており、表の並びにも依存している。
 
-この結果、[spsa.md](../../plans/archived/spsa.md) の完了条件（289行、合成目的関数の試験を通すこと）と、[spsa-gain-simulation.md](../../measurements/spsa-gain-simulation.md) の再現コマンド（49行、143行）は、どちらも満たせない状態にある。
+この結果、[spsa.md](../../plans/archived/spsa.md) の完了条件（289行、合成目的関数の試験を通すこと）と、[spsa-gain-simulation.md](../../measurements/spsa-gain-calibration/spsa-gain-simulation.md) の再現コマンド（49行、143行）は、どちらも満たせない状態にある。
 これは削除ではなく修理の候補である。
 係数表の読み込みと件数・名前の照合を削り、22個の (名前, 最小, 最大) をテスト内の定数として持たせる。
 その表は simulation.rs の20〜43行の `MEASURED` に既にあり、spsa.md:278 も「係数は22個、うち1個は階段状」と事前に定めている。
@@ -49,12 +49,12 @@ T03では、完了した計画の測定スクリプトに同梱されたPython�
 
 削除対象は次の6ファイル、120件である。
 
-- [docs/measurements/qsearch-output-diagnostics/test_diagnose.py](../../measurements/qsearch-output-diagnostics/test_diagnose.py)（25件）
-- [docs/measurements/qsearch-output-leaf-sample/test_leaf_sample.py](../../measurements/qsearch-output-leaf-sample/test_leaf_sample.py)（21件）
-- [docs/measurements/qsearch-output-search-trace/test_trace_roots.py](../../measurements/qsearch-output-search-trace/test_trace_roots.py)（35件）
-- [docs/measurements/relational-correction-prep/test_phase0.py](../../measurements/relational-correction-prep/test_phase0.py)（28件）
-- [docs/measurements/relational-correction-prep/prep/test_phase3.py](../../measurements/relational-correction-prep/prep/test_phase3.py)（8件）
-- [docs/measurements/relational-correction-prep/prep/test_prep.py](../../measurements/relational-correction-prep/prep/test_prep.py)（3件）
+- [docs/measurements/qsearch-output-training/qsearch-output-diagnostics/test_diagnose.py](../../measurements/qsearch-output-training/qsearch-output-diagnostics/test_diagnose.py)（25件）
+- [docs/measurements/qsearch-output-training/qsearch-output-leaf-sample/test_leaf_sample.py](../../measurements/qsearch-output-training/qsearch-output-leaf-sample/test_leaf_sample.py)（21件）
+- [docs/measurements/qsearch-output-training/qsearch-output-search-trace/test_trace_roots.py](../../measurements/qsearch-output-training/qsearch-output-search-trace/test_trace_roots.py)（35件）
+- [docs/measurements/relational-correction/relational-correction-prep/test_phase0.py](../../measurements/relational-correction/relational-correction-prep/test_phase0.py)（28件）
+- [docs/measurements/relational-correction/relational-correction-prep/prep/test_phase3.py](../../measurements/relational-correction/relational-correction-prep/prep/test_phase3.py)（8件）
+- [docs/measurements/relational-correction/relational-correction-prep/prep/test_prep.py](../../measurements/relational-correction/relational-correction-prep/prep/test_prep.py)（3件）
 
 これらを収集・実行する設定はない。
 `conftest.py`、pytestの設定、CIはなく、唯一の標準の実行経路である pst-training.md:22 の `unittest discover -s tools/train/tests` は docs/ を探さない。
@@ -70,11 +70,11 @@ T03では、完了した計画の測定スクリプトに同梱されたPython�
 文書はこれらのテストを、測定時点の検証の記録として参照している。
 削除する場合は、次の5箇所を、テストが残るコミット（`test_diagnose.py`、`test_leaf_sample.py`、`test_trace_roots.py` は0a0171f、`test_phase0.py` は7988c42、`prep/` の2ファイルはa0b666e）への参照に書き換える。
 
-- [qsearch-output-diagnostics/README.md](../../measurements/qsearch-output-diagnostics/README.md) の188行の検証コマンド
-- [relational-correction-prep/prep/README.md](../../measurements/relational-correction-prep/prep/README.md) の72行の検証コマンド
-- [qsearch-output-search-trace.md](../../measurements/qsearch-output-search-trace.md) の200行の保存物一覧
-- [qsearch-output-leaf-sample.md](../../measurements/qsearch-output-leaf-sample.md) の128行の保存物一覧
-- [relational-correction-prep.md](../../measurements/relational-correction-prep.md) の261行の保存物一覧
+- [qsearch-output-diagnostics/README.md](../../measurements/qsearch-output-training/qsearch-output-diagnostics/README.md) の188行の検証コマンド
+- [relational-correction-prep/prep/README.md](../../measurements/relational-correction/relational-correction-prep/prep/README.md) の72行の検証コマンド
+- [qsearch-output-search-trace.md](../../measurements/qsearch-output-training/qsearch-output-search-trace.md) の200行の保存物一覧
+- [qsearch-output-leaf-sample.md](../../measurements/qsearch-output-training/qsearch-output-leaf-sample.md) の128行の保存物一覧
+- [relational-correction-prep.md](../../measurements/relational-correction/relational-correction-prep.md) の261行の保存物一覧
 
 完了済みの train-tools-layout.md は経緯の記録なので書き換えない。
 凍結して残す案は採らない。

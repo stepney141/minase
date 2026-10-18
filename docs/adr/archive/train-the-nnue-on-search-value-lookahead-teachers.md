@@ -25,12 +25,12 @@ NNUEの学習は、探索値だけを使う混合比λ=1.0の先読み教師を�
 線形の経路と非線形の経路で教師を分ける案は、同じ合計出力の一部をそれぞれ別の教師へ近づけようとすると、両方が共通に表せる方向で寄与が相殺するので採らなかった（[PSTとFMの同時学習](../../plans/archived/pst-fm-joint-training.md)と同じ判断）。
 tataraの勝率モデル損失は、既定のオフセットと尺度がチェスの評価値の分布向けであり、中将棋での値を推定する根拠がないので採らなかった（[学習器の速度の調査](../../research/nnue-trainer-speed.md)）。
 やねうら王の公式手順のように教師局面を静止探索の末端へ置き換える案は採らなかった（[教師生成の先行事例](../../research/teacher-generation-prior-art.md)）。
-元の局面と末端の局面をそれぞれ深く探索した値は静かな局面でも平均185.8センチポーン異なり（[記録](../../measurements/qsearch-output-leaf-sample.md)）、元の教師値を末端へ移す近似の根拠がないからである。
+元の局面と末端の局面をそれぞれ深く探索した値は静かな局面でも平均185.8センチポーン異なり（[記録](../../measurements/qsearch-output-training/qsearch-output-leaf-sample.md)）、元の教師値を末端へ移す近似の根拠がないからである。
 
 ## 結果
 
 教師用のKを教師の分類ごとに推定する規則と、出力のKを基準の重みファイルの値に固定する規則は、[教師データを来歴ファイルで分類する](classify-teacher-data-by-provenance-files.md)と[学習する評価関数の出力Kを固定する](fix-the-output-k-of-trained-weights.md)が扱う。
 `minase-trainer nnue train`の`--lambda-override`の既定値は1.0であり、PST、FM、および同時学習の学習器が来歴のλを使うのとは既定が異なる。
-初代のネットは、検証損失がどちらの入力特徴集合でもエポック1で最良になり、その後は訓練損失だけが下がった（[学習の記録](../../measurements/nnue-replacement-training.md)）。
+初代のネットは、検証損失がどちらの入力特徴集合でもエポック1で最良になり、その後は訓練損失だけが下がった（[学習の記録](../../measurements/nnue-replacement/nnue-replacement-training.md)）。
 この頭打ちは[学習率スケジュール](../../plans/archived/nnue-lr-schedule.md)の計画が扱う。
 λ=1.0の支持は条件付きなので、教師の混合比を変える提案は、NNUEの候補を対局で測って決める必要がある。

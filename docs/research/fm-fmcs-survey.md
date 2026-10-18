@@ -74,7 +74,7 @@ fmcsはコンソールアプリであり、wineでは疑似端末（`script`）�
 | 受け方の玉将と太子、攻め方の奔王が玉将に当たる図 | 王手なしとして即座に不詰。 |
 
 試した問題は[tests/](fm-fmcs-survey/tests/)にある。
-付属の作品集150問を1問5分で解かせた測定は[fmcsによる付属作品集150問の解答測定](../measurements/fmcs-tsume-collection.md)にある。
+付属の作品集150問を1問5分で解かせた測定は[fmcsによる付属作品集150問の解答測定](../measurements/adhoc/fmcs-tsume-collection.md)にある。
 
 ## 利用条件
 

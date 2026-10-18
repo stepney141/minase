@@ -18,7 +18,7 @@ Minaseでは、置換表をデータ競合のない原子型の16バイトエン
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了。2026年8月13日に起案し、2026年8月22日に着手して、2026年8月23日に完了した。
 結論は、静止探索の置換表利用と最深ワーカー採用・深さスキップを組み合わせた第2版が、時間制御で`Threads=2`が`Threads=1`に対してElo +62.1（95%信頼区間［+41.5, +83.0］）を示したため、GSPRTが上限500ペアで判定保留であった点を規定からの逸脱として明記したうえで採用したことである。
-根拠は [measurements/lazy-smp-v2-threads2-tc.md](../../measurements/lazy-smp-v2-threads2-tc.md) にあり、単一ワーカーの静止探索の置換表は [measurements/qsearch-tt-nodes100k.md](../../measurements/qsearch-tt-nodes100k.md) で採用した。
+根拠は [measurements/lazy-smp/lazy-smp-v2-threads2-tc.md](../../measurements/lazy-smp/lazy-smp-v2-threads2-tc.md) にあり、単一ワーカーの静止探索の置換表は [measurements/lazy-smp/qsearch-tt-nodes100k.md](../../measurements/lazy-smp/qsearch-tt-nodes100k.md) で採用した。
 製品の既定ワーカー数は1を維持する。
 次期候補は、`Threads=4`対2の時間制御GSPRTを必要になった時点で採否測定の節と同じ手順で行うことである。
 
@@ -108,7 +108,7 @@ Lazy SMPの採否は、着手時点で完成している単一ワーカー探索
 周期を4種類で循環させるのは、ワーカー番号をそのまま周期にすると多数ワーカーで深さ1しか探索しない補助ワーカーが生じるためであり、5本目以降の補助ワーカーは既存の周期を重複して受け持つ。
 飛ばした反復の分だけ補助ワーカーは主ワーカーより先の深さへ進み、主ワーカーが同じ深さへ到達したときに共有置換表の記録がカットオフと指し手順序付けに使われる。
 
-この方式は、初版の多様化（補助ワーカーが主ワーカーと同じ深さ列を探索し、ルート合法手列をワーカー番号だけ回転する）が棋力に転化しなかった原因の診断から導いた（[measurements/lazy-smp-v1-diversification-bench.md](../../measurements/lazy-smp-v1-diversification-bench.md)）。
+この方式は、初版の多様化（補助ワーカーが主ワーカーと同じ深さ列を探索し、ルート合法手列をワーカー番号だけ回転する）が棋力に転化しなかった原因の診断から導いた（[measurements/lazy-smp/lazy-smp-v1-diversification-bench.md](../../measurements/lazy-smp/lazy-smp-v1-diversification-bench.md)）。
 初版では、各ワーカーの指し手順序付けが共有置換表に記録された最善手（置換表手）を先頭へ入れ替えるため、主ワーカーが根の置換表エントリを書いた後は補助ワーカーも回転した並びを捨てて主ワーカーと同じ手から同じ深さを探索し、補助ワーカーは主ワーカーを遅れてなぞる複製になって新しい情報をほとんど供給しなかった。
 さらに、単一ワーカーの深さ5探索では、置換表を照会する残り深さ1以上のノードが全ノードの約2%であり、残りは置換表を使わない静止探索と深さ0ノードであったため、置換表共有が減らせる部分木はごく一部であった（教訓は [lessons/qsearch-dag-without-tt.md](../../lessons/qsearch-dag-without-tt.md)）。
 2026年8月22日の診断では、補助ワーカーが同じ深さを時間的に先行して探索している間だけ主ワーカーのノードが減り（深さ5で22%減）、補助ワーカーが1つ深い反復にいる間は逆に補助ワーカー側が主ワーカーの記録から利益を得ることが分かった。
@@ -162,7 +162,7 @@ scopeの終了後に外部停止を再確認して停止理由を上書きする
 総ノード数は`AtomicU64`で数え、着手を盤面へ適用する直前に共有カウンタへ反映する。
 ノード上限がある場合は`compare_exchange`で1ノードずつ予約し、Nノードを超える予約を拒否して`NodeLimit`を設定する。
 ノード上限があるときの1024ノード単位の一括予約は、単一の共有カウンタでは`Finished.nodes`と決定性を両立できないため採らない。
-第2版のフェーズ7では、停止フラグとの偽共有を避けるキャッシュライン分離と、上限なし時の1024ノード単位の局所反映を試したが、ワーカーあたりNPSの改善がゲート（3%）に達しなかったため不採用とし、初版の毎ノード反映を維持する（[measurements/lazy-smp-counter-nps-gate.md](../../measurements/lazy-smp-counter-nps-gate.md)）。
+第2版のフェーズ7では、停止フラグとの偽共有を避けるキャッシュライン分離と、上限なし時の1024ノード単位の局所反映を試したが、ワーカーあたりNPSの改善がゲート（3%）に達しなかったため不採用とし、初版の毎ノード反映を維持する（[measurements/lazy-smp/lazy-smp-counter-nps-gate.md](../../measurements/lazy-smp/lazy-smp-counter-nps-gate.md)）。
 静止探索の置換表を導入した後は、2ワーカーと4ワーカーのワーカーあたりNPSが単一ワーカーとほぼ同じであり、初版で観測した競合による低下は解消している。
 `Progress.nodes`と`Finished.nodes`は送信時点のチーム総数であり、`Finished.nodes`は最後の`Progress.nodes`以上かつ（上限があれば）N以下である。
 
@@ -196,7 +196,7 @@ USIの`Threads`とCECPの`cores`は同じ探索開始引数へ写し、プロト
 
 `Threads=1`では共有置換表への競合がないため、現行の固定深さと固定ノード数の完全再現契約を維持する。
 原子型への置換後も、置換規則、容量、スロット番号、および世代幅を変えず、既存benchの総ノード数を一致させる。
-第2版のフェーズ6は置換規則と静止探索を意図的に変えるため、その採用コミットのbench総ノード数（[measurements/qsearch-tt-nodes100k.md](../../measurements/qsearch-tt-nodes100k.md)）を以後の基準とし、フェーズ7と8は`Threads=1`でこの基準と一致しなければならない。
+第2版のフェーズ6は置換規則と静止探索を意図的に変えるため、その採用コミットのbench総ノード数（[measurements/lazy-smp/qsearch-tt-nodes100k.md](../../measurements/lazy-smp/qsearch-tt-nodes100k.md)）を以後の基準とし、フェーズ7と8は`Threads=1`でこの基準と一致しなければならない。
 
 `Threads>1`では、固定深さと固定ノード数でも共有置換表の公開順がオペレーティングシステム（OS）のスケジューリングに依存する。
 このため、`docs/guides/sprt.md`の完全再現契約を`Threads=1`に限定し、並列時には合法手、予算上限、イベント順序、および停止後の全joinだけを決定的な契約とする。
@@ -210,7 +210,7 @@ USIの`Threads`とCECPの`cores`は同じ探索開始引数へ写し、プロト
 固定ノード数では計算資源の増加による時間短縮を棋力へ反映できず、固定深さでは両者の探索深さが同じになるため、いずれも主たる採否条件には使わない。
 
 時間制御の水準は測定前に固定する。
-初版の測定に使った`time=10000+100,byoyomi=200`は1手あたり約0.4秒、到達深さ4〜5であり、補助ワーカーが先行する余地がほとんどない（[measurements/lazy-smp-threads2-tc.md](../../measurements/lazy-smp-threads2-tc.md)）。
+初版の測定に使った`time=10000+100,byoyomi=200`は1手あたり約0.4秒、到達深さ4〜5であり、補助ワーカーが先行する余地がほとんどない（[measurements/lazy-smp/lazy-smp-threads2-tc.md](../../measurements/lazy-smp/lazy-smp-threads2-tc.md)）。
 第2版の採否測定は`time=30000+300,byoyomi=500`（初手のsoft limitは約1.2秒、到達深さ5〜6）、同時対局数8、`--max-pairs 500`で行い、結果を見てから水準を変えない。
 500ペアで判定保留の場合は不採用（判定保留）として固定局数のEloと信頼区間を記録し、設計へ戻る。
 時間制御GSPRTの前に固定深さbenchのゲートを置く。
@@ -266,7 +266,7 @@ USIの`Threads`、CECPの`smp=1`と`cores`、およびbenchのワーカー数と
 固定局面benchで`Threads=1`、2、4の経過時間とノード毎秒を測定し、オーバーサブスクリプションがない条件を確定する。
 次に、既定ワーカー数だけが異なる測定コミットを作り、時間制御GSPRTで`Threads=2`対1を判定する。
 H1の場合だけ`Threads=4`対2へ進み、各結果を docs/measurements/ の測定記録へ残す。
-初版の結果は [measurements/lazy-smp-v1-bench-depth4.md](../../measurements/lazy-smp-v1-bench-depth4.md) と [measurements/lazy-smp-threads2-tc.md](../../measurements/lazy-smp-threads2-tc.md) にあり、固定深さの経過時間が短縮せず時間制御でも判定保留であったため、第2版のフェーズ6〜8へ進んだ。
+初版の結果は [measurements/lazy-smp/lazy-smp-v1-bench-depth4.md](../../measurements/lazy-smp/lazy-smp-v1-bench-depth4.md) と [measurements/lazy-smp/lazy-smp-threads2-tc.md](../../measurements/lazy-smp/lazy-smp-threads2-tc.md) にあり、固定深さの経過時間が短縮せず時間制御でも判定保留であったため、第2版のフェーズ6〜8へ進んだ。
 
 ### フェーズ6　静止探索の置換表と置換規則（第2版）
 
@@ -276,14 +276,14 @@ H1の場合だけ`Threads=4`対2へ進み、各結果を docs/measurements/ の�
 照会と記録には現在の`ply`を渡し、最後の王駒捕獲の`MATE - ply`は既存の変換で往復させる。
 このフェーズは単一ワーカーの探索結果を変えるため、bench署名を新しい値として記録し、採否は`--each nodes=100000`のコミット対コミットGSPRT（`--max-pairs 3000`）で判定する。
 受入試験は、同一キーの浅い値の保持、同深さの置換、過去世代の置換、異なるキーの規則、静止探索の3バウンド、手なしの往復、詰み値、最大ply葉の非記録を列挙する。
-GSPRTはH1に到達し、採用した（[measurements/qsearch-tt-nodes100k.md](../../measurements/qsearch-tt-nodes100k.md)）。
+GSPRTはH1に到達し、採用した（[measurements/lazy-smp/qsearch-tt-nodes100k.md](../../measurements/lazy-smp/qsearch-tt-nodes100k.md)）。
 
 ### フェーズ7　共有カウンタの配置と一括予約（第2版）
 
 総ノード数を停止フラグと別のキャッシュラインへ分離し、ノード上限がないときは各ワーカーの局所カウンタから1024ノードごとに加算する。
 フェーズ6採用コミットの`Threads=1`固定深さbench署名は不変でなければならない。
 採否は、フェーズ6採用コミットと本フェーズのコミットで`minase dev bench --depth 5 --threads T --repetitions 5`をT=1、2、4について同時負荷なしで順に実行し、ワーカーあたりNPS（中央値NPSをTで割った値）がT=2と4で3%以上改善し、T=1の中央値NPSの低下が2%以内であることとする。棋力測定は行わない。
-実測の結果このゲートに達せず不採用となり、計数方式を毎ノード反映へ巻き戻した（[measurements/lazy-smp-counter-nps-gate.md](../../measurements/lazy-smp-counter-nps-gate.md)）。
+実測の結果このゲートに達せず不採用となり、計数方式を毎ノード反映へ巻き戻した（[measurements/lazy-smp/lazy-smp-counter-nps-gate.md](../../measurements/lazy-smp/lazy-smp-counter-nps-gate.md)）。
 
 ### フェーズ8　最深ワーカーの採用と深さスキップ（第2版）
 
@@ -291,7 +291,7 @@ GSPRTはH1に到達し、採用した（[measurements/qsearch-tt-nodes100k.md](.
 補助ワーカーの反復列を周期付きの深さスキップへ変更し、ルート回転を撤去し、いずれかのワーカーの深さ上限完了をチーム停止条件に加える。
 USIは`Finished.depth`が最後に出力した深さを超える場合に最終`info`を出す。
 採否測定の節に定めた固定深さbenchのゲートを通過した場合だけ、`DEFAULT_THREADS`だけを2へ変えた候補コミットで`time=30000+300,byoyomi=500`の時間制御GSPRT（`--max-pairs 500`）を行う。
-benchゲートは深さ5で26.5%、深さ6で17.9%の短縮で通過し（[measurements/lazy-smp-v2-bench-gate.md](../../measurements/lazy-smp-v2-bench-gate.md)）、時間制御GSPRTは上限500ペアで判定保留ながらElo +62.1（95%信頼区間［+41.5, +83.0］）であったため採用した（[measurements/lazy-smp-v2-threads2-tc.md](../../measurements/lazy-smp-v2-threads2-tc.md)）。
+benchゲートは深さ5で26.5%、深さ6で17.9%の短縮で通過し（[measurements/lazy-smp/lazy-smp-v2-bench-gate.md](../../measurements/lazy-smp/lazy-smp-v2-bench-gate.md)）、時間制御GSPRTは上限500ペアで判定保留ながらElo +62.1（95%信頼区間［+41.5, +83.0］）であったため採用した（[measurements/lazy-smp/lazy-smp-v2-threads2-tc.md](../../measurements/lazy-smp/lazy-smp-v2-threads2-tc.md)）。
 
 ## 検証
 

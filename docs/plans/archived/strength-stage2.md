@@ -20,7 +20,7 @@ fail-low（反復の評価値が前回を大きく下回り、最善手が崩れ
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 本マイルストーンは2026年9月2日に起案して同日に着手し、2026年9月4日に完了した。
 予算式、反復継続の判断、および`position`再生の差分適用を採用し、停止理由の記録を段階開始版として残した。
-予算式は[STC](../../measurements/strength-stage2-budget-stc.md)と[LTC](../../measurements/strength-stage2-budget-ltc.md)、反復継続の判断は[STC](../../measurements/strength-stage2-iteration-stc.md)と[LTC](../../measurements/strength-stage2-iteration-ltc.md)がいずれも`H1`であり、[秒読みの煙試験](../../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件、[固定自己対局](../../measurements/strength-stage2-elo200.md)は+113.9 Elo、[HaChu戦](../../measurements/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録した。
+予算式は[STC](../../measurements/strength-stage2/strength-stage2-budget-stc.md)と[LTC](../../measurements/strength-stage2/strength-stage2-budget-ltc.md)、反復継続の判断は[STC](../../measurements/strength-stage2/strength-stage2-iteration-stc.md)と[LTC](../../measurements/strength-stage2/strength-stage2-iteration-ltc.md)がいずれも`H1`であり、[秒読みの煙試験](../../measurements/strength-stage2/strength-stage2-byoyomi-smoke.md)は時間切れ0件、[固定自己対局](../../measurements/strength-stage2/strength-stage2-elo200.md)は+113.9 Elo、[HaChu戦](../../measurements/strength-stage2/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録した。
 
 ## 目的
 
@@ -54,7 +54,7 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 | 秒読み | 予算式の秒読み項（`0.8·byoyomi`）は変えず、秒読みの比較項目は設けない。標準のSTCとLTCに秒読みはなく発動を確認できないこと、および上位計画が秒読みで起こると記した「主時間が早く尽きて以後は最小予算」が加算でも同じ機構で起きていることが分かったためである。秒読みの安全性は煙試験で確認する。 |
 | 停止理由の記録 | エンジンは`bestmove`の直前に`info string stop <理由>`を出力し、反復完了ごとの`info`行に経過時間`time`を加える。ハーネスは手ごとの記録に停止理由と最後に完了した反復の経過時間を保存し、保存形式の版を上げる。停止理由は事実の記録であり、機能比較のスイッチではない。保存記録の思考時間から予算式を再計算して停止理由を推定し続ける案は、式をスクリプトへ複製し変更後に古くなるため、本書の診断限りとする。 |
 | 段階開始版 | 停止理由の記録を含むフェーズ1の完了コミットを段階開始版とし、以後の採否測定はすべてこれを起点にする。記録の追加は候補側だけの`info`出力を増やし、その出力時間は時計から引かれるので、段階1の完了コミットを基準にすると予算式単独の効果を測れない。フェーズ1は探索挙動を変えないことをbenchの総ノード数で確認する。 |
-| `position`再生の差分適用 | 安全性の修正として採用する。ハーネスは`position`送信直後から計時し、エンジンは全手を2回再生するため、固定費が着手数に比例して増え、2,860手で約65msに達する。速度としてはLTCの1手予算の1%未満だが、[反復継続の判断のSTC](../../measurements/strength-stage2-iteration-stc.md)で、2,800手を超える対局の残り時間120msの局面でこの固定費が安全余裕30msを超えて時間切れが1件生じた。履歴の接頭辞が一致する`position`では差分の着手だけを解析して原子的に適用し、固定費を手数に依存しない大きさへ下げる。探索の挙動は変えないので、benchの総ノード数の一致で確認し、段階ゲートのGSPRTに含めて判定する。安全余裕を広げる案は、予算そのものを変えて棋力へ影響するため採らない。 |
+| `position`再生の差分適用 | 安全性の修正として採用する。ハーネスは`position`送信直後から計時し、エンジンは全手を2回再生するため、固定費が着手数に比例して増え、2,860手で約65msに達する。速度としてはLTCの1手予算の1%未満だが、[反復継続の判断のSTC](../../measurements/strength-stage2/strength-stage2-iteration-stc.md)で、2,800手を超える対局の残り時間120msの局面でこの固定費が安全余裕30msを超えて時間切れが1件生じた。履歴の接頭辞が一致する`position`では差分の着手だけを解析して原子的に適用し、固定費を手数に依存しない大きさへ下げる。探索の挙動は変えないので、benchの総ノード数の一致で確認し、段階ゲートのGSPRTに含めて判定する。安全余裕を広げる案は、予算そのものを変えて棋力へ影響するため採らない。 |
 | 未変更の係数 | 加算の70%、秒読みの80%、`hard = min(4·soft, remaining/4)`は本段階では変えず、段階6の適応的な延長の後に再調整する。 |
 | 未採用コードの扱い | 不採用となった項目はコードに残さず、設計だけを本書に保持する。 |
 
@@ -148,21 +148,21 @@ hard limitによる探索途中の打ち切りは安全弁として残す。
 エンジンの`info string stop`と`time`欄、ハーネスの2欄と形式版の更新、および`clock_profile.py`の表示の置き換えを実装する。
 探索の挙動は変わらないので、benchの総ノード数が段階1の完了コミットと一致することを確認し、GSPRTは行わない。
 この完了コミットを段階開始版とし、段階開始版どうしの10ペアのSTC煙試験で、100ply以降のhard限り打ち切りの割合が本書の推定値（STCで86%以上）と整合することを確認する。
-benchの総ノード数は一致し、[煙試験](../../measurements/strength-stage2-phase1-smoke.md)では100ply以降の79〜92%がhard打ち切りで、捨てられた計算時間の中央値は約50msであった。
+benchの総ノード数は一致し、[煙試験](../../measurements/strength-stage2/strength-stage2-phase1-smoke.md)では100ply以降の79〜92%がhard打ち切りで、捨てられた計算時間の中央値は約50msであった。
 
 ### フェーズ2　予算式
 
 残り手数の見積り、`ply`の経路、および`soft ≤ hard`の不変条件を実装する。
 単体テストで、任意の入力に対して`soft ≤ hard`と`hard ≥ 1ms`が成り立つこと、時計合計が30msを超える入力で`hard ≤ remaining + byoyomi − 30ms`が成り立つこと、見積りが手数について単調非増加であること、および`ply`が`EXPECTED_PLIES`以上なら見積りが`MIN_MOVES`であることを固定する。
 10ペアのSTC煙試験で停止理由の分布を確認してから、段階開始版とのSTCとLTCで採否を決める。
-[煙試験](../../measurements/strength-stage2-budget-smoke.md)で主時間の枯渇が100手目付近から200手目付近へ遅れることを確認し、[STC](../../measurements/strength-stage2-budget-stc.md)と[LTC](../../measurements/strength-stage2-budget-ltc.md)がともに`H1`かつ異常0件となったため採用した。
+[煙試験](../../measurements/strength-stage2/strength-stage2-budget-smoke.md)で主時間の枯渇が100手目付近から200手目付近へ遅れることを確認し、[STC](../../measurements/strength-stage2/strength-stage2-budget-stc.md)と[LTC](../../measurements/strength-stage2/strength-stage2-budget-ltc.md)がともに`H1`かつ異常0件となったため採用した。
 
 ### フェーズ3　反復継続の判断
 
 継続判断の純粋関数を実装し、境界条件を単体テストで固定する。
 10ペアのSTC煙試験でhard限り打ち切りの割合が下がることを確認してから、フェーズ2の採用結果とのSTCとLTCで採否を決める。
 フェーズ2が不採用なら段階開始版を基準にする。
-[煙試験](../../measurements/strength-stage2-iteration-smoke.md)で200手目以降のhard打ち切りが8割前後から2〜3割へ減ることを確認し、[STC](../../measurements/strength-stage2-iteration-stc.md)と[LTC](../../measurements/strength-stage2-iteration-ltc.md)がともに`H1`となったため採用した。
+[煙試験](../../measurements/strength-stage2/strength-stage2-iteration-smoke.md)で200手目以降のhard打ち切りが8割前後から2〜3割へ減ることを確認し、[STC](../../measurements/strength-stage2/strength-stage2-iteration-stc.md)と[LTC](../../measurements/strength-stage2/strength-stage2-iteration-ltc.md)がともに`H1`となったため採用した。
 STCの時間切れ1件は基準側の`position`再生の固定費が原因であり、フェーズ4で対処した。
 
 ### フェーズ4　`position`再生の差分適用
@@ -177,7 +177,7 @@ benchの総ノード数は一致し、2,860手の着手列に対する`position`
 
 採用構成で`time=10000+100,byoyomi=200`の10ペアを走らせ、`time_forfeits`が0件であることを確認する。
 時間切れが出た場合は本段階を完了とせず、原因を調査して不具合として修正し、係数の調整は行わない。
-[煙試験](../../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件であった。
+[煙試験](../../measurements/strength-stage2/strength-stage2-byoyomi-smoke.md)は時間切れ0件であった。
 
 ### フェーズ6　段階ゲート
 
@@ -186,7 +186,7 @@ benchの総ノード数は一致し、2,860手の着手列に対する`position`
 フェーズ4は探索の挙動を変えず、benchの総ノード数の一致と`position`処理時間の計測で確認する。
 最終構成と段階開始版とのSTCとLTCを省略する判断は、LTC1回に半日から1日を要する測定費用を理由とする利用者の決定である。
 反復継続の判断のLTCが`H1`で異常が0件になれば、段階開始版との固定200ペアEloをSTCで、HaChu戦の固定200ペアEloを対等な時間制御で、進捗指標として記録する。
-[固定自己対局](../../measurements/strength-stage2-elo200.md)は+113.9 Elo（95%信頼区間+80.8〜+149.1）、[HaChu戦](../../measurements/strength-stage2-hachu-elo200.md)は+149.3 Elo（95%信頼区間+115.5〜+186.0）であった。
+[固定自己対局](../../measurements/strength-stage2/strength-stage2-elo200.md)は+113.9 Elo（95%信頼区間+80.8〜+149.1）、[HaChu戦](../../measurements/strength-stage2/strength-stage2-hachu-elo200.md)は+149.3 Elo（95%信頼区間+115.5〜+186.0）であった。
 
 ## 検証
 
@@ -216,12 +216,12 @@ benchの総ノード数は一致し、2,860手の着手列に対する`position`
 - [探索部](search.md)：時間管理の現行契約と`SearchLimits`。
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)と[棋力測定の段階ゲート](match-staged-gate.md)：時間制御GSPRTの標準手順。
 - [棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)：実行ディレクトリと保存形式。
-- [持ち時間感度](../../measurements/sensitivity-time2x.md)：持ち時間2倍で+216 Eloという効果の目安。
-- [段階1の最終STC](../../measurements/strength-stage1-final-stc.md)と[最終LTC](../../measurements/strength-stage1-final-ltc.md)：時計再構成に用いた保存記録。
+- [持ち時間感度](../../measurements/evaluation-gen1/sensitivity-time2x.md)：持ち時間2倍で+216 Eloという効果の目安。
+- [段階1の最終STC](../../measurements/strength-stage1/strength-stage1-final-stc.md)と[最終LTC](../../measurements/strength-stage1/strength-stage1-final-ltc.md)：時計再構成に用いた保存記録。
 - [採否測定の条件で改良が発動することを実装前に確認する](../../lessons/measure-feature-activation-before-sprt.md)：停止理由を記録する根拠。
-- [段階開始版の煙試験](../../measurements/strength-stage2-phase1-smoke.md)：記録された停止理由と診断の整合。
-- [予算式の煙試験](../../measurements/strength-stage2-budget-smoke.md)、[STC](../../measurements/strength-stage2-budget-stc.md)、および[LTC](../../measurements/strength-stage2-budget-ltc.md)：予算式の採用根拠。
-- [反復継続の判断の煙試験](../../measurements/strength-stage2-iteration-smoke.md)、[STC](../../measurements/strength-stage2-iteration-stc.md)、および[LTC](../../measurements/strength-stage2-iteration-ltc.md)：反復継続の判断の採用根拠と時間切れの分析。
-- [秒読みの煙試験](../../measurements/strength-stage2-byoyomi-smoke.md)：秒読みの経路の安全確認。
-- [固定自己対局](../../measurements/strength-stage2-elo200.md)と[HaChu戦](../../measurements/strength-stage2-hachu-elo200.md)：段階間の進捗指標。
+- [段階開始版の煙試験](../../measurements/strength-stage2/strength-stage2-phase1-smoke.md)：記録された停止理由と診断の整合。
+- [予算式の煙試験](../../measurements/strength-stage2/strength-stage2-budget-smoke.md)、[STC](../../measurements/strength-stage2/strength-stage2-budget-stc.md)、および[LTC](../../measurements/strength-stage2/strength-stage2-budget-ltc.md)：予算式の採用根拠。
+- [反復継続の判断の煙試験](../../measurements/strength-stage2/strength-stage2-iteration-smoke.md)、[STC](../../measurements/strength-stage2/strength-stage2-iteration-stc.md)、および[LTC](../../measurements/strength-stage2/strength-stage2-iteration-ltc.md)：反復継続の判断の採用根拠と時間切れの分析。
+- [秒読みの煙試験](../../measurements/strength-stage2/strength-stage2-byoyomi-smoke.md)：秒読みの経路の安全確認。
+- [固定自己対局](../../measurements/strength-stage2/strength-stage2-elo200.md)と[HaChu戦](../../measurements/strength-stage2/strength-stage2-hachu-elo200.md)：段階間の進捗指標。
 - [手数に比例する固定費は超長手数の対局で時間切れを起こす](../../lessons/per-move-overhead-grows-with-game-length.md)：`position`再生の差分適用から得た教訓。

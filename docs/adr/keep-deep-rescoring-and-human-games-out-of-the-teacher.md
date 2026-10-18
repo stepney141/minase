@@ -12,9 +12,9 @@
 追加Aは、中盤で王駒が露出した局面の探索値を10,000,000ノードの探索で付け直すものである。
 追加Bは、lishogiの人間どうしの棋譜の局面を、対局結果だけを教師値とする分類として加えるものである。
 追加Cは、棋譜の途中局面から始めた自己対局の局面を加えるものである。
-[教師の構成の記録](../measurements/strength-stage9-teacher-composition.md)のとおり、3つとも基準を満たさなかった。
-追加Aの[診断](../measurements/strength-stage9-depth-sensitivity.md)では、層別の差の差は−5.6センチポーンで、片側95%上端+18.4が基準の−30以下に届かなかった。
-追加Bの[診断](../measurements/strength-stage9-human-signal.md)と追加Cの[診断](../measurements/strength-stage9-human-start-signal.md)では、対数損失の差の片側95%下限がいずれも0を超えなかった。
+[教師の構成の記録](../measurements/strength-stage9/strength-stage9-teacher-composition.md)のとおり、3つとも基準を満たさなかった。
+追加Aの[診断](../measurements/strength-stage9/strength-stage9-depth-sensitivity.md)では、層別の差の差は−5.6センチポーンで、片側95%上端+18.4が基準の−30以下に届かなかった。
+追加Bの[診断](../measurements/strength-stage9/strength-stage9-human-signal.md)と追加Cの[診断](../measurements/strength-stage9/strength-stage9-human-start-signal.md)では、対数損失の差の片側95%下限がいずれも0を超えなかった。
 
 ## 決定
 

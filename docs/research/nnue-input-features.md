@@ -128,27 +128,27 @@ Fairy-Stockfishの切替条件は、多数の変種を1つの実装で扱うた�
 minaseの設計書も、王条件付けに伴う全再計算と、過去の利き数表の実装で探索速度が0.816倍になったことを、追加特徴を初回に採らない理由としている。
 このうち王条件付けの理由は王将と太子の2枚による基準の切替であり、前述のとおり太子は稀なので費用は小さく、残る費用は自玉の移動による全再計算である。
 これは実行時の計算費用についての根拠であり、追加特徴から得られる棋力上の利益が小さいことの証拠ではない。
-0.816倍は当時の特定実装と測定条件での値であり、別の抽出方式の費用を決める値でもない。[設計判断](../plans/archived/nnue-replacement.md#設計判断)、[利き数表の測定](../measurements/strength-stage9-table-bench.md#結論)
+0.816倍は当時の特定実装と測定条件での値であり、別の抽出方式の費用を決める値でもない。[設計判断](../plans/archived/nnue-replacement.md#設計判断)、[利き数表の測定](../measurements/strength-stage9/strength-stage9-table-bench.md#結論)
 
 ## 測定で確認した範囲
 
 minaseでは同じ13,680入力を使う2駒関係のモデルであるFactorization Machineの候補Faが、駒配置を線形に加算するPSTのみの基準に対し、持ち時間60秒と1手0.2秒の加算、260有効ペアの対局で約+65 Eloを得た。
-これは配置入力から有効な関係を学べた実績であり、入力が役に立たないという見方を否定するが、今回のNNUEの十分性までは示さない。[Faの採否測定](../measurements/fm-quarter-current-pst-fa-ltc.md#結論)
+これは配置入力から有効な関係を学べた実績であり、入力が役に立たないという見方を否定するが、今回のNNUEの十分性までは示さない。[Faの採否測定](../measurements/fm-quarter-current-pst/fm-quarter-current-pst-fa-ltc.md#結論)
 
 過去の世代1NNUEは、同じデータで再学習したPSTに対し固定100,000ノードで約−27 Elo、時間制御で約−150 Eloだった。
 これらは入力、幅、教師、学習法を合わせた構成の結果であり、入力だけを差し替えた比較ではない。
-したがって、入力不足が敗因と断定することも、入力不足を敗因から除外することもできない。[固定ノード測定](../measurements/nnue-gen1-nodes100k.md#結論)、[時間制御測定](../measurements/nnue-gen1-tc.md#結論)
+したがって、入力不足が敗因と断定することも、入力不足を敗因から除外することもできない。[固定ノード測定](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md#結論)、[時間制御測定](../measurements/evaluation-gen1/nnue-gen1-tc.md#結論)
 
 別系統では、PSTに局所2駒表を加える実験も行われている。
-この比較は関係特徴を調べた実績だが、P型NNUEと王条件付きNNUEの比較ではないため、今回の入力の選択を確定しない。[局所2駒表の測定](../measurements/relational-correction-stc.md)、[同じ候補の固定ノード測定](../measurements/relational-correction-nodes200.md)
+この比較は関係特徴を調べた実績だが、P型NNUEと王条件付きNNUEの比較ではないため、今回の入力の選択を確定しない。[局所2駒表の測定](../measurements/relational-correction/relational-correction-stc.md)、[同じ候補の固定ノード測定](../measurements/relational-correction/relational-correction-nodes200.md)
 
 今回の幅64と128については、整数推論の一致などを検証した段階であり、本学習と棋力の結果はまだ記録されていない。
-幅の比較は、同じ入力で容量を増やす効果を測るが、入力の選択そのものの比較にはならない。[今回の学習記録](../measurements/nnue-replacement-training.md#フェーズ4の学習)
+幅の比較は、同じ入力で容量を増やす効果を測るが、入力の選択そのものの比較にはならない。[今回の学習記録](../measurements/nnue-replacement/nnue-replacement-training.md#フェーズ4の学習)
 
 学習データの被覆も別に確認する必要がある。
 世代3の1ファイルを使った試走では4,742特徴が未観測であり、その内訳が到達不能な組合せか、合法だが稀な組合せかは記録から分からない。
 世代2と世代3の10ファイル全体でも、13,680特徴のうち4,230特徴が未観測だった（前述の集計による）。
-最終訓練集合の値ではないが、特徴を用意するだけで有効な重みが学べるわけではないことを示す診断項目である。[試走の観測数](../measurements/nnue-replacement-training.md#フェーズ2の試走)
+最終訓練集合の値ではないが、特徴を用意するだけで有効な重みが学べるわけではないことを示す診断項目である。[試走の観測数](../measurements/nnue-replacement/nnue-replacement-training.md#フェーズ2の試走)
 
 入力を適切とする実験的な根拠を得るには、教師、検証分割、幅、学習予算をそろえ、P型と、王の位置を掛けたHalfKP型または限定した利きを加えた構成を比較する必要がある。
 HalfKP型は原則として王将を基準にし、王将を失った視点だけ太子を基準にすればよく、P型の拡幅も比較すると、入力の選択と容量を増やす効果を分けて調べられる。
