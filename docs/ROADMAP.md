@@ -98,7 +98,7 @@
 | メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
 | 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
 | vast.aiでの教師生成 | [plans/vast-selfplay.md](plans/vast-selfplay.md) | 起案 | |
-| 探索の関数形の見直しの統括 | [plans/search-forms.md](plans/search-forms.md) | 起案 | |
+| 探索の関数形の見直しの統括 | [plans/search-forms.md](plans/search-forms.md) | 進行中 | |
 | 探索の枝刈りとLMRの関数形の見直し | [plans/search-pruning-forms.md](plans/search-pruning-forms.md) | 起案 | |
 | 浅い前向き枝刈りの深さと対象の拡張 | [plans/shallow-pruning-extensions.md](plans/shallow-pruning-extensions.md) | 起案 | |
 | historyの更新量の形とcontinuation history | [plans/history-forms.md](plans/history-forms.md) | 起案 | |
