@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::search::alphabeta::params;
-use crate::search::alphabeta::pruning::{futility_margin, late_move_limit};
+use crate::search::alphabeta::pruning::{futility_value, late_move_limit, pruning_lmr_depth};
 
 // 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
 // 各着手の評価を引き分けより高く保ち、静かな手の上限と探索順序を観測する。
@@ -36,14 +36,28 @@ fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
         .unwrap()
         .max(static_eval)
         + 1;
-    assert!(alpha < static_eval + futility_margin(nnue.pawn_value(), 1, true));
+    let lmr_depth = pruning_lmr_depth(1, 1, false, false, false);
+    assert!(alpha < futility_value(nnue.pawn_value(), static_eval, alpha, lmr_depth));
     alpha
 }
 
 #[cfg(feature = "tuning")]
 pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
+    let futility = [
+        params::futility_base(),
+        params::futility_lmr_depth(),
+        params::futility_above_alpha(),
+    ];
+    // late move pruningだけを観測できるよう、先行するfutilityの見積りを十分高くする。
+    params::set("FutilityBase", 400).unwrap();
+    params::set("FutilityLmrDepth", 0).unwrap();
+    params::set("FutilityAboveAlpha", 0).unwrap();
     let alpha = quiet_alpha(board, test_nnue());
-    run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
+    let result = run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt());
+    params::set("FutilityBase", futility[0]).unwrap();
+    params::set("FutilityLmrDepth", futility[1]).unwrap();
+    params::set("FutilityAboveAlpha", futility[2]).unwrap();
+    result
 }
 
 // 上限は基数と深さ²の項の和を百分率で換算し、improvingでなければ倍率を掛ける。
@@ -122,6 +136,12 @@ fn late_move_pruning_uses_improving_updated_after_null_move() {
             assert!(!searcher.improving(static_eval, 2));
             let beta = static_eval + beta_offset;
             let alpha = beta - 1;
+            let updated_improving = beta_offset <= 0;
+            let lmr_depth = pruning_lmr_depth(1, 1, updated_improving, false, true);
+            assert!(
+                futility_value(nnue.pawn_value(), static_eval, alpha, lmr_depth) > alpha,
+                "先行するfutility pruningは発動しない"
+            );
             for &mv in &moves {
                 assert!(!mv.promote && move_order_key(&board, nnue, mv).is_none());
                 let mut child = board.clone();
@@ -144,12 +164,7 @@ fn late_move_pruning_uses_improving_updated_after_null_move() {
             assert!(score < alpha && score.abs() < MATE_THRESHOLD);
             assert_eq!(
                 searcher.nodes,
-                if beta_offset == 1 && futility_margin(nnue.pawn_value(), 1, false) == 0 {
-                    // alphaと静的評価が等しく、余裕0では先行するfutilityが後続を省く。
-                    1
-                } else {
-                    expected_nodes.max(1).min(moves.len() as u64)
-                },
+                expected_nodes.max(1).min(moves.len() as u64),
                 "beta_offset={beta_offset}"
             );
         });
@@ -397,8 +412,12 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
             ordered.push(mv);
         }
     });
-    let margin = futility_margin(100, 1, false);
-    let improving = margin == 0;
+    let static_eval = evaluate(test_nnue(), &board);
+    let lmr_depth = pruning_lmr_depth(1, 1, false, false, true);
+    let futility = futility_value(100, static_eval, static_eval, lmr_depth);
+    assert!(futility > static_eval);
+    let margin = futility - static_eval;
+    let improving = false;
     let limit = late_move_limit(1, improving) as usize;
     let limit = limit.max(1).min(ordered.len());
     for (index, &target) in ordered.iter().enumerate() {

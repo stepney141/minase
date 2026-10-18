@@ -125,26 +125,82 @@ pub(super) fn lmr_base(depth: usize, index: usize, divisor: i32) -> u16 {
     (100.0 * reduction).floor() as u16
 }
 
-/// 深さ1〜3のfutility余裕値を求める。
-pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
-    let percent = match depth {
-        1 => params::futility_margin1(),
-        2 => params::futility_margin2(),
-        3 => params::futility_margin3(),
-        _ => unreachable!("futility applies only at depths 1 to 3"),
-    };
-    let margin = pawn * percent / 100;
-    if improving {
-        return margin;
+/// 静かな手のfutility pruningを行うlmrDepthの上限。
+/// Stockfishの`lmrDepth < 12`に対応する（src/search.cpp:1247）。
+pub(super) const QUIET_FUTILITY_LMR_DEPTH_LIMIT: i32 = 12;
+
+/// 静かな手のfutility見積りの式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct FutilityCoefficients {
+    pub(super) futility_base: i32,
+    pub(super) futility_lmr_depth: i32,
+    pub(super) futility_above_alpha: i32,
+}
+
+impl FutilityCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            futility_base: params::futility_base(),
+            futility_lmr_depth: params::futility_lmr_depth(),
+            futility_above_alpha: params::futility_above_alpha(),
+        }
     }
-    let scale = match depth {
-        1 => params::non_improving_futility1(),
-        2 => params::non_improving_futility2(),
-        3 => params::non_improving_futility3(),
-        _ => unreachable!("futility applies only at depths 1 to 3"),
-    };
-    // 百分率の余裕値を求めてから縮め、尺度100では丸めも含めて同じ値にする。
-    margin * scale / 100
+
+    /// 補正後の静的評価と枝刈り用のlmrDepthから、静かな手の見積りを求める。
+    /// Stockfishの式に対応する（src/search.cpp:1242-1243）。
+    pub(super) fn futility_value(
+        &self,
+        pawn: i32,
+        static_eval: i32,
+        alpha: i32,
+        lmr_depth: i32,
+    ) -> i32 {
+        let percent = i64::from(self.futility_base)
+            + i64::from(self.futility_lmr_depth) * i64::from(lmr_depth)
+            + i64::from(self.futility_above_alpha) * i64::from(static_eval > alpha);
+        (i64::from(static_eval) + i64::from(pawn) * percent / 100) as i32
+    }
+
+    /// lmrDepthと見積りが静かな手のfutility pruningを許す場合、その見積りを返す。
+    pub(super) fn futility_pruning_value(
+        &self,
+        pawn: i32,
+        static_eval: i32,
+        alpha: i32,
+        lmr_depth: i32,
+    ) -> Option<i32> {
+        if lmr_depth >= QUIET_FUTILITY_LMR_DEPTH_LIMIT {
+            return None;
+        }
+        let value = self.futility_value(pawn, static_eval, alpha, lmr_depth);
+        (value <= alpha).then_some(value)
+    }
+}
+
+/// 静かな手のfutility見積りを求める（Stockfish src/search.cpp:1242-1243）。
+#[cfg(test)]
+pub(super) fn futility_value(pawn: i32, static_eval: i32, alpha: i32, lmr_depth: i32) -> i32 {
+    FutilityCoefficients::current().futility_value(pawn, static_eval, alpha, lmr_depth)
+}
+
+/// lmrDepthと見積りから、静かな手のfutility pruningに使える見積りを返す。
+pub(super) fn futility_pruning_value(
+    pawn: i32,
+    static_eval: i32,
+    alpha: i32,
+    lmr_depth: i32,
+) -> Option<i32> {
+    FutilityCoefficients::current().futility_pruning_value(pawn, static_eval, alpha, lmr_depth)
+}
+
+/// 枝刈りした手の見積りで最善値だけを上げてよいかを返す。
+/// Stockfishの最善値の更新に対応する（src/search.cpp:1249-1251）。
+pub(super) fn should_raise_futility_best_score(best_score: i32, futility_value: i32) -> bool {
+    best_score < futility_value
+        && best_score > -REPETITION_BAND_START
+        && best_score < REPETITION_BAND_START
+        && futility_value > -REPETITION_BAND_START
+        && futility_value < REPETITION_BAND_START
 }
 
 /// 静かな手の上限の式に渡す調整係数。
@@ -407,15 +463,39 @@ impl LmrCoefficients {
         }
     }
 
+    /// 枝刈りより前に決まるLMRの減深量を1/100手単位で返す。
+    /// Stockfishの枝刈り前の減深量に対応する（src/search.cpp:1183-1192, 1917-1920）。
+    pub(super) fn lmr_reduction_before_pruning(
+        &self,
+        table: u16,
+        improving: bool,
+        pv_node: bool,
+        tt_pv: bool,
+    ) -> i32 {
+        let table = i64::from(table);
+        (table * (100 + i64::from(self.lmr_non_improving) * i64::from(!improving)) / 100
+            + i64::from(self.lmr_base)
+            - i64::from(self.lmr_pv_reduction) * i64::from(pv_node)
+            + i64::from(self.lmr_tt_pv) * i64::from(tt_pv)) as i32
+    }
+
+    /// 手を読む深さから枝刈り前の減深量を引き、枝刈り用のlmrDepthを返す。
+    pub(super) fn pruning_lmr_depth(
+        &self,
+        table: u16,
+        depth: u32,
+        improving: bool,
+        pv_node: bool,
+        tt_pv: bool,
+    ) -> i32 {
+        depth as i32 - 1 - self.lmr_reduction_before_pruning(table, improving, pv_node, tt_pv) / 100
+    }
+
     pub(super) fn lmr_reduction(&self, table: u16, context: LmrContext) -> i32 {
         let c = context;
         let all_node = !c.pv_node && !c.cut_node;
-        let table = i64::from(table);
-        let r_pre = table * (100 + i64::from(self.lmr_non_improving) * i64::from(!c.improving))
-            / 100
-            + i64::from(self.lmr_base)
-            - i64::from(self.lmr_pv_reduction) * i64::from(c.pv_node)
-            + i64::from(self.lmr_tt_pv) * i64::from(c.tt_pv);
+        let r_pre =
+            i64::from(self.lmr_reduction_before_pruning(table, c.improving, c.pv_node, c.tt_pv));
         let threshold = self.lmr_history_threshold;
         let history = match c.history {
             Some(value) if value >= threshold => -100,
@@ -460,6 +540,27 @@ impl LmrCoefficients {
         }
         r as i32
     }
+}
+
+/// ノードと手番号から、枝刈り用の符号つきlmrDepthを返す。
+///
+/// `depth - 1 - r_pre / 100`を0方向へ丸める。表の手番号は0始まりで、
+/// 256以上なら最終列を使う。history以降のLMRの項と減深・延長の上限は含めない。
+/// Stockfishの枝刈り用の深さに対応する（src/search.cpp:1203）。
+pub(super) fn pruning_lmr_depth(
+    depth: u32,
+    index: usize,
+    improving: bool,
+    pv_node: bool,
+    tt_pv: bool,
+) -> i32 {
+    LmrCoefficients::current().pruning_lmr_depth(
+        lmr_table()[depth as usize][index.min(LMR_MOVE_COUNT - 1)],
+        depth,
+        improving,
+        pv_node,
+        tt_pv,
+    )
 }
 
 /// ノードと手の情報から、符号つきのLMR減深量を1/100手単位で返す。

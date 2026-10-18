@@ -503,10 +503,15 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         let beta = leaf_value(winner);
         assert!(leaf_value(tt_move) < beta);
         assert!(!royal_under_attack(&board));
+        let static_eval = evaluate(searcher.nnue, &board);
+        let lmr_depth = super::super::pruning::pruning_lmr_depth(3, 1, false, false, false);
         assert!(
-            evaluate(searcher.nnue, &board)
-                + super::super::pruning::futility_margin(searcher.nnue.pawn_value(), 3, false)
-                < beta - 1
+            super::super::pruning::futility_value(
+                searcher.nnue.pawn_value(),
+                static_eval,
+                beta - 1,
+                lmr_depth,
+            ) < beta - 1
         );
         searcher.tt.store(
             search_key(&board),
@@ -517,7 +522,7 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             ply,
             false,
         );
-        // 子は最大手数の静的評価で固定する。麒麟の成りはfutilityの余裕値より大きく評価を上げる。
+        // 子は最大手数の静的評価で固定する。麒麟の成りはfutilityの見積りより大きく評価を上げる。
         searcher.null_move_ply = Some(ply);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),

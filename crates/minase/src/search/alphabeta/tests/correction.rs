@@ -112,6 +112,11 @@ fn correction_negamax_update_conditions() {
             &mut butterfly_history,
             &mut capture_history,
         );
+        // 深さ2ではfollowPVのPVノードとしてS1を除き、補正表の更新条件だけを検査する。
+        if depth == 2 {
+            assert!(beta - alpha > 1);
+            searcher.follow_pv[0] = true;
+        }
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
         let before = searcher.correction.read(Color::Black, key);
@@ -237,23 +242,21 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
 }
 
 #[test]
-fn correction_changes_futility_expansion_at_boundary() {
-    assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
-    // 良化していない深さ1の余裕値をαに合わせる。
-    let margin = test_nnue().pawn_value() * params::futility_margin1() / 100
-        * params::non_improving_futility1()
-        / 100;
+fn correction_changes_futility_estimate() {
     let nnue = test_nnue();
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
+    let board = bare_kings();
+    let quiets = legal_moves(&board);
+    let history = repeated_root_children(&board, &quiets);
+    let raw = evaluate(nnue, &board);
+    let alpha = raw + 10 * nnue.pawn_value();
+    let mut scores = Vec::new();
     let mut nodes = Vec::new();
     for correction in [0, 1] {
-        let mut board = bare_kings();
+        let mut board = board.clone();
         let table = TranspositionTable::new(1).unwrap();
-        let quiets = legal_moves(&board);
-        let history = repeated_root_children(&board, &quiets);
-        let alpha = evaluate(nnue, &board) + margin;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
@@ -271,8 +274,6 @@ fn correction_changes_futility_expansion_at_boundary() {
             &mut butterfly_history,
             &mut capture_history,
         );
-        searcher.seek_mate = true;
-        searcher.killers[0] = [Some(quiets[1]), Some(quiets[2])];
         table.store(
             search_key(&board),
             0,
@@ -294,14 +295,16 @@ fn correction_changes_futility_expansion_at_boundary() {
             correction
         );
         let score = searcher
-            .negamax(&mut board, 1, alpha, alpha + 1, 0, false)
+            .negamax(&mut board, 1, alpha, alpha + 2, 0, false)
             .unwrap();
         assert!(score < alpha);
         assert!(score.abs() < MATE_THRESHOLD);
+        assert_eq!(searcher.static_evals[0], raw + correction);
+        scores.push(score);
         nodes.push(searcher.nodes);
     }
-    assert_eq!(nodes[0], 1);
-    assert!(nodes[1] > nodes[0]);
+    assert_eq!(nodes, [1, 1]);
+    assert_eq!(scores[1], scores[0] + 1);
 }
 
 #[test]

@@ -160,27 +160,18 @@ parameters! {
     /// Stockfishは8/208で4（src/search.cpp:1415）、YaneuraOuは9/90で10。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     LmrShallowerMargin(lmr_shallower_margin): 26, 0, 40;
-    /// 残り深さ1で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
-    /// 良化していないノードでは[`non_improving_futility1()`]の倍率で縮める。
-    /// 値はSPSAで調整した。
-    FutilityMargin1(futility_margin1): 317, 0, 400;
-    /// 残り深さ2で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
-    /// 良化していないノードでは[`non_improving_futility2()`]の倍率で縮める。
-    /// 値はSPSAで調整した。
-    FutilityMargin2(futility_margin2): 264, 0, 400;
-    /// 残り深さ3で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
-    /// 良化していないノードでは[`non_improving_futility3()`]の倍率で縮める。
-    /// 値はSPSAで調整した。
-    FutilityMargin3(futility_margin3): 315, 0, 400;
-    /// 良化していない残り深さ1のノードでfutility余裕値に掛ける倍率。単位は百分率である。
-    /// 値はSPSAで調整した。
-    NonImprovingFutility1(non_improving_futility1): 82, 0, 100;
-    /// 良化していない残り深さ2のノードでfutility余裕値に掛ける倍率。単位は百分率である。
-    /// 値はSPSAで調整した。
-    NonImprovingFutility2(non_improving_futility2): 81, 0, 100;
-    /// 良化していない残り深さ3のノードでfutility余裕値に掛ける倍率。単位は百分率である。
-    /// 値はSPSAで調整した。
-    NonImprovingFutility3(non_improving_futility3): 84, 0, 100;
+    /// 静かな手のfutility見積りに加える定数。単位は歩兵価値に対する百分率である。
+    /// Stockfishは164/208で79（src/search.cpp:1242-1243）、YaneuraOuは42/90で47（yaneuraou-search.cpp:3663-3664）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    FutilityBase(futility_base): 79, 0, 400;
+    /// 静かな手のfutility見積りでlmrDepth 1あたりに加える量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは119/208で57（src/search.cpp:1242-1243）、YaneuraOuは120/90で133（yaneuraou-search.cpp:3663-3664）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    FutilityLmrDepth(futility_lmr_depth): 57, 0, 300;
+    /// 静的評価がαより大きいときにfutility見積りへ加える量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは90/208で43（src/search.cpp:1242-1243）、YaneuraOuは86/90で96（yaneuraou-search.cpp:3663-3664）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    FutilityAboveAlpha(futility_above_alpha): 43, -100, 300;
     /// late move pruningで数える静かな手の上限の切片。単位は1/100手である。
     /// 既定値はStockfishとYaneuraOuの`3 + d²`（Stockfish src/search.cpp:1199、YaneuraOu yaneuraou-search.cpp:3593）を換算した値であり、
     /// この式の形での値はSPSAで未調整である。

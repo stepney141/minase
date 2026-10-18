@@ -4,7 +4,8 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    is_opponent_worsening, is_seek_mate, reverse_futility_margin, seek_mate_null_move_reduction,
+    FutilityCoefficients, is_opponent_worsening, is_seek_mate, reverse_futility_margin,
+    seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::LmrContext;
@@ -142,6 +143,85 @@ fn lmr_table_follows_logarithmic_rule() {
     // 除数1.47で対数積を割り、100倍して切り捨てる。
     for (depth, index, expected) in [(3, 3, 82), (4, 8, 196), (5, 255, 606), (8, 10, 325)] {
         assert_eq!(super::super::pruning::lmr_base(depth, index, 147), expected);
+    }
+}
+
+#[test]
+fn lmr_reduction_before_pruning_and_depth_match_numeric_examples() {
+    let coefficients = lmr_coefficients();
+    for (case, table, improving, pv_node, tt_pv, depth, reduction, lmr_depth) in [
+        ("base", 0, false, false, false, 1, 127, -1),
+        ("pv", 300, true, true, false, 8, 421, 3),
+        ("tt pv", 300, true, false, true, 8, 497, 3),
+        ("non improving", 300, false, false, false, 8, 436, 3),
+        ("combined", 300, false, true, true, 8, 500, 2),
+    ] {
+        assert_eq!(
+            coefficients.lmr_reduction_before_pruning(table, improving, pv_node, tt_pv),
+            reduction,
+            "{case}"
+        );
+        assert_eq!(
+            coefficients.pruning_lmr_depth(table, depth, improving, pv_node, tt_pv),
+            lmr_depth,
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn futility_value_matches_numeric_examples() {
+    let coefficients = FutilityCoefficients {
+        futility_base: 79,
+        futility_lmr_depth: 57,
+        futility_above_alpha: 43,
+    };
+    for (static_eval, alpha, lmr_depth, expected) in
+        [(0, 50, 2, 193), (60, 50, -1, 125), (50, 50, 0, 129)]
+    {
+        assert_eq!(
+            coefficients.futility_value(100, static_eval, alpha, lmr_depth),
+            expected
+        );
+    }
+}
+
+#[test]
+fn futility_pruning_value_includes_equality_but_excludes_depth_twelve() {
+    let coefficients = FutilityCoefficients {
+        futility_base: 79,
+        futility_lmr_depth: 57,
+        futility_above_alpha: 43,
+    };
+
+    assert_eq!(
+        coefficients.futility_pruning_value(100, 0, 193, 2),
+        Some(193)
+    );
+    assert_eq!(coefficients.futility_pruning_value(100, 0, 192, 2), None);
+    assert_eq!(
+        coefficients.futility_pruning_value(100, 0, 706, 11),
+        Some(706)
+    );
+    assert_eq!(coefficients.futility_pruning_value(100, 0, 1000, 12), None);
+}
+
+#[test]
+fn futility_best_score_raise_requires_strict_order_and_values_inside_bands() {
+    let band = REPETITION_BAND_START;
+    for (best_score, futility_value, expected) in [
+        (10, 11, true),
+        (10, 10, false),
+        (-band + 1, -band + 2, true),
+        (-band, -band + 1, false),
+        (band - 2, band - 1, true),
+        (band - 2, band, false),
+    ] {
+        assert_eq!(
+            should_raise_futility_best_score(best_score, futility_value),
+            expected,
+            "best_score={best_score}, futility_value={futility_value}"
+        );
     }
 }
 
@@ -449,53 +529,100 @@ pub(super) fn lmr_max_reduction_parameter_sets_cap() {
     params::set("LmrDeeperMargin", 82).unwrap();
 }
 
-// futilityは補正後の静的評価と余裕値の和がα以下なら後続の静かな手を飛ばす。
-// 最善値が負の詰み帯にある間は少なくとも1手を読み、合法手なしの詰みと誤認しない。
+// futilityはPVノードでも後続の静かな手を飛ばすが、followPVでは全手を読む。
+// どちらも少なくとも1手を読み、合法手なしの詰みと誤認しない。
 #[test]
-fn futility_reduces_quiet_nodes_without_false_mate() {
-    let position = bare_kings();
+fn futility_prunes_pv_quiets_without_false_mate_except_on_follow_pv() {
+    let board = bare_kings();
     let nnue = test_nnue();
-    let static_eval = evaluate(nnue, &position);
+    let static_eval = evaluate(nnue, &board);
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    let alpha = static_eval + 10 * nnue.pawn_value();
 
-    assert!(!royal_under_attack(&position));
+    assert!(!royal_under_attack(&board));
     assert!(
-        legal_moves(&position)
+        moves
             .iter()
-            .all(|&mv| { !mv.promote && move_order_key(&position, nnue, mv).is_none() })
+            .all(|&mv| { !mv.promote && move_order_key(&board, nnue, mv).is_none() })
     );
-    // 根付近とply=2の両方で、最初の手を保護することを検査する。
-    for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
-        let alpha = static_eval
-            + super::super::pruning::futility_margin(nnue.pawn_value(), depth, false).max(300);
-        let table = small_tt();
-        let (score, pruned_nodes) =
-            run_move_pruning(&position, depth, alpha, alpha + 1, ply, &table);
-        let (_, full_nodes) =
-            run_move_pruning(&position, depth, alpha, alpha + 2, ply, &small_tt());
-        assert!(pruned_nodes > 0, "最初の手は探索する: depth={depth}");
-        assert!(
-            pruned_nodes < full_nodes,
-            "depth={depth}: {pruned_nodes} >= {full_nodes}"
-        );
-        assert!(score.abs() < MATE_THRESHOLD, "depth={depth}: score={score}");
-        let hit = table.probe(search_key(&position), ply).unwrap();
-        assert_eq!(hit.score, score);
-        assert!(hit.score.abs() < MATE_THRESHOLD);
-        if depth == 1 {
-            let leaf_scores: Vec<_> = legal_moves(&position)
-                .into_iter()
-                .map(|mv| {
-                    let mut child = position.clone();
-                    child.make_move_unchecked(mv, engine_rules());
-                    -evaluate(nnue, &child)
-                })
-                .collect();
-            assert!(
-                (*leaf_scores.iter().min().unwrap()..=*leaf_scores.iter().max().unwrap())
-                    .contains(&score)
-            );
+    for depth in [1, 4] {
+        let mut results = Vec::new();
+        for follow_pv in [false, true] {
+            with_root_searcher(&board, &history, |searcher| {
+                searcher.follow_pv[0] = follow_pv;
+                searcher.tt.store(
+                    search_key(&board),
+                    0,
+                    0,
+                    Bound::Upper,
+                    Some(moves[0]),
+                    0,
+                    true,
+                );
+                let score = searcher
+                    .negamax(&mut board.clone(), depth, alpha, alpha + 2, 0, false)
+                    .unwrap();
+                assert!(searcher.nodes > 0, "最初の手は探索する");
+                assert!(score.abs() < MATE_THRESHOLD, "score={score}");
+                results.push((score, searcher.nodes));
+            });
         }
+        assert!(results[0].1 < results[1].1, "depth={depth}");
+        assert_eq!(results[1].1, moves.len() as u64, "depth={depth}");
     }
+}
+
+#[test]
+fn futility_does_not_prune_quiet_checks() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 2), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::Black, PieceKind::SideMover),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    let moves = legal_moves(&board);
+    let tt_move = Move {
+        from: sq(0, 0),
+        mid: None,
+        to: sq(1, 0),
+        promote: false,
+    };
+    assert!(moves.contains(&tt_move));
+    assert!(!board.gives_check(&MoveGenerator::standard(), tt_move));
+    assert!(!royal_under_attack(&board));
+    assert!(
+        moves
+            .iter()
+            .all(|&mv| !mv.promote && move_order_key(&board, test_nnue(), mv).is_none())
+    );
+    let checking: Vec<_> = moves
+        .iter()
+        .copied()
+        .filter(|&mv| board.gives_check(&MoveGenerator::standard(), mv))
+        .collect();
+    assert!(!checking.is_empty());
+    let history = repeated_root_children(&board, &moves);
+    with_root_searcher(&board, &history, |searcher| {
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            true,
+        );
+        let alpha = evaluate(searcher.nnue, &board) + 10 * searcher.nnue.pawn_value();
+        let score = searcher
+            .negamax(&mut board.clone(), 1, alpha, alpha + 2, 0, false)
+            .unwrap();
+        assert!(score.abs() < MATE_THRESHOLD);
+        assert_eq!(searcher.nodes, 1 + checking.len() as u64);
+    });
 }
 
 // 先頭の記録手が王駒を失っても、

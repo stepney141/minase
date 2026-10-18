@@ -16,9 +16,10 @@ use super::correction::key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
     LmrContext, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
-    corrected_static_eval, futility_margin, is_improving, is_opponent_worsening, late_move_limit,
-    lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth, null_move_reduction, pruning_eval,
-    razoring_margin, reverse_futility_margin, see_margin, seek_mate_null_move_reduction,
+    corrected_static_eval, futility_pruning_value, is_improving, is_opponent_worsening,
+    late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth,
+    null_move_reduction, pruning_eval, pruning_lmr_depth, razoring_margin, reverse_futility_margin,
+    see_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
     zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
@@ -66,7 +67,9 @@ impl Searcher<'_> {
     ///
     /// 前向き枝刈りはreverse futility、razoring、null moveの順で判定する。
     /// 手のループではlate move pruningの後、捕獲手にはSEE、それ以外の手にはfutilityを判定し、残った手にLMRを適用する。
-    /// razoring、futility、late move pruning、およびSEEは、それぞれIIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という条件を持つ。
+    /// 静かな手のfutilityはlmrDepthが12未満ならPVノードにも適用し、followPVのPVノード、成る手、および王手になる手を除く。
+    /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことも要求する。
+    /// razoring、late move pruning、およびSEEは、それぞれIIR後の残り深さ3以下、零窓、αとβが詰み帯と専用の帯の外という条件を持つ。
     /// さらに手番側のどの王駒にも相手の疑似利きが届かない場合に限り、razoringは残り深さ2以下に限る。
     /// reverse futilityは残り深さ18以下でttPvでなく、合法な置換表の手が静かな手でない場合に限る。
     /// 詰みを探す反復では上限を5に下げ、razoringを行わない（Stockfish src/search.cpp:1017, 1022）。
@@ -193,7 +196,6 @@ impl Searcher<'_> {
         let window_outside_bands =
             alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START;
         let razoring_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
-        let quiet_futility_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let late_move_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let capture_see_node = depth <= 3 && beta - alpha == 1 && window_outside_bands;
         let mut royal_attacked = None;
@@ -268,8 +270,6 @@ impl Searcher<'_> {
 
         // null moveを試さなかった場合も更新する（Stockfish src/search.cpp:1080）。
         improving |= static_eval >= beta;
-        let futility_bound = quiet_futility_node
-            .then(|| static_eval + futility_margin(self.nnue.pawn_value(), depth, improving));
         let late_move_limit = late_move_node.then(|| late_move_limit(depth, improving));
         // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
@@ -314,7 +314,9 @@ impl Searcher<'_> {
             counted_quiets += i32::from(counted_quiet);
             // 置換表の記録手は、手のループ内の前向き枝刈りで飛ばさない。
             // 最善値が負の詰み帯と専用の帯を脱するまでは探索を続け、全手の枝刈りを合法手なしの詰みと誤認することと、
-            // 安全な手を読まずに負けの値を上界として保存することを防ぐ。
+            // 安全な手を読まずに負けの値を上界として保存することを防ぐ。初期値ではcan_prune_movesが偽なので、
+            // 真になる前に少なくとも1手を読み、best_moveを設定する。futilityの見積りでbest_scoreだけを上げても、
+            // best_moveがNoneのままになることはない。
             // 飛ばした手もindexを進めるが、探索済みの手には加えず、減点とkiller更新の対象にしない。
             if can_prune_moves(best_score) && Some(mv) != tt_move {
                 // late move pruningは、捕獲手と成る手を対象にしない。
@@ -349,13 +351,35 @@ impl Searcher<'_> {
                 } else {
                     // futility pruningは、成る手を対象にしない。
                     // 成る手は、麒麟が獅子に成るように評価が大きく動くため保護する。
-                    if quiet_futility_node
-                        && futility_bound.is_some_and(|bound| bound <= alpha)
-                        && !mv.promote
-                        && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                    if !mv.promote
+                        && !(self.follow_pv[ply as usize] && pv_node)
+                        && window_outside_bands
                     {
-                        index += 1;
-                        continue;
+                        // 枝刈り用のlmrDepthは、この判定に到達した手についてだけ求める。
+                        let lmr_depth = pruning_lmr_depth(
+                            depth,
+                            index,
+                            improving,
+                            pv_node,
+                            self.tt_pv[ply as usize],
+                        );
+                        if let Some(futility_value) = futility_pruning_value(
+                            self.nnue.pawn_value(),
+                            static_eval,
+                            alpha,
+                            lmr_depth,
+                        ) {
+                            // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
+                            if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                                && !position.gives_check(&self.generator, mv)
+                            {
+                                if should_raise_futility_best_score(best_score, futility_value) {
+                                    best_score = futility_value;
+                                }
+                                index += 1;
+                                continue;
+                            }
+                        }
                     }
                 }
             }

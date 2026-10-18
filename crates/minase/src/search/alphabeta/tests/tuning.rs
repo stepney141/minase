@@ -7,7 +7,7 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     pruning::{
-        futility_margin, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
+        futility_value, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
         see_margin,
     },
     root::grow_aspiration_delta,
@@ -88,9 +88,6 @@ fn tuning_parameters_in_isolated_process() {
             "quiet history scales",
             "disabled history decay",
             "disabled capture history decay",
-            "non improving futility 1",
-            "non improving futility 2",
-            "non improving futility 3",
             "lmp base",
             "lmp slope",
             "lmp non improving",
@@ -158,12 +155,9 @@ fn tuning_parameters_in_isolated_process() {
         ("LmrAllNode", 142),
         ("LmrDeeperMargin", 82),
         ("LmrShallowerMargin", 26),
-        ("FutilityMargin1", 317),
-        ("FutilityMargin2", 264),
-        ("FutilityMargin3", 315),
-        ("NonImprovingFutility1", 82),
-        ("NonImprovingFutility2", 81),
-        ("NonImprovingFutility3", 84),
+        ("FutilityBase", 79),
+        ("FutilityLmrDepth", 57),
+        ("FutilityAboveAlpha", 43),
         ("LmpBase", 1799),
         ("LmpSlope", 48),
         ("LmpNonImproving", 31),
@@ -250,18 +244,6 @@ fn tuning_parameters_in_isolated_process() {
     match scenario.as_str() {
         "lmr max reduction" => {
             super::pruning::lmr_max_reduction_parameter_sets_cap();
-            return;
-        }
-        "non improving futility 1" => {
-            non_improving_parameter_changes_search(1, "NonImprovingFutility1");
-            return;
-        }
-        "non improving futility 2" => {
-            non_improving_parameter_changes_search(2, "NonImprovingFutility2");
-            return;
-        }
-        "non improving futility 3" => {
-            non_improving_parameter_changes_search(3, "NonImprovingFutility3");
             return;
         }
         "lmp base" => {
@@ -445,7 +427,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 69] = [
+    let cases: [Case; 66] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -591,23 +573,14 @@ fn tuning_parameters_in_isolated_process() {
         ("LmrShallowerMargin", 0, || {
             i64::from(super::super::pruning::lmr_research_depth(7, 4, 52, 50, 100))
         }),
-        ("FutilityMargin1", 100, || {
-            i64::from(futility_margin(101, 1, true))
+        ("FutilityBase", 100, || {
+            i64::from(futility_value(100, 0, 50, 2))
         }),
-        ("FutilityMargin2", 100, || {
-            i64::from(futility_margin(101, 2, true))
+        ("FutilityLmrDepth", 100, || {
+            i64::from(futility_value(100, 0, 50, 2))
         }),
-        ("FutilityMargin3", 100, || {
-            i64::from(futility_margin(101, 3, true))
-        }),
-        ("NonImprovingFutility1", 100, || {
-            i64::from(futility_margin(101, 1, false))
-        }),
-        ("NonImprovingFutility2", 100, || {
-            i64::from(futility_margin(101, 2, false))
-        }),
-        ("NonImprovingFutility3", 100, || {
-            i64::from(futility_margin(101, 3, false))
+        ("FutilityAboveAlpha", 100, || {
+            i64::from(futility_value(100, 60, 50, 0))
         }),
         ("LmpBase", 600, || i64::from(late_move_limit(1, false))),
         ("LmpSlope", 400, || i64::from(late_move_limit(1, false))),
@@ -906,71 +879,6 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
         (0, beta - 1),
         "null moveの打ち切りは保存しない"
     );
-}
-
-// 子が反復で引き分けになる局面では、親の枝刈りの条件だけで展開数が決まる。
-#[cfg(feature = "tuning")]
-fn non_improving_parameter_changes_search(depth: u32, name: &str) {
-    let board = bare_kings();
-    let moves = legal_moves(&board);
-    let history = repeated_root_children(&board, &moves);
-    let nnue = test_nnue();
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    assert_eq!(params::futility_margin1(), 317, "数値例の前提");
-    assert_eq!(params::futility_margin2(), 264, "数値例の前提");
-    assert_eq!(params::futility_margin3(), 315, "数値例の前提");
-    assert_eq!(params::non_improving_futility1(), 82, "数値例の前提");
-    assert_eq!(params::non_improving_futility2(), 81, "数値例の前提");
-    assert_eq!(params::non_improving_futility3(), 84, "数値例の前提");
-    // 100×百分率/100の後に倍率を掛ける。317×82/100→259、264×81/100→213、315×84/100→264。
-    let reduced = [259, 213, 264][depth as usize - 1];
-    let alpha = evaluate(nnue, &board) + reduced;
-    let search = || {
-        let mut nodes = 0;
-        with_root_searcher(&board, &history, |searcher| {
-            searcher.tt.store(
-                search_key(&board),
-                0,
-                0,
-                Bound::Upper,
-                Some(moves[0]),
-                2,
-                false,
-            );
-            searcher.static_evals[0] = evaluate(nnue, &board);
-            assert!(!searcher.improving(evaluate(nnue, &board), 2));
-            assert_eq!(
-                searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 2, false),
-                Some(DRAW_SCORE)
-            );
-            nodes = searcher.nodes;
-        });
-        nodes
-    };
-    assert_eq!(search(), 1);
-    params::set(name, 100).unwrap();
-    assert_eq!(search(), moves.len() as u64);
-    // 尺度100では、端数を含めて現行の余裕値と完全に一致する。
-    // 歩兵価値×317,264,315%を0方向へ丸める。例: 137×264/100=361.68→361。
-    for (pawn, expected) in [
-        (1, [3, 2, 3]),
-        (37, [117, 97, 116]),
-        (100, [317, 264, 315]),
-        (137, [434, 361, 431]),
-        (999, [3166, 2637, 3146]),
-    ] {
-        assert_eq!(
-            futility_margin(pawn, depth, false),
-            expected[depth as usize - 1]
-        );
-        assert_eq!(
-            futility_margin(pawn, depth, false),
-            futility_margin(pawn, depth, true)
-        );
-    }
-    params::set(name, 0).unwrap();
-    assert_eq!(futility_margin(137, depth, false), 0);
-    assert_eq!(search(), 1);
 }
 
 #[cfg(feature = "tuning")]
