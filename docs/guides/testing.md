@@ -310,9 +310,9 @@ cargo test -p minase --lib --features search-stats,tuning
 
 `scripts/`のPythonスクリプトのテストは、この4つの検査に含まれない。
 現在は、Lishogiの棋譜を取得する`scripts/fetch_lishogi_games.py`のテストと、vast.aiの調整機でSPSAを実行する`scripts/vast/`と`scripts/vast-spsa/`のテストがある。
-前者は外部と通信せずに再試行と待機の規則を、後者は偽の`vastai`、`ssh`、`scp`、および`rsync`を使って、機械の作成から取得と削除までの判定を検査する。
+前者は外部と通信せずに再試行と待機の規則を検査し、後者は偽の`vastai`、`ssh`、`scp`、および`rsync`を使って、機械の作成から取得と削除までの判定を検査する。
 これらのスクリプトを変更したときは、マージの前にリポジトリのルートで、変更したスクリプトのテストを実行する。
-調整機のPythonは3.11なので、`scripts/vast/`と`scripts/vast-spsa/`のテストは3.11でも実行する。
+調整機のPythonは3.11なので、`scripts/vast/`と`scripts/vast-spsa/`のテストは、手元のPythonに加えて3.11でも実行する。
 
 ```console
 PYTHONPATH=. python3 scripts/test_fetch_lishogi_games.py
