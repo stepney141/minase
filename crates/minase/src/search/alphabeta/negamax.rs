@@ -21,7 +21,7 @@ use super::pruning::{
     capture_futility_value, corrected_static_eval, futility_pruning_value, is_improving,
     is_opponent_worsening, late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth,
     non_lmr_depth, pruning_eval, pruning_lmr_depth, quiet_see_margin, razoring_margin,
-    reverse_futility_margin, see_margin, seek_mate_null_move_reduction,
+    reverse_futility_margin, reverse_futility_value, see_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
@@ -212,7 +212,7 @@ impl Searcher<'_> {
         let late_move_node = window_outside_bands;
         let mut royal_attacked = None;
         // Stockfish src/search.cpp:1022-1033。余裕値が負でもβ未満の値では打ち切らない。
-        // 返す判定用の評価値は置換表へ保存しない。
+        // 返すβと判定用の評価値の加重平均は置換表へ保存しない。
         let reverse_futility_max_depth = if self.seek_mate {
             SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH
         } else {
@@ -241,7 +241,7 @@ impl Searcher<'_> {
                 .get_or_init(|| self.legal_tt_capture(position, tt_move))
                 .is_none_or(|capture| capture)
         {
-            return Some(eval);
+            return Some(reverse_futility_value(beta, eval));
         }
         // allNodeで判定用の評価値が深さ比例の余裕値を引いたαより小さければ、静止探索の値をそのまま返す。
         // Stockfish src/search.cpp:1015-1018。

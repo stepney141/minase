@@ -750,11 +750,12 @@ fn reverse_futility_parameter_changes_search() {
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     // 既定の余裕値32に1足りない窓。基数0なら余裕値は3となり枝刈りする。
     let beta = value - 31;
+    let expected = ((661 * i64::from(beta) + 363 * i64::from(value)) / 1024) as i32;
     assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
     params::set("ReverseFutilityMultBase", 0).unwrap();
     assert_eq!(
         run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
-        (value, 0)
+        (expected, 0)
     );
     assert_eq!(
         reverse_futility_margin(137, 1, false, false, true, 0),

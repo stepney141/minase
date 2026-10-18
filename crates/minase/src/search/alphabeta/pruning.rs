@@ -382,6 +382,16 @@ pub(super) const REVERSE_FUTILITY_MAX_DEPTH: u32 = 18;
 /// Stockfishの`depth < (seekMate ? 6 : 19)`に対応する固定値（src/search.cpp:1021-1022）。
 pub(super) const SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH: u32 = 5;
 
+/// reverse futility pruningの返り値でβに掛ける重み。
+/// Stockfishの`(661 * beta + 363 * eval) / 1024`を使う（src/search.cpp:1033）。
+const REVERSE_FUTILITY_BETA_WEIGHT: i64 = 661;
+
+/// reverse futility pruningの返り値で判定用の評価値に掛ける重み。
+const REVERSE_FUTILITY_EVAL_WEIGHT: i64 = 363;
+
+/// reverse futility pruningの返り値に使う重みの分母。
+const REVERSE_FUTILITY_WEIGHT_DENOMINATOR: i64 = 1024;
+
 /// reverse futilityの`mult`の上限。単位は歩兵価値に対する百分率である。
 /// Stockfishの85を歩兵価値208で換算した41%（Stockfish src/search.cpp:1025）。
 const REVERSE_FUTILITY_MULT_MAX: i64 = 41;
@@ -451,6 +461,26 @@ pub(super) fn reverse_futility_margin(
         opponent_worsening,
         correction,
     )
+}
+
+/// reverse futility pruningで返すβと判定用の評価値の加重平均を求める。
+///
+/// `eval >= beta`を前提とし、返り値は`beta`以上`eval`以下に収まる。
+/// 中間の積は`i64`で計算し、0方向へ丸める。
+/// Stockfishの`(661 * beta + 363 * eval) / 1024`を使う（src/search.cpp:1033）。
+pub(super) fn reverse_futility_value(beta: i32, eval: i32) -> i32 {
+    #[cfg(feature = "invariants")]
+    assert!(eval >= beta);
+
+    let value = (REVERSE_FUTILITY_BETA_WEIGHT * i64::from(beta)
+        + REVERSE_FUTILITY_EVAL_WEIGHT * i64::from(eval))
+        / REVERSE_FUTILITY_WEIGHT_DENOMINATOR;
+    let value = value as i32;
+
+    #[cfg(feature = "invariants")]
+    assert!(value >= beta && value <= eval);
+
+    value
 }
 
 /// IIR適用後の残り深さに比例するrazoring余裕値を求める。

@@ -577,12 +577,13 @@ fn cutoff_counts_reset_two_plies_ahead_before_tt_probe() {
         assert_eq!(searcher.root_depth, 0);
         assert!(searcher.cutoff_counts.iter().all(|&count| count == 0));
         searcher.cutoff_counts.fill(7);
+        // allNodeでfail-lowになるExact値を使い、置換表の照合で直ちに戻る。
         searcher
             .tt
-            .store(search_key(&board), 3, 123, Bound::Exact, None, 1, false);
+            .store(search_key(&board), 3, 0, Bound::Exact, None, 1, false);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, 0, 1, 1, false),
-            Some(123)
+            Some(0)
         );
         assert_eq!(&searcher.cutoff_counts[..5], &[7, 7, 7, 0, 7]);
         searcher.cutoff_counts[3] = 9;

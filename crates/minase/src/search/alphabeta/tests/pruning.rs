@@ -7,7 +7,8 @@ use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
     is_seek_mate, late_move_limit, pruning_lmr_depth, quiet_see_margin,
     quiet_see_margin_with_coefficient, razoring_margin, razoring_margin_with_coefficient,
-    reverse_futility_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
+    reverse_futility_margin, reverse_futility_value, seek_mate_null_move_reduction,
+    should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::LmrContext;
@@ -26,6 +27,11 @@ fn root_reverse_margin(depth: u32, tt_hit: bool) -> i32 {
         * (100 * depth as i32 - params::reverse_futility_opponent_worsening())
         / 10000)
         .max(0)
+}
+
+/// S8で定めたreverse futility pruningの返り値を、探索テストの期待値として求める。
+fn expected_reverse_futility_value(beta: i32, eval: i32) -> i32 {
+    ((661 * i64::from(beta) + 363 * i64::from(eval)) / 1024) as i32
 }
 
 #[test]
@@ -82,7 +88,10 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
                 .negamax(&mut board.clone(), depth, beta - 1, beta, 0, false)
                 .unwrap();
             if pruned {
-                assert_eq!((score, searcher.nodes), (value, 0));
+                assert_eq!(
+                    (score, searcher.nodes),
+                    (expected_reverse_futility_value(beta, value), 0)
+                );
                 assert!(searcher.tt.probe(search_key(&board), 0).is_none());
             } else {
                 assert!(searcher.nodes > 0, "残り深さ6では子を展開する");
@@ -1727,6 +1736,18 @@ fn reverse_futility_margin_matches_numeric_examples() {
 }
 
 #[test]
+fn reverse_futility_value_matches_numeric_examples() {
+    for (beta, eval, expected) in [
+        (100, 1124, 463),
+        (-300, -300, -300),
+        (-100, 1000, 289),
+        (-1000, -500, -822),
+    ] {
+        assert_eq!(reverse_futility_value(beta, eval), expected);
+    }
+}
+
+#[test]
 fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
     for (previous, expected) in [
         (Some(-5), true),
@@ -1740,7 +1761,7 @@ fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
 
 // 根ではopponentWorseningが真。各深さの余裕値に一致する窓で検査する。
 #[test]
-fn reverse_futility_returns_static_eval_at_margin_without_storing() {
+fn reverse_futility_returns_weighted_value_at_margin_without_storing() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
     // F5ではallNodeにIIRを適用しないので、要求深さをそのまま使う。
@@ -1750,7 +1771,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
         let beta = value - margin.max(0);
         assert_eq!(
             run_negamax(&board, requested_depth, beta - 1, beta, 0, &table),
-            (value, 0)
+            (expected_reverse_futility_value(beta, value), 0)
         );
         assert!(table.probe(search_key(&board), 0).is_none());
     }
@@ -1853,7 +1874,10 @@ fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
         table.store(search_key(&board), 0, value, Bound::Upper, mv, 0, is_pv);
         let (score, nodes) = run_negamax(&board, 1, beta - 1, beta, 0, &table);
         if pruned {
-            assert_eq!((score, nodes), (value, 0));
+            assert_eq!(
+                (score, nodes),
+                (expected_reverse_futility_value(beta, value), 0)
+            );
             let hit = table.probe(search_key(&board), 0).unwrap();
             assert_eq!((hit.depth, hit.score, hit.best_move), (0, value, mv));
         } else {
@@ -1880,7 +1904,10 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 2, false)
                 .unwrap();
             if at_beta && margin <= 0 {
-                assert_eq!((score, searcher.nodes), (value, 0));
+                assert_eq!(
+                    (score, searcher.nodes),
+                    (expected_reverse_futility_value(beta, value), 0)
+                );
             } else {
                 assert!(searcher.nodes > 0);
             }
@@ -2159,7 +2186,10 @@ fn reverse_futility_uses_corrected_static_eval() {
             if corrected {
                 assert!(searcher.nodes > 0);
             } else {
-                assert_eq!(score, evaluate(test_nnue(), &board));
+                assert_eq!(
+                    score,
+                    expected_reverse_futility_value(beta, evaluate(test_nnue(), &board))
+                );
                 assert_eq!(searcher.nodes, 0);
             }
         });
@@ -2184,7 +2214,7 @@ fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
                 .unwrap();
             if bound == Bound::Lower {
-                assert_eq!(score, value);
+                assert_eq!(score, expected_reverse_futility_value(beta, value));
                 assert_eq!(searcher.nodes, 0);
             } else {
                 assert!(searcher.nodes > 0);
