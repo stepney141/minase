@@ -11,7 +11,7 @@ use crate::search::alphabeta::pruning::{
     should_raise_futility_best_score,
 };
 
-use crate::search::alphabeta::pruning::LmrContext;
+use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::{lmr_depth, lmr_research_depth};
 
@@ -141,6 +141,7 @@ pub(super) fn lmr_context() -> LmrContext {
         alpha: 0,
         eval: 0,
         pawn: 100,
+        seek_mate_gives_check: None,
     }
 }
 
@@ -408,6 +409,138 @@ fn lmr_reduction_matches_f4_examples() {
         2,
         "反復深さの初期値0"
     );
+}
+
+#[test]
+fn seek_mate_check_adjusts_positive_lmr_reduction_by_one_quarter() {
+    let context = LmrContext {
+        depth: 1,
+        index: 0,
+        improving: true,
+        pv_node: true,
+        capture: true,
+        history: None,
+        ..lmr_context()
+    };
+    for (reduction, gives_check, expected) in [
+        (400, None, 400),
+        (400, Some(true), 300),
+        (400, Some(false), 500),
+        (-200, Some(true), -200),
+        (-200, Some(false), -200),
+        (0, Some(true), 0),
+        (0, Some(false), 0),
+        (3, Some(true), 3),
+        (3, Some(false), 3),
+        (7, Some(true), 6),
+        (7, Some(false), 8),
+    ] {
+        assert_eq!(
+            isolated_lmr_coefficients(reduction).lmr_reduction(
+                0,
+                LmrContext {
+                    seek_mate_gives_check: gives_check,
+                    ..context
+                },
+            ),
+            expected,
+            "reduction={reduction}, gives_check={gives_check:?}"
+        );
+    }
+}
+
+#[test]
+fn seek_mate_check_adjustment_precedes_no_tt_move_increment() {
+    let context = LmrContext {
+        depth: 1,
+        index: 0,
+        improving: true,
+        pv_node: true,
+        capture: true,
+        history: None,
+        ..lmr_context()
+    };
+    for (reduction, gives_check, expected_adjusted, expected_depth) in
+        [(360, false, 450, 5), (612, true, 459, 4)]
+    {
+        let adjusted = isolated_lmr_coefficients(reduction).lmr_reduction(
+            0,
+            LmrContext {
+                seek_mate_gives_check: Some(gives_check),
+                ..context
+            },
+        );
+        assert_eq!(adjusted, expected_adjusted);
+        assert_eq!(
+            super::super::pruning::non_lmr_depth_with_coefficient(5, adjusted, false, 57),
+            expected_depth,
+            "reduction={reduction}, gives_check={gives_check}"
+        );
+    }
+}
+
+#[test]
+fn seek_mate_check_adjustment_follows_all_node_term() {
+    let coefficients = LmrCoefficients {
+        lmr_all_node: 100,
+        ..isolated_lmr_coefficients(400)
+    };
+    let context = LmrContext {
+        depth: 1,
+        index: 0,
+        improving: true,
+        capture: true,
+        history: None,
+        seek_mate_gives_check: Some(true),
+        ..lmr_context()
+    };
+
+    // allNodeの項で400から595に増やした後、その1/4を0方向へ丸めて引く。
+    assert_eq!(coefficients.lmr_reduction(0, context), 447);
+}
+
+#[test]
+fn lmr_check_value_is_present_only_when_seeking_mate() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 2), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::Black, PieceKind::SideMover),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    let generator = MoveGenerator::standard();
+    let moves = legal_moves(&board);
+    let checking = moves
+        .iter()
+        .copied()
+        .find(|&mv| board.gives_check(&generator, mv))
+        .expect("fixture must have a checking move");
+    let non_checking = moves
+        .iter()
+        .copied()
+        .find(|&mv| !board.gives_check(&generator, mv))
+        .expect("fixture must have a non-checking move");
+
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.seek_mate = false;
+        assert_eq!(searcher.lmr_seek_mate_gives_check(&board, checking), None);
+        assert_eq!(
+            searcher.lmr_seek_mate_gives_check(&board, non_checking),
+            None
+        );
+
+        searcher.seek_mate = true;
+        assert_eq!(
+            searcher.lmr_seek_mate_gives_check(&board, checking),
+            Some(true)
+        );
+        assert_eq!(
+            searcher.lmr_seek_mate_gives_check(&board, non_checking),
+            Some(false)
+        );
+    });
 }
 
 #[test]
@@ -2396,6 +2529,32 @@ pub(super) fn lmr_coefficients() -> super::super::pruning::LmrCoefficients {
         lmr_tt_move: 269,
         lmr_alpha_eval: 46,
         lmr_all_node: 142,
+    }
+}
+
+fn isolated_lmr_coefficients(reduction: i32) -> LmrCoefficients {
+    LmrCoefficients {
+        lmr_non_improving: 0,
+        lmr_base: reduction,
+        lmr_pv_reduction: 0,
+        lmr_tt_pv: 0,
+        lmr_history_threshold: 0,
+        lmr_offset: 0,
+        lmr_move_count: 0,
+        lmr_tt_pv_base: 0,
+        lmr_tt_pv_pv: 0,
+        lmr_tt_pv_value: 0,
+        lmr_tt_pv_depth: 0,
+        lmr_tt_pv_depth_cut_node: 0,
+        lmr_cut_node: 0,
+        lmr_cut_node_no_tt_move: 0,
+        lmr_tt_capture: 0,
+        lmr_cutoff_count: 0,
+        lmr_cutoff_count_many: 0,
+        lmr_cutoff_count_all_node: 0,
+        lmr_tt_move: 0,
+        lmr_alpha_eval: 0,
+        lmr_all_node: 0,
     }
 }
 

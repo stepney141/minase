@@ -515,6 +515,7 @@ impl Searcher<'_> {
                     alpha,
                     eval,
                     pawn: self.nnue.pawn_value(),
+                    seek_mate_gives_check: self.lmr_seek_mate_gives_check(position, mv),
                 });
                 if lmr {
                     lmr_depth(depth, reduction, pv_node, ply, self.root_depth)
@@ -639,6 +640,12 @@ impl Searcher<'_> {
                     .is_legal_move(position, mv, &mut Vec::new(), &mut Vec::new())
             })
             .map(|mv| move_order_key(position, self.nnue, mv).is_some())
+    }
+
+    /// LMRの式を使う手について、詰みを探す局面でだけ王手になるかを返す。
+    pub(super) fn lmr_seek_mate_gives_check(&self, position: &Position, mv: Move) -> Option<bool> {
+        self.seek_mate
+            .then(|| position.gives_check(&self.generator, mv))
     }
 
     /// null moveの部分木を探索し、局面と探索状態を復元してから値を返す。

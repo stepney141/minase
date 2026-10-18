@@ -602,6 +602,10 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
     NullMoveCoefficients::current().null_move_reduction(depth, static_eval, beta, pawn)
 }
 
+/// 詰みを探す局面で、王手かどうかに応じてLMRの減深量を増減する割合の除数。
+/// Stockfishの減深量の1/4に対応する（src/search.cpp:1391-1392）。
+const SEEK_MATE_LMR_DIVISOR: i64 = 4;
+
 /// LMRの式へ渡す、その手を読む直前のノードと手の情報。
 #[derive(Clone, Copy)]
 pub(super) struct LmrContext {
@@ -623,6 +627,8 @@ pub(super) struct LmrContext {
     pub(super) alpha: i32,
     pub(super) eval: i32,
     pub(super) pawn: i32,
+    /// 詰みを探す局面なら、その手が王手になるか。詰みを探す局面でなければNone。
+    pub(super) seek_mate_gives_check: Option<bool>,
 }
 
 /// LMRの符号つき減深量の式に渡す調整係数。
@@ -753,6 +759,11 @@ impl LmrCoefficients {
             // 分母の定数105は268/256の換算値（Stockfish src/search.cpp:1387-1388）。
             r += r * i64::from(self.lmr_all_node) / (100 * i64::from(c.depth) + 105);
         }
+        if let Some(gives_check) = c.seek_mate_gives_check
+            && r > 0
+        {
+            r += (if gives_check { -r } else { r }) / SEEK_MATE_LMR_DIVISOR;
+        }
         r as i32
     }
 }
@@ -780,7 +791,7 @@ pub(super) fn pruning_lmr_depth(
 
 /// ノードと手の情報から、符号つきのLMR減深量を1/100手単位で返す。
 ///
-/// Stockfish src/search.cpp:1183-1192, 1345-1388, 1917-1920の各項を個別に0方向へ丸める。
+/// Stockfish src/search.cpp:1183-1192, 1345-1392, 1917-1920の各項を個別に0方向へ丸める。
 /// 表の手番号は0始まりで、256以上なら表だけ最終列を使う。手番号の減算項は実際の番号を使う。
 /// historyの補正は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
 /// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
