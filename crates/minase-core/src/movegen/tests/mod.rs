@@ -4,6 +4,7 @@
 //! 獅子の捕獲制限（第13条から第16条、第29条）は`tests/lion_capture.rs`が検証する。
 
 mod attackers;
+mod gives_check;
 mod lion_capture;
 mod lion_moves;
 mod movement;

@@ -7,6 +7,7 @@ mod checked;
 mod control;
 mod expand;
 mod generate;
+mod gives_check;
 mod lion;
 mod lion_capture;
 mod lion_like;
