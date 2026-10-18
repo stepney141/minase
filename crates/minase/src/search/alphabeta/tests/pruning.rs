@@ -4,8 +4,9 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    FutilityCoefficients, SeeCoefficients, is_opponent_worsening, is_seek_mate, late_move_limit,
-    reverse_futility_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
+    CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
+    is_seek_mate, late_move_limit, reverse_futility_margin, seek_mate_null_move_reduction,
+    should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::LmrContext;
@@ -234,6 +235,30 @@ fn see_margin_matches_numeric_examples() {
     };
     for (depth, history, expected) in [(1, 0, 85), (3, 1024, 271), (1, -8000, 0)] {
         assert_eq!(coefficients.see_margin(100, depth, history), expected);
+    }
+}
+
+// S4の数値例。負のlmrDepthとcapture historyの2回の除算を0方向へ丸める。
+#[test]
+fn capture_futility_value_matches_numeric_examples() {
+    let coefficients = CaptureFutilityCoefficients {
+        capture_futility_base: 113,
+        capture_futility_lmr_depth: 119,
+        capture_futility_history: 134,
+    };
+    for (static_eval, lmr_depth, captured_value, history, expected) in
+        [(-500, 1, 200, 0, -68), (0, -2, 100, 1024, 39)]
+    {
+        assert_eq!(
+            coefficients.capture_futility_value(
+                100,
+                static_eval,
+                lmr_depth,
+                captured_value,
+                history,
+            ),
+            expected
+        );
     }
 }
 
@@ -729,15 +754,15 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
 }
 
 // 静かな記録手を先に探索して条件を成立させても、
-// 後続の捕獲手と非捕獲の成る手は展開し、記録手だけの場合より探索ノードが増える。
+// 後続の王手になる捕獲手と非捕獲の成る手は展開し、記録手だけの場合より探索ノードが増える。
 #[test]
-fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
+fn futility_searches_checking_captures_and_promotions_after_quiet_tt_move() {
     for (board, promotion) in [
         (
             position(
                 Color::Black,
                 &[
-                    (sq(0, 11), Color::White, PieceKind::King),
+                    (sq(5, 8), Color::White, PieceKind::King),
                     (sq(5, 4), Color::White, PieceKind::Pawn),
                     (sq(5, 3), Color::Black, PieceKind::Rook),
                     (sq(11, 0), Color::Black, PieceKind::King),
@@ -779,6 +804,13 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
             })
             .collect();
         assert!(!protected.is_empty());
+        if !promotion {
+            assert!(
+                protected
+                    .iter()
+                    .all(|&mv| position.gives_check(&MoveGenerator::standard(), mv))
+            );
+        }
         let table = small_tt();
         table.store(
             search_key(&position),
@@ -793,6 +825,247 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
         assert!(score.abs() < MATE_THRESHOLD);
         assert!(nodes > 1, "記録手の後にも探索する");
     }
+}
+
+/// 捕獲手のfutility見積りと、その手がLMR表で使う番号を返す。
+fn capture_futility_context(
+    board: &Position,
+    target: Move,
+    tt_move: Move,
+    depth: u32,
+) -> (i32, i32) {
+    let nnue = test_nnue();
+    let mut target_index = None;
+    with_root_searcher(board, &[], |searcher| {
+        let mut picker = MovePicker::new(Some(tt_move), [None; KILLER_COUNT]);
+        let mut index = 0;
+        while let Some((mv, _)) = picker.next(
+            board,
+            searcher.nnue,
+            &searcher.generator,
+            searcher.history,
+            searcher.capture_history,
+        ) {
+            if mv == target {
+                target_index = Some(index);
+                break;
+            }
+            index += 1;
+        }
+    });
+    let index = target_index.expect("target capture must be returned by the move picker");
+    let lmr_depth = super::super::pruning::pruning_lmr_depth(depth, index, false, false, true);
+    let captured_value = board
+        .captured_squares(target)
+        .into_iter()
+        .flatten()
+        .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+        .sum();
+    let value = super::super::pruning::capture_futility_value(
+        nnue.pawn_value(),
+        evaluate(nnue, board),
+        lmr_depth,
+        captured_value,
+        0,
+    );
+    (lmr_depth, value)
+}
+
+/// 対象手だけがβへ届く子の値を置換表へ置き、対象手を読んだかを根の結果で検査する。
+/// αは現在の係数から求めた見積りを基準にするため、係数の既定値には依存しない。
+fn assert_capture_futility_search(
+    board: &Position,
+    target: Move,
+    tt_move: Move,
+    depth: u32,
+    alpha_offset: i32,
+    expected_check: bool,
+    searched: bool,
+) -> i32 {
+    let nnue = test_nnue();
+    let moves = legal_moves(board);
+    assert!(moves.contains(&target));
+    assert!(moves.contains(&tt_move));
+    assert!(move_order_key(board, nnue, target).is_some());
+    assert!(!captures_last_royal(board, target));
+    assert!(!royal_under_attack(board));
+    assert_eq!(
+        board.gives_check(&MoveGenerator::new(engine_rules()), target),
+        expected_check
+    );
+
+    let (lmr_depth, futility_value) = capture_futility_context(board, target, tt_move, depth);
+    let alpha = futility_value + alpha_offset;
+    let beta = alpha + 1;
+    assert!(alpha > evaluate(nnue, board));
+    assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
+    assert_eq!(futility_value <= alpha, alpha_offset >= 0);
+    assert!(!see_prunes(
+        board,
+        engine_rules(),
+        nnue,
+        target,
+        super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
+    ));
+
+    let mut target_child = board.clone();
+    target_child.make_move_unchecked(target, engine_rules());
+    let target_key = search_key(&target_child);
+    assert_eq!(
+        moves
+            .iter()
+            .filter(|&&mv| {
+                let mut child = board.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                search_key(&child) == target_key
+            })
+            .count(),
+        1,
+        "対象手の子局面を置換表で一意に識別できる"
+    );
+
+    let table = TranspositionTable::new(16).unwrap();
+    for &mv in &moves {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        let parent_score = if mv == target { beta } else { alpha - 1 };
+        table.store(
+            search_key(&child),
+            MAX_PLY,
+            -parent_score,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
+    }
+    table.store(
+        search_key(board),
+        0,
+        0,
+        Bound::Upper,
+        Some(tt_move),
+        0,
+        false,
+    );
+    let (score, _) = run_move_pruning(board, depth, alpha, beta, 0, &table);
+    let hit = table.probe(search_key(board), 0).unwrap();
+    if searched {
+        assert_eq!(score, beta);
+        assert_eq!(hit.best_move, Some(target));
+        assert_eq!(hit.bound, Bound::Lower);
+    } else {
+        assert_eq!(score, alpha - 1);
+        assert_ne!(hit.best_move, Some(target));
+    }
+    lmr_depth
+}
+
+fn capture_futility_fixture(white_king: Square) -> (Position, Move, Move) {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (white_king, Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let target = Move {
+        from: sq(5, 3),
+        mid: None,
+        to: sq(5, 4),
+        promote: false,
+    };
+    let tt_move = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    (board, target, tt_move)
+}
+
+#[test]
+fn capture_futility_prunes_eligible_capture_at_equality() {
+    let (board, target, tt_move) = capture_futility_fixture(sq(0, 11));
+    let lmr_depth = assert_capture_futility_search(&board, target, tt_move, 7, 0, false, false);
+    assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
+}
+
+#[test]
+fn capture_futility_searches_promoting_checking_and_tt_captures() {
+    let promotion_board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 7), Color::Black, PieceKind::Pawn),
+            (sq(5, 8), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let promotion = Move {
+        from: sq(5, 7),
+        mid: None,
+        to: sq(5, 8),
+        promote: true,
+    };
+    let quiet = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    assert_capture_futility_search(&promotion_board, promotion, quiet, 7, 0, false, true);
+
+    let (checking_board, checking, quiet) = capture_futility_fixture(sq(5, 8));
+    assert_capture_futility_search(&checking_board, checking, quiet, 7, 0, true, true);
+
+    let (tt_board, tt_capture, _) = capture_futility_fixture(sq(0, 11));
+    assert_capture_futility_search(&tt_board, tt_capture, tt_capture, 7, 0, false, true);
+}
+
+#[test]
+fn capture_futility_excludes_lmr_depth_eight() {
+    let (board, target, tt_move) = capture_futility_fixture(sq(0, 11));
+    let depth = (1..=MAX_PLY)
+        .find(|&depth| capture_futility_context(&board, target, tt_move, depth).0 >= 8)
+        .unwrap();
+    let lmr_depth = assert_capture_futility_search(&board, target, tt_move, depth, 0, false, true);
+    assert_eq!(lmr_depth, 8);
+}
+
+#[test]
+fn capture_futility_applies_to_two_stage_captures_and_sums_both_victims() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::Lion),
+            (sq(5, 4), Color::White, PieceKind::Pawn),
+            (sq(5, 5), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let target = Move {
+        from: sq(5, 3),
+        mid: Some(sq(5, 4)),
+        to: sq(5, 5),
+        promote: false,
+    };
+    let tt_move = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    assert_eq!(
+        board.captured_squares(target),
+        [Some(sq(5, 4)), Some(sq(5, 5))]
+    );
+
+    assert_capture_futility_search(&board, target, tt_move, 7, 0, false, false);
+    assert_capture_futility_search(&board, target, tt_move, 7, -1, false, true);
 }
 
 // SEEが負の捕獲しかなくても先頭手は読み、全手の枝刈りによる偽の詰みを防ぐ。
@@ -862,12 +1135,30 @@ fn see_pruning_searches_first_capture_without_false_mate() {
     let (score, nodes) = result.unwrap();
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
-    // 葉は最大手数で静的評価を返すため、通常探索の捕獲だけを数える。
-    let margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
-    let pruned = moves
-        .iter()
-        .all(|&mv| see_prunes(&board, engine_rules(), nnue, mv, margin));
-    assert_eq!(nodes, if pruned { 1 } else { 2 });
+    // 先頭手はcan_prune_movesが偽なので必ず読み、後続手はS4の式が成立するので読まない。
+    let static_eval = evaluate(nnue, &board);
+    let improving = static_eval > 0;
+    let lmr_depth = super::super::pruning::pruning_lmr_depth(1, 1, improving, false, true);
+    assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
+    for &mv in &moves {
+        let captured_value = board
+            .captured_squares(mv)
+            .into_iter()
+            .flatten()
+            .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+            .sum();
+        assert!(
+            super::super::pruning::capture_futility_value(
+                nnue.pawn_value(),
+                static_eval,
+                lmr_depth,
+                captured_value,
+                0,
+            ) <= alpha
+        );
+        assert!(!board.gives_check(&MoveGenerator::standard(), mv));
+    }
+    assert_eq!(nodes, 1);
     assert_eq!(hit.score, score);
     assert!(hit.score.abs() < MATE_THRESHOLD);
     assert_eq!(hit.bound, Bound::Upper);
@@ -1227,7 +1518,10 @@ fn see_pruning_searches_rule_dependent_capture() {
     assert!(!see_prunes(&board, engine_rules(), nnue, capture, 200));
     assert!(!royal_under_attack(&board));
     let static_eval = evaluate(nnue, &board);
-    let alpha = static_eval + 3 * nnue.pawn_value();
+    // S4の見積りを1だけ上回らせず、判定不能の手がS3へ進むことを検査する。
+    let (_, futility_value) = capture_futility_context(&board, capture, quiet, 2);
+    let alpha = futility_value - 1;
+    assert!(alpha > static_eval);
     let table = small_tt();
     // 他の捕獲による先行カットオフを避け、経由升を持つ捕獲まで探索を進める。
     // 対象と同じ盤面になる手は保存せず、実際に探索された結果を観測する。
@@ -1268,9 +1562,9 @@ fn see_pruning_searches_rule_dependent_capture() {
     assert_eq!(search_key(&child), search_key(&target));
 }
 
-// 最後の王駒の捕獲は詰みとして返し、保存する。
+// 捕獲手のfutility式が成立しても、最後の王駒の捕獲は詰みとして返し、保存する。
 #[test]
-fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
+fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
     let board = position(
         Color::Black,
         &[
@@ -1294,8 +1588,23 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     assert!(legal_moves(&board).contains(&capture));
     assert!(!royal_under_attack(&board));
     assert!(captures_last_royal(&board, capture));
-    let ply = 5;
+    let ply = 0;
+    let (lmr_depth, futility_value) = capture_futility_context(&board, capture, quiet, 1);
+    assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
+    let alpha = futility_value.max(evaluate(test_nnue(), &board) + 1);
+    assert!(alpha.abs() < REPETITION_BAND_START && (alpha + 1).abs() < REPETITION_BAND_START);
     let table = small_tt();
+    let mut quiet_child = board.clone();
+    quiet_child.make_move_unchecked(quiet, engine_rules());
+    table.store(
+        search_key(&quiet_child),
+        MAX_PLY,
+        -(alpha - 1),
+        Bound::Exact,
+        None,
+        ply + 1,
+        false,
+    );
     table.store(
         search_key(&board),
         0,
@@ -1305,7 +1614,6 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
         ply,
         false,
     );
-    let alpha = evaluate(test_nnue(), &board) + 3 * test_nnue().pawn_value();
     let (score, _) = run_move_pruning(&board, 1, alpha, alpha + 1, ply, &table);
     assert_eq!(score, MATE - (ply + 1) as i32);
     let hit = table.probe(search_key(&board), ply).unwrap();

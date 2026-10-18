@@ -282,6 +282,66 @@ pub(super) fn see_margin(pawn: i32, depth: u32, capture_history: i32) -> i32 {
     SeeCoefficients::current().see_margin(pawn, depth, capture_history)
 }
 
+/// 捕獲手のfutility pruningを行うlmrDepthの上限。
+/// Stockfishの`lmrDepth < 8`に対応する（src/search.cpp:1211）。
+pub(super) const CAPTURE_FUTILITY_LMR_DEPTH_LIMIT: i32 = 8;
+
+/// 捕獲手のfutility見積りの式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct CaptureFutilityCoefficients {
+    pub(super) capture_futility_base: i32,
+    pub(super) capture_futility_lmr_depth: i32,
+    pub(super) capture_futility_history: i32,
+}
+
+impl CaptureFutilityCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            capture_futility_base: params::capture_futility_base(),
+            capture_futility_lmr_depth: params::capture_futility_lmr_depth(),
+            capture_futility_history: params::capture_futility_history(),
+        }
+    }
+
+    /// 補正後の静的評価、枝刈り用のlmrDepth、捕獲価値、およびcapture historyから見積りを求める。
+    /// Stockfishの式に対応する（src/search.cpp:1213-1214）。
+    pub(super) fn capture_futility_value(
+        &self,
+        pawn: i32,
+        static_eval: i32,
+        lmr_depth: i32,
+        captured_value: i32,
+        capture_history: i32,
+    ) -> i32 {
+        let percent = i64::from(self.capture_futility_base)
+            + i64::from(self.capture_futility_lmr_depth) * i64::from(lmr_depth);
+        let weighted_history =
+            i64::from(capture_history) * i64::from(self.capture_futility_history) / 1024;
+        let history_value = weighted_history * i64::from(pawn) / STOCKFISH_PAWN_VALUE;
+        (i64::from(static_eval)
+            + i64::from(pawn) * percent / 100
+            + i64::from(captured_value)
+            + history_value) as i32
+    }
+}
+
+/// 捕獲手のfutility見積りを求める（Stockfish src/search.cpp:1213-1214）。
+pub(super) fn capture_futility_value(
+    pawn: i32,
+    static_eval: i32,
+    lmr_depth: i32,
+    captured_value: i32,
+    capture_history: i32,
+) -> i32 {
+    CaptureFutilityCoefficients::current().capture_futility_value(
+        pawn,
+        static_eval,
+        lmr_depth,
+        captured_value,
+        capture_history,
+    )
+}
+
 /// reverse futilityの残り深さの上限。Stockfishの`depth < (seekMate ? 6 : 19)`に対応する。
 /// 詰みを探す場合を除く18手を使う（Stockfish src/search.cpp:1022）。
 pub(super) const REVERSE_FUTILITY_MAX_DEPTH: u32 = 18;

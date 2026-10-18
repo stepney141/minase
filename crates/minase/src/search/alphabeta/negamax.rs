@@ -15,12 +15,12 @@ use super::INFINITY;
 use super::correction::key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
-    LmrContext, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
-    corrected_static_eval, futility_pruning_value, is_improving, is_opponent_worsening,
-    late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth,
-    null_move_reduction, pruning_eval, pruning_lmr_depth, razoring_margin, reverse_futility_margin,
-    see_margin, seek_mate_null_move_reduction, should_raise_futility_best_score,
-    zero_window_tt_cutoff,
+    CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, REVERSE_FUTILITY_MAX_DEPTH,
+    SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH, capture_futility_value, corrected_static_eval,
+    futility_pruning_value, is_improving, is_opponent_worsening, late_move_limit, lmr_depth,
+    lmr_reduction, lmr_research_depth, non_lmr_depth, null_move_reduction, pruning_eval,
+    pruning_lmr_depth, razoring_margin, reverse_futility_margin, see_margin,
+    seek_mate_null_move_reduction, should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{PathMove, Searcher};
@@ -66,7 +66,8 @@ impl Searcher<'_> {
     /// 補正表の更新には補正前の評価を渡す。
     ///
     /// 前向き枝刈りはreverse futility、razoring、null moveの順で判定する。
-    /// 手のループではlate move pruningの後、捕獲手と王手になる手にはSEE、それ以外の手にはfutilityを判定し、残った手にLMRを適用する。
+    /// 手のループではlate move pruningの後、捕獲手のfutility、捕獲手と王手になる手のSEE、静かな手のfutilityの順に判定し、残った手にLMRを適用する。
+    /// 捕獲手のfutilityはlmrDepthが8未満で、成る手、相手の最後の王駒を取る手、および王手になる手を除く。
     /// 静かな手のfutilityはlmrDepthが12未満ならPVノードにも適用し、followPVのPVノード、成る手、および王手になる手を除く。
     /// αとβが詰み帯と専用の帯の外にあり、手番側の王駒に相手の疑似利きが届かないことも要求する。
     /// late move pruningはIIR後の残り深さに上限を設けず、零窓とPVノードの両方に適用する。
@@ -333,6 +334,47 @@ impl Searcher<'_> {
                 }
 
                 if capture {
+                    // Stockfish src/search.cpp:1208-1217。捕獲価値は整列値を流用せず、
+                    // 2枚取りを含む実際の捕獲升から求める。
+                    if window_outside_bands && !mv.promote && !captures_last_royal(position, mv) {
+                        let lmr_depth = pruning_lmr_depth(
+                            depth,
+                            index,
+                            improving,
+                            pv_node,
+                            self.tt_pv[ply as usize],
+                        );
+                        if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT {
+                            let captured_value = position
+                                .captured_squares(mv)
+                                .into_iter()
+                                .flatten()
+                                .map(|square| {
+                                    self.nnue.piece_value(
+                                        position
+                                            .piece_at(square)
+                                            .expect("capture square must contain a piece"),
+                                    )
+                                })
+                                .sum();
+                            let history = self.capture_history.read(position, self.nnue, mv);
+                            if capture_futility_value(
+                                self.nnue.pawn_value(),
+                                static_eval,
+                                lmr_depth,
+                                captured_value,
+                                history,
+                            ) <= alpha
+                                // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
+                                && !position.gives_check(&self.generator, mv)
+                                && !*royal_attacked
+                                    .get_or_insert_with(|| royal_under_attack(position))
+                            {
+                                index += 1;
+                                continue;
+                            }
+                        }
+                    }
                     // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
                     // docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。

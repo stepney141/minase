@@ -151,6 +151,18 @@ fn tuning_usi_contract_in_isolated_process() {
                 "SeeCaptureHistory",
                 params::see_capture_history as fn() -> i32,
             ),
+            (
+                "CaptureFutilityBase",
+                params::capture_futility_base as fn() -> i32,
+            ),
+            (
+                "CaptureFutilityLmrDepth",
+                params::capture_futility_lmr_depth as fn() -> i32,
+            ),
+            (
+                "CaptureFutilityHistory",
+                params::capture_futility_history as fn() -> i32,
+            ),
             ("AspirationDelta", params::aspiration_delta as fn() -> i32),
             ("AspirationGrowth", params::aspiration_growth as fn() -> i32),
             ("NullMoveBase", params::null_move_base as fn() -> i32),

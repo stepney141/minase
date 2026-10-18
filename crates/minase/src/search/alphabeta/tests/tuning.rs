@@ -7,8 +7,8 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     pruning::{
-        futility_value, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
-        see_margin,
+        capture_futility_value, futility_value, late_move_limit, lmr_base, razoring_margin,
+        reverse_futility_margin, see_margin,
     },
     root::grow_aspiration_delta,
 };
@@ -171,6 +171,9 @@ fn tuning_parameters_in_isolated_process() {
         ("RazoringMargin2", 2885),
         ("SeeDepthMargin", 85),
         ("SeeCaptureHistory", 34),
+        ("CaptureFutilityBase", 113),
+        ("CaptureFutilityLmrDepth", 119),
+        ("CaptureFutilityHistory", 134),
         ("AspirationDelta", 57),
         ("AspirationGrowth", 168),
         ("NullMoveBase", 4799),
@@ -426,7 +429,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 65] = [
+    let cases: [Case; 68] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -613,6 +616,15 @@ fn tuning_parameters_in_isolated_process() {
         ("SeeDepthMargin", 100, || i64::from(see_margin(101, 2, 0))),
         ("SeeCaptureHistory", 100, || {
             i64::from(see_margin(208, 1, 1024))
+        }),
+        ("CaptureFutilityBase", 0, || {
+            i64::from(capture_futility_value(100, 0, 1, 100, 0))
+        }),
+        ("CaptureFutilityLmrDepth", 0, || {
+            i64::from(capture_futility_value(100, 0, 1, 100, 0))
+        }),
+        ("CaptureFutilityHistory", 100, || {
+            i64::from(capture_futility_value(208, 0, 0, 100, 1024))
         }),
         ("AspirationDelta", 100, || i64::from(aspiration_delta(101))),
         ("AspirationGrowth", 300, || {

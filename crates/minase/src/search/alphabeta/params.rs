@@ -223,6 +223,18 @@ parameters! {
     /// StockfishとYaneuraOuはともに34である（Stockfish src/search.cpp:1222、YaneuraOu yaneuraou-search.cpp:3631）。
     /// 開始値はStockfishの値であり、SPSAで未調整である。
     SeeCaptureHistory(see_capture_history): 34, -50, 200;
+    /// 捕獲手のfutility見積りに加える定数。単位は歩兵価値に対する百分率である。
+    /// Stockfishは234/208で113、YaneuraOuは218/90で242である（Stockfish src/search.cpp:1213、YaneuraOu yaneuraou-search.cpp:3616）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CaptureFutilityBase(capture_futility_base): 113, 0, 600;
+    /// 捕獲手のfutility見積りでlmrDepth 1あたりに加える量。単位は歩兵価値に対する百分率である。
+    /// Stockfishは247/208で119、YaneuraOuは223/90で248である（Stockfish src/search.cpp:1213、YaneuraOu yaneuraou-search.cpp:3616）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CaptureFutilityLmrDepth(capture_futility_lmr_depth): 119, 0, 500;
+    /// 捕獲手のfutility見積りに加えるcapture historyの重み。単位は履歴値に対する1/1024である。
+    /// Stockfishは134、YaneuraOuは131である（Stockfish src/search.cpp:1214、YaneuraOu yaneuraou-search.cpp:3617）。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    CaptureFutilityHistory(capture_futility_history): 134, -100, 600;
     /// aspiration windowの初期半幅。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     AspirationDelta(aspiration_delta): 57, 10, 200;

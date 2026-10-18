@@ -448,11 +448,11 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
         Color::Black,
         &[
             (sq(11, 0), Color::Black, PieceKind::King),
-            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(3, 8), Color::White, PieceKind::King),
             (sq(5, 3), Color::Black, PieceKind::FreeKing),
-            (sq(5, 4), Color::White, PieceKind::Rook),
+            (sq(5, 4), Color::White, PieceKind::GoldGeneral),
             (sq(5, 5), Color::White, PieceKind::Pawn),
-            (sq(3, 3), Color::Black, PieceKind::Pawn),
+            (sq(3, 3), Color::Black, PieceKind::Rook),
             (sq(3, 4), Color::White, PieceKind::Pawn),
         ],
     );
@@ -474,6 +474,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             &[(quiet, false), (pruned, true), (winner, true)]
         );
         assert!(!royal_under_attack(&board));
+        assert!(board.gives_check(&MoveGenerator::standard(), winner));
         let history = searcher.capture_history.read(&board, searcher.nnue, pruned);
         let margin =
             crate::search::alphabeta::pruning::see_margin(searcher.nnue.pawn_value(), 3, history);
@@ -514,6 +515,108 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
         assert_eq!(
             searcher.capture_history.read(&board, searcher.nnue, winner),
             9
+        );
+    });
+}
+
+/// 捕獲手のfutility pruningで飛ばした手は、後続の静かな手の打ち切りでも減点しない。
+#[test]
+fn capture_history_excludes_capture_futility_pruned_capture() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::White, PieceKind::Pawn),
+            (sq(6, 7), Color::Black, PieceKind::Pawn),
+        ],
+    );
+    let tt_move = capture(sq(11, 0), sq(10, 0));
+    let pruned = capture(sq(5, 3), sq(5, 4));
+    let winner = Move {
+        promote: true,
+        ..capture(sq(6, 7), sq(6, 8))
+    };
+    let moves = legal_moves(&board);
+    assert!(moves.contains(&tt_move));
+    assert!(moves.contains(&pruned));
+    assert!(moves.contains(&winner));
+    assert!(!royal_under_attack(&board));
+    assert!(!board.gives_check(&MoveGenerator::standard(), pruned));
+
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.killers[0][0] = Some(winner);
+        let ordered = picked(searcher, &board, Some(tt_move));
+        assert_eq!(ordered[0], (tt_move, false));
+        let pruned_index = ordered.iter().position(|&(mv, _)| mv == pruned).unwrap();
+        let winner_index = ordered.iter().position(|&(mv, _)| mv == winner).unwrap();
+        assert!(pruned_index < winner_index);
+
+        let depth = 7;
+        let static_eval = evaluate(searcher.nnue, &board);
+        let lmr_depth =
+            super::super::pruning::pruning_lmr_depth(depth, pruned_index, false, false, true);
+        assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
+        let captured_value = board
+            .captured_squares(pruned)
+            .into_iter()
+            .flatten()
+            .map(|square| searcher.nnue.piece_value(board.piece_at(square).unwrap()))
+            .sum();
+        let alpha = super::super::pruning::capture_futility_value(
+            searcher.nnue.pawn_value(),
+            static_eval,
+            lmr_depth,
+            captured_value,
+            0,
+        );
+        let beta = alpha + 1;
+        assert!(alpha > static_eval);
+        assert!(!see_prunes(
+            &board,
+            engine_rules(),
+            searcher.nnue,
+            pruned,
+            super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
+        ));
+
+        for &mv in &moves {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let parent_score = if mv == winner { beta } else { alpha - 1 };
+            searcher.tt.store(
+                search_key(&child),
+                MAX_PLY,
+                -parent_score,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            Bound::Upper,
+            Some(tt_move),
+            0,
+            true,
+        );
+        searcher.seek_mate = true;
+        searcher.null_move_ply = Some(0);
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), depth, alpha, beta, 0, false),
+            Some(beta)
+        );
+        assert_eq!(
+            searcher.tt.probe(search_key(&board), 0).unwrap().best_move,
+            Some(winner)
+        );
+        assert_eq!(
+            searcher.capture_history.read(&board, searcher.nnue, pruned),
+            0
         );
     });
 }
