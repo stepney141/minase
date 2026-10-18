@@ -62,7 +62,7 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
 }
 
 // 上限は基数と深さ²の項の和を百分率で換算し、improvingでなければ倍率を掛ける。
-// 数える手の範囲を選んだ理由は docs/adr/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md にある。
+// 数える手の範囲を選んだ理由は docs/adr/apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md にある。
 #[test]
 fn late_move_limits_follow_quadratic_depth_rule() {
     for (depth, improving, expected) in [

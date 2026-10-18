@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月4日。[late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](../count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月4日。[late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)によって置き換えられた。
 
 ## コンテキスト
 

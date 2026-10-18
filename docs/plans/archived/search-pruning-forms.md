@@ -76,7 +76,7 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 - LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](../correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
 - 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](../qsearch-forms.md)が扱う。
 - 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](../qsearch-forms.md)、[aspiration-window-forms.md](../aspiration-window-forms.md)、および[time-instability-scaling.md](../time-instability-scaling.md)で扱う。
-- 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../../adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）。
+- 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）。
 
 ## 依存関係
 
@@ -136,7 +136,7 @@ reverse futility pruningの余裕値の補正量の項はF1が持ち、[correcti
 | LMRをしない手の減深（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、LMRの分岐を通らない零窓の探索でも、置換表の手がなければ減深量に`LmrNoTtMove`を足し、減深量が大きければ通常深さから1手または2手減らして読む（`src/search.cpp:1428-1436`）。Stockfishがこの分岐を通るのは、零窓のノードの先頭の手と残り深さ1のノードの2手目以降だけなので、minaseも同じ手に限る。LMRの対象でない2手目以降の手（捕獲手とkiller手）は、Stockfishでは減深の分岐で読まれる手なので、この分岐には含めず、LMRを広げる[history-forms.md](../history-forms.md)のM5に委ねる。 |
 | LMRのcutNodeの増分と上限の釣り合い（F4） | cutNodeの増分の開始値は約3.9手、置換表の手がなければ約4.8手であり（`src/search.cpp:1356-1357`）、Stockfishでは多くの減算の項と釣り合っている。上限`LmrMaxReduction`の開始値3では、cutNodeで減深の対象となる手の多くが上限で減深される。2026年10月17日の利用者の決定により上限は係数として残すので、上限と増分の釣り合いはSPSAに選ばせる。上限に張り付いた最終値は、測定記録に残して解釈する。 |
 | allNodeの項の分母（F4） | Stockfishの`r × 276/(256 × depth + 268)`（`src/search.cpp:1387-1388`）の分子を係数`LmrAllNode`とし、分母の定数268/256は105に換算して固定する。2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により入れる。 |
-| 置換表の打ち切り（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、零窓のノードでは、置換表の値による打ち切りに「cutNodeで値がβ以上か、allNodeで値がβ未満か、残り深さが4より深い」というStockfishの条件（`src/search.cpp:899`）を加える。同じ決定により、打ち切りの深さの条件（同894-895行）と、残り深さ7以上で置換表の手を指した後の局面を置換表で確かめる処理（同917-931行）も入れる。PVノードでの打ち切りは、[ADR](../../adr/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が測定で決めた既存の仕組みなので残し、現行の条件のままとする。50手規則で打ち切りを止める条件（同915行）は、中将棋に50手規則がないので持たない。着手後の局面の値が専用の帯にある場合は、経路に依存する値を打ち切りに使わない現行の規則に揃えて、値がないものとして扱う。これは本書の判断である。 |
+| 置換表の打ち切り（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、零窓のノードでは、置換表の値による打ち切りに「cutNodeで値がβ以上か、allNodeで値がβ未満か、残り深さが4より深い」というStockfishの条件（`src/search.cpp:899`）を加える。同じ決定により、打ち切りの深さの条件（同894-895行）と、残り深さ7以上で置換表の手を指した後の局面を置換表で確かめる処理（同917-931行）も入れる。PVノードでの打ち切りは、[ADR](../../adr/archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が測定で決めた既存の仕組みなので残し、現行の条件のままとする。50手規則で打ち切りを止める条件（同915行）は、中将棋に50手規則がないので持たない。着手後の局面の値が専用の帯にある場合は、経路に依存する値を打ち切りに使わない現行の規則に揃えて、値がないものとして扱う。これは本書の判断である。 |
 | IIR（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、allNodeではIIRを行わない（`src/search.cpp:1085`）。深さ3以上の条件は、[ADR](../../adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)が測定で決めた既存の仕組みなので残し、Stockfishの深さ6には変えない。同じ決定により、前の反復の主変化を辿るノードでもIIRを行わない条件（Stockfishの`followPV`、同791-794行と1085行）を入れる。根は主変化を辿るノードとし、子は、親がそうであり、親から子への手が前の反復で確定した主変化の同じ手数の手と一致するときに限って、主変化を辿るノードとする。 |
 | 詰みを探す局面（F6） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの`seekMate`（`src/search.cpp:395`）を入れる。前の反復で確定した根の評価値の絶対値が、歩兵価値の`361 + 105769/D²`%以上なら詰みを探す局面とする。ここで`D`は反復の深さであり、2つの定数はStockfishの750と220000を歩兵価値208で換算した値である。Stockfishはこの値を棋力のための値ではないとして調整しない（同394行）ので、固定する。詰みを探す局面では、reverse futility pruningの深さの上限を5にし、razoringを行わず（同1017行）、null moveの減深を半分にする（同1045行）。 |
 

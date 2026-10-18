@@ -1227,7 +1227,7 @@ fn capture_futility_applies_to_two_stage_captures_and_sums_both_victims() {
 
 // SEEが負の捕獲しかなくても先頭手は読み、全手の枝刈りによる偽の詰みを防ぐ。
 // この局面は王駒と周囲の歩兵が動けず、仲人が歩兵を取って取り返される2手だけが合法である。
-// 判断の理由は docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。
+// 判断の理由は docs/adr/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md にある。
 #[test]
 fn see_pruning_searches_first_capture_without_false_mate() {
     let board = position(

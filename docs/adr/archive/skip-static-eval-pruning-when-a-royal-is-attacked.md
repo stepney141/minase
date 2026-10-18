@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月6日。[浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わず、reverse futility pruningはStockfishの条件で残り深さ18まで行う](../skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月6日。[浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わず、reverse futility pruningはStockfishの条件で残り深さ18まで行う](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -15,7 +15,7 @@ reverse futility pruning、futility pruning、およびrazoringは静的評価�
 [段階4の診断bench](../../measurements/strength-stage4/strength-stage4-pruning-bench.md)では、非PVかつ詰み帯でないノードのうち、いずれかの王駒に利きが届くノードは残り深さ1、2、3で1.56%、1.87%、2.99%だった。
 最後の王駒だけに限ると1.52%、1.80%、2.99%であり、差は小さかった。
 段階4ではfutility pruningだけが[STC](../../measurements/strength-stage4/strength-stage4-futility-stc.md)と[LTC](../../measurements/strength-stage4/strength-stage4-futility-ltc.md)で`H1`となり、reverse futility pruningは[STC](../../measurements/strength-stage4/strength-stage4-rfp-stc.md)で`H0`だった。
-2026年9月21日には、[棋力向上段階8](../../plans/archived/strength-stage8.md)がSEEによる捕獲手の枝刈りを同じ対象ノードに加えた（[ADR](../prune-losing-captures-by-see-at-shallow-nodes.md)）。
+2026年9月21日には、[棋力向上段階8](../../plans/archived/strength-stage8.md)がSEEによる捕獲手の枝刈りを同じ対象ノードに加えた（[ADR](prune-losing-captures-by-see-at-shallow-nodes.md)）。
 2026年10月4日には、[不採用だった探索部の改良の再調整](../../plans/archived/search-revival-spsa.md)が、reverse futility pruning、razoring、および定義を改めたlate move pruningを同じ適用条件のまま戻して係数を調整し直し、[LTC](../../measurements/search-revival-spsa/search-revival-tstar-vs-m-ltc.md)で`H1`となって採用した（[採用のADR](../adopt-revived-search-items-as-a-bundle.md)）。
 本ADRは、この拡張を含む現行の適用条件を記録する。
 

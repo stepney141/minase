@@ -246,7 +246,7 @@ impl Searcher<'_> {
         // allNodeで判定用の評価値が深さ比例の余裕値を引いたαより小さければ、静止探索の値をそのまま返す。
         // Stockfish src/search.cpp:1015-1018。
         // 王駒に疑似利きが届くノードを除く理由は
-        // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md にある。
+        // docs/adr/extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md にある。
         if razoring_node && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position)) {
             let value = self.quiesce(position, alpha, beta, ply)?;
             return Some(value);
@@ -402,7 +402,7 @@ impl Searcher<'_> {
                     }
                     // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
-                    // docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。
+                    // docs/adr/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md にある。
                     if window_outside_bands
                         && !captures_last_royal(position, mv)
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))

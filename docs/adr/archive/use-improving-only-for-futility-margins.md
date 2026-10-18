@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月4日。[improvingは補正後の静的評価で判定し、futilityとreverse futilityの余裕値、late move pruningの上限、およびLMRの減深量に使う](../judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月4日。[improvingは補正後の静的評価で判定し、futilityとreverse futilityの余裕値、late move pruningの上限、およびLMRの減深量に使う](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)によって置き換えられた。
 
 ## コンテキスト
 

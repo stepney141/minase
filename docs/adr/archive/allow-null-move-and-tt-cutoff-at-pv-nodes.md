@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月28日。[null moveと置換表の打ち切りをPVノードでも行い、零窓のノードの打ち切りにはcutNodeとallNodeの区別を使う](../allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月28日。[null moveと置換表の打ち切りをPVノードでも行い、零窓のノードの打ち切りにはcutNodeとallNodeの区別を使う](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -46,7 +46,7 @@ Stockfishの2つの除外条件を入れない案は、Stockfishにある項目�
 置換表の手は、合法手であることを確かめてから、枝刈りのために捕獲手かを判定することにも使う。
 これらの契約は`crates/minase/src/search/alphabeta/tt.rs`の`Hit::best_move`のdocコメントにあり、条件の判定は`negamax.rs`の`negamax`にある。
 null move pruningで早期に返るノードは置換表へ保存しないので、次の反復でも記録手がなく再び減深され得る。
-cutNodeとallNodeの受け渡しの規則は、[置換表の打ち切りのADR](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が定める。
+cutNodeとallNodeの受け渡しの規則は、[置換表の打ち切りのADR](archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が定める。
 
 この変更は、段階ゲートを通らずに採用した。
 SPSAの値を反映した候補は、設計書を始めた時点のmaster`99ccc6bb`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、776ペアで`H0`となった（[STCの記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。

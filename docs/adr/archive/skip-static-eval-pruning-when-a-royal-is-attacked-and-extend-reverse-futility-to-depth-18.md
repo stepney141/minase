@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月18日。
+置き換え済み。決定日は2026年10月18日。[浅い前向き枝刈りは深さと窓の条件をStockfishに合わせて王駒に利きが届くノードでは行わず、reverse futility pruningはβと判定用の評価値の加重平均を返す](../extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -12,17 +12,17 @@ reverse futility pruning、futility pruning、およびrazoringは静的評価�
 王駒が取られ得る局面の静的評価は、最後の王駒の捕獲を詰みの値とする探索値から大きく外れる。
 王駒の捕獲を禁じる規則はないので、王駒の升では、相手駒の疑似利きと実際に捕獲できる駒の集合が一致する。
 
-[旧ADR](archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)は、2026年9月6日に、これらの枝刈りを残り深さ3以下の零窓のノードに限り、王駒に利きが届くノードを除くと決めた。
-[棋力向上段階4](../plans/archived/strength-stage4.md)の[診断bench](../measurements/strength-stage4/strength-stage4-pruning-bench.md)では、非PVかつ詰み帯でないノードのうち、いずれかの王駒に利きが届くノードは残り深さ1、2、3で1.56%、1.87%、2.99%であり、最後の王駒だけに限ると1.52%、1.80%、2.99%だった。
+[旧ADR](skip-static-eval-pruning-when-a-royal-is-attacked.md)は、2026年9月6日に、これらの枝刈りを残り深さ3以下の零窓のノードに限り、王駒に利きが届くノードを除くと決めた。
+[棋力向上段階4](../../plans/archived/strength-stage4.md)の[診断bench](../../measurements/strength-stage4/strength-stage4-pruning-bench.md)では、非PVかつ詰み帯でないノードのうち、いずれかの王駒に利きが届くノードは残り深さ1、2、3で1.56%、1.87%、2.99%であり、最後の王駒だけに限ると1.52%、1.80%、2.99%だった。
 同じ適用条件は、その後SEEによる捕獲手の枝刈りに広がった（[ADR](prune-losing-captures-by-see-at-shallow-nodes.md)）。
-2026年10月4日には、reverse futility pruning、razoring、および定義を改めたlate move pruningも同じ条件のまま採用された（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
+2026年10月4日には、reverse futility pruning、razoring、および定義を改めたlate move pruningも同じ条件のまま採用された（[採用のADR](../adopt-revived-search-items-as-a-bundle.md)）。
 このときのreverse futility pruningは、深さ1〜3に共通の1つの余裕値を補正前の静的評価から引いて判定する形だったので、深さ1と深さ3の余裕値の比を1以外にできなかった。
 
 2026年10月17日に、現行の形のまま探索と時間管理の係数をSPSAで調整し直したところ、余裕値の係数`ReverseFutilityMargin`が開始値428から下限0まで動いた。
 この調整は、後続の設計書で全係数を調整し直すので、反映せずに中止した。
 Stockfishの余裕値は深さに比例して増え、improvingのときは補正量の項を除いて深さ2以下で0以下になる（`src/search.cpp:1022-1033`）。
 現行の形では全深さの余裕値を一律に0へ近づけることでしかこの挙動に近づけないので、SPSAが係数を下限まで動かしたのはそのためである可能性がある。
-同じ日に、[探索の枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)で、前向き枝刈りと減深の式をStockfishの形へ寄せることにした。
+同じ日に、[探索の枝刈りとLMRの関数形の見直し](../../plans/archived/search-pruning-forms.md)で、前向き枝刈りと減深の式をStockfishの形へ寄せることにした。
 エンジンの開発者の決定により、Stockfishにある項目は入れて形と値をStockfishに合わせ、深さの上限のような閾値はStockfishの値で固定し、中将棋の規則から来る王駒への利きの除外は残す。
 
 ## 決定
@@ -49,7 +49,7 @@ reverse futility pruningは、次の条件をすべて満たすノードで判�
 
 余裕値はStockfishの式（`src/search.cpp:1025-1030`）を歩兵価値の百分率の係数で表したものであり、深さに比例する項からimprovingとopponentWorseningの項を引き、補正量の絶対値に比例する項を足す。
 深さに掛ける倍率の上限（歩兵価値の41%）と、深さの上限18および5は、Stockfishの値で固定する。
-判定用の評価値とopponentWorseningの定義は、[静的評価のADR](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)にある。
+判定用の評価値とopponentWorseningの定義は、[静的評価のADR](../key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)にある。
 
 ## 検討した代案
 
@@ -61,7 +61,7 @@ Stockfishは深さの上限を、詰みの発見のために調整しない値�
 旧ADRで棄却した案は、この決定でも棄却したままとする。
 判定を最後の王駒に限る案は、除外率がほとんど変わらないので採らない。
 reverse futility pruningの返り値をβへ丸める案は、境界としては常に正しいが、上位ノードが得る情報を減らすので採らない。
-返り値をβと判定用の評価値の重み付き平均にするStockfishの形（`src/search.cpp:1033`）は、[浅い枝刈りの拡張の設計書](../plans/shallow-pruning-extensions.md)が扱うので、本決定には含めない。
+返り値をβと判定用の評価値の重み付き平均にするStockfishの形（`src/search.cpp:1033`）は、[浅い枝刈りの拡張の設計書](../../plans/shallow-pruning-extensions.md)が扱うので、本決定には含めない。
 
 ## 結果
 
@@ -73,9 +73,9 @@ reverse futility pruningの返り値をβへ丸める案は、境界としては
 条件の判定は`crates/minase/src/search/alphabeta/negamax.rs`の`negamax`にあり、王駒への利きは他の条件が成立したときだけ`royal_under_attack`で調べてノード内で再利用する。
 余裕値の式と固定の定数は`pruning.rs`の`reverse_futility_margin`と`REVERSE_FUTILITY_MAX_DEPTH`の周辺に、詰みを探す局面の判定は`is_seek_mate`にあり、ttPvの印は`tt.rs`の`Hit`の`is_pv`である。
 `ReverseFutilityMargin`は廃し、余裕値の6つの係数を新たに調整の対象にした。
-係数を開始値に置いた時点では、余裕値が深さ1で歩兵価値の約24%と、旧来の余裕値の428%よりはるかに小さく、benchの探索ノード数はこのコミットで直前より77.2%減った（[benchの記録](../measurements/search-pruning-forms/search-pruning-forms-bench.md)）。
-2026年10月18日の30,000ペアのSPSAでは、`mult`の定数`ReverseFutilityMultBase`が開始値22から235へ動いた（[SPSAの記録](../measurements/search-pruning-forms/search-pruning-forms.md)）。
+係数を開始値に置いた時点では、余裕値が深さ1で歩兵価値の約24%と、旧来の余裕値の428%よりはるかに小さく、benchの探索ノード数はこのコミットで直前より77.2%減った（[benchの記録](../../measurements/search-pruning-forms/search-pruning-forms-bench.md)）。
+2026年10月18日の30,000ペアのSPSAでは、`mult`の定数`ReverseFutilityMultBase`が開始値22から235へ動いた（[SPSAの記録](../../measurements/search-pruning-forms/search-pruning-forms.md)）。
 
 この変更は、段階ゲートを通らずに採用した。
-SPSAの値を反映した候補は、設計書を始めた時点のmaster`99ccc6bb`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、776ペアで`H0`となった（[STCの記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAの値を反映した候補は、設計書を始めた時点のmaster`99ccc6bb`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、776ペアで`H0`となった（[STCの記録](../../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

@@ -137,7 +137,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月4日 [精度を損なう測定の短縮案を採らない](reject-measurement-shortcuts-that-lose-accuracy.md)
 - 2026年9月5日 [SEEは獅子規則に依存する交換段階だけを判定不能とする](mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)
 - 2026年9月5日 [静止探索に専用の深さ上限を置かない](omit-quiescence-depth-limit.md)
-- 2026年9月6日 [null moveのverification searchを実装しない](omit-null-move-verification-search.md)
+- 2026年9月6日 [null moveのverification searchを実装しない](archive/omit-null-move-verification-search.md)（置き換え済み）
 - 2026年9月6日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わない](archive/skip-static-eval-pruning-when-a-royal-is-attacked.md)（置き換え済み）
 - 2026年9月7日 [LMRの減深量は対数表に3段階のhistory補正を加えて求める](archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)（置き換え済み）
 - 2026年9月7日 [静かな手のhistoryはbutterfly表だけで引く](keep-only-the-butterfly-history-table.md)
@@ -167,7 +167,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月21日 [correction historyは駒種別の枚数を鍵にし、futilityの判定にだけ使う](archive/key-correction-history-by-material.md)（置き換え済み）
 - 2026年9月21日 [予想手は採用結果の読み筋の2手目だけから取り、相手番の局面は先読みしない](take-ponder-move-from-the-pv.md)
 - 2026年9月21日 [先読みが的中したら同じ探索を続け、時間予算を的中の時点から測る](continue-search-and-measure-budget-from-ponderhit.md)
-- 2026年9月21日 [浅い非PVノードでSEEの損が余裕値を超える捕獲手を展開しない](prune-losing-captures-by-see-at-shallow-nodes.md)
+- 2026年9月21日 [浅い非PVノードでSEEの損が余裕値を超える捕獲手を展開しない](archive/prune-losing-captures-by-see-at-shallow-nodes.md)（置き換え済み）
 - 2026年9月21日 [獅子の2段階の非捕獲移動だけを浅く読む減深を実装しない](omit-lion-two-step-quiet-move-reduction.md)
 - 2026年9月21日 [発動率の低い探索手法を実装しない](skip-low-activation-search-techniques.md)
 - 2026年9月22日 [SPSAの結果は係数表の既定値のリテラルだけを書き換えて反映する](apply-spsa-results-by-rewriting-default-literals.md)
@@ -257,10 +257,17 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月18日 [SPSAは借りた計算機で、負荷時の速度の比で伸ばした持ち時間で実行する](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)
 - 2026年10月18日 [再開は実行条件を`manifest.json`だけから読み、SPSAではコミット指定の調整対象のビルドし直しを受け入れる](resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)
 - 2026年10月18日 [correction historyは駒種別の枚数を鍵にし、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)
-- 2026年10月18日 [improvingは補正後の静的評価で判定し、futilityとreverse futilityの余裕値、late move pruningの上限、およびLMRの減深量に使う](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)
-- 2026年10月18日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わず、reverse futility pruningはStockfishの条件で残り深さ18まで行う](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)
+- 2026年10月18日 [improvingは補正後の静的評価で判定し、futilityとreverse futilityの余裕値、late move pruningの上限、およびLMRの減深量に使う](archive/judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)（置き換え済み）
+- 2026年10月18日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わず、reverse futility pruningはStockfishの条件で残り深さ18まで行う](archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)（置き換え済み）
 - 2026年10月18日 [LMRの減深量は対数表と3段階のhistory補正にStockfishの項を1/100手単位で加えて求め、上限を係数として残す](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)
-- 2026年10月18日 [late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)
-- 2026年10月18日 [null moveと置換表の打ち切りをPVノードでも行い、零窓のノードの打ち切りにはcutNodeとallNodeの区別を使う](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)
+- 2026年10月18日 [late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)（置き換え済み）
+- 2026年10月18日 [null moveと置換表の打ち切りをPVノードでも行い、零窓のノードの打ち切りにはcutNodeとallNodeの区別を使う](archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)（置き換え済み）
 - 2026年10月18日 [置換表の記録手がないノードを1だけ浅く読み、allNodeと前の反復の主変化を辿るノードでは浅くしない](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)
 - 2026年10月18日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterとLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)
+- 2026年10月19日 [浅い前向き枝刈りは深さと窓の条件をStockfishに合わせて王駒に利きが届くノードでは行わず、reverse futility pruningはβと判定用の評価値の加重平均を返す](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)
+- 2026年10月19日 [捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)
+- 2026年10月19日 [late move pruningは全深さとPVノードで行い、静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)
+- 2026年10月19日 [null moveはcutNodeでStockfishの静的評価の条件を満たすときだけ試し、置換表の打ち切りはPVノードでも行って零窓のノードではcutNodeとallNodeの区別を使う](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)
+- 2026年10月19日 [null moveの打ち切りは残り深さ16以上で検証探索により確かめる](verify-null-move-cutoffs-at-remaining-depth-16-and-above.md)
+- 2026年10月19日 [improvingは補正後の静的評価で判定し、reverse futility pruningの余裕値、null move pruningの条件、late move pruningの上限、およびLMRの減深量に使い、静かな手のfutility pruningの余裕値には使わない](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)
+- 2026年10月19日 [着手が王手になるかを前計算なしに着手後の占有で判定し、枝刈りと詰みを探す局面のLMRに使う](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)

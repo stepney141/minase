@@ -114,7 +114,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 - [butterfly表だけのADR](../adr/keep-only-the-butterfly-history-table.md)（2026年9月7日）は、静かな手のhistoryをbutterfly表だけで構成すると決め、直前の手と組み合わせる表は対象外とした。M3はcontinuation history、pawn history、およびlow ply historyを加える。駒種と到達升で引く表（piece-to history）は、Stockfishにもないので加えない。このADRはPSTの時期の測定に基づき、4次元の表が疎だという判断は表を根の探索ごとに初期化していた時期のものなので、再提案するときは現行の表の寿命で測り直す必要があると留保している。
 - [捕獲履歴のADR](../adr/bound-capture-history-and-use-it-in-qsearch.md)（2026年10月10日）は、捕獲履歴の換算値を歩兵価値の定数倍に抑えて並べ替えに使い、重力式で更新すると決めた。M1は捕獲履歴の更新量と上限をStockfishの形にし、M4は捕獲手のLMRにも使う。並べ替えへの換算の形は変えず、尺度`CaptureHistoryScale`の開始値をStockfishの換算値に置き直す。このADRはPSTの時期の測定に基づき、LMRへの使用については留保していない。
 
-[late move pruningの数え方のADR](../adr/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[killer手を損な先頭捕獲より先に返すADR](../adr/try-killers-before-a-losing-first-capture.md)、および[根の手の並べ替えのADR](../adr/order-root-moves-by-previous-subtree-nodes.md)の決定は変えない。
+[late move pruningの数え方のADR](../adr/archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[killer手を損な先頭捕獲より先に返すADR](../adr/try-killers-before-a-losing-first-capture.md)、および[根の手の並べ替えのADR](../adr/order-root-moves-by-previous-subtree-nodes.md)の決定は変えない。
 
 ## 設計判断
 
