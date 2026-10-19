@@ -188,7 +188,10 @@ fn tuning_parameters_in_isolated_process() {
         ("HistoryMalusBase", 200),
         ("HistoryMalusCap", 2100),
         ("HistoryMalusDecay", 900),
+        ("HistoryTtCutoffBonus", 100),
         ("HistoryTtMoveBonus", 300),
+        ("HistoryPriorBonus", 200),
+        ("HistoryEvalDiff", 10),
         ("HistoryDecay", 37),
         ("CaptureHistoryDecay", 13),
         ("CaptureHistoryScale", 155),
@@ -428,7 +431,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 76] = [
+    let cases: [Case; 79] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -697,11 +700,45 @@ fn tuning_parameters_in_isolated_process() {
                 .updates(10, false, 0, false, 0);
             i64::from(updates.decay_quiet_malus(updates.quiet_malus()))
         }),
+        ("HistoryTtCutoffBonus", 0, || {
+            i64::from(super::super::ordering::tt_cutoff_history_bonus(
+                3,
+                params::history_tt_cutoff_bonus(),
+            ))
+        }),
         ("HistoryTtMoveBonus", 0, || {
             i64::from(
                 super::super::ordering::HistoryUpdateCoefficients::current()
                     .updates(1, true, 0, false, 0)
                     .bonus,
+            )
+        }),
+        ("HistoryPriorBonus", 0, || {
+            i64::from(
+                super::super::ordering::fail_low_history_updates(
+                    super::super::ordering::FailLowHistoryInput {
+                        depth: 4,
+                        best_score: 0,
+                        static_eval: 208,
+                        previous_static_eval: -208,
+                        previous_stat_score: 0,
+                        previous_move_count: 10,
+                        pawn_value: 208,
+                    },
+                    params::history_prior_bonus(),
+                )
+                .butterfly,
+            )
+        }),
+        ("HistoryEvalDiff", 0, || {
+            i64::from(
+                super::super::ordering::eval_difference_history_updates(
+                    -208,
+                    0,
+                    208,
+                    params::history_eval_diff(),
+                )
+                .butterfly,
             )
         }),
         ("HistoryDecay", 50, history_decay),

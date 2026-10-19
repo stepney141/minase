@@ -38,6 +38,10 @@ const TT_CUTOFF_CHILD_MIN_DEPTH: u32 = 7;
 /// Stockfishの`SEARCHEDLIST_CAPACITY`と同じ32を使う（src/search.cpp:75, 1578）。
 const SEARCHED_LIST_CAPACITY: usize = 32;
 
+/// LMRの減深探索がαを上回った手のcontinuation history加点。
+/// Stockfishと同じ1334を使う（src/search.cpp:1423）。
+const POST_LMR_CONTINUATION_BONUS: i32 = 1334;
+
 /// 実際に読んだ手をhistoryの減点対象へ加えるかを返す。
 pub(super) fn should_record_searched_move(move_count: usize, score: i32, alpha: i32) -> bool {
     move_count <= SEARCHED_LIST_CAPACITY && score <= alpha
@@ -167,6 +171,13 @@ impl Searcher<'_> {
                 )
             };
             if cutoff {
+                if hit.score >= beta
+                    && let Some(mv) = tt_move
+                {
+                    let capture =
+                        *tt_capture.get_or_init(|| self.legal_tt_capture(position, tt_move));
+                    self.update_tt_cutoff_histories(position, ply, depth, mv, capture);
+                }
                 let mut consistent = true;
                 // Stockfish src/search.cpp:917-931。照合の着手は探索ノードに数えない。
                 if !pv_node
@@ -214,6 +225,7 @@ impl Searcher<'_> {
         let correction = self.correction.read(side, self.material_keys[ply as usize]);
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[ply as usize] = static_eval;
+        self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
         let mut improving = self.improving(static_eval, ply);
         let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
 
@@ -585,24 +597,6 @@ impl Searcher<'_> {
                 if !capture {
                     self.record_killer(mv, ply);
                 }
-                let parent_stat_score = ply
-                    .checked_sub(1)
-                    .map_or(0, |parent| self.stat_scores[parent as usize]);
-                let updates = HistoryUpdateCoefficients::current().updates(
-                    depth,
-                    Some(mv) == tt_move,
-                    parent_stat_score,
-                    !pv_node,
-                    searched_quiets.len() + searched_captures.len(),
-                );
-                self.update_beta_cutoff_histories(
-                    position,
-                    mv,
-                    capture,
-                    &searched_quiets,
-                    &searched_captures,
-                    updates,
-                );
                 break;
             }
             // αを上回った手は、後で最善手でなくなっても減点対象へ加えない。
@@ -626,6 +620,29 @@ impl Searcher<'_> {
                 -MATE + ply as i32
             });
         };
+        if best_score > original_alpha {
+            let parent_stat_score = ply
+                .checked_sub(1)
+                .map_or(0, |parent| self.stat_scores[parent as usize]);
+            let updates = HistoryUpdateCoefficients::current().updates(
+                depth,
+                Some(best_move) == tt_move,
+                parent_stat_score,
+                !pv_node,
+                searched_quiets.len() + searched_captures.len(),
+            );
+            self.update_best_move_histories(
+                position,
+                best_move,
+                best_capture,
+                &searched_quiets,
+                &searched_captures,
+                updates,
+            );
+            self.update_refutation_history(ply, updates.malus);
+        } else {
+            self.update_fail_low_histories(ply, depth, best_score, static_eval);
+        }
         let bound = if best_score <= original_alpha {
             Bound::Upper
         } else if beta_cutoff {
@@ -865,6 +882,7 @@ impl Searcher<'_> {
             .map(|value| -value)
         };
         let mut research_depth = depth - 1;
+        let mut update_post_lmr = false;
         if let Some(best) = lmr_best
             && let Some(value) = score
             && value > alpha
@@ -888,6 +906,13 @@ impl Searcher<'_> {
                     )
                     .map(|value| -value);
             }
+            update_post_lmr = score.is_some();
+        }
+        if update_post_lmr {
+            let record = self.path_moves[ply as usize]
+                .record
+                .expect("LMR move must have a path record");
+            self.update_continuation(ply, record.piece, record.mv, POST_LMR_CONTINUATION_BONUS);
         }
         if !first && score.is_some_and(|value| value > alpha && value < beta) {
             score = self

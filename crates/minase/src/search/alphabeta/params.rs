@@ -302,10 +302,22 @@ parameters! {
     /// Stockfishは921（src/search.cpp:2021）、YaneuraOuは977（yaneuraou-search.cpp:5327）。
     /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
     HistoryMalusDecay(history_malus_decay): 921, 700, 1024;
+    /// 置換表の静かな打ち切り手へ与える、残り深さ1あたりの加点。単位は履歴点である。
+    /// Stockfishは131（src/search.cpp:906）、YaneuraOuは傾き130（yaneuraou-search.cpp:2739-2740）。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    HistoryTtCutoffBonus(history_tt_cutoff_bonus): 131, 0, 300;
     /// 最善手が置換表の手ならhistoryの加点へ加える量。単位は履歴点である。
     /// Stockfishは364（src/search.cpp:2005）、YaneuraOuは353（yaneuraou-search.cpp:5309）。
     /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
     HistoryTtMoveBonus(history_tt_move_bonus): 364, 0, 1000;
+    /// Fail lowで直前の静かな手のbutterfly historyへ与える加点の倍率。単位は1/32768である。
+    /// Stockfishは215（src/search.cpp:1630）、YaneuraOuは235（yaneuraou-search.cpp:4336）。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    HistoryPriorBonus(history_prior_bonus): 215, 0, 600;
+    /// 静的評価の変化によるbutterfly historyの更新倍率。
+    /// Stockfishは11（src/search.cpp:1008）、YaneuraOuは10（yaneuraou-search.cpp:3129）。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    HistoryEvalDiff(history_eval_diff): 11, 0, 40;
     /// 新しい根の探索へ持ち越すbutterfly historyの割合。単位は百分率である。
     /// Stockfishの729/1024を71%へ換算した（src/search.cpp:343）。YaneuraOuは100%に当たる。
     /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。

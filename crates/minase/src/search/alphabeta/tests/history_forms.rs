@@ -5,7 +5,9 @@ use crate::search::alphabeta::history::{
     CONTINUATION_HISTORY_LIMIT, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_LIMIT, PAWN_HISTORY_LIMIT,
 };
 use crate::search::alphabeta::ordering::{
-    HistoryUpdateCoefficients, capture_stat_score, continuation_index, quiet_stat_score,
+    FailLowHistoryInput, HistoryUpdateCoefficients, capture_stat_score, continuation_index,
+    eval_difference_history_updates, fail_low_history_updates, quiet_stat_score,
+    refutation_continuation_update,
 };
 
 fn record(
@@ -332,7 +334,7 @@ fn continuation_and_quiet_history_updates_match_numeric_examples() {
             tt_move_bonus: 0,
         }
         .updates(1, false, 0, false, 0);
-        searcher.update_beta_cutoff_histories(&board, current, false, &[], &[], updates);
+        searcher.update_best_move_histories(&board, current, false, &[], &[], updates);
         assert_eq!(
             searcher.history[Color::Black.index()][current.from.dense_index()]
                 [current.to.dense_index()],
@@ -431,4 +433,464 @@ fn history_form_limits_and_stat_score_numeric_examples() {
             assert!((-LOW_PLY_HISTORY_LIMIT..=LOW_PLY_HISTORY_LIMIT).contains(&i32::from(value)));
         }
     });
+}
+
+#[test]
+fn fail_low_history_updates_match_numeric_examples() {
+    let input = FailLowHistoryInput {
+        depth: 4,
+        best_score: 0,
+        static_eval: 200,
+        previous_static_eval: -100,
+        previous_stat_score: 196,
+        previous_move_count: 9,
+        pawn_value: 208,
+    };
+    let nine = fail_low_history_updates(input, 215);
+    assert_eq!(
+        nine,
+        super::super::ordering::FailLowHistoryUpdates {
+            bonus_scale: 294,
+            scaled_bonus: 151_410,
+            continuation: 2430,
+            butterfly: 993,
+            pawn: 5988,
+        }
+    );
+
+    let ten = fail_low_history_updates(
+        FailLowHistoryInput {
+            previous_move_count: 10,
+            ..input
+        },
+        215,
+    );
+    assert_eq!((ten.bonus_scale, ten.scaled_bonus), (480, 247_200));
+
+    let zero = fail_low_history_updates(
+        FailLowHistoryInput {
+            depth: 1,
+            best_score: 1000,
+            static_eval: 0,
+            previous_static_eval: 0,
+            previous_stat_score: 0,
+            previous_move_count: 0,
+            pawn_value: 208,
+        },
+        215,
+    );
+    assert_eq!(
+        zero,
+        super::super::ordering::FailLowHistoryUpdates {
+            bonus_scale: 0,
+            scaled_bonus: 0,
+            continuation: 0,
+            butterfly: 0,
+            pawn: 0,
+        }
+    );
+}
+
+#[test]
+fn eval_difference_history_updates_match_clamp_examples() {
+    let lower = eval_difference_history_updates(300, 200, 208, 11);
+    assert_eq!(
+        (lower.delta, lower.butterfly, lower.pawn),
+        (-129, -1419, -1677)
+    );
+
+    let upper = eval_difference_history_updates(-300, -200, 208, 11);
+    assert_eq!(
+        (upper.delta, upper.butterfly, upper.pawn),
+        (254, 2794, 3302)
+    );
+
+    let middle = eval_difference_history_updates(4, 6, 208, 11);
+    assert_eq!(
+        (middle.delta, middle.butterfly, middle.pawn),
+        (50, 550, 650)
+    );
+    assert_eq!(refutation_continuation_update(2244), -1562);
+}
+
+#[test]
+fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
+    let board = staged_picker_fixture();
+    let quiet = legal_moves(&board)
+        .into_iter()
+        .find(|&mv| board.captured_squares(mv).iter().all(Option::is_none))
+        .unwrap();
+    let capture = legal_moves(&board)
+        .into_iter()
+        .find(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .unwrap();
+    let illegal = step(sq(1, 1), sq(1, 2));
+    assert!(!legal_moves(&board).contains(&illegal));
+
+    for (alpha, beta, bound, score) in
+        [(99, 100, Bound::Lower, 150), (-100, 100, Bound::Exact, 150)]
+    {
+        with_root_searcher(&board, &[], |searcher| {
+            searcher
+                .tt
+                .store(search_key(&board), 4, score, bound, Some(quiet), 0, false);
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), 3, alpha, beta, 0, alpha == 99),
+                Some(score)
+            );
+            assert!(
+                searcher.history[board.side_to_move().index()][quiet.from.dense_index()]
+                    [quiet.to.dense_index()]
+                    > 0
+            );
+        });
+    }
+
+    with_root_searcher(&board, &[], |searcher| {
+        searcher.tt.store(
+            search_key(&board),
+            4,
+            150,
+            Bound::Lower,
+            Some(illegal),
+            0,
+            false,
+        );
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 3, 99, 100, 0, true),
+            Some(150)
+        );
+        assert!(
+            searcher
+                .history
+                .iter()
+                .flatten()
+                .flatten()
+                .all(|&value| value == 0)
+        );
+    });
+
+    let context = record(
+        Color::Black,
+        PieceKind::GoldGeneral,
+        sq(2, 2),
+        sq(2, 3),
+        None,
+    );
+    let previous = record(
+        Color::White,
+        PieceKind::SilverGeneral,
+        sq(3, 3),
+        sq(3, 4),
+        None,
+    );
+    for (score, bound, cut_node, move_count, changed) in [
+        (150, Bound::Lower, true, 4, true),
+        (99, Bound::Upper, false, 4, false),
+        (150, Bound::Lower, true, 5, false),
+    ] {
+        with_root_searcher(&board, &[], |searcher| {
+            set_contexts(searcher, [Some(context), Some(previous)]);
+            searcher.accumulators[2] = searcher.nnue.refresh_accumulator(&board);
+            searcher.move_counts[1] = move_count;
+            let continuation = continuation_index(context, previous.piece, previous.mv, 1);
+            searcher.continuation_history.store(continuation, 0);
+            searcher.tt.store(
+                search_key(&board),
+                if score >= 100 { 4 } else { 3 },
+                score,
+                bound,
+                Some(capture),
+                2,
+                false,
+            );
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), 3, 99, 100, 2, cut_node),
+                Some(score)
+            );
+            let actual = searcher.continuation_history.read(continuation);
+            assert_eq!(
+                actual < 0,
+                changed,
+                "score={score}, move_count={move_count}"
+            );
+        });
+    }
+}
+
+#[test]
+fn fail_low_and_eval_difference_update_recorded_histories() {
+    let board = bare_kings();
+    let context = record(Color::Black, PieceKind::Rook, sq(2, 2), sq(2, 3), None);
+    let quiet = record(
+        Color::White,
+        PieceKind::GoldGeneral,
+        sq(3, 3),
+        sq(3, 4),
+        None,
+    );
+    with_root_searcher(&board, &[], |searcher| {
+        set_contexts(searcher, [Some(context), Some(quiet)]);
+        let pawn = searcher.nnue.pawn_value();
+        searcher.static_evals[1] = -pawn;
+        searcher.stat_scores[1] = 0;
+        searcher.move_counts[1] = 10;
+        searcher.pawn_keys[2] = 0x1234;
+        let continuation = continuation_index(context, quiet.piece, quiet.mv, 1);
+        searcher.continuation_history.store(continuation, 0);
+        searcher.history[Color::White.index()][quiet.mv.from.dense_index()]
+            [quiet.mv.to.dense_index()] = 0;
+        searcher
+            .pawn_history
+            .store(searcher.pawn_keys[2], quiet.piece, quiet.mv.to, 0);
+
+        searcher.update_fail_low_histories(2, 4, 0, pawn);
+        assert!(searcher.continuation_history.read(continuation) > 0);
+        assert!(
+            searcher.history[Color::White.index()][quiet.mv.from.dense_index()]
+                [quiet.mv.to.dense_index()]
+                > 0
+        );
+        assert!(
+            searcher
+                .pawn_history
+                .read(searcher.pawn_keys[2], quiet.piece, quiet.mv.to)
+                > 0
+        );
+
+        let eval_quiet = record(
+            Color::White,
+            PieceKind::CopperGeneral,
+            sq(4, 4),
+            sq(4, 5),
+            None,
+        );
+        set_contexts(searcher, [Some(context), Some(eval_quiet)]);
+        searcher.static_evals[1] = -pawn;
+        searcher.pawn_keys[2] = 0x5678;
+        searcher.history[Color::White.index()][eval_quiet.mv.from.dense_index()]
+            [eval_quiet.mv.to.dense_index()] = 0;
+        searcher
+            .pawn_history
+            .store(searcher.pawn_keys[2], eval_quiet.piece, eval_quiet.mv.to, 0);
+        searcher.update_eval_difference_histories(2, 0, false);
+        assert!(
+            searcher.history[Color::White.index()][eval_quiet.mv.from.dense_index()]
+                [eval_quiet.mv.to.dense_index()]
+                > 0
+        );
+        assert!(
+            searcher
+                .pawn_history
+                .read(searcher.pawn_keys[2], eval_quiet.piece, eval_quiet.mv.to)
+                > 0
+        );
+
+        let tt_hit = record(
+            Color::White,
+            PieceKind::CopperGeneral,
+            sq(5, 5),
+            sq(5, 6),
+            None,
+        );
+        set_contexts(searcher, [Some(context), Some(tt_hit)]);
+        searcher.static_evals[1] = -pawn;
+        searcher.pawn_keys[2] = 0x9abc;
+        searcher
+            .pawn_history
+            .store(searcher.pawn_keys[2], tt_hit.piece, tt_hit.mv.to, 0);
+        searcher.update_eval_difference_histories(2, 0, true);
+        assert_eq!(
+            searcher
+                .pawn_history
+                .read(searcher.pawn_keys[2], tt_hit.piece, tt_hit.mv.to),
+            0
+        );
+    });
+
+    let capture_board = staged_picker_fixture();
+    let capture = legal_moves(&capture_board)
+        .into_iter()
+        .find(|&mv| {
+            capture_board
+                .captured_squares(mv)
+                .iter()
+                .any(Option::is_some)
+        })
+        .unwrap();
+    let mut after_capture = capture_board.clone();
+    let undo = after_capture.make_move_unchecked(capture, engine_rules());
+    let captured = MoveRecord::from_undo(test_nnue(), &undo);
+    with_root_searcher(&capture_board, &[], |searcher| {
+        set_contexts(searcher, [Some(context), Some(captured)]);
+        assert_eq!(searcher.capture_history.read_record(captured), 0);
+        searcher.update_fail_low_histories(2, 4, 0, 0);
+        assert_eq!(searcher.capture_history.read_record(captured), 892);
+        assert_eq!(
+            searcher
+                .capture_history
+                .read(&capture_board, searcher.nnue, capture),
+            892
+        );
+    });
+}
+
+#[test]
+fn previous_quiet_updates_skip_root_null_and_capture() {
+    let board = staged_picker_fixture();
+    let tt_capture = legal_moves(&board)
+        .into_iter()
+        .find(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .unwrap();
+    let older = record(Color::Black, PieceKind::Rook, sq(2, 2), sq(2, 3), None);
+    let quiet = record(
+        Color::White,
+        PieceKind::GoldGeneral,
+        sq(3, 3),
+        sq(3, 4),
+        None,
+    );
+    let captured = MoveRecord {
+        captured: Some(PieceKind::Pawn),
+        ..quiet
+    };
+
+    for (records, probe, ply) in [
+        (vec![], quiet, 0),
+        (vec![Some(older), Some(quiet), None], quiet, 3),
+        (vec![Some(older), Some(captured)], captured, 2),
+    ] {
+        with_root_searcher(&board, &[], |searcher| {
+            set_contexts(searcher, records);
+            let context = continuation_index(older, probe.piece, probe.mv, 1);
+            searcher.continuation_history.store(context, 0);
+            searcher.history[Color::White.index()][probe.mv.from.dense_index()]
+                [probe.mv.to.dense_index()] = 0;
+            searcher.pawn_keys[ply as usize] = 0x2468;
+            searcher.pawn_history.store(
+                searcher.pawn_keys[ply as usize],
+                probe.piece,
+                probe.mv.to,
+                0,
+            );
+            if ply > 0 {
+                searcher.move_counts[(ply - 1) as usize] = 1;
+                searcher.tt_hits[(ply - 1) as usize] = false;
+                searcher.static_evals[(ply - 1) as usize] = 0;
+            }
+
+            searcher.update_tt_cutoff_histories(&board, ply, 3, tt_capture, Some(true));
+            searcher.update_eval_difference_histories(ply, 0, false);
+            searcher.update_refutation_history(ply, 1000);
+            searcher.update_fail_low_histories(ply, 4, 0, 0);
+
+            assert_eq!(searcher.continuation_history.read(context), 0);
+            assert_eq!(
+                searcher.history[Color::White.index()][probe.mv.from.dense_index()]
+                    [probe.mv.to.dense_index()],
+                0
+            );
+            assert_eq!(
+                searcher.pawn_history.read(
+                    searcher.pawn_keys[ply as usize],
+                    probe.piece,
+                    probe.mv.to
+                ),
+                0
+            );
+        });
+    }
+}
+
+#[test]
+fn refutation_penalty_requires_previous_node_move_count() {
+    let board = bare_kings();
+    let context = record(Color::Black, PieceKind::Rook, sq(2, 2), sq(2, 3), None);
+    let previous = record(
+        Color::White,
+        PieceKind::GoldGeneral,
+        sq(3, 3),
+        sq(3, 4),
+        None,
+    );
+    for (move_count, tt_hit, changed) in [
+        (1, false, true),
+        (2, true, true),
+        (2, false, false),
+        (1, true, false),
+    ] {
+        with_root_searcher(&board, &[], |searcher| {
+            set_contexts(searcher, [Some(context), Some(previous)]);
+            searcher.move_counts[1] = move_count;
+            searcher.tt_hits[1] = tt_hit;
+            let index = continuation_index(context, previous.piece, previous.mv, 1);
+            searcher.continuation_history.store(index, 0);
+            searcher.update_refutation_history(2, 2244);
+            assert_eq!(
+                searcher.continuation_history.read(index) < 0,
+                changed,
+                "move_count={move_count}, tt_hit={tt_hit}"
+            );
+        });
+    }
+}
+
+#[test]
+fn pv_alpha_improvement_updates_history_without_killer() {
+    let board = bare_kings();
+    let moves = legal_moves(&board);
+    let best = moves[0];
+    with_root_searcher(&board, &[], |searcher| {
+        searcher
+            .tt
+            .store(search_key(&board), 0, 0, Bound::Upper, Some(best), 0, false);
+        for &mv in &moves {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            searcher
+                .tt
+                .store(search_key(&child), 4, 0, Bound::Exact, None, 1, false);
+        }
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
+            Some(0)
+        );
+        assert!(
+            searcher.history[Color::Black.index()][best.from.dense_index()][best.to.dense_index()]
+                > 0
+        );
+        assert_eq!(searcher.killers[0], [None, None]);
+    });
+}
+
+#[test]
+fn post_lmr_continuation_bonus_requires_alpha_improvement() {
+    let root = bare_kings();
+    let context_move = legal_moves(&root)[0];
+    for (value, changed) in [(1, true), (0, false)] {
+        with_root_searcher(&root, &[], |searcher| {
+            let mut current = root.clone();
+            push_path_move(searcher, &mut current, Some(context_move));
+            let context = searcher.path_moves[0].record.unwrap();
+            let mv = legal_moves(&current)[0];
+            let piece = current.piece_at(mv.from).unwrap();
+            let continuation = continuation_index(context, piece, mv, 1);
+            searcher.continuation_history.store(continuation, 0);
+
+            let mut child = current.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            searcher
+                .tt
+                .store(search_key(&child), 6, -value, Bound::Exact, None, 2, false);
+            assert_eq!(
+                searcher.search_move(&mut current, mv, 7, 0, 10, 1, false, 5, Some(0), false),
+                Some(value)
+            );
+            assert_eq!(
+                searcher.continuation_history.read(continuation) > 0,
+                changed,
+                "value={value}"
+            );
+        });
+    }
 }

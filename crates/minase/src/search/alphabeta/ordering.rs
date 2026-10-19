@@ -1,6 +1,7 @@
 //! 着手の順序付けと手の成績の更新。
 //!
-//! β打ち切りでは、historyの加点を`min(傾き × 深さ − 切片, 上限)`へ置換表の手と親のstatScoreの項を加えて求める。
+//! 最善値が探索開始時のαを上回るノードでは、historyの加点を
+//! `min(傾き × 深さ − 切片, 上限)`へ置換表の手と親のstatScoreの項を加えて求める。
 //! 減点も同じ形の1次式で求め、αを上回らなかった探索済みの手へ与える。
 //! Butterfly historyと捕獲履歴は、それぞれ上限7183と10692の重力式で更新する。
 
@@ -10,7 +11,7 @@ use crate::eval::Nnue;
 use minase_core::MoveGenerator;
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::mv::Move;
-use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode};
+use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
 
 use super::capture_history::CaptureHistory;
@@ -125,6 +126,115 @@ impl HistoryUpdates {
 fn scaled_history_value(value: i32, numerator: i32) -> i32 {
     i32::try_from(i64::from(value) * i64::from(numerator) / 1024)
         .expect("scaled history value must fit i32")
+}
+
+/// 置換表の静かな打ち切り手へ与える加点を求める。
+/// 積は`i64`で計算する（src/search.cpp:902-906）。
+pub(super) fn tt_cutoff_history_bonus(depth: u32, coefficient: i32) -> i32 {
+    i32::try_from(i64::from(depth) * i64::from(coefficient))
+        .expect("TT cutoff history bonus must fit i32")
+}
+
+/// 前の最善手が反駁されたときのcontinuation historyの減点を求める。
+/// 積は`i64`で計算し、整数除算は0方向へ丸める（src/search.cpp:2031-2035）。
+pub(super) fn refutation_continuation_update(malus: i32) -> i32 {
+    i32::try_from(-(i64::from(malus) * 713 / 1024))
+        .expect("refutation continuation update must fit i32")
+}
+
+/// Fail lowで直前の静かな手へ与える加点の入力。
+#[derive(Clone, Copy)]
+pub(super) struct FailLowHistoryInput {
+    pub(super) depth: u32,
+    pub(super) best_score: i32,
+    pub(super) static_eval: i32,
+    pub(super) previous_static_eval: i32,
+    pub(super) previous_stat_score: i32,
+    pub(super) previous_move_count: usize,
+    pub(super) pawn_value: i32,
+}
+
+/// Fail lowで直前の静かな手へ与える各表の更新量。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct FailLowHistoryUpdates {
+    pub(super) bonus_scale: i32,
+    pub(super) scaled_bonus: i32,
+    pub(super) continuation: i32,
+    pub(super) butterfly: i32,
+    pub(super) pawn: i32,
+}
+
+/// Fail lowで直前の静かな手へ与える各表の更新量を求める。
+///
+/// 評価値はStockfishの尺度へ換算し、積は`i64`で計算する。
+/// 整数除算は0方向へ丸める（src/search.cpp:1611-1633）。
+pub(super) fn fail_low_history_updates(
+    input: FailLowHistoryInput,
+    history_prior_bonus: i32,
+) -> FailLowHistoryUpdates {
+    let value = stockfish_value(input.best_score, input.pawn_value);
+    let static_eval = stockfish_value(input.static_eval, input.pawn_value);
+    let previous_static_eval = stockfish_value(input.previous_static_eval, input.pawn_value);
+    let depth = i64::from(input.depth);
+    let bonus_scale = (-241_i64 - i64::from(input.previous_stat_score / 98)
+        + (59 * depth).min(420)
+        + 186 * i64::from(input.previous_move_count > 9)
+        + 142 * i64::from(value <= static_eval - 106)
+        + 159 * i64::from(value <= -previous_static_eval - 68))
+    .max(0);
+    let scaled_bonus = (150 * depth - 85).min(1337) * bonus_scale;
+    let update = |numerator, denominator| {
+        i32::try_from(scaled_bonus * i64::from(numerator) / denominator)
+            .expect("fail-low history update must fit i32")
+    };
+    FailLowHistoryUpdates {
+        bonus_scale: i32::try_from(bonus_scale).expect("fail-low bonus scale must fit i32"),
+        scaled_bonus: i32::try_from(scaled_bonus).expect("fail-low scaled bonus must fit i32"),
+        continuation: update(263, 16_384),
+        butterfly: update(history_prior_bonus, 32_768),
+        pawn: update(324, 8192),
+    }
+}
+
+/// 静的評価の変化によるhistoryの更新量。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct EvalDifferenceHistoryUpdates {
+    pub(super) delta: i32,
+    pub(super) butterfly: i32,
+    pub(super) pawn: i32,
+}
+
+/// 直前の手の前後の静的評価からhistoryの更新量を求める。
+///
+/// 評価値はStockfishの尺度へ換算し、積は`i64`で計算する
+/// （src/search.cpp:1004-1011）。
+pub(super) fn eval_difference_history_updates(
+    previous_static_eval: i32,
+    static_eval: i32,
+    pawn_value: i32,
+    history_eval_diff: i32,
+) -> EvalDifferenceHistoryUpdates {
+    let previous = stockfish_value(previous_static_eval, pawn_value);
+    let current = stockfish_value(static_eval, pawn_value);
+    let delta = (-(previous + current)).clamp(-189, 194) + 60;
+    EvalDifferenceHistoryUpdates {
+        delta: i32::try_from(delta).expect("static evaluation difference must fit i32"),
+        butterfly: i32::try_from(delta * i64::from(history_eval_diff))
+            .expect("evaluation-difference butterfly update must fit i32"),
+        pawn: i32::try_from(delta * 13).expect("evaluation-difference pawn update must fit i32"),
+    }
+}
+
+fn stockfish_value(value: i32, pawn_value: i32) -> i64 {
+    i64::from(value) * 208 / i64::from(pawn_value)
+}
+
+fn records_pawn_history(record: MoveRecord) -> bool {
+    !record.mv.promote
+        && !matches!(
+            record.piece.kind(),
+            Some(PieceKind::Pawn | PieceKind::GoBetween)
+        )
 }
 
 /// 静かな手のbutterfly historyと1手前・2手前のcontinuation historyからstatScoreを求める。
@@ -309,6 +419,157 @@ impl Searcher<'_> {
             .update(self.pawn_keys[ply as usize], piece, mv.to, pawn_update);
     }
 
+    /// 置換表の値による打ち切りのhistoryを更新する。
+    ///
+    /// 置換表の手が合法な静かな手ならその手へ加点する。直前の手への減点は、
+    /// 置換表の手の合法性と捕獲の種別によらない（src/search.cpp:902-910）。
+    pub(super) fn update_tt_cutoff_histories(
+        &mut self,
+        position: &Position,
+        ply: u32,
+        requested_depth: u32,
+        tt_move: Move,
+        tt_capture: Option<bool>,
+    ) {
+        if tt_capture == Some(false) {
+            self.update_quiet_histories(
+                ply,
+                piece_at_for_ordering(position, tt_move.from),
+                tt_move,
+                tt_cutoff_history_bonus(requested_depth, params::history_tt_cutoff_bonus()),
+            );
+        }
+
+        let Some(previous_ply) = ply.checked_sub(1) else {
+            return;
+        };
+        let Some(previous) = self.previous_move_record(ply) else {
+            return;
+        };
+        if previous.captured.is_none() && self.move_counts[previous_ply as usize] < 5 {
+            self.update_continuation(previous_ply, previous.piece, previous.mv, -2210);
+        }
+    }
+
+    /// 直前の静かな手の前後の静的評価からhistoryを更新する。
+    /// Stockfishの王手の条件は、minaseがすべてのノードで静的評価を求めるため置かない。
+    pub(super) fn update_eval_difference_histories(
+        &mut self,
+        ply: u32,
+        static_eval: i32,
+        tt_hit: bool,
+    ) {
+        let Some(previous_ply) = ply.checked_sub(1) else {
+            return;
+        };
+        let Some(previous) = self.previous_move_record(ply) else {
+            return;
+        };
+        if previous.captured.is_some() {
+            return;
+        }
+        let updates = eval_difference_history_updates(
+            self.static_evals[previous_ply as usize],
+            static_eval,
+            self.nnue.pawn_value(),
+            params::history_eval_diff(),
+        );
+        self.update_butterfly(previous, updates.butterfly);
+        if !tt_hit && records_pawn_history(previous) {
+            self.pawn_history.update(
+                self.pawn_keys[ply as usize],
+                previous.piece,
+                previous.mv.to,
+                updates.pawn,
+            );
+        }
+    }
+
+    /// 最善値がαを上回ったノードで、反駁された直前の静かな手を減点する。
+    pub(super) fn update_refutation_history(&self, ply: u32, malus: i32) {
+        let Some(previous_ply) = ply.checked_sub(1) else {
+            return;
+        };
+        let Some(previous) = self.previous_move_record(ply) else {
+            return;
+        };
+        if previous.captured.is_none()
+            && self.move_counts[previous_ply as usize]
+                == 1 + usize::from(self.tt_hits[previous_ply as usize])
+        {
+            self.update_continuation(
+                previous_ply,
+                previous.piece,
+                previous.mv,
+                refutation_continuation_update(malus),
+            );
+        }
+    }
+
+    /// Fail lowのノードで、このノードへ至った手のhistoryを更新する。
+    pub(super) fn update_fail_low_histories(
+        &mut self,
+        ply: u32,
+        depth: u32,
+        best_score: i32,
+        static_eval: i32,
+    ) {
+        let Some(previous_ply) = ply.checked_sub(1) else {
+            return;
+        };
+        let Some(previous) = self.previous_move_record(ply) else {
+            return;
+        };
+        if previous.captured.is_some() {
+            self.capture_history.update_record(previous, 892);
+            return;
+        }
+
+        let updates = fail_low_history_updates(
+            FailLowHistoryInput {
+                depth,
+                best_score,
+                static_eval,
+                previous_static_eval: self.static_evals[previous_ply as usize],
+                previous_stat_score: self.stat_scores[previous_ply as usize],
+                previous_move_count: self.move_counts[previous_ply as usize],
+                pawn_value: self.nnue.pawn_value(),
+            },
+            params::history_prior_bonus(),
+        );
+        self.update_continuation(
+            previous_ply,
+            previous.piece,
+            previous.mv,
+            updates.continuation,
+        );
+        self.update_butterfly(previous, updates.butterfly);
+        if records_pawn_history(previous) {
+            self.pawn_history.update(
+                self.pawn_keys[ply as usize],
+                previous.piece,
+                previous.mv.to,
+                updates.pawn,
+            );
+        }
+    }
+
+    fn previous_move_record(&self, ply: u32) -> Option<MoveRecord> {
+        let previous = ply.checked_sub(1)? as usize;
+        self.path_moves.get(previous)?.record
+    }
+
+    fn update_butterfly(&mut self, record: MoveRecord, bonus: i32) {
+        let color = record
+            .piece
+            .color()
+            .expect("butterfly history mover color")
+            .index();
+        let value =
+            &mut self.history[color][record.mv.from.dense_index()][record.mv.to.dense_index()];
+        *value = history_gravity(*value, bonus, HISTORY_LIMIT);
+    }
+
     /// 実際に読む手のstatScoreを、着手前の局面と履歴表から求める。
     pub(super) fn move_stat_score(
         &self,
@@ -334,13 +595,13 @@ impl Searcher<'_> {
         }
     }
 
-    /// βカットを起こした最善手へ加点し、探索済みの手へ減点する。
+    /// αを上回った最善手へ加点し、探索済みの手へ減点する。
     ///
     /// Butterfly historyの上限は7183とし、捕獲履歴の上限は10692とする。
     /// 静かな手の減点は読んだ順に`HistoryMalusDecay / 1024`倍してから与える。
     /// 両表とも更新量を表の上限へ切り詰めた重力式を使う。
     /// 方式の理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
-    pub(super) fn update_beta_cutoff_histories(
+    pub(super) fn update_best_move_histories(
         &mut self,
         position: &Position,
         best: Move,

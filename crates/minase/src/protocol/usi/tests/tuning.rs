@@ -213,9 +213,18 @@ fn tuning_usi_contract_in_isolated_process() {
                 params::history_malus_decay as fn() -> i32,
             ),
             (
+                "HistoryTtCutoffBonus",
+                params::history_tt_cutoff_bonus as fn() -> i32,
+            ),
+            (
                 "HistoryTtMoveBonus",
                 params::history_tt_move_bonus as fn() -> i32,
             ),
+            (
+                "HistoryPriorBonus",
+                params::history_prior_bonus as fn() -> i32,
+            ),
+            ("HistoryEvalDiff", params::history_eval_diff as fn() -> i32),
             ("HistoryDecay", params::history_decay as fn() -> i32),
             (
                 "CaptureHistoryDecay",

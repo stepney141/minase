@@ -15,6 +15,7 @@ use minase_core::position::Position;
 use super::history::history_gravity;
 use super::ordering::piece_at_for_ordering;
 use super::params;
+use super::searcher::MoveRecord;
 
 /// 捕獲履歴の絶対値の上限。
 /// Stockfishの`CapturePieceToHistory`と同じ10692を使う（src/history.h:135）。
@@ -83,6 +84,18 @@ impl CaptureHistory {
         let value = &mut self.values[index(position, nnue, mv)];
         *value = history_gravity(*value, bonus, CAPTURE_HISTORY_LIMIT);
     }
+
+    /// 探索経路に記録した捕獲手の要素へ更新量を与える。
+    pub(super) fn update_record(&mut self, record: MoveRecord, bonus: i32) {
+        let value = &mut self.values[index_from_record(record)];
+        *value = history_gravity(*value, bonus, CAPTURE_HISTORY_LIMIT);
+    }
+
+    /// 探索経路に記録した捕獲手の履歴値を返す。
+    #[cfg(test)]
+    pub(super) fn read_record(&self, record: MoveRecord) -> i32 {
+        self.values[index_from_record(record)]
+    }
 }
 
 /// 着手前の所有者と駒種、到達升、被捕獲駒種の順で添字を構成する。
@@ -98,9 +111,24 @@ fn index(position: &Position, nnue: &Nnue, mv: Move) -> usize {
             .map(|square| piece_at_for_ordering(position, square)),
     )
     .expect("capture history requires a capture");
+    index_from_parts(mover, mv.to.dense_index(), victim)
+}
+
+/// 探索経路の記録から捕獲履歴の添字を構成する。
+fn index_from_record(record: MoveRecord) -> usize {
+    index_from_parts(
+        record.piece,
+        record.mv.to.dense_index(),
+        record
+            .captured
+            .expect("capture history record requires a captured piece"),
+    )
+}
+
+fn index_from_parts(mover: PieceCode, to: usize, victim: PieceKind) -> usize {
     let code = mover.color().expect("mover color").index() * PIECE_KIND_COUNT
         + mover.kind().expect("mover kind").index();
-    (code * BOARD_SQUARE_COUNT + mv.to.dense_index()) * PIECE_KIND_COUNT + victim.index()
+    (code * BOARD_SQUARE_COUNT + to) * PIECE_KIND_COUNT + victim.index()
 }
 
 /// 捕獲履歴の添字に使う被捕獲駒種を返す。
