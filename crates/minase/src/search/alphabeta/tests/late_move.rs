@@ -1,8 +1,11 @@
 //! 静かな手だけを数えるlate move pruningを検査する。
 
 use super::*;
+#[cfg(feature = "tuning")]
 use crate::search::REPETITION_BAND_START;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::params;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::{futility_value, late_move_limit, pruning_lmr_depth};
 
 // 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
@@ -107,8 +110,8 @@ pub(super) fn late_move_non_improving_parameter_scales_limit() {
 }
 
 // Stockfish src/search.cpp:1080, 1199。比較で良化していなくても静的評価がβ以上ならimproving側の上限を使う。
-#[test]
-fn late_move_pruning_uses_improving_updated_after_null_move() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
     let board = quiet_board();
@@ -177,8 +180,8 @@ fn late_move_pruning_uses_improving_updated_after_null_move() {
 }
 
 // 深さ4の零窓と、前の反復の主変化を辿るPVノードでも上限後の静かな手を省く。
-#[test]
-fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
     let nnue = test_nnue();
     let board = quiet_board();
     let moves = legal_moves(&board);
@@ -210,8 +213,8 @@ fn late_move_pruning_applies_at_depth_four_and_follow_pv_nodes() {
 }
 
 // αまたはβが詰み帯と専用の帯に達する場合は、浅いノードでも深いノードでも静かな手を省かない。
-#[test]
-fn late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band() {
     let board = quiet_board();
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
@@ -245,8 +248,8 @@ fn late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band() {
 }
 
 // 手番側の王駒に相手の疑似利きが届く場合は、深さ4でも静かな手を省かない。
-#[test]
-fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
     // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
     let board = position(
         Color::Black,
@@ -284,11 +287,12 @@ fn late_move_pruning_does_not_apply_while_royal_is_attacked() {
 }
 
 // 保護する手は静かな手の枠を消費しない。上限0の調整テストでも同じ保護を確かめる。
-#[test]
-fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
     check_late_move_protected_moves(late_move_limit(1, true) as u64);
 }
 
+#[cfg(feature = "tuning")]
 pub(super) fn check_late_move_protected_moves(limit: u64) {
     for (board, promotion) in [
         (
@@ -481,8 +485,8 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
 }
 
 // 数だけでなく順序も検査する。対象手以外の子を引き分けに固定し、対象手を読んだかを値で識別する。
-#[test]
-fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
+#[cfg(feature = "tuning")]
+pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
     let board = quiet_board();
     let mut ordered = Vec::new();
     with_root_searcher(&board, &[], |searcher| {

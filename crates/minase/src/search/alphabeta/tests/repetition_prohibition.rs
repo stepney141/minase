@@ -294,7 +294,7 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
     assert!(results[1] < results[0]);
 }
 
-/// 黒の王と歩を塞ぎ、仲人の戻りだけを残す。白王が戻るとその1手が禁止される。
+/// 白王と黒の王を自駒で塞ぎ、白王と仲人には戻りだけを残す。白王が戻ると黒の1手が禁止される。
 fn trapped_fixture(rule: RepetitionRule) -> (Game, [Move; 4]) {
     let mut pieces = vec![
         (sq(0, 0), Color::Black, PieceKind::GoBetween),
@@ -302,7 +302,14 @@ fn trapped_fixture(rule: RepetitionRule) -> (Game, [Move; 4]) {
         (sq(10, 10), Color::Black, PieceKind::Pawn),
         (sq(10, 11), Color::Black, PieceKind::Pawn),
         (sq(11, 10), Color::Black, PieceKind::Pawn),
-        (sq(5, 5), Color::White, PieceKind::King),
+        (sq(5, 0), Color::White, PieceKind::King),
+        (sq(4, 0), Color::White, PieceKind::Pawn),
+        (sq(6, 0), Color::White, PieceKind::Pawn),
+        (sq(4, 1), Color::White, PieceKind::Pawn),
+        (sq(6, 1), Color::White, PieceKind::Pawn),
+        (sq(4, 2), Color::White, PieceKind::Pawn),
+        (sq(5, 2), Color::White, PieceKind::Pawn),
+        (sq(6, 2), Color::White, PieceKind::Pawn),
     ];
     pieces.extend((2..=11).map(|rank| (sq(0, rank), Color::Black, PieceKind::Pawn)));
     let rules = Rules {
@@ -312,9 +319,9 @@ fn trapped_fixture(rule: RepetitionRule) -> (Game, [Move; 4]) {
     (
         Game::from_position(rules, position(Color::White, &pieces)),
         [
-            step(sq(5, 5), sq(5, 4)),
+            step(sq(5, 0), sq(5, 1)),
             step(sq(0, 0), sq(0, 1)),
-            step(sq(5, 4), sq(5, 5)),
+            step(sq(5, 1), sq(5, 0)),
             step(sq(0, 1), sq(0, 0)),
         ],
     )
@@ -331,6 +338,7 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
             play(&mut game, &cycle);
         }
         play(&mut game, &cycle[..2]);
+        assert_eq!(game.legal_moves(), vec![cycle[2]]);
         let snapshot = SearchSnapshot::from_game(&game).unwrap();
         assert_eq!(
             game.clone().play(cycle[2]),

@@ -99,6 +99,7 @@ fn tuning_parameters_in_isolated_process() {
             "razoring depth margin",
             "null move eval scale",
             "disabled null move eval scale",
+            "fixed shallow pruning behavior",
         ] {
             let output = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -288,6 +289,21 @@ fn tuning_parameters_in_isolated_process() {
         }
         "disabled null move eval scale" => {
             zero_null_move_eval_scale_matches_base_reduction();
+            return;
+        }
+        "fixed shallow pruning behavior" => {
+            // 上の固定係数では、LMPの上限は深さ1のimprovingで18、非improvingで5、
+            // 深さ4の非improvingで7となり、各局面の静かな手を一部だけ読む。
+            super::late_move::late_move_pruning_uses_improving_updated_after_null_move();
+            super::late_move::late_move_pruning_applies_at_depth_four_and_follow_pv_nodes();
+            super::late_move::late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band();
+            super::late_move::late_move_pruning_does_not_apply_while_royal_is_attacked();
+            super::late_move::late_move_pruning_preserves_protected_moves_and_quiet_allowance();
+            super::late_move::late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit();
+            super::pruning::null_move_reduction_uses_corrected_static_eval_not_tt_value();
+            // 深さ15と16のnull moveの子深さは2と3になり、置換表で値を固定できる。
+            #[cfg(feature = "search-stats")]
+            super::null_move::verification_starts_at_depth_threshold_and_returns_original_null_score();
             return;
         }
         _ => {}

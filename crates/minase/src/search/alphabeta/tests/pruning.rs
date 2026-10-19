@@ -2203,6 +2203,13 @@ fn null_move_reduction_matches_s7_numeric_examples() {
     assert_eq!(coefficients.null_move_reduction(16, -1, 0, 100), 11);
 }
 
+// NullMoveEvalScaleの範囲は0以上なので、補正後の静的評価が増えても減深量は減らない。
+#[test]
+fn null_move_reduction_is_monotone_in_corrected_static_eval() {
+    let lower = null_move_reduction(16, 0, 0, 100);
+    assert!(null_move_reduction(16, 1000, 0, 100) >= lower);
+}
+
 // S7の試行条件の数値例。余裕値151とimprovingの減算23、先行する打ち切り2回の加算48を検査する。
 #[test]
 fn null_move_condition_matches_s7_numeric_examples() {
@@ -2382,8 +2389,8 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
     }
 }
 
-#[test]
-fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
+#[cfg(feature = "tuning")]
+pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
     assert_eq!(test_nnue().pawn_value(), 100);
     let boundary = (20_000 + params::null_move_eval_scale() - 1) / params::null_move_eval_scale();
     let depth: u32 = 15;

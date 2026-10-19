@@ -297,9 +297,8 @@ fn store_null_fail_high(searcher: &Searcher<'_>, board: &Position, depth: u32, b
     );
 }
 
-#[cfg(feature = "search-stats")]
-#[test]
-fn verification_starts_at_depth_threshold_and_returns_original_null_score() {
+#[cfg(all(feature = "search-stats", feature = "tuning"))]
+pub(super) fn verification_starts_at_depth_threshold_and_returns_original_null_score() {
     assert_eq!(NULL_MOVE_VERIFICATION_MIN_DEPTH, 16);
     let board = quiet_position_with_material();
     for (depth, expected_verifications) in [(15, 0), (16, 1)] {
