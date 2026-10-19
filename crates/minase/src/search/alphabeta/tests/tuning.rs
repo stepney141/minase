@@ -100,6 +100,7 @@ fn tuning_parameters_in_isolated_process() {
             "null move eval scale",
             "disabled null move eval scale",
             "fixed shallow pruning behavior",
+            "fixed history and capture pruning",
         ] {
             let output = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -319,6 +320,11 @@ fn tuning_parameters_in_isolated_process() {
             // 深さ15と16のnull moveの子深さは2と3になり、置換表で値を固定できる。
             #[cfg(feature = "search-stats")]
             super::null_move::verification_starts_at_depth_threshold_and_returns_original_null_score();
+            return;
+        }
+        "fixed history and capture pruning" => {
+            super::history_forms::fail_low_and_eval_difference_update_recorded_histories();
+            super::pruning::see_pruning_searches_first_capture_without_false_mate();
             return;
         }
         _ => {}

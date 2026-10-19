@@ -618,8 +618,8 @@ fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
     }
 }
 
-#[test]
-fn fail_low_and_eval_difference_update_recorded_histories() {
+#[cfg(feature = "tuning")]
+pub(super) fn fail_low_and_eval_difference_update_recorded_histories() {
     let board = bare_kings();
     let context = record(Color::Black, PieceKind::Rook, sq(2, 2), sq(2, 3), None);
     let quiet = record(
@@ -707,7 +707,11 @@ fn fail_low_and_eval_difference_update_recorded_histories() {
             0
         );
     });
+}
 
+#[test]
+fn fail_low_updates_recorded_capture_history() {
+    let context = record(Color::Black, PieceKind::Rook, sq(2, 2), sq(2, 3), None);
     let capture_board = staged_picker_fixture();
     let capture = legal_moves(&capture_board)
         .into_iter()
