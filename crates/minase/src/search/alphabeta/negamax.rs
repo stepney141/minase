@@ -23,11 +23,11 @@ use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
     NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
     NullMoveCoefficients, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
-    capture_futility_value, continuation_history_prunes, corrected_static_eval,
+    applies_lmr, capture_futility_value, continuation_history_prunes, corrected_static_eval,
     futility_pruning_value, history_pruning_lmr_depth, is_improving, is_opponent_worsening,
-    late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth, pruning_eval,
-    pruning_lmr_depth, quiet_see_margin, razoring_margin, reverse_futility_margin,
-    reverse_futility_value, see_margin, seek_mate_null_move_reduction,
+    late_move_limit, lmr_depth, lmr_history_value, lmr_reduction, lmr_research_depth,
+    non_lmr_depth, pruning_eval, pruning_lmr_depth, quiet_see_margin, razoring_margin,
+    reverse_futility_margin, reverse_futility_value, see_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
@@ -41,7 +41,7 @@ const TT_CUTOFF_CHILD_MIN_DEPTH: u32 = 7;
 
 /// 探索済みの手の列に保持するノードの手数の上限。
 /// Stockfishの`SEARCHEDLIST_CAPACITY`と同じ32を使う（src/search.cpp:75, 1578）。
-const SEARCHED_LIST_CAPACITY: usize = 32;
+pub(super) const SEARCHED_LIST_CAPACITY: usize = 32;
 
 /// LMRの減深探索がαを上回った手のcontinuation history加点。
 /// Stockfishと同じ1334を使う（src/search.cpp:1423）。
@@ -560,10 +560,8 @@ impl Searcher<'_> {
             // 枝刈りを通った後、減深量を求める前に1回だけ計算する（src/search.cpp:1371-1381）。
             let stat_score = self.move_stat_score(position, mv, capture, ply);
             self.stat_scores[ply as usize] = stat_score;
-            let quiet_candidate =
-                Some(mv) != tt_move && !capture && !self.killers[ply as usize].contains(&Some(mv));
             // 残り深さ2以上、2手目以降に適用する（Stockfish src/search.cpp:1395）。
-            let lmr = depth >= 2 && index >= 1 && quiet_candidate;
+            let lmr = applies_lmr(depth, index);
             let first_depth = if lmr || (index == 0 && !pv_node) {
                 let tt_capture =
                     *tt_capture.get_or_init(|| self.legal_tt_capture(position, tt_move));
@@ -579,9 +577,10 @@ impl Searcher<'_> {
                     is_tt_move: tt_capture.is_some() && Some(mv) == tt_move,
                     capture,
                     stat_score,
-                    history: quiet_candidate.then(|| {
-                        self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()]
-                    }),
+                    history: lmr_history_value(
+                        capture,
+                        self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()],
+                    ),
                     cutoff_count: self.cutoff_counts[(ply + 1) as usize],
                     alpha,
                     eval,

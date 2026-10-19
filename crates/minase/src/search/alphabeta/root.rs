@@ -6,9 +6,14 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
-use super::pruning::{corrected_static_eval, is_seek_mate};
+use super::negamax::{SEARCHED_LIST_CAPACITY, should_record_searched_move};
+use super::ordering::{HistoryUpdateCoefficients, move_order_key};
+use super::pruning::{
+    LmrContext, applies_lmr, corrected_static_eval, is_seek_mate, lmr_depth, lmr_history_value,
+    lmr_reduction, pruning_eval,
+};
 use super::searcher::Searcher;
-use super::tt::Bound;
+use super::tt::{Bound, Hit};
 use super::{INFINITY, params};
 
 /// 反復探索の窓と、次に外れた側を広げる幅。
@@ -130,7 +135,7 @@ impl Searcher<'_> {
     /// 先頭手は通常の整列で優先した置換表の手であり、`root_results`に直前の最善手があればそちらを優先する。
     /// どちらもなければ[`Self::order_moves`]の先頭を保ち、前回ノード数がなければその整列順のままとする。
     /// 評価値で整列しない理由は`docs/adr/order-root-moves-by-previous-subtree-nodes.md`にある。
-    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) -> bool {
+    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) -> Option<Hit> {
         let tt_hit = self.tt.probe(search_key(position), 0);
         let tt_move = tt_hit.and_then(|hit| hit.best_move);
         self.order_moves(position, moves, tt_move, 0);
@@ -151,7 +156,7 @@ impl Searcher<'_> {
                 )
             });
         }
-        tt_hit.is_some()
+        tt_hit
     }
 
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
@@ -197,7 +202,8 @@ impl Searcher<'_> {
     /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
     /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
-    /// 根の各手は通常深さで読み、LMRを適用しない。子ノードの枝刈りは通常どおり行う。
+    /// 根の先頭以外の手は残り深さ2以上でLMRを適用し、子ノードの枝刈りも通常どおり行う。
+    /// 完了した探索で最善値が開始時のαを上回れば、根でもhistoryを1回更新する。
     /// 中断された場合は`None`を返し、停止条件を記録する。
     pub(super) fn search_root(
         &mut self,
@@ -228,7 +234,8 @@ impl Searcher<'_> {
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
-        self.tt_hits[0] = self.order_root_moves(&position, &mut moves);
+        let tt_hit = self.order_root_moves(&position, &mut moves);
+        self.tt_hits[0] = tt_hit.is_some();
         // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
         #[cfg(feature = "invariants")]
         self.nnue
@@ -237,15 +244,57 @@ impl Searcher<'_> {
         let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
         let correction = self.correction.read(side, self.material_keys[0]);
         self.static_evals[0] = corrected_static_eval(raw, correction);
+        let eval = pruning_eval(
+            self.static_evals[0],
+            tt_hit.map(|hit| (hit.score, hit.bound)),
+        );
+        let improving = self.static_evals[0] >= beta;
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
+        let root_tt_move = moves[0];
+        let tt_capture = move_order_key(&position, self.nnue, root_tt_move).is_some();
+        let mut best_capture = false;
+        let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
+        let mut searched_quiets = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
 
         for (index, mv) in moves.into_iter().enumerate() {
             self.move_counts[0] = index + 1;
             // 根も実際に読む各手のstatScoreを子の探索前に記録する（src/search.cpp:1371-1378）。
-            let capture = super::ordering::move_order_key(&position, self.nnue, mv).is_some();
-            self.stat_scores[0] = self.move_stat_score(&position, mv, capture, 0);
+            let capture = move_order_key(&position, self.nnue, mv).is_some();
+            let stat_score = self.move_stat_score(&position, mv, capture, 0);
+            self.stat_scores[0] = stat_score;
+            // Stockfishは根の並べ替え後の先頭手を置換表の手として扱う
+            // （src/search.cpp:839-840）。
+            let lmr = applies_lmr(depth, index);
+            let first_depth = if lmr {
+                let reduction = lmr_reduction(LmrContext {
+                    depth,
+                    index,
+                    improving,
+                    pv_node: true,
+                    tt_pv: true,
+                    cut_node: false,
+                    tt_hit: tt_hit.map(|hit| (hit.score, u32::from(hit.depth))),
+                    tt_capture: Some(tt_capture),
+                    is_tt_move: mv == root_tt_move,
+                    capture,
+                    stat_score,
+                    history: lmr_history_value(
+                        capture,
+                        self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()],
+                    ),
+                    cutoff_count: self.cutoff_counts[1],
+                    alpha,
+                    eval,
+                    pawn: self.nnue.pawn_value(),
+                    seek_mate_gives_check: self.lmr_seek_mate_gives_check(&position, mv),
+                });
+                lmr_depth(depth, reduction, true, 0, self.root_depth)
+            } else {
+                depth - 1
+            };
+            let alpha_before = alpha;
             let before = self.nodes;
             let score = self.search_move(
                 &mut position,
@@ -255,8 +304,8 @@ impl Searcher<'_> {
                 beta,
                 0,
                 index == 0,
-                depth - 1,
-                None,
+                first_depth,
+                lmr.then_some(best_score),
                 false,
             );
             let nodes = self.nodes - before;
@@ -272,6 +321,7 @@ impl Searcher<'_> {
             if score > best_score {
                 best_score = score;
                 best_move = mv;
+                best_capture = capture;
                 self.update_pv(0, mv);
             }
             alpha = alpha.max(score);
@@ -279,6 +329,30 @@ impl Searcher<'_> {
                 self.cutoff_counts[0] += 1;
                 break;
             }
+            if should_record_searched_move(index + 1, score, alpha_before) {
+                if capture {
+                    searched_captures.push(mv);
+                } else {
+                    searched_quiets.push(mv);
+                }
+            }
+        }
+        if best_score > original_alpha {
+            let updates = HistoryUpdateCoefficients::current().updates(
+                depth,
+                best_move == root_tt_move,
+                0,
+                false,
+                searched_quiets.len() + searched_captures.len(),
+            );
+            self.update_best_move_histories(
+                &position,
+                best_move,
+                best_capture,
+                &searched_quiets,
+                &searched_captures,
+                updates,
+            );
         }
         let bound = if best_score <= original_alpha {
             Bound::Upper

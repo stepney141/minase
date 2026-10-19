@@ -646,6 +646,19 @@ pub(super) fn lmr_history_adjustment(stat_score: i32, coefficient: i32) -> i32 {
         .expect("LMR history adjustment must fit i32")
 }
 
+/// LMRを適用する残り深さと手番かを返す。
+/// 手の種別によらず、残り深さ2以上の2手目以降を対象とする
+/// （Stockfish src/search.cpp:1395）。
+pub(super) fn applies_lmr(depth: u32, index: usize) -> bool {
+    depth >= 2 && index >= 1
+}
+
+/// LMRの段差に使うbutterfly historyを返す。
+/// 静かな置換表の手とkiller手を含む非捕獲手は値を持ち、捕獲手は持たない。
+pub(super) fn lmr_history_value(capture: bool, butterfly: i32) -> Option<i32> {
+    (!capture).then_some(butterfly)
+}
+
 /// LMRの式へ渡す、その手を読む直前のノードと手の情報。
 #[derive(Clone, Copy)]
 pub(super) struct LmrContext {
@@ -663,7 +676,7 @@ pub(super) struct LmrContext {
     pub(super) capture: bool,
     /// M3aの式で求めた、その手のstatScore。
     pub(super) stat_score: i32,
-    /// 置換表の手、捕獲手、killer手以外の非捕獲手だけが持つ履歴値。
+    /// 捕獲手でない手が持つbutterfly historyの値。
     pub(super) history: Option<i32>,
     pub(super) cutoff_count: u32,
     pub(super) alpha: i32,
@@ -838,7 +851,7 @@ pub(super) fn pruning_lmr_depth(
 ///
 /// Stockfish src/search.cpp:1183-1192, 1345-1392, 1917-1920の各項を個別に0方向へ丸める。
 /// 表の手番号は0始まりで、256以上なら表だけ最終列を使う。手番号の減算項は実際の番号を使う。
-/// Butterfly historyの段差は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
+/// Butterfly historyの段差は捕獲手でない手に掛け、閾値以上なら−100、負の閾値以下なら+100とする。
 /// statScoreの連続量は手の種別によらず、allNodeの拡大より前に引く。
 /// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
 pub(super) fn lmr_reduction(context: LmrContext) -> i32 {

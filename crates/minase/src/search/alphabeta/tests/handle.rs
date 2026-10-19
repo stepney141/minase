@@ -220,28 +220,22 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     let delta = aspiration_delta(test_nnue().pawn_value());
     let previous = -crate::search::REPETITION_BAND_START + 2 * delta + 1;
     let table = small_tt();
+    let mut snapshot = snapshot_for(&midgame);
+    snapshot.root_moves.truncate(1);
     // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
-    // 深さ3の子の記録は、深さ5の反復では打ち切りに使えない。
-    for mv in legal_moves(&midgame) {
-        let mut child = midgame.clone();
-        child.make_move_unchecked(mv, engine_rules());
-        table.store(
-            search_key(&child),
-            3,
-            -previous,
-            Bound::Exact,
-            None,
-            1,
-            false,
-        );
-    }
-    let handle = start(
-        snapshot_for(&midgame),
-        depth_limits(6),
-        81,
-        DEFAULT_THREADS,
-        table,
+    // 根を1手に限定してLMRの係数から分離し、深さ3の子の記録は深さ5では使えなくする。
+    let mut child = midgame.clone();
+    child.make_move_unchecked(snapshot.root_moves[0], engine_rules());
+    table.store(
+        search_key(&child),
+        3,
+        -previous,
+        Bound::Exact,
+        None,
+        1,
+        false,
     );
+    let handle = start(snapshot, depth_limits(6), 81, DEFAULT_THREADS, table);
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 81));
     let (progress, finished) = event_reports(events);

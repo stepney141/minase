@@ -2260,6 +2260,47 @@ mod tests {
             .collect()
     }
 
+    /// 最後の`info`の主変化と`bestmove`を照合し、予想手があれば最善手との組を返す。
+    fn assert_bestmove_matches_final_pv(output: &str) -> Option<(&str, &str)> {
+        let bestmoves = bestmoves(output);
+        assert_eq!(bestmoves.len(), 1, "{output}");
+        let bestmove: Vec<_> = bestmoves[0].split_whitespace().collect();
+        let pv: Vec<_> = output
+            .lines()
+            .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
+            .next_back()
+            .unwrap_or_else(|| panic!("missing final PV: {output}"))
+            .split_whitespace()
+            .collect();
+        match pv.as_slice() {
+            [first] => {
+                assert_eq!(bestmove, ["bestmove", *first], "{output}");
+                None
+            }
+            [first, second, ..] => {
+                assert_eq!(
+                    bestmove,
+                    ["bestmove", *first, "ponder", *second],
+                    "{output}"
+                );
+                Some((first, second))
+            }
+            [] => panic!("empty final PV: {output}"),
+        }
+    }
+
+    /// 開始局面で最善手を指した後の`moves`に予想手が含まれることを確認する。
+    fn assert_startpos_ponder_is_legal(best_move: &str, ponder_move: &str) {
+        let output = session(
+            &[RuleCode::R1],
+            &format!("position startpos moves {best_move}\nmoves\n"),
+        );
+        assert!(error_lines(&output).is_empty(), "{output}");
+        let replies = moves_sets(&output);
+        assert_eq!(replies.len(), 1, "{output}");
+        assert!(replies[0].contains(ponder_move), "{output}");
+    }
+
     fn error_lines(output: &str) -> Vec<&str> {
         output
             .lines()
@@ -4534,7 +4575,9 @@ mod tests {
         );
         assert!(!output.contains("option name USI_Ponder"));
         assert!(error_lines(&output).is_empty());
-        assert!(bestmoves(&output)[0].contains(" ponder "));
+        if let Some((best_move, ponder_move)) = assert_bestmove_matches_final_pv(&output) {
+            assert_startpos_ponder_is_legal(best_move, ponder_move);
+        }
     }
 
     /// 既存の観測用ライターで入力と出力を1行ずつ往復させる。
@@ -4652,25 +4695,21 @@ mod tests {
             commands.send(Ok("ponderhit".into())).unwrap();
             assert_eq!(receive_line(lines), "info string stop depth\n");
             let best = receive_line(lines);
-            let words: Vec<_> = best.split_whitespace().collect();
-            let pv: Vec<_> = final_pv
-                .split(" pv ")
-                .nth(1)
-                .unwrap()
-                .split_whitespace()
-                .collect();
-            assert_eq!(words, ["bestmove", pv[0], "ponder", pv[1]]);
+            let result = format!("{final_pv}{best}");
+            let ponder = assert_bestmove_matches_final_pv(&result);
             assert_eq!(receive_line(lines), "readyok\n");
             // 外形でも予想手の合法性を確認する。
-            commands
-                .send(Ok(format!("position startpos moves {}", words[1])))
-                .unwrap();
-            commands.send(Ok("moves".into())).unwrap();
-            assert!(
-                receive_line(lines)
-                    .split_whitespace()
-                    .any(|word| word == words[3])
-            );
+            if let Some((best_move, ponder_move)) = ponder {
+                commands
+                    .send(Ok(format!("position startpos moves {best_move}")))
+                    .unwrap();
+                commands.send(Ok("moves".into())).unwrap();
+                assert!(
+                    receive_line(lines)
+                        .split_whitespace()
+                        .any(|word| word == ponder_move)
+                );
+            }
         });
     }
 
@@ -4699,7 +4738,8 @@ mod tests {
                     .unwrap();
             }
             assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
-            assert!(lines.try_iter().all(|line| !line.starts_with("bestmove ")));
+            let held: String = lines.try_iter().collect();
+            assert!(bestmoves(&held).is_empty(), "{held}");
             let mut pending = VecDeque::new();
             if command == "eof" {
                 protocol.discard_search(&mut active).unwrap();
@@ -4709,13 +4749,16 @@ mod tests {
                     .unwrap();
             }
             assert!(active.is_none());
-            let result: String = lines.try_iter().collect();
+            let released: String = lines.try_iter().collect();
             if matches!(command, "ponderhit" | "stop") {
-                assert_eq!(bestmoves(&result).len(), 1);
-                assert!(result.contains("info string stop depth\n"));
-                assert!(bestmoves(&result)[0].contains(" ponder "));
+                assert_eq!(bestmoves(&released).len(), 1, "{released}");
+                assert!(released.contains("info string stop depth\n"), "{released}");
+                let result = format!("{held}{released}");
+                if let Some((best_move, ponder_move)) = assert_bestmove_matches_final_pv(&result) {
+                    assert_startpos_ponder_is_legal(best_move, ponder_move);
+                }
             } else {
-                assert!(bestmoves(&result).is_empty());
+                assert!(bestmoves(&released).is_empty(), "{released}");
             }
         }
     }

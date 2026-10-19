@@ -457,3 +457,181 @@ fn aspiration_retry_interruption_keeps_fail_high_bound() {
         assert_eq!(hit.score, DRAW_SCORE);
     });
 }
+
+/// 固定したhistory係数で、根の最善手と探索済みの手の更新を検査する。
+/// 調整係数の変更を他のテストへ漏らさないよう、`tuning`の子プロセスから呼ぶ。
+#[cfg(feature = "tuning")]
+pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets() {
+    let board = Position::initial();
+    let moves: Vec<_> = legal_moves(&board)
+        .into_iter()
+        .filter(|&mv| move_order_key(&board, test_nnue(), mv).is_none())
+        .take(4)
+        .collect();
+    assert_eq!(moves.len(), 4);
+
+    with_root_searcher(&board, &[], |searcher| {
+        let first = moves[0];
+        let mut root_results = crate::search::alphabeta::root::RootResults::default();
+        root_results.previous_best = Some(first);
+        searcher.root_results = Some(root_results);
+
+        let mut ordered = moves.clone();
+        searcher.order_root_moves(&board, &mut ordered);
+        assert_eq!(ordered[0], first);
+        let scores = [0, 10, 20, -5];
+        for (&mv, score) in ordered.iter().zip(scores) {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            searcher.tt.store(
+                search_key(&child),
+                MAX_PLY,
+                -score,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        for (&mv, score) in ordered.iter().zip(scores) {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let hit = searcher.tt.probe(search_key(&child), 1).unwrap();
+            assert_eq!(hit.score, -score, "child entry for {mv:?}");
+        }
+
+        assert_eq!(
+            searcher.search_root(&board, &moves, 8, -10, 100),
+            Some((ordered[2], scores[2]))
+        );
+        let history = |mv: Move| {
+            searcher.history[Color::Black.index()][mv.from.dense_index()][mv.to.dense_index()]
+        };
+        assert!(history(ordered[2]) > 0, "根の静かな最善手を加点する");
+        assert!(
+            history(ordered[3]) < 0,
+            "αを上回らなかった探索済みの手を減点する"
+        );
+        assert_eq!(history(ordered[0]), 0, "αを上回った先頭手は減点しない");
+        assert_eq!(
+            history(ordered[1]),
+            0,
+            "後で最善手でなくなってもαを上回った手は減点しない"
+        );
+    });
+}
+
+#[test]
+fn interrupted_root_search_does_not_update_history() {
+    let board = bare_kings();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    with_root_searcher(&board, &history, |searcher| {
+        searcher.interrupt_at = Some((1, StopReason::NodeLimit));
+        assert!(searcher.search_root(&board, &moves, 1, -1, 1).is_none());
+        assert_eq!(searcher.nodes, 1);
+        assert!(
+            searcher
+                .history
+                .iter()
+                .flatten()
+                .flatten()
+                .all(|&value| value == 0),
+            "中断した根の局所的な探索済み列は更新に使わない"
+        );
+    });
+}
+
+/// 固定したLMR係数で、根の後順手の減深と再探索を検査する。
+/// 調整係数の変更を他のテストへ漏らさないよう、`tuning`の子プロセスから呼ぶ。
+#[cfg(feature = "tuning")]
+pub(super) fn root_lmr_research_records_only_the_final_score() {
+    let board = Position::initial();
+    let moves: Vec<_> = legal_moves(&board)
+        .into_iter()
+        .filter(|&mv| move_order_key(&board, test_nnue(), mv).is_none() && !mv.promote)
+        .take(11)
+        .collect();
+    assert_eq!(moves.len(), 11);
+    let first = moves[0];
+
+    let mut ordered = Vec::new();
+    with_root_searcher(&board, &[], |searcher| {
+        let mut root_results = crate::search::alphabeta::root::RootResults::default();
+        root_results.previous_best = Some(first);
+        searcher.root_results = Some(root_results);
+        ordered.clone_from(&moves);
+        searcher.order_root_moves(&board, &mut ordered);
+    });
+    assert_eq!(ordered[0], first);
+    let target = ordered[10];
+    let mut target_child = board.clone();
+    target_child.make_move_unchecked(target, engine_rules());
+    let mut history: Vec<_> = legal_moves(&target_child)
+        .into_iter()
+        .map(|reply| {
+            let mut grandchild = target_child.clone();
+            grandchild.make_move_unchecked(reply, engine_rules());
+            search_key(&grandchild)
+        })
+        .collect();
+    history.extend([search_key(&board); 2]);
+
+    with_root_searcher(&board, &history, |searcher| {
+        let mut root_results = crate::search::alphabeta::root::RootResults::default();
+        root_results.previous_best = Some(first);
+        searcher.root_results = Some(root_results);
+        for &mv in &ordered {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let (depth, root_score) = if mv == target { (6, 100) } else { (MAX_PLY, 0) };
+            searcher.tt.store(
+                search_key(&child),
+                depth,
+                -root_score,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        assert_eq!(
+            searcher
+                .tt
+                .probe(search_key(&target_child), 1)
+                .unwrap()
+                .depth,
+            6
+        );
+
+        assert_eq!(
+            searcher.search_root(&board, &moves, 8, -1, 200),
+            Some((first, 0))
+        );
+        let target_nodes = searcher
+            .current_root_nodes
+            .iter()
+            .find(|(mv, _)| *mv == target)
+            .unwrap()
+            .1;
+        assert_eq!(target_nodes, 2, "減深探索と通常深さの再探索の全体を数える");
+        let hit = searcher.tt.probe(search_key(&target_child), 1).unwrap();
+        assert_eq!(
+            (hit.depth, hit.score),
+            (7, 0),
+            "深さ6の値を超えた後に再探索する"
+        );
+
+        let partial = searcher
+            .root_results
+            .as_ref()
+            .unwrap()
+            .partial_result(Some(StopReason::HardLimit))
+            .unwrap();
+        assert_eq!((partial.score, partial.pv.as_slice()), (0, &[first][..]));
+        assert_ne!(
+            partial.score, 100,
+            "減深探索の途中値はRootResultsへ記録しない"
+        );
+    });
+}

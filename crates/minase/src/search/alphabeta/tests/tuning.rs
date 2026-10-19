@@ -82,6 +82,8 @@ fn tuning_parameters_in_isolated_process() {
         for scenario in [
             "lmr table",
             "lmr max reduction",
+            "m5 root history",
+            "m5 root lmr",
             "parameters",
             "disabled capture history",
             "disabled history decay",
@@ -248,6 +250,14 @@ fn tuning_parameters_in_isolated_process() {
     match scenario.as_str() {
         "lmr max reduction" => {
             super::pruning::lmr_max_reduction_parameter_sets_cap();
+            return;
+        }
+        "m5 root history" => {
+            super::root::root_history_updates_best_and_only_searched_non_improving_quiets();
+            return;
+        }
+        "m5 root lmr" => {
+            super::root::root_lmr_research_records_only_the_final_score();
             return;
         }
         "lmp base" => {

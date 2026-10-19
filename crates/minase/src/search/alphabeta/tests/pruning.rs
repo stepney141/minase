@@ -6,10 +6,10 @@ use crate::search::alphabeta::history::CONTINUATION_HISTORY_LIMIT;
 use crate::search::alphabeta::ordering::continuation_index;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients,
+    CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, applies_lmr,
     continuation_history_prunes, history_lmr_divisor, history_pruning_lmr_depth,
-    is_opponent_worsening, is_seek_mate, lmr_history_adjustment, pruning_lmr_depth,
-    quiet_see_margin, quiet_see_margin_with_coefficient, razoring_margin,
+    is_opponent_worsening, is_seek_mate, lmr_history_adjustment, lmr_history_value,
+    pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient, razoring_margin,
     razoring_margin_with_coefficient, reverse_futility_margin, reverse_futility_value,
     seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
@@ -210,6 +210,70 @@ fn lmr_stat_score_adjustment_matches_numeric_examples_and_precedes_all_node_scal
     };
     // 1000からq_hist=104を引いた896へ、allNodeの896×100/(100+105)=437を足す。
     assert_eq!(coefficients.lmr_reduction(0, context), 1333);
+}
+
+#[test]
+fn lmr_targets_capture_killer_and_late_tt_moves_with_fixed_coefficients() {
+    assert!(!applies_lmr(1, 1), "残り深さ1では対象外");
+    assert!(!applies_lmr(8, 0), "先頭手は対象外");
+    assert!(applies_lmr(2, 1), "残り深さ2の2手目から対象");
+
+    let base = lmr_context();
+    let threshold = lmr_coefficients().lmr_history_threshold;
+    for (case, context, expected_reduction, expected_depth) in [
+        (
+            "capture",
+            LmrContext {
+                capture: true,
+                history: None,
+                ..base
+            },
+            655,
+            4,
+        ),
+        (
+            "killer",
+            LmrContext {
+                history: Some(threshold),
+                ..base
+            },
+            540,
+            4,
+        ),
+        (
+            "late tt move",
+            LmrContext {
+                tt_capture: Some(false),
+                is_tt_move: true,
+                history: Some(threshold),
+                ..base
+            },
+            229,
+            5,
+        ),
+    ] {
+        let reduction = example_lmr_reduction(context);
+        assert_eq!(reduction, expected_reduction, "{case}");
+        assert_eq!(
+            example_lmr_depth(context.depth, reduction, false, 0, 8),
+            expected_depth,
+            "{case}"
+        );
+        assert!(expected_depth < context.depth - 1, "{case}");
+    }
+}
+
+#[test]
+fn lmr_history_step_includes_killer_and_quiet_tt_but_excludes_capture() {
+    let butterfly = 417;
+    for case in ["killer", "quiet tt move"] {
+        assert_eq!(
+            lmr_history_value(false, butterfly),
+            Some(butterfly),
+            "{case}"
+        );
+    }
+    assert_eq!(lmr_history_value(true, butterfly), None, "capture");
 }
 
 #[test]
