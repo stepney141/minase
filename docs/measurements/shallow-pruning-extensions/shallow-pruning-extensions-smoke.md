@@ -2,7 +2,7 @@
 
 ## 目的
 
-[浅い前向き枝刈りの深さと対象の拡張](../../plans/shallow-pruning-extensions.md)のフェーズ4として、[SPSA](shallow-pruning-extensions.md)の最終値を反映した候補と起点を、STCの条件で32ペア対局させる。
+[浅い前向き枝刈りの深さと対象の拡張](../../plans/archived/shallow-pruning-extensions.md)のフェーズ4として、[SPSA](shallow-pruning-extensions.md)の最終値を反映した候補と起点を、STCの条件で32ペア対局させる。
 時間切れとエンジン異常が出ないことを確かめ、時間の使い方の変化を記録する。
 採否には使わない。
 
@@ -17,11 +17,14 @@ target/release/minase match run \
   --candidate commit:29443569e7328386f6858c0695232792934cef2e \
   --baseline commit:a892a5e66106e756dd94df862aa0a2de3779f326 \
   --each time=10000+100 --concurrency 191 elo --pairs 32
+```
+
+実行ディレクトリは、終了後に測定機の`data/matches/shallow-pruning-extensions-smoke`へ取得し、集計は測定機で次のコマンドで行った。
+
+```console
 data/spsa/shallow-pruning-extensions-runner/minase match report \
   --run-dir data/matches/shallow-pruning-extensions-smoke
 ```
-
-実行ディレクトリは、終了後に測定機の`data/matches/shallow-pruning-extensions-smoke`へ取得し、集計は測定機で行った。
 
 ## エンジン
 
@@ -54,7 +57,7 @@ runnerは、調整機で`364c10aa`をビルドした通常のminase（2.4.0）�
 
 値は`minase match report`が保存記録から再計算した集計による。
 32ペアの固定局数Eloは信頼区間の幅が約170 Eloあり、強さの判定には使わない。
-破棄した1ペア（ペア18）は、1局目を起点が詰みで勝ち、2局目が4,086手で手数上限に達した。
+破棄した1ペア（ペア18）は、1局目は起点が詰みで勝ち、2局目は4,086手で手数上限に達した。
 
 時間の使い方は次のとおりである。
 総思考時間と終局時の残り時間は、`pairs/`に保存された各手の思考時間から計算した。終局時の残り時間は、持ち時間に1手の加算を着手数だけ足し、思考時間の合計を引いた値である。
@@ -67,7 +70,7 @@ runnerは、調整機で`364c10aa`をビルドした通常のminase（2.4.0）�
 | 1手の平均思考時間 | 131.8 ms | 130.8 ms |
 | 終局時の残り時間の中央値 | 1,739 ms | 1,688 ms |
 
-候補と起点の総思考時間の比は1.008である。
+候補と起点の総思考時間の比（候補÷起点）は1.008である。
 
 手数帯ごとの完了深さ（反復深化で読み終えた深さの平均）と思考時間の中央値は、`scripts/clock_profile.py`を`--role candidate`と`--role baseline`で別々に実行して集計した。
 
@@ -89,4 +92,4 @@ runnerは、調整機で`364c10aa`をビルドした通常のminase（2.4.0）�
 
 候補は、時間切れとエンジン異常を起こさなかった。
 総思考時間は起点とほぼ同じで、終局時の残り時間も近い。
-設計書の手順どおり、同じ調整機でSTCへ進む。
+設計書の手順どおり、同じ調整機で逐次検定のSTCへ進む。
