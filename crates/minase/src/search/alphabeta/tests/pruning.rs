@@ -5,15 +5,14 @@ use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
-    is_seek_mate, late_move_limit, pruning_lmr_depth, quiet_see_margin,
-    quiet_see_margin_with_coefficient, razoring_margin, razoring_margin_with_coefficient,
-    reverse_futility_margin, reverse_futility_value, seek_mate_null_move_reduction,
-    should_raise_futility_best_score,
+    is_seek_mate, pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient,
+    razoring_margin, razoring_margin_with_coefficient, reverse_futility_margin,
+    reverse_futility_value, seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::pruning::{lmr_depth, lmr_research_depth};
+use crate::search::alphabeta::pruning::{late_move_limit, lmr_depth, lmr_research_depth};
 
 // F1の成立境界の窓を作る。根はopponentWorseningが真でimprovingは偽。
 // eval >= betaも必要なので、負の余裕値ではevalとbetaを一致させる。
@@ -768,8 +767,8 @@ fn futility_prunes_pv_quiets_without_false_mate_except_on_follow_pv() {
 }
 
 // late move pruningの上限まではfutilityが王手になる静かな手を保護し、上限後は王手でも先に省く。
-#[test]
-fn futility_protects_quiet_checks_before_late_move_limit() {
+#[cfg(feature = "tuning")]
+pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
     let board = position(
         Color::Black,
         &[
@@ -1400,8 +1399,8 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
 
 // 展開した捕獲の子局面に通常探索の値が保存されることを使い、
 // SEEがPVノードと残り深さ4にも適用され、記録手と王駒への利きは除かれることを検査する。
-#[test]
-fn see_pruning_applies_without_depth_or_zero_window_limits() {
+#[cfg(feature = "tuning")]
+pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
     let nnue = test_nnue();
     for (depth, width, capture_is_tt, attacked, attacker, victim) in [
         (2, 1, false, false, PieceKind::Phoenix, PieceKind::Pawn),
@@ -1664,8 +1663,8 @@ fn quiet_see_pruning_skips_losing_non_check() {
 }
 
 // followPVのPVノードでは、同じ王手にならない静かな手を読む。
-#[test]
-fn quiet_see_pruning_searches_follow_pv_move() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiet_see_pruning_searches_follow_pv_move() {
     let (board, target) = losing_quiet_non_check();
     assert_quiet_see_search(&board, target, false, true, false, true);
 }
@@ -1678,8 +1677,8 @@ fn quiet_see_pruning_searches_tt_move() {
 }
 
 // 成る角行の静かな手は王手になりSEEが負でも、成る手の保護により読む。
-#[test]
-fn see_pruning_searches_promoting_quiet_check() {
+#[cfg(feature = "tuning")]
+pub(super) fn see_pruning_searches_promoting_quiet_check() {
     let board = position(
         Color::Black,
         &[
@@ -1700,8 +1699,8 @@ fn see_pruning_searches_promoting_quiet_check() {
 }
 
 // 経由升を持つ獅子の捕獲は規則依存なので展開する。
-#[test]
-fn see_pruning_searches_rule_dependent_capture() {
+#[cfg(feature = "tuning")]
+pub(super) fn see_pruning_searches_rule_dependent_capture() {
     let board = position(
         Color::Black,
         &[

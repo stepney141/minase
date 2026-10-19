@@ -4,6 +4,7 @@
 use super::*;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::see_margin;
 use crate::search::{REPETITION_WIN, in_repetition_band};
 
@@ -299,8 +300,8 @@ fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
     }
 }
 
-#[test]
-fn r1_repetition_band_windows_disable_see_pruning() {
+#[cfg(feature = "tuning")]
+pub(super) fn r1_repetition_band_windows_disable_see_pruning() {
     let board = position(
         Color::Black,
         &[

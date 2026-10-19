@@ -395,8 +395,8 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 
 /// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
 /// 静かな手のSEEで飛ばした手も探索済みの手に含めない。
-#[test]
-fn quiet_history_negamax_updates_only_searched_quiets() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
     let board = position(
         Color::Black,
         &[

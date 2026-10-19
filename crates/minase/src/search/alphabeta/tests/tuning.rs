@@ -294,12 +294,19 @@ fn tuning_parameters_in_isolated_process() {
         "fixed shallow pruning behavior" => {
             // 上の固定係数では、LMPの上限は深さ1のimprovingで18、非improvingで5、
             // 深さ4の非improvingで7となり、各局面の静かな手を一部だけ読む。
+            super::history::quiet_history_negamax_updates_only_searched_quiets();
             super::late_move::late_move_pruning_uses_improving_updated_after_null_move();
             super::late_move::late_move_pruning_applies_at_depth_four_and_follow_pv_nodes();
             super::late_move::late_move_pruning_does_not_apply_when_alpha_or_beta_is_in_reserved_band();
             super::late_move::late_move_pruning_does_not_apply_while_royal_is_attacked();
             super::late_move::late_move_pruning_preserves_protected_moves_and_quiet_allowance();
             super::late_move::late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit();
+            super::pruning::futility_protects_quiet_checks_before_late_move_limit();
+            super::pruning::see_pruning_applies_without_depth_or_zero_window_limits();
+            super::pruning::quiet_see_pruning_searches_follow_pv_move();
+            super::pruning::see_pruning_searches_promoting_quiet_check();
+            super::pruning::see_pruning_searches_rule_dependent_capture();
+            super::repetition_band::r1_repetition_band_windows_disable_see_pruning();
             super::pruning::null_move_reduction_uses_corrected_static_eval_not_tt_value();
             // 深さ15と16のnull moveの子深さは2と3になり、置換表で値を固定できる。
             #[cfg(feature = "search-stats")]
