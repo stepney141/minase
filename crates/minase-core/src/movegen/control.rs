@@ -19,6 +19,19 @@ pub(crate) fn piece_control_with_occupancy(
 }
 
 impl Position {
+    /// 指定した占有状態で、`from`に置いた`color`側の`kind`の疑似利きを返す。
+    ///
+    /// 固定利き、走り、および獅子・角鷹・飛鷲の2段階の到達範囲を含む。
+    /// `occupied`は走りの遮蔽に使い、`from`を含まなくてもよい。
+    pub fn piece_control_with_occupancy(
+        occupied: Bitboard,
+        color: Color,
+        kind: PieceKind,
+        from: Square,
+    ) -> Bitboard {
+        piece_control_with_occupancy(occupied, color, kind, from)
+    }
+
     /// 指定した升にある駒の、現在の占有状態での疑似利きを返す。
     ///
     /// 規則を考慮しない疑似利きであり、固定利き、走り、および獅子・角鷹・飛鷲の

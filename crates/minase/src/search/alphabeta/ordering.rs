@@ -9,7 +9,7 @@ use core::cmp::Reverse;
 
 use crate::eval::Nnue;
 use minase_core::MoveGenerator;
-use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard};
+use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard, Square};
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
@@ -146,15 +146,66 @@ pub(super) fn lesser_threat_delta(moving_kind: PieceKind, threats: Bitboard, mv:
     i32::from(threats.contains(mv.from)) - i32::from(threats.contains(mv.to))
 }
 
-/// 王手であり、SEEがStockfishの−75以上か判定不能なら真を返す。
-/// 王手でない手ではSEEを求めない（src/movepick.cpp:241-242）。
+/// 駒種ごとに、その駒を置くと相手の王駒へ直接の王手になる升を保持する。
+pub(super) struct DirectCheckSquares {
+    occupied: Bitboard,
+    opponent: Color,
+    royal: Option<Square>,
+    by_kind: [Option<Bitboard>; PIECE_KIND_COUNT],
+}
+
+impl DirectCheckSquares {
+    /// 相手の王駒がちょうど1枚ならその升を保持し、それ以外なら全駒種を空集合とする。
+    pub(super) fn new(position: &Position) -> Self {
+        let opponent = position.side_to_move().opposite();
+        let royals = position.royal_pieces(opponent);
+        let royal = if royals.popcount() == 1 {
+            royals.lsb()
+        } else {
+            None
+        };
+        Self {
+            occupied: position.occupied(),
+            opponent,
+            royal,
+            by_kind: [None; PIECE_KIND_COUNT],
+        }
+    }
+
+    /// `kind`の駒を`to`へ置く手が、現在の占有で直接の王手になるかを返す。
+    pub(super) fn contains(&mut self, kind: PieceKind, to: Square) -> bool {
+        let Some(royal) = self.royal else {
+            return false;
+        };
+        let occupied = self.occupied;
+        let opponent = self.opponent;
+        let squares = self.by_kind[kind.index()].get_or_insert_with(|| {
+            // 中将棋の動きは180度回転と先後の入れ替えについて対称なので、
+            // 相手色の同じ駒を王駒升に置いた疑似利きが、直接王手になる升の集合に等しい。
+            Position::piece_control_with_occupancy(occupied, opponent, kind, royal)
+        });
+        squares.contains(to)
+    }
+}
+
+/// 直接の王手であり、SEEがStockfishの−75以上か判定不能なら真を返す。
+/// 直接の王手でない手ではSEEを求めない（src/movepick.cpp:241-242）。
 pub(super) fn qualifies_for_check_bonus(
     position: &Position,
     generator: &MoveGenerator,
     nnue: &Nnue,
+    direct_checks: &mut DirectCheckSquares,
+    moving_kind: PieceKind,
     mv: Move,
 ) -> bool {
-    position.gives_check(generator, mv)
+    let kind_after_move = if mv.promote {
+        moving_kind
+            .promoted()
+            .expect("promoting move must have a promotable piece")
+    } else {
+        moving_kind
+    };
+    direct_checks.contains(kind_after_move, mv.to)
         && !see_prunes(
             position,
             generator.rules(),
@@ -846,10 +897,12 @@ fn quiet_move_ordering_value(
     generator: &MoveGenerator,
     context: MovePickerContext<'_>,
     lesser_piece_threats: &LesserPieceThreats,
+    direct_checks: &mut DirectCheckSquares,
     mv: Move,
 ) -> i64 {
     let piece = piece_at_for_ordering(position, mv.from);
     let piece_value = nnue.piece_value(piece);
+    let moving_kind = piece.kind().expect("quiet ordering mover kind");
     let continuation = CONTINUATION_WEIGHTS
         .iter()
         .filter_map(|&(distance, _)| {
@@ -873,14 +926,17 @@ fn quiet_move_ordering_value(
             ply: context.ply,
             from: mv.from,
             to: mv.to,
-            check: qualifies_for_check_bonus(position, generator, nnue, mv),
-            moving_piece_value: piece_value,
-            pawn_value: nnue.pawn_value(),
-            threat_delta: lesser_threat_delta(
-                piece.kind().expect("quiet ordering mover kind"),
-                threats,
+            check: qualifies_for_check_bonus(
+                position,
+                generator,
+                nnue,
+                direct_checks,
+                moving_kind,
                 mv,
             ),
+            moving_piece_value: piece_value,
+            pawn_value: nnue.pawn_value(),
+            threat_delta: lesser_threat_delta(moving_kind, threats, mv),
         },
         context.low_ply_history,
         context.coefficients,
@@ -1054,21 +1110,25 @@ impl MovePicker {
                     let threats = LesserPieceThreats::with_piece_values(position, |piece| {
                         nnue.piece_value(piece)
                     });
-                    self.quiet_order.extend(
-                        self.quiets
-                            .iter()
-                            .enumerate()
-                            .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
-                            .map(|(index, mv)| {
-                                (
-                                    Reverse(quiet_move_ordering_value(
-                                        position, nnue, generator, context, &threats, *mv,
-                                    )),
-                                    Reverse(nnue.quiet_move_pst_delta(position, *mv)),
-                                    index,
-                                )
-                            }),
-                    );
+                    let mut direct_checks = DirectCheckSquares::new(position);
+                    for (index, &mv) in self.quiets.iter().enumerate() {
+                        if self.used_quiets.contains(&Some(index)) {
+                            continue;
+                        }
+                        self.quiet_order.push((
+                            Reverse(quiet_move_ordering_value(
+                                position,
+                                nnue,
+                                generator,
+                                context,
+                                &threats,
+                                &mut direct_checks,
+                                mv,
+                            )),
+                            Reverse(nnue.quiet_move_pst_delta(position, mv)),
+                            index,
+                        ));
+                    }
                     self.quiet_order.sort_unstable();
                     self.stage = MovePickerStage::Done;
                 }

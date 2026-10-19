@@ -102,6 +102,29 @@ fn piece_control_covers_fixed_sliding_and_two_stage_destinations() {
     );
 }
 
+/// 占有と仮想の駒を指定する公開関数は、空升からも遮蔽を考慮した疑似利きを返す。
+#[test]
+fn piece_control_with_occupancy_accepts_a_hypothetical_piece() {
+    let board = position(
+        Color::Black,
+        &[
+            (msq(6, 3), Color::Black, PieceKind::Pawn),
+            (msq(6, 9), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let control = Position::piece_control_with_occupancy(
+        board.occupied(),
+        Color::Black,
+        PieceKind::Rook,
+        msq(6, 6),
+    );
+
+    assert!(control.contains(msq(6, 3)));
+    assert!(control.contains(msq(6, 9)));
+    assert!(!control.contains(msq(6, 2)));
+    assert!(!control.contains(msq(6, 10)));
+}
+
 /// 空升から駒別疑似利きを求めるのは呼び出し側の誤りとして拒否する。
 #[test]
 #[should_panic(expected = "piece control square must contain a piece")]

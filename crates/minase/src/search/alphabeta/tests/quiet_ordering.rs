@@ -3,10 +3,44 @@
 use super::*;
 use crate::search::alphabeta::history::LOW_PLY_HISTORY_PLY_COUNT;
 use crate::search::alphabeta::ordering::{
-    LesserPieceThreats, QuietOrderingCoefficients, QuietOrderingInput, continuation_index,
-    lesser_threat_delta, qualifies_for_check_bonus, quiet_ordering_value,
+    DirectCheckSquares, LesserPieceThreats, QuietOrderingCoefficients, QuietOrderingInput,
+    continuation_index, lesser_threat_delta, qualifies_for_check_bonus, quiet_ordering_value,
 };
 use minase_core::Bitboard;
+
+fn kind_before_move(position: &Position, mv: Move) -> PieceKind {
+    position
+        .piece_at(mv.from)
+        .and_then(PieceCode::kind)
+        .expect("test move origin must contain a piece")
+}
+
+fn kind_after_move(position: &Position, mv: Move) -> PieceKind {
+    let kind = kind_before_move(position, mv);
+    if mv.promote {
+        kind.promoted()
+            .expect("test promoting move must have a promotable piece")
+    } else {
+        kind
+    }
+}
+
+/// 現在の占有のまま到達升へ着手後の駒を置いたとき、相手の唯一の王駒へ利くかを調べる。
+fn direct_check_reference(position: &Position, mv: Move) -> bool {
+    let mover = position.side_to_move();
+    let royals = position.royal_pieces(mover.opposite());
+    if royals.popcount() != 1 {
+        return false;
+    }
+    let royal = royals.lsb().expect("one royal must have a square");
+    Position::piece_control_with_occupancy(
+        position.occupied(),
+        mover,
+        kind_after_move(position, mv),
+        mv.to,
+    )
+    .contains(royal)
+}
 
 #[test]
 fn lesser_piece_threats_group_equal_values_and_use_strictly_lower_groups() {
@@ -58,6 +92,169 @@ fn royal_move_has_no_lesser_piece_threat_term() {
 }
 
 #[test]
+fn direct_check_squares_match_forward_control_on_bench_and_random_quiets() {
+    let mut compared = 0_usize;
+    let mut checks = 0_usize;
+
+    for rules in minase_core::test_util::capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        let positions = minase_core::test_util::bench_positions()
+            .into_iter()
+            .chain(minase_core::test_util::sampled_random_positions(rules));
+        for position in positions {
+            let mut base_moves = Vec::new();
+            let mut quiets = Vec::new();
+            generator.generate_quiets(&position, &mut base_moves, &mut quiets);
+            let mut direct_checks = DirectCheckSquares::new(&position);
+            for mv in quiets {
+                let expected = direct_check_reference(&position, mv);
+                let actual = direct_checks.contains(kind_after_move(&position, mv), mv.to);
+                assert_eq!(actual, expected, "rules={rules:?}, mv={mv:?}");
+                compared += 1;
+                checks += usize::from(actual);
+            }
+        }
+    }
+
+    assert!(compared > 0, "the comparison must examine quiet moves");
+    assert!(checks > 0, "the comparison must include direct checks");
+}
+
+#[test]
+fn direct_check_bonus_is_disabled_when_the_opponent_has_two_royals() {
+    let nnue = test_nnue();
+    let generator = MoveGenerator::standard();
+    let board = position_with_promoted_pieces(
+        Color::Black,
+        &[
+            (sq(11, 11), Color::Black, PieceKind::King, false),
+            (sq(4, 3), Color::Black, PieceKind::FreeKing, false),
+            (sq(5, 0), Color::White, PieceKind::King, false),
+            (sq(0, 4), Color::White, PieceKind::CrownPrince, true),
+        ],
+    );
+    let mv = step(sq(4, 3), sq(5, 4));
+    assert!(legal_moves(&board).contains(&mv));
+    assert!(!direct_check_reference(&board, mv));
+    assert!(!see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        mv,
+        nnue.pawn_value() * 75 / 208,
+    ));
+
+    let mut direct_checks = DirectCheckSquares::new(&board);
+    assert!(!qualifies_for_check_bonus(
+        &board,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        kind_before_move(&board, mv),
+        mv,
+    ));
+}
+
+#[test]
+fn direct_check_bonus_uses_the_promoted_piece_kind() {
+    let nnue = test_nnue();
+    let generator = MoveGenerator::standard();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 7), Color::Black, PieceKind::Kirin),
+            (sq(7, 11), Color::White, PieceKind::King),
+        ],
+    );
+    let unpromoted = step(sq(5, 7), sq(5, 9));
+    let promoted = Move {
+        promote: true,
+        ..unpromoted
+    };
+    assert!(legal_moves(&board).contains(&unpromoted));
+    assert!(legal_moves(&board).contains(&promoted));
+    assert!(!direct_check_reference(&board, unpromoted));
+    assert!(direct_check_reference(&board, promoted));
+
+    let moving_kind = kind_before_move(&board, promoted);
+    let mut direct_checks = DirectCheckSquares::new(&board);
+    assert!(!qualifies_for_check_bonus(
+        &board,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        moving_kind,
+        unpromoted,
+    ));
+    assert!(qualifies_for_check_bonus(
+        &board,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        moving_kind,
+        promoted,
+    ));
+}
+
+#[test]
+fn discovered_check_alone_does_not_receive_the_direct_check_bonus() {
+    let nnue = test_nnue();
+    let generator = MoveGenerator::standard();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 2), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::Black, PieceKind::SideMover),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    let mv = step(sq(5, 4), sq(6, 4));
+    assert!(legal_moves(&board).contains(&mv));
+    assert!(board.gives_check(&generator, mv));
+    assert!(!direct_check_reference(&board, mv));
+
+    let mut direct_checks = DirectCheckSquares::new(&board);
+    assert!(!qualifies_for_check_bonus(
+        &board,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        kind_before_move(&board, mv),
+        mv,
+    ));
+}
+
+#[test]
+fn vacating_the_origin_does_not_extend_direct_check_squares() {
+    let nnue = test_nnue();
+    let generator = MoveGenerator::standard();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 5), Color::Black, PieceKind::Rook),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    let mv = step(sq(5, 5), sq(5, 3));
+    assert!(legal_moves(&board).contains(&mv));
+    assert!(board.gives_check(&generator, mv));
+    assert!(!direct_check_reference(&board, mv));
+
+    let mut direct_checks = DirectCheckSquares::new(&board);
+    assert!(!qualifies_for_check_bonus(
+        &board,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        kind_before_move(&board, mv),
+        mv,
+    ));
+}
+
+#[test]
 fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
     let nnue = test_nnue();
     let generator = MoveGenerator::standard();
@@ -80,10 +277,13 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         losing_check,
         nnue.pawn_value() * 75 / 208,
     ));
+    let mut direct_checks = DirectCheckSquares::new(&losing);
     assert!(!qualifies_for_check_bonus(
         &losing,
         &generator,
         nnue,
+        &mut direct_checks,
+        kind_before_move(&losing, losing_check),
         losing_check,
     ));
 
@@ -104,8 +304,14 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         safe_check,
         nnue.pawn_value() * 75 / 208,
     ));
+    let mut direct_checks = DirectCheckSquares::new(&safe);
     assert!(qualifies_for_check_bonus(
-        &safe, &generator, nnue, safe_check,
+        &safe,
+        &generator,
+        nnue,
+        &mut direct_checks,
+        kind_before_move(&safe, safe_check),
+        safe_check,
     ));
 
     let unknown = position(
@@ -132,10 +338,13 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         unknown_check,
         nnue.pawn_value() * 75 / 208,
     ));
+    let mut direct_checks = DirectCheckSquares::new(&unknown);
     assert!(qualifies_for_check_bonus(
         &unknown,
         &generator,
         nnue,
+        &mut direct_checks,
+        kind_before_move(&unknown, unknown_check),
         unknown_check,
     ));
 }
