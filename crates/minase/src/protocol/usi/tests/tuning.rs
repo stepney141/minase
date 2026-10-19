@@ -69,6 +69,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 "LmrHistoryThreshold",
                 params::lmr_history_threshold as fn() -> i32,
             ),
+            ("LmrHistoryScale", params::lmr_history_scale as fn() -> i32),
             ("LmrMaxReduction", params::lmr_max_reduction as fn() -> i32),
             ("LmrBase", params::lmr_base as fn() -> i32),
             ("LmrOffset", params::lmr_offset as fn() -> i32),
@@ -107,6 +108,10 @@ fn tuning_usi_contract_in_isolated_process() {
             (
                 "LmrShallowerMargin",
                 params::lmr_shallower_margin as fn() -> i32,
+            ),
+            (
+                "ContinuationPruning",
+                params::continuation_pruning as fn() -> i32,
             ),
             ("FutilityBase", params::futility_base as fn() -> i32),
             (

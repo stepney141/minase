@@ -7,8 +7,8 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     pruning::{
-        capture_futility_value, futility_value, late_move_limit, lmr_base, quiet_see_margin,
-        razoring_margin, reverse_futility_margin, see_margin,
+        capture_futility_value, continuation_history_prunes, futility_value, late_move_limit,
+        lmr_base, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
     },
     root::grow_aspiration_delta,
 };
@@ -129,6 +129,7 @@ fn tuning_parameters_in_isolated_process() {
     let fixture = [
         ("LmrDivisor", 147),
         ("LmrHistoryThreshold", 35),
+        ("LmrHistoryScale", 439),
         ("LmrMaxReduction", 3),
         ("LmrBase", 127),
         ("LmrOffset", 106),
@@ -153,6 +154,7 @@ fn tuning_parameters_in_isolated_process() {
         ("LmrAllNode", 142),
         ("LmrDeeperMargin", 82),
         ("LmrShallowerMargin", 26),
+        ("ContinuationPruning", 4000),
         ("FutilityBase", 79),
         ("FutilityLmrDepth", 57),
         ("FutilityAboveAlpha", 43),
@@ -433,13 +435,19 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 81] = [
+    let cases: [Case; 83] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
         ("LmrHistoryThreshold", 512, || {
             i64::from(lmr_reduction(super::super::pruning::LmrContext {
                 history: Some(256),
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrHistoryScale", 0, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                stat_score: 10_000,
                 ..super::pruning::lmr_context()
             }))
         }),
@@ -578,6 +586,13 @@ fn tuning_parameters_in_isolated_process() {
         }),
         ("LmrShallowerMargin", 0, || {
             i64::from(super::super::pruning::lmr_research_depth(7, 4, 52, 50, 100))
+        }),
+        ("ContinuationPruning", 12_000, || {
+            i64::from(continuation_history_prunes(
+                -6000,
+                1,
+                params::continuation_pruning(),
+            ))
         }),
         ("FutilityBase", 100, || {
             i64::from(futility_value(100, 0, 50, 2))

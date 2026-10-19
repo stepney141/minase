@@ -2,12 +2,16 @@
 
 use super::*;
 use crate::search::REPETITION_BAND_START;
+use crate::search::alphabeta::history::CONTINUATION_HISTORY_LIMIT;
+use crate::search::alphabeta::ordering::continuation_index;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
-    CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, is_opponent_worsening,
-    is_seek_mate, pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient,
-    razoring_margin, razoring_margin_with_coefficient, reverse_futility_margin,
-    reverse_futility_value, seek_mate_null_move_reduction, should_raise_futility_best_score,
+    CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients,
+    continuation_history_prunes, history_lmr_divisor, history_pruning_lmr_depth,
+    is_opponent_worsening, is_seek_mate, lmr_history_adjustment, pruning_lmr_depth,
+    quiet_see_margin, quiet_see_margin_with_coefficient, razoring_margin,
+    razoring_margin_with_coefficient, reverse_futility_margin, reverse_futility_value,
+    seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
@@ -135,6 +139,7 @@ pub(super) fn lmr_context() -> LmrContext {
         tt_capture: None,
         is_tt_move: false,
         capture: false,
+        stat_score: 0,
         history: Some(0),
         cutoff_count: 0,
         alpha: 0,
@@ -182,6 +187,45 @@ fn lmr_reduction_before_pruning_and_depth_match_numeric_examples() {
             "{case}"
         );
     }
+}
+
+#[test]
+fn lmr_stat_score_adjustment_matches_numeric_examples_and_precedes_all_node_scaling() {
+    assert_eq!(lmr_history_adjustment(10_000, 439), 104);
+    assert_eq!(lmr_history_adjustment(-10_000, 439), -104);
+
+    let coefficients = LmrCoefficients {
+        lmr_history_scale: 439,
+        lmr_all_node: 100,
+        ..isolated_lmr_coefficients(1000)
+    };
+    let context = LmrContext {
+        depth: 1,
+        index: 0,
+        improving: true,
+        capture: true,
+        stat_score: 10_000,
+        history: None,
+        ..lmr_context()
+    };
+    // 1000からq_hist=104を引いた896へ、allNodeの896×100/(100+105)=437を足す。
+    assert_eq!(coefficients.lmr_reduction(0, context), 1333);
+}
+
+#[test]
+fn continuation_history_pruning_formulas_match_boundaries() {
+    for (depth, expected) in [(1, 3343), (8, 3000), (16, 3448), (20, 3448)] {
+        assert_eq!(history_lmr_divisor(depth), expected);
+    }
+
+    let coefficient = 4000;
+    let depth = 3;
+    assert!(continuation_history_prunes(-12_001, depth, coefficient));
+    assert!(!continuation_history_prunes(-12_000, depth, coefficient));
+    assert!(!continuation_history_prunes(-11_999, depth, coefficient));
+
+    // H=6000+69×32/32=6069、D(8)=3000なので、2を足す。
+    assert_eq!(history_pruning_lmr_depth(2, 8, 6000, 32), 4);
 }
 
 #[test]
@@ -1491,6 +1535,111 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
     }
 }
 
+fn continuation_pruning_fixture(white_king: Square) -> (Position, Move) {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (white_king, Color::White, PieceKind::King),
+            (sq(4, 4), Color::Black, PieceKind::Rook),
+        ],
+    );
+    (board, step(sq(4, 4), sq(5, 4)))
+}
+
+/// 先頭の置換表の手で枝刈りを可能にし、`target`が読まれた場合だけβ打ち切りを起こす。
+fn assert_continuation_pruning_search(
+    board: &Position,
+    target: Move,
+    expected_check: bool,
+    follow_pv: bool,
+    searched: bool,
+) {
+    let nnue = test_nnue();
+    let moves = legal_moves(board);
+    let leading_quiet = step(sq(11, 0), sq(10, 0));
+    assert!(moves.contains(&leading_quiet));
+    assert!(moves.contains(&target));
+    assert!(!royal_under_attack(board));
+    assert_eq!(
+        board.gives_check(&MoveGenerator::new(engine_rules()), target),
+        expected_check
+    );
+    assert!(board.captured_squares(target).iter().all(Option::is_none));
+
+    let minimum_child_value = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(nnue, &child)
+        })
+        .min()
+        .unwrap();
+    let alpha = minimum_child_value - 1;
+    let beta = alpha + 2;
+    assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
+
+    let table = TranspositionTable::new(16).unwrap();
+    for &mv in &moves {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        let parent_score = if mv == target { beta } else { alpha - 1 };
+        table.store(
+            search_key(&child),
+            MAX_PLY,
+            -parent_score,
+            Bound::Exact,
+            None,
+            2,
+            false,
+        );
+    }
+    table.store(
+        search_key(board),
+        0,
+        0,
+        Bound::Upper,
+        Some(leading_quiet),
+        1,
+        false,
+    );
+
+    let context = MoveRecord {
+        mv: step(sq(3, 3), sq(3, 4)),
+        piece: PieceCode::new(Color::White, PieceKind::CopperGeneral).unwrap(),
+        captured: None,
+    };
+    let piece = board.piece_at(target.from).unwrap();
+    let continuation = continuation_index(context, piece, target, 1);
+    let (score, _) = run_configured_negamax(board, 2, alpha, beta, 1, &table, |searcher| {
+        searcher.path_moves[0].record = Some(context);
+        searcher.follow_pv[1] = follow_pv;
+        searcher.killers[1][0] = Some(target);
+        searcher
+            .continuation_history
+            .store(continuation, -(CONTINUATION_HISTORY_LIMIT as i16));
+    });
+    let hit = table.probe(search_key(board), 1).unwrap();
+    if searched {
+        assert_eq!(hit.best_move, Some(target), "score={score}, beta={beta}");
+        assert!(score >= beta);
+        assert_eq!(hit.bound, Bound::Lower);
+    } else {
+        assert_ne!(hit.best_move, Some(target));
+    }
+}
+
+#[test]
+fn continuation_history_pruning_skips_low_quiet_but_searches_checks_and_follow_pv() {
+    let (quiet_board, quiet) = continuation_pruning_fixture(sq(11, 11));
+    assert_continuation_pruning_search(&quiet_board, quiet, false, false, false);
+    assert_continuation_pruning_search(&quiet_board, quiet, false, true, true);
+
+    let (checking_board, checking) = continuation_pruning_fixture(sq(5, 8));
+    assert_continuation_pruning_search(&checking_board, checking, true, false, true);
+}
+
 /// 先頭の置換表の手で枝刈りを可能にし、`target`が読まれた場合だけβ打ち切りを起こす。
 /// 子の値は固定ネットの局面評価から作る窓に対する相対値とし、係数の既定値に依存させない。
 fn assert_quiet_see_search(
@@ -2520,6 +2669,7 @@ pub(super) fn lmr_coefficients() -> super::super::pruning::LmrCoefficients {
         lmr_pv_reduction: 6,
         lmr_tt_pv: 70,
         lmr_history_threshold: 35,
+        lmr_history_scale: 439,
         lmr_offset: 106,
         lmr_move_count: 0,
         lmr_tt_pv_base: 337,
@@ -2546,6 +2696,7 @@ fn isolated_lmr_coefficients(reduction: i32) -> LmrCoefficients {
         lmr_pv_reduction: 0,
         lmr_tt_pv: 0,
         lmr_history_threshold: 0,
+        lmr_history_scale: 0,
         lmr_offset: 0,
         lmr_move_count: 0,
         lmr_tt_pv_base: 0,

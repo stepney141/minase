@@ -64,6 +64,10 @@ parameters! {
     /// Stockfishに対応する値はなく、表の上限の変更に合わせて`round(9 × 7183 / 4384)`から15へ換算した。
     /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。
     LmrHistoryThreshold(lmr_history_threshold): 15, 0, 2000;
+    /// statScoreによってLMRの減深量を減らす倍率。単位は1/4096である。
+    /// Stockfishは439（src/search.cpp:1381）、YaneuraOuは428（yaneuraou-search.cpp:3937）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    LmrHistoryScale(lmr_history_scale): 439, 0, 1000;
     /// LMRの減深量の上限。単位は手である。
     /// StockfishとYaneuraOuには減深量の上限がなく、換算する元がないので、従来の定数と同じ3を既定値とする。
     /// 範囲の上限8は暫定の値である。SPSAの調整対象であり、この係数としての値は未調整である。
@@ -161,6 +165,10 @@ parameters! {
     /// Stockfishは8/208で4（src/search.cpp:1415）、YaneuraOuは9/90で10。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     LmrShallowerMargin(lmr_shallower_margin): 27, 0, 40;
+    /// Continuation historyによる枝刈りの、残り深さ1あたりの閾値。単位は履歴点である。
+    /// Stockfishは4136（src/search.cpp:1234）、YaneuraOuは4097（yaneuraou-search.cpp:3653）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    ContinuationPruning(continuation_pruning): 4136, 1000, 12000;
     /// 静かな手のfutility見積りに加える定数。単位は歩兵価値に対する百分率である。
     /// Stockfishは164/208で79（src/search.cpp:1242-1243）、YaneuraOuは42/90で47（yaneuraou-search.cpp:3663-3664）。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。

@@ -16,15 +16,18 @@ use super::correction::key_after_move;
 use super::history::pawn_key_after_move;
 use super::ordering::{
     HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
+    piece_at_for_ordering,
 };
+use super::params;
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
     NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
     NullMoveCoefficients, REVERSE_FUTILITY_MAX_DEPTH, SEEK_MATE_REVERSE_FUTILITY_MAX_DEPTH,
-    capture_futility_value, corrected_static_eval, futility_pruning_value, is_improving,
-    is_opponent_worsening, late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth,
-    non_lmr_depth, pruning_eval, pruning_lmr_depth, quiet_see_margin, razoring_margin,
-    reverse_futility_margin, reverse_futility_value, see_margin, seek_mate_null_move_reduction,
+    capture_futility_value, continuation_history_prunes, corrected_static_eval,
+    futility_pruning_value, history_pruning_lmr_depth, is_improving, is_opponent_worsening,
+    late_move_limit, lmr_depth, lmr_reduction, lmr_research_depth, non_lmr_depth, pruning_eval,
+    pruning_lmr_depth, quiet_see_margin, razoring_margin, reverse_futility_margin,
+    reverse_futility_value, see_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
@@ -466,13 +469,36 @@ impl Searcher<'_> {
                     // S1で王手と判明した手はS5を通さずS3へ進める（src/search.cpp:1205, 1227-1259）。
                     let mut gives_check = None;
                     if !(self.follow_pv[ply as usize] && pv_node) {
-                        // 枝刈り用のlmrDepthは、この判定に到達した手についてだけ求める。
-                        let lmr_depth = pruning_lmr_depth(
+                        let piece = piece_at_for_ordering(position, mv.from);
+                        let history = self.continuation_value(ply, piece, mv, 1).unwrap_or(0)
+                            + self.continuation_value(ply, piece, mv, 2).unwrap_or(0)
+                            + self
+                                .pawn_history
+                                .read(self.pawn_keys[ply as usize], piece, mv.to);
+                        // 王手と王駒への利きは、安いhistoryの条件を満たした後に調べる。
+                        if continuation_history_prunes(
+                            history,
                             depth,
-                            index,
-                            improving,
-                            pv_node,
-                            self.tt_pv[ply as usize],
+                            params::continuation_pruning(),
+                        ) && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                            && !*gives_check
+                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                        {
+                            index += 1;
+                            continue;
+                        }
+                        // 枝刈り用のlmrDepthは、この判定に到達した手についてだけ求める。
+                        let lmr_depth = history_pruning_lmr_depth(
+                            pruning_lmr_depth(
+                                depth,
+                                index,
+                                improving,
+                                pv_node,
+                                self.tt_pv[ply as usize],
+                            ),
+                            depth,
+                            history,
+                            self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()],
                         );
                         if let Some(futility_value) = futility_pruning_value(
                             self.nnue.pawn_value(),
@@ -530,6 +556,10 @@ impl Searcher<'_> {
                     }
                 }
             }
+            // 子がこのノードへ至った手の値として読み、LMRの連続量にも使う。
+            // 枝刈りを通った後、減深量を求める前に1回だけ計算する（src/search.cpp:1371-1381）。
+            let stat_score = self.move_stat_score(position, mv, capture, ply);
+            self.stat_scores[ply as usize] = stat_score;
             let quiet_candidate =
                 Some(mv) != tt_move && !capture && !self.killers[ply as usize].contains(&Some(mv));
             // 残り深さ2以上、2手目以降に適用する（Stockfish src/search.cpp:1395）。
@@ -548,6 +578,7 @@ impl Searcher<'_> {
                     tt_capture,
                     is_tt_move: tt_capture.is_some() && Some(mv) == tt_move,
                     capture,
+                    stat_score,
                     history: quiet_candidate.then(|| {
                         self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()]
                     }),
@@ -565,9 +596,6 @@ impl Searcher<'_> {
             } else {
                 depth - 1
             };
-            // 子がこのノードへ至った手の値として読むため、実際に読むすべての手で記録する。
-            // Stockfish src/search.cpp:1371-1378。
-            self.stat_scores[ply as usize] = self.move_stat_score(position, mv, capture, ply);
             let alpha_before = alpha;
             let score = self.search_move(
                 position,

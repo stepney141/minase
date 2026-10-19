@@ -225,6 +225,38 @@ pub(super) fn quiet_see_margin_with_coefficient(
     (i64::from(pawn) * i64::from(coefficient) * lmr_depth * lmr_depth / 100) as i32
 }
 
+/// Continuation historyの和が、残り深さに比例する枝刈りの閾値を下回るかを返す。
+///
+/// 閾値の形と厳密な不等号はStockfishに従う（src/search.cpp:1229-1235）。
+pub(super) fn continuation_history_prunes(history: i32, depth: u32, coefficient: i32) -> bool {
+    i64::from(history) < -i64::from(coefficient) * i64::from(depth)
+}
+
+/// 静かな手の枝刈り用lmrDepthへhistoryを加えるときの除数を返す。
+///
+/// 深さは16で切り詰める（src/search.cpp:55-58）。
+pub(super) fn history_lmr_divisor(depth: u32) -> i32 {
+    let depth = i64::from(depth.min(16));
+    i32::try_from(3000 + 7 * (depth - 8) * (depth - 8))
+        .expect("history lmrDepth divisor must fit i32")
+}
+
+/// Continuation、pawn、およびbutterfly historyを枝刈り用lmrDepthへ加える。
+///
+/// Butterfly historyの項と除数による項をそれぞれ0方向へ丸める
+/// （src/search.cpp:1236-1240）。
+pub(super) fn history_pruning_lmr_depth(
+    lmr_depth: i32,
+    depth: u32,
+    history: i32,
+    butterfly: i32,
+) -> i32 {
+    let butterfly = 69 * i64::from(butterfly) / 32;
+    let history = i64::from(history) + butterfly;
+    i32::try_from(i64::from(lmr_depth) + history / i64::from(history_lmr_divisor(depth)))
+        .expect("history-adjusted pruning lmrDepth must fit i32")
+}
+
 /// 枝刈りした手の見積りで最善値だけを上げてよいかを返す。
 /// Stockfishの最善値の更新に対応する（src/search.cpp:1249-1251）。
 pub(super) fn should_raise_futility_best_score(best_score: i32, futility_value: i32) -> bool {
@@ -606,6 +638,14 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
 /// Stockfishの減深量の1/4に対応する（src/search.cpp:1391-1392）。
 const SEEK_MATE_LMR_DIVISOR: i64 = 4;
 
+/// statScoreからLMRの減深量へ引く連続量を1/100手単位で返す。
+///
+/// 積は`i64`で計算し、`4096 × 1024`で1回だけ割る（src/search.cpp:1381）。
+pub(super) fn lmr_history_adjustment(stat_score: i32, coefficient: i32) -> i32 {
+    i32::try_from(i64::from(stat_score) * i64::from(coefficient) * 100 / (4096 * 1024))
+        .expect("LMR history adjustment must fit i32")
+}
+
 /// LMRの式へ渡す、その手を読む直前のノードと手の情報。
 #[derive(Clone, Copy)]
 pub(super) struct LmrContext {
@@ -621,6 +661,8 @@ pub(super) struct LmrContext {
     pub(super) tt_capture: Option<bool>,
     pub(super) is_tt_move: bool,
     pub(super) capture: bool,
+    /// M3aの式で求めた、その手のstatScore。
+    pub(super) stat_score: i32,
     /// 置換表の手、捕獲手、killer手以外の非捕獲手だけが持つ履歴値。
     pub(super) history: Option<i32>,
     pub(super) cutoff_count: u32,
@@ -639,6 +681,7 @@ pub(super) struct LmrCoefficients {
     pub(super) lmr_pv_reduction: i32,
     pub(super) lmr_tt_pv: i32,
     pub(super) lmr_history_threshold: i32,
+    pub(super) lmr_history_scale: i32,
     pub(super) lmr_offset: i32,
     pub(super) lmr_move_count: i32,
     pub(super) lmr_tt_pv_base: i32,
@@ -665,6 +708,7 @@ impl LmrCoefficients {
             lmr_pv_reduction: params::lmr_pv_reduction(),
             lmr_tt_pv: params::lmr_tt_pv(),
             lmr_history_threshold: params::lmr_history_threshold(),
+            lmr_history_scale: params::lmr_history_scale(),
             lmr_offset: params::lmr_offset(),
             lmr_move_count: params::lmr_move_count(),
             lmr_tt_pv_base: params::lmr_tt_pv_base(),
@@ -748,6 +792,7 @@ impl LmrCoefficients {
         } else if c.is_tt_move {
             r -= i64::from(self.lmr_tt_move);
         }
+        r -= i64::from(lmr_history_adjustment(c.stat_score, self.lmr_history_scale));
         if !c.capture && c.alpha.abs() < REPETITION_BAND_START {
             let pawn = i64::from(c.pawn);
             // −64と96を歩兵価値208で換算した−31%と46%（Stockfish src/search.cpp:1383-1384）。
@@ -793,7 +838,8 @@ pub(super) fn pruning_lmr_depth(
 ///
 /// Stockfish src/search.cpp:1183-1192, 1345-1392, 1917-1920の各項を個別に0方向へ丸める。
 /// 表の手番号は0始まりで、256以上なら表だけ最終列を使う。手番号の減算項は実際の番号を使う。
-/// historyの補正は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
+/// Butterfly historyの段差は対象の静かな手だけに掛け、閾値以上なら−100、負の閾値以下なら+100とする。
+/// statScoreの連続量は手の種別によらず、allNodeの拡大より前に引く。
 /// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
 pub(super) fn lmr_reduction(context: LmrContext) -> i32 {
     LmrCoefficients::current().lmr_reduction(
