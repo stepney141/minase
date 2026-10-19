@@ -45,11 +45,11 @@ StockfishやYaneuraOuと同じく減深量の上限をなくす案は、中将�
 Stockfishと同じ1/1024手の単位で求める案は、minaseの係数の表が百分率で揃っているので採らなかった。
 置換表の手の減深を減らす項（`src/search.cpp:1368-1369`）を、minaseが置換表の手をLMRの対象にしないので省く案は採らなかった。
 この項はLMRの分岐を通らない探索で先頭に読む置換表の手に働き、省くとcutNodeで先頭に読む置換表の手が、cutNodeの増分によって1手か2手浅く読まれる。
-LMRの分岐を通らない減深に捕獲手とkiller手も含める案は、Stockfishではそれらが減深の分岐で読まれる手なので採らず、LMRを捕獲手、killer手、および根へ広げる変更とともに[historyの形の設計書](../../plans/history-forms.md)に委ねた。
+LMRの分岐を通らない減深に捕獲手とkiller手も含める案は、Stockfishではそれらが減深の分岐で読まれる手なので採らず、LMRを捕獲手、killer手、および根へ広げる変更とともに[historyの形の設計書](../../plans/archived/history-forms.md)に委ねた。
 
 旧ADRで棄却した案は、この決定でも棄却したままとする。
 history値に比例して減深量を連続的に増減する案は、比例係数と切り詰めの2つの自由度を持ち込み、それぞれを1つに絞る診断が要るので採らない。
-Stockfishのこの項（statScoreの項）を加えるかは、[historyの形の設計書](../../plans/history-forms.md)が扱う。
+Stockfishのこの項（statScoreの項）を加えるかは、[historyの形の設計書](../../plans/archived/history-forms.md)が扱う。
 失う良い結果の割合に10%以下という絶対基準を課す案は、[試行診断](../../measurements/strength-stage5/strength-stage5-lmr-trial-bench.md)で当時の規則自体が良い結果の31.5%を失っていて基準を満たさなかったので採らない。
 
 ## 結果

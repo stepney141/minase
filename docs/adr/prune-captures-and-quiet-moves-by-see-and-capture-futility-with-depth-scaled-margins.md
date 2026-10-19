@@ -72,7 +72,7 @@ YaneuraOuは、将棋ではSEEが負の静かな手でもその後に詰む場�
 ## 結果
 
 capture historyは、手の順序に加えて、捕獲手のSEEによる枝刈りと捕獲手のfutility pruningの余裕値にも使う。
-capture historyの上限は起点の係数`CaptureHistoryLimit`のままであり、Stockfishの上限10692（`src/history.h:135`）とは`h`の大きさが違うので、重みの意味は[historyの形の見直し](../plans/history-forms.md)が上限をStockfishの値に固定するまでStockfishと一致しない。
+capture historyの上限は起点の係数`CaptureHistoryLimit`のままであり、Stockfishの上限10692（`src/history.h:135`）とは`h`の大きさが違うので、重みの意味は[historyの形の見直し](../plans/archived/history-forms.md)が上限をStockfishの値に固定するまでStockfishと一致しない。
 王手になる静かな手と王手にならない静かな手を分けるので、静かな手のSEEの判定と王手の判定の費用が加わる。
 王手の判定は[王手の判定のADR](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)が定め、ほかの条件がすべて成り立った後に求める。
 

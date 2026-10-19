@@ -68,7 +68,7 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 
 次の事項は対象外とする。
 
-- LMRのstatScore（historyの値による増減）の項、continuation history、LMRの捕獲手と根への拡大、および根でのhistoryの更新。[history-forms.md](../history-forms.md)で扱う。
+- LMRのstatScore（historyの値による増減）の項、continuation history、LMRの捕獲手と根への拡大、および根でのhistoryの更新。[history-forms.md](history-forms.md)で扱う。
 - futility pruning、late move pruning、およびSEE（static exchange evaluation、駒の取り合いの損得の見積り）による枝刈りの深さの拡張と余裕値の形、razoringの形、およびnull move pruningを試す条件。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)で扱う。
 - reverse futility pruningの返り値をβと判定用の評価値の重み付き平均にすること（Stockfish `src/search.cpp:1033`）。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱い、F1は返り値の混合を加えない。
 - 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
@@ -133,7 +133,7 @@ reverse futility pruningの余裕値の補正量の項はF1が持ち、[correcti
 | LMRの減深量の単位（F4の準備） | 減深量を1/100手単位の整数で計算し、最後に100で割る。現行の表は`floor(ln d × ln m/(LmrDivisor/100))`の整数を持つので、定数項や倍率を足すと、表の段階で切り捨てた端数が失われる。表に`floor(100x)`（xは切り捨て前の値）を持てば、整数`h`について`floor((floor(100x) + 100h)/100) = floor(x) + h`が成り立つので、単位の変更だけのコミットは探索を変えず、探索ノード数の一致で検証できる。両エンジンは1/1024手単位を使うが（Stockfish `src/search.cpp:1402-1403`）、minaseの表の係数は百分率で揃えているので1/100手とする。 |
 | LMRの項（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの減深量の項のうち、statScoreの項と補正量の項を除くすべてを入れる（`src/search.cpp:1183-1192, 1345-1388`）。ttPvの項、手番号の項、置換表の手が捕獲の項、子のβ打ち切り数の項、置換表の手の減深を減らす項、αと判定用の評価値の差の項、cutNodeとallNodeの項がこれに当たる。置換表の手の減深を減らす項（同1368-1369行）は、minaseが置換表の手をLMRの対象にしないのでLMRの分岐では働かないが、LMRの分岐を通らない探索で先頭に読む置換表の手の減深量を約2.1手減らすので、係数`LmrTtMove`として入れる。この項を除くと、cutNodeで先頭に読む置換表の手が、cutNodeの増分によって1手か2手浅く読まれる。減深量の前半`r_pre`（同1183-1192行）は、shallow-pruning-extensions.mdのlmrDepthの基にもなるので、後半と分けて定める。 |
 | LMRの減深後の深さ（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、Stockfishの`max(1, newDepth + min(-r/1024, ply < 2 × rootDepth ? 2 : 0)) + PvNode`（`src/search.cpp:1402`）に合わせる。負の減深量による延長を、根からの手数が反復の深さの2倍未満なら2手まで許し、PVノードでは減深後の深さに1を足す。減深の上限`LmrMaxReduction`は残す既存の仕組みなので、正の減深量の上限としてだけ掛け、延長には掛けない。減深した探索がαを超えたら、Stockfishと同じく、その値が最善値より十分に高ければ1手深く、最善値に届かなければ1手浅く、通常深さを調整してから再探索する（同1414-1420行）。 |
-| LMRをしない手の減深（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、LMRの分岐を通らない零窓の探索でも、置換表の手がなければ減深量に`LmrNoTtMove`を足し、減深量が大きければ通常深さから1手または2手減らして読む（`src/search.cpp:1428-1436`）。Stockfishがこの分岐を通るのは、零窓のノードの先頭の手と残り深さ1のノードの2手目以降だけなので、minaseも同じ手に限る。LMRの対象でない2手目以降の手（捕獲手とkiller手）は、Stockfishでは減深の分岐で読まれる手なので、この分岐には含めず、LMRを広げる[history-forms.md](../history-forms.md)のM5に委ねる。 |
+| LMRをしない手の減深（F4） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、LMRの分岐を通らない零窓の探索でも、置換表の手がなければ減深量に`LmrNoTtMove`を足し、減深量が大きければ通常深さから1手または2手減らして読む（`src/search.cpp:1428-1436`）。Stockfishがこの分岐を通るのは、零窓のノードの先頭の手と残り深さ1のノードの2手目以降だけなので、minaseも同じ手に限る。LMRの対象でない2手目以降の手（捕獲手とkiller手）は、Stockfishでは減深の分岐で読まれる手なので、この分岐には含めず、LMRを広げる[history-forms.md](history-forms.md)のM5に委ねる。 |
 | LMRのcutNodeの増分と上限の釣り合い（F4） | cutNodeの増分の開始値は約3.9手、置換表の手がなければ約4.8手であり（`src/search.cpp:1356-1357`）、Stockfishでは多くの減算の項と釣り合っている。上限`LmrMaxReduction`の開始値3では、cutNodeで減深の対象となる手の多くが上限で減深される。2026年10月17日の利用者の決定により上限は係数として残すので、上限と増分の釣り合いはSPSAに選ばせる。上限に張り付いた最終値は、測定記録に残して解釈する。 |
 | allNodeの項の分母（F4） | Stockfishの`r × 276/(256 × depth + 268)`（`src/search.cpp:1387-1388`）の分子を係数`LmrAllNode`とし、分母の定数268/256は105に換算して固定する。2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により入れる。 |
 | 置換表の打ち切り（F5） | 2026年10月17日の利用者の決定（Stockfishにある項目は入れる）により、零窓のノードでは、置換表の値による打ち切りに「cutNodeで値がβ以上か、allNodeで値がβ未満か、残り深さが4より深い」というStockfishの条件（`src/search.cpp:899`）を加える。同じ決定により、打ち切りの深さの条件（同894-895行）と、残り深さ7以上で置換表の手を指した後の局面を置換表で確かめる処理（同917-931行）も入れる。PVノードでの打ち切りは、[ADR](../../adr/archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が測定で決めた既存の仕組みなので残し、現行の条件のままとする。50手規則で打ち切りを止める条件（同915行）は、中将棋に50手規則がないので持たない。着手後の局面の値が専用の帯にある場合は、経路に依存する値を打ち切りに使わない現行の規則に揃えて、値がないものとして扱う。これは本書の判断である。 |
@@ -231,7 +231,7 @@ F4も2つのコミットで入れる。
 `LmrMaxReduction`の開始値は現行と同じ3なので、このコミットは探索を変えない。
 2つ目のコミットで、1/100手単位の減深量と、減深を適用した後の探索の深さを、次の式で求める。
 この式は、LMRの項を加える後続の設計書が共有する正本である。
-[history-forms.md](../history-forms.md)、[correction-history-tables.md](../correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
+[history-forms.md](history-forms.md)、[correction-history-tables.md](../correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
 `trunc`は0方向への丸めであり、丸めを要する項は個別に丸めてから加減算する。
 前半`r_pre`はStockfishの1183〜1192行に当たり、`F4_r0`の残りの項はStockfishの1345〜1384行に当たる。
 
@@ -275,13 +275,13 @@ PVノードの1手は、Stockfishの1402行と同じく`max`の外で足す。
 
 後続の設計書の追加項は、次の位置に入る。
 `q_corr`は補正量の項であり、[correction-history-tables.md](../correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
-`q_hist`はstatScoreの項であり、[history-forms.md](../history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
+`q_hist`はstatScoreの項であり、[history-forms.md](history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
 `q_mate`は詰みを探す局面で王手になる手とならない手の減深量を変える項であり、[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9が定め、allNodeの項を足した後に足す（同1391-1392行）。
 本書の範囲では、3つの追加項はいずれも0である。
 `r`は負にもなり得るので、減深量を0以上へ切り詰めることはしない。負の減深量は`E`を限度とする延長になる。
 
 LMRは、残り深さ2以上のノードで、対象の手（置換表の手、捕獲手、およびkiller手を除く非捕獲手）に適用する。対象の手の範囲と、根でLMRを行わないことは変えない。
-LMRを捕獲手、killer手、および根へ広げるのは、[history-forms.md](../history-forms.md)のM5である。
+LMRを捕獲手、killer手、および根へ広げるのは、[history-forms.md](history-forms.md)のM5である。
 減深した零窓の探索の値がαを超えたら、通常深さ`d − 1`を、`d' < d − 1`かつ値が最善値より歩兵価値の`LmrDeeperMargin`%を超えて高ければ1手深く、値が最善値に歩兵価値の`LmrShallowerMargin`%を足した値より低ければ1手浅く調整する。
 調整した深さが`d'`より深ければ、その深さで零窓の再探索を行う。
 全窓の再探索も、調整した深さで行う（Stockfish `src/search.cpp:1414-1455`）。

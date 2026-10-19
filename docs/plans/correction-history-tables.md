@@ -24,7 +24,7 @@ SPSAで調整するのは各仕組みの強さを決める重みと更新量だ�
 ## 状態
 
 起案。2026年10月17日に起案し、同日の2回の利用者の決定に合わせて改訂した。
-[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の完了を待って着手し、着手は利用者の指示による。
+前の設計書の[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)は2026年10月20日に採用で完了したので、着手は利用者の指示による。
 次の一手は、連鎖の1つ前の設計書の完了後に起点を確定し、依存関係の節に従って起点の式を確かめてから、フェーズ1（形の変更の実装）を始めることである。
 
 ## 目的
@@ -38,7 +38,7 @@ SPSAで調整するのは各仕組みの強さを決める重みと更新量だ�
 第1に、StockfishとYaneuraOu（やねうら王）で形や値が違う場合はStockfishに合わせ、YaneuraOuにだけある項目は入れず、Stockfishにだけある項目は入れる。
 第2に、新しい係数の開始値は両エンジンの換算値とし、両者が違えばStockfishの換算値とする。
 第3に、本書については、continuation correction historyを含め、表の大きさをStockfishと同じにし、表の更新を合成した補正後の評価との残差で行い、表を対局の間減衰させずに持ち越す。
-continuation correction historyの表の引き方は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の共有の表と同じ考え方（Stockfishの形）にそろえる。
+continuation correction historyの表の引き方は、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)の共有の表と同じ考え方（Stockfishの形）にそろえる。
 第4に、minaseにあってStockfishにない既存の仕組みのうち、中将棋の診断や測定で決めたもの（本書では駒種別の枚数を鍵にした表）は残し、Stockfishの仕組みを並べて足し、残したものもSPSAで調整する。中将棋の規則から来る条件（王駒への利きの除外など）も残す。
 第5に、SPSAで調整するのは各仕組みの強さを決める値（重みと更新量）だけとし、上下限や更新の内部の定数はStockfishの値で固定する。
 第6に、評価値の単位を持つ係数の範囲は、Stockfishの換算値、YaneuraOuの換算値、およびminaseの現行の対応する値の3つをすべて含むように取る。中将棋は将棋ともチェスとも異なるので、値はminaseのSPSAが決める。
@@ -89,7 +89,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 ## 依存関係
 
 本書は、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)から始まる設計書の連鎖の4本目である。
-起点は、連鎖の1つ前の[historyの更新量の形とcontinuation historyの設計書](history-forms.md)が完了した後のmasterの先頭であり、前の設計書の候補が採用されたかどうかは問わない。
+起点は、連鎖の1つ前の[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)が完了した後のmasterの先頭であり、前の設計書の候補が採用されたかどうかは問わない。
 この順序は提案であり、最終的な順序は利用者が決める。
 前の設計書の候補がmasterへ統合されると`params.rs`の既定値と探索の式が変わり、本書の検証の基準も変わるので、実装を含めて前の設計書の完了後に始める。
 起点の表の既定値を、既存の係数のSPSAの開始値とする。
@@ -102,7 +102,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 - さらに[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS7（null move pruningを試す条件に、減深量の計算と同じ静的評価を使う変更）も採用されていれば、本書の補正量はnull move pruningを試すかどうかの判定にも入る。
 - [探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)が採用されていなければ、補正後の静的評価はfutility pruningにだけ使われている。本書は適用先を広げない。一括で不採用となった項目群から一部だけを選び直して再測定することになるからである。この場合、新しい表と持ち越しが探索に及ぶ範囲はfutility pruningとC5だけになり、効果は小さいと見込まれる。この場合に着手するかは、着手時に利用者が決める。
 - C5が補正項を引く位置と単位は、先行案の採否ではなく起点の実装で決める。起点のLMRが手の端数を持つ単位（F4またはhistory-formsの1/100手）で減深量を計算していれば、その単位を使う。手単位の整数で計算していれば、F4の設計判断「LMRの減深量の単位」と同じ方法で表を1/100手単位に改める。この変更は、整数`h`について`floor((floor(100x) + 100h)/100) = floor(x) + h`が成り立つので、探索を変えない。起点の単位が1/100手以外なら、`LmrCorrection`はその単位で定め、新しい係数の表の範囲と換算値もその単位へ直す。
-- [historyの更新量の形とcontinuation historyの設計書](history-forms.md)は、ply `q`のノードで指した手について、その`Move`と着手前の駒種をplyごとに記録する（null moveと根より前は記録を持たない）。この記録が起点にあれば、C3はそれを再利用する。なければ、C3で同じ定義の記録を加える。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
+- [historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)は、ply `q`のノードで指した手について、その`Move`と着手前の駒種をplyごとに記録する（null moveと根より前は記録を持たない）。この記録が起点にあれば、C3はそれを再利用する。なければ、C3で同じ定義の記録を加える。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
@@ -131,11 +131,11 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | 3つの値と開始値の隔たり | 重みは、pawnがStockfish 52、YaneuraOu 105、現行0、minorが36、75、0、non-pawnが44、107、0、2手前と4手前の文脈が30、69、0、6手前の文脈が24、なし、0である。更新量は、上界でないノードが20、9、なし、上界のノードが30、12、なしである。LMRの項は101、45、0である。材料表の重みは、StockfishにもYaneuraOuにもなく、起点の`CorrectionCap`の値（現行の既定値なら220）である。重みの開始値はYaneuraOuの換算値の約半分であり、更新量とLMRの項の開始値はYaneuraOuの換算値の2倍を超える。補正の表と項を持たない現行からは、いずれも離れた値から始まる。 |
 | SPSAの対象 | 利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値（表の重み、更新量、LMRの項）だけとし、残した材料表の重みも調整する。上下限、表ごとの更新の倍率、初期値などはStockfishの値で固定し、固定する定数の節に行番号とともにまとめる。起点の表の調整対象の全係数（`FmScale`を除く）から、新しい形では使わなくなる`CorrectionCap`と`CorrectionWeight`を除き、新しい9係数を加える。係数の数は起点の時点で数え直す。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含めるので、本番の前に時間切れの事前確認を行う。 |
 | SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。連鎖の先行案をすべて採用した場合、本書の時点の調整対象は88係数前後になる（起点の表で数え直す）。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
-| 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)がpawn historyのために導入する双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。history-formsが採用されていなければ、同じ定義の鍵を本書で導入する。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。先手と後手のnon-pawnの鍵は、それぞれの歩兵と仲人以外の全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:516, 947-957`）。pawnとnon-pawnの鍵の定義は[段階12の診断](../measurements/strength-stage12/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
+| 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)がpawn historyのために導入する双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。history-formsが採用されていなければ、同じ定義の鍵を本書で導入する。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。先手と後手のnon-pawnの鍵は、それぞれの歩兵と仲人以外の全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:516, 947-957`）。pawnとnon-pawnの鍵の定義は[段階12の診断](../measurements/strength-stage12/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
 | 材料表を残すこと | 利用者の決定により残す。Stockfishに材料表はないが、中将棋の[診断](../adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)で鍵の候補のうち最も予測を改善した表である。他の表と同じ形に改め、Stockfishの表と並べて足す。重み`CorrectionMaterialWeight`の開始値は、起点の`CorrectionCap`の値とする（現行の既定値なら220）。新しい形では、要素が上限1024に達したときの補正量が重みの百分率×歩兵価値になるので、起点の補正の上限と同じ大きさになる値である。更新量の倍率は、Stockfishで基準になるpawnの表と同じ128/128とする。 |
 | 表の合成 | Stockfishと同じく、各表の要素に表ごとの重みを掛けて足し合わせ、補正後の評価を評価関数の出力の範囲に収める（Stockfish `src/search.cpp:95-118`）。補正量の全体の上限`CorrectionCap`は、Stockfishにないので除く。先手と後手のnon-pawnの表には同じ重みを使う。2手前と4手前の文脈にも同じ重みを使い、6手前には別の重みを使う。1手前の手がnull moveのときは、Stockfishと同じくcontinuation correction historyの代わりに定数を加える。この定数は換算すると歩兵価値の約0.3%である。 |
 | 表の大きさと共有 | 利用者の決定により、大きさと共有の仕方をStockfishと同じにする。局面を鍵にした5つの表（材料、pawn、minor、2つのnon-pawn）は、探索チームの全ワーカーで共有し、手番側ごとに「65,536×ワーカー数以上の最小の2のべき」要素の`i16`とする（Stockfish `src/history.h:40, 158-171, 189-191, 206-212`、`src/thread.cpp:213`）。要素は不可分の読み書き（`Relaxed`順序）で扱い、Stockfishも同じく競合を許す（`src/history.h:60-63`）。1ワーカーあたりの大きさは5表で約1.3 MBである。continuation correction historyは、Stockfishと同じくワーカーごとに持つ（`src/search.h:335`）。手の組を直接の添字で引く1つの表であり（`src/history.h:177-185`）、1ワーカーあたり約36 MBである。 |
-| continuation correction historyの引き方（C3） | 利用者の決定により、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の共有の表と同じ考え方にそろえる。1つの表を「文脈の手の駒種、文脈の手の到達升、1手前の手の駒種、1手前の手の到達升」で引き、2手前、4手前、6手前の文脈は同じ表の中の区画を引く。Stockfishも1つの表を3つの文脈で引く（`src/search.cpp:104-109`）。升は、手番側が後手なら盤を180度回転させた升で引く。駒の手番は、手番側と何手前の手かで決まるので添字に含めない。文脈の手の駒種は着手前の駒種とし、1手前の手の駒種は着手後に到達升にある駒種とする。Stockfishも文脈には動かした駒（`src/position.cpp:816-820`、`src/search.cpp:692-693`）を、1手前の手には到達升の駒（`src/search.cpp:106`）を使う。文脈の手がない場合（根より前とnull move）は、Stockfishの番兵（`src/search.cpp:303-309, 697-702`）と同じく、表の中の「文脈なし」の区画を引いて更新する。表は文脈の駒種29種に「文脈なし」を加えた30種、升144、駒種29、升144の約1,800万要素の`i16`である。 |
+| continuation correction historyの引き方（C3） | 利用者の決定により、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)の共有の表と同じ考え方にそろえる。1つの表を「文脈の手の駒種、文脈の手の到達升、1手前の手の駒種、1手前の手の到達升」で引き、2手前、4手前、6手前の文脈は同じ表の中の区画を引く。Stockfishも1つの表を3つの文脈で引く（`src/search.cpp:104-109`）。升は、手番側が後手なら盤を180度回転させた升で引く。駒の手番は、手番側と何手前の手かで決まるので添字に含めない。文脈の手の駒種は着手前の駒種とし、1手前の手の駒種は着手後に到達升にある駒種とする。Stockfishも文脈には動かした駒（`src/position.cpp:816-820`、`src/search.cpp:692-693`）を、1手前の手には到達升の駒（`src/search.cpp:106`）を使う。文脈の手がない場合（根より前とnull move）は、Stockfishの番兵（`src/search.cpp:303-309, 697-702`）と同じく、表の中の「文脈なし」の区画を引いて更新する。表は文脈の駒種29種に「文脈なし」を加えた30種、升144、駒種29、升144の約1,800万要素の`i16`である。 |
 | 値の形と更新（C4） | 利用者の決定により、Stockfishの形にする。要素は−1024以上1024以下の整数とし、更新量`b`に対して`v ← v + b − v|b|/1024`の重力式で更新する（Stockfish `src/history.h:70-76`）。更新量は、探索値と合成した補正後の静的評価との差、つまり全表の合成の残差から作り、各表へ表ごとの倍率を掛けて同じ観測で更新する（Stockfish `src/search.cpp:120-143, 1664-1673`）。表ごとの倍率と初期値は、利用者の決定によりStockfishの値で固定する。現行の指数移動平均の重み`CorrectionWeight`と深さの頭打ち8は、新しい形では使わないので除く。Stockfishは深さの頭打ちを持たず、更新量を±256で切り詰める。 |
 | 更新の条件（C4） | Stockfishの条件に合わせる（`src/search.cpp:1666-1667`）。上界でないノードでは、最善手が捕獲手でなく、探索値が補正後の静的評価より高い場合に更新する。上界のノードでは、探索値が補正後の静的評価以下の場合に更新し、捕獲手の条件は課さない。Stockfishの`!ss->inCheck`に当たる条件として、手番側の王駒に相手の利きが届くノードを除く現行の条件は残す。中将棋の規則から来る条件であり、王手の義務がなく（RULES.md第8条）、王駒が取られ得る局面の静的評価は探索値から大きく外れるからである。探索値が詰み帯と専用の帯にあるノードを除く現行の条件も残す。正確な値のノードで探索値が静的評価より低い場合は、現行は更新するが、Stockfishに合わせて更新しない。更新量は上界のノードで1.5倍になる（Stockfish 18/12）。 |
 | 持ち越し（C1） | 利用者の決定により、全表を対局の間、減衰させずに持ち越す。Stockfishは表を新規対局でだけ初期化する（`src/search.cpp:713-736`）。表は`HistoryTables`に置き、初期化する時点はbutterfly historyと同じく、新規対局、受理された規則変更、受理された置換表容量の変更、およびワーカー数の変更とする（[ADR](../adr/archive/carry-history-tables-within-a-game.md)）。持ち越しの割合の係数は置かない。 |

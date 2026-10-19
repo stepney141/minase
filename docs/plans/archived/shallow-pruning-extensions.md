@@ -78,13 +78,13 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 次の事項は対象外とする。
 
 - 王駒に相手の利きが届くノードを浅い枝刈りから除く条件と、獅子の規則に依存してSEEが判定不能な手を枝刈りしない規則。いずれも中将棋の規則に由来するので残す（[ADR](../../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[SEEのADR](../../adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)）。
-- lmrDepthをhistoryの値で増減する項と、continuation historyの値が低い静かな手を読まない枝刈り（Stockfish `src/search.cpp:1229-1240`）。continuation historyは直前の手を文脈とするhistoryであり、minaseはまだこの表を持たない。次の[historyの形の見直し](../history-forms.md)が、表とともにStockfishの重みでこれらを加える。
+- lmrDepthをhistoryの値で増減する項と、continuation historyの値が低い静かな手を読まない枝刈り（Stockfish `src/search.cpp:1229-1240`）。continuation historyは直前の手を文脈とするhistoryであり、minaseはまだこの表を持たない。次の[historyの形の見直し](history-forms.md)が、表とともにStockfishの重みでこれらを加える。
 - reverse futility pruningとrazoringに使う静的評価を置換表の値で置き換える処理（Stockfish `src/search.cpp:862-865`）。前の設計書が扱う。
 - Stockfishの浅い枝刈りの前提条件`pos.non_pawn_material(us)`と、捕獲手のSEEによる枝刈りにある最後の駒を捨てる手の除外（`src/search.cpp:1196, 1223-1224`）。前者はポーンだけの終盤、後者は合法手のない側を引き分けとするステイルメイトのための条件であり、中将棋には相当する仕組みがない（RULES.md第23条）。2026年10月17日の利用者の決定は、Stockfishに相当する仕組みがない事項はYaneuraOuに合わせるとしており、YaneuraOuも前者を外している（`yaneuraou-search.cpp:3585-3588`）。
 - YaneuraOuにだけある項。静かな手のfutility pruningの`151 × !bestMove`、捕獲手のSEEの`α ≥ 引き分けの値`の条件、およびrazoringの深さの2乗の余裕値である。2026年10月17日の利用者の決定により入れない。
 - 詰みを探す局面の判定（Stockfishの`seekMate`）。seekMate本体は前の設計書が導入する。
 - 損な先頭の捕獲手よりkiller手を先に返す手の順序。killer手は、同じ手数の別のノードでβ打ち切りを起こした静かな手である。対象は`ordering.rs`の`MovePicker::reset`の`killers_before_losing_capture`である。残り深さ3以下という条件は、手の順序付けの[診断](../../measurements/move-ordering/move-ordering-diag.md)で決めたものであり（[ADR](../../adr/try-killers-before-a-losing-first-capture.md)）、本書は変えない。
-- 手の並べ替えで王手になる手に加点すること（Stockfish `src/movepick.cpp:242`）。[historyの形の見直し](../history-forms.md)が、本書のM2の判定を使って扱う。
+- 手の並べ替えで王手になる手に加点すること（Stockfish `src/movepick.cpp:242`）。[historyの形の見直し](history-forms.md)が、本書のM2の判定を使って扱う。
 
 ## 依存関係
 
@@ -93,7 +93,7 @@ razoringは、2026年10月17日に中止した現行の形でのSPSAの途中で
 本書は、前の設計書が導入した次のものを使う。
 F0のcutNodeとallNodeの区別はS6とS7で使い、F1とF4のttPvとLMRの減深量の前半`r_pre`はlmrDepthの計算で使い、F2の判定用の評価値はS6とS8で使う。F5のfollowPVはS1とS5で、F6の詰みを探す局面の判定はS6、S7、およびS9で使う。
 reverse futility pruningの返り値は、前の設計書のF1ではなく本書のS8が扱う。
-本書のM2が導入する王手の判定は、[historyの形の見直し](../history-forms.md)の手の並べ替えと、[静止探索の補正と枝刈りの形の見直し](../qsearch-forms.md)が再利用し、それぞれで重複して導入しない。
+本書のM2が導入する王手の判定は、[historyの形の見直し](history-forms.md)の手の並べ替えと、[静止探索の補正と枝刈りの形の見直し](../qsearch-forms.md)が再利用し、それぞれで重複して導入しない。
 capture historyの表の上限は、historyの形の見直しがStockfishの10692へ固定するが、本書の時点では起点の係数`CaptureHistoryLimit`のままである。
 連鎖の順序は、前の設計書の後に本書、その後にhistoryの形の見直しと続く提案であり、最終的な順序は利用者が決める。
 

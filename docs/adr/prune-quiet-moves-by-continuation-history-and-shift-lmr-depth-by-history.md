@@ -11,7 +11,7 @@ Stockfishは、これらの枝刈りの前に、1手前と2手前のcontinuation
 minaseには、この2つの仕組みがなかった。
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにだけある項目は入れる。
-[historyの形の設計書](../plans/history-forms.md)は、continuation historyとpawn historyを新設したうえで（[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)）、この2つの仕組みを入れた。
+[historyの形の設計書](../plans/archived/history-forms.md)は、continuation historyとpawn historyを新設したうえで（[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)）、この2つの仕組みを入れた。
 
 ## 決定
 

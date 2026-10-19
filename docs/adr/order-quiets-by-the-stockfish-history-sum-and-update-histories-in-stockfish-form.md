@@ -11,7 +11,7 @@
 深さの2乗の加点は、起点の既定値で深さ10でもbutterfly historyの上限の約7.7%、深さ2では約0.3%にとどまり、Stockfishの静かな最善手への加点（深さ10で約15%、深さ2で約2.3%）より小さかった。
 
 2026年10月17日のエンジンの開発者の決定により、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseにあってStockfishにない仕組みのうち中将棋の診断や測定で決めたものは残す。
-[historyの形の設計書](../plans/history-forms.md)は、この決定に従って、静かな手の並べ替えとhistoryの更新をStockfishの形へ寄せた。
+[historyの形の設計書](../plans/archived/history-forms.md)は、この決定に従って、静かな手の並べ替えとhistoryの更新をStockfishの形へ寄せた。
 
 ## 決定
 

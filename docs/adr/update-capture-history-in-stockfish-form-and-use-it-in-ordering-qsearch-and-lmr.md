@@ -12,7 +12,7 @@
 旧ADRは、PSTの時期の測定に基づいていた。
 
 2026年10月17日のエンジンの開発者の決定により、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseにあってStockfishにない仕組みのうち中将棋の診断や測定で決めたものは残す。
-[historyの形の設計書](../plans/history-forms.md)は、この決定に従って捕獲履歴の更新をStockfishの形へ寄せた。
+[historyの形の設計書](../plans/archived/history-forms.md)は、この決定に従って捕獲履歴の更新をStockfishの形へ寄せた。
 
 ## 決定
 

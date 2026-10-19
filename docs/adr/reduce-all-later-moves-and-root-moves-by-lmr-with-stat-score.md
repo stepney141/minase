@@ -8,7 +8,7 @@
 
 LMR（late move reductions）は、順序付けの後方にある手を浅く読み、αを上回ったときだけ本来の深さで読み直す手法である。
 [旧ADR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、2026年10月18日に、LMRを置換表の手とkiller手を除く非捕獲手に適用して根では行わず、減深量を対数表と3段階のhistory補正にStockfishの項を加えて1/100手単位で求めると決めた。
-旧ADRは、Stockfishの項のうちstatScore（手の成績を表す値）の項と、LMRを捕獲手、killer手、および根へ広げることを、[historyの形の設計書](../plans/history-forms.md)に委ねていた。
+旧ADRは、Stockfishの項のうちstatScore（手の成績を表す値）の項と、LMRを捕獲手、killer手、および根へ広げることを、[historyの形の設計書](../plans/archived/history-forms.md)に委ねていた。
 旧ADRより前の[ADR](archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、history値に比例して減深量を連続的に増減する案を、比例係数と切り詰めの2つの自由度を絞る診断が要るとして棄却していた。
 
 2026年10月17日のエンジンの開発者の決定により、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseにあってStockfishにない仕組みのうち中将棋の診断や測定で決めたものは残す。

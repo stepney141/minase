@@ -2,7 +2,7 @@
 
 ## 目的
 
-[historyの更新量の形とcontinuation historyの設計書](../../plans/history-forms.md)のフェーズ5として、SPSAの最終値を反映した候補と起点を、短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
+[historyの更新量の形とcontinuation historyの設計書](../../plans/archived/history-forms.md)のフェーズ5として、SPSAの最終値を反映した候補と起点を、短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
 [統括計画](../../plans/search-forms.md)の決定により、本書の変更はこの判定によらず採用し、LTCは行わない。
 この記録は、統括計画のフェーズ10で7本を通して強くなっていなかった場合に、どのサブタスクで後退したかを調べる手がかりにする。
 

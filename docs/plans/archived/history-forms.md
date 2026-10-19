@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本書は、手の成績を学習する表（history）の更新と使い方をチェスのStockfishの形へそろえ、現行のmasterより強くなるかを確かめる。
-minaseのbutterfly history（手番、移動元、移動先ごとの静かな手の成績の表）は、β打ち切り（ある手の値が探索窓の上端βに達し、残りの手を読まずに打ち切ること）のたびに深さの2乗に比例して加減点するので、1回の更新が表の上限に占める割合は、深さ10でStockfishの約半分、深さ2で約7分の1と小さい（[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)）。
+minaseのbutterfly history（手番、移動元、移動先ごとの静かな手の成績の表）は、β打ち切り（ある手の値が探索窓の上端βに達し、残りの手を読まずに打ち切ること）のたびに深さの2乗に比例して加減点するので、1回の更新が表の上限に占める割合は、深さ10でStockfishの約半分、深さ2で約7分の1と小さい（[係数の関数形の比較](../../research/search-coefficient-forms-prior-art.md)）。
 本書が変えるのは5つである。
 1つ目に、加点と減点の量をStockfishの上限つき1次式に置き換え、表の上限と値の尺度をStockfishと同じにする（history bonus/malus）。
 2つ目に、historyを更新する場面を、最善手がαを上げたノード、置換表（探索結果を局面ごとに保存する表）による打ち切り、fail low（全手がα以下）のノードへ至った手、および静的評価の変化へ広げる。
@@ -13,21 +13,21 @@ minaseのbutterfly history（手番、移動元、移動先ごとの静かな手
 killer手や段差のように中将棋の診断と測定で決めた既存の仕組みは残す。
 新しい係数の開始値はStockfishの値とし、既存の係数とまとめてSPSA（simultaneous perturbation stochastic approximation、全係数を同時に少しずらした2つの設定を対局させて係数を動かす調整法）で調整する。
 調整した版を、起点のmasterと短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
-[統括計画](search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
+[統括計画](../search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
 完了条件は、SPSAとSTCの測定記録を残し、候補をmasterへ統合することである。
 
 ## 状態
 
-着手。2026年10月19日に、利用者の指示を受けて着手した。
-起点は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)を採用で終えた後のmasterである。
-起点には、依存関係の節が前提とする仕組み（1/100手単位のLMR、枝刈り用のlmrDepth、王手の判定、静かな手のSEE、followPV、およびplyごとの補正後の静的評価）がすべてあるので、それらを導入する移行のコミットは置かなかった。
-着手前に、本書の記述を起点のコードとStockfishの写しに照らして見直し、更新する手の列の定義、置換表の打ち切りでの更新の条件、LMRの後のcontinuation historyの更新、および置き直す係数の値を改めた。
-フェーズ1（形の変更の実装）は終えた。結果は[探索ノード数と探索速度の記録](../measurements/history-forms/history-forms-bench.md)にある。
-M3bの時点では、並べ替えの変更で深さ9を読み終える時間が約12%延びるにとどまったので先へ進んだ。最後のコミットで測ると、並べ替えで規則どおりの王手の判定をすべての静かな手に使う費用が探索時間の約19%を占めたので、Stockfishの`check_squares`と同じ直接の王手の判定に改めた（設計判断の「並べ替えの王手と脅威の項」）。これはClaudeの判断である。
-最後のコミットは起点に比べて、深さ9の探索ノード数が22%少なく、NPSが約34%低く、深さ9を読み終える時間が約17%長い。
-係数の既定値を範囲の1/3と2/3に置いた表でもテストが通ることを、SPSAの前に確かめた。
-利用者の判断を待つ点はない。
-次の一手は、フェーズ2（パラメーターファイルと時間切れの事前確認）である。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年10月17日に起案し、2026年10月19日に[統括計画](../search-forms.md)のサブタスク3として着手して、2026年10月20日に完了した。
+移行1項目（M0）と6項目（M1、M3a、M2、M3b、M4、M5）の形の変更と、82個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。
+並べ替えで規則どおりの王手の判定をすべての静かな手に使うと探索時間の約19%を占めたので、Stockfishの`check_squares`と同じ直接の王手の判定に改めた。これはClaudeの判断である。
+SPSAは、探索済みの静かな手の減点の逓減を使わない側（`HistoryMalusDecay`が上限の1024）と、静的評価の変化による更新を使わない側（`HistoryEvalDiff`が下限の0）へ動かし、加点と減点の深さ1あたりの増分とLMRのstatScoreの比例係数を上げた。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して221ペアで`H1`（約+80 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+測定の記録は、[benchのノード数、探索速度、およびメモリ](../../measurements/history-forms/history-forms-bench.md)、[時間切れの事前確認](../../measurements/history-forms/history-forms-safety.md)、[SPSA](../../measurements/history-forms/history-forms.md)、[事前対局](../../measurements/history-forms/history-forms-smoke.md)、および[STC](../../measurements/history-forms/history-forms-stc.md)にある。
+SPSAの前に、係数の既定値を範囲の1/3と2/3に置いた表で落ちる捕獲履歴のテスト4件を直し、SPSAの値を反映した後に落ちた2件を、係数を固定した隔離プロセスで確かめる形に直した。
+lishogiのBotのコンテナは、2局を同時に対局して上限6 GiBのうち約4.3 GiBを使っており、1エンジンあたり約0.23 GBの増分を加えても上限に収まる見込みである。
+7本のサブタスクを通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
 
 ## 目的
 
@@ -36,7 +36,7 @@ M3bの時点では、並べ替えの変更で深さ9を読み終える時間が�
 Stockfishの静かな最善手への加点は、深さ10で1096、深さ2で162であり、表の上限7183のそれぞれ約15%と約2.3%に当たる（`src/search.cpp:2004-2006, 2015`）。
 Stockfishでは、値が上限に近づくほど更新量を小さくする重力式（後述）による忘却が働く。
 minaseでは浅いノードでの1回の更新が小さいので、重力式による忘却は働きにくく、根の探索ごとの減衰（`HistoryDecay`）が忘却の多くを担っていると推測される。
-また、直前の手を文脈とする表は、[手の順序付けの改善](archived/move-ordering.md)の診断で、表を対局内で持ち越し、根の探索ごとに23%へ減衰させる条件で、静かな手の順序を変えるノードがSTC相当で44.6%（1手前）と61.3%（2手前）あると分かったが、表の大きさの設計が残っていた（[診断の記録](../measurements/move-ordering/move-ordering-diag.md)）。
+また、直前の手を文脈とする表は、[手の順序付けの改善](move-ordering.md)の診断で、表を対局内で持ち越し、根の探索ごとに23%へ減衰させる条件で、静かな手の順序を変えるノードがSTC相当で44.6%（1手前）と61.3%（2手前）あると分かったが、表の大きさの設計が残っていた（[診断の記録](../../measurements/move-ordering/move-ordering-diag.md)）。
 2026年10月17日の利用者の決定により、形や値は両エンジンで違えばStockfishに合わせ、Stockfishにだけある項目は含める。
 同じ日の利用者の決定により、minaseにあってStockfishにない既存の仕組みのうち、中将棋の診断や測定で決めたものは残し、Stockfishの仕組みを並べて足す。
 本書は、historyに関わるStockfishの仕組みを1つの候補にまとめ、係数を調整し直して測る。
@@ -48,14 +48,14 @@ minaseでは浅いノードでの1回の更新が小さいので、重力式に�
 - **起点**は、前の設計書が完了した後、フェーズ1を始めた時点のmasterの先頭のコミットである。既存の係数の現行値（`LmrDivisor`、`HistoryDecay`、`CaptureHistoryScale`など）は、起点の`crates/minase/src/search/alphabeta/params.rs`の表の既定値を指す。本書が例に挙げる現行の値は起点の値である。
 - **形の変更**は、本書の項目を実装したコミット列であり、新しい係数を開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で`params.rs`の表の既定値へ書き込んだコミットである。
-- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../guides/sprt.md)）。
+- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../../guides/sprt.md)）。
 - **bench**は、固定の15局面を指定の深さで探索し、探索ノード数、評価値、最善手、および探索速度を出力する`minase dev bench`である。
 - **ワーカー**は、1つの探索を並列に進める探索スレッドであり、その数はUSIオプション`Threads`で決まる。
 - **butterfly history**は、`history.rs`の`HistoryTable`であり、手番側、移動元、移動先で引く静かな手の成績である。**捕獲履歴**（capture history）は、`capture_history.rs`の、動かす駒、到達升、取られる駒種で引く捕獲手の成績である。
 - **重力式**は、符号つきの更新量`b`を表の上限`D`で`[−D, D]`に切り詰めてから、値`v`を`v + b − trunc(v×|b|/D)`へ置き換える更新式である。`trunc`は0の方向への切り捨てである。現行の`record_quiet_beta_cutoff`と同じ式であり、Stockfishの`StatsEntry::operator<<`（`src/history.h:70-76`）も同じ形である。値は常に`[−D, D]`に収まる。
 - **Stockfishの尺度**は、表の値と更新量をStockfishと同じ数値で表すことをいう。本書は表の上限をStockfishと同じ値にするので、Stockfishの定数を換算せずに使える。評価値だけは尺度が違うので、minaseの評価値`e`を`e × 208/P`（`P`は探索用の歩兵価値、208はStockfishの歩兵価値、`src/types.h:199`）へ換算して使う。
 - **静かな手の段**は、手選択器（`ordering.rs`の`MovePicker`）が置換表の手、捕獲手、killer手（同じ深さの別のノードでβ打ち切りを起こした静かな手）を返した後に、残りの静かな手を並べ替えの値の降順に返す区切りである。
-- **着手の記録**は、`Searcher`の`path_moves`の要素に持たせる、そのplyのノードで指した手の`Move`、着手前の駒コード（所有者を含む）、および捕獲手なら捕獲履歴の添字に使う取った駒種の組である。2枚取りの取った駒種は、捕獲履歴の現行の添字と同じく価値の高い方（同値なら到達升の駒）とする。通常探索のply `p`のノードでは`path_moves`の長さが`p`に等しく、ply `p`の記録は、ply `p`の局面からply `p + 1`の局面へ進めた手を表す。着手後の駒（成る手なら成った駒）は、`Move`の成りの指定と着手前の駒コードから導く。null moveはそのplyの記録を空にし、根より前のplyは記録を持たない。静止探索は`path_moves`へ積まないので、記録は通常探索だけで参照する。[correction historyの鍵の追加の設計書](correction-history-tables.md)のC3も、同じ記録を使う。
+- **着手の記録**は、`Searcher`の`path_moves`の要素に持たせる、そのplyのノードで指した手の`Move`、着手前の駒コード（所有者を含む）、および捕獲手なら捕獲履歴の添字に使う取った駒種の組である。2枚取りの取った駒種は、捕獲履歴の現行の添字と同じく価値の高い方（同値なら到達升の駒）とする。通常探索のply `p`のノードでは`path_moves`の長さが`p`に等しく、ply `p`の記録は、ply `p`の局面からply `p + 1`の局面へ進めた手を表す。着手後の駒（成る手なら成った駒）は、`Move`の成りの指定と着手前の駒コードから導く。null moveはそのplyの記録を空にし、根より前のplyは記録を持たない。静止探索は`path_moves`へ積まないので、記録は通常探索だけで参照する。[correction historyの鍵の追加の設計書](../correction-history-tables.md)のC3も、同じ記録を使う。
 - **文脈の手**は、ply `p`のノードで手を引くときに参照する、ply `p − i`（`i`は1、2、3、4、6）の記録の手である。記録が空のplyは文脈の手を持たない。
 - **ノードの手数**は、そのノードで手選択器の候補列から取り出した適格な合法手の数であり、枝刈りで飛ばした手も含み、R2とR3の禁止手は含めない。Stockfishの`moveCount`（`src/search.cpp:1154`）に当たる。起点の`negamax`の0始まりの添字`index`は禁止手で進まず、枝刈りした手で進むので、処理中の手のノードの手数は`index + 1`である。`Searcher`はこの値を手を処理するたびにplyごとの配列へ書き、子のノードは親の値を読む。同じ手の再探索では値を変えない。
 - **探索済みの手の列**は、ノードで実際に読んだ手のうち、ノードの手数が32以下で、読んだ時点でαを上回らなかった手を、静かな手と捕獲手に分けて読んだ順に並べたものである（Stockfish `src/search.cpp:75, 1578`）。αを上回った手は、後で最善手でなくなっても列に加えない。M1の減点の対象と、零窓のノードでの加点の上乗せに使う手の数は、この2つの列である。
@@ -80,53 +80,53 @@ minaseでは浅いノードでの1回の更新が小さいので、重力式に�
 - 置換表の手の成績の表（Stockfishの`ttMoveHistory`）。Stockfishはこの表をsingular extensionの余裕値にだけ使い（`src/search.cpp:1290, 1308, 1608`）、minaseにはsingular extensionがない。
 - continuation historyの王手の次元。Stockfishは表を、文脈の手を指した局面が王手を受けていたかで分け、王手を受けている局面では2手前までの表だけを更新する（`src/search.cpp:690-691, 2059-2061`）。minaseは王手を受けている局面を区別しない（王駒を利きへ置く手も合法であり、RULES.md第8条第3項から第5項）。
 - killer手の表の変更。killer手はStockfishにないminaseだけの仕組みであり、2026年10月17日の利用者の決定（中将棋の診断や測定で決めた仕組みは残す）により、本書はその更新と手選択器の段を変えない。
-- LMRの減深量のうちhistory以外の項（cutNode、allNode、ttPv、置換表の手が捕獲手の場合、子ノードの打ち切りの回数、`α − eval`、手数、補正量など）と、減深の結果に応じて読み直しの深さを増減する処理。これらは[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)と[correction historyの設計書](correction-history-tables.md)が扱う。本書のstatScoreの項は、それらの項と同じ式の中で引く（M4）。
+- LMRの減深量のうちhistory以外の項（cutNode、allNode、ttPv、置換表の手が捕獲手の場合、子ノードの打ち切りの回数、`α − eval`、手数、補正量など）と、減深の結果に応じて読み直しの深さを増減する処理。これらは[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)と[correction historyの設計書](../correction-history-tables.md)が扱う。本書のstatScoreの項は、それらの項と同じ式の中で引く（M4）。
 - 置換表で打ち切る条件そのもの。本書は打ち切ったときの更新だけを加える。
-- correction historyにcontinuationの鍵を加えること。[correction historyの設計書](correction-history-tables.md)が扱う。
+- correction historyにcontinuationの鍵を加えること。[correction historyの設計書](../correction-history-tables.md)が扱う。
 
 ## 依存関係
 
-起点は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)が完了した後のmasterの先頭である。
+起点は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が完了した後のmasterの先頭である。
 起点の表の既定値をSPSAの開始値とする。
 
 M4とM5は、LMRの減深量を1/100手単位の整数で計算し、最後に手単位へ直す形を前提にする。
-この形は[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF4が導入し、起点の`pruning.rs`の`LmrCoefficients::lmr_reduction`にある。
+この形は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4が導入し、起点の`pruning.rs`の`LmrCoefficients::lmr_reduction`にある。
 LMRの減深量と減深後の深さの式は、F4の式を正本とする。
 本書はF4の`r₀`からstatScoreの項`q_hist`を引くことだけを加え、その位置はallNodeの拡大の前とする（M4）。
-[correction historyの設計書](correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
+[correction historyの設計書](../correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
 
-M4の減深後の深さ（lmrDepth）へのhistoryの項は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)が静かな手のfutility pruningとSEEによる枝刈りに導入した枝刈り用のlmrDepth（`pruning.rs`の`pruning_lmr_depth`）に足す。
+M4の減深後の深さ（lmrDepth）へのhistoryの項は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が静かな手のfutility pruningとSEEによる枝刈りに導入した枝刈り用のlmrDepth（`pruning.rs`の`pruning_lmr_depth`）に足す。
 
 pawn historyは、歩兵と仲人の配置の鍵（pawn key）で引く。
-この鍵は本書が導入し、[correction historyの設計書](correction-history-tables.md)のC2は本書の鍵を再利用する。
+この鍵は本書が導入し、[correction historyの設計書](../correction-history-tables.md)のC2は本書の鍵を再利用する。
 
-M3bの王手の加点は、Stockfishの`check_squares`と同じく、ノードで駒種ごとに求める直接の王手の升の集合で判定し、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS3が導入した静かな手のSEEの判定器（`see.rs`の`see_prunes`）を再利用する。
+M3bの王手の加点は、Stockfishの`check_squares`と同じく、ノードで駒種ごとに求める直接の王手の升の集合で判定し、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS3が導入した静かな手のSEEの判定器（`see.rs`の`see_prunes`）を再利用する。
 同じ設計書が導入した王手の判定`Position::gives_check`（RULES.md第8条の定義に従い、開き王手と王駒が2枚の場合を含む）は、枝刈りでの王手の判定に使い続け、並べ替えには使わない。
-SEEの判定器の引数を符号つきの閾値`T`（`SEE < T`なら真）に改める契約の移行（[静止探索の設計書](qsearch-forms.md)）には、王手の加点に使う判定も含め、閾値`−trunc(75P/208)`を保つ。
+SEEの判定器の引数を符号つきの閾値`T`（`SEE < T`なら真）に改める契約の移行（[静止探索の設計書](../qsearch-forms.md)）には、王手の加点に使う判定も含め、閾値`−trunc(75P/208)`を保つ。
 
-SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
+SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、採否の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
-時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
-実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
+実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 本書は次のADRの決定の一部を変える。
 採用した場合は、完了時に、起点の時点で有効なADR（先行の設計書が置き換えていればその後継）を確認し、新しいADRで置き換える。
 部分的に変える場合は、残る決定も新しいADRへ引き継ぐ。
 
-- [LMRの式のADR](../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)（2026年9月7日）は、history補正を閾値による±1の段差とし、連続量の案を比例係数と切り詰めの2つの自由度を絞る診断が要るとして棄却した。対象は置換表の手、捕獲手、killer手を除く非捕獲手とし、根では行わないとした。M4は段差を残し、Stockfishの連続量を並べて加える。比例係数はStockfishの値から始めてSPSAで調整する。M5は対象を先頭の手を除く全手と根へ広げる。このADRは評価関数がPSTだった時期の測定に基づき、上限3と段差を「STCの到達深さが5〜6だった時期の判断」として見直しの余地を留保している。同じADRの上限は[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF4も変える。
-- [静かな手の順序のADR](../adr/archive/order-quiets-with-malus-and-pst-tiebreak.md)（2026年10月10日）は、加点と減点を別の尺度で深さの2乗に比例させ、重力式で更新すると決めた。M1は加点と減点をStockfishの上限つき1次式に置き換え、M2は更新する場面を増やし、M3bは並べ替えの値に新しい表を加える。重力式と同点破りは変えない。このADRはPSTを既定の評価関数としていた時期の測定に基づき、同点破りの効果をNNUEで測り直していないことと、尺度がSPSAの調整を待つ既定値であることを記している。
-- [historyの持ち越しのADR](../adr/archive/carry-history-tables-within-a-game.md)（2026年10月10日）は、butterfly historyと捕獲履歴を対局内で減衰させて持ち越し、killer表と補正表は持ち越さないと決めた。M3aはcontinuation historyとpawn historyを加え、新規対局などの時点で初期化して対局内で減衰させずに持ち越し、low ply historyは探索ごとに初期化する。butterfly historyと捕獲履歴の減衰の仕組みは変えず、`HistoryDecay`の開始値をStockfishの値に置き直す。このADRはPSTとFMを既定の評価関数としていた時期の測定に基づき、continuation historyの設計を別の設計書に委ねている。
-- [butterfly表だけのADR](../adr/archive/keep-only-the-butterfly-history-table.md)（2026年9月7日）は、静かな手のhistoryをbutterfly表だけで構成すると決め、直前の手と組み合わせる表は対象外とした。M3aはcontinuation history、pawn history、およびlow ply historyを加える。駒種と到達升で引く表（piece-to history）は、Stockfishにもないので加えない。このADRはPSTの時期の測定に基づき、4次元の表が疎だという判断は表を根の探索ごとに初期化していた時期のものなので、再提案するときは現行の表の寿命で測り直す必要があると留保している。
-- [捕獲履歴のADR](../adr/archive/bound-capture-history-and-use-it-in-qsearch.md)（2026年10月10日）は、捕獲履歴の換算値を歩兵価値の定数倍に抑えて並べ替えに使い、重力式で更新すると決めた。M1は捕獲履歴の更新量と上限をStockfishの形にし、M4は捕獲手のLMRにも使う。並べ替えへの換算の形は変えず、尺度`CaptureHistoryScale`の開始値をStockfishの換算値に置き直す。このADRはPSTの時期の測定に基づき、LMRへの使用については留保していない。
+- [LMRの式のADR](../../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)（2026年9月7日）は、history補正を閾値による±1の段差とし、連続量の案を比例係数と切り詰めの2つの自由度を絞る診断が要るとして棄却した。対象は置換表の手、捕獲手、killer手を除く非捕獲手とし、根では行わないとした。M4は段差を残し、Stockfishの連続量を並べて加える。比例係数はStockfishの値から始めてSPSAで調整する。M5は対象を先頭の手を除く全手と根へ広げる。このADRは評価関数がPSTだった時期の測定に基づき、上限3と段差を「STCの到達深さが5〜6だった時期の判断」として見直しの余地を留保している。同じADRの上限は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4も変える。
+- [静かな手の順序のADR](../../adr/archive/order-quiets-with-malus-and-pst-tiebreak.md)（2026年10月10日）は、加点と減点を別の尺度で深さの2乗に比例させ、重力式で更新すると決めた。M1は加点と減点をStockfishの上限つき1次式に置き換え、M2は更新する場面を増やし、M3bは並べ替えの値に新しい表を加える。重力式と同点破りは変えない。このADRはPSTを既定の評価関数としていた時期の測定に基づき、同点破りの効果をNNUEで測り直していないことと、尺度がSPSAの調整を待つ既定値であることを記している。
+- [historyの持ち越しのADR](../../adr/archive/carry-history-tables-within-a-game.md)（2026年10月10日）は、butterfly historyと捕獲履歴を対局内で減衰させて持ち越し、killer表と補正表は持ち越さないと決めた。M3aはcontinuation historyとpawn historyを加え、新規対局などの時点で初期化して対局内で減衰させずに持ち越し、low ply historyは探索ごとに初期化する。butterfly historyと捕獲履歴の減衰の仕組みは変えず、`HistoryDecay`の開始値をStockfishの値に置き直す。このADRはPSTとFMを既定の評価関数としていた時期の測定に基づき、continuation historyの設計を別の設計書に委ねている。
+- [butterfly表だけのADR](../../adr/archive/keep-only-the-butterfly-history-table.md)（2026年9月7日）は、静かな手のhistoryをbutterfly表だけで構成すると決め、直前の手と組み合わせる表は対象外とした。M3aはcontinuation history、pawn history、およびlow ply historyを加える。駒種と到達升で引く表（piece-to history）は、Stockfishにもないので加えない。このADRはPSTの時期の測定に基づき、4次元の表が疎だという判断は表を根の探索ごとに初期化していた時期のものなので、再提案するときは現行の表の寿命で測り直す必要があると留保している。
+- [捕獲履歴のADR](../../adr/archive/bound-capture-history-and-use-it-in-qsearch.md)（2026年10月10日）は、捕獲履歴の換算値を歩兵価値の定数倍に抑えて並べ替えに使い、重力式で更新すると決めた。M1は捕獲履歴の更新量と上限をStockfishの形にし、M4は捕獲手のLMRにも使う。並べ替えへの換算の形は変えず、尺度`CaptureHistoryScale`の開始値をStockfishの換算値に置き直す。このADRはPSTの時期の測定に基づき、LMRへの使用については留保していない。
 
-[late move pruningの数え方のADR](../adr/archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[killer手を損な先頭捕獲より先に返すADR](../adr/try-killers-before-a-losing-first-capture.md)、および[根の手の並べ替えのADR](../adr/order-root-moves-by-previous-subtree-nodes.md)の決定は変えない。
+[late move pruningの数え方のADR](../../adr/archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[killer手を損な先頭捕獲より先に返すADR](../../adr/try-killers-before-a-losing-first-capture.md)、および[根の手の並べ替えのADR](../../adr/order-root-moves-by-previous-subtree-nodes.md)の決定は変えない。
 
 ## 設計判断
 
 | 項目 | 決定 |
 |---|---|
 | 合わせる先 | 2026年10月17日の利用者の決定により、形や値がStockfishとYaneuraOuで違う場合はStockfishに合わせ、YaneuraOuにだけある項目は入れず、Stockfishにだけある項目は入れる。本書の範囲では、YaneuraOuもpawn history、low ply history、continuation historyによる枝刈り、および静的評価の変化による更新を持つ（`yaneuraou-search.cpp:1540, 3126-3132, 3646-3661`）。同じ日の利用者の決定により、minaseにあってStockfishにない既存の仕組みのうち、中将棋の診断や測定で決めたもの（killer手、LMRの段差、静かな手の同点破り、捕獲履歴の静止探索での使用、根の手の並べ替え、および捕獲履歴の根ごとの減衰）は残し、Stockfishの仕組みを並べて足し、残したものもSPSAで調整する。 |
-| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回のSTCで強さの変化を記録する。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。 |
+| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回のSTCで強さの変化を記録する。[不採用だった探索部の改良の再調整](search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。 |
 | 開始値と検証 | 2026年10月17日の利用者の決定により、新しい係数の開始値はStockfishの値とする。既存の係数のうち、Stockfishに同じ形の値がある`HistoryDecay`（32から71）と`CaptureHistoryScale`（285から734）は、その換算値に置き直す。`LmrHistoryThreshold`はStockfishに対応する値がないので、表の上限を7183へ改める尺度の変更に合わせて、`round(起点のLmrHistoryThreshold × 7183 / 起点のHistoryLimit)`を開始値にする（起点の9と4384なら15）。本書で置き直す既存の係数はこの3つに限り、ほかの係数は起点の調整済みの値のまま始める。各項目のコミットでbenchのノード数の変化を記録し、挙動を変えない移行（M0）だけをノード数の一致で検証する。 |
 | 尺度と表の上限 | butterfly historyと捕獲履歴の上限を、係数`HistoryLimit`と`CaptureHistoryLimit`から、Stockfishと同じ定数7183と10692に改め（`src/history.h:128, 135`）、両係数を廃する。新しい表の上限もStockfishと同じにする。表の上限がStockfishと同じなら、Stockfishの更新量と重みを換算せずに使え、表の間の値の比もStockfishと同じになる。上限を係数として残すと、更新量を上限に比例させて換算する限り、上限は値の分解能を変えるだけで探索の挙動に効かなくなる。 |
 | 係数にする値と定数にする値 | 2026年10月17日の利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値（傾き、切片、上限の手前で効く量、重み、倍率）だけとし、上下限、平均の重み、更新の内部の定数はStockfishの値で固定する。本書の新しい係数は15個であり、固定する72個の定数は後述の「定数」の表に行番号つきでまとめる。 |
@@ -134,13 +134,13 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | 減点の逓減（malus decay） | 探索済みの静かな手の列の先の手ほど大きく減点する。Stockfishは、読んだ順に、減点を1手ごとに921/1024倍してから与える（`src/search.cpp:2018-2022`）。係数の上限を1024にするのは、1024を超えると後の手の減点が大きくなり、重力式の切り詰めに頼ることになるからである。 |
 | 更新の条件の拡大 | Stockfishと同じく、最善手が探索開始時のαを上げたノードで更新する（`src/search.cpp:1602-1608`）。起点の`negamax`はfail lowでも`best_move`を設定するので、判定は`best_score > original_alpha`で行う。β打ち切りに限っていた現行より更新が増える。killer手の更新はminaseだけの仕組みなので、現行どおりβ打ち切りに限る。加えて、置換表の打ち切りの条件が成り立ったときの静かな置換表の手への加点と直前の手への減点（同902-910）、fail lowのノードでの直前の静かな手への加点と直前の捕獲手への捕獲履歴の加点（同1611-1643）、前の最善手が反駁されたときの直前の手への追加の減点（同2031-2035）、直前の手の前後の静的評価の変化による更新（同1002-1012）、およびLMRで減深した探索の値がαを上回った手へのcontinuation historyの加点（同1423）を加える。置換表による更新は、Stockfishと同じく、打ち切りの前に置換表の手の子局面を照合する処理より前に行うので、照合の結果で打ち切りを見送っても更新は残る。 |
 | 置換表の手の確認 | 置換表の打ち切りでの置換表の手への加点は、置換表の手が現局面で合法な静かな手であることを`MoveGenerator::is_legal_move`で確かめてから行う。置換表の手はハッシュの衝突で別の局面のものである場合があり、continuation historyを引くには移動元の駒種が要るからである。Stockfishは合法性を確かめずに更新するが、チェスの表は移動元と到達升だけで引けるので、別の局面の手でも表の外を読まない。同じ打ち切りでの直前の手への減点は、直前の手の記録だけを使うので、Stockfishと同じく置換表の手があれば、捕獲手でも合法性を確かめずに行う。 |
-| 静的評価を求めるノード | 静的評価の変化による更新は、直前の手のノードと現在のノードの補正後の静的評価を使う（`src/search.cpp:845-875, 1002-1012`）。[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF2がノードごとに1回求めて保持する補正後の評価を再利用し、historyの更新のために補正表を読み直さない。起点の`Searcher::static_evals`がこの値を保持している。Stockfishは、現在のノードか直前の手のノードが王手を受けていればこの更新とfail lowの加点の一部の項を行わない（同1001、1618-1619）。王手の局面では`staticEval`が2手前の値の写しであり、実際の評価ではないからである（同848）。minaseはすべてのノードで静的評価を求めるので、この条件を置かない。王駒に相手の疑似利きが届くノードで既存の枝刈りを止めるのは探索の判断であり、historyの更新に混じる雑音は係数の調整が吸収するとみる。 |
+| 静的評価を求めるノード | 静的評価の変化による更新は、直前の手のノードと現在のノードの補正後の静的評価を使う（`src/search.cpp:845-875, 1002-1012`）。[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF2がノードごとに1回求めて保持する補正後の評価を再利用し、historyの更新のために補正表を読み直さない。起点の`Searcher::static_evals`がこの値を保持している。Stockfishは、現在のノードか直前の手のノードが王手を受けていればこの更新とfail lowの加点の一部の項を行わない（同1001、1618-1619）。王手の局面では`staticEval`が2手前の値の写しであり、実際の評価ではないからである（同848）。minaseはすべてのノードで静的評価を求めるので、この条件を置かない。王駒に相手の疑似利きが届くノードで既存の枝刈りを止めるのは探索の判断であり、historyの更新に混じる雑音は係数の調整が吸収するとみる。 |
 | continuation historyの表の形 | 2026年10月17日の利用者の決定により、表はStockfishと同じく1組の共有の表とし、何手前の文脈も同じ表の中の区画を引く（Stockfish `src/history.h:198-199`、`src/search.cpp:690-691, 1140-1142`）。手は180度の回転で引き、表を引く手を指す側が後手なら、文脈の手と現在の手の升をともに回転する。中将棋は初期配置と規則が180度の回転と手番の入れ替えについて対称なので、先手の局面と回転した後手の局面の統計を同じ要素に集められる。添字は「文脈の手が捕獲手か（2）、文脈の手を指したのが表を引く手と同じ側か（2）、文脈の手の着手前の駒種（29）、文脈の手の到達升（144）、現在の手の着手前の駒種（29）、現在の手の到達升（144）」とし、要素はi16とする。29は成駒を含む駒種の数（`PIECE_KIND_COUNT`）、144は盤の升の数である。同じ側かどうかの次元は、Stockfishの添字の駒が手番の色を含むことに当たり、文脈の手が何手前かの偶奇で決まる。捕獲手かどうかの次元はStockfishに合わせて持つ。王手の次元は対象外の節のとおり持たない。文脈の手を持たない項は参照も更新もせず、並べ替えなどでは0として足す。Stockfishは文脈の手がない場合に初期値の区画を引くので（`src/search.cpp:690-691`）、これは意図した違いである。 |
 | continuation historyの大きさと共有 | 表は69,755,904要素で約140 MBであり、探索チームの全ワーカーで共有する。Stockfishは同じNUMAノードのワーカーの間で共有する（`src/history.h:201-212`）。要素は不可分の読み書き（`AtomicI16`の`Relaxed`順序の読み出しと書き込み）で扱い、競合した更新が失われることを許す。Stockfishも同じく競合を許す（同138行の`AtomicStats`）。共有するのでメモリはワーカー数によらない。捕獲手かどうかの次元を持たなければ約70 MBになるが、Stockfishとの一致を崩すので採らない。表は`HistoryTables`が持ち、各ワーカーの探索状態へ共有の参照で渡す。表は新規対局、受理した規則と置換表の容量`USI_Hash`の変更、ワーカー数の変更、および引き分けの評価値`DrawValue`の変更の時点で初期値にし、対局内で減衰させずに持ち越す。Stockfishも減衰させるのはbutterfly historyだけである（`src/search.cpp:341-343`）。効果の根拠とした診断は、1手前と2手前の2表を根の探索ごとに23%へ減衰させる条件で測ったものであり、本書の表の形と寿命での発動率は測っていない。 |
-| pawn historyの形 | Stockfishと同じく、歩兵の配置の鍵で引くエントリごとに、動かす駒と到達升の表を持つ（`src/history.h:146, 220-225`）。中将棋の鍵は、規則書が「価値ある駒」から除く2種（RULES.md第3条第11項）である歩兵と仲人の配置とし、[correction historyの設計書](correction-history-tables.md)のC2の鍵と同じ定義にする。鍵は所有者、歩兵か仲人か、および升ごとの64ビットの乱数の排他的論理和であり、乱数は`correction.rs`の材料の鍵と同じく固定のシードのsplitmix64で作るが、シードは別にする。`material_keys`と同じくplyごとの配列で差分更新し、着手の取り消しの記録（`Undo`）から、動かした駒が歩兵か仲人なら移動元を、着手後も歩兵か仲人なら到達升を、取った駒が歩兵か仲人ならその升を出し入れする。材料の鍵は加減算なので、演算は写さない。null moveでは親の鍵をそのまま使う。鍵は盤の絶対の配置なので、この表は回転せず、駒は手番を含む58種で引く。1エントリは駒58種×升144のi16で約16.7 KBになり、チェスの約8倍なので、エントリの数をStockfishのワーカーあたり8192から1024に減らし、ワーカー1つ分の大きさをStockfishと同程度（約17 MB）にする。エントリの数は1024にワーカー数以上の最小の2のべきを掛けた数とし、表は全ワーカーで共有する。Stockfishも表の大きさをワーカー数に比例させて共有する。USIの`Threads`の上限256では表だけで約4.4 GBになるが、多数のワーカーを使う機械はメモリも大きいとみて、上限は変えない。 |
+| pawn historyの形 | Stockfishと同じく、歩兵の配置の鍵で引くエントリごとに、動かす駒と到達升の表を持つ（`src/history.h:146, 220-225`）。中将棋の鍵は、規則書が「価値ある駒」から除く2種（RULES.md第3条第11項）である歩兵と仲人の配置とし、[correction historyの設計書](../correction-history-tables.md)のC2の鍵と同じ定義にする。鍵は所有者、歩兵か仲人か、および升ごとの64ビットの乱数の排他的論理和であり、乱数は`correction.rs`の材料の鍵と同じく固定のシードのsplitmix64で作るが、シードは別にする。`material_keys`と同じくplyごとの配列で差分更新し、着手の取り消しの記録（`Undo`）から、動かした駒が歩兵か仲人なら移動元を、着手後も歩兵か仲人なら到達升を、取った駒が歩兵か仲人ならその升を出し入れする。材料の鍵は加減算なので、演算は写さない。null moveでは親の鍵をそのまま使う。鍵は盤の絶対の配置なので、この表は回転せず、駒は手番を含む58種で引く。1エントリは駒58種×升144のi16で約16.7 KBになり、チェスの約8倍なので、エントリの数をStockfishのワーカーあたり8192から1024に減らし、ワーカー1つ分の大きさをStockfishと同程度（約17 MB）にする。エントリの数は1024にワーカー数以上の最小の2のべきを掛けた数とし、表は全ワーカーで共有する。Stockfishも表の大きさをワーカー数に比例させて共有する。USIの`Threads`の上限256では表だけで約4.4 GBになるが、多数のワーカーを使う機械はメモリも大きいとみて、上限は変えない。 |
 | low ply historyの形 | Stockfishと同じく、根からのplyが5未満のノードで、plyと移動元と到達升で引く表を持つ（`src/history.h:42, 132`）。Stockfishは反復深化のループに入る前に全要素を102にする（`src/search.cpp:339`）。minaseでは、探索ごとに各ワーカーの探索状態（`Searcher`）を作る時点で102にし、反復深化と窓の読み直しでは初期化しない。ワーカーごとに持ち、約200 KBである。 |
 | 並べ替えの値 | 静かな手の段の値を、Stockfishと同じく`2×butterfly + 2×pawn + (1、2、3、4、6手前の文脈のcontinuation historyの和) + 8×low ply/(1 + ply)`とする（`src/movepick.cpp:233-251`）。同点破り（線形経路の差分、生成順）は変えない。根の並べ替えは前回の反復の部分木ノード数で決めるので変わらない。 |
-| LMRのhistory補正（statScore） | 閾値による±1手の段差（`LmrHistoryThreshold`）は、[棋力向上段階5](archived/strength-stage5.md)の診断と測定で決めた仕組みなので、2026年10月17日の利用者の決定により残す。そこへStockfishのstatScoreに比例する連続量を並べて加える（`src/search.cpp:1371-1381`）。statScoreは、静かな手では`(2252×butterfly + 1126×1手前 + 1093×2手前)/1024`、捕獲手では`873×取る駒の価値/128 + 捕獲履歴`である。取る駒の価値は、獅子の2段階移動で2枚を取る手では合計してから、Stockfishの尺度へ1回だけ換算する。statScoreは、LMRを適用するかどうかによらず、実際に読むすべての手（先頭の手と根の手を含む）について求めて記録する。子のノードのM1とM2が、このノードへ至った手のstatScoreを使うからである。段差はbutterfly historyの値で判定し、捕獲手には使わない。statScoreは段差の判定に使わない。表の値がStockfishの水準に上がると段差はほとんどの手で働くようになるが、閾値を調整の対象に残すので、SPSAが閾値を上げて段差を弱めることもできる。 |
+| LMRのhistory補正（statScore） | 閾値による±1手の段差（`LmrHistoryThreshold`）は、[棋力向上段階5](strength-stage5.md)の診断と測定で決めた仕組みなので、2026年10月17日の利用者の決定により残す。そこへStockfishのstatScoreに比例する連続量を並べて加える（`src/search.cpp:1371-1381`）。statScoreは、静かな手では`(2252×butterfly + 1126×1手前 + 1093×2手前)/1024`、捕獲手では`873×取る駒の価値/128 + 捕獲履歴`である。取る駒の価値は、獅子の2段階移動で2枚を取る手では合計してから、Stockfishの尺度へ1回だけ換算する。statScoreは、LMRを適用するかどうかによらず、実際に読むすべての手（先頭の手と根の手を含む）について求めて記録する。子のノードのM1とM2が、このノードへ至った手のstatScoreを使うからである。段差はbutterfly historyの値で判定し、捕獲手には使わない。statScoreは段差の判定に使わない。表の値がStockfishの水準に上がると段差はほとんどの手で働くようになるが、閾値を調整の対象に残すので、SPSAが閾値を上げて段差を弱めることもできる。 |
 | 並べ替えの王手と脅威の項 | Stockfishと同じく、静かな手の並べ替えの値に、王手になる手でSEE（駒の取り合いの損得の見積り）が`−trunc(75P/208)`（Stockfishの尺度で−75）以上なら`OrderingCheckBonus`を足し（`src/movepick.cpp:241-242`）、動かす駒より価値の低い相手の駒に狙われている升から出る手に加点、そうした升へ入る手に減点する（同244-247）。王手の判定は、Stockfishの`check_squares`と同じく直接の王手に限る。直接の王手とは、相手の王駒がちょうど1枚あり、現在の占有のまま到達升に着手後の駒種の駒を置くと、その駒の疑似利きが王駒に届く手であり、開き王手と王駒が2枚の場合は含めない。中将棋の動きは180度の回転と先後の入れ替えについて対称なので、駒種ごとの直接の王手の升の集合は、相手の色の同じ駒種の駒を王駒の升に置いたときの疑似利きに等しく、ノードで静かな手の段を開くときに、必要な駒種についてだけ求める。当初は規則どおりの`Position::gives_check`をすべての静かな手に使ったが、フェーズ1の測定でこの判定が探索時間の約19%を占めたので、Stockfishの形に改めた。SEEが規則に依存して判定できない手と、経由升を持つ手は、閾値以上として扱う。既存の枝刈りが判定できない手を飛ばさないのと同じ側である。Stockfishは価値の低い駒の集合を駒の格（歩兵、小駒、飛車、女王）で作り、キングには0を使う（同201-209）。中将棋は駒種が29あり、評価関数の駒価値は成駒を区別した駒の状態ごとに異なるので、相手の駒のうち盤上の駒コードの駒価値（`Nnue::piece_value`）が動かす駒より厳密に小さいものの疑似利きの和集合を価値の低い駒の脅威とし、王駒には0を使う。疑似利きは現在の占有での利きであり、獅子、角鷹、および飛鷲の2段階の到達範囲を含み、獅子の捕獲制限の合法性は調べない。利きはminase-coreの既存の利きの計算を呼ぶ公開の関数を`Position`に加えて求める。この集合はノードで静かな手の段を開くときに、相手の駒を価値の順に並べ、同じ価値の駒をまとめた累積の利きとして1回だけ求め、費用は探索速度の低下として測る。YaneuraOuは王手の加点だけを持ち、脅威の項を持たない（`movepick.cpp:371-388`）。 |
 | 評価値の単位を持つ係数 | 2026年10月17日の利用者の決定により、評価値の単位を持つ係数の範囲は、Stockfishの換算値（歩兵価値208で割った値）、YaneuraOuの換算値（歩兵価値90で割った値）、およびminaseの現行の値をすべて含むように取る。本書で当たるのは2つである。`CaptureHistoryScale`（捕獲履歴が上限のときの並べ替えへの加算、歩兵価値に対する百分率）は、Stockfishが10692 × 100/(7 × 208) = 734.3を丸めて734、YaneuraOuが10692 × 100/(7 × 90)で1697、現行が285であり、開始値734は現行の約2.6倍である（Stockfish `src/movepick.cpp:225-226`、YaneuraOu `movepick.cpp:340-341`）。現行の換算は尺度を先に整数で求めるので、Stockfishの比とは丸めの分だけ違う。`OrderingThreatWeight`（動かす駒の価値が歩兵1枚分のときの脅威の項の大きさ）は、Stockfishが20×208で4160、YaneuraOuは項を持たず、現行は0である。 |
 | continuation historyによる枝刈り | Stockfishと同じく、静かな手のうち、1手前と2手前のcontinuation historyとpawn historyの和が`−ContinuationPruning × d`を下回る手を読まない（`src/search.cpp:1229-1235`）。適用条件は起点の静かな手のfutility pruningと同じとし、前回の反復の主変化を辿るPVノードを除く（同1227行の`followPV`）。Stockfishと同じく、この枝刈りはlmrDepthを使わずに先に判定し、続いてlmrDepthにhistoryの項を足してからfutility pruningと静かな手のSEEによる枝刈りに渡す（同1229-1259）。王手になる手はこの枝刈りの対象外であり、起点と同じく王手の判定は安い条件がすべて成り立った後に行う。 |
@@ -148,7 +148,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | 根での更新 | Stockfishは根も同じ探索関数で読むので、根でも最善手がαを上げればhistoryを更新する。本書は`search_root`にも同じ更新を加える。根には直前の手がないので、直前の手を使う更新は行わない。 |
 | 重みが0のときの処理 | 係数が0でも、表の参照と更新、および置換表の手の合法性の確認を省かない。省く分岐を置くと、フェーズ1で測る探索速度に、SPSAで係数が動いた後の費用が現れないからである。 |
 | SPSAの対象 | 起点の表のすべての係数（`FmScale`を除く71係数）から、廃する4係数（`HistoryBonusScale`、`HistoryMalusScale`、`HistoryLimit`、`CaptureHistoryLimit`）を除き、新しい15係数を加えた82係数とする。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含むので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアで82係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアで82係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。 |
 | 新しい係数の範囲 | 2026年10月17日の利用者の決定により、範囲は開始値を含み、両エンジンの値と現行の値の両方を含むように取る。現行の値は、新しい仕組みがない状態（追加の更新の強さ、LMRの補正の強さ、王手と脅威の項は0、減点の逓減は1024、上限は表の上限）に当たる値とする。continuation historyによる枝刈りの閾値だけは、枝刈りがない現行の状態が閾値の無限大に当たるので、範囲に含められない。 |
 
 メモリは、continuation historyの約140 MB、全ワーカーで共有するpawn historyの約17 MB×（ワーカー数以上の最小の2のべき）、およびワーカーごとのlow ply historyの約0.2 MBが増え、`Threads`が1なら1プロセスで約157 MBになる。
@@ -162,7 +162,7 @@ lishogiのBotは`Threads`を4としているので（`minase-lishogi-bot/config.
 IIR（internal iterative reduction）は、置換表に記録手がない残り深さ3以上のノードを1だけ浅く読む現行の規則であり、allNodeと前の反復の主変化を辿るノードには適用しない。適用しないノードではIIRの後の深さは要求深さに等しい。
 表の値と更新量はStockfishの尺度で表す。
 `trunc`は0の方向への丸めであり、重力式の除算も、それ以外の除算もStockfishと同じく整数の除算（0の方向への切り捨て）とする。
-LMRの1/100手単位の減深量を手単位へ直す除算も、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF4と同じく0の方向へ丸める。
+LMRの1/100手単位の減深量を手単位へ直す除算も、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4と同じく0の方向へ丸める。
 各節の見出しの順は、フェーズ1でコミットする順である。
 
 ### M0　探索経路の状態の追加（挙動を変えない移行）
@@ -303,13 +303,13 @@ V(x) = 2h_{\mathrm{bf}}(x) + 2h_{\mathrm{pawn}}(x) + \sum_{i \in \{1,2,3,4,6\}} 
 
 ### M4　LMRと枝刈りでのhistoryの使用（statScore、continuation history based pruning）
 
-LMRの減深量と減深後の深さは、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF4の式を正本とし、本書はF4の`r₀`にM3aのstatScore`s`の項を加えるだけである。
+LMRの減深量と減深後の深さは、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4の式を正本とし、本書はF4の`r₀`にM3aのstatScore`s`の項を加えるだけである。
 
 ```math
 q_{\mathrm{hist}} = \mathrm{trunc}\left(\frac{s \times \mathrm{LmrHistoryScale} \times 100}{4096 \times 1024}\right), \qquad r_0' = r_0^{\mathrm{F4}} - q_{\mathrm{corr}} - q_{\mathrm{hist}}
 ```
 
-ここで`r₀^F4`はF4の`r₀`の全項、`q_corr`は後続の[correction historyの設計書](correction-history-tables.md)のC5が加える補正項であり、本書の実装の時点ではこの項はなく、`r₀′ = r₀^F4 − q_hist`である。
+ここで`r₀^F4`はF4の`r₀`の全項、`q_corr`は後続の[correction historyの設計書](../correction-history-tables.md)のC5が加える補正項であり、本書の実装の時点ではこの項はなく、`r₀′ = r₀^F4 − q_hist`である。
 `q_hist`の積は64ビットの整数で計算し、`4096 × 1024`で1回だけ割る。
 各項は個別に0方向へ丸めてから足す。
 `r₀′`をF4の`r₀`の代わりに使い、allNodeの拡大、S9の詰みを探す局面での調整、0方向への丸めによる手単位の`R`、および減深後の深さ`d′`（負の減深量による延長とPVノードの1手の加算を含む）は、F4とS9の規則のまま求める。
@@ -392,7 +392,7 @@ YaneuraOuの値は範囲の根拠として示す。
 ## 所要時間の見積り
 
 時間切れの事前確認、SPSA、事前対局、およびSTCは調整機で、反映とテストは測定機で行う。
-SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。
+SPSAの所要時間は、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。
 1反復の時間は持ち時間で決まるので、係数の数が増えても、表の参照で探索速度が下がっても、大きくは変わらない。
 ただし本書は1局のメモリを約0.31 GB増やすので、メモリの少ない調整機では同時対局数が下がり、その分だけ所要時間が延びる。
 
@@ -409,7 +409,7 @@ SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)�
 ## 実装フェーズ
 
 基本シードは、時間切れの事前確認を3800000000、セッションを3850000000、事前対局を3900000000、STCを3950000000とする。
-これらは着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であることを確かめた（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
+これらは着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であることを確かめた（[教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 予約した4000000000はLTCを行わないので使わない。
 各測定の開始前に、測定機でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
 
@@ -421,11 +421,11 @@ M0、M1、M3a、M2、M3b、M4、M5の順に、1項目を1コミットにする�
 M0のコミットでは、benchの全15局面を深さ3、5、7のそれぞれで探索し、探索ノード数、評価値、および最善手が起点と一致することを確かめる。
 M1からM5の各コミットでは、同じbenchのノード数を記録し、直前のコミットとの差を残す。
 新しい係数は、その係数を使う項目のコミットで`params.rs`の表へ追加する。廃する4係数の削除と、置き直す3係数の開始値と範囲の変更はM1で行う。
-`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点とM3bのコミット、および起点と最後のコミットで交互に3回ずつ測り、探索速度の変化を記録する（[教訓](../lessons/pin-bench-to-performance-core.md)）。
+`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点とM3bのコミット、および起点と最後のコミットで交互に3回ずつ測り、探索速度の変化を記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。
 王手の判定と脅威の集合の費用はM3bで初めて現れるので、M3bで探索速度が大きく下がった場合は、その時点で対策の案を利用者に示す。
 同じ実行で最大常駐メモリも記録し、増分がcontinuation historyの約140 MBとpawn historyの約17 MBに見合うことを確かめる。
 調整用ビルド（`--features tuning`つきのビルド）が新しい係数を`Tune_<係数名>`のUSIオプションとして宣言し、廃した係数を宣言しないことを確かめる。
-新しい式の単体テストは、式の写しではなく数値の例で書き、係数を引数で受け取る純粋な関数に固定の係数を渡して確かめる（[テストの手引き](../guides/testing.md)）。
+新しい式の単体テストは、式の写しではなく数値の例で書き、係数を引数で受け取る純粋な関数に固定の係数を渡して確かめる（[テストの手引き](../../guides/testing.md)）。
 着手の記録とcontinuation historyのテストは、null moveがそのplyの記録を空にすること、文脈の手を持たない項は参照も更新もしないこと、1手前がnull moveでも2手前以降の記録があればその項を参照すること、根のノードでは文脈の手がないこと、後手の手で升を180度回転して引くこと、fail lowの加点では1つ前のplyの手を指した側を基準に回転すること、成る手でも着手前の駒種で引くこと、記録から着手後の駒を導けること、および更新後の値が表の上限の範囲に収まることを確かめる。
 pawn historyのテストは、通常の移動、成り、2枚取り、および居喰いの後に、差分更新した鍵が局面から計算し直した鍵と一致することを確かめる。
 探索済みの手の列のテストは、ノードの手数が32を超えた手と、読んだ時点でαを上回った手が列に入らないことを確かめる。
@@ -439,12 +439,12 @@ LMRのテストは、`q_hist`がallNodeの拡大の前に引かれること、�
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/history-forms-runner/`へ複製し、以後の再ビルドで変わらないrunner（測定を実行するプログラム）として固定して、以後のフェーズはこのrunnerで実行する。
-ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/history-forms.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/history-forms-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/history-forms-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 
 ```console
 <調整機のminase> spsa \
@@ -454,7 +454,7 @@ LMRのテストは、`q_hist`がallNodeの拡大の前に引かれること、�
   --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
-`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
+`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
 結果は測定記録`history-forms-safety`に残す。
 完了条件は、時間切れとエンジン異常が0件であることと、測定記録の保存である。
 
@@ -484,7 +484,7 @@ LMRのテストは、`q_hist`がallNodeの拡大の前に引かれること、�
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 STCの前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
-事前対局とSTCは、[統括計画](search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
+事前対局とSTCは、[統括計画](../search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
@@ -499,7 +499,7 @@ STCの前に、候補が時間切れやエンジン異常を起こさないこ�
 
 ### フェーズ5　STC
 
-2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](../search-forms.md)の設計判断「各サブタスクの採否」）。
 STCは、統括計画のフェーズ10で強くなっていなかった場合に、どのサブタスクで後退したかの手がかりにするための記録として行い、LTCは行わない。
 STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
@@ -510,8 +510,8 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
   --each time=10000+100 --concurrency <調整機の同時対局数> gsprt --max-pairs 3000
 ```
 
-逐次検定の停止規則は[SPRTの手引き](../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`history-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 
@@ -535,10 +535,10 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
 ## 参考資料
 
-- [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
-- [手の順序付けの改善](archived/move-ordering.md)と、counter move historyとcontinuation historyの再診断を含む[診断の記録](../measurements/move-ordering/move-ordering-diag.md)。
-- 根の探索ごとに初期化する表での発動率の記録（[counter move history](../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[continuation history](../measurements/strength-stage5/strength-stage5-continuation-bench.md)）と、その表の設計を記した[棋力向上段階5](archived/strength-stage5.md)。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)。
+- [手の順序付けの改善](move-ordering.md)と、counter move historyとcontinuation historyの再診断を含む[診断の記録](../../measurements/move-ordering/move-ordering-diag.md)。
+- 根の探索ごとに初期化する表での発動率の記録（[counter move history](../../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[continuation history](../../measurements/strength-stage5/strength-stage5-continuation-bench.md)）と、その表の設計を記した[棋力向上段階5](strength-stage5.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。lmrDepthの除数は55〜58行、low ply historyの初期化は339行、butterfly historyの根ごとの減衰は341〜343行、文脈の表の設定は688〜700行、表の初期化は713〜727行、探索済みの手の列の上限は75行と1578行、静的評価の変化による更新は1001〜1012行、置換表の打ち切りでの更新は902〜910行、文脈の表の配列は1140〜1142行、continuation historyによる枝刈りとlmrDepthへの項は1227〜1240行、statScoreとLMRの補正は1371〜1381行、LMRの適用条件は1395行、LMRの後のcontinuation historyの更新は1423行、最善手があるときの更新は1602〜1608行、fail lowの加点は1611〜1643行、加点と減点は2004〜2042行、continuation historyの更新は2049〜2073行、静かな手の表の更新は2077〜2089行。`src/movepick.cpp`の静かな手の並べ替えは233〜251行。`src/history.h`の重力式は70〜76行、表の型と上限は128〜146行、共有の表は198〜225行。`src/types.h`の歩兵価値は199行。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。low ply historyの初期化は1540行、置換表の打ち切りでの更新は2735〜2748行、静的評価の変化による更新は3126〜3132行、continuation historyによる枝刈りは3646〜3661行、LMRのhistory補正は3925〜3937行、fail lowの加点は4311〜4339行、加点と減点は5308〜5350行。
-- [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
-- [SPSAによる係数調整の手引き](../guides/spsa.md)、[SPRTによる棋力測定の手引き](../guides/sprt.md)、および[SPSAの反復予算の調査](../research/spsa-iteration-budget.md)。
+- [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
+- [SPSAによる係数調整の手引き](../../guides/spsa.md)、[SPRTによる棋力測定の手引き](../../guides/sprt.md)、および[SPSAの反復予算の調査](../../research/spsa-iteration-budget.md)。

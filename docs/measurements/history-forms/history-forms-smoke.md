@@ -2,7 +2,7 @@
 
 ## 目的
 
-[historyの更新量の形とcontinuation historyの設計書](../../plans/history-forms.md)のフェーズ4として、STCの前に、SPSAの最終値を反映した候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめる。
+[historyの更新量の形とcontinuation historyの設計書](../../plans/archived/history-forms.md)のフェーズ4として、STCの前に、SPSAの最終値を反映した候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめる。
 32ペアの固定局数Eloは信頼区間が広く、強さの判定には使わない。
 
 ## コマンドライン

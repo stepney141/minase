@@ -9,7 +9,7 @@
 [旧ADR](archive/carry-history-tables-within-a-game.md)は、2026年10月10日に、butterfly history（手番、移動元、移動先ごとの静かな手の成績）と捕獲履歴を、置換表と同じく探索をまたいで受け渡し、新しい根の探索のたびにそれぞれの減衰率を掛け、新規対局などの時点で初期化すると決めた。
 旧ADRは、PSTとFMを既定の評価関数としていた時期の測定に基づき、continuation historyの設計を別の設計書に委ねていた。
 
-[historyの形の設計書](../plans/history-forms.md)は、2026年10月17日のエンジンの開発者の決定（形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れる）に従い、continuation history、pawn history、およびlow ply historyを新設した（[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)）。
+[historyの形の設計書](../plans/archived/history-forms.md)は、2026年10月17日のエンジンの開発者の決定（形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れる）に従い、continuation history、pawn history、およびlow ply historyを新設した（[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)）。
 Stockfishは、根の探索のたびにbutterfly historyだけを729/1024倍し（`src/search.cpp:341-343`）、continuation historyとpawn historyは同じNUMAノードのワーカーで共有して減衰させず（`src/history.h:201-225`）、low ply historyは反復深化のループに入る前に102にする（`src/search.cpp:339`）。
 
 ## 決定
