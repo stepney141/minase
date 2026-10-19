@@ -54,7 +54,9 @@ use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::clock::SearchClock;
-use crate::search::alphabeta::correction::{material_key, new_correction_values};
+use crate::search::alphabeta::correction::{
+    correction_from_weighted_sum, material_key, new_correction_values,
+};
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
 };
@@ -465,6 +467,22 @@ fn with_draw_value_root_searcher(
     test(&mut searcher);
 }
 
+/// 現在の材料表の要素から、探索が静的評価へ加える補正量を求める。
+fn material_correction(searcher: &Searcher<'_>, side: Color, key: u64) -> i32 {
+    let weighted_sum = i64::from(crate::search::alphabeta::params::correction_material_weight())
+        * i64::from(searcher.correction.read(side, key));
+    correction_from_weighted_sum(weighted_sum, searcher.nnue.pawn_value())
+}
+
+/// 補正以外の境界を検査するとき、初期値−5の材料表を値0にする。
+fn zero_material_correction(searcher: &mut Searcher<'_>, position: &Position) {
+    let side = position.side_to_move();
+    let key = material_key(position);
+    assert_eq!(searcher.correction.read(side, key), -5);
+    searcher.correction.update(side, key, 5, 128);
+    assert_eq!(material_correction(searcher, side, key), 0);
+}
+
 /// 全ルート手が反復による引き分けとなる履歴を作る。
 fn repeated_root_children(position: &Position, moves: &[Move]) -> Vec<u64> {
     moves
@@ -537,7 +555,9 @@ fn run_negamax(
     ply: u32,
     table: &TranspositionTable,
 ) -> (i32, u64) {
-    run_configured_negamax(position, depth, alpha, beta, ply, table, |_| {})
+    run_configured_negamax(position, depth, alpha, beta, ply, table, |searcher| {
+        zero_material_correction(searcher, position);
+    })
 }
 
 fn run_configured_negamax(
@@ -868,6 +888,7 @@ fn run_move_pruning(
         .and_then(|h| h.best_move);
     table.store(search_key(position), 0, alpha, Bound::Upper, mv, ply, true);
     run_configured_negamax(position, depth, alpha, beta, ply, table, |s| {
+        zero_material_correction(s, position);
         s.seek_mate = true;
         s.null_move_ply = Some(ply);
     })

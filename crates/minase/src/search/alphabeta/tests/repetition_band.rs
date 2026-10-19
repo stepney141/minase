@@ -453,11 +453,11 @@ fn r1_repetition_band_scores_do_not_update_correction_history() {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
             with_root_searcher(&board, &[], |searcher| {
                 let key = material_key(&board);
-                searcher.correction.update(Color::Black, key, 64, 8);
+                searcher.correction.update(Color::Black, key, 31, 128);
                 let before = searcher.correction.read(Color::Black, key);
-                assert_ne!(before, 0);
+                assert_eq!(before, 26);
                 // 反復による勝敗の値を、negamaxの出口で使う更新処理へ渡す。
-                searcher.update_correction(&board, 2, 0, score, bound, false, None, None);
+                searcher.update_correction(&board, 2, 0, score, bound, false, 0, None);
                 assert_eq!(
                     searcher.correction.read(Color::Black, key),
                     before,
@@ -467,12 +467,12 @@ fn r1_repetition_band_scores_do_not_update_correction_history() {
         }
     }
     // 直前の通常範囲は引き続き学習対象となる。
-    for score in [-29_486, 29_486] {
+    for (score, bound) in [(-29_486, Bound::Upper), (29_486, Bound::Exact)] {
         with_root_searcher(&board, &[], |searcher| {
-            searcher.update_correction(&board, 2, 0, score, Bound::Exact, false, None, None);
+            searcher.update_correction(&board, 2, 0, score, bound, false, 0, None);
             assert_ne!(
                 searcher.correction.read(Color::Black, material_key(&board)),
-                0
+                -5
             );
         });
     }

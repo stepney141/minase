@@ -1,9 +1,8 @@
 //! correction historyは静的評価に加える（Stockfish src/search.cpp:832, 846-870）。
-//! 詰み帯の外で最善手が非捕獲のときに、補正前の評価との差で更新する。
+//! 詰み帯の外で境界と捕獲手の条件を満たすときに、補正後の評価との差で更新する。
 
 use super::*;
 use crate::eval::evaluate;
-use crate::search::alphabeta::params;
 use minase_core::Color;
 
 fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<'a> {
@@ -48,20 +47,20 @@ fn correction_negamax_update_conditions() {
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
-    for (mut board, delta, bound, updates, capture, depth) in [
-        (bare_kings(), 320, Bound::Exact, true, false, 2),
-        (bare_kings(), -320, Bound::Exact, true, false, 2),
-        (bare_kings(), -320, Bound::Upper, true, false, 2),
-        (bare_kings(), 320, Bound::Lower, true, false, 2),
-        (bare_kings(), 320, Bound::Upper, false, false, 2),
-        (bare_kings(), -320, Bound::Lower, false, false, 2),
-        (bare_kings(), 0, Bound::Upper, false, false, 2),
-        (bare_kings(), 0, Bound::Lower, false, false, 2),
-        (capture_board(), 320, Bound::Exact, false, true, 2),
-        (capture_board(), -320, Bound::Upper, false, true, 2),
-        (capture_board(), 320, Bound::Lower, false, true, 2),
-        (attacked_board(), 320, Bound::Exact, false, false, 2),
-        (bare_kings(), 320, Bound::Exact, true, false, 3),
+    for (mut board, delta, bound, expected, capture, depth, initial_bonus) in [
+        (bare_kings(), 320, Bound::Exact, 132, false, 2, 5),
+        (bare_kings(), -320, Bound::Exact, 0, false, 2, 5),
+        (bare_kings(), -320, Bound::Upper, -191, false, 2, 5),
+        (bare_kings(), 320, Bound::Lower, 132, false, 2, 5),
+        (bare_kings(), 320, Bound::Upper, 0, false, 2, 5),
+        (bare_kings(), -320, Bound::Lower, 0, false, 2, 5),
+        (capture_board(), 320, Bound::Exact, 0, true, 2, 5),
+        (capture_board(), -320, Bound::Upper, -191, true, 2, 5),
+        (capture_board(), 320, Bound::Lower, 0, true, 2, 5),
+        (attacked_board(), 320, Bound::Exact, 0, false, 2, 5),
+        (bare_kings(), 320, Bound::Exact, 132, false, 3, 5),
+        // 補正前の評価との差は0だが、入口の補正後の評価との差277から更新する。
+        (bare_kings(), 0, Bound::Exact, -798, false, 2, -1024),
     ] {
         let key = material_key(&board);
         let eval = evaluate(nnue, &board);
@@ -122,10 +121,9 @@ fn correction_negamax_update_conditions() {
             assert!(beta - alpha > 1);
             searcher.follow_pv[0] = true;
         }
-        // 更新しないケースも非ゼロの初期値を保持することを確認する。
-        searcher.correction.update(Color::Black, key, 64, 8);
-        let before = searcher.correction.read(Color::Black, key);
-        assert!(before > 0);
+        searcher
+            .correction
+            .update(Color::Black, key, initial_bonus, 128);
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0, false),
             Some(score)
@@ -142,13 +140,7 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), board == attacked_board());
-        let after = searcher.correction.read(Color::Black, key);
-        assert!(after.abs() <= params::correction_cap());
-        if updates && before != delta.signum() * params::correction_cap() {
-            assert_eq!((after - before).signum(), delta.signum());
-        } else {
-            assert_eq!(after, before);
-        }
+        assert_eq!(searcher.correction.read(Color::Black, key), expected);
     }
 }
 
@@ -200,7 +192,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
-        searcher.correction.update(Color::Black, key, 64, 8);
+        searcher.correction.update(Color::Black, key, 5, 128);
         let before = searcher.correction.read(Color::Black, key);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
@@ -208,10 +200,10 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             "article_31_r1 score={score}"
         );
         let after = searcher.correction.read(Color::Black, key);
-        if score.abs() >= MATE_THRESHOLD {
-            assert_eq!(after, before);
+        if score == 29_486 {
+            assert_eq!(after, 265);
         } else {
-            assert_eq!(after, score.signum() * params::correction_cap());
+            assert_eq!(after, before);
         }
     }
     for interrupted in [false, true] {
@@ -245,13 +237,71 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
-        searcher.correction.update(Color::Black, key, 64, 8);
+        searcher.correction.update(Color::Black, key, 31, 128);
         let before = searcher.correction.read(Color::Black, key);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             if interrupted { None } else { Some(320) }
         );
         assert_eq!(searcher.correction.read(Color::Black, key), before);
+    }
+}
+
+#[test]
+fn correction_root_updates_only_after_completed_search() {
+    let nnue = test_nnue();
+    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let board = bare_kings();
+    let score = evaluate(nnue, &board);
+    let rules = MoveRules::standard();
+    let moves = legal_moves(&board);
+
+    for interrupted in [false, true] {
+        let stop = AtomicBool::new(interrupted);
+        let clock = ManualClock::new(Duration::ZERO);
+        let shared = shared(&stop, &clock);
+        let table = TranspositionTable::new(1).unwrap();
+        let mut child = board.clone();
+        for &mv in &moves {
+            let undo = child.make_move_unchecked(mv, rules);
+            table.store(search_key(&child), 8, -score, Bound::Exact, None, 1, false);
+            child.unmake_move(undo);
+        }
+        let mut butterfly_history =
+            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
+        let mut searcher = new_searcher(
+            nnue,
+            &board,
+            rules,
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+            DRAW_SCORE,
+            &[],
+            &shared,
+            &table,
+            &mut butterfly_history,
+            &mut capture_history,
+            &mut correction_values,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
+        );
+        let key = material_key(&board);
+        searcher.correction.update(Color::Black, key, -1024, 128);
+        assert_eq!(searcher.correction.read(Color::Black, key), -1024);
+
+        let result = searcher.search_root(&board, &moves, 2, -INFINITY, INFINITY);
+        if interrupted {
+            assert_eq!(result, None);
+            assert_eq!(searcher.correction.read(Color::Black, key), -1024);
+        } else {
+            assert_eq!(result.map(|(_, value)| value), Some(score));
+            // c=−277、D=277、b0=110、b=113なので、−1024は−798になる。
+            assert_eq!(searcher.correction.read(Color::Black, key), -798);
+        }
     }
 }
 
@@ -302,15 +352,17 @@ fn correction_changes_futility_estimate() {
             0,
             true,
         );
-        searcher.correction.update(
-            Color::Black,
-            material_key(&board),
-            correction * (1024 + 8 * params::correction_weight() - 1)
-                / (8 * params::correction_weight()),
-            8,
-        );
+        searcher
+            .correction
+            .update(Color::Black, material_key(&board), 5 + correction * 4, 128);
+        let weighted_sum =
+            i64::from(crate::search::alphabeta::params::correction_material_weight())
+                * i64::from(searcher.correction.read(Color::Black, material_key(&board)));
         assert_eq!(
-            searcher.correction.read(Color::Black, material_key(&board)),
+            crate::search::alphabeta::correction::correction_from_weighted_sum(
+                weighted_sum,
+                nnue.pawn_value(),
+            ),
             correction
         );
         let score = searcher
@@ -444,7 +496,7 @@ fn correction_values_are_cleared_at_each_search_team_start() {
         histories
             .correction
             .iter()
-            .any(|values| values.iter().flatten().any(|&value| value != 0))
+            .any(|values| values.iter().flatten().any(|&value| value != -5))
     );
 
     for values in &mut histories.correction {
@@ -476,6 +528,6 @@ fn correction_values_are_cleared_at_each_search_team_start() {
         histories
             .correction
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == 0))
+            .all(|values| values.iter().flatten().all(|&value| value == -5))
     );
 }

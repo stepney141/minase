@@ -345,12 +345,21 @@ parameters! {
     /// Stockfishは20 × 208で4160（src/movepick.cpp:246-247）。YaneuraOuはこの項を持たず0である。
     /// 開始値はStockfishの値であり、SPSAで未調整である。
     OrderingThreatWeight(ordering_threat_weight): 3020, 0, 12000;
-    /// correction historyの補正値の絶対値の上限。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    CorrectionCap(correction_cap): 277, 50, 400;
-    /// correction historyの更新重み `min(深さ, 8) × 係数 / 1024` の係数。単位は1/1024である。
-    /// 値はSPSAで調整した。
-    CorrectionWeight(correction_weight): 71, 8, 128;
+    /// 材料表の要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// StockfishとYaneuraOuには材料表がなく、開始値277は従来の`CorrectionCap`と同じ大きさである。
+    /// 範囲は従来の50〜400と、材料表を無効にする0を含む。
+    /// 開始値は設計書の換算による値であり、SPSAで未調整である。
+    CorrectionMaterialWeight(correction_material_weight): 277, 0, 500;
+    /// 上界でないノードの、歩兵価値1枚分の残差と深さ1手あたり、±256で切り詰める前の更新量である。
+    /// Stockfishは208×12/128で19.5、YaneuraOuは90×12/128で約8である
+    /// （Stockfish src/search.cpp:1670、YaneuraOu yaneuraou-search.cpp:4414）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionBonus(correction_bonus): 20, 4, 60;
+    /// 上界のノードの、歩兵価値1枚分の残差と深さ1手あたり、±256で切り詰める前の更新量である。
+    /// Stockfishは208×18/128で約29、YaneuraOuは90×17/128で約12である
+    /// （Stockfish src/search.cpp:1670、YaneuraOu yaneuraou-search.cpp:4414）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionFailLowBonus(correction_fail_low_bonus): 29, 6, 90;
     /// 静止探索のdelta pruningの余裕値。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     DeltaMargin(delta_margin): 500, 50, 500;

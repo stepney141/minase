@@ -464,6 +464,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
             for (is_reference, input) in [(false, &snapshot), (true, &reference)] {
                 with_snapshot(input, &nnue, |searcher| {
                     let mut current = snapshot.position().clone();
+                    zero_material_correction(searcher, &current);
                     searcher.seek_mate = true;
                     searcher.null_move_ply = Some(0);
                     searcher

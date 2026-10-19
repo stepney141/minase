@@ -4,6 +4,7 @@
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
 //! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
 
+use super::history::history_gravity;
 use super::params;
 use super::royal::royal_under_attack;
 use super::searcher::Searcher;
@@ -15,7 +16,7 @@ use minase_core::position::Undo;
 use minase_core::{Position, Square};
 
 impl Searcher<'_> {
-    /// 詰み帯と専用の帯の外で、最善手が非捕獲手、かつ王駒に疑似利きが届かないノードだけを学習する。
+    /// 詰み帯と専用の帯の外で、境界と残差の条件を満たし、王駒に疑似利きが届かないノードだけを学習する。
     /// 反復による勝敗は経路に依存し、静的評価の誤差ではないため補正履歴に取り込まない。
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update_correction(
@@ -26,90 +27,119 @@ impl Searcher<'_> {
         best_score: i32,
         bound: Bound,
         best_capture: bool,
-        mut static_eval: Option<i32>,
+        static_eval: i32,
         mut royal_attacked: Option<bool>,
     ) {
-        // 正確な値、静的評価より低い上界、静的評価より高い下界なら補正の向きが確定する。
-        // 捕獲による駒得は静的評価の偏りではないため除外する。理由は
-        // docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md にある。
-        if best_score.abs() < REPETITION_BAND_START && !best_capture {
-            let static_eval = *static_eval.get_or_insert_with(|| {
-                #[cfg(feature = "invariants")]
-                self.nnue
-                    .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-                self.nnue
-                    .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
-            });
-            if (bound == Bound::Exact
-                || (bound == Bound::Upper && best_score < static_eval)
-                || (bound == Bound::Lower && best_score > static_eval))
-                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-            {
-                self.correction.update(
-                    position.side_to_move(),
-                    self.material_keys[ply as usize],
-                    best_score - static_eval,
-                    depth,
-                );
-            }
+        if best_score.abs() >= REPETITION_BAND_START {
+            return;
+        }
+        let Some(bonus) = correction_update_bonus(
+            best_score - static_eval,
+            depth,
+            bound,
+            best_capture,
+            params::correction_bonus(),
+            params::correction_fail_low_bonus(),
+            self.nnue.pawn_value(),
+        ) else {
+            return;
+        };
+        if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position)) {
+            self.correction.update(
+                position.side_to_move(),
+                self.material_keys[ply as usize],
+                bonus,
+                MATERIAL_UPDATE_MULTIPLIER,
+            );
         }
     }
 }
 
 const ENTRY_COUNT: usize = 4096;
-const SCALE: i64 = 1024;
+/// 補正表の要素と表ごとの更新量の絶対値の上限。
+/// Stockfishと同じ1024を使う（src/history.h:41）。
+pub(super) const CORRECTION_LIMIT: i32 = 1024;
+/// 材料表の初期値。Stockfishの局面を鍵にした補正表と同じ−5を使う（src/search.cpp:719）。
+pub(super) const CORRECTION_INITIAL: i16 = -5;
+/// 材料表の更新倍率。Stockfishで基準となるpawnの表と同じ128/128を使う。
+const MATERIAL_UPDATE_MULTIPLIER: i32 = 128;
+const UPDATE_MULTIPLIER_DENOMINATOR: i64 = 128;
+const CORRECTION_DENOMINATOR: i64 = 102_400;
+const UPDATE_BASE_LIMIT: i64 = 256;
+const UPDATE_SCALE_NUMERATOR: i64 = 1061;
+const UPDATE_SCALE_DENOMINATOR: i64 = 1024;
 
-/// 手番側ごとの固定小数点の補正値。
-pub(super) type CorrectionValues = [[i64; ENTRY_COUNT]; COLOR_COUNT];
+/// 手番側ごとの材料表の値。
+pub(super) type CorrectionValues = [[i16; ENTRY_COUNT]; COLOR_COUNT];
 
-/// 全要素が0の補正値を作る。
+/// 全要素が−5の材料表を作る。
 pub(super) fn new_correction_values() -> Box<CorrectionValues> {
-    Box::new([[0; ENTRY_COUNT]; COLOR_COUNT])
+    Box::new([[CORRECTION_INITIAL; ENTRY_COUNT]; COLOR_COUNT])
 }
 
-/// ワーカー別の補正値と探索ごとに求めた上限をまとめて扱う。
+/// ワーカー別の材料表を扱う。
 pub(super) struct CorrectionTable<'a> {
     values: &'a mut CorrectionValues,
-    cap: i64,
 }
 
 impl<'a> CorrectionTable<'a> {
-    /// 歩兵価値と`CorrectionCap`の百分率から、この探索で使う補正上限を求める。
-    pub(super) fn new(values: &'a mut CorrectionValues, pawn: i32) -> Self {
-        Self {
-            values,
-            cap: i64::from(pawn) * i64::from(params::correction_cap()) / 100,
-        }
+    pub(super) fn new(values: &'a mut CorrectionValues) -> Self {
+        Self { values }
     }
 
-    /// 手番側と鍵の下位12ビットで表を引き、静的評価と同じ単位の補正値を返す。
-    /// 1024倍の固定小数点値を0方向へ整数除算し、歩兵価値×`CorrectionCap`%の正負の範囲へ収める。
+    /// 手番側と鍵の下位12ビットで材料表を引く。
     pub(super) fn read(&self, side: Color, key: u64) -> i32 {
-        (self.values[side.index()][key as usize & (ENTRY_COUNT - 1)] / SCALE)
-            .clamp(-self.cap, self.cap) as i32
+        i32::from(self.values[side.index()][key as usize & (ENTRY_COUNT - 1)])
     }
 
-    /// 探索値と補正前の静的評価の差を、同じ添字の指数移動平均へ取り込む。
-    ///
-    /// 固定小数点値をF、差をDとすると `F += (D × 1024 − F) × min(depth, 8) × CorrectionWeight / 1024` で更新する。
-    /// 重みは `min(depth, 8) × CorrectionWeight / 1024` であり、積の後の整数除算は0方向へ丸める。
-    /// 更新後のFは、歩兵価値×`CorrectionCap`%の1024倍を正負の上限として切り詰める。
-    pub(super) fn update(&mut self, side: Color, key: u64, difference: i32, depth: u32) {
-        let fixed = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
-        *fixed = updated_correction(
-            *fixed,
-            difference,
-            depth,
-            params::correction_weight(),
-            self.cap,
-        );
+    /// 表ごとの倍率を掛けた更新量を、同じ添字の要素へ重力式で取り込む。
+    pub(super) fn update(&mut self, side: Color, key: u64, bonus: i32, multiplier: i32) {
+        let value = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
+        *value = updated_correction(*value, bonus, multiplier);
     }
 }
 
-fn updated_correction(mut fixed: i64, difference: i32, depth: u32, weight: i32, cap: i64) -> i64 {
-    fixed += (i64::from(difference) * SCALE - fixed) * i64::from(depth.min(8)) * i64::from(weight)
-        / 1024;
-    fixed.clamp(-cap * SCALE, cap * SCALE)
+/// 表の重み付きの和から、静的評価と同じ単位の補正量を求める。
+pub(super) fn correction_from_weighted_sum(weighted_sum: i64, pawn: i32) -> i32 {
+    (i64::from(pawn) * weighted_sum / CORRECTION_DENOMINATOR) as i32
+}
+
+/// 残差、深さ、および境界から、全表へ渡す更新量を求める。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn correction_update_bonus(
+    difference: i32,
+    depth: u32,
+    bound: Bound,
+    best_capture: bool,
+    bonus: i32,
+    fail_low_bonus: i32,
+    pawn: i32,
+) -> Option<i32> {
+    let applies = match bound {
+        Bound::Upper => difference <= 0,
+        Bound::Lower | Bound::Exact => difference > 0 && !best_capture,
+    };
+    if !applies {
+        return None;
+    }
+    let coefficient = if bound == Bound::Upper {
+        fail_low_bonus
+    } else {
+        bonus
+    };
+    // Stockfishと同じく、残差と深さから作る更新量を±256へ切り詰める（src/search.cpp:1670-1671）。
+    let base = (i64::from(difference) * i64::from(depth) * i64::from(coefficient)
+        / i64::from(pawn))
+    .clamp(-UPDATE_BASE_LIMIT, UPDATE_BASE_LIMIT);
+    // Stockfishと同じく、切り詰めた後の更新量へ1061/1024を掛ける（src/search.cpp:1672）。
+    Some((UPDATE_SCALE_NUMERATOR * base / UPDATE_SCALE_DENOMINATOR) as i32)
+}
+
+/// 表ごとの倍率を掛け、上限1024の重力式で要素を更新する。
+fn updated_correction(value: i16, bonus: i32, multiplier: i32) -> i16 {
+    let bonus = (i64::from(bonus) * i64::from(multiplier) / UPDATE_MULTIPLIER_DENOMINATOR)
+        .clamp(i64::from(-CORRECTION_LIMIT), i64::from(CORRECTION_LIMIT)) as i32;
+    history_gravity(i32::from(value), bonus, CORRECTION_LIMIT) as i16
 }
 
 /// 位置に依存しない駒種別枚数のハッシュ。加算なので同種の複数枚も区別する。
@@ -161,36 +191,83 @@ mod tests {
     use minase_core::{MoveGenerator, PieceKind};
 
     #[test]
-    fn correction_fixed_point_weights_rounding_caps_and_sides() {
-        // f7c0925cの数値例で使った重み76、上限181を固定する。
-        // 13×76=988、次回は1902。
-        for sign in [-1, 1] {
-            let first = updated_correction(0, sign * 13, 1, 76, 181);
-            assert_eq!(first, i64::from(sign) * 988);
-            let second = updated_correction(first, sign * 13, 1, 76, 181);
-            assert_eq!(second, i64::from(sign) * 1902);
-            for depth in [8, 9, 256] {
-                assert_eq!(
-                    updated_correction(0, sign * 100, depth, 76, 181),
-                    i64::from(sign) * 60800
-                );
-            }
+    fn correction_amount_rounds_toward_zero_and_static_eval_is_bounded() {
+        assert_eq!(correction_from_weighted_sum(1023, 100), 0);
+        assert_eq!(correction_from_weighted_sum(1024, 100), 1);
+        assert_eq!(correction_from_weighted_sum(-1024, 100), -1);
+        assert_eq!(correction_from_weighted_sum(277 * 1024, 100), 277);
+        assert_eq!(correction_from_weighted_sum(500 * 1024, 100), 500);
+
+        use crate::eval::nnue::EVALUATION_LIMIT;
+        use crate::search::alphabeta::pruning::corrected_static_eval;
+        assert_eq!(corrected_static_eval(EVALUATION_LIMIT, 1), EVALUATION_LIMIT);
+        assert_eq!(
+            corrected_static_eval(-EVALUATION_LIMIT, -1),
+            -EVALUATION_LIMIT
+        );
+    }
+
+    #[test]
+    fn correction_update_bonus_matches_numeric_examples() {
+        assert_eq!(
+            correction_update_bonus(50, 3, Bound::Exact, false, 20, 29, 100),
+            Some(31)
+        );
+        assert_eq!(
+            correction_update_bonus(10_000, 10, Bound::Exact, false, 20, 29, 100),
+            Some(265)
+        );
+        assert_eq!(
+            correction_update_bonus(-50, 3, Bound::Upper, false, 20, 20, 100),
+            Some(-31)
+        );
+        // 深さを8で頭打ちにせず、9手をそのまま掛ける。
+        assert_eq!(
+            correction_update_bonus(50, 9, Bound::Exact, false, 20, 29, 100),
+            Some(93)
+        );
+    }
+
+    #[test]
+    fn correction_update_conditions_follow_bound_and_capture() {
+        for (difference, bound, capture, expected) in [
+            (-1, Bound::Upper, false, true),
+            (0, Bound::Upper, true, true),
+            (1, Bound::Upper, false, false),
+            (1, Bound::Lower, false, true),
+            (1, Bound::Lower, true, false),
+            (0, Bound::Lower, false, false),
+            (-1, Bound::Lower, false, false),
+            (1, Bound::Exact, false, true),
+            (1, Bound::Exact, true, false),
+            (0, Bound::Exact, false, false),
+            (-1, Bound::Exact, false, false),
+        ] {
+            assert_eq!(
+                correction_update_bonus(difference, 100, bound, capture, 20, 29, 100).is_some(),
+                expected,
+                "difference={difference}, bound={bound:?}, capture={capture}"
+            );
         }
-        let mut values = [[0; ENTRY_COUNT]; COLOR_COUNT];
-        let mut table = CorrectionTable::new(&mut values, 100);
-        for (side, sign) in [(Color::Black, 1), (Color::White, -1)] {
-            assert_eq!(table.read(side, 7), 0);
-            table.values[side.index()][7] = i64::from(sign) * 988;
-            assert_eq!(table.read(side, 7), 0);
-            table.values[side.index()][7] = i64::from(sign) * 1902;
-            assert_eq!(table.read(side, 7), sign);
-        }
-        table.update(Color::Black, 0, 100_000, 1);
-        table.update(Color::White, 0, -100_000, 1);
-        let cap = params::correction_cap();
-        assert_eq!(table.read(Color::Black, 0), cap);
-        assert_eq!(table.read(Color::White, 0), -cap);
-        assert_eq!(table.read(Color::Black, 4096), cap);
+    }
+
+    #[test]
+    fn correction_gravity_matches_numeric_examples_and_limits() {
+        assert_eq!(updated_correction(-5, 31, 128), 26);
+        assert_eq!(updated_correction(1000, 265, 128), 1007);
+        assert_eq!(updated_correction(-5, 62, 64), 26);
+        assert_eq!(updated_correction(1024, 10_000, 128), 1024);
+        assert_eq!(updated_correction(-1024, -10_000, 128), -1024);
+
+        let mut values = [[CORRECTION_INITIAL; ENTRY_COUNT]; COLOR_COUNT];
+        let mut table = CorrectionTable::new(&mut values);
+        assert_eq!(table.read(Color::Black, 7), -5);
+        assert_eq!(table.read(Color::White, 7), -5);
+        table.update(Color::Black, 7, 31, 128);
+        table.update(Color::White, 7, -31, 128);
+        assert_eq!(table.read(Color::Black, 7), 26);
+        assert_eq!(table.read(Color::White, 7), -36);
+        assert_eq!(table.read(Color::Black, 4096 + 7), 26);
     }
 
     #[test]

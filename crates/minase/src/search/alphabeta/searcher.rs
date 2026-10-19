@@ -103,7 +103,7 @@ pub(super) fn new_searcher<'a>(
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         pawn_keys: [root_pawn_key; MAX_PLY as usize + 1],
         static_evals: [0; MAX_PLY as usize + 1],
-        correction: CorrectionTable::new(correction_values, nnue.pawn_value()),
+        correction: CorrectionTable::new(correction_values),
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
         capture_history,
@@ -264,7 +264,7 @@ pub(super) struct Searcher<'a> {
     pub(super) pawn_keys: [u64; MAX_PLY as usize + 1],
     /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
     pub(super) static_evals: [i32; MAX_PLY as usize + 1],
-    /// 反復深化の間で共有する、このワーカー専用の補正表と探索ごとの上限。
+    /// 反復深化の間で共有する、このワーカー専用の材料表。
     pub(super) correction: CorrectionTable<'a>,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
     /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。

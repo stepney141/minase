@@ -5,7 +5,7 @@ use super::*;
 use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
-    correction::CorrectionTable,
+    correction::{CorrectionTable, correction_from_weighted_sum, correction_update_bonus},
     pruning::{
         capture_futility_value, continuation_history_prunes, futility_value, late_move_limit,
         lmr_base, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
@@ -202,8 +202,9 @@ fn tuning_parameters_in_isolated_process() {
         ("CaptureHistoryScale", 155),
         ("OrderingCheckBonus", 12000),
         ("OrderingThreatWeight", 3000),
-        ("CorrectionCap", 181),
-        ("CorrectionWeight", 76),
+        ("CorrectionMaterialWeight", 277),
+        ("CorrectionBonus", 20),
+        ("CorrectionFailLowBonus", 29),
         ("DeltaMargin", 500),
         ("QsearchMoveLimit", 6),
         ("ExpectedPlies", 458),
@@ -337,11 +338,43 @@ fn tuning_parameters_in_isolated_process() {
         return;
     }
     assert_eq!(scenario, "parameters");
-    fn correction(difference: i32) -> i64 {
+    fn material_correction() -> i64 {
         let mut values = new_correction_values();
-        let mut table = CorrectionTable::new(&mut values, 100);
-        table.update(Color::Black, 7, difference, 8);
-        i64::from(table.read(Color::Black, 7))
+        let mut table = CorrectionTable::new(&mut values);
+        table.update(Color::Black, 7, 31, 128);
+        i64::from(correction_from_weighted_sum(
+            i64::from(params::correction_material_weight())
+                * i64::from(table.read(Color::Black, 7)),
+            100,
+        ))
+    }
+    fn normal_correction_bonus() -> i64 {
+        i64::from(
+            correction_update_bonus(
+                50,
+                3,
+                Bound::Exact,
+                false,
+                params::correction_bonus(),
+                params::correction_fail_low_bonus(),
+                100,
+            )
+            .unwrap(),
+        )
+    }
+    fn fail_low_correction_bonus() -> i64 {
+        i64::from(
+            correction_update_bonus(
+                -50,
+                3,
+                Bound::Upper,
+                false,
+                params::correction_bonus(),
+                params::correction_fail_low_bonus(),
+                100,
+            )
+            .unwrap(),
+        )
     }
     fn capture_history_adjustment() -> i64 {
         let board = staged_picker_fixture();
@@ -452,7 +485,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 83] = [
+    let cases: [Case; 84] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -788,8 +821,9 @@ fn tuning_parameters_in_isolated_process() {
         ("OrderingThreatWeight", 0, || {
             i64::from(super::super::ordering::QuietOrderingCoefficients::current().threat_weight)
         }),
-        ("CorrectionCap", 400, || correction(100_000)),
-        ("CorrectionWeight", 64, || correction(100)),
+        ("CorrectionMaterialWeight", 500, material_correction),
+        ("CorrectionBonus", 60, normal_correction_bonus),
+        ("CorrectionFailLowBonus", 90, fail_low_correction_bonus),
         ("DeltaMargin", 300, delta),
         ("QsearchMoveLimit", 1, qsearch_limit),
         ("ExpectedPlies", 250, || {

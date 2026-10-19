@@ -86,6 +86,7 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
             .max(0);
     for (seek_mate, depth, pruned) in [(true, 5, true), (true, 6, false), (false, 6, true)] {
         with_root_searcher(&board, &[], |searcher| {
+            zero_material_correction(searcher, &board);
             searcher.seek_mate = seek_mate;
             let score = searcher
                 .negamax(&mut board.clone(), depth, beta - 1, beta, 0, false)
@@ -2115,7 +2116,15 @@ fn reverse_futility_returns_weighted_value_at_margin_without_storing() {
         let table = small_tt();
         let beta = value - margin.max(0);
         assert_eq!(
-            run_negamax(&board, requested_depth, beta - 1, beta, 0, &table),
+            run_configured_negamax(
+                &board,
+                requested_depth,
+                beta - 1,
+                beta,
+                0,
+                &table,
+                |searcher| zero_material_correction(searcher, &board),
+            ),
             (expected_reverse_futility_value(beta, value), 0)
         );
         assert!(table.probe(search_key(&board), 0).is_none());
@@ -2217,7 +2226,10 @@ fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
     ] {
         let table = small_tt();
         table.store(search_key(&board), 0, value, Bound::Upper, mv, 0, is_pv);
-        let (score, nodes) = run_negamax(&board, 1, beta - 1, beta, 0, &table);
+        let (score, nodes) =
+            run_configured_negamax(&board, 1, beta - 1, beta, 0, &table, |searcher| {
+                zero_material_correction(searcher, &board)
+            });
         if pruned {
             assert_eq!(
                 (score, nodes),
@@ -2301,13 +2313,14 @@ fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
             0,
             &small_tt(),
         );
-        let (_, boundary_nodes) = run_negamax(
+        let (_, boundary_nodes) = run_configured_negamax(
             &position,
             depth,
             boundary_alpha,
             boundary_alpha + 1,
             0,
             &small_tt(),
+            |searcher| zero_material_correction(searcher, &position),
         );
         assert!(
             boundary_nodes > quiet_nodes,
@@ -2318,7 +2331,10 @@ fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
         let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
         assert_eq!(quiet_score, static_eval);
         let table = small_tt();
-        let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
+        let (score, nodes) =
+            run_configured_negamax(&position, depth, alpha, alpha + 1, 0, &table, |searcher| {
+                zero_material_correction(searcher, &position)
+            });
         assert_eq!((score, nodes), (quiet_score, quiet_nodes));
         assert!(nodes < boundary_nodes);
         assert!(
@@ -2456,9 +2472,9 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
             }
             let side = position.side_to_move();
             let key = material_key(&position);
-            let difference = if reverse { -1000 } else { 1000 };
-            searcher.correction.update(side, key, difference, 8);
-            assert_ne!(searcher.correction.read(side, key), 0);
+            let bonus = if reverse { -1024 } else { 1024 };
+            searcher.correction.update(side, key, bonus, 128);
+            assert_ne!(material_correction(searcher, side, key), 0);
             let raw = evaluate(searcher.nnue, &position);
             let alpha = if reverse {
                 raw - root_reverse_margin(1, false) - 1
@@ -2521,9 +2537,13 @@ fn reverse_futility_uses_corrected_static_eval() {
     assert_eq!(test_nnue().pawn_value(), 100);
     let board = bare_kings();
     let mut values = new_correction_values();
-    let mut seeded = super::super::correction::CorrectionTable::new(&mut values, 100);
-    seeded.update(board.side_to_move(), material_key(&board), -64, 8);
-    let correction = seeded.read(board.side_to_move(), material_key(&board));
+    let mut seeded = super::super::correction::CorrectionTable::new(&mut values);
+    seeded.update(board.side_to_move(), material_key(&board), -1024, 128);
+    let correction = correction_from_weighted_sum(
+        i64::from(params::correction_material_weight())
+            * i64::from(seeded.read(board.side_to_move(), material_key(&board))),
+        100,
+    );
     assert!(correction < 0);
     let margin = reverse_futility_margin(100, 1, false, false, true, correction).max(0);
     let beta = evaluate(test_nnue(), &board) + correction - margin + 1;
@@ -2532,7 +2552,9 @@ fn reverse_futility_uses_corrected_static_eval() {
             if corrected {
                 searcher
                     .correction
-                    .update(board.side_to_move(), material_key(&board), -64, 8);
+                    .update(board.side_to_move(), material_key(&board), -1024, 128);
+            } else {
+                zero_material_correction(searcher, &board);
             }
             let score = searcher
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
@@ -2556,6 +2578,7 @@ fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
     let board = bare_kings();
     for bound in [Bound::Lower, Bound::Upper] {
         with_root_searcher(&board, &[], |searcher| {
+            zero_material_correction(searcher, &board);
             searcher.seek_mate = true;
             let raw = evaluate(searcher.nnue, &board);
             let value = raw + 500;
@@ -2627,13 +2650,13 @@ pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
             if corrected {
                 searcher
                     .correction
-                    .update(board.side_to_move(), material_key(&board), 64, 8);
-                assert!(
-                    searcher
-                        .correction
-                        .read(board.side_to_move(), material_key(&board))
-                        > 0
+                    .update(board.side_to_move(), material_key(&board), 9, 128);
+                assert_eq!(
+                    material_correction(searcher, board.side_to_move(), material_key(&board)),
+                    1
                 );
+            } else {
+                zero_material_correction(searcher, &board);
             }
             // 判定用の評価値だけをβ未満にしてreverse futilityを避ける。
             // 減深量は、この値ではなく補正後の静的評価から求める。

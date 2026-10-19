@@ -6,6 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
+use super::correction::correction_from_weighted_sum;
 use super::negamax::{SEARCHED_LIST_CAPACITY, should_record_searched_move};
 use super::ordering::{HistoryUpdateCoefficients, move_order_key};
 use super::pruning::{
@@ -242,13 +243,13 @@ impl Searcher<'_> {
             .assert_accumulator(&position, &self.accumulators[0], 0);
         let side = position.side_to_move();
         let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
-        let correction = self.correction.read(side, self.material_keys[0]);
-        self.static_evals[0] = corrected_static_eval(raw, correction);
-        let eval = pruning_eval(
-            self.static_evals[0],
-            tt_hit.map(|hit| (hit.score, hit.bound)),
-        );
-        let improving = self.static_evals[0] >= beta;
+        let weighted_sum = i64::from(params::correction_material_weight())
+            * i64::from(self.correction.read(side, self.material_keys[0]));
+        let correction = correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value());
+        let static_eval = corrected_static_eval(raw, correction);
+        self.static_evals[0] = static_eval;
+        let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
+        let improving = static_eval >= beta;
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
@@ -361,6 +362,16 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
+        self.update_correction(
+            &position,
+            depth,
+            0,
+            best_score,
+            bound,
+            best_capture,
+            static_eval,
+            None,
+        );
         self.tt
             .store(key, depth, best_score, bound, Some(best_move), 0, true);
         Some((best_move, best_score))

@@ -12,7 +12,7 @@ use minase_core::position::Position;
 use minase_core::repetition_key;
 
 use super::INFINITY;
-use super::correction::key_after_move;
+use super::correction::{correction_from_weighted_sum, key_after_move};
 use super::history::pawn_key_after_move;
 use super::ordering::{
     HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
@@ -84,7 +84,7 @@ impl Searcher<'_> {
     /// IIRの後に補正後の静的評価を1回求め、手数ごとに保持する（Stockfish src/search.cpp:832, 846-884）。
     /// reverse futilityとrazoringには置換表の値を条件つきで採る判定用の評価値を使い、
     /// null moveの減深量、improving、およびfutilityには静的評価を使う。
-    /// 補正表の更新には補正前の評価を渡す。
+    /// 補正表の更新にはノードの入口で求めた補正後の評価を渡す。
     ///
     /// 前向き枝刈りはreverse futility、razoring、null moveの順で判定する。
     /// 手のループではlate move pruningの後、捕獲手のfutility、捕獲手と王手になる手のSEE、静かな手のfutilityの順に判定し、残った手にLMRを適用する。
@@ -227,7 +227,9 @@ impl Searcher<'_> {
         let raw = self
             .nnue
             .evaluate_accumulator(&self.accumulators[ply as usize], side);
-        let correction = self.correction.read(side, self.material_keys[ply as usize]);
+        let weighted_sum = i64::from(params::correction_material_weight())
+            * i64::from(self.correction.read(side, self.material_keys[ply as usize]));
+        let correction = correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value());
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[ply as usize] = static_eval;
         self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
@@ -696,7 +698,7 @@ impl Searcher<'_> {
             best_score,
             bound,
             best_capture,
-            Some(raw),
+            static_eval,
             royal_attacked,
         );
         // Stockfish src/search.cpp:1651-1657。α以下なら、直前のノードの印も継ぐ。

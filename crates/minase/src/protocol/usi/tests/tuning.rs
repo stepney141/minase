@@ -247,8 +247,15 @@ fn tuning_usi_contract_in_isolated_process() {
                 "OrderingThreatWeight",
                 params::ordering_threat_weight as fn() -> i32,
             ),
-            ("CorrectionCap", params::correction_cap as fn() -> i32),
-            ("CorrectionWeight", params::correction_weight as fn() -> i32),
+            (
+                "CorrectionMaterialWeight",
+                params::correction_material_weight as fn() -> i32,
+            ),
+            ("CorrectionBonus", params::correction_bonus as fn() -> i32),
+            (
+                "CorrectionFailLowBonus",
+                params::correction_fail_low_bonus as fn() -> i32,
+            ),
             ("DeltaMargin", params::delta_margin as fn() -> i32),
             (
                 "QsearchMoveLimit",

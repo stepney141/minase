@@ -11,7 +11,7 @@ use minase_core::piece::{COLOR_COUNT, PieceCode, PieceKind};
 use minase_core::position::{Position, Undo};
 
 use super::capture_history::CaptureHistory;
-use super::correction::{CorrectionValues, new_correction_values};
+use super::correction::{CORRECTION_INITIAL, CorrectionValues, new_correction_values};
 
 /// Butterfly historyの絶対値の上限。
 /// Stockfishの`ButterflyHistory`と同じ7183を使う（src/history.h:128）。
@@ -274,7 +274,7 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 ///
 /// 探索チームは根の探索ごとにワーカー別の2表だけを、それぞれ`HistoryDecay`%と
 /// `CaptureHistoryDecay`%へ減衰させる。共有の2表は減衰させない。
-/// 補正表もワーカーごとに置くが、現行の寿命を保つため探索チームの開始ごとに0へ戻す。
+/// 材料表もワーカーごとに置くが、現行の寿命を保つため探索チームの開始ごとに−5へ戻す。
 /// USI層は新規対局、受理した規則または`USI_Hash`の変更、ワーカー数の変更で初期化する。
 /// 拒否した変更と同じワーカー数の再指定では保持する。
 /// killer手は持ち越さない。
@@ -322,11 +322,11 @@ impl HistoryTables {
         self.pawn.clear();
     }
 
-    /// 現行の補正表の寿命を保つため、探索チームの開始時に全ワーカーの値を0へ戻す。
+    /// 現行の補正表の寿命を保つため、探索チームの開始時に全ワーカーの値を−5へ戻す。
     pub(super) fn clear_correction_for_search(&mut self) {
         for values in &mut self.correction {
             for value in values.iter_mut().flatten() {
-                *value = 0;
+                *value = CORRECTION_INITIAL;
             }
         }
     }

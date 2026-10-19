@@ -665,7 +665,7 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
         histories
             .correction
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == 0))
+            .all(|values| values.iter().flatten().all(|&value| value == -5))
     );
     for index in [
         0,
@@ -725,7 +725,7 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
         histories
             .correction
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == 0))
+            .all(|values| values.iter().flatten().all(|&value| value == -5))
     );
     assert_eq!(histories.continuation.read(0), -586);
     assert_eq!(histories.pawn.read(0x1234, pawn_piece, pawn_square), -1338);
@@ -753,7 +753,7 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             histories
                 .correction
                 .iter()
-                .all(|values| values.iter().flatten().all(|&value| value == 0))
+                .all(|values| values.iter().flatten().all(|&value| value == -5))
         );
     }
 }
