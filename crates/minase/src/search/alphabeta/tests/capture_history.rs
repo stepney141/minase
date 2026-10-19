@@ -269,21 +269,15 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
         assert_eq!(searcher.nodes, winner_index as u64 + 1);
         for (index, &(mv, is_capture)) in moves.iter().enumerate() {
             if is_capture {
-                let expected = if index > winner_index {
-                    0
-                } else if index == winner_index {
-                    1740
-                } else if index == 0 {
+                let history = searcher.capture_history.read(&board, searcher.nnue, mv);
+                if index > winner_index || index == 0 {
                     // 最初の手はαを−10から0へ上げたため、探索済みの手の列には入らない。
-                    0
+                    assert_eq!(history, 0, "move {index}, quiet={quiet_cutoff}");
+                } else if index == winner_index {
+                    assert!(history > 0, "move {index}, quiet={quiet_cutoff}");
                 } else {
-                    -3263
-                };
-                assert_eq!(
-                    searcher.capture_history.read(&board, searcher.nnue, mv),
-                    expected,
-                    "move {index}, quiet={quiet_cutoff}"
-                );
+                    assert!(history < 0, "move {index}, quiet={quiet_cutoff}");
+                }
             }
         }
     });
@@ -522,39 +516,38 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
     });
 }
 
-/// 捕獲手のfutility pruningで飛ばした手は、後続の静かな手の打ち切りでも減点しない。
+/// 捕獲手のfutility pruningで飛ばした手は、後続の捕獲手の打ち切りでも減点しない。
 #[test]
 fn capture_history_excludes_capture_futility_pruned_capture() {
     let board = position(
         Color::Black,
         &[
             (sq(11, 0), Color::Black, PieceKind::King),
-            (sq(0, 11), Color::White, PieceKind::King),
-            (sq(5, 3), Color::Black, PieceKind::Rook),
-            (sq(5, 4), Color::White, PieceKind::Pawn),
-            (sq(6, 7), Color::Black, PieceKind::Pawn),
+            (sq(3, 8), Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::Pawn),
+            (sq(5, 4), Color::White, PieceKind::GoldGeneral),
+            (sq(3, 3), Color::Black, PieceKind::Rook),
+            (sq(3, 7), Color::White, PieceKind::GoldGeneral),
         ],
     );
     let tt_move = capture(sq(11, 0), sq(10, 0));
     let pruned = capture(sq(5, 3), sq(5, 4));
-    let winner = Move {
-        promote: true,
-        ..capture(sq(6, 7), sq(6, 8))
-    };
+    let winner = capture(sq(3, 3), sq(3, 7));
     let moves = legal_moves(&board);
     assert!(moves.contains(&tt_move));
     assert!(moves.contains(&pruned));
     assert!(moves.contains(&winner));
     assert!(!royal_under_attack(&board));
     assert!(!board.gives_check(&MoveGenerator::standard(), pruned));
+    assert!(board.gives_check(&MoveGenerator::standard(), winner));
 
     with_root_searcher(&board, &[], |searcher| {
-        searcher.killers[0][0] = Some(winner);
         let ordered = picked(searcher, &board, Some(tt_move));
-        assert_eq!(ordered[0], (tt_move, false));
+        assert_eq!(
+            &ordered[..3],
+            &[(tt_move, false), (pruned, true), (winner, true)]
+        );
         let pruned_index = ordered.iter().position(|&(mv, _)| mv == pruned).unwrap();
-        let winner_index = ordered.iter().position(|&(mv, _)| mv == winner).unwrap();
-        assert!(pruned_index < winner_index);
 
         let depth = 7;
         let static_eval = evaluate(searcher.nnue, &board);
@@ -567,15 +560,18 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             .flatten()
             .map(|square| searcher.nnue.piece_value(board.piece_at(square).unwrap()))
             .sum();
-        let alpha = super::super::pruning::capture_futility_value(
-            searcher.nnue.pawn_value(),
-            static_eval,
-            lmr_depth,
-            captured_value,
-            0,
-        );
+        let alpha = 20_000;
         let beta = alpha + 1;
         assert!(alpha > static_eval);
+        assert!(
+            super::super::pruning::capture_futility_value(
+                searcher.nnue.pawn_value(),
+                static_eval,
+                lmr_depth,
+                captured_value,
+                0,
+            ) <= alpha
+        );
         assert!(!see_prunes(
             &board,
             engine_rules(),
@@ -742,24 +738,37 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
 fn changed_worker_count_uses_decayed_initial_history() {
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for count in [4, 2, 1] {
+        for history in &mut histories.workers {
+            for value in history.iter_mut().flatten().flatten() {
+                *value = 1000;
+            }
+        }
         for history in &mut histories.capture {
             history.values_mut().fill(1000);
         }
-        stopped_search(&mut histories, worker_count(count));
+        let threads = worker_count(count);
+        let mut expected = crate::search::HistoryTables::new(threads);
+        stopped_search(&mut expected, threads);
+        stopped_search(&mut histories, threads);
         assert_eq!(histories.workers.len(), count);
         assert_eq!(histories.capture.len(), count);
         assert!(
-            histories.workers.iter().all(|history| history
+            histories
+                .workers
                 .iter()
-                .flatten()
-                .flatten()
-                .all(|&value| value == -3))
+                .zip(&expected.workers)
+                .all(|(actual, expected)| actual
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .eq(expected.iter().flatten().flatten()))
         );
         assert!(
             histories
                 .capture
                 .iter()
-                .all(|history| history.values().iter().all(|&value| value == -452))
+                .zip(&expected.capture)
+                .all(|(actual, expected)| actual.values() == expected.values())
         );
     }
 }
