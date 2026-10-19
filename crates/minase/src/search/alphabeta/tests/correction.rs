@@ -99,6 +99,7 @@ fn correction_negamax_update_conditions() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -112,6 +113,7 @@ fn correction_negamax_update_conditions() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -180,6 +182,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -193,6 +196,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -223,6 +227,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -236,6 +241,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -269,6 +275,7 @@ fn correction_changes_futility_estimate() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -282,6 +289,7 @@ fn correction_changes_futility_estimate() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -333,6 +341,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -346,6 +355,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -377,6 +387,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let mut correction_values = new_correction_values();
     let mut searcher = new_searcher(
         nnue,
         &board,
@@ -390,6 +401,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &table,
         &mut butterfly_history,
         &mut capture_history,
+        &mut correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -401,4 +413,69 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     );
     assert_eq!(searcher.material_keys[1], root_key);
     assert_eq!(material_key(&board), root_key);
+}
+
+#[test]
+fn correction_values_are_cleared_at_each_search_team_start() {
+    let threads = worker_count(4);
+    let snapshot = snapshot_for(&quiet_midgame());
+    let table = small_tt();
+    let mut histories = crate::search::HistoryTables::new(threads);
+    let first = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth_limits(3),
+        &AtomicBool::new(false),
+        threads,
+        &table,
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(first.stop_reason, StopReason::DepthCompleted);
+    assert!(
+        histories
+            .correction
+            .iter()
+            .any(|values| values.iter().flatten().any(|&value| value != 0))
+    );
+
+    for values in &mut histories.correction {
+        for value in values.iter_mut().flatten() {
+            *value = 1;
+        }
+    }
+    let second = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth_limits(3),
+        &AtomicBool::new(true),
+        threads,
+        &table,
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(second.stop_reason, StopReason::ExternalStop);
+    assert_eq!(second.result.nodes, 0);
+    assert!(
+        histories
+            .correction
+            .iter()
+            .all(|values| values.iter().flatten().all(|&value| value == 0))
+    );
 }

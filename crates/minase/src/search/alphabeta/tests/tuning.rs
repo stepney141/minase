@@ -338,7 +338,8 @@ fn tuning_parameters_in_isolated_process() {
     }
     assert_eq!(scenario, "parameters");
     fn correction(difference: i32) -> i64 {
-        let mut table = CorrectionTable::new(100);
+        let mut values = new_correction_values();
+        let mut table = CorrectionTable::new(&mut values, 100);
         table.update(Color::Black, 7, difference, 8);
         i64::from(table.read(Color::Black, 7))
     }

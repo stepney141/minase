@@ -2520,7 +2520,8 @@ fn pruning_eval_selects_only_directional_bounds_outside_decisive_bands() {
 fn reverse_futility_uses_corrected_static_eval() {
     assert_eq!(test_nnue().pawn_value(), 100);
     let board = bare_kings();
-    let mut seeded = super::super::correction::CorrectionTable::new(100);
+    let mut values = new_correction_values();
+    let mut seeded = super::super::correction::CorrectionTable::new(&mut values, 100);
     seeded.update(board.side_to_move(), material_key(&board), -64, 8);
     let correction = seeded.read(board.side_to_move(), material_key(&board));
     assert!(correction < 0);

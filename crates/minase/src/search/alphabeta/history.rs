@@ -11,6 +11,7 @@ use minase_core::piece::{COLOR_COUNT, PieceCode, PieceKind};
 use minase_core::position::{Position, Undo};
 
 use super::capture_history::CaptureHistory;
+use super::correction::{CorrectionValues, new_correction_values};
 
 /// Butterfly historyの絶対値の上限。
 /// Stockfishの`ButterflyHistory`と同じ7183を使う（src/history.h:128）。
@@ -273,19 +274,21 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 ///
 /// 探索チームは根の探索ごとにワーカー別の2表だけを、それぞれ`HistoryDecay`%と
 /// `CaptureHistoryDecay`%へ減衰させる。共有の2表は減衰させない。
+/// 補正表もワーカーごとに置くが、現行の寿命を保つため探索チームの開始ごとに0へ戻す。
 /// USI層は新規対局、受理した規則または`USI_Hash`の変更、ワーカー数の変更で初期化する。
 /// 拒否した変更と同じワーカー数の再指定では保持する。
-/// killer手とcorrection historyの補正表は持ち越さない。
+/// killer手は持ち越さない。
 /// 寿命の判断は`docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,
+    pub(crate) correction: Vec<Box<CorrectionValues>>,
     pub(crate) continuation: ContinuationHistory,
     pub(crate) pawn: PawnHistory,
 }
 
 impl HistoryTables {
-    /// 指定したワーカー数の表をStockfishと同じ初期値で初期化する。
+    /// 指定したワーカー数の表をそれぞれの初期値で作る。
     pub fn new(threads: NonZeroUsize) -> Self {
         Self {
             workers: (0..threads.get())
@@ -296,12 +299,15 @@ impl HistoryTables {
                 })
                 .collect(),
             capture: (0..threads.get()).map(|_| CaptureHistory::new()).collect(),
+            correction: (0..threads.get())
+                .map(|_| new_correction_values())
+                .collect(),
             continuation: ContinuationHistory::new(),
             pawn: PawnHistory::new(threads),
         }
     }
 
-    /// ワーカー数を保ったまま全ワーカーの表をStockfishと同じ初期値へ戻す。
+    /// ワーカー数を保ったまま全表をそれぞれの初期値へ戻す。
     pub fn clear(&mut self) {
         for history in &mut self.workers {
             for value in history.iter_mut().flatten().flatten() {
@@ -311,7 +317,17 @@ impl HistoryTables {
         for history in &mut self.capture {
             history.clear();
         }
+        self.clear_correction_for_search();
         self.continuation.clear();
         self.pawn.clear();
+    }
+
+    /// 現行の補正表の寿命を保つため、探索チームの開始時に全ワーカーの値を0へ戻す。
+    pub(super) fn clear_correction_for_search(&mut self) {
+        for values in &mut self.correction {
+            for value in values.iter_mut().flatten() {
+                *value = 0;
+            }
+        }
     }
 }

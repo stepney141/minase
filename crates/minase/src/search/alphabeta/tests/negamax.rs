@@ -410,6 +410,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &root,
@@ -423,6 +424,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );

@@ -54,7 +54,7 @@ use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::clock::SearchClock;
-use crate::search::alphabeta::correction::material_key;
+use crate::search::alphabeta::correction::{material_key, new_correction_values};
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
 };
@@ -445,6 +445,7 @@ fn with_draw_value_root_searcher(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let mut correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -457,6 +458,7 @@ fn with_draw_value_root_searcher(
         &table,
         &mut butterfly_history,
         &mut capture_history,
+        &mut correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -501,6 +503,7 @@ fn run_quiesce(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let mut correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -515,6 +518,7 @@ fn run_quiesce(
         table,
         &mut butterfly_history,
         &mut capture_history,
+        &mut correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -561,6 +565,7 @@ fn run_configured_negamax(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let mut correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -575,6 +580,7 @@ fn run_configured_negamax(
         table,
         &mut butterfly_history,
         &mut capture_history,
+        &mut correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );

@@ -59,18 +59,25 @@ impl Searcher<'_> {
 const ENTRY_COUNT: usize = 4096;
 const SCALE: i64 = 1024;
 
-/// 手番側ごとの固定小数点の補正値。探索の生成時だけ初期化する。
-pub(super) struct CorrectionTable {
-    values: Box<[[i64; ENTRY_COUNT]; COLOR_COUNT]>,
+/// 手番側ごとの固定小数点の補正値。
+pub(super) type CorrectionValues = [[i64; ENTRY_COUNT]; COLOR_COUNT];
+
+/// 全要素が0の補正値を作る。
+pub(super) fn new_correction_values() -> Box<CorrectionValues> {
+    Box::new([[0; ENTRY_COUNT]; COLOR_COUNT])
+}
+
+/// ワーカー別の補正値と探索ごとに求めた上限をまとめて扱う。
+pub(super) struct CorrectionTable<'a> {
+    values: &'a mut CorrectionValues,
     cap: i64,
 }
 
-impl CorrectionTable {
-    /// 歩兵価値と`CorrectionCap`の百分率から補正上限を求め、全要素を0にする。
-    /// 各ワーカーの探索開始時に作り、反復深化の間だけ保持する。
-    pub(super) fn new(pawn: i32) -> Self {
+impl<'a> CorrectionTable<'a> {
+    /// 歩兵価値と`CorrectionCap`の百分率から、この探索で使う補正上限を求める。
+    pub(super) fn new(values: &'a mut CorrectionValues, pawn: i32) -> Self {
         Self {
-            values: Box::new([[0; ENTRY_COUNT]; COLOR_COUNT]),
+            values,
             cap: i64::from(pawn) * i64::from(params::correction_cap()) / 100,
         }
     }
@@ -169,7 +176,8 @@ mod tests {
                 );
             }
         }
-        let mut table = CorrectionTable::new(100);
+        let mut values = [[0; ENTRY_COUNT]; COLOR_COUNT];
+        let mut table = CorrectionTable::new(&mut values, 100);
         for (side, sign) in [(Color::Black, 1), (Color::White, -1)] {
             assert_eq!(table.read(side, 7), 0);
             table.values[side.index()][7] = i64::from(sign) * 988;

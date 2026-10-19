@@ -254,6 +254,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
+        let mut correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &position,
@@ -267,6 +268,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &mut correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -354,6 +356,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
         let pawn_history = &histories.pawn;
         let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
             let mut captures = empty_capture_history();
+            let mut correction_values = new_correction_values();
             let completed = run_auxiliary_worker(
                 test_nnue(),
                 &position,
@@ -370,6 +373,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 &table,
                 history,
                 &mut captures,
+                &mut correction_values,
                 continuation_history,
                 pawn_history,
             );
@@ -391,6 +395,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 &table,
                 history,
                 &mut captures,
+                &mut correction_values,
                 continuation_history,
                 pawn_history,
             );
@@ -463,6 +468,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         let continuation_history = &histories.continuation;
         let pawn_history = &histories.pawn;
         let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+            let mut correction_values = new_correction_values();
             if worker_index == 1 {
                 let outcome = run_auxiliary_worker(
                     nnue,
@@ -480,6 +486,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     &table,
                     history,
                     &mut empty_capture_history(),
+                    &mut correction_values,
                     continuation_history,
                     pawn_history,
                 );
@@ -502,6 +509,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 &table,
                 &mut butterfly_history,
                 &mut capture_history,
+                &mut correction_values,
                 continuation_history,
                 pawn_history,
             );
@@ -623,6 +631,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                 let mut history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
                 let mut capture_history = empty_capture_history();
+                let mut correction_values = new_correction_values();
                 let mut searcher = new_searcher(
                     nnue,
                     &position,
@@ -636,6 +645,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     &table,
                     &mut history,
                     &mut capture_history,
+                    &mut correction_values,
                     &shared_histories.continuation,
                     &shared_histories.pawn,
                 );
