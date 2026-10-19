@@ -276,7 +276,7 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 /// USI層は新規対局、受理した規則または`USI_Hash`の変更、ワーカー数の変更で初期化する。
 /// 拒否した変更と同じワーカー数の再指定では保持する。
 /// killer手とcorrection historyの補正表は持ち越さない。
-/// 寿命の判断は`docs/adr/carry-history-tables-within-a-game.md`にある。
+/// 寿命の判断は`docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,

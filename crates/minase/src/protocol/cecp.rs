@@ -59,7 +59,7 @@ pub struct CecpProtocol {
     /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出し中は`None`。
     transposition_table: Option<TranspositionTable>,
     /// 対局内で持ち越すワーカー別のhistory表。探索中は`None`である。
-    /// 理由は`docs/adr/carry-history-tables-within-a-game.md`にある。
+    /// 理由は`docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
     histories: Option<search::HistoryTables>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,

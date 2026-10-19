@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月7日。[LMRの減深量は対数表と3段階のhistory補正にStockfishの項を1/100手単位で加えて求め、上限を係数として残す](../reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月7日。[LMRの減深量は対数表と3段階のhistory補正にStockfishの項を1/100手単位で加えて求め、上限を係数として残す](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)によって置き換えられた。
 
 ## コンテキスト
 

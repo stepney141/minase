@@ -114,8 +114,8 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 一部だけを変えるADRでは、残る決定も新しいADRへ引き継ぐ。
 
 - [correction historyの鍵と適用先のADR](../adr/archive/key-correction-history-by-material.md)は、2026年9月21日に、材料表だけを鍵とし、探索ごとに初期化し、補正前の誤差を学び、補正をfutility pruningにだけ使うと決めた。本書は、材料表を残したうえで鍵の表を加え、表を対局の間持ち越してワーカー間で共有し、値の形と更新をStockfishの形にし、補正量の大きさを減深量に使う。更新の条件のうち、手番側の王駒に相手の利きが届くノードを除くことは残し、捕獲手と境界の種類の条件はStockfishの形にする。決定と根拠の診断は既定の評価関数がPSTだった時期のものであり、ADR自身が、各表の補正を平均せずに足し合わせる形を未測定の候補として残している。
-- [butterfly historyと捕獲履歴の持ち越しのADR](../adr/carry-history-tables-within-a-game.md)は、2026年10月10日に、補正表を持ち越さないと決めた。本書のC1は、補正表を対局の間持ち越す。この決定は既定の評価関数がPSTだった時期のもので、根拠はfutility pruningにだけ補正を使う前提の発動率0.69%である。ADRは補正表の持ち越しの再測定を留保していない。
-- 起点でLMRの式を定めているADRは、C5で補正量への依存が加わる。[late move reductionsの式の旧ADR](../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は2026年9月7日のPST時期の決定であり、上限と段差のhistory補正をSTCの到達深さが5〜6だった時期の判断として見直しの余地を留保していた。その後継の[LMRの式のADR](../adr/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、サブタスク1でStockfishの項を加え、上限を係数として残した。同じADRが棄却した連続量の項はhistoryの項であり、補正量の項ではない。
+- [butterfly historyと捕獲履歴の持ち越しのADR](../adr/archive/carry-history-tables-within-a-game.md)は、2026年10月10日に、補正表を持ち越さないと決めた。本書のC1は、補正表を対局の間持ち越す。この決定は既定の評価関数がPSTだった時期のもので、根拠はfutility pruningにだけ補正を使う前提の発動率0.69%である。ADRは補正表の持ち越しの再測定を留保していない。
+- 起点でLMRの式を定めているADRは、C5で補正量への依存が加わる。[late move reductionsの式の旧ADR](../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は2026年9月7日のPST時期の決定であり、上限と段差のhistory補正をSTCの到達深さが5〜6だった時期の判断として見直しの余地を留保していた。その後継の[LMRの式のADR](../adr/archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、サブタスク1でStockfishの項を加え、上限を係数として残した。同じADRが棄却した連続量の項はhistoryの項であり、補正量の項ではない。
 
 ## 設計判断
 
@@ -138,7 +138,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 | continuation correction historyの引き方（C3） | 利用者の決定により、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の共有の表と同じ考え方にそろえる。1つの表を「文脈の手の駒種、文脈の手の到達升、1手前の手の駒種、1手前の手の到達升」で引き、2手前、4手前、6手前の文脈は同じ表の中の区画を引く。Stockfishも1つの表を3つの文脈で引く（`src/search.cpp:104-109`）。升は、手番側が後手なら盤を180度回転させた升で引く。駒の手番は、手番側と何手前の手かで決まるので添字に含めない。文脈の手の駒種は着手前の駒種とし、1手前の手の駒種は着手後に到達升にある駒種とする。Stockfishも文脈には動かした駒（`src/position.cpp:816-820`、`src/search.cpp:692-693`）を、1手前の手には到達升の駒（`src/search.cpp:106`）を使う。文脈の手がない場合（根より前とnull move）は、Stockfishの番兵（`src/search.cpp:303-309, 697-702`）と同じく、表の中の「文脈なし」の区画を引いて更新する。表は文脈の駒種29種に「文脈なし」を加えた30種、升144、駒種29、升144の約1,800万要素の`i16`である。 |
 | 値の形と更新（C4） | 利用者の決定により、Stockfishの形にする。要素は−1024以上1024以下の整数とし、更新量`b`に対して`v ← v + b − v|b|/1024`の重力式で更新する（Stockfish `src/history.h:70-76`）。更新量は、探索値と合成した補正後の静的評価との差、つまり全表の合成の残差から作り、各表へ表ごとの倍率を掛けて同じ観測で更新する（Stockfish `src/search.cpp:120-143, 1664-1673`）。表ごとの倍率と初期値は、利用者の決定によりStockfishの値で固定する。現行の指数移動平均の重み`CorrectionWeight`と深さの頭打ち8は、新しい形では使わないので除く。Stockfishは深さの頭打ちを持たず、更新量を±256で切り詰める。 |
 | 更新の条件（C4） | Stockfishの条件に合わせる（`src/search.cpp:1666-1667`）。上界でないノードでは、最善手が捕獲手でなく、探索値が補正後の静的評価より高い場合に更新する。上界のノードでは、探索値が補正後の静的評価以下の場合に更新し、捕獲手の条件は課さない。Stockfishの`!ss->inCheck`に当たる条件として、手番側の王駒に相手の利きが届くノードを除く現行の条件は残す。中将棋の規則から来る条件であり、王手の義務がなく（RULES.md第8条）、王駒が取られ得る局面の静的評価は探索値から大きく外れるからである。探索値が詰み帯と専用の帯にあるノードを除く現行の条件も残す。正確な値のノードで探索値が静的評価より低い場合は、現行は更新するが、Stockfishに合わせて更新しない。更新量は上界のノードで1.5倍になる（Stockfish 18/12）。 |
-| 持ち越し（C1） | 利用者の決定により、全表を対局の間、減衰させずに持ち越す。Stockfishは表を新規対局でだけ初期化する（`src/search.cpp:713-736`）。表は`HistoryTables`に置き、初期化する時点はbutterfly historyと同じく、新規対局、受理された規則変更、受理された置換表容量の変更、およびワーカー数の変更とする（[ADR](../adr/carry-history-tables-within-a-game.md)）。持ち越しの割合の係数は置かない。 |
+| 持ち越し（C1） | 利用者の決定により、全表を対局の間、減衰させずに持ち越す。Stockfishは表を新規対局でだけ初期化する（`src/search.cpp:713-736`）。表は`HistoryTables`に置き、初期化する時点はbutterfly historyと同じく、新規対局、受理された規則変更、受理された置換表容量の変更、およびワーカー数の変更とする（[ADR](../adr/archive/carry-history-tables-within-a-game.md)）。持ち越しの割合の係数は置かない。 |
 | 補正量の大きさの利用（C5） | 補正量の絶対値が大きいノードでは静的評価が当てにならないとみなし、LMRの減深量を減らす。Stockfishと同じ項である（`src/search.cpp:1353`）。減深量の項は、歩兵価値1枚分の補正量あたりの1/100手とする。reverse futility pruningの余裕値の項（同1030行）は、search-pruning-formsのF1が持つ。 |
 | 補正を読む時点 | Stockfishと同じく、補正量はノードごとに1回だけ読む（`src/search.cpp:832`）。補正後の評価を使う判定（F2）、更新の残差、およびC5は、すべてこの値を使う。search-pruning-formsのF2も、同じくノードごとに1回読む形をとる。 |
 
@@ -399,6 +399,6 @@ LTCの判定保留は、手引きのとおり`--resume`と`--target-pairs`で延
 - Stockfish（コミット5c4cef0b）。`src/history.h`の表の大きさと上限は40〜41行、重力式は70〜76行、補正表の型は152〜191行、共有の表は206〜250行、共有の要素の不可分の読み書きは60〜63行。`src/search.h`のワーカーごとのcontinuation correction historyの宣言は335行。`src/thread.cpp`の共有の表の大きさは213行。`src/search.cpp`の補正量は95〜118行、更新は120〜143行、根の番兵は303〜309行、文脈の設定は692〜702行、初期化は713〜736行、ノードでの補正量の読み出しは832行と860行、LMRの補正量の項は1353行、更新の条件と更新量は1664〜1673行。`src/position.cpp`の鍵の定義は505〜526行、成りでの鍵の更新は947〜957行、動かした駒の記録は816〜820行。`src/types.h`の歩兵価値は199行。
 - YaneuraOu（コミットc1b80eaa）。`source/position.cpp`のminor pieceの定義は27〜36行。`source/engine/yaneuraou-engine/yaneuraou-search.cpp`の補正量は724〜746行、更新は748〜770行、LMRの補正量の項は3890行、更新の条件と更新量は4404〜4417行。`source/evaluate.h`の歩兵価値は78行。
 - 日本中将棋連盟「中将棋連盟競技規則・総則編（2019年度版）」の駒の格付け（RULES.mdの［J1］）。
-- [correction historyの鍵と適用先のADR](../adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[持ち越しのADR](../adr/carry-history-tables-within-a-game.md)。
+- [correction historyの鍵と適用先のADR](../adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[持ち越しのADR](../adr/archive/carry-history-tables-within-a-game.md)。
 - [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。

@@ -32,7 +32,7 @@ opponentWorseningは、現局面の静的評価が、保持した1手前の局�
 良化していないノードでは、浅いノードのfutility pruningの余裕値に深さ別の縮小率を掛ける。
 この縮め方は旧ADRから引き継ぐ。
 reverse futility pruningの余裕値はimprovingとopponentWorseningで縮め、late move pruningの上限はimprovingでないときに縮め、LMRの表の値はimprovingでないときに割合で増やす。
-これらの式と係数は、[reverse futility pruningのADR](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[late move pruningのADR](count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、および[LMRのADR](../reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が定める。
+これらの式と係数は、[reverse futility pruningのADR](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[late move pruningのADR](count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、および[LMRのADR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が定める。
 
 ## 検討した代案
 

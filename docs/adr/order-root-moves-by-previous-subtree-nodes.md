@@ -11,7 +11,7 @@
 [手の順序付けの改善](../plans/archived/move-ordering.md)の[根の診断](../measurements/move-ordering/move-ordering-root-diag.md)では、最善手が交替した反復のノード数が全反復のノード数に占める割合が、STCで53.6%、LTCで53.8%だった。
 新しい最善手の順位の平均は、通常の順序付けのキーではSTCで24.8、前回反復の各手の部分木ノード数の降順に並べると18.7だった。
 ただし反復ごとに数えると、部分木ノード数で並べた方が後になる反復がやや多く、改善は大きく前へ動く少数の反復に偏っていた。
-この候補を含む[手の順序付けの改善の7候補](bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering/move-ordering-all-ltc.md)）。
+この候補を含む[手の順序付けの改善の7候補](archive/bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering/move-ordering-all-ltc.md)）。
 
 ## 決定
 

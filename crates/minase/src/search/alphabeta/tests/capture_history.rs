@@ -1,6 +1,6 @@
 //! 捕獲履歴の添字、重力式による更新、駒価値への換算、整列、対局内の持ち越しを検査する。
 //! 換算値の絶対値は歩兵価値×尺度%以下に保ち、通常探索では捕獲価値へ加えるが根の整列には加えない。
-//! 判断の理由は`docs/adr/bound-capture-history-and-use-it-in-qsearch.md`にある。
+//! 判断の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
 use super::*;
 use crate::search::alphabeta::params;

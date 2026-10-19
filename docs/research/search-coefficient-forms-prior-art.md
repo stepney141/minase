@@ -67,7 +67,7 @@ minaseのreverse futility pruning、razoring、null move、およびimprovingの
 
 aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
 返った値を基準に窓を移す形は、そのADRの代案に含まれていない。
-history補正を連続量にする案は、[late move reductionsのADR](../adr/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が自由度の増加を理由に棄却している。
+history補正を連続量にする案は、[late move reductionsのADR](../adr/archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が自由度の増加を理由に棄却している。
 同じADRは、上限3と段差の補正をSTCの到達深さが5〜6だった時期の判断としている。
 
 ## historyとcorrection history

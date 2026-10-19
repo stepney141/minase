@@ -67,7 +67,7 @@ impl Pst {
 
     /// 静かな手の履歴値が同じ場合の同点破りに使う、手番側視点のPST差分。
     /// FMは含めず、補間後の除算前の分子を返す。
-    /// 理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
+    /// 理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();
         let piece = position.piece_at(mv.from).expect("quiet mover exists");

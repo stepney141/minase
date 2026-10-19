@@ -40,7 +40,7 @@ reverse futility pruningは、βと判定用の評価値の加重平均`(661β +
 手を飛ばす5つの枝刈りは、さらにそのノードで探索済みの最善値が負の詰み帯と専用の帯の外にあることも要求する。
 これらの条件は旧ADRから引き継ぎ、成る手を対象にしない保護も起点から変えない。
 
-lmrDepthは、手を読む深さ`d − 1`から、[LMRのADR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)の減深量のうち枝刈りより前に決まる部分`r_pre`を手単位に直して引いた符号付きの値`d − 1 − r_pre/100`である（`src/search.cpp:1203`）。
+lmrDepthは、手を読む深さ`d − 1`から、[LMRのADR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)の減深量のうち枝刈りより前に決まる部分`r_pre`を手単位に直して引いた符号付きの値`d − 1 − r_pre/100`である（`src/search.cpp:1203`）。
 `d`は内部反復減深（IIR）を適用した後の残り深さ、`P`は歩兵価値、除算は0方向へ丸める整数除算である。
 静かな手のfutility pruningは、捕獲手でも成る手でも王手になる手でもない手について、lmrDepthが12未満で、見積り`e + P × (FutilityBase + FutilityLmrDepth × lmrDepth + FutilityAboveAlpha × [e > α])/100`がα以下なら、その手を読まない。
 `e`は補正後の静的評価であり、`[e > α]`は`e`がαより大きければ1、そうでなければ0を表す。

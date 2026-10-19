@@ -378,7 +378,7 @@ fn captures_with_history(
 }
 
 // 群内は生の履歴、攻撃駒価値、生成順で並べ、置換表の手を最優先する。
-// 採用理由はdocs/adr/bound-capture-history-and-use-it-in-qsearch.md。
+// 採用理由はdocs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md。
 #[test]
 fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
     let (board, moves) = history_ordering_position();

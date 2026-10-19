@@ -4,7 +4,7 @@
 //! 更新量を±10692へ切り詰めてから、butterfly historyと同じ重力式で更新する。
 //! 値は常に±10692に収まり、通常探索では[`CaptureHistory::adjustment`]で駒価値へ換算する。
 //! 静止探索では生の履歴値で同じ捕獲価値の群内を並べる。
-//! 上限と適用範囲の理由は`docs/adr/bound-capture-history-and-use-it-in-qsearch.md`にある。
+//! 上限と適用範囲の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
 use crate::eval::Nnue;
 use minase_core::board::BOARD_SQUARE_COUNT;

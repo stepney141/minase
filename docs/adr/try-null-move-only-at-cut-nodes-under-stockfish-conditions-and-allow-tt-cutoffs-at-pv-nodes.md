@@ -103,7 +103,7 @@ null moveを試す条件の判定は`crates/minase/src/search/alphabeta/negamax.
 既存の`NullMoveBase`、`NullMoveSlope`、および`NullMoveEvalScale`は、起点の4799、393、および133から、Stockfishの換算値7200、400、および163へ開始値を置き直した。
 `NullMoveBase`と`NullMoveSlope`の範囲の上限は、Stockfishの換算値を含むように4800と400から10000と600へ広げた。
 王駒への利きを調べるノードはnull moveの分だけ増え、その費用は係数で消せない。
-cutNodeとallNodeの区別は、[LMRの減深量](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)、[IIRを行わない条件](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)、およびrazoringにも使う。
+cutNodeとallNodeの区別は、[LMRの減深量](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)、[IIRを行わない条件](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)、およびrazoringにも使う。
 経路に依存する探索値が置換表を通じてPVへ入り得ることは、既知の近似として残る。
 
 `minase dev bench`の深さ3、5、7の全15局面の探索ノード数の合計は、null moveの条件、減深量、および検証探索を入れたコミットで直前より1.6%増えた（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。

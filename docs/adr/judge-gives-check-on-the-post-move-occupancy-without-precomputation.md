@@ -20,7 +20,7 @@ Stockfishは、着手が王手になるかを浅い枝刈りとLMRで使う。
 
 [浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、Stockfishの枝刈りとLMRの項を入れるために、王手の判定を加えることにした。
 前計算を加えるかは、測定なしの最適化を禁じるプロジェクトの方針に従い、実装の後に王手の判定の費用を測って決めることにした。
-[LMRのADR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、詰みを探す局面で王手になる手の減深量を変える項を、王手の判定を導入するこの設計書に委ねていた。
+[LMRのADR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、詰みを探す局面で王手になる手の減深量を変える項を、王手の判定を導入するこの設計書に委ねていた。
 
 ## 決定
 

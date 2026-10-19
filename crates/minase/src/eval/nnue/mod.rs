@@ -129,7 +129,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     /// 移動元の特徴を引き、移動先の特徴を足すときは成りも反映する。
     /// 非線形の経路を含めず、`q×Δmg + (90−q)×Δeg`を720で割る前の分子として返す。
     /// 線形の経路は王の位置で条件付けないため、入力特徴集合によらず成り立つ。
-    /// 理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`と`docs/adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md`にある。
+    /// 理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`と`docs/adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md`にある。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();
         let piece = position.piece_at(mv.from).expect("quiet mover exists");

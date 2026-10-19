@@ -800,7 +800,7 @@ impl Searcher<'_> {
     /// Butterfly historyの上限は7183とし、捕獲履歴の上限は10692とする。
     /// 静かな手の減点は読んだ順に`HistoryMalusDecay / 1024`倍してから与える。
     /// 両表とも更新量を表の上限へ切り詰めた重力式を使う。
-    /// 方式の理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
+    /// 方式の理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     pub(super) fn update_best_move_histories(
         &mut self,
         position: &Position,
@@ -962,7 +962,7 @@ pub(super) struct MovePicker {
     base_moves: Vec<Move>,
     /// 静かな手の並べ替え値の降順、線形経路の移動差分の降順、生成順の整列キー。
     /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
-    /// 同点破りの理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
+    /// 同点破りの理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     quiet_order: Vec<(Reverse<i64>, Reverse<i64>, usize)>,
     used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,

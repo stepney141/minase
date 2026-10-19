@@ -20,7 +20,7 @@ Stockfishは、捕獲手と王手になる手を同じ枝で扱い、SEEの値�
 王手にならない捕獲手には、その前に捕獲手のfutility pruningを行い、静的評価に取る駒の価値、lmrDepthに比例する余裕値、およびcapture historyの項を足してもαに届かない手を読まない（同1208-1217行）。
 王手にならない静かな手には、SEEの値が`−23 × max(lmrDepth, 0)²`を下回る手を読まない枝刈りを行う（同1255-1259行）。
 いずれも深さの上限を持たず、PVノードでも働く。
-minaseのcapture historyは、[capture historyのADR](bound-capture-history-and-use-it-in-qsearch.md)が定めるとおり、通常探索と静止探索の捕獲手の順序にだけ使われていた。
+minaseのcapture historyは、[capture historyのADR](archive/bound-capture-history-and-use-it-in-qsearch.md)が定めるとおり、通常探索と静止探索の捕獲手の順序にだけ使われていた。
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れて形と値をStockfishに合わせ、新しい係数の開始値はStockfishの値を換算した値とすることにした。
 同じ決定により、成る手を枝刈りの対象から外すminaseの保護は残す。

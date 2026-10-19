@@ -113,7 +113,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 - [late move pruningの数え方のADR](../../adr/archive/count-only-quiet-moves-for-late-move-pruning.md)は、2026年10月4日に、静かな手だけを数える上限式を決めた。全深さへ適用を広げる変更は未測定の候補として残すと、ADR自身が記している。S2は深さの上限を外し、PVノードにも適用する。上限式と、静かな手だけを数える決定は残す。
 - [null moveをPVノードでも行うADR](../../adr/archive/allow-null-move-and-tt-cutoff-at-pv-nodes.md)は、2026年9月28日に、null move pruningをノードの種別と静的評価のβとの大小によらずに試すと決めた。棄却したのは「非PVノードに限り、かつ補正後の静的評価がβ以上」を全深さに課す案である。S7は、cutNodeに限ったうえでStockfishの静的評価の条件を課す。ADRは、ノード種別の予測を持ったうえで条件を加える方式を未測定と記している。
 - [null moveの検証探索を実装しないADR](../../adr/archive/omit-null-move-verification-search.md)は、2026年9月6日に、検証探索がβを下回る割合（矛盾率）が深さ5と7で0件だったとして、検証探索を入れないと決めた。同じADRは、減深量が大きくなるほど縮めた探索は浅くなるので、再提案するときは現行の構成で矛盾率を測り直す必要があると記している。S7はStockfishと同じく残り深さ16以上で検証探索を行い、減深量もStockfishの値から始めるので、フェーズ1で矛盾率を測って記録する。
-- [capture historyのADR](../../adr/bound-capture-history-and-use-it-in-qsearch.md)は、2026年10月10日に、capture historyを通常探索と静止探索の手の順序に使うと決めた。決定は他の用途を禁じていないが、S3とS4は枝刈りの判定にも使うので、新しいADRに用途を記録する。
+- [capture historyのADR](../../adr/archive/bound-capture-history-and-use-it-in-qsearch.md)は、2026年10月10日に、capture historyを通常探索と静止探索の手の順序に使うと決めた。決定は他の用途を禁じていないが、S3とS4は枝刈りの判定にも使うので、新しいADRに用途を記録する。
 - [一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)は、2026年10月4日に、razoringと、静的評価の余裕によるnull moveの減深の加算を含む8項目を採用した。S6はrazoringを外さずに形を改め、S7は減深の加算の上限3を外してStockfishの形にする。
 
 ## 設計判断

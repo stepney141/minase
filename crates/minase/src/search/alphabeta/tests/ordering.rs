@@ -41,7 +41,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
 }
 
 // 静かな手はhistory値の降順、線形経路の差分の降順、生成順に並べる。
-// 採用理由はdocs/adr/order-quiets-with-malus-and-pst-tiebreak.md。
+// 採用理由はdocs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md。
 struct ReferenceMovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,

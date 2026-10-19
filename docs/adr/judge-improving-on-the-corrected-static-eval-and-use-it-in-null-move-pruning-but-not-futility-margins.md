@@ -33,7 +33,7 @@ late move pruningの上限はimprovingでないときに縮め、LMRの表の値
 LMRの減深量のうち枝刈りより前に決まる部分はlmrDepthにも入るので、更新後のimprovingは、静かな手と捕獲手のfutility pruningと静かな手のSEEによる枝刈りにもlmrDepthを通じて影響する。
 静かな手のfutility pruningの余裕値には、improvingの項を置かない。
 
-これらの式と係数は、[reverse futility pruningのADR](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)、[null moveのADR](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)、[late move pruningのADR](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)、および[LMRのADR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が定める。
+これらの式と係数は、[reverse futility pruningのADR](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)、[null moveのADR](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)、[late move pruningのADR](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)、および[LMRのADR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が定める。
 
 ## 検討した代案
 
