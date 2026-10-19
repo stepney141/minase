@@ -7,7 +7,7 @@
 ## コンテキスト
 
 [浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、静かな手のfutility pruningとSEEによる枝刈りに、手を読む深さからLMRの枝刈り前の減深量を引いた枝刈り用のlmrDepthを使う形を入れた（[枝刈りのADR](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)）。
-Stockfishは、これらの枝刈りの前に、1手前と2手前のcontinuation historyとpawn historyの和が残り深さに比例する閾値を下回る静かな手を読まず、続いてhistoryの値に応じてlmrDepthを増減する（`src/search.cpp:1227-1240`）。
+Stockfishは、これらの枝刈りの前に、1手前と2手前のcontinuation historyとpawn historyの3つの和が、残り深さに比例する閾値を下回る静かな手を読まず、続いてhistoryの値に応じてlmrDepthを増減する（`src/search.cpp:1227-1240`）。
 minaseには、この2つの仕組みがなかった。
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにだけある項目は入れる。
@@ -20,7 +20,7 @@ minaseには、この2つの仕組みがなかった。
 文脈の手がない項は0として足す。
 王手になる手と、手番側の王駒に相手の疑似利きが届くノードは、既存の静かな手の枝刈りと同じく対象外とし、王手の判定は閾値の条件が成り立った後に行う。
 
-読む手については、上の和にbutterfly historyの69/32を加えた値を`3000 + 7 × (min(d, 16) − 8)²`で割り、枝刈り用のlmrDepthに足してから、静かな手のfutility pruningとSEEによる枝刈りに渡す（`src/search.cpp:55-58, 1236-1240`）。
+読む手については、上の和にbutterfly historyの69/32倍を加えた値を`3000 + 7 × (min(d, 16) − 8)²`で割り、枝刈り用のlmrDepthに足してから、静かな手のfutility pruningとSEEによる枝刈りに渡す（`src/search.cpp:55-58, 1236-1240`）。
 閾値の傾き`ContinuationPruning`はSPSAで調整し、butterfly historyの重みと除数の定数はStockfishの値で固定する。
 
 ## 検討した代案

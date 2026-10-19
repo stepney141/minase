@@ -272,7 +272,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月19日 [improvingは補正後の静的評価で判定し、reverse futility pruningの余裕値、null move pruningの条件、late move pruningの上限、およびLMRの減深量に使い、静かな手のfutility pruningの余裕値には使わない](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)
 - 2026年10月19日 [着手が王手になるかを前計算なしに着手後の占有で判定し、枝刈りと詰みを探す局面のLMRに使う](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)
 - 2026年10月19日 [LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量を1/100手単位で加える](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)
-- 2026年10月19日 [静かな手はStockfishと同じhistoryの和と直接の王手と脅威の項で並べ、historyはStockfishの上限つき1次式と更新の場面で更新する](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)
+- 2026年10月19日 [静かな手はStockfishと同じhistoryの和と直接の王手と脅威の項で並べ、historyはStockfishの上限つき1次式で、Stockfishと同じ場面に更新する](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)
 - 2026年10月19日 [静かな手のhistoryは、butterfly表、continuation history、pawn history、およびlow ply historyで引く](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)
 - 2026年10月19日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)
 - 2026年10月19日 [捕獲履歴はStockfishの上限、初期値、および更新量で更新し、寄与を歩兵価値の定数倍に抑えて並べ替えと静止探索に使い、LMRのstatScoreにも使う](update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md)
