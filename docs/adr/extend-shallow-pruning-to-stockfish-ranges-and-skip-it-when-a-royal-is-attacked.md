@@ -28,7 +28,7 @@ reverse futility pruningは、βと判定用の評価値の加重平均`(661β +
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れてYaneuraOuにだけある項目は入れず、深さの上限や平均の重みのような値はStockfishの値で固定することにした。
 同じ決定により、中将棋の規則から来る王駒への利きの除外と、成る手を枝刈りの対象から外す保護は残し、razoringのコードは外さずにStockfishの形に改め、調整し直す。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、最初に旧ADRの「残り深さ3以下の零窓」という1つの判定を手法ごとの条件へ分け、その後で各手法の条件と式をStockfishの形に改めた。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、最初に旧ADRの「残り深さ3以下の零窓」という1つの判定を手法ごとの条件へ分け、その後で各手法の条件と式をStockfishの形に改めた。
 
 ## 決定
 
@@ -124,4 +124,9 @@ razoringの余裕値は`razoring_margin`に、reverse futility pruningの余裕�
 `FutilityMargin1`〜`3`、`NonImprovingFutility1`〜`3`、および`RazoringMargin1`〜`2`は廃した。
 `RazoringDepthMargin`の開始値は、YaneuraOuの換算値の約1/5、起点の深さ1あたりの余裕値の約1/9〜1/16である。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、razoringの余裕値`RazoringDepthMargin`が開始値164から2,197へ、静かな手のfutility pruningのlmrDepthあたりの増分`FutilityLmrDepth`が57から219へ上がり、浅い前向き枝刈りを控える側へ動いた（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+razoringの余裕値は、旧来の深さ1の余裕値2,622に近く、razoringはほとんど働かない値に戻った。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

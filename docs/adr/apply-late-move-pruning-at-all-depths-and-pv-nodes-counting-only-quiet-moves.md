@@ -19,7 +19,7 @@ late move pruningは、順序付けの後方にある静かな手を読まずに
 深さの上限3は、評価関数がPSTとFMだった時期に段階4で静的評価に基づく枝刈りを入れたときの値を引き継いだものである。
 Stockfishのlate move pruningには深さの上限がなく、PVノードでも働く（`src/search.cpp:1199`）。
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れて形をStockfishに合わせ、静かな手だけを数えるような中将棋の診断で決めた仕組みは残すことにした。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、この決定に従って適用範囲だけを広げた。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、この決定に従って適用範囲だけを広げた。
 
 ## 決定
 
@@ -55,4 +55,8 @@ killer手は数える対象にならないので、枝刈りもされない。
 
 `minase dev bench`の深さ3、5、7の全15局面の探索ノード数の合計は、適用範囲を広げたコミットで直前より33.4%減り、設計書の項目の中で最も大きく減った（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、上限の切片`LmpBase`が開始値1,799から6,436へ、傾き`LmpSlope`が48から346へ上がり、上限を広げる側へ動いた。improvingでないときの倍率`LmpNonImproving`は31から26になった（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

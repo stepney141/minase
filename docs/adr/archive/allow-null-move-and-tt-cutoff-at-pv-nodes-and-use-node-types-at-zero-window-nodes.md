@@ -58,7 +58,7 @@ PVノードで置換表の値による打ち切りをやめる案は、上記の
 null moveの適用条件は、残り深さ3以上、直前がnull moveでない、βが詰み帯と専用の帯の外、手番側に王駒以外の駒がある、の4つのままである。
 2026年10月4日には、静的評価がβを上回る量に応じてnull moveの減深量を加算する変更が入ったが（[採用のADR](../adopt-revived-search-items-as-a-bundle.md)）、これも試すかどうかの条件ではない。
 経路に依存する探索値が置換表を通じてPVへ入り得ることは、既知の近似として残る。
-cutNodeに限ってnull moveを試すStockfishの条件は、ノード種別の予測を使えるようになったが、本決定には含めず、[浅い枝刈りの拡張の設計書](../../plans/shallow-pruning-extensions.md)が扱う。
+cutNodeに限ってnull moveを試すStockfishの条件は、ノード種別の予測を使えるようになったが、本決定には含めず、[浅い枝刈りの拡張の設計書](../../plans/archived/shallow-pruning-extensions.md)が扱う。
 cutNodeとallNodeの区別は、[LMRの減深量](../reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)と[IIRを行わない条件](../reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)にも使う。
 
 受け渡しの規則は`crates/minase/src/search/alphabeta/negamax.rs`の`child_cut_node`、零窓の打ち切りの条件は`pruning.rs`の`zero_window_tt_cutoff`、詰みを探す局面の減深は`seek_mate_null_move_reduction`のdocコメントにある。

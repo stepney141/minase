@@ -15,7 +15,7 @@ Stockfishの静かな手のfutility pruningの式はimprovingを使わない（`
 一方、null move pruningを試す条件には`−47 × improving`の項がある（同1037-1039行）。
 この条件はnull moveの判定の後にimprovingを更新する処理（同1080行）より前にあるので、更新前の値を使う。
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れて形と値をStockfishに合わせることにした。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、この決定に従って静かな手のfutility pruningを手ごとの判定に改め、null move pruningにStockfishの条件を加えた。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、この決定に従って静かな手のfutility pruningを手ごとの判定に改め、null move pruningにStockfishの条件を加えた。
 
 ## 決定
 
@@ -54,4 +54,8 @@ null move pruningを試す条件の項の係数は`params.rs`の`NullMoveEvalImp
 null moveの前後は同じ盤面なので、null moveの直後のノードでは、1手前の値はnull moveをした局面の静的評価になり、Stockfishと同じ比較になる。
 旧ADRが記したとおり、correction historyの学習につれて比較の基準が動く影響は、測っていない。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、null moveを試す条件のimprovingの項`NullMoveEvalImproving`が開始値23から76へ上がり、reverse futility pruningのimprovingの項`ReverseFutilityImproving`は144から163、late move pruningの`LmpNonImproving`は31から26になった（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

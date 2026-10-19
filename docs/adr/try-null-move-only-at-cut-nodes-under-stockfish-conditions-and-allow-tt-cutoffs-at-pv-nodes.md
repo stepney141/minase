@@ -19,7 +19,7 @@ cutNodeは、親がβ打ち切りを見込んで零窓で読ませる子のノ�
 同じADRは、null moveを、ノードの種別と静的評価のβとの大小を条件にせずに試し続けると決めた。
 null moveを試す条件は、残り深さ3以上、直前がnull moveでない、βが詰み帯と専用の帯の外、手番側に王駒以外の駒がある、の4つだった。
 減深量は、基本量`(NullMoveBase + d × NullMoveSlope)/1200`に、静的評価がβを上回る量に応じた加算を上限3で足したものであり、加算は[一括採用のADR](adopt-revived-search-items-as-a-bundle.md)で導入された。
-旧ADRは、ノード種別の予測を使えるようになった後も、cutNodeに限ってnull moveを試すStockfishの条件を自らの決定に含めず、[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)の設計書に委ねていた。
+旧ADRは、ノード種別の予測を使えるようになった後も、cutNodeに限ってnull moveを試すStockfishの条件を自らの決定に含めず、[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)の設計書に委ねていた。
 また、[浅いノードの前向き枝刈りの旧ADR](archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)は、null move pruningには王駒への利きの判定を加えないと決めていた。
 
 Stockfishは、cutNodeで`staticEval + 50 × priorNMPFailHigh ≥ β − 13 × depth − 47 × improving + 365`かつ`β ≥ −2000`のときだけnull moveを試す（`src/search.cpp:1037-1039`）。
@@ -108,4 +108,8 @@ cutNodeとallNodeの区別は、[LMRの減深量](reduce-lmr-by-log-table-histor
 
 `minase dev bench`の深さ3、5、7の全15局面の探索ノード数の合計は、null moveの条件、減深量、および検証探索を入れたコミットで直前より1.6%増えた（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、試す条件の定数`NullMoveEvalMargin`が開始値175から−847へ下がり、null moveを試すノードを増やす側へ動いた。減深量の切片`NullMoveBase`は7,200から範囲の上限10,000の近くの9,985へ、傾き`NullMoveSlope`は400から474へ、静的評価の項の倍率`NullMoveEvalScale`は163から238へ上がり、減深量を増やす側へ動いた。打ち切り1回あたりの加算`NullMoveFailHighBonus`は24のままだった（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

@@ -18,7 +18,7 @@ Stockfishは、着手が王手になるかを浅い枝刈りとLMRで使う。
 中将棋では王手の放置が合法なので、着手前から相手の王駒に利いている駒による王手の継続と遮断、王駒による王手、および成った後の駒種による王手も判定しなければならない。
 このため、Stockfishの前計算はそのまま移せない。
 
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、Stockfishの枝刈りとLMRの項を入れるために、王手の判定を加えることにした。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、Stockfishの枝刈りとLMRの項を入れるために、王手の判定を加えることにした。
 前計算を加えるかは、測定なしの最適化を禁じるプロジェクトの方針に従い、実装の後に王手の判定の費用を測って決めることにした。
 [LMRのADR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、詰みを探す局面で王手になる手の減深量を変える項を、王手の判定を導入するこの設計書に委ねていた。
 
@@ -33,7 +33,7 @@ Stockfishは、着手が王手になるかを浅い枝刈りとLMRで使う。
 残る相手の王駒が2枚なら、2枚の取り方は獅子、角鷹、および飛鷲の連続する1升ずつの2段階に限られるので、2枚が隣接していなければ王手としない。
 隣接していれば、局面の複製に着手を適用し、手番を着手側に戻した局面の合法手に2枚とも取る手があるかを調べる。
 Stockfishの形の前計算は持たない。
-前計算を持たずに着手後の占有で判定する方式は、2026年10月18日のエンジンの開発者の判断であり、[設計書](../plans/shallow-pruning-extensions.md)の設計判断「王手の判定（M2）」に記録した。
+前計算を持たずに着手後の占有で判定する方式は、2026年10月18日のエンジンの開発者の判断であり、[設計書](../plans/archived/shallow-pruning-extensions.md)の設計判断「王手の判定（M2）」に記録した。
 
 判定は、静かな手のfutility pruning、捕獲手のfutility pruning、SEEによる捕獲手と王手になる静かな手の枝刈り、静かな手のSEEによる枝刈り、および詰みを探す局面のLMRで使う。
 各枝刈りは、王手の判定をほかの条件がすべて成り立った後に求める。
@@ -64,4 +64,8 @@ Stockfishの形の前計算を中将棋に合わせて作り、探索ノード�
 王手の判定は、[historyの形の見直し](../plans/history-forms.md)の手の並べ替えと[静止探索の補正と枝刈りの形の見直し](../plans/qsearch-forms.md)でも使い、それぞれで重複して導入しない。
 王駒が2枚で隣接している場合の局面の複製と合法手の生成の費用は、別に測っていない。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+王手の判定と、詰みを探す局面のLMRの割合1/4は、SPSAの対象ではない。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

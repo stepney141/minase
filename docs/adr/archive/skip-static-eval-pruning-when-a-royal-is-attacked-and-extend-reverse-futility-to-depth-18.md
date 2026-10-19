@@ -61,7 +61,7 @@ Stockfishは深さの上限を、詰みの発見のために調整しない値�
 旧ADRで棄却した案は、この決定でも棄却したままとする。
 判定を最後の王駒に限る案は、除外率がほとんど変わらないので採らない。
 reverse futility pruningの返り値をβへ丸める案は、境界としては常に正しいが、上位ノードが得る情報を減らすので採らない。
-返り値をβと判定用の評価値の重み付き平均にするStockfishの形（`src/search.cpp:1033`）は、[浅い枝刈りの拡張の設計書](../../plans/shallow-pruning-extensions.md)が扱うので、本決定には含めない。
+返り値をβと判定用の評価値の重み付き平均にするStockfishの形（`src/search.cpp:1033`）は、[浅い枝刈りの拡張の設計書](../../plans/archived/shallow-pruning-extensions.md)が扱うので、本決定には含めない。
 
 ## 結果
 

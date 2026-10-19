@@ -17,17 +17,16 @@ SPSAの結果の反映は測定機で行い、事前対局とSTC、および最�
 
 ## 状態
 
-進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は完了し、2026年10月18日に利用者の指示を受けてサブタスク2（[浅い前向き枝刈りの拡張](shallow-pruning-extensions.md)）に着手した。残りの5本のサブタスクは起案であり、着手していない。
+進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、いずれも採用で完了した。残りの5本のサブタスクは起案であり、着手していない。
 SPSAは、2026年10月17日の利用者の決定により、サブタスクごとに行う（設計判断の「SPSAの単位」）。
 フェーズ0（試走と持ち時間の換算の確定）は終えた。結果は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)にある。Threadripper PRO 9995WXの調整機で`f`は1.46となり、換算した持ち時間の下で調整機は測定機より約0.3手深く読んだ。2026年10月18日に利用者は、SPSAは係数の最適化なのでこの差にこだわらず、`f`をそのまま使うと決めた。
-サブタスク1の時間切れの事前確認とSPSAは、同じ日の利用者の判断により、スクリプトを待たずに試走の調整機でフェーズ0と同じ手作業で行っている。
-フェーズ1（スクリプトの実装と検証）は終えた。`scripts/vast-spsa/`のスクリプトと共通の`scripts/vast/common.sh`をBashで実装し、`minase spsa --resume`がコミット指定の調整対象のビルドし直しを受け入れるように改めた。実機での結果は[検証の記録](../measurements/search-forms/vast-spsa-scripts.md)にあり、停止した調整機からの取得が貸し手によって失敗することを除いて、検証の表の条件をすべて満たした。
-2026年10月18日に、シェルにPythonの断片を埋め込む書き方は保守しにくいという利用者の指摘を受けて、同じ振る舞いのPythonへ書き直した（設計判断の「スクリプトの言語」）。書き直したスクリプトは、偽の`vastai`とSSHを使うテストを通し、実機でも作成から削除までの正常の流れを約6分で1回通した（[記録](../measurements/search-forms/vast-spsa-scripts-python.md)）。異常時の止まり方は、偽の実行ファイルによるテストでだけ確かめている。
-フェーズ2（手引きとADR）は、[SPSAの手引き](../guides/spsa.md)の第8節、[調整機のADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)、および[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)を書いた。masterへの統合は利用者の許可を待つ。
-2026年10月18日に利用者は、事前対局と段階ゲートもSPSAを終えた調整機で、持ち時間を換算せずに行うと決めた（設計判断の「対局の実行場所」）。調整機で段階ゲートを動かすスクリプトはまだないので、サブタスク1では手作業で行い、その経験からスクリプトの形を決める。
+フェーズ1（スクリプトの実装と検証）は終えた。`scripts/vast-spsa/`のスクリプトと共通の`scripts/vast/common.py`は、シェルにPythonの断片を埋め込む書き方は保守しにくいという2026年10月18日の利用者の指摘を受けて、Pythonで書いた（設計判断の「スクリプトの言語」）。実機での結果は[検証の記録](../measurements/search-forms/vast-spsa-scripts.md)と[Pythonへ書き直した後の記録](../measurements/search-forms/vast-spsa-scripts-python.md)にある。
+フェーズ2（手引きとADR）は、[SPSAの手引き](../guides/spsa.md)の第8節、[調整機のADR](../adr/run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)、および[再開のADR](../adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)を書いて終えた。
+2026年10月18日に利用者は、事前対局とSTCもSPSAを終えた調整機で、持ち時間を換算せずに行うと決めた（設計判断の「対局の実行場所」）。サブタスク2では、全反復の取得と検査の後も調整機を残す`--keep`を`fetch.py`に加え、事前対局とSTCは候補のコミットを`git bundle`で調整機へ送って手作業で行った。
+物理コアが多く安い出品は、照会してから出品IDを渡して作成するまでの間にほかの利用者に借りられるので、同じ日に利用者の指摘を受けて、照会した出品から条件に合う最安のものをその場で作成する起動の形を`launch.py`に加えた。サブタスク2はこの形でAMD EPYC 9654の2基構成（`f`は1.57、1時間2.01米ドル）を借り、SPSAからSTCまでを約10.1時間、約20.4米ドルで終えた。
 同じ日に利用者は、サブタスク1をSTCの結果によらず採用すると決め、続けてこの扱いを全サブタスクに広げた。各サブタスクでは事前対局とSTCだけを行い、LTCは行わない（設計判断の「各サブタスクの採否」）。7本を通して元のmasterより強くなったかは、新たに加えたフェーズ10で確かめる（設計判断の「通しの確認」）。
-サブタスク1は2026年10月18日に、STCで`H0`（約−17 Elo）のまま、上記の決定により採用で完了した（[STCの記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
-次の一手は、サブタスク2のフェーズ1（移行と9項目の実装）を進めることである。
+STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
+次の一手は、利用者がサブタスク3（[historyの形](history-forms.md)）の着手とそのセッションの費用を決めることである。
 
 ## 目的
 
@@ -67,7 +66,7 @@ SPSAの更新則、30,000ペアの規模、および`minase spsa`のコードは
 | 順 | 設計書 | 内容 | 係数の増減 | 累積 | 基本シードの予約 |
 |---|---|---|---|---|---|
 | 1 | [枝刈りとLMRの関数形](archived/search-pruning-forms.md) | ノードの種別、reverse futility pruning、補正後の評価値、LMP、LMRの式 | 31を加え1を除く | 68 | 3,200,000,000〜3,400,000,000 |
-| 2 | [浅い枝刈りの拡張](shallow-pruning-extensions.md) | futility pruning、SEE、razoring、null move pruningの深さと対象 | 14を加え11を除く | 約71 | 3,500,000,000〜3,700,000,000 |
+| 2 | [浅い枝刈りの拡張](archived/shallow-pruning-extensions.md) | futility pruning、SEE、razoring、null move pruningの深さと対象 | 14を加え11を除く | 約71 | 3,500,000,000〜3,700,000,000 |
 | 3 | [historyの形](history-forms.md) | historyの更新量の形とcontinuation history | 15を加え4を除く | 約82 | 3,800,000,000〜4,000,000,000 |
 | 4 | [correction historyの表](correction-history-tables.md) | correction historyの表の追加と持ち越し | 9を加え2を除く | 約89 | 4,100,000,000〜4,300,000,000 |
 | 5 | [静止探索の形](qsearch-forms.md) | 静止探索の補正と枝刈り | 1を加える | 約90 | 4,400,000,000〜4,600,000,000 |

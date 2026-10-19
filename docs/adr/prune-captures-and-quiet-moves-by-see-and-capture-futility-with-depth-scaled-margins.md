@@ -24,7 +24,7 @@ minaseのcapture historyは、[capture historyのADR](bound-capture-history-and-
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れて形と値をStockfishに合わせ、新しい係数の開始値はStockfishの値を換算した値とすることにした。
 同じ決定により、成る手を枝刈りの対象から外すminaseの保護は残す。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、この決定に従って3つの枝刈りを実装した。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、この決定に従って3つの枝刈りを実装した。
 深さ別の余裕値は深さに比例する1つの係数に置き換わるので、旧ADRが診断に基づいて深さ別の値を選んだ判断は、この決定で覆る。
 
 ## 決定
@@ -84,4 +84,8 @@ capture historyの上限は起点の係数`CaptureHistoryLimit`のままであ�
 係数は`params.rs`の`SeeDepthMargin`、`SeeCaptureHistory`、`CaptureFutilityBase`、`CaptureFutilityLmrDepth`、`CaptureFutilityHistory`、および`QuietSeeMargin`であり、Stockfishの値を換算した85、34、113、119、134、および11から調整する。
 `SeeMargin1`〜`3`は廃した。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、SEEの枝の`SeeDepthMargin`が開始値85から168、`SeeCaptureHistory`が34から122、捕獲手のfutility pruningの`CaptureFutilityBase`が113から504、`CaptureFutilityHistory`が134から475、静かな手のSEEの`QuietSeeMargin`が11から48へ上がり、いずれも枝刈りを控える側へ動いた（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

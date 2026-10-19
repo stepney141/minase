@@ -19,7 +19,7 @@ Stockfishは、null moveの探索がβ以上を返したとき、残り深さが
 検証探索の間は、根からの手数が`ply + 3 × (depth − R)/4`に達するまでnull moveを試さない（同1066行）。
 YaneuraOuも同じ形を持つ（`yaneuraou-search.cpp:3278-3297`）。
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れ、深さの下限のような値はStockfishの値で固定することにした。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、この決定に従って検証探索を入れ、旧ADRの求めに従って矛盾率を測り直した。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、この決定に従って検証探索を入れ、旧ADRの求めに従って矛盾率を測り直した。
 
 測り直しでは、全15局面のbenchを深さ18と20で探索し、残り深さ16以上で検証探索を行って数えた（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
 起点では、検証探索を持たないコミットを展開した使い捨ての写しに、打ち切りの判断を変えずに同じ条件の検証探索を追加で行って数える計測を入れた。
@@ -55,4 +55,9 @@ LTCやそれより長い持ち時間での効果は測っていない。
 `search-stats`機能つきのビルドでは、完了した検証探索の数とβを下回った数を`null_move_verifications`と`null_move_verification_failures`として数える。
 null moveを試す条件と減深量は[null moveのADR](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)が定める。
 
-<!-- SPSAとSTCの結果を完了時に書く -->
+検証探索を行う残り深さの下限16は固定の定数であり、SPSAの対象ではない。
+STCでは残り深さ16以上のノードがほとんど現れないので、SPSAとSTCの結果は、この決定の効果をほとんど含まない。
+
+この変更は、段階ゲートを通らずに採用した。
+SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

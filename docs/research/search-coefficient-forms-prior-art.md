@@ -105,7 +105,7 @@ Stockfishは相手との持ち時間の差でも目安時間を下げるが（`s
 構造の差のうち、[探索の枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)が扱うのは、reverse futility pruningの形と深さの上限、補正後の評価の適用先、late move pruningのimprovingの項、およびlate move reductionsの定数項、improving、PVノード、上限である。
 これらは、新しい係数の開始値を現行と同じ挙動になる値に設定できるので、形だけを変えたコミットを探索ノード数の一致で検証できる。
 残りの差は、次の6本の設計書がこの順の連鎖として扱う。順序は提案であり、各設計書は1つ前の設計書の完了後のmasterを起点とする。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/shallow-pruning-extensions.md)は、futility pruning、late move pruning、SEEによる枝刈り、およびrazoringの深さの上限、捕獲手のfutility pruningと静かな手のSEEによる枝刈り、SEEの余裕値のcapture historyの項、null moveを試す条件、およびreverse futility pruningの返り値を扱う。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、futility pruning、late move pruning、SEEによる枝刈り、およびrazoringの深さの上限、捕獲手のfutility pruningと静かな手のSEEによる枝刈り、SEEの余裕値のcapture historyの項、null moveを試す条件、およびreverse futility pruningの返り値を扱う。
 [historyの更新量の形とcontinuation history](../plans/history-forms.md)は、butterfly historyの更新量と更新の条件、continuation history、LMRのhistory補正の連続化、およびLMRの捕獲手とkiller手への拡張を扱う。
 [correction historyの表の追加と持ち越し](../plans/correction-history-tables.md)は、駒配置を鍵にした表、continuation correction history、表の持ち越し、および補正量の余裕値とLMRへの利用を扱う。
 [静止探索の補正と枝刈りの形](../plans/qsearch-forms.md)は、stand-patへの補正、delta pruningの余裕値のSEEへの利用、手数の数え方、および取り返しの例外を扱う。

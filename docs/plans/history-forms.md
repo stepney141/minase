@@ -18,7 +18,7 @@ killer手や段差のように中将棋の診断と測定で決めた既存の�
 ## 状態
 
 起案。2026年10月17日に起案した。
-[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)の完了を待って着手し、着手は利用者の指示による。
+[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)の完了を待って着手し、着手は利用者の指示による。
 利用者の判断を待つ点はない。
 次の一手は、前の設計書の完了後に起点を確定し、フェーズ1（形の変更の実装）を始めることである。
 
@@ -49,7 +49,7 @@ minaseでは1回の更新が小さいので、重力式による忘却はほと�
 - **静かな手の段**は、手選択器（`ordering.rs`の`MovePicker`）が置換表の手、捕獲手、killer手（同じ深さの別のノードでβ打ち切りを起こした静かな手）を返した後に、残りの静かな手を並べ替えの値の降順に返す区切りである。
 - **着手の記録**は、`Searcher`がplyごとに持つ、そのplyのノードで指した手の`Move`、着手前の駒種、および捕獲手かどうかの組である。ply `p`の記録は、ply `p`の局面からply `p + 1`の局面へ進めた手を表す。着手後の駒（成る手なら成った駒）は、`Move`の成りの指定と着手前の駒種から導く。null moveはそのplyの記録を空にし、根より前のplyは記録を持たない。[correction historyの鍵の追加の設計書](correction-history-tables.md)のC3も、同じ記録を使う。
 - **文脈の手**は、ply `p`のノードで手を引くときに参照する、ply `p − i`（`i`は1、2、3、4、6）の記録の手である。記録が空のplyは文脈の手を持たない。
-- **ノードの手数**は、そのノードで手選択器の候補列から取り出した適格な合法手の数であり、枝刈りで飛ばした手も含む。Stockfishの`moveCount`に当たり、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)の数え方と同じである。M1の加点の式が使う「最善手より先に読んだ手の数」は、実際に読んだ手の数であり、これとは別である。
+- **ノードの手数**は、そのノードで手選択器の候補列から取り出した適格な合法手の数であり、枝刈りで飛ばした手も含む。Stockfishの`moveCount`に当たり、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)の数え方と同じである。M1の加点の式が使う「最善手より先に読んだ手の数」は、実際に読んだ手の数であり、これとは別である。
 - **improving**は、`negamax.rs`の`improving`が定める判定であり、同じ手番の2手前の局面より静的評価が上がったことをいう。
 - **PVノード**は窓の幅が1より大きいノード、**零窓のノード**は窓の幅が1のノードである。
 - **i16**は、−32768から32767までを表す16ビットの符号つき整数である。
@@ -76,7 +76,7 @@ minaseでは1回の更新が小さいので、重力式による忘却はほと�
 
 ## 依存関係
 
-起点は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が完了した後のmasterの先頭である。
+起点は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)が完了した後のmasterの先頭である。
 前の設計書の候補が採用されたかどうかにかかわらず、起点の表の既定値をSPSAの開始値とする。
 前の設計書の候補がmasterへ統合されると`params.rs`の既定値と探索が変わるので、実装を含めて前の設計書の完了後に始める。
 系列の順序は提案であり、最終的な順序は利用者が決める。
@@ -86,16 +86,16 @@ M4とM5は、LMRの減深量を1/100手単位の整数で計算し、最後に�
 起点のLMRが1/100手単位で計算されていなければ、F4の設計判断「LMRの減深量の単位」と同じ方法で減深量の表を1/100手単位に改める変更を、探索ノード数が一致するコミットとしてフェーズ1の最初に入れる。
 LMRの減深量と減深後の深さの式は、F4の式を正本とする。
 本書はF4の`r₀`からstatScoreの項`q_hist`を引くことだけを加え、その位置はallNodeの拡大の前とする（M4）。
-[correction historyの設計書](correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
+[correction historyの設計書](correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
 起点にこれらの項がなければ、該当する項は0、上限は3として読み、これらの係数は加えない。
 
-M4の減深後の深さ（lmrDepth）へのhistoryの項は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が静かな手のfutility pruningにlmrDepthを導入していることを前提にする。
+M4の減深後の深さ（lmrDepth）へのhistoryの項は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)が静かな手のfutility pruningにlmrDepthを導入していることを前提にする。
 起点にlmrDepthがなければ、この項は加えず、continuation historyによる枝刈りだけを加える。
 
 pawn historyは、歩兵と仲人の配置の鍵（pawn key）で引く。
 この鍵は本書が導入し、[correction historyの設計書](correction-history-tables.md)のC2は本書の鍵を再利用する。
 
-M3の王手の加点は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が導入する王手の判定（RULES.md第8条の定義に従い、Stockfishの`check_squares`に当たる前計算）と、同じ設計書のS5が導入する静かな手のSEEの判定器（取る駒がない手の交換列を作る判定）を再利用する。
+M3の王手の加点は、[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)が導入する王手の判定（RULES.md第8条の定義に従い、Stockfishの`check_squares`に当たる前計算）と、同じ設計書のS5が導入する静かな手のSEEの判定器（取る駒がない手の交換列を作る判定）を再利用する。
 起点にこれらがなければ、同じ設計書の定義どおりの判定と判定器だけを、挙動を変えない移行のコミットとして本書が先に入れる。
 SEEの判定器の引数を符号つきの閾値`T`（`SEE < T`なら真）に改める契約の移行（[静止探索の設計書](qsearch-forms.md)）には、王手の加点に使う判定も含め、閾値`−trunc(75P/208)`を保つ。
 
