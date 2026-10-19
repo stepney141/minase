@@ -42,25 +42,33 @@ fn futility_pruning_is_independent_of_improving() {
     let static_eval = evaluate(test_nnue(), &board);
     let alpha = static_eval + 10 * test_nnue().pawn_value();
     for improving in [false, true] {
-        with_root_searcher(&board, &history, |searcher| {
-            searcher.tt.store(
-                search_key(&board),
-                0,
-                0,
-                Bound::Upper,
-                Some(moves[0]),
-                2,
-                true,
-            );
-            searcher.static_evals[0] = static_eval - i32::from(improving);
-            assert_eq!(searcher.improving(static_eval, 2), improving);
-            assert!(!royal_under_attack(&board));
-            let score = searcher
-                .negamax(&mut board.clone(), 1, alpha, alpha + 2, 2, false)
-                .unwrap();
-            assert!(score < alpha && score.abs() < MATE_THRESHOLD);
-            assert_eq!(searcher.nodes, 1);
-        });
+        with_repetition_root_searcher(
+            test_nnue(),
+            &board,
+            engine_rules(),
+            SearchRepetition::R3,
+            &history,
+            |searcher| {
+                searcher.tt.store(
+                    search_key(&board),
+                    0,
+                    0,
+                    Bound::Upper,
+                    Some(moves[0]),
+                    2,
+                    true,
+                );
+                searcher.static_evals[0] = static_eval - i32::from(improving);
+                assert_eq!(searcher.improving(static_eval, 2), improving);
+                assert!(!royal_under_attack(&board));
+                set_test_path_ply(searcher, 2);
+                let score = searcher
+                    .negamax(&mut board.clone(), 1, alpha, alpha + 2, 2, false)
+                    .unwrap();
+                assert!(score < alpha && score.abs() < MATE_THRESHOLD);
+                assert_eq!(searcher.nodes, 1);
+            },
+        );
     }
 }
 
@@ -77,6 +85,7 @@ fn improving_uses_corrected_evaluations() {
             assert!(correction > 0 && correction <= 100);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = raw + previous_correction;
+            set_test_path_ply(searcher, 2);
             searcher
                 .negamax(&mut board.clone(), 1, -INFINITY, INFINITY, 2, false)
                 .unwrap();

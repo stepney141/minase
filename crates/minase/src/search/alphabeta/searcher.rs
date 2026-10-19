@@ -9,13 +9,14 @@ use crate::search::events::StopReason;
 use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
 use minase_core::board::Square;
 use minase_core::mv::Move;
-use minase_core::position::Position;
+use minase_core::piece::{PieceCode, PieceKind};
+use minase_core::position::{Position, Undo};
 use minase_core::rules::MoveRules;
 use minase_core::{Color, MoveGenerator, move_was_attacking, repetition_key};
 
-use super::capture_history::CaptureHistory;
+use super::capture_history::{CaptureHistory, captured_kind_for_history};
 use super::correction::{CorrectionTable, material_key};
-use super::history::HistoryTable;
+use super::history::{HistoryTable, pawn_key};
 use super::ordering::MovePicker;
 use super::params;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
@@ -48,6 +49,7 @@ pub(super) fn new_searcher<'a>(
     capture_history: &'a mut CaptureHistory,
 ) -> Searcher<'a> {
     let root_accumulator = nnue.refresh_accumulator(position);
+    let root_pawn_key = pawn_key(position);
     Searcher {
         root_results: None,
         completed_root_nodes: Vec::new(),
@@ -78,6 +80,9 @@ pub(super) fn new_searcher<'a>(
         seek_mate: false,
         cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
+        stat_scores: [0; MAX_PLY as usize + 1],
+        move_counts: [0; MAX_PLY as usize + 1],
+        tt_hits: [false; MAX_PLY as usize + 1],
         previous_pv: Vec::new(),
         follow_pv: [false; MAX_PLY as usize + 1],
         pv: (0..=MAX_PLY)
@@ -90,6 +95,7 @@ pub(super) fn new_searcher<'a>(
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
+        pawn_keys: [root_pawn_key; MAX_PLY as usize + 1],
         static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(nnue.pawn_value()),
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
@@ -108,10 +114,44 @@ pub(super) struct PonderIteration {
     pub(super) budget: TimeBudget,
 }
 
-/// 探索経路上の1着手。再現を検出したときの攻撃側の判定に使う。
+/// 通常探索の1着手を、着手前の局面に基づいて記録する。
+///
+/// 通常探索のply `p`のノードでは`path_moves.len() == p`であり、
+/// `path_moves[p - i]`はply `p - i`のノードで指した手である。
+/// null moveは記録を持たず、静止探索は`path_moves`へ積まないため、この記録は通常探索だけで参照する。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct MoveRecord {
+    /// 指した手。
+    pub(super) mv: Move,
+    /// 着手前の盤上の駒。所有者と成りの状態を含む。
+    #[allow(dead_code)]
+    pub(super) piece: PieceCode,
+    /// 捕獲履歴の添字に使う被捕獲駒種。静かな手では`None`。
+    #[allow(dead_code)]
+    pub(super) captured: Option<PieceKind>,
+}
+
+impl MoveRecord {
+    /// 適用済みの着手について、`Undo`が保持する着手前の情報から記録を作る。
+    pub(super) fn from_undo(nnue: &Nnue, undo: &Undo) -> Self {
+        Self {
+            mv: undo.mv,
+            piece: undo.moved_piece_before,
+            captured: captured_kind_for_history(
+                nnue,
+                undo.captured
+                    .iter()
+                    .flatten()
+                    .map(|captured| captured.piece),
+            ),
+        }
+    }
+}
+
+/// 探索経路上の1着手。再現を検出したときの攻撃側の判定にも使う。
 pub(super) struct PathMove {
-    /// 実着手。null moveは`None`。
-    pub(super) mv: Option<Move>,
+    /// 実着手の記録。null moveは`None`。
+    pub(super) record: Option<MoveRecord>,
     /// 再現時に初めて計算する攻撃的着手の判定結果。着手を取り消すときに捨てる。
     pub(super) attacking: Option<bool>,
 }
@@ -192,6 +232,12 @@ pub(super) struct Searcher<'a> {
     pub(super) cutoff_counts: [u32; MAX_PLY as usize + 3],
     /// plyごとのttPv。PVノードまたは照合した印で立て、α以下なら親の印も継ぐ。
     pub(super) tt_pv: [bool; MAX_PLY as usize + 1],
+    /// plyごとのstatScore。ノードの開始時に0へ戻す。
+    pub(super) stat_scores: [i32; MAX_PLY as usize + 1],
+    /// plyごとのノードの手数。禁止手を除き、枝刈りした手を含む。
+    pub(super) move_counts: [usize; MAX_PLY as usize + 1],
+    /// plyごとに置換表の照合に成功したかを保持する。
+    pub(super) tt_hits: [bool; MAX_PLY as usize + 1],
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     pub(super) qsearch: Vec<QsearchBuffers>,
     /// 通常探索の候補と整列領域をplyごとに再利用する。
@@ -202,6 +248,8 @@ pub(super) struct Searcher<'a> {
     pub(super) accumulators: Vec<NnueAccumulator>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
+    /// plyごとの歩兵と仲人の絶対配置の鍵。null moveでは変化しない。
+    pub(super) pawn_keys: [u64; MAX_PLY as usize + 1],
     /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
     pub(super) static_evals: [i32; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。
@@ -315,7 +363,7 @@ impl Searcher<'_> {
         debug_assert!(
             self.path_moves[start..]
                 .iter()
-                .all(|entry| entry.mv.is_some())
+                .all(|entry| entry.record.is_some())
         );
         if attackers == [false; 2] {
             return self.r1_draw_score(position.side_to_move().opposite());
@@ -324,7 +372,8 @@ impl Searcher<'_> {
         let mut replay = self.root_position.clone();
         for (index, entry) in self.path_moves.iter_mut().enumerate() {
             let mover = replay.side_to_move();
-            if let Some(played) = entry.mv {
+            if let Some(record) = entry.record {
+                let played = record.mv;
                 replay.make_move_unchecked(played, self.rules);
                 if index >= start {
                     let attacking = *entry.attacking.get_or_insert_with(|| {

@@ -1270,6 +1270,8 @@ fn see_pruning_searches_first_capture_without_false_mate() {
         searcher.seek_mate = true;
         searcher.accumulators[ply as usize] = searcher.accumulators[0].clone();
         searcher.material_keys[ply as usize] = searcher.material_keys[0];
+        searcher.pawn_keys[ply as usize] = searcher.pawn_keys[0];
+        set_test_path_ply(searcher, ply);
         searcher
             .tt
             .store(search_key(&board), 0, alpha, Bound::Upper, None, ply, true);
@@ -2029,6 +2031,7 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
             searcher.material_keys[2] = searcher.material_keys[0];
             searcher.static_evals[0] = value - 1;
             searcher.static_evals[1] = -value;
+            set_test_path_ply(searcher, 2);
             let margin = reverse_futility_margin(100, 1, false, true, false, 0);
             let beta = value + i32::from(!at_beta);
 

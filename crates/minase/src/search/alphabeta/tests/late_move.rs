@@ -165,6 +165,7 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
                     !reply.promote && move_order_key(&child, nnue, reply).is_none()
                 }));
             }
+            set_test_path_ply(searcher, 2);
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, beta, 2, false)
                 .unwrap();

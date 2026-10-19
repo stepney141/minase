@@ -583,6 +583,7 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
         // 麒麟の成りはfutilityの見積りより大きく評価を上げる。
         searcher.seek_mate = true;
         searcher.null_move_ply = Some(ply);
+        set_test_path_ply(searcher, ply);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
             Some(beta)

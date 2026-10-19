@@ -9,7 +9,7 @@
 use crate::eval::Nnue;
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::mv::Move;
-use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT};
+use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
 
 use super::ordering::piece_at_for_ordering;
@@ -100,18 +100,31 @@ impl CaptureHistory {
 /// 2枚取りでは価値の高い被捕獲駒を選び、同値なら捕獲升の列の後方、すなわち到達升を選ぶ。
 fn index(position: &Position, nnue: &Nnue, mv: Move) -> usize {
     let mover = piece_at_for_ordering(position, mv.from);
-    let victim = position
-        .captured_squares(mv)
-        .into_iter()
-        .flatten()
-        .map(|square| piece_at_for_ordering(position, square))
-        // 同値なら後の捕獲升を選ぶ。2枚取りでは経由升より到達升を優先する。
-        .max_by_key(|&piece| nnue.piece_value(piece))
-        .expect("capture history requires a capture");
+    let victim = captured_kind_for_history(
+        nnue,
+        position
+            .captured_squares(mv)
+            .into_iter()
+            .flatten()
+            .map(|square| piece_at_for_ordering(position, square)),
+    )
+    .expect("capture history requires a capture");
     let code = mover.color().expect("mover color").index() * PIECE_KIND_COUNT
         + mover.kind().expect("mover kind").index();
-    (code * BOARD_SQUARE_COUNT + mv.to.dense_index()) * PIECE_KIND_COUNT
-        + victim.kind().expect("victim kind").index()
+    (code * BOARD_SQUARE_COUNT + mv.to.dense_index()) * PIECE_KIND_COUNT + victim.index()
+}
+
+/// 捕獲履歴の添字に使う被捕獲駒種を返す。
+/// 2枚取りでは価値の高い駒を選び、同値なら列の後方にある到達升の駒を選ぶ。
+pub(super) fn captured_kind_for_history(
+    nnue: &Nnue,
+    pieces: impl IntoIterator<Item = PieceCode>,
+) -> Option<PieceKind> {
+    pieces
+        .into_iter()
+        // `Iterator::max_by_key`は最大値が複数あれば最後の要素を返す。
+        .max_by_key(|&piece| nnue.piece_value(piece))
+        .and_then(PieceCode::kind)
 }
 
 fn update(value: &mut i32, bonus: i32, limit: i32) {

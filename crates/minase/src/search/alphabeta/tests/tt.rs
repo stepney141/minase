@@ -74,6 +74,7 @@ fn negamax_fail_low_inherits_parent_pv_flag() {
                 searcher
                     .tt
                     .store(key, 0, 0, Bound::Upper, None, 1, stored_pv);
+                set_test_path_ply(searcher, 1);
                 let score = searcher
                     .negamax(&mut position.clone(), 1, INFINITY - 1, INFINITY, 1, false)
                     .unwrap();
@@ -115,6 +116,7 @@ fn negamax_inherits_parent_pv_flag_when_score_equals_alpha() {
             1,
             false,
         );
+        set_test_path_ply(searcher, 1);
         let score = searcher
             .negamax(&mut position.clone(), 1, alpha, alpha + 1, 1, false)
             .unwrap();
@@ -135,6 +137,7 @@ fn negamax_pv_flag_respects_missing_parent_and_fail_high() {
     ] {
         with_root_searcher(&position, &[], |searcher| {
             searcher.tt_pv.fill(true);
+            set_test_path_ply(searcher, ply);
             searcher
                 .negamax(&mut position.clone(), 1, alpha, beta, ply, false)
                 .unwrap();

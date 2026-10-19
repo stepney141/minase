@@ -329,6 +329,7 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
     assert!(legal_moves(&child).contains(&recapture));
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 2;
+        set_test_path_ply(searcher, ply);
         seed_first(searcher, &child, first_capture(), ply + 1);
         if quiescence_parent {
             seed_first(searcher, &board, capture, ply);

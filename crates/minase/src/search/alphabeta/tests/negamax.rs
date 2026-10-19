@@ -581,6 +581,7 @@ fn cutoff_counts_reset_two_plies_ahead_before_tt_probe() {
         searcher
             .tt
             .store(search_key(&board), 3, 0, Bound::Exact, None, 1, false);
+        set_test_path_ply(searcher, 1);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, 0, 1, 1, false),
             Some(0)
@@ -605,6 +606,7 @@ fn cutoff_counts_accumulate_at_cutoff_ply() {
         searcher.cutoff_counts[1] = 4;
         searcher.cutoff_counts[2] = 6;
         searcher.cutoff_counts[3] = 8;
+        set_test_path_ply(searcher, 1);
         assert!(
             searcher
                 .negamax(&mut board.clone(), 1, -INFINITY, -INFINITY + 1, 1, false)
@@ -675,6 +677,7 @@ fn extended_search_stops_at_max_ply() {
     let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
         let value = evaluate(test_nnue(), &board);
+        set_test_path_ply(searcher, MAX_PLY);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, MAX_PLY, false),
             Some(value)
@@ -769,6 +772,7 @@ fn follow_pv_requires_parent_and_matching_move_at_same_ply() {
                     searcher.follow_pv[ply as usize] = parent;
                     // 子の古い値は毎回上書きされなければならない。
                     searcher.follow_pv[(ply + 1) as usize] = true;
+                    set_test_path_ply(searcher, ply);
                     searcher
                         .search_move(
                             &mut position.clone(),

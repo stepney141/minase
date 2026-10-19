@@ -504,6 +504,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
         // seek_mateで入口のrazoringを除外し、子は最大手数の静的評価で固定する。
         searcher.seek_mate = true;
         searcher.null_move_ply = Some(ply);
+        set_test_path_ply(searcher, ply);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 3, beta - 1, beta, ply, false),
             Some(beta)

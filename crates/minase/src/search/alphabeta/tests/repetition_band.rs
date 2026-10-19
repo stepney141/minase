@@ -154,6 +154,7 @@ fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
                 5,
                 false,
             );
+            set_test_path_ply(searcher, 40);
             let expected = if score > 0 { 29_955 } else { -29_955 };
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 2, alpha, beta, 40, false),

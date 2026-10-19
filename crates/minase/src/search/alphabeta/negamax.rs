@@ -13,6 +13,7 @@ use minase_core::repetition_key;
 
 use super::INFINITY;
 use super::correction::key_after_move;
+use super::history::pawn_key_after_move;
 use super::ordering::move_order_key;
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
@@ -25,7 +26,7 @@ use super::pruning::{
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
-use super::searcher::{PathMove, Searcher};
+use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 
@@ -94,6 +95,8 @@ impl Searcher<'_> {
         // PVノードはcutNodeにしない（Stockfish src/search.cpp:766）。
         #[cfg(feature = "invariants")]
         assert!(!(beta - alpha > 1 && cut_node));
+        #[cfg(feature = "invariants")]
+        assert_eq!(self.path_moves.len(), ply as usize);
         self.pv[ply as usize].clear();
 
         if depth == 0 || ply >= MAX_PLY {
@@ -108,6 +111,9 @@ impl Searcher<'_> {
         // 2手先だけを初期化し、子の手数の数は兄弟の探索と再探索の間で保持する。
         // Stockfish src/search.cpp:829。
         self.cutoff_counts[(ply + 2) as usize] = 0;
+        // 子が直前の手のstatScoreとして読む値は、後続項目で手ごとに書く。
+        // Stockfish src/search.cpp:828。
+        self.stat_scores[ply as usize] = 0;
         // 子のnull move打ち切り回数は、兄弟とその再探索の間だけ保持する。
         // Stockfish src/search.cpp:830。
         self.prior_nmp_fail_high[(ply + 1) as usize] = 0;
@@ -125,6 +131,7 @@ impl Searcher<'_> {
             self.stats.tt_probes += 1;
         }
         let tt_hit = self.tt.probe(key, ply);
+        self.tt_hits[ply as usize] = tt_hit.is_some();
         // Stockfish src/search.cpp:842。PVの印をreverse futilityの適用条件に使う。
         self.tt_pv[ply as usize] = pv_node || tt_hit.is_some_and(|hit| hit.is_pv);
         if let Some(hit) = tt_hit {
@@ -331,6 +338,7 @@ impl Searcher<'_> {
                 had_forbidden_move = true;
                 continue;
             }
+            self.move_counts[ply as usize] = index + 1;
             // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
             // killer手はこの制限から除くが、futilityの対象にはなり得る。
             let counted_quiet = Some(mv) != tt_move
@@ -669,13 +677,14 @@ impl Searcher<'_> {
             lion_before,
         );
         self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
+        self.pawn_keys[(ply + 1) as usize] = self.pawn_keys[ply as usize];
         let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
         let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
         // このキー自体では反復を判定せず、部分木内の実着手からの参照点にする。
         self.path_keys
             .push(repetition_key(self.repetition.rule(), position));
         self.path_moves.push(PathMove {
-            mv: None,
+            record: None,
             attacking: None,
         });
         let score = self
@@ -709,6 +718,9 @@ impl Searcher<'_> {
     ) -> Option<i32> {
         let previous_static_eval = self.static_evals[ply as usize];
         let previous_tt_pv = self.tt_pv[ply as usize];
+        let previous_stat_score = self.stat_scores[ply as usize];
+        let previous_move_count = self.move_counts[ply as usize];
+        let previous_tt_hit = self.tt_hits[ply as usize];
         let previous_nmp_min_ply = self.nmp_min_ply.replace(
             ply + NULL_MOVE_VERIFICATION_PLY_NUMERATOR * depth
                 / NULL_MOVE_VERIFICATION_PLY_DENOMINATOR,
@@ -717,6 +729,9 @@ impl Searcher<'_> {
         self.nmp_min_ply = previous_nmp_min_ply;
         self.static_evals[ply as usize] = previous_static_eval;
         self.tt_pv[ply as usize] = previous_tt_pv;
+        self.stat_scores[ply as usize] = previous_stat_score;
+        self.move_counts[ply as usize] = previous_move_count;
+        self.tt_hits[ply as usize] = previous_tt_hit;
         self.pv[ply as usize].clear();
         let score = score?;
         #[cfg(feature = "search-stats")]
@@ -797,9 +812,11 @@ impl Searcher<'_> {
         );
         self.material_keys[(ply + 1) as usize] =
             key_after_move(self.material_keys[ply as usize], &undo);
+        self.pawn_keys[(ply + 1) as usize] =
+            pawn_key_after_move(self.pawn_keys[ply as usize], &undo);
         self.path_keys.push(repetition_key);
         self.path_moves.push(PathMove {
-            mv: Some(mv),
+            record: Some(MoveRecord::from_undo(self.nnue, &undo)),
             attacking: None,
         });
         let mut score = if first {

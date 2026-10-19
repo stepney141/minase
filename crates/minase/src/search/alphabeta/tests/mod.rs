@@ -21,6 +21,7 @@ mod negamax;
 mod null_move;
 mod ordering;
 mod partial;
+mod path_state;
 mod ponder;
 mod pruning;
 mod qsearch_move_limit;
@@ -55,7 +56,7 @@ use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
 };
-use crate::search::alphabeta::history::HistoryTable;
+use crate::search::alphabeta::history::{HistoryTable, pawn_key};
 use crate::search::alphabeta::ordering::{
     MoveOrderKey, MovePicker, MovePickerStage, move_order_key, order_captures,
 };
@@ -68,8 +69,8 @@ use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
-    KILLER_COUNT, PathMove, PonderIteration, RepetitionMatch, STOP_CHECK_INTERVAL, Searcher,
-    new_searcher,
+    KILLER_COUNT, MoveRecord, PathMove, PonderIteration, RepetitionMatch, STOP_CHECK_INTERVAL,
+    Searcher, new_searcher,
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
@@ -170,26 +171,43 @@ fn complete_cycle(searcher: &mut Searcher<'_>, current: &mut Position, mv: Move)
 
 /// 実着手またはnull moveを適用し、対応する経路と各plyの局面状態を積む。
 fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Option<Move>) {
-    if let Some(mv) = mv {
+    let record = if let Some(mv) = mv {
         let mut moves = Vec::new();
         searcher.generator.generate_moves(position, &mut moves);
         assert!(moves.contains(&mv));
-        position.make_move_unchecked(mv, searcher.rules);
+        let undo = position.make_move_unchecked(mv, searcher.rules);
+        Some(MoveRecord::from_undo(searcher.nnue, &undo))
     } else {
         position.make_null_move();
         searcher.null_move_boundary = Some(searcher.path_keys.len());
         searcher.null_move_ply = Some(searcher.path_keys.len() as u32);
-    }
+        None
+    };
     searcher
         .path_keys
         .push(repetition_key(searcher.repetition.rule(), position));
     searcher.path_moves.push(PathMove {
-        mv,
+        record,
         attacking: None,
     });
     let ply = searcher.path_moves.len();
     searcher.accumulators[ply] = searcher.nnue.refresh_accumulator(position);
     searcher.material_keys[ply] = material_key(position);
+    searcher.pawn_keys[ply] = pawn_key(position);
+    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
+}
+
+/// 前段の着手自体を検査しないテストで、指定plyに対応する経路の長さだけを用意する。
+fn set_test_path_ply(searcher: &mut Searcher<'_>, ply: u32) {
+    assert!(searcher.path_moves.len() <= ply as usize);
+    while searcher.path_moves.len() < ply as usize {
+        let index = searcher.path_moves.len() as u64;
+        searcher.path_moves.push(PathMove {
+            record: None,
+            attacking: None,
+        });
+        searcher.path_keys.push(0xd1ff_0000_0000_0000 ^ index);
+    }
     assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
 }
 
@@ -493,6 +511,7 @@ fn run_configured_negamax(
         &mut butterfly_history,
         &mut capture_history,
     );
+    set_test_path_ply(&mut searcher, ply);
     configure(&mut searcher);
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply, false)

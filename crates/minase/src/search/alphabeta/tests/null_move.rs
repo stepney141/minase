@@ -70,6 +70,7 @@ fn run_candidate(
         if previous_null {
             searcher.null_move_ply = Some(ply);
         }
+        set_test_path_ply(searcher, ply);
         let score = searcher.negamax(&mut board.clone(), depth, alpha, beta, ply, cut_node);
         result = Some((
             score,
@@ -233,8 +234,13 @@ fn verification_restores_same_ply_state_after_completed_failure() {
     let board = quiet_position_with_material();
     with_root_searcher(&board, &[], |searcher| {
         let saved_static_eval = 12_345;
+        let saved_stat_score = 23_456;
+        let saved_move_count = 34_567;
         searcher.static_evals[0] = saved_static_eval;
         searcher.tt_pv[0] = true;
+        searcher.stat_scores[0] = saved_stat_score;
+        searcher.move_counts[0] = saved_move_count;
+        searcher.tt_hits[0] = true;
         searcher.nmp_min_ply = Some(77);
         searcher.pv[0].push(legal_moves(&board)[0]);
         let beta =
@@ -246,6 +252,9 @@ fn verification_restores_same_ply_state_after_completed_failure() {
         assert_eq!(searcher.nmp_min_ply, Some(77));
         assert_eq!(searcher.static_evals[0], saved_static_eval);
         assert!(searcher.tt_pv[0]);
+        assert_eq!(searcher.stat_scores[0], saved_stat_score);
+        assert_eq!(searcher.move_counts[0], saved_move_count);
+        assert!(searcher.tt_hits[0]);
         assert!(searcher.pv[0].is_empty());
         #[cfg(feature = "search-stats")]
         {
@@ -260,8 +269,13 @@ fn verification_restores_same_ply_state_before_propagating_interruption() {
     let board = quiet_position_with_material();
     with_root_searcher(&board, &[], |searcher| {
         let saved_static_eval = -12_345;
+        let saved_stat_score = -23_456;
+        let saved_move_count = 45_678;
         searcher.static_evals[0] = saved_static_eval;
         searcher.tt_pv[0] = true;
+        searcher.stat_scores[0] = saved_stat_score;
+        searcher.move_counts[0] = saved_move_count;
+        searcher.tt_hits[0] = true;
         searcher.pv[0].push(legal_moves(&board)[0]);
         searcher.interrupt_at = Some((0, StopReason::ExternalStop));
         let beta = evaluate(searcher.nnue, &board) + 1;
@@ -272,6 +286,9 @@ fn verification_restores_same_ply_state_before_propagating_interruption() {
         assert_eq!(searcher.nmp_min_ply, None);
         assert_eq!(searcher.static_evals[0], saved_static_eval);
         assert!(searcher.tt_pv[0]);
+        assert_eq!(searcher.stat_scores[0], saved_stat_score);
+        assert_eq!(searcher.move_counts[0], saved_move_count);
+        assert!(searcher.tt_hits[0]);
         assert!(searcher.pv[0].is_empty());
         #[cfg(feature = "search-stats")]
         {

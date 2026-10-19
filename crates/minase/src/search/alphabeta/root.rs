@@ -130,11 +130,9 @@ impl Searcher<'_> {
     /// 先頭手は通常の整列で優先した置換表の手であり、`root_results`に直前の最善手があればそちらを優先する。
     /// どちらもなければ[`Self::order_moves`]の先頭を保ち、前回ノード数がなければその整列順のままとする。
     /// 評価値で整列しない理由は`docs/adr/order-root-moves-by-previous-subtree-nodes.md`にある。
-    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) {
-        let tt_move = self
-            .tt
-            .probe(search_key(position), 0)
-            .and_then(|hit| hit.best_move);
+    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) -> bool {
+        let tt_hit = self.tt.probe(search_key(position), 0);
+        let tt_move = tt_hit.and_then(|hit| hit.best_move);
         self.order_moves(position, moves, tt_move, 0);
         if let Some(previous) = self.root_results.as_ref().and_then(|r| r.previous_best) {
             let index = moves
@@ -153,6 +151,7 @@ impl Searcher<'_> {
                 )
             });
         }
+        tt_hit.is_some()
     }
 
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
@@ -217,6 +216,7 @@ impl Searcher<'_> {
         self.follow_pv[0] = true;
         // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
         self.cutoff_counts[2] = 0;
+        self.stat_scores[0] = 0;
         // 根が読む子のnull move打ち切り回数を初期化する（Stockfish src/search.cpp:830）。
         self.prior_nmp_fail_high[1] = 0;
         if let Some(results) = &mut self.root_results {
@@ -228,7 +228,7 @@ impl Searcher<'_> {
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
-        self.order_root_moves(&position, &mut moves);
+        self.tt_hits[0] = self.order_root_moves(&position, &mut moves);
         // 根の静的評価も子孫のimprovingの比較に保持する（Stockfish src/search.cpp:846-884）。
         #[cfg(feature = "invariants")]
         self.nnue
@@ -242,6 +242,7 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
 
         for (index, mv) in moves.into_iter().enumerate() {
+            self.move_counts[0] = index + 1;
             let before = self.nodes;
             let score = self.search_move(
                 &mut position,
