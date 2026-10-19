@@ -234,6 +234,14 @@ fn tuning_usi_contract_in_isolated_process() {
                 "CaptureHistoryScale",
                 params::capture_history_scale as fn() -> i32,
             ),
+            (
+                "OrderingCheckBonus",
+                params::ordering_check_bonus as fn() -> i32,
+            ),
+            (
+                "OrderingThreatWeight",
+                params::ordering_threat_weight as fn() -> i32,
+            ),
             ("CorrectionCap", params::correction_cap as fn() -> i32),
             ("CorrectionWeight", params::correction_weight as fn() -> i32),
             ("DeltaMargin", params::delta_margin as fn() -> i32),

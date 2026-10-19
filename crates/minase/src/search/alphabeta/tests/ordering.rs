@@ -29,7 +29,12 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
         assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker
-            .next(&position, nnue, &generator, &history, &capture_history)
+            .next(
+                &position,
+                nnue,
+                &generator,
+                isolated_move_picker_context(&history, &capture_history),
+            )
             .unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
     }
@@ -203,8 +208,12 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                 let mut ordinal = 0;
                 loop {
                     let expected = reference.next(&position, nnue, &generator, &history);
-                    let actual =
-                        picker.next(&position, nnue, &generator, &history, &capture_history);
+                    let actual = picker.next(
+                        &position,
+                        nnue,
+                        &generator,
+                        isolated_move_picker_context(&history, &capture_history),
+                    );
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
                         break;
@@ -268,8 +277,15 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = empty_capture_history();
-    std::iter::from_fn(|| picker.next(board, nnue, &generator, &history, &capture_history))
-        .collect()
+    std::iter::from_fn(|| {
+        picker.next(
+            board,
+            nnue,
+            &generator,
+            isolated_move_picker_context(&history, &capture_history),
+        )
+    })
+    .collect()
 }
 
 /// 合法なkillerだけを前置し、元の捕獲列を保つ。

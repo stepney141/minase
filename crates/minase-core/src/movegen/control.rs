@@ -19,6 +19,26 @@ pub(crate) fn piece_control_with_occupancy(
 }
 
 impl Position {
+    /// 指定した升にある駒の、現在の占有状態での疑似利きを返す。
+    ///
+    /// 規則を考慮しない疑似利きであり、固定利き、走り、および獅子・角鷹・飛鷲の
+    /// 2段階の到達範囲を含む。獅子の捕獲制限の合法性は調べない。
+    ///
+    /// # Panics
+    ///
+    /// `square`に駒がない場合にパニックする。
+    pub fn piece_control(&self, square: Square) -> Bitboard {
+        let piece = self
+            .piece_at(square)
+            .expect("piece control square must contain a piece");
+        piece_control_with_occupancy(
+            self.occupied(),
+            piece.color().expect("board piece must have a color"),
+            piece.kind().expect("board piece must have a kind"),
+            square,
+        )
+    }
+
     /// 指定した占有状態で`square`へ疑似利きが届く`color`側の駒を返す。
     ///
     /// 駒の升が結果に含まれることと、その駒が`color`側であり、その升が`occupied`に含まれ、

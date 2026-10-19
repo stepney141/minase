@@ -27,6 +27,7 @@ mod ponder;
 mod pruning;
 mod qsearch_move_limit;
 mod quiesce;
+mod quiet_ordering;
 mod repetition_band;
 mod repetition_prohibition;
 mod repetition_tree;
@@ -57,9 +58,12 @@ use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
 };
-use crate::search::alphabeta::history::{HistoryTable, pawn_key};
+use crate::search::alphabeta::history::{
+    HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, pawn_key,
+};
 use crate::search::alphabeta::ordering::{
-    MoveOrderKey, MovePicker, MovePickerStage, move_order_key, order_captures,
+    MoveOrderKey, MovePicker, MovePickerContext, MovePickerStage, QuietOrderingCoefficients,
+    move_order_key, order_captures,
 };
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::allows_null_move;
@@ -338,6 +342,52 @@ fn empty_capture_history() -> crate::search::alphabeta::capture_history::Capture
     let mut history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     history.values_mut().fill(0);
     history
+}
+
+/// 手選択器の段階制御だけを検査するときに、追加の並べ替え係数を0にした状態を返す。
+/// 係数が0でも王手、SEE、および脅威の集合は通常どおり計算される。
+fn isolated_move_picker_context<'a>(
+    history: &'a HistoryTable,
+    capture_history: &'a crate::search::alphabeta::capture_history::CaptureHistory,
+) -> MovePickerContext<'a> {
+    static SHARED_HISTORIES: OnceLock<crate::search::HistoryTables> = OnceLock::new();
+    static LOW_PLY_HISTORY: OnceLock<Box<LowPlyHistory>> = OnceLock::new();
+    let shared =
+        SHARED_HISTORIES.get_or_init(|| crate::search::HistoryTables::new(DEFAULT_THREADS));
+    let low_ply_history = LOW_PLY_HISTORY.get_or_init(|| {
+        Box::new(
+            [[[LOW_PLY_HISTORY_INITIAL; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT];
+                LOW_PLY_HISTORY_PLY_COUNT],
+        )
+    });
+    MovePickerContext {
+        history,
+        capture_history,
+        continuation_history: &shared.continuation,
+        pawn_history: &shared.pawn,
+        low_ply_history,
+        path_moves: &[],
+        pawn_key: 0,
+        ply: 0,
+        coefficients: QuietOrderingCoefficients {
+            check_bonus: 0,
+            threat_weight: 0,
+        },
+    }
+}
+
+fn searcher_move_picker_context<'a>(searcher: &'a Searcher<'_>, ply: u32) -> MovePickerContext<'a> {
+    MovePickerContext {
+        history: searcher.history,
+        capture_history: searcher.capture_history,
+        continuation_history: searcher.continuation_history,
+        pawn_history: searcher.pawn_history,
+        low_ply_history: searcher.low_ply_history.as_ref(),
+        path_moves: &searcher.path_moves,
+        pawn_key: searcher.pawn_keys[ply as usize],
+        ply,
+        coefficients: QuietOrderingCoefficients::current(),
+    }
 }
 
 /// 明示した重みを使い、時間制限のない単一ワーカーで根を検査する。

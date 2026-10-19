@@ -14,7 +14,9 @@ use minase_core::repetition_key;
 use super::INFINITY;
 use super::correction::key_after_move;
 use super::history::pawn_key_after_move;
-use super::ordering::{HistoryUpdateCoefficients, move_order_key};
+use super::ordering::{
+    HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
+};
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
     NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
@@ -341,6 +343,7 @@ impl Searcher<'_> {
         let mut had_forbidden_move = false;
         let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
         let mut searched_quiets = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
+        let quiet_ordering_coefficients = QuietOrderingCoefficients::current();
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
         let mut searched_moves = 0;
@@ -350,8 +353,17 @@ impl Searcher<'_> {
             position,
             self.nnue,
             &self.generator,
-            self.history,
-            self.capture_history,
+            MovePickerContext {
+                history: &*self.history,
+                capture_history: &*self.capture_history,
+                continuation_history: self.continuation_history,
+                pawn_history: self.pawn_history,
+                low_ply_history: self.low_ply_history.as_ref(),
+                path_moves: &self.path_moves,
+                pawn_key: self.pawn_keys[ply as usize],
+                ply,
+                coefficients: quiet_ordering_coefficients,
+            },
         ) {
             // 禁止手は探索順位、枝刈りの静かな手数、履歴の更新対象、ノード数に含めない。
             if self.move_is_forbidden(position, mv) {

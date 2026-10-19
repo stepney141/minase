@@ -158,8 +158,7 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
             board,
             searcher.nnue,
             &searcher.generator,
-            searcher.history,
-            searcher.capture_history,
+            searcher_move_picker_context(searcher, 0),
         )
     })
     .collect()

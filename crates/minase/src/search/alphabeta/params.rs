@@ -329,6 +329,14 @@ parameters! {
     /// Stockfishの`10692 × 100 / (7 × 208)`を734%へ換算した（src/movepick.cpp:225-226）。YaneuraOuは1697%に当たる。
     /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。
     CaptureHistoryScale(capture_history_scale): 734, 0, 2000;
+    /// SEEが−75以上か判定不能である王手の、静かな手の並べ替え値への加点。
+    /// Stockfishは16384（src/movepick.cpp:242）、YaneuraOuも16384（yaneuraou-movepick.cpp:371）である。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    OrderingCheckBonus(ordering_check_bonus): 16384, 0, 32768;
+    /// 動かす駒が歩兵1枚分の価値を持つときの、価値の低い駒による脅威の項の大きさ。
+    /// Stockfishは20 × 208で4160（src/movepick.cpp:246-247）。YaneuraOuはこの項を持たず0である。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    OrderingThreatWeight(ordering_threat_weight): 4160, 0, 12000;
     /// correction historyの補正値の絶対値の上限。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     CorrectionCap(correction_cap): 126, 50, 400;

@@ -9,18 +9,19 @@ use core::cmp::Reverse;
 
 use crate::eval::Nnue;
 use minase_core::MoveGenerator;
-use minase_core::board::BOARD_SQUARE_COUNT;
+use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard};
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
 
 use super::capture_history::CaptureHistory;
 use super::history::{
-    HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT, LOW_PLY_HISTORY_PLY_COUNT, history_gravity,
+    ContinuationHistory, HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT,
+    LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, PawnHistory, history_gravity,
 };
 use super::params;
 use super::royal::captures_last_royal;
-use super::searcher::{KILLER_COUNT, MoveRecord, Searcher};
+use super::searcher::{KILLER_COUNT, MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
 
 /// Continuation historyを更新する文脈の距離と重み。
@@ -30,6 +31,139 @@ const CONTINUATION_WEIGHTS: [(usize, i32); 5] = [(1, 520), (2, 390), (3, 145), (
 /// 更新前の正値の数に応じてcontinuation historyへ掛ける倍率。
 /// Stockfishの値を使う（src/search.cpp:2053-2070）。
 const CONTINUATION_MULTIPLIERS: [i32; 6] = [94, 103, 110, 106, 119, 126];
+
+/// 静かな手の並べ替えで使う調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct QuietOrderingCoefficients {
+    pub(super) check_bonus: i32,
+    pub(super) threat_weight: i32,
+}
+
+impl QuietOrderingCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            check_bonus: params::ordering_check_bonus(),
+            threat_weight: params::ordering_threat_weight(),
+        }
+    }
+}
+
+/// 静かな手の並べ替え値へ渡す、履歴と局面から求めた値。
+#[derive(Clone, Copy)]
+pub(super) struct QuietOrderingInput {
+    pub(super) butterfly: i32,
+    pub(super) pawn: i32,
+    pub(super) continuation: i32,
+    pub(super) ply: u32,
+    pub(super) from: minase_core::Square,
+    pub(super) to: minase_core::Square,
+    pub(super) check: bool,
+    pub(super) moving_piece_value: i32,
+    pub(super) pawn_value: i32,
+    pub(super) threat_delta: i32,
+}
+
+/// 静かな手の並べ替え値を求める。
+///
+/// Low ply historyはply 5未満でだけ加え、すべての積と合計は`i64`で計算する。
+/// 整数除算は0方向へ丸める（src/movepick.cpp:233-251）。
+pub(super) fn quiet_ordering_value(
+    input: QuietOrderingInput,
+    low_ply_history: &LowPlyHistory,
+    coefficients: QuietOrderingCoefficients,
+) -> i64 {
+    assert!(input.pawn_value > 0, "pawn value must be positive");
+    let mut value =
+        2 * i64::from(input.butterfly) + 2 * i64::from(input.pawn) + i64::from(input.continuation);
+    if input.ply < LOW_PLY_HISTORY_PLY_COUNT as u32 {
+        let low_ply =
+            low_ply_history[input.ply as usize][input.from.dense_index()][input.to.dense_index()];
+        value += 8 * i64::from(low_ply) / (1 + i64::from(input.ply));
+    }
+    value += i64::from(coefficients.check_bonus) * i64::from(input.check);
+    let threat = i64::from(input.moving_piece_value) * i64::from(coefficients.threat_weight)
+        / i64::from(input.pawn_value);
+    value + threat * i64::from(input.threat_delta)
+}
+
+/// 相手の同価値の駒をまとめた、価値順の累積疑似利き。
+pub(super) struct LesserPieceThreats {
+    /// 各要素は駒価値と、その価値以下の相手駒の疑似利きの和集合である。
+    pub(super) groups: Vec<(i32, Bitboard)>,
+}
+
+impl LesserPieceThreats {
+    /// 相手の盤上の各駒を実際の駒コードで評価し、同価値の群ごとに累積疑似利きを作る。
+    pub(super) fn with_piece_values(
+        position: &Position,
+        mut piece_value: impl FnMut(PieceCode) -> i32,
+    ) -> Self {
+        let enemy = position.side_to_move().opposite();
+        let mut controls: Vec<_> = position
+            .pieces_of(enemy)
+            .into_iter()
+            .map(|square| {
+                let piece = position
+                    .piece_at(square)
+                    .expect("enemy piece square must contain a piece");
+                (piece_value(piece), position.piece_control(square))
+            })
+            .collect();
+        controls.sort_unstable_by_key(|&(value, _)| value);
+
+        let mut groups = Vec::with_capacity(controls.len());
+        let mut cumulative = Bitboard::EMPTY;
+        let mut index = 0;
+        while index < controls.len() {
+            let value = controls[index].0;
+            while index < controls.len() && controls[index].0 == value {
+                cumulative |= controls[index].1;
+                index += 1;
+            }
+            groups.push((value, cumulative));
+        }
+        Self { groups }
+    }
+
+    /// `piece_value`より価値が厳密に小さい相手駒の疑似利きの和集合を返す。
+    pub(super) fn below(&self, piece_value: i32) -> Bitboard {
+        let count = self
+            .groups
+            .partition_point(|&(value, _)| value < piece_value);
+        if count == 0 {
+            Bitboard::EMPTY
+        } else {
+            self.groups[count - 1].1
+        }
+    }
+}
+
+/// 王駒を除き、価値の低い駒の利きから出る手を1、入る手を−1として返す。
+pub(super) fn lesser_threat_delta(moving_kind: PieceKind, threats: Bitboard, mv: Move) -> i32 {
+    if matches!(moving_kind, PieceKind::King | PieceKind::CrownPrince) {
+        return 0;
+    }
+    i32::from(threats.contains(mv.from)) - i32::from(threats.contains(mv.to))
+}
+
+/// 王手であり、SEEがStockfishの−75以上か判定不能なら真を返す。
+/// 王手でない手ではSEEを求めない（src/movepick.cpp:241-242）。
+pub(super) fn qualifies_for_check_bonus(
+    position: &Position,
+    generator: &MoveGenerator,
+    nnue: &Nnue,
+    mv: Move,
+) -> bool {
+    position.gives_check(generator, mv)
+        && !see_prunes(
+            position,
+            generator.rules(),
+            nnue,
+            mv,
+            i32::try_from(i64::from(nnue.pawn_value()) * 75 / 208)
+                .expect("ordering check SEE margin must fit i32"),
+        )
+}
 
 /// Historyの加点と減点の式に渡す調整係数。
 #[derive(Clone, Copy)]
@@ -298,6 +432,22 @@ fn oriented_square(square: usize, color: Color) -> usize {
     }
 }
 
+fn continuation_value(
+    continuation_history: &ContinuationHistory,
+    path_moves: &[PathMove],
+    ply: u32,
+    piece: PieceCode,
+    mv: Move,
+    distance: usize,
+) -> Option<i32> {
+    let context_ply = ply.checked_sub(distance as u32)? as usize;
+    let path = path_moves
+        .get(context_ply)
+        .expect("continuation context ply must exist in the path");
+    path.record
+        .map(|context| continuation_history.read(continuation_index(context, piece, mv, distance)))
+}
+
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
     pub(super) fn order_moves(
@@ -349,15 +499,14 @@ impl Searcher<'_> {
         mv: Move,
         distance: usize,
     ) -> Option<i32> {
-        let context_ply = ply.checked_sub(distance as u32)? as usize;
-        let path = self
-            .path_moves
-            .get(context_ply)
-            .expect("continuation context ply must exist in the path");
-        path.record.map(|context| {
-            self.continuation_history
-                .read(continuation_index(context, piece, mv, distance))
-        })
+        continuation_value(
+            self.continuation_history,
+            &self.path_moves,
+            ply,
+            piece,
+            mv,
+            distance,
+        )
     }
 
     /// 指定plyで指す手の5文脈へcontinuation historyの更新量を与える。
@@ -677,6 +826,67 @@ pub(super) enum MovePickerStage {
     Done,
 }
 
+/// 手選択器が静かな手の並べ替えと捕獲履歴の換算に使う探索状態。
+#[derive(Clone, Copy)]
+pub(super) struct MovePickerContext<'a> {
+    pub(super) history: &'a HistoryTable,
+    pub(super) capture_history: &'a CaptureHistory,
+    pub(super) continuation_history: &'a ContinuationHistory,
+    pub(super) pawn_history: &'a PawnHistory,
+    pub(super) low_ply_history: &'a LowPlyHistory,
+    pub(super) path_moves: &'a [PathMove],
+    pub(super) pawn_key: u64,
+    pub(super) ply: u32,
+    pub(super) coefficients: QuietOrderingCoefficients,
+}
+
+fn quiet_move_ordering_value(
+    position: &Position,
+    nnue: &Nnue,
+    generator: &MoveGenerator,
+    context: MovePickerContext<'_>,
+    lesser_piece_threats: &LesserPieceThreats,
+    mv: Move,
+) -> i64 {
+    let piece = piece_at_for_ordering(position, mv.from);
+    let piece_value = nnue.piece_value(piece);
+    let continuation = CONTINUATION_WEIGHTS
+        .iter()
+        .filter_map(|&(distance, _)| {
+            continuation_value(
+                context.continuation_history,
+                context.path_moves,
+                context.ply,
+                piece,
+                mv,
+                distance,
+            )
+        })
+        .sum();
+    let threats = lesser_piece_threats.below(piece_value);
+    quiet_ordering_value(
+        QuietOrderingInput {
+            butterfly: context.history[piece.color().expect("quiet ordering mover color").index()]
+                [mv.from.dense_index()][mv.to.dense_index()],
+            pawn: context.pawn_history.read(context.pawn_key, piece, mv.to),
+            continuation,
+            ply: context.ply,
+            from: mv.from,
+            to: mv.to,
+            check: qualifies_for_check_bonus(position, generator, nnue, mv),
+            moving_piece_value: piece_value,
+            pawn_value: nnue.pawn_value(),
+            threat_delta: lesser_threat_delta(
+                piece.kind().expect("quiet ordering mover kind"),
+                threats,
+                mv,
+            ),
+        },
+        context.low_ply_history,
+        context.coefficients,
+    )
+}
+
 /// 置換表の手、捕獲手、killer手、残りの静かな手の順に合法手を1回ずつ返す。
 ///
 /// [`Self::reset`]で指定したノードでは、整列後の先頭捕獲手だけを静的交換評価（SEE）で判定する。
@@ -694,10 +904,10 @@ pub(super) struct MovePicker {
     quiets: Vec<Move>,
     quiet_index: usize,
     base_moves: Vec<Move>,
-    /// butterfly historyの降順、線形経路の移動差分の降順、生成順の整列キー。
+    /// 静かな手の並べ替え値の降順、線形経路の移動差分の降順、生成順の整列キー。
     /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
     /// 同点破りの理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
-    quiet_order: Vec<(Reverse<i32>, Reverse<i64>, usize)>,
+    quiet_order: Vec<(Reverse<i64>, Reverse<i64>, usize)>,
     used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,
 }
@@ -750,8 +960,7 @@ impl MovePicker {
         position: &Position,
         nnue: &Nnue,
         generator: &MoveGenerator,
-        history: &HistoryTable,
-        capture_history: &CaptureHistory,
+        context: MovePickerContext<'_>,
     ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
@@ -784,7 +993,7 @@ impl MovePicker {
                                     let mut key = move_order_key(position, nnue, mv)
                                         .expect("capture generator must not return a quiet move");
                                     key.captured_value +=
-                                        capture_history.adjustment(position, nnue, mv);
+                                        context.capture_history.adjustment(position, nnue, mv);
                                     (mv, key)
                                 }),
                         );
@@ -842,7 +1051,9 @@ impl MovePicker {
                 }
                 // killer手を除き、quiet_orderの3つのキーで順序を確定する。
                 MovePickerStage::Quiets => {
-                    let color = position.side_to_move().index();
+                    let threats = LesserPieceThreats::with_piece_values(position, |piece| {
+                        nnue.piece_value(piece)
+                    });
                     self.quiet_order.extend(
                         self.quiets
                             .iter()
@@ -850,9 +1061,9 @@ impl MovePicker {
                             .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
                             .map(|(index, mv)| {
                                 (
-                                    Reverse(
-                                        history[color][mv.from.dense_index()][mv.to.dense_index()],
-                                    ),
+                                    Reverse(quiet_move_ordering_value(
+                                        position, nnue, generator, context, &threats, *mv,
+                                    )),
                                     Reverse(nnue.quiet_move_pst_delta(position, *mv)),
                                     index,
                                 )

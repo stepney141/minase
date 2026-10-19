@@ -195,6 +195,8 @@ fn tuning_parameters_in_isolated_process() {
         ("HistoryDecay", 37),
         ("CaptureHistoryDecay", 13),
         ("CaptureHistoryScale", 155),
+        ("OrderingCheckBonus", 12000),
+        ("OrderingThreatWeight", 3000),
         ("CorrectionCap", 181),
         ("CorrectionWeight", 76),
         ("DeltaMargin", 500),
@@ -431,7 +433,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 79] = [
+    let cases: [Case; 81] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -748,6 +750,12 @@ fn tuning_parameters_in_isolated_process() {
             super::capture_history::capture_decay_probe,
         ),
         ("CaptureHistoryScale", 200, capture_history_adjustment),
+        ("OrderingCheckBonus", 0, || {
+            i64::from(super::super::ordering::QuietOrderingCoefficients::current().check_bonus)
+        }),
+        ("OrderingThreatWeight", 0, || {
+            i64::from(super::super::ordering::QuietOrderingCoefficients::current().threat_weight)
+        }),
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),

@@ -6,10 +6,12 @@
 use crate::board::Bitboard;
 use crate::board::Square;
 use crate::movegen::control::piece_control_with_occupancy;
-use crate::piece::Color;
+use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 use crate::rules::MoveRules;
-use crate::test_util::{bench_positions, sampled_random_positions};
+use crate::test_util::{bench_positions, position, sampled_random_positions};
+
+use super::msq;
 
 fn assert_attackers_match_piece_controls(position: &Position, occupied: Bitboard) {
     for target in Square::all() {
@@ -65,4 +67,45 @@ fn attackers_to_by_matches_piece_control_on_reference_positions() {
         }
         assert_attackers_match_piece_controls(&position, without_several);
     }
+}
+
+/// 公開の駒別疑似利きは、現在の占有状態を使う既存の利きの定義と一致する。
+#[test]
+fn piece_control_covers_fixed_sliding_and_two_stage_destinations() {
+    let fixed = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Pawn)]);
+    assert_eq!(
+        fixed.piece_control(msq(6, 6)),
+        Bitboard::from_square(msq(6, 5))
+    );
+
+    let sliding = position(
+        Color::Black,
+        &[
+            (msq(6, 6), Color::Black, PieceKind::Rook),
+            (msq(6, 3), Color::Black, PieceKind::Pawn),
+            (msq(6, 9), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let sliding_control = sliding.piece_control(msq(6, 6));
+    assert!(sliding_control.contains(msq(6, 3)));
+    assert!(sliding_control.contains(msq(6, 9)));
+    assert!(!sliding_control.contains(msq(6, 2)));
+    assert!(!sliding_control.contains(msq(6, 10)));
+
+    let lion = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);
+    let lion_control = lion.piece_control(msq(6, 6));
+    assert!(lion_control.contains(msq(6, 5)));
+    assert!(lion_control.contains(msq(6, 4)));
+    assert_eq!(
+        lion_control,
+        piece_control_with_occupancy(lion.occupied(), Color::Black, PieceKind::Lion, msq(6, 6),)
+    );
+}
+
+/// 空升から駒別疑似利きを求めるのは呼び出し側の誤りとして拒否する。
+#[test]
+#[should_panic(expected = "piece control square must contain a piece")]
+fn piece_control_rejects_empty_square() {
+    let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::King)]);
+    let _ = board.piece_control(msq(5, 5));
 }

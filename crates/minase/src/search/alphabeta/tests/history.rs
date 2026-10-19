@@ -335,9 +335,10 @@ pub(super) fn zero_decay_clears_history_between_searches() {
                 .all(|h| h.iter().flatten().flatten().all(|&v| v == 0))
         );
     }
-    // 単一ワーカーの実探索でも、履歴を再利用した2回目と新品の表の結果が一致する。
+    // 単一ワーカーの実探索でも、減衰対象外の共有表を同じ状態にそろえれば、
+    // ワーカー別の2表を再利用した探索と新品の表の結果が一致する。
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
-    let first = crate::search::search(
+    crate::search::search(
         nnue,
         &snapshot,
         &depth_limits(3),
@@ -346,7 +347,10 @@ pub(super) fn zero_decay_clears_history_between_searches() {
         &mut histories,
     )
     .unwrap();
-    let second = crate::search::search(
+    let fresh_shared = HistoryTables::new(DEFAULT_THREADS);
+    histories.continuation = fresh_shared.continuation;
+    histories.pawn = fresh_shared.pawn;
+    let reused = crate::search::search(
         nnue,
         &snapshot,
         &depth_limits(3),
@@ -355,7 +359,16 @@ pub(super) fn zero_decay_clears_history_between_searches() {
         &mut histories,
     )
     .unwrap();
-    assert_eq!(first, second);
+    let fresh = crate::search::search(
+        nnue,
+        &snapshot,
+        &depth_limits(3),
+        DEFAULT_THREADS,
+        &mut small_tt(),
+        &mut HistoryTables::new(DEFAULT_THREADS),
+    )
+    .unwrap();
+    assert_eq!(reused, fresh);
 }
 
 /// 重力式は更新量を先に切り詰め、正負の値を常に表の範囲内へ保つ。
@@ -385,8 +398,7 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
             board,
             searcher.nnue,
             &searcher.generator,
-            searcher.history,
-            searcher.capture_history,
+            searcher_move_picker_context(searcher, 0),
         )
     })
     .collect()
@@ -396,6 +408,11 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
 /// 静かな手のSEEで飛ばした手も探索済みの手に含めない。
 #[cfg(feature = "tuning")]
 pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
+    let check_bonus = params::ordering_check_bonus();
+    let threat_weight = params::ordering_threat_weight();
+    // この検査では枝刈りと履歴更新だけを分離する。係数が0でもM3bの判定処理は省かれない。
+    params::set("OrderingCheckBonus", 0).unwrap();
+    params::set("OrderingThreatWeight", 0).unwrap();
     let board = position(
         Color::Black,
         &[
@@ -408,7 +425,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
             (sq(5, 3), Color::White, PieceKind::Pawn),
         ],
     );
-    for winner_index in [0, 2, 4] {
+    for winner_case in 0..3 {
         with_root_searcher(&board, &[], |searcher| {
             // F5の浅いcutNodeでfail-lowの打ち切りが制限されるため、子を十分深く読む。
             searcher.null_move_ply = Some(0);
@@ -417,12 +434,9 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                 .filter(|&mv| board.captured_squares(mv).iter().all(Option::is_none))
                 .collect();
             let tt_move = quiets[0];
-            let winner = quiets[winner_index];
             searcher.killers[0] = [Some(quiets[1]), Some(quiets[2])];
             let moves = history_moves(searcher, &board, Some(tt_move));
             assert!(moves.iter().any(|&(_, capture)| capture));
-            let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
-            assert!(cutoff_index + 1 < moves.len());
             assert!(!royal_under_attack(&board));
             let static_eval = evaluate(searcher.nnue, &board);
             let quiet_see_pruned: Vec<_> = moves
@@ -467,7 +481,33 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                     )
                 })
                 .collect();
-            if winner_index == 4 {
+            let winner = match winner_case {
+                0 => tt_move,
+                1 => quiets[2],
+                2 => {
+                    let first_pruned = quiet_see_pruned
+                        .iter()
+                        .position(|&pruned| pruned)
+                        .expect("fixture must contain a SEE-pruned quiet");
+                    moves
+                        .iter()
+                        .enumerate()
+                        .skip(first_pruned + 1)
+                        .find_map(|(index, &(mv, capture))| {
+                            (!capture
+                                && mv != tt_move
+                                && !searcher.killers[0].contains(&Some(mv))
+                                && !quiet_see_pruned[index]
+                                && index + 1 < moves.len())
+                            .then_some(mv)
+                        })
+                        .expect("fixture must contain a later searchable ordinary quiet")
+                }
+                _ => unreachable!("three winner cases"),
+            };
+            let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
+            assert!(cutoff_index + 1 < moves.len());
+            if winner_case == 2 {
                 assert!(
                     quiet_see_pruned[..=cutoff_index]
                         .iter()
@@ -530,6 +570,8 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
             }
         });
     }
+    params::set("OrderingCheckBonus", check_bonus).unwrap();
+    params::set("OrderingThreatWeight", threat_weight).unwrap();
 }
 
 /// 候補8: futilityで飛ばした非捕獲手は、後続の成る手がカットしても減点しない。

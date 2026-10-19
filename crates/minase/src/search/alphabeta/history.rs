@@ -157,7 +157,6 @@ impl PawnHistory {
     }
 
     /// 指定した鍵、駒、および到達升に対応する値を返す。
-    #[cfg(test)]
     pub(super) fn read(&self, key: u64, piece: PieceCode, to: Square) -> i32 {
         i32::from(self.values[self.index(key, piece, to)].load(Ordering::Relaxed))
     }

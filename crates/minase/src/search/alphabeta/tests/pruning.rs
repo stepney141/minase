@@ -808,8 +808,7 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
             &board,
             searcher.nnue,
             &searcher.generator,
-            searcher.history,
-            searcher.capture_history,
+            searcher_move_picker_context(searcher, 0),
         ) {
             assert!(!capture && !mv.promote);
             ordered.push(mv);
@@ -999,8 +998,7 @@ fn capture_futility_context(
             board,
             searcher.nnue,
             &searcher.generator,
-            searcher.history,
-            searcher.capture_history,
+            searcher_move_picker_context(searcher, 0),
         ) {
             if mv == target {
                 target_index = Some(index);

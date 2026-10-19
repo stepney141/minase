@@ -301,9 +301,12 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
             for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
-                while let Some((mv, is_capture)) =
-                    picker.next(&position, nnue, &generator, &history, &capture_history)
-                {
+                while let Some((mv, is_capture)) = picker.next(
+                    &position,
+                    nnue,
+                    &generator,
+                    isolated_move_picker_context(&history, &capture_history),
+                ) {
                     if !is_capture {
                         break;
                     }
@@ -380,9 +383,12 @@ pub(super) fn zero_capture_scale_preserves_reference_order() {
             for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
-                while let Some((mv, is_capture)) =
-                    picker.next(&position, nnue, &generator, &history, &capture_history)
-                {
+                while let Some((mv, is_capture)) = picker.next(
+                    &position,
+                    nnue,
+                    &generator,
+                    isolated_move_picker_context(&history, &capture_history),
+                ) {
                     if !is_capture {
                         break;
                     }
