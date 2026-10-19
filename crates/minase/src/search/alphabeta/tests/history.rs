@@ -22,6 +22,10 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
             *value = capture_values[(index + worker) % capture_values.len()];
         }
     }
+    let pawn_piece = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+    let pawn_square = sq(4, 4);
+    histories.continuation.store(0, 1234);
+    histories.pawn.store(0x1234, pawn_piece, pawn_square, 2345);
     for go in 1..=2 {
         let quiet_before = histories.workers.clone();
         let capture_before: Vec<_> = histories
@@ -72,6 +76,12 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
                 );
             }
         }
+        assert_eq!(histories.continuation.read(0), 1234, "go={go}");
+        assert_eq!(
+            histories.pawn.read(0x1234, pawn_piece, pawn_square),
+            2345,
+            "go={go}"
+        );
     }
 }
 
@@ -199,6 +209,8 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &table,
                 &mut histories.workers[0],
                 &mut histories.capture[0],
+                &histories.continuation,
+                &histories.pawn,
             );
             let carried = searcher.history[board.side_to_move().index()]
                 [preferred.from.dense_index()][preferred.to.dense_index()];

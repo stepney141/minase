@@ -8,16 +8,27 @@ use core::cmp::Reverse;
 
 use crate::eval::Nnue;
 use minase_core::MoveGenerator;
+use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::mv::Move;
-use minase_core::piece::PieceCode;
+use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode};
 use minase_core::position::Position;
 
 use super::capture_history::CaptureHistory;
-use super::history::{HISTORY_LIMIT, HistoryTable, history_gravity};
+use super::history::{
+    HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT, LOW_PLY_HISTORY_PLY_COUNT, history_gravity,
+};
 use super::params;
 use super::royal::captures_last_royal;
-use super::searcher::{KILLER_COUNT, Searcher};
+use super::searcher::{KILLER_COUNT, MoveRecord, Searcher};
 use super::see::see_prunes;
+
+/// Continuation historyを更新する文脈の距離と重み。
+/// Stockfishの値を使う（src/search.cpp:2049-2051）。
+const CONTINUATION_WEIGHTS: [(usize, i32); 5] = [(1, 520), (2, 390), (3, 145), (4, 251), (6, 209)];
+
+/// 更新前の正値の数に応じてcontinuation historyへ掛ける倍率。
+/// Stockfishの値を使う（src/search.cpp:2053-2070）。
+const CONTINUATION_MULTIPLIERS: [i32; 6] = [94, 103, 110, 106, 119, 126];
 
 /// Historyの加点と減点の式に渡す調整係数。
 #[derive(Clone, Copy)]
@@ -116,6 +127,67 @@ fn scaled_history_value(value: i32, numerator: i32) -> i32 {
         .expect("scaled history value must fit i32")
 }
 
+/// 静かな手のbutterfly historyと1手前・2手前のcontinuation historyからstatScoreを求める。
+/// 積は`i64`で計算し、整数除算は0方向へ丸める（src/search.cpp:1375-1378）。
+pub(super) fn quiet_stat_score(
+    butterfly: i32,
+    continuation_one: i32,
+    continuation_two: i32,
+) -> i32 {
+    let score = 2252_i64 * i64::from(butterfly)
+        + 1126_i64 * i64::from(continuation_one)
+        + 1093_i64 * i64::from(continuation_two);
+    i32::try_from(score / 1024).expect("quiet statScore must fit i32")
+}
+
+/// 捕獲価値をStockfishの尺度へ1回だけ換算し、捕獲履歴を加えてstatScoreを求める。
+/// 積は`i64`で計算し、整数除算は0方向へ丸める（src/search.cpp:1371-1373）。
+pub(super) fn capture_stat_score(captured_value: i32, pawn: i32, capture_history: i32) -> i32 {
+    let stockfish_value = i64::from(captured_value) * 208 / i64::from(pawn);
+    let score = 873 * stockfish_value / 128 + i64::from(capture_history);
+    i32::try_from(score).expect("capture statScore must fit i32")
+}
+
+/// Continuation historyの6次元の添字を平坦な配列の添字へ写す。
+/// 両方の到達升は現在の手の所有者が後手なら180度回転する。
+pub(super) fn continuation_index(
+    context: MoveRecord,
+    current_piece: PieceCode,
+    current_move: Move,
+    distance: usize,
+) -> usize {
+    let color = current_piece.color().expect("continuation mover color");
+    let context_to = oriented_square(context.mv.to.dense_index(), color);
+    let current_to = oriented_square(current_move.to.dense_index(), color);
+    let context_kind = context
+        .piece
+        .kind()
+        .expect("continuation context piece kind")
+        .index();
+    let current_kind = current_piece
+        .kind()
+        .expect("continuation mover piece kind")
+        .index();
+    (((((usize::from(context.captured.is_some()) * COLOR_COUNT
+        + usize::from(distance.is_multiple_of(2)))
+        * PIECE_KIND_COUNT
+        + context_kind)
+        * BOARD_SQUARE_COUNT
+        + context_to)
+        * PIECE_KIND_COUNT
+        + current_kind)
+        * BOARD_SQUARE_COUNT)
+        + current_to
+}
+
+fn oriented_square(square: usize, color: Color) -> usize {
+    if color == Color::White {
+        BOARD_SQUARE_COUNT - 1 - square
+    } else {
+        square
+    }
+}
+
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
     pub(super) fn order_moves(
@@ -158,6 +230,110 @@ impl Searcher<'_> {
         }
     }
 
+    /// 指定plyの手を、指定した距離の文脈で引いたcontinuation historyの値を返す。
+    /// 根より前またはnull moveの文脈は`None`とする。
+    pub(super) fn continuation_value(
+        &self,
+        ply: u32,
+        piece: PieceCode,
+        mv: Move,
+        distance: usize,
+    ) -> Option<i32> {
+        let context_ply = ply.checked_sub(distance as u32)? as usize;
+        let path = self
+            .path_moves
+            .get(context_ply)
+            .expect("continuation context ply must exist in the path");
+        path.record.map(|context| {
+            self.continuation_history
+                .read(continuation_index(context, piece, mv, distance))
+        })
+    }
+
+    /// 指定plyで指す手の5文脈へcontinuation historyの更新量を与える。
+    ///
+    /// 更新前の正値の数に応じて倍率を選び、1手前には73を加える。
+    /// 文脈を持たない距離は参照も更新もしない（src/search.cpp:2049-2073）。
+    pub(super) fn update_continuation(&self, ply: u32, piece: PieceCode, mv: Move, bonus: i32) {
+        let mut positive_count = 0;
+        for (distance, weight) in CONTINUATION_WEIGHTS {
+            let Some(context_ply) = ply.checked_sub(distance as u32) else {
+                continue;
+            };
+            let path = self
+                .path_moves
+                .get(context_ply as usize)
+                .expect("continuation context ply must exist in the path");
+            let Some(context) = path.record else {
+                continue;
+            };
+            let index = continuation_index(context, piece, mv, distance);
+            if self.continuation_history.read(index) > 0 {
+                positive_count += 1;
+            }
+            let scaled = i64::from(bonus)
+                * i64::from(weight)
+                * i64::from(CONTINUATION_MULTIPLIERS[positive_count])
+                / 65_536;
+            let update = i32::try_from(scaled).expect("continuation update must fit i32")
+                + 73 * i32::from(distance == 1);
+            self.continuation_history.update(index, update);
+        }
+    }
+
+    /// Butterfly、low ply、continuation、およびpawn historyへ静かな手の更新量を与える。
+    /// 各倍率はStockfishの値を使う（src/search.cpp:2077-2089）。
+    pub(super) fn update_quiet_histories(
+        &mut self,
+        ply: u32,
+        piece: PieceCode,
+        mv: Move,
+        bonus: i32,
+    ) {
+        let color = piece.color().expect("quiet history mover color").index();
+        let from = mv.from.dense_index();
+        let to = mv.to.dense_index();
+        let butterfly = &mut self.history[color][from][to];
+        *butterfly = history_gravity(*butterfly, bonus, HISTORY_LIMIT);
+
+        if (ply as usize) < LOW_PLY_HISTORY_PLY_COUNT {
+            let low_ply = &mut self.low_ply_history[ply as usize][from][to];
+            let update = scaled_history_value(bonus, 712);
+            *low_ply = history_gravity(i32::from(*low_ply), update, LOW_PLY_HISTORY_LIMIT) as i16;
+        }
+
+        self.update_continuation(ply, piece, mv, scaled_history_value(bonus, 750));
+
+        let pawn_update = scaled_history_value(bonus, if bonus > -4 { 1104 } else { 459 });
+        self.pawn_history
+            .update(self.pawn_keys[ply as usize], piece, mv.to, pawn_update);
+    }
+
+    /// 実際に読む手のstatScoreを、着手前の局面と履歴表から求める。
+    pub(super) fn move_stat_score(
+        &self,
+        position: &Position,
+        mv: Move,
+        capture: bool,
+        ply: u32,
+    ) -> i32 {
+        if capture {
+            capture_stat_score(
+                captured_value(position, self.nnue, mv),
+                self.nnue.pawn_value(),
+                self.capture_history.read(position, self.nnue, mv),
+            )
+        } else {
+            let piece = piece_at_for_ordering(position, mv.from);
+            quiet_stat_score(
+                self.history[piece.color().expect("quiet statScore mover color").index()]
+                    [mv.from.dense_index()][mv.to.dense_index()],
+                self.continuation_value(ply, piece, mv, 1).unwrap_or(0),
+                self.continuation_value(ply, piece, mv, 2).unwrap_or(0),
+            )
+        }
+    }
+
     /// βカットを起こした最善手へ加点し、探索済みの手へ減点する。
     ///
     /// Butterfly historyの上限は7183とし、捕獲履歴の上限は10692とする。
@@ -173,21 +349,26 @@ impl Searcher<'_> {
         searched_captures: &[Move],
         updates: HistoryUpdates,
     ) {
-        let color = position.side_to_move().index();
-        let mut update_quiet = |mv: Move, bonus: i32| {
-            let value = &mut self.history[color][mv.from.dense_index()][mv.to.dense_index()];
-            *value = history_gravity(*value, bonus, HISTORY_LIMIT);
-        };
-
+        let ply = u32::try_from(self.path_moves.len()).expect("search ply must fit u32");
         if best_capture {
             self.capture_history
                 .update(position, self.nnue, best, updates.capture_bonus());
         } else {
-            update_quiet(best, updates.quiet_bonus());
+            self.update_quiet_histories(
+                ply,
+                piece_at_for_ordering(position, best.from),
+                best,
+                updates.quiet_bonus(),
+            );
             let mut malus = updates.quiet_malus();
             for &mv in searched_quiets {
                 malus = updates.decay_quiet_malus(malus);
-                update_quiet(mv, -malus);
+                self.update_quiet_histories(
+                    ply,
+                    piece_at_for_ordering(position, mv.from),
+                    mv,
+                    -malus,
+                );
             }
         }
 
@@ -448,16 +629,21 @@ pub(super) struct MoveOrderKey {
 /// [`MovePicker::next`]が捕獲手かどうかを分類するためにこの関数を使うのは置換表の記録手だけである。
 /// 捕獲段では捕獲専用生成が分類を保証し、この関数は整列キーの取得に使う。
 pub(super) fn move_order_key(position: &Position, nnue: &Nnue, mv: Move) -> Option<MoveOrderKey> {
-    let captured_value: i32 = position
-        .captured_squares(mv)
-        .into_iter()
-        .flatten()
-        .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
-        .sum();
+    let captured_value = captured_value(position, nnue, mv);
     (captured_value > 0).then(|| MoveOrderKey {
         captured_value,
         attacker_value: nnue.piece_value(piece_at_for_ordering(position, mv.from)),
     })
+}
+
+/// 2枚取りを含む、手が取る駒の価値の合計を返す。
+fn captured_value(position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+    position
+        .captured_squares(mv)
+        .into_iter()
+        .flatten()
+        .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
+        .sum()
 }
 
 /// 指定升の駒コードを返す。

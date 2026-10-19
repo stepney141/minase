@@ -120,8 +120,7 @@ impl Searcher<'_> {
         // 2手先だけを初期化し、子の手数の数は兄弟の探索と再探索の間で保持する。
         // Stockfish src/search.cpp:829。
         self.cutoff_counts[(ply + 2) as usize] = 0;
-        // 子が直前の手のstatScoreとして読む値は、後続項目で手ごとに書く。
-        // Stockfish src/search.cpp:828。
+        // 手を読む前に書くstatScoreをノードの開始時に0へ戻す（Stockfish src/search.cpp:828）。
         self.stat_scores[ply as usize] = 0;
         // 子のnull move打ち切り回数は、兄弟とその再探索の間だけ保持する。
         // Stockfish src/search.cpp:830。
@@ -542,6 +541,9 @@ impl Searcher<'_> {
             } else {
                 depth - 1
             };
+            // 子がこのノードへ至った手の値として読むため、実際に読むすべての手で記録する。
+            // Stockfish src/search.cpp:1371-1378。
+            self.stat_scores[ply as usize] = self.move_stat_score(position, mv, capture, ply);
             let alpha_before = alpha;
             let score = self.search_move(
                 position,

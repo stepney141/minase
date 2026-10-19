@@ -666,6 +666,26 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
+    for index in [
+        0,
+        histories.continuation.values().len() / 2,
+        histories.continuation.values().len() - 1,
+    ] {
+        assert_eq!(
+            histories.continuation.values()[index].load(AtomicOrdering::Relaxed),
+            -586
+        );
+    }
+    for index in [
+        0,
+        histories.pawn.values().len() / 2,
+        histories.pawn.values().len() - 1,
+    ] {
+        assert_eq!(
+            histories.pawn.values()[index].load(AtomicOrdering::Relaxed),
+            -1338
+        );
+    }
     for history in &mut histories.workers {
         for value in history.iter_mut().flatten().flatten() {
             *value = -123;
@@ -674,6 +694,10 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
     for history in &mut histories.capture {
         history.values_mut().fill(456);
     }
+    let pawn_piece = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+    let pawn_square = sq(4, 4);
+    histories.continuation.store(0, 789);
+    histories.pawn.store(0x1234, pawn_piece, pawn_square, 987);
     histories.clear();
     assert_eq!(histories.workers.len(), 4);
     assert_eq!(histories.capture.len(), 4);
@@ -690,11 +714,14 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
+    assert_eq!(histories.continuation.read(0), -586);
+    assert_eq!(histories.pawn.read(0x1234, pawn_piece, pawn_square), -1338);
 
-    for count in [1, 2, 4] {
+    for (count, pawn_entries) in [(1, 1024), (2, 2048), (3, 4096), (4, 4096)] {
         let histories = crate::search::HistoryTables::new(worker_count(count));
         assert_eq!(histories.workers.len(), count);
         assert_eq!(histories.capture.len(), count);
+        assert_eq!(histories.pawn.entry_count(), pawn_entries);
         assert!(
             histories.workers.iter().all(|history| history
                 .iter()

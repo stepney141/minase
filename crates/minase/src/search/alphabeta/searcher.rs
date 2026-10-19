@@ -7,7 +7,7 @@ use crate::eval::Nnue;
 use crate::eval::nnue::accumulator::NnueAccumulator;
 use crate::search::events::StopReason;
 use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
-use minase_core::board::Square;
+use minase_core::board::{BOARD_SQUARE_COUNT, Square};
 use minase_core::mv::Move;
 use minase_core::piece::{PieceCode, PieceKind};
 use minase_core::position::{Position, Undo};
@@ -16,7 +16,10 @@ use minase_core::{Color, MoveGenerator, move_was_attacking, repetition_key};
 
 use super::capture_history::{CaptureHistory, captured_kind_for_history};
 use super::correction::{CorrectionTable, material_key};
-use super::history::{HistoryTable, pawn_key};
+use super::history::{
+    ContinuationHistory, HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT,
+    LowPlyHistory, PawnHistory, pawn_key,
+};
 use super::ordering::MovePicker;
 use super::params;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
@@ -47,6 +50,8 @@ pub(super) fn new_searcher<'a>(
     tt: &'a TranspositionTable,
     history: &'a mut HistoryTable,
     capture_history: &'a mut CaptureHistory,
+    continuation_history: &'a ContinuationHistory,
+    pawn_history: &'a PawnHistory,
 ) -> Searcher<'a> {
     let root_accumulator = nnue.refresh_accumulator(position);
     let root_pawn_key = pawn_key(position);
@@ -101,6 +106,12 @@ pub(super) fn new_searcher<'a>(
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
         capture_history,
+        continuation_history,
+        pawn_history,
+        low_ply_history: Box::new(
+            [[[LOW_PLY_HISTORY_INITIAL; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT];
+                LOW_PLY_HISTORY_PLY_COUNT],
+        ),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     }
@@ -261,6 +272,12 @@ pub(super) struct Searcher<'a> {
     pub(super) history: &'a mut HistoryTable,
     /// ワーカー番号ごとに探索間で持ち越す捕獲履歴。
     pub(super) capture_history: &'a mut CaptureHistory,
+    /// 探索チームで共有し、対局内で持ち越すcontinuation history。
+    pub(super) continuation_history: &'a ContinuationHistory,
+    /// 探索チームで共有し、対局内で持ち越すpawn history。
+    pub(super) pawn_history: &'a PawnHistory,
+    /// 探索ごとに102で初期化する、根に近い手のワーカー専用履歴。
+    pub(super) low_ply_history: Box<LowPlyHistory>,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     pub(super) killers: KillerTable,
     /// 置換表。

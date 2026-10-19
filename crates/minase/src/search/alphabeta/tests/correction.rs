@@ -44,6 +44,7 @@ fn attacked_board() -> Position {
 #[test]
 fn correction_negamax_update_conditions() {
     let nnue = test_nnue();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -111,6 +112,8 @@ fn correction_negamax_update_conditions() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         // 深さ2ではfollowPVのPVノードとしてS1を除き、補正表の更新条件だけを検査する。
         if depth == 2 {
@@ -151,6 +154,7 @@ fn correction_negamax_update_conditions() {
 fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let nnue = test_nnue();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for score in [
         MATE_THRESHOLD,
         -MATE_THRESHOLD,
@@ -189,6 +193,8 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         let before = searcher.correction.read(Color::Black, key);
@@ -230,6 +236,8 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         let before = searcher.correction.read(Color::Black, key);
@@ -244,6 +252,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
 #[test]
 fn correction_changes_futility_estimate() {
     let nnue = test_nnue();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -273,6 +282,8 @@ fn correction_changes_futility_estimate() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         table.store(
             search_key(&board),
@@ -310,6 +321,7 @@ fn correction_changes_futility_estimate() {
 #[test]
 fn correction_search_move_and_null_move_propagate_material_keys() {
     let nnue = test_nnue();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -334,6 +346,8 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         assert_eq!(searcher.material_keys[0], root_key);
         let mut moves = Vec::new();
@@ -376,6 +390,8 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &table,
         &mut butterfly_history,
         &mut capture_history,
+        &shared_histories.continuation,
+        &shared_histories.pawn,
     );
     searcher.material_keys[1] = !root_key;
     assert!(

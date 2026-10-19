@@ -394,6 +394,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interruption() {
     let root = null_repetition_fixture();
     let nnue = test_nnue();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for nested in [false, true] {
         let external_stop = AtomicBool::new(false);
         let shared = SharedSearch {
@@ -422,6 +423,8 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         searcher.seek_mate = true;
         if nested {

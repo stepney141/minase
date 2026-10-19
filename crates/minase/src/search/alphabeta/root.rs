@@ -243,6 +243,9 @@ impl Searcher<'_> {
 
         for (index, mv) in moves.into_iter().enumerate() {
             self.move_counts[0] = index + 1;
+            // 根も実際に読む各手のstatScoreを子の探索前に記録する（src/search.cpp:1371-1378）。
+            let capture = super::ordering::move_order_key(&position, self.nnue, mv).is_some();
+            self.stat_scores[0] = self.move_stat_score(&position, mv, capture, 0);
             let before = self.nodes;
             let score = self.search_move(
                 &mut position,

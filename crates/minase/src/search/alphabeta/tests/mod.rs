@@ -14,6 +14,7 @@ mod correction;
 mod draw_value;
 mod handle;
 mod history;
+mod history_forms;
 mod improving;
 mod late_move;
 mod limits;
@@ -394,6 +395,7 @@ fn with_draw_value_root_searcher(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -405,6 +407,8 @@ fn with_draw_value_root_searcher(
         &table,
         &mut butterfly_history,
         &mut capture_history,
+        &shared_histories.continuation,
+        &shared_histories.pawn,
     );
     test(&mut searcher);
 }
@@ -447,6 +451,7 @@ fn run_quiesce(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -460,6 +465,8 @@ fn run_quiesce(
         table,
         &mut butterfly_history,
         &mut capture_history,
+        &shared_histories.continuation,
+        &shared_histories.pawn,
     );
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
@@ -504,6 +511,7 @@ fn run_configured_negamax(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -517,6 +525,8 @@ fn run_configured_negamax(
         table,
         &mut butterfly_history,
         &mut capture_history,
+        &shared_histories.continuation,
+        &shared_histories.pawn,
     );
     set_test_path_ply(&mut searcher, ply);
     configure(&mut searcher);

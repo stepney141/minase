@@ -222,6 +222,8 @@ pub(in crate::search) fn run_search_team(
         .iter_mut()
         .zip(&mut histories.capture)
         .collect();
+    let continuation_history = &histories.continuation;
+    let pawn_history = &histories.pawn;
     let worker_outcomes = run_worker_team(
         &mut worker_histories,
         &shared,
@@ -241,6 +243,8 @@ pub(in crate::search) fn run_search_team(
                     tt,
                     history,
                     capture_history,
+                    continuation_history,
+                    pawn_history,
                     events,
                     ponder,
                     byoyomi_clock(limits).is_some(),
@@ -260,6 +264,8 @@ pub(in crate::search) fn run_search_team(
                     tt,
                     history,
                     capture_history,
+                    continuation_history,
+                    pawn_history,
                 )
             }
         },

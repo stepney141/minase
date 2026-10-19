@@ -209,6 +209,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let position = Position::initial();
     let nnue = test_nnue();
     let table = small_tt();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let stable_boundary = 1100 * 100 / params::iteration_ratio() as u64;
     let hard_boundary = 1400 * 100 / params::iteration_ratio() as u64;
@@ -266,6 +267,8 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
+            &shared_histories.continuation,
+            &shared_histories.pawn,
         );
         searcher.ponder_iteration = Some(PonderIteration {
             started: ms(t),
@@ -346,80 +349,83 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
         let roots = legal_moves(&position);
         let table = small_tt();
         let completed_depth = AtomicU64::new(0);
-        let outcomes = run_worker_team(
-            &mut crate::search::HistoryTables::new(worker_count(threads)).workers,
-            &shared,
-            |worker_index, history| {
-                let mut captures = empty_capture_history();
-                let completed = run_auxiliary_worker(
-                    test_nnue(),
-                    &position,
-                    engine_rules(),
-                    SearchRepetition::R1 {
-                        consecutive_attacking_moves: [0; 2],
-                    },
-                    DRAW_SCORE,
-                    &roots,
-                    &[],
-                    1,
-                    worker_index.max(1),
-                    &shared,
-                    &table,
-                    history,
-                    &mut captures,
-                );
-                if worker_index != 0 {
-                    return completed;
-                }
-                assert_eq!(completed.result.depth, 1);
-                completed_depth.store(u64::from(completed.result.depth), AtomicOrdering::Relaxed);
-                let mut searcher = new_searcher(
-                    test_nnue(),
-                    &position,
-                    engine_rules(),
-                    SearchRepetition::R1 {
-                        consecutive_attacking_moves: [0; 2],
-                    },
-                    DRAW_SCORE,
-                    &[],
-                    &shared,
-                    &table,
-                    history,
-                    &mut captures,
-                );
-                searcher.ponder_iteration = Some(PonderIteration {
-                    started: clock.elapsed(),
-                    stable: false,
-                    checked: false,
-                    budget: TimeBudget {
-                        byoyomi_period: false,
-                        soft: Duration::from_millis(300),
-                        hard: Duration::from_millis(300),
-                    },
-                });
-                clock.set(Duration::from_millis(1000));
-                let (_sender, events) = mpsc::channel();
-                let notification = SearchHandle {
-                    events,
-                    clock: clock.clone(),
-                    hit_ns: Arc::clone(&hit_ns),
-                    stop: Arc::new(AtomicBool::new(false)),
-                    thread: None,
-                };
-                notification.ponderhit();
-                clock.set(Duration::from_millis(1010));
-                // 的中後も次の検査点までは続け、その検査点でhardを使い切らず止める。
-                searcher.nodes = STOP_CHECK_INTERVAL - 1;
-                assert!(searcher.enter_node());
-                assert!(!searcher.enter_node());
-                assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
-                crate::search::alphabeta::deepening::main_worker_outcome(
-                    &searcher,
-                    completed.result,
-                    completed.pv,
-                )
-            },
-        );
+        let mut histories = crate::search::HistoryTables::new(worker_count(threads));
+        let continuation_history = &histories.continuation;
+        let pawn_history = &histories.pawn;
+        let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+            let mut captures = empty_capture_history();
+            let completed = run_auxiliary_worker(
+                test_nnue(),
+                &position,
+                engine_rules(),
+                SearchRepetition::R1 {
+                    consecutive_attacking_moves: [0; 2],
+                },
+                DRAW_SCORE,
+                &roots,
+                &[],
+                1,
+                worker_index.max(1),
+                &shared,
+                &table,
+                history,
+                &mut captures,
+                continuation_history,
+                pawn_history,
+            );
+            if worker_index != 0 {
+                return completed;
+            }
+            assert_eq!(completed.result.depth, 1);
+            completed_depth.store(u64::from(completed.result.depth), AtomicOrdering::Relaxed);
+            let mut searcher = new_searcher(
+                test_nnue(),
+                &position,
+                engine_rules(),
+                SearchRepetition::R1 {
+                    consecutive_attacking_moves: [0; 2],
+                },
+                DRAW_SCORE,
+                &[],
+                &shared,
+                &table,
+                history,
+                &mut captures,
+                continuation_history,
+                pawn_history,
+            );
+            searcher.ponder_iteration = Some(PonderIteration {
+                started: clock.elapsed(),
+                stable: false,
+                checked: false,
+                budget: TimeBudget {
+                    byoyomi_period: false,
+                    soft: Duration::from_millis(300),
+                    hard: Duration::from_millis(300),
+                },
+            });
+            clock.set(Duration::from_millis(1000));
+            let (_sender, events) = mpsc::channel();
+            let notification = SearchHandle {
+                events,
+                clock: clock.clone(),
+                hit_ns: Arc::clone(&hit_ns),
+                stop: Arc::new(AtomicBool::new(false)),
+                thread: None,
+            };
+            notification.ponderhit();
+            clock.set(Duration::from_millis(1010));
+            // 的中後も次の検査点までは続け、その検査点でhardを使い切らず止める。
+            searcher.nodes = STOP_CHECK_INTERVAL - 1;
+            assert!(searcher.enter_node());
+            assert!(!searcher.enter_node());
+            assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+            crate::search::alphabeta::deepening::main_worker_outcome(
+                &searcher,
+                completed.result,
+                completed.pv,
+            )
+        });
         assert_eq!(shared.reason(), StopReason::SoftLimit);
         assert!(
             u64::from(select_worker_outcome(&outcomes).result.depth)
@@ -453,35 +459,12 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             }),
         };
         let completed = std::sync::Barrier::new(2);
-        let outcomes = run_worker_team(
-            &mut crate::search::HistoryTables::new(worker_count(2)).workers,
-            &shared,
-            |worker_index, history| {
-                if worker_index == 1 {
-                    let outcome = run_auxiliary_worker(
-                        nnue,
-                        &position,
-                        engine_rules(),
-                        SearchRepetition::R1 {
-                            consecutive_attacking_moves: [0; 2],
-                        },
-                        DRAW_SCORE,
-                        &roots,
-                        &[],
-                        2,
-                        1,
-                        &shared,
-                        &table,
-                        history,
-                        &mut empty_capture_history(),
-                    );
-                    completed.wait();
-                    return outcome;
-                }
-                let mut butterfly_history =
-                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-                let mut capture_history = empty_capture_history();
-                let mut searcher = new_searcher(
+        let mut histories = crate::search::HistoryTables::new(worker_count(2));
+        let continuation_history = &histories.continuation;
+        let pawn_history = &histories.pawn;
+        let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+            if worker_index == 1 {
+                let outcome = run_auxiliary_worker(
                     nnue,
                     &position,
                     engine_rules(),
@@ -489,53 +472,77 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         consecutive_attacking_moves: [0; 2],
                     },
                     DRAW_SCORE,
+                    &roots,
                     &[],
+                    2,
+                    1,
                     &shared,
                     &table,
-                    &mut butterfly_history,
-                    &mut capture_history,
+                    history,
+                    &mut empty_capture_history(),
+                    continuation_history,
+                    pawn_history,
                 );
-                if targeted_with_remaining_time {
-                    // 持ち時間期では対象の探索にも当て直しを適用する。
-                    searcher.root_results =
-                        Some(crate::search::alphabeta::root::RootResults::default());
-                }
-                searcher.ponder_iteration = Some(PonderIteration {
-                    started: Duration::from_millis(
-                        1400 * 100 / params::iteration_ratio() as u64 + 1,
-                    ),
-                    stable: false,
-                    checked: false,
-                    budget: TimeBudget {
-                        byoyomi_period: false,
-                        soft: Duration::from_millis(100),
-                        hard: Duration::from_millis(400),
-                    },
-                });
                 completed.wait();
-                hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
-                assert!(
-                    searcher
-                        .search_iteration(&position, &roots, 1, None)
-                        .is_none()
-                );
-                assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
-                WorkerOutcome {
-                    partial_score: None,
-                    worker_index: 0,
-                    result: SearchResult {
-                        #[cfg(feature = "search-stats")]
-                        stats: crate::search::SearchStats::default(),
-                        best_move: roots[0],
-                        score: 0,
-                        depth: 0,
-                        nodes: 0,
-                    },
-                    pv: vec![roots[0]],
-                    nodes: searcher.nodes,
-                }
-            },
-        );
+                return outcome;
+            }
+            let mut butterfly_history =
+                Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+            let mut capture_history = empty_capture_history();
+            let mut searcher = new_searcher(
+                nnue,
+                &position,
+                engine_rules(),
+                SearchRepetition::R1 {
+                    consecutive_attacking_moves: [0; 2],
+                },
+                DRAW_SCORE,
+                &[],
+                &shared,
+                &table,
+                &mut butterfly_history,
+                &mut capture_history,
+                continuation_history,
+                pawn_history,
+            );
+            if targeted_with_remaining_time {
+                // 持ち時間期では対象の探索にも当て直しを適用する。
+                searcher.root_results =
+                    Some(crate::search::alphabeta::root::RootResults::default());
+            }
+            searcher.ponder_iteration = Some(PonderIteration {
+                started: Duration::from_millis(1400 * 100 / params::iteration_ratio() as u64 + 1),
+                stable: false,
+                checked: false,
+                budget: TimeBudget {
+                    byoyomi_period: false,
+                    soft: Duration::from_millis(100),
+                    hard: Duration::from_millis(400),
+                },
+            });
+            completed.wait();
+            hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
+            assert!(
+                searcher
+                    .search_iteration(&position, &roots, 1, None)
+                    .is_none()
+            );
+            assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+            WorkerOutcome {
+                partial_score: None,
+                worker_index: 0,
+                result: SearchResult {
+                    #[cfg(feature = "search-stats")]
+                    stats: crate::search::SearchStats::default(),
+                    best_move: roots[0],
+                    score: 0,
+                    depth: 0,
+                    nodes: 0,
+                },
+                pv: vec![roots[0]],
+                nodes: searcher.nodes,
+            }
+        });
         let adopted = select_worker_outcome(&outcomes);
         assert_eq!(adopted.worker_index, 1);
         assert_eq!(adopted.result.depth, 2);
@@ -583,6 +590,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     let position = Position::initial();
     let nnue = test_nnue();
     let table = small_tt();
+    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     for (remaining, byoyomi, depth, nodes, movetime, recheck) in [
         (0, 10_030, None, None, None, false),
@@ -628,6 +636,8 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     &table,
                     &mut history,
                     &mut capture_history,
+                    &shared_histories.continuation,
+                    &shared_histories.pawn,
                 );
                 searcher.ponder_iteration = Some(PonderIteration {
                     started: ms(90_000),
