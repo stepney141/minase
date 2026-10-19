@@ -408,7 +408,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
         let table = small_tt();
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &root,

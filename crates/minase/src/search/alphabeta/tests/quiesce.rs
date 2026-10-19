@@ -399,9 +399,15 @@ fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
             [0, 5, 4, 1, 2, 3],
         ),
     ] {
-        let mut history = CaptureHistory::new();
+        let mut history = empty_capture_history();
         if let Some((winner, loser, depth)) = cutoff {
-            history.record_cutoff(&board, nnue, moves[winner], &[moves[loser]], depth);
+            let bonus = if depth == 1 {
+                1
+            } else {
+                super::super::capture_history::CAPTURE_HISTORY_LIMIT
+            };
+            history.update(&board, nnue, moves[winner], bonus);
+            history.update(&board, nnue, moves[loser], -bonus);
             assert!(history.read(&board, nnue, moves[winner]) > 0, "{case}");
             assert!(history.read(&board, nnue, moves[loser]) < 0, "{case}");
             if depth == 1 {
@@ -445,7 +451,7 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
         .collect();
     order_captures(&mut reference);
     let reference: Vec<_> = reference.into_iter().map(|(mv, _)| mv).collect();
-    let history = CaptureHistory::new();
+    let history = empty_capture_history();
     assert_eq!(
         captures_with_history(&board, nnue, &history, None),
         reference
@@ -466,11 +472,15 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
         .collect();
     assert_eq!(ordinary.len(), 2);
     for reward_special in [true, false] {
-        let mut history = CaptureHistory::new();
+        let mut history = empty_capture_history();
         if reward_special {
-            history.record_cutoff(&board, nnue, lion_moves[0], &ordinary, 1);
+            history.update(&board, nnue, lion_moves[0], 1);
+            for &mv in &ordinary {
+                history.update(&board, nnue, mv, -1);
+            }
         } else {
-            history.record_cutoff(&board, nnue, ordinary[1], &[lion_moves[0]], 1);
+            history.update(&board, nnue, ordinary[1], 1);
+            history.update(&board, nnue, lion_moves[0], -1);
         }
         let expected: Vec<_> = if reward_special {
             lion_moves.iter().chain(&ordinary).copied().collect()

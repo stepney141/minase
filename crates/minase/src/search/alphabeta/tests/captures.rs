@@ -1,7 +1,6 @@
 //! 静止探索の候補を捕獲価値の降順に群へ分け、同じ整列キーの手は生成順を保つ。
 
 use super::*;
-use crate::search::alphabeta::capture_history::CaptureHistory;
 use minase_core::test_util::{CAPTURE_EDGE_SFENS, capture_test_positions, capture_test_rules};
 
 fn public_reference(
@@ -41,7 +40,7 @@ fn reference(
 fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let positions = capture_test_positions();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -109,7 +108,7 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
 fn double_capture_survives_when_each_victim_is_at_the_threshold() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     let threshold = nnue.pawn_value();
@@ -136,7 +135,7 @@ fn double_capture_survives_when_each_victim_is_at_the_threshold() {
 fn rising_threshold_preserves_the_surviving_sequence() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let mut buffers = QsearchBuffers::default();
     for position in capture_test_positions() {
@@ -171,7 +170,7 @@ fn rising_threshold_preserves_the_surviving_sequence() {
 fn reset_discards_targets_from_partially_consumed_node() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let positions = [
         position(
@@ -228,7 +227,7 @@ fn reset_discards_targets_from_partially_consumed_node() {
 fn lion_capture_filter_preserves_remaining_tt_variants() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -292,7 +291,7 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
 // 安定性と置換表の手の扱いを含めて、公開捕獲列の安定整列と一致する。
 #[test]
 fn main_picker_captures_match_stable_reference_for_all_rules() {
-    let capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let nnue = test_nnue();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
@@ -353,7 +352,7 @@ fn initialized_candidate_presence_matches_filtered_reference() {
 /// 捕獲履歴の尺度が0なら、捕獲価値の降順、攻撃駒価値の昇順、生成順に整列する。
 #[cfg(feature = "tuning")]
 pub(super) fn zero_capture_scale_preserves_reference_order() {
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let mut capture_history = empty_capture_history();
     let nnue = test_nnue();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
@@ -362,8 +361,20 @@ pub(super) fn zero_capture_scale_preserves_reference_order() {
             let ordered = public_reference(&position, &generator, nnue, None);
             // 同順位も含む基準列に、正負の非ゼロ履歴を付けてから比較する。
             for pair in ordered.chunks(2) {
-                let earlier: Vec<_> = pair.iter().skip(1).map(|&(mv, _)| mv).collect();
-                capture_history.record_cutoff(&position, nnue, pair[0].0, &earlier, 256);
+                capture_history.update(
+                    &position,
+                    nnue,
+                    pair[0].0,
+                    super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+                );
+                for &(mv, _) in pair.iter().skip(1) {
+                    capture_history.update(
+                        &position,
+                        nnue,
+                        mv,
+                        -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+                    );
+                }
                 assert_ne!(capture_history.read(&position, nnue, pair[0].0), 0);
             }
             for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {

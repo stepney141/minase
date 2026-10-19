@@ -1,14 +1,13 @@
 //! 着手の順序付けを検査する。
 
 use super::*;
-use crate::search::alphabeta::capture_history::CaptureHistory;
 
 /// 捕獲手と非捕獲手のどちらも、置換表の記録手は正しく分類されて先頭に出る。
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
     let nnue = test_nnue();
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture = Move {
@@ -166,7 +165,7 @@ impl ReferenceMovePicker {
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
     let nnue = test_nnue();
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for rules in minase_core::test_util::capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -268,7 +267,7 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
     let nnue = test_nnue();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let capture_history = CaptureHistory::new();
+    let capture_history = empty_capture_history();
     std::iter::from_fn(|| picker.next(board, nnue, &generator, &history, &capture_history))
         .collect()
 }

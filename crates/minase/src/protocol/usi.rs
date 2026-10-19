@@ -2507,7 +2507,8 @@ mod tests {
                     );
                 }
                 let histories = protocol.histories.as_ref().unwrap();
-                let expected = if clears { 0 } else { -100 };
+                let quiet_expected = if clears { -5 } else { -100 };
+                let capture_expected = if clears { -742 } else { -100 };
                 assert_eq!(histories.workers.len(), 2);
                 assert_eq!(histories.capture.len(), 2);
                 assert!(histories.workers.iter().all(|history| {
@@ -2515,14 +2516,14 @@ mod tests {
                         .iter()
                         .flatten()
                         .flatten()
-                        .all(|&value| value == expected)
+                        .all(|&value| value == quiet_expected)
                 }));
-                assert!(
-                    histories
-                        .capture
+                assert!(histories.capture.iter().all(|history| {
+                    history
+                        .values()
                         .iter()
-                        .all(|history| history.values().iter().all(|&value| value == expected))
-                );
+                        .all(|&value| value == capture_expected)
+                }));
             }
         }
     }

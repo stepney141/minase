@@ -100,7 +100,8 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
         }
         for (worker, history) in histories.capture.iter_mut().enumerate() {
             let depth = 30 + worker as u32;
-            history.record_cutoff(&board, nnue, mv, &[], depth);
+            history.values_mut().fill(0);
+            history.update(&board, nnue, mv, (depth * depth) as i32);
             // 深さ30,31,32,33の二乗は900,961,1024,1089。
             assert_eq!(
                 history.read(&board, nnue, mv),
@@ -345,38 +346,24 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     assert_eq!(first, second);
 }
 
-/// 候補8の更新式は両端で飽和し、負の重力項も0方向へ丸める。
+/// 重力式は更新量を先に切り詰め、正負の値を常に表の範囲内へ保つ。
 #[test]
 fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
-    let board = Position::initial();
-    let moves = legal_moves(&board);
-    let winner = moves[0];
-    let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
-    let side = board.side_to_move().index();
-    let limit = params::history_limit();
-    with_root_searcher(&board, &[], |searcher| {
-        for old in [-limit, -limit / 2 - 1, -10, 0, 10, limit] {
-            for depth in [0, 3, 256] {
-                searcher.history[side][winner.from.dense_index()][winner.to.dense_index()] = old;
-                searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()] = old;
-                searcher.history[side ^ 1][0][0] = 123;
-                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
-                let bonus =
-                    searcher.history[side][winner.from.dense_index()][winner.to.dense_index()];
-                let malus =
-                    searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()];
-                assert!((old..=limit).contains(&bonus));
-                assert!((-limit..=old).contains(&malus));
-                if depth == 0 || params::history_bonus_scale() == 0 {
-                    assert_eq!(bonus, old);
-                }
-                if depth == 0 || params::history_malus_scale() == 0 {
-                    assert_eq!(malus, old);
-                }
-                assert_eq!(searcher.history[side ^ 1][0][0], 123);
-            }
+    let limit = super::super::history::HISTORY_LIMIT;
+    for old in [-limit, -limit / 2 - 1, -10, 0, 10, limit] {
+        for bonus in [-(limit + 1), -limit, -9, 0, 9, limit, limit + 1] {
+            let updated = super::super::history::history_gravity(old, bonus, limit);
+            assert!((-limit..=limit).contains(&updated));
         }
-    });
+    }
+    assert_eq!(
+        super::super::history::history_gravity(0, limit + 1, limit),
+        limit
+    );
+    assert_eq!(
+        super::super::history::history_gravity(0, -(limit + 1), limit),
+        -limit
+    );
 }
 
 fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(Move, bool)> {
@@ -504,20 +491,30 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                 .count();
             assert_eq!(searcher.nodes, searched as u64);
             assert_eq!(searcher.killers[0][0], Some(winner));
-            for (index, &(mv, capture)) in moves.iter().enumerate() {
-                let expected = if capture || index > cutoff_index || quiet_see_pruned[index] {
-                    0
-                } else if mv == winner {
-                    params::history_bonus_scale()
+            let mut alpha = -10;
+            let mut penalized = Vec::new();
+            for (index, &(mv, capture)) in moves[..cutoff_index].iter().enumerate() {
+                if quiet_see_pruned[index] {
+                    continue;
+                }
+                if !capture && index + 1 <= 32 && 0 <= alpha {
+                    penalized.push(mv);
+                }
+                alpha = alpha.max(0);
+            }
+            for &(mv, _) in &moves {
+                let actual = searcher.history[board.side_to_move().index()][mv.from.dense_index()]
+                    [mv.to.dense_index()];
+                if mv == winner {
+                    assert!(actual > 0, "winner={winner:?}, move={mv:?}");
+                } else if penalized
+                    .iter()
+                    .any(|other| other.from == mv.from && other.to == mv.to)
+                {
+                    assert!(actual < 0, "winner={winner:?}, move={mv:?}");
                 } else {
-                    -params::history_malus_scale()
-                };
-                assert_eq!(
-                    searcher.history[board.side_to_move().index()][mv.from.dense_index()]
-                        [mv.to.dense_index()],
-                    expected,
-                    "winner={winner:?}, move={mv:?}"
-                );
+                    assert_eq!(actual, 0, "winner={winner:?}, move={mv:?}");
+                }
             }
         });
     }
@@ -603,12 +600,12 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             let actual = searcher.history[0][mv.from.dense_index()][mv.to.dense_index()];
             match learned {
                 Some(other) if *other == winner => {
-                    assert!((0..=params::history_limit()).contains(&actual));
-                    assert_eq!(actual > 0, params::history_bonus_scale() >= 12);
+                    assert!((0..=super::super::history::HISTORY_LIMIT).contains(&actual));
+                    assert!(actual > 0);
                 }
                 Some(_) => {
-                    assert!((-params::history_limit()..=0).contains(&actual));
-                    assert_eq!(actual < 0, params::history_malus_scale() >= 12);
+                    assert!((-super::super::history::HISTORY_LIMIT..=0).contains(&actual));
+                    assert!(actual < 0);
                 }
                 None => {
                     pruned += 1;
@@ -620,59 +617,72 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
     });
 }
 
-/// 調整係数は子プロセス内だけで変更し、加点と減点の独立性と百分率の丸めを固定する。
-#[cfg(feature = "tuning")]
-pub(super) fn check_quiet_history_scales() {
-    let board = Position::initial();
-    let moves = legal_moves(&board);
-    let winner = moves[0];
-    let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
-    for (bonus_scale, malus_scale, depth, bonus, malus) in [
-        (0, 100, 3, 0, 9),
-        (100, 0, 3, 9, 0),
-        (0, 0, 256, 0, 0),
-        (150, 250, 3, 13, 22),
-        (
-            400,
-            400,
-            256,
-            params::history_limit(),
-            params::history_limit(),
-        ),
-    ] {
-        params::set("HistoryBonusScale", bonus_scale).unwrap();
-        params::set("HistoryMalusScale", malus_scale).unwrap();
-        with_root_searcher(&board, &[], |searcher| {
-            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
-            assert_eq!(
-                searcher.history[0][winner.from.dense_index()][winner.to.dense_index()],
-                bonus
-            );
-            assert_eq!(
-                searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
-                -malus
-            );
-            assert_eq!(searcher.killers[0][0], Some(winner));
-            if bonus_scale == 0 && malus_scale == 0 {
-                searcher.history[0][winner.from.dense_index()][winner.to.dense_index()] = -123;
-                searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()] = 456;
-                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
-                assert_eq!(
-                    searcher.history[0][winner.from.dense_index()][winner.to.dense_index()],
-                    -123
-                );
-                assert_eq!(
-                    searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
-                    456
-                );
-            }
-        });
+fn stockfish_history_coefficients() -> super::super::ordering::HistoryUpdateCoefficients {
+    super::super::ordering::HistoryUpdateCoefficients {
+        bonus_slope: 133,
+        bonus_base: 81,
+        bonus_cap: 1487,
+        malus_slope: 968,
+        malus_base: 235,
+        malus_cap: 2244,
+        malus_decay: 921,
+        tt_move_bonus: 364,
     }
+}
+
+/// Stockfishの固定値から、深さ、置換表の手、親のstatScore、および零窓の各項を検査する。
+#[test]
+fn history_bonus_and_malus_match_numeric_examples() {
+    let coefficients = stockfish_history_coefficients();
+    assert_eq!(coefficients.updates(10, false, 0, false, 0).bonus, 1249);
+    assert_eq!(coefficients.updates(10, true, 0, false, 0).bonus, 1613);
+    assert_eq!(coefficients.updates(10, false, -100, false, 0).bonus, 1246);
+    assert_eq!(coefficients.updates(10, false, 0, true, 3).bonus, 1263);
+    assert_eq!(coefficients.updates(10, false, 0, false, 0).malus, 2244);
+    let shallow = coefficients.updates(1, false, 0, false, 0);
+    assert_eq!((shallow.bonus, shallow.malus), (52, 733));
+
+    let signed = super::super::ordering::HistoryUpdateCoefficients {
+        bonus_slope: 0,
+        bonus_base: 10,
+        bonus_cap: 200,
+        malus_slope: 0,
+        malus_base: 20,
+        malus_cap: 200,
+        malus_decay: 1024,
+        tt_move_bonus: 0,
+    }
+    .updates(1, false, 0, false, 0);
+    assert_eq!((signed.bonus, signed.malus), (-10, -20));
+}
+
+/// 静かな手の減点は1159/1024倍した後、各手の直前に921/1024倍する。
+#[test]
+fn quiet_history_malus_decays_before_each_update() {
+    let updates = stockfish_history_coefficients().updates(10, false, 0, false, 0);
+    let initial = updates.quiet_malus();
+    let first = updates.decay_quiet_malus(initial);
+    let second = updates.decay_quiet_malus(first);
+    assert_eq!((initial, -first, -second), (2539, -2283, -2053));
+}
+
+/// 探索済みの手の列は32手目までのfail-lowだけを保持する。
+#[test]
+fn searched_move_boundary_requires_no_alpha_improvement() {
+    assert!(super::super::negamax::should_record_searched_move(
+        32, 10, 10
+    ));
+    assert!(!super::super::negamax::should_record_searched_move(
+        33, 10, 10
+    ));
+    assert!(!super::super::negamax::should_record_searched_move(
+        32, 11, 10
+    ));
 }
 
 #[test]
 fn quiet_history_gravity_numeric_examples() {
-    // 上限100、更新量±9の独立した算術例。−51×9/100は−4へ丸める。
+    // 上限100の独立した算術例。−51×9/100は−4へ丸め、±100を超える更新量は先に切り詰める。
     for (old, delta, expected) in [
         (0, 9, 9),
         (100, 9, 100),
@@ -681,9 +691,11 @@ fn quiet_history_gravity_numeric_examples() {
         (-51, -9, -56),
         (100, -100, -100),
         (-100, 100, 100),
+        (0, 1000, 100),
+        (0, -1000, -100),
     ] {
         assert_eq!(
-            super::super::ordering::history_gravity(old, delta, 100),
+            super::super::history::history_gravity(old, delta, 100),
             expected
         );
     }

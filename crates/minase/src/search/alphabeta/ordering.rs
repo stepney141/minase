@@ -1,4 +1,8 @@
 //! 着手の順序付けと手の成績の更新。
+//!
+//! β打ち切りでは、historyの加点を`min(傾き × 深さ − 切片, 上限)`へ置換表の手と親のstatScoreの項を加えて求める。
+//! 減点も同じ形の1次式で求め、αを上回らなかった探索済みの手へ与える。
+//! Butterfly historyと捕獲履歴は、それぞれ上限7183と10692の重力式で更新する。
 
 use core::cmp::Reverse;
 
@@ -9,11 +13,108 @@ use minase_core::piece::PieceCode;
 use minase_core::position::Position;
 
 use super::capture_history::CaptureHistory;
-use super::history::HistoryTable;
+use super::history::{HISTORY_LIMIT, HistoryTable, history_gravity};
 use super::params;
 use super::royal::captures_last_royal;
 use super::searcher::{KILLER_COUNT, Searcher};
 use super::see::see_prunes;
+
+/// Historyの加点と減点の式に渡す調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct HistoryUpdateCoefficients {
+    pub(super) bonus_slope: i32,
+    pub(super) bonus_base: i32,
+    pub(super) bonus_cap: i32,
+    pub(super) malus_slope: i32,
+    pub(super) malus_base: i32,
+    pub(super) malus_cap: i32,
+    pub(super) malus_decay: i32,
+    pub(super) tt_move_bonus: i32,
+}
+
+impl HistoryUpdateCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            bonus_slope: params::history_bonus_slope(),
+            bonus_base: params::history_bonus_base(),
+            bonus_cap: params::history_bonus_cap(),
+            malus_slope: params::history_malus_slope(),
+            malus_base: params::history_malus_base(),
+            malus_cap: params::history_malus_cap(),
+            malus_decay: params::history_malus_decay(),
+            tt_move_bonus: params::history_tt_move_bonus(),
+        }
+    }
+
+    /// 残り深さ、置換表の手、親のstatScore、および探索済みの手数から加点と減点を求める。
+    /// Stockfishのhistory bonusとmalusに対応する（src/search.cpp:2004-2011）。
+    pub(super) fn updates(
+        &self,
+        depth: u32,
+        tt_move: bool,
+        parent_stat_score: i32,
+        zero_window: bool,
+        searched_moves: usize,
+    ) -> HistoryUpdates {
+        let depth = i64::from(depth);
+        let mut bonus = (i64::from(self.bonus_slope) * depth - i64::from(self.bonus_base))
+            .min(i64::from(self.bonus_cap));
+        bonus +=
+            i64::from(self.tt_move_bonus) * i64::from(tt_move) + i64::from(parent_stat_score / 28);
+        if zero_window {
+            let searched_moves =
+                i64::try_from(searched_moves).expect("searched move count must fit i64");
+            bonus += bonus * searched_moves / 256;
+        }
+        let malus = (i64::from(self.malus_slope) * depth - i64::from(self.malus_base))
+            .min(i64::from(self.malus_cap));
+        HistoryUpdates {
+            bonus: i32::try_from(bonus).expect("history bonus must fit i32"),
+            malus: i32::try_from(malus).expect("history malus must fit i32"),
+            malus_decay: self.malus_decay,
+        }
+    }
+}
+
+/// 1回のhistory更新で使う符号つきの加点、減点、および静かな手の減点の逓減率。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct HistoryUpdates {
+    pub(super) bonus: i32,
+    pub(super) malus: i32,
+    malus_decay: i32,
+}
+
+impl HistoryUpdates {
+    /// 静かな最善手へ与える加点を返す（Stockfish src/search.cpp:2013-2015）。
+    pub(super) fn quiet_bonus(self) -> i32 {
+        scaled_history_value(self.bonus, 899)
+    }
+
+    /// 捕獲する最善手へ与える加点を返す（Stockfish src/search.cpp:2024-2029）。
+    pub(super) fn capture_bonus(self) -> i32 {
+        scaled_history_value(self.bonus, 1427)
+    }
+
+    /// 探索済みの捕獲手へ与える減点の絶対値を返す（Stockfish src/search.cpp:2037-2042）。
+    pub(super) fn capture_malus(self) -> i32 {
+        scaled_history_value(self.malus, 1489)
+    }
+
+    /// 探索済みの静かな手へ与える減点の逓減前の値を返す。
+    pub(super) fn quiet_malus(self) -> i32 {
+        scaled_history_value(self.malus, 1159)
+    }
+
+    /// 探索済みの静かな手1つ分を逓減した値を返す（Stockfish src/search.cpp:2018-2022）。
+    pub(super) fn decay_quiet_malus(self, malus: i32) -> i32 {
+        scaled_history_value(malus, self.malus_decay)
+    }
+}
+
+fn scaled_history_value(value: i32, numerator: i32) -> i32 {
+    i32::try_from(i64::from(value) * i64::from(numerator) / 1024)
+        .expect("scaled history value must fit i32")
+}
 
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
@@ -48,41 +149,52 @@ impl Searcher<'_> {
         }
     }
 
-    /// βカットを起こした非捕獲手をkiller表へ記録し、butterfly historyへ加減点する。
-    ///
-    /// 加点量は `min(深さ² × HistoryBonusScale / 100, HistoryLimit)`、先に探索した非捕獲手への減点量は同じ式で`HistoryMalusScale`を使う。
-    /// 符号つきの更新量をbとして、重力式 `v += b − v × |b| / HistoryLimit` を用いる。
-    /// 整数除算は0方向へ丸め、初期値が範囲内なら値は常に±`HistoryLimit`以内に収まる。
-    /// 方式の理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
-    pub(super) fn record_quiet_beta_cutoff(
-        &mut self,
-        position: &Position,
-        mv: Move,
-        earlier: &[Move],
-        depth: u32,
-        ply: u32,
-    ) {
+    /// βカットを起こした静かな手をkiller表へ記録する。
+    pub(super) fn record_killer(&mut self, mv: Move, ply: u32) {
         let killers = &mut self.killers[ply as usize];
         if killers[0] != Some(mv) {
             killers[1] = killers[0];
             killers[0] = Some(mv);
         }
+    }
 
+    /// βカットを起こした最善手へ加点し、探索済みの手へ減点する。
+    ///
+    /// Butterfly historyの上限は7183とし、捕獲履歴の上限は10692とする。
+    /// 静かな手の減点は読んだ順に`HistoryMalusDecay / 1024`倍してから与える。
+    /// 両表とも更新量を表の上限へ切り詰めた重力式を使う。
+    /// 方式の理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
+    pub(super) fn update_beta_cutoff_histories(
+        &mut self,
+        position: &Position,
+        best: Move,
+        best_capture: bool,
+        searched_quiets: &[Move],
+        searched_captures: &[Move],
+        updates: HistoryUpdates,
+    ) {
         let color = position.side_to_move().index();
-        let limit = i64::from(params::history_limit());
-        let depth_squared = i64::from(depth).pow(2);
-        let bonus =
-            (depth_squared * i64::from(params::history_bonus_scale()) / 100).min(limit) as i32;
-        let malus =
-            (depth_squared * i64::from(params::history_malus_scale()) / 100).min(limit) as i32;
-        // 負の履歴値にも同じ重力式を適用する。
-        let mut update = |mv: Move, delta: i32| {
+        let mut update_quiet = |mv: Move, bonus: i32| {
             let value = &mut self.history[color][mv.from.dense_index()][mv.to.dense_index()];
-            *value = history_gravity(*value, delta, limit);
+            *value = history_gravity(*value, bonus, HISTORY_LIMIT);
         };
-        update(mv, bonus);
-        for &mv in earlier {
-            update(mv, -malus);
+
+        if best_capture {
+            self.capture_history
+                .update(position, self.nnue, best, updates.capture_bonus());
+        } else {
+            update_quiet(best, updates.quiet_bonus());
+            let mut malus = updates.quiet_malus();
+            for &mv in searched_quiets {
+                malus = updates.decay_quiet_malus(malus);
+                update_quiet(mv, -malus);
+            }
+        }
+
+        let capture_malus = updates.capture_malus();
+        for &mv in searched_captures {
+            self.capture_history
+                .update(position, self.nnue, mv, -capture_malus);
         }
     }
 }
@@ -357,11 +469,4 @@ pub(super) fn piece_at_for_ordering(position: &Position, square: minase_core::Sq
     position
         .piece_at(square)
         .expect("move ordering square must contain a piece")
-}
-
-/// 符号つきの重力更新。除算は0方向へ丸める。
-pub(super) fn history_gravity(old: i32, delta: i32, limit: i64) -> i32 {
-    let old = i64::from(old);
-    let delta = i64::from(delta);
-    (old + delta - old * delta.abs() / limit) as i32
 }

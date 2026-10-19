@@ -332,6 +332,13 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
     with_nnue_root_searcher(test_nnue(), position, history, test);
 }
 
+/// 履歴更新以外の条件を分離するため、捕獲履歴を明示的に0にしたテスト用の表を返す。
+fn empty_capture_history() -> crate::search::alphabeta::capture_history::CaptureHistory {
+    let mut history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    history.values_mut().fill(0);
+    history
+}
+
 /// 明示した重みを使い、時間制限のない単一ワーカーで根を検査する。
 fn with_nnue_root_searcher(
     nnue: &Nnue,
@@ -386,7 +393,7 @@ fn with_draw_value_root_searcher(
     let table = small_tt();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let mut capture_history = empty_capture_history();
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -439,7 +446,7 @@ fn run_quiesce(
     let nnue = test_nnue();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let mut capture_history = empty_capture_history();
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -496,7 +503,7 @@ fn run_configured_negamax(
     let nnue = test_nnue();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let mut capture_history = empty_capture_history();
     let mut searcher = new_searcher(
         nnue,
         position,

@@ -192,7 +192,7 @@ pub(in crate::search) fn run_search_team(
     if histories.workers.len() != threads.get() {
         *histories = HistoryTables::new(threads);
     }
-    // 新しい根で1回だけ減衰する。0なら前回の履歴をすべて消す。
+    // 新しい根で1回だけ減衰する。新品の表にも適用し、既定値では−5を−3、−742を−452にする。
     let decay = params::history_decay();
     for history in &mut histories.workers {
         for value in history.iter_mut().flatten().flatten() {

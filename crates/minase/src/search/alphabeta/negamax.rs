@@ -14,7 +14,7 @@ use minase_core::repetition_key;
 use super::INFINITY;
 use super::correction::key_after_move;
 use super::history::pawn_key_after_move;
-use super::ordering::move_order_key;
+use super::ordering::{HistoryUpdateCoefficients, move_order_key};
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
     NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
@@ -33,6 +33,15 @@ use super::tt::Bound;
 /// 打ち切り前に置換表の手を指した局面を照合する深さの下限。
 /// Stockfishの`depth >= 7`に対応する（src/search.cpp:917）。
 const TT_CUTOFF_CHILD_MIN_DEPTH: u32 = 7;
+
+/// 探索済みの手の列に保持するノードの手数の上限。
+/// Stockfishの`SEARCHEDLIST_CAPACITY`と同じ32を使う（src/search.cpp:75, 1578）。
+const SEARCHED_LIST_CAPACITY: usize = 32;
+
+/// 実際に読んだ手をhistoryの減点対象へ加えるかを返す。
+pub(super) fn should_record_searched_move(move_count: usize, score: i32, alpha: i32) -> bool {
+    move_count <= SEARCHED_LIST_CAPACITY && score <= alpha
+}
 
 impl Searcher<'_> {
     /// 保持した2手前の静的評価と比べる（Stockfish src/search.cpp:883）。
@@ -319,8 +328,8 @@ impl Searcher<'_> {
         let mut index = 0;
         let mut counted_quiets = 0;
         let mut had_forbidden_move = false;
-        let mut searched_captures = Vec::new();
-        let mut searched_quiets: Vec<Move> = Vec::new();
+        let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
+        let mut searched_quiets = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
         let mut searched_moves = 0;
@@ -533,6 +542,7 @@ impl Searcher<'_> {
             } else {
                 depth - 1
             };
+            let alpha_before = alpha;
             let score = self.search_move(
                 position,
                 mv,
@@ -570,29 +580,36 @@ impl Searcher<'_> {
                 // 延長の有無による重み付けは行わない（Stockfish src/search.cpp:1562）。
                 self.cutoff_counts[ply as usize] += 1;
                 beta_cutoff = true;
-                if capture {
-                    self.capture_history.record_cutoff(
-                        position,
-                        self.nnue,
-                        mv,
-                        &searched_captures,
-                        depth,
-                    );
-                } else {
-                    self.capture_history.record_quiet_cutoff(
-                        position,
-                        self.nnue,
-                        &searched_captures,
-                        depth,
-                    );
-                    self.record_quiet_beta_cutoff(position, mv, &searched_quiets, depth, ply);
+                if !capture {
+                    self.record_killer(mv, ply);
                 }
+                let parent_stat_score = ply
+                    .checked_sub(1)
+                    .map_or(0, |parent| self.stat_scores[parent as usize]);
+                let updates = HistoryUpdateCoefficients::current().updates(
+                    depth,
+                    Some(mv) == tt_move,
+                    parent_stat_score,
+                    !pv_node,
+                    searched_quiets.len() + searched_captures.len(),
+                );
+                self.update_beta_cutoff_histories(
+                    position,
+                    mv,
+                    capture,
+                    &searched_quiets,
+                    &searched_captures,
+                    updates,
+                );
                 break;
             }
-            if capture {
-                searched_captures.push(mv);
-            } else {
-                searched_quiets.push(mv);
+            // αを上回った手は、後で最善手でなくなっても減点対象へ加えない。
+            if should_record_searched_move(index + 1, score, alpha_before) {
+                if capture {
+                    searched_captures.push(mv);
+                } else {
+                    searched_quiets.push(mv);
+                }
             }
             index += 1;
         }

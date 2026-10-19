@@ -3,7 +3,6 @@
 //! 判断の理由は`docs/adr/bound-capture-history-and-use-it-in-qsearch.md`にある。
 
 use super::*;
-use crate::search::alphabeta::capture_history::CaptureHistory;
 use crate::search::alphabeta::params;
 
 fn capture(from: Square, to: Square) -> Move {
@@ -38,8 +37,8 @@ fn capture_history_double_capture_uses_more_valuable_victim() {
             ..capture(sq(5, 5), sq(6, 6))
         };
         assert!(legal_moves(&board).contains(&mv));
-        let mut history = CaptureHistory::new();
-        history.record_cutoff(&board, nnue, mv, &[], 3);
+        let mut history = empty_capture_history();
+        history.update(&board, nnue, mv, 9);
         for (victim, expected) in [(PieceKind::Pawn, 0), (PieceKind::Rook, 9)] {
             let single = position(
                 Color::Black,
@@ -77,8 +76,8 @@ fn capture_history_equal_victims_prefer_destination() {
         mid: Some(sq(5, 6)),
         ..capture(sq(5, 5), sq(6, 6))
     };
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, nnue, mv, &[], 2);
+    let mut history = empty_capture_history();
+    history.update(&board, nnue, mv, 4);
     assert_eq!(history.read(&board, nnue, capture(mv.from, mv.to)), 4);
     let king = position(
         Color::Black,
@@ -108,8 +107,8 @@ fn capture_history_promotion_uses_pre_move_piece_and_color() {
         ],
     );
     assert!(legal_moves(&board).contains(&mv));
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, nnue, mv, &[], 4);
+    let mut history = empty_capture_history();
+    history.update(&board, nnue, mv, 16);
     assert_eq!(
         history.read(
             &board,
@@ -183,18 +182,27 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
         let winner = captures[3];
         let mut root_before = legal_moves(&board);
         searcher.order_moves(&board, &mut root_before, None, 0);
-        searcher
-            .capture_history
-            .record_cutoff(&board, searcher.nnue, winner, &[captures[0]], 256);
+        searcher.capture_history.update(
+            &board,
+            searcher.nnue,
+            winner,
+            super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+        );
+        searcher.capture_history.update(
+            &board,
+            searcher.nnue,
+            captures[0],
+            -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+        );
         assert_eq!(
             searcher.capture_history.read(&board, searcher.nnue, winner),
-            params::capture_history_limit()
+            super::super::capture_history::CAPTURE_HISTORY_LIMIT
         );
         assert_eq!(
             searcher
                 .capture_history
                 .read(&board, searcher.nnue, captures[0]),
-            -params::capture_history_limit()
+            -super::super::capture_history::CAPTURE_HISTORY_LIMIT
         );
         assert_eq!(
             searcher
@@ -265,9 +273,12 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
                 let expected = if index > winner_index {
                     0
                 } else if index == winner_index {
-                    100
+                    1740
+                } else if index == 0 {
+                    // 最初の手はαを−10から0へ上げたため、探索済みの手の列には入らない。
+                    0
                 } else {
-                    -100
+                    -3263
                 };
                 assert_eq!(
                     searcher.capture_history.read(&board, searcher.nnue, mv),
@@ -290,39 +301,23 @@ fn capture_history_negamax_penalizes_searched_captures_on_quiet_cutoff() {
     assert_capture_history_after_cutoff(true);
 }
 
-/// 候補1: 減点は既存の重力更新式に従い、探索済みの捕獲手だけに適用する。
+/// 捕獲履歴の更新はbutterfly historyと同じ重力式を使う。
 #[test]
-fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
+fn capture_history_update_uses_shared_gravity() {
     let board = capture_fixture();
     let nnue = test_nnue();
-    let earlier = [
-        capture(sq(5, 5), sq(5, 7)),
-        capture(sq(5, 5), sq(3, 5)),
-        capture(sq(5, 5), sq(7, 5)),
-    ];
-    let untouched = capture(sq(5, 5), sq(5, 3));
-    let limit = params::capture_history_limit();
-    for depth in [0, 3, 64, 256] {
-        let mut history = CaptureHistory::new();
-        history.record_cutoff(&board, nnue, earlier[0], &[earlier[1]], 64);
-        history.record_cutoff(&board, nnue, untouched, &[], 3);
-        let before = earlier.map(|mv| history.read(&board, nnue, mv));
-        assert_eq!(before, [4096, -4096, 0]);
-
-        history.record_quiet_cutoff(&board, nnue, &earlier, depth);
-
-        for (mv, old) in earlier.into_iter().zip(before) {
-            let after = history.read(&board, nnue, mv);
-            assert!((-limit..=old).contains(&after));
-            if depth == 0 {
-                assert_eq!(after, old);
-            } else if depth == 256 {
-                assert_eq!(after, -limit);
-            } else {
-                assert!(after < old || old == -limit);
-            }
+    let mv = capture(sq(5, 5), sq(5, 7));
+    let limit = super::super::capture_history::CAPTURE_HISTORY_LIMIT;
+    for old in [-limit, -10, 0, 10, limit] {
+        for bonus in [-(limit + 1), -9, 0, 9, limit + 1] {
+            let mut history = empty_capture_history();
+            history.values_mut().fill(old);
+            history.update(&board, nnue, mv, bonus);
+            assert_eq!(
+                history.read(&board, nnue, mv),
+                super::super::history::history_gravity(old, bonus, limit)
+            );
         }
-        assert_eq!(history.read(&board, nnue, untouched), 9);
     }
 }
 
@@ -333,10 +328,12 @@ fn capture_history_adjustment_truncates_toward_zero() {
     let nnue = test_nnue();
     let winner = capture(sq(5, 5), sq(5, 7));
     let loser = capture(sq(5, 5), sq(3, 5));
-    let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, nnue, winner, &[loser], 1);
+    let mut history = empty_capture_history();
+    history.update(&board, nnue, winner, 1);
+    history.update(&board, nnue, loser, -1);
     assert!(
-        nnue.pawn_value() * params::capture_history_scale() < 100 * params::capture_history_limit()
+        nnue.pawn_value() * params::capture_history_scale()
+            < 100 * super::super::capture_history::CAPTURE_HISTORY_LIMIT
     );
     assert_eq!(history.adjustment(&board, nnue, winner), 0);
     assert_eq!(history.adjustment(&board, nnue, loser), 0);
@@ -365,8 +362,13 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
     assert!(moves.contains(&tt_move));
     assert!(!royal_under_attack(&board));
 
-    let mut penalized = CaptureHistory::new();
-    penalized.record_quiet_cutoff(&board, nnue, &[target], 100);
+    let mut penalized = empty_capture_history();
+    penalized.update(
+        &board,
+        nnue,
+        target,
+        -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+    );
     let raw = penalized.read(&board, nnue, target);
     let adjustment = penalized.adjustment(&board, nnue, target);
     let base_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
@@ -427,9 +429,12 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
         run_configured_negamax(&board, 1, alpha, beta, 0, &table, |searcher| {
             searcher.follow_pv[0] = true;
             if penalize {
-                searcher
-                    .capture_history
-                    .record_quiet_cutoff(&board, searcher.nnue, &[target], 100);
+                searcher.capture_history.update(
+                    &board,
+                    searcher.nnue,
+                    target,
+                    -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+                );
             }
         });
         table.probe(search_key(&board), 0).unwrap()
@@ -514,10 +519,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             searcher.capture_history.read(&board, searcher.nnue, pruned),
             0
         );
-        assert_eq!(
-            searcher.capture_history.read(&board, searcher.nnue, winner),
-            9
-        );
+        assert!(searcher.capture_history.read(&board, searcher.nnue, winner) > 0);
     });
 }
 
@@ -647,10 +649,23 @@ fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZero
     assert_eq!(outcome.result.nodes, 0);
 }
 
-/// 候補4: clearは両方の履歴を全消去し、ワーカー数を保つ。
+/// newとclearは全ワーカーの履歴をStockfishと同じ初期値にする。
 #[test]
-fn history_tables_clear_resets_butterfly_and_capture_history() {
+fn history_tables_new_and_clear_use_stockfish_initial_values() {
     let mut histories = crate::search::HistoryTables::new(worker_count(4));
+    assert!(
+        histories.workers.iter().all(|history| history
+            .iter()
+            .flatten()
+            .flatten()
+            .all(|&value| value == -5))
+    );
+    assert!(
+        histories
+            .capture
+            .iter()
+            .all(|history| history.values().iter().all(|&value| value == -742))
+    );
     for history in &mut histories.workers {
         for value in history.iter_mut().flatten().flatten() {
             *value = -123;
@@ -667,31 +682,58 @@ fn history_tables_clear_resets_butterfly_and_capture_history() {
             .iter()
             .flatten()
             .flatten()
-            .all(|&value| value == 0))
+            .all(|&value| value == -5))
     );
     assert!(
         histories
             .capture
             .iter()
-            .all(|history| history.values().iter().all(|&value| value == 0))
+            .all(|history| history.values().iter().all(|&value| value == -742))
     );
+
+    for count in [1, 2, 4] {
+        let histories = crate::search::HistoryTables::new(worker_count(count));
+        assert_eq!(histories.workers.len(), count);
+        assert_eq!(histories.capture.len(), count);
+        assert!(
+            histories.workers.iter().all(|history| history
+                .iter()
+                .flatten()
+                .flatten()
+                .all(|&value| value == -5))
+        );
+        assert!(
+            histories
+                .capture
+                .iter()
+                .all(|history| history.values().iter().all(|&value| value == -742))
+        );
+    }
 }
 
-/// 候補4: ワーカー数が増減すると、持ち越し表を新品に置き換える。
+/// 探索開始時にワーカー数が変わると、新品の表を作ってから初回の減衰を適用する。
 #[test]
-fn changed_worker_count_resets_capture_history() {
+fn changed_worker_count_uses_decayed_initial_history() {
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for count in [4, 2, 1] {
         for history in &mut histories.capture {
             history.values_mut().fill(1000);
         }
         stopped_search(&mut histories, worker_count(count));
+        assert_eq!(histories.workers.len(), count);
         assert_eq!(histories.capture.len(), count);
+        assert!(
+            histories.workers.iter().all(|history| history
+                .iter()
+                .flatten()
+                .flatten()
+                .all(|&value| value == -3))
+        );
         assert!(
             histories
                 .capture
                 .iter()
-                .all(|history| history.values().iter().all(|&value| value == 0))
+                .all(|history| history.values().iter().all(|&value| value == -452))
         );
     }
 }
@@ -699,7 +741,7 @@ fn changed_worker_count_resets_capture_history() {
 /// 候補4: 0は全消去、100は全保持し、負値の端数も0方向へ丸める。
 #[test]
 fn capture_history_decay_boundaries() {
-    let mut history = CaptureHistory::new();
+    let mut history = empty_capture_history();
     let values = [7, -7, 100, -100, -5, 1000];
     // 23%を掛けると1.61,−1.61,23,−23,−1.15,230。整数除算は0方向へ丸める。
     for (percent, expected) in [(0, [0; 6]), (23, [1, -1, 23, -23, -1, 230]), (100, values)] {
@@ -762,31 +804,31 @@ pub(super) fn capture_decay_probe() -> i64 {
     i64::from(histories.capture[0].values()[0])
 }
 
-/// record_cutoffの加減点は正負の上限を保ち、最大加減点では端点へ達する。
-/// tuningの隔離プロセスでも呼び、許容上限4096と65536の双方で同じ契約を確かめる。
+/// 捕獲履歴の加減点は正負の上限を保ち、上限を超える更新量でも端点を越えない。
 #[test]
-pub(super) fn capture_history_gravity_stays_bounded_at_limit_extremes() {
+fn capture_history_gravity_stays_bounded_at_limit_extremes() {
     let board = capture_fixture();
     let nnue = test_nnue();
     let winner = capture(sq(5, 5), sq(5, 7));
     let earlier = capture(sq(5, 5), sq(3, 5));
-    let limit = params::capture_history_limit();
-    let mut history = CaptureHistory::new();
+    let limit = super::super::capture_history::CAPTURE_HISTORY_LIMIT;
+    let mut history = empty_capture_history();
     for old in [-limit, -limit + 1, -10, 0, 10, limit - 1, limit] {
-        for depth in [0, 1, 3, 64, 256] {
+        for bonus in [0, 1, 9, limit, limit + 1] {
             history.values_mut().fill(old);
-            history.record_cutoff(&board, nnue, winner, &[earlier], depth);
-            let bonus = history.read(&board, nnue, winner);
-            let malus = history.read(&board, nnue, earlier);
-            assert!((-limit..=limit).contains(&bonus));
-            assert!((-limit..=limit).contains(&malus));
-            if depth == 256 {
-                assert_eq!(bonus, limit);
-                assert_eq!(malus, -limit);
+            history.update(&board, nnue, winner, bonus);
+            history.update(&board, nnue, earlier, -bonus);
+            let rewarded = history.read(&board, nnue, winner);
+            let penalized = history.read(&board, nnue, earlier);
+            assert!((-limit..=limit).contains(&rewarded));
+            assert!((-limit..=limit).contains(&penalized));
+            if bonus >= limit {
+                assert_eq!(rewarded, limit);
+                assert_eq!(penalized, -limit);
             }
-            if old == -10 && depth == 3 {
+            if old == -10 && bonus == 9 {
                 // |−10×9/limit|<1なので重力項は0。−10+9=−1、−10−9=−19。
-                assert_eq!((bonus, malus), (-1, -19));
+                assert_eq!((rewarded, penalized), (-1, -19));
             }
         }
     }

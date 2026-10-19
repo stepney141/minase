@@ -61,8 +61,9 @@ parameters! {
     /// （src/search.cpp:80-82, 1917-1920）。この式の形での値はSPSAで未調整である。
     LmrDivisor(lmr_divisor): 100, 100, 400;
     /// LMRの減深量を1増減するbutterfly historyの閾値。単位は履歴点である。
-    /// 値はSPSAで調整した。
-    LmrHistoryThreshold(lmr_history_threshold): 9, 0, 512;
+    /// Stockfishに対応する値はなく、表の上限の変更に合わせて`round(9 × 7183 / 4384)`から15へ換算した。
+    /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。
+    LmrHistoryThreshold(lmr_history_threshold): 15, 0, 2000;
     /// LMRの減深量の上限。単位は手である。
     /// StockfishとYaneuraOuには減深量の上限がなく、換算する元がないので、従来の定数と同じ3を既定値とする。
     /// 範囲の上限8は暫定の値である。SPSAの調整対象であり、この係数としての値は未調整である。
@@ -273,27 +274,49 @@ parameters! {
     /// Stockfishは50/208で24（src/search.cpp:1037-1038）、YaneuraOuはこの項を持たず0である。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     NullMoveFailHighBonus(null_move_fail_high_bonus): 24, 0, 200;
-    /// butterfly historyの絶対値の上限。単位は履歴点であり、重力式の除数にも使う。
-    /// 値はSPSAで調整した。
-    HistoryLimit(history_limit): 4384, 4096, 65536;
-    /// βカットを起こした静かな手へ深さ²に比例して加点する尺度。単位は百分率である。
-    /// SPSAの調整対象であり、この係数としての値は未調整である。
-    HistoryBonusScale(history_bonus_scale): 336, 0, 400;
-    /// 同じノードで先に探索した静かな手を深さ²に比例して減点する尺度。単位は百分率である。
-    /// SPSAの調整対象であり、この係数としての値は未調整である。
-    HistoryMalusScale(history_malus_scale): 166, 0, 400;
+    /// Historyの加点の残り深さ1手あたりの増分。単位は履歴点である。
+    /// Stockfishは133（src/search.cpp:2005）、YaneuraOuは128（yaneuraou-search.cpp:5309）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryBonusSlope(history_bonus_slope): 133, 0, 400;
+    /// Historyの加点の1次式から引く切片。単位は履歴点である。
+    /// Stockfishは81（src/search.cpp:2005）、YaneuraOuは77（yaneuraou-search.cpp:5309）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryBonusBase(history_bonus_base): 81, -100, 300;
+    /// Historyの加点の上限。単位は履歴点である。
+    /// Stockfishは1487（src/search.cpp:2005）、YaneuraOuは1529（yaneuraou-search.cpp:5309）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryBonusCap(history_bonus_cap): 1487, 200, 7183;
+    /// Historyの減点の残り深さ1手あたりの増分。単位は履歴点である。
+    /// Stockfishは968（src/search.cpp:2006）、YaneuraOuは882（yaneuraou-search.cpp:5310）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryMalusSlope(history_malus_slope): 968, 0, 2500;
+    /// Historyの減点の1次式から引く切片。単位は履歴点である。
+    /// Stockfishは235（src/search.cpp:2006）、YaneuraOuは204（yaneuraou-search.cpp:5310）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryMalusBase(history_malus_base): 235, -200, 800;
+    /// Historyの減点の上限。単位は履歴点である。
+    /// Stockfishは2244（src/search.cpp:2006）、YaneuraOuは2122（yaneuraou-search.cpp:5310）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryMalusCap(history_malus_cap): 2244, 200, 7183;
+    /// 探索済みの静かな手1つごとに減点へ掛ける倍率。単位は1/1024である。
+    /// Stockfishは921（src/search.cpp:2021）、YaneuraOuは977（yaneuraou-search.cpp:5327）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryMalusDecay(history_malus_decay): 921, 700, 1024;
+    /// 最善手が置換表の手ならhistoryの加点へ加える量。単位は履歴点である。
+    /// Stockfishは364（src/search.cpp:2005）、YaneuraOuは353（yaneuraou-search.cpp:5309）。
+    /// 開始値はStockfishの値であり、この値ではSPSAで未調整である。
+    HistoryTtMoveBonus(history_tt_move_bonus): 364, 0, 1000;
     /// 新しい根の探索へ持ち越すbutterfly historyの割合。単位は百分率である。
-    /// 値はSPSAで調整した。
-    HistoryDecay(history_decay): 32, 0, 100;
+    /// Stockfishの729/1024を71%へ換算した（src/search.cpp:343）。YaneuraOuは100%に当たる。
+    /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。
+    HistoryDecay(history_decay): 71, 0, 100;
     /// 新しい根の探索へ持ち越す捕獲履歴の割合。単位は百分率である。
     /// SPSAの調整対象であり、この係数としての値は未調整である。
     CaptureHistoryDecay(capture_history_decay): 61, 0, 100;
-    /// 捕獲履歴の絶対値の上限。単位は履歴点であり、重力式と駒価値への換算の除数にも使う。
-    /// 値はSPSAで調整した。
-    CaptureHistoryLimit(capture_history_limit): 6134, 4096, 65536;
     /// 整列キーへ加える捕獲履歴の換算値の絶対値の上限。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    CaptureHistoryScale(capture_history_scale): 285, 0, 400;
+    /// Stockfishの`10692 × 100 / (7 × 208)`を734%へ換算した（src/movepick.cpp:225-226）。YaneuraOuは1697%に当たる。
+    /// 開始値は設計書の換算による値であり、この値ではSPSAで未調整である。
+    CaptureHistoryScale(capture_history_scale): 734, 0, 2000;
     /// correction historyの補正値の絶対値の上限。単位は歩兵価値に対する百分率である。
     /// 値はSPSAで調整した。
     CorrectionCap(correction_cap): 126, 50, 400;

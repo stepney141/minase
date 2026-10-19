@@ -190,23 +190,36 @@ fn tuning_usi_contract_in_isolated_process() {
                 "NullMoveFailHighBonus",
                 params::null_move_fail_high_bonus as fn() -> i32,
             ),
-            ("HistoryLimit", params::history_limit as fn() -> i32),
             (
-                "HistoryBonusScale",
-                params::history_bonus_scale as fn() -> i32,
+                "HistoryBonusSlope",
+                params::history_bonus_slope as fn() -> i32,
             ),
             (
-                "HistoryMalusScale",
-                params::history_malus_scale as fn() -> i32,
+                "HistoryBonusBase",
+                params::history_bonus_base as fn() -> i32,
+            ),
+            ("HistoryBonusCap", params::history_bonus_cap as fn() -> i32),
+            (
+                "HistoryMalusSlope",
+                params::history_malus_slope as fn() -> i32,
+            ),
+            (
+                "HistoryMalusBase",
+                params::history_malus_base as fn() -> i32,
+            ),
+            ("HistoryMalusCap", params::history_malus_cap as fn() -> i32),
+            (
+                "HistoryMalusDecay",
+                params::history_malus_decay as fn() -> i32,
+            ),
+            (
+                "HistoryTtMoveBonus",
+                params::history_tt_move_bonus as fn() -> i32,
             ),
             ("HistoryDecay", params::history_decay as fn() -> i32),
             (
                 "CaptureHistoryDecay",
                 params::capture_history_decay as fn() -> i32,
-            ),
-            (
-                "CaptureHistoryLimit",
-                params::capture_history_limit as fn() -> i32,
             ),
             (
                 "CaptureHistoryScale",

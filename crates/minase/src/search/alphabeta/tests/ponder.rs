@@ -252,7 +252,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
         };
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &position,
@@ -350,7 +350,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             &mut crate::search::HistoryTables::new(worker_count(threads)).workers,
             &shared,
             |worker_index, history| {
-                let mut captures = crate::search::alphabeta::capture_history::CaptureHistory::new();
+                let mut captures = empty_capture_history();
                 let completed = run_auxiliary_worker(
                     test_nnue(),
                     &position,
@@ -473,15 +473,14 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         &shared,
                         &table,
                         history,
-                        &mut crate::search::alphabeta::capture_history::CaptureHistory::new(),
+                        &mut empty_capture_history(),
                     );
                     completed.wait();
                     return outcome;
                 }
                 let mut butterfly_history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-                let mut capture_history =
-                    crate::search::alphabeta::capture_history::CaptureHistory::new();
+                let mut capture_history = empty_capture_history();
                 let mut searcher = new_searcher(
                     nnue,
                     &position,
@@ -615,8 +614,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                 };
                 let mut history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-                let mut capture_history =
-                    crate::search::alphabeta::capture_history::CaptureHistory::new();
+                let mut capture_history = empty_capture_history();
                 let mut searcher = new_searcher(
                     nnue,
                     &position,

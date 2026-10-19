@@ -97,7 +97,7 @@ fn correction_negamax_update_conditions() {
         }
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -175,7 +175,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -216,7 +216,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -259,7 +259,7 @@ fn correction_changes_futility_estimate() {
         let table = TranspositionTable::new(1).unwrap();
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -320,7 +320,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         let root_key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+        let mut capture_history = empty_capture_history();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -362,7 +362,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     let root_key = material_key(&board);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let mut capture_history = empty_capture_history();
     let mut searcher = new_searcher(
         nnue,
         &board,

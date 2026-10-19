@@ -1,4 +1,7 @@
 //! 対局内で持ち越すワーカー別のbutterfly historyと捕獲履歴。
+//!
+//! Butterfly historyの上限は7183、初期値は−5であり、捕獲履歴の上限は10692、初期値は−742である。
+//! 両表は符号つきの更新量を各上限へ切り詰めてから、共通の重力式で更新する。
 
 use core::num::NonZeroUsize;
 
@@ -8,8 +11,28 @@ use minase_core::position::{Position, Undo};
 
 use super::capture_history::CaptureHistory;
 
+/// Butterfly historyの絶対値の上限。
+/// Stockfishの`ButterflyHistory`と同じ7183を使う（src/history.h:128）。
+pub(super) const HISTORY_LIMIT: i32 = 7183;
+
+/// 新しい対局でのbutterfly historyの初期値。
+/// Stockfishの初期化と同じ−5を使う（src/search.cpp:714）。
+const HISTORY_INITIAL: i32 = -5;
+
 /// 手番側・移動元・移動先で参照するhistory表。
 pub(crate) type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
+
+/// 符号つきの更新量を表の上限で切り詰め、重力式で履歴値を更新する。
+///
+/// `v + b - trunc(v * |b| / D)`を計算し、積には`i64`を使う。
+/// Stockfishの`StatsEntry::operator<<`と同じ式である（src/history.h:70-76）。
+pub(super) fn history_gravity(value: i32, bonus: i32, limit: i32) -> i32 {
+    let value = i64::from(value);
+    let bonus = i64::from(bonus.clamp(-limit, limit));
+    let updated = value + bonus - value * bonus.abs() / i64::from(limit);
+    debug_assert!((i64::from(-limit)..=i64::from(limit)).contains(&updated));
+    updated as i32
+}
 
 /// 歩兵と仲人の絶対配置を表す鍵を局面から計算する。
 /// 成った歩兵と仲人、手番、および成り権保留状態は含めない。
@@ -84,25 +107,29 @@ pub struct HistoryTables {
 }
 
 impl HistoryTables {
-    /// 指定したワーカー数の表を0で初期化する。
+    /// 指定したワーカー数の表をStockfishと同じ初期値で初期化する。
     pub fn new(threads: NonZeroUsize) -> Self {
         Self {
             workers: (0..threads.get())
-                .map(|_| Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]))
+                .map(|_| {
+                    Box::new(
+                        [[[HISTORY_INITIAL; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT],
+                    )
+                })
                 .collect(),
             capture: (0..threads.get()).map(|_| CaptureHistory::new()).collect(),
         }
     }
 
-    /// ワーカー数を保ったまま全ワーカーの表を0にする。
+    /// ワーカー数を保ったまま全ワーカーの表をStockfishと同じ初期値へ戻す。
     pub fn clear(&mut self) {
         for history in &mut self.workers {
             for value in history.iter_mut().flatten().flatten() {
-                *value = 0;
+                *value = HISTORY_INITIAL;
             }
         }
         for history in &mut self.capture {
-            history.decay(0);
+            history.clear();
         }
     }
 }

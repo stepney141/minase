@@ -112,7 +112,7 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
             histories
                 .capture
                 .iter()
-                .all(|history| history.values().iter().all(|&value| value == 0)),
+                .all(|history| history.values().iter().all(|&value| value == -742)),
             "{command}: capture history"
         );
         assert!(
@@ -120,7 +120,7 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
                 .iter()
                 .flatten()
                 .flatten()
-                .all(|&v| v == 0)),
+                .all(|&v| v == -5)),
             "{command}: quiet history"
         );
     }

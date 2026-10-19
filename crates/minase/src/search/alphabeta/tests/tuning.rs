@@ -83,9 +83,7 @@ fn tuning_parameters_in_isolated_process() {
             "lmr table",
             "lmr max reduction",
             "parameters",
-            "capture history limits",
             "disabled capture history",
-            "quiet history scales",
             "disabled history decay",
             "disabled capture history decay",
             "lmp base",
@@ -183,12 +181,16 @@ fn tuning_parameters_in_isolated_process() {
         ("NullMoveEvalDepth", 6),
         ("NullMoveEvalImproving", 23),
         ("NullMoveFailHighBonus", 24),
-        ("HistoryLimit", 5808),
-        ("HistoryBonusScale", 207),
-        ("HistoryMalusScale", 110),
+        ("HistoryBonusSlope", 111),
+        ("HistoryBonusBase", 70),
+        ("HistoryBonusCap", 1400),
+        ("HistoryMalusSlope", 900),
+        ("HistoryMalusBase", 200),
+        ("HistoryMalusCap", 2100),
+        ("HistoryMalusDecay", 900),
+        ("HistoryTtMoveBonus", 300),
         ("HistoryDecay", 37),
         ("CaptureHistoryDecay", 13),
-        ("CaptureHistoryLimit", 8376),
         ("CaptureHistoryScale", 155),
         ("CorrectionCap", 181),
         ("CorrectionWeight", 76),
@@ -206,17 +208,6 @@ fn tuning_parameters_in_isolated_process() {
         params::set(name, value).unwrap();
     }
 
-    if scenario == "capture history limits" {
-        for limit in [4096, 65536] {
-            params::set("CaptureHistoryLimit", limit).unwrap();
-            super::capture_history::capture_history_gravity_stays_bounded_at_limit_extremes();
-        }
-        return;
-    }
-    if scenario == "quiet history scales" {
-        super::history::check_quiet_history_scales();
-        return;
-    }
     if scenario == "disabled capture history" {
         params::set("CaptureHistoryScale", 0).unwrap();
         super::captures::zero_capture_scale_preserves_reference_order();
@@ -328,23 +319,6 @@ fn tuning_parameters_in_isolated_process() {
         table.update(Color::Black, 7, difference, 8);
         i64::from(table.read(Color::Black, 7))
     }
-    fn history() -> i64 {
-        let board = Position::initial();
-        let mv = legal_moves(&board)[0];
-        let mut result = 0;
-        with_root_searcher(&board, &[], |searcher| {
-            let (side, from, to) = (
-                board.side_to_move().index(),
-                mv.from.dense_index(),
-                mv.to.dense_index(),
-            );
-            // どちらの上限でも有効な値から、上限に応じた重力項の差を観測する。
-            searcher.history[side][from][to] = 4096;
-            searcher.record_quiet_beta_cutoff(&board, mv, &[], 8, 0);
-            result = i64::from(searcher.history[side][from][to]);
-        });
-        result
-    }
     fn capture_history_adjustment() -> i64 {
         let board = staged_picker_fixture();
         let mv = Move {
@@ -355,9 +329,12 @@ fn tuning_parameters_in_isolated_process() {
         };
         let mut result = 0;
         with_root_searcher(&board, &[], |searcher| {
-            searcher
-                .capture_history
-                .record_cutoff(&board, searcher.nnue, mv, &[], 100);
+            searcher.capture_history.update(
+                &board,
+                searcher.nnue,
+                mv,
+                super::super::capture_history::CAPTURE_HISTORY_LIMIT,
+            );
             result = i64::from(
                 searcher
                     .capture_history
@@ -451,7 +428,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 72] = [
+    let cases: [Case; 76] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -673,21 +650,59 @@ fn tuning_parameters_in_isolated_process() {
         ("NullMoveFailHighBonus", 200, || {
             i64::from(allows_null_move(4, 0, 0, 100, false, 1))
         }),
-        ("HistoryLimit", 65536, history),
-        ("HistoryBonusScale", 200, history),
-        ("HistoryMalusScale", 200, || {
-            let board = Position::initial();
-            let moves = legal_moves(&board);
-            let winner = moves[0];
-            let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
-            let mut result = 0;
-            with_root_searcher(&board, &[], |searcher| {
-                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], 3, 0);
-                result = i64::from(
-                    searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
-                );
-            });
-            result
+        ("HistoryBonusSlope", 400, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(1, false, 0, false, 0)
+                    .bonus,
+            )
+        }),
+        ("HistoryBonusBase", -100, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(1, false, 0, false, 0)
+                    .bonus,
+            )
+        }),
+        ("HistoryBonusCap", 200, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(20, false, 0, false, 0)
+                    .bonus,
+            )
+        }),
+        ("HistoryMalusSlope", 0, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(1, false, 0, false, 0)
+                    .malus,
+            )
+        }),
+        ("HistoryMalusBase", -200, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(1, false, 0, false, 0)
+                    .malus,
+            )
+        }),
+        ("HistoryMalusCap", 200, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(10, false, 0, false, 0)
+                    .malus,
+            )
+        }),
+        ("HistoryMalusDecay", 700, || {
+            let updates = super::super::ordering::HistoryUpdateCoefficients::current()
+                .updates(10, false, 0, false, 0);
+            i64::from(updates.decay_quiet_malus(updates.quiet_malus()))
+        }),
+        ("HistoryTtMoveBonus", 0, || {
+            i64::from(
+                super::super::ordering::HistoryUpdateCoefficients::current()
+                    .updates(1, true, 0, false, 0)
+                    .bonus,
+            )
         }),
         ("HistoryDecay", 50, history_decay),
         (
@@ -695,7 +710,6 @@ fn tuning_parameters_in_isolated_process() {
             50,
             super::capture_history::capture_decay_probe,
         ),
-        ("CaptureHistoryLimit", 65536, capture_history_adjustment),
         ("CaptureHistoryScale", 200, capture_history_adjustment),
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
