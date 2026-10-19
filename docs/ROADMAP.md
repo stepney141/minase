@@ -102,7 +102,7 @@
 | 探索の枝刈りとLMRの関数形の見直し | [plans/archived/search-pruning-forms.md](plans/archived/search-pruning-forms.md) | 完了（採用） | 2026年10月18日 |
 | 浅い前向き枝刈りの深さと対象の拡張 | [plans/archived/shallow-pruning-extensions.md](plans/archived/shallow-pruning-extensions.md) | 完了（採用） | 2026年10月19日 |
 | historyの更新量の形とcontinuation history | [plans/archived/history-forms.md](plans/archived/history-forms.md) | 完了（採用） | |
-| correction historyの表の追加と持ち越し | [plans/correction-history-tables.md](plans/correction-history-tables.md) | 起案 | |
+| correction historyの表の追加と持ち越し | [plans/correction-history-tables.md](plans/correction-history-tables.md) | 進行中 | |
 | 静止探索の補正と枝刈りの形の見直し | [plans/qsearch-forms.md](plans/qsearch-forms.md) | 起案 | |
 | aspiration windowsの幅と窓の移し方の見直し | [plans/aspiration-window-forms.md](plans/aspiration-window-forms.md) | 起案 | |
 | 探索の不安定さに応じた持ち時間の伸縮 | [plans/time-instability-scaling.md](plans/time-instability-scaling.md) | 起案 | |
