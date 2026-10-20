@@ -452,7 +452,7 @@ fn with_draw_value_root_searcher(
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -465,18 +465,19 @@ fn with_draw_value_root_searcher(
         &mut butterfly_history,
         &mut capture_history,
         &correction_values,
+        &mut shared_histories.continuation_correction[0],
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
     test(&mut searcher);
 }
 
-/// 現在の5表から、探索と同じ処理で静的評価へ加える補正量を求める。
+/// 現在の全表から、探索と同じ処理で静的評価へ加える補正量を求める。
 fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
     searcher.correction_value(side, ply)
 }
 
-/// 補正以外の境界を検査するとき、現在の局面が引く5表の要素を直接0にする。
+/// 補正以外の境界を検査するとき、現在の局面が引く全表の要素を直接0にする。
 fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
     let side = position.side_to_move();
     let placement = correction_piece_keys(position);
@@ -496,6 +497,16 @@ fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
         assert_eq!(searcher.correction.read(side, key, table), -5);
         searcher.correction.store(side, key, table, 0);
         assert_eq!(searcher.correction.read(side, key, table), 0);
+    }
+    if let Some(indices) =
+        searcher.continuation_correction_indices(side, searcher.path_moves.len() as u32)
+    {
+        for index in indices {
+            searcher.continuation_correction.store(index, 0);
+        }
+        for index in indices {
+            assert_eq!(searcher.continuation_correction.read(index), 0);
+        }
     }
 }
 
@@ -538,7 +549,7 @@ fn run_quiesce(
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -553,6 +564,7 @@ fn run_quiesce(
         &mut butterfly_history,
         &mut capture_history,
         &correction_values,
+        &mut shared_histories.continuation_correction[0],
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -602,7 +614,7 @@ fn run_configured_negamax(
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -617,6 +629,7 @@ fn run_configured_negamax(
         &mut butterfly_history,
         &mut capture_history,
         &correction_values,
+        &mut shared_histories.continuation_correction[0],
         &shared_histories.continuation,
         &shared_histories.pawn,
     );

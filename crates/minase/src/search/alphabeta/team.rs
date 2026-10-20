@@ -223,14 +223,24 @@ pub(in crate::search) fn run_search_team(
         .iter_mut()
         .zip(&mut histories.capture)
         .zip(&histories.correction)
-        .map(|((history, capture_history), correction)| (history, capture_history, correction))
+        .zip(&mut histories.continuation_correction)
+        .map(
+            |(((history, capture_history), correction), continuation_correction)| {
+                (
+                    history,
+                    capture_history,
+                    correction,
+                    continuation_correction,
+                )
+            },
+        )
         .collect();
     let continuation_history = &histories.continuation;
     let pawn_history = &histories.pawn;
     let worker_outcomes = run_worker_team(
         &mut worker_histories,
         &shared,
-        |worker_index, (history, capture_history, correction)| {
+        |worker_index, (history, capture_history, correction, continuation_correction)| {
             if worker_index == 0 {
                 run_main_worker(
                     nnue,
@@ -247,6 +257,7 @@ pub(in crate::search) fn run_search_team(
                     history,
                     capture_history,
                     correction,
+                    continuation_correction,
                     continuation_history,
                     pawn_history,
                     events,
@@ -269,6 +280,7 @@ pub(in crate::search) fn run_search_team(
                     history,
                     capture_history,
                     correction,
+                    continuation_correction,
                     continuation_history,
                     pawn_history,
                 )

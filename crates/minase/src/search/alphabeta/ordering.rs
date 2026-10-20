@@ -475,7 +475,7 @@ pub(super) fn continuation_index(
         + current_to
 }
 
-fn oriented_square(square: usize, color: Color) -> usize {
+pub(super) fn oriented_square(square: usize, color: Color) -> usize {
     if color == Color::White {
         BOARD_SQUARE_COUNT - 1 - square
     } else {

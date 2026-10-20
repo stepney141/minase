@@ -90,7 +90,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     };
     let nnue = test_nnue();
     let tt = small_tt();
-    let histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
 
     let outcome = run_main_worker(
         nnue,
@@ -109,6 +109,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         &mut empty_capture_history(),
         &new_correction_values(),
+        &mut histories.continuation_correction[0],
         &histories.continuation,
         &histories.pawn,
         None,
@@ -263,7 +264,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
     let nnue = test_nnue();
     let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 10_030))).unwrap();
     let budget = time_budget(&limits).unwrap();
-    let histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for ponder in [false, true] {
         let stop = AtomicBool::new(false);
         let hit_ns = AtomicU64::new(if ponder { 100_000_000_000 } else { 0 });
@@ -296,6 +297,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
             &mut empty_capture_history(),
             &new_correction_values(),
+            &mut histories.continuation_correction[0],
             &histories.continuation,
             &histories.pawn,
             None,

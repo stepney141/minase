@@ -1,30 +1,46 @@
-//! 材料と駒配置を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
+//! 材料、駒配置、および探索経路の着手を鍵にした静的評価の補正（correction history）。
 //!
 //! 手番側ごとに材料、pawn、minor、先手と後手のnon-pawnの5表を引き、
-//! 重み付きの和から求めた補正値を通常探索の各ノードの静的評価に加える。
+//! 2手前、4手前、6手前の着手を文脈にした表の値とともに、重み付きの和から
+//! 求めた補正値を通常探索の各ノードの静的評価に加える。
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
 //! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
 
 use std::sync::atomic::{AtomicI16, Ordering};
 
 use super::history::history_gravity;
+use super::ordering::oriented_square;
 use super::params;
 use super::royal::royal_under_attack;
-use super::searcher::Searcher;
+use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::tt::Bound;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::REPETITION_BAND_START;
 use minase_core::board::BOARD_SQUARE_COUNT;
-use minase_core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
+use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Undo;
 use minase_core::{Position, Square};
 
 impl Searcher<'_> {
-    /// 現在のplyの5表を読み、重み付きの和から静的評価へ加える補正量を求める。
+    /// 現在のplyの全表を読み、重み付きの和から静的評価へ加える補正量を求める。
     pub(super) fn correction_value(&self, side: Color, ply: u32) -> i32 {
+        let weighted_sum = self.correction_weighted_sum_at(side, ply);
+        correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value())
+    }
+
+    /// 現在のplyで引く全表の重み付きの和を返す。
+    pub(super) fn correction_weighted_sum_at(&self, side: Color, ply: u32) -> i64 {
         let ply = ply as usize;
         let non_pawn_keys = self.non_pawn_keys[ply];
-        let weighted_sum = correction_weighted_sum(
+        let continuation = match continuation_correction_indices(&self.path_moves, side, ply) {
+            Some([two, four, six]) => ContinuationCorrectionValues::Present {
+                two: self.continuation_correction.read(two),
+                four: self.continuation_correction.read(four),
+                six: self.continuation_correction.read(six),
+            },
+            None => ContinuationCorrectionValues::NoPreviousMove,
+        };
+        correction_weighted_sum(
             CorrectionWeights::current(),
             self.correction
                 .read(side, self.material_keys[ply], CorrectionTableKind::Material),
@@ -42,8 +58,18 @@ impl Searcher<'_> {
                 non_pawn_keys[Color::White.index()],
                 CorrectionTableKind::WhiteNonPawn,
             ),
-        );
-        correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value())
+            continuation,
+        )
+    }
+
+    /// 現在のplyで2手前、4手前、6手前の文脈から引く添字を返す。
+    #[cfg(test)]
+    pub(super) fn continuation_correction_indices(
+        &self,
+        side: Color,
+        ply: u32,
+    ) -> Option<[usize; 3]> {
+        continuation_correction_indices(&self.path_moves, side, ply as usize)
     }
 
     /// 詰み帯と専用の帯の外で、境界と残差の条件を満たし、王駒に疑似利きが届かないノードだけを学習する。
@@ -112,6 +138,16 @@ impl Searcher<'_> {
                 bonus,
                 NON_PAWN_UPDATE_MULTIPLIER,
             );
+            if let Some(indices) = continuation_correction_indices(&self.path_moves, side, ply) {
+                for (index, multiplier) in indices.into_iter().zip([
+                    CONTINUATION_2_UPDATE_MULTIPLIER,
+                    CONTINUATION_4_UPDATE_MULTIPLIER,
+                    CONTINUATION_6_UPDATE_MULTIPLIER,
+                ]) {
+                    self.continuation_correction
+                        .update(index, bonus, multiplier);
+                }
+            }
         }
     }
 }
@@ -132,11 +168,27 @@ const PAWN_UPDATE_MULTIPLIER: i32 = 128;
 const MINOR_UPDATE_MULTIPLIER: i32 = 150;
 /// non-pawn表の更新倍率。Stockfishと同じ186/128を使う（src/search.cpp:127, 132-133）。
 const NON_PAWN_UPDATE_MULTIPLIER: i32 = 186;
+/// 2手前の文脈の更新倍率。Stockfishと同じ130/128を使う（src/search.cpp:139）。
+const CONTINUATION_2_UPDATE_MULTIPLIER: i32 = 130;
+/// 4手前の文脈の更新倍率。Stockfishと同じ70/128を使う（src/search.cpp:140）。
+const CONTINUATION_4_UPDATE_MULTIPLIER: i32 = 70;
+/// 6手前の文脈の更新倍率。Stockfishと同じ35/128を使う（src/search.cpp:141）。
+const CONTINUATION_6_UPDATE_MULTIPLIER: i32 = 35;
 const UPDATE_MULTIPLIER_DENOMINATOR: i64 = 128;
 const CORRECTION_DENOMINATOR: i64 = 102_400;
 const UPDATE_BASE_LIMIT: i64 = 256;
 const UPDATE_SCALE_NUMERATOR: i64 = 1061;
 const UPDATE_SCALE_DENOMINATOR: i64 = 1024;
+const CONTINUATION_CONTEXT_KIND_COUNT: usize = PIECE_KIND_COUNT + 1;
+/// Continuation correction historyの要素数。
+pub(super) const CONTINUATION_CORRECTION_LEN: usize =
+    CONTINUATION_CONTEXT_KIND_COUNT * BOARD_SQUARE_COUNT * PIECE_KIND_COUNT * BOARD_SQUARE_COUNT;
+/// Continuation correction historyの初期値。Stockfishと同じ5を使う（src/search.cpp:731-733）。
+pub(super) const CONTINUATION_CORRECTION_INITIAL: i16 = 5;
+/// 1手前の手がない場合に加える値。
+/// Stockfishの80695を`80695 × 102400 / (131072 × 208)`で換算した303を使う
+/// （src/search.cpp:104-109）。
+const NO_PREVIOUS_MOVE_CORRECTION: i64 = 303;
 
 /// 1つの配列に束ねる補正表の番号。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -178,6 +230,51 @@ impl CorrectionValues {
 /// 全要素が−5の5表を作る。
 pub(super) fn new_correction_values() -> CorrectionValues {
     CorrectionValues::new()
+}
+
+/// 文脈の手と1手前の手で引く、ワーカー専用のcontinuation correction history。
+pub(crate) struct ContinuationCorrectionHistory {
+    values: Box<[i16]>,
+}
+
+impl ContinuationCorrectionHistory {
+    /// 全要素が5の表を作る。
+    pub(super) fn new() -> Self {
+        Self {
+            values: vec![CONTINUATION_CORRECTION_INITIAL; CONTINUATION_CORRECTION_LEN]
+                .into_boxed_slice(),
+        }
+    }
+
+    /// 全要素を初期値5へ戻す。
+    pub(super) fn clear(&mut self) {
+        self.values.fill(CONTINUATION_CORRECTION_INITIAL);
+    }
+
+    /// 指定要素の値を返す。
+    pub(super) fn read(&self, index: usize) -> i32 {
+        i32::from(self.values[index])
+    }
+
+    /// 文脈ごとの倍率を掛けた更新量を、指定要素へ重力式で取り込む。
+    pub(super) fn update(&mut self, index: usize, bonus: i32, multiplier: i32) {
+        self.values[index] = updated_correction(self.values[index], bonus, multiplier);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn store(&mut self, index: usize, value: i16) {
+        self.values[index] = value;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values(&self) -> &[i16] {
+        &self.values
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values_mut(&mut self) -> &mut [i16] {
+        &mut self.values
+    }
 }
 
 /// ワーカー別の5表を扱う。
@@ -223,12 +320,66 @@ fn correction_index(side: Color, key: u64, table: CorrectionTableKind) -> usize 
         + table as usize
 }
 
+/// 文脈の手、1手前の手、および現在の手番側から平坦な表の添字を求める。
+/// 文脈がなければ駒種29と回転しない升0の区画を使う。
+pub(super) fn continuation_correction_index(
+    context: Option<MoveRecord>,
+    previous: MoveRecord,
+    side: Color,
+) -> usize {
+    let (context_kind, context_to) = context.map_or((PIECE_KIND_COUNT, 0), |record| {
+        (
+            record
+                .piece
+                .kind()
+                .expect("continuation correction context piece kind")
+                .index(),
+            oriented_square(record.mv.to.dense_index(), side),
+        )
+    });
+    let previous_piece = if previous.mv.promote {
+        previous
+            .piece
+            .promote()
+            .expect("continuation correction previous move promotion")
+    } else {
+        previous.piece
+    };
+    let previous_kind = previous_piece
+        .kind()
+        .expect("continuation correction previous piece kind")
+        .index();
+    let previous_to = oriented_square(previous.mv.to.dense_index(), side);
+    ((context_kind * BOARD_SQUARE_COUNT + context_to) * PIECE_KIND_COUNT + previous_kind)
+        * BOARD_SQUARE_COUNT
+        + previous_to
+}
+
+fn continuation_correction_indices(
+    path_moves: &[PathMove],
+    side: Color,
+    ply: usize,
+) -> Option<[usize; 3]> {
+    let previous = path_record(path_moves, ply, 1)?;
+    Some([2, 4, 6].map(|distance| {
+        continuation_correction_index(path_record(path_moves, ply, distance), previous, side)
+    }))
+}
+
+fn path_record(path_moves: &[PathMove], ply: usize, distance: usize) -> Option<MoveRecord> {
+    ply.checked_sub(distance)
+        .and_then(|index| path_moves.get(index))
+        .and_then(|entry| entry.record)
+}
+
 #[derive(Clone, Copy)]
 struct CorrectionWeights {
     material: i32,
     pawn: i32,
     minor: i32,
     non_pawn: i32,
+    continuation: i32,
+    continuation_six: i32,
 }
 
 impl CorrectionWeights {
@@ -238,8 +389,16 @@ impl CorrectionWeights {
             pawn: params::correction_pawn_weight(),
             minor: params::correction_minor_weight(),
             non_pawn: params::correction_non_pawn_weight(),
+            continuation: params::correction_continuation_weight(),
+            continuation_six: params::correction_continuation6_weight(),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum ContinuationCorrectionValues {
+    NoPreviousMove,
+    Present { two: i32, four: i32, six: i32 },
 }
 
 fn correction_weighted_sum(
@@ -249,11 +408,20 @@ fn correction_weighted_sum(
     minor: i32,
     black_non_pawn: i32,
     white_non_pawn: i32,
+    continuation: ContinuationCorrectionValues,
 ) -> i64 {
+    let continuation = match continuation {
+        ContinuationCorrectionValues::NoPreviousMove => NO_PREVIOUS_MOVE_CORRECTION,
+        ContinuationCorrectionValues::Present { two, four, six } => {
+            i64::from(weights.continuation) * (i64::from(two) + i64::from(four))
+                + i64::from(weights.continuation_six) * i64::from(six)
+        }
+    };
     i64::from(weights.material) * i64::from(material)
         + i64::from(weights.pawn) * i64::from(pawn)
         + i64::from(weights.minor) * i64::from(minor)
         + i64::from(weights.non_pawn) * (i64::from(black_non_pawn) + i64::from(white_non_pawn))
+        + continuation
 }
 
 /// 表の重み付きの和から、静的評価と同じ単位の補正量を求める。
@@ -607,6 +775,50 @@ mod tests {
     }
 
     #[test]
+    fn continuation_correction_index_orients_squares_and_uses_pre_and_post_move_kinds() {
+        let context = MoveRecord {
+            mv: Move {
+                from: sq(2, 2),
+                mid: None,
+                to: sq(2, 3),
+                promote: true,
+            },
+            piece: PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
+            captured: None,
+        };
+        let previous = MoveRecord {
+            mv: Move {
+                from: sq(4, 4),
+                mid: None,
+                to: sq(4, 5),
+                promote: true,
+            },
+            piece: PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+            captured: None,
+        };
+
+        // 文脈は着手前の歩兵0、1手前は成った後の金将17を使う。
+        // 到達升は38と64で、後手番ではそれぞれ105と79へ回転する。
+        assert_eq!(
+            continuation_correction_index(Some(context), previous, Color::Black),
+            161_200
+        );
+        assert_eq!(
+            continuation_correction_index(Some(context), previous, Color::White),
+            441_007
+        );
+        // 文脈なしは駒種29、升0を使い、この升0は後手番でも回転しない。
+        assert_eq!(
+            continuation_correction_index(None, previous, Color::Black),
+            17_441_488
+        );
+        assert_eq!(
+            continuation_correction_index(None, previous, Color::White),
+            17_441_503
+        );
+    }
+
+    #[test]
     fn correction_weighted_sum_matches_numeric_example() {
         let weighted_sum = correction_weighted_sum(
             CorrectionWeights {
@@ -614,15 +826,66 @@ mod tests {
                 pawn: 52,
                 minor: 36,
                 non_pawn: 44,
+                continuation: 30,
+                continuation_six: 24,
             },
             1024,
             -512,
             100,
             10,
             -10,
+            ContinuationCorrectionValues::Present {
+                two: 0,
+                four: 0,
+                six: 0,
+            },
         );
         assert_eq!(weighted_sum, 260_624);
         assert_eq!(correction_from_weighted_sum(weighted_sum, 100), 254);
+    }
+
+    #[test]
+    fn continuation_correction_weighted_sum_matches_numeric_example() {
+        let weighted_sum = correction_weighted_sum(
+            CorrectionWeights {
+                material: 0,
+                pawn: 0,
+                minor: 0,
+                non_pawn: 0,
+                continuation: 30,
+                continuation_six: 24,
+            },
+            0,
+            0,
+            0,
+            0,
+            0,
+            ContinuationCorrectionValues::Present {
+                two: 100,
+                four: -50,
+                six: 1024,
+            },
+        );
+        assert_eq!(weighted_sum, 26_076);
+        assert_eq!(
+            correction_weighted_sum(
+                CorrectionWeights {
+                    material: 0,
+                    pawn: 0,
+                    minor: 0,
+                    non_pawn: 0,
+                    continuation: 30,
+                    continuation_six: 24,
+                },
+                0,
+                0,
+                0,
+                0,
+                0,
+                ContinuationCorrectionValues::NoPreviousMove,
+            ),
+            303
+        );
     }
 
     #[test]

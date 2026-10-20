@@ -208,6 +208,8 @@ fn tuning_parameters_in_isolated_process() {
         ("CorrectionPawnWeight", 52),
         ("CorrectionMinorWeight", 36),
         ("CorrectionNonPawnWeight", 44),
+        ("CorrectionContinuationWeight", 30),
+        ("CorrectionContinuation6Weight", 24),
         ("CorrectionBonus", 20),
         ("CorrectionFailLowBonus", 29),
         ("DeltaMargin", 500),
@@ -508,7 +510,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 87] = [
+    let cases: [Case; 89] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -848,6 +850,18 @@ fn tuning_parameters_in_isolated_process() {
         ("CorrectionPawnWeight", 200, pawn_correction),
         ("CorrectionMinorWeight", 200, minor_correction),
         ("CorrectionNonPawnWeight", 200, non_pawn_correction),
+        ("CorrectionContinuationWeight", 200, || {
+            i64::from(correction_from_weighted_sum(
+                i64::from(params::correction_continuation_weight()) * 1024,
+                100,
+            ))
+        }),
+        ("CorrectionContinuation6Weight", 200, || {
+            i64::from(correction_from_weighted_sum(
+                i64::from(params::correction_continuation6_weight()) * 1024,
+                100,
+            ))
+        }),
         ("CorrectionBonus", 60, normal_correction_bonus),
         ("CorrectionFailLowBonus", 90, fail_low_correction_bonus),
         ("DeltaMargin", 300, delta),

@@ -1274,10 +1274,12 @@ mod tests {
     fn cores_accepts_boundaries_and_rejects_invalid_values() {
         // [`CecpProtocol::handle_cores`]に従い、coresは1..=256だけを受理し、不正値は固定CECPエラーを
         // 返す。正当値は無応答である。
+        assert_eq!(parse_cores("1").map(NonZeroUsize::get), Some(1));
+        assert_eq!(parse_cores("256").map(NonZeroUsize::get), Some(256));
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = CecpProtocol::new(&engine);
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
-        for threads in [256, 1] {
+        for threads in [1, 2] {
             assert_eq!(
                 run(&mut protocol, &mut engine, &format!("cores {threads}\n")),
                 ""
@@ -1291,7 +1293,7 @@ mod tests {
         );
 
         assert_eq!(output, "Error (invalid command): cores\n".repeat(4));
-        assert_eq!(protocol.threads.get(), 1);
+        assert_eq!(protocol.threads.get(), 2);
     }
 
     #[test]

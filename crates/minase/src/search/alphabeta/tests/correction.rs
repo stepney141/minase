@@ -76,11 +76,86 @@ fn correction_update_applies_one_observation_to_all_five_tables() {
     });
 }
 
+#[test]
+fn continuation_correction_updates_shared_sentinel_element_in_context_order() {
+    let root = bare_kings();
+    with_root_searcher(&root, &[], |searcher| {
+        let mut board = root.clone();
+        let mv = legal_moves(&board)[0];
+        push_path_move(searcher, &mut board, Some(mv));
+        let side = board.side_to_move();
+        let indices = searcher.continuation_correction_indices(side, 1).unwrap();
+        assert_eq!(indices, [indices[0]; 3]);
+
+        for (multiplier, expected) in [(130, 135), (70, 196), (35, 225)] {
+            searcher
+                .continuation_correction
+                .update(indices[0], 128, multiplier);
+            assert_eq!(searcher.continuation_correction.read(indices[0]), expected);
+        }
+
+        searcher.continuation_correction.store(indices[0], 5);
+        searcher.update_correction(&board, 20, 1, 31, Bound::Exact, false, 0, Some(false));
+        assert_eq!(searcher.continuation_correction.read(indices[0]), 225);
+    });
+}
+
+#[test]
+fn continuation_correction_missing_previous_move_uses_constant_and_skips_update() {
+    let root = bare_kings();
+    with_root_searcher(&root, &[], |searcher| {
+        searcher.continuation_correction.values_mut().fill(1024);
+        zero_position_correction(searcher, &root);
+        assert_eq!(searcher.correction_weighted_sum_at(Color::Black, 0), 303);
+        searcher.update_correction(&root, 20, 0, 31, Bound::Exact, false, 0, Some(false));
+        assert!(
+            searcher
+                .continuation_correction
+                .values()
+                .iter()
+                .all(|&value| value == 1024)
+        );
+
+        let mut after_null = root.clone();
+        push_path_move(searcher, &mut after_null, None);
+        zero_position_correction(searcher, &after_null);
+        assert_eq!(searcher.correction_weighted_sum_at(Color::White, 1), 303);
+        searcher.update_correction(&after_null, 20, 1, 31, Bound::Exact, false, 0, Some(false));
+        assert!(
+            searcher
+                .continuation_correction
+                .values()
+                .iter()
+                .all(|&value| value == 1024)
+        );
+    });
+}
+
+#[test]
+fn continuation_correction_initializes_clears_and_is_worker_local() {
+    let mut histories = crate::search::HistoryTables::new(worker_count(2));
+    assert_eq!(histories.continuation_correction.len(), 2);
+    for history in &histories.continuation_correction {
+        assert_eq!(history.values().len(), 30 * 144 * 29 * 144);
+        assert!(history.values().iter().all(|&value| value == 5));
+    }
+
+    histories.continuation_correction[0].store(17, 99);
+    assert_eq!(histories.continuation_correction[0].read(17), 99);
+    assert_eq!(histories.continuation_correction[1].read(17), 5);
+
+    histories.clear();
+    assert!(histories.continuation_correction.iter().all(|history| {
+        history.values().len() == 30 * 144 * 29 * 144
+            && history.values().iter().all(|&value| value == 5)
+    }));
+}
+
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
     let nnue = test_nnue();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -150,6 +225,7 @@ fn correction_negamax_update_conditions() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -194,7 +270,7 @@ fn correction_negamax_update_conditions() {
 fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let nnue = test_nnue();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     for score in [
         MATE_THRESHOLD,
         -MATE_THRESHOLD,
@@ -235,6 +311,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -286,6 +363,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -312,7 +390,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
 fn correction_root_updates_only_after_completed_search() {
     let nnue = test_nnue();
     assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let board = bare_kings();
     let score = evaluate(nnue, &board);
     let rules = MoveRules::standard();
@@ -347,6 +425,7 @@ fn correction_root_updates_only_after_completed_search() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -386,7 +465,7 @@ fn correction_root_updates_only_after_completed_search() {
 #[test]
 fn correction_changes_futility_estimate() {
     let nnue = test_nnue();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -418,6 +497,7 @@ fn correction_changes_futility_estimate() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -455,7 +535,7 @@ fn correction_changes_futility_estimate() {
 #[test]
 fn correction_search_move_and_null_move_propagate_position_keys() {
     let nnue = test_nnue();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
@@ -483,6 +563,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -542,6 +623,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
         &mut butterfly_history,
         &mut capture_history,
         &correction_values,
+        &mut shared_histories.continuation_correction[0],
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -561,8 +643,8 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
 }
 
 #[test]
-fn correction_values_are_cleared_at_each_search_team_start() {
-    let threads = worker_count(4);
+fn correction_histories_are_cleared_at_each_search_team_start() {
+    let threads = worker_count(2);
     let snapshot = snapshot_for(&quiet_midgame());
     let table = small_tt();
     let mut histories = crate::search::HistoryTables::new(threads);
@@ -597,6 +679,9 @@ fn correction_values_are_cleared_at_each_search_team_start() {
             value.store(1, AtomicOrdering::Relaxed);
         }
     }
+    for history in &mut histories.continuation_correction {
+        history.values_mut().fill(1);
+    }
     let second = run_search_team(
         test_nnue(),
         &snapshot.position,
@@ -623,4 +708,10 @@ fn correction_values_are_cleared_at_each_search_team_start() {
             .iter()
             .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
     }));
+    assert!(
+        histories
+            .continuation_correction
+            .iter()
+            .all(|history| history.values().iter().all(|&value| value == 5))
+    );
 }

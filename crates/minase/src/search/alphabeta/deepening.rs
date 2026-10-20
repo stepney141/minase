@@ -12,7 +12,7 @@ use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
 use super::capture_history::CaptureHistory;
-use super::correction::CorrectionValues;
+use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 use super::history::{ContinuationHistory, HistoryTable, PawnHistory};
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
@@ -50,6 +50,7 @@ pub(super) fn run_main_worker(
     history: &mut HistoryTable,
     capture_history: &mut CaptureHistory,
     correction_values: &CorrectionValues,
+    continuation_correction: &mut ContinuationCorrectionHistory,
     continuation_history: &ContinuationHistory,
     pawn_history: &PawnHistory,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
@@ -68,6 +69,7 @@ pub(super) fn run_main_worker(
         history,
         capture_history,
         correction_values,
+        continuation_correction,
         continuation_history,
         pawn_history,
     );
@@ -220,6 +222,7 @@ pub(super) fn run_auxiliary_worker(
     history: &mut HistoryTable,
     capture_history: &mut CaptureHistory,
     correction_values: &CorrectionValues,
+    continuation_correction: &mut ContinuationCorrectionHistory,
     continuation_history: &ContinuationHistory,
     pawn_history: &PawnHistory,
 ) -> WorkerOutcome {
@@ -235,6 +238,7 @@ pub(super) fn run_auxiliary_worker(
         history,
         capture_history,
         correction_values,
+        continuation_correction,
         continuation_history,
         pawn_history,
     );

@@ -365,6 +365,16 @@ parameters! {
     /// （Stockfish src/search.cpp:111, 116-118、YaneuraOu yaneuraou-search.cpp:737）。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     CorrectionNonPawnWeight(correction_non_pawn_weight): 44, 0, 200;
+    /// 2手前と4手前のcontinuation correction historyの要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// Stockfishの7885は約30、YaneuraOuの7982は約69に当たり、従来は表がないため0である
+    /// （Stockfish src/search.cpp:105-107、YaneuraOu yaneuraou-search.cpp:737）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionContinuationWeight(correction_continuation_weight): 30, 0, 200;
+    /// 6手前のcontinuation correction historyの要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// Stockfishの6307は約24に当たり、YaneuraOuには対応する項がなく、従来は表がないため0である
+    /// （Stockfish src/search.cpp:108）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionContinuation6Weight(correction_continuation6_weight): 24, 0, 200;
     /// 上界でないノードの、歩兵価値1枚分の残差と深さ1手あたり、±256で切り詰める前の更新量である。
     /// Stockfishは208×12/128で19.5、YaneuraOuは90×12/128で約8である
     /// （Stockfish src/search.cpp:1670、YaneuraOu yaneuraou-search.cpp:4414）。

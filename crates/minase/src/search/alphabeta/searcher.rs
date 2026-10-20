@@ -15,7 +15,10 @@ use minase_core::rules::MoveRules;
 use minase_core::{Color, MoveGenerator, move_was_attacking, repetition_key};
 
 use super::capture_history::{CaptureHistory, captured_kind_for_history};
-use super::correction::{CorrectionTable, CorrectionValues, correction_piece_keys, material_key};
+use super::correction::{
+    ContinuationCorrectionHistory, CorrectionTable, CorrectionValues, correction_piece_keys,
+    material_key,
+};
 use super::history::{
     ContinuationHistory, HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT,
     LowPlyHistory, PawnHistory, pawn_key,
@@ -51,6 +54,7 @@ pub(super) fn new_searcher<'a>(
     history: &'a mut HistoryTable,
     capture_history: &'a mut CaptureHistory,
     correction_values: &'a CorrectionValues,
+    continuation_correction: &'a mut ContinuationCorrectionHistory,
     continuation_history: &'a ContinuationHistory,
     pawn_history: &'a PawnHistory,
 ) -> Searcher<'a> {
@@ -107,6 +111,7 @@ pub(super) fn new_searcher<'a>(
         non_pawn_keys: [root_correction_keys.non_pawn; MAX_PLY as usize + 1],
         static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(correction_values),
+        continuation_correction,
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
         capture_history,
@@ -273,6 +278,8 @@ pub(super) struct Searcher<'a> {
     pub(super) static_evals: [i32; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の5つの補正表。
     pub(super) correction: CorrectionTable<'a>,
+    /// 反復深化の間で共有する、このワーカー専用のcontinuation correction history。
+    pub(super) continuation_correction: &'a mut ContinuationCorrectionHistory,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
     /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。
     pub(super) delta_margin: i32,

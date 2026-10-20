@@ -2689,10 +2689,12 @@ mod tests {
     fn threads_accepts_boundaries_and_rejects_invalid_values() {
         // [`UsiProtocol::handle_setoption`]に従い、Threadsは1..=256だけを受理し、
         // 不正値には固定エラーを返す。正当値は無応答である。
+        assert_eq!(parse_threads("1").map(NonZeroUsize::get), Some(1));
+        assert_eq!(parse_threads("256").map(NonZeroUsize::get), Some(256));
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
-        for threads in [256, 1] {
+        for threads in [1, 2] {
             assert_eq!(
                 run(
                     &mut protocol,
@@ -2723,7 +2725,7 @@ mod tests {
                 "info string error: Threads must be an integer from 1 to 256\n",
             )
         );
-        assert_eq!(protocol.threads.get(), 1);
+        assert_eq!(protocol.threads.get(), 2);
     }
 
     /// 王将の逃げ先が奔王、竪行、飛車に覆われ、反車でも捕獲を防げない局面。

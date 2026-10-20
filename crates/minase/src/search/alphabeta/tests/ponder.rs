@@ -209,7 +209,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let position = Position::initial();
     let nnue = test_nnue();
     let table = small_tt();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     let stable_boundary = 1100 * 100 / params::iteration_ratio() as u64;
     let hard_boundary = 1400 * 100 / params::iteration_ratio() as u64;
@@ -269,6 +269,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             &mut butterfly_history,
             &mut capture_history,
             &correction_values,
+            &mut shared_histories.continuation_correction[0],
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -357,6 +358,8 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
         let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
             let mut captures = empty_capture_history();
             let correction_values = new_correction_values();
+            let mut continuation_correction =
+                super::super::correction::ContinuationCorrectionHistory::new();
             let completed = run_auxiliary_worker(
                 test_nnue(),
                 &position,
@@ -374,6 +377,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 history,
                 &mut captures,
                 &correction_values,
+                &mut continuation_correction,
                 continuation_history,
                 pawn_history,
             );
@@ -396,6 +400,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 history,
                 &mut captures,
                 &correction_values,
+                &mut continuation_correction,
                 continuation_history,
                 pawn_history,
             );
@@ -469,6 +474,8 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         let pawn_history = &histories.pawn;
         let outcomes = run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
             let correction_values = new_correction_values();
+            let mut continuation_correction =
+                super::super::correction::ContinuationCorrectionHistory::new();
             if worker_index == 1 {
                 let outcome = run_auxiliary_worker(
                     nnue,
@@ -487,6 +494,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     history,
                     &mut empty_capture_history(),
                     &correction_values,
+                    &mut continuation_correction,
                     continuation_history,
                     pawn_history,
                 );
@@ -510,6 +518,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 &mut butterfly_history,
                 &mut capture_history,
                 &correction_values,
+                &mut continuation_correction,
                 continuation_history,
                 pawn_history,
             );
@@ -598,7 +607,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     let position = Position::initial();
     let nnue = test_nnue();
     let table = small_tt();
-    let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
     for (remaining, byoyomi, depth, nodes, movetime, recheck) in [
         (0, 10_030, None, None, None, false),
@@ -646,6 +655,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     &mut history,
                     &mut capture_history,
                     &correction_values,
+                    &mut shared_histories.continuation_correction[0],
                     &shared_histories.continuation,
                     &shared_histories.pawn,
                 );
