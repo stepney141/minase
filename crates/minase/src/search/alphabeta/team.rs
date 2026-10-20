@@ -222,7 +222,7 @@ pub(in crate::search) fn run_search_team(
         .workers
         .iter_mut()
         .zip(&mut histories.capture)
-        .zip(&mut histories.correction)
+        .zip(&histories.correction)
         .map(|((history, capture_history), correction)| (history, capture_history, correction))
         .collect();
     let continuation_history = &histories.continuation;

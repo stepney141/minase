@@ -251,6 +251,18 @@ fn tuning_usi_contract_in_isolated_process() {
                 "CorrectionMaterialWeight",
                 params::correction_material_weight as fn() -> i32,
             ),
+            (
+                "CorrectionPawnWeight",
+                params::correction_pawn_weight as fn() -> i32,
+            ),
+            (
+                "CorrectionMinorWeight",
+                params::correction_minor_weight as fn() -> i32,
+            ),
+            (
+                "CorrectionNonPawnWeight",
+                params::correction_non_pawn_weight as fn() -> i32,
+            ),
             ("CorrectionBonus", params::correction_bonus as fn() -> i32),
             (
                 "CorrectionFailLowBonus",

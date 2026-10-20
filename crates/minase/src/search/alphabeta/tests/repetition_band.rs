@@ -453,13 +453,24 @@ fn r1_repetition_band_scores_do_not_update_correction_history() {
         for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
             with_root_searcher(&board, &[], |searcher| {
                 let key = material_key(&board);
-                searcher.correction.update(Color::Black, key, 31, 128);
-                let before = searcher.correction.read(Color::Black, key);
+                searcher.correction.update(
+                    Color::Black,
+                    key,
+                    CorrectionTableKind::Material,
+                    31,
+                    128,
+                );
+                let before =
+                    searcher
+                        .correction
+                        .read(Color::Black, key, CorrectionTableKind::Material);
                 assert_eq!(before, 26);
                 // 反復による勝敗の値を、negamaxの出口で使う更新処理へ渡す。
                 searcher.update_correction(&board, 2, 0, score, bound, false, 0, None);
                 assert_eq!(
-                    searcher.correction.read(Color::Black, key),
+                    searcher
+                        .correction
+                        .read(Color::Black, key, CorrectionTableKind::Material),
                     before,
                     "{score}, {bound:?}"
                 );
@@ -471,7 +482,11 @@ fn r1_repetition_band_scores_do_not_update_correction_history() {
         with_root_searcher(&board, &[], |searcher| {
             searcher.update_correction(&board, 2, 0, score, bound, false, 0, None);
             assert_ne!(
-                searcher.correction.read(Color::Black, material_key(&board)),
+                searcher.correction.read(
+                    Color::Black,
+                    material_key(&board),
+                    CorrectionTableKind::Material,
+                ),
                 -5
             );
         });

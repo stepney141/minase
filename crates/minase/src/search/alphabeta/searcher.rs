@@ -9,13 +9,13 @@ use crate::search::events::StopReason;
 use crate::search::{DRAW_SCORE, MAX_PLY, REPETITION_WIN, SearchRepetition, TranspositionTable};
 use minase_core::board::{BOARD_SQUARE_COUNT, Square};
 use minase_core::mv::Move;
-use minase_core::piece::{PieceCode, PieceKind};
+use minase_core::piece::{COLOR_COUNT, PieceCode, PieceKind};
 use minase_core::position::{Position, Undo};
 use minase_core::rules::MoveRules;
 use minase_core::{Color, MoveGenerator, move_was_attacking, repetition_key};
 
 use super::capture_history::{CaptureHistory, captured_kind_for_history};
-use super::correction::{CorrectionTable, CorrectionValues, material_key};
+use super::correction::{CorrectionTable, CorrectionValues, correction_piece_keys, material_key};
 use super::history::{
     ContinuationHistory, HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT,
     LowPlyHistory, PawnHistory, pawn_key,
@@ -50,12 +50,13 @@ pub(super) fn new_searcher<'a>(
     tt: &'a TranspositionTable,
     history: &'a mut HistoryTable,
     capture_history: &'a mut CaptureHistory,
-    correction_values: &'a mut CorrectionValues,
+    correction_values: &'a CorrectionValues,
     continuation_history: &'a ContinuationHistory,
     pawn_history: &'a PawnHistory,
 ) -> Searcher<'a> {
     let root_accumulator = nnue.refresh_accumulator(position);
     let root_pawn_key = pawn_key(position);
+    let root_correction_keys = correction_piece_keys(position);
     Searcher {
         root_results: None,
         completed_root_nodes: Vec::new(),
@@ -102,6 +103,8 @@ pub(super) fn new_searcher<'a>(
         accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         pawn_keys: [root_pawn_key; MAX_PLY as usize + 1],
+        minor_keys: [root_correction_keys.minor; MAX_PLY as usize + 1],
+        non_pawn_keys: [root_correction_keys.non_pawn; MAX_PLY as usize + 1],
         static_evals: [0; MAX_PLY as usize + 1],
         correction: CorrectionTable::new(correction_values),
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
@@ -262,9 +265,13 @@ pub(super) struct Searcher<'a> {
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
     /// plyごとの歩兵と仲人の絶対配置の鍵。null moveでは変化しない。
     pub(super) pawn_keys: [u64; MAX_PLY as usize + 1],
+    /// plyごとの双方の小駒の絶対配置の鍵。null moveでは変化しない。
+    pub(super) minor_keys: [u64; MAX_PLY as usize + 1],
+    /// plyごとの、所有者別の歩兵と仲人以外の絶対配置の鍵。null moveでは変化しない。
+    pub(super) non_pawn_keys: [[u64; COLOR_COUNT]; MAX_PLY as usize + 1],
     /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
     pub(super) static_evals: [i32; MAX_PLY as usize + 1],
-    /// 反復深化の間で共有する、このワーカー専用の材料表。
+    /// 反復深化の間で共有する、このワーカー専用の5つの補正表。
     pub(super) correction: CorrectionTable<'a>,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
     /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。

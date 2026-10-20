@@ -1,8 +1,11 @@
-//! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
+//! 材料と駒配置を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
 //!
-//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値を通常探索の各ノードの静的評価に加える。
+//! 手番側ごとに材料、pawn、minor、先手と後手のnon-pawnの5表を引き、
+//! 重み付きの和から求めた補正値を通常探索の各ノードの静的評価に加える。
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
 //! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
+
+use std::sync::atomic::{AtomicI16, Ordering};
 
 use super::history::history_gravity;
 use super::params;
@@ -11,11 +14,38 @@ use super::searcher::Searcher;
 use super::tt::Bound;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::REPETITION_BAND_START;
-use minase_core::piece::{COLOR_COUNT, Color, PieceCode};
+use minase_core::board::BOARD_SQUARE_COUNT;
+use minase_core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
 use minase_core::position::Undo;
 use minase_core::{Position, Square};
 
 impl Searcher<'_> {
+    /// 現在のplyの5表を読み、重み付きの和から静的評価へ加える補正量を求める。
+    pub(super) fn correction_value(&self, side: Color, ply: u32) -> i32 {
+        let ply = ply as usize;
+        let non_pawn_keys = self.non_pawn_keys[ply];
+        let weighted_sum = correction_weighted_sum(
+            CorrectionWeights::current(),
+            self.correction
+                .read(side, self.material_keys[ply], CorrectionTableKind::Material),
+            self.correction
+                .read(side, self.pawn_keys[ply], CorrectionTableKind::Pawn),
+            self.correction
+                .read(side, self.minor_keys[ply], CorrectionTableKind::Minor),
+            self.correction.read(
+                side,
+                non_pawn_keys[Color::Black.index()],
+                CorrectionTableKind::BlackNonPawn,
+            ),
+            self.correction.read(
+                side,
+                non_pawn_keys[Color::White.index()],
+                CorrectionTableKind::WhiteNonPawn,
+            ),
+        );
+        correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value())
+    }
+
     /// 詰み帯と専用の帯の外で、境界と残差の条件を満たし、王駒に疑似利きが届かないノードだけを学習する。
     /// 反復による勝敗は経路に依存し、静的評価の誤差ではないため補正履歴に取り込まない。
     #[allow(clippy::too_many_arguments)]
@@ -45,58 +75,185 @@ impl Searcher<'_> {
             return;
         };
         if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position)) {
+            let side = position.side_to_move();
+            let ply = ply as usize;
             self.correction.update(
-                position.side_to_move(),
-                self.material_keys[ply as usize],
+                side,
+                self.material_keys[ply],
+                CorrectionTableKind::Material,
                 bonus,
                 MATERIAL_UPDATE_MULTIPLIER,
+            );
+            self.correction.update(
+                side,
+                self.pawn_keys[ply],
+                CorrectionTableKind::Pawn,
+                bonus,
+                PAWN_UPDATE_MULTIPLIER,
+            );
+            self.correction.update(
+                side,
+                self.minor_keys[ply],
+                CorrectionTableKind::Minor,
+                bonus,
+                MINOR_UPDATE_MULTIPLIER,
+            );
+            self.correction.update(
+                side,
+                self.non_pawn_keys[ply][Color::Black.index()],
+                CorrectionTableKind::BlackNonPawn,
+                bonus,
+                NON_PAWN_UPDATE_MULTIPLIER,
+            );
+            self.correction.update(
+                side,
+                self.non_pawn_keys[ply][Color::White.index()],
+                CorrectionTableKind::WhiteNonPawn,
+                bonus,
+                NON_PAWN_UPDATE_MULTIPLIER,
             );
         }
     }
 }
 
-const ENTRY_COUNT: usize = 4096;
+const ENTRY_COUNT: usize = 65_536;
+const TABLE_COUNT: usize = 5;
 /// 補正表の要素と表ごとの更新量の絶対値の上限。
 /// Stockfishと同じ1024を使う（src/history.h:41）。
 pub(super) const CORRECTION_LIMIT: i32 = 1024;
-/// 材料表の初期値。Stockfishの局面を鍵にした補正表と同じ−5を使う（src/search.cpp:719）。
+/// 局面を鍵にした5表の初期値。Stockfishと同じ−5を使う（src/search.cpp:719）。
 pub(super) const CORRECTION_INITIAL: i16 = -5;
-/// 材料表の更新倍率。Stockfishで基準となるpawnの表と同じ128/128を使う。
+/// 材料表の更新倍率。Stockfishに材料表はないため、基準のpawnと同じ128/128を使う
+/// （src/search.cpp:130）。
 const MATERIAL_UPDATE_MULTIPLIER: i32 = 128;
+/// pawn表の更新倍率。Stockfishでは更新量をそのまま使う（src/search.cpp:130）。
+const PAWN_UPDATE_MULTIPLIER: i32 = 128;
+/// minor表の更新倍率。Stockfishと同じ150/128を使う（src/search.cpp:131）。
+const MINOR_UPDATE_MULTIPLIER: i32 = 150;
+/// non-pawn表の更新倍率。Stockfishと同じ186/128を使う（src/search.cpp:127, 132-133）。
+const NON_PAWN_UPDATE_MULTIPLIER: i32 = 186;
 const UPDATE_MULTIPLIER_DENOMINATOR: i64 = 128;
 const CORRECTION_DENOMINATOR: i64 = 102_400;
 const UPDATE_BASE_LIMIT: i64 = 256;
 const UPDATE_SCALE_NUMERATOR: i64 = 1061;
 const UPDATE_SCALE_DENOMINATOR: i64 = 1024;
 
-/// 手番側ごとの材料表の値。
-pub(super) type CorrectionValues = [[i16; ENTRY_COUNT]; COLOR_COUNT];
-
-/// 全要素が−5の材料表を作る。
-pub(super) fn new_correction_values() -> Box<CorrectionValues> {
-    Box::new([[CORRECTION_INITIAL; ENTRY_COUNT]; COLOR_COUNT])
+/// 1つの配列に束ねる補正表の番号。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CorrectionTableKind {
+    Material = 0,
+    Pawn = 1,
+    Minor = 2,
+    BlackNonPawn = 3,
+    WhiteNonPawn = 4,
 }
 
-/// ワーカー別の材料表を扱う。
+/// 材料、pawn、minor、先手と後手のnon-pawnの5表を束ねた値。
+pub(crate) struct CorrectionValues {
+    values: Box<[AtomicI16]>,
+}
+
+impl CorrectionValues {
+    fn new() -> Self {
+        Self {
+            values: std::iter::repeat_with(|| AtomicI16::new(CORRECTION_INITIAL))
+                .take(ENTRY_COUNT * COLOR_COUNT * TABLE_COUNT)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        }
+    }
+
+    pub(super) fn clear(&self) {
+        for value in &self.values {
+            value.store(CORRECTION_INITIAL, Ordering::Relaxed);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values(&self) -> &[AtomicI16] {
+        &self.values
+    }
+}
+
+/// 全要素が−5の5表を作る。
+pub(super) fn new_correction_values() -> CorrectionValues {
+    CorrectionValues::new()
+}
+
+/// ワーカー別の5表を扱う。
 pub(super) struct CorrectionTable<'a> {
-    values: &'a mut CorrectionValues,
+    values: &'a CorrectionValues,
 }
 
 impl<'a> CorrectionTable<'a> {
-    pub(super) fn new(values: &'a mut CorrectionValues) -> Self {
+    pub(super) fn new(values: &'a CorrectionValues) -> Self {
         Self { values }
     }
 
-    /// 手番側と鍵の下位12ビットで材料表を引く。
-    pub(super) fn read(&self, side: Color, key: u64) -> i32 {
-        i32::from(self.values[side.index()][key as usize & (ENTRY_COUNT - 1)])
+    /// 鍵の下位16ビット、手番側、および表の番号から要素を引く。
+    pub(super) fn read(&self, side: Color, key: u64, table: CorrectionTableKind) -> i32 {
+        i32::from(self.values.values[correction_index(side, key, table)].load(Ordering::Relaxed))
     }
 
     /// 表ごとの倍率を掛けた更新量を、同じ添字の要素へ重力式で取り込む。
-    pub(super) fn update(&mut self, side: Color, key: u64, bonus: i32, multiplier: i32) {
-        let value = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
-        *value = updated_correction(*value, bonus, multiplier);
+    pub(super) fn update(
+        &self,
+        side: Color,
+        key: u64,
+        table: CorrectionTableKind,
+        bonus: i32,
+        multiplier: i32,
+    ) {
+        let value = &self.values.values[correction_index(side, key, table)];
+        let old = value.load(Ordering::Relaxed);
+        value.store(
+            updated_correction(old, bonus, multiplier),
+            Ordering::Relaxed,
+        );
     }
+
+    #[cfg(test)]
+    pub(crate) fn store(&self, side: Color, key: u64, table: CorrectionTableKind, value: i16) {
+        self.values.values[correction_index(side, key, table)].store(value, Ordering::Relaxed);
+    }
+}
+
+fn correction_index(side: Color, key: u64, table: CorrectionTableKind) -> usize {
+    (((key as usize) & (ENTRY_COUNT - 1)) * COLOR_COUNT + side.index()) * TABLE_COUNT
+        + table as usize
+}
+
+#[derive(Clone, Copy)]
+struct CorrectionWeights {
+    material: i32,
+    pawn: i32,
+    minor: i32,
+    non_pawn: i32,
+}
+
+impl CorrectionWeights {
+    fn current() -> Self {
+        Self {
+            material: params::correction_material_weight(),
+            pawn: params::correction_pawn_weight(),
+            minor: params::correction_minor_weight(),
+            non_pawn: params::correction_non_pawn_weight(),
+        }
+    }
+}
+
+fn correction_weighted_sum(
+    weights: CorrectionWeights,
+    material: i32,
+    pawn: i32,
+    minor: i32,
+    black_non_pawn: i32,
+    white_non_pawn: i32,
+) -> i64 {
+    i64::from(weights.material) * i64::from(material)
+        + i64::from(weights.pawn) * i64::from(pawn)
+        + i64::from(weights.minor) * i64::from(minor)
+        + i64::from(weights.non_pawn) * (i64::from(black_non_pawn) + i64::from(white_non_pawn))
 }
 
 /// 表の重み付きの和から、静的評価と同じ単位の補正量を求める。
@@ -137,9 +294,13 @@ pub(super) fn correction_update_bonus(
 
 /// 表ごとの倍率を掛け、上限1024の重力式で要素を更新する。
 fn updated_correction(value: i16, bonus: i32, multiplier: i32) -> i16 {
-    let bonus = (i64::from(bonus) * i64::from(multiplier) / UPDATE_MULTIPLIER_DENOMINATOR)
-        .clamp(i64::from(-CORRECTION_LIMIT), i64::from(CORRECTION_LIMIT)) as i32;
+    let bonus = scaled_update_bonus(bonus, multiplier);
     history_gravity(i32::from(value), bonus, CORRECTION_LIMIT) as i16
+}
+
+fn scaled_update_bonus(bonus: i32, multiplier: i32) -> i32 {
+    (i64::from(bonus) * i64::from(multiplier) / UPDATE_MULTIPLIER_DENOMINATOR)
+        .clamp(i64::from(-CORRECTION_LIMIT), i64::from(CORRECTION_LIMIT)) as i32
 }
 
 /// 位置に依存しない駒種別枚数のハッシュ。加算なので同種の複数枚も区別する。
@@ -183,12 +344,126 @@ const PIECE_KEYS: [u64; COLOR_COUNT * PIECE_STATE_COUNT] = {
     keys
 };
 
+/// minorと所有者別non-pawnの配置鍵。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct CorrectionPieceKeys {
+    pub(super) minor: u64,
+    pub(super) non_pawn: [u64; COLOR_COUNT],
+}
+
+/// minorと所有者別non-pawnの配置鍵を局面から計算する。
+pub(super) fn correction_piece_keys(position: &Position) -> CorrectionPieceKeys {
+    let mut keys = CorrectionPieceKeys::default();
+    for square in Square::all() {
+        if let Some(piece) = position.piece_at(square) {
+            toggle_piece_square_keys(&mut keys, piece, square);
+        }
+    }
+    keys
+}
+
+/// 着手前の配置鍵へ`Undo`の移動、成り、およびすべての捕獲を反映する。
+pub(super) fn correction_piece_keys_after_move(
+    mut keys: CorrectionPieceKeys,
+    undo: &Undo,
+) -> CorrectionPieceKeys {
+    toggle_piece_square_keys(&mut keys, undo.moved_piece_before, undo.mv.from);
+    let moved_piece_after = if undo.mv.promote {
+        undo.moved_piece_before.promote().expect("合法な成り")
+    } else {
+        undo.moved_piece_before
+    };
+    toggle_piece_square_keys(&mut keys, moved_piece_after, undo.mv.to);
+    for captured in undo.captured.iter().flatten() {
+        toggle_piece_square_keys(&mut keys, captured.piece, captured.square);
+    }
+    keys
+}
+
+fn toggle_piece_square_keys(keys: &mut CorrectionPieceKeys, piece: PieceCode, square: Square) {
+    let kind = piece.kind().expect("盤上の駒");
+    let key = piece_square_key(piece, square);
+    if is_minor(kind) {
+        keys.minor ^= key;
+    }
+    if !matches!(kind, PieceKind::Pawn | PieceKind::GoBetween) {
+        let color = piece.color().expect("盤上の駒");
+        keys.non_pawn[color.index()] ^= key;
+    }
+}
+
+fn is_minor(kind: PieceKind) -> bool {
+    matches!(
+        kind,
+        PieceKind::FerociousLeopard
+            | PieceKind::CopperGeneral
+            | PieceKind::SilverGeneral
+            | PieceKind::GoldGeneral
+            | PieceKind::BlindTiger
+            | PieceKind::DrunkElephant
+            | PieceKind::Kirin
+    )
+}
+
+fn piece_square_key(piece: PieceCode, square: Square) -> u64 {
+    let color = piece.color().expect("盤上の駒").index();
+    let state = piece_state_of(piece);
+    PIECE_SQUARE_KEYS
+        [(color * PIECE_STATE_COUNT + state) * BOARD_SQUARE_COUNT + square.dense_index()]
+}
+
+/// 固定シードのsplitmix64で所有者、駒状態、および升ごとの定数をコンパイル時に作る。
+static PIECE_SQUARE_KEYS: [u64; COLOR_COUNT * PIECE_STATE_COUNT * BOARD_SQUARE_COUNT] = {
+    let mut keys = [0; COLOR_COUNT * PIECE_STATE_COUNT * BOARD_SQUARE_COUNT];
+    let mut state = 0x6d69_6e61_7365_0013_u64;
+    let mut i = 0;
+    while i < keys.len() {
+        state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        keys[i] = z ^ (z >> 31);
+        i += 1;
+    }
+    keys
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase_core::mv::Move;
     use minase_core::rules::MoveRules;
-    use minase_core::test_util::{position, sq};
+    use minase_core::test_util::{position, position_from_codes, sq};
     use minase_core::{MoveGenerator, PieceKind};
+
+    fn board_with_kings(mut pieces: Vec<(Square, Color, PieceKind)>) -> Position {
+        pieces.extend([
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ]);
+        position(Color::Black, &pieces)
+    }
+
+    fn assert_incremental_piece_keys(name: &str, board: &Position, mv: Move) {
+        let rules = MoveRules::standard();
+        let mut moves = Vec::new();
+        MoveGenerator::new(rules).generate_moves(board, &mut moves);
+        assert!(
+            moves.contains(&mv),
+            "{name}: test move must be legal: {mv:?}"
+        );
+
+        let before = correction_piece_keys(board);
+        let mut after = board.clone();
+        let undo = after.make_move_unchecked(mv, rules);
+        assert_eq!(
+            correction_piece_keys_after_move(before, &undo),
+            correction_piece_keys(&after),
+            "{name}: {mv:?}"
+        );
+        after.unmake_move(undo);
+        assert_eq!(correction_piece_keys(&after), before, "{name}: undo");
+    }
 
     #[test]
     fn correction_amount_rounds_toward_zero_and_static_eval_is_bounded() {
@@ -259,15 +534,103 @@ mod tests {
         assert_eq!(updated_correction(1024, 10_000, 128), 1024);
         assert_eq!(updated_correction(-1024, -10_000, 128), -1024);
 
-        let mut values = [[CORRECTION_INITIAL; ENTRY_COUNT]; COLOR_COUNT];
-        let mut table = CorrectionTable::new(&mut values);
-        assert_eq!(table.read(Color::Black, 7), -5);
-        assert_eq!(table.read(Color::White, 7), -5);
-        table.update(Color::Black, 7, 31, 128);
-        table.update(Color::White, 7, -31, 128);
-        assert_eq!(table.read(Color::Black, 7), 26);
-        assert_eq!(table.read(Color::White, 7), -36);
-        assert_eq!(table.read(Color::Black, 4096 + 7), 26);
+        let values = new_correction_values();
+        let table = CorrectionTable::new(&values);
+        assert_eq!(
+            table.read(Color::Black, 7, CorrectionTableKind::Material),
+            -5
+        );
+        assert_eq!(
+            table.read(Color::White, 7, CorrectionTableKind::Material),
+            -5
+        );
+        table.update(Color::Black, 7, CorrectionTableKind::Material, 31, 128);
+        table.update(Color::White, 7, CorrectionTableKind::Material, -31, 128);
+        assert_eq!(
+            table.read(Color::Black, 7, CorrectionTableKind::Material),
+            26
+        );
+        assert_eq!(
+            table.read(Color::White, 7, CorrectionTableKind::Material),
+            -36
+        );
+        assert_eq!(
+            table.read(
+                Color::Black,
+                ENTRY_COUNT as u64 + 7,
+                CorrectionTableKind::Material,
+            ),
+            26
+        );
+    }
+
+    #[test]
+    fn correction_table_keeps_side_table_and_low_key_bits_distinct() {
+        let values = new_correction_values();
+        assert_eq!(
+            values.values().len(),
+            ENTRY_COUNT * COLOR_COUNT * TABLE_COUNT
+        );
+        let table = CorrectionTable::new(&values);
+        let key = 17;
+        table.store(Color::Black, key, CorrectionTableKind::Material, 11);
+        table.store(Color::White, key, CorrectionTableKind::Material, 12);
+        table.store(Color::Black, key, CorrectionTableKind::Pawn, 13);
+        table.store(Color::Black, key, CorrectionTableKind::BlackNonPawn, 14);
+        table.store(Color::Black, key, CorrectionTableKind::WhiteNonPawn, 15);
+
+        assert_eq!(
+            table.read(Color::Black, key, CorrectionTableKind::Material),
+            11
+        );
+        assert_eq!(
+            table.read(Color::White, key, CorrectionTableKind::Material),
+            12
+        );
+        assert_eq!(table.read(Color::Black, key, CorrectionTableKind::Pawn), 13);
+        assert_eq!(
+            table.read(Color::Black, key, CorrectionTableKind::BlackNonPawn),
+            14
+        );
+        assert_eq!(
+            table.read(Color::Black, key, CorrectionTableKind::WhiteNonPawn),
+            15
+        );
+        assert_eq!(
+            table.read(
+                Color::Black,
+                key + ENTRY_COUNT as u64,
+                CorrectionTableKind::Material,
+            ),
+            11
+        );
+    }
+
+    #[test]
+    fn correction_weighted_sum_matches_numeric_example() {
+        let weighted_sum = correction_weighted_sum(
+            CorrectionWeights {
+                material: 277,
+                pawn: 52,
+                minor: 36,
+                non_pawn: 44,
+            },
+            1024,
+            -512,
+            100,
+            10,
+            -10,
+        );
+        assert_eq!(weighted_sum, 260_624);
+        assert_eq!(correction_from_weighted_sum(weighted_sum, 100), 254);
+    }
+
+    #[test]
+    fn correction_table_update_multipliers_match_numeric_example() {
+        assert_eq!(scaled_update_bonus(100, MATERIAL_UPDATE_MULTIPLIER), 100);
+        assert_eq!(scaled_update_bonus(100, PAWN_UPDATE_MULTIPLIER), 100);
+        assert_eq!(scaled_update_bonus(100, MINOR_UPDATE_MULTIPLIER), 117);
+        assert_eq!(scaled_update_bonus(100, NON_PAWN_UPDATE_MULTIPLIER), 145);
     }
 
     #[test]
@@ -295,6 +658,168 @@ mod tests {
     }
 
     #[test]
+    fn correction_piece_key_sets_follow_current_kind_owner_state_and_square() {
+        let square = sq(5, 5);
+        let promoted_pawn = PieceCode::new(Color::Black, PieceKind::Pawn)
+            .unwrap()
+            .promote()
+            .unwrap();
+        let gold = PieceCode::new(Color::Black, PieceKind::GoldGeneral).unwrap();
+        let promoted_position = position_from_codes(Color::Black, &[(square, promoted_pawn)]);
+        let gold_position = position_from_codes(Color::Black, &[(square, gold)]);
+        let promoted_keys = correction_piece_keys(&promoted_position);
+        let gold_keys = correction_piece_keys(&gold_position);
+        assert_ne!(promoted_keys.minor, 0, "成った歩兵はminorに入る");
+        assert_ne!(promoted_keys.minor, gold_keys.minor);
+
+        for piece in [
+            PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap(),
+            PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+        ] {
+            let board = position_from_codes(Color::Black, &[(square, piece)]);
+            assert_eq!(correction_piece_keys(&board).minor, 0);
+        }
+
+        let king = position(Color::Black, &[(square, Color::White, PieceKind::King)]);
+        let king_keys = correction_piece_keys(&king);
+        assert_ne!(king_keys.non_pawn[Color::White.index()], 0);
+        assert_eq!(king_keys.non_pawn[Color::Black.index()], 0);
+
+        let pieces = [
+            (sq(4, 4), Color::Black, PieceKind::SilverGeneral),
+            (sq(7, 7), Color::White, PieceKind::Rook),
+        ];
+        assert_eq!(
+            correction_piece_keys(&position(Color::Black, &pieces)),
+            correction_piece_keys(&position(Color::White, &pieces)),
+            "手番は配置鍵に含めない"
+        );
+
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                for piece in [
+                    PieceCode::new(color, kind),
+                    PieceCode::new_promoted(color, kind),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let board = position_from_codes(Color::Black, &[(square, piece)]);
+                    let pawn = super::super::history::pawn_key(&board) != 0;
+                    let non_pawn = correction_piece_keys(&board).non_pawn[color.index()] != 0;
+                    assert_ne!(pawn, non_pawn, "{piece:?}");
+                    assert_eq!(
+                        pawn,
+                        matches!(piece.kind(), Some(PieceKind::Pawn | PieceKind::GoBetween)),
+                        "{piece:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn correction_piece_keys_match_explicit_promotions_captures_and_lion_moves() {
+        let promotion = |from, to| Move {
+            from,
+            mid: None,
+            to,
+            promote: true,
+        };
+        for (name, kind, mv) in [
+            ("歩兵の成り", PieceKind::Pawn, promotion(sq(4, 7), sq(4, 8))),
+            (
+                "仲人の成り",
+                PieceKind::GoBetween,
+                promotion(sq(4, 7), sq(4, 8)),
+            ),
+            (
+                "醉象の成り",
+                PieceKind::DrunkElephant,
+                promotion(sq(4, 7), sq(4, 8)),
+            ),
+            (
+                "麒麟の成り",
+                PieceKind::Kirin,
+                promotion(sq(4, 7), sq(5, 8)),
+            ),
+            (
+                "銀将の成り",
+                PieceKind::SilverGeneral,
+                promotion(sq(4, 7), sq(4, 8)),
+            ),
+        ] {
+            assert_incremental_piece_keys(
+                name,
+                &board_with_kings(vec![(mv.from, Color::Black, kind)]),
+                mv,
+            );
+        }
+
+        let capture = Move {
+            from: sq(4, 4),
+            mid: None,
+            to: sq(4, 9),
+            promote: false,
+        };
+        assert_incremental_piece_keys(
+            "小駒の捕獲",
+            &board_with_kings(vec![
+                (capture.from, Color::Black, PieceKind::Rook),
+                (capture.to, Color::White, PieceKind::GoldGeneral),
+            ]),
+            capture,
+        );
+
+        let igui = Move {
+            from: sq(5, 5),
+            mid: Some(sq(5, 6)),
+            to: sq(5, 5),
+            promote: false,
+        };
+        assert_incremental_piece_keys(
+            "獅子の居喰い",
+            &board_with_kings(vec![
+                (igui.from, Color::Black, PieceKind::Lion),
+                (igui.mid.unwrap(), Color::White, PieceKind::GoldGeneral),
+            ]),
+            igui,
+        );
+
+        let jitto = Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 5),
+            promote: false,
+        };
+        assert_incremental_piece_keys(
+            "獅子のじっと",
+            &board_with_kings(vec![(jitto.from, Color::Black, PieceKind::Lion)]),
+            jitto,
+        );
+
+        let double_capture = Move {
+            from: sq(5, 5),
+            mid: Some(sq(5, 6)),
+            to: sq(5, 7),
+            promote: false,
+        };
+        assert_incremental_piece_keys(
+            "獅子の2枚取り",
+            &board_with_kings(vec![
+                (double_capture.from, Color::Black, PieceKind::Lion),
+                (
+                    double_capture.mid.unwrap(),
+                    Color::White,
+                    PieceKind::GoldGeneral,
+                ),
+                (double_capture.to, Color::White, PieceKind::SilverGeneral),
+            ]),
+            double_capture,
+        );
+    }
+
+    #[test]
     fn correction_incremental_keys_match_seeded_playouts_and_undo() {
         let rules = MoveRules::standard();
         let generator = MoveGenerator::new(rules);
@@ -315,10 +840,12 @@ mod tests {
         let mut promotions = 0;
         let mut doubles = 0;
         for mut board in starts {
-            let mut key = material_key(&board);
+            let mut material = material_key(&board);
+            let mut placement = correction_piece_keys(&board);
             for _ in 0..64 {
                 let null = board.make_null_move();
-                assert_eq!(key, material_key(&board));
+                assert_eq!(material, material_key(&board));
+                assert_eq!(placement, correction_piece_keys(&board));
                 board.unmake_null_move(null);
                 let mut moves = Vec::new();
                 generator.generate_moves(&board, &mut moves);
@@ -328,19 +855,24 @@ mod tests {
                 // 各局面の全候補も照合し、稀な2枚取りと成りを確実に含める。
                 for &mv in &moves {
                     let undo = board.make_move_unchecked(mv, rules);
-                    let after = key_after_move(key, &undo);
+                    let material_after = key_after_move(material, &undo);
+                    let placement_after = correction_piece_keys_after_move(placement, &undo);
                     let taken = undo.captured.iter().flatten().count();
                     captures += usize::from(taken > 0);
                     doubles += usize::from(taken == 2);
                     promotions += usize::from(mv.promote);
-                    assert_eq!(after, material_key(&board), "{mv:?}");
+                    assert_eq!(material_after, material_key(&board), "{mv:?}");
+                    assert_eq!(placement_after, correction_piece_keys(&board), "{mv:?}");
                     board.unmake_move(undo);
-                    assert_eq!(key, material_key(&board));
+                    assert_eq!(material, material_key(&board));
+                    assert_eq!(placement, correction_piece_keys(&board));
                 }
                 let mv = moves[rng.next() as usize % moves.len()];
                 let undo = board.make_move_unchecked(mv, rules);
-                key = key_after_move(key, &undo);
-                assert_eq!(key, material_key(&board));
+                material = key_after_move(material, &undo);
+                placement = correction_piece_keys_after_move(placement, &undo);
+                assert_eq!(material, material_key(&board));
+                assert_eq!(placement, correction_piece_keys(&board));
             }
         }
         assert!(captures > 0 && promotions > 0 && doubles > 0);

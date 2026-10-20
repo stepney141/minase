@@ -39,6 +39,43 @@ fn attacked_board() -> Position {
     )
 }
 
+#[test]
+fn correction_update_applies_one_observation_to_all_five_tables() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        let side = board.side_to_move();
+        let static_eval = evaluate(searcher.nnue, &board);
+        searcher.update_correction(
+            &board,
+            3,
+            0,
+            static_eval + 50,
+            Bound::Exact,
+            false,
+            static_eval,
+            None,
+        );
+
+        for (key, table, expected) in [
+            (searcher.material_keys[0], CorrectionTableKind::Material, 26),
+            (searcher.pawn_keys[0], CorrectionTableKind::Pawn, 26),
+            (searcher.minor_keys[0], CorrectionTableKind::Minor, 31),
+            (
+                searcher.non_pawn_keys[0][Color::Black.index()],
+                CorrectionTableKind::BlackNonPawn,
+                40,
+            ),
+            (
+                searcher.non_pawn_keys[0][Color::White.index()],
+                CorrectionTableKind::WhiteNonPawn,
+                40,
+            ),
+        ] {
+            assert_eq!(searcher.correction.read(side, key, table), expected);
+        }
+    });
+}
+
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
@@ -98,7 +135,7 @@ fn correction_negamax_update_conditions() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -112,7 +149,7 @@ fn correction_negamax_update_conditions() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -121,9 +158,13 @@ fn correction_negamax_update_conditions() {
             assert!(beta - alpha > 1);
             searcher.follow_pv[0] = true;
         }
-        searcher
-            .correction
-            .update(Color::Black, key, initial_bonus, 128);
+        searcher.correction.update(
+            Color::Black,
+            key,
+            CorrectionTableKind::Material,
+            initial_bonus,
+            128,
+        );
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0, false),
             Some(score)
@@ -140,7 +181,12 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), board == attacked_board());
-        assert_eq!(searcher.correction.read(Color::Black, key), expected);
+        assert_eq!(
+            searcher
+                .correction
+                .read(Color::Black, key, CorrectionTableKind::Material),
+            expected
+        );
     }
 }
 
@@ -174,7 +220,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -188,18 +234,24 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
-        searcher.correction.update(Color::Black, key, 5, 128);
-        let before = searcher.correction.read(Color::Black, key);
+        searcher
+            .correction
+            .update(Color::Black, key, CorrectionTableKind::Material, 5, 128);
+        let before = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             Some(score),
             "article_31_r1 score={score}"
         );
-        let after = searcher.correction.read(Color::Black, key);
+        let after = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
         if score == 29_486 {
             assert_eq!(after, 265);
         } else {
@@ -219,7 +271,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -233,17 +285,26 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
-        searcher.correction.update(Color::Black, key, 31, 128);
-        let before = searcher.correction.read(Color::Black, key);
+        searcher
+            .correction
+            .update(Color::Black, key, CorrectionTableKind::Material, 31, 128);
+        let before = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0, false),
             if interrupted { None } else { Some(320) }
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), before);
+        assert_eq!(
+            searcher
+                .correction
+                .read(Color::Black, key, CorrectionTableKind::Material),
+            before
+        );
     }
 }
 
@@ -271,7 +332,7 @@ fn correction_root_updates_only_after_completed_search() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -285,22 +346,39 @@ fn correction_root_updates_only_after_completed_search() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
         let key = material_key(&board);
-        searcher.correction.update(Color::Black, key, -1024, 128);
-        assert_eq!(searcher.correction.read(Color::Black, key), -1024);
+        searcher
+            .correction
+            .update(Color::Black, key, CorrectionTableKind::Material, -1024, 128);
+        assert_eq!(
+            searcher
+                .correction
+                .read(Color::Black, key, CorrectionTableKind::Material),
+            -1024
+        );
 
         let result = searcher.search_root(&board, &moves, 2, -INFINITY, INFINITY);
         if interrupted {
             assert_eq!(result, None);
-            assert_eq!(searcher.correction.read(Color::Black, key), -1024);
+            assert_eq!(
+                searcher
+                    .correction
+                    .read(Color::Black, key, CorrectionTableKind::Material),
+                -1024
+            );
         } else {
             assert_eq!(result.map(|(_, value)| value), Some(score));
             // c=−277、D=277、b0=110、b=113なので、−1024は−798になる。
-            assert_eq!(searcher.correction.read(Color::Black, key), -798);
+            assert_eq!(
+                searcher
+                    .correction
+                    .read(Color::Black, key, CorrectionTableKind::Material),
+                -798
+            );
         }
     }
 }
@@ -325,7 +403,7 @@ fn correction_changes_futility_estimate() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -339,7 +417,7 @@ fn correction_changes_futility_estimate() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
@@ -352,19 +430,15 @@ fn correction_changes_futility_estimate() {
             0,
             true,
         );
-        searcher
-            .correction
-            .update(Color::Black, material_key(&board), 5 + correction * 4, 128);
-        let weighted_sum =
-            i64::from(crate::search::alphabeta::params::correction_material_weight())
-                * i64::from(searcher.correction.read(Color::Black, material_key(&board)));
-        assert_eq!(
-            crate::search::alphabeta::correction::correction_from_weighted_sum(
-                weighted_sum,
-                nnue.pawn_value(),
-            ),
-            correction
+        zero_position_correction(&mut searcher, &board);
+        searcher.correction.update(
+            Color::Black,
+            material_key(&board),
+            CorrectionTableKind::Material,
+            correction * 4,
+            128,
         );
+        assert_eq!(position_correction(&searcher, Color::Black, 0), correction);
         let score = searcher
             .negamax(&mut board, 1, alpha, alpha + 2, 0, false)
             .unwrap();
@@ -379,7 +453,7 @@ fn correction_changes_futility_estimate() {
 }
 
 #[test]
-fn correction_search_move_and_null_move_propagate_material_keys() {
+fn correction_search_move_and_null_move_propagate_position_keys() {
     let nnue = test_nnue();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);
@@ -389,11 +463,12 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     let table = TranspositionTable::new(1).unwrap();
     let mut changed = 0;
     for mut board in minase_core::test_util::bench_positions() {
-        let root_key = material_key(&board);
+        let root_material = material_key(&board);
+        let root_placement = correction_piece_keys(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
-        let mut correction_values = new_correction_values();
+        let correction_values = new_correction_values();
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -407,11 +482,13 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             &table,
             &mut butterfly_history,
             &mut capture_history,
-            &mut correction_values,
+            &correction_values,
             &shared_histories.continuation,
             &shared_histories.pawn,
         );
-        assert_eq!(searcher.material_keys[0], root_key);
+        assert_eq!(searcher.material_keys[0], root_material);
+        assert_eq!(searcher.minor_keys[0], root_placement.minor);
+        assert_eq!(searcher.non_pawn_keys[0], root_placement.non_pawn);
         let mut moves = Vec::new();
         MoveGenerator::new(rules).generate_moves(&board, &mut moves);
         for mv in moves {
@@ -419,27 +496,38 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
                 continue;
             }
             let undo = board.make_move_unchecked(mv, rules);
-            let expected = material_key(&board);
+            let expected_material = material_key(&board);
+            let expected_placement = correction_piece_keys(&board);
             board.unmake_move(undo);
-            searcher.material_keys[1] = !expected;
+            searcher.material_keys[1] = !expected_material;
+            searcher.minor_keys[1] = !expected_placement.minor;
+            searcher.non_pawn_keys[1] = expected_placement.non_pawn.map(|key| !key);
             assert!(
                 searcher
                     .search_move(&mut board, mv, 1, 10_000, 10_001, 0, true, 0, None, false)
                     .is_some()
             );
-            assert_eq!(searcher.material_keys[1], expected);
-            assert_eq!(searcher.material_keys[0], root_key);
-            assert_eq!(material_key(&board), root_key);
-            changed += usize::from(expected != root_key);
+            assert_eq!(searcher.material_keys[1], expected_material);
+            assert_eq!(searcher.minor_keys[1], expected_placement.minor);
+            assert_eq!(searcher.non_pawn_keys[1], expected_placement.non_pawn);
+            assert_eq!(searcher.material_keys[0], root_material);
+            assert_eq!(searcher.minor_keys[0], root_placement.minor);
+            assert_eq!(searcher.non_pawn_keys[0], root_placement.non_pawn);
+            assert_eq!(material_key(&board), root_material);
+            assert_eq!(correction_piece_keys(&board), root_placement);
+            changed += usize::from(
+                expected_material != root_material || expected_placement != root_placement,
+            );
         }
     }
     assert!(changed > 0);
     let mut board = capture_board();
-    let root_key = material_key(&board);
+    let root_material = material_key(&board);
+    let root_placement = correction_piece_keys(&board);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
-    let mut correction_values = new_correction_values();
+    let correction_values = new_correction_values();
     let mut searcher = new_searcher(
         nnue,
         &board,
@@ -453,18 +541,23 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &table,
         &mut butterfly_history,
         &mut capture_history,
-        &mut correction_values,
+        &correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
-    searcher.material_keys[1] = !root_key;
+    searcher.material_keys[1] = !root_material;
+    searcher.minor_keys[1] = !root_placement.minor;
+    searcher.non_pawn_keys[1] = root_placement.non_pawn.map(|key| !key);
     assert!(
         searcher
             .search_null_move(&mut board, 0, INFINITY, 0)
             .is_some()
     );
-    assert_eq!(searcher.material_keys[1], root_key);
-    assert_eq!(material_key(&board), root_key);
+    assert_eq!(searcher.material_keys[1], root_material);
+    assert_eq!(searcher.minor_keys[1], root_placement.minor);
+    assert_eq!(searcher.non_pawn_keys[1], root_placement.non_pawn);
+    assert_eq!(material_key(&board), root_material);
+    assert_eq!(correction_piece_keys(&board), root_placement);
 }
 
 #[test]
@@ -492,16 +585,16 @@ fn correction_values_are_cleared_at_each_search_team_start() {
         false,
     );
     assert_eq!(first.stop_reason, StopReason::DepthCompleted);
-    assert!(
-        histories
-            .correction
+    assert!(histories.correction.iter().any(|values| {
+        values
+            .values()
             .iter()
-            .any(|values| values.iter().flatten().any(|&value| value != -5))
-    );
+            .any(|value| value.load(AtomicOrdering::Relaxed) != -5)
+    }));
 
-    for values in &mut histories.correction {
-        for value in values.iter_mut().flatten() {
-            *value = 1;
+    for values in &histories.correction {
+        for value in values.values() {
+            value.store(1, AtomicOrdering::Relaxed);
         }
     }
     let second = run_search_team(
@@ -524,10 +617,10 @@ fn correction_values_are_cleared_at_each_search_team_start() {
     );
     assert_eq!(second.stop_reason, StopReason::ExternalStop);
     assert_eq!(second.result.nodes, 0);
-    assert!(
-        histories
-            .correction
+    assert!(histories.correction.iter().all(|values| {
+        values
+            .values()
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == -5))
-    );
+            .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
+    }));
 }

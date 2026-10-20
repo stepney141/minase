@@ -133,8 +133,10 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
                 .store(search_key(&board), 0, 0, Bound::Upper, None, 2, true);
             let side = board.side_to_move();
             let key = material_key(&board);
-            searcher.correction.update(side, key, 1024, 128);
-            let correction = material_correction(searcher, side, key);
+            searcher
+                .correction
+                .update(side, key, CorrectionTableKind::Material, 1024, 128);
+            let correction = position_correction(searcher, side, 2);
             assert!(correction > 0);
             let static_eval = evaluate(nnue, &board) + correction;
             searcher.accumulators[2] = searcher.accumulators[0].clone();
@@ -155,9 +157,11 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 assert_eq!(
-                    searcher
-                        .correction
-                        .read(child.side_to_move(), material_key(&child)),
+                    searcher.correction.read(
+                        child.side_to_move(),
+                        material_key(&child),
+                        CorrectionTableKind::Material,
+                    ),
                     -5
                 );
                 assert!(-evaluate(nnue, &child) < alpha, "子の値は窓を下回る");
@@ -332,7 +336,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
         let history = repeated_root_children(&board, &moves);
         assert!(!royal_under_attack(&board));
         with_root_searcher(&board, &history, |searcher| {
-            zero_material_correction(searcher, &board);
+            zero_position_correction(searcher, &board);
             searcher.seek_mate = true;
             let quiets: Vec<_> = moves
                 .iter()
@@ -514,7 +518,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();
         let history = repeated_root_children(&board, &other_moves);
         with_root_searcher(&board, &history, |searcher| {
-            zero_material_correction(searcher, &board);
+            zero_position_correction(searcher, &board);
             let alpha = evaluate(searcher.nnue, &board) + margin - 1;
             searcher.seek_mate = true;
             searcher

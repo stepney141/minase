@@ -661,12 +661,12 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
-    assert!(
-        histories
-            .correction
+    assert!(histories.correction.iter().all(|values| {
+        values
+            .values()
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == -5))
-    );
+            .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
+    }));
     for index in [
         0,
         histories.continuation.values().len() / 2,
@@ -695,9 +695,9 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
     for history in &mut histories.capture {
         history.values_mut().fill(456);
     }
-    for values in &mut histories.correction {
-        for value in values.iter_mut().flatten() {
-            *value = 123;
+    for values in &histories.correction {
+        for value in values.values() {
+            value.store(123, AtomicOrdering::Relaxed);
         }
     }
     let pawn_piece = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
@@ -721,12 +721,12 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
-    assert!(
-        histories
-            .correction
+    assert!(histories.correction.iter().all(|values| {
+        values
+            .values()
             .iter()
-            .all(|values| values.iter().flatten().all(|&value| value == -5))
-    );
+            .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
+    }));
     assert_eq!(histories.continuation.read(0), -586);
     assert_eq!(histories.pawn.read(0x1234, pawn_piece, pawn_square), -1338);
 
@@ -749,12 +749,12 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
                 .iter()
                 .all(|history| history.values().iter().all(|&value| value == -742))
         );
-        assert!(
-            histories
-                .correction
+        assert!(histories.correction.iter().all(|values| {
+            values
+                .values()
                 .iter()
-                .all(|values| values.iter().flatten().all(|&value| value == -5))
-        );
+                .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
+        }));
     }
 }
 

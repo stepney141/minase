@@ -49,7 +49,7 @@ pub(super) fn run_main_worker(
     tt: &TranspositionTable,
     history: &mut HistoryTable,
     capture_history: &mut CaptureHistory,
-    correction_values: &mut CorrectionValues,
+    correction_values: &CorrectionValues,
     continuation_history: &ContinuationHistory,
     pawn_history: &PawnHistory,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
@@ -219,7 +219,7 @@ pub(super) fn run_auxiliary_worker(
     tt: &TranspositionTable,
     history: &mut HistoryTable,
     capture_history: &mut CaptureHistory,
-    correction_values: &mut CorrectionValues,
+    correction_values: &CorrectionValues,
     continuation_history: &ContinuationHistory,
     pawn_history: &PawnHistory,
 ) -> WorkerOutcome {

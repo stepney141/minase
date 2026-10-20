@@ -209,7 +209,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &table,
                 &mut histories.workers[0],
                 &mut histories.capture[0],
-                &mut histories.correction[0],
+                &histories.correction[0],
                 &histories.continuation,
                 &histories.pawn,
             );

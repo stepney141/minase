@@ -350,6 +350,21 @@ parameters! {
     /// 範囲は従来の50〜400と、材料表を無効にする0を含む。
     /// 開始値は設計書の換算による値であり、SPSAで未調整である。
     CorrectionMaterialWeight(correction_material_weight): 277, 0, 500;
+    /// pawn表の要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// Stockfishの13806は約52、YaneuraOuの12153は約105に当たり、従来は表がないため0である
+    /// （Stockfish src/search.cpp:111, 116-118、YaneuraOu yaneuraou-search.cpp:737）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionPawnWeight(correction_pawn_weight): 52, 0, 200;
+    /// minor表の要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// Stockfishの9512は約36、YaneuraOuの8620は約75に当たり、従来は表がないため0である
+    /// （Stockfish src/search.cpp:111, 116-118、YaneuraOu yaneuraou-search.cpp:737）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionMinorWeight(correction_minor_weight): 36, 0, 200;
+    /// 先手と後手のnon-pawn表の要素が1024のときの補正量を、歩兵価値に対する百分率で表す。
+    /// Stockfishの11615は約44、YaneuraOuの12355は約107に当たり、従来は表がないため0である
+    /// （Stockfish src/search.cpp:111, 116-118、YaneuraOu yaneuraou-search.cpp:737）。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    CorrectionNonPawnWeight(correction_non_pawn_weight): 44, 0, 200;
     /// 上界でないノードの、歩兵価値1枚分の残差と深さ1手あたり、±256で切り詰める前の更新量である。
     /// Stockfishは208×12/128で19.5、YaneuraOuは90×12/128で約8である
     /// （Stockfish src/search.cpp:1670、YaneuraOu yaneuraou-search.cpp:4414）。

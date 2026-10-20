@@ -320,7 +320,7 @@ pub(super) fn verification_starts_at_depth_threshold_and_returns_original_null_s
     let board = quiet_position_with_material();
     for (depth, expected_verifications) in [(15, 0), (16, 1)] {
         with_root_searcher(&board, &[], |searcher| {
-            zero_material_correction(searcher, &board);
+            zero_position_correction(searcher, &board);
             let static_eval = evaluate(searcher.nnue, &board);
             let beta = static_eval - 200;
             assert!(beta >= null_move_beta_minimum(searcher.nnue.pawn_value()));
@@ -359,7 +359,7 @@ pub(super) fn verification_starts_at_depth_threshold_and_returns_original_null_s
 fn failed_verification_continues_outer_search_after_restoring_state() {
     let board = quiet_position_with_material();
     with_root_searcher(&board, &[], |searcher| {
-        zero_material_correction(searcher, &board);
+        zero_position_correction(searcher, &board);
         let static_eval = evaluate(searcher.nnue, &board);
         let beta = static_eval - 200;
         let depth = 20;

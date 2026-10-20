@@ -5,7 +5,9 @@ use super::*;
 use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
-    correction::{CorrectionTable, correction_from_weighted_sum, correction_update_bonus},
+    correction::{
+        CorrectionTable, CorrectionTableKind, correction_from_weighted_sum, correction_update_bonus,
+    },
     pruning::{
         capture_futility_value, continuation_history_prunes, futility_value, late_move_limit,
         lmr_base, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
@@ -203,6 +205,9 @@ fn tuning_parameters_in_isolated_process() {
         ("OrderingCheckBonus", 12000),
         ("OrderingThreatWeight", 3000),
         ("CorrectionMaterialWeight", 277),
+        ("CorrectionPawnWeight", 52),
+        ("CorrectionMinorWeight", 36),
+        ("CorrectionNonPawnWeight", 44),
         ("CorrectionBonus", 20),
         ("CorrectionFailLowBonus", 29),
         ("DeltaMargin", 500),
@@ -339,12 +344,30 @@ fn tuning_parameters_in_isolated_process() {
     }
     assert_eq!(scenario, "parameters");
     fn material_correction() -> i64 {
-        let mut values = new_correction_values();
-        let mut table = CorrectionTable::new(&mut values);
-        table.update(Color::Black, 7, 31, 128);
+        let values = new_correction_values();
+        let table = CorrectionTable::new(&values);
+        table.update(Color::Black, 7, CorrectionTableKind::Material, 31, 128);
         i64::from(correction_from_weighted_sum(
             i64::from(params::correction_material_weight())
-                * i64::from(table.read(Color::Black, 7)),
+                * i64::from(table.read(Color::Black, 7, CorrectionTableKind::Material)),
+            100,
+        ))
+    }
+    fn pawn_correction() -> i64 {
+        i64::from(correction_from_weighted_sum(
+            i64::from(params::correction_pawn_weight()) * 1024,
+            100,
+        ))
+    }
+    fn minor_correction() -> i64 {
+        i64::from(correction_from_weighted_sum(
+            i64::from(params::correction_minor_weight()) * 1024,
+            100,
+        ))
+    }
+    fn non_pawn_correction() -> i64 {
+        i64::from(correction_from_weighted_sum(
+            i64::from(params::correction_non_pawn_weight()) * 1024,
             100,
         ))
     }
@@ -485,7 +508,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 84] = [
+    let cases: [Case; 87] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -822,6 +845,9 @@ fn tuning_parameters_in_isolated_process() {
             i64::from(super::super::ordering::QuietOrderingCoefficients::current().threat_weight)
         }),
         ("CorrectionMaterialWeight", 500, material_correction),
+        ("CorrectionPawnWeight", 200, pawn_correction),
+        ("CorrectionMinorWeight", 200, minor_correction),
+        ("CorrectionNonPawnWeight", 200, non_pawn_correction),
         ("CorrectionBonus", 60, normal_correction_bonus),
         ("CorrectionFailLowBonus", 90, fail_low_correction_bonus),
         ("DeltaMargin", 300, delta),

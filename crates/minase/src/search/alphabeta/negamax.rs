@@ -12,7 +12,7 @@ use minase_core::position::Position;
 use minase_core::repetition_key;
 
 use super::INFINITY;
-use super::correction::{correction_from_weighted_sum, key_after_move};
+use super::correction::{CorrectionPieceKeys, correction_piece_keys_after_move, key_after_move};
 use super::history::pawn_key_after_move;
 use super::ordering::{
     HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
@@ -227,9 +227,7 @@ impl Searcher<'_> {
         let raw = self
             .nnue
             .evaluate_accumulator(&self.accumulators[ply as usize], side);
-        let weighted_sum = i64::from(params::correction_material_weight())
-            * i64::from(self.correction.read(side, self.material_keys[ply as usize]));
-        let correction = correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value());
+        let correction = self.correction_value(side, ply);
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[ply as usize] = static_eval;
         self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
@@ -755,6 +753,8 @@ impl Searcher<'_> {
         );
         self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
         self.pawn_keys[(ply + 1) as usize] = self.pawn_keys[ply as usize];
+        self.minor_keys[(ply + 1) as usize] = self.minor_keys[ply as usize];
+        self.non_pawn_keys[(ply + 1) as usize] = self.non_pawn_keys[ply as usize];
         let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
         let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
         // このキー自体では反復を判定せず、部分木内の実着手からの参照点にする。
@@ -891,6 +891,15 @@ impl Searcher<'_> {
             key_after_move(self.material_keys[ply as usize], &undo);
         self.pawn_keys[(ply + 1) as usize] =
             pawn_key_after_move(self.pawn_keys[ply as usize], &undo);
+        let correction_keys = correction_piece_keys_after_move(
+            CorrectionPieceKeys {
+                minor: self.minor_keys[ply as usize],
+                non_pawn: self.non_pawn_keys[ply as usize],
+            },
+            &undo,
+        );
+        self.minor_keys[(ply + 1) as usize] = correction_keys.minor;
+        self.non_pawn_keys[(ply + 1) as usize] = correction_keys.non_pawn;
         self.path_keys.push(repetition_key);
         self.path_moves.push(PathMove {
             record: Some(MoveRecord::from_undo(self.nnue, &undo)),

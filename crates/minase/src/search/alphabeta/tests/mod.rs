@@ -55,7 +55,8 @@ use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::clock::SearchClock;
 use crate::search::alphabeta::correction::{
-    correction_from_weighted_sum, material_key, new_correction_values,
+    CorrectionTableKind, correction_from_weighted_sum, correction_piece_keys, material_key,
+    new_correction_values,
 };
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
@@ -201,6 +202,9 @@ fn push_path_move(searcher: &mut Searcher<'_>, position: &mut Position, mv: Opti
     searcher.accumulators[ply] = searcher.nnue.refresh_accumulator(position);
     searcher.material_keys[ply] = material_key(position);
     searcher.pawn_keys[ply] = pawn_key(position);
+    let correction_keys = correction_piece_keys(position);
+    searcher.minor_keys[ply] = correction_keys.minor;
+    searcher.non_pawn_keys[ply] = correction_keys.non_pawn;
     assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
 }
 
@@ -447,7 +451,7 @@ fn with_draw_value_root_searcher(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
-    let mut correction_values = new_correction_values();
+    let correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -460,27 +464,39 @@ fn with_draw_value_root_searcher(
         &table,
         &mut butterfly_history,
         &mut capture_history,
-        &mut correction_values,
+        &correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
     test(&mut searcher);
 }
 
-/// 現在の材料表の要素から、探索が静的評価へ加える補正量を求める。
-fn material_correction(searcher: &Searcher<'_>, side: Color, key: u64) -> i32 {
-    let weighted_sum = i64::from(crate::search::alphabeta::params::correction_material_weight())
-        * i64::from(searcher.correction.read(side, key));
-    correction_from_weighted_sum(weighted_sum, searcher.nnue.pawn_value())
+/// 現在の5表から、探索と同じ処理で静的評価へ加える補正量を求める。
+fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
+    searcher.correction_value(side, ply)
 }
 
-/// 補正以外の境界を検査するとき、初期値−5の材料表を値0にする。
-fn zero_material_correction(searcher: &mut Searcher<'_>, position: &Position) {
+/// 補正以外の境界を検査するとき、現在の局面が引く5表の要素を直接0にする。
+fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
     let side = position.side_to_move();
-    let key = material_key(position);
-    assert_eq!(searcher.correction.read(side, key), -5);
-    searcher.correction.update(side, key, 5, 128);
-    assert_eq!(material_correction(searcher, side, key), 0);
+    let placement = correction_piece_keys(position);
+    for (key, table) in [
+        (material_key(position), CorrectionTableKind::Material),
+        (pawn_key(position), CorrectionTableKind::Pawn),
+        (placement.minor, CorrectionTableKind::Minor),
+        (
+            placement.non_pawn[Color::Black.index()],
+            CorrectionTableKind::BlackNonPawn,
+        ),
+        (
+            placement.non_pawn[Color::White.index()],
+            CorrectionTableKind::WhiteNonPawn,
+        ),
+    ] {
+        assert_eq!(searcher.correction.read(side, key, table), -5);
+        searcher.correction.store(side, key, table, 0);
+        assert_eq!(searcher.correction.read(side, key, table), 0);
+    }
 }
 
 /// 全ルート手が反復による引き分けとなる履歴を作る。
@@ -521,7 +537,7 @@ fn run_quiesce(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
-    let mut correction_values = new_correction_values();
+    let correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -536,7 +552,7 @@ fn run_quiesce(
         table,
         &mut butterfly_history,
         &mut capture_history,
-        &mut correction_values,
+        &correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -556,7 +572,7 @@ fn run_negamax(
     table: &TranspositionTable,
 ) -> (i32, u64) {
     run_configured_negamax(position, depth, alpha, beta, ply, table, |searcher| {
-        zero_material_correction(searcher, position);
+        zero_position_correction(searcher, position);
     })
 }
 
@@ -585,7 +601,7 @@ fn run_configured_negamax(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
-    let mut correction_values = new_correction_values();
+    let correction_values = new_correction_values();
     let shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let mut searcher = new_searcher(
         nnue,
@@ -600,7 +616,7 @@ fn run_configured_negamax(
         table,
         &mut butterfly_history,
         &mut capture_history,
-        &mut correction_values,
+        &correction_values,
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
@@ -888,7 +904,7 @@ fn run_move_pruning(
         .and_then(|h| h.best_move);
     table.store(search_key(position), 0, alpha, Bound::Upper, mv, ply, true);
     run_configured_negamax(position, depth, alpha, beta, ply, table, |s| {
-        zero_material_correction(s, position);
+        zero_position_correction(s, position);
         s.seek_mate = true;
         s.null_move_ply = Some(ply);
     })

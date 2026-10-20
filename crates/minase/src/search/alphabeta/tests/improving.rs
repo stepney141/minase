@@ -80,8 +80,10 @@ fn improving_uses_corrected_evaluations() {
         with_root_searcher(&board, &[], |searcher| {
             let side = board.side_to_move();
             let key = material_key(&board);
-            searcher.correction.update(side, key, 128, 128);
-            let correction = material_correction(searcher, side, key);
+            searcher
+                .correction
+                .update(side, key, CorrectionTableKind::Material, 128, 128);
+            let correction = position_correction(searcher, side, 2);
             assert!(correction > 0 && correction <= 100);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = raw + previous_correction;
@@ -105,10 +107,14 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
     for root in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let side = board.side_to_move();
-            searcher
-                .correction
-                .update(side, material_key(&board), 64, 128);
-            let correction = material_correction(searcher, side, material_key(&board));
+            searcher.correction.update(
+                side,
+                material_key(&board),
+                CorrectionTableKind::Material,
+                64,
+                128,
+            );
+            let correction = position_correction(searcher, side, 0);
             assert!(correction > 0);
             let raw = evaluate(searcher.nnue, &board);
             searcher.static_evals[0] = i32::MIN;
