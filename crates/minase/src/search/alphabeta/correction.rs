@@ -96,52 +96,56 @@ impl Searcher<'_> {
             return;
         };
         if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position)) {
-            let side = position.side_to_move();
-            let ply = ply as usize;
-            self.correction.update(
-                side,
-                self.material_keys[ply],
-                CorrectionTableKind::Material,
-                bonus,
-                MATERIAL_UPDATE_MULTIPLIER,
-            );
-            self.correction.update(
-                side,
-                self.pawn_keys[ply],
-                CorrectionTableKind::Pawn,
-                bonus,
-                PAWN_UPDATE_MULTIPLIER,
-            );
-            self.correction.update(
-                side,
-                self.minor_keys[ply],
-                CorrectionTableKind::Minor,
-                bonus,
-                MINOR_UPDATE_MULTIPLIER,
-            );
-            self.correction.update(
-                side,
-                self.non_pawn_keys[ply][Color::Black.index()],
-                CorrectionTableKind::BlackNonPawn,
-                bonus,
-                NON_PAWN_UPDATE_MULTIPLIER,
-            );
-            self.correction.update(
-                side,
-                self.non_pawn_keys[ply][Color::White.index()],
-                CorrectionTableKind::WhiteNonPawn,
-                bonus,
-                NON_PAWN_UPDATE_MULTIPLIER,
-            );
-            if let Some(indices) = continuation_correction_indices(&self.path_moves, side, ply) {
-                for (index, multiplier) in indices.into_iter().zip([
-                    CONTINUATION_2_UPDATE_MULTIPLIER,
-                    CONTINUATION_4_UPDATE_MULTIPLIER,
-                    CONTINUATION_6_UPDATE_MULTIPLIER,
-                ]) {
-                    self.continuation_correction
-                        .update(index, bonus, multiplier);
-                }
+            self.apply_correction_bonus(position.side_to_move(), ply, bonus);
+        }
+    }
+
+    /// 求めた更新量を局面の5表と2手前、4手前、6手前の文脈へ順に適用する。
+    pub(super) fn apply_correction_bonus(&mut self, side: Color, ply: u32, bonus: i32) {
+        let ply = ply as usize;
+        self.correction.update(
+            side,
+            self.material_keys[ply],
+            CorrectionTableKind::Material,
+            bonus,
+            MATERIAL_UPDATE_MULTIPLIER,
+        );
+        self.correction.update(
+            side,
+            self.pawn_keys[ply],
+            CorrectionTableKind::Pawn,
+            bonus,
+            PAWN_UPDATE_MULTIPLIER,
+        );
+        self.correction.update(
+            side,
+            self.minor_keys[ply],
+            CorrectionTableKind::Minor,
+            bonus,
+            MINOR_UPDATE_MULTIPLIER,
+        );
+        self.correction.update(
+            side,
+            self.non_pawn_keys[ply][Color::Black.index()],
+            CorrectionTableKind::BlackNonPawn,
+            bonus,
+            NON_PAWN_UPDATE_MULTIPLIER,
+        );
+        self.correction.update(
+            side,
+            self.non_pawn_keys[ply][Color::White.index()],
+            CorrectionTableKind::WhiteNonPawn,
+            bonus,
+            NON_PAWN_UPDATE_MULTIPLIER,
+        );
+        if let Some(indices) = continuation_correction_indices(&self.path_moves, side, ply) {
+            for (index, multiplier) in indices.into_iter().zip([
+                CONTINUATION_2_UPDATE_MULTIPLIER,
+                CONTINUATION_4_UPDATE_MULTIPLIER,
+                CONTINUATION_6_UPDATE_MULTIPLIER,
+            ]) {
+                self.continuation_correction
+                    .update(index, bonus, multiplier);
             }
         }
     }

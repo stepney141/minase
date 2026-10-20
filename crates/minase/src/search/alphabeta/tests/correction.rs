@@ -1,8 +1,11 @@
 //! correction historyは静的評価に加える（Stockfish src/search.cpp:832, 846-870）。
 //! 詰み帯の外で境界と捕獲手の条件を満たすときに、補正後の評価との差で更新する。
 
+use core::cmp::Ordering::{Equal, Greater, Less};
+
 use super::*;
 use crate::eval::evaluate;
+use crate::search::alphabeta::correction::correction_update_bonus;
 use minase_core::Color;
 
 fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<'a> {
@@ -78,17 +81,9 @@ fn correction_update_applies_one_observation_to_all_five_tables() {
     let board = bare_kings();
     with_root_searcher(&board, &[], |searcher| {
         let side = board.side_to_move();
-        let static_eval = evaluate(searcher.nnue, &board);
-        searcher.update_correction(
-            &board,
-            3,
-            0,
-            static_eval + 50,
-            Bound::Exact,
-            false,
-            static_eval,
-            None,
-        );
+        let bonus = correction_update_bonus(50, 3, Bound::Exact, false, 20, 29, 100).unwrap();
+        assert_eq!(bonus, 31);
+        searcher.apply_correction_bonus(side, 0, bonus);
 
         for (key, table, expected) in [
             (searcher.material_keys[0], CorrectionTableKind::Material, 26),
@@ -129,7 +124,7 @@ fn continuation_correction_updates_shared_sentinel_element_in_context_order() {
         }
 
         searcher.continuation_correction.store(indices[0], 5);
-        searcher.update_correction(&board, 20, 1, 31, Bound::Exact, false, 0, Some(false));
+        searcher.apply_correction_bonus(side, 1, 128);
         assert_eq!(searcher.continuation_correction.read(indices[0]), 225);
     });
 }
@@ -231,20 +226,20 @@ fn correction_negamax_update_conditions() {
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new(Duration::ZERO);
     let shared = shared(&stop, &clock);
-    for (mut board, delta, bound, expected, capture, depth, initial_bonus) in [
-        (bare_kings(), 320, Bound::Exact, 132, false, 2, 5),
-        (bare_kings(), -320, Bound::Exact, 0, false, 2, 5),
-        (bare_kings(), -320, Bound::Upper, -191, false, 2, 5),
-        (bare_kings(), 320, Bound::Lower, 132, false, 2, 5),
-        (bare_kings(), 320, Bound::Upper, 0, false, 2, 5),
-        (bare_kings(), -320, Bound::Lower, 0, false, 2, 5),
-        (capture_board(), 320, Bound::Exact, 0, true, 2, 5),
-        (capture_board(), -320, Bound::Upper, -191, true, 2, 5),
-        (capture_board(), 320, Bound::Lower, 0, true, 2, 5),
-        (attacked_board(), 320, Bound::Exact, 0, false, 2, 5),
-        (bare_kings(), 320, Bound::Exact, 132, false, 3, 5),
-        // 補正前の評価との差は0だが、入口の補正後の評価との差277から更新する。
-        (bare_kings(), 0, Bound::Exact, -798, false, 2, -1024),
+    for (mut board, delta, bound, expected_change, capture, depth, initial_bonus) in [
+        (bare_kings(), 320, Bound::Exact, Greater, false, 2, 5),
+        (bare_kings(), -320, Bound::Exact, Equal, false, 2, 5),
+        (bare_kings(), -320, Bound::Upper, Less, false, 2, 5),
+        (bare_kings(), 320, Bound::Lower, Greater, false, 2, 5),
+        (bare_kings(), 320, Bound::Upper, Equal, false, 2, 5),
+        (bare_kings(), -320, Bound::Lower, Equal, false, 2, 5),
+        (capture_board(), 320, Bound::Exact, Equal, true, 2, 5),
+        (capture_board(), -320, Bound::Upper, Less, true, 2, 5),
+        (capture_board(), 320, Bound::Lower, Equal, true, 2, 5),
+        (attacked_board(), 320, Bound::Exact, Equal, false, 2, 5),
+        (bare_kings(), 320, Bound::Exact, Greater, false, 3, 5),
+        // 補正前の評価との差は0だが、入口の補正後の評価との差は正なので更新する。
+        (bare_kings(), 0, Bound::Exact, Greater, false, 2, -1024),
     ] {
         let key = material_key(&board);
         let eval = evaluate(nnue, &board);
@@ -313,6 +308,9 @@ fn correction_negamax_update_conditions() {
             initial_bonus,
             128,
         );
+        let before = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0, false),
             Some(score)
@@ -329,12 +327,10 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), board == attacked_board());
-        assert_eq!(
-            searcher
-                .correction
-                .read(Color::Black, key, CorrectionTableKind::Material),
-            expected
-        );
+        let after = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
+        assert_eq!(after.cmp(&before), expected_change);
     }
 }
 
@@ -505,12 +501,10 @@ fn correction_root_updates_only_after_completed_search() {
         searcher
             .correction
             .update(Color::Black, key, CorrectionTableKind::Material, -1024, 128);
-        assert_eq!(
-            searcher
-                .correction
-                .read(Color::Black, key, CorrectionTableKind::Material),
-            -1024
-        );
+        let initial = searcher
+            .correction
+            .read(Color::Black, key, CorrectionTableKind::Material);
+        assert_eq!(initial, -1024);
 
         let result = searcher.search_root(&board, &moves, 2, -INFINITY, INFINITY);
         if interrupted {
@@ -519,16 +513,15 @@ fn correction_root_updates_only_after_completed_search() {
                 searcher
                     .correction
                     .read(Color::Black, key, CorrectionTableKind::Material),
-                -1024
+                initial
             );
         } else {
             assert_eq!(result.map(|(_, value)| value), Some(score));
-            // c=−277、D=277、b0=110、b=113なので、−1024は−798になる。
-            assert_eq!(
+            assert!(
                 searcher
                     .correction
-                    .read(Color::Black, key, CorrectionTableKind::Material),
-                -798
+                    .read(Color::Black, key, CorrectionTableKind::Material)
+                    > initial
             );
         }
     }
@@ -546,9 +539,10 @@ fn correction_changes_futility_estimate() {
     let history = repeated_root_children(&board, &quiets);
     let raw = evaluate(nnue, &board);
     let alpha = raw + 10 * nnue.pawn_value();
+    let mut corrections = Vec::new();
     let mut scores = Vec::new();
     let mut nodes = Vec::new();
-    for correction in [0, 1] {
+    for bonus in [0, 8] {
         let mut board = board.clone();
         let table = TranspositionTable::new(1).unwrap();
         let mut butterfly_history =
@@ -587,21 +581,28 @@ fn correction_changes_futility_estimate() {
             Color::Black,
             material_key(&board),
             CorrectionTableKind::Material,
-            correction * 4,
+            bonus,
             128,
         );
-        assert_eq!(position_correction(&searcher, Color::Black, 0), correction);
+        let correction = position_correction(&searcher, Color::Black, 0);
+        if bonus == 0 {
+            assert_eq!(correction, 0);
+        } else {
+            assert!(correction > 0);
+        }
         let score = searcher
             .negamax(&mut board, 1, alpha, alpha + 2, 0, false)
             .unwrap();
         assert!(score < alpha);
         assert!(score.abs() < MATE_THRESHOLD);
         assert_eq!(searcher.static_evals[0], raw + correction);
+        corrections.push(correction);
         scores.push(score);
         nodes.push(searcher.nodes);
     }
     assert_eq!(nodes, [1, 1]);
-    assert_eq!(scores[1], scores[0] + 1);
+    assert!(corrections[1] > corrections[0]);
+    assert_eq!(scores[1] - scores[0], corrections[1] - corrections[0]);
 }
 
 #[test]

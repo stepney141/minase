@@ -2330,6 +2330,7 @@ fn reverse_futility_requires_eval_at_least_beta_with_negative_margin() {
     for at_beta in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.seek_mate = true;
+            zero_position_correction(searcher, &board);
             let value = evaluate(searcher.nnue, &board);
             searcher.accumulators[2] = searcher.accumulators[0].clone();
             searcher.material_keys[2] = searcher.material_keys[0];
