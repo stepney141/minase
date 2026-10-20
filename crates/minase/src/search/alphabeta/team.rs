@@ -202,7 +202,6 @@ pub(in crate::search) fn run_search_team(
     for history in &mut histories.capture {
         history.decay(params::capture_history_decay());
     }
-    histories.clear_correction_for_search();
     tt.new_search();
     let shared = SharedSearch {
         external_stop,
@@ -218,29 +217,22 @@ pub(in crate::search) fn run_search_team(
     };
 
     let history_keys: Vec<u64> = history_keys.to_vec();
+    let correction = &histories.correction;
     let mut worker_histories: Vec<_> = histories
         .workers
         .iter_mut()
         .zip(&mut histories.capture)
-        .zip(&histories.correction)
         .zip(&mut histories.continuation_correction)
-        .map(
-            |(((history, capture_history), correction), continuation_correction)| {
-                (
-                    history,
-                    capture_history,
-                    correction,
-                    continuation_correction,
-                )
-            },
-        )
+        .map(|((history, capture_history), continuation_correction)| {
+            (history, capture_history, continuation_correction)
+        })
         .collect();
     let continuation_history = &histories.continuation;
     let pawn_history = &histories.pawn;
     let worker_outcomes = run_worker_team(
         &mut worker_histories,
         &shared,
-        |worker_index, (history, capture_history, correction, continuation_correction)| {
+        |worker_index, (history, capture_history, continuation_correction)| {
             if worker_index == 0 {
                 run_main_worker(
                     nnue,

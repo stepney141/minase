@@ -6,6 +6,7 @@
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
 //! 鍵を選んだ理由は`docs/adr/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md`にある。
 
+use core::num::NonZeroUsize;
 use std::sync::atomic::{AtomicI16, Ordering};
 
 use super::history::history_gravity;
@@ -152,7 +153,9 @@ impl Searcher<'_> {
     }
 }
 
-const ENTRY_COUNT: usize = 65_536;
+/// 局面を鍵にした補正表のワーカー1つ分のエントリ数。
+/// Stockfishの`CORRHIST_BASE_SIZE`と同じ65,536を使う（src/history.h:40）。
+const CORRECTION_BASE_ENTRIES: usize = 65_536;
 const TABLE_COUNT: usize = 5;
 /// 補正表の要素と表ごとの更新量の絶対値の上限。
 /// Stockfishと同じ1024を使う（src/history.h:41）。
@@ -200,18 +203,37 @@ pub(super) enum CorrectionTableKind {
     WhiteNonPawn = 4,
 }
 
-/// 材料、pawn、minor、先手と後手のnon-pawnの5表を束ねた値。
+/// 探索チームで共有する、材料、pawn、minor、先手と後手のnon-pawnの5表。
+///
+/// 各要素は`Relaxed`順序で読み、新しい値を計算してから`Relaxed`順序で書く。
+/// 読み書きの間に別ワーカーが更新した場合、その更新が失われることを許す
+/// （src/history.h:60-63）。
 pub(crate) struct CorrectionValues {
     values: Box<[AtomicI16]>,
+    entry_mask: usize,
 }
 
 impl CorrectionValues {
-    fn new() -> Self {
+    /// ワーカー数以上の最小の2のべきに65,536を掛けたエントリ数で作る
+    /// （src/history.h:40、src/thread.cpp:213）。
+    pub(super) fn new(threads: NonZeroUsize) -> Self {
+        let worker_entries = threads
+            .get()
+            .checked_next_power_of_two()
+            .expect("worker count must have a representable next power of two");
+        let entries = CORRECTION_BASE_ENTRIES
+            .checked_mul(worker_entries)
+            .expect("correction history entry count must fit usize");
+        let len = entries
+            .checked_mul(COLOR_COUNT)
+            .and_then(|len| len.checked_mul(TABLE_COUNT))
+            .expect("correction history length must fit usize");
         Self {
             values: std::iter::repeat_with(|| AtomicI16::new(CORRECTION_INITIAL))
-                .take(ENTRY_COUNT * COLOR_COUNT * TABLE_COUNT)
+                .take(len)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            entry_mask: entries - 1,
         }
     }
 
@@ -225,11 +247,22 @@ impl CorrectionValues {
     pub(crate) fn values(&self) -> &[AtomicI16] {
         &self.values
     }
+
+    fn index(&self, side: Color, key: u64, table: CorrectionTableKind) -> usize {
+        (((key as usize) & self.entry_mask) * COLOR_COUNT + side.index()) * TABLE_COUNT
+            + table as usize
+    }
+
+    #[cfg(test)]
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entry_mask + 1
+    }
 }
 
-/// 全要素が−5の5表を作る。
+/// 単一ワーカー用の、全要素が−5の5表を作る。
+#[cfg(test)]
 pub(super) fn new_correction_values() -> CorrectionValues {
-    CorrectionValues::new()
+    CorrectionValues::new(NonZeroUsize::MIN)
 }
 
 /// 文脈の手と1手前の手で引く、ワーカー専用のcontinuation correction history。
@@ -277,7 +310,7 @@ impl ContinuationCorrectionHistory {
     }
 }
 
-/// ワーカー別の5表を扱う。
+/// 探索チームで共有する5表を共有参照で扱う。
 pub(super) struct CorrectionTable<'a> {
     values: &'a CorrectionValues,
 }
@@ -287,9 +320,9 @@ impl<'a> CorrectionTable<'a> {
         Self { values }
     }
 
-    /// 鍵の下位16ビット、手番側、および表の番号から要素を引く。
+    /// 表の大きさに応じた鍵の下位ビット、手番側、および表の番号から要素を引く。
     pub(super) fn read(&self, side: Color, key: u64, table: CorrectionTableKind) -> i32 {
-        i32::from(self.values.values[correction_index(side, key, table)].load(Ordering::Relaxed))
+        i32::from(self.values.values[self.values.index(side, key, table)].load(Ordering::Relaxed))
     }
 
     /// 表ごとの倍率を掛けた更新量を、同じ添字の要素へ重力式で取り込む。
@@ -301,7 +334,7 @@ impl<'a> CorrectionTable<'a> {
         bonus: i32,
         multiplier: i32,
     ) {
-        let value = &self.values.values[correction_index(side, key, table)];
+        let value = &self.values.values[self.values.index(side, key, table)];
         let old = value.load(Ordering::Relaxed);
         value.store(
             updated_correction(old, bonus, multiplier),
@@ -311,13 +344,8 @@ impl<'a> CorrectionTable<'a> {
 
     #[cfg(test)]
     pub(crate) fn store(&self, side: Color, key: u64, table: CorrectionTableKind, value: i16) {
-        self.values.values[correction_index(side, key, table)].store(value, Ordering::Relaxed);
+        self.values.values[self.values.index(side, key, table)].store(value, Ordering::Relaxed);
     }
-}
-
-fn correction_index(side: Color, key: u64, table: CorrectionTableKind) -> usize {
-    (((key as usize) & (ENTRY_COUNT - 1)) * COLOR_COUNT + side.index()) * TABLE_COUNT
-        + table as usize
 }
 
 /// 文脈の手、1手前の手、および現在の手番側から平坦な表の添字を求める。
@@ -725,7 +753,7 @@ mod tests {
         assert_eq!(
             table.read(
                 Color::Black,
-                ENTRY_COUNT as u64 + 7,
+                CORRECTION_BASE_ENTRIES as u64 + 7,
                 CorrectionTableKind::Material,
             ),
             26
@@ -737,7 +765,7 @@ mod tests {
         let values = new_correction_values();
         assert_eq!(
             values.values().len(),
-            ENTRY_COUNT * COLOR_COUNT * TABLE_COUNT
+            CORRECTION_BASE_ENTRIES * COLOR_COUNT * TABLE_COUNT
         );
         let table = CorrectionTable::new(&values);
         let key = 17;
@@ -767,7 +795,7 @@ mod tests {
         assert_eq!(
             table.read(
                 Color::Black,
-                key + ENTRY_COUNT as u64,
+                key + CORRECTION_BASE_ENTRIES as u64,
                 CorrectionTableKind::Material,
             ),
             11

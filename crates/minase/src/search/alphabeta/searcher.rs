@@ -276,9 +276,9 @@ pub(super) struct Searcher<'a> {
     pub(super) non_pawn_keys: [[u64; COLOR_COUNT]; MAX_PLY as usize + 1],
     /// plyごとの補正後の静的評価。通常探索と根で子を読む前に書き込む。
     pub(super) static_evals: [i32; MAX_PLY as usize + 1],
-    /// 反復深化の間で共有する、このワーカー専用の5つの補正表。
+    /// 対局内で持ち越し、探索チームの全ワーカーで共有する5つの補正表。
     pub(super) correction: CorrectionTable<'a>,
-    /// 反復深化の間で共有する、このワーカー専用のcontinuation correction history。
+    /// 対局内で持ち越す、このワーカー専用のcontinuation correction history。
     pub(super) continuation_correction: &'a mut ContinuationCorrectionHistory,
     /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
     /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。

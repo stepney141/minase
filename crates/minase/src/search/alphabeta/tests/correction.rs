@@ -17,6 +17,40 @@ fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<
     }
 }
 
+fn with_history_worker_searcher(
+    histories: &mut crate::search::HistoryTables,
+    worker: usize,
+    board: &Position,
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
+    let stop = AtomicBool::new(false);
+    let clock = ManualClock::new(Duration::ZERO);
+    let shared = shared(&stop, &clock);
+    let table = small_tt();
+    let mut butterfly_history =
+        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = empty_capture_history();
+    let mut searcher = new_searcher(
+        test_nnue(),
+        board,
+        MoveRules::standard(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &[],
+        &shared,
+        &table,
+        &mut butterfly_history,
+        &mut capture_history,
+        &histories.correction,
+        &mut histories.continuation_correction[worker],
+        &histories.continuation,
+        &histories.pawn,
+    );
+    test(&mut searcher);
+}
+
 fn capture_board() -> Position {
     position(
         Color::Black,
@@ -149,6 +183,44 @@ fn continuation_correction_initializes_clears_and_is_worker_local() {
         history.values().len() == 30 * 144 * 29 * 144
             && history.values().iter().all(|&value| value == 5)
     }));
+}
+
+#[test]
+fn position_correction_is_shared_between_worker_searchers() {
+    let board = bare_kings();
+    let mut histories = crate::search::HistoryTables::new(worker_count(2));
+    let side = board.side_to_move();
+    let key = material_key(&board);
+    let continuation_index = 17;
+
+    with_history_worker_searcher(&mut histories, 0, &board, |searcher| {
+        searcher
+            .correction
+            .update(side, key, CorrectionTableKind::Material, 128, 128);
+        searcher
+            .continuation_correction
+            .update(continuation_index, 128, 128);
+        assert_eq!(
+            searcher
+                .correction
+                .read(side, key, CorrectionTableKind::Material),
+            123
+        );
+        assert_eq!(
+            searcher.continuation_correction.read(continuation_index),
+            133
+        );
+    });
+
+    with_history_worker_searcher(&mut histories, 1, &board, |searcher| {
+        assert_eq!(
+            searcher
+                .correction
+                .read(side, key, CorrectionTableKind::Material),
+            123
+        );
+        assert_eq!(searcher.continuation_correction.read(continuation_index), 5);
+    });
 }
 
 /// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
@@ -643,8 +715,8 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
 }
 
 #[test]
-fn correction_histories_are_cleared_at_each_search_team_start() {
-    let threads = worker_count(2);
+fn correction_histories_survive_the_next_search_team_start() {
+    let threads = DEFAULT_THREADS;
     let snapshot = snapshot_for(&quiet_midgame());
     let table = small_tt();
     let mut histories = crate::search::HistoryTables::new(threads);
@@ -667,21 +739,23 @@ fn correction_histories_are_cleared_at_each_search_team_start() {
         false,
     );
     assert_eq!(first.stop_reason, StopReason::DepthCompleted);
-    assert!(histories.correction.iter().any(|values| {
-        values
-            .values()
-            .iter()
-            .any(|value| value.load(AtomicOrdering::Relaxed) != -5)
-    }));
-
-    for values in &histories.correction {
-        for value in values.values() {
-            value.store(1, AtomicOrdering::Relaxed);
-        }
-    }
-    for history in &mut histories.continuation_correction {
-        history.values_mut().fill(1);
-    }
+    let (position_index, position_value) = histories
+        .correction
+        .values()
+        .iter()
+        .enumerate()
+        .find_map(|(index, value)| {
+            let value = value.load(AtomicOrdering::Relaxed);
+            (value != -5).then_some((index, value))
+        })
+        .expect("the first search must update position correction history");
+    let (continuation_index, continuation_value) = histories.continuation_correction[0]
+        .values()
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|&(_, value)| value != 5)
+        .expect("the first search must update continuation correction history");
     let second = run_search_team(
         test_nnue(),
         &snapshot.position,
@@ -702,16 +776,12 @@ fn correction_histories_are_cleared_at_each_search_team_start() {
     );
     assert_eq!(second.stop_reason, StopReason::ExternalStop);
     assert_eq!(second.result.nodes, 0);
-    assert!(histories.correction.iter().all(|values| {
-        values
-            .values()
-            .iter()
-            .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
-    }));
-    assert!(
-        histories
-            .continuation_correction
-            .iter()
-            .all(|history| history.values().iter().all(|&value| value == 5))
+    assert_eq!(
+        histories.correction.values()[position_index].load(AtomicOrdering::Relaxed),
+        position_value
+    );
+    assert_eq!(
+        histories.continuation_correction[0].read(continuation_index),
+        i32::from(continuation_value)
     );
 }

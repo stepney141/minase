@@ -661,12 +661,19 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
-    assert!(histories.correction.iter().all(|values| {
-        values
+    assert!(
+        histories
+            .correction
             .values()
             .iter()
             .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
-    }));
+    );
+    assert!(
+        histories
+            .continuation_correction
+            .iter()
+            .all(|history| history.values().iter().all(|&value| value == 5))
+    );
     for index in [
         0,
         histories.continuation.values().len() / 2,
@@ -695,10 +702,11 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
     for history in &mut histories.capture {
         history.values_mut().fill(456);
     }
-    for values in &histories.correction {
-        for value in values.values() {
-            value.store(123, AtomicOrdering::Relaxed);
-        }
+    for value in histories.correction.values() {
+        value.store(123, AtomicOrdering::Relaxed);
+    }
+    for history in &mut histories.continuation_correction {
+        history.values_mut().fill(456);
     }
     let pawn_piece = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
     let pawn_square = sq(4, 4);
@@ -707,7 +715,8 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
     histories.clear();
     assert_eq!(histories.workers.len(), 4);
     assert_eq!(histories.capture.len(), 4);
-    assert_eq!(histories.correction.len(), 4);
+    assert_eq!(histories.correction.entry_count(), 262_144);
+    assert_eq!(histories.continuation_correction.len(), 4);
     assert!(
         histories.workers.iter().all(|history| history
             .iter()
@@ -721,20 +730,33 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
             .iter()
             .all(|history| history.values().iter().all(|&value| value == -742))
     );
-    assert!(histories.correction.iter().all(|values| {
-        values
+    assert!(
+        histories
+            .correction
             .values()
             .iter()
             .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
-    }));
+    );
+    assert!(
+        histories
+            .continuation_correction
+            .iter()
+            .all(|history| history.values().iter().all(|&value| value == 5))
+    );
     assert_eq!(histories.continuation.read(0), -586);
     assert_eq!(histories.pawn.read(0x1234, pawn_piece, pawn_square), -1338);
 
-    for (count, pawn_entries) in [(1, 1024), (2, 2048), (3, 4096), (4, 4096)] {
+    for (count, pawn_entries, correction_entries) in [
+        (1, 1024, 65_536),
+        (2, 2048, 131_072),
+        (3, 4096, 262_144),
+        (4, 4096, 262_144),
+    ] {
         let histories = crate::search::HistoryTables::new(worker_count(count));
         assert_eq!(histories.workers.len(), count);
         assert_eq!(histories.capture.len(), count);
-        assert_eq!(histories.correction.len(), count);
+        assert_eq!(histories.correction.entry_count(), correction_entries);
+        assert_eq!(histories.continuation_correction.len(), count);
         assert_eq!(histories.pawn.entry_count(), pawn_entries);
         assert!(
             histories.workers.iter().all(|history| history
@@ -749,12 +771,19 @@ fn history_tables_new_and_clear_use_stockfish_initial_values() {
                 .iter()
                 .all(|history| history.values().iter().all(|&value| value == -742))
         );
-        assert!(histories.correction.iter().all(|values| {
-            values
+        assert!(
+            histories
+                .correction
                 .values()
                 .iter()
                 .all(|value| value.load(AtomicOrdering::Relaxed) == -5)
-        }));
+        );
+        assert!(
+            histories
+                .continuation_correction
+                .iter()
+                .all(|history| history.values().iter().all(|&value| value == 5))
+        );
     }
 }
 

@@ -1,7 +1,9 @@
 //! 対局内で持ち越すhistory表。
 //!
-//! Butterfly historyと捕獲履歴はワーカーごとに持ち、continuation historyとpawn historyは
-//! 探索チームで共有する。各表は符号つきの更新量を上限へ切り詰めてから、共通の重力式で更新する。
+//! Butterfly historyと捕獲履歴はワーカーごとに持ち、continuation history、pawn history、
+//! および局面を鍵にした補正表は探索チームで共有する。
+//! Continuation correction historyはワーカーごとに持つ。
+//! 各表は符号つきの更新量を上限へ切り詰めてから、共通の重力式で更新する。
 
 use core::num::NonZeroUsize;
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -11,7 +13,7 @@ use minase_core::piece::{COLOR_COUNT, PieceCode, PieceKind};
 use minase_core::position::{Position, Undo};
 
 use super::capture_history::CaptureHistory;
-use super::correction::{ContinuationCorrectionHistory, CorrectionValues, new_correction_values};
+use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 
 /// Butterfly historyの絶対値の上限。
 /// Stockfishの`ButterflyHistory`と同じ7183を使う（src/history.h:128）。
@@ -273,17 +275,19 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 /// 対局内で次の根の探索へ持ち越すhistory表。
 ///
 /// 探索チームは根の探索ごとにワーカー別の2表だけを、それぞれ`HistoryDecay`%と
-/// `CaptureHistoryDecay`%へ減衰させる。共有の2表は減衰させない。
-/// 局面を鍵にした5つの補正表とcontinuation correction historyもワーカーごとに置くが、
-/// 現行の寿命を保つため探索チームの開始ごとにそれぞれ−5と5へ戻す。
-/// USI層は新規対局、受理した規則または`USI_Hash`の変更、ワーカー数の変更で初期化する。
-/// 拒否した変更と同じワーカー数の再指定では保持する。
+/// `CaptureHistoryDecay`%へ減衰させる。Continuation historyとpawn historyは減衰させない。
+/// 局面を鍵にした5つの補正表は探索チームで共有し、continuation correction historyは
+/// ワーカーごとに持つ。どちらも減衰させず、対局内の次の根の探索へ持ち越す。
+/// プロトコル層は、新規対局、受理した規則変更、受理した置換表容量の指定、引き分けの
+/// 評価値の変更、およびワーカー数の変更で初期化する。
+/// 拒否した変更と同じワーカー数の再指定では保持するが、置換表容量は同じ値の再指定でも初期化する。
 /// killer手は持ち越さない。
-/// 寿命の判断は`docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
+/// 各表の寿命と共有範囲の判断は
+/// `docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,
-    pub(crate) correction: Vec<CorrectionValues>,
+    pub(crate) correction: CorrectionValues,
     pub(crate) continuation_correction: Vec<ContinuationCorrectionHistory>,
     pub(crate) continuation: ContinuationHistory,
     pub(crate) pawn: PawnHistory,
@@ -301,9 +305,7 @@ impl HistoryTables {
                 })
                 .collect(),
             capture: (0..threads.get()).map(|_| CaptureHistory::new()).collect(),
-            correction: (0..threads.get())
-                .map(|_| new_correction_values())
-                .collect(),
+            correction: CorrectionValues::new(threads),
             continuation_correction: (0..threads.get())
                 .map(|_| ContinuationCorrectionHistory::new())
                 .collect(),
@@ -322,18 +324,11 @@ impl HistoryTables {
         for history in &mut self.capture {
             history.clear();
         }
-        self.clear_correction_for_search();
-        self.continuation.clear();
-        self.pawn.clear();
-    }
-
-    /// 現行の補正表の寿命を保つため、探索チームの開始時に全ワーカーの値を初期値へ戻す。
-    pub(super) fn clear_correction_for_search(&mut self) {
-        for values in &self.correction {
-            values.clear();
-        }
+        self.correction.clear();
         for history in &mut self.continuation_correction {
             history.clear();
         }
+        self.continuation.clear();
+        self.pawn.clear();
     }
 }

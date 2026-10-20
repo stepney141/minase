@@ -3,6 +3,9 @@
 
 use super::*;
 use crate::search::alphabeta::history_decay_for_test;
+use std::sync::atomic::Ordering as AtomicOrdering;
+
+const CORRECTION_INDEX: usize = 17;
 
 fn setup() -> (Engine, UsiProtocol) {
     let mut engine = make_engine(&[RuleCode::R1]);
@@ -17,6 +20,10 @@ fn setup() -> (Engine, UsiProtocol) {
 
 fn seed(protocol: &mut UsiProtocol) {
     let histories = protocol.histories.as_mut().unwrap();
+    histories.correction.values()[CORRECTION_INDEX].store(321, AtomicOrdering::Relaxed);
+    for (worker, history) in histories.continuation_correction.iter_mut().enumerate() {
+        history.store(CORRECTION_INDEX, worker as i16 + 400);
+    }
     for (worker, history) in histories.capture.iter_mut().enumerate() {
         history.values_mut().fill(worker as i32 + 100);
     }
@@ -30,6 +37,18 @@ fn assert_seed(protocol: &UsiProtocol, command: &str) {
     let histories = protocol.histories.as_ref().unwrap();
     assert_eq!(histories.workers.len(), 4, "{command}");
     assert_eq!(histories.capture.len(), 4, "{command}");
+    assert_eq!(
+        histories.correction.values()[CORRECTION_INDEX].load(AtomicOrdering::Relaxed),
+        321,
+        "{command}: position correction history"
+    );
+    for (worker, history) in histories.continuation_correction.iter().enumerate() {
+        assert_eq!(
+            i32::from(history.values()[CORRECTION_INDEX]),
+            worker as i32 + 400,
+            "{command}: continuation correction worker {worker}"
+        );
+    }
     for (worker, history) in histories.capture.iter().enumerate() {
         assert!(
             history
@@ -79,6 +98,8 @@ fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
     }
     for command in [
         "setoption name Threads value 4",
+        "setoption name DrawValueBlack value 0",
+        "setoption name DrawValueWhite value 0",
         "position startpos",
         "isready",
     ] {
@@ -95,6 +116,8 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
         ("setoption name Threads value 2", 2),
         ("setoption name USI_Hash value 1", 4),
         ("setoption name USI_Hash value 2", 4),
+        ("setoption name DrawValueBlack value -50", 4),
+        ("setoption name DrawValueWhite value 50", 4),
     ] {
         let (mut engine, mut protocol) = setup();
         run(
@@ -108,6 +131,18 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
         let histories = protocol.histories.as_ref().unwrap();
         assert_eq!(histories.workers.len(), workers, "{command}");
         assert_eq!(histories.capture.len(), workers, "{command}");
+        assert_eq!(
+            histories.correction.values()[CORRECTION_INDEX].load(AtomicOrdering::Relaxed),
+            -5,
+            "{command}: position correction history"
+        );
+        assert!(
+            histories
+                .continuation_correction
+                .iter()
+                .all(|history| history.values()[CORRECTION_INDEX] == 5),
+            "{command}: continuation correction history"
+        );
         assert!(
             histories
                 .capture

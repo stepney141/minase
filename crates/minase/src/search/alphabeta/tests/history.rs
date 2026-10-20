@@ -209,7 +209,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 &table,
                 &mut histories.workers[0],
                 &mut histories.capture[0],
-                &histories.correction[0],
+                &histories.correction,
                 &mut histories.continuation_correction[0],
                 &histories.continuation,
                 &histories.pawn,
@@ -337,7 +337,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
                 .all(|h| h.iter().flatten().flatten().all(|&v| v == 0))
         );
     }
-    // 単一ワーカーの実探索でも、減衰対象外の共有表を同じ状態にそろえれば、
+    // 単一ワーカーの実探索でも、減衰対象外の表を同じ状態にそろえれば、
     // ワーカー別の2表を再利用した探索と新品の表の結果が一致する。
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     crate::search::search(
@@ -352,6 +352,8 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     let fresh_shared = HistoryTables::new(DEFAULT_THREADS);
     histories.continuation = fresh_shared.continuation;
     histories.pawn = fresh_shared.pawn;
+    histories.correction = fresh_shared.correction;
+    histories.continuation_correction = fresh_shared.continuation_correction;
     let reused = crate::search::search(
         nnue,
         &snapshot,
