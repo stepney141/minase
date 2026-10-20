@@ -25,6 +25,7 @@ fn seed_first(searcher: &Searcher<'_>, board: &Position, mv: Move, ply: u32) {
         search_key(board),
         0,
         INFINITY,
+        None,
         Bound::Upper,
         Some(mv),
         ply,
@@ -371,7 +372,7 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
         );
         let mut after = child.clone();
         after.make_move_unchecked(recapture, engine_rules());
-        assert_eq!(hit.score, -evaluate(searcher.nnue, &after));
+        assert_eq!(hit.value.unwrap().score, -evaluate(searcher.nnue, &after));
         assert_eq!(
             searcher.nodes, 3,
             "親の捕獲、子の置換表の捕獲、取り返しを読む"

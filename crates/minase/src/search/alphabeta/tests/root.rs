@@ -93,6 +93,7 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
                 search_key(&position),
                 1,
                 0,
+                None,
                 Bound::Exact,
                 Some(tt_move),
                 0,
@@ -292,9 +293,10 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, expected_nodes);
             let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
-            assert_eq!(hit.bound, bound);
-            assert_eq!(hit.score, score);
+            assert_eq!(hit.value.unwrap().bound, bound);
+            assert_eq!(hit.value.unwrap().score, score);
             assert_eq!(hit.best_move, Some(best_move));
+            assert_eq!(hit.static_eval, Some(evaluate(searcher.nnue, &position)));
         });
     }
 }
@@ -320,7 +322,13 @@ fn aspiration_researches_scores_equal_to_either_edge() {
                 assert_eq!(nodes, if prev == delta || index == 0 { 2 } else { 1 });
             }
             assert_eq!(
-                searcher.tt.probe(search_key(&position), 0).unwrap().bound,
+                searcher
+                    .tt
+                    .probe(search_key(&position), 0)
+                    .unwrap()
+                    .value
+                    .unwrap()
+                    .bound,
                 Bound::Exact
             );
         });
@@ -347,16 +355,23 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
         let key = search_key(&position);
-        searcher
-            .tt
-            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0, false);
+        searcher.tt.store(
+            key,
+            0,
+            DRAW_SCORE,
+            None,
+            Bound::Exact,
+            Some(quiet),
+            0,
+            false,
+        );
         let (best_move, score) = searcher
             .search_root(&position, &moves, 1, MATE, INFINITY)
             .unwrap();
         assert_eq!(score, MATE - 1);
         assert!(captures_last_royal(&position, best_move));
         let hit = searcher.tt.probe(key, 0).unwrap();
-        assert_eq!(hit.bound, Bound::Upper);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
         assert_eq!(hit.best_move, Some(best_move));
         let before = searcher.nodes;
         assert_eq!(
@@ -364,7 +379,10 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
             Some((best_move, MATE - 1))
         );
         assert_eq!(searcher.nodes - before, 0);
-        assert_eq!(searcher.tt.probe(key, 0).unwrap().bound, Bound::Lower);
+        assert_eq!(
+            searcher.tt.probe(key, 0).unwrap().value.unwrap().bound,
+            Bound::Lower
+        );
     });
 }
 
@@ -453,8 +471,8 @@ fn aspiration_retry_interruption_keeps_fail_high_bound() {
         assert_eq!(searcher.nodes, 1);
         assert_eq!(searcher.stop_reason, Some(StopReason::NodeLimit));
         let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
-        assert_eq!(hit.bound, Bound::Lower);
-        assert_eq!(hit.score, DRAW_SCORE);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
+        assert_eq!(hit.value.unwrap().score, DRAW_SCORE);
     });
 }
 
@@ -487,6 +505,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
                 search_key(&child),
                 MAX_PLY,
                 -score,
+                None,
                 Bound::Exact,
                 None,
                 1,
@@ -497,7 +516,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let hit = searcher.tt.probe(search_key(&child), 1).unwrap();
-            assert_eq!(hit.score, -score, "child entry for {mv:?}");
+            assert_eq!(hit.value.unwrap().score, -score, "child entry for {mv:?}");
         }
 
         assert_eq!(
@@ -589,6 +608,7 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
                 search_key(&child),
                 depth,
                 -root_score,
+                None,
                 Bound::Exact,
                 None,
                 1,
@@ -599,6 +619,8 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
             searcher
                 .tt
                 .probe(search_key(&target_child), 1)
+                .unwrap()
+                .value
                 .unwrap()
                 .depth,
             6
@@ -617,7 +639,7 @@ pub(super) fn root_lmr_research_records_only_the_final_score() {
         assert_eq!(target_nodes, 2, "減深探索と通常深さの再探索の全体を数える");
         let hit = searcher.tt.probe(search_key(&target_child), 1).unwrap();
         assert_eq!(
-            (hit.depth, hit.score),
+            (hit.value.unwrap().depth, hit.value.unwrap().score),
             (7, 0),
             "深さ6の値を超えた後に再探索する"
         );

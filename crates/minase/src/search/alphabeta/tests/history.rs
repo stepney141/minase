@@ -523,6 +523,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                 search_key(&board),
                 0,
                 0,
+                None,
                 Bound::Upper,
                 Some(tt_move),
                 0,
@@ -533,9 +534,16 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
                 let score = if mv == winner { 20 } else { 0 };
-                searcher
-                    .tt
-                    .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
+                searcher.tt.store(
+                    search_key(&child),
+                    16,
+                    -score,
+                    None,
+                    Bound::Exact,
+                    None,
+                    1,
+                    false,
+                );
             }
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
@@ -629,6 +637,7 @@ fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(tt_move),
             ply,

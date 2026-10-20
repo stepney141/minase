@@ -263,6 +263,7 @@ fn correction_negamax_update_conditions() {
                 search_key(&board),
                 0,
                 0,
+                None,
                 Bound::Upper,
                 Some(first),
                 0,
@@ -271,7 +272,16 @@ fn correction_negamax_update_conditions() {
         }
         for mv in moves {
             let undo = board.make_move_unchecked(mv, rules);
-            table.store(search_key(&board), 8, -score, Bound::Exact, None, 1, false);
+            table.store(
+                search_key(&board),
+                8,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
             board.unmake_move(undo);
         }
         let mut butterfly_history =
@@ -316,9 +326,9 @@ fn correction_negamax_update_conditions() {
             Some(score)
         );
         let hit = table.probe(search_key(&board), 0).unwrap();
-        assert_eq!(hit.bound, bound);
-        assert_eq!(hit.depth, 2);
-        assert_eq!(hit.score, score);
+        assert_eq!(hit.value.unwrap().bound, bound);
+        assert_eq!(hit.value.unwrap().depth, 2);
+        assert_eq!(hit.value.unwrap().score, score);
         assert_eq!(
             board
                 .captured_squares(hit.best_move.unwrap())
@@ -357,7 +367,16 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         MoveGenerator::new(rules).generate_moves(&board, &mut moves);
         for mv in moves {
             let undo = board.make_move_unchecked(mv, rules);
-            table.store(search_key(&board), 2, -score, Bound::Exact, None, 1, false);
+            table.store(
+                search_key(&board),
+                2,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
             board.unmake_move(undo);
         }
         let key = material_key(&board);
@@ -410,7 +429,16 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
         let mut board = bare_kings();
         let table = TranspositionTable::new(1).unwrap();
         if !interrupted {
-            table.store(search_key(&board), 2, 320, Bound::Exact, None, 0, false);
+            table.store(
+                search_key(&board),
+                2,
+                320,
+                None,
+                Bound::Exact,
+                None,
+                0,
+                false,
+            );
         }
         let key = material_key(&board);
         let mut butterfly_history =
@@ -472,7 +500,16 @@ fn correction_root_updates_only_after_completed_search() {
         let mut child = board.clone();
         for &mv in &moves {
             let undo = child.make_move_unchecked(mv, rules);
-            table.store(search_key(&child), 8, -score, Bound::Exact, None, 1, false);
+            table.store(
+                search_key(&child),
+                8,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
             child.unmake_move(undo);
         }
         let mut butterfly_history =
@@ -571,6 +608,7 @@ fn correction_changes_futility_estimate() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(quiets[0]),
             0,

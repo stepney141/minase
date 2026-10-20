@@ -384,6 +384,7 @@ fn quiescence_path_state(
                 search_key(board),
                 0,
                 INFINITY,
+                None,
                 Bound::Upper,
                 Some(mv),
                 0,

@@ -90,7 +90,7 @@ use crate::search::alphabeta::time::{
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
-    CRITICAL_BOUND_MASK, CRITICAL_RESERVED_MASK, pack_move, unpack_move,
+    CRITICAL_BOUND_MASK, CRITICAL_NO_VALUE_MASK, CRITICAL_RESERVED_MASK, pack_move, unpack_move,
 };
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
@@ -919,7 +919,16 @@ fn run_move_pruning(
     let mv = table
         .probe(search_key(position), ply)
         .and_then(|h| h.best_move);
-    table.store(search_key(position), 0, alpha, Bound::Upper, mv, ply, true);
+    table.store(
+        search_key(position),
+        0,
+        alpha,
+        None,
+        Bound::Upper,
+        mv,
+        ply,
+        true,
+    );
     run_configured_negamax(position, depth, alpha, beta, ply, table, |s| {
         zero_position_correction(s, position);
         s.seek_mate = true;

@@ -160,55 +160,60 @@ impl Searcher<'_> {
                 self.stats.tt_hits += 1;
             }
             tt_move = hit.best_move;
-            let cutoff = if pv_node {
-                !in_repetition_band(hit.score)
-                    && u32::from(hit.depth) >= depth
-                    && match hit.bound {
-                        Bound::Exact => true,
-                        Bound::Lower => hit.score >= beta,
-                        Bound::Upper => hit.score <= alpha,
-                    }
-            } else {
-                zero_window_tt_cutoff(
-                    hit.score,
-                    hit.bound,
-                    u32::from(hit.depth),
-                    depth,
-                    beta,
-                    cut_node,
-                )
-            };
-            if cutoff {
-                if hit.score >= beta
-                    && let Some(mv) = tt_move
-                {
-                    let capture =
-                        *tt_capture.get_or_init(|| self.legal_tt_capture(position, tt_move));
-                    self.update_tt_cutoff_histories(position, ply, depth, mv, capture);
-                }
-                let mut consistent = true;
-                // Stockfish src/search.cpp:917-931。照合の着手は探索ノードに数えない。
-                if !pv_node
-                    && depth >= TT_CUTOFF_CHILD_MIN_DEPTH
-                    && hit.score.abs() < MATE_THRESHOLD
-                    && let Some(mv) = tt_move
-                    && tt_capture
-                        .get_or_init(|| self.legal_tt_capture(position, tt_move))
-                        .is_some()
-                {
-                    let undo = position.make_move_unchecked(mv, self.rules);
-                    let next = self.tt.probe(search_key(position), ply + 1);
-                    position.unmake_move(undo);
-                    if let Some(next) = next.filter(|next| !in_repetition_band(next.score)) {
-                        consistent = (hit.score >= beta) == (-next.score >= beta);
-                    }
-                }
-                if consistent {
-                    #[cfg(feature = "search-stats")]
+            if let Some(value) = hit.value {
+                let cutoff = if pv_node {
+                    !in_repetition_band(value.score)
+                        && u32::from(value.depth) >= depth
+                        && match value.bound {
+                            Bound::Exact => true,
+                            Bound::Lower => value.score >= beta,
+                            Bound::Upper => value.score <= alpha,
+                        }
+                } else {
+                    zero_window_tt_cutoff(
+                        value.score,
+                        value.bound,
+                        u32::from(value.depth),
+                        depth,
+                        beta,
+                        cut_node,
+                    )
+                };
+                if cutoff {
+                    if value.score >= beta
+                        && let Some(mv) = tt_move
                     {
-                        self.stats.tt_cutoffs += 1;
+                        let capture =
+                            *tt_capture.get_or_init(|| self.legal_tt_capture(position, tt_move));
+                        self.update_tt_cutoff_histories(position, ply, depth, mv, capture);
                     }
-                    return Some(hit.score);
+                    let mut consistent = true;
+                    // Stockfish src/search.cpp:917-931。照合の着手は探索ノードに数えない。
+                    if !pv_node
+                        && depth >= TT_CUTOFF_CHILD_MIN_DEPTH
+                        && value.score.abs() < MATE_THRESHOLD
+                        && let Some(mv) = tt_move
+                        && tt_capture
+                            .get_or_init(|| self.legal_tt_capture(position, tt_move))
+                            .is_some()
+                    {
+                        let undo = position.make_move_unchecked(mv, self.rules);
+                        let next = self.tt.probe(search_key(position), ply + 1);
+                        position.unmake_move(undo);
+                        if let Some(next) = next
+                            .and_then(|next| next.value)
+                            .filter(|next| !in_repetition_band(next.score))
+                        {
+                            consistent = (value.score >= beta) == (-next.score >= beta);
+                        }
+                    }
+                    if consistent {
+                        #[cfg(feature = "search-stats")]
+                        {
+                            self.stats.tt_cutoffs += 1;
+                        }
+                        return Some(value.score);
+                    }
                 }
             }
         }
@@ -237,7 +242,12 @@ impl Searcher<'_> {
         self.static_evals[ply as usize] = static_eval;
         self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
         let mut improving = self.improving(static_eval, ply);
-        let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
+        let eval = pruning_eval(
+            static_eval,
+            tt_hit
+                .and_then(|hit| hit.value)
+                .map(|value| (value.score, value.bound)),
+        );
 
         // 王駒への利きは個々の枝刈りが発動し得る場合に調べる。
         let window_outside_bands =
@@ -577,7 +587,9 @@ impl Searcher<'_> {
                     pv_node,
                     tt_pv: self.tt_pv[ply as usize],
                     cut_node,
-                    tt_hit: tt_hit.map(|hit| (hit.score, u32::from(hit.depth))),
+                    tt_hit: tt_hit
+                        .and_then(|hit| hit.value)
+                        .map(|value| (value.score, u32::from(value.depth))),
                     tt_capture,
                     is_tt_move: tt_capture.is_some() && Some(mv) == tt_move,
                     capture,
@@ -713,6 +725,7 @@ impl Searcher<'_> {
             key,
             depth,
             best_score,
+            Some(raw),
             bound,
             Some(best_move),
             ply,

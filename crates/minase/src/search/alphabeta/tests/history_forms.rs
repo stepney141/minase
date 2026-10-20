@@ -368,6 +368,7 @@ fn negamax_and_root_record_stat_score_before_searching_each_move() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(chosen),
             0,
@@ -531,9 +532,16 @@ fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
         [(99, 100, Bound::Lower, 150), (-100, 100, Bound::Exact, 150)]
     {
         with_root_searcher(&board, &[], |searcher| {
-            searcher
-                .tt
-                .store(search_key(&board), 4, score, bound, Some(quiet), 0, false);
+            searcher.tt.store(
+                search_key(&board),
+                4,
+                score,
+                None,
+                bound,
+                Some(quiet),
+                0,
+                false,
+            );
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 3, alpha, beta, 0, alpha == 99),
                 Some(score)
@@ -551,6 +559,7 @@ fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
             search_key(&board),
             4,
             150,
+            None,
             Bound::Lower,
             Some(illegal),
             0,
@@ -599,6 +608,7 @@ fn tt_cutoff_history_updates_obey_move_and_parent_conditions() {
                 search_key(&board),
                 if score >= 100 { 4 } else { 3 },
                 score,
+                None,
                 bound,
                 Some(capture),
                 2,
@@ -845,15 +855,22 @@ fn pv_alpha_improvement_updates_history_without_killer() {
     let moves = legal_moves(&board);
     let best = moves[0];
     with_root_searcher(&board, &[], |searcher| {
-        searcher
-            .tt
-            .store(search_key(&board), 0, 0, Bound::Upper, Some(best), 0, false);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            0,
+            None,
+            Bound::Upper,
+            Some(best),
+            0,
+            false,
+        );
         for &mv in &moves {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             searcher
                 .tt
-                .store(search_key(&child), 4, 0, Bound::Exact, None, 1, false);
+                .store(search_key(&child), 4, 0, None, Bound::Exact, None, 1, false);
         }
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -10, 10, 0, false),
@@ -883,9 +900,16 @@ fn post_lmr_continuation_bonus_requires_alpha_improvement() {
 
             let mut child = current.clone();
             child.make_move_unchecked(mv, engine_rules());
-            searcher
-                .tt
-                .store(search_key(&child), 6, -value, Bound::Exact, None, 2, false);
+            searcher.tt.store(
+                search_key(&child),
+                6,
+                -value,
+                None,
+                Bound::Exact,
+                None,
+                2,
+                false,
+            );
             assert_eq!(
                 searcher.search_move(&mut current, mv, 7, 0, 10, 1, false, 5, Some(0), false),
                 Some(value)

@@ -1,4 +1,12 @@
 //! 探索局面の置換表。
+//!
+//! 1エントリは2個の64ビット原子値からなる。`critical`は検証キーと探索値を持ち、
+//! `advisory`は記録手、世代、および補正前の静的評価を持つ。
+//! 探索値なしの記録は静的評価だけを持ち、探索値、境界の種類、深さ、および記録手を持たない。
+//!
+//! `advisory`は検証キーと同じ原子操作では読まれない。このため、並行書き込みでは
+//! 記録手と静的評価が別の局面の値になり得る。Stockfishと同じ近似として許容し、
+//! 記録手は合法性を確認してから使う。
 
 use core::mem::size_of;
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
@@ -38,7 +46,8 @@ impl fmt::Display for TranspositionTableError {
 
 impl std::error::Error for TranspositionTableError {}
 
-/// 格納された評価値と探索窓の関係。0は空エントリの目印に予約する。
+/// 格納された評価値と探索窓の関係。
+/// 探索値なしの印がない場合、0は空エントリの目印に予約する。
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Bound {
@@ -70,8 +79,12 @@ pub(super) const CRITICAL_BOUND_MASK: u64 = 0b11 << CRITICAL_BOUND_SHIFT;
 pub(super) const CRITICAL_PV_SHIFT: u32 = 58;
 /// `critical`のPVの印のマスク。
 pub(super) const CRITICAL_PV_MASK: u64 = 1 << CRITICAL_PV_SHIFT;
-/// `critical`の予約領域はbit 59..=63に置き、常に0にする。
-pub(super) const CRITICAL_RESERVED_MASK: u64 = 0b1_1111 << 59;
+/// `critical`の探索値なしの印はbit 59に置く。
+pub(super) const CRITICAL_NO_VALUE_SHIFT: u32 = 59;
+/// `critical`の探索値なしの印のマスク。
+pub(super) const CRITICAL_NO_VALUE_MASK: u64 = 1 << CRITICAL_NO_VALUE_SHIFT;
+/// `critical`の予約領域はbit 60..=63に置き、常に0にする。
+pub(super) const CRITICAL_RESERVED_MASK: u64 = 0b1111 << 60;
 
 /// `advisory`の指し手はbit 0..=24に置く。
 pub(super) const ADVISORY_MOVE_SHIFT: u32 = 0;
@@ -81,22 +94,28 @@ pub(super) const ADVISORY_MOVE_MASK: u64 = 0x01ff_ffff << ADVISORY_MOVE_SHIFT;
 pub(super) const ADVISORY_GENERATION_SHIFT: u32 = 25;
 /// `advisory`の世代マスク。
 pub(super) const ADVISORY_GENERATION_MASK: u64 = 0xff << ADVISORY_GENERATION_SHIFT;
-/// `advisory`の予約領域はbit 33..=63に置き、常に0にする。
-pub(super) const ADVISORY_RESERVED_MASK: u64 = 0x7fff_ffff << 33;
+/// `advisory`の補正前の静的評価はbit 33..=48に置く。
+pub(super) const ADVISORY_STATIC_EVAL_SHIFT: u32 = 33;
+/// `advisory`の補正前の静的評価マスク。
+pub(super) const ADVISORY_STATIC_EVAL_MASK: u64 = 0xffff << ADVISORY_STATIC_EVAL_SHIFT;
+/// `advisory`の予約領域はbit 49..=63に置き、常に0にする。
+pub(super) const ADVISORY_RESERVED_MASK: u64 = 0x7fff << 49;
 /// 指し手25ビットがすべて1の「手なし」符号。
 pub(super) const NO_MOVE: u32 = 0x01ff_ffff;
+/// 静的評価の「なし」を表す、評価関数の出力範囲外の符号。
+pub(super) const NO_STATIC_EVAL: i16 = i16::MIN;
 
 /// 置換表の1エントリ。2個の64ビット原子値で厳密に16バイトを占める。
 #[repr(C)]
 struct Entry {
-    /// 検証キー、評価値、深さ、バウンド、PVの印、および予約領域。
+    /// 検証キー、探索値、PVの印、探索値なしの印、および予約領域。
     critical: AtomicU64,
-    /// 指し手、世代、および予約領域。
+    /// 指し手、世代、補正前の静的評価、および予約領域。
     advisory: AtomicU64,
 }
 
 impl Entry {
-    /// 空エントリ。`critical`のバウンド0が未使用の目印になる。
+    /// 空エントリ。`critical`の探索値なしの印が0で、バウンド0が未使用の目印になる。
     fn empty() -> Self {
         Self {
             critical: AtomicU64::new(0),
@@ -108,20 +127,43 @@ impl Entry {
 const _: () = assert!(size_of::<Entry>() == 16);
 
 /// `critical`から取り出した探索値。
-struct CriticalFields {
-    /// 局面キーの上位32ビットによる照合キー。
-    key: u32,
+#[derive(Clone, Copy)]
+struct CriticalValue {
     /// 格納形式の評価値。
     score: i16,
     /// 探索した残り深さ。
     depth: u8,
     /// 評価値と探索窓の関係。
     bound: Bound,
+}
+
+/// `critical`から取り出した項目。
+struct CriticalFields {
+    /// 局面キーの上位32ビットによる照合キー。
+    key: u32,
+    /// 探索値なしの記録では`None`。
+    value: Option<CriticalValue>,
     /// 主変化の木に属するノードとして保存した印。
     is_pv: bool,
 }
 
+/// 置換表に保存された探索値。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TtValue {
+    /// 現在の手数基準へ戻した評価値。
+    pub(crate) score: i32,
+    /// 格納時の残り深さ。
+    pub(crate) depth: u8,
+    /// 評価値と探索窓の関係。
+    pub(crate) bound: Bound,
+}
+
 /// 置換表の照合に成功したエントリの内容。
+///
+/// [`value`](Self::value)が`None`なら、補正前の静的評価だけを持つ探索値なしの記録である。
+/// この記録は探索値、境界の種類、深さ、および記録手を持たない。
+/// `best_move`と`static_eval`は検証キーと別の原子語にあるため、並行書き込みでは
+/// 別の局面の値になり得る。これはStockfishと同じ近似である。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Hit {
     /// 手順序付けに使う助言手。
@@ -130,12 +172,10 @@ pub(crate) struct Hit {
     /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
     /// 合法手であることを確認してから着手に使い、枝刈りのための捕獲手かの判定にも使ってよい。
     pub(crate) best_move: Option<Move>,
-    /// 現在の手数基準へ戻した評価値。
-    pub(crate) score: i32,
-    /// 格納時の残り深さ。
-    pub(crate) depth: u8,
-    /// 評価値と探索窓の関係。
-    pub(crate) bound: Bound,
+    /// 補正前の静的評価。詰み距離の変換は適用しない。
+    pub(crate) static_eval: Option<i32>,
+    /// 評価値、深さ、および境界の種類。探索値なしの記録では`None`。
+    pub(crate) value: Option<TtValue>,
     /// 主変化の木に属するノードとして保存した印。
     pub(crate) is_pv: bool,
 }
@@ -224,8 +264,9 @@ impl TranspositionTable {
 
     /// 局面キーに対応するエントリを照合して返す。
     ///
-    /// 照合対象は評価値、深さ、バウンド、PVの印であり、[`Hit::best_move`]は別の
-    /// 原子語にある助言値である。呼出し側は合法手との一致を検証して使う。
+    /// 照合対象は探索値、探索値なしの印、およびPVの印である。
+    /// [`Hit::best_move`]と[`Hit::static_eval`]は別の原子語にある助言値であり、
+    /// 呼出し側は記録手と合法手との一致を検証して使う。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
         let entry = &self.entries[key as usize & self.mask];
         let critical = entry.critical.load(Ordering::Acquire);
@@ -234,12 +275,22 @@ impl TranspositionTable {
             return None;
         }
         let advisory = entry.advisory.load(Ordering::Relaxed);
-        let best_move = unpack_move(unpack_advisory_move(advisory))?;
+        let static_eval = unpack_advisory_static_eval(advisory);
+        let (best_move, value) = match fields.value {
+            Some(value) => (
+                unpack_move(unpack_advisory_move(advisory))?,
+                Some(TtValue {
+                    score: score_from_tt(value.score, ply),
+                    depth: value.depth,
+                    bound: value.bound,
+                }),
+            ),
+            None => (None, None),
+        };
         Some(Hit {
             best_move,
-            score: score_from_tt(fields.score, ply),
-            depth: fields.depth,
-            bound: fields.bound,
+            static_eval,
+            value,
             is_pv: fields.is_pv,
         })
     }
@@ -251,6 +302,7 @@ impl TranspositionTable {
     /// 異なる検証キーでは、過去世代または既存より深い結果だけが置き換える。
     /// 同一キーの深さ制限は、静止探索の深さ0の記録が通常探索の深い記録を消すことを防ぐ。
     /// 理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    /// `static_eval`は補正前の静的評価であり、詰み距離の変換を適用しない。
     /// `is_pv`はPVの印として保存し、置換の判断には使わない。
     ///
     /// 2ワーカーが同じ既存値から書き込み可と判断すると、浅い結果が後から公開されることも許容する。
@@ -262,6 +314,7 @@ impl TranspositionTable {
         key: u64,
         depth: u32,
         score: i32,
+        static_eval: Option<i32>,
         bound: Bound,
         best_move: Option<Move>,
         ply: u32,
@@ -280,14 +333,16 @@ impl TranspositionTable {
         let depth = depth.min(u8::MAX as u32) as u8;
         let replace = match existing {
             None => true,
-            Some(existing) if existing.key == key => depth >= existing.depth,
-            Some(existing) => age > 0 || depth > existing.depth,
+            Some(existing) if existing.key == key => {
+                depth >= existing.value.map_or(0, |value| value.depth)
+            }
+            Some(existing) => age > 0 || depth > existing.value.map_or(0, |value| value.depth),
         };
         if !replace {
             return;
         }
 
-        let advisory = pack_advisory(best_move, generation);
+        let advisory = pack_advisory(best_move, generation, static_eval);
         let critical = pack_critical(key, score_to_tt(score, ply), depth, bound, is_pv);
         entry.advisory.store(advisory, Ordering::Relaxed);
         entry.critical.store(critical, Ordering::Release);
@@ -339,31 +394,47 @@ fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound, is_pv: bool) -> 
         | (u64::from(is_pv) << CRITICAL_PV_SHIFT)
 }
 
-/// `critical`を探索値へ復号する。予約領域またはバウンドが不正なら失敗する。
+/// `critical`を項目へ復号する。予約領域または探索値のバウンドが不正なら失敗する。
 fn unpack_critical(critical: u64) -> Option<CriticalFields> {
     if critical & CRITICAL_RESERVED_MASK != 0 {
         return None;
     }
-    let bound = match ((critical & CRITICAL_BOUND_MASK) >> CRITICAL_BOUND_SHIFT) as u8 {
-        value if value == Bound::Exact as u8 => Bound::Exact,
-        value if value == Bound::Lower as u8 => Bound::Lower,
-        value if value == Bound::Upper as u8 => Bound::Upper,
-        _ => return None,
+    let value = if critical & CRITICAL_NO_VALUE_MASK != 0 {
+        None
+    } else {
+        let bound = match ((critical & CRITICAL_BOUND_MASK) >> CRITICAL_BOUND_SHIFT) as u8 {
+            value if value == Bound::Exact as u8 => Bound::Exact,
+            value if value == Bound::Lower as u8 => Bound::Lower,
+            value if value == Bound::Upper as u8 => Bound::Upper,
+            _ => return None,
+        };
+        Some(CriticalValue {
+            score: ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
+            depth: ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
+            bound,
+        })
     };
     Some(CriticalFields {
         key: ((critical & CRITICAL_KEY_MASK) >> CRITICAL_KEY_SHIFT) as u32,
-        score: ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
-        depth: ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
-        bound,
+        value,
         is_pv: critical & CRITICAL_PV_MASK != 0,
     })
 }
 
 /// 助言情報を`advisory`のビット配置へ詰め込む。
-fn pack_advisory(best_move: Option<Move>, generation: u8) -> u64 {
+fn pack_advisory(best_move: Option<Move>, generation: u8, static_eval: Option<i32>) -> u64 {
     let packed_move = best_move.map_or(NO_MOVE, pack_move);
+    let static_eval = static_eval.map_or(NO_STATIC_EVAL, |value| {
+        let value = i16::try_from(value).expect("static evaluation must fit in i16");
+        assert_ne!(
+            value, NO_STATIC_EVAL,
+            "static evaluation uses the none code"
+        );
+        value
+    });
     let advisory = (u64::from(packed_move) << ADVISORY_MOVE_SHIFT)
-        | (u64::from(generation) << ADVISORY_GENERATION_SHIFT);
+        | (u64::from(generation) << ADVISORY_GENERATION_SHIFT)
+        | (u64::from(static_eval as u16) << ADVISORY_STATIC_EVAL_SHIFT);
     debug_assert_eq!(advisory & ADVISORY_RESERVED_MASK, 0);
     advisory
 }
@@ -376,6 +447,13 @@ fn unpack_advisory_move(advisory: u64) -> u32 {
 /// `advisory`から世代を取り出す。
 fn unpack_advisory_generation(advisory: u64) -> u8 {
     ((advisory & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8
+}
+
+/// `advisory`から補正前の静的評価を取り出す。
+fn unpack_advisory_static_eval(advisory: u64) -> Option<i32> {
+    let value =
+        ((advisory & ADVISORY_STATIC_EVAL_MASK) >> ADVISORY_STATIC_EVAL_SHIFT) as u16 as i16;
+    (value != NO_STATIC_EVAL).then_some(i32::from(value))
 }
 
 /// 指し手を32ビットへ詰め込む。中間升なしは0xffで表す。
@@ -500,18 +578,20 @@ mod diagnostic_tests {
                         let table = TranspositionTable::new(1).unwrap();
                         let key = search_key(board);
                         assert!(table.inspect(board, ply).is_none());
-                        table.store(key, 7, score, bound, best_move, 5, false);
+                        table.store(key, 7, score, None, bound, best_move, 5, false);
                         let raw = table.raw_entry(key);
                         let generation = table.generation();
                         let hit = table.inspect(board, ply).unwrap();
-                        assert_eq!(hit.depth, 7);
-                        assert_eq!(hit.bound, bound);
+                        let value = hit.value.unwrap();
+                        assert_eq!(value.depth, 7);
+                        assert_eq!(value.bound, bound);
                         assert_eq!(hit.best_move, best_move);
-                        assert_eq!(hit.score, expected);
+                        assert_eq!(value.score, expected);
+                        assert_eq!(hit.static_eval, None);
                         assert_eq!(table.raw_entry(key), raw);
                         assert_eq!(table.generation(), generation);
                         // 同じスロットでも検証キーが違えば項目なしになる。
-                        table.store(key ^ (1_u64 << 32), 8, 456, bound, None, 0, false);
+                        table.store(key ^ (1_u64 << 32), 8, 456, None, bound, None, 0, false);
                         assert!(table.inspect(board, ply).is_none());
                     }
                 }

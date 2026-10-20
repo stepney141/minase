@@ -2037,7 +2037,7 @@ fn diagnostic_evaluation(position: &Position) -> Result<Vec<String>, String> {
     Ok(lines)
 }
 
-/// 置換表の項目を、詰み手数補正後の値と記録手のUSI表記へ変換する。
+/// 置換表の項目を、詰み手数補正後の探索値、静的評価、および記録手のUSI表記へ変換する。
 fn diagnostic_hit(
     position: &Position,
     generator: &MoveGenerator,
@@ -2054,14 +2054,22 @@ fn diagnostic_hit(
         }
         Some(mv) => usi::text_generated(position, mv),
     };
-    let bound = match hit.bound {
+    let static_eval = hit
+        .static_eval
+        .map_or_else(|| "none".to_owned(), |value| value.to_string());
+    let Some(value) = hit.value else {
+        return Ok(format!(
+            "search none bestmove {best_move} static-eval {static_eval}"
+        ));
+    };
+    let bound = match value.bound {
         search::Bound::Exact => "exact",
         search::Bound::Lower => "lower",
         search::Bound::Upper => "upper",
     };
     Ok(format!(
-        "depth {} bound {bound} score {} bestmove {best_move}",
-        hit.depth, hit.score
+        "depth {} bound {bound} score {} bestmove {best_move} static-eval {static_eval}",
+        value.depth, value.score
     ))
 }
 
@@ -2089,7 +2097,10 @@ fn diagnostic_table(engine: &Engine, table: &TranspositionTable) -> Result<Vec<S
             diagnostic_hit(&child, &generator, table.inspect(&child, 1))?
         ));
     }
-    lines.push("note bestmove may come from a different store operation than the score".to_owned());
+    lines.push(
+        "note bestmove and static-eval may come from a different store operation than the score"
+            .to_owned(),
+    );
     Ok(lines)
 }
 
@@ -2543,8 +2554,8 @@ mod tests {
                 } else {
                     let after = after.unwrap();
                     assert_eq!(
-                        (after.best_move, after.score, after.depth, after.bound),
-                        (before.best_move, before.score, before.depth, before.bound)
+                        (after.best_move, after.static_eval, after.value),
+                        (before.best_move, before.static_eval, before.value)
                     );
                 }
                 let histories = protocol.histories.as_ref().unwrap();
@@ -4379,7 +4390,7 @@ mod tests {
         assert_eq!(tail.lines().count(), 2);
     }
 
-    /// [`diagnostic_table`]の契約: 境界、深さ、最善手と項目なしを指定語彙で表示する。
+    /// [`diagnostic_table`]の契約: 探索値、静的評価、最善手、および項目なしを指定語彙で表示する。
     #[test]
     fn diagnostic_hit_formats_all_fields() {
         let position = Position::initial();
@@ -4393,19 +4404,32 @@ mod tests {
         ] {
             let hit = search::Hit {
                 best_move,
-                score: 123,
-                depth: 7,
-                bound,
+                static_eval: None,
+                value: Some(search::TtValue {
+                    score: 123,
+                    depth: 7,
+                    bound,
+                }),
                 is_pv: false,
             };
             assert_eq!(
                 diagnostic_hit(&position, &generator, Some(hit)).unwrap(),
                 format!(
-                    "depth 7 bound {text} score 123 bestmove {}",
+                    "depth 7 bound {text} score 123 bestmove {} static-eval none",
                     if best_move.is_some() { "6i6h" } else { "none" }
                 )
             );
         }
+        let hit = search::Hit {
+            best_move: None,
+            static_eval: Some(-321),
+            value: None,
+            is_pv: false,
+        };
+        assert_eq!(
+            diagnostic_hit(&position, &generator, Some(hit)).unwrap(),
+            "search none bestmove none static-eval -321"
+        );
         assert_eq!(diagnostic_hit(&position, &generator, None).unwrap(), "none");
     }
 

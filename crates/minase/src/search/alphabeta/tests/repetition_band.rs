@@ -42,6 +42,7 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
                     search_key(&board),
                     32,
                     score,
+                    None,
                     bound,
                     Some(tt_move),
                     0,
@@ -50,9 +51,16 @@ fn r1_repetition_band_negamax_ignores_every_bound_but_searches_tt_move_first() {
                 for &mv in &moves {
                     let mut child = board.clone();
                     child.make_move_unchecked(mv, engine_rules());
-                    searcher
-                        .tt
-                        .store(search_key(&child), 32, 0, Bound::Exact, None, 1, false);
+                    searcher.tt.store(
+                        search_key(&child),
+                        32,
+                        0,
+                        None,
+                        Bound::Exact,
+                        None,
+                        1,
+                        false,
+                    );
                 }
                 let (alpha, beta) = match bound {
                     Bound::Exact => (-INFINITY, INFINITY),
@@ -103,6 +111,7 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
                     search_key(&board),
                     32,
                     score,
+                    None,
                     bound,
                     Some(tt_move),
                     0,
@@ -149,6 +158,7 @@ fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
                 search_key(&board),
                 32,
                 score,
+                None,
                 bound,
                 Some(tt_move),
                 5,
@@ -178,6 +188,7 @@ fn r1_repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
             search_key(&board),
             32,
             sign * 29_744,
+            None,
             Bound::Exact,
             None,
             5,
@@ -185,7 +196,12 @@ fn r1_repetition_band_deep_mate_corrected_into_band_is_not_a_tt_cutoff() {
         );
         // 保存距離251手に読み出し位置40手を足すと291手となり、専用の帯へ入る。
         assert_eq!(
-            table.probe(search_key(&board), 40).unwrap().score,
+            table
+                .probe(search_key(&board), 40)
+                .unwrap()
+                .value
+                .unwrap()
+                .score,
             sign * 29_709
         );
         let (score, nodes) = run_negamax(&board, 1, -INFINITY, INFINITY, 40, &table);
@@ -214,6 +230,7 @@ fn r1_repetition_band_is_not_reused_after_only_game_history_changes() {
                 search_key(&board),
                 32,
                 score,
+                None,
                 Bound::Exact,
                 Some(repetition_move()),
                 0,
@@ -282,6 +299,7 @@ fn r1_repetition_band_windows_disable_futility_and_late_move_pruning() {
                     search_key(&board),
                     0,
                     0,
+                    None,
                     Bound::Upper,
                     Some(moves[0]),
                     0,
@@ -341,6 +359,7 @@ pub(super) fn r1_repetition_band_windows_disable_see_pruning() {
                 search_key(&board),
                 0,
                 0,
+                None,
                 Bound::Upper,
                 Some(quiet),
                 0,
@@ -384,6 +403,7 @@ fn r1_repetition_band_beta_disables_null_move() {
                 search_key(&board),
                 0,
                 0,
+                None,
                 Bound::Upper,
                 Some(moves[0]),
                 0,
@@ -395,6 +415,7 @@ fn r1_repetition_band_beta_disables_null_move() {
                 search_key(&passed),
                 32,
                 -29_990,
+                None,
                 Bound::Exact,
                 None,
                 1,

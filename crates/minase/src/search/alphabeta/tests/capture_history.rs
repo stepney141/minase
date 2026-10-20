@@ -258,9 +258,16 @@ fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             let score = if index == winner_index { 20 } else { 0 };
-            searcher
-                .tt
-                .store(search_key(&child), 16, -score, Bound::Exact, None, 1, false);
+            searcher.tt.store(
+                search_key(&child),
+                16,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
         }
         assert_eq!(
             searcher.negamax(&mut board.clone(), 10, -10, 10, 0, false),
@@ -410,6 +417,7 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
                 search_key(&child),
                 MAX_PLY,
                 -parent_score,
+                None,
                 Bound::Exact,
                 None,
                 1,
@@ -420,6 +428,7 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(tt_move),
             0,
@@ -500,6 +509,7 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(quiet),
             ply,
@@ -594,6 +604,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
                 search_key(&child),
                 MAX_PLY,
                 -parent_score,
+                None,
                 Bound::Exact,
                 None,
                 1,
@@ -604,6 +615,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(tt_move),
             0,

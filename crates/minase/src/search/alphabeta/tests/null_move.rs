@@ -60,6 +60,7 @@ fn run_candidate(
             search_key(board),
             0,
             beta - 1,
+            None,
             Bound::Upper,
             None,
             ply,
@@ -178,9 +179,16 @@ fn prior_nmp_fail_high_accumulates_and_child_slot_resets_on_node_entry() {
     with_root_searcher(&board, &[], |searcher| {
         assert!(searcher.nmp_min_ply.is_none());
         assert!(searcher.prior_nmp_fail_high.iter().all(|&count| count == 0));
-        searcher
-            .tt
-            .store(search_key(&board), 0, beta - 1, Bound::Upper, None, 0, true);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            beta - 1,
+            None,
+            Bound::Upper,
+            None,
+            0,
+            true,
+        );
         searcher.prior_nmp_fail_high[1] = 9;
         for expected in [1, 2] {
             assert!(
@@ -307,6 +315,7 @@ fn store_null_fail_high(searcher: &Searcher<'_>, board: &Position, depth: u32, b
         search_key(&after_null),
         depth,
         -beta - 50,
+        None,
         Bound::Upper,
         None,
         1,
@@ -329,6 +338,7 @@ pub(super) fn verification_starts_at_depth_threshold_and_returns_original_null_s
                 search_key(&board),
                 depth - 1,
                 beta,
+                None,
                 Bound::Lower,
                 None,
                 0,
@@ -368,6 +378,7 @@ fn failed_verification_continues_outer_search_after_restoring_state() {
             search_key(&board),
             depth - 1,
             beta - 1,
+            None,
             Bound::Upper,
             None,
             0,

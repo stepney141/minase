@@ -53,6 +53,7 @@ fn futility_pruning_is_independent_of_improving() {
                     search_key(&board),
                     0,
                     0,
+                    None,
                     Bound::Upper,
                     Some(moves[0]),
                     2,

@@ -130,7 +130,7 @@ pub(super) fn late_move_pruning_uses_improving_updated_after_null_move() {
             searcher.seek_mate = true;
             searcher
                 .tt
-                .store(search_key(&board), 0, 0, Bound::Upper, None, 2, true);
+                .store(search_key(&board), 0, 0, None, Bound::Upper, None, 2, true);
             let side = board.side_to_move();
             let key = material_key(&board);
             searcher
@@ -351,6 +351,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 search_key(&board),
                 0,
                 evaluate(searcher.nnue, &board),
+                None,
                 Bound::Upper,
                 Some(tt_move),
                 0,
@@ -467,6 +468,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
         search_key(&child),
         2,
         opponent_score,
+        None,
         Bound::Exact,
         None,
         ply + 1,
@@ -476,6 +478,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
         search_key(&board),
         0,
         0,
+        None,
         Bound::Upper,
         Some(losing_move),
         ply,
@@ -484,8 +487,8 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     let (score, _) = run_move_pruning(&board, 2, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
-    assert_eq!(hit.score, score);
-    assert!(hit.score.abs() < MATE_THRESHOLD);
+    assert_eq!(hit.value.unwrap().score, score);
+    assert!(hit.value.unwrap().score.abs() < MATE_THRESHOLD);
     assert_ne!(hit.best_move, Some(losing_move));
 }
 
@@ -521,9 +524,16 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             zero_position_correction(searcher, &board);
             let alpha = evaluate(searcher.nnue, &board) + margin - 1;
             searcher.seek_mate = true;
-            searcher
-                .tt
-                .store(search_key(&board), 0, alpha, Bound::Upper, None, 0, true);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                alpha,
+                None,
+                Bound::Upper,
+                None,
+                0,
+                true,
+            );
             let mut child = board.clone();
             child.make_move_unchecked(target, engine_rules());
             let target_score = -evaluate(searcher.nnue, &child);

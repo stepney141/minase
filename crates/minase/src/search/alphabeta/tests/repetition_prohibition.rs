@@ -264,6 +264,7 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
                 search_key(&current),
                 0,
                 0,
+                None,
                 Bound::Upper,
                 Some(cycle[3]),
                 0,
@@ -467,9 +468,16 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                     zero_position_correction(searcher, &current);
                     searcher.seek_mate = true;
                     searcher.null_move_ply = Some(0);
-                    searcher
-                        .tt
-                        .store(search_key(&current), 0, 0, Bound::Upper, None, 0, true);
+                    searcher.tt.store(
+                        search_key(&current),
+                        0,
+                        0,
+                        None,
+                        Bound::Upper,
+                        None,
+                        0,
+                        true,
+                    );
                     // 履歴値を異ならせ、根と内部ノードの整列の違いに左右されない順序を与える。
                     for (index, mv) in allowed.iter().enumerate() {
                         searcher.history[current.side_to_move().index()][mv.from.dense_index()]
@@ -482,6 +490,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                             search_key(&current),
                             0,
                             0,
+                            None,
                             Bound::Upper,
                             Some(forbidden),
                             0,
@@ -510,6 +519,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 search_key(&child),
                                 10,
                                 child_score,
+                                None,
                                 Bound::Exact,
                                 None,
                                 1,

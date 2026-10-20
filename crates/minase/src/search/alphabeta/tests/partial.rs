@@ -112,6 +112,7 @@ fn byoyomi_root_order_moves_only_previous_best_ahead_of_existing_order() {
                 search_key(&position),
                 1,
                 0,
+                None,
                 Bound::Exact,
                 Some(tt_move),
                 0,
@@ -180,8 +181,18 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                 assert_eq!(outcome.pv, completed_pv);
                 let after = searcher.tt.probe(key, 0).unwrap();
                 assert_eq!(
-                    (after.depth, after.score, after.bound, after.best_move),
-                    (before.depth, before.score, before.bound, before.best_move)
+                    (
+                        after.value.unwrap().depth,
+                        after.value.unwrap().score,
+                        after.value.unwrap().bound,
+                        after.best_move
+                    ),
+                    (
+                        before.value.unwrap().depth,
+                        before.value.unwrap().score,
+                        before.value.unwrap().bound,
+                        before.best_move
+                    )
                 );
             });
         }
@@ -221,7 +232,13 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
             if retry {
                 // 最初の窓は下界として記録されたが、新しい窓では未完了である。
                 assert_eq!(
-                    searcher.tt.probe(search_key(&position), 0).unwrap().bound,
+                    searcher
+                        .tt
+                        .probe(search_key(&position), 0)
+                        .unwrap()
+                        .value
+                        .unwrap()
+                        .bound,
                     Bound::Lower
                 );
             }

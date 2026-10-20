@@ -230,6 +230,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
         search_key(&child),
         3,
         -previous,
+        None,
         Bound::Exact,
         None,
         1,

@@ -153,7 +153,7 @@ fn quiescence_early_exits_do_not_probe_or_store() {
             "{case}"
         );
         assert!(table.probe(key, ply).is_none(), "{case}");
-        table.store(key, depth, stored, Bound::Exact, None, ply, false);
+        table.store(key, depth, stored, None, Bound::Exact, None, ply, false);
         let raw_before = table.raw_entry(key);
         assert_eq!(
             run_quiesce(board, alpha, beta, ply, &table),
@@ -164,7 +164,11 @@ fn quiescence_early_exits_do_not_probe_or_store() {
         assert_eq!(table.raw_entry(key), raw_before, "{case}");
         let hit = table.probe(key, ply).unwrap();
         assert_eq!(
-            (hit.score, u32::from(hit.depth), hit.bound),
+            (
+                hit.value.unwrap().score,
+                u32::from(hit.value.unwrap().depth),
+                hit.value.unwrap().bound
+            ),
             (stored, depth, Bound::Exact),
             "{case}"
         );
@@ -204,7 +208,7 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
 
     for (bound, score, alpha, beta) in cases {
         let table = small_tt();
-        table.store(key, 0, score, bound, None, 0, false);
+        table.store(key, 0, score, None, bound, None, 0, false);
         let (actual, _) = run_quiesce(&position, alpha, beta, 0, &table);
         assert_eq!(actual, score);
     }
@@ -235,12 +239,13 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     let table = small_tt();
     let (first_score, first_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     let hit = table.probe(search_key(&position), 0).unwrap();
-    assert_eq!(hit.depth, 0);
-    assert_eq!(hit.bound, Bound::Exact);
+    assert_eq!(hit.value.unwrap().depth, 0);
+    assert_eq!(hit.value.unwrap().bound, Bound::Exact);
     let stored_move = hit.best_move.expect("捕獲手が最善なら記録手を持つ");
     assert_eq!(stored_move.from, capture.from);
     assert_eq!(stored_move.to, capture.to);
-    assert_eq!(hit.score, first_score);
+    assert_eq!(hit.value.unwrap().score, first_score);
+    assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
 
     let (second_score, second_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     assert_eq!(second_score, first_score);
@@ -285,9 +290,9 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         let (score, nodes) = run_quiesce(&position, alpha, beta, 0, &table);
         let hit = table.probe(key, 0).unwrap();
         assert_eq!((score, nodes), (stand_pat, 0), "{case}");
-        assert_eq!(hit.score, stand_pat, "{case}");
-        assert_eq!(hit.depth, 0, "{case}");
-        assert_eq!(hit.bound, expected_bound, "{case}");
+        assert_eq!(hit.value.unwrap().score, stand_pat, "{case}");
+        assert_eq!(hit.value.unwrap().depth, 0, "{case}");
+        assert_eq!(hit.value.unwrap().bound, expected_bound, "{case}");
         assert_eq!(hit.best_move, None, "{case}");
     }
 }
@@ -319,12 +324,17 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
         let hit = table.probe(search_key(&position), ply).unwrap();
         assert_eq!(score, MATE - (ply + 1) as i32);
         assert!(score >= MATE_THRESHOLD);
-        assert_eq!(hit.score, score);
-        assert_eq!(hit.depth, 0);
+        assert_eq!(hit.value.unwrap().score, score);
+        assert_eq!(hit.value.unwrap().depth, 0);
         assert_eq!(hit.best_move, Some(mate_move));
         // 同じ局面を根から評価すると、捕獲までの距離は1手になる。
         assert_eq!(
-            table.probe(search_key(&position), 0).unwrap().score,
+            table
+                .probe(search_key(&position), 0)
+                .unwrap()
+                .value
+                .unwrap()
+                .score,
             MATE - 1
         );
     }

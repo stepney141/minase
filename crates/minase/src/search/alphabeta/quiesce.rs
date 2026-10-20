@@ -126,18 +126,20 @@ impl Searcher<'_> {
                 self.stats.quiesce_tt_hits += 1;
             }
             tt_move = hit.best_move;
-            let cutoff = !in_repetition_band(hit.score)
-                && match hit.bound {
-                    Bound::Exact => true,
-                    Bound::Lower => hit.score >= beta,
-                    Bound::Upper => hit.score <= original_alpha,
-                };
-            if cutoff {
-                #[cfg(feature = "search-stats")]
-                {
-                    self.stats.quiesce_tt_cutoffs += 1;
+            if let Some(value) = hit.value {
+                let cutoff = !in_repetition_band(value.score)
+                    && match value.bound {
+                        Bound::Exact => true,
+                        Bound::Lower => value.score >= beta,
+                        Bound::Upper => value.score <= original_alpha,
+                    };
+                if cutoff {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_tt_cutoffs += 1;
+                    }
+                    return Some(value.score);
                 }
-                return Some(hit.score);
             }
         }
 
@@ -247,7 +249,8 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
-        self.tt.store(key, 0, best, bound, best_move, ply, pv_hit);
+        self.tt
+            .store(key, 0, best, Some(stand_pat), bound, best_move, ply, pv_hit);
         Some(best)
     }
 }

@@ -65,14 +65,16 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     );
     let key = search_key(&position);
     let table = small_tt();
-    table.store(key, 0, 28_000, Bound::Exact, None, 0, false);
-    assert_eq!(table.probe(key, 0).unwrap().depth, 0);
+    table.store(key, 0, 28_000, None, Bound::Exact, None, 0, false);
+    assert_eq!(table.probe(key, 0).unwrap().value.unwrap().depth, 0);
 
     let (score, nodes) = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
     assert_ne!(score, 28_000);
     assert!(score.abs() < 29_000);
     assert!(nodes > 1, "深さ1の子を探索しなければならない");
-    assert_eq!(table.probe(key, 0).unwrap().depth, 1);
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.value.unwrap().depth, 1);
+    assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
 }
 
 // 深さ不足の記録でも記録手があれば、内部反復減深を行わず要求深さ3を保つ。
@@ -84,12 +86,12 @@ fn iir_preserves_depth_when_tt_has_a_move() {
     let table = small_tt();
     run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
     let hit = table.probe(key, 0).unwrap();
-    assert_eq!(hit.depth, 1);
+    assert_eq!(hit.value.unwrap().depth, 1);
     assert!(hit.best_move.is_some());
 
     let (_, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
     assert!(nodes > 1);
-    assert_eq!(table.probe(key, 0).unwrap().depth, 3);
+    assert_eq!(table.probe(key, 0).unwrap().value.unwrap().depth, 3);
 }
 
 // 内部反復減深は要求深さ3以上に限り、記録手がなくても残り深さ2以下では減深しない。
@@ -100,7 +102,14 @@ fn iir_preserves_depth_below_three() {
         let table = small_tt();
         run_negamax(&position, depth, -INFINITY, INFINITY, 0, &table);
         assert_eq!(
-            u32::from(table.probe(search_key(&position), 0).unwrap().depth),
+            u32::from(
+                table
+                    .probe(search_key(&position), 0)
+                    .unwrap()
+                    .value
+                    .unwrap()
+                    .depth
+            ),
             depth
         );
     }
@@ -112,13 +121,13 @@ fn iir_reduces_depth_when_tt_entry_has_no_move() {
     let position = bare_kings();
     let key = search_key(&position);
     let table = small_tt();
-    table.store(key, 0, 28_000, Bound::Exact, None, 0, false);
+    table.store(key, 0, 28_000, None, Bound::Exact, None, 0, false);
     assert!(table.probe(key, 0).unwrap().best_move.is_none());
 
     let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
     assert_ne!(score, 28_000);
     assert!(nodes > 1);
-    assert_eq!(table.probe(key, 0).unwrap().depth, 2);
+    assert_eq!(table.probe(key, 0).unwrap().value.unwrap().depth, 2);
 }
 
 // null moveの子が捕獲なしの静止探索で打ち切られる場合、実着手の適用回数は0となる。
@@ -151,7 +160,16 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     let key = search_key(&position);
     for stored_depth in [2, 3] {
         let table = small_tt();
-        table.store(key, stored_depth, 28_000, Bound::Exact, None, 0, false);
+        table.store(
+            key,
+            stored_depth,
+            28_000,
+            None,
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
         let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
         if stored_depth == 3 {
             assert_eq!((score, nodes), (28_000, 0));
@@ -161,7 +179,10 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
             assert!(nodes > 1);
             assert!(table.probe(key, 0).unwrap().best_move.is_some());
         }
-        assert_eq!(u32::from(table.probe(key, 0).unwrap().depth), stored_depth);
+        assert_eq!(
+            u32::from(table.probe(key, 0).unwrap().value.unwrap().depth),
+            stored_depth
+        );
     }
 }
 
@@ -206,6 +227,7 @@ fn null_move_jitto_does_not_repeat_pre_null_position() {
             search_key(&after_null),
             0,
             0,
+            None,
             Bound::Upper,
             Some(reply),
             1,
@@ -254,7 +276,7 @@ fn null_move_two_jittos_repeat_post_null_position() {
                 child.make_move_unchecked(mv, engine_rules());
                 searcher
                     .tt
-                    .store(search_key(&child), 2, 1, Bound::Exact, None, 2, false);
+                    .store(search_key(&child), 2, 1, None, Bound::Exact, None, 2, false);
             }
         }
 
@@ -264,6 +286,7 @@ fn null_move_two_jittos_repeat_post_null_position() {
             search_key(&after_null),
             0,
             -1,
+            None,
             Bound::Upper,
             Some(white_jitto),
             1,
@@ -273,6 +296,7 @@ fn null_move_two_jittos_repeat_post_null_position() {
             search_key(&root),
             0,
             1,
+            None,
             Bound::Lower,
             Some(black_jitto),
             2,
@@ -284,10 +308,11 @@ fn null_move_two_jittos_repeat_post_null_position() {
         assert_eq!(score, DRAW_SCORE);
         let hit = searcher.tt.probe(search_key(&root), 2).unwrap();
         assert_eq!(
-            hit.score, DRAW_SCORE,
+            hit.value.unwrap().score,
+            DRAW_SCORE,
             "最初のじっとで打ち切らず、双方のじっとで反復を検出する"
         );
-        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
         assert_eq!(hit.best_move, Some(black_jitto));
         assert_eq!(current, root);
         assert_eq!(searcher.path_keys, path);
@@ -356,6 +381,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
             search_key(&after_null),
             0,
             0,
+            None,
             Bound::Upper,
             Some(jitto(&after_null)),
             3,
@@ -445,6 +471,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             search_key(&passed),
             0,
             -beta,
+            None,
             Bound::Exact,
             None,
             if nested { 3 } else { 1 },
@@ -482,9 +509,16 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             let beta = -crate::search::REPETITION_BAND_START;
             let mut passed = root.clone();
             passed.make_null_move();
-            searcher
-                .tt
-                .store(search_key(&passed), 0, -beta, Bound::Exact, None, 1, true);
+            searcher.tt.store(
+                search_key(&passed),
+                0,
+                -beta,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                true,
+            );
             let score = searcher.search_null_move(&mut current, 2, beta, 0);
             assert_eq!(
                 score.is_none(),
@@ -547,6 +581,7 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
                 search_key(&board),
                 0,
                 alpha,
+                None,
                 Bound::Upper,
                 tt_move,
                 0,
@@ -555,9 +590,16 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
             for (mv, score) in [(killer, beta), (capture, beta + 100)] {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
-                searcher
-                    .tt
-                    .store(search_key(&child), 5, -score, Bound::Exact, None, 1, false);
+                searcher.tt.store(
+                    search_key(&child),
+                    5,
+                    -score,
+                    None,
+                    Bound::Exact,
+                    None,
+                    1,
+                    false,
+                );
             }
             let mut current = board.clone();
             assert_eq!(
@@ -586,7 +628,7 @@ fn cutoff_counts_reset_two_plies_ahead_before_tt_probe() {
         // allNodeでfail-lowになるExact値を使い、置換表の照合で直ちに戻る。
         searcher
             .tt
-            .store(search_key(&board), 3, 0, Bound::Exact, None, 1, false);
+            .store(search_key(&board), 3, 0, None, Bound::Exact, None, 1, false);
         set_test_path_ply(searcher, 1);
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, 0, 1, 1, false),
@@ -622,7 +664,7 @@ fn cutoff_counts_accumulate_at_cutoff_ply() {
         assert_eq!(&searcher.cutoff_counts[1..4], &[5, 6, 0]);
         searcher
             .tt
-            .store(search_key(&board), 2, 0, Bound::Upper, None, 1, false);
+            .store(search_key(&board), 2, 0, None, Bound::Upper, None, 1, false);
         searcher
             .negamax(&mut board.clone(), 1, -INFINITY, -INFINITY + 1, 1, false)
             .unwrap();
@@ -660,6 +702,7 @@ fn extended_depth_is_capped_before_tt_probe() {
                 search_key(&board),
                 recorded,
                 123,
+                None,
                 Bound::Exact,
                 Some(legal_moves(&board)[0]),
                 0,
@@ -713,6 +756,7 @@ fn lmr_search_move_researches_at_adjusted_depth() {
                 search_key(&child),
                 reduced,
                 -value,
+                None,
                 Bound::Exact,
                 Some(reply),
                 1,
@@ -733,10 +777,14 @@ fn lmr_search_move_researches_at_adjusted_depth() {
                 )
                 .unwrap();
             let hit = searcher.tt.probe(search_key(&child), 1).unwrap();
-            assert_eq!(hit.depth, expected, "初回深さ{reduced}、値{value}");
+            assert_eq!(
+                hit.value.unwrap().depth,
+                expected,
+                "初回深さ{reduced}、値{value}"
+            );
             // 全窓の再探索を経た値は正確な値として記録される。
-            assert_eq!(hit.bound, Bound::Exact);
-            assert_eq!(hit.score, -score);
+            assert_eq!(hit.value.unwrap().bound, Bound::Exact);
+            assert_eq!(hit.value.unwrap().score, -score);
         });
     }
 }
@@ -759,7 +807,13 @@ fn iir_respects_node_type_and_follow_pv() {
                 .negamax(&mut position.clone(), 3, alpha, beta, 0, cut_node)
                 .unwrap();
             assert_eq!(
-                searcher.tt.probe(search_key(&position), 0).unwrap().depth,
+                searcher
+                    .tt
+                    .probe(search_key(&position), 0)
+                    .unwrap()
+                    .value
+                    .unwrap()
+                    .depth,
                 expected_depth
             );
         });

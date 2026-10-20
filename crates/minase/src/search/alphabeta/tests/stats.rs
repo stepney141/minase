@@ -101,9 +101,16 @@ fn normal_tt_repeat_counts_probe_hit_and_cutoff() {
 fn insufficient_tt_depth_is_a_hit_without_a_cutoff() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
-        searcher
-            .tt
-            .store(search_key(&position), 0, 0, Bound::Exact, None, 0, false);
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            0,
+            None,
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
         searcher
             .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
             .unwrap();

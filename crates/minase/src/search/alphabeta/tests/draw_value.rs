@@ -201,7 +201,16 @@ fn article_31_r1_negative_draw_value_selects_a_quiet_move_over_a_history_draw() 
         let mut child = game.position().clone();
         child.make_move_unchecked(quiet, game.rules().moves);
         // 根から見て-50 < -20 < 0。子の手番側から見た値は+20となる。
-        table.store(search_key(&child), 8, 20, Bound::Exact, None, 1, false);
+        table.store(
+            search_key(&child),
+            8,
+            20,
+            None,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
         let result = crate::search::search(
             &nnue,
             &input,

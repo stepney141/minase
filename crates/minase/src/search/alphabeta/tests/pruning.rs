@@ -938,6 +938,7 @@ fn futility_prunes_pv_quiets_without_false_mate_except_on_follow_pv() {
                     search_key(&board),
                     0,
                     0,
+                    None,
                     Bound::Upper,
                     Some(moves[0]),
                     0,
@@ -1021,6 +1022,7 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(tt_move),
             0,
@@ -1077,6 +1079,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
         search_key(&child),
         MAX_PLY,
         opponent_score,
+        None,
         Bound::Exact,
         None,
         ply + 1,
@@ -1086,6 +1089,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
         search_key(&position),
         0,
         0,
+        None,
         Bound::Upper,
         Some(losing_move),
         ply,
@@ -1094,7 +1098,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
     let (score, _) = run_move_pruning(&position, 3, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&position), ply).unwrap();
-    assert!(hit.score.abs() < MATE_THRESHOLD);
+    assert!(hit.value.unwrap().score.abs() < MATE_THRESHOLD);
     assert_ne!(hit.best_move, Some(losing_move));
 }
 
@@ -1161,6 +1165,7 @@ fn futility_searches_checking_captures_and_promotions_after_quiet_tt_move() {
             search_key(&position),
             0,
             evaluate(nnue, &position),
+            None,
             Bound::Upper,
             Some(tt_move),
             0,
@@ -1277,6 +1282,7 @@ fn assert_capture_futility_search(
             search_key(&child),
             MAX_PLY,
             -parent_score,
+            None,
             Bound::Exact,
             None,
             1,
@@ -1287,6 +1293,7 @@ fn assert_capture_futility_search(
         search_key(board),
         0,
         0,
+        None,
         Bound::Upper,
         Some(tt_move),
         0,
@@ -1297,7 +1304,7 @@ fn assert_capture_futility_search(
     if searched {
         assert_eq!(score, beta);
         assert_eq!(hit.best_move, Some(target));
-        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
     } else {
         assert_eq!(score, alpha - 1);
         assert_ne!(hit.best_move, Some(target));
@@ -1460,9 +1467,16 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
         searcher.material_keys[ply as usize] = searcher.material_keys[0];
         searcher.pawn_keys[ply as usize] = searcher.pawn_keys[0];
         set_test_path_ply(searcher, ply);
-        searcher
-            .tt
-            .store(search_key(&board), 0, alpha, Bound::Upper, None, ply, true);
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            alpha,
+            None,
+            Bound::Upper,
+            None,
+            ply,
+            true,
+        );
         let score = searcher
             .negamax(&mut board.clone(), 1, alpha, alpha + 1, ply, false)
             .unwrap();
@@ -1470,8 +1484,9 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
         table.store(
             search_key(&board),
             1,
-            hit.score,
-            hit.bound,
+            hit.value.unwrap().score,
+            None,
+            hit.value.unwrap().bound,
             hit.best_move,
             ply,
             false,
@@ -1505,9 +1520,9 @@ pub(super) fn see_pruning_searches_first_capture_without_false_mate() {
         assert!(!board.gives_check(&MoveGenerator::standard(), mv));
     }
     assert_eq!(nodes, 1);
-    assert_eq!(hit.score, score);
-    assert!(hit.score.abs() < MATE_THRESHOLD);
-    assert_eq!(hit.bound, Bound::Upper);
+    assert_eq!(hit.value.unwrap().score, score);
+    assert!(hit.value.unwrap().score.abs() < MATE_THRESHOLD);
+    assert_eq!(hit.value.unwrap().bound, Bound::Upper);
 }
 
 // 奔王が飛車の筋を開ける記録手は負けるが、
@@ -1556,6 +1571,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
         search_key(&child),
         MAX_PLY,
         opponent_score,
+        None,
         Bound::Exact,
         None,
         ply + 1,
@@ -1565,6 +1581,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
         search_key(&board),
         0,
         0,
+        None,
         Bound::Upper,
         Some(losing_move),
         ply,
@@ -1573,8 +1590,8 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     let (score, _) = run_move_pruning(&board, 3, alpha, alpha + 1, ply, &table);
     assert!(score.abs() < MATE_THRESHOLD, "score={score}");
     let hit = table.probe(search_key(&board), ply).unwrap();
-    assert_eq!(hit.score, score);
-    assert!(hit.score.abs() < MATE_THRESHOLD);
+    assert_eq!(hit.value.unwrap().score, score);
+    assert!(hit.value.unwrap().score.abs() < MATE_THRESHOLD);
     let best = hit.best_move.unwrap();
     assert_ne!(best, losing_move);
     let mut safe = board.clone();
@@ -1584,7 +1601,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
             .into_iter()
             .any(|mv| captures_last_royal(&safe, mv))
     );
-    assert_eq!(hit.bound, Bound::Upper);
+    assert_eq!(hit.value.unwrap().bound, Bound::Upper);
 }
 
 // 展開した捕獲の子局面に通常探索の値が保存されることを使い、
@@ -1663,6 +1680,7 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
             search_key(&board),
             0,
             0,
+            None,
             Bound::Upper,
             Some(tt_move),
             0,
@@ -1677,7 +1695,15 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
             expanded,
             "depth={depth}, width={width}, capture_is_tt={capture_is_tt}, attacked={attacked}, attacker={attacker:?}, victim={victim:?}"
         );
-        assert_eq!(table.probe(search_key(&board), 0).unwrap().score, score);
+        assert_eq!(
+            table
+                .probe(search_key(&board), 0)
+                .unwrap()
+                .value
+                .unwrap()
+                .score,
+            score
+        );
     }
 }
 
@@ -1735,6 +1761,7 @@ fn assert_continuation_pruning_search(
             search_key(&child),
             MAX_PLY,
             -parent_score,
+            None,
             Bound::Exact,
             None,
             2,
@@ -1745,6 +1772,7 @@ fn assert_continuation_pruning_search(
         search_key(board),
         0,
         0,
+        None,
         Bound::Upper,
         Some(leading_quiet),
         1,
@@ -1770,7 +1798,7 @@ fn assert_continuation_pruning_search(
     if searched {
         assert_eq!(hit.best_move, Some(target), "score={score}, beta={beta}");
         assert!(score >= beta);
-        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
     } else {
         assert_ne!(hit.best_move, Some(target));
     }
@@ -1871,6 +1899,7 @@ fn assert_quiet_see_search(
             search_key(&child),
             MAX_PLY,
             -parent_score,
+            None,
             Bound::Exact,
             None,
             1,
@@ -1886,6 +1915,7 @@ fn assert_quiet_see_search(
         search_key(board),
         0,
         0,
+        None,
         Bound::Upper,
         Some(tt_move),
         0,
@@ -1899,7 +1929,7 @@ fn assert_quiet_see_search(
     if searched {
         assert_eq!(score, beta);
         assert_eq!(hit.best_move, Some(target));
-        assert_eq!(hit.bound, Bound::Lower);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
     } else {
         // targetを読めばその場でβ打ち切りになる。後続手の値は問わない。
         assert_ne!(hit.best_move, Some(target));
@@ -2039,6 +2069,7 @@ pub(super) fn see_pruning_searches_rule_dependent_capture() {
                 search_key(&child),
                 1,
                 -static_eval,
+                None,
                 Bound::Exact,
                 None,
                 1,
@@ -2050,6 +2081,7 @@ pub(super) fn see_pruning_searches_rule_dependent_capture() {
         search_key(&board),
         0,
         static_eval,
+        None,
         Bound::Upper,
         Some(quiet),
         0,
@@ -2058,7 +2090,7 @@ pub(super) fn see_pruning_searches_rule_dependent_capture() {
     let (score, _) = run_move_pruning(&board, 2, alpha, alpha + 1, 0, &table);
     assert!(score > static_eval);
     let hit = table.probe(search_key(&board), 0).unwrap();
-    assert_eq!(hit.score, score);
+    assert_eq!(hit.value.unwrap().score, score);
     let best = hit.best_move.unwrap();
     assert!(best.mid.is_some(), "規則依存の捕獲を探索した値で更新する");
     let mut child = board.clone();
@@ -2104,6 +2136,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
         search_key(&quiet_child),
         MAX_PLY,
         -(alpha - 1),
+        None,
         Bound::Exact,
         None,
         ply + 1,
@@ -2113,6 +2146,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
         search_key(&board),
         0,
         evaluate(test_nnue(), &board),
+        None,
         Bound::Upper,
         Some(quiet),
         ply,
@@ -2121,7 +2155,7 @@ fn capture_futility_searches_last_royal_capture_after_quiet_tt_move() {
     let (score, _) = run_move_pruning(&board, 1, alpha, alpha + 1, ply, &table);
     assert_eq!(score, MATE - (ply + 1) as i32);
     let hit = table.probe(search_key(&board), ply).unwrap();
-    assert_eq!(hit.score, score);
+    assert_eq!(hit.value.unwrap().score, score);
     assert_eq!(hit.best_move, Some(capture));
 }
 
@@ -2306,7 +2340,16 @@ fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
         (Some(invalid_quiet), false, true),
     ] {
         let table = small_tt();
-        table.store(search_key(&board), 0, value, Bound::Upper, mv, 0, is_pv);
+        table.store(
+            search_key(&board),
+            0,
+            value,
+            None,
+            Bound::Upper,
+            mv,
+            0,
+            is_pv,
+        );
         let (score, nodes) =
             run_configured_negamax(&board, 1, beta - 1, beta, 0, &table, |searcher| {
                 zero_position_correction(searcher, &board)
@@ -2317,7 +2360,14 @@ fn reverse_futility_validates_tt_move_and_excludes_tt_pv() {
                 (expected_reverse_futility_value(beta, value), 0)
             );
             let hit = table.probe(search_key(&board), 0).unwrap();
-            assert_eq!((hit.depth, hit.score, hit.best_move), (0, value, mv));
+            assert_eq!(
+                (
+                    hit.value.unwrap().depth,
+                    hit.value.unwrap().score,
+                    hit.best_move
+                ),
+                (0, value, mv)
+            );
         } else {
             assert!(nodes > 0, "mv={mv:?}, is_pv={is_pv}");
         }
@@ -2365,6 +2415,7 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
         search_key(&board),
         1,
         beta - 1,
+        None,
         Bound::Exact,
         None,
         0,
@@ -2485,6 +2536,7 @@ fn razoring_returns_quiescence_above_alpha() {
         search_key(&position),
         0,
         tt_eval,
+        None,
         Bound::Upper,
         None,
         0,
@@ -2495,7 +2547,11 @@ fn razoring_returns_quiescence_above_alpha() {
     assert!(score > alpha);
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(
-        (hit.depth, hit.score, hit.bound),
+        (
+            hit.value.unwrap().depth,
+            hit.value.unwrap().score,
+            hit.value.unwrap().bound
+        ),
         (0, tt_eval, Bound::Upper)
     );
 }
@@ -2546,6 +2602,7 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
                     search_key(&position),
                     0,
                     evaluate(searcher.nnue, &position),
+                    None,
                     Bound::Lower,
                     None,
                     0,
@@ -2571,8 +2628,8 @@ fn correction_can_prevent_reverse_futility_and_razoring() {
                 .unwrap();
             assert!(searcher.nodes > 0, "補正により通常探索へ進む");
             let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
-            assert_eq!(hit.depth, 1);
-            assert_eq!(hit.score, score);
+            assert_eq!(hit.value.unwrap().depth, 1);
+            assert_eq!(hit.value.unwrap().score, score);
         });
     }
 }
@@ -2684,7 +2741,7 @@ fn reverse_futility_uses_shallow_tt_lower_bound_but_not_upper_bound() {
             let beta = value - root_reverse_margin(1, true);
             searcher
                 .tt
-                .store(search_key(&board), 0, value, bound, None, 0, false);
+                .store(search_key(&board), 0, value, None, bound, None, 0, false);
             let score = searcher
                 .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
                 .unwrap();
@@ -2710,7 +2767,7 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
             let alpha = raw + razoring_margin(searcher.nnue.pawn_value(), 1) - 1;
             searcher
                 .tt
-                .store(search_key(&board), 0, raw - 18, bound, None, 0, true);
+                .store(search_key(&board), 0, raw - 18, None, bound, None, 0, true);
             let (quiet, _) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
@@ -2759,9 +2816,16 @@ pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
             }
             // 判定用の評価値だけをβ未満にしてreverse futilityを避ける。
             // 減深量は、この値ではなく補正後の静的評価から求める。
-            searcher
-                .tt
-                .store(search_key(&board), 0, beta - 1, Bound::Upper, None, 0, true);
+            searcher.tt.store(
+                search_key(&board),
+                0,
+                beta - 1,
+                None,
+                Bound::Upper,
+                None,
+                0,
+                true,
+            );
             searcher.follow_pv[0] = true;
             let mut passed = board.clone();
             passed.make_null_move();
@@ -2770,6 +2834,7 @@ pub(super) fn null_move_reduction_uses_corrected_static_eval_not_tt_value() {
                 search_key(&passed),
                 base_child_depth - 1,
                 -beta,
+                None,
                 Bound::Upper,
                 None,
                 1,

@@ -248,7 +248,12 @@ impl Searcher<'_> {
             correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[0] = static_eval;
-        let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
+        let eval = pruning_eval(
+            static_eval,
+            tt_hit
+                .and_then(|hit| hit.value)
+                .map(|value| (value.score, value.bound)),
+        );
         let improving = static_eval >= beta;
         let original_alpha = alpha;
         let mut best_move = moves[0];
@@ -276,7 +281,9 @@ impl Searcher<'_> {
                     pv_node: true,
                     tt_pv: true,
                     cut_node: false,
-                    tt_hit: tt_hit.map(|hit| (hit.score, u32::from(hit.depth))),
+                    tt_hit: tt_hit
+                        .and_then(|hit| hit.value)
+                        .map(|value| (value.score, u32::from(value.depth))),
                     tt_capture: Some(tt_capture),
                     is_tt_move: mv == root_tt_move,
                     capture,
@@ -373,8 +380,16 @@ impl Searcher<'_> {
             static_eval,
             None,
         );
-        self.tt
-            .store(key, depth, best_score, bound, Some(best_move), 0, true);
+        self.tt.store(
+            key,
+            depth,
+            best_score,
+            Some(raw),
+            bound,
+            Some(best_move),
+            0,
+            true,
+        );
         Some((best_move, best_score))
     }
 }
