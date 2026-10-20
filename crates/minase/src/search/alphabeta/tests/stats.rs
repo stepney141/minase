@@ -49,6 +49,7 @@ fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
         searcher
             .quiesce(&mut current, -INFINITY, -INFINITY + 1, 0)
             .unwrap();
+        set_test_path_ply(searcher, MAX_PLY);
         searcher
             .quiesce(&mut current, -INFINITY, INFINITY, MAX_PLY)
             .unwrap();

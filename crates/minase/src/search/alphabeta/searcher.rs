@@ -67,6 +67,8 @@ pub(super) fn new_searcher<'a>(
         current_root_nodes: Vec::new(),
         #[cfg(test)]
         interrupt_at: None,
+        #[cfg(test)]
+        path_state_at_interrupt: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         nnue,
@@ -134,11 +136,11 @@ pub(super) struct PonderIteration {
     pub(super) budget: TimeBudget,
 }
 
-/// 通常探索の1着手を、着手前の局面に基づいて記録する。
+/// 探索経路上の1着手を、着手前の局面に基づいて記録する。
 ///
-/// 通常探索のply `p`のノードでは`path_moves.len() == p`であり、
+/// ply `p`の通常探索と静止探索のノードでは`path_moves.len() == p`であり、
 /// `path_moves[p - i]`はply `p - i`のノードで指した手である。
-/// null moveは記録を持たず、静止探索は`path_moves`へ積まないため、この記録は通常探索だけで参照する。
+/// 通常探索と静止探索の実着手は記録を持ち、null moveは記録を持たない。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MoveRecord {
     /// 指した手。
@@ -176,6 +178,18 @@ pub(super) struct PathMove {
     pub(super) attacking: Option<bool>,
 }
 
+/// テスト用の停止点で保存する、現在のplyの経路状態。
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct PathStateSnapshot {
+    pub(super) path_key: u64,
+    pub(super) record: Option<MoveRecord>,
+    pub(super) material_key: u64,
+    pub(super) pawn_key: u64,
+    pub(super) minor_key: u64,
+    pub(super) non_pawn_key: [u64; COLOR_COUNT],
+}
+
 /// 再現した局面に最も近い、同一局面の出現位置。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RepetitionMatch {
@@ -196,6 +210,9 @@ pub(super) struct Searcher<'a> {
     /// 「途中結果の採用」の停止契約を実着手の境界で再現する検査用の停止点。
     #[cfg(test)]
     pub(super) interrupt_at: Option<(u64, StopReason)>,
+    /// 検査用の停止点に達した時点の経路状態。
+    #[cfg(test)]
+    pub(super) path_state_at_interrupt: Option<PathStateSnapshot>,
     /// このワーカーだけが更新する探索統計。
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,
@@ -216,7 +233,7 @@ pub(super) struct Searcher<'a> {
     /// 探索経路上の反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) path_keys: Vec<u64>,
     /// `path_keys[i + 1]`の局面へ至る着手を`i`番目に持つスタック。
-    /// 根は着手を持たないので、長さは`path_keys.len() - 1`となる。
+    /// 通常探索と静止探索で同じ契約に従い、根は着手を持たないので長さは`path_keys.len() - 1`となる。
     pub(super) path_moves: Vec<PathMove>,
     /// null moveで到達した直後のノードのply。
     pub(super) null_move_ply: Option<u32>,
@@ -453,6 +470,22 @@ impl Searcher<'_> {
         if let Some((nodes, reason)) = self.interrupt_at
             && self.nodes >= nodes
         {
+            let ply = self.path_moves.len();
+            self.path_state_at_interrupt =
+                self.path_keys
+                    .last()
+                    .copied()
+                    .map(|path_key| PathStateSnapshot {
+                        path_key,
+                        record: self
+                            .path_moves
+                            .last()
+                            .and_then(|path_move| path_move.record),
+                        material_key: self.material_keys[ply],
+                        pawn_key: self.pawn_keys[ply],
+                        minor_key: self.minor_keys[ply],
+                        non_pawn_key: self.non_pawn_keys[ply],
+                    });
             self.shared.stop(reason);
             self.stop_reason = Some(reason);
             return false;

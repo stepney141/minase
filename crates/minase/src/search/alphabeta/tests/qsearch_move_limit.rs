@@ -132,6 +132,7 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
     with_root_searcher(&board, &[], |searcher| {
         assert_eq!(searcher.previous_capture[0], None);
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         let tt_capture = *captures.last().unwrap();
         seed_first(searcher, &board, tt_capture, ply);
         // 同価値の捕獲は同じ段に入り、置換表の手の後は公開されている順序規則に従う。
@@ -191,6 +192,7 @@ single_capture_test!(qsearch_limit_reads_last_royal_after_tt_capture, {
     );
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         seed_first(searcher, &board, first_capture(), ply);
         let mate = ordinary(sq(5, 0), sq(5, 8));
         assert!(legal_moves(&board).contains(&mate));
@@ -227,6 +229,7 @@ single_capture_test!(qsearch_limit_reads_double_lion_capture_after_tt_capture, {
     );
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         // 手数上限の例外だけを検査し、delta pruningの閾値を全二重捕獲より大きくする。
         searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, first_capture(), ply);
@@ -394,6 +397,7 @@ fn qsearch_limit_counts_exception_as_first_capture() {
     let (board, captures) = captures_over_limit();
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         seed_first(searcher, &board, captures[0], ply);
         searcher.previous_capture[ply as usize] = Some(captures[0].to);
         assert!(
@@ -427,6 +431,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         searcher.delta_margin = INFINITY;
         seed_first(searcher, &board, captures[0], ply);
         assert!(capture_is_pruned_by_see(
@@ -489,6 +494,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let board = position_from_codes(Color::Black, &pieces);
     with_nnue_root_searcher(nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
         // 固定したdelta境界で手数の算入を検査する。
         searcher.delta_margin = 500;
         seed_first(searcher, &board, captures[0], ply);

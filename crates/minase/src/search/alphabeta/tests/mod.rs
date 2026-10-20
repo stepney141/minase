@@ -77,8 +77,8 @@ use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
-    KILLER_COUNT, MoveRecord, PathMove, PonderIteration, RepetitionMatch, STOP_CHECK_INTERVAL,
-    Searcher, new_searcher,
+    KILLER_COUNT, MoveRecord, PathMove, PathStateSnapshot, PonderIteration, RepetitionMatch,
+    STOP_CHECK_INTERVAL, Searcher, new_searcher,
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
@@ -571,6 +571,7 @@ fn run_quiesce(
         &shared_histories.continuation,
         &shared_histories.pawn,
     );
+    set_test_path_ply(&mut searcher, ply);
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");

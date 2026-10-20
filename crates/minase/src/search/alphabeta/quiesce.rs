@@ -4,7 +4,7 @@ use core::cmp::Reverse;
 
 use crate::eval::Nnue;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
-use crate::search::snapshot::search_key;
+use crate::search::snapshot::{SearchRepetition, search_key};
 use crate::search::{MATE, MAX_PLY, in_repetition_band};
 use minase_core::MoveGenerator;
 use minase_core::board::Bitboard;
@@ -12,13 +12,20 @@ use minase_core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 use minase_core::mv::Move;
 use minase_core::piece::{PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
+use minase_core::repetition_key;
 
 use super::capture_history::CaptureHistory;
+use super::correction::{CorrectionPieceKeys, correction_piece_keys_after_move, key_after_move};
+#[cfg(feature = "invariants")]
+use super::correction::{correction_piece_keys, material_key};
+#[cfg(feature = "invariants")]
+use super::history::pawn_key;
+use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::params;
 use super::pruning::capture_is_pruned_by_see;
 use super::royal::captures_all_royals;
-use super::searcher::Searcher;
+use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::tt::Bound;
 
 impl Searcher<'_> {
@@ -27,6 +34,7 @@ impl Searcher<'_> {
     /// 王駒がすべて狙われていてもstand-patを使い、非捕獲の王手と成りは展開しない。
     /// この近似の理由は`docs/adr/use-stand-pat-when-royals-are-attacked.md`にある。
     /// 捕獲ごとに盤上の駒が減って同一局面へ戻らないため、反復は検出しない。
+    /// 捕獲を指して子を読む間は、補正の4つの鍵と探索経路の着手記録を通常探索と同じ契約で更新する。
     /// 静止探索内の手は主変化へ含めず、中断された場合は`None`を返す。
     ///
     /// 最大ply、stand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
@@ -59,10 +67,20 @@ impl Searcher<'_> {
         }
         self.pv[ply as usize].clear();
 
-        if ply >= MAX_PLY {
-            #[cfg(feature = "invariants")]
+        #[cfg(feature = "invariants")]
+        {
+            assert_eq!(self.path_moves.len(), ply as usize);
+            assert_eq!(self.path_moves.len() + 1, self.path_keys.len());
             self.nnue
                 .assert_accumulator(position, &self.accumulators[ply as usize], ply);
+            assert_eq!(self.material_keys[ply as usize], material_key(position));
+            assert_eq!(self.pawn_keys[ply as usize], pawn_key(position));
+            let correction_keys = correction_piece_keys(position);
+            assert_eq!(self.minor_keys[ply as usize], correction_keys.minor);
+            assert_eq!(self.non_pawn_keys[ply as usize], correction_keys.non_pawn);
+        }
+
+        if ply >= MAX_PLY {
             return Some(
                 self.nnue.evaluate_accumulator(
                     &self.accumulators[ply as usize],
@@ -71,9 +89,6 @@ impl Searcher<'_> {
             );
         }
 
-        #[cfg(feature = "invariants")]
-        self.nnue
-            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
         let stand_pat = self
             .nnue
             .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move());
@@ -184,9 +199,35 @@ impl Searcher<'_> {
                     position,
                     &undo,
                 );
+                self.material_keys[(ply + 1) as usize] =
+                    key_after_move(self.material_keys[ply as usize], &undo);
+                self.pawn_keys[(ply + 1) as usize] =
+                    pawn_key_after_move(self.pawn_keys[ply as usize], &undo);
+                let correction_keys = correction_piece_keys_after_move(
+                    CorrectionPieceKeys {
+                        minor: self.minor_keys[ply as usize],
+                        non_pawn: self.non_pawn_keys[ply as usize],
+                    },
+                    &undo,
+                );
+                self.minor_keys[(ply + 1) as usize] = correction_keys.minor;
+                self.non_pawn_keys[(ply + 1) as usize] = correction_keys.non_pawn;
+                let path_key = match self.repetition {
+                    SearchRepetition::R1 { .. } => search_key(position),
+                    SearchRepetition::R2 | SearchRepetition::R3 => {
+                        repetition_key(self.repetition.rule(), position)
+                    }
+                };
+                self.path_keys.push(path_key);
+                self.path_moves.push(PathMove {
+                    record: Some(MoveRecord::from_undo(self.nnue, &undo)),
+                    attacking: None,
+                });
                 let score = self
                     .quiesce(position, -beta, -alpha, ply + 1)
                     .map(|value| -value);
+                self.path_keys.pop();
+                self.path_moves.pop();
                 position.unmake_move(undo);
                 score?
             };
