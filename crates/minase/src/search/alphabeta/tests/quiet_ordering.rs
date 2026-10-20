@@ -141,7 +141,7 @@ fn direct_check_bonus_is_disabled_when_the_opponent_has_two_royals() {
         engine_rules(),
         nnue,
         mv,
-        nnue.pawn_value() * 75 / 208,
+        -(nnue.pawn_value() * 75 / 208),
     ));
 
     let mut direct_checks = DirectCheckSquares::new(&board);
@@ -275,7 +275,7 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         engine_rules(),
         nnue,
         losing_check,
-        nnue.pawn_value() * 75 / 208,
+        -(nnue.pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&losing);
     assert!(!qualifies_for_check_bonus(
@@ -302,7 +302,7 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         engine_rules(),
         nnue,
         safe_check,
-        nnue.pawn_value() * 75 / 208,
+        -(nnue.pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&safe);
     assert!(qualifies_for_check_bonus(
@@ -336,7 +336,7 @@ fn check_bonus_requires_a_check_whose_see_is_not_below_the_margin() {
         engine_rules(),
         nnue,
         unknown_check,
-        nnue.pawn_value() * 75 / 208,
+        -(nnue.pawn_value() * 75 / 208),
     ));
     let mut direct_checks = DirectCheckSquares::new(&unknown);
     assert!(qualifies_for_check_bonus(

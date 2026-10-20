@@ -459,7 +459,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                             engine_rules(),
                             searcher.nnue,
                             mv,
-                            super::super::pruning::see_margin(searcher.nnue.pawn_value(), 10, 0),
+                            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), 10, 0),
                         ));
                         return false;
                     }
@@ -478,7 +478,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                         engine_rules(),
                         searcher.nnue,
                         mv,
-                        super::super::pruning::quiet_see_margin(
+                        -super::super::pruning::quiet_see_margin(
                             searcher.nnue.pawn_value(),
                             lmr_depth,
                         ),

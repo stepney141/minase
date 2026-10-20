@@ -24,20 +24,21 @@ use minase_core::rules::MoveRules;
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。
 const MAX_GAINS: usize = 93;
 
-/// 交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
+/// 交換評価が`threshold`未満で、規則依存による判定不能でもない場合に枝刈りする。
 ///
-/// `margin`は駒価値と同じ単位の非負の余裕値であり、等号では枝刈りしない。
+/// `threshold`は駒価値と同じ単位の符号付きの閾値であり、等号では枝刈りしない。
 /// 呼び出し側は合法な捕獲手、または経由升を持たない合法な静かな手を渡す。
 /// 捕獲手では、相手の最後の王駒を取る手を呼び出し側で除く。
 /// 捕獲の有無は[`Position::captured_squares`]で決め、移動元と到達升が同じじっとも静かな手として扱う。
 /// 交換列を最後まで逆算した値が得られる場合と同じ閾値判定を返し、規則依存で判定不能なら偽を返す。
-/// 最初の取り返しで損が余裕値以下と確定したら、残る逆引きと逆算を省く。
+/// 2段階移動の手は偽を返す。
+/// 最初の取り返しで交換評価が閾値以上と確定したら、残る逆引きと逆算を省く。
 pub(super) fn see_prunes(
     position: &Position,
     rules: MoveRules,
     nnue: &Nnue,
     mv: Move,
-    margin: i32,
+    threshold: i32,
 ) -> bool {
     if mv.mid.is_some() {
         return false;
@@ -63,9 +64,9 @@ pub(super) fn see_prunes(
     };
     let mut gains = [0_i32; MAX_GAINS];
     gains[0] = captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
-    // 相手の成り益を最大に見積もっても損が余裕値以下なら、取り返しの列挙を省く。
-    if gains[0] >= -margin
-        && nnue.piece_value(moving_piece) - captured_value + nnue.max_promotion_gain() <= margin
+    // 相手の成り益を最大に見積もっても交換評価が閾値以上なら、取り返しの列挙を省く。
+    if gains[0] >= threshold
+        && captured_value - nnue.piece_value(moving_piece) - nnue.max_promotion_gain() >= threshold
     {
         return false;
     }
@@ -125,10 +126,10 @@ pub(super) fn see_prunes(
                 piece_value = promoted_value;
             }
         }
-        // 逆算結果は min(g0, max(-g1, X))。g0 >= -marginかつg1 <= marginなら
-        // -margin以上である。成り益を含むg1で判定する。
+        // 逆算結果は min(g0, max(-g1, X))。g0 >= thresholdかつ
+        // g1 <= -thresholdならthreshold以上である。成り益を含むg1で判定する。
         // 後続が獅子規則に依存しても枝刈りしないので、この終了は安全である。
-        if depth == 1 && gains[0] >= -margin && gains[1] <= margin {
+        if depth == 1 && gains[0] >= threshold && i64::from(gains[1]) <= -i64::from(threshold) {
             return false;
         }
         lion_on_square = next_kind == PieceKind::Lion
@@ -142,7 +143,7 @@ pub(super) fn see_prunes(
         gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
         depth -= 1;
     }
-    gains[0] < -margin
+    gains[0] < threshold
 }
 
 /// 捕獲手または経由升のない静かな手について、到達升での駒の取り合いを手番側視点で見積もる。
@@ -317,7 +318,7 @@ mod tests {
         bench_positions, position_from_codes, sampled_random_positions, sq,
     };
 
-    /// 余裕値0・200と負の期待値の境界で契約を検査する。
+    /// 負、0、正の閾値と期待値の境界で契約を検査する。
     fn assert_prune_contract(
         board: &Position,
         rules: MoveRules,
@@ -327,24 +328,21 @@ mod tests {
     ) {
         let reference = see_reference(board, rules, nnue, mv);
         assert_eq!(reference, expected, "move={mv:?}");
-        for margin in [0, 200] {
+        for threshold in [-200, 0, 150] {
             assert_eq!(
-                see_prunes(board, rules, nnue, mv, margin),
-                reference.is_some_and(|v| v < -margin),
-                "move={mv:?}, margin={margin}"
+                see_prunes(board, rules, nnue, mv, threshold),
+                reference.is_some_and(|value| value < threshold),
+                "move={mv:?}, threshold={threshold}"
             );
         }
-        if let Some(v) = expected.filter(|&v| v < 0) {
-            assert!(
-                !see_prunes(board, rules, nnue, mv, -v),
-                "move={mv:?}, margin={}, expected={v}",
-                -v
-            );
-            assert!(
-                see_prunes(board, rules, nnue, mv, -v - 1),
-                "move={mv:?}, margin={}, expected={v}",
-                -v - 1
-            );
+        if let Some(value) = expected {
+            for threshold in [value - 1, value, value + 1] {
+                assert_eq!(
+                    see_prunes(board, rules, nnue, mv, threshold),
+                    value < threshold,
+                    "move={mv:?}, threshold={threshold}, expected={value}"
+                );
+            }
         }
     }
 
@@ -364,12 +362,22 @@ mod tests {
                 let mut captures = Vec::new();
                 generator.generate_captures(&board, &mut captures);
                 for mv in captures {
-                    for margin in [0, 200] {
+                    let reference = see_reference(&board, rules, nnue, mv);
+                    for threshold in [-200, 0, 150] {
                         assert_eq!(
-                            see_prunes(&board, rules, nnue, mv, margin),
-                            see_reference(&board, rules, nnue, mv).is_some_and(|v| v < -margin),
-                            "rules={rules:?}, position={index}, move={mv:?}, margin={margin}"
+                            see_prunes(&board, rules, nnue, mv, threshold),
+                            reference.is_some_and(|value| value < threshold),
+                            "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                         );
+                    }
+                    if let Some(value) = reference {
+                        for threshold in [value - 1, value, value + 1] {
+                            assert_eq!(
+                                see_prunes(&board, rules, nnue, mv, threshold),
+                                value < threshold,
+                                "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
+                            );
+                        }
                     }
                     checked += 1;
                 }
@@ -400,12 +408,21 @@ mod tests {
                     mv.mid.is_none() && board.captured_squares(mv).iter().all(Option::is_none)
                 }) {
                     let reference = see_reference(&board, rules, nnue, mv);
-                    for margin in [0, 200] {
+                    for threshold in [-200, 0, 150] {
                         assert_eq!(
-                            see_prunes(&board, rules, nnue, mv, margin),
-                            reference.is_some_and(|value| value < -margin),
-                            "rules={rules:?}, position={index}, move={mv:?}, margin={margin}"
+                            see_prunes(&board, rules, nnue, mv, threshold),
+                            reference.is_some_and(|value| value < threshold),
+                            "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
                         );
+                    }
+                    if let Some(value) = reference {
+                        for threshold in [value - 1, value, value + 1] {
+                            assert_eq!(
+                                see_prunes(&board, rules, nnue, mv, threshold),
+                                value < threshold,
+                                "rules={rules:?}, position={index}, move={mv:?}, threshold={threshold}"
+                            );
+                        }
                     }
                     checked += 1;
                     negative += usize::from(reference.is_some_and(|value| value < 0));
@@ -470,7 +487,7 @@ mod tests {
     // 飛車で角行を取り、歩兵に
     // 取り返される損失の直前、等号、直後で厳密な境界を検査する。
     #[test]
-    fn see_prunes_respects_margin_and_strict_boundary() {
+    fn see_prunes_respects_threshold_and_strict_boundary() {
         let nnue = test_nnue();
         let board = position(
             Color::Black,
@@ -486,13 +503,13 @@ mod tests {
             - value(nnue, unpromoted(Color::White, PieceKind::Bishop));
         assert!(loss > 0);
         assert_prune_contract(&board, rules, nnue, mv, Some(-loss));
-        for (margin, prunes) in [
+        for (threshold, prunes) in [
+            (-loss - 1, false),
+            (-loss, false),
+            (-loss + 1, true),
             (0, true),
-            (loss - 1, true),
-            (loss, false),
-            (loss + 1, false),
         ] {
-            assert_eq!(see_prunes(&board, rules, nnue, mv, margin), prunes);
+            assert_eq!(see_prunes(&board, rules, nnue, mv, threshold), prunes);
         }
     }
 
@@ -546,7 +563,7 @@ mod tests {
                 MoveRules::standard(),
                 &nnue,
                 capture(sq(5, 4), sq(5, 5)),
-                200,
+                -200,
             ));
         }
     }
@@ -1016,11 +1033,11 @@ mod tests {
                 Some(expected),
                 "case={index}"
             );
-            for margin in [0, 200, -expected, -expected - 1] {
+            for threshold in [0, -200, expected, expected + 1] {
                 assert_eq!(
-                    see_prunes(&board, rules, nnue, mv, margin),
-                    expected < -margin,
-                    "case={index}, margin={margin}"
+                    see_prunes(&board, rules, nnue, mv, threshold),
+                    expected < threshold,
+                    "case={index}, threshold={threshold}"
                 );
             }
         }

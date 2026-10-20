@@ -364,7 +364,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             assert!(protected > 0);
             for &mv in &moves {
                 if move_order_key(&board, searcher.nnue, mv).is_some() {
-                    assert!(!see_prunes(&board, engine_rules(), searcher.nnue, mv, 2));
+                    assert!(!see_prunes(&board, engine_rules(), searcher.nnue, mv, -2));
                 }
             }
             let mut picker = MovePicker::new(Some(tt_move), killers);

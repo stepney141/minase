@@ -372,15 +372,21 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
         engine_rules(),
         nnue,
         target,
-        base_margin
+        -base_margin
     ));
-    assert!(see_prunes(&board, engine_rules(), nnue, target, raw_margin));
+    assert!(see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        target,
+        -raw_margin
+    ));
     assert!(!see_prunes(
         &board,
         engine_rules(),
         nnue,
         target,
-        adjusted_margin
+        -adjusted_margin
     ));
 
     let minimum_child_value = moves
@@ -481,14 +487,14 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             engine_rules(),
             searcher.nnue,
             pruned,
-            margin
+            -margin
         ));
         assert!(!see_prunes(
             &board,
             engine_rules(),
             searcher.nnue,
             winner,
-            margin
+            -margin
         ));
         searcher.tt.store(
             search_key(&board),
@@ -577,7 +583,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             engine_rules(),
             searcher.nnue,
             pruned,
-            super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
+            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
         ));
 
         for &mv in &moves {

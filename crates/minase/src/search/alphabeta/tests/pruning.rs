@@ -1249,7 +1249,7 @@ fn assert_capture_futility_search(
         engine_rules(),
         nnue,
         target,
-        super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
+        -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
     ));
 
     let mut target_child = board.clone();
@@ -1540,7 +1540,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert!(moves.contains(&losing_move));
     assert!(moves.contains(&safe_capture));
     assert!(!royal_under_attack(&board));
-    assert!(see_prunes(&board, engine_rules(), nnue, safe_capture, 200));
+    assert!(see_prunes(&board, engine_rules(), nnue, safe_capture, -200));
     let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
     let ply = 5;
     let mut child = board.clone();
@@ -1644,7 +1644,7 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
         assert!(legal_moves(&board).contains(&quiet));
         assert!(see_prunes(&board, engine_rules(), nnue, capture, 0));
         assert_eq!(
-            see_prunes(&board, engine_rules(), nnue, capture, 200),
+            see_prunes(&board, engine_rules(), nnue, capture, -200),
             victim == PieceKind::Pawn,
         );
         let expanded = capture_is_tt
@@ -1654,7 +1654,7 @@ pub(super) fn see_pruning_applies_without_depth_or_zero_window_limits() {
                 engine_rules(),
                 nnue,
                 capture,
-                super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
+                -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0),
             );
         let alpha = evaluate(nnue, &board) + 3 * nnue.pawn_value();
         let table = small_tt();
@@ -1821,7 +1821,7 @@ fn assert_quiet_see_search(
         engine_rules(),
         nnue,
         target,
-        super::super::pruning::see_margin(nnue.pawn_value(), 1, 0),
+        -super::super::pruning::see_margin(nnue.pawn_value(), 1, 0),
     ));
     let lmr_depth = pruning_lmr_depth(1, usize::from(!target_is_tt_move), false, true, true);
     if !expected_check && !target.promote && target.mid.is_none() {
@@ -1830,7 +1830,7 @@ fn assert_quiet_see_search(
             engine_rules(),
             nnue,
             target,
-            quiet_see_margin(nnue.pawn_value(), lmr_depth),
+            -quiet_see_margin(nnue.pawn_value(), lmr_depth),
         ));
     }
 
@@ -2019,7 +2019,7 @@ pub(super) fn see_pruning_searches_rule_dependent_capture() {
     };
     let nnue = test_nnue();
     assert!(legal_moves(&board).contains(&capture));
-    assert!(!see_prunes(&board, engine_rules(), nnue, capture, 200));
+    assert!(!see_prunes(&board, engine_rules(), nnue, capture, -200));
     assert!(!royal_under_attack(&board));
     let static_eval = evaluate(nnue, &board);
     // S4の見積りを1だけ上回らせず、判定不能の手がS3へ進むことを検査する。

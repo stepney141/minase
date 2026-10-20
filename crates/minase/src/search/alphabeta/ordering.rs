@@ -211,7 +211,7 @@ pub(super) fn qualifies_for_check_bonus(
             generator.rules(),
             nnue,
             mv,
-            i32::try_from(i64::from(nnue.pawn_value()) * 75 / 208)
+            -i32::try_from(i64::from(nnue.pawn_value()) * 75 / 208)
                 .expect("ordering check SEE margin must fit i32"),
         )
 }

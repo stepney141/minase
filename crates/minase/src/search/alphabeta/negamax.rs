@@ -459,7 +459,7 @@ impl Searcher<'_> {
                             self.rules,
                             self.nnue,
                             mv,
-                            see_margin(
+                            -see_margin(
                                 self.nnue.pawn_value(),
                                 depth,
                                 self.capture_history.read(position, self.nnue, mv),
@@ -534,7 +534,7 @@ impl Searcher<'_> {
                                 self.rules,
                                 self.nnue,
                                 mv,
-                                quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
+                                -quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
                             )
                             && !*gives_check
                                 .get_or_insert_with(|| position.gives_check(&self.generator, mv))
@@ -551,7 +551,7 @@ impl Searcher<'_> {
                             self.rules,
                             self.nnue,
                             mv,
-                            see_margin(self.nnue.pawn_value(), depth, 0),
+                            -see_margin(self.nnue.pawn_value(), depth, 0),
                         )
                         && *gives_check
                             .get_or_insert_with(|| position.gives_check(&self.generator, mv))

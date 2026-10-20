@@ -335,8 +335,7 @@ impl SeeCoefficients {
         let weighted_history =
             i64::from(capture_history) * i64::from(self.see_capture_history) / 1024;
         let history_margin = weighted_history * i64::from(pawn) / STOCKFISH_PAWN_VALUE;
-        // see_prunesの現行の契約に合わせる。後続の設計書は符号付き閾値へ移し、
-        // この切り詰めを外す。
+        // 符号付きの閾値から0への切り詰めを外すのは次の変更で行う。
         (depth_margin + history_margin).max(0) as i32
     }
 }
