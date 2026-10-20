@@ -2,7 +2,7 @@
 
 ## 目的
 
-[correction historyの表の追加と持ち越しの設計書](../../plans/correction-history-tables.md)のフェーズ1で入れたコミットを対象とする。
+[correction historyの表の追加と持ち越しの設計書](../../plans/archived/correction-history-tables.md)のフェーズ1で入れたコミットを対象とする。
 探索を変えない移行のコミットについては、探索ノード数、評価値、および最善手が起点と同じになることを確かめる。
 探索を変えるコミット（材料表の値の形と更新を改めるC4、局面の配置の4表を加えるC2、continuation correction historyを加えるC3、LMRの減深量に補正量の項を加えるC5）については`minase dev bench`の探索ノード数の変化を記録し、表を持ち越して共有するC1については、`Threads=1`のbenchがC3と同じになることを確かめる。
 あわせて探索速度と最大常駐メモリを測る。

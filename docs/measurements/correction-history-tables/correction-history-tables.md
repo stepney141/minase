@@ -2,7 +2,7 @@
 
 ## 目的
 
-[correction historyの表の追加と持ち越しの設計書](../../plans/correction-history-tables.md)のフェーズ3として、形の変更の最後のコミット`e695176a`の89係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
+[correction historyの表の追加と持ち越しの設計書](../../plans/archived/correction-history-tables.md)のフェーズ3として、形の変更の最後のコミット`e695176a`の89係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
 SPSAの対局結果は強さの根拠にしない。
 最終値は、この予算と設定で得た候補の値であり、最適値とは呼ばない。
 

@@ -8,7 +8,7 @@
 
 LMR（late move reductions）は、順序付けの後方にある手を浅く読み、αを上回ったときだけ本来の深さで読み直す手法である。
 [旧ADR](archive/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)は、2026年10月19日に、LMRを先頭の手を除くすべての手と根に適用し、減深量を対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量から1/100手単位で求めると決めた。
-旧ADRは、Stockfishの項のうち補正量の大きさの項（`src/search.cpp:1353`）を、[correction historyの表の設計書](../plans/correction-history-tables.md)に委ねていた。
+旧ADRは、Stockfishの項のうち補正量の大きさの項（`src/search.cpp:1353`）を、[correction historyの表の設計書](../plans/archived/correction-history-tables.md)に委ねていた。
 旧ADRの前の[ADR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)は、2026年10月18日に、LMRを置換表の手とkiller手を除く非捕獲手に適用して根では行わず、減深量を対数表と3段階のhistory補正にStockfishの項を加えて1/100手単位で求めると決めた。
 このADRは、Stockfishの項のうちstatScore（手の成績を表す値）の項と、LMRを捕獲手、killer手、および根へ広げることを、[historyの形の設計書](../plans/archived/history-forms.md)に委ねていた。
 さらに前の[ADR](archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、history値に比例して減深量を連続的に増減する案を、比例係数と切り詰めの2つの自由度を絞る診断が要るとして棄却していた。

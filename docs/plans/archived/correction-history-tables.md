@@ -14,32 +14,40 @@ Stockfishは、駒の配置を鍵にした複数の表と、手番側自身の�
 3つ目に、2手前、4手前、6手前の手を文脈として直前の手で引く表（continuation correction history）を加える。
 4つ目に、表の値の形と更新をStockfishの形にする。値は上限つきの整数とし、合成した補正後の評価との差から更新量を作る。
 5つ目に、補正量の絶対値をlate move reductions（LMR、後方の手を浅く読む減深）の減深量に使う。
-補正量の絶対値をreverse futility pruningの余裕値に使う項は、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)の項目F1（reverse futility pruningの余裕値の形の変更）が扱う。
+補正量の絶対値をreverse futility pruningの余裕値に使う項は、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)の項目F1（reverse futility pruningの余裕値の形の変更）が扱う。
 SPSA（simultaneous perturbation stochastic approximation、全係数を同時に少しずらした2つの設定を対局させて係数を動かす調整法）で調整するのは各仕組みの強さを決める重みと更新量だけとし、上限、表ごとの更新の倍率、初期値などはStockfishの値で固定する。
 新しい係数の開始値はStockfishの値を中将棋の歩兵価値へ換算した値とし、既存の係数とまとめてSPSAで調整する。
 本書は、探索の関数形をStockfishとYaneuraOuの形へ寄せる設計書の連鎖の4本目であり、1つ前の設計書が完了した後のmasterを起点とする。
 調整した版を、起点のmasterと短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
-[統括計画](search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
+[統括計画](../search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
 完了条件は、SPSAとSTCの測定記録を残し、候補をmasterへ統合することである。
 
 ## 状態
 
-着手。2026年10月17日に起案し、同日の2回の利用者の決定に合わせて改訂した。
-前の設計書の[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)が2026年10月20日に採用で完了した後、同日に利用者の指示で着手し、起点のコードとの照合の結果に合わせて本書を改訂した。
-次の一手は、フェーズ1（形の変更の実装）を移行のコミットから始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年10月17日に起案し、2026年10月20日に[統括計画](../search-forms.md)のサブタスク4として着手して、2026年10月21日に完了した。
+挙動を変えない移行1項目と5項目（C4、C2、C3、C1、C5）の形の変更と、89個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。
+設計判断は、[補正表の鍵、合成、および更新のADR](../../adr/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[表の持ち越しと共有のADR](../../adr/carry-histories-and-correction-histories-within-a-game.md)、および[LMRのADR](../../adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)に移した。
+起点のコードとの照合で、更新量に1061/1024を掛けるのを±256の切り詰めの後にすること、根でも局面の表を更新すること、引き分けの評価値の変更でも表を初期化すること、およびLMRの補正項を切り捨てる前の重み付きの和から求めることを、Stockfishと起点に合わせて決めた。これらはClaudeの判断である。
+SPSAは、中将棋に固有の材料表の重みを277から154へ下げ、minorとnon-pawnの表とcontinuation correction historyの重みを上げた。continuation correction historyの重みは、2手前と4手前が30から104へ、6手前が24から111へ上がった。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して625ペアで`H1`（約+30 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+測定の記録は、[benchのノード数、探索速度、およびメモリ](../../measurements/correction-history-tables/correction-history-tables-bench.md)、[時間切れの事前確認](../../measurements/correction-history-tables/correction-history-tables-safety.md)、[SPSA](../../measurements/correction-history-tables/correction-history-tables.md)、[事前対局](../../measurements/correction-history-tables/correction-history-tables-smoke.md)、および[STC](../../measurements/correction-history-tables/correction-history-tables-stc.md)にある。
+SPSAの前に、係数の既定値を範囲の1/3と2/3に置いた表で落ちる補正表とreverse futility pruningのテスト6件を直したので、SPSAの値を反映した後のテストはすべて通った。
+lishogiのBotのコンテナは上限6 GiBであり、2局を同時に対局するエンジン（それぞれ置換表2 GB、`Threads`は4）に1エンジンあたり約150 MBの増分を加えても上限に収まる見込みである。
+7本のサブタスクを通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
 
 ## 目的
 
 本書が確かめるのは、「補正表の鍵、値の形、更新、寿命、および補正量の使い道をStockfishの形へそろえ、新しい形の係数を調整すれば、現行の形で調整した探索より強くなる」という仮説である。
-[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)は、correction historyの鍵、寿命、および適用先を、係数の値の調整では埋まらない差に分類した。
-このうち適用先の拡大は[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF2が、reverse futility pruningの余裕値の補正量の項は同書のF1が扱う。
+[係数の関数形の比較](../../research/search-coefficient-forms-prior-art.md)は、correction historyの鍵、寿命、および適用先を、係数の値の調整では埋まらない差に分類した。
+このうち適用先の拡大は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF2が、reverse futility pruningの余裕値の補正量の項は同書のF1が扱う。
 本書は残りの鍵、値の形、更新、寿命、および補正量の大きさのLMRへの利用を扱う。
 
 2026年10月17日の利用者の決定（2回）により、本書の判断は次の方針に従う。
 第1に、StockfishとYaneuraOu（やねうら王）で形や値が違う場合はStockfishに合わせ、YaneuraOuにだけある項目は入れず、Stockfishにだけある項目は入れる。
 第2に、新しい係数の開始値は両エンジンの換算値とし、両者が違えばStockfishの換算値とする。
 第3に、本書については、continuation correction historyを含め、表の大きさをStockfishと同じにし、表の更新を合成した補正後の評価との残差で行い、表を対局の間減衰させずに持ち越す。
-continuation correction historyの表の引き方は、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)の共有の表と同じ考え方（Stockfishの形）にそろえる。
+continuation correction historyの表の引き方は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の共有の表と同じ考え方（Stockfishの形）にそろえる。
 第4に、minaseにあってStockfishにない既存の仕組みのうち、中将棋の診断や測定で決めたもの（本書では駒種別の枚数を鍵にした表）は残し、Stockfishの仕組みを並べて足し、残したものもSPSAで調整する。中将棋の規則から来る条件（王駒への利きの除外など）も残す。
 第5に、SPSAで調整するのは各仕組みの強さを決める値（重みと更新量）だけとし、上下限や更新の内部の定数はStockfishの値で固定する。
 第6に、評価値の単位を持つ係数の範囲は、Stockfishの換算値、YaneuraOuの換算値、およびminaseの現行の対応する値の3つをすべて含むように取る。中将棋は将棋ともチェスとも異なるので、値はminaseのSPSAが決める。
@@ -47,8 +55,8 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 この方針により、新しい係数を開始値に置いた探索は、現行の探索と一致しない。
 各項目のコミットでは探索ノード数の変化を記録し、挙動を変えない移行のコミットだけをノード数の一致で検証する。
 
-現行の形は、[ADR](../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)が診断に基づいて選んだものである。
-その診断は、駒配置の表を加えると予測誤差が悪化したとして見送ったが、比べた予測は現行の表と追加の表の等分の平均であり、現行の補正を半分に薄める形だった（[診断の記録](../measurements/strength-stage12/strength-stage12-activation-diag.md#項目6の補正表の鍵)）。
+現行の形は、[ADR](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)が診断に基づいて選んだものである。
+その診断は、駒配置の表を加えると予測誤差が悪化したとして見送ったが、比べた予測は現行の表と追加の表の等分の平均であり、現行の補正を半分に薄める形だった（[診断の記録](../../measurements/strength-stage12/strength-stage12-activation-diag.md#項目6の補正表の鍵)）。
 同じ記録で、歩兵と仲人の配置を鍵にした表は、平均しても誤差を0.20%しか悪化させず、0でない値を返す参照が89.50%あった。
 表の持ち越しを見送った根拠の発動率（STC相当で0.69%）も、補正をfutility pruningにだけ使う前提の値である。
 加えて、これらの診断は既定の評価関数がPST（駒の種類と升ごとの評価値の表）だった時期のものであり、評価関数をNNUEに替えた後には測られていない。
@@ -60,7 +68,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 - **起点**は、連鎖の1つ前の設計書が完了した後、フェーズ1を始める時点のmasterの先頭のコミットである。
 - **形の変更**は、本書の5項目を実装したコミット列であり、新しい係数を開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で表（`crates/minase/src/search/alphabeta/params.rs`）の既定値へ書き込んだコミットである。
-- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../guides/sprt.md)）。
+- **STC**と**LTC**は、それぞれ10秒＋1手0.1秒と60秒＋1手0.2秒の持ち時間で行う自己対局の採否測定である（[SPRTの手引き](../../guides/sprt.md)）。
 - **補正表**は、局面または手の組を鍵にして、静的評価の補正のもとになる値を持つ表である。本書の後の補正表は、Stockfishと同じく、要素を−1024以上1024以下の整数で持つ。
 - **材料表**は、現行の補正表（双方の駒種別の枚数の組を鍵にした表）をいう。
 - **補正量**は、全表の値を重み付きで足し合わせた値であり、静的評価と同じ単位を持つ。補正後の静的評価は、補正前の静的評価に補正量を足し、評価関数の出力の範囲に収めた値である。
@@ -79,43 +87,43 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 
 次の事項は対象外とする。
 
-- reverse futility pruningの余裕値の補正量の項。[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF1が、Stockfishの余裕値の形（`src/search.cpp:1027-1030`）の一部として扱い、本書の補正量をそのまま使う。
+- reverse futility pruningの余裕値の補正量の項。[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF1が、Stockfishの余裕値の形（`src/search.cpp:1027-1030`）の一部として扱い、本書の補正量をそのまま使う。
 - 静止探索のstand-patへの補正の適用。連鎖の次の`qsearch-forms.md`で扱い、本書の補正量をそのまま使う。
-- 王駒の升の組を鍵にした表。[ADR](../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)はこの鍵を材料表の鍵の代わりとして比べただけであり、Stockfishにも対応する表がない。王駒の升は、C2の先手と後手の配置の鍵に含まれる。
+- 王駒の升の組を鍵にした表。[ADR](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)はこの鍵を材料表の鍵の代わりとして比べただけであり、Stockfishにも対応する表がない。王駒の升は、C2の先手と後手の配置の鍵に含まれる。
 - 表ごとの更新量の倍率と、表の初期値の調整。Stockfishの値を固定の定数として使い、SPSAの対象にしない。固定する定数の節を参照。
-- 置換表の値で補正後の評価を置き換えること（Stockfish `src/search.cpp:862-865`）。[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)が扱う。
+- 置換表の値で補正後の評価を置き換えること（Stockfish `src/search.cpp:862-865`）。[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)が扱う。
 - singular extensionの余裕値への補正量の利用（Stockfish `src/search.cpp:1288`）と、singular extensionの探索の結果による表の更新（Stockfish `src/search.cpp:1306-1316`）。minaseはsingular extension（置換表の手だけが良い手かを浅い探索で確かめて延長する手法）を持たない。
-- null move pruningを試す条件に補正後の評価を使う変更を、本書で新たに加えること。この条件は[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS7が扱う。S7とF2がともに採用されていれば、条件には既に補正後の評価が使われており、本書の補正量もその条件に入る（依存関係の節を参照）。
+- null move pruningを試す条件に補正後の評価を使う変更を、本書で新たに加えること。この条件は[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS7が扱う。S7とF2がともに採用されていれば、条件には既に補正後の評価が使われており、本書の補正量もその条件に入る（依存関係の節を参照）。
 
 ## 依存関係
 
-本書は、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)から始まる設計書の連鎖の4本目である。
-起点は、連鎖の1つ前の[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)が完了した後のmasterの先頭である。
+本書は、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)から始まる設計書の連鎖の4本目である。
+起点は、連鎖の1つ前の[historyの更新量の形とcontinuation historyの設計書](history-forms.md)が完了した後のmasterの先頭である。
 前の設計書の候補がmasterへ統合されると`params.rs`の既定値と探索の式が変わり、本書の検証の基準も変わるので、実装を含めて前の設計書の完了後に始める。
 起点の表の既定値を、既存の係数のSPSAの開始値とする。
 
 起点では、連鎖の前の3本の設計書がいずれも採用されている。
 起点のコードを読んで確かめた状態と、本書の項目の扱いは次のとおりである。
-以下のF1、F2、F4は[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)の項目であり、それぞれreverse futility pruningの余裕値の形、補正後の評価の適用先の拡大、およびLMRの減深量の形の変更である。
+以下のF1、F2、F4は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)の項目であり、それぞれreverse futility pruningの余裕値の形、補正後の評価の適用先の拡大、およびLMRの減深量の形の変更である。
 
-- 補正量は、置換表による打ち切りとIIR（置換表の手がないノードの深さを減らす内部反復減深）の後に、ノードごとに1回読まれている（F2）。補正後の静的評価は、improving、futility pruning、null move pruningを試す条件（[浅い枝刈りの深さと対象の拡張](archived/shallow-pruning-extensions.md)のS7）と減深量、静的評価の変化とfail lowによるhistoryの更新に使われている。reverse futility pruningとrazoringは、補正後の静的評価を置換表の値で置き換えることのある判定用の評価値を使う。本書の補正量は、これらすべてに入る。
+- 補正量は、置換表による打ち切りとIIR（置換表の手がないノードの深さを減らす内部反復減深）の後に、ノードごとに1回読まれている（F2）。補正後の静的評価は、improving、futility pruning、null move pruningを試す条件（[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS7）と減深量、静的評価の変化とfail lowによるhistoryの更新に使われている。reverse futility pruningとrazoringは、補正後の静的評価を置換表の値で置き換えることのある判定用の評価値を使う。本書の補正量は、これらすべてに入る。
 - reverse futility pruningの余裕値は、補正量の絶対値に係数`ReverseFutilityCorrection`を掛けた項を持つ（F1）。本書はこの項を変えず、新しい補正量をそのまま渡す。
 - LMRの減深量は1/100手単位で計算され（F4）、history-formsのhistoryの連続量の項はallNodeによる拡大の前に引かれている。C5はこの単位と位置を使う。
-- [historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)が加えた着手の記録（`searcher.rs`の`MoveRecord`、ply `q`のノードで指した手の`Move`と着手前の駒）と、歩兵と仲人の配置の鍵（`history.rs`の`pawn_key`）がある。C3とC2はこれらを再利用する。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
+- [historyの更新量の形とcontinuation historyの設計書](history-forms.md)が加えた着手の記録（`searcher.rs`の`MoveRecord`、ply `q`のノードで指した手の`Move`と着手前の駒）と、歩兵と仲人の配置の鍵（`history.rs`の`pawn_key`）がある。C3とC2はこれらを再利用する。同書のcontinuation historyの表と同じく、C3も升を手番側に合わせて180度回転して引く。
 - したがって、挙動を変えない移行として要るのは、補正表を`HistoryTables`へ移すことだけである。
 
-SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、採否の手順は[SPRTの手引き](../guides/sprt.md)に従う。
+SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、採否の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
-時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
-実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
+実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 本書は、起点で有効な次のADRの決定の一部を変える。
 完了時に、これらを新しいADRで置き換える。
 一部だけを変えるADRでは、残る決定も新しいADRへ引き継ぐ。
 
-- [correction historyの鍵と適用先のADR](../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)は、2026年10月18日に、駒種別の枚数を鍵にした補正表を各ノードで1回読み、補正後の静的評価を枝刈りと減深のすべての判定に使うと決めた。その前身の[旧ADR](../adr/archive/key-correction-history-by-material.md)は、2026年9月21日に、材料表だけを鍵とし、探索ごとに初期化し、補正前の誤差を学ぶと決めた。本書は、材料表を残したうえで鍵の表を加え、表を対局の間持ち越してワーカー間で共有し、値の形と更新をStockfishの形にし、補正量の大きさを減深量に使う。更新の条件のうち、手番側の王駒に相手の利きが届くノードを除くことは残し、捕獲手と境界の種類の条件はStockfishの形にする。鍵の決定と根拠の診断は既定の評価関数がPSTだった時期のものであり、旧ADR自身が、各表の補正を平均せずに足し合わせる形を未測定の候補として残している。
-- [historyの持ち越しと共有のADR](../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)は、2026年10月19日に、補正表を旧ADR（[butterfly historyと捕獲履歴の持ち越しのADR](../adr/archive/carry-history-tables-within-a-game.md)、2026年10月10日）と同じく持ち越さないと決めた。本書のC1は、補正表を対局の間持ち越す。旧ADRの根拠は、既定の評価関数がPSTだった時期に、補正をfutility pruningにだけ使う前提で測った発動率0.69%であり、旧ADRは補正表の持ち越しの再測定を留保していない。
-- [LMRの式のADR](../adr/archive/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)は、2026年10月19日に、LMRを先頭の手を除くすべての手と根に適用し、減深量にstatScoreの連続量までを加えると決めた。C5は、この式に補正量への依存を加える。その前身の[late move reductionsの式の旧ADR](../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、上限と段差のhistory補正をSTCの到達深さが5〜6だった時期の判断として見直しの余地を留保していた。
+- [correction historyの鍵と適用先のADR](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)は、2026年10月18日に、駒種別の枚数を鍵にした補正表を各ノードで1回読み、補正後の静的評価を枝刈りと減深のすべての判定に使うと決めた。その前身の[旧ADR](../../adr/archive/key-correction-history-by-material.md)は、2026年9月21日に、材料表だけを鍵とし、探索ごとに初期化し、補正前の誤差を学ぶと決めた。本書は、材料表を残したうえで鍵の表を加え、表を対局の間持ち越してワーカー間で共有し、値の形と更新をStockfishの形にし、補正量の大きさを減深量に使う。更新の条件のうち、手番側の王駒に相手の利きが届くノードを除くことは残し、捕獲手と境界の種類の条件はStockfishの形にする。鍵の決定と根拠の診断は既定の評価関数がPSTだった時期のものであり、旧ADR自身が、各表の補正を平均せずに足し合わせる形を未測定の候補として残している。
+- [historyの持ち越しと共有のADR](../../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)は、2026年10月19日に、補正表を旧ADR（[butterfly historyと捕獲履歴の持ち越しのADR](../../adr/archive/carry-history-tables-within-a-game.md)、2026年10月10日）と同じく持ち越さないと決めた。本書のC1は、補正表を対局の間持ち越す。旧ADRの根拠は、既定の評価関数がPSTだった時期に、補正をfutility pruningにだけ使う前提で測った発動率0.69%であり、旧ADRは補正表の持ち越しの再測定を留保していない。
+- [LMRの式のADR](../../adr/archive/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)は、2026年10月19日に、LMRを先頭の手を除くすべての手と根に適用し、減深量にstatScoreの連続量までを加えると決めた。C5は、この式に補正量への依存を加える。その前身の[late move reductionsの式の旧ADR](../../adr/archive/reduce-lmr-by-log-table-with-stepped-history-adjustment.md)は、上限と段差のhistory補正をSTCの到達深さが5〜6だった時期の判断として見直しの余地を留保していた。
 
 ## 設計判断
 
@@ -124,21 +132,21 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 5項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回のSTCで強さの変化を記録する。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。 |
+| 候補の束ね方 | 5項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整してから、1回のSTCで強さの変化を記録する。[不採用だった探索部の改良の再調整](search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../../adr/adopt-revived-search-items-as-a-bundle.md)）。項目ごとにSPSAと段階ゲートを繰り返す案は、1項目あたり、調整機でのSPSAに約13〜18時間と約25〜35米ドル、測定機でのSTCとLTCに約6〜38時間を要するので採らない。代償として、項目ごとの寄与は測らない。 |
 | 準拠する形 | 利用者の決定により、Stockfishの形に合わせる。YaneuraOuは将棋向けに小駒の区分を定め直し（`source/position.cpp:27-36`）、continuation correction historyを2手前と4手前の2つに限るが（`yaneuraou-search.cpp:732-737`）、これらのYaneuraOuだけの形は採らない。 |
 | 新しい係数の開始値 | 利用者の決定により、Stockfishの値を換算した値とする。換算は、評価値の差を歩兵価値の比で直す（Stockfishの歩兵価値は208、`src/types.h:199`）。材料表の重みはStockfishに対応する値がないので、現行の補正の上限に当たる値から始める（この表の「材料表を残すこと」の行を参照）。新しい開始値では探索が現行と一致しなくなるので、各項目のコミットで探索ノード数の変化を記録する。 |
 | 新しい係数の範囲 | 利用者の決定により、Stockfishの換算値、YaneuraOuの換算値（歩兵価値90、`source/evaluate.h:78`）、およびminaseの現行の対応する値の3つをすべて含める。現行に表や項がない係数は、現行の値を0とする。3つの値は次の行に示す。 |
 | 換算値と開始値の比較 | 重みは、pawnがStockfish 52、YaneuraOu 105、現行0、minorが36、75、0、non-pawnが44、107、0、2手前と4手前の文脈が30、69、0、6手前の文脈が24、なし、0である。更新量は、上界でないノードが20、8、なし、上界のノードが29、12、なしである。LMRの項は101、45、0である。材料表の重みは、StockfishにもYaneuraOuにもなく、起点の`CorrectionCap`の値277である。重みの開始値はYaneuraOuの換算値の約半分であり、更新量とLMRの項の開始値はYaneuraOuの換算値の2倍を超える。補正の表と項を持たない現行からは、いずれも離れた値から始まる。 |
 | SPSAの対象 | 利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値（表の重み、更新量、LMRの項）だけとし、残した材料表の重みも調整する。上下限、表ごとの更新の倍率、初期値などはStockfishの値で固定し、固定する定数の節に行番号とともにまとめる。起点の表の調整対象の全係数（調整用ビルドの評価の補正だけが使う倍率`FmScale`を除く82係数）から、新しい形では使わなくなる`CorrectionCap`と`CorrectionWeight`を除き、新しい9係数を加えた89係数を調整する。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。本書の調整対象は89係数である。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
-| 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)がpawn historyのために導入した双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。minaseは成った駒を成った後の駒種で表し、成った歩兵を金将、成った仲人を醉象とするので、所属は駒の現在の駒種が7種のいずれかであるかで判定する。こうすると、成った歩兵と仲人は入り、成って別の駒種になった小駒（太子になった醉象、獅子になった麒麟など）は外れる。先手と後手のnon-pawnの鍵は、それぞれの、現在の駒種が歩兵でも仲人でもない全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:517, 947-957`）。この集合は、pawnの鍵に入る駒の補集合である。minorとnon-pawnの鍵の乱数は、所有者、成りの状態を区別する駒の状態（`piece_state_of`）、および升の組ごとに持つ。pawnとnon-pawnの鍵の定義は[段階12の診断](../measurements/strength-stage12/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
-| 材料表を残すこと | 利用者の決定により残す。Stockfishに材料表はないが、中将棋の[診断](../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)で鍵の候補のうち最も予測を改善した表である。他の表と同じ形に改め、Stockfishの表と並べて足す。重み`CorrectionMaterialWeight`の開始値は、起点の`CorrectionCap`の値277とする。新しい形では、要素が上限1024に達したときの補正量が重みの百分率×歩兵価値になるので、起点の補正の上限と同じ大きさになる値である。更新量の倍率は、Stockfishで基準になるpawnの表と同じ128/128とする。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。本書の調整対象は89係数である。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
+| 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)がpawn historyのために導入した双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。minaseは成った駒を成った後の駒種で表し、成った歩兵を金将、成った仲人を醉象とするので、所属は駒の現在の駒種が7種のいずれかであるかで判定する。こうすると、成った歩兵と仲人は入り、成って別の駒種になった小駒（太子になった醉象、獅子になった麒麟など）は外れる。先手と後手のnon-pawnの鍵は、それぞれの、現在の駒種が歩兵でも仲人でもない全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:517, 947-957`）。この集合は、pawnの鍵に入る駒の補集合である。minorとnon-pawnの鍵の乱数は、所有者、成りの状態を区別する駒の状態（`piece_state_of`）、および升の組ごとに持つ。pawnとnon-pawnの鍵の定義は[段階12の診断](../../measurements/strength-stage12/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
+| 材料表を残すこと | 利用者の決定により残す。Stockfishに材料表はないが、中将棋の[診断](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)で鍵の候補のうち最も予測を改善した表である。他の表と同じ形に改め、Stockfishの表と並べて足す。重み`CorrectionMaterialWeight`の開始値は、起点の`CorrectionCap`の値277とする。新しい形では、要素が上限1024に達したときの補正量が重みの百分率×歩兵価値になるので、起点の補正の上限と同じ大きさになる値である。更新量の倍率は、Stockfishで基準になるpawnの表と同じ128/128とする。 |
 | 表の合成 | Stockfishと同じく、各表の要素に表ごとの重みを掛けて足し合わせ、補正後の評価を評価関数の出力の範囲に収める（Stockfish `src/search.cpp:95-118`）。補正量の全体の上限`CorrectionCap`は、Stockfishにないので除く。先手と後手のnon-pawnの表には同じ重みを使う。2手前と4手前の文脈にも同じ重みを使い、6手前には別の重みを使う。1手前の手がない場合（根とnull moveの直後）は、Stockfishと同じくcontinuation correction historyの代わりに定数を加える。Stockfishの根では1手前の手が`Move::none()`であり、`m.is_ok()`が偽になるからである（`src/search.cpp:97, 104`）。この定数は換算すると歩兵価値の約0.3%である。 |
 | 表の大きさと共有 | 利用者の決定により、大きさと共有の仕方をStockfishと同じにする。局面を鍵にした5つの表（材料、pawn、minor、2つのnon-pawn）は、探索チームの全ワーカーで共有し、手番側ごとに「65,536×ワーカー数以上の最小の2のべき」要素の`i16`とする（Stockfish `src/history.h:40, 158-171, 189-191, 206-212`、`src/thread.cpp:213`）。Stockfishは1つの配列の要素に手番ごとの4値の束を持ち、各値をそれぞれの鍵で引く。本書も5表を1つの配列に束ね、各表をそれぞれの鍵で引く。要素は不可分の読み書き（`Relaxed`順序）で扱い、Stockfishも同じく競合を許す（`src/history.h:60-63`）。5表の大きさは、ワーカー数が2のべきのとき1ワーカーあたり約1.3 MBである。Stockfishは非一様メモリアクセスのノードごとに表を共有するが、minaseは全ワーカーで1組を共有する。continuation correction historyは、Stockfishと同じくワーカーごとに持つ（`src/search.h:335`）。手の組を直接の添字で引く1つの表であり（`src/history.h:177-185`）、1ワーカーあたり約36 MBである。ワーカー数256では約9.2 GBになるので、`Threads`の上限を受理するかを確かめるテストは、表を確保する設定の命令ではなく、値を判定する関数で確かめる。 |
-| continuation correction historyの引き方（C3） | 利用者の決定により、[historyの更新量の形とcontinuation historyの設計書](archived/history-forms.md)の共有の表と同じ考え方にそろえる。1つの表を「文脈の手の駒種、文脈の手の到達升、1手前の手の駒種、1手前の手の到達升」で引き、2手前、4手前、6手前の文脈は同じ表の中の区画を引く。Stockfishも1つの表を3つの文脈で引く（`src/search.cpp:104-109`）。升は、現在のノードの手番側が後手なら盤を180度回転させた升で引く。駒の手番は、手番側と何手前の手かで決まるので添字に含めない。駒種は`PieceKind`の29種とする。成った駒は成った後の駒種で数え、成った歩兵と生の金将のような成りの状態の違いは区別しない。文脈の手の駒種は着手前の駒種、1手前の手の駒種は着手後に到達升にある駒種（成る手なら成った後の駒種）とする。Stockfishも文脈には動かした駒（`src/position.cpp:816-820`、`src/search.cpp:692-693`）を、1手前の手には到達升の駒（`src/search.cpp:106`）を使う。文脈の手がない場合（根より前とnull move）は、Stockfishの番兵`[NO_PIECE][0]`（`src/search.cpp:303-309, 697-702`）と同じく、表の中の「文脈なし」の区画の固定の1升を引いて更新する。表は文脈の駒種29種に「文脈なし」を加えた30種、升144、駒種29、升144の約1,800万要素の`i16`である。「文脈なし」の区画の残る143升は使わないが、添字の式を単純に保つために確保する。1手前の手がない場合（根とnull moveの直後）は、表を引かず、更新もしない。 |
+| continuation correction historyの引き方（C3） | 利用者の決定により、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)の共有の表と同じ考え方にそろえる。1つの表を「文脈の手の駒種、文脈の手の到達升、1手前の手の駒種、1手前の手の到達升」で引き、2手前、4手前、6手前の文脈は同じ表の中の区画を引く。Stockfishも1つの表を3つの文脈で引く（`src/search.cpp:104-109`）。升は、現在のノードの手番側が後手なら盤を180度回転させた升で引く。駒の手番は、手番側と何手前の手かで決まるので添字に含めない。駒種は`PieceKind`の29種とする。成った駒は成った後の駒種で数え、成った歩兵と生の金将のような成りの状態の違いは区別しない。文脈の手の駒種は着手前の駒種、1手前の手の駒種は着手後に到達升にある駒種（成る手なら成った後の駒種）とする。Stockfishも文脈には動かした駒（`src/position.cpp:816-820`、`src/search.cpp:692-693`）を、1手前の手には到達升の駒（`src/search.cpp:106`）を使う。文脈の手がない場合（根より前とnull move）は、Stockfishの番兵`[NO_PIECE][0]`（`src/search.cpp:303-309, 697-702`）と同じく、表の中の「文脈なし」の区画の固定の1升を引いて更新する。表は文脈の駒種29種に「文脈なし」を加えた30種、升144、駒種29、升144の約1,800万要素の`i16`である。「文脈なし」の区画の残る143升は使わないが、添字の式を単純に保つために確保する。1手前の手がない場合（根とnull moveの直後）は、表を引かず、更新もしない。 |
 | 値の形と更新（C4） | 利用者の決定により、Stockfishの形にする。要素は−1024以上1024以下の整数とし、更新量`b`に対して`v ← v + b − v|b|/1024`の重力式で更新する（Stockfish `src/history.h:70-76`）。更新量は、探索値と合成した補正後の静的評価との差、つまり全表の合成の残差から作り、各表へ表ごとの倍率を掛けて同じ観測で更新する（Stockfish `src/search.cpp:120-143, 1664-1673`）。Stockfishと同じく、残差と深さから作った更新量を±256で切り詰めてから固定の倍率1061/1024を掛け、さらに表ごとの倍率を掛ける。2手前、4手前、6手前の文脈が同じ要素を指すときは、Stockfishと同じくこの順に、その都度の値で3回更新する。表ごとの倍率と初期値は、利用者の決定によりStockfishの値で固定する。現行の指数移動平均の重み`CorrectionWeight`と深さの頭打ち8は、新しい形では使わないので除く。Stockfishは深さの頭打ちを持たない。 |
 | 更新の条件（C4） | Stockfishの条件（`src/search.cpp:1666-1667`）を、minaseの境界の種類へ対応させる。上界でないノード（下界と正確な値）では、最善手が捕獲手でなく、探索値が補正後の静的評価より高い場合に更新する。上界のノードでは、探索値が補正後の静的評価以下の場合に更新し、捕獲手の条件は課さない。Stockfishは同じ値の手を選び直す処理（`src/search.cpp:1541`）により、上界のノードでも最善手を持つことがあるが、minaseの最善手の選び方は変えず、この例外は入れない。手番側のいずれかの王駒に相手の利きが届くノードを除く現行の条件は残す。Stockfishの`!ss->inCheck`に近い役割の条件であるが、RULES.md第8条の王手（最後の王駒が取られ得る状態）より広い。中将棋では王手を受けた側に王手を解消する義務がなく（RULES.md第8条第4項）、王駒が取られ得る局面の静的評価は探索値から大きく外れるからである。探索値が詰み帯と専用の帯にあるノードを除く現行の条件も残す。正確な値のノードで探索値が静的評価より低い場合は、現行は更新するが、Stockfishに合わせて更新しない。残差には、ノードの入口で求めた補正後の静的評価を使い、置換表の値で置き換えた判定用の評価値は使わない。Stockfishは根でも同じ条件で更新するので（`src/search.cpp:1666`には根を除く条件がない）、minaseも根の探索が完了したときに局面の表を更新する。根には1手前の手がないので、continuation correction historyは更新しない。上界の更新量の係数の開始値はそうでないノードの約1.5倍である（Stockfish 18/12）が、2つの係数は独立に調整する。 |
-| 持ち越し（C1） | 利用者の決定により、全表を対局の間、減衰させずに持ち越す。Stockfishは表を新規対局でだけ初期化する（`src/search.cpp:713-736`）。表は`HistoryTables`に置き、butterfly historyと同じ時点で初期化する（[ADR](../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)）。その時点は、新規対局、受理された規則変更、受理された置換表容量の指定（同じ値の再指定を含む）、`DrawValueBlack`または`DrawValueWhite`の値の変更、およびワーカー数の変更であり、同じワーカー数の再指定では保持する。根の探索ごとの減衰（`HistoryDecay`と`CaptureHistoryDecay`）は補正表に掛けない。持ち越しの割合の係数は置かない。 |
+| 持ち越し（C1） | 利用者の決定により、全表を対局の間、減衰させずに持ち越す。Stockfishは表を新規対局でだけ初期化する（`src/search.cpp:713-736`）。表は`HistoryTables`に置き、butterfly historyと同じ時点で初期化する（[ADR](../../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)）。その時点は、新規対局、受理された規則変更、受理された置換表容量の指定（同じ値の再指定を含む）、`DrawValueBlack`または`DrawValueWhite`の値の変更、およびワーカー数の変更であり、同じワーカー数の再指定では保持する。根の探索ごとの減衰（`HistoryDecay`と`CaptureHistoryDecay`）は補正表に掛けない。持ち越しの割合の係数は置かない。 |
 | 補正量の大きさの利用（C5） | 補正量の絶対値が大きいノードでは静的評価が当てにならないとみなし、LMRの減深量を減らす。Stockfishと同じ項である（`src/search.cpp:1353`）。減深量の項は、歩兵価値1枚分の補正量あたりの1/100手とする。Stockfishは、静的評価には重み付きの和を131072で割った値を、LMRには割る前の和を使う。本書もLMRの項は、切り捨てる前の重み付きの和から求める。reverse futility pruningの余裕値の項（同1030行）は、search-pruning-formsのF1が持つ。 |
 | 補正を読む時点 | Stockfishと同じく、補正量はノードごとに1回だけ読む（`src/search.cpp:832`）。補正後の評価を使う判定（F2）、更新の残差、およびC5は、すべてこの値を使う。Stockfishは置換表の照合の前に読み、minaseは置換表による打ち切りとIIRの後に読むが、どちらの位置でも探索経路の着手は確定しているので、C3が引く手は変わらない。 |
 
@@ -245,7 +253,7 @@ continuation correction historyは2手前、4手前、6手前の順に更新し�
 補正項`q_corr = trunc(LmrCorrection × |S| / 102400)`を求める。
 `S`は、ノードの入口でC2の式により求めた、切り捨てる前の重み付きの和である。
 補正量`c`と`q_corr`は`P × S / 102400`と`S / 102400`の関係にあるので、`q_corr`は歩兵価値1枚分の補正量あたり`LmrCorrection`の1/100手を減らす。
-`q_corr`は、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)のF4が定める1/100手単位の減深量の式から、allNode（すべての手がα以下に終わると見込むノード）による拡大の前に1回だけ引く。
+`q_corr`は、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4が定める1/100手単位の減深量の式から、allNode（すべての手がα以下に終わると見込むノード）による拡大の前に1回だけ引く。
 history-formsのhistoryの項も同じ位置で引く。
 以後の拡大、手単位への丸め、上下限、および延長とPVノードの扱いは、F4の式に従う。
 枝刈り用のlmrDepthの式には入れない。
@@ -295,7 +303,7 @@ history-formsのhistoryの項も同じ位置で引く。
 ## 所要時間の見積り
 
 時間切れの事前確認、SPSA、事前対局、およびSTCは調整機で、反映とテストは測定機で行う。
-SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の3本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
+SPSAの所要時間は、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の3本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
 本書は1局のメモリを約75 MB増やすので、メモリの少ない調整機では同時対局数が下がり、その分だけ所要時間が延びる。
 
 | 段階 | 内容 | 見積り |
@@ -311,7 +319,7 @@ SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)�
 ## 実装フェーズ
 
 基本シードは、時間切れの事前確認を4100000000、セッションを4150000000、事前対局を4200000000、STCを4250000000とする。
-これらは着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であることを確かめた（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
+これらは着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であることを確かめた（[教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 予約した基本シードのうち4300000000は、LTCを行わないので使わない。
 各測定の開始前に、測定機でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
 
@@ -328,10 +336,10 @@ C3はワーカーごとのcontinuation correction history、「文脈なし」�
 C1は局面の表を全ワーカーで共有する1組に替え、大きさをワーカー数に合わせ、探索チームの開始時の初期化をやめる。`Threads=1`の`minase dev bench`は共有の有無と持ち越しで結果が変わらないので、C1のコミットではbenchの全15局面がC3と一致することを確かめ、共有と持ち越しの正しさは複数ワーカーの単体テストで確かめる。
 C5は`LmrCorrection`を加え、根を含むLMRの減深量に補正項を入れる。
 各項目のコミットでは、同じbenchの深さ3、5、7の全15局面の探索ノード数を記録し、直前のコミットとの差を残す。
-`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更の最後のコミットで交互に3回ずつ測り、探索速度（NPS、1秒あたりの探索ノード数）の変化を記録する（[教訓](../lessons/pin-bench-to-performance-core.md)）。
+`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更の最後のコミットで交互に3回ずつ測り、探索速度（NPS、1秒あたりの探索ノード数）の変化を記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。
 同じ実行で最大常駐メモリも記録し、増分が、1ワーカーのbenchで約37 MB（ワーカーごとのcontinuation correction historyの約36 MBと、共有の表の約1.3 MB）であることを確かめる。
 新しい係数は`params.rs`の表へ追加し、`CorrectionCap`と`CorrectionWeight`を表から除き、調整用ビルド（`--features tuning`つきのビルド）が新しい係数を`Tune_<係数名>`のUSIオプションとして宣言することを確かめる。
-単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../guides/testing.md)）。
+単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../../guides/testing.md)）。
 式は、重み付きの和、補正後の評価、更新の可否と更新量、表ごとの倍率、continuation correction historyの添字、およびLMRの補正項を、入力だけで結果が決まる関数に分け、係数は引数で受け取る。テストには固定の係数を渡し、SPSAで変わる既定値に期待値を結びつけない。
 少なくとも、重み付きの和と補正量の正負と丸めの数値例、根とnull moveの直後の定数`Q`、重力式の更新と表ごとの倍率の数値例、同じ要素を3つの文脈が指すときの順の更新、更新の条件（境界の種類、捕獲手、王駒への利き、帯）、根の探索の完了時だけの更新、残差がノードの入口の評価に基づくこと、`HistoryTables`の初期化の時点（`DrawValue`の変更を含む）と根の探索をまたぐ持ち越し、複数ワーカー（1、2、3）での局面の表の共有と表の大きさ、continuation correction historyが後手番で升を回転して引くこと、直前の成りと文脈の着手前の駒種、文脈なしの区画を引くこと、1手前がないとき表を引かずに更新もしないこと、根と内部ノードのLMRに同じ補正項が入ること、および固定シードの着手列とその全候補手について差分更新した配置の鍵が局面からの再計算と一致することを確かめる。
 最後の照合は、現行の`correction_incremental_keys_match_seeded_playouts_and_undo`と同じく、捕獲、成り、獅子の2枚取り、居喰い、およびnull moveを含め、成りで小駒の集合に入る駒と出る駒、居喰い、およびじっとは局面を組んで明示的にも確かめる。
@@ -342,12 +350,12 @@ USIとCECPの`Threads`の上限を受理するかのテストは、256ワーカ�
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/correction-history-tables-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後のフェーズはこのrunnerで実行する。
-ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/correction-history-tables.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-既定のパラメーターファイルの写しを作り、開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+既定のパラメーターファイルの写しを作り、開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 起点で時間管理の係数の名前や範囲が変わっていれば、手引きの第3節の値を起点の表に合わせて読み替える。
 
 ```console
@@ -358,7 +366,7 @@ USIとCECPの`Threads`の上限を受理するかのテストは、256ワーカ�
   --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
-`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
+`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
 結果は測定記録`correction-history-tables-safety`に残す。
 完了条件は、時間切れとエンジン異常が0件であることと、測定記録の保存である。
 
@@ -388,7 +396,7 @@ USIとCECPの`Threads`の上限を受理するかのテストは、256ワーカ�
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 STCの前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
-事前対局とSTCは、[統括計画](search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
+事前対局とSTCは、[統括計画](../search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
@@ -402,7 +410,7 @@ STCの前に、候補が時間切れやエンジン異常を起こさないこ�
 
 ### フェーズ5　STC
 
-2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](../search-forms.md)の設計判断「各サブタスクの採否」）。
 STCは、統括計画のフェーズ10で強くなっていなかった場合に、どのサブタスクで後退したかの手がかりにするための記録として行い、LTCは行わない。
 STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
@@ -413,8 +421,8 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
   --each time=10000+100 --concurrency <調整機の同時対局数> gsprt --max-pairs 3000
 ```
 
-逐次検定の停止規則は[SPRTの手引き](../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`correction-history-tables-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 
@@ -439,11 +447,11 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
 ## 参考資料
 
-- [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
-- [棋力向上段階12の発動率の診断](../measurements/strength-stage12/strength-stage12-activation-diag.md)と、その付属の`correction-keys.patch`および`correction-results.json`。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)。
+- [棋力向上段階12の発動率の診断](../../measurements/strength-stage12/strength-stage12-activation-diag.md)と、その付属の`correction-keys.patch`および`correction-results.json`。
 - Stockfish（コミット5c4cef0b）。`src/history.h`の表の大きさと上限は40〜41行、重力式は70〜76行、補正表の型は152〜191行、共有の表は206〜250行、共有の要素の不可分の読み書きは60〜63行。`src/search.h`のワーカーごとのcontinuation correction historyの宣言は335行。`src/thread.cpp`の共有の表の大きさは213行。`src/search.cpp`の補正量は95〜118行（重み付きの和は111行）、更新は120〜143行、根の番兵は303〜309行、文脈の設定は692〜702行、初期化は713〜736行、ノードでの補正量の読み出しは832行、静的評価への適用は860行、LMRの補正量の項は1353行、同じ値の手を選び直す処理は1541行、更新の条件と更新量は1664〜1673行。`src/position.cpp`の鍵の定義は505〜526行（non-pawnの鍵は517行）、成りでの鍵の更新は947〜957行、動かした駒の記録は816〜820行。`src/types.h`の歩兵価値は199行。
 - YaneuraOu（コミットc1b80eaa）。`source/position.cpp`のminor pieceの定義は27〜36行。`source/engine/yaneuraou-engine/yaneuraou-search.cpp`の補正量は724〜746行、更新は748〜770行、LMRの補正量の項は3890行、更新の条件と更新量は4404〜4417行。`source/evaluate.h`の歩兵価値は78行。
 - 日本中将棋連盟「中将棋連盟競技規則・総則編（2019年度版）」の駒の格付け（RULES.mdの［J1］）。
-- [correction historyの鍵と適用先のADR](../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[持ち越しのADR](../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)。
-- [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
-- [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。
+- [correction historyの鍵と適用先のADR](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[持ち越しのADR](../../adr/archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)。
+- [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
+- [SPSAによる係数調整の手引き](../../guides/spsa.md)と[SPRTによる棋力測定の手引き](../../guides/sprt.md)。

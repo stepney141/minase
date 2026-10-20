@@ -56,7 +56,7 @@ Stockfishのこの項（statScoreの項）を加えるかは、[historyの形の
 
 式の詳細は`crates/minase/src/search/alphabeta/pruning.rs`の`LmrCoefficients::lmr_reduction`、`lmr_depth`、`lmr_research_depth`、`non_lmr_depth`、および`lmr_table`のdocコメントにあり、係数の現行値は`params.rs`にある。
 cutNodeとallNodeの区別は[置換表の打ち切りのADR](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が、ttPvは[reverse futility pruningのADR](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)が、判定用の評価値は[静的評価のADR](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)が定める。
-補正量の項は[correction historyの表の設計書](../../plans/correction-history-tables.md)が扱い、本決定には含めない（`src/search.cpp:1353`）。
+補正量の項は[correction historyの表の設計書](../../plans/archived/correction-history-tables.md)が扱い、本決定には含めない（`src/search.cpp:1353`）。
 詰みを探す局面で王手になる手とならない手の減深量を変える項も、[浅い枝刈りの拡張の設計書](../../plans/archived/shallow-pruning-extensions.md)が扱い、本決定には含めない（同1391-1392行）。
 
 減深量は負にもなり得るので、PVノードの1手と合わせて、旧来の式より深く読むノードが増える。

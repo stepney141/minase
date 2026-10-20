@@ -2,7 +2,7 @@
 
 ## 目的
 
-[correction historyの表の追加と持ち越しの設計書](../../plans/correction-history-tables.md)のフェーズ4として、SPSAの最終値を反映した候補が、STCの条件で時間切れやエンジン異常を起こさないことと、時間の使い方の変化を、起点との32ペアで確かめる。
+[correction historyの表の追加と持ち越しの設計書](../../plans/archived/correction-history-tables.md)のフェーズ4として、SPSAの最終値を反映した候補が、STCの条件で時間切れやエンジン異常を起こさないことと、時間の使い方の変化を、起点との32ペアで確かめる。
 棋力の判定には使わない。
 
 ## コマンドライン

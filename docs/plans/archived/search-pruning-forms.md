@@ -73,7 +73,7 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 - reverse futility pruningの返り値をβと判定用の評価値の重み付き平均にすること（Stockfish `src/search.cpp:1033`）。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱い、F1は返り値の混合を加えない。
 - 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
 - null move pruningの減深量の既存の係数（`NullMoveBase`、`NullMoveSlope`、`NullMoveEvalScale`）の開始値をStockfishの換算値へ置き直すこと。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱う。
-- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](../correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
+- LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
 - 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](../qsearch-forms.md)が扱う。
 - 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](../qsearch-forms.md)、[aspiration-window-forms.md](../aspiration-window-forms.md)、および[time-instability-scaling.md](../time-instability-scaling.md)で扱う。
 - 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）。
@@ -92,7 +92,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 
 後続の設計書とは、次のように分担する。
 F0が導入するcutNodeとallNode、およびF1の準備が導入するttPvは、後続の設計書がそれぞれの範囲で使う。
-reverse futility pruningの余裕値の補正量の項はF1が持ち、[correction-history-tables.md](../correction-history-tables.md)は持たない。
+reverse futility pruningの余裕値の補正量の項はF1が持ち、[correction-history-tables.md](correction-history-tables.md)は持たない。
 [shallow-pruning-extensions.md](shallow-pruning-extensions.md)が使う減深後の深さ（lmrDepth）の基になる減深量は、F4の`r_pre`とする。
 
 本書は次のADRの決定の一部を変える。
@@ -231,7 +231,7 @@ F4も2つのコミットで入れる。
 `LmrMaxReduction`の開始値は現行と同じ3なので、このコミットは探索を変えない。
 2つ目のコミットで、1/100手単位の減深量と、減深を適用した後の探索の深さを、次の式で求める。
 この式は、LMRの項を加える後続の設計書が共有する正本である。
-[history-forms.md](history-forms.md)、[correction-history-tables.md](../correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
+[history-forms.md](history-forms.md)、[correction-history-tables.md](correction-history-tables.md)、および[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9は、この式の中の指定した位置に入る追加項だけを定義する。
 `trunc`は0方向への丸めであり、丸めを要する項は個別に丸めてから加減算する。
 前半`r_pre`はStockfishの1183〜1192行に当たり、`F4_r0`の残りの項はStockfishの1345〜1384行に当たる。
 
@@ -274,7 +274,7 @@ d' = \max\left(1,\ d - 1 - \mathrm{clamp}\left(\mathrm{trunc}(r/100),\ -E,\ \mat
 PVノードの1手は、Stockfishの1402行と同じく`max`の外で足す。
 
 後続の設計書の追加項は、次の位置に入る。
-`q_corr`は補正量の項であり、[correction-history-tables.md](../correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
+`q_corr`は補正量の項であり、[correction-history-tables.md](correction-history-tables.md)のC5が定め、allNodeの項を足す前に引く（Stockfish `src/search.cpp:1353`）。
 `q_hist`はstatScoreの項であり、[history-forms.md](history-forms.md)が定め、同じくallNodeの項を足す前に引く（同1381行）。
 `q_mate`は詰みを探す局面で王手になる手とならない手の減深量を変える項であり、[shallow-pruning-extensions.md](shallow-pruning-extensions.md)のS9が定め、allNodeの項を足した後に足す（同1391-1392行）。
 本書の範囲では、3つの追加項はいずれも0である。

@@ -55,7 +55,7 @@ minaseでは浅いノードでの1回の更新が小さいので、重力式に�
 - **重力式**は、符号つきの更新量`b`を表の上限`D`で`[−D, D]`に切り詰めてから、値`v`を`v + b − trunc(v×|b|/D)`へ置き換える更新式である。`trunc`は0の方向への切り捨てである。現行の`record_quiet_beta_cutoff`と同じ式であり、Stockfishの`StatsEntry::operator<<`（`src/history.h:70-76`）も同じ形である。値は常に`[−D, D]`に収まる。
 - **Stockfishの尺度**は、表の値と更新量をStockfishと同じ数値で表すことをいう。本書は表の上限をStockfishと同じ値にするので、Stockfishの定数を換算せずに使える。評価値だけは尺度が違うので、minaseの評価値`e`を`e × 208/P`（`P`は探索用の歩兵価値、208はStockfishの歩兵価値、`src/types.h:199`）へ換算して使う。
 - **静かな手の段**は、手選択器（`ordering.rs`の`MovePicker`）が置換表の手、捕獲手、killer手（同じ深さの別のノードでβ打ち切りを起こした静かな手）を返した後に、残りの静かな手を並べ替えの値の降順に返す区切りである。
-- **着手の記録**は、`Searcher`の`path_moves`の要素に持たせる、そのplyのノードで指した手の`Move`、着手前の駒コード（所有者を含む）、および捕獲手なら捕獲履歴の添字に使う取った駒種の組である。2枚取りの取った駒種は、捕獲履歴の現行の添字と同じく価値の高い方（同値なら到達升の駒）とする。通常探索のply `p`のノードでは`path_moves`の長さが`p`に等しく、ply `p`の記録は、ply `p`の局面からply `p + 1`の局面へ進めた手を表す。着手後の駒（成る手なら成った駒）は、`Move`の成りの指定と着手前の駒コードから導く。null moveはそのplyの記録を空にし、根より前のplyは記録を持たない。静止探索は`path_moves`へ積まないので、記録は通常探索だけで参照する。[correction historyの鍵の追加の設計書](../correction-history-tables.md)のC3も、同じ記録を使う。
+- **着手の記録**は、`Searcher`の`path_moves`の要素に持たせる、そのplyのノードで指した手の`Move`、着手前の駒コード（所有者を含む）、および捕獲手なら捕獲履歴の添字に使う取った駒種の組である。2枚取りの取った駒種は、捕獲履歴の現行の添字と同じく価値の高い方（同値なら到達升の駒）とする。通常探索のply `p`のノードでは`path_moves`の長さが`p`に等しく、ply `p`の記録は、ply `p`の局面からply `p + 1`の局面へ進めた手を表す。着手後の駒（成る手なら成った駒）は、`Move`の成りの指定と着手前の駒コードから導く。null moveはそのplyの記録を空にし、根より前のplyは記録を持たない。静止探索は`path_moves`へ積まないので、記録は通常探索だけで参照する。[correction historyの鍵の追加の設計書](correction-history-tables.md)のC3も、同じ記録を使う。
 - **文脈の手**は、ply `p`のノードで手を引くときに参照する、ply `p − i`（`i`は1、2、3、4、6）の記録の手である。記録が空のplyは文脈の手を持たない。
 - **ノードの手数**は、そのノードで手選択器の候補列から取り出した適格な合法手の数であり、枝刈りで飛ばした手も含み、R2とR3の禁止手は含めない。Stockfishの`moveCount`（`src/search.cpp:1154`）に当たる。起点の`negamax`の0始まりの添字`index`は禁止手で進まず、枝刈りした手で進むので、処理中の手のノードの手数は`index + 1`である。`Searcher`はこの値を手を処理するたびにplyごとの配列へ書き、子のノードは親の値を読む。同じ手の再探索では値を変えない。
 - **探索済みの手の列**は、ノードで実際に読んだ手のうち、ノードの手数が32以下で、読んだ時点でαを上回らなかった手を、静かな手と捕獲手に分けて読んだ順に並べたものである（Stockfish `src/search.cpp:75, 1578`）。αを上回った手は、後で最善手でなくなっても列に加えない。M1の減点の対象と、零窓のノードでの加点の上乗せに使う手の数は、この2つの列である。
@@ -80,9 +80,9 @@ minaseでは浅いノードでの1回の更新が小さいので、重力式に�
 - 置換表の手の成績の表（Stockfishの`ttMoveHistory`）。Stockfishはこの表をsingular extensionの余裕値にだけ使い（`src/search.cpp:1290, 1308, 1608`）、minaseにはsingular extensionがない。
 - continuation historyの王手の次元。Stockfishは表を、文脈の手を指した局面が王手を受けていたかで分け、王手を受けている局面では2手前までの表だけを更新する（`src/search.cpp:690-691, 2059-2061`）。minaseは王手を受けている局面を区別しない（王駒を利きへ置く手も合法であり、RULES.md第8条第3項から第5項）。
 - killer手の表の変更。killer手はStockfishにないminaseだけの仕組みであり、2026年10月17日の利用者の決定（中将棋の診断や測定で決めた仕組みは残す）により、本書はその更新と手選択器の段を変えない。
-- LMRの減深量のうちhistory以外の項（cutNode、allNode、ttPv、置換表の手が捕獲手の場合、子ノードの打ち切りの回数、`α − eval`、手数、補正量など）と、減深の結果に応じて読み直しの深さを増減する処理。これらは[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)と[correction historyの設計書](../correction-history-tables.md)が扱う。本書のstatScoreの項は、それらの項と同じ式の中で引く（M4）。
+- LMRの減深量のうちhistory以外の項（cutNode、allNode、ttPv、置換表の手が捕獲手の場合、子ノードの打ち切りの回数、`α − eval`、手数、補正量など）と、減深の結果に応じて読み直しの深さを増減する処理。これらは[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)と[correction historyの設計書](correction-history-tables.md)が扱う。本書のstatScoreの項は、それらの項と同じ式の中で引く（M4）。
 - 置換表で打ち切る条件そのもの。本書は打ち切ったときの更新だけを加える。
-- correction historyにcontinuationの鍵を加えること。[correction historyの設計書](../correction-history-tables.md)が扱う。
+- correction historyにcontinuationの鍵を加えること。[correction historyの設計書](correction-history-tables.md)が扱う。
 
 ## 依存関係
 
@@ -93,12 +93,12 @@ M4とM5は、LMRの減深量を1/100手単位の整数で計算し、最後に�
 この形は[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF4が導入し、起点の`pruning.rs`の`LmrCoefficients::lmr_reduction`にある。
 LMRの減深量と減深後の深さの式は、F4の式を正本とする。
 本書はF4の`r₀`からstatScoreの項`q_hist`を引くことだけを加え、その位置はallNodeの拡大の前とする（M4）。
-[correction historyの設計書](../correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
+[correction historyの設計書](correction-history-tables.md)のC5の`q_corr`もallNodeの拡大の前に引き、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS9の詰みを探す局面での調整はallNodeの拡大の後に行う。
 
 M4の減深後の深さ（lmrDepth）へのhistoryの項は、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)が静かな手のfutility pruningとSEEによる枝刈りに導入した枝刈り用のlmrDepth（`pruning.rs`の`pruning_lmr_depth`）に足す。
 
 pawn historyは、歩兵と仲人の配置の鍵（pawn key）で引く。
-この鍵は本書が導入し、[correction historyの設計書](../correction-history-tables.md)のC2は本書の鍵を再利用する。
+この鍵は本書が導入し、[correction historyの設計書](correction-history-tables.md)のC2は本書の鍵を再利用する。
 
 M3bの王手の加点は、Stockfishの`check_squares`と同じく、ノードで駒種ごとに求める直接の王手の升の集合で判定し、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS3が導入した静かな手のSEEの判定器（`see.rs`の`see_prunes`）を再利用する。
 同じ設計書が導入した王手の判定`Position::gives_check`（RULES.md第8条の定義に従い、開き王手と王駒が2枚の場合を含む）は、枝刈りでの王手の判定に使い続け、並べ替えには使わない。
@@ -137,7 +137,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 | 静的評価を求めるノード | 静的評価の変化による更新は、直前の手のノードと現在のノードの補正後の静的評価を使う（`src/search.cpp:845-875, 1002-1012`）。[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)のF2がノードごとに1回求めて保持する補正後の評価を再利用し、historyの更新のために補正表を読み直さない。起点の`Searcher::static_evals`がこの値を保持している。Stockfishは、現在のノードか直前の手のノードが王手を受けていればこの更新とfail lowの加点の一部の項を行わない（同1001、1618-1619）。王手の局面では`staticEval`が2手前の値の写しであり、実際の評価ではないからである（同848）。minaseはすべてのノードで静的評価を求めるので、この条件を置かない。王駒に相手の疑似利きが届くノードで既存の枝刈りを止めるのは探索の判断であり、historyの更新に混じる雑音は係数の調整が吸収するとみる。 |
 | continuation historyの表の形 | 2026年10月17日の利用者の決定により、表はStockfishと同じく1組の共有の表とし、何手前の文脈も同じ表の中の区画を引く（Stockfish `src/history.h:198-199`、`src/search.cpp:690-691, 1140-1142`）。手は180度の回転で引き、表を引く手を指す側が後手なら、文脈の手と現在の手の升をともに回転する。中将棋は初期配置と規則が180度の回転と手番の入れ替えについて対称なので、先手の局面と回転した後手の局面の統計を同じ要素に集められる。添字は「文脈の手が捕獲手か（2）、文脈の手を指したのが表を引く手と同じ側か（2）、文脈の手の着手前の駒種（29）、文脈の手の到達升（144）、現在の手の着手前の駒種（29）、現在の手の到達升（144）」とし、要素はi16とする。29は成駒を含む駒種の数（`PIECE_KIND_COUNT`）、144は盤の升の数である。同じ側かどうかの次元は、Stockfishの添字の駒が手番の色を含むことに当たり、文脈の手が何手前かの偶奇で決まる。捕獲手かどうかの次元はStockfishに合わせて持つ。王手の次元は対象外の節のとおり持たない。文脈の手を持たない項は参照も更新もせず、並べ替えなどでは0として足す。Stockfishは文脈の手がない場合に初期値の区画を引くので（`src/search.cpp:690-691`）、これは意図した違いである。 |
 | continuation historyの大きさと共有 | 表は69,755,904要素で約140 MBであり、探索チームの全ワーカーで共有する。Stockfishは同じNUMAノードのワーカーの間で共有する（`src/history.h:201-212`）。要素は不可分の読み書き（`AtomicI16`の`Relaxed`順序の読み出しと書き込み）で扱い、競合した更新が失われることを許す。Stockfishも同じく競合を許す（同138行の`AtomicStats`）。共有するのでメモリはワーカー数によらない。捕獲手かどうかの次元を持たなければ約70 MBになるが、Stockfishとの一致を崩すので採らない。表は`HistoryTables`が持ち、各ワーカーの探索状態へ共有の参照で渡す。表は新規対局、受理した規則と置換表の容量`USI_Hash`の変更、ワーカー数の変更、および引き分けの評価値`DrawValue`の変更の時点で初期値にし、対局内で減衰させずに持ち越す。Stockfishも減衰させるのはbutterfly historyだけである（`src/search.cpp:341-343`）。効果の根拠とした診断は、1手前と2手前の2表を根の探索ごとに23%へ減衰させる条件で測ったものであり、本書の表の形と寿命での発動率は測っていない。 |
-| pawn historyの形 | Stockfishと同じく、歩兵の配置の鍵で引くエントリごとに、動かす駒と到達升の表を持つ（`src/history.h:146, 220-225`）。中将棋の鍵は、規則書が「価値ある駒」から除く2種（RULES.md第3条第11項）である歩兵と仲人の配置とし、[correction historyの設計書](../correction-history-tables.md)のC2の鍵と同じ定義にする。鍵は所有者、歩兵か仲人か、および升ごとの64ビットの乱数の排他的論理和であり、乱数は`correction.rs`の材料の鍵と同じく固定のシードのsplitmix64で作るが、シードは別にする。`material_keys`と同じくplyごとの配列で差分更新し、着手の取り消しの記録（`Undo`）から、動かした駒が歩兵か仲人なら移動元を、着手後も歩兵か仲人なら到達升を、取った駒が歩兵か仲人ならその升を出し入れする。材料の鍵は加減算なので、演算は写さない。null moveでは親の鍵をそのまま使う。鍵は盤の絶対の配置なので、この表は回転せず、駒は手番を含む58種で引く。1エントリは駒58種×升144のi16で約16.7 KBになり、チェスの約8倍なので、エントリの数をStockfishのワーカーあたり8192から1024に減らし、ワーカー1つ分の大きさをStockfishと同程度（約17 MB）にする。エントリの数は1024にワーカー数以上の最小の2のべきを掛けた数とし、表は全ワーカーで共有する。Stockfishも表の大きさをワーカー数に比例させて共有する。USIの`Threads`の上限256では表だけで約4.4 GBになるが、多数のワーカーを使う機械はメモリも大きいとみて、上限は変えない。 |
+| pawn historyの形 | Stockfishと同じく、歩兵の配置の鍵で引くエントリごとに、動かす駒と到達升の表を持つ（`src/history.h:146, 220-225`）。中将棋の鍵は、規則書が「価値ある駒」から除く2種（RULES.md第3条第11項）である歩兵と仲人の配置とし、[correction historyの設計書](correction-history-tables.md)のC2の鍵と同じ定義にする。鍵は所有者、歩兵か仲人か、および升ごとの64ビットの乱数の排他的論理和であり、乱数は`correction.rs`の材料の鍵と同じく固定のシードのsplitmix64で作るが、シードは別にする。`material_keys`と同じくplyごとの配列で差分更新し、着手の取り消しの記録（`Undo`）から、動かした駒が歩兵か仲人なら移動元を、着手後も歩兵か仲人なら到達升を、取った駒が歩兵か仲人ならその升を出し入れする。材料の鍵は加減算なので、演算は写さない。null moveでは親の鍵をそのまま使う。鍵は盤の絶対の配置なので、この表は回転せず、駒は手番を含む58種で引く。1エントリは駒58種×升144のi16で約16.7 KBになり、チェスの約8倍なので、エントリの数をStockfishのワーカーあたり8192から1024に減らし、ワーカー1つ分の大きさをStockfishと同程度（約17 MB）にする。エントリの数は1024にワーカー数以上の最小の2のべきを掛けた数とし、表は全ワーカーで共有する。Stockfishも表の大きさをワーカー数に比例させて共有する。USIの`Threads`の上限256では表だけで約4.4 GBになるが、多数のワーカーを使う機械はメモリも大きいとみて、上限は変えない。 |
 | low ply historyの形 | Stockfishと同じく、根からのplyが5未満のノードで、plyと移動元と到達升で引く表を持つ（`src/history.h:42, 132`）。Stockfishは反復深化のループに入る前に全要素を102にする（`src/search.cpp:339`）。minaseでは、探索ごとに各ワーカーの探索状態（`Searcher`）を作る時点で102にし、反復深化と窓の読み直しでは初期化しない。ワーカーごとに持ち、約200 KBである。 |
 | 並べ替えの値 | 静かな手の段の値を、Stockfishと同じく`2×butterfly + 2×pawn + (1、2、3、4、6手前の文脈のcontinuation historyの和) + 8×low ply/(1 + ply)`とする（`src/movepick.cpp:233-251`）。同点破り（線形経路の差分、生成順）は変えない。根の並べ替えは前回の反復の部分木ノード数で決めるので変わらない。 |
 | LMRのhistory補正（statScore） | 閾値による±1手の段差（`LmrHistoryThreshold`）は、[棋力向上段階5](strength-stage5.md)の診断と測定で決めた仕組みなので、2026年10月17日の利用者の決定により残す。そこへStockfishのstatScoreに比例する連続量を並べて加える（`src/search.cpp:1371-1381`）。statScoreは、静かな手では`(2252×butterfly + 1126×1手前 + 1093×2手前)/1024`、捕獲手では`873×取る駒の価値/128 + 捕獲履歴`である。取る駒の価値は、獅子の2段階移動で2枚を取る手では合計してから、Stockfishの尺度へ1回だけ換算する。statScoreは、LMRを適用するかどうかによらず、実際に読むすべての手（先頭の手と根の手を含む）について求めて記録する。子のノードのM1とM2が、このノードへ至った手のstatScoreを使うからである。段差はbutterfly historyの値で判定し、捕獲手には使わない。statScoreは段差の判定に使わない。表の値がStockfishの水準に上がると段差はほとんどの手で働くようになるが、閾値を調整の対象に残すので、SPSAが閾値を上げて段差を弱めることもできる。 |
@@ -309,7 +309,7 @@ LMRの減深量と減深後の深さは、[探索の枝刈りとLMRの関数形�
 q_{\mathrm{hist}} = \mathrm{trunc}\left(\frac{s \times \mathrm{LmrHistoryScale} \times 100}{4096 \times 1024}\right), \qquad r_0' = r_0^{\mathrm{F4}} - q_{\mathrm{corr}} - q_{\mathrm{hist}}
 ```
 
-ここで`r₀^F4`はF4の`r₀`の全項、`q_corr`は後続の[correction historyの設計書](../correction-history-tables.md)のC5が加える補正項であり、本書の実装の時点ではこの項はなく、`r₀′ = r₀^F4 − q_hist`である。
+ここで`r₀^F4`はF4の`r₀`の全項、`q_corr`は後続の[correction historyの設計書](correction-history-tables.md)のC5が加える補正項であり、本書の実装の時点ではこの項はなく、`r₀′ = r₀^F4 − q_hist`である。
 `q_hist`の積は64ビットの整数で計算し、`4096 × 1024`で1回だけ割る。
 各項は個別に0方向へ丸めてから足す。
 `r₀′`をF4の`r₀`の代わりに使い、allNodeの拡大、S9の詰みを探す局面での調整、0方向への丸めによる手単位の`R`、および減深後の深さ`d′`（負の減深量による延長とPVノードの1手の加算を含む）は、F4とS9の規則のまま求める。

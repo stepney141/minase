@@ -43,5 +43,5 @@ LMRを静かな手に限り、根では行わない旧ADRの形は、Stockfish�
 
 式の詳細は`crates/minase/src/search/alphabeta/pruning.rs`の`LmrCoefficients::lmr_reduction`、`applies_lmr`、`lmr_history_value`、および`lmr_depth`と、`root.rs`の`search_root`のdocコメントにあり、statScoreの式は`ordering.rs`の`quiet_stat_score`と`capture_stat_score`にある。係数の現行値は`params.rs`にある。
 historyの更新でstatScoreを使う箇所は[historyの更新のADR](../order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)が定める。
-補正量の項は[correction historyの表の設計書](../../plans/correction-history-tables.md)が扱い、本決定には含めない（`src/search.cpp:1353`）。
+補正量の項は[correction historyの表の設計書](../../plans/archived/correction-history-tables.md)が扱い、本決定には含めない（`src/search.cpp:1353`）。
 変更の効果は、[探索ノード数と探索速度の記録](../../measurements/history-forms/history-forms-bench.md)、[SPSAの記録](../../measurements/history-forms/history-forms.md)、および[STCの記録](../../measurements/history-forms/history-forms-stc.md)にある。
