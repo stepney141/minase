@@ -117,6 +117,11 @@ parameters! {
     /// Stockfishは65/1024で6（src/search.cpp:1352）、YaneuraOuは65/1024で6。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     LmrMoveCount(lmr_move_count): 0, 0, 20;
+    /// 補正量が歩兵価値1枚分のときに、LMRの減深量から引く量。単位は1/100手である。
+    /// Stockfishは131072×208×100/(26310×1024)で約101、YaneuraOuは131072×90×100/(25600×1024)で45であり、従来は項がないため0である
+    /// （Stockfish src/search.cpp:1353、YaneuraOu yaneuraou-search.cpp:3890）。
+    /// 開始値は設計書の換算によるStockfishの値であり、SPSAで未調整である。
+    LmrCorrection(lmr_correction): 101, 0, 200;
     /// LMRのcutNodeの加算量。単位は1/100手である。
     /// Stockfishは4026/1024で393（src/search.cpp:1356-1357）、YaneuraOuは3611/1024で353。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。

@@ -12,7 +12,10 @@ use minase_core::position::Position;
 use minase_core::repetition_key;
 
 use super::INFINITY;
-use super::correction::{CorrectionPieceKeys, correction_piece_keys_after_move, key_after_move};
+use super::correction::{
+    CorrectionPieceKeys, correction_from_weighted_sum, correction_piece_keys_after_move,
+    key_after_move,
+};
 use super::history::pawn_key_after_move;
 use super::ordering::{
     HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
@@ -227,7 +230,9 @@ impl Searcher<'_> {
         let raw = self
             .nnue
             .evaluate_accumulator(&self.accumulators[ply as usize], side);
-        let correction = self.correction_value(side, ply);
+        let correction_weighted_sum = self.correction_weighted_sum_at(side, ply);
+        let correction =
+            correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[ply as usize] = static_eval;
         self.update_eval_difference_histories(ply, static_eval, self.tt_hits[ply as usize]);
@@ -585,6 +590,7 @@ impl Searcher<'_> {
                     alpha,
                     eval,
                     pawn: self.nnue.pawn_value(),
+                    correction_weighted_sum,
                     seek_mate_gives_check: self.lmr_seek_mate_gives_check(position, mv),
                 });
                 if lmr {

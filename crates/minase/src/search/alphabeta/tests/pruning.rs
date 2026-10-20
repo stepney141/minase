@@ -8,10 +8,10 @@ use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, applies_lmr,
     continuation_history_prunes, history_lmr_divisor, history_pruning_lmr_depth,
-    is_opponent_worsening, is_seek_mate, lmr_history_adjustment, lmr_history_value,
-    pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient, razoring_margin,
-    razoring_margin_with_coefficient, reverse_futility_margin, reverse_futility_value,
-    seek_mate_null_move_reduction, should_raise_futility_best_score,
+    is_opponent_worsening, is_seek_mate, lmr_correction_adjustment, lmr_history_adjustment,
+    lmr_history_value, pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient,
+    razoring_margin, razoring_margin_with_coefficient, reverse_futility_margin,
+    reverse_futility_value, seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
@@ -146,6 +146,7 @@ pub(super) fn lmr_context() -> LmrContext {
         alpha: 0,
         eval: 0,
         pawn: 100,
+        correction_weighted_sum: 0,
         seek_mate_gives_check: None,
     }
 }
@@ -211,6 +212,86 @@ fn lmr_stat_score_adjustment_matches_numeric_examples_and_precedes_all_node_scal
     };
     // 1000からq_hist=104を引いた896へ、allNodeの896×100/(100+105)=437を足す。
     assert_eq!(coefficients.lmr_reduction(0, context), 1333);
+}
+
+#[test]
+fn lmr_correction_adjustment_matches_numeric_examples() {
+    for (weighted_sum, expected) in [(1023, 1), (-102_400, 101), (537_i64 * 1024, 542), (0, 0)] {
+        assert_eq!(lmr_correction_adjustment(weighted_sum, 101), expected);
+    }
+}
+
+#[test]
+fn lmr_correction_adjustment_precedes_all_node_scaling() {
+    let coefficients = LmrCoefficients {
+        lmr_correction: 101,
+        lmr_all_node: 100,
+        ..isolated_lmr_coefficients(1000)
+    };
+    let context = LmrContext {
+        depth: 1,
+        index: 0,
+        improving: true,
+        capture: true,
+        history: None,
+        correction_weighted_sum: 102_400,
+        ..lmr_context()
+    };
+
+    let non_all_node = LmrContext {
+        cut_node: true,
+        ..context
+    };
+    let without_correction = LmrContext {
+        correction_weighted_sum: 0,
+        ..non_all_node
+    };
+    assert_eq!(
+        coefficients.lmr_reduction(0, without_correction)
+            - coefficients.lmr_reduction(0, non_all_node),
+        101
+    );
+
+    // 1000から101を引いた899へ、allNodeの899×100/(100+105)=438を足す。
+    assert_eq!(coefficients.lmr_reduction(0, context), 1337);
+}
+
+#[test]
+fn lmr_correction_adjustment_is_equal_at_root_and_internal_nodes() {
+    let coefficients = LmrCoefficients {
+        lmr_correction: 101,
+        ..isolated_lmr_coefficients(1000)
+    };
+    let base = LmrContext {
+        capture: true,
+        history: None,
+        correction_weighted_sum: 102_400,
+        ..lmr_context()
+    };
+    let root = LmrContext {
+        pv_node: true,
+        tt_pv: true,
+        tt_capture: Some(false),
+        is_tt_move: true,
+        ..base
+    };
+    let internal = LmrContext {
+        cut_node: true,
+        ..base
+    };
+
+    for (case, context) in [("root", root), ("internal", internal)] {
+        let without_correction = LmrContext {
+            correction_weighted_sum: 0,
+            ..context
+        };
+        assert_eq!(
+            coefficients.lmr_reduction(0, without_correction)
+                - coefficients.lmr_reduction(0, context),
+            101,
+            "{case}"
+        );
+    }
 }
 
 #[test]
@@ -2777,6 +2858,7 @@ pub(super) fn lmr_coefficients() -> super::super::pruning::LmrCoefficients {
         lmr_history_scale: 439,
         lmr_offset: 106,
         lmr_move_count: 0,
+        lmr_correction: 101,
         lmr_tt_pv_base: 337,
         lmr_tt_pv_pv: 13,
         lmr_tt_pv_value: 95,
@@ -2804,6 +2886,7 @@ fn isolated_lmr_coefficients(reduction: i32) -> LmrCoefficients {
         lmr_history_scale: 0,
         lmr_offset: 0,
         lmr_move_count: 0,
+        lmr_correction: 0,
         lmr_tt_pv_base: 0,
         lmr_tt_pv_pv: 0,
         lmr_tt_pv_value: 0,

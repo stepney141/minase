@@ -85,6 +85,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 params::lmr_tt_pv_depth_cut_node as fn() -> i32,
             ),
             ("LmrMoveCount", params::lmr_move_count as fn() -> i32),
+            ("LmrCorrection", params::lmr_correction as fn() -> i32),
             ("LmrCutNode", params::lmr_cut_node as fn() -> i32),
             (
                 "LmrCutNodeNoTtMove",

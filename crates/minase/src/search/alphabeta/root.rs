@@ -6,6 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
+use super::correction::correction_from_weighted_sum;
 use super::negamax::{SEARCHED_LIST_CAPACITY, should_record_searched_move};
 use super::ordering::{HistoryUpdateCoefficients, move_order_key};
 use super::pruning::{
@@ -242,7 +243,9 @@ impl Searcher<'_> {
             .assert_accumulator(&position, &self.accumulators[0], 0);
         let side = position.side_to_move();
         let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
-        let correction = self.correction_value(side, 0);
+        let correction_weighted_sum = self.correction_weighted_sum_at(side, 0);
+        let correction =
+            correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());
         let static_eval = corrected_static_eval(raw, correction);
         self.static_evals[0] = static_eval;
         let eval = pruning_eval(static_eval, tt_hit.map(|hit| (hit.score, hit.bound)));
@@ -286,6 +289,7 @@ impl Searcher<'_> {
                     alpha,
                     eval,
                     pawn: self.nnue.pawn_value(),
+                    correction_weighted_sum,
                     seek_mate_gives_check: self.lmr_seek_mate_gives_check(&position, mv),
                 });
                 lmr_depth(depth, reduction, true, 0, self.root_depth)

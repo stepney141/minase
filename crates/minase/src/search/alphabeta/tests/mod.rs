@@ -474,7 +474,10 @@ fn with_draw_value_root_searcher(
 
 /// 現在の全表から、探索と同じ処理で静的評価へ加える補正量を求める。
 fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
-    searcher.correction_value(side, ply)
+    correction_from_weighted_sum(
+        searcher.correction_weighted_sum_at(side, ply),
+        searcher.nnue.pawn_value(),
+    )
 }
 
 /// 補正以外の境界を検査するとき、現在の局面が引く全表の要素を直接0にする。

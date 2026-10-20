@@ -23,12 +23,6 @@ use minase_core::position::Undo;
 use minase_core::{Position, Square};
 
 impl Searcher<'_> {
-    /// 現在のplyの全表を読み、重み付きの和から静的評価へ加える補正量を求める。
-    pub(super) fn correction_value(&self, side: Color, ply: u32) -> i32 {
-        let weighted_sum = self.correction_weighted_sum_at(side, ply);
-        correction_from_weighted_sum(weighted_sum, self.nnue.pawn_value())
-    }
-
     /// 現在のplyで引く全表の重み付きの和を返す。
     pub(super) fn correction_weighted_sum_at(&self, side: Color, ply: u32) -> i64 {
         let ply = ply as usize;

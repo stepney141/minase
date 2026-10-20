@@ -638,12 +638,22 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
 /// Stockfishの減深量の1/4に対応する（src/search.cpp:1391-1392）。
 const SEEK_MATE_LMR_DIVISOR: i64 = 4;
 
+/// 補正表の重み付きの和を、歩兵価値1枚分を102,400とするLMRの単位へ直す除数。
+const LMR_CORRECTION_DENOMINATOR: i64 = 102_400;
+
 /// statScoreからLMRの減深量へ引く連続量を1/100手単位で返す。
 ///
 /// 積は`i64`で計算し、`4096 × 1024`で1回だけ割る（src/search.cpp:1381）。
 pub(super) fn lmr_history_adjustment(stat_score: i32, coefficient: i32) -> i32 {
     i32::try_from(i64::from(stat_score) * i64::from(coefficient) * 100 / (4096 * 1024))
         .expect("LMR history adjustment must fit i32")
+}
+
+/// 補正表の重み付きの和の絶対値から、LMRの減深量へ引く1/100手単位の量を返す。
+/// 積は`i64`で計算し、102,400で1回だけ割る（Stockfish src/search.cpp:1353）。
+pub(super) fn lmr_correction_adjustment(weighted_sum: i64, coefficient: i32) -> i32 {
+    i32::try_from(i64::from(coefficient) * weighted_sum.abs() / LMR_CORRECTION_DENOMINATOR)
+        .expect("LMR correction adjustment must fit i32")
 }
 
 /// LMRを適用する残り深さと手番かを返す。
@@ -682,6 +692,8 @@ pub(super) struct LmrContext {
     pub(super) alpha: i32,
     pub(super) eval: i32,
     pub(super) pawn: i32,
+    /// ノードの入口で全補正表を1回だけ読んで得た、切り捨て前の重み付きの和。
+    pub(super) correction_weighted_sum: i64,
     /// 詰みを探す局面なら、その手が王手になるか。詰みを探す局面でなければNone。
     pub(super) seek_mate_gives_check: Option<bool>,
 }
@@ -697,6 +709,7 @@ pub(super) struct LmrCoefficients {
     pub(super) lmr_history_scale: i32,
     pub(super) lmr_offset: i32,
     pub(super) lmr_move_count: i32,
+    pub(super) lmr_correction: i32,
     pub(super) lmr_tt_pv_base: i32,
     pub(super) lmr_tt_pv_pv: i32,
     pub(super) lmr_tt_pv_value: i32,
@@ -724,6 +737,7 @@ impl LmrCoefficients {
             lmr_history_scale: params::lmr_history_scale(),
             lmr_offset: params::lmr_offset(),
             lmr_move_count: params::lmr_move_count(),
+            lmr_correction: params::lmr_correction(),
             lmr_tt_pv_base: params::lmr_tt_pv_base(),
             lmr_tt_pv_pv: params::lmr_tt_pv_pv(),
             lmr_tt_pv_value: params::lmr_tt_pv_value(),
@@ -806,6 +820,10 @@ impl LmrCoefficients {
             r -= i64::from(self.lmr_tt_move);
         }
         r -= i64::from(lmr_history_adjustment(c.stat_score, self.lmr_history_scale));
+        r -= i64::from(lmr_correction_adjustment(
+            c.correction_weighted_sum,
+            self.lmr_correction,
+        ));
         if !c.capture && c.alpha.abs() < REPETITION_BAND_START {
             let pawn = i64::from(c.pawn);
             // −64と96を歩兵価値208で換算した−31%と46%（Stockfish src/search.cpp:1383-1384）。
@@ -852,7 +870,7 @@ pub(super) fn pruning_lmr_depth(
 /// Stockfish src/search.cpp:1183-1192, 1345-1392, 1917-1920の各項を個別に0方向へ丸める。
 /// 表の手番号は0始まりで、256以上なら表だけ最終列を使う。手番号の減算項は実際の番号を使う。
 /// Butterfly historyの段差は捕獲手でない手に掛け、閾値以上なら−100、負の閾値以下なら+100とする。
-/// statScoreの連続量は手の種別によらず、allNodeの拡大より前に引く。
+/// statScoreの連続量と補正表の重み付きの和による項は、手の種別によらずallNodeの拡大より前に引く。
 /// 負の減深量は延長に使うので、ここでは上限も下限も掛けない。
 pub(super) fn lmr_reduction(context: LmrContext) -> i32 {
     LmrCoefficients::current().lmr_reduction(

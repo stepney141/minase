@@ -147,6 +147,7 @@ fn tuning_parameters_in_isolated_process() {
         ("LmrTtPvDepth", 77),
         ("LmrTtPvDepthCutNode", 90),
         ("LmrMoveCount", 0),
+        ("LmrCorrection", 101),
         ("LmrCutNode", 164),
         ("LmrCutNodeNoTtMove", 59),
         ("LmrTtCapture", 0),
@@ -510,7 +511,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 89] = [
+    let cases: [Case; 90] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -593,6 +594,12 @@ fn tuning_parameters_in_isolated_process() {
         }),
         ("LmrMoveCount", 6, || {
             i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                ..super::pruning::lmr_context()
+            }))
+        }),
+        ("LmrCorrection", 200, || {
+            i64::from(lmr_reduction(super::super::pruning::LmrContext {
+                correction_weighted_sum: 102_400,
                 ..super::pruning::lmr_context()
             }))
         }),
