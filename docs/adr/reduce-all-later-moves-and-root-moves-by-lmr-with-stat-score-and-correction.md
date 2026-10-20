@@ -54,3 +54,4 @@ LMRを静かな手に限り、根では行わない2026年10月18日のADRの形
 historyの更新でstatScoreを使う箇所は[historyの更新のADR](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)が定める。
 statScoreの連続量までの変更の効果は、[historyの形の探索ノード数と探索速度の記録](../measurements/history-forms/history-forms-bench.md)、[SPSAの記録](../measurements/history-forms/history-forms.md)、および[STCの記録](../measurements/history-forms/history-forms-stc.md)にある。
 補正量の項を加えたコミットは、benchの深さ3、5、7の探索ノード数の合計を8.7%増やした（[benchの記録](../measurements/correction-history-tables/correction-history-tables-bench.md)）。
+補正量の項の係数`LmrCorrection`は、Stockfishの換算値101から始め、30,000ペアのSPSAで68になった（[SPSAの記録](../measurements/correction-history-tables/correction-history-tables.md)）。

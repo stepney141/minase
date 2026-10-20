@@ -83,3 +83,6 @@ LMRの補正項を、切り捨てた後の補正量`c`から求める案は、St
 鍵、表、合成、および更新の詳細は`crates/minase/src/search/alphabeta/correction.rs`のdocコメントにあり、補正後の静的評価の求め方は`negamax.rs`の`negamax`と`root.rs`の`search_root`のdocコメントにある。係数の現行値は`params.rs`にある。
 形の変更をすべて入れて係数を開始値に置いた版は、設計書を始めた時点のmasterに比べて、benchの深さ3、5、7の探索ノード数の合計が1.5%多く、NPSが約6.7%低く、深さ9を読み終える時間が約12.8%長かった（[benchの記録](../measurements/correction-history-tables/correction-history-tables-bench.md)）。
 鍵の選び方を決めた段階8と段階12の診断は既定の評価関数がPSTだった時期のものであり、新しい形の各表の寄与は測っていない。
+2026年10月20日から21日にかけて、ほかの係数とまとめた89係数を30,000ペアのSPSAで調整し、材料表の重みは277から154へ下がり、minorとnon-pawnの表の重みとcontinuation correction historyの重みは上がった（[SPSAの記録](../measurements/correction-history-tables/correction-history-tables.md)）。
+SPSAの値を反映した候補は、設計書を始めた時点のmaster`e21b7655`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、625ペアで`H1`（約+30 Elo）となった（[STCの記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）。
+探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

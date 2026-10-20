@@ -21,7 +21,7 @@ target/release/minase spsa --run-dir /workspace/job/correction-history-tables --
 `r_end`はすべて0.002であり、利得の指数はα = 0.602とγ = 0.101、学習率の安定化の定数はA = 375である。
 持ち時間の`time=12900+129`は、測定機のSTC`time=10000+100`の基本時間と加算に、換算係数`f` = 1.29を掛けた値である。換算係数の求め方は[事前確認の記録](correction-history-tables-safety.md)にある。
 実行ディレクトリは、`scripts/vast-spsa/fetch.py --keep`が10分ごとに測定機の`data/vast-spsa/correction-history-tables/`へ取得し、全反復がそろった時点で`minase spsa apply`による記録の検査に通した。終了後に`data/spsa/correction-history-tables`へ移した。
-2026年10月20日19時6分（日本時間）ごろから、vast.aiのAPIが口座の操作に2要素認証でのログインを求めて拒否したので、`fetch.py`は調整機の状態の照会に6回続けて失敗して終了した。調整機は止まらずにセッションを続けた。利用者が認証し直すまでの約50分は、コンテナのSSHを通したrsyncで実行ディレクトリとログを取得し、19時57分に`fetch.py`を起動し直した。
+2026年10月20日19時6分（日本時間）ごろから、vast.aiのAPIが口座の操作に2要素認証でのログインを求め、要求を拒否するようになったので、`fetch.py`は調整機の状態の照会に6回続けて失敗して終了した。調整機は止まらずにセッションを続けた。利用者が認証し直すまでの約50分は、コンテナのSSHを通したrsyncで実行ディレクトリとログを取得し、19時57分に`fetch.py`を起動し直した。
 
 ## エンジン
 
@@ -40,8 +40,8 @@ runnerが記録したCPUの数は、物理192コア、論理368スレッドで�
 開始時に見込んだ所要時間は8.15時間だった。
 調整機を作り直して再開したことはない。
 
-調整機は、照会した出品のうち条件に合う最安のものを`launch.py`がその場で作成する方式で、2026年10月20日16時33分（日本時間）に作成した。
-1時間2.5米ドル以下の96コアの型の出品が現れるまで、10時19分から約6.2時間待った。
+調整機は、照会した出品のうち条件に合う最安のものを`launch.py`がその場で作成する方式で借りた。作成は2026年10月20日16時33分（日本時間）である。
+1時間2.5米ドル以下の96コアのCPUの出品が現れるまで、10時19分から約6.2時間待った。
 セッションは2026年10月20日17時ごろに始まり、10月21日0時15分ごろに終わった。
 
 ## 結果
@@ -163,7 +163,7 @@ runnerが記録したCPUの数は、物理192コア、論理368スレッドで�
 | `CorrectionFailLowBonus` | 29 | 12 | — | 21 | −0.56 | +0.65 | — |
 | `LmrCorrection` | 101 | 45 | 0 | 68 | −1.00 | +0.68 | +2.03 |
 
-材料表の重み`CorrectionMaterialWeight`は277から154へ下がり、Stockfishの配置の表の重み（minor、non-pawn）とcontinuation correction historyの重みはいずれも上がった。
+材料表の重み`CorrectionMaterialWeight`は277から154へ下がり、Stockfishにある配置の表（minor、non-pawn）の重みとcontinuation correction historyの重みはいずれも上がった。
 continuation correction historyの2手前と4手前の重みは30から104へ、6手前の重みは24から111へ上がり、YaneuraOuの換算値（69）も上回った。
 pawnの表の重み`CorrectionPawnWeight`は52から36へ下がった。
 LMRの補正項の係数`LmrCorrection`は101から68へ下がり、YaneuraOuの換算値（45）とStockfishの換算値の間に入った。
