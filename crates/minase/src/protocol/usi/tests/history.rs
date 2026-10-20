@@ -1,5 +1,5 @@
 //! history表の対局内持ち越しとUSIライフサイクルの検査。
-//! 理由は`docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
+//! 理由は`docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 
 use super::*;
 use crate::search::alphabeta::history_decay_for_test;

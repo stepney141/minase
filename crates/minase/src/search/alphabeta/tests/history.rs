@@ -1,5 +1,5 @@
 //! butterfly履歴と捕獲履歴は対局内で持ち越し、根の探索前に減衰させる。
-//! 採用理由はdocs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md。
+//! 採用理由はdocs/adr/carry-histories-and-correction-histories-within-a-game.md。
 
 use super::*;
 use crate::search::HistoryTables;

@@ -71,7 +71,7 @@ parameters! {
     /// LMRの減深量の上限。単位は手である。
     /// StockfishとYaneuraOuには減深量の上限がなく、換算する元がないので、従来の定数と同じ3を既定値とする。
     /// 範囲の上限8は暫定の値である。SPSAの調整対象であり、この係数としての値は未調整である。
-    /// 上限を設けた判断の根拠は`docs/adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md`にある。
+    /// 上限を設けた判断の根拠は`docs/adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md`にある。
     LmrMaxReduction(lmr_max_reduction): 4, 1, 8;
     /// LMRの基数。単位は1/100手である。
     /// Stockfishは948/1024で93（src/search.cpp:1919）、YaneuraOuは1133/1024で111。

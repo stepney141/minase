@@ -33,5 +33,5 @@ continuation historyを、文脈の手を指した局面が王手を受けてい
 ## 結果
 
 表の添字は`crates/minase/src/search/alphabeta/ordering.rs`の`continuation_index`、`history.rs`の`ContinuationHistory`、`PawnHistory`、`pawn_key`、および`pawn_key_after_move`のdocコメントにあり、着手の記録は`searcher.rs`の`MoveRecord`にある。
-表の使い方は[並べ替えと更新のADR](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)、[LMRのADR](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)、および[continuation historyによる枝刈りのADR](prune-quiet-moves-by-continuation-history-and-shift-lmr-depth-by-history.md)が、寿命は[持ち越しのADR](carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)が定める。
+表の使い方は[並べ替えと更新のADR](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)、[LMRのADR](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)、および[continuation historyによる枝刈りのADR](prune-quiet-moves-by-continuation-history-and-shift-lmr-depth-by-history.md)が、寿命は[持ち越しのADR](carry-histories-and-correction-histories-within-a-game.md)が定める。
 [correction historyの表の設計書](../plans/correction-history-tables.md)のC2は、pawn historyの鍵を再利用する。

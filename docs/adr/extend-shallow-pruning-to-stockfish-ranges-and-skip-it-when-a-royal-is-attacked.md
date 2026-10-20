@@ -72,7 +72,7 @@ reverse futility pruningは、次の条件をすべて満たすノードで`(661
 余裕値はStockfishの式（`src/search.cpp:1025-1030`）を歩兵価値の百分率の係数で表したものであり、深さに比例する項からimprovingとopponentWorseningの項を引き、補正量の絶対値に比例する項を足す。
 深さに掛ける倍率の上限（歩兵価値の41%）、深さの上限18および5、および返り値の重み661と363は、Stockfishの値で固定する。
 返り値の式以外は旧ADRから引き継ぐ。
-判定用の評価値の定義は[静的評価のADR](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)に、improvingとopponentWorseningの定義は[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)にある。
+判定用の評価値の定義は[静的評価のADR](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)に、improvingとopponentWorseningの定義は[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)にある。
 null move pruningを試す条件は、[null moveのADR](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)が定める。
 旧ADRがnull move pruningには王駒への利きの判定を加えないとした決定は、そのADRが改め、手番側の王駒に相手の疑似利きが届くノードではnull moveを試さない。
 

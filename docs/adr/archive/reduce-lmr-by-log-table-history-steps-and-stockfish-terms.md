@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月18日。[LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量を1/100手単位で加える](../reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月18日。[LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量を1/100手単位で加える](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)によって置き換えられた。
 
 ## コンテキスト
 
@@ -55,7 +55,7 @@ Stockfishのこの項（statScoreの項）を加えるかは、[historyの形の
 ## 結果
 
 式の詳細は`crates/minase/src/search/alphabeta/pruning.rs`の`LmrCoefficients::lmr_reduction`、`lmr_depth`、`lmr_research_depth`、`non_lmr_depth`、および`lmr_table`のdocコメントにあり、係数の現行値は`params.rs`にある。
-cutNodeとallNodeの区別は[置換表の打ち切りのADR](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が、ttPvは[reverse futility pruningのADR](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)が、判定用の評価値は[静的評価のADR](../key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)が定める。
+cutNodeとallNodeの区別は[置換表の打ち切りのADR](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)が、ttPvは[reverse futility pruningのADR](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)が、判定用の評価値は[静的評価のADR](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)が定める。
 補正量の項は[correction historyの表の設計書](../../plans/correction-history-tables.md)が扱い、本決定には含めない（`src/search.cpp:1353`）。
 詰みを探す局面で王手になる手とならない手の減深量を変える項も、[浅い枝刈りの拡張の設計書](../../plans/archived/shallow-pruning-extensions.md)が扱い、本決定には含めない（同1391-1392行）。
 

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月10日。[butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](../carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月10日。[butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -50,5 +50,5 @@ minaseはすべてのノードで静的評価を求めるので、この条件�
 ## 結果
 
 並べ替えと更新の式は`crates/minase/src/search/alphabeta/ordering.rs`の`quiet_ordering_value`、`DirectCheckSquares`、`LesserPieceThreats`、`HistoryUpdateCoefficients`、`update_quiet_histories`、および`update_continuation`のdocコメントにあり、更新の場面は`negamax.rs`と`root.rs`にある。係数の現行値は`params.rs`にある。
-表の形と寿命は、[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)と[持ち越しのADR](carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)が定める。
+表の形と寿命は、[表の構成のADR](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)と[持ち越しのADR](carry-histories-and-correction-histories-within-a-game.md)が定める。
 変更の効果は、[SPSAの記録](../measurements/history-forms/history-forms.md)と[STCの記録](../measurements/history-forms/history-forms-stc.md)にある。

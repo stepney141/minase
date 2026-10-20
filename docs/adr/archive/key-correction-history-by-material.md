@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月21日。[correction historyは駒種別の枚数を鍵にし、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](../key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月21日。[correction historyは駒種別の枚数を鍵にし、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)によって置き換えられた。
 
 ## コンテキスト
 

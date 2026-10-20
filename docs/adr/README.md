@@ -256,7 +256,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月18日 [測定記録は測定を計画した設計書ごとのディレクトリに置き、凍結した文書の中でもリンクのパスだけは書き換える](group-measurement-records-by-commissioning-plan.md)
 - 2026年10月18日 [SPSAは借りた計算機で、負荷時の速度の比で伸ばした持ち時間で実行する](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)
 - 2026年10月18日 [再開は実行条件を`manifest.json`だけから読み、SPSAではコミット指定の調整対象のビルドし直しを受け入れる](resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md)
-- 2026年10月18日 [correction historyは駒種別の枚数を鍵にし、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)
+- 2026年10月18日 [correction historyは駒種別の枚数を鍵にし、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)（置き換え済み）
 - 2026年10月18日 [improvingは補正後の静的評価で判定し、futilityとreverse futilityの余裕値、late move pruningの上限、およびLMRの減深量に使う](archive/judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)（置き換え済み）
 - 2026年10月18日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わず、reverse futility pruningはStockfishの条件で残り深さ18まで行う](archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)（置き換え済み）
 - 2026年10月18日 [LMRの減深量は対数表と3段階のhistory補正にStockfishの項を1/100手単位で加えて求め、上限を係数として残す](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)（置き換え済み）
@@ -271,9 +271,12 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月19日 [null moveの打ち切りは残り深さ16以上で検証探索により確かめる](verify-null-move-cutoffs-at-remaining-depth-16-and-above.md)
 - 2026年10月19日 [improvingは補正後の静的評価で判定し、reverse futility pruningの余裕値、null move pruningの条件、late move pruningの上限、およびLMRの減深量に使い、静かな手のfutility pruningの余裕値には使わない](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)
 - 2026年10月19日 [着手が王手になるかを前計算なしに着手後の占有で判定し、枝刈りと詰みを探す局面のLMRに使う](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)
-- 2026年10月19日 [LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量を1/100手単位で加える](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)
+- 2026年10月19日 [LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、およびstatScoreの連続量を1/100手単位で加える](archive/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score.md)（置き換え済み）
 - 2026年10月19日 [静かな手はStockfishと同じhistoryの和と直接の王手と脅威の項で並べ、historyはStockfishの上限つき1次式で、Stockfishと同じ場面に更新する](order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md)
 - 2026年10月19日 [静かな手のhistoryは、butterfly表、continuation history、pawn history、およびlow ply historyで引く](look-up-quiet-histories-in-butterfly-continuation-pawn-and-low-ply-tables.md)
-- 2026年10月19日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)
+- 2026年10月19日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)（置き換え済み）
 - 2026年10月19日 [捕獲履歴はStockfishの上限、初期値、および更新量で更新し、寄与を歩兵価値の定数倍に抑えて並べ替えと静止探索に使い、LMRのstatScoreにも使う](update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md)
 - 2026年10月19日 [continuation historyとpawn historyの値が低い静かな手を読まず、枝刈り用のlmrDepthをhistoryで増減する](prune-quiet-moves-by-continuation-history-and-shift-lmr-depth-by-history.md)
+- 2026年10月20日 [correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)
+- 2026年10月20日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation history、pawn history、および局面を鍵にした補正表は探索チームで共有して減衰させずに持ち越し、continuation correction historyはワーカーごとに持ち越し、low ply historyは探索ごとに初期化する](carry-histories-and-correction-histories-within-a-game.md)
+- 2026年10月20日 [LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、statScoreの連続量、および補正量の大きさの項を1/100手単位で加える](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)

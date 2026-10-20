@@ -49,7 +49,7 @@ reverse futility pruningは、次の条件をすべて満たすノードで判�
 
 余裕値はStockfishの式（`src/search.cpp:1025-1030`）を歩兵価値の百分率の係数で表したものであり、深さに比例する項からimprovingとopponentWorseningの項を引き、補正量の絶対値に比例する項を足す。
 深さに掛ける倍率の上限（歩兵価値の41%）と、深さの上限18および5は、Stockfishの値で固定する。
-判定用の評価値とopponentWorseningの定義は、[静的評価のADR](../key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)にある。
+判定用の評価値とopponentWorseningの定義は、[静的評価のADR](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)と[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)にある。
 
 ## 検討した代案
 

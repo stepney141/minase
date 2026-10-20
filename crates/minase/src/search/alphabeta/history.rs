@@ -283,7 +283,7 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 /// 拒否した変更と同じワーカー数の再指定では保持するが、置換表容量は同じ値の再指定でも初期化する。
 /// killer手は持ち越さない。
 /// 各表の寿命と共有範囲の判断は
-/// `docs/adr/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md`にある。
+/// `docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,
