@@ -6,7 +6,7 @@ use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::negamax::{can_prune_moves, null_move_cutoff_score};
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::see_margin;
-use crate::search::{REPETITION_WIN, in_repetition_band};
+use crate::search::{REPETITION_BAND_START, REPETITION_WIN, in_repetition_band};
 
 #[test]
 fn r1_repetition_band_boundaries_exclude_normal_evaluation_and_mates() {
@@ -450,26 +450,28 @@ fn r1_repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
 }
 
 #[test]
-fn r1_repetition_band_normalizes_initial_and_widened_aspiration_edges() {
-    for distance in [49, 50, 51, 100] {
-        let mut high = AspirationWindow::initial(Some(29_487 - distance), 50);
-        let mut low = AspirationWindow::initial(Some(-29_487 + distance), 50);
-        assert_eq!(high.alpha, 29_487 - distance - 50);
-        assert_eq!(low.beta, -29_487 + distance + 50);
-        if distance <= 50 {
-            assert_eq!(high.beta, INFINITY);
-            assert_eq!(low.alpha, -INFINITY);
-        } else {
-            assert_eq!(high.beta, 29_487 - distance + 50);
-            assert_eq!(low.alpha, -29_487 + distance - 50);
-        }
-        let unchanged_alpha = high.alpha;
-        let unchanged_beta = low.beta;
-        high.widen_high();
-        low.widen_low();
-        assert_eq!((high.alpha, high.beta), (unchanged_alpha, INFINITY));
-        assert_eq!((low.alpha, low.beta), (-INFINITY, unchanged_beta));
-    }
+fn r1_repetition_band_normalizes_initial_and_moved_aspiration_edges() {
+    let mut high = AspirationWindow::initial(Some((REPETITION_BAND_START - 100, 50)));
+    assert_eq!(
+        (high.alpha, high.beta),
+        (REPETITION_BAND_START - 150, REPETITION_BAND_START - 50)
+    );
+    high.widen_high(REPETITION_BAND_START - 50);
+    assert_eq!(
+        (high.alpha, high.beta),
+        (REPETITION_BAND_START - 100, INFINITY)
+    );
+
+    let mut low = AspirationWindow::initial(Some((-REPETITION_BAND_START + 100, 50)));
+    assert_eq!(
+        (low.alpha, low.beta),
+        (-REPETITION_BAND_START + 50, -REPETITION_BAND_START + 150)
+    );
+    low.widen_low(-REPETITION_BAND_START + 50);
+    assert_eq!(
+        (low.alpha, low.beta),
+        (-INFINITY, -REPETITION_BAND_START + 50)
+    );
 }
 
 #[test]

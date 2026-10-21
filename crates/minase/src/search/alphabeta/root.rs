@@ -82,57 +82,72 @@ pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
     u32::try_from(weight).expect("root move weight is bounded by its u32 constants")
 }
 
-/// 反復探索の窓と、次に外れた側を広げる幅。
+/// 反復探索の窓と、窓外れ後の移動に使う半幅。
 ///
 /// 直前の完了反復の最善手について、評価値の平均の周囲から探索を始めるaspiration windowである。
 /// `delta`は静的評価と同じ単位で、初期値は定数項、符号つき2乗の平均の項、およびワーカー番号の項から求める。
-/// 外れた側だけを広げる理由は`docs/adr/widen-only-the-failed-side-of-aspiration-windows.md`にある。
+/// 窓外れ時は返った値から外れた側の端を移し、反対側の端も元の窓の端を基準に寄せる。
 pub(super) struct AspirationWindow {
     pub(super) alpha: i32,
     pub(super) beta: i32,
-    pub(super) delta: i32,
+    pub(super) delta: Option<i32>,
 }
 
 impl AspirationWindow {
-    /// 最善手の平均が詰み帯と専用の帯の外なら、平均±`delta`を初期窓にする。
-    /// 平均がない場合は全窓とし、詰み帯または専用の帯に達した端は無限へ置き換える。
-    pub(super) fn initial(average: Option<i32>, delta: i32) -> Self {
+    /// 最善手の平均が詰み帯と専用の帯の外なら、平均±半幅を初期窓にする。
+    /// 平均と半幅の組がない場合は全窓とし、半幅は保持せず読まない。
+    /// 詰み帯または専用の帯に達した端は無限へ置き換える。
+    pub(super) fn initial(average_and_delta: Option<(i32, i32)>) -> Self {
+        let Some((average, delta)) = average_and_delta else {
+            return Self {
+                alpha: -INFINITY,
+                beta: INFINITY,
+                delta: None,
+            };
+        };
+        if i64::from(average).abs() >= i64::from(REPETITION_BAND_START) {
+            return Self {
+                alpha: -INFINITY,
+                beta: INFINITY,
+                delta: None,
+            };
+        }
+        debug_assert!(delta >= 1);
         let mut window = Self {
             alpha: -INFINITY,
             beta: INFINITY,
-            delta,
+            delta: Some(delta),
         };
-        if let Some(average) =
-            average.filter(|&score| i64::from(score).abs() < i64::from(REPETITION_BAND_START))
-        {
-            window.set_bounds(
-                i64::from(average) - i64::from(delta),
-                i64::from(average) + i64::from(delta),
-            );
-        }
+        window.set_bounds(
+            i64::from(average) - i64::from(delta),
+            i64::from(average) + i64::from(delta),
+        );
         window
     }
 
-    /// 下側だけを広げ、次の拡大量に調整係数を掛ける。
-    pub(super) fn widen_low(&mut self) {
-        let alpha = if self.alpha == -INFINITY {
-            i64::from(self.alpha)
-        } else {
-            i64::from(self.alpha) - i64::from(self.delta)
-        };
-        self.set_bounds(alpha, i64::from(self.beta));
-        self.delta = grow_aspiration_delta(self.delta);
+    /// fail lowの値から下端を移し、上端を元の下端へ寄せてから半幅を広げる。
+    pub(super) fn widen_low(&mut self, score: i32) {
+        debug_assert!(score <= self.alpha);
+        debug_assert!(self.alpha != -INFINITY);
+        let delta = self
+            .delta
+            .expect("an aspiration retry must have a half-width");
+        self.set_bounds(i64::from(score) - i64::from(delta), i64::from(self.alpha));
+        self.delta = Some(grow_aspiration_delta(delta));
     }
 
-    /// 上側だけを広げ、次の拡大量に調整係数を掛ける。
-    pub(super) fn widen_high(&mut self) {
-        let beta = if self.beta == INFINITY {
-            i64::from(self.beta)
-        } else {
-            i64::from(self.beta) + i64::from(self.delta)
-        };
-        self.set_bounds(i64::from(self.alpha), beta);
-        self.delta = grow_aspiration_delta(self.delta);
+    /// fail highの値から上端を移し、下端を元の上端を基準に寄せてから半幅を広げる。
+    pub(super) fn widen_high(&mut self, score: i32) {
+        debug_assert!(score >= self.beta);
+        debug_assert!(self.beta != INFINITY);
+        let delta = self
+            .delta
+            .expect("an aspiration retry must have a half-width");
+        self.set_bounds(
+            (i64::from(self.beta) - i64::from(delta)).max(i64::from(self.alpha)),
+            i64::from(score) + i64::from(delta),
+        );
+        self.delta = Some(grow_aspiration_delta(delta));
     }
 
     /// 64ビット整数で求めた端を正規化して保持する。
@@ -254,13 +269,15 @@ impl Searcher<'_> {
         tt_hit
     }
 
-    /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
+    /// 窓を移しながら同じ深さを読み直し、窓内で完了した結果だけを返す。
     ///
     /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
     /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
     /// 深さ2以上は平均があれば窓を置く。
     /// 直前の完了値は詰みを探す印の判定だけに使う。
-    /// 値がα以下なら下側だけ、β以上なら上側だけを広げ、同じ深さで再探索する。
+    /// 値がα以下ならβを元のαへ寄せて下端を返り値から移し、
+    /// β以上ならαを元のβを基準に寄せて上端を返り値から移す。
+    /// どちらも窓を移した後に半幅を広げ、同じ深さで再探索する。
     /// 等号も窓外れとし、fail-lowの最善手は置換表の助言としてだけ残して、完了結果や進捗へは採らない。
     /// 読み直し中の中断も`None`を返す。
     pub(super) fn search_iteration(
@@ -278,20 +295,19 @@ impl Searcher<'_> {
                 .find(|(mv, _)| *mv == best_move)
                 .and_then(|(_, stats)| stats.averages)
         });
-        let mut window = if let Some((average, signed_square_average)) = averages {
-            AspirationWindow::initial(
-                Some(average),
-                initial_aspiration_delta(
-                    self.nnue.pawn_value(),
-                    params::aspiration_delta(),
-                    params::aspiration_score_width(),
-                    signed_square_average,
-                    self.worker_index,
-                ),
-            )
-        } else {
-            AspirationWindow::initial(None, 1)
-        };
+        let mut window =
+            AspirationWindow::initial(averages.map(|(average, signed_square_average)| {
+                (
+                    average,
+                    initial_aspiration_delta(
+                        self.nnue.pawn_value(),
+                        params::aspiration_delta(),
+                        params::aspiration_score_width(),
+                        signed_square_average,
+                        self.worker_index,
+                    ),
+                )
+            }));
         loop {
             let Some((best_move, score)) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)
@@ -300,9 +316,9 @@ impl Searcher<'_> {
                 return None;
             };
             if score <= window.alpha {
-                window.widen_low();
+                window.widen_low(score);
             } else if score >= window.beta {
-                window.widen_high();
+                window.widen_high(score);
             } else {
                 self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
                 if let Some(results) = &mut self.root_results {

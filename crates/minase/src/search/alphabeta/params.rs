@@ -260,9 +260,11 @@ parameters! {
     /// Stockfishの`/10193`は約204（src/search.cpp:389）、YaneuraOuの`/9000`は約100
     /// （yaneuraou-search.cpp:1670）である。開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     AspirationScoreWidth(aspiration_score_width): 204, 0, 400;
-    /// aspiration windowが次に外れた際の拡大量に掛ける倍率。単位は百分率である。
-    /// 値はSPSAで調整した。
-    AspirationGrowth(aspiration_growth): 149, 125, 400;
+    /// aspiration windowが窓外れした際に、次の半幅へ掛ける倍率。単位は百分率である。
+    /// Stockfishは`delta += 47 * delta / 128`（src/search.cpp:455）で約137%、YaneuraOuは
+    /// `delta += delta / 3`（yaneuraou-search.cpp:1795）で約133%である。
+    /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    AspirationGrowth(aspiration_growth): 137, 125, 400;
     /// null moveの基本減深量 `(切片 + 深さ × 傾き) / 1200` の切片。単位は1/1200手である。
     /// StockfishとYaneuraOuは、子の1手を除いて6手に相当する7200である
     /// （Stockfish src/search.cpp:1044、YaneuraOu yaneuraou-search.cpp:3252）。
