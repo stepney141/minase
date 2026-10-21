@@ -183,6 +183,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     after_null.make_null_move();
     let expected = -evaluate(test_nnue(), &after_null);
     with_root_searcher(&position, &[], |searcher| {
+        zero_position_correction(searcher, &after_null);
         assert_eq!(
             searcher.search_null_move(&mut position.clone(), 0, expected, 0),
             Some(expected)

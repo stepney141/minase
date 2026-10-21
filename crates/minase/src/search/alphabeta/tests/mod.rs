@@ -480,11 +480,9 @@ fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
     )
 }
 
-/// 補正以外の境界を検査するとき、現在の局面が引く全表の要素を直接0にする。
-fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
-    let side = position.side_to_move();
+fn position_correction_entries(position: &Position) -> [(u64, CorrectionTableKind); 5] {
     let placement = correction_piece_keys(position);
-    for (key, table) in [
+    [
         (material_key(position), CorrectionTableKind::Material),
         (pawn_key(position), CorrectionTableKind::Pawn),
         (placement.minor, CorrectionTableKind::Minor),
@@ -496,9 +494,24 @@ fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
             placement.non_pawn[Color::White.index()],
             CorrectionTableKind::WhiteNonPawn,
         ),
-    ] {
+    ]
+}
+
+fn store_position_correction(searcher: &Searcher<'_>, position: &Position, value: i16) {
+    let side = position.side_to_move();
+    for (key, table) in position_correction_entries(position) {
+        searcher.correction.store(side, key, table, value);
+    }
+}
+
+/// 補正以外の境界を検査するとき、現在の局面が引く全表の要素を直接0にする。
+fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
+    let side = position.side_to_move();
+    for (key, table) in position_correction_entries(position) {
         assert_eq!(searcher.correction.read(side, key, table), -5);
-        searcher.correction.store(side, key, table, 0);
+    }
+    store_position_correction(searcher, position, 0);
+    for (key, table) in position_correction_entries(position) {
         assert_eq!(searcher.correction.read(side, key, table), 0);
     }
     if let Some(indices) =
@@ -527,7 +540,7 @@ fn repeated_root_children(position: &Position, moves: &[Move]) -> Vec<u64> {
         .collect()
 }
 
-/// 静止探索を直接実行し、評価値と当該Searcherの実着手の適用回数を返す。
+/// 補正表を0にして静止探索を直接実行し、評価値と当該Searcherの実着手の適用回数を返す。
 fn run_quiesce(
     position: &Position,
     alpha: i32,
@@ -572,6 +585,7 @@ fn run_quiesce(
         &shared_histories.pawn,
     );
     set_test_path_ply(&mut searcher, ply);
+    zero_position_correction(&mut searcher, position);
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");

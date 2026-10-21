@@ -15,7 +15,10 @@ use minase_core::position::Position;
 use minase_core::repetition_key;
 
 use super::capture_history::CaptureHistory;
-use super::correction::{CorrectionPieceKeys, correction_piece_keys_after_move, key_after_move};
+use super::correction::{
+    CorrectionPieceKeys, correction_from_weighted_sum, correction_piece_keys_after_move,
+    key_after_move,
+};
 #[cfg(feature = "invariants")]
 use super::correction::{correction_piece_keys, material_key};
 #[cfg(feature = "invariants")]
@@ -23,13 +26,13 @@ use super::history::pawn_key;
 use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::params;
-use super::pruning::capture_is_pruned_by_see;
+use super::pruning::{capture_is_pruned_by_see, corrected_static_eval};
 use super::royal::captures_all_royals;
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::tt::Bound;
 
 impl Searcher<'_> {
-    /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
+    /// 補正後の静的評価をstand-patとし、捕獲手だけを使う静止探索で局面を評価する。
     ///
     /// 王駒がすべて狙われていてもstand-patを使い、非捕獲の王手と成りは展開しない。
     /// この近似の理由は`docs/adr/use-stand-pat-when-royals-are-attacked.md`にある。
@@ -37,10 +40,12 @@ impl Searcher<'_> {
     /// 捕獲を指して子を読む間は、補正の4つの鍵と探索経路の着手記録を通常探索と同じ契約で更新する。
     /// 静止探索内の手は主変化へ含めず、中断された場合は`None`を返す。
     ///
-    /// 最大ply、stand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
+    /// 最大plyでは補正前の静的評価を返す。
+    /// その後は補正後のstand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
     /// その後の置換表ヒットによる打ち切りと中断も保存しない。
     /// 専用の帯の値は対局履歴と探索経路に依存するため、打ち切りには使わず記録手だけを使う。
-    /// 通常出口は深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、それ以外は正確な値とする。
+    /// 通常出口は補正前の静的評価と探索値を深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、
+    /// それ以外は正確な値とする。補正後のstand-patは静的評価として保存しない。
     /// stand-patを上回る捕獲手がなければ記録手は持たない。
     /// 深さ0の記録は通常探索の深さ条件を満たさず、カットオフに使われない。
     /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
@@ -80,25 +85,28 @@ impl Searcher<'_> {
             assert_eq!(self.non_pawn_keys[ply as usize], correction_keys.non_pawn);
         }
 
+        let side = position.side_to_move();
+        let v = self
+            .nnue
+            .evaluate_accumulator(&self.accumulators[ply as usize], side);
         if ply >= MAX_PLY {
-            return Some(
-                self.nnue.evaluate_accumulator(
-                    &self.accumulators[ply as usize],
-                    position.side_to_move(),
-                ),
-            );
+            return Some(v);
         }
 
-        let stand_pat = self
-            .nnue
-            .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move());
-        if stand_pat >= beta {
-            return Some(stand_pat);
+        let s = corrected_static_eval(
+            v,
+            correction_from_weighted_sum(
+                self.correction_weighted_sum_at(side, ply),
+                self.nnue.pawn_value(),
+            ),
+        );
+        if s >= beta {
+            return Some(s);
         }
 
         let original_alpha = alpha;
-        alpha = alpha.max(stand_pat);
-        let threshold = alpha - stand_pat - self.delta_margin;
+        alpha = alpha.max(s);
+        let threshold = alpha - s - self.delta_margin;
         let buffers = &mut self.qsearch[ply as usize];
         buffers.reset(position);
         if !buffers.initialize(
@@ -108,7 +116,7 @@ impl Searcher<'_> {
             &self.capture_ranks,
             threshold,
         ) {
-            return Some(stand_pat);
+            return Some(s);
         }
 
         let key = search_key(position);
@@ -143,7 +151,7 @@ impl Searcher<'_> {
             }
         }
 
-        let mut best = stand_pat;
+        let mut best = s;
         let mut best_move = None;
         let mut searched_captures = 0;
         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
@@ -161,9 +169,7 @@ impl Searcher<'_> {
                 buffers.royal_count,
                 candidate.capture.captured,
             );
-            if !is_last_royal_capture
-                && stand_pat + candidate.captured_value + self.delta_margin <= alpha
-            {
+            if !is_last_royal_capture && s + candidate.captured_value + self.delta_margin <= alpha {
                 continue;
             }
             if !is_last_royal_capture
@@ -250,7 +256,7 @@ impl Searcher<'_> {
             Bound::Exact
         };
         self.tt
-            .store(key, 0, best, Some(stand_pat), bound, best_move, ply, pv_hit);
+            .store(key, 0, best, Some(v), bound, best_move, ply, pv_hit);
         Some(best)
     }
 }

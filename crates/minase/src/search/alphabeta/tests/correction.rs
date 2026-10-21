@@ -5,6 +5,7 @@ use core::cmp::Ordering::{Equal, Greater, Less};
 
 use super::*;
 use crate::eval::evaluate;
+use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::correction::correction_update_bonus;
 use minase_core::Color;
 
@@ -74,6 +75,119 @@ fn attacked_board() -> Position {
             (sq(11, 0), Color::Black, PieceKind::King),
         ],
     )
+}
+
+fn near_upper_evaluation_limit_board() -> Position {
+    let black_king = sq(11, 0);
+    let white_king = sq(0, 11);
+    let mut pieces = vec![
+        (black_king, Color::Black, PieceKind::King),
+        (white_king, Color::White, PieceKind::King),
+    ];
+    let mut squares = Square::all().filter(|&square| square != black_king && square != white_king);
+    pieces.extend(
+        squares
+            .by_ref()
+            .take(17)
+            .map(|square| (square, Color::Black, PieceKind::Rook)),
+    );
+    pieces.push((
+        squares.next().expect("fixture has a square for the bishop"),
+        Color::Black,
+        PieceKind::Bishop,
+    ));
+    position(Color::Black, &pieces)
+}
+
+#[test]
+fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
+    let board = bare_kings();
+    let v = evaluate(test_nnue(), &board);
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.correction.store(
+            board.side_to_move(),
+            material_key(&board),
+            CorrectionTableKind::Material,
+            1024,
+        );
+        let correction = position_correction(searcher, board.side_to_move(), 0);
+        assert_ne!(correction, 0);
+        let expected = (v + correction).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, expected, 0),
+            Some(expected)
+        );
+    });
+}
+
+#[test]
+fn quiescence_stand_pat_clamps_at_evaluation_limit() {
+    let board = near_upper_evaluation_limit_board();
+    let v = evaluate(test_nnue(), &board);
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        store_position_correction(searcher, &board, 1024);
+        let correction = position_correction(searcher, board.side_to_move(), 0);
+        assert!(v < EVALUATION_LIMIT);
+        assert!(v + correction > EVALUATION_LIMIT);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, EVALUATION_LIMIT, 0),
+            Some(EVALUATION_LIMIT)
+        );
+    });
+}
+
+#[test]
+fn quiescence_max_ply_returns_uncorrected_static_eval() {
+    let board = bare_kings();
+    let v = evaluate(test_nnue(), &board);
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.correction.store(
+            board.side_to_move(),
+            material_key(&board),
+            CorrectionTableKind::Material,
+            1024,
+        );
+        assert_ne!(position_correction(searcher, board.side_to_move(), 0), 0);
+        set_test_path_ply(searcher, MAX_PLY);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, MAX_PLY),
+            Some(v)
+        );
+    });
+}
+
+#[test]
+fn quiescence_tt_stores_uncorrected_static_eval() {
+    let board = capture_board();
+    let key = search_key(&board);
+    let v = evaluate(test_nnue(), &board);
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.correction.store(
+            board.side_to_move(),
+            material_key(&board),
+            CorrectionTableKind::Material,
+            1024,
+        );
+        let correction = position_correction(searcher, board.side_to_move(), 0);
+        assert_ne!(correction, 0);
+        let s = (v + correction).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT);
+        assert_ne!(s, v);
+
+        let mut current = board.clone();
+        assert!(
+            searcher
+                .quiesce(&mut current, -INFINITY, INFINITY, 0)
+                .is_some()
+        );
+        assert_eq!(searcher.tt.probe(key, 0).unwrap().static_eval, Some(v));
+    });
 }
 
 #[test]

@@ -113,6 +113,7 @@ fn seek_mate_disables_razoring() {
         let (quiet_score, quiet_nodes) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
         for seek_mate in [false, true] {
             with_root_searcher(&board, &[], |searcher| {
+                zero_position_correction(searcher, &board);
                 searcher.seek_mate = seek_mate;
                 let score = searcher
                     .negamax(&mut board.clone(), depth, alpha, alpha + 1, 0, false)

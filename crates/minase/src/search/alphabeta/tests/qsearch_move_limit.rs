@@ -496,6 +496,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
     with_nnue_root_searcher(nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
         set_test_path_ply(searcher, ply);
+        zero_position_correction(searcher, &board);
         // 固定したdelta境界で手数の算入を検査する。
         searcher.delta_margin = 500;
         seed_first(searcher, &board, captures[0], ply);
@@ -583,6 +584,7 @@ fn qsearch_limit_null_move_clears_previous_capture() {
     let mut after_null = board.clone();
     after_null.make_null_move();
     with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &after_null);
         let expected = -evaluate(searcher.nnue, &after_null);
         searcher.previous_capture[1] = Some(sq(5, 3));
         assert_eq!(

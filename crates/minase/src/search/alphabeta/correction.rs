@@ -2,7 +2,7 @@
 //!
 //! 手番側ごとに材料、pawn、minor、先手と後手のnon-pawnの5表を引き、
 //! 2手前、4手前、6手前の着手を文脈にした表の値とともに、重み付きの和から
-//! 求めた補正値を通常探索の各ノードの静的評価に加える。
+//! 求めた補正値を通常探索の各ノードの静的評価と静止探索のstand-patに加える。
 //! 補正後の静的評価は、静的評価を使う前向き枝刈りの判定のすべてに使う（Stockfish src/search.cpp:832, 846-870）。
 //! 鍵を選んだ理由は`docs/adr/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md`にある。
 

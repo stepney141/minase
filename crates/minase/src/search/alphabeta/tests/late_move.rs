@@ -536,6 +536,8 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             );
             let mut child = board.clone();
             child.make_move_unchecked(target, engine_rules());
+            store_position_correction(searcher, &child, 0);
+            searcher.continuation_correction.values_mut().fill(0);
             let target_score = -evaluate(searcher.nnue, &child);
             assert!(target_score > DRAW_SCORE && alpha > DRAW_SCORE);
             let score = searcher
