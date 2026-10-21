@@ -252,8 +252,8 @@ pub(super) fn history_pruning_lmr_depth(
         .expect("history-adjusted pruning lmrDepth must fit i32")
 }
 
-/// 枝刈りした手の見積りで最善値だけを上げてよいかを返す。
-/// Stockfishの最善値の更新に対応する（src/search.cpp:1249-1251）。
+/// 通常探索と静止探索で、枝刈りした手の見積りにより最善値だけを上げてよいかを返す。
+/// Stockfishの最善値の更新に対応する（src/search.cpp:1249-1251, 1834, 1841）。
 pub(super) fn should_raise_futility_best_score(best_score: i32, futility_value: i32) -> bool {
     best_score < futility_value
         && best_score > -REPETITION_BAND_START

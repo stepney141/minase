@@ -51,6 +51,12 @@ search_stats! {
     quiesce_see_threshold_prunes,
     /// 静止探索でSEEの下限により枝刈りした候補数。
     quiesce_see_floor_prunes,
+    /// 静止探索のdelta pruningの見積りが最善値を実際に引き上げた回数。
+    quiesce_delta_best_score_raises,
+    /// 静止探索のSEEの閾値の見積りが最善値を実際に引き上げた回数。
+    quiesce_see_threshold_best_score_raises,
+    /// 静止探索で入口のαとfutility baseの差以下の価値の群から候補を返したノード数。先頭の置換表手を除き、ノードごとに1回だけ数える。
+    quiesce_low_value_group_nodes,
     /// 完了したnull move検証探索の回数。中断した呼び出しは含めない。
     null_move_verifications,
     /// 完了したnull move検証探索のうち、値がβ未満だった回数。

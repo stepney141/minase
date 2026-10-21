@@ -2437,7 +2437,7 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
 }
 
 // 判定用の評価値が閾値と等しければ通常探索し、1小さければ深さの上限なく静止探索の値を返す。
-// 捕獲候補のない局面では静的評価を返し、置換表へ保存しない。
+// 捕獲候補のない局面では静的評価を返し、静止探索の通常出口から置換表へ保存する。
 #[test]
 fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
@@ -2479,10 +2479,11 @@ fn razoring_uses_a_strict_boundary_without_a_depth_limit() {
             });
         assert_eq!((score, nodes), (quiet_score, quiet_nodes));
         assert!(nodes < boundary_nodes);
-        assert!(
-            table.probe(search_key(&position), 0).is_none(),
-            "捕獲のない静止探索は置換表に保存しない"
-        );
+        let hit = table.probe(search_key(&position), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, quiet_score);
+        assert_eq!(hit.value.unwrap().depth, 0);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+        assert_eq!(hit.best_move, None);
     }
 }
 
@@ -2774,16 +2775,17 @@ fn razoring_uses_shallow_tt_upper_bound_but_not_lower_bound() {
             let raw = evaluate(searcher.nnue, &board);
             // 静的評価では余裕値に1足りず、低い上界を採れば静止探索へ移る。
             let alpha = raw + razoring_margin(searcher.nnue.pawn_value(), 1) - 1;
+            let tt_value = raw - 18;
             searcher
                 .tt
-                .store(search_key(&board), 0, raw - 18, None, bound, None, 0, true);
+                .store(search_key(&board), 0, tt_value, None, bound, None, 0, true);
             let (quiet, _) = run_quiesce(&board, alpha, alpha + 1, 0, &small_tt());
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
                 .unwrap();
             if bound == Bound::Upper && quiet <= alpha {
                 assert_eq!(searcher.nodes, 0);
-                assert_eq!(score, raw, "捕獲のない静止探索は補正前の評価を返す");
+                assert_eq!(score, tt_value, "静止探索でも既存の上界を照会する");
             } else {
                 assert!(searcher.nodes > 0);
             }

@@ -1,6 +1,7 @@
 //! 静止探索を検査する。
 
 use super::*;
+use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::capture_history::CaptureHistory;
 
 // 深さ0ではstand-patと捕獲手を探索する。
@@ -126,6 +127,244 @@ fn quiescence_applies_see_threshold_then_floor_with_fixed_bounds() {
     }
 }
 
+fn single_low_value_capture() -> (Position, Move) {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(0, 0), Color::Black, PieceKind::Rook),
+            (sq(0, 2), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let capture = step(sq(0, 0), sq(0, 2));
+    assert!(legal_moves(&board).contains(&capture));
+    (board, capture)
+}
+
+// 入口時のdelta pruning境界上の捕獲も候補として取り出し、見積りを返して保存する。
+#[test]
+fn quiescence_delta_pruned_low_value_capture_raises_and_stores_best() {
+    let (board, capture) = single_low_value_capture();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = 37;
+        searcher.qsearch_see_floor = -INFINITY;
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let captured_value = searcher
+            .nnue
+            .piece_value(board.piece_at(capture.to).unwrap());
+        let expected = stand_pat + searcher.delta_margin + captured_value;
+        assert!(expected < REPETITION_BAND_START);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), expected, INFINITY, 0),
+            Some(expected)
+        );
+        assert_eq!(searcher.nodes, 0, "delta pruningした捕獲は読まない");
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, expected);
+        assert_eq!(hit.value.unwrap().depth, 0);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+        assert_eq!(hit.static_eval, Some(stand_pat));
+        assert_eq!(hit.best_move, None);
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 1);
+            assert_eq!(searcher.stats.quiesce_see_threshold_best_score_raises, 0);
+            assert_eq!(searcher.stats.quiesce_low_value_group_nodes, 1);
+        }
+    });
+}
+
+// 低価値の置換表手は候補として処理するが、低価値群へ達したノードの計数には含めない。
+#[cfg(feature = "search-stats")]
+#[test]
+fn quiescence_low_value_group_stat_excludes_leading_tt_capture() {
+    let (board, capture) = single_low_value_capture();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = 37;
+        searcher.qsearch_see_floor = -INFINITY;
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let captured_value = searcher
+            .nnue
+            .piece_value(board.piece_at(capture.to).unwrap());
+        let expected = stand_pat + searcher.delta_margin + captured_value;
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            INFINITY,
+            None,
+            Bound::Upper,
+            Some(capture),
+            0,
+            false,
+        );
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), expected, INFINITY, 0),
+            Some(expected)
+        );
+        assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 1);
+        assert_eq!(searcher.stats.quiesce_low_value_group_nodes, 0);
+    });
+}
+
+// SEEの閾値で読まない候補は、現在のαとfutility baseの小さい方まで最善値を上げる。
+#[test]
+fn quiescence_see_threshold_pruned_capture_raises_best() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 4), Color::Black, PieceKind::Rook),
+            (sq(5, 5), Color::White, PieceKind::Bishop),
+            (sq(5, 6), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let capture = step(sq(5, 4), sq(5, 5));
+    assert!(legal_moves(&board).contains(&capture));
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = 2;
+        searcher.qsearch_see_floor = -INFINITY;
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let alpha = stand_pat + 1;
+        assert!(see_prunes(
+            &board,
+            searcher.rules,
+            searcher.nnue,
+            capture,
+            -1,
+        ));
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), alpha, INFINITY, 0),
+            Some(alpha)
+        );
+        assert_eq!(searcher.nodes, 0, "SEEの閾値で枝刈りした捕獲は読まない");
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, alpha);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+        assert_eq!(hit.best_move, None);
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_see_threshold_prunes, 1);
+            assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 0);
+            assert_eq!(searcher.stats.quiesce_see_threshold_best_score_raises, 1);
+            assert_eq!(searcher.stats.quiesce_low_value_group_nodes, 0);
+        }
+    });
+}
+
+// 枝刈りの見積りから反復専用帯の値を作らない。
+#[test]
+fn quiescence_does_not_raise_best_to_repetition_band() {
+    let (board, capture) = single_low_value_capture();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let captured_value = searcher
+            .nnue
+            .piece_value(board.piece_at(capture.to).unwrap());
+        searcher.delta_margin = REPETITION_BAND_START - stand_pat - captured_value;
+        searcher.qsearch_see_floor = -INFINITY;
+        assert!(searcher.delta_margin > 0);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), REPETITION_BAND_START, INFINITY, 0,),
+            Some(stand_pat)
+        );
+        assert_eq!(searcher.nodes, 0);
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, stand_pat);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 0);
+            assert_eq!(searcher.stats.quiesce_low_value_group_nodes, 1);
+        }
+    });
+}
+
+// 捕獲候補がなくても通常出口を通り、stand-patを深さ0の置換表項目へ保存する。
+#[test]
+fn quiescence_without_captures_stores_stand_pat() {
+    let board = bare_kings();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        let stand_pat = evaluate(searcher.nnue, &board);
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, 0),
+            Some(stand_pat)
+        );
+        assert_eq!(searcher.nodes, 0);
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, stand_pat);
+        assert_eq!(hit.value.unwrap().depth, 0);
+        assert_eq!(hit.value.unwrap().bound, Bound::Exact);
+        assert_eq!(hit.static_eval, Some(stand_pat));
+        assert_eq!(hit.best_move, None);
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_tt_probes, 1);
+            assert_eq!(searcher.stats.quiesce_tt_hits, 0);
+        }
+    });
+}
+
+// 先の捕獲でαが上がると、初期αでは読んだはずの後続捕獲を現在のαでdelta pruningする。
+#[test]
+fn quiescence_delta_pruning_uses_alpha_raised_by_an_earlier_capture() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(0, 4), Color::Black, PieceKind::Rook),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+            (sq(5, 4), Color::Black, PieceKind::Rook),
+            (sq(5, 5), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let first = step(sq(0, 4), sq(0, 5));
+    let later = step(sq(5, 4), sq(5, 5));
+    assert!(legal_moves(&board).contains(&first));
+    assert!(legal_moves(&board).contains(&later));
+    with_root_searcher(&board, &[], |searcher| {
+        let ply = MAX_PLY - 1;
+        set_test_path_ply(searcher, ply);
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = 0;
+        searcher.qsearch_see_floor = -INFINITY;
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let later_estimate =
+            stand_pat + searcher.nnue.piece_value(board.piece_at(later.to).unwrap());
+        let mut child = board.clone();
+        child.make_move_unchecked(first, engine_rules());
+        let first_score = -evaluate(searcher.nnue, &child);
+        assert!(stand_pat < later_estimate);
+        assert!(later_estimate <= first_score);
+        assert!(!see_prunes(&board, searcher.rules, searcher.nnue, first, 0,));
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
+            Some(first_score)
+        );
+        assert_eq!(searcher.nodes, 1, "後続捕獲は上昇後のαで枝刈りする");
+        let hit = searcher.tt.probe(search_key(&board), ply).unwrap();
+        assert_eq!(hit.value.unwrap().score, first_score);
+        assert_eq!(hit.best_move, Some(first));
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 0);
+            assert_eq!(searcher.stats.quiesce_see_threshold_prunes, 0);
+        }
+    });
+}
+
 // 捕獲手のない葉ではstand-patを返すため、
 // depth=1の根評価は各合法手の子局面に対する静的評価の最大値と一致する。
 #[test]
@@ -166,7 +405,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
     assert_eq!(result.nodes, moves.len() as u64);
 }
 
-// stand-pat、最大ply、候補なしの出口では置換表を参照も更新もしない。
+// stand-patと最大plyの出口では置換表を参照も更新もしない。
 #[test]
 fn quiescence_early_exits_do_not_probe_or_store() {
     let nnue = test_nnue();
@@ -179,20 +418,6 @@ fn quiescence_early_exits_do_not_probe_or_store() {
             (fs(6, 1), Color::White, PieceKind::King),
         ],
     );
-    let capture = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(3, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 4), Color::White, PieceKind::Pawn),
-        ],
-    );
-    assert_eq!(nnue.pawn_value(), 100, "固定ネットの歩兵価値");
-    // 捕獲する歩兵の価値と、現在のdelta余裕値の和を境界にする。
-    let threshold = evaluate(nnue, &capture)
-        + nnue.pawn_value()
-        + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100;
     for (case, board, alpha, beta, ply, stored, depth) in [
         (
             "stand_pat_equal",
@@ -213,24 +438,6 @@ fn quiescence_early_exits_do_not_probe_or_store() {
             4,
         ),
         ("max_ply", &kings, -INFINITY, INFINITY, MAX_PLY, 12_345, 8),
-        (
-            "no_captures",
-            &initial,
-            -INFINITY,
-            INFINITY,
-            0,
-            initial_eval + 123,
-            4,
-        ),
-        (
-            "filtered_captures",
-            &capture,
-            threshold,
-            INFINITY,
-            0,
-            evaluate(nnue, &capture) + 123,
-            4,
-        ),
     ] {
         let key = search_key(board);
         let stand_pat = evaluate(nnue, board);
@@ -467,7 +674,7 @@ fn captures_with_history(
     let ranks = CaptureRanks::new(nnue);
     let mut buffers = QsearchBuffers::default();
     buffers.reset(board);
-    assert!(buffers.initialize(board, &generator, nnue, &ranks, -1));
+    buffers.initialize(board, &generator, nnue, &ranks);
     buffers.set_tt_move(board, &generator, tt_move);
     std::iter::from_fn(|| buffers.next(board, &generator, nnue, &ranks, history))
         .map(|candidate| candidate.capture.mv)

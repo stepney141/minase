@@ -34,10 +34,9 @@ fn reference(
     captures
 }
 
-// 同節と「捕獲対象を生成前に除外する」: 公開生成・安定整列・回転から
-// 得た列を閾値で除いた結果に、段階生成の残存手順が一致する。
+// 公開生成・安定整列・回転から得た全候補の列に、段階生成の手順が一致する。
 #[test]
-fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
+fn staged_captures_match_reference_for_rules_and_tt_moves() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
     let capture_history = empty_capture_history();
@@ -47,10 +46,6 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
         let mut buffers = QsearchBuffers::default();
         for position in &positions {
             let ordered = reference(position, &generator, nnue, None);
-            let mut thresholds = vec![-1, i32::MAX / 2];
-            thresholds.extend(ordered.iter().map(|(_, key)| key.captured_value));
-            thresholds.sort_unstable();
-            thresholds.dedup();
             let mut all = Vec::new();
             generator.generate_moves(position, &mut all);
             let quiet = all.into_iter().find(|&mv| {
@@ -59,78 +54,64 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
                     .into_iter()
                     .all(|s| s.is_none())
             });
-            for threshold in thresholds {
-                let tt_moves = [
-                    None,
-                    ordered.first().map(|&(mv, _)| mv),
-                    ordered.get(ordered.len() / 2).map(|&(mv, _)| mv),
-                    quiet,
-                    ordered
-                        .iter()
-                        .find(|&&(mv, key)| {
-                            key.captured_value <= threshold && !captures_last_royal(position, mv)
-                        })
-                        .map(|&(mv, _)| mv),
-                ];
-                for tt_move in tt_moves {
-                    let expected: Vec<_> = reference(position, &generator, nnue, tt_move)
-                        .into_iter()
-                        .filter(|&(mv, key)| {
-                            key.captured_value > threshold || captures_last_royal(position, mv)
-                        })
-                        .map(|(mv, _)| mv)
-                        .collect();
-                    buffers.reset(position);
-                    buffers.initialize(position, &generator, nnue, &ranks, threshold);
-                    buffers.set_tt_move(position, &generator, tt_move);
-                    let mut actual = Vec::new();
-                    while let Some(candidate) =
-                        buffers.next(position, &generator, nnue, &ranks, &capture_history)
-                    {
-                        if candidate.captured_value > threshold
-                            || captures_last_royal(position, candidate.capture.mv)
-                        {
-                            actual.push(candidate.capture.mv);
-                        }
-                    }
-                    assert_eq!(
-                        actual, expected,
-                        "rules={rules:?}, tt={tt_move:?}, threshold={threshold}"
-                    );
+            let tt_moves = [
+                None,
+                ordered.first().map(|&(mv, _)| mv),
+                ordered.get(ordered.len() / 2).map(|&(mv, _)| mv),
+                quiet,
+            ];
+            for tt_move in tt_moves {
+                let expected: Vec<_> = reference(position, &generator, nnue, tt_move)
+                    .into_iter()
+                    .map(|(mv, _)| mv)
+                    .collect();
+                buffers.reset(position);
+                buffers.initialize(position, &generator, nnue, &ranks);
+                buffers.set_tt_move(position, &generator, tt_move);
+                let mut actual = Vec::new();
+                while let Some(candidate) =
+                    buffers.next(position, &generator, nnue, &ranks, &capture_history)
+                {
+                    actual.push(candidate.capture.mv);
                 }
+                assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
             }
         }
     }
 }
 
-// 同節: 特殊捕獲は単独の被捕獲駒の価値で除外せず、2枚の合計で判定する。
+// 特殊な2枚取りの捕獲価値は、2枚の価値の合計とする。
 #[test]
-fn double_capture_survives_when_each_victim_is_at_the_threshold() {
+fn double_capture_uses_the_combined_victim_value() {
     let nnue = test_nnue();
     let ranks = CaptureRanks::new(nnue);
     let capture_history = empty_capture_history();
     let generator = MoveGenerator::standard();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
-    let threshold = nnue.pawn_value();
     let mut buffers = QsearchBuffers::default();
     buffers.reset(&position);
-    buffers.initialize(&position, &generator, nnue, &ranks, threshold);
+    buffers.initialize(&position, &generator, nnue, &ranks);
     buffers.set_tt_move(&position, &generator, None);
-    let mut surviving = Vec::new();
+    let mut double_captures = Vec::new();
     while let Some(c) = buffers.next(&position, &generator, nnue, &ranks, &capture_history) {
-        if c.captured_value > threshold {
-            surviving.push(c);
+        if c.capture.captured.into_iter().flatten().count() == 2 {
+            double_captures.push(c);
         }
     }
-    assert!(!surviving.is_empty());
-    assert!(
-        surviving
-            .iter()
-            .all(|c| c.capture.captured.into_iter().flatten().count() == 2)
-    );
+    assert!(!double_captures.is_empty());
+    for candidate in double_captures {
+        let expected: i32 = candidate
+            .capture
+            .captured
+            .into_iter()
+            .flatten()
+            .map(|square| nnue.piece_value(position.piece_at(square).unwrap()))
+            .sum();
+        assert_eq!(candidate.captured_value, expected);
+    }
 }
 
-// 同節: αが検査の途中で増加しても、入口以降の残存手順は参照と一致する。
+// αが検査の途中で増加しても、全候補へ閾値を順に当てた残存手順は参照と一致する。
 #[test]
 fn rising_threshold_preserves_the_surviving_sequence() {
     let nnue = test_nnue();
@@ -150,7 +131,7 @@ fn rising_threshold_preserves_the_surviving_sequence() {
             }
         }
         buffers.reset(&position);
-        buffers.initialize(&position, &generator, nnue, &ranks, -1);
+        buffers.initialize(&position, &generator, nnue, &ranks);
         buffers.set_tt_move(&position, &generator, tt_move);
         threshold = -1;
         let mut actual = Vec::new();
@@ -198,7 +179,7 @@ fn reset_discards_targets_from_partially_consumed_node() {
     for first in &positions {
         for second in &positions {
             buffers.reset(first);
-            buffers.initialize(first, &generator, nnue, &ranks, -1);
+            buffers.initialize(first, &generator, nnue, &ranks);
             buffers.set_tt_move(first, &generator, None);
             assert!(
                 buffers
@@ -206,7 +187,7 @@ fn reset_discards_targets_from_partially_consumed_node() {
                     .is_some()
             );
             buffers.reset(second);
-            buffers.initialize(second, &generator, nnue, &ranks, -1);
+            buffers.initialize(second, &generator, nnue, &ranks);
             buffers.set_tt_move(second, &generator, None);
             let mut actual = Vec::new();
             while let Some(c) = buffers.next(second, &generator, nnue, &ranks, &capture_history) {
@@ -257,32 +238,20 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
             .map(Some)
             .chain([None, Some(invalid)])
         {
-            for threshold in [-1, nnue.pawn_value(), i32::MAX / 2] {
-                buffers.reset(&position);
-                buffers.initialize(&position, &generator, nnue, &ranks, threshold);
-                buffers.set_tt_move(&position, &generator, tt_move);
-                let mut actual = Vec::new();
-                while let Some(candidate) =
-                    buffers.next(&position, &generator, nnue, &ranks, &capture_history)
-                {
-                    if candidate.captured_value > threshold
-                        || captures_last_royal(&position, candidate.capture.mv)
-                    {
-                        actual.push(candidate.capture.mv);
-                    }
-                }
-                let expected: Vec<_> = reference(&position, &generator, nnue, tt_move)
-                    .into_iter()
-                    .filter(|&(mv, key)| {
-                        key.captured_value > threshold || captures_last_royal(&position, mv)
-                    })
-                    .map(|(mv, _)| mv)
-                    .collect();
-                assert_eq!(
-                    actual, expected,
-                    "rules={rules:?}, tt={tt_move:?}, threshold={threshold}"
-                );
+            buffers.reset(&position);
+            buffers.initialize(&position, &generator, nnue, &ranks);
+            buffers.set_tt_move(&position, &generator, tt_move);
+            let mut actual = Vec::new();
+            while let Some(candidate) =
+                buffers.next(&position, &generator, nnue, &ranks, &capture_history)
+            {
+                actual.push(candidate.capture.mv);
             }
+            let expected: Vec<_> = reference(&position, &generator, nnue, tt_move)
+                .into_iter()
+                .map(|(mv, _)| mv)
+                .collect();
+            assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
         }
     }
 }
@@ -317,36 +286,6 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                     .map(|(mv, _)| mv)
                     .collect();
                 assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
-            }
-        }
-    }
-}
-
-// 候補の有無は、合法な捕獲の参照列に
-// 入口の閾値と最後の王駒の例外を適用した結果と一致する。
-#[test]
-fn initialized_candidate_presence_matches_filtered_reference() {
-    let nnue = test_nnue();
-    let ranks = CaptureRanks::new(nnue);
-    let mut buffers = QsearchBuffers::default();
-    for rules in capture_test_rules() {
-        let generator = MoveGenerator::new(rules);
-        for position in capture_test_positions() {
-            let ordered = reference(&position, &generator, nnue, None);
-            let mut thresholds = vec![-1, i32::MAX / 2];
-            thresholds.extend(ordered.iter().map(|(_, key)| key.captured_value));
-            thresholds.sort_unstable();
-            thresholds.dedup();
-            for threshold in thresholds {
-                let expected = ordered.iter().any(|&(mv, key)| {
-                    key.captured_value > threshold || captures_last_royal(&position, mv)
-                });
-                buffers.reset(&position);
-                assert_eq!(
-                    buffers.initialize(&position, &generator, nnue, &ranks, threshold),
-                    expected,
-                    "rules={rules:?}, threshold={threshold}, position={position:?}",
-                );
             }
         }
     }

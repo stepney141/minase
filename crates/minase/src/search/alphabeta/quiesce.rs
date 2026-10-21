@@ -26,7 +26,7 @@ use super::history::pawn_key;
 use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::params;
-use super::pruning::corrected_static_eval;
+use super::pruning::{corrected_static_eval, should_raise_futility_best_score};
 use super::royal::captures_all_royals;
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
@@ -42,8 +42,9 @@ impl Searcher<'_> {
     /// 静止探索内の手は主変化へ含めず、中断された場合は`None`を返す。
     ///
     /// 最大plyでは補正前の静的評価を返す。
-    /// その後は補正後のstand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
-    /// その後の置換表ヒットによる打ち切りと中断も保存しない。
+    /// その後は補正後のstand-patがβ以上なら、置換表を照会も保存もせず返す。
+    /// 捕獲候補を初期化してから置換表を照会し、候補がなくても通常出口でstand-patを保存する。
+    /// 置換表ヒットによる打ち切りと中断は保存しない。
     /// 専用の帯の値は対局履歴と探索経路に依存するため、打ち切りには使わず記録手だけを使う。
     /// 通常出口は補正前の静的評価と探索値を深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、
     /// それ以外は正確な値とする。補正後のstand-patは静的評価として保存しない。
@@ -54,6 +55,11 @@ impl Searcher<'_> {
     /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
     /// それ以外は[`Self::delta_margin`]のdelta pruning、補正後のstand-patと余裕値を基準にしたSEEの閾値、
     /// [`Self::qsearch_see_floor`]のSEEの下限、手数制限の順に判定する。
+    /// delta pruningで読まない手はstand-pat、余裕値、および捕獲価値の和で最善値を引き上げる。
+    /// SEEの閾値で読まない手は、現在のαとstand-patに余裕値を足した値の小さい方で引き上げる。
+    /// どちらも現在の最善値と見積りが通常域にある場合に限り、αと最善手は変えない
+    /// （Stockfish src/search.cpp:1834, 1841）。
+    /// SEEの下限と手数制限で読まない手は最善値を引き上げない。
     /// delta pruningは成り益を加えず、置換表の捕獲手もSEEの例外にしない。
     /// 成り益を除く理由は`docs/adr/keep-delta-pruning-without-promotion-gain.md`にある。
     ///
@@ -108,18 +114,9 @@ impl Searcher<'_> {
 
         let original_alpha = alpha;
         alpha = alpha.max(s);
-        let threshold = alpha - s - self.delta_margin;
         let buffers = &mut self.qsearch[ply as usize];
         buffers.reset(position);
-        if !buffers.initialize(
-            position,
-            &self.generator,
-            self.nnue,
-            &self.capture_ranks,
-            threshold,
-        ) {
-            return Some(s);
-        }
+        buffers.initialize(position, &self.generator, self.nnue, &self.capture_ranks);
 
         let key = search_key(position);
         let mut tt_move = None;
@@ -157,6 +154,10 @@ impl Searcher<'_> {
         let mut best_move = None;
         let mut searched_captures = 0;
         let futility_base = s + self.delta_margin;
+        #[cfg(feature = "search-stats")]
+        let low_value_threshold = alpha - futility_base;
+        #[cfg(feature = "search-stats")]
+        let mut returned_low_value_group = false;
         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
@@ -166,13 +167,29 @@ impl Searcher<'_> {
             self.capture_history,
         ) {
             let mv = candidate.capture.mv;
+            #[cfg(feature = "search-stats")]
+            if !returned_low_value_group
+                && Some(mv) != tt_move
+                && candidate.captured_value <= low_value_threshold
+            {
+                self.stats.quiesce_low_value_group_nodes += 1;
+                returned_low_value_group = true;
+            }
             let buffers = &self.qsearch[ply as usize];
             let is_last_royal_capture = captures_all_royals(
                 buffers.royals,
                 buffers.royal_count,
                 candidate.capture.captured,
             );
-            if !is_last_royal_capture && s + candidate.captured_value + self.delta_margin <= alpha {
+            let futility_value = futility_base + candidate.captured_value;
+            if !is_last_royal_capture && futility_value <= alpha {
+                if should_raise_futility_best_score(best, futility_value) {
+                    best = futility_value;
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_delta_best_score_raises += 1;
+                    }
+                }
                 continue;
             }
             if !is_last_royal_capture
@@ -181,6 +198,14 @@ impl Searcher<'_> {
                 #[cfg(feature = "search-stats")]
                 {
                     self.stats.quiesce_see_threshold_prunes += 1;
+                }
+                let estimate = alpha.min(futility_base);
+                if should_raise_futility_best_score(best, estimate) {
+                    best = estimate;
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_see_threshold_best_score_raises += 1;
+                    }
                 }
                 continue;
             }
@@ -353,7 +378,8 @@ impl CaptureRanks {
     }
 }
 
-/// 静止探索の1深さ分の領域。対象升の配列は使用する順位だけを初期化する。
+/// 静止探索の1深さ分の領域。
+/// すべての対象升を捕獲価値の順位に登録し、候補の列が達した群だけを生成する。
 pub(super) struct QsearchBuffers {
     pub(super) validation: CaptureCache,
     pub(super) capturers: Vec<OrdinaryCapturer>,
@@ -415,8 +441,8 @@ impl QsearchBuffers {
         self.tt_pending = self.tt_move.is_some();
     }
 
-    /// 入口のdelta pruning後に残る対象と捕獲価値の群を決め、通常駒の利きを保存する。
-    /// 合計捕獲価値が`threshold`を超える合法捕獲か、最後の王駒を取る合法捕獲がある場合だけ真を返す。
+    /// 特殊捕獲を生成し、すべての相手駒を捕獲価値の群へ登録して通常駒の利きを保存する。
+    /// 合法な捕獲の有無は調べず、群の候補は[`Self::next`]が必要になったときに生成する。
     /// 獅子が経由升で取り、移動元と異なる空升へ進む手は探索候補から除く。
     pub(super) fn initialize(
         &mut self,
@@ -424,11 +450,8 @@ impl QsearchBuffers {
         generator: &MoveGenerator,
         nnue: &Nnue,
         ranks: &CaptureRanks,
-        threshold: i32,
-    ) -> bool {
+    ) {
         let opponent = position.side_to_move().opposite();
-        let royals = self.royals;
-        let royal_count = self.royal_count;
         generator.generate_special_captures(position, &mut |capture| {
             if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
                 return;
@@ -439,11 +462,6 @@ impl QsearchBuffers {
                 .flatten()
                 .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
                 .sum();
-            if captured_value <= threshold
-                && !captures_all_royals(royals, royal_count, capture.captured)
-            {
-                return;
-            }
             let mut candidate = QsearchCapture::new(nnue, capture, captured_value, 0);
             candidate.seq = self.special.len() as u16;
             self.special.push(candidate);
@@ -455,12 +473,7 @@ impl QsearchBuffers {
             let pieces = position.pieces_of_kind(opponent, kind);
             let [unpromoted, promoted] = ranks.ranks_of_kind[kind.index()];
             if unpromoted == promoted {
-                let targets = if ranks.values[unpromoted as usize] > threshold {
-                    pieces
-                } else {
-                    pieces & royals
-                };
-                self.add_targets(targets, unpromoted, &mut allowed);
+                self.add_targets(pieces, unpromoted, &mut allowed);
             } else {
                 for square in pieces {
                     let rank = if piece_at_for_ordering(position, square).is_promoted() {
@@ -468,23 +481,11 @@ impl QsearchBuffers {
                     } else {
                         unpromoted
                     };
-                    if ranks.values[rank as usize] > threshold || royals.contains(square) {
-                        self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
-                    }
+                    self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
                 }
             }
         }
         generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
-        !self.special.is_empty()
-            || self.capturers.iter().any(|capturer| {
-                let mut present = false;
-                generator.emit_ordinary_captures(position, &[*capturer], allowed, &mut |capture| {
-                    let value = nnue.piece_value(piece_at_for_ordering(position, capture.mv.to));
-                    present |= value > threshold
-                        || captures_all_royals(royals, royal_count, capture.captured);
-                });
-                present
-            })
     }
 
     /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位と全対象升の集合を更新する。
@@ -502,7 +503,7 @@ impl QsearchBuffers {
         *allowed |= targets;
     }
 
-    /// 通常捕獲と特殊捕獲の残りから最大の捕獲価値を選び、同価値の候補を1群にまとめる。
+    /// 通常捕獲と特殊捕獲の残りから最大の捕獲価値を選び、同価値の候補を1群だけ生成する。
     ///
     /// 群内は捕獲履歴の生値の降順、攻撃駒の価値の昇順、全手生成での生成順に並べる。
     /// 履歴の表引きは群へ加える候補ごとに1回だけ行い、整列中は保存した値を使う。
@@ -564,7 +565,7 @@ impl QsearchBuffers {
         Some(())
     }
 
-    /// 置換表の捕獲を先頭に返し、要求されたグループまでだけを生成する。
+    /// 置換表の捕獲を先頭に返し、その後は捕獲価値の降順に必要な群だけを生成する。
     pub(super) fn next(
         &mut self,
         position: &Position,

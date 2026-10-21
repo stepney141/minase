@@ -33,13 +33,15 @@ fn assert_relations(stats: SearchStats) {
     assert!(stats.quiesce_tt_cutoffs <= stats.quiesce_tt_hits);
     assert!(stats.quiesce_tt_hits <= stats.quiesce_tt_probes);
     assert!(stats.quiesce_tt_probes <= stats.quiesce_nodes);
+    assert!(stats.quiesce_see_threshold_best_score_raises <= stats.quiesce_see_threshold_prunes);
+    assert!(stats.quiesce_low_value_group_nodes <= stats.quiesce_nodes);
     assert!(ranks(stats).iter().sum::<u64>() <= stats.normal_nodes);
 }
 
 /// 深さ0の移行は静止探索だけに数える。
-/// 捕獲なし、stand-pat、最大plyで返る呼び出しも数え、照会は実行時だけ数える。
+/// 捕獲なしでは置換表を照会し、stand-patと最大plyの出口では照会しない。
 #[test]
-fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
+fn depth_zero_and_quiesce_exits_count_calls_and_actual_probes() {
     let position = quiet_position();
     with_root_searcher(&position, &[], |searcher| {
         let mut current = position.clone();
@@ -57,6 +59,7 @@ fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
             searcher.stats,
             SearchStats {
                 quiesce_nodes: 3,
+                quiesce_tt_probes: 1,
                 ..SearchStats::default()
             }
         );

@@ -477,7 +477,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
 }
 
 #[test]
-fn qsearch_limit_does_not_count_delta_pruned_capture() {
+fn qsearch_limit_does_not_count_delta_pruned_capture_but_uses_its_estimate() {
     let (board, captures) = captures_over_limit();
     let nnue = test_nnue();
     // 香車は歩兵より捕獲価値が高く、隣の筋を守らないためSEEの閾値を通る。
@@ -505,7 +505,8 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
         // 固定したdelta境界で手数の算入を検査する。
         searcher.delta_margin = 500;
         seed_first(searcher, &board, captures[0], ply);
-        let alpha = evaluate(searcher.nnue, &board)
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let alpha = stand_pat
             + searcher.delta_margin
             + searcher
                 .nnue
@@ -519,7 +520,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
                 "捕獲後もdeltaの閾値は変わらない: {mv:?}"
             );
         }
-        let expected = captures[1..]
+        let searched_best = captures[1..]
             .iter()
             .map(|&mv| {
                 assert!(!see_prunes(
@@ -532,21 +533,28 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
                 capture_leaf_score(&board, searcher.nnue, mv)
             })
             .max()
-            .unwrap()
-            .max(evaluate(searcher.nnue, &board));
+            .unwrap();
+        let pruned_estimate = stand_pat
+            + searcher.delta_margin
+            + searcher
+                .nnue
+                .piece_value(board.piece_at(captures[0].to).unwrap());
+        assert!(pruned_estimate <= alpha);
+        assert!(pruned_estimate > searched_best);
+        let expected = stand_pat.max(searched_best).max(pruned_estimate);
         assert_eq!(
             searcher.quiesce(&mut board.clone(), alpha, INFINITY, ply),
             Some(expected)
         );
         assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
-        let best = searcher
-            .tt
-            .probe(search_key(&board), ply)
-            .unwrap()
-            .best_move
-            .unwrap();
-        assert!(captures[1..].contains(&best));
-        assert_eq!(capture_leaf_score(&board, searcher.nnue, best), expected);
+        let hit = searcher.tt.probe(search_key(&board), ply).unwrap();
+        assert_eq!(hit.value.unwrap().score, expected);
+        assert_eq!(
+            hit.best_move, None,
+            "見積りによる引き上げは最善手を変えない"
+        );
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 1);
     });
 }
 
