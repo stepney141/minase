@@ -1,7 +1,7 @@
 //! 補正後の静的評価による良化判定を検査する。
 
 use super::*;
-use crate::search::alphabeta::pruning::is_improving;
+use crate::search::alphabeta::pruning::{corrected_static_eval, is_improving};
 
 // Stockfish src/search.cpp:883。等号と比較相手がない場合は偽とする。
 #[test]
@@ -77,22 +77,21 @@ fn futility_pruning_is_independent_of_improving() {
 #[test]
 fn improving_uses_corrected_evaluations() {
     let board = bare_kings();
-    for (previous_correction, expected_improving) in [(0, true), (100, false)] {
+    for (previous_difference, expected_improving) in [(1, true), (0, false)] {
         with_root_searcher(&board, &[], |searcher| {
             let side = board.side_to_move();
-            let key = material_key(&board);
-            searcher
-                .correction
-                .update(side, key, CorrectionTableKind::Material, 128, 128);
+            zero_position_correction(searcher, &board);
+            store_position_correction(searcher, &board, 512);
             let correction = position_correction(searcher, side, 2);
-            assert!(correction > 0 && correction <= 100);
             let raw = evaluate(searcher.nnue, &board);
-            searcher.static_evals[0] = raw + previous_correction;
+            let corrected = corrected_static_eval(raw, correction);
+            assert_ne!(corrected, raw);
+            searcher.static_evals[0] = corrected - previous_difference;
             set_test_path_ply(searcher, 2);
             searcher
                 .negamax(&mut board.clone(), 1, -INFINITY, INFINITY, 2, false)
                 .unwrap();
-            assert_eq!(searcher.static_evals[2], raw + correction);
+            assert_eq!(searcher.static_evals[2], corrected);
             assert_eq!(
                 searcher.improving(searcher.static_evals[2], 2),
                 expected_improving
@@ -108,16 +107,12 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
     for root in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let side = board.side_to_move();
-            searcher.correction.update(
-                side,
-                material_key(&board),
-                CorrectionTableKind::Material,
-                64,
-                128,
-            );
+            zero_position_correction(searcher, &board);
+            store_position_correction(searcher, &board, 512);
             let correction = position_correction(searcher, side, 0);
-            assert!(correction > 0);
             let raw = evaluate(searcher.nnue, &board);
+            let corrected = corrected_static_eval(raw, correction);
+            assert_ne!(corrected, raw);
             searcher.static_evals[0] = i32::MIN;
             if root {
                 assert!(
@@ -132,7 +127,7 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
                         .is_some()
                 );
             }
-            assert_eq!(searcher.static_evals[0], raw + correction);
+            assert_eq!(searcher.static_evals[0], corrected);
         });
     }
 }

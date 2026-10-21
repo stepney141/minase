@@ -541,14 +541,14 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             (sq(11, 0), Color::Black, PieceKind::King),
             (sq(3, 8), Color::White, PieceKind::King),
             (sq(5, 3), Color::Black, PieceKind::Pawn),
-            (sq(5, 4), Color::White, PieceKind::GoldGeneral),
-            (sq(3, 3), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::White, PieceKind::Rook),
+            (sq(3, 6), Color::Black, PieceKind::Pawn),
             (sq(3, 7), Color::White, PieceKind::GoldGeneral),
         ],
     );
     let tt_move = capture(sq(11, 0), sq(10, 0));
     let pruned = capture(sq(5, 3), sq(5, 4));
-    let winner = capture(sq(3, 3), sq(3, 7));
+    let winner = capture(sq(3, 6), sq(3, 7));
     let moves = legal_moves(&board);
     assert!(moves.contains(&tt_move));
     assert!(moves.contains(&pruned));
@@ -558,6 +558,7 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
     assert!(board.gives_check(&MoveGenerator::standard(), winner));
 
     with_root_searcher(&board, &[], |searcher| {
+        zero_depth_one_corrections(searcher, &board, &moves);
         let ordered = picked(searcher, &board, Some(tt_move));
         assert_eq!(
             &ordered[..3],
@@ -565,7 +566,8 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
         );
         let pruned_index = ordered.iter().position(|&(mv, _)| mv == pruned).unwrap();
 
-        let depth = 7;
+        // 子を静止探索に固定し、LMR係数と通常探索の置換表打ち切り条件を分離する。
+        let depth = 1;
         let static_eval = evaluate(searcher.nnue, &board);
         let lmr_depth =
             super::super::pruning::pruning_lmr_depth(depth, pruned_index, false, false, true);
@@ -593,6 +595,13 @@ fn capture_history_excludes_capture_futility_pruned_capture() {
             engine_rules(),
             searcher.nnue,
             pruned,
+            -super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
+        ));
+        assert!(!see_prunes(
+            &board,
+            engine_rules(),
+            searcher.nnue,
+            winner,
             -super::super::pruning::see_margin(searcher.nnue.pawn_value(), depth, 0),
         ));
 

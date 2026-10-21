@@ -7,6 +7,7 @@ use super::*;
 use crate::eval::evaluate;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::correction::correction_update_bonus;
+use crate::search::alphabeta::pruning::corrected_static_eval;
 use minase_core::Color;
 
 fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<'a> {
@@ -693,7 +694,8 @@ fn correction_changes_futility_estimate() {
     let mut corrections = Vec::new();
     let mut scores = Vec::new();
     let mut nodes = Vec::new();
-    for bonus in [0, 8] {
+    // 更新量ではなく表の値を固定し、重みが変わっても同じ2状態を比較する。
+    for table_value in [-512, 512] {
         let mut board = board.clone();
         let table = TranspositionTable::new(1).unwrap();
         let mut butterfly_history =
@@ -729,25 +731,17 @@ fn correction_changes_futility_estimate() {
             true,
         );
         zero_position_correction(&mut searcher, &board);
-        searcher.correction.update(
-            Color::Black,
-            material_key(&board),
-            CorrectionTableKind::Material,
-            bonus,
-            128,
-        );
+        store_position_correction(&searcher, &board, table_value);
         let correction = position_correction(&searcher, Color::Black, 0);
-        if bonus == 0 {
-            assert_eq!(correction, 0);
-        } else {
-            assert!(correction > 0);
-        }
         let score = searcher
             .negamax(&mut board, 1, alpha, alpha + 2, 0, false)
             .unwrap();
         assert!(score < alpha);
         assert!(score.abs() < MATE_THRESHOLD);
-        assert_eq!(searcher.static_evals[0], raw + correction);
+        assert_eq!(
+            searcher.static_evals[0],
+            corrected_static_eval(raw, correction)
+        );
         corrections.push(correction);
         scores.push(score);
         nodes.push(searcher.nodes);

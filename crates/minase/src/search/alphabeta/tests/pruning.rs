@@ -1231,14 +1231,17 @@ fn capture_futility_context(
     (lmr_depth, value)
 }
 
+// 深さ1では枝刈り用のlmrDepthが0以下で、対象局面の捕獲価値は最大でも歩兵2枚分である。
+// CaptureFutilityBaseの上限600%を含めても、固定の1,000なら全係数範囲で見積りを上回る。
+const CAPTURE_FUTILITY_TEST_ALPHA_MARGIN: i32 = 1_000;
+
 /// 対象手だけがβへ届く子の値を置換表へ置き、対象手を読んだかを根の結果で検査する。
-/// αは現在の係数から求めた見積りを基準にするため、係数の既定値には依存しない。
 fn assert_capture_futility_search(
     board: &Position,
     target: Move,
     tt_move: Move,
     depth: u32,
-    alpha_offset: i32,
+    alpha: i32,
     expected_check: bool,
     searched: bool,
 ) -> i32 {
@@ -1255,11 +1258,10 @@ fn assert_capture_futility_search(
     );
 
     let (lmr_depth, futility_value) = capture_futility_context(board, target, tt_move, depth);
-    let alpha = futility_value + alpha_offset;
     let beta = alpha + 1;
     assert!(alpha > evaluate(nnue, board));
     assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
-    assert_eq!(futility_value <= alpha, alpha_offset >= 0);
+    assert!(futility_value <= alpha);
     assert!(!see_prunes(
         board,
         engine_rules(),
@@ -1310,7 +1312,21 @@ fn assert_capture_futility_search(
         0,
         false,
     );
-    let (score, _) = run_move_pruning(board, depth, alpha, beta, 0, &table);
+    table.store(
+        search_key(board),
+        0,
+        alpha,
+        None,
+        Bound::Upper,
+        Some(tt_move),
+        0,
+        true,
+    );
+    let (score, _) = run_configured_negamax(board, depth, alpha, beta, 0, &table, |searcher| {
+        zero_depth_one_corrections(searcher, board, &moves);
+        searcher.seek_mate = true;
+        searcher.null_move_ply = Some(0);
+    });
     let hit = table.probe(search_key(board), 0).unwrap();
     if searched {
         assert_eq!(score, beta);
@@ -1321,6 +1337,26 @@ fn assert_capture_futility_search(
         assert_ne!(hit.best_move, Some(target));
     }
     lmr_depth
+}
+
+fn assert_capture_futility_boundary(
+    board: &Position,
+    target: Move,
+    tt_move: Move,
+    depth: u32,
+    expected_check: bool,
+    searched: bool,
+) -> i32 {
+    let (_, futility_value) = capture_futility_context(board, target, tt_move, depth);
+    assert_capture_futility_search(
+        board,
+        target,
+        tt_move,
+        depth,
+        futility_value,
+        expected_check,
+        searched,
+    )
 }
 
 fn capture_futility_fixture(white_king: Square) -> (Position, Move, Move) {
@@ -1351,7 +1387,7 @@ fn capture_futility_fixture(white_king: Square) -> (Position, Move, Move) {
 #[test]
 fn capture_futility_prunes_eligible_capture_at_equality() {
     let (board, target, tt_move) = capture_futility_fixture(sq(0, 11));
-    let lmr_depth = assert_capture_futility_search(&board, target, tt_move, 7, 0, false, false);
+    let lmr_depth = assert_capture_futility_boundary(&board, target, tt_move, 7, false, false);
     assert!(lmr_depth < super::super::pruning::CAPTURE_FUTILITY_LMR_DEPTH_LIMIT);
 }
 
@@ -1378,13 +1414,37 @@ fn capture_futility_searches_promoting_checking_and_tt_captures() {
         to: sq(10, 0),
         promote: false,
     };
-    assert_capture_futility_search(&promotion_board, promotion, quiet, 7, 0, false, true);
+    assert_capture_futility_search(
+        &promotion_board,
+        promotion,
+        quiet,
+        1,
+        evaluate(test_nnue(), &promotion_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        false,
+        true,
+    );
 
     let (checking_board, checking, quiet) = capture_futility_fixture(sq(5, 8));
-    assert_capture_futility_search(&checking_board, checking, quiet, 7, 0, true, true);
+    assert_capture_futility_search(
+        &checking_board,
+        checking,
+        quiet,
+        1,
+        evaluate(test_nnue(), &checking_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        true,
+        true,
+    );
 
     let (tt_board, tt_capture, _) = capture_futility_fixture(sq(0, 11));
-    assert_capture_futility_search(&tt_board, tt_capture, tt_capture, 7, 0, false, true);
+    assert_capture_futility_search(
+        &tt_board,
+        tt_capture,
+        tt_capture,
+        1,
+        evaluate(test_nnue(), &tt_board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        false,
+        true,
+    );
 }
 
 #[test]
@@ -1393,7 +1453,7 @@ fn capture_futility_excludes_lmr_depth_eight() {
     let depth = (1..=MAX_PLY)
         .find(|&depth| capture_futility_context(&board, target, tt_move, depth).0 >= 8)
         .unwrap();
-    let lmr_depth = assert_capture_futility_search(&board, target, tt_move, depth, 0, false, true);
+    let lmr_depth = assert_capture_futility_boundary(&board, target, tt_move, depth, false, true);
     assert_eq!(lmr_depth, 8);
 }
 
@@ -1426,8 +1486,32 @@ fn capture_futility_applies_to_two_stage_captures_and_sums_both_victims() {
         [Some(sq(5, 4)), Some(sq(5, 5))]
     );
 
-    assert_capture_futility_search(&board, target, tt_move, 7, 0, false, false);
-    assert_capture_futility_search(&board, target, tt_move, 7, -1, false, true);
+    let victim_values: Vec<_> = board
+        .captured_squares(target)
+        .into_iter()
+        .flatten()
+        .map(|square| test_nnue().piece_value(board.piece_at(square).unwrap()))
+        .collect();
+    assert_eq!(victim_values.len(), 2);
+    let (lmr_depth, both) = capture_futility_context(&board, target, tt_move, 1);
+    let first_only = super::super::pruning::capture_futility_value(
+        test_nnue().pawn_value(),
+        evaluate(test_nnue(), &board),
+        lmr_depth,
+        victim_values[0],
+        0,
+    );
+    assert_eq!(both - first_only, victim_values[1]);
+
+    assert_capture_futility_search(
+        &board,
+        target,
+        tt_move,
+        1,
+        evaluate(test_nnue(), &board) + CAPTURE_FUTILITY_TEST_ALPHA_MARGIN,
+        false,
+        false,
+    );
 }
 
 // SEEが負の捕獲しかなくても先頭手は読み、全手の枝刈りによる偽の詰みを防ぐ。
