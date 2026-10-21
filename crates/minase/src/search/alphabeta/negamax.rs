@@ -85,6 +85,7 @@ impl Searcher<'_> {
     /// 判断の理由は`docs/adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md`にある。
     ///
     /// IIRの後に補正後の静的評価を1回求め、手数ごとに保持する（Stockfish src/search.cpp:832, 846-884）。
+    /// 置換表に補正前の静的評価があれば、評価関数の出力を求めずに使う（Stockfish src/search.cpp:854-860）。
     /// reverse futilityとrazoringには置換表の値を条件つきで採る判定用の評価値を使い、
     /// null moveの減深量、improving、およびfutilityには静的評価を使う。
     /// 補正表の更新にはノードの入口で求めた補正後の評価を渡す。
@@ -232,9 +233,16 @@ impl Searcher<'_> {
         #[cfg(feature = "invariants")]
         self.nnue
             .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-        let raw = self
-            .nnue
-            .evaluate_accumulator(&self.accumulators[ply as usize], side);
+        let raw = if let Some(static_eval) = tt_hit.and_then(|hit| hit.static_eval) {
+            #[cfg(feature = "search-stats")]
+            {
+                self.stats.tt_static_eval_uses += 1;
+            }
+            static_eval
+        } else {
+            self.nnue
+                .evaluate_accumulator(&self.accumulators[ply as usize], side)
+        };
         let correction_weighted_sum = self.correction_weighted_sum_at(side, ply);
         let correction =
             correction_from_weighted_sum(correction_weighted_sum, self.nnue.pawn_value());

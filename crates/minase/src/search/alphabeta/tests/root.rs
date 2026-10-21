@@ -124,6 +124,36 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
     }
 }
 
+// 根も置換表の補正前の静的評価に、現在の補正を加えて保持する。
+#[test]
+fn root_uses_tt_static_evaluation_before_current_correction() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        let evaluated = evaluate(searcher.nnue, &position);
+        let tt_static_eval = if evaluated == 1_000 { -1_000 } else { 1_000 };
+        let correction = position_correction(searcher, position.side_to_move(), 0);
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            0,
+            Some(tt_static_eval),
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+
+        searcher
+            .search_root(&position, &moves, 1, -INFINITY, INFINITY)
+            .unwrap();
+
+        assert_eq!(searcher.static_evals[0], tt_static_eval + correction);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_uses, 1);
+    });
+}
+
 // 読み直し中は前回完了表を参照し、同じ手へ各窓の探索量を加算する。
 #[test]
 fn root_research_keeps_completed_counts_and_accumulates_each_move() {

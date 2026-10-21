@@ -41,6 +41,8 @@ search_stats! {
     tt_hits,
     /// 通常探索で置換表の値により打ち切った回数。
     tt_cutoffs,
+    /// 通常探索と根で置換表の補正前の静的評価を使った回数。
+    tt_static_eval_uses,
     /// 静止探索で置換表を照会した回数。
     quiesce_tt_probes,
     /// 静止探索の置換表照会で項目が一致した回数。

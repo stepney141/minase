@@ -77,6 +77,63 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
 }
 
+// 深さ不足の記録に静的評価があれば、探索値では打ち切らず、その静的評価に現在の補正を加えて保持する。
+#[test]
+fn negamax_uses_tt_static_evaluation_before_current_correction() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        let evaluated = evaluate(searcher.nnue, &position);
+        let tt_static_eval = if evaluated == 1_000 { -1_000 } else { 1_000 };
+        let correction = position_correction(searcher, position.side_to_move(), 0);
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            0,
+            Some(tt_static_eval),
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+
+        searcher
+            .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
+            .unwrap();
+
+        assert_eq!(searcher.static_evals[0], tt_static_eval + correction);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_uses, 1);
+    });
+}
+
+// 深さ不足の記録に静的評価がなければ、評価関数の出力に現在の補正を加えて保持する。
+#[test]
+fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        let evaluated = evaluate(searcher.nnue, &position);
+        let correction = position_correction(searcher, position.side_to_move(), 0);
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            0,
+            None,
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+
+        searcher
+            .negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false)
+            .unwrap();
+
+        assert_eq!(searcher.static_evals[0], evaluated + correction);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_uses, 0);
+    });
+}
+
 // 深さ不足の記録でも記録手があれば、内部反復減深を行わず要求深さ3を保つ。
 // 判断の理由は docs/adr/reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md にある。
 #[test]
