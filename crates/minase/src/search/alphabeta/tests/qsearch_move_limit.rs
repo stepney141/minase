@@ -1,7 +1,8 @@
-//! 静止探索は実際に読んだ捕獲手を制限し、最後の王駒の捕獲、取り返し、獅子の2枚取りを除外する。
-//! 例外の手も手数には含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
+//! 静止探索は候補の列から取り出した順番で捕獲手を制限し、最後の王駒の捕獲、取り返し、獅子の2枚取りを除外する。
+//! 枝刈りした手と例外の手も候補数に含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
 
 use super::*;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::params;
 
 fn ordinary(from: Square, to: Square) -> Move {
@@ -18,6 +19,7 @@ fn first_capture() -> Move {
     ordinary(sq(0, 0), sq(0, 2))
 }
 
+#[cfg(feature = "tuning")]
 fn seed_first(searcher: &Searcher<'_>, board: &Position, mv: Move, ply: u32) {
     assert!(legal_moves(board).contains(&mv));
     // 窓を打ち切らないUpper記録で、対象外の捕獲を先頭に指定する。
@@ -47,10 +49,11 @@ fn two_captures(victim: PieceKind) -> Position {
     )
 }
 
-/// 上限より1手多い独立した歩兵の捕獲を用意する。
+/// 指定した上限より1手多い独立した歩兵の捕獲を用意する。
 /// 先頭は置換表で指定し、残りは全て同価値の歩兵とする。
-fn captures_over_limit() -> (Position, Vec<Move>) {
-    let count = params::qsearch_move_limit() as u8 + 1;
+#[cfg(feature = "tuning")]
+fn captures_over_limit(limit: usize) -> (Position, Vec<Move>) {
+    let count = u8::try_from(limit + 1).unwrap();
     assert!(count <= 10, "王駒の筋を避けて捕獲を配置する");
     let mut pieces = vec![
         (sq(11, 0), Color::Black, PieceKind::King),
@@ -72,19 +75,20 @@ fn captures_over_limit() -> (Position, Vec<Move>) {
     (board, captures)
 }
 
+#[cfg(feature = "tuning")]
 fn capture_leaf_score(board: &Position, nnue: &Nnue, mv: Move) -> i32 {
     let mut child = board.clone();
     child.make_move_unchecked(mv, engine_rules());
     -evaluate(nnue, &child)
 }
 
-// 複雑な捕獲の例外は上限1を明示し、必ず上限到達後の経路を通す。
+// 手数制限を使うテストは上限を明示し、既定値や他の並列テストに依存させない。
 // 他の並列テストへ係数を漏らさないよう、既存のtuningテストと同じく隔離する。
 #[cfg(feature = "tuning")]
-fn single_capture_limit(test: &str) -> bool {
+fn fixed_capture_limit(test: &str, limit: i32) -> bool {
     const CHILD: &str = "MINASE_QSEARCH_LIMIT_TEST";
     if std::env::var(CHILD).as_deref() == Ok(test) {
-        params::set("QsearchMoveLimit", 1).unwrap();
+        params::set("QsearchMoveLimit", limit).unwrap();
         return true;
     }
     let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -114,11 +118,11 @@ fn single_capture_limit(test: &str) -> bool {
 }
 
 #[cfg(feature = "tuning")]
-macro_rules! single_capture_test {
-    ($name:ident, $body:block) => {
+macro_rules! fixed_capture_limit_test {
+    ($name:ident, $limit:literal, $body:block) => {
         #[test]
         fn $name() {
-            if single_capture_limit(stringify!($name)) {
+            if fixed_capture_limit(stringify!($name), $limit) {
                 $body
             }
         }
@@ -127,9 +131,16 @@ macro_rules! single_capture_test {
 
 // 最大ply直前で呼び、探索された各捕獲の子を静的評価の葉にする。
 // これにより探索ノード数は、このノードで実際に読んだ捕獲手数となる。
+#[cfg(feature = "tuning")]
 #[test]
-fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
-    let (board, captures) = captures_over_limit();
+fn qsearch_limit_counts_tt_capture_once_and_prunes_at_limit() {
+    if !fixed_capture_limit(
+        stringify!(qsearch_limit_counts_tt_capture_once_and_prunes_at_limit),
+        2,
+    ) {
+        return;
+    }
+    let (board, captures) = captures_over_limit(2);
     with_root_searcher(&board, &[], |searcher| {
         assert_eq!(searcher.previous_capture[0], None);
         let ply = MAX_PLY - 1;
@@ -140,7 +151,7 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
         let mut ordered = captures.clone();
         ordered.pop();
         ordered.insert(0, tt_capture);
-        let searched = &ordered[..params::qsearch_move_limit() as usize];
+        let searched = &ordered[..2];
         let mut expected = evaluate(searcher.nnue, &board);
         let mut best_move = None;
         for &mv in searched {
@@ -164,7 +175,12 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
             Some(expected)
         );
-        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
+        assert_eq!(searcher.nodes, 2);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(
+            searcher.stats.quiesce_move_count_prunes, 1,
+            "群の置換表手は重複して候補に数えない"
+        );
         assert_eq!(
             searcher.previous_capture[MAX_PLY as usize],
             Some(searched.last().unwrap().to)
@@ -181,41 +197,55 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
 }
 
 #[cfg(feature = "tuning")]
-single_capture_test!(qsearch_limit_reads_last_royal_after_tt_capture, {
-    let board = position(
-        Color::Black,
-        &[
-            (sq(11, 0), Color::Black, PieceKind::King),
-            (sq(5, 8), Color::White, PieceKind::King),
-            (sq(0, 0), Color::Black, PieceKind::Rook),
-            (sq(0, 2), Color::White, PieceKind::Pawn),
-            (sq(5, 0), Color::Black, PieceKind::Rook),
-        ],
-    );
-    with_root_searcher(&board, &[], |searcher| {
-        let ply = MAX_PLY - 1;
-        set_test_path_ply(searcher, ply);
-        seed_first(searcher, &board, first_capture(), ply);
-        let mate = ordinary(sq(5, 0), sq(5, 8));
-        assert!(legal_moves(&board).contains(&mate));
-        assert_eq!(
-            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
-            Some(MATE - MAX_PLY as i32)
+fixed_capture_limit_test!(
+    qsearch_limit_counts_last_royal_without_counting_a_search_node,
+    2,
+    {
+        let board = position(
+            Color::Black,
+            &[
+                (sq(11, 0), Color::Black, PieceKind::King),
+                (sq(5, 8), Color::White, PieceKind::King),
+                (sq(0, 0), Color::Black, PieceKind::Rook),
+                (sq(0, 2), Color::White, PieceKind::Pawn),
+                (sq(5, 0), Color::Black, PieceKind::Rook),
+                (sq(8, 4), Color::Black, PieceKind::Pawn),
+                (sq(8, 5), Color::White, PieceKind::Pawn),
+            ],
         );
-        assert_eq!(searcher.nodes, 1, "先頭の捕獲を読んだ後で王駒を取る");
-        assert_eq!(
-            searcher
-                .tt
-                .probe(search_key(&board), ply)
-                .unwrap()
-                .best_move,
-            Some(mate)
-        );
-    });
-});
+        with_root_searcher(&board, &[], |searcher| {
+            let ply = MAX_PLY - 1;
+            set_test_path_ply(searcher, ply);
+            seed_first(searcher, &board, first_capture(), ply);
+            let mate = ordinary(sq(5, 0), sq(5, 8));
+            assert!(legal_moves(&board).contains(&mate));
+            assert_eq!(
+                searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
+                Some(MATE - MAX_PLY as i32)
+            );
+            assert_eq!(
+                searcher.nodes, 1,
+                "王駒を取る候補は数えるが探索ノードには数えない"
+            );
+            #[cfg(feature = "search-stats")]
+            assert_eq!(
+                searcher.stats.quiesce_move_count_prunes, 1,
+                "王駒を取る候補の後の通常捕獲は上限で読まない"
+            );
+            assert_eq!(
+                searcher
+                    .tt
+                    .probe(search_key(&board), ply)
+                    .unwrap()
+                    .best_move,
+                Some(mate)
+            );
+        });
+    }
+);
 
 #[cfg(feature = "tuning")]
-single_capture_test!(qsearch_limit_reads_double_lion_capture_after_tt_capture, {
+fixed_capture_limit_test!(qsearch_limit_reads_double_lion_capture_after_limit, 1, {
     // 香車2枚をこの配置に置き、二重捕獲による評価増分を駒価値とdelta_marginの和に収める。
     let board = position(
         Color::Black,
@@ -383,21 +413,32 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
 }
 
 #[cfg(feature = "tuning")]
-single_capture_test!(qsearch_limit_recaptures_mid_capture_after_normal_search, {
-    check_lion_recapture(false, false);
-});
+fixed_capture_limit_test!(
+    qsearch_limit_recaptures_mid_capture_after_normal_search,
+    1,
+    {
+        check_lion_recapture(false, false);
+    }
+);
 #[cfg(feature = "tuning")]
-single_capture_test!(qsearch_limit_recaptures_igui_after_quiescence, {
+fixed_capture_limit_test!(qsearch_limit_recaptures_igui_after_quiescence, 1, {
     check_lion_recapture(true, true);
 });
 #[cfg(feature = "tuning")]
-single_capture_test!(qsearch_limit_recaptures_mid_capture_after_quiescence, {
+fixed_capture_limit_test!(qsearch_limit_recaptures_mid_capture_after_quiescence, 1, {
     check_lion_recapture(false, true);
 });
 
+#[cfg(feature = "tuning")]
 #[test]
-fn qsearch_limit_counts_exception_as_first_capture() {
-    let (board, captures) = captures_over_limit();
+fn qsearch_limit_counts_exception_as_first_candidate() {
+    if !fixed_capture_limit(
+        stringify!(qsearch_limit_counts_exception_as_first_candidate),
+        2,
+    ) {
+        return;
+    }
+    let (board, captures) = captures_over_limit(2);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
         set_test_path_ply(searcher, ply);
@@ -408,17 +449,19 @@ fn qsearch_limit_counts_exception_as_first_capture() {
                 .quiesce(&mut board.clone(), -INFINITY, INFINITY, ply)
                 .is_some()
         );
-        assert_eq!(
-            searcher.nodes,
-            params::qsearch_move_limit() as u64,
-            "先頭が取り返しでも上限に数える"
-        );
+        assert_eq!(searcher.nodes, 2, "先頭が取り返しでも候補の順番に数える");
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.quiesce_move_count_prunes, 1);
     });
 }
 
+#[cfg(feature = "tuning")]
 #[test]
-fn qsearch_limit_does_not_count_see_pruned_capture() {
-    let (board, captures) = captures_over_limit();
+fn qsearch_limit_counts_see_pruned_candidate() {
+    if !fixed_capture_limit(stringify!(qsearch_limit_counts_see_pruned_candidate), 2) {
+        return;
+    }
+    let (board, captures) = captures_over_limit(2);
     let mut pieces: Vec<_> = Square::all()
         .filter_map(|square| board.piece_at(square).map(|piece| (square, piece)))
         .collect();
@@ -444,27 +487,25 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
             captures[0],
             searcher.qsearch_see_floor,
         ));
-        let expected = captures[1..]
-            .iter()
-            .take(params::qsearch_move_limit() as usize)
-            .map(|&mv| {
-                assert!(!see_prunes(
-                    &board,
-                    engine_rules(),
-                    searcher.nnue,
-                    mv,
-                    searcher.qsearch_see_floor,
-                ));
-                capture_leaf_score(&board, searcher.nnue, mv)
-            })
-            .max()
-            .unwrap()
+        assert!(!see_prunes(
+            &board,
+            engine_rules(),
+            searcher.nnue,
+            captures[1],
+            searcher.qsearch_see_floor,
+        ));
+        let expected = capture_leaf_score(&board, searcher.nnue, captures[1])
             .max(evaluate(searcher.nnue, &board));
         assert_eq!(
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
             Some(expected)
         );
-        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
+        assert_eq!(searcher.nodes, 1);
+        #[cfg(feature = "search-stats")]
+        {
+            assert_eq!(searcher.stats.quiesce_see_floor_prunes, 1);
+            assert_eq!(searcher.stats.quiesce_move_count_prunes, 1);
+        }
         let best = searcher
             .tt
             .probe(search_key(&board), ply)
@@ -476,9 +517,16 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
     });
 }
 
+#[cfg(feature = "tuning")]
 #[test]
-fn qsearch_limit_does_not_count_delta_pruned_capture_but_uses_its_estimate() {
-    let (board, captures) = captures_over_limit();
+fn qsearch_limit_counts_delta_pruned_candidate_and_uses_its_estimate() {
+    if !fixed_capture_limit(
+        stringify!(qsearch_limit_counts_delta_pruned_candidate_and_uses_its_estimate),
+        2,
+    ) {
+        return;
+    }
+    let (board, captures) = captures_over_limit(2);
     let nnue = test_nnue();
     // 香車は歩兵より捕獲価値が高く、隣の筋を守らないためSEEの閾値を通る。
     // エポック0では評価増分が駒価値とdelta_marginの和に収まる。
@@ -520,20 +568,14 @@ fn qsearch_limit_does_not_count_delta_pruned_capture_but_uses_its_estimate() {
                 "捕獲後もdeltaの閾値は変わらない: {mv:?}"
             );
         }
-        let searched_best = captures[1..]
-            .iter()
-            .map(|&mv| {
-                assert!(!see_prunes(
-                    &board,
-                    engine_rules(),
-                    searcher.nnue,
-                    mv,
-                    searcher.qsearch_see_floor,
-                ));
-                capture_leaf_score(&board, searcher.nnue, mv)
-            })
-            .max()
-            .unwrap();
+        assert!(!see_prunes(
+            &board,
+            engine_rules(),
+            searcher.nnue,
+            captures[1],
+            searcher.qsearch_see_floor,
+        ));
+        let searched_best = capture_leaf_score(&board, searcher.nnue, captures[1]);
         let pruned_estimate = stand_pat
             + searcher.delta_margin
             + searcher
@@ -546,7 +588,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture_but_uses_its_estimate() {
             searcher.quiesce(&mut board.clone(), alpha, INFINITY, ply),
             Some(expected)
         );
-        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
+        assert_eq!(searcher.nodes, 1);
         let hit = searcher.tt.probe(search_key(&board), ply).unwrap();
         assert_eq!(hit.value.unwrap().score, expected);
         assert_eq!(
@@ -554,7 +596,10 @@ fn qsearch_limit_does_not_count_delta_pruned_capture_but_uses_its_estimate() {
             "見積りによる引き上げは最善手を変えない"
         );
         #[cfg(feature = "search-stats")]
-        assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 1);
+        {
+            assert_eq!(searcher.stats.quiesce_delta_best_score_raises, 1);
+            assert_eq!(searcher.stats.quiesce_move_count_prunes, 1);
+        }
     });
 }
 

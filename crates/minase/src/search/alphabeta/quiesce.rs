@@ -53,19 +53,21 @@ impl Searcher<'_> {
     /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
     ///
     /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
-    /// それ以外は[`Self::delta_margin`]のdelta pruning、補正後のstand-patと余裕値を基準にしたSEEの閾値、
-    /// [`Self::qsearch_see_floor`]のSEEの下限、手数制限の順に判定する。
+    /// それ以外は手数制限、[`Self::delta_margin`]のdelta pruning、
+    /// 補正後のstand-patと余裕値を基準にしたSEEの閾値、[`Self::qsearch_see_floor`]のSEEの下限の順に判定する。
     /// delta pruningで読まない手はstand-pat、余裕値、および捕獲価値の和で最善値を引き上げる。
     /// SEEの閾値で読まない手は、現在のαとstand-patに余裕値を足した値の小さい方で引き上げる。
     /// どちらも現在の最善値と見積りが通常域にある場合に限り、αと最善手は変えない
     /// （Stockfish src/search.cpp:1834, 1841）。
-    /// SEEの下限と手数制限で読まない手は最善値を引き上げない。
+    /// 手数制限とSEEの下限で読まない手は最善値を引き上げない。
     /// delta pruningは成り益を加えず、置換表の捕獲手もSEEの例外にしない。
     /// 成り益を除く理由は`docs/adr/keep-delta-pruning-without-promotion-gain.md`にある。
     ///
-    /// 手数制限は、置換表の手も含めて実際に読んだ捕獲手が`QsearchMoveLimit`手に達した後に働く。
+    /// 手数制限は、候補の列の`next`が返した合法で重複しない候補について、現在の候補より前に返した候補の数`n`を
+    /// 0から数え、`n >= QsearchMoveLimit`なら候補を読まない（Stockfish src/search.cpp:1816, 1825）。
+    /// 置換表の手、最後の王駒を取る手、例外の手、および各枝刈りで読まない手も候補に数える。
     /// 最後の王駒を取る手、直前の相手の捕獲手の到達升で取り返す手、獅子が2枚を取る手は、この制限だけの例外とする。
-    /// 例外として読んだ手も手数に含めるが、枝刈りした候補は含めない。
+    /// 2段階移動も1候補と数え、最後の王駒を取る手は候補に数えても探索ノードには数えない。
     /// 数え方の理由は`docs/adr/limit-searched-captures-in-qsearch.md`にある。
     pub(super) fn quiesce(
         &mut self,
@@ -152,7 +154,7 @@ impl Searcher<'_> {
 
         let mut best = s;
         let mut best_move = None;
-        let mut searched_captures = 0;
+        let mut candidate_count = 0;
         let futility_base = s + self.delta_margin;
         #[cfg(feature = "search-stats")]
         let low_value_threshold = alpha - futility_base;
@@ -166,6 +168,8 @@ impl Searcher<'_> {
             &self.capture_ranks,
             self.capture_history,
         ) {
+            let candidate_index = candidate_count;
+            candidate_count += 1;
             let mv = candidate.capture.mv;
             #[cfg(feature = "search-stats")]
             if !returned_low_value_group
@@ -181,61 +185,56 @@ impl Searcher<'_> {
                 buffers.royal_count,
                 candidate.capture.captured,
             );
-            let futility_value = futility_base + candidate.captured_value;
-            if !is_last_royal_capture && futility_value <= alpha {
-                if should_raise_futility_best_score(best, futility_value) {
-                    best = futility_value;
-                    #[cfg(feature = "search-stats")]
-                    {
-                        self.stats.quiesce_delta_best_score_raises += 1;
-                    }
-                }
-                continue;
-            }
-            if !is_last_royal_capture
-                && see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base)
-            {
-                #[cfg(feature = "search-stats")]
-                {
-                    self.stats.quiesce_see_threshold_prunes += 1;
-                }
-                let estimate = alpha.min(futility_base);
-                if should_raise_futility_best_score(best, estimate) {
-                    best = estimate;
-                    #[cfg(feature = "search-stats")]
-                    {
-                        self.stats.quiesce_see_threshold_best_score_raises += 1;
-                    }
-                }
-                continue;
-            }
-            if !is_last_royal_capture
-                && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
-            {
-                #[cfg(feature = "search-stats")]
-                {
-                    self.stats.quiesce_see_floor_prunes += 1;
-                }
-                continue;
-            }
-            // 上限は実際に読んだ捕獲だけを数える。例外も手数に含める。
-            if searched_captures >= params::qsearch_move_limit()
-                && !is_last_royal_capture
-                && !self.previous_capture[ply as usize]
-                    .is_some_and(|square| candidate.capture.captured.contains(&Some(square)))
-                && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
-                    && candidate.capture.captured.iter().all(Option::is_some))
-            {
-                continue;
-            }
-            if !is_last_royal_capture {
-                self.enter_node().then_some(())?;
-            }
-            searched_captures += 1;
-            self.previous_capture[(ply + 1) as usize] = Some(mv.to);
             let score = if is_last_royal_capture {
                 MATE - (ply + 1) as i32
             } else {
+                if candidate_index >= params::qsearch_move_limit() as usize
+                    && !self.previous_capture[ply as usize]
+                        .is_some_and(|square| candidate.capture.captured.contains(&Some(square)))
+                    && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
+                        && candidate.capture.captured.iter().all(Option::is_some))
+                {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_move_count_prunes += 1;
+                    }
+                    continue;
+                }
+                let futility_value = futility_base + candidate.captured_value;
+                if futility_value <= alpha {
+                    if should_raise_futility_best_score(best, futility_value) {
+                        best = futility_value;
+                        #[cfg(feature = "search-stats")]
+                        {
+                            self.stats.quiesce_delta_best_score_raises += 1;
+                        }
+                    }
+                    continue;
+                }
+                if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_see_threshold_prunes += 1;
+                    }
+                    let estimate = alpha.min(futility_base);
+                    if should_raise_futility_best_score(best, estimate) {
+                        best = estimate;
+                        #[cfg(feature = "search-stats")]
+                        {
+                            self.stats.quiesce_see_threshold_best_score_raises += 1;
+                        }
+                    }
+                    continue;
+                }
+                if see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor) {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_see_floor_prunes += 1;
+                    }
+                    continue;
+                }
+                self.enter_node().then_some(())?;
+                self.previous_capture[(ply + 1) as usize] = Some(mv.to);
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,

@@ -47,6 +47,8 @@ search_stats! {
     quiesce_tt_hits,
     /// 静止探索で置換表の値により打ち切った回数。
     quiesce_tt_cutoffs,
+    /// 静止探索で手数制限により読まなかった候補数。
+    quiesce_move_count_prunes,
     /// 静止探索で補正後のstand-patと余裕値を基準にしたSEEの閾値により枝刈りした候補数。
     quiesce_see_threshold_prunes,
     /// 静止探索でSEEの下限により枝刈りした候補数。
