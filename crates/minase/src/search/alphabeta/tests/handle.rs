@@ -223,26 +223,9 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
-    let delta = aspiration_delta(test_nnue().pawn_value());
-    let previous = -crate::search::REPETITION_BAND_START + 2 * delta + 1;
-    let table = small_tt();
     let mut snapshot = snapshot_for(&midgame);
     snapshot.root_moves.truncate(1);
-    // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
-    // 根を1手に限定してLMRの係数から分離し、深さ3の子の記録は深さ5では使えなくする。
-    let mut child = midgame.clone();
-    child.make_move_unchecked(snapshot.root_moves[0], engine_rules());
-    table.store(
-        search_key(&child),
-        3,
-        -previous,
-        None,
-        Bound::Exact,
-        None,
-        1,
-        false,
-    );
-    let handle = start(snapshot, depth_limits(6), 81, DEFAULT_THREADS, table);
+    let handle = start(snapshot, depth_limits(6), 81, DEFAULT_THREADS, small_tt());
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 81));
     let (progress, finished) = event_reports(events);
@@ -250,10 +233,6 @@ fn progress_depths_start_at_one_and_increase_by_one() {
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
-    // 深さ5は初期窓を外れるが、
-    // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
-    assert_eq!(progress[3].1, previous);
-    assert!(progress[4].1 >= progress[3].1 + delta);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
     }

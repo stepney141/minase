@@ -452,8 +452,8 @@ fn r1_repetition_band_null_move_cutoff_returns_beta_instead_of_a_win() {
 #[test]
 fn r1_repetition_band_normalizes_initial_and_widened_aspiration_edges() {
     for distance in [49, 50, 51, 100] {
-        let mut high = AspirationWindow::initial(5, Some(29_487 - distance), 50);
-        let mut low = AspirationWindow::initial(5, Some(-29_487 + distance), 50);
+        let mut high = AspirationWindow::initial(Some(29_487 - distance), 50);
+        let mut low = AspirationWindow::initial(Some(-29_487 + distance), 50);
         assert_eq!(high.alpha, 29_487 - distance - 50);
         assert_eq!(low.beta, -29_487 + distance + 50);
         if distance <= 50 {

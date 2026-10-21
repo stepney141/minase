@@ -84,7 +84,7 @@ pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
 
 /// 反復探索の窓と、次に外れた側を広げる幅。
 ///
-/// 前の反復の値の周囲から探索を始めるaspiration windowである。
+/// 直前の完了反復の最善手について、評価値の平均の周囲から探索を始めるaspiration windowである。
 /// `delta`は静的評価と同じ単位で、初期値は歩兵価値×`AspirationDelta`%とする。
 /// 外れた側だけを広げる理由は`docs/adr/widen-only-the-failed-side-of-aspiration-windows.md`にある。
 pub(super) struct AspirationWindow {
@@ -94,46 +94,60 @@ pub(super) struct AspirationWindow {
 }
 
 impl AspirationWindow {
-    /// 深さ5以上で同じワーカーの直前の完了値が詰み帯と専用の帯の外なら、その値±`delta`を初期窓にする。
-    /// それ以外は全窓とし、詰み帯または専用の帯に達した端は無限へ置き換える。
-    pub(super) fn initial(depth: u32, prev: Option<i32>, delta: i32) -> Self {
-        let (alpha, beta) = match prev {
-            Some(score) if depth >= 5 && score.abs() < REPETITION_BAND_START => {
-                (score - delta, score + delta)
-            }
-            _ => (-INFINITY, INFINITY),
+    /// 最善手の平均が詰み帯と専用の帯の外なら、平均±`delta`を初期窓にする。
+    /// 平均がない場合は全窓とし、詰み帯または専用の帯に達した端は無限へ置き換える。
+    pub(super) fn initial(average: Option<i32>, delta: i32) -> Self {
+        let mut window = Self {
+            alpha: -INFINITY,
+            beta: INFINITY,
+            delta,
         };
-        let mut window = Self { alpha, beta, delta };
-        window.normalize();
+        if let Some(average) =
+            average.filter(|&score| i64::from(score).abs() < i64::from(REPETITION_BAND_START))
+        {
+            window.set_bounds(
+                i64::from(average) - i64::from(delta),
+                i64::from(average) + i64::from(delta),
+            );
+        }
         window
     }
 
     /// 下側だけを広げ、次の拡大量に調整係数を掛ける。
     pub(super) fn widen_low(&mut self) {
-        if self.alpha != -INFINITY {
-            self.alpha -= self.delta;
-        }
-        self.normalize();
+        let alpha = if self.alpha == -INFINITY {
+            i64::from(self.alpha)
+        } else {
+            i64::from(self.alpha) - i64::from(self.delta)
+        };
+        self.set_bounds(alpha, i64::from(self.beta));
         self.delta = grow_aspiration_delta(self.delta);
     }
 
     /// 上側だけを広げ、次の拡大量に調整係数を掛ける。
     pub(super) fn widen_high(&mut self) {
-        if self.beta != INFINITY {
-            self.beta += self.delta;
-        }
-        self.normalize();
+        let beta = if self.beta == INFINITY {
+            i64::from(self.beta)
+        } else {
+            i64::from(self.beta) + i64::from(self.delta)
+        };
+        self.set_bounds(i64::from(self.alpha), beta);
         self.delta = grow_aspiration_delta(self.delta);
     }
 
-    /// 詰み帯または専用の帯へ達した端を無限へ置き換える。
-    fn normalize(&mut self) {
-        if self.alpha <= -REPETITION_BAND_START {
-            self.alpha = -INFINITY;
-        }
-        if self.beta >= REPETITION_BAND_START {
-            self.beta = INFINITY;
-        }
+    /// 64ビット整数で求めた端を正規化して保持する。
+    fn set_bounds(&mut self, alpha: i64, beta: i64) {
+        let band_start = i64::from(REPETITION_BAND_START);
+        self.alpha = if alpha <= -band_start {
+            -INFINITY
+        } else {
+            i32::try_from(alpha).expect("finite aspiration alpha remains in the ordinary band")
+        };
+        self.beta = if beta >= band_start {
+            INFINITY
+        } else {
+            i32::try_from(beta).expect("finite aspiration beta remains in the ordinary band")
+        };
     }
 }
 
@@ -229,7 +243,10 @@ impl Searcher<'_> {
 
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
     ///
-    /// 主ワーカーと補助ワーカーが共有し、直前の完了値は各ワーカー自身のものを使う。
+    /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
+    /// 評価値の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
+    /// 深さ2以上は平均があれば窓を置く。
+    /// 直前の完了値は詰みを探す印の判定だけに使う。
     /// 値がα以下なら下側だけ、β以上なら上側だけを広げ、同じ深さで再探索する。
     /// 等号も窓外れとし、fail-lowの最善手は置換表の助言としてだけ残して、完了結果や進捗へは採らない。
     /// 読み直し中の中断も`None`を返す。
@@ -238,12 +255,18 @@ impl Searcher<'_> {
         position: &Position,
         root_moves: &[Move],
         depth: u32,
-        prev: Option<i32>,
+        prev: Option<(Move, i32)>,
     ) -> Option<(Move, i32)> {
-        self.seek_mate = is_seek_mate(prev, depth, self.nnue.pawn_value());
+        self.seek_mate = is_seek_mate(prev.map(|(_, score)| score), depth, self.nnue.pawn_value());
         self.previous_pv.clone_from(&self.pv[0]);
+        let average = prev.and_then(|(best_move, _)| {
+            self.root_move_stats
+                .iter()
+                .find(|(mv, _)| *mv == best_move)
+                .and_then(|(_, stats)| stats.averages.map(|(average, _)| average))
+        });
         let mut window =
-            AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));
+            AspirationWindow::initial(average, aspiration_delta(self.nnue.pawn_value()));
         loop {
             let Some((best_move, score)) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)

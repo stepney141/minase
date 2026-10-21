@@ -1,7 +1,26 @@
 //! 根の探索と探索窓を検査する。
 
 use super::*;
+use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::root::{RootMoveStats, grow_aspiration_delta, root_move_weight};
+
+fn set_root_move_averages(searcher: &mut Searcher<'_>, mv: Move, averages: Option<(i32, i64)>) {
+    if let Some((_, stats)) = searcher
+        .root_move_stats
+        .iter_mut()
+        .find(|(recorded, _)| *recorded == mv)
+    {
+        stats.averages = averages;
+    } else {
+        searcher.root_move_stats.push((
+            mv,
+            RootMoveStats {
+                effort: 0,
+                averages,
+            },
+        ));
+    }
+}
 
 #[test]
 fn first_root_move_stats_update_uses_the_score_and_its_signed_square() {
@@ -79,8 +98,8 @@ fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
         assert!(!searcher.seek_mate);
         assert_eq!(searcher.nnue.pawn_value(), 100);
         // D=2の閾値は26803、D=5は105769/25を切り捨てて4591。
-        // 王将だけの局面では±4591に届かず、D=5では窓を読み直す。
-        for (depth, previous, expected) in [
+        // 窓の中心となる平均は0に固定し、組の値と反復の深さだけを変える。
+        for (depth, previous_score, expected) in [
             (1, None, false),
             (2, Some(4591), false),
             (5, Some(4591), true),
@@ -88,13 +107,17 @@ fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
             (5, Some(-4591), true),
             (1, None, false),
         ] {
+            let previous = previous_score.map(|score| {
+                set_root_move_averages(searcher, moves[0], Some((0, 0)));
+                (moves[0], score)
+            });
             let (_, score) = searcher
                 .search_iteration(&position, &moves, depth, previous)
                 .unwrap();
             assert!(score.abs() < 4590);
             assert_eq!(
                 searcher.seek_mate, expected,
-                "depth={depth}, prev={previous:?}"
+                "depth={depth}, prev={previous_score:?}"
             );
         }
     });
@@ -115,7 +138,7 @@ fn completed_root_subtrees_order_the_next_iteration() {
             let (best, score) = searcher
                 .search_iteration(&position, &moves, depth, prev)
                 .unwrap();
-            prev = Some(score);
+            prev = Some((best, score));
             assert!(searcher.current_root_nodes.is_empty());
             let counts = &searcher.completed_root_nodes;
             assert_eq!(counts.len(), moves.len());
@@ -321,16 +344,17 @@ fn interrupted_root_iteration_discards_only_current_counts() {
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
     with_root_searcher(&position, &history, |searcher| {
-        searcher
+        let (best_move, score) = searcher
             .search_iteration(&position, &moves, 2, None)
             .unwrap();
         let completed = searcher.completed_root_nodes.clone();
         // 最初のfail-high窓を完了し、読み直しの途中で止める。
         searcher.interrupt_at = Some((searcher.nodes + 2, StopReason::NodeLimit));
         let delta = aspiration_delta(searcher.nnue.pawn_value());
+        set_root_move_averages(searcher, best_move, Some((-delta, 0)));
         assert!(
             searcher
-                .search_iteration(&position, &moves, 5, Some(-delta))
+                .search_iteration(&position, &moves, 5, Some((best_move, score)))
                 .is_none()
         );
         assert_eq!(searcher.completed_root_nodes, completed);
@@ -355,75 +379,106 @@ fn aspiration_growth_saturates_at_i32_max() {
     assert_eq!(grow_aspiration_delta(i32::MAX), i32::MAX);
 }
 
-// 深さ5以上で通常値だけを狭い窓の中心に使う。
+// 通常範囲の平均だけを狭い窓の中心に使う。
 // 判断の理由は docs/adr/widen-only-the-failed-side-of-aspiration-windows.md にある。
 #[test]
-fn aspiration_initial_window_uses_only_eligible_previous_scores() {
-    for depth in 1..=4 {
-        let window = AspirationWindow::initial(depth, Some(100), 50);
-        assert_eq!(
-            (window.alpha, window.beta),
+fn aspiration_initial_window_uses_only_eligible_averages() {
+    for (case, average, expected) in [
+        ("no_average", None, (-INFINITY, INFINITY)),
+        (
+            "mate_threshold",
+            Some(MATE_THRESHOLD),
             (-INFINITY, INFINITY),
-            "depth={depth}"
-        );
-    }
-    for depth in [5, 6, 8] {
-        for (case, prev, expected) in [
-            ("no_previous", None, (-INFINITY, INFINITY)),
-            (
-                "mate_threshold",
-                Some(MATE_THRESHOLD),
-                (-INFINITY, INFINITY),
-            ),
-            (
-                "negative_mate_threshold",
-                Some(-MATE_THRESHOLD),
-                (-INFINITY, INFINITY),
-            ),
-            ("mate", Some(MATE), (-INFINITY, INFINITY)),
-            ("negative_mate", Some(-MATE), (-INFINITY, INFINITY)),
-            ("article_31_r1_lower", Some(29_487), (-INFINITY, INFINITY)),
-            ("article_31_r1_inner", Some(29_740), (-INFINITY, INFINITY)),
-            ("article_31_r1_upper", Some(29_743), (-INFINITY, INFINITY)),
-            (
-                "article_31_r1_negative_lower",
-                Some(-29_487),
-                (-INFINITY, INFINITY),
-            ),
-            (
-                "article_31_r1_negative_inner",
-                Some(-29_740),
-                (-INFINITY, INFINITY),
-            ),
-            (
-                "article_31_r1_negative_upper",
-                Some(-29_743),
-                (-INFINITY, INFINITY),
-            ),
-            ("article_31_r1_below_band", Some(29_486), (29_436, INFINITY)),
-            (
-                "article_31_r1_above_negative_band",
-                Some(-29_486),
-                (-INFINITY, -29_436),
-            ),
-            ("ordinary", Some(100), (50, 150)),
-        ] {
-            let window = AspirationWindow::initial(depth, prev, 50);
-            assert_eq!(
-                (window.alpha, window.beta),
-                expected,
-                "{case}, depth={depth}, prev={prev:?}"
-            );
-            if prev == Some(100) {
-                assert_eq!(window.delta, 50, "{case}, depth={depth}");
-            }
-        }
+        ),
+        (
+            "negative_mate_threshold",
+            Some(-MATE_THRESHOLD),
+            (-INFINITY, INFINITY),
+        ),
+        (
+            "repetition_band_start",
+            Some(REPETITION_BAND_START),
+            (-INFINITY, INFINITY),
+        ),
+        (
+            "negative_repetition_band_start",
+            Some(-REPETITION_BAND_START),
+            (-INFINITY, INFINITY),
+        ),
+        (
+            "just_below_repetition_band",
+            Some(REPETITION_BAND_START - 1),
+            (REPETITION_BAND_START - 51, INFINITY),
+        ),
+        (
+            "just_above_negative_repetition_band",
+            Some(-REPETITION_BAND_START + 1),
+            (-INFINITY, -REPETITION_BAND_START + 51),
+        ),
+        ("ordinary", Some(100), (50, 150)),
+    ] {
+        let window = AspirationWindow::initial(average, 50);
+        assert_eq!((window.alpha, window.beta), expected, "{case}");
+        assert_eq!(window.delta, 50, "{case}");
     }
 }
 
 #[test]
+fn iteration_uses_full_window_without_a_previous_best_average() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    for previous_best in [None, Some(moves[0])] {
+        with_root_searcher(&position, &history, |searcher| {
+            let previous = previous_best.map(|best_move| {
+                set_root_move_averages(searcher, best_move, None);
+                (best_move, DRAW_SCORE)
+            });
+            let depth = if previous.is_some() { 2 } else { 1 };
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, depth, previous)
+                .unwrap();
+            assert_eq!(score, DRAW_SCORE);
+            assert_eq!(searcher.nodes, moves.len() as u64);
+        });
+    }
+}
+
+#[test]
+fn iteration_centers_the_window_on_the_previous_best_average() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    with_root_searcher(&position, &history, |searcher| {
+        let delta = aspiration_delta(searcher.nnue.pawn_value());
+        let best_move = moves[0];
+        set_root_move_averages(
+            searcher,
+            best_move,
+            Some((delta, i64::from(delta) * i64::from(delta))),
+        );
+        let (_, score) = searcher
+            .search_iteration(&position, &moves, 2, Some((best_move, 10_000)))
+            .unwrap();
+        assert_eq!(score, DRAW_SCORE);
+        assert_eq!(searcher.nodes, 2 * moves.len() as u64);
+    });
+}
+
+#[test]
+fn aspiration_window_endpoints_use_i64_before_normalization() {
+    let window = AspirationWindow::initial(Some(1), i32::MAX);
+    assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
+
+    let mut widened = AspirationWindow::initial(Some(0), 1);
+    widened.delta = i32::MAX;
+    widened.widen_high();
+    assert_eq!((widened.alpha, widened.beta), (-1, INFINITY));
+}
+
+#[test]
 fn aspiration_widens_only_the_failed_side() {
-    let mut low = AspirationWindow::initial(5, Some(100), 50);
+    let mut low = AspirationWindow::initial(Some(100), 50);
     for high_side in [false, false, true, false, true] {
         let before = (low.alpha, low.beta, low.delta);
         if high_side {
@@ -483,17 +538,23 @@ fn aspiration_researches_scores_equal_to_either_edge() {
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
     let delta = aspiration_delta(test_nnue().pawn_value());
-    for (prev, first_nodes) in [(delta, moves.len() as u64), (-delta, 1)] {
+    for (average, first_nodes) in [(delta, moves.len() as u64), (-delta, 1)] {
         with_root_searcher(&position, &history, |searcher| {
+            let best_move = moves[0];
+            set_root_move_averages(
+                searcher,
+                best_move,
+                Some((average, i64::from(average) * i64::from(average.abs()))),
+            );
             let (_, score) = searcher
-                .search_iteration(&position, &moves, 5, Some(prev))
+                .search_iteration(&position, &moves, 5, Some((best_move, 10_000)))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, first_nodes + moves.len() as u64);
             assert!(searcher.current_root_nodes.is_empty());
             assert_eq!(searcher.completed_root_nodes.len(), moves.len());
             for (index, &(_, nodes)) in searcher.completed_root_nodes.iter().enumerate() {
-                assert_eq!(nodes, if prev == delta || index == 0 { 2 } else { 1 });
+                assert_eq!(nodes, if average == delta || index == 0 { 2 } else { 1 });
             }
             assert_eq!(
                 searcher
@@ -609,16 +670,17 @@ fn iteration_snapshots_previous_pv_before_window_research() {
     let position = bare_kings();
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
-        searcher
+        let (best_move, score) = searcher
             .search_iteration(&position, &moves, 1, None)
             .unwrap();
         assert!(searcher.previous_pv.is_empty());
         assert!(searcher.follow_pv[0]);
         let previous = searcher.pv[0].clone();
         assert!(!previous.is_empty());
-        // 王将だけの局面では到達しない前回値を与え、窓の読み直しを起こす。
+        // 王将だけの局面では到達しない平均を与え、窓の読み直しを起こす。
+        set_root_move_averages(searcher, best_move, Some((10_000, 100_000_000)));
         searcher
-            .search_iteration(&position, &moves, 5, Some(10_000))
+            .search_iteration(&position, &moves, 5, Some((best_move, score)))
             .unwrap();
         assert_eq!(searcher.previous_pv, previous);
         assert!(searcher.follow_pv[0]);
@@ -633,10 +695,12 @@ fn aspiration_retry_interruption_keeps_fail_high_bound() {
     let history = repeated_root_children(&board, &moves);
     with_root_searcher(&board, &history, |searcher| {
         let delta = aspiration_delta(searcher.nnue.pawn_value());
+        let best_move = moves[0];
+        set_root_move_averages(searcher, best_move, Some((-delta - 1, 0)));
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
         assert!(
             searcher
-                .search_iteration(&board, &moves, 5, Some(-delta - 1))
+                .search_iteration(&board, &moves, 5, Some((best_move, DRAW_SCORE)))
                 .is_none()
         );
         assert_eq!(searcher.nodes, 1);
