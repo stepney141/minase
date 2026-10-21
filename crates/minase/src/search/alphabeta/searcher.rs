@@ -27,7 +27,7 @@ use super::ordering::MovePicker;
 use super::params;
 use super::pruning::qsearch_see_floor;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
-use super::root::RootResults;
+use super::root::{RootMoveStats, RootResults};
 use super::team::SharedSearch;
 use super::time::{TimeBudget, iteration_prediction_fits};
 
@@ -64,6 +64,7 @@ pub(super) fn new_searcher<'a>(
     let root_correction_keys = correction_piece_keys(position);
     Searcher {
         root_results: None,
+        root_move_stats: Vec::new(),
         completed_root_nodes: Vec::new(),
         current_root_nodes: Vec::new(),
         #[cfg(test)]
@@ -205,6 +206,8 @@ pub(super) enum RepetitionMatch {
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
     pub(super) root_results: Option<RootResults>,
+    /// この`go`で累積する、根の手ごとの探索量と評価値の平均。
+    pub(super) root_move_stats: Vec<(Move, RootMoveStats)>,
     /// 直前に完了した反復の、根の手ごとの部分木ノード数。
     pub(super) completed_root_nodes: Vec<(Move, u64)>,
     /// 進行中の反復で、窓の読み直しを含めて累積する部分木ノード数。

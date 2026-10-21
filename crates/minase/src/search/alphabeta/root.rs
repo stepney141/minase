@@ -17,6 +17,71 @@ use super::searcher::Searcher;
 use super::tt::{Bound, Hit};
 use super::{INFINITY, params};
 
+/// 根の手の平均を更新する尺度（Stockfish `src/search.cpp:1480`）。
+const ROOT_MOVE_AVERAGE_SCALE: u32 = 32;
+/// 根の手の重みで、更新前の累計ノード数に掛ける比3/2の分子
+/// （Stockfish `src/search.cpp:1481`）。
+const ROOT_MOVE_EFFORT_RATIO_NUMERATOR: u32 = 3;
+/// 根の手の重みで、今回のノード数に掛ける比3/2の分母
+/// （Stockfish `src/search.cpp:1482`）。
+const ROOT_MOVE_EFFORT_RATIO_DENOMINATOR: u32 = 2;
+/// 根の手の平均に使う重みの下限（Stockfish `src/search.cpp:1483`）。
+const ROOT_MOVE_WEIGHT_MIN: u32 = 12;
+/// 根の手の平均に使う重みの上限（Stockfish `src/search.cpp:1484`）。
+const ROOT_MOVE_WEIGHT_MAX: u32 = 24;
+/// 根の手の符号つき2乗の平均に使う重みの上限（Stockfish `src/search.cpp:1489`）。
+const ROOT_MOVE_SIGNED_SQUARE_WEIGHT_MAX: u32 = 16;
+
+/// 根の手について、`go`の間に累積する探索量と評価値の平均。
+#[derive(Default)]
+pub(super) struct RootMoveStats {
+    /// 累計の探索ノード数。
+    pub(super) effort: u64,
+    /// 評価値の平均と、符号つき2乗`v × |v|`の平均。
+    pub(super) averages: Option<(i32, i64)>,
+}
+
+impl RootMoveStats {
+    /// 完了した1回の根の手の探索を、今回のノード数と最終値で反映する
+    /// （Stockfish `src/search.cpp:1474-1501`）。
+    pub(super) fn update(&mut self, nodes: u64, value: i32) {
+        let weight = i64::from(root_move_weight(nodes, self.effort));
+        self.effort += nodes;
+
+        let signed_value = i64::from(value);
+        let signed_square = signed_value * signed_value.abs();
+        if let Some((average, signed_square_average)) = &mut self.averages {
+            let scale = i64::from(ROOT_MOVE_AVERAGE_SCALE);
+            *average = i32::try_from(
+                (weight * signed_value + (scale - weight) * i64::from(*average)).div_euclid(scale),
+            )
+            .expect("root move average remains an i32 score");
+            let signed_square_weight = weight.min(i64::from(ROOT_MOVE_SIGNED_SQUARE_WEIGHT_MAX));
+            *signed_square_average = (signed_square_weight * signed_square
+                + (scale - signed_square_weight) * *signed_square_average)
+                .div_euclid(scale);
+        } else {
+            self.averages = Some((value, signed_square));
+        }
+    }
+}
+
+/// 今回と更新前の累計ノード数から、根の手の平均に使う重みを求める
+/// （Stockfish `src/search.cpp:1486-1488`）。
+pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
+    let previous_effort = previous_effort.max(1);
+    let numerator = u128::from(ROOT_MOVE_AVERAGE_SCALE)
+        * u128::from(ROOT_MOVE_EFFORT_RATIO_DENOMINATOR)
+        * u128::from(nodes);
+    let denominator = u128::from(ROOT_MOVE_EFFORT_RATIO_DENOMINATOR) * u128::from(nodes)
+        + u128::from(ROOT_MOVE_EFFORT_RATIO_NUMERATOR) * u128::from(previous_effort);
+    let weight = (numerator / denominator).clamp(
+        u128::from(ROOT_MOVE_WEIGHT_MIN),
+        u128::from(ROOT_MOVE_WEIGHT_MAX),
+    );
+    u32::try_from(weight).expect("root move weight is bounded by its u32 constants")
+}
+
 /// 反復探索の窓と、次に外れた側を広げる幅。
 ///
 /// 前の反復の値の周囲から探索を始めるaspiration windowである。
@@ -344,6 +409,13 @@ impl Searcher<'_> {
                 self.current_root_nodes.push((mv, nodes));
             }
             let score = score?;
+            if let Some((_, stats)) = self.root_move_stats.iter_mut().find(|(m, _)| *m == mv) {
+                stats.update(nodes, score);
+            } else {
+                let mut stats = RootMoveStats::default();
+                stats.update(nodes, score);
+                self.root_move_stats.push((mv, stats));
+            }
             if let Some(results) = &mut self.root_results {
                 results.record(mv, score, alpha, &self.pv[1]);
             }

@@ -1,7 +1,75 @@
 //! 根の探索と探索窓を検査する。
 
 use super::*;
-use crate::search::alphabeta::root::grow_aspiration_delta;
+use crate::search::alphabeta::root::{RootMoveStats, grow_aspiration_delta, root_move_weight};
+
+#[test]
+fn first_root_move_stats_update_uses_the_score_and_its_signed_square() {
+    for (value, signed_square) in [(3, 9), (-3, -9)] {
+        let mut stats = RootMoveStats::default();
+        stats.update(7, value);
+        assert_eq!(stats.effort, 7);
+        assert_eq!(stats.averages, Some((value, signed_square)));
+    }
+}
+
+#[test]
+fn root_move_stats_weight_has_a_lower_bound_of_twelve() {
+    let mut stats = RootMoveStats {
+        effort: 100,
+        averages: Some((8, 64)),
+    };
+    stats.update(1, 40);
+    assert_eq!(stats.effort, 101);
+    assert_eq!(stats.averages, Some((20, 640)));
+}
+
+#[test]
+fn root_move_stats_weight_has_an_upper_bound_of_twenty_four() {
+    let mut stats = RootMoveStats {
+        effort: 0,
+        averages: Some((8, 64)),
+    };
+    stats.update(100, 40);
+    assert_eq!(stats.effort, 100);
+    assert_eq!(stats.averages, Some((32, 832)));
+}
+
+#[test]
+fn root_move_signed_square_weight_has_an_upper_bound_of_sixteen() {
+    let mut stats = RootMoveStats {
+        effort: 1,
+        averages: Some((0, 0)),
+    };
+    stats.update(2, 32);
+    assert_eq!(stats.effort, 3);
+    assert_eq!(stats.averages, Some((18, 512)));
+}
+
+#[test]
+fn zero_node_root_move_update_initializes_averages_without_effort() {
+    assert_eq!(root_move_weight(0, 0), 12);
+    let mut stats = RootMoveStats::default();
+    stats.update(0, -2);
+    assert_eq!(stats.effort, 0);
+    assert_eq!(stats.averages, Some((-2, -4)));
+}
+
+#[test]
+fn root_move_stats_round_negative_averages_down() {
+    let mut stats = RootMoveStats {
+        effort: 100,
+        averages: Some((0, 0)),
+    };
+    stats.update(1, -1);
+    assert_eq!(stats.effort, 101);
+    assert_eq!(stats.averages, Some((-1, -1)));
+}
+
+#[test]
+fn root_move_weight_accepts_near_limit_node_counts() {
+    assert_eq!(root_move_weight(u64::MAX, u64::MAX), 12);
+}
 
 #[test]
 fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
@@ -214,6 +282,35 @@ fn root_research_keeps_completed_counts_and_accumulates_each_move() {
             searcher.order_root_moves(&position, &mut ordered);
             assert_eq!(ordered[0], baseline[0]);
             assert_eq!(ordered[1], promoted);
+        }
+    });
+}
+
+// 同じfail-low窓を読み直しても、並べ替え後の添字ではなく手の等値で記録を累積する。
+#[test]
+fn root_move_stats_accumulate_by_move_across_window_research() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    with_root_searcher(&position, &history, |searcher| {
+        assert!(searcher.root_move_stats.is_empty());
+        // 全ての手が反復による引き分けとなり、各窓で正確に1ノードを使う。
+        for expected_effort in 1..=2 {
+            assert_eq!(
+                searcher.search_root(&position, &moves, 5, 0, 1).unwrap().1,
+                DRAW_SCORE
+            );
+            assert_eq!(searcher.root_move_stats.len(), moves.len());
+            for mv in &moves {
+                let mut matching = searcher
+                    .root_move_stats
+                    .iter()
+                    .filter(|(recorded, _)| recorded == mv);
+                let stats = &matching.next().unwrap().1;
+                assert_eq!(stats.effort, expected_effort);
+                assert_eq!(stats.averages, Some((DRAW_SCORE, 0)));
+                assert!(matching.next().is_none());
+            }
         }
     });
 }
@@ -615,7 +712,7 @@ pub(super) fn root_history_updates_best_and_only_searched_non_improving_quiets()
 }
 
 #[test]
-fn interrupted_root_search_does_not_update_history() {
+fn interrupted_root_search_does_not_record_the_interrupted_move_or_update_history() {
     let board = bare_kings();
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
@@ -623,6 +720,19 @@ fn interrupted_root_search_does_not_update_history() {
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
         assert!(searcher.search_root(&board, &moves, 1, -1, 1).is_none());
         assert_eq!(searcher.nodes, 1);
+        let interrupted = searcher
+            .current_root_nodes
+            .iter()
+            .find(|(_, nodes)| *nodes == 0)
+            .unwrap()
+            .0;
+        assert_eq!(searcher.root_move_stats.len(), 1);
+        assert!(
+            searcher
+                .root_move_stats
+                .iter()
+                .all(|(mv, _)| *mv != interrupted)
+        );
         assert!(
             searcher
                 .history
