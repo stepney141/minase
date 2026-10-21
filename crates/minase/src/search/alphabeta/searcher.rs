@@ -94,6 +94,7 @@ pub(super) fn new_searcher<'a>(
         stop_reason: None,
         ponder_iteration: None,
         root_depth: 0,
+        fail_high_recovery: 0,
         seek_mate: false,
         cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
@@ -272,6 +273,9 @@ pub(super) struct Searcher<'a> {
     pub(super) follow_pv: [bool; MAX_PLY as usize + 1],
     /// 現在の反復の深さ。LMRの延長を許すplyの範囲に使う（Stockfish src/search.cpp:1402）。
     pub(super) root_depth: u32,
+    /// 反復をまたいで持ち越すfail highの減深。`go`ごとに0から始める
+    /// （Stockfish src/search.cpp:336, 405, 461-462）。
+    pub(super) fail_high_recovery: u32,
     /// 前の反復の確定値から決めた、現在の反復で詰みを探すかの印（Stockfish src/search.cpp:395）。
     pub(super) seek_mate: bool,
     /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。

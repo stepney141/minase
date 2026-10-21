@@ -369,10 +369,11 @@ fn article_31_r1_two_workers_score_the_path_cycle_ten_times() {
     let nnue = test_nnue();
     for attempt in 0..10 {
         let threads = worker_count(2);
+        // A5では深さ2の読み直しが深さ1まで減るため、2手先の反復値を確定できる深さ3まで読む。
         let result = crate::search::search(
             nnue,
             &snapshot,
-            &depth_limits(2),
+            &depth_limits(3),
             threads,
             &mut small_tt(),
             &mut crate::search::HistoryTables::new(threads),
@@ -380,7 +381,7 @@ fn article_31_r1_two_workers_score_the_path_cycle_ten_times() {
         .unwrap();
         assert_eq!(result.best_move, attack, "attempt {attempt}");
         assert_eq!(result.score, -(REPETITION_WIN - 2), "attempt {attempt}");
-        assert_eq!(result.depth, 2);
+        assert_eq!(result.depth, 3);
     }
 }
 

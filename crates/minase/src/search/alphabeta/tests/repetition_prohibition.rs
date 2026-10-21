@@ -350,15 +350,26 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
                 reason: WinReason::Stalemate
             }))
         );
-        let result = search_snapshot(&snapshot, &nnue, 2);
-        assert_eq!(result.best_move, cycle[2]);
         // R3は合法な再現で先に引き分けと近似するため、再現後の選択肢の減少までは読まない。
         let expected = if rule == RepetitionRule::R2 {
             REPETITION_WIN - 1
         } else {
             DRAW_SCORE
         };
-        assert_eq!(result.score, expected);
+        with_snapshot(&snapshot, &nnue, |searcher| {
+            let (best_move, score) = searcher
+                .search_root(
+                    snapshot.position(),
+                    snapshot.root_moves(),
+                    2,
+                    2,
+                    -INFINITY,
+                    INFINITY,
+                )
+                .unwrap();
+            assert_eq!(best_move, cycle[2]);
+            assert_eq!(score, expected);
+        });
         with_snapshot(&snapshot, &nnue, |searcher| {
             let mut current = snapshot.position().clone();
             assert_eq!(
@@ -546,6 +557,7 @@ pub(super) fn articles_31_r2_and_23_forbidden_tt_killer_and_quiet_moves_do_not_c
                                 } else {
                                     input.root_moves()
                                 },
+                                depth,
                                 depth,
                                 alpha,
                                 beta,

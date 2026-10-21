@@ -185,16 +185,12 @@ fn article_23_2_opponent_with_no_legal_moves_scores_mate_minus_one_ply() {
     );
     let moves = legal_moves(&position);
 
-    let result = run_search(
-        &position,
-        engine_rules(),
-        &moves,
-        &[],
-        &depth_limits(2),
-        DEFAULT_THREADS,
-        &mut small_tt(),
-    );
+    with_root_searcher(&position, &[], |searcher| {
+        let (_, score) = searcher
+            .search_root(&position, &moves, 2, 2, -INFINITY, INFINITY)
+            .unwrap();
 
-    // 全候補が同値のため最善手の一意性は主張しない。
-    assert_eq!(result.score, MATE - 1);
+        // 全候補が同値のため最善手の一意性は主張しない。
+        assert_eq!(score, MATE - 1);
+    });
 }

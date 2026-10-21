@@ -663,7 +663,7 @@ fn correction_root_updates_only_after_completed_search() {
             .read(Color::Black, key, CorrectionTableKind::Material);
         assert_eq!(initial, -1024);
 
-        let result = searcher.search_root(&board, &moves, 2, -INFINITY, INFINITY);
+        let result = searcher.search_root(&board, &moves, 2, 2, -INFINITY, INFINITY);
         if interrupted {
             assert_eq!(result, None);
             assert_eq!(

@@ -791,7 +791,7 @@ fn root_resets_cutoff_counts_and_records_iteration_depth() {
     with_root_searcher(&board, &[], |searcher| {
         searcher.cutoff_counts[2] = 7;
         searcher
-            .search_root(&board, &legal_moves(&board), 1, -INFINITY, -INFINITY + 1)
+            .search_root(&board, &legal_moves(&board), 1, 1, -INFINITY, -INFINITY + 1)
             .unwrap();
         assert_eq!(searcher.cutoff_counts[2], 0);
         assert_eq!(searcher.cutoff_counts[0], 1);

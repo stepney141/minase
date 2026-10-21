@@ -31,6 +31,62 @@ const ROOT_MOVE_WEIGHT_MIN: u32 = 12;
 const ROOT_MOVE_WEIGHT_MAX: u32 = 24;
 /// 根の手の符号つき2乗の平均に使う重みの上限（Stockfish `src/search.cpp:1489`）。
 const ROOT_MOVE_SIGNED_SQUARE_WEIGHT_MAX: u32 = 16;
+/// 反復を始めるたびにfail highの持ち越しから引く量
+/// （Stockfish `src/search.cpp:405`）。
+const FAIL_HIGH_RECOVERY_DECAY: u32 = 2;
+/// fail highによって減らした窓の深さの下限
+/// （Stockfish `src/search.cpp:410`）。
+const MIN_ASPIRATION_WINDOW_DEPTH: u32 = 1;
+
+/// 1回の反復で数えるfail highと、反復をまたいで持ち越す減深。
+#[derive(Clone, Copy)]
+pub(super) struct FailHighReduction {
+    failed_high_count: u32,
+    recovery: u32,
+}
+
+impl FailHighReduction {
+    /// 持ち越しを2減らして0で止め、fail highの回数を0にして反復を始める。
+    pub(super) fn begin(recovery: u32) -> Self {
+        Self {
+            failed_high_count: 0,
+            recovery: recovery.saturating_sub(FAIL_HIGH_RECOVERY_DECAY),
+        }
+    }
+
+    /// 反復の深さからfail high 1回につき1手と持ち越しを引き、1手を下限とする
+    /// （Stockfish `src/search.cpp:410, 450`）。
+    pub(super) fn window_depth(self, iteration_depth: u32) -> u32 {
+        iteration_depth
+            .saturating_sub(self.failed_high_count)
+            .saturating_sub(self.recovery)
+            .max(MIN_ASPIRATION_WINDOW_DEPTH)
+    }
+
+    /// fail highの回数を1増やす。
+    pub(super) fn after_fail_high(mut self) -> Self {
+        self.failed_high_count += 1;
+        self
+    }
+
+    /// fail lowの後はfail highの回数を0へ戻す。
+    pub(super) fn after_fail_low(mut self) -> Self {
+        self.failed_high_count = 0;
+        self
+    }
+
+    /// 窓内で完了した反復の後に持ち越す減深を返す。
+    ///
+    /// fail highがあれば`(h + 1) / 2 + 2`、なければ開始時に減らした値を保つ
+    /// （Stockfish `src/search.cpp:461-462`）。
+    pub(super) fn recovery_after_completion(self) -> u32 {
+        if self.failed_high_count == 0 {
+            self.recovery
+        } else {
+            self.failed_high_count.div_ceil(2) + 2
+        }
+    }
+}
 
 /// 根の手について、`go`の間に累積する探索量と評価値の平均。
 #[derive(Default)]
@@ -269,26 +325,37 @@ impl Searcher<'_> {
         tt_hit
     }
 
-    /// 窓を移しながら同じ深さを読み直し、窓内で完了した結果だけを返す。
+    /// 窓を移しながら読み直し、窓内で完了した反復だけを返す。
     ///
     /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
     /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
     /// 深さ2以上は平均があれば窓を置く。
     /// 直前の完了値は詰みを探す印の判定だけに使う。
+    /// 反復の開始時にfail highの持ち越しを減らし、各窓はfail highの回数と持ち越しに応じて
+    /// 反復の深さ以下で読む。fail lowでは回数を0へ戻し、fail highでは1増やす。
     /// 値がα以下ならβを元のαへ寄せて下端を返り値から移し、
     /// β以上ならαを元のβを基準に寄せて上端を返り値から移す。
-    /// どちらも窓を移した後に半幅を広げ、同じ深さで再探索する。
+    /// どちらも窓を移した後に半幅を広げて再探索する。
     /// 等号も窓外れとし、fail-lowの最善手は置換表の助言としてだけ残して、完了結果や進捗へは採らない。
+    /// 完了結果は、実際に読んだ窓の深さによらず、引数の反復の深さの結果として扱う。
+    /// 根の置換表へは窓の深さで保存を要求するため、既存の置換規則により、浅い完了窓が
+    /// 先に読んだ深い窓の記録を上書きしないことがある。
     /// 読み直し中の中断も`None`を返す。
     pub(super) fn search_iteration(
         &mut self,
         position: &Position,
         root_moves: &[Move],
-        depth: u32,
+        iteration_depth: u32,
         prev: Option<(Move, i32)>,
     ) -> Option<(Move, i32)> {
-        self.seek_mate = is_seek_mate(prev.map(|(_, score)| score), depth, self.nnue.pawn_value());
+        self.seek_mate = is_seek_mate(
+            prev.map(|(_, score)| score),
+            iteration_depth,
+            self.nnue.pawn_value(),
+        );
         self.previous_pv.clone_from(&self.pv[0]);
+        let mut reduction = FailHighReduction::begin(self.fail_high_recovery);
+        self.fail_high_recovery = reduction.recovery;
         let averages = prev.and_then(|(best_move, _)| {
             self.root_move_stats
                 .iter()
@@ -309,17 +376,26 @@ impl Searcher<'_> {
                 )
             }));
         loop {
-            let Some((best_move, score)) =
-                self.search_root(position, root_moves, depth, window.alpha, window.beta)
-            else {
+            let window_depth = reduction.window_depth(iteration_depth);
+            let Some((best_move, score)) = self.search_root(
+                position,
+                root_moves,
+                iteration_depth,
+                window_depth,
+                window.alpha,
+                window.beta,
+            ) else {
                 self.current_root_nodes.clear();
                 return None;
             };
             if score <= window.alpha {
+                reduction = reduction.after_fail_low();
                 window.widen_low(score);
             } else if score >= window.beta {
+                reduction = reduction.after_fail_high();
                 window.widen_high(score);
             } else {
+                self.fail_high_recovery = reduction.recovery_after_completion();
                 self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
                 if let Some(results) = &mut self.root_results {
                     results.previous_best = Some(best_move);
@@ -329,9 +405,13 @@ impl Searcher<'_> {
         }
     }
 
-    /// ルート局面を指定深さで探索し、最善手と評価値を返す。
+    /// ルート局面を反復の深さと窓の深さを分けて探索し、最善手と評価値を返す。
     ///
-    /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
+    /// `root_depth`には反復の深さを保持し、根のLMR、子の探索、historyとcorrectionの更新、
+    /// および置換表への保存には窓の深さを使う。
+    /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表への保存を要求する。
+    /// 置換表への保存は窓の深さで要求し、既存の置換規則に従う。このため、浅い窓の結果が
+    /// 先に深く読んだ窓の記録を上書きしないことがある。
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
     /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
     /// 置換表に補正前の静的評価があれば、評価関数の出力を求めずに使う（Stockfish src/search.cpp:854-860）。
@@ -344,7 +424,8 @@ impl Searcher<'_> {
         &mut self,
         position: &Position,
         root_moves: &[Move],
-        depth: u32,
+        iteration_depth: u32,
+        window_depth: u32,
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
@@ -353,7 +434,7 @@ impl Searcher<'_> {
             self.nmp_min_ply.is_none(),
             "null move verification state must not reach the root"
         );
-        self.root_depth = depth;
+        self.root_depth = iteration_depth;
         self.follow_pv[0] = true;
         // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
         self.cutoff_counts[2] = 0;
@@ -421,10 +502,10 @@ impl Searcher<'_> {
             self.stat_scores[0] = stat_score;
             // Stockfishは根の並べ替え後の先頭手を置換表の手として扱う
             // （src/search.cpp:839-840）。
-            let lmr = applies_lmr(depth, index);
+            let lmr = applies_lmr(window_depth, index);
             let first_depth = if lmr {
                 let reduction = lmr_reduction(LmrContext {
-                    depth,
+                    depth: window_depth,
                     index,
                     improving,
                     pv_node: true,
@@ -448,16 +529,16 @@ impl Searcher<'_> {
                     correction_weighted_sum,
                     seek_mate_gives_check: self.lmr_seek_mate_gives_check(&position, mv),
                 });
-                lmr_depth(depth, reduction, true, 0, self.root_depth)
+                lmr_depth(window_depth, reduction, true, 0, self.root_depth)
             } else {
-                depth - 1
+                window_depth - 1
             };
             let alpha_before = alpha;
             let before = self.nodes;
             let score = self.search_move(
                 &mut position,
                 mv,
-                depth,
+                window_depth,
                 alpha,
                 beta,
                 0,
@@ -504,7 +585,7 @@ impl Searcher<'_> {
         }
         if best_score > original_alpha {
             let updates = HistoryUpdateCoefficients::current().updates(
-                depth,
+                window_depth,
                 best_move == root_tt_move,
                 0,
                 false,
@@ -528,7 +609,7 @@ impl Searcher<'_> {
         };
         self.update_correction(
             &position,
-            depth,
+            window_depth,
             0,
             best_score,
             bound,
@@ -538,7 +619,7 @@ impl Searcher<'_> {
         );
         self.tt.store(
             key,
-            depth,
+            window_depth,
             best_score,
             Some(raw),
             bound,
