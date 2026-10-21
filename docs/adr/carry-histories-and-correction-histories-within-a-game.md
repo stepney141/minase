@@ -10,7 +10,7 @@
 旧ADRは、correction historyの補正表を、その前の[ADR](archive/carry-history-tables-within-a-game.md)と同じく持ち越さないとしていた。
 持ち越さない根拠は、既定の評価関数がPSTだった時期に、補正をfutility pruningにだけ使う前提で測った発動率（STC相当で0.69%）であり、補正を枝刈りと減深のすべての判定に使うようになった後には測っていない。
 
-[correction historyの表の設計書](../plans/archived/correction-history-tables.md)は、補正表を局面を鍵にした5つの表とcontinuation correction historyに改めた（[補正表のADR](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)）。
+[correction historyの表の設計書](../plans/archived/correction-history-tables.md)は、補正表を局面を鍵にした5つの表とcontinuation correction historyに改めた（[補正表のADR](sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)）。
 2026年10月17日のエンジンの開発者の決定により、同書では、表の大きさと共有の仕方をStockfishと同じにし、表を対局の間減衰させずに持ち越す。
 Stockfishは、局面を鍵にした補正表を同じNUMAノードのワーカーで共有し、その大きさを65,536にワーカー数以上の最小の2のべきを掛けた要素数とし（`src/history.h:40, 201-225`、`src/thread.cpp:213`）、continuation correction historyはワーカーごとに持ち（`src/search.h:335`）、どちらも新規対局でだけ初期化する（`src/search.cpp:713-736`）。
 

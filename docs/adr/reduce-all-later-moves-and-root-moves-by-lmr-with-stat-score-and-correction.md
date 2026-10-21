@@ -25,7 +25,7 @@ statScoreは、静かな手ではbutterfly historyと1手前と2手前のcontinu
 子のノードがhistoryを更新するときに、このノードへ至った手のstatScoreを使うからである。
 
 同じくallNodeによる拡大の前に、補正量の大きさの項`trunc(LmrCorrection × |S| / 102400)`も引く（同1353行）。
-`S`は、ノードの入口で補正後の静的評価を求めるときに読んだ、補正表の切り捨てる前の重み付きの和であり（[補正表のADR](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)）、この項は歩兵価値1枚分の補正量あたり`LmrCorrection`の1/100手を減らす。
+`S`は、ノードの入口で補正後の静的評価を求めるときに読んだ、補正表の切り捨てる前の重み付きの和であり（[補正表のADR](sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)）、この項は歩兵価値1枚分の補正量あたり`LmrCorrection`の1/100手を減らす。
 補正量の絶対値が大きいノードでは静的評価が当てにならないとみなし、浅く読む量を減らすためである。
 根でも、根で読んだ`S`による同じ項を引き、枝刈り用のlmrDepthの式には入れない。
 
@@ -46,7 +46,7 @@ LMRを静かな手に限り、根では行わない2026年10月18日のADRの形
 根のLMRでは、減深した探索の値がαを上回った手を、浅くする調整の後に残り深さ0の全窓で再探索することがあり、その手の主変化は1手で終わる。
 この場合に予想手を置換表などから補う案は、[予想手のADR](take-ponder-move-from-the-pv.md)の決定を変えるので採らなかった。
 
-補正量の項を、切り捨てた後の補正量から求める案は、Stockfishが割る前の和を使うので採らなかった（[補正表のADR](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)）。
+補正量の項を、切り捨てた後の補正量から求める案は、Stockfishが割る前の和を使うので採らなかった（[補正表のADR](sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)）。
 
 ## 結果
 

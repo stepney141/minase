@@ -301,7 +301,7 @@ impl TranspositionTable {
     /// 浅い結果を拒否したときは世代も変えず、同深さならバウンドを問わず後の書き込みを採る。
     /// 異なる検証キーでは、過去世代または既存より深い結果だけが置き換える。
     /// 同一キーの深さ制限は、静止探索の深さ0の記録が通常探索の深い記録を消すことを防ぐ。
-    /// 理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    /// 理由は`docs/adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md`にある。
     /// 静止探索の結果は、β以上なら下界、それ以外は上界として保存し、正確な値は保存しない
     /// （Stockfish src/search.cpp:1908-1909）。
     /// `static_eval`は補正前の静的評価であり、詰み距離の変換を適用しない。
@@ -309,7 +309,7 @@ impl TranspositionTable {
     ///
     /// 2ワーカーが同じ既存値から書き込み可と判断すると、浅い結果が後から公開されることも許容する。
     /// 比較交換で再判定せず、助言語をRelaxedで書いた後に評価値の語をReleaseで公開する。
-    /// この競合の扱いは`docs/adr/use-atomic-two-word-transposition-entries.md`に従う。
+    /// この競合の扱いは`docs/adr/store-static-evals-and-eval-only-records-in-two-word-tt-entries.md`に従う。
     #[allow(clippy::too_many_arguments)]
     pub(super) fn store(
         &self,

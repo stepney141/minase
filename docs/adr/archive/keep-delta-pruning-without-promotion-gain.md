@@ -2,17 +2,17 @@
 
 ## ステータス
 
-承認済み。決定日は2026年9月29日。
+置き換え済み。決定日は2026年9月29日。[静止探索の捕獲手は候補の列の順番で手数を制限し、取り返し、成る手、および王手になる手を手数制限、delta pruning、およびSEEの閾値から外す](../prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md)によって置き換えられた。
 
 ## コンテキスト
 
 delta pruningは、静止探索で、stand-patに取る駒の価値と余裕値を加えてもαに届かない捕獲手を展開しない枝刈りである。
 その契約は、最善の場合でもαに届かない捕獲だけを省くことである。
-2026年9月28日の[探索部の不具合監査](../audits/search-bugs-2026-09-28.md)は、捕獲と同時に成る手の成り益をこの判定が無視することを指摘した。
+2026年9月28日の[探索部の不具合監査](../../audits/search-bugs-2026-09-28.md)は、捕獲と同時に成る手の成り益をこの判定が無視することを指摘した。
 成り益を無視すると、αに届く捕獲まで省くことがあるので、これは契約に反する不具合である。
-[探索部の不具合修正](../plans/archived/search-bug-fixes.md)は、取る駒の価値と成り益の和で判定する修正を実装した。
+[探索部の不具合修正](../../plans/archived/search-bug-fixes.md)は、取る駒の価値と成り益の和で判定する修正を実装した。
 成り益は、到達升での駒の取り合いの見積り（SEE）と同じ計算で求めた。
-親コミットと比べる診断のSTCは、上限3,000ペアで判定に達しなかった（[測定記録](../measurements/search-bug-fixes/search-bug-fixes-delta-promotion-diag-stc.md)）。
+親コミットと比べる診断のSTCは、上限3,000ペアで判定に達しなかった（[測定記録](../../measurements/search-bug-fixes/search-bug-fixes-delta-promotion-diag-stc.md)）。
 修正版に対する親コミットの得点率は51.0%（約+6.7 Elo）、LLRは0.932であり、LLRは有効1,209ペアの時点で1.95まで上がっていた。
 修正前の版がわずかに強い方向の証拠が残ったので、エンジンの開発者がこの修正を取り込まないと決めた。
 

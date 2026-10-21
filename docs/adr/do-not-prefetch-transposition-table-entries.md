@@ -30,5 +30,5 @@ minaseのエンジンとライブラリはworkspaceのlintで`unsafe_code = "for
 ## 結果
 
 置換表の照合の待ちは、探索木を変えない高速化では残る負荷として扱う。
-照合の回数を減らす変更は、[静止探索で置換表の照会より先にstand-patと候補の有無を判定する](check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)決定で採用した。
+照合の回数を減らす変更は、[静止探索で置換表の照会より先にstand-patと候補の有無を判定する](probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)決定で採用した。
 再提案は、`unsafe`を禁じる決定を見直す場合に限られ、その場合も現行の評価関数と置換表で速度を測り直す必要がある。

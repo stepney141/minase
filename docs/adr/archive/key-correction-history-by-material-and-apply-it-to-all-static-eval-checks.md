@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月18日。[correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](../sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月18日。[correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)によって置き換えられた。
 
 ## コンテキスト
 

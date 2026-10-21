@@ -97,7 +97,7 @@ impl Searcher<'_> {
     /// （Stockfish src/search.cpp:1908-1909）。補正後のstand-patは静的評価として保存しない。
     /// stand-patを上回る捕獲手がなければ記録手は持たない。
     /// 深さ0の記録は通常探索の深さ条件を満たさず、カットオフに使われない。
-    /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    /// 保存の理由は`docs/adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md`にある。
     ///
     /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
     /// それ以外は、取り返しと成る手なら手数制限、[`Self::delta_margin`]のdelta pruning、
@@ -119,7 +119,7 @@ impl Searcher<'_> {
     /// 取り返し、成る手、および王手になる手は3つの枝刈りを免れ、獅子が2枚を取る手は手数制限だけを免れる。
     /// 角鷹と飛鷲の2枚取りは、獅子の例外に含めない。
     /// 2段階移動も1候補と数え、最後の王駒を取る手は候補に数えても探索ノードには数えない。
-    /// 数え方の理由は`docs/adr/limit-searched-captures-in-qsearch.md`にある。
+    /// 数え方の理由は`docs/adr/prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md`にある。
     pub(super) fn quiesce(
         &mut self,
         position: &mut Position,

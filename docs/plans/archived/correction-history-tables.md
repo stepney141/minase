@@ -27,7 +27,7 @@ SPSA（simultaneous perturbation stochastic approximation、全係数を同時�
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月17日に起案し、2026年10月20日に[統括計画](../search-forms.md)のサブタスク4として着手して、2026年10月21日に完了した。
 挙動を変えない移行1項目と、5項目（C4、C2、C3、C1、C5）の形の変更を実装し、89個の係数を30,000ペアのSPSAで調整した値を反映した版を、1つの候補として採用した。
-設計判断は、[補正表の鍵、合成、および更新のADR](../../adr/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[表の持ち越しと共有のADR](../../adr/carry-histories-and-correction-histories-within-a-game.md)、および[LMRのADR](../../adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)に移した。
+設計判断は、[補正表の鍵、合成、および更新のADR](../../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[表の持ち越しと共有のADR](../../adr/carry-histories-and-correction-histories-within-a-game.md)、および[LMRのADR](../../adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)に移した。
 起点のコードとの照合の結果、Stockfishと起点に合わせて次の4点を決めた。更新量に1061/1024を掛けるのは±256の切り詰めの後とし、根でも局面の表を更新し、引き分けの評価値の変更でも表を初期化し、LMRの補正項は切り捨てる前の重み付きの和から求める。これらはClaudeの判断である。
 SPSAの結果、中将棋に固有の材料表の重みは277から154へ下がり、minorとnon-pawnの表とcontinuation correction historyの重みは上がった。continuation correction historyの重みは、2手前と4手前が30から104へ、6手前が24から111へ上がった。
 SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して625ペアで`H1`（約+30 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

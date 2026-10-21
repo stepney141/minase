@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、静かな手のfutility pruningとSEEによる枝刈りに、手を読む深さからLMRの枝刈り前の減深量を引いた枝刈り用のlmrDepthを使う形を入れた（[枝刈りのADR](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)）。
+[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、静かな手のfutility pruningとSEEによる枝刈りに、手を読む深さからLMRの枝刈り前の減深量を引いた枝刈り用のlmrDepthを使う形を入れた（[枝刈りのADR](prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)）。
 Stockfishは、これらの枝刈りの前に、1手前と2手前のcontinuation historyとpawn historyの3つの和が、残り深さに比例する閾値を下回る静かな手を読まず、続いてhistoryの値に応じてlmrDepthを増減する（`src/search.cpp:1227-1240`）。
 minaseには、この2つの仕組みがなかった。
 

@@ -29,7 +29,7 @@
 ## 結果
 
 公開の捕獲生成の着手集合と順序は変わらず、通常駒の探索専用の生成は対象升に絞った公開生成の部分列と一致する。
-静止探索の候補は、後にそこから獅子の一部の捕獲を除いた（[静止探索は置換表の照会より先にstand-patと候補の有無を判定する](check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)）。
+静止探索の候補は、後にそこから獅子の一部の捕獲を除いた（[静止探索は置換表の照会より先にstand-patと候補の有無を判定する](probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)）。
 回転は列の操作としては実装せず、`QsearchBuffers::next`が置換表の手を先に返し、群の中の同じ手を飛ばすことで同じ順序を作る。
 回転は探索木を変え、[回転の測定記録](../measurements/movegen-speedup/movegen-speedup-rotation-bench-depth5.md)では深さ5の15局面のノード数の差は0.016%だった。
 段階化はノードごとの固定費を生むので、件数の削減率から速度を見積もらない（[段階生成の固定費の教訓](../lessons/staged-generation-fixed-cost.md)）。

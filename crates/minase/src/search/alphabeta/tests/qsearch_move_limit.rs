@@ -1,6 +1,6 @@
 //! 静止探索は候補の列から取り出した順番で捕獲手を制限する。
 //! 最後の王駒の捕獲と免除の手に加え、獅子の2枚取りを手数制限から外す。
-//! 枝刈りした手と免除または例外の手も候補数に含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
+//! 枝刈りした手と免除または例外の手も候補数に含める。採用理由はdocs/adr/prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md。
 
 use super::*;
 #[cfg(feature = "tuning")]

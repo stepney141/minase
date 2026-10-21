@@ -482,7 +482,7 @@ impl Searcher<'_> {
                     }
                     // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
-                    // docs/adr/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md にある。
+                    // docs/adr/prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md にある。
                     if window_outside_bands
                         && !captures_last_royal(position, mv)
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))

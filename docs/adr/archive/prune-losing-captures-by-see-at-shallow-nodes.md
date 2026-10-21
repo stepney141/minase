@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月21日。[捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](../prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月21日。[捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)によって置き換えられた。
 
 ## コンテキスト
 

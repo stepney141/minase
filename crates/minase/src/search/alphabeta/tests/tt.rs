@@ -370,7 +370,7 @@ fn tt_static_evaluations_round_trip_without_mate_distance_adjustment() {
     }
 }
 
-// 同一キーを深さで保護する理由はdocs/adr/store-quiescence-results-at-depth-zero.md。
+// 同一キーを深さで保護する理由はdocs/adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md。
 // 同一キーは世代を
 // 問わず既存以上の深さだけを書き込み、異なるキーは過去世代または既存より
 // 深い結果だけを書き込む。

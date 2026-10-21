@@ -120,9 +120,9 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](archive/approximate-adjudication-inside-search-tree.md)（置き換え済み）
 - 2026年8月22日 [王手延長を実装しない](omit-check-extension.md)
 - 2026年8月23日 [探索ワーカー数の既定値を1にする](keep-default-threads-at-one.md)
-- 2026年8月23日 [置換表のエントリを2語の原子値にする](use-atomic-two-word-transposition-entries.md)
+- 2026年8月23日 [置換表のエントリを2語の原子値にする](archive/use-atomic-two-word-transposition-entries.md)（置き換え済み）
 - 2026年8月23日 [補助ワーカーは深さを飛ばし、最も深い反復を完了したワーカーの結果を採る](diversify-lazy-smp-workers-by-skipping-depths.md)
-- 2026年8月23日 [静止探索の結果を深さ0で置換表へ保存する](store-quiescence-results-at-depth-zero.md)
+- 2026年8月23日 [静止探索の結果を深さ0で置換表へ保存する](archive/store-quiescence-results-at-depth-zero.md)（置き換え済み）
 - 2026年8月25日 [規則セットを排他群ごとの列挙型で表し、着手規則と対局規則の2層に分ける](represent-rule-sets-as-algebraic-data-types.md)
 - 2026年8月26日 [教師値の探索は深さではなくノード数で打ち切る](use-fixed-node-searches-for-teacher-values.md)
 - 2026年8月26日 [評価関数に王と2駒の組の表（KPP）を使わない](omit-kpp-tables-from-evaluation.md)
@@ -147,7 +147,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月12日 [反復の延長信号を使わず、最善手が安定したときだけ早く止める](stop-early-on-stable-best-move-without-extensions.md)
 - 2026年9月12日 [置換表の記録手がないノードを1だけ浅く読む](archive/reduce-depth-by-one-without-tt-move.md)（置き換え済み）
 - 2026年9月12日 [置換表を1スロット1エントリの直接マップのまま保つ](keep-transposition-table-direct-mapped.md)
-- 2026年9月12日 [静的評価を置換表に保存しない](do-not-store-static-eval-in-tt.md)
+- 2026年9月12日 [静的評価を置換表に保存しない](archive/do-not-store-static-eval-in-tt.md)（置き換え済み）
 - 2026年9月14日 [学習する評価関数の出力Kを初期値の重みファイルの値に固定し、データから推定し直さない](archive/fix-the-output-k-of-trained-weights.md)（置き換え済み）
 - 2026年9月14日 [教師データの自己対局の手数上限を4,000手にする](cap-teacher-games-at-4000-plies.md)
 - 2026年9月14日 [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](penalize-wrong-signed-piece-removal-differences.md)
@@ -157,7 +157,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月17日 [効果が測定の幅に収まった、または数%以下と見込まれた生成とSEEの高速化を実装しない](skip-low-yield-movegen-and-see-speedups.md)
 - 2026年9月17日 [探索内の反復検出は対局履歴と探索経路の線形走査で行う](check-repetition-by-linear-scan.md)
 - 2026年9月17日 [置換表の行を先読みしない](do-not-prefetch-transposition-table-entries.md)
-- 2026年9月17日 [静止探索は置換表の照会より先にstand-patと候補の有無を判定し、獅子の経由升捕獲から空升へ進む手を読まない](check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)
+- 2026年9月17日 [静止探索は置換表の照会より先にstand-patと候補の有無を判定し、獅子の経由升捕獲から空升へ進む手を読まない](archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)（置き換え済み）
 - 2026年9月18日 [序盤の係数は予算式の秒読みの項にだけ掛ける](scale-only-the-byoyomi-term-in-the-opening.md)
 - 2026年9月18日 [持ち時間を後半の手のために温存せず、序盤から分担して使う](spend-main-time-from-the-opening.md)
 - 2026年9月18日 [直前局面は逆向きに構成した候補を順方向の合法手生成器で検証して求める](verify-predecessor-candidates-with-forward-movegen.md)
@@ -197,7 +197,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月28日 [反復の先読み（upcoming repetition detection）を採らない](reject-upcoming-repetition-detection.md)
 - 2026年9月29日 [null moveより後の局面だけで反復を検出する](detect-repetition-only-after-latest-null-move.md)
 - 2026年9月29日 [王駒がすべて狙われた局面でも静止探索でstand-patを使う](use-stand-pat-when-royals-are-attacked.md)
-- 2026年9月29日 [静止探索のdelta pruningに成り益を加えない](keep-delta-pruning-without-promotion-gain.md)
+- 2026年9月29日 [静止探索のdelta pruningに成り益を加えない](archive/keep-delta-pruning-without-promotion-gain.md)（置き換え済み）
 - 2026年9月30日 [静止探索の出力を回帰する学習と、捕獲局面を加える学習を採らない](do-not-regress-quiescence-search-outputs.md)
 - 2026年10月1日 [PSTの学習に浅い探索の手の順位の損失を加えない](reject-move-rank-loss-in-pst-training.md)
 - 2026年10月2日 [PSTに手作りの局所2駒表の補正項を加えない](reject-local-two-piece-correction-for-pst.md)
@@ -208,7 +208,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月4日 [リポジトリのルートを仮想マニフェストにし、crateを`crates/`の下に並べる](arrange-crates-under-a-virtual-workspace.md)
 - 2026年10月4日 [単独で不採用だった探索の8項目を、SPSAで再調整して一括で採用する](adopt-revived-search-items-as-a-bundle.md)
 - 2026年10月4日 [規則と表記をライブラリ`minase-core`に置き、探索と評価をエンジン`minase`に置く](split-rules-library-from-engine.md)
-- 2026年10月4日 [静止探索は実際に読んだ捕獲手の数で打ち切る](limit-searched-captures-in-qsearch.md)
+- 2026年10月4日 [静止探索は実際に読んだ捕獲手の数で打ち切る](archive/limit-searched-captures-in-qsearch.md)（置き換え済み）
 - 2026年10月5日 [再開は実行条件を`manifest.json`だけから読み、runnerと測定機を照合しない](archive/resume-from-the-manifest-without-checking-the-runner.md)（置き換え済み）
 - 2026年10月5日 [補助ツールを実行ファイル`minase`のサブコマンドにし、エンジンはサブコマンドなしで起動する](run-developer-tools-as-engine-subcommands.md)
 - 2026年10月5日 [評価関数の候補は探索係数を調整し直さずに採否を測る](judge-evaluation-candidates-without-retuning-search-coefficients.md)
@@ -265,7 +265,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月18日 [置換表の記録手がないノードを1だけ浅く読み、allNodeと前の反復の主変化を辿るノードでは浅くしない](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)
 - 2026年10月18日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterとLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)
 - 2026年10月19日 [浅い前向き枝刈りは深さと窓の条件をStockfishに合わせて王駒に利きが届くノードでは行わず、reverse futility pruningはβと判定用の評価値の加重平均を返す](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)
-- 2026年10月19日 [捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)
+- 2026年10月19日 [捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)（置き換え済み）
 - 2026年10月19日 [late move pruningは全深さとPVノードで行い、静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)
 - 2026年10月19日 [null moveはcutNodeでStockfishの静的評価の条件を満たすときだけ試し、置換表の打ち切りはPVノードでも行って零窓のノードではcutNodeとallNodeの区別を使う](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)
 - 2026年10月19日 [null moveの打ち切りは残り深さ16以上で検証探索により確かめる](verify-null-move-cutoffs-at-remaining-depth-16-and-above.md)
@@ -277,6 +277,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月19日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation historyとpawn historyは探索チームで共有して減衰させずに持ち越し、low ply historyは探索ごとに初期化する](archive/carry-histories-within-a-game-and-share-continuation-and-pawn-histories.md)（置き換え済み）
 - 2026年10月19日 [捕獲履歴はStockfishの上限、初期値、および更新量で更新し、寄与を歩兵価値の定数倍に抑えて並べ替えと静止探索に使い、LMRのstatScoreにも使う](update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md)
 - 2026年10月19日 [continuation historyとpawn historyの値が低い静かな手を読まず、枝刈り用のlmrDepthをhistoryで増減する](prune-quiet-moves-by-continuation-history-and-shift-lmr-depth-by-history.md)
-- 2026年10月20日 [correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)
+- 2026年10月20日 [correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、各ノードで1回求めた補正後の静的評価を枝刈りと減深のすべての判定に使う](archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)（置き換え済み）
 - 2026年10月20日 [butterfly historyと捕獲履歴は対局内で減衰させて持ち越し、continuation history、pawn history、および局面を鍵にした補正表は探索チームで共有して減衰させずに持ち越し、continuation correction historyはワーカーごとに持ち越し、low ply historyは探索ごとに初期化する](carry-histories-and-correction-histories-within-a-game.md)
 - 2026年10月20日 [LMRは先頭の手を除くすべての手と根に適用し、減深量に対数表、3段階のhistory補正、Stockfishの項、statScoreの連続量、および補正量の大きさの項を1/100手単位で加える](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)
+- 2026年10月21日 [捕獲手と静かな手をSEEの符号付きの閾値と駒得の見積りで枝刈りし、閾値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)
+- 2026年10月21日 [correction historyは材料表、駒配置の4表、およびcontinuation correction historyの重み付きの和で求めてStockfishの形で更新し、補正後の静的評価を枝刈りと減深のすべての判定と静止探索のstand-patに使う](sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)
+- 2026年10月21日 [静止探索の捕獲手は候補の列の順番で手数を制限し、取り返し、成る手、および王手になる手を手数制限、delta pruning、およびSEEの閾値から外す](prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md)
+- 2026年10月21日 [静止探索は静的評価を求める前に置換表を照会して零窓のノードでだけ打ち切り、置換表の値でstand-patを置き換え、βを超えた返り値をβの側へ寄せる](probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)
+- 2026年10月21日 [置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)

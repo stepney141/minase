@@ -2,14 +2,14 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月19日。
+置き換え済み。決定日は2026年10月19日。[捕獲手と静かな手をSEEの符号付きの閾値と駒得の見積りで枝刈りし、閾値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](../prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)によって置き換えられた。
 
 ## コンテキスト
 
 SEE（static exchange evaluation）は、着手の到達升での駒の取り合いを実際には読まず、取る駒と取り返される駒の価値の列から損得を見積もる手法である。
-[旧ADR](archive/prune-losing-captures-by-see-at-shallow-nodes.md)は、2026年9月21日に、浅いノードでSEEの値が深さ別の余裕値の符号を反転した値を下回る捕獲手を展開しないと決めた。
+[旧ADR](prune-losing-captures-by-see-at-shallow-nodes.md)は、2026年9月21日に、浅いノードでSEEの値が深さ別の余裕値の符号を反転した値を下回る捕獲手を展開しないと決めた。
 当時のfutility pruningは、駒の増減がない手にだけ静的評価を上界として使えたので、捕獲手を対象にできなかった。
-[棋力向上段階8](../plans/archived/strength-stage8.md)は、余裕値をチェスや本将棋の値から流用せず、深さごとに「失う良い結果の割合が10%以下の候補のうち枝刈りが最も多いもの」として[診断](../measurements/strength-stage8/strength-stage8-pruning-bench.md)から選んだ。
+[棋力向上段階8](../../plans/archived/strength-stage8.md)は、余裕値をチェスや本将棋の値から流用せず、深さごとに「失う良い結果の割合が10%以下の候補のうち枝刈りが最も多いもの」として[診断](../../measurements/strength-stage8/strength-stage8-pruning-bench.md)から選んだ。
 旧ADRは、余裕値を深さによらず1つにする案を、この診断で深さごとに適格な値が異なったので採らなかった。
 静止探索と同じ余裕値0を全深さで使う案も、残り深さ2で失う割合が13.1%となり基準を超えたので採らなかった。
 この診断は、評価関数がPSTだった時期のものである。
@@ -20,11 +20,11 @@ Stockfishは、捕獲手と王手になる手を同じ枝で扱い、SEEの値�
 王手にならない捕獲手には、その前に捕獲手のfutility pruningを行い、静的評価に取る駒の価値、lmrDepthに比例する余裕値、およびcapture historyの項を足してもαに届かない手を読まない（同1208-1217行）。
 王手にならない静かな手には、SEEの値が`−23 × max(lmrDepth, 0)²`を下回る手を読まない枝刈りを行う（同1255-1259行）。
 いずれも深さの上限を持たず、PVノードでも働く。
-minaseのcapture historyは、[capture historyのADR](archive/bound-capture-history-and-use-it-in-qsearch.md)が定めるとおり、通常探索と静止探索の捕獲手の順序にだけ使われていた。
+minaseのcapture historyは、[capture historyのADR](bound-capture-history-and-use-it-in-qsearch.md)が定めるとおり、通常探索と静止探索の捕獲手の順序にだけ使われていた。
 
 2026年10月17日のエンジンの開発者の決定により、Stockfishにある項目は入れて形と値をStockfishに合わせ、新しい係数の開始値はStockfishの値を換算した値とすることにした。
 同じ決定により、成る手を枝刈りの対象から外すminaseの保護は残す。
-[浅い前向き枝刈りの深さと対象の拡張](../plans/archived/shallow-pruning-extensions.md)は、この決定に従って3つの枝刈りを実装した。
+[浅い前向き枝刈りの深さと対象の拡張](../../plans/archived/shallow-pruning-extensions.md)は、この決定に従って3つの枝刈りを実装した。
 深さ別の余裕値は深さに比例する1つの係数に置き換わるので、旧ADRが診断に基づいて深さ別の値を選んだ判断は、この決定で覆る。
 
 ## 決定
@@ -48,7 +48,7 @@ minaseのcapture historyは、[capture historyのADR](archive/bound-capture-hist
 
 3つの枝刈りは、いずれも深さの上限を持たず、零窓のノードとPVノードの両方で行う。
 静かな手のSEEによる枝刈りだけは、根から前の反復の主変化を辿るfollowPVのPVノードでは行わない。
-適用するノードの共通の条件とlmrDepthの定義は、[浅い前向き枝刈りのADR](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)にある。
+適用するノードの共通の条件とlmrDepthの定義は、[浅い前向き枝刈りのADR](../extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)にある。
 読まなかった手もLMRの表を引く手番号に数えるが、探索済みの手には加えないので、historyとcapture historyの減点とkiller手の更新の対象にならない。
 
 ## 検討した代案
@@ -56,7 +56,7 @@ minaseのcapture historyは、[capture historyのADR](archive/bound-capture-hist
 深さ別の余裕値`SeeMargin1`〜`3`を使い続ける案は、深さの上限を外すと4以上の深さの値を決められず、Stockfishの形にもないので採らなかった。
 旧ADRが診断で棄却した、全深さで余裕値を0にする案は、`SeeDepthMargin`の範囲の下限0とcapture historyの項の0での切り詰めによって形に含まれるので、選ぶかどうかはSPSAに委ねた。
 Stockfishと同じく余裕値を0で切り詰めない案は、現行の`see_prunes`が非負の余裕値を契約とするので、本決定では採らなかった。
-後続の[静止探索の補正と枝刈りの形の見直し](../plans/qsearch-forms.md)が、引数を符号付きの閾値へ移した後で切り詰めを外す。
+後続の[静止探索の補正と枝刈りの形の見直し](../../plans/qsearch-forms.md)が、引数を符号付きの閾値へ移した後で切り詰めを外す。
 
 成る手を捕獲手のfutility pruningと静かな手の2つのSEEの枝刈りの対象にする案は、成る手を枝刈りの対象から外す保護を残すというエンジンの開発者の決定により採らなかった。
 王手になる静かな手のcapture historyの項を表から引く案は、minaseの表が取る駒の種類で引き、取る駒のない手の欄を持たないので採らなかった。
@@ -72,11 +72,11 @@ YaneuraOuは、将棋ではSEEが負の静かな手でもその後に詰む場�
 ## 結果
 
 capture historyは、手の順序に加えて、捕獲手のSEEによる枝刈りと捕獲手のfutility pruningの余裕値にも使う。
-capture historyの上限は起点の係数`CaptureHistoryLimit`のままであり、Stockfishの上限10692（`src/history.h:135`）とは`h`の大きさが違うので、重みの意味は[historyの形の見直し](../plans/archived/history-forms.md)が上限をStockfishの値に固定するまでStockfishと一致しない。
+capture historyの上限は起点の係数`CaptureHistoryLimit`のままであり、Stockfishの上限10692（`src/history.h:135`）とは`h`の大きさが違うので、重みの意味は[historyの形の見直し](../../plans/archived/history-forms.md)が上限をStockfishの値に固定するまでStockfishと一致しない。
 王手になる静かな手と王手にならない静かな手を分けるので、静かな手のSEEの判定と王手の判定の費用が加わる。
-王手の判定は[王手の判定のADR](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)が定め、ほかの条件がすべて成り立った後に求める。
+王手の判定は[王手の判定のADR](../judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)が定め、ほかの条件がすべて成り立った後に求める。
 
-`minase dev bench`の深さ3、5、7の全15局面の探索ノード数の合計は、SEEによる捕獲手の枝刈りの余裕値を改めたコミットで直前より0.9%増え、捕獲手のfutility pruningを加えたコミットで13.6%減り、静かな手のSEEによる枝刈りを加えたコミットで10.7%減った（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
+`minase dev bench`の深さ3、5、7の全15局面の探索ノード数の合計は、SEEによる捕獲手の枝刈りの余裕値を改めたコミットで直前より0.9%増え、捕獲手のfutility pruningを加えたコミットで13.6%減り、静かな手のSEEによる枝刈りを加えたコミットで10.7%減った（[benchの記録](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
 静かな手のSEEの判定は、benchの局面と固定シードのランダムな対局の局面の、経由升を持たない静かな手について、参照実装の値と照合した。
 
 捕獲手と静かな手のSEEによる枝刈りの判定は`crates/minase/src/search/alphabeta/negamax.rs`の`negamax`にあり、SEEの判定契約は`see.rs`の`see_prunes`にある。
@@ -84,8 +84,8 @@ capture historyの上限は起点の係数`CaptureHistoryLimit`のままであ�
 係数は`params.rs`の`SeeDepthMargin`、`SeeCaptureHistory`、`CaptureFutilityBase`、`CaptureFutilityLmrDepth`、`CaptureFutilityHistory`、および`QuietSeeMargin`であり、Stockfishの値を換算した85、34、113、119、134、および11から調整する。
 `SeeMargin1`〜`3`は廃した。
 
-2026年10月18日から19日にかけての30,000ペアのSPSAでは、SEEの枝の`SeeDepthMargin`が開始値85から168、`SeeCaptureHistory`が34から122、捕獲手のfutility pruningの`CaptureFutilityBase`が113から504、`CaptureFutilityHistory`が134から475、静かな手のSEEの`QuietSeeMargin`が11から48へ上がり、いずれも枝刈りを控える側へ動いた（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
+2026年10月18日から19日にかけての30,000ペアのSPSAでは、SEEの枝の`SeeDepthMargin`が開始値85から168、`SeeCaptureHistory`が34から122、捕獲手のfutility pruningの`CaptureFutilityBase`が113から504、`CaptureFutilityHistory`が134から475、静かな手のSEEの`QuietSeeMargin`が11から48へ上がり、いずれも枝刈りを控える側へ動いた（[SPSAの記録](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
 
 この変更は、段階ゲートを通らずに採用した。
-SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAの値を反映した候補は、[前の設計書](../../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

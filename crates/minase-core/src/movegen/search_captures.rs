@@ -53,7 +53,7 @@ impl MoveGenerator {
     /// 到達升が移動元と異なる場合に限り除く。
     /// 居喰い、2枚取り、1升で止まる捕獲、および経由升のない直接跳びによる捕獲は残す。
     /// 角鷹と飛鷲の同じ形の手は対象外であり、公開の生成と主探索の候補も変えない。
-    /// 理由は`docs/adr/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md`にある。
+    /// 理由は`docs/adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md`にある。
     pub fn is_excluded_lion_capture(position: &Position, mv: Move) -> bool {
         position
             .piece_at(mv.from)

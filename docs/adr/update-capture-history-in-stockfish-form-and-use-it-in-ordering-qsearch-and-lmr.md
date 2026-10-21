@@ -26,7 +26,7 @@ fail lowのノードでは、このノードへ至った手が捕獲手なら、
 `CaptureHistoryScale`の開始値は、Stockfishの`捕獲履歴 + 7 × 駒の価値`の比に当たる734とする（`src/movepick.cpp:225-226`）。
 静止探索では、旧ADRと同じく、取る駒の価値の群の構造を保ったまま、群の中の順序に捕獲履歴の生の値を使う。
 LMRを捕獲手にも適用するので（[LMRのADR](reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)）、捕獲手のstatScoreを取る駒の価値の換算値の873/128と捕獲履歴の和とする（`src/search.cpp:1371-1373`）。
-捕獲手のSEEとfutilityの枝刈りの余裕値に捕獲履歴を使う既存の仕組み（[枝刈りのADR](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)）は変えない。
+捕獲手のSEEとfutilityの枝刈りの余裕値に捕獲履歴を使う既存の仕組み（[枝刈りのADR](prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)）は変えない。
 
 ## 検討した代案
 

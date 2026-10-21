@@ -45,7 +45,7 @@ lmrDepthは、手を読む深さ`d − 1`から、[LMRのADR](archive/reduce-lmr
 静かな手のfutility pruningは、捕獲手でも成る手でも王手になる手でもない手について、lmrDepthが12未満で、見積り`e + P × (FutilityBase + FutilityLmrDepth × lmrDepth + FutilityAboveAlpha × [e > α])/100`がα以下なら、その手を読まない。
 `e`は補正後の静的評価であり、`[e > α]`は`e`がαより大きければ1、そうでなければ0を表す。
 読まなかった手の見積りが最善値より大きく、最善値と見積りがともに詰み帯と専用の帯の外にあれば、最善値だけをその見積りに上げる（`src/search.cpp:1249-1251`）。
-捕獲手と静かな手のSEEによる枝刈りと捕獲手のfutility pruningの式は[SEEと駒得の見積りによる枝刈りのADR](prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)が、late move pruningの上限と数え方は[late move pruningのADR](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)が、王手になる手の判定は[王手の判定のADR](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)が定める。
+捕獲手と静かな手のSEEによる枝刈りと捕獲手のfutility pruningの式は[SEEと駒得の見積りによる枝刈りのADR](prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)が、late move pruningの上限と数え方は[late move pruningのADR](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)が、王手になる手の判定は[王手の判定のADR](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)が定める。
 
 razoringは、allNodeで、詰みを探す局面でなく、判定用の評価値が`α − P × RazoringDepthMargin × d/100`より小さいとき、静止探索を窓`(α, β)`で呼んでその値をそのまま返す。
 深さの上限は持たない。
@@ -72,7 +72,7 @@ reverse futility pruningは、次の条件をすべて満たすノードで`(661
 余裕値はStockfishの式（`src/search.cpp:1025-1030`）を歩兵価値の百分率の係数で表したものであり、深さに比例する項からimprovingとopponentWorseningの項を引き、補正量の絶対値に比例する項を足す。
 深さに掛ける倍率の上限（歩兵価値の41%）、深さの上限18および5、および返り値の重み661と363は、Stockfishの値で固定する。
 返り値の式以外は旧ADRから引き継ぐ。
-判定用の評価値の定義は[静的評価のADR](sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)に、improvingとopponentWorseningの定義は[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)にある。
+判定用の評価値の定義は[静的評価のADR](sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)に、improvingとopponentWorseningの定義は[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)にある。
 null move pruningを試す条件は、[null moveのADR](try-null-move-only-at-cut-nodes-under-stockfish-conditions-and-allow-tt-cutoffs-at-pv-nodes.md)が定める。
 旧ADRがnull move pruningには王駒への利きの判定を加えないとした決定は、そのADRが改め、手番側の王駒に相手の疑似利きが届くノードではnull moveを試さない。
 
