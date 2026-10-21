@@ -66,7 +66,7 @@ delta pruningとSEEの閾値の基準は、どちらも`s`に余裕値を足し�
 
 静止探索は、捕獲手を指した後にも、通常探索の着手と同じ関数（`key_after_move`、`pawn_key_after_move`、`correction_piece_keys_after_move`、および`MoveRecord::from_undo`）で、4つの鍵の列と着手の記録`path_moves`を更新する。
 反復の判定に使う`path_keys`にも、採用している反復規則の鍵を積み、`path_moves.len() + 1 == path_keys.len()`の関係を静止探索でも保つ。
-積む鍵はR1では`search_key`、R2とR3では`repetition_key`であり、静止探索は反復を判定しないので、積んだ鍵は読まない。
+積む鍵は、反復規則がR1（RULES.md第31条）なら`search_key`、R2とR3なら`repetition_key`であり、静止探索は反復を判定しないので、積んだ鍵は読まない。
 子から戻るときは、中断で戻る場合も含めて、積んだ記録を必ず取り除く。
 null moveの直後は鍵を写し、着手の記録を持たない要素を1つ積み、同じplyで探索し直すnull moveの検証探索は入口で記録を積まない。
 
