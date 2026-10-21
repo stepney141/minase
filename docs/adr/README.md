@@ -143,7 +143,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月7日 [静かな手のhistoryはbutterfly表だけで引く](archive/keep-only-the-butterfly-history-table.md)（置き換え済み）
 - 2026年9月8日 [探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)
 - 2026年9月8日 [線形の評価の2組の重みを盤上総駒数で補間する](interpolate-the-linear-path-by-total-piece-count.md)
-- 2026年9月12日 [aspiration windowsは外れた側だけを広げ、fail-high時に浅く読み直さない](widen-only-the-failed-side-of-aspiration-windows.md)
+- 2026年9月12日 [aspiration windowsは外れた側だけを広げ、fail-high時に浅く読み直さない](archive/widen-only-the-failed-side-of-aspiration-windows.md)（置き換え済み）
 - 2026年9月12日 [反復の延長信号を使わず、最善手が安定したときだけ早く止める](stop-early-on-stable-best-move-without-extensions.md)
 - 2026年9月12日 [置換表の記録手がないノードを1だけ浅く読む](archive/reduce-depth-by-one-without-tt-move.md)（置き換え済み）
 - 2026年9月12日 [置換表を1スロット1エントリの直接マップのまま保つ](keep-transposition-table-direct-mapped.md)
@@ -285,3 +285,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月21日 [静止探索の捕獲手は候補の列の順番で手数を制限し、取り返し、成る手、および王手になる手を手数制限、delta pruning、およびSEEの閾値から外す](prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md)
 - 2026年10月21日 [静止探索は静的評価を求める前に置換表を照会して零窓のノードでだけ打ち切り、置換表の値でstand-patを置き換え、βを超えた返り値をβの側へ寄せる](probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)
 - 2026年10月21日 [置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)
+- 2026年10月22日 [aspiration windowsは深さ2以上で直前の最善手の平均を中心に置き、初期の半幅を根の値の大きさとともに広げ、窓外れでは外れた側の端を返った値から移して反対側の端も寄せる](center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)
+- 2026年10月22日 [aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)

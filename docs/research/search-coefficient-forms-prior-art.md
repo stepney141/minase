@@ -65,7 +65,7 @@ minaseのreverse futility pruning、razoring、null move、およびimprovingの
 | delta pruning（`DeltaMargin`） | `stand-pat + 取る駒の価値 + 余裕値 ≤ α`なら読まない。stand-patは補正前の評価（`quiesce.rs:76-97, 144-148`） | 補正後の評価に定数を足した基準を使い、余裕値をSEEの閾値にも入れ、読まない手の値で最善値を更新する。王手になる手、直前の到達升への手、成る手を除く（Stockfish `search.cpp:1794-1843`） | 同型（付随部分に差） | 余裕値は埋まる |
 | 静止探索の手数制限（`QsearchMoveLimit`） | 実際に読んだ捕獲手が4手に達したら残りを読まない（`quiesce.rs:154-169`） | 生成順の位置が2手を超えたら読まない。王手になる手、直前の到達升への手、成る手を例外にし、王手を受けている局面では使わない（Stockfish `search.cpp:1816-1826`） | 適用条件の違い | 埋まらない |
 
-aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
+aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
 返った値を基準に窓を移す形は、そのADRの代案に含まれていない。
 history補正を連続量にする案は、[late move reductionsのADR](../adr/archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が自由度の増加を理由に棄却している。
 同じADRは、上限3と段差の補正をSTCの到達深さが5〜6だった時期の判断としている。

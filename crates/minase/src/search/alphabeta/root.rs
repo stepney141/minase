@@ -143,6 +143,7 @@ pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
 /// 直前の完了反復の最善手について、評価値の平均の周囲から探索を始めるaspiration windowである。
 /// `delta`は静的評価と同じ単位で、初期値は定数項、符号つき2乗の平均の項、およびワーカー番号の項から求める。
 /// 窓外れ時は返った値から外れた側の端を移し、反対側の端も元の窓の端を基準に寄せる。
+/// 判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`にある。
 pub(super) struct AspirationWindow {
     pub(super) alpha: i32,
     pub(super) beta: i32,
@@ -341,6 +342,8 @@ impl Searcher<'_> {
     /// 根の置換表へは窓の深さで保存を要求するため、既存の置換規則により、浅い完了窓が
     /// 先に読んだ深い窓の記録を上書きしないことがある。
     /// 読み直し中の中断も`None`を返す。
+    /// 窓の置き方と移し方の判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`に、
+    /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md`にある。
     pub(super) fn search_iteration(
         &mut self,
         position: &Position,

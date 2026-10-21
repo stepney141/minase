@@ -21,7 +21,7 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 ## 目的
 
 本書が確かめるのは、「aspiration windowsをStockfishの形にそろえて係数を調整し直せば、起点の形で調整した探索より強くなる」という仮説である。
-起点の形は、[aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)が2026年9月に決めたものであり、当時の既定の評価関数はPST（駒の種類と升ごとの値の表による評価）だった。
+起点の形は、[aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が2026年9月に決めたものであり、当時の既定の評価関数はPST（駒の種類と升ごとの値の表による評価）だった。
 2026年10月12日に既定の評価関数がNNUE（差分更新できる小型のニューラルネットワーク）へ置き換わった後、窓の形は測り直していない。
 窓の2係数`AspirationDelta`と`AspirationGrowth`は、先行する5本のサブタスクのSPSAでも調整し直されたが、窓の形そのものは比べていない。
 評価値の大きさによる幅の違い、反復ごとの値の揺れを均した中心、大きく外れたときの窓の移し方、およびfail highのときの減深は、起点の形に仕組みがないので、係数の値を変えても表せない。
@@ -63,7 +63,7 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 - 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
 - 評価値の平均から評価関数の楽観度（optimism）を調整する項（Stockfish `src/search.cpp:397-399`）。評価関数の側の変更であり、minaseのNNUEは楽観度の入力を持たない。
 - fail lowのときに先読みの的中で止める指示を取り消す処理（Stockfish `src/search.cpp:443-444`の`stopOnPonderhit`）。先読みの扱いは時間管理の側の仕組みであり、本書の範囲外である。
-- 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
+- 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
 - 窓のたびに根の手を値で安定整列すること（Stockfish `src/search.cpp:414`）。minaseは、置換表の手、秒読みの時計で探索する主ワーカーでは直前の最善手、および前回の完了反復の部分木ノード数で根の手を並べる（[根の手の並べ方のADR](../adr/order-root-moves-by-previous-subtree-nodes.md)）。本書はこの並べ方を変えない。
 - 複数の主変化を探索するMultiPVのループ。Stockfishは窓の処理をこのループの中に置き、持ち越しを1本目の主変化（`pvIdx == 0`）でだけ更新する。minaseは主変化を1本だけ探索するので、1本目の処理だけを移す。
 - 根の2手目以降の値がαを超えたときの読み直しの条件。Stockfishは値がβ以上でも全窓で読み直すが（`src/search.cpp:1442`）、minaseの`search_move`は値がαとβの間にあるときだけ読み直す。M2は、起点の`search_move`が返す最終の値と、その手に使った全ノード数を記録する。
@@ -85,7 +85,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../gui
 完了時に、起点の時点で有効なADRを確認し、新しいADRで置き換える。
 本書が変えない決定、つまり窓外れの途中経過を出力しないこと、および補助ワーカーが自分の探索の記録だけで窓を置くことも、新しいADRへ引き継ぐ。
 
-- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](archived/strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
+- [aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](archived/strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
 
 [深さを飛ばすADR](../adr/diversify-lazy-smp-workers-by-skipping-depths.md)による補助ワーカーの多様化は変えず、A2のワーカー番号の項はそれに加わる。
 [反復の結果の帯のADR](../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が定めた窓の端の保護、つまり詰み帯または専用の帯に達した端を無限へ置き換える扱いは変えない。
@@ -413,6 +413,6 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 - [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。減深の回数と持ち越しの宣言は335〜336行、初期の窓は389〜392行、詰みを探す印は395行、減深は403〜412行と461〜462行、窓のたびの根の手の整列は414行、窓外れの処理は437〜455行、完了した反復の出力は516〜518行、`increaseDepth`は634行、根の置換表の手は839〜840行、根の2手目以降の読み直しは1442行、根の手の平均の更新は1466〜1501行。`src/search.h`の154〜158行（根の手の記録と初期値）、`src/thread.cpp`の306〜318行（根の手の表の作成）、`src/types.h`の199行（歩兵価値）、`src/tt.cpp`の109行（置換の条件）。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。初期の窓は1670〜1673行、半幅の拡大は1795行。
-- [aspiration windowsのADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)および[段階12のSTC](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)。
+- [aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)および[段階12のSTC](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)。
 - [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。
