@@ -170,8 +170,13 @@ fn r1_repetition_band_protection_keeps_mate_tt_cutoffs() {
                 searcher.negamax(&mut board.clone(), 2, alpha, beta, 40, false),
                 Some(expected)
             );
+            let (quiesce_alpha, quiesce_beta) = match bound {
+                Bound::Lower => (expected - 1, expected),
+                Bound::Upper => (expected, expected + 1),
+                Bound::Exact => (0, 1),
+            };
             assert_eq!(
-                searcher.quiesce(&mut board.clone(), alpha, beta, 40),
+                searcher.quiesce(&mut board.clone(), quiesce_alpha, quiesce_beta, 40),
                 Some(expected)
             );
             assert_eq!(searcher.nodes, 0);

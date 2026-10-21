@@ -218,7 +218,7 @@ fn quiescence_preserves_hit_pv_flag_without_changing_ply_flags() {
                     .unwrap();
                 let hit = searcher.tt.probe(key, 0).unwrap();
                 assert_eq!(hit.value.unwrap().depth, 0);
-                assert_eq!(hit.value.unwrap().bound, Bound::Exact);
+                assert_eq!(hit.value.unwrap().bound, Bound::Upper);
                 assert_eq!(hit.value.unwrap().score, score);
                 assert_eq!(hit.is_pv, stored_pv == Some(true));
                 assert!(searcher.tt_pv.iter().all(|&value| value == ply_pv));
@@ -693,6 +693,81 @@ fn static_eval_only_entry_hits_without_exposing_a_search_value_or_move() {
     assert_eq!(hit.static_eval, Some(-321));
     assert!(table.probe(key ^ (1_u64 << 32), 0).is_none());
     assert!(small_tt().probe(key, 0).is_none());
+}
+
+// 探索値なしの記録は、探索値の欄を0にし、手なし、世代、静的評価、およびPVの印だけを往復する。
+#[test]
+fn store_static_eval_writes_only_the_static_evaluation_fields() {
+    let key = 0x2468_1357_0000_0042;
+    let table = small_tt();
+    table.new_search();
+    table.store_static_eval(key, -1_234, true);
+
+    let hit = table.probe(key, 40).unwrap();
+    assert_eq!(hit.value, None);
+    assert_eq!(hit.best_move, None);
+    assert_eq!(hit.static_eval, Some(-1_234));
+    assert!(hit.is_pv);
+
+    let (critical, advisory) = table.raw_entry(key);
+    assert_ne!(critical & CRITICAL_NO_VALUE_MASK, 0);
+    assert_ne!(critical & CRITICAL_PV_MASK, 0);
+    assert_eq!(
+        critical & (CRITICAL_SCORE_MASK | CRITICAL_DEPTH_MASK | CRITICAL_BOUND_MASK),
+        0
+    );
+    assert_eq!(advisory & ADVISORY_MOVE_MASK, u64::from(NO_MOVE));
+    assert_eq!(
+        (advisory & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT,
+        1
+    );
+}
+
+// 探索値なしの記録は深さ0のstoreと同じ置換規則に従う。
+#[test]
+fn store_static_eval_uses_depth_zero_replacement_rules() {
+    let key_a = 0x1111_1111_0000_0001;
+    let key_b = 0x2222_2222_0000_0001;
+
+    // 空エントリへ書く。
+    let table = small_tt();
+    table.new_search();
+    assert!(table.store_static_eval(key_a, 10, false));
+    assert_eq!(table.probe(key_a, 0).unwrap().static_eval, Some(10));
+
+    // 同じ局面の深さ0の探索値と探索値なしの記録は、どちらも置き換える。
+    table.store(key_a, 0, 100, None, Bound::Exact, None, 0, false);
+    assert!(table.store_static_eval(key_a, 20, true));
+    let hit = table.probe(key_a, 0).unwrap();
+    assert_eq!(hit.value, None);
+    assert_eq!(hit.static_eval, Some(20));
+    assert!(hit.is_pv);
+    assert!(table.store_static_eval(key_a, 30, false));
+    let hit = table.probe(key_a, 0).unwrap();
+    assert_eq!(hit.static_eval, Some(30));
+    assert!(!hit.is_pv);
+
+    // 同じ局面の深さ1以上の探索値は保持する。
+    table.store(key_a, 1, 101, None, Bound::Lower, None, 0, true);
+    assert!(!table.store_static_eval(key_a, 40, false));
+    let hit = table.probe(key_a, 0).unwrap();
+    assert_eq!(hit.value.unwrap().depth, 1);
+    assert_eq!(hit.value.unwrap().score, 101);
+    assert_eq!(hit.static_eval, None);
+    assert!(hit.is_pv);
+
+    // 同じ世代の別局面は保持する。
+    assert!(!table.store_static_eval(key_b, 50, false));
+    assert!(table.probe(key_b, 0).is_none());
+    assert_eq!(table.probe(key_a, 0).unwrap().value.unwrap().score, 101);
+
+    // 過去世代の別局面は深さにかかわらず置き換える。
+    table.new_search();
+    assert!(table.store_static_eval(key_b, 60, false));
+    assert!(table.probe(key_a, 0).is_none());
+    let hit = table.probe(key_b, 0).unwrap();
+    assert_eq!(hit.value, None);
+    assert_eq!(hit.static_eval, Some(60));
 }
 
 // F5では要求深さ7から着手後の値の方向を確かめ、専用の帯は値なしとして扱う。

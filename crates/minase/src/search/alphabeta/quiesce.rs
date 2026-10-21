@@ -26,7 +26,7 @@ use super::history::pawn_key;
 use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::params;
-use super::pruning::{corrected_static_eval, should_raise_futility_best_score};
+use super::pruning::{corrected_static_eval, pruning_eval, should_raise_futility_best_score};
 use super::royal::captures_all_royals;
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
@@ -41,13 +41,21 @@ impl Searcher<'_> {
     /// 捕獲を指して子を読む間は、補正の4つの鍵と探索経路の着手記録を通常探索と同じ契約で更新する。
     /// 静止探索内の手は主変化へ含めず、中断された場合は`None`を返す。
     ///
-    /// 最大plyでは補正前の静的評価を返す。
-    /// その後は補正後のstand-patがβ以上なら、置換表を照会も保存もせず返す。
-    /// 捕獲候補を初期化してから置換表を照会し、候補がなくても通常出口でstand-patを保存する。
-    /// 置換表ヒットによる打ち切りと中断は保存しない。
-    /// 専用の帯の値は対局履歴と探索経路に依存するため、打ち切りには使わず記録手だけを使う。
-    /// 通常出口は補正前の静的評価と探索値を深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、
-    /// それ以外は正確な値とする。補正後のstand-patは静的評価として保存しない。
+    /// 最大plyでは補正前の静的評価を返す。その後、静的評価を求める前に置換表を照会し、
+    /// 窓の幅が1なら、正確な値、β以上の下界、またはα以下の上界で打ち切る
+    /// （Stockfish src/search.cpp:1734-1746）。専用の帯の値は対局履歴と探索経路に依存するため
+    /// 打ち切りには使わず、詰み帯の値は使う。窓の幅が1でなければ、同じ条件を満たしても打ち切らない。
+    ///
+    /// 照合した記録に補正前の静的評価があれば評価関数の値に代えて使い、現在の補正を加える。
+    /// 置換表の探索値が通常域にあり、正確な値であるか、下界でstand-patより大きいか、
+    /// 上界でstand-pat以下なら、その値を最善値の初期値にする（Stockfish src/search.cpp:1756-1770）。
+    /// この初期値がβ以上なら返し、照会に当たっていなければ補正前の静的評価だけを持つ記録を書く
+    /// （Stockfish src/search.cpp:1785-1787）。delta pruningとSEEの閾値の基準は、
+    /// 置換表の値へ置き換える前のstand-patから求める（Stockfish src/search.cpp:1794）。
+    ///
+    /// 置換表ヒットによる打ち切りと中断は保存しない。通常出口は補正前の静的評価と探索値を
+    /// 深さ0で保存し、最善値がβ以上なら下界、それ以外は上界とする。正確な値は保存しない
+    /// （Stockfish src/search.cpp:1908-1909）。補正後のstand-patは静的評価として保存しない。
     /// stand-patを上回る捕獲手がなければ記録手は持たない。
     /// 深さ0の記録は通常探索の深さ条件を満たさず、カットオフに使われない。
     /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
@@ -99,33 +107,16 @@ impl Searcher<'_> {
             assert_eq!(self.non_pawn_keys[ply as usize], correction_keys.non_pawn);
         }
 
-        let side = position.side_to_move();
-        let v = self
-            .nnue
-            .evaluate_accumulator(&self.accumulators[ply as usize], side);
         if ply >= MAX_PLY {
-            return Some(v);
+            return Some(
+                self.nnue.evaluate_accumulator(
+                    &self.accumulators[ply as usize],
+                    position.side_to_move(),
+                ),
+            );
         }
-
-        let s = corrected_static_eval(
-            v,
-            correction_from_weighted_sum(
-                self.correction_weighted_sum_at(side, ply),
-                self.nnue.pawn_value(),
-            ),
-        );
-        if s >= beta {
-            return Some(s);
-        }
-
-        let original_alpha = alpha;
-        alpha = alpha.max(s);
-        let buffers = &mut self.qsearch[ply as usize];
-        buffers.reset(position);
-        buffers.initialize(position, &self.generator, self.nnue, &self.capture_ranks);
 
         let key = search_key(position);
-        let mut tt_move = None;
         #[cfg(feature = "search-stats")]
         {
             self.stats.quiesce_tt_probes += 1;
@@ -133,6 +124,7 @@ impl Searcher<'_> {
         let tt_hit = self.tt.probe(key, ply);
         // Stockfish src/search.cpp:1741, 1908。静止探索は照合した印だけを引き継ぐ。
         let pv_hit = tt_hit.is_some_and(|hit| hit.is_pv);
+        let mut tt_move = None;
         if let Some(hit) = tt_hit {
             #[cfg(feature = "search-stats")]
             {
@@ -144,19 +136,67 @@ impl Searcher<'_> {
                     && match value.bound {
                         Bound::Exact => true,
                         Bound::Lower => value.score >= beta,
-                        Bound::Upper => value.score <= original_alpha,
+                        Bound::Upper => value.score <= alpha,
                     };
                 if cutoff {
+                    if beta == alpha + 1 {
+                        #[cfg(feature = "search-stats")]
+                        {
+                            self.stats.quiesce_tt_cutoffs += 1;
+                        }
+                        return Some(value.score);
+                    }
                     #[cfg(feature = "search-stats")]
                     {
-                        self.stats.quiesce_tt_cutoffs += 1;
+                        self.stats.quiesce_tt_wide_window_cutoff_skips += 1;
                     }
-                    return Some(value.score);
                 }
             }
         }
 
-        let mut best = s;
+        let side = position.side_to_move();
+        let v = if let Some(static_eval) = tt_hit.and_then(|hit| hit.static_eval) {
+            #[cfg(feature = "search-stats")]
+            {
+                self.stats.quiesce_tt_static_eval_uses += 1;
+            }
+            static_eval
+        } else {
+            self.nnue
+                .evaluate_accumulator(&self.accumulators[ply as usize], side)
+        };
+        let s = corrected_static_eval(
+            v,
+            correction_from_weighted_sum(
+                self.correction_weighted_sum_at(side, ply),
+                self.nnue.pawn_value(),
+            ),
+        );
+        let best = pruning_eval(
+            s,
+            tt_hit
+                .and_then(|hit| hit.value)
+                .map(|value| (value.score, value.bound)),
+        );
+        #[cfg(feature = "search-stats")]
+        if best != s {
+            self.stats.quiesce_tt_value_replacements += 1;
+        }
+        if best >= beta {
+            if tt_hit.is_none() && self.tt.store_static_eval(key, v, false) {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.quiesce_static_eval_stores += 1;
+                }
+            }
+            return Some(best);
+        }
+
+        alpha = alpha.max(best);
+        let buffers = &mut self.qsearch[ply as usize];
+        buffers.reset(position);
+        buffers.initialize(position, &self.generator, self.nnue, &self.capture_ranks);
+        let mut best = best;
         let mut best_move = None;
         let mut candidate_count = 0;
         let futility_base = s + self.delta_margin;
@@ -338,10 +378,8 @@ impl Searcher<'_> {
         }
         let bound = if best >= beta {
             Bound::Lower
-        } else if best <= original_alpha {
-            Bound::Upper
         } else {
-            Bound::Exact
+            Bound::Upper
         };
         self.tt
             .store(key, 0, best, Some(v), bound, best_move, ply, pv_hit);

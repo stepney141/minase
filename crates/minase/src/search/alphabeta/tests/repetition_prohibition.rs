@@ -382,7 +382,9 @@ fn articles_31_r2_r3_and_23_all_forbidden_moves_lose_in_the_repetition_band() {
                 Some(-(REPETITION_WIN - 1))
             );
             assert_eq!(searcher.nodes, nodes);
-            assert!(searcher.tt.probe(search_key(&current), 1).is_none());
+            let hit = searcher.tt.probe(search_key(&current), 1).unwrap();
+            assert_eq!(hit.value, None);
+            assert_eq!(hit.static_eval, Some(evaluate(&nnue, &current)));
         });
     }
 }
@@ -402,7 +404,8 @@ fn check_no_generated_moves_keep_the_mate_score() {
         ),
     );
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
-    with_snapshot(&snapshot, &epoch_zero_nnue(), |searcher| {
+    let nnue = epoch_zero_nnue();
+    with_snapshot(&snapshot, &nnue, |searcher| {
         let mut current = snapshot.position().clone();
         push_path_move(searcher, &mut current, Some(step(sq(10, 0), sq(10, 1))));
         assert!(legal_moves(&current).is_empty());
@@ -410,7 +413,9 @@ fn check_no_generated_moves_keep_the_mate_score() {
             searcher.negamax(&mut current, 1, -INFINITY, INFINITY, 1, false),
             Some(-MATE + 1)
         );
-        assert!(searcher.tt.probe(search_key(&current), 1).is_none());
+        let hit = searcher.tt.probe(search_key(&current), 1).unwrap();
+        assert_eq!(hit.value, None);
+        assert_eq!(hit.static_eval, Some(evaluate(&nnue, &current)));
     });
 }
 

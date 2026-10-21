@@ -43,12 +43,22 @@ search_stats! {
     tt_cutoffs,
     /// 通常探索と根で置換表の補正前の静的評価を使った回数。
     tt_static_eval_uses,
+    /// 通常探索と根で探索値なしの記録を書いた回数。
+    tt_static_eval_stores,
     /// 静止探索で置換表を照会した回数。
     quiesce_tt_probes,
     /// 静止探索の置換表照会で項目が一致した回数。
     quiesce_tt_hits,
     /// 静止探索で置換表の値により打ち切った回数。
     quiesce_tt_cutoffs,
+    /// 静止探索で置換表の補正前の静的評価を使った回数。
+    quiesce_tt_static_eval_uses,
+    /// 静止探索で置換表の値がstand-patを置き換えた回数。
+    quiesce_tt_value_replacements,
+    /// 静止探索で打ち切り条件を満たしたが、窓の幅が1でないため打ち切らなかった回数。
+    quiesce_tt_wide_window_cutoff_skips,
+    /// 静止探索で探索値なしの記録を書いた回数。
+    quiesce_static_eval_stores,
     /// 静止探索で手数制限により読まなかった候補数。
     quiesce_move_count_prunes,
     /// 静止探索で補正後のstand-patと余裕値を基準にしたSEEの閾値により枝刈りした候補数。

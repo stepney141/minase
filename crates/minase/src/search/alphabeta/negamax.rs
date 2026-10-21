@@ -86,6 +86,8 @@ impl Searcher<'_> {
     ///
     /// IIRの後に補正後の静的評価を1回求め、手数ごとに保持する（Stockfish src/search.cpp:832, 846-884）。
     /// 置換表に補正前の静的評価があれば、評価関数の出力を求めずに使う（Stockfish src/search.cpp:854-860）。
+    /// 照会に当たらなければ、求めた補正前の静的評価を探索値なしの記録として直ちに保存する
+    /// （Stockfish src/search.cpp:870-874）。照合した記録に静的評価がない場合は保存しない。
     /// reverse futilityとrazoringには置換表の値を条件つきで採る判定用の評価値を使い、
     /// null moveの減深量、improving、およびfutilityには静的評価を使う。
     /// 補正表の更新にはノードの入口で求めた補正後の評価を渡す。
@@ -240,8 +242,20 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            self.nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], side)
+            let raw = self
+                .nnue
+                .evaluate_accumulator(&self.accumulators[ply as usize], side);
+            if tt_hit.is_none()
+                && self
+                    .tt
+                    .store_static_eval(key, raw, self.tt_pv[ply as usize])
+            {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.tt_static_eval_stores += 1;
+                }
+            }
+            raw
         };
         let correction_weighted_sum = self.correction_weighted_sum_at(side, ply);
         let correction =

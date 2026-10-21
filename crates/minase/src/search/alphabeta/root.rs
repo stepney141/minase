@@ -204,6 +204,8 @@ impl Searcher<'_> {
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
     /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
     /// 置換表に補正前の静的評価があれば、評価関数の出力を求めずに使う（Stockfish src/search.cpp:854-860）。
+    /// 照会に当たらなければ、求めた補正前の静的評価をPVの探索値なしの記録として直ちに保存する
+    /// （Stockfish src/search.cpp:870-874）。照合した記録に静的評価がない場合は保存しない。
     /// 根の先頭以外の手は残り深さ2以上でLMRを適用し、子ノードの枝刈りも通常どおり行う。
     /// 完了した探索で最善値が開始時のαを上回れば、根でもhistoryを1回更新する。
     /// 中断された場合は`None`を返し、停止条件を記録する。
@@ -250,7 +252,14 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            self.nnue.evaluate_accumulator(&self.accumulators[0], side)
+            let raw = self.nnue.evaluate_accumulator(&self.accumulators[0], side);
+            if tt_hit.is_none() && self.tt.store_static_eval(key, raw, true) {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.tt_static_eval_stores += 1;
+                }
+            }
+            raw
         };
         let correction_weighted_sum = self.correction_weighted_sum_at(side, 0);
         let correction =

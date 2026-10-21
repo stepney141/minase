@@ -304,7 +304,7 @@ fn quiescence_without_captures_stores_stand_pat() {
         let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
         assert_eq!(hit.value.unwrap().score, stand_pat);
         assert_eq!(hit.value.unwrap().depth, 0);
-        assert_eq!(hit.value.unwrap().bound, Bound::Exact);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
         assert_eq!(hit.static_eval, Some(stand_pat));
         assert_eq!(hit.best_move, None);
         #[cfg(feature = "search-stats")]
@@ -405,112 +405,266 @@ fn quiescence_without_captures_matches_static_evaluation() {
     assert_eq!(result.nodes, moves.len() as u64);
 }
 
-// stand-patと最大plyの出口では置換表を参照も更新もしない。
+// 最大plyでは置換表を参照も更新もせず、補正前の静的評価を返す。
 #[test]
-fn quiescence_early_exits_do_not_probe_or_store() {
-    let nnue = test_nnue();
-    let initial = Position::initial();
-    let initial_eval = evaluate(nnue, &initial);
-    let kings = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
+fn quiescence_max_ply_does_not_probe_or_store() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
+    let table = small_tt();
+    table.store(key, 8, 12_345, None, Bound::Exact, None, MAX_PLY, false);
+    let raw_before = table.raw_entry(key);
+
+    assert_eq!(
+        run_quiesce(&board, -INFINITY, INFINITY, MAX_PLY, &table),
+        (stand_pat, 0)
     );
-    for (case, board, alpha, beta, ply, stored, depth) in [
+    assert_eq!(table.raw_entry(key), raw_before);
+}
+
+// Exact、score >= betaのLower、score <= alphaのUpperは、窓の幅が1の場合だけ返す。
+// 幅が2以上なら同じ記録でも入口の打ち切りに使わず、通常のstand-pat処理へ進む。
+#[test]
+fn quiescence_tt_cutoff_requires_a_zero_window() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
+
+    let exact = small_tt();
+    exact.store(key, 0, stand_pat + 7, None, Bound::Exact, None, 0, false);
+    let raw = exact.raw_entry(key);
+    assert_eq!(
+        run_quiesce(&board, stand_pat + 20, stand_pat + 21, 0, &exact).0,
+        stand_pat + 7
+    );
+    assert_eq!(exact.raw_entry(key), raw, "零窓では通常出口を通らない");
+    let exact = small_tt();
+    exact.store(key, 0, stand_pat + 7, None, Bound::Exact, None, 0, false);
+    assert_eq!(
+        run_quiesce(&board, -INFINITY, INFINITY, 0, &exact).0,
+        stand_pat + 7
+    );
+    let hit = exact.probe(key, 0).unwrap();
+    assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+    assert_eq!(hit.static_eval, Some(stand_pat));
+
+    let lower = small_tt();
+    lower.store(key, 0, stand_pat - 2, None, Bound::Lower, None, 0, false);
+    assert_eq!(
+        run_quiesce(&board, stand_pat - 3, stand_pat - 2, 0, &lower).0,
+        stand_pat - 2
+    );
+    let lower = small_tt();
+    lower.store(key, 0, stand_pat - 2, None, Bound::Lower, None, 0, false);
+    assert_eq!(
+        run_quiesce(&board, stand_pat - 4, stand_pat - 2, 0, &lower).0,
+        stand_pat
+    );
+
+    let upper = small_tt();
+    upper.store(key, 0, stand_pat + 2, None, Bound::Upper, None, 0, false);
+    assert_eq!(
+        run_quiesce(&board, stand_pat + 2, stand_pat + 3, 0, &upper).0,
+        stand_pat + 2
+    );
+    let upper = small_tt();
+    upper.store(key, 0, stand_pat + 2, None, Bound::Upper, None, 0, false);
+    assert_eq!(
+        run_quiesce(&board, stand_pat + 2, stand_pat + 4, 0, &upper).0,
+        stand_pat
+    );
+}
+
+// 置換表の通常域の値は、Exactなら大小によらず、Lowerならstand-patより大きい場合だけ、
+// Upperならstand-pat以下の場合だけ最善値の初期値にする。専用の帯と詰み帯は使わない。
+#[test]
+fn quiescence_tt_value_replaces_stand_pat_only_for_the_matching_bound_direction() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
+    for (case, bound, stored, expected) in [
+        ("exact below", Bound::Exact, stand_pat - 7, stand_pat - 7),
+        ("exact above", Bound::Exact, stand_pat + 7, stand_pat + 7),
+        ("lower below", Bound::Lower, stand_pat - 7, stand_pat),
+        ("lower above", Bound::Lower, stand_pat + 7, stand_pat + 7),
+        ("upper below", Bound::Upper, stand_pat - 7, stand_pat - 7),
+        ("upper above", Bound::Upper, stand_pat + 7, stand_pat),
         (
-            "stand_pat_equal",
-            &initial,
-            -INFINITY,
-            initial_eval,
-            0,
-            initial_eval + 123,
-            4,
+            "repetition band",
+            Bound::Exact,
+            REPETITION_BAND_START,
+            stand_pat,
         ),
-        (
-            "stand_pat_above",
-            &initial,
-            -INFINITY,
-            initial_eval - 1,
-            0,
-            initial_eval + 123,
-            4,
-        ),
-        ("max_ply", &kings, -INFINITY, INFINITY, MAX_PLY, 12_345, 8),
+        ("mate band", Bound::Exact, MATE - 1, stand_pat),
     ] {
-        let key = search_key(board);
-        let stand_pat = evaluate(nnue, board);
         let table = small_tt();
+        table.store(key, 0, stored, Some(stand_pat), bound, None, 0, false);
         assert_eq!(
-            run_quiesce(board, alpha, beta, ply, &table),
-            (stand_pat, 0),
-            "{case}"
-        );
-        assert!(table.probe(key, ply).is_none(), "{case}");
-        table.store(key, depth, stored, None, Bound::Exact, None, ply, false);
-        let raw_before = table.raw_entry(key);
-        assert_eq!(
-            run_quiesce(board, alpha, beta, ply, &table),
-            (stand_pat, 0),
-            "{case}"
-        );
-        assert_ne!(stand_pat, stored, "{case}");
-        assert_eq!(table.raw_entry(key), raw_before, "{case}");
-        let hit = table.probe(key, ply).unwrap();
-        assert_eq!(
-            (
-                hit.value.unwrap().score,
-                u32::from(hit.value.unwrap().depth),
-                hit.value.unwrap().bound
-            ),
-            (stored, depth, Bound::Exact),
+            run_quiesce(&board, -INFINITY, INFINITY, 0, &table),
+            (expected, 0),
             "{case}"
         );
     }
 }
 
-// Exact、
-// score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
+// 詰み帯は零窓の打ち切りに使うが、専用の帯は使わない。
 #[test]
-fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(3, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 4), Color::White, PieceKind::Pawn),
-        ],
-    );
-    let key = search_key(&position);
-    let stand_pat = evaluate(test_nnue(), &position);
-    let cases = [
-        (Bound::Exact, stand_pat + 17, stand_pat - 10, stand_pat + 10),
-        (
-            Bound::Lower,
-            stand_pat + 50,
-            stand_pat - 100,
-            stand_pat + 50,
-        ),
-        (
-            Bound::Upper,
-            stand_pat - 50,
-            stand_pat - 50,
-            stand_pat + 100,
-        ),
-    ];
+fn quiescence_tt_cutoff_uses_mate_but_not_repetition_band_values() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
 
-    for (bound, score, alpha, beta) in cases {
-        let table = small_tt();
-        table.store(key, 0, score, None, bound, None, 0, false);
-        let (actual, _) = run_quiesce(&position, alpha, beta, 0, &table);
-        assert_eq!(actual, score);
-    }
+    let mate = small_tt();
+    mate.store(key, 0, MATE - 5, None, Bound::Exact, None, 0, false);
+    assert_eq!(run_quiesce(&board, 0, 1, 0, &mate), (MATE - 5, 0));
+
+    let repetition = small_tt();
+    repetition.store(
+        key,
+        0,
+        REPETITION_BAND_START,
+        None,
+        Bound::Exact,
+        None,
+        0,
+        false,
+    );
+    assert_eq!(
+        run_quiesce(&board, stand_pat, stand_pat + 1, 0, &repetition),
+        (stand_pat, 0)
+    );
 }
 
-// 静止探索の通常出口は深さ0で記録され、同じ入口局面を
-// 再訪するとExactヒットで捕獲展開を省く。
+// 置換表で置き換えた初期値がβ以上なら、幅が2の窓でも候補を作らず、その値を返す。
+#[test]
+fn quiescence_tt_replacement_at_beta_returns_before_candidates() {
+    let (board, _) = single_low_value_capture();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let stored = stand_pat + 20;
+        let key = search_key(&board);
+        searcher.tt.store(
+            key,
+            0,
+            stored,
+            Some(stand_pat),
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+        let raw = searcher.tt.raw_entry(key);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), stored - 2, stored, 0),
+            Some(stored)
+        );
+        assert_eq!(searcher.nodes, 0);
+        assert_eq!(searcher.tt.raw_entry(key), raw);
+    });
+}
+
+// delta pruningのfutility baseは、置換表で置き換えた値ではなく元のstand-patから求める。
+#[test]
+fn quiescence_delta_pruning_uses_stand_pat_before_tt_replacement() {
+    let (board, capture) = single_low_value_capture();
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = 37;
+        searcher.qsearch_see_floor = -INFINITY;
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let captured_value = searcher
+            .nnue
+            .piece_value(board.piece_at(capture.to).unwrap());
+        let stored = stand_pat + searcher.delta_margin + captured_value;
+        searcher.tt.store(
+            search_key(&board),
+            0,
+            stored,
+            Some(stand_pat),
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, 0),
+            Some(stored)
+        );
+        assert_eq!(searcher.nodes, 0, "境界上の捕獲はdelta pruningする");
+    });
+}
+
+// 照会ミスでstand-patがβ以上なら探索値なしの記録を書き、次の照会では値で打ち切らない。
+#[test]
+fn quiescence_stand_pat_cutoff_stores_static_eval_without_a_search_value() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
+    let table = small_tt();
+
+    assert_eq!(
+        run_quiesce(&board, stand_pat - 2, stand_pat, 0, &table),
+        (stand_pat, 0)
+    );
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.value, None);
+    assert_eq!(hit.static_eval, Some(stand_pat));
+    assert_eq!(hit.best_move, None);
+    assert!(!hit.is_pv);
+
+    assert_eq!(
+        run_quiesce(&board, stand_pat + 1, stand_pat + 2, 0, &table),
+        (stand_pat, 0)
+    );
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.value.unwrap().score, stand_pat);
+    assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+}
+
+// 照会に当たったノードでは、stand-patで打ち切っても探索値なしの記録へ置き換えない。
+#[test]
+fn quiescence_stand_pat_cutoff_does_not_store_on_a_tt_hit() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let stand_pat = evaluate(test_nnue(), &board);
+    let table = small_tt();
+    table.store(key, 0, stand_pat, None, Bound::Upper, None, 0, true);
+    let raw = table.raw_entry(key);
+
+    assert_eq!(
+        run_quiesce(&board, stand_pat - 2, stand_pat, 0, &table),
+        (stand_pat, 0)
+    );
+    assert_eq!(table.raw_entry(key), raw);
+    let hit = table.probe(key, 0).unwrap();
+    assert!(hit.value.is_some());
+    assert_eq!(hit.static_eval, None);
+}
+
+// 探索値なしの記録の静的評価を、評価関数の出力に代えてstand-patとして使う。
+#[test]
+fn quiescence_uses_static_eval_from_a_value_less_tt_entry() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let evaluated = evaluate(test_nnue(), &board);
+    let stored = if evaluated == 1_234 { -1_234 } else { 1_234 };
+    let table = small_tt();
+    table.store_static_eval(key, stored, false);
+
+    assert_eq!(
+        run_quiesce(&board, -INFINITY, INFINITY, 0, &table),
+        (stored, 0)
+    );
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.static_eval, Some(stored));
+    assert_eq!(hit.value.unwrap().score, stored);
+}
+
+// 静止探索の通常出口は深さ0の上界として記録され、同じ入口局面を
+// 上界が打ち切れる零窓で再訪すると捕獲展開を省く。
 #[test]
 fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     // 項目4の手数制限でも捕獲が最善になるよう、成否の分岐を持たない局面を使う。
@@ -535,21 +689,21 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     let (first_score, first_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(hit.value.unwrap().depth, 0);
-    assert_eq!(hit.value.unwrap().bound, Bound::Exact);
+    assert_eq!(hit.value.unwrap().bound, Bound::Upper);
     let stored_move = hit.best_move.expect("捕獲手が最善なら記録手を持つ");
     assert_eq!(stored_move.from, capture.from);
     assert_eq!(stored_move.to, capture.to);
     assert_eq!(hit.value.unwrap().score, first_score);
     assert_eq!(hit.static_eval, Some(evaluate(test_nnue(), &position)));
 
-    let (second_score, second_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
+    let (second_score, second_nodes) =
+        run_quiesce(&position, first_score, first_score + 1, 0, &table);
     assert_eq!(second_score, first_score);
     assert_eq!(first_nodes, 1);
     assert_eq!(second_nodes, 0);
 }
 
-// 通常出口のUpper・Exactを深さ0で記録し、
-// stand-patが最善なら手なしとする。
+// 通常出口は窓内の値も含めて上界を深さ0で記録し、stand-patが最善なら手なしとする。
 #[test]
 fn quiescence_records_bounds_and_no_move_by_exit_path() {
     let position = position(
@@ -575,8 +729,8 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
     );
     let cases = [
         ("upper", stand_pat, INFINITY, Bound::Upper),
-        ("exact", stand_pat - 1, stand_pat + 1, Bound::Exact),
-        ("all_see_pruned", -INFINITY, INFINITY, Bound::Exact),
+        ("inside", stand_pat - 1, stand_pat + 1, Bound::Upper),
+        ("all_see_pruned", -INFINITY, INFINITY, Bound::Upper),
     ];
 
     for (case, alpha, beta, expected_bound) in cases {
@@ -620,6 +774,7 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
         assert!(score >= MATE_THRESHOLD);
         assert_eq!(hit.value.unwrap().score, score);
         assert_eq!(hit.value.unwrap().depth, 0);
+        assert_eq!(hit.value.unwrap().bound, Bound::Upper);
         assert_eq!(hit.best_move, Some(mate_move));
         // 同じ局面を根から評価すると、捕獲までの距離は1手になる。
         assert_eq!(
@@ -632,6 +787,28 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
             MATE - 1
         );
     }
+}
+
+// 候補の探索値がβ以上になった通常出口は下界として保存する。
+#[test]
+fn quiescence_normal_exit_stores_a_lower_bound_on_fail_high() {
+    let board = position(
+        Color::Black,
+        &[
+            (fs(1, 12), Color::Black, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let expected = MATE - 1;
+    let table = small_tt();
+    assert_eq!(
+        run_quiesce(&board, expected - 2, expected - 1, 0, &table).0,
+        expected
+    );
+    let hit = table.probe(search_key(&board), 0).unwrap();
+    assert_eq!(hit.value.unwrap().score, expected);
+    assert_eq!(hit.value.unwrap().bound, Bound::Lower);
 }
 
 fn history_ordering_position() -> (Position, [Move; 6]) {

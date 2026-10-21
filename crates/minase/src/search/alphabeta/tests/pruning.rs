@@ -97,7 +97,9 @@ fn seek_mate_limits_reverse_futility_to_depth_five() {
                     (score, searcher.nodes),
                     (expected_reverse_futility_value(beta, value), 0)
                 );
-                assert!(searcher.tt.probe(search_key(&board), 0).is_none());
+                let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+                assert_eq!(hit.value, None);
+                assert_eq!(hit.static_eval, Some(value));
             } else {
                 assert!(searcher.nodes > 0, "残り深さ6では子を展開する");
             }
@@ -1881,7 +1883,7 @@ fn assert_quiet_see_search(
         .min()
         .unwrap();
     let alpha = minimum_child_value - 1;
-    let beta = alpha + 2;
+    let beta = alpha + if target_is_tt_move { 1 } else { 2 };
     assert!(alpha.abs() < REPETITION_BAND_START && beta.abs() < REPETITION_BAND_START);
     if !follow_pv && !target_is_tt_move && !target.promote {
         assert_eq!(
@@ -2229,9 +2231,10 @@ fn opponent_worsening_compares_previous_ply_and_is_true_at_root() {
     }
 }
 
-// 根ではopponentWorseningが真。各深さの余裕値に一致する窓で検査する。
+// 根ではopponentWorseningが真。各深さの余裕値に一致する窓で検査し、
+// TTミス時の静的評価値だけが保存されることも確認する。
 #[test]
-fn reverse_futility_returns_weighted_value_at_margin_without_storing() {
+fn reverse_futility_returns_weighted_value_at_margin_after_storing_static_eval() {
     let board = bare_kings();
     let value = evaluate(test_nnue(), &board);
     // F5ではallNodeにIIRを適用しないので、要求深さをそのまま使う。
@@ -2251,7 +2254,9 @@ fn reverse_futility_returns_weighted_value_at_margin_without_storing() {
             ),
             (expected_reverse_futility_value(beta, value), 0)
         );
-        assert!(table.probe(search_key(&board), 0).is_none());
+        let hit = table.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value, None);
+        assert_eq!(hit.static_eval, Some(value));
     }
 }
 
@@ -2530,9 +2535,9 @@ fn razoring_does_not_run_when_a_royal_is_attacked() {
     assert!(nodes > quiet_nodes, "王駒への利きがあれば通常探索する");
 }
 
-// 静止探索の値がαを超えても、その値をそのまま返して通常探索の深さでは保存しない。
+// 浅いTT上界でrazoringに入ったゼロ幅静止探索は、その上界で直ちに打ち切る。
 #[test]
-fn razoring_returns_quiescence_above_alpha() {
+fn razoring_reuses_the_tt_upper_bound_in_zero_window_quiescence() {
     let position = bare_kings();
     let nnue = test_nnue();
     let raw = evaluate(nnue, &position);
@@ -2553,8 +2558,8 @@ fn razoring_returns_quiescence_above_alpha() {
         false,
     );
     let (score, nodes) = run_negamax(&position, depth, alpha, beta, 0, &table);
-    assert_eq!((score, nodes), (raw, 0));
-    assert!(score > alpha);
+    assert_eq!((score, nodes), (tt_eval, 0));
+    assert!(score < alpha);
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(
         (

@@ -150,7 +150,36 @@ fn root_uses_tt_static_evaluation_before_current_correction() {
 
         assert_eq!(searcher.static_evals[0], tt_static_eval + correction);
         #[cfg(feature = "search-stats")]
-        assert_eq!(searcher.stats.tt_static_eval_uses, 1);
+        {
+            assert_eq!(searcher.stats.tt_static_eval_uses, 1);
+            assert_eq!(searcher.stats.tt_static_eval_stores, 0);
+        }
+    });
+}
+
+// 根の照会ミスでも、補正前の静的評価をPVの探索値なし記録として保存する。
+#[test]
+fn root_stores_static_eval_only_on_a_tt_miss() {
+    let position = bare_kings();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        let raw = evaluate(searcher.nnue, &position);
+        searcher
+            .shared
+            .external_stop
+            .store(true, AtomicOrdering::Relaxed);
+
+        assert_eq!(
+            searcher.search_root(&position, &moves, 1, -INFINITY, INFINITY),
+            None
+        );
+        let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+        assert_eq!(hit.value, None);
+        assert_eq!(hit.static_eval, Some(raw));
+        assert_eq!(hit.best_move, None);
+        assert!(hit.is_pv);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_stores, 1);
     });
 }
 

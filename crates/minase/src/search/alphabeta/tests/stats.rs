@@ -31,6 +31,9 @@ fn assert_relations(stats: SearchStats) {
     assert!(stats.tt_hits <= stats.tt_probes);
     assert!(stats.tt_probes <= stats.normal_nodes);
     assert!(stats.quiesce_tt_cutoffs <= stats.quiesce_tt_hits);
+    assert!(stats.quiesce_tt_static_eval_uses <= stats.quiesce_tt_hits);
+    assert!(stats.quiesce_tt_value_replacements <= stats.quiesce_tt_hits);
+    assert!(stats.quiesce_tt_wide_window_cutoff_skips <= stats.quiesce_tt_hits);
     assert!(stats.quiesce_tt_hits <= stats.quiesce_tt_probes);
     assert!(stats.quiesce_tt_probes <= stats.quiesce_nodes);
     assert!(stats.quiesce_check_exemptions <= stats.quiesce_gives_check_calls);
@@ -40,7 +43,7 @@ fn assert_relations(stats: SearchStats) {
 }
 
 /// 深さ0の移行は静止探索だけに数える。
-/// 捕獲なしでは置換表を照会し、stand-patと最大plyの出口では照会しない。
+/// 捕獲なしとstand-patの出口では置換表を照会し、最大plyの出口だけは照会しない。
 #[test]
 fn depth_zero_and_quiesce_exits_count_calls_and_actual_probes() {
     let position = quiet_position();
@@ -60,7 +63,9 @@ fn depth_zero_and_quiesce_exits_count_calls_and_actual_probes() {
             searcher.stats,
             SearchStats {
                 quiesce_nodes: 3,
-                quiesce_tt_probes: 1,
+                quiesce_tt_probes: 2,
+                quiesce_tt_hits: 1,
+                quiesce_tt_static_eval_uses: 1,
                 ..SearchStats::default()
             }
         );
@@ -148,7 +153,7 @@ fn quiesce_tt_repeat_counts_probe_hit_and_cutoff_separately() {
         assert_relations(searcher.stats);
         searcher.stats = SearchStats::default();
         assert_eq!(
-            searcher.quiesce(&mut current, -INFINITY, INFINITY, 0),
+            searcher.quiesce(&mut current, first, first + 1, 0),
             Some(first)
         );
         assert_eq!(
@@ -161,6 +166,53 @@ fn quiesce_tt_repeat_counts_probe_hit_and_cutoff_separately() {
                 ..SearchStats::default()
             }
         );
+    });
+}
+
+/// 静止探索の置換表静的評価、stand-patの置き換え、および全窓で見送った打ち切りを別々に数える。
+#[test]
+fn quiesce_tt_static_eval_replacement_and_wide_window_skip_are_counted() {
+    let position = quiet_position();
+    with_root_searcher(&position, &[], |searcher| {
+        zero_position_correction(searcher, &position);
+        let stand_pat = evaluate(searcher.nnue, &position);
+        searcher.tt.store(
+            search_key(&position),
+            0,
+            stand_pat + 10,
+            Some(stand_pat),
+            Bound::Exact,
+            None,
+            0,
+            false,
+        );
+
+        assert_eq!(
+            searcher.quiesce(&mut position.clone(), -INFINITY, INFINITY, 0),
+            Some(stand_pat + 10)
+        );
+        assert_eq!(searcher.stats.quiesce_tt_static_eval_uses, 1);
+        assert_eq!(searcher.stats.quiesce_tt_value_replacements, 1);
+        assert_eq!(searcher.stats.quiesce_tt_wide_window_cutoff_skips, 1);
+        assert_eq!(searcher.stats.quiesce_tt_cutoffs, 0);
+        assert_relations(searcher.stats);
+    });
+}
+
+/// stand-patで打ち切る照会ミスは静止探索用の探索値なし記録として数える。
+#[test]
+fn quiesce_static_eval_only_store_is_counted_separately() {
+    let position = quiet_position();
+    with_root_searcher(&position, &[], |searcher| {
+        zero_position_correction(searcher, &position);
+        let stand_pat = evaluate(searcher.nnue, &position);
+        assert_eq!(
+            searcher.quiesce(&mut position.clone(), stand_pat - 2, stand_pat, 0),
+            Some(stand_pat)
+        );
+        assert_eq!(searcher.stats.quiesce_static_eval_stores, 1);
+        assert_eq!(searcher.stats.tt_static_eval_stores, 0);
+        assert_relations(searcher.stats);
     });
 }
 

@@ -89,7 +89,8 @@ use crate::search::alphabeta::time::{
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
-    CRITICAL_BOUND_MASK, CRITICAL_NO_VALUE_MASK, CRITICAL_RESERVED_MASK, pack_move, unpack_move,
+    CRITICAL_BOUND_MASK, CRITICAL_DEPTH_MASK, CRITICAL_NO_VALUE_MASK, CRITICAL_PV_MASK,
+    CRITICAL_RESERVED_MASK, CRITICAL_SCORE_MASK, NO_MOVE, pack_move, unpack_move,
 };
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};

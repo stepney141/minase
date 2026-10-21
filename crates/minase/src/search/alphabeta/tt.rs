@@ -302,6 +302,8 @@ impl TranspositionTable {
     /// 異なる検証キーでは、過去世代または既存より深い結果だけが置き換える。
     /// 同一キーの深さ制限は、静止探索の深さ0の記録が通常探索の深い記録を消すことを防ぐ。
     /// 理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    /// 静止探索の結果は、β以上なら下界、それ以外は上界として保存し、正確な値は保存しない
+    /// （Stockfish src/search.cpp:1908-1909）。
     /// `static_eval`は補正前の静的評価であり、詰み距離の変換を適用しない。
     /// `is_pv`はPVの印として保存し、置換の判断には使わない。
     ///
@@ -331,13 +333,7 @@ impl TranspositionTable {
         // MAX_PLYは256だが、根以外の残り深さは最大255である。公開APIから
         // 256を渡されても比較を保守的にするため、格納幅の上限へ飽和させる。
         let depth = depth.min(u8::MAX as u32) as u8;
-        let replace = match existing {
-            None => true,
-            Some(existing) if existing.key == key => {
-                depth >= existing.value.map_or(0, |value| value.depth)
-            }
-            Some(existing) => age > 0 || depth > existing.value.map_or(0, |value| value.depth),
-        };
+        let replace = should_replace(existing.as_ref(), key, age, depth);
         if !replace {
             return;
         }
@@ -346,6 +342,37 @@ impl TranspositionTable {
         let critical = pack_critical(key, score_to_tt(score, ply), depth, bound, is_pv);
         entry.advisory.store(advisory, Ordering::Relaxed);
         entry.critical.store(critical, Ordering::Release);
+    }
+
+    /// 補正前の静的評価だけを持つ探索値なしの記録を書き込む。
+    ///
+    /// Stockfishが探索値`VALUE_NONE`と未探索を表す深さで書く記録に当たる
+    /// （src/search.cpp:873, 1786）。検証キー、探索値なしの印、およびPVの印だけを
+    /// `critical`へ置き、`advisory`には手なし、現在の世代、および静的評価を置く。
+    ///
+    /// 置換は深さ0の[`Self::store`]と同じ規則に従う。空エントリ、同じ局面の深さ0の記録、
+    /// および過去の世代の別局面の記録を置き換える。同じ局面の深さ1以上の記録と、
+    /// 同じ世代の別局面の記録は置き換えない。`advisory`をRelaxedで書いた後に
+    /// `critical`をReleaseで公開する順序も[`Self::store`]と同じである。
+    /// 実際に記録を書いた場合は`true`を返す。
+    pub(super) fn store_static_eval(&self, key: u64, static_eval: i32, is_pv: bool) -> bool {
+        let index = key as usize & self.mask;
+        let entry = &self.entries[index];
+        let existing_critical = entry.critical.load(Ordering::Acquire);
+        let existing_advisory = entry.advisory.load(Ordering::Relaxed);
+        let existing = unpack_critical(existing_critical);
+        let key = verification_key(key);
+        let generation = self.generation.load(Ordering::Relaxed);
+        let age = generation.wrapping_sub(unpack_advisory_generation(existing_advisory));
+        if !should_replace(existing.as_ref(), key, age, 0) {
+            return false;
+        }
+
+        let advisory = pack_advisory(None, generation, Some(static_eval));
+        let critical = pack_static_eval_critical(key, is_pv);
+        entry.advisory.store(advisory, Ordering::Relaxed);
+        entry.critical.store(critical, Ordering::Release);
+        true
     }
 
     /// テスト用にキーが指すスロットの生の原子値を返す。
@@ -385,6 +412,17 @@ fn verification_key(key: u64) -> u32 {
     (key >> 32) as u32
 }
 
+/// 既存エントリを指定した深さの記録で置き換えられるかを返す。
+fn should_replace(existing: Option<&CriticalFields>, key: u32, age: u8, depth: u8) -> bool {
+    match existing {
+        None => true,
+        Some(existing) if existing.key == key => {
+            depth >= existing.value.map_or(0, |value| value.depth)
+        }
+        Some(existing) => age > 0 || depth > existing.value.map_or(0, |value| value.depth),
+    }
+}
+
 /// 探索値を`critical`のビット配置へ詰め込む。
 fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound, is_pv: bool) -> u64 {
     (u64::from(key) << CRITICAL_KEY_SHIFT)
@@ -392,6 +430,13 @@ fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound, is_pv: bool) -> 
         | (u64::from(depth) << CRITICAL_DEPTH_SHIFT)
         | ((bound as u64) << CRITICAL_BOUND_SHIFT)
         | (u64::from(is_pv) << CRITICAL_PV_SHIFT)
+}
+
+/// 探索値なしの記録を`critical`のビット配置へ詰め込む。
+fn pack_static_eval_critical(key: u32, is_pv: bool) -> u64 {
+    (u64::from(key) << CRITICAL_KEY_SHIFT)
+        | (u64::from(is_pv) << CRITICAL_PV_SHIFT)
+        | CRITICAL_NO_VALUE_MASK
 }
 
 /// `critical`を項目へ復号する。予約領域または探索値のバウンドが不正なら失敗する。

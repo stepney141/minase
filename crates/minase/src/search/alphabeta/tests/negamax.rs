@@ -2,6 +2,7 @@
 
 use super::super::negamax::{ChildSearch, child_cut_node};
 use super::*;
+use crate::search::REPETITION_BAND_START;
 
 // F0の受け渡し表を期待値とし、親の値に依存する行は真と偽の両方を検査する。
 #[test]
@@ -131,6 +132,59 @@ fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
         assert_eq!(searcher.static_evals[0], evaluated + correction);
         #[cfg(feature = "search-stats")]
         assert_eq!(searcher.stats.tt_static_eval_uses, 0);
+    });
+}
+
+// 照会ミスでは補正前の静的評価を探索値なしで保存し、ノードのPVの印を付ける。
+#[test]
+fn negamax_stores_static_eval_only_on_a_tt_miss() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        let raw = evaluate(searcher.nnue, &position);
+        searcher
+            .shared
+            .external_stop
+            .store(true, AtomicOrdering::Relaxed);
+
+        assert_eq!(
+            searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false),
+            None
+        );
+        let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+        assert_eq!(hit.value, None);
+        assert_eq!(hit.static_eval, Some(raw));
+        assert_eq!(hit.best_move, None);
+        assert!(hit.is_pv);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_stores, 1);
+    });
+}
+
+// 照会に当たった記録に静的評価がなくても、探索値なしの記録へ置き換えない。
+#[test]
+fn negamax_does_not_store_static_eval_only_on_a_tt_hit() {
+    let position = bare_kings();
+    with_root_searcher(&position, &[], |searcher| {
+        let key = search_key(&position);
+        searcher
+            .tt
+            .store(key, 0, 0, None, Bound::Upper, None, 0, false);
+        let raw = searcher.tt.raw_entry(key);
+        searcher
+            .shared
+            .external_stop
+            .store(true, AtomicOrdering::Relaxed);
+
+        assert_eq!(
+            searcher.negamax(&mut position.clone(), 1, -INFINITY, INFINITY, 0, false),
+            None
+        );
+        assert_eq!(searcher.tt.raw_entry(key), raw);
+        let hit = searcher.tt.probe(key, 0).unwrap();
+        assert!(hit.value.is_some());
+        assert_eq!(hit.static_eval, None);
+        #[cfg(feature = "search-stats")]
+        assert_eq!(searcher.stats.tt_static_eval_stores, 0);
     });
 }
 
@@ -338,12 +392,12 @@ fn null_move_two_jittos_repeat_post_null_position() {
             }
         }
 
-        // 双方のじっとを先に読む。後手のじっと後の先手の窓は[-1, 0]なので、
-        // 2手目が反復ならその引き分け値で打ち切り、先手局面に下界0が残る。
+        // 双方のじっとを先に読む。静止探索で打ち切られない反復帯の値を使い、
+        // 2手目が反復ならその引き分け値で打ち切って先手局面に下界0を残す。
         searcher.tt.store(
             search_key(&after_null),
             0,
-            -1,
+            REPETITION_BAND_START,
             None,
             Bound::Upper,
             Some(white_jitto),
