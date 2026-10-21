@@ -61,7 +61,7 @@ Stockfishの形の前計算を中将棋に合わせて作り、探索ノード�
 詰みを探す局面のLMRの項は`crates/minase/src/search/alphabeta/pruning.rs`の`LmrCoefficients::lmr_reduction`にあり、割合の除数は`SEEK_MATE_LMR_DIVISOR`、王手の判定の結果は`LmrContext`の`seek_mate_gives_check`で渡す。
 詰みを探す局面でだけ王手を判定する処理は、`negamax.rs`の`Searcher::lmr_seek_mate_gives_check`にある。
 この項を入れたコミットで、benchの探索ノード数の合計は直前より6.5%減った（[benchの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)）。
-王手の判定は、[historyの形の見直し](../plans/archived/history-forms.md)の手の並べ替えと[静止探索の補正と枝刈りの形の見直し](../plans/qsearch-forms.md)でも使い、それぞれで重複して導入しない。
+王手の判定は、[historyの形の見直し](../plans/archived/history-forms.md)の手の並べ替えと[静止探索の補正と枝刈りの形の見直し](../plans/archived/qsearch-forms.md)でも使い、それぞれで重複して導入しない。
 王駒が2枚で隣接している場合の局面の複製と合法手の生成の費用は、別に測っていない。
 
 王手の判定と、詰みを探す局面のLMRの割合1/4は、SPSAの対象ではない。

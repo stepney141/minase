@@ -4,7 +4,7 @@
 
 本書は、静止探索（quiescence search、読みの末端で捕獲手だけを読み進め、駒の取り合いの途中で評価しないための探索）の評価と枝刈りの式を、チェスのStockfishの形へそろえ、現行のmasterより強くなるかを確かめる。
 将棋のYaneuraOu（やねうら王）も同じ形を持ち、両エンジンで形や値が違う点はStockfishに合わせる。
-[係数の関数形の比較](../research/search-coefficient-forms-prior-art.md)によれば、minaseの静止探索は、stand-pat（何も指さずに現局面の静的評価を探索値の下限として採る選択肢）とdelta pruning（取る駒の価値と余裕値を足してもαに届かない捕獲手を読まない枝刈り）に補正前の静的評価を使い、1ノードで読む捕獲手の数を両エンジンと違う数え方で制限している。
+[係数の関数形の比較](../../research/search-coefficient-forms-prior-art.md)によれば、minaseの静止探索は、stand-pat（何も指さずに現局面の静的評価を探索値の下限として採る選択肢）とdelta pruning（取る駒の価値と余裕値を足してもαに届かない捕獲手を読まない枝刈り）に補正前の静的評価を使い、1ノードで読む捕獲手の数を両エンジンと違う数え方で制限している。
 本書が変えるのは7つである。
 1つ目に、correction history（探索値と静的評価のずれを学習して静的評価を補正する手法）の補正を、stand-patとdelta pruningの基準に等倍で加える。
 2つ目に、SEE（static exchange evaluation、到達升での駒の取り合いの損得の見積り）による枝刈りを、delta pruningの余裕値を使う閾値と、小さな損を許す下限の2段にする。
@@ -17,43 +17,54 @@ SPSAで調整するのは強さを決める値だけとし、その開始値はS
 全項目を1つの候補にまとめ、既存の係数とともにSPSA（simultaneous perturbation stochastic approximation、全係数を同時に少しずらした2つの設定を対局させて係数を動かす調整法）で調整する。
 本書は、探索の関数形をStockfishとYaneuraOuの形へ寄せる設計書の連鎖の5本目であり、1つ前の設計書が完了した後のmasterを起点とする。
 調整した版を、起点のmasterと短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
-[統括計画](search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
+[統括計画](../search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
 完了条件は、SPSAとSTCの測定記録を残し、候補をmasterへ統合することである。
 
 ## 状態
 
-着手。2026年10月17日に起案した。
-前の設計書の[correction historyの表の見直し](archived/correction-history-tables.md)が2026年10月21日に採用で完了した後、同日に利用者の指示で着手し、起点のコードとの照合の結果に合わせて本書を改訂した。
-次の一手は、フェーズ1（形の変更の実装）を移行のコミットから始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年10月17日に起案し、2026年10月21日に[統括計画](../search-forms.md)のサブタスク5として着手して、同日に完了した。
+挙動を変えない移行4項目と、7項目（Q1〜Q7）の形の変更を実装し、90個の係数を30,000ペアのSPSAで調整した値を反映した版を、1つの候補として採用した。
+設計判断は、[静止探索の捕獲手の枝刈りのADR](../../adr/prune-qsearch-captures-by-candidate-order-with-recapture-promotion-and-check-exemptions.md)、[静止探索の入口のADR](../../adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)、[置換表のADR](../../adr/store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)、[SEEのADR](../../adr/prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md)、および[correction historyのADR](../../adr/sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)に移した。
+起点のコードとの照合の結果、次の5点を決めた。これらはClaudeの判断である。
+王手の判定には起点の`Position::gives_check`を使い、前計算を導入しない。
+入口で価値の低い群を省く方式をやめ、全候補へ規則を順に当てる。
+静止探索の保存の境界の種類を、下界と上界に限る。
+βへの寄せと最善値の引き上げを、通常域の値に限る。
+`DeltaMargin`の範囲は、50〜500のまま保つ。
+SPSAの結果、`DeltaMargin`は147から131へ、`QsearchSeeMargin`は36から42へ、`QsearchMoveLimit`は2から8へ動いた。
+形の変更は、1つのコアに固定したNPSを約7.4%、16本を同時に走らせた負荷時のNPSを約16%下げた。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して107ペアで`H1`（約+261 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+測定の記録は、[benchのノード数、探索速度、および発動回数](../../measurements/qsearch-forms/qsearch-forms-bench.md)、[時間切れの事前確認](../../measurements/qsearch-forms/qsearch-forms-safety.md)、[SPSA](../../measurements/qsearch-forms/qsearch-forms.md)、[事前対局](../../measurements/qsearch-forms/qsearch-forms-smoke.md)、および[STC](../../measurements/qsearch-forms/qsearch-forms-stc.md)にある。
 
 ## 目的
 
 本書が確かめるのは、「静止探索の評価と枝刈りの式をStockfishの形へそろえ、新しい形の係数を調整すれば、現行の形で調整した探索より強くなる」という仮説である。
-minaseの探索では、静止探索のノードが全ノードの大半を占める（[手数制限のADR](../adr/archive/limit-searched-captures-in-qsearch.md)）。
+minaseの探索では、静止探索のノードが全ノードの大半を占める（[手数制限のADR](../../adr/archive/limit-searched-captures-in-qsearch.md)）。
 起点の`minase dev bench`を`search-stats`フィーチャつきで深さ9で探索すると、静止探索のノードは全ノードの約60%であり、その約71%（`1 − quiesce_tt_probes/quiesce_nodes`）は置換表を照会せずに入口で値を返す。
-静止探索は深さの上限なく再帰するので、1ノードあたりの枝刈りの差が探索全体へ積み重なる（[教訓](../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。
+静止探索は深さの上限なく再帰するので、1ノードあたりの枝刈りの差が探索全体へ積み重なる（[教訓](../../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。
 現行の手数制限は、delta pruningとSEEの枝刈りを通過して実際に読んだ捕獲手を数えるので、枝刈りされた候補が多いノードほど後方の候補まで読む。
 両エンジンは枝刈りの前に候補の順番を数え、3番目以降の候補を、取り返しなどの例外を除いて読まない（Stockfish `src/search.cpp:1816-1826`）。
-[手数制限のADR](../adr/archive/limit-searched-captures-in-qsearch.md)は、この数え方を未測定の候補として残している。
-また、通常探索の補正の適用先を広げる[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)は、静止探索への適用を「すべての静止探索ノードの値を変え、通常探索の項目と効果を切り分けられない」として別の候補に分けた。
+[手数制限のADR](../../adr/archive/limit-searched-captures-in-qsearch.md)は、この数え方を未測定の候補として残している。
+また、通常探索の補正の適用先を広げる[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)は、静止探索への適用を「すべての静止探索ノードの値を変え、通常探索の項目と効果を切り分けられない」として別の候補に分けた。
 本書はその候補を、静止探索の他の形の差と合わせて1つの候補として測る。
 
 ## 適用範囲
 
 本書の用語を次のように定める。
 
-- **前計画**は、連鎖の1つ前の[correction historyの表の見直し](archived/correction-history-tables.md)である。
+- **前計画**は、連鎖の1つ前の[correction historyの表の見直し](correction-history-tables.md)である。
 - **起点**は、前計画が完了した後、フェーズ1を始める時点のmasterの先頭のコミット`662c1ab6`である。連鎖の前の4本の設計書はすべて採用されており、起点はそれらの形とSPSAの調整値を持つ。
 - **形の変更**は、本書の項目を実装したコミット列であり、新しい係数を開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で表（`crates/minase/src/search/alphabeta/params.rs`）の既定値へ書き込んだコミットである。
-- **STC**は、10秒＋1手0.1秒の持ち時間で行う自己対局の逐次検定である（[SPRTの手引き](../guides/sprt.md)）。
+- **STC**は、10秒＋1手0.1秒の持ち時間で行う自己対局の逐次検定である（[SPRTの手引き](../../guides/sprt.md)）。
 - **補正値**は、起点の通常探索が静的評価に足している補正の値である。`Searcher::correction_weighted_sum_at`が、5つの補正表（駒種別の枚数、歩兵と仲人の配置、小駒の配置、および先手と後手それぞれの歩兵と仲人以外の駒の配置を鍵にした表）とcontinuation correction（2手前、4手前、6手前の手を文脈として直前の手で引く補正）の値を重み付きで足し合わせ、`correction_from_weighted_sum`がその和を歩兵価値で換算した値を指す（`crates/minase/src/search/alphabeta/correction.rs`）。
 - **補正の鍵と着手の記録**は、補正値を読むために手数ごとに保持する`material_keys`、`pawn_keys`、`minor_keys`、および`non_pawn_keys`の4つの鍵の列と、`path_moves`の着手の記録である。`path_moves`は、反復の判定に使う`path_keys`と`path_moves.len() + 1 == path_keys.len()`の関係を保って積まれ、取り除かれる。
-- **候補の列**は、静止探索の1ノードで調べる捕獲手の列である。置換表の手を先頭に置き、残りを取る駒の価値の群の降順に並べ、群の中は現行の`QsearchBuffers`の順序に従う（[ADR](../adr/generate-qsearch-captures-by-value-group-per-piece.md)）。獅子が経由升で取って空升へ進む手は、現行どおり含めない（[ADR](../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)）。
+- **候補の列**は、静止探索の1ノードで調べる捕獲手の列である。置換表の手を先頭に置き、残りを取る駒の価値の群の降順に並べ、群の中は現行の`QsearchBuffers`の順序に従う（[ADR](../../adr/generate-qsearch-captures-by-value-group-per-piece.md)）。獅子が経由升で取って空升へ進む手は、現行どおり含めない（[ADR](../../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)）。
 - **詰み帯と専用の帯**は、詰みまでの手数を表す評価値の範囲と、千日手などの反復の結果を表す評価値の範囲（`crates/minase/src/search/mod.rs`の`MATE_THRESHOLD`と`REPETITION_BAND_START`）である。両者の外、つまり絶対値が`REPETITION_BAND_START`（29,487）未満の評価値を**通常域**の値と呼ぶ。評価関数の出力（絶対値28,999以下）は通常域にある。
 - **取り返し**は、取る駒の升の集合に直前の手の到達升を含む捕獲手である。直前の手は捕獲でなくてもよく、根とnull moveの直後のノードには直前の手がないものとする。
 - **成る手**は、成りを選んだ捕獲手である。同じ移動で成らない手は成る手ではない。
-- **王手になる手**は、指した後の局面で、着手側が次の1手で相手の残存王駒をすべて取れる状態になる手である。王手の定義はRULES.md第8条に従う。相手が王将または玉将と太子を併せ持つ場合は、1手で両方を取れる状態だけが王手に当たり、両方を取れる駒には、同条第7項の獅子に加えて、第11条第3項により各段階で駒を取れる角鷹と飛鷲も含む。着手で相手の王駒がすべてなくなる手は王手になる手ではなく、相手の最後の王駒を取る手として別に扱う。判定は起点の`Position::gives_check`（`crates/minase-core/src/movegen/gives_check.rs`）が行う（[王手の判定のADR](../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)）。
+- **王手になる手**は、指した後の局面で、着手側が次の1手で相手の残存王駒をすべて取れる状態になる手である。王手の定義はRULES.md第8条に従う。相手が王将または玉将と太子を併せ持つ場合は、1手で両方を取れる状態だけが王手に当たり、両方を取れる駒には、同条第7項の獅子に加えて、第11条第3項により各段階で駒を取れる角鷹と飛鷲も含む。着手で相手の王駒がすべてなくなる手は王手になる手ではなく、相手の最後の王駒を取る手として別に扱う。判定は起点の`Position::gives_check`（`crates/minase-core/src/movegen/gives_check.rs`）が行う（[王手の判定のADR](../../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)）。
 - **免除の手**は、取り返し、成る手、および王手になる手である。Stockfishは、これらを手数制限、delta pruning、およびSEEの閾値による枝刈りから外す（`src/search.cpp:1822-1823`）。
 - **探索値なしの記録**は、置換表のエントリのうち、補正前の静的評価だけを持ち、探索値、境界の種類、深さ、および記録手を持たない記録である。Stockfishが探索値`VALUE_NONE`と未探索を表す深さで書く記録（`src/search.cpp:873, 1786`）に当たる。
 
@@ -83,43 +94,43 @@ minaseの探索では、静止探索のノードが全ノードの大半を占�
 
 次の事項は対象外とする。
 
-- 通常探索で置換表の値を静的評価の代わりに使うこと（Stockfish `src/search.cpp:862-865`）。[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)が起点の`pruning_eval`として実装しており、本書はその規則を変えない。
-- 王駒が狙われた局面でstand-patを使わず全合法手を読むこと。約120 Elo弱かった（[ADR](../adr/use-stand-pat-when-royals-are-attacked.md)）。
+- 通常探索で置換表の値を静的評価の代わりに使うこと（Stockfish `src/search.cpp:862-865`）。[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)が起点の`pruning_eval`として実装しており、本書はその規則を変えない。
+- 王駒が狙われた局面でstand-patを使わず全合法手を読むこと。約120 Elo弱かった（[ADR](../../adr/use-stand-pat-when-royals-are-attacked.md)）。
 - YaneuraOuにだけある静止探索の1手詰め判定（`yaneuraou-search.cpp:4766`）。両エンジンで違う点はStockfishに合わせ、YaneuraOuにだけある項目は入れない。
-- 静止探索の深さの上限（[ADR](../adr/omit-quiescence-depth-limit.md)）と、静止探索での補正表の更新。両エンジンとも補正表は通常探索でだけ更新する（Stockfish `src/search.cpp:1315, 1672`、YaneuraOu `yaneuraou-search.cpp:4417`）。
+- 静止探索の深さの上限（[ADR](../../adr/omit-quiescence-depth-limit.md)）と、静止探索での補正表の更新。両エンジンとも補正表は通常探索でだけ更新する（Stockfish `src/search.cpp:1315, 1672`、YaneuraOu `yaneuraou-search.cpp:4417`）。
 
 ## 依存関係
 
 起点は、連鎖の前の4本の設計書がすべて採用された後のmasterの先頭`662c1ab6`である。
 起点の表の既定値をSPSAの開始値とする。
 Q1が読む補正値は、前計画が加えた5つの補正表とcontinuation correctionの合成値であり、静止探索でこの値を読むために、前計画が加えた鍵と着手の記録も静止探索の着手の後に更新する。
-Q4の王手の判定には、[浅い枝刈りの拡張](archived/shallow-pruning-extensions.md)が導入した`Position::gives_check`を使う。
-同書は、Stockfishの`check_squares`と`blockers_for_king`に当たるノードごとの前計算を、中将棋の王手の定義では王手の継続と遮断、王駒による王手、および成った後の駒種による王手も扱わなければならないため導入しなかった（[王手の判定のADR](../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)）。
+Q4の王手の判定には、[浅い枝刈りの拡張](shallow-pruning-extensions.md)が導入した`Position::gives_check`を使う。
+同書は、Stockfishの`check_squares`と`blockers_for_king`に当たるノードごとの前計算を、中将棋の王手の定義では王手の継続と遮断、王駒による王手、および成った後の駒種による王手も扱わなければならないため導入しなかった（[王手の判定のADR](../../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)）。
 本書も前計算を導入しない。
-設計書の順序は、[探索の枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)から始まり、浅い枝刈り、history、correction historyの表、本書、aspiration windows、時間管理と続く連鎖として提案したものであり、最終的な順序は利用者が決める。
+設計書の順序は、[探索の枝刈りとLMRの関数形の見直し](search-pruning-forms.md)から始まり、浅い枝刈り、history、correction historyの表、本書、aspiration windows、時間管理と続く連鎖として提案したものであり、最終的な順序は利用者が決める。
 
-SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、対局の手順は[SPRTの手引き](../guides/sprt.md)に従う。
-時間切れの事前確認、SPSAのセッション、事前対局、およびSTCは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
+SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、対局の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
+時間切れの事前確認、SPSAのセッション、事前対局、およびSTCは、[探索の関数形の見直しの統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
-実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
+実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 本書は次のADRの決定の一部を変える。
 完了時に、起点の時点で有効なADRを新しいADRで置き換える。
 決定の一部だけを変えるので、変えない部分の決定も新しいADRへ引き継ぐ。
 
-- [手数制限のADR](../adr/archive/limit-searched-captures-in-qsearch.md)は、置換表の手を含めて実際に読んだ捕獲手を数え、取り返しを直前の相手の捕獲手の到達升で判定すると決めた。Q3は数え方を候補の列の順番に、Q4は取り返しを直前の手の到達升に変え、成る手と王手になる手を免除に加える。上限は2026年10月4日のSPSAで4に決まり、起点では2026年10月18日以降のSPSAで6になっている。最初に上限を決めた測定は、既定の評価関数がNNUEへ置き換わる前のものである。同じADRは、Stockfishのように生成した全捕獲手を数えて上限を2とする方式を未測定の候補として残している。
-- [correction historyの鍵と適用先のADR](../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)は、補正を置換表の保存値と静止探索のstand-patに使わないと決めた。Q1はstand-patとdelta pruningの基準に補正を加える。同じADRの鍵の選び方の根拠となった診断は既定の評価関数がPSTだった時期のものであり、新しい形の表の調整と採否の測定は2026年10月20日から21日にNNUEで行ったが、静止探索への適用は測っていない。
-- [delta pruningに成り益を加えないADR](../adr/archive/keep-delta-pruning-without-promotion-gain.md)は、成る手もdelta pruningの対象とし、取る駒の価値だけで判定すると決めた。Q4は成る手をdelta pruningから外す。同じADRは、成り益を足す修正がわずかに弱い方向の結果だったことと、NNUE採用前の測定であることを記録している。
-- [入口の判定のADR](../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)は、stand-patがβ以上のノードと、入口のdelta pruningの後に読む捕獲が残らないノードでは、置換表を照会も保存もせずに返すと決めた。Q7は照会をstand-patの前へ移し、Q5は入口のdelta pruningをやめて、捕獲手のないノードも通常の出口で保存する。獅子が経由升で取って空升へ進む手を候補から除く決定は変えない。この決定の測定は、既定の評価関数がNNUEへ置き換わる前のものである。
-- [静的評価を置換表に保存しないADR](../adr/archive/do-not-store-static-eval-in-tt.md)は、エントリに静的評価を持たないと決めた。Q7はエントリの予約領域に静的評価を置く。同じADRは、PSTの時期の評価費用に基づく判断であり、再提案には現行の評価関数での測り直しが要ると記録している。
-- [静止探索の結果を深さ0で保存するADR](../adr/archive/store-quiescence-results-at-depth-zero.md)は、静的評価だけでβ以上となるノードでは置換表を照会も保存もしないと記録している。Q7はこのノードでも照会し、置換表に当たらなければ探索値なしの記録を書く。また、保存の境界の種類を下界と上界の2つにする。深さ0で保存すること、および同じ局面のエントリを深さで置き換える規則は変えない。
-- [2語の置換表のADR](../adr/archive/use-atomic-two-word-transposition-entries.md)は、1エントリを16バイトとし、1語目に検証キー、評価値、深さ、および境界の種類を、2語目に記録手と世代を置くと決めた。Q7は、2語目の予約領域に静的評価を、1語目の予約領域に探索値なしの目印を置き、並行書き込みで静的評価が別の局面の値になり得ることを、同じADRが受け入れている近似に加える。
-- [SEEとcapture futilityの余裕値のADR](../adr/archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)は、`see_prunes`が非負の余裕値を契約とするため、捕獲手のSEEの余裕値を0で切り詰めると決め、切り詰めを外すことを本書に委ねた。Q2はSEEの判定を符号付きの閾値へ移して切り詰めを外す。
+- [手数制限のADR](../../adr/archive/limit-searched-captures-in-qsearch.md)は、置換表の手を含めて実際に読んだ捕獲手を数え、取り返しを直前の相手の捕獲手の到達升で判定すると決めた。Q3は数え方を候補の列の順番に、Q4は取り返しを直前の手の到達升に変え、成る手と王手になる手を免除に加える。上限は2026年10月4日のSPSAで4に決まり、起点では2026年10月18日以降のSPSAで6になっている。最初に上限を決めた測定は、既定の評価関数がNNUEへ置き換わる前のものである。同じADRは、Stockfishのように生成した全捕獲手を数えて上限を2とする方式を未測定の候補として残している。
+- [correction historyの鍵と適用先のADR](../../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)は、補正を置換表の保存値と静止探索のstand-patに使わないと決めた。Q1はstand-patとdelta pruningの基準に補正を加える。同じADRの鍵の選び方の根拠となった診断は既定の評価関数がPSTだった時期のものであり、新しい形の表の調整と採否の測定は2026年10月20日から21日にNNUEで行ったが、静止探索への適用は測っていない。
+- [delta pruningに成り益を加えないADR](../../adr/archive/keep-delta-pruning-without-promotion-gain.md)は、成る手もdelta pruningの対象とし、取る駒の価値だけで判定すると決めた。Q4は成る手をdelta pruningから外す。同じADRは、成り益を足す修正がわずかに弱い方向の結果だったことと、NNUE採用前の測定であることを記録している。
+- [入口の判定のADR](../../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)は、stand-patがβ以上のノードと、入口のdelta pruningの後に読む捕獲が残らないノードでは、置換表を照会も保存もせずに返すと決めた。Q7は照会をstand-patの前へ移し、Q5は入口のdelta pruningをやめて、捕獲手のないノードも通常の出口で保存する。獅子が経由升で取って空升へ進む手を候補から除く決定は変えない。この決定の測定は、既定の評価関数がNNUEへ置き換わる前のものである。
+- [静的評価を置換表に保存しないADR](../../adr/archive/do-not-store-static-eval-in-tt.md)は、エントリに静的評価を持たないと決めた。Q7はエントリの予約領域に静的評価を置く。同じADRは、PSTの時期の評価費用に基づく判断であり、再提案には現行の評価関数での測り直しが要ると記録している。
+- [静止探索の結果を深さ0で保存するADR](../../adr/archive/store-quiescence-results-at-depth-zero.md)は、静的評価だけでβ以上となるノードでは置換表を照会も保存もしないと記録している。Q7はこのノードでも照会し、置換表に当たらなければ探索値なしの記録を書く。また、保存の境界の種類を下界と上界の2つにする。深さ0で保存すること、および同じ局面のエントリを深さで置き換える規則は変えない。
+- [2語の置換表のADR](../../adr/archive/use-atomic-two-word-transposition-entries.md)は、1エントリを16バイトとし、1語目に検証キー、評価値、深さ、および境界の種類を、2語目に記録手と世代を置くと決めた。Q7は、2語目の予約領域に静的評価を、1語目の予約領域に探索値なしの目印を置き、並行書き込みで静的評価が別の局面の値になり得ることを、同じADRが受け入れている近似に加える。
+- [SEEとcapture futilityの余裕値のADR](../../adr/archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)は、`see_prunes`が非負の余裕値を契約とするため、捕獲手のSEEの余裕値を0で切り詰めると決め、切り詰めを外すことを本書に委ねた。Q2はSEEの判定を符号付きの閾値へ移して切り詰めを外す。
 
 次のADRは本書で変えない。
-[SEEの判定不能の範囲のADR](../adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)が定める、獅子の規則に依存して判定不能となる捕獲手を枝刈りしない規則は、Q2の閾値と下限でも保つ。
-[段階生成のADR](../adr/generate-qsearch-captures-by-value-group-per-piece.md)の、取る駒の価値の群ごとに段階的に生成する方式も保つ。
-[王手の判定のADR](../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)の、前計算なしに着手後の占有で王手を判定する方式も保ち、静止探索でも同じ判定を使う。
+[SEEの判定不能の範囲のADR](../../adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)が定める、獅子の規則に依存して判定不能となる捕獲手を枝刈りしない規則は、Q2の閾値と下限でも保つ。
+[段階生成のADR](../../adr/generate-qsearch-captures-by-value-group-per-piece.md)の、取る駒の価値の群ごとに段階的に生成する方式も保つ。
+[王手の判定のADR](../../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)の、前計算なしに着手後の占有で王手を判定する方式も保ち、静止探索でも同じ判定を使う。
 
 ## 設計判断
 
@@ -134,8 +145,8 @@ minaseにあってStockfishにない既存の仕組みのうち、中将棋の�
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 7項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整する。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。採否は、統括計画の設計判断「各サブタスクの採否」により、STCの結果によらず採用とし、STCは記録として行う。項目ごとにSPSAを繰り返す案は、1項目あたり調整機での事前確認とSPSAに約8〜18時間と約15〜35米ドルを要するので採らない。このため、項目ごとの寄与は測らない。 |
-| 静止探索での補正（Q1） | stand-pat、αの引き上げ、delta pruning、およびSEEの閾値の基準に、補正前の静的評価に補正値を等倍で足した値を使う。倍率の係数は置かない（利用者の決定）。両エンジンは通常探索と同じ補正後の評価を静止探索でも使う（Stockfish `src/search.cpp:1754-1776`、YaneuraOu `yaneuraou-search.cpp:4730, 4791`）。補正後の値は、起点の通常探索と同じ`corrected_static_eval`で評価関数の出力の範囲（`crates/minase/src/eval/nnue/`の`EVALUATION_LIMIT`）に収め、詰み帯と専用の帯へ入れない。補正値は、最大plyのノードと置換表の打ち切りで返るノードを除き、静的評価を求める全静止探索ノードで読む。Stockfishも、最大ply、置換表の打ち切り、および王手を受けている局面では読まない（`src/search.cpp:1729-1752`）。王駒に利きが届くかは調べない。stand-patは王駒が狙われた局面でも使うと決めており（[ADR](../adr/use-stand-pat-when-royals-are-attacked.md)）、利きの判定を全静止探索ノードに加えると時間がかかるからである。補正値を読む処理の時間は、Q1の前後の探索速度として記録する。 |
+| 候補の束ね方 | 7項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整する。[不採用だった探索部の改良の再調整](search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../../adr/adopt-revived-search-items-as-a-bundle.md)）。採否は、統括計画の設計判断「各サブタスクの採否」により、STCの結果によらず採用とし、STCは記録として行う。項目ごとにSPSAを繰り返す案は、1項目あたり調整機での事前確認とSPSAに約8〜18時間と約15〜35米ドルを要するので採らない。このため、項目ごとの寄与は測らない。 |
+| 静止探索での補正（Q1） | stand-pat、αの引き上げ、delta pruning、およびSEEの閾値の基準に、補正前の静的評価に補正値を等倍で足した値を使う。倍率の係数は置かない（利用者の決定）。両エンジンは通常探索と同じ補正後の評価を静止探索でも使う（Stockfish `src/search.cpp:1754-1776`、YaneuraOu `yaneuraou-search.cpp:4730, 4791`）。補正後の値は、起点の通常探索と同じ`corrected_static_eval`で評価関数の出力の範囲（`crates/minase/src/eval/nnue/`の`EVALUATION_LIMIT`）に収め、詰み帯と専用の帯へ入れない。補正値は、最大plyのノードと置換表の打ち切りで返るノードを除き、静的評価を求める全静止探索ノードで読む。Stockfishも、最大ply、置換表の打ち切り、および王手を受けている局面では読まない（`src/search.cpp:1729-1752`）。王駒に利きが届くかは調べない。stand-patは王駒が狙われた局面でも使うと決めており（[ADR](../../adr/use-stand-pat-when-royals-are-attacked.md)）、利きの判定を全静止探索ノードに加えると時間がかかるからである。補正値を読む処理の時間は、Q1の前後の探索速度として記録する。 |
 | 補正を変えない箇所 | 最大plyに達したノードの返り値は補正前の静的評価のままとする。Stockfishも、王手を受けていなければ同じ箇所で`evaluate(pos)`をそのまま返す（`src/search.cpp:1729-1730`）。補正表の更新と更新に使う差は変えない。Q1は置換表の保存の規則も変えず、保存の境界の種類はQ7で変える。置換表に保存する静的評価は、Q1の後も補正前の値`v`であり、補正後の`s`は保存しない。 |
 | 補正の鍵と着手の記録の保守 | 現行の静止探索は着手後のplyの鍵と着手の記録を更新しないので、補正値を読めない。静止探索の着手の後にも、通常探索の`search_move`と同じ関数（`key_after_move`、`pawn_key_after_move`、`correction_piece_keys_after_move`、および`MoveRecord::from_undo`）で、4つの鍵の列と`path_moves`を更新する。`path_keys`にも、採用している反復規則の鍵（R1では`search_key`、R2とR3では`repetition_key`）を積み、`path_moves.len() + 1 == path_keys.len()`の関係を静止探索でも保つ。静止探索は反復を判定しないので、積んだ鍵は読まない。continuation correctionは現在の手数を基準に`path_moves`の添字を引くので、静止探索の部分だけの短い記録列を別に作る方法では添字が合わない。子から戻るときは、中断で戻る場合も含めて、積んだ記録を必ず取り除く。null moveの直後は、起点のとおり鍵を写し、着手の記録を持たない要素を1つ積む。同じplyで探索し直すnull moveの検証探索は、入口で記録を積まない。この更新だけでは探索が変わらないので、Q1とは別の純粋な移行のコミットにする。`Searcher`と`MoveRecord`のdocコメントの「静止探索は`path_moves`へ積まない」は改める。 |
 | SEEの閾値と下限（Q2） | Stockfishは2段のSEEの判定を持つ。免除の手でない候補は、SEEの値が`α − futilityBase`未満なら読まない（`src/search.cpp:1839-1843`）。ここで`futilityBase`は補正後の静的評価に余裕値を足した値である（同`1794`）。そのうえで、全候補について、SEEの値が−74未満なら読まない（同`1851`）。本書は両方をそのまま移し、前者の余裕値には既存の`DeltaMargin`を使う。Stockfishも同じ`futilityBase`をdelta pruningとSEEの閾値に使うからである。符号付きの閾値で負の余裕値を表せるようになるので、同じQ2のコミットで、通常探索の捕獲手のSEE（S3）の閾値を`T = −max(0, A + H)`から`T = −(A + H)`に改め、0への切り詰めを外す。Stockfishの捕獲手のSEEの余裕値も切り詰めない（`src/search.cpp:1222`）。静かな手のSEE（S5）は変えない。後者は新しい係数`QsearchSeeMargin`とし、係数は許す損の大きさを正の百分率で表し、判定では符号を反転して閾値にする。開始値は74を歩兵価値208で換算した約36%とする。現行の静止探索は損のない捕獲だけを読むので、下限を0とした場合に当たる。 |
@@ -144,10 +155,10 @@ minaseにあってStockfishにない既存の仕組みのうち、中将棋の�
 | 判定の順序 | Stockfishの順序に合わせる（`src/search.cpp:1819-1852`）。最後の王駒を取る手を先に判定して詰みの値を使う。それ以外の候補は、取り返しと成る手の判定を先に行い、どちらでもなければ、手数制限、delta pruning、SEEの閾値の順に、その候補が枝刈りの条件に当たるかを調べる。条件に当たった場合にだけ`gives_check`で王手になる手かを調べ、王手になる手なら3つの枝刈りをいずれも適用せずに次へ進み、王手になる手でなければその条件で枝刈りする。続いて、最後の王駒を取る手を除く全候補にSEEの下限を当てる。Stockfishは全候補で先に王手を判定するが（`src/search.cpp:1813`）、判定は局面を変えず、枝刈りと最善値の引き上げより前に結果が決まるので、結果は同じである。王手の判定の結果は同じ候補の中で再利用し、計数のためだけに王手を判定しない。SEEの下限は王手になる手も免れない。Stockfishが枝刈りの前に置く`is_loss(bestValue)`と`is_loss(futilityBase)`の条件（`src/search.cpp:1819, 1822`）は、王手を受けている局面でstand-patを使わない場合に働く。minaseでは、補正後の静的評価`s`が−28,999以上で余裕値`Δ`が0以上なので、`futilityBase`は−28,999以上になり、最善値の初期値も通常域にあり、最善値は初期値から下がらない。最善値と`futilityBase`が負けを表す詰み帯と専用の帯に入らないので、この条件は常に偽になり、移さない。 |
 | 免除の手（Q4） | 取り返し、成る手、および王手になる手を、手数制限、delta pruning、およびSEEの閾値から外す（利用者の決定）。Stockfishは、`givesCheck`、`prevSq`、および`PROMOTION`の3つの条件をこの3つの判定に共通に使う（`src/search.cpp:1822-1823`）。SEEの下限は、Stockfishと同じく免除の手にも当てる。取り返しの判定は、Stockfishの`prevSq`（直前の手の到達升、`src/search.cpp:1799`）に合わせて、直前の手が捕獲手かどうかを問わない。このため`Searcher::previous_capture`を内容に合う名前（`previous_move_to`など）へ改め、通常探索のすべての着手の後に到達升を、根とnull moveの後には`None`を置く。差が出るのは、通常探索の非捕獲手の直後に静止探索へ入るノードであり、深さが0に達した入口、razoringが呼ぶ静止探索、およびnull moveの検証探索の中の入口が含まれる。チェスでは1手で取る駒は1枚なので`move.to_sq() == prevSq`で足りるが、minaseは居喰いと獅子の2段階移動があるので、現行どおり取る駒の升の集合に直前の到達升が含まれるかで判定する。YaneuraOuは成る手の免除を外したほうが強かったとして、通常のビルドで外している（`yaneuraou-search.cpp:4916-4921`、`source/config.h:337`）。両エンジンで違う点はStockfishに合わせるので、本書は成る手を免除に含める。 |
 | 王手の判定 | 王手になる手の判定には起点の`Position::gives_check`を使う。この関数は、残る相手の王駒が1枚なら着手後の占有で利きを調べ、2枚なら両方を取る合法手の有無を調べるので、開き王手、着手前からの王手の継続と遮断、成った後の駒種による王手、居喰い、経由升での捕獲、および王駒を1枚取って残る1枚へ利かせる手を扱う。静止探索の候補は、通常の捕獲と特殊な捕獲の生成が公開の合法手生成の部分列に一致し、置換表の手も`is_legal_capture`で同じ集合への所属を確かめてあるので、`gives_check`の「この局面の合法手」という契約を満たす。並べ替えの王手の加点に使う`DirectCheckSquares`は直接の王手だけを扱うので、代わりに使わない。王駒の升での疑似利きと捕獲可能性が一致すること（`royal.rs`の`royal_under_attack`のdocコメント）を、この判定でも前提にする。判定にかかる時間は探索速度の変化として記録する。 |
-| 中将棋に固有の例外 | 相手の最後の王駒を取る手は、すべての枝刈りの前に詰みの値を使う現行の扱いを保つ。終局の手であり、チェスには対応する手がない。獅子が1手で2枚を取る手は、現行どおり手数制限だけを免れ、delta pruningとSEEの判定は受ける。両エンジンに対応する手がないので現行の扱いを保つ（利用者の決定）。角鷹と飛鷲の2枚取りは、この例外に含めない。フェーズ1で各例外と免除が働く回数を数える（[教訓](../lessons/measure-conservative-guard-coverage.md)）。 |
+| 中将棋に固有の例外 | 相手の最後の王駒を取る手は、すべての枝刈りの前に詰みの値を使う現行の扱いを保つ。終局の手であり、チェスには対応する手がない。獅子が1手で2枚を取る手は、現行どおり手数制限だけを免れ、delta pruningとSEEの判定は受ける。両エンジンに対応する手がないので現行の扱いを保つ（利用者の決定）。角鷹と飛鷲の2枚取りは、この例外に含めない。フェーズ1で各例外と免除が働く回数を数える（[教訓](../../lessons/measure-conservative-guard-coverage.md)）。 |
 | 最善値の引き上げ（Q5） | Stockfishは、delta pruningで読まなかった手の見積り`futilityBase + 取る駒の価値`と、SEEの閾値で読まなかった手の見積り`min(α, futilityBase)`で最善値を引き上げる（`src/search.cpp:1834, 1841`）。手数制限とSEEの下限で読まなかった手は引き上げない。本書はこの規則をそのまま移す（利用者の決定）。αは変えず、最善値と置換表に保存する値だけが変わる。ただし、引き上げは、引き上げる前の最善値と見積りの値の両方が通常域にある場合に限る。起点の通常探索の`should_raise_futility_best_score`と同じ条件であり、`futilityBase`に取る駒の価値を足した見積りが専用の帯に入り得るためのStockfishとの差である。 |
 | 入口の処理（Q5） | 入口のdelta pruning（価値が`α − s − Δ`以下の捕獲を生成から除き、候補がなければstand-patを返す処理）をやめる。すべての対象升を価値の群に登録し、群は起点と同じく価値の降順に、候補の列がその群に達したときに初めて生成する。特殊な捕獲は起点と同じく入口で生成する。候補ごとに上の規則を順に当て、手数制限の上限に達した後も、後続の免除の手、最後の王駒を取る手、および獅子の2枚取りを読むために列の処理を続ける。これで、高価値の群でβを超えて打ち切るノードでは後続の群を生成しない起点の利点は残る。入口の閾値以下の群を、`n`が上限に達した後は免除の手と最後の王駒を取る手だけを生成する形で省く方式は、同じ群で免除の手が先に`n`を消費する場合と、上限の後の獅子の2枚取りがdelta pruningで最善値を引き上げる場合に、全候補へ規則を順に当てた結果と一致しないので採らない。低価値の群の生成と整列が増える一方で入口の候補の存在確認がなくなるので、速度の差は形の変更の前後で測る。 |
-| 候補のないノードの出口 | 現行は、入口のdelta pruningの後に読む捕獲が残らないノードで、置換表を使わずにstand-patを返す（[ADR](../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)）。Q5で入口のdelta pruningがなくなり、Q7で置換表の照会がstand-patの前に移るので、捕獲手が1つもないノードも含め、候補の列の処理を終えたら通常の出口で最善値を置換表へ保存する。Stockfishも、置換表とstand-patで打ち切る場合を除き、すべての出口で保存する（`src/search.cpp:1906-1910`）。 |
+| 候補のないノードの出口 | 現行は、入口のdelta pruningの後に読む捕獲が残らないノードで、置換表を使わずにstand-patを返す（[ADR](../../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)）。Q5で入口のdelta pruningがなくなり、Q7で置換表の照会がstand-patの前に移るので、捕獲手が1つもないノードも含め、候補の列の処理を終えたら通常の出口で最善値を置換表へ保存する。Stockfishも、置換表とstand-patで打ち切る場合を除き、すべての出口で保存する（`src/search.cpp:1906-1910`）。 |
 | βへの寄せ（Q6） | Stockfishは、stand-patがβ以上で打ち切るときに`(441 × stand-pat + 583 × β)/1024`を返し（`src/search.cpp:1783`）、候補を調べた後の最善値がβを超えたときに`(462 × 最善値 + 562 × β)/1024`を返して置換表にも保存する（同`1903-1910`）。本書はこの形を移す。混合の重みは平均の重みであり、仕組みの強さを決める値ではないので、Stockfishの441/1024と462/1024で固定し、SPSAで調整しない（利用者の決定）。YaneuraOuは両方とも`(最善値 + β)/2`である（`yaneuraou-search.cpp:4817, 5094`）。寄せるのは、寄せる値とβの両方が通常域にある場合に限る。Stockfishは寄せる値が決着の値でないことだけを確かめるが（`src/search.cpp:1782, 1903`）、minaseではβが詰み帯に近いと、寄せた値が専用の帯に入り得るからである。たとえば寄せる値が−28,999でβが−29,999なら、寄せた値は−29,568となり、絶対値が29,487以上29,744未満の専用の帯に入る。重みは正で和が1024なので、寄せた値はβ以上にとどまる。 |
 | 置換表の照会の順序と打ち切り（Q7） | 最大plyの判定の後、静的評価を求める前に置換表を照会し、打ち切れる値ならその値を返す。Stockfishの順序に合わせる（`src/search.cpp:1734-1746`）。打ち切りは窓の幅が1のノードに限る。現行の静止探索は窓の幅によらず打ち切っている。Stockfishの打ち切りは非PVノード（`!PvNode`、同`1743-1746`）に限られ、静止探索ではPVの種別をテンプレートの引数で子へ引き継ぐので、窓の幅が1のPVノードもあり得る。minaseは窓の幅で非PVノードを定める起点の規則を保つ。打ち切りに使う値の条件（専用の帯の値を使わないこと、および境界の種類による判定）は現行どおりとし、探索値なしの記録は使わない。詰み帯の値は、起点どおり打ち切りに使う。 |
 | 置換表の値によるstand-patの置き換え（Q7） | 置換表に当たり、探索値を持つ記録の値が通常域にあり、記録が正確な値であるか、下界で値が`s`より大きいか、上界で値が`s`以下であるとき、stand-patの代わりにその値を最善値の初期値とする（Stockfish `src/search.cpp:1767-1770`）。この条件は、起点の通常探索が判定用の評価値に使う`pruning_eval`と同じであり、同じ関数を使う。Stockfishの境界の種類はビットの組であり、正確な値は下界と上界の両方に当たるので、Stockfishの条件も正確な値を含む。minaseの境界の種類の符号はStockfishと違うので、ビット演算はそのまま移さない。置き換えた値は、β以上で打ち切る判定、αの引き上げ、および最善値の初期値に使う。delta pruningとSEEの閾値の基準`F`は、Stockfishと同じく置き換える前の`s`から求める（同`1794`）。 |
@@ -158,7 +169,7 @@ minaseにあってStockfishにない既存の仕組みのうち、中将棋の�
 | 評価値の単位を持つ係数の3つの値 | 歩兵価値に対する百分率で、Stockfishの換算値、YaneuraOuの換算値、minaseの起点の値を並べる。`DeltaMargin`は147（306/208、`src/search.cpp:1794`）、364（328/90、`yaneuraou-search.cpp:4837`）、499である。開始値のStockfishの換算値147は、YaneuraOuの364の約0.40倍、起点の499の約0.29倍である。`QsearchSeeMargin`は36（74/208、`src/search.cpp:1851`）、81（73/90、`yaneuraou-search.cpp:4989`）、0（現行の静止探索は損のある捕獲を読まない）である。範囲はどちらも3つの値を含む。 |
 | `DeltaMargin`の範囲 | 起点の50〜500のままとする。起点の値499は上限の直下にあり、SPSAのたびに上がってきたが、それは入口のdelta pruningがあり免除のない起点の形での結果であり、Q1からQ5で形が変わった後の最適値も大きいことを示すものではない。範囲を50〜1000へ広げる案は、最後の反復の摂動幅`c_end`（範囲の1/6）を75から158へ倍にする。`k`回目の反復の摂動幅は`c_end × (3,750/k)^0.101`（`crates/minase/src/bin/minase/spsa_runner/model.rs`）であり、最初の反復では`c_end`の約2.3倍になる。開始値147では、範囲が50〜500でも最初の反復の摂動幅約172の下側は下限50で切り詰められる。範囲を広げると摂動幅は約2.1倍の約364になり、中心値が開始値の近くにとどまる間は下側の摂動が長く切り詰められて、対称な摂動を前提とする勾配の推定が偏り得る。学習率も`c_end`の2乗に比例するので、範囲を広げると更新の幅も変わる。最終値が上限に達した場合は、その旨を測定記録に書き、範囲を広げるかを後続のサブタスクの着手時に利用者が決める。 |
 | SPSAの対象 | 起点の表の調整対象の89係数（`FmScale`を除く）に新しい1係数を加えた90係数とする。`DeltaMargin`は開始値をStockfishの換算値に置き直す。`QsearchMoveLimit`は意味と範囲を変えた既存の係数として含める。そのほかの係数は起点の値から始める。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含むので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで90係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで90係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
 
 ## 変更の内容
 
@@ -264,7 +275,7 @@ Q7で置き換えた後の最善値の初期値`b_0`が`β`以上の場合に限
 ## 所要時間の見積り
 
 時間切れの事前確認、SPSA、事前対局、およびSTCは調整機で、反映とテストは測定機で行う。
-SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の4本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
+SPSAの所要時間は、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の4本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
 本書はエントリの大きさを変えないので、1局のメモリはほぼ変わらない。Q1、Q4、Q5、およびQ7は静止探索のノードの処理を増やすので、探索速度が下がれば、持ち時間の換算係数を通じて所要時間が延びる。
 
 | 段階 | 内容 | 見積り |
@@ -280,7 +291,7 @@ SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)�
 ## 実装フェーズ
 
 基本シードは、時間切れの事前確認を4400000000、セッションを4450000000、事前対局を4500000000、STCを4550000000とする。
-これらは起案時点で、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であり（[教訓](../lessons/derive-seed-adjacent-collision.md)）、着手時にも同じ方法で未使用であることを確かめた。
+これらは起案時点で、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）、および他の設計書が予約した値から、各測定のペア数以上離れた未使用の値であり（[教訓](../../lessons/derive-seed-adjacent-collision.md)）、着手時にも同じ方法で未使用であることを確かめた。
 各測定の開始前に、その測定を行う機械でほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
 
 ### フェーズ1　形の変更の実装
@@ -312,24 +323,24 @@ Q5の入口の処理には、全候補を先に生成する参照実装を置か
 置換表は、エントリが16バイトのままであること、静的評価の「なし」、探索値なしの記録、正確な値によるstand-patの置き換え、置き換えの規則、根と子局面との照合、2語目が別の書き込みに由来する場合、静的評価に詰みの手数の変換を掛けないこと、および専用の帯の境界を単体テストで確かめる。
 `--features search-stats`のbenchで、手数制限で読まなかった候補の数、免除と例外の種類ごとに、本来は当たる枝刈りを免れた候補の数（理由が重なる場合は、取り返し、成る手、王手の順で最初の理由に数え、王手は実際に判定した場合だけ数える）、Q2の閾値と下限がそれぞれ枝刈りした候補の数、Q5で枝刈りの見積りが最善値を実際に引き上げた回数、低価値の群（αを最善値の初期値まで引き上げた直後の値を`α_0`として、価値が`α_0 − F`以下の群。先頭の置換表の手は含めない）から`next`が候補を返したノードの数（ノードごとに1回）、Q7で置換表の値がstand-patを置き換えた回数、静止探索と通常探索で置換表の静的評価を使った回数、および窓の幅が1でないために打ち切らなかった回数を数え、測定記録に残す。計数のためだけに王手を判定しない。
 これらの計数は`crates/minase/src/search/stats.rs`の項目として加える。
-Q1、Q4、Q5、およびQ7は静止探索ノードの処理を増やすので、`search-stats`と`invariants`のない同じビルド条件で、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更で交互に3回ずつ測り、探索時間、探索ノード数、および1秒あたりのノード数を併記して記録する（[教訓](../lessons/pin-bench-to-performance-core.md)）。Q1の直前と直後のコミットも同じ方法で比べ、補正値を読む処理の時間を記録する。
+Q1、Q4、Q5、およびQ7は静止探索ノードの処理を増やすので、`search-stats`と`invariants`のない同じビルド条件で、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更で交互に3回ずつ測り、探索時間、探索ノード数、および1秒あたりのノード数を併記して記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。Q1の直前と直後のコミットも同じ方法で比べ、補正値を読む処理の時間を記録する。
 新しい係数は`params.rs`の表へ追加し、`QsearchMoveLimit`の既定値、範囲、およびdocコメントと、`DeltaMargin`の既定値を改め、固定する定数は名前つきの定数として出典の行番号をdocコメントに書き、調整用ビルド（`--features tuning`つきのビルド）が`Tune_<係数名>`のUSIオプションとして宣言することを確かめる。
 `crates/minase/src/search/alphabeta/tests/qsearch_move_limit.rs`のテストは、削除せず新しい数え方と免除に合わせて書き直す。
-新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../guides/testing.md)）。
+新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../../guides/testing.md)）。
 `see_prunes`は、負、0、正の閾値のそれぞれで、交換列を最後まで逆算した参照値との照合テストで確かめる。照合には、経由升、成り益、獅子の規則による判定不能、および等号の場合を含める。
 `quiesce`、`QsearchBuffers`、`see_prunes`、`Searcher::previous_capture`の後継、`Searcher`と`MoveRecord`、`tt.rs`、および`correction.rs`のdocコメントを、新しい契約に合わせて書き直す。
 形の変更を終えたら、SPSAの前に、`params.rs`の既定値を範囲の1/3と2/3の位置に置いた一時的な表でそれぞれテストを走らせ、落ちたテストを、係数を固定の値に設定するか係数によらず結果が決まる局面で確かめる形に直す。
-完了条件は、[テストの手引き](../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、および`cargo test -p minase --lib --features search-stats,tuning`）の通過、純粋な移行でのノード数の一致、各項目のノード数の記録、静止探索の鍵と着手の記録の一致、既定値を1/3と2/3に置いたテストの通過、探索速度の記録、および発動回数の記録である。
+完了条件は、[テストの手引き](../../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、および`cargo test -p minase --lib --features search-stats,tuning`）の通過、純粋な移行でのノード数の一致、各項目のノード数の記録、静止探索の鍵と着手の記録の一致、既定値を1/3と2/3に置いたテストの通過、探索速度の記録、および発動回数の記録である。
 
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミット（Q6まで入ったコミット）でビルドした`minase`を`data/spsa/qsearch-forms-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、以後の測定機での作業はこのrunnerで実行する。
-ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
+ただし、時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/qsearch-forms.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、SPSAの手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/qsearch-forms-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/qsearch-forms-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 起点で時間管理の係数の名前や範囲が変わっていれば、手引きの第3節の値を起点の表に合わせて読み替える。
 
 ```console
@@ -340,7 +351,7 @@ Q1、Q4、Q5、およびQ7は静止探索ノードの処理を増やすので、
   --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
-`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
+`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
 結果は測定記録`qsearch-forms-safety`に残す。
 完了条件は、時間切れとエンジン異常が0件であることと、測定記録の保存である。
 
@@ -370,7 +381,7 @@ Q1、Q4、Q5、およびQ7は静止探索ノードの処理を増やすので、
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 STCの前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
-事前対局とSTCは、[統括計画](search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
+事前対局とSTCは、[統括計画](../search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
@@ -384,7 +395,7 @@ STCの前に、候補が時間切れやエンジン異常を起こさないこ�
 
 ### フェーズ5　STC
 
-2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](../search-forms.md)の設計判断「各サブタスクの採否」）。
 STCは、統括計画のフェーズ10で強くなっていなかった場合に、どのサブタスクで後退したかの手がかりにするための記録として行い、LTCは行わない。
 STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
@@ -395,8 +406,8 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
   --each time=10000+100 --concurrency <調整機の同時対局数> gsprt --max-pairs 3000
 ```
 
-逐次検定の停止規則は[SPRTの手引き](../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`qsearch-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 
@@ -425,9 +436,9 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
 ## 参考資料
 
-- [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。補正値は95〜118行、最大plyの返り値は1729〜1730行、静止探索の補正後の評価は1754〜1776行、stand-patの返り値は1780〜1789行、`futilityBase`は1794行、`prevSq`は1799行、王手の判定は1813行、手数の数え方、免除、枝刈り、および最善値の引き上げは1816〜1853行、βを超えた最善値の寄せと保存は1903〜1910行、置換表の照会と打ち切りは1734〜1746行、通常探索の静的評価の読み出しと探索値なしの記録は856〜874行、通常探索の結果の保存は1657行、置換表の静的評価と値の利用は1756〜1770行、stand-patでの記録の書き込みは1785〜1787行。王手の判定は`src/position.cpp`の731〜774行。歩兵価値208は`src/types.h`の199行。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。静止探索の補正後の評価は4730行と4791行、stand-patの返り値は4817行、`futilityBase`は4837行、`prevSq`は4851行、手数の数え方と枝刈りは4897〜4989行、βを超えた最善値の寄せは5094行。成る手の免除は`#if STOCKFISH`の中にあり（4916〜4921行）、通常のビルドでは`source/config.h`の337行のとおり無効である。歩兵価値90は`source/evaluate.h`の78行。
-- [手数制限のADR](../adr/archive/limit-searched-captures-in-qsearch.md)、[correction historyの鍵と適用先のADR](../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[delta pruningに成り益を加えないADR](../adr/archive/keep-delta-pruning-without-promotion-gain.md)、[入口の判定のADR](../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)、[静的評価を置換表に保存しないADR](../adr/archive/do-not-store-static-eval-in-tt.md)、[静止探索の結果を深さ0で保存するADR](../adr/archive/store-quiescence-results-at-depth-zero.md)、[2語の置換表のADR](../adr/archive/use-atomic-two-word-transposition-entries.md)、[SEEとcapture futilityの余裕値のADR](../adr/archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)、[段階生成のADR](../adr/generate-qsearch-captures-by-value-group-per-piece.md)、および[王手の判定のADR](../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)。
-- [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
-- [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。
+- [手数制限のADR](../../adr/archive/limit-searched-captures-in-qsearch.md)、[correction historyの鍵と適用先のADR](../../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[delta pruningに成り益を加えないADR](../../adr/archive/keep-delta-pruning-without-promotion-gain.md)、[入口の判定のADR](../../adr/archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)、[静的評価を置換表に保存しないADR](../../adr/archive/do-not-store-static-eval-in-tt.md)、[静止探索の結果を深さ0で保存するADR](../../adr/archive/store-quiescence-results-at-depth-zero.md)、[2語の置換表のADR](../../adr/archive/use-atomic-two-word-transposition-entries.md)、[SEEとcapture futilityの余裕値のADR](../../adr/archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)、[段階生成のADR](../../adr/generate-qsearch-captures-by-value-group-per-piece.md)、および[王手の判定のADR](../../adr/judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)。
+- [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
+- [SPSAによる係数調整の手引き](../../guides/spsa.md)と[SPRTによる棋力測定の手引き](../../guides/sprt.md)。

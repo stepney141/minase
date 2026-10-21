@@ -119,4 +119,7 @@ SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-
 係数の現行値は、その後のサブタスクのSPSAを経た値であり、`params.rs`にある。
 2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 
-SPSAとSTCの結果は、測定の後に追記する。
+形の変更の90係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/qsearch-forms/qsearch-forms.md)）。
+最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して107ペアで`H1`（約+261 Elo）だった（[STCの記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）。
+逐次検定は境界を越えた時点で止まるので、この点推定は大きめに出やすく、採否には使っていない。
+SPSAの最終値は、`SeeDepthMargin`が234から328へ上がり、`SeeCaptureHistory`は177から178へほとんど動かなかった。

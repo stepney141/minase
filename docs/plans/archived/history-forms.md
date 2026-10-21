@@ -102,7 +102,7 @@ pawn historyは、歩兵と仲人の配置の鍵（pawn key）で引く。
 
 M3bの王手の加点は、Stockfishの`check_squares`と同じく、ノードで駒種ごとに求める直接の王手の升の集合で判定し、[浅い枝刈りの深さと対象の拡張](shallow-pruning-extensions.md)のS3が導入した静かな手のSEEの判定器（`see.rs`の`see_prunes`）を再利用する。
 同じ設計書が導入した王手の判定`Position::gives_check`（RULES.md第8条の定義に従い、開き王手と王駒が2枚の場合を含む）は、枝刈りでの王手の判定に使い続け、並べ替えには使わない。
-SEEの判定器の引数を符号つきの閾値`T`（`SEE < T`なら真）に改める契約の移行（[静止探索の設計書](../qsearch-forms.md)）には、王手の加点に使う判定も含め、閾値`−trunc(75P/208)`を保つ。
+SEEの判定器の引数を符号つきの閾値`T`（`SEE < T`なら真）に改める契約の移行（[静止探索の設計書](qsearch-forms.md)）には、王手の加点に使う判定も含め、閾値`−trunc(75P/208)`を保つ。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、採否の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。

@@ -17,7 +17,7 @@ SPSAの結果の反映は測定機で行い、事前対局とSTC、および最�
 
 ## 状態
 
-進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）は2026年10月21日に、いずれも採用で完了した。残りの3本のサブタスクは起案であり、着手していない。
+進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）とサブタスク5（[静止探索の形](archived/qsearch-forms.md)）は2026年10月21日に、いずれも採用で完了した。残りの2本のサブタスクは起案であり、着手していない。
 SPSAは、2026年10月17日の利用者の決定により、サブタスクごとに行う（設計判断の「SPSAの単位」）。
 フェーズ0（試走と持ち時間の換算の確定）は終えた。結果は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)にある。Threadripper PRO 9995WXの調整機で`f`は1.46となり、換算した持ち時間の下で調整機は測定機より約0.3手深く読んだ。2026年10月18日に利用者は、SPSAは係数の最適化なのでこの差にこだわらず、`f`をそのまま使うと決めた。
 フェーズ1（スクリプトの実装と検証）は終えた。`scripts/vast-spsa/`のスクリプトと共通の`scripts/vast/common.py`は、シェルにPythonの断片を埋め込む書き方は保守しにくいという2026年10月18日の利用者の指摘を受けて、Pythonで書いた（設計判断の「スクリプトの言語」）。実機での結果は[検証の記録](../measurements/search-forms/vast-spsa-scripts.md)と[Pythonへ書き直した後の記録](../measurements/search-forms/vast-spsa-scripts-python.md)にある。
@@ -27,8 +27,9 @@ SPSAは、2026年10月17日の利用者の決定により、サブタスクご�
 同じ日に利用者は、サブタスク1をSTCの結果によらず採用すると決め、続けてこの扱いを全サブタスクに広げた。各サブタスクでは事前対局とSTCだけを行い、LTCは行わない（設計判断の「各サブタスクの採否」）。7本を通して元のmasterより強くなったかは、新たに加えたフェーズ10で確かめる（設計判断の「通しの確認」）。
 サブタスク3は、AMD EPYC 9K84の2基構成（`f`は1.45、1時間約1.89米ドル）を借り、事前確認からSTCまでを約9.1時間、約17.1米ドルで終えた。その前に借りたAMD Eng Sampleの機械はコンテナに論理208 CPUしか割り当てられておらず、見込みの所要時間が上限の24時間を超えたので、`remote.py`が本番を始めずに止まり、`fetch.py`が削除した（約0.35米ドル）。`remote.py`は物理コア数を`lscpu`のソケット数とコア数の積で数え、コンテナのCPUの割り当ては見ない。
 サブタスク4は、サブタスク3と同じAMD EPYC 9K84の2基構成（`f`は1.29、1時間約1.87米ドル）を借り、事前確認からSTCまでを約8.4時間、約15.8米ドルで終えた。1時間2.5米ドル以下の出品が現れるまで約6.2時間待った。セッションの途中で、vast.aiのAPIが口座の操作に2要素認証でのログインを再び求め、`fetch.py`が状態の照会に6回続けて失敗して終了した。調整機はセッションを続けたので、利用者が認証し直すまでの約50分は、SSHを通したrsyncで実行ディレクトリを取得した。
-STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
-次の一手は、利用者がサブタスク5（[静止探索の形](qsearch-forms.md)）の着手とそのセッションの費用を決めることである。
+サブタスク5は、照会を始めてから約8分でAMD EPYC 9654の2基構成（`f`は1.26、1時間約2.01米ドル）を借り、事前確認からSTCまでを約8.6時間で終えた。借りていた時間は約8.7時間で、費用は時間単価から約17.5米ドルと見込む。STCの後に調整機を削除しようとしたところ、vast.aiのAPIが口座の操作に2要素認証でのログインを再び求めた。そこで、起動時スクリプトが自己停止に使うコンテナ用のAPIの鍵で調整機を停止し、削除は認証し直した後に行う。
+STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）、サブタスク5がサブタスク4を採用した版に対して`H1`（約+261 Elo、[記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
+次の一手は、利用者がサブタスク6（[aspiration windowsの形](aspiration-window-forms.md)）の着手とそのセッションの費用を決めることである。
 
 ## 目的
 
@@ -71,7 +72,7 @@ SPSAの更新則、30,000ペアの規模、および`minase spsa`のコードは
 | 2 | [浅い枝刈りの拡張](archived/shallow-pruning-extensions.md) | futility pruning、SEE、razoring、null move pruningの深さと対象 | 14を加え11を除く | 約71 | 3,500,000,000〜3,700,000,000 |
 | 3 | [historyの形](archived/history-forms.md) | historyの更新量の形とcontinuation history | 15を加え4を除く | 約82 | 3,800,000,000〜4,000,000,000 |
 | 4 | [correction historyの表](archived/correction-history-tables.md) | correction historyの表の追加と持ち越し | 9を加え2を除く | 約89 | 4,100,000,000〜4,300,000,000 |
-| 5 | [静止探索の形](qsearch-forms.md) | 静止探索の補正と枝刈り | 1を加える | 約90 | 4,400,000,000〜4,600,000,000 |
+| 5 | [静止探索の形](archived/qsearch-forms.md) | 静止探索の補正と枝刈り | 1を加える | 約90 | 4,400,000,000〜4,600,000,000 |
 | 6 | [aspiration windowsの形](aspiration-window-forms.md) | 窓の幅と窓の移し方 | 1を加える | 約91 | 4,700,000,000〜4,900,000,000 |
 | 7 | [持ち時間の伸縮](time-instability-scaling.md) | 探索の不安定さに応じた持ち時間の伸縮 | 12を加える | 約103 | 5,000,000,000〜5,350,000,000 |
 

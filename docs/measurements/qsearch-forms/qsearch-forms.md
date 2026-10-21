@@ -2,7 +2,7 @@
 
 ## 目的
 
-[静止探索の補正と枝刈りの形の見直しの設計書](../../plans/qsearch-forms.md)のフェーズ3として、形の変更の最後のコミット`e9abbc86`の90係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
+[静止探索の補正と枝刈りの形の見直しの設計書](../../plans/archived/qsearch-forms.md)のフェーズ3として、形の変更の最後のコミット`e9abbc86`の90係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
 SPSAの対局結果は強さの根拠にしない。
 最終値は、この予算と設定で得た候補の値であり、最適値とは呼ばない。
 
@@ -162,10 +162,10 @@ runnerが記録したCPUの数は、物理192コア、論理368スレッドで�
 `QsearchMoveLimit`は2から8へ上がり、移動量は`c_end`の2.42倍だった。候補の列の順番で数えると、Stockfishの2より多くの候補を読む方向が選ばれた。
 `QsearchSeeMargin`は36から42へわずかに上がり、Stockfishの換算値とYaneuraOuの換算値（81）の間にとどまった。
 
-本書が加えた係数のほかでは、大きく動いた係数が多い。
+本書が加えた係数のほかにも、大きく動いた係数がある。
 correction historyの材料表の重み`CorrectionMaterialWeight`は154から6へ下がって0の近くになり、continuation correction historyの重み`CorrectionContinuationWeight`は104から上限の200へ上がった。補正表の更新量`CorrectionBonus`と`CorrectionFailLowBonus`は、それぞれ23から45へ、21から53へ上がった。
 LMRでは、cutNodeの項`LmrCutNode`が57から435へ上がり、3段階のhistory補正の倍率`LmrHistoryScale`は612から24へ下がった。LMRの減深量の上限`LmrMaxReduction`は4から6へ上がった。
-静止探索の補正値は、[correction historyのADR](../../adr/sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)のとおり通常探索と同じ合成値を使うので、静止探索に補正を加えたことと補正表の重みの大きな変化の関係は、この記録からは分からない。
+静止探索の補正値は、[correction historyのADR](../../adr/sum-material-placement-and-continuation-correction-histories-and-apply-them-to-the-qsearch-stand-pat.md)のとおり通常探索と同じ合成値を使うので、静止探索に補正を加えたことと補正表の重みの大きな変化の関係は、この記録からは切り分けられない。
 
 ## 結論
 

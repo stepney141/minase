@@ -7,7 +7,7 @@ fmcs.exe 0.03.003 の通常の最善詰は、指定手数を上限とする証�
 
 報告書の保存先は [codex-re.md](re-codex.md) である。
 以下の C の行番号は [fmcs.c](fmcs.c（Ghidraの逆コンパイル出力、リポジトリには含めない）) に対応し、文字列アドレスは strings_va.txt と照合した。
-仕様書は fmcs/fmcs_help.txt.utf8、規則書は [/home/stepney141/board-games/minase/docs/rules/RULES.md](/home/stepney141/board-games/minase/docs/rules/RULES.md) を指す。
+仕様書は fmcs/fmcs_help.txt.utf8、規則書は [/home/stepney141/board-games/minase/docs/rules/RULES.md](../../../../../../docs/rules/RULES.md) を指す。
 指定資料だけを使った独立した静的解析であり、実行結果による検証はしていない。
 逆コンパイラが返り値や引数を取り損ねた箇所があるため、呼出側の使用法を併せて読み、成りの不整合については元バイナリの命令も確認した。
 

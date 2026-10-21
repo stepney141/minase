@@ -74,8 +74,8 @@ LMRも同じ事情にあり、Stockfishの減深量はノードの種別、置�
 - 王手になる手の判定と、それを使う項。王手の判定のための前計算は[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が導入する。このため、詰みを探す局面で王手にならない手の減深を増やすStockfishの項（`src/search.cpp:1391-1392`）も、本書では入れずにshallow-pruning-extensions.mdが扱う。
 - null move pruningの減深量の既存の係数（`NullMoveBase`、`NullMoveSlope`、`NullMoveEvalScale`）の開始値をStockfishの換算値へ置き直すこと。[shallow-pruning-extensions.md](shallow-pruning-extensions.md)が扱う。
 - LMRの補正量の項（Stockfish `src/search.cpp:1353`）。[correction-history-tables.md](correction-history-tables.md)のC5が扱い、F4の式の`q_corr`の位置に入る。
-- 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](../qsearch-forms.md)が扱う。
-- 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](../qsearch-forms.md)、[aspiration-window-forms.md](../aspiration-window-forms.md)、および[time-instability-scaling.md](../time-instability-scaling.md)で扱う。
+- 置換表に保存した静的評価を通常探索で使うこと（Stockfish `src/search.cpp:856-860`）。[qsearch-forms.md](qsearch-forms.md)が扱う。
+- 静止探索、aspiration windows、および時間管理の形。それぞれ[qsearch-forms.md](qsearch-forms.md)、[aspiration-window-forms.md](../aspiration-window-forms.md)、および[time-instability-scaling.md](../time-instability-scaling.md)で扱う。
 - 王駒に相手の利きが届くノードを枝刈りから除く条件。中将棋の規則から来る条件であり、2026年10月17日の利用者の決定により残す（[ADR](../../adr/archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)）。
 
 ## 依存関係

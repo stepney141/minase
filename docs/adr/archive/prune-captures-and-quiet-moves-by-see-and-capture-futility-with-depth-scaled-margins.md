@@ -56,7 +56,7 @@ minaseのcapture historyは、[capture historyのADR](bound-capture-history-and-
 深さ別の余裕値`SeeMargin1`〜`3`を使い続ける案は、深さの上限を外すと4以上の深さの値を決められず、Stockfishの形にもないので採らなかった。
 旧ADRが診断で棄却した、全深さで余裕値を0にする案は、`SeeDepthMargin`の範囲の下限0とcapture historyの項の0での切り詰めによって形に含まれるので、選ぶかどうかはSPSAに委ねた。
 Stockfishと同じく余裕値を0で切り詰めない案は、現行の`see_prunes`が非負の余裕値を契約とするので、本決定では採らなかった。
-後続の[静止探索の補正と枝刈りの形の見直し](../../plans/qsearch-forms.md)が、引数を符号付きの閾値へ移した後で切り詰めを外す。
+後続の[静止探索の補正と枝刈りの形の見直し](../../plans/archived/qsearch-forms.md)が、引数を符号付きの閾値へ移した後で切り詰めを外す。
 
 成る手を捕獲手のfutility pruningと静かな手の2つのSEEの枝刈りの対象にする案は、成る手を枝刈りの対象から外す保護を残すというエンジンの開発者の決定により採らなかった。
 王手になる静かな手のcapture historyの項を表から引く案は、minaseの表が取る駒の種類で引き、取る駒のない手の欄を持たないので採らなかった。
