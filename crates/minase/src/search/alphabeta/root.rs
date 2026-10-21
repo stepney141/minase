@@ -72,14 +72,16 @@ impl AspirationWindow {
     }
 }
 
-/// 直前の評価値から上下に取る初期窓幅を求める。
+/// 歩兵価値から初期の半幅を求め、1以上にする。
 pub(super) fn aspiration_delta(pawn: i32) -> i32 {
-    pawn * params::aspiration_delta() / 100
+    (pawn * params::aspiration_delta() / 100).max(1)
 }
 
-/// 窓幅の拡大を広い整数型で計算してから飽和させる。
+/// 半幅を1以上増やす項と調整係数を掛けた項の大きい方へ広げる。
+/// 加算と乗算は64ビット整数で計算し、32ビット整数の上限で飽和させる。
 pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
-    let grown = i64::from(delta) * i64::from(params::aspiration_growth()) / 100;
+    let delta = i64::from(delta);
+    let grown = (delta + 1).max(delta * i64::from(params::aspiration_growth()) / 100);
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 

@@ -1,6 +1,7 @@
 //! 根の探索と探索窓を検査する。
 
 use super::*;
+use crate::search::alphabeta::root::grow_aspiration_delta;
 
 #[test]
 fn iteration_sets_seek_mate_from_previous_score_before_window_research() {
@@ -238,6 +239,23 @@ fn interrupted_root_iteration_discards_only_current_counts() {
         assert_eq!(searcher.completed_root_nodes, completed);
         assert!(searcher.current_root_nodes.is_empty());
     });
+}
+
+#[test]
+fn aspiration_delta_is_positive_for_a_small_pawn_value() {
+    assert!(aspiration_delta(1) >= 1);
+}
+
+#[test]
+fn aspiration_growth_increases_small_deltas() {
+    for delta in 1..=3 {
+        assert!(grow_aspiration_delta(delta) > delta);
+    }
+}
+
+#[test]
+fn aspiration_growth_saturates_at_i32_max() {
+    assert_eq!(grow_aspiration_delta(i32::MAX), i32::MAX);
 }
 
 // 深さ5以上で通常値だけを狭い窓の中心に使う。
