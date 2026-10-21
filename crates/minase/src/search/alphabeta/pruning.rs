@@ -2,15 +2,10 @@
 
 use std::sync::OnceLock;
 
-use crate::eval::Nnue;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::{MAX_PLY, REPETITION_BAND_START, in_repetition_band};
-use minase_core::mv::Move;
-use minase_core::position::Position;
-use minase_core::rules::MoveRules;
 
 use super::params;
-use super::see::see_prunes;
 use super::tt::Bound;
 
 /// 詰みを探す局面の閾値の切片。歩兵価値に対する百分率。
@@ -327,7 +322,7 @@ impl SeeCoefficients {
         }
     }
 
-    /// 残り深さとcapture historyからSEEで許容する損の余裕値を求める。
+    /// 残り深さとcapture historyからSEEで許容する損の余裕値を求める。履歴の項により負の値もとる。
     /// Stockfishの深さと履歴の項に対応する（src/search.cpp:1222）。
     pub(super) fn see_margin(&self, pawn: i32, depth: u32, capture_history: i32) -> i32 {
         let depth_margin =
@@ -335,14 +330,18 @@ impl SeeCoefficients {
         let weighted_history =
             i64::from(capture_history) * i64::from(self.see_capture_history) / 1024;
         let history_margin = weighted_history * i64::from(pawn) / STOCKFISH_PAWN_VALUE;
-        // 符号付きの閾値から0への切り詰めを外すのは次の変更で行う。
-        (depth_margin + history_margin).max(0) as i32
+        (depth_margin + history_margin) as i32
     }
 }
 
 /// 残り深さとcapture historyからSEEで許容する損の余裕値を求める。
 pub(super) fn see_margin(pawn: i32, depth: u32, capture_history: i32) -> i32 {
     SeeCoefficients::current().see_margin(pawn, depth, capture_history)
+}
+
+/// 静止探索のSEEで許す損の下限を、歩兵価値と百分率の係数から符号付き閾値として求める。
+pub(super) fn qsearch_see_floor(pawn: i32, coefficient: i32) -> i32 {
+    -(i64::from(pawn) * i64::from(coefficient) / 100) as i32
 }
 
 /// 捕獲手のfutility pruningを行うlmrDepthの上限。
@@ -962,14 +961,4 @@ pub(super) fn non_lmr_depth_with_coefficient(
 ) -> u32 {
     let reduction = reduction + if has_tt_move { 0 } else { lmr_no_tt_move };
     normal.saturating_sub(u32::from(reduction > 511) + u32::from(reduction > 536 && normal > 2))
-}
-
-/// 静的交換評価で損と判定できる捕獲手かを返す。
-pub(super) fn capture_is_pruned_by_see(
-    position: &Position,
-    rules: MoveRules,
-    nnue: &Nnue,
-    mv: Move,
-) -> bool {
-    see_prunes(position, rules, nnue, mv, 0)
 }

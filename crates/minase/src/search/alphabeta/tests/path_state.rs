@@ -365,12 +365,7 @@ fn quiescence_path_state(
 ) -> PathStateSnapshot {
     assert!(legal_moves(board).contains(&mv));
     assert!(board.captured_squares(mv).iter().any(Option::is_some));
-    assert!(!capture_is_pruned_by_see(
-        board,
-        engine_rules(),
-        test_nnue(),
-        mv
-    ));
+    assert!(!see_prunes(board, engine_rules(), test_nnue(), mv, 0,));
     let mut snapshot = None;
     with_repetition_root_searcher(
         test_nnue(),
@@ -394,11 +389,12 @@ fn quiescence_path_state(
             child.make_move_unchecked(mv, engine_rules());
             let child_capture = step(sq(8, 8), sq(8, 6));
             assert!(legal_moves(&child).contains(&child_capture));
-            assert!(!capture_is_pruned_by_see(
+            assert!(!see_prunes(
                 &child,
                 engine_rules(),
                 searcher.nnue,
-                child_capture
+                child_capture,
+                0,
             ));
 
             let path_keys = searcher.path_keys.clone();

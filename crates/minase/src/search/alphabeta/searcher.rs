@@ -25,6 +25,7 @@ use super::history::{
 };
 use super::ordering::MovePicker;
 use super::params;
+use super::pruning::qsearch_see_floor;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
 use super::root::RootResults;
 use super::team::SharedSearch;
@@ -115,6 +116,7 @@ pub(super) fn new_searcher<'a>(
         correction: CorrectionTable::new(correction_values),
         continuation_correction,
         delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
+        qsearch_see_floor: qsearch_see_floor(nnue.pawn_value(), params::qsearch_see_margin()),
         history,
         capture_history,
         continuation_history,
@@ -297,9 +299,11 @@ pub(super) struct Searcher<'a> {
     pub(super) correction: CorrectionTable<'a>,
     /// 対局内で持ち越す、このワーカー専用のcontinuation correction history。
     pub(super) continuation_correction: &'a mut ContinuationCorrectionHistory,
-    /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
-    /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。
+    /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位の余裕値。
+    /// 静止探索のdelta pruningとSEEの閾値に使う。
     pub(super) delta_margin: i32,
+    /// 歩兵価値と`QsearchSeeMargin`から求める、静止探索のSEEの下限。
+    pub(super) qsearch_see_floor: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     pub(super) history: &'a mut HistoryTable,
     /// ワーカー番号ごとに探索間で持ち越す捕獲履歴。

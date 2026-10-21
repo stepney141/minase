@@ -26,9 +26,10 @@ use super::history::pawn_key;
 use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::params;
-use super::pruning::{capture_is_pruned_by_see, corrected_static_eval};
+use super::pruning::corrected_static_eval;
 use super::royal::captures_all_royals;
 use super::searcher::{MoveRecord, PathMove, Searcher};
+use super::see::see_prunes;
 use super::tt::Bound;
 
 impl Searcher<'_> {
@@ -51,7 +52,8 @@ impl Searcher<'_> {
     /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
     ///
     /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
-    /// それ以外は[`Self::delta_margin`]のdelta pruning、負のSEEによる枝刈り、手数制限の順に判定する。
+    /// それ以外は[`Self::delta_margin`]のdelta pruning、補正後のstand-patと余裕値を基準にしたSEEの閾値、
+    /// [`Self::qsearch_see_floor`]のSEEの下限、手数制限の順に判定する。
     /// delta pruningは成り益を加えず、置換表の捕獲手もSEEの例外にしない。
     /// 成り益を除く理由は`docs/adr/keep-delta-pruning-without-promotion-gain.md`にある。
     ///
@@ -154,6 +156,7 @@ impl Searcher<'_> {
         let mut best = s;
         let mut best_move = None;
         let mut searched_captures = 0;
+        let futility_base = s + self.delta_margin;
         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
@@ -173,8 +176,21 @@ impl Searcher<'_> {
                 continue;
             }
             if !is_last_royal_capture
-                && capture_is_pruned_by_see(position, self.rules, self.nnue, mv)
+                && see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base)
             {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.quiesce_see_threshold_prunes += 1;
+                }
+                continue;
+            }
+            if !is_last_royal_capture
+                && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
+            {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.quiesce_see_floor_prunes += 1;
+                }
                 continue;
             }
             // 上限は実際に読んだ捕獲だけを数える。例外も手数に含める。

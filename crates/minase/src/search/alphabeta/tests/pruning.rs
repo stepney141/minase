@@ -9,9 +9,10 @@ use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, applies_lmr,
     continuation_history_prunes, history_lmr_divisor, history_pruning_lmr_depth,
     is_opponent_worsening, is_seek_mate, lmr_correction_adjustment, lmr_history_adjustment,
-    lmr_history_value, pruning_lmr_depth, quiet_see_margin, quiet_see_margin_with_coefficient,
-    razoring_margin, razoring_margin_with_coefficient, reverse_futility_margin,
-    reverse_futility_value, seek_mate_null_move_reduction, should_raise_futility_best_score,
+    lmr_history_value, pruning_lmr_depth, qsearch_see_floor, quiet_see_margin,
+    quiet_see_margin_with_coefficient, razoring_margin, razoring_margin_with_coefficient,
+    reverse_futility_margin, reverse_futility_value, seek_mate_null_move_reduction,
+    should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
@@ -431,15 +432,22 @@ fn futility_best_score_raise_requires_strict_order_and_values_inside_bands() {
     }
 }
 
-// S3の数値例。2回の除算の独立した0方向の丸めと、0での切り詰めを検査する。
+// S3の数値例。2回の除算をそれぞれ0方向へ丸め、履歴の項が大きければ負になる。
 #[test]
 fn see_margin_matches_numeric_examples() {
     let coefficients = SeeCoefficients {
         see_depth_margin: 85,
         see_capture_history: 34,
     };
-    for (depth, history, expected) in [(1, 0, 85), (3, 1024, 271), (1, -8000, 0)] {
+    for (depth, history, expected) in [(1, 0, 85), (3, 1024, 271), (1, -8000, -42)] {
         assert_eq!(coefficients.see_margin(100, depth, history), expected);
+    }
+}
+
+#[test]
+fn qsearch_see_floor_matches_numeric_examples() {
+    for (pawn, coefficient, expected) in [(208, 36, -74), (208, 0, 0), (208, 200, -416)] {
+        assert_eq!(qsearch_see_floor(pawn, coefficient), expected);
     }
 }
 

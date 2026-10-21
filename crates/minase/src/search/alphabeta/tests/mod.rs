@@ -70,9 +70,7 @@ use crate::search::alphabeta::ordering::{
 };
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::allows_null_move;
-use crate::search::alphabeta::pruning::{
-    capture_is_pruned_by_see, lmr_reduction, lmr_table, null_move_reduction,
-};
+use crate::search::alphabeta::pruning::{lmr_reduction, lmr_table, null_move_reduction};
 use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};

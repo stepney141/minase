@@ -214,6 +214,7 @@ fn tuning_parameters_in_isolated_process() {
         ("CorrectionBonus", 20),
         ("CorrectionFailLowBonus", 29),
         ("DeltaMargin", 500),
+        ("QsearchSeeMargin", 36),
         ("QsearchMoveLimit", 6),
         ("ExpectedPlies", 458),
         ("MinMoves", 40),
@@ -511,7 +512,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 90] = [
+    let cases: [Case; 91] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -872,6 +873,13 @@ fn tuning_parameters_in_isolated_process() {
         ("CorrectionBonus", 60, normal_correction_bonus),
         ("CorrectionFailLowBonus", 90, fail_low_correction_bonus),
         ("DeltaMargin", 300, delta),
+        ("QsearchSeeMargin", 200, || {
+            let mut result = 0;
+            with_root_searcher(&Position::initial(), &[], |searcher| {
+                result = i64::from(searcher.qsearch_see_floor);
+            });
+            result
+        }),
         ("QsearchMoveLimit", 1, qsearch_limit),
         ("ExpectedPlies", 250, || {
             clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64

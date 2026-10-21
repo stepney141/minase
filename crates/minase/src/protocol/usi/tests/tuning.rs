@@ -279,6 +279,10 @@ fn tuning_usi_contract_in_isolated_process() {
             ),
             ("DeltaMargin", params::delta_margin as fn() -> i32),
             (
+                "QsearchSeeMargin",
+                params::qsearch_see_margin as fn() -> i32,
+            ),
+            (
                 "QsearchMoveLimit",
                 params::qsearch_move_limit as fn() -> i32,
             ),

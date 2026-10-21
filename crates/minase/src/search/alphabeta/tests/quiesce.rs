@@ -38,6 +38,94 @@ fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
     assert!(result.score.abs() < 29_000);
 }
 
+// 飛車で角行を取って歩兵に取り返される交換を使い、SEEの2段の境界を分離する。
+#[test]
+fn quiescence_applies_see_threshold_then_floor_with_fixed_bounds() {
+    let position = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 4), Color::Black, PieceKind::Rook),
+            (sq(5, 5), Color::White, PieceKind::Bishop),
+            (sq(5, 6), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let capture = step(sq(5, 4), sq(5, 5));
+    let nnue = test_nnue();
+    assert!(legal_moves(&position).contains(&capture));
+    let loss = nnue.piece_value(position.piece_at(capture.from).unwrap())
+        - nnue.piece_value(position.piece_at(capture.to).unwrap());
+    assert!(loss > 1);
+    assert!(!see_prunes(&position, engine_rules(), nnue, capture, -loss));
+    assert!(see_prunes(
+        &position,
+        engine_rules(),
+        nnue,
+        capture,
+        -loss + 1
+    ));
+
+    for (case, delta_margin, see_floor, threshold_prunes, floor_prunes, nodes) in [
+        ("threshold", loss - 1, -INFINITY, true, false, 0),
+        (
+            "threshold before floor",
+            loss - 1,
+            -loss + 1,
+            true,
+            false,
+            0,
+        ),
+        ("floor", loss + 1, -loss + 1, false, true, 0),
+        ("within floor", loss + 1, -loss, false, false, 1),
+    ] {
+        with_root_searcher(&position, &[], |searcher| {
+            let ply = MAX_PLY - 1;
+            set_test_path_ply(searcher, ply);
+            zero_position_correction(searcher, &position);
+            searcher.delta_margin = delta_margin;
+            searcher.qsearch_see_floor = see_floor;
+            assert_eq!(
+                see_prunes(
+                    &position,
+                    searcher.rules,
+                    searcher.nnue,
+                    capture,
+                    -delta_margin,
+                ),
+                threshold_prunes,
+                "{case}"
+            );
+            assert_eq!(
+                !threshold_prunes
+                    && see_prunes(&position, searcher.rules, searcher.nnue, capture, see_floor,),
+                floor_prunes,
+                "{case}"
+            );
+            assert!(
+                searcher
+                    .quiesce(&mut position.clone(), -INFINITY, INFINITY, ply)
+                    .is_some(),
+                "{case}"
+            );
+            assert_eq!(searcher.nodes, nodes, "{case}");
+            #[cfg(feature = "search-stats")]
+            {
+                assert_eq!(
+                    searcher.stats.quiesce_see_threshold_prunes,
+                    u64::from(threshold_prunes),
+                    "{case}"
+                );
+                assert_eq!(
+                    searcher.stats.quiesce_see_floor_prunes,
+                    u64::from(floor_prunes),
+                    "{case}"
+                );
+            }
+        });
+    }
+}
+
 // 捕獲手のない葉ではstand-patを返すため、
 // depth=1の根評価は各合法手の子局面に対する静的評価の最大値と一致する。
 #[test]
@@ -273,12 +361,11 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
     let mut captures = Vec::new();
     MoveGenerator::standard().generate_captures(&position, &mut captures);
     assert!(!captures.is_empty());
-    assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
-        &position,
-        engine_rules(),
-        nnue,
-        mv
-    )));
+    assert!(
+        captures
+            .iter()
+            .all(|&mv| see_prunes(&position, engine_rules(), nnue, mv, 0,))
+    );
     let cases = [
         ("upper", stand_pat, INFINITY, Bound::Upper),
         ("exact", stand_pat - 1, stand_pat + 1, Bound::Exact),

@@ -390,9 +390,17 @@ parameters! {
     /// （Stockfish src/search.cpp:1670、YaneuraOu yaneuraou-search.cpp:4414）。
     /// 開始値はStockfishの値を換算した値であり、SPSAで未調整である。
     CorrectionFailLowBonus(correction_fail_low_bonus): 21, 6, 90;
-    /// 静止探索のdelta pruningの余裕値。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    DeltaMargin(delta_margin): 499, 50, 500;
+    /// 静止探索のdelta pruningとSEEの閾値に使う余裕値。単位は歩兵価値に対する百分率である。
+    /// Stockfishの306は歩兵価値208で換算すると約147、YaneuraOuの328は歩兵価値90で換算すると約364である
+    /// （Stockfish src/search.cpp:1794、YaneuraOu yaneuraou-search.cpp:4837）。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    DeltaMargin(delta_margin): 147, 50, 500;
+    /// 静止探索のSEEの下限で許す損を正の値で表す。単位は歩兵価値に対する百分率である。
+    /// Stockfishの74は歩兵価値208で換算すると約36である（src/search.cpp:1851）。
+    /// YaneuraOuの73は歩兵価値90で換算すると約81である（yaneuraou-search.cpp:4989）。
+    /// 0は損のない捕獲だけを読む起点の静止探索に当たる。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    QsearchSeeMargin(qsearch_see_margin): 36, 0, 200;
     /// 静止探索で通常読む捕獲手数の上限。単位は手であり、例外は[`super::searcher::Searcher::quiesce`]に従う。
     /// 値はSPSAで調整した。
     QsearchMoveLimit(qsearch_move_limit): 6, 1, 7;
