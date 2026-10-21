@@ -5,7 +5,7 @@ use core::cmp::Reverse;
 use crate::eval::Nnue;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::snapshot::{SearchRepetition, search_key};
-use crate::search::{MATE, MAX_PLY, in_repetition_band};
+use crate::search::{MATE, MAX_PLY, REPETITION_BAND_START, in_repetition_band};
 use minase_core::MoveGenerator;
 use minase_core::board::Bitboard;
 use minase_core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
@@ -32,6 +32,40 @@ use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 
+/// 入口の打ち切りで使う最善値の重み（Stockfish `src/search.cpp:1783`）。
+const ENTRY_CUTOFF_BEST_WEIGHT: i32 = 441;
+/// 入口の打ち切りで使うβの重み（Stockfish `src/search.cpp:1783`）。
+const ENTRY_CUTOFF_BETA_WEIGHT: i32 = 583;
+/// 候補を調べた後に使う最善値の重み（Stockfish `src/search.cpp:1904`）。
+const POST_SEARCH_BEST_WEIGHT: i32 = 462;
+/// 候補を調べた後に使うβの重み（Stockfish `src/search.cpp:1904`）。
+const POST_SEARCH_BETA_WEIGHT: i32 = 562;
+/// βへ寄せる重みの分母（Stockfish `src/search.cpp:1783, 1904`）。
+const SCORE_BLEND_DENOMINATOR: i32 = 1024;
+
+fn is_normal_score(score: i32) -> bool {
+    score > -REPETITION_BAND_START && score < REPETITION_BAND_START
+}
+
+/// 入口でβ以上となった通常域の最善値を、通常域のβへ寄せる。
+pub(super) fn qsearch_entry_cutoff_score(best: i32, beta: i32) -> i32 {
+    if is_normal_score(beta) {
+        (ENTRY_CUTOFF_BEST_WEIGHT * best + ENTRY_CUTOFF_BETA_WEIGHT * beta)
+            / SCORE_BLEND_DENOMINATOR
+    } else {
+        best
+    }
+}
+
+/// 候補を調べた後にβを超えた通常域の最善値を、βへ寄せる。
+pub(super) fn qsearch_post_search_score(best: i32, beta: i32) -> i32 {
+    if best > beta && is_normal_score(best) && is_normal_score(beta) {
+        (POST_SEARCH_BEST_WEIGHT * best + POST_SEARCH_BETA_WEIGHT * beta) / SCORE_BLEND_DENOMINATOR
+    } else {
+        best
+    }
+}
+
 impl Searcher<'_> {
     /// 補正後の静的評価をstand-patとし、捕獲手だけを使う静止探索で局面を評価する。
     ///
@@ -49,9 +83,14 @@ impl Searcher<'_> {
     /// 照合した記録に補正前の静的評価があれば評価関数の値に代えて使い、現在の補正を加える。
     /// 置換表の探索値が通常域にあり、正確な値であるか、下界でstand-patより大きいか、
     /// 上界でstand-pat以下なら、その値を最善値の初期値にする（Stockfish src/search.cpp:1756-1770）。
-    /// この初期値がβ以上なら返し、照会に当たっていなければ補正前の静的評価だけを持つ記録を書く
-    /// （Stockfish src/search.cpp:1785-1787）。delta pruningとSEEの閾値の基準は、
-    /// 置換表の値へ置き換える前のstand-patから求める（Stockfish src/search.cpp:1794）。
+    /// この初期値がβ以上なら、通常域のβとの加重平均へ寄せて返し、照会に当たっていなければ
+    /// 寄せる前の補正前静的評価だけを持つ記録を書く（Stockfish src/search.cpp:1783, 1785-1787）。
+    /// 候補を調べた後は、最善値がβを超え、両方が通常域にある場合だけ別の加重平均へ寄せ、
+    /// その値を返して置換表にも保存する（Stockfish src/search.cpp:1903-1910）。
+    /// 詰み帯と反復の専用帯の値は寄せない。Stockfishは最善値が決着の値でないことだけを調べるが、
+    /// minaseではβが詰み帯に近いと加重平均が反復の専用帯へ入り得るため、βにも通常域を求める。
+    /// delta pruningとSEEの閾値の基準は、置換表の値へ置き換える前のstand-patから求める
+    /// （Stockfish src/search.cpp:1794）。
     ///
     /// 置換表ヒットによる打ち切りと中断は保存しない。通常出口は補正前の静的評価と探索値を
     /// 深さ0で保存し、最善値がβ以上なら下界、それ以外は上界とする。正確な値は保存しない
@@ -189,7 +228,7 @@ impl Searcher<'_> {
                     self.stats.quiesce_static_eval_stores += 1;
                 }
             }
-            return Some(best);
+            return Some(qsearch_entry_cutoff_score(best, beta));
         }
 
         alpha = alpha.max(best);
@@ -376,6 +415,7 @@ impl Searcher<'_> {
                 break;
             }
         }
+        let best = qsearch_post_search_score(best, beta);
         let bound = if best >= beta {
             Bound::Lower
         } else {

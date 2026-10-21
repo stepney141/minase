@@ -1,8 +1,37 @@
 //! 静止探索を検査する。
 
 use super::*;
+use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::capture_history::CaptureHistory;
+use crate::search::alphabeta::quiesce::{qsearch_entry_cutoff_score, qsearch_post_search_score};
+
+#[test]
+fn qsearch_entry_cutoff_score_blends_toward_beta() {
+    assert_eq!(qsearch_entry_cutoff_score(300, 100), 186);
+    assert_eq!(qsearch_entry_cutoff_score(-50, -200), -135);
+    assert_eq!(qsearch_entry_cutoff_score(1024, 0), 441);
+    assert_eq!(qsearch_entry_cutoff_score(0, -1024), -583);
+}
+
+#[test]
+fn qsearch_post_search_score_blends_only_strict_fail_highs() {
+    assert_eq!(qsearch_post_search_score(400, 100), 235);
+    assert_eq!(qsearch_post_search_score(1024, 0), 462);
+    assert_eq!(qsearch_post_search_score(0, -1024), -562);
+    assert_eq!(qsearch_post_search_score(100, 100), 100);
+}
+
+#[test]
+fn qsearch_score_blending_skips_values_outside_the_normal_range() {
+    let beta = -29_999;
+    assert_eq!(qsearch_entry_cutoff_score(-50, beta), -50);
+    assert_eq!(qsearch_post_search_score(-50, beta), -50);
+    assert_eq!(
+        qsearch_post_search_score(REPETITION_BAND_START, 100),
+        REPETITION_BAND_START
+    );
+}
 
 // 深さ0ではstand-patと捕獲手を探索する。
 // 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
@@ -423,7 +452,7 @@ fn quiescence_max_ply_does_not_probe_or_store() {
 }
 
 // Exact、score >= betaのLower、score <= alphaのUpperは、窓の幅が1の場合だけ返す。
-// 幅が2以上なら同じ記録でも入口の打ち切りに使わず、通常のstand-pat処理へ進む。
+// 幅が2以上なら打ち切り条件を満たす記録でも使わず、通常のstand-pat処理へ進む。
 #[test]
 fn quiescence_tt_cutoff_requires_a_zero_window() {
     let board = bare_kings();
@@ -455,9 +484,9 @@ fn quiescence_tt_cutoff_requires_a_zero_window() {
         stand_pat - 2
     );
     let lower = small_tt();
-    lower.store(key, 0, stand_pat - 2, None, Bound::Lower, None, 0, false);
+    lower.store(key, 0, stand_pat, None, Bound::Lower, None, 0, false);
     assert_eq!(
-        run_quiesce(&board, stand_pat - 4, stand_pat - 2, 0, &lower).0,
+        run_quiesce(&board, stand_pat - 2, stand_pat, 0, &lower).0,
         stand_pat
     );
 
@@ -622,6 +651,40 @@ fn quiescence_stand_pat_cutoff_stores_static_eval_without_a_search_value() {
     let hit = table.probe(key, 0).unwrap();
     assert_eq!(hit.value.unwrap().score, stand_pat);
     assert_eq!(hit.value.unwrap().bound, Bound::Upper);
+}
+
+// 入口の返り値は補正後のstand-patからβへ寄せるが、置換表には寄せる前の
+// 補正前静的評価だけを保存する。
+#[test]
+fn quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_static_eval() {
+    let board = bare_kings();
+    let key = search_key(&board);
+    let unadjusted = evaluate(test_nnue(), &board);
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.correction.store(
+            board.side_to_move(),
+            material_key(&board),
+            CorrectionTableKind::Material,
+            1024,
+        );
+        let correction = position_correction(searcher, board.side_to_move(), 0);
+        assert_ne!(correction, 0);
+        let stand_pat = (unadjusted + correction).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT);
+        assert_ne!(stand_pat, unadjusted);
+        let beta = stand_pat - 1024;
+        let expected = stand_pat - 583;
+        assert!(beta.abs() < REPETITION_BAND_START);
+
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), beta - 1, beta, 0),
+            Some(expected)
+        );
+        let hit = searcher.tt.probe(key, 0).unwrap();
+        assert_eq!(hit.value, None);
+        assert_eq!(hit.static_eval, Some(unadjusted));
+        assert_eq!(hit.best_move, None);
+    });
 }
 
 // 照会に当たったノードでは、stand-patで打ち切っても探索値なしの記録へ置き換えない。
@@ -809,6 +872,38 @@ fn quiescence_normal_exit_stores_a_lower_bound_on_fail_high() {
     let hit = table.probe(search_key(&board), 0).unwrap();
     assert_eq!(hit.value.unwrap().score, expected);
     assert_eq!(hit.value.unwrap().bound, Bound::Lower);
+}
+
+// 候補を調べた後にβを超えた通常域の最善値はβへ寄せ、同じ値を返して下界として保存する。
+#[test]
+fn quiescence_post_search_fail_high_blends_return_and_stored_value() {
+    let (board, capture) = single_low_value_capture();
+    let mut child = board.clone();
+    child.make_move_unchecked(capture, engine_rules());
+
+    with_root_searcher(&board, &[], |searcher| {
+        zero_position_correction(searcher, &board);
+        searcher.delta_margin = INFINITY;
+        searcher.qsearch_see_floor = -INFINITY;
+        searcher.tt.store_static_eval(search_key(&board), 0, false);
+        searcher.tt.store(
+            search_key(&child),
+            0,
+            -400,
+            None,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
+
+        assert_eq!(searcher.quiesce(&mut board.clone(), 99, 100, 0), Some(235));
+        let hit = searcher.tt.probe(search_key(&board), 0).unwrap();
+        assert_eq!(hit.value.unwrap().score, 235);
+        assert_eq!(hit.value.unwrap().bound, Bound::Lower);
+        assert_eq!(hit.best_move, Some(capture));
+        assert_eq!(hit.static_eval, Some(0));
+    });
 }
 
 fn history_ordering_position() -> (Position, [Move; 6]) {

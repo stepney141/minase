@@ -4,7 +4,9 @@
 
 use super::*;
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::params;
+use crate::search::alphabeta::{
+    params, pruning::corrected_static_eval, quiesce::qsearch_post_search_score,
+};
 
 fn ordinary(from: Square, to: Square) -> Move {
     Move {
@@ -360,6 +362,12 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 2;
         set_test_path_ply(searcher, ply);
+        let qsearch_child_beta = quiescence_parent.then(|| {
+            -corrected_static_eval(
+                evaluate(searcher.nnue, &board),
+                position_correction(searcher, board.side_to_move(), ply),
+            )
+        });
         seed_first(searcher, &child, first_capture(), ply + 1);
         if quiescence_parent {
             seed_first(searcher, &board, capture, ply);
@@ -398,7 +406,10 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
         );
         let mut after = child.clone();
         after.make_move_unchecked(recapture, engine_rules());
-        assert_eq!(hit.value.unwrap().score, -evaluate(searcher.nnue, &after));
+        let unblended = -evaluate(searcher.nnue, &after);
+        let expected =
+            qsearch_child_beta.map_or(unblended, |beta| qsearch_post_search_score(unblended, beta));
+        assert_eq!(hit.value.unwrap().score, expected);
         assert_eq!(
             searcher.nodes, 3,
             "親の捕獲、子の置換表の捕獲、取り返しを読む"

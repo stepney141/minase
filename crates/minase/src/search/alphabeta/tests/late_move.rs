@@ -7,6 +7,8 @@ use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::{futility_value, late_move_limit, pruning_lmr_depth};
+#[cfg(feature = "tuning")]
+use crate::search::alphabeta::quiesce::qsearch_entry_cutoff_score;
 
 // 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
 // 各着手の評価を引き分けより高く保ち、静かな手の上限と探索順序を観測する。
@@ -540,13 +542,18 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             searcher.continuation_correction.values_mut().fill(0);
             let target_score = -evaluate(searcher.nnue, &child);
             assert!(target_score > DRAW_SCORE && alpha > DRAW_SCORE);
+            let searched_score = if target_score <= alpha {
+                -qsearch_entry_cutoff_score(-target_score, -alpha)
+            } else {
+                target_score
+            };
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
                 .unwrap();
             assert_eq!(
                 score,
                 if index < limit {
-                    target_score
+                    searched_score
                 } else {
                     DRAW_SCORE
                 },
