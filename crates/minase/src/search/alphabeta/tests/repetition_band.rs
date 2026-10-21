@@ -135,7 +135,7 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
                 }
                 assert_eq!(searcher.nodes, 1, "{score}, {bound:?}");
                 assert_eq!(
-                    searcher.previous_capture[1],
+                    searcher.previous_move_to[1],
                     Some(tt_move.to),
                     "{score}, {bound:?}"
                 );

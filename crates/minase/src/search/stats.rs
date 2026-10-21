@@ -53,6 +53,16 @@ search_stats! {
     quiesce_see_threshold_prunes,
     /// 静止探索でSEEの下限により枝刈りした候補数。
     quiesce_see_floor_prunes,
+    /// 静止探索で取り返しにより、本来は当たる手数制限、delta pruning、またはSEEの閾値を免れた候補数。
+    quiesce_recapture_exemptions,
+    /// 静止探索で成る手により、本来は当たる手数制限、delta pruning、またはSEEの閾値を免れた候補数。
+    quiesce_promotion_exemptions,
+    /// 静止探索で王手になる手により、本来は当たる手数制限、delta pruning、またはSEEの閾値を免れた候補数。
+    quiesce_check_exemptions,
+    /// 静止探索で獅子の2枚取りにより手数制限を免れた候補数。
+    quiesce_lion_double_move_count_exemptions,
+    /// 静止探索の枝刈り条件に当たった候補について、王手になるかを判定した回数。
+    quiesce_gives_check_calls,
     /// 静止探索のdelta pruningの見積りが最善値を実際に引き上げた回数。
     quiesce_delta_best_score_raises,
     /// 静止探索のSEEの閾値の見積りが最善値を実際に引き上げた回数。

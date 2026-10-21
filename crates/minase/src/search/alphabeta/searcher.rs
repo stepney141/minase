@@ -84,7 +84,7 @@ pub(super) fn new_searcher<'a>(
         null_move_ply: None,
         nmp_min_ply: None,
         prior_nmp_fail_high: [0; MAX_PLY as usize + 1],
-        previous_capture: [None; MAX_PLY as usize + 1],
+        previous_move_to: [None; MAX_PLY as usize + 1],
         null_move_boundary: None,
         nodes: 0,
         shared,
@@ -243,9 +243,9 @@ pub(super) struct Searcher<'a> {
     pub(super) nmp_min_ply: Option<u32>,
     /// plyごとのnull move打ち切り回数。同じ親が探索した子とその再探索の間で保持する。
     pub(super) prior_nmp_fail_high: [u32; MAX_PLY as usize + 1],
-    /// 直前の捕獲手の到達升。居喰いでも捕獲した駒の最終位置を使う。
-    /// 根とnull moveの直後は取り返しの対象を持たない。
-    pub(super) previous_capture: [Option<Square>; MAX_PLY as usize + 1],
+    /// 直前の手の到達升。根とnull moveの直後では`None`。
+    /// 取り返しは、候補が取る駒の升の集合にこの升を含むかで判定する。
+    pub(super) previous_move_to: [Option<Square>; MAX_PLY as usize + 1],
     /// 直近のnull move直後の局面キーが探索経路に占める位置。
     /// 部分木内の反復判定はこの境界以降だけを参照する。
     pub(super) null_move_boundary: Option<usize>,

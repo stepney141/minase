@@ -1,5 +1,6 @@
-//! 静止探索は候補の列から取り出した順番で捕獲手を制限し、最後の王駒の捕獲、取り返し、獅子の2枚取りを除外する。
-//! 枝刈りした手と例外の手も候補数に含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
+//! 静止探索は候補の列から取り出した順番で捕獲手を制限する。
+//! 最後の王駒の捕獲と免除の手に加え、獅子の2枚取りを手数制限から外す。
+//! 枝刈りした手と免除または例外の手も候補数に含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
 
 use super::*;
 #[cfg(feature = "tuning")]
@@ -142,7 +143,7 @@ fn qsearch_limit_counts_tt_capture_once_and_prunes_at_limit() {
     }
     let (board, captures) = captures_over_limit(2);
     with_root_searcher(&board, &[], |searcher| {
-        assert_eq!(searcher.previous_capture[0], None);
+        assert_eq!(searcher.previous_move_to[0], None);
         let ply = MAX_PLY - 1;
         set_test_path_ply(searcher, ply);
         let tt_capture = *captures.last().unwrap();
@@ -182,7 +183,7 @@ fn qsearch_limit_counts_tt_capture_once_and_prunes_at_limit() {
             "群の置換表手は重複して候補に数えない"
         );
         assert_eq!(
-            searcher.previous_capture[MAX_PLY as usize],
+            searcher.previous_move_to[MAX_PLY as usize],
             Some(searched.last().unwrap().to)
         );
         assert_eq!(
@@ -199,7 +200,7 @@ fn qsearch_limit_counts_tt_capture_once_and_prunes_at_limit() {
 #[cfg(feature = "tuning")]
 fixed_capture_limit_test!(
     qsearch_limit_counts_last_royal_without_counting_a_search_node,
-    2,
+    1,
     {
         let board = position(
             Color::Black,
@@ -209,8 +210,6 @@ fixed_capture_limit_test!(
                 (sq(0, 0), Color::Black, PieceKind::Rook),
                 (sq(0, 2), Color::White, PieceKind::Pawn),
                 (sq(5, 0), Color::Black, PieceKind::Rook),
-                (sq(8, 4), Color::Black, PieceKind::Pawn),
-                (sq(8, 5), Color::White, PieceKind::Pawn),
             ],
         );
         with_root_searcher(&board, &[], |searcher| {
@@ -226,11 +225,6 @@ fixed_capture_limit_test!(
             assert_eq!(
                 searcher.nodes, 1,
                 "王駒を取る候補は数えるが探索ノードには数えない"
-            );
-            #[cfg(feature = "search-stats")]
-            assert_eq!(
-                searcher.stats.quiesce_move_count_prunes, 1,
-                "王駒を取る候補の後の通常捕獲は上限で読まない"
             );
             assert_eq!(
                 searcher
@@ -393,7 +387,7 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
             );
         }
         assert_eq!(
-            searcher.previous_capture[(ply + 1) as usize],
+            searcher.previous_move_to[(ply + 1) as usize],
             Some(destination)
         );
         let hit = searcher.tt.probe(search_key(&child), ply + 1).unwrap();
@@ -443,7 +437,7 @@ fn qsearch_limit_counts_exception_as_first_candidate() {
         let ply = MAX_PLY - 1;
         set_test_path_ply(searcher, ply);
         seed_first(searcher, &board, captures[0], ply);
-        searcher.previous_capture[ply as usize] = Some(captures[0].to);
+        searcher.previous_move_to[ply as usize] = Some(captures[0].to);
         assert!(
             searcher
                 .quiesce(&mut board.clone(), -INFINITY, INFINITY, ply)
@@ -604,12 +598,12 @@ fn qsearch_limit_counts_delta_pruned_candidate_and_uses_its_estimate() {
 }
 
 #[test]
-fn qsearch_limit_quiet_move_clears_previous_capture() {
+fn qsearch_limit_quiet_move_records_previous_destination() {
     let board = two_captures(PieceKind::Pawn);
     with_root_searcher(&board, &[], |searcher| {
         let quiet = ordinary(sq(11, 0), sq(10, 0));
         assert!(legal_moves(&board).contains(&quiet));
-        searcher.previous_capture[1] = Some(sq(5, 3));
+        searcher.previous_move_to[1] = Some(sq(5, 3));
         assert!(
             searcher
                 .search_move(
@@ -626,12 +620,12 @@ fn qsearch_limit_quiet_move_clears_previous_capture() {
                 )
                 .is_some()
         );
-        assert_eq!(searcher.previous_capture[1], None);
+        assert_eq!(searcher.previous_move_to[1], Some(quiet.to));
     });
 }
 
 #[test]
-fn qsearch_limit_null_move_clears_previous_capture() {
+fn qsearch_limit_null_move_clears_previous_destination() {
     let board = position(
         Color::Black,
         &[
@@ -645,12 +639,12 @@ fn qsearch_limit_null_move_clears_previous_capture() {
     with_root_searcher(&board, &[], |searcher| {
         zero_position_correction(searcher, &after_null);
         let expected = -evaluate(searcher.nnue, &after_null);
-        searcher.previous_capture[1] = Some(sq(5, 3));
+        searcher.previous_move_to[1] = Some(sq(5, 3));
         assert_eq!(
             searcher.search_null_move(&mut board.clone(), 0, expected, 0),
             Some(expected)
         );
         assert_eq!(searcher.nodes, 0, "null move直後の静止探索を調べる");
-        assert_eq!(searcher.previous_capture[1], None);
+        assert_eq!(searcher.previous_move_to[1], None);
     });
 }

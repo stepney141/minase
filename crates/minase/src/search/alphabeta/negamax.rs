@@ -763,7 +763,7 @@ impl Searcher<'_> {
             .map(|trigger| trigger.square);
         let undo = position.make_null_move();
         self.follow_pv[(ply + 1) as usize] = false;
-        self.previous_capture[(ply + 1) as usize] = None;
+        self.previous_move_to[(ply + 1) as usize] = None;
         let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
         self.nnue.update_accumulator_after_null(
             &parents[ply as usize],
@@ -873,11 +873,7 @@ impl Searcher<'_> {
         // 親から一致し続ける手順だけを辿る（Stockfish src/search.cpp:791-794）。
         self.follow_pv[(ply + 1) as usize] =
             self.follow_pv[ply as usize] && self.previous_pv.get(ply as usize) == Some(&mv);
-        self.previous_capture[(ply + 1) as usize] = position
-            .captured_squares(mv)
-            .iter()
-            .any(Option::is_some)
-            .then_some(mv.to);
+        self.previous_move_to[(ply + 1) as usize] = Some(mv.to);
         if captures_last_royal(position, mv) {
             return Some(MATE - (ply + 1) as i32);
         }

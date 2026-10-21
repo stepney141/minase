@@ -53,20 +53,24 @@ impl Searcher<'_> {
     /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
     ///
     /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
-    /// それ以外は手数制限、[`Self::delta_margin`]のdelta pruning、
-    /// 補正後のstand-patと余裕値を基準にしたSEEの閾値、[`Self::qsearch_see_floor`]のSEEの下限の順に判定する。
+    /// それ以外は、取り返しと成る手なら手数制限、[`Self::delta_margin`]のdelta pruning、
+    /// 補正後のstand-patと余裕値を基準にしたSEEの閾値を適用しない。
+    /// どちらでもない候補は、この3つの条件に当たったときだけ王手になるかを判定する。
+    /// 王手になる手も3つの枝刈りを適用せず、同じ候補では王手を高々1回判定する。
+    /// 最後に、すべての候補へ[`Self::qsearch_see_floor`]のSEEの下限を適用する。
     /// delta pruningで読まない手はstand-pat、余裕値、および捕獲価値の和で最善値を引き上げる。
     /// SEEの閾値で読まない手は、現在のαとstand-patに余裕値を足した値の小さい方で引き上げる。
     /// どちらも現在の最善値と見積りが通常域にある場合に限り、αと最善手は変えない
     /// （Stockfish src/search.cpp:1834, 1841）。
     /// 手数制限とSEEの下限で読まない手は最善値を引き上げない。
-    /// delta pruningは成り益を加えず、置換表の捕獲手もSEEの例外にしない。
-    /// 成り益を除く理由は`docs/adr/keep-delta-pruning-without-promotion-gain.md`にある。
+    /// 置換表の捕獲手はSEEの例外にしない。
     ///
     /// 手数制限は、候補の列の`next`が返した合法で重複しない候補について、現在の候補より前に返した候補の数`n`を
     /// 0から数え、`n >= QsearchMoveLimit`なら候補を読まない（Stockfish src/search.cpp:1816, 1825）。
-    /// 置換表の手、最後の王駒を取る手、例外の手、および各枝刈りで読まない手も候補に数える。
-    /// 最後の王駒を取る手、直前の相手の捕獲手の到達升で取り返す手、獅子が2枚を取る手は、この制限だけの例外とする。
+    /// 置換表の手、最後の王駒を取る手、免除と例外の手、および各枝刈りで読まない手も候補に数える。
+    /// 取り返しは、候補が取る駒の升の集合に直前の手の到達升を含むかで判定する。
+    /// 取り返し、成る手、および王手になる手は3つの枝刈りを免れ、獅子が2枚を取る手は手数制限だけを免れる。
+    /// 角鷹と飛鷲の2枚取りは、獅子の例外に含めない。
     /// 2段階移動も1候補と数え、最後の王駒を取る手は候補に数えても探索ノードには数えない。
     /// 数え方の理由は`docs/adr/limit-searched-captures-in-qsearch.md`にある。
     pub(super) fn quiesce(
@@ -161,7 +165,7 @@ impl Searcher<'_> {
         #[cfg(feature = "search-stats")]
         let mut returned_low_value_group = false;
         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
-        while let Some(candidate) = self.qsearch[ply as usize].next(
+        'candidates: while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
             &self.generator,
             self.nnue,
@@ -188,43 +192,87 @@ impl Searcher<'_> {
             let score = if is_last_royal_capture {
                 MATE - (ply + 1) as i32
             } else {
-                if candidate_index >= params::qsearch_move_limit() as usize
-                    && !self.previous_capture[ply as usize]
-                        .is_some_and(|square| candidate.capture.captured.contains(&Some(square)))
-                    && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
-                        && candidate.capture.captured.iter().all(Option::is_some))
-                {
-                    #[cfg(feature = "search-stats")]
-                    {
-                        self.stats.quiesce_move_count_prunes += 1;
-                    }
-                    continue;
-                }
                 let futility_value = futility_base + candidate.captured_value;
-                if futility_value <= alpha {
-                    if should_raise_futility_best_score(best, futility_value) {
-                        best = futility_value;
+                let is_recapture = self.previous_move_to[ply as usize]
+                    .is_some_and(|square| candidate.capture.captured.contains(&Some(square)));
+                let is_double_lion = candidate.capture.piece.kind() == Some(PieceKind::Lion)
+                    && candidate.capture.captured.iter().all(Option::is_some);
+                'pruning: {
+                    if is_recapture || mv.promote {
                         #[cfg(feature = "search-stats")]
                         {
-                            self.stats.quiesce_delta_best_score_raises += 1;
+                            let would_prune = (candidate_index
+                                >= params::qsearch_move_limit() as usize
+                                && !is_double_lion)
+                                || futility_value <= alpha
+                                || see_prunes(
+                                    position,
+                                    self.rules,
+                                    self.nnue,
+                                    mv,
+                                    alpha - futility_base,
+                                );
+                            if would_prune {
+                                if is_recapture {
+                                    self.stats.quiesce_recapture_exemptions += 1;
+                                } else {
+                                    self.stats.quiesce_promotion_exemptions += 1;
+                                }
+                            }
+                        }
+                        break 'pruning;
+                    }
+
+                    if candidate_index >= params::qsearch_move_limit() as usize {
+                        if is_double_lion {
+                            #[cfg(feature = "search-stats")]
+                            {
+                                self.stats.quiesce_lion_double_move_count_exemptions += 1;
+                            }
+                        } else {
+                            if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                                break 'pruning;
+                            }
+                            #[cfg(feature = "search-stats")]
+                            {
+                                self.stats.quiesce_move_count_prunes += 1;
+                            }
+                            continue 'candidates;
                         }
                     }
-                    continue;
-                }
-                if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
-                    #[cfg(feature = "search-stats")]
-                    {
-                        self.stats.quiesce_see_threshold_prunes += 1;
+
+                    if futility_value <= alpha {
+                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                            break 'pruning;
+                        }
+                        if should_raise_futility_best_score(best, futility_value) {
+                            best = futility_value;
+                            #[cfg(feature = "search-stats")]
+                            {
+                                self.stats.quiesce_delta_best_score_raises += 1;
+                            }
+                        }
+                        continue 'candidates;
                     }
-                    let estimate = alpha.min(futility_base);
-                    if should_raise_futility_best_score(best, estimate) {
-                        best = estimate;
+
+                    if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
+                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                            break 'pruning;
+                        }
                         #[cfg(feature = "search-stats")]
                         {
-                            self.stats.quiesce_see_threshold_best_score_raises += 1;
+                            self.stats.quiesce_see_threshold_prunes += 1;
                         }
+                        let estimate = alpha.min(futility_base);
+                        if should_raise_futility_best_score(best, estimate) {
+                            best = estimate;
+                            #[cfg(feature = "search-stats")]
+                            {
+                                self.stats.quiesce_see_threshold_best_score_raises += 1;
+                            }
+                        }
+                        continue 'candidates;
                     }
-                    continue;
                 }
                 if see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor) {
                     #[cfg(feature = "search-stats")]
@@ -234,7 +282,7 @@ impl Searcher<'_> {
                     continue;
                 }
                 self.enter_node().then_some(())?;
-                self.previous_capture[(ply + 1) as usize] = Some(mv.to);
+                self.previous_move_to[(ply + 1) as usize] = Some(mv.to);
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,
@@ -298,6 +346,20 @@ impl Searcher<'_> {
         self.tt
             .store(key, 0, best, Some(v), bound, best_move, ply, pv_hit);
         Some(best)
+    }
+
+    /// 枝刈り条件に当たった候補が王手になる手なら、免除として記録する。
+    fn checking_move_exempts_qsearch_pruning(&mut self, position: &Position, mv: Move) -> bool {
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.quiesce_gives_check_calls += 1;
+        }
+        let gives_check = position.gives_check(&self.generator, mv);
+        #[cfg(feature = "search-stats")]
+        if gives_check {
+            self.stats.quiesce_check_exemptions += 1;
+        }
+        gives_check
     }
 }
 

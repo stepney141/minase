@@ -25,6 +25,7 @@ mod partial;
 mod path_state;
 mod ponder;
 mod pruning;
+mod qsearch_exemptions;
 mod qsearch_move_limit;
 mod quiesce;
 mod quiet_ordering;

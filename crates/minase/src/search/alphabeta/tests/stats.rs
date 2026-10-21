@@ -33,6 +33,7 @@ fn assert_relations(stats: SearchStats) {
     assert!(stats.quiesce_tt_cutoffs <= stats.quiesce_tt_hits);
     assert!(stats.quiesce_tt_hits <= stats.quiesce_tt_probes);
     assert!(stats.quiesce_tt_probes <= stats.quiesce_nodes);
+    assert!(stats.quiesce_check_exemptions <= stats.quiesce_gives_check_calls);
     assert!(stats.quiesce_see_threshold_best_score_raises <= stats.quiesce_see_threshold_prunes);
     assert!(stats.quiesce_low_value_group_nodes <= stats.quiesce_nodes);
     assert!(ranks(stats).iter().sum::<u64>() <= stats.normal_nodes);
