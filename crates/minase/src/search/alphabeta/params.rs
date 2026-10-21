@@ -251,9 +251,15 @@ parameters! {
     /// Stockfishは134、YaneuraOuは131である（Stockfish src/search.cpp:1214、YaneuraOu yaneuraou-search.cpp:3617）。
     /// 開始値はStockfishの値であり、SPSAで未調整である。
     CaptureFutilityHistory(capture_futility_history): 368, -100, 600;
-    /// aspiration windowの初期半幅。単位は歩兵価値に対する百分率である。
-    /// 値はSPSAで調整した。
-    AspirationDelta(aspiration_delta): 97, 10, 200;
+    /// aspiration windowの初期半幅の定数項。単位は歩兵価値に対する百分率である。
+    /// Stockfishの定数項5は約2.4%（src/search.cpp:389）、YaneuraOuの定数項5は約5.6%
+    /// （yaneuraou-search.cpp:1670）である。開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    AspirationDelta(aspiration_delta): 2, 1, 200;
+    /// aspiration windowの初期半幅に根の値の大きさから加える量。
+    /// 単位は歩兵価値に対する百分率であり、根の値が歩兵価値の10倍で一定のときに半幅へ加わる量を表す。
+    /// Stockfishの`/10193`は約204（src/search.cpp:389）、YaneuraOuの`/9000`は約100
+    /// （yaneuraou-search.cpp:1670）である。開始値はStockfishの値を換算した値であり、SPSAで未調整である。
+    AspirationScoreWidth(aspiration_score_width): 204, 0, 400;
     /// aspiration windowが次に外れた際の拡大量に掛ける倍率。単位は百分率である。
     /// 値はSPSAで調整した。
     AspirationGrowth(aspiration_growth): 149, 125, 400;

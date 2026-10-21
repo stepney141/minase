@@ -85,7 +85,7 @@ pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
 /// 反復探索の窓と、次に外れた側を広げる幅。
 ///
 /// 直前の完了反復の最善手について、評価値の平均の周囲から探索を始めるaspiration windowである。
-/// `delta`は静的評価と同じ単位で、初期値は歩兵価値×`AspirationDelta`%とする。
+/// `delta`は静的評価と同じ単位で、初期値は定数項、符号つき2乗の平均の項、およびワーカー番号の項から求める。
 /// 外れた側だけを広げる理由は`docs/adr/widen-only-the-failed-side-of-aspiration-windows.md`にある。
 pub(super) struct AspirationWindow {
     pub(super) alpha: i32,
@@ -151,9 +151,22 @@ impl AspirationWindow {
     }
 }
 
-/// 歩兵価値から初期の半幅を求め、1以上にする。
-pub(super) fn aspiration_delta(pawn: i32) -> i32 {
-    (pawn * params::aspiration_delta() / 100).max(1)
+/// 歩兵価値、調整係数、符号つき2乗の平均、およびワーカー番号から初期の半幅を求める。
+/// 3つの項は64ビット整数で個別に切り捨ててから足し、結果を1以上にする。
+pub(super) fn initial_aspiration_delta(
+    pawn: i32,
+    aspiration_delta: i32,
+    aspiration_score_width: i32,
+    signed_square_average: i64,
+    worker_index: usize,
+) -> i32 {
+    let pawn = i64::from(pawn);
+    let constant_term = pawn * i64::from(aspiration_delta) / 100;
+    let score_term =
+        i64::from(aspiration_score_width) * signed_square_average.abs() / (10_000 * pawn);
+    let worker_term = (worker_index % 8) as i64 * pawn / 208;
+    i32::try_from((constant_term + score_term + worker_term).max(1))
+        .expect("initial aspiration delta remains an i32 score")
 }
 
 /// 半幅を1以上増やす項と調整係数を掛けた項の大きい方へ広げる。
@@ -244,7 +257,7 @@ impl Searcher<'_> {
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
     ///
     /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
-    /// 評価値の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
+    /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
     /// 深さ2以上は平均があれば窓を置く。
     /// 直前の完了値は詰みを探す印の判定だけに使う。
     /// 値がα以下なら下側だけ、β以上なら上側だけを広げ、同じ深さで再探索する。
@@ -259,14 +272,26 @@ impl Searcher<'_> {
     ) -> Option<(Move, i32)> {
         self.seek_mate = is_seek_mate(prev.map(|(_, score)| score), depth, self.nnue.pawn_value());
         self.previous_pv.clone_from(&self.pv[0]);
-        let average = prev.and_then(|(best_move, _)| {
+        let averages = prev.and_then(|(best_move, _)| {
             self.root_move_stats
                 .iter()
                 .find(|(mv, _)| *mv == best_move)
-                .and_then(|(_, stats)| stats.averages.map(|(average, _)| average))
+                .and_then(|(_, stats)| stats.averages)
         });
-        let mut window =
-            AspirationWindow::initial(average, aspiration_delta(self.nnue.pawn_value()));
+        let mut window = if let Some((average, signed_square_average)) = averages {
+            AspirationWindow::initial(
+                Some(average),
+                initial_aspiration_delta(
+                    self.nnue.pawn_value(),
+                    params::aspiration_delta(),
+                    params::aspiration_score_width(),
+                    signed_square_average,
+                    self.worker_index,
+                ),
+            )
+        } else {
+            AspirationWindow::initial(None, 1)
+        };
         loop {
             let Some((best_move, score)) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)

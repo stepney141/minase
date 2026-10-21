@@ -557,6 +557,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
                 consecutive_attacking_moves: [0; 2],
             },
             DRAW_SCORE,
+            0,
             &[],
             &shared,
             &table,

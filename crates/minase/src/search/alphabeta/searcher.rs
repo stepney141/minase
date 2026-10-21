@@ -49,6 +49,7 @@ pub(super) fn new_searcher<'a>(
     rules: MoveRules,
     repetition: SearchRepetition,
     draw_value: i32,
+    worker_index: usize,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
@@ -77,6 +78,7 @@ pub(super) fn new_searcher<'a>(
         rules,
         repetition,
         draw_value,
+        worker_index,
         root_position: position.clone(),
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -229,6 +231,8 @@ pub(super) struct Searcher<'a> {
     pub(super) repetition: SearchRepetition,
     /// 根の手番側から見た、R1の引き分けの再現に返す値。
     pub(super) draw_value: i32,
+    /// 探索チーム内で割り当て済みのワーカー番号。
+    pub(super) worker_index: usize,
     /// 攻撃的着手の判定で探索経路を再生するための、根の局面の写し。
     pub(super) root_position: Position,
     /// 探索ノードでの合法手生成器。

@@ -12,7 +12,7 @@ use crate::search::alphabeta::{
         capture_futility_value, continuation_history_prunes, futility_value, late_move_limit,
         lmr_base, quiet_see_margin, razoring_margin, reverse_futility_margin, see_margin,
     },
-    root::grow_aspiration_delta,
+    root::{grow_aspiration_delta, initial_aspiration_delta},
 };
 
 /// 時計のdocコメントの式から手計算した例。各項の丸めと上限を個別に検査する。
@@ -181,6 +181,7 @@ fn tuning_parameters_in_isolated_process() {
         ("CaptureFutilityLmrDepth", 119),
         ("CaptureFutilityHistory", 134),
         ("AspirationDelta", 57),
+        ("AspirationScoreWidth", 204),
         ("AspirationGrowth", 168),
         ("NullMoveBase", 7200),
         ("NullMoveSlope", 400),
@@ -512,7 +513,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 91] = [
+    let cases: [Case; 92] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -728,7 +729,24 @@ fn tuning_parameters_in_isolated_process() {
         ("CaptureFutilityHistory", 100, || {
             i64::from(capture_futility_value(208, 0, 0, 100, 1024))
         }),
-        ("AspirationDelta", 100, || i64::from(aspiration_delta(101))),
+        ("AspirationDelta", 100, || {
+            i64::from(initial_aspiration_delta(
+                101,
+                params::aspiration_delta(),
+                params::aspiration_score_width(),
+                0,
+                0,
+            ))
+        }),
+        ("AspirationScoreWidth", 400, || {
+            i64::from(initial_aspiration_delta(
+                100,
+                params::aspiration_delta(),
+                params::aspiration_score_width(),
+                1_000_000,
+                0,
+            ))
+        }),
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))
         }),
