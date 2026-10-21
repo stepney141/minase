@@ -504,13 +504,34 @@ fn store_position_correction(searcher: &Searcher<'_>, position: &Position, value
     }
 }
 
+/// 補正を検査しない探索で、局面表とcontinuation correction historyの全要素を0にする。
+fn zero_correction_histories(histories: &mut crate::search::HistoryTables) {
+    for value in histories.correction.values() {
+        value.store(0, AtomicOrdering::Relaxed);
+    }
+    for history in &mut histories.continuation_correction {
+        history.values_mut().fill(0);
+    }
+}
+
+fn zero_current_correction(searcher: &mut Searcher<'_>, position: &Position) {
+    store_position_correction(searcher, position, 0);
+    if let Some(indices) = searcher
+        .continuation_correction_indices(position.side_to_move(), searcher.path_moves.len() as u32)
+    {
+        for index in indices {
+            searcher.continuation_correction.store(index, 0);
+        }
+    }
+}
+
 /// 補正以外の境界を検査するとき、現在の局面が引く全表の要素を直接0にする。
 fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
     let side = position.side_to_move();
     for (key, table) in position_correction_entries(position) {
         assert_eq!(searcher.correction.read(side, key, table), -5);
     }
-    store_position_correction(searcher, position, 0);
+    zero_current_correction(searcher, position);
     for (key, table) in position_correction_entries(position) {
         assert_eq!(searcher.correction.read(side, key, table), 0);
     }
@@ -524,6 +545,32 @@ fn zero_position_correction(searcher: &mut Searcher<'_>, position: &Position) {
             assert_eq!(searcher.continuation_correction.read(index), 0);
         }
     }
+}
+
+/// 深さ1の通常探索が現在の局面と各子局面で読む補正を0にする。
+fn zero_depth_one_corrections(searcher: &mut Searcher<'_>, position: &Position, moves: &[Move]) {
+    zero_current_correction(searcher, position);
+    let path_len = searcher.path_moves.len();
+    let child_ply = path_len + 1;
+    let accumulator = searcher.accumulators[child_ply].clone();
+    let material_key = searcher.material_keys[child_ply];
+    let pawn_key = searcher.pawn_keys[child_ply];
+    let minor_key = searcher.minor_keys[child_ply];
+    let non_pawn_keys = searcher.non_pawn_keys[child_ply];
+    for &mv in moves {
+        let mut child = position.clone();
+        push_path_move(searcher, &mut child, Some(mv));
+        zero_current_correction(searcher, &child);
+        searcher.path_moves.pop();
+        searcher.path_keys.pop();
+    }
+    searcher.accumulators[child_ply] = accumulator;
+    searcher.material_keys[child_ply] = material_key;
+    searcher.pawn_keys[child_ply] = pawn_key;
+    searcher.minor_keys[child_ply] = minor_key;
+    searcher.non_pawn_keys[child_ply] = non_pawn_keys;
+    assert_eq!(searcher.path_moves.len(), path_len);
+    assert_eq!(searcher.path_moves.len() + 1, searcher.path_keys.len());
 }
 
 /// 全ルート手が反復による引き分けとなる履歴を作る。
@@ -694,6 +741,29 @@ fn run_search(
     threads: NonZeroUsize,
     tt: &mut TranspositionTable,
 ) -> SearchResult {
+    run_search_with_histories(
+        position,
+        rules,
+        root_moves,
+        history_keys,
+        limits,
+        threads,
+        tt,
+        &mut crate::search::HistoryTables::new(threads),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_search_with_histories(
+    position: &Position,
+    rules: MoveRules,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    limits: &SearchLimits,
+    threads: NonZeroUsize,
+    tt: &mut TranspositionTable,
+    histories: &mut crate::search::HistoryTables,
+) -> SearchResult {
     let snapshot = SearchSnapshot::from_parts(
         position.clone(),
         rules,
@@ -705,15 +775,8 @@ fn run_search(
     )
     .expect("test root moves must not be empty");
     let nnue = test_nnue();
-    crate::search::search(
-        nnue,
-        &snapshot,
-        limits,
-        threads,
-        tt,
-        &mut crate::search::HistoryTables::new(threads),
-    )
-    .expect("valid test input must be searchable")
+    crate::search::search(nnue, &snapshot, limits, threads, tt, histories)
+        .expect("valid test input must be searchable")
 }
 
 fn snapshot_for(position: &Position) -> SearchSnapshot {

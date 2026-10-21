@@ -419,7 +419,9 @@ fn quiescence_without_captures_matches_static_evaluation() {
         .max()
         .expect("root must have a legal move");
 
-    let result = run_search(
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    zero_correction_histories(&mut histories);
+    let result = run_search_with_histories(
         &position,
         engine_rules(),
         &moves,
@@ -427,6 +429,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
         &depth_limits(1),
         DEFAULT_THREADS,
         &mut small_tt(),
+        &mut histories,
     );
 
     assert_eq!(result.score, expected);

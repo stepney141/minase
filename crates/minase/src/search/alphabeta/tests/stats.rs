@@ -288,6 +288,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
             }
         }
         with_root_searcher(&position, &[], |searcher| {
+            zero_depth_one_corrections(searcher, &position, &ordered);
             for (index, mv) in ordered.iter().enumerate() {
                 searcher.history[position.side_to_move().index()][mv.from.dense_index()]
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;
@@ -309,6 +310,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
         });
         // 同じ順序でβを最善値に置くと、その順位で打ち切り、度数には入らない。
         with_root_searcher(&position, &[], |searcher| {
+            zero_depth_one_corrections(searcher, &position, &ordered);
             for (index, mv) in ordered.iter().enumerate() {
                 searcher.history[position.side_to_move().index()][mv.from.dense_index()]
                     [mv.to.dense_index()] = (ordered.len() - index) as i32;

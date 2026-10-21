@@ -114,6 +114,7 @@ fn negamax_inherits_parent_pv_flag_when_score_equals_alpha() {
         .max()
         .unwrap();
     with_root_searcher(&position, &[], |searcher| {
+        zero_depth_one_corrections(searcher, &position, &legal_moves(&position));
         searcher.tt_pv[0] = true;
         // 浅い上界でreverse futilityを避け、印のないノードが親の印を継ぐ経路を読む。
         searcher.tt.store(

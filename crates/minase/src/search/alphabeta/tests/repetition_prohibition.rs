@@ -115,6 +115,8 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
                 let before = current.clone();
                 assert!(searcher.move_is_forbidden(&mut current, cycle[3]));
                 assert_eq!(current, before);
+                let moves = legal_moves(&current);
+                zero_depth_one_corrections(searcher, &current, &moves);
                 let expected = best_allowed_leaf(searcher, &current, cycle[3]);
                 assert!(expected < DRAW_SCORE);
                 let nodes = searcher.nodes;
@@ -123,10 +125,7 @@ fn articles_31_r2_and_23_skip_repetitions_of_start_history_and_path() {
                     Some(expected)
                 );
                 // 捕獲のない1手読みでは、禁止手を除いた各候補だけが1ノードを使う。
-                assert_eq!(
-                    searcher.nodes - nodes,
-                    (legal_moves(&current).len() - 1) as u64
-                );
+                assert_eq!(searcher.nodes - nodes, (moves.len() - 1) as u64);
                 assert!(searcher.tt.probe(search_key(&repeated), ply + 1).is_none());
                 assert_ne!(
                     searcher
@@ -195,6 +194,8 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                             .all(|entry| entry.attacking.is_none())
                     );
                 } else {
+                    let moves = legal_moves(&current);
+                    zero_depth_one_corrections(searcher, &current, &moves);
                     let expected = best_allowed_leaf(searcher, &current, cycle[3]);
                     assert!(expected < DRAW_SCORE);
                     let before = current.clone();
@@ -203,10 +204,7 @@ fn articles_31_r3_and_23_count_root_once_and_allow_only_second_and_third_occurre
                         searcher.negamax(&mut current, 1, -INFINITY, INFINITY, ply, false),
                         Some(expected)
                     );
-                    assert_eq!(
-                        searcher.nodes - nodes,
-                        (legal_moves(&current).len() - 1) as u64
-                    );
+                    assert_eq!(searcher.nodes - nodes, (moves.len() - 1) as u64);
                     assert_ne!(searcher.pv[ply as usize][0], cycle[3]);
                     assert_eq!(current, before);
                 }
@@ -238,13 +236,15 @@ fn articles_31_r3_and_23_add_occurrences_across_history_and_path() {
 
 fn search_snapshot(snapshot: &SearchSnapshot, nnue: &Nnue, depth: u32) -> SearchResult {
     let threads = worker_count(1);
+    let mut histories = crate::search::HistoryTables::new(threads);
+    zero_correction_histories(&mut histories);
     crate::search::search(
         nnue,
         snapshot,
         &depth_limits(depth),
         threads,
         &mut small_tt(),
-        &mut crate::search::HistoryTables::new(threads),
+        &mut histories,
     )
     .unwrap()
 }
@@ -270,6 +270,8 @@ fn articles_31_r2_and_23_do_not_mix_the_forbidden_draw_into_the_best_legal_score
                 0,
                 false,
             );
+            let moves = legal_moves(&current);
+            zero_depth_one_corrections(searcher, &current, &moves);
             let expected = if rule == RepetitionRule::R1 {
                 DRAW_SCORE
             } else {

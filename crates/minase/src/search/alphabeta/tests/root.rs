@@ -445,31 +445,28 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
     });
 }
 
-// 深さ4の完了時点から1手だけ読む予算にし、次の反復の中断で完了結果を保持する。
+// 全ルート手が反復引き分けとなる局面では、各深さで1手につき1ノードを使う。
+// 深さ4の完了後に1手だけ読む固定予算で、次のaspiration反復を中断する。
 #[test]
 fn aspiration_interruption_preserves_the_last_completed_iteration() {
     let position = quiet_midgame();
     let moves = legal_moves(&position);
-    let history = [search_key(&position)];
-    let mut node_limit = 0;
-    let mut completed = None;
-    let mut completed_pv = Vec::new();
-    with_root_searcher(&position, &history, |searcher| {
-        for depth in 1..=4 {
-            completed = searcher.search_iteration(
-                &position,
-                &moves,
-                depth,
-                completed.map(|(_, score)| score),
-            );
-            assert!(completed.is_some());
-        }
-        completed_pv.clone_from(&searcher.pv[0]);
-        node_limit = searcher.nodes + 1;
-    });
+    let completed_depth = 4;
+    let completed_nodes = u64::from(completed_depth) * moves.len() as u64;
+    let node_limit = completed_nodes + 1;
+    let snapshot = SearchSnapshot::from_parts(
+        position.clone(),
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        repeated_root_children(&position, &moves),
+        moves,
+    )
+    .unwrap();
 
     let handle = start(
-        snapshot_for(&position),
+        snapshot,
         nodes_limits(node_limit),
         85,
         worker_count(1),
@@ -479,16 +476,16 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
     handle.join().expect("search thread must not panic");
     assert_eq!(
         progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
-        vec![1, 2, 3, 4]
+        (1..=completed_depth).collect::<Vec<_>>()
     );
-    assert_eq!(finished.depth, 4);
-    assert_eq!((finished.best_move, finished.score), completed.unwrap());
-    assert_eq!(finished.pv, completed_pv);
+    assert_eq!(finished.depth, completed_depth);
     assert_eq!(finished.nodes, node_limit);
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
     let last = progress.last().unwrap();
+    assert_eq!(finished.best_move, last.4[0]);
     assert_eq!(last.1, finished.score);
     assert_eq!(last.4, finished.pv);
+    assert_eq!(last.2, completed_nodes);
     assert!(last.2 < finished.nodes);
 }
 

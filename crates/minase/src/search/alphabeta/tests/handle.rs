@@ -91,17 +91,23 @@ fn search_apis_use_the_supplied_nnue() {
     )
     .unwrap();
 
-    let synchronous = crate::search::search(
-        &supplied,
-        &snapshot,
-        &depth_limits(1),
-        DEFAULT_THREADS,
-        &mut small_tt(),
-        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
-    )
-    .unwrap();
+    let synchronous = {
+        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+        zero_correction_histories(&mut histories);
+        crate::search::search(
+            &supplied,
+            &snapshot,
+            &depth_limits(1),
+            DEFAULT_THREADS,
+            &mut small_tt(),
+            &mut histories,
+        )
+        .unwrap()
+    };
     assert_eq!(synchronous.score, expected);
 
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    zero_correction_histories(&mut histories);
     let handle = crate::search::start_search(
         Arc::new(supplied),
         snapshot,
@@ -109,7 +115,7 @@ fn search_apis_use_the_supplied_nnue() {
         7,
         DEFAULT_THREADS,
         small_tt(),
-        crate::search::HistoryTables::new(DEFAULT_THREADS),
+        histories,
         false,
     );
     let (_, asynchronous) = event_reports(drain_raw(&handle));
