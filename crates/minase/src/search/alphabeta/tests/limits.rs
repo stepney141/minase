@@ -50,7 +50,7 @@ fn zero_search_budgets_are_rejected_at_construction() {
     ));
 }
 
-// 設計書T5の入力契約: 秒読み0かつmovetimeなしの時計だけが相手の残り時間を必須とする。
+// 秒読み0かつmovetimeなしの時計だけが相手の残り時間を必須とする。
 #[test]
 fn time_advantage_clock_requires_opponent_remaining_time() {
     let without_opponent = ClockLimits::new(1_000, 0, 0, None, 0).unwrap();

@@ -25,6 +25,92 @@ use super::time::{
     should_start_next_iteration, stable_signal,
 };
 
+/// 完了反復ごとの時間伸縮と安定判定に使う係数。
+#[derive(Clone, Copy)]
+pub(super) struct IterationScalingCoefficients {
+    pub(super) falling_eval: FallingEvalCoefficients,
+    pub(super) best_move_stability: TimeReductionCoefficients,
+    pub(super) best_move_instability: TimeInstabilityCoefficients,
+    pub(super) best_move_effort: TimeEffortCoefficients,
+    pub(super) stable_iterations: usize,
+}
+
+impl IterationScalingCoefficients {
+    fn current() -> Self {
+        Self {
+            falling_eval: FallingEvalCoefficients::current(),
+            best_move_stability: TimeReductionCoefficients::current(),
+            best_move_instability: TimeInstabilityCoefficients::current(),
+            best_move_effort: TimeEffortCoefficients::current(),
+            stable_iterations: params::stable_iterations() as usize,
+        }
+    }
+}
+
+/// 主ワーカーが探索開始時の基礎予算と最新の完了反復で伸縮した予算を区別して保持する。
+#[derive(Clone, Copy)]
+struct IterationBudgets {
+    base: Option<TimeBudget>,
+    current: Option<TimeBudget>,
+}
+
+impl IterationBudgets {
+    fn new(base: Option<TimeBudget>) -> Self {
+        Self {
+            base,
+            current: base,
+        }
+    }
+
+    fn has_budget(self) -> bool {
+        self.current.is_some()
+    }
+
+    /// 最新の完了反復で伸縮した予算を使い、次の反復を始められるかを返す。
+    fn can_start_next_iteration(
+        self,
+        elapsed: Duration,
+        hit: Duration,
+        stable: bool,
+    ) -> Option<bool> {
+        self.current
+            .map(|budget| should_start_next_iteration(elapsed, hit, budget, stable))
+    }
+
+    /// 基礎softに完了反復の因子を掛け、次の反復へ渡す予算を更新する。
+    fn scale(&mut self, factors: &[u128], root_move_count: usize) -> u128 {
+        let base = self
+            .base
+            .expect("instability scaling requires a time budget");
+        let time_ms = scaled_soft_millis(base.soft, factors, root_move_count);
+        self.current = Some(scaled_time_budget(base, time_ms));
+        time_ms
+    }
+
+    /// 先読みで始める反復へ、最新の完了反復で伸縮した予算を渡す。
+    fn ponder_iteration(
+        self,
+        started: Duration,
+        stable: bool,
+        mate_early_stop: bool,
+    ) -> Option<PonderIteration> {
+        self.current.map(|budget| PonderIteration {
+            started,
+            stable,
+            mate_early_stop,
+            checked: false,
+            budget,
+        })
+    }
+}
+
+/// 先読み中の最新の完了反復が詰みによる早期停止の条件を満たすかを記録する。
+pub(super) fn update_ponder_mate_early_stop(record: &mut bool, enabled: bool, score: i32) -> bool {
+    let current = enabled && mate_early_stop(score);
+    *record = current;
+    current
+}
+
 /// 補助ワーカーが探索する深さを昇順に返す。
 ///
 /// 1始まりのワーカー番号kに対し、周期 `2 + ((k − 1) % 4)` ごとに深さ1から反復する。
@@ -58,6 +144,59 @@ pub(super) fn run_main_worker(
     history_keys: &[u64],
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
+    instability_scaling: Option<InstabilityScaling>,
+    shared: &SharedSearch<'_>,
+    tt: &TranspositionTable,
+    history: &mut HistoryTable,
+    capture_history: &mut CaptureHistory,
+    correction_values: &CorrectionValues,
+    continuation_correction: &mut ContinuationCorrectionHistory,
+    continuation_history: &ContinuationHistory,
+    pawn_history: &PawnHistory,
+    events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+    ponder: bool,
+    adopt_partial: bool,
+) -> WorkerOutcome {
+    run_main_worker_with_iteration_hook(
+        nnue,
+        position,
+        rules,
+        repetition,
+        draw_value,
+        root_moves,
+        history_keys,
+        depth_limit,
+        time_budget,
+        instability_scaling,
+        shared,
+        tt,
+        history,
+        capture_history,
+        correction_values,
+        continuation_correction,
+        continuation_history,
+        pawn_history,
+        events,
+        ponder,
+        adopt_partial,
+        IterationScalingCoefficients::current(),
+        |_depth, _stable| false,
+    )
+}
+
+/// 指定した時間係数を使い、反復開始直後の検査フックを伴って主ワーカーを実行する。
+/// 通常経路は何もしないフックを渡し、テストは先読み的中を決定的な位置へ注入する。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_main_worker_with_iteration_hook(
+    nnue: &Nnue,
+    position: &Position,
+    rules: MoveRules,
+    repetition: SearchRepetition,
+    draw_value: i32,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    depth_limit: u32,
+    time_budget: Option<TimeBudget>,
     mut instability_scaling: Option<InstabilityScaling>,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
@@ -70,6 +209,8 @@ pub(super) fn run_main_worker(
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ponder: bool,
     adopt_partial: bool,
+    coefficients: IterationScalingCoefficients,
+    mut iteration_hook: impl FnMut(u32, bool) -> bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(
         nnue,
@@ -101,16 +242,18 @@ pub(super) fn run_main_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     let mut completed_bests = Vec::new();
-    let base_time_budget = time_budget;
-    let mut current_time_budget = base_time_budget;
+    let mut iteration_budgets = IterationBudgets::new(time_budget);
     // 先読み中は最新の完了反復の判定で毎回上書きし、次の反復の開始時に保存する。
     let mut mate_early_stop_on_hit = false;
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some((result.best_move, result.score));
-        if ponder && let Some(budget) = current_time_budget {
+        if ponder && iteration_budgets.has_budget() {
             let iteration_started = shared.clock.elapsed();
-            let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
+            let stable = stable_signal(&completed_bests, coefficients.stable_iterations);
+            let iteration = iteration_budgets
+                .ponder_iteration(iteration_started, stable, mate_early_stop_on_hit)
+                .expect("a timed ponder search must have an iteration budget");
             // 前の境界の検査後やワーカー生成前に的中した場合も、開始条件を通す。
             // tを先に記録するので、このhの読み取りより後の的中は必ずtより後になる。
             let hit_ns = shared
@@ -119,26 +262,27 @@ pub(super) fn run_main_worker(
                 .hit_ns
                 .load(AtomicOrdering::Relaxed);
             if hit_ns != u64::MAX
-                && (mate_early_stop_on_hit
+                && (iteration.mate_early_stop
                     || !should_start_next_iteration(
                         shared.clock.elapsed(),
                         Duration::from_nanos(hit_ns),
-                        budget,
-                        stable,
+                        iteration.budget,
+                        iteration.stable,
                     ))
             {
                 shared.stop(StopReason::SoftLimit);
                 break;
             }
-            searcher.ponder_iteration = Some(PonderIteration {
-                started: iteration_started,
-                stable,
-                mate_early_stop: mate_early_stop_on_hit,
-                checked: false,
-                budget,
-            });
+            searcher.ponder_iteration = Some(iteration);
         }
         searcher.begin_iteration();
+        let ponder_stable = searcher
+            .ponder_iteration
+            .as_ref()
+            .is_some_and(|iteration| iteration.stable);
+        if iteration_hook(depth, ponder_stable) && !searcher.check_time() {
+            break;
+        }
         if let Some(scaling) = &mut instability_scaling {
             scaling.begin_iteration();
         }
@@ -148,20 +292,16 @@ pub(super) fn run_main_worker(
             break;
         };
         completed_bests.push(best_move);
-        let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
+        let stable = stable_signal(&completed_bests, coefficients.stable_iterations);
         let mut scaled_time_ms = None;
         if let Some(scaling) = &mut instability_scaling {
-            let base = base_time_budget.expect("instability scaling requires a time budget");
-            let falling_eval = scaling.update_falling_eval(
-                score,
-                nnue.pawn_value(),
-                FallingEvalCoefficients::current(),
-            );
+            let falling_eval =
+                scaling.update_falling_eval(score, nnue.pawn_value(), coefficients.falling_eval);
             let best_move_stability = scaling
-                .update_best_move_stability(&completed_bests, TimeReductionCoefficients::current());
+                .update_best_move_stability(&completed_bests, coefficients.best_move_stability);
             let best_move_instability = scaling.update_best_move_instability(
                 shared.take_best_move_changes(),
-                TimeInstabilityCoefficients::current(),
+                coefficients.best_move_instability,
             );
             let best_move_nodes = searcher
                 .root_move_stats
@@ -172,10 +312,9 @@ pub(super) fn run_main_worker(
             let best_move_effort = best_move_effort_factor(
                 best_move_nodes,
                 searcher.nodes,
-                TimeEffortCoefficients::current(),
+                coefficients.best_move_effort,
             );
-            let time_ms = scaled_soft_millis(
-                base.soft,
+            let time_ms = iteration_budgets.scale(
                 &[
                     falling_eval as u128,
                     best_move_stability as u128,
@@ -184,11 +323,13 @@ pub(super) fn run_main_worker(
                 ],
                 root_moves.len(),
             );
-            current_time_budget = Some(scaled_time_budget(base, time_ms));
             scaled_time_ms = Some(time_ms);
         }
-        let mate_early_stop = instability_scaling.is_some() && mate_early_stop(score);
-        mate_early_stop_on_hit = mate_early_stop;
+        let mate_early_stop = update_ponder_mate_early_stop(
+            &mut mate_early_stop_on_hit,
+            instability_scaling.is_some(),
+            score,
+        );
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -211,21 +352,28 @@ pub(super) fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if current_time_budget.is_some_and(|budget| {
+        let mut iteration_boundary = None;
+        let stop_for_time = if iteration_budgets.has_budget() {
             let hit_ns = shared
                 .hard_limit
                 .expect("a timed search has a hard limit")
                 .hit_ns
                 .load(AtomicOrdering::Relaxed);
+            let boundary_elapsed = shared.clock.elapsed();
+            iteration_boundary = Some((boundary_elapsed, hit_ns));
             hit_ns != u64::MAX
                 && (mate_early_stop
-                    || !should_start_next_iteration(
-                        elapsed,
-                        Duration::from_nanos(hit_ns),
-                        budget,
-                        stable,
-                    ))
-        }) {
+                    || !iteration_budgets
+                        .can_start_next_iteration(
+                            boundary_elapsed,
+                            Duration::from_nanos(hit_ns),
+                            stable,
+                        )
+                        .expect("a timed search must have an iteration budget"))
+        } else {
+            false
+        };
+        if stop_for_time {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -233,15 +381,12 @@ pub(super) fn run_main_worker(
             shared.stop(StopReason::DepthCompleted);
             break;
         }
-        if let Some(time_ms) = scaled_time_ms {
-            let hit_ns = shared
-                .hard_limit
-                .expect("instability scaling requires a hard limit")
-                .hit_ns
-                .load(AtomicOrdering::Relaxed);
+        if let (Some(time_ms), Some((boundary_elapsed, hit_ns))) =
+            (scaled_time_ms, iteration_boundary)
+        {
             let hit = (hit_ns != u64::MAX).then(|| Duration::from_nanos(hit_ns));
             shared.increase_depth.store(
-                should_increase_depth(elapsed, hit, time_ms),
+                should_increase_depth(boundary_elapsed, hit, time_ms),
                 AtomicOrdering::Relaxed,
             );
         }

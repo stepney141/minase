@@ -7,6 +7,7 @@ use crate::search::alphabeta::root::RootMoveStats;
 /// 指定した`elapsed`呼び出しで先読みの的中時刻を記録する時計。
 struct HitOnElapsedCallClock<'a> {
     elapsed: Duration,
+    hit: Duration,
     calls: AtomicU64,
     hit_on_call: u64,
     hit_ns: &'a AtomicU64,
@@ -17,12 +18,244 @@ impl SearchClock for HitOnElapsedCallClock<'_> {
         let call = self.calls.fetch_add(1, AtomicOrdering::Relaxed) + 1;
         if call == self.hit_on_call {
             self.hit_ns.store(
-                self.elapsed.as_nanos().try_into().unwrap(),
+                self.hit.as_nanos().try_into().unwrap(),
                 AtomicOrdering::Relaxed,
             );
         }
         self.elapsed
     }
+}
+
+/// 4因子の積を1,257‰に固定し、直近2反復の最善手が同じなら安定と判定する係数。
+fn fixed_ponder_scaling_coefficients() -> IterationScalingCoefficients {
+    IterationScalingCoefficients {
+        falling_eval: FallingEvalCoefficients {
+            base: 1_000,
+            previous: 0,
+            iteration: 0,
+        },
+        best_move_stability: TimeReductionCoefficients {
+            intercept: 1_000,
+            slope: 0,
+            scale: 2_468,
+        },
+        best_move_instability: TimeInstabilityCoefficients {
+            base: 1_500,
+            slope: 0,
+        },
+        best_move_effort: TimeEffortCoefficients {
+            intercept: 1_000,
+            slope: 0,
+        },
+        stable_iterations: 2,
+    }
+}
+
+fn fixed_ponder_budget() -> TimeBudget {
+    TimeBudget {
+        byoyomi_period: false,
+        soft: Duration::from_millis(1_000),
+        hard: Duration::from_secs(60),
+    }
+}
+
+/// 固定係数で先読みの主ワーカーを実行し、完了反復の伸縮後予算を後続反復へ渡す。
+fn run_fixed_scaled_ponder(
+    depth_limit: u32,
+    clock: &dyn SearchClock,
+    hit_ns: &AtomicU64,
+    iteration_hook: impl FnMut(u32, bool) -> bool,
+) -> WorkerOutcome {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    assert!(root_moves.len() > 1);
+    let budget = fixed_ponder_budget();
+    let stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
+        node_limit: None,
+        clock,
+        hard_limit: Some(HardLimit {
+            duration: budget.hard,
+            hit_ns,
+        }),
+    };
+    let threads = worker_count(1);
+    let mut histories = crate::search::HistoryTables::new(threads);
+    let previous = PreviousSearch {
+        score_and_average: Some((0, 0)),
+        time_reduction: 1_000,
+        ponder_search_started: false,
+    };
+    run_main_worker_with_iteration_hook(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &[search_key(&position)],
+        depth_limit,
+        Some(budget),
+        Some(InstabilityScaling::new(previous, threads)),
+        &shared,
+        &small_tt(),
+        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        &mut empty_capture_history(),
+        &new_correction_values(),
+        &mut histories.continuation_correction[0],
+        &histories.continuation,
+        &histories.pawn,
+        None,
+        true,
+        false,
+        fixed_ponder_scaling_coefficients(),
+        iteration_hook,
+    )
+}
+
+/// 指定した先読み反復を持つ主ワーカーの探索器を、的中後の時計検査に通す。
+fn with_timed_ponder_searcher(
+    iteration: PonderIteration,
+    hit: Duration,
+    elapsed: Duration,
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
+    let position = Position::initial();
+    let stop = AtomicBool::new(false);
+    let hit_ns = AtomicU64::new(hit.as_nanos().try_into().unwrap());
+    let clock = ManualClock::new(elapsed);
+    let shared = SharedSearch {
+        external_stop: &stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
+        node_limit: None,
+        clock: &clock,
+        hard_limit: Some(HardLimit {
+            duration: Duration::from_secs(10),
+            hit_ns: &hit_ns,
+        }),
+    };
+    let table = small_tt();
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let mut butterfly_history =
+        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = empty_capture_history();
+    let correction_values = new_correction_values();
+    let mut searcher = new_searcher(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        0,
+        &[],
+        &shared,
+        &table,
+        &mut butterfly_history,
+        &mut capture_history,
+        &correction_values,
+        &mut histories.continuation_correction[0],
+        &histories.continuation,
+        &histories.pawn,
+    );
+    searcher.ponder_iteration = Some(iteration);
+    test(&mut searcher);
+}
+
+/// 完了反復で伸ばしたsoftは、的中後に次の反復を始める判定へ渡す。
+#[test]
+fn scaled_ponder_budget_reaches_the_post_hit_iteration_boundary() {
+    let base = fixed_ponder_budget();
+    let hit = Duration::from_secs(10);
+    let elapsed = hit + Duration::from_millis(1_100);
+    assert!(!should_start_next_iteration(elapsed, hit, base, false,));
+    let hit_ns = AtomicU64::new(u64::MAX);
+    // 深さ1の開始、進捗、境界の時計取得に続く4回目が、深さ2の開始時刻である。
+    let clock = HitOnElapsedCallClock {
+        elapsed,
+        hit,
+        calls: AtomicU64::new(0),
+        hit_on_call: 4,
+        hit_ns: &hit_ns,
+    };
+
+    let outcome = run_fixed_scaled_ponder(2, &clock, &hit_ns, |_depth, _stable| false);
+    assert_eq!(outcome.result.depth, 2);
+}
+
+/// 完了反復で伸ばしたsoftは先読み反復へ保存し、的中後の時計検査で予測を当て直す。
+#[test]
+fn scaled_ponder_budget_reaches_the_in_iteration_hit_recheck() {
+    let base = fixed_ponder_budget();
+    let hit = Duration::from_secs(10);
+    let ratio = params::iteration_ratio() as u128;
+    let base_boundary = (hit.as_nanos() + base.soft.as_nanos()).saturating_mul(100) / ratio;
+    let started = Duration::from_nanos(u64::try_from(base_boundary + 1).unwrap());
+    assert!(started < hit);
+    assert!(!iteration_prediction_fits(started, hit, base, true));
+    let scaled = scaled_time_budget(base, 1_257);
+    assert!(iteration_prediction_fits(started, hit, scaled, true,));
+    let clock = ManualClock::new(started);
+    let hit_ns = AtomicU64::new(u64::MAX);
+    let checked = std::cell::Cell::new(false);
+    let outcome = run_fixed_scaled_ponder(3, &clock, &hit_ns, |depth, stable| {
+        if depth != 3 {
+            return false;
+        }
+        assert!(stable);
+        clock.set(hit + Duration::from_millis(1));
+        hit_ns.store(hit.as_nanos().try_into().unwrap(), AtomicOrdering::Relaxed);
+        checked.set(true);
+        true
+    });
+    assert!(checked.get());
+    assert_eq!(outcome.result.depth, 3);
+}
+
+/// 最新の完了反復が詰み条件を外れた場合は記録を解除し、その後の的中では停止しない。
+#[test]
+fn completed_ponder_iteration_clears_mate_stop_before_hit() {
+    let mut mate_early_stop_on_hit = false;
+    assert!(update_ponder_mate_early_stop(
+        &mut mate_early_stop_on_hit,
+        true,
+        MATE - 1,
+    ));
+    assert!(!update_ponder_mate_early_stop(
+        &mut mate_early_stop_on_hit,
+        true,
+        DRAW_SCORE,
+    ));
+
+    let hit = Duration::from_secs(1);
+    let iteration = PonderIteration {
+        started: hit,
+        stable: false,
+        mate_early_stop: mate_early_stop_on_hit,
+        checked: false,
+        budget: TimeBudget {
+            byoyomi_period: false,
+            soft: Duration::from_secs(1),
+            hard: Duration::from_secs(10),
+        },
+    };
+    with_timed_ponder_searcher(iteration, hit, hit + Duration::from_millis(1), |searcher| {
+        assert!(searcher.check_time());
+        assert_eq!(searcher.stop_reason, None);
+    });
 }
 
 // 予測完了時刻は探索開始からの累積時間に比例し、的中までの時間を引いて予算と比べる。
@@ -417,9 +650,10 @@ fn ponder_mate_stop_waits_for_hit_and_stops_before_the_next_iteration() {
     assert_eq!(pre_hit.stop_reason, StopReason::DepthCompleted);
 
     let hit_ns = AtomicU64::new(u64::MAX);
-    // 深さ1の開始と完了境界が1、2回目であり、3回目は深さ2を始める直前となる。
+    // 深さ1の開始と進捗が1、2回目であり、3回目の境界時刻の取得後に的中する。
     let clock = HitOnElapsedCallClock {
         elapsed: Duration::from_millis(1),
+        hit: Duration::from_millis(1),
         calls: AtomicU64::new(0),
         hit_on_call: 3,
         hit_ns: &hit_ns,

@@ -60,7 +60,8 @@ use crate::search::alphabeta::correction::{
     new_correction_values,
 };
 use crate::search::alphabeta::deepening::{
-    auxiliary_depths, run_auxiliary_worker, run_main_worker,
+    IterationScalingCoefficients, auxiliary_depths, run_auxiliary_worker, run_main_worker,
+    run_main_worker_with_iteration_hook, update_ponder_mate_early_stop,
 };
 use crate::search::alphabeta::history::{
     HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, pawn_key,

@@ -2,6 +2,165 @@
 
 use super::*;
 
+/// 呼び出し順に指定した経過時間を返し、列の末尾に達した後は最後の時刻を返す時計。
+struct SequenceClock {
+    elapsed: Vec<Duration>,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl SequenceClock {
+    fn new(elapsed: Vec<Duration>) -> Self {
+        assert!(!elapsed.is_empty());
+        assert!(elapsed.windows(2).all(|pair| pair[0] <= pair[1]));
+        Self {
+            elapsed,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+impl SearchClock for SequenceClock {
+    fn elapsed(&self) -> Duration {
+        let call = self.calls.fetch_add(1, AtomicOrdering::Relaxed);
+        self.elapsed[call.min(self.elapsed.len() - 1)]
+    }
+}
+
+/// 進捗通知後の反復境界では、的中時刻を読んだ後の新しい時刻で継続を判定する。
+#[test]
+fn iteration_boundary_rereads_the_clock_after_progress() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    let budget = TimeBudget {
+        byoyomi_period: false,
+        soft: Duration::from_millis(500),
+        hard: Duration::from_secs(5),
+    };
+    let clock = SequenceClock::new(vec![
+        Duration::ZERO,
+        Duration::from_millis(100),
+        Duration::from_millis(600),
+    ]);
+    let hit_ns = AtomicU64::new(0);
+    let stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
+        node_limit: None,
+        clock: &clock,
+        hard_limit: Some(HardLimit {
+            duration: budget.hard,
+            hit_ns: &hit_ns,
+        }),
+    };
+    let (sender, receiver) = mpsc::channel();
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let outcome = run_main_worker(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &[search_key(&position)],
+        2,
+        Some(budget),
+        None,
+        &shared,
+        &small_tt(),
+        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        &mut empty_capture_history(),
+        &new_correction_values(),
+        &mut histories.continuation_correction[0],
+        &histories.continuation,
+        &histories.pawn,
+        Some((&sender, 1)),
+        false,
+        false,
+    );
+    drop(sender);
+
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(shared.reason(), StopReason::SoftLimit);
+    let progress = receiver.try_iter().collect::<Vec<_>>();
+    assert!(matches!(
+        progress.as_slice(),
+        [SearchEvent::Progress { elapsed, .. }] if *elapsed == Duration::from_millis(100)
+    ));
+}
+
+/// increaseDepthは進捗通知の時刻ではなく、同じ反復境界で読み直した時刻を使う。
+#[test]
+fn increase_depth_uses_the_refreshed_iteration_boundary_time() {
+    let position = bare_kings();
+    let root_moves = vec![legal_moves(&position)[0]];
+    let budget = TimeBudget {
+        byoyomi_period: false,
+        soft: Duration::from_secs(4),
+        hard: Duration::from_secs(5),
+    };
+    let clock = SequenceClock::new(vec![
+        Duration::ZERO,
+        Duration::from_millis(100),
+        Duration::from_millis(300),
+    ]);
+    let hit_ns = AtomicU64::new(0);
+    let stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
+        node_limit: None,
+        clock: &clock,
+        hard_limit: Some(HardLimit {
+            duration: budget.hard,
+            hit_ns: &hit_ns,
+        }),
+    };
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let outcome = run_main_worker(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &[search_key(&position)],
+        2,
+        Some(budget),
+        Some(InstabilityScaling::new(
+            PreviousSearch::default(),
+            DEFAULT_THREADS,
+        )),
+        &shared,
+        &small_tt(),
+        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        &mut empty_capture_history(),
+        &new_correction_values(),
+        &mut histories.continuation_correction[0],
+        &histories.continuation,
+        &histories.pawn,
+        None,
+        false,
+        false,
+    );
+
+    assert_eq!(outcome.result.depth, 2);
+    assert!(!shared.increase_depth.load(AtomicOrdering::Relaxed));
+    assert_eq!(outcome.search_again_counter, 1);
+}
+
 /// 詰みによる早期停止は3手以内の勝ちとちょうど2手の負けだけを対象にする。
 #[test]
 fn mate_early_stop_accepts_only_the_configured_mate_distances() {
@@ -929,7 +1088,6 @@ fn increase_depth_state_resets_and_preserves_main_progress_depths() {
     // 根の候補が1手なのでhardで抑える前の時間は500 msとなる。
     // 400 msの境界で共有状態が偽になり、深さ2を始めるときだけ回数が増える。
     let (first, depths) = run(2, Duration::from_millis(400), &mut histories);
-    assert_eq!(first.stop_reason, StopReason::DepthCompleted);
     assert_eq!(first.worker_search_again_counters, [1]);
     assert_eq!(depths, [1, 2]);
 

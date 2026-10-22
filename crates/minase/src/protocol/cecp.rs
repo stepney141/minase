@@ -928,7 +928,8 @@ impl TimeControl {
     ///
     /// 残り時間がなければ時計は作らず、保持した`st`と`sd`を併せて制限にする。
     /// 制限が1つもなければ`None`を返し、呼び出し側は`tellusererror search limits are not set`を出す。
-    /// 時計があり、相手の残り時間がなければ、探索を始める時点で[`SearchLimits::new`]が拒否する。
+    /// 時計があり、相手の残り時間も`st`による固定時間もなければ、探索を始める時点で
+    /// [`SearchLimits::new`]が拒否する。
     /// `level`の初期持ち時間を相手の残り時間として補わない。
     fn search_limits(&self, ply: u32) -> Result<Option<SearchLimits>, search::SearchError> {
         let clock = self
