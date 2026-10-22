@@ -10,18 +10,30 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 具体的には、初期の半幅を根の値の大きさとともに広げ、中心には、直前の反復の最善手を根で読むたびに得た値を探索ノード数で重み付けした平均を置く。
 窓は深さ2以上のすべての反復で使い、外れたときは返った値を基準に窓を移して反対側の端も寄せ、fail highが続くときは読み直しを浅くする。
 新しい1係数と、形を変える既存の2係数は、Stockfishの値を換算して開始値とし、ほかの係数とまとめてSPSA（simultaneous perturbation stochastic approximation、全係数を同時に少しずらした2つの設定を対局させて係数を動かす調整法）で調整する。
-[探索の関数形の見直しの統括計画](search-forms.md)の決定により、調整した版は、起点との短時間条件STCの逐次検定の結果によらず採用し、STCは記録として残す。
+[探索の関数形の見直しの統括計画](../search-forms.md)の決定により、調整した版は、起点との短時間条件STCの逐次検定の結果によらず採用し、STCは記録として残す。
 完了条件は、形の変更の検証、SPSA、事前対局、およびSTCが測定記録に残り、候補がmasterへ統合されることである。
+STCは上限の3,000ペアで判定保留（約+8.6 Elo）となり、本書の変更は採用した。
 
 ## 状態
 
-進行中。2026年10月21日に、[統括計画](search-forms.md)のサブタスク6として、利用者の指示を受けて着手した。
-次の一手は、フェーズ1（形の変更の実装）である。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年10月17日に起案し、2026年10月21日に[統括計画](../search-forms.md)のサブタスク6として着手して、2026年10月22日に完了した。
+挙動を変えない移行2項目（M1とM2）と、5項目（A1〜A5）の形の変更を実装し、91個の係数を30,000ペアのSPSAで調整した値を反映した版を、1つの候補として採用した。
+設計判断は、[窓の形のADR](../../adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)と[fail highの減深のADR](../../adr/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)に移した。
+起点のコードとの照合の結果、次の4点を決めた。これらはClaudeの判断である。
+反復の深さと窓の深さを分け、`root_depth`と詰みを探す印は反復の深さで、根のLMR、子の探索、historyとcorrectionの更新、および置換表への保存は窓の深さで扱う。
+浅い窓の結果が置換表の置換規則によって深い記録を上書きしないという、Stockfishとの挙動の差を受け入れ、根だけの置換規則を設けない。
+根の手ごとの平均の更新は、Stockfishの整数の結果と同じく床関数で丸める。
+2つのワーカーでR1の反復を評価するテストは、A5の減深を受けて深さ上限を4にする。
+SPSAの結果、`AspirationDelta`は2%から100%へ、`AspirationScoreWidth`は204%から63%へ、`AspirationGrowth`は137%から146%へ動いた。初期の半幅の定数項は、Stockfishの換算値ではなく起点とほぼ同じ値が選ばれた。
+形の変更は、1つのコアに固定して測ったNPSを約2.2%下げ、深さ9のbenchの探索ノード数を約14.8%減らした。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+測定の記録は、[benchのノード数と探索速度](../../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)、[時間切れの事前確認](../../measurements/aspiration-window-forms/aspiration-window-forms-safety.md)、[SPSA](../../measurements/aspiration-window-forms/aspiration-window-forms.md)、[事前対局](../../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)、および[STC](../../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)にある。
 
 ## 目的
 
 本書が確かめるのは、「aspiration windowsをStockfishの形にそろえて係数を調整し直せば、起点の形で調整した探索より強くなる」という仮説である。
-起点の形は、[aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が2026年9月に決めたものであり、当時の既定の評価関数はPST（駒の種類と升ごとの値の表による評価）だった。
+起点の形は、[aspiration windowsのADR](../../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が2026年9月に決めたものであり、当時の既定の評価関数はPST（駒の種類と升ごとの値の表による評価）だった。
 2026年10月12日に既定の評価関数がNNUE（差分更新できる小型のニューラルネットワーク）へ置き換わった後、窓の形は測り直していない。
 窓の2係数`AspirationDelta`と`AspirationGrowth`は、先行する5本のサブタスクのSPSAでも調整し直されたが、窓の形そのものは比べていない。
 評価値の大きさによる幅の違い、反復ごとの値の揺れを均した中心、大きく外れたときの窓の移し方、およびfail highのときの減深は、起点の形に仕組みがないので、係数の値を変えても表せない。
@@ -35,10 +47,10 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 
 本書の用語を次のように定める。
 
-- **起点**は、前計画（[静止探索の形](archived/qsearch-forms.md)）が完了した後のmasterの先頭のコミット`03f5d79d`である。
+- **起点**は、前計画（[静止探索の形](qsearch-forms.md)）が完了した後のmasterの先頭のコミット`03f5d79d`である。
 - **形の変更**は、本書の項目を実装したコミット列であり、係数を開始値に置く。
 - **候補**は、形の変更の上に、SPSAの最終値を`minase spsa apply`で表（`crates/minase/src/search/alphabeta/params.rs`）の既定値へ書き込んだコミットである。
-- **STC**は、10秒＋1手0.1秒の持ち時間で行う自己対局の逐次検定である（[SPRTの手引き](../guides/sprt.md)）。
+- **STC**は、10秒＋1手0.1秒の持ち時間で行う自己対局の逐次検定である（[SPRTの手引き](../../guides/sprt.md)）。
 - **ワーカー**は、Lazy SMP（複数のスレッドが置換表を共有して同じ局面を探索する並列化）の各探索スレッドであり、主ワーカーの番号は0、補助ワーカーは1から数える。SPSAとSTCは`Threads=1`で行うので、対局で動くのは主ワーカーだけである。
 - **根の手**は、根の局面の合法手である。各ワーカーは、USIの`go`コマンドで探索を始めるたびに、根の手ごとの記録を空にする。
 - **反復の深さ**`d`は、反復深化のその回の深さであり、進捗の通知と探索結果の深さに使う。**窓の深さ**`D`は、その反復の中で1つの窓を読むときに根の探索へ渡す深さである。fail highの減深（後述のA5）を入れる前は、常に`D = d`である。
@@ -60,52 +72,52 @@ minaseの探索は反復深化、つまり深さ1から1手ずつ深くして探
 
 次の事項は対象外とする。
 
-- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
+- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](../time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
 - 評価値の平均から評価関数の楽観度（optimism）を調整する項（Stockfish `src/search.cpp:397-399`）。評価関数の側の変更であり、minaseのNNUEは楽観度の入力を持たない。
 - fail lowのときに先読みの的中で止める指示を取り消す処理（Stockfish `src/search.cpp:443-444`の`stopOnPonderhit`）。先読みの扱いは時間管理の側の仕組みであり、本書の範囲外である。
-- 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
-- 窓のたびに根の手を値で安定整列すること（Stockfish `src/search.cpp:414`）。minaseは、置換表の手、秒読みの時計で探索する主ワーカーでは直前の最善手、および前回の完了反復の部分木ノード数で根の手を並べる（[根の手の並べ方のADR](../adr/order-root-moves-by-previous-subtree-nodes.md)）。本書はこの並べ方を変えない。
+- 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
+- 窓のたびに根の手を値で安定整列すること（Stockfish `src/search.cpp:414`）。minaseは、置換表の手、秒読みの時計で探索する主ワーカーでは直前の最善手、および前回の完了反復の部分木ノード数で根の手を並べる（[根の手の並べ方のADR](../../adr/order-root-moves-by-previous-subtree-nodes.md)）。本書はこの並べ方を変えない。
 - 複数の主変化を探索するMultiPVのループ。Stockfishは窓の処理をこのループの中に置き、持ち越しを1本目の主変化（`pvIdx == 0`）でだけ更新する。minaseは主変化を1本だけ探索するので、1本目の処理だけを移す。
 - 根の2手目以降の値がαを超えたときの読み直しの条件。Stockfishは値がβ以上でも全窓で読み直すが（`src/search.cpp:1442`）、minaseの`search_move`は値がαとβの間にあるときだけ読み直す。M2は、起点の`search_move`が返す最終の値と、その手に使った全ノード数を記録する。
 - 根で手を1つ読むたびに共有の停止の印を調べること（Stockfish `src/search.cpp:1467-1468`）。minaseでは、中断された手の探索は値を返さないので、M2はその手を記録しない。
 
 ## 依存関係
 
-起点は、[連鎖の1つ前の設計書](archived/qsearch-forms.md)が完了した後のmasterの先頭である。
-連鎖の先行する5本（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)、[浅い枝刈りの拡張](archived/shallow-pruning-extensions.md)、[historyの形](archived/history-forms.md)、[correction historyの表](archived/correction-history-tables.md)、[静止探索の形](archived/qsearch-forms.md)）はいずれも採用され、その実装とSPSAの最終値は起点に入っている。
+起点は、[連鎖の1つ前の設計書](qsearch-forms.md)が完了した後のmasterの先頭である。
+連鎖の先行する5本（[枝刈りとLMRの関数形](search-pruning-forms.md)、[浅い枝刈りの拡張](shallow-pruning-extensions.md)、[historyの形](history-forms.md)、[correction historyの表](correction-history-tables.md)、[静止探索の形](qsearch-forms.md)）はいずれも採用され、その実装とSPSAの最終値は起点に入っている。
 本書の開始値は、起点の表の既定値のうち、本書が形を変える2係数を本書の開始値に置き換え、新しい1係数を加えたものである。
-本書は先行の5本の仕組みを使わず、連鎖の次の[持ち時間の伸縮](time-instability-scaling.md)が本書のM2とA5を使う。
+本書は先行の5本の仕組みを使わず、連鎖の次の[持ち時間の伸縮](../time-instability-scaling.md)が本書のM2とA5を使う。
 
-SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../guides/spsa.md)に、対局の手順は[SPRTの手引き](../guides/sprt.md)に従う。
-時間切れの事前確認、SPSAのセッション、事前対局、およびSTCは、[統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
+SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、対局の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
+時間切れの事前確認、SPSAのセッション、事前対局、およびSTCは、[統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
 反映とテスト、および形の変更の検証は、lishogiのBotと共用する手元の測定機で行う。
-実装はcodexへ委任する（[委任の手引き](../guides/codex-delegation.md)）。
+実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 本書は次のADRの決定を変える。
 完了時に、起点の時点で有効なADRを確認し、新しいADRで置き換える。
 本書が変えない決定、つまり窓外れの途中経過を出力しないこと、および補助ワーカーが自分の探索の記録だけで窓を置くことも、新しいADRへ引き継ぐ。
 
-- [aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](archived/strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
+- [aspiration windowsのADR](../../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)は2026年9月12日に、深さ5以上で直前の完了値を中心に窓を置き、外れた側の端だけを元の端から広げ、fail highのときに浅く読み直さないと決めた。窓の実装を採用した[STC](../../measurements/strength-stage6/strength-stage6-aspiration-stc.md)と[LTC](../../measurements/strength-stage6/strength-stage6-aspiration-ltc.md)は、PSTを既定の評価関数としていた時期の測定である。窓を使い始める深さ5は、当時のSTCの完了深さの最頻値が6だったことから選んだ値であり、測って選んだ値ではない。外れなかった側の端を中点へ寄せる案は、窓の意味を複雑にするという設計上の判断で棄却され、測られていない。fail highの回数だけ読み直しを浅くする方式は、[棋力向上段階12](strength-stage12.md)のSTCで改善を示せない判定`H0`となって棄却された（[測定記録](../../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。この測定もPSTの時期のもので、2026年9月27日に行われ、当時のminaseはStockfishの`failHighRecovery`に当たる持ち越しを持たなかった。ADRは、この方式を再び提案するなら新しい構成で別の主張として段階ゲートにかけることを求めているが、2026年10月17日の利用者の決定により、本書はこの方式を他の項目と同じ候補に含める。本書は、窓を使い始める深さ、中心、窓の移し方、およびfail highのときの減深の決定をすべて置き換える。
 
-[深さを飛ばすADR](../adr/diversify-lazy-smp-workers-by-skipping-depths.md)による補助ワーカーの多様化は変えず、A2のワーカー番号の項はそれに加わる。
-[反復の結果の帯のADR](../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が定めた窓の端の保護、つまり詰み帯または専用の帯に達した端を無限へ置き換える扱いは変えない。
-置換表の置換規則（[静止探索の置換表のADR](../adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)が理由を記す、同じ局面では既存以上の深さの結果だけを書き込む規則）も変えない。
+[深さを飛ばすADR](../../adr/diversify-lazy-smp-workers-by-skipping-depths.md)による補助ワーカーの多様化は変えず、A2のワーカー番号の項はそれに加わる。
+[反復の結果の帯のADR](../../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が定めた窓の端の保護、つまり詰み帯または専用の帯に達した端を無限へ置き換える扱いは変えない。
+置換表の置換規則（[静止探索の置換表のADR](../../adr/probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)が理由を記す、同じ局面では既存以上の深さの結果だけを書き込む規則）も変えない。
 
 ## 設計判断
 
 | 項目 | 決定 |
 |---|---|
-| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整する。[不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../adr/adopt-revived-search-items-as-a-bundle.md)）。採否は、統括計画の設計判断「各サブタスクの採否」により、STCの結果によらず採用とし、STCは記録として行う。項目ごとにSPSAを繰り返す案は、1項目あたり調整機での事前確認とSPSAに約8〜18時間と約15〜35米ドルを要するので採らない。このため、項目ごとの寄与は測らない。 |
+| 候補の束ね方 | 全項目を1つの候補とし、既存の係数とまとめて1回のSPSAで調整する。[不採用だった探索部の改良の再調整](search-revival-spsa.md)が8項目をこの方式で採用した先例に従う（[ADR](../../adr/adopt-revived-search-items-as-a-bundle.md)）。採否は、統括計画の設計判断「各サブタスクの採否」により、STCの結果によらず採用とし、STCは記録として行う。項目ごとにSPSAを繰り返す案は、1項目あたり調整機での事前確認とSPSAに約8〜18時間と約15〜35米ドルを要するので採らない。このため、項目ごとの寄与は測らない。 |
 | 開始値 | 2026年10月17日の利用者の決定により、新しい係数の開始値はStockfishの値の換算値とする。同じ日の利用者の決定により、Stockfishに同じ形の値がある既存の係数も換算値に置き直す。本書でこれに当たるのは`AspirationDelta`と`AspirationGrowth`の2つだけであり、ほかの係数は起点の表の既定値から始める。挙動を変えない移行（M1、M2）のコミットだけをノード数の一致で検証し、それ以外のコミットでは`minase dev bench`のノード数の変化を記録する。 |
 | 換算の単位 | minaseの係数は歩兵価値に対する百分率で表す。Stockfishの評価値は歩兵価値208を単位とし（`src/types.h:199`）、起点の埋め込みネットの歩兵価値は100である。Stockfishの値`x`は歩兵価値の`100x/208`%に換算する。 |
-| SPSAで調整する値と固定する定数 | 2026年10月17日の利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値だけとし、上下限、平均の重み、および更新の内部の定数はStockfishの値で固定する。本書で調整するのは初期の半幅の定数項、評価値の大きさの項の重み、および拡大率の3係数である。平均の重みの定数と減深の回数の規則は、変更の内容の節の「固定する定数」の表に行番号つきでまとめる。ワーカー番号の項も換算値で固定する。SPSAとSTCは`Threads=1`で行い（[Threadsの既定値のADR](../adr/keep-default-threads-at-one.md)）、動くのは番号0の主ワーカーだけなので、この項は対局では働かない。 |
+| SPSAで調整する値と固定する定数 | 2026年10月17日の利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値だけとし、上下限、平均の重み、および更新の内部の定数はStockfishの値で固定する。本書で調整するのは初期の半幅の定数項、評価値の大きさの項の重み、および拡大率の3係数である。平均の重みの定数と減深の回数の規則は、変更の内容の節の「固定する定数」の表に行番号つきでまとめる。ワーカー番号の項も換算値で固定する。SPSAとSTCは`Threads=1`で行い（[Threadsの既定値のADR](../../adr/keep-default-threads-at-one.md)）、動くのは番号0の主ワーカーだけなので、この項は対局では働かない。 |
 | 評価値の単位を持つ係数の範囲 | 2026年10月17日の利用者の決定により、式の形と開始値はStockfishに合わせ、値はminaseのSPSAが決める。評価値の単位を持つ係数の範囲は、Stockfishの換算値（歩兵価値208で割る）、YaneuraOuの換算値（歩兵価値90で割る）、および起点の値の3つをすべて含むように取る。中将棋は将棋ともチェスとも異なるゲームであり、YaneuraOuは同じ形の定数を将棋向けに調整し直しているからである。3つの値は係数の表に並べる。開始値が他の2つから遠いのは`AspirationDelta`であり、開始値2%は起点の97%の約1/48、YaneuraOuの約5.6%の約1/3である。`AspirationScoreWidth`の開始値204%も、起点の0（評価値の項がない形）とYaneuraOuの約100%から離れている。 |
 | SPSAの対象 | 起点の表の調整対象の90係数（`FmScale`を除く）に、新しい1係数`AspirationScoreWidth`を加えた91係数とする。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで91係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../research/spsa-iteration-budget.md)）。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。30,000ペアで91係数を十分に調整できるかは未検証である。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
 | 根の手ごとの記録（M2） | 各ワーカーの探索状態（`Searcher`）に、根の手と記録の組の列を持たせ、根の手は`Move`の等値で探す。根の手は窓のたびに並べ替わるので、並べ替えた後の添字では対応させない。記録の寿命は`go`ごとであり、起点が反復ごとに持つ部分木ノード数の記録（`completed_root_nodes`と`current_root_nodes`）とは寿命が違うので、それらを流用しない。ワーカーの探索状態は`go`ごとに作られるので、空の列で初期化すれば`go`ごとに空にする要件を満たす。先読みの的中は探索を作り直さないので、先読み中の記録はそのまま使い続ける。Stockfishと同じく、窓外れのときの値や、2手目以降を零窓（幅1の窓）で読んだときの上界も記録に入れ、重みはその手の今回の探索ノード数とそれまでの累計の比で決める（`src/search.cpp:1474-1495`）。探索が中断された手の値は入れない（`src/search.cpp:1467-1468`）。 |
 | 平均の丸め（M2） | 平均と符号つき2乗の平均の更新は、負の無限大の方向へ丸める（床関数）。Stockfishは重みと尺度を符号なし64ビット整数で持ち、負の値を含む積和も符号なしで計算してから32ビットへ切り詰めるので、整数の結果は床関数と一致する（`src/search.cpp:1480-1501`）。本書の他の除算は、起点の`params.rs`と同じく0方向へ丸める。 |
 | 窓の中心（A1、averageScore） | 次の反復の窓の中心には、直前の完了反復の最善手`b`の平均`a(b)`を使う。`search_iteration`には、起点の直前の完了値に代えて、直前の完了反復の最善手と値の組を渡す。平均と2乗の平均は、その手をキーとしてワーカー自身の記録から読む。値は、起点と同じく詰みを探す印（`is_seek_mate`、Stockfish `src/search.cpp:395`の`seekMate`）の判定に使う。主ワーカーの`RootResults::previous_best`は秒読みの時計で探索する主ワーカーだけが持つので、窓の中心の入力には使わない。 |
-| 帯の値と中心 | Stockfishと同じく、詰み帯と専用の帯の値も平均に入れる。ただし、中心が詰み帯または専用の帯にある反復は、起点と同じく全窓で読む。[反復の結果の帯のADR](../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が窓の端に施した保護を、中心にも適用するためである。この保護は中将棋の反復の扱いから来るminaseの仕組みであり、2026年10月17日の利用者の決定により、Stockfishにない仕組みでも残す。 |
+| 帯の値と中心 | Stockfishと同じく、詰み帯と専用の帯の値も平均に入れる。ただし、中心が詰み帯または専用の帯にある反復は、起点と同じく全窓で読む。[反復の結果の帯のADR](../../adr/reserve-a-path-dependent-band-for-repetition-outcomes.md)が窓の端に施した保護を、中心にも適用するためである。この保護は中将棋の反復の扱いから来るminaseの仕組みであり、2026年10月17日の利用者の決定により、Stockfishにない仕組みでも残す。 |
 | 初期の半幅（A2） | Stockfishの`delta = 5 + threadIdx % 8 + |meanSquaredScore|/10193`（`src/search.cpp:389`）を換算する。定数項5は歩兵価値の約2.4%なので、`AspirationDelta`の開始値を2とする。2乗の平均の項は係数`AspirationScoreWidth`で表し、開始値は約204%とする。この係数は、根の値が歩兵価値の10倍で一定のときに半幅へ加わる量を、歩兵価値に対する百分率で表す。ワーカー番号の項は、番号`k`について`(k mod 8)`をStockfishの単位で加える形を、歩兵価値で換算して固定する。起点の埋め込みネットでは、番号0〜7に対して0、0、0、1、1、2、2、3になる。ワーカー番号は、ワーカーの探索状態を作る`new_searcher`の引数として、主ワーカーには0、補助ワーカーには起点で割り当て済みの番号を渡す。 |
 | 半幅の下限と拡大の丸め（M1） | 初期の半幅は1以上とし、拡大は`max(δ + 1, ⌊δ × AspirationGrowth/100⌋)`として、丸めた後も必ず1以上広がるようにする。起点の拡大`⌊δ × AspirationGrowth/100⌋`は整数除算なので、半幅が3以下で倍率が125%前後なら半幅が広がらないことがある。A2の開始値では、根の値が小さいと初期の半幅は2になり得る。Stockfishの拡大`delta += 47 × delta/128`（`src/search.cpp:455`）も、Stockfishの初期の半幅が5以上なので丸めで止まることはない。起点の埋め込みネットの歩兵価値は100で、`AspirationDelta`の起点の値97%では初期の半幅は97なので、M1は起点の探索を変えない。歩兵価値の小さい重みファイルでは初期の半幅の下限が働くことがあるので、探索が変わらないという主張は、歩兵価値が100の埋め込みネットを前提にしたものである。 |
 | 窓を深さ2以上で使う（A3） | Stockfishは全深さで同じ窓の式を使う（`src/search.cpp:389-392`）。ただし、深さ1では根の手の平均がまだなく、平均は初期値の`−VALUE_INFINITE`、2乗の平均は`−VALUE_INFINITE²`なので（`src/search.h:154-158`）、主ワーカーの初期の半幅は約100,472となり、窓は全窓になる。minaseの深さ1には直前の完了反復がなく、最善手の平均もないので、全窓で読む。これはStockfishの深さ1と同じ窓である。深さ2以上では、直前の完了反復の最善手に平均があれば窓を使う。 |
@@ -205,7 +217,7 @@ fail highで元のαが負の無限でも、`β − δ`が`−REPETITION_BAND_ST
 深さ`d`の反復を始めるとき、`r ← max(0, r − 2)`とし、fail highの回数`h`を0にする。
 補助ワーカーが深さを飛ばす場合も、実際に行う反復ごとに1回だけ2を引く。
 窓で読むたびに、窓の深さを`D = max(1, d − h − r)`とする。
-Stockfishの式には読み直しの回数の項`3 × (searchAgainCounter + 1)/4`もあるが、回数が0なら値は0なので、本書では置かず、[時間管理の設計書](time-instability-scaling.md)のT7がこの式へ追加する。
+Stockfishの式には読み直しの回数の項`3 × (searchAgainCounter + 1)/4`もあるが、回数が0なら値は0なので、本書では置かず、[時間管理の設計書](../time-instability-scaling.md)のT7がこの式へ追加する。
 fail highのたびに`h`を1増やし、fail lowのたびに`h`を0に戻す。
 窓外れの読み直しを経た場合も含め、窓の内側で反復を完了したとき、`h > 0`なら`r ← (h + 1)/2 + 2`とする。`h = 0`で完了したときは、反復の開始時に減らした`r`をそのまま保つ。
 根の探索`search_root`は、反復の深さ`d`と窓の深さ`D`を受け取り、設計判断の「反復の深さと窓の深さ」の表のとおりに使い分ける。
@@ -245,7 +257,7 @@ SPSAで調整する3係数を次に示す。
 ## 所要時間の見積り
 
 時間切れの事前確認、SPSA、事前対局、およびSTCは調整機で、形の変更の検証、反映、およびテストは測定機で行う。
-SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の5本のサブタスクは、同じ規模の調整機で事前確認からSTCまで約8〜10時間、約16〜21米ドルだった。
+SPSAの所要時間は、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の5本のサブタスクは、同じ規模の調整機で事前確認からSTCまで約8〜10時間、約16〜21米ドルだった。
 M2は根で手を読むたびに記録を更新するので、探索速度が下がれば、持ち時間の換算係数を通じて所要時間が延びる。
 
 | 段階 | 内容 | 見積り |
@@ -261,7 +273,7 @@ M2は根で手を読むたびに記録を更新するので、探索速度が下
 ## 実装フェーズ
 
 基本シードは、時間切れの事前確認を4700000000、SPSAのセッションを4750000000、事前対局を4800000000、STCを4850000000とする。
-着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`、`data/spsa/`、および`data/vast-spsa/`の記録）から各測定のペア数以上離れていることを確かめた（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
+着手時に、保存済みの測定とSPSAの基本シード（`data/matches/`、`data/spsa/`、および`data/vast-spsa/`の記録）から各測定のペア数以上離れていることを確かめた（[教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 測定機で探索速度を測る前と各測定の開始前に、ほかの対局測定、SPSA、教師生成、および学習が動いていないことを実行ファイル名で確かめる。
 
 ### フェーズ1　形の変更の実装
@@ -283,11 +295,11 @@ A1とA3は、中心を平均に変えると深さ5で窓を使い始める理由
 
 M1とM2のコミットでは、`minase dev bench`の全15局面を深さ3、5、7のそれぞれで探索し、局面ごとの探索ノード数、評価値、および最善手が起点と一致することを確かめる。
 A1からA5の各コミットでは、同じbenchの局面ごとの探索ノード数、評価値、および最善手を記録し、直前のコミットとの差を残す。A5以後のbenchの深さは反復の深さである。
-M2は根で手を読むたびに記録を更新するので、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、M1とM2のコミットで交互に3回ずつ測り、M2だけの探索速度の変化を記録する（[教訓](../lessons/pin-bench-to-performance-core.md)）。起点とM2を比べると、M1による変化が混ざって分けられないからである。
+M2は根で手を読むたびに記録を更新するので、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、M1とM2のコミットで交互に3回ずつ測り、M2だけの探索速度の変化を記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。起点とM2を比べると、M1による変化が混ざって分けられないからである。
 あわせて、起点と最後のコミットの探索速度も同じ方法で測る。
 新しい係数は`params.rs`の表へ追加し、既存の2係数の既定値と範囲を上の表のとおり書き換え、調整用ビルド（`--features tuning`つきのビルド）が`Tune_<係数名>`のUSIオプションとして宣言することを確かめる。
 
-新しい式の単体テストは、式の写しではなく数値の例で書き、係数を引数で渡せる関数に固定の係数を渡して確かめる（[テストの手引き](../guides/testing.md)）。
+新しい式の単体テストは、式の写しではなく数値の例で書き、係数を引数で渡せる関数に固定の係数を渡して確かめる（[テストの手引き](../../guides/testing.md)）。
 数値の例には次を含める。
 
 - M2の重みの下限12と上限24、2乗の平均の重みの上限16、`N = 0`の手、負の値の床関数による丸め、および中断した手を記録しないこと。
@@ -315,12 +327,12 @@ cargo test -p minase --lib --features search-stats,tuning
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
 形の変更の最後のコミットでビルドした`minase`を`data/spsa/aspiration-window-forms-runner/`へ複製してrunner（測定を実行するプログラム）として固定し、測定機で行う以後のフェーズはこのrunnerで実行する。
-時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
+時間切れの事前確認とSPSAのセッションは[SPSAの手引き](../../guides/spsa.md)の調整機の手順で実行し、調整機では同じコミットからビルドしたrunnerを使う。
 `minase spsa params --engine commit:<形の変更> --rules engine-default`で既定のパラメーターファイルを生成し、`FmScale`の行を削除したファイルを`data/spsa/aspiration-window-forms.params`とする。
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、前の設計書と同じく使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-パラメーターファイルの写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/aspiration-window-forms-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+パラメーターファイルの写しの開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/aspiration-window-forms-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 
 ```console
 <調整機のminase> spsa \
@@ -330,7 +342,7 @@ cargo test -p minase --lib --features search-stats,tuning
   --iterations <事前確認の反復数> --pairs-per-iteration 8
 ```
 
-`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
+`time_forfeits`（時間切れの件数）が1件でもあれば、[デバッグの手引き](../../guides/debugging.md#時間切れと時間管理)の手順で原因を調べ、該当する係数の範囲を狭める案を利用者に示してから本番へ進む。
 結果は測定記録`aspiration-window-forms-safety`に残す。
 完了条件は、時間切れとエンジン異常が0件であることと、測定記録の保存である。
 
@@ -360,7 +372,7 @@ cargo test -p minase --lib --features search-stats,tuning
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 STCの前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
-事前対局とSTCは、[統括計画](search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
+事前対局とSTCは、[統括計画](../search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
@@ -374,7 +386,7 @@ STCの前に、候補が時間切れやエンジン異常を起こさないこ�
 
 ### フェーズ5　STC
 
-2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](../search-forms.md)の設計判断「各サブタスクの採否」）。
 STCは、統括計画のフェーズ10で強くなっていなかった場合に、どのサブタスクで後退したかの手がかりにするための記録として行い、LTCは行わない。
 STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
@@ -385,8 +397,8 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
   --each time=10000+100 --concurrency <調整機の同時対局数> gsprt --max-pairs 3000
 ```
 
-逐次検定の停止規則は[SPRTの手引き](../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`aspiration-window-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 
@@ -410,9 +422,9 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 
 ## 参考資料
 
-- [探索と時間管理の係数の関数形に関する既存実装との比較](../research/search-coefficient-forms-prior-art.md)。
+- [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。減深の回数と持ち越しの宣言は335〜336行、初期の窓は389〜392行、詰みを探す印は395行、減深は403〜412行と461〜462行、窓のたびの根の手の整列は414行、窓外れの処理は437〜455行、完了した反復の出力は516〜518行、`increaseDepth`は634行、根の置換表の手は839〜840行、根の2手目以降の読み直しは1442行、根の手の平均の更新は1466〜1501行。`src/search.h`の154〜158行（根の手の記録と初期値）、`src/thread.cpp`の306〜318行（根の手の表の作成）、`src/types.h`の199行（歩兵価値）、`src/tt.cpp`の109行（置換の条件）。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。初期の窓は1670〜1673行、半幅の拡大は1795行。
-- [aspiration windowsのADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../measurements/strength-stage6/strength-stage6-aspiration-stc.md)および[段階12のSTC](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)。
-- [不採用だった探索部の改良の再調整](archived/search-revival-spsa.md)と[一括採用のADR](../adr/adopt-revived-search-items-as-a-bundle.md)。
-- [SPSAによる係数調整の手引き](../guides/spsa.md)と[SPRTによる棋力測定の手引き](../guides/sprt.md)。
+- [aspiration windowsのADR](../../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)と、その根拠の[段階6のSTC](../../measurements/strength-stage6/strength-stage6-aspiration-stc.md)および[段階12のSTC](../../measurements/strength-stage12/strength-stage12-aspiration-stc.md)。
+- [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
+- [SPSAによる係数調整の手引き](../../guides/spsa.md)と[SPRTによる棋力測定の手引き](../../guides/sprt.md)。

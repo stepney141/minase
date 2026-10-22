@@ -2,7 +2,7 @@
 
 ## 目的
 
-[aspiration windowsの幅と窓の移し方の見直しの設計書](../../plans/aspiration-window-forms.md)のフェーズ4として、SPSAの最終値を反映した候補がSTCの条件で時間切れやエンジン異常を起こさないことを確かめ、時間の使い方の変化を見るために、起点と32ペアを対局させる。
+[aspiration windowsの幅と窓の移し方の見直しの設計書](../../plans/archived/aspiration-window-forms.md)のフェーズ4として、SPSAの最終値を反映した候補がSTCの条件で時間切れやエンジン異常を起こさないことを確かめ、時間の使い方の変化を見るために、起点と32ペアを対局させる。
 棋力の判定には使わない。
 
 ## コマンドライン

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[aspiration windowsの幅と窓の移し方の見直しの設計書](../../plans/aspiration-window-forms.md)のフェーズ3として、形の変更の最後のコミット`7631da34`の91係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
+[aspiration windowsの幅と窓の移し方の見直しの設計書](../../plans/archived/aspiration-window-forms.md)のフェーズ3として、形の変更の最後のコミット`7631da34`の91係数をSPSAで30,000ペア調整し、事前対局とSTCにかける候補の値を得る。
 SPSAの対局結果は強さの根拠にしない。
 最終値は、この予算と設定で得た候補の値であり、最適値とは呼ばない。
 

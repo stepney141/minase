@@ -28,7 +28,7 @@ fail highではαを「元のβ − 半幅」と元のαの大きい方へ上げ
 窓は全深さで同じ式で置くが、深さ1では平均の初期値が`−VALUE_INFINITE`なので、実質的に全窓になる（`src/search.h:154-158`）。
 
 2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れる。
-同じ決定により、[aspiration windowsの形の見直し](../plans/aspiration-window-forms.md)では、窓の幅、中心、拡大、および窓外れのときの窓の移し方をStockfishの形にそろえ、fail lowとfail highで端の寄せ方を分け、ワーカー番号で半幅をずらす項も入れる。
+同じ決定により、[aspiration windowsの形の見直し](../plans/archived/aspiration-window-forms.md)では、窓の幅、中心、拡大、および窓外れのときの窓の移し方をStockfishの形にそろえ、fail lowとfail highで端の寄せ方を分け、ワーカー番号で半幅をずらす項も入れる。
 新しい係数の開始値と、Stockfishに同じ形の値がある既存の係数は、Stockfishの値の換算値にする。
 SPSAでは各仕組みの強さを決める値だけを調整し、平均の重みのような内部の定数はStockfishの値で固定する。
 minaseの既存の仕組みのうち中将棋の規則から来るものは、Stockfishになくても残す。
@@ -95,7 +95,7 @@ Stockfishは重みと尺度を符号なし64ビット整数で持ち、負の値
 この式は整数の除算なので、半幅が3以下で倍率が125%前後なら半幅が広がらないことがある。
 新しい開始値では、根の値が小さい局面の初期の半幅は2になり得る。
 Stockfishの初期の半幅は5以上なので、Stockfishの拡大の式は丸めで止まらない。
-半幅を必ず1以上広げれば、窓外れを繰り返しても半幅は通常の評価値の範囲の幅を越えるまで増え続け、その後は高々3回の窓外れで両端が無限になるので、読み直しは有限回で止まる（[設計書](../plans/aspiration-window-forms.md)の「読み直しの停止の保証」）。
+半幅を必ず1以上広げれば、窓外れを繰り返しても半幅は通常の評価値の範囲の幅を越えるまで増え続け、その後は高々3回の窓外れで両端が無限になるので、読み直しは有限回で止まる（[設計書](../plans/archived/aspiration-window-forms.md)の「読み直しの停止の保証」）。
 
 ワーカー番号の項をSPSAで調整する案は採らなかった。
 SPSAとSTCは`Threads=1`で行い（[ADR](keep-default-threads-at-one.md)）、動くのは番号0の主ワーカーだけなので、この項は調整の対局では働かない。
@@ -116,7 +116,7 @@ Stockfishも根の手の記録をスレッドごとに持つ。
 [benchの記録](../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)では、平均の記録を足すだけのコミットは探索ノード数、評価値、および最善手を変えず、1つのコアに固定したNPSを約0.1%下げた。
 窓を深さ2以上で使って中心を平均にしたコミットは、深さ3、5、7の全15局面の探索ノード数の合計を25.6%減らした。
 初期の半幅を3つの項の和にしたコミットと、窓外れのときに両端を移すコミットは、探索ノード数の合計をそれぞれ4.5%と4.2%増やした。
-`AspirationDelta`の開始値2%は旧来の値97%よりずっと小さく、根の値が小さい局面の初期の半幅は97から2〜10程度へ狭まるので、窓外れは増える。
+`AspirationDelta`の開始値2%は旧来の値97%より大幅に小さく、根の値が小さい局面の初期の半幅は97から2〜10程度へ狭まるので、窓外れは増える。
 
 初期の半幅に下限1を置き、拡大で必ず1以上広げる変更は、歩兵価値が100の埋め込みネットと旧来の係数では探索を変えなかった。
 歩兵価値の小さい重みファイルでは、下限が働いて探索が変わり得る。
@@ -129,4 +129,8 @@ Stockfishも根の手の記録をスレッドごとに持つ。
 窓の形の変更は、fail highの減深とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整する。
 2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 項目ごとの棋力への寄与は測らない。
-SPSAとSTCの結果は、測定を終えた後に本節へ追記する。
+形の変更の91係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/aspiration-window-forms/aspiration-window-forms.md)）。
+初期の半幅の定数項`AspirationDelta`は開始値の2%から100%へ上がり、旧来の値97%とほぼ同じになった。根の値の大きさの項`AspirationScoreWidth`は204%から63%へ下がり、拡大率`AspirationGrowth`は137%から146%へ上がった。
+中心を平均に置き、窓外れで両端を移す形の下でも、初期の半幅にはStockfishの狭い定数項ではなく、旧来と同じ程度の広い定数項が選ばれた。
+最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して上限の3,000ペアまでに判定できず（判定保留、LLR +2.177）、平均得点から求めた差は約+8.6 Elo（95%信頼区間はおよそ+0.6〜+16.5）だった（[STCの記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）。
+[事前対局](../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)では、最終値を反映した版の完了深さ（反復の深さ）は、400手目より前のすべての手数帯で起点より約0.7〜1.1手浅く、上限の時間による停止は起点の43手に対して170手だった。

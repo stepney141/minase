@@ -16,8 +16,8 @@ Stockfishは、評価値の下落（falling eval）、最善手が最後に変�
 ## 状態
 
 起案。2026年10月17日に起案した。
-連鎖の1つ前の[aspiration windowsの関数形の見直し](aspiration-window-forms.md)の完了と、利用者の着手の指示を待つ。
-次の一手は、前の設計書の完了後に起点を確定し、フェーズ0（起点の時計の再構成）を始めることである。
+連鎖の1つ前の[aspiration windowsの関数形の見直し](archived/aspiration-window-forms.md)は2026年10月22日に採用で完了したので、着手は利用者の指示による。
+次の一手は、起点を確定し、フェーズ0（起点の時計の再構成）を始めることである。
 
 ## 目的
 
@@ -111,11 +111,11 @@ B1の`H0`は基準時間の変更と信号を併せた結果なので、信号�
 - 秒読みに関わる係数と`ByoyomiMargin`（秒読みの締切に残す余裕を与えるUSIオプション）。秒読みのない時計で調整するSPSAでは勝敗に影響しないからである（[ADR](../adr/exclude-byoyomi-terms-and-safety-margin-from-spsa.md)）。
 - 秒読み期の判定。秒読み期は締切まで反復を始める規則であり、softを使わないので、本書の因子は働かない。YaneuraOuも秒読み期は締切まで読む。
 - `movetime`による探索。Stockfishは`movetime`では時間管理を使わない。
-- fail highの回数による減深（Stockfishの`failedHighCnt`と`failHighRecovery`）。[aspiration windowsの設計書](aspiration-window-forms.md)のA5が扱う。T7は、A5が定める窓の読む深さの式に減深の項を1つ加える。
+- fail highの回数による減深（Stockfishの`failedHighCnt`と`failHighRecovery`）。[aspiration windowsの設計書](archived/aspiration-window-forms.md)のA5が扱う。T7は、A5が定める窓の読む深さの式に減深の項を1つ加える。
 
 ## 依存関係
 
-起点は、[aspiration windowsの関数形の見直し](aspiration-window-forms.md)が完了した後のmasterの先頭である。
+起点は、[aspiration windowsの関数形の見直し](archived/aspiration-window-forms.md)が完了した後のmasterの先頭である。
 この順序は、[枝刈りとLMRの関数形の見直し](archived/search-pruning-forms.md)から始まる連鎖の提案であり、最終的な順序は利用者が決める。
 前の設計書の採否にかかわらず、起点の表の既定値をSPSAの開始値とする。
 前の設計書の候補がmasterへ統合されると`params.rs`の既定値と係数の数が変わるので、実装を含めて前の設計書の完了後に始める。
@@ -262,7 +262,7 @@ hardのうち`soft_raw`の倍数の項は`soft_raw'`から求めるので、自�
 \mathrm{depth} = \max\left(1,\ d - h - h_{\mathrm{carry}} - \left\lfloor \frac{3 \times (k + 1)}{4} \right\rfloor\right)
 ```
 
-`h`と`h_carry`は、[aspiration windowsの設計書](aspiration-window-forms.md)のA5のfail highの回数と持ち越し（A5の式の`h`と`r`、Stockfishの`failedHighCnt`と`failHighRecovery`）である。
+`h`と`h_carry`は、[aspiration windowsの設計書](archived/aspiration-window-forms.md)のA5のfail highの回数と持ち越し（A5の式の`h`と`r`、Stockfishの`failedHighCnt`と`failHighRecovery`）である。
 A5の窓の読む深さ`max(1, d − h − r)`に、T7の項を1つだけ加えた式であり、窓を読み直すたびにこの深さを使う。
 反復の番号dはフラグにかかわらず1ずつ増え、T2の距離と二値の短縮は反復の番号で数える。
 
