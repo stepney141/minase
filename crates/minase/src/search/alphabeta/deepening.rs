@@ -19,9 +19,9 @@ use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
-    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeInstabilityCoefficients,
-    TimeReductionCoefficients, scaled_soft_millis, scaled_time_budget, should_start_next_iteration,
-    stable_signal,
+    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeEffortCoefficients,
+    TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
+    scaled_soft_millis, scaled_time_budget, should_start_next_iteration, stable_signal,
 };
 
 /// 補助ワーカーが探索する深さを昇順に返す。
@@ -152,12 +152,24 @@ pub(super) fn run_main_worker(
                 shared.take_best_move_changes(),
                 TimeInstabilityCoefficients::current(),
             );
+            let best_move_nodes = searcher
+                .root_move_stats
+                .iter()
+                .find(|(mv, _stats)| *mv == best_move)
+                .map(|(_mv, stats)| stats.effort)
+                .expect("a completed best move must have root move statistics");
+            let best_move_effort = best_move_effort_factor(
+                best_move_nodes,
+                searcher.nodes,
+                TimeEffortCoefficients::current(),
+            );
             let time_ms = scaled_soft_millis(
                 base.soft,
                 &[
                     falling_eval as u128,
                     best_move_stability as u128,
                     best_move_instability,
+                    best_move_effort as u128,
                 ],
             );
             current_time_budget = Some(scaled_time_budget(base, time_ms));

@@ -97,6 +97,65 @@ fn best_move_change_accumulator_decays_before_adding_completed_changes() {
     assert_eq!(scaling.best_move_change_accumulator, 3584);
 }
 
+/// 最善手のノード占有率は100000倍した整数とし、全ノード数0は分母1として扱う。
+#[test]
+fn best_move_effort_ratio_scales_nodes_and_uses_one_for_zero_total() {
+    assert_eq!(best_move_effort_ratio(3, 8), 37_500);
+    assert_eq!(best_move_effort_ratio(0, 0), 0);
+    assert_eq!(best_move_effort_ratio(1, 0), 100_000);
+}
+
+/// best move effortの直線は固定範囲へ切り詰め、負の傾きの項を0の方向へ丸める。
+#[test]
+fn best_move_effort_factor_uses_fixed_bounds_and_truncates_toward_zero() {
+    assert_eq!(
+        best_move_effort_factor(
+            1,
+            4,
+            TimeEffortCoefficients {
+                intercept: 800,
+                slope: -200,
+            },
+        ),
+        750
+    );
+    assert_eq!(
+        best_move_effort_factor(
+            0,
+            1,
+            TimeEffortCoefficients {
+                intercept: 900,
+                slope: 0,
+            },
+        ),
+        838
+    );
+    assert_eq!(
+        best_move_effort_factor(
+            0,
+            1,
+            TimeEffortCoefficients {
+                intercept: 600,
+                slope: 0,
+            },
+        ),
+        693
+    );
+
+    // −3 × 33333 / 100000は0方向なら0、床方向なら−1になる。
+    assert_eq!(
+        best_move_effort_factor(
+            1,
+            3,
+            TimeEffortCoefficients {
+                intercept: 800,
+                slope: -3,
+            },
+        ),
+        800
+    );
+}
+
 /// 時間因子の積は基礎softから求め、積があふれた後もu128の時間としてhardまで保持する。
 #[test]
 fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
@@ -216,9 +275,13 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
         DEFAULT_THREADS.get(),
         TimeInstabilityCoefficients::current(),
     );
+    let effort = best_move_effort_factor(1, 1, TimeEffortCoefficients::current());
     let scaled = scaled_time_budget(
         base,
-        scaled_soft_millis(base.soft, &[1728, stability as u128, instability]),
+        scaled_soft_millis(
+            base.soft,
+            &[1728, stability as u128, instability, effort as u128],
+        ),
     );
     assert!(scaled.soft > base.soft);
     assert!(iteration_prediction_fits(
@@ -282,9 +345,15 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
         DEFAULT_THREADS.get(),
         TimeInstabilityCoefficients::current(),
     );
-    let initialized_ms =
-        scaled_soft_millis(base.soft, &[1728, initialized_factor as u128, instability]);
-    let neutral_ms = scaled_soft_millis(base.soft, &[1728, neutral_factor as u128, instability]);
+    let effort = best_move_effort_factor(1, 1, TimeEffortCoefficients::current()) as u128;
+    let initialized_ms = scaled_soft_millis(
+        base.soft,
+        &[1728, initialized_factor as u128, instability, effort],
+    );
+    let neutral_ms = scaled_soft_millis(
+        base.soft,
+        &[1728, neutral_factor as u128, instability, effort],
+    );
     assert!(initialized_ms < neutral_ms);
     assert!(initialized_ms < base.hard.as_millis());
     let elapsed = Duration::from_millis(u64::try_from(initialized_ms).unwrap());
@@ -328,6 +397,73 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
     neutral.previous_search.time_reduction = 1000;
     let neutral_outcome = run(&mut neutral);
     assert_eq!(neutral_outcome.result.depth, 2);
+}
+
+// 共有ノード数に補助ワーカー相当の値があっても、最善手の占有率は主ワーカー自身の
+// 根の手ごとの記録と全ノード数から求める。
+#[cfg(feature = "tuning")]
+pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
+    let position = bare_kings();
+    let root_moves = vec![legal_moves(&position)[0]];
+    let history_keys = [search_key(&position)];
+    let external_stop = AtomicBool::new(false);
+    let budget = TimeBudget {
+        soft: Duration::from_millis(1000),
+        hard: Duration::from_millis(10_000),
+        byoyomi_period: false,
+    };
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(1_000_000),
+        best_move_changes: AtomicU64::new(0),
+        node_limit: None,
+        clock: &ManualClock::new(Duration::from_millis(693)),
+        hard_limit: Some(HardLimit {
+            duration: budget.hard,
+            hit_ns: &AtomicU64::new(0),
+        }),
+    };
+    let scaling = InstabilityScaling::new(
+        PreviousSearch {
+            score_and_average: Some((0, 0)),
+            time_reduction: 1032,
+        },
+        worker_count(2),
+    );
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+
+    let outcome = run_main_worker(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &history_keys,
+        2,
+        Some(budget),
+        Some(scaling),
+        &shared,
+        &small_tt(),
+        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        &mut empty_capture_history(),
+        &new_correction_values(),
+        &mut histories.continuation_correction[0],
+        &histories.continuation,
+        &histories.pawn,
+        None,
+        false,
+        false,
+    );
+
+    assert!(outcome.nodes > 0);
+    assert!(shared.nodes() > outcome.nodes);
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(shared.reason(), StopReason::SoftLimit);
 }
 
 // 指定した直近の反復数だけ最善手が同じときに安定とする。

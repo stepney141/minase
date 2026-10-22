@@ -101,6 +101,22 @@ impl TimeInstabilityCoefficients {
     }
 }
 
+/// best move effortによる時間の因子の調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct TimeEffortCoefficients {
+    pub(super) intercept: i32,
+    pub(super) slope: i32,
+}
+
+impl TimeEffortCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            intercept: params::time_effort_intercept(),
+            slope: params::time_effort_slope(),
+        }
+    }
+}
+
 /// 評価値の下落の因子の下限と上限。Stockfish `src/search.cpp:594-597`に合わせる。
 const FALLING_EVAL_FACTOR_MIN: i32 = 576;
 const FALLING_EVAL_FACTOR_MAX: i32 = 1728;
@@ -110,6 +126,13 @@ const TIME_REDUCTION_MIN: i64 = 629;
 const TIME_REDUCTION_MAX: i64 = 1544;
 /// 前の探索の短縮率に加える定数。Stockfish `src/search.cpp:604-605`に合わせる。
 const TIME_REDUCTION_FACTOR_BASE: i64 = 1468;
+
+/// 最善手のノード占有率を表す尺度。100000が占有率100%に当たる。
+const BEST_MOVE_EFFORT_SCALE: u128 = 100_000;
+/// 最善手のノード占有率による因子の下限と上限。
+/// Stockfish `src/search.cpp:592, 609-610`に合わせる。
+const BEST_MOVE_EFFORT_FACTOR_MIN: i64 = 693;
+const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
 /// 完了反復ごとの時間伸縮に使う探索の不安定さの状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -286,6 +309,33 @@ pub(super) fn best_move_instability_factor(
         .base
         .checked_add(numerator / denominator)
         .expect("best move instability factor must fit in u128")
+}
+
+/// 最善手の部分木の累計ノード数が全ノード数に占める割合を100000倍して返す。
+pub(super) fn best_move_effort_ratio(best_move_nodes: u64, total_nodes: u64) -> u128 {
+    BEST_MOVE_EFFORT_SCALE * u128::from(best_move_nodes) / u128::from(total_nodes.max(1))
+}
+
+/// 最善手のノード占有率を、固定範囲内のbest move effortの因子へ変換する。
+///
+/// 占有率、傾きの項、および直線はそれぞれ`u128`、`i64`、`i64`で求める。
+/// 負になり得る傾きの項はRustの整数除算によって0の方向へ丸める。
+pub(super) fn best_move_effort_factor(
+    best_move_nodes: u64,
+    total_nodes: u64,
+    coefficients: TimeEffortCoefficients,
+) -> i32 {
+    let ratio = i64::try_from(best_move_effort_ratio(best_move_nodes, total_nodes))
+        .expect("best move effort ratio must fit in i64");
+    let slope_term = i64::from(coefficients.slope)
+        .checked_mul(ratio)
+        .expect("best move effort slope term must fit in i64")
+        / 100_000;
+    let factor = i64::from(coefficients.intercept)
+        .checked_add(slope_term)
+        .expect("best move effort factor must fit in i64");
+    i32::try_from(factor.clamp(BEST_MOVE_EFFORT_FACTOR_MIN, BEST_MOVE_EFFORT_FACTOR_MAX))
+        .expect("clamped best move effort factor must fit in i32")
 }
 
 /// 基礎softに千分率の因子を順に掛け、hardで抑える前の時間をmsで返す。

@@ -86,7 +86,8 @@ use crate::search::alphabeta::team::{
 };
 use crate::search::alphabeta::time::{
     FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
-    TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_instability_factor,
+    TimeEffortCoefficients, TimeInstabilityCoefficients, TimeReductionCoefficients,
+    best_move_effort_factor, best_move_effort_ratio, best_move_instability_factor,
     best_move_stability_distance, best_move_stability_factor, clock_budget, falling_eval_factor,
     iteration_prediction_fits, scaled_soft_millis, scaled_time_budget, should_start_next_iteration,
     stable_signal, time_budget, time_reduction,

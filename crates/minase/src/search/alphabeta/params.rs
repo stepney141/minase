@@ -485,6 +485,18 @@ parameters! {
     /// 範囲0〜4000は従来の項なしに当たる0と両実装の値を含む。
     /// 開始値はStockfishの値であり、SPSAで未調整である。
     TimeInstabilitySlope(time_instability_slope): 2229, 0, 4000;
+    /// 最善手のノード占有率による時間の因子の切片。単位は千分率である。
+    /// Stockfishの直線を換算すると、占有率0%では
+    /// 0.969 + 75800 × 0.255 / 28710 ≈ 1.642となる（src/search.cpp:609-610）。
+    /// 範囲500〜2500は中立値1000と換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeEffortIntercept(time_effort_intercept): 1642, 500, 2500;
+    /// 最善手のノード占有率100%あたりの時間の因子の変化量。単位は千分率である。
+    /// Stockfishの直線の傾きを換算すると、−0.255 / 28710 × 100000 × 1000 ≈ −888となる
+    /// （src/search.cpp:609-610）。
+    /// 範囲−2000〜500は従来の項なしに当たる0と換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeEffortSlope(time_effort_slope): -888, -2000, 500;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]

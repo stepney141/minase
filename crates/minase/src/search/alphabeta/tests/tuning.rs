@@ -233,6 +233,8 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeReductionScale", 2284),
         ("TimeInstabilityBase", 1077),
         ("TimeInstabilitySlope", 2229),
+        ("TimeEffortIntercept", 1642),
+        ("TimeEffortSlope", -888),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
@@ -245,6 +247,17 @@ fn tuning_parameters_in_isolated_process() {
         params::set("IterationRatio", 150).unwrap();
         super::time::instability_scaling_starts_an_iteration_that_the_base_soft_rejects();
         super::time::initial_previous_time_reduction_controls_the_first_scaled_budget();
+        params::set("TimeFallingBase", 1000).unwrap();
+        params::set("TimeFallingPrevious", 0).unwrap();
+        params::set("TimeFallingIteration", 0).unwrap();
+        params::set("TimeReductionIntercept", 1000).unwrap();
+        params::set("TimeReductionSlope", 0).unwrap();
+        params::set("TimeReductionScale", 2500).unwrap();
+        params::set("TimeInstabilityBase", 1000).unwrap();
+        params::set("TimeInstabilitySlope", 0).unwrap();
+        params::set("TimeEffortIntercept", 2500).unwrap();
+        params::set("TimeEffortSlope", -2000).unwrap();
+        super::time::best_move_effort_scaling_ignores_shared_auxiliary_nodes();
         return;
     }
 
@@ -536,6 +549,13 @@ fn tuning_parameters_in_isolated_process() {
         ))
         .unwrap()
     }
+    fn best_move_effort() -> i64 {
+        i64::from(best_move_effort_factor(
+            1,
+            1,
+            TimeEffortCoefficients::current(),
+        ))
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -565,7 +585,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 101] = [
+    let cases: [Case; 103] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -978,6 +998,8 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeReductionScale", 1000, best_move_stability),
         ("TimeInstabilityBase", 1500, best_move_instability),
         ("TimeInstabilitySlope", 4000, best_move_instability),
+        ("TimeEffortIntercept", 2000, best_move_effort),
+        ("TimeEffortSlope", -1000, best_move_effort),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());
