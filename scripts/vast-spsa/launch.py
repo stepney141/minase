@@ -27,7 +27,7 @@ import common
 import remote
 
 OFFER_RETRY_SECONDS = 30
-OFFER_QUERY = ('cpu_cores>=192 verified=true reliability>=0.95 inet_up>=100 disk_space>=50 '
+OFFER_QUERY = ('cpu_cores>=192 verified=any reliability>=0.95 inet_up>=100 disk_space>=50 '
                'rentable=true gpu_frac=1 duration>=2 direct_port_count>=1')
 FAILURES = (OSError, ValueError, KeyError, TypeError, common.VastError, subprocess.SubprocessError)
 
@@ -35,7 +35,7 @@ FAILURES = (OSError, ValueError, KeyError, TypeError, common.VastError, subproce
 def offer_errors(offer: dict[str, Any]) -> list[str]:
     """出品のCPU、貸出期限、通信とディスクの条件ごとに誤りを返す。"""
     errors = []
-    for key, expected in (('cpu_arch', 'amd64'), ('verification', 'verified')):
+    for key, expected in (('cpu_arch', 'amd64'),):
         if key not in offer or offer[key] != expected:
             errors.append(f'{key}は{expected}でなければなりません')
     for key, minimum in (('cpu_cores', 192), ('duration', 172800), ('reliability2', 0.95),
