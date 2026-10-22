@@ -321,6 +321,14 @@ fn tuning_usi_contract_in_isolated_process() {
                 "TimeReductionScale",
                 params::time_reduction_scale as fn() -> i32,
             ),
+            (
+                "TimeInstabilityBase",
+                params::time_instability_base as fn() -> i32,
+            ),
+            (
+                "TimeInstabilitySlope",
+                params::time_instability_slope as fn() -> i32,
+            ),
             ("FmScale", params::fm_scale as fn() -> i32),
         ];
         assert_eq!(accessors.len(), params::PARAMETERS.len());

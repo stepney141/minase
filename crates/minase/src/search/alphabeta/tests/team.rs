@@ -15,6 +15,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
             team_stop: AtomicBool::new(false),
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
+            best_move_changes: AtomicU64::new(0),
             node_limit: None,
             clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,

@@ -2,6 +2,7 @@
 //!
 //! 予算式が係数表`params`を読み、反復の開始判定と先読みの的中処理が反復深化に結びつくため、αβ探索の側に置く。
 
+use core::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::search::limits::{ClockLimits, SearchLimits};
@@ -82,6 +83,24 @@ impl TimeReductionCoefficients {
     }
 }
 
+/// best move instabilityによる時間の因子の調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct TimeInstabilityCoefficients {
+    pub(super) base: u128,
+    pub(super) slope: u128,
+}
+
+impl TimeInstabilityCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            base: u128::try_from(params::time_instability_base())
+                .expect("time instability base must not be negative"),
+            slope: u128::try_from(params::time_instability_slope())
+                .expect("time instability slope must not be negative"),
+        }
+    }
+}
+
 /// 評価値の下落の因子の下限と上限。Stockfish `src/search.cpp:594-597`に合わせる。
 const FALLING_EVAL_FACTOR_MIN: i32 = 576;
 const FALLING_EVAL_FACTOR_MAX: i32 = 1728;
@@ -92,7 +111,7 @@ const TIME_REDUCTION_MAX: i64 = 1544;
 /// 前の探索の短縮率に加える定数。Stockfish `src/search.cpp:604-605`に合わせる。
 const TIME_REDUCTION_FACTOR_BASE: i64 = 1468;
 
-/// 完了反復ごとの時間伸縮に使う評価値の下落と最善手の安定性の状態。
+/// 完了反復ごとの時間伸縮に使う探索の不安定さの状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct InstabilityScaling {
     pub(super) previous_average: Option<i32>,
@@ -100,12 +119,15 @@ pub(super) struct InstabilityScaling {
     pub(super) current: usize,
     pub(super) previous_time_reduction: i32,
     pub(super) time_reduction: i32,
+    /// 最善手の変化回数の減衰つき累計。単位は1/1024回である。
+    pub(super) best_move_change_accumulator: u128,
+    worker_count: NonZeroUsize,
 }
 
 impl InstabilityScaling {
     /// 前の探索の評価値で環状配列を埋め、欠測時は0とする。
     /// 短縮率は前の値を保持し、現在値を中立値1000で初期化する。
-    pub(super) fn new(previous: PreviousSearch) -> Self {
+    pub(super) fn new(previous: PreviousSearch, worker_count: NonZeroUsize) -> Self {
         let initial = previous
             .score_and_average
             .map_or(0, |(score, _average)| score);
@@ -115,7 +137,14 @@ impl InstabilityScaling {
             current: 0,
             previous_time_reduction: previous.time_reduction,
             time_reduction: 1000,
+            best_move_change_accumulator: 0,
+            worker_count,
         }
+    }
+
+    /// 実際に反復を始めるとき、最善手の変化回数の累計を半分へ減衰させる。
+    pub(super) fn begin_iteration(&mut self) {
+        self.best_move_change_accumulator /= 2;
     }
 
     /// 現在位置の値から評価値の下落の因子を求めた後、完了反復の値を書いて位置を進める。
@@ -148,6 +177,26 @@ impl InstabilityScaling {
             best_move_stability_factor(self.previous_time_reduction, reduction, coefficients.scale);
         self.time_reduction = reduction;
         factor
+    }
+
+    /// 完了反復までに回収した変化回数を累計へ加え、best move instabilityの因子を返す。
+    pub(super) fn update_best_move_instability(
+        &mut self,
+        changes: u64,
+        coefficients: TimeInstabilityCoefficients,
+    ) -> u128 {
+        let added = 1024_u128
+            .checked_mul(u128::from(changes))
+            .expect("best move change increment must fit in u128");
+        self.best_move_change_accumulator = self
+            .best_move_change_accumulator
+            .checked_add(added)
+            .expect("best move change accumulator must fit in u128");
+        best_move_instability_factor(
+            self.best_move_change_accumulator,
+            self.worker_count.get(),
+            coefficients,
+        )
     }
 }
 
@@ -214,6 +263,29 @@ pub(super) fn best_move_stability_factor(
     let numerator = (TIME_REDUCTION_FACTOR_BASE + i64::from(previous_time_reduction)) * 1_000_000;
     let denominator = i64::from(scale) * i64::from(time_reduction);
     i32::try_from(numerator / denominator).expect("best move stability factor must fit in i32")
+}
+
+/// 最善手の変化回数の減衰つき累計から、best move instabilityの因子を千分率で返す。
+///
+/// 累計は1/1024回の単位であり、全ワーカーの合計を設定上のワーカー数で割る。
+pub(super) fn best_move_instability_factor(
+    change_accumulator: u128,
+    worker_count: usize,
+    coefficients: TimeInstabilityCoefficients,
+) -> u128 {
+    assert!(worker_count > 0, "worker count must be positive");
+    let workers = u128::try_from(worker_count).expect("worker count must fit in u128");
+    let numerator = coefficients
+        .slope
+        .checked_mul(change_accumulator)
+        .expect("best move instability numerator must fit in u128");
+    let denominator = 1024_u128
+        .checked_mul(workers)
+        .expect("best move instability denominator must fit in u128");
+    coefficients
+        .base
+        .checked_add(numerator / denominator)
+        .expect("best move instability factor must fit in u128")
 }
 
 /// 基礎softに千分率の因子を順に掛け、hardで抑える前の時間をmsで返す。

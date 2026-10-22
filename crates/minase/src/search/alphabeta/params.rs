@@ -475,6 +475,16 @@ parameters! {
     /// 範囲1000〜4000は中立値1000と換算値を含む。
     /// 開始値はStockfishの換算値であり、SPSAで未調整である。
     TimeReductionScale(time_reduction_scale): 2284, 1000, 4000;
+    /// 最善手の変化回数による時間の因子の切片。単位は千分率である。
+    /// Stockfishは1.077、YaneuraOuは1.040に当たる（src/search.cpp:607）。
+    /// 範囲500〜1500は従来の中立値1000と両実装の値を含む。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    TimeInstabilityBase(time_instability_base): 1077, 500, 1500;
+    /// 全ワーカーで平均した最善手の変化1回あたりの増分。単位は千分率である。
+    /// Stockfishは2.229、YaneuraOuは1.896に当たる（src/search.cpp:607）。
+    /// 範囲0〜4000は従来の項なしに当たる0と両実装の値を含む。
+    /// 開始値はStockfishの値であり、SPSAで未調整である。
+    TimeInstabilitySlope(time_instability_slope): 2229, 0, 4000;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]

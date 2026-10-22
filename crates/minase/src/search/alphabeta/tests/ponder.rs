@@ -245,6 +245,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             team_stop: AtomicBool::new(false),
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
+            best_move_changes: AtomicU64::new(0),
             node_limit: None,
             clock: &ManualClock::new(ms(elapsed)),
             hard_limit: Some(HardLimit {
@@ -349,6 +350,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             team_stop: AtomicBool::new(false),
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
+            best_move_changes: AtomicU64::new(0),
             node_limit: None,
             clock: clock.as_ref(),
             hard_limit: Some(HardLimit {
@@ -481,6 +483,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             team_stop: AtomicBool::new(false),
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
+            best_move_changes: AtomicU64::new(0),
             node_limit: None,
             clock: &ManualClock::new(Duration::from_secs(1)),
             hard_limit: Some(HardLimit {
@@ -664,6 +667,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     team_stop: AtomicBool::new(false),
                     stop_reason: AtomicU8::new(0),
                     total_nodes: AtomicU64::new(0),
+                    best_move_changes: AtomicU64::new(0),
                     node_limit: None,
                     clock: &ManualClock::new(
                         ms(100_000) + if expired { budget.hard } else { ms(1) },

@@ -231,6 +231,8 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeReductionIntercept", 254),
         ("TimeReductionSlope", 78),
         ("TimeReductionScale", 2284),
+        ("TimeInstabilityBase", 1077),
+        ("TimeInstabilitySlope", 2229),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
@@ -526,6 +528,14 @@ fn tuning_parameters_in_isolated_process() {
             coefficients.scale,
         ))
     }
+    fn best_move_instability() -> i64 {
+        i64::try_from(best_move_instability_factor(
+            3072,
+            2,
+            TimeInstabilityCoefficients::current(),
+        ))
+        .unwrap()
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -555,7 +565,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 99] = [
+    let cases: [Case; 101] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -966,6 +976,8 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeReductionIntercept", 500, best_move_stability),
         ("TimeReductionSlope", 100, best_move_stability),
         ("TimeReductionScale", 1000, best_move_stability),
+        ("TimeInstabilityBase", 1500, best_move_instability),
+        ("TimeInstabilitySlope", 4000, best_move_instability),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());

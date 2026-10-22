@@ -36,6 +36,46 @@ fn current_initial_delta(pawn: i32, signed_square_average: i64, worker_index: us
     )
 }
 
+/// 指定した根の値を置換表から返し、探索前のαを上回った2手目以降の回数を返す。
+fn counted_root_improvements(scores: &[i32], alpha: i32, beta: i32) -> u64 {
+    let position = Position::initial();
+    let moves: Vec<_> = legal_moves(&position)
+        .into_iter()
+        .filter(|&mv| move_order_key(&position, test_nnue(), mv).is_none() && !mv.promote)
+        .take(scores.len())
+        .collect();
+    assert_eq!(moves.len(), scores.len());
+
+    let mut changes = 0;
+    with_root_searcher(&position, &[], |searcher| {
+        let mut results = crate::search::alphabeta::root::RootResults::default();
+        results.previous_best = Some(moves[0]);
+        searcher.root_results = Some(results);
+        let mut ordered = moves.clone();
+        searcher.order_root_moves(&position, &mut ordered);
+        assert_eq!(ordered[0], moves[0]);
+        for (&mv, &score) in ordered.iter().zip(scores) {
+            let mut child = position.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            searcher.tt.store(
+                search_key(&child),
+                MAX_PLY,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        searcher
+            .search_root(&position, &moves, 8, 8, alpha, beta)
+            .unwrap();
+        changes = searcher.shared.take_best_move_changes();
+    });
+    changes
+}
+
 #[test]
 fn first_root_move_stats_update_uses_the_score_and_its_signed_square() {
     for (value, signed_square) in [(3, 9), (-3, -9)] {
@@ -102,6 +142,61 @@ fn root_move_stats_round_negative_averages_down() {
 #[test]
 fn root_move_weight_accepts_near_limit_node_counts() {
     assert_eq!(root_move_weight(u64::MAX, u64::MAX), 12);
+}
+
+#[test]
+fn best_move_change_count_excludes_the_first_and_non_improving_root_moves() {
+    assert_eq!(counted_root_improvements(&[20], 0, 100), 0);
+    assert_eq!(counted_root_improvements(&[20, 10], 0, 100), 0);
+    assert_eq!(counted_root_improvements(&[20, 10, 30], 0, 100), 1);
+}
+
+#[test]
+fn best_move_change_count_includes_each_aspiration_retry_and_is_taken_once() {
+    let position = Position::initial();
+    let moves: Vec<_> = legal_moves(&position)
+        .into_iter()
+        .filter(|&mv| move_order_key(&position, test_nnue(), mv).is_none() && !mv.promote)
+        .take(3)
+        .collect();
+    assert_eq!(moves.len(), 3);
+
+    with_root_searcher(&position, &[], |searcher| {
+        let first = moves[0];
+        let mut results = crate::search::alphabeta::root::RootResults::default();
+        results.previous_best = Some(first);
+        searcher.root_results = Some(results);
+        let mut ordered = moves.clone();
+        searcher.order_root_moves(&position, &mut ordered);
+        assert_eq!(ordered[0], first);
+        let delta = current_initial_delta(searcher.nnue.pawn_value(), 0, searcher.worker_index);
+        let scores = [0, 2 * delta, 4 * delta];
+        for (&mv, score) in ordered.iter().zip(scores) {
+            let mut child = position.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            searcher.tt.store(
+                search_key(&child),
+                MAX_PLY,
+                -score,
+                None,
+                Bound::Exact,
+                None,
+                1,
+                false,
+            );
+        }
+        set_root_move_averages(searcher, first, Some((0, 0)));
+        assert_eq!(
+            searcher
+                .search_iteration(&position, &moves, 8, Some((first, 0)))
+                .unwrap()
+                .1,
+            scores[2]
+        );
+        // 最初の窓では2手目、1回目の読み直しと完了窓では2手目と3手目が更新する。
+        assert_eq!(searcher.shared.take_best_move_changes(), 5);
+        assert_eq!(searcher.shared.take_best_move_changes(), 0);
+    });
 }
 
 #[test]
@@ -1083,6 +1178,7 @@ fn interrupted_root_search_does_not_record_the_interrupted_move_or_update_histor
         searcher.interrupt_at = Some((1, StopReason::NodeLimit));
         assert!(searcher.search_root(&board, &moves, 1, 1, -1, 1).is_none());
         assert_eq!(searcher.nodes, 1);
+        assert_eq!(searcher.shared.take_best_move_changes(), 0);
         let interrupted = searcher
             .current_root_nodes
             .iter()

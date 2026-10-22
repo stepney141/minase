@@ -72,6 +72,8 @@ pub(super) struct SharedSearch<'a> {
     pub(super) stop_reason: AtomicU8,
     /// 全ワーカーが実際の着手を盤面へ適用した合計回数。
     pub(super) total_nodes: AtomicU64,
+    /// 全ワーカーが数えた、根で最善値を更新した2手目以降の手の回数。
+    pub(super) best_move_changes: AtomicU64,
     /// 探索チーム全体で実着手を適用する回数の上限。
     pub(super) node_limit: Option<u64>,
     /// 探索開始からの経過時間を測る共有時計。
@@ -108,6 +110,16 @@ impl SharedSearch<'_> {
     /// 現在までに探索チームが実際の着手を盤面へ適用した合計回数を返す。
     pub(super) fn nodes(&self) -> u64 {
         self.total_nodes.load(AtomicOrdering::Relaxed)
+    }
+
+    /// 根で完了した2手目以降の手が探索前のαを上回ったことを記録する。
+    pub(super) fn record_best_move_change(&self) {
+        self.best_move_changes.fetch_add(1, AtomicOrdering::Relaxed);
+    }
+
+    /// 全ワーカーが記録した最善手の変化回数を回収し、次の区間を0から始める。
+    pub(super) fn take_best_move_changes(&self) -> u64 {
+        self.best_move_changes.swap(0, AtomicOrdering::Relaxed)
     }
 
     /// 共有状態に記録された停止理由を返す。
@@ -199,7 +211,7 @@ pub(in crate::search) fn run_search_team(
     let instability_scaling = (finite_limits
         .is_some_and(|limits| limits.clock.is_some() && limits.movetime_ms.is_none())
         && time_budget.is_some_and(|budget| !budget.byoyomi_period))
-    .then(|| InstabilityScaling::new(histories.previous_search));
+    .then(|| InstabilityScaling::new(histories.previous_search, threads));
     // 新しい根で1回だけ減衰する。新品の表にも適用し、既定値では−5を−3、−742を−452にする。
     let decay = params::history_decay();
     for history in &mut histories.workers {
@@ -216,6 +228,7 @@ pub(in crate::search) fn run_search_team(
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
         node_limit,
         clock,
         hard_limit: time_budget.map(|budget| HardLimit {

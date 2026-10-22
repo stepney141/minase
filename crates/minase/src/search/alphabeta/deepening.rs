@@ -19,8 +19,9 @@ use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
-    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeReductionCoefficients,
-    scaled_soft_millis, scaled_time_budget, should_start_next_iteration, stable_signal,
+    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeInstabilityCoefficients,
+    TimeReductionCoefficients, scaled_soft_millis, scaled_time_budget, should_start_next_iteration,
+    stable_signal,
 };
 
 /// 補助ワーカーが探索する深さを昇順に返す。
@@ -128,6 +129,9 @@ pub(super) fn run_main_worker(
                 budget,
             });
         }
+        if let Some(scaling) = &mut instability_scaling {
+            scaling.begin_iteration();
+        }
         let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             debug_assert!(searcher.stop_reason.is_some());
@@ -144,9 +148,17 @@ pub(super) fn run_main_worker(
             );
             let best_move_stability = scaling
                 .update_best_move_stability(&completed_bests, TimeReductionCoefficients::current());
+            let best_move_instability = scaling.update_best_move_instability(
+                shared.take_best_move_changes(),
+                TimeInstabilityCoefficients::current(),
+            );
             let time_ms = scaled_soft_millis(
                 base.soft,
-                &[falling_eval as u128, best_move_stability as u128],
+                &[
+                    falling_eval as u128,
+                    best_move_stability as u128,
+                    best_move_instability,
+                ],
             );
             current_time_budget = Some(scaled_time_budget(base, time_ms));
         }

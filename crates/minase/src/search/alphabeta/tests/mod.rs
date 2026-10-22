@@ -86,9 +86,10 @@ use crate::search::alphabeta::team::{
 };
 use crate::search::alphabeta::time::{
     FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
-    TimeReductionCoefficients, best_move_stability_distance, best_move_stability_factor,
-    clock_budget, falling_eval_factor, iteration_prediction_fits, scaled_soft_millis,
-    scaled_time_budget, should_start_next_iteration, stable_signal, time_budget, time_reduction,
+    TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_instability_factor,
+    best_move_stability_distance, best_move_stability_factor, clock_budget, falling_eval_factor,
+    iteration_prediction_fits, scaled_soft_millis, scaled_time_budget, should_start_next_iteration,
+    stable_signal, time_budget, time_reduction,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
@@ -452,6 +453,7 @@ fn with_draw_value_root_searcher(
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
         node_limit: None,
         clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
@@ -611,6 +613,7 @@ fn run_quiesce(
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
         node_limit: None,
         clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
@@ -679,6 +682,7 @@ fn run_configured_negamax(
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
         node_limit: None,
         clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,

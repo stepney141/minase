@@ -557,6 +557,9 @@ impl Searcher<'_> {
                 self.current_root_nodes.push((mv, nodes));
             }
             let score = score?;
+            if index > 0 && score > alpha_before {
+                self.shared.record_best_move_change();
+            }
             if let Some((_, stats)) = self.root_move_stats.iter_mut().find(|(m, _)| *m == mv) {
                 stats.update(nodes, score);
             } else {

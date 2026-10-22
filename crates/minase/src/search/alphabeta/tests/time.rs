@@ -64,6 +64,39 @@ fn best_move_stability_distance_counts_the_equal_suffix() {
     assert_eq!(best_move_stability_distance(&[a, a, b]), 0);
 }
 
+/// 最善手の変化回数の因子は全ワーカーの平均を使い、正の除算を床方向へ丸める。
+#[test]
+fn best_move_instability_factor_divides_by_workers_and_rounds_down() {
+    let coefficients = TimeInstabilityCoefficients {
+        base: 1077,
+        slope: 2229,
+    };
+    // 3回相当を2ワーカーで割った傾きの項は3343.5を床方向へ丸めて3343になる。
+    assert_eq!(best_move_instability_factor(3072, 2, coefficients), 4420);
+    // 同じ累計を3ワーカーで割れば、傾きの項はちょうど2229になる。
+    assert_eq!(best_move_instability_factor(3072, 3, coefficients), 3306);
+}
+
+/// 反復開始時に累計を半分にしてから、完了時に回収した回数を1024倍して加える。
+#[test]
+fn best_move_change_accumulator_decays_before_adding_completed_changes() {
+    let coefficients = TimeInstabilityCoefficients {
+        base: 1000,
+        slope: 1000,
+    };
+    let mut scaling = InstabilityScaling::new(PreviousSearch::default(), worker_count(2));
+    assert_eq!(scaling.best_move_change_accumulator, 0);
+
+    scaling.begin_iteration();
+    assert_eq!(scaling.update_best_move_instability(3, coefficients), 2500);
+    assert_eq!(scaling.best_move_change_accumulator, 3072);
+
+    scaling.begin_iteration();
+    assert_eq!(scaling.best_move_change_accumulator, 1536);
+    assert_eq!(scaling.update_best_move_instability(2, coefficients), 2750);
+    assert_eq!(scaling.best_move_change_accumulator, 3584);
+}
+
 /// 時間因子の積は基礎softから求め、積があふれた後もu128の時間としてhardまで保持する。
 #[test]
 fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
@@ -100,13 +133,17 @@ fn falling_eval_ring_uses_previous_score_then_the_value_from_four_iterations_ago
         previous: 0,
         iteration: 100,
     };
-    let mut scaling = InstabilityScaling::new(PreviousSearch {
-        score_and_average: Some((40, 0)),
-        time_reduction: 900,
-    });
+    let mut scaling = InstabilityScaling::new(
+        PreviousSearch {
+            score_and_average: Some((40, 0)),
+            time_reduction: 900,
+        },
+        worker_count(1),
+    );
     assert_eq!(scaling.iteration_values, [40; 4]);
     assert_eq!(scaling.previous_time_reduction, 900);
     assert_eq!(scaling.time_reduction, 1000);
+    assert_eq!(scaling.best_move_change_accumulator, 0);
     let factors: Vec<_> = [10, 20, 30, 40, 50]
         .into_iter()
         .map(|value| scaling.update_falling_eval(value, 100, coefficients))
@@ -115,7 +152,7 @@ fn falling_eval_ring_uses_previous_score_then_the_value_from_four_iterations_ago
     assert_eq!(scaling.iteration_values, [50, 20, 30, 40]);
     assert_eq!(scaling.current, 1);
 
-    let mut missing = InstabilityScaling::new(PreviousSearch::default());
+    let mut missing = InstabilityScaling::new(PreviousSearch::default(), worker_count(1));
     assert_eq!(missing.previous_average, None);
     assert_eq!(missing.iteration_values, [0; 4]);
     assert_eq!(missing.update_falling_eval(9, 100, coefficients), 1728);
@@ -166,7 +203,7 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
 #[cfg(feature = "tuning")]
 pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects() {
     let position = bare_kings();
-    let root_moves = legal_moves(&position);
+    let root_moves = vec![legal_moves(&position)[0]];
     let history_keys = [search_key(&position)];
     let clock_limits = clock(100_000, 0, 0);
     let scaled_limits = SearchLimits::new(Some(2), None, None, Some(clock_limits)).unwrap();
@@ -174,9 +211,14 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
     let coefficients = TimeReductionCoefficients::current();
     let reduction = time_reduction(0, coefficients);
     let stability = best_move_stability_factor(850, reduction, coefficients.scale);
+    let instability = best_move_instability_factor(
+        0,
+        DEFAULT_THREADS.get(),
+        TimeInstabilityCoefficients::current(),
+    );
     let scaled = scaled_time_budget(
         base,
-        scaled_soft_millis(base.soft, &[1728, stability as u128]),
+        scaled_soft_millis(base.soft, &[1728, stability as u128, instability]),
     );
     assert!(scaled.soft > base.soft);
     assert!(iteration_prediction_fits(
@@ -227,7 +269,7 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
 #[cfg(feature = "tuning")]
 pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget() {
     let position = bare_kings();
-    let root_moves = legal_moves(&position);
+    let root_moves = vec![legal_moves(&position)[0]];
     let history_keys = [search_key(&position)];
     let limits = SearchLimits::new(Some(2), None, None, Some(clock(100_000, 0, 0))).unwrap();
     let base = time_budget(&limits).unwrap();
@@ -235,8 +277,14 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
     let reduction = time_reduction(0, coefficients);
     let initialized_factor = best_move_stability_factor(850, reduction, coefficients.scale);
     let neutral_factor = best_move_stability_factor(1000, reduction, coefficients.scale);
-    let initialized_ms = scaled_soft_millis(base.soft, &[1728, initialized_factor as u128]);
-    let neutral_ms = scaled_soft_millis(base.soft, &[1728, neutral_factor as u128]);
+    let instability = best_move_instability_factor(
+        0,
+        DEFAULT_THREADS.get(),
+        TimeInstabilityCoefficients::current(),
+    );
+    let initialized_ms =
+        scaled_soft_millis(base.soft, &[1728, initialized_factor as u128, instability]);
+    let neutral_ms = scaled_soft_millis(base.soft, &[1728, neutral_factor as u128, instability]);
     assert!(initialized_ms < neutral_ms);
     assert!(initialized_ms < base.hard.as_millis());
     let elapsed = Duration::from_millis(u64::try_from(initialized_ms).unwrap());
@@ -327,6 +375,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
         node_limit: None,
         clock: &ManualClock::new(Duration::from_millis(
             100000 / super::super::params::iteration_ratio() as u64 + 1,
@@ -522,6 +571,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             team_stop: AtomicBool::new(false),
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
+            best_move_changes: AtomicU64::new(0),
             node_limit: None,
             clock: &ManualClock::new(Duration::from_secs(if ponder { 105 } else { 5 })),
             hard_limit: Some(HardLimit {
