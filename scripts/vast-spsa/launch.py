@@ -4,7 +4,8 @@
 使い方:
   python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --offer <出品ID>
   python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --max-price <1時間あたりの米ドル>
-      --min-cpu-cores <スレッド数> --cpu <CPU名の一部> [--cpu <CPU名の一部> ...] --wait <分>
+      --min-cpu-cores <スレッド数> --min-cpu-ram <MB> --cpu <CPU名の一部>
+      [--cpu <CPU名の一部> ...] --wait <分>
 """
 
 import argparse
@@ -73,17 +74,21 @@ def search_offers() -> tuple[str, list[dict[str, Any]]]:
 
 
 def select_offers(offers: list[dict[str, Any]], max_price: float,
-                  min_cpu_cores: int, cpu_names: list[str]) -> list[dict[str, Any]]:
+                  min_cpu_cores: int, min_cpu_ram: int,
+                  cpu_names: list[str]) -> list[dict[str, Any]]:
     """追加条件に合う出品を価格とIDの昇順で返す。"""
     selected = []
     for offer in offers:
         offer_id = offer.get('id')
         cpu_name = offer.get('cpu_name')
+        cpu_ram = offer.get('cpu_ram')
         price = offer.get('dph_total')
         if (offer_errors(offer)
                 or type(offer_id) is not int or offer_id <= 0
                 or type(cpu_name) is not str or not any(name in cpu_name for name in cpu_names)
                 or offer['cpu_cores'] < min_cpu_cores
+                or type(cpu_ram) not in (int, float) or not math.isfinite(cpu_ram)
+                or cpu_ram < min_cpu_ram
                 or type(price) not in (int, float) or not math.isfinite(price)
                 or price > max_price):
             continue
@@ -210,14 +215,17 @@ def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
 
 
 def launch(session: str, minutes: int, offer_id: int | None, max_price: float | None,
-           min_cpu_cores: int | None, cpu_names: list[str] | None,
+           min_cpu_cores: int | None, min_cpu_ram: int | None, cpu_names: list[str] | None,
            wait_minutes: int | None) -> None:
     """出品を指定または自動選択し、作成から転送完了までを管理する。"""
     automatic = offer_id is None
     if automatic:
-        if max_price is None or min_cpu_cores is None or not cpu_names or wait_minutes is None:
-            raise ValueError('自動選択の引数が不足しています')
-    elif any(value is not None for value in (max_price, min_cpu_cores, cpu_names, wait_minutes)):
+        if (max_price is None or min_cpu_cores is None or min_cpu_ram is None
+                or not cpu_names or wait_minutes is None):
+            raise ValueError('自動選択には--max-price、--min-cpu-cores、--min-cpu-ram、'
+                             '--cpu、--waitが必要です')
+    elif any(value is not None
+             for value in (max_price, min_cpu_cores, min_cpu_ram, cpu_names, wait_minutes)):
         raise ValueError('--offerと自動選択の引数は同時に指定できません')
     remote.check_name(session)
     root = Path(git_output(SCRIPT_DIR.parent.parent, 'rev-parse', '--show-toplevel'))
@@ -250,12 +258,12 @@ def launch(session: str, minutes: int, offer_id: int | None, max_price: float | 
             print(f'セッション {session} を開始しました。インスタンスID: {instance_id}')
             return
 
-        assert max_price is not None and min_cpu_cores is not None
+        assert max_price is not None and min_cpu_cores is not None and min_cpu_ram is not None
         assert cpu_names is not None and wait_minutes is not None
         wait_end = time.monotonic() + wait_minutes * 60
         while time.monotonic() < wait_end:
             offers_output, offers = search_offers()
-            candidates = select_offers(offers, max_price, min_cpu_cores, cpu_names)
+            candidates = select_offers(offers, max_price, min_cpu_cores, min_cpu_ram, cpu_names)
             for offer in candidates:
                 if time.monotonic() >= wait_end:
                     raise ValueError(f'{wait_minutes}分の待機時間内に出品を作成できませんでした')
@@ -264,6 +272,7 @@ def launch(session: str, minutes: int, offer_id: int | None, max_price: float | 
                 if instance_id is not None:
                     print(f'セッション {session} を開始しました。インスタンスID: {instance_id}、'
                           f'出品ID: {offer["id"]}、cpu_name: {offer["cpu_name"]}、'
+                          f'cpu_ram: {offer["cpu_ram"]}、'
                           f'dph_total: {offer["dph_total"]}')
                     return
             remaining = wait_end - time.monotonic()
@@ -304,7 +313,7 @@ def main() -> int:
         usage=('launch.py <セッション名> <期限までの分数> --offer <出品ID>\n'
                '       launch.py <セッション名> <期限までの分数> '
                '--max-price <1時間あたりの米ドル> '
-               '--min-cpu-cores <スレッド数> --cpu <CPU名の一部> '
+               '--min-cpu-cores <スレッド数> --min-cpu-ram <MB> --cpu <CPU名の一部> '
                '[--cpu <CPU名の一部> ...] --wait <分>'),
         add_help=False, allow_abbrev=False)
     parser.add_argument('session', metavar='セッション名')
@@ -313,20 +322,22 @@ def main() -> int:
     choice.add_argument('--offer', type=positive_integer)
     choice.add_argument('--max-price', type=positive_number)
     parser.add_argument('--min-cpu-cores', type=positive_integer)
+    parser.add_argument('--min-cpu-ram', type=positive_integer)
     parser.add_argument('--cpu', action='append', type=cpu_name_part)
     parser.add_argument('--wait', type=positive_integer)
     try:
         options = parser.parse_args()
-        automatic_values = (options.min_cpu_cores, options.cpu, options.wait)
+        automatic_values = (options.min_cpu_cores, options.min_cpu_ram,
+                            options.cpu, options.wait)
         if options.offer is not None and any(value is not None for value in automatic_values):
             parser.error('--offerと自動選択の引数は同時に指定できません')
         if options.max_price is not None and any(value is None for value in automatic_values):
-            parser.error('自動選択には--min-cpu-cores、--cpu、--waitが必要です')
+            parser.error('自動選択には--min-cpu-cores、--min-cpu-ram、--cpu、--waitが必要です')
     except SystemExit as error:
         return 0 if error.code == 0 else 1
     try:
         launch(options.session, options.minutes, options.offer, options.max_price,
-               options.min_cpu_cores, options.cpu, options.wait)
+               options.min_cpu_cores, options.min_cpu_ram, options.cpu, options.wait)
     except FAILURES as error:
         return common.cli_error(error)
     return 0

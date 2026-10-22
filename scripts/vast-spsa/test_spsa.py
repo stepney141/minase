@@ -34,7 +34,7 @@ CONFIG = {'commit': 'a' * 40, 'runner_commit': 'b' * 40, 'seed': 0, 'iterations'
 OFFER = {'id': 42, 'cpu_arch': 'amd64', 'verification': 'verified', 'cpu_cores': 192,
          'duration': 172800, 'reliability2': 0.95, 'direct_port_count': 1, 'inet_up': 100,
          'disk_space': 50, 'gpu_frac': 1, 'cpu_cores_effective': 192,
-         'cpu_name': 'AMD EPYC 7B13', 'dph_total': 0.9}
+         'cpu_name': 'AMD EPYC 7B13', 'cpu_ram': 260000, 'dph_total': 0.9}
 
 
 def make_run(path: Path, applications: list[int]) -> None:
@@ -101,6 +101,21 @@ class SpsaTests(unittest.TestCase):
         for value in (float('nan'), float('inf'), True, '192'):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 launch.check_offer([{**OFFER, 'cpu_cores': value}], '42')
+
+    def test_select_offers_requires_finite_cpu_ram_at_least_minimum(self) -> None:
+        """実メモリが有限の数で下限以上の出品だけを価格順に選ぶ。"""
+        without_ram = {**OFFER, 'id': 2, 'dph_total': 0.2}
+        del without_ram['cpu_ram']
+        offers = [
+            {**OFFER, 'id': 1, 'cpu_ram': 259999, 'dph_total': 0.1},
+            without_ram,
+            {**OFFER, 'id': 3, 'cpu_ram': '260000', 'dph_total': 0.3},
+            {**OFFER, 'id': 4, 'cpu_ram': float('inf'), 'dph_total': 0.4},
+            {**OFFER, 'id': 5, 'cpu_ram': 260000, 'dph_total': 0.5},
+            {**OFFER, 'id': 6, 'cpu_ram': 260001, 'dph_total': 0.6},
+        ]
+        selected = launch.select_offers(offers, 1, 192, 260000, ['EPYC'])
+        self.assertEqual([offer['id'] for offer in selected], [5, 6])
 
     def test_session_round_trip_and_integer_boundaries(self) -> None:
         """最大整数、seedの0、正の整数NPSを受け入れ、TOMLを書き戻せる。"""
@@ -541,7 +556,8 @@ class WorkflowTests(unittest.TestCase):
         self.queue_successful_launch(51, uploaded)
         output = io.StringIO()
         arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
-                     '--min-cpu-cores', '224', '--cpu', 'EPYC', '--cpu', 'Ryzen', '--wait', '2']
+                     '--min-cpu-cores', '224', '--min-cpu-ram', '260000',
+                     '--cpu', 'EPYC', '--cpu', 'Ryzen', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
                 redirect_stdout(output):
             self.assertEqual(launch.main(), 0)
@@ -551,6 +567,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual((directory / 'offer.json').read_text(), response)
         self.assertIn('出品ID: 51', output.getvalue())
         self.assertIn('cpu_name: AMD EPYC 7B13', output.getvalue())
+        self.assertIn('cpu_ram: 260000', output.getvalue())
         self.assertIn('dph_total: 0.4', output.getvalue())
         self.assertFalse(self.fake.remaining())
 
@@ -566,7 +583,8 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['show'], '[]')
         self.queue_successful_launch(42, uploaded)
         arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
-                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '2']
+                     '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+                     '--cpu', 'EPYC', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments):
             self.assertEqual(launch.main(), 0)
         calls = self.fake.calls()
@@ -583,7 +601,8 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
         self.queue_successful_launch(42, uploaded)
         arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
-                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '2']
+                     '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+                     '--cpu', 'EPYC', '--wait', '2']
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
                 patch.object(launch, 'time', wraps=launch.time) as clock:
             clock.sleep.return_value = None
@@ -600,7 +619,8 @@ class WorkflowTests(unittest.TestCase):
         self.fake.add('vastai', ['search', 'offers'], json.dumps([OFFER]))
         self.fake.add('rustc', ['--version'], 'rustc 1.90.0 (test)\n')
         arguments = ['launch.py', 'trial', '1449', '--max-price', '1',
-                     '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1']
+                     '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+                     '--cpu', 'EPYC', '--wait', '1']
         errors = io.StringIO()
         with patch.object(Path, 'home', return_value=self.root), patch.object(sys, 'argv', arguments), \
                 patch.object(launch.time, 'monotonic', side_effect=[0, 0, 0, 61]), \
@@ -613,24 +633,33 @@ class WorkflowTests(unittest.TestCase):
     def test_launch_rejects_invalid_arguments_before_vastai(self) -> None:
         """競合、欠落、旧形式、未知の引数と不正な数値を作成前に拒否する。"""
         complete = ['launch.py', 'trial', '60', '--max-price', '1',
-                    '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1']
+                    '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+                    '--cpu', 'EPYC', '--wait', '1']
         cases = [
             ['launch.py', 'trial', '60', '--offer', '42', '--max-price', '1',
-             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
-            ['launch.py', 'trial', '60', '--offer', '42', '--min-cpu-cores', '192'],
-            *[complete[:index] + complete[index + 2:] for index in (3, 5, 7, 9)],
+             '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+             '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--offer', '42', '--min-cpu-ram', '260000'],
+            *[complete[:index] + complete[index + 2:] for index in (3, 5, 7, 9, 11)],
             ['launch.py', 'trial', '42', '60'],
             ['launch.py', 'trial', '60', '--offer', '42', '--unknown'],
             ['launch.py', 'trial', '0', '--offer', '42'],
             ['launch.py', 'trial', '60', '--offer', '0'],
             ['launch.py', 'trial', '60', '--max-price', '0',
-             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
+             '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+             '--cpu', 'EPYC', '--wait', '1'],
             ['launch.py', 'trial', '60', '--max-price', 'inf',
-             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '1'],
+             '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+             '--cpu', 'EPYC', '--wait', '1'],
             ['launch.py', 'trial', '60', '--max-price', '1',
-             '--min-cpu-cores', '0', '--cpu', 'EPYC', '--wait', '1'],
+             '--min-cpu-cores', '0', '--min-cpu-ram', '260000',
+             '--cpu', 'EPYC', '--wait', '1'],
             ['launch.py', 'trial', '60', '--max-price', '1',
-             '--min-cpu-cores', '192', '--cpu', 'EPYC', '--wait', '0'],
+             '--min-cpu-cores', '192', '--min-cpu-ram', '0',
+             '--cpu', 'EPYC', '--wait', '1'],
+            ['launch.py', 'trial', '60', '--max-price', '1',
+             '--min-cpu-cores', '192', '--min-cpu-ram', '260000',
+             '--cpu', 'EPYC', '--wait', '0'],
         ]
         for arguments in cases:
             with self.subTest(arguments=arguments), patch.object(sys, 'argv', arguments):
