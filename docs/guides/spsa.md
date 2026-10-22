@@ -197,11 +197,12 @@ python3 scripts/vast-spsa/bench.py target/match-cache/<コミット>-tuning/mina
 候補は、次の条件で照会したオンデマンドの出品から選ぶ。
 
 ```console
-vastai search offers 'cpu_cores>=192 verified=true reliability>=0.95 inet_up>=100 disk_space>=50 rentable=true gpu_frac=1 duration>=2 direct_port_count>=1' \
+vastai search offers 'cpu_cores>=192 verified=any reliability>=0.95 inet_up>=100 disk_space>=50 rentable=true gpu_frac=1 duration>=2 direct_port_count>=1' \
   --type on-demand --raw --limit 1000
 ```
 
 このうち、`cpu_arch`が`amd64`で、`cpu_cores_effective`が`cpu_cores`と等しい出品を、見込みの1回の費用の安い順に試す。
+vast.aiの検証（`verified`）は条件にしない。`vastai search offers`は既定で検証済みの出品だけを返すので、`verified=any`を明示する。SPSAは機密の情報を扱わないので、検証されていない出品も借りてよいと2026年10月22日に利用者が決めた。
 過去のセッションの記録に負荷時の速度があるCPU型は、その速度から求めた所要時間に時間単価を掛け、記録のないCPU型は時間単価に24時間を掛けて、1回の費用を見積もる。
 `remote.py`は、開始時に測った負荷時の速度から所要時間を見込み、24時間を超えれば本番を始めずに止まる。
 その場合、`fetch.py`は調整機を削除するので、次の候補で起動し直す。
