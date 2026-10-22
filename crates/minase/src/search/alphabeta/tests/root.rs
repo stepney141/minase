@@ -4,8 +4,8 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::root::{
-    FailHighReduction, RootMoveStats, grow_aspiration_delta, initial_aspiration_delta,
-    root_move_weight,
+    FailHighReduction, RootMoveStats, grow_aspiration_delta, increase_depth_reduction,
+    initial_aspiration_delta, root_move_weight,
 };
 
 fn set_root_move_averages(searcher: &mut Searcher<'_>, mv: Move, averages: Option<(i32, i64)>) {
@@ -548,19 +548,19 @@ fn aspiration_growth_saturates_at_i32_max() {
 #[test]
 fn fail_high_reduction_decreases_each_retry_and_fail_low_resets_the_count() {
     let reduction = FailHighReduction::begin(0);
-    assert_eq!(reduction.window_depth(6), 6);
+    assert_eq!(reduction.window_depth(6, 0), 6);
     let reduction = reduction.after_fail_high();
-    assert_eq!(reduction.window_depth(6), 5);
+    assert_eq!(reduction.window_depth(6, 0), 5);
     let reduction = reduction.after_fail_high();
-    assert_eq!(reduction.window_depth(6), 4);
-    assert_eq!(reduction.after_fail_low().window_depth(6), 6);
+    assert_eq!(reduction.window_depth(6, 0), 4);
+    assert_eq!(reduction.after_fail_low().window_depth(6, 0), 6);
 }
 
 #[test]
 fn fail_high_recovery_decays_at_iteration_start_and_is_preserved_without_fail_high() {
     for (recovery, expected) in [(3, 1), (1, 0)] {
         let reduction = FailHighReduction::begin(recovery);
-        assert_eq!(reduction.window_depth(6), 6 - expected);
+        assert_eq!(reduction.window_depth(6, 0), 6 - expected);
         assert_eq!(reduction.recovery_after_completion(), expected);
     }
 }
@@ -581,8 +581,24 @@ fn aspiration_window_depth_has_a_lower_bound_of_one() {
     let reduction = FailHighReduction::begin(5)
         .after_fail_high()
         .after_fail_high();
-    assert_eq!(reduction.window_depth(4), 1);
-    assert_eq!(reduction.window_depth(1), 1);
+    assert_eq!(reduction.window_depth(4, 0), 1);
+    assert_eq!(reduction.window_depth(1, 4), 1);
+}
+
+#[test]
+fn increase_depth_reduction_uses_three_quarters_of_the_next_count() {
+    let reductions: Vec<_> = (0..=4).map(increase_depth_reduction).collect();
+    assert_eq!(reductions, [0, 1, 2, 3, 3]);
+}
+
+#[test]
+fn window_depth_combines_fail_high_recovery_and_increase_depth_reductions() {
+    // beginで持ち越し5から2を引き、fail high 2回とk=2の減深2をさらに引く。
+    let reduction = FailHighReduction::begin(5)
+        .after_fail_high()
+        .after_fail_high();
+    assert_eq!(reduction.window_depth(10, 2), 3);
+    assert_eq!(reduction.window_depth(5, 2), 1);
 }
 
 // 通常範囲の平均だけを狭い窓の中心に使う。

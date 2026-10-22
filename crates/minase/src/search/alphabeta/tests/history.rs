@@ -329,6 +329,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 stop_reason: AtomicU8::new(0),
                 total_nodes: AtomicU64::new(0),
                 best_move_changes: AtomicU64::new(0),
+                increase_depth: AtomicBool::new(true),
                 node_limit: None,
                 clock: &ManualClock::new(Duration::ZERO),
                 hard_limit: None,
@@ -377,6 +378,7 @@ fn history_carry_workers_update_their_own_table() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
         node_limit: None,
         clock: &ManualClock::new(Duration::ZERO),
         hard_limit: None,
@@ -406,6 +408,7 @@ fn history_carry_workers_update_their_own_table() {
                 partial_score: None,
                 returned_move_average: Some(index as i32),
                 time_reduction: (index == 0).then_some(1000),
+                search_again_counter: 0,
                 worker_index: index,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]

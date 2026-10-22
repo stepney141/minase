@@ -136,6 +136,10 @@ const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
 /// 根の候補が1手のときの時間上限。Stockfish `src/search.cpp:615-617`に合わせる。
 const SINGLE_ROOT_MOVE_TIME_CAP_MS: u128 = 500;
+/// increaseDepthで深さを増やしてよい経過時間の上限。hardで抑える前の時間に対する百分率。
+const INCREASE_DEPTH_THRESHOLD_PERCENT: u128 = 50;
+/// 百分率の尺度。
+const PERCENT_SCALE: u128 = 100;
 
 /// 完了反復ごとの時間伸縮に使う探索の不安定さの状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -388,6 +392,28 @@ pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget 
         soft: Duration::from_millis(to_u64_ms(soft_ms)),
         ..base
     }
+}
+
+/// 的中後の経過時間がhardで抑える前の時間の50%以下なら、深さを増やしてよいと判定する。
+///
+/// 的中前は常に真を返す。時間はナノ秒へ揃えて交差積で比較し、ミリ秒への切り詰めを行わない。
+/// Stockfish `src/search.cpp:634`に当たる。
+pub(super) fn should_increase_depth(
+    elapsed: Duration,
+    hit: Option<Duration>,
+    scaled_time_ms: u128,
+) -> bool {
+    let Some(hit) = hit else {
+        return true;
+    };
+    let elapsed_ns = elapsed
+        .saturating_sub(hit)
+        .as_nanos()
+        .saturating_mul(PERCENT_SCALE);
+    let threshold_ns = scaled_time_ms
+        .saturating_mul(1_000_000)
+        .saturating_mul(INCREASE_DEPTH_THRESHOLD_PERCENT);
+    elapsed_ns <= threshold_ns
 }
 
 /// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。

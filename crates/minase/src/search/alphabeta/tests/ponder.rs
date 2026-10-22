@@ -246,6 +246,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             best_move_changes: AtomicU64::new(0),
+            increase_depth: AtomicBool::new(true),
             node_limit: None,
             clock: &ManualClock::new(ms(elapsed)),
             hard_limit: Some(HardLimit {
@@ -351,6 +352,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             best_move_changes: AtomicU64::new(0),
+            increase_depth: AtomicBool::new(true),
             node_limit: None,
             clock: clock.as_ref(),
             hard_limit: Some(HardLimit {
@@ -484,6 +486,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             best_move_changes: AtomicU64::new(0),
+            increase_depth: AtomicBool::new(true),
             node_limit: None,
             clock: &ManualClock::new(Duration::from_secs(1)),
             hard_limit: Some(HardLimit {
@@ -573,6 +576,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 partial_score: None,
                 returned_move_average: None,
                 time_reduction: Some(777),
+                search_again_counter: 0,
                 worker_index: 0,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]
@@ -668,6 +672,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     stop_reason: AtomicU8::new(0),
                     total_nodes: AtomicU64::new(0),
                     best_move_changes: AtomicU64::new(0),
+                    increase_depth: AtomicBool::new(true),
                     node_limit: None,
                     clock: &ManualClock::new(
                         ms(100_000) + if expired { budget.hard } else { ms(1) },

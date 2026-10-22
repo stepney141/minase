@@ -17,6 +17,7 @@ fn shared<'a>(stop: &'a AtomicBool, clock: &'a dyn SearchClock) -> SharedSearch<
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
         node_limit: None,
         clock,
         hard_limit: None,

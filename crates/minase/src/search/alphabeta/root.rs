@@ -37,8 +37,13 @@ const FAIL_HIGH_RECOVERY_DECAY: u32 = 2;
 /// fail highによって減らした窓の深さの下限
 /// （Stockfish `src/search.cpp:410`）。
 const MIN_ASPIRATION_WINDOW_DEPTH: u32 = 1;
+/// 深さを増やさない反復の回数から減深を求める分子と分母
+/// （Stockfish `src/search.cpp:410-411`）。
+const SEARCH_AGAIN_REDUCTION_NUMERATOR: u32 = 3;
+const SEARCH_AGAIN_REDUCTION_DENOMINATOR: u32 = 4;
 
 /// 1回の反復で数えるfail highと、反復をまたいで持ち越す減深。
+/// 窓の深さでは、これらとincreaseDepthのワーカー固有の回数を合成する。
 #[derive(Clone, Copy)]
 pub(super) struct FailHighReduction {
     failed_high_count: u32,
@@ -54,12 +59,13 @@ impl FailHighReduction {
         }
     }
 
-    /// 反復の深さからfail high 1回につき1手と持ち越しを引き、1手を下限とする
-    /// （Stockfish `src/search.cpp:410, 450`）。
-    pub(super) fn window_depth(self, iteration_depth: u32) -> u32 {
+    /// 反復の深さからfail high 1回につき1手、持ち越し、およびincreaseDepthの
+    /// 減深を引き、1手を下限とする（Stockfish `src/search.cpp:410-411, 450`）。
+    pub(super) fn window_depth(self, iteration_depth: u32, search_again_counter: u32) -> u32 {
         iteration_depth
             .saturating_sub(self.failed_high_count)
             .saturating_sub(self.recovery)
+            .saturating_sub(increase_depth_reduction(search_again_counter))
             .max(MIN_ASPIRATION_WINDOW_DEPTH)
     }
 
@@ -86,6 +92,12 @@ impl FailHighReduction {
             self.failed_high_count.div_ceil(2) + 2
         }
     }
+}
+
+/// 深さを増やさずに始めた反復の回数から、窓の減深を返す。
+pub(super) fn increase_depth_reduction(search_again_counter: u32) -> u32 {
+    SEARCH_AGAIN_REDUCTION_NUMERATOR * (search_again_counter + 1)
+        / SEARCH_AGAIN_REDUCTION_DENOMINATOR
 }
 
 /// 根の手について、`go`の間に累積する探索量と評価値の平均。
@@ -332,8 +344,11 @@ impl Searcher<'_> {
     /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
     /// 深さ2以上は平均があれば窓を置く。
     /// 直前の完了値は詰みを探す印の判定だけに使う。
-    /// 反復の開始時にfail highの持ち越しを減らし、各窓はfail highの回数と持ち越しに応じて
-    /// 反復の深さ以下で読む。fail lowでは回数を0へ戻し、fail highでは1増やす。
+    /// 反復の開始時にfail highの持ち越しを減らし、各窓はfail highの回数、持ち越し、
+    /// およびincreaseDepthの回数`k`に応じて反復の深さ以下で読む。
+    /// 窓の深さは`max(1, d − h − h_carry − floor(3 × (k + 1) / 4))`とし、
+    /// 読み直しの間は`k`を変えない。
+    /// fail lowではfail highの回数を0へ戻し、fail highでは1増やす。
     /// 値がα以下ならβを元のαへ寄せて下端を返り値から移し、
     /// β以上ならαを元のβを基準に寄せて上端を返り値から移す。
     /// どちらも窓を移した後に半幅を広げて再探索する。
@@ -379,7 +394,7 @@ impl Searcher<'_> {
                 )
             }));
         loop {
-            let window_depth = reduction.window_depth(iteration_depth);
+            let window_depth = reduction.window_depth(iteration_depth, self.search_again_counter);
             let Some((best_move, score)) = self.search_root(
                 position,
                 root_moves,

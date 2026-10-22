@@ -21,7 +21,8 @@ use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
     FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeEffortCoefficients,
     TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
-    scaled_soft_millis, scaled_time_budget, should_start_next_iteration, stable_signal,
+    scaled_soft_millis, scaled_time_budget, should_increase_depth, should_start_next_iteration,
+    stable_signal,
 };
 
 /// 補助ワーカーが探索する深さを昇順に返す。
@@ -42,6 +43,8 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// 深さ2以上は、直前の完了反復の最善手について記録した評価値の平均を窓の中心に使い、
 /// 符号つき2乗の平均を初期半幅に使う。
 /// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
+/// 時間で継続すると決めた完了反復の境界ではincreaseDepthの共有状態を更新し、実際に始める
+/// 反復ごとに1回だけワーカー固有の回数へ反映する。反復の番号と進捗の深さは1ずつ増やす。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
     nnue: &Nnue,
@@ -129,6 +132,7 @@ pub(super) fn run_main_worker(
                 budget,
             });
         }
+        searcher.begin_iteration();
         if let Some(scaling) = &mut instability_scaling {
             scaling.begin_iteration();
         }
@@ -139,6 +143,7 @@ pub(super) fn run_main_worker(
         };
         completed_bests.push(best_move);
         let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
+        let mut scaled_time_ms = None;
         if let Some(scaling) = &mut instability_scaling {
             let base = base_time_budget.expect("instability scaling requires a time budget");
             let falling_eval = scaling.update_falling_eval(
@@ -174,6 +179,7 @@ pub(super) fn run_main_worker(
                 root_moves.len(),
             );
             current_time_budget = Some(scaled_time_budget(base, time_ms));
+            scaled_time_ms = Some(time_ms);
         }
         result.best_move = best_move;
         result.score = score;
@@ -205,7 +211,7 @@ pub(super) fn run_main_worker(
                 .load(AtomicOrdering::Relaxed);
             hit_ns != u64::MAX
                 && !should_start_next_iteration(
-                    shared.clock.elapsed(),
+                    elapsed,
                     Duration::from_nanos(hit_ns),
                     budget,
                     stable,
@@ -217,6 +223,18 @@ pub(super) fn run_main_worker(
         if depth == depth_limit {
             shared.stop(StopReason::DepthCompleted);
             break;
+        }
+        if let Some(time_ms) = scaled_time_ms {
+            let hit_ns = shared
+                .hard_limit
+                .expect("instability scaling requires a hard limit")
+                .hit_ns
+                .load(AtomicOrdering::Relaxed);
+            let hit = (hit_ns != u64::MAX).then(|| Duration::from_nanos(hit_ns));
+            shared.increase_depth.store(
+                should_increase_depth(elapsed, hit, time_ms),
+                AtomicOrdering::Relaxed,
+            );
         }
     }
     let time_reduction = instability_scaling.map_or(1000, |scaling| scaling.time_reduction);
@@ -250,6 +268,8 @@ pub(super) fn main_worker_outcome(
         partial_score,
         returned_move_average,
         time_reduction: Some(time_reduction),
+        #[cfg(test)]
+        search_again_counter: searcher.search_again_counter,
         worker_index: 0,
         result,
         pv: completed_pv,
@@ -263,6 +283,7 @@ pub(super) fn main_worker_outcome(
 /// 窓の初期化には自分の直前の完了反復の最善手と、その手について自分が記録した評価値の平均を使う。
 /// 初期半幅には、その手について自分が記録した符号つき2乗の平均とワーカー番号も使う。
 /// 窓外れは読み直してから同じ反復の最善手、評価値、深さ、主変化を1組で保持する。
+/// 深さを飛ばしても、実際に始める反復ごとにincreaseDepthの共有状態を1回だけ回数へ反映する。
 /// 深さ上限を完了すると自分の処理を終え、他ワーカーへ深さ完了の停止を通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_auxiliary_worker(
@@ -314,6 +335,7 @@ pub(super) fn run_auxiliary_worker(
     let mut completed_pv = vec![root_moves[0]];
     for depth in auxiliary_depths(worker_index, depth_limit) {
         let prev = (result.depth > 0).then_some((result.best_move, result.score));
+        searcher.begin_iteration();
         let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             break;
@@ -336,6 +358,8 @@ pub(super) fn run_auxiliary_worker(
         partial_score: None,
         returned_move_average,
         time_reduction: None,
+        #[cfg(test)]
+        search_again_counter: searcher.search_again_counter,
         worker_index,
         result,
         pv: completed_pv,

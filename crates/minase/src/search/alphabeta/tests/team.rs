@@ -16,6 +16,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             best_move_changes: AtomicU64::new(0),
+            increase_depth: AtomicBool::new(true),
             node_limit: None,
             clock: &ManualClock::new(Duration::ZERO),
             hard_limit: None,
@@ -37,6 +38,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                         partial_score: None,
                         returned_move_average: None,
                         time_reduction: (worker_index == 0).then_some(1000),
+                        search_again_counter: 0,
                         worker_index,
                         result: SearchResult {
                             #[cfg(feature = "search-stats")]
@@ -183,6 +185,7 @@ fn worker_outcome_selection_uses_depth_partial_then_index_and_excludes_zero() {
             partial_score,
             returned_move_average: (depth > 0).then_some(worker_index as i32 * 10),
             time_reduction: (worker_index == 0).then_some(1000),
+            search_again_counter: 0,
             worker_index,
             result: SearchResult {
                 #[cfg(feature = "search-stats")]

@@ -241,6 +241,39 @@ fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
     assert_eq!(scaled.byoyomi_period, base.byoyomi_period);
 }
 
+/// increaseDepthは的中後の経過時間をhardで抑える前の時間と比べ、50%ちょうどを含む。
+#[test]
+fn increase_depth_uses_half_of_unclamped_scaled_time_without_rounding() {
+    let hit = Duration::from_secs(1);
+    assert!(should_increase_depth(
+        Duration::from_millis(1500),
+        Some(hit),
+        1000
+    ));
+    assert!(!should_increase_depth(
+        Duration::from_millis(1500) + Duration::from_nanos(1),
+        Some(hit),
+        1000
+    ));
+    assert!(should_increase_depth(Duration::from_secs(100), None, 1));
+
+    let hard_capped = scaled_time_budget(
+        TimeBudget {
+            soft: Duration::from_millis(100),
+            hard: Duration::from_millis(400),
+            byoyomi_period: false,
+        },
+        1000,
+    );
+    assert_eq!(hard_capped.soft, Duration::from_millis(400));
+    assert!(Duration::from_millis(450) > hard_capped.soft);
+    assert!(should_increase_depth(
+        Duration::from_millis(450),
+        Some(Duration::ZERO),
+        1000
+    ));
+}
+
 /// 根の候補が1手なら因子の積を求めた後の時間を500 msで抑え、2手以上と500 ms未満は変えない。
 #[test]
 fn single_root_move_caps_scaled_soft_time_after_factor_product() {
@@ -502,6 +535,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(1_000_000),
         best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
         node_limit: None,
         clock: &ManualClock::new(Duration::from_millis(346)),
         hard_limit: Some(HardLimit {
@@ -597,6 +631,112 @@ pub(super) fn single_root_move_scaling_stops_at_500_millis_boundary() {
     assert_eq!(outcome.stop_reason, StopReason::SoftLimit);
 }
 
+/// increaseDepthの共有状態は探索ごとに真から始まり、偽で始めた反復だけを数える。
+/// 主ワーカーが窓を浅く読んでも、進捗には反復の番号を1ずつ通知する。
+#[test]
+fn increase_depth_state_resets_and_preserves_main_progress_depths() {
+    let position = quiet_midgame();
+    let root_moves = vec![legal_moves(&position)[0]];
+    let history_keys = [search_key(&position)];
+    let threads = worker_count(1);
+    let mut histories = crate::search::HistoryTables::new(threads);
+
+    let run = |depth, elapsed, histories: &mut crate::search::HistoryTables| {
+        let limits =
+            SearchLimits::new(Some(depth), None, None, Some(clock(10_000_000, 0, 0))).unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let outcome = run_search_team(
+            test_nnue(),
+            &position,
+            engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+            DRAW_SCORE,
+            &root_moves,
+            &history_keys,
+            &limits,
+            &AtomicBool::new(false),
+            threads,
+            &small_tt(),
+            histories,
+            Some((&sender, 1)),
+            &ManualClock::new(elapsed),
+            &AtomicU64::new(0),
+            false,
+        );
+        drop(sender);
+        let depths = receiver
+            .try_iter()
+            .filter_map(|event| match event {
+                SearchEvent::Progress { depth, .. } => Some(depth),
+                SearchEvent::Finished { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        (outcome, depths)
+    };
+
+    // 根の候補が1手なのでhardで抑える前の時間は500 msとなる。
+    // 400 msの境界で共有状態が偽になり、深さ2を始めるときだけ回数が増える。
+    let (first, depths) = run(2, Duration::from_millis(400), &mut histories);
+    assert_eq!(first.stop_reason, StopReason::DepthCompleted);
+    assert_eq!(first.worker_search_again_counters, [1]);
+    assert_eq!(depths, [1, 2]);
+
+    // 前の探索が偽で終わっても、新しい探索の最初の反復は真から始める。
+    let (second, depths) = run(1, Duration::ZERO, &mut histories);
+    assert_eq!(second.stop_reason, StopReason::DepthCompleted);
+    assert_eq!(second.worker_search_again_counters, [0]);
+    assert_eq!(depths, [1]);
+}
+
+/// 補助ワーカーは深さを飛ばしても、実際に始める各反復で共有状態を1回だけ読む。
+#[test]
+fn auxiliary_worker_counts_only_the_iterations_it_starts() {
+    let position = quiet_midgame();
+    let root_moves = vec![legal_moves(&position)[0]];
+    let external_stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(false),
+        node_limit: None,
+        clock: &ManualClock::new(Duration::ZERO),
+        hard_limit: None,
+    };
+    let mut histories = crate::search::HistoryTables::new(worker_count(2));
+
+    assert_eq!(auxiliary_depths(1, 6).collect::<Vec<_>>(), [1, 3, 5, 6]);
+
+    let outcome = run_auxiliary_worker(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &[search_key(&position)],
+        6,
+        1,
+        &shared,
+        &small_tt(),
+        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        &mut empty_capture_history(),
+        &new_correction_values(),
+        &mut histories.continuation_correction[1],
+        &histories.continuation,
+        &histories.pawn,
+    );
+
+    assert_eq!(outcome.result.depth, 6);
+    assert_eq!(outcome.search_again_counter, 4);
+}
+
 // 指定した直近の反復数だけ最善手が同じときに安定とする。
 // 採用理由はdocs/adr/stop-early-on-stable-best-move-without-extensions.md。
 #[test]
@@ -643,6 +783,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         best_move_changes: AtomicU64::new(0),
+        increase_depth: AtomicBool::new(true),
         node_limit: None,
         clock: &ManualClock::new(Duration::from_millis(
             100000 / super::super::params::iteration_ratio() as u64 + 1,
@@ -877,6 +1018,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             stop_reason: AtomicU8::new(0),
             total_nodes: AtomicU64::new(0),
             best_move_changes: AtomicU64::new(0),
+            increase_depth: AtomicBool::new(true),
             node_limit: None,
             clock: &ManualClock::new(Duration::from_secs(if ponder { 105 } else { 5 })),
             hard_limit: Some(HardLimit {

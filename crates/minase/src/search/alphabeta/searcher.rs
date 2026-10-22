@@ -95,6 +95,7 @@ pub(super) fn new_searcher<'a>(
         ponder_iteration: None,
         root_depth: 0,
         fail_high_recovery: 0,
+        search_again_counter: 0,
         seek_mate: false,
         cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
@@ -276,6 +277,9 @@ pub(super) struct Searcher<'a> {
     /// 反復をまたいで持ち越すfail highの減深。`go`ごとに0から始める
     /// （Stockfish src/search.cpp:336, 405, 461-462）。
     pub(super) fail_high_recovery: u32,
+    /// 共有状態が「深さを増やさない」の間に始めた反復の回数。
+    /// 探索ごとに0から始め、窓の読み直しでは増やさない。
+    pub(super) search_again_counter: u32,
     /// 前の反復の確定値から決めた、現在の反復で詰みを探すかの印（Stockfish src/search.cpp:395）。
     pub(super) seek_mate: bool,
     /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。
@@ -332,6 +336,14 @@ pub(super) struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
+    /// 実際に反復を始めるとき、共有状態が偽なら回数を1増やす
+    /// （Stockfish src/search.cpp:369-370）。
+    pub(super) fn begin_iteration(&mut self) {
+        if !self.shared.increase_depth.load(AtomicOrdering::Relaxed) {
+            self.search_again_counter += 1;
+        }
+    }
+
     /// R2またはR3の下で、この局面からの着手が禁止手（RULES.md第31条R2・R3、第26条第11項）かを返す。R1では常に`false`。
     ///
     /// 着手を適用して反復規則のキーを求め、R2では対局履歴または探索経路に1回でも現れていれば、

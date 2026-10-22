@@ -32,6 +32,9 @@ pub(in crate::search) struct SearchOutcome {
     /// 合算前の値を検査するためにテスト時だけ保持する各ワーカーの統計。
     #[cfg(all(test, feature = "search-stats"))]
     pub(super) worker_stats: Vec<crate::search::SearchStats>,
+    /// 各ワーカーが深さを増やさずに始めた反復の回数。
+    #[cfg(test)]
+    pub(super) worker_search_again_counters: Vec<u32>,
     /// 完了した探索の結果。
     pub(in crate::search) result: SearchResult,
     /// 探索開始からの経過時間。
@@ -51,6 +54,9 @@ pub(super) struct WorkerOutcome {
     pub(super) returned_move_average: Option<i32>,
     /// 主ワーカーが最後に求めた短縮率。補助ワーカーでは値を持たない。
     pub(super) time_reduction: Option<i32>,
+    /// 深さを増やさずに始めた反復の回数。
+    #[cfg(test)]
+    pub(super) search_again_counter: u32,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
     pub(super) worker_index: usize,
     /// 最後まで完了した反復の結果。
@@ -74,6 +80,8 @@ pub(super) struct SharedSearch<'a> {
     pub(super) total_nodes: AtomicU64,
     /// 全ワーカーが数えた、根で最善値を更新した2手目以降の手の回数。
     pub(super) best_move_changes: AtomicU64,
+    /// 次の反復で窓の読む深さを増やしてよいかを全ワーカーで共有する。
+    pub(super) increase_depth: AtomicBool,
     /// 探索チーム全体で実着手を適用する回数の上限。
     pub(super) node_limit: Option<u64>,
     /// 探索開始からの経過時間を測る共有時計。
@@ -229,6 +237,9 @@ pub(in crate::search) fn run_search_team(
         stop_reason: AtomicU8::new(0),
         total_nodes: AtomicU64::new(0),
         best_move_changes: AtomicU64::new(0),
+        // 探索ごとに初期化し、前の探索の値を持ち越さない
+        // （Stockfish src/thread.cpp:304）。
+        increase_depth: AtomicBool::new(true),
         node_limit,
         clock,
         hard_limit: time_budget.map(|budget| HardLimit {
@@ -330,6 +341,11 @@ pub(in crate::search) fn run_search_team(
         worker_stats: worker_outcomes
             .iter()
             .map(|outcome| outcome.result.stats)
+            .collect(),
+        #[cfg(test)]
+        worker_search_again_counters: worker_outcomes
+            .iter()
+            .map(|outcome| outcome.search_again_counter)
             .collect(),
         result,
         elapsed: clock.elapsed(),
