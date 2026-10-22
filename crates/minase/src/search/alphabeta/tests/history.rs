@@ -129,14 +129,17 @@ fn previous_search_is_cleared_when_every_worker_stops_at_depth_zero() {
 }
 
 #[test]
-fn history_tables_clear_removes_the_previous_search_value() {
+fn history_tables_clear_removes_previous_search_values_and_ponder_mark() {
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     assert_eq!(histories.previous_search.time_reduction, 850);
+    assert!(!histories.previous_search.ponder_search_started);
     histories.previous_search.score_and_average = Some((123, 456));
     histories.previous_search.time_reduction = 777;
+    histories.previous_search.ponder_search_started = true;
     histories.clear();
     assert_eq!(histories.previous_search.score_and_average, None);
     assert_eq!(histories.previous_search.time_reduction, 850);
+    assert!(!histories.previous_search.ponder_search_started);
 }
 
 // 停止済みでも根の開始は1回。両方の履歴を全要素、各ワーカーで検査する。

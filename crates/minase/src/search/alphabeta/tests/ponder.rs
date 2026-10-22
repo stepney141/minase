@@ -187,6 +187,40 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     }
 }
 
+/// ワーカー数の不一致で履歴表を作り直しても、開始した先読みの印を新しい表に立てる。
+#[test]
+fn ponder_sets_mark_after_worker_count_rebuild() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    let threads = worker_count(2);
+    let mut histories = crate::search::HistoryTables::new(worker_count(1));
+    assert!(!histories.previous_search.ponder_search_started);
+
+    let _ = run_search_team(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &[search_key(&position)],
+        &SearchLimits::new(Some(1), None, Some(1_000), None).unwrap(),
+        &AtomicBool::new(false),
+        threads,
+        &small_tt(),
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(u64::MAX),
+        true,
+    );
+
+    assert_eq!(histories.workers.len(), threads.get());
+    assert!(histories.previous_search.ponder_search_started);
+}
+
 // 的中時刻はスレッド生成前から共有し、最初の通知だけを記録する。
 // 生成前の的中は共有起点を持つハンドルをスレッドなしで構成して厳密に検査する。
 #[test]

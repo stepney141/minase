@@ -28,12 +28,14 @@ pub(super) struct TimeBudget {
     pub(super) byoyomi_period: bool,
 }
 
-/// 次の探索へ持ち越す、直前の探索の値。
+/// 次の探索へ持ち越す値と、表の初期化後に先読みの探索を始めたかを示す印。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct PreviousSearch {
     pub(crate) score_and_average: Option<(i32, i32)>,
     /// 主ワーカーが最後に求めたbest move stabilityの短縮率。単位は千分率である。
     pub(crate) time_reduction: i32,
+    /// 表の初期化後に先読みの探索を1回以上始めたかを示す。
+    pub(crate) ponder_search_started: bool,
 }
 
 /// 前の探索の短縮率の初期値。Stockfish `src/thread.cpp:271`に合わせる。
@@ -44,6 +46,7 @@ impl Default for PreviousSearch {
         Self {
             score_and_average: None,
             time_reduction: INITIAL_PREVIOUS_TIME_REDUCTION,
+            ponder_search_started: false,
         }
     }
 }
@@ -137,6 +140,8 @@ const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
 /// 根の候補が1手のときの時間上限。Stockfish `src/search.cpp:615-617`に合わせる。
 const SINGLE_ROOT_MOVE_TIME_CAP_MS: u128 = 500;
+/// 先読みを使う対局でsoftに加える割合。Stockfish `src/timeman.cpp:164-165`に合わせる。
+const PONDER_SOFT_INCREASE_PERCENT: u128 = 25;
 /// 早期停止の対象とする、勝ち側の詰みまでの手数。
 const EARLY_STOP_MATE_IN: i32 = 3;
 /// 早期停止の対象とする、負け側の詰みまでの手数。
@@ -397,6 +402,22 @@ pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget 
         soft: Duration::from_millis(to_u64_ms(soft_ms)),
         ..base
     }
+}
+
+/// 先読みを使った後の通常探索で、基礎softを25%増やしてhard以下に抑える。
+///
+/// ミリ秒単位の正の整数除算によって増分を床方向へ丸める。hardと秒読み期の印は変えない。
+/// 秒読み期にはこの増分を適用しない。Stockfish `src/timeman.cpp:164-165`に当たる。
+pub(super) fn ponder_bonus_time_budget(base: TimeBudget) -> TimeBudget {
+    assert!(
+        !base.byoyomi_period,
+        "ponder bonus must not be applied in the byoyomi period"
+    );
+    let soft_ms = base.soft.as_millis();
+    scaled_time_budget(
+        base,
+        soft_ms + soft_ms * PONDER_SOFT_INCREASE_PERCENT / PERCENT_SCALE,
+    )
 }
 
 /// 完了反復の値が3手以内の勝ち、またはちょうど2手の負けを表すかを返す。

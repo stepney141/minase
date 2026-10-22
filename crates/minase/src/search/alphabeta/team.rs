@@ -23,7 +23,7 @@ use super::clock::SearchClock;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
 use super::params;
-use super::time::{InstabilityScaling, byoyomi_clock, time_budget};
+use super::time::{InstabilityScaling, byoyomi_clock, ponder_bonus_time_budget, time_budget};
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {
@@ -205,7 +205,6 @@ pub(in crate::search) fn run_search_team(
     hit_ns: &AtomicU64,
     ponder: bool,
 ) -> SearchOutcome {
-    let time_budget = time_budget(limits);
     let finite_limits = limits.finite();
     let depth_limit = finite_limits
         .and_then(|limits| limits.depth)
@@ -216,10 +215,19 @@ pub(in crate::search) fn run_search_team(
     if histories.workers.len() != threads.get() {
         *histories = HistoryTables::new(threads);
     }
-    let instability_scaling = (finite_limits
+    let previous_search = histories.previous_search;
+    if ponder {
+        histories.previous_search.ponder_search_started = true;
+    }
+    let mut time_budget = time_budget(limits);
+    let uses_instability_scaling = finite_limits
         .is_some_and(|limits| limits.clock.is_some() && limits.movetime_ms.is_none())
-        && time_budget.is_some_and(|budget| !budget.byoyomi_period))
-    .then(|| InstabilityScaling::new(histories.previous_search, threads));
+        && time_budget.is_some_and(|budget| !budget.byoyomi_period);
+    if uses_instability_scaling && previous_search.ponder_search_started && !ponder {
+        time_budget = time_budget.map(ponder_bonus_time_budget);
+    }
+    let instability_scaling =
+        uses_instability_scaling.then(|| InstabilityScaling::new(previous_search, threads));
     // 新しい根で1回だけ減衰する。新品の表にも適用し、既定値では−5を−3、−742を−452にする。
     let decay = params::history_decay();
     for history in &mut histories.workers {

@@ -90,6 +90,7 @@ fn tuning_parameters_in_isolated_process() {
             "m5 root lmr",
             "parameters",
             "time instability integration",
+            "ponder bonus integration",
             "disabled capture history",
             "disabled history decay",
             "disabled capture history decay",
@@ -264,6 +265,29 @@ fn tuning_parameters_in_isolated_process() {
         params::set("TimeEffortIntercept", 1000).unwrap();
         params::set("TimeEffortSlope", 0).unwrap();
         super::time::single_root_move_scaling_stops_at_500_millis_boundary();
+        return;
+    }
+
+    if scenario == "ponder bonus integration" {
+        // 基礎予算をsoft 100 ms、hard 200 msとし、4因子の積を838‰へ固定する。
+        params::set("ExpectedPlies", 400).unwrap();
+        params::set("MinMoves", 40).unwrap();
+        params::set("HardSoftRatio", 200).unwrap();
+        params::set("HardRemainingShare", 50).unwrap();
+        params::set("IterationRatio", 150).unwrap();
+        params::set("TimeAdvantage", 0).unwrap();
+        params::set("TimeFallingBase", 1000).unwrap();
+        params::set("TimeFallingPrevious", 0).unwrap();
+        params::set("TimeFallingIteration", 0).unwrap();
+        params::set("TimeReductionIntercept", 1000).unwrap();
+        params::set("TimeReductionSlope", 0).unwrap();
+        params::set("TimeReductionScale", 2468).unwrap();
+        params::set("TimeInstabilityBase", 1000).unwrap();
+        params::set("TimeInstabilitySlope", 0).unwrap();
+        params::set("TimeEffortIntercept", 1000).unwrap();
+        params::set("TimeEffortSlope", 0).unwrap();
+        super::time::ponder_bonus_starts_only_the_marked_normal_search();
+        super::time::ponder_bonus_excludes_hit_ponder_movetime_and_byoyomi_period();
         return;
     }
 

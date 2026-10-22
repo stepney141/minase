@@ -308,6 +308,36 @@ fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
     assert_eq!(scaled.byoyomi_period, base.byoyomi_period);
 }
 
+/// 先読み後の基礎softは25%増しをミリ秒単位で床方向へ丸め、hardを超えない。
+#[test]
+fn ponder_bonus_adds_one_quarter_with_floor_and_hard_cap() {
+    let uncapped = TimeBudget {
+        soft: Duration::from_millis(11),
+        hard: Duration::from_millis(20),
+        byoyomi_period: false,
+    };
+    assert_eq!(
+        ponder_bonus_time_budget(uncapped),
+        TimeBudget {
+            soft: Duration::from_millis(13),
+            ..uncapped
+        }
+    );
+
+    let capped = TimeBudget {
+        soft: Duration::from_millis(80),
+        hard: Duration::from_millis(90),
+        byoyomi_period: false,
+    };
+    assert_eq!(
+        ponder_bonus_time_budget(capped),
+        TimeBudget {
+            soft: capped.hard,
+            ..capped
+        }
+    );
+}
+
 /// increaseDepthは的中後の経過時間をhardで抑える前の時間と比べ、50%ちょうどを含む。
 #[test]
 fn increase_depth_uses_half_of_unclamped_scaled_time_without_rounding() {
@@ -376,6 +406,7 @@ fn falling_eval_ring_uses_previous_score_then_the_value_from_four_iterations_ago
         PreviousSearch {
             score_and_average: Some((40, 0)),
             time_reduction: 900,
+            ponder_search_started: false,
         },
         worker_count(1),
     );
@@ -583,6 +614,156 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
     assert_eq!(neutral_outcome.result.depth, 2);
 }
 
+#[cfg(feature = "tuning")]
+fn run_ponder_bonus_test_search(
+    position: &Position,
+    root_moves: &[Move],
+    limits: &SearchLimits,
+    elapsed: Duration,
+    hit_ns: u64,
+    ponder: bool,
+    histories: &mut crate::search::HistoryTables,
+) -> (u32, StopReason) {
+    let outcome = run_search_team(
+        test_nnue(),
+        position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        root_moves,
+        &[search_key(position)],
+        limits,
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        histories,
+        None,
+        &ManualClock::new(elapsed),
+        &AtomicU64::new(hit_ns),
+        ponder,
+    );
+    (outcome.result.depth, outcome.stop_reason)
+}
+
+/// 印のない探索は基礎softのまま止まり、先読みを1回始めた後の通常探索だけが25%増しを使う。
+#[cfg(feature = "tuning")]
+pub(super) fn ponder_bonus_starts_only_the_marked_normal_search() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    assert!(root_moves.len() > 1);
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(20_000, 0, 0))).unwrap();
+    assert_eq!(
+        time_budget(&limits),
+        Some(TimeBudget {
+            soft: Duration::from_millis(100),
+            hard: Duration::from_millis(200),
+            byoyomi_period: false,
+        })
+    );
+    let new_histories = || {
+        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+        histories.previous_search.score_and_average = Some((0, 0));
+        histories.previous_search.time_reduction = 1000;
+        histories
+    };
+
+    let mut unmarked = new_histories();
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &limits,
+            Duration::from_millis(90),
+            0,
+            false,
+            &mut unmarked,
+        ),
+        (1, StopReason::SoftLimit)
+    );
+
+    let mut marked = new_histories();
+    let mark_limits = SearchLimits::new(Some(1), None, Some(1_000), None).unwrap();
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &mark_limits,
+            Duration::ZERO,
+            u64::MAX,
+            true,
+            &mut marked,
+        ),
+        (1, StopReason::DepthCompleted)
+    );
+    assert!(marked.previous_search.ponder_search_started);
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &limits,
+            Duration::from_millis(90),
+            0,
+            false,
+            &mut marked,
+        ),
+        (2, StopReason::DepthCompleted)
+    );
+}
+
+/// 先読みとして始めた探索には的中後も増分を使わず、movetime併用と秒読み期も対象外とする。
+#[cfg(feature = "tuning")]
+pub(super) fn ponder_bonus_excludes_hit_ponder_movetime_and_byoyomi_period() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    histories.previous_search.score_and_average = Some((0, 0));
+    histories.previous_search.time_reduction = 1000;
+    histories.previous_search.ponder_search_started = true;
+
+    let clock_limits = clock(20_000, 0, 0);
+    let timed = SearchLimits::new(Some(2), None, None, Some(clock_limits)).unwrap();
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &timed,
+            Duration::from_millis(110),
+            0,
+            true,
+            &mut histories,
+        ),
+        (0, StopReason::SoftLimit)
+    );
+
+    let with_movetime = SearchLimits::new(Some(2), None, Some(1_000), Some(clock_limits)).unwrap();
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &with_movetime,
+            Duration::from_millis(110),
+            0,
+            false,
+            &mut histories,
+        ),
+        (1, StopReason::SoftLimit)
+    );
+
+    let byoyomi = SearchLimits::new(None, None, None, Some(clock(0, 0, 31))).unwrap();
+    let _ = run_ponder_bonus_test_search(
+        &position,
+        &root_moves,
+        &byoyomi,
+        Duration::from_millis(1),
+        0,
+        false,
+        &mut histories,
+    );
+    assert!(histories.previous_search.ponder_search_started);
+}
+
 // 共有ノード数に補助ワーカー相当の値があっても、最善手の占有率は主ワーカー自身の
 // 根の手ごとの記録と全ノード数から求める。
 #[cfg(feature = "tuning")]
@@ -614,6 +795,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
         PreviousSearch {
             score_and_average: Some((0, 0)),
             time_reduction: 1032,
+            ponder_search_started: false,
         },
         worker_count(2),
     );
@@ -671,6 +853,7 @@ pub(super) fn single_root_move_scaling_stops_at_500_millis_boundary() {
     histories.previous_search = PreviousSearch {
         score_and_average: Some((0, 0)),
         time_reduction: 1032,
+        ponder_search_started: false,
     };
 
     let outcome = run_search_team(
