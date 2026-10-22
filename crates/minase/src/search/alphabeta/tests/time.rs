@@ -2,6 +2,73 @@
 
 use super::*;
 
+/// 詰みによる早期停止は3手以内の勝ちとちょうど2手の負けだけを対象にする。
+#[test]
+fn mate_early_stop_accepts_only_the_configured_mate_distances() {
+    assert!(mate_early_stop(MATE - 3));
+    assert!(!mate_early_stop(MATE - 4));
+    assert!(mate_early_stop(-(MATE - 2)));
+    assert!(!mate_early_stop(-(MATE - 1)));
+    assert!(!mate_early_stop(-(MATE - 3)));
+
+    for value in [
+        REPETITION_BAND_START,
+        REPETITION_WIN,
+        -REPETITION_BAND_START,
+        -REPETITION_WIN,
+        0,
+        123,
+    ] {
+        assert!(!mate_early_stop(value), "value={value}");
+    }
+}
+
+/// 時計予算の内側でも、完了反復が詰みの条件を満たせばその境界で停止する。
+#[test]
+fn mate_early_stop_stops_a_timed_search_inside_the_budget() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 12), Color::Black, PieceKind::King),
+        ],
+    );
+    let root_move = legal_moves(&position)
+        .into_iter()
+        .find(|mv| mv.from == fs(6, 10) && mv.to == fs(6, 1))
+        .expect("the rook must be able to capture the last royal");
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(1_000_000, 0, 0)))
+        .expect("the test clock must be valid");
+    let budget = time_budget(&limits).expect("the timed search must have a budget");
+    assert!(Duration::ZERO < budget.soft);
+
+    let outcome = run_search_team(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &[root_move],
+        &[search_key(&position)],
+        &limits,
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(outcome.result.score, MATE - 1);
+    assert_eq!(outcome.stop_reason, StopReason::SoftLimit);
+}
+
 /// 評価値の下落の因子の式は2つの項を加えてから1回だけ歩兵価値で割り、固定範囲へ切り詰める。
 #[test]
 fn falling_eval_factor_uses_one_truncating_division_and_fixed_bounds() {

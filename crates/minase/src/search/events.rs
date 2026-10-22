@@ -11,7 +11,7 @@ pub enum StopReason {
     DepthCompleted,
     /// 指定ノード数へ達した。
     NodeLimit,
-    /// 完了イテレーションの境界でsoft limitへ達した。
+    /// soft limitまたは完了反復の評価値に基づく時間管理の判断で停止した。
     SoftLimit,
     /// 探索中にhard limitへ達した。
     HardLimit,

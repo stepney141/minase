@@ -89,9 +89,9 @@ use crate::search::alphabeta::time::{
     TimeEffortCoefficients, TimeInstabilityCoefficients, TimeReductionCoefficients,
     best_move_effort_factor, best_move_effort_ratio, best_move_instability_factor,
     best_move_stability_distance, best_move_stability_factor, clock_budget, falling_eval_factor,
-    iteration_prediction_fits, scaled_soft_millis, scaled_time_budget, should_increase_depth,
-    should_start_next_iteration, stable_signal, time_advantage_factor, time_budget,
-    time_budget_with_coefficients, time_reduction,
+    iteration_prediction_fits, mate_early_stop, scaled_soft_millis, scaled_time_budget,
+    should_increase_depth, should_start_next_iteration, stable_signal, time_advantage_factor,
+    time_budget, time_budget_with_coefficients, time_reduction,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
@@ -104,8 +104,8 @@ use crate::search::handle::{SearchHandle, start_search_with_clock};
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
-    DEFAULT_THREADS, DRAW_SCORE, MATE, MATE_THRESHOLD, MAX_PLY, TranspositionTable,
-    TranspositionTableError,
+    DEFAULT_THREADS, DRAW_SCORE, MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_BAND_START,
+    REPETITION_WIN, TranspositionTable, TranspositionTableError,
 };
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::mv::Move;

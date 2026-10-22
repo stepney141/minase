@@ -139,6 +139,8 @@ pub(super) fn new_searcher<'a>(
 pub(super) struct PonderIteration {
     pub(super) started: Duration,
     pub(super) stable: bool,
+    /// 反復を始めた時点で、最新の完了反復が詰みによる早期停止の条件を満たしていたか。
+    pub(super) mate_early_stop: bool,
     pub(super) checked: bool,
     pub(super) budget: TimeBudget,
 }
@@ -545,7 +547,8 @@ impl Searcher<'_> {
     /// 先読みの的中時刻を先に読み、hard limitを反復の完了時刻予測より先に検査する。
     ///
     /// 的中前は時間で止めず、的中後は的中からの経過時間でhard limitを判定する。
-    /// 先読みから続く主ワーカーの反復は、最初の時計検査で[`iteration_prediction_fits`]を当て直す。
+    /// 先読みから続く主ワーカーの反復は、最初の時計検査で詰みによる早期停止を判定し、
+    /// 的中前に始めていた場合だけ[`iteration_prediction_fits`]を当て直す。
     /// 秒読み期ではこの当て直しを行わず、hard limitだけで中断する。
     pub(super) fn check_time(&mut self) -> bool {
         let Some(limit) = self.shared.hard_limit else {
@@ -560,18 +563,21 @@ impl Searcher<'_> {
         let reason = if elapsed.saturating_sub(hit) >= limit.duration {
             Some(StopReason::HardLimit)
         } else if let Some(iteration) = &mut self.ponder_iteration {
-            if iteration.budget.byoyomi_period || iteration.checked {
+            if iteration.mate_early_stop {
+                Some(StopReason::SoftLimit)
+            } else if iteration.budget.byoyomi_period || iteration.checked {
                 return true;
+            } else {
+                iteration.checked = true;
+                (iteration.started < hit
+                    && !iteration_prediction_fits(
+                        iteration.started,
+                        hit,
+                        iteration.budget,
+                        iteration.stable,
+                    ))
+                .then_some(StopReason::SoftLimit)
             }
-            iteration.checked = true;
-            (iteration.started < hit
-                && !iteration_prediction_fits(
-                    iteration.started,
-                    hit,
-                    iteration.budget,
-                    iteration.stable,
-                ))
-            .then_some(StopReason::SoftLimit)
         } else {
             None
         };

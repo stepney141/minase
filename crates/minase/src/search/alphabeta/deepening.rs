@@ -21,8 +21,8 @@ use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
     FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeEffortCoefficients,
     TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
-    scaled_soft_millis, scaled_time_budget, should_increase_depth, should_start_next_iteration,
-    stable_signal,
+    mate_early_stop, scaled_soft_millis, scaled_time_budget, should_increase_depth,
+    should_start_next_iteration, stable_signal,
 };
 
 /// 補助ワーカーが探索する深さを昇順に返す。
@@ -45,6 +45,8 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
 /// 時間で継続すると決めた完了反復の境界ではincreaseDepthの共有状態を更新し、実際に始める
 /// 反復ごとに1回だけワーカー固有の回数へ反映する。反復の番号と進捗の深さは1ずつ増やす。
+/// 詰みによる早期停止後も、より深い補助ワーカーの結果が選ばれ得るため、返す手が詰みである
+/// ことは保証しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
     nnue: &Nnue,
@@ -101,6 +103,8 @@ pub(super) fn run_main_worker(
     let mut completed_bests = Vec::new();
     let base_time_budget = time_budget;
     let mut current_time_budget = base_time_budget;
+    // 先読み中は最新の完了反復の判定で毎回上書きし、次の反復の開始時に保存する。
+    let mut mate_early_stop_on_hit = false;
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some((result.best_move, result.score));
@@ -115,12 +119,13 @@ pub(super) fn run_main_worker(
                 .hit_ns
                 .load(AtomicOrdering::Relaxed);
             if hit_ns != u64::MAX
-                && !should_start_next_iteration(
-                    shared.clock.elapsed(),
-                    Duration::from_nanos(hit_ns),
-                    budget,
-                    stable,
-                )
+                && (mate_early_stop_on_hit
+                    || !should_start_next_iteration(
+                        shared.clock.elapsed(),
+                        Duration::from_nanos(hit_ns),
+                        budget,
+                        stable,
+                    ))
             {
                 shared.stop(StopReason::SoftLimit);
                 break;
@@ -128,6 +133,7 @@ pub(super) fn run_main_worker(
             searcher.ponder_iteration = Some(PonderIteration {
                 started: iteration_started,
                 stable,
+                mate_early_stop: mate_early_stop_on_hit,
                 checked: false,
                 budget,
             });
@@ -181,6 +187,8 @@ pub(super) fn run_main_worker(
             current_time_budget = Some(scaled_time_budget(base, time_ms));
             scaled_time_ms = Some(time_ms);
         }
+        let mate_early_stop = instability_scaling.is_some() && mate_early_stop(score);
+        mate_early_stop_on_hit = mate_early_stop;
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -210,12 +218,13 @@ pub(super) fn run_main_worker(
                 .hit_ns
                 .load(AtomicOrdering::Relaxed);
             hit_ns != u64::MAX
-                && !should_start_next_iteration(
-                    elapsed,
-                    Duration::from_nanos(hit_ns),
-                    budget,
-                    stable,
-                )
+                && (mate_early_stop
+                    || !should_start_next_iteration(
+                        elapsed,
+                        Duration::from_nanos(hit_ns),
+                        budget,
+                        stable,
+                    ))
         }) {
             shared.stop(StopReason::SoftLimit);
             break;

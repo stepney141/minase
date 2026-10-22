@@ -4,6 +4,27 @@ use super::*;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::root::RootMoveStats;
 
+/// 指定した`elapsed`呼び出しで先読みの的中時刻を記録する時計。
+struct HitOnElapsedCallClock<'a> {
+    elapsed: Duration,
+    calls: AtomicU64,
+    hit_on_call: u64,
+    hit_ns: &'a AtomicU64,
+}
+
+impl SearchClock for HitOnElapsedCallClock<'_> {
+    fn elapsed(&self) -> Duration {
+        let call = self.calls.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+        if call == self.hit_on_call {
+            self.hit_ns.store(
+                self.elapsed.as_nanos().try_into().unwrap(),
+                AtomicOrdering::Relaxed,
+            );
+        }
+        self.elapsed
+    }
+}
+
 // 予測完了時刻は探索開始からの累積時間に比例し、的中までの時間を引いて予算と比べる。
 // 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
 #[test]
@@ -203,7 +224,7 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
 
 // 的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
 // 既存のノード検査点へ時刻を注入し、負荷に依存せず当て直しの停止、継続、
-// hard優先、的中後の開始、1回性を検査する。反復の状態は仕様で明示された境界。
+// hard優先、詰みによる停止、的中後の開始、1回性を検査する。反復の状態は仕様で明示された境界。
 #[test]
 fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let ms = Duration::from_millis;
@@ -214,26 +235,31 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     let stop = AtomicBool::new(false);
     let stable_boundary = 1100 * 100 / params::iteration_ratio() as u64;
     let hard_boundary = 1400 * 100 / params::iteration_ratio() as u64;
-    for (t, hit, elapsed, stable, expected) in [
+    for (t, hit, elapsed, stable, mate_early_stop, expected) in [
         (
             hard_boundary + 1,
             1000,
             1010,
             false,
+            false,
             Some(StopReason::SoftLimit),
         ),
-        (hard_boundary, 1000, 1010, false, None),
+        (hard_boundary, 1000, 1010, false, false, None),
         (
             stable_boundary + 1,
             1000,
             1010,
             true,
+            false,
             Some(StopReason::SoftLimit),
         ),
-        (stable_boundary, 1000, 1010, true, None),
-        (600, 1000, 1500, false, Some(StopReason::HardLimit)),
-        (1001, 1000, 1010, true, None),
-        (600, u64::MAX, 1010, true, None),
+        (stable_boundary, 1000, 1010, true, false, None),
+        (600, 1000, 1500, false, false, Some(StopReason::HardLimit)),
+        (1001, 1000, 1010, true, false, None),
+        (600, u64::MAX, 1010, true, false, None),
+        (600, u64::MAX, 1010, false, true, None),
+        (600, 1000, 1010, false, true, Some(StopReason::SoftLimit)),
+        (600, 1000, 1400, false, true, Some(StopReason::HardLimit)),
     ] {
         let hit_ns = AtomicU64::new(if hit == u64::MAX {
             hit
@@ -280,6 +306,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
         searcher.ponder_iteration = Some(PonderIteration {
             started: ms(t),
             stable,
+            mate_early_stop,
             checked: false,
             budget: TimeBudget {
                 byoyomi_period: false,
@@ -294,8 +321,78 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             searcher.ponder_iteration.as_mut().unwrap().started = ms(900);
             searcher.nodes = STOP_CHECK_INTERVAL;
             assert!(searcher.enter_node());
+        } else if hit == u64::MAX && mate_early_stop {
+            // 次の完了反復が条件を満たさなければ記録を偽に戻し、その後の的中では止めない。
+            searcher.ponder_iteration.as_mut().unwrap().mate_early_stop = false;
+            hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
+            searcher.nodes = STOP_CHECK_INTERVAL;
+            assert!(searcher.enter_node());
+            assert_eq!(searcher.stop_reason, None);
         }
     }
+}
+
+/// 的中前の詰み判定では探索を止めず、的中が次の反復より前なら開始判定で停止する。
+#[test]
+fn ponder_mate_stop_waits_for_hit_and_stops_before_the_next_iteration() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 12), Color::Black, PieceKind::King),
+        ],
+    );
+    let root_move = legal_moves(&position)
+        .into_iter()
+        .find(|mv| mv.from == fs(6, 10) && mv.to == fs(6, 1))
+        .expect("the rook must be able to capture the last royal");
+    let root_moves = [root_move];
+    let history_keys = [search_key(&position)];
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(1_000_000, 0, 0)))
+        .expect("the test clock must be valid");
+    let run = |clock: &dyn SearchClock, hit_ns: &AtomicU64| {
+        run_search_team(
+            test_nnue(),
+            &position,
+            engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+            DRAW_SCORE,
+            &root_moves,
+            &history_keys,
+            &limits,
+            &AtomicBool::new(false),
+            DEFAULT_THREADS,
+            &small_tt(),
+            &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
+            None,
+            clock,
+            hit_ns,
+            true,
+        )
+    };
+
+    let pre_hit = run(
+        &ManualClock::new(Duration::from_millis(1)),
+        &AtomicU64::new(u64::MAX),
+    );
+    assert_eq!(pre_hit.result.depth, 2);
+    assert_eq!(pre_hit.stop_reason, StopReason::DepthCompleted);
+
+    let hit_ns = AtomicU64::new(u64::MAX);
+    // 深さ1の開始と完了境界が1、2回目であり、3回目は深さ2を始める直前となる。
+    let clock = HitOnElapsedCallClock {
+        elapsed: Duration::from_millis(1),
+        calls: AtomicU64::new(0),
+        hit_on_call: 3,
+        hit_ns: &hit_ns,
+    };
+    let hit_before_next_iteration = run(&clock, &hit_ns);
+    assert_eq!(hit_before_next_iteration.result.depth, 1);
+    assert_eq!(hit_before_next_iteration.result.score, MATE - 1);
+    assert_eq!(hit_before_next_iteration.stop_reason, StopReason::SoftLimit);
 }
 
 // 的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
@@ -310,6 +407,7 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
         searcher.ponder_iteration = Some(PonderIteration {
             started,
             stable: true,
+            mate_early_stop: false,
             checked: false,
             budget: TimeBudget {
                 byoyomi_period: false,
@@ -420,6 +518,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             searcher.ponder_iteration = Some(PonderIteration {
                 started: clock.elapsed(),
                 stable: false,
+                mate_early_stop: false,
                 checked: false,
                 budget: TimeBudget {
                     byoyomi_period: false,
@@ -557,6 +656,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             searcher.ponder_iteration = Some(PonderIteration {
                 started: Duration::from_millis(1400 * 100 / params::iteration_ratio() as u64 + 1),
                 stable: false,
+                mate_early_stop: false,
                 checked: false,
                 budget: TimeBudget {
                     byoyomi_period: false,
@@ -708,6 +808,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                 searcher.ponder_iteration = Some(PonderIteration {
                     started: ms(90_000),
                     stable,
+                    mate_early_stop: false,
                     checked: false,
                     budget,
                 });

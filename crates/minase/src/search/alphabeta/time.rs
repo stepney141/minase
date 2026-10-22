@@ -5,6 +5,7 @@
 use core::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::search::MATE;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use minase_core::mv::Move;
 
@@ -136,6 +137,10 @@ const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
 /// 根の候補が1手のときの時間上限。Stockfish `src/search.cpp:615-617`に合わせる。
 const SINGLE_ROOT_MOVE_TIME_CAP_MS: u128 = 500;
+/// 早期停止の対象とする、勝ち側の詰みまでの手数。
+const EARLY_STOP_MATE_IN: i32 = 3;
+/// 早期停止の対象とする、負け側の詰みまでの手数。
+const EARLY_STOP_MATED_IN: i32 = 2;
 /// increaseDepthで深さを増やしてよい経過時間の上限。hardで抑える前の時間に対する百分率。
 const INCREASE_DEPTH_THRESHOLD_PERCENT: u128 = 50;
 /// 百分率の尺度。
@@ -392,6 +397,14 @@ pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget 
         soft: Duration::from_millis(to_u64_ms(soft_ms)),
         ..base
     }
+}
+
+/// 完了反復の値が3手以内の勝ち、またはちょうど2手の負けを表すかを返す。
+///
+/// 双方の着手をそれぞれ1手と数える。反復による勝敗の専用の帯は詰み帯より低いため、
+/// この条件には入らない。Stockfish `src/search.cpp:621-624`に当たる。
+pub(super) fn mate_early_stop(value: i32) -> bool {
+    value >= MATE - EARLY_STOP_MATE_IN || value == -(MATE - EARLY_STOP_MATED_IN)
 }
 
 /// 的中後の経過時間がhardで抑える前の時間の50%以下なら、深さを増やしてよいと判定する。
