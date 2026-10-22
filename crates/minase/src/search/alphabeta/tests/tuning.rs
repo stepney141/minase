@@ -25,8 +25,10 @@ fn tuning_default_clock_budget_matches_numeric_examples() {
         increment_share: 87,
         hard_soft_ratio: 730,
         hard_remaining_share: 39,
+        time_advantage: 900,
     };
     // Mの初期値229と下限40の境界、加算87%、hard倍率730%、残り39%を検査する。
+    // 相手の残り時間は自分と同じなのでtime advantageは働かず、既存の算術例を保つ。
     // 秒読みの序盤係数は変わらず、各項の除算を先に行ってから合算する。
     for (name, remaining, increment, byoyomi, ply, soft, hard) in [
         ("initial division below", 228, 0, 0, 0, 0, 1),
@@ -235,6 +237,7 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeInstabilitySlope", 2229),
         ("TimeEffortIntercept", 1642),
         ("TimeEffortSlope", -888),
+        ("TimeAdvantage", 900),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
@@ -556,6 +559,10 @@ fn tuning_parameters_in_isolated_process() {
             TimeEffortCoefficients::current(),
         ))
     }
+    fn time_advantage() -> i64 {
+        let clock = ClockLimits::new(100_000, 0, 0, Some(200_000), 0).unwrap();
+        i64::try_from(clock_budget(clock).soft.as_millis()).unwrap()
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -585,7 +592,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 103] = [
+    let cases: [Case; 104] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -1000,6 +1007,7 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeInstabilitySlope", 4000, best_move_instability),
         ("TimeEffortIntercept", 2000, best_move_effort),
         ("TimeEffortSlope", -1000, best_move_effort),
+        ("TimeAdvantage", 0, time_advantage),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());

@@ -334,6 +334,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 params::time_effort_intercept as fn() -> i32,
             ),
             ("TimeEffortSlope", params::time_effort_slope as fn() -> i32),
+            ("TimeAdvantage", params::time_advantage as fn() -> i32),
             ("FmScale", params::fm_scale as fn() -> i32),
         ];
         assert_eq!(accessors.len(), params::PARAMETERS.len());

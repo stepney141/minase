@@ -156,6 +156,63 @@ fn best_move_effort_factor_uses_fixed_bounds_and_truncates_toward_zero() {
     );
 }
 
+/// time advantageの因子は相手の残り時間が多いときだけ減り、正の除算を床方向へ丸める。
+#[test]
+fn time_advantage_factor_uses_remaining_time_difference_and_floor_division() {
+    assert_eq!(time_advantage_factor(5, 5, 900), 1000);
+    assert_eq!(time_advantage_factor(6, 5, 900), 1000);
+    assert_eq!(time_advantage_factor(5, 0, 900), 1000);
+
+    // 900 × 3 / 8は337余り4なので、因子は663になる。
+    assert_eq!(time_advantage_factor(2, 5, 900), 663);
+    assert_eq!(time_advantage_factor(1, 4, 0), 1000);
+    assert_eq!(time_advantage_factor(1, 4, 1000), 500);
+}
+
+/// time advantageはsoft_rawとその倍数で決まるhardだけを縮める。
+/// 残り時間の割合と安全上限で決まるhardは変えない。
+#[test]
+fn time_advantage_scales_soft_and_only_the_soft_multiple_hard_candidate() {
+    let coefficients = |hard_remaining_share| ClockCoefficients {
+        expected_plies: 20,
+        min_moves: 10,
+        increment_share: 0,
+        hard_soft_ratio: 200,
+        hard_remaining_share,
+        time_advantage: 900,
+    };
+    let clock = |opponent_remaining_ms| {
+        ClockLimits::new(1000, 0, 0, Some(opponent_remaining_ms), 0).unwrap()
+    };
+
+    let neutral = coefficients(50).budget(clock(1000), 30);
+    let scaled = coefficients(50).budget(clock(3000), 30);
+    assert_eq!(neutral.soft, Duration::from_millis(100));
+    assert_eq!(neutral.hard, Duration::from_millis(200));
+    assert_eq!(scaled.soft, Duration::from_millis(55));
+    assert_eq!(scaled.hard, Duration::from_millis(110));
+
+    let remaining_limited = coefficients(10);
+    assert_eq!(
+        remaining_limited.budget(clock(1000), 30).hard,
+        Duration::from_millis(100)
+    );
+    assert_eq!(
+        remaining_limited.budget(clock(3000), 30).hard,
+        Duration::from_millis(100)
+    );
+
+    let safety_limited = coefficients(50);
+    assert_eq!(
+        safety_limited.budget(clock(1000), 950).hard,
+        Duration::from_millis(50)
+    );
+    assert_eq!(
+        safety_limited.budget(clock(3000), 950).hard,
+        Duration::from_millis(50)
+    );
+}
+
 /// 時間因子の積は基礎softから求め、積があふれた後もu128の時間としてhardまで保持する。
 #[test]
 fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
@@ -581,31 +638,69 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
-// 深さ・ノード数・固定時間の併用では通常の時計予算を使う。
+// 秒読みが正の時計では、相手の残り時間によって予算を変えない。
 #[test]
-fn excluded_clocks_preserve_clock_budget() {
-    for (remaining, increment, byoyomi) in [(60000, 1000, 0), (0, 100, 1000)] {
-        for (depth, nodes, fixed) in [
-            (Some(2), None, None),
-            (None, Some(100), None),
-            (None, None, Some(500)),
-            (Some(2), Some(100), Some(10000)),
-        ] {
-            for margin in [0, 30, 60000] {
-                let clock = clock(remaining, increment, byoyomi).with_byoyomi_margin_ms(margin);
-                let ordinary = clock_budget(clock);
-                let limits = SearchLimits::new(depth, nodes, fixed, Some(clock)).unwrap();
-                let expected = match fixed {
-                    Some(ms) => TimeBudget {
-                        soft: ordinary.soft.min(Duration::from_millis(ms)),
-                        hard: ordinary.hard.min(Duration::from_millis(ms)),
-                        byoyomi_period: false,
-                    },
-                    None => ordinary,
-                };
-                assert_eq!(time_budget(&limits), Some(expected));
-            }
-        }
+fn byoyomi_clock_does_not_apply_time_advantage() {
+    let coefficients = ClockCoefficients {
+        expected_plies: 20,
+        min_moves: 10,
+        increment_share: 0,
+        hard_soft_ratio: 200,
+        hard_remaining_share: 50,
+        time_advantage: 900,
+    };
+    let budget = |opponent_remaining_ms| {
+        let clock = ClockLimits::new(1000, 0, 100, Some(opponent_remaining_ms), 0).unwrap();
+        let limits = SearchLimits::new(None, None, None, Some(clock)).unwrap();
+        time_budget_with_coefficients(&limits, coefficients).unwrap()
+    };
+    assert_eq!(budget(1000), budget(3000));
+    assert_eq!(budget(1000).soft, Duration::from_millis(108));
+    assert_eq!(budget(1000).hard, Duration::from_millis(216));
+}
+
+// 固定時間を併用する時計では、相手の残り時間によって予算を変えない。
+#[test]
+fn movetime_clock_does_not_apply_time_advantage() {
+    let coefficients = ClockCoefficients {
+        expected_plies: 20,
+        min_moves: 10,
+        increment_share: 0,
+        hard_soft_ratio: 200,
+        hard_remaining_share: 50,
+        time_advantage: 900,
+    };
+    let budget = |opponent_remaining_ms| {
+        let clock = ClockLimits::new(1000, 0, 0, Some(opponent_remaining_ms), 0).unwrap();
+        let limits = SearchLimits::new(None, None, Some(500), Some(clock)).unwrap();
+        time_budget_with_coefficients(&limits, coefficients).unwrap()
+    };
+    assert_eq!(budget(1000), budget(3000));
+    assert_eq!(budget(1000).soft, Duration::from_millis(100));
+    assert_eq!(budget(1000).hard, Duration::from_millis(200));
+}
+
+// 深さやノード数を併用しても、秒読みと固定時間がなければtime advantageを適用する。
+#[test]
+fn depth_and_node_limited_clocks_apply_time_advantage() {
+    let coefficients = ClockCoefficients {
+        expected_plies: 20,
+        min_moves: 10,
+        increment_share: 0,
+        hard_soft_ratio: 200,
+        hard_remaining_share: 50,
+        time_advantage: 900,
+    };
+    for (depth, nodes) in [(Some(2), None), (None, Some(100)), (Some(2), Some(100))] {
+        let budget = |opponent_remaining_ms| {
+            let clock = ClockLimits::new(1000, 0, 0, Some(opponent_remaining_ms), 0).unwrap();
+            let limits = SearchLimits::new(depth, nodes, None, Some(clock)).unwrap();
+            time_budget_with_coefficients(&limits, coefficients).unwrap()
+        };
+        assert_eq!(budget(1000).soft, Duration::from_millis(100));
+        assert_eq!(budget(1000).hard, Duration::from_millis(200));
+        assert_eq!(budget(3000).soft, Duration::from_millis(55));
+        assert_eq!(budget(3000).hard, Duration::from_millis(110));
     }
 }
 

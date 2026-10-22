@@ -497,6 +497,10 @@ parameters! {
     /// 範囲−2000〜500は従来の項なしに当たる0と換算値を含む。
     /// 開始値はStockfishの換算値であり、SPSAで未調整である。
     TimeEffortSlope(time_effort_slope): -888, -2000, 500;
+    /// 相手より残り時間が少ないときにsoft limitを縮める係数。単位は千分率である。
+    /// Stockfishの0.9に当たり（src/timeman.cpp:155）、上限1000は残り時間の差の割合が
+    /// −1に近づいても因子が負にならない値である。SPSAで未調整である。
+    TimeAdvantage(time_advantage): 900, 0, 1000;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]
