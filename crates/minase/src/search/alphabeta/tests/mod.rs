@@ -274,8 +274,14 @@ fn clock(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64) -> ClockLimits {
 }
 
 fn clock_at_ply(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64, ply: u32) -> ClockLimits {
-    ClockLimits::new(remaining_ms, increment_ms, byoyomi_ms, ply)
-        .expect("test clock must contain non-zero time")
+    ClockLimits::new(
+        remaining_ms,
+        increment_ms,
+        byoyomi_ms,
+        Some(remaining_ms),
+        ply,
+    )
+    .expect("test clock must contain non-zero time")
 }
 
 fn small_tt() -> TranspositionTable {

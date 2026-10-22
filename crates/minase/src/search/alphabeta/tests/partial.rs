@@ -23,7 +23,7 @@ fn clock_cases() -> Vec<(SearchLimits, bool)> {
                 depth,
                 nodes,
                 movetime,
-                Some(ClockLimits::new(remaining, 0, byoyomi, 0).unwrap()),
+                Some(ClockLimits::new(remaining, 0, byoyomi, Some(remaining), 0).unwrap()),
             )
             .unwrap(),
             eligible,

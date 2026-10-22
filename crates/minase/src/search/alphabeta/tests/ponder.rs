@@ -127,7 +127,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
 // 超えても先読みは続き、深さとノード数の上限は的中前から働く。
 #[test]
 fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
-    let clock = ClockLimits::new(0, 0, 100, 0).unwrap();
+    let clock = ClockLimits::new(0, 0, 100, None, 0).unwrap();
     let snapshot = snapshot_for(&Position::initial());
     let table = small_tt();
     let stop = AtomicBool::new(false);
@@ -699,7 +699,7 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_at_deadline() {
             None,
             None,
             None,
-            Some(ClockLimits::new(0, 0, 300, 0).unwrap()),
+            Some(ClockLimits::new(0, 0, 300, None, 0).unwrap()),
         )
         .unwrap();
         let clock = Arc::new(ManualClock::new(Duration::ZERO));

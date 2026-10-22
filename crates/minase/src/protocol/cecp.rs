@@ -16,7 +16,7 @@
 //! | `ping N` | `pong N`を返す。 |
 //! | `result` | 対局状態機械の`EndGame`で開始待ちへ戻り、裁定の食い違いに異議を唱えない。 |
 //! | `option`、`memory`、`cores` | `handle_option`、`handle_memory`、`handle_cores`で設定を検査する。 |
-//! | `time`、`otim`、`level`、`st`、`sd` | `TimeControl`の契約に従って探索制限を更新する。 |
+//! | `time`、`otim`、`level`、`st`、`sd` | `TimeControl`の契約に従って両者の時計と探索制限を更新する。 |
 //! | `?` | 待機中は無応答で無視する。 |
 //! | `quit` | 無応答で終了する。 |
 //! | `easy`、`hard`、`post`、`nopost`、`random`、`computer`、`name`、`hint`、`draw` | 対応する機能を持たず、状態を変えずに無視する。 |
@@ -90,15 +90,18 @@ enum PlayMode {
 /// `time`と`otim`は1/100秒を10倍してミリ秒にする。
 /// `level MPS BASE INC`のBASEは分または`分:秒`で、秒は60未満とする。
 /// INCは秒として小数第3位までをミリ秒へ写し、第4位以下は切り捨てる。
-/// エンジン側の残り時間をBASE、加算をINCにする。
+/// エンジン側の残り時間をBASE、加算をINCにし、保持していた相手の残り時間は消す。
 /// MPSは区切り手数として構文だけ検査し、探索制限に残り手数の欄がないため使わない。
 /// `st`は小数を許す1手の固定秒数、`sd`は1〜256の深さ上限である。
 /// 不正な値は`Error (invalid command): <コマンド>`を返す。
-/// `otim`は値を検査するだけで保持せず、予算には使わない。探索への変換は[`Self::search_limits`]に従う。
+/// `otim`は相手の残り時間として保持し、`time`との受信順にかかわらず探索へ渡す。
+/// 新規対局では保持した相手の残り時間を消す。探索への変換は[`Self::search_limits`]に従う。
 #[derive(Default)]
 struct TimeControl {
     /// `time`が通知したエンジン側の残り時間(ms)。
     engine_remaining_ms: Option<u64>,
+    /// `otim`が通知した相手側の残り時間(ms)。
+    opponent_remaining_ms: Option<u64>,
     /// `level`が通知した1手ごとの加算時間(ms)。
     increment_ms: u64,
     /// `st`が通知した1手の固定時間(ms)。
@@ -642,6 +645,7 @@ impl CecpProtocol {
             self.play_mode = PlayMode::Playing {
                 engine_side: Color::White,
             };
+            self.time_control.opponent_remaining_ms = None;
             self.histories
                 .as_mut()
                 .expect("idle protocol must own history tables")
@@ -870,6 +874,8 @@ impl CecpProtocol {
         };
         if engine_clock {
             self.time_control.engine_remaining_ms = Some(milliseconds);
+        } else {
+            self.time_control.opponent_remaining_ms = Some(milliseconds);
         }
         Ok(())
     }
@@ -886,6 +892,7 @@ impl CecpProtocol {
             return writeln!(output, "Error (invalid command): level");
         };
         self.time_control.engine_remaining_ms = Some(base_ms);
+        self.time_control.opponent_remaining_ms = None;
         self.time_control.increment_ms = increment_ms;
         Ok(())
     }
@@ -917,15 +924,24 @@ impl CecpProtocol {
 }
 
 impl TimeControl {
-    /// 自分の残り時間、加算、秒読み0、および[`Engine::ply`]から探索の時計を作る。
+    /// 自分と相手の残り時間、加算、秒読み0、および[`Engine::ply`]から探索の時計を作る。
     ///
     /// 残り時間がなければ時計は作らず、保持した`st`と`sd`を併せて制限にする。
-    /// `otim`は使わない。制限が1つもなければ`None`を返し、呼び出し側は
-    /// `tellusererror search limits are not set`を出して探索しない。
+    /// 制限が1つもなければ`None`を返し、呼び出し側は`tellusererror search limits are not set`を出す。
+    /// 時計があり、相手の残り時間がなければ、探索を始める時点で[`SearchLimits::new`]が拒否する。
+    /// `level`の初期持ち時間を相手の残り時間として補わない。
     fn search_limits(&self, ply: u32) -> Result<Option<SearchLimits>, search::SearchError> {
         let clock = self
             .engine_remaining_ms
-            .map(|remaining_ms| ClockLimits::new(remaining_ms, self.increment_ms, 0, ply))
+            .map(|remaining_ms| {
+                ClockLimits::new(
+                    remaining_ms,
+                    self.increment_ms,
+                    0,
+                    self.opponent_remaining_ms,
+                    ply,
+                )
+            })
             .transpose()?;
         if self.depth.is_none() && self.movetime_ms.is_none() && clock.is_none() {
             return Ok(None);
@@ -1161,23 +1177,60 @@ mod tests {
     }
 
     #[test]
-    fn time_and_otim_normalize_centiseconds_to_milliseconds() {
-        // [`TimeControl`]のtimeの換算は出力に現れないため、内部時計を直接観測して係数10を検査する。
-        // otimは無応答で受理され、エンジン側の時計を変えない。
+    fn time_and_otim_are_stored_in_either_order_and_normalized() {
+        // [`TimeControl`]の換算は出力に現れないため、内部時計を直接観測して係数10を検査する。
+        for input in ["time 6000\notim 123\n", "otim 123\ntime 6000\n"] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = CecpProtocol::new(&engine);
+            let output = run(&mut protocol, &mut engine, input);
+
+            assert!(output.is_empty());
+            let clock = protocol
+                .time_control
+                .search_limits(37)
+                .unwrap()
+                .unwrap()
+                .clock()
+                .unwrap();
+            assert_eq!(clock.remaining_ms(), 60_000);
+            assert_eq!(clock.opponent_remaining_ms(), Some(1_230));
+            assert_eq!(clock.ply(), 37);
+        }
+    }
+
+    #[test]
+    fn time_without_otim_is_rejected_when_search_starts() {
+        let output = session(&[RuleCode::R1], "new\ntime 6000\ngo\n");
+
+        assert_eq!(
+            output,
+            "tellusererror search clock without byoyomi requires the opponent's remaining time\n"
+        );
+        assert!(move_lines(&output).is_empty());
+    }
+
+    #[test]
+    fn new_and_level_clear_the_stored_opponent_time() {
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = CecpProtocol::new(&engine);
-        let output = run(&mut protocol, &mut engine, "time 6000\notim 123\n");
+        let output = run(&mut protocol, &mut engine, "time 6000\notim 123\nnew\n");
 
         assert!(output.is_empty());
         assert_eq!(protocol.time_control.engine_remaining_ms, Some(60_000));
-        let clock = protocol
-            .time_control
-            .search_limits(37)
-            .unwrap()
-            .unwrap()
-            .clock()
-            .unwrap();
-        assert_eq!(clock.ply(), 37);
+        assert_eq!(protocol.time_control.opponent_remaining_ms, None);
+        assert!(matches!(
+            protocol.time_control.search_limits(0),
+            Err(search::SearchError::MissingOpponentClock)
+        ));
+
+        let output = run(&mut protocol, &mut engine, "otim 456\nlevel 40 5 0\n");
+        assert!(output.is_empty());
+        assert_eq!(protocol.time_control.engine_remaining_ms, Some(300_000));
+        assert_eq!(protocol.time_control.opponent_remaining_ms, None);
+        assert!(matches!(
+            protocol.time_control.search_limits(0),
+            Err(search::SearchError::MissingOpponentClock)
+        ));
     }
 
     fn run_queued(protocol: &mut CecpProtocol, engine: &mut Engine, input: &str) -> String {

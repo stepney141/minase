@@ -22,6 +22,8 @@ pub(super) struct FiniteSearchLimits {
 ///
 /// 複数の制限を持つ有限探索は、最も早く満たされた条件で止まる。
 /// `movetime`と時計の併用時はsoftとhardのそれぞれで両者の小さい予算を採る。
+/// 秒読みが0で`movetime`を併用しない時計には、相手との残り時間の差で目安時間を補正するため、
+/// 相手の残り時間が必要である。秒読みが正の時計と`movetime`を併用する時計ではこの補正を使わない。
 /// 無期限探索にはsoftもhardもなく、外部停止要求だけを停止条件とする。
 /// [`crate::search::start_search`]で先読みとして開始すると、的中の通知まで時間の制限を使わない。
 /// 深さの範囲は[`Self::new`]とプロトコル側の入力検査の両方で拒否する。
@@ -44,8 +46,9 @@ impl SearchLimits {
     ///
     /// # Errors
     ///
-    /// 制約が1つもない場合、深さが`1..=MAX_PLY`（1〜256）から外れる場合、ノード数が0の場合、または
-    /// 固定時間が0 msの場合は[`SearchError`]を返す。
+    /// 制約が1つもない場合、深さが`1..=MAX_PLY`（1〜256）から外れる場合、ノード数が0の場合、
+    /// 固定時間が0 msの場合、または秒読みが0で固定時間を併用しない時計に相手の残り時間がない場合は
+    /// [`SearchError`]を返す。
     pub fn new(
         depth: Option<u32>,
         nodes: Option<u64>,
@@ -68,6 +71,11 @@ impl SearchLimits {
         let movetime_ms = movetime_ms
             .map(|milliseconds| NonZeroU64::new(milliseconds).ok_or(SearchError::ZeroMoveTime))
             .transpose()?;
+        if clock.is_some_and(|clock| {
+            clock.byoyomi_ms == 0 && movetime_ms.is_none() && clock.opponent_remaining_ms.is_none()
+        }) {
+            return Err(SearchError::MissingOpponentClock);
+        }
         Ok(Self {
             kind: SearchLimitKind::Finite(FiniteSearchLimits {
                 depth,
@@ -145,6 +153,8 @@ impl SearchLimits {
 pub struct ClockLimits {
     /// 手番開始時の残り時間(ms)。
     pub(super) remaining_ms: u64,
+    /// 相手側の残り時間(ms)。
+    pub(super) opponent_remaining_ms: Option<u64>,
     /// 1手ごとの加算時間(ms)。
     pub(super) increment_ms: u64,
     /// 1手ごとの秒読み時間(ms)。
@@ -169,6 +179,7 @@ impl ClockLimits {
         remaining_ms: u64,
         increment_ms: u64,
         byoyomi_ms: u64,
+        opponent_remaining_ms: Option<u64>,
         ply: u32,
     ) -> Result<Self, SearchError> {
         if remaining_ms == 0 && increment_ms == 0 && byoyomi_ms == 0 {
@@ -176,6 +187,7 @@ impl ClockLimits {
         }
         Ok(Self {
             remaining_ms,
+            opponent_remaining_ms,
             increment_ms,
             byoyomi_ms,
             byoyomi_margin_ms: Self::DEFAULT_BYOYOMI_MARGIN_MS,
@@ -198,6 +210,11 @@ impl ClockLimits {
     /// 手番開始時の残り時間(ms)を返す。
     pub const fn remaining_ms(self) -> u64 {
         self.remaining_ms
+    }
+
+    /// 相手側の残り時間(ms)を返す。
+    pub const fn opponent_remaining_ms(self) -> Option<u64> {
+        self.opponent_remaining_ms
     }
 
     /// 1手ごとの加算時間(ms)を返す。

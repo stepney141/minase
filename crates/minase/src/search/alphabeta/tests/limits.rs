@@ -41,9 +41,33 @@ fn zero_search_budgets_are_rejected_at_construction() {
         Err(SearchError::ZeroMoveTime)
     ));
     assert!(matches!(
-        ClockLimits::new(0, 0, 0, 0),
+        ClockLimits::new(0, 0, 0, None, 0),
         Err(SearchError::EmptyClock)
     ));
+    assert!(matches!(
+        ClockLimits::new(0, 0, 0, Some(1), 0),
+        Err(SearchError::EmptyClock)
+    ));
+}
+
+// 設計書T5の入力契約: 秒読み0かつmovetimeなしの時計だけが相手の残り時間を必須とする。
+#[test]
+fn time_advantage_clock_requires_opponent_remaining_time() {
+    let without_opponent = ClockLimits::new(1_000, 0, 0, None, 0).unwrap();
+    for (depth, nodes) in [(None, None), (Some(2), None), (None, Some(100))] {
+        assert!(matches!(
+            SearchLimits::new(depth, nodes, None, Some(without_opponent)),
+            Err(SearchError::MissingOpponentClock)
+        ));
+    }
+
+    let opponent_at_zero = ClockLimits::new(1_000, 0, 0, Some(0), 0).unwrap();
+    assert_eq!(opponent_at_zero.opponent_remaining_ms(), Some(0));
+    assert!(SearchLimits::new(None, None, None, Some(opponent_at_zero)).is_ok());
+
+    let byoyomi = ClockLimits::new(1_000, 0, 100, None, 0).unwrap();
+    assert!(SearchLimits::new(None, None, None, Some(byoyomi)).is_ok());
+    assert!(SearchLimits::new(None, None, Some(20), Some(without_opponent)).is_ok());
 }
 
 // 監査「探索条件と探索局面の不正状態」: 公開スナップショットはGameが

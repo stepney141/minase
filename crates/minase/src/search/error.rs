@@ -25,6 +25,8 @@ pub enum SearchError {
     ZeroMoveTime,
     /// 持ち時間、加算時間、秒読み時間がすべて0 msである。
     EmptyClock,
+    /// 固定時間を併用しない秒読みのない時計に、相手の残り時間が指定されていない。
+    MissingOpponentClock,
     /// 探索できるルート合法手がない。
     NoLegalMoves,
     /// 終局済みの対局が指定された。
@@ -48,6 +50,8 @@ impl fmt::Display for SearchError {
             Self::ZeroNodeLimit => formatter.write_str("search node limit must be non-zero"),
             Self::ZeroMoveTime => formatter.write_str("search movetime must be non-zero"),
             Self::EmptyClock => formatter.write_str("search clock must contain non-zero time"),
+            Self::MissingOpponentClock => formatter
+                .write_str("search clock without byoyomi requires the opponent's remaining time"),
             Self::NoLegalMoves => formatter.write_str("search requires at least one legal move"),
             Self::FinishedGame => formatter.write_str("search requires an ongoing game"),
             Self::InfiniteSynchronousSearch => {

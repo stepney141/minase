@@ -13,7 +13,7 @@
 //! | `moves`、`state` | `handle_moves`と`handle_state`の独自照会を処理する。 |
 //! | `d`、`eval`、`tt` | `handle_diagnostic`の診断を出力する。 |
 //! | 引数に`mate`を含む`go` | `checkmate notimplemented`を1行返す。 |
-//! | それ以外の`go` | `start_go`で探索を開始する。 |
+//! | それ以外の`go` | `parse_go_config`で手番側と相手側の時計を検査し、`start_go`で探索を開始する。 |
 //! | `quit` | 無応答で終了する。 |
 //! | `debug`、`register`、`stop` | 無応答で無視する。 |
 //! | `ponderhit` | `info string error: ponderhit requires an active ponder search`を返す。 |
@@ -1419,7 +1419,10 @@ fn position_extension_start(
 /// 深さの範囲は[`SearchLimits::new`]でも検査する。
 ///
 /// 時計は手番側の残り時間と加算を選び、省略値を0、秒読みを共通値とする。
-/// 選んだ時計の3値がすべて0なら拒否し、[`Engine::ply`]と`ByoyomiMargin`を[`ClockLimits`]へ渡す。
+/// 手番でない側の残り時間は`Option`のまま保持する。秒読みが0で`movetime`を併用しない時計では、
+/// 相手との残り時間の差による目安時間の補正に必要なため、省略を拒否する。
+/// 秒読みが正の時計と`movetime`を併用する時計ではこの補正を使わないため、省略を受理する。
+/// 手番側の時計の3値がすべて0なら拒否し、[`Engine::ply`]と`ByoyomiMargin`を[`ClockLimits`]へ渡す。
 /// 先読みの時計引数は、的中後に自分が使える時間としてそのまま渡す。
 fn parse_go_config(
     tokens: &[&str],
@@ -1505,12 +1508,18 @@ fn parse_go_config(
         btime.is_some() || wtime.is_some() || binc.is_some() || winc.is_some() || byoyomi.is_some();
     let clock = clock_specified
         .then(|| {
-            let (remaining_ms, increment_ms) = match side_to_move {
-                Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0)),
-                Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
+            let (remaining_ms, increment_ms, opponent_remaining_ms) = match side_to_move {
+                Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0), wtime),
+                Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0), btime),
             };
-            ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0), ply)
-                .map(|clock| clock.with_byoyomi_margin_ms(byoyomi_margin_ms))
+            ClockLimits::new(
+                remaining_ms,
+                increment_ms,
+                byoyomi.unwrap_or(0),
+                opponent_remaining_ms,
+                ply,
+            )
+            .map(|clock| clock.with_byoyomi_margin_ms(byoyomi_margin_ms))
         })
         .transpose()
         .map_err(|error| error.to_string())?;
@@ -3764,14 +3773,38 @@ mod tests {
             parse_go_config(&tokens, Color::Black, 37, 30)
                 .unwrap()
                 .clock(),
-            Some(ClockLimits::new(1000, 30, 500, 37).unwrap())
+            Some(ClockLimits::new(1000, 30, 500, Some(2000), 37).unwrap())
         );
         assert_eq!(
             parse_go_config(&tokens, Color::White, 37, 30)
                 .unwrap()
                 .clock(),
-            Some(ClockLimits::new(2000, 40, 500, 37).unwrap())
+            Some(ClockLimits::new(2000, 40, 500, Some(1000), 37).unwrap())
         );
+    }
+
+    #[test]
+    fn go_clock_requires_opponent_time_only_when_time_advantage_applies() {
+        let missing_opponent =
+            "search clock without byoyomi requires the opponent's remaining time";
+        for (args, side) in [
+            ("btime 1000", Color::Black),
+            ("wtime 1000", Color::White),
+            ("ponder btime 1000", Color::Black),
+        ] {
+            assert_eq!(
+                parse_go_config(&args.split_whitespace().collect::<Vec<_>>(), side, 0, 30,)
+                    .unwrap_err(),
+                missing_opponent,
+                "{args}"
+            );
+        }
+
+        let byoyomi = parse_go_config(&["btime", "1000", "byoyomi", "100"], Color::Black, 0, 30)
+            .unwrap()
+            .clock()
+            .unwrap();
+        assert_eq!(byoyomi.opponent_remaining_ms(), None);
     }
 
     #[test]
@@ -4558,7 +4591,7 @@ mod tests {
                 None,
                 None,
                 None,
-                Some((1000, 7, 50)),
+                Some((1000, 7, 50, Some(2000))),
             ),
             ("ponder movetime 20", None, None, Some(20), None),
             (
@@ -4566,7 +4599,7 @@ mod tests {
                 Some(2),
                 Some(100),
                 Some(20),
-                Some((1000, 0, 0)),
+                Some((1000, 0, 0, None)),
             ),
         ] {
             let parsed = parse_go_config(
@@ -4581,9 +4614,14 @@ mod tests {
             assert_eq!(parsed.nodes(), nodes, "{args}");
             assert_eq!(parsed.movetime_ms(), movetime, "{args}");
             assert_eq!(
-                parsed
-                    .clock()
-                    .map(|c| (c.remaining_ms(), c.increment_ms(), c.byoyomi_ms())),
+                parsed.clock().map(|c| {
+                    (
+                        c.remaining_ms(),
+                        c.increment_ms(),
+                        c.byoyomi_ms(),
+                        c.opponent_remaining_ms(),
+                    )
+                }),
                 clock,
                 "{args}"
             );
