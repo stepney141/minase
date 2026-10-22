@@ -291,7 +291,8 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
         (600, 1000, 1500, false, false, Some(StopReason::HardLimit)),
         (1001, 1000, 1010, true, false, None),
         (600, u64::MAX, 1010, true, false, None),
-        (600, u64::MAX, 1010, false, true, None),
+        // 記録を偽に戻した後の当て直しは、IterationRatioの範囲（150〜400）のどの値でも通る開始時刻で調べる。
+        (300, u64::MAX, 1010, false, true, None),
         (600, 1000, 1010, false, true, Some(StopReason::SoftLimit)),
         (600, 1000, 1400, false, true, Some(StopReason::HardLimit)),
     ] {
