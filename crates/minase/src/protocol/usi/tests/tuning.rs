@@ -173,6 +173,10 @@ fn tuning_usi_contract_in_isolated_process() {
                 params::capture_futility_history as fn() -> i32,
             ),
             ("AspirationDelta", params::aspiration_delta as fn() -> i32),
+            (
+                "AspirationScoreWidth",
+                params::aspiration_score_width as fn() -> i32,
+            ),
             ("AspirationGrowth", params::aspiration_growth as fn() -> i32),
             ("NullMoveBase", params::null_move_base as fn() -> i32),
             ("NullMoveSlope", params::null_move_slope as fn() -> i32),

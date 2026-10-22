@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::search::alphabeta::params;
+use crate::search::alphabeta::root::RootMoveStats;
 
 // 予測完了時刻は探索開始からの累積時間に比例し、的中までの時間を引いて予算と比べる。
 // 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
@@ -263,6 +264,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
                 consecutive_attacking_moves: [0; 2],
             },
             DRAW_SCORE,
+            0,
             &[],
             &shared,
             &table,
@@ -298,14 +300,10 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
 // aspirationの再探索を発生させても反復の開始時刻と安定性を変えない。
 #[test]
 fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    with_root_searcher(&position, &[], |searcher| {
+    let position = quiet_midgame();
+    let roots = legal_moves(&position);
+    let history = repeated_root_children(&position, &roots);
+    with_root_searcher(&position, &history, |searcher| {
         let started = Duration::from_millis(123);
         searcher.ponder_iteration = Some(PonderIteration {
             started,
@@ -317,10 +315,20 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
                 hard: Duration::from_secs(4),
             },
         });
+        let previous_best = roots[0];
+        searcher.root_move_stats.push((
+            previous_best,
+            RootMoveStats {
+                effort: 1,
+                averages: Some((1_000, 1_000_000)),
+            },
+        ));
+        let before = searcher.nodes;
         let (_, score) = searcher
-            .search_iteration(&position, &legal_moves(&position), 5, Some(20_000))
+            .search_iteration(&position, &roots, 5, Some((previous_best, DRAW_SCORE)))
             .unwrap();
-        assert!(score < 20_000 - aspiration_delta(searcher.nnue.pawn_value()));
+        assert_eq!(score, DRAW_SCORE);
+        assert!(searcher.nodes - before > roots.len() as u64);
         let iteration = searcher.ponder_iteration.as_ref().unwrap();
         assert_eq!(iteration.started, started);
         assert!(iteration.stable);
@@ -394,6 +402,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                     consecutive_attacking_moves: [0; 2],
                 },
                 DRAW_SCORE,
+                0,
                 &[],
                 &shared,
                 &table,
@@ -512,6 +521,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     consecutive_attacking_moves: [0; 2],
                 },
                 DRAW_SCORE,
+                0,
                 &[],
                 &shared,
                 &table,
@@ -649,6 +659,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                         consecutive_attacking_moves: [0; 2],
                     },
                     DRAW_SCORE,
+                    0,
                     &[],
                     &shared,
                     &table,

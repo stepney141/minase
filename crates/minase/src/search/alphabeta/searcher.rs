@@ -27,7 +27,7 @@ use super::ordering::MovePicker;
 use super::params;
 use super::pruning::qsearch_see_floor;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
-use super::root::RootResults;
+use super::root::{RootMoveStats, RootResults};
 use super::team::SharedSearch;
 use super::time::{TimeBudget, iteration_prediction_fits};
 
@@ -49,6 +49,7 @@ pub(super) fn new_searcher<'a>(
     rules: MoveRules,
     repetition: SearchRepetition,
     draw_value: i32,
+    worker_index: usize,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
@@ -64,6 +65,7 @@ pub(super) fn new_searcher<'a>(
     let root_correction_keys = correction_piece_keys(position);
     Searcher {
         root_results: None,
+        root_move_stats: Vec::new(),
         completed_root_nodes: Vec::new(),
         current_root_nodes: Vec::new(),
         #[cfg(test)]
@@ -76,6 +78,7 @@ pub(super) fn new_searcher<'a>(
         rules,
         repetition,
         draw_value,
+        worker_index,
         root_position: position.clone(),
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -91,6 +94,7 @@ pub(super) fn new_searcher<'a>(
         stop_reason: None,
         ponder_iteration: None,
         root_depth: 0,
+        fail_high_recovery: 0,
         seek_mate: false,
         cutoff_counts: [0; MAX_PLY as usize + 3],
         tt_pv: [false; MAX_PLY as usize + 1],
@@ -205,6 +209,8 @@ pub(super) enum RepetitionMatch {
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
     pub(super) root_results: Option<RootResults>,
+    /// この`go`で累積する、根の手ごとの探索量と評価値の平均。
+    pub(super) root_move_stats: Vec<(Move, RootMoveStats)>,
     /// 直前に完了した反復の、根の手ごとの部分木ノード数。
     pub(super) completed_root_nodes: Vec<(Move, u64)>,
     /// 進行中の反復で、窓の読み直しを含めて累積する部分木ノード数。
@@ -226,6 +232,8 @@ pub(super) struct Searcher<'a> {
     pub(super) repetition: SearchRepetition,
     /// 根の手番側から見た、R1の引き分けの再現に返す値。
     pub(super) draw_value: i32,
+    /// 探索チーム内で割り当て済みのワーカー番号。
+    pub(super) worker_index: usize,
     /// 攻撃的着手の判定で探索経路を再生するための、根の局面の写し。
     pub(super) root_position: Position,
     /// 探索ノードでの合法手生成器。
@@ -265,6 +273,9 @@ pub(super) struct Searcher<'a> {
     pub(super) follow_pv: [bool; MAX_PLY as usize + 1],
     /// 現在の反復の深さ。LMRの延長を許すplyの範囲に使う（Stockfish src/search.cpp:1402）。
     pub(super) root_depth: u32,
+    /// 反復をまたいで持ち越すfail highの減深。`go`ごとに0から始める
+    /// （Stockfish src/search.cpp:336, 405, 461-462）。
+    pub(super) fail_high_recovery: u32,
     /// 前の反復の確定値から決めた、現在の反復で詰みを探すかの印（Stockfish src/search.cpp:395）。
     pub(super) seek_mate: bool,
     /// plyごとのβ打ち切り数。ノード開始時に2手先だけを0に戻す（Stockfish src/search.cpp:829, 1562）。

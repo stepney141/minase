@@ -33,6 +33,9 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 }
 
 /// 主ワーカーの反復深化を実行し、窓内で深さを完了するごとに進捗イベントを送る。
+/// 深さ1は全窓で読む。
+/// 深さ2以上は、直前の完了反復の最善手について記録した評価値の平均を窓の中心に使い、
+/// 符号つき2乗の平均を初期半幅に使う。
 /// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
@@ -63,6 +66,7 @@ pub(super) fn run_main_worker(
         rules,
         repetition,
         draw_value,
+        0,
         history_keys,
         shared,
         tt,
@@ -88,7 +92,7 @@ pub(super) fn run_main_worker(
     let mut completed_bests = Vec::new();
 
     for depth in 1..=depth_limit {
-        let prev = (result.depth > 0).then_some(result.score);
+        let prev = (result.depth > 0).then_some((result.best_move, result.score));
         if ponder && let Some(budget) = time_budget {
             let iteration_started = shared.clock.elapsed();
             let stable = stable_signal(&completed_bests);
@@ -204,7 +208,9 @@ pub(super) fn main_worker_outcome(
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 ///
 /// 進捗を通知せずsoft limitも評価しないが、各ノードでチーム共通の停止条件を検査する。
-/// 窓の初期化には自分の直前の完了値を使い、窓外れは読み直してから同じ反復の最善手、評価値、深さ、主変化を1組で保持する。
+/// 窓の初期化には自分の直前の完了反復の最善手と、その手について自分が記録した評価値の平均を使う。
+/// 初期半幅には、その手について自分が記録した符号つき2乗の平均とワーカー番号も使う。
+/// 窓外れは読み直してから同じ反復の最善手、評価値、深さ、主変化を1組で保持する。
 /// 深さ上限を完了すると自分の処理を終え、他ワーカーへ深さ完了の停止を通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_auxiliary_worker(
@@ -232,6 +238,7 @@ pub(super) fn run_auxiliary_worker(
         rules,
         repetition,
         draw_value,
+        worker_index,
         history_keys,
         shared,
         tt,
@@ -254,7 +261,7 @@ pub(super) fn run_auxiliary_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     for depth in auxiliary_depths(worker_index, depth_limit) {
-        let prev = (result.depth > 0).then_some(result.score);
+        let prev = (result.depth > 0).then_some((result.best_move, result.score));
         let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             break;

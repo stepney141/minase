@@ -65,7 +65,7 @@ minaseのreverse futility pruning、razoring、null move、およびimprovingの
 | delta pruning（`DeltaMargin`） | `stand-pat + 取る駒の価値 + 余裕値 ≤ α`なら読まない。stand-patは補正前の評価（`quiesce.rs:76-97, 144-148`） | 補正後の評価に定数を足した基準を使い、余裕値をSEEの閾値にも入れ、読まない手の値で最善値を更新する。王手になる手、直前の到達升への手、成る手を除く（Stockfish `search.cpp:1794-1843`） | 同型（付随部分に差） | 余裕値は埋まる |
 | 静止探索の手数制限（`QsearchMoveLimit`） | 実際に読んだ捕獲手が4手に達したら残りを読まない（`quiesce.rs:154-169`） | 生成順の位置が2手を超えたら読まない。王手になる手、直前の到達升への手、成る手を例外にし、王手を受けている局面では使わない（Stockfish `search.cpp:1816-1826`） | 適用条件の違い | 埋まらない |
 
-aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
+aspiration windowsでfail high時に深さを浅くする方式と反対側の端を寄せる方式は、[ADR](../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)で棄却済みである（fail high時の減深は、STCで改善を示せない`H0`だった）。
 返った値を基準に窓を移す形は、そのADRの代案に含まれていない。
 history補正を連続量にする案は、[late move reductionsのADR](../adr/archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)が自由度の増加を理由に棄却している。
 同じADRは、上限3と段差の補正をSTCの到達深さが5〜6だった時期の判断としている。
@@ -109,7 +109,7 @@ Stockfishは相手との持ち時間の差でも目安時間を下げるが（`s
 [historyの更新量の形とcontinuation history](../plans/archived/history-forms.md)は、butterfly historyの更新量と更新の条件、continuation history、LMRのhistory補正の連続化、およびLMRの捕獲手とkiller手への拡張を扱う。
 [correction historyの表の追加と持ち越し](../plans/archived/correction-history-tables.md)は、駒配置を鍵にした表、continuation correction history、表の持ち越し、および補正量の余裕値とLMRへの利用を扱う。
 [静止探索の補正と枝刈りの形](../plans/archived/qsearch-forms.md)は、stand-patへの補正、delta pruningの余裕値のSEEへの利用、手数の数え方、および取り返しの例外を扱う。
-[aspiration windowsの幅と窓の移し方](../plans/aspiration-window-forms.md)は、初期の幅、窓の中心、窓を使い始める深さ、および外れたときの窓の移し方を扱う。
+[aspiration windowsの幅と窓の移し方](../plans/archived/aspiration-window-forms.md)は、初期の幅、窓の中心、窓を使い始める深さ、および外れたときの窓の移し方を扱う。
 [探索の不安定さに応じた持ち時間の伸縮](../plans/time-instability-scaling.md)は、評価値の下落、最善手の安定と変化、最善手のノード占有率、および相手との持ち時間の差による目安時間の伸縮を扱う。
 王駒に相手の利きが届くノードを枝刈りから除く条件は、関数形の差ではなく中将棋の規則から来る判断なので、どの設計書でも変えない。
 

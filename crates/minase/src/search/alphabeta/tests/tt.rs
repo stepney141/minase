@@ -185,7 +185,14 @@ fn root_stores_pv_flag() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
         searcher
-            .search_root(&position, &legal_moves(&position), 1, -INFINITY, INFINITY)
+            .search_root(
+                &position,
+                &legal_moves(&position),
+                1,
+                1,
+                -INFINITY,
+                INFINITY,
+            )
             .unwrap();
         assert!(searcher.tt_pv[0]);
         assert!(searcher.tt.probe(search_key(&position), 0).unwrap().is_pv);

@@ -117,7 +117,7 @@ fn root_and_full_window_nodes_store_corrected_evaluation() {
             if root {
                 assert!(
                     searcher
-                        .search_root(&board, &legal_moves(&board), 2, -INFINITY, INFINITY)
+                        .search_root(&board, &legal_moves(&board), 2, 2, -INFINITY, INFINITY)
                         .is_some()
                 );
             } else {

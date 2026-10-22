@@ -17,69 +17,235 @@ use super::searcher::Searcher;
 use super::tt::{Bound, Hit};
 use super::{INFINITY, params};
 
-/// 反復探索の窓と、次に外れた側を広げる幅。
+/// 根の手の平均を更新する尺度（Stockfish `src/search.cpp:1480`）。
+const ROOT_MOVE_AVERAGE_SCALE: u32 = 32;
+/// 根の手の重みで、更新前の累計ノード数に掛ける比3/2の分子
+/// （Stockfish `src/search.cpp:1481`）。
+const ROOT_MOVE_EFFORT_RATIO_NUMERATOR: u32 = 3;
+/// 根の手の重みで、今回のノード数に掛ける比3/2の分母
+/// （Stockfish `src/search.cpp:1482`）。
+const ROOT_MOVE_EFFORT_RATIO_DENOMINATOR: u32 = 2;
+/// 根の手の平均に使う重みの下限（Stockfish `src/search.cpp:1483`）。
+const ROOT_MOVE_WEIGHT_MIN: u32 = 12;
+/// 根の手の平均に使う重みの上限（Stockfish `src/search.cpp:1484`）。
+const ROOT_MOVE_WEIGHT_MAX: u32 = 24;
+/// 根の手の符号つき2乗の平均に使う重みの上限（Stockfish `src/search.cpp:1489`）。
+const ROOT_MOVE_SIGNED_SQUARE_WEIGHT_MAX: u32 = 16;
+/// 反復を始めるたびにfail highの持ち越しから引く量
+/// （Stockfish `src/search.cpp:405`）。
+const FAIL_HIGH_RECOVERY_DECAY: u32 = 2;
+/// fail highによって減らした窓の深さの下限
+/// （Stockfish `src/search.cpp:410`）。
+const MIN_ASPIRATION_WINDOW_DEPTH: u32 = 1;
+
+/// 1回の反復で数えるfail highと、反復をまたいで持ち越す減深。
+#[derive(Clone, Copy)]
+pub(super) struct FailHighReduction {
+    failed_high_count: u32,
+    recovery: u32,
+}
+
+impl FailHighReduction {
+    /// 持ち越しを2減らして0で止め、fail highの回数を0にして反復を始める。
+    pub(super) fn begin(recovery: u32) -> Self {
+        Self {
+            failed_high_count: 0,
+            recovery: recovery.saturating_sub(FAIL_HIGH_RECOVERY_DECAY),
+        }
+    }
+
+    /// 反復の深さからfail high 1回につき1手と持ち越しを引き、1手を下限とする
+    /// （Stockfish `src/search.cpp:410, 450`）。
+    pub(super) fn window_depth(self, iteration_depth: u32) -> u32 {
+        iteration_depth
+            .saturating_sub(self.failed_high_count)
+            .saturating_sub(self.recovery)
+            .max(MIN_ASPIRATION_WINDOW_DEPTH)
+    }
+
+    /// fail highの回数を1増やす。
+    pub(super) fn after_fail_high(mut self) -> Self {
+        self.failed_high_count += 1;
+        self
+    }
+
+    /// fail lowの後はfail highの回数を0へ戻す。
+    pub(super) fn after_fail_low(mut self) -> Self {
+        self.failed_high_count = 0;
+        self
+    }
+
+    /// 窓内で完了した反復の後に持ち越す減深を返す。
+    ///
+    /// fail highがあれば`(h + 1) / 2 + 2`、なければ開始時に減らした値を保つ
+    /// （Stockfish `src/search.cpp:461-462`）。
+    pub(super) fn recovery_after_completion(self) -> u32 {
+        if self.failed_high_count == 0 {
+            self.recovery
+        } else {
+            self.failed_high_count.div_ceil(2) + 2
+        }
+    }
+}
+
+/// 根の手について、`go`の間に累積する探索量と評価値の平均。
+#[derive(Default)]
+pub(super) struct RootMoveStats {
+    /// 累計の探索ノード数。
+    pub(super) effort: u64,
+    /// 評価値の平均と、符号つき2乗`v × |v|`の平均。
+    pub(super) averages: Option<(i32, i64)>,
+}
+
+impl RootMoveStats {
+    /// 完了した1回の根の手の探索を、今回のノード数と最終値で反映する
+    /// （Stockfish `src/search.cpp:1474-1501`）。
+    pub(super) fn update(&mut self, nodes: u64, value: i32) {
+        let weight = i64::from(root_move_weight(nodes, self.effort));
+        self.effort += nodes;
+
+        let signed_value = i64::from(value);
+        let signed_square = signed_value * signed_value.abs();
+        if let Some((average, signed_square_average)) = &mut self.averages {
+            let scale = i64::from(ROOT_MOVE_AVERAGE_SCALE);
+            *average = i32::try_from(
+                (weight * signed_value + (scale - weight) * i64::from(*average)).div_euclid(scale),
+            )
+            .expect("root move average remains an i32 score");
+            let signed_square_weight = weight.min(i64::from(ROOT_MOVE_SIGNED_SQUARE_WEIGHT_MAX));
+            *signed_square_average = (signed_square_weight * signed_square
+                + (scale - signed_square_weight) * *signed_square_average)
+                .div_euclid(scale);
+        } else {
+            self.averages = Some((value, signed_square));
+        }
+    }
+}
+
+/// 今回と更新前の累計ノード数から、根の手の平均に使う重みを求める
+/// （Stockfish `src/search.cpp:1486-1488`）。
+pub(super) fn root_move_weight(nodes: u64, previous_effort: u64) -> u32 {
+    let previous_effort = previous_effort.max(1);
+    let numerator = u128::from(ROOT_MOVE_AVERAGE_SCALE)
+        * u128::from(ROOT_MOVE_EFFORT_RATIO_DENOMINATOR)
+        * u128::from(nodes);
+    let denominator = u128::from(ROOT_MOVE_EFFORT_RATIO_DENOMINATOR) * u128::from(nodes)
+        + u128::from(ROOT_MOVE_EFFORT_RATIO_NUMERATOR) * u128::from(previous_effort);
+    let weight = (numerator / denominator).clamp(
+        u128::from(ROOT_MOVE_WEIGHT_MIN),
+        u128::from(ROOT_MOVE_WEIGHT_MAX),
+    );
+    u32::try_from(weight).expect("root move weight is bounded by its u32 constants")
+}
+
+/// 反復探索の窓と、窓外れ後の移動に使う半幅。
 ///
-/// 前の反復の値の周囲から探索を始めるaspiration windowである。
-/// `delta`は静的評価と同じ単位で、初期値は歩兵価値×`AspirationDelta`%とする。
-/// 外れた側だけを広げる理由は`docs/adr/widen-only-the-failed-side-of-aspiration-windows.md`にある。
+/// 直前の完了反復の最善手について、評価値の平均の周囲から探索を始めるaspiration windowである。
+/// `delta`は静的評価と同じ単位で、初期値は定数項、符号つき2乗の平均の項、およびワーカー番号の項から求める。
+/// 窓外れ時は返った値から外れた側の端を移し、反対側の端も元の窓の端を基準に寄せる。
+/// 判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`にある。
 pub(super) struct AspirationWindow {
     pub(super) alpha: i32,
     pub(super) beta: i32,
-    pub(super) delta: i32,
+    pub(super) delta: Option<i32>,
 }
 
 impl AspirationWindow {
-    /// 深さ5以上で同じワーカーの直前の完了値が詰み帯と専用の帯の外なら、その値±`delta`を初期窓にする。
-    /// それ以外は全窓とし、詰み帯または専用の帯に達した端は無限へ置き換える。
-    pub(super) fn initial(depth: u32, prev: Option<i32>, delta: i32) -> Self {
-        let (alpha, beta) = match prev {
-            Some(score) if depth >= 5 && score.abs() < REPETITION_BAND_START => {
-                (score - delta, score + delta)
-            }
-            _ => (-INFINITY, INFINITY),
+    /// 最善手の平均が詰み帯と専用の帯の外なら、平均±半幅を初期窓にする。
+    /// 平均と半幅の組がない場合は全窓とし、半幅は保持せず読まない。
+    /// 詰み帯または専用の帯に達した端は無限へ置き換える。
+    pub(super) fn initial(average_and_delta: Option<(i32, i32)>) -> Self {
+        let Some((average, delta)) = average_and_delta else {
+            return Self {
+                alpha: -INFINITY,
+                beta: INFINITY,
+                delta: None,
+            };
         };
-        let mut window = Self { alpha, beta, delta };
-        window.normalize();
+        if i64::from(average).abs() >= i64::from(REPETITION_BAND_START) {
+            return Self {
+                alpha: -INFINITY,
+                beta: INFINITY,
+                delta: None,
+            };
+        }
+        debug_assert!(delta >= 1);
+        let mut window = Self {
+            alpha: -INFINITY,
+            beta: INFINITY,
+            delta: Some(delta),
+        };
+        window.set_bounds(
+            i64::from(average) - i64::from(delta),
+            i64::from(average) + i64::from(delta),
+        );
         window
     }
 
-    /// 下側だけを広げ、次の拡大量に調整係数を掛ける。
-    pub(super) fn widen_low(&mut self) {
-        if self.alpha != -INFINITY {
-            self.alpha -= self.delta;
-        }
-        self.normalize();
-        self.delta = grow_aspiration_delta(self.delta);
+    /// fail lowの値から下端を移し、上端を元の下端へ寄せてから半幅を広げる。
+    pub(super) fn widen_low(&mut self, score: i32) {
+        debug_assert!(score <= self.alpha);
+        debug_assert!(self.alpha != -INFINITY);
+        let delta = self
+            .delta
+            .expect("an aspiration retry must have a half-width");
+        self.set_bounds(i64::from(score) - i64::from(delta), i64::from(self.alpha));
+        self.delta = Some(grow_aspiration_delta(delta));
     }
 
-    /// 上側だけを広げ、次の拡大量に調整係数を掛ける。
-    pub(super) fn widen_high(&mut self) {
-        if self.beta != INFINITY {
-            self.beta += self.delta;
-        }
-        self.normalize();
-        self.delta = grow_aspiration_delta(self.delta);
+    /// fail highの値から上端を移し、下端を元の上端を基準に寄せてから半幅を広げる。
+    pub(super) fn widen_high(&mut self, score: i32) {
+        debug_assert!(score >= self.beta);
+        debug_assert!(self.beta != INFINITY);
+        let delta = self
+            .delta
+            .expect("an aspiration retry must have a half-width");
+        self.set_bounds(
+            (i64::from(self.beta) - i64::from(delta)).max(i64::from(self.alpha)),
+            i64::from(score) + i64::from(delta),
+        );
+        self.delta = Some(grow_aspiration_delta(delta));
     }
 
-    /// 詰み帯または専用の帯へ達した端を無限へ置き換える。
-    fn normalize(&mut self) {
-        if self.alpha <= -REPETITION_BAND_START {
-            self.alpha = -INFINITY;
-        }
-        if self.beta >= REPETITION_BAND_START {
-            self.beta = INFINITY;
-        }
+    /// 64ビット整数で求めた端を正規化して保持する。
+    fn set_bounds(&mut self, alpha: i64, beta: i64) {
+        let band_start = i64::from(REPETITION_BAND_START);
+        self.alpha = if alpha <= -band_start {
+            -INFINITY
+        } else {
+            i32::try_from(alpha).expect("finite aspiration alpha remains in the ordinary band")
+        };
+        self.beta = if beta >= band_start {
+            INFINITY
+        } else {
+            i32::try_from(beta).expect("finite aspiration beta remains in the ordinary band")
+        };
     }
 }
 
-/// 直前の評価値から上下に取る初期窓幅を求める。
-pub(super) fn aspiration_delta(pawn: i32) -> i32 {
-    pawn * params::aspiration_delta() / 100
+/// 歩兵価値、調整係数、符号つき2乗の平均、およびワーカー番号から初期の半幅を求める。
+/// 3つの項は64ビット整数で個別に切り捨ててから足し、結果を1以上にする。
+pub(super) fn initial_aspiration_delta(
+    pawn: i32,
+    aspiration_delta: i32,
+    aspiration_score_width: i32,
+    signed_square_average: i64,
+    worker_index: usize,
+) -> i32 {
+    let pawn = i64::from(pawn);
+    let constant_term = pawn * i64::from(aspiration_delta) / 100;
+    let score_term =
+        i64::from(aspiration_score_width) * signed_square_average.abs() / (10_000 * pawn);
+    let worker_term = (worker_index % 8) as i64 * pawn / 208;
+    i32::try_from((constant_term + score_term + worker_term).max(1))
+        .expect("initial aspiration delta remains an i32 score")
 }
 
-/// 窓幅の拡大を広い整数型で計算してから飽和させる。
+/// 半幅を1以上増やす項と調整係数を掛けた項の大きい方へ広げる。
+/// 加算と乗算は64ビット整数で計算し、32ビット整数の上限で飽和させる。
 pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
-    let grown = i64::from(delta) * i64::from(params::aspiration_growth()) / 100;
+    let delta = i64::from(delta);
+    let grown = (delta + 1).max(delta * i64::from(params::aspiration_growth()) / 100);
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 
@@ -160,35 +326,79 @@ impl Searcher<'_> {
         tt_hit
     }
 
-    /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
+    /// 窓を移しながら読み直し、窓内で完了した反復だけを返す。
     ///
-    /// 主ワーカーと補助ワーカーが共有し、直前の完了値は各ワーカー自身のものを使う。
-    /// 値がα以下なら下側だけ、β以上なら上側だけを広げ、同じ深さで再探索する。
+    /// 主ワーカーと補助ワーカーが共有し、直前の完了反復の最善手と、その手について各ワーカーが持つ
+    /// 評価値の平均と符号つき2乗の平均を使う。深さ1は直前の完了反復がないため全窓で読む。
+    /// 深さ2以上は平均があれば窓を置く。
+    /// 直前の完了値は詰みを探す印の判定だけに使う。
+    /// 反復の開始時にfail highの持ち越しを減らし、各窓はfail highの回数と持ち越しに応じて
+    /// 反復の深さ以下で読む。fail lowでは回数を0へ戻し、fail highでは1増やす。
+    /// 値がα以下ならβを元のαへ寄せて下端を返り値から移し、
+    /// β以上ならαを元のβを基準に寄せて上端を返り値から移す。
+    /// どちらも窓を移した後に半幅を広げて再探索する。
     /// 等号も窓外れとし、fail-lowの最善手は置換表の助言としてだけ残して、完了結果や進捗へは採らない。
+    /// 完了結果は、実際に読んだ窓の深さによらず、引数の反復の深さの結果として扱う。
+    /// 根の置換表へは窓の深さで保存を要求するため、既存の置換規則により、浅い完了窓が
+    /// 先に読んだ深い窓の記録を上書きしないことがある。
     /// 読み直し中の中断も`None`を返す。
+    /// 窓の置き方と移し方の判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`に、
+    /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md`にある。
     pub(super) fn search_iteration(
         &mut self,
         position: &Position,
         root_moves: &[Move],
-        depth: u32,
-        prev: Option<i32>,
+        iteration_depth: u32,
+        prev: Option<(Move, i32)>,
     ) -> Option<(Move, i32)> {
-        self.seek_mate = is_seek_mate(prev, depth, self.nnue.pawn_value());
+        self.seek_mate = is_seek_mate(
+            prev.map(|(_, score)| score),
+            iteration_depth,
+            self.nnue.pawn_value(),
+        );
         self.previous_pv.clone_from(&self.pv[0]);
+        let mut reduction = FailHighReduction::begin(self.fail_high_recovery);
+        self.fail_high_recovery = reduction.recovery;
+        let averages = prev.and_then(|(best_move, _)| {
+            self.root_move_stats
+                .iter()
+                .find(|(mv, _)| *mv == best_move)
+                .and_then(|(_, stats)| stats.averages)
+        });
         let mut window =
-            AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));
+            AspirationWindow::initial(averages.map(|(average, signed_square_average)| {
+                (
+                    average,
+                    initial_aspiration_delta(
+                        self.nnue.pawn_value(),
+                        params::aspiration_delta(),
+                        params::aspiration_score_width(),
+                        signed_square_average,
+                        self.worker_index,
+                    ),
+                )
+            }));
         loop {
-            let Some((best_move, score)) =
-                self.search_root(position, root_moves, depth, window.alpha, window.beta)
-            else {
+            let window_depth = reduction.window_depth(iteration_depth);
+            let Some((best_move, score)) = self.search_root(
+                position,
+                root_moves,
+                iteration_depth,
+                window_depth,
+                window.alpha,
+                window.beta,
+            ) else {
                 self.current_root_nodes.clear();
                 return None;
             };
             if score <= window.alpha {
-                window.widen_low();
+                reduction = reduction.after_fail_low();
+                window.widen_low(score);
             } else if score >= window.beta {
-                window.widen_high();
+                reduction = reduction.after_fail_high();
+                window.widen_high(score);
             } else {
+                self.fail_high_recovery = reduction.recovery_after_completion();
                 self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
                 if let Some(results) = &mut self.root_results {
                     results.previous_best = Some(best_move);
@@ -198,9 +408,13 @@ impl Searcher<'_> {
         }
     }
 
-    /// ルート局面を指定深さで探索し、最善手と評価値を返す。
+    /// ルート局面を反復の深さと窓の深さを分けて探索し、最善手と評価値を返す。
     ///
-    /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
+    /// `root_depth`には反復の深さを保持し、根のLMR、子の探索、historyとcorrectionの更新、
+    /// および置換表への保存には窓の深さを使う。
+    /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表への保存を要求する。
+    /// 置換表への保存は窓の深さで要求し、既存の置換規則に従う。このため、浅い窓の結果が
+    /// 先に深く読んだ窓の記録を上書きしないことがある。
     /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
     /// 根のcutNodeは偽とする（Stockfish src/search.cpp:412）。
     /// 置換表に補正前の静的評価があれば、評価関数の出力を求めずに使う（Stockfish src/search.cpp:854-860）。
@@ -213,7 +427,8 @@ impl Searcher<'_> {
         &mut self,
         position: &Position,
         root_moves: &[Move],
-        depth: u32,
+        iteration_depth: u32,
+        window_depth: u32,
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
@@ -222,7 +437,7 @@ impl Searcher<'_> {
             self.nmp_min_ply.is_none(),
             "null move verification state must not reach the root"
         );
-        self.root_depth = depth;
+        self.root_depth = iteration_depth;
         self.follow_pv[0] = true;
         // 根も2手先のβ打ち切り数を初期化する（Stockfish src/search.cpp:829）。
         self.cutoff_counts[2] = 0;
@@ -290,10 +505,10 @@ impl Searcher<'_> {
             self.stat_scores[0] = stat_score;
             // Stockfishは根の並べ替え後の先頭手を置換表の手として扱う
             // （src/search.cpp:839-840）。
-            let lmr = applies_lmr(depth, index);
+            let lmr = applies_lmr(window_depth, index);
             let first_depth = if lmr {
                 let reduction = lmr_reduction(LmrContext {
-                    depth,
+                    depth: window_depth,
                     index,
                     improving,
                     pv_node: true,
@@ -317,16 +532,16 @@ impl Searcher<'_> {
                     correction_weighted_sum,
                     seek_mate_gives_check: self.lmr_seek_mate_gives_check(&position, mv),
                 });
-                lmr_depth(depth, reduction, true, 0, self.root_depth)
+                lmr_depth(window_depth, reduction, true, 0, self.root_depth)
             } else {
-                depth - 1
+                window_depth - 1
             };
             let alpha_before = alpha;
             let before = self.nodes;
             let score = self.search_move(
                 &mut position,
                 mv,
-                depth,
+                window_depth,
                 alpha,
                 beta,
                 0,
@@ -342,6 +557,13 @@ impl Searcher<'_> {
                 self.current_root_nodes.push((mv, nodes));
             }
             let score = score?;
+            if let Some((_, stats)) = self.root_move_stats.iter_mut().find(|(m, _)| *m == mv) {
+                stats.update(nodes, score);
+            } else {
+                let mut stats = RootMoveStats::default();
+                stats.update(nodes, score);
+                self.root_move_stats.push((mv, stats));
+            }
             if let Some(results) = &mut self.root_results {
                 results.record(mv, score, alpha, &self.pv[1]);
             }
@@ -366,7 +588,7 @@ impl Searcher<'_> {
         }
         if best_score > original_alpha {
             let updates = HistoryUpdateCoefficients::current().updates(
-                depth,
+                window_depth,
                 best_move == root_tt_move,
                 0,
                 false,
@@ -390,7 +612,7 @@ impl Searcher<'_> {
         };
         self.update_correction(
             &position,
-            depth,
+            window_depth,
             0,
             best_score,
             bound,
@@ -400,7 +622,7 @@ impl Searcher<'_> {
         );
         self.tt.store(
             key,
-            depth,
+            window_depth,
             best_score,
             Some(raw),
             bound,

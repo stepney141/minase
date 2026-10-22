@@ -73,7 +73,7 @@ use crate::search::alphabeta::ordering::{
 use crate::search::alphabeta::pruning::allows_null_move;
 use crate::search::alphabeta::pruning::{lmr_reduction, lmr_table, null_move_reduction};
 use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
-use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
+use crate::search::alphabeta::root::AspirationWindow;
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
     KILLER_COUNT, MoveRecord, PathMove, PathStateSnapshot, PonderIteration, RepetitionMatch,
@@ -459,6 +459,7 @@ fn with_draw_value_root_searcher(
         rules,
         repetition,
         draw_value,
+        0,
         history,
         &shared,
         &table,
@@ -621,6 +622,7 @@ fn run_quiesce(
             consecutive_attacking_moves: [0; 2],
         },
         DRAW_SCORE,
+        0,
         &history,
         &shared,
         table,
@@ -688,6 +690,7 @@ fn run_configured_negamax(
             consecutive_attacking_moves: [0; 2],
         },
         DRAW_SCORE,
+        0,
         &history,
         &shared,
         table,

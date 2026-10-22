@@ -168,7 +168,7 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                 searcher.interrupt_at = Some((searcher.nodes + 1, reason));
                 assert!(
                     searcher
-                        .search_iteration(&position, &roots, 2, Some(score))
+                        .search_iteration(&position, &roots, 2, Some((best_move, score)))
                         .is_none()
                 );
                 let outcome = main_worker_outcome(searcher, completed, completed_pv.clone());
@@ -207,18 +207,27 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
     for (complete_first, retry) in [(false, false), (true, false), (true, true)] {
         with_root_searcher(&position, &history, |searcher| {
             searcher.root_results = Some(RootResults::default());
-            if complete_first {
+            let previous = complete_first.then(|| {
                 searcher
                     .search_iteration(&position, &roots, 1, None)
-                    .unwrap();
-            }
+                    .unwrap()
+            });
             // 初回なら1手だけ完了。読み直しなら最初のfail-high窓の1手だけ完了。
             let nodes = searcher.nodes + u64::from(!complete_first || retry);
             searcher.interrupt_at = Some((nodes, StopReason::HardLimit));
-            let prev = retry.then_some(-1000);
+            if retry {
+                let (best_move, _) = previous.unwrap();
+                searcher
+                    .root_move_stats
+                    .iter_mut()
+                    .find(|(mv, _)| *mv == best_move)
+                    .unwrap()
+                    .1
+                    .averages = Some((-1000, -1_000_000));
+            }
             assert!(
                 searcher
-                    .search_iteration(&position, &roots, if retry { 5 } else { 2 }, prev)
+                    .search_iteration(&position, &roots, if retry { 5 } else { 2 }, previous)
                     .is_none()
             );
             assert!(

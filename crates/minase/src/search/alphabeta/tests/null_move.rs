@@ -215,7 +215,7 @@ fn root_resets_child_nmp_count_on_every_window_search() {
             searcher.prior_nmp_fail_high[1] = count;
             assert!(
                 searcher
-                    .search_root(&board, &moves, 1, -INFINITY, INFINITY)
+                    .search_root(&board, &moves, 1, 1, -INFINITY, INFINITY)
                     .is_some()
             );
             assert_eq!(searcher.prior_nmp_fail_high[1], 0);
@@ -231,7 +231,7 @@ fn root_rejects_active_null_move_verification_state() {
     with_root_searcher(&board, &[], |searcher| {
         searcher.nmp_min_ply = Some(1);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            searcher.search_root(&board, &moves, 1, -INFINITY, INFINITY)
+            searcher.search_root(&board, &moves, 1, 1, -INFINITY, INFINITY)
         }));
         assert!(result.is_err());
     });

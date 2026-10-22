@@ -386,7 +386,7 @@ fn negamax_and_root_record_stat_score_before_searching_each_move() {
         let expected = searcher.move_stat_score(&board, chosen, false, 0);
         assert!(
             searcher
-                .search_root(&board, &[chosen], 1, -INFINITY, INFINITY)
+                .search_root(&board, &[chosen], 1, 1, -INFINITY, INFINITY)
                 .is_some()
         );
         assert_eq!(searcher.stat_scores[0], expected);

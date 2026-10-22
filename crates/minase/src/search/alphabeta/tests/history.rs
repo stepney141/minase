@@ -204,6 +204,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 snapshot.rules(),
                 snapshot.repetition(),
                 DRAW_SCORE,
+                0,
                 &[],
                 &shared,
                 &table,
