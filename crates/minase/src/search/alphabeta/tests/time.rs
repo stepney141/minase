@@ -41,18 +41,25 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
-// 直近4反復の最善手が同じときだけ安定とする。
+// 指定した直近の反復数だけ最善手が同じときに安定とする。
 // 採用理由はdocs/adr/stop-early-on-stable-best-move-without-extensions.md。
 #[test]
-fn stable_signal_requires_four_identical_recent_best_moves() {
+fn stable_signal_uses_requested_number_of_recent_best_moves() {
     let moves = legal_moves(&Position::initial());
     let [a, b] = [moves[0], moves[1]];
-    assert!(stable_signal(&[a, a, a, a]));
-    assert!(!stable_signal(&[a, a, a]));
-    assert!(stable_signal(&[b, a, a, a, a]));
-    assert!(!stable_signal(&[a, a, a, b]));
-    assert!(!stable_signal(&[a, b, a, a, a]));
-    assert!(!stable_signal(&[]));
+    for iterations in [2, 4, 8] {
+        let identical = vec![a; iterations];
+        assert!(!stable_signal(&identical[..iterations - 1], iterations));
+        assert!(stable_signal(&identical, iterations));
+
+        let mut different_recent = identical.clone();
+        different_recent[iterations - 1] = b;
+        assert!(!stable_signal(&different_recent, iterations));
+
+        let mut different_before = vec![b];
+        different_before.extend(identical);
+        assert!(stable_signal(&different_before, iterations));
+    }
 }
 
 // 継続条件を満たさない主ワーカーは

@@ -223,6 +223,7 @@ fn tuning_parameters_in_isolated_process() {
         ("HardSoftRatio", 730),
         ("HardRemainingShare", 39),
         ("IterationRatio", 277),
+        ("StableIterations", 4),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
@@ -484,6 +485,13 @@ fn tuning_parameters_in_isolated_process() {
             true,
         ))
     }
+    fn stability() -> i64 {
+        let best = legal_moves(&Position::initial())[0];
+        i64::from(stable_signal(
+            &[best; 4],
+            params::stable_iterations() as usize,
+        ))
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -513,7 +521,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 92] = [
+    let cases: [Case; 93] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -917,6 +925,7 @@ fn tuning_parameters_in_isolated_process() {
             clock_budget(clock(1000, 1000, 0)).hard.as_millis() as i64
         }),
         ("IterationRatio", 150, prediction),
+        ("StableIterations", 8, stability),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());

@@ -26,19 +26,14 @@ pub(super) struct TimeBudget {
     pub(super) byoyomi_period: bool,
 }
 
-/// 最善手の安定を判定する直近の完了反復数。
-///
-/// この数の連続した完了反復がすべて同じ最善手を返せば安定とする。
-/// 4反復を使う判断の理由は`docs/adr/stop-early-on-stable-best-move-without-extensions.md`にある。
-const STABLE_ITERATIONS: usize = 4;
-
 /// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。
 ///
-/// [`STABLE_ITERATIONS`]個の最善手が揃い、すべて同じ場合だけ真を返す。
+/// `iterations`個の最善手が揃い、すべて同じ場合だけ真を返す。
 /// `bests`は完了順に並び、末尾が最新の反復の最善手である。
-pub(super) fn stable_signal(bests: &[Move]) -> bool {
-    bests.len() >= STABLE_ITERATIONS
-        && bests[bests.len() - STABLE_ITERATIONS..]
+/// 反復数は係数`StableIterations`で与え、既定値4の判断の理由は`docs/adr/stop-early-on-stable-best-move-without-extensions.md`にある。
+pub(super) fn stable_signal(bests: &[Move], iterations: usize) -> bool {
+    bests.len() >= iterations
+        && bests[bests.len() - iterations..]
             .windows(2)
             .all(|pair| pair[0] == pair[1])
 }

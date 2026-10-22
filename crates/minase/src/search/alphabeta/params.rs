@@ -431,6 +431,10 @@ parameters! {
     /// 次の反復の完了時刻を予測する、直前の反復の累積経過時間に対する倍率。単位は百分率である。
     /// 値はSPSAで調整した。
     IterationRatio(iteration_ratio): 203, 150, 400;
+    /// 最善手の安定を判定する直近の完了反復数。単位は反復である。
+    /// 既定値は係数にする前の定数4であり、範囲2〜8は4反復を選んだ診断が比べた3〜5を含む。
+    /// SPSAで未調整である。
+    StableIterations(stable_iterations): 4, 2, 8;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]

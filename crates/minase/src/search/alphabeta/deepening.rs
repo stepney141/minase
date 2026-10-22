@@ -14,6 +14,7 @@ use minase_core::rules::MoveRules;
 use super::capture_history::CaptureHistory;
 use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 use super::history::{ContinuationHistory, HistoryTable, PawnHistory};
+use super::params;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
@@ -95,7 +96,7 @@ pub(super) fn run_main_worker(
         let prev = (result.depth > 0).then_some((result.best_move, result.score));
         if ponder && let Some(budget) = time_budget {
             let iteration_started = shared.clock.elapsed();
-            let stable = stable_signal(&completed_bests);
+            let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
             // 前の境界の検査後やワーカー生成前に的中した場合も、開始条件を通す。
             // tを先に記録するので、このhの読み取りより後の的中は必ずtより後になる。
             let hit_ns = shared
@@ -127,7 +128,7 @@ pub(super) fn run_main_worker(
             break;
         };
         completed_bests.push(best_move);
-        let stable = stable_signal(&completed_bests);
+        let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;

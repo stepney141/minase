@@ -299,6 +299,7 @@ fn tuning_usi_contract_in_isolated_process() {
                 params::hard_remaining_share as fn() -> i32,
             ),
             ("IterationRatio", params::iteration_ratio as fn() -> i32),
+            ("StableIterations", params::stable_iterations as fn() -> i32),
             ("FmScale", params::fm_scale as fn() -> i32),
         ];
         assert_eq!(accessors.len(), params::PARAMETERS.len());
