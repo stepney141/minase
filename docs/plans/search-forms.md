@@ -17,7 +17,7 @@ SPSAの結果の反映は測定機で行い、事前対局とSTC、および最�
 
 ## 状態
 
-進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）とサブタスク5（[静止探索の形](archived/qsearch-forms.md)）は2026年10月21日に、サブタスク6（[aspiration windowsの形](archived/aspiration-window-forms.md)）は2026年10月22日に、いずれも採用で完了した。残りのサブタスク7（[持ち時間の伸縮](time-instability-scaling.md)）は起案であり、着手していない。
+進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）とサブタスク5（[静止探索の形](archived/qsearch-forms.md)）は2026年10月21日に、サブタスク6（[aspiration windowsの形](archived/aspiration-window-forms.md)）は2026年10月22日に、いずれも採用で完了した。残りのサブタスク7（[持ち時間の伸縮](time-instability-scaling.md)）は、2026年10月22日に着手した。
 SPSAは、2026年10月17日の利用者の決定により、サブタスクごとに行う（設計判断の「SPSAの単位」）。
 フェーズ0（試走と持ち時間の換算の確定）は終えた。結果は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)にある。Threadripper PRO 9995WXの調整機で`f`は1.46となり、換算した持ち時間の下で調整機は測定機より約0.3手深く読んだ。2026年10月18日に利用者は、SPSAは係数の最適化なのでこの差にこだわらず、`f`をそのまま使うと決めた。
 フェーズ1（スクリプトの実装と検証）は終えた。`scripts/vast-spsa/`のスクリプトと共通の`scripts/vast/common.py`は、シェルにPythonの断片を埋め込む書き方は保守しにくいという2026年10月18日の利用者の指摘を受けて、Pythonで書いた（設計判断の「スクリプトの言語」）。実機での結果は[検証の記録](../measurements/search-forms/vast-spsa-scripts.md)と[Pythonへ書き直した後の記録](../measurements/search-forms/vast-spsa-scripts-python.md)にある。
@@ -30,7 +30,7 @@ SPSAは、2026年10月17日の利用者の決定により、サブタスクご�
 サブタスク5は、照会を始めてから約8分でAMD EPYC 9654の2基構成（`f`は1.26、1時間約2.01米ドル）を借り、事前確認からSTCまでを約8.6時間で終えた。借りていた時間は約8.7時間で、費用は着手前後の残高の差から求めて約17.46米ドルだった。STCの後に調整機を削除しようとしたところ、vast.aiのAPIが口座の操作に2要素認証でのログインを再び求めた。そこで、起動時スクリプトが自己停止に使うコンテナ用のAPIの鍵で調整機をいったん停止し、利用者が認証し直した後に削除した。
 サブタスク6は、AMD EPYC 9K84の2基構成（`f`は1.37、1時間約1.88米ドル）を借り、事前確認からSTCまでを約9.8時間で終えた。借りていた時間もほぼ同じ約9.8時間で、費用は時間単価から求めて約18.4米ドルだった。当時の`launch.py`の条件による選択は、メモリを条件に含めていなかった。メモリの少ない出品を借りると同時対局数が下がり、所要時間と費用が増えるので、`cpu_ram`が260,000 MB以上の出品だけを測定機で照会し、見つかった出品のIDを`launch.py`に渡して作成した。照会を始めてから約10分で作成できた。この後、`launch.py`の自動選択に、実メモリの下限を指定する必須の引数`--min-cpu-ram`を加えた（[SPSAの手引き](../guides/spsa.md)の第8節）。STCは上限の3,000ペアまで続いた。runnerは最後のペアの後に全ペアの棋譜を1スレッドで再生して先読みの統計を数え直すので、最終の集計の出力までにさらに約26分かかった。
 STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）、サブタスク5がサブタスク4を採用した版に対して`H1`（約+261 Elo、[記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）、サブタスク6がサブタスク5を採用した版に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo、[記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
-次の一手は、利用者がサブタスク7（[持ち時間の伸縮](time-instability-scaling.md)）の着手とそのセッションの費用を決めることである。
+次の一手は、サブタスク7の形の変更を実装し、調整機でのSPSAへ進むことである。調整機を借りる前に、利用者がそのセッションの費用を入金する。
 
 ## 目的
 
