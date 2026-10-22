@@ -439,6 +439,16 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             assert!(searcher.enter_node());
             assert!(!searcher.enter_node());
             assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+            let average = completed
+                .returned_move_average
+                .expect("the completed depth must have an average");
+            searcher.root_move_stats.push((
+                completed.result.best_move,
+                RootMoveStats {
+                    effort: 1,
+                    averages: Some((average, 0)),
+                },
+            ));
             crate::search::alphabeta::deepening::main_worker_outcome(
                 &searcher,
                 completed.result,
@@ -557,6 +567,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
             WorkerOutcome {
                 partial_score: None,
+                returned_move_average: None,
                 worker_index: 0,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]
@@ -574,6 +585,14 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         assert_eq!(adopted.worker_index, 1);
         assert_eq!(adopted.result.depth, 2);
         assert!(roots.contains(&adopted.result.best_move));
+        let expected = (
+            adopted.result.score,
+            adopted
+                .returned_move_average
+                .expect("the adopted auxiliary result must have an average"),
+        );
+        record_previous_search(&mut histories, adopted);
+        assert_eq!(histories.previous_search.score_and_average, Some(expected));
         assert_eq!(shared.reason(), StopReason::SoftLimit);
     }
 }

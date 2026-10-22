@@ -34,6 +34,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                     completed.fetch_add(1, AtomicOrdering::Release);
                     WorkerOutcome {
                         partial_score: None,
+                        returned_move_average: None,
                         worker_index,
                         result: SearchResult {
                             #[cfg(feature = "search-stats")]
@@ -178,6 +179,7 @@ fn worker_outcome_selection_uses_depth_partial_then_index_and_excludes_zero() {
     let outcome =
         |worker_index: usize, depth: u32, move_index: usize, partial_score| WorkerOutcome {
             partial_score,
+            returned_move_average: (depth > 0).then_some(worker_index as i32 * 10),
             worker_index,
             result: SearchResult {
                 #[cfg(feature = "search-stats")]

@@ -5,6 +5,72 @@ use super::*;
 use crate::search::HistoryTables;
 use crate::search::alphabeta::params;
 
+// 単一ワーカーが深さ1を完了したとき、採用評価値と返却手の最初の平均値を持ち越す。
+#[test]
+fn previous_search_records_the_adopted_main_worker_result() {
+    let snapshot = snapshot_for(&quiet_midgame());
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    let outcome = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth_limits(1),
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(
+        histories.previous_search.score_and_average,
+        Some((outcome.result.score, outcome.result.score))
+    );
+}
+
+// 深さ1を完了しない直前の探索は欠測であり、それ以前の有効値を残さない。
+#[test]
+fn previous_search_is_cleared_when_every_worker_stops_at_depth_zero() {
+    let snapshot = snapshot_for(&Position::initial());
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    histories.previous_search.score_and_average = Some((123, 456));
+    let outcome = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth_limits(3),
+        &AtomicBool::new(true),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(outcome.result.depth, 0);
+    assert_eq!(histories.previous_search.score_and_average, None);
+}
+
+#[test]
+fn history_tables_clear_removes_the_previous_search_value() {
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    histories.previous_search.score_and_average = Some((123, 456));
+    histories.clear();
+    assert_eq!(histories.previous_search.score_and_average, None);
+}
+
 // 停止済みでも根の開始は1回。両方の履歴を全要素、各ワーカーで検査する。
 #[test]
 fn history_carry_ages_every_worker_once_before_the_first_iteration() {
@@ -268,6 +334,7 @@ fn history_carry_workers_update_their_own_table() {
             capture.values_mut()[0] -= 100;
             WorkerOutcome {
                 partial_score: None,
+                returned_move_average: Some(index as i32),
                 worker_index: index,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]

@@ -18,7 +18,10 @@ use super::params;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
-use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
+use super::time::{
+    FallingEvalCoefficients, InstabilityScaling, TimeBudget, scaled_soft_millis,
+    scaled_time_budget, should_start_next_iteration, stable_signal,
+};
 
 /// 補助ワーカーが探索する深さを昇順に返す。
 ///
@@ -49,6 +52,7 @@ pub(super) fn run_main_worker(
     history_keys: &[u64],
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
+    mut instability_scaling: Option<InstabilityScaling>,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     history: &mut HistoryTable,
@@ -91,10 +95,12 @@ pub(super) fn run_main_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     let mut completed_bests = Vec::new();
+    let base_time_budget = time_budget;
+    let mut current_time_budget = base_time_budget;
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some((result.best_move, result.score));
-        if ponder && let Some(budget) = time_budget {
+        if ponder && let Some(budget) = current_time_budget {
             let iteration_started = shared.clock.elapsed();
             let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
             // 前の境界の検査後やワーカー生成前に的中した場合も、開始条件を通す。
@@ -129,6 +135,16 @@ pub(super) fn run_main_worker(
         };
         completed_bests.push(best_move);
         let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
+        if let Some(scaling) = &mut instability_scaling {
+            let base = base_time_budget.expect("instability scaling requires a time budget");
+            let factor = scaling.update_falling_eval(
+                score,
+                nnue.pawn_value(),
+                FallingEvalCoefficients::current(),
+            );
+            let time_ms = scaled_soft_millis(base.soft, &[factor as u128]);
+            current_time_budget = Some(scaled_time_budget(base, time_ms));
+        }
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -151,7 +167,7 @@ pub(super) fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| {
+        if current_time_budget.is_some_and(|budget| {
             let hit_ns = shared
                 .hard_limit
                 .expect("a timed search has a hard limit")
@@ -196,9 +212,11 @@ pub(super) fn main_worker_outcome(
         result.best_move = partial.pv[0];
         completed_pv.clone_from(&partial.pv);
     }
+    let returned_move_average = returned_move_average(searcher, result);
     let nodes = searcher.nodes;
     WorkerOutcome {
         partial_score,
+        returned_move_average,
         worker_index: 0,
         result,
         pv: completed_pv,
@@ -279,12 +297,27 @@ pub(super) fn run_auxiliary_worker(
     {
         result.stats = searcher.stats;
     }
+    let returned_move_average = returned_move_average(&searcher, result);
     let nodes = searcher.nodes;
     WorkerOutcome {
         partial_score: None,
+        returned_move_average,
         worker_index,
         result,
         pv: completed_pv,
         nodes,
     }
+}
+
+/// 深さ1以上を完了したワーカーが返す手の根の手ごとの記録の平均値を返す。
+fn returned_move_average(searcher: &Searcher<'_>, result: SearchResult) -> Option<i32> {
+    (result.depth > 0).then(|| {
+        searcher
+            .root_move_stats
+            .iter()
+            .find(|(mv, _stats)| *mv == result.best_move)
+            .and_then(|(_mv, stats)| stats.averages)
+            .map(|(average, _signed_square_average)| average)
+            .expect("a completed root move must have an average score")
+    })
 }

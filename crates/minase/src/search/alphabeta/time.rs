@@ -26,6 +26,121 @@ pub(super) struct TimeBudget {
     pub(super) byoyomi_period: bool,
 }
 
+/// 次の探索へ持ち越す、直前の探索の評価値と返却手の平均値。
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub(crate) struct PreviousSearch {
+    pub(crate) score_and_average: Option<(i32, i32)>,
+}
+
+/// 評価値の下落の因子の調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct FallingEvalCoefficients {
+    pub(super) base: i32,
+    pub(super) previous: i32,
+    pub(super) iteration: i32,
+}
+
+impl FallingEvalCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            base: params::time_falling_base(),
+            previous: params::time_falling_previous(),
+            iteration: params::time_falling_iteration(),
+        }
+    }
+}
+
+/// 評価値の下落の因子の下限と上限。Stockfish `src/search.cpp:594-597`に合わせる。
+const FALLING_EVAL_FACTOR_MIN: i32 = 576;
+const FALLING_EVAL_FACTOR_MAX: i32 = 1728;
+
+/// 完了反復ごとの時間伸縮に使う評価値の下落の因子の状態。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) struct InstabilityScaling {
+    pub(super) previous_average: Option<i32>,
+    pub(super) iteration_values: [i32; 4],
+    pub(super) current: usize,
+}
+
+impl InstabilityScaling {
+    /// 前の探索の評価値で環状配列を埋め、欠測時は0で埋める。
+    pub(super) fn new(previous: PreviousSearch) -> Self {
+        let initial = previous
+            .score_and_average
+            .map_or(0, |(score, _average)| score);
+        Self {
+            previous_average: previous.score_and_average.map(|(_score, average)| average),
+            iteration_values: [initial; 4],
+            current: 0,
+        }
+    }
+
+    /// 現在位置の値から評価値の下落の因子を求めた後、完了反復の値を書いて位置を進める。
+    pub(super) fn update_falling_eval(
+        &mut self,
+        value: i32,
+        pawn_value: i32,
+        coefficients: FallingEvalCoefficients,
+    ) -> i32 {
+        let factor = falling_eval_factor(
+            self.previous_average,
+            self.iteration_values[self.current],
+            value,
+            pawn_value,
+            coefficients,
+        );
+        self.iteration_values[self.current] = value;
+        self.current = (self.current + 1) % self.iteration_values.len();
+        factor
+    }
+}
+
+/// 評価値の下落による評価値の下落の因子を千分率で返す。
+///
+/// 2つの差と積は`i64`で求め、和を歩兵価値で1回だけ割る。
+/// 前の探索の平均値がなければ、minaseの欠測時の規則として上限を返す。
+pub(super) fn falling_eval_factor(
+    previous_average: Option<i32>,
+    iteration_value: i32,
+    value: i32,
+    pawn_value: i32,
+    coefficients: FallingEvalCoefficients,
+) -> i32 {
+    let Some(previous_average) = previous_average else {
+        return FALLING_EVAL_FACTOR_MAX;
+    };
+    assert!(pawn_value > 0, "pawn value must be positive");
+    let previous_difference = i64::from(previous_average) - i64::from(value);
+    let iteration_difference = i64::from(iteration_value) - i64::from(value);
+    let numerator = i64::from(coefficients.previous) * previous_difference
+        + i64::from(coefficients.iteration) * iteration_difference;
+    (i64::from(coefficients.base) + numerator / i64::from(pawn_value)).clamp(
+        i64::from(FALLING_EVAL_FACTOR_MIN),
+        i64::from(FALLING_EVAL_FACTOR_MAX),
+    ) as i32
+}
+
+/// 基礎softに千分率の因子を順に掛け、hardで抑える前の時間をmsで返す。
+pub(super) fn scaled_soft_millis(base_soft: Duration, factors: &[u128]) -> u128 {
+    let numerator = factors.iter().fold(base_soft.as_millis(), |time, &factor| {
+        time.saturating_mul(factor)
+    });
+    let exponent = u32::try_from(factors.len()).expect("time factor count must fit in u32");
+    let denominator = 1000_u128
+        .checked_pow(exponent)
+        .expect("time factor denominator must fit in u128");
+    numerator / denominator
+}
+
+/// 基礎予算のsoftだけを、hardで抑えた伸縮後の値へ差し替える。
+pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget {
+    let soft_ms = time_ms.min(base.hard.as_millis());
+    TimeBudget {
+        soft: Duration::from_millis(to_u64_ms(soft_ms)),
+        ..base
+    }
+}
+
 /// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。
 ///
 /// `iterations`個の最善手が揃い、すべて同じ場合だけ真を返す。

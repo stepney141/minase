@@ -23,7 +23,7 @@ use super::clock::SearchClock;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
 use super::params;
-use super::time::{byoyomi_clock, time_budget};
+use super::time::{InstabilityScaling, byoyomi_clock, time_budget};
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {
@@ -47,6 +47,8 @@ pub(in crate::search) struct SearchOutcome {
 pub(super) struct WorkerOutcome {
     /// 対象の探索の主ワーカーが採用した途中結果の下界。
     pub(super) partial_score: Option<i32>,
+    /// 返却手について、このワーカーの根の手ごとの記録にある評価値の平均。
+    pub(super) returned_move_average: Option<i32>,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
     pub(super) worker_index: usize,
     /// 最後まで完了した反復の結果。
@@ -192,6 +194,10 @@ pub(in crate::search) fn run_search_team(
     if histories.workers.len() != threads.get() {
         *histories = HistoryTables::new(threads);
     }
+    let instability_scaling = (finite_limits
+        .is_some_and(|limits| limits.clock.is_some() && limits.movetime_ms.is_none())
+        && time_budget.is_some_and(|budget| !budget.byoyomi_period))
+    .then(|| InstabilityScaling::new(histories.previous_search));
     // 新しい根で1回だけ減衰する。新品の表にも適用し、既定値では−5を−3、−742を−452にする。
     let decay = params::history_decay();
     for history in &mut histories.workers {
@@ -244,6 +250,7 @@ pub(in crate::search) fn run_search_team(
                     &history_keys,
                     depth_limit,
                     time_budget,
+                    instability_scaling,
                     &shared,
                     tt,
                     history,
@@ -288,6 +295,7 @@ pub(in crate::search) fn run_search_team(
             .sum::<u64>()
     );
     let adopted = select_worker_outcome(&worker_outcomes);
+    record_previous_search(histories, adopted);
     let mut result = adopted.result;
     result.nodes = total_nodes;
     #[cfg(feature = "search-stats")]
@@ -309,6 +317,17 @@ pub(in crate::search) fn run_search_team(
         pv: adopted.pv.clone(),
         stop_reason: shared.reason(),
     }
+}
+
+/// 採用したワーカーの返却手から、次の探索へ持ち越す評価値と平均値を記録する。
+pub(super) fn record_previous_search(histories: &mut HistoryTables, adopted: &WorkerOutcome) {
+    histories.previous_search.score_and_average = (adopted.result.depth > 0).then(|| {
+        let score = adopted.partial_score.unwrap_or(adopted.result.score);
+        let average = adopted
+            .returned_move_average
+            .expect("a completed worker result must have an average score");
+        (score, average)
+    });
 }
 
 /// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。

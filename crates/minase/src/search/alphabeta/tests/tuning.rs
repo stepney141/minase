@@ -224,6 +224,9 @@ fn tuning_parameters_in_isolated_process() {
         ("HardRemainingShare", 39),
         ("IterationRatio", 277),
         ("StableIterations", 4),
+        ("TimeFallingBase", 115),
+        ("TimeFallingPrevious", 4784),
+        ("TimeFallingIteration", 2288),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
@@ -492,6 +495,15 @@ fn tuning_parameters_in_isolated_process() {
             params::stable_iterations() as usize,
         ))
     }
+    fn falling_eval() -> i64 {
+        i64::from(falling_eval_factor(
+            Some(20),
+            10,
+            0,
+            100,
+            FallingEvalCoefficients::current(),
+        ))
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -521,7 +533,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 93] = [
+    let cases: [Case; 96] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -926,6 +938,9 @@ fn tuning_parameters_in_isolated_process() {
         }),
         ("IterationRatio", 150, prediction),
         ("StableIterations", 8, stability),
+        ("TimeFallingBase", 200, falling_eval),
+        ("TimeFallingPrevious", 4000, falling_eval),
+        ("TimeFallingIteration", 2000, falling_eval),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());

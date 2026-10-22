@@ -300,6 +300,15 @@ fn tuning_usi_contract_in_isolated_process() {
             ),
             ("IterationRatio", params::iteration_ratio as fn() -> i32),
             ("StableIterations", params::stable_iterations as fn() -> i32),
+            ("TimeFallingBase", params::time_falling_base as fn() -> i32),
+            (
+                "TimeFallingPrevious",
+                params::time_falling_previous as fn() -> i32,
+            ),
+            (
+                "TimeFallingIteration",
+                params::time_falling_iteration as fn() -> i32,
+            ),
             ("FmScale", params::fm_scale as fn() -> i32),
         ];
         assert_eq!(accessors.len(), params::PARAMETERS.len());

@@ -81,11 +81,13 @@ use crate::search::alphabeta::searcher::{
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
-    HardLimit, SharedSearch, WorkerOutcome, run_search_team, run_worker_team, select_worker_outcome,
+    HardLimit, SharedSearch, WorkerOutcome, record_previous_search, run_search_team,
+    run_worker_team, select_worker_outcome,
 };
 use crate::search::alphabeta::time::{
-    TimeBudget, clock_budget, iteration_prediction_fits, should_start_next_iteration,
-    stable_signal, time_budget,
+    FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget, clock_budget,
+    falling_eval_factor, iteration_prediction_fits, scaled_soft_millis, scaled_time_budget,
+    should_start_next_iteration, stable_signal, time_budget,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,

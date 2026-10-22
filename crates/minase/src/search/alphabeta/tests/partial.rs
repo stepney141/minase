@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::search::alphabeta::deepening::main_worker_outcome;
-use crate::search::alphabeta::root::RootResults;
+use crate::search::alphabeta::root::{RootMoveStats, RootResults};
 use crate::search::alphabeta::time::byoyomi_clock;
 
 /// 「対象の探索」の境界を列挙する。予算の長短には依存しない。
@@ -256,7 +256,7 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
 }
 
 #[test]
-fn partial_changes_move_and_pv_without_changing_completed_score_or_depth() {
+fn partial_preserves_public_score_and_depth_but_carries_partial_score_and_average() {
     let position = Position::initial();
     let roots = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {
@@ -275,10 +275,24 @@ fn partial_changes_move_and_pv_without_changing_completed_score_or_depth() {
             depth: 3,
             nodes: 0,
         };
+        searcher.root_move_stats.push((
+            roots[1],
+            RootMoveStats {
+                effort: 1,
+                averages: Some((-750, -562_500)),
+            },
+        ));
         let outcome = main_worker_outcome(searcher, completed, vec![roots[0]]);
         assert_eq!(outcome.result.best_move, roots[1]);
         assert_eq!(outcome.pv, [roots[1], roots[2]]);
         assert_eq!(outcome.partial_score, Some(-1000));
         assert_eq!((outcome.result.score, outcome.result.depth), (100, 3));
+
+        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+        record_previous_search(&mut histories, &outcome);
+        assert_eq!(
+            histories.previous_search.score_and_average,
+            Some((-1000, -750))
+        );
     });
 }

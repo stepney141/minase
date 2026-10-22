@@ -14,6 +14,7 @@ use minase_core::position::{Position, Undo};
 
 use super::capture_history::CaptureHistory;
 use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
+use super::time::PreviousSearch;
 
 /// Butterfly historyの絶対値の上限。
 /// Stockfishの`ButterflyHistory`と同じ7183を使う（src/history.h:128）。
@@ -272,19 +273,21 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
     keys
 };
 
-/// 対局内で次の根の探索へ持ち越すhistory表。
+/// 対局内で次の根の探索へ持ち越す履歴表と、直前の探索の値。
 ///
 /// 探索チームは根の探索ごとにワーカー別の2表だけを、それぞれ`HistoryDecay`%と
 /// `CaptureHistoryDecay`%へ減衰させる。Continuation historyとpawn historyは減衰させない。
 /// 局面を鍵にした5つの補正表は探索チームで共有し、continuation correction historyは
 /// ワーカーごとに持つ。どちらも減衰させず、対局内の次の根の探索へ持ち越す。
+/// 直前の探索の評価値と返却手の平均値は、探索チームが採用結果から更新し、深さ0なら消去する。
 /// プロトコル層は、新規対局、受理した規則変更、受理した置換表容量の指定、引き分けの
 /// 評価値の変更、およびワーカー数の変更で初期化する。
 /// 拒否した変更と同じワーカー数の再指定では保持するが、置換表容量は同じ値の再指定でも初期化する。
-/// killer手は持ち越さない。
+/// [`Self::clear`]でも表と直前の探索の値を初期化する。killer手は持ち越さない。
 /// 各表の寿命と共有範囲の判断は
 /// `docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 pub struct HistoryTables {
+    pub(crate) previous_search: PreviousSearch,
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,
     pub(crate) correction: CorrectionValues,
@@ -297,6 +300,7 @@ impl HistoryTables {
     /// 指定したワーカー数の表をそれぞれの初期値で作る。
     pub fn new(threads: NonZeroUsize) -> Self {
         Self {
+            previous_search: PreviousSearch::default(),
             workers: (0..threads.get())
                 .map(|_| {
                     Box::new(
@@ -314,8 +318,9 @@ impl HistoryTables {
         }
     }
 
-    /// ワーカー数を保ったまま全表をそれぞれの初期値へ戻す。
+    /// ワーカー数を保ったまま全表と直前の探索の値をそれぞれの初期値へ戻す。
     pub fn clear(&mut self) {
+        self.previous_search = PreviousSearch::default();
         for history in &mut self.workers {
             for value in history.iter_mut().flatten().flatten() {
                 *value = HISTORY_INITIAL;

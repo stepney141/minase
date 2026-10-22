@@ -435,6 +435,27 @@ parameters! {
     /// 既定値は係数にする前の定数4であり、範囲2〜8は4反復を選んだ診断が比べた3〜5を含む。
     /// SPSAで未調整である。
     StableIterations(stable_iterations): 4, 2, 8;
+    /// 評価値の下落による時間の因子（falling eval）の切片。単位は千分率である。
+    /// Stockfishの11.48 / 100 × 1000 = 114.8を丸めると115、
+    /// YaneuraOuの11.325 / 100 × 1000 = 113.25を丸めると113に当たる
+    /// （Stockfish src/search.cpp:594、YaneuraOu yaneuraou-search.cpp:1971）。
+    /// 範囲0〜1500は切片を無効にする0と、中立値1000を超える値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeFallingBase(time_falling_base): 115, 0, 1500;
+    /// 評価値の下落の因子で前の探索の平均値との差に掛ける係数。単位は歩兵1枚あたりの千分率である。
+    /// Stockfishの2.30 / 100 × 1000 × 208 = 4784、
+    /// YaneuraOuの2.115 / 100 × 1000 × 90 ≈ 1904に当たる
+    /// （Stockfish src/search.cpp:594、YaneuraOu yaneuraou-search.cpp:1971）。
+    /// 範囲0〜8000は従来の項なしに当たる0と、両実装の換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeFallingPrevious(time_falling_previous): 4784, 0, 8000;
+    /// 評価値の下落の因子で4反復前の値との差に掛ける係数。単位は歩兵1枚あたりの千分率である。
+    /// Stockfishの1.1 / 100 × 1000 × 208 = 2288、
+    /// YaneuraOuの0.987 / 100 × 1000 × 90 ≈ 888に当たる
+    /// （Stockfish src/search.cpp:595、YaneuraOu yaneuraou-search.cpp:1972）。
+    /// 範囲0〜5000は従来の項なしに当たる0と、両実装の換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeFallingIteration(time_falling_iteration): 2288, 0, 5000;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]

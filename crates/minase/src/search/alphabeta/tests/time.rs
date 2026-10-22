@@ -2,6 +2,97 @@
 
 use super::*;
 
+/// 評価値の下落の因子の式は2つの項を加えてから1回だけ歩兵価値で割り、固定範囲へ切り詰める。
+#[test]
+fn falling_eval_factor_uses_one_truncating_division_and_fixed_bounds() {
+    let coefficients = FallingEvalCoefficients {
+        base: 1000,
+        previous: 200,
+        iteration: 100,
+    };
+    assert_eq!(
+        falling_eval_factor(Some(50), 20, 10, 100, coefficients),
+        1090
+    );
+    assert_eq!(
+        falling_eval_factor(Some(500), 500, 0, 100, coefficients),
+        1728
+    );
+    assert_eq!(
+        falling_eval_factor(Some(-500), -500, 0, 100, coefficients),
+        576
+    );
+
+    // 2項を別々に割れば0 + 0になるが、和4を3で割るので1になる。
+    let one_division = FallingEvalCoefficients {
+        base: 1000,
+        previous: 1,
+        iteration: 1,
+    };
+    assert_eq!(falling_eval_factor(Some(3), 3, 1, 3, one_division), 1001);
+    // 分子−1の0方向への丸めは0であり、床関数の−1とは異なる。
+    assert_eq!(falling_eval_factor(Some(0), 1, 1, 3, one_division), 1000);
+    assert_eq!(
+        falling_eval_factor(None, i32::MIN, i32::MAX, 1, coefficients),
+        1728
+    );
+}
+
+/// 時間因子の積は基礎softから求め、積があふれた後もu128の時間としてhardまで保持する。
+#[test]
+fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(2000), &[1500]),
+        3000
+    );
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(2000), &[1500, 800]),
+        2400
+    );
+
+    let maximum = u128::from(u64::MAX);
+    let saturated = scaled_soft_millis(Duration::from_millis(u64::MAX), &[maximum, maximum, 2]);
+    assert_eq!(saturated, u128::MAX / 1_000_000_000);
+    assert!(saturated > u128::from(u64::MAX));
+
+    let base = TimeBudget {
+        soft: Duration::from_millis(u64::MAX),
+        hard: Duration::from_millis(u64::MAX),
+        byoyomi_period: false,
+    };
+    let scaled = scaled_time_budget(base, saturated);
+    assert_eq!(scaled.soft, base.hard);
+    assert_eq!(scaled.hard, base.hard);
+    assert_eq!(scaled.byoyomi_period, base.byoyomi_period);
+}
+
+/// 評価値の下落の因子の環状配列は前の探索の評価値で始まり、4反復後に最初の完了値を再び参照する。
+#[test]
+fn falling_eval_ring_uses_previous_score_then_the_value_from_four_iterations_ago() {
+    let coefficients = FallingEvalCoefficients {
+        base: 1000,
+        previous: 0,
+        iteration: 100,
+    };
+    let mut scaling = InstabilityScaling::new(PreviousSearch {
+        score_and_average: Some((40, 0)),
+    });
+    assert_eq!(scaling.iteration_values, [40; 4]);
+    let factors: Vec<_> = [10, 20, 30, 40, 50]
+        .into_iter()
+        .map(|value| scaling.update_falling_eval(value, 100, coefficients))
+        .collect();
+    assert_eq!(factors, [1030, 1020, 1010, 1000, 960]);
+    assert_eq!(scaling.iteration_values, [50, 20, 30, 40]);
+    assert_eq!(scaling.current, 1);
+
+    let mut missing = InstabilityScaling::new(PreviousSearch::default());
+    assert_eq!(missing.previous_average, None);
+    assert_eq!(missing.iteration_values, [0; 4]);
+    assert_eq!(missing.update_falling_eval(9, 100, coefficients), 1728);
+    assert_eq!(missing.iteration_values, [9, 0, 0, 0]);
+}
+
 // 時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
 // 残り時間と秒読みの合計が30 msを超えるとき、hardはその合計から30 msを引いた値以下になる。
 #[test]
@@ -39,6 +130,62 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     let budget = time_budget(&movetime_limits(500)).expect("movetime must produce a budget");
     assert_eq!(budget.soft, Duration::from_millis(500));
     assert_eq!(budget.hard, Duration::from_millis(500));
+}
+
+// 時計だけの探索では最初の完了反復後に評価値の下落の因子を適用する。
+// 同じ基礎予算でもmovetimeを併用すれば評価値の下落の因子を使わず、基礎softで止まる。
+#[test]
+fn falling_eval_scaling_starts_an_iteration_that_the_base_soft_rejects() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    let history_keys = [search_key(&position)];
+    let clock_limits = clock(100_000, 0, 0);
+    let scaled_limits = SearchLimits::new(Some(2), None, None, Some(clock_limits)).unwrap();
+    let base = time_budget(&scaled_limits).unwrap();
+    let scaled = scaled_time_budget(base, scaled_soft_millis(base.soft, &[1728]));
+    assert!(scaled.soft > base.soft);
+    assert!(iteration_prediction_fits(
+        base.soft,
+        Duration::ZERO,
+        base,
+        false
+    ));
+
+    let fixed_ms = u64::try_from(base.hard.as_millis()).unwrap();
+    let excluded_limits =
+        SearchLimits::new(Some(2), None, Some(fixed_ms), Some(clock_limits)).unwrap();
+    assert_eq!(time_budget(&excluded_limits), Some(base));
+
+    let run = |limits: &SearchLimits| {
+        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+        run_search_team(
+            test_nnue(),
+            &position,
+            engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+            DRAW_SCORE,
+            &root_moves,
+            &history_keys,
+            limits,
+            &AtomicBool::new(false),
+            DEFAULT_THREADS,
+            &small_tt(),
+            &mut histories,
+            None,
+            &ManualClock::new(base.soft),
+            &AtomicU64::new(0),
+            false,
+        )
+    };
+    let scaled_outcome = run(&scaled_limits);
+    assert_eq!(scaled_outcome.result.depth, 2);
+    assert_eq!(scaled_outcome.stop_reason, StopReason::DepthCompleted);
+
+    let excluded_outcome = run(&excluded_limits);
+    assert_eq!(excluded_outcome.result.depth, 1);
+    assert_eq!(excluded_outcome.stop_reason, StopReason::SoftLimit);
 }
 
 // 指定した直近の反復数だけ最善手が同じときに安定とする。
@@ -111,6 +258,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         &history_keys,
         2,
         Some(budget),
+        None,
         &shared,
         &tt,
         &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
@@ -299,6 +447,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             &[],
             2,
             Some(budget),
+            None,
             &shared,
             &small_tt(),
             &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
