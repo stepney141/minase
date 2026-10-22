@@ -358,7 +358,7 @@ impl Searcher<'_> {
     /// 先に読んだ深い窓の記録を上書きしないことがある。
     /// 読み直し中の中断も`None`を返す。
     /// 窓の置き方と移し方の判断の理由は`docs/adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md`に、
-    /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md`にある。
+    /// fail highの減深と反復の深さの扱いの判断の理由は`docs/adr/reduce-aspiration-depth-after-fail-highs-and-late-iterations.md`にある。
     pub(super) fn search_iteration(
         &mut self,
         position: &Position,

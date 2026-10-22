@@ -144,7 +144,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月8日 [探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)
 - 2026年9月8日 [線形の評価の2組の重みを盤上総駒数で補間する](interpolate-the-linear-path-by-total-piece-count.md)
 - 2026年9月12日 [aspiration windowsは外れた側だけを広げ、fail-high時に浅く読み直さない](archive/widen-only-the-failed-side-of-aspiration-windows.md)（置き換え済み）
-- 2026年9月12日 [反復の延長信号を使わず、最善手が安定したときだけ早く止める](stop-early-on-stable-best-move-without-extensions.md)
+- 2026年9月12日 [反復の延長信号を使わず、最善手が安定したときだけ早く止める](archive/stop-early-on-stable-best-move-without-extensions.md)（置き換え済み）
 - 2026年9月12日 [置換表の記録手がないノードを1だけ浅く読む](archive/reduce-depth-by-one-without-tt-move.md)（置き換え済み）
 - 2026年9月12日 [置換表を1スロット1エントリの直接マップのまま保つ](keep-transposition-table-direct-mapped.md)
 - 2026年9月12日 [静的評価を置換表に保存しない](archive/do-not-store-static-eval-in-tt.md)（置き換え済み）
@@ -161,12 +161,12 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月18日 [序盤の係数は予算式の秒読みの項にだけ掛ける](scale-only-the-byoyomi-term-in-the-opening.md)
 - 2026年9月18日 [持ち時間を後半の手のために温存せず、序盤から分担して使う](spend-main-time-from-the-opening.md)
 - 2026年9月18日 [直前局面は逆向きに構成した候補を順方向の合法手生成器で検証して求める](verify-predecessor-candidates-with-forward-movegen.md)
-- 2026年9月18日 [秒読みのない時計では、予算を分担そのものにして途中結果で指す時間管理を採らない](reject-fair-share-budget-with-partial-results.md)
+- 2026年9月18日 [秒読みのない時計では、予算を分担そのものにして途中結果で指す時間管理を採らない](archive/reject-fair-share-budget-with-partial-results.md)（置き換え済み）
 - 2026年9月19日 [ノード数は着手を適用する直前に1つずつ共有カウンタへ数える](count-nodes-per-move-on-shared-counter.md)
 - 2026年9月21日 [`position`の着手列は、前回受理した列との差分だけを適用する](apply-position-by-token-difference.md)
 - 2026年9月21日 [correction historyは駒種別の枚数を鍵にし、futilityの判定にだけ使う](archive/key-correction-history-by-material.md)（置き換え済み）
 - 2026年9月21日 [予想手は採用結果の読み筋の2手目だけから取り、相手番の局面は先読みしない](take-ponder-move-from-the-pv.md)
-- 2026年9月21日 [先読みが的中したら同じ探索を続け、時間予算を的中の時点から測る](continue-search-and-measure-budget-from-ponderhit.md)
+- 2026年9月21日 [先読みが的中したら同じ探索を続け、時間予算を的中の時点から測る](archive/continue-search-and-measure-budget-from-ponderhit.md)（置き換え済み）
 - 2026年9月21日 [浅い非PVノードでSEEの損が余裕値を超える捕獲手を展開しない](archive/prune-losing-captures-by-see-at-shallow-nodes.md)（置き換え済み）
 - 2026年9月21日 [獅子の2段階の非捕獲移動だけを浅く読む減深を実装しない](omit-lion-two-step-quiet-move-reduction.md)
 - 2026年9月21日 [発動率の低い探索手法を実装しない](skip-low-activation-search-techniques.md)
@@ -286,4 +286,9 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月21日 [静止探索は静的評価を求める前に置換表を照会して零窓のノードでだけ打ち切り、置換表の値でstand-patを置き換え、βを超えた返り値をβの側へ寄せる](probe-the-tt-before-the-qsearch-stand-pat-and-blend-fail-highs-toward-beta.md)
 - 2026年10月21日 [置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)
 - 2026年10月22日 [aspiration windowsは深さ2以上で直前の最善手の平均を中心に置き、初期の半幅を根の値の大きさとともに広げ、窓外れでは外れた側の端を返った値から移して反対側の端も寄せる](center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)
-- 2026年10月22日 [aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)
+- 2026年10月22日 [aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](archive/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)（置き換え済み）
+- 2026年10月22日 [目安時間softを、探索の開始時に求めた基礎予算に探索の不安定さの4因子の積を完了反復ごとに掛けて伸縮させ、最善手が安定したときの早期終了と短い詰みでの停止を併用する](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)
+- 2026年10月22日 [秒読みのない時計では、予算を分担そのものにして途中結果で指す時間管理を採らず、hardで中断した反復を捨てる現行の機構を保つ](keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)
+- 2026年10月22日 [先読みが的中したら同じ探索を続けて時間予算を的中の時点から測り、先読みの探索を始めた後の、先読みでない探索の目安時間を25%増やす](measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)
+- 2026年10月22日 [aspiration windowsは、fail highの回数、反復をまたぐ持ち越し、および目安の時間の半分を過ぎた後に始めた反復の回数で窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)
+- 2026年10月22日 [秒読みのない時計では、相手より残り時間が少ないときに目安時間を縮め、そのために相手の残り時間を探索の必須の入力にする](shrink-the-soft-limit-when-behind-on-clocks-without-byoyomi.md)

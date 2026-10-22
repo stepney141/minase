@@ -1146,7 +1146,7 @@ fn auxiliary_worker_counts_only_the_iterations_it_starts() {
 }
 
 // 指定した直近の反復数だけ最善手が同じときに安定とする。
-// 採用理由はdocs/adr/stop-early-on-stable-best-move-without-extensions.md。
+// 採用理由はdocs/adr/scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md。
 #[test]
 fn stable_signal_uses_requested_number_of_recent_best_moves() {
     let moves = legal_moves(&Position::initial());

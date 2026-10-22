@@ -639,7 +639,7 @@ impl UsiProtocol {
     /// 以後の完了は通常探索と同じく直ちに`bestmove`を出し、探索を作り直さない。
     /// すでに完了して保留中なら、保持していた結果をその場で出す。
     /// 先読み中でなければ`info string error: ponderhit requires an active ponder search`を返す。
-    /// 理由は`docs/adr/continue-search-and-measure-budget-from-ponderhit.md`にある。
+    /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
     fn ponderhit(
         &mut self,
         engine: &Engine,
@@ -824,7 +824,7 @@ impl UsiProtocol {
     /// `tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
     /// 最後に`usiok`を出す。オプション名と範囲の変更は互換性を壊す変更として扱う。
     /// 時間予算が値に依存しないため`USI_Ponder`は宣言しない。
-    /// 理由は`docs/adr/continue-search-and-measure-budget-from-ponderhit.md`にある。
+    /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "id name minase {}", env!("CARGO_PKG_VERSION"))?;
         writeln!(output, "id author stepney141")?;

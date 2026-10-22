@@ -28,7 +28,7 @@ softの一定割合を超えたら次の反復を始めない案は、係数が1
 STCでは基準側に時間切れが1件出たが、原因は`position`の全着手の再生の固定費であり、[`position`の着手列は、前回受理した列との差分だけを適用する](apply-position-by-token-difference.md)の決定につながった。
 固定比の当初値は2.5であり、現行値は後にSPSAで調整した値である。
 予測が過大なら時間が時計に残って後の手へ回り、過小ならhardで打ち切られるので、どちらの誤りも時間切れを生まない。
-最善手が安定したときの扱いは[反復の延長信号を使わず、最善手が安定したときだけ早く止める](stop-early-on-stable-best-move-without-extensions.md)にある。
-先読みが的中した探索での予測の扱いは[先読みが的中したら同じ探索を続け、時間予算を的中の時点から測る](continue-search-and-measure-budget-from-ponderhit.md)にある。
+最善手が安定したときの扱いは[反復の延長信号を使わず、最善手が安定したときだけ早く止める](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)にある。
+先読みが的中した探索での予測の扱いは[先読みが的中したら同じ探索を続け、時間予算を的中の時点から測る](measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)にある。
 後に[秒読みつき時計での持ち時間と秒読みの活用](../plans/byoyomi-time-usage.md)は、持ち時間を使い切った後の秒読み期の手に限り、予測を使わずhardだけで次の反復を始めるかを決める形に改めた。
 測定は評価関数がPSTとFMだった時期の構成で行ったので、予測の方式を変える提案には現行の構成での再測定が要る。

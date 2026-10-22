@@ -59,7 +59,7 @@ SPSAで調整するのは、初期の半幅の定数項`AspirationDelta`、根�
 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の`info`行で出力せず、窓の内側で完了した反復だけを出力する。
 補助ワーカーは、主ワーカーの値ではなく、自分の直前の完了反復の最善手と自分の記録で窓を置く。
 
-fail highのときに読み直しの窓の深さを減らす決定は、[fail highの減深のADR](reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)にある。
+fail highのときに読み直しの窓の深さを減らす決定は、[fail highの減深のADR](reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)にある。
 
 ## 検討した代案
 

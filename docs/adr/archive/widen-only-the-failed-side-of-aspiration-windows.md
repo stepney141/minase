@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月12日。[aspiration windowsは深さ2以上で直前の最善手の平均を中心に置き、初期の半幅を根の値の大きさとともに広げ、窓外れでは外れた側の端を返った値から移して反対側の端も寄せる](../center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)および[aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](../reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月12日。[aspiration windowsは深さ2以上で直前の最善手の平均を中心に置き、初期の半幅を根の値の大きさとともに広げ、窓外れでは外れた側の端を返った値から移して反対側の端も寄せる](../center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)および[aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)によって置き換えられた。
 
 ## コンテキスト
 

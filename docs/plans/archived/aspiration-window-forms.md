@@ -19,7 +19,7 @@ STCは上限の3,000ペアで判定保留（約+8.6 Elo）となり、本書の�
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月17日に起案し、2026年10月21日に[統括計画](../search-forms.md)のサブタスク6として着手して、2026年10月22日に完了した。
 挙動を変えない移行2項目（M1とM2）と、5項目（A1〜A5）の形の変更を実装し、91個の係数を30,000ペアのSPSAで調整した値を反映した版を、1つの候補として採用した。
-設計判断は、[窓の形のADR](../../adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)と[fail highの減深のADR](../../adr/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)に移した。
+設計判断は、[窓の形のADR](../../adr/center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)と[fail highの減深のADR](../../adr/archive/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)に移した。
 起点のコードとの照合の結果、次の4点を決めた。これらはClaudeの判断である。
 反復の深さと窓の深さを分け、`root_depth`と詰みを探す印は反復の深さで、根のLMR、子の探索、historyとcorrectionの更新、および置換表への保存は窓の深さで扱う。
 浅い窓の結果が置換表の置換規則によって深い記録を上書きしないという、Stockfishとの挙動の差を受け入れ、根だけの置換規則を設けない。

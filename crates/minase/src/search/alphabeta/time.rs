@@ -454,7 +454,7 @@ pub(super) fn should_increase_depth(
 ///
 /// `iterations`個の最善手が揃い、すべて同じ場合だけ真を返す。
 /// `bests`は完了順に並び、末尾が最新の反復の最善手である。
-/// 反復数は係数`StableIterations`で与え、既定値4の判断の理由は`docs/adr/stop-early-on-stable-best-move-without-extensions.md`にある。
+/// 反復数は係数`StableIterations`で与え、既定値4の判断の理由は`docs/adr/scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md`にある。
 pub(super) fn stable_signal(bests: &[Move], iterations: usize) -> bool {
     bests.len() >= iterations
         && bests[bests.len() - iterations..]
@@ -491,7 +491,7 @@ pub(super) fn should_start_next_iteration(
 ///
 /// 先読みで始めた反復も、的中後にこの式へ当て直す。
 /// 先読みでない探索は`hit = 0`なので、先読みなしの式と不等号まで一致する。
-/// 理由は`docs/adr/continue-search-and-measure-budget-from-ponderhit.md`にある。
+/// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
 pub(super) fn iteration_prediction_fits(
     started: Duration,
     hit: Duration,
@@ -553,7 +553,7 @@ impl ClockCoefficients {
     /// 秒読みの項だけの序盤係数は`docs/adr/scale-only-the-byoyomi-term-in-the-opening.md`、
     /// 持ち時間を序盤から配る理由は`docs/adr/spend-main-time-from-the-opening.md`にある。
     /// 秒読みのない時計でhardを残り時間の割合でも抑え、途中結果を使わない理由は
-    /// `docs/adr/reject-fair-share-budget-with-partial-results.md`にある。
+    /// `docs/adr/keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md`にある。
     pub(super) fn budget(self, clock: ClockLimits, margin_ms: u64) -> TimeBudget {
         self.budget_with_time_advantage(clock, margin_ms, clock.byoyomi_ms == 0)
     }

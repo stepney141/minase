@@ -2,20 +2,20 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月22日。
+置き換え済み。決定日は2026年10月22日。[aspiration windowsは、fail highの回数、反復をまたぐ持ち越し、および目安の時間の半分を過ぎた後に始めた反復の回数で窓の深さを減らし、完了した反復は反復の深さの結果として扱う](../reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)によって置き換えられた。
 
 ## コンテキスト
 
 aspiration windowsは、反復深化の各反復で前の反復の値の近くに狭い窓を置いて根を読み始め、根の値が窓を外れたら窓を移して同じ反復を読み直す手法である。
 根の値が窓の上端β以上になることをfail highという。
 fail highの後の読み直しを浅くする方式は、fail highで最善手が既に良いと分かっているので、窓を確定させる読み直しを浅く済ませて次の反復へ早く進むことを狙う。
-窓の置き方と移し方は[窓の形のADR](center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)が定める。
+窓の置き方と移し方は[窓の形のADR](../center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)が定める。
 
-2026年9月27日に、[棋力向上段階12](../plans/archived/strength-stage12.md)は、同じ反復の中で連続したfail highの回数`n`を数え、読み直しの深さを`max(1, 深さ − n)`とする変更を測った。
+2026年9月27日に、[棋力向上段階12](../../plans/archived/strength-stage12.md)は、同じ反復の中で連続したfail highの回数`n`を数え、読み直しの深さを`max(1, 深さ − n)`とする変更を測った。
 段階12は、Stockfishの導入版（コミット081af908）にならって、fail lowで回数を0へ戻し、完了した反復の深さには減らした後の深さを使い、主ワーカーだけに適用した。
-STCは1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。
+STCは1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../../measurements/strength-stage12/strength-stage12-aspiration-stc.md)）。
 この測定は既定の評価関数がPSTだった時期のものであり、当時のminaseは、減らした深さを次の反復へ持ち越す仕組みを持たなかった。
-[2026年9月12日の旧ADR](archive/widen-only-the-failed-side-of-aspiration-windows.md)は、fail highの後に浅く読み直さないことを決定に含め、この段階12の結果を根拠として記録した。
+[2026年9月12日の旧ADR](widen-only-the-failed-side-of-aspiration-windows.md)は、fail highの後に浅く読み直さないことを決定に含め、この段階12の結果を根拠として記録した。
 旧ADRは、この方式を再び提案するなら、その測定より新しい構成で別の主張として段階ゲートにかけることを求めていた。
 
 現行のStockfishは、反復ごとにfail highの回数`failedHighCnt`を0から数え、fail highのたびに1増やし、fail lowで0に戻す（`src/search.cpp:403-450`）。
@@ -25,9 +25,9 @@ STCは1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../mea
 `searchAgainCounter`は、反復の深さを増やさなかった回数である。
 Stockfishの時間管理は、目安時間の半分を過ぎると反復の深さを増やさない（同`369-370, 634`）。
 
-2026年10月17日のエンジンの開発者の決定により、[aspiration windowsの形の見直し](../plans/archived/aspiration-window-forms.md)は、fail highの減深を窓の形の変更と同じ候補に含め、Stockfishの形にそろえる。
+2026年10月17日のエンジンの開発者の決定により、[aspiration windowsの形の見直し](../../plans/archived/aspiration-window-forms.md)は、fail highの減深を窓の形の変更と同じ候補に含め、Stockfishの形にそろえる。
 このため、旧ADRが求めた単独の段階ゲートは行わない。
-さらに、2026年10月18日のエンジンの開発者の決定により、候補はSTCの結果によらず採用する（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+さらに、2026年10月18日のエンジンの開発者の決定により、候補はSTCの結果によらず採用する（[採用の例外のADR](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 2026年10月17日の決定は、SPSAでは各仕組みの強さを決める値だけを調整し、上下限と更新の内部の定数はStockfishの値で固定することも定めており、設計書はfail highの減深の規則をこの固定する定数に分類した。
 
 ## 決定
@@ -36,7 +36,7 @@ Stockfishの時間管理は、目安時間の半分を過ぎると反復の深�
 深さ`d`の反復を始めるたびに`r`を0を下限として2減らし、fail highの回数`h`を0にする。
 各窓は`D = max(1, d − h − r)`の深さで読み、fail highのたびに`h`を1増やし、fail lowのたびに`h`を0に戻す。
 窓の内側で反復を完了したとき、`h`が1以上なら`r`を`(h + 1)/2 + 2`とし、`h`が0なら反復の開始時に減らした`r`を保つ。
-主ワーカーと補助ワーカーは同じ規則に従い、補助ワーカーが深さを飛ばして反復する場合（[ADR](diversify-lazy-smp-workers-by-skipping-depths.md)）も、実際に行う反復ごとに1回だけ`r`を減らす。
+主ワーカーと補助ワーカーは同じ規則に従い、補助ワーカーが深さを飛ばして反復する場合（[ADR](../diversify-lazy-smp-workers-by-skipping-depths.md)）も、実際に行う反復ごとに1回だけ`r`を減らす。
 Stockfishの`searchAgainCounter`の項は、minaseにその回数を増やす時間管理の仕組みがまだないので置かない。
 
 根の探索には、反復の深さ`d`と窓の深さ`D`を別々に渡す。
@@ -72,7 +72,7 @@ Stockfishは根の手の表の先頭を置換表の手として使い（`src/sea
 減深と持ち越しの規則は`crates/minase/src/search/alphabeta/root.rs`の`FailHighReduction`に、反復の深さと窓の深さの使い分けは同じファイルの`Searcher::search_iteration`と`Searcher::search_root`のdocコメントにあり、持ち越しは`Searcher`の`fail_high_recovery`が持つ。
 固定した定数は`root.rs`の名前つきの定数である。
 
-[benchの記録](../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)では、減深を加えたコミットは、深さ3、5、7の全15局面の探索ノード数の合計を直前のコミットより12.1%減らした。
+[benchの記録](../../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)では、減深を加えたコミットは、深さ3、5、7の全15局面の探索ノード数の合計を直前のコミットより12.1%減らした。
 benchの深さは反復の深さであり、benchが報告する深さ`d`の結果は、深さ`d`まで読んだ窓の結果とは限らない。
 
 反復の深さと窓の深さが違うことは、テストの深さ上限の選び方にも影響した。
@@ -87,9 +87,9 @@ fail highの後に窓の深さが減るので、深さ上限3では最後の窓�
 完了した反復を深さ`d`として扱うので、窓の深さを減らして完了したワーカーの結果が、より深い窓で1つ浅い反復を完了したワーカーの結果より優先されることがある。
 段階12の実装が減らした深さを完了深さとした理由の1つはこの優先を避けることだったが、SPSAとSTCは`Threads=1`で行うので、補助ワーカーへの適用とあわせてこの影響は測っていない。
 
-[持ち時間の伸縮の設計書](../plans/time-instability-scaling.md)は、反復の深さを増やさない時間管理の仕組みを入れるときに、窓の深さの式へStockfishの`3 × (回数 + 1)/4`の項を加える予定である。
+[持ち時間の伸縮の設計書](../../plans/time-instability-scaling.md)は、反復の深さを増やさない時間管理の仕組みを入れるときに、窓の深さの式へStockfishの`3 × (回数 + 1)/4`の項を加える予定である。
 
 fail highの減深は窓の形の変更とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整する。
-SPSAで調整した最終値を反映した版は、STCで設計書を始めた時点のmasterに対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった（[STCの記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）。
-[事前対局](../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)では、最終値を反映した版が報告した完了深さは、400手目より前のすべての手数帯で起点より約0.7〜1.1手浅かった。
+SPSAで調整した最終値を反映した版は、STCで設計書を始めた時点のmasterに対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった（[STCの記録](../../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）。
+[事前対局](../../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)では、最終値を反映した版が報告した完了深さは、400手目より前のすべての手数帯で起点より約0.7〜1.1手浅かった。
 この完了深さは反復の深さであり、減深で浅く読んだ窓もその反復の深さとして数えるので、実際に読んだ窓の深さとの差は測っていない。
