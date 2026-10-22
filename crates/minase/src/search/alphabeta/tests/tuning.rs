@@ -261,6 +261,9 @@ fn tuning_parameters_in_isolated_process() {
         params::set("TimeEffortIntercept", 2500).unwrap();
         params::set("TimeEffortSlope", -2000).unwrap();
         super::time::best_move_effort_scaling_ignores_shared_auxiliary_nodes();
+        params::set("TimeEffortIntercept", 1000).unwrap();
+        params::set("TimeEffortSlope", 0).unwrap();
+        super::time::single_root_move_scaling_stops_at_500_millis_boundary();
         return;
     }
 

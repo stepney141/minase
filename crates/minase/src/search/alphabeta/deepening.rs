@@ -171,6 +171,7 @@ pub(super) fn run_main_worker(
                     best_move_instability,
                     best_move_effort as u128,
                 ],
+                root_moves.len(),
             );
             current_time_budget = Some(scaled_time_budget(base, time_ms));
         }

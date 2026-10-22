@@ -134,6 +134,9 @@ const BEST_MOVE_EFFORT_SCALE: u128 = 100_000;
 const BEST_MOVE_EFFORT_FACTOR_MIN: i64 = 693;
 const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
+/// 根の候補が1手のときの時間上限。Stockfish `src/search.cpp:615-617`に合わせる。
+const SINGLE_ROOT_MOVE_TIME_CAP_MS: u128 = 500;
+
 /// 完了反復ごとの時間伸縮に使う探索の不安定さの状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct InstabilityScaling {
@@ -357,8 +360,12 @@ pub(super) fn time_advantage_factor(
     1000 - time_advantage * difference / (remaining + opponent + 1)
 }
 
-/// 基礎softに千分率の因子を順に掛け、hardで抑える前の時間をmsで返す。
-pub(super) fn scaled_soft_millis(base_soft: Duration, factors: &[u128]) -> u128 {
+/// 基礎softに千分率の因子を順に掛け、根の候補が1手なら500 msで抑えた時間を返す。
+pub(super) fn scaled_soft_millis(
+    base_soft: Duration,
+    factors: &[u128],
+    root_move_count: usize,
+) -> u128 {
     let numerator = factors.iter().fold(base_soft.as_millis(), |time, &factor| {
         time.saturating_mul(factor)
     });
@@ -366,7 +373,12 @@ pub(super) fn scaled_soft_millis(base_soft: Duration, factors: &[u128]) -> u128 
     let denominator = 1000_u128
         .checked_pow(exponent)
         .expect("time factor denominator must fit in u128");
-    numerator / denominator
+    let time_ms = numerator / denominator;
+    if root_move_count == 1 {
+        time_ms.min(SINGLE_ROOT_MOVE_TIME_CAP_MS)
+    } else {
+        time_ms
+    }
 }
 
 /// 基礎予算のsoftだけを、hardで抑えた伸縮後の値へ差し替える。

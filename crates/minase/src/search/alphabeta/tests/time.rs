@@ -217,16 +217,16 @@ fn time_advantage_scales_soft_and_only_the_soft_multiple_hard_candidate() {
 #[test]
 fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
     assert_eq!(
-        scaled_soft_millis(Duration::from_millis(2000), &[1500]),
+        scaled_soft_millis(Duration::from_millis(2000), &[1500], 2),
         3000
     );
     assert_eq!(
-        scaled_soft_millis(Duration::from_millis(2000), &[1500, 800]),
+        scaled_soft_millis(Duration::from_millis(2000), &[1500, 800], 2),
         2400
     );
 
     let maximum = u128::from(u64::MAX);
-    let saturated = scaled_soft_millis(Duration::from_millis(u64::MAX), &[maximum, maximum, 2]);
+    let saturated = scaled_soft_millis(Duration::from_millis(u64::MAX), &[maximum, maximum, 2], 2);
     assert_eq!(saturated, u128::MAX / 1_000_000_000);
     assert!(saturated > u128::from(u64::MAX));
 
@@ -239,6 +239,29 @@ fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
     assert_eq!(scaled.soft, base.hard);
     assert_eq!(scaled.hard, base.hard);
     assert_eq!(scaled.byoyomi_period, base.byoyomi_period);
+}
+
+/// 根の候補が1手なら因子の積を求めた後の時間を500 msで抑え、2手以上と500 ms未満は変えない。
+#[test]
+fn single_root_move_caps_scaled_soft_time_after_factor_product() {
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(2000), &[1500], 1),
+        500
+    );
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(2000), &[1500], 2),
+        3000
+    );
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(250), &[1500], 1),
+        375
+    );
+
+    let maximum = u128::from(u64::MAX);
+    assert_eq!(
+        scaled_soft_millis(Duration::from_millis(u64::MAX), &[maximum, maximum, 2], 1),
+        500
+    );
 }
 
 /// 評価値の下落の因子の環状配列は前の探索の評価値で始まり、4反復後に最初の完了値を再び参照する。
@@ -338,6 +361,7 @@ pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects
         scaled_soft_millis(
             base.soft,
             &[1728, stability as u128, instability, effort as u128],
+            root_moves.len(),
         ),
     );
     assert!(scaled.soft > base.soft);
@@ -391,7 +415,7 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
     let position = bare_kings();
     let root_moves = vec![legal_moves(&position)[0]];
     let history_keys = [search_key(&position)];
-    let limits = SearchLimits::new(Some(2), None, None, Some(clock(100_000, 0, 0))).unwrap();
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(20_000, 0, 0))).unwrap();
     let base = time_budget(&limits).unwrap();
     let coefficients = TimeReductionCoefficients::current();
     let reduction = time_reduction(0, coefficients);
@@ -406,12 +430,15 @@ pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget()
     let initialized_ms = scaled_soft_millis(
         base.soft,
         &[1728, initialized_factor as u128, instability, effort],
+        root_moves.len(),
     );
     let neutral_ms = scaled_soft_millis(
         base.soft,
         &[1728, neutral_factor as u128, instability, effort],
+        root_moves.len(),
     );
     assert!(initialized_ms < neutral_ms);
+    assert!(neutral_ms < 500);
     assert!(initialized_ms < base.hard.as_millis());
     let elapsed = Duration::from_millis(u64::try_from(initialized_ms).unwrap());
     assert!(iteration_prediction_fits(
@@ -465,7 +492,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
     let history_keys = [search_key(&position)];
     let external_stop = AtomicBool::new(false);
     let budget = TimeBudget {
-        soft: Duration::from_millis(1000),
+        soft: Duration::from_millis(500),
         hard: Duration::from_millis(10_000),
         byoyomi_period: false,
     };
@@ -476,7 +503,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
         total_nodes: AtomicU64::new(1_000_000),
         best_move_changes: AtomicU64::new(0),
         node_limit: None,
-        clock: &ManualClock::new(Duration::from_millis(693)),
+        clock: &ManualClock::new(Duration::from_millis(346)),
         hard_limit: Some(HardLimit {
             duration: budget.hard,
             hit_ns: &AtomicU64::new(0),
@@ -521,6 +548,53 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
     assert!(shared.nodes() > outcome.nodes);
     assert_eq!(outcome.result.depth, 1);
     assert_eq!(shared.reason(), StopReason::SoftLimit);
+}
+
+// 基礎softでは次の反復を始められる500 msの境界で、根の候補が1手なら
+// 完了反復後の伸縮によって停止する。
+#[cfg(feature = "tuning")]
+pub(super) fn single_root_move_scaling_stops_at_500_millis_boundary() {
+    let position = bare_kings();
+    let root_moves = vec![legal_moves(&position)[0]];
+    let history_keys = [search_key(&position)];
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(1_000_000, 0, 0))).unwrap();
+    let budget = time_budget(&limits).unwrap();
+    let clock = ManualClock::new(Duration::from_millis(500));
+    assert!(should_start_next_iteration(
+        clock.elapsed(),
+        Duration::ZERO,
+        budget,
+        false
+    ));
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    histories.previous_search = PreviousSearch {
+        score_and_average: Some((0, 0)),
+        time_reduction: 1032,
+    };
+
+    let outcome = run_search_team(
+        test_nnue(),
+        &position,
+        engine_rules(),
+        SearchRepetition::R1 {
+            consecutive_attacking_moves: [0; 2],
+        },
+        DRAW_SCORE,
+        &root_moves,
+        &history_keys,
+        &limits,
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut histories,
+        None,
+        &clock,
+        &AtomicU64::new(0),
+        false,
+    );
+
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(outcome.stop_reason, StopReason::SoftLimit);
 }
 
 // 指定した直近の反復数だけ最善手が同じときに安定とする。
