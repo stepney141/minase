@@ -404,10 +404,9 @@ pub(super) fn apply(run_dir: &Path, source: &Path) -> Result<String, ApplyError>
     struct ApplyManifest {
         settings: Settings,
     }
-    let manifest: ApplyManifest = serde_json::from_reader(
-        File::open(run_dir.join("manifest.json")).map_err(ApplyError::Read)?,
-    )
-    .map_err(|error| ApplyError::Read(io::Error::new(io::ErrorKind::InvalidData, error)))?;
+    let bytes = fs::read(run_dir.join("manifest.json")).map_err(ApplyError::Read)?;
+    let manifest: ApplyManifest = serde_json::from_slice(&bytes)
+        .map_err(|error| ApplyError::Read(io::Error::new(io::ErrorKind::InvalidData, error)))?;
     let settings = &manifest.settings;
     validate_parameters(&settings.parameters).map_err(invalid_parameters)?;
     validate_settings(settings).map_err(ApplyError::InvalidSettings)?;

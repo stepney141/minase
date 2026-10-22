@@ -7,7 +7,7 @@
 //! 現行の各ファイルの欄は書き手の[`crate::match_runner`]に定める。
 
 use serde::Deserialize;
-use std::{fs::File, io, path::Path};
+use std::{fs, io, path::Path};
 
 /// 集計対象の実行記録形式。
 pub(super) const FORMAT_VERSION: u32 = 5;
@@ -104,7 +104,8 @@ pub(super) struct RunSummary {
 
 /// JSONファイルを型付きで読む。
 pub(super) fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<T> {
-    serde_json::from_reader(File::open(path)?).map_err(|error| {
+    let bytes = fs::read(path)?;
+    serde_json::from_slice(&bytes).map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("invalid JSON in {}: {error}", path.display()),

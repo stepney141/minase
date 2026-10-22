@@ -38,8 +38,7 @@ use minase::harness::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File},
-    io,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -100,8 +99,8 @@ pub(super) fn invalid(message: impl Into<String>) -> io::Error {
 }
 
 fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> io::Result<T> {
-    serde_json::from_reader(File::open(path)?)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    let bytes = fs::read(path)?;
+    serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 impl Store {

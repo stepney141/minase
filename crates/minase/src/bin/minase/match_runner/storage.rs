@@ -34,7 +34,7 @@
 //! ロックファイル`.match_runner.lock`と原子的保存は[`minase::harness::lock_run_directory`]に定める。
 
 use std::collections::BTreeMap;
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -498,8 +498,8 @@ fn validate_record_header(record: &PairRecord, target_pairs: u64) -> io::Result<
 
 /// 指定JSONファイル全体を読み込む。
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<T> {
-    let file = File::open(path)?;
-    serde_json::from_reader(file).map_err(json_error)
+    let bytes = fs::read(path)?;
+    serde_json::from_slice(&bytes).map_err(json_error)
 }
 
 /// 前回の未確定一時ファイルだけを除去する。
