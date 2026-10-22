@@ -49,6 +49,8 @@ pub(super) struct WorkerOutcome {
     pub(super) partial_score: Option<i32>,
     /// 返却手について、このワーカーの根の手ごとの記録にある評価値の平均。
     pub(super) returned_move_average: Option<i32>,
+    /// 主ワーカーが最後に求めた短縮率。補助ワーカーでは値を持たない。
+    pub(super) time_reduction: Option<i32>,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
     pub(super) worker_index: usize,
     /// 最後まで完了した反復の結果。
@@ -294,8 +296,12 @@ pub(in crate::search) fn run_search_team(
             .map(|outcome| outcome.nodes)
             .sum::<u64>()
     );
+    let main = worker_outcomes
+        .iter()
+        .find(|outcome| outcome.worker_index == 0)
+        .expect("search team must contain the main worker");
     let adopted = select_worker_outcome(&worker_outcomes);
-    record_previous_search(histories, adopted);
+    record_previous_search(histories, adopted, main);
     let mut result = adopted.result;
     result.nodes = total_nodes;
     #[cfg(feature = "search-stats")]
@@ -319,8 +325,13 @@ pub(in crate::search) fn run_search_team(
     }
 }
 
-/// 採用したワーカーの返却手から、次の探索へ持ち越す評価値と平均値を記録する。
-pub(super) fn record_previous_search(histories: &mut HistoryTables, adopted: &WorkerOutcome) {
+/// 採用したワーカーから評価値と平均値を、主ワーカーから最後の短縮率を記録する。
+pub(super) fn record_previous_search(
+    histories: &mut HistoryTables,
+    adopted: &WorkerOutcome,
+    main: &WorkerOutcome,
+) {
+    assert_eq!(main.worker_index, 0, "main worker index must be zero");
     histories.previous_search.score_and_average = (adopted.result.depth > 0).then(|| {
         let score = adopted.partial_score.unwrap_or(adopted.result.score);
         let average = adopted
@@ -328,6 +339,9 @@ pub(super) fn record_previous_search(histories: &mut HistoryTables, adopted: &Wo
             .expect("a completed worker result must have an average score");
         (score, average)
     });
+    histories.previous_search.time_reduction = main
+        .time_reduction
+        .expect("the main worker must return its time reduction");
 }
 
 /// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。

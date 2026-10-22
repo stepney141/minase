@@ -85,9 +85,10 @@ use crate::search::alphabeta::team::{
     run_worker_team, select_worker_outcome,
 };
 use crate::search::alphabeta::time::{
-    FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget, clock_budget,
-    falling_eval_factor, iteration_prediction_fits, scaled_soft_millis, scaled_time_budget,
-    should_start_next_iteration, stable_signal, time_budget,
+    FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
+    TimeReductionCoefficients, best_move_stability_distance, best_move_stability_factor,
+    clock_budget, falling_eval_factor, iteration_prediction_fits, scaled_soft_millis,
+    scaled_time_budget, should_start_next_iteration, stable_signal, time_budget, time_reduction,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,

@@ -35,6 +35,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                     WorkerOutcome {
                         partial_score: None,
                         returned_move_average: None,
+                        time_reduction: (worker_index == 0).then_some(1000),
                         worker_index,
                         result: SearchResult {
                             #[cfg(feature = "search-stats")]
@@ -180,6 +181,7 @@ fn worker_outcome_selection_uses_depth_partial_then_index_and_excludes_zero() {
         |worker_index: usize, depth: u32, move_index: usize, partial_score| WorkerOutcome {
             partial_score,
             returned_move_average: (depth > 0).then_some(worker_index as i32 * 10),
+            time_reduction: (worker_index == 0).then_some(1000),
             worker_index,
             result: SearchResult {
                 #[cfg(feature = "search-stats")]

@@ -453,6 +453,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 &searcher,
                 completed.result,
                 completed.pv,
+                1000,
             )
         });
         assert_eq!(shared.reason(), StopReason::SoftLimit);
@@ -568,6 +569,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             WorkerOutcome {
                 partial_score: None,
                 returned_move_average: None,
+                time_reduction: Some(777),
                 worker_index: 0,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]
@@ -581,6 +583,10 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 nodes: searcher.nodes,
             }
         });
+        let main = outcomes
+            .iter()
+            .find(|outcome| outcome.worker_index == 0)
+            .unwrap();
         let adopted = select_worker_outcome(&outcomes);
         assert_eq!(adopted.worker_index, 1);
         assert_eq!(adopted.result.depth, 2);
@@ -591,8 +597,9 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 .returned_move_average
                 .expect("the adopted auxiliary result must have an average"),
         );
-        record_previous_search(&mut histories, adopted);
+        record_previous_search(&mut histories, adopted, main);
         assert_eq!(histories.previous_search.score_and_average, Some(expected));
+        assert_eq!(histories.previous_search.time_reduction, 777);
         assert_eq!(shared.reason(), StopReason::SoftLimit);
     }
 }

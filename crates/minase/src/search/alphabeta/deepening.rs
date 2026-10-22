@@ -19,8 +19,8 @@ use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
-    FallingEvalCoefficients, InstabilityScaling, TimeBudget, scaled_soft_millis,
-    scaled_time_budget, should_start_next_iteration, stable_signal,
+    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeReductionCoefficients,
+    scaled_soft_millis, scaled_time_budget, should_start_next_iteration, stable_signal,
 };
 
 /// 補助ワーカーが探索する深さを昇順に返す。
@@ -137,12 +137,17 @@ pub(super) fn run_main_worker(
         let stable = stable_signal(&completed_bests, params::stable_iterations() as usize);
         if let Some(scaling) = &mut instability_scaling {
             let base = base_time_budget.expect("instability scaling requires a time budget");
-            let factor = scaling.update_falling_eval(
+            let falling_eval = scaling.update_falling_eval(
                 score,
                 nnue.pawn_value(),
                 FallingEvalCoefficients::current(),
             );
-            let time_ms = scaled_soft_millis(base.soft, &[factor as u128]);
+            let best_move_stability = scaling
+                .update_best_move_stability(&completed_bests, TimeReductionCoefficients::current());
+            let time_ms = scaled_soft_millis(
+                base.soft,
+                &[falling_eval as u128, best_move_stability as u128],
+            );
             current_time_budget = Some(scaled_time_budget(base, time_ms));
         }
         result.best_move = best_move;
@@ -189,7 +194,8 @@ pub(super) fn run_main_worker(
             break;
         }
     }
-    main_worker_outcome(&searcher, result, completed_pv)
+    let time_reduction = instability_scaling.map_or(1000, |scaling| scaling.time_reduction);
+    main_worker_outcome(&searcher, result, completed_pv, time_reduction)
 }
 
 /// [`RootResults::partial_result`]の途中結果があれば、その着手と主変化を採る。
@@ -198,6 +204,7 @@ pub(super) fn main_worker_outcome(
     searcher: &Searcher<'_>,
     mut result: SearchResult,
     mut completed_pv: Vec<Move>,
+    time_reduction: i32,
 ) -> WorkerOutcome {
     #[cfg(feature = "search-stats")]
     {
@@ -217,6 +224,7 @@ pub(super) fn main_worker_outcome(
     WorkerOutcome {
         partial_score,
         returned_move_average,
+        time_reduction: Some(time_reduction),
         worker_index: 0,
         result,
         pv: completed_pv,
@@ -302,6 +310,7 @@ pub(super) fn run_auxiliary_worker(
     WorkerOutcome {
         partial_score: None,
         returned_move_average,
+        time_reduction: None,
         worker_index,
         result,
         pv: completed_pv,

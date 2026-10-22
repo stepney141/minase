@@ -38,6 +38,32 @@ fn falling_eval_factor_uses_one_truncating_division_and_fixed_bounds() {
     );
 }
 
+/// 最善手の安定性から求める短縮率は直線を固定範囲へ切り詰め、時間因子は床方向へ丸める。
+#[test]
+fn best_move_stability_factor_uses_fixed_bounds_and_floor_division() {
+    let coefficients = TimeReductionCoefficients {
+        intercept: 300,
+        slope: 100,
+        scale: 2000,
+    };
+    assert_eq!(time_reduction(0, coefficients), 629);
+    assert_eq!(time_reduction(4, coefficients), 700);
+    assert_eq!(time_reduction(20, coefficients), 1544);
+
+    // 2_318_000_000 / 1_400_000 = 1655余り1_000_000である。
+    assert_eq!(best_move_stability_factor(850, 700, 2000), 1655);
+}
+
+/// 最善手が同じ末尾の長さから1を引き、直前の反復で変わった場合は0へ戻す。
+#[test]
+fn best_move_stability_distance_counts_the_equal_suffix() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b] = [moves[0], moves[1]];
+    assert_eq!(best_move_stability_distance(&[a]), 0);
+    assert_eq!(best_move_stability_distance(&[a, b, b, b]), 2);
+    assert_eq!(best_move_stability_distance(&[a, a, b]), 0);
+}
+
 /// 時間因子の積は基礎softから求め、積があふれた後もu128の時間としてhardまで保持する。
 #[test]
 fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
@@ -76,8 +102,11 @@ fn falling_eval_ring_uses_previous_score_then_the_value_from_four_iterations_ago
     };
     let mut scaling = InstabilityScaling::new(PreviousSearch {
         score_and_average: Some((40, 0)),
+        time_reduction: 900,
     });
     assert_eq!(scaling.iteration_values, [40; 4]);
+    assert_eq!(scaling.previous_time_reduction, 900);
+    assert_eq!(scaling.time_reduction, 1000);
     let factors: Vec<_> = [10, 20, 30, 40, 50]
         .into_iter()
         .map(|value| scaling.update_falling_eval(value, 100, coefficients))
@@ -132,17 +161,23 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
-// 時計だけの探索では最初の完了反復後に評価値の下落の因子を適用する。
-// 同じ基礎予算でもmovetimeを併用すれば評価値の下落の因子を使わず、基礎softで止まる。
-#[test]
-fn falling_eval_scaling_starts_an_iteration_that_the_base_soft_rejects() {
+// 時計だけの探索では最初の完了反復後に時間伸縮の因子を適用する。
+// 同じ基礎予算でもmovetimeを併用すれば因子を使わず、基礎softで止まる。
+#[cfg(feature = "tuning")]
+pub(super) fn instability_scaling_starts_an_iteration_that_the_base_soft_rejects() {
     let position = bare_kings();
     let root_moves = legal_moves(&position);
     let history_keys = [search_key(&position)];
     let clock_limits = clock(100_000, 0, 0);
     let scaled_limits = SearchLimits::new(Some(2), None, None, Some(clock_limits)).unwrap();
     let base = time_budget(&scaled_limits).unwrap();
-    let scaled = scaled_time_budget(base, scaled_soft_millis(base.soft, &[1728]));
+    let coefficients = TimeReductionCoefficients::current();
+    let reduction = time_reduction(0, coefficients);
+    let stability = best_move_stability_factor(850, reduction, coefficients.scale);
+    let scaled = scaled_time_budget(
+        base,
+        scaled_soft_millis(base.soft, &[1728, stability as u128]),
+    );
     assert!(scaled.soft > base.soft);
     assert!(iteration_prediction_fits(
         base.soft,
@@ -186,6 +221,65 @@ fn falling_eval_scaling_starts_an_iteration_that_the_base_soft_rejects() {
     let excluded_outcome = run(&excluded_limits);
     assert_eq!(excluded_outcome.result.depth, 1);
     assert_eq!(excluded_outcome.stop_reason, StopReason::SoftLimit);
+}
+
+// 初期化直後の850を使った予算境界では停止し、1000に置き換えた場合だけ次の反復を完了する。
+#[cfg(feature = "tuning")]
+pub(super) fn initial_previous_time_reduction_controls_the_first_scaled_budget() {
+    let position = bare_kings();
+    let root_moves = legal_moves(&position);
+    let history_keys = [search_key(&position)];
+    let limits = SearchLimits::new(Some(2), None, None, Some(clock(100_000, 0, 0))).unwrap();
+    let base = time_budget(&limits).unwrap();
+    let coefficients = TimeReductionCoefficients::current();
+    let reduction = time_reduction(0, coefficients);
+    let initialized_factor = best_move_stability_factor(850, reduction, coefficients.scale);
+    let neutral_factor = best_move_stability_factor(1000, reduction, coefficients.scale);
+    let initialized_ms = scaled_soft_millis(base.soft, &[1728, initialized_factor as u128]);
+    let neutral_ms = scaled_soft_millis(base.soft, &[1728, neutral_factor as u128]);
+    assert!(initialized_ms < neutral_ms);
+    assert!(initialized_ms < base.hard.as_millis());
+    let elapsed = Duration::from_millis(u64::try_from(initialized_ms).unwrap());
+    assert!(iteration_prediction_fits(
+        elapsed,
+        Duration::ZERO,
+        base,
+        false
+    ));
+
+    let run = |histories: &mut crate::search::HistoryTables| {
+        run_search_team(
+            test_nnue(),
+            &position,
+            engine_rules(),
+            SearchRepetition::R1 {
+                consecutive_attacking_moves: [0; 2],
+            },
+            DRAW_SCORE,
+            &root_moves,
+            &history_keys,
+            &limits,
+            &AtomicBool::new(false),
+            DEFAULT_THREADS,
+            &small_tt(),
+            histories,
+            None,
+            &ManualClock::new(elapsed),
+            &AtomicU64::new(0),
+            false,
+        )
+    };
+
+    let mut initialized = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    assert_eq!(initialized.previous_search.time_reduction, 850);
+    let initialized_outcome = run(&mut initialized);
+    assert_eq!(initialized_outcome.result.depth, 1);
+    assert_eq!(initialized_outcome.stop_reason, StopReason::SoftLimit);
+
+    let mut neutral = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    neutral.previous_search.time_reduction = 1000;
+    let neutral_outcome = run(&mut neutral);
+    assert_eq!(neutral_outcome.result.depth, 2);
 }
 
 // 指定した直近の反復数だけ最善手が同じときに安定とする。

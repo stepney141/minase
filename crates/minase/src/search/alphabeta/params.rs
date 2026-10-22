@@ -456,6 +456,25 @@ parameters! {
     /// 範囲0〜5000は従来の項なしに当たる0と、両実装の換算値を含む。
     /// 開始値はStockfishの換算値であり、SPSAで未調整である。
     TimeFallingIteration(time_falling_iteration): 2288, 0, 5000;
+    /// 最善手の安定性による短縮率の切片。単位は千分率である。
+    /// Stockfishの直線を換算すると、x = 0では
+    /// (0.639 − 4.96 × (1.712 − 0.639) / (18.79 − 4.96)) × 1000 ≈ 254となる
+    /// （src/search.cpp:600-602）。
+    /// 範囲0〜1500は従来の項なしに当たる0と、固定上限1544に近い値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeReductionIntercept(time_reduction_intercept): 254, 0, 1500;
+    /// 最善手が変わらない距離1あたりの短縮率の増分。単位は千分率である。
+    /// Stockfishの直線の傾きを換算すると、
+    /// (1.712 − 0.639) / (18.79 − 4.96) × 1000 ≈ 78となる
+    /// （src/search.cpp:600-602）。
+    /// 範囲0〜300は従来の項なしに当たる0と、換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeReductionSlope(time_reduction_slope): 78, 0, 300;
+    /// 最善手の安定性による時間の因子の分母に掛ける倍率。単位は千分率である。
+    /// Stockfishの2.284 × 1000 = 2284に当たる（src/search.cpp:604-605）。
+    /// 範囲1000〜4000は中立値1000と換算値を含む。
+    /// 開始値はStockfishの換算値であり、SPSAで未調整である。
+    TimeReductionScale(time_reduction_scale): 2284, 1000, 4000;
     /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
     /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]

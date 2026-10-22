@@ -87,6 +87,7 @@ fn tuning_parameters_in_isolated_process() {
             "m5 root history",
             "m5 root lmr",
             "parameters",
+            "time instability integration",
             "disabled capture history",
             "disabled history decay",
             "disabled capture history decay",
@@ -227,10 +228,22 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeFallingBase", 115),
         ("TimeFallingPrevious", 4784),
         ("TimeFallingIteration", 2288),
+        ("TimeReductionIntercept", 254),
+        ("TimeReductionSlope", 78),
+        ("TimeReductionScale", 2284),
         ("FmScale", 1024),
     ];
     for (name, value) in fixture {
         params::set(name, value).unwrap();
+    }
+
+    if scenario == "time instability integration" {
+        // 時間境界を確実に分離できる値へ固定し、SPSA後の既定値には依存させない。
+        params::set("HardSoftRatio", 800).unwrap();
+        params::set("IterationRatio", 150).unwrap();
+        super::time::instability_scaling_starts_an_iteration_that_the_base_soft_rejects();
+        super::time::initial_previous_time_reduction_controls_the_first_scaled_budget();
+        return;
     }
 
     if scenario == "disabled capture history" {
@@ -504,6 +517,15 @@ fn tuning_parameters_in_isolated_process() {
             FallingEvalCoefficients::current(),
         ))
     }
+    fn best_move_stability() -> i64 {
+        let coefficients = TimeReductionCoefficients::current();
+        let reduction = time_reduction(5, coefficients);
+        i64::from(best_move_stability_factor(
+            850,
+            reduction,
+            coefficients.scale,
+        ))
+    }
 
     // FmScaleはNNUEには作用しないため、非零の2駒関係を持つ固定重みで係数の反映を検査する。
     fn fm_evaluation() -> i64 {
@@ -533,7 +555,7 @@ fn tuning_parameters_in_isolated_process() {
     // 一度構築した評価関数にも調整値が反映されることを含めて調べる。
     fm_evaluation();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 96] = [
+    let cases: [Case; 99] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -941,6 +963,9 @@ fn tuning_parameters_in_isolated_process() {
         ("TimeFallingBase", 200, falling_eval),
         ("TimeFallingPrevious", 4000, falling_eval),
         ("TimeFallingIteration", 2000, falling_eval),
+        ("TimeReductionIntercept", 500, best_move_stability),
+        ("TimeReductionSlope", 100, best_move_stability),
+        ("TimeReductionScale", 1000, best_move_stability),
         ("FmScale", 0, fm_evaluation),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());

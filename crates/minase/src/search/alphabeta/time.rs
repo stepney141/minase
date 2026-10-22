@@ -26,10 +26,24 @@ pub(super) struct TimeBudget {
     pub(super) byoyomi_period: bool,
 }
 
-/// 次の探索へ持ち越す、直前の探索の評価値と返却手の平均値。
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+/// 次の探索へ持ち越す、直前の探索の値。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct PreviousSearch {
     pub(crate) score_and_average: Option<(i32, i32)>,
+    /// 主ワーカーが最後に求めたbest move stabilityの短縮率。単位は千分率である。
+    pub(crate) time_reduction: i32,
+}
+
+/// 前の探索の短縮率の初期値。Stockfish `src/thread.cpp:271`に合わせる。
+const INITIAL_PREVIOUS_TIME_REDUCTION: i32 = 850;
+
+impl Default for PreviousSearch {
+    fn default() -> Self {
+        Self {
+            score_and_average: None,
+            time_reduction: INITIAL_PREVIOUS_TIME_REDUCTION,
+        }
+    }
 }
 
 /// 評価値の下落の因子の調整係数。
@@ -50,20 +64,47 @@ impl FallingEvalCoefficients {
     }
 }
 
+/// best move stabilityによる時間の因子の調整係数。
+#[derive(Clone, Copy)]
+pub(super) struct TimeReductionCoefficients {
+    pub(super) intercept: i32,
+    pub(super) slope: i32,
+    pub(super) scale: i32,
+}
+
+impl TimeReductionCoefficients {
+    pub(super) fn current() -> Self {
+        Self {
+            intercept: params::time_reduction_intercept(),
+            slope: params::time_reduction_slope(),
+            scale: params::time_reduction_scale(),
+        }
+    }
+}
+
 /// 評価値の下落の因子の下限と上限。Stockfish `src/search.cpp:594-597`に合わせる。
 const FALLING_EVAL_FACTOR_MIN: i32 = 576;
 const FALLING_EVAL_FACTOR_MAX: i32 = 1728;
 
-/// 完了反復ごとの時間伸縮に使う評価値の下落の因子の状態。
+/// 最善手の安定性から求める短縮率の下限と上限。Stockfish `src/search.cpp:600-602`に合わせる。
+const TIME_REDUCTION_MIN: i64 = 629;
+const TIME_REDUCTION_MAX: i64 = 1544;
+/// 前の探索の短縮率に加える定数。Stockfish `src/search.cpp:604-605`に合わせる。
+const TIME_REDUCTION_FACTOR_BASE: i64 = 1468;
+
+/// 完了反復ごとの時間伸縮に使う評価値の下落と最善手の安定性の状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct InstabilityScaling {
     pub(super) previous_average: Option<i32>,
     pub(super) iteration_values: [i32; 4],
     pub(super) current: usize,
+    pub(super) previous_time_reduction: i32,
+    pub(super) time_reduction: i32,
 }
 
 impl InstabilityScaling {
-    /// 前の探索の評価値で環状配列を埋め、欠測時は0で埋める。
+    /// 前の探索の評価値で環状配列を埋め、欠測時は0とする。
+    /// 短縮率は前の値を保持し、現在値を中立値1000で初期化する。
     pub(super) fn new(previous: PreviousSearch) -> Self {
         let initial = previous
             .score_and_average
@@ -72,6 +113,8 @@ impl InstabilityScaling {
             previous_average: previous.score_and_average.map(|(_score, average)| average),
             iteration_values: [initial; 4],
             current: 0,
+            previous_time_reduction: previous.time_reduction,
+            time_reduction: 1000,
         }
     }
 
@@ -91,6 +134,19 @@ impl InstabilityScaling {
         );
         self.iteration_values[self.current] = value;
         self.current = (self.current + 1) % self.iteration_values.len();
+        factor
+    }
+
+    /// 完了反復の最善手列からbest move stabilityの因子を求め、現在の短縮率を更新する。
+    pub(super) fn update_best_move_stability(
+        &mut self,
+        bests: &[Move],
+        coefficients: TimeReductionCoefficients,
+    ) -> i32 {
+        let reduction = time_reduction(best_move_stability_distance(bests), coefficients);
+        let factor =
+            best_move_stability_factor(self.previous_time_reduction, reduction, coefficients.scale);
+        self.time_reduction = reduction;
         factor
     }
 }
@@ -118,6 +174,46 @@ pub(super) fn falling_eval_factor(
         i64::from(FALLING_EVAL_FACTOR_MIN),
         i64::from(FALLING_EVAL_FACTOR_MAX),
     ) as i32
+}
+
+/// 完了反復の最善手列の末尾で、同じ手が続いた回数から1を引いた距離を返す。
+pub(super) fn best_move_stability_distance(bests: &[Move]) -> usize {
+    let last = bests
+        .last()
+        .expect("best move stability requires a completed iteration");
+    bests
+        .iter()
+        .rev()
+        .take_while(|&&best| best == *last)
+        .count()
+        - 1
+}
+
+/// 最善手が最後に変わった完了反復からの距離を、固定範囲内の短縮率へ変換する。
+pub(super) fn time_reduction(x: usize, coefficients: TimeReductionCoefficients) -> i32 {
+    let x = i64::try_from(x).expect("best move stability distance must fit in i64");
+    let reduction = i64::from(coefficients.intercept) + i64::from(coefficients.slope) * x;
+    i32::try_from(reduction.clamp(TIME_REDUCTION_MIN, TIME_REDUCTION_MAX))
+        .expect("clamped time reduction must fit in i32")
+}
+
+/// 前の探索と現在の短縮率から、best move stabilityによる時間の因子を千分率で返す。
+///
+/// 分子と分母は`i64`で求め、正の整数除算によって床方向へ丸める。
+pub(super) fn best_move_stability_factor(
+    previous_time_reduction: i32,
+    time_reduction: i32,
+    scale: i32,
+) -> i32 {
+    assert!(
+        previous_time_reduction >= 0,
+        "previous time reduction must not be negative"
+    );
+    assert!(time_reduction > 0, "time reduction must be positive");
+    assert!(scale > 0, "time reduction scale must be positive");
+    let numerator = (TIME_REDUCTION_FACTOR_BASE + i64::from(previous_time_reduction)) * 1_000_000;
+    let denominator = i64::from(scale) * i64::from(time_reduction);
+    i32::try_from(numerator / denominator).expect("best move stability factor must fit in i32")
 }
 
 /// 基礎softに千分率の因子を順に掛け、hardで抑える前の時間をmsで返す。

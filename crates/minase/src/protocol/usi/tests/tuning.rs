@@ -309,6 +309,18 @@ fn tuning_usi_contract_in_isolated_process() {
                 "TimeFallingIteration",
                 params::time_falling_iteration as fn() -> i32,
             ),
+            (
+                "TimeReductionIntercept",
+                params::time_reduction_intercept as fn() -> i32,
+            ),
+            (
+                "TimeReductionSlope",
+                params::time_reduction_slope as fn() -> i32,
+            ),
+            (
+                "TimeReductionScale",
+                params::time_reduction_scale as fn() -> i32,
+            ),
             ("FmScale", params::fm_scale as fn() -> i32),
         ];
         assert_eq!(accessors.len(), params::PARAMETERS.len());

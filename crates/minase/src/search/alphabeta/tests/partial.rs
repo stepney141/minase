@@ -171,7 +171,7 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                         .search_iteration(&position, &roots, 2, Some((best_move, score)))
                         .is_none()
                 );
-                let outcome = main_worker_outcome(searcher, completed, completed_pv.clone());
+                let outcome = main_worker_outcome(searcher, completed, completed_pv.clone(), 1000);
                 assert_eq!((outcome.result.depth, outcome.result.score), (1, score));
                 assert_eq!(
                     outcome.partial_score.is_some(),
@@ -282,14 +282,14 @@ fn partial_preserves_public_score_and_depth_but_carries_partial_score_and_averag
                 averages: Some((-750, -562_500)),
             },
         ));
-        let outcome = main_worker_outcome(searcher, completed, vec![roots[0]]);
+        let outcome = main_worker_outcome(searcher, completed, vec![roots[0]], 1000);
         assert_eq!(outcome.result.best_move, roots[1]);
         assert_eq!(outcome.pv, [roots[1], roots[2]]);
         assert_eq!(outcome.partial_score, Some(-1000));
         assert_eq!((outcome.result.score, outcome.result.depth), (100, 3));
 
         let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
-        record_previous_search(&mut histories, &outcome);
+        record_previous_search(&mut histories, &outcome, &outcome);
         assert_eq!(
             histories.previous_search.score_and_average,
             Some((-1000, -750))

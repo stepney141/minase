@@ -33,6 +33,69 @@ fn previous_search_records_the_adopted_main_worker_result() {
         histories.previous_search.score_and_average,
         Some((outcome.result.score, outcome.result.score))
     );
+    assert_eq!(histories.previous_search.time_reduction, 1000);
+}
+
+// 時間伸縮を使う探索は、完了反復で主ワーカーが最後に求めた短縮率を持ち越す。
+#[test]
+fn scaled_search_records_the_last_main_time_reduction() {
+    let snapshot = snapshot_for(&quiet_midgame());
+    let limits = SearchLimits::new(Some(1), None, None, Some(clock(100_000, 0, 0))).unwrap();
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    assert_eq!(histories.previous_search.time_reduction, 850);
+    let outcome = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &limits,
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(
+        histories.previous_search.time_reduction,
+        time_reduction(0, TimeReductionCoefficients::current())
+    );
+}
+
+// 時計とmovetimeを併用する探索は時間伸縮を使わず、短縮率を中立値へ戻す。
+#[test]
+fn clock_with_movetime_records_neutral_time_reduction() {
+    let snapshot = snapshot_for(&quiet_midgame());
+    let limits =
+        SearchLimits::new(Some(1), None, Some(100_000), Some(clock(100_000, 0, 0))).unwrap();
+    let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    histories.previous_search.time_reduction = 777;
+    let outcome = run_search_team(
+        test_nnue(),
+        &snapshot.position,
+        snapshot.rules(),
+        snapshot.repetition(),
+        DRAW_SCORE,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &limits,
+        &AtomicBool::new(false),
+        DEFAULT_THREADS,
+        &small_tt(),
+        &mut histories,
+        None,
+        &ManualClock::new(Duration::ZERO),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(outcome.result.depth, 1);
+    assert_eq!(histories.previous_search.time_reduction, 1000);
 }
 
 // 深さ1を完了しない直前の探索は欠測であり、それ以前の有効値を残さない。
@@ -41,6 +104,7 @@ fn previous_search_is_cleared_when_every_worker_stops_at_depth_zero() {
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     histories.previous_search.score_and_average = Some((123, 456));
+    histories.previous_search.time_reduction = 777;
     let outcome = run_search_team(
         test_nnue(),
         &snapshot.position,
@@ -61,14 +125,18 @@ fn previous_search_is_cleared_when_every_worker_stops_at_depth_zero() {
     );
     assert_eq!(outcome.result.depth, 0);
     assert_eq!(histories.previous_search.score_and_average, None);
+    assert_eq!(histories.previous_search.time_reduction, 1000);
 }
 
 #[test]
 fn history_tables_clear_removes_the_previous_search_value() {
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
+    assert_eq!(histories.previous_search.time_reduction, 850);
     histories.previous_search.score_and_average = Some((123, 456));
+    histories.previous_search.time_reduction = 777;
     histories.clear();
     assert_eq!(histories.previous_search.score_and_average, None);
+    assert_eq!(histories.previous_search.time_reduction, 850);
 }
 
 // 停止済みでも根の開始は1回。両方の履歴を全要素、各ワーカーで検査する。
@@ -335,6 +403,7 @@ fn history_carry_workers_update_their_own_table() {
             WorkerOutcome {
                 partial_score: None,
                 returned_move_average: Some(index as i32),
+                time_reduction: (index == 0).then_some(1000),
                 worker_index: index,
                 result: SearchResult {
                     #[cfg(feature = "search-stats")]

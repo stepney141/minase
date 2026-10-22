@@ -279,11 +279,13 @@ const PAWN_KEYS: [u64; COLOR_COUNT * 2 * BOARD_SQUARE_COUNT] = {
 /// `CaptureHistoryDecay`%へ減衰させる。Continuation historyとpawn historyは減衰させない。
 /// 局面を鍵にした5つの補正表は探索チームで共有し、continuation correction historyは
 /// ワーカーごとに持つ。どちらも減衰させず、対局内の次の根の探索へ持ち越す。
-/// 直前の探索の評価値と返却手の平均値は、探索チームが採用結果から更新し、深さ0なら消去する。
+/// 直前の探索の評価値と返却手の平均値は採用結果から更新し、深さ0なら消去する。
+/// best move stabilityの短縮率は主ワーカーの最後の値を保持し、計算しなかった探索では1000とする。
 /// プロトコル層は、新規対局、受理した規則変更、受理した置換表容量の指定、引き分けの
 /// 評価値の変更、およびワーカー数の変更で初期化する。
 /// 拒否した変更と同じワーカー数の再指定では保持するが、置換表容量は同じ値の再指定でも初期化する。
-/// [`Self::clear`]でも表と直前の探索の値を初期化する。killer手は持ち越さない。
+/// [`Self::clear`]でも表と直前の探索の値を初期化し、短縮率を850へ戻す。
+/// killer手は持ち越さない。
 /// 各表の寿命と共有範囲の判断は
 /// `docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 pub struct HistoryTables {
