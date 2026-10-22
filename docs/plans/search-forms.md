@@ -32,7 +32,8 @@ SPSAは、2026年10月17日の利用者の決定により、サブタスクご�
 STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）、サブタスク5がサブタスク4を採用した版に対して`H1`（約+261 Elo、[記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）、サブタスク6がサブタスク5を採用した版に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo、[記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
 サブタスク7は、形の変更の実装と開始値の事前対局を終え、利用者はそのセッションの費用を入金した。
 同じ日に、利用者は、調整機の出品はvast.aiの検証済みでなくてもよいと決めた（選定条件の節）。検証されていないEPYC 9B45の出品は、1回目がコンテナに46 CPUぶんしか割り当てられておらず、2回目がSSHに接続できなかったので、どちらも本番の前に削除した。`remote.py`は物理コア数を`lscpu`で数え、コンテナのCPUの割り当て（cgroup）を見ないので、出品の表示と割り当てが違う機械では、同時対局数を物理コア数から決めて負荷時の速度を測り、所要時間の見込みの上限で止まる。
-次の一手は、サブタスク7の調整機を借りて、時間切れの事前確認とSPSAへ進むことである。
+物理192コアのEPYCの出品は約8時間半待っても出なかったので、2026年10月23日に、利用者の決定でAMD Ryzen Threadripper PRO 9995WX（物理96コア、1時間約2.00米ドル）を借りた。同時対局数は95、負荷時の速度は測定機とほぼ同じで`f`は1.00だった。時間切れの事前確認は異常なしで終わり、SPSAの本番は約12.7時間の見込みで進んでいる。
+次の一手は、サブタスク7のSPSAを終えて、反映、事前対局、およびSTCへ進むことである。
 
 ## 目的
 
