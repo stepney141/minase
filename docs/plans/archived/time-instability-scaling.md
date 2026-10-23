@@ -80,7 +80,7 @@ fail-lowとは、aspiration windows（直前の反復の評価値の周りに狭
 起点の探索の深さは当時より深く、[起点の時計の記録](../../measurements/time-instability-scaling/time-instability-scaling-baseline.md)では、STCの平均完了深さは手数帯ごとに約14〜17である。
 開始時点の時間の使い方は、SPSAの前の開始値の事前対局（フェーズ2）で記録する。
 
-[秒読みつき時計での持ち時間と秒読みの活用](../byoyomi-time-usage.md)は、持ち時間期（持ち時間を使い切る前の手）の配分を局面の難しさで変える段階Bとして、持ち時間の消費の速さが異なる3候補を用意した。
+[秒読みつき時計での持ち時間と秒読みの活用](byoyomi-time-usage.md)は、持ち時間期（持ち時間を使い切る前の手）の配分を局面の難しさで変える段階Bとして、持ち時間の消費の速さが異なる3候補を用意した。
 B0は消費の水準を現行に保つ候補、B1は持ち時間を早く使い切る候補、B2は持ち時間を200手目まで残す候補である。
 3候補はいずれも、先に採用した段階A（秒読み期の締切と途中結果の採用）の構成を秒読みつきの条件で上回らなかった。
 3候補は共通の二値の「難しさの信号」を使った。
@@ -599,6 +599,6 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`、`src/search.h`、`src/thread.cpp`、`src/timeman.cpp`、`src/types.h`、および`src/misc.h`。採用したスレッドの値の記録は`search.cpp`の252〜260行、前の探索の値の記録は644行、反復の値の初期化は319〜322行、変化回数の累計の減衰は354行、深さを増やさない回数は369〜370行、反復の深さの式は410〜411行、最善手が変わった深さの記録は526〜547行、4因子と積は592〜613行、合法手が1つの上限は615〜617行、停止と詰みの判定は621〜624行、深さを増やす状態の更新は634行、根の手の平均値とノード数の累計は1474〜1495行、変化回数の計数は1504行と1531〜1532行。前の探索の値の初期化は`thread.cpp`の251行と270〜275行、深さを増やす状態の初期化は304行。相手との残り時間の差は`timeman.cpp`の151〜156行、上限時間は159〜162行、先読みの25%増しは164〜165行。歩兵価値は`types.h`の199行、`VALUE_INFINITE`は155行。直線の`interpolate`は`misc.h`の486〜489行。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`と`source/timeman.cpp`。4因子と積は1969〜1990行、合法手が1つの上限は1995〜1996行、停止の判定は2041行。`timeman.cpp`は相手の残り時間を参照せず、283〜286行で`USI_Ponder`が有効で`Stochastic_Ponder`が無効なら目安時間を25%増やす。
 - [持ち時間の効率的な使用](time-management-efficiency.md)の「棄却した再構成の各段階」、[第2段階の事前判定](../../measurements/time-management-efficiency/time-management-efficiency-stage2-bench.md)、および[第3段階のベンチ](../../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)。
-- [棋力向上段階6](strength-stage6.md)と[秒読みつき時計での持ち時間と秒読みの活用](../byoyomi-time-usage.md)。
+- [棋力向上段階6](strength-stage6.md)と[秒読みつき時計での持ち時間と秒読みの活用](byoyomi-time-usage.md)。
 - [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../../guides/spsa.md)、[SPRTによる棋力測定の手引き](../../guides/sprt.md)、および[反復予算の調査](../../research/spsa-iteration-budget.md)。

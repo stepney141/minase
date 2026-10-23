@@ -59,7 +59,7 @@ minaseは中断した反復の結果を捨てるので、この項は使い捨�
 その後、aspiration windowsの窓の中心を置くために、根の手ごとの評価値の平均と累計の探索ノード数を記録する仕組みが入った（[窓の形のADR](center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)）。
 伸縮の4因子のうち、評価値の下落と最善手のノード占有率はこの記録を使うが、秒読みのない時計で途中結果を採るためには使わない。
 
-秒読みが正の時計の配分と途中結果の扱いは、[秒読みつき時計での持ち時間と秒読みの活用](../plans/byoyomi-time-usage.md)が別に定めており、この決定は秒読みのない時計に適用する。
+秒読みが正の時計の配分と途中結果の扱いは、[秒読みつき時計での持ち時間と秒読みの活用](../plans/archived/byoyomi-time-usage.md)が別に定めており、この決定は秒読みのない時計に適用する。
 時間管理の機構を変える提案では、採否測定の前に総思考時間と使い残しを現行と比べる（[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)）。
 設計書は、統括計画の決定により、この比較を採否の条件ではなく記録にした。
 開始値の[事前対局](../measurements/time-instability-scaling/time-instability-scaling-start.md)では、1局の総思考時間は起点の0.992倍であり、完了深さは7つの手数帯のうち5つで起点を下回った。

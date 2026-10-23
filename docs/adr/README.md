@@ -212,6 +212,9 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月5日 [再開は実行条件を`manifest.json`だけから読み、runnerと測定機を照合しない](archive/resume-from-the-manifest-without-checking-the-runner.md)（置き換え済み）
 - 2026年10月5日 [補助ツールを実行ファイル`minase`のサブコマンドにし、エンジンはサブコマンドなしで起動する](run-developer-tools-as-engine-subcommands.md)
 - 2026年10月5日 [評価関数の候補は探索係数を調整し直さずに採否を測る](judge-evaluation-candidates-without-retuning-search-coefficients.md)
+- 2026年10月6日 [秒読み期は締切まで反復を始め、締切で打ち切った反復の途中結果で指す](search-to-the-byoyomi-deadline-and-play-partial-results.md)
+- 2026年10月6日 [秒読みの締切の余裕をミリ秒のUSIオプション`ByoyomiMargin`で与え、既定値を30 msにする](give-the-byoyomi-margin-as-a-millisecond-usi-option.md)
+- 2026年10月7日 [秒読みつきの時計で、持ち時間を局面の難しさで重み付けして配分しない](do-not-weight-main-time-by-difficulty-on-byoyomi-clocks.md)
 - 2026年10月10日 [butterfly historyと捕獲履歴を対局内で減衰させて持ち越す](archive/carry-history-tables-within-a-game.md)（置き換え済み）
 - 2026年10月10日 [lishogiのBotの`ByoyomiMargin`を3,000 msにする](set-bot-byoyomi-margin-to-3000-ms.md)
 - 2026年10月10日 [先頭の捕獲手だけをSEEで判定し、損ならkiller手を先に返す](try-killers-before-a-losing-first-capture.md)

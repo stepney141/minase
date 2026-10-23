@@ -18,5 +18,5 @@ Botのログで着手の`POST`の往復時間を測ると、0.6秒を超えた�
 
 ## 出典
 
-- [秒読みつき時計での持ち時間と秒読みの活用](../plans/byoyomi-time-usage.md)の「状態」。
+- [秒読みつき時計での持ち時間と秒読みの活用](../plans/archived/byoyomi-time-usage.md)の「状態」。
 - 配備リポジトリ`minase-lishogi-bot`の`config.yml`と`README.md`の「通常対局の時計の換算と注意」。

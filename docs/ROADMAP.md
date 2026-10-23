@@ -84,7 +84,7 @@
 | 測定の再開条件の簡素化 | [plans/archived/match-resume-simplification.md](plans/archived/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
 | PSTとFMの同時学習 | [plans/archived/pst-fm-joint-training.md](plans/archived/pst-fm-joint-training.md) | 完了（不採用） | 2026年10月8日 |
 | FMの補正の倍率のSPSAによる調整 | [plans/archived/fm-scale-spsa.md](plans/archived/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
-| 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
+| 秒読みつき時計での持ち時間と秒読みの活用 | [plans/archived/byoyomi-time-usage.md](plans/archived/byoyomi-time-usage.md) | 完了（一部不採用） | 2026年10月23日 |
 | NNUEの共通土台と初代のネットによるPST＋FMの完全代替 | [plans/archived/nnue-replacement.md](plans/archived/nnue-replacement.md) | 完了（採用） | 2026年10月12日 |
 | 手の順序付けの改善 | [plans/archived/move-ordering.md](plans/archived/move-ordering.md) | 完了（採用） | 2026年10月10日 |
 | 詰み探索（df-pn） | [plans/mate-search.md](plans/mate-search.md) | 起案 | |
@@ -116,9 +116,9 @@
 
 ### 直近の完了
 
+- [秒読みつき時計での持ち時間と秒読みの活用](plans/archived/byoyomi-time-usage.md)は2026年10月23日に、一部不採用で完了した。秒読み期は締切まで反復を始め、締切で打ち切った反復の途中結果で指す段階Aは、持ち時間と秒読みの比が20と150の秒読みつきの2条件のGSPRTでともに`H1`となり、採用した（minase 2.2.0以降）。持ち時間を局面の難しさで重み付けする段階Bの3候補は、段階Aを上回らず不採用とした。lishogiのBotは、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局51局で、Bot側の時間切れが0件だった（[Botの記録](measurements/byoyomi-time-usage/bot-byoyomi-margin-3000.md)）。
 - [探索の関数形の見直しの統括計画](plans/archived/search-forms.md)は2026年10月23日に、採用で完了した。探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本のサブタスクを、vast.aiで借りた計算機での30,000ペアのSPSAで1本ずつ調整し、2026年10月18日の利用者の決定によりSTCの結果によらず採用した。7本を終えた版は、統括計画を始める前のmaster（`99ccc6bb`）に対して、測定機のLTCで104ペアで`H1`（約+493 Elo）だった（[LTCの記録](measurements/search-forms/search-forms-ltc.md)）。サブタスク1のSTCは`H0`（約−17 Elo）であり、その原因を調べるかは利用者が決める。
 - [探索の不安定さに応じた持ち時間の伸縮](plans/archived/time-instability-scaling.md)は2026年10月23日に、採用で完了した。完了反復ごとに目安の時間softへStockfishの4因子（falling eval、best move stability、best move instability、best move effort）の積を掛けて伸縮させ、相手との残り時間の差による補正、根の候補が1手の局面の上限、目安の時間の半分を過ぎた後に始めた反復を浅く読む規則、短い詰みでの早期停止、および先読みの後の目安時間の25%増しを加えた。最善手が続けて同じときの二値の短縮は残し、その反復数を係数にした。103個の係数を30,000ペアのSPSAでvast.aiの計算機を使って約11.4時間で調整したところ、評価値の下落と最善手の変化回数への反応は、開始値にしたStockfishの換算値より弱くなった（[SPSAの記録](measurements/time-instability-scaling/time-instability-scaling.md)）。同じ計算機で持ち時間を換算せずに行ったSTCは、1つ前のサブタスクを採用した版に対して303ペアで`H1`（約+51 Elo）だった（[STCの記録](measurements/time-instability-scaling/time-instability-scaling-stc.md)）。秒読みつきの短い条件では`H1`とならなかった（`H0`、約−4 Elo）ので、相手との残り時間の差の補正を除く項目は秒読みが0の時計に限った（[秒読みつきの短い条件の記録](measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)）。
-- [aspiration windowsの幅と窓の移し方の見直し](plans/archived/aspiration-window-forms.md)は2026年10月22日に、採用で完了した。aspiration windowsの窓を深さ2以上で使い、窓の中心には、直前の反復の最善手を根で読むたびに得た値の平均（Stockfishの`averageScore`）を置いた。初期の半幅は、定数項、根の値の大きさの項、およびワーカー番号の項の和にした。窓外れのときは返った値を基準に両端を移し、fail highが続くときは読み直しの深さを減らして次の反復へ持ち越す。形の変更は深さ9のbenchの探索ノード数を約14.8%減らし、1つのコアのNPSを約2.2%下げた（[benchの記録](measurements/aspiration-window-forms/aspiration-window-forms-bench.md)）。91個の係数を30,000ペアのSPSAでvast.aiの計算機を使って約7.9時間で調整したところ、初期の半幅の定数項は2%から100%へ上がり、旧来の97%とほぼ同じになった（[SPSAの記録](measurements/aspiration-window-forms/aspiration-window-forms.md)）。同じ計算機で持ち時間を換算せずに行ったSTCは、1つ前のサブタスクを採用した版に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった（[STCの記録](measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）。
 
 ### 次の候補
 
@@ -131,7 +131,6 @@
 - [Athénanの計画](plans/athenan.md)は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。PSTを既定の評価関数とする前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - 評価関数の後続3計画（[静止探索の出力](plans/archived/qsearch-output-training.md)、[順位の損失](plans/archived/rank-loss-training.md)、[関係補正項](plans/archived/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
-- [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、自己対局の教師生成をvast.aiで借りる計算機へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、生成機のディスクに置いたファイルを作業機が10分ごとに取得して検査し、検査済みのファイルが作業機にあることを完了の記録とする。機種はZen 4以降のEPYCを2基積んだ384スレッドの機械を条件で選ぶ。フェーズ0の生成機での試走では、EPYC 9654の2基構成が同時384局で1ファイルを653秒で生成し、30ファイルは約5.5時間、約5.6米ドルと見込む（[試走の記録](measurements/vast-selfplay/vast-selfplay-trial.md)）。作業機での同じ条件の測定は、作業機で動いている別の学習が終わるのを待っている。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。

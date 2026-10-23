@@ -35,7 +35,7 @@
 時間制御のGSPRTは上限500ペアでLLRが2.615の判定保留であったが、固定局数のEloは+62.1、95%信頼区間は［+41.5, +83.0］であった（[測定記録](../measurements/lazy-smp/lazy-smp-v2-threads2-tc.md)）。
 設計書は500ペアの判定保留を不採用と定めていたが、この規定から逸脱することを明記して採用した。
 現行の[棋力測定の手引き](../guides/sprt.md)は信頼区間を採用の根拠に読み替えることを禁じており、この採用はその規則より前の判断である。
-後に[秒読みつき時計での持ち時間と秒読みの活用](../plans/byoyomi-time-usage.md)が、同じ深さのワーカーの間で途中結果の有無を比べる基準を加えた。
+後に[秒読みつき時計での持ち時間と秒読みの活用](../plans/archived/byoyomi-time-usage.md)が、同じ深さのワーカーの間で途中結果の有無を比べる基準を加えた。
 `Threads=4`対`Threads=2`の測定は行っていない。
 測定は評価関数v0の時期に行ったので、多様化の方式を変える提案には再測定が要る。
 探索する深さの列の詳細は`crates/minase/src/search/alphabeta/deepening.rs`の`auxiliary_depths`のdocコメントに、結果の選択は`team.rs`の`select_worker_outcome`のdocコメントにある。
