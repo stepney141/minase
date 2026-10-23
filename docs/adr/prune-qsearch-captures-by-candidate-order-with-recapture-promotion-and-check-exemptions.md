@@ -34,7 +34,7 @@ Stockfishの静止探索は、置換表の手を含む候補を枝刈りの前�
 delta pruningとSEEの閾値で読まなかった手は、その手の見積りで最善値を引き上げる（同`1834, 1841`）。
 将棋のYaneuraOuも同じ形を持つが、成る手の免除は外したほうが強かったとして、通常のビルドで無効にしている（`yaneuraou-search.cpp:4916-4921`、`source/config.h:337`）。
 
-2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにある項目は入れ、minaseの既存の仕組みのうち中将棋の規則や診断で決めたものは残す。
+2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにある項目は入れ、minaseの既存の仕組みのうち中将棋の規則や診断で決めたものは残す。
 新しい係数の開始値はStockfishの値を歩兵価値で換算した値とし、Stockfishに同じ形の値がある既存の係数も、その換算値を開始値に置き直す。
 [静止探索の補正と枝刈りの形の見直し](../plans/archived/qsearch-forms.md)は、この決定に従って静止探索の7項目を1つの候補にまとめて実装した。
 

@@ -8,7 +8,7 @@
 ## コマンドライン
 
 パラメーターファイル`aspiration-window-forms-safety.params`は、本番の91係数のファイルの写しで、開始値を`HardRemainingShare` = 50、`HardSoftRatio` = 800、`MinMoves` = 40、および`IterationRatio` = 150へ書き換えたものである。`HardRemainingShare`は、本番の開始値もすでに範囲の上端の50である。
-反復数156は、[統括計画](../../plans/search-forms.md)が定める`⌈13 × 同時対局数 ÷ 16⌉`（同時対局数191）である。
+反復数156は、[統括計画](../../plans/archived/search-forms.md)が定める`⌈13 × 同時対局数 ÷ 16⌉`（同時対局数191）である。
 持ち時間は、測定機のSTC`time=10000+100`に、この調整機で測った換算係数1.37を掛けた値である。
 換算係数は、測定機の負荷時の速度467,260 NPSを、調整機で191本の`dev bench`を同時に走らせた負荷時の速度340,521 NPSで割った比を、小数第2位に丸めた値である。
 測定機の値は、調整用ビルドを16本同時に`minase dev bench --depth 9 --repetitions 3`で走らせた平均NPSを5回測った中央値であり、5回の値は470,331、453,675、467,260、477,536、および459,882 NPSだった。

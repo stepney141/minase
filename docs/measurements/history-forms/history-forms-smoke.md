@@ -7,7 +7,7 @@
 
 ## コマンドライン
 
-[統括計画](../../plans/search-forms.md)の決定により、SPSAを終えた調整機で、持ち時間を換算せずに実行した。
+[統括計画](../../plans/archived/search-forms.md)の決定により、SPSAを終えた調整機で、持ち時間を換算せずに実行した。
 候補のコミットは、測定機で作った`git bundle`で調整機のcloneへ取り込んだ。
 
 ```console

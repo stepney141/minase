@@ -27,7 +27,7 @@ fail highではαを「元のβ − 半幅」と元のαの大きい方へ上げ
 どちらも、そのたびに半幅を約1.37倍にする（`src/search.cpp:437-455`）。
 窓は全深さで同じ式で置くが、深さ1では平均の初期値が`−VALUE_INFINITE`なので、実質的に全窓になる（`src/search.h:154-158`）。
 
-2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れる。
+2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れる。
 同じ決定により、[aspiration windowsの形の見直し](../plans/archived/aspiration-window-forms.md)では、窓の幅、中心、拡大、および窓外れのときの窓の移し方をStockfishの形にそろえ、fail lowとfail highで端の寄せ方を分け、ワーカー番号で半幅をずらす項も入れる。
 新しい係数の開始値と、Stockfishに同じ形の値がある既存の係数は、Stockfishの値の換算値にする。
 SPSAでは各仕組みの強さを決める値だけを調整し、平均の重みのような内部の定数はStockfishの値で固定する。

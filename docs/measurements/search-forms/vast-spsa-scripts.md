@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索の関数形の見直しの統括計画](../../plans/search-forms.md)のフェーズ1として、`scripts/vast-spsa/`の`launch.sh`、`remote.sh`、および`fetch.sh`と、教師生成と共通の処理を置く`scripts/vast/common.sh`を実際のvast.aiの機械で動かし、統括計画の「検証」の表の条件で、正常の流れと異常時の止まり方を確かめる。
+[探索の関数形の見直しの統括計画](../../plans/archived/search-forms.md)のフェーズ1として、`scripts/vast-spsa/`の`launch.sh`、`remote.sh`、および`fetch.sh`と、教師生成と共通の処理を置く`scripts/vast/common.sh`を実際のvast.aiの機械で動かし、統括計画の「検証」の表の条件で、正常の流れと異常時の止まり方を確かめる。
 棋力測定ではない。
 
 ## コマンドライン

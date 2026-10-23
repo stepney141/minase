@@ -19,7 +19,7 @@ Stockfishは、歩兵の配置、小駒の配置、および先手と後手そ�
 各表は、合成した補正後の評価と探索値の差から作った1つの更新量を表ごとの倍率で掛け、重力式（要素`v`へ更新量`b`を`v ← v + b − v|b|/1024`で取り込み、値が上限に近いほど動きにくくする式）で更新する（`src/search.cpp:120-143, 1664-1673`）。
 補正量の大きさは、LMR（後方の手を浅く読む減深）の減深量とreverse futility pruningの余裕値にも使う。
 
-2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../../plans/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseの既存の仕組みのうち中将棋の診断や測定で決めたものは残して調整の対象にする。
+2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../../plans/archived/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseの既存の仕組みのうち中将棋の診断や測定で決めたものは残して調整の対象にする。
 同じ日の決定により、[correction historyの表の設計書](../../plans/archived/correction-history-tables.md)については、表の大きさと共有の仕方をStockfishと同じにし、表を合成した補正後の評価との残差で更新し、表を対局の間減衰させずに持ち越し、更新の倍率と初期値はStockfishの値で固定する。
 
 ## 決定

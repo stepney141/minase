@@ -8,7 +8,7 @@ SPSAの対局結果は強さの根拠にしない。
 
 ## コマンドライン
 
-[統括計画](../../plans/search-forms.md)の調整機で、`scripts/vast-spsa/remote.py`が[時間切れの事前確認](aspiration-window-forms-safety.md)を通した後に次を実行した。
+[統括計画](../../plans/archived/search-forms.md)の調整機で、`scripts/vast-spsa/remote.py`が[時間切れの事前確認](aspiration-window-forms-safety.md)を通した後に次を実行した。
 
 ```console
 target/release/minase spsa --run-dir /workspace/job/aspiration-window-forms --seed 4750000000 \

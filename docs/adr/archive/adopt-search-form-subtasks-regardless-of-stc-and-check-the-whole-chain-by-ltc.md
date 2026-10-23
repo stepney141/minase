@@ -10,7 +10,7 @@ minaseの機能採否は、STCで選別し、LTCの`H1`だけで採用を決め�
 STCで`H0`となった候補は採用せず、LTCへも進めない。
 SPSAの値も、最終値を既定値へ書き込んだ候補として同じ段階ゲートで採否を決める（[SPSAの値の採否のADR](../adopt-spsa-values-only-through-the-staged-gate.md)）。
 
-[探索の関数形の見直しの統括計画](../../plans/search-forms.md)は、minaseの探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本の設計書をサブタスクとして束ねる。
+[探索の関数形の見直しの統括計画](../../plans/archived/search-forms.md)は、minaseの探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本の設計書をサブタスクとして束ねる。
 各サブタスクは、式の形を変える実装をしたうえで、その時点の全係数を30,000ペアのSPSAで調整する。
 以下、SPSAのためにvast.aiで借りる計算機を調整機、開発と棋力測定に使う手元の機械を測定機と呼ぶ。
 SPSAは調整機で行い、その後の事前対局とSTCも、同じ調整機で持ち時間を換算せずに行う（[調整機のADR](../run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)）。

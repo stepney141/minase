@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索の関数形の見直しの統括計画](../../plans/search-forms.md)のフェーズ1のスクリプトを、2026年10月18日にBashからPythonへ書き直した（設計判断の「スクリプトの言語」）。
+[探索の関数形の見直しの統括計画](../../plans/archived/search-forms.md)のフェーズ1のスクリプトを、2026年10月18日にBashからPythonへ書き直した（設計判断の「スクリプトの言語」）。
 書き直した`launch.py`、`remote.py`、`fetch.py`、および`scripts/vast/common.py`が、本物のvast.aiの機械で、作成から削除までの正常の流れを通すことを確かめる。
 棋力測定ではない。
 異常時の止まり方は、偽の`vastai`、`ssh`、`scp`、および`rsync`を使うテストで確かめ、実機では繰り返していない。

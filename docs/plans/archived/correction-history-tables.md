@@ -19,13 +19,13 @@ SPSA（simultaneous perturbation stochastic approximation、全係数を同時�
 新しい係数の開始値はStockfishの値を中将棋の歩兵価値へ換算した値とし、既存の係数とまとめてSPSAで調整する。
 本書は、探索の関数形をStockfishとYaneuraOuの形へ寄せる設計書の連鎖の4本目であり、1つ前の設計書が完了した後のmasterを起点とする。
 調整した版を、起点のmasterと短時間条件STCの逐次検定で対局させ、強さの変化を記録する。
-[統括計画](../search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
+[統括計画](search-forms.md)の決定により、本書の変更はSTCの結果によらず採用し、長時間条件LTCは行わない。
 完了条件は、SPSAとSTCの測定記録を残し、候補をmasterへ統合することである。
 
 ## 状態
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
-完了（採用）。2026年10月17日に起案し、2026年10月20日に[統括計画](../search-forms.md)のサブタスク4として着手して、2026年10月21日に完了した。
+完了（採用）。2026年10月17日に起案し、2026年10月20日に[統括計画](search-forms.md)のサブタスク4として着手して、2026年10月21日に完了した。
 挙動を変えない移行1項目と、5項目（C4、C2、C3、C1、C5）の形の変更を実装し、89個の係数を30,000ペアのSPSAで調整した値を反映した版を、1つの候補として採用した。
 設計判断は、[補正表の鍵、合成、および更新のADR](../../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[表の持ち越しと共有のADR](../../adr/carry-histories-and-correction-histories-within-a-game.md)、および[LMRのADR](../../adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)に移した。
 起点のコードとの照合の結果、Stockfishと起点に合わせて次の4点を決めた。更新量に1061/1024を掛けるのは±256の切り詰めの後とし、根でも局面の表を更新し、引き分けの評価値の変更でも表を初期化し、LMRの補正項は切り捨てる前の重み付きの和から求める。これらはClaudeの判断である。
@@ -34,7 +34,7 @@ SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTC
 測定の記録は、[benchのノード数、探索速度、およびメモリ](../../measurements/correction-history-tables/correction-history-tables-bench.md)、[時間切れの事前確認](../../measurements/correction-history-tables/correction-history-tables-safety.md)、[SPSA](../../measurements/correction-history-tables/correction-history-tables.md)、[事前対局](../../measurements/correction-history-tables/correction-history-tables-smoke.md)、および[STC](../../measurements/correction-history-tables/correction-history-tables-stc.md)にある。
 SPSAの前に、係数の既定値を範囲の1/3と2/3に置いた表で失敗する補正表とreverse futility pruningのテスト6件を直したので、SPSAの値を反映した後のテストはすべて通った。
 lishogiのBotのコンテナはメモリの上限が6 GiBであり、2局を同時に対局する構成（各エンジンの置換表2 GB、`Threads`は4）に、本書の変更による1エンジンあたり約150 MBの増分が加わっても、上限に収まる見込みである。
-7本のサブタスクを通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
+7本のサブタスクを通して元のmasterより強くなったかは、[統括計画](search-forms.md)のフェーズ10で確かめる。
 
 ## 目的
 
@@ -114,7 +114,7 @@ continuation correction historyの表の引き方は、[historyの更新量の�
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、採否の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 測定機はlishogiのBotと共用するので、測定機での対局の同時対局数は16を上限とする。
-時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
+時間切れの事前確認とSPSAのセッションは、[探索の関数形の見直しの統括計画](search-forms.md)に従い、vast.aiで借りる調整機で行う。
 実装はcodexへ委任する（[委任の手引き](../../guides/codex-delegation.md)）。
 
 本書は、起点で有効な次のADRの決定の一部を変える。
@@ -138,7 +138,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 | 新しい係数の範囲 | 利用者の決定により、Stockfishの換算値、YaneuraOuの換算値（歩兵価値90、`source/evaluate.h:78`）、およびminaseの現行の対応する値の3つをすべて含める。現行に表や項がない係数は、現行の値を0とする。3つの値は次の行に示す。 |
 | 換算値と開始値の比較 | 重みは、pawnがStockfish 52、YaneuraOu 105、現行0、minorが36、75、0、non-pawnが44、107、0、2手前と4手前の文脈が30、69、0、6手前の文脈が24、なし、0である。更新量は、上界でないノードが20、8、なし、上界のノードが29、12、なしである。LMRの項は101、45、0である。材料表の重みは、StockfishにもYaneuraOuにもなく、起点の`CorrectionCap`の値277である。重みの開始値はYaneuraOuの換算値の約半分であり、更新量とLMRの項の開始値はYaneuraOuの換算値の2倍を超える。補正の表と項を持たない現行からは、いずれも離れた値から始まる。 |
 | SPSAの対象 | 利用者の決定により、SPSAで調整するのは各仕組みの強さを決める値（表の重み、更新量、LMRの項）だけとし、残した材料表の重みも調整する。上下限、表ごとの更新の倍率、初期値などはStockfishの値で固定し、固定する定数の節に行番号とともにまとめる。起点の表の調整対象の全係数（調整用ビルドの評価の補正だけが使う倍率`FmScale`を除く82係数）から、新しい形では使わなくなる`CorrectionCap`と`CorrectionWeight`を除き、新しい9係数を加えた89係数を調整する。新しい係数だけを調整する案は、既存の係数との相互作用を検証の外に置くので採らない（先例のADRと同じ理由）。時間管理の係数を含めるので、本番の前に時間切れの事前確認を行う。 |
-| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](../search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](../search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。本書の調整対象は89係数である。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
+| SPSAの設定 | 既定の設定を流用する。3,750反復、1反復8ペア（計30,000ペア）、調整機での実行、持ち時間は測定機の10秒＋0.1秒を[統括計画](search-forms.md#持ち時間の換算)の方式で換算した値、同時対局数は[統括計画](search-forms.md#同時対局数とメモリ)が調整機ごとに決める数、`c_end`（最後の反復の摂動幅）は範囲の1/6、`r_end`（最後の反復の学習率）は0.002である（[SPSAの手引き](../../guides/spsa.md)）。30,000ペアは候補を1つ作るための予算であり、最終値を最適値とは呼ばない。総ペア数は、[利得と規模のADR](../../adr/decay-spsa-gains-over-30000-pair-sessions.md)が定める標準の30,000ペアである。本書の調整対象は89係数である。30,000ペアでこの数を十分に調整できるかは未検証であり、不採用はこの予算と設定で改善を示さなかったことを意味する。予算を変える場合は開始前に決め、途中で延長しない（[反復予算の調査](../../research/spsa-iteration-budget.md)）。 |
 | 局面の鍵（C2） | Stockfishの4つの鍵（pawn、minor、先手と後手のnon-pawn）に当たる鍵を使う（Stockfish `src/position.cpp:505-526`）。pawnの鍵は、[historyの更新量の形とcontinuation historyの設計書](history-forms.md)がpawn historyのために導入した双方の歩兵と仲人の配置の鍵を再利用する。[日本中将棋連盟の競技規則](https://www.chushogi-renmei.com/kouza/rule2007.htm)は駒の格付けで歩兵と仲人を「歩」の格にまとめ、RULES.md第3条第11項も2種を「価値ある駒」から除く。minorの鍵は、同じ格付けが「小駒」とする猛豹、銅将、銀将、金将、盲虎、醉象、麒麟、および太子のうち、王駒の太子を除く7種の双方の配置とする。Stockfishのminorの鍵もキングを除く（`src/position.cpp:518-524`）。成った歩兵は金将と、成った仲人は醉象と同じ動きなので小駒に含める。この扱いは格付けに明文がなく、本書の判断であり、利用者はこの定義を了承した。minaseは成った駒を成った後の駒種で表し、成った歩兵を金将、成った仲人を醉象とするので、所属は駒の現在の駒種が7種のいずれかであるかで判定する。こうすると、成った歩兵と仲人は入り、成って別の駒種になった小駒（太子になった醉象、獅子になった麒麟など）は外れる。先手と後手のnon-pawnの鍵は、それぞれの、現在の駒種が歩兵でも仲人でもない全駒の配置とし、Stockfishと同じく王駒と成った駒を含める（`src/position.cpp:517, 947-957`）。この集合は、pawnの鍵に入る駒の補集合である。minorとnon-pawnの鍵の乱数は、所有者、成りの状態を区別する駒の状態（`piece_state_of`）、および升の組ごとに持つ。pawnとnon-pawnの鍵の定義は[段階12の診断](../../measurements/strength-stage12/strength-stage12-activation-diag.md)のパッチ`correction-keys.patch`と同じであり、その診断は差分更新した鍵を局面からの再計算と440,293回照合して、不一致0件を確かめている。 |
 | 材料表を残すこと | 利用者の決定により残す。Stockfishに材料表はないが、中将棋の[診断](../../adr/archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)で鍵の候補のうち最も予測を改善した表である。他の表と同じ形に改め、Stockfishの表と並べて足す。重み`CorrectionMaterialWeight`の開始値は、起点の`CorrectionCap`の値277とする。新しい形では、要素が上限1024に達したときの補正量が重みの百分率×歩兵価値になるので、起点の補正の上限と同じ大きさになる値である。更新量の倍率は、Stockfishで基準になるpawnの表と同じ128/128とする。 |
 | 表の合成 | Stockfishと同じく、各表の要素に表ごとの重みを掛けて足し合わせ、補正後の評価を評価関数の出力の範囲に収める（Stockfish `src/search.cpp:95-118`）。補正量の全体の上限`CorrectionCap`は、Stockfishにないので除く。先手と後手のnon-pawnの表には同じ重みを使う。2手前と4手前の文脈にも同じ重みを使い、6手前には別の重みを使う。1手前の手がない場合（根とnull moveの直後）は、Stockfishと同じくcontinuation correction historyの代わりに定数を加える。Stockfishの根では1手前の手が`Move::none()`であり、`m.is_ok()`が偽になるからである（`src/search.cpp:97, 104`）。この定数は換算すると歩兵価値の約0.3%である。 |
@@ -303,7 +303,7 @@ history-formsのhistoryの項も同じ位置で引く。
 ## 所要時間の見積り
 
 時間切れの事前確認、SPSA、事前対局、およびSTCは調整機で、反映とテストは測定機で行う。
-SPSAの所要時間は、[統括計画](../search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の3本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
+SPSAの所要時間は、[統括計画](search-forms.md#所要時間と費用)の見積りにより、物理192コアの調整機で同時対局数191なら約13〜18時間である。前の3本のサブタスクは、同じ規模の調整機で約8〜16時間だった。
 本書は1局のメモリを約75 MB増やすので、メモリの少ない調整機では同時対局数が下がり、その分だけ所要時間が延びる。
 
 | 段階 | 内容 | 見積り |
@@ -355,7 +355,7 @@ USIとCECPの`Threads`の上限を受理するかのテストは、256ワーカ�
 開始値と範囲が形の変更の`params.rs`の表と一致すること、および`c_end`と`r_end`が既定値であることを、使い捨てのスクリプトで機械的に突き合わせる。
 
 続いて、手引きの第3節に従い、時間管理の4係数を思考時間が最も長くなる側の範囲の端に置いても時間切れが起きないことを確かめる。
-既定のパラメーターファイルの写しを作り、開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、[統括計画](../search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
+既定のパラメーターファイルの写しを作り、開始値を`HardRemainingShare`＝50、`HardSoftRatio`＝800、`MinMoves`＝40、`IterationRatio`＝150へ書き換えた`data/spsa/correction-history-tables-safety.params`で、[統括計画](search-forms.md#実行の構成)が定める反復数（同時対局数191なら156反復、1,248ペア。同時対局数は調整機ごとに決まる）を調整機で実行する。
 起点で時間管理の係数の名前や範囲が変わっていれば、手引きの第3節の値を起点の表に合わせて読み替える。
 
 ```console
@@ -396,7 +396,7 @@ USIとCECPの`Threads`の上限を受理するかのテストは、256ワーカ�
 候補の調整用ビルドの宣言を`minase spsa params`で出力し、既定値の欄が`apply`の出力と一致することを確かめる。
 
 STCの前に、候補が時間切れやエンジン異常を起こさないことと、時間の使い方の変化を確かめるため、STCの条件で候補と起点の32ペアの事前対局を行う。
-事前対局とSTCは、[統括計画](../search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
+事前対局とSTCは、[統括計画](search-forms.md)の設計判断「対局の実行場所」により、SPSAを終えた調整機で、持ち時間を換算せずに行う。候補のコミットは`git bundle`で調整機のcloneへ渡し、`<固定したminase>`は調整機でrunnerのコミットからビルドしたminaseとする。同時対局数は、SPSAと同じ調整機の同時対局数とする。実行ディレクトリは測定機の`data/matches/`へ取得してから集計し、記録する。
 
 ```console
 <固定したminase> match run \
@@ -410,7 +410,7 @@ STCの前に、候補が時間切れやエンジン異常を起こさないこ�
 
 ### フェーズ5　STC
 
-2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](../search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、本書の変更はSTCの判定によらず採用する（[統括計画](search-forms.md)の設計判断「各サブタスクの採否」）。
 STCは、統括計画のフェーズ10で強くなっていなかった場合に、どのサブタスクで後退したかの手がかりにするための記録として行い、LTCは行わない。
 STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 

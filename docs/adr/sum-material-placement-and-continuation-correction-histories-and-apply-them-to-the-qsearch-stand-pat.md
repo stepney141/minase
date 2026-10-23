@@ -27,7 +27,7 @@ stand-patは、何も指さずに現局面の静的評価を探索値の下限�
 旧ADRは、置換表の保存値と静止探索のstand-patには補正を加えないとしていた。
 通常探索の補正の適用先を広げた[探索の枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)は、静止探索への適用を、すべての静止探索ノードの値を変えて通常探索の項目と効果を切り分けられないとして、別の候補に分けていた。
 
-2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseの既存の仕組みのうち中将棋の診断や測定で決めたものは残して調整の対象にする。
+2026年10月17日のエンジンの開発者の決定により、[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)の各サブタスクでは、形や値がStockfishとYaneuraOuで違えばStockfishに合わせ、Stockfishにだけある項目は入れ、minaseの既存の仕組みのうち中将棋の診断や測定で決めたものは残して調整の対象にする。
 同じ日の決定により、[correction historyの表の設計書](../plans/archived/correction-history-tables.md)については、表の大きさと共有の仕方をStockfishと同じにし、表を合成した補正後の評価との残差で更新し、表を対局の間減衰させずに持ち越し、更新の倍率と初期値はStockfishの値で固定する。
 [静止探索の補正と枝刈りの形の見直し](../plans/archived/qsearch-forms.md)は、静止探索への補正の適用を、静止探索の他の形の差と合わせた7項目の1つとして実装した。
 

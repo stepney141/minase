@@ -8,7 +8,7 @@
 ## コマンドライン
 
 パラメーターファイル`search-pruning-forms-safety.params`は、本番の68係数のファイルの写しで、開始値を`HardRemainingShare` = 50、`HardSoftRatio` = 800、`MinMoves` = 40、および`IterationRatio` = 150へ書き換えたものである。
-反復数78は、[統括計画](../../plans/search-forms.md)が定める`⌈13 × 同時対局数 ÷ 16⌉`（同時対局数95）である。
+反復数78は、[統括計画](../../plans/archived/search-forms.md)が定める`⌈13 × 同時対局数 ÷ 16⌉`（同時対局数95）である。
 持ち時間は、測定機のSTC`time=10000+100`に[試走](../search-forms/vast-spsa-trial.md)で求めた換算係数1.46を掛けた値である。
 
 ```console

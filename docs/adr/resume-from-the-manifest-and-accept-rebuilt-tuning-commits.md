@@ -11,7 +11,7 @@
 runnerを照合しない理由は、[補助ツールのサブコマンド化](../plans/archived/cli-subcommands.md)でrunnerがエンジンと同じ`minase`になり、探索や評価だけの変更でもrunnerのSHA-256が変わるからである。
 fishtest、fastchess、cutechess-cli、およびAyaneも、再開時にrunner自身のハッシュを照合しない（[再開条件の簡素化の参考資料](../plans/archived/match-resume-simplification.md#参考資料)）。
 
-2026年10月18日、[探索の関数形の見直しの統括計画](../plans/search-forms.md)で、SPSAをvast.aiで借りる計算機（以下、調整機）で実行することにした（[調整機のADR](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)）。
+2026年10月18日、[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)で、SPSAをvast.aiで借りる計算機（以下、調整機）で実行することにした（[調整機のADR](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)）。
 調整用ビルドは`.cargo/config.toml`の`target-cpu=native`で機械ごとにビルドされるので、同じコミットでも実行ファイルのSHA-256は機械ごとに変わる。
 旧ADRのままでは、調整機が途中で失われたときに、最初の調整機の実行ファイルを持ち込める同じCPU型の機械でしか再開できない。
 エンジンの開発者は、SPSAを完遂できればよく、新しい機械では都度ビルドし直せばよいと判断した。

@@ -3,7 +3,7 @@
 ## 目的
 
 [correction historyの表の追加と持ち越しの設計書](../../plans/archived/correction-history-tables.md)のフェーズ5として、SPSAの最終値を反映した候補と起点を、短時間条件（10秒＋1手0.1秒）の逐次検定STCで対局させ、強さの変化を記録する。
-[統括計画](../../plans/search-forms.md)の決定により、この判定は採否に使わない。
+[統括計画](../../plans/archived/search-forms.md)の決定により、この判定は採否に使わない。
 
 ## コマンドライン
 

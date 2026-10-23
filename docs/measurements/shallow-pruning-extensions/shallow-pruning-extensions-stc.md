@@ -3,11 +3,11 @@
 ## 目的
 
 [浅い前向き枝刈りの深さと対象の拡張](../../plans/archived/shallow-pruning-extensions.md)のフェーズ5として、[SPSA](shallow-pruning-extensions.md)の最終値を反映した候補が起点より短時間条件で強いかを、GSPRTで測る。
-2026年10月18日の利用者の決定により、統括計画の各サブタスクはSTCの結果によらず採用し、STCは採否に使わない記録とし、LTCは行わない（[統括計画](../../plans/search-forms.md)の設計判断「各サブタスクの採否」）。
+2026年10月18日の利用者の決定により、統括計画の各サブタスクはSTCの結果によらず採用し、STCは採否に使わない記録とし、LTCは行わない（[統括計画](../../plans/archived/search-forms.md)の設計判断「各サブタスクの採否」）。
 
 ## コマンドライン
 
-[統括計画](../../plans/search-forms.md)の決定により、SPSAを終えた調整機で、持ち時間を換算せずに実行した。
+[統括計画](../../plans/archived/search-forms.md)の決定により、SPSAを終えた調整機で、持ち時間を換算せずに実行した。
 
 ```console
 target/release/minase match run \

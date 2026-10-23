@@ -8,7 +8,7 @@ SPSAの対局結果は採否の根拠にしない。
 
 ## コマンドライン
 
-[統括計画](../../plans/search-forms.md)の調整機で、そのスクリプトの完成を待たずに、時間切れの事前確認を通した後に次を手作業で起動した。
+[統括計画](../../plans/archived/search-forms.md)の調整機で、そのスクリプトの完成を待たずに、時間切れの事前確認を通した後に次を手作業で起動した。
 
 ```console
 target/release/minase spsa --run-dir /workspace/job/search-pruning-forms --seed 3250000000 \
