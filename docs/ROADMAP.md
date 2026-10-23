@@ -96,7 +96,7 @@
 | ファイル形式の整理と形式の仕様の整備 | [plans/archived/file-format-consolidation.md](plans/archived/file-format-consolidation.md) | 完了（採用） | 2026年10月13日 |
 | 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
 | メモリより大きい教師データの一様シャッフル | [plans/archived/out-of-core-shuffle.md](plans/archived/out-of-core-shuffle.md) | 完了（採用） | 2026年10月17日 |
-| 引き分けの評価値の設定（DrawValue） | [plans/draw-value.md](plans/draw-value.md) | 進行中 | |
+| 引き分けの評価値の設定（DrawValue） | [plans/archived/draw-value.md](plans/archived/draw-value.md) | 完了（採用） | 2026年10月23日 |
 | vast.aiでの教師生成 | [plans/vast-selfplay.md](plans/vast-selfplay.md) | 起案 | |
 | 探索の関数形の見直しの統括 | [plans/archived/search-forms.md](plans/archived/search-forms.md) | 完了（採用） | 2026年10月23日 |
 | 探索の枝刈りとLMRの関数形の見直し | [plans/archived/search-pruning-forms.md](plans/archived/search-pruning-forms.md) | 完了（採用） | 2026年10月18日 |
@@ -116,9 +116,9 @@
 
 ### 直近の完了
 
+- [引き分けの評価値の設定](plans/archived/draw-value.md)は2026年10月23日に、採用で完了した。千日手の引き分けに返す評価値を、やねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにした。既定値0では`bench`の総ノード数と結果が変わらないので、自己対局による測定を行わずに採用した（minase 2.5.0以降）。lishogiのBotでは2.5.0で両方のオプションを−1に設定し、評価値がちょうど同じ手の間でだけ千日手を避けるようにした。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/archived/byoyomi-time-usage.md)は2026年10月23日に、一部不採用で完了した。秒読み期は締切まで反復を始め、締切で打ち切った反復の途中結果で指す段階Aは、持ち時間と秒読みの比が20と150の秒読みつきの2条件のGSPRTでともに`H1`となり、採用した（minase 2.2.0以降）。持ち時間を局面の難しさで重み付けする段階Bの3候補は、段階Aを上回らず不採用とした。lishogiのBotは、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局51局で、Bot側の時間切れが0件だった（[Botの記録](measurements/byoyomi-time-usage/bot-byoyomi-margin-3000.md)）。
 - [探索の関数形の見直しの統括計画](plans/archived/search-forms.md)は2026年10月23日に、採用で完了した。探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本のサブタスクを、vast.aiで借りた計算機での30,000ペアのSPSAで1本ずつ調整し、2026年10月18日の利用者の決定によりSTCの結果によらず採用した。7本を終えた版は、統括計画を始める前のmaster（`99ccc6bb`）に対して、測定機のLTCで104ペアで`H1`（約+493 Elo）だった（[LTCの記録](measurements/search-forms/search-forms-ltc.md)）。サブタスク1のSTCは`H0`（約−17 Elo）であり、その原因を調べるかは利用者が決める。
-- [探索の不安定さに応じた持ち時間の伸縮](plans/archived/time-instability-scaling.md)は2026年10月23日に、採用で完了した。完了反復ごとに目安の時間softへStockfishの4因子（falling eval、best move stability、best move instability、best move effort）の積を掛けて伸縮させ、相手との残り時間の差による補正、根の候補が1手の局面の上限、目安の時間の半分を過ぎた後に始めた反復を浅く読む規則、短い詰みでの早期停止、および先読みの後の目安時間の25%増しを加えた。最善手が続けて同じときの二値の短縮は残し、その反復数を係数にした。103個の係数を30,000ペアのSPSAでvast.aiの計算機を使って約11.4時間で調整したところ、評価値の下落と最善手の変化回数への反応は、開始値にしたStockfishの換算値より弱くなった（[SPSAの記録](measurements/time-instability-scaling/time-instability-scaling.md)）。同じ計算機で持ち時間を換算せずに行ったSTCは、1つ前のサブタスクを採用した版に対して303ペアで`H1`（約+51 Elo）だった（[STCの記録](measurements/time-instability-scaling/time-instability-scaling-stc.md)）。秒読みつきの短い条件では`H1`とならなかった（`H0`、約−4 Elo）ので、相手との残り時間の差の補正を除く項目は秒読みが0の時計に限った（[秒読みつきの短い条件の記録](measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)）。
 
 ### 次の候補
 
@@ -126,7 +126,7 @@
 - [教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す](plans/sparse-teacher-recording.md)は、KataGoのplayout cap randomizationにならい、手ごとの抽選で4手に1手だけを2万ノードで探索して記録し、残りを4,000ノードで指す生成を加え、同じ計算時間で約2.5倍の対局を生成した教師で学んだNNUEを段階ゲートにかける。着手は、前項の判定1が「支持」となった後とし、生成を作業機とvast.aiのどちらで行うかは着手時に利用者が決める。
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、[NNUEの隠れ層と位相補間の出力の計画](plans/archived/nnue-hidden-layer.md)が残した4つの固定の出力部を、隠れ層の段数と各幅、端点数を名前で与える1つの出力部（`stack-h16-e2`のような構成名）に置き換え、現行の直接内積を`stack-e1`として同じ型で表す。構造の整理であり段階ゲートは持たず、ノード数の一致と前計画の学習結果のビット単位の再現で挙動が変わっていないことを確かめる。以後のアーキテクチャの実験は、構成名を変えて学び段階ゲートで測るだけになる。着手は利用者の指示を待つ。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は、Stockfishとやねうら王がNNUEの高速化に使う表をminaseに当てはめられるかを調べ、待機中とした。この表は、自玉の位置で条件付ける入力特徴集合や、差分の連鎖が途切れる更新方式が生む第1層の全再計算を速くするものであり、現行のP型と着手ごとの差分更新では探索中に全再計算が起きない（深さ9のbenchで累算器の更新6,400,021回のうち15回で、いずれも探索の開始時）。自玉の位置で条件付けるネットを時間制御の対局で測り直すか、更新方式を変えて全再計算が起きるようになった時点で再開する。
-- [引き分けの評価値の設定](plans/draw-value.md)は、千日手の引き分けに返す評価値をやねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにする。オプションと探索の実装は完了し、既定値では探索が変わらないことを`bench`で確かめた。残りは、この版のリリース後にlishogiのBotの設定で両オプションを−1にするフェーズであり、リリースは利用者の判断を待つ。[手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
+- [手の順序付けの改善](plans/archived/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案も候補になる。
 - 探索が使う既定の評価関数は、2026年10月12日に[NNUE](plans/archived/nnue-replacement.md)へ置き換わった。PSTとFMを既定としていた時期に挙げたほかの候補（PSTのさらに長い学習、補正なしのPSTを軽い評価として使うlazy evaluation）を、NNUEの採用後も続けるかは決まっていない。
 - [Athénanの計画](plans/athenan.md)は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。PSTを既定の評価関数とする前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - 評価関数の後続3計画（[静止探索の出力](plans/archived/qsearch-output-training.md)、[順位の損失](plans/archived/rank-loss-training.md)、[関係補正項](plans/archived/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
