@@ -140,7 +140,8 @@ const BEST_MOVE_EFFORT_FACTOR_MAX: i64 = 838;
 
 /// 根の候補が1手のときの時間上限。Stockfish `src/search.cpp:615-617`に合わせる。
 const SINGLE_ROOT_MOVE_TIME_CAP_MS: u128 = 500;
-/// 先読みを使う対局でsoftに加える割合。Stockfish `src/timeman.cpp:164-165`に合わせる。
+/// 秒読みが0の時計で、先読みを使う対局のsoftに加える割合。
+/// Stockfish `src/timeman.cpp:164-165`に合わせる。
 const PONDER_SOFT_INCREASE_PERCENT: u128 = 25;
 /// 早期停止の対象とする、勝ち側の詰みまでの手数。
 const EARLY_STOP_MATE_IN: i32 = 3;
@@ -151,7 +152,7 @@ const INCREASE_DEPTH_THRESHOLD_PERCENT: u128 = 50;
 /// 百分率の尺度。
 const PERCENT_SCALE: u128 = 100;
 
-/// 完了反復ごとの時間伸縮に使う探索の不安定さの状態。
+/// 秒読みが0で`movetime`のない時計に対し、完了反復ごとの時間伸縮に使う探索の不安定さの状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct InstabilityScaling {
     pub(super) previous_average: Option<i32>,
@@ -404,10 +405,11 @@ pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget 
     }
 }
 
-/// 先読みを使った後の通常探索で、基礎softを25%増やしてhard以下に抑える。
+/// 先読みを使った後の、秒読みが0の時計による通常探索で、基礎softを25%増やしてhard以下に抑える。
 ///
 /// ミリ秒単位の正の整数除算によって増分を床方向へ丸める。hardと秒読み期の印は変えない。
-/// 秒読み期にはこの増分を適用しない。Stockfish `src/timeman.cpp:164-165`に当たる。
+/// 呼び出し側は秒読みが正の時計と`movetime`を使う探索を除外する。
+/// Stockfish `src/timeman.cpp:164-165`に当たる。
 pub(super) fn ponder_bonus_time_budget(base: TimeBudget) -> TimeBudget {
     assert!(
         !base.byoyomi_period,

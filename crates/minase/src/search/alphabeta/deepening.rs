@@ -26,6 +26,9 @@ use super::time::{
 };
 
 /// 完了反復ごとの時間伸縮と安定判定に使う係数。
+///
+/// 時間伸縮は秒読みが0で`movetime`のない時計だけに適用する。
+/// `stable_iterations`による二値の短縮は、時間予算を持つほかの探索にも適用する。
 #[derive(Clone, Copy)]
 pub(super) struct IterationScalingCoefficients {
     pub(super) falling_eval: FallingEvalCoefficients,
@@ -129,8 +132,8 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// 深さ2以上は、直前の完了反復の最善手について記録した評価値の平均を窓の中心に使い、
 /// 符号つき2乗の平均を初期半幅に使う。
 /// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
-/// 時間で継続すると決めた完了反復の境界ではincreaseDepthの共有状態を更新し、実際に始める
-/// 反復ごとに1回だけワーカー固有の回数へ反映する。反復の番号と進捗の深さは1ずつ増やす。
+/// 時間伸縮を使う探索では、時間で継続すると決めた完了反復の境界でincreaseDepthの共有状態を更新し、
+/// 実際に始める反復ごとに1回だけワーカー固有の回数へ反映する。反復の番号と進捗の深さは1ずつ増やす。
 /// 詰みによる早期停止後も、より深い補助ワーカーの結果が選ばれ得るため、返す手が詰みである
 /// ことは保証しない。
 #[allow(clippy::too_many_arguments)]

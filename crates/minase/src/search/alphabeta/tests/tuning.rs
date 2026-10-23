@@ -287,7 +287,7 @@ fn tuning_parameters_in_isolated_process() {
         params::set("TimeInstabilitySlope", 0).unwrap();
         params::set("TimeEffortIntercept", 1000).unwrap();
         params::set("TimeEffortSlope", 0).unwrap();
-        super::time::ponder_bonus_starts_only_the_marked_normal_search();
+        super::time::ponder_bonus_requires_a_marked_normal_zero_byoyomi_clock();
         super::time::ponder_bonus_excludes_hit_ponder_movetime_and_byoyomi_period();
         return;
     }

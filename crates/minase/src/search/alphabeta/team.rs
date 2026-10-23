@@ -23,7 +23,9 @@ use super::clock::SearchClock;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
 use super::params;
-use super::time::{InstabilityScaling, byoyomi_clock, ponder_bonus_time_budget, time_budget};
+use super::time::{
+    InstabilityScaling, TimeBudget, byoyomi_clock, ponder_bonus_time_budget, time_budget,
+};
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {
@@ -181,6 +183,20 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
     }
 }
 
+/// 探索の不安定さに基づく時間管理を使う探索かを返す。
+///
+/// 有限探索に秒読みが0の時計があり、`movetime`がなく、時間予算が秒読み期でない場合だけ真を返す。
+/// 深さやノード数の制限は時計と併用できる。4因子によるsoftの伸縮、根の候補が1手の上限、
+/// increaseDepth、詰みによる早期停止、および先読み後の25%増しは、この判定を共有する。
+pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<TimeBudget>) -> bool {
+    let Some(limits) = limits.finite() else {
+        return false;
+    };
+    limits.movetime_ms.is_none()
+        && limits.clock.is_some_and(|clock| clock.byoyomi_ms() == 0)
+        && budget.is_some_and(|budget| !budget.byoyomi_period)
+}
+
 /// 調整役として補助ワーカーを生成し、主ワーカーの探索と全ワーカーのjoinを実行する。
 ///
 /// 置換表の世代はワーカー生成前に探索ごとに1回だけ進める。
@@ -220,9 +236,7 @@ pub(in crate::search) fn run_search_team(
         histories.previous_search.ponder_search_started = true;
     }
     let mut time_budget = time_budget(limits);
-    let uses_instability_scaling = finite_limits
-        .is_some_and(|limits| limits.clock.is_some() && limits.movetime_ms.is_none())
-        && time_budget.is_some_and(|budget| !budget.byoyomi_period);
+    let uses_instability_scaling = uses_instability_scaling(limits, time_budget);
     if uses_instability_scaling && previous_search.ponder_search_started && !ponder {
         time_budget = time_budget.map(ponder_bonus_time_budget);
     }

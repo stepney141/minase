@@ -2,6 +2,44 @@
 
 use super::*;
 
+/// 探索の不安定さによる時間管理は、秒読みが0で`movetime`のない時計だけに適用する。
+#[test]
+fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
+    let zero_byoyomi = SearchLimits::new(None, None, None, Some(clock(1_000, 0, 0))).unwrap();
+    assert!(uses_instability_scaling(
+        &zero_byoyomi,
+        time_budget(&zero_byoyomi)
+    ));
+
+    let byoyomi_main_time =
+        SearchLimits::new(None, None, None, Some(clock(1_000, 0, 1_000))).unwrap();
+    let main_time_budget = time_budget(&byoyomi_main_time);
+    assert!(main_time_budget.is_some_and(|budget| !budget.byoyomi_period));
+    assert!(!uses_instability_scaling(
+        &byoyomi_main_time,
+        main_time_budget
+    ));
+
+    let byoyomi_period = SearchLimits::new(None, None, None, Some(clock(0, 0, 1_000))).unwrap();
+    let period_budget = time_budget(&byoyomi_period);
+    assert!(period_budget.is_some_and(|budget| budget.byoyomi_period));
+    assert!(!uses_instability_scaling(&byoyomi_period, period_budget));
+
+    let clock_with_movetime =
+        SearchLimits::new(None, None, Some(100), Some(clock(1_000, 0, 0))).unwrap();
+    assert!(!uses_instability_scaling(
+        &clock_with_movetime,
+        time_budget(&clock_with_movetime)
+    ));
+
+    for clockless in [depth_limits(1), nodes_limits(1)] {
+        assert!(!uses_instability_scaling(
+            &clockless,
+            time_budget(&clockless)
+        ));
+    }
+}
+
 // 監査「探索ワーカーのパニック伝播」: 調整役はパニックしたワーカーから
 // チーム停止を通知し、残るワーカーをすべて回収してからパニックを伝播する。
 #[test]

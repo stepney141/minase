@@ -806,35 +806,39 @@ fn run_ponder_bonus_test_search(
     (outcome.result.depth, outcome.stop_reason)
 }
 
-/// 印のない探索は基礎softのまま止まり、先読みを1回始めた後の通常探索だけが25%増しを使う。
+/// 先読み後の通常探索でも、25%増しは秒読みが0の時計だけに適用する。
 #[cfg(feature = "tuning")]
-pub(super) fn ponder_bonus_starts_only_the_marked_normal_search() {
+pub(super) fn ponder_bonus_requires_a_marked_normal_zero_byoyomi_clock() {
     let position = bare_kings();
     let root_moves = legal_moves(&position);
     assert!(root_moves.len() > 1);
-    let limits = SearchLimits::new(Some(2), None, None, Some(clock(20_000, 0, 0))).unwrap();
+    let zero_byoyomi = SearchLimits::new(Some(2), None, None, Some(clock(20_000, 0, 0))).unwrap();
+    let positive_byoyomi =
+        SearchLimits::new(Some(2), None, None, Some(clock(20_000, 0, 1))).unwrap();
     assert_eq!(
-        time_budget(&limits),
+        time_budget(&zero_byoyomi),
         Some(TimeBudget {
             soft: Duration::from_millis(100),
             hard: Duration::from_millis(200),
             byoyomi_period: false,
         })
     );
+    assert_eq!(time_budget(&positive_byoyomi), time_budget(&zero_byoyomi));
     let new_histories = || {
         let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
         histories.previous_search.score_and_average = Some((0, 0));
         histories.previous_search.time_reduction = 1000;
         histories
     };
+    let elapsed = Duration::from_millis(101);
 
     let mut unmarked = new_histories();
     assert_eq!(
         run_ponder_bonus_test_search(
             &position,
             &root_moves,
-            &limits,
-            Duration::from_millis(90),
+            &zero_byoyomi,
+            elapsed,
             0,
             false,
             &mut unmarked,
@@ -842,32 +846,51 @@ pub(super) fn ponder_bonus_starts_only_the_marked_normal_search() {
         (1, StopReason::SoftLimit)
     );
 
-    let mut marked = new_histories();
     let mark_limits = SearchLimits::new(Some(1), None, Some(1_000), None).unwrap();
+    let mark_ponder_started = |histories: &mut crate::search::HistoryTables| {
+        assert_eq!(
+            run_ponder_bonus_test_search(
+                &position,
+                &root_moves,
+                &mark_limits,
+                Duration::ZERO,
+                u64::MAX,
+                true,
+                histories,
+            ),
+            (1, StopReason::DepthCompleted)
+        );
+        assert!(histories.previous_search.ponder_search_started);
+    };
+
+    let mut marked = new_histories();
+    mark_ponder_started(&mut marked);
     assert_eq!(
         run_ponder_bonus_test_search(
             &position,
             &root_moves,
-            &mark_limits,
-            Duration::ZERO,
-            u64::MAX,
-            true,
-            &mut marked,
-        ),
-        (1, StopReason::DepthCompleted)
-    );
-    assert!(marked.previous_search.ponder_search_started);
-    assert_eq!(
-        run_ponder_bonus_test_search(
-            &position,
-            &root_moves,
-            &limits,
-            Duration::from_millis(90),
+            &zero_byoyomi,
+            elapsed,
             0,
             false,
             &mut marked,
         ),
         (2, StopReason::DepthCompleted)
+    );
+
+    let mut marked_byoyomi = new_histories();
+    mark_ponder_started(&mut marked_byoyomi);
+    assert_eq!(
+        run_ponder_bonus_test_search(
+            &position,
+            &root_moves,
+            &positive_byoyomi,
+            elapsed,
+            0,
+            false,
+            &mut marked_byoyomi,
+        ),
+        (1, StopReason::SoftLimit)
     );
 }
 

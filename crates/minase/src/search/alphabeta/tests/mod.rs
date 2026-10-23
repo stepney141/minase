@@ -84,7 +84,7 @@ use crate::search::alphabeta::searcher::{
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
     HardLimit, SharedSearch, WorkerOutcome, record_previous_search, run_search_team,
-    run_worker_team, select_worker_outcome,
+    run_worker_team, select_worker_outcome, uses_instability_scaling,
 };
 use crate::search::alphabeta::time::{
     ClockCoefficients, FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
