@@ -157,7 +157,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 測定機には、vast.aiのCLI`vastai`とAPIキー、vast.ai専用のSSHの鍵`~/.ssh/id_vastai`（公開鍵をアカウントに登録したもの）、および通常の開発環境が必要である。
 vast.aiの残高は、セッションの見積もりに余裕を加えた額にしておき、自動補充は設定しない。
 残高が尽きると調整機はvast.aiに止められるが、停止した調整機のディスクの課金は負の残高として続くので、入金した額は費用の上限にならない。
-費用は、調整機が期限に自分を停止することと、取得を終えた調整機を削除することで抑える（[運用のADR](../adr/operate-rented-spsa-sessions-with-python-scripts-git-bundles-and-self-stop-deadlines.md)）。
+費用は、調整機が期限に自分を停止することと、取得を終えた調整機を削除することで抑える（[費用のADR](../adr/limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)）。
 
 セッションごとに、測定機の`data/vast-spsa/<セッション名>/`へ次の3つを置く。
 セッション名は、調整機で作る実行ディレクトリの名前と同じにし、終了後に`data/spsa/<セッション名>`へ移す名前にもする。
@@ -207,7 +207,7 @@ vastai search offers 'cpu_cores>=192 verified=any reliability>=0.95 inet_up>=100
 vast.aiの検証（`verified`）は条件にしない。`vastai search offers`は既定で検証済みの出品だけを返すので、`verified=any`を明示する。SPSAは機密の情報を扱わないので、検証されていない出品も借りてよいと2026年10月22日に利用者が決めた。
 過去のセッションの記録に負荷時の速度があるCPU型は、その速度から求めた所要時間に時間単価を掛け、記録のないCPU型は時間単価に24時間を掛けて、1回の費用を見積もる。
 この見積もりは手で出品を選ぶときに使う。次節の`launch.py`の自動の選択は、過去の記録を読まず、時間単価の安い順に試す。
-出品の条件と同時対局数の決め方を選んだ理由は、[出品と同時対局数のADR](../adr/run-one-game-per-physical-core-with-the-default-hash-and-filter-rented-offers-by-architecture-threads-and-duration.md)にある。
+出品の条件と同時対局数の決め方を選んだ理由は、[出品と同時対局数のADR](../adr/run-one-game-per-physical-core-with-the-default-hash-and-filter-rented-offers-by-architecture-threads-and-duration.md)と[検証済みとメモリの下限のADR](../adr/accept-unverified-rented-offers-and-require-a-memory-floor-in-automatic-selection.md)にある。
 `remote.py`は、新規の開始時に測った負荷時の速度から所要時間を見込み、24時間を超えれば本番を始めずに止まる。24時間は`remote.py`の固定値である。
 その場合、`fetch.py`は調整機を削除するので、次の候補で起動し直す。
 物理コアが多く安い出品はほかの利用者にすぐ借りられるので、照会と作成の間を空けない。

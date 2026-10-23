@@ -294,4 +294,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月22日 [秒読みのない時計では、相手より残り時間が少ないときに目安時間を縮め、そのために相手の残り時間を探索の必須の入力にする](shrink-the-soft-limit-when-behind-on-clocks-without-byoyomi.md)
 - 2026年10月17日 [調整機では物理コア1つにつき1局を既定の置換表で指させ、出品はアーキテクチャ、スレッド数、および貸出期限で絞る](run-one-game-per-physical-core-with-the-default-hash-and-filter-rented-offers-by-architecture-threads-and-duration.md)
 - 2026年10月17日 [同時対局数の多い調整機でも、SPSAの更新則と規模を変えない](keep-the-spsa-update-rule-and-scale-on-rented-machines-with-many-concurrent-games.md)
-- 2026年10月18日 [調整機のSPSAは標準ライブラリのPythonのスクリプトで操作し、コミットをgit bundleで渡し、期限での自己停止と取得後の削除で費用を抑える](operate-rented-spsa-sessions-with-python-scripts-git-bundles-and-self-stop-deadlines.md)
+- 2026年10月17日 [調整対象のコミットはgit bundleで調整機へ渡し、調整機でビルドする](ship-tuning-commits-to-rented-machines-as-git-bundles-and-build-them-there.md)
+- 2026年10月18日 [調整機のSPSAを操作するスクリプトは標準ライブラリのPythonで書き、教師生成のスクリプトとは共通の処理だけを共有する](write-rented-spsa-scripts-in-standard-library-python-apart-from-the-selfplay-scripts.md)
+- 2026年10月18日 [調整機の費用は、入金額ではなく、期限での自己停止と、最後の対局の後の削除で抑える](limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)
+- 2026年10月22日 [調整機の出品はvast.aiの検証済みを求めず、条件による自動の選択では実メモリの下限を必須にする](accept-unverified-rented-offers-and-require-a-memory-floor-in-automatic-selection.md)
