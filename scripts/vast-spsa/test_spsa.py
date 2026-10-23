@@ -2,7 +2,7 @@
 """SPSAの設定、計算、記録の取得と調整機の終了処理を検査する。
 
 使い方: python3 scripts/vast-spsa/test_spsa.py
-指示書とdocs/plans/search-forms.mdの式を期待値の根拠とする。
+remote.py、launch.py、fetch.pyのdocstringとdocs/guides/spsa.mdの第8節を期待値の根拠とする。
 """
 
 from contextlib import redirect_stdout, redirect_stderr
@@ -79,11 +79,22 @@ class SpsaTests(unittest.TestCase):
         self.assertEqual(launch.offer_errors(OFFER), [])
         launch.check_offer([OFFER], '42')
 
+    def test_offer_accepts_unverified_and_missing_verification(self) -> None:
+        """2026年10月22日の決定により、SPSAの調整機は検証済みを条件にしない。"""
+        for absent in (False, True):
+            with self.subTest(absent=absent):
+                offer = dict(OFFER)
+                if absent:
+                    del offer['verification']
+                else:
+                    offer['verification'] = 'unverified'
+                self.assertEqual(launch.offer_errors(offer), [])
+
     def test_offer_rejects_every_condition_and_missing_field(self) -> None:
-        """10条件のどれかが違う出品と、各欄が欠ける出品を拒否する。"""
-        invalid = {'cpu_arch': 'arm64', 'verification': 'unverified', 'cpu_cores': 191,
-                   'duration': 172799, 'reliability2': 0.949, 'direct_port_count': 0,
-                   'inet_up': 99, 'disk_space': 49, 'gpu_frac': 0.5, 'cpu_cores_effective': 191}
+        """9条件のどれかが違う出品と、各欄が欠ける出品を拒否する。"""
+        invalid = {'cpu_arch': 'arm64', 'cpu_cores': 191, 'duration': 172799,
+                   'reliability2': 0.949, 'direct_port_count': 0, 'inet_up': 99,
+                   'disk_space': 49, 'gpu_frac': 0.5, 'cpu_cores_effective': 191}
         for key, value in invalid.items():
             for absent in (False, True):
                 with self.subTest(key=key, absent=absent):
