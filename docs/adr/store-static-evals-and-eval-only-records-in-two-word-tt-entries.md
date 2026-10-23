@@ -99,7 +99,7 @@ NPSの低下の内訳は測っていない。
 ThreadSanitizerなどのサニタイザは検証の道具に採っておらず（[ADR](do-not-adopt-sanitizers-or-miri.md)）、並行書き込みの近似は競合試験で確かめていない。
 1スロットに複数のエントリを置くクラスタ化は、[置換表を1スロット1エントリの直接マップのまま保つADR](keep-transposition-table-direct-mapped.md)が扱う。
 実装は`crates/minase/src/search/alphabeta/tt.rs`にあり、ビット配置とメモリ順序の詳細は`TranspositionTable`の`probe`、`store`、および`store_static_eval`と、`Hit`のdocコメントにある。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）。
 
 形の変更の90係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/qsearch-forms/qsearch-forms.md)）。
 最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して107ペアで`H1`（約+261 Elo）だった（[STCの記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）。

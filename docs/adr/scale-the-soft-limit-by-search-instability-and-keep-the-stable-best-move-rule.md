@@ -43,7 +43,7 @@ falling evalとbest move stabilityは、前の探索の評価値、その手の�
 minaseにあってStockfishにない仕組みのうち、中将棋の診断や測定で決めたものは残してSPSAで調整し、二値の短縮はこれに当たる。
 同じ日に、エンジンの開発者は、4因子を秒読みつきの時計でも使うこと、best move effortをStockfishの連続の形にすること、根の候補が1手の局面に上限を置くこと、前の探索の値を持ち越すこと、および詰みでの早期停止を入れることを決めた。
 YaneuraOuも、秒読みつきの時計で4因子の積を目安時間に掛ける（`yaneuraou-search.cpp:1989-1996`）。
-2026年10月18日のエンジンの開発者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）ので、旧ADRが延長の再提案に求めた単独の段階ゲートは行わない。
+2026年10月18日のエンジンの開発者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）ので、旧ADRが延長の再提案に求めた単独の段階ゲートは行わない。
 一方、秒読みつきの時計はlishogiのBotと人間との対局で使う時計なので、2026年10月22日に、エンジンの開発者は設計書の案1を選んだ。案1は、SPSAで調整した候補を秒読みつきの短い条件と長い条件で起点と比べ、両方が`H1`なら秒読みつきの時計でも4因子などを使い、どちらかが`H1`でなければ秒読みが0の時計に限るというものである。
 候補は秒読みつきの短い条件で`H1`とならなかった（[測定記録](../measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)）。
 

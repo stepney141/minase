@@ -31,7 +31,7 @@ T1〜T10の10項目と、T5の入力にする相手の残り時間の検査を�
 SPSAでは、評価値の下落に反応する`TimeFallingPrevious`が4,784から2,141へ、最善手の変化回数に反応する`TimeInstabilitySlope`が2,229から803へ下がり、softに対するhardの比`HardSoftRatio`は571%から755%へ上がった。
 SPSAの最終値を反映した後、補正の重みの既定値に依存していたテストを、テストだけを変える別のコミットで直した。
 事前対局では、1局の総思考時間は起点の0.965倍で、完了深さは7つの手数帯のすべてで起点より深かった。
-STCは、起点に対して303ペア（有効297）で`H1`（LLR +2.945、約+51 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+STCは、起点に対して303ペア（有効297）で`H1`（LLR +2.945、約+51 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 秒読みつきの短い条件は、1,634有効ペアで`H0`（LLR −2.991、約−4 Elo）だった。この測定では候補に時間切れが1件出た。両エンジンに共通する、締切からの遅れの分布の裾によるものと判断して再開したが、そのペアを除いたLLRは−2.922で`H0`の境界に届かない。ただし`H1`の境界からは大きく離れており、案1の扱いは変わらない。適用を限定した版は、案1の規則により測り直していない。
 測定の記録は、[起点の時計の再構成](../../measurements/time-instability-scaling/time-instability-scaling-baseline.md)、[benchのノード数と探索速度](../../measurements/time-instability-scaling/time-instability-scaling-bench.md)、[開始値の事前対局](../../measurements/time-instability-scaling/time-instability-scaling-start.md)、[時間切れの事前確認](../../measurements/time-instability-scaling/time-instability-scaling-safety.md)、[SPSA](../../measurements/time-instability-scaling/time-instability-scaling.md)、[事前対局](../../measurements/time-instability-scaling/time-instability-scaling-smoke.md)、[STC](../../measurements/time-instability-scaling/time-instability-scaling-stc.md)、および[秒読みつきの短い条件](../../measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)にある。
 
@@ -154,7 +154,7 @@ SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../
 本書は次の4つのADRの決定の一部を変える。
 採用した場合は、完了時に新しいADRで置き換え、変えずに残る決定も新しいADRへ引き継ぐ。
 
-- [延長の信号を使わないADR](../../adr/archive/stop-early-on-stable-best-move-without-extensions.md)は、fail-lowと最善手交替による延長を使わず、最善手が4反復続けて同じときだけ早く止めると決めた。本書の因子は1を超えてsoftを伸ばせるので、延長を使わないという決定を変える。二値の短縮は残し、反復数を係数にする。測定はNNUEへの置き換えより前の評価関数で行われた。このADRは評価関数の時期による再測定の留保を書いていないが、「延長を再び提案する場合は、別の信号として段階ゲートにかける必要がある」としている。本書の候補は統括計画の決定によりSTCの判定によらず採用するので、この求めの代わりに、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+- [延長の信号を使わないADR](../../adr/archive/stop-early-on-stable-best-move-without-extensions.md)は、fail-lowと最善手交替による延長を使わず、最善手が4反復続けて同じときだけ早く止めると決めた。本書の因子は1を超えてsoftを伸ばせるので、延長を使わないという決定を変える。二値の短縮は残し、反復数を係数にする。測定はNNUEへの置き換えより前の評価関数で行われた。このADRは評価関数の時期による再測定の留保を書いていないが、「延長を再び提案する場合は、別の信号として段階ゲートにかける必要がある」としている。本書の候補は統括計画の決定によりSTCの判定によらず採用するので、この求めの代わりに、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 - [予算を分担そのものにする時間管理を採らないADR](../../adr/archive/reject-fair-share-budget-with-partial-results.md)は、代案として「局面の信号の積でsoftを伸縮させる案」と「softの半分を過ぎた後の反復の深さを抑える案」を棄却した。本書はこの2つを、予算の再定義を伴わない形で再び提案する。秒読みのない時計でhardまで続けて中断した反復を捨てる機構と、hardを残り時間の割合でも抑える決定は変えない。測定はNNUEへの置き換えより前の評価関数で行われ、ADR自身が「同じ方式を再提案するには現行の構成での再測定が要る」と留保している。
 - [先読みの的中から予算を測るADR](../../adr/archive/continue-search-and-measure-budget-from-ponderhit.md)は、目減りを補う別の機構を持たないと決めた。本書のT9は、先読みの印が立っている、先読みでない探索にだけ25%増しを加える（設計判断の表を参照）。的中から予算を測る機構は変えず、的中時の再判定にも伸縮後のsoftを渡す。測定はNNUEへの置き換えより前で、起点や再判定の方式を変える提案には再測定が要ると留保している。
 - [fail highの減深のADR](../../adr/archive/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)は、「Stockfishの`searchAgainCounter`の項は、minaseにその回数を増やす時間管理の仕組みがまだないので置かない」とした。T7はこの項を加える。
@@ -539,7 +539,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`time-instability-scaling-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 

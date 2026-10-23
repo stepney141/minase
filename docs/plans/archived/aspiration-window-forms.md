@@ -27,7 +27,7 @@ STCは上限の3,000ペアで判定保留（約+8.6 Elo）となり、本書の�
 2つのワーカーでR1の反復を評価するテストは、A5の減深を受けて深さ上限を4にする。
 SPSAの結果、`AspirationDelta`は2%から100%へ、`AspirationScoreWidth`は204%から63%へ、`AspirationGrowth`は137%から146%へ動いた。初期の半幅の定数項は、Stockfishの換算値ではなく起点とほぼ同じ値が選ばれた。
 形の変更は、1つのコアに固定して測ったNPSを約2.2%下げ、深さ9のbenchの探索ノード数を約14.8%減らした。
-SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数と探索速度](../../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)、[時間切れの事前確認](../../measurements/aspiration-window-forms/aspiration-window-forms-safety.md)、[SPSA](../../measurements/aspiration-window-forms/aspiration-window-forms.md)、[事前対局](../../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)、および[STC](../../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)にある。
 
 ## 目的
@@ -398,7 +398,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`aspiration-window-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 

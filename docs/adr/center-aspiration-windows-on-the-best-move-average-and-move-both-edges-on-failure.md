@@ -127,7 +127,7 @@ Stockfishも根の手の記録をスレッドごとに持つ。
 窓外れのときにαを上げる移し方を入れても、採る値の基準は読み直す窓の開始時のαのままである。
 
 窓の形の変更は、fail highの減深とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整する。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）。
 項目ごとの棋力への寄与は測らない。
 形の変更の91係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/aspiration-window-forms/aspiration-window-forms.md)）。
 初期の半幅の定数項`AspirationDelta`は開始値の2%から100%へ上がり、旧来の値97%とほぼ同じになった。根の値の大きさの項`AspirationScoreWidth`は204%から63%へ下がり、拡大率`AspirationGrowth`は137%から146%へ上がった。

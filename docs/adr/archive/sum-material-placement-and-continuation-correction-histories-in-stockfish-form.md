@@ -85,4 +85,4 @@ LMRの補正項を、切り捨てた後の補正量`c`から求める案は、St
 鍵の選び方を決めた段階8と段階12の診断は既定の評価関数がPSTだった時期のものであり、新しい形の各表の寄与は測っていない。
 2026年10月20日から21日にかけて、ほかの係数とまとめた89係数を30,000ペアのSPSAで調整し、材料表の重みは277から154へ下がり、minorとnon-pawnの表の重みとcontinuation correction historyの重みは上がった（[SPSAの記録](../../measurements/correction-history-tables/correction-history-tables.md)）。
 SPSAの値を反映した候補は、設計書を始めた時点のmaster`e21b7655`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、625ペアで`H1`（約+30 Elo）となった（[STCの記録](../../measurements/correction-history-tables/correction-history-tables-stc.md)）。
-探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。

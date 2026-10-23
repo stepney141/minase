@@ -22,7 +22,7 @@ F5は置換表による打ち切りと内部反復減深（IIR）にノードの
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月17日に起案して着手し、2026年10月18日に完了した。
-ノードの種別の受け渡しから詰みを探す局面の扱いまでの7項目（F0〜F6）の形の変更と、68個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。STCは`H0`だったが、2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+ノードの種別の受け渡しから詰みを探す局面の扱いまでの7項目（F0〜F6）の形の変更と、68個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。STCは`H0`だったが、2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数と探索速度](../../measurements/search-pruning-forms/search-pruning-forms-bench.md)、[時間切れの事前確認](../../measurements/search-pruning-forms/search-pruning-forms-safety.md)、[SPSA](../../measurements/search-pruning-forms/search-pruning-forms.md)、[事前対局](../../measurements/search-pruning-forms/search-pruning-forms-smoke.md)、および[STC](../../measurements/search-pruning-forms/search-pruning-forms-stc.md)にある。STCの記録には、弱くなった原因の手がかりを残した。
 7本を通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
 

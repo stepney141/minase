@@ -27,7 +27,7 @@ Stockfishの時間管理は、目安時間の半分を過ぎると反復の深�
 
 2026年10月17日のエンジンの開発者の決定により、[aspiration windowsの形の見直し](../../plans/archived/aspiration-window-forms.md)は、fail highの減深を窓の形の変更と同じ候補に含め、Stockfishの形にそろえる。
 このため、旧ADRが求めた単独の段階ゲートは行わない。
-さらに、2026年10月18日のエンジンの開発者の決定により、候補はSTCの結果によらず採用する（[採用の例外のADR](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+さらに、2026年10月18日のエンジンの開発者の決定により、候補はSTCの結果によらず採用する（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 2026年10月17日の決定は、SPSAでは各仕組みの強さを決める値だけを調整し、上下限と更新の内部の定数はStockfishの値で固定することも定めており、設計書はfail highの減深の規則をこの固定する定数に分類した。
 
 ## 決定

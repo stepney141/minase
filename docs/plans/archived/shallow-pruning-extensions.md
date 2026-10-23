@@ -24,7 +24,7 @@ null move pruningは、手番を相手に渡しても打ち切れるノードを
 完了（採用）。2026年10月17日に起案し、2026年10月18日に[統括計画](../search-forms.md)のサブタスク2として着手して、2026年10月19日に完了した。
 移行2項目（M1、M2）と9項目（S1〜S9）の形の変更と、71個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。王手の判定は探索時間の約4%だったので、Stockfishの形の前計算は加えなかった。
 SPSAは、浅い前向き枝刈りの余裕値を一様にStockfishの換算値より大きく、つまり枝刈りを控える側へ動かし、null moveを試す条件を緩める側へ動かした。
-SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して1,381ペアで`H1`（約+17 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して1,381ペアで`H1`（約+17 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数、探索速度、および検証探索の矛盾率](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-bench.md)、[時間切れの事前確認](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-safety.md)、[SPSA](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)、[事前対局](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-smoke.md)、および[STC](../../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)にある。
 SPSAの値を反映した後に、係数の既定値に依存していたテスト15件を、係数を固定してから確かめる形などに直した。
 7本のサブタスクを通して元のmasterより強くなったかは、[統括計画](../search-forms.md)のフェーズ10で確かめる。
@@ -431,7 +431,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 予約した基本シード3700000000は使わない。
 結果は測定記録`shallow-pruning-extensions-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。

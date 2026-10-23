@@ -117,7 +117,7 @@ capture historyの値が大きく負の捕獲手では捕獲手のSEEの閾値�
 2026年10月18日から19日にかけての30,000ペアのSPSAでは、SEEの枝の`SeeDepthMargin`が開始値85から168、`SeeCaptureHistory`が34から122、捕獲手のfutility pruningの`CaptureFutilityBase`が113から504、`CaptureFutilityHistory`が134から475、静かな手のSEEの`QuietSeeMargin`が11から48へ上がり、いずれも枝刈りを控える側へ動いた（[SPSAの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions.md)）。
 SPSAの値を反映した候補は、[前の設計書](../plans/archived/search-pruning-forms.md)を採用した版`a892a5e6`に対して、SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行った`time=10000+100`のSTCで、1,381ペアで`H1`となった（[STCの記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）。
 係数の現行値は、その後のサブタスクのSPSAを経た値であり、`params.rs`にある。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）。
 
 形の変更の90係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/qsearch-forms/qsearch-forms.md)）。
 最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して107ペアで`H1`（約+261 Elo）だった（[STCの記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）。

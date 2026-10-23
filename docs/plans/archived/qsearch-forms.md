@@ -34,7 +34,7 @@ SPSAで調整するのは強さを決める値だけとし、その開始値はS
 `DeltaMargin`の範囲は、50〜500のまま保つ。
 SPSAの結果、`DeltaMargin`は147から131へ、`QsearchSeeMargin`は36から42へ、`QsearchMoveLimit`は2から8へ動いた。
 形の変更は、1つのコアに固定したNPSを約7.4%、16本を同時に走らせた負荷時のNPSを約16%下げた。
-SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して107ペアで`H1`（約+261 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して107ペアで`H1`（約+261 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数、探索速度、および発動回数](../../measurements/qsearch-forms/qsearch-forms-bench.md)、[時間切れの事前確認](../../measurements/qsearch-forms/qsearch-forms-safety.md)、[SPSA](../../measurements/qsearch-forms/qsearch-forms.md)、[事前対局](../../measurements/qsearch-forms/qsearch-forms-smoke.md)、および[STC](../../measurements/qsearch-forms/qsearch-forms-stc.md)にある。
 
 ## 目的
@@ -407,7 +407,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`qsearch-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 

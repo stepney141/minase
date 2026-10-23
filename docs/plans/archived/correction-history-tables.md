@@ -30,7 +30,7 @@ SPSA（simultaneous perturbation stochastic approximation、全係数を同時�
 設計判断は、[補正表の鍵、合成、および更新のADR](../../adr/archive/sum-material-placement-and-continuation-correction-histories-in-stockfish-form.md)、[表の持ち越しと共有のADR](../../adr/carry-histories-and-correction-histories-within-a-game.md)、および[LMRのADR](../../adr/reduce-all-later-moves-and-root-moves-by-lmr-with-stat-score-and-correction.md)に移した。
 起点のコードとの照合の結果、Stockfishと起点に合わせて次の4点を決めた。更新量に1061/1024を掛けるのは±256の切り詰めの後とし、根でも局面の表を更新し、引き分けの評価値の変更でも表を初期化し、LMRの補正項は切り捨てる前の重み付きの和から求める。これらはClaudeの判断である。
 SPSAの結果、中将棋に固有の材料表の重みは277から154へ下がり、minorとnon-pawnの表とcontinuation correction historyの重みは上がった。continuation correction historyの重みは、2手前と4手前が30から104へ、6手前が24から111へ上がった。
-SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して625ペアで`H1`（約+30 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して625ペアで`H1`（約+30 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数、探索速度、およびメモリ](../../measurements/correction-history-tables/correction-history-tables-bench.md)、[時間切れの事前確認](../../measurements/correction-history-tables/correction-history-tables-safety.md)、[SPSA](../../measurements/correction-history-tables/correction-history-tables.md)、[事前対局](../../measurements/correction-history-tables/correction-history-tables-smoke.md)、および[STC](../../measurements/correction-history-tables/correction-history-tables-stc.md)にある。
 SPSAの前に、係数の既定値を範囲の1/3と2/3に置いた表で失敗する補正表とreverse futility pruningのテスト6件を直したので、SPSAの値を反映した後のテストはすべて通った。
 lishogiのBotのコンテナはメモリの上限が6 GiBであり、2局を同時に対局する構成（各エンジンの置換表2 GB、`Threads`は4）に、本書の変更による1エンジンあたり約150 MBの増分が加わっても、上限に収まる見込みである。
@@ -422,7 +422,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`correction-history-tables-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 

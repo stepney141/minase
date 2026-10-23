@@ -23,7 +23,7 @@ killer手や段差のように中将棋の診断と測定で決めた既存の�
 移行1項目（M0）と6項目（M1、M3a、M2、M3b、M4、M5）の形の変更と、82個の係数を30,000ペアのSPSAで調整した値を、1つの候補として採用した。
 並べ替えで規則どおりの王手の判定をすべての静かな手に使うと探索時間の約19%を占めたので、Stockfishの`check_squares`と同じ直接の王手の判定に改めた。これはClaudeの判断である。
 SPSAは、探索済みの静かな手の減点の逓減を使わない側（`HistoryMalusDecay`が上限の1024）と、静的評価の変化による更新を使わない側（`HistoryEvalDiff`が下限の0）へ動かし、加点と減点の深さ1あたりの増分とLMRのstatScoreの比例係数を上げた。
-SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して221ペアで`H1`（約+80 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTCは、起点に対して221ペアで`H1`（約+80 Elo）だった。2026年10月18日の利用者の決定により、統括計画のサブタスクはSTCの結果によらず採用する（[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 測定の記録は、[benchのノード数、探索速度、およびメモリ](../../measurements/history-forms/history-forms-bench.md)、[時間切れの事前確認](../../measurements/history-forms/history-forms-safety.md)、[SPSA](../../measurements/history-forms/history-forms.md)、[事前対局](../../measurements/history-forms/history-forms-smoke.md)、および[STC](../../measurements/history-forms/history-forms-stc.md)にある。
 SPSAの前に、係数の既定値を範囲の1/3と2/3に置いた表で落ちる捕獲履歴のテスト4件を直し、SPSAの値を反映した後に落ちた2件を、係数を固定した隔離プロセスで確かめる形に直した。
 lishogiのBotのコンテナは、2局を同時に対局して上限6 GiBのうち約4.3 GiBを使っており、1エンジンあたり約0.23 GBの増分を加えても上限に収まる見込みである。
@@ -511,7 +511,7 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 ```
 
 逐次検定の停止規則は[SPRTの手引き](../../guides/sprt.md)のSTCのとおりとし、判定は記録するが採否には使わない。
-採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
+採用はLTCの`H1`だけが決めるという同手引きの原則の例外であり、統括計画の[採用の例外のADR](../../adr/archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)に従う。
 結果は測定記録`history-forms-stc`に残す。
 完了条件は、STCの判定と測定記録の保存である。
 

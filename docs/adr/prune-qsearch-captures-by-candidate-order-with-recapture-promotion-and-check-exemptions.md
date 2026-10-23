@@ -147,7 +147,7 @@ NPSの低下の内訳は測っておらず、王手の判定と低価値の群�
 
 捕獲手の判定は`crates/minase/src/search/alphabeta/quiesce.rs`の`quiesce`、候補の列は同じファイルの`QsearchBuffers`、最善値を引き上げる条件は`pruning.rs`の`should_raise_futility_best_score`、直前の手の到達升は`searcher.rs`の`Searcher::previous_move_to`のdocコメントにある。
 係数は`params.rs`の`QsearchMoveLimit`、`DeltaMargin`、および`QsearchSeeMargin`である。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）。
 
 形の変更の90係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/qsearch-forms/qsearch-forms.md)）。
 最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して107ペアで`H1`（約+261 Elo）だった（[STCの記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）。

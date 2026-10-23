@@ -2,22 +2,22 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月18日。
+置き換え済み。決定日は2026年10月18日。[探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterと測定機のLTCで比べる](../adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)によって置き換えられた。
 
 ## コンテキスト
 
-minaseの機能採否は、STCで選別し、LTCの`H1`だけで採用を決める（[段階ゲートのADR](screen-at-stc-and-decide-at-ltc.md)、[棋力測定の手引き](../guides/sprt.md)）。
+minaseの機能採否は、STCで選別し、LTCの`H1`だけで採用を決める（[段階ゲートのADR](../screen-at-stc-and-decide-at-ltc.md)、[棋力測定の手引き](../../guides/sprt.md)）。
 STCで`H0`となった候補は採用せず、LTCへも進めない。
-SPSAの値も、最終値を既定値へ書き込んだ候補として同じ段階ゲートで採否を決める（[SPSAの値の採否のADR](adopt-spsa-values-only-through-the-staged-gate.md)）。
+SPSAの値も、最終値を既定値へ書き込んだ候補として同じ段階ゲートで採否を決める（[SPSAの値の採否のADR](../adopt-spsa-values-only-through-the-staged-gate.md)）。
 
-[探索の関数形の見直しの統括計画](../plans/search-forms.md)は、minaseの探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本の設計書をサブタスクとして束ねる。
+[探索の関数形の見直しの統括計画](../../plans/search-forms.md)は、minaseの探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本の設計書をサブタスクとして束ねる。
 各サブタスクは、式の形を変える実装をしたうえで、その時点の全係数を30,000ペアのSPSAで調整する。
 以下、SPSAのためにvast.aiで借りる計算機を調整機、開発と棋力測定に使う手元の機械を測定機と呼ぶ。
-SPSAは調整機で行い、その後の事前対局とSTCも、同じ調整機で持ち時間を換算せずに行う（[調整機のADR](run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)）。
+SPSAは調整機で行い、その後の事前対局とSTCも、同じ調整機で持ち時間を換算せずに行う（[調整機のADR](../run-spsa-on-rented-machines-with-nps-scaled-time-controls.md)）。
 調整機の1コアは測定機より遅いので、換算しない持ち時間の対局では、1手の探索量が測定機の同じ持ち時間より少なく、試走の機械では約1/1.46だった。
 
-サブタスク1の[枝刈りとLMRの関数形の見直し](../plans/archived/search-pruning-forms.md)では、SPSAの値を反映した候補を、設計書を始めた時点のmaster`99ccc6bb`と`time=10000+100`のSTCで比べた。
-判定は776ペアで`H0`、LLRは−2.962であり、時間切れとエンジン異常は0件だった（[STCの記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。
+サブタスク1の[枝刈りとLMRの関数形の見直し](../../plans/archived/search-pruning-forms.md)では、SPSAの値を反映した候補を、設計書を始めた時点のmaster`99ccc6bb`と`time=10000+100`のSTCで比べた。
+判定は776ペアで`H0`、LLRは−2.962であり、時間切れとエンジン異常は0件だった（[STCの記録](../../measurements/search-pruning-forms/search-pruning-forms-stc.md)）。
 有効766ペアの度数から求めたEloは約−17であるが、固定局数の推定ではない。
 2026年10月18日、このSTCの実行中に、エンジンの開発者は、後続のサブタスクで強さが改善される可能性があるので、サブタスク1をSTCの結果によらず採用すると決めた。
 続けて、各サブタスクではSPRTを行わなくてもよいとして、この扱いを7本すべてに広げた。
@@ -41,7 +41,7 @@ STCも行わない案は、フェーズ10で強くなっていなかった場合
 
 7本の途中のmasterは、統括計画の前のmasterより弱い可能性を含んだまま、次のサブタスクの起点になる。
 サブタスク1の変更は、STCで`H0`のまま採用した。
-サブタスク1による新しい決定は、[静的評価とcorrection history](archive/key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)、[improving](archive/judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)、[浅いノードの前向き枝刈りとreverse futility pruning](archive/skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[LMR](archive/reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)、[late move pruning](archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[置換表の打ち切りとnull move](archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)、および[IIR](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)のADRに記録した。
+サブタスク1による新しい決定は、[静的評価とcorrection history](key-correction-history-by-material-and-apply-it-to-all-static-eval-checks.md)、[improving](judge-improving-on-the-corrected-static-eval-and-use-it-in-pruning-and-lmr.md)、[浅いノードの前向き枝刈りとreverse futility pruning](skip-static-eval-pruning-when-a-royal-is-attacked-and-extend-reverse-futility-to-depth-18.md)、[LMR](reduce-lmr-by-log-table-history-steps-and-stockfish-terms.md)、[late move pruning](count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)、[置換表の打ち切りとnull move](allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)、および[IIR](../reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)のADRに記録した。
 
 各サブタスクのSTCは、調整機で持ち時間を換算せずに行うので、測定機で行った過去の段階ゲートとは条件が異なり、結果を比べられない。
 7本を通して元のmasterより強くなったかは、フェーズ10の1回のLTCだけで確かめる。

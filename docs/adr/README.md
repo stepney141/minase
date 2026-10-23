@@ -263,7 +263,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月18日 [late move pruningは静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](archive/count-only-quiet-moves-for-late-move-pruning-and-shrink-the-limit-when-not-improving.md)（置き換え済み）
 - 2026年10月18日 [null moveと置換表の打ち切りをPVノードでも行い、零窓のノードの打ち切りにはcutNodeとallNodeの区別を使う](archive/allow-null-move-and-tt-cutoff-at-pv-nodes-and-use-node-types-at-zero-window-nodes.md)（置き換え済み）
 - 2026年10月18日 [置換表の記録手がないノードを1だけ浅く読み、allNodeと前の反復の主変化を辿るノードでは浅くしない](reduce-depth-by-one-without-tt-move-except-at-all-nodes-and-on-the-previous-pv.md)
-- 2026年10月18日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterとLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)
+- 2026年10月18日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterとLTCで比べる](archive/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)（置き換え済み）
 - 2026年10月19日 [浅い前向き枝刈りは深さと窓の条件をStockfishに合わせて王駒に利きが届くノードでは行わず、reverse futility pruningはβと判定用の評価値の加重平均を返す](extend-shallow-pruning-to-stockfish-ranges-and-skip-it-when-a-royal-is-attacked.md)
 - 2026年10月19日 [捕獲手と静かな手をSEEと駒得の見積りで枝刈りし、余裕値を残り深さまたはlmrDepthに比例させてcapture historyで補正する](archive/prune-captures-and-quiet-moves-by-see-and-capture-futility-with-depth-scaled-margins.md)（置き換え済み）
 - 2026年10月19日 [late move pruningは全深さとPVノードで行い、静かな手だけを数え、improvingでないときに上限を縮め、履歴の条件を付けない](apply-late-move-pruning-at-all-depths-and-pv-nodes-counting-only-quiet-moves.md)
@@ -298,3 +298,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月18日 [調整機のSPSAを操作するスクリプトは標準ライブラリのPythonで書き、教師生成のスクリプトとは共通の処理だけを共有する](write-rented-spsa-scripts-in-standard-library-python-apart-from-the-selfplay-scripts.md)
 - 2026年10月18日 [調整機の費用は、入金額ではなく、期限での自己停止と、最後の対局の後の削除で抑える](limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)
 - 2026年10月22日 [調整機の出品はvast.aiの検証済みを求めず、条件による自動の選択では実メモリの下限を必須にする](accept-unverified-rented-offers-and-require-a-memory-floor-in-automatic-selection.md)
+- 2026年10月23日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterと測定機のLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)

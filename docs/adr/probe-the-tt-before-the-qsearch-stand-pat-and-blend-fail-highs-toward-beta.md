@@ -115,7 +115,7 @@ Stockfishのように寄せる値が決着の値でないことだけを確か�
 
 入口の順序、打ち切り、保存の条件、およびβへの寄せは`crates/minase/src/search/alphabeta/quiesce.rs`の`quiesce`のdocコメントにあり、寄せの重みは同じファイルの名前つきの定数である。
 獅子の候補から外す手の条件は`MoveGenerator::is_excluded_lion_capture`のdocコメントにあり、置き換えの規則は`tt.rs`の`TranspositionTable::store`にある。
-2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
+2026年10月18日のエンジンの開発者の決定により、探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通して元のmasterより強くなったかは統括計画のフェーズ10のLTCで確かめる（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)）。
 
 形の変更の90係数を、vast.aiで借りた計算機で30,000ペアのSPSAにより調整した（[SPSAの記録](../measurements/qsearch-forms/qsearch-forms.md)）。
 最終値を反映した版は、同じ計算機で持ち時間を換算せずに行ったSTCで、設計書を始めた時点のmasterに対して107ペアで`H1`（約+261 Elo）だった（[STCの記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）。
