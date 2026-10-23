@@ -76,4 +76,6 @@ hardの候補のうち`soft_raw`の倍数の項は、因子を掛けた`soft_raw
 因子は`crates/minase/src/search/alphabeta/time.rs`の`time_advantage_factor`と`ClockCoefficients::budget`に、適用の条件は同じファイルの`time_budget`にある。
 入力の検査は`crates/minase/src/search/limits.rs`の`SearchLimits::new`に、USIとCECPの扱いは`crates/minase/src/protocol/usi.rs`の`parse_go_config`と`cecp.rs`の`TimeControl`のdocコメントにある。
 固定深さの`minase dev bench`は時計を使わないので、この変更で探索ノード数、評価値、および最善手は変わらなかった（[benchの記録](../measurements/time-instability-scaling/time-instability-scaling-bench.md)）。
-`TimeAdvantage`は、持ち時間の伸縮の設計書のほかの係数とまとめて、秒読みのない時計の自己対局でSPSAにより調整する。
+`TimeAdvantage`は、持ち時間の伸縮の設計書のほかの係数とまとめて、秒読みのない時計の自己対局で30,000ペアのSPSAにより調整し、最終値は開始値900‰とほぼ同じ897‰だった（[SPSAの記録](../measurements/time-instability-scaling/time-instability-scaling.md)）。
+持ち時間の伸縮のほかの項目とあわせた候補は、STCで起点に対して303ペア（有効297）でLLR +2.945の`H1`となり、平均得点から求めた差は約+51 Eloだった（[STCの記録](../measurements/time-instability-scaling/time-instability-scaling-stc.md)）。この差には探索の係数の調整し直しも含まれ、この因子だけの寄与は測っていない。
+ほかの項目は、秒読みつきの短い条件で`H1`とならなかったので秒読みが0の時計に限ったが（[伸縮のADR](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)）、この因子は初めから秒読みが0の時計だけに掛けているので、適用の条件は変わらない。

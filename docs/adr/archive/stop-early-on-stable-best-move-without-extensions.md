@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年9月12日。[目安時間softを、探索の開始時に求めた基礎予算に探索の不安定さの4因子の積を完了反復ごとに掛けて伸縮させ、最善手が安定したときの早期終了と短い詰みでの停止を併用する](../scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)によって置き換えられた。
+置き換え済み。決定日は2026年9月12日。[秒読みのない時計では、探索の開始時に求めた基礎予算の目安時間softに、探索の不安定さの4因子の積を完了反復ごとに掛けて伸縮させ、最善手が安定したときの早期終了と短い詰みでの停止を併用する](../scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)によって置き換えられた。
 
 ## コンテキスト
 

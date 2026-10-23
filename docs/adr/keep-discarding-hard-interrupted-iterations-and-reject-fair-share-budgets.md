@@ -63,4 +63,7 @@ minaseは中断した反復の結果を捨てるので、この項は使い捨�
 時間管理の機構を変える提案では、採否測定の前に総思考時間と使い残しを現行と比べる（[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)）。
 設計書は、統括計画の決定により、この比較を採否の条件ではなく記録にした。
 開始値の[事前対局](../measurements/time-instability-scaling/time-instability-scaling-start.md)では、1局の総思考時間は起点の0.992倍であり、完了深さは7つの手数帯のうち5つで起点を下回った。
+SPSAの最終値を反映した候補の[事前対局](../measurements/time-instability-scaling/time-instability-scaling-smoke.md)では、1局の総思考時間は起点の0.965倍であり、完了深さは7つの手数帯のすべてで起点を上回った。
+同じ候補は、旧ADRが再提案に求めた再測定に代わる[STC](../measurements/time-instability-scaling/time-instability-scaling-stc.md)で、起点に対して303ペア（有効297）でLLR +2.945の`H1`となり、平均得点から求めた差は約+51 Eloだった。
+この差には探索の係数の調整し直しも含まれる。時間切れは事前対局とSTCで0件だった。
 予算を分担そのものにする方式の測定は評価関数がPSTとFMだった時期の構成で行ったので、この方式を再提案するには現行の構成での再測定が要る。

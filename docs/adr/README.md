@@ -287,8 +287,8 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月21日 [置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)
 - 2026年10月22日 [aspiration windowsは深さ2以上で直前の最善手の平均を中心に置き、初期の半幅を根の値の大きさとともに広げ、窓外れでは外れた側の端を返った値から移して反対側の端も寄せる](center-aspiration-windows-on-the-best-move-average-and-move-both-edges-on-failure.md)
 - 2026年10月22日 [aspiration windowsはfail highの回数と反復をまたぐ持ち越しで読み直しの窓の深さを減らし、完了した反復は反復の深さの結果として扱う](archive/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)（置き換え済み）
-- 2026年10月22日 [目安時間softを、探索の開始時に求めた基礎予算に探索の不安定さの4因子の積を完了反復ごとに掛けて伸縮させ、最善手が安定したときの早期終了と短い詰みでの停止を併用する](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)
+- 2026年10月23日 [秒読みのない時計では、探索の開始時に求めた基礎予算の目安時間softに、探索の不安定さの4因子の積を完了反復ごとに掛けて伸縮させ、最善手が安定したときの早期終了と短い詰みでの停止を併用する](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)
 - 2026年10月22日 [秒読みのない時計では、予算を分担そのものにして途中結果で指す時間管理を採らず、hardで中断した反復を捨てる現行の機構を保つ](keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)
-- 2026年10月22日 [先読みが的中したら同じ探索を続けて時間予算を的中の時点から測り、先読みの探索を始めた後の、先読みでない探索の目安時間を25%増やす](measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)
-- 2026年10月22日 [aspiration windowsは、fail highの回数、反復をまたぐ持ち越し、および目安の時間の半分を過ぎた後に始めた反復の回数で窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)
+- 2026年10月23日 [先読みが的中したら同じ探索を続けて時間予算を的中の時点から測り、秒読みのない時計では、先読みの探索を始めた後の、先読みでない探索の目安時間を25%増やす](measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)
+- 2026年10月23日 [aspiration windowsは、fail highの回数、反復をまたぐ持ち越し、および目安の時間の半分を過ぎた後に始めた反復の回数で窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)
 - 2026年10月22日 [秒読みのない時計では、相手より残り時間が少ないときに目安時間を縮め、そのために相手の残り時間を探索の必須の入力にする](shrink-the-soft-limit-when-behind-on-clocks-without-byoyomi.md)

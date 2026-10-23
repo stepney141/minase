@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月22日。
+承認済み。決定日は2026年10月23日。
 
 ## コンテキスト
 
@@ -46,7 +46,7 @@ STCは1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../mea
 主ワーカーと補助ワーカーは同じ規則に従い、補助ワーカーが深さを飛ばして反復する場合（[ADR](diversify-lazy-smp-workers-by-skipping-depths.md)）も、実際に行う反復ごとに1回だけ`h_carry`を減らす。
 
 探索チームの全ワーカーは「深さを増やしてよい」かを表す1つの状態を共有し、状態は探索ごとに「増やしてよい」から始めて前の探索から持ち越さない。
-4因子を使う探索では、主ワーカーが、完了反復の境界で次の反復へ進むと決めたときにだけ状態を書き換える。
+4因子を使う探索（[伸縮のADR](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)が定める、時計の秒読みが0で`movetime`がない探索）では、主ワーカーが、完了反復の境界で次の反復へ進むと決めたときにだけ状態を書き換える。
 的中前の先読みなら「増やしてよい」とし、そうでなければ、的中からの経過時間が`t`の50%以下なら「増やしてよい」、超えていれば「増やさない」とする。
 各ワーカーは、実際に反復を始めるときに状態が「増やさない」なら`k`を1増やし、`k`はその探索の間は減らさず、窓の読み直しでは増やさない。
 補助ワーカーは深さを飛ばしたまま、実際に始めた反復ごとに1回だけ`k`を判定する。
@@ -97,7 +97,7 @@ Stockfishは根の手の表の先頭を置換表の手として使い、正確�
 `k`は`searcher.rs`の`Searcher::search_again_counter`と`Searcher::begin_iteration`に、共有する状態は`team.rs`の`SharedSearch::increase_depth`に、状態を決める判定は`time.rs`の`should_increase_depth`にある。
 固定した定数は`root.rs`と`time.rs`の名前つきの定数である。
 
-4因子を使わない探索（`movetime`を指定した探索、秒読み期、時計のない深さやノード数の制限の探索、および無期限の探索）では、状態は「増やしてよい」のままで`k`は0なので、`k`による減深は働かない。
+4因子を使わない探索（秒読みが正の時計の探索、`movetime`を指定した探索、時計のない深さやノード数の制限の探索、および無期限の探索）では、状態は「増やしてよい」のままで`k`は0なので、`k`による減深は働かない。
 固定深さの`minase dev bench`もこれに当たり、持ち時間の伸縮の設計書の全13コミットで、全15局面の深さ3、5、7の探索ノード数、評価値、および最善手が起点と一致した（[benchの記録](../measurements/time-instability-scaling/time-instability-scaling-bench.md)）。
 fail highの減深は、[aspiration windowsのbenchの記録](../measurements/aspiration-window-forms/aspiration-window-forms-bench.md)では、深さ3、5、7の全15局面の探索ノード数の合計を直前のコミットより12.1%減らした。
 benchの深さは反復の深さであり、benchが報告する深さ`d`の結果は、深さ`d`まで読んだ窓の結果とは限らない。
@@ -106,6 +106,7 @@ benchの深さは反復の深さであり、benchが報告する深さ`d`の結�
 `IterationRatio`の起点の値は203%なので、最善手が安定したときの早期終了が働く境界で次の反復を始めるのは、経過時間が`min(t, hard)`の約49%以下のときだけである。
 そのため、早期終了が働き、`t`がhard以下の境界では、状態は新たに「増やさない」にならない。
 これは次の反復の予測を変えずに残したことによる既知の相互作用であり、`k`の働きの強さはSPSAが調整する係数を通して決まる。
+SPSAの後の`IterationRatio`は152%なので、この境界は約66%に上がり、早期終了が働く境界でも、経過時間が`t`の50%を超えて約66%以下なら、次の反復を始めると同時に状態が「増やさない」になる。
 
 反復の深さと窓の深さが違うことは、テストの深さ上限の選び方にも影響した。
 [RULES.md](../rules/RULES.md)第31条の反復規則R1の下で、2つのワーカーが探索経路の周回を評価する探索を10回繰り返すテスト`article_31_r1_two_workers_score_the_path_cycle_ten_times`は、深さ上限3では、10回のうち1回だけ周回を読めずに失敗した。
@@ -125,4 +126,7 @@ fail highの後に窓の深さが減るので、深さ上限3では最後の窓�
 fail highの減深は窓の形の変更とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整した。
 その版は、STCで設計書を始めた時点のmasterに対して上限の3,000ペアまでに判定できず、LLRは+2.177、平均得点から求めた差は約+8.6 Eloだった（[STCの記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）。
 [事前対局](../measurements/aspiration-window-forms/aspiration-window-forms-smoke.md)では、その版が報告した完了深さは、400手目より前のすべての手数帯で起点より約0.7〜1.1手浅かった。
-`k`による減深は、持ち時間の伸縮の項目とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整する。
+`k`による減深は、持ち時間の伸縮の項目とあわせて1つの候補とし、ほかの係数とまとめてSPSAで調整した（[SPSAの記録](../measurements/time-instability-scaling/time-instability-scaling.md)）。
+その版は、STCで持ち時間の伸縮の設計書を始めた時点のmasterに対して303ペア（有効297）でLLR +2.945の`H1`となり、平均得点から求めた差は約+51 Eloだった（[STCの記録](../measurements/time-instability-scaling/time-instability-scaling-stc.md)）。
+この差は持ち時間の伸縮のほかの項目と探索の係数の調整し直しを含むので、`k`による減深だけの寄与ではない。
+秒読みつきの短い条件で`H1`とならなかったので、`k`による減深も、4因子とともに秒読みが0の時計に限った（[測定記録](../measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)）。
