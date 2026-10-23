@@ -1,6 +1,7 @@
 //! 静止探索を検査する。
 
 use super::*;
+#[cfg(feature = "tuning")]
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::capture_history::CaptureHistory;
@@ -658,8 +659,8 @@ fn quiescence_stand_pat_cutoff_stores_static_eval_without_a_search_value() {
 
 // 入口の返り値は補正後のstand-patからβへ寄せるが、置換表には寄せる前の
 // 補正前静的評価だけを保存する。
-#[test]
-fn quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_static_eval() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_static_eval() {
     let board = bare_kings();
     let key = search_key(&board);
     let unadjusted = evaluate(test_nnue(), &board);

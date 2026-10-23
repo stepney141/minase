@@ -79,8 +79,8 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
 }
 
 // 深さ不足の記録に静的評価があれば、探索値では打ち切らず、その静的評価に現在の補正を加えて保持する。
-#[test]
-fn negamax_uses_tt_static_evaluation_before_current_correction() {
+#[cfg(feature = "tuning")]
+pub(super) fn negamax_uses_tt_static_evaluation_before_current_correction() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
         let evaluated = evaluate(searcher.nnue, &position);
@@ -108,8 +108,8 @@ fn negamax_uses_tt_static_evaluation_before_current_correction() {
 }
 
 // 深さ不足の記録に静的評価がなければ、評価関数の出力に現在の補正を加えて保持する。
-#[test]
-fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
+#[cfg(feature = "tuning")]
+pub(super) fn negamax_evaluates_when_tt_static_evaluation_is_absent() {
     let position = bare_kings();
     with_root_searcher(&position, &[], |searcher| {
         let evaluated = evaluate(searcher.nnue, &position);

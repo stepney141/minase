@@ -7,12 +7,12 @@ use crate::search::alphabeta::ordering::continuation_index;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, applies_lmr,
-    continuation_history_prunes, history_lmr_divisor, history_pruning_lmr_depth,
-    is_opponent_worsening, is_seek_mate, lmr_correction_adjustment, lmr_history_adjustment,
-    lmr_history_value, pruning_lmr_depth, qsearch_see_floor, quiet_see_margin,
-    quiet_see_margin_with_coefficient, razoring_margin, razoring_margin_with_coefficient,
-    reverse_futility_margin, reverse_futility_value, seek_mate_null_move_reduction,
-    should_raise_futility_best_score,
+    continuation_history_prunes, corrected_static_eval, history_lmr_divisor,
+    history_pruning_lmr_depth, is_opponent_worsening, is_seek_mate, lmr_correction_adjustment,
+    lmr_history_adjustment, lmr_history_value, pruning_lmr_depth, qsearch_see_floor,
+    quiet_see_margin, quiet_see_margin_with_coefficient, razoring_margin,
+    razoring_margin_with_coefficient, reverse_futility_margin, reverse_futility_value,
+    seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
@@ -2693,43 +2693,46 @@ fn null_move_condition_matches_s7_numeric_examples() {
 fn correction_can_prevent_reverse_futility_and_razoring() {
     assert_eq!(test_nnue().pawn_value(), 100, "固定ネットの歩兵価値");
     let position = bare_kings();
-    for reverse in [true, false] {
-        with_root_searcher(&position, &[], |searcher| {
-            searcher.seek_mate = reverse;
-            if !reverse {
-                searcher.tt.store(
+    let raw = evaluate(test_nnue(), &position);
+    for (reverse, correction, alpha) in [
+        (true, -1, raw - root_reverse_margin(1, true) - 1),
+        (
+            false,
+            1,
+            raw + razoring_margin(test_nnue().pawn_value(), 1) + 1,
+        ),
+    ] {
+        let corrected = corrected_static_eval(raw, correction);
+        assert_eq!(corrected, raw + correction);
+        for (decision_eval, pruned) in [(raw, true), (corrected, false)] {
+            with_root_searcher(&position, &[], |searcher| {
+                zero_position_correction(searcher, &position);
+                // Searcherには補正重みの差し替え口がないため、補正後に枝刈りへ渡る値を直接与える。
+                assert!(searcher.tt.store_static_eval(
                     search_key(&position),
-                    0,
-                    evaluate(searcher.nnue, &position),
-                    None,
-                    Bound::Lower,
-                    None,
-                    0,
-                    true,
-                );
-            }
-            let side = position.side_to_move();
-            let key = material_key(&position);
-            let bonus = if reverse { -1024 } else { 1024 };
-            searcher
-                .correction
-                .update(side, key, CorrectionTableKind::Material, bonus, 128);
-            assert_ne!(position_correction(searcher, side, 0), 0);
-            let raw = evaluate(searcher.nnue, &position);
-            let alpha = if reverse {
-                raw - root_reverse_margin(1, false) - 1
-            } else {
-                raw + razoring_margin(searcher.nnue.pawn_value(), 1) + 1
-            };
-            let mut board = position.clone();
-            let score = searcher
-                .negamax(&mut board, 1, alpha, alpha + 1, 0, false)
-                .unwrap();
-            assert!(searcher.nodes > 0, "補正により通常探索へ進む");
-            let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
-            assert_eq!(hit.value.unwrap().depth, 1);
-            assert_eq!(hit.value.unwrap().score, score);
-        });
+                    decision_eval,
+                    !reverse,
+                ));
+                searcher.seek_mate = reverse;
+                let score = searcher
+                    .negamax(&mut position.clone(), 1, alpha, alpha + 1, 0, false)
+                    .unwrap();
+                assert_eq!(searcher.static_evals[0], decision_eval);
+                let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+                if pruned {
+                    assert_eq!(searcher.nodes, 0, "補正前は枝刈りが成立する");
+                    if reverse {
+                        assert_eq!(hit.value, None, "reverse futilityは探索値を保存しない");
+                    } else {
+                        assert_eq!(hit.value.unwrap().depth, 0, "razoringは静止探索へ移る");
+                    }
+                } else {
+                    assert!(searcher.nodes > 0, "補正により通常探索へ進む");
+                    assert_eq!(hit.value.unwrap().depth, 1);
+                    assert_eq!(hit.value.unwrap().score, score);
+                }
+            });
+        }
     }
 }
 
@@ -2773,56 +2776,37 @@ fn pruning_eval_selects_only_directional_bounds_outside_decisive_bands() {
 }
 
 #[test]
-fn reverse_futility_uses_corrected_static_eval() {
-    assert_eq!(test_nnue().pawn_value(), 100);
-    let board = bare_kings();
-    let values = new_correction_values();
-    let seeded = super::super::correction::CorrectionTable::new(&values);
-    seeded.update(
-        board.side_to_move(),
-        material_key(&board),
-        CorrectionTableKind::Material,
-        -1024,
-        128,
-    );
-    let correction = correction_from_weighted_sum(
-        i64::from(params::correction_material_weight())
-            * i64::from(seeded.read(
-                board.side_to_move(),
-                material_key(&board),
-                CorrectionTableKind::Material,
-            )),
-        100,
-    );
-    assert!(correction < 0);
-    let margin = reverse_futility_margin(100, 1, false, false, true, correction).max(0);
-    let beta = evaluate(test_nnue(), &board) + correction - margin + 1;
-    for corrected in [false, true] {
-        with_root_searcher(&board, &[], |searcher| {
-            if corrected {
-                searcher.correction.update(
-                    board.side_to_move(),
-                    material_key(&board),
-                    CorrectionTableKind::Material,
-                    -1024,
-                    128,
-                );
-            } else {
-                zero_position_correction(searcher, &board);
+fn one_point_correction_crosses_all_reverse_futility_and_razoring_margins() {
+    let raw = 1_000;
+    let lower = corrected_static_eval(raw, -1);
+    // 根では置換表の照合があり、良化していないため、係数範囲から生じる倍率と深さ項を直接全走査する。
+    for mult in 0..=41 {
+        for opponent_worsening in 0..=100 {
+            for correction_coefficient in 0..=200 {
+                let coefficients = super::super::pruning::ReverseFutilityCoefficients {
+                    reverse_futility_mult_base: mult,
+                    reverse_futility_mult_slope: 0,
+                    reverse_futility_no_tt_hit: 0,
+                    reverse_futility_improving: 0,
+                    reverse_futility_opponent_worsening: opponent_worsening,
+                    reverse_futility_correction: correction_coefficient,
+                };
+                let margin = coefficients.reverse_futility_margin(100, 1, true, false, true, 0);
+                let corrected_margin =
+                    coefficients.reverse_futility_margin(100, 1, true, false, true, -1);
+                let beta = raw - margin;
+                assert!(raw >= beta && raw - margin >= beta);
+                assert!(lower < beta || lower - corrected_margin < beta);
             }
-            let score = searcher
-                .negamax(&mut board.clone(), 1, beta - 1, beta, 0, false)
-                .unwrap();
-            if corrected {
-                assert!(searcher.nodes > 0);
-            } else {
-                assert_eq!(
-                    score,
-                    expected_reverse_futility_value(beta, evaluate(test_nnue(), &board))
-                );
-                assert_eq!(searcher.nodes, 0);
-            }
-        });
+        }
+    }
+
+    let higher = corrected_static_eval(raw, 1);
+    for coefficient in 0..=3_000 {
+        let margin = razoring_margin_with_coefficient(100, 1, coefficient);
+        let alpha = raw + margin + 1;
+        assert!(raw < alpha - margin);
+        assert!(higher >= alpha - margin);
     }
 }
 

@@ -326,8 +326,8 @@ fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
 }
 
 // 根も置換表の補正前の静的評価に、現在の補正を加えて保持する。
-#[test]
-fn root_uses_tt_static_evaluation_before_current_correction() {
+#[cfg(feature = "tuning")]
+pub(super) fn root_uses_tt_static_evaluation_before_current_correction() {
     let position = bare_kings();
     let moves = legal_moves(&position);
     with_root_searcher(&position, &[], |searcher| {

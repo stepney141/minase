@@ -106,6 +106,7 @@ fn tuning_parameters_in_isolated_process() {
             "null move eval scale",
             "disabled null move eval scale",
             "fixed shallow pruning behavior",
+            "fixed correction behavior",
             "fixed history and capture pruning",
         ] {
             let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -393,6 +394,21 @@ fn tuning_parameters_in_isolated_process() {
             // 深さ15と16のnull moveの子深さは2と3になり、置換表で値を固定できる。
             #[cfg(feature = "search-stats")]
             super::null_move::verification_starts_at_depth_threshold_and_returns_original_null_score();
+            return;
+        }
+        "fixed correction behavior" => {
+            // 補正を探索へ接続する検査は、上で固定した非0の重みを使い、SPSA後の既定値から分離する。
+            super::correction::quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval();
+            super::correction::quiescence_stand_pat_clamps_at_evaluation_limit();
+            super::correction::quiescence_max_ply_returns_uncorrected_static_eval();
+            super::correction::quiescence_tt_stores_uncorrected_static_eval();
+            super::quiesce::quiescence_stand_pat_cutoff_blends_return_but_stores_unadjusted_static_eval();
+            super::improving::improving_uses_corrected_evaluations();
+            super::improving::root_and_full_window_nodes_store_corrected_evaluation();
+            super::correction::correction_changes_futility_estimate();
+            super::negamax::negamax_uses_tt_static_evaluation_before_current_correction();
+            super::negamax::negamax_evaluates_when_tt_static_evaluation_is_absent();
+            super::root::root_uses_tt_static_evaluation_before_current_correction();
             return;
         }
         "fixed history and capture pruning" => {

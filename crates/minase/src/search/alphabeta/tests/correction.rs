@@ -5,8 +5,10 @@ use core::cmp::Ordering::{Equal, Greater, Less};
 
 use super::*;
 use crate::eval::evaluate;
+#[cfg(feature = "tuning")]
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::alphabeta::correction::correction_update_bonus;
+#[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::corrected_static_eval;
 use minase_core::Color;
 
@@ -81,6 +83,7 @@ fn attacked_board() -> Position {
     )
 }
 
+#[cfg(feature = "tuning")]
 fn near_upper_evaluation_limit_board() -> Position {
     let black_king = sq(11, 0);
     let white_king = sq(0, 11);
@@ -103,8 +106,8 @@ fn near_upper_evaluation_limit_board() -> Position {
     position(Color::Black, &pieces)
 }
 
-#[test]
-fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
     let board = bare_kings();
     let v = evaluate(test_nnue(), &board);
     with_root_searcher(&board, &[], |searcher| {
@@ -126,8 +129,8 @@ fn quiescence_stand_pat_beta_cutoff_uses_corrected_static_eval() {
     });
 }
 
-#[test]
-fn quiescence_stand_pat_clamps_at_evaluation_limit() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiescence_stand_pat_clamps_at_evaluation_limit() {
     let board = near_upper_evaluation_limit_board();
     let v = evaluate(test_nnue(), &board);
     with_root_searcher(&board, &[], |searcher| {
@@ -144,8 +147,8 @@ fn quiescence_stand_pat_clamps_at_evaluation_limit() {
     });
 }
 
-#[test]
-fn quiescence_max_ply_returns_uncorrected_static_eval() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiescence_max_ply_returns_uncorrected_static_eval() {
     let board = bare_kings();
     let v = evaluate(test_nnue(), &board);
     with_root_searcher(&board, &[], |searcher| {
@@ -166,8 +169,8 @@ fn quiescence_max_ply_returns_uncorrected_static_eval() {
     });
 }
 
-#[test]
-fn quiescence_tt_stores_uncorrected_static_eval() {
+#[cfg(feature = "tuning")]
+pub(super) fn quiescence_tt_stores_uncorrected_static_eval() {
     let board = capture_board();
     let key = search_key(&board);
     let v = evaluate(test_nnue(), &board);
@@ -686,8 +689,8 @@ fn correction_root_updates_only_after_completed_search() {
     }
 }
 
-#[test]
-fn correction_changes_futility_estimate() {
+#[cfg(feature = "tuning")]
+pub(super) fn correction_changes_futility_estimate() {
     let nnue = test_nnue();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     let stop = AtomicBool::new(false);

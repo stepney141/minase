@@ -55,9 +55,10 @@ use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::clock::SearchClock;
+#[cfg(feature = "tuning")]
+use crate::search::alphabeta::correction::correction_from_weighted_sum;
 use crate::search::alphabeta::correction::{
-    CorrectionTableKind, correction_from_weighted_sum, correction_piece_keys, material_key,
-    new_correction_values,
+    CorrectionTableKind, correction_piece_keys, material_key, new_correction_values,
 };
 use crate::search::alphabeta::deepening::{
     IterationScalingCoefficients, auxiliary_depths, run_auxiliary_worker, run_main_worker,
@@ -489,6 +490,7 @@ fn with_draw_value_root_searcher(
 }
 
 /// 現在の全表から、探索と同じ処理で静的評価へ加える補正量を求める。
+#[cfg(feature = "tuning")]
 fn position_correction(searcher: &Searcher<'_>, side: Color, ply: u32) -> i32 {
     correction_from_weighted_sum(
         searcher.correction_weighted_sum_at(side, ply),

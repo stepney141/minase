@@ -1,7 +1,9 @@
 //! 補正後の静的評価による良化判定を検査する。
 
 use super::*;
-use crate::search::alphabeta::pruning::{corrected_static_eval, is_improving};
+#[cfg(feature = "tuning")]
+use crate::search::alphabeta::pruning::corrected_static_eval;
+use crate::search::alphabeta::pruning::is_improving;
 
 // Stockfish src/search.cpp:883。等号と比較相手がない場合は偽とする。
 #[test]
@@ -74,8 +76,8 @@ fn futility_pruning_is_independent_of_improving() {
 }
 
 // Stockfish src/search.cpp:846-884。現在と2手前の双方に補正を含めて比べる。
-#[test]
-fn improving_uses_corrected_evaluations() {
+#[cfg(feature = "tuning")]
+pub(super) fn improving_uses_corrected_evaluations() {
     let board = bare_kings();
     for (previous_difference, expected_improving) in [(1, true), (0, false)] {
         with_root_searcher(&board, &[], |searcher| {
@@ -101,8 +103,8 @@ fn improving_uses_corrected_evaluations() {
 }
 
 // 根と浅い枝刈りの対象外の通常ノードも、補正後の値を保持する。
-#[test]
-fn root_and_full_window_nodes_store_corrected_evaluation() {
+#[cfg(feature = "tuning")]
+pub(super) fn root_and_full_window_nodes_store_corrected_evaluation() {
     let board = bare_kings();
     for root in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
