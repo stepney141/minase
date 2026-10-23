@@ -292,3 +292,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月23日 [先読みが的中したら同じ探索を続けて時間予算を的中の時点から測り、秒読みのない時計では、先読みの探索を始めた後の、先読みでない探索の目安時間を25%増やす](measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md)
 - 2026年10月23日 [aspiration windowsは、fail highの回数、反復をまたぐ持ち越し、および目安の時間の半分を過ぎた後に始めた反復の回数で窓の深さを減らし、完了した反復は反復の深さの結果として扱う](reduce-aspiration-depth-after-fail-highs-and-late-iterations.md)
 - 2026年10月22日 [秒読みのない時計では、相手より残り時間が少ないときに目安時間を縮め、そのために相手の残り時間を探索の必須の入力にする](shrink-the-soft-limit-when-behind-on-clocks-without-byoyomi.md)
+- 2026年10月17日 [調整機では物理コア1つにつき1局を既定の置換表で指させ、出品はアーキテクチャ、スレッド数、および貸出期限で絞る](run-one-game-per-physical-core-with-the-default-hash-and-filter-rented-offers-by-architecture-threads-and-duration.md)
+- 2026年10月17日 [同時対局数の多い調整機でも、SPSAの更新則と規模を変えない](keep-the-spsa-update-rule-and-scale-on-rented-machines-with-many-concurrent-games.md)
+- 2026年10月18日 [調整機のSPSAは標準ライブラリのPythonのスクリプトで操作し、コミットをgit bundleで渡し、期限での自己停止と取得後の削除で費用を抑える](operate-rented-spsa-sessions-with-python-scripts-git-bundles-and-self-stop-deadlines.md)
