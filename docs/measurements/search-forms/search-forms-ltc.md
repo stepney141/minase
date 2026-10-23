@@ -57,5 +57,5 @@ GSPRTの仮説は既定のelo0 = 0、elo1 = 10、α = β = 0.05である。
 
 7本のサブタスクを終えた版は、統括計画を始める前のmasterに対して、測定機のLTCで`H1`となった（LLR +2.950、約+493 Elo）。
 時間切れとエンジン異常は0件だった。
-各サブタスクは[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)によりSTCの結果によらず採用しており、この判定により、7本を通して元のmasterより強くなったことが確かめられた。
-サブタスクごとの寄与はこの測定からは分からず、サブタスク1のSTCが`H0`（約−17 Elo、[記録](../search-pruning-forms/search-pruning-forms-stc.md)）だったことの原因も、この測定は扱わない。
+各サブタスクは[採用の例外のADR](../../adr/adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)に従ってSTCの結果によらず採用しており、今回の判定で、7本を通して元のmasterより強くなったことが確かめられた。
+サブタスクごとの寄与はこの測定からは分からない。サブタスク1のSTCが`H0`（約−17 Elo、[記録](../search-pruning-forms/search-pruning-forms-stc.md)）だった原因も、この測定の対象外である。

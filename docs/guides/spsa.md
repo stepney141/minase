@@ -157,7 +157,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 測定機には、vast.aiのCLI`vastai`とAPIキー、vast.ai専用のSSHの鍵`~/.ssh/id_vastai`（公開鍵をアカウントに登録したもの）、および通常の開発環境が必要である。
 vast.aiの残高は、セッションの見積もりに余裕を加えた額にしておき、自動補充は設定しない。
 残高が尽きると調整機はvast.aiに止められるが、停止した調整機のディスクの課金は負の残高として続くので、入金した額は費用の上限にならない。
-費用は、調整機が期限に自分を停止することと、取得を終えた調整機を削除することで抑える（[費用のADR](../adr/limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)）。
+費用は、調整機が期限に自己停止することと、取得を終えた調整機を削除することで抑える（[費用のADR](../adr/limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)）。
 
 セッションごとに、測定機の`data/vast-spsa/<セッション名>/`へ次の3つを置く。
 セッション名は、調整機で作る実行ディレクトリの名前と同じにし、終了後に`data/spsa/<セッション名>`へ移す名前にもする。

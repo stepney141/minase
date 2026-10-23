@@ -21,7 +21,7 @@ SPSAの結果の反映は測定機で行い、事前対局とSTCは調整機で�
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 完了（採用）。2026年10月17日に起案して着手し、2026年10月23日に完了した。
 7本のサブタスク（[枝刈りとLMRの関数形](search-pruning-forms.md)、[浅い前向き枝刈りの拡張](shallow-pruning-extensions.md)、[historyの形](history-forms.md)、[correction historyの表](correction-history-tables.md)、[静止探索の形](qsearch-forms.md)、[aspiration windowsの形](aspiration-window-forms.md)、および[持ち時間の伸縮](time-instability-scaling.md)）をすべて採用した。
-各サブタスクは、vast.aiで借りた調整機で全係数を30,000ペアのSPSAで調整し、同じ調整機で事前対局とSTCを持ち時間を換算せずに行い、2026年10月18日の利用者の決定によりSTCの結果によらず採用した。
+各サブタスクでは、vast.aiで借りた調整機で全係数を30,000ペアのSPSAで調整し、同じ調整機で事前対局とSTCを持ち時間を換算せずに行った。2026年10月18日の利用者の決定により、各サブタスクをSTCの結果によらず採用した。
 STCは、サブタスク1が`H0`（約−17 Elo）、サブタスク6が上限の3,000ペアで判定保留（約+8.6 Elo）、ほかの5本が`H1`だった。記録は各設計書の「状態」節からたどれる。
 フェーズ10の通しのLTCは、2026年10月23日の利用者の指示により測定機で行い、7本を終えた版は統括計画を始める前のmaster`99ccc6bb`に対して104ペアで`H1`（LLR +2.950、約+493 Elo）となった（[LTCの記録](../../measurements/search-forms/search-forms-ltc.md)）。
 フェーズ0の試走の結果は[試走の記録](../../measurements/search-forms/vast-spsa-trial.md)に、フェーズ1のスクリプトの検証は[検証の記録](../../measurements/search-forms/vast-spsa-scripts.md)と[Pythonへ書き直した後の記録](../../measurements/search-forms/vast-spsa-scripts-python.md)にある。
