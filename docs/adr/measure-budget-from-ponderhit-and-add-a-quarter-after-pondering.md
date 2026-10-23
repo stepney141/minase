@@ -25,7 +25,7 @@ YaneuraOuも、`USI_Ponder`が有効で`Stochastic_Ponder`が無効なら目安�
 Stockfishは、先読み中に目安時間の超過か短い詰みの条件を満たしても止めず、印`stopOnPonderhit`を立てて的中か`stop`を待つ（`src/search.cpp:626-629`）。
 この印は、aspiration windowsの窓が評価値の低下で外れると消える（同`444`）。
 
-[持ち時間の伸縮の設計書](../plans/time-instability-scaling.md)は、2026年10月17日のエンジンの開発者の決定に従い、Stockfishの時間管理の項目をminaseへ入れた。
+[持ち時間の伸縮の設計書](../plans/archived/time-instability-scaling.md)は、2026年10月17日のエンジンの開発者の決定に従い、Stockfishの時間管理の項目をminaseへ入れた。
 エンジンの開発者は、先読みを使う対局での25%増しも入れると決め、設計書はその対象を、minaseが的中の時点から予算を測ることに合わせて絞った。
 同じ設計書は、完了反復ごとに目安時間を伸縮させる4因子と、短い詰みでの早期停止を入れた（[伸縮のADR](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)）。
 これらは先読みから続く探索の判定にも関わる。

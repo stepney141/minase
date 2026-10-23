@@ -110,7 +110,7 @@ Stockfishは相手との持ち時間の差でも目安時間を下げるが（`s
 [correction historyの表の追加と持ち越し](../plans/archived/correction-history-tables.md)は、駒配置を鍵にした表、continuation correction history、表の持ち越し、および補正量の余裕値とLMRへの利用を扱う。
 [静止探索の補正と枝刈りの形](../plans/archived/qsearch-forms.md)は、stand-patへの補正、delta pruningの余裕値のSEEへの利用、手数の数え方、および取り返しの例外を扱う。
 [aspiration windowsの幅と窓の移し方](../plans/archived/aspiration-window-forms.md)は、初期の幅、窓の中心、窓を使い始める深さ、および外れたときの窓の移し方を扱う。
-[探索の不安定さに応じた持ち時間の伸縮](../plans/time-instability-scaling.md)は、評価値の下落、最善手の安定と変化、最善手のノード占有率、および相手との持ち時間の差による目安時間の伸縮を扱う。
+[探索の不安定さに応じた持ち時間の伸縮](../plans/archived/time-instability-scaling.md)は、評価値の下落、最善手の安定と変化、最善手のノード占有率、および相手との持ち時間の差による目安時間の伸縮を扱う。
 王駒に相手の利きが届くノードを枝刈りから除く条件は、関数形の差ではなく中将棋の規則から来る判断なので、どの設計書でも変えない。
 
 ## 参考資料

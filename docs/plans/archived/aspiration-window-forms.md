@@ -72,7 +72,7 @@ SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTC
 
 次の事項は対象外とする。
 
-- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](../time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
+- 深さを増やさずに同じ深さを読み直す回数による減深（Stockfish `src/search.cpp:335, 369-370, 411`の`searchAgainCounter`）。この回数は、目安時間の50%を過ぎたら深さを増やさない時間管理の仕組み（`src/search.cpp:634`の`increaseDepth`）が増やすものであり、その仕組みは[連鎖の次の設計書](time-instability-scaling.md)のT7が導入する。本書のA5の時点ではこの回数を0とし、T7が同じ深さの式に`3 × (回数 + 1)/4`の減深項を1回だけ追加する。
 - 評価値の平均から評価関数の楽観度（optimism）を調整する項（Stockfish `src/search.cpp:397-399`）。評価関数の側の変更であり、minaseのNNUEは楽観度の入力を持たない。
 - fail lowのときに先読みの的中で止める指示を取り消す処理（Stockfish `src/search.cpp:443-444`の`stopOnPonderhit`）。先読みの扱いは時間管理の側の仕組みであり、本書の範囲外である。
 - 窓外れの途中経過をUSIの`lowerbound`または`upperbound`の行で出力すること。[aspiration windowsのADR](../../adr/archive/widen-only-the-failed-side-of-aspiration-windows.md)が、対局ハーネスに保存される手の深さと経過時間が未完了の反復の値になるとして棄却しており、本書も出力しない。
@@ -86,7 +86,7 @@ SPSAに使ったvast.aiの計算機で持ち時間を換算せずに行ったSTC
 起点は、[連鎖の1つ前の設計書](qsearch-forms.md)が完了した後のmasterの先頭である。
 連鎖の先行する5本（[枝刈りとLMRの関数形](search-pruning-forms.md)、[浅い枝刈りの拡張](shallow-pruning-extensions.md)、[historyの形](history-forms.md)、[correction historyの表](correction-history-tables.md)、[静止探索の形](qsearch-forms.md)）はいずれも採用され、その実装とSPSAの最終値は起点に入っている。
 本書の開始値は、起点の表の既定値のうち、本書が形を変える2係数を本書の開始値に置き換え、新しい1係数を加えたものである。
-本書は先行の5本の仕組みを使わず、連鎖の次の[持ち時間の伸縮](../time-instability-scaling.md)が本書のM2とA5を使う。
+本書は先行の5本の仕組みを使わず、連鎖の次の[持ち時間の伸縮](time-instability-scaling.md)が本書のM2とA5を使う。
 
 SPSAの手順と既定の設定は[SPSAによる係数調整の手引き](../../guides/spsa.md)に、対局の手順は[SPRTの手引き](../../guides/sprt.md)に従う。
 時間切れの事前確認、SPSAのセッション、事前対局、およびSTCは、[統括計画](../search-forms.md)に従い、vast.aiで借りる調整機で行う。
@@ -217,7 +217,7 @@ fail highで元のαが負の無限でも、`β − δ`が`−REPETITION_BAND_ST
 深さ`d`の反復を始めるとき、`r ← max(0, r − 2)`とし、fail highの回数`h`を0にする。
 補助ワーカーが深さを飛ばす場合も、実際に行う反復ごとに1回だけ2を引く。
 窓で読むたびに、窓の深さを`D = max(1, d − h − r)`とする。
-Stockfishの式には読み直しの回数の項`3 × (searchAgainCounter + 1)/4`もあるが、回数が0なら値は0なので、本書では置かず、[時間管理の設計書](../time-instability-scaling.md)のT7がこの式へ追加する。
+Stockfishの式には読み直しの回数の項`3 × (searchAgainCounter + 1)/4`もあるが、回数が0なら値は0なので、本書では置かず、[時間管理の設計書](time-instability-scaling.md)のT7がこの式へ追加する。
 fail highのたびに`h`を1増やし、fail lowのたびに`h`を0に戻す。
 窓外れの読み直しを経た場合も含め、窓の内側で反復を完了したとき、`h > 0`なら`r ← (h + 1)/2 + 2`とする。`h = 0`で完了したときは、反復の開始時に減らした`r`をそのまま保つ。
 根の探索`search_root`は、反復の深さ`d`と窓の深さ`D`を受け取り、設計判断の「反復の深さと窓の深さ」の表のとおりに使い分ける。

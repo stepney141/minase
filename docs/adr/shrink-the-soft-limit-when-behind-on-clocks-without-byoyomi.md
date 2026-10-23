@@ -16,7 +16,7 @@ Stockfishは、ノード数を時間として使う設定と、周期的な時�
 上限時間は目安時間の倍数からも決まるので、補正は上限時間にも及ぶ（同`159-162`）。
 YaneuraOuの時間管理（`source/timeman.cpp`）は、相手の残り時間を参照しない。
 
-[持ち時間の伸縮の設計書](../plans/time-instability-scaling.md)は、2026年10月17日のエンジンの開発者の決定に従い、Stockfishの時間管理の項目をminaseへ入れた。
+[持ち時間の伸縮の設計書](../plans/archived/time-instability-scaling.md)は、2026年10月17日のエンジンの開発者の決定に従い、Stockfishの時間管理の項目をminaseへ入れた。
 同じ決定により、統括計画の各サブタスクでは、Stockfishにだけある項目は入れ、秒読みのようにStockfishに相当する仕組みがない事項はYaneuraOuに合わせる。
 エンジンの開発者は、同じ日に、相手との残り時間の差による補正を同書に含めると決めた。
 

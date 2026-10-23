@@ -37,7 +37,7 @@ falling evalとbest move stabilityは、前の探索の評価値、その手の�
 第3段階は単独では測られず、予算の再定義と途中結果の採用を積んだ最終候補としてSTCで`H0`となった（[予算の再定義を採らないADR](keep-discarding-hard-interrupted-iterations-and-reject-fair-share-budgets.md)）。
 その事前の[ベンチ](../measurements/time-management-efficiency/time-management-efficiency-stage3-bench.md)では、Stockfishの定数のままではminaseの深さ6〜8の探索で積が系統的に大きくなり、best move stabilityの因子は240局面中180局面以上で上限に張り付いた。
 
-[持ち時間の伸縮の設計書](../plans/time-instability-scaling.md)は、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の最後のサブタスクとして、Stockfishの時間管理の項目をminaseへ入れた。
+[持ち時間の伸縮の設計書](../plans/archived/time-instability-scaling.md)は、[探索の関数形の見直しの統括計画](../plans/search-forms.md)の最後のサブタスクとして、Stockfishの時間管理の項目をminaseへ入れた。
 2026年10月17日のエンジンの開発者の決定により、統括計画の各サブタスクでは、StockfishとYaneuraOuで形や値が違えばStockfishに合わせ、Stockfishにだけある項目は入れ、秒読みのようにStockfishに相当する仕組みがない事項はYaneuraOuに合わせる。
 同じ決定により、新しい係数の開始値はStockfishの値の換算値とし、SPSAでは各仕組みの強さを決める値だけを調整して、上下限と内部の定数はStockfishの値で固定する。
 minaseにあってStockfishにない仕組みのうち、中将棋の診断や測定で決めたものは残してSPSAで調整し、二値の短縮はこれに当たる。

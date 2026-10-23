@@ -17,7 +17,7 @@ SPSAの結果の反映は測定機で行い、事前対局とSTC、および最�
 
 ## 状態
 
-進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）とサブタスク5（[静止探索の形](archived/qsearch-forms.md)）は2026年10月21日に、サブタスク6（[aspiration windowsの形](archived/aspiration-window-forms.md)）は2026年10月22日に、いずれも採用で完了した。残りのサブタスク7（[持ち時間の伸縮](time-instability-scaling.md)）は、2026年10月22日に着手した。
+進行中。2026年10月17日に、利用者の指示を受けてサブタスク1（[枝刈りとLMRの関数形](archived/search-pruning-forms.md)）とあわせて着手した。サブタスク1は2026年10月18日に、サブタスク2（[浅い前向き枝刈りの拡張](archived/shallow-pruning-extensions.md)）は2026年10月19日に、サブタスク3（[historyの形](archived/history-forms.md)）は2026年10月20日に、サブタスク4（[correction historyの表](archived/correction-history-tables.md)）とサブタスク5（[静止探索の形](archived/qsearch-forms.md)）は2026年10月21日に、サブタスク6（[aspiration windowsの形](archived/aspiration-window-forms.md)）は2026年10月22日に、サブタスク7（[持ち時間の伸縮](archived/time-instability-scaling.md)）は2026年10月23日に、いずれも採用で完了した。残りはフェーズ10である。
 SPSAは、2026年10月17日の利用者の決定により、サブタスクごとに行う（設計判断の「SPSAの単位」）。
 フェーズ0（試走と持ち時間の換算の確定）は終えた。結果は[試走の記録](../measurements/search-forms/vast-spsa-trial.md)にある。Threadripper PRO 9995WXの調整機で`f`は1.46となり、換算した持ち時間の下で調整機は測定機より約0.3手深く読んだ。2026年10月18日に利用者は、SPSAは係数の最適化なのでこの差にこだわらず、`f`をそのまま使うと決めた。
 フェーズ1（スクリプトの実装と検証）は終えた。`scripts/vast-spsa/`のスクリプトと共通の`scripts/vast/common.py`は、シェルにPythonの断片を埋め込む書き方は保守しにくいという2026年10月18日の利用者の指摘を受けて、Pythonで書いた（設計判断の「スクリプトの言語」）。実機での結果は[検証の記録](../measurements/search-forms/vast-spsa-scripts.md)と[Pythonへ書き直した後の記録](../measurements/search-forms/vast-spsa-scripts-python.md)にある。
@@ -29,11 +29,12 @@ SPSAは、2026年10月17日の利用者の決定により、サブタスクご�
 サブタスク4は、サブタスク3と同じAMD EPYC 9K84の2基構成（`f`は1.29、1時間約1.87米ドル）を借り、事前確認からSTCまでを約8.4時間、約15.8米ドルで終えた。1時間2.5米ドル以下の出品が現れるまで約6.2時間待った。セッションの途中で、vast.aiのAPIが口座の操作に2要素認証でのログインを再び求め、`fetch.py`が状態の照会に6回続けて失敗して終了した。調整機はセッションを続けたので、利用者が認証し直すまでの約50分は、SSHを通したrsyncで実行ディレクトリを取得した。
 サブタスク5は、照会を始めてから約8分でAMD EPYC 9654の2基構成（`f`は1.26、1時間約2.01米ドル）を借り、事前確認からSTCまでを約8.6時間で終えた。借りていた時間は約8.7時間で、費用は着手前後の残高の差から求めて約17.46米ドルだった。STCの後に調整機を削除しようとしたところ、vast.aiのAPIが口座の操作に2要素認証でのログインを再び求めた。そこで、起動時スクリプトが自己停止に使うコンテナ用のAPIの鍵で調整機をいったん停止し、利用者が認証し直した後に削除した。
 サブタスク6は、AMD EPYC 9K84の2基構成（`f`は1.37、1時間約1.88米ドル）を借り、事前確認からSTCまでを約9.8時間で終えた。借りていた時間もほぼ同じ約9.8時間で、費用は時間単価から求めて約18.4米ドルだった。当時の`launch.py`の条件による選択は、メモリを条件に含めていなかった。メモリの少ない出品を借りると同時対局数が下がり、所要時間と費用が増えるので、`cpu_ram`が260,000 MB以上の出品だけを測定機で照会し、見つかった出品のIDを`launch.py`に渡して作成した。照会を始めてから約10分で作成できた。この後、`launch.py`の自動選択に、実メモリの下限を指定する必須の引数`--min-cpu-ram`を加えた（[SPSAの手引き](../guides/spsa.md)の第8節）。STCは上限の3,000ペアまで続いた。runnerは最後のペアの後に全ペアの棋譜を1スレッドで再生して先読みの統計を数え直すので、最終の集計の出力までにさらに約26分かかった。
-STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）、サブタスク5がサブタスク4を採用した版に対して`H1`（約+261 Elo、[記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）、サブタスク6がサブタスク5を採用した版に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo、[記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
-サブタスク7は、形の変更の実装と開始値の事前対局を終え、利用者はそのセッションの費用を入金した。
-同じ日に、利用者は、調整機の出品はvast.aiの検証済みでなくてもよいと決めた（選定条件の節）。検証されていないEPYC 9B45の出品は、1回目がコンテナに46 CPUぶんしか割り当てられておらず、2回目がSSHに接続できなかったので、どちらも本番の前に削除した。`remote.py`は物理コア数を`lscpu`で数え、コンテナのCPUの割り当て（cgroup）を見ないので、出品の表示と割り当てが違う機械では、同時対局数を物理コア数から決めて負荷時の速度を測り、所要時間の見込みの上限で止まる。
-物理192コアのEPYCの出品は約8時間半待っても出なかったので、2026年10月23日に、利用者の決定でAMD Ryzen Threadripper PRO 9995WX（物理96コア、1時間約2.00米ドル）を借りた。同時対局数は95、負荷時の速度は測定機とほぼ同じで`f`は1.00だった。時間切れの事前確認は異常なしで終わり、SPSAの本番は約12.7時間の見込みで進んでいる。
-次の一手は、サブタスク7のSPSAを終えて、反映、事前対局、およびSTCへ進むことである。
+STCは、サブタスク1が起案前のmasterに対して`H0`（約−17 Elo、[記録](../measurements/search-pruning-forms/search-pruning-forms-stc.md)）、サブタスク2がサブタスク1を採用した版に対して`H1`（約+17 Elo、[記録](../measurements/shallow-pruning-extensions/shallow-pruning-extensions-stc.md)）、サブタスク3がサブタスク2を採用した版に対して`H1`（約+80 Elo、[記録](../measurements/history-forms/history-forms-stc.md)）、サブタスク4がサブタスク3を採用した版に対して`H1`（約+30 Elo、[記録](../measurements/correction-history-tables/correction-history-tables-stc.md)）、サブタスク5がサブタスク4を採用した版に対して`H1`（約+261 Elo、[記録](../measurements/qsearch-forms/qsearch-forms-stc.md)）、サブタスク6がサブタスク5を採用した版に対して上限の3,000ペアで判定保留（LLR +2.177、約+8.6 Elo、[記録](../measurements/aspiration-window-forms/aspiration-window-forms-stc.md)）、サブタスク7がサブタスク6を採用した版に対して`H1`（約+51 Elo、[記録](../measurements/time-instability-scaling/time-instability-scaling-stc.md)）だった。サブタスク1で弱くなった原因の調査は、本計画を終えてから行うかどうかを利用者が決める。
+サブタスク7では、2026年10月22日に利用者がセッションの費用を入金し、同じ日に、調整機の出品はvast.aiの検証済みでなくてもよいと決めた（選定条件の節）。検証されていないEPYC 9B45の出品は、1回目がコンテナに46 CPUぶんしか割り当てられておらず、2回目がSSHに接続できなかったので、どちらも本番の前に削除した。`remote.py`は物理コア数を`lscpu`で数え、コンテナのCPUの割り当て（cgroup）を見ないので、出品の表示と割り当てが違う機械では、割り当てを超える同時対局数で負荷時の速度を測るので速度が極端に低く出て、所要時間の見込みの上限で止まる。
+物理192コアのEPYCの出品は約8時間半待っても出なかったので、2026年10月23日に、利用者の決定でAMD Ryzen Threadripper PRO 9995WX（物理96コア、1時間約2.00米ドル）を借りた。同時対局数は95、負荷時の速度は測定機とほぼ同じで`f`は1.00であり、SPSAは約11.4時間かかった。`f`が1.00なので、持ち時間の換算の節で例外とした、合法手が1つの局面の500 msの上限も測定機と同じ条件で働いた。SPSAの記録は手ごとの停止理由を持たないので、この上限の発動の件数は数えていない。
+サブタスク7は秒読みつきの時計での扱いを設計書の案1で決めるので、STCの後に同じ調整機で秒読みつきの短い条件（同時対局数47）も測り、`H1`とならなかったので、持ち時間の伸縮の大半の項目を秒読みが0の時計に限った。この測定では候補に時間切れが1件出た（[記録](../measurements/time-instability-scaling/time-instability-scaling-byoyomi-short.md)）。
+事前確認から秒読みつきの短い条件までの約15.5時間で、費用は時間単価から求めて約31米ドルだった。調整機の削除の際に、vast.aiのAPIが再び2要素認証でのログインを求めたので、コンテナ用のAPIの鍵で調整機をいったん停止し、利用者が認証し直した後に削除した。
+次の一手は、フェーズ10で、7本のサブタスクを終えた版と統括計画を始める前のmaster（`99ccc6bb`）をLTCで対局させることであり、着手とその費用は利用者が決める。
 
 ## 目的
 
@@ -78,7 +79,7 @@ SPSAの更新則、30,000ペアの規模、および`minase spsa`のコードは
 | 4 | [correction historyの表](archived/correction-history-tables.md) | correction historyの表の追加と持ち越し | 9を加え2を除く | 約89 | 4,100,000,000〜4,300,000,000 |
 | 5 | [静止探索の形](archived/qsearch-forms.md) | 静止探索の補正と枝刈り | 1を加える | 約90 | 4,400,000,000〜4,600,000,000 |
 | 6 | [aspiration windowsの形](archived/aspiration-window-forms.md) | 窓の幅と窓の移し方 | 1を加える | 約91 | 4,700,000,000〜4,900,000,000 |
-| 7 | [持ち時間の伸縮](time-instability-scaling.md) | 探索の不安定さに応じた持ち時間の伸縮 | 12を加える | 約103 | 5,000,000,000〜5,350,000,000 |
+| 7 | [持ち時間の伸縮](archived/time-instability-scaling.md) | 探索の不安定さに応じた持ち時間の伸縮 | 12を加える | 約103 | 5,000,000,000〜5,350,000,000 |
 
 SPSAの手順と規模は[SPSAの手引き](../guides/spsa.md)と[利得と規模のADR](../adr/decay-spsa-gains-over-30000-pair-sessions.md)に、対局の手順は[SPRTの手引き](../guides/sprt.md)に従い、採否の決め方は設計判断の「各サブタスクの採否」による。
 同時対局数を物理コア数から1を引いた数とする規則は、[同時対局数のADR](../adr/derive-default-concurrency-from-physical-cores.md)に従う。
@@ -156,7 +157,7 @@ EPYC 9654の2基構成で`c`が191なら、処理量は約4.3〜6.0倍、所要�
 
 起案時のminaseが各手に割り当てる思考時間の予算は、残り時間と加算に係数の比を掛けて決まり、固定の値は安全余裕の30 msだけである（`crates/minase/src/search/alphabeta/time.rs`の`clock_budget_with_margin`）。
 このため、持ち時間を一様に伸ばしても、時間管理の係数の働きはほぼ変わらない。
-例外は、[持ち時間の伸縮](time-instability-scaling.md)が加える、合法手が1つの局面で目安の思考時間（soft）を500 msに抑える上限であり、この上限は換算されない。同書はこの上限が働くことはまれと見込んでいるので、そのセッションの記録で発動の件数を確かめる。
+例外は、[持ち時間の伸縮](archived/time-instability-scaling.md)が加える、合法手が1つの局面で目安の思考時間（soft）を500 msに抑える上限であり、この上限は換算されない。同書はこの上限が働くことはまれと見込んでいるので、そのセッションの記録で発動の件数を確かめる。
 一方、安全余裕と、対局を進める審判のプロセスとエンジンの間で1手ごとに生じる通信の遅れは伸びないので、持ち時間に対する割合は測定機の1/`f`になり、調整機の対局がわずかに有利になる。
 fishtestも同じ近似で持ち時間を伸ばしている。
 

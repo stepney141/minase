@@ -27,7 +27,7 @@ STCは1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../mea
 
 2026年10月17日のエンジンの開発者の決定により、[aspiration windowsの形の見直し](../plans/archived/aspiration-window-forms.md)は、fail highの減深をStockfishの形にそろえた。
 [旧ADR](archive/reduce-aspiration-re-search-depth-after-fail-highs-and-keep-the-iteration-depth.md)はその決定を記録したが、`searchAgainCounter`の項は、当時のminaseにその回数を増やす時間管理の仕組みがなかったので置かなかった。
-続く[持ち時間の伸縮の設計書](../plans/time-instability-scaling.md)は、同じ日のエンジンの開発者の決定により、Stockfishにだけある`increaseDepth`を入れた。
+続く[持ち時間の伸縮の設計書](../plans/archived/time-instability-scaling.md)は、同じ日のエンジンの開発者の決定により、Stockfishにだけある`increaseDepth`を入れた。
 その時間の基準は、[伸縮のADR](scale-the-soft-limit-by-search-instability-and-keep-the-stable-best-move-rule.md)が定める、基礎予算の目安時間softに4因子の積を掛けて根の候補が1手なら500 msで抑えた時間`t`（hardで抑える前の時間）である。
 2026年10月18日のエンジンの開発者の決定により、両設計書の候補はSTCの結果によらず採用する（[採用の例外のADR](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc.md)）。
 2026年10月17日の決定は、SPSAでは各仕組みの強さを決める値だけを調整し、上下限と更新の内部の定数はStockfishの値で固定することも定めており、両設計書は減深の規則と50%の閾値をこの固定する定数に分類した。
