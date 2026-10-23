@@ -6,6 +6,16 @@
   python3 scripts/vast-spsa/launch.py <セッション名> <期限までの分数> --max-price <1時間あたりの米ドル>
       --min-cpu-cores <スレッド数> --min-cpu-ram <MB> --cpu <CPU名の一部>
       [--cpu <CPU名の一部> ...] --wait <分>
+
+測定機では、セッションを`data/vast-spsa/<セッション名>/`に置く。
+利用者が書く`session.toml`と`params`をlaunch.pyが検査して調整機へ送り、`precheck = true`なら利用者が書く`safety.params`も送る。
+fetch.pyも同じ条件で設定とパラメーターファイルを検査し、`session.toml`から取得条件を読む。
+`incoming/`はfetch.pyが取得した本番の実行ディレクトリであり、sync_run.pyが内容を検査する。
+`run/`はsync_run.pyが`incoming/`から作る再開用の写しであり、fetch.pyが検査し、launch.pyが再開時に調整機へ送る。
+`safety/`はfetch.pyが取得した事前確認の実行ディレクトリである。
+`logs/`はfetch.pyが取得した調整機のログであり、fetch.pyは`fetch.log`も追記して終了コードと所要時間の記録を読む。
+`deadline`は停止期限のUNIX時刻を秒で表し、launch.pyが書いてfetch.pyが読む。
+launch.pyは出品と接続の記録として`offer.json`、`onstart.sh`、`instance-id`、`ssh-address`も書く。
 """
 
 import argparse
@@ -136,7 +146,11 @@ def git_output(root: Path, *args: str) -> str:
 def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
                 root: Path, directory: Path, label: str, config: remote.Session,
                 temporary: Path, retry_unavailable: bool, wait_end: float | None) -> int | None:
-    """1件の出品で作成と転送を行い、借りられない出品だけ再試行可能とする。"""
+    """1件の出品で作成と転送を行い、借りられない出品だけ再試行可能とする。
+
+    `source.bundle`、設定、パラメーター、remote.pyと再開用の記録をすべて転送してから、開始の印`/workspace/job/started`を作る。
+    `onstart()`が作る起動行は、この印ができるまで待ち、印がある場合にだけremote.pyを起動する。
+    """
     instance_id = None
     cleanup = False
     try:

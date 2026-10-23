@@ -2,6 +2,7 @@
 """JSONと適用番号を検査して再開用の写しを入れ替える。
 
 使い方: from sync_run import sync_run, check_runで関数を読み込む。
+`run/`は`incoming/`の各ファイルへのハードリンクで構成し、内容を複製しない。
 """
 
 import ctypes

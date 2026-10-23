@@ -3,6 +3,27 @@
 
 使い方: python3 /workspace/job/remote.py <セッション名>
 設定検査と計算の関数は、import remoteで利用できる。
+
+ジョブのディレクトリは`/workspace/job`である。
+`session.toml`、`params`、`source.bundle`を読み、事前確認を行う場合は`safety.params`も読む。
+`source.bundle`から一時ディレクトリ`minase-cloning/`へcloneし、そのディレクトリをrunnerと調整用ビルドを置く`minase/`へ改名する。
+ビルドを終えると`.build-ready`を作り、以後の起動では同じジョブ内のビルドを再利用する。
+`.remote.lock`は重複起動を防ぐために使う。
+本番の実行ディレクトリは`<セッション名>/`、事前確認の実行ディレクトリは`<セッション名>-safety/`である。
+
+`logs/clone.log`はcloneとrunnerのcheckoutを、`logs/build.log`はビルドとパラメーター列挙のエラーを記録する。
+`logs/declared.params`は調整対象が宣言するパラメーターを、`logs/bench-<番号>.log`は各benchの結果を記録する。
+`logs/<セッション名>.log`は本番を、`logs/<セッション名>-safety.log`は事前確認を記録する。
+起動時スクリプトはremote.pyの標準出力と標準エラーを`logs/remote.log`へ追記する。
+`logs/sizing.txt`は開始のたびに追記する。
+各測定は`measured_at`、`physical_cores`、`memory_bytes`、`c`、`local_nps`、`loaded_nps`、`f`、`each`、`estimated_hours`の各行からなる。
+新規の本番を始めるときは`production_c`と`production_each`も記録する。
+再開時は`resume=`の行を加え、測り直した`f`と持ち時間を記録に残すが実行には使わない。
+
+終了コードは一時ファイル`logs/.exit-status.tmp`から`logs/exit-status`へ置換して保存する。
+0は本番の完了、3は新規開始の所要時間の見込みが24時間を超えたこと、4は事前確認の失敗、5は本番またはその再開の失敗を表す。
+1はその他の検査や実行の失敗を表す。
+これらより前に外部コマンドが失敗した場合はその正の終了コードを保存し、シグナルでは128にシグナル番号を加えた値を保存する。
 """
 
 from contextlib import ExitStack
@@ -34,7 +55,18 @@ def check_name(name: str) -> None:
 
 
 def load_session(directory: Path) -> Session:
-    """TOMLの型、必須キー、値の範囲とパラメーターファイルを検査する。"""
+    """`session.toml`の型、必須キー、値の範囲とパラメーターファイルを検査する。
+
+    必須の`commit`、`runner_commit`、`rules`は空でない文字列である。
+    必須の`seed`は0以上2の64乗未満の整数である。
+    必須の`iterations`、`pairs_per_iteration`、`game_rss_bytes`は1以上2の64乗未満の整数である。
+    必須の`local_nps`は有限の正の整数または浮動小数点数である。
+    必須の`precheck`は真偽値である。
+    `precheck_seed`は`precheck = true`のときだけ書く必須の整数で、範囲は`seed`と同じである。
+    未知のキー、指定した型と異なる値、および必須キーの欠落を拒否し、既定値では補完しない。
+    `params`は常に必要であり、`safety.params`は事前確認を行う場合に必要である。
+    どちらのパラメーターファイルも空であってはならない。
+    """
     path = directory / 'session.toml'
     if not path.is_file():
         raise ValueError(f'session.tomlがありません: {directory}')
@@ -90,7 +122,12 @@ def check_manifest(path: Path, config: Session) -> None:
 
 
 def concurrency(cores: int, memory: int, rss: int) -> int:
-    """物理コア数とメモリの両方を満たす同時対局数を求める。"""
+    """物理コア数とメモリの両方を満たす同時対局数を求める。
+
+    同時対局数は、物理コア数から1を引いた数と、メモリを`rss × 1.25`で割って切り捨てた数の小さい方である。
+    `rss`は1局で動く候補と基準の2エンジンを合わせた最大常駐メモリである。
+    1.25倍はOSとrunnerのための余裕であり、物理コア数には同時マルチスレッディング（SMT）の論理スレッドを数えない。
+    """
     if min(cores, memory, rss) <= 0:
         raise ValueError('コア数とメモリは正数でなければなりません')
     count = min(cores - 1, memory * 4 // (rss * 5))
@@ -101,7 +138,15 @@ def concurrency(cores: int, memory: int, rss: int) -> int:
 
 def sizing(local: int | float | Decimal, remote: Decimal, iterations: int,
            pairs: int, count: int) -> tuple[Decimal, str, Decimal]:
-    """換算係数、持ち時間と所要時間を十進数で算出する。"""
+    """換算係数、持ち時間と所要時間を十進数で算出する。
+
+    換算係数`f`は、測定機の負荷時の速度`local`を調整機の負荷時の速度`remote`で割り、小数第2位へ四捨五入した値である。
+    持ち時間は`10000 × f`と`100 × f`をそれぞれ整数のミリ秒へ四捨五入し、`time=<基本>+<加算>`とする。
+    所要時間の見込みは`反復数 × 1反復のペア数 × 9.05秒 × 16 × f ÷ 同時対局数 ÷ 3600`時間である。
+    9.05秒は、測定機の同時対局数16で3,000ペアに27,138秒かかったセッションの1ペアあたりの時間である。
+    このセッションの記録は`docs/measurements/spsa-gain-calibration/spsa-stage9-20260925-c5.md`にある。
+    1局の時間は持ち時間に比例するため`f`を掛け、測定機との同時対局数の比を反映するため`16 ÷ 同時対局数`を掛ける。
+    """
     local, remote, iterations, pairs, count = map(Decimal, map(str, (local, remote, iterations, pairs, count)))
     if any(not value.is_finite() or value <= 0 for value in (local, remote, iterations, pairs, count)):
         raise ValueError('速度と実行規模は有限の正数にしてください')
@@ -200,7 +245,12 @@ def bench(binary: Path, count: int, logs: Path, children: Children,
 
 
 def summary_ok(path: Path, iterations: int, no_failures: bool) -> None:
-    """最終要約の完了反復数と事前確認の異常件数を検査する。"""
+    """最終要約の完了反復数と事前確認の異常件数を検査する。
+
+    `minase spsa`はエンジン異常があっても終了コード0で終わる。
+    このため、最後の`summary:`行の完了反復数と`engine_failures:`行の5種類の件数で成否を判定する。
+    `no_failures`が真なら、いずれかの異常が1件でもある記録を拒否する。
+    """
     text = path.read_text()
     summaries = re.findall(r'^summary: applied=([0-9]+) valid_pairs=[0-9]+ discarded_pairs=[0-9]+$', text, re.M)
     failures = re.findall(r'^engine_failures: illegal_moves=([0-9]+) crashes=([0-9]+) timeouts=([0-9]+) time_forfeits=([0-9]+) rejected_moves=([0-9]+)$', text, re.M)
@@ -234,7 +284,16 @@ def run_spsa(children: Children, args: list[str], log: Path, cwd: Path,
 
 
 def execute(session: str, job: Path, children: Children) -> int:
-    """ビルド、計測、事前確認、本番または再開を順に実行する。"""
+    """ビルド、計測、事前確認、本番または再開を順に実行する。
+
+    新規開始では、所要時間の見込みがコードの固定値である24時間を超えると、事前確認より前に終了コード3で止まる。
+    本番の実行ディレクトリに`manifest.json`があれば、この上限を調べずに`--resume`で再開する。
+    再開時も負荷時の速度を測り、`f`、持ち時間と同時対局数を求め直して`sizing.txt`へ残すが、実行には記録済みの持ち時間と同時対局数を使う。
+
+    事前確認の反復数は`⌈13 × c ÷ 16⌉`であり、`c`は同時対局数である。
+    事前確認の実行ディレクトリに`manifest.json`があれば、記録済みの反復数、同時対局数と持ち時間を使う。
+    既存のログが全反復の完了と異常0件を示せば再実行せず、そうでなければ`--resume`で事前確認を続ける。
+    """
     config = load_session(job)
     logs = job / 'logs'
     repository = job / 'minase'
