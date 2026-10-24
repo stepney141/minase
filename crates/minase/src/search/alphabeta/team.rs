@@ -185,7 +185,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 
 /// 探索の不安定さに基づく時間管理を使う探索かを返す。
 ///
-/// 有限探索に秒読みが0の時計があり、`movetime`がなく、時間予算が秒読み期でない場合だけ真を返す。
+/// 有限探索に秒読みが0の時計があり、`movetime`がなく、時間予算のdeadlineが偽の場合だけ真を返す。
 /// 深さやノード数の制限は時計と併用できる。4因子によるsoftの伸縮、根の候補が1手の上限、
 /// increaseDepth、詰みによる早期停止、および先読み後の25%増しは、この判定を共有する。
 pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<TimeBudget>) -> bool {
@@ -194,7 +194,7 @@ pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<Tim
     };
     limits.movetime_ms.is_none()
         && limits.clock.is_some_and(|clock| clock.byoyomi_ms() == 0)
-        && budget.is_some_and(|budget| !budget.byoyomi_period)
+        && budget.is_some_and(|budget| !budget.deadline)
 }
 
 /// 調整役として補助ワーカーを生成し、主ワーカーの探索と全ワーカーのjoinを実行する。

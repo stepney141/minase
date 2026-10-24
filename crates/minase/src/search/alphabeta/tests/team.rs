@@ -14,7 +14,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
     let byoyomi_main_time =
         SearchLimits::new(None, None, None, Some(clock(1_000, 0, 1_000))).unwrap();
     let main_time_budget = time_budget(&byoyomi_main_time);
-    assert!(main_time_budget.is_some_and(|budget| !budget.byoyomi_period));
+    assert!(main_time_budget.is_some_and(|budget| !budget.deadline));
     assert!(!uses_instability_scaling(
         &byoyomi_main_time,
         main_time_budget
@@ -22,7 +22,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
 
     let byoyomi_period = SearchLimits::new(None, None, None, Some(clock(0, 0, 1_000))).unwrap();
     let period_budget = time_budget(&byoyomi_period);
-    assert!(period_budget.is_some_and(|budget| budget.byoyomi_period));
+    assert!(period_budget.is_some_and(|budget| budget.deadline));
     assert!(!uses_instability_scaling(&byoyomi_period, period_budget));
 
     let clock_with_movetime =
@@ -32,7 +32,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
         time_budget(&clock_with_movetime)
     ));
 
-    for clockless in [depth_limits(1), nodes_limits(1)] {
+    for clockless in [depth_limits(1), nodes_limits(1), movetime_limits(100)] {
         assert!(!uses_instability_scaling(
             &clockless,
             time_budget(&clockless)

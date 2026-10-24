@@ -32,7 +32,7 @@ fn iteration_boundary_rereads_the_clock_after_progress() {
     let position = bare_kings();
     let root_moves = legal_moves(&position);
     let budget = TimeBudget {
-        byoyomi_period: false,
+        deadline: false,
         soft: Duration::from_millis(500),
         hard: Duration::from_secs(5),
     };
@@ -101,7 +101,7 @@ fn increase_depth_uses_the_refreshed_iteration_boundary_time() {
     let position = bare_kings();
     let root_moves = vec![legal_moves(&position)[0]];
     let budget = TimeBudget {
-        byoyomi_period: false,
+        deadline: false,
         soft: Duration::from_secs(4),
         hard: Duration::from_secs(5),
     };
@@ -459,12 +459,12 @@ fn scaled_soft_time_handles_one_multiple_and_saturating_factors() {
     let base = TimeBudget {
         soft: Duration::from_millis(u64::MAX),
         hard: Duration::from_millis(u64::MAX),
-        byoyomi_period: false,
+        deadline: false,
     };
     let scaled = scaled_time_budget(base, saturated);
     assert_eq!(scaled.soft, base.hard);
     assert_eq!(scaled.hard, base.hard);
-    assert_eq!(scaled.byoyomi_period, base.byoyomi_period);
+    assert_eq!(scaled.deadline, base.deadline);
 }
 
 /// 先読み後の基礎softは25%増しをミリ秒単位で床方向へ丸め、hardを超えない。
@@ -473,7 +473,7 @@ fn ponder_bonus_adds_one_quarter_with_floor_and_hard_cap() {
     let uncapped = TimeBudget {
         soft: Duration::from_millis(11),
         hard: Duration::from_millis(20),
-        byoyomi_period: false,
+        deadline: false,
     };
     assert_eq!(
         ponder_bonus_time_budget(uncapped),
@@ -486,7 +486,7 @@ fn ponder_bonus_adds_one_quarter_with_floor_and_hard_cap() {
     let capped = TimeBudget {
         soft: Duration::from_millis(80),
         hard: Duration::from_millis(90),
-        byoyomi_period: false,
+        deadline: false,
     };
     assert_eq!(
         ponder_bonus_time_budget(capped),
@@ -517,7 +517,7 @@ fn increase_depth_uses_half_of_unclamped_scaled_time_without_rounding() {
         TimeBudget {
             soft: Duration::from_millis(100),
             hard: Duration::from_millis(400),
-            byoyomi_period: false,
+            deadline: false,
         },
         1000,
     );
@@ -618,13 +618,58 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
     }
 }
 
-// 時計なしの固定時間単独では、併用則
-// （softとhardのそれぞれで小さい方）の帰結として両リミットとも指定値になる。
+// 固定時間だけを指定した探索は、的中時刻と最善手の安定性によらず、指定時間を締切にする。
 #[test]
-fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
-    let budget = time_budget(&movetime_limits(500)).expect("movetime must produce a budget");
-    assert_eq!(budget.soft, Duration::from_millis(500));
-    assert_eq!(budget.hard, Duration::from_millis(500));
+fn movetime_budget_and_gate_use_only_the_deadline() {
+    let ms = Duration::from_millis;
+    for movetime in [1, 30, 1000, 60_000, u64::MAX] {
+        let budget = time_budget(&movetime_limits(movetime)).unwrap();
+        let deadline = ms(movetime);
+        assert_eq!(budget.soft, deadline);
+        assert_eq!(budget.hard, deadline);
+        assert!(budget.deadline);
+        for hit in [Duration::ZERO, ms(10_000)] {
+            for stable in [false, true] {
+                for (since_hit, expected) in [
+                    (deadline - Duration::from_nanos(1), true),
+                    (deadline, false),
+                    (deadline + Duration::from_nanos(1), false),
+                ] {
+                    assert_eq!(
+                        should_start_next_iteration(hit + since_hit, hit, budget, stable),
+                        expected,
+                        "movetime={movetime}, hit={hit:?}, stable={stable}, since_hit={since_hit:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+// 深さやノード数を併用する固定時間の予算は指定値のままで、予測による開始判定を使う。
+#[test]
+fn movetime_with_depth_or_nodes_keeps_prediction_based_budget() {
+    for movetime in [1, 30, 1000, 60_000, u64::MAX] {
+        for (depth, nodes) in [(Some(2), None), (None, Some(100)), (Some(2), Some(100))] {
+            let limits = SearchLimits::new(depth, nodes, Some(movetime), None).unwrap();
+            assert_eq!(
+                time_budget(&limits),
+                Some(TimeBudget {
+                    soft: Duration::from_millis(movetime),
+                    hard: Duration::from_millis(movetime),
+                    deadline: false,
+                })
+            );
+        }
+    }
+}
+
+// 時間を指定しない深さ制限、ノード数制限、無限探索は、時間予算を持たない。
+#[test]
+fn limits_without_time_constraints_have_no_budget() {
+    for limits in [depth_limits(2), nodes_limits(100), infinite_limits()] {
+        assert_eq!(time_budget(&limits), None);
+    }
 }
 
 // 時計だけの探索では最初の完了反復後に時間伸縮の因子を適用する。
@@ -820,7 +865,7 @@ pub(super) fn ponder_bonus_requires_a_marked_normal_zero_byoyomi_clock() {
         Some(TimeBudget {
             soft: Duration::from_millis(100),
             hard: Duration::from_millis(200),
-            byoyomi_period: false,
+            deadline: false,
         })
     );
     assert_eq!(time_budget(&positive_byoyomi), time_budget(&zero_byoyomi));
@@ -957,7 +1002,7 @@ pub(super) fn best_move_effort_scaling_ignores_shared_auxiliary_nodes() {
     let budget = TimeBudget {
         soft: Duration::from_millis(500),
         hard: Duration::from_millis(10_000),
-        byoyomi_period: false,
+        deadline: false,
     };
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -1204,7 +1249,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     let history_keys = [search_key(&position)];
     let external_stop = AtomicBool::new(false);
     let budget = TimeBudget {
-        byoyomi_period: false,
+        deadline: false,
         soft: Duration::from_secs(1),
         hard: Duration::from_secs(1),
     };
@@ -1303,6 +1348,8 @@ fn byoyomi_clock_does_not_apply_time_advantage() {
     assert_eq!(budget(1000), budget(3000));
     assert_eq!(budget(1000).soft, Duration::from_millis(108));
     assert_eq!(budget(1000).hard, Duration::from_millis(216));
+    assert!(!budget(1000).deadline);
+    assert!(!budget(3000).deadline);
 }
 
 // 固定時間を併用する時計では、相手の残り時間によって予算を変えない。
@@ -1316,14 +1363,30 @@ fn movetime_clock_does_not_apply_time_advantage() {
         hard_remaining_share: 50,
         time_advantage: 900,
     };
-    let budget = |opponent_remaining_ms| {
-        let clock = ClockLimits::new(1000, 0, 0, Some(opponent_remaining_ms), 0).unwrap();
-        let limits = SearchLimits::new(None, None, Some(500), Some(clock)).unwrap();
-        time_budget_with_coefficients(&limits, coefficients).unwrap()
-    };
-    assert_eq!(budget(1000), budget(3000));
-    assert_eq!(budget(1000).soft, Duration::from_millis(100));
-    assert_eq!(budget(1000).hard, Duration::from_millis(200));
+    // 残り1000 ms、残り10手ではsoft=100 ms、hard=200 msとなる。
+    // 秒読み100 msは序盤にsoftへ8 msを足し、持ち時間0なら安全上限70 msで抑える。
+    for (remaining, byoyomi, movetime, soft, hard) in [
+        (1000, 0, 50, 50, 50),
+        (1000, 0, 150, 100, 150),
+        (1000, 0, 500, 100, 200),
+        (1000, 100, 500, 108, 216),
+        (0, 100, 500, 70, 70),
+        (0, 100, 50, 50, 50),
+    ] {
+        let budget = |opponent_remaining_ms| {
+            let clock =
+                ClockLimits::new(remaining, 0, byoyomi, Some(opponent_remaining_ms), 0).unwrap();
+            let limits = SearchLimits::new(None, None, Some(movetime), Some(clock)).unwrap();
+            time_budget_with_coefficients(&limits, coefficients).unwrap()
+        };
+        let expected = TimeBudget {
+            soft: Duration::from_millis(soft),
+            hard: Duration::from_millis(hard),
+            deadline: false,
+        };
+        assert_eq!(budget(1000), expected);
+        assert_eq!(budget(3000), expected);
+    }
 }
 
 // 深さやノード数を併用しても、秒読みと固定時間がなければtime advantageを適用する。
@@ -1337,7 +1400,12 @@ fn depth_and_node_limited_clocks_apply_time_advantage() {
         hard_remaining_share: 50,
         time_advantage: 900,
     };
-    for (depth, nodes) in [(Some(2), None), (None, Some(100)), (Some(2), Some(100))] {
+    for (depth, nodes) in [
+        (None, None),
+        (Some(2), None),
+        (None, Some(100)),
+        (Some(2), Some(100)),
+    ] {
         let budget = |opponent_remaining_ms| {
             let clock = ClockLimits::new(1000, 0, 0, Some(opponent_remaining_ms), 0).unwrap();
             let limits = SearchLimits::new(depth, nodes, None, Some(clock)).unwrap();
@@ -1347,6 +1415,8 @@ fn depth_and_node_limited_clocks_apply_time_advantage() {
         assert_eq!(budget(1000).hard, Duration::from_millis(200));
         assert_eq!(budget(3000).soft, Duration::from_millis(55));
         assert_eq!(budget(3000).hard, Duration::from_millis(110));
+        assert!(!budget(1000).deadline);
+        assert!(!budget(3000).deadline);
     }
 }
 
@@ -1365,6 +1435,7 @@ fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
                     let deadline = ms(byoyomi.saturating_sub(margin).max(1));
                     assert_eq!(budget.soft, deadline);
                     assert_eq!(budget.hard, deadline);
+                    assert!(budget.deadline);
                     for hit in [Duration::ZERO, ms(10_000)] {
                         for stable in [false, true] {
                             for (since_hit, expected) in [
@@ -1420,7 +1491,7 @@ fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
             let cap = Duration::from_millis((remaining + byoyomi).saturating_sub(margin).max(1));
             assert_eq!(actual.hard, uncapped.hard.min(cap));
             assert_eq!(actual.soft, uncapped.soft.min(cap));
-            assert!(!actual.byoyomi_period);
+            assert!(!actual.deadline);
         }
     }
 }
@@ -1428,6 +1499,17 @@ fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
 // 秒読み期は反復の開始前と完了後に締切を検査し、先読み中は的中まで時計による判定を行わない。
 #[test]
 fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search() {
+    let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 10_030))).unwrap();
+    assert_starts_iterations_before_deadline(limits, true);
+}
+
+// 固定時間だけを指定した探索は、通常探索でも先読みでも締切前なら次の反復を始める。
+#[test]
+fn movetime_starts_iterations_before_deadline_in_normal_and_ponder_search() {
+    assert_starts_iterations_before_deadline(movetime_limits(10_000), false);
+}
+
+fn assert_starts_iterations_before_deadline(limits: SearchLimits, adopt_partial: bool) {
     let position = position(
         Color::Black,
         &[
@@ -1437,12 +1519,15 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
     );
     let root_moves = legal_moves(&position);
     let nnue = test_nnue();
-    let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 10_030))).unwrap();
     let budget = time_budget(&limits).unwrap();
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
-    for ponder in [false, true] {
+    for (ponder, hit, elapsed_secs) in [
+        (false, 0, 9),
+        (true, u64::MAX, 109),
+        (true, 100_000_000_000, 109),
+    ] {
         let stop = AtomicBool::new(false);
-        let hit_ns = AtomicU64::new(if ponder { 100_000_000_000 } else { 0 });
+        let hit_ns = AtomicU64::new(hit);
         let shared = SharedSearch {
             external_stop: &stop,
             team_stop: AtomicBool::new(false),
@@ -1451,7 +1536,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             best_move_changes: AtomicU64::new(0),
             increase_depth: AtomicBool::new(true),
             node_limit: None,
-            clock: &ManualClock::new(Duration::from_secs(if ponder { 105 } else { 5 })),
+            clock: &ManualClock::new(Duration::from_secs(elapsed_secs)),
             hard_limit: Some(HardLimit {
                 duration: budget.hard,
                 hit_ns: &hit_ns,
@@ -1480,7 +1565,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             &histories.pawn,
             None,
             ponder,
-            true,
+            adopt_partial,
         );
         assert_eq!(outcome.result.depth, 2);
         assert_eq!(shared.reason(), StopReason::DepthCompleted);
