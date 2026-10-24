@@ -135,14 +135,15 @@ cargo run --release --bin minase -- match run \
 段階ゲートの標準コマンドは`--ponder`を含まない。
 `--ponder`は、先読みの挙動を変える変更の採否と、先読みを使う運用条件での強さの確認に使う。
 
-### 固定時間の探索を測る測定（`movetime=`）
+### 固定時間の思考制限による測定（`movetime=`）
 
 `movetime=<ms>,timemargin=<ms>`は、USIのエンジンへ毎手`go movetime <ms>`を送る、1手の思考時間を固定した思考制限である。
-時計の引数は送らず、`timemargin`はハーネスの判定だけに使ってエンジンへは送らない。
+時計の引数は送らない。
+`timemargin`はハーネスの判定だけに使い、エンジンへは送らない。
 `movetime`は1以上、`timemargin`は0以上の整数ミリ秒で、どちらも省略できない。
-思考時間（`go`の送信から`bestmove`の受信まで）が`movetime`と`timemargin`の和を超えた手は時間切れ（`time_forfeits`）とし、和と等しい手は受理する。
+思考時間（`go`の送信から`bestmove`の受信まで）が`movetime`と`timemargin`の和を超えた手は時間切れ（`time_forfeits`）とし、和以下の手は受理する。
 この判定はcutechessとfastchessの1手固定時間と同じである。
-両ツールでは`timemargin`の既定値が0だが、`movetime`に達した時点で探索を打ち切るエンジンでも、停止の検査の間隔と入出力の分だけ思考時間が`movetime`を超えるので、ハーネスは値の明示を求める。
+両ツールでは`timemargin`の既定値が0だが、`movetime`に達した時点で探索を打ち切るエンジンでも、停止を検査する間隔と入出力の分だけ思考時間が`movetime`を超えるので、ハーネスは値の明示を求める。
 `movetime=`は`time=`や`--ponder`と同じく候補と基準に同じ条件を与える対局条件であり、機能比較のスイッチではない。
 
 STCとLTCは`go movetime`を送らないので、`go movetime`の探索だけに働く変更（lishogiのBotの通信対局、開発用GUIで指す固定時間の対局）の効果は段階ゲートに現れない。
