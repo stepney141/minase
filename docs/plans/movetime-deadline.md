@@ -20,7 +20,8 @@ StockfishとYaneuraOuは、固定時間の探索では指定時間まで反復�
 フェーズ3の[煙試験](../measurements/movetime-deadline/movetime-deadline-smoke.md)は、測定機が別の計算で埋まっていたので、別の機械ryzen0（Threadripper 2990WX、物理32コア）で同時12対局で行った。
 300 msは判定条件をすべて満たした。
 1,000 msは、`movetime`を超えた量の最大値（70.2 ms）と手数200以上の帯の完了深さの2つの判定基準を満たさなかったが、前者は測定の開始時の一斉起動による候補と基準の双方の一過性の遅れ、後者は手数上限で破棄された1局による偏りと判断した。
-選別条件（300 ms）の本測定をryzen0で進めている。
+選別条件の[本測定](../measurements/movetime-deadline/movetime-deadline-screen-300.md)は、有効416ペアで`H1`（LLR +2.946）となり、異常は0件だった。
+判定条件（1,000 ms）の本測定をryzen0で進めている。
 
 ## 目的
 
