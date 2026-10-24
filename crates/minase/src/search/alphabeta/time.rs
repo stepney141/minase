@@ -613,8 +613,9 @@ impl ClockCoefficients {
     }
 }
 
-/// 秒読み用の時間配分と途中結果の採用を適用する時計を返す。
+/// 秒読み用の時間配分を適用する時計を返す。
 /// 秒読みが正で、固定時間、深さ、ノード数の制限を併用しない有限探索だけを選ぶ。
+/// 根の順序と途中結果の採用は、固定時間だけの探索も含めて[`uses_partial_results`]で判定する。
 pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
     let limits = limits.finite()?;
     limits.clock.filter(|clock| {
@@ -633,6 +634,12 @@ pub(super) fn movetime_deadline(limits: &SearchLimits) -> Option<Duration> {
         .movetime_ms
         .filter(|_| limits.clock.is_none() && limits.depth.is_none() && limits.nodes.is_none())
         .map(|milliseconds| Duration::from_millis(milliseconds.get()))
+}
+
+/// 根の順序と途中結果の採用を有効にするかを返す。
+/// [`byoyomi_clock`]で選ぶ秒読みつき時計の探索と、[`movetime_deadline`]で選ぶ固定時間だけの探索に適用する。
+pub(super) fn uses_partial_results(limits: &SearchLimits) -> bool {
+    byoyomi_clock(limits).is_some() || movetime_deadline(limits).is_some()
 }
 
 /// 探索制限から時間予算を求める。

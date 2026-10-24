@@ -261,14 +261,15 @@ pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 
-/// 中断時の着手選択に使う、探索窓のαを上回った最大値とその主変化。
+/// 秒読みつき時計の探索と固定時間だけを指定した探索で、中断時の着手選択に使う値と主変化。
+/// 探索窓のαを上回った最大値を保持する。
 pub(super) struct PartialResult {
     pub(super) score: i32,
     pub(super) pv: Vec<Move>,
 }
 
-/// 秒読みつき時計だけで探索する主ワーカーが保持する、途中結果の採用材料。
-/// 適用対象は[`super::time::byoyomi_clock`]、採用条件は[`Self::partial_result`]に従う。
+/// 秒読みつき時計の探索と固定時間だけを指定した探索で、主ワーカーが保持する途中結果の採用材料。
+/// 適用条件は[`super::time::uses_partial_results`]、採用条件は[`Self::partial_result`]に従う。
 #[derive(Default)]
 pub(super) struct RootResults {
     pub(super) previous_best: Option<Move>,
