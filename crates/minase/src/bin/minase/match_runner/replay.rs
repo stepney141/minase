@@ -140,19 +140,24 @@ fn validate_saved_game(
                 reason: FailureKind::TimeForfeit
             }
         );
-        match clocks.get_mut(side) {
-            Some(clock) => {
-                let timed_out = clock
-                    .update(Duration::from_nanos(turn.think_time_ns))
+        let limit = if side == candidate_color {
+            conditions.candidate_limit
+        } else {
+            conditions.baseline_limit
+        };
+        match limit {
+            SearchLimit::Time(_) | SearchLimit::Movetime { .. } => {
+                let timed_out = clocks
+                    .update(side, limit, Duration::from_nanos(turn.think_time_ns))
                     .is_err();
                 if timed_out != expects_time_forfeit {
                     return Err(invalid_pair_record(SavedRecordError::Clock));
                 }
             }
-            None if expects_time_forfeit => {
+            SearchLimit::Fixed { .. } if expects_time_forfeit => {
                 return Err(invalid_pair_record(SavedRecordError::FixedLimitTimeForfeit));
             }
-            _ => {}
+            SearchLimit::Fixed { .. } => {}
         }
         let is_last = index + 1 == record.turns.len();
         match &turn.response {
@@ -572,6 +577,79 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    // docs/plans/movetime-deadline.md: 再開でも固定時間の境界と時間切れの分類を保つ。
+    #[test]
+    fn saved_movetime_game_validates_the_forfeit_boundary_for_both_players() {
+        let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(8, 1));
+        let side = stored_color(opening.game.position().side_to_move());
+        let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();
+        let timed = parse_search_limit("time=10000+0").unwrap();
+        for candidate_color in [StoredColor::Black, StoredColor::White] {
+            let candidate_moves = candidate_color == side;
+            let conditions = SavedGameConditions {
+                candidate_protocol: Protocol::Usi,
+                candidate_limit: if candidate_moves { limit } else { timed },
+                baseline_protocol: Protocol::Usi,
+                baseline_limit: if candidate_moves { timed } else { limit },
+                response_timeout: Duration::from_secs(1),
+            };
+            let mut record = GameRecord {
+                candidate_color,
+                candidate_seed: 1,
+                baseline_seed: 2,
+                wall_time_ns: 500_000_000,
+                candidate_cpu_time_ns: None,
+                baseline_cpu_time_ns: None,
+                candidate_peak_rss_bytes: None,
+                baseline_peak_rss_bytes: None,
+                turns: vec![TurnRecord {
+                    side,
+                    think_time_ns: 400_000_000,
+                    evaluation: None,
+                    stop_reason: None,
+                    completed_time_ms: None,
+                    ponder: None,
+                    response: TurnResponse::Resigned,
+                }],
+                termination: TerminationRecord::Resigned { loser: side },
+            };
+            assert!(matches!(
+                validate_saved_game(&record, &opening, u32::MAX, conditions).unwrap(),
+                PlayedGame::Finished {
+                    outcome: GameOutcome::Resigned { .. },
+                    ..
+                }
+            ));
+            record.turns[0].think_time_ns = 400_000_001;
+            assert_saved_error(
+                validate_saved_game(&record, &opening, u32::MAX, conditions),
+                SavedRecordError::Clock,
+            );
+            record.turns[0].response = TurnResponse::Failure {
+                reason: FailureKind::TimeForfeit,
+            };
+            record.termination = TerminationRecord::Forfeit {
+                loser: side,
+                reason: FailureKind::TimeForfeit,
+            };
+            assert!(matches!(
+                validate_saved_game(&record, &opening, u32::MAX, conditions).unwrap(),
+                PlayedGame::Finished {
+                    outcome: GameOutcome::Forfeit {
+                        reason: EngineFailure::TimeForfeit,
+                        ..
+                    },
+                    ..
+                }
+            ));
+            record.turns[0].think_time_ns = 400_000_000;
+            assert_saved_error(
+                validate_saved_game(&record, &opening, u32::MAX, conditions),
+                SavedRecordError::Clock,
+            );
+        }
     }
 
     #[test]

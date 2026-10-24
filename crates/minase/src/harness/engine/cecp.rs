@@ -179,10 +179,14 @@ pub(super) fn cecp_memory_text(hash_mb: Option<u64>) -> String {
 ///
 /// 深さ固定、整数秒の持ち時間と加算、および基本時間と加算が0で整数秒の秒読みだけを受理する。
 /// 最後の形式は1手固定時間として送る。
-/// `nodes`、基本時間か加算を伴う秒読み、および秒未満の値は、
+/// `nodes`、`movetime`、基本時間か加算を伴う秒読み、および秒未満の値は、
 /// エンジンの解決時に[`io::ErrorKind::InvalidInput`]で拒否する。
 pub(in crate::harness) fn validate_cecp_limit(limit: SearchLimit) -> io::Result<()> {
     match limit {
+        SearchLimit::Movetime { .. } => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CECP engine does not support a movetime limit",
+        )),
         SearchLimit::Fixed { nodes: Some(_), .. } => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "CECP engine does not support a fixed node limit",
@@ -231,6 +235,19 @@ mod tests {
     use crate::harness::player::{parse_player_spec, resolve_player};
     use minase_core::Square;
     use std::sync::mpsc;
+
+    // docs/plans/movetime-deadline.md: movetimeはUSI専用として解決時に拒否する。
+    #[test]
+    fn cecp_resolution_rejects_movetime() {
+        let result = resolve_player(
+            parse_player_spec("cecp:engine").unwrap(),
+            parse_search_limit("movetime=300,timemargin=100").unwrap(),
+            None,
+            "engine-default",
+            Vec::new(),
+        );
+        assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+    }
 
     // [`cecp_level_text`]の分、秒、および加算の表記を検査する。
     #[test]

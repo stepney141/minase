@@ -14,7 +14,7 @@ pub enum EngineFailure {
     Crash,
     /// 応答期限までに応答がない。
     Timeout,
-    /// 時間制御対局での時間切れ。
+    /// 時間制御または固定時間の対局での時間切れ。
     TimeForfeit,
     /// 審判層が合法とした相手の着手を`Illegal move`で拒否した。
     RejectedMove,

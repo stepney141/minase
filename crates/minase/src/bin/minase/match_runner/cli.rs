@@ -587,6 +587,9 @@ mod tests {
         for extra in [
             vec!["--each", "depth=4"],
             vec!["--each", "nodes=1000"],
+            vec!["--each", "movetime=300,timemargin=100"],
+            vec!["--candidate-limit", "movetime=300,timemargin=100"],
+            vec!["--baseline-limit", "movetime=300,timemargin=100"],
             vec!["--baseline-limit", "depth=1"],
             vec!["--candidate-limit", "nodes=1"],
             vec!["--baseline", "cecp:engine"],

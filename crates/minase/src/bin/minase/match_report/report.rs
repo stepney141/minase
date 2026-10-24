@@ -838,6 +838,26 @@ mod tests {
         assert!(report(&run_dir).is_err());
     }
 
+    // docs/plans/movetime-deadline.md: 集計対象は時間制御のままであり、movetimeもdepthも拒否する。
+    #[test]
+    fn report_rejects_movetime_and_fixed_limits() {
+        let run_dir = calibration_fixture();
+        let manifest_path = run_dir.join("manifest.json");
+        let mut manifest: serde_json::Value = read_json(&manifest_path).unwrap();
+        for limit in [
+            serde_json::json!({"kind": "movetime", "movetime_ms": 300, "timemargin_ms": 100}),
+            serde_json::json!({"kind": "fixed", "depth": 1, "nodes": null}),
+        ] {
+            manifest["candidate"]["limit"] = limit.clone();
+            manifest["baseline"]["limit"] = limit;
+            std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            assert_eq!(
+                report(&run_dir).err().unwrap().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
+    }
+
     // [`report`]は現行版だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
     fn report_rejects_version_four_before_decoding_new_fields() {

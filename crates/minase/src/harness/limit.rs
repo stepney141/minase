@@ -1,7 +1,11 @@
 //! 思考制限と時間制御の構文。
+//!
+//! `depth=N[,nodes=M]`、`nodes=M`、`time=B+I[,byoyomi=ms]`、
+//! `movetime=ms,timemargin=ms`を受理する。固定時間の2値はこの順で両方必須である。
 
 use crate::harness::clock::Clock;
 use crate::search::MAX_PLY;
+use std::num::NonZeroU64;
 
 /// USIの`go`へ渡す思考制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -15,6 +19,13 @@ pub enum SearchLimit {
     },
     /// 持ち時間による時間制御。
     Time(TimeControl),
+    /// 1手ごとの固定思考時間。時計は持たず、超過の許容時間はハーネスだけが使う。
+    Movetime {
+        /// エンジンへ送る1以上の思考時間(ms)。
+        movetime_ms: NonZeroU64,
+        /// 時間切れ判定に加える許容時間(ms)。
+        timemargin_ms: u64,
+    },
 }
 
 /// ミリ秒単位の持ち時間、加算時間、秒読み。
@@ -55,6 +66,10 @@ impl SearchLimit {
                 "time={}+{},byoyomi={}",
                 time.base_ms, time.increment_ms, time.byoyomi_ms
             ),
+            Self::Movetime {
+                movetime_ms,
+                timemargin_ms,
+            } => format!("movetime={movetime_ms},timemargin={timemargin_ms}"),
         }
     }
 
@@ -77,14 +92,14 @@ impl SearchLimit {
                 depth: None,
                 nodes: None,
             } => unreachable!("a validated fixed limit contains depth or nodes"),
-            Self::Time(_) => None,
+            Self::Time(_) | Self::Movetime { .. } => None,
         }
     }
 
     /// 時間制御なら時計の初期状態を返す。
     pub(super) fn clock(self) -> Option<Clock> {
         match self {
-            Self::Fixed { .. } => None,
+            Self::Fixed { .. } | Self::Movetime { .. } => None,
             Self::Time(time) => Some(Clock::new(time)),
         }
     }
@@ -120,12 +135,33 @@ impl std::error::Error for SearchLimitError {}
 
 /// `--each`などへ渡す思考制限を解析する。
 ///
-/// 文法は`depth=N[,nodes=M]`、`nodes=M`、`time=B+I[,byoyomi=ms]`である。
-/// 深さは1〜[`MAX_PLY`]、ノード数は1以上、時間の各値は0以上の整数ミリ秒とする。
+/// 文法は`depth=N[,nodes=M]`、`nodes=M`、`time=B+I[,byoyomi=ms]`、
+/// `movetime=ms,timemargin=ms`である。
+/// 深さは1〜[`MAX_PLY`]、ノード数と`movetime`は1以上、その他の時間は0以上の整数ミリ秒とする。
 /// `B`は基本時間、`I`は加算時間であり、省略した秒読みは0となる。
+/// `movetime`と`timemargin`はこの順で両方必須であり、他の制限と併用できない。
 pub fn parse_search_limit(input: &str) -> Result<SearchLimit, SearchLimitError> {
     let mut fields = input.split(',');
     let first = fields.next().expect("split always returns one field");
+    if let Some(value) = first.strip_prefix("movetime=") {
+        let movetime_ms = value
+            .parse::<NonZeroU64>()
+            .map_err(|error| format!("invalid positive movetime '{value}': {error}"))?;
+        let timemargin_ms = fields
+            .next()
+            .and_then(|field| field.strip_prefix("timemargin="))
+            .ok_or_else(|| "movetime must be followed by 'timemargin=<ms>'".to_owned())?;
+        let timemargin_ms = parse_nonnegative_u64(timemargin_ms)?;
+        if fields.next().is_some() {
+            return Err("limit has too many comma-separated fields"
+                .to_owned()
+                .into());
+        }
+        return Ok(SearchLimit::Movetime {
+            movetime_ms,
+            timemargin_ms,
+        });
+    }
     if let Some(value) = first.strip_prefix("time=") {
         let (base_ms, increment_ms) = value
             .split_once('+')
@@ -173,7 +209,7 @@ pub fn parse_search_limit(input: &str) -> Result<SearchLimit, SearchLimitError> 
         (None, Some(parse_positive_u64(value)?))
     } else {
         return Err(
-            "limit must be 'depth=N', 'nodes=M', 'depth=N,nodes=M', or 'time=B+I'"
+            "limit must be 'depth=N', 'nodes=M', 'depth=N,nodes=M', 'time=B+I', or 'movetime=ms,timemargin=ms'"
                 .to_owned()
                 .into(),
         );
@@ -228,6 +264,66 @@ fn parse_search_depth(text: &str) -> Result<u32, SearchLimitError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // docs/plans/movetime-deadline.md: 固定時間と許容時間は両方必須である。
+    #[test]
+    fn movetime_accepts_explicit_duration_and_margin() {
+        for (text, movetime_ms, timemargin_ms) in [
+            ("movetime=300,timemargin=100", 300, 100),
+            ("movetime=1,timemargin=0", 1, 0),
+        ] {
+            assert_eq!(
+                parse_search_limit(text),
+                Ok(SearchLimit::Movetime {
+                    movetime_ms: NonZeroU64::new(movetime_ms).unwrap(),
+                    timemargin_ms,
+                })
+            );
+        }
+    }
+
+    // 同設計書の文法と値の範囲に従い、欠落、非整数、順序違反、余分な欄を拒否する。
+    #[test]
+    fn movetime_rejects_missing_invalid_and_extra_fields() {
+        for invalid in [
+            "movetime=300",
+            "timemargin=100",
+            "movetime=0,timemargin=100",
+            "movetime=-1,timemargin=100",
+            "movetime=300,timemargin=-1",
+            "movetime=1.5,timemargin=100",
+            "movetime=300,timemargin=1.5",
+            "movetime=x,timemargin=100",
+            "movetime=300,timemargin=x",
+            "movetime=,timemargin=100",
+            "movetime=300,timemargin=",
+            "timemargin=100,movetime=300",
+            "movetime=300,byoyomi=100",
+            "movetime=300,timemargin=100,depth=1",
+            "movetime=300,timemargin=100,nodes=1",
+            "movetime=300,timemargin=100,time=1000+0",
+            "movetime=300,timemargin=100,timemargin=0",
+            "movetime=300,timemargin=100,",
+            "movetime=18446744073709551616,timemargin=0",
+            "movetime=1,timemargin=18446744073709551616",
+        ] {
+            assert!(parse_search_limit(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    // CLI表示は明示した2値を保ち、同じ思考制限として再解析できる。
+    #[test]
+    fn movetime_cli_text_round_trips() {
+        for text in [
+            "movetime=300,timemargin=100",
+            "movetime=1,timemargin=0",
+            "movetime=18446744073709551615,timemargin=18446744073709551615",
+        ] {
+            let limit = parse_search_limit(text).unwrap();
+            assert_eq!(limit.cli_text(), text);
+            assert_eq!(parse_search_limit(&limit.cli_text()), Ok(limit));
+        }
+    }
 
     // [`parse_search_limit`]の思考制限の文法を検査する。
     // 規範文書に明文がないため、depthとnodesの併記を受理することを実装契約とする。

@@ -49,6 +49,10 @@ pub(super) enum SearchLimit {
         increment_ms: u64,
         byoyomi_ms: u64,
     },
+    Movetime {
+        movetime_ms: u64,
+        timemargin_ms: u64,
+    },
 }
 
 /// 両エンジンの探索ワーカー数。

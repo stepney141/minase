@@ -9,7 +9,8 @@
 //! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`と`limit`を持つエンジン設定である。
 //! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
 //! `limit`は`kind="fixed"`なら`depth`と`nodes`、`kind="time"`なら
-//! `base_ms`、`increment_ms`、`byoyomi_ms`を持ち、時間の単位はミリ秒である。
+//! `base_ms`、`increment_ms`、`byoyomi_ms`、`kind="movetime"`なら
+//! `movetime_ms`と`timemargin_ms`を持ち、時間の単位はミリ秒である。
 //! `rules_source`は起動時の規則指定、`canonical_rules`は審判用の規則コードの文字列配列である。
 //! `mode`は`kind="elo"`、または`kind="gsprt"`と数値の`h0_elo`、`h1_elo`、`alpha`、`beta`である。
 //! `seed`はu64の基本シード、`max_ply`はu32の手数上限、`response_timeout_secs`はu64の応答待ち秒数である。
@@ -83,6 +84,13 @@ pub(super) enum StoredSearchLimit {
         increment_ms: u64,
         /// 1手ごとの秒読み(ms)。
         byoyomi_ms: u64,
+    },
+    /// 1手ごとの固定思考時間。
+    Movetime {
+        /// エンジンへ送る思考時間(ms)。
+        movetime_ms: u64,
+        /// 時間切れ判定に加える許容時間(ms)。
+        timemargin_ms: u64,
     },
 }
 

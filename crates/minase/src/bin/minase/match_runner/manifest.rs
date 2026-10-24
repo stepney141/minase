@@ -17,6 +17,13 @@ const fn stored_search_limit(limit: SearchLimit) -> StoredSearchLimit {
             increment_ms: time.increment_ms,
             byoyomi_ms: time.byoyomi_ms,
         },
+        SearchLimit::Movetime {
+            movetime_ms,
+            timemargin_ms,
+        } => StoredSearchLimit::Movetime {
+            movetime_ms: movetime_ms.get(),
+            timemargin_ms,
+        },
     }
 }
 
@@ -124,6 +131,23 @@ pub(super) fn run_manifest(
 mod tests {
     use super::*;
     use crate::match_runner::cli::parse_rule_set_argument;
+
+    // docs/plans/movetime-deadline.md: 固定時間は版を変えずに専用のkindと2値で保存する。
+    #[test]
+    fn movetime_manifest_serializes_explicit_duration_and_margin() {
+        let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();
+        let stored = stored_search_limit(limit);
+        let json = serde_json::to_value(&stored).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"kind": "movetime", "movetime_ms": 300, "timemargin_ms": 100})
+        );
+        assert_eq!(
+            serde_json::from_value::<StoredSearchLimit>(json).unwrap(),
+            stored
+        );
+        assert_eq!(FORMAT_VERSION, 5);
+    }
 
     // default_concurrencyのdocコメントと物理コア数からの既定値に関するADRに従う。
     #[test]

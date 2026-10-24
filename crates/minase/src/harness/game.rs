@@ -177,9 +177,7 @@ pub fn play_game(
         if stop.load(Ordering::Acquire) {
             return None;
         }
-        if let Some(clock) = clocks.get_mut(side_to_move)
-            && let Err(reason) = clock.update(elapsed)
-        {
+        if let Err(reason) = clocks.update(side_to_move, limit, elapsed) {
             turns.push(TurnRecord {
                 side: stored_color(side_to_move),
                 think_time_ns: duration_ns(elapsed),
