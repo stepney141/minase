@@ -49,6 +49,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [チェスと将棋の教師混合比](chess-shogi-teacher-mixing.md)は、Stockfish、elmo、やねうら王、dlshogi、AobaZeroなどの一次資料から、混合比の実採用例、学習器の既定値、およびminaseと係数の定義が異なる場合の換算を確認する。
 - [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](win-rate-scale-k-prior-art.md)は、やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealなどで尺度Kが定数か推定値かを一次資料で確認し、重みと同時に学習する例はなく、実行ごとの推定はTexel系とdlshogiの`--use_evalfix`に限られることを示す。
 - [将棋の教師生成と学習ツールの調査（GenSfenとtatara）](teacher-generation-prior-art.md)は、やねうら王のGenSfenとNNUE学習ツールtataraのソースから、将棋の教師の質を作る要素を整理する。
+- [強豪エンジンの教師生成と自己参照の偏りへの対策](teacher-generation-strong-engines.md)は、Stockfish、lc0、自己生成だけで育てたチェスエンジン、Fairy-Stockfish、および将棋の強豪の教師生成を一次資料で調べ、自己生成の反復が伸びにくくなった記録、偏りの主因として開発者が挙げる局面の偏り、外部の局面を使う対策の効果（AobaZeroが人間に似た局面から始めて+20 Eloなど）、およびランダムな手の効果が手の選び方と条件で分かれることを整理し、minaseの教師生成の候補を既存の決定との関係とともに並べる。
 - [探索で使う局面に合わせた評価関数の学習](search-aware-evaluation.md)は、過去のNNUEの不採用を踏まえ、候補自身が選ぶ局面の再評価を先に検証し、利きの補助学習とモデル構造を条件付きで比較する案を示す。
 - [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md)は、Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。
 - [Athénanの先行事例の調査](athenan-prior-art.md)は、学習にDescent、対局にUBFMsを使うAthénanの定義、構成要素ごとの効果の証拠、Olympiadの成績、および公開実装を一次資料で確認し、中将棋へ適用するときの問題として循環、長い対局、線形の評価関数での実証の欠如、比較相手のαβ探索の弱さ、およびメモリの増加を挙げる。

@@ -235,6 +235,6 @@ STCの測定名は`nnue-material-linear-init-noninferiority-stc`、LTCの測定�
 - [探索用駒価値を学習済みPSTから導くADR](../adr/derive-search-piece-values-from-the-learned-pst.md)
 - [先読みなしの教師によるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)
 - Stockfish、コミット`a17c0ce2`「SFNNv17: Remove psqt accumulator and update default net」（2026年9月30日）。線形経路を廃止し、STCとLTCの非劣化の試験に通った。
-- Fairy-Stockfishの学習器variant-nnue-pytorch、コミット`749db94`の`model.py`165〜174行（`_init_psqt`）と`halfka.py`21〜32行（`halfka_psqts`）。線形経路の初期値は駒の種類ごとの駒価値で、升によらない。
-- Fairy-Stockfishの教師生成器variant-nnue-tools、コミット`7c8cc75f`の`src/uci.cpp`433〜438行。学習器が読む駒価値の表`PIECE_VALUES`を、王を除いて書き出す。
+- Fairy-Stockfishの学習器fairy-stockfish/variant-nnue-pytorch、コミット`b15df38`（2026年6月30日）の`model.py`165〜174行（`_init_psqt`）と`halfka_v2.py`41〜56行（`halfka_psqts`）。線形経路の初期値は駒の種類ごとの駒価値で、升によらない。
+- Fairy-Stockfishの教師生成器fairy-stockfish/variant-nnue-tools、コミット`445b53c4`（2026年9月25日）の`src/uci.cpp`433〜439行。学習器が読む駒価値の表`PIECE_VALUES`を、Fairy-Stockfishの中盤の駒価値から王を除いて書き出す。
 - やねうら王、コミット`c1b80eaa09fe13d5f12b1599d1ae4d53c224de30`の`source/eval/nnue/nnue_architecture.h`52行。線形経路を持たない「SFNN without Psqt」の型を定める。
