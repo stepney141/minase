@@ -112,7 +112,7 @@
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
 | 測定記録の再配置 | [plans/archived/measurements-layout.md](plans/archived/measurements-layout.md) | 完了（採用） | 2026年10月18日 |
 | 固定時間（movetime）の探索の締切と途中結果 | [plans/movetime-deadline.md](plans/movetime-deadline.md) | 起案 | |
-| NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/nnue-material-linear-init.md](plans/nnue-material-linear-init.md) | 起案 | |
+| NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/nnue-material-linear-init.md](plans/nnue-material-linear-init.md) | 進行中 | |
 
 ## 現在地
 
@@ -125,7 +125,7 @@
 ### 次の候補
 
 - [固定時間（movetime）の探索の締切と途中結果](plans/movetime-deadline.md)は、`go movetime`の探索で、予測による反復の開始の制限を外して指定時間まで反復を始め、打ち切った反復の途中結果で指す規則を、秒読み期と同じ形で適用する。lishogiのBotの通信対局では、minase 2.5.0の探索の47%が1手300秒で打ち切られ、主ワーカーが最後に反復を完了した時刻は平均192秒だった（[調査メモ](research/movetime-prior-art-and-correspondence-usage.md)）。思考時間の上限を延ばさずに、着手へ反映する時間を増やすことを狙う。採否は、対局ハーネスに加える思考制限`movetime=`の300 msと1,000 msの自己対局GSPRTで決め、秒読み期の同種の測定と同程度の効果なら合計約4〜5時間と見込む。着手は利用者の指示を待つ。
-- [NNUEの線形経路を升によらない駒価値で初期化する学習](plans/nnue-material-linear-init.md)は、NNUEの線形経路（PSQT）に前の世代の学習済みPSTを移す初期化をやめ、升によらない駒価値から現行と同じ教師と条件で学び直す。lishogiのBotで麒麟が自陣の右端2筋に成る前の手数の59%を過ごす偏り（人間の上位者は0.3%）を調べた際に、利用者が移植をやめると決めた（[分析の記録](measurements/adhoc/kirin-right-edge-bias.md)）。新しいネットは麒麟の右端選好の診断と、masterに劣らないことを確かめる非劣性のGSPRT（STCとLTC）にかけ、所要時間は学習が約2時間、測定が約1日から2日である。採否は利用者の決定により非劣性で判定し、着手は利用者の指示を待つ。
+- [NNUEの線形経路を升によらない駒価値で初期化する学習](plans/nnue-material-linear-init.md)は、NNUEの線形経路（PSQT）に前の世代の学習済みPSTを移す初期化をやめ、升によらない駒価値から現行と同じ教師と条件で学び直す。lishogiのBotで麒麟が自陣の右端2筋に成る前の手数の59%を過ごす偏り（人間の上位者は0.3%）を調べた際に、利用者が移植をやめると決めた（[分析の記録](measurements/adhoc/kirin-right-edge-bias.md)）。新しいネットは麒麟の右端選好の診断と、masterに劣らないことを確かめる非劣性のGSPRT（STCとLTC）にかけ、所要時間は学習が約2時間、測定が約1日から2日である。採否は利用者の決定により非劣性で判定し、2026年10月25日に着手した。
 - [先読みなしの教師での対局単位と局面単位の間引きの比較](plans/nnue-subsample-no-lookahead.md)は、[前計画](plans/archived/nnue-early-best-epoch.md)が先読み教師だけで示した「多数の対局から疎に採るほうが検証損失が低い」という結果を、標準の先読みなしの教師でやり直し、対局数の効果が残るかと、効果の大きさが教師によって変わるかを、事前に定めた基準で判定する。学習器の変更はなく、測定機のGPUで約5時間かかる。結論は次の教師生成の計画の着手の前提になる。着手は利用者の指示を待つ。
 - [教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す](plans/sparse-teacher-recording.md)は、KataGoのplayout cap randomizationにならい、手ごとの抽選で4手に1手だけを2万ノードで探索して記録し、残りを4,000ノードで指す生成を加え、同じ計算時間で約2.5倍の対局を生成した教師で学んだNNUEを段階ゲートにかける。着手は、前項の判定1が「支持」となった後とし、生成を作業機とvast.aiのどちらで行うかは着手時に利用者が決める。
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、[NNUEの隠れ層と位相補間の出力の計画](plans/archived/nnue-hidden-layer.md)が残した4つの固定の出力部を、隠れ層の段数と各幅、端点数を名前で与える1つの出力部（`stack-h16-e2`のような構成名）に置き換え、現行の直接内積を`stack-e1`として同じ型で表す。構造の整理であり段階ゲートは持たず、ノード数の一致と前計画の学習結果のビット単位の再現で挙動が変わっていないことを確かめる。以後のアーキテクチャの実験は、構成名を変えて学び段階ゲートで測るだけになる。着手は利用者の指示を待つ。
