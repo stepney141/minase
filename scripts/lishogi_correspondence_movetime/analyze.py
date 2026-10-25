@@ -20,8 +20,9 @@ then the bestmove with reason hard 299.5..301.5 s after go.
 After a hard stop, minase writes one more info line when the selected result is
 deeper than the last progress line: a partial result (with `lowerbound`, after
 `info string partial`) or a deeper helper worker's result. In a hard-stopped
-search, attributed lines with time >= 299.5 s are that line, because a main
-worker iteration that completes after 197 s is followed by a soft stop.
+search, that final line is emitted at or after the 300 s cutoff, so its `time`
+is >= 300 s. Main worker iterations completed before the cutoff have `time`
+< 300 s.
 """
 import bisect
 import re
@@ -31,7 +32,6 @@ from collections import defaultdict
 from datetime import datetime
 
 CAP_S = 300.0
-FINAL_LINE_S = 299.5
 
 TS = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3}) ")
 INFO = re.compile(r">> info depth (\d+) .*?time (\d+) pv (\S+)")
@@ -102,8 +102,8 @@ def match_end(search, bests, best_times):
 def classify(search):
     """Split a matched search into main worker iterations and the final line after a hard stop."""
     hard = search["end"]["stop"] == "hard"
-    search["main"] = [x for x in search["infos"] if not (hard and x["time"] >= FINAL_LINE_S)]
-    final = [x for x in search["infos"] if hard and x["time"] >= FINAL_LINE_S]
+    search["main"] = [x for x in search["infos"] if not (hard and x["time"] >= CAP_S)]
+    final = [x for x in search["infos"] if hard and x["time"] >= CAP_S]
     search["partial"] = any(x["lower"] for x in final)
     search["helper"] = bool(final) and not search["partial"]
 
