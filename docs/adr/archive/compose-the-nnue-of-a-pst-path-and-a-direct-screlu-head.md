@@ -2,15 +2,15 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月12日。
+置き換え済み。決定日は2026年10月12日。[NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](../compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)によって置き換えられた。
 
 ## コンテキスト
 
-[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)は、PST＋FMを1つのネットで置き換えるにあたり、ネットの構造を決める必要があった。
+[NNUEによるPST＋FMの完全代替](../../plans/archived/nnue-replacement.md)は、PST＋FMを1つのネットで置き換えるにあたり、ネットの構造を決める必要があった。
 基底特徴とは、駒状態、陣営、および升の組に先獅子の対象升を加えた13,680個の特徴であり、PSTとFMの入力と同じである。
 置き換え前のPSTは、序中盤用と終盤用の2組の表を盤上総駒数で補間しており、FMの補正は第2層なしで当時の採用PSTに勝っていた。
 FMの補正は、入力の線形和を二乗する活性化を持つ幅32の隠れ層と線形の項の組合せとして書けるので、隠れ層を重ねなくても2駒の関係を表せる。
-Stockfishの特徴変換部も、特徴ごとの線形項を駒数バケット別に持ち、評価を線形項と非線形部の和として出す（[アーキテクチャの考察](../research/nnue-architecture-discussion.md)）。
+Stockfishの特徴変換部も、特徴ごとの線形項を駒数バケット別に持ち、評価を線形項と非線形部の和として出す（[アーキテクチャの考察](../../research/nnue-architecture-discussion.md)）。
 駒数バケットは、捕獲で境界をまたぐと残った全特徴への出力重みが変わり、評価値が不連続に変わり得る。
 
 ## 決定
@@ -31,8 +31,8 @@ FMの埋め込みを符号つき二乗のユニットへ直接移す案は採ら
 
 ## 結果
 
-盤上総駒数による補間の式とその選択の理由は、[線形の評価の2組の重みを盤上総駒数で補間する](interpolate-the-linear-path-by-total-piece-count.md)が扱う。
+盤上総駒数による補間の式とその選択の理由は、[線形の評価の2組の重みを盤上総駒数で補間する](../interpolate-the-linear-path-by-total-piece-count.md)が扱う。
 `quiet_move_pst_delta`と`breakdown`は、線形の経路の重みを基底特徴の番号で直接引く。
 重みファイルのヘッダには構造を表す文字列（構造記述文字列）を置き、この出力の構造はその中の`linear=tapered2;head=direct-screlu`の部分で表される。
 出力部を増やすときは、`Head`トレイトの新しい実装と構造記述文字列の新しい名前を加え、入力特徴集合と第1層には手を入れない。
-[NNUEの隠れ層と位相補間の出力](../plans/archived/nnue-hidden-layer.md)は、隠れ層を持つ出力部を測る計画として起案されており、その結果で本決定は置き換わり得る。
+[NNUEの隠れ層と位相補間の出力](../../plans/archived/nnue-hidden-layer.md)は、隠れ層を持つ出力部を測る計画として起案されており、その結果で本決定は置き換わり得る。

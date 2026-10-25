@@ -14,20 +14,20 @@ lishogiのBotの対局では、麒麟が成る前に盤上にいた手数の59%�
 
 ## 状態
 
-進行中。2026年10月25日に利用者の指示で着手した。
-非劣性の測定で候補に置くmasterは、着手時点のmasterのコミットに固定する。
-[NNUEの出力部の層積みへの統一](nnue-layer-stack.md)との統合の順は、本書を先に着手したので、本書を先に統合すると決めた。
-フェーズ1から4までを終えた。
+進行中。2026年10月25日に利用者の指示で着手し、採用と判定した。
+非劣性の測定では、候補に置くmasterを着手時点のmasterのコミットに固定した。
+[NNUEの出力部の層積みへの統一](nnue-layer-stack.md)との統合の順は、本書を先に着手したので、本書を先に統合すると決め、層積みの計画の再現の基準を書き換えた。
 フェーズ1の3つの検査では、回帰検査の検証損失がビット単位で一致し、`config.json`の照合でも初期値に関わる項目のほかに違いがなく、非線形部分の初期値も変更前の学習器のものとバイト単位で一致した。
 [学習の記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)のとおり、新しいネットの最良の検証損失は現行のネットより3.1×10⁻⁵高いだけであり、量子化の検査と3つの診断に通った。
 線形重みの初期値からの移動量は平均1センチポーン前後にとどまり、位置による評価の差は非線形部分が担っている。
-[麒麟の診断](../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)の判定は「半分より多くが残る」であり、R_新（128.8センチポーン）はR_現（121.2センチポーン）より大きかった。
-非劣性の[STC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)は1,752ペアで`H0`（LLR −2.958）となり、異常は0件だったので、LTCへ進めた。
-非劣性のLTCを測定機で進めている。
+[麒麟の診断](../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)の判定は「半分より多くが残る」であり、R_新（128.8センチポーン）はR_現（121.2センチポーン）より大きかったので、偏りを減らす手段は教師データの作り方の見直しになる。
+非劣性の[STC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)は1,752ペアで、[LTC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)は1,579ペアでともに`H0`となり、どちらもエンジン異常、時間切れ、および拒否着手は0件だったので、採用とした。
+決定は[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)に記録し、旧ADRを置き換えた。
+残りは、利用者の許可を得てmasterへ統合することである。
 
 ## 目的
 
-線形経路にPSTを移す方式は、[NNUEによるPST＋FMの完全代替](archived/nnue-replacement.md)で、蒸留を使わずに旧評価関数の知識を取り込む手段として採用された（[ADR](../adr/use-nnue-as-the-only-search-evaluation.md)、[構造のADR](../adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
+線形経路にPSTを移す方式は、[NNUEによるPST＋FMの完全代替](archived/nnue-replacement.md)で、蒸留を使わずに旧評価関数の知識を取り込む手段として採用された（[ADR](../adr/use-nnue-as-the-only-search-evaluation.md)、[構造のADR](../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)）。
 2026年10月25日に、利用者は、前の世代の表を移す方式はNNUEの構成として筋が悪く、線形経路は初期化して学ぶべきだと決めた。
 初期値は、Fairy-Stockfishの学習器と同じく升によらない駒価値とすることも、同日に利用者が選んだ。
 採否を棋力の向上ではなく非劣性で判定することも、同日に利用者が決めた。
@@ -233,14 +233,14 @@ STCの測定名は`nnue-material-linear-init-noninferiority-stc`、LTCの測定�
 
 - 採否が「設計判断」の規則で決まり、測定記録に書かれている。
 - 麒麟の診断に、「半分より多くが残る」「半分より多くは残らない」「判定不能」のいずれかの結論が付き、測定記録に書かれている。
-- 採用した場合は、利用者の許可を得てmasterへ統合し、線形経路の初期値を定めるADRを書いて[構造のADR](../adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)を置き換え、学習の手引きと学習器のdocコメントを改めている。
+- 採用した場合は、利用者の許可を得てmasterへ統合し、線形経路の初期値を定めるADRを書いて[構造のADR](../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)を置き換え、学習の手引きと学習器のdocコメントを改めている。
 - 採用した場合は、「依存関係」に書いた層積みの計画と間引きの比較の計画の検証の条件を改めている。
 - 不採用の場合は、ブランチを統合せず、線形重みの移動量と診断の結果を、次に打つ手を決める材料として「状態」節に書いている。
 
 ## 参考資料
 
 - [麒麟が自陣の右端へ寄る傾向の分析](../measurements/adhoc/kirin-right-edge-bias.md)
-- [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にするADR](../adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)
+- [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にするADR](../adr/archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)
 - [探索用駒価値を学習済みPSTから導くADR](../adr/derive-search-piece-values-from-the-learned-pst.md)
 - [先読みなしの教師によるNNUEの学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)
 - Stockfish、コミット`a17c0ce2`「SFNNv17: Remove psqt accumulator and update default net」（2026年9月30日）。線形経路を廃止し、STCとLTCの非劣化の試験に通った。
