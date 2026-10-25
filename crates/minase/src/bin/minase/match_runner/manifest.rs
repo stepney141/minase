@@ -132,7 +132,7 @@ mod tests {
     use super::*;
     use crate::match_runner::cli::parse_rule_set_argument;
 
-    // docs/plans/movetime-deadline.md: 固定時間は版を変えずに専用のkindと2値で保存する。
+    // docs/plans/archived/movetime-deadline.md: 固定時間は版を変えずに専用のkindと2値で保存する。
     #[test]
     fn movetime_manifest_serializes_explicit_duration_and_margin() {
         let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();

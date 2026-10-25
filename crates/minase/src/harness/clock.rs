@@ -209,7 +209,7 @@ mod tests {
     use super::*;
     use crate::harness::limit::parse_search_limit;
 
-    // docs/plans/movetime-deadline.md: 固定時間の制限は時計を持たず、毎手独立に適用する。
+    // docs/plans/archived/movetime-deadline.md: 固定時間の制限は時計を持たず、毎手独立に適用する。
     #[test]
     fn movetime_forfeit_requires_exceeding_each_turn_allowance() {
         let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();

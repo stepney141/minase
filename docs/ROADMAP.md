@@ -111,20 +111,16 @@
 | 教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す | [plans/sparse-teacher-recording.md](plans/sparse-teacher-recording.md) | 起案 | |
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
 | 測定記録の再配置 | [plans/archived/measurements-layout.md](plans/archived/measurements-layout.md) | 完了（採用） | 2026年10月18日 |
-| 固定時間（movetime）の探索の締切と途中結果 | [plans/movetime-deadline.md](plans/movetime-deadline.md) | 進行中 | |
+| 固定時間（movetime）の探索の締切と途中結果 | [plans/archived/movetime-deadline.md](plans/archived/movetime-deadline.md) | 完了（採用） | 2026年10月26日 |
 | NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/nnue-material-linear-init.md](plans/nnue-material-linear-init.md) | 起案 | |
 
 ## 現在地
 
 ### 直近の完了
 
+- [固定時間（movetime）の探索の締切と途中結果](plans/archived/movetime-deadline.md)は2026年10月26日に、採用で完了した。`go movetime`の探索で、予測による反復の開始の制限を外して指定時間まで反復を始め、打ち切った反復の途中結果で指す規則を、秒読み期と同じ形で適用した。対局ハーネスに加えた思考制限`movetime=`の自己対局GSPRTで、1手300 msが有効416ペア、1手1,000 msが有効325ペアでともに`H1`となり（測定機が埋まっていたので別の機械で測定）、minase 2.6.0としてlishogiのBotへ配備した。配備後の通信対局では、照合できた105件の探索がすべて300秒まで探索し、15.2%で途中結果を採った（[配備後の記録](measurements/movetime-deadline/movetime-deadline-bot-correspondence.md)）。33.3%では補助ワーカーのより深い結果が指されており、ワーカー間の選択の規則は範囲外として残った。
 - [引き分けの評価値の設定](plans/archived/draw-value.md)は2026年10月23日に、採用で完了した。千日手の引き分けに返す評価値を、やねうら王式のUSIオプション`DrawValueBlack`と`DrawValueWhite`で設定できるようにした。既定値0では`bench`の総ノード数と結果が変わらないので、自己対局による測定を行わずに採用した（minase 2.5.0以降）。lishogiのBotでは2.5.0で両方のオプションを−1に設定し、評価値がちょうど同じ手の間でだけ千日手を避けるようにした。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/archived/byoyomi-time-usage.md)は2026年10月23日に、一部不採用で完了した。秒読み期は締切まで反復を始め、締切で打ち切った反復の途中結果で指す段階Aは、持ち時間と秒読みの比が20と150の秒読みつきの2条件のGSPRTでともに`H1`となり、採用した（minase 2.2.0以降）。持ち時間を局面の難しさで重み付けする段階Bの3候補は、段階Aを上回らず不採用とした。lishogiのBotは、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局51局で、Bot側の時間切れが0件だった（[Botの記録](measurements/byoyomi-time-usage/bot-byoyomi-margin-3000.md)）。
-- [探索の関数形の見直しの統括計画](plans/archived/search-forms.md)は2026年10月23日に、採用で完了した。探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本のサブタスクを、vast.aiで借りた計算機での30,000ペアのSPSAで1本ずつ調整し、2026年10月18日の利用者の決定によりSTCの結果によらず採用した。7本を終えた版は、統括計画を始める前のmaster（`99ccc6bb`）に対して、測定機のLTCで104ペアで`H1`（約+493 Elo）だった（[LTCの記録](measurements/search-forms/search-forms-ltc.md)）。サブタスク1のSTCは`H0`（約−17 Elo）であり、その原因を調べるかは利用者が決める。
-
-### 進行中
-
-- [固定時間（movetime）の探索の締切と途中結果](plans/movetime-deadline.md)は、`go movetime`の探索で、予測による反復の開始の制限を外して指定時間まで反復を始め、打ち切った反復の途中結果で指す規則を、秒読み期と同じ形で適用する。2026年10月25日に着手し、対局ハーネスに加えた思考制限`movetime=`の自己対局GSPRTで、1手300 msの選別条件が有効416ペア、1手1,000 msの判定条件が有効325ペアでともに`H1`となり、採用と判定した（[ADR](adr/search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)）。測定は、測定機が別の計算で埋まっていたので別の機械ryzen0で行った。2026年10月25日にminase 2.6.0としてリリースし、同日lishogiのBotへ配備した。残りは、配備後の通信対局の探索が100件以上たまってから、指定時間を使い切った探索と途中結果の割合を集計するフェーズ4の記録である。
 
 ### 次の候補
 

@@ -160,7 +160,7 @@ fn restored_hash(recorded: Option<u64>, default: Option<u64>) -> Result<Option<u
 mod tests {
     use super::*;
 
-    // docs/plans/movetime-deadline.md: 再開は保存された2値から同じ制限を復元する。
+    // docs/plans/archived/movetime-deadline.md: 再開は保存された2値から同じ制限を復元する。
     #[test]
     fn movetime_resume_restores_saved_duration_and_margin() {
         for (json, expected) in [

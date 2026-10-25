@@ -1,0 +1,15 @@
+searches with go in [2026-10-25 10:46:56, 2026-10-25 22:19:00) UTC: 111
+
+minase 2.6.0: excluded {'ambiguous lines': 4, 'no matching end': 2}, matched with ambiguous lines 0
+  all matched: 105 searches, hard 105 (100%), soft 0
+    used time: mean 300 s
+    main worker's last completed iteration: mean 206 s, median 224 s, cap / mean 1.45
+    hard stops: mean time after main worker's last completed iteration 94 s (31% of cap); share of total used time 31%
+    hard stops: partial results 16 (move differs from main worker's last completed iteration: 1), deeper helper results 35 (completion time unknown), neither 54 (mean time after main worker's last completed iteration 73 s)
+    searches past 150 s: 105; main worker's best at 150 s differs from played move: 16 (15.2%)
+  without ambiguous lines: 105 searches, hard 105 (100%), soft 0
+    used time: mean 300 s
+    main worker's last completed iteration: mean 206 s, median 224 s, cap / mean 1.45
+    hard stops: mean time after main worker's last completed iteration 94 s (31% of cap); share of total used time 31%
+    hard stops: partial results 16 (move differs from main worker's last completed iteration: 1), deeper helper results 35 (completion time unknown), neither 54 (mean time after main worker's last completed iteration 73 s)
+    searches past 150 s: 105; main worker's best at 150 s differs from played move: 16 (15.2%)

@@ -148,7 +148,7 @@ cargo run --release --bin minase -- match run \
 
 STCとLTCは`go movetime`を送らないので、`go movetime`の探索だけに働く変更（lishogiのBotの通信対局、開発用GUIで指す固定時間の対局）の効果は段階ゲートに現れない。
 そのような変更は、`movetime=`の短い条件で選別し、長い条件で判定する。
-条件と順序は変更ごとの設計書で定め、振分けと採用の規則は段階ゲートのSTCとLTCに準じる（先例は[固定時間の探索の締切と途中結果](../plans/movetime-deadline.md)）。
+条件と順序は変更ごとの設計書で定め、振分けと採用の規則は段階ゲートのSTCとLTCに準じる（先例は[固定時間の探索の締切と途中結果](../plans/archived/movetime-deadline.md)）。
 `movetime=`は`--ponder`、および`cecp:`のエンジンとは併用できず、指定するとエラーになる。
 CECPのエンジンに使う「1手固定時間」（「エンジンの指定方法」の節）は、秒読みだけの時間制御として指定する別の思考制限である。
 

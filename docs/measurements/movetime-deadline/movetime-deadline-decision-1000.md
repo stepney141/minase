@@ -2,7 +2,7 @@
 
 ## 目的
 
-[固定時間（movetime）の探索の締切と途中結果](../../plans/movetime-deadline.md)の候補と基準（変更前のコミット）を、判定条件`movetime=1000,timemargin=100`のGSPRTで比べ、[選別条件](movetime-deadline-screen-300.md)を通過した候補を採用するかを決める。
+[固定時間（movetime）の探索の締切と途中結果](../../plans/archived/movetime-deadline.md)の候補と基準（変更前のコミット）を、判定条件`movetime=1000,timemargin=100`のGSPRTで比べ、[選別条件](movetime-deadline-screen-300.md)を通過した候補を採用するかを決める。
 
 ## コマンドライン
 

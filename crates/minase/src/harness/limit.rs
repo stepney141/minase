@@ -265,7 +265,7 @@ fn parse_search_depth(text: &str) -> Result<u32, SearchLimitError> {
 mod tests {
     use super::*;
 
-    // docs/plans/movetime-deadline.md: 固定時間と許容時間は両方必須である。
+    // docs/plans/archived/movetime-deadline.md: 固定時間と許容時間は両方必須である。
     #[test]
     fn movetime_accepts_explicit_duration_and_margin() {
         for (text, movetime_ms, timemargin_ms) in [

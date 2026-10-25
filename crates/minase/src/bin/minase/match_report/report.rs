@@ -838,7 +838,7 @@ mod tests {
         assert!(report(&run_dir).is_err());
     }
 
-    // docs/plans/movetime-deadline.md: 集計対象は時間制御のままであり、movetimeもdepthも拒否する。
+    // docs/plans/archived/movetime-deadline.md: 集計対象は時間制御のままであり、movetimeもdepthも拒否する。
     #[test]
     fn report_rejects_movetime_and_fixed_limits() {
         let run_dir = calibration_fixture();

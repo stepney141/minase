@@ -236,7 +236,7 @@ mod tests {
     use minase_core::Square;
     use std::sync::mpsc;
 
-    // docs/plans/movetime-deadline.md: movetimeはUSI専用として解決時に拒否する。
+    // docs/plans/archived/movetime-deadline.md: movetimeはUSI専用として解決時に拒否する。
     #[test]
     fn cecp_resolution_rejects_movetime() {
         let result = resolve_player(

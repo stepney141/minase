@@ -16,7 +16,7 @@ Botの通信対局では、minase 2.5.0の探索の47%が300秒で打ち切ら�
 StockfishとYaneuraOuも、`movetime`の指定では通常の時間管理を外して指定時間まで探索し、打ち切った反復で読み終えた手を使う。
 また、エンジンの開発者は2026年9月18日に、人間との対局で棋力を落とす変更を許容しないと決めている。
 標準の採否測定（STCとLTC）は`go movetime`を送らないので、この変更の採否は固定時間の自己対局で測る必要があった。
-本書の決定は[固定時間（movetime）の探索の締切と途中結果](../plans/movetime-deadline.md)で下した。
+本書の決定は[固定時間（movetime）の探索の締切と途中結果](../plans/archived/movetime-deadline.md)で下した。
 
 ## 決定
 

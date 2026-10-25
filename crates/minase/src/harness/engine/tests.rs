@@ -121,7 +121,7 @@ fn seed() -> NonZeroU64 {
     NonZeroU64::new(1).unwrap()
 }
 
-// docs/plans/movetime-deadline.md: 遅れた応答は着手として採用せず、時間切れの手として記録・集計する。
+// docs/plans/archived/movetime-deadline.md: 遅れた応答は着手として採用せず、時間切れの手として記録・集計する。
 #[test]
 fn movetime_game_records_and_counts_time_forfeits() {
     let a = fake(

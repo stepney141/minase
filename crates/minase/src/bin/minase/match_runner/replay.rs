@@ -579,7 +579,7 @@ mod tests {
         ));
     }
 
-    // docs/plans/movetime-deadline.md: 再開でも固定時間の境界と時間切れの分類を保つ。
+    // docs/plans/archived/movetime-deadline.md: 再開でも固定時間の境界と時間切れの分類を保つ。
     #[test]
     fn saved_movetime_game_validates_the_forfeit_boundary_for_both_players() {
         let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(8, 1));
