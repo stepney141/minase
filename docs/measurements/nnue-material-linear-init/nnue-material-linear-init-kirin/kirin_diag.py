@@ -1,6 +1,6 @@
 """人間の棋譜で麒麟の3筋と7筋への置き直しを比べる単独の診断スクリプト。
 
-定義は docs/plans/nnue-material-linear-init.md の「麒麟の診断」に従う。
+定義は docs/plans/archived/nnue-material-linear-init.md の「麒麟の診断」に従う。
 evaluate_games に渡す評価器は、SFENの列を受け取り、同じ順の
 (評価値cp, 非線形部分cp) の列を返す。テストでは外部プロセスを必要としない。
 棋譜は最後まで再生し、失敗した対局からは途中の局面も採用しない。

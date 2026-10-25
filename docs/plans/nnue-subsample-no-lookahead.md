@@ -50,7 +50,7 @@
 教師データは、前計画と同じ30ファイル（`data/nnue-lr-schedule-gen/generated-*.bin`）である。
 学習器は、前計画のフェーズ5と同じ`data/nnue-early-best-epoch/minase-trainer-subsample`（SHA-256 `f84299c6…`）を使う。
 このバイナリは、前計画の記録のとおりコミット`6b43c663`からビルドしたものである。
-その後の[線形経路を駒価値で初期化する計画](nnue-material-linear-init.md)で学習器の線形の経路の初期値が変わったが、本書は先読みあり8本と同じこのバイナリを使い続けるので、比較の条件は変わらない。
+その後の[線形経路を駒価値で初期化する計画](archived/nnue-material-linear-init.md)で学習器の線形の経路の初期値が変わったが、本書は先読みあり8本と同じこのバイナリを使い続けるので、比較の条件は変わらない。
 先読みあり8本の出力は、前計画の`data/nnue-early-best-epoch/`に保持されている。
 
 集計は、前計画の使い捨てのプログラム`teacherstat`（`data/nnue-early-best-epoch/tools/teacherstat/`）を拡張して行う。

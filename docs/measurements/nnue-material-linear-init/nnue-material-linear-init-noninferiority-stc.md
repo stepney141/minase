@@ -2,7 +2,7 @@
 
 ## 目的
 
-[線形経路を駒価値で初期化する計画](../../plans/nnue-material-linear-init.md)のフェーズ5の選別として、masterを候補、線形経路を探索用駒価値で初期化したネットを埋め込んだコミットを基準とする短時間の時間制御（STC）のGSPRTで、新しいネットがmasterより約10 Elo以上弱い可能性を退けられるかを調べる。
+[線形経路を駒価値で初期化する計画](../../plans/archived/nnue-material-linear-init.md)のフェーズ5の選別として、masterを候補、線形経路を探索用駒価値で初期化したネットを埋め込んだコミットを基準とする短時間の時間制御（STC）のGSPRTで、新しいネットがmasterより約10 Elo以上弱い可能性を退けられるかを調べる。
 
 ## コマンドライン
 
@@ -17,7 +17,7 @@ data/nnue-material-linear-init/minase-master match run \
 
 仮説は既定のとおり、H0をelo=0、H1をelo=10とし、誤り率はα=β=0.05である。
 候補にmaster、基準に新しいネットを置いたので、`H0`は「masterが10 Elo強い」という仮説を誤り率5%で退けたこと、すなわち新しいネットが約10 Elo以上弱い可能性を退けたことを意味する。
-シードは、既存の測定の最大のシード（[movetimeの計画](../../plans/movetime-deadline.md)の6,250,000,000）から上限ペア数より離れた値を選んだ。
+シードは、既存の測定の最大のシード（[movetimeの計画](../../plans/archived/movetime-deadline.md)の6,250,000,000）から上限ペア数より離れた値を選んだ。
 
 ## エンジン
 

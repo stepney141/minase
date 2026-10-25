@@ -2,7 +2,7 @@
 
 ## 目的
 
-[線形経路を駒価値で初期化する計画](../../plans/nnue-material-linear-init.md)のフェーズ5の採否を決める測定として、[STC](nnue-material-linear-init-noninferiority-stc.md)を通った新しいネットを、masterを候補とする長時間の時間制御（LTC）のGSPRTにかけ、新しいネットがmasterより約10 Elo以上弱い可能性を退けられるかを調べる。
+[線形経路を駒価値で初期化する計画](../../plans/archived/nnue-material-linear-init.md)のフェーズ5の採否を決める測定として、[STC](nnue-material-linear-init-noninferiority-stc.md)を通った新しいネットを、masterを候補とする長時間の時間制御（LTC）のGSPRTにかけ、新しいネットがmasterより約10 Elo以上弱い可能性を退けられるかを調べる。
 
 ## コマンドライン
 

@@ -15,7 +15,7 @@ PSTの移植は、蒸留を使わずに旧評価関数の知識を取り込む�
 開発者は、前の世代の学習済みPSTをネットへ移すことはNNUEの構成として筋が悪いと判断し、線形の経路を升によらない駒価値で初期化して学習すると決めた。
 Fairy-Stockfishの学習器は線形の経路を駒の種類ごとの駒価値だけで初期化し、Stockfishは2026年9月30日のSFNNv17で線形の経路そのものを廃止していた。
 
-[線形経路を駒価値で初期化する計画](../plans/nnue-material-linear-init.md)では、現行のネットと同じ教師データ、引数、およびシードで、初期値だけを探索用駒価値に変えたネットを学習した。
+[線形経路を駒価値で初期化する計画](../plans/archived/nnue-material-linear-init.md)では、現行のネットと同じ教師データ、引数、およびシードで、初期値だけを探索用駒価値に変えたネットを学習した。
 最良の検証損失は現行のネットより3.1×10⁻⁵高く、線形重みの初期値からの移動量は平均で1センチポーン前後にとどまり、位置による評価の差は非線形部分が担った（[学習の記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)）。
 masterを候補とする非劣性のGSPRTは、[STC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)が1,752ペア、[LTC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)が1,579ペアでともに`H0`となり、新しいネットが約10 Elo以上弱い可能性を退けた。
 人間同士の対局の局面で麒麟を同じ段の3筋と7筋へ置き直した評価の差は、現行のネットが121.2センチポーン、新しいネットが128.8センチポーンであり、右側の筋への選好は弱まらなかった（[麒麟の診断](../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)）。
