@@ -19,10 +19,9 @@ StockfishとYaneuraOuは、固定時間の探索では指定時間まで反復�
 測定機が別の計算とBotで埋まっていたので、[煙試験](../measurements/movetime-deadline/movetime-deadline-smoke.md)と2つの採否測定は別の機械ryzen0（Threadripper 2990WX、物理32コア）で同時12対局で行った。
 実装前の[発動の確認](../measurements/movetime-deadline/movetime-deadline-activation.md)は停止条件に当たらず、固定深さのbenchの総ノード数は着手前と一致した。
 採否の決定は[ADR](../adr/search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)に記録した。
-2026年10月25日にmasterへ統合した。
-残りはフェーズ4である。
-リリースの時期は利用者が決め、Botへの配備の後に通信対局のログを集計して、`minase-lishogi-bot`の`README.md`の「通信対局」節を書き換える。
-集計のスクリプトは、打ち切りの後の最後の行を300秒の境界で分けるように改めてある。
+2026年10月25日にmasterへ統合し、minase 2.6.0としてリリースして、同日10時46分（UTC）にlishogiのBotへ配備した。
+`minase-lishogi-bot`の`README.md`の「通信対局」節には、300秒まで探索して途中結果で指すことを書き足した。
+残りはフェーズ4の配備後の記録であり、配備の時刻以降の通信対局の探索が100件以上たまってから、調査メモのスクリプト（打ち切りの後の最後の行を300秒の境界で分けるように改めたもの）で集計する。
 
 ## 目的
 
