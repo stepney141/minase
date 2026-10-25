@@ -22,8 +22,6 @@ fn argv() -> Vec<&'static str> {
         "128",
         "--data",
         "first.bin",
-        "--init-pst",
-        "pst-float.npz",
         "--base",
         "pst.bin",
         "--output-dir",
@@ -68,7 +66,6 @@ fn train_requires_the_model_inputs_and_output_directory() {
         "--feature-set",
         "--width",
         "--data",
-        "--init-pst",
         "--base",
         "--output-dir",
     ] {

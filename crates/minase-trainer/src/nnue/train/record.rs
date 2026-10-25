@@ -202,7 +202,7 @@ pub(super) struct Configuration {
 ///
 /// 最上位の`device`は`"cuda"`または`"cpu"`、`arguments`は新規実行時の全引数[`Args`]、
 /// `resolved_threads`は実効ワーカー数である。
-/// `settings`は引数から`output_dir`、`resume`、`data`、`init_pst`、`base`、`epochs`、
+/// `settings`は引数から`output_dir`、`resume`、`data`、`base`、`epochs`、
 /// `patience`、`time_limit_hours`、`threads`、`validation_interval`、`bucket_positions`、`scratch_dir`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
 /// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
@@ -211,7 +211,7 @@ pub(super) struct Configuration {
 /// 教師と最適化の係数は[`crate::nnue::options::TrainingOptions`]に従う。
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
-/// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
+/// `inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
 /// `preprocessing`は`teacher_classes`、`teacher_cp_per_logit`、`teacher_lambdas`、`teacher_cp_per_logit_source`、
 /// `cp_per_logit`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師の勝率尺度（1ロジットあたりのcp）は`null`である。
@@ -256,7 +256,6 @@ pub(super) fn configuration<'a>(
         "resume",
         "data",
         "teacher_cp_per_logit",
-        "init_pst",
         "base",
         "epochs",
         "patience",
@@ -279,7 +278,7 @@ pub(super) fn configuration<'a>(
         .into_iter()
         .map(file_record)
         .collect::<Result<Vec<_>>>()?;
-    let inputs = json!({"files": files, "init_pst": file_record(&args.init_pst)?, "base": file_record(&args.base)?});
+    let inputs = json!({"files": files, "base": file_record(&args.base)?});
     let count = |mask: &[bool]| {
         // 埋め草は観測対象に含めない。
         let rows = if mask.is_empty() {

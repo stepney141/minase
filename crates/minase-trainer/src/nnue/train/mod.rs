@@ -42,7 +42,7 @@ use crate::{
     nnue::{
         data::{BatchSlot, InputFeatureSet, build_batches, build_targets},
         export::{self, QuantizationReport, RemovalSignReport},
-        model::{Checkpoint, Masks, Model, Parameter, Progress, Shape, load_initial},
+        model::{Checkpoint, Masks, Model, Parameter, Progress, Shape},
         reference::{AdamW, Validation},
     },
 };
@@ -186,16 +186,16 @@ struct Session {
 
 impl Session {
     /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
-    /// `--init-pst`の2端点を[`validate_initial`]で`--base`のMNPTと照合し、初期化したモデルの
-    /// [`Model::expanded_linear`]も同じ検査に通す。不一致なら学習を始めない。
+    /// `--base`の探索用駒価値から[`base::Base::initial_linear`]で線形初期値を作る。
+    /// 王駒と先獅子は0とし、非王駒は自駒を正、相手駒を負として全升と2端点へ同じ値を置く。
     /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
     /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
-    /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
+    /// 初期値の鏡映対称性と保存範囲は[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
     /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
     /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
-    /// 教師の勝率尺度、先読み教師、観測マスクと初期値は全訓練集合から作り、その後で更新用の集合を間引く。
+    /// 教師の勝率尺度、先読み教師、観測マスクは全訓練集合から作り、その後で更新用の集合を間引く。
     /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は
     /// `epoch×ceil(抽出後の訓練局面数/batch)`、epochは指定上限以下でなければならない。
     /// 記録されたdevice_nameも一致を要求する。
@@ -207,8 +207,7 @@ impl Session {
         args.validate()?;
         let workers = args.workers()?;
         let base = base::read(&args.base)?;
-        let initial = load_initial(&args.init_pst)?;
-        validate_initial(&initial, &base.linear)?;
+        let initial = base.initial_linear();
 
         let mut dataset = Store::open(&args, workers)?;
         if dataset.training_count() == 0 || dataset.validation_count() == 0 {
@@ -227,7 +226,6 @@ impl Session {
             args.seed,
             0.05,
         )?;
-        validate_initial(&model.expanded_linear(), &base.linear)?;
         let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
         let mut dataset_info = store::DatasetInfo::from(&dataset);
         dataset_info.subsample = selection.summary.as_ref();
@@ -833,28 +831,6 @@ fn validate_batches<T>(
     let total = total.ok_or(Error::Invalid("empty validation set"))?;
     validate_statistics(&total)?;
     Ok(Some(total))
-}
-
-/// 実数PSTの全13,680特徴×2端点が基準MNPTへ再量子化できることを検査する。
-/// `--init-pst`の`middlegame`と`endgame`の各値vについて、`round_ties_even(v × 8)`が
-/// 対応するMNPTのi16値と一致しなければならない。MNPTの単位は1/8センチポーンである。
-/// 配列長の不一致と非有限値も拒否し、初期化後の[`Model::expanded_linear`]にも同じ検査を行う。
-fn validate_initial(initial: &[[f32; 2]], baseline: &[[i16; 2]]) -> Result<()> {
-    if initial.len() != baseline.len()
-        || initial
-            .iter()
-            .flatten()
-            .zip(baseline.iter().flatten())
-            .any(|(&value, &integer)| {
-                !value.is_finite()
-                    || (f64::from(value) * 8.0).round_ties_even() != f64::from(integer)
-            })
-    {
-        return Err(
-            Error::Invalid("--init-pst does not requantize to the baseline MNPT PST").into(),
-        );
-    }
-    Ok(())
 }
 
 /// 確定済みの`latest.npz`に対応する`best.npz`を復旧する。

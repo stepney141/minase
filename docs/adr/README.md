@@ -222,7 +222,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月10日 [根の2手目以降を前回反復の部分木ノード数で並べる](order-root-moves-by-previous-subtree-nodes.md)
 - 2026年10月10日 [静かな手の順序を減点つきの重力式と線形経路の差分の同点破りで決める](archive/order-quiets-with-malus-and-pst-tiebreak.md)（置き換え済み）
 - 2026年10月12日 [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](use-p-type-input-features-for-the-nnue.md)
-- 2026年10月12日 [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)
+- 2026年10月12日 [NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)（置き換え済み）
 - 2026年10月12日 [NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](backpropagate-the-first-layer-through-a-reverse-index.md)
 - 2026年10月12日 [NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)
 - 2026年10月12日 [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](archive/train-the-nnue-on-search-value-lookahead-teachers.md)（置き換え済み）
@@ -304,3 +304,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月23日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterと測定機のLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)
 - 2026年10月25日 [強くする手段に人間の棋譜を使わない](do-not-use-human-games-to-strengthen-the-engine.md)
 - 2026年10月25日 [時計と併用しない固定時間の探索も締切まで反復を始め、締切で打ち切った反復の途中結果で指す](search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)
+- 2026年10月26日 [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)

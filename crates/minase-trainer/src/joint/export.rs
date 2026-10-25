@@ -15,7 +15,7 @@
 //! | `a` | `<f4` | `[32]` | FMの出力係数を置く。 |
 //! | `mask` | `\|b1` | `[13680]` | 観測済みを1、未観測を0で表す。 |
 //!
-//! `nnue train --init-pst`は端点の2配列だけを読み、`fm scale --float`は`mask`以外の4配列を読む。
+//! `fm scale --float`は`mask`以外の4配列を読む。
 
 use super::{Model, Result};
 use crate::{
@@ -194,7 +194,7 @@ pub(super) fn quantization_report(
 /// NPZは圧縮せず、`middlegame`と`endgame`はdtype `<f4`、形`[13680]`のセンチポーン単位の実数PSTとする。
 /// 端点は鏡映対を展開した特徴番号順の値である。
 /// `V`は`<f4`の`[13680, 32]`、`a`は`<f4`の`[32]`、`mask`は`|b1`の`[13680]`である。
-/// この5配列は`fm scale --float`と`nnue train --init-pst`の入力に使える。
+/// この5配列は`fm scale --float`の入力に使える。
 /// MNPTを読み直し、重みと勝率尺度、駒価値、規則名が出力モデルと基準に一致することを検査する。
 /// 量子化の合否は[`report`]で判定する。
 pub(super) fn write_best(
