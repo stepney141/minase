@@ -834,19 +834,6 @@ impl Training {
         let data = Data::new(&[(11, [2; 32], 320)]);
         let base = include_bytes!("../../minase/nets/pst.bin");
         fs::write(data.temp.join("pst.bin"), base).unwrap();
-        // MNPT版3の本体はヘッダ80バイトの後に序中盤、終盤のi16[13680]を順に置き、単位は1/8cpである。
-        // 初期値は基準のPSTを浮動小数へ戻したものとし、再量子化で基準と一致させる。
-        const FEATURES: usize = 13_680;
-        let weight =
-            |at: usize| f32::from(i16::from_le_bytes([base[80 + 2 * at], base[81 + 2 * at]])) / 8.0;
-        let initial: Vec<[f32; 2]> = (0..FEATURES)
-            .map(|feature| [weight(feature), weight(FEATURES + feature)])
-            .collect();
-        fs::write(
-            data.temp.join("pst-float.npz"),
-            minase_trainer::pst::encode_pst_npz(&initial).unwrap(),
-        )
-        .unwrap();
         Self { data }
     }
     fn path(&self, name: &str) -> String {
@@ -861,8 +848,6 @@ impl Training {
             "8".into(),
             "--data".into(),
             self.data.paths[0].to_str().unwrap().into(),
-            "--init-pst".into(),
-            self.path("pst-float.npz"),
             "--base".into(),
             self.path("pst.bin"),
             "--output-dir".into(),

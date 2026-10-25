@@ -8,11 +8,9 @@
 //! 理由は`docs/adr/share-p-type-mirror-weights-by-half-width-rotation.md`にある。
 
 mod checkpoint;
-mod npz;
 mod quantize;
 
 pub use checkpoint::{Checkpoint, Progress};
-pub use npz::load_initial;
 pub use quantize::{Quantized, quantize};
 
 use crate::nnue::data::{CANONICAL_ROWS, InputFeatureSet, Observations};

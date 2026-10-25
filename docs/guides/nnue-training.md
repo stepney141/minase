@@ -49,10 +49,10 @@ done
 学習器は開始時に全ファイルを読み、各対局の手順を再生して局面を復元する。
 読み込みはファイル単位で`--threads`のスレッドに分けて行い、その時間は`config.json`の`preprocessing_seconds`に含まれる。
 
-線形の経路の初期値には、PSTとFMの同時学習が書き出した圧縮なしのNPZ（`pst-float.npz`）を`--init-pst`に与える。
 評価値を勝率へ変換する勝率尺度（1ロジットあたりのcp）、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNPT形式）から引き継ぐ。
-学習器は開始時に、`--init-pst`の左右の鏡映対が一致することと、`--init-pst`を量子化すると`--base`のPSTの部分に一致することを検査し、一致しなければ停止する。
-したがって、`--init-pst`と`--base`には同じ学習から得た組を与える。
+線形の経路の初期値も、この探索用駒価値から作る。
+盤上の駒に対応する行には、自駒ならその駒状態の探索用駒価値を、相手駒なら符号を反転した値を、144升と序中盤用・終盤用の2列に同じく置き、王駒と先獅子の対象升の行は0とする。
+`--base`のPSTの部分は使わないので、初期値は升ごとの選好を持たない。
 学習データの規則セットも、`--base`の規則セットと一致していなければならない。
 
 教師値で探索値と対局結果を混ぜる比λは`--lambda`で必ず指定し、NNUEの学習では探索値だけを教師とする1.0を指定する。
@@ -85,7 +85,6 @@ for FEATURE_SET in P HalfKP-hm-b8; do
   cargo run --release --offline -j 2 -p minase-trainer -- nnue train \
     --feature-set "$FEATURE_SET" --width 128 \
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
-    --init-pst "$TRAIN_DATA_ROOT/pst-fm-joint-training/j75/pst-float.npz" \
     --base crates/minase/nets/pst.bin \
     --lambda 1.0 --teacher-cp-per-logit calibrate \
     --batch 16384 --epochs 1 --seed 1 \

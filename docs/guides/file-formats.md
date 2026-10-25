@@ -28,9 +28,9 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断、`nnue train`（書き出した重みの検査） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
-| PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `nnue train --init-pst`、`joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
+| PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
-| 同時学習の浮動小数点の重み`pst-float.npz`（5配列） | NPZ、版なし | `minase-trainer joint train` | `fm scale --float`、`nnue train --init-pst`、`joint train`、`diag pst-compare` | `crates/minase-trainer/src/joint/export.rs` |
+| 同時学習の浮動小数点の重み`pst-float.npz`（5配列） | NPZ、版なし | `minase-trainer joint train` | `fm scale --float`、`joint train`、`diag pst-compare` | `crates/minase-trainer/src/joint/export.rs` |
 
 教師データは付随ファイルを持たない。
 MNSDは1局ごとに開始局面を1回だけ書き、以後は1手ごとに指した手、価値、印、および方策を並べる対局単位の形式であり、読み手は手順を再生して各局面を復元する。

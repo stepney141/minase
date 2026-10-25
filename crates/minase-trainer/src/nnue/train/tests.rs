@@ -39,7 +39,6 @@ fn args() -> Args {
         width: 8,
         data: vec!["records.bin".into()],
         train_subsample: None,
-        init_pst: "pst-float.npz".into(),
         base: "pst.bin".into(),
         output_dir: "output".into(),
         lookahead_gamma: None,
@@ -218,7 +217,6 @@ impl Fixture {
         let mut args = args();
         args.data = vec![self.0.join("records.bin")];
         args.base = self.0.join("pst.bin");
-        args.init_pst = self.0.join("pst-float.npz");
         args.output_dir = self.0.join("continuous");
         args.epochs = 2;
         args.lookahead_gamma = Some(0.9);
@@ -228,18 +226,6 @@ impl Fixture {
             include_bytes!("../../../../minase/nets/pst.bin"),
         )
         .unwrap();
-        let initial: Vec<_> = base::read(&args.base)
-            .unwrap()
-            .linear
-            .iter()
-            .map(|pair| pair.map(|weight| f32::from(weight) / 8.0))
-            .collect();
-        fs::write(
-            &args.init_pst,
-            crate::pst::encode_pst_npz(&initial).unwrap(),
-        )
-        .unwrap();
-
         // seed=11では0..40のうち4、15、22が検証対局である。
         // 40対局×8局面のうち訓練296局面を33件ずつに分け、末尾を32件にする。
         let header = Header::new(
@@ -309,7 +295,7 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
     let observations = Observations::compute(dataset, args.feature_set).unwrap();
     let model = Model::initialize(
         Shape::new(args.feature_set, args.width, base.cp_per_logit, args.head).unwrap(),
-        &crate::nnue::model::load_initial(&args.init_pst).unwrap(),
+        &base.initial_linear(),
         Masks::from_observations(args.feature_set, &observations).unwrap(),
         args.seed,
         0.05,
@@ -366,10 +352,7 @@ fn resume_config_allows_budget_and_worker_changes() {
         configuration.document["inputs"]["base"]["checksum"],
         crate::nn::hex(&sha256(&fs::read(&args.base).unwrap()[80..]))
     );
-    assert_eq!(
-        configuration.document["inputs"]["init_pst"]["byte_length"],
-        fs::metadata(&args.init_pst).unwrap().len()
-    );
+    assert!(configuration.document["inputs"].get("init_pst").is_none());
     let input = &configuration.document["inputs"]["files"][0];
     assert_eq!(
         input["path"],
@@ -518,7 +501,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         "lr_head",
         "weight_decay_head",
         "lambda",
-        "npz",
         "base",
         "data",
         "origin",
@@ -605,11 +587,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             "lr_head" => args.training.lr_head *= 2.0,
             "weight_decay_head" => args.training.weight_decay_head *= 2.0,
             "lambda" => args.training.lambda = 0.75,
-            "npz" => {
-                let replacement = fixture.0.join("other.npz");
-                fs::copy(&args.init_pst, &replacement).unwrap();
-                args.init_pst = replacement;
-            }
             "base" => {
                 let mut bytes = fs::read(&args.base).unwrap();
                 let last = bytes.len() - 1;
@@ -641,7 +618,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         };
         let expected = match change {
             "origin" => MismatchField::Preprocessing,
-            "npz" | "base" | "data" => MismatchField::Inputs,
+            "base" | "data" => MismatchField::Inputs,
             "head" => MismatchField::Settings,
             "settings" => MismatchField::Seed,
             "device" => MismatchField::Device,
@@ -1380,8 +1357,6 @@ fn parse_training_args(extra: &[&str]) -> std::result::Result<Args, clap::Error>
             "1",
             "--data",
             "missing.bin",
-            "--init-pst",
-            "missing.npz",
             "--base",
             "missing.mnpt",
             "--output-dir",
@@ -1476,8 +1451,7 @@ fn arguments_reject_invalid_lr_schedules_before_accessing_files() {
         let mut args = files.clone();
         args.data = vec![fixture.0.join("missing-data.bin")];
         args.base = fixture.0.join("missing-base.bin");
-        args.init_pst = fixture.0.join("missing-pst.npz");
-        for path in [&args.data[0], &args.base, &args.init_pst] {
+        for path in [&args.data[0], &args.base] {
             assert!(!path.exists());
         }
         args.lr_schedule = schedule;
