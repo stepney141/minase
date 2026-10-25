@@ -14,14 +14,13 @@ StockfishとYaneuraOuは、固定時間の探索では指定時間まで反復�
 
 ## 状態
 
-進行中。2026年10月25日に着手した。
-フェーズ0の[発動の確認](../measurements/movetime-deadline/movetime-deadline-activation.md)では、秒読み期の`go`の完了深さが`movetime`の`go`より深くなった局面が300 msで51.5%、1,000 msで41.5%あり、途中結果が着手を変えた局面は2.0%と3.0%だったので、停止条件に当たらなかった。
-フェーズ1（対局ハーネスの思考制限`movetime=`）とフェーズ2（対象の探索の締切と途中結果）を実装し、固定深さのbenchの総ノード数が着手前と一致することを確かめた。
-フェーズ3の[煙試験](../measurements/movetime-deadline/movetime-deadline-smoke.md)は、測定機が別の計算で埋まっていたので、別の機械ryzen0（Threadripper 2990WX、物理32コア）で同時12対局で行った。
-300 msは判定条件をすべて満たした。
-1,000 msは、`movetime`を超えた量の最大値（70.2 ms）と手数200以上の帯の完了深さの2つの判定基準を満たさなかったが、前者は測定の開始時の一斉起動による候補と基準の双方の一過性の遅れ、後者は手数上限で破棄された1局による偏りと判断した。
-選別条件の[本測定](../measurements/movetime-deadline/movetime-deadline-screen-300.md)は、有効416ペアで`H1`（LLR +2.946）となり、異常は0件だった。
-判定条件（1,000 ms）の本測定をryzen0で進めている。
+進行中。2026年10月25日に着手し、採否測定で採用と判定した。
+選別条件（`movetime=300,timemargin=100`）は有効416ペアで`H1`（[記録](../measurements/movetime-deadline/movetime-deadline-screen-300.md)）、判定条件（`movetime=1000,timemargin=100`）は有効325ペアで`H1`（[記録](../measurements/movetime-deadline/movetime-deadline-decision-1000.md)）となり、どちらもエンジン異常、時間切れ、および拒否着手は0件だった。
+測定機が別の計算とBotで埋まっていたので、[煙試験](../measurements/movetime-deadline/movetime-deadline-smoke.md)と2つの採否測定は別の機械ryzen0（Threadripper 2990WX、物理32コア）で同時12対局で行った。
+実装前の[発動の確認](../measurements/movetime-deadline/movetime-deadline-activation.md)は停止条件に当たらず、固定深さのbenchの総ノード数は着手前と一致した。
+採否の決定は[ADR](../adr/search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)に記録した。
+残りはフェーズ4である。
+masterへの統合、リリース、およびBotへの配備は利用者が行い、配備の後に通信対局のログを集計して、`minase-lishogi-bot`の`README.md`の「通信対局」節を書き換える。
 
 ## 目的
 
