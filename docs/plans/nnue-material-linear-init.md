@@ -22,7 +22,8 @@ lishogiのBotの対局では、麒麟が成る前に盤上にいた手数の59%�
 [学習の記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)のとおり、新しいネットの最良の検証損失は現行のネットより3.1×10⁻⁵高いだけであり、量子化の検査と3つの診断に通った。
 線形重みの初期値からの移動量は平均1センチポーン前後にとどまり、位置による評価の差は非線形部分が担っている。
 [麒麟の診断](../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)の判定は「半分より多くが残る」であり、R_新（128.8センチポーン）はR_現（121.2センチポーン）より大きかった。
-非劣性のSTCを測定機で進めている。
+非劣性の[STC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)は1,752ペアで`H0`（LLR −2.958）となり、異常は0件だったので、LTCへ進めた。
+非劣性のLTCを測定機で進めている。
 
 ## 目的
 
