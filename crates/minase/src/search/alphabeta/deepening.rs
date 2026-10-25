@@ -136,6 +136,8 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// 実際に始める反復ごとに1回だけワーカー固有の回数へ反映する。反復の番号と進捗の深さは1ずつ増やす。
 /// 詰みによる早期停止後も、より深い補助ワーカーの結果が選ばれ得るため、返す手が詰みである
 /// ことは保証しない。
+/// 秒読みつき時計の探索と固定時間だけを指定した探索では、[`super::time::uses_partial_results`]に従い、
+/// `adopt_partial`で根の順序と途中結果の採用を有効にする。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
     nnue: &Nnue,
@@ -398,6 +400,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
     main_worker_outcome(&searcher, result, completed_pv, time_reduction)
 }
 
+/// 秒読みつき時計の探索と固定時間だけを指定した探索では、
 /// [`RootResults::partial_result`]の途中結果があれば、その着手と主変化を採る。
 /// 完了反復の深さと評価値は保ち、途中結果の値は`partial_score`として別に返す。
 pub(super) fn main_worker_outcome(

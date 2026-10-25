@@ -111,7 +111,7 @@
 | 教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す | [plans/sparse-teacher-recording.md](plans/sparse-teacher-recording.md) | 起案 | |
 | 第1層の全再計算の差分化（Finny tables） | [plans/nnue-finny-tables.md](plans/nnue-finny-tables.md) | 待機中 | |
 | 測定記録の再配置 | [plans/archived/measurements-layout.md](plans/archived/measurements-layout.md) | 完了（採用） | 2026年10月18日 |
-| 固定時間（movetime）の探索の締切と途中結果 | [plans/movetime-deadline.md](plans/movetime-deadline.md) | 起案 | |
+| 固定時間（movetime）の探索の締切と途中結果 | [plans/movetime-deadline.md](plans/movetime-deadline.md) | 進行中 | |
 | NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/nnue-material-linear-init.md](plans/nnue-material-linear-init.md) | 起案 | |
 
 ## 現在地
@@ -122,9 +122,12 @@
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/archived/byoyomi-time-usage.md)は2026年10月23日に、一部不採用で完了した。秒読み期は締切まで反復を始め、締切で打ち切った反復の途中結果で指す段階Aは、持ち時間と秒読みの比が20と150の秒読みつきの2条件のGSPRTでともに`H1`となり、採用した（minase 2.2.0以降）。持ち時間を局面の難しさで重み付けする段階Bの3候補は、段階Aを上回らず不採用とした。lishogiのBotは、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局51局で、Bot側の時間切れが0件だった（[Botの記録](measurements/byoyomi-time-usage/bot-byoyomi-margin-3000.md)）。
 - [探索の関数形の見直しの統括計画](plans/archived/search-forms.md)は2026年10月23日に、採用で完了した。探索と時間管理の式をStockfishとYaneuraOuの形へ寄せる7本のサブタスクを、vast.aiで借りた計算機での30,000ペアのSPSAで1本ずつ調整し、2026年10月18日の利用者の決定によりSTCの結果によらず採用した。7本を終えた版は、統括計画を始める前のmaster（`99ccc6bb`）に対して、測定機のLTCで104ペアで`H1`（約+493 Elo）だった（[LTCの記録](measurements/search-forms/search-forms-ltc.md)）。サブタスク1のSTCは`H0`（約−17 Elo）であり、その原因を調べるかは利用者が決める。
 
+### 進行中
+
+- [固定時間（movetime）の探索の締切と途中結果](plans/movetime-deadline.md)は、`go movetime`の探索で、予測による反復の開始の制限を外して指定時間まで反復を始め、打ち切った反復の途中結果で指す規則を、秒読み期と同じ形で適用する。2026年10月25日に着手し、対局ハーネスに加えた思考制限`movetime=`の自己対局GSPRTで、1手300 msの選別条件が有効416ペア、1手1,000 msの判定条件が有効325ペアでともに`H1`となり、採用と判定した（[ADR](adr/search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)）。測定は、測定機が別の計算で埋まっていたので別の機械ryzen0で行った。残りは、利用者によるmasterへの統合、リリース、およびBotへの配備の後に、lishogiの通信対局のログで指定時間を使い切った探索と途中結果の割合を集計するフェーズ4である。
+
 ### 次の候補
 
-- [固定時間（movetime）の探索の締切と途中結果](plans/movetime-deadline.md)は、`go movetime`の探索で、予測による反復の開始の制限を外して指定時間まで反復を始め、打ち切った反復の途中結果で指す規則を、秒読み期と同じ形で適用する。lishogiのBotの通信対局では、minase 2.5.0の探索の47%が1手300秒で打ち切られ、主ワーカーが最後に反復を完了した時刻は平均192秒だった（[調査メモ](research/movetime-prior-art-and-correspondence-usage.md)）。思考時間の上限を延ばさずに、着手へ反映する時間を増やすことを狙う。採否は、対局ハーネスに加える思考制限`movetime=`の300 msと1,000 msの自己対局GSPRTで決め、秒読み期の同種の測定と同程度の効果なら合計約4〜5時間と見込む。着手は利用者の指示を待つ。
 - [NNUEの線形経路を升によらない駒価値で初期化する学習](plans/nnue-material-linear-init.md)は、NNUEの線形経路（PSQT）に前の世代の学習済みPSTを移す初期化をやめ、升によらない駒価値から現行と同じ教師と条件で学び直す。lishogiのBotで麒麟が自陣の右端2筋に成る前の手数の59%を過ごす偏り（人間の上位者は0.3%）を調べた際に、利用者が移植をやめると決めた（[分析の記録](measurements/adhoc/kirin-right-edge-bias.md)）。新しいネットは麒麟の右端選好の診断と、masterに劣らないことを確かめる非劣性のGSPRT（STCとLTC）にかけ、所要時間は学習が約2時間、測定が約1日から2日である。採否は利用者の決定により非劣性で判定し、着手は利用者の指示を待つ。
 - [先読みなしの教師での対局単位と局面単位の間引きの比較](plans/nnue-subsample-no-lookahead.md)は、[前計画](plans/archived/nnue-early-best-epoch.md)が先読み教師だけで示した「多数の対局から疎に採るほうが検証損失が低い」という結果を、標準の先読みなしの教師でやり直し、対局数の効果が残るかと、効果の大きさが教師によって変わるかを、事前に定めた基準で判定する。学習器の変更はなく、測定機のGPUで約5時間かかる。結論は次の教師生成の計画の着手の前提になる。着手は利用者の指示を待つ。
 - [教師生成で記録する局面を間引き、記録しない手を少ないノード数で指す](plans/sparse-teacher-recording.md)は、KataGoのplayout cap randomizationにならい、手ごとの抽選で4手に1手だけを2万ノードで探索して記録し、残りを4,000ノードで指す生成を加え、同じ計算時間で約2.5倍の対局を生成した教師で学んだNNUEを段階ゲートにかける。着手は、前項の判定1が「支持」となった後とし、生成を作業機とvast.aiのどちらで行うかは着手時に利用者が決める。

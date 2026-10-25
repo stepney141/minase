@@ -1,0 +1,15 @@
+limit: movetime=1000,timemargin=100 (ms)
+statistics: all recorded turns; depth n excludes null depths; p99=inclusive
+candidate turns=12384 moves=12384 other_responses={}
+candidate think/movetime median=1.011278 mean=1.013397 min=1.000722
+candidate overshoot_ms max=70.244 p99=28.394 over_movetime=12384/12384
+candidate stop_reasons={"hard": 12146, "soft": 238}
+candidate bounds={"exact": 10514, "lower": 1870} lower=1870/12384 (15.100%)
+candidate completed_depth by ply band: 0-49:mean=22.742(n=968) 50-99:mean=22.023(n=1200) 100-199:mean=21.095(n=2253) 200+:mean=21.921(n=7963)
+baseline turns=12383 moves=12383 other_responses={}
+baseline think/movetime median=0.818241 mean=0.841321 min=0.659927
+baseline overshoot_ms max=69.248 p99=20.873 over_movetime=2694/12383
+baseline stop_reasons={"hard": 2572, "soft": 9811}
+baseline bounds={"exact": 12383} lower=0/12383 (0.000%)
+baseline completed_depth by ply band: 0-49:mean=22.112(n=968) 50-99:mean=21.450(n=1199) 100-199:mean=20.539(n=2253) 200+:mean=22.281(n=7963)
+pairs=24 wall_time_s mean=957.807 max=3858.449

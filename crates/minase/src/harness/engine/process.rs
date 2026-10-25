@@ -142,7 +142,7 @@ impl EngineProcess {
                     SearchLimit::Time(time) => {
                         process.send(&cecp_level_text(time))?;
                     }
-                    SearchLimit::Fixed { .. } => {
+                    SearchLimit::Fixed { .. } | SearchLimit::Movetime { .. } => {
                         unreachable!("CECP limits are validated during player resolution")
                     }
                 }

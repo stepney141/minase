@@ -24,7 +24,7 @@ use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
 use super::params;
 use super::time::{
-    InstabilityScaling, TimeBudget, byoyomi_clock, ponder_bonus_time_budget, time_budget,
+    InstabilityScaling, TimeBudget, ponder_bonus_time_budget, time_budget, uses_partial_results,
 };
 
 /// 探索の内部実行が返す結果一式。
@@ -185,7 +185,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 
 /// 探索の不安定さに基づく時間管理を使う探索かを返す。
 ///
-/// 有限探索に秒読みが0の時計があり、`movetime`がなく、時間予算が秒読み期でない場合だけ真を返す。
+/// 有限探索に秒読みが0の時計があり、`movetime`がなく、時間予算のdeadlineが偽の場合だけ真を返す。
 /// 深さやノード数の制限は時計と併用できる。4因子によるsoftの伸縮、根の候補が1手の上限、
 /// increaseDepth、詰みによる早期停止、および先読み後の25%増しは、この判定を共有する。
 pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<TimeBudget>) -> bool {
@@ -194,7 +194,7 @@ pub(super) fn uses_instability_scaling(limits: &SearchLimits, budget: Option<Tim
     };
     limits.movetime_ms.is_none()
         && limits.clock.is_some_and(|clock| clock.byoyomi_ms() == 0)
-        && budget.is_some_and(|budget| !budget.byoyomi_period)
+        && budget.is_some_and(|budget| !budget.deadline)
 }
 
 /// 調整役として補助ワーカーを生成し、主ワーカーの探索と全ワーカーのjoinを実行する。
@@ -309,7 +309,7 @@ pub(in crate::search) fn run_search_team(
                     pawn_history,
                     events,
                     ponder,
-                    byoyomi_clock(limits).is_some(),
+                    uses_partial_results(limits),
                 )
             } else {
                 run_auxiliary_worker(
@@ -454,7 +454,8 @@ fn run_worker_guarded<T>(
 }
 
 /// 完了深さが大きい結果を選び、同深さなら途中結果を持つ結果、次に番号が小さいワーカーを優先する。
-/// [`byoyomi_clock`]の対象外の探索と補助ワーカーには途中結果がない。
+/// 途中結果を持つのは、[`uses_partial_results`]で選ぶ秒読みつき時計の探索と、
+/// 固定時間だけを指定した探索の主ワーカーだけである。
 ///
 /// 深さ0は採用候補から除き、全ワーカーが深さ0なら主ワーカーの既定結果を
 /// 返す。

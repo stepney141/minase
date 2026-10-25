@@ -14,8 +14,13 @@ StockfishとYaneuraOuは、固定時間の探索では指定時間まで反復�
 
 ## 状態
 
-起案。2026年10月25日に起案した。
-着手は利用者の指示を待つ。
+進行中。2026年10月25日に着手し、採否測定で採用と判定した。
+選別条件（`movetime=300,timemargin=100`）は有効416ペアで`H1`（[記録](../measurements/movetime-deadline/movetime-deadline-screen-300.md)）、判定条件（`movetime=1000,timemargin=100`）は有効325ペアで`H1`（[記録](../measurements/movetime-deadline/movetime-deadline-decision-1000.md)）となり、どちらもエンジン異常、時間切れ、および拒否着手は0件だった。
+測定機が別の計算とBotで埋まっていたので、[煙試験](../measurements/movetime-deadline/movetime-deadline-smoke.md)と2つの採否測定は別の機械ryzen0（Threadripper 2990WX、物理32コア）で同時12対局で行った。
+実装前の[発動の確認](../measurements/movetime-deadline/movetime-deadline-activation.md)は停止条件に当たらず、固定深さのbenchの総ノード数は着手前と一致した。
+採否の決定は[ADR](../adr/search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)に記録した。
+残りはフェーズ4である。
+masterへの統合、リリース、およびBotへの配備は利用者が行い、配備の後に通信対局のログを集計して、`minase-lishogi-bot`の`README.md`の「通信対局」節を書き換える。
 
 ## 目的
 

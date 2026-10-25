@@ -303,3 +303,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月22日 [調整機の出品はvast.aiの検証済みを求めず、条件による自動の選択では実メモリの下限を必須にする](accept-unverified-rented-offers-and-require-a-memory-floor-in-automatic-selection.md)
 - 2026年10月23日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterと測定機のLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)
 - 2026年10月25日 [強くする手段に人間の棋譜を使わない](do-not-use-human-games-to-strengthen-the-engine.md)
+- 2026年10月25日 [時計と併用しない固定時間の探索も締切まで反復を始め、締切で打ち切った反復の途中結果で指す](search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)

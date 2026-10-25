@@ -66,7 +66,7 @@ fn tuning_default_clock_budget_matches_numeric_examples() {
         assert_eq!(
             actual,
             TimeBudget {
-                byoyomi_period: false,
+                deadline: false,
                 soft: Duration::from_millis(soft),
                 hard: Duration::from_millis(hard),
             },
@@ -555,7 +555,7 @@ fn tuning_parameters_in_isolated_process() {
             Duration::from_millis(50),
             Duration::ZERO,
             TimeBudget {
-                byoyomi_period: false,
+                deadline: false,
                 soft: Duration::from_millis(100),
                 hard: Duration::from_millis(200),
             },

@@ -6,6 +6,7 @@ use super::cli::Mode;
 use super::storage::{EngineRecord, ManifestMode, RunManifest, StoredSearchLimit};
 use minase::harness::*;
 use minase_core::{Rules, rules::parse_rule_set};
+use std::num::NonZeroU64;
 use std::{io, time::Duration};
 
 /// 再開時の`gsprt --elo0`と`--elo1`を、指定された値だけ保存済み仮説と照合する。
@@ -100,7 +101,21 @@ fn restore_player(
     manifest: &RunManifest,
 ) -> io::Result<PlayerConfig> {
     let spec = restore_player_spec(&record.identity)?;
-    let limit = match record.limit {
+    let limit = restore_search_limit(&record.limit)?;
+    let mut player = resolve_player(spec, limit, hash_mb, &manifest.rules_source, Vec::new())?;
+    verify_identity(&record.identity, &player.identity)?;
+    let defaults =
+        probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;
+    if defaults.threads != threads {
+        return Err(ResumeError::ThreadsMismatch.into());
+    }
+    player.hash_mb = restored_hash(hash_mb, defaults.hash_mb)?;
+    Ok(player)
+}
+
+/// 保存した値を思考制限の型へ戻す。
+fn restore_search_limit(limit: &StoredSearchLimit) -> io::Result<SearchLimit> {
+    Ok(match *limit {
         StoredSearchLimit::Fixed { depth, nodes } => SearchLimit::Fixed { depth, nodes },
         StoredSearchLimit::Time {
             base_ms,
@@ -111,16 +126,16 @@ fn restore_player(
             increment_ms,
             byoyomi_ms,
         }),
-    };
-    let mut player = resolve_player(spec, limit, hash_mb, &manifest.rules_source, Vec::new())?;
-    verify_identity(&record.identity, &player.identity)?;
-    let defaults =
-        probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;
-    if defaults.threads != threads {
-        return Err(ResumeError::ThreadsMismatch.into());
-    }
-    player.hash_mb = restored_hash(hash_mb, defaults.hash_mb)?;
-    Ok(player)
+        StoredSearchLimit::Movetime {
+            movetime_ms,
+            timemargin_ms,
+        } => SearchLimit::Movetime {
+            movetime_ms: NonZeroU64::new(movetime_ms).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "saved movetime must be nonzero")
+            })?,
+            timemargin_ms,
+        },
+    })
 }
 
 fn verify_identity(
@@ -144,6 +159,39 @@ fn restored_hash(recorded: Option<u64>, default: Option<u64>) -> Result<Option<u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // docs/plans/movetime-deadline.md: 再開は保存された2値から同じ制限を復元する。
+    #[test]
+    fn movetime_resume_restores_saved_duration_and_margin() {
+        for (json, expected) in [
+            (
+                r#"{"kind":"movetime","movetime_ms":300,"timemargin_ms":100}"#,
+                "movetime=300,timemargin=100",
+            ),
+            (
+                r#"{"kind":"movetime","movetime_ms":1,"timemargin_ms":0}"#,
+                "movetime=1,timemargin=0",
+            ),
+        ] {
+            let stored: StoredSearchLimit = serde_json::from_str(json).unwrap();
+            assert_eq!(
+                restore_search_limit(&stored).unwrap(),
+                parse_search_limit(expected).unwrap()
+            );
+        }
+    }
+
+    // 保存値0はNonZero型に戻せないため、不正な記録として扱う。
+    #[test]
+    fn movetime_resume_rejects_zero_as_invalid_data() {
+        let stored =
+            serde_json::from_str(r#"{"kind":"movetime","movetime_ms":0,"timemargin_ms":100}"#)
+                .unwrap();
+        assert_eq!(
+            restore_search_limit(&stored).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
 
     #[test]
     fn verify_mode_checks_only_explicit_hypotheses() {

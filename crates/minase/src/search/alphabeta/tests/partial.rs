@@ -1,17 +1,18 @@
-//! 秒読みつき時計だけの探索がhard limitで中断した場合の途中結果を検査する。
+//! 秒読みつき時計の探索と固定時間だけの探索がhard limitで中断した場合の途中結果を検査する。
 //! 直前の最善手を読み終えた窓から、開始時のαを上回る最大値と主変化を採用する。
 
 use super::*;
 use crate::search::alphabeta::deepening::main_worker_outcome;
 use crate::search::alphabeta::root::{RootMoveStats, RootResults};
-use crate::search::alphabeta::time::byoyomi_clock;
+use crate::search::alphabeta::time::uses_partial_results;
 
-/// 「対象の探索」の境界を列挙する。予算の長短には依存しない。
+/// 根の順序と途中結果の適用条件の境界を列挙する。予算の長短には依存しない。
 fn clock_cases() -> Vec<(SearchLimits, bool)> {
     [
         (0, 1000, None, None, None, true),
         (1000, 1000, None, None, None, true),
         (1000, 0, None, None, None, false),
+        (1000, 0, None, None, Some(1000), false),
         (0, 1000, Some(5), None, None, false),
         (0, 1000, None, Some(10000), None, false),
         (0, 1000, None, None, Some(1000), false),
@@ -32,7 +33,15 @@ fn clock_cases() -> Vec<(SearchLimits, bool)> {
     .chain([
         (depth_limits(5), false),
         (nodes_limits(10000), false),
-        (movetime_limits(1000), false),
+        (movetime_limits(1000), true),
+        (
+            SearchLimits::new(Some(5), None, Some(1000), None).unwrap(),
+            false,
+        ),
+        (
+            SearchLimits::new(None, Some(10000), Some(1000), None).unwrap(),
+            false,
+        ),
         (infinite_limits(), false),
     ])
     .collect()
@@ -102,7 +111,7 @@ fn partial_requires_previous_best_and_non_upper_maximum_in_the_current_window() 
 }
 
 #[test]
-fn byoyomi_root_order_moves_only_previous_best_ahead_of_existing_order() {
+fn partial_root_order_moves_only_previous_best_ahead_of_existing_order() {
     let position = Position::initial();
     let roots = legal_moves(&position);
     for (limits, eligible) in clock_cases() {
@@ -120,7 +129,7 @@ fn byoyomi_root_order_moves_only_previous_best_ahead_of_existing_order() {
             );
             let mut expected = roots.clone();
             searcher.order_moves(&position, &mut expected, Some(tt_move), 0);
-            searcher.root_results = byoyomi_clock(&limits).map(|_| RootResults::default());
+            searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
             if let Some(results) = &mut searcher.root_results {
                 results.previous_best = Some(roots[1]);
             }
@@ -149,7 +158,7 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
             StopReason::DepthCompleted,
         ] {
             with_root_searcher(&position, &history, |searcher| {
-                searcher.root_results = byoyomi_clock(&limits).map(|_| RootResults::default());
+                searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
                 let (best_move, score) = searcher
                     .search_iteration(&position, &roots, 1, None)
                     .unwrap();
@@ -175,7 +184,8 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
                 assert_eq!((outcome.result.depth, outcome.result.score), (1, score));
                 assert_eq!(
                     outcome.partial_score.is_some(),
-                    eligible && reason == StopReason::HardLimit
+                    eligible && reason == StopReason::HardLimit,
+                    "{limits:?}, reason={reason:?}"
                 );
                 assert_eq!(outcome.result.best_move, best_move);
                 assert_eq!(outcome.pv, completed_pv);
@@ -204,54 +214,56 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
     let position = Position::initial();
     let roots = legal_moves(&position);
     let history = repeated_root_children(&position, &roots);
-    for (complete_first, retry) in [(false, false), (true, false), (true, true)] {
-        with_root_searcher(&position, &history, |searcher| {
-            searcher.root_results = Some(RootResults::default());
-            let previous = complete_first.then(|| {
-                searcher
-                    .search_iteration(&position, &roots, 1, None)
-                    .unwrap()
-            });
-            // 初回なら1手だけ完了。読み直しなら最初のfail-high窓の1手だけ完了。
-            let nodes = searcher.nodes + u64::from(!complete_first || retry);
-            searcher.interrupt_at = Some((nodes, StopReason::HardLimit));
-            if retry {
-                let (best_move, _) = previous.unwrap();
-                searcher
-                    .root_move_stats
-                    .iter_mut()
-                    .find(|(mv, _)| *mv == best_move)
-                    .unwrap()
-                    .1
-                    .averages = Some((-1000, -1_000_000));
-            }
-            assert!(
-                searcher
-                    .search_iteration(&position, &roots, if retry { 5 } else { 2 }, previous)
-                    .is_none()
-            );
-            assert!(
-                searcher
-                    .root_results
-                    .as_ref()
-                    .unwrap()
-                    .partial_result(searcher.stop_reason)
-                    .is_none()
-            );
-            if retry {
-                // 最初の窓は下界として記録されたが、新しい窓では未完了である。
-                assert_eq!(
+    for (limits, _) in clock_cases() {
+        for (complete_first, retry) in [(false, false), (true, false), (true, true)] {
+            with_root_searcher(&position, &history, |searcher| {
+                searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
+                let previous = complete_first.then(|| {
                     searcher
-                        .tt
-                        .probe(search_key(&position), 0)
+                        .search_iteration(&position, &roots, 1, None)
                         .unwrap()
-                        .value
+                });
+                // 初回なら1手だけ完了。読み直しなら最初のfail-high窓の1手だけ完了。
+                let nodes = searcher.nodes + u64::from(!complete_first || retry);
+                searcher.interrupt_at = Some((nodes, StopReason::HardLimit));
+                if retry {
+                    let (best_move, _) = previous.unwrap();
+                    searcher
+                        .root_move_stats
+                        .iter_mut()
+                        .find(|(mv, _)| *mv == best_move)
                         .unwrap()
-                        .bound,
-                    Bound::Lower
+                        .1
+                        .averages = Some((-1000, -1_000_000));
+                }
+                assert!(
+                    searcher
+                        .search_iteration(&position, &roots, if retry { 5 } else { 2 }, previous)
+                        .is_none()
                 );
-            }
-        });
+                assert!(
+                    searcher
+                        .root_results
+                        .as_ref()
+                        .and_then(|results| results.partial_result(searcher.stop_reason))
+                        .is_none(),
+                    "{limits:?}, complete_first={complete_first}, retry={retry}"
+                );
+                if retry {
+                    // 最初の窓は下界として記録されたが、新しい窓では未完了である。
+                    assert_eq!(
+                        searcher
+                            .tt
+                            .probe(search_key(&position), 0)
+                            .unwrap()
+                            .value
+                            .unwrap()
+                            .bound,
+                        Bound::Lower
+                    );
+                }
+            });
+        }
     }
 }
 
@@ -259,40 +271,45 @@ fn hard_interruption_before_previous_best_and_in_research_has_no_partial() {
 fn partial_preserves_public_score_and_depth_but_carries_partial_score_and_average() {
     let position = Position::initial();
     let roots = legal_moves(&position);
-    with_root_searcher(&position, &[], |searcher| {
-        let mut results = RootResults::default();
-        results.previous_best = Some(roots[0]);
-        results.begin_window(-INFINITY);
-        results.record(roots[0], -2000, -INFINITY, &[]);
-        results.record(roots[1], -1000, -2000, &[roots[2]]);
-        searcher.root_results = Some(results);
-        searcher.stop_reason = Some(StopReason::HardLimit);
-        let completed = SearchResult {
-            #[cfg(feature = "search-stats")]
-            stats: crate::search::SearchStats::default(),
-            best_move: roots[0],
-            score: 100,
-            depth: 3,
-            nodes: 0,
-        };
-        searcher.root_move_stats.push((
-            roots[1],
-            RootMoveStats {
-                effort: 1,
-                averages: Some((-750, -562_500)),
-            },
-        ));
-        let outcome = main_worker_outcome(searcher, completed, vec![roots[0]], 1000);
-        assert_eq!(outcome.result.best_move, roots[1]);
-        assert_eq!(outcome.pv, [roots[1], roots[2]]);
-        assert_eq!(outcome.partial_score, Some(-1000));
-        assert_eq!((outcome.result.score, outcome.result.depth), (100, 3));
+    for (limits, _) in clock_cases().into_iter().filter(|(_, eligible)| *eligible) {
+        with_root_searcher(&position, &[], |searcher| {
+            searcher.root_results = uses_partial_results(&limits).then(RootResults::default);
+            let results = searcher
+                .root_results
+                .as_mut()
+                .expect("eligible searches must track partial results");
+            results.previous_best = Some(roots[0]);
+            results.begin_window(-INFINITY);
+            results.record(roots[0], -2000, -INFINITY, &[]);
+            results.record(roots[1], -1000, -2000, &[roots[2]]);
+            searcher.stop_reason = Some(StopReason::HardLimit);
+            let completed = SearchResult {
+                #[cfg(feature = "search-stats")]
+                stats: crate::search::SearchStats::default(),
+                best_move: roots[0],
+                score: 100,
+                depth: 3,
+                nodes: 0,
+            };
+            searcher.root_move_stats.push((
+                roots[1],
+                RootMoveStats {
+                    effort: 1,
+                    averages: Some((-750, -562_500)),
+                },
+            ));
+            let outcome = main_worker_outcome(searcher, completed, vec![roots[0]], 1000);
+            assert_eq!(outcome.result.best_move, roots[1]);
+            assert_eq!(outcome.pv, [roots[1], roots[2]]);
+            assert_eq!(outcome.partial_score, Some(-1000));
+            assert_eq!((outcome.result.score, outcome.result.depth), (100, 3));
 
-        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
-        record_previous_search(&mut histories, &outcome, &outcome);
-        assert_eq!(
-            histories.previous_search.score_and_average,
-            Some((-1000, -750))
-        );
-    });
+            let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+            record_previous_search(&mut histories, &outcome, &outcome);
+            assert_eq!(
+                histories.previous_search.score_and_average,
+                Some((-1000, -750))
+            );
+        });
+    }
 }

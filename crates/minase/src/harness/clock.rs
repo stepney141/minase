@@ -75,9 +75,9 @@ impl Clock {
 /// 1局で両色に割り当てた時計。
 #[derive(Clone, Copy)]
 pub struct GameClocks {
-    /// 先手の時計。固定制限の側は`None`。
+    /// 先手の時計。固定制限と固定時間の側は`None`。
     black: Option<Clock>,
-    /// 後手の時計。固定制限の側は`None`。
+    /// 後手の時計。固定制限と固定時間の側は`None`。
     white: Option<Clock>,
 }
 
@@ -108,10 +108,41 @@ impl GameClocks {
         }
     }
 
+    /// 実測思考時間から時間切れを判定し、時間制御の場合だけ時計を更新する。
+    ///
+    /// 固定時間は毎手独立に`elapsed > movetime + timemargin`のときだけ時間切れとする。
+    /// 等しい場合は受理し、深さとノード数の固定制限には時間切れを適用しない。
+    pub fn update(
+        &mut self,
+        color: Color,
+        limit: SearchLimit,
+        elapsed: Duration,
+    ) -> Result<(), EngineFailure> {
+        match limit {
+            SearchLimit::Fixed { .. } => Ok(()),
+            SearchLimit::Time(_) => self
+                .get_mut(color)
+                .expect("a time-controlled player must have a clock")
+                .update(elapsed),
+            SearchLimit::Movetime {
+                movetime_ms,
+                timemargin_ms,
+            } => {
+                let allowance =
+                    Duration::from_millis(movetime_ms.get()) + Duration::from_millis(timemargin_ms);
+                if elapsed > allowance {
+                    Err(EngineFailure::TimeForfeit)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
     /// 時間制御側へ送るUSIの時間引数を現在の両時計から作る。
     ///
     /// `btime`、`wtime`、`binc`、`winc`は両者の残り時間と加算時間をミリ秒で表す。
-    /// 時計を持たない固定制限の相手は0とし、`byoyomi`には手番側の秒読みを送る。
+    /// 時計を持たない相手は0とし、`byoyomi`には手番側の秒読みを送る。
     fn go_text(&self, side_to_move: Color) -> String {
         let black = self.black.unwrap_or_else(zero_clock);
         let white = self.white.unwrap_or_else(zero_clock);
@@ -131,9 +162,11 @@ impl GameClocks {
     /// 現在の制限と両時計からプロトコル共通の思考要求を作る。
     ///
     /// 時間制御のUSI引数は[`Self::go_text`]に従う。
+    /// 固定時間のUSI引数は`movetime <ms>`だけであり、許容時間や時計を送らない。
     /// CECPでは、時間制御側の残り時間と秒読みの和を10 ms単位へ切り捨て、センチ秒で送る。
-    /// 相手が固定制限で時計を持たなければ、相手の値は0である。
+    /// 相手が時計を持たなければ、相手の値は0である。
     /// 手番側が固定制限の場合は、両者の値を[`CECP_FIXED_TIME_CS`]とする。
+    /// 固定時間はCECPでは拒否するため、CECP用の値は使わない。
     pub(super) fn think_request(&self, side_to_move: Color, limit: SearchLimit) -> ThinkRequest {
         match limit {
             SearchLimit::Fixed { .. } => ThinkRequest {
@@ -153,6 +186,11 @@ impl GameClocks {
                     .get(side_to_move.opposite())
                     .map_or(0, Clock::cecp_time_cs),
             },
+            SearchLimit::Movetime { movetime_ms, .. } => ThinkRequest {
+                go_text: format!("movetime {movetime_ms}"),
+                own_cs: 0,
+                opponent_cs: 0,
+            },
         }
     }
 }
@@ -170,6 +208,68 @@ fn zero_clock() -> Clock {
 mod tests {
     use super::*;
     use crate::harness::limit::parse_search_limit;
+
+    // docs/plans/movetime-deadline.md: 固定時間の制限は時計を持たず、毎手独立に適用する。
+    #[test]
+    fn movetime_forfeit_requires_exceeding_each_turn_allowance() {
+        let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();
+        let mut clocks = GameClocks::new(Color::Black, limit, limit);
+        for side in [Color::Black, Color::White] {
+            assert!(clocks.get_mut(side).is_none());
+            for elapsed in [399_999_999, 400_000_000, 400_000_000] {
+                assert_eq!(
+                    clocks.update(side, limit, Duration::from_nanos(elapsed)),
+                    Ok(())
+                );
+            }
+            assert_eq!(
+                clocks.update(side, limit, Duration::from_nanos(400_000_001)),
+                Err(EngineFailure::TimeForfeit)
+            );
+        }
+    }
+
+    // 各入力はu64のミリ秒であり、合計がu64を超えても桁あふれしない。
+    #[test]
+    fn movetime_allowance_can_exceed_u64_milliseconds() {
+        let limit = parse_search_limit("movetime=1,timemargin=18446744073709551615").unwrap();
+        let mut clocks = GameClocks::new(Color::Black, limit, limit);
+        assert_eq!(
+            clocks.update(
+                Color::Black,
+                limit,
+                Duration::new(18_446_744_073_709_551, 616_000_000)
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            clocks.update(
+                Color::Black,
+                limit,
+                Duration::new(18_446_744_073_709_551, 616_000_001)
+            ),
+            Err(EngineFailure::TimeForfeit)
+        );
+    }
+
+    // 同設計書: USIにはmovetimeだけを送り、非対称な時間制御側には相手の時計を0とする。
+    #[test]
+    fn movetime_requests_omit_clocks_and_supply_zero_to_timed_opponents() {
+        let fixed = parse_search_limit("movetime=300,timemargin=100").unwrap();
+        let timed = parse_search_limit("time=1000+20,byoyomi=50").unwrap();
+        for (fixed_color, expected_time) in [
+            (Color::Black, "btime 0 wtime 1000 binc 0 winc 20 byoyomi 50"),
+            (Color::White, "btime 1000 wtime 0 binc 20 winc 0 byoyomi 50"),
+        ] {
+            let clocks = GameClocks::new(fixed_color, fixed, timed);
+            let request = clocks.think_request(fixed_color, fixed);
+            assert_eq!(format!("go {}", request.go_text), "go movetime 300");
+            let request = clocks.think_request(fixed_color.opposite(), timed);
+            assert_eq!(request.go_text, expected_time);
+            assert_eq!(request.own_cs, 105);
+            assert_eq!(request.opponent_cs, 0);
+        }
+    }
 
     // [`Clock::update`]の時間切れ境界を検査する。
     #[test]

@@ -3,14 +3,16 @@
 use crate::harness::clock::GameClocks;
 use crate::harness::engine::process::EngineProcess;
 use crate::harness::engine::{EngineResponse, EngineScore};
-use crate::harness::failure::EngineFailure;
+use crate::harness::failure::{EngineFailure, FailureCounts};
 use crate::harness::game::{PlayedGame, play_game};
 use crate::harness::limit::parse_search_limit;
+use crate::harness::pair::record_game_failure;
 use crate::harness::player::{PlayerConfig, Protocol, parse_player_spec, resolve_player};
 use crate::harness::ponder_stats::{PonderCounts, count_ponder_game};
 use crate::harness::records::convert::recorded_game;
 use crate::harness::records::{
     EngineIdentity, FailureKind, ScoreRecord, StopReasonRecord, StoredColor, TerminationRecord,
+    TurnResponse,
 };
 use crate::harness::referee::ponder_move;
 use minase_core::notation::usi;
@@ -117,6 +119,60 @@ fn line_of_play(count: usize) -> (Vec<String>, Vec<Move>) {
 
 fn seed() -> NonZeroU64 {
     NonZeroU64::new(1).unwrap()
+}
+
+// docs/plans/movetime-deadline.md: 遅れた応答は着手として採用せず、時間切れの手として記録・集計する。
+#[test]
+fn movetime_game_records_and_counts_time_forfeits() {
+    let a = fake(
+        vec![
+            step("position startpos", ""),
+            ("go movetime 1", 20, "bestmove resign".to_owned(), 0),
+        ],
+        "movetime=1,timemargin=0",
+    );
+    let b = fake(vec![], "movetime=1,timemargin=0");
+    let result = play_game(
+        Game::new(Rules::ENGINE_DEFAULT),
+        vec![],
+        vec![],
+        100,
+        Color::Black,
+        &a,
+        seed(),
+        &b,
+        seed(),
+        Duration::from_secs(5),
+        false,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(result.record.turns.len(), 1);
+    let turn = &result.record.turns[0];
+    assert_eq!(turn.side, StoredColor::Black);
+    assert!(turn.think_time_ns > 1_000_000);
+    assert_eq!(
+        turn.response,
+        TurnResponse::Failure {
+            reason: FailureKind::TimeForfeit
+        }
+    );
+    assert_eq!(
+        result.record.termination,
+        TerminationRecord::Forfeit {
+            loser: StoredColor::Black,
+            reason: FailureKind::TimeForfeit,
+        }
+    );
+    let mut counts = FailureCounts::default();
+    record_game_failure(result.played, &mut counts);
+    assert_eq!(
+        counts,
+        FailureCounts {
+            time_forfeits: 1,
+            ..FailureCounts::default()
+        }
+    );
 }
 
 // [`super::ponder`]の契約を検査する。

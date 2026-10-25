@@ -14,7 +14,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
     let byoyomi_main_time =
         SearchLimits::new(None, None, None, Some(clock(1_000, 0, 1_000))).unwrap();
     let main_time_budget = time_budget(&byoyomi_main_time);
-    assert!(main_time_budget.is_some_and(|budget| !budget.byoyomi_period));
+    assert!(main_time_budget.is_some_and(|budget| !budget.deadline));
     assert!(!uses_instability_scaling(
         &byoyomi_main_time,
         main_time_budget
@@ -22,7 +22,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
 
     let byoyomi_period = SearchLimits::new(None, None, None, Some(clock(0, 0, 1_000))).unwrap();
     let period_budget = time_budget(&byoyomi_period);
-    assert!(period_budget.is_some_and(|budget| budget.byoyomi_period));
+    assert!(period_budget.is_some_and(|budget| budget.deadline));
     assert!(!uses_instability_scaling(&byoyomi_period, period_budget));
 
     let clock_with_movetime =
@@ -32,7 +32,7 @@ fn instability_scaling_requires_a_zero_byoyomi_clock_without_movetime() {
         time_budget(&clock_with_movetime)
     ));
 
-    for clockless in [depth_limits(1), nodes_limits(1)] {
+    for clockless in [depth_limits(1), nodes_limits(1), movetime_limits(100)] {
         assert!(!uses_instability_scaling(
             &clockless,
             time_budget(&clockless)
@@ -124,6 +124,36 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
     ));
     let (table, _) = handle.join().expect("search team must not panic");
     assert_eq!(table.generation(), 1);
+}
+
+/// 固定時間だけの4ワーカー探索は合法な着手と主変化を返し、指定時間の2倍未満で終了する。
+#[test]
+fn four_worker_movetime_search_returns_legal_pv_within_time_allowance() {
+    let initial = Position::initial();
+    let root_moves = legal_moves(&initial);
+    let movetime_ms = 500;
+    let handle = start(
+        snapshot_for(&initial),
+        movetime_limits(movetime_ms),
+        301,
+        worker_count(4),
+        small_tt(),
+    );
+    let (_, finished) = event_reports(drain_raw(&handle));
+    handle.join().expect("search team must not panic");
+
+    assert!(root_moves.contains(&finished.best_move));
+    assert_eq!(finished.pv[0], finished.best_move);
+    assert_pv_is_legal(&initial, &finished.pv);
+    assert!(matches!(
+        finished.stop_reason,
+        StopReason::SoftLimit | StopReason::HardLimit
+    ));
+    assert!(
+        finished.elapsed < Duration::from_millis(movetime_ms * 2),
+        "elapsed={:?}, movetime={movetime_ms} ms",
+        finished.elapsed
+    );
 }
 
 // ノード予約は探索チーム全体の

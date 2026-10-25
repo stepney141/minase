@@ -549,7 +549,7 @@ impl Searcher<'_> {
     /// 的中前は時間で止めず、的中後は的中からの経過時間でhard limitを判定する。
     /// 先読みから続く主ワーカーの反復は、最初の時計検査で詰みによる早期停止を判定し、
     /// 的中前に始めていた場合だけ[`iteration_prediction_fits`]を当て直す。
-    /// 秒読み期ではこの当て直しを行わず、hard limitだけで中断する。
+    /// 秒読み期と固定時間だけを指定した探索では、この当て直しを行わず、hard limitだけで中断する。
     pub(super) fn check_time(&mut self) -> bool {
         let Some(limit) = self.shared.hard_limit else {
             return true;
@@ -565,7 +565,7 @@ impl Searcher<'_> {
         } else if let Some(iteration) = &mut self.ponder_iteration {
             if iteration.mate_early_stop {
                 Some(StopReason::SoftLimit)
-            } else if iteration.budget.byoyomi_period || iteration.checked {
+            } else if iteration.budget.deadline || iteration.checked {
                 return true;
             } else {
                 iteration.checked = true;

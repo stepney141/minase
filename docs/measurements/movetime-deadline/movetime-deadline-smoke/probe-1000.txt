@@ -1,0 +1,3 @@
+baseline  mean depth=19.355 partial=0/200 changed=0
+candidate mean depth=20.030 partial=34/200 changed=3
+paired depth diff (candidate - baseline): mean=+0.675 se=0.072 n=200

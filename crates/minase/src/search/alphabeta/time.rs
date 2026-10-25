@@ -16,7 +16,9 @@ use super::params;
 /// [`ClockCoefficients::budget`]では残り時間と秒読みの和が余裕を超えるとき、
 /// hardはその和から余裕を引いた値以下となる。
 /// softは通常、反復の境界で照合し、hardは探索中の時計の検査点でも照合する。
-/// 先読みから続く反復では、的中後の最初の時計検査でも[`iteration_prediction_fits`]で予算を当て直す。
+/// [`byoyomi_clock`]の対象で残り持ち時間が0の場合と[`movetime_deadline`]の対象では、
+/// softとhardを兼ねる締切まで、予測と最善手の安定性を使わず反復を始める。
+/// それ以外の先読みから続く反復では、的中後の最初の時計検査でも[`iteration_prediction_fits`]で予算を当て直す。
 /// 通常探索では探索開始から、先読みでは的中の時点から測る。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct TimeBudget {
@@ -24,8 +26,8 @@ pub(super) struct TimeBudget {
     pub(super) soft: Duration,
     /// 探索途中でも打ち切る上限時間。
     pub(super) hard: Duration,
-    /// 対象の探索の秒読み期では、予測を使わず締切まで反復を始める。
-    pub(super) byoyomi_period: bool,
+    /// 予測を使わず、softとhardを兼ねる締切まで反復を始める予算を示す。
+    pub(super) deadline: bool,
 }
 
 /// 次の探索へ持ち越す値と、表の初期化後に先読みの探索を始めたかを示す印。
@@ -407,13 +409,13 @@ pub(super) fn scaled_time_budget(base: TimeBudget, time_ms: u128) -> TimeBudget 
 
 /// 先読みを使った後の、秒読みが0の時計による通常探索で、基礎softを25%増やしてhard以下に抑える。
 ///
-/// ミリ秒単位の正の整数除算によって増分を床方向へ丸める。hardと秒読み期の印は変えない。
+/// ミリ秒単位の正の整数除算によって増分を床方向へ丸める。hardとdeadlineの印は変えない。
 /// 呼び出し側は秒読みが正の時計と`movetime`を使う探索を除外する。
 /// Stockfish `src/timeman.cpp:164-165`に当たる。
 pub(super) fn ponder_bonus_time_budget(base: TimeBudget) -> TimeBudget {
     assert!(
-        !base.byoyomi_period,
-        "ponder bonus must not be applied in the byoyomi period"
+        !base.deadline,
+        "ponder bonus must not be applied to a deadline budget"
     );
     let soft_ms = base.soft.as_millis();
     scaled_time_budget(
@@ -468,7 +470,8 @@ pub(super) fn stable_signal(bests: &[Move], iterations: usize) -> bool {
 ///
 /// 通常は[`iteration_prediction_fits`]を満たし、さらに最善手が不安定なら的中後の経過時間がsoft未満であることを要求する。
 /// 安定時のsoft判定は同関数の完了時刻予測に含まれる。
-/// [`byoyomi_clock`]の対象で残り持ち時間が0の場合は予測と安定性を使わず、的中後の経過時間がhard未満かだけを判定する。
+/// [`byoyomi_clock`]の対象で残り持ち時間が0の場合と[`movetime_deadline`]の対象では、
+/// 予測と安定性を使わず、的中後の経過時間がhard未満かだけを判定する。
 ///
 /// 固定倍の予測は`docs/adr/predict-next-iteration-by-fixed-ratio.md`に基づく。
 /// 的中までの時間を予算に足す扱いは[`iteration_prediction_fits`]に従う。
@@ -478,7 +481,7 @@ pub(super) fn should_start_next_iteration(
     budget: TimeBudget,
     stable: bool,
 ) -> bool {
-    if budget.byoyomi_period {
+    if budget.deadline {
         return elapsed.saturating_sub(hit) < budget.hard;
     }
     iteration_prediction_fits(elapsed, hit, budget, stable)
@@ -491,7 +494,7 @@ pub(super) fn should_start_next_iteration(
 /// `started × IterationRatio ≤ (hit + hard) × 100` を要求し、安定時はsoftにも同じ判定を行う。
 /// 交差積で比較して、百分率の除算による丸めを避ける。
 ///
-/// 先読みで始めた反復も、的中後にこの式へ当て直す。
+/// 締切だけで継続を決める予算を除き、先読みで始めた反復も的中後にこの式へ当て直す。
 /// 先読みでない探索は`hit = 0`なので、先読みなしの式と不等号まで一致する。
 /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
 pub(super) fn iteration_prediction_fits(
@@ -605,13 +608,14 @@ impl ClockCoefficients {
         TimeBudget {
             soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
             hard: Duration::from_millis(to_u64_ms(hard)),
-            byoyomi_period: false,
+            deadline: false,
         }
     }
 }
 
-/// 秒読み用の時間配分と途中結果の採用を適用する時計を返す。
+/// 秒読み用の時間配分を適用する時計を返す。
 /// 秒読みが正で、固定時間、深さ、ノード数の制限を併用しない有限探索だけを選ぶ。
+/// 根の順序と途中結果の採用は、固定時間だけの探索も含めて[`uses_partial_results`]で判定する。
 pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
     let limits = limits.finite()?;
     limits.clock.filter(|clock| {
@@ -622,10 +626,28 @@ pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
     })
 }
 
+/// 固定時間だけを指定した探索の締切を返す。
+/// 時計、深さ、ノード数の制限を併用しない有限探索だけを選ぶ。
+pub(super) fn movetime_deadline(limits: &SearchLimits) -> Option<Duration> {
+    let limits = limits.finite()?;
+    limits
+        .movetime_ms
+        .filter(|_| limits.clock.is_none() && limits.depth.is_none() && limits.nodes.is_none())
+        .map(|milliseconds| Duration::from_millis(milliseconds.get()))
+}
+
+/// 根の順序と途中結果の採用を有効にするかを返す。
+/// [`byoyomi_clock`]で選ぶ秒読みつき時計の探索と、[`movetime_deadline`]で選ぶ固定時間だけの探索に適用する。
+pub(super) fn uses_partial_results(limits: &SearchLimits) -> bool {
+    byoyomi_clock(limits).is_some() || movetime_deadline(limits).is_some()
+}
+
 /// 探索制限から時間予算を求める。
 ///
 /// [`byoyomi_clock`]の対象では指定の秒読み余裕を使い、残り持ち時間が0なら`max(1 ms, 秒読み − 余裕)`をsoftとhardの両方にする。
 /// 持ち時間があれば[`ClockCoefficients::budget`]を使う。
+/// [`movetime_deadline`]の対象では、指定時間をsoftとhardの両方にする。
+/// 秒読み期と固定時間だけを指定した探索ではdeadlineの印を立て、予測を使わず締切まで反復を始める。
 /// 秒読みが0で`movetime`がなければtime advantageを適用し、深さやノード数の制限を併用しても除外しない。
 /// 秒読みが正の時計と`movetime`を併用する時計では適用しない。
 /// `movetime`と時計の併用時はsoftとhardのそれぞれで小さい方を採る。
@@ -638,6 +660,13 @@ pub(super) fn time_budget_with_coefficients(
     limits: &SearchLimits,
     coefficients: ClockCoefficients,
 ) -> Option<TimeBudget> {
+    if let Some(deadline) = movetime_deadline(limits) {
+        return Some(TimeBudget {
+            soft: deadline,
+            hard: deadline,
+            deadline: true,
+        });
+    }
     if let Some(clock) = byoyomi_clock(limits) {
         if clock.remaining_ms == 0 {
             let deadline = Duration::from_millis(
@@ -649,7 +678,7 @@ pub(super) fn time_budget_with_coefficients(
             return Some(TimeBudget {
                 soft: deadline,
                 hard: deadline,
-                byoyomi_period: true,
+                deadline: true,
             });
         }
         return Some(coefficients.budget(clock, clock.byoyomi_margin_ms));
@@ -658,7 +687,7 @@ pub(super) fn time_budget_with_coefficients(
     let movetime = limits.movetime_ms.map(|milliseconds| TimeBudget {
         soft: Duration::from_millis(milliseconds.get()),
         hard: Duration::from_millis(milliseconds.get()),
-        byoyomi_period: false,
+        deadline: false,
     });
     let clock = limits.clock.map(|clock| {
         if limits.movetime_ms.is_some() {
@@ -671,7 +700,7 @@ pub(super) fn time_budget_with_coefficients(
         (Some(fixed), Some(clock)) => Some(TimeBudget {
             soft: fixed.soft.min(clock.soft),
             hard: fixed.hard.min(clock.hard),
-            byoyomi_period: false,
+            deadline: false,
         }),
         (Some(budget), None) | (None, Some(budget)) => Some(budget),
         (None, None) => None,
