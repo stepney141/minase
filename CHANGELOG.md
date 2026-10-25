@@ -1,3 +1,11 @@
+## v2.6.0 (2026-10-25)
+
+### Features
+
+- **match:** Add a fixed movetime limit to the match harness
+- **search:** Search movetime-only limits to the deadline
+- **search:** Play partial results in movetime-only searches
+
 ## v2.5.0 (2026-10-23)
 
 ### Features
