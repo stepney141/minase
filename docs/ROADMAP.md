@@ -56,7 +56,13 @@
 | SPSAの調整結果をソースへ反映するコマンド | [plans/archived/spsa-apply.md](plans/archived/spsa-apply.md) | 完了（採用） | 2026年9月22日 |
 | 探索部の反復負け回避と反復禁止 | [plans/archived/search-repetition.md](plans/archived/search-repetition.md) | 完了（採用） | 2026年10月15日 |
 | 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/archived/search-revival-spsa.md](plans/archived/search-revival-spsa.md) | 完了（採用） | 2026年10月4日 |
-| AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
+| AlphaZero型探索と深層強化学習の統括 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
+| AlphaZero型探索の実行環境と実現性の実測 | [plans/alphazero-environment.md](plans/alphazero-environment.md) | 起案 | |
+| AlphaZero型探索のネットの入出力と推論 | [plans/alphazero-network.md](plans/alphazero-network.md) | 起案 | |
+| 探索方式の共存とMCTS | [plans/alphazero-mcts.md](plans/alphazero-mcts.md) | 起案 | |
+| AlphaZero型探索の自己対局生成器 | [plans/alphazero-selfplay.md](plans/alphazero-selfplay.md) | 起案 | |
+| AlphaZero型探索の学習器 | [plans/alphazero-trainer.md](plans/alphazero-trainer.md) | 起案 | |
+| AlphaZero型探索の強化学習の実行 | [plans/alphazero-rl.md](plans/alphazero-rl.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
 | USI投了（issue #6） | [plans/archived/usi-resignation.md](plans/archived/usi-resignation.md) | 完了（採用） | 2026年9月25日 |
 | SPSAの摂動幅と学習率の較正 | [plans/archived/spsa-gain-calibration.md](plans/archived/spsa-gain-calibration.md) | 完了（採用） | 2026年9月26日 |
@@ -136,5 +142,5 @@
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、自己対局の教師生成をvast.aiで借りる計算機へ移し、作業機より短い時間で終える計画である。既存の生成単位であるシード範囲1つにつきファイル1本をそのままバッチとし、生成機のディスクに置いたファイルを作業機が10分ごとに取得して検査し、検査済みのファイルが作業機にあることを完了の記録とする。機種はZen 4以降のEPYCを2基積んだ384スレッドの機械を条件で選ぶ。フェーズ0の生成機での試走では、EPYC 9654の2基構成が同時384局で1ファイルを653秒で生成し、30ファイルは約5.5時間、約5.6米ドルと見込む（[試走の記録](measurements/vast-selfplay/vast-selfplay-trial.md)）。作業機での同じ条件の測定は、作業機で動いている別の学習が終わるのを待っている。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
-- [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、作業機での時間制御の対局でαβ探索とNNUEの組合せと同等以上に強くすることを目標とする。到達は、約10 Eloの許容幅の非劣性をLTCのGSPRTで判定し、判定は利用者が決めたときに行う。ネットをαβ探索の自己対局による教師あり学習で初期化しないのは、NNUEが教師データから身につけた偏りを受け継がないようにするためである。計算時間は限らず、伸びが止まればネットの大きさと探索回数を段階的に増やし、最大の段階でも伸びなければ利用者の判断を仰ぐ。GPUを使う学習と自己対局は、毎月まずGoogle Colabの有料プランの月次付与で行い、足りない分をvast.aiとRunpodで借りる機械で補い、その料金は10サイクルごとに見積もりを示して承認を得る。自己対局の開始局面に人間の棋譜は使わず、反復と引き分けはαβ探索と同じ規則で扱う。実装はまだなく、着手は利用者の許可を待っている。
+- [AlphaZero型探索と深層強化学習の統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、作業機での時間制御の対局でαβ探索とNNUEの組合せと同等以上に強くすることを目標とし、作業を6本のサブタスク（[実行環境と実現性の実測](plans/alphazero-environment.md)、[ネットの入出力と推論](plans/alphazero-network.md)、[探索方式の共存とMCTS](plans/alphazero-mcts.md)、[自己対局生成器](plans/alphazero-selfplay.md)、[学習器](plans/alphazero-trainer.md)、および[強化学習の実行](plans/alphazero-rl.md)）に分けて束ねる。到達は、約10 Eloの許容幅の非劣性をLTCのGSPRTで判定し、判定は利用者が決めたときに行う。ネットをαβ探索の自己対局による教師あり学習で初期化しないのは、NNUEが教師データから身につけた偏りを受け継がないようにするためである。計算時間は限らず、伸びが止まればネットの大きさと探索回数を段階的に増やし、最大の段階でも伸びなければ利用者の判断を仰ぐ。GPUを使う学習と自己対局は、毎月まずGoogle Colabの有料プランの月次付与で行い、足りない分をvast.aiとRunpodで借りる機械で補う。サブタスクの実装は統合ブランチに集め、判定で`H0`となったネットとともにmasterへ統合する。実装はまだなく、着手は利用者の許可を待っている。
 - 教師生成の見直しは、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、[AlphaZero型の計画](plans/alphazero.md)の後に、そのネットの評価値でNNUEの教師データを付け直す形で起案する（2026年10月25日の開発者の決定）。調査では、自己生成の教師だけで伸びが止まった将棋のtanuki-が、深層学習系のモデルで評価値を付け直してレーティング差R+104.3を得ている。強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。AlphaZero型のネットはゼロから学ぶので、αβ探索の自己対局の偏りを直接は受け継がないが、付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で偏りがないことを確かめる。範囲を絞った対局途中のランダム化と、静的評価と探索値が食い違う局面の採取は、人間の棋譜を使わない残りの候補として調査メモに記録してある。
