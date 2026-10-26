@@ -226,14 +226,14 @@ impl<'a> InferenceIo<'a> {
                 input_data,
             ))?)),
             IoMode::Binding => {
-                // CPUOutput は CUDA のホスト側ピン留めメモリを表し、入力にも使える。
+                // 入力は CUDA のホスト側ピン留めメモリに置く。
                 let allocator = Allocator::new(
                     session,
                     MemoryInfo::new(
                         AllocationDevice::CUDA_PINNED,
                         0,
                         AllocatorType::Device,
-                        MemoryType::CPUOutput,
+                        MemoryType::CPUInput,
                     )?,
                 )?;
                 let mut input = Tensor::<f32>::new(&allocator, [batch, 95, 12, 12])?;
@@ -243,11 +243,16 @@ impl<'a> InferenceIo<'a> {
                     .copy_from_slice(input_data);
                 let mut binding = session.create_binding()?;
                 let batch = i64::try_from(batch)?;
+                // 出力は作り置きのページング可能なCPUメモリへ束縛する。ピン留めメモリへ束縛すると、
+                // ONNX Runtime 1.28.3 は同じバッファへの複写として拒否する（gpu_data_transfer.cc 104行）。
                 binding.bind_output(
                     "policy",
-                    Tensor::<f32>::new(&allocator, [batch, POLICY_ELEMENTS])?,
+                    Tensor::<f32>::new(&Allocator::default(), [batch, POLICY_ELEMENTS])?,
                 )?;
-                binding.bind_output("value", Tensor::<f32>::new(&allocator, [batch, 1])?)?;
+                binding.bind_output(
+                    "value",
+                    Tensor::<f32>::new(&Allocator::default(), [batch, 1])?,
+                )?;
                 Ok(Self::Binding {
                     binding: Box::new(binding),
                     input,
