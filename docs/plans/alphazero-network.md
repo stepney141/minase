@@ -8,6 +8,7 @@
 方策は移動元の升ごとに249種類の移動を割り当てた計35,856要素、価値は勝率1出力とし、ネットは大域プーリングを入れた10ブロック128チャネルのResNetから始める。
 推論は、ONNX形式で保存したネットを、実行時に読み込むライブラリONNX Runtimeを通じてGPUで行い、RustからはortクレートのTensorRT実行プロバイダをFP16で使う（用語は統括計画の適用範囲の節が定める）。
 入力の符号化と方策のラベルはRustの`nn::encoding`とPythonの学習器の両方に実装し、Rustが書き出した固定局面集で両者の一致を確かめる。
+強化学習（RL）の途中のネットはコミットせず、エンジンと生成器が起動引数`--nn-model`でONNXのファイルを指定して読み、到達の判定に使うネットだけを埋め込む。
 完了条件は、検証の節の試験が通り、ortによる推論が作業機のGPUで動き、実装が統合ブランチへマージされることである。
 
 ## 状態
@@ -31,6 +32,7 @@
 - ネットの構成（層の並びと大きさ）を定める。PyTorchによる実装は[学習器](alphazero-trainer.md)が行う。
 - USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
 - Pythonの符号化との照合に使う固定局面集の入力平面と方策ラベルを書き出す。
+- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](alphazero-mcts.md)が、生成器では[自己対局生成器](alphazero-selfplay.md)が実装する。
 
 次の項目は対象外とする。
 
@@ -52,6 +54,7 @@ ortによる推論の動作は、同書のフェーズ1で作ったランダム�
 | 価値の出力 | 勝率1出力（引き分けは0.5） | 勝ち・引き分け・負けの3分類（WDL）、残り手数ヘッド（MLH） |
 | 方策の符号化 | 移動元の升ごとの249面、計35,856出力 | 移動先基準の121面、2段の分解出力、平坦な列挙 |
 | 推論 | ortクレートのload-dynamic、TensorRT実行プロバイダのFP16 | tch、candle、burn、TensorRTの直接バインディング |
+| ネットの指定 | 起動引数`--nn-model`でONNXのファイルを指定する。到達の判定に使うネットだけを埋め込み、埋め込みを持つビルドでは指定を省くと埋め込みのネットを使う | USIオプションで指定する（ハーネスにエンジンごとの`setoption`の拡張が要る）、測定に使うネットをすべてコミットして`commit:`で選ぶ（借りた機械にリポジトリがない） |
 
 ### 入力は局面だけから決まる95面にする
 
@@ -154,13 +157,30 @@ lc0がmockやrandomのバックエンドで探索を試験するのと同じ役�
 方策は`Evaluator`の出力のうち合法手のラベルだけを取り出してsoftmaxで正規化し、非合法手には確率を割り当てない。
 推論の出力に非有限値（NaNまたは無限大）があれば、その局面を使わずにエラーとする。
 
-### ネットの置き場所
+### ネットの指定と置き場所
 
-学習済みのネットはONNX形式で`crates/minase/nets/`に置いて`include_bytes!`で埋め込み、ortのメモリからの読み込みでセッションを作る。
+RLの途中のネットはコミットせず、作業機のNASにファイルとして置く（[強化学習の実行](alphazero-rl.md)の「転送するものと保管」の節）。
+各サイクルの生成と進捗測定は借りた機械で行い、借りた機械にはリポジトリがないので、ネットをコミットしてハーネスの`commit:`指定で選ぶことはできないからである。
+そこで、MCTSのエンジンと自己対局生成器は、起動引数`--nn-model <パス>`でONNXのファイルを指定して読む（2026年10月26日の利用者の決定）。
+エンジンの`--nn-model`は、探索方式を選ぶ`--search mcts`と同じく起動時に1回だけ与え、実行中にネットを替えない。
+TensorRTはネットを替えるたびにエンジンを作り直して数分かかるので、ネットを替えるときはエンジンを起動し直すほうが単純だからである。
+読み込みでは、ファイルの内容をバイト列として読み、ortのメモリからの読み込みでセッションを作る。
+ネットの検査和は同じバイト列から求め、TensorRTのエンジンのキャッシュの鍵と、生成器が教師データのヘッダに書く「教師の重みの検査和」に使う。
+ファイルを読めない場合と、ネットからセッションを作れない場合は、別のネットへ切り替えずにエラーで終了する。
+
+到達の判定に使うネットだけは、ONNX形式で`crates/minase/nets/`に置いて`include_bytes!`で埋め込む。
+埋め込みのコードとネットは、統括計画のフェーズ7で同じコミットとして統合ブランチへ入れる。
 推論のコードは学習済みの重みと同じコミットでmasterへ入れる（[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)）。
 本書の実装は統合ブランチに置き、masterへは統括計画の到達の判定で使ったネットとともに入る（統括計画の「サブタスクの統合」の節）。
+埋め込みのネットがないビルドでは、`--search mcts`に`--nn-model`の指定を必須とし、指定がなければ起動時にエラーで終了する。
+埋め込みのネットを持つビルドでは、`--nn-model`を省くと埋め込みのネットを使い、指定するとそのファイルだけを読む。
 10ブロック128チャネルのネットは単精度で約12 MBであり、現行のNNUE（`crates/minase/nets/nnue.bin`、約3.6 MB）と同じくgitで管理できる。
-RLの途中のネットは`data/`に置き、測定または採用に使うネットだけをコミットする。
+
+埋め込みのネットを既定にしてファイルで差し替える形は、StockfishのUCI（チェスのエンジンの通信規約）のオプション`EvalFile`（`src/engine.cpp` 136行と`src/nnue/network.cpp` 91〜110行、コミット5c4cef0b）と、lc0の`WeightsFile`（`src/neural/shared_params.cc` 45行と74〜76行、コミットd91bd14）と同じである。
+lc0の`WeightsFile`は起動引数`--weights`を兼ね、埋め込みでビルドした場合だけ既定値が埋め込みのネットになる。
+dlshogiも、ネットのファイルをUSIオプション`DNN_Model`（既定値`model.onnx`、`cppshogi/usi.cpp` 103行、コミット79df19e）で指定する。
+本書がUSIオプションではなく起動引数で指定するのは、進捗測定で同じバイナリの候補と基準に別のネットを与えるとき、USIオプションではエンジンごとに任意の`setoption`を送る拡張がハーネスに要り、`setoption`のたびにネットを読み直す処理も要るからである。
+起動引数なら、ネットのパスはエンジンの起動コマンドに入るので、ハーネスの既存の起動コマンドの形式と、[探索方式の共存とMCTS](alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節の拡張だけで指定できる。
 
 ### TensorRTのエンジンのキャッシュ
 
@@ -181,7 +201,7 @@ TensorRTは、初回の読み込みでネットをGPU向けに最適化したエ
 
 ### フェーズ2　ortによる推論
 
-ortの依存を加え、ortによる`Evaluator`の実装、`NnBackend`、およびTensorRTのエンジンのキャッシュを実装する。
+ortの依存を加え、ortによる`Evaluator`の実装、ネットのバイト列からのセッションの作成、`NnBackend`、TensorRTのエンジンのキャッシュ、および`minase dev nn-eval`を実装する。
 推論の動作は、[実行環境と実現性の実測](alphazero-environment.md)のフェーズ1で作ったランダム初期化のネットを使い、作業機のGPUと環境定義から導入した環境の中で確かめる。
 
 ## 検証
@@ -194,6 +214,7 @@ ortの依存を加え、ortによる`Evaluator`の実装、`NnBackend`、およ�
 - TensorRTのエンジンのキャッシュの鍵が、ネットの検査和、GPUの機種名、GPUのメモリ容量、GPUの計算能力、またはTensorRTの版のどれか1つだけが異なる場合に別の鍵になることを確かめる。
 
 Rustが書き出した固定局面集の入力平面と方策ラベルをPythonの符号化が再現することは、[学習器](alphazero-trainer.md)の検証の節で確かめる。
+埋め込みのネットを入れる統括計画のフェーズ7のコミットでは、`--nn-model`を省いた起動が埋め込みのネットを使い、指定した起動がそのファイルだけを読むことを確かめる。
 
 ortの依存を加えたコミットでは、1.88のツールチェーンでの全ターゲットの検査、`ORT_DYLIB_PATH`を設定しない環境での`cargo build --release --bin minase`、およびリリースビルドの時間とバイナリの大きさの変化を確かめる。
 
@@ -201,6 +222,8 @@ ortの依存を加えたコミットでは、1.88のツールチェーンでの�
 TensorRTのエンジンはGPUの機種ごとに作られるので、この比較は学習に使ったGPU種別だけでなく、推論に使う作業機のGPUでも行い、ネットの大きさを変えたときにも改めて行う。
 方策のlogitと価値の差がそれぞれ許容誤差（CPUは1e-4、FP16は1e-2を初期値とする）に収まり、非有限値がなく、方策の最大の手がすべての入力で一致することを確かめる。
 これにより、ONNXへの出力で出力の並びがずれた場合や、別の着手のlogitを読む実装を検出する。
+Rust側の出力は、`minase dev nn-eval`が、`--nn-model`で受け取ったネットと指定した実行プロバイダとバッチの大きさで、固定の局面集の各局面の合法手の方策のlogitと価値を推論して書き出す。
+PyTorchの出力は、[学習器](alphazero-trainer.md)が同じ局面集から求める。
 本書では、この比較の手順を作り、フェーズ2でランダム初期化のネットについて作業機で実行する。
 学習済みのネットについての実行は、[強化学習の実行](alphazero-rl.md)が、最初に学習したネットで生成を始める前、最初の進捗測定、およびネットの大きさまたはGPU種別を変えたときに行う。
 
@@ -214,5 +237,6 @@ TensorRTのエンジンはGPUの機種ごとに作られるので、この比較
 - Wu, "Accelerating Self-Play Learning in Go", [arXiv:1902.10565](https://arxiv.org/abs/1902.10565)：大域プーリングによる学習の加速と、ネットの大きさの段階的な拡大。
 - [ONNX Runtime 1.28 `tensorrt_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/v1.28.0/onnxruntime/core/providers/tensorrt/tensorrt_execution_provider.cc)：TensorRT 11以降でのFP16の設定の無効化（1651〜1659行）と、エンジンのキャッシュのメモリ容量への依存（3523行）。
 - [pykeio/ort](https://github.com/pykeio/ort)：ONNX RuntimeのRustバインディング。
-- [LeelaChessZero/lc0](https://github.com/LeelaChessZero/lc0)：WDLとMLHの出力、試験用のバックエンド。
-- [TadaoYamaoka/DeepLearningShogi](https://github.com/TadaoYamaoka/DeepLearningShogi)：履歴の面を持たない入力、利きの面、勝率1出力。
+- [LeelaChessZero/lc0](https://github.com/LeelaChessZero/lc0)：WDLとMLHの出力、試験用のバックエンド、および`src/neural/shared_params.cc`の`WeightsFile`（コミットd91bd14）。
+- [TadaoYamaoka/DeepLearningShogi](https://github.com/TadaoYamaoka/DeepLearningShogi)：履歴の面を持たない入力、利きの面、勝率1出力、および`cppshogi/usi.cpp`の`DNN_Model`（コミット79df19e）。
+- [official-stockfish/Stockfish](https://github.com/official-stockfish/Stockfish)（コミット5c4cef0b）：`src/engine.cpp`の`EvalFile`と、`src/nnue/network.cpp`の埋め込みのネットとファイルの読み分け。
