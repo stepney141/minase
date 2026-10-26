@@ -10,7 +10,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ort::{ep, logging::LogLevel, session::Session, value::TensorRef};
+use ort::{
+    ep,
+    logging::LogLevel,
+    memory::{AllocationDevice, Allocator, AllocatorType, MemoryInfo, MemoryType},
+    session::{IoBinding, Session},
+    value::{Tensor, TensorRef},
+};
 use serde_json::json;
 
 const INPUT_ELEMENTS: usize = 95 * 12 * 12;
@@ -33,9 +39,25 @@ impl Provider {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum IoMode {
+    Copy,
+    Binding,
+}
+
+impl IoMode {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Copy => "copy",
+            Self::Binding => "binding",
+        }
+    }
+}
+
 struct Args {
     model: String,
     provider: Provider,
+    io: IoMode,
     fp16: bool,
     batches: Vec<usize>,
     seconds: Duration,
@@ -53,6 +75,7 @@ impl Args {
                 name.as_str(),
                 "--model"
                     | "--provider"
+                    | "--io"
                     | "--fp16"
                     | "--batches"
                     | "--seconds"
@@ -81,6 +104,14 @@ impl Args {
             "cpu" => Provider::Cpu,
             value => return Err(format!("invalid --provider: {value}").into()),
         };
+        let io = match required("--io")?.as_str() {
+            "copy" => IoMode::Copy,
+            "binding" => IoMode::Binding,
+            value => return Err(format!("invalid --io: {value}").into()),
+        };
+        if provider == Provider::Cpu && io == IoMode::Binding {
+            return Err("--io binding requires --provider cuda or tensorrt".into());
+        }
         let fp16 = parse_switch("--fp16", required("--fp16")?)?;
         if fp16 && provider != Provider::TensorRt {
             return Err("--fp16 on requires --provider tensorrt".into());
@@ -99,6 +130,7 @@ impl Args {
         Ok(Self {
             model: required("--model")?.clone(),
             provider,
+            io,
             fp16,
             batches,
             seconds,
@@ -171,12 +203,78 @@ fn create_session(args: &Args, batch: usize) -> Result<Session, Box<dyn Error>> 
         .commit_from_file(&args.model)?)
 }
 
+enum InferenceIo<'a> {
+    Copy(TensorRef<'a, f32>),
+    Binding {
+        binding: Box<IoBinding>,
+        input: Tensor<f32>,
+        // 束縛したテンソルを解放するまで、そのアロケータを保持する。
+        _allocator: Allocator,
+    },
+}
+
+impl<'a> InferenceIo<'a> {
+    fn new(
+        mode: IoMode,
+        session: &Session,
+        batch: usize,
+        input_data: &'a [f32],
+    ) -> Result<Self, Box<dyn Error>> {
+        match mode {
+            IoMode::Copy => Ok(Self::Copy(TensorRef::from_array_view((
+                [batch, 95, 12, 12],
+                input_data,
+            ))?)),
+            IoMode::Binding => {
+                // CPUOutput は CUDA のホスト側ピン留めメモリを表し、入力にも使える。
+                let allocator = Allocator::new(
+                    session,
+                    MemoryInfo::new(
+                        AllocationDevice::CUDA_PINNED,
+                        0,
+                        AllocatorType::Device,
+                        MemoryType::CPUOutput,
+                    )?,
+                )?;
+                let mut input = Tensor::<f32>::new(&allocator, [batch, 95, 12, 12])?;
+                input
+                    .try_extract_tensor_mut::<f32>()?
+                    .1
+                    .copy_from_slice(input_data);
+                let mut binding = session.create_binding()?;
+                let batch = i64::try_from(batch)?;
+                binding.bind_output(
+                    "policy",
+                    Tensor::<f32>::new(&allocator, [batch, POLICY_ELEMENTS])?,
+                )?;
+                binding.bind_output("value", Tensor::<f32>::new(&allocator, [batch, 1])?)?;
+                Ok(Self::Binding {
+                    binding: Box::new(binding),
+                    input,
+                    _allocator: allocator,
+                })
+            }
+        }
+    }
+}
+
 fn run_once(
     session: &mut Session,
-    input: &TensorRef<'_, f32>,
+    io: &mut InferenceIo<'_>,
     batch: usize,
 ) -> Result<(), Box<dyn Error>> {
-    let outputs = session.run(ort::inputs!["input" => input.view()])?;
+    let outputs = match io {
+        InferenceIo::Copy(input) => session.run(ort::inputs!["input" => input.view()])?,
+        InferenceIo::Binding { binding, input, .. } => {
+            // 毎回入力を再束縛し、GPU への転送と同期を計測に含める。
+            binding.bind_input("input", input)?;
+            binding.synchronize_inputs()?;
+            let outputs = session.run_binding(binding)?;
+            // CPU で出力を読む前に転送完了を待ち、この同期も計測に含める。
+            binding.synchronize_outputs()?;
+            outputs
+        }
+    };
     if outputs.len() != 2 {
         return Err(format!("expected 2 outputs, got {}", outputs.len()).into());
     }
@@ -263,23 +361,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         let start = Instant::now();
         let mut session = create_session(&args, batch)?;
         let session_create_secs = start.elapsed().as_secs_f64();
-        let input = TensorRef::from_array_view((
-            [batch, 95, 12, 12],
+        let mut inference_io = InferenceIo::new(
+            args.io,
+            &session,
+            batch,
             &input_data[..batch * INPUT_ELEMENTS],
-        ))?;
+        )?;
 
         let start = Instant::now();
-        run_once(&mut session, &input, batch)?;
+        run_once(&mut session, &mut inference_io, batch)?;
         let first_run_secs = start.elapsed().as_secs_f64();
         for _ in 0..args.warmup {
-            run_once(&mut session, &input, batch)?;
+            run_once(&mut session, &mut inference_io, batch)?;
         }
 
         let mut latencies = Vec::new();
         let start = Instant::now();
         loop {
             let run_start = Instant::now();
-            run_once(&mut session, &input, batch)?;
+            run_once(&mut session, &mut inference_io, batch)?;
             latencies.push(run_start.elapsed().as_secs_f64() * 1000.0);
             if start.elapsed() >= args.seconds {
                 break;
@@ -300,6 +400,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let record = json!({
             "model": args.model,
             "provider": args.provider.name(),
+            "io": args.io.name(),
             "fp16": args.fp16,
             "batch": batch,
             "session_create_secs": session_create_secs,
