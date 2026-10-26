@@ -21,6 +21,7 @@ use serde_json::json;
 
 const INPUT_ELEMENTS: usize = 95 * 12 * 12;
 const POLICY_ELEMENTS: i64 = 249 * 12 * 12;
+const READS_PER_POSITION: usize = 81;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Provider {
@@ -168,6 +169,16 @@ fn make_input(batch: usize) -> Result<Vec<f32>, Box<dyn Error>> {
     Ok(data)
 }
 
+fn make_policy_indices() -> [usize; READS_PER_POSITION] {
+    let mut state = 0x1234_5678_9abc_def0_u64;
+    std::array::from_fn(|_| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % POLICY_ELEMENTS as u64) as usize
+    })
+}
+
 fn create_session(args: &Args, batch: usize) -> Result<Session, Box<dyn Error>> {
     let mut builder = Session::builder()?.with_log_level(if args.detailed_build_log {
         LogLevel::Verbose
@@ -267,6 +278,8 @@ fn run_once(
     session: &mut Session,
     io: &mut InferenceIo<'_>,
     batch: usize,
+    policy_indices: &[usize; READS_PER_POSITION],
+    check_all: bool,
 ) -> Result<(), Box<dyn Error>> {
     let outputs = match io {
         InferenceIo::Copy(input) => session.run(ort::inputs!["input" => input.view()])?,
@@ -283,7 +296,7 @@ fn run_once(
     if outputs.len() != 2 {
         return Err(format!("expected 2 outputs, got {}", outputs.len()).into());
     }
-    for (name, width) in [("policy", POLICY_ELEMENTS), ("value", 1)] {
+    let validate_output = |name: &str, width: i64| -> Result<&[f32], Box<dyn Error>> {
         let output = outputs
             .get(name)
             .ok_or_else(|| format!("missing output: {name}"))?;
@@ -292,8 +305,29 @@ fn run_once(
         if **shape != expected {
             return Err(format!("{name} shape is {shape:?}, expected {expected:?}").into());
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if check_all && values.iter().any(|value| !value.is_finite()) {
             return Err(format!("{name} contains a non-finite value").into());
+        }
+        Ok(values)
+    };
+    let policy = validate_output("policy", POLICY_ELEMENTS)?;
+    let value = validate_output("value", 1)?;
+    if !check_all {
+        // 計測区間では本番の探索と同様に、方策は平均合法手数に相当する81要素だけを各局面で読む。
+        let mut sum = 0.0_f32;
+        for (policy, &value) in policy
+            .as_chunks::<{ POLICY_ELEMENTS as usize }>()
+            .0
+            .iter()
+            .zip(value)
+        {
+            for &index in policy_indices {
+                sum += policy[index];
+            }
+            sum += value;
+        }
+        if !std::hint::black_box(sum).is_finite() {
+            return Err("sampled outputs have a non-finite sum".into());
         }
     }
     Ok(())
@@ -362,6 +396,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let max_batch = *args.batches.iter().max().ok_or("--batches is empty")?;
     let input_data = make_input(max_batch)?;
+    let policy_indices = make_policy_indices();
     for &batch in &args.batches {
         let start = Instant::now();
         let mut session = create_session(&args, batch)?;
@@ -374,17 +409,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?;
 
         let start = Instant::now();
-        run_once(&mut session, &mut inference_io, batch)?;
+        run_once(
+            &mut session,
+            &mut inference_io,
+            batch,
+            &policy_indices,
+            true,
+        )?;
         let first_run_secs = start.elapsed().as_secs_f64();
         for _ in 0..args.warmup {
-            run_once(&mut session, &mut inference_io, batch)?;
+            run_once(
+                &mut session,
+                &mut inference_io,
+                batch,
+                &policy_indices,
+                true,
+            )?;
         }
 
         let mut latencies = Vec::new();
         let start = Instant::now();
         loop {
             let run_start = Instant::now();
-            run_once(&mut session, &mut inference_io, batch)?;
+            run_once(
+                &mut session,
+                &mut inference_io,
+                batch,
+                &policy_indices,
+                false,
+            )?;
             latencies.push(run_start.elapsed().as_secs_f64() * 1000.0);
             if start.elapsed() >= args.seconds {
                 break;
@@ -408,6 +461,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "io": args.io.name(),
             "fp16": args.fp16,
             "batch": batch,
+            "reads_per_position": READS_PER_POSITION,
             "session_create_secs": session_create_secs,
             "first_run_secs": first_run_secs,
             "runs": runs,
