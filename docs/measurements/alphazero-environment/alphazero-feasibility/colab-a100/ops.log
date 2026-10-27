@@ -1,0 +1,27 @@
+2026-10-27T00:08:24+09:00 new start
+[colab] Creating session 'af-a100'...
+[colab] Session READY.
+2026-10-27T00:08:28+09:00 new end
+Current balance: 399.54 compute units
+Usage rate: 6.84/hr
+Active assignments: 2
+[af-a100] gpu-a100-s-usc1f0-2iqlxwecubnd2 | Hardware: A100 | Shape: Standard | Variant: GPU | Status: IDLE
+2026-10-27T00:08:50+09:00 upload minase-2c7c3c4f.tar 35287040 bytes 10.401445653 s
+2026-10-27T00:08:57+09:00 upload generated-8200000.bin 25195651 bytes 7.230832191 s
+2026-10-27T00:08:57+09:00 upload measure.sh 3570 bytes .575911335 s
+minase.tar 38cfbd4d5f09c1eb937fc4b5a652d18628852ceb1ed47864174a129e9251d698
+pid 1409
+2026-10-27T00:09:07+09:00 measure launched
+minase.tar 090e6592c00788e04b25247822d8baab231f46a0fe0a115c95600833e6735835
+pid 18609
+2026-10-27T00:42:05+09:00 measure launched d8bc5e43 (src2/out2)
+2026-10-27T01:07:07+09:00 stopped
+Current balance: 388.02 compute units
+Usage rate: 1.54/hr
+Active assignments: 1
+2026-10-27T01:31:39+09:00 new3 start
+2026-10-27T01:31:42+09:00 new3 end
+pid 721
+2026-10-27T01:32:03+09:00 trt-only launched eda8f146
+2026-10-27T02:06:38+09:00 trt rerun launched (out4, measure-trt 68c537d5135d)
+2026-10-27T02:27:59+09:00 stopped (eda8f146 trt run)

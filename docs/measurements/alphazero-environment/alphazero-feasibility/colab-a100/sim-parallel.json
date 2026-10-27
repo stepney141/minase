@@ -1,0 +1,17 @@
+[
+ {
+  "workers": 1,
+  "mean_us_per_simulation": 11.574810015624998,
+  "total_simulations_per_second": 86394.50657506136
+ },
+ {
+  "workers": 6,
+  "mean_us_per_simulation": 11.715346817708332,
+  "total_simulations_per_second": 512181.3501668972
+ },
+ {
+  "workers": 12,
+  "mean_us_per_simulation": 19.79388221744792,
+  "total_simulations_per_second": 611397.6837231263
+ }
+]

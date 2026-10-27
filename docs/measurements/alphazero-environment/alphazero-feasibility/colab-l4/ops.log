@@ -1,0 +1,37 @@
+2026-10-26T23:48:40+09:00 new start
+[colab] Creating session 'af-l4'...
+[colab] Session READY.
+2026-10-26T23:48:44+09:00 new end
+Current balance: 400.00 compute units
+Usage rate: 1.54/hr
+Active assignments: 1
+[af-l4] gpu-l4-s-kkb-usw4a0-33hog97q23cnl | Hardware: L4 | Shape: Standard | Variant: GPU | Status: IDLE
+3a70cd95160fb85c6b2795d873929723aec4e7b9b5294217bb1d7bf7b2014788  /home/stepney141/board-games/minase/docs/measurements/alphazero-environment/alphazero-feasibility/measure.sh
+2026-10-26T23:49:01+09:00 upload minase-2c7c3c4f.tar 35287040 bytes 9.191430097 s
+2026-10-26T23:49:06+09:00 upload generated-8200000.bin 25195651 bytes 5.353478361 s
+2026-10-26T23:49:07+09:00 upload measure.sh 3570 bytes .449615179 s
+2026-10-26T23:53:18+09:00 upload window-5g.bin 5000000000 bytes colab-upload 233.161544472 s
+2026-10-27T00:06:42+09:00 upload window-5g.bin 5000000000 bytes rsync 803.499263332 s
+window-rsync 48d1c320d1e39881b2d13dacb8e809eed7b73dd72f0c9ba5f536dd5389c8df45
+minase.tar 38cfbd4d5f09c1eb937fc4b5a652d18628852ceb1ed47864174a129e9251d698
+pid 5674
+2026-10-27T00:07:24+09:00 measure launched
+minase.tar 090e6592c00788e04b25247822d8baab231f46a0fe0a115c95600833e6735835
+pid 23256
+2026-10-27T00:42:03+09:00 measure launched d8bc5e43 (src2/out2)
+679b390c4be86d6ccbaedd2dac5bfaee2f8391a8aa837d2a1517c554806f6fab  /content/cycle-out.bin
+
+2026-10-27T01:09:58+09:00 download cycle-out.bin 1200000000 bytes colab-download 139.796090739 s
+679b390c4be86d6ccbaedd2dac5bfaee2f8391a8aa837d2a1517c554806f6fab  /mnt/synology_nas/minase/alphazero/feasibility/.recv-colab-download.tmp
+2026-10-27T01:12:02+09:00 download cycle-out.bin 1200000000 bytes rsync 123.409339872 s
+679b390c4be86d6ccbaedd2dac5bfaee2f8391a8aa837d2a1517c554806f6fab  /mnt/synology_nas/minase/alphazero/feasibility/.recv-rsync.tmp
+24037e2b31faa944336577eea420846ea00319a172ea41afac0b591c24da98e8  /home/stepney141/board-games/minase/docs/measurements/alphazero-environment/alphazero-feasibility/longrun.sh
+pid 43583
+2026-10-27T01:13:37+09:00 longrun launched
+2026-10-27T11:57:30+09:00 12h mark passed; stopping longrun
+pid 203819
+2026-10-27T11:57:49+09:00 trt-only launched eda8f146 (out3)
+2026-10-27T12:10:52+09:00 stopped (12h check done, eda8f146 trt run)
+Current balance: 359.07 compute units
+Usage rate: 0.00/hr
+Active assignments: 0

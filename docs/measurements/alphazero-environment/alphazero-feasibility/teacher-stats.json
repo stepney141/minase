@@ -1,0 +1,39 @@
+{
+  "bytes_per_position": 333.77483672577654,
+  "end_reasons": {
+    "draw_agreement": 0,
+    "draw_bare_king": 0,
+    "draw_piece_exhaustion": 53,
+    "draw_repetition": 2697,
+    "not_from_game": 0,
+    "win_bare_king": 0,
+    "win_mate": 211776,
+    "win_no_legal_move": 0,
+    "win_piece_exhaustion": 841,
+    "win_repetition": 6536,
+    "win_resignation": 0,
+    "win_royal_capture": 733
+  },
+  "files": 30,
+  "game_length_plies": {
+    "max": 3997,
+    "mean": 464.40687489893816,
+    "p50": 434,
+    "p90": 608,
+    "p95": 690,
+    "p99": 1297
+  },
+  "games": 222636,
+  "games_over_1000_plies_fraction": 0.01557699563412925,
+  "gb_per_million_positions": 0.33377483672577657,
+  "legal_moves": {
+    "max": 222,
+    "mean": 80.69370918144413,
+    "p50": 82,
+    "p90": 117,
+    "p99": 142
+  },
+  "legal_moves_method": "MoveGenerator::generate_moves (without repetition history)",
+  "percentile_method": "nearest_rank",
+  "positions": 103616325
+}

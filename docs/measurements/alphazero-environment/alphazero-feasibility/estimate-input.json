@@ -1,0 +1,43 @@
+{
+ "common": {
+  "mean_game_plies": 464.4,
+  "bytes_per_position": 333.77,
+  "source_bytes": 35287040,
+  "net_bytes": 13854384,
+  "checkpoint_bytes": 27700192,
+  "upload_bytes_per_sec": 6216558,
+  "download_bytes_per_sec": 9718973
+ },
+ "machines": {
+  "L4": {
+   "gpu_evals_per_sec": 33935,
+   "cpu_simulations_per_sec": 484504,
+   "train_positions_per_sec": 7426,
+   "session_secs": 4,
+   "setup_secs": 81,
+   "build_secs": 80,
+   "engine_secs": 12.0,
+   "cu_per_hour": 1.54
+  },
+  "A100": {
+   "gpu_evals_per_sec": 26133,
+   "cpu_simulations_per_sec": 611398,
+   "train_positions_per_sec": 15645,
+   "session_secs": 4,
+   "setup_secs": 214,
+   "build_secs": 82,
+   "engine_secs": 13.4,
+   "cu_per_hour": 5.3
+  },
+  "G4": {
+   "gpu_evals_per_sec": 122113,
+   "cpu_simulations_per_sec": 7664882,
+   "train_positions_per_sec": 27503,
+   "session_secs": 4,
+   "setup_secs": 96,
+   "build_secs": 42,
+   "engine_secs": 3.7,
+   "cu_per_hour": 8.9
+  }
+ }
+}

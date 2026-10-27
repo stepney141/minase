@@ -1,0 +1,41 @@
+{
+ "L4": {
+  "bound": "gpu",
+  "positions_per_day": 88848000,
+  "generation_secs": 972,
+  "training_secs": 539,
+  "progress_secs": 4379,
+  "fixed_secs": 445,
+  "transfer_secs": 268,
+  "cycle_secs": 2394,
+  "cycle_without_progress_secs": 1956,
+  "cycle_with_progress_secs": 6335,
+  "cu_per_cycle": 1.02
+ },
+ "A100": {
+  "bound": "gpu",
+  "positions_per_day": 68420945,
+  "generation_secs": 1263,
+  "training_secs": 256,
+  "progress_secs": 5687,
+  "fixed_secs": 581,
+  "transfer_secs": 268,
+  "cycle_secs": 2668,
+  "cycle_without_progress_secs": 2100,
+  "cycle_with_progress_secs": 7786,
+  "cu_per_cycle": 3.93
+ },
+ "G4": {
+  "bound": "gpu",
+  "positions_per_day": 319714036,
+  "generation_secs": 270,
+  "training_secs": 145,
+  "progress_secs": 1217,
+  "fixed_secs": 414,
+  "transfer_secs": 268,
+  "cycle_secs": 951,
+  "cycle_without_progress_secs": 829,
+  "cycle_with_progress_secs": 2046,
+  "cu_per_cycle": 2.35
+ }
+}

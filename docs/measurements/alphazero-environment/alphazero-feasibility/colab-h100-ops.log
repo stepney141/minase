@@ -1,0 +1,12 @@
+2026-10-27T00:09:19+09:00 new start
+[colab] Creating session 'af-h100'...
+[colab] Backend rejected accelerator 'H100'. You may not have quota or entitlement for this accelerator on your account. Try a different one (e.g. --gpu T4) or omit --gpu/--tpu for a CPU runtime.
+2026-10-27T00:09:20+09:00 new end
+Current balance: 399.54 compute units
+Usage rate: 6.84/hr
+Active assignments: 2
+[colab] Session 'af-h100' not found.
+2026-10-27T01:07:13+09:00 new retry (1 other session active)
+[colab] Backend rejected accelerator 'H100'. You may not have quota or entitlement for this accelerator on your account. Try a different one (e.g. --gpu T4) or omit --gpu/--tpu for a CPU runtime.
+2026-10-27T12:10:57+09:00 new retry 3 (no other sessions)
+[colab] Backend rejected accelerator 'H100'. You may not have quota or entitlement for this accelerator on your account. Try a different one (e.g. --gpu T4) or omit --gpu/--tpu for a CPU runtime.

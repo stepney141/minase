@@ -1,0 +1,1 @@
+Layer(Myelin): {ForeignNode[input_cast...policy_castOut]}, Tactic: 0x0000000000000000, input (Float[256,95,12,12]) -> policy (Float[256,35856]), value (Float[256,1])

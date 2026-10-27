@@ -1,0 +1,32 @@
+{
+  "breakdown_us_per_simulation": {
+    "backup": 0.047692328125,
+    "encoding": 1.7811166406249999,
+    "make_unmake": 0.23154709375000002,
+    "move_generation": 5.395903453125,
+    "other": 0.447657625,
+    "policy": 2.4624697343750004,
+    "selection": 1.9483682031249998
+  },
+  "considered": 16,
+  "expanded_nodes_include_root": true,
+  "leaf_legal_moves_scope": "newly_expanded_nonterminal_leaves",
+  "mean_expanded_nodes": 32.9775,
+  "mean_leaf_legal_moves": 81.78417637401297,
+  "mean_max_depth": 3.6675,
+  "mean_root_legal_moves": 81.2675,
+  "mean_us_per_simulation": 12.314755078125,
+  "percentile_method": "nearest_rank",
+  "positions": 2000,
+  "search_time_us": {
+    "p50": 410.65999999999997,
+    "p90": 491.78700000000003,
+    "p99": 547.476
+  },
+  "seed": 1,
+  "simulations": 64000,
+  "simulations_per_position": 32,
+  "simulations_per_second": 81203.40142016503,
+  "stride": 1709,
+  "terminal_leaf_fraction": 0.000703125
+}
