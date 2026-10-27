@@ -16,7 +16,7 @@
 起案。2026年10月26日に起案した。
 実装はまだない。
 前提とする[ネットの入出力と推論](archived/alphazero-network.md)は2026年10月27日に完了しており、着手は利用者の指示を待つ。
-[自己対局生成器](alphazero-selfplay.md)とは並行して進めてよい。
+[自己対局生成器](archived/alphazero-selfplay.md)とは並行して進めてよい。
 次の一手は、masterから本書のブランチを切り、MNSDを読む拡張モジュールから実装することである。
 
 ## 目的
@@ -40,7 +40,7 @@ RLの各サイクルでは、直前のサイクルまでのネットを、直近
 ## 依存関係
 
 ネットの入出力と構成は[ネットの入出力と推論](archived/alphazero-network.md)が定め、Pythonの符号化との照合に使う固定局面集もそのサブタスクが書き出す。
-学習データの形式は[教師データ形式の統一](archived/unified-teacher-format.md)が定めたMNSDの版2であり、MCTSの教師の記録は[自己対局生成器](alphazero-selfplay.md)の「記録の形式」の節に従う。
+学習データの形式は[教師データ形式の統一](archived/unified-teacher-format.md)が定めたMNSDの版2であり、MCTSの教師の記録は[自己対局生成器](archived/alphazero-selfplay.md)の「記録の形式」の節に従う。
 環境は`tools/train/zero/`の環境定義から導入する（[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
 学習曲線の点検は、[学習前に1エポックのステップ数を確認する](../lessons/check-steps-per-epoch-before-training.md)と[教師不足と判定する前に学習曲線を確認する](../lessons/check-learning-before-blaming-data.md)に従う。
 [GPUを要する学習はcodexへ委任しない](../lessons/run-gpu-training-outside-codex-sandbox.md)に従い、実装を担うAIエージェントのcodexには学習器のコードだけを委任し、GPUを使う学習は委任元のエージェントが直接行う。
