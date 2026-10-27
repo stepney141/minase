@@ -419,6 +419,55 @@ fn depth_limit_is_a_network_leaf_and_score_bands_include_max_ply() {
 }
 
 #[test]
+fn reuse_rejects_ambiguous_keys_even_when_only_one_edge_has_a_child() {
+    for children in 1..=2 {
+        let mut game = ambiguous_lion_game();
+        let moves = ["8h9i8h", "4h5i4h"]
+            .map(|text| minase_core::notation::usi::parse(game.position(), text).unwrap());
+        let mut input = SearchSnapshot::from_game(&game).unwrap();
+        assert!(moves.iter().all(|mv| input.root_moves().contains(mv)));
+        input.root_moves = moves.to_vec();
+        let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
+        advance(&mut driver, &mut UniformEvaluator);
+        let config = PuctConfig::default();
+        let requests: Vec<_> = (0..children)
+            .map(|_| {
+                let Step::Evaluate(request) =
+                    driver.select_leaf(SelectionRule::Puct(&config)).unwrap()
+                else {
+                    panic!("each distinct move must have its own child");
+                };
+                request
+            })
+            .collect();
+        for request in requests {
+            evaluate(&mut driver, &mut UniformEvaluator, &request);
+        }
+        assert_eq!(
+            driver
+                .tree()
+                .root()
+                .edges
+                .iter()
+                .filter(|edge| edge.child.is_some())
+                .count(),
+            children
+        );
+        game.play(moves[1]).unwrap();
+        let next = SearchSnapshot::from_game(&game).unwrap();
+        for mv in moves {
+            let mut position = driver.snapshot.position().clone();
+            position.make_move_unchecked(mv, next.rules());
+            assert_eq!(
+                repetition_key(RepetitionRule::R1, &position),
+                *next.history_keys().last().unwrap()
+            );
+        }
+        assert!(!driver.reuse(&next, DrawValue::SelfPlay).unwrap());
+    }
+}
+
+#[test]
 fn reroot_preserves_repetition_judgments_against_fresh_history() {
     for attacks in [[false, false], [true, false], [false, true]] {
         let (root, line) = rook_cycle(attacks[0], attacks[1]);

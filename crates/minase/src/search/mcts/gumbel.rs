@@ -7,7 +7,7 @@
 //! の既定の式に従う。価値は勝率へ写して保持し、節点内の再尺度化も単精度で行う。
 
 use super::softmax;
-use super::tree::{Node, NodeState, TreeError};
+use super::tree::{Edge, Node, NodeState, Outcome, TreeError};
 
 /// 根のGumbel乱数とSequential Halvingの予算。
 ///
@@ -45,14 +45,31 @@ impl Gumbel {
         self.num_considered
     }
 
-    /// 探索後の根から、最大訪問回数の辺に制限したスコアで手の添字を返す。
+    /// 確定した勝ちを優先し、確定した負けを除いた最大訪問回数の辺からスコアで選ぶ。
+    ///
+    /// 根が勝ちに確定した場合と全辺が負けの場合は、[`Node::best_edge`]と同じ順序を使う。
     ///
     /// # Errors
     /// 根が未評価、辺がない、または乱数の数と辺の数が異なる場合は拒否する。
     pub fn action(&self, root: &Node) -> Result<usize, TreeError> {
         self.validate_root(root)?;
-        let considered = root.edges.iter().map(|edge| edge.visits).max().unwrap();
-        self.score_considered(root, considered)
+        if matches!(root.state, NodeState::Proven(proof) if proof.outcome == Outcome::Win) {
+            return root.best_edge().ok_or(TreeError::NoSelectableEdge);
+        }
+        let eligible = |edge: &Edge| {
+            !matches!(edge.child.as_deref().map(|child| child.state),
+                Some(NodeState::Proven(proof)) if proof.outcome == Outcome::Win)
+        };
+        let considered = root
+            .edges
+            .iter()
+            .filter(|edge| eligible(edge))
+            .map(|edge| edge.visits)
+            .max();
+        match considered {
+            Some(visits) => self.score_considered(root, visits, eligible),
+            None => root.best_edge().ok_or(TreeError::NoSelectableEdge),
+        }
     }
 
     pub(super) fn validate_root(&self, root: &Node) -> Result<(), TreeError> {
@@ -72,10 +89,15 @@ impl Gumbel {
             .considered_visits
             .get(visits as usize)
             .ok_or(TreeError::BudgetExhausted)?;
-        self.score_considered(root, considered)
+        self.score_considered(root, considered, |_| true)
     }
 
-    fn score_considered(&self, node: &Node, considered: u32) -> Result<usize, TreeError> {
+    fn score_considered(
+        &self,
+        node: &Node,
+        considered: u32,
+        eligible: impl Fn(&Edge) -> bool,
+    ) -> Result<usize, TreeError> {
         let completed = completed_qvalues(node)?;
         let max_logit = node
             .edges
@@ -83,7 +105,7 @@ impl Gumbel {
             .map(|edge| edge.logit)
             .fold(f32::NEG_INFINITY, f32::max);
         argmax(node.edges.iter().enumerate().map(|(index, edge)| {
-            if edge.visits == considered {
+            if edge.visits == considered && eligible(edge) {
                 (self.root_gumbel[index] + (edge.logit - max_logit) + completed[index]).max(-1e9)
             } else {
                 f32::NEG_INFINITY

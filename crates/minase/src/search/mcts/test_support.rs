@@ -47,6 +47,14 @@ pub(super) fn initial() -> SearchSnapshot {
     snapshot(&Position::initial())
 }
 
+pub(super) fn ambiguous_lion_game() -> Game {
+    let codes = minase_core::rules::parse_rule_set("L0,P0,R1,E2").unwrap();
+    let rules = Rules::from_codes(&codes).unwrap();
+    let position =
+        minase_core::parse_sfen("11k/12/2n9/12/12/12/8p3/4N3+O3/12/12/12/K11 b").unwrap();
+    Game::from_position(rules, position)
+}
+
 pub(super) fn nodes(count: u64) -> SearchLimits {
     SearchLimits::new(None, Some(count), None, None).unwrap()
 }

@@ -9,6 +9,7 @@
 //! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`と`limit`を持つエンジン設定である。
 //! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
 //! `kind="commit"`の`args`は追加の起動引数を文字列配列で持ち、省略時は空配列となる。
+//! `working_directory`は追加引数の有無によらず測定開始時の作業ディレクトリを記録する。
 //! `limit`は`kind="fixed"`なら`depth`と`nodes`、`kind="time"`なら
 //! `base_ms`、`increment_ms`、`byoyomi_ms`、`kind="movetime"`なら
 //! `movetime_ms`と`timemargin_ms`を持ち、時間の単位はミリ秒である。
@@ -609,6 +610,7 @@ mod tests {
                     hash: "a".repeat(40),
                     sha256: "d".repeat(64),
                     args: Vec::new(),
+                    working_directory: std::env::current_dir().unwrap(),
                 },
                 limit: StoredSearchLimit::Fixed {
                     depth: None,
@@ -757,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn version_six_manifest_round_trips_commit_startup_arguments() {
+    fn version_six_manifest_round_trips_commit_arguments_and_working_directory() {
         for args in [
             Vec::new(),
             vec![
@@ -777,6 +779,10 @@ mod tests {
             drop(RunStore::create(&path, expected.clone(), 1).unwrap());
             let json: serde_json::Value = read_json(&path.join(MANIFEST_FILE)).unwrap();
             assert_eq!(json["format_version"], 6);
+            assert_eq!(
+                json["candidate"]["identity"]["working_directory"],
+                serde_json::json!(std::env::current_dir().unwrap())
+            );
             assert_eq!(
                 json["candidate"]["identity"]["args"],
                 serde_json::json!(args)

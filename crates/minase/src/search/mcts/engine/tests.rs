@@ -161,6 +161,52 @@ fn capacity_stops_after_evaluating_the_root_without_counting_a_failed_descent() 
 }
 
 #[test]
+fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
+    let mut game = ambiguous_lion_game();
+    let input = SearchSnapshot::from_game(&game).unwrap();
+    // 非攻撃的な8hのじっとの下に引き分けを記録し、攻撃的な4hのじっとで再開する。
+    let quiet = minase_core::notation::usi::parse(game.position(), "8h9i8h").unwrap();
+    let mut after_quiet = game.position().clone();
+    after_quiet.make_move_unchecked(quiet, input.rules());
+    let reply = minase_core::notation::usi::parse(&after_quiet, "10c11d10c").unwrap();
+    let mut previous = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
+    previous.config.batch_size = NonZeroUsize::new(256).unwrap();
+    let mut fresh_engine = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
+    fresh_engine.config = previous.config;
+    let (previous, _) = finish(previous.start(input, nodes(10_000), 1, false).unwrap());
+    let mv = minase_core::notation::usi::parse(game.position(), "4h5i4h").unwrap();
+    game.play(mv).unwrap();
+    let next = SearchSnapshot::from_game(&game).unwrap();
+    let (fresh, fresh_event) = finish(
+        fresh_engine
+            .start(next.clone(), nodes(128), 2, false)
+            .unwrap(),
+    );
+    let (continued, continued_event) = finish(previous.start(next, nodes(128), 2, false).unwrap());
+    let SearchEvent::Finished {
+        score: fresh_score, ..
+    } = fresh_event
+    else {
+        panic!();
+    };
+    let SearchEvent::Finished {
+        score: continued_score,
+        ..
+    } = continued_event
+    else {
+        panic!();
+    };
+    // 相手の獅子のじっとで周回が閉じ、攻撃を続けた先手の負けになる。
+    assert_eq!(fresh_score, crate::search::REPETITION_WIN - 1);
+    assert_eq!(continued_score, fresh_score);
+    assert_eq!(
+        continued.driver.as_ref().unwrap().tree().root().state,
+        fresh.driver.as_ref().unwrap().tree().root().state
+    );
+    assert!(!continued.reused);
+}
+
+#[test]
 fn played_subtree_is_reused_and_clear_or_draw_changes_discard_it() {
     for change in [0, 1, 2] {
         let mut game = Game::new(rules(RepetitionRule::R1));
@@ -327,6 +373,138 @@ impl SearchClock for ManualClock {
     fn elapsed(&self) -> Duration {
         Duration::from_millis(self.0.load(Ordering::SeqCst))
     }
+}
+
+struct TimedEvaluator {
+    clock: Arc<ManualClock>,
+    batches: Arc<Mutex<Vec<usize>>>,
+    milliseconds_per_leaf: u64,
+}
+impl Evaluator for TimedEvaluator {
+    fn evaluate(
+        &mut self,
+        queries: &[Query<'_>],
+        logits: &mut Vec<f32>,
+        values: &mut Vec<f32>,
+    ) -> Result<(), NnError> {
+        self.batches.lock().unwrap().push(queries.len());
+        self.clock.0.fetch_add(
+            self.milliseconds_per_leaf * queries.len() as u64,
+            Ordering::SeqCst,
+        );
+        UniformEvaluator.evaluate(queries, logits, values)
+    }
+}
+
+#[test]
+fn hard_limit_caps_the_batch_using_root_evaluation_time_per_leaf() {
+    let clock = Arc::new(ManualClock::default());
+    let batches = Arc::new(Mutex::new(Vec::new()));
+    let mut engine = engine(TimedEvaluator {
+        clock: clock.clone(),
+        batches: batches.clone(),
+        milliseconds_per_leaf: 21,
+    });
+    engine.config.batch_size = NonZeroUsize::new(256).unwrap();
+    let limits = SearchLimits::new(None, None, Some(100), None).unwrap();
+    let (_, event) = finish(
+        engine
+            .start_with_clock(initial(), limits, 1, false, clock)
+            .unwrap(),
+    );
+    // 根に21 ms、残り79 msなので次は3葉。残り16 msでは1葉も評価できない。
+    assert_eq!(*batches.lock().unwrap(), [1, 3]);
+    assert!(matches!(event, SearchEvent::Finished {
+        nodes: 4, elapsed, stop_reason: StopReason::HardLimit, ..
+    } if elapsed == Duration::from_millis(84)));
+}
+
+#[test]
+fn hard_limit_uses_time_per_leaf_after_a_multi_leaf_batch() {
+    let clock = Arc::new(ManualClock::default());
+    let batches = Arc::new(Mutex::new(Vec::new()));
+    let engine = engine(TimedEvaluator {
+        clock: clock.clone(),
+        batches: batches.clone(),
+        milliseconds_per_leaf: 21,
+    });
+    let limits = SearchLimits::new(None, None, Some(150), None).unwrap();
+    let (_, event) = finish(
+        engine
+            .start_with_clock(initial(), limits, 1, false, clock)
+            .unwrap(),
+    );
+    // 105 msで残り45 ms。直前の84 msを4葉で割れば、もう2葉を評価できる。
+    assert_eq!(*batches.lock().unwrap(), [1, 4, 2]);
+    assert!(matches!(event, SearchEvent::Finished {
+        nodes: 7, elapsed, stop_reason: StopReason::HardLimit, ..
+    } if elapsed == Duration::from_millis(147)));
+}
+
+#[test]
+fn time_does_not_reduce_batches_without_a_budget_or_before_ponderhit() {
+    for (limits, ponder) in [
+        (nodes(10), false),
+        (
+            SearchLimits::new(None, Some(10), Some(100), None).unwrap(),
+            true,
+        ),
+    ] {
+        let clock = Arc::new(ManualClock::default());
+        let batches = Arc::new(Mutex::new(Vec::new()));
+        let engine = engine(TimedEvaluator {
+            clock: clock.clone(),
+            batches: batches.clone(),
+            milliseconds_per_leaf: 40,
+        });
+        let (_, event) = finish(
+            engine
+                .start_with_clock(initial(), limits, 1, ponder, clock)
+                .unwrap(),
+        );
+        assert_eq!(*batches.lock().unwrap(), [1, 4, 4, 1]);
+        assert!(matches!(event, SearchEvent::Finished {
+            nodes: 10, elapsed, stop_reason: StopReason::NodeLimit, ..
+        } if elapsed == Duration::from_millis(400)));
+    }
+}
+
+/// 時計の読み出しごとに1 ms進め、評価なしの降下にも時間がかかる状況を作る。
+struct TickingClock(Arc<ManualClock>);
+impl SearchClock for TickingClock {
+    fn elapsed(&self) -> Duration {
+        Duration::from_millis(self.0.0.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+#[test]
+fn batches_without_evaluation_preserve_the_last_time_per_leaf() {
+    let (root, line) = rook_cycle(false, false);
+    let mut game = Game::from_position(rules(RepetitionRule::R1), root);
+    for mv in &line[..3] {
+        game.play(*mv).unwrap();
+    }
+    let mut input = SearchSnapshot::from_game(&game).unwrap();
+    // この1手は引き分けの周回を閉じるので、根の後は推論せず逆伝播だけを行う。
+    input.root_moves = vec![line[3]];
+    let clock = Arc::new(ManualClock::default());
+    let batches = Arc::new(Mutex::new(Vec::new()));
+    let engine = engine(TimedEvaluator {
+        clock: clock.clone(),
+        batches: batches.clone(),
+        milliseconds_per_leaf: 40,
+    });
+    let limits = SearchLimits::new(None, None, Some(100), None).unwrap();
+    let (_, event) = finish(
+        engine
+            .start_with_clock(input, limits, 1, false, Arc::new(TickingClock(clock)))
+            .unwrap(),
+    );
+    assert_eq!(*batches.lock().unwrap(), [1]);
+    // 根の40 ms以上という見積もりを保てば、残り40 msを切ったところで停止する。
+    assert!(matches!(event, SearchEvent::Finished {
+        nodes, elapsed, stop_reason: StopReason::HardLimit, ..
+    } if nodes > 1 && elapsed < Duration::from_millis(80)));
 }
 
 struct GatedEvaluator {

@@ -45,6 +45,7 @@ fn manifest(s: Settings) -> Manifest {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
             args: Vec::new(),
+            working_directory: std::env::current_dir().unwrap(),
         },
         engine_sha256: "b".repeat(64),
         settings: s,
@@ -1421,6 +1422,7 @@ fn resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change() {
                 hash: hash.clone(),
                 sha256: sha256_file(&player.path).unwrap(),
                 args: Vec::new(),
+                working_directory: std::env::current_dir().unwrap(),
             }
         );
         return;
@@ -1464,6 +1466,7 @@ fn resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change() {
         hash,
         sha256: digest.clone(),
         args: Vec::new(),
+        working_directory: fs::canonicalize(&repository.0).unwrap(),
     };
     m.engine_sha256 = digest.clone();
     drop(Store::create(&run, &m).unwrap());
@@ -1515,7 +1518,29 @@ fn resume_rejects_different_commit_even_with_matching_engine_digest() {
         hash: "c".repeat(40),
         sha256: m.engine_sha256.clone(),
         args: Vec::new(),
+        working_directory: std::env::current_dir().unwrap(),
     };
+    assert_eq!(
+        engine::check_engine_identity(&m, &resolved, &m.engine_sha256),
+        Err(ResumeError::EngineIdentityMismatch)
+    );
+}
+
+#[test]
+fn resume_commit_identity_includes_working_directory() {
+    let m = manifest(settings(1, 1, 1));
+    assert_eq!(
+        engine::check_engine_identity(&m, &m.engine, &m.engine_sha256),
+        Ok(())
+    );
+    let mut resolved = m.engine.clone();
+    let EngineIdentity::Commit {
+        working_directory, ..
+    } = &mut resolved
+    else {
+        unreachable!();
+    };
+    *working_directory = working_directory.join("different-directory");
     assert_eq!(
         engine::check_engine_identity(&m, &resolved, &m.engine_sha256),
         Err(ResumeError::EngineIdentityMismatch)

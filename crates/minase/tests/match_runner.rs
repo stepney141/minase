@@ -669,8 +669,10 @@ fn resume_rejects_recorded_commit_digest_mismatch_before_engine_start() {
     let dir = repository.join("run");
     small_run(&dir);
     let mut manifest = json_file(&dir.join("manifest.json"));
-    manifest["candidate"]["identity"] =
-        serde_json::json!({"kind":"commit", "hash":hash, "sha256":"0".repeat(64), "args":[]});
+    manifest["candidate"]["identity"] = serde_json::json!({
+        "kind": "commit", "hash": hash, "sha256": "0".repeat(64), "args": [],
+        "working_directory": *repository
+    });
     write_json(&dir.join("manifest.json"), &manifest);
     let before = std::fs::read(dir.join("invocations.json")).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
@@ -789,6 +791,32 @@ done
         manifest["baseline"]["identity"]["args"],
         serde_json::json!(["--search", "alphabeta"])
     );
+    for side in ["candidate", "baseline"] {
+        assert_eq!(
+            manifest[side]["identity"]["working_directory"],
+            serde_json::json!(*repository)
+        );
+    }
+    let history = std::fs::read(dir.join("invocations.json")).unwrap();
+    let other_directory = repository.join("elsewhere");
+    std::fs::create_dir(&other_directory).unwrap();
+    std::fs::write(&log, "").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--resume"])
+        .arg(&dir)
+        .args(["--target-pairs", "2"])
+        .env("MINASE_TEST_ARGS_LOG", &log)
+        .current_dir(&other_directory)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("engine working directory differs"));
+    assert_eq!(
+        std::fs::read(dir.join("invocations.json")).unwrap(),
+        history
+    );
+    assert_eq!(json_file(&dir.join("manifest.json")), manifest);
+    assert!(std::fs::read_to_string(&log).unwrap().is_empty());
     std::fs::write(&log, "").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
         .args(["match", "run", "--resume"])

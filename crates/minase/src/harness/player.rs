@@ -212,6 +212,7 @@ pub fn resolve_player(
                     hash,
                     sha256,
                     args: extra_args,
+                    working_directory,
                 },
             )
         }

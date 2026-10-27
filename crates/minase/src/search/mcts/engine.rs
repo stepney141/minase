@@ -356,7 +356,7 @@ fn run(
         ));
     };
     evaluate_batch(driver, evaluator, &[root], &mut logits, &mut values)?;
-    let mut batch_time = clock.elapsed().saturating_sub(started);
+    let mut time_per_leaf = clock.elapsed().saturating_sub(started);
     let mut capacity_exhausted = false;
     loop {
         if stop.load(Ordering::Relaxed) {
@@ -373,9 +373,15 @@ fn run(
         if matches!(driver.tree().root().state, NodeState::Proven(_)) {
             return Ok(StopReason::DepthCompleted);
         }
-        if let Some(reason) = time_stop(budget, batch_time, clock, hit_ns) {
-            return Ok(reason);
+        let mut batch_size = config.batch_size.get();
+        if let Some(limit) = limits.nodes() {
+            batch_size =
+                (batch_size as u64).min(limit.saturating_sub(driver.simulations())) as usize;
         }
+        let batch_size = match timed_batch_size(batch_size, budget, time_per_leaf, clock, hit_ns) {
+            Ok(size) => size,
+            Err(reason) => return Ok(reason),
+        };
         if capacity_exhausted {
             // 無期限探索では容量不足を停止理由にせず、外部停止を待つ。
             std::thread::park_timeout(Duration::from_millis(1));
@@ -383,7 +389,7 @@ fn run(
         }
         let started = clock.elapsed();
         let mut requests = Vec::new();
-        for _ in 0..config.batch_size.get() {
+        for _ in 0..batch_size {
             if stop.load(Ordering::Relaxed)
                 || limits
                     .nodes()
@@ -404,30 +410,43 @@ fn run(
         }
         if !requests.is_empty() {
             evaluate_batch(driver, evaluator, &requests, &mut logits, &mut values)?;
+            time_per_leaf = clock.elapsed().saturating_sub(started) / requests.len() as u32;
         }
-        batch_time = clock.elapsed().saturating_sub(started);
     }
 }
 
-fn time_stop(
+/// 直前の空でないバッチの収集と推論にかかった1葉あたりの時間で、次の葉数を制限する。
+///
+/// GPUの推論時間はバッチの葉数に対して線形より緩く増えるため、小さなバッチから
+/// 大きなバッチを予測すると所要時間を過大に見積もり、hardを超えない側に倒れる。
+/// 計測時間が0なら時間による葉数の制限はかけず、softの経過判定だけを行う。
+fn timed_batch_size(
+    batch_size: usize,
     budget: Option<TimeBudget>,
-    batch_time: Duration,
+    time_per_leaf: Duration,
     clock: &dyn SearchClock,
     hit_ns: &AtomicU64,
-) -> Option<StopReason> {
-    let budget = budget?;
+) -> Result<usize, StopReason> {
+    let Some(budget) = budget else {
+        return Ok(batch_size);
+    };
     let hit = hit_ns.load(Ordering::Relaxed);
     if hit == u64::MAX {
-        return None;
+        return Ok(batch_size);
     }
     let elapsed = clock.elapsed().saturating_sub(Duration::from_nanos(hit));
     if elapsed >= budget.soft {
-        Some(StopReason::SoftLimit)
-    } else if elapsed.saturating_add(batch_time) >= budget.hard {
-        Some(StopReason::HardLimit)
-    } else {
-        None
+        return Err(StopReason::SoftLimit);
     }
+    if time_per_leaf.is_zero() {
+        return Ok(batch_size);
+    }
+    let remaining = budget.hard.saturating_sub(elapsed);
+    let size = (batch_size as u128).min(remaining.as_nanos() / time_per_leaf.as_nanos()) as usize;
+    if size == 0 {
+        return Err(StopReason::HardLimit);
+    }
+    Ok(size)
 }
 
 fn evaluate_batch(

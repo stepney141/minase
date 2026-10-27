@@ -238,6 +238,9 @@ impl Driver {
     }
 
     /// 履歴の差分をたどれ、根の規則と候補手が一致するときだけ木を付け替える。
+    ///
+    /// 各キーに一致する辺が、未展開の辺も含めて1本だけで、その辺に子がある場合に限る。
+    /// 同じ局面に至る別の手ではR1の攻撃側が異なり得るため、キーだけで経路を選ばない。
     pub(super) fn reuse(
         &mut self,
         snapshot: &SearchSnapshot,
@@ -265,17 +268,21 @@ impl Driver {
         let mut node = self.tree.root();
         let mut moves = Vec::new();
         for &key in &snapshot.history_keys()[self.snapshot.history_keys().len()..] {
-            let found = node.edges.iter().find_map(|edge| {
-                let child = edge.child.as_deref()?;
+            let mut matching = node.edges.iter().filter_map(|edge| {
                 let mut next = position.clone();
                 next.make_move_unchecked(edge.mv, snapshot.rules());
-                (repetition_key(snapshot.repetition().rule(), &next) == key)
-                    .then_some((edge.mv, child, next))
+                (repetition_key(snapshot.repetition().rule(), &next) == key).then_some((edge, next))
             });
-            let Some((mv, child, next)) = found else {
+            let Some((edge, next)) = matching.next() else {
                 return Ok(false);
             };
-            moves.push(mv);
+            if matching.next().is_some() {
+                return Ok(false);
+            }
+            let Some(child) = edge.child.as_deref() else {
+                return Ok(false);
+            };
+            moves.push(edge.mv);
             node = child;
             position = next;
         }

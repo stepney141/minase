@@ -30,10 +30,11 @@
 //! 異常分類は`illegal_move`、`crash`、`timeout`、`time_forfeit`、`rejected_move`である。
 //! 審判による終局の`reason`は審判層の理由名を文字列として保存する。
 //!
-//! 実行条件で共有する[`EngineIdentity`]は`kind="random"`、`kind="commit"`と`hash`、`sha256`、`args`、
+//! 実行条件で共有する[`EngineIdentity`]は`kind="random"`、`kind="commit"`と`hash`、`sha256`、`args`、`working_directory`、
 //! または`kind="command"`と`program`、`args`、`protocol`、`working_directory`である。
 //! `protocol`は`usi`か`cecp`、パスは文字列、`args`は文字列配列である。
 //! コミットの`args`は`--protocol usi --rules <規則>`の後に足す引数だけを記録し、省略時は空配列とする。
+//! `working_directory`は測定開始時の作業ディレクトリであり、追加引数の有無によらず記録する。
 
 pub(in crate::harness) mod convert;
 pub use convert::{RecordedGame, failure_from_stored, stored_color};
@@ -65,6 +66,8 @@ pub enum EngineIdentity {
         sha256: String,
         /// 規則指定の後に足す起動引数。指定がなければ空配列。
         args: Vec<String>,
+        /// 相対パスの解釈に使う、測定開始時の作業ディレクトリ。
+        working_directory: PathBuf,
     },
     /// 任意の起動コマンド。
     Command {

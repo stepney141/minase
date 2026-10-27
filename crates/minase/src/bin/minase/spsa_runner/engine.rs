@@ -26,6 +26,7 @@ pub(super) fn resolve_engine(
                 hash,
                 sha256,
                 args: Vec::new(),
+                working_directory: std::env::current_dir()?,
             },
             path,
             args: vec![
@@ -77,15 +78,22 @@ pub(super) fn restore_engine(manifest: &super::storage::Manifest) -> io::Result<
     Ok(player)
 }
 
-/// コミット指定は完全ハッシュ、それ以外は開始時の実行ファイルのSHA-256で照合する。
+/// コミット指定は完全ハッシュ、引数、作業ディレクトリ、それ以外は開始時の実行ファイルのSHA-256で照合する。
 pub(super) fn check_engine_identity(
     manifest: &super::storage::Manifest,
     identity: &EngineIdentity,
     sha256: &str,
 ) -> Result<(), ResumeError> {
     let matches = match &manifest.engine {
-        EngineIdentity::Commit { hash, args, .. } => {
-            matches!(identity, EngineIdentity::Commit { hash: resolved, args: resolved_args, .. } if resolved == hash && resolved_args == args)
+        EngineIdentity::Commit {
+            hash,
+            args,
+            working_directory,
+            ..
+        } => {
+            matches!(identity, EngineIdentity::Commit {
+                hash: resolved, args: resolved_args, working_directory: resolved_directory, ..
+            } if resolved == hash && resolved_args == args && resolved_directory == working_directory)
         }
         _ => sha256 == manifest.engine_sha256,
     };

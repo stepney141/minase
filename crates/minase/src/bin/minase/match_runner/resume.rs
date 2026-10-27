@@ -65,7 +65,7 @@ impl std::error::Error for ModeMismatch {}
 ///
 /// 再開の統計モードと仮説、基本シード、手数上限、応答期限、先読みの有無、
 /// 置換表容量、および同時対局数も、呼び出し側が同じmanifestから読む。
-/// `commit:`は記録した完全ハッシュと追加引数で再解決し、SHA-256と引数を含む同一性の一致を要求する。
+/// `commit:`は記録した完全ハッシュと追加引数で再解決し、SHA-256、引数、作業ディレクトリの一致を要求する。
 /// 起動コマンドは記録したプログラム、引数、プロトコルを使い、
 /// 記録した作業ディレクトリと同じ場所からだけ復元する。
 /// 任意の起動コマンドの実体と`random`にはSHA-256の照合がない。
@@ -172,11 +172,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resume_identity_includes_commit_working_directory() {
+        for args in [
+            Vec::new(),
+            vec!["--nn-model".to_owned(), "net.onnx".to_owned()],
+        ] {
+            let recorded = EngineIdentity::Commit {
+                hash: "a".repeat(40),
+                sha256: "b".repeat(64),
+                args,
+                working_directory: std::env::current_dir().unwrap(),
+            };
+            assert_eq!(verify_identity(&recorded, &recorded), Ok(()));
+            let mut resolved = recorded.clone();
+            let EngineIdentity::Commit {
+                working_directory, ..
+            } = &mut resolved
+            else {
+                unreachable!();
+            };
+            *working_directory = working_directory.join("different-directory");
+            assert_eq!(
+                verify_identity(&recorded, &resolved),
+                Err(ResumeError::EngineIdentityMismatch)
+            );
+        }
+    }
+
+    #[test]
     fn resume_identity_includes_commit_startup_arguments() {
         let recorded = EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
             args: vec!["--search".to_owned(), "mcts".to_owned()],
+            working_directory: std::env::current_dir().unwrap(),
         };
         assert_eq!(verify_identity(&recorded, &recorded), Ok(()));
         for args in [
@@ -187,6 +216,7 @@ mod tests {
                 hash: "a".repeat(40),
                 sha256: "b".repeat(64),
                 args,
+                working_directory: std::env::current_dir().unwrap(),
             };
             assert_eq!(
                 verify_identity(&recorded, &resolved),
@@ -303,11 +333,13 @@ mod tests {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
             args: Vec::new(),
+            working_directory: std::env::current_dir().unwrap(),
         };
         let resolved = EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "c".repeat(64),
             args: Vec::new(),
+            working_directory: std::env::current_dir().unwrap(),
         };
         assert_eq!(
             verify_identity(&recorded, &resolved),

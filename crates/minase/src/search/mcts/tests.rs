@@ -49,6 +49,50 @@ fn terminal(proof: Proof) -> Box<Node> {
     })
 }
 
+#[test]
+fn gumbel_action_keeps_a_proven_win_despite_a_losing_edges_higher_logit() {
+    let mut root = statistics_node(&[(0.5, 1, 0.0), (0.5, 1, 1.0)], 0.5, 0.0);
+    root.edges[0].logit = 10.0;
+    root.edges[1].logit = 0.0;
+    root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
+    root.edges[1].child = Some(terminal(proof(Outcome::Loss, 0, false)));
+    root.state = NodeState::Proven(proof(Outcome::Win, 1, false));
+    let gumbel = Gumbel::new(vec![0.0; 2], 2).unwrap();
+    assert_eq!(gumbel.action(&root).unwrap(), 1);
+}
+
+#[test]
+fn gumbel_action_compares_visits_and_scores_after_excluding_proven_losses() {
+    for losing_visits in [1, 4] {
+        let mut root = statistics_node(
+            &[(0.5, losing_visits, 0.0), (0.25, 1, 0.5), (0.25, 1, 0.5)],
+            0.5,
+            0.0,
+        );
+        root.edges[0].logit = 10.0;
+        root.edges[1].logit = 0.0;
+        root.edges[2].logit = 1.0;
+        root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
+        let gumbel = Gumbel::new(vec![0.0; 3], losing_visits + 2).unwrap();
+        assert_eq!(gumbel.action(&root).unwrap(), 2);
+    }
+}
+
+#[test]
+fn gumbel_action_uses_proof_order_when_every_edge_is_a_loss() {
+    for repetition in [false, true] {
+        let mut root = statistics_node(&[(0.5, 4, 0.0), (0.5, 1, 0.0)], 0.5, 0.0);
+        root.edges[0].logit = 10.0;
+        root.edges[1].logit = 0.0;
+        root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
+        root.edges[1].child = Some(terminal(proof(Outcome::Win, 20, repetition)));
+        root.state = NodeState::Proven(proof(Outcome::Loss, 21, repetition));
+        let gumbel = Gumbel::new(vec![0.0; 2], 5).unwrap();
+        // 同じ負けなら遅い詰みを選び、反復負けは詰み負けより優先する。
+        assert_eq!(gumbel.action(&root).unwrap(), 1);
+    }
+}
+
 /// 純粋な選択式の入力となる、手計算で指定した統計。
 fn statistics_node(statistics: &[(f32, u32, f64)], value: f32, visited_policy: f32) -> Node {
     Node {
