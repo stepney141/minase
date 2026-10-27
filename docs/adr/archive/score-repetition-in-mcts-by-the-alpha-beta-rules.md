@@ -2,7 +2,7 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。決定日は2026年10月27日。[MCTSは新しい節点を審判層の裁定で終局させてから反復の近似を適用し、引き分けの勝率を由来を問わず同じ値にする](../adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)によって置き換えられた。
 
 ## コンテキスト
 

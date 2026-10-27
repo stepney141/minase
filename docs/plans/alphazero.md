@@ -25,7 +25,7 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 このため、FP16の照合をlogitではなく合法手の確率と価値の差で行うように改め（2026年10月28日の利用者の決定、[ADR](../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）、学習したネットが新しい基準で照合に通ることを確かめた（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 各サブタスクは、完了のたびにmasterへマージする（「サブタスクの統合」の節）。
 初版の学習が動いてから検討すると定めた事項を除いて、設計判断は確定している。
-次の一手は、サブタスク6の[強化学習の実行](alphazero-rl.md)である。着手は利用者の指示を待つ。
+2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)が、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥と計画の空欄を確認したので、[監査対応](alphazero-audit-remediation.md)を先に行う。次の一手は、監査対応の完了後のサブタスク6の[強化学習の実行](alphazero-rl.md)である。着手は利用者の指示を待つ。
 
 ## 目的
 

@@ -102,7 +102,7 @@ minaseは1サイクル（約9,300局）の全局面を1回ずつ読み、学習�
 
 ### 方策の損失の正規化
 
-学習器の方策の損失は、35,856出力の全体のlog-softmaxと方策の目標との交差エントロピーである（[教師と損失のADR](../adr/train-the-zero-value-on-mixed-results-and-root-values.md)）。
+学習器の方策の損失は、35,856出力の全体のlog-softmaxと方策の目標との交差エントロピーである（[教師と損失のADR](../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)）。
 35,856のラベルのうち、盤面によらず常に不可能なものが19,748ある。
 直線の移動で経路が盤に収まるもの、成りのラベルで移動元または移動先が敵陣の4段にあるもの、および2歩系とじっとで経路が盤に収まるものを数えると16,108になり（[policy-mask-count.py](alphazero-rl-readiness-2026-10-28/policy-mask-count.py)、[policy-mask-count.json](alphazero-rl-readiness-2026-10-28/policy-mask-count.json)）、固定局面集の288局面の合法手24,186個はすべてこの中にある。
 全logitが等しいときの損失の差は`log(35,856/16,108) ≈ 0.80`である。
@@ -136,7 +136,7 @@ logitが大きくなるのは学習が進んでからなので、各サイクル
 
 ### その他
 
-探索木のR1の反復の判定は、直近の出現からの1周だけを調べる近似であり（[反復のADR](../adr/score-repetition-in-mcts-by-the-alpha-beta-rules.md)）、近似に基づくQが価値の教師に混ざる。
+探索木のR1の反復の判定は、直近の出現からの1周だけを調べる近似であり（[反復のADR](../adr/archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)）、近似に基づくQが価値の教師に混ざる。
 投了は反復の近似に由来する節点がある探索木では行わないが、λの分の近似値は残る。
 反復による打ち切りの件数と深さ、および該当する局面のQと対局結果の差は、試走で測る必要がある。
 

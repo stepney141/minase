@@ -48,7 +48,7 @@ RLは数か月に及び、長期の実行の後に探索や学習器の欠陥が
 ## 依存関係
 
 探索木と駆動部は[探索方式の共存とMCTS](archived/alphazero-mcts.md)、審判層は[対局管理層と審判層](archived/game-referee.md)と[審判ロジック再編とR0撤去](archived/adjudication-refactor.md)が作った。
-反復の扱いは[MCTSの反復のADR](../adr/score-repetition-in-mcts-by-the-alpha-beta-rules.md)が、学習器の損失は[教師と損失のADR](../adr/train-the-zero-value-on-mixed-results-and-root-values.md)が定めており、本書はこれらを新しいADRで置き換える。
+反復の扱いは[MCTSの反復のADR](../adr/archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)が、学習器の損失は[教師と損失のADR](../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)が定めていたので、本書はこれらを[MCTSの終局判定のADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)と[学習器の定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)で置き換える。
 [対局履歴を局面と合法手生成器から分離するADR](../adr/keep-game-history-out-of-position-and-movegen.md)と`Game`のdocコメントは、探索木の各節点で`Game::play`を呼ばないと記しており、本書はMCTSに限ってこの前提を改め、αβ探索の方式は維持する。
 方策のラベルの定義は[方策のADR](../adr/encode-the-zero-policy-as-249-planes-per-from-square.md)に従う。
 対局ハーネスの起動引数の記録は[探索方式の共存とMCTS](archived/alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節に従う。
@@ -164,7 +164,7 @@ CECPのエンジンへの指定は従来どおり起動前に拒否する。
 [ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の文脈の記述を訂正する。
 凍結した設計書は書き直さず、監査報告が対応箇所を示す。
 ADRの決定は変えないので、文脈の誤った文だけを改める。
-`Game`のdocコメントと[対局履歴の分離のADR](../adr/keep-game-history-out-of-position-and-movegen.md)には、MCTSでは`Game`を使い、αβ探索の方式は維持する変更を反映する。
+`Game`のdocコメントには、MCTSでは`Game`を使い、αβ探索の方式は維持する変更を反映し、[対局履歴の分離のADR](../adr/keep-game-history-out-of-position-and-movegen.md)に対する例外は新しいADRのコンテキストに記す（承認済みのADRの本文は書き換えない）。
 
 [強化学習の実行](alphazero-rl.md)には、次の事項を書き足す。
 初期10サイクルの設定の表（学習率0.01、モーメンタム0.9、重み減衰1×10⁻⁴、勾配のノルムの上限10、バッチ256、bf16、λ=0.333、学習窓k=1、探索回数32、チェックポイントの間隔は初期値200更新で試走で保存と転送の時間を確かめる）。

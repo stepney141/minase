@@ -12,7 +12,7 @@ AlphaZero型探索の強化学習（RL）では、計算の大半を自己対局
 AlphaZeroの通常のPUCT（方策の確率が大きく訪問の少ない手ほど優先する選択式）とディリクレ雑音では、800回の探索でも根の子を一巡できず、探索回数を減らすと方策の目標が雑音に支配される。
 これは、Gumbel AlphaZeroの論文（Danihelka et al., "Policy improvement by planning with Gumbel", ICLR 2022）が通常の方式の失敗条件として挙げる状況である。
 同論文では、9路盤の囲碁で通常のMuZeroが1手16回以下の探索で学習に失敗したのに対し、Gumbel MuZeroは1手2回でも学習が安定した。
-将棋では、技巧とGumbel dlshogiが1手16〜64回の探索で学習を安定させている。
+将棋では、技巧が1手32〜128回、Gumbel dlshogiが1手16〜64回の探索で学習を安定させている（技巧の回数の誤りは2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 論文の著者らは、実装をDeepMindのmctxとして公開している。
 エンジンの開発者は、[探索方式の共存とMCTSの設計書](../plans/archived/alphazero-mcts.md)でこの方式を決めた。
 

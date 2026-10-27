@@ -7,7 +7,7 @@
 ## コンテキスト
 
 ネットの構成は、学習器が学習してONNXへ書き出す計算グラフであり、minaseの推論はその入出力の名前と形だけに依存する。
-KataGoは、各残差ブロックに大域プーリング（チャネルごとの平均と最大値を他のチャネルへバイアスとして戻す層）を入れて、学習が1.60倍速くなったと報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565）。
+KataGoは、残差ブロックのうち2〜3個に等間隔で大域プーリング（チャネルごとの平均と最大値を他のチャネルへバイアスとして戻す層）を入れ、それを除くと学習の効率が1.60倍の差になると報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565、付録A.3と表2。配置の記述の誤りは2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 KataGoは学習の最初の約1日で6ブロック96チャネルから10ブロック128チャネルへ移り、lc0のT70も10ブロック128チャネルである。
 [実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)では、10ブロック128チャネルのネットによる強化学習の1サイクルを、Colab機のL4で約40分で回せる見込みが得られた。
 決定の経緯は[ネットの入出力と推論の設計書](../plans/archived/alphazero-network.md)にある。
