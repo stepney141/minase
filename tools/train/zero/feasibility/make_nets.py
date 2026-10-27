@@ -6,6 +6,9 @@ import torch
 from torch import nn
 
 
+SIZES = ((6, 96), (10, 128), (15, 192), (20, 256))
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
@@ -48,6 +51,27 @@ class ZeroNet(nn.Module):
         return self.policy_head(x).flatten(1), self.value_head(x)
 
 
+def export_onnx(model: ZeroNet, path: Path) -> None:
+    """実現性の測定と参照推論で同じ設定のONNXを書き出し、検査する。"""
+    sample = torch.zeros(1, 95, 12, 12, dtype=torch.float32)
+    with torch.inference_mode():
+        torch.onnx.export(
+            model,
+            sample,
+            path,
+            input_names=["input"],
+            output_names=["policy", "value"],
+            opset_version=17,
+            dynamo=False,
+            dynamic_axes={
+                "input": {0: "batch"},
+                "policy": {0: "batch"},
+                "value": {0: "batch"},
+            },
+        )
+    onnx.checker.check_model(str(path))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", type=Path, required=True)
@@ -56,26 +80,12 @@ def main() -> None:
 
     torch.manual_seed(0)
     sample = torch.zeros(1, 95, 12, 12, dtype=torch.float32)
-    for blocks, channels in ((6, 96), (10, 128), (15, 192), (20, 256)):
+    for blocks, channels in SIZES:
         model = ZeroNet(blocks, channels).eval()
         path = args.out_dir / f"zero-b{blocks}c{channels}.onnx"
         with torch.inference_mode():
             policy, value = model(sample)
-            torch.onnx.export(
-                model,
-                sample,
-                path,
-                input_names=["input"],
-                output_names=["policy", "value"],
-                opset_version=17,
-                dynamo=False,
-                dynamic_axes={
-                    "input": {0: "batch"},
-                    "policy": {0: "batch"},
-                    "value": {0: "batch"},
-                },
-            )
-        onnx.checker.check_model(str(path))
+        export_onnx(model, path)
         parameters = sum(parameter.numel() for parameter in model.parameters())
         print(
             f"{path.name}: parameters={parameters} bytes={path.stat().st_size} "
