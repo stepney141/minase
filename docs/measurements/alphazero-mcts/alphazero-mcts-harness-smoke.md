@@ -17,7 +17,7 @@ minase match run --run-dir data/matches/alphazero-mcts-harness-smoke --seed 2026
 minase match run --resume data/matches/alphazero-mcts-harness-smoke --target-pairs 3
 ```
 
-実行ディレクトリは作業用の一時ディレクトリに作り、終了後に`data/matches/alphazero-mcts-harness-smoke`へ写した。
+実行ディレクトリは作業用の一時ディレクトリに作り、終了後に`data/matches/alphazero-mcts-harness-smoke`へ写したが、本書の記録の後に利用者の判断で削除した。
 `XDG_CACHE_HOME`は、MCTSの`NnCacheDir`の既定値（`$XDG_CACHE_HOME/minase/tensorrt`）を与えるために設定した。
 ハーネスは`NnBackend`を送らないので、MCTSは既定のTensorRTで推論した。
 
