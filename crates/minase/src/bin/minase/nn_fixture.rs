@@ -1,4 +1,8 @@
 //! 学習器との符号化の照合と推論の比較に使う固定局面集を書き出す。
+//!
+//! 本モジュールは固定局面集のJSON Lines形式の正本を定める。
+//! 固定局面集は`tools/train/zero/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`minase dev nn-eval`の推論に使われる。
+//! 1行につき1局面を記録し、キーの順は[`Fixture`]のフィールド順に固定する。
 
 use std::fs;
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -120,17 +124,27 @@ fn fixture_square(file: u8, rank: u8, side: Color) -> Square {
     Square::new(file, rank).expect("fixture square is on the board")
 }
 
-/// 1行の交換形式。構造体のフィールド順をJSONのキー順として保持する。
+/// 1行の交換形式を定め、構造体のフィールド順をJSONのキー順として保持する。
 #[derive(Serialize)]
 struct Fixture {
+    /// [`to_extended_sfen`]が書く5欄の拡張SFENである。
+    /// 先獅子の升を含み、次の手数は1とする。
     sfen: String,
+    /// 手番を`"black"`または`"white"`で表す。
     side_to_move: &'static str,
-    /// 密番号順の144升。駒は現在の陣営・駒種番号・成りビットで表す。
+    /// [`Square::dense_index`]の順に並ぶ144升である。
+    /// 空升は`null`、駒は`[陣営, 駒種番号, 成り]`で表す。
+    /// 陣営は[`Color::index`]、駒種番号は盤上の駒の[`PieceKind::index`]であり、成駒には成った後の駒種を使う。
+    /// 成りは[`PieceCode::is_promoted`]の真偽値である。
     board: Vec<Option<(usize, usize, bool)>>,
+    /// [`Position::lion_capture_square`]が返す先獅子の升を[`Square::dense_index`]で表す。
+    /// これは直前に獅子以外の駒が獅子を取った升であり、記録がなければ`null`とする。
     lion_capture: Option<usize>,
-    /// 入力平面で1.0になる添字の昇順列。
+    /// [`nn::encode`](minase::nn::encode)の出力で1.0になる添字`面 * 144 + 相対升`を昇順に並べる。
+    /// 相対升は先手番なら[`Square::dense_index`]、後手番なら`143 - dense_index`である。
     input: Vec<usize>,
-    /// 合法手の生成順に、移動元・中継升・移動先・成り・ラベルを並べる。
+    /// [`MoveGenerator`]が返す合法手の順に、`[移動元, 中継升 または null, 移動先, 成り, ラベル]`を並べる。
+    /// 升は[`Square::dense_index`]、成りはその着手で成るかどうかの真偽値、ラベルは[`nn::policy_label`](minase::nn::policy_label)で表す。
     moves: Vec<(usize, Option<usize>, usize, bool, usize)>,
 }
 

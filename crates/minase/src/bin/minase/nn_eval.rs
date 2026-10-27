@@ -1,4 +1,8 @@
 //! 固定局面集をONNX Runtimeで評価し、PyTorchとの照合用JSONを書き出す。
+//!
+//! 出力JSONの形式の正本は、本モジュールの[`Evaluation`]と[`PositionEvaluation`]である。
+//! `tools/train/zero/nn_torch_reference.py`も同じ形式を出力し、`backend`を`"pytorch"`とする。
+//! この形式は`tools/train/zero/nn_compare.py`が読み、推論結果の照合に使う。
 
 use std::fs;
 use std::num::NonZeroUsize;
@@ -68,16 +72,23 @@ impl Arguments {
 /// 構造体のフィールド順をJSONのキー順として保持する。
 #[derive(Serialize)]
 struct Evaluation {
+    /// ONNXのファイルのSHA-256を小文字の16進数で表す。
     network_sha256: String,
+    /// 実行プロバイダ名で、`"tensorrt"`、`"cuda"`、`"cpu"`のいずれかである。
     backend: &'static str,
+    /// `--batch`で指定した、1回の推論にまとめる局面数の上限である。
     batch: usize,
+    /// 局面ごとの結果を固定局面集と同じ順に並べる。
     positions: Vec<PositionEvaluation>,
 }
 
 #[derive(Serialize)]
 struct PositionEvaluation {
+    /// 固定局面集の`sfen`と同じ拡張SFENである。
     sfen: String,
+    /// 手番側の勝率を0〜1で表す。
     value: f32,
+    /// 固定局面集の`moves`と同じ順に`[ラベル, logit]`を並べる。
     moves: Vec<(usize, f32)>,
 }
 

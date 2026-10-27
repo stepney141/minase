@@ -15,7 +15,8 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 /// 相対升は先手番なら[`minase_core::Square::dense_index`]、後手番なら
 /// `143 - dense_index`とし、筋と段の両方を反転して盤を180度回転する。
 /// 面0〜93は`相対陣営 * 47 + piece_state(piece)`で、手番側の駒を陣営0、相手の駒を陣営1とする。
-/// 面94は[`Position::lion_capture_square`]が示す先獅子の升に1を置く。
+/// 面94は、直前の着手で獅子以外の駒が相手獅子を取った升（[`Position::lion_capture_square`]）に1を置く。
+/// 先獅子（RULES.md第15条）の禁止は、この升と盤面から決まる。
 /// 全要素を0にした後に該当箇所へ1を置くため、値は0.0か1.0だけである。
 ///
 /// 規則セット`engine-default`（P0でP5なし）では、この95面で次の合法手が決まる。

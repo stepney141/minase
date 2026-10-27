@@ -1,4 +1,21 @@
 //! モンテカルロ木探索（MCTS）が使うネットの入力平面、方策のラベル、および評価器。
+//!
+//! AlphaZero型探索のMCTS、自己対局生成器、およびPythonの学習器が共有するネットの入出力の契約を定める。
+//! 入力は95面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
+//! 推論には評価器の抽象[`Evaluator`]、試験用の[`UniformEvaluator`]、およびONNX Runtimeによる[`OnnxEvaluator`]を用意する。
+//! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
+//!
+//! 設計判断は`docs/adr/`の次の7本に記録している。
+//!
+//! - `encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md`
+//! - `encode-the-zero-policy-as-249-planes-per-from-square.md`
+//! - `predict-a-single-win-probability-in-the-zero-network.md`
+//! - `run-zero-network-inference-through-ort-load-dynamic.md`
+//! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
+//! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
+//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md`
+//!
+//! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。
 
 use core::fmt;
 use minase_core::{BOARD_SQUARE_COUNT, Color, Square};
