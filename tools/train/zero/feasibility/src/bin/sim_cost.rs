@@ -1,3 +1,4 @@
+use minase::nn::{INPUT_SIZE, POLICY_SIZE, encode, policy_label};
 use minase::training::records::Reader;
 use minase_core::rng::splitmix64;
 use minase_core::{Move, MoveGenerator, MoveRules, Position};
@@ -8,11 +9,6 @@ use std::fs::File;
 use std::hint::black_box;
 use std::io::{BufReader, Write};
 use std::time::{Duration, Instant};
-
-#[path = "../encoding.rs"]
-mod encoding;
-
-use encoding::{INPUT_SIZE, POLICY_SIZE, encode, policy_label};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -240,7 +236,8 @@ fn expand<const BREAKDOWN: bool>(
     }
 
     let start = tick::<BREAKDOWN>();
-    encode(position, &mut evaluator.input);
+    encode(position, &mut evaluator.input)
+        .expect("P0 teacher positions have no deferred promotion");
     // 推論を呼ばなくても、バッファへの書き込みを最適化で消させない。
     black_box(evaluator.input.as_slice());
     timings.finish(ENCODING, start);
