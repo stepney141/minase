@@ -9,7 +9,8 @@ import unittest
 import minase_mnsd_reader
 import numpy as np
 
-from minase_zero.data import read_file, read_window
+from minase_zero.data import is_training_sample, read_file, read_window
+from minase_zero.encoding import policy_labels, policy_mask
 
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "zero-selfplay-small.mnsd"
@@ -97,6 +98,31 @@ class DataTests(unittest.TestCase):
             self.assertEqual(int(data.policy_probabilities[start:end].sum(dtype=np.uint64)), 65535)
             self.assertEqual(len(np.unique(data.policy_labels[start:end])), end - start)
 
+    def test_legal_labels_include_candidates_and_keep_extension_order(self) -> None:
+        data = self.dataset
+        self.assertEqual(data.legal_offsets.shape, (1010,))
+        self.assertEqual(data.legal_offsets.dtype, np.uint64)
+        self.assertEqual(data.legal_labels.dtype, np.uint16)
+        self.assertEqual(data.legal_offsets[0], 0)
+        self.assertEqual(data.legal_offsets[-1], len(data.legal_labels))
+        self.assertTrue(np.all(policy_mask()[data.legal_labels]))
+        legal_counts = np.diff(data.legal_offsets)
+        expected = policy_labels(
+            *(np.frombuffer(self.raw[f"legal_{column}"], dtype=np.uint8)
+              for column in ("from", "mid", "to", "promote")),
+            np.repeat(data.sides, legal_counts.astype(np.intp)),
+        )
+        np.testing.assert_array_equal(data.legal_labels, expected)
+        self.assertTrue(np.all(legal_counts >= np.diff(data.policy_offsets)))
+        for index in range(len(data)):
+            legal = data.legal_labels[data.legal_offsets[index]:data.legal_offsets[index + 1]]
+            candidates = data.policy_labels[data.policy_offsets[index]:data.policy_offsets[index + 1]]
+            self.assertEqual(len(np.unique(legal)), len(legal))
+            self.assertTrue(np.all(np.isin(candidates, legal)))
+        np.testing.assert_array_equal(data.training_sample, is_training_sample(self.info.header.seed, data.games))
+        self.assertTrue(np.any(data.training_sample))
+        self.assertFalse(np.any(data.training_sample & data.validation))
+
     def test_extension_returns_python_scalars_and_little_endian_bytes(self) -> None:
         path = self.directory / "scalars.mnsd"
         write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "engine-default")
@@ -143,12 +169,24 @@ class DataTests(unittest.TestCase):
         np.testing.assert_array_equal(data.results, [1, 0])
         np.testing.assert_array_equal(data.policy_offsets, [0, 2, 3])
         np.testing.assert_array_equal(data.policy_probabilities, [12345, 53190, 65535])
+        self.assertTrue(np.all(np.diff(data.legal_offsets) > np.diff(data.policy_offsets)))
         # 方策の仕様表: 先手の王将の右・右前、後手の歩兵の前。移動元は0、0、131。
         np.testing.assert_array_equal(data.policy_labels, [3168, 1584, 12])
         reversed_data, _ = read_window([second, first])
         np.testing.assert_array_equal(reversed_data.games, [3, 9])
         np.testing.assert_array_equal(reversed_data.policy_offsets, [0, 1, 3])
         np.testing.assert_array_equal(reversed_data.policy_labels, [12, 3168, 1584])
+        first_data, _ = read_file(first)
+        second_data, _ = read_file(second)
+        np.testing.assert_array_equal(data.legal_offsets,
+                                      [0, len(first_data.legal_labels),
+                                       len(first_data.legal_labels) + len(second_data.legal_labels)])
+        np.testing.assert_array_equal(data.legal_labels,
+                                      np.concatenate([first_data.legal_labels, second_data.legal_labels]))
+        np.testing.assert_array_equal(reversed_data.legal_labels,
+                                      np.concatenate([second_data.legal_labels, first_data.legal_labels]))
+        np.testing.assert_array_equal(reversed_data.legal_offsets,
+                                      [0, len(second_data.legal_labels), len(data.legal_labels)])
 
     def test_same_game_number_with_different_seed_is_accepted(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
@@ -178,6 +216,8 @@ class DataTests(unittest.TestCase):
         self.assertEqual(len(data), 0)
         self.assertEqual(data.boards.shape, (0, 144))
         np.testing.assert_array_equal(data.policy_offsets, [0])
+        np.testing.assert_array_equal(data.legal_offsets, [0])
+        self.assertEqual(len(data.legal_labels), 0)
         self.assertEqual(infos[0].header.origin, None)
         self.assertEqual(infos[0].training_count, 0)
         self.assertEqual(infos[0].validation_count, 0)

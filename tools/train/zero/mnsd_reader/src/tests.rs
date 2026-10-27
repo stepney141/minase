@@ -245,6 +245,33 @@ fn mcts_preserves_resignation_search_and_expands_played_policy() {
     assert_eq!(actual.outcomes, [2, 1]);
     assert_eq!(actual.visits, [31, u32::MAX]);
     assert_eq!(actual.policy_offsets, [0, 1, 3]);
+    assert!(actual.legal_offsets[1] > 1);
+    assert!(actual.legal_offsets[2] - actual.legal_offsets[1] > 2);
+    let expected_legal = sorted_legal_moves(&game).unwrap();
+    let start = actual.legal_offsets[1] as usize;
+    let end = actual.legal_offsets[2] as usize;
+    let legal_columns: Vec<_> = (start..end)
+        .map(|index| {
+            [
+                actual.legal_from[index],
+                actual.legal_mid[index],
+                actual.legal_to[index],
+                actual.legal_promote[index],
+            ]
+        })
+        .collect();
+    let expected_columns: Vec<_> = expected_legal
+        .iter()
+        .map(|mv| {
+            [
+                mv.from.dense_index() as u8,
+                mv.mid.map_or(255, |s| s.dense_index() as u8),
+                mv.to.dense_index() as u8,
+                u8::from(mv.promote),
+            ]
+        })
+        .collect();
+    assert_eq!(legal_columns, expected_columns);
     let expected = [(searched, 65535), candidates[0], candidates[1]];
     for (index, (mv, probability)) in expected.into_iter().enumerate() {
         assert_eq!(actual.policy_from[index], mv.from.dense_index() as u8);
@@ -316,6 +343,8 @@ fn empty_file_and_unselected_games_keep_metadata_and_empty_offsets() {
     assert!(empty.game_numbers.is_empty());
     assert!(empty.boards.is_empty());
     assert_eq!(empty.policy_offsets, [0]);
+    assert_eq!(empty.legal_offsets, [0]);
+    assert!(empty.legal_from.is_empty());
     let path = fixture.write(
         TeacherKind::Mcts,
         &[unselected_game(99, Origin::HumanOpeningSelfplay)],
@@ -325,6 +354,8 @@ fn empty_file_and_unselected_games_keep_metadata_and_empty_offsets() {
     assert_eq!(unselected.game_numbers, [99]);
     assert!(unselected.games.is_empty());
     assert_eq!(unselected.policy_offsets, [0]);
+    assert_eq!(unselected.legal_offsets, [0]);
+    assert!(unselected.legal_from.is_empty());
 }
 
 #[test]
@@ -399,4 +430,50 @@ fn missing_file_preserves_io_error_cause() {
     let error = read_file(&fixture.0.join("missing.mnsd")).unwrap_err();
     assert!(matches!(error, Error::Io(ref source) if source.kind() == io::ErrorKind::NotFound));
     assert!(std::error::Error::source(&error).is_some());
+}
+
+#[test]
+fn legal_columns_match_generated_moves_in_record_order() {
+    // フェーズ2: 固定自己対局の全採用局面で、合法手の内容と順序を照合する。
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");
+    let actual = read_file(&path).unwrap();
+    let mut reader = Reader::new(BufReader::new(File::open(&path).unwrap())).unwrap();
+    let generator = MoveGenerator::new(reader.header().rules().moves);
+    let mut index = 0;
+    assert_eq!(actual.legal_offsets.len(), actual.games.len() + 1);
+    assert_eq!(actual.legal_offsets[0], 0);
+    assert_eq!(
+        *actual.legal_offsets.last().unwrap() as usize,
+        actual.legal_from.len()
+    );
+    for column in [&actual.legal_mid, &actual.legal_to, &actual.legal_promote] {
+        assert_eq!(column.len(), actual.legal_from.len());
+    }
+    while let Some(game) = reader.read_game().unwrap() {
+        for (entry, position) in game.record().entries().iter().zip(game.positions()) {
+            if entry.exclusion() != Exclusion::None || entry.value() == Value::None {
+                continue;
+            }
+            let mut generated = Vec::new();
+            generator.generate_moves(position, &mut generated);
+            let start = actual.legal_offsets[index] as usize;
+            let end = actual.legal_offsets[index + 1] as usize;
+            let decoded: Vec<_> = (start..end)
+                .map(|i| Move {
+                    from: Square::from_dense(actual.legal_from[i] as usize).unwrap(),
+                    mid: (actual.legal_mid[i] != 255)
+                        .then(|| Square::from_dense(actual.legal_mid[i] as usize).unwrap()),
+                    to: Square::from_dense(actual.legal_to[i] as usize).unwrap(),
+                    promote: actual.legal_promote[i] != 0,
+                })
+                .collect();
+            assert_eq!(decoded.len(), generated.len());
+            assert!(generated.iter().all(|mv| decoded.contains(mv)));
+            // 履歴を持たないGameで、recordsが規定する順序を独立に照合する。
+            let without_history = Game::from_position(reader.header().rules(), position.clone());
+            assert_eq!(decoded, sorted_legal_moves(&without_history).unwrap());
+            index += 1;
+        }
+    }
+    assert_eq!(index, actual.games.len());
 }

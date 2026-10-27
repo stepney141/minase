@@ -31,12 +31,54 @@ def _piece_planes() -> tuple[int, ...]:
 
 
 PIECE_CODE_PLANES = _piece_planes()
-_DIRECTIONS = np.array([[5, 6, 7], [4, -1, 0], [3, 2, 1]], dtype=np.int64)
+_DIRECTION_STEPS = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
+_KNIGHT_STEPS = ((1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2))
+_DIRECTIONS = np.full((3, 3), -1, dtype=np.int64)
+for _direction, (_dx, _dy) in enumerate(_DIRECTION_STEPS):
+    _DIRECTIONS[_dx + 1, _dy + 1] = _direction
 _KNIGHT_DIRECTIONS = np.full((5, 5), -1, dtype=np.int64)
-for _direction, (_dx, _dy) in enumerate(
-    ((1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2))
-):
+for _direction, (_dx, _dy) in enumerate(_KNIGHT_STEPS):
     _KNIGHT_DIRECTIONS[_dx + 2, _dy + 2] = _direction
+
+
+def policy_mask() -> NDArray[np.bool_]:
+    """盤面によらず可能な16,108ラベルを真とする長さ35,856の定数マスクを返す。
+
+    policy_labelsと同じ面・相対座標で、移動先と中継升が盤内にあることを検査する。
+    成りの直線移動は、移動元か移動先の相対段が敵陣の8〜11であることも要求する。
+    駒の配置や種類、反復の履歴は参照しない。
+    """
+    squares = np.arange(BOARD_SQUARES)
+    x, y = squares % 12, squares // 12
+    mask = np.empty((POLICY_PLANES, BOARD_SQUARES), dtype=np.bool_)
+
+    def inside(x: NDArray[np.integer], y: NDArray[np.integer]) -> NDArray[np.bool_]:
+        return (0 <= x) & (x < 12) & (0 <= y) & (y < 12)
+
+    for plane in range(POLICY_PLANES):
+        if plane < 176:
+            direction, distance = divmod(plane % 88, 11)
+            dx, dy = _DIRECTION_STEPS[direction]
+            tx, ty = x + dx * (distance + 1), y + dy * (distance + 1)
+            mask[plane] = inside(tx, ty)
+            if plane >= 88:
+                mask[plane] &= (y >= 8) | (ty >= 8)
+        elif plane < 184:
+            dx, dy = _KNIGHT_STEPS[plane - 176]
+            mask[plane] = inside(x + dx, y + dy)
+        elif plane < 240:
+            first, second = divmod(plane - 184, 7)
+            dx, dy = _DIRECTION_STEPS[first]
+            mx, my = x + dx, y + dy
+            reverse = (first + 4) % 8
+            sx, sy = _DIRECTION_STEPS[second + (second >= reverse)]
+            mask[plane] = inside(mx, my) & inside(mx + sx, my + sy)
+        elif plane < 248:
+            dx, dy = _DIRECTION_STEPS[plane - 240]
+            mask[plane] = inside(x + dx, y + dy)
+        else:
+            mask[plane] = True
+    return mask.reshape(POLICY_SIZE)
 
 
 def encode_planes(boards: torch.Tensor, sides: torch.Tensor, lions: torch.Tensor) -> torch.Tensor:

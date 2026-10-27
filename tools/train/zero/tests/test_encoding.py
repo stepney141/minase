@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 import torch
 
-from minase_zero.encoding import encode_planes, policy_labels
+from minase_zero.encoding import encode_planes, policy_labels, policy_mask
 
 
 class EncodingTests(unittest.TestCase):
@@ -55,6 +55,30 @@ class EncodingTests(unittest.TestCase):
         actual = policy_labels(*(columns[:, index] for index in range(4)), np.array(sides, dtype=np.uint8))
         np.testing.assert_array_equal(actual, columns[:, 4])
         self.assertEqual(actual.dtype, np.int64)
+
+    def test_constant_mask_matches_audit_counts_and_all_fixture_moves(self) -> None:
+        # 設計書とpolicy-mask-count.pyの群別列挙を参照値にする。
+        mask = policy_mask()
+        self.assertEqual(mask.shape, (35_856,))
+        self.assertEqual(mask.dtype, np.bool_)
+        self.assertEqual(np.count_nonzero(mask), 16_108)
+        for start, end, expected in ((0, 88, 5192), (88, 176, 2456), (176, 184, 880),
+                                      (184, 240, 6424), (240, 248, 1012), (248, 249, 144)):
+            with self.subTest(planes=(start, end)):
+                self.assertEqual(np.count_nonzero(mask[start * 144:end * 144]), expected)
+        labels = [move[4] for fixture in self.fixtures for move in fixture["moves"]]
+        self.assertEqual(len(labels), 24_186)
+        self.assertTrue(np.all(mask[labels]))
+
+    def test_constant_mask_checks_promotion_zone_and_intermediate_square(self) -> None:
+        mask = policy_mask()
+        # 前方1升の成り: 相対段6→7は不可、7→8は可。後方1升の8→7も可。
+        self.assertFalse(mask[88 * 144 + 6 * 12])
+        self.assertTrue(mask[88 * 144 + 7 * 12])
+        self.assertTrue(mask[132 * 144 + 8 * 12])
+        # 左端から左前、次に右前なら到達升は盤内でも中継升が盤外になる。
+        self.assertFalse(mask[(184 + 7 * 7 + 1) * 144])
+        self.assertTrue(mask[(184 + 7 * 7 + 1) * 144 + 1])
 
     def test_empty_batches(self) -> None:
         empty = torch.empty(0, dtype=torch.uint8)

@@ -8,7 +8,9 @@
 //! `engine_default`は規則名ではなく、解釈した規則と`Rules::ENGINE_DEFAULT`の一致を表す。
 //!
 //! 配列はすべてリトルエンディアンのbytesであり、NumPyの`frombuffer`で読める。
-//! nは選別後の局面数、mは全候補数、gは対局数を表す。
+//! nは選別後の局面数、mは全候補数、lは全合法手数、gは対局数を表す。
+//! 合法手は反復の履歴を考えず、`MoveGenerator::generate_moves`で生成する。
+//! 各局面の手は`records::sorted_legal_moves`と同じ4バイト鍵の順で並べる。
 //!
 //! | キー | 要素型 | 形と意味 |
 //! |---|---|---|
@@ -27,11 +29,16 @@
 //! | `policy_to` | u8 | m。移動先のdense_index |
 //! | `policy_promote` | u8 | m。成り0か1 |
 //! | `policy_probabilities` | u16 | m。65,535を1とする確率 |
+//! | `legal_offsets` | u64 | n+1。各局面の合法手区間。先頭0、末尾l |
+//! | `legal_from` | u8 | l。移動元のdense_index |
+//! | `legal_mid` | u8 | l。経由升のdense_index。なしは255 |
+//! | `legal_to` | u8 | l。移動先のdense_index |
+//! | `legal_promote` | u8 | l。成り0か1 |
 
 use std::{fmt, fs::File, io, io::BufReader, path::Path};
 
 use minase::training::records::{self, Exclusion, Header, Origin, Outcome, Policy, Reader, Value};
-use minase_core::{GameResult, Move};
+use minase_core::{GameResult, Move, MoveGenerator};
 
 #[cfg(feature = "python")]
 mod python;
@@ -98,7 +105,7 @@ impl From<records::Error> for Error {
     }
 }
 
-/// 復号済みのヘッダと、入力順の局面・候補の列。各列の型と意味はモジュールの表に従う。
+/// 復号済みのヘッダと、入力順の局面・候補・合法手の列。各列はモジュールの表に従う。
 #[derive(Debug)]
 pub struct Records {
     pub header: Header,
@@ -118,6 +125,11 @@ pub struct Records {
     pub policy_to: Vec<u8>,
     pub policy_promote: Vec<u8>,
     pub policy_probabilities: Vec<u16>,
+    pub legal_offsets: Vec<u64>,
+    pub legal_from: Vec<u8>,
+    pub legal_mid: Vec<u8>,
+    pub legal_to: Vec<u8>,
+    pub legal_promote: Vec<u8>,
 }
 
 impl Records {
@@ -140,6 +152,11 @@ impl Records {
             policy_to: Vec::new(),
             policy_promote: Vec::new(),
             policy_probabilities: Vec::new(),
+            legal_offsets: vec![0],
+            legal_from: Vec::new(),
+            legal_mid: Vec::new(),
+            legal_to: Vec::new(),
+            legal_promote: Vec::new(),
         }
     }
 
@@ -164,6 +181,8 @@ pub fn read_file(path: &Path) -> Result<Records, Error> {
     let file = File::open(path).map_err(Error::Io)?;
     let mut reader = Reader::new(BufReader::new(file))?;
     let mut output = Records::new(reader.header().clone());
+    let generator = MoveGenerator::new(output.header.rules().moves);
+    let mut legal = Vec::new();
     while let Some(game) = reader.read_game()? {
         let record = game.record();
         let number = record.game_number();
@@ -242,6 +261,25 @@ pub fn read_file(path: &Path) -> Result<Records, Error> {
             output
                 .policy_offsets
                 .push(output.policy_probabilities.len() as u64);
+            legal.clear();
+            generator.generate_moves(position, &mut legal);
+            legal.sort_unstable_by_key(|mv| {
+                (
+                    mv.from.dense_index(),
+                    mv.mid.map_or(255, |square| square.dense_index()),
+                    mv.to.dense_index(),
+                    mv.promote,
+                )
+            });
+            for mv in &legal {
+                output.legal_from.push(mv.from.dense_index() as u8);
+                output
+                    .legal_mid
+                    .push(mv.mid.map_or(255, |square| square.dense_index() as u8));
+                output.legal_to.push(mv.to.dense_index() as u8);
+                output.legal_promote.push(u8::from(mv.promote));
+            }
+            output.legal_offsets.push(output.legal_from.len() as u64);
         }
     }
     Ok(output)
