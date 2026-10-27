@@ -55,6 +55,33 @@ fn repetition_proven_loss_never_resigns_at_zero_q() {
 }
 
 #[test]
+fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
+    // 訪問済みの候補がすべて負けでも、未訪問の手を混合価値つきで選べる。
+    for repetition in [false, true] {
+        let mut tree = small_tree(3);
+        let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2).unwrap();
+        for _ in 0..2 {
+            let selected = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
+            tree.create_child(&selected.path, winning_child(repetition))
+                .unwrap();
+        }
+        let root = tree.root();
+        assert_eq!(root.state, NodeState::Expanded);
+        assert_eq!(root.edges.iter().filter(|edge| edge.visits > 0).count(), 2);
+        let action = gumbel.action(root).unwrap();
+        assert_eq!(root.edges[action].visits, 0);
+        assert_eq!(root.edges[action].q(), None);
+        let value = selected_value(root, action).unwrap();
+        assert_eq!(
+            value.to_bits(),
+            gumbel::mixed_value(root).unwrap().to_bits()
+        );
+        assert!(value > 0.0 && value < RESIGN_THRESHOLD);
+        assert!(!should_resign(root, action).unwrap());
+    }
+}
+
+#[test]
 fn unresolved_root_with_unvisited_edges_resigns_only_without_repetition_cutoffs() {
     for (child, expected) in [
         (Child::Draw(0.5), false),
@@ -205,6 +232,71 @@ fn selfplay_driver_keeps_repetition_draw_at_half_despite_nonzero_draw_option() {
         assert_eq!(edge.visits, 1);
         assert!(search.finished());
     }
+}
+
+#[test]
+fn single_simulation_plays_unvisited_action_after_repetition_loss() {
+    // R1の直近1周では、白飛車だけが黒の歩兵への攻撃を続ける。
+    // 4手目の反復は探索では白の負けになり、唯一訪問した候補から除かれる。
+    let rules = Rules {
+        exhaustion: ExhaustionRule::E2,
+        ..Rules::ENGINE_DEFAULT
+    };
+    let mut game = PlayingGame::new(
+        1,
+        Settings {
+            rules,
+            seed: 7,
+            simulations: 1,
+            playthrough_percent: 1,
+            max_ply: 6,
+        },
+    )
+    .unwrap();
+    game.game = Game::from_position(
+        rules,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(3, 3), Color::Black, PieceKind::Rook),
+                (sq(8, 1), Color::Black, PieceKind::Pawn),
+                (sq(8, 8), Color::White, PieceKind::Rook),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    let line = [
+        step(sq(3, 3), sq(3, 4)),
+        step(sq(8, 8), sq(8, 7)),
+        step(sq(3, 4), sq(3, 3)),
+        step(sq(8, 7), sq(8, 8)),
+    ];
+    for &mv in &line[..3] {
+        assert_eq!(game.game.play(mv).unwrap(), GameStatus::Ongoing);
+    }
+    game.entries.clear();
+    assert!(!game.playthrough);
+    let mut evaluator = FavorMove(line[3]);
+    while let Some(request) = game.advance().unwrap() {
+        let mut logits = Vec::new();
+        let mut values = Vec::new();
+        evaluator
+            .evaluate(&[request.query()], &mut logits, &mut values)
+            .unwrap();
+        game.evaluate(&request, &logits, values[0]).unwrap();
+    }
+    assert_eq!(game.game.ply_count(), 6);
+    assert_eq!(game.entries.len(), 3);
+    let entry = &game.entries[0];
+    let played = entry.played_move().expect("the unvisited action is played");
+    assert_ne!(played, line[3]);
+    assert_eq!(entry.visits(), Some(1));
+    // 根の評価0.5と、唯一の訪問の負け0を混合した0.25を量子化する。
+    assert_eq!(entry.value(), Value::Mcts(16384));
+    assert!(matches!(entry.policy(), Policy::Candidates(_)));
+    assert!(!game.resigned);
+    assert_eq!(game.first_trigger, None);
 }
 
 #[test]

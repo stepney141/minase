@@ -46,6 +46,7 @@ pub(super) fn config() -> Config {
         rules: engine_default_rules().unwrap().to_string(),
         generation_commit: "0123456789abcdef0123456789abcdef01234567".into(),
         network_sha256: minase::datagen::hex(&CHECKSUM),
+        nn_backend: "cpu".into(),
         seed: 7,
         games: 6,
         chunk_games: 2,
@@ -267,7 +268,8 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
     assert_eq!(saved, report.summary);
     let saved_config: serde_json::Value =
         serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
-    assert_eq!(saved_config.as_object().unwrap().len(), 9);
+    assert_eq!(saved_config["nn_backend"], "cpu");
+    assert_eq!(saved_config.as_object().unwrap().len(), 10);
     for absent in ["version", "threads", "games_per_thread"] {
         assert!(saved_config.get(absent).is_none());
     }

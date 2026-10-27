@@ -1,4 +1,42 @@
 //! 1局の序盤、手ごとの探索、投了、および教師情報の記録。
+//!
+//! 対局番号はサイクル内の1からの通し番号であり、対局のシードは`derive_seed(基本シード, 対局番号)`とする。
+//! 序盤の乱択には`derive_seed(対局のシード, 0)`を使い、初期局面から8〜16手を一様に選ぶ。
+//! 序盤で終局した場合は、序盤のシードから再び`derive_seed(序盤のシード, 0)`を派生させて作り直す。
+//! Gumbel乱数には`derive_seed(対局のシード, 1)`で初期化した1本の乱数列を全手番で使う。
+//! `derive_seed(対局のシード, 2) % 100 < playthrough_percent`を満たす対局は投了させずに最後まで指させる。
+//! シードと番号の扱いは`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
+//!
+//! 各手番は新しい探索木からGumbel AlphaZeroのSequential Halvingを行い、最後に残った手を指す。
+//! 温度による手の抽選とディリクレ雑音は使わない。
+//! 根の評価後に指定したシミュレーション数を終えるか、根の勝敗が確定したら探索を終える。
+//! 根の総訪問回数は根の辺の訪問回数の和であり、根自体の評価は数えない。
+//! 探索中の引き分けの価値は、引き分け値の設定によらず0.5とする。
+//! 木の容量16 MiBを使い切った場合はエラーにする。
+//! 探索の構成は`docs/adr/batch-zero-self-play-leaves-across-many-games.md`を参照。
+//!
+//! 教師データ形式MNSDの価値は、根の手番側から見た期待得点で、勝ちを1、引き分けを0.5、負けを0とする。
+//! 最後に残った辺が訪問済みなら訪問で得た期待得点の平均Qを、未訪問なら[`gumbel::mixed_value`]による混合価値を使う。
+//! 有限な[0, 1]の値だけを受け付け、65,535倍して四捨五入した整数を記録する。
+//! 方策は根の候補手`SearchSnapshot::root_moves`だけについて求める`softmax(logit + σq)`であり、
+//! R1反復規則により根の候補から外れた合法手の確率は0になる。
+//! 候補をMNSDの合法手の番号順に並べ、確率の合計が65,535になるよう最大剰余法で量子化し、0になった候補は記録しない。
+//!
+//! 対局記録は初期局面を開始局面、開始手数を0、由来を乱数開始の自己対局とする。
+//! 手順の各項目は着手前の局面を表し、除外理由はすべて「なし」とする。
+//! 序盤の項目は指した手だけを持ち、価値と方策はなし、訪問回数は0とする。
+//! 探索した手の項目は指した手、上記の価値と方策、および根の総訪問回数を持つ。
+//! 投了した局面も探索の価値、方策、および訪問回数を持つが、指した手は持たない。
+//! 投了以外の終局では、指した手、価値、方策がなく、訪問回数が0の最終項目を追加する。
+//!
+//! 投了条件は、選んだ辺が訪問済みでQが1%未満、かつ根とその子孫に反復で打ち切った節点がないことである。
+//! 反復の印は[`Node::has_repetition_cutoff`]で調べ、反復による勝敗の確定と引き分けの両方を含める。
+//! 選んだ辺が未訪問なら投了せず、最後まで指させる対局では条件の成立だけを記録する。
+//! 最初に条件を満たした側が最終的に負けなかった場合を誤った投了とし、勝ち、引き分け、手数上限での打ち切りを含める。
+//! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+//!
+//! 序盤を含めて1,000手に達しても未終局の対局は、学習用の記録をすべて破棄し、集計だけに残す。
+//! `docs/adr/discard-zero-self-play-games-that-reach-1000-plies.md`を参照。
 
 use minase::datagen::opening::generate_opening;
 use minase::search::SearchSnapshot;
@@ -219,7 +257,7 @@ impl Search {
     fn decision(&self, game: &Game) -> Result<Decision, Error> {
         let root = self.driver.tree().root();
         let action = self.gumbel.action(root)?;
-        let q = selected_q(root, action)?;
+        let value = selected_value(root, action)?;
         let legal = records::sorted_legal_moves(game)?;
         let probabilities = gumbel::policy_target(root)?;
         let weights = root
@@ -241,7 +279,7 @@ impl Search {
             .collect();
         Ok(Decision {
             mv: root.edges[action].mv,
-            value: Value::Mcts((f64::from(q) * 65535.0).round() as u16),
+            value: Value::Mcts((f64::from(value) * 65535.0).round() as u16),
             policy: Policy::Candidates(candidates),
             visits: root.edges.iter().map(|edge| edge.visits).sum(),
             resign: should_resign(root, action)?,
@@ -270,22 +308,25 @@ fn gumbel_noise(random: u64) -> f32 {
     -(-log_u).ln() as f32
 }
 
-fn selected_q(root: &Node, action: usize) -> Result<f32, Error> {
-    let q = root
-        .edges
-        .get(action)
-        .ok_or(Error::InvalidAction)?
-        .q()
-        .ok_or(Error::MissingValue)?;
-    if !q.is_finite() || !(0.0..=1.0).contains(&q) {
-        return Err(Error::InvalidValue(q));
+/// 選んだ辺のQを返し、未訪問ならGumbelの混合価値を返す。
+fn selected_value(root: &Node, action: usize) -> Result<f32, Error> {
+    let edge = root.edges.get(action).ok_or(Error::InvalidAction)?;
+    let value = match edge.q() {
+        Some(q) => q,
+        None => gumbel::mixed_value(root)?,
+    };
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return Err(Error::InvalidValue(value));
     }
-    Ok(q)
+    Ok(value)
 }
 
-/// 反復の近似に依存せず、選んだ手の期待得点が1%未満のときだけ投了する。
+/// 選んだ辺が訪問済みでQが1%未満、かつ根の部分木に反復の印がなければ投了する。
 pub(super) fn should_resign(root: &Node, action: usize) -> Result<bool, Error> {
-    Ok(selected_q(root, action)? < RESIGN_THRESHOLD && !root.has_repetition_cutoff())
+    let edge = root.edges.get(action).ok_or(Error::InvalidAction)?;
+    Ok(edge.visits > 0
+        && selected_value(root, action)? < RESIGN_THRESHOLD
+        && !root.has_repetition_cutoff())
 }
 
 /// 最初に投了条件を満たした側が、最後まで指しても負けなかったかを返す。

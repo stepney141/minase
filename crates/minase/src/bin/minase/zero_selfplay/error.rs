@@ -26,7 +26,6 @@ pub(super) enum Error {
     Collision,
     Capacity,
     InvalidAction,
-    MissingValue,
     InvalidValue(f32),
     MissingSearch,
     UnexpectedGame(u32),
@@ -63,7 +62,6 @@ impl fmt::Display for Error {
             Self::Collision => f.write_str("Gumbel search collided with an unfinished evaluation"),
             Self::Capacity => f.write_str("selfplay tree capacity exceeded; reduce --simulations"),
             Self::InvalidAction => f.write_str("Gumbel selected an absent root edge"),
-            Self::MissingValue => f.write_str("selected root edge has no visits"),
             Self::InvalidValue(value) => write!(
                 f,
                 "selected root value is not finite and within [0, 1]: {value}"

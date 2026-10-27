@@ -70,6 +70,50 @@ fn output_rejects_nonempty_directory_without_config_and_requires_existing_parent
 }
 
 #[test]
+fn output_resumes_initialization_with_only_lock_and_temporary_config() {
+    for temporary_config in [false, true] {
+        let directory = TemporaryDirectory::new();
+        fs::write(directory.0.join(".zero_selfplay.lock"), b"").unwrap();
+        if temporary_config {
+            fs::write(directory.0.join("config.json.tmp"), b"unfinished JSON").unwrap();
+        }
+        let config = config();
+        let lock = open_directory(&directory.0, &config).unwrap();
+        let saved: Config =
+            serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
+        assert_eq!(saved, config);
+        assert!(!directory.0.join("config.json.tmp").exists());
+        assert!(matches!(
+            open_directory(&directory.0, &config),
+            Err(Error::Locked { .. })
+        ));
+        drop(lock);
+        drop(open_directory(&directory.0, &config).unwrap());
+    }
+}
+
+#[test]
+fn resume_rejects_changed_nn_backend() {
+    let directory = TemporaryDirectory::new();
+    let config = config();
+    drop(open_directory(&directory.0, &config).unwrap());
+    for backend in ["cuda", "tensorrt"] {
+        let changed = Config {
+            nn_backend: backend.into(),
+            ..config.clone()
+        };
+        let Err(Error::ConfigMismatch(fields)) = open_directory(&directory.0, &changed) else {
+            panic!("a different inference provider must be rejected");
+        };
+        assert_eq!(fields, ["nn_backend"]);
+    }
+    let saved: Config =
+        serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
+    assert_eq!(saved.nn_backend, "cpu");
+    drop(open_directory(&directory.0, &config).unwrap());
+}
+
+#[test]
 fn output_lock_is_exclusive_and_all_changed_condition_names_are_reported() {
     let directory = TemporaryDirectory::new();
     let config = config();
@@ -83,6 +127,7 @@ fn output_lock_is_exclusive_and_all_changed_condition_names_are_reported() {
     changed.rules.push_str(",E3");
     changed.generation_commit = "f".repeat(40);
     changed.network_sha256 = "f".repeat(64);
+    changed.nn_backend = "tensorrt".into();
     changed.seed += 1;
     changed.games += 1;
     changed.chunk_games += 1;
@@ -98,6 +143,7 @@ fn output_lock_is_exclusive_and_all_changed_condition_names_are_reported() {
             "rules",
             "generation_commit",
             "network_sha256",
+            "nn_backend",
             "seed",
             "games",
             "chunk_games",

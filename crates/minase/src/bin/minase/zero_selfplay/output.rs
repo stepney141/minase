@@ -1,4 +1,84 @@
 //! 出力先の排他、塊の順序付き保存、再開、および投了の較正結果の集計。
+//!
+//! 出力先には生成条件を`config.json`、サイクル全体の集計を`summary.json`として保存する。
+//! 塊ごとに、投了以外で終えた対局の`chunk-00000.mnsd`、投了で終えた対局の
+//! `chunk-00000.resigned.mnsd`、および集計の`chunk-00000.json`を作る。
+//! 番号は0から始まり、少なくとも5桁で表す。
+//! 対局が0件のMNSDファイルもヘッダを持つ。
+//! `.zero_selfplay.lock`に対するOSの排他ロックを処理中保持し、同じ出力先の同時使用を拒否する。
+//! ロックファイルが残っているだけでは使用中とみなさない。
+//!
+//! 新規の出力先は、親ディレクトリが存在する場所に作るか、空のディレクトリを使う。
+//! `config.json`がない場合の空の判定では、`.zero_selfplay.lock`と`config.json.tmp`だけを無視する。
+//! それ以外の項目があればエラーにする。
+//! 保存済みの生成条件とは、`rules`、`generation_commit`、`network_sha256`、`nn_backend`、
+//! `seed`、`games`、`chunk_games`、`simulations`、`playthrough_percent`、`max_ply`を照合し、相違する欄の名前を報告する。
+//! `nn_backend`の綴りは`tensorrt`、`cuda`、`cpu`とする。
+//! スレッド数、スレッドごとの同時対局数、GPUの種類、およびネットのファイルパスは照合しない。
+//! ネットの同一性は`network_sha256`で照合する。
+//!
+//! 総対局数をN、塊の対局数をGとすると、塊の数はN/Gを切り上げた値になる。
+//! 0から数えてk番目の塊は、対局番号kG+1からmin((k+1)G, N)までを担当する。
+//! 各塊は対局番号順に記録し、最後の塊はG局未満でも確定する。
+//! 手数上限で破棄した対局も塊の対局数に含める。
+//!
+//! 書き込み中のファイル名には`.tmp`を付ける。
+//! 塊の全対局が揃ったら、2つのMNSDファイルのヘッダの件数を確定し、フラッシュと`sync_all`を行う。
+//! 投了以外のファイル、投了のファイルの順に`.tmp`を外す改名を行い、ディレクトリも同期する。
+//! 最後に塊の集計をJSONの一時ファイルへ書き、同期して改名し、再びディレクトリを同期する。
+//! `config.json`と`summary.json`も同じ一時ファイル、同期、改名の手順で保存する。
+//! 塊の集計JSONの存在を、その塊が確定した印とする。
+//!
+//! 再開時は確定済みの塊の集計だけを読み、その塊のMNSDファイルは読み直さず、書き換えない。
+//! 集計JSONのない塊は全対局を生成し直し、残った一時ファイルや未確定のMNSDファイルを置き換える。
+//! 全塊が確定済みなら推論器を作らず、保存済みの塊の集計から`summary.json`を作り直す。
+//! 保存と再開の方式は`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
+//!
+//! MNSDヘッダの識別子は`MNSD`、版は2、予約欄はすべて0とする。
+//! 規則セット、生成コミット、ネットのSHA-256検査和、教師の種類、教師の探索規模、および基本シードを保存する。
+//! 教師の種類はモンテカルロ木探索を表す`TeacherKind::Mcts`、探索規模は`simulations`、シードはサイクルの`seed`とする。
+//! 対局数と手順の項目の総数は、そのMNSDファイルに実際に書いた件数である。
+//! 項目の総数には序盤と最終項目も含み、下記の探索した局面数とは異なる。
+//! 各欄の符号化は[`minase::training::records`]に従う。
+//!
+//! 塊の集計は、塊の番号`chunk`と担当範囲の先頭の対局番号`first_game`に加え、次の件数を同じJSONオブジェクトに持つ。
+//! サイクルの集計にも次表の欄を置き、すべての塊の件数を合算する。
+//!
+//! | 欄 | 意味 |
+//! |---|---|
+//! | `games` | 破棄を含めて処理した対局数を表す。 |
+//! | `discarded_max_ply` | 手数上限で未終局のまま破棄した対局数を表す。 |
+//! | `resigned_games` | 投了のMNSDファイルへ保存した対局数を表す。 |
+//! | `games_file_games` | 投了以外のMNSDファイルへ保存した対局数を表す。 |
+//! | `positions` | 投了以外で終えた対局で探索した局面数を表す。 |
+//! | `resigned_positions` | 投了で終えた対局で探索した局面数を表し、投了した局面も数える。 |
+//! | `playthrough_games` | 最後まで指させる抽選に当たった対局数を表し、手数上限での破棄も含む。 |
+//! | `resign_triggered_playthrough_games` | 最後まで指させる対局のうち、投了条件が1回以上成立した対局数を表す。 |
+//! | `false_resignations` | その条件が最初に成立した側が負けなかった対局数を表し、引き分けと手数上限での破棄も含む。 |
+//! | `black_wins` | 先手が勝った対局数を表す。 |
+//! | `white_wins` | 後手が勝った対局数を表す。 |
+//! | `draws` | 引き分けた対局数を表す。 |
+//! | `win_reason_royal_capture` | 王駒の捕獲による決着数を表す。 |
+//! | `win_reason_repetition` | 反復による勝敗の決着数を表す。 |
+//! | `win_reason_piece_exhaustion` | 駒枯れによる勝敗の決着数を表す。 |
+//! | `win_reason_bare_king` | 裸玉による勝敗の決着数を表す。 |
+//! | `win_reason_stalemate` | 合法手なしによる決着数を表す。 |
+//! | `win_reason_mate` | 詰みによる決着数を表す。 |
+//! | `win_reason_resignation` | 投了による決着数を表す。 |
+//! | `draw_reason_repetition` | 反復による引き分け数を表す。 |
+//! | `draw_reason_piece_exhaustion` | 駒枯れによる引き分け数を表す。 |
+//! | `draw_reason_bare_king` | 裸玉による引き分け数を表す。 |
+//! | `draw_reason_agreement` | 合意による引き分け数を表す。 |
+//! | `plies` | 序盤を含む着手数の合計を表し、破棄した対局の手数も含む。 |
+//!
+//! `positions`と`resigned_positions`は、破棄した対局、乱択の序盤、および探索していない終局の局面を数えない。
+//! `false_resignation_rate`は`false_resignations / resign_triggered_playthrough_games`で求め、分母が0ならJSONの`null`とする。
+//! この割合が5%を厳密に超えたときだけ、`resigned_games_excluded`を`true`にする。
+//! `training_files`は塊の番号順の学習ファイル一覧であり、投了以外のファイルは常に含め、投了のファイルは除外が決まった場合だけ外す。
+//! `training_positions`はこの一覧に残したファイルで探索した局面数の合計とする。
+//! 割合が未定義の場合は投了のファイルも一覧に含め、除外する場合も確定したファイル自体は保持する。
+//! 除外した対局数の分を投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
+//! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
 
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
@@ -17,12 +97,18 @@ use super::game::{CompletedGame, Settings, false_resignation};
 use super::worker::Workers;
 use super::{Error, FALSE_RESIGNATION_LIMIT};
 
-/// 出力を決める生成条件。推論の並列数は再開時の照合に含めない。
+/// 出力を決める生成条件。すべての欄を再開時に照合する。
+///
+/// CPUとTensorRTの16ビット浮動小数点演算では推論の数値が異なるため、
+/// `nn_backend`も照合し、同じサイクルに異なる実行プロバイダの結果を混ぜない。
+/// 推論の並列数は照合せず、借りた機械を替えて再開できるようGPUの種類も照合しない。
+/// `docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct Config {
     pub(super) rules: String,
     pub(super) generation_commit: String,
     pub(super) network_sha256: String,
+    pub(super) nn_backend: String,
     pub(super) seed: u64,
     pub(super) games: u32,
     pub(super) chunk_games: u32,
@@ -64,6 +150,7 @@ impl Config {
                 self.network_sha256 != saved.network_sha256,
                 "network_sha256",
             ),
+            (self.nn_backend != saved.nn_backend, "nn_backend"),
             (self.seed != saved.seed, "seed"),
             (self.games != saved.games, "games"),
             (self.chunk_games != saved.chunk_games, "chunk_games"),
@@ -396,8 +483,13 @@ fn open_directory(directory: &Path, config: &Config) -> Result<DirectoryLock, Er
         fs::create_dir(directory)?;
     }
     let config_path = directory.join("config.json");
-    if !config_path.try_exists()? && fs::read_dir(directory)?.next().transpose()?.is_some() {
-        return Err(Error::NonemptyDirectory(directory.to_owned()));
+    if !config_path.try_exists()? {
+        for entry in fs::read_dir(directory)? {
+            let name = entry?.file_name();
+            if name != ".zero_selfplay.lock" && name != "config.json.tmp" {
+                return Err(Error::NonemptyDirectory(directory.to_owned()));
+            }
+        }
     }
     let file = OpenOptions::new()
         .read(true)

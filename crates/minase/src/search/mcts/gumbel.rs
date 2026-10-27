@@ -149,31 +149,44 @@ pub fn considered_visits(
     Ok(sequence)
 }
 
-/// 混合価値で未訪問の辺を補い、mctxの既定の変換σを施したQを返す。
+/// mctxの`qtransform_completed_by_mix_value`が未訪問の辺に与える混合価値を返す。
+/// 節点の手番側から見たネットの価値と、訪問済みの辺の方策で重み付けしたQを混合する。
 ///
 /// # Errors
 /// ネットの評価または辺を持たない節点は拒否する。
-pub fn completed_qvalues(node: &Node) -> Result<Vec<f32>, TreeError> {
+pub fn mixed_value(node: &Node) -> Result<f32, TreeError> {
     check_evaluated(node)?;
     let value = node.value.ok_or(TreeError::NotEvaluated)?;
     let mut total_visits = 0.0_f32;
     let mut sum_policy = 0.0_f32;
     let mut weighted_q = 0.0_f32;
-    let mut max_visits = 0;
     for edge in &node.edges {
         total_visits += edge.visits as f32;
-        max_visits = max_visits.max(edge.visits);
         if edge.visits > 0 {
             let p = edge.policy.max(f32::MIN_POSITIVE);
             sum_policy += p;
             weighted_q += p * (edge.value_sum as f32 / edge.visits as f32);
         }
     }
-    let mixed = if total_visits > 0.0 {
+    Ok(if total_visits > 0.0 {
         (value + total_visits * (weighted_q / sum_policy)) / (total_visits + 1.0)
     } else {
         value
-    };
+    })
+}
+
+/// 混合価値で未訪問の辺を補い、mctxの既定の変換σを施したQを返す。
+///
+/// # Errors
+/// ネットの評価または辺を持たない節点は拒否する。
+pub fn completed_qvalues(node: &Node) -> Result<Vec<f32>, TreeError> {
+    let mixed = mixed_value(node)?;
+    let max_visits = node
+        .edges
+        .iter()
+        .map(|edge| edge.visits)
+        .max()
+        .ok_or(TreeError::NoSelectableEdge)?;
     let mut completed: Vec<_> = node
         .edges
         .iter()
