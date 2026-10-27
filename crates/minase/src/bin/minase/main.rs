@@ -20,6 +20,7 @@ mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
 mod usi_random;
+mod zero_selfplay;
 
 /// グローバルアロケータ。1つの実行ファイルに1つだけ置け、エンジンとすべての補助ツールに適用する。
 /// mimallocを使う理由は`docs/adr/use-mimalloc-in-executables.md`にある。
@@ -128,6 +129,8 @@ enum MatchCommand {
 enum DataCommand {
     /// 自己対局データを生成・検査する。
     Selfplay(selfplay_gen::Arguments),
+    /// Gumbel AlphaZeroの自己対局から学習データを生成する。
+    ZeroSelfplay(zero_selfplay::Arguments),
     /// lishogiの棋譜を取り込む。
     Lishogi(lishogi_import::Arguments),
 }
@@ -178,6 +181,7 @@ fn main() -> ExitCode {
         Some(Command::Match(MatchCommand::Report(arguments))) => match_report::main(arguments),
         Some(Command::Spsa(arguments)) => spsa_runner::main(arguments),
         Some(Command::Data(DataCommand::Selfplay(arguments))) => selfplay_gen::main(arguments),
+        Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
         Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
         Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
@@ -194,6 +198,87 @@ mod tests {
 
     use super::*;
 
+    fn zero_selfplay_arguments() -> Vec<&'static str> {
+        vec![
+            "data",
+            "zero-selfplay",
+            "--output-dir",
+            "cycle",
+            "--nn-model",
+            "net.onnx",
+            "--nn-backend",
+            "cpu",
+            "--generation-commit",
+            "0123456789abcdef0123456789abcdef01234567",
+            "--seed",
+            "1",
+            "--games",
+            "2",
+            "--chunk-games",
+            "2",
+            "--simulations",
+            "2",
+            "--playthrough-percent",
+            "100",
+            "--threads",
+            "1",
+            "--games-per-thread",
+            "2",
+        ]
+    }
+
+    // zero-selfplayはすべての引数を必須とし、割合・件数・コミットの範囲を検査する。
+    #[test]
+    fn zero_selfplay_requires_every_option_and_validates_values() {
+        let parse =
+            |args: Vec<&str>| Arguments::try_parse_from(std::iter::once("minase").chain(args));
+        let complete = zero_selfplay_arguments();
+        for index in (2..complete.len()).step_by(2) {
+            let mut missing = complete.clone();
+            missing.drain(index..index + 2);
+            let error = parse(missing).err().unwrap();
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "{}",
+                complete[index]
+            );
+        }
+        for (option, invalid) in [
+            ("--playthrough-percent", "0"),
+            ("--playthrough-percent", "101"),
+            ("--games", "0"),
+            ("--chunk-games", "0"),
+            ("--simulations", "0"),
+            ("--threads", "0"),
+            ("--games-per-thread", "0"),
+            ("--generation-commit", "abc"),
+            ("--generation-commit", "あ"),
+            (
+                "--generation-commit",
+                "g123456789abcdef0123456789abcdef01234567",
+            ),
+            ("--nn-backend", "auto"),
+        ] {
+            let mut args = complete.clone();
+            let index = args.iter().position(|&arg| arg == option).unwrap();
+            args[index + 1] = invalid;
+            assert!(parse(args).is_err(), "{option} {invalid}");
+        }
+        for backend in ["tensorrt", "cuda", "cpu"] {
+            for percent in ["1", "100"] {
+                let mut args = complete.clone();
+                args[7] = backend;
+                let index = args
+                    .iter()
+                    .position(|&arg| arg == "--playthrough-percent")
+                    .unwrap();
+                args[index + 1] = percent;
+                assert!(parse(args).is_ok());
+            }
+        }
+    }
+
     // [`Arguments`]の契約: 全ツールをエンジン引数なしで起動できる。
     #[test]
     fn subcommands_do_not_require_engine_arguments() {
@@ -201,6 +286,7 @@ mod tests {
             vec!["match", "run", "--run-dir", "run", "elo", "--pairs", "4"],
             vec!["match", "report", "--run-dir", "run"],
             vec!["data", "selfplay", "inspect", "positions.mnsd"],
+            zero_selfplay_arguments(),
             vec![
                 "data",
                 "lishogi",
