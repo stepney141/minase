@@ -44,6 +44,7 @@ fn manifest(s: Settings) -> Manifest {
         engine: EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
+            args: Vec::new(),
         },
         engine_sha256: "b".repeat(64),
         settings: s,
@@ -1419,6 +1420,7 @@ fn resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change() {
             EngineIdentity::Commit {
                 hash: hash.clone(),
                 sha256: sha256_file(&player.path).unwrap(),
+                args: Vec::new(),
             }
         );
         return;
@@ -1461,6 +1463,7 @@ fn resume_accepts_rebuilt_commit_and_notifies_only_on_digest_change() {
     m.engine = EngineIdentity::Commit {
         hash,
         sha256: digest.clone(),
+        args: Vec::new(),
     };
     m.engine_sha256 = digest.clone();
     drop(Store::create(&run, &m).unwrap());
@@ -1511,6 +1514,7 @@ fn resume_rejects_different_commit_even_with_matching_engine_digest() {
     let resolved = EngineIdentity::Commit {
         hash: "c".repeat(40),
         sha256: m.engine_sha256.clone(),
+        args: Vec::new(),
     };
     assert_eq!(
         engine::check_engine_identity(&m, &resolved, &m.engine_sha256),

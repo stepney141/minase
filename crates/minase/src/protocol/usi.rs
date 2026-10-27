@@ -5,7 +5,7 @@
 //! | コマンド | 応答と処理 |
 //! | --- | --- |
 //! | `usi` | `UsiProtocol::write_handshake`の握手列を返す。 |
-//! | `isready` | 必要なら置換表を確保し、`readyok`を返す。 |
+//! | `isready` | 探索器を準備し、`readyok`を返す。推論器の作成に失敗したらエラーを通知してセッションを終了する。 |
 //! | `setoption` | `UsiProtocol::handle_setoption`で設定を検査する。 |
 //! | `usinewgame` | [`EngineCommand::NewGame`]を適用する。 |
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
@@ -182,9 +182,14 @@ impl UsiProtocol {
     /// セッション開始前に構築することで、宣言値と状態機械の起動時規則を
     /// 異なる値から作れないようにする。
     pub fn new(engine: &Engine) -> Self {
+        Self::with_searcher(engine, Searcher::alpha_beta())
+    }
+
+    /// 起動時に選ばれた探索器と、エンジンの規則でUSIセッションを構築する。
+    pub fn with_searcher(engine: &Engine, searcher: Searcher) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
-            searcher: Some(Searcher::alpha_beta()),
+            searcher: Some(searcher),
             position_synchronized: false,
             accepted_position: None,
             next_search_id: 1,
@@ -208,17 +213,23 @@ impl UsiProtocol {
         };
 
         #[cfg(feature = "tuning")]
-        if command == "go" {
+        if command == "go" && matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
             TUNING_LOCKED.store(true, Ordering::Relaxed);
         }
 
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => {
-                self.searcher
+                if let Err(error) = self
+                    .searcher
                     .as_mut()
                     .expect("idle protocol must own its searcher")
-                    .prepare();
+                    .prepare()
+                {
+                    write_error(output, &error.to_string())?;
+                    output.flush()?;
+                    return Err(io::Error::other(error));
+                }
                 writeln!(output, "readyok")?;
             }
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
@@ -263,6 +274,8 @@ impl UsiProtocol {
     /// 探索は対局の複製から作るスナップショットで行い、返す手を`Engine`へ適用しない。
     /// 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
     /// 引き分けの評価値は、根が先手番なら`DrawValueBlack`、後手番なら`DrawValueWhite`を使う。
+    /// MCTSの`nodes`はシミュレーションの回数で、αβ探索の着手適用回数とは異なる。
+    /// MCTSを開始した`go`ごとに、この違いを`info string`で通知する。
     fn start_go(
         &mut self,
         engine: &Engine,
@@ -314,6 +327,7 @@ impl UsiProtocol {
             .searcher
             .take()
             .expect("idle protocol must own its searcher");
+        let is_mcts = matches!(searcher, Searcher::Mcts(_));
         let handle = match searcher.start(snapshot, config, search_id, tokens.contains(&"ponder")) {
             Ok(handle) => handle,
             Err(failure) => {
@@ -322,6 +336,12 @@ impl UsiProtocol {
                 return Ok(None);
             }
         };
+        if is_mcts {
+            writeln!(
+                output,
+                "info string nodes count MCTS simulations, not alpha-beta move applications"
+            )?;
+        }
         Ok(Some(ActiveSearch::Running {
             context: SearchContext {
                 id: search_id,
@@ -340,6 +360,7 @@ impl UsiProtocol {
     /// 探索中は入力を優先し、入力がなければ探索通知を刈り取る。どちらもなければ10 ms待つ。
     /// 送信側が閉じたら有限探索は完了を待つが、結果を保留する無限探索と先読みは捨てる。
     /// 入力スレッドの読み取りエラーでは探索を捨ててエラーを返す。
+    /// `isready`の準備に失敗した場合も元の原因を保持した入出力エラーを返し、`readyok`は出さない。
     /// コマンドの処理順は本モジュールの探索中の入力の契約に従う。
     pub fn run_channel(
         &mut self,
@@ -782,7 +803,9 @@ impl UsiProtocol {
     /// option name DrawValueWhite type spin default 0 min -28999 max 28999
     /// ```
     ///
-    /// `tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
+    /// 上の探索オプションはαβ探索の場合である。MCTSは`Threads`の上限を1とし、
+    /// `NnBackend`、`NnCacheDir`、`NnBatchSize`を続ける。空の文字列は`<empty>`と表記する。
+    /// αβ探索の`tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
     /// 最後に`usiok`を出す。オプション名と範囲の変更は互換性を壊す変更として扱う。
     /// 時間予算が値に依存しないため`USI_Ponder`は宣言しない。
     /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
@@ -810,6 +833,27 @@ impl UsiProtocol {
                     "option name {} type spin default {default} min {min} max {max}",
                     option.name
                 )?,
+                SearchOptionKind::String { default } => writeln!(
+                    output,
+                    "option name {} type string default {}",
+                    option.name,
+                    if default.is_empty() {
+                        "<empty>"
+                    } else {
+                        &default
+                    }
+                )?,
+                SearchOptionKind::Combo { default, choices } => {
+                    write!(
+                        output,
+                        "option name {} type combo default {default}",
+                        option.name
+                    )?;
+                    for choice in choices {
+                        write!(output, " var {choice}")?;
+                    }
+                    writeln!(output)?;
+                }
             }
         }
         writeln!(
@@ -831,11 +875,13 @@ impl UsiProtocol {
             )?;
         }
         #[cfg(feature = "tuning")]
-        for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
-            writeln!(
-                output,
-                "option name Tune_{name} type spin default {default} min {min} max {max}"
-            )?;
+        if matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
+            for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
+                writeln!(
+                    output,
+                    "option name Tune_{name} type spin default {default} min {min} max {max}"
+                )?;
+            }
         }
         writeln!(output, "usiok")
     }
@@ -844,12 +890,16 @@ impl UsiProtocol {
     ///
     /// `name`と`value`、および標準のオプション名は大文字小文字を区別しない。
     /// 各キーワードの直後の1語を名前と値として読み、名前がなければ無応答で無視する。
+    /// 探索器のstringオプションでは`value`以降を1つの空白でつなぎ、`<empty>`は空文字列にする。
     /// `RuleSet`は[`parse_rule_set`]の規則コードのコンマ区切り、または
     /// `engine-default`か`lishogi`の単独指定として読み、次局の規則だけを変える。
     /// 受理時の置換表、history表、および局面トークン履歴の消去は[`Self::apply_silent`]に従う。
     /// `USI_Variant`は大小文字を区別せず`chushogi`だけを受理する。
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
+    /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
+    /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
+    /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
     /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
@@ -864,13 +914,17 @@ impl UsiProtocol {
     /// | `RuleSet` | `RuleSet requires a value`を返す。 | 規則パーサまたは状態機械の拒否理由を返す。 |
     /// | `USI_Variant` | `USI_Variant requires a value`を返す。 | `unsupported USI_Variant value '<値>'`を返す。 |
     /// | `USI_Hash` | `USI_Hash requires a value`を返す。 | `USI_Hash must be an integer from 1 to 65536`を返す。 |
-    /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to 256`を返す。 |
+    /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to <上限>`を返す。上限はαβ探索で256、MCTSで1。 |
+    /// | `NnBackend` | `NnBackend requires a value`を返す。 | `invalid NnBackend value '<値>'`を返す。 |
+    /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
+    /// | `NnBatchSize` | `NnBatchSize requires a value`を返す。 | `NnBatchSize must be an integer from 1 to 1024`を返す。 |
     /// | `ResignValue` | `missing ResignValue value`を返す。 | `invalid ResignValue value`を返す。 |
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
     /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
     /// | `DrawValueWhite` | `missing DrawValueWhite value`を返す。 | `invalid DrawValueWhite value`を返す。 |
     ///
-    /// `tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
+    /// αβ探索の`tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
+    /// MCTSでは`Tune_`名も未知の名前として扱う。
     /// 未知の名前は`USI_Ponder`も含め無応答で無視する。
     /// 探索中の設定は待ち行列へ入り、探索終了後に適用されるため次の探索から効く。
     fn handle_setoption(
@@ -886,7 +940,9 @@ impl UsiProtocol {
         };
 
         #[cfg(feature = "tuning")]
-        if let Some(parameter) = name.strip_prefix("Tune_") {
+        if matches!(self.searcher, Some(Searcher::AlphaBeta(_)))
+            && let Some(parameter) = name.strip_prefix("Tune_")
+        {
             if TUNING_LOCKED.load(Ordering::Relaxed) {
                 return write_error(output, "tuning parameters cannot change after go");
             }
@@ -940,6 +996,19 @@ impl UsiProtocol {
                         );
                     };
                     SearchOptionValue::Spin(value)
+                }
+                SearchOptionKind::Combo { .. } => SearchOptionValue::Combo(value.to_owned()),
+                SearchOptionKind::String { .. } => {
+                    let index = tokens
+                        .iter()
+                        .position(|token| token.eq_ignore_ascii_case("value"))
+                        .expect("a value token was found");
+                    let value = tokens[index + 1..].join(" ");
+                    SearchOptionValue::String(if value == "<empty>" {
+                        String::new()
+                    } else {
+                        value
+                    })
                 }
             };
             match self
@@ -1258,6 +1327,9 @@ impl UsiProtocol {
         command: &str,
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        if command == "tt" && matches!(self.searcher, Some(Searcher::Mcts(_))) {
+            return write_error(output, "tt requires --search alphabeta");
+        }
         if engine.lifecycle() == EngineLifecycle::AwaitingStart {
             return write_error(
                 output,

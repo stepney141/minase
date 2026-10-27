@@ -31,6 +31,9 @@ use summary::{integrate_pair_statistics, print_elo_summary, print_gsprt_summary}
 
 /// 引数を検証し、ワーカープールでペア対局を実行して集計を出力する。
 pub(super) fn main(arguments: Arguments) {
+    if let Err(error) = arguments.validate_startup_args() {
+        error.exit();
+    }
     if let Err(error) = minase::eval::weights() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
@@ -103,6 +106,10 @@ pub(super) fn main(arguments: Arguments) {
             arguments.candidate_hash,
             &arguments.rules.source,
             Vec::new(),
+            arguments
+                .candidate_args
+                .as_ref()
+                .map(|args| args.split_whitespace().map(str::to_owned).collect()),
         ) {
             Ok(player) => player,
             Err(error) => {
@@ -116,6 +123,10 @@ pub(super) fn main(arguments: Arguments) {
             arguments.baseline_hash,
             &arguments.rules.source,
             Vec::new(),
+            arguments
+                .baseline_args
+                .as_ref()
+                .map(|args| args.split_whitespace().map(str::to_owned).collect()),
         ) {
             Ok(player) => player,
             Err(error) => {

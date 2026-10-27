@@ -65,7 +65,7 @@ impl std::error::Error for ModeMismatch {}
 ///
 /// 再開の統計モードと仮説、基本シード、手数上限、応答期限、先読みの有無、
 /// 置換表容量、および同時対局数も、呼び出し側が同じmanifestから読む。
-/// `commit:`は記録した完全ハッシュを再解決し、SHA-256を含む同一性の一致を要求する。
+/// `commit:`は記録した完全ハッシュと追加引数で再解決し、SHA-256と引数を含む同一性の一致を要求する。
 /// 起動コマンドは記録したプログラム、引数、プロトコルを使い、
 /// 記録した作業ディレクトリと同じ場所からだけ復元する。
 /// 任意の起動コマンドの実体と`random`にはSHA-256の照合がない。
@@ -102,7 +102,18 @@ fn restore_player(
 ) -> io::Result<PlayerConfig> {
     let spec = restore_player_spec(&record.identity)?;
     let limit = restore_search_limit(&record.limit)?;
-    let mut player = resolve_player(spec, limit, hash_mb, &manifest.rules_source, Vec::new())?;
+    let args = match &record.identity {
+        EngineIdentity::Commit { args, .. } => Some(args.clone()),
+        _ => None,
+    };
+    let mut player = resolve_player(
+        spec,
+        limit,
+        hash_mb,
+        &manifest.rules_source,
+        Vec::new(),
+        args,
+    )?;
     verify_identity(&record.identity, &player.identity)?;
     let defaults =
         probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;
@@ -159,6 +170,30 @@ fn restored_hash(recorded: Option<u64>, default: Option<u64>) -> Result<Option<u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resume_identity_includes_commit_startup_arguments() {
+        let recorded = EngineIdentity::Commit {
+            hash: "a".repeat(40),
+            sha256: "b".repeat(64),
+            args: vec!["--search".to_owned(), "mcts".to_owned()],
+        };
+        assert_eq!(verify_identity(&recorded, &recorded), Ok(()));
+        for args in [
+            Vec::new(),
+            vec!["--search".to_owned(), "alphabeta".to_owned()],
+        ] {
+            let resolved = EngineIdentity::Commit {
+                hash: "a".repeat(40),
+                sha256: "b".repeat(64),
+                args,
+            };
+            assert_eq!(
+                verify_identity(&recorded, &resolved),
+                Err(ResumeError::EngineIdentityMismatch)
+            );
+        }
+    }
 
     // docs/plans/archived/movetime-deadline.md: 再開は保存された2値から同じ制限を復元する。
     #[test]
@@ -267,10 +302,12 @@ mod tests {
         let recorded = EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "b".repeat(64),
+            args: Vec::new(),
         };
         let resolved = EngineIdentity::Commit {
             hash: "a".repeat(40),
             sha256: "c".repeat(64),
+            args: Vec::new(),
         };
         assert_eq!(
             verify_identity(&recorded, &resolved),

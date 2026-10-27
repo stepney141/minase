@@ -22,7 +22,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingEvaluator => f.write_str("MCTS requires a neural evaluator"),
+            Self::MissingEvaluator => f.write_str("MCTS requires isready before go"),
             Self::DepthLimitUnsupported => f.write_str("MCTS does not support a depth limit"),
             Self::PromotionDeferred => f.write_str("MCTS cannot encode rules P1, P2 or P5"),
             Self::InvalidScale => f.write_str("MCTS cp_per_logit must be finite and positive"),

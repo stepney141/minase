@@ -22,7 +22,11 @@ pub(super) fn resolve_engine(
         let (path, hash, sha256) = resolve_commit(revision, Some("tuning"))?;
         Ok(PlayerConfig {
             text: spec.text,
-            identity: EngineIdentity::Commit { hash, sha256 },
+            identity: EngineIdentity::Commit {
+                hash,
+                sha256,
+                args: Vec::new(),
+            },
             path,
             args: vec![
                 "--protocol".to_owned(),
@@ -38,7 +42,7 @@ pub(super) fn resolve_engine(
             options: Vec::new(),
         })
     } else {
-        let mut player = resolve_player(spec, each, None, rules, Vec::new())?;
+        let mut player = resolve_player(spec, each, None, rules, Vec::new(), None)?;
         // 裸のコマンド名は起動時と同じPATHで解決し、ハッシュ対象を固定する。
         if player.path.components().count() == 1 {
             let path = std::env::var_os("PATH")
@@ -80,8 +84,8 @@ pub(super) fn check_engine_identity(
     sha256: &str,
 ) -> Result<(), ResumeError> {
     let matches = match &manifest.engine {
-        EngineIdentity::Commit { hash, .. } => {
-            matches!(identity, EngineIdentity::Commit { hash: resolved, .. } if resolved == hash)
+        EngineIdentity::Commit { hash, args, .. } => {
+            matches!(identity, EngineIdentity::Commit { hash: resolved, args: resolved_args, .. } if resolved == hash && resolved_args == args)
         }
         _ => sha256 == manifest.engine_sha256,
     };

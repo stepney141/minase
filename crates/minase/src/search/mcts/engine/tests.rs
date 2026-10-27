@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 fn engine(evaluator: impl Evaluator + Send + 'static) -> Engine {
-    Engine::new(
+    Engine::with_evaluator(
         Some(Box::new(evaluator)),
         Config {
             capacity_bytes: CAPACITY,
@@ -502,7 +502,7 @@ fn finite_time_limits_use_the_shared_clock_budget() {
 
 #[test]
 fn mcts_start_rejects_missing_evaluator_depth_and_deferred_promotion_rules() {
-    let no_evaluator = Engine::new(None, Config::new(SCALE));
+    let no_evaluator = Engine::with_evaluator(None, Config::new(SCALE));
     let failure = match Searcher::Mcts(no_evaluator).start(initial(), nodes(1), 1, false) {
         Err(failure) => failure,
         Ok(_) => panic!(),
@@ -551,14 +551,20 @@ fn mcts_options_are_bounded_and_prepare_does_not_allocate_a_transposition_table(
     let options: Vec<_> = searcher
         .options()
         .into_iter()
-        .map(|option| {
-            let SearchOptionKind::Spin { default, min, max } = option.kind;
-            (option.name, default, min, max)
+        .filter_map(|option| {
+            let SearchOptionKind::Spin { default, min, max } = option.kind else {
+                return None;
+            };
+            Some((option.name, default, min, max))
         })
         .collect();
     assert_eq!(
         options,
-        [("USI_Hash", 256, 1, 65_536), ("Threads", 1, 1, 1)]
+        [
+            ("USI_Hash", 256, 1, 65_536),
+            ("Threads", 1, 1, 1),
+            ("NnBatchSize", 256, 1, 1024)
+        ]
     );
     for (name, value) in [
         ("USI_Hash", 0),
@@ -573,7 +579,7 @@ fn mcts_options_are_bounded_and_prepare_does_not_allocate_a_transposition_table(
         ));
     }
     assert!(matches!(
-        searcher.set_option("NnBatchSize", SearchOptionValue::Spin(4)),
+        searcher.set_option("Unknown", SearchOptionValue::Spin(4)),
         Err(SetOptionError::UnknownOption { .. })
     ));
     searcher
@@ -582,7 +588,7 @@ fn mcts_options_are_bounded_and_prepare_does_not_allocate_a_transposition_table(
     searcher
         .set_option("Threads", SearchOptionValue::Spin(1))
         .unwrap();
-    searcher.prepare();
+    searcher.prepare().unwrap();
     assert!(searcher.transposition_table().is_none());
     assert_eq!(searcher.threads().get(), 1);
 }

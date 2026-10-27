@@ -37,8 +37,8 @@ pub use events::{SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, SearchJoinError, search};
 pub use limits::{ClockLimits, SearchLimits};
 pub use searcher::{
-    SearchOption, SearchOptionKind, SearchOptionValue, Searcher, SetOptionError, StartError,
-    StartFailure,
+    PrepareError, SearchOption, SearchOptionKind, SearchOptionValue, Searcher, SetOptionError,
+    StartError, StartFailure,
 };
 pub use snapshot::{SearchRepetition, SearchSnapshot};
 

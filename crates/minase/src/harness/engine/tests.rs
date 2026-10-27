@@ -810,6 +810,7 @@ fn usi_options_are_sent_in_order_before_isready() {
             ("Tune_Second".to_owned(), "-3".to_owned()),
             ("Tune_First".to_owned(), "19".to_owned()),
         ],
+        None,
     )
     .unwrap();
     player.args = vec![

@@ -34,7 +34,7 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 保存済み実験を再開するディレクトリ。新規作成との排他指定は[`Self::run_dir`]に従う。
-    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
+    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
     /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
     #[arg(long, requires = "resume", conflicts_with = "run_dir", value_parser = parse_positive_u64)]
@@ -58,6 +58,12 @@ pub(crate) struct Arguments {
     /// 基準側の起動コマンド（パスと空白区切りの引数）または`random`。
     #[arg(long, default_value = "random", value_parser = parse_player_spec)]
     pub(super) baseline: PlayerSpec,
+    /// 候補側のcommit:エンジンへ追加する、空白区切りの起動引数。
+    #[arg(long, allow_hyphen_values = true)]
+    pub(super) candidate_args: Option<String>,
+    /// 基準側のcommit:エンジンへ追加する、空白区切りの起動引数。
+    #[arg(long, allow_hyphen_values = true)]
+    pub(super) baseline_args: Option<String>,
     /// 両エンジンに適用する既定の思考制限。
     #[arg(long, default_value = "depth=1", value_parser = parse_search_limit)]
     pub(super) each: SearchLimit,
@@ -92,6 +98,22 @@ pub(crate) struct Arguments {
 }
 
 impl Arguments {
+    /// 追加引数は、その側がコミット指定である場合だけ受理する。
+    pub(super) fn validate_startup_args(&self) -> Result<(), clap::Error> {
+        for (name, spec, args) in [
+            ("candidate", &self.candidate, &self.candidate_args),
+            ("baseline", &self.baseline, &self.baseline_args),
+        ] {
+            if args.is_some() && !matches!(spec.kind, PlayerKind::Commit(_)) {
+                return Err(crate::subcommand_command(&["match", "run"]).error(
+                    clap::error::ErrorKind::ValueValidation,
+                    format!("--{name}-args requires --{name} commit:<revision>"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// 共通の思考制限を各側の明示指定で上書きする。
     pub(super) fn search_limits(&self) -> (SearchLimit, SearchLimit) {
         (
@@ -446,6 +468,8 @@ mod tests {
             vec!["--baseline-limit", "depth=1"],
             vec!["--candidate-hash", "256"],
             vec!["--baseline-hash", "256"],
+            vec!["--candidate-args", "--search mcts"],
+            vec!["--baseline-args", "--search alphabeta"],
         ] {
             let error = Arguments::try_parse_from(
                 ["match_runner", "--resume", "old"]
@@ -475,6 +499,43 @@ mod tests {
         .unwrap();
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
         assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn startup_arguments_are_accepted_only_for_the_corresponding_commit_engine() {
+        for side in ["candidate", "baseline"] {
+            for spec in [
+                "commit:HEAD",
+                "random",
+                "unavailable-engine",
+                "cecp:unavailable-engine",
+            ] {
+                for value in ["--search mcts --nn-model net.onnx", ""] {
+                    let arguments = Arguments::try_parse_from([
+                        "match_runner",
+                        "--run-dir",
+                        "unused",
+                        &format!("--{side}"),
+                        spec,
+                        &format!("--{side}-args"),
+                        value,
+                        "elo",
+                        "--pairs",
+                        "1",
+                    ])
+                    .unwrap();
+                    let result = arguments.validate_startup_args();
+                    if spec == "commit:HEAD" {
+                        result.unwrap();
+                    } else {
+                        assert_eq!(
+                            result.unwrap_err().kind(),
+                            clap::error::ErrorKind::ValueValidation
+                        );
+                    }
+                }
+            }
+        }
     }
 
     // 外部入力は型の最大値を超えた時点で拒否する。

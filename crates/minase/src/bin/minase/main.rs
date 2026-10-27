@@ -30,7 +30,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 ///
 /// サブコマンドなしはエンジン起動であり、`--protocol`と`--rules`を必須とする。
 /// 両欄は`Option`だが`required = true`を付け、`subcommand_negates_reqs`で補助ツール時だけ必須を外す。
-/// `--protocol`、`--rules`、`--io-log`とサブコマンドの併用は`args_conflicts_with_subcommands`で拒否する。
+/// `--protocol`、`--rules`、`--io-log`、`--search`、`--nn-model`とサブコマンドの併用は拒否する。
+/// 探索方式は既定で`alphabeta`とし、`mcts`にはUSIと`--nn-model`の指定を要求する。
 /// 引数なしの起動もエラーである。プロトコルは`usi`か`cecp`で、既定値も自動判別も持たない。
 /// 対局ハーネスの`commit:`は過去のコミットを`--protocol usi --rules <規則>`で起動するため、この形は互換性の対象である。
 /// 理由は`docs/adr/run-developer-tools-as-engine-subcommands.md`にある。
@@ -50,6 +51,12 @@ struct Arguments {
     /// 入出力のログを新規作成するパス。
     #[arg(long)]
     io_log: Option<PathBuf>,
+    /// 起動時に選ぶ探索方式。
+    #[arg(long, value_enum, default_value = "alphabeta")]
+    search: SearchKind,
+    /// MCTSで読むONNX形式のネットのパス。
+    #[arg(long)]
+    nn_model: Option<PathBuf>,
     /// 補助ツールの呼び出し。
     #[command(subcommand)]
     command: Option<Command>,
@@ -73,6 +80,15 @@ enum ProtocolKind {
     Usi,
     /// CECP(XBoard)。
     Cecp,
+}
+
+/// 起動時に固定する探索方式。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum SearchKind {
+    /// NNUEを用いたαβ探索。
+    Alphabeta,
+    /// 方策・価値ネットを用いたモンテカルロ木探索。
+    Mcts,
 }
 
 /// 補助ツールを目的別に分けるサブコマンド。
@@ -155,6 +171,8 @@ fn main() -> ExitCode {
                 .rules
                 .expect("clap requires --rules for the engine"),
             arguments.io_log,
+            arguments.search,
+            arguments.nn_model,
         ),
         Some(Command::Match(MatchCommand::Run(arguments))) => match_runner::main(arguments),
         Some(Command::Match(MatchCommand::Report(arguments))) => match_report::main(arguments),
@@ -226,6 +244,9 @@ mod tests {
             vec!["--protocol", "usi"],
             vec!["--rules", "engine-default"],
             vec!["--io-log", "io.log"],
+            vec!["--search", "alphabeta"],
+            vec!["--search", "mcts"],
+            vec!["--nn-model", "net.onnx"],
             vec!["--protocol", "usi", "--rules", "engine-default"],
         ] {
             let error = Arguments::try_parse_from(

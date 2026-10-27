@@ -70,16 +70,10 @@ impl Engine {
             .ok_or_else(|| SetOptionError::UnknownOption {
                 name: name.to_owned(),
             })?;
-        let SearchOptionKind::Spin { min, max, .. } = option.kind;
-        let SearchOptionValue::Spin(value) = value;
-        if !(min..=max).contains(&value) {
-            return Err(SetOptionError::OutOfRange {
-                name: option.name,
-                value,
-                min,
-                max,
-            });
-        }
+        option.validate(&value)?;
+        let SearchOptionValue::Spin(value) = value else {
+            unreachable!("validated alpha-beta option is a spin value");
+        };
         match option.name {
             "USI_Hash" => {
                 match &mut self.transposition_table {

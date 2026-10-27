@@ -16,7 +16,7 @@ pub enum Searcher {
 }
 
 /// 探索方式が宣言する、プロトコルの表記に依存しないオプション。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SearchOption {
     /// オプションの宣言名。
     pub name: &'static str,
@@ -25,7 +25,7 @@ pub struct SearchOption {
 }
 
 /// 探索オプションの値の種類。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchOptionKind {
     /// 範囲を持つ非負の整数。
     Spin {
@@ -36,13 +36,68 @@ pub enum SearchOptionKind {
         /// 最大値。境界を含む。
         max: usize,
     },
+    /// 自由な文字列。
+    String {
+        /// 既定値。空文字列も受理する。
+        default: String,
+    },
+    /// 大文字小文字を区別しない選択肢。
+    Combo {
+        /// 既定値。
+        default: &'static str,
+        /// 選択肢の宣言順。
+        choices: &'static [&'static str],
+    },
 }
 
 /// プロトコル層が解析した探索オプションの値。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SearchOptionValue {
     /// 整数オプションの値。
     Spin(usize),
+    /// 文字列オプションの値。
+    String(String),
+    /// 選択肢オプションの値。
+    Combo(String),
+}
+
+impl fmt::Display for SearchOptionValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Spin(value) => value.fmt(formatter),
+            Self::String(value) | Self::Combo(value) => value.fmt(formatter),
+        }
+    }
+}
+
+impl SearchOption {
+    /// プロトコルを通さない設定も、宣言された種類と範囲で検査する。
+    pub(super) fn validate(&self, value: &SearchOptionValue) -> Result<(), SetOptionError> {
+        match (&self.kind, value) {
+            (SearchOptionKind::Spin { min, max, .. }, SearchOptionValue::Spin(value)) => {
+                if !(min..=max).contains(&value) {
+                    return Err(SetOptionError::OutOfRange {
+                        name: self.name,
+                        value: *value,
+                        min: *min,
+                        max: *max,
+                    });
+                }
+            }
+            (SearchOptionKind::String { .. }, SearchOptionValue::String(_)) => {}
+            (SearchOptionKind::Combo { choices, .. }, SearchOptionValue::Combo(value))
+                if choices
+                    .iter()
+                    .any(|choice| choice.eq_ignore_ascii_case(value)) => {}
+            _ => {
+                return Err(SetOptionError::InvalidValue {
+                    name: self.name,
+                    value: value.to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 探索オプションを適用できない理由。
@@ -64,6 +119,13 @@ pub enum SetOptionError {
         /// 最大値。
         max: usize,
     },
+    /// 種類または選択肢が宣言と一致しない値。
+    InvalidValue {
+        /// オプションの宣言名。
+        name: &'static str,
+        /// 指定された値。
+        value: String,
+    },
     /// 置換表の確保または容量の変更に失敗した。
     TranspositionTable(TranspositionTableError),
 }
@@ -75,6 +137,9 @@ impl fmt::Display for SetOptionError {
             Self::OutOfRange { name, min, max, .. } => {
                 write!(formatter, "{name} must be an integer from {min} to {max}")
             }
+            Self::InvalidValue { name, value } => {
+                write!(formatter, "invalid {name} value '{value}'")
+            }
             Self::TranspositionTable(error) => error.fmt(formatter),
         }
     }
@@ -84,7 +149,38 @@ impl std::error::Error for SetOptionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::TranspositionTable(error) => Some(error),
-            Self::UnknownOption { .. } | Self::OutOfRange { .. } => None,
+            Self::UnknownOption { .. } | Self::OutOfRange { .. } | Self::InvalidValue { .. } => {
+                None
+            }
+        }
+    }
+}
+
+/// 探索前の推論器の準備に失敗した理由。
+#[derive(Debug)]
+pub enum PrepareError {
+    /// TensorRTのキャッシュ先が指定されていない。
+    MissingCacheDir,
+    /// ネットの推論セッションを作成できない。
+    Network(crate::nn::NnError),
+}
+
+impl fmt::Display for PrepareError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingCacheDir => {
+                formatter.write_str("NnCacheDir must be set for NnBackend tensorrt")
+            }
+            Self::Network(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for PrepareError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::MissingCacheDir => None,
+            Self::Network(error) => Some(error),
         }
     }
 }
@@ -155,19 +251,17 @@ impl Searcher {
         Self::AlphaBeta(alphabeta::Engine::new())
     }
 
-    /// NNUEの勝率尺度を使い、指定された推論器でMCTSを作る。
-    /// 推論器が未設定の場合は、探索開始時にエラーを返す。
+    /// NNUEの勝率尺度を使い、指定されたネットでMCTSを作る。
+    /// 推論器は[`Self::prepare`]で作成する。
     ///
     /// # Errors
     /// 勝率尺度を持つNNUEの重みを読み込めない場合は拒否する。
-    pub fn mcts(
-        evaluator: Option<Box<dyn crate::nn::Evaluator + Send>>,
-    ) -> Result<Self, StartError> {
+    pub fn mcts(network: crate::nn::Network) -> Result<Self, StartError> {
         let scale = crate::eval::weights()
             .map_err(StartError::Weights)?
             .cp_per_logit();
         Ok(Self::Mcts(mcts::Engine::new(
-            evaluator,
+            network,
             mcts::Config::new(scale),
         )))
     }
@@ -181,10 +275,11 @@ impl Searcher {
     }
 
     /// 宣言どおりの名前でオプションを適用する。
-    /// 大文字小文字の照合と文字列の解析はプロトコル層が行う。
+    /// 名前の大文字小文字の照合と文字列の解析はプロトコル層が行う。
+    /// 値の種類と範囲は探索器でも検査する。
     ///
     /// # Errors
-    /// 名前が未知、値が範囲外、または必要なメモリを確保できない場合は、
+    /// 名前が未知、値の種類・範囲・選択肢が不正、または必要なメモリを確保できない場合は、
     /// 状態を変えずに元の原因を保持したエラーを返す。
     pub fn set_option(
         &mut self,
@@ -213,14 +308,20 @@ impl Searcher {
         }
     }
 
-    /// 探索前に必要な領域の確保を試みる。
+    /// 探索前に必要な領域と推論器を準備する。
     /// αβ探索では未確保の置換表だけを既定容量で確保する。
-    /// 失敗時は状態を変えず、次の[`Self::start`]で再試行してエラーを返す。
-    /// MCTSの推論器は構築時に受け取り、ここでは何もしない。
-    pub fn prepare(&mut self) {
+    /// 置換表の確保の失敗は次の[`Self::start`]で再試行して報告する。
+    /// MCTSでは、未作成または設定変更で破棄された推論器を作成する。
+    ///
+    /// # Errors
+    /// MCTSのキャッシュ先が未設定、または推論器を作れない場合は原因を返す。
+    pub fn prepare(&mut self) -> Result<(), PrepareError> {
         match self {
-            Self::AlphaBeta(engine) => engine.prepare(),
-            Self::Mcts(_) => {}
+            Self::AlphaBeta(engine) => {
+                engine.prepare();
+                Ok(())
+            }
+            Self::Mcts(engine) => engine.prepare(),
         }
     }
 
@@ -292,7 +393,9 @@ mod tests {
             .options()
             .into_iter()
             .map(|option| {
-                let SearchOptionKind::Spin { default, min, max } = option.kind;
+                let SearchOptionKind::Spin { default, min, max } = option.kind else {
+                    panic!("alpha-beta declares only spin options");
+                };
                 (option.name, default, min, max)
             })
             .collect();
@@ -345,5 +448,33 @@ mod tests {
                 .downcast_ref::<TranspositionTableError>(),
             Some(&cause)
         );
+    }
+
+    #[test]
+    fn search_options_reject_wrong_value_kinds_without_panicking() {
+        assert!(matches!(
+            Searcher::alpha_beta().set_option("Threads", SearchOptionValue::String("1".to_owned())),
+            Err(SetOptionError::InvalidValue { .. })
+        ));
+        let mut searcher = Searcher::mcts(crate::nn::Network::from_bytes(Vec::new())).unwrap();
+        for (name, value) in [
+            ("Threads", SearchOptionValue::Combo("1".to_owned())),
+            ("NnBackend", SearchOptionValue::Spin(1)),
+            ("NnCacheDir", SearchOptionValue::Combo("/cache".to_owned())),
+        ] {
+            assert!(matches!(
+                searcher.set_option(name, value),
+                Err(SetOptionError::InvalidValue { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn preparation_error_preserves_the_network_error_source() {
+        let error = PrepareError::Network(crate::nn::NnError::RuntimeLibraryPathUnset);
+        assert!(matches!(
+            error.source().unwrap().downcast_ref::<crate::nn::NnError>(),
+            Some(crate::nn::NnError::RuntimeLibraryPathUnset)
+        ));
     }
 }

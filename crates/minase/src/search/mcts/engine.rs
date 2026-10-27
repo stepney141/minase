@@ -1,6 +1,8 @@
 //! 対局用PUCTのバッチ評価、時間管理、および探索木の持ち越し。
 
+use std::ffi::OsStr;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -9,13 +11,13 @@ use super::Error;
 use super::driver::{DrawValue, Driver, EvaluationRequest, Step, validate_rules, validate_scale};
 use super::puct::PuctConfig;
 use super::tree::{NodeState, SelectionRule};
-use crate::nn::{Evaluator, NnError};
+use crate::nn::{Evaluator, ExecutionProvider, Network, NnError, OnnxEvaluator};
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::{
-    SearchEvent, SearchHandle, SearchJoinError, SearchLimits, SearchOption, SearchOptionKind,
-    SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError, StartFailure,
-    StopReason,
+    PrepareError, SearchEvent, SearchHandle, SearchJoinError, SearchLimits, SearchOption,
+    SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
+    StartFailure, StopReason,
 };
 
 /// 対局用MCTSの設定。勝率尺度は探索の境界から値で受け取る。
@@ -45,6 +47,10 @@ impl Config {
 
 /// 対局内で持ち越す推論器、探索木、および設定。
 pub struct Engine {
+    network: Network,
+    backend: String,
+    cache_dir: PathBuf,
+    default_cache_dir: PathBuf,
     evaluator: Option<Box<dyn Evaluator + Send>>,
     driver: Option<Box<Driver>>,
     config: Config,
@@ -53,15 +59,32 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// 推論器と設定を受け取る。推論セッションの作成は呼び出し側が行う。
-    pub fn new(evaluator: Option<Box<dyn Evaluator + Send>>, config: Config) -> Self {
+    /// ネットと設定を保持し、推論器の作成は`prepare`まで遅延する。
+    /// TensorRTを既定とし、キャッシュ先は空でない`XDG_CACHE_HOME`の下に置く。
+    pub fn new(network: Network, config: Config) -> Self {
+        let cache_dir = default_cache_dir(std::env::var_os("XDG_CACHE_HOME").as_deref());
         Self {
-            evaluator,
+            network,
+            backend: "tensorrt".to_owned(),
+            default_cache_dir: cache_dir.clone(),
+            cache_dir,
+            evaluator: None,
             driver: None,
             config,
             #[cfg(test)]
             reused: false,
         }
+    }
+
+    /// ONNX Runtimeを使わない試験でだけ推論器を注入する。
+    #[cfg(test)]
+    pub(crate) fn with_evaluator(
+        evaluator: Option<Box<dyn Evaluator + Send>>,
+        config: Config,
+    ) -> Self {
+        let mut engine = Self::new(Network::from_bytes(Vec::new()), config);
+        engine.evaluator = evaluator;
+        engine
     }
 
     pub(in crate::search) fn options(&self) -> Vec<SearchOption> {
@@ -82,6 +105,27 @@ impl Engine {
                     max: 1,
                 },
             },
+            SearchOption {
+                name: "NnBackend",
+                kind: SearchOptionKind::Combo {
+                    default: "tensorrt",
+                    choices: &["tensorrt", "cuda", "cpu"],
+                },
+            },
+            SearchOption {
+                name: "NnCacheDir",
+                kind: SearchOptionKind::String {
+                    default: self.default_cache_dir.to_string_lossy().into_owned(),
+                },
+            },
+            SearchOption {
+                name: "NnBatchSize",
+                kind: SearchOptionKind::Spin {
+                    default: 256,
+                    min: 1,
+                    max: 1024,
+                },
+            },
         ]
     }
 
@@ -97,21 +141,70 @@ impl Engine {
             .ok_or_else(|| SetOptionError::UnknownOption {
                 name: name.to_owned(),
             })?;
-        let SearchOptionKind::Spin { min, max, .. } = option.kind;
-        let SearchOptionValue::Spin(value) = value;
-        let invalid = || SetOptionError::OutOfRange {
-            name: option.name,
-            value,
-            min,
-            max,
-        };
-        if !(min..=max).contains(&value) {
-            return Err(invalid());
+        option.validate(&value)?;
+        match (option.name, value) {
+            ("USI_Hash", SearchOptionValue::Spin(value)) => {
+                let capacity_bytes =
+                    value
+                        .checked_mul(1024 * 1024)
+                        .ok_or(SetOptionError::OutOfRange {
+                            name: option.name,
+                            value,
+                            min: 1,
+                            max: 65_536,
+                        })?;
+                if self.config.capacity_bytes != capacity_bytes {
+                    self.clear();
+                    self.config.capacity_bytes = capacity_bytes;
+                }
+            }
+            ("Threads", SearchOptionValue::Spin(_)) => {}
+            ("NnBackend", SearchOptionValue::Combo(value)) => {
+                let backend = value.to_ascii_lowercase();
+                if self.backend != backend {
+                    self.backend = backend;
+                    self.evaluator = None;
+                }
+            }
+            ("NnCacheDir", SearchOptionValue::String(value)) => {
+                let cache_dir = PathBuf::from(value);
+                if self.cache_dir != cache_dir {
+                    self.cache_dir = cache_dir;
+                    self.evaluator = None;
+                }
+            }
+            ("NnBatchSize", SearchOptionValue::Spin(value)) => {
+                let batch_size = NonZeroUsize::new(value).expect("validated non-zero batch size");
+                if self.config.batch_size != batch_size {
+                    self.config.batch_size = batch_size;
+                    self.evaluator = None;
+                }
+            }
+            _ => unreachable!("all validated MCTS options are handled"),
         }
-        if option.name == "USI_Hash" {
-            let capacity_bytes = value.checked_mul(1024 * 1024).ok_or_else(invalid)?;
-            self.clear();
-            self.config.capacity_bytes = capacity_bytes;
+        Ok(())
+    }
+
+    fn execution_provider(&self) -> Result<ExecutionProvider, PrepareError> {
+        match self.backend.as_str() {
+            "tensorrt" if self.cache_dir.as_os_str().is_empty() => {
+                Err(PrepareError::MissingCacheDir)
+            }
+            "tensorrt" => Ok(ExecutionProvider::TensorRt {
+                cache_root: self.cache_dir.clone(),
+            }),
+            "cuda" => Ok(ExecutionProvider::Cuda),
+            "cpu" => Ok(ExecutionProvider::Cpu),
+            _ => unreachable!("the backend was validated when set"),
+        }
+    }
+
+    pub(in crate::search) fn prepare(&mut self) -> Result<(), PrepareError> {
+        if self.evaluator.is_none() {
+            let provider = self.execution_provider()?;
+            let evaluator = OnnxEvaluator::new(&self.network, &provider, self.config.batch_size)
+                .map_err(PrepareError::Network)?;
+            self.evaluator = Some(Box::new(evaluator));
         }
         Ok(())
     }
@@ -232,6 +325,13 @@ impl Engine {
             self.reused = reused;
         }
         Ok(())
+    }
+}
+
+fn default_cache_dir(xdg_cache_home: Option<&OsStr>) -> PathBuf {
+    match xdg_cache_home {
+        Some(path) if !path.is_empty() => PathBuf::from(path).join("minase/tensorrt"),
+        _ => PathBuf::new(),
     }
 }
 
@@ -365,5 +465,7 @@ fn evaluate_batch(
     Ok(())
 }
 
+#[cfg(test)]
+mod options_tests;
 #[cfg(test)]
 mod tests;

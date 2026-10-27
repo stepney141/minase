@@ -536,7 +536,7 @@ fn resume_records_only_invocations_that_execute_games() {
     small_run(&dir);
     let manifest = std::fs::read(dir.join("manifest.json")).unwrap();
     let value = json_file(&dir.join("manifest.json"));
-    assert_eq!(value["format_version"], 5);
+    assert_eq!(value["format_version"], 6);
     assert!(value.get("runner").is_none());
     assert!(value.get("cpu").is_none());
     assert_eq!(
@@ -670,7 +670,7 @@ fn resume_rejects_recorded_commit_digest_mismatch_before_engine_start() {
     small_run(&dir);
     let mut manifest = json_file(&dir.join("manifest.json"));
     manifest["candidate"]["identity"] =
-        serde_json::json!({"kind":"commit", "hash":hash, "sha256":"0".repeat(64)});
+        serde_json::json!({"kind":"commit", "hash":hash, "sha256":"0".repeat(64), "args":[]});
     write_json(&dir.join("manifest.json"), &manifest);
     let before = std::fs::read(dir.join("invocations.json")).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
@@ -687,6 +687,133 @@ fn resume_rejects_recorded_commit_digest_mismatch_before_engine_start() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
+}
+
+/// コミットの追加引数は規則の後に渡し、版6へ記録して再開時にも復元する。
+#[cfg(unix)]
+#[test]
+fn commit_startup_arguments_are_forwarded_recorded_and_restored() {
+    use std::os::unix::fs::PermissionsExt;
+    let repository = run_directory();
+    let clone = Command::new("git")
+        .args(["clone", "--shared", "--no-checkout"])
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .arg(&repository)
+        .output()
+        .unwrap();
+    assert!(
+        clone.status.success(),
+        "{}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+    let revision = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repository)
+        .output()
+        .unwrap();
+    assert!(revision.status.success());
+    let hash = String::from_utf8(revision.stdout)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let cache = repository.join("target/match-cache").join(&hash);
+    std::fs::create_dir_all(&cache).unwrap();
+    let binary = cache.join("minase");
+    std::fs::write(&binary, r#"#!/bin/sh
+printf '%s\n' "$*" >> "$MINASE_TEST_ARGS_LOG"
+test "$1" = '--protocol' && test "$2" = 'usi' && test "$3" = '--rules' && test "$4" = 'engine-default' || exit 21
+shift 4
+case "$*" in
+    '--search mcts --nn-model net.onnx'|'--search alphabeta') ;;
+    *) exit 22 ;;
+esac
+while IFS= read -r line; do
+    case "$line" in
+        usi) printf 'option name Threads type spin default 1 min 1 max 1\noption name USI_Hash type spin default 256 min 1 max 65536\nusiok\n' ;;
+        isready) echo readyok ;;
+        go*) echo 'bestmove resign' ;;
+        quit) exit 0 ;;
+    esac
+done
+"#).unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(
+        binary.with_extension("sha256"),
+        minase::harness::sha256_file(&binary).unwrap(),
+    )
+    .unwrap();
+    let log = repository.join("startup.log");
+    let dir = repository.join("run");
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--run-dir"])
+        .arg(&dir)
+        .args([
+            "--candidate",
+            "commit:HEAD",
+            "--baseline",
+            "commit:HEAD",
+            "--candidate-args",
+            "--search   mcts\t--nn-model net.onnx",
+            "--baseline-args",
+            "--search alphabeta",
+            "--each",
+            "nodes=1",
+            "--concurrency",
+            "1",
+            "--response-timeout",
+            "5",
+            "--max-ply",
+            "100",
+            "--seed",
+            "20260811",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .env("MINASE_TEST_ARGS_LOG", &log)
+        .current_dir(&repository)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let manifest = json_file(&dir.join("manifest.json"));
+    assert_eq!(manifest["format_version"], 6);
+    assert_eq!(
+        manifest["candidate"]["identity"]["args"],
+        serde_json::json!(["--search", "mcts", "--nn-model", "net.onnx"])
+    );
+    assert_eq!(
+        manifest["baseline"]["identity"]["args"],
+        serde_json::json!(["--search", "alphabeta"])
+    );
+    std::fs::write(&log, "").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--resume"])
+        .arg(&dir)
+        .args(["--target-pairs", "2"])
+        .env("MINASE_TEST_ARGS_LOG", &log)
+        .current_dir(&repository)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(json_file(&dir.join("manifest.json")), manifest);
+    let invocations = std::fs::read_to_string(log).unwrap();
+    let candidate = "--protocol usi --rules engine-default --search mcts --nn-model net.onnx";
+    let baseline = "--protocol usi --rules engine-default --search alphabeta";
+    assert!(invocations.lines().any(|line| line == candidate));
+    assert!(invocations.lines().any(|line| line == baseline));
+    assert!(
+        invocations
+            .lines()
+            .all(|line| line == candidate || line == baseline)
+    );
 }
 
 #[cfg(unix)]
