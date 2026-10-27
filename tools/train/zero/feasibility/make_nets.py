@@ -1,75 +1,15 @@
 import argparse
 from pathlib import Path
+import sys
 
-import onnx
 import torch
-from torch import nn
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from minase_zero.net import ResidualBlock, ZeroNet, export_onnx
 
 
 SIZES = ((6, 96), (10, 128), (15, 192), (20, 256))
-
-
-class ResidualBlock(nn.Module):
-    def __init__(self, channels: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.pool_bias = nn.Linear(2 * channels, channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(channels)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        y = torch.relu(self.bn1(self.conv1(x)))
-        pooled = torch.cat((y.mean(dim=(2, 3)), y.amax(dim=(2, 3))), dim=1)
-        y = y + self.pool_bias(pooled)[:, :, None, None]
-        return torch.relu(x + self.bn2(self.conv2(y)))
-
-
-class ZeroNet(nn.Module):
-    def __init__(self, blocks: int, channels: int):
-        super().__init__()
-        self.trunk = nn.Sequential(
-            nn.Conv2d(95, channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(channels),
-            nn.ReLU(),
-            *(ResidualBlock(channels) for _ in range(blocks)),
-        )
-        self.policy_head = nn.Conv2d(channels, 249, 1, bias=True)
-        self.value_head = nn.Sequential(
-            nn.Conv2d(channels, 1, 1, bias=False),
-            nn.BatchNorm2d(1),
-            nn.ReLU(),
-            nn.Flatten(1),
-            nn.Linear(144, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x = self.trunk(x)
-        return self.policy_head(x).flatten(1), self.value_head(x)
-
-
-def export_onnx(model: ZeroNet, path: Path) -> None:
-    """実現性の測定と参照推論で同じ設定のONNXを書き出し、検査する。"""
-    sample = torch.zeros(1, 95, 12, 12, dtype=torch.float32)
-    with torch.inference_mode():
-        torch.onnx.export(
-            model,
-            sample,
-            path,
-            input_names=["input"],
-            output_names=["policy", "value"],
-            opset_version=17,
-            dynamo=False,
-            dynamic_axes={
-                "input": {0: "batch"},
-                "policy": {0: "batch"},
-                "value": {0: "batch"},
-            },
-        )
-    onnx.checker.check_model(str(path))
 
 
 def main() -> None:

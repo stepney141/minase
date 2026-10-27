@@ -1,0 +1,290 @@
+{
+  "cycle": 1,
+  "config": {
+    "device": "cuda",
+    "init": "/home/stepney141/board-games/minase/data/alphazero-trainer/cycle-0000/checkpoint.pt",
+    "data": [
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00000.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00001.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00002.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00003.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00000.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00001.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00002.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00003.resigned.mnsd"
+    ],
+    "cycle": 1,
+    "seed": 20261101,
+    "batch_size": 256,
+    "checkpoint_steps": 50,
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "clip_grad_norm": 10.0,
+    "value_lambda": 0.333,
+    "precision": "bf16",
+    "trainer_commit": "db2119a8b60cdb07d6e018acdc378df88c836ae0",
+    "blocks": 10,
+    "channels": 128
+  },
+  "provenance": {
+    "trainer_commit": "db2119a8b60cdb07d6e018acdc378df88c836ae0",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.11.0+cu130",
+    "cuda_version": "13.0",
+    "numpy_version": "2.5.4",
+    "device_name": "NVIDIA GeForce RTX 3060 Ti",
+    "init_sha256": "b095a1241e69dff63a29f878dc5d4a7777df3bdeb5390efcdea4d4ca010690a0",
+    "files": [
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00000.mnsd",
+        "size": 9036757,
+        "sha256": "ac897951fba757f7d40d420011bf152f757067ac1f202af113e9e921ef0d368a",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 250,
+          "entry_count": 30041
+        },
+        "position_count": 26818,
+        "training_count": 25674,
+        "validation_count": 1144
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00001.mnsd",
+        "size": 9410989,
+        "sha256": "6ca1781fb82cc2754810f958c5142161e56fbd352459eb47fe58e3c00950c006",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 250,
+          "entry_count": 31505
+        },
+        "position_count": 28266,
+        "training_count": 26850,
+        "validation_count": 1416
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00002.mnsd",
+        "size": 8824392,
+        "sha256": "be26a607e0df71de882cece2c9b5fc366c9769d8c4bf6a031dcc49d94d7b8fd5",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 250,
+          "entry_count": 30018
+        },
+        "position_count": 26749,
+        "training_count": 24785,
+        "validation_count": 1964
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00003.mnsd",
+        "size": 8490560,
+        "sha256": "1f2903d9576ec010568dde69f97a03f9267b2fa46509038fefc575f19d5ac092",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 250,
+          "entry_count": 28990
+        },
+        "position_count": 25767,
+        "training_count": 24510,
+        "validation_count": 1257
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00000.resigned.mnsd",
+        "size": 152,
+        "sha256": "d2d40f0815227e57d01faa396af1edbadd727c1b4574c6df7af30ab44c27aefd",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00001.resigned.mnsd",
+        "size": 152,
+        "sha256": "d2d40f0815227e57d01faa396af1edbadd727c1b4574c6df7af30ab44c27aefd",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00002.resigned.mnsd",
+        "size": 152,
+        "sha256": "d2d40f0815227e57d01faa396af1edbadd727c1b4574c6df7af30ab44c27aefd",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/alphazero-trainer/selfplay-c1/chunk-00003.resigned.mnsd",
+        "size": 152,
+        "sha256": "d2d40f0815227e57d01faa396af1edbadd727c1b4574c6df7af30ab44c27aefd",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+          "network_checksum": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+          "teacher_search_budget": 32,
+          "seed": 20261100,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      }
+    ]
+  },
+  "training_count": 101819,
+  "validation_count": 5781,
+  "completed_steps": 398,
+  "total_steps": 398,
+  "positions_seen": 101819,
+  "training_losses": {
+    "policy": 5.1341447830200195,
+    "value": 0.5950266122817993,
+    "value_result": 0.4922407865524292
+  },
+  "validation_losses": {
+    "policy": 4.649052619934082,
+    "value": 0.8133187890052795,
+    "value_result": 0.7975885272026062
+  },
+  "learning_curve": [
+    {
+      "completed_steps": 50,
+      "training_losses": {
+        "policy": 7.031708240509033,
+        "value": 0.69100022315979,
+        "value_result": 0.6893391609191895
+      }
+    },
+    {
+      "completed_steps": 100,
+      "training_losses": {
+        "policy": 5.314887046813965,
+        "value": 0.6795302629470825,
+        "value_result": 0.6701722741127014
+      }
+    },
+    {
+      "completed_steps": 150,
+      "training_losses": {
+        "policy": 4.9624738693237305,
+        "value": 0.6455677151679993,
+        "value_result": 0.604952335357666
+      }
+    },
+    {
+      "completed_steps": 200,
+      "training_losses": {
+        "policy": 4.8611979484558105,
+        "value": 0.5950031876564026,
+        "value_result": 0.4974718987941742
+      }
+    },
+    {
+      "completed_steps": 250,
+      "training_losses": {
+        "policy": 4.780114650726318,
+        "value": 0.5594515204429626,
+        "value_result": 0.41803351044654846
+      }
+    },
+    {
+      "completed_steps": 300,
+      "training_losses": {
+        "policy": 4.737728118896484,
+        "value": 0.5399922728538513,
+        "value_result": 0.3737039268016815
+      }
+    },
+    {
+      "completed_steps": 350,
+      "training_losses": {
+        "policy": 4.688666820526123,
+        "value": 0.5290993452072144,
+        "value_result": 0.3507347106933594
+      }
+    },
+    {
+      "completed_steps": 398,
+      "training_losses": {
+        "policy": 4.675561428070068,
+        "value": 0.517031729221344,
+        "value_result": 0.3259710967540741
+      }
+    }
+  ],
+  "data_order_sha256": "60483412d0a83e5209cb55781df72affca58d13316256979b805fe0f98f74e8e",
+  "network_sha256": "45204684c87d76acb33891cf7aab631ebd7f3bc67c923566e02d498208aba6bb",
+  "elapsed_seconds": {
+    "loading": 6.151879259967245,
+    "training": 23.23425065597985,
+    "validation": 0.38446077296976
+  },
+  "positions_per_second": 4382.280345839113
+}

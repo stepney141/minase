@@ -1,0 +1,44 @@
+NN session creation: 0.056443 s
+NN inference (288 positions): 1.265942 s
+NN session creation: 0.675292 s
+NN inference (288 positions): 0.097977 s
+NN session creation: 0.057514 s
+NN inference (288 positions): 1.138282 s
+NN session creation: 0.569816 s
+NN inference (288 positions): 0.029507 s
+NN session creation: 0.063156 s
+NN inference (288 positions): 0.368569 s
+NN session creation: 0.583665 s
+NN inference (288 positions): 0.022550 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_value_abs_diff":4.167823181133734e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 1
+comparison failed: maximum logit difference 0.03899955749511719 exceeds tolerance 0.01
+{"positions":288,"max_logit_abs_diff":0.03899955749511719,"max_value_abs_diff":0.009661621144866905,"best_move_mismatches":7,"best_move_mismatch_gaps":[[1,0.007180213928222656],[10,0.006511688232421875],[155,0.0078277587890625],[214,0.007874488830566406],[260,0.004183769226074219],[268,0.008098602294921875],[272,0.0076427459716796875]]}
+exit 1
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_value_abs_diff":4.467823181197872e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 7
+comparison failed: maximum logit difference 0.03441143035888672 exceeds tolerance 0.01
+{"positions":288,"max_logit_abs_diff":0.03441143035888672,"max_value_abs_diff":0.007719080771636966,"best_move_mismatches":4,"best_move_mismatch_gaps":[[74,0.006173133850097656],[216,0.012444496154785156],[260,0.004183769226074219],[268,0.008098602294921875]]}
+exit 1
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_value_abs_diff":4.467823181197872e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 256
+comparison failed: maximum logit difference 0.0431671142578125 exceeds tolerance 0.01
+comparison failed: maximum value difference 0.011175569747161884 exceeds tolerance 0.01
+{"positions":288,"max_logit_abs_diff":0.0431671142578125,"max_value_abs_diff":0.011175569747161884,"best_move_mismatches":4,"best_move_mismatch_gaps":[[26,0.010349273681640625],[80,0.0040130615234375],[216,0.012444496154785156],[221,0.0027008056640625]]}
+exit 1
+cpu-b1: max_logit_diff=1.252e-05 max_legal_probability_diff=5.392e-07 max_kl=5.834e-12 max_value_diff=4.168e-06
+cpu-b7: max_logit_diff=1.252e-05 max_legal_probability_diff=5.907e-07 max_kl=6.200e-12 max_value_diff=4.468e-06
+cpu-b256: max_logit_diff=1.252e-05 max_legal_probability_diff=5.907e-07 max_kl=6.200e-12 max_value_diff=4.468e-06
+trt-b1: max_logit_diff=3.900e-02 max_legal_probability_diff=1.641e-03 max_kl=7.973e-05 max_value_diff=9.662e-03
+trt-b7: max_logit_diff=3.441e-02 max_legal_probability_diff=2.826e-03 max_kl=5.865e-05 max_value_diff=7.719e-03
+trt-b256: max_logit_diff=4.317e-02 max_legal_probability_diff=2.363e-03 max_kl=8.399e-05 max_value_diff=1.118e-02
+largest |legal logit| per position: median=12.71 max=14.17
+value: min=0.0959 max=0.9300 std=0.2227
+neighbor-misread max legal probability diff per position: median=3.515e-02 max=2.085e-01
+largest |activation| by layer (FP16 max 65504): policy_head=14.17, trunk.12.conv1=11.21, trunk.11.conv1=9.84, trunk.1=9.03, trunk.2=9.03

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["maturin==1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "minase-mnsd-reader"
+version = "0.1.0"
+requires-python = "==3.13.*"
+
+[tool.maturin]
+features = ["python"]
+module-name = "minase_mnsd_reader"
+
+[tool.uv]
+# Rebuild the extension when its sources or the minase crates it reads MNSD through change.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+    { file = "../../../../crates/minase/Cargo.toml" },
+    { file = "../../../../crates/minase/src/**/*.rs" },
+    { file = "../../../../crates/minase-core/Cargo.toml" },
+    { file = "../../../../crates/minase-core/src/**/*.rs" },
+]

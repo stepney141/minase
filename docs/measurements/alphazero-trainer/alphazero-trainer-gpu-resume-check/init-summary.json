@@ -1,0 +1,15 @@
+{
+  "blocks": 10,
+  "channels": 128,
+  "seed": 20261028,
+  "parameters": 3462524,
+  "network_sha256": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+  "provenance": {
+    "trainer_commit": "db2119a8b60cdb07d6e018acdc378df88c836ae0",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.11.0+cu130",
+    "cuda_version": "13.0",
+    "numpy_version": "2.5.4",
+    "device_name": "x86_64"
+  }
+}

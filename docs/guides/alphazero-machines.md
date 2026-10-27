@@ -66,6 +66,7 @@ rsync -a -e "$RSH" /mnt/synology_nas/minase/alphazero/minase-<コミット>.tar 
 Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導入してから、minaseをビルドする。
 次のコマンドは、`colab ssh -s <名前>`で開いたColab機のシェルで実行するか、4節の方法によりバックグラウンドで起動する。
 `setup.sh`は、uvのロックファイルからPythonの依存パッケージを、rustupから固定した版のRustのツールチェーンを、Microsoftの配布物からONNX Runtimeを導入し、版を表示して終わる。
+uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）も、固定した版のツールチェーンでビルドして導入する。
 新しいColab機での所要時間は、導入がL4で81秒、A100で214秒、G4で96〜98秒、minaseのビルドが40〜82秒であった。
 
 ```console

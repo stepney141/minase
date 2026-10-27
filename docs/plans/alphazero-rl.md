@@ -14,8 +14,11 @@
 
 起案。2026年10月26日に起案した。
 実装と実行はまだない。
-着手は、サブタスク1から5の完了を待つ。
-[実行環境と実現性の実測](archived/alphazero-environment.md)で選んだGPU種別（Colab機のL4）の機械を借り、借りた機械をまたぐ再開の確認を行うことである。
+前提のサブタスク1から5は2026年10月28日までに完了しており、着手は利用者の指示を待つ。
+学習器の確認では、学習したネットのTensorRTのFP16の出力が照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
+このため、FP16の照合をlogitではなく合法手の確率と価値の差で行うように照合の道具と手引きを改めてから、最初の生成を始める（2026年10月28日の利用者の決定）。
+同じ確認で、1,000局の学習の対局結果に対する価値の検証損失はln 2を上回った（[記録](../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
+次の一手は、[実行環境と実現性の実測](archived/alphazero-environment.md)で選んだGPU種別（Colab機のL4）の機械を借り、借りた機械をまたぐ再開の確認を行うことである。
 
 ## 目的
 
@@ -42,7 +45,7 @@
 
 本書は、サブタスク1から5の成果をすべて使う。
 借りた機械の操作、転送と保管の手順、終了手順、および1サイクルの所要時間と料金の見積もりの式は、[Colab機の操作の手引き](../guides/alphazero-machines.md)が定める。
-生成と学習の手順は[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](alphazero-trainer.md)が、探索回数の上限を1にしたときの動作は[探索方式の共存とMCTS](archived/alphazero-mcts.md)が定める。
+生成と学習の手順は[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](archived/alphazero-trainer.md)が、探索回数の上限を1にしたときの動作は[探索方式の共存とMCTS](archived/alphazero-mcts.md)が定める。
 PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の3者の出力の一致を確かめる手順は、[ネットの入出力と推論](archived/alphazero-network.md)が定める。
 進捗測定の固定局数とEloの読み方は[docs/guides/sprt.md](../guides/sprt.md)の進捗記録の固定局数Eloに従う。
 
@@ -69,7 +72,7 @@ AlphaZeroはAlphaGo Zeroのゲーティングを廃止しても学習が進む�
 
 最初のサイクルは、ランダムに初期化したネットで自己対局を生成する。
 以後の学習は、前のサイクルのネットから再開し、直近kサイクルのデータを1回ずつ読む。
-各サイクルの生成と学習は、[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](alphazero-trainer.md)の手順に従う。
+各サイクルの生成と学習は、[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](archived/alphazero-trainer.md)の手順に従う。
 投了は初めのサイクルでは無効にし、誤った投了の割合に基づいて有効と無効を切り替える（[投了のADR](../adr/resign-zero-self-play-games-below-one-percent-after-calibration.md)）。
 生成器`minase data zero-selfplay`は1サイクルの量を対局数で受け取るので、100万局面に要る対局数を、試走または前のサイクルの1局あたりの局面数から決める（[塊のADR](../adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
 各サイクルの基本シードは、前のサイクルの基本シードから総対局数以上離す。
@@ -111,7 +114,7 @@ RLの途中のネットはコミットせず、到達の判定に使うネット
 ### 借りた機械が止まった場合
 
 借りた機械は、Colab機ではセッションの上限時間、残高の枯渇、およびColab側の都合で、レンタル機では貸し手の都合で止まり得る。
-生成器と学習器は、どの時点で止まっても再開できるように作られている（[自己対局生成器](archived/alphazero-selfplay.md)の「塊ごとの確定と再開」の節、[学習器](alphazero-trainer.md)の「チェックポイントと再開」の節）。
+生成器と学習器は、どの時点で止まっても再開できるように作られている（[自己対局生成器](archived/alphazero-selfplay.md)の「塊ごとの確定と再開」の節、[学習器](archived/alphazero-trainer.md)の「チェックポイントと再開」の節）。
 借りた機械が途中で止まった場合は、新しい機械を借り、作業機にある確定済みの塊と最後のチェックポイントを転送して続きを走らせる。
 
 ### 費用の規則

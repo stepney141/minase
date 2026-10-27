@@ -7,6 +7,7 @@ dependencies = [
     "tensorrt-cu13-libs==10.14.1.48",
     "onnx",
     "numpy",
+    "minase-mnsd-reader",
 ]
 
 [tool.uv]
@@ -19,3 +20,4 @@ explicit = true
 
 [tool.uv.sources]
 tensorrt-cu13-libs = { index = "nvidia" }
+minase-mnsd-reader = { path = "mnsd_reader" }
