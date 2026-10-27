@@ -14,9 +14,12 @@
 
 ## 状態
 
-起案。2026年10月28日に起案した。
+進行中。2026年10月28日に起案し、同日に着手した。
 監査報告は[docs/audits/alphazero-rl-readiness-2026-10-28.md](../audits/alphazero-rl-readiness-2026-10-28.md)にある。
-次の一手は、フェーズ1の探索木の終局判定の実装である。
+フェーズ1から4までを実装し、探索木の終局判定が審判層と一致する試験、学習器の定数マスクと診断の試験、およびハーネスのUSIオプションの試験が通り、αβ探索の深さ6のbenchはmasterの255fb48cと15局面すべてで一致した。
+本番の駆動部の測定では、根の探索時間の中央値がGumbelの32回の探索で0.094 msから0.555 msへ、PUCTの800回の探索で2.09 msから19.1 msへ増えた（[測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
+自己対局の生成はGPUの推論が律速である見込みのまま変わらないが、GPUの推論を含む1サイクルの時間は[強化学習の実行](alphazero-rl.md)の試走で確かめる。
+次の一手は、利用者の許可を得てmasterへマージし、本書を凍結することである。
 
 ## 目的
 

@@ -51,7 +51,8 @@ MCTSの対局エンジンは引き続き成り規則P0（P5なし）だけを受
 探索木の終局は審判層と一致し、終局の葉にネットの評価を要求しない。
 経路の再生は節点を作るたびに合法性の検査と裁定を繰り返すので、探索木のCPUの費用が増える。
 監査の補助測定では、1本の乱数対局の経路の再生に1手で約6 µs、8手で37〜53 µsかかった。
-本番の駆動部での変更の前後の測定は[監査対応の測定記録](../measurements/alphazero-audit-remediation/)にある。
+本番の駆動部を一様評価器で駆動した109局面の測定では、根の探索時間の中央値が、Gumbelの32回の探索で0.094 msから0.555 msへ、PUCTの800回の探索で2.09 msから19.1 msへ増え、完了したシミュレーション1回あたりでは約3 µsから約40 µsになった（[測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
+自己対局の生成はGPUの推論が律速である見込みのまま変わらないが、GPUの推論を含む1サイクルの時間は[強化学習の実行](../plans/alphazero-rl.md)の試走で確かめる。
 MCTSは[局面と合法手生成器を対局の履歴から独立させる決定](keep-game-history-out-of-position-and-movegen.md)が定める「探索は`Game`を経由しない」という原則の例外になるが、`Position`と`MoveGenerator`が履歴を持たないという決定自体は変わらない。
 同じ局面に至る別の手順を合流させる探索グラフ（DAG）を検討するときは、経路の再生で状態を求める前提を見直す必要がある。
 実装は`crates/minase/src/search/snapshot.rs`と`crates/minase/src/search/mcts/driver.rs`にある。
