@@ -1,7 +1,18 @@
-"""固定局面集の推論結果のlogitと価値を照合する。
+"""固定局面集の推論結果を、合法手の方策と価値で照合する。
 
-各logitの差が許容誤差t以下なら、候補が最大とした手の基準logitは基準の最大から2t以内に収まる。
-この範囲は要素ごとの検査で保証されるため、最大の手の不一致は件数と差のみを報告し、合否に使わない。
+ONNX RuntimeのCPUでは--policy logitsを選び、logitと価値をそれぞれ許容誤差1×10⁻⁴で比べる。
+TensorRTのFP16（16ビット浮動小数点）では--policy probabilitiesを選び、探索が使う合法手の確率で比べる。
+確率は、各局面の合法手のlogitから、基準と候補のそれぞれで倍精度のsoftmaxにより計算する。
+--policy-toleranceと--value-toleranceは必須であり、FP16では確率1×10⁻²、価値2×10⁻²などを指定する。
+
+学習したネットの測定では、FP16の丸めの累積によるlogitの差の最大は4.3×10⁻²、価値の差の最大は1.1×10⁻²だったが、確率の差の最大は2.8×10⁻³であった。
+各logitを列の隣の着手から読み違えた場合、局面ごとの確率の差の最大は中央値3.5×10⁻²、全体で0.21となった。
+この測定では丸めによる差と読み違えによる差が分かれており、確率の許容誤差1×10⁻²でも出力の並びのずれや読み違えを検出できる。
+測定の詳細はdocs/measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.mdにある。
+
+最大のlogitを持つ手の不一致は件数と基準のlogitの差を報告し、合否に使わない。
+logitで比べる場合、各logitの差が許容誤差t以下なら、候補が最大とした手の基準logitは基準の最大から2t以内に収まる。
+この範囲は要素ごとの検査に含まれるため、最大の手を別途検査する必要はない。
 """
 
 import argparse
@@ -36,7 +47,19 @@ def read_result(path: Path) -> dict:
     return data
 
 
-def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, list[str]]:
+def softmax(logits: list[float]) -> list[float]:
+    """有限な合法手のlogitを倍精度で確率へ正規化する。合法手がなければ空列を返す。"""
+    if not logits:
+        return []
+    maximum = max(logits)
+    weights = [math.exp(logit - maximum) for logit in logits]
+    total = sum(weights)
+    return [weight / total for weight in weights]
+
+
+def compare(
+    reference: dict, candidate: dict, policy: str, policy_tolerance: float, value_tolerance: float,
+) -> tuple[dict, list[str]]:
     problems = []
     if reference["network_sha256"] != candidate["network_sha256"]:
         problems.append("network_sha256 differs")
@@ -57,6 +80,7 @@ def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, l
                 problems.append(f"{name} position {index}: non-finite logit")
 
     max_logit_diff = 0.0
+    max_probability_diff = 0.0
     max_value_diff = 0.0
     best_move_mismatches = 0
     best_move_mismatch_gaps = []
@@ -76,8 +100,12 @@ def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, l
         if finite_logits:
             for (_, left_logit), (_, right_logit) in zip(left_moves, right_moves):
                 max_logit_diff = max(max_logit_diff, abs(left_logit - right_logit))
-            # 各logitの差がt以下なら、候補が選んだ手の基準logitと基準の最大との差は2t以下。
-            # この範囲は要素ごとの検査で保証されるので、不一致の件数と差は報告だけに使う。
+            left_probabilities = softmax([float(logit) for _, logit in left_moves])
+            right_probabilities = softmax([float(logit) for _, logit in right_moves])
+            for left_probability, right_probability in zip(left_probabilities, right_probabilities):
+                max_probability_diff = max(max_probability_diff, abs(left_probability - right_probability))
+            # logitで比べる場合、各logitの差がt以下なら、候補が選んだ手の基準logitと基準の最大との差は2t以下。
+            # どちらの比較方法でも、不一致の件数と差は報告だけに使う。
             # 同率なら列の先頭を採る。ラベル列の一致も別に検査する。
             left_best = max(range(len(left_moves)), key=lambda i: left_moves[i][1]) if left_moves else None
             right_best = max(range(len(right_moves)), key=lambda i: right_moves[i][1]) if right_moves else None
@@ -89,10 +117,14 @@ def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, l
                     gap = left_moves[left_best][1] - left_moves[right_best][1]
                     best_move_mismatch_gaps.append([index, gap])
 
-    if max_logit_diff > tolerance:
-        problems.append(f"maximum logit difference {max_logit_diff} exceeds tolerance {tolerance}")
-    if max_value_diff > tolerance:
-        problems.append(f"maximum value difference {max_value_diff} exceeds tolerance {tolerance}")
+    if policy == "logits":
+        policy_name, max_policy_diff = "logit", max_logit_diff
+    else:
+        policy_name, max_policy_diff = "probability", max_probability_diff
+    if max_policy_diff > policy_tolerance:
+        problems.append(f"maximum {policy_name} difference {max_policy_diff} exceeds tolerance {policy_tolerance}")
+    if max_value_diff > value_tolerance:
+        problems.append(f"maximum value difference {max_value_diff} exceeds tolerance {value_tolerance}")
 
     # 比較できない指標を0と報告しない。JSONで表せない非有限値もnullにする。
     comparable = len(expected) == len(actual)
@@ -100,6 +132,9 @@ def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, l
         "positions": len(expected),
         "max_logit_abs_diff": max_logit_diff
         if comparable and same_move_counts and finite_logits and math.isfinite(max_logit_diff)
+        else None,
+        "max_probability_abs_diff": max_probability_diff
+        if comparable and same_move_counts and finite_logits and math.isfinite(max_probability_diff)
         else None,
         "max_value_abs_diff": max_value_diff
         if comparable and finite_values and math.isfinite(max_value_diff)
@@ -113,25 +148,33 @@ def compare(reference: dict, candidate: dict, tolerance: float) -> tuple[dict, l
     return summary, problems
 
 
+def finite_nonnegative_float(value: str) -> float:
+    tolerance = float(value)
+    if not math.isfinite(tolerance) or tolerance < 0:
+        raise argparse.ArgumentTypeError("tolerance must be finite and nonnegative")
+    return tolerance
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
-    parser.add_argument("--tolerance", type=float, required=True)
+    parser.add_argument("--policy", choices=("logits", "probabilities"), required=True)
+    parser.add_argument("--policy-tolerance", type=finite_nonnegative_float, required=True)
+    parser.add_argument("--value-tolerance", type=finite_nonnegative_float, required=True)
     args = parser.parse_args()
     summary = {
         "positions": None,
         "max_logit_abs_diff": None,
+        "max_probability_abs_diff": None,
         "max_value_abs_diff": None,
         "best_move_mismatches": None,
         "best_move_mismatch_gaps": None,
     }
     try:
-        if not math.isfinite(args.tolerance) or args.tolerance < 0:
-            raise ValueError("tolerance must be finite and nonnegative")
         reference = read_result(args.reference)
         candidate = read_result(args.candidate)
-        summary, problems = compare(reference, candidate, args.tolerance)
+        summary, problems = compare(reference, candidate, args.policy, args.policy_tolerance, args.value_tolerance)
     except (OSError, ValueError, KeyError, TypeError, OverflowError) as error:
         problems = [str(error)]
     print(json.dumps(summary, allow_nan=False, separators=(",", ":")))

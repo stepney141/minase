@@ -15,8 +15,8 @@
 起案。2026年10月26日に起案した。
 実装と実行はまだない。
 前提のサブタスク1から5は2026年10月28日までに完了しており、着手は利用者の指示を待つ。
-学習器の確認では、学習したネットのTensorRTのFP16の出力が照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
-このため、FP16の照合をlogitではなく合法手の確率と価値の差で行うように照合の道具と手引きを改めてから、最初の生成を始める（2026年10月28日の利用者の決定）。
+学習器の確認では、学習したネットのTensorRTのFP16の出力がlogitの照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
+このため、FP16の照合を合法手の確率と価値の差で行うように照合の道具と手引きを改め（2026年10月28日の利用者の決定）、学習したネットが新しい基準で照合に通ることを確かめた（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 同じ確認で、1,000局の学習の対局結果に対する価値の検証損失はln 2を上回った（[記録](../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
 次の一手は、[実行環境と実現性の実測](archived/alphazero-environment.md)で選んだGPU種別（Colab機のL4）の機械を借り、借りた機械をまたぐ再開の確認を行うことである。
 

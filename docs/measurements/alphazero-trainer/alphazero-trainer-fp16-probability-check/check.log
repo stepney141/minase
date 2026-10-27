@@ -1,0 +1,30 @@
+NN session creation: 0.050978 s
+NN inference (288 positions): 0.717338 s
+NN session creation: 7.085835 s
+NN inference (288 positions): 0.087096 s
+NN session creation: 0.054163 s
+NN inference (288 positions): 0.342649 s
+NN session creation: 7.608867 s
+NN inference (288 positions): 0.026155 s
+NN session creation: 0.036210 s
+NN inference (288 positions): 0.155792 s
+NN session creation: 9.525908 s
+NN inference (288 positions): 0.019581 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_probability_abs_diff":5.39167321261802e-07,"max_value_abs_diff":4.167823181133734e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.03899955749511719,"max_probability_abs_diff":0.0016410740952016306,"max_value_abs_diff":0.009661621144866905,"best_move_mismatches":7,"best_move_mismatch_gaps":[[1,0.007180213928222656],[10,0.006511688232421875],[155,0.0078277587890625],[214,0.007874488830566406],[260,0.004183769226074219],[268,0.008098602294921875],[272,0.0076427459716796875]]}
+exit 0
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_probability_abs_diff":5.906549217782331e-07,"max_value_abs_diff":4.467823181197872e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.03441143035888672,"max_probability_abs_diff":0.0028263576551945946,"max_value_abs_diff":0.007719080771636966,"best_move_mismatches":4,"best_move_mismatch_gaps":[[74,0.006173133850097656],[216,0.012444496154785156],[260,0.004183769226074219],[268,0.008098602294921875]]}
+exit 0
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":1.2518432617625308e-05,"max_probability_abs_diff":5.906549217782331e-07,"max_value_abs_diff":4.467823181197872e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit 0
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.0431671142578125,"max_probability_abs_diff":0.002362559189397845,"max_value_abs_diff":0.011175569747161884,"best_move_mismatches":4,"best_move_mismatch_gaps":[[26,0.010349273681640625],[80,0.0040130615234375],[216,0.012444496154785156],[221,0.0027008056640625]]}
+exit 0
