@@ -1,0 +1,4 @@
+steps=50/398 policy=7.031708 value=0.691000 value_result=0.689339 positions_per_second=4013.94
+steps=100/398 policy=5.314887 value=0.679530 value_result=0.670172 positions_per_second=4724.12
+steps=150/398 policy=4.962474 value=0.645568 value_result=0.604952 positions_per_second=4709.32
+steps=200/398 policy=4.861198 value=0.595003 value_result=0.497472 positions_per_second=4641.84

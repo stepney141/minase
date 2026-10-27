@@ -25,7 +25,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
+| MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断、`nnue train`（書き出した重みの検査） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
@@ -65,6 +65,17 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 
 終了報告は、学習が途中で失敗した場合や、同時学習の開始時の量子化検査に通らなかった場合には、`status`と`reason`を中心とする少数の欄だけを持つ。
 欄の構成は同じ`Summary`のdocコメントにある。
+
+## AlphaZero型探索の学習器の保存物
+
+AlphaZero型探索の学習器`minase_zero`（`tools/train/zero/minase_zero/`）は、`init`と`train`の出力先に、チェックポイント、ONNXのネット、および終了報告を書き出す。
+ONNXのネットはONNXが形式を定めるので載せない。
+試験用の小さな自己対局のファイル`tools/train/zero/fixtures/zero-selfplay-small.mnsd`はMNSDの版2であり、`minase data zero-selfplay`で作った。
+
+| 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
+|---|---|---|---|---|
+| チェックポイント`checkpoint.pt` | PyTorchの`torch.save`の辞書、版なし | `minase_zero init`、`train` | `minase_zero train`（`--init`と`--resume`）、`fixture-eval` | `tools/train/zero/minase_zero/train.py`のdocstring |
+| 終了報告`summary.json` | なし | `minase_zero init`、`train` | なし | `tools/train/zero/minase_zero/train.py`のdocstring |
 
 ## 取り込み、診断、および重みの変換の報告
 
@@ -124,7 +135,7 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 読むときは、どのコマンドの出力ディレクトリにあるかで形式を見分ける。
 
 - `manifest.json`と`invocations.json`は、対局ハーネスの実行ディレクトリとSPSAの実行ディレクトリの両方にある。SPSAの`manifest.json`は版の欄を持たず、係数とSPSAの設定を持つ。
-- `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なる。
+- `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なり、AlphaZero型探索の学習器`minase_zero`の`summary.json`も`init`と`train`で欄が異なる。
 - `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
 - `latest.npz`と`best.npz`は4種の学習器がそれぞれ書き、収める配列は学習器ごとに異なる。`meta`の`kind`で学習器を見分ける。

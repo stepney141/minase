@@ -1,0 +1,12 @@
+{
+  "rules": "L0,P0,R1,E0",
+  "generation_commit": "ae6a3723a82bc2ccf28c033f0659358d88e95e45",
+  "network_sha256": "a01d01d47dd462fe5bf481caf35a2fec650415eed508d9358b54de4898db4168",
+  "nn_backend": "tensorrt",
+  "seed": 20261100,
+  "games": 1000,
+  "chunk_games": 250,
+  "simulations": 32,
+  "playthrough_percent": 100,
+  "max_ply": 1000
+}

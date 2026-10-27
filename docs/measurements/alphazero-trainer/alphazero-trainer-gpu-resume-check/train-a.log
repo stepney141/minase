@@ -1,0 +1,9 @@
+steps=50/398 policy=7.031708 value=0.691000 value_result=0.689339 positions_per_second=3220.96
+steps=100/398 policy=5.314887 value=0.679530 value_result=0.670172 positions_per_second=4626.10
+steps=150/398 policy=4.962474 value=0.645568 value_result=0.604952 positions_per_second=4627.64
+steps=200/398 policy=4.861198 value=0.595003 value_result=0.497472 positions_per_second=4649.07
+steps=250/398 policy=4.780115 value=0.559452 value_result=0.418034 positions_per_second=4660.06
+steps=300/398 policy=4.737728 value=0.539992 value_result=0.373704 positions_per_second=4642.51
+steps=350/398 policy=4.688666 value=0.529099 value_result=0.350735 positions_per_second=4641.49
+steps=398/398 policy=4.675561 value=0.517032 value_result=0.325971 positions_per_second=4445.14
+exit 0

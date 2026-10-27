@@ -15,14 +15,16 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 ## 状態
 
 進行中。2026年9月24日に起案し、2026年10月26日に着手した。
-サブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)、サブタスク2の[ネットの入出力と推論](archived/alphazero-network.md)、サブタスク3の[探索方式の共存とMCTS](archived/alphazero-mcts.md)、およびサブタスク4の[自己対局生成器](archived/alphazero-selfplay.md)は、2026年10月27日に完了してmasterへマージした。
+サブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)、サブタスク2の[ネットの入出力と推論](archived/alphazero-network.md)、サブタスク3の[探索方式の共存とMCTS](archived/alphazero-mcts.md)、およびサブタスク4の[自己対局生成器](archived/alphazero-selfplay.md)は2026年10月27日に、サブタスク5の[学習器](archived/alphazero-trainer.md)は2026年10月28日に完了してmasterへマージした。
 サブタスク1の実測では、10ブロック128チャネルの1サイクルを、1サイクルのCUが最も小さいColab機のL4で約40分（約1.02 CU）で回せる見込みが得られた。
 サブタスク2では、ランダム初期化のネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が作業機で許容誤差に収まることを確かめた。
 サブタスク3では、αβ探索の動作を変えずに探索方式`--search mcts`を加え、ランダム初期化のネットを使うMCTSがUSIで対局を規則上の終局まで指し切ることを確かめた。
 サブタスク4では、多数の局の葉をまとめて推論する自己対局生成器`minase data zero-selfplay`を加え、生成を途中で強制終了しても、起動し直すと確定済みの塊を残して欠けた塊だけが生成し直されることを作業機で確かめた。
+サブタスク5では、MNSDをRustの拡張モジュールで読むPyTorchの学習器`minase_zero`を加え、作業機のGPUで途中で強制終了して再開した学習が、止めない学習と出力したネットのバイト列まで一致することを確かめた。
+このとき学習したネットのTensorRTのFP16の出力は、照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
 各サブタスクは、完了のたびにmasterへマージする（「サブタスクの統合」の節）。
 初版の学習が動いてから検討すると定めた事項を除いて、設計判断は確定している。
-次の一手は、masterからサブタスク5の[学習器](alphazero-trainer.md)のブランチを切ることである。着手は利用者の指示を待つ。
+次の一手は、サブタスク6の[強化学習の実行](alphazero-rl.md)の前に、学習したネットのTensorRTのFP16の照合の許容誤差か照合する値（logitか合法手の確率か）を決め直すことである。着手は利用者の指示を待つ。
 
 ## 目的
 
@@ -79,7 +81,7 @@ MCTSは、αβ探索の置き換えとしてではなく、同じリポジトリ
 | 2 | [ネットの入出力と推論](archived/alphazero-network.md)（完了） | 入力平面、方策の符号化、価値の出力、ネットの構成、ortによる推論、およびネットのファイルの指定 | `crates/minase/src/nn/` | 1 |
 | 3 | [探索方式の共存とMCTS](archived/alphazero-mcts.md)（完了） | 探索方式の境界、PUCTとGumbel AlphaZeroの探索、反復と引き分けの扱い、起動引数`--search`と`--nn-model`、およびハーネスの起動引数の拡張 | `crates/minase/src/search/`、`crates/minase/src/harness/` | 2 |
 | 4 | [自己対局生成器](archived/alphazero-selfplay.md)（完了） | RLの自己対局の生成、手数の上限、投了、および塊ごとの確定と再開 | `crates/minase/src/bin/minase/zero_selfplay/` | 2、3 |
-| 5 | [学習器](alphazero-trainer.md) | PyTorchによる学習、MNSDの読み込み、価値と方策の損失、チェックポイント、およびONNXへの出力 | `tools/train/zero/` | 1、2 |
+| 5 | [学習器](archived/alphazero-trainer.md)（完了） | PyTorchによる学習、MNSDの読み込み、価値と方策の損失、チェックポイント、およびONNXへの出力 | `tools/train/zero/` | 1、2 |
 | 6 | [強化学習の実行](alphazero-rl.md) | サイクルの手順、費用の規則と承認、進捗測定、ネットと探索回数の段階的な引き上げ、および記録 | `docs/measurements/alphazero-rl/`、NAS | 1〜5 |
 
 サブタスク1では、本番のコードを書く前に、借りる候補のGPU種別ごとに1サイクルを回せるかを見積もる。

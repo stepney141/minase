@@ -1,0 +1,5 @@
+resume: completed_steps=200/398
+steps=250/398 policy=4.780115 value=0.559452 value_result=0.418034 positions_per_second=3783.83
+steps=300/398 policy=4.737728 value=0.539992 value_result=0.373704 positions_per_second=4523.59
+steps=350/398 policy=4.688667 value=0.529099 value_result=0.350735 positions_per_second=4520.37
+steps=398/398 policy=4.675561 value=0.517032 value_result=0.325971 positions_per_second=4338.71

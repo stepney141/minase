@@ -57,7 +57,14 @@ uv run --frozen python nn_torch_reference.py --onnx <ネット.onnx> --blocks 10
   --fixture fixtures/nn-positions.jsonl --out <出力>/pytorch.json
 ```
 
-学習したネットの出力は、学習器がチェックポイントから同じ形で書き出す（[学習器の設計書](../plans/alphazero-trainer.md)）。
+学習したネットの出力は、学習器`minase_zero`の`fixture-eval`がチェックポイントから同じ形で書き出す。
+`fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
+
+```console
+cd tools/train/zero
+uv run --frozen python -m minase_zero fixture-eval --checkpoint <出力先>/checkpoint.pt \
+  --onnx <出力先>/model.onnx --fixture fixtures/nn-positions.jsonl --out <出力>/pytorch.json
+```
 
 ## 5. 照合する
 

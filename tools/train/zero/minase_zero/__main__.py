@@ -1,4 +1,19 @@
-"""初期化、学習、再開、および固定局面集の推論を明示した引数で実行する。"""
+"""初期化、学習、再開、および固定局面集の推論を明示した引数で実行する。
+
+作業ディレクトリをtools/train/zeroにして、`uv run --frozen python -m minase_zero <サブコマンド>`で起動する。
+引数はすべて既定値を持たない。
+
+- init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
+- train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（学習窓の
+  MNSDファイルの列）、--out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
+  --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
+  --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
+- train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
+- fixture-eval：--checkpoint、--onnx、--fixture、--out。
+
+引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
+出力先と学習の契約はtrain.pyのdocstringにある。
+"""
 
 import argparse
 from pathlib import Path
