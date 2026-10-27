@@ -53,3 +53,21 @@ Claude Codeのサブエージェント`codex:codex-rescue`は、起動したセ�
 別のディレクトリで実行すると「No job found」となり、完了を待つループが終わらない。
 codexが判断を求めて止まった場合は、同じディレクトリで`task --resume-last --write --cwd <同じパス> "<回答>"`と実行すると、同じセッションのまま続けられる。
 指示書に「質問で止まらず、判断が要る点は方針に沿って決め、報告に書くこと」と書いておくと、止まらずに最後まで実行する。
+
+補助スクリプトには使い方を表示するオプションがない。
+`task --help`と実行すると、`--help`を依頼文とする実際のタスクがcodexで起動する。
+サブコマンド（`task`、`status`、`result`、`cancel`など）と引数は、補助スクリプトのソースで確かめる。
+
+補助スクリプトは、作業ディレクトリごとにcodexとの通信を仲介するプロセス（broker）を起動する。
+brokerは委任が終わっても終了しない。
+CLAUDE.mdが求める補助プロセスの後始末として、worktreeでの委任を終えたら、そのworktreeのbrokerを終了させる。
+プラグインがClaude Codeのセッションの終了時に実行するフックを、そのworktreeを`cwd`として手動で実行すると、そのworktreeのbrokerだけが終了し、ジョブの記録も消える。
+
+```console
+echo "{\"cwd\":\"<worktreeのパス>\",\"session_id\":\"$CODEX_COMPANION_SESSION_ID\",\"hook_event_name\":\"SessionEnd\"}" \
+  | CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/codex-openai-codex \
+    node <プラグインの場所>/scripts/session-lifecycle-hook.mjs SessionEnd
+```
+
+終了したことは`pgrep -af '[a]pp-server-broker'`で確かめる。
+ほかのセッションが起動したbrokerは、作業ディレクトリが異なり、まだ使われていることがあるので終了させない。
