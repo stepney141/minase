@@ -30,7 +30,7 @@
 //! 投了以外の終局では、指した手、価値、方策がなく、訪問回数が0の最終項目を追加する。
 //!
 //! 投了条件は、選んだ辺が訪問済みでQが1%未満、かつ根とその子孫に反復で打ち切った節点がないことである。
-//! 反復の印は[`Node::has_repetition_cutoff`]で調べ、反復による勝敗の確定と引き分けの両方を含める。
+//! 反復の印は[`Node::has_approximate_result`]で調べ、反復の近似による勝敗の確定と引き分けの両方を含める。正確な裁定は含めない。
 //! 選んだ辺が未訪問なら投了せず、最後まで指させる対局では条件の成立だけを記録する。
 //! 最初に条件を満たした側が最終的に負けなかった場合を誤った投了とし、勝ち、引き分け、手数上限での打ち切りを含める。
 //! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
@@ -326,7 +326,7 @@ pub(super) fn should_resign(root: &Node, action: usize) -> Result<bool, Error> {
     let edge = root.edges.get(action).ok_or(Error::InvalidAction)?;
     Ok(edge.visits > 0
         && selected_value(root, action)? < RESIGN_THRESHOLD
-        && !root.has_repetition_cutoff())
+        && !root.has_approximate_result())
 }
 
 /// 最初に投了条件を満たした側が、最後まで指しても負けなかったかを返す。

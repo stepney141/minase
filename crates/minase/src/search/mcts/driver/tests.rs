@@ -64,7 +64,10 @@ fn r1_path_cycles_classify_both_attackers_and_draws_without_inference() {
             assert_eq!(advance(&mut driver, &mut evaluator), None);
             let terminal = driver.tree().node(&path(&driver, &line)).unwrap();
             let expected = if attacks[0] == attacks[1] {
-                NodeState::Draw(0.5)
+                NodeState::Draw {
+                    value: 0.5,
+                    approximate: true,
+                }
             } else {
                 let side_attacks = attacks[root.side_to_move().index()];
                 proven(
@@ -73,6 +76,7 @@ fn r1_path_cycles_classify_both_attackers_and_draws_without_inference() {
                     } else {
                         Outcome::Win
                     },
+                    true,
                     true,
                 )
             };
@@ -93,51 +97,38 @@ fn r1_path_cycles_classify_both_attackers_and_draws_without_inference() {
     }
 }
 
-// 履歴部分の攻撃連続数は、周回に必要な回数とちょうど等しい場合にだけ十分となる。
+// 履歴部分もGame::playで作り、攻撃連続数を手作業で注入しない。
 #[test]
 fn r1_history_counts_cover_the_history_segment_and_current_move() {
-    for attacker in Color::ALL {
-        let (root, line) = rook_cycle(attacker == Color::Black, attacker == Color::White);
+    for attacks in [[true, false], [false, true], [false, false], [true, true]] {
+        let (root, line) = rook_cycle(attacks[0], attacks[1]);
         for prefix in [2, 3] {
             let mut game = Game::from_position(rules(RepetitionRule::R1), root.clone());
             for &mv in &line[..prefix] {
                 assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
             }
-            for sufficient in [false, true] {
-                let mut input = SearchSnapshot::from_game(&game).unwrap();
-                if !sufficient {
-                    let SearchRepetition::R1 {
-                        ref mut consecutive_attacking_moves,
-                    } = input.repetition
-                    else {
-                        panic!()
-                    };
-                    consecutive_attacking_moves[attacker.index()] -= 1;
-                }
-                let mut evaluator = ScriptedEvaluator::line(game.position(), &line[prefix..]);
-                let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
-                for _ in prefix..4 {
-                    advance(&mut driver, &mut evaluator);
-                }
-                assert_eq!(advance(&mut driver, &mut evaluator), None);
-                let terminal = driver.tree().node(&path(&driver, &line[prefix..])).unwrap();
-                assert_eq!(
-                    terminal.state,
-                    if sufficient {
-                        proven(
-                            if attacker == Color::Black {
-                                Outcome::Loss
-                            } else {
-                                Outcome::Win
-                            },
-                            true,
-                        )
-                    } else {
-                        NodeState::Draw(0.5)
-                    }
-                );
-                assert_eq!(evaluator.seen.len(), 4 - prefix);
+            let mut driver = Driver::new(
+                SearchSnapshot::from_game(&game).unwrap(),
+                CAPACITY,
+                DrawValue::SelfPlay,
+            )
+            .unwrap();
+            let mut evaluator = ScriptedEvaluator::line(game.position(), &line[prefix..]);
+            for _ in prefix..4 {
+                advance(&mut driver, &mut evaluator);
             }
+            assert_eq!(advance(&mut driver, &mut evaluator), None);
+            let terminal = driver.tree().node(&path(&driver, &line[prefix..])).unwrap();
+            let expected = match attacks {
+                [true, false] => proven(Outcome::Loss, true, true),
+                [false, true] => proven(Outcome::Win, true, true),
+                _ => NodeState::Draw {
+                    value: 0.5,
+                    approximate: true,
+                },
+            };
+            assert_eq!(terminal.state, expected);
+            assert_eq!(evaluator.seen.len(), 4 - prefix);
         }
     }
 }
@@ -193,58 +184,56 @@ fn r2_r3_root_moves_exclude_the_forbidden_return() {
     }
 }
 
+// 過去の周回とは異なる迂回を通り、初出の子から既出局面へ戻る応手を調べる。
 #[test]
 fn r2_r3_child_moves_filter_exact_history_thresholds() {
     for (rule, threshold) in [(RepetitionRule::R2, 1), (RepetitionRule::R3, 3)] {
-        for count in 0..=threshold {
-            let mut input = initial();
-            input.repetition = if rule == RepetitionRule::R2 {
-                SearchRepetition::R2
-            } else {
-                SearchRepetition::R3
-            };
-            let first = input.root_moves()[0];
-            input.root_moves = vec![first];
-            let mut child = input.position().clone();
-            child.make_move_unchecked(first, input.rules());
-            let mut expected = legal_moves(&child);
-            let forbidden = expected[0];
-            let mut returned = child.clone();
-            returned.make_move_unchecked(forbidden, input.rules());
-            input.history_keys = vec![repetition_key(rule, &returned); count];
-            input
-                .history_keys
-                .push(repetition_key(rule, input.position()));
-            if count == threshold {
-                expected.retain(|&mv| mv != forbidden);
+        for count in 1..=threshold {
+            let (root, cycle) = rook_cycle(false, false);
+            let mut game = Game::from_position(rules(rule), root);
+            let old_cycle = [
+                cycle[0],
+                step(sq(8, 8), sq(8, 6)),
+                cycle[2],
+                step(sq(8, 6), sq(8, 8)),
+            ];
+            for _ in 1..count {
+                for mv in old_cycle {
+                    assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+                }
             }
-            let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
-            advance(&mut driver, &mut UniformEvaluator);
+            for &mv in &cycle[..2] {
+                assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+            }
+            let mut driver = Driver::new(
+                SearchSnapshot::from_game(&game).unwrap(),
+                CAPACITY,
+                DrawValue::SelfPlay,
+            )
+            .unwrap();
+            let mut evaluator = ScriptedEvaluator::line(game.position(), &cycle[2..]);
+            advance(&mut driver, &mut evaluator);
             let Step::Evaluate(request) = driver
                 .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
                 .unwrap()
             else {
                 panic!()
             };
-            assert_eq!(request.query().moves, expected);
-            evaluate(&mut driver, &mut UniformEvaluator, &request);
+            assert_eq!(game.play(cycle[2]), Ok(GameStatus::Ongoing));
+            assert_eq!(request.query().moves, game.legal_moves());
+            assert_eq!(request.query().moves.contains(&cycle[3]), count < threshold);
+            evaluate(&mut driver, &mut evaluator, &request);
         }
     }
 }
 
-// 根を履歴末尾と経路先頭の両方で数えると、R3の2回目を誤って禁止する。
+// 根は履歴末尾と経路先頭の両方にあるが、R3の合法な2回目は辺に残す。
 #[test]
 fn prohibition_counts_the_root_once_and_includes_the_child_path() {
     let (root, line) = rook_cycle(false, false);
-    for (rule, root_occurrences, forbidden) in [
-        (RepetitionRule::R2, 1, true),
-        (RepetitionRule::R3, 1, false),
-        (RepetitionRule::R3, 2, false),
-        (RepetitionRule::R3, 3, true),
-    ] {
-        let mut input =
+    for rule in [RepetitionRule::R2, RepetitionRule::R3] {
+        let input =
             SearchSnapshot::from_game(&Game::from_position(rules(rule), root.clone())).unwrap();
-        input.history_keys = vec![repetition_key(rule, &root); root_occurrences];
         let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
         let mut evaluator = ScriptedEvaluator::line(&root, &line);
         for _ in 0..4 {
@@ -253,46 +242,56 @@ fn prohibition_counts_the_root_once_and_includes_the_child_path() {
         let parent = driver.tree().node(&path(&driver, &line[..3])).unwrap();
         assert_eq!(
             parent.edges.iter().any(|edge| edge.mv == line[3]),
-            !forbidden
+            rule == RepetitionRule::R3
         );
-        if !forbidden {
+        if rule == RepetitionRule::R3 {
             assert_eq!(advance(&mut driver, &mut evaluator), None);
             assert_eq!(
                 driver.tree().node(&path(&driver, &line)).unwrap().state,
-                NodeState::Draw(0.5)
+                NodeState::Draw {
+                    value: 0.5,
+                    approximate: true
+                }
             );
         }
     }
 }
 
-// 履歴に子の全応手の到達先を置く。子自体は初出なので禁止手を除く段まで進む。
+// 第23条: 局面合法手がすべて反復で禁止される場合も、審判層の合法手なしで確定する。
 #[test]
-fn all_forbidden_replies_prove_a_loss_in_the_repetition_band() {
-    for (repetition, count) in [(SearchRepetition::R2, 1), (SearchRepetition::R3, 3)] {
-        let mut input = initial();
-        input.repetition = repetition;
-        let mv = input.root_moves()[0];
-        input.root_moves = vec![mv];
-        let mut child = input.position().clone();
-        child.make_move_unchecked(mv, input.rules());
-        let mut history = Vec::new();
-        for reply in legal_moves(&child) {
-            let mut next = child.clone();
-            next.make_move_unchecked(reply, input.rules());
-            history.extend(vec![repetition_key(repetition.rule(), &next); count]);
+fn all_forbidden_replies_are_an_exact_stalemate_in_the_mate_band() {
+    let mut pieces = vec![
+        (sq(0, 0), Color::Black, PieceKind::GoBetween),
+        (sq(11, 11), Color::Black, PieceKind::King),
+        (sq(10, 10), Color::Black, PieceKind::Pawn),
+        (sq(10, 11), Color::Black, PieceKind::Pawn),
+        (sq(11, 10), Color::Black, PieceKind::Pawn),
+        (sq(5, 5), Color::White, PieceKind::King),
+    ];
+    pieces.extend((2..=11).map(|rank| (sq(0, rank), Color::Black, PieceKind::Pawn)));
+    let cycle = [
+        step(sq(5, 5), sq(5, 4)),
+        step(sq(0, 0), sq(0, 1)),
+        step(sq(5, 4), sq(5, 5)),
+        step(sq(0, 1), sq(0, 0)),
+    ];
+    for (rule, rounds) in [(RepetitionRule::R2, 0), (RepetitionRule::R3, 2)] {
+        for e1 in [false, true] {
+            let mut configured = rules(rule);
+            configured.e1 = e1;
+            let mut game = Game::from_position(configured, position(Color::White, &pieces));
+            for mv in cycle.into_iter().cycle().take(rounds * 4 + 2) {
+                assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+            }
+            check_transition(
+                &game,
+                cycle[2],
+                GameStatus::Finished(GameResult::Win {
+                    winner: Color::White,
+                    reason: WinReason::Stalemate,
+                }),
+            );
         }
-        assert!(!history.contains(&repetition_key(repetition.rule(), &child)));
-        history.push(repetition_key(repetition.rule(), input.position()));
-        input.history_keys = history;
-        let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
-        advance(&mut driver, &mut UniformEvaluator);
-        assert_eq!(advance(&mut driver, &mut UniformEvaluator), None);
-        assert_eq!(
-            driver.tree().node(&[0]).unwrap().state,
-            proven(Outcome::Loss, true)
-        );
-        assert_eq!(driver.score(SCALE).unwrap(), REPETITION_WIN - 1);
-        assert!(in_repetition_band(driver.score(SCALE).unwrap()));
     }
 }
 
@@ -343,7 +342,7 @@ fn draws_use_root_perspective_and_selfplay_stays_neutral() {
                     .node(&path(&driver, &line[prefix..]))
                     .unwrap()
                     .state;
-                let NodeState::Draw(actual) = state else {
+                let NodeState::Draw { value: actual, .. } = state else {
                     panic!("{state:?}")
                 };
                 let r = match draw {
@@ -357,7 +356,7 @@ fn draws_use_root_perspective_and_selfplay_stays_neutral() {
             }
         }
     }
-    // R3の合法な2回目の再現は、対局用の設定でも0.5とする。
+    // R3の合法な2回目の再現にも、対局用の引き分け値を適用する。
     let input = SearchSnapshot::from_game(&Game::from_position(
         rules(RepetitionRule::R3),
         root.clone(),
@@ -379,7 +378,10 @@ fn draws_use_root_perspective_and_selfplay_stays_neutral() {
     }
     assert_eq!(
         driver.tree().node(&path(&driver, &line)).unwrap().state,
-        NodeState::Draw(0.5)
+        NodeState::Draw {
+            value: driver.draw_probability,
+            approximate: true
+        }
     );
 }
 
@@ -410,6 +412,7 @@ fn depth_limit_is_a_network_leaf_and_score_bands_include_max_ply() {
                 outcome,
                 distance: MAX_PLY,
                 repetition,
+                approximate: repetition,
             }
             .score();
             assert_eq!(in_repetition_band(score), repetition);
@@ -652,7 +655,7 @@ fn no_generated_moves_are_a_mate_loss_before_repetition_filtering() {
     assert_eq!(advance(&mut driver, &mut UniformEvaluator), None);
     assert_eq!(
         driver.tree().node(&[0]).unwrap().state,
-        proven(Outcome::Loss, false)
+        proven(Outcome::Loss, false, false)
     );
     assert_eq!(driver.score(SCALE).unwrap(), MATE - 1);
 }
@@ -739,5 +742,851 @@ fn reroot_preserves_r2_r3_prohibitions_when_path_becomes_history() {
             .map(|edge| edge.mv)
             .collect();
         assert_eq!(after, expected);
+    }
+}
+
+// 設計書の終局契約をGameの結果と照合する。根の候補の選別は別の試験で検査する。
+fn check_transition(game: &Game, mv: Move, expected: GameStatus) -> Driver {
+    let before = game.clone();
+    let mut oracle = game.clone();
+    assert_eq!(oracle.play(mv), Ok(expected), "fixture move: {mv:?}");
+    let mut input = SearchSnapshot::from_game(game).unwrap();
+    input.root_moves = vec![mv];
+    let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
+    if matches!(expected, GameStatus::Finished(_)) {
+        driver.tree.max_ply = 1;
+    }
+    advance(&mut driver, &mut UniformEvaluator);
+    let evaluated = advance(&mut driver, &mut UniformEvaluator).is_some();
+    let child = driver.tree().node(&[0]).unwrap();
+    match expected {
+        GameStatus::Finished(result) => {
+            assert!(
+                !evaluated,
+                "a terminal child must not request inference: {result:?}"
+            );
+            assert_eq!(child.value, None);
+            assert!(child.edges.is_empty());
+            assert!(!child.has_approximate_result());
+            match result {
+                GameResult::Win { winner, reason } => {
+                    let outcome = if winner == oracle.position().side_to_move() {
+                        Outcome::Win
+                    } else {
+                        Outcome::Loss
+                    };
+                    assert_eq!(
+                        child.state,
+                        proven(outcome, reason == WinReason::Repetition, false)
+                    );
+                    assert_eq!(
+                        driver.tree().root().edges[0].q(),
+                        Some(if winner == game.position().side_to_move() {
+                            1.0
+                        } else {
+                            0.0
+                        })
+                    );
+                    let NodeState::Proven(parent) = driver.tree().root().state else {
+                        panic!()
+                    };
+                    assert_eq!(parent.distance, 1);
+                    assert_eq!(
+                        parent.outcome,
+                        if outcome == Outcome::Win {
+                            Outcome::Loss
+                        } else {
+                            Outcome::Win
+                        }
+                    );
+                }
+                GameResult::Draw { .. } => {
+                    assert_eq!(
+                        child.state,
+                        NodeState::Draw {
+                            value: 0.5,
+                            approximate: false
+                        }
+                    );
+                    assert_eq!(driver.tree().root().edges[0].q(), Some(0.5));
+                }
+            }
+        }
+        GameStatus::Ongoing => {
+            assert!(
+                evaluated || child.has_approximate_result(),
+                "ongoing game classified as {:?}",
+                child.state
+            );
+        }
+    }
+    assert!(before.same_state(game));
+    assert!(before.same_state(driver.snapshot.game().unwrap()));
+    driver
+}
+
+fn win(winner: Color, reason: WinReason) -> GameStatus {
+    GameStatus::Finished(GameResult::Win { winner, reason })
+}
+
+fn draw(reason: minase_core::DrawReason) -> GameStatus {
+    GameStatus::Finished(GameResult::Draw { reason })
+}
+
+// 監査の3例。E1は詰みだけを止め、E2は駒枯れだけを止める。
+#[test]
+fn audit_terminal_examples_follow_the_full_endgame_rules() {
+    use minase_core::{DrawReason, ExhaustionRule};
+    let cases = [
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                    (sq(4, 4), Color::Black, PieceKind::Rook),
+                    (sq(4, 5), Color::White, PieceKind::Pawn),
+                ],
+            ),
+            step(sq(4, 4), sq(4, 5)),
+            win(Color::Black, WinReason::PieceExhaustion),
+        ),
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                    (sq(0, 1), Color::White, PieceKind::Pawn),
+                ],
+            ),
+            step(sq(0, 0), sq(0, 1)),
+            draw(DrawReason::PieceExhaustion),
+        ),
+        (
+            position(
+                Color::Black,
+                &[
+                    (sq(2, 2), Color::Black, PieceKind::King),
+                    (sq(0, 0), Color::White, PieceKind::King),
+                    (sq(1, 2), Color::Black, PieceKind::FreeKing),
+                    (sq(11, 5), Color::White, PieceKind::Pawn),
+                ],
+            ),
+            step(sq(1, 2), sq(1, 1)),
+            win(Color::Black, WinReason::Mate),
+        ),
+    ];
+    for (position, mv, result) in cases {
+        for e1 in [false, true] {
+            for exhaustion in [ExhaustionRule::E0, ExhaustionRule::E2] {
+                let configured = Rules {
+                    e1,
+                    exhaustion,
+                    ..Rules::ENGINE_DEFAULT
+                };
+                let expected = if (result == win(Color::Black, WinReason::Mate) && e1)
+                    || (result != win(Color::Black, WinReason::Mate)
+                        && exhaustion == ExhaustionRule::E2)
+                {
+                    GameStatus::Ongoing
+                } else {
+                    result
+                };
+                check_transition(
+                    &Game::from_position(configured, position.clone()),
+                    mv,
+                    expected,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn royal_capture_handles_the_prince_and_both_steps_of_a_lion_move() {
+    use minase_core::PieceCode;
+    use minase_core::test_util::position_from_codes;
+    let position = position_from_codes(
+        Color::Black,
+        &[
+            (
+                sq(0, 0),
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+            ),
+            (
+                sq(5, 5),
+                PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+            ),
+            (
+                sq(5, 6),
+                PieceCode::new(Color::White, PieceKind::King).unwrap(),
+            ),
+            (
+                sq(6, 6),
+                PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
+            ),
+        ],
+    );
+    let game = Game::from_position(Rules::ENGINE_DEFAULT, position);
+    for to in [sq(5, 6), sq(6, 6)] {
+        check_transition(&game, step(sq(5, 5), to), GameStatus::Ongoing);
+    }
+    // 王駒捕獲と駒枯れがともに成立しても、捕獲を理由とする。
+    check_transition(
+        &game,
+        Move {
+            from: sq(5, 5),
+            mid: Some(sq(5, 6)),
+            to: sq(6, 6),
+            promote: false,
+        },
+        win(Color::Black, WinReason::RoyalCapture),
+    );
+}
+
+fn grace_game() -> (Game, Move) {
+    (
+        Game::from_position(
+            Rules::ENGINE_DEFAULT,
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(5, 5), Color::Black, PieceKind::GoldGeneral),
+                    (sq(4, 7), Color::White, PieceKind::King),
+                    (sq(5, 6), Color::White, PieceKind::Pawn),
+                ],
+            ),
+        ),
+        step(sq(5, 5), sq(5, 6)),
+    )
+}
+
+#[test]
+fn grace_is_carried_from_the_root_and_isolated_between_branches() {
+    use minase_core::DrawReason;
+    let (mut game, establish) = grace_game();
+    let driver = check_transition(&game, establish, GameStatus::Ongoing);
+    let before = game.clone();
+    let node = driver.tree().node(&[0]).unwrap();
+    for _ in 0..2 {
+        for (mv, result) in [
+            (
+                step(sq(4, 7), sq(3, 7)),
+                win(Color::Black, WinReason::PieceExhaustion),
+            ),
+            (step(sq(4, 7), sq(5, 6)), draw(DrawReason::PieceExhaustion)),
+        ] {
+            let index = node.edges.iter().position(|edge| edge.mv == mv).unwrap();
+            let (_, moves, state) = driver.classify_child(&[0, index]).unwrap();
+            assert!(moves.is_empty());
+            assert_eq!(
+                state,
+                if matches!(result, GameStatus::Finished(GameResult::Win { .. })) {
+                    proven(Outcome::Win, false, false)
+                } else {
+                    NodeState::Draw {
+                        value: 0.5,
+                        approximate: false,
+                    }
+                }
+            );
+            assert!(before.same_state(driver.snapshot.game().unwrap()));
+        }
+    }
+    assert_eq!(game.play(establish), Ok(GameStatus::Ongoing));
+    // 裸側の根で同じ猶予を引き継ぎ、捕獲しない応手は敗北となる。
+    check_transition(
+        &game,
+        step(sq(4, 7), sq(3, 7)),
+        win(Color::Black, WinReason::PieceExhaustion),
+    );
+    check_transition(
+        &game,
+        step(sq(4, 7), sq(5, 6)),
+        draw(DrawReason::PieceExhaustion),
+    );
+    // 余分な駒を取っても王駒同士が隣接していれば、対局は継続する。
+    let mut adjacent = Game::from_position(
+        Rules::ENGINE_DEFAULT,
+        position(
+            Color::Black,
+            &[
+                (sq(4, 5), Color::Black, PieceKind::King),
+                (sq(5, 5), Color::Black, PieceKind::GoldGeneral),
+                (sq(4, 7), Color::White, PieceKind::King),
+                (sq(5, 6), Color::White, PieceKind::Pawn),
+            ],
+        ),
+    );
+    check_transition(&adjacent, establish, GameStatus::Ongoing);
+    adjacent.play(establish).unwrap();
+    check_transition(&adjacent, step(sq(4, 7), sq(5, 6)), GameStatus::Ongoing);
+}
+
+#[test]
+fn material_counts_dead_pieces_unpromoted_pieces_and_capturable_bare_kings() {
+    for kind in [PieceKind::Pawn, PieceKind::Lance] {
+        for (color, rank) in [(Color::Black, 11), (Color::White, 0)] {
+            let game = Game::from_position(
+                Rules::ENGINE_DEFAULT,
+                position(
+                    Color::Black,
+                    &[
+                        (sq(2, 2), Color::Black, PieceKind::King),
+                        (sq(9, 9), Color::White, PieceKind::King),
+                        (sq(5, 5), Color::Black, PieceKind::GoldGeneral),
+                        (sq(0, rank), color, kind),
+                    ],
+                ),
+            );
+            check_transition(
+                &game,
+                step(sq(2, 2), sq(2, 3)),
+                win(Color::Black, WinReason::PieceExhaustion),
+            );
+        }
+    }
+    for kind in [PieceKind::Pawn, PieceKind::GoBetween] {
+        let game = Game::from_position(
+            Rules::ENGINE_DEFAULT,
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                    (sq(4, 4), Color::Black, kind),
+                ],
+            ),
+        );
+        check_transition(&game, step(sq(4, 4), sq(4, 5)), GameStatus::Ongoing);
+    }
+    for exhaustion in [
+        minase_core::ExhaustionRule::E0,
+        minase_core::ExhaustionRule::E3,
+    ] {
+        let game = Game::from_position(
+            Rules {
+                exhaustion,
+                ..Rules::ENGINE_DEFAULT
+            },
+            position(
+                Color::Black,
+                &[
+                    (sq(4, 4), Color::Black, PieceKind::King),
+                    (sq(4, 6), Color::White, PieceKind::King),
+                ],
+            ),
+        );
+        check_transition(&game, step(sq(4, 4), sq(4, 5)), GameStatus::Ongoing);
+    }
+}
+
+#[test]
+fn bare_king_wins_and_draws_are_exact() {
+    use minase_core::{DrawReason, ExhaustionRule};
+    let configured = Rules {
+        exhaustion: ExhaustionRule::E3,
+        ..Rules::ENGINE_DEFAULT
+    };
+    let game = Game::from_position(
+        configured,
+        position(
+            Color::Black,
+            &[
+                (sq(5, 4), Color::Black, PieceKind::King),
+                (sq(9, 9), Color::White, PieceKind::Rook),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    check_transition(
+        &game,
+        step(sq(5, 4), sq(5, 5)),
+        win(Color::White, WinReason::BareKing),
+    );
+    let game = Game::from_position(
+        configured,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    check_transition(&game, step(sq(0, 0), sq(0, 1)), draw(DrawReason::BareKing));
+}
+
+#[test]
+fn exact_r1_wins_losses_and_draws_precede_the_cycle_approximation() {
+    use minase_core::DrawReason;
+    for attacks in [[true, false], [false, true], [false, false], [true, true]] {
+        let (start, cycle) = rook_cycle(attacks[0], attacks[1]);
+        let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start);
+        for ply in 0..12 {
+            let mv = cycle[ply % 4];
+            let expected = if ply < 11 {
+                GameStatus::Ongoing
+            } else {
+                match attacks {
+                    [true, false] => win(Color::White, WinReason::Repetition),
+                    [false, true] => win(Color::Black, WinReason::Repetition),
+                    _ => draw(DrawReason::Repetition),
+                }
+            };
+            if ply >= 10 {
+                check_transition(&game, mv, expected);
+            }
+            if ply == 11 && attacks == [false, true] {
+                // 白の自滅は根から除くが、Gameでは受理して黒の勝ちにする。
+                let input = SearchSnapshot::from_game(&game).unwrap();
+                assert!(!input.root_moves().contains(&mv));
+                assert!(game.repetition_root_moves().losing().contains(&mv));
+            }
+            assert_eq!(game.play(mv), Ok(expected));
+        }
+    }
+}
+
+#[test]
+fn exact_terminal_and_approximate_repetition_precede_the_depth_limit() {
+    let (game, establish) = grace_game();
+    let mut driver = check_transition(&game, establish, GameStatus::Ongoing);
+    driver.tree.max_ply = 2;
+    let index = driver
+        .tree()
+        .node(&[0])
+        .unwrap()
+        .edges
+        .iter()
+        .position(|edge| edge.mv == step(sq(4, 7), sq(3, 7)))
+        .unwrap();
+    assert_eq!(
+        driver.classify_child(&[0, index]).unwrap().2,
+        proven(Outcome::Win, false, false)
+    );
+    let (start, cycle) = rook_cycle(false, false);
+    let mut driver = Driver::new(snapshot(&start), CAPACITY, DrawValue::SelfPlay).unwrap();
+    driver.tree.max_ply = 4;
+    let mut evaluator = ScriptedEvaluator::line(&start, &cycle);
+    for _ in 0..4 {
+        advance(&mut driver, &mut evaluator);
+    }
+    assert_eq!(advance(&mut driver, &mut evaluator), None);
+    assert!(
+        driver
+            .tree()
+            .node(&path(&driver, &cycle))
+            .unwrap()
+            .has_approximate_result()
+    );
+}
+
+#[test]
+fn exact_draws_use_the_configured_probability_from_either_side() {
+    use minase_core::ExhaustionRule;
+    for exhaustion in [ExhaustionRule::E0, ExhaustionRule::E3] {
+        let (mut game, establish) = grace_game();
+        if exhaustion == ExhaustionRule::E3 {
+            game = Game::from_position(
+                Rules {
+                    exhaustion,
+                    ..Rules::ENGINE_DEFAULT
+                },
+                game.position().clone(),
+            );
+        }
+        for prefix in [false, true] {
+            let mut root = game.clone();
+            if prefix {
+                root.play(establish).unwrap();
+            }
+            let line = if prefix {
+                vec![step(sq(4, 7), sq(5, 6))]
+            } else {
+                vec![establish, step(sq(4, 7), sq(5, 6))]
+            };
+            for cp in [-1200, 1200] {
+                for draw_value in [
+                    DrawValue::SelfPlay,
+                    DrawValue::Game {
+                        cp_per_logit: SCALE,
+                    },
+                ] {
+                    let input = SearchSnapshot::from_game(&root)
+                        .unwrap()
+                        .with_draw_value(cp)
+                        .unwrap();
+                    let mut driver = Driver::new(input, CAPACITY, draw_value).unwrap();
+                    let mut evaluator = ScriptedEvaluator::line(root.position(), &line);
+                    for _ in 0..line.len() {
+                        advance(&mut driver, &mut evaluator);
+                    }
+                    assert_eq!(advance(&mut driver, &mut evaluator), None);
+                    let expected = if prefix {
+                        1.0 - driver.draw_probability
+                    } else {
+                        driver.draw_probability
+                    };
+                    assert_eq!(
+                        driver.tree().node(&path(&driver, &line)).unwrap().state,
+                        NodeState::Draw {
+                            value: expected,
+                            approximate: false
+                        }
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn seeded_games_match_the_referee_without_terminal_inference() {
+    use minase_core::rng::XorShift64;
+    use std::num::{NonZeroU64, NonZeroUsize};
+    let mut checked = 0;
+    let mut terminal = 0;
+    for seed in [1, 17, 123, 20261028] {
+        let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
+        let mut game = Game::with_default_rules();
+        for _ in 0..600 {
+            let moves = game.legal_moves();
+            let mv = moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())];
+            let mut next = game.clone();
+            let expected = next.play(mv).unwrap();
+            if SearchSnapshot::from_game(&game)
+                .unwrap()
+                .root_moves()
+                .contains(&mv)
+            {
+                check_transition(&game, mv, expected);
+                checked += 1;
+            }
+            game = next;
+            if matches!(expected, GameStatus::Finished(_)) {
+                terminal += 1;
+                break;
+            }
+        }
+    }
+    assert!(checked >= 600, "only {checked} plies checked");
+    assert!(terminal > 0, "random coverage must include a terminal move");
+}
+
+#[test]
+fn reuse_compares_full_rules_and_the_draw_perspective() {
+    let game = Game::with_default_rules();
+    let mut driver = Driver::new(
+        SearchSnapshot::from_game(&game).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    assert!(
+        driver
+            .reuse(
+                &SearchSnapshot::from_game(&game).unwrap(),
+                DrawValue::SelfPlay
+            )
+            .unwrap()
+    );
+    advance(&mut driver, &mut UniformEvaluator);
+    for configured in [
+        Rules {
+            e1: true,
+            ..game.rules()
+        },
+        Rules {
+            exhaustion: minase_core::ExhaustionRule::E2,
+            ..game.rules()
+        },
+    ] {
+        let different = Game::from_position(configured, game.position().clone());
+        assert!(
+            !driver
+                .reuse(
+                    &SearchSnapshot::from_game(&different).unwrap(),
+                    DrawValue::SelfPlay
+                )
+                .unwrap()
+        );
+    }
+    let draw_value = DrawValue::Game {
+        cp_per_logit: SCALE,
+    };
+    let input = SearchSnapshot::from_game(&game)
+        .unwrap()
+        .with_draw_value(1200)
+        .unwrap();
+    let mut driver = Driver::new(input, CAPACITY, draw_value).unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    let path = advance(&mut driver, &mut UniformEvaluator).unwrap();
+    let mv = driver.tree().root().edges[path[0]].mv;
+    let mut next = game.clone();
+    next.play(mv).unwrap();
+    let input = SearchSnapshot::from_game(&next)
+        .unwrap()
+        .with_draw_value(1200)
+        .unwrap();
+    assert!(!driver.reuse(&input, draw_value).unwrap());
+}
+
+#[test]
+fn snapshots_without_a_game_are_rejected_by_mcts() {
+    let source = initial();
+    let synthetic = SearchSnapshot::from_parts(
+        source.position.clone(),
+        source.rules,
+        source.repetition,
+        source.history_keys.clone(),
+        source.root_moves.clone(),
+    )
+    .unwrap();
+    assert!(matches!(
+        Driver::new(synthetic, CAPACITY, DrawValue::SelfPlay),
+        Err(Error::MissingGame)
+    ));
+}
+
+#[test]
+fn illegal_replay_returns_the_original_error_and_cancels_virtual_loss() {
+    use minase_core::{GameError, IllegalMoveCause};
+    use std::error::Error as _;
+    let invalid = step(sq(5, 5), sq(5, 6));
+    let mut input = initial();
+    input.root_moves = vec![invalid];
+    let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    let expected = GameError::IllegalMove {
+        mv: invalid,
+        cause: IllegalMoveCause::Movement,
+    };
+    for _ in 0..2 {
+        let error = match driver.select_leaf(SelectionRule::Puct(&PuctConfig::default())) {
+            Err(error) => error,
+            _ => panic!(),
+        };
+        assert_eq!(
+            error.source().unwrap().downcast_ref::<GameError>(),
+            Some(&expected)
+        );
+        assert_eq!(
+            error,
+            Error::Replay {
+                path: vec![invalid],
+                ply: 1,
+                source: expected
+            }
+        );
+        assert_eq!(driver.simulations(), 1);
+        assert_eq!(driver.tree().root().edges[0].virtual_loss, 0);
+        assert!(driver.tree().root().edges[0].child.is_none());
+    }
+}
+
+#[test]
+fn an_existing_path_cannot_continue_after_an_exact_terminal() {
+    let game = Game::from_position(
+        Rules::ENGINE_DEFAULT,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(11, 11), Color::White, PieceKind::King),
+                (sq(0, 1), Color::White, PieceKind::Pawn),
+            ],
+        ),
+    );
+    let first = step(sq(0, 0), sq(0, 1));
+    let second = step(sq(11, 11), sq(10, 11));
+    let mut input = SearchSnapshot::from_game(&game).unwrap();
+    input.root_moves = vec![first];
+    let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    let config = PuctConfig::default();
+    // 既存の子を故意に継続扱いにして、不整合な木を作る。
+    let selection = driver
+        .tree
+        .select_leaf(SelectionRule::Puct(&config))
+        .unwrap();
+    driver
+        .tree
+        .create_child(&selection.path, Child::Pending(&[second]))
+        .unwrap();
+    driver.tree.evaluate(&selection.path, &[0.0], 0.5).unwrap();
+    let error = match driver.select_leaf(SelectionRule::Puct(&config)) {
+        Err(error) => error,
+        _ => panic!(),
+    };
+    assert_eq!(
+        error,
+        Error::PrematureTerminal {
+            path: vec![first, second],
+            ply: 1,
+            result: GameResult::Draw {
+                reason: minase_core::DrawReason::PieceExhaustion
+            }
+        }
+    );
+    assert_eq!(driver.tree().root().edges[0].virtual_loss, 0);
+    assert_eq!(driver.tree().node(&[0]).unwrap().edges[0].virtual_loss, 0);
+}
+
+// 第21条第3項c・d: 正確なR1の勝利と引き分けだけが詰みの回避手となる。
+#[test]
+fn exact_repetition_can_rescue_mate_but_a_fresh_position_cannot() {
+    for drawn in [false, true] {
+        let mut pieces = vec![
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(1, 8), Color::Black, PieceKind::Rook),
+            (sq(3, 9), Color::Black, PieceKind::Rook),
+            (sq(2, 9), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+            (sq(2, 1), Color::White, PieceKind::GoldGeneral),
+            (sq(1, 11), Color::White, PieceKind::Pawn),
+            (sq(7, 10), Color::White, PieceKind::Pawn),
+            (sq(11, 0), Color::White, PieceKind::King),
+        ];
+        if drawn {
+            pieces.push((sq(7, 9), Color::White, PieceKind::Pawn));
+        }
+        let mut game = Game::from_position(Rules::ENGINE_DEFAULT, position(Color::White, &pieces));
+        let w_out = step(sq(0, 5), sq(2, 5));
+        let w_back = step(sq(2, 5), sq(0, 5));
+        let z_out = step(sq(1, 8), sq(1, 2));
+        let z_back = step(sq(1, 2), sq(1, 8));
+        let y_out = step(sq(3, 9), sq(3, 10));
+        for mv in [
+            w_out, z_out, w_back, z_back, w_out, z_out, w_back, z_back, w_out, y_out,
+        ] {
+            assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        }
+        let fresh = Game::from_position(game.rules(), game.position().clone());
+        check_transition(&fresh, w_back, win(Color::White, WinReason::Mate));
+        check_transition(&game, w_back, GameStatus::Ongoing);
+        game.play(w_back).unwrap();
+        check_transition(
+            &game,
+            step(sq(3, 10), sq(3, 9)),
+            if drawn {
+                draw(minase_core::DrawReason::Repetition)
+            } else {
+                win(Color::Black, WinReason::Repetition)
+            },
+        );
+    }
+}
+
+// 猶予の開始時は、守られた駒の捕獲でも認めるため、詰みを先に裁定しない。
+#[test]
+fn exhaustion_grace_precedes_mate_and_its_consumption_precedes_capture_search() {
+    use minase_core::PieceCode;
+    use minase_core::test_util::position_from_codes;
+    let game = Game::from_position(
+        Rules::ENGINE_DEFAULT,
+        position_from_codes(
+            Color::Black,
+            &[
+                (
+                    sq(0, 0),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(1, 2),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(1, 1),
+                    PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap(),
+                ),
+                (
+                    sq(0, 1),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
+            ],
+        ),
+    );
+    let mv = step(sq(1, 2), sq(0, 1));
+    check_transition(&game, mv, GameStatus::Ongoing);
+    let mut next = game.clone();
+    next.play(mv).unwrap();
+    check_transition(
+        &next,
+        step(sq(0, 0), sq(1, 0)),
+        win(Color::Black, WinReason::PieceExhaustion),
+    );
+    check_transition(&next, step(sq(0, 0), sq(0, 1)), GameStatus::Ongoing);
+}
+
+// 2手周期のじっとでは4回目の出現が6手目に来るが、R1の12可逆手条件を満たすまで裁定しない。
+#[test]
+fn fourth_occurrence_at_eleven_reversible_plies_is_still_only_approximate() {
+    let mut game = Game::from_position(
+        Rules::ENGINE_DEFAULT,
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(3, 3), Color::Black, PieceKind::Lion),
+                (sq(8, 8), Color::White, PieceKind::Lion),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
+    for ply in 0..10 {
+        assert_eq!(game.play(cycle[ply % 2]), Ok(GameStatus::Ongoing));
+    }
+    let driver = check_transition(&game, cycle[0], GameStatus::Ongoing);
+    assert!(driver.tree().node(&[0]).unwrap().has_approximate_result());
+    assert_eq!(game.play(cycle[0]), Ok(GameStatus::Ongoing));
+    check_transition(&game, cycle[1], draw(minase_core::DrawReason::Repetition));
+}
+
+#[test]
+fn sibling_replays_do_not_share_repetition_history() {
+    let (start, cycle) = rook_cycle(false, false);
+    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start);
+    for &mv in &cycle[..3] {
+        game.play(mv).unwrap();
+    }
+    let before = game.clone();
+    let driver = Driver::new(
+        SearchSnapshot::from_game(&game).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    let back = driver
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .position(|edge| edge.mv == cycle[3])
+        .unwrap();
+    let other = driver
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .position(|edge| edge.mv == step(sq(8, 7), sq(7, 7)))
+        .unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            driver.classify_child(&[back]).unwrap().2,
+            NodeState::Draw {
+                value: 0.5,
+                approximate: true
+            }
+        );
+        assert_eq!(
+            driver.classify_child(&[other]).unwrap().2,
+            NodeState::Pending { unexpanded: false }
+        );
+        assert!(before.same_state(driver.snapshot.game().unwrap()));
     }
 }

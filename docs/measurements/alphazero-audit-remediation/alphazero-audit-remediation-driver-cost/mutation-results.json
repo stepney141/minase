@@ -1,0 +1,22 @@
+[
+  {
+    "mutation": "winner",
+    "detected": true,
+    "test": "search::mcts::driver::tests::exact_r1_wins_losses_and_draws_precede_the_cycle_approximation"
+  },
+  {
+    "mutation": "exact_mark",
+    "detected": true,
+    "test": "search::mcts::driver::tests::audit_terminal_examples_follow_the_full_endgame_rules"
+  },
+  {
+    "mutation": "loss_dependency",
+    "detected": true,
+    "test": "search::mcts::tests::a_proven_loss_depends_on_every_reply_including_approximate_ones"
+  },
+  {
+    "mutation": "state_comparison",
+    "detected": true,
+    "test": "game::referee::tests::same_state_compares_the_complete_referee_state"
+  }
+]

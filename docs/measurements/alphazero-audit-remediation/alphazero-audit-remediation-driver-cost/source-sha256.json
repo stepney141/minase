@@ -1,0 +1,15 @@
+{
+  "crates/minase-core/src/game/referee.rs": "e0830441159f0b31cb62711f37083b48866f8e73cd2d79db39fe2313769d0b61",
+  "crates/minase/src/search/snapshot.rs": "410e67a061e3a15c7a4f3d6bf3011dbbd5b7fe7ec882d7fb4e74ca4d93d21435",
+  "crates/minase/src/search/mcts/driver.rs": "74861ad4f043f7d592d638ca3ca722a116c329e19f723685448133590607a2be",
+  "crates/minase/src/search/mcts/tree.rs": "be065e032b9e7db3a7c5cbeb081d1f34ea9c8d1b1e8609649c212accd6f401eb",
+  "crates/minase/src/search/mcts/error.rs": "14f56b84e9f7a3c6bbd0b3a680577b99a72e02d6840850c31011d52c3cd7ed7a",
+  "crates/minase/src/search/mcts/driver/tests.rs": "4c9610af3aac4c9d7643922636a3672f22cb7dad81a9dfe6590aae6865ae6de7",
+  "crates/minase/src/search/mcts/engine/tests.rs": "443361f0e7098066aad6e68409b0f88e5d046a393dfcbda1e3537d2657a84ce4",
+  "crates/minase/src/search/mcts/tests.rs": "93f34f0c8352502e0c50ae77c488cc386ca3b7d9ce51dfa048fe68e6ebc7ff87",
+  "crates/minase/src/bin/minase/zero_selfplay/game.rs": "f6e9bd4f84227574ef16ddae05492853acce319fa170b24a69178cc4d31850db",
+  "crates/minase/src/bin/minase/zero_selfplay/game/tests.rs": "df1ad33ac68c027377a85cd901fbbb5cfe7023af617155a4038a115d5ec47774",
+  "tools/train/zero/feasibility/Cargo.toml": "857283912ec10e36dd6d37e304e82484d09fcd5d11e94beb82eb6519c0820d7c",
+  "tools/train/zero/feasibility/src/bin/driver_cost.rs": "874b81325a5f29f7c0e627ca8702b2a236f442150cc8a612d8b2ba88d42e0ffd",
+  "tools/train/zero/feasibility/Cargo.lock": "a85544d787dcbaddc3a87e240c41c9004b63564dad187a8b90e1a799a6002665"
+}
