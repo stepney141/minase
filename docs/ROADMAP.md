@@ -60,7 +60,7 @@
 | AlphaZero型探索の実行環境と実現性の実測 | [plans/archived/alphazero-environment.md](plans/archived/alphazero-environment.md) | 完了（採用） | 2026年10月27日 |
 | AlphaZero型探索のネットの入出力と推論 | [plans/archived/alphazero-network.md](plans/archived/alphazero-network.md) | 完了（採用） | 2026年10月27日 |
 | 探索方式の共存とMCTS | [plans/archived/alphazero-mcts.md](plans/archived/alphazero-mcts.md) | 完了（採用） | 2026年10月27日 |
-| AlphaZero型探索の自己対局生成器 | [plans/alphazero-selfplay.md](plans/alphazero-selfplay.md) | 起案 | |
+| AlphaZero型探索の自己対局生成器 | [plans/alphazero-selfplay.md](plans/alphazero-selfplay.md) | 進行中 | |
 | AlphaZero型探索の学習器 | [plans/alphazero-trainer.md](plans/alphazero-trainer.md) | 起案 | |
 | AlphaZero型探索の強化学習の実行 | [plans/alphazero-rl.md](plans/alphazero-rl.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
