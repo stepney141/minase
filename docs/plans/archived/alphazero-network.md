@@ -38,7 +38,7 @@ TensorRTのエンジンのキャッシュの鍵は、計画時の5つの値か�
 - ネットの構成（層の並びと大きさ）を定める。PyTorchによる実装は[学習器](../alphazero-trainer.md)が行う。
 - USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
 - Pythonの符号化との照合に使う固定局面集の入力平面と方策ラベルを書き出す。
-- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](alphazero-mcts.md)が、生成器では[自己対局生成器](../alphazero-selfplay.md)が実装する。
+- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](alphazero-mcts.md)が、生成器では[自己対局生成器](alphazero-selfplay.md)が実装する。
 
 次の項目は対象外とする。
 

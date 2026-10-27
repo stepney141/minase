@@ -329,9 +329,9 @@ impl Engine {
 }
 
 fn default_cache_dir(xdg_cache_home: Option<&OsStr>) -> PathBuf {
-    match xdg_cache_home {
-        Some(path) if !path.is_empty() => PathBuf::from(path).join("minase/tensorrt"),
-        _ => PathBuf::new(),
+    match crate::nn::tensorrt_cache::cache_root(xdg_cache_home) {
+        Some(path) => path,
+        None => PathBuf::new(),
     }
 }
 

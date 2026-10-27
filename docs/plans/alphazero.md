@@ -15,13 +15,14 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 ## 状態
 
 進行中。2026年9月24日に起案し、2026年10月26日に着手した。
-サブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)、サブタスク2の[ネットの入出力と推論](archived/alphazero-network.md)、およびサブタスク3の[探索方式の共存とMCTS](archived/alphazero-mcts.md)は、2026年10月27日に完了してmasterへマージした。
+サブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)、サブタスク2の[ネットの入出力と推論](archived/alphazero-network.md)、サブタスク3の[探索方式の共存とMCTS](archived/alphazero-mcts.md)、およびサブタスク4の[自己対局生成器](archived/alphazero-selfplay.md)は、2026年10月27日に完了してmasterへマージした。
 サブタスク1の実測では、10ブロック128チャネルの1サイクルを、1サイクルのCUが最も小さいColab機のL4で約40分（約1.02 CU）で回せる見込みが得られた。
 サブタスク2では、ランダム初期化のネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が作業機で許容誤差に収まることを確かめた。
 サブタスク3では、αβ探索の動作を変えずに探索方式`--search mcts`を加え、ランダム初期化のネットを使うMCTSがUSIで対局を規則上の終局まで指し切ることを確かめた。
+サブタスク4では、多数の局の葉をまとめて推論する自己対局生成器`minase data zero-selfplay`を加え、生成を途中で強制終了しても、起動し直すと確定済みの塊を残して欠けた塊だけが生成し直されることを作業機で確かめた。
 各サブタスクは、完了のたびにmasterへマージする（「サブタスクの統合」の節）。
 初版の学習が動いてから検討すると定めた事項を除いて、設計判断は確定している。
-次の一手は、masterからサブタスク4の[自己対局生成器](alphazero-selfplay.md)とサブタスク5の[学習器](alphazero-trainer.md)のブランチを切ることであり、2つは並行して進められる。着手は利用者の指示を待つ。
+次の一手は、masterからサブタスク5の[学習器](alphazero-trainer.md)のブランチを切ることである。着手は利用者の指示を待つ。
 
 ## 目的
 
@@ -77,7 +78,7 @@ MCTSは、αβ探索の置き換えとしてではなく、同じリポジトリ
 | 1 | [実行環境と実現性の実測](archived/alphazero-environment.md)（完了） | すべての機械で同じ版を入れる環境定義、借りた機械の操作と転送の手順、部品の実測による1サイクルの所要時間と料金の見積もり、およびGPU種別の選定 | `tools/train/zero/`の環境定義、`docs/guides/`の手引き | なし |
 | 2 | [ネットの入出力と推論](archived/alphazero-network.md)（完了） | 入力平面、方策の符号化、価値の出力、ネットの構成、ortによる推論、およびネットのファイルの指定 | `crates/minase/src/nn/` | 1 |
 | 3 | [探索方式の共存とMCTS](archived/alphazero-mcts.md)（完了） | 探索方式の境界、PUCTとGumbel AlphaZeroの探索、反復と引き分けの扱い、起動引数`--search`と`--nn-model`、およびハーネスの起動引数の拡張 | `crates/minase/src/search/`、`crates/minase/src/harness/` | 2 |
-| 4 | [自己対局生成器](alphazero-selfplay.md) | RLの自己対局の生成、手数の上限、投了、および塊ごとの確定と再開 | `crates/minase/src/bin/minase/zero_selfplay/` | 2、3 |
+| 4 | [自己対局生成器](archived/alphazero-selfplay.md)（完了） | RLの自己対局の生成、手数の上限、投了、および塊ごとの確定と再開 | `crates/minase/src/bin/minase/zero_selfplay/` | 2、3 |
 | 5 | [学習器](alphazero-trainer.md) | PyTorchによる学習、MNSDの読み込み、価値と方策の損失、チェックポイント、およびONNXへの出力 | `tools/train/zero/` | 1、2 |
 | 6 | [強化学習の実行](alphazero-rl.md) | サイクルの手順、費用の規則と承認、進捗測定、ネットと探索回数の段階的な引き上げ、および記録 | `docs/measurements/alphazero-rl/`、NAS | 1〜5 |
 
@@ -146,7 +147,7 @@ dlshogiは、資源不足を理由にゼロからの学習を行わず、αβエ
 このため本計画は、サイクル数と期間を固定せず、MCTSがαβ探索と同等以上に届くまで学習を続ける。
 学習の初めの自己対局は、ネットが駒の価値を覚えるまで、ほぼでたらめな手の対局になる。
 一様ランダムな手の対局は、[ランダム対局検証ハーネス](archived/random-play.md)の実測（代表9規則セットの2,700局とR1の1,000局、計3,700局）で手数の中央値が242手、99パーセンタイルが928手であり、大半が王駒の捕獲か詰みで終わった。
-このため、手数の上限1,000手（[自己対局生成器](alphazero-selfplay.md)の「対局の進め方と手数の上限」の節）の下でも、初めのサイクルから学習データが得られる見込みである。
+このため、手数の上限1,000手（[自己対局生成器](archived/alphazero-selfplay.md)の「対局の進め方と手数の上限」の節）の下でも、初めのサイクルから学習データが得られる見込みである。
 ただし、この分布は`engine-default`だけのものではなく、探索を伴う自己対局の長さは一様ランダムな対局と異なり得るので、初回の生成の前に試走で測る（[強化学習の実行](alphazero-rl.md)の「試走」の節）。
 
 手書きの評価関数v0（駒割と最小限のPST、`crates/minase/src/eval/handcrafted.rs`）のαβ探索でSLする案も採らない。

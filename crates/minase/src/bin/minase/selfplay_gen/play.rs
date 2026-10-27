@@ -310,6 +310,7 @@ fn recording_start(opening_ply: u32, plies: &[u32]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase::datagen::opening::generate_opening;
 
     #[test]
     fn recording_starts_after_last_injection_or_at_opening() {
@@ -318,9 +319,7 @@ mod tests {
         assert_eq!(recording_start(12, &[14, 50, 91]), 92);
     }
 
-    use crate::selfplay_gen::{
-        engine_default_rules, opening::generate_opening, test_support::test_table,
-    };
+    use crate::selfplay_gen::{engine_default_rules, test_support::test_table};
     use minase::datagen::statistics::INJECTION_HISTOGRAM_BINS;
     use std::collections::BTreeSet;
 

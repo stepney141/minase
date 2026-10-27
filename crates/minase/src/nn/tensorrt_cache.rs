@@ -1,12 +1,22 @@
 //! GPUの照会と、TensorRTのエンジンを設定ごとに分けるキャッシュの鍵。
 
+use std::ffi::OsStr;
 use std::fmt;
 use std::io;
 use std::num::{NonZeroUsize, ParseIntError};
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 use std::string::FromUtf8Error;
 
 use sha2::{Digest, Sha256};
+
+/// 空でない`XDG_CACHE_HOME`の下に置く、TensorRTのキャッシュの親を返す。
+/// 未設定または空の場合は、別のディレクトリを補わず`None`を返す。
+pub fn cache_root(xdg_cache_home: Option<&OsStr>) -> Option<PathBuf> {
+    xdg_cache_home
+        .filter(|path| !path.is_empty())
+        .map(|path| PathBuf::from(path).join("minase/tensorrt"))
+}
 
 /// `nvidia-smi`で取得した1枚のGPUの情報。
 #[derive(Debug, PartialEq, Eq)]

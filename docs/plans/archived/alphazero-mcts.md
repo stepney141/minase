@@ -43,7 +43,7 @@ Gumbelの探索は、合成した探索環境でmctxのコミット428bfb7が出
 次の項目は対象外とする。
 
 - ネットの入力の符号化、方策のラベル、および推論。[ネットの入出力と推論](alphazero-network.md)で扱う。
-- 自己対局の進行、投了、および記録。[自己対局生成器](../alphazero-selfplay.md)で扱う。
+- 自己対局の進行、投了、および記録。[自己対局生成器](alphazero-selfplay.md)で扱う。
 - DAG型の探索木。統括計画の適用範囲の節のとおり、初版の結果を見てから検討する。
 
 ## 依存関係
@@ -145,7 +145,7 @@ DAG型の探索木を検討する場合は、この前提を見直す必要が�
 勝ちまたは負けの確定を親へ伝えるときは、反復に由来するかどうかの印もあわせて伝える。
 対局の探索では、反復に由来する確定を反復の勝敗の帯の評価値で返す。
 プロトコル層の投了判定は、評価値がこの帯にあれば`ResignValue`によらず投了しない（`crates/minase/src/protocol/usi.rs`の`should_resign`）。
-RLの自己対局でも、根の確定が反復に由来する場合は投了しない（[自己対局生成器](../alphazero-selfplay.md)の「投了」の節）。
+RLの自己対局でも、根の確定が反復に由来する場合は投了しない（[自己対局生成器](alphazero-selfplay.md)の「投了」の節）。
 評価値の帯は、根からの手数が`MAX_PLY`（256）以下であることを前提に定義されている（`crates/minase/src/search/mod.rs`）。
 257手先の勝敗を同じ式で表すと、反復の勝ちは帯から外れ、詰みの勝ちは反復の帯に入ってしまう。
 このため、MCTSの探索木もαβ探索と同じく根から256手までとし、それより深い節点は作らない。
@@ -177,7 +177,7 @@ vはオプションの値、Kは「共存の構造」の節で評価値の表示
 RLの自己対局の探索では、引き分けの値を使わず、引き分けを常に0.5とする。
 dlshogiの自己対局も、対局用の設定によらず千日手を0.5としている（`selfplay/self_play.cpp`）。
 探索で引き分けに0.5以外の値を与えると、根の価値を混ぜる価値の教師に偏りが入るからである。
-本書は、引き分けを0.5に固定する探索の設定を用意し、[自己対局生成器](../alphazero-selfplay.md)がそれを使う。
+本書は、引き分けを0.5に固定する探索の設定を用意し、[自己対局生成器](alphazero-selfplay.md)がそれを使う。
 
 ### 共存の構造
 
@@ -194,7 +194,7 @@ Rustには静的初期化による登録がないので、登録表の代わり�
 | `crates/minase/src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
 | `crates/minase/src/eval/` | αβ探索の静的評価。NNUEと、比較用に残すPSTとFM（変更なし）。 |
 
-ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](../alphazero-selfplay.md)が新設する。
+ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](alphazero-selfplay.md)が新設する。
 依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`と駒の状態番号のための`eval::features`へとし、`alphabeta`と`mcts`は互いを参照しない。
 親の`search`は2つの子を列挙型で束ねるだけで、プロトコル層は`search`の境界の型だけを使い、`alphabeta`と`mcts`の内部を参照しない。
 自己対局生成器とbenchは、lc0の自己対局が探索の実装を直接使うのと同じく、方式のモジュールを直接使ってよい。

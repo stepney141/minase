@@ -6,6 +6,7 @@ use minase_core::{Game, IllegalMove, Move, MoveGenerator, Position};
 
 pub mod game;
 pub mod git;
+pub mod opening;
 pub mod statistics;
 
 /// 教師から除外する探索値の絶対値下限29,000。

@@ -40,6 +40,43 @@ fn proof(outcome: Outcome, distance: u32, repetition: bool) -> Proof {
     }
 }
 
+// 根が未確定でも、孫以下の反復打ち切りを投了の抑止に使う。
+fn cutoff_descendant(child: Child<'_>) -> Tree {
+    let mut tree = tree(&[100.0, -100.0], 0.5);
+    let rule = PuctConfig::default();
+    let first = tree.select_leaf(SelectionRule::Puct(&rule)).unwrap();
+    tree.create_child(&first.path, Child::Pending(&moves(2)))
+        .unwrap();
+    tree.evaluate(&first.path, &[100.0, -100.0], 0.5).unwrap();
+    let second = tree.select_leaf(SelectionRule::Puct(&rule)).unwrap();
+    assert_eq!(second.path.len(), 2);
+    tree.create_child(&second.path, child).unwrap();
+    tree
+}
+
+#[test]
+fn repetition_cutoff_finds_draw_descendants() {
+    let tree = cutoff_descendant(Child::Draw(0.5));
+    assert_eq!(tree.root().state, NodeState::Expanded);
+    assert!(tree.root().has_repetition_cutoff());
+    assert!(tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+}
+
+#[test]
+fn repetition_cutoff_finds_repetition_proof_descendants() {
+    let tree = cutoff_descendant(Child::Proven(proof(Outcome::Win, 0, true)));
+    assert_eq!(tree.root().state, NodeState::Expanded);
+    assert!(tree.root().has_repetition_cutoff());
+    assert!(tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+}
+
+#[test]
+fn repetition_cutoff_does_not_classify_mate_proofs_as_repetition() {
+    let tree = cutoff_descendant(Child::Proven(proof(Outcome::Win, 0, false)));
+    assert!(!tree.root().has_repetition_cutoff());
+    assert!(!tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+}
+
 fn terminal(proof: Proof) -> Box<Node> {
     Box::new(Node {
         value: None,
