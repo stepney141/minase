@@ -218,13 +218,13 @@ fn expand<const BREAKDOWN: bool>(
     generator: &MoveGenerator,
     evaluator: &mut Evaluator,
     timings: &mut Timings,
-) -> Node {
+) -> Result<Node> {
     let side = position.side_to_move();
     if position.royal_pieces(side).is_empty() {
-        return Node::terminal(0.0);
+        return Ok(Node::terminal(0.0));
     }
     if position.royal_pieces(side.opposite()).is_empty() {
-        return Node::terminal(1.0);
+        return Ok(Node::terminal(1.0));
     }
 
     let start = tick::<BREAKDOWN>();
@@ -232,12 +232,11 @@ fn expand<const BREAKDOWN: bool>(
     generator.generate_moves(position, &mut moves);
     timings.finish(MOVE_GENERATION, start);
     if moves.is_empty() {
-        return Node::terminal(0.0);
+        return Ok(Node::terminal(0.0));
     }
 
     let start = tick::<BREAKDOWN>();
-    encode(position, &mut evaluator.input)
-        .expect("P0 teacher positions have no deferred promotion");
+    encode(position, &mut evaluator.input)?;
     // 推論を呼ばなくても、バッファへの書き込みを最適化で消させない。
     black_box(evaluator.input.as_slice());
     timings.finish(ENCODING, start);
@@ -270,7 +269,7 @@ fn expand<const BREAKDOWN: bool>(
         edge.prior = (edge.prior / sum).max(f32::MIN_POSITIVE);
     }
     timings.finish(POLICY, start);
-    Node { value, children }
+    Ok(Node { value, children })
 }
 
 fn considered_visits(m: usize, n: usize) -> Vec<usize> {
@@ -408,9 +407,9 @@ fn search<const BREAKDOWN: bool>(
     evaluator: &mut Evaluator,
     rng: &mut Rng,
     timings: &mut Timings,
-) -> SearchStats {
+) -> Result<SearchStats> {
     let generator = MoveGenerator::new(sample.rules);
-    let root = expand::<BREAKDOWN>(&sample.position, &generator, evaluator, timings);
+    let root = expand::<BREAKDOWN>(&sample.position, &generator, evaluator, timings)?;
     let mut stats = SearchStats {
         expanded_nodes: usize::from(!root.children.is_empty()),
         ..SearchStats::default()
@@ -456,7 +455,7 @@ fn search<const BREAKDOWN: bool>(
             if let Some(child) = edge.child {
                 current = child;
             } else {
-                let child = expand::<BREAKDOWN>(&sample.position, &generator, evaluator, timings);
+                let child = expand::<BREAKDOWN>(&sample.position, &generator, evaluator, timings)?;
                 if !child.children.is_empty() {
                     stats.expanded_nodes += 1;
                     stats.evaluated_leaves += 1;
@@ -496,7 +495,7 @@ fn search<const BREAKDOWN: bool>(
         black_box((tree[0].children[selected].mv, scratch.as_slice()));
         timings.finish(SELECTION, start);
     }
-    stats
+    Ok(stats)
 }
 
 fn percentile(sorted: &[f64], percent: usize) -> f64 {
@@ -531,7 +530,7 @@ fn measure<const BREAKDOWN: bool>(config: &Config, mut samples: Vec<Sample>) -> 
             &mut evaluator,
             &mut rng,
             &mut timings,
-        );
+        )?;
         let elapsed = start.elapsed();
         total += elapsed;
         times.push(elapsed.as_secs_f64() * 1e6);
@@ -718,7 +717,8 @@ mod tests {
             &MoveGenerator::new(rules),
             &mut evaluator,
             &mut Timings::default(),
-        );
+        )
+        .unwrap();
         assert_eq!(terminal.value, 0.0);
         assert!(terminal.children.is_empty());
         position.unmake_move(undo);
@@ -747,7 +747,8 @@ mod tests {
             &mut evaluator,
             &mut rng,
             &mut timings,
-        );
+        )
+        .unwrap();
         assert_eq!(sample.position, position);
         assert_eq!(timings.0, [Duration::ZERO; 6]);
         let mut rng = Rng(1);
@@ -759,7 +760,8 @@ mod tests {
             &mut evaluator,
             &mut rng,
             &mut timings,
-        );
+        )
+        .unwrap();
         assert_eq!(sample.position, position);
         assert_eq!(on, off);
         assert_eq!(off.evaluated_leaves + off.terminal_simulations, 32);

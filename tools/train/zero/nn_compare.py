@@ -18,6 +18,8 @@ def read_result(path: Path) -> dict:
         raise ValueError(f"{path}: expected an object with network_sha256")
     if not isinstance(data["positions"], list):
         raise ValueError(f"{path}: positions must be a list")
+    if not data["positions"]:
+        raise ValueError(f"{path}: positions must not be empty")
     for index, position in enumerate(data["positions"]):
         if not isinstance(position, dict) or not isinstance(position["sfen"], str):
             raise ValueError(f"{path}: position {index} must have a string sfen")
