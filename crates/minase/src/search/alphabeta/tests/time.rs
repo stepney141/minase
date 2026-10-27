@@ -1311,13 +1311,15 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let initial = Position::initial();
     let clock = Arc::new(ManualClock::new(Duration::from_millis(30)));
     let handle = start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(small_tt()),
+            histories: crate::search::HistoryTables::new(DEFAULT_THREADS),
+            threads: DEFAULT_THREADS,
+        },
         Arc::clone(shared_test_nnue()),
         snapshot_for(&initial),
         movetime_limits(30),
         61,
-        DEFAULT_THREADS,
-        small_tt(),
-        crate::search::HistoryTables::new(DEFAULT_THREADS),
         false,
         clock,
     );

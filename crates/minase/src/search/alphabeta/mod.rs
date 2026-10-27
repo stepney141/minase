@@ -4,6 +4,7 @@ mod capture_history;
 pub(in crate::search) mod clock;
 mod correction;
 mod deepening;
+mod engine;
 pub(crate) mod history;
 mod negamax;
 mod ordering;
@@ -19,6 +20,8 @@ pub(in crate::search) mod team;
 mod tests;
 mod time;
 pub(in crate::search) mod tt;
+
+pub use engine::Engine;
 
 use crate::search::MATE;
 

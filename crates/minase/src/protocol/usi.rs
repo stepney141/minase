@@ -39,7 +39,6 @@
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
-use std::num::NonZeroUsize;
 #[cfg(feature = "tuning")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
@@ -47,8 +46,8 @@ use std::time::Duration;
 
 use crate::eval::nnue;
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, StopReason,
-    TranspositionTable,
+    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchOptionKind,
+    SearchOptionValue, SearchSnapshot, Searcher, StopReason, TranspositionTable,
 };
 use minase_core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use minase_core::mv::Move;
@@ -66,9 +65,6 @@ use super::engine::{
     Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
 };
 
-/// USIから設定できる置換表容量の上限(MiB)。
-const MAX_HASH_SIZE_MB: usize = 65_536;
-
 /// 投了閾値の既定値20,000 cp。判定は[`UsiProtocol::should_resign`]に従う。
 /// 通常の評価値がほとんど6,000 cpを超えないことを踏まえ、詰まされる読みを対象にする。
 /// 理由は`docs/adr/decide-resignation-in-the-usi-layer.md`にある。
@@ -82,18 +78,14 @@ static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 pub struct UsiProtocol {
     /// `option`宣言のdefault値に使う起動時規則の正準表記。
     startup_rules_text: String,
-    /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出している間は`None`。
-    transposition_table: Option<TranspositionTable>,
-    /// 探索中はワーカーへ貸し出す、対局内の履歴。
-    histories: Option<search::HistoryTables>,
+    /// 対局内で持ち越す探索器。探索スレッドへ貸し出している間は`None`。
+    searcher: Option<Searcher>,
     /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
     position_synchronized: bool,
     /// 最後に受理した`position`の開始局面と着手のトークン列。
     accepted_position: Option<AcceptedPosition>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
-    /// 次の探索に使うワーカー数。
-    threads: NonZeroUsize,
     /// 根の手番側から見たcpに適用する投了閾値。条件は[`Self::should_resign`]に従う。
     resign_value: i32,
     /// 根が先手番のときに使う、根の手番側から見た引き分けの評価値(cp)。
@@ -192,12 +184,10 @@ impl UsiProtocol {
     pub fn new(engine: &Engine) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
-            transposition_table: None,
-            histories: Some(search::HistoryTables::new(search::DEFAULT_THREADS)),
+            searcher: Some(Searcher::alpha_beta()),
             position_synchronized: false,
             accepted_position: None,
             next_search_id: 1,
-            threads: search::DEFAULT_THREADS,
             resign_value: DEFAULT_RESIGN_VALUE,
             draw_value_black: search::DRAW_SCORE,
             draw_value_white: search::DRAW_SCORE,
@@ -225,14 +215,10 @@ impl UsiProtocol {
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => {
-                // 置換表がなければ既定の256 MiBで確保し初期化する。
-                // 最初の`go`で確保を待つと、その時間も時計上の思考時間に数えられるためである。
-                // 確保に失敗してもreadyokを返し、goで改めて確保して失敗を報告する。
-                if self.transposition_table.is_none()
-                    && let Ok(table) = TranspositionTable::new(search::DEFAULT_TT_SIZE_MB)
-                {
-                    self.transposition_table = Some(table);
-                }
+                self.searcher
+                    .as_mut()
+                    .expect("idle protocol must own its searcher")
+                    .prepare();
                 writeln!(output, "readyok")?;
             }
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
@@ -323,36 +309,19 @@ impl UsiProtocol {
             };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let nnue = match crate::eval::weights() {
-            Ok(nnue) => nnue,
-            Err(error) => {
-                write_error(output, &error.to_string())?;
+        let infinite = config.is_infinite();
+        let searcher = self
+            .searcher
+            .take()
+            .expect("idle protocol must own its searcher");
+        let handle = match searcher.start(snapshot, config, search_id, tokens.contains(&"ponder")) {
+            Ok(handle) => handle,
+            Err(failure) => {
+                self.searcher = Some(failure.searcher);
+                write_error(output, &failure.error.to_string())?;
                 return Ok(None);
             }
         };
-        let transposition_table = match self.transposition_table.take() {
-            Some(table) => table,
-            None => match TranspositionTable::new(search::DEFAULT_TT_SIZE_MB) {
-                Ok(table) => table,
-                Err(error) => {
-                    write_error(output, &error.to_string())?;
-                    return Ok(None);
-                }
-            },
-        };
-        let infinite = config.is_infinite();
-        let handle = search::start_search(
-            nnue,
-            snapshot,
-            config,
-            search_id,
-            self.threads,
-            transposition_table,
-            self.histories
-                .take()
-                .expect("idle protocol must own history tables"),
-            tokens.contains(&"ponder"),
-        );
         Ok(Some(ActiveSearch::Running {
             context: SearchContext {
                 id: search_id,
@@ -539,9 +508,7 @@ impl UsiProtocol {
         let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
             return Ok(());
         };
-        let (table, histories) = join_search(handle)?;
-        self.transposition_table = Some(table);
-        self.histories = Some(histories);
+        self.searcher = Some(join_search(handle)?);
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -595,9 +562,7 @@ impl UsiProtocol {
                 else {
                     unreachable!();
                 };
-                let (table, histories) = join_search(handle)?;
-                self.transposition_table = Some(table);
-                self.histories = Some(histories);
+                self.searcher = Some(join_search(handle)?);
                 write_final_info_if_deeper(
                     output,
                     &mut context,
@@ -756,9 +721,7 @@ impl UsiProtocol {
                         }
                     }
                 };
-                let (table, histories) = join_search(handle)?;
-                self.transposition_table = Some(table);
-                self.histories = Some(histories);
+                self.searcher = Some(join_search(handle)?);
                 write_bestmove(
                     output,
                     &context.position,
@@ -799,9 +762,7 @@ impl UsiProtocol {
         };
         if let ActiveSearch::Running { handle, .. } = search {
             handle.request_stop();
-            let (table, histories) = join_search(handle)?;
-            self.transposition_table = Some(table);
-            self.histories = Some(histories);
+            self.searcher = Some(join_search(handle)?);
         }
         Ok(())
     }
@@ -837,17 +798,20 @@ impl UsiProtocol {
             output,
             "option name USI_Variant type string default chushogi"
         )?;
-        writeln!(
-            output,
-            "option name USI_Hash type spin default {} min 1 max {}",
-            search::DEFAULT_TT_SIZE_MB,
-            MAX_HASH_SIZE_MB
-        )?;
-        writeln!(
-            output,
-            "option name Threads type spin default {} min 1 max 256",
-            search::DEFAULT_THREADS
-        )?;
+        for option in self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own its searcher")
+            .options()
+        {
+            match option.kind {
+                SearchOptionKind::Spin { default, min, max } => writeln!(
+                    output,
+                    "option name {} type spin default {default} min {min} max {max}",
+                    option.name
+                )?,
+            }
+        }
         writeln!(
             output,
             "option name ResignValue type spin default {DEFAULT_RESIGN_VALUE} min 1 max 99999"
@@ -955,46 +919,38 @@ impl UsiProtocol {
                 }
                 None => write_error(output, "USI_Variant requires a value"),
             }
-        } else if name.eq_ignore_ascii_case("USI_Hash") {
+        } else if let Some(option) = self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own its searcher")
+            .options()
+            .into_iter()
+            .find(|option| name.eq_ignore_ascii_case(option.name))
+        {
+            let name = option.name;
             let Some(value) = value else {
-                return write_error(output, "USI_Hash requires a value");
+                return write_error(output, &format!("{name} requires a value"));
             };
-            let Some(size_mb) = value
-                .parse::<usize>()
-                .ok()
-                .filter(|&size| (1..=MAX_HASH_SIZE_MB).contains(&size))
-            else {
-                return write_error(
-                    output,
-                    &format!("USI_Hash must be an integer from 1 to {MAX_HASH_SIZE_MB}"),
-                );
+            let value = match option.kind {
+                SearchOptionKind::Spin { min, max, .. } => {
+                    let Some(value) = parse_spin(value, min, max) else {
+                        return write_error(
+                            output,
+                            &format!("{name} must be an integer from {min} to {max}"),
+                        );
+                    };
+                    SearchOptionValue::Spin(value)
+                }
             };
-            let result = match &mut self.transposition_table {
-                Some(transposition_table) => transposition_table.resize(size_mb),
-                None => TranspositionTable::new(size_mb).map(|table| {
-                    self.transposition_table = Some(table);
-                }),
-            };
-            if let Err(error) = result {
-                return write_error(output, &error.to_string());
-            }
-            self.histories
+            match self
+                .searcher
                 .as_mut()
-                .expect("idle protocol must own history tables")
-                .clear();
-            Ok(())
-        } else if name.eq_ignore_ascii_case("Threads") {
-            let Some(value) = value else {
-                return write_error(output, "Threads requires a value");
-            };
-            let Some(threads) = parse_threads(value) else {
-                return write_error(output, "Threads must be an integer from 1 to 256");
-            };
-            if self.threads != threads {
-                self.histories = Some(search::HistoryTables::new(threads));
-                self.threads = threads;
+                .expect("idle protocol must own its searcher")
+                .set_option(name, value)
+            {
+                Ok(()) => Ok(()),
+                Err(error) => write_error(output, &error.to_string()),
             }
-            Ok(())
         } else if name.eq_ignore_ascii_case("ResignValue") {
             let Some(value) = value else {
                 return write_error(output, "missing ResignValue value");
@@ -1041,13 +997,10 @@ impl UsiProtocol {
             };
             if *current != value {
                 *current = value;
-                self.histories
+                self.searcher
                     .as_mut()
-                    .expect("idle protocol must own history tables")
+                    .expect("idle protocol must own its searcher")
                     .clear();
-                if let Some(table) = &mut self.transposition_table {
-                    table.clear();
-                }
             }
             Ok(())
         } else {
@@ -1315,8 +1268,10 @@ impl UsiProtocol {
             "d" => diagnostic_position(engine),
             "eval" => diagnostic_evaluation(engine.game().position()),
             "tt" => self
-                .transposition_table
+                .searcher
                 .as_ref()
+                .expect("idle protocol must own its searcher")
+                .transposition_table()
                 .ok_or_else(|| "tt requires an allocated transposition table".to_owned())
                 .and_then(|table| diagnostic_table(engine, table)),
             _ => unreachable!("only diagnostic commands are dispatched here"),
@@ -1369,15 +1324,10 @@ impl UsiProtocol {
                     self.accepted_position = None;
                 }
                 if clears_transposition_table {
-                    self.histories
+                    self.searcher
                         .as_mut()
-                        .expect("idle protocol must own history tables")
+                        .expect("idle protocol must own its searcher")
                         .clear();
-                }
-                if clears_transposition_table
-                    && let Some(transposition_table) = &mut self.transposition_table
-                {
-                    transposition_table.clear();
                 }
                 Ok(())
             }
@@ -1626,8 +1576,8 @@ impl ActiveSearch {
     }
 }
 
-/// 探索スレッドの終了を待ち、貸し出していた置換表と履歴表を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<(TranspositionTable, search::HistoryTables)> {
+/// 探索スレッドの終了を待ち、貸し出していた探索器を回収する。
+fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))
@@ -1818,13 +1768,12 @@ fn parse_draw_value(value: &str) -> Option<i32> {
         .filter(|value| (-search::DRAW_VALUE_LIMIT..=search::DRAW_VALUE_LIMIT).contains(value))
 }
 
-/// 1以上256以下のワーカー数を解析する。
-fn parse_threads(value: &str) -> Option<NonZeroUsize> {
+/// 宣言された範囲の整数オプションを解析する。
+fn parse_spin(value: &str, min: usize, max: usize) -> Option<usize> {
     value
         .parse::<usize>()
         .ok()
-        .and_then(NonZeroUsize::new)
-        .filter(|threads| threads.get() <= 256)
+        .filter(|value| (min..=max).contains(value))
 }
 
 /// `moves`以降の指し手列を解析し、局面を進めながら検証する。
@@ -2461,7 +2410,14 @@ mod tests {
                 assert_eq!(protocol.root_draw_value(other), other_value);
                 // readyokやttの空項目では、未確保と確保済みの空表を区別できない。
                 // 初回探索前の確保という契約に限り内部状態を観測する。
-                assert!(protocol.transposition_table.is_none());
+                assert!(
+                    protocol
+                        .searcher
+                        .as_ref()
+                        .unwrap()
+                        .transposition_table()
+                        .is_none()
+                );
             }
             for value in [
                 "29000",
@@ -2529,12 +2485,14 @@ mod tests {
                 assert!(error_lines(&output).is_empty(), "{output}");
                 // probeは探索層に限定されるため、それを呼ぶinspectで同じ照合を使う。
                 let before = protocol
-                    .transposition_table
+                    .searcher
                     .as_ref()
+                    .unwrap()
+                    .transposition_table()
                     .unwrap()
                     .inspect(engine.game().position(), 0)
                     .unwrap();
-                let histories = protocol.histories.as_mut().unwrap();
+                let histories = protocol.searcher.as_mut().unwrap().histories_mut_for_test();
                 for history in &mut histories.workers {
                     for value in history.iter_mut().flatten().flatten() {
                         *value = -100;
@@ -2554,8 +2512,10 @@ mod tests {
                     assert_eq!(output, "");
                 }
                 let after = protocol
-                    .transposition_table
+                    .searcher
                     .as_ref()
+                    .unwrap()
+                    .transposition_table()
                     .unwrap()
                     .inspect(engine.game().position(), 0);
                 if clears {
@@ -2567,7 +2527,7 @@ mod tests {
                         (before.best_move, before.static_eval, before.value)
                     );
                 }
-                let histories = protocol.histories.as_ref().unwrap();
+                let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
                 let quiet_expected = if clears { -5 } else { -100 };
                 let capture_expected = if clears { -742 } else { -100 };
                 assert_eq!(histories.workers.len(), 2);
@@ -2709,21 +2669,21 @@ mod tests {
     fn threads_accepts_boundaries_and_rejects_invalid_values() {
         // [`UsiProtocol::handle_setoption`]に従い、Threadsは1..=256だけを受理し、
         // 不正値には固定エラーを返す。正当値は無応答である。
-        assert_eq!(parse_threads("1").map(NonZeroUsize::get), Some(1));
-        assert_eq!(parse_threads("256").map(NonZeroUsize::get), Some(256));
+        assert_eq!(parse_spin("1", 1, 256), Some(1));
+        assert_eq!(parse_spin("256", 1, 256), Some(256));
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
-        for threads in [1, 2] {
+        for (value, threads) in [("1", 1), ("2", 2), ("+2", 2)] {
             assert_eq!(
                 run(
                     &mut protocol,
                     &mut engine,
-                    &format!("setoption name Threads value {threads}\n")
+                    &format!("setoption name tHREADS value {value}\n")
                 ),
                 ""
             );
-            assert_eq!(protocol.threads.get(), threads);
+            assert_eq!(protocol.searcher.as_ref().unwrap().threads().get(), threads);
         }
         let output = run(
             &mut protocol,
@@ -2745,7 +2705,7 @@ mod tests {
                 "info string error: Threads must be an integer from 1 to 256\n",
             )
         );
-        assert_eq!(protocol.threads.get(), 2);
+        assert_eq!(protocol.searcher.as_ref().unwrap().threads().get(), 2);
     }
 
     /// 王将の逃げ先が奔王、竪行、飛車に覆われ、反車でも捕獲を防げない局面。
@@ -3454,13 +3414,27 @@ mod tests {
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         let before = run(&mut protocol, &mut engine, "position startpos\nstate\n");
-        assert!(protocol.transposition_table.is_none());
+        assert!(
+            protocol
+                .searcher
+                .as_ref()
+                .unwrap()
+                .transposition_table()
+                .is_none()
+        );
         let output = run(&mut protocol, &mut engine, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(lines[0], "readyok");
         // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない。
         assert_eq!(before.lines().collect::<Vec<_>>(), [lines[1]]);
-        assert!(protocol.transposition_table.is_some());
+        assert!(
+            protocol
+                .searcher
+                .as_ref()
+                .unwrap()
+                .transposition_table()
+                .is_some()
+        );
     }
 
     // RULES.md第33条とSetRulesの契約: 受信時に検証し、拒否時は直前の正当な次局規則を保つ。

@@ -47,8 +47,7 @@ fn search_with_node_limit_is_deterministic() {
     assert_eq!(first, second);
 }
 
-// 監査「学習NNUE追加後の公開境界」: 探索APIはグローバルな埋め込み重みでは
-// なく、呼び出し側が明示した検証済みNNUEで葉を評価する。
+// 同期版の探索APIとαβ探索の注入用の入口は、呼び出し側が明示した検証済みNNUEで葉を評価する。
 #[test]
 fn search_apis_use_the_supplied_nnue() {
     let position = position(
@@ -108,15 +107,18 @@ fn search_apis_use_the_supplied_nnue() {
 
     let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
     zero_correction_histories(&mut histories);
-    let handle = crate::search::start_search(
+    let handle = start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(small_tt()),
+            histories,
+            threads: DEFAULT_THREADS,
+        },
         Arc::new(supplied),
         snapshot,
         depth_limits(1),
         7,
-        DEFAULT_THREADS,
-        small_tt(),
-        histories,
         false,
+        Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
     );
     let (_, asynchronous) = event_reports(drain_raw(&handle));
     handle.join().unwrap();
@@ -191,7 +193,8 @@ fn stop_before_depth_one_still_yields_a_legal_best_move() {
             ),
             "threads={threads}"
         );
-        let (table, _) = handle.join().expect("search team must not panic");
+        let returned = handle.join().expect("search team must not panic");
+        let table = returned.transposition_table().unwrap();
         assert_eq!(table.generation(), 1, "threads={threads}");
     }
 }
@@ -274,7 +277,9 @@ fn join_returns_the_transposition_table_for_reuse() {
         small_tt(),
     );
     let (_, first) = event_reports(drain_raw(&handle));
-    let (mut returned_tt, _) = handle.join().expect("search thread must not panic");
+    let crate::search::Searcher::AlphaBeta(engine) =
+        handle.join().expect("search thread must not panic");
+    let mut returned_tt = engine.transposition_table.unwrap();
 
     // 根の探索ごとに世代を1回進め、前回の同じ深さの記録も異なるキーで置き換えられるようにする。
     assert_eq!(returned_tt.generation(), 1);
@@ -312,10 +317,11 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
             thread::yield_now();
         }
         finished.store(true, AtomicOrdering::Release);
-        (
-            small_tt(),
-            crate::search::HistoryTables::new(DEFAULT_THREADS),
-        )
+        crate::search::Searcher::AlphaBeta(crate::search::alphabeta::Engine {
+            transposition_table: Some(small_tt()),
+            histories: crate::search::HistoryTables::new(DEFAULT_THREADS),
+            threads: DEFAULT_THREADS,
+        })
     });
     let handle = SearchHandle {
         clock: Arc::new(ManualClock::new(Duration::ZERO)),
@@ -340,11 +346,9 @@ fn search_handle_join_returns_the_coordinator_panic() {
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),
-        thread: Some(thread::spawn(
-            || -> (TranspositionTable, crate::search::HistoryTables) {
-                panic!("injected coordinator panic")
-            },
-        )),
+        thread: Some(thread::spawn(|| -> crate::search::Searcher {
+            panic!("injected coordinator panic")
+        })),
     };
 
     assert!(handle.join().is_err());

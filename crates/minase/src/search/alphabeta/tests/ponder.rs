@@ -1111,13 +1111,15 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_at_deadline() {
         .unwrap();
         let clock = Arc::new(ManualClock::new(Duration::ZERO));
         let handle = start_search_with_clock(
+            crate::search::alphabeta::Engine {
+                transposition_table: Some(small_tt()),
+                histories: crate::search::HistoryTables::new(worker_count(4)),
+                threads: worker_count(4),
+            },
             Arc::clone(shared_test_nnue()),
             snapshot_for(&initial),
             limits,
             910,
-            worker_count(4),
-            small_tt(),
-            crate::search::HistoryTables::new(worker_count(4)),
             ponder,
             clock.clone(),
         );

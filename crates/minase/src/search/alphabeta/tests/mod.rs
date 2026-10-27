@@ -64,6 +64,7 @@ use crate::search::alphabeta::deepening::{
     IterationScalingCoefficients, auxiliary_depths, run_auxiliary_worker, run_main_worker,
     run_main_worker_with_iteration_hook, update_ponder_mate_early_stop,
 };
+use crate::search::alphabeta::engine::start_search_with_clock;
 use crate::search::alphabeta::history::{
     HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, pawn_key,
 };
@@ -102,7 +103,7 @@ use crate::search::alphabeta::tt::{
 };
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
-use crate::search::handle::{SearchHandle, start_search_with_clock};
+use crate::search::handle::SearchHandle;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
@@ -742,15 +743,18 @@ fn start(
     threads: NonZeroUsize,
     tt: TranspositionTable,
 ) -> SearchHandle {
-    crate::search::start_search(
+    start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(tt),
+            histories: crate::search::HistoryTables::new(threads),
+            threads,
+        },
         Arc::clone(shared_test_nnue()),
         snapshot,
         limits,
         search_id,
-        threads,
-        tt,
-        crate::search::HistoryTables::new(threads),
         false,
+        Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
     )
 }
 
@@ -960,15 +964,18 @@ fn assert_pv_is_legal(root: &Position, pv: &[Move]) {
 }
 
 fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
-    crate::search::start_search(
+    start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(small_tt()),
+            histories: crate::search::HistoryTables::new(worker_count(threads)),
+            threads: worker_count(threads),
+        },
         Arc::clone(shared_test_nnue()),
         snapshot_for(&Position::initial()),
         limits,
         700,
-        worker_count(threads),
-        small_tt(),
-        crate::search::HistoryTables::new(worker_count(threads)),
         true,
+        Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
     )
 }
 
