@@ -133,6 +133,18 @@ pub struct Node {
 }
 
 impl Node {
+    /// この節点または子孫に、反復で打ち切った引き分けか勝敗の確定があるかを返す。
+    /// 自己対局では、反復の近似値に基づく投了を避けるために使う。
+    pub fn has_repetition_cutoff(&self) -> bool {
+        matches!(self.state, NodeState::Draw(_))
+            || matches!(self.state, NodeState::Proven(proof) if proof.repetition)
+            || self.edges.iter().any(|edge| {
+                edge.child
+                    .as_deref()
+                    .is_some_and(Node::has_repetition_cutoff)
+            })
+    }
+
     fn new(moves: &[Move], state: NodeState) -> Self {
         Self {
             value: None,

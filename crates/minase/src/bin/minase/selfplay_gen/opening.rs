@@ -4,13 +4,13 @@
 //! [`read_openings`]はUTF-8の全行を空白区切りで読み、空行やコメントを読み飛ばさない。
 //! 0行のファイルもエラーとし、拡張SFENの復元にはエンジン既定の移動規則を使う。
 
-use minase::datagen::{data_error, invalid_data};
-use minase_core::rng::{XorShift64, derive_seed};
-use minase_core::{Color, Game, GameStatus, Move, Position, Rules};
+use minase::datagen::data_error;
+use minase::datagen::opening::generate_opening;
+use minase_core::{Color, Game, Move, Position, Rules};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader},
-    num::{NonZeroU64, NonZeroUsize},
+    num::NonZeroU64,
     path::Path,
 };
 
@@ -124,49 +124,10 @@ pub(super) fn starting_game(
     }
 }
 
-/// 同じ対局シードから決定的に、8〜16手を一様に選んでランダム序盤を作る。
-/// 同じ評価関数どうしが毎回同じ手順をたどり、同じ局面だけを記録することを避ける。
-/// 対局ハーネスの8〜12手より長い範囲を使い、開始局面の多様性を優先する。
-pub(super) fn generate_opening(
-    rules: Rules,
-    game_seed: NonZeroU64,
-) -> io::Result<(Game, Vec<Move>)> {
-    let mut opening_seed = derive_seed(game_seed.get(), 0);
-    loop {
-        let mut game = Game::new(rules);
-        let mut moves = Vec::new();
-        let mut rng = XorShift64::new(opening_seed);
-        let opening_plies = 8 + rng.index(NonZeroUsize::new(9).unwrap());
-        let mut finished = false;
-        for _ in 0..opening_plies {
-            let legal_moves = game.legal_moves();
-            if legal_moves.is_empty() {
-                return Err(invalid_data(
-                    "an opening game is ongoing but has no legal moves",
-                ));
-            }
-            let move_count = NonZeroUsize::new(legal_moves.len())
-                .expect("the empty move list was rejected above");
-            let selected = legal_moves[rng.index(move_count)];
-            let status = game.play(selected).map_err(|error| {
-                invalid_data(format!("random opening move was rejected: {error}"))
-            })?;
-            moves.push(selected);
-            if matches!(status, GameStatus::Finished(_)) {
-                finished = true;
-                break;
-            }
-        }
-        if !finished {
-            return Ok((game, moves));
-        }
-        opening_seed = derive_seed(opening_seed.get(), 0);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase_core::rng::derive_seed;
 
     #[test]
     fn read_openings_rejects_fields_move_number_deferred_missing_royal_and_empty() {
