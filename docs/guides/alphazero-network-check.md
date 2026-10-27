@@ -69,23 +69,30 @@ uv run --frozen python -m minase_zero fixture-eval --checkpoint <出力先>/chec
 ## 5. 照合する
 
 各出力を、PyTorchの出力を基準として`tools/train/zero/nn_compare.py`で照合する。
-許容誤差は、CPUが1×10⁻⁴、TensorRTのFP16が1×10⁻²である。
+ONNX RuntimeのCPUの出力の照合では、合法手のlogitと価値の差を、どちらも許容誤差1×10⁻⁴で比べる。
+TensorRTのFP16の出力の照合では、各局面の合法手のlogitをsoftmaxで正規化した確率の差を許容誤差1×10⁻²で、価値の差を2×10⁻²で比べる。
 
 ```console
-uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/cpu-b7.json --tolerance 1e-4
-uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/trt-b7.json --tolerance 1e-2
+uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/cpu-b7.json \
+  --policy logits --policy-tolerance 1e-4 --value-tolerance 1e-4
+uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/trt-b7.json \
+  --policy probabilities --policy-tolerance 1e-2 --value-tolerance 2e-2
 ```
 
-照合は、ネットのSHA-256、局面数、各局面のSFEN、ラベルの列が一致し、すべての値が有限であり、logitと価値の差の絶対値の最大が許容誤差以下のときに、終了コード0で終了する。
-標準出力の1行のJSONは、局面数、logitの差の最大、価値の差の最大、最大のlogitを持つ手（以下、最大の手）の不一致の数、および不一致の局面ごとの基準のlogitの差を示す。
+照合は、ネットのSHA-256、局面数、各局面のSFEN、ラベルの列が一致し、すべての値が有限であり、`--policy`で選んだ量と価値の差の絶対値の最大がそれぞれの許容誤差以下のときに、終了コード0で終了する。
+標準出力の1行のJSONは、局面数、logitの差の最大、合法手の確率の差の最大、価値の差の最大、最大のlogitを持つ手（以下、最大の手）の不一致の数、および不一致の局面ごとの基準のlogitの差を示す。
+
+FP16をlogitではなく確率で比べるのは、FP16の丸めの誤差が値の大きさに比例して層ごとに累積し、logitの大きい学習したネットではlogitの差も大きくなるからである。
+1サイクル分学習した10ブロック128チャネルのネットでは、合法手のlogitの最大が約14あり、FP16のlogitの差は最大4.3×10⁻²、価値の差は最大1.1×10⁻²であったが、MCTSが使う合法手の確率の差は最大2.8×10⁻³であった（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
+各合法手のlogitを、合法手の列で隣にある着手のものと読み違えた場合、同じネットで局面ごとの確率の差の最大は中央値3.5×10⁻²、全体で0.21になるので、確率の許容誤差1×10⁻²でも出力の並びのずれや読み違えは検出できる。
+FP16の照合をこの形にしたのは2026年10月28日の開発者の決定である（[ADR](../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）。
 
 最大の手の不一致は合否に使わない。
-各logitの差が許容誤差t以下なら、候補が最大とした手の基準のlogitは基準の最大から2t以内に収まるので、最大の手の一致は要素ごとの検査に含意され、ほぼ同点の局面でだけ入れ替わる。
-ランダム初期化のネットのFP16では、288局面中2局面で入れ替わり、基準のlogitの差はどれも3.2×10⁻⁴以下であった。
+logitで比べる場合、各logitの差が許容誤差t以下なら、候補が最大とした手の基準のlogitは基準の最大から2t以内に収まるので、最大の手の一致は要素ごとの検査に含まれ、ほぼ同点の局面でだけ入れ替わる。
 
-FP16の許容誤差1×10⁻²は、価値の局面間の散らばりより大きいことがある。
-ランダム初期化のネットでは価値の散らばりが0.003しかなく、FP16の照合では価値の読み出しのずれを検出できない。
-価値のずれはCPUの1×10⁻⁴の照合で検出するので、CPUの照合は省略しない。
+ランダム初期化のネットは、合法手のlogitの散らばりが小さく（局面ごとの標準偏差0.05〜0.07）、確率がほぼ一様になるので、FP16の確率の照合では読み違えを検出できない。
+価値の散らばりも0.003しかなく、FP16の照合では価値の読み出しのずれも検出できない。
+これらはCPUの1×10⁻⁴の照合で検出するので、CPUの照合は省略しない。
 
 ## 6. 照合に失敗したとき
 

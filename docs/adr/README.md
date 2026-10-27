@@ -328,3 +328,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、入力の95面と方策の目標はPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)
 - 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](train-the-zero-value-on-mixed-results-and-root-values.md)
 - 2026年10月27日 [AlphaZero型探索の学習は、シードで固定した順列と完了した更新の回数で再開し、チェックポイント、ONNX、および集計を原子的に確定させる](resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)
+- 2026年10月28日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、logitではなく合法手の確率と価値で照合する](compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)

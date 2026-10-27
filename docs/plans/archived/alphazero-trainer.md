@@ -20,8 +20,8 @@ MNSDを読む拡張モジュール`minase_mnsd_reader`を`tools/train/zero/mnsd_
 作業機のGPUで1,000局の自己対局を1サイクル分学習し、途中で`SIGKILL`により止めて再開した学習は、中断しない学習と、読んだ局面の順序、更新回数、損失、および出力したネットのバイト列まで一致した（[記録](../../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
 この学習では、対局結果に対する価値の検証損失が0.798となり、常に勝率0.5を出す場合の損失ln 2（約0.693）を上回った。
 対局結果が対局の記憶として学ばれた兆候なので、[強化学習の実行](../alphazero-rl.md)では最初のサイクルからこの指標を見て判断する。
-学習したネットの出力は、ONNX RuntimeのCPUではPyTorchと許容誤差に収まったが、TensorRTのFP16ではlogitの差が最大4.3×10⁻²となり、許容誤差の初期値1×10⁻²を超えた（[記録](../../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
-差は飽和のない丸めの累積であり、FP16の許容誤差か照合する値を、強化学習の最初の生成の前に決め直す必要がある。
+学習したネットの出力は、ONNX RuntimeのCPUではPyTorchと許容誤差に収まったが、TensorRTのFP16ではlogitの差が最大4.3×10⁻²となり、logitの許容誤差の初期値1×10⁻²を超えた（[記録](../../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
+差は飽和のない丸めの累積だったので、FP16の照合を合法手の確率と価値の差で行うように照合の道具と手引きを改め（2026年10月28日の利用者の決定、[ADR](../../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）、同じネットがバッチの大きさ1、7、256のすべてで新しい基準の照合に通った（[記録](../../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 `crates/`は変更しておらず、αβ探索の深さ6のbenchの局面ごとのノード数、最善手、および評価値はmasterと一致した。
 本書が定めていなかった事項は、着手時にClaudeが決めて「着手時に補った決定」の節に記した。
 仕様は学習器と拡張モジュールのdocコメントへ、設計判断は4本のADR（[PyTorchでの学習とONNXへの出力](../../adr/train-the-zero-network-in-pytorch-and-export-it-as-onnx.md)、[拡張モジュールによる読み込み](../../adr/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)、[教師と損失](../../adr/train-the-zero-value-on-mixed-results-and-root-values.md)、[チェックポイントと再開](../../adr/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）へ移した。
