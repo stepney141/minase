@@ -15,8 +15,8 @@
 
 起案。2026年10月26日に起案した。
 実装はまだない。
-着手は、[ネットの入出力と推論](archived/alphazero-network.md)の完了を待つ。
-[探索方式の共存とMCTS](alphazero-mcts.md)と[自己対局生成器](alphazero-selfplay.md)とは並行して進めてよい。
+前提とする[ネットの入出力と推論](archived/alphazero-network.md)は2026年10月27日に完了しており、着手は利用者の指示を待つ。
+[自己対局生成器](alphazero-selfplay.md)とは並行して進めてよい。
 次の一手は、masterから本書のブランチを切り、MNSDを読む拡張モジュールから実装することである。
 
 ## 目的
@@ -93,7 +93,7 @@ kの広げ方は[強化学習の実行](alphazero-rl.md)の「生成と学習を
 λを変えるのは、この指標と進捗測定の対局の結果から、変える根拠が得られた場合に限る。
 λを変えた後の、混合した教師に対する損失の低下は、学習の改善の根拠にしない。
 [対局内で一定な教師成分は関係を表せるモデルに記憶される](../lessons/game-constant-target-memorization.md)の教訓により、対局結果を価値の教師に混ぜる本書では、対局単位の検証損失を1エポック目から監視する。
-方策の損失は、completed Qによる方策の目標（[探索方式の共存とMCTS](alphazero-mcts.md)の「RLの探索はGumbel AlphaZeroにする」の節）との交差エントロピーとする。
+方策の損失は、completed Qによる方策の目標（[探索方式の共存とMCTS](archived/alphazero-mcts.md)の「RLの探索はGumbel AlphaZeroにする」の節）との交差エントロピーとする。
 
 ### チェックポイントと再開
 

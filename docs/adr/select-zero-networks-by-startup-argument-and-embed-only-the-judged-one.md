@@ -37,5 +37,5 @@ USIオプションでネットを指定する案は採らなかった。
 ネットのパスはハーネスの実行条件に残るが、ネットの内容は残らない。
 同じパスのファイルを書き換えると記録と対局のネットの対応が失われるので、RLはネットをサイクル番号つきのファイル名で保持し、上書きしない。
 推論のコードは学習済みの重みより先にmasterへ入るが、既定の探索の評価関数としては使われないので、既定の探索のbenchの結果とテストの結果を変えない。
-エンジンの`--nn-model`は[探索方式の共存とMCTS](../plans/alphazero-mcts.md)が、生成器の`--nn-model`は[自己対局生成器](../plans/alphazero-selfplay.md)が実装し、検査用の`minase dev nn-eval`も同じ読み込みを使う。
+エンジンの`--nn-model`は[探索方式の共存とMCTS](../plans/archived/alphazero-mcts.md)が、生成器の`--nn-model`は[自己対局生成器](../plans/alphazero-selfplay.md)が実装し、検査用の`minase dev nn-eval`も同じ読み込みを使う。
 ネットの読み込みは`crates/minase/src/nn/onnx.rs`の`Network`にある。

@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本書は、[AlphaZero型探索と深層強化学習の統括計画](alphazero.md)の3本目のサブタスクであり、既存のαβ探索と並ぶ第2の探索方式としてMCTS（Monte Carlo tree search、モンテカルロ木探索）をminaseに実装する。
+本書は、[AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)の3本目のサブタスクであり、既存のαβ探索と並ぶ第2の探索方式としてMCTS（Monte Carlo tree search、モンテカルロ木探索）をminaseに実装する。
 MCTSは、ネットが返す方策と価値を使い、有望な手だけを選んで深く読む探索である（用語は統括計画の適用範囲の節が定める）。
 対局では、lc0とdlshogiが実績を積んだPUCTと仮想損失によるバッチ評価を使い、強化学習の自己対局では、1手あたり数十回の探索でも方策を改善できるように設計されたGumbel AlphaZeroを使う。
 両者は木の構造、展開、ネットの評価、および価値の逆伝播を共有し、子の選択規則と根の予算配分だけを切り替える。
@@ -13,9 +13,18 @@ MCTSは、ネットが返す方策と価値を使い、有望な手だけを選�
 
 ## 状態
 
-進行中。2026年10月26日に起案し、2026年10月27日に利用者の指示で着手した。
-masterからブランチ`alphazero-mcts`を切り、フェーズ1の探索方式の境界から実装している。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年10月27日に完了し、実装をmasterへマージした。
+探索方式の境界`Searcher`、局面を持たないMCTSの探索木、PUCTとGumbelの選択規則、局面と反復規則を扱う駆動部、および対局用の探索ループを`crates/minase/src/search/`に実装した。
+起動引数`--search`と`--nn-model`、およびMCTSのUSIオプションは`crates/minase/src/bin/minase/`と`crates/minase/src/protocol/`に、ハーネスの`--candidate-args`は`crates/minase/src/harness/`と`crates/minase/src/bin/minase/match_runner/`に実装した。
+Gumbelの探索は、合成した探索環境でmctxのコミット428bfb7が出した参照値と、3つの設定の計128回のシミュレーションの経路、最後の手、根の訪問回数、および方策の目標が一致した。
+境界の追加、時間配分の式と時計の移動、およびMCTSの追加の前後で、αβ探索の深さ6のbenchの局面ごとのノード数、最善手、および評価値はmasterと一致した。
+ランダム初期化のネットを使うMCTSは、CPUとTensorRTの両方でUSIの対局を規則上の終局まで指し切り、4,096手の着手列を1手ずつ与えても1手あたりの固定費は約1.4 msしか増えなかった（[記録](../../measurements/alphazero-mcts/alphazero-mcts-usi-smoke.md)）。
+ハーネスでは、`--candidate-args`で起動したMCTSが対局を指し切り、記録した起動引数で再開できた（[記録](../../measurements/alphazero-mcts/alphazero-mcts-harness-smoke.md)）。
+実行ディレクトリの形式の版は5から6へ上がったので、版5の実行ディレクトリは、その測定を開始したハーネスで再開と集計を行う。
 本書が定めていなかった事項は、着手時にClaudeが決めて「着手時に補った決定」の節に記した。
+設計判断と着手時に補った決定は5本のADRへ、MCTSを測る手順は[棋力測定の手引き](../../guides/sprt.md)へ移した。
 
 ## 目的
 
@@ -33,18 +42,18 @@ masterからブランチ`alphazero-mcts`を切り、フェーズ1の探索方式
 
 次の項目は対象外とする。
 
-- ネットの入力の符号化、方策のラベル、および推論。[ネットの入出力と推論](archived/alphazero-network.md)で扱う。
-- 自己対局の進行、投了、および記録。[自己対局生成器](alphazero-selfplay.md)で扱う。
+- ネットの入力の符号化、方策のラベル、および推論。[ネットの入出力と推論](alphazero-network.md)で扱う。
+- 自己対局の進行、投了、および記録。[自己対局生成器](../alphazero-selfplay.md)で扱う。
 - DAG型の探索木。統括計画の適用範囲の節のとおり、初版の結果を見てから検討する。
 
 ## 依存関係
 
-境界と`alphabeta/`の分離は[探索部と評価関数のモジュール再編](archived/search-eval-layout.md)が定めており、本書はその配置の上に`SearchAlgorithm`、`Searcher`、および`mcts/`を加える。
-探索木の内側の反復は、[探索部の反復負け回避と反復禁止](archived/search-repetition.md)がαβ探索に採用したものと同じ規則で扱う。
-引き分けの値は[引き分けの値のADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)のUSIオプションを使う。
-推論の抽象`Evaluator`、方策のラベル、一様評価器、およびネットのファイルの読み込みは[ネットの入出力と推論](archived/alphazero-network.md)が実装し、ネットの指定の規則は同書の「ネットの指定と置き場所」の節が定める。
-USIの対局の確認には、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使う。
-ハーネスのエンジンの起動と記録は[対局ハーネスのバイナリ対戦化](archived/match-harness.md)と[docs/guides/sprt.md](../guides/sprt.md)が定める。
+境界と`alphabeta/`の分離は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定めており、本書はその配置の上に`SearchAlgorithm`、`Searcher`、および`mcts/`を加える。
+探索木の内側の反復は、[探索部の反復負け回避と反復禁止](search-repetition.md)がαβ探索に採用したものと同じ規則で扱う。
+引き分けの値は[引き分けの値のADR](../../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)のUSIオプションを使う。
+推論の抽象`Evaluator`、方策のラベル、一様評価器、およびネットのファイルの読み込みは[ネットの入出力と推論](alphazero-network.md)が実装し、ネットの指定の規則は同書の「ネットの指定と置き場所」の節が定める。
+USIの対局の確認には、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使う。
+ハーネスのエンジンの起動と記録は[対局ハーネスのバイナリ対戦化](match-harness.md)と[docs/guides/sprt.md](../../guides/sprt.md)が定める。
 
 ## 設計判断
 
@@ -71,7 +80,7 @@ n＝32、m＝16では、各段の探索回数は16回、8回、および8回に�
 9路盤囲碁では、通常のMuZeroが1手16回以下の探索で学習に失敗したのに対し、Gumbel MuZeroは1手2回でも学習が安定した。
 将棋では技巧とGumbel dlshogiが、1手16〜64回で学習を安定させている。
 
-中将棋の合法手は1局面で100手を超えることが多い（[evaluation.md](archived/evaluation.md)、現行のNNUEの教師データでは平均80.7手、99パーセンタイル142手、最大222手（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)））。
+中将棋の合法手は1局面で100手を超えることが多い（[evaluation.md](evaluation.md)、現行のNNUEの教師データでは平均80.7手、99パーセンタイル142手、最大222手（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)））。
 通常のPUCTとディリクレ雑音では、800回の探索でもルートの子を一巡できず、探索回数の少ない設定では方策の目標が雑音に支配される。
 これはGumbel論文が通常のAlphaZeroの失敗条件として挙げる状況である。
 1手の探索回数を減らせれば、同じGPU時間で生成できる局面数が比例して増える。
@@ -85,7 +94,7 @@ completed Q、変換σ、および内部の節点の選択は、Gumbel論文の�
 内部の節点では、同じ式で作った改善後の方策π′から、π′(a) − N(a)/(1 + Σ_b N(b)) が最大の子を決定的に選ぶ。
 候補数はm＝min(n, 16, 合法手数)とし、1手の探索回数nは、技巧とGumbel dlshogiが学習の安定を報告した16〜64回の中間の32から始める。
 m＝16と2つの係数はmctxの既定値（`policies.py`の`max_num_considered_actions`、`qtransforms.py`の`maxvisit_init`と`value_scale`、コミット428bfb7）であり、中将棋での調整はRLが動いてから行う。
-nの引き上げは、[強化学習の実行](alphazero-rl.md)の「伸びが止まったらネットと探索回数を段階的に増やす」の節の段階に従う。
+nの引き上げは、[強化学習の実行](../alphazero-rl.md)の「伸びが止まったらネットと探索回数を段階的に増やす」の節の段階に従う。
 実装の正しさは、固定の小さな探索木について訪問の順序と方策の目標をmctxの出力と照合して確かめる（「検証」の節）。
 
 KataGoのplayout cap randomization（一部の手番だけ多く探索して学習に記録する方式）は採らない。
@@ -102,7 +111,7 @@ PUCTの初期値はdlshogiの対局用の値（c_init＝1.44、c_base＝28288、
 中将棋に合わせた値の調整は、初版の比較とは別に行う。
 
 探索回数の上限を1に指定したときは、合法手のうち方策のlogitが最大の手を探索なしで指す。
-[強化学習の実行](alphazero-rl.md)は、この動作を学習が働いていることの確認に使う。
+[強化学習の実行](../alphazero-rl.md)は、この動作を学習が働いていることの確認に使う。
 
 ### 反復と引き分けはαβ探索と同じ規則で扱う
 
@@ -110,7 +119,7 @@ MCTSは、反復による勝敗と引き分けをαβ探索と同じように扱
 反復規則はRULES.md第31条が定める。
 R1は、可逆手が12手以上続いた後の同一局面の4回目の出現を原則として引き分けとし、最初の出現からその時点まで攻撃的着手を続けた側が一方だけならその側の負けとする規則である。
 R2は同じ手番の既出局面を再現する着手を、R3は4回目の出現を生じさせる着手を、それぞれ不合法とする規則である。
-[探索部の反復負け回避と反復禁止](archived/search-repetition.md)がαβ探索に採用した扱いは3つある。
+[探索部の反復負け回避と反復禁止](search-repetition.md)がαβ探索に採用した扱いは3つある。
 根で反復負けに直結する手を候補から除くこと、探索木の中でR1の周回の攻撃側を負けとすること、およびR2とR3が禁じる手を探索木の中で読まずに除くことである。
 本書は、3つともMCTSにも同じように実装する（2026年10月26日の利用者の決定）。
 R2とR3の禁止手の除外は合法性そのものであり、除かなければMCTSは不合法な手を展開し、RLの方策の目標にも不合法な手が入る。
@@ -122,7 +131,7 @@ R1の攻撃側の負けは規則が定める対局の結果であり、αβ探�
 このため、MCTSも同じ根の候補手から探索を始めるだけでよい。
 再現の判定に使うキーの計算と攻撃的着手の判定には、`minase-core`の`repetition_key`と`move_was_attacking`をそのまま使える。
 MCTSが新たに実装するのは、木を降りて新しい節点を作るときの判定だけである。
-その判定では、節点の局面のキーを根からの経路と対局履歴の両方と照合し、一致した場合の勝敗をαβ探索と同じ規則（[根の反復負け回避と周回の勝敗のADR](../adr/avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)）で決め、その節点をネットで評価しない終局の節点とする。
+その判定では、節点の局面のキーを根からの経路と対局履歴の両方と照合し、一致した場合の勝敗をαβ探索と同じ規則（[根の反復負け回避と周回の勝敗のADR](../../adr/avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)）で決め、その節点をネットで評価しない終局の節点とする。
 R2とR3では、規則が禁じる手を節点の子に加えず、子がすべて禁じられた節点を合法手のない負け（RULES.md第23条）とする。
 
 これらの勝敗は経路に依存する。
@@ -136,7 +145,7 @@ DAG型の探索木を検討する場合は、この前提を見直す必要が�
 勝ちまたは負けの確定を親へ伝えるときは、反復に由来するかどうかの印もあわせて伝える。
 対局の探索では、反復に由来する確定を反復の勝敗の帯の評価値で返す。
 プロトコル層の投了判定は、評価値がこの帯にあれば`ResignValue`によらず投了しない（`crates/minase/src/protocol/usi.rs`の`should_resign`）。
-RLの自己対局でも、根の確定が反復に由来する場合は投了しない（[自己対局生成器](alphazero-selfplay.md)の「投了」の節）。
+RLの自己対局でも、根の確定が反復に由来する場合は投了しない（[自己対局生成器](../alphazero-selfplay.md)の「投了」の節）。
 評価値の帯は、根からの手数が`MAX_PLY`（256）以下であることを前提に定義されている（`crates/minase/src/search/mod.rs`）。
 257手先の勝敗を同じ式で表すと、反復の勝ちは帯から外れ、詰みの勝ちは反復の帯に入ってしまう。
 このため、MCTSの探索木もαβ探索と同じく根から256手までとし、それより深い節点は作らない。
@@ -152,7 +161,7 @@ lc0は、根より後の2回目の出現を引き分けとする一方で、根�
 minaseの照合はこの区別をしないので、新しい根より下では巻き戻しは要らないと見込む。
 この見込みはコードからの推論なので、「検証」の節の試験で確かめる。
 
-R1の引き分けの値は、αβ探索と同じUSIオプション`DrawValueBlack`と`DrawValueWhite`で与え、`SearchSnapshot`が根の手番側から見た値として持つ（[引き分けの値のADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
+R1の引き分けの値は、αβ探索と同じUSIオプション`DrawValueBlack`と`DrawValueWhite`で与え、`SearchSnapshot`が根の手番側から見た値として持つ（[引き分けの値のADR](../../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
 主要なMCTSのエンジンも、引き分けの価値を設定できる。
 dlshogiは`Draw_Value_Black`と`Draw_Value_White`を勝率の千分率（既定500）で、ふかうら王は`DrawValueBlack`と`DrawValueWhite`を同じ千分率で根の手番に応じて、lc0は`DrawScore`を白から見た−1〜1の値で持つ。
 一方、やねうら王のαβ探索は同じ名前の`DrawValueBlack`をcp単位で持つので、同じ系列のエンジンの中で同じ名前のオプションの単位が異なる。
@@ -168,7 +177,7 @@ vはオプションの値、Kは「共存の構造」の節で評価値の表示
 RLの自己対局の探索では、引き分けの値を使わず、引き分けを常に0.5とする。
 dlshogiの自己対局も、対局用の設定によらず千日手を0.5としている（`selfplay/self_play.cpp`）。
 探索で引き分けに0.5以外の値を与えると、根の価値を混ぜる価値の教師に偏りが入るからである。
-本書は、引き分けを0.5に固定する探索の設定を用意し、[自己対局生成器](alphazero-selfplay.md)がそれを使う。
+本書は、引き分けを0.5に固定する探索の設定を用意し、[自己対局生成器](../alphazero-selfplay.md)がそれを使う。
 
 ### 共存の構造
 
@@ -185,7 +194,7 @@ Rustには静的初期化による登録がないので、登録表の代わり�
 | `crates/minase/src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
 | `crates/minase/src/eval/` | αβ探索の静的評価。NNUEと、比較用に残すPSTとFM（変更なし）。 |
 
-ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](archived/alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](alphazero-selfplay.md)が新設する。
+ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](../alphazero-selfplay.md)が新設する。
 依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`と駒の状態番号のための`eval::features`へとし、`alphabeta`と`mcts`は互いを参照しない。
 親の`search`は2つの子を列挙型で束ねるだけで、プロトコル層は`search`の境界の型だけを使い、`alphabeta`と`mcts`の内部を参照しない。
 自己対局生成器とbenchは、lc0の自己対局が探索の実装を直接使うのと同じく、方式のモジュールを直接使ってよい。
@@ -213,21 +222,21 @@ Kは現行のNNUEの重みファイルが持つ勝率尺度であり、1ロジ�
 丸めにより評価値の絶対値は約7,400以下となり、評価関数の出力の上限`EVALUATION_LIMIT`（28,999）より小さく保たれる。
 このため、プロトコル層が反復の勝敗の帯または詰みの帯と取り違えて表示または投了することはない。
 この写像により、投了判定`ResignValue`と読み筋の表示を方式によらず共通にできる。
-深さは主変化の長さ、ノード数はシミュレーションの回数とし、αβ探索のノード数（make_moveの適用回数、[research/node-count-definition.md](../research/node-count-definition.md)）とは定義が異なることをUSIの`info string`と文書に明記する。
+深さは主変化の長さ、ノード数はシミュレーションの回数とし、αβ探索のノード数（make_moveの適用回数、[research/node-count-definition.md](../../research/node-count-definition.md)）とは定義が異なることをUSIの`info string`と文書に明記する。
 
 方式の選択は、起動引数`--search alphabeta|mcts`で起動時に1回だけ行い、既定は`alphabeta`とする。
-MCTSのネットは起動引数`--nn-model`で起動時に指定する（[ネットの入出力と推論](archived/alphazero-network.md)の「ネットの指定と置き場所」の節）。
+MCTSのネットは起動引数`--nn-model`で起動時に指定する（[ネットの入出力と推論](alphazero-network.md)の「ネットの指定と置き場所」の節）。
 `--nn-model`は`--search mcts`のときだけ受け付け、`--search alphabeta`とともに与えた場合は起動時にエラーで終了する。
 USIのオプションのうち、規則セット、`ResignValue`、`DrawValueBlack`、および`DrawValueWhite`のような共通のものはプロトコル層が宣言し、`Threads`、`USI_Hash`、および方式に固有のもの（推論の`NnBackend`と`NnCacheDir`を含む）は選ばれた方式が宣言する。
 `NnBackend`は`tensorrt`、`cuda`、`cpu`の3値で既定を`tensorrt`とし、`nn::ExecutionProvider`へ写す。
 `NnCacheDir`の既定は`$XDG_CACHE_HOME/minase/tensorrt`とし、`XDG_CACHE_HOME`が設定されていない場合は`$HOME/.cache`で補わずに既定値を空とし、空のまま`NnBackend`に`tensorrt`を選んだ起動は`isready`への応答の前にエラーで終了する。
 TensorRTのエンジンの作成は`isready`の応答の前に行い、10ブロック128チャネルの作業機で7〜10秒かかるので、測定の前にエンジンを1回起動してキャッシュを作っておく手順を手引きに書く。
-`cuda`は、ONNX Runtime 1.28.3では出力を返した後のプロセスの終了処理で非決定的に異常終了することがある（[ランダム初期化のネットの出力の照合](../measurements/alphazero-network/random-net-output-check.md)）ので、`quit`の後の終了コードに依存する処理を書かない。
+`cuda`は、ONNX Runtime 1.28.3では出力を返した後のプロセスの終了処理で非決定的に異常終了することがある（[ランダム初期化のネットの出力の照合](../../measurements/alphazero-network/random-net-output-check.md)）ので、`quit`の後の終了コードに依存する処理を書かない。
 ハーネスは`commit:`で指定したエンジンが`Threads`と`USI_Hash`の既定値を報告しないと拒否するので、MCTSも両方を宣言し、`USI_Hash`は探索木の容量として解釈する。
 
 棄却した代案とその理由は次のとおりである。
 別バイナリ`minase-zero`は、プロトコル層の配線を二重に持ち、ハーネスの`commit:`ビルドが`--bin minase`だけを作る前提とも合わない。
-別クレートへの分割は、[src構成の整理](archived/src-layout.md)が定めたワークスペース化の契機（外部利用者、公開、ビルド時間の問題）のいずれにも当たらない。
+別クレートへの分割は、[src構成の整理](src-layout.md)が定めたワークスペース化の契機（外部利用者、公開、ビルド時間の問題）のいずれにも当たらない。
 `dyn`トレイトによる開いた登録は、方式が2つで増やす予定もない現状では、列挙型の網羅的な`match`より検査が弱くなるだけである。
 USIオプションでの実行時の切替は、置換表と推論セッションのように方式ごとに持つ状態とオプションの集合が異なり、選ばれていない方式のオプションが表に出るので採らない。
 lc0も探索をUCIオプションで切り替えない。
@@ -238,7 +247,7 @@ lc0も探索をUCIオプションで切り替えない。
 
 ハーネスの`commit:`指定は起動引数を`--protocol usi --rules <規則>`に固定しており（`crates/minase/src/harness/player.rs`の`resolve_player`）、このままではMCTSを選べない。
 このため、エンジンの指定に任意の起動引数を足せる汎用の拡張（例 `--candidate-args "--search mcts --nn-model <ネットのファイル>"`）をハーネスに加える。
-この拡張はエンジンの起動方法の指定であり、ハーネスが差分の内容を知る機能比較のスイッチではないので、[CONTRIBUTING.md](../../CONTRIBUTING.md)の「棋力測定」の節が禁じる、ハーネスへの機能比較のスイッチの追加には当たらない。
+この拡張はエンジンの起動方法の指定であり、ハーネスが差分の内容を知る機能比較のスイッチではないので、[CONTRIBUTING.md](../../../CONTRIBUTING.md)の「棋力測定」の節が禁じる、ハーネスへの機能比較のスイッチの追加には当たらない。
 個々の変更の採否には、この拡張を使う場合も、従来どおりコミット対コミットのGSPRTを使う。
 起動引数は`manifest.json`に記録し、再開時の一致検査の対象に含める。
 代案は、対象コミットを固定したworktreeで自前でビルドしたバイナリを起動コマンドの形式で指定することであり、ハーネスの変更は要らないが、コミットとバイナリの対応をハーネスが検証しなくなるので採らない。
@@ -249,7 +258,7 @@ lc0も探索をUCIオプションで切り替えない。
 
 - 初版はNNキャッシュを作らず、`USI_Hash`は探索木の容量だけを表す。キャッシュの効果を測る前に作らないためであり、木の容量が尽きたら探索を止め、停止理由を`NodeLimit`とする。
 - MCTSの`Threads`は1だけを受け付け、`min 1 max 1`と宣言する。1本のスレッドが仮想損失で葉を集めてバッチで評価し、複数のスレッドへ広げるのは、CPU側の処理が律速だと実測で分かってからとする。
-- 1回の推論に送る葉の数の上限はUSIオプション`NnBatchSize`（既定256、1〜1024）で与え、TensorRTの最大バッチにも使う。既定値の256は、作業機の1ストリームでバッチ256が最大の毎秒評価数の98%に達した実測（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)）による。
+- 1回の推論に送る葉の数の上限はUSIオプション`NnBatchSize`（既定256、1〜1024）で与え、TensorRTの最大バッチにも使う。既定値の256は、作業機の1ストリームでバッチ256が最大の毎秒評価数の98%に達した実測（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)）による。
 - 葉を集める途中で評価待ちの葉に再び達したら、その降下の仮想損失を戻してバッチの収集を打ち切る。
 - `go depth`は、MCTSでは深さの制限の意味を定めないので、エラーで拒否する。
 - 時間配分は、αβ探索の持ち時間の配分式（`alphabeta/time.rs`の`time_budget`）を探索の境界へ移して共有する。到達の判定で、時間の配り方ではなく探索方式の違いを比べるためである。MCTSは、softに達した時点か、直前のバッチと同じ時間で次のバッチを終えるとhardを超える時点で止まる。
@@ -264,7 +273,7 @@ lc0も探索をUCIオプションで切り替えない。
 
 ## 実装フェーズ
 
-実装と試験はすべて作業機で行い、MCTSの単体試験には[ネットの入出力と推論](archived/alphazero-network.md)の一様評価器を使う。
+実装と試験はすべて作業機で行い、MCTSの単体試験には[ネットの入出力と推論](alphazero-network.md)の一様評価器を使う。
 USIの対局の確認には、ランダム初期化のネットを`--nn-model`で与え、ONNX RuntimeのCPU実行プロバイダ（`NnBackend`の`cpu`）で推論する（2026年10月26日の利用者の決定）。
 一様評価器を選ぶ値をUSIのオプションに足すと、試験のための選択肢が本番のオプションに残るからである。
 
@@ -299,7 +308,7 @@ USIの対局の確認には、ランダム初期化のネットを`--nn-model`�
 - 探索回数の上限が1のとき、合法手のうち方策のlogitが最大の手を返すことを確かめる。
 - 次の3つの起動がエラーで終了することを確かめる。埋め込みのネットのないビルドで`--nn-model`を与えずに`--search mcts`で起動する場合、`--nn-model`のファイルを読めない場合（別のネットへ切り替えない）、および`--search alphabeta`とともに`--nn-model`を与える場合である。
 - 指した手の部分木が次の探索で再利用され、`stop`と`ponderhit`がαβ探索と同じ順序の`SearchEvent`を返すことを確かめる。
-- 手数の上限に近い着手列を1手ずつ与えても、1手あたりの固定費が時間切れの安全余裕の内側に収まることを確かめる（[手数に比例する固定費は超長手数の対局で時間切れを起こす](../lessons/per-move-overhead-grows-with-game-length.md)）。
+- 手数の上限に近い着手列を1手ずつ与えても、1手あたりの固定費が時間切れの安全余裕の内側に収まることを確かめる（[手数に比例する固定費は超長手数の対局で時間切れを起こす](../../lessons/per-move-overhead-grows-with-game-length.md)）。
 
 境界へ`Searcher`を加える変更では、αβ探索のbenchの出力の一致に加えて、既存の試験の全件が変更前と同じく通ることを確かめる。
 
