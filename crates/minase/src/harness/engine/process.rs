@@ -100,7 +100,7 @@ impl EngineProcess {
         let mut process = Self::spawn(config, timeout)?;
         match config.protocol {
             Protocol::Usi => {
-                process.read_usi_defaults()?;
+                process.read_usi_declarations()?;
                 process.send(&format!(
                     "setoption name RuleSet value {}",
                     config.rules_source

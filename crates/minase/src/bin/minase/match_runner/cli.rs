@@ -34,7 +34,7 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 保存済み実験を再開するディレクトリ。新規作成との排他指定は[`Self::run_dir`]に従う。
-    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
+    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "candidate_option", "baseline_option", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
     /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
     #[arg(long, requires = "resume", conflicts_with = "run_dir", value_parser = parse_positive_u64)]
@@ -64,6 +64,9 @@ pub(crate) struct Arguments {
     /// 基準側のcommit:エンジンへ追加する、空白区切りの起動引数。
     #[arg(long, allow_hyphen_values = true)]
     pub(super) baseline_args: Option<String>,
+    /// 各側に送る追加のUSIオプション。
+    #[command(flatten)]
+    pub(super) options: Box<UsiOptions>,
     /// 両エンジンに適用する既定の思考制限。
     #[arg(long, default_value = "depth=1", value_parser = parse_search_limit)]
     pub(super) each: SearchLimit,
@@ -97,7 +100,37 @@ pub(crate) struct Arguments {
     pub(super) mode: Option<Mode>,
 }
 
+/// 候補と基準の追加USIオプションの引数。
+#[derive(clap::Args)]
+pub(super) struct UsiOptions {
+    /// 候補側に送るUSIオプション。名前=値の形式で繰り返し指定できる。
+    #[arg(long, value_name = "NAME=VALUE", value_parser = parse_usi_option)]
+    pub(super) candidate_option: Vec<(String, String)>,
+    /// 基準側に送るUSIオプション。名前=値の形式で繰り返し指定できる。
+    #[arg(long, value_name = "NAME=VALUE", value_parser = parse_usi_option)]
+    pub(super) baseline_option: Vec<(String, String)>,
+}
+
 impl Arguments {
+    /// 各側のUSIオプション名の重複を、ASCIIの大小文字を区別せず拒否する。
+    pub(super) fn validate_options(&self) -> Result<(), clap::Error> {
+        for (side, options) in [
+            ("candidate", &self.options.candidate_option),
+            ("baseline", &self.options.baseline_option),
+        ] {
+            let mut names = std::collections::HashSet::new();
+            for (name, _) in options {
+                if !names.insert(name.to_ascii_lowercase()) {
+                    return Err(crate::subcommand_command(&["match", "run"]).error(
+                        clap::error::ErrorKind::ValueValidation,
+                        format!("duplicate --{side}-option name '{name}'"),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 追加引数は、その側がコミット指定である場合だけ受理する。
     pub(super) fn validate_startup_args(&self) -> Result<(), clap::Error> {
         for (name, spec, args) in [
@@ -155,6 +188,28 @@ impl Arguments {
         }
         Ok(())
     }
+}
+
+/// 最初の`=`でUSIオプションを分け、改行、空の名前、および測定用の予約名を拒否する。
+fn parse_usi_option(input: &str) -> Result<(String, String), String> {
+    if input.contains(['\r', '\n']) {
+        return Err("USI option names and values must not contain newlines".to_owned());
+    }
+    let (name, value) = input
+        .split_once('=')
+        .ok_or_else(|| "USI option must have the form NAME=VALUE".to_owned())?;
+    if name.trim().is_empty() {
+        return Err("USI option name must not be empty".to_owned());
+    }
+    if ["RuleSet", "USI_Hash", "ResignValue", "Seed", "Threads"]
+        .iter()
+        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+    {
+        return Err(format!(
+            "USI option '{name}' is reserved by the match harness"
+        ));
+    }
+    Ok((name.to_owned(), value.to_owned()))
 }
 
 /// 対局結果の集計方法。
@@ -260,6 +315,96 @@ pub(super) fn time_seed() -> Result<u64, std::time::SystemTimeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 設計書「対局ハーネスにUSIオプションを指定する」: 最初の=だけで分け、各側の列を保つ。
+    #[test]
+    fn usi_options_preserve_values_and_order_for_each_side() {
+        let args = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "unused",
+            "--candidate-option",
+            "NnBatchSize=64",
+            "--candidate-option",
+            "Output File= path=a b ",
+            "--candidate-option",
+            "Label=",
+            "--baseline-option",
+            "NnBatchSize=256",
+        ])
+        .unwrap();
+        args.validate_options().unwrap();
+        assert_eq!(
+            args.options.candidate_option,
+            vec![
+                ("NnBatchSize".to_owned(), "64".to_owned()),
+                ("Output File".to_owned(), " path=a b ".to_owned()),
+                ("Label".to_owned(), String::new()),
+            ]
+        );
+        assert_eq!(
+            args.options.baseline_option,
+            vec![("NnBatchSize".to_owned(), "256".to_owned())]
+        );
+    }
+
+    #[test]
+    fn usi_options_reject_reserved_names_newlines_and_missing_separators() {
+        for flag in ["--candidate-option", "--baseline-option"] {
+            for input in [
+                "RuleSet=R1",
+                "rUlEsEt=R1",
+                "USI_Hash=64",
+                "usi_hash=64",
+                "ResignValue=0",
+                "resignvalue=0",
+                "Seed=1",
+                "SEED=1",
+                "Threads=1",
+                "threads=1",
+                "NnBatchSize",
+                "",
+                "=64",
+                " =64",
+                "Nn\nBatchSize=64",
+                "Nn\rBatchSize=64",
+                "Label=a\nb",
+                "Label=a\rb",
+            ] {
+                let error =
+                    Arguments::try_parse_from(["match_runner", "--run-dir", "unused", flag, input])
+                        .err()
+                        .unwrap();
+                assert_eq!(
+                    error.kind(),
+                    clap::error::ErrorKind::ValueValidation,
+                    "{flag} {input:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn usi_options_reject_duplicate_names_with_ascii_case_folding() {
+        for flag in ["--candidate-option", "--baseline-option"] {
+            for duplicate in ["NnBatchSize=64", "nnbATCHsIZE=256"] {
+                let args = Arguments::try_parse_from([
+                    "match_runner",
+                    "--run-dir",
+                    "unused",
+                    flag,
+                    "NnBatchSize=64",
+                    flag,
+                    duplicate,
+                ])
+                .unwrap();
+                assert_eq!(
+                    args.validate_options().unwrap_err().kind(),
+                    clap::error::ErrorKind::ValueValidation
+                );
+            }
+        }
+    }
 
     #[test]
     fn search_limits_resolve_each_and_independent_overrides() {
@@ -470,6 +615,8 @@ mod tests {
             vec!["--baseline-hash", "256"],
             vec!["--candidate-args", "--search mcts"],
             vec!["--baseline-args", "--search alphabeta"],
+            vec!["--candidate-option", "NnBatchSize=64"],
+            vec!["--baseline-option", "NnBatchSize=64"],
         ] {
             let error = Arguments::try_parse_from(
                 ["match_runner", "--resume", "old"]

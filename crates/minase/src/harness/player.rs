@@ -136,7 +136,7 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 /// エンジン指定を起動コマンドと実効制限へ解決する。
 ///
 /// 追加のUSIオプションは[`PlayerConfig::options`]に従う。
-/// CECP指定で追加オプションがあれば、プロセスを起動する前に入力エラーを返す。
+/// `random`またはCECP指定で追加オプションがあれば、プロセスを起動する前に入力エラーを返す。
 /// コミット指定は通常ビルドを使い、`startup_args`を`--protocol usi --rules <規則>`の後に足す。
 /// コミット以外に`startup_args`を指定すると、空配列でも起動前に入力エラーを返す。
 /// `random`は`std::env::current_exe()`で得た実行中の実行ファイルを`dev usi-random`で起動し、
@@ -159,6 +159,12 @@ pub fn resolve_player(
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "CECP engine does not support USI setoption settings",
+        ));
+    }
+    if matches!(spec.kind, PlayerKind::Random) && !options.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "random engine does not support USI setoption settings",
         ));
     }
     if let Some(hash_mb) = hash_mb {
@@ -436,17 +442,19 @@ mod tests {
         }
     }
 
-    // [`resolve_player`]の契約に従い、CECPのUSI設定は起動前に拒否する。
+    // [`resolve_player`]の契約に従い、randomとCECPの追加USI設定は起動前に拒否する。
     #[test]
-    fn cecp_resolution_rejects_nonempty_usi_options() {
-        let result = resolve_player(
-            parse_player_spec("cecp:engine-that-does-not-exist").unwrap(),
-            parse_search_limit("depth=1").unwrap(),
-            None,
-            "R1",
-            vec![("Tune_First".to_owned(), "17".to_owned())],
-            None,
-        );
-        assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+    fn random_and_cecp_resolution_reject_nonempty_usi_options() {
+        for spec in ["random", "cecp:engine-that-does-not-exist"] {
+            let result = resolve_player(
+                parse_player_spec(spec).unwrap(),
+                parse_search_limit("depth=1").unwrap(),
+                None,
+                "R1",
+                vec![("Tune_First".to_owned(), "17".to_owned())],
+                None,
+            );
+            assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+        }
     }
 }

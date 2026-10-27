@@ -104,10 +104,12 @@ pub(super) fn run_manifest(
         candidate: EngineRecord {
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
+            options: candidate.options.clone(),
         },
         baseline: EngineRecord {
             identity: baseline.identity.clone(),
             limit: stored_search_limit(baseline.limit),
+            options: baseline.options.clone(),
         },
         rules_source: rules.source.clone(),
         canonical_rules: rules.codes.iter().map(ToString::to_string).collect(),
@@ -146,7 +148,6 @@ mod tests {
             serde_json::from_value::<StoredSearchLimit>(json).unwrap(),
             stored
         );
-        assert_eq!(FORMAT_VERSION, 6);
     }
 
     // default_concurrencyのdocコメントと物理コア数からの既定値に関するADRに従う。

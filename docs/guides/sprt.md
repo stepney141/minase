@@ -228,6 +228,12 @@ cargo run --release --bin minase -- match report \
 たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
 minase本体は`--protocol`と`--rules`の指定が必須なので、この形式では両方の引数を必ず書く。
 
+USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名前=値'`でそれぞれ繰り返し指定でき、最初の`=`で名前と値を分ける。
+名前と値に改行を含む指定と、同じ側で名前が重複する指定は拒否する。
+測定条件と資源管理が扱う`RuleSet`、`USI_Hash`、`ResignValue`、`Seed`、`Threads`は予約名であり、予約名と重複の照合ではASCIIの大小文字を区別しない。
+新規実行時にエンジンの宣言と照合し、`spin`は宣言範囲の整数、`combo`は選択肢、`check`は`true`か`false`、`string`は指定した文字列を受理する一方、未宣言の名前、未対応の型、`random`または`cecp:`への指定は拒否する。
+受理した列は`manifest.json`に保存して再開時に復元し、`--resume`との同時指定は同じ値でも引数のエラーにする。
+
 ハーネス自体の煙試験には`random`を指定する。
 この指定では同一ビルドの`minase dev usi-random`が起動され、合法手から一様ランダムに着手する校正用エンジンとして動く。
 `random`同士の対局は、真のElo差が0であると分かっている唯一の対戦カードである。
@@ -246,7 +252,7 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 
 AlphaZero型探索のMCTSは、`--candidate-args "--search mcts --nn-model <ネットのファイル>"`のように起動引数で選ぶ。
 MCTSの推論にはONNX Runtimeが要るので、`tools/train/zero/setup.sh`で導入した環境の`tools/train/zero/env.sh`をbashで読み込んでから`minase match run`を起動する。
-ハーネスは推論の設定のUSIオプションを送らないので、MCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
+推論の設定は`--candidate-option NnBatchSize=64`や`--baseline-option NnBackend=cuda`のように指定でき、指定がなければMCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
 `XDG_CACHE_HOME`が設定されていないとminaseは`isready`でエラーになって終了するので、測定の前に設定する。
 TensorRTのエンジンの作成は、作業機の10ブロック128チャネルのネットで約11秒かかり、キャッシュの鍵には1回の推論の最大バッチ（`NnBatchSize`、既定256）が入る。
 同時に起動した複数の局が同じTensorRTのエンジンを作り始めないように、測定の前に同じネットと最大バッチでエンジンを1回起動してキャッシュを作っておく。

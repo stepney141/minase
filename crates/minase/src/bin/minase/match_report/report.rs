@@ -592,10 +592,12 @@ mod tests {
                 "format_version": FORMAT_VERSION,
                 "candidate": {
                     "identity": {"kind": "commit", "hash": "a", "sha256": "b", "args": []},
+                    "options": [["NnBatchSize", "64"]],
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "baseline": {
                     "identity": {"kind": "commit", "hash": "c", "sha256": "d", "args": []},
+                    "options": [],
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "mode": {"kind": "elo"},
@@ -860,21 +862,27 @@ mod tests {
 
     // [`report`]は現行版だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
-    fn report_rejects_version_four_before_decoding_new_fields() {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let run_dir = std::env::temp_dir().join(format!(
-            "minase-report-v4-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&run_dir).unwrap();
-        File::create(run_dir.join(".match_runner.lock")).unwrap();
-        std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":4}"#).unwrap();
-        let error = report(&run_dir).err().unwrap();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert!(error.to_string().contains(&format!(
-            "requires format version {FORMAT_VERSION}, found 4"
-        )));
-        std::fs::remove_dir_all(run_dir).unwrap();
+    fn report_rejects_old_versions_before_decoding_new_fields() {
+        for version in [4, 5, 6] {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let run_dir = std::env::temp_dir().join(format!(
+                "minase-report-v4-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&run_dir).unwrap();
+            File::create(run_dir.join(".match_runner.lock")).unwrap();
+            std::fs::write(
+                run_dir.join("manifest.json"),
+                format!("{{\"format_version\":{version}}}"),
+            )
+            .unwrap();
+            let error = report(&run_dir).err().unwrap();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(error.to_string().contains(&format!(
+                "requires format version {FORMAT_VERSION}, found {version}"
+            )));
+            std::fs::remove_dir_all(run_dir).unwrap();
+        }
     }
 }
