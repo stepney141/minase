@@ -1,5 +1,5 @@
 {
- "common": {
+ "common": {"simulations_per_move": 32, 
   "mean_game_plies": 464.4,
   "bytes_per_position": 333.77,
   "source_bytes": 35287040,

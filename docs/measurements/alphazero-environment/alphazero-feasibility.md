@@ -2,13 +2,13 @@
 
 ## 目的
 
-[実行環境と実現性の実測の設計書](../../plans/alphazero-environment.md)のフェーズ1とフェーズ2として、作業機とColab機（L4、A100、G4）で、ネットの推論、MCTSのCPUの処理、ネットの学習、環境の導入とビルド、およびファイルの転送を実測する。
+[実行環境と実現性の実測の設計書](../../plans/archived/alphazero-environment.md)のフェーズ1とフェーズ2として、作業機とColab機（L4、A100、G4）で、ネットの推論、MCTSのCPUの処理、ネットの学習、環境の導入とビルド、およびファイルの転送を実測する。
 その値と同書の「一次見積もりの式」から、10ブロック128チャネルのネットによる強化学習（RL）の1サイクル（100万局面の自己対局と学習）の所要時間と、Colabが利用料の単位とする計算単位（compute unit、以下CU）をGPU種別ごとに求めて、借りるGPU種別を選ぶ。
 あわせて、Colab機で無人の計算が連続して何時間動くかを確かめ、教師データから対局長と合法手数の分布を集計する。
 
 ## コマンドライン
 
-測定用の道具は、統合ブランチ`alphazero`から切ったブランチ`alphazero-environment`の`tools/train/zero/feasibility/`にある。
+測定用の道具は`tools/train/zero/feasibility/`にあり、測定のときはブランチ`alphazero-environment`で作った。
 `make_nets.py`はランダムに初期化した4つの大きさのネットをONNXへ出力し、`trt_bench`はONNX RuntimeのTensorRT実行プロバイダで推論の速度を、`sim_cost`はGumbel AlphaZero（1手32回、候補16手）の探索の1シミュレーションあたりのCPUの処理時間を、`train_bench.py`は学習の1ステップの速度を測り、`teacher_stats`は教師データの分布を集計する。
 本記録と同じ名前のディレクトリ`alphazero-feasibility/`に置いた`measure.sh`は、1台の機械で導入、ビルド、ネットの作成、推論、CPUの処理、および学習を順に測り、推論の段階は`measure-trt.sh`が受け持つ。
 `summarize.py`は`measure.sh`の出力を表の値にまとめ、`estimate.py`は`estimate-input.json`の値から見積もりを計算する。
@@ -49,7 +49,7 @@ CPUの処理の測定は、教師データ`generated-8200000.bin`（SHA-256 `e22
 
 | 項目 | 値 |
 |---|---|
-| 道具のコミット | 2c7c3c4f、d8bc5e43、eda8f146（ブランチ`alphazero-environment`） |
+| 道具のコミット | 2c7c3c4f、d8bc5e43、eda8f146（ブランチ`alphazero-environment`、masterにはef9b0c65でマージ） |
 | Python | 3.13（uvが管理する版。作業機とColab機で同じロックファイル`tools/train/zero/uv.lock`から導入） |
 | PyTorch | 2.11.0（CUDA 13.0版） |
 | TensorRT | 10.14.1.48（NVIDIAの索引の`tensorrt-cu13-libs`） |

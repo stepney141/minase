@@ -8,8 +8,6 @@ import json
 import sys
 
 POSITIONS_PER_CYCLE = 1_000_000
-# 1局面あたりのネットの評価は、根の展開の1回と1手32回の探索で33回である（木の再利用とNNキャッシュは数えない）。
-EVALS_PER_POSITION = 33
 WINDOW_CYCLES = 4
 PROGRESS_SIMULATIONS_PER_MOVE = 800
 PROGRESS_GAMES = 400
@@ -29,7 +27,9 @@ MACHINE_FIELDS = {
 
 def estimate(machine: dict, common: dict) -> dict:
     rate = min(machine["gpu_evals_per_sec"], machine["cpu_simulations_per_sec"])
-    generation = POSITIONS_PER_CYCLE * EVALS_PER_POSITION / rate
+    # 1局面あたりのネットの評価は、根の展開の1回と1手n回の探索である（木の再利用とNNキャッシュは数えない）。
+    evals_per_position = common["simulations_per_move"] + 1
+    generation = POSITIONS_PER_CYCLE * evals_per_position / rate
     training = WINDOW_CYCLES * POSITIONS_PER_CYCLE / machine["train_positions_per_sec"]
     progress_evals = PROGRESS_GAMES * common["mean_game_plies"] * PROGRESS_SIMULATIONS_PER_MOVE
     progress = progress_evals / rate
@@ -46,7 +46,7 @@ def estimate(machine: dict, common: dict) -> dict:
     cycle = generation + training + progress / PROGRESS_INTERVAL_CYCLES + fixed
     return {
         "bound": "gpu" if machine["gpu_evals_per_sec"] <= machine["cpu_simulations_per_sec"] else "cpu",
-        "positions_per_day": round(rate * 86_400 / EVALS_PER_POSITION),
+        "positions_per_day": round(rate * 86_400 / evals_per_position),
         "generation_secs": round(generation),
         "training_secs": round(training),
         "progress_secs": round(progress),

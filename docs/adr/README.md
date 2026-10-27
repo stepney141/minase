@@ -305,3 +305,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月25日 [強くする手段に人間の棋譜を使わない](do-not-use-human-games-to-strengthen-the-engine.md)
 - 2026年10月25日 [時計と併用しない固定時間の探索も締切まで反復を始め、締切で打ち切った反復の途中結果で指す](search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)
 - 2026年10月26日 [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)
+- 2026年10月27日 [AlphaZero型探索のGPUはColab機を公式CLIで借り、状態は作業機のNASにだけ置く](rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)
+- 2026年10月27日 [AlphaZero型探索の実行環境は、独自のコンテナイメージを作らず、同じロックファイルと固定した版を用いてすべての機械へ導入する](install-the-zero-toolchain-from-one-lock-on-every-machine.md)
+- 2026年10月27日 [AlphaZero型探索のサブタスクは統合ブランチに集めず、1本ずつmasterへマージする](merge-alphazero-subtasks-into-master-one-by-one.md)

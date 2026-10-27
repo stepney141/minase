@@ -9,14 +9,14 @@
 推論は、ONNX形式で保存したネットを、実行時に読み込むライブラリONNX Runtimeを通じてGPUで行い、RustからはortクレートのTensorRT実行プロバイダをFP16で使う（用語は統括計画の適用範囲の節が定める）。
 入力の符号化と方策のラベルはRustの`nn::encoding`とPythonの学習器の両方に実装し、Rustが書き出した固定局面集で両者の一致を確かめる。
 強化学習（RL）の途中のネットはコミットせず、エンジンと生成器が起動引数`--nn-model`でONNXのファイルを指定して読み、到達の判定に使うネットだけを埋め込む。
-完了条件は、検証の節の試験が通り、ortによる推論が作業機のGPUで動き、実装が統合ブランチへマージされることである。
+完了条件は、検証の節の試験が通り、ortによる推論が作業機のGPUで動き、実装がmasterへマージされることである。
 
 ## 状態
 
 起案。2026年10月26日に起案した。
 実装はまだない。
-着手は、[実行環境と実現性の実測](alphazero-environment.md)の実装が統合ブランチへマージされるのを待つ。
-次の一手は、統合ブランチから本書のブランチを切り、GPUを要しない符号化、方策のラベル、推論の抽象、および一様評価器から実装することである。
+前提とするサブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)は完了しており、着手は利用者の指示を待つ。
+次の一手は、masterから本書のブランチを切り、GPUを要しない符号化、方策のラベル、推論の抽象、および一様評価器から実装することである。
 
 ## 目的
 
@@ -43,8 +43,8 @@
 
 方策のラベルは、[指し手正準化](archived/move-canonicalization.md)が定めた着手の正準形の上に定義する。
 入力の駒の状態の区別は、NNUEとPSTの特徴が使う`crates/minase/src/eval/features.rs`の`piece_state`と同じにする。
-ONNX Runtime、TensorRT、およびcuDNNの版と導入は、[実行環境と実現性の実測](alphazero-environment.md)の環境定義に従う。
-ortによる推論の動作は、同書のフェーズ1で作ったランダム初期化のネットで確かめる。
+ONNX Runtime、TensorRT、およびcuDNNの版と導入は、環境定義`tools/train/zero/`（[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）に従う。
+ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）で確かめる。
 `crates/minase/src/nn/`は`minase-core`だけに依存し、探索のモジュールを参照しない（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
 
 ## 設計判断
@@ -88,7 +88,7 @@ dlshogiは駒の利きと利き数の面が学習の短縮に有効だったと�
 方策の出力は249チャネルの1×1畳み込み、価値の出力は1チャネルの1×1畳み込みと全結合層2つとシグモイドである。
 大きさの初期値は10ブロック128チャネルとする。
 KataGoが学習の最初の約1日で6ブロック96チャネルから移った大きさであり、lc0のT70も同じ大きさで、重みは約300万個になる。
-大きさは[実行環境と実現性の実測](alphazero-environment.md)の実測で確定する。
+この大きさは、[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)でColab機のL4が1サイクルを約40分で回せると見積もられたので、初期値として確定した。
 伸びが止まった場合にネットを大きくする段階は、[強化学習の実行](alphazero-rl.md)の「伸びが止まったらネットと探索回数を段階的に増やす」の節が定める。
 
 ### 価値は勝率1出力にする
@@ -131,7 +131,7 @@ TensorRTの版は10系に固定する。
 ONNX Runtime 1.28のTensorRT実行プロバイダは、TensorRT 11以降に対してビルドした場合にFP16の設定を無効にし、ネットのONNXに書かれた型どおりに実行するので（`tensorrt_execution_provider.cc` 1651〜1659行）、単精度のONNXにFP16の設定を付けてもFP16では動かない。
 10系なら、学習器が出力する単精度のONNXを、ONNX RuntimeのCPU実行プロバイダとの照合にもそのまま使え、FP16への変換はTensorRTに任せられる。
 ONNX Runtime 1.28の公式のビルドも、CUDA 13向けとCUDA 12向けのどちらでもTensorRT 10.14.1.48を使っているので（`tools/ci_build/github/azure-pipelines/templates/common-variables.yml` 3〜4行。2026年10月9日公開のONNX Runtime 1.31.0でもTensorRTは同じ版である）、配布されているライブラリをそのまま使える。
-FP16で動いていることは、[実行環境と実現性の実測](alphazero-environment.md)でTensorRTの詳細ログと、FP16の設定の有無による速度の差で確かめる。
+FP16で動いていることは、[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で、TensorRTの詳細ログと、FP16の設定の有無による速度の差により確かめた。
 Colabのドライバの都合などで10系を使えない場合は、同書の実測でONNX Runtime、TensorRT、およびortの版の組を見直してから進み、別の出力形式を先回りして用意しない。
 選んだ実行プロバイダを初期化できない場合は、別の実行プロバイダへ黙って切り替えず、`isready`への応答の前にエラーを返して終了する。
 推論は、ONNX Runtimeに出力を確保させる`session.run`の経路で行う。
@@ -174,9 +174,9 @@ TensorRTはネットを替えるたびにエンジンを作り直して数分か
 ファイルを読めない場合と、ネットからセッションを作れない場合は、別のネットへ切り替えずにエラーで終了する。
 
 到達の判定に使うネットだけは、ONNX形式で`crates/minase/nets/`に置いて`include_bytes!`で埋め込む。
-埋め込みのコードとネットは、統括計画のフェーズ7で同じコミットとして統合ブランチへ入れる。
-推論のコードは学習済みの重みと同じコミットでmasterへ入れる（[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)）。
-本書の実装は統合ブランチに置き、masterへは統括計画の到達の判定で使ったネットとともに入る（統括計画の「サブタスクの統合」の節）。
+埋め込みのコードとネットは、統括計画のフェーズ7で同じコミットとして作り、判定で`H0`となったときにmasterへマージする。
+本書の推論のコードは、学習済みの重みより先にmasterへ入る。
+推論のコードは既定の探索の評価関数ではなく、`--search mcts`と`--nn-model`を指定したときだけ使われるので、既定の探索のbenchとテストを変えないからである（[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)、[統合ブランチの廃止のADR](../adr/merge-alphazero-subtasks-into-master-one-by-one.md)）。
 埋め込みのネットがないビルドでは、`--search mcts`に`--nn-model`の指定を必須とし、指定がなければ起動時にエラーで終了する。
 埋め込みのネットを持つビルドでは、`--nn-model`を省くと埋め込みのネットを使い、指定するとそのファイルだけを読む。
 10ブロック128チャネルのネットは単精度で約12 MBであり、現行のNNUE（`crates/minase/nets/nnue.bin`、約3.6 MB）と同じくgitで管理できる。
@@ -193,7 +193,7 @@ TensorRTは、初回の読み込みでネットをGPU向けに最適化したエ
 作られたエンジンはGPUの機種とTensorRTの版に固有であり、ネットは借りた機械で学習して作業機のRTX 3060 Tiでも動かすので、ネットの検査和だけでは同じエンジンを使えるかが決まらない。
 計算能力（compute capability）が同じGPUでも、メモリの大きいGPUで作ったエンジンはメモリの小さいGPUで読み込めない場合があると、ONNX Runtime 1.28のTensorRT実行プロバイダのソース（`tensorrt_execution_provider.cc` 3523行）が注記している。
 このためエンジンは、ネットの検査和、GPUの機種名、GPUのメモリ容量、GPUの計算能力、およびTensorRTの版の組をキーにしてUSIオプション`NnCacheDir`（既定は`$XDG_CACHE_HOME/minase/tensorrt`）の下のディレクトリへ保存し、次回からは読み込むだけにする。
-借りた機械には永続する記憶領域を置かないので、借りるたびにエンジンを作り直し、その時間は1サイクルの所要時間に含める（[実行環境と実現性の実測](alphazero-environment.md)の「一次見積もりの式」の節）。
+借りた機械には永続する記憶領域を置かないので、借りるたびにエンジンを作り直し、その時間は1サイクルの所要時間に含める（[Colab機の操作の手引き](../guides/alphazero-machines.md)の6節）。
 エンジンの作成は`isready`の応答の前に行い、最初の`go`の持ち時間に含めない。
 ハーネスの応答タイムアウトは既定で120秒なので、測定の前にエンジンを1回起動してキャッシュを作っておく手順を手引きに書く。
 
@@ -207,7 +207,7 @@ TensorRTは、初回の読み込みでネットをGPU向けに最適化したエ
 ### フェーズ2　ortによる推論
 
 ortの依存を加え、ortによる`Evaluator`の実装、ネットのバイト列からのセッションの作成、`NnBackend`、TensorRTのエンジンのキャッシュ、および`minase dev nn-eval`を実装する。
-推論の動作は、[実行環境と実現性の実測](alphazero-environment.md)のフェーズ1で作ったランダム初期化のネットを使い、作業機のGPUと環境定義から導入した環境の中で確かめる。
+推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使い、作業機のGPUと環境定義から導入した環境の中で確かめる。
 
 ## 検証
 
@@ -234,8 +234,8 @@ PyTorchの出力は、[学習器](alphazero-trainer.md)が同じ局面集から�
 
 ## 完了条件
 
-本書の完了条件は、検証の節の試験がすべて通り、ortによる推論がランダム初期化のネットについて作業機のGPUで動き、実装が統合ブランチへマージされることである。
-マージの後は、統括計画の「サブタスクの統合」の節に従って状態を待機中（masterへの統合待ち）とする。
+本書の完了条件は、検証の節の試験がすべて通り、ortによる推論がランダム初期化のネットについて作業機のGPUで動き、実装がmasterへマージされることである。
+マージと同時に完了とし、統括計画の「サブタスクの統合」の節に従って有効な内容を移して設計書を凍結する。
 
 ## 参考資料
 
