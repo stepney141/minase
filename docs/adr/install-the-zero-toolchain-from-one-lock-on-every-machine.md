@@ -29,5 +29,5 @@ Rustのツールチェーンはrustupで固定した版を入れ、ONNX Runtime�
 ## 結果
 
 新しい機械を借りるたびに、導入とビルドにかかる数分がサイクルの所要時間に加わる。
-GPUドライバ、OS、およびglibcは機械ごとに異なるので、その差が推論の結果に影響しないことは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合で確かめる（[ネットの入出力と推論](../plans/alphazero-network.md)の検証の節）。
+GPUドライバ、OS、およびglibcは機械ごとに異なるので、その差が推論の結果に影響しないことは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合で確かめる（[ネットの入出力と推論](../plans/archived/alphazero-network.md)の検証の節）。
 版を上げるときは、ロックファイルと`tools/train/zero/env.sh`の版を同じコミットで変える。

@@ -1,0 +1,44 @@
+zero-b6c96.onnx: parameters=1252700 bytes=5017098 policy=[1, 35856] value=[1, 1]
+zero-b10c128.onnx: parameters=3462524 bytes=13854384 policy=[1, 35856] value=[1, 1]
+zero-b15c192.onnx: parameters=11323772 bytes=45285260 policy=[1, 35856] value=[1, 1]
+zero-b20c256.onnx: parameters=26561020 bytes=106209976 policy=[1, 35856] value=[1, 1]
+61a62a623067f9328f1baa91700dc98c81b7c43146ef8448f8263cc570d01600  <out-dir>/nets/zero-b10c128.onnx
+93c948fbf0bfd89ea9ac512e76b6eeda483126bb021d68c7da8b756cd037c62e  <out-dir>/nets/zero-b15c192.onnx
+2ade392afe529b01f3b1f5c903ec7ed8bca1110e8eaaa0bd2a774f843cebe4a9  <out-dir>/nets/zero-b20c256.onnx
+268dbbfc65b5dcc285a3bcb75020048ad5ea1468bae50ccd282cd30e68f7a34f  <out-dir>/nets/zero-b6c96.onnx
+cpu-b1 exit=0 NN session creation: 0.056343 s NN inference (288 positions): 0.715847 s 
+cpu-b7 exit=0 NN session creation: 0.055033 s NN inference (288 positions): 0.404915 s 
+cpu-b256 exit=0 NN session creation: 0.054208 s NN inference (288 positions): 0.151043 s 
+trt-b1 exit=0 NN session creation: 7.142373 s NN inference (288 positions): 0.087695 s 
+trt-b7 exit=0 NN session creation: 7.571560 s NN inference (288 positions): 0.028252 s 
+trt-b256 exit=0 NN session creation: 9.633473 s NN inference (288 positions): 0.019751 s 
+trt-b1-cached exit=0 NN session creation: 0.358891 s NN inference (288 positions): 0.089622 s 
+trt-b7-cached exit=0 NN session creation: 0.400515 s NN inference (288 positions): 0.027748 s 
+trt-b256-cached exit=0 NN session creation: 0.411193 s NN inference (288 positions): 0.020043 s 
+cuda-b7-run1 exit=0 NN session creation: 0.190639 s NN inference (288 positions): 0.267723 s 
+cuda-b7-run2 exit=0 NN session creation: 0.195765 s NN inference (288 positions): 0.267455 s 
+run.sh: Aborted                    (core dumped) "$B" dev nn-eval --nn-model "$NET" "$@" --out "$OUT/eval/$name.json" 2> "$OUT/eval/$name.stderr"
+cuda-b7-run3 exit=134 NN session creation: 0.196487 s NN inference (288 positions): 0.267503 s corrupted double-linked list 
+run.sh: Aborted                    (core dumped) "$B" dev nn-eval --nn-model "$NET" "$@" --out "$OUT/eval/$name.json" 2> "$OUT/eval/$name.stderr"
+cuda-b7-run4 exit=134 NN session creation: 0.175368 s NN inference (288 positions): 0.267397 s corrupted double-linked list 
+pytorch exit=0
+cpu-b1 tolerance=1e-4: {"positions":288,"max_logit_abs_diff":1.6625156401550711e-07,"max_value_abs_diff":8.809051510461074e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0
+cpu-b7 tolerance=1e-4: {"positions":288,"max_logit_abs_diff":1.5691687011570865e-07,"max_value_abs_diff":8.809051510461074e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0
+cpu-b256 tolerance=1e-4: {"positions":288,"max_logit_abs_diff":1.5691687011570865e-07,"max_value_abs_diff":8.809051510461074e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0
+trt-b1 tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.00047811815806579616,"max_value_abs_diff":0.00024884689193727105,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0
+trt-b7 tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.000350392854892731,"max_value_abs_diff":0.00024252879959107965,"best_move_mismatches":2,"best_move_mismatch_gaps":[[53,6.361305713653564e-05],[209,0.0003171861171722412]]}
+exit=0
+trt-b256 tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.0004369164786148065,"max_value_abs_diff":0.0002498055662536469,"best_move_mismatches":2,"best_move_mismatch_gaps":[[102,1.1444091796875e-05],[277,8.202344179153442e-05]]}
+exit=0
+trt-b1-cached tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.00047811815806579616,"max_value_abs_diff":0.00024884689193727105,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0
+trt-b7-cached tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.000350392854892731,"max_value_abs_diff":0.00024252879959107965,"best_move_mismatches":2,"best_move_mismatch_gaps":[[53,6.361305713653564e-05],[209,0.0003171861171722412]]}
+exit=0
+trt-b256-cached tolerance=1e-2: {"positions":288,"max_logit_abs_diff":0.0004369164786148065,"max_value_abs_diff":0.0002498055662536469,"best_move_mismatches":2,"best_move_mismatch_gaps":[[102,1.1444091796875e-05],[277,8.202344179153442e-05]]}
+exit=0
+cuda-b7-run1 tolerance=1e-2: {"positions":288,"max_logit_abs_diff":6.06770809745763e-05,"max_value_abs_diff":1.6723564147946846e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+exit=0

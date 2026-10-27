@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本書は、[AlphaZero型探索と深層強化学習の統括計画](alphazero.md)の2本目のサブタスクであり、MCTSが使うニューラルネットワーク（以下ネット）の入力と出力の形、ネットの構成、およびRustからの推論を定めて実装する。
+本書は、[AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)の2本目のサブタスクであり、MCTSが使うニューラルネットワーク（以下ネット）の入力と出力の形、ネットの構成、およびRustからの推論を定めて実装する。
 ネットは、局面を入力すると各合法手の有望さの確率分布（方策）と手番側の勝率（価値）を返す。
 入力は手番側から見た12×12の盤の平面95面であり、駒の状態ごとの94面と先獅子の1面からなる。
 方策は移動元の升ごとに249種類の移動を割り当てた計35,856要素、価値は勝率1出力とし、ネットは大域プーリングを入れた10ブロック128チャネルのResNetから始める。
@@ -13,10 +13,16 @@
 
 ## 状態
 
-起案。2026年10月26日に起案した。
-実装はまだない。
-前提とするサブタスク1の[実行環境と実現性の実測](archived/alphazero-environment.md)は完了しており、着手は利用者の指示を待つ。
-次の一手は、masterから本書のブランチを切り、GPUを要しない符号化、方策のラベル、推論の抽象、および一様評価器から実装することである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年10月27日に完了し、実装をmasterへマージした。
+入力の符号化、方策のラベル、評価器の抽象、一様評価器、ONNX Runtimeによる推論、TensorRTのエンジンのキャッシュ、固定局面集、および`minase dev nn-eval`を`crates/minase/src/nn/`と`crates/minase/src/bin/minase/`に実装した。
+作業機でのランダム初期化のネットの照合では、PyTorchの出力に対してONNX RuntimeのCPUの差は1.7×10⁻⁷以下、TensorRTのFP16の差は4.8×10⁻⁴以下であり、バッチの大きさ1、7、および256のすべてで許容誤差に収まった（[記録](../../measurements/alphazero-network/random-net-output-check.md)）。
+最大のlogitを持つ手の一致は、各logitの差の検査に含まれるので、照合の結果を見た後に合否の条件から外し、件数と差を報告するだけにした。
+CUDAの実行プロバイダは、出力を書き終えた後の終了処理で8回中4回、`libcuda`の終了処理の中で異常終了したが、既定のTensorRTとCPUは正常に終了した。
+ortの依存はクリーンなリリースビルドを約5%、実行ファイルを約3%大きくしただけなので、依存を常に含める方針を維持した（[記録](../../measurements/alphazero-network/ort-build-cost.md)）。
+TensorRTのエンジンのキャッシュの鍵は、計画時の5つの値から、ネットの検査和、GPUの機種名、GPUのメモリ容量、および最大バッチの4つに改めた（「TensorRTのエンジンのキャッシュ」の節）。
+設計判断は入力、方策、価値、推論、ネットの指定、キャッシュの鍵、およびネットの構成の7本のADRへ、照合の手順は[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)へ移した。
 
 ## 目的
 
@@ -29,23 +35,23 @@
 本書では、次の作業を行う。
 
 - 入力平面の符号化、方策のラベル、推論の抽象`Evaluator`、ortによる推論、試験用の一様評価器、およびTensorRTのエンジンのキャッシュを`crates/minase/src/nn/`に新設する。
-- ネットの構成（層の並びと大きさ）を定める。PyTorchによる実装は[学習器](alphazero-trainer.md)が行う。
-- USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
+- ネットの構成（層の並びと大きさ）を定める。PyTorchによる実装は[学習器](../alphazero-trainer.md)が行う。
+- USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](../alphazero-mcts.md)の「共存の構造」の節）。
 - Pythonの符号化との照合に使う固定局面集の入力平面と方策ラベルを書き出す。
-- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](alphazero-mcts.md)が、生成器では[自己対局生成器](alphazero-selfplay.md)が実装する。
+- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](../alphazero-mcts.md)が、生成器では[自己対局生成器](../alphazero-selfplay.md)が実装する。
 
 次の項目は対象外とする。
 
-- MCTSの探索。[探索方式の共存とMCTS](alphazero-mcts.md)で扱う。
-- Pythonの符号化と学習。[学習器](alphazero-trainer.md)で扱う。
+- MCTSの探索。[探索方式の共存とMCTS](../alphazero-mcts.md)で扱う。
+- Pythonの符号化と学習。[学習器](../alphazero-trainer.md)で扱う。
 
 ## 依存関係
 
-方策のラベルは、[指し手正準化](archived/move-canonicalization.md)が定めた着手の正準形の上に定義する。
+方策のラベルは、[指し手正準化](move-canonicalization.md)が定めた着手の正準形の上に定義する。
 入力の駒の状態の区別は、NNUEとPSTの特徴が使う`crates/minase/src/eval/features.rs`の`piece_state`と同じにする。
-ONNX Runtime、TensorRT、およびcuDNNの版と導入は、環境定義`tools/train/zero/`（[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）に従う。
-ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）で確かめる。
-`crates/minase/src/nn/`は`minase-core`だけに依存し、探索のモジュールを参照しない（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
+ONNX Runtime、TensorRT、およびcuDNNの版と導入は、環境定義`tools/train/zero/`（[実行環境の導入のADR](../../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）に従う。
+ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）で確かめる。
+`crates/minase/src/nn/`は`minase-core`と、駒の状態番号のための`eval::features`だけに依存し、探索のモジュールを参照しない（[探索方式の共存とMCTS](../alphazero-mcts.md)の「共存の構造」の節）。
 
 ## 設計判断
 
@@ -61,13 +67,13 @@ ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が�
 入力は、手番側から見た12×12の盤の平面95面とする。
 94面は、手番側と相手側のそれぞれについて47種類の駒の状態を1面ずつ割り当てたものである。
 47種類は、NNUEとPSTの特徴が使う区別（`piece_state`）と同じく、29の駒種に、成れる18の駒種の「まだ成れる」状態を加えたものである。
-残る1面は、先獅子（RULES.md第15条）で直後に取れない獅子の升を示す。
+残る1面は、直前の着手で獅子以外の駒が相手獅子を取った升（`Position::lion_capture_square`）を示し、先獅子（RULES.md第15条）の禁止はこの升と盤面から決まる。
 規則セット`engine-default`（P0でP5なし）では成り権の保留状態を追跡しないので（`crates/minase-core/src/position/make_move.rs`の`make_move_unchecked`）、この95面で次の合法手が決まる。
 保留状態を追跡するP1、P2、またはP5の規則セットで学習する場合は、`Position::promotion_deferred`の升を示す面を足す必要がある。
 
 入力は局面だけから決まり、過去の局面の履歴も反復の回数も含めない。
 dlshogiは履歴の面なしで強さを得ており、履歴を含めると同じ局面でも入力が変わるので、NNキャッシュの鍵と学習データの両方に履歴を持たせる必要が生じる。
-反復は探索木の側で規則どおりに扱い（[探索方式の共存とMCTS](alphazero-mcts.md)の「反復と引き分けはαβ探索と同じ規則で扱う」の節）、ネットには判断させない。
+反復は探索木の側で規則どおりに扱い（[探索方式の共存とMCTS](../alphazero-mcts.md)の「反復と引き分けはαβ探索と同じ規則で扱う」の節）、ネットには判断させない。
 NNキャッシュの鍵は、αβ探索の置換表と同じく、駒配置と手番のZobrist値に先獅子と成り権保留の状態を加えた値（`Position::zobrist`と`Position::rights_zobrist`の排他的論理和）とする。
 
 dlshogiは駒の利きと利き数の面が学習の短縮に有効だったと報告しているが、初版には入れない。
@@ -79,7 +85,9 @@ dlshogiは駒の利きと利き数の面が学習の短縮に有効だったと�
 
 入力平面の符号化はRustの`nn::encoding`とPythonの学習器の両方に実装する。
 駒の状態を面へ展開するだけの処理なので、規則の知識は要らない。
-両者の一致は、Rustが固定の局面集について面と方策ラベルを書き出したファイルをPythonの試験が読んで照合する形で固定する（[診断値は独立した参照値と照合する](../lessons/compare-diagnostics-with-independent-reference.md)）。
+両者の一致は、Rustが固定の局面集について面と方策ラベルを書き出したファイルをPythonの試験が読んで照合する形で固定する（[診断値は独立した参照値と照合する](../../lessons/compare-diagnostics-with-independent-reference.md)）。
+固定局面集は、初期局面、固定シードのランダム対局の283局面、および先獅子と成駒を含む手で組んだ4局面の計288局面とし、`minase dev nn-fixture`が`tools/train/zero/fixtures/nn-positions.jsonl`へ書き出したものをコミットする。
+minaseのテストは、生成した内容とこのファイルがバイト単位で一致することを確かめる。
 
 ### ネットの構成
 
@@ -88,13 +96,13 @@ dlshogiは駒の利きと利き数の面が学習の短縮に有効だったと�
 方策の出力は249チャネルの1×1畳み込み、価値の出力は1チャネルの1×1畳み込みと全結合層2つとシグモイドである。
 大きさの初期値は10ブロック128チャネルとする。
 KataGoが学習の最初の約1日で6ブロック96チャネルから移った大きさであり、lc0のT70も同じ大きさで、重みは約300万個になる。
-この大きさは、[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)でColab機のL4が1サイクルを約40分で回せると見積もられたので、初期値として確定した。
-伸びが止まった場合にネットを大きくする段階は、[強化学習の実行](alphazero-rl.md)の「伸びが止まったらネットと探索回数を段階的に増やす」の節が定める。
+この大きさは、[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)でColab機のL4が1サイクルを約40分で回せると見積もられたので、初期値として確定した。
+伸びが止まった場合にネットを大きくする段階は、[強化学習の実行](../alphazero-rl.md)の「伸びが止まったらネットと探索回数を段階的に増やす」の節が定める。
 
 ### 価値は勝率1出力にする
 
 価値の出力は手番側の勝率1つとし、引き分けは0.5として学習する。
-lc0は引き分けの多いチェスで勝ち・引き分け・負けの3分類（WDL）を導入したが、minaseの自己対局の引き分けは、NNUEの教師を生成した1ファイルで7,414局中98局（1.3%）と少なく（[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）、3分類の利点が小さい。
+lc0は引き分けの多いチェスで勝ち・引き分け・負けの3分類（WDL）を導入したが、minaseの自己対局の引き分けは、NNUEの教師を生成した1ファイルで7,414局中98局（1.3%）と少なく（[記録](../../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）、3分類の利点が小さい。
 dlshogiの勝率1出力と二値交差エントロピーの組合せが、この条件の既知の実例である。
 
 残り手数を予測する出力（moves-left head、MLH）は入れない。
@@ -109,7 +117,7 @@ lc0はMLHで勝ちを早く決めさせているが、Gumbel dlshogiは手数の
 中継升のある着手は、第1段で相手駒を取ってから別の升へ進む2歩が、第1段の8方向と第2段の7方向で56種、第1段で取って元の升へ戻る居喰いが8種である。
 その場に戻るだけのじっと（`from == to`で中継升なし）は1種である。
 直進の距離2は、獅子、麒麟、鳳凰、角鷹、飛鷲の跳びと、第1段の升が空いている2歩の両方を表す。
-minaseの着手表現は、空いた中継升を通る2歩を直接の跳びと同じ値に正準化しているので（[move-canonicalization.md](archived/move-canonicalization.md)）、この重なりは同じ着手の重なりであり、異なる着手が同じラベルを持つことはない。
+minaseの着手表現は、空いた中継升を通る2歩を直接の跳びと同じ値に正準化しているので（[move-canonicalization.md](move-canonicalization.md)）、この重なりは同じ着手の重なりであり、異なる着手が同じラベルを持つことはない。
 成れる麒麟と鳳凰の跳びは直進の成りの面に入り、獅子、角鷹、飛鷲は成らないので2歩系に成りの面は要らない。
 後手番では盤を180度回転させてから符号化し、ネットは常に手番側から見た盤を見る。
 
@@ -120,7 +128,7 @@ minaseの着手表現は、空いた中継升を通る2歩を直接の跳びと�
 移動先基準で距離3以上をまとめる121面の案は出力が半分になるが、ラベルから着手を戻すのに盤面が要る。
 出力層の計算量は、128チャネルから249チャネルへの1×1畳み込みで144升×128×249≒460万積和であり、10ブロック128チャネルの本体の約4.4億積和の約1%なので、面の数を半分にしても推論の速さはほとんど変わらない。
 ただし転送の量は別であり、方策の出力はFP32で1局面あたり約143 KBになる。
-[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)では、G4のColab機が毎秒約12万評価のときにGPUからホストへ毎秒約17 GBを転送し、CPUの遅いL4とA100のColab機では、推論ストリームが1本のとき、出力の受け取りを含むホスト側の処理が推論の速さを律速していると推定された。
+[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)では、G4のColab機が毎秒約12万評価のときにGPUからホストへ毎秒約17 GBを転送し、CPUの遅いL4とA100のColab機では、推論ストリームが1本のとき、出力の受け取りを含むホスト側の処理が推論の速さを律速していると推定された。
 2歩の第1段と第2段を分けて出力する案は、中間の節点で付け喰い（RULES.md第16条）を含む合法性を保証する必要があり、初版の負担に見合わない。
 
 ### 推論はortのload-dynamicで行う
@@ -131,11 +139,11 @@ TensorRTの版は10系に固定する。
 ONNX Runtime 1.28のTensorRT実行プロバイダは、TensorRT 11以降に対してビルドした場合にFP16の設定を無効にし、ネットのONNXに書かれた型どおりに実行するので（`tensorrt_execution_provider.cc` 1651〜1659行）、単精度のONNXにFP16の設定を付けてもFP16では動かない。
 10系なら、学習器が出力する単精度のONNXを、ONNX RuntimeのCPU実行プロバイダとの照合にもそのまま使え、FP16への変換はTensorRTに任せられる。
 ONNX Runtime 1.28の公式のビルドも、CUDA 13向けとCUDA 12向けのどちらでもTensorRT 10.14.1.48を使っているので（`tools/ci_build/github/azure-pipelines/templates/common-variables.yml` 3〜4行。2026年10月9日公開のONNX Runtime 1.31.0でもTensorRTは同じ版である）、配布されているライブラリをそのまま使える。
-FP16で動いていることは、[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で、TensorRTの詳細ログと、FP16の設定の有無による速度の差により確かめた。
+FP16で動いていることは、[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で、TensorRTの詳細ログと、FP16の設定の有無による速度の差により確かめた。
 Colabのドライバの都合などで10系を使えない場合は、同書の実測でONNX Runtime、TensorRT、およびortの版の組を見直してから進み、別の出力形式を先回りして用意しない。
 選んだ実行プロバイダを初期化できない場合は、別の実行プロバイダへ黙って切り替えず、`isready`への応答の前にエラーを返して終了する。
 推論は、ONNX Runtimeに出力を確保させる`session.run`の経路で行う。
-[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で、ONNX Runtime 1.28.3は、`IoBinding`で出力をCUDAのピン留めメモリへ束縛すると同じバッファへの複写として実行を拒否し、事前に確保したページング可能なメモリへ束縛する方式は`session.run`より遅いか、ヒープの破壊で異常終了したからである。
+[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で、ONNX Runtime 1.28.3は、`IoBinding`で出力をCUDAのピン留めメモリへ束縛すると同じバッファへの複写として実行を拒否し、事前に確保したページング可能なメモリへ束縛する方式は`session.run`より遅いか、ヒープの破壊で異常終了したからである。
 `session.run`の経路でも、A100のColab機ではセッションの破棄か終了処理の時点でglibcがヒープの破壊を検出することがあったので、本書の実装で終了処理を確かめる。
 
 ortを選ぶ理由は、ビルド時にCUDA、cuDNN、TensorRT、ONNX Runtimeのいずれも要らないことである。
@@ -149,7 +157,7 @@ ortの2.0系は2026年10月26日時点でもリリース候補であり、最新
 rc.13の`ort`と`ort-sys`はどちらも`rust-version = "1.88"`を宣言しているので、minaseの`rust-version`を引き上げる必要はない。
 10月12日に公開されたrc.14は`rust-version = "1.92"`とONNX Runtime 1.31を要件とし、rc.15も`rust-version = "1.92"`を宣言している。
 このため、rc.14以降へ上げるにはminaseの`rust-version`の引き上げと環境定義のONNX Runtimeの更新が必要になる。
-依存を加えるコミットで、[最小対応版は実際のツールチェーンで検査する](../lessons/verify-msrv-with-toolchain.md)に従い、1.88のツールチェーンで依存の解決と全ターゲットを検査する。
+依存を加えるコミットで、[最小対応版は実際のツールチェーンで検査する](../../lessons/verify-msrv-with-toolchain.md)に従い、1.88のツールチェーンで依存の解決と全ターゲットを検査する。
 依存は常に含め、cargo featureで切り替えない。
 load-dynamicならビルド時の負担は純Rustの依存の追加だけであり、featureにするとハーネスの`commit:`ビルドへ機能名を渡す仕組みが別に要るからである。
 フェーズ2でリリースビルドの時間とバイナリの大きさを測り、許容できない増加があればこの判断を見直す。
@@ -164,7 +172,7 @@ lc0がmockやrandomのバックエンドで探索を試験するのと同じ役�
 
 ### ネットの指定と置き場所
 
-RLの途中のネットはコミットせず、作業機のNASにファイルとして置く（[強化学習の実行](alphazero-rl.md)の「転送するものと保管」の節）。
+RLの途中のネットはコミットせず、作業機のNASにファイルとして置く（[強化学習の実行](../alphazero-rl.md)の「転送するものと保管」の節）。
 各サイクルの生成と進捗測定は借りた機械で行い、借りた機械にはリポジトリがないので、ネットをコミットしてハーネスの`commit:`指定で選ぶことはできないからである。
 そこで、MCTSのエンジンと自己対局生成器は、起動引数`--nn-model <パス>`でONNXのファイルを指定して読む（2026年10月26日の利用者の決定）。
 エンジンの`--nn-model`は、探索方式を選ぶ`--search mcts`と同じく起動時に1回だけ与え、実行中にネットを替えない。
@@ -176,7 +184,7 @@ TensorRTはネットを替えるたびにエンジンを作り直して数分か
 到達の判定に使うネットだけは、ONNX形式で`crates/minase/nets/`に置いて`include_bytes!`で埋め込む。
 埋め込みのコードとネットは、統括計画のフェーズ7で同じコミットとして作り、判定で`H0`となったときにmasterへマージする。
 本書の推論のコードは、学習済みの重みより先にmasterへ入る。
-推論のコードは既定の探索の評価関数ではなく、`--search mcts`と`--nn-model`を指定したときだけ使われるので、既定の探索のbenchとテストを変えないからである（[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)、[統合ブランチの廃止のADR](../adr/merge-alphazero-subtasks-into-master-one-by-one.md)）。
+推論のコードは既定の探索の評価関数ではなく、`--search mcts`と`--nn-model`を指定したときだけ使われるので、既定の探索のbenchとテストを変えないからである（[ランダム初期化の評価関数では探索が止まらない](../../lessons/random-init-net-stalls-search.md)、[統合ブランチの廃止のADR](../../adr/merge-alphazero-subtasks-into-master-one-by-one.md)）。
 埋め込みのネットがないビルドでは、`--search mcts`に`--nn-model`の指定を必須とし、指定がなければ起動時にエラーで終了する。
 埋め込みのネットを持つビルドでは、`--nn-model`を省くと埋め込みのネットを使い、指定するとそのファイルだけを読む。
 10ブロック128チャネルのネットは単精度で約12 MBであり、現行のNNUE（`crates/minase/nets/nnue.bin`、約3.6 MB）と同じくgitで管理できる。
@@ -185,15 +193,20 @@ TensorRTはネットを替えるたびにエンジンを作り直して数分か
 lc0の`WeightsFile`は起動引数`--weights`を兼ね、埋め込みでビルドした場合だけ既定値が埋め込みのネットになる。
 dlshogiも、ネットのファイルをUSIオプション`DNN_Model`（既定値`model.onnx`、`cppshogi/usi.cpp` 103行、コミット79df19e）で指定する。
 本書がUSIオプションではなく起動引数で指定するのは、進捗測定で同じバイナリの候補と基準に別のネットを与えるとき、USIオプションではエンジンごとに任意の`setoption`を送る拡張がハーネスに要り、`setoption`のたびにネットを読み直す処理も要るからである。
-起動引数なら、ネットのパスはエンジンの起動コマンドに入るので、ハーネスの既存の起動コマンドの形式と、[探索方式の共存とMCTS](alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節の拡張だけで指定できる。
+起動引数なら、ネットのパスはエンジンの起動コマンドに入るので、ハーネスの既存の起動コマンドの形式と、[探索方式の共存とMCTS](../alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節の拡張だけで指定できる。
 
 ### TensorRTのエンジンのキャッシュ
 
 TensorRTは、初回の読み込みでネットをGPU向けに最適化したエンジンを作り、数分かかる。
 作られたエンジンはGPUの機種とTensorRTの版に固有であり、ネットは借りた機械で学習して作業機のRTX 3060 Tiでも動かすので、ネットの検査和だけでは同じエンジンを使えるかが決まらない。
 計算能力（compute capability）が同じGPUでも、メモリの大きいGPUで作ったエンジンはメモリの小さいGPUで読み込めない場合があると、ONNX Runtime 1.28のTensorRT実行プロバイダのソース（`tensorrt_execution_provider.cc` 3523行）が注記している。
-このためエンジンは、ネットの検査和、GPUの機種名、GPUのメモリ容量、GPUの計算能力、およびTensorRTの版の組をキーにしてUSIオプション`NnCacheDir`（既定は`$XDG_CACHE_HOME/minase/tensorrt`）の下のディレクトリへ保存し、次回からは読み込むだけにする。
-借りた機械には永続する記憶領域を置かないので、借りるたびにエンジンを作り直し、その時間は1サイクルの所要時間に含める（[Colab機の操作の手引き](../guides/alphazero-machines.md)の6節）。
+このためエンジンは、ネットの検査和、GPUの機種名、GPUのメモリ容量、および最大バッチの組をキーにしてUSIオプション`NnCacheDir`（既定は`$XDG_CACHE_HOME/minase/tensorrt`）の下のディレクトリへ保存し、次回からは読み込むだけにする。
+GPUの機種名とメモリ容量は`nvidia-smi`で照会し、GPUがちょうど1枚でなければエラーとする。
+計画の時点では計算能力とTensorRTの版も鍵に入れるとしていたが、ONNX Runtimeはエンジンのファイル名に、ネットの識別子のハッシュ（ONNX Runtime、CUDA、およびTensorRTの版を含む）、精度、および計算能力を入れるので（`tensorrt_execution_provider_utils.h` 523〜596行、`tensorrt_execution_provider.cc` 3378〜3389行と3512〜3525行）、鍵から外した。
+このハッシュはネットのファイル名とノード名から作られ、メモリから読んだネットでは重みを含まないので、ネットの検査和は鍵に必須である。
+最大バッチを鍵に加えたのは、ONNX Runtimeが最適化プロファイルの異なるエンジンを同じ名前で作り直す（同 3555行）ので、最大バッチの異なる設定が同じディレクトリを交互に上書きしないようにするためである。
+`$XDG_CACHE_HOME`が設定されていない場合に`$HOME/.cache`で補うことはせず、`NnCacheDir`を与えないままTensorRTを選んだ起動はエラーで終了させる（宣言と検査は[探索方式の共存とMCTS](../alphazero-mcts.md)が実装する）。
+借りた機械には永続する記憶領域を置かないので、借りるたびにエンジンを作り直し、その時間は1サイクルの所要時間に含める（[Colab機の操作の手引き](../../guides/alphazero-machines.md)の6節）。
 エンジンの作成は`isready`の応答の前に行い、最初の`go`の持ち時間に含めない。
 ハーネスの応答タイムアウトは既定で120秒なので、測定の前にエンジンを1回起動してキャッシュを作っておく手順を手引きに書く。
 
@@ -207,7 +220,7 @@ TensorRTは、初回の読み込みでネットをGPU向けに最適化したエ
 ### フェーズ2　ortによる推論
 
 ortの依存を加え、ortによる`Evaluator`の実装、ネットのバイト列からのセッションの作成、`NnBackend`、TensorRTのエンジンのキャッシュ、および`minase dev nn-eval`を実装する。
-推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使い、作業機のGPUと環境定義から導入した環境の中で確かめる。
+推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使い、作業機のGPUと環境定義から導入した環境の中で確かめる。
 
 ## 検証
 
@@ -216,21 +229,23 @@ ortの依存を加え、ortによる`Evaluator`の実装、ネットのバイト
 - 方策のラベルが単射であることを、ランダム対局の局面集の全合法手について性質試験で確かめる。
 - 局面の合法手の集合とラベルから着手を一意に戻せることを確かめる。
 - 後手番の局面のラベルが、盤を180度回転させた先手番の局面の対応する着手のラベルと一致することを確かめる。
-- TensorRTのエンジンのキャッシュの鍵が、ネットの検査和、GPUの機種名、GPUのメモリ容量、GPUの計算能力、またはTensorRTの版のどれか1つだけが異なる場合に別の鍵になることを確かめる。
+- TensorRTのエンジンのキャッシュの鍵が、ネットの検査和、GPUの機種名、GPUのメモリ容量、または最大バッチのどれか1つだけが異なる場合に別の鍵になることを確かめる。
 
-Rustが書き出した固定局面集の入力平面と方策ラベルをPythonの符号化が再現することは、[学習器](alphazero-trainer.md)の検証の節で確かめる。
+Rustが書き出した固定局面集の入力平面と方策ラベルをPythonの符号化が再現することは、[学習器](../alphazero-trainer.md)の検証の節で確かめる。
 埋め込みのネットを入れる統括計画のフェーズ7のコミットでは、`--nn-model`を省いた起動が埋め込みのネットを使い、指定した起動がそのファイルだけを読むことを確かめる。
 
 ortの依存を加えたコミットでは、1.88のツールチェーンでの全ターゲットの検査、`ORT_DYLIB_PATH`を設定しない環境での`cargo build --release --bin minase`、およびリリースビルドの時間とバイナリの大きさの変化を確かめる。
 
 学習済みのネットを初めて推論に使う前に、固定の入力集について、PyTorchの出力、ONNX RuntimeのCPUの出力、およびTensorRTのFP16の出力を、バッチの大きさ1、7、および256で比べる。
 TensorRTのエンジンはGPUの機種ごとに作られるので、この比較は学習に使ったGPU種別だけでなく、推論に使う作業機のGPUでも行い、ネットの大きさを変えたときにも改めて行う。
-方策のlogitと価値の差がそれぞれ許容誤差（CPUは1e-4、FP16は1e-2を初期値とする）に収まり、非有限値がなく、方策の最大の手がすべての入力で一致することを確かめる。
+方策のlogitと価値の差がそれぞれ許容誤差（CPUは1e-4、FP16は1e-2を初期値とする）に収まり、非有限値がないことを確かめる。
+計画の時点では方策の最大の手がすべての入力で一致することも求めていたが、ランダム初期化のネットの照合でFP16の最大の手がほぼ同点の局面で入れ替わったので、その結果を見た後に合否の条件から外し、件数と差を報告するだけにした。
+各logitの差が許容誤差t以下なら、候補が最大とした手の基準のlogitは基準の最大から2t以内に収まるので、この条件は要素ごとの検査に含意される。
 これにより、ONNXへの出力で出力の並びがずれた場合や、別の着手のlogitを読む実装を検出する。
 Rust側の出力は、`minase dev nn-eval`が、`--nn-model`で受け取ったネットと指定した実行プロバイダとバッチの大きさで、固定の局面集の各局面の合法手の方策のlogitと価値を推論して書き出す。
-PyTorchの出力は、[学習器](alphazero-trainer.md)が同じ局面集から求める。
+PyTorchの出力は、[学習器](../alphazero-trainer.md)が同じ局面集から求める。
 本書では、この比較の手順を作り、フェーズ2でランダム初期化のネットについて作業機で実行する。
-学習済みのネットについての実行は、[強化学習の実行](alphazero-rl.md)が、最初に学習したネットで生成を始める前、最初の進捗測定、およびネットの大きさまたはGPU種別を変えたときに行う。
+学習済みのネットについての実行は、[強化学習の実行](../alphazero-rl.md)が、最初に学習したネットで生成を始める前、最初の進捗測定、およびネットの大きさまたはGPU種別を変えたときに行う。
 
 ## 完了条件
 

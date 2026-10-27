@@ -15,7 +15,7 @@ MCTSは、ネットが返す方策と価値を使い、有望な手だけを選�
 
 起案。2026年10月26日に起案した。
 実装はまだない。
-着手は、[ネットの入出力と推論](alphazero-network.md)の完了を待つ。
+前提とする[ネットの入出力と推論](archived/alphazero-network.md)は2026年10月27日に完了しており、着手は利用者の指示を待つ。
 次の一手は、masterから本書のブランチを切り、探索方式の境界へ`SearchAlgorithm`と`Searcher`を加えることである。
 
 ## 目的
@@ -34,7 +34,7 @@ MCTSは、ネットが返す方策と価値を使い、有望な手だけを選�
 
 次の項目は対象外とする。
 
-- ネットの入力の符号化、方策のラベル、および推論。[ネットの入出力と推論](alphazero-network.md)で扱う。
+- ネットの入力の符号化、方策のラベル、および推論。[ネットの入出力と推論](archived/alphazero-network.md)で扱う。
 - 自己対局の進行、投了、および記録。[自己対局生成器](alphazero-selfplay.md)で扱う。
 - DAG型の探索木。統括計画の適用範囲の節のとおり、初版の結果を見てから検討する。
 
@@ -43,7 +43,7 @@ MCTSは、ネットが返す方策と価値を使い、有望な手だけを選�
 境界と`alphabeta/`の分離は[探索部と評価関数のモジュール再編](archived/search-eval-layout.md)が定めており、本書はその配置の上に`SearchAlgorithm`、`Searcher`、および`mcts/`を加える。
 探索木の内側の反復は、[探索部の反復負け回避と反復禁止](archived/search-repetition.md)がαβ探索に採用したものと同じ規則で扱う。
 引き分けの値は[引き分けの値のADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)のUSIオプションを使う。
-推論の抽象`Evaluator`、方策のラベル、一様評価器、およびネットのファイルの読み込みは[ネットの入出力と推論](alphazero-network.md)が実装し、ネットの指定の規則は同書の「ネットの指定と置き場所」の節が定める。
+推論の抽象`Evaluator`、方策のラベル、一様評価器、およびネットのファイルの読み込みは[ネットの入出力と推論](archived/alphazero-network.md)が実装し、ネットの指定の規則は同書の「ネットの指定と置き場所」の節が定める。
 USIの対局の確認には、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）を使う。
 ハーネスのエンジンの起動と記録は[対局ハーネスのバイナリ対戦化](archived/match-harness.md)と[docs/guides/sprt.md](../guides/sprt.md)が定める。
 
@@ -188,8 +188,8 @@ Rustには静的初期化による登録がないので、登録表の代わり�
 | `crates/minase/src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
 | `crates/minase/src/eval/` | αβ探索の静的評価。NNUEと、比較用に残すPSTとFM（変更なし）。 |
 
-ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](alphazero-selfplay.md)が新設する。
-依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`へとし、`alphabeta`と`mcts`は互いを参照しない。
+ネットの入力の符号化と推論を置く`crates/minase/src/nn/`は[ネットの入出力と推論](archived/alphazero-network.md)が、自己対局生成器を置く`crates/minase/src/bin/minase/zero_selfplay/`は[自己対局生成器](alphazero-selfplay.md)が新設する。
+依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`と駒の状態番号のための`eval::features`へとし、`alphabeta`と`mcts`は互いを参照しない。
 親の`search`は2つの子を列挙型で束ねるだけで、プロトコル層は`search`の境界の型だけを使い、`alphabeta`と`mcts`の内部を参照しない。
 自己対局生成器とbenchは、lc0の自己対局が探索の実装を直接使うのと同じく、方式のモジュールを直接使ってよい。
 
@@ -219,9 +219,13 @@ Kは現行のNNUEの重みファイルが持つ勝率尺度であり、1ロジ�
 深さは主変化の長さ、ノード数はシミュレーションの回数とし、αβ探索のノード数（make_moveの適用回数、[research/node-count-definition.md](../research/node-count-definition.md)）とは定義が異なることをUSIの`info string`と文書に明記する。
 
 方式の選択は、起動引数`--search alphabeta|mcts`で起動時に1回だけ行い、既定は`alphabeta`とする。
-MCTSのネットは起動引数`--nn-model`で起動時に指定する（[ネットの入出力と推論](alphazero-network.md)の「ネットの指定と置き場所」の節）。
+MCTSのネットは起動引数`--nn-model`で起動時に指定する（[ネットの入出力と推論](archived/alphazero-network.md)の「ネットの指定と置き場所」の節）。
 `--nn-model`は`--search mcts`のときだけ受け付け、`--search alphabeta`とともに与えた場合は起動時にエラーで終了する。
 USIのオプションのうち、規則セット、`ResignValue`、`DrawValueBlack`、および`DrawValueWhite`のような共通のものはプロトコル層が宣言し、`Threads`、`USI_Hash`、および方式に固有のもの（推論の`NnBackend`と`NnCacheDir`を含む）は選ばれた方式が宣言する。
+`NnBackend`は`tensorrt`、`cuda`、`cpu`の3値で既定を`tensorrt`とし、`nn::ExecutionProvider`へ写す。
+`NnCacheDir`の既定は`$XDG_CACHE_HOME/minase/tensorrt`とし、`XDG_CACHE_HOME`が設定されていない場合は`$HOME/.cache`で補わずに既定値を空とし、空のまま`NnBackend`に`tensorrt`を選んだ起動は`isready`への応答の前にエラーで終了する。
+TensorRTのエンジンの作成は`isready`の応答の前に行い、10ブロック128チャネルの作業機で7〜10秒かかるので、測定の前にエンジンを1回起動してキャッシュを作っておく手順を手引きに書く。
+`cuda`は、ONNX Runtime 1.28.3では出力を返した後のプロセスの終了処理で非決定的に異常終了することがある（[ランダム初期化のネットの出力の照合](../measurements/alphazero-network/random-net-output-check.md)）ので、`quit`の後の終了コードに依存する処理を書かない。
 ハーネスは`commit:`で指定したエンジンが`Threads`と`USI_Hash`の既定値を報告しないと拒否するので、MCTSも両方を宣言し、`USI_Hash`はNNキャッシュと探索木の容量の合計として解釈する。
 
 棄却した代案とその理由は次のとおりである。
@@ -244,7 +248,7 @@ lc0も探索をUCIオプションで切り替えない。
 
 ## 実装フェーズ
 
-実装と試験はすべて作業機で行い、MCTSの単体試験には[ネットの入出力と推論](alphazero-network.md)の一様評価器を使う。
+実装と試験はすべて作業機で行い、MCTSの単体試験には[ネットの入出力と推論](archived/alphazero-network.md)の一様評価器を使う。
 USIの対局の確認には、ランダム初期化のネットを`--nn-model`で与え、ONNX RuntimeのCPU実行プロバイダ（`NnBackend`の`cpu`）で推論する（2026年10月26日の利用者の決定）。
 一様評価器を選ぶ値をUSIのオプションに足すと、試験のための選択肢が本番のオプションに残るからである。
 

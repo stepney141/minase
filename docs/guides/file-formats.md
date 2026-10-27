@@ -107,6 +107,17 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 | SPSAが既定値を書き戻すマクロ`parameters!` | なし | `minase spsa apply` | `minase spsa apply` | `crates/minase/src/bin/minase/spsa_runner/apply.rs` |
 | エンジンの入出力の記録（`--io-log`） | なし | `minase --io-log` | なし | `crates/minase/src/bin/minase/io_log.rs` |
 
+## AlphaZero型探索のネットの照合
+
+ネットの入力の符号化と方策のラベルをPythonの学習器と照合する固定局面集と、ネットの出力をPyTorch、ONNX Runtime、およびTensorRTの間で照合するための推論の結果である。
+照合の手順は[ネットの出力の照合の手引き](alphazero-network-check.md)にある。
+ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ONNXとONNX Runtimeが形式を定めるので載せない。
+
+| 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
+|---|---|---|---|---|
+| 固定局面集`tools/train/zero/fixtures/nn-positions.jsonl` | なし | `minase dev nn-fixture` | minaseのテスト、`tools/train/zero/nn_torch_reference.py`、学習器の試験 | `crates/minase/src/bin/minase/nn_fixture.rs` |
+| 固定局面集の推論の結果（`--out`で指定） | なし | `minase dev nn-eval`、`tools/train/zero/nn_torch_reference.py` | `tools/train/zero/nn_compare.py` | `crates/minase/src/bin/minase/nn_eval.rs` |
+
 ## 同じ名前で中身が違うファイル
 
 次のファイルは、同じ名前で別の形式を持つ。

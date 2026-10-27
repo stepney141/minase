@@ -37,7 +37,7 @@ RLの計算の大半は自己対局の生成であり、1手あたり32回のシ
 
 ## 依存関係
 
-各局の探索は[探索方式の共存とMCTS](alphazero-mcts.md)のGumbel AlphaZeroの探索と、引き分けを0.5に固定する設定を使い、推論は[ネットの入出力と推論](alphazero-network.md)の`Evaluator`を使う。
+各局の探索は[探索方式の共存とMCTS](alphazero-mcts.md)のGumbel AlphaZeroの探索と、引き分けを0.5に固定する設定を使い、推論は[ネットの入出力と推論](archived/alphazero-network.md)の`Evaluator`を使う。
 開始局面の乱択の手順は、[評価関数](archived/evaluation.md)が作った`selfplay_gen`の機構を使う。
 学習データは、[教師データ形式の統一](archived/unified-teacher-format.md)が定めた教師データの形式MNSDの版2で記録し、着手と方策の表し方は[着手の番号と方策の確率のADR](../adr/index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)に従う。
 開始局面に人間の棋譜を使わないことは、統括計画の「ゼロから学習する」の節が定める。
@@ -56,7 +56,7 @@ RLの計算の大半は自己対局の生成であり、1手あたり32回のシ
 生成器は、1プロセスで数百局を同時に進め、各局の探索がネットの評価を必要とした葉を複数局からまとめて1回の推論にかける。
 これはdlshogiの自己対局生成器の構成であり、1局の内部では仮想損失を使わずに済む。
 CPUの木の操作とGPUの推論を重ねるため、局の集合を数個のスレッドに分け、各スレッドが自分の集合のバッチを交互に推論へ出す。
-生成に使うネットは、ONNXのファイルを必須の起動引数`--nn-model`で受け取り、その検査和をMNSDのヘッダの「教師の重みの検査和」に書く（[ネットの入出力と推論](alphazero-network.md)の「ネットの指定と置き場所」の節）。
+生成に使うネットは、ONNXのファイルを必須の起動引数`--nn-model`で受け取り、その検査和をMNSDのヘッダの「教師の重みの検査和」に書く（[ネットの入出力と推論](archived/alphazero-network.md)の「ネットの指定と置き場所」の節）。
 最初のサイクルでは、ランダムに初期化したネットのファイルを与える。
 
 各局の着手は、Gumbel AlphaZeroのSequential Halvingが最後に残した手とする。

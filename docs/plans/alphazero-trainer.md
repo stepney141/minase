@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本書は、[AlphaZero型探索と深層強化学習の統括計画](alphazero.md)の5本目のサブタスクであり、自己対局の学習データからネットを学ぶ学習器を、PyTorchで`tools/train/zero/`に実装する。
-ネットは、局面を入力すると各合法手の有望さの確率分布（方策）と手番側の勝率（価値）を返すResNetであり、入出力と構成は[ネットの入出力と推論](alphazero-network.md)が定める（用語は統括計画の適用範囲の節が定める）。
+ネットは、局面を入力すると各合法手の有望さの確率分布（方策）と手番側の勝率（価値）を返すResNetであり、入出力と構成は[ネットの入出力と推論](archived/alphazero-network.md)が定める（用語は統括計画の適用範囲の節が定める）。
 学習データは教師データの形式MNSDで記録されているが、局面の復元には中将棋の着手の適用と合法手の生成が要るので、Rustの読み込み器を包むPythonの拡張モジュールを作り、局面、価値、方策、および根の総訪問回数を配列として受け取る。
 価値の教師は対局結果と根の価値の混合とし、混合比はdlshogiの既定値から始めて、対局結果だけに対する検証損失で監視する。
 方策の損失は、Gumbel AlphaZeroの探索が作る方策の目標との交差エントロピーとする。
@@ -15,7 +15,7 @@
 
 起案。2026年10月26日に起案した。
 実装はまだない。
-着手は、[ネットの入出力と推論](alphazero-network.md)の完了を待つ。
+着手は、[ネットの入出力と推論](archived/alphazero-network.md)の完了を待つ。
 [探索方式の共存とMCTS](alphazero-mcts.md)と[自己対局生成器](alphazero-selfplay.md)とは並行して進めてよい。
 次の一手は、masterから本書のブランチを切り、MNSDを読む拡張モジュールから実装することである。
 
@@ -39,7 +39,7 @@ RLの各サイクルでは、直前のサイクルまでのネットを、直近
 
 ## 依存関係
 
-ネットの入出力と構成は[ネットの入出力と推論](alphazero-network.md)が定め、Pythonの符号化との照合に使う固定局面集もそのサブタスクが書き出す。
+ネットの入出力と構成は[ネットの入出力と推論](archived/alphazero-network.md)が定め、Pythonの符号化との照合に使う固定局面集もそのサブタスクが書き出す。
 学習データの形式は[教師データ形式の統一](archived/unified-teacher-format.md)が定めたMNSDの版2であり、MCTSの教師の記録は[自己対局生成器](alphazero-selfplay.md)の「記録の形式」の節に従う。
 環境は`tools/train/zero/`の環境定義から導入する（[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
 学習曲線の点検は、[学習前に1エポックのステップ数を確認する](../lessons/check-steps-per-epoch-before-training.md)と[教師不足と判定する前に学習曲線を確認する](../lessons/check-learning-before-blaming-data.md)に従う。
@@ -76,7 +76,9 @@ PythonのDLの学習器は、MNSDの局面を単体では復元できない。
 
 入力平面の符号化と方策のラベルはPythonにも実装する。
 駒の状態を面へ展開するだけの処理なので、規則の知識は要らない。
-Rustとの一致は、Rustが書き出した固定局面集の面と方策ラベルをPythonの試験が読んで照合する形で固定する（[ネットの入出力と推論](alphazero-network.md)の「入力は局面だけから決まる95面にする」の節）。
+Rustとの一致は、Rustが書き出した固定局面集の面と方策ラベルをPythonの試験が読んで照合する形で固定する（[ネットの入出力と推論](archived/alphazero-network.md)の「入力は局面だけから決まる95面にする」の節）。
+固定局面集は`tools/train/zero/fixtures/nn-positions.jsonl`にあり、各行の欄は`crates/minase/src/bin/minase/nn_fixture.rs`のdocコメントが定める。
+学習したネットのPyTorchの出力は、同じ局面集について`minase dev nn-eval`と同じ形のJSONで書き出し、`tools/train/zero/nn_compare.py`でONNX RuntimeとTensorRTの出力と照合する（[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)）。
 
 ### 教師と損失
 
@@ -121,7 +123,7 @@ MNSDを読む拡張モジュールと、Pythonの入力平面の符号化と方�
 - 拡張モジュールが返す局面が、αβ探索のファイルについて、Rustの学習器が同じファイルから復元する除外されていない局面の列と一致することを確かめる。
 - 作業機で確定したチェックポイントだけから再開した学習が、読んだデータと更新回数に重複も欠落もないことを確かめる。
 
-学習済みのネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が一致することは、[ネットの入出力と推論](alphazero-network.md)の検証の節の手順で確かめる。
+学習済みのネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が一致することは、[ネットの入出力と推論](archived/alphazero-network.md)の検証の節の手順で確かめる。
 
 ## 完了条件
 
