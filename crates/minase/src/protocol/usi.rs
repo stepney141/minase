@@ -1580,7 +1580,7 @@ impl ActiveSearch {
 fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
     handle
         .join()
-        .map_err(|_| io::Error::other("search thread panicked"))
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 /// 採用した読み筋の2手目だけから、検査済みの予想手を得る。

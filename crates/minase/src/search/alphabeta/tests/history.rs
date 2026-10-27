@@ -274,11 +274,13 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                 depth_limits(3),
                 search_id,
                 false,
-                Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
+                Arc::new(crate::search::clock::MonotonicClock::new()),
             );
             let (_, result) = event_reports(drain_raw(&handle));
             assert_eq!(result.depth, 3, "threads={threads}, search_id={search_id}");
-            let crate::search::Searcher::AlphaBeta(engine) = handle.join().unwrap();
+            let crate::search::Searcher::AlphaBeta(engine) = handle.join().unwrap() else {
+                panic!("expected alpha-beta")
+            };
             table = engine.transposition_table.unwrap();
             histories = engine.histories;
             for (worker, history) in histories.capture.iter().enumerate() {

@@ -6,11 +6,15 @@
 //! 呼び出し側が用意した置換表と[`HistoryTables`]でαβ探索を実行する。
 
 pub mod alphabeta;
+mod budget;
+#[cfg(test)]
+mod budget_tests;
+mod clock;
 mod error;
 mod events;
 mod handle;
 mod limits;
-mod mcts;
+pub mod mcts;
 mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
@@ -30,7 +34,7 @@ pub use alphabeta::tt::{
 };
 pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
-pub use handle::{SearchHandle, search};
+pub use handle::{SearchHandle, SearchJoinError, search};
 pub use limits::{ClockLimits, SearchLimits};
 pub use searcher::{
     SearchOption, SearchOptionKind, SearchOptionValue, Searcher, SetOptionError, StartError,

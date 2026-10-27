@@ -1,17 +1,14 @@
 //! αβ探索が対局内で持ち越す状態と、非同期探索の開始。
 
 use core::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::sync::{Arc, mpsc};
-use std::thread;
+use std::sync::Arc;
 
-use super::clock::{MonotonicClock, SearchClock};
-use super::team::run_search_team;
-use crate::eval::Nnue;
+use crate::search::clock::MonotonicClock;
+use crate::search::handle::start_search_with_clock;
 use crate::search::{
-    DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, SearchEvent, SearchHandle, SearchLimits,
-    SearchOption, SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError,
-    StartError, StartFailure, TranspositionTable,
+    DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, SearchHandle, SearchLimits, SearchOption,
+    SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
+    StartFailure, TranspositionTable,
 };
 
 /// αβ探索の置換表、history表、およびワーカー数。
@@ -163,67 +160,5 @@ impl Engine {
             ponder,
             Arc::new(MonotonicClock::new()),
         ))
-    }
-}
-
-/// 指定した重みと時計を使い、置換表を確保済みの探索器を開始する。
-/// 時計は探索チームと的中通知で共有する。
-pub(in crate::search) fn start_search_with_clock(
-    mut engine: Engine,
-    nnue: Arc<Nnue>,
-    snapshot: SearchSnapshot,
-    limits: SearchLimits,
-    search_id: u64,
-    ponder: bool,
-    clock: Arc<dyn SearchClock>,
-) -> SearchHandle {
-    let thread_clock = Arc::clone(&clock);
-    let hit_ns = Arc::new(AtomicU64::new(if ponder { u64::MAX } else { 0 }));
-    let thread_hit_ns = Arc::clone(&hit_ns);
-    let (sender, events) = mpsc::channel();
-    let stop = Arc::new(AtomicBool::new(false));
-    let thread_stop = Arc::clone(&stop);
-    let thread = thread::spawn(move || {
-        let outcome = run_search_team(
-            &nnue,
-            &snapshot.position,
-            snapshot.rules(),
-            snapshot.repetition(),
-            snapshot.draw_value(),
-            &snapshot.root_moves,
-            &snapshot.history_keys,
-            &limits,
-            &thread_stop,
-            engine.threads,
-            engine
-                .transposition_table
-                .as_ref()
-                .expect("a prepared search engine must own its transposition table"),
-            &mut engine.histories,
-            Some((&sender, search_id)),
-            thread_clock.as_ref(),
-            &thread_hit_ns,
-            ponder,
-        );
-        let result = outcome.result;
-        let _ = sender.send(SearchEvent::Finished {
-            partial_score: outcome.partial_score,
-            search_id,
-            best_move: result.best_move,
-            score: result.score,
-            depth: result.depth,
-            nodes: result.nodes,
-            elapsed: outcome.elapsed,
-            pv: outcome.pv,
-            stop_reason: outcome.stop_reason,
-        });
-        Searcher::AlphaBeta(engine)
-    });
-    SearchHandle {
-        clock,
-        hit_ns,
-        events,
-        stop,
-        thread: Some(thread),
     }
 }

@@ -19,11 +19,12 @@ use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
-    FallingEvalCoefficients, InstabilityScaling, TimeBudget, TimeEffortCoefficients,
+    FallingEvalCoefficients, InstabilityScaling, TimeEffortCoefficients,
     TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
     mate_early_stop, scaled_soft_millis, scaled_time_budget, should_increase_depth,
     should_start_next_iteration, stable_signal,
 };
+use crate::search::budget::TimeBudget;
 
 /// 完了反復ごとの時間伸縮と安定判定に使う係数。
 ///

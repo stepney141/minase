@@ -4,13 +4,15 @@ use core::{fmt, num::NonZeroUsize};
 
 use super::{
     SearchHandle, SearchLimits, SearchSnapshot, TranspositionTable, TranspositionTableError,
-    alphabeta,
+    alphabeta, mcts,
 };
 
 /// 選ばれた探索方式と、その方式が対局の間に持ち越す状態。
 pub enum Searcher {
     /// αβ探索。
     AlphaBeta(alphabeta::Engine),
+    /// モンテカルロ木探索。
+    Mcts(mcts::Engine),
 }
 
 /// 探索方式が宣言する、プロトコルの表記に依存しないオプション。
@@ -92,6 +94,8 @@ impl std::error::Error for SetOptionError {
 pub enum StartError {
     /// 埋め込みNNUEの重みを読み込めない。
     Weights(crate::eval::nnue::Error),
+    /// MCTSの入力または設定が不正。
+    Mcts(mcts::Error),
     /// 置換表を確保できない。
     TranspositionTable(TranspositionTableError),
 }
@@ -100,6 +104,7 @@ impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Weights(error) => error.fmt(formatter),
+            Self::Mcts(error) => error.fmt(formatter),
             Self::TranspositionTable(error) => error.fmt(formatter),
         }
     }
@@ -109,6 +114,7 @@ impl std::error::Error for StartError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Weights(error) => Some(error),
+            Self::Mcts(error) => Some(error),
             Self::TranspositionTable(error) => Some(error),
         }
     }
@@ -149,10 +155,28 @@ impl Searcher {
         Self::AlphaBeta(alphabeta::Engine::new())
     }
 
+    /// NNUEの勝率尺度を使い、指定された推論器でMCTSを作る。
+    /// 推論器が未設定の場合は、探索開始時にエラーを返す。
+    ///
+    /// # Errors
+    /// 勝率尺度を持つNNUEの重みを読み込めない場合は拒否する。
+    pub fn mcts(
+        evaluator: Option<Box<dyn crate::nn::Evaluator + Send>>,
+    ) -> Result<Self, StartError> {
+        let scale = crate::eval::weights()
+            .map_err(StartError::Weights)?
+            .cp_per_logit();
+        Ok(Self::Mcts(mcts::Engine::new(
+            evaluator,
+            mcts::Config::new(scale),
+        )))
+    }
+
     /// 選ばれた方式のオプションを宣言順に返す。
     pub fn options(&self) -> Vec<SearchOption> {
         match self {
             Self::AlphaBeta(engine) => engine.options(),
+            Self::Mcts(engine) => engine.options(),
         }
     }
 
@@ -169,6 +193,7 @@ impl Searcher {
     ) -> Result<(), SetOptionError> {
         match self {
             Self::AlphaBeta(engine) => engine.set_option(name, value),
+            Self::Mcts(engine) => engine.set_option(name, value),
         }
     }
 
@@ -176,6 +201,7 @@ impl Searcher {
     pub fn threads(&self) -> NonZeroUsize {
         match self {
             Self::AlphaBeta(engine) => engine.threads,
+            Self::Mcts(_) => super::DEFAULT_THREADS,
         }
     }
 
@@ -183,15 +209,18 @@ impl Searcher {
     pub fn clear(&mut self) {
         match self {
             Self::AlphaBeta(engine) => engine.clear(),
+            Self::Mcts(engine) => engine.clear(),
         }
     }
 
     /// 探索前に必要な領域の確保を試みる。
     /// αβ探索では未確保の置換表だけを既定容量で確保する。
     /// 失敗時は状態を変えず、次の[`Self::start`]で再試行してエラーを返す。
+    /// MCTSの推論器は構築時に受け取り、ここでは何もしない。
     pub fn prepare(&mut self) {
         match self {
             Self::AlphaBeta(engine) => engine.prepare(),
+            Self::Mcts(_) => {}
         }
     }
 
@@ -199,6 +228,7 @@ impl Searcher {
     pub fn transposition_table(&self) -> Option<&TranspositionTable> {
         match self {
             Self::AlphaBeta(engine) => engine.transposition_table.as_ref(),
+            Self::Mcts(_) => None,
         }
     }
 
@@ -210,10 +240,12 @@ impl Searcher {
     /// 遅れて届いた通知は[`super::SearchEvent::search_id`]で識別する。
     /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知し、
     /// `join`がペイロードを返す。この場合は`Finished`を送信しない。
+    /// MCTSの推論が失敗した場合も`Finished`を送らず、`join`が元の`NnError`を返す。
     ///
     /// # Errors
-    /// 重みの取得、置換表の確保の順に準備し、失敗した場合は探索を始めず、
-    /// 元の状態の探索器と原因を返す。
+    /// αβ探索は重みの取得、置換表の確保の順に準備する。
+    /// MCTSは推論器、深さ制限、成り規則、および設定を検査する。
+    /// 失敗した場合は探索を始めず、探索器と原因を返す。
     #[allow(clippy::result_large_err)] // 再試行に必要な探索状態を所有権ごと返す。
     pub fn start(
         self,
@@ -224,6 +256,7 @@ impl Searcher {
     ) -> Result<SearchHandle, StartFailure> {
         match self {
             Self::AlphaBeta(engine) => engine.start(snapshot, limits, search_id, ponder),
+            Self::Mcts(engine) => engine.start(snapshot, limits, search_id, ponder),
         }
     }
 
@@ -232,6 +265,7 @@ impl Searcher {
     pub(crate) fn histories_for_test(&self) -> &super::HistoryTables {
         match self {
             Self::AlphaBeta(engine) => &engine.histories,
+            Self::Mcts(_) => panic!("alpha-beta histories requested by a test of MCTS"),
         }
     }
 
@@ -240,6 +274,7 @@ impl Searcher {
     pub(crate) fn histories_mut_for_test(&mut self) -> &mut super::HistoryTables {
         match self {
             Self::AlphaBeta(engine) => &mut engine.histories,
+            Self::Mcts(_) => panic!("alpha-beta histories requested by a test of MCTS"),
         }
     }
 }

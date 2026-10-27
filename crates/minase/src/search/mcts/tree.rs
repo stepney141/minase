@@ -355,6 +355,8 @@ pub struct Tree {
     capacity_bytes: usize,
     used_bytes: usize,
     pending: Vec<PendingSimulation>,
+    #[cfg(test)]
+    pub(super) max_ply: u32,
 }
 
 impl Tree {
@@ -378,12 +380,21 @@ impl Tree {
             capacity_bytes,
             used_bytes,
             pending: Vec::new(),
+            #[cfg(test)]
+            max_ply: MAX_PLY,
         })
     }
 
     /// 現在の根を返す。
     pub fn root(&self) -> &Node {
         &self.root
+    }
+
+    pub(super) fn depth_limit(&self) -> u32 {
+        #[cfg(test)]
+        return self.max_ply;
+        #[cfg(not(test))]
+        MAX_PLY
     }
 
     /// 節点と辺が使用する容量をバイト単位で返す。
@@ -470,7 +481,7 @@ impl Tree {
         if edge.child.is_some() {
             return Err(TreeError::InvalidState);
         }
-        if path.len() > MAX_PLY as usize {
+        if path.len() > self.depth_limit() as usize {
             return Err(TreeError::DepthLimit);
         }
         let (moves, state): (&[Move], _) = match child {
@@ -478,13 +489,13 @@ impl Tree {
                 if moves.is_empty() {
                     return Err(TreeError::EmptyMoves);
                 }
-                if path.len() == MAX_PLY as usize {
+                if path.len() == self.depth_limit() as usize {
                     return Err(TreeError::DepthLimit);
                 }
                 (moves, NodeState::Pending { unexpanded: false })
             }
             Child::Unexpanded => {
-                if path.len() != MAX_PLY as usize {
+                if path.len() != self.depth_limit() as usize {
                     return Err(TreeError::DepthLimit);
                 }
                 (&[], NodeState::Pending { unexpanded: true })
@@ -516,7 +527,8 @@ impl Tree {
 
     /// 評価待ちの節点へlogitと勝率を投入し、経路に沿って逆伝播する。
     ///
-    /// 根の初回評価には空の経路を使い、辺への訪問は数えない。
+    /// 根の評価には空の経路を使い、辺への訪問は数えない。
+    /// 再利用した展開済みの根も、統計を保ったまま再評価できる。
     /// 展開しない葉には空のlogit列を渡す。
     ///
     /// # Errors
@@ -532,8 +544,10 @@ impl Tree {
             self.pending_index(path)?;
         }
         let node = self.node(path)?;
-        let NodeState::Pending { unexpanded } = node.state else {
-            return Err(TreeError::InvalidState);
+        let unexpanded = match node.state {
+            NodeState::Pending { unexpanded } => unexpanded,
+            NodeState::Expanded if path.is_empty() && self.pending.is_empty() => false,
+            _ => return Err(TreeError::InvalidState),
         };
         validate_value(value)?;
         if logits.len() != node.edges.len() || logits.iter().any(|x| !x.is_finite()) {
@@ -610,7 +624,11 @@ impl Tree {
             }
             pv.push(edge.mv);
             match edge.child.as_deref() {
-                Some(child) if child.state == NodeState::Expanded => node = child,
+                Some(child)
+                    if matches!(child.state, NodeState::Expanded | NodeState::Proven(_)) =>
+                {
+                    node = child;
+                }
                 _ => break,
             }
         }

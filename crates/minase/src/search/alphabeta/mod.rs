@@ -1,7 +1,6 @@
 //! αβ探索の実装。
 
 mod capture_history;
-pub(in crate::search) mod clock;
 mod correction;
 mod deepening;
 mod engine;

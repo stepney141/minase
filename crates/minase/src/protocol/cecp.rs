@@ -961,7 +961,7 @@ impl Protocol for CecpProtocol {
 fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
     handle
         .join()
-        .map_err(|_| io::Error::other("search thread panicked"))
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 /// 1以上256以下のワーカー数を解析する。

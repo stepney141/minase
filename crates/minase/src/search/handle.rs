@@ -1,13 +1,14 @@
 //! 探索の開始と実行中の探索チームの操作。
 
-use core::num::NonZeroUsize;
+use core::{fmt, num::NonZeroUsize};
+use std::any::Any;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 
 use crate::eval::Nnue;
-use crate::search::alphabeta::clock::{MonotonicClock, SearchClock};
 use crate::search::alphabeta::team::run_search_team;
+use crate::search::clock::{MonotonicClock, SearchClock};
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult};
 use crate::search::limits::SearchLimits;
@@ -27,7 +28,7 @@ pub struct SearchHandle {
     /// 探索チームと共有する外部停止フラグ。
     pub(super) stop: Arc<AtomicBool>,
     /// 全ワーカーの終了後に探索器を返す調整役のハンドル。
-    pub(super) thread: Option<thread::JoinHandle<Searcher>>,
+    pub(super) thread: Option<thread::JoinHandle<Result<Searcher, SearchJoinError>>>,
 }
 
 impl SearchHandle {
@@ -58,17 +59,51 @@ impl SearchHandle {
 
     /// 探索チームへ停止を要求して全ワーカーの終了を待ち、探索器を返す。
     ///
-    /// 探索ワーカーがパニックした場合は、そのペイロードを`Err`で返す。
-    /// この場合、探索イベントの[`SearchEvent::Finished`]は送信されない。
-    pub fn join(mut self) -> thread::Result<Searcher> {
+    /// パニックはペイロードを、推論の失敗は元のエラーを保持して返す。
+    /// いずれの場合も探索イベントの[`SearchEvent::Finished`]は送信されない。
+    pub fn join(mut self) -> Result<Searcher, SearchJoinError> {
         self.stop_and_join()
             .expect("a live SearchHandle must own its search thread")
     }
 
     /// 停止要求と探索スレッドの回収を1回だけ行う。
-    fn stop_and_join(&mut self) -> Option<thread::Result<Searcher>> {
+    fn stop_and_join(&mut self) -> Option<Result<Searcher, SearchJoinError>> {
         self.request_stop();
-        self.thread.take().map(thread::JoinHandle::join)
+        self.thread.take().map(|thread| {
+            thread
+                .join()
+                .map_err(SearchJoinError::Panic)
+                .and_then(|result| result)
+        })
+    }
+
+    /// 時計、停止、的中通知、およびスレッドの回収を両方式で共有する。
+    pub(super) fn spawn(
+        clock: Arc<dyn SearchClock>,
+        ponder: bool,
+        run: impl FnOnce(
+            Arc<dyn SearchClock>,
+            Arc<AtomicU64>,
+            Arc<AtomicBool>,
+            mpsc::Sender<SearchEvent>,
+        ) -> Result<Searcher, SearchJoinError>
+        + Send
+        + 'static,
+    ) -> Self {
+        let thread_clock = Arc::clone(&clock);
+        let hit_ns = Arc::new(AtomicU64::new(if ponder { u64::MAX } else { 0 }));
+        let thread_hit_ns = Arc::clone(&hit_ns);
+        let (sender, events) = mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let thread = thread::spawn(move || run(thread_clock, thread_hit_ns, thread_stop, sender));
+        Self {
+            clock,
+            hit_ns,
+            events,
+            stop,
+            thread: Some(thread),
+        }
     }
 }
 
@@ -120,4 +155,96 @@ pub fn search(
         false,
     )
     .result)
+}
+
+/// 指定した重みと時計を使い、置換表を確保済みの探索器を開始する。
+/// 時計は探索チームと的中通知で共有する。
+pub(in crate::search) fn start_search_with_clock(
+    mut engine: crate::search::alphabeta::Engine,
+    nnue: Arc<Nnue>,
+    snapshot: SearchSnapshot,
+    limits: SearchLimits,
+    search_id: u64,
+    ponder: bool,
+    clock: Arc<dyn SearchClock>,
+) -> SearchHandle {
+    SearchHandle::spawn(
+        clock,
+        ponder,
+        move |thread_clock, thread_hit_ns, thread_stop, sender| {
+            let outcome = run_search_team(
+                &nnue,
+                &snapshot.position,
+                snapshot.rules(),
+                snapshot.repetition(),
+                snapshot.draw_value(),
+                &snapshot.root_moves,
+                &snapshot.history_keys,
+                &limits,
+                &thread_stop,
+                engine.threads,
+                engine
+                    .transposition_table
+                    .as_ref()
+                    .expect("a prepared search engine must own its transposition table"),
+                &mut engine.histories,
+                Some((&sender, search_id)),
+                thread_clock.as_ref(),
+                &thread_hit_ns,
+                ponder,
+            );
+            let result = outcome.result;
+            let _ = sender.send(SearchEvent::Finished {
+                partial_score: outcome.partial_score,
+                search_id,
+                best_move: result.best_move,
+                score: result.score,
+                depth: result.depth,
+                nodes: result.nodes,
+                elapsed: outcome.elapsed,
+                pv: outcome.pv,
+                stop_reason: outcome.stop_reason,
+            });
+            Ok(Searcher::AlphaBeta(engine))
+        },
+    )
+}
+
+/// 探索スレッドのパニックと、型を保持した探索の失敗。
+#[derive(Debug)]
+pub enum SearchJoinError {
+    /// スレッドのパニックのペイロード。
+    Panic(Box<dyn Any + Send + 'static>),
+    /// ネットの推論の失敗。
+    Inference(crate::nn::NnError),
+    /// MCTSの木または駆動部の契約違反。
+    Mcts(crate::search::mcts::Error),
+}
+
+impl fmt::Display for SearchJoinError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Panic(payload) => {
+                f.write_str("search thread panicked")?;
+                if let Some(message) = payload.downcast_ref::<String>() {
+                    write!(f, ": {message}")?;
+                } else if let Some(message) = payload.downcast_ref::<&str>() {
+                    write!(f, ": {message}")?;
+                }
+                Ok(())
+            }
+            Self::Inference(error) => write!(f, "search inference failed: {error}"),
+            Self::Mcts(error) => write!(f, "MCTS search failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for SearchJoinError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Panic(_) => None,
+            Self::Inference(error) => Some(error),
+            Self::Mcts(error) => Some(error),
+        }
+    }
 }

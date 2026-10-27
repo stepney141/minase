@@ -54,7 +54,6 @@ use std::time::Duration;
 use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
-use crate::search::alphabeta::clock::SearchClock;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::correction::correction_from_weighted_sum;
 use crate::search::alphabeta::correction::{
@@ -64,7 +63,6 @@ use crate::search::alphabeta::deepening::{
     IterationScalingCoefficients, auxiliary_depths, run_auxiliary_worker, run_main_worker,
     run_main_worker_with_iteration_hook, update_ponder_mate_early_stop,
 };
-use crate::search::alphabeta::engine::start_search_with_clock;
 use crate::search::alphabeta::history::{
     HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, pawn_key,
 };
@@ -88,22 +86,26 @@ use crate::search::alphabeta::team::{
     run_worker_team, select_worker_outcome, uses_instability_scaling,
 };
 use crate::search::alphabeta::time::{
-    ClockCoefficients, FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
-    TimeEffortCoefficients, TimeInstabilityCoefficients, TimeReductionCoefficients,
-    best_move_effort_factor, best_move_effort_ratio, best_move_instability_factor,
-    best_move_stability_distance, best_move_stability_factor, clock_budget, falling_eval_factor,
-    iteration_prediction_fits, mate_early_stop, ponder_bonus_time_budget, scaled_soft_millis,
-    scaled_time_budget, should_increase_depth, should_start_next_iteration, stable_signal,
-    time_advantage_factor, time_budget, time_budget_with_coefficients, time_reduction,
+    FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeEffortCoefficients,
+    TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
+    best_move_effort_ratio, best_move_instability_factor, best_move_stability_distance,
+    best_move_stability_factor, falling_eval_factor, iteration_prediction_fits, mate_early_stop,
+    ponder_bonus_time_budget, scaled_soft_millis, scaled_time_budget, should_increase_depth,
+    should_start_next_iteration, stable_signal, time_reduction,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
     CRITICAL_BOUND_MASK, CRITICAL_DEPTH_MASK, CRITICAL_NO_VALUE_MASK, CRITICAL_PV_MASK,
     CRITICAL_RESERVED_MASK, CRITICAL_SCORE_MASK, NO_MOVE, pack_move, unpack_move,
 };
+#[cfg(feature = "tuning")]
+use crate::search::budget::clock_budget;
+use crate::search::budget::{TimeBudget, time_budget};
+use crate::search::clock::SearchClock;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::handle::SearchHandle;
+use crate::search::handle::start_search_with_clock;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
@@ -754,7 +756,7 @@ fn start(
         limits,
         search_id,
         false,
-        Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
+        Arc::new(crate::search::clock::MonotonicClock::new()),
     )
 }
 
@@ -975,7 +977,7 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
         limits,
         700,
         true,
-        Arc::new(crate::search::alphabeta::clock::MonotonicClock::new()),
+        Arc::new(crate::search::clock::MonotonicClock::new()),
     )
 }
 

@@ -874,3 +874,25 @@ fn invalid_configuration_and_child_requests_do_not_mutate_the_tree() {
     assert_eq!(tree.used_bytes(), bytes);
     tree.cancel_leaf(&leaf.path).unwrap();
 }
+
+// 確定した勝敗も、根から終端までの選択済みの手順を主変化として返す。
+#[test]
+fn principal_variation_follows_proven_interior_nodes_to_the_terminal() {
+    let actions = moves(1);
+    let mut tree = tree(&[0.0], 0.5);
+    let config = PuctConfig::default();
+    for _ in 0..2 {
+        let leaf = tree.select_leaf(SelectionRule::Puct(&config)).unwrap();
+        tree.create_child(&leaf.path, Child::Pending(&actions))
+            .unwrap();
+        tree.evaluate(&leaf.path, &[0.0], 0.5).unwrap();
+    }
+    let leaf = tree.select_leaf(SelectionRule::Puct(&config)).unwrap();
+    tree.create_child(&leaf.path, Child::Proven(proof(Outcome::Loss, 0, false)))
+        .unwrap();
+    assert_eq!(
+        tree.root().state,
+        NodeState::Proven(proof(Outcome::Win, 3, false))
+    );
+    assert_eq!(tree.principal_variation(), vec![actions[0]; 3]);
+}

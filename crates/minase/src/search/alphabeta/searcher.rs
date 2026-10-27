@@ -29,7 +29,8 @@ use super::pruning::qsearch_see_floor;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
 use super::root::{RootMoveStats, RootResults};
 use super::team::SharedSearch;
-use super::time::{TimeBudget, iteration_prediction_fits};
+use super::time::iteration_prediction_fits;
+use crate::search::budget::TimeBudget;
 
 /// 時計を検査するワーカーごとのノード数間隔。
 /// 外部停止とチーム停止は[`Searcher::enter_node`]を呼ぶたびに読み、4096ノードごとなのは時計の確認だけである。

@@ -1,5 +1,6 @@
 //! 固定係数での算術と、調整オプションの反映を検査する。
 
+#[cfg(feature = "tuning")]
 use super::*;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::params;
@@ -14,66 +15,6 @@ use crate::search::alphabeta::{
     },
     root::{grow_aspiration_delta, initial_aspiration_delta},
 };
-
-/// 時計のdocコメントの式から手計算した例。各項の丸めと上限を個別に検査する。
-#[test]
-fn tuning_default_clock_budget_matches_numeric_examples() {
-    // f7c0925cの時間配分の算術例で使った係数を固定する。
-    let coefficients = super::super::time::ClockCoefficients {
-        expected_plies: 458,
-        min_moves: 40,
-        increment_share: 87,
-        hard_soft_ratio: 730,
-        hard_remaining_share: 39,
-        time_advantage: 900,
-    };
-    // Mの初期値229と下限40の境界、加算87%、hard倍率730%、残り39%を検査する。
-    // 相手の残り時間は自分と同じなのでtime advantageは働かず、既存の算術例を保つ。
-    // 秒読みの序盤係数は変わらず、各項の除算を先に行ってから合算する。
-    for (name, remaining, increment, byoyomi, ply, soft, hard) in [
-        ("initial division below", 228, 0, 0, 0, 0, 1),
-        ("initial division exact", 229, 0, 0, 0, 1, 7),
-        ("initial division above", 230, 0, 0, 0, 1, 7),
-        ("increment rounds down", 229, 1, 0, 0, 1, 7),
-        ("increment fraction", 229, 9, 0, 0, 8, 58),
-        ("increment next integer", 229, 10, 0, 0, 9, 65),
-        ("increment above integer", 229, 11, 0, 0, 10, 73),
-        ("separate truncations", 230, 1, 12, 0, 1, 7),
-        ("opening fraction reaches integer", 229, 0, 13, 0, 2, 14),
-        ("opening below cap", 21100, 0, 1000, 35, 880, 6424),
-        ("opening at cap", 21100, 0, 1000, 36, 900, 6570),
-        ("opening after cap", 21000, 0, 1000, 37, 900, 6570),
-        ("moves before floor", 8200, 0, 0, 376, 200, 1460),
-        ("moves at floor", 8000, 0, 0, 377, 200, 1460),
-        ("moves after floor", 8000, 0, 0, 378, 200, 1460),
-        ("moves beyond game", 8000, 0, 0, u32::MAX, 200, 1460),
-        ("remaining cap", 1000, 1000, 0, 0, 390, 390),
-        ("safety cap", 31, 1000, 0, 0, 1, 1),
-        ("safety below zero", 29, 1000, 0, 0, 1, 1),
-        ("byoyomi without main time", 0, 100, 1000, 0, 800, 800),
-        ("large increment is capped", 1000, u64::MAX, 0, 0, 390, 390),
-        (
-            "final duration saturates",
-            u64::MAX,
-            u64::MAX,
-            u64::MAX,
-            458,
-            u64::MAX,
-            u64::MAX,
-        ),
-    ] {
-        let actual = coefficients.budget(clock_at_ply(remaining, increment, byoyomi, ply), 30);
-        assert_eq!(
-            actual,
-            TimeBudget {
-                deadline: false,
-                soft: Duration::from_millis(soft),
-                hard: Duration::from_millis(hard),
-            },
-            "{name}"
-        );
-    }
-}
 
 /// 全係数の計算への反映を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
