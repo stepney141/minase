@@ -38,7 +38,7 @@ GPUが速くても、1手あたり32〜64回のシミュレーションの探索
 
 次の項目は対象外とする。
 
-- 学習器とネットの本番のコード。それぞれ[学習器](../alphazero-trainer.md)と[ネットの入出力と推論](../alphazero-network.md)で扱う。
+- 学習器とネットの本番のコード。それぞれ[学習器](../alphazero-trainer.md)と[ネットの入出力と推論](alphazero-network.md)で扱う。
 - 毎月の予算の使い方、レンタル機の承認、各サイクルで転送するもの、および保管の期間。[強化学習の実行](../alphazero-rl.md)で扱う。
 
 ## 依存関係
@@ -115,7 +115,7 @@ vast.aiは借りたGPUの割合に応じてCPUを割り当て、余剰のCPUの�
 
 Colab機、レンタル機、および作業機は、同じ版のライブラリとツールチェーンを同じ定義から導入する。
 Colabではコンテナを使えず、レンタル機も事業者の公開イメージをそのまま使うので、Pythonの依存はuvのロックファイル（`tools/train/zero/pyproject.toml`と`uv.lock`）で、Rustのツールチェーンはrustupの固定版で、それぞれ版を固定し、導入スクリプトを`tools/train/zero/`に置く。
-Pythonの依存には、PyTorch 2.11.0（CUDA 13版）、NVIDIAの索引から取るTensorRT 10.14.1.48（`tensorrt-cu13-libs`）、およびPyTorchが依存するcuDNN 9.19のpipパッケージを含め、ONNX Runtime 1.28.3の共有ライブラリは、Microsoftが公開するLinux x64のCUDA 13版の配布物を導入スクリプトが取得し、検査和を照合して置く（[ネットの入出力と推論](../alphazero-network.md)の「推論はortのload-dynamicで行う」の節）。
+Pythonの依存には、PyTorch 2.11.0（CUDA 13版）、NVIDIAの索引から取るTensorRT 10.14.1.48（`tensorrt-cu13-libs`）、およびPyTorchが依存するcuDNN 9.19のpipパッケージを含め、ONNX Runtime 1.28.3の共有ライブラリは、Microsoftが公開するLinux x64のCUDA 13版の配布物を導入スクリプトが取得し、検査和を照合して置く（[ネットの入出力と推論](alphazero-network.md)の「推論はortのload-dynamicで行う」の節）。
 minaseの推論は、その共有ライブラリを`ORT_DYLIB_PATH`で読み込み、TensorRTとcuDNNはpipパッケージが同梱する共有ライブラリを検索パスに加えて使う。
 このため、作業機のシステムに追加で導入するものはない。
 2026年10月26日に借りたColab機のランタイムは、Ubuntu 24.04.4、Python 3.13.16、PyTorch 2.11.0（CUDA 13.0版）、およびGPUドライバ580.82.07であった。
@@ -194,7 +194,7 @@ NNキャッシュの的中と木の再利用で評価の回数は減るが、一
 FP16で動いていることは、TensorRTの詳細ログと、FP16の設定の有無による速度の差で確かめる。
 第2に、Rustの使い捨ての試作で、1シミュレーションあたりのCPUの費用（手の選択、着手の適用と戻し、葉の合法手生成、入力の符号化、および価値の逆伝播）を1スレッドで測る。
 第3に、版2の教師データから対局長と合法手数の分布を集計し、データ量の見積もりと、学習が進んだ後に手数の上限1,000手で除かれる対局の割合の見込みに用いる。
-第1の測定で作ったランダム初期化のネットは、[ネットの入出力と推論](../alphazero-network.md)のortによる推論の動作確認と、[探索方式の共存とMCTS](../alphazero-mcts.md)のUSIの対局の確認にも使う。
+第1の測定で作ったランダム初期化のネットは、[ネットの入出力と推論](alphazero-network.md)のortによる推論の動作確認と、[探索方式の共存とMCTS](../alphazero-mcts.md)のUSIの対局の確認にも使う。
 
 ### フェーズ2　Colab機とレンタル機での実測
 

@@ -6,10 +6,6 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, Write};
 
-#[cfg(test)]
-#[path = "../encoding.rs"]
-mod encoding;
-
 #[derive(Default)]
 struct Histogram {
     bins: BTreeMap<usize, u64>,

@@ -13,6 +13,8 @@ mod io_log;
 mod lishogi_import;
 mod match_report;
 mod match_runner;
+mod nn_eval;
+mod nn_fixture;
 mod perft;
 mod random_play;
 mod selfplay_gen;
@@ -118,6 +120,10 @@ enum DataCommand {
 enum DevCommand {
     /// 固定局面で探索を検証する。
     Bench(bench::Arguments),
+    /// ネットの入出力の照合に使う固定局面集を書き出す。
+    NnFixture(nn_fixture::Arguments),
+    /// 固定局面集をネットで評価し、推論の照合用JSONを書き出す。
+    NnEval(nn_eval::Arguments),
     /// 合法手の経路数を数える。
     Perft(perft::Arguments),
     /// ランダム対局で不変条件を検証する。
@@ -156,6 +162,8 @@ fn main() -> ExitCode {
         Some(Command::Data(DataCommand::Selfplay(arguments))) => selfplay_gen::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
         Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
+        Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
+        Some(Command::Dev(DevCommand::NnEval(arguments))) => nn_eval::main(arguments),
         Some(Command::Dev(DevCommand::Perft(arguments))) => perft::main(arguments),
         Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
         Some(Command::Dev(DevCommand::UsiRandom)) => return usi_random::main().report(),
@@ -189,6 +197,19 @@ mod tests {
                 "200",
             ],
             vec!["dev", "bench"],
+            vec!["dev", "nn-fixture", "--out", "positions.jsonl"],
+            vec![
+                "dev",
+                "nn-eval",
+                "--nn-model",
+                "net.onnx",
+                "--backend",
+                "cpu",
+                "--batch",
+                "7",
+                "--out",
+                "evaluation.json",
+            ],
             vec!["dev", "perft", "1", "--rules", "engine-default"],
             vec!["dev", "random-play", "--rules", "engine-default"],
             vec!["dev", "usi-random"],

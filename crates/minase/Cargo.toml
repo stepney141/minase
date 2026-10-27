@@ -39,6 +39,9 @@ minase-core = { version = "0.2.0", path = "../minase-core" }
 clap = { version = "4.6.4", features = ["derive"] }
 fs2 = "0.4.3"
 mimalloc = "0.1.52"
+# ONNX Runtime is loaded at run time from ORT_DYLIB_PATH, so building needs no GPU libraries.
+# See docs/adr/run-zero-network-inference-through-ort-load-dynamic.md.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "tensorrt", "cuda", "api-28"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 sha2 = "0.10"

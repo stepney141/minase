@@ -2,6 +2,8 @@
 //!
 //! 盤、駒、合法手、裁定、および表記は[`minase_core`]が提供する。
 //! 探索と評価の依存は[`search`]から[`eval`]、さらに`minase_core`への一方向である。
+//! [`nn`]はモンテカルロ木探索（MCTS）のネットの入出力として、入力平面の符号化、方策のラベル、および評価器の抽象を持つ。
+//! `nn`は`minase_core`と[`eval::features`]の駒の状態番号だけに依存し、`search`から参照されることはあっても`search`を参照しない。
 //! [`training`]はMNSDの交換形式を持ち、プロジェクト内では`minase_core`だけに依存する。
 //! `search`と`eval`は`training`を参照しない。
 //! `datagen`はデータ生成と棋譜取り込みの共有処理を持ち、`training`と`minase_core`に依存し、探索と評価には依存しない。
@@ -15,6 +17,7 @@ pub mod datagen;
 pub mod eval;
 #[doc(hidden)]
 pub mod harness;
+pub mod nn;
 pub mod protocol;
 pub mod search;
 #[doc(hidden)]

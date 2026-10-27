@@ -1253,6 +1253,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         soft: Duration::from_secs(1),
         hard: Duration::from_secs(1),
     };
+    let hard_limit_hit_ns = AtomicU64::new(0);
     let shared = SharedSearch {
         external_stop: &external_stop,
         team_stop: AtomicBool::new(false),
@@ -1266,7 +1267,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         )),
         hard_limit: Some(HardLimit {
             duration: budget.hard,
-            hit_ns: &AtomicU64::new(0),
+            hit_ns: &hard_limit_hit_ns,
         }),
     };
     let nnue = test_nnue();
