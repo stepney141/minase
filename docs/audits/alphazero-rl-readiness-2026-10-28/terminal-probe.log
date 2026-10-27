@@ -1,0 +1,12 @@
+   Compiling astra-audit-probe v0.0.0 (/tmp/claude-1000/-home-stepney141-board-games-minase/6df15eae-20d7-4230-8efc-cdb9a3906246/scratchpad/astra-work/probe)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running `/tmp/claude-1000/-home-stepney141-board-games-minase/6df15eae-20d7-4230-8efc-cdb9a3906246/scratchpad/astra-work/probe-target/debug/astra-audit-probe`
+E0 win: real game: Finished(Win { winner: Black, reason: PieceExhaustion })
+MCTS requests NN evaluation with 3 moves
+backed up Q=Some(0.100000024); root state=Expanded; expected terminal Q=1
+E0 draw: real game: Finished(Draw { reason: PieceExhaustion })
+MCTS requests NN evaluation with 3 moves
+backed up Q=Some(0.100000024); root state=Expanded; expected terminal Q=0.5
+Checkmate: real game: Finished(Win { winner: Black, reason: Mate })
+MCTS requests NN evaluation with 4 moves
+backed up Q=Some(0.100000024); root state=Expanded; expected terminal Q=1
