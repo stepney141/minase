@@ -1,0 +1,20 @@
+{
+  "plies": 34,
+  "status": "draw repetition",
+  "isready_seconds": 0.066,
+  "think_seconds_max": 0.353,
+  "think_seconds_mean": 0.201,
+  "exit_code": 0,
+  "think_seconds_first_100": 0.201,
+  "think_seconds_last_100": 0.201,
+  "first_info": [
+    "info string nodes count MCTS simulations, not alpha-beta move applications",
+    "info depth 2 score cp 0 nodes 32 nps 163 time 195 pv 3i3h 11c11b",
+    "info string stop nodes"
+  ],
+  "last_info": [
+    "info string nodes count MCTS simulations, not alpha-beta move applications",
+    "info depth 1 score cp -1000 nodes 32 nps 91 time 351 pv 7c6c7c",
+    "info string stop nodes"
+  ]
+}

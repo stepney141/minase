@@ -2,7 +2,7 @@
 //! 理由は`docs/adr/carry-histories-and-correction-histories-within-a-game.md`にある。
 
 use super::*;
-use crate::search::alphabeta::history_decay_for_test;
+use crate::search::history_decay_for_test;
 use std::sync::atomic::Ordering as AtomicOrdering;
 
 const CORRECTION_INDEX: usize = 17;
@@ -19,7 +19,7 @@ fn setup() -> (Engine, UsiProtocol) {
 }
 
 fn seed(protocol: &mut UsiProtocol) {
-    let histories = protocol.histories.as_mut().unwrap();
+    let histories = protocol.searcher.as_mut().unwrap().histories_mut_for_test();
     histories.correction.values()[CORRECTION_INDEX].store(321, AtomicOrdering::Relaxed);
     for (worker, history) in histories.continuation_correction.iter_mut().enumerate() {
         history.store(CORRECTION_INDEX, worker as i16 + 400);
@@ -34,7 +34,7 @@ fn seed(protocol: &mut UsiProtocol) {
 }
 
 fn assert_seed(protocol: &UsiProtocol, command: &str) {
-    let histories = protocol.histories.as_ref().unwrap();
+    let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
     assert_eq!(histories.workers.len(), 4, "{command}");
     assert_eq!(histories.capture.len(), 4, "{command}");
     assert_eq!(
@@ -59,9 +59,10 @@ fn assert_seed(protocol: &UsiProtocol, command: &str) {
         );
     }
     for (worker, history) in protocol
-        .histories
+        .searcher
         .as_ref()
         .unwrap()
+        .histories_for_test()
         .workers
         .iter()
         .enumerate()
@@ -128,7 +129,7 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
         seed(&mut protocol);
         let output = run(&mut protocol, &mut engine, command);
         assert!(!output.contains("error"), "{command}: {output}");
-        let histories = protocol.histories.as_ref().unwrap();
+        let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
         assert_eq!(histories.workers.len(), workers, "{command}");
         assert_eq!(histories.capture.len(), workers, "{command}");
         assert_eq!(
@@ -199,7 +200,7 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
                 protocol.discard_search(&mut active).unwrap();
             }
             assert!(active.is_none());
-            let histories = protocol.histories.as_ref().unwrap();
+            let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
             assert_eq!(histories.workers.len(), 4);
             for (worker, history) in histories.workers.iter().enumerate() {
                 let numerator = (160 + worker as i32 * 16) * history_decay_for_test();

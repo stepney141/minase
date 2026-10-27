@@ -54,7 +54,6 @@ use std::time::Duration;
 use crate::eval::PIECE_STATE_COUNT;
 use crate::eval::{Nnue, evaluate};
 use crate::search::alphabeta::INFINITY;
-use crate::search::alphabeta::clock::SearchClock;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::correction::correction_from_weighted_sum;
 use crate::search::alphabeta::correction::{
@@ -87,22 +86,26 @@ use crate::search::alphabeta::team::{
     run_worker_team, select_worker_outcome, uses_instability_scaling,
 };
 use crate::search::alphabeta::time::{
-    ClockCoefficients, FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeBudget,
-    TimeEffortCoefficients, TimeInstabilityCoefficients, TimeReductionCoefficients,
-    best_move_effort_factor, best_move_effort_ratio, best_move_instability_factor,
-    best_move_stability_distance, best_move_stability_factor, clock_budget, falling_eval_factor,
-    iteration_prediction_fits, mate_early_stop, ponder_bonus_time_budget, scaled_soft_millis,
-    scaled_time_budget, should_increase_depth, should_start_next_iteration, stable_signal,
-    time_advantage_factor, time_budget, time_budget_with_coefficients, time_reduction,
+    FallingEvalCoefficients, InstabilityScaling, PreviousSearch, TimeEffortCoefficients,
+    TimeInstabilityCoefficients, TimeReductionCoefficients, best_move_effort_factor,
+    best_move_effort_ratio, best_move_instability_factor, best_move_stability_distance,
+    best_move_stability_factor, falling_eval_factor, iteration_prediction_fits, mate_early_stop,
+    ponder_bonus_time_budget, scaled_soft_millis, scaled_time_budget, should_increase_depth,
+    should_start_next_iteration, stable_signal, time_reduction,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
     CRITICAL_BOUND_MASK, CRITICAL_DEPTH_MASK, CRITICAL_NO_VALUE_MASK, CRITICAL_PV_MASK,
     CRITICAL_RESERVED_MASK, CRITICAL_SCORE_MASK, NO_MOVE, pack_move, unpack_move,
 };
+#[cfg(feature = "tuning")]
+use crate::search::budget::clock_budget;
+use crate::search::budget::{TimeBudget, time_budget};
+use crate::search::clock::SearchClock;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
-use crate::search::handle::{SearchHandle, start_search_with_clock};
+use crate::search::handle::SearchHandle;
+use crate::search::handle::start_search_with_clock;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{
@@ -742,15 +745,18 @@ fn start(
     threads: NonZeroUsize,
     tt: TranspositionTable,
 ) -> SearchHandle {
-    crate::search::start_search(
+    start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(tt),
+            histories: crate::search::HistoryTables::new(threads),
+            threads,
+        },
         Arc::clone(shared_test_nnue()),
         snapshot,
         limits,
         search_id,
-        threads,
-        tt,
-        crate::search::HistoryTables::new(threads),
         false,
+        Arc::new(crate::search::clock::MonotonicClock::new()),
     )
 }
 
@@ -960,15 +966,18 @@ fn assert_pv_is_legal(root: &Position, pv: &[Move]) {
 }
 
 fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
-    crate::search::start_search(
+    start_search_with_clock(
+        crate::search::alphabeta::Engine {
+            transposition_table: Some(small_tt()),
+            histories: crate::search::HistoryTables::new(worker_count(threads)),
+            threads: worker_count(threads),
+        },
         Arc::clone(shared_test_nnue()),
         snapshot_for(&Position::initial()),
         limits,
         700,
-        worker_count(threads),
-        small_tt(),
-        crate::search::HistoryTables::new(worker_count(threads)),
         true,
+        Arc::new(crate::search::clock::MonotonicClock::new()),
     )
 }
 

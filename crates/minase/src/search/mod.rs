@@ -1,16 +1,21 @@
 //! 探索方式に依存しない入力、出力、および実行の境界。
 //!
-//! 直下に[`SearchLimits`]、[`SearchSnapshot`]、[`SearchEvent`]、[`SearchHandle`]と
-//! [`start_search`]および[`search()`]を置き、αβ探索に固有の処理は`alphabeta`へ閉じる。
-//! 実行境界は探索チームの`run_search_team`を呼び、置換表とワーカー別の[`HistoryTables`]を受け渡す。
-//! `team`と`tt`のモジュールは`pub(in crate::search)`で参照範囲を探索層に限定する。
-//! 履歴の型は本モジュールから公開し、履歴の操作と調整係数はプロトコルからも参照する。
+//! [`Searcher`]が方式ごとの状態とオプションを束ね、[`SearchHandle`]との間で所有権を受け渡す。
+//! [`SearchLimits`]、[`SearchSnapshot`]、[`SearchEvent`]は各方式が共通に使う。
+//! αβ探索に固有の処理は`alphabeta`へ閉じ、同期版の[`search()`]は
+//! 呼び出し側が用意した置換表と[`HistoryTables`]でαβ探索を実行する。
 
-pub(crate) mod alphabeta;
+pub mod alphabeta;
+mod budget;
+#[cfg(test)]
+mod budget_tests;
+mod clock;
 mod error;
 mod events;
 mod handle;
 mod limits;
+pub mod mcts;
+mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
 mod stats;
@@ -20,6 +25,8 @@ pub use stats::SearchStats;
 
 pub use alphabeta::history::HistoryTables;
 #[cfg(test)]
+pub(crate) use alphabeta::history_decay_for_test;
+#[cfg(test)]
 pub(crate) use alphabeta::tt::TtValue;
 pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
@@ -27,8 +34,12 @@ pub use alphabeta::tt::{
 };
 pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
-pub use handle::{SearchHandle, search, start_search};
+pub use handle::{SearchHandle, SearchJoinError, search};
 pub use limits::{ClockLimits, SearchLimits};
+pub use searcher::{
+    PrepareError, SearchOption, SearchOptionKind, SearchOptionValue, Searcher, SetOptionError,
+    StartError, StartFailure,
+};
 pub use snapshot::{SearchRepetition, SearchSnapshot};
 
 use core::num::NonZeroUsize;

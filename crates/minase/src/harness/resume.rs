@@ -12,7 +12,7 @@ pub enum ResumeError {
     InvalidTarget,
     /// 指定した目標が前回の目標を超えない。
     TargetNotIncreased,
-    /// 起動コマンドの作業ディレクトリが変わった。
+    /// エンジンを起動する作業ディレクトリが変わった。
     WorkingDirectoryMismatch,
     /// エンジンの実行ファイルまたはコミットが変わった。
     EngineIdentityMismatch,
@@ -54,6 +54,16 @@ impl From<ResumeError> for io::Error {
 
 /// 保存したコミットまたは起動コマンドを現在の作業ディレクトリで復元する。
 pub fn restore_player_spec(identity: &EngineIdentity) -> io::Result<PlayerSpec> {
+    if let EngineIdentity::Commit {
+        working_directory, ..
+    }
+    | EngineIdentity::Command {
+        working_directory, ..
+    } = identity
+        && std::env::current_dir()? != *working_directory
+    {
+        return Err(ResumeError::WorkingDirectoryMismatch.into());
+    }
     let kind = match identity {
         EngineIdentity::Random => PlayerKind::Random,
         EngineIdentity::Commit { hash, .. } => PlayerKind::Commit(hash.clone()),
@@ -61,22 +71,17 @@ pub fn restore_player_spec(identity: &EngineIdentity) -> io::Result<PlayerSpec> 
             program,
             args,
             protocol,
-            working_directory,
-        } => {
-            if std::env::current_dir()? != *working_directory {
-                return Err(ResumeError::WorkingDirectoryMismatch.into());
-            }
-            match protocol {
-                StoredProtocol::Usi => PlayerKind::Command {
-                    program: program.clone(),
-                    args: args.clone(),
-                },
-                StoredProtocol::Cecp => PlayerKind::Cecp {
-                    program: program.clone(),
-                    args: args.clone(),
-                },
-            }
-        }
+            ..
+        } => match protocol {
+            StoredProtocol::Usi => PlayerKind::Command {
+                program: program.clone(),
+                args: args.clone(),
+            },
+            StoredProtocol::Cecp => PlayerKind::Cecp {
+                program: program.clone(),
+                args: args.clone(),
+            },
+        },
     };
     let text = match &kind {
         PlayerKind::Random => "random".to_owned(),
@@ -86,4 +91,39 @@ pub fn restore_player_spec(identity: &EngineIdentity) -> io::Result<PlayerSpec> 
         }
     };
     Ok(PlayerSpec { text, kind })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commit_resume_requires_the_recorded_working_directory_with_or_without_arguments() {
+        let current = std::env::current_dir().unwrap();
+        for args in [
+            Vec::new(),
+            vec!["--nn-model".to_owned(), "net.onnx".to_owned()],
+        ] {
+            let mut identity = EngineIdentity::Commit {
+                hash: "a".repeat(40),
+                sha256: "b".repeat(64),
+                args,
+                working_directory: current.clone(),
+            };
+            assert!(matches!(restore_player_spec(&identity).unwrap().kind,
+                PlayerKind::Commit(hash) if hash == "a".repeat(40)));
+            let EngineIdentity::Commit {
+                working_directory, ..
+            } = &mut identity
+            else {
+                unreachable!();
+            };
+            *working_directory = current.join("different-directory");
+            let error = restore_player_spec(&identity).unwrap_err();
+            assert_eq!(
+                error.get_ref().unwrap().downcast_ref::<ResumeError>(),
+                Some(&ResumeError::WorkingDirectoryMismatch)
+            );
+        }
+    }
 }

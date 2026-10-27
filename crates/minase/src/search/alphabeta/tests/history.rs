@@ -263,19 +263,26 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
                 .iter()
                 .map(|h| h.read(&board, nnue, mv))
                 .collect();
-            let handle = crate::search::start_search(
+            let handle = start_search_with_clock(
+                crate::search::alphabeta::Engine {
+                    transposition_table: Some(table),
+                    histories,
+                    threads,
+                },
                 Arc::clone(shared_test_nnue()),
                 snapshot_for(&Position::initial()),
                 depth_limits(3),
                 search_id,
-                threads,
-                table,
-                histories,
                 false,
+                Arc::new(crate::search::clock::MonotonicClock::new()),
             );
             let (_, result) = event_reports(drain_raw(&handle));
             assert_eq!(result.depth, 3, "threads={threads}, search_id={search_id}");
-            (table, histories) = handle.join().unwrap();
+            let crate::search::Searcher::AlphaBeta(engine) = handle.join().unwrap() else {
+                panic!("expected alpha-beta")
+            };
+            table = engine.transposition_table.unwrap();
+            histories = engine.histories;
             for (worker, history) in histories.capture.iter().enumerate() {
                 assert_truncated_ratio(
                     i64::from(history.read(&board, nnue, mv)),
@@ -706,7 +713,7 @@ pub(super) fn quiet_history_negamax_updates_only_searched_quiets() {
                 if quiet_see_pruned[index] {
                     continue;
                 }
-                if !capture && index + 1 <= 32 && 0 <= alpha {
+                if !capture && index < 32 && 0 <= alpha {
                     penalized.push(mv);
                 }
                 alpha = alpha.max(0);

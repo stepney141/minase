@@ -5,7 +5,7 @@
 //! | コマンド | 応答と処理 |
 //! | --- | --- |
 //! | `usi` | `UsiProtocol::write_handshake`の握手列を返す。 |
-//! | `isready` | 必要なら置換表を確保し、`readyok`を返す。 |
+//! | `isready` | 探索器を準備し、`readyok`を返す。推論器の作成に失敗したらエラーを通知してセッションを終了する。 |
 //! | `setoption` | `UsiProtocol::handle_setoption`で設定を検査する。 |
 //! | `usinewgame` | [`EngineCommand::NewGame`]を適用する。 |
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
@@ -39,7 +39,6 @@
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
-use std::num::NonZeroUsize;
 #[cfg(feature = "tuning")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
@@ -47,8 +46,8 @@ use std::time::Duration;
 
 use crate::eval::nnue;
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, StopReason,
-    TranspositionTable,
+    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchOptionKind,
+    SearchOptionValue, SearchSnapshot, Searcher, StopReason, TranspositionTable,
 };
 use minase_core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use minase_core::mv::Move;
@@ -66,9 +65,6 @@ use super::engine::{
     Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
 };
 
-/// USIから設定できる置換表容量の上限(MiB)。
-const MAX_HASH_SIZE_MB: usize = 65_536;
-
 /// 投了閾値の既定値20,000 cp。判定は[`UsiProtocol::should_resign`]に従う。
 /// 通常の評価値がほとんど6,000 cpを超えないことを踏まえ、詰まされる読みを対象にする。
 /// 理由は`docs/adr/decide-resignation-in-the-usi-layer.md`にある。
@@ -82,18 +78,14 @@ static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 pub struct UsiProtocol {
     /// `option`宣言のdefault値に使う起動時規則の正準表記。
     startup_rules_text: String,
-    /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出している間は`None`。
-    transposition_table: Option<TranspositionTable>,
-    /// 探索中はワーカーへ貸し出す、対局内の履歴。
-    histories: Option<search::HistoryTables>,
+    /// 対局内で持ち越す探索器。探索スレッドへ貸し出している間は`None`。
+    searcher: Option<Searcher>,
     /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
     position_synchronized: bool,
     /// 最後に受理した`position`の開始局面と着手のトークン列。
     accepted_position: Option<AcceptedPosition>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
-    /// 次の探索に使うワーカー数。
-    threads: NonZeroUsize,
     /// 根の手番側から見たcpに適用する投了閾値。条件は[`Self::should_resign`]に従う。
     resign_value: i32,
     /// 根が先手番のときに使う、根の手番側から見た引き分けの評価値(cp)。
@@ -190,14 +182,17 @@ impl UsiProtocol {
     /// セッション開始前に構築することで、宣言値と状態機械の起動時規則を
     /// 異なる値から作れないようにする。
     pub fn new(engine: &Engine) -> Self {
+        Self::with_searcher(engine, Searcher::alpha_beta())
+    }
+
+    /// 起動時に選ばれた探索器と、エンジンの規則でUSIセッションを構築する。
+    pub fn with_searcher(engine: &Engine, searcher: Searcher) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
-            transposition_table: None,
-            histories: Some(search::HistoryTables::new(search::DEFAULT_THREADS)),
+            searcher: Some(searcher),
             position_synchronized: false,
             accepted_position: None,
             next_search_id: 1,
-            threads: search::DEFAULT_THREADS,
             resign_value: DEFAULT_RESIGN_VALUE,
             draw_value_black: search::DRAW_SCORE,
             draw_value_white: search::DRAW_SCORE,
@@ -218,20 +213,22 @@ impl UsiProtocol {
         };
 
         #[cfg(feature = "tuning")]
-        if command == "go" {
+        if command == "go" && matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
             TUNING_LOCKED.store(true, Ordering::Relaxed);
         }
 
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => {
-                // 置換表がなければ既定の256 MiBで確保し初期化する。
-                // 最初の`go`で確保を待つと、その時間も時計上の思考時間に数えられるためである。
-                // 確保に失敗してもreadyokを返し、goで改めて確保して失敗を報告する。
-                if self.transposition_table.is_none()
-                    && let Ok(table) = TranspositionTable::new(search::DEFAULT_TT_SIZE_MB)
+                if let Err(error) = self
+                    .searcher
+                    .as_mut()
+                    .expect("idle protocol must own its searcher")
+                    .prepare()
                 {
-                    self.transposition_table = Some(table);
+                    write_error(output, &error.to_string())?;
+                    output.flush()?;
+                    return Err(io::Error::other(error));
                 }
                 writeln!(output, "readyok")?;
             }
@@ -277,6 +274,8 @@ impl UsiProtocol {
     /// 探索は対局の複製から作るスナップショットで行い、返す手を`Engine`へ適用しない。
     /// 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
     /// 引き分けの評価値は、根が先手番なら`DrawValueBlack`、後手番なら`DrawValueWhite`を使う。
+    /// MCTSの`nodes`はシミュレーションの回数で、αβ探索の着手適用回数とは異なる。
+    /// MCTSを開始した`go`ごとに、この違いを`info string`で通知する。
     fn start_go(
         &mut self,
         engine: &Engine,
@@ -323,36 +322,26 @@ impl UsiProtocol {
             };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let nnue = match crate::eval::weights() {
-            Ok(nnue) => nnue,
-            Err(error) => {
-                write_error(output, &error.to_string())?;
+        let infinite = config.is_infinite();
+        let searcher = self
+            .searcher
+            .take()
+            .expect("idle protocol must own its searcher");
+        let is_mcts = matches!(searcher, Searcher::Mcts(_));
+        let handle = match searcher.start(snapshot, config, search_id, tokens.contains(&"ponder")) {
+            Ok(handle) => handle,
+            Err(failure) => {
+                self.searcher = Some(failure.searcher);
+                write_error(output, &failure.error.to_string())?;
                 return Ok(None);
             }
         };
-        let transposition_table = match self.transposition_table.take() {
-            Some(table) => table,
-            None => match TranspositionTable::new(search::DEFAULT_TT_SIZE_MB) {
-                Ok(table) => table,
-                Err(error) => {
-                    write_error(output, &error.to_string())?;
-                    return Ok(None);
-                }
-            },
-        };
-        let infinite = config.is_infinite();
-        let handle = search::start_search(
-            nnue,
-            snapshot,
-            config,
-            search_id,
-            self.threads,
-            transposition_table,
-            self.histories
-                .take()
-                .expect("idle protocol must own history tables"),
-            tokens.contains(&"ponder"),
-        );
+        if is_mcts {
+            writeln!(
+                output,
+                "info string nodes count MCTS simulations, not alpha-beta move applications"
+            )?;
+        }
         Ok(Some(ActiveSearch::Running {
             context: SearchContext {
                 id: search_id,
@@ -371,6 +360,7 @@ impl UsiProtocol {
     /// 探索中は入力を優先し、入力がなければ探索通知を刈り取る。どちらもなければ10 ms待つ。
     /// 送信側が閉じたら有限探索は完了を待つが、結果を保留する無限探索と先読みは捨てる。
     /// 入力スレッドの読み取りエラーでは探索を捨ててエラーを返す。
+    /// `isready`の準備に失敗した場合も元の原因を保持した入出力エラーを返し、`readyok`は出さない。
     /// コマンドの処理順は本モジュールの探索中の入力の契約に従う。
     pub fn run_channel(
         &mut self,
@@ -539,9 +529,7 @@ impl UsiProtocol {
         let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
             return Ok(());
         };
-        let (table, histories) = join_search(handle)?;
-        self.transposition_table = Some(table);
-        self.histories = Some(histories);
+        self.searcher = Some(join_search(handle)?);
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -595,9 +583,7 @@ impl UsiProtocol {
                 else {
                     unreachable!();
                 };
-                let (table, histories) = join_search(handle)?;
-                self.transposition_table = Some(table);
-                self.histories = Some(histories);
+                self.searcher = Some(join_search(handle)?);
                 write_final_info_if_deeper(
                     output,
                     &mut context,
@@ -756,9 +742,7 @@ impl UsiProtocol {
                         }
                     }
                 };
-                let (table, histories) = join_search(handle)?;
-                self.transposition_table = Some(table);
-                self.histories = Some(histories);
+                self.searcher = Some(join_search(handle)?);
                 write_bestmove(
                     output,
                     &context.position,
@@ -799,9 +783,7 @@ impl UsiProtocol {
         };
         if let ActiveSearch::Running { handle, .. } = search {
             handle.request_stop();
-            let (table, histories) = join_search(handle)?;
-            self.transposition_table = Some(table);
-            self.histories = Some(histories);
+            self.searcher = Some(join_search(handle)?);
         }
         Ok(())
     }
@@ -821,7 +803,9 @@ impl UsiProtocol {
     /// option name DrawValueWhite type spin default 0 min -28999 max 28999
     /// ```
     ///
-    /// `tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
+    /// 上の探索オプションはαβ探索の場合である。MCTSは`Threads`の上限を1とし、
+    /// `NnBackend`、`NnCacheDir`、`NnBatchSize`を続ける。空の文字列は`<empty>`と表記する。
+    /// αβ探索の`tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
     /// 最後に`usiok`を出す。オプション名と範囲の変更は互換性を壊す変更として扱う。
     /// 時間予算が値に依存しないため`USI_Ponder`は宣言しない。
     /// 理由は`docs/adr/measure-budget-from-ponderhit-and-add-a-quarter-after-pondering.md`にある。
@@ -837,17 +821,41 @@ impl UsiProtocol {
             output,
             "option name USI_Variant type string default chushogi"
         )?;
-        writeln!(
-            output,
-            "option name USI_Hash type spin default {} min 1 max {}",
-            search::DEFAULT_TT_SIZE_MB,
-            MAX_HASH_SIZE_MB
-        )?;
-        writeln!(
-            output,
-            "option name Threads type spin default {} min 1 max 256",
-            search::DEFAULT_THREADS
-        )?;
+        for option in self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own its searcher")
+            .options()
+        {
+            match option.kind {
+                SearchOptionKind::Spin { default, min, max } => writeln!(
+                    output,
+                    "option name {} type spin default {default} min {min} max {max}",
+                    option.name
+                )?,
+                SearchOptionKind::String { default } => writeln!(
+                    output,
+                    "option name {} type string default {}",
+                    option.name,
+                    if default.is_empty() {
+                        "<empty>"
+                    } else {
+                        &default
+                    }
+                )?,
+                SearchOptionKind::Combo { default, choices } => {
+                    write!(
+                        output,
+                        "option name {} type combo default {default}",
+                        option.name
+                    )?;
+                    for choice in choices {
+                        write!(output, " var {choice}")?;
+                    }
+                    writeln!(output)?;
+                }
+            }
+        }
         writeln!(
             output,
             "option name ResignValue type spin default {DEFAULT_RESIGN_VALUE} min 1 max 99999"
@@ -867,11 +875,13 @@ impl UsiProtocol {
             )?;
         }
         #[cfg(feature = "tuning")]
-        for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
-            writeln!(
-                output,
-                "option name Tune_{name} type spin default {default} min {min} max {max}"
-            )?;
+        if matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
+            for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
+                writeln!(
+                    output,
+                    "option name Tune_{name} type spin default {default} min {min} max {max}"
+                )?;
+            }
         }
         writeln!(output, "usiok")
     }
@@ -880,12 +890,16 @@ impl UsiProtocol {
     ///
     /// `name`と`value`、および標準のオプション名は大文字小文字を区別しない。
     /// 各キーワードの直後の1語を名前と値として読み、名前がなければ無応答で無視する。
+    /// 探索器のstringオプションでは`value`以降を1つの空白でつなぎ、`<empty>`は空文字列にする。
     /// `RuleSet`は[`parse_rule_set`]の規則コードのコンマ区切り、または
     /// `engine-default`か`lishogi`の単独指定として読み、次局の規則だけを変える。
     /// 受理時の置換表、history表、および局面トークン履歴の消去は[`Self::apply_silent`]に従う。
     /// `USI_Variant`は大小文字を区別せず`chushogi`だけを受理する。
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
+    /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
+    /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
+    /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
     /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
@@ -900,13 +914,17 @@ impl UsiProtocol {
     /// | `RuleSet` | `RuleSet requires a value`を返す。 | 規則パーサまたは状態機械の拒否理由を返す。 |
     /// | `USI_Variant` | `USI_Variant requires a value`を返す。 | `unsupported USI_Variant value '<値>'`を返す。 |
     /// | `USI_Hash` | `USI_Hash requires a value`を返す。 | `USI_Hash must be an integer from 1 to 65536`を返す。 |
-    /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to 256`を返す。 |
+    /// | `Threads` | `Threads requires a value`を返す。 | `Threads must be an integer from 1 to <上限>`を返す。上限はαβ探索で256、MCTSで1。 |
+    /// | `NnBackend` | `NnBackend requires a value`を返す。 | `invalid NnBackend value '<値>'`を返す。 |
+    /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
+    /// | `NnBatchSize` | `NnBatchSize requires a value`を返す。 | `NnBatchSize must be an integer from 1 to 1024`を返す。 |
     /// | `ResignValue` | `missing ResignValue value`を返す。 | `invalid ResignValue value`を返す。 |
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
     /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
     /// | `DrawValueWhite` | `missing DrawValueWhite value`を返す。 | `invalid DrawValueWhite value`を返す。 |
     ///
-    /// `tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
+    /// αβ探索の`tuning`ビルドの`Tune_`名は大文字小文字を区別し、最初の`go`以後は変更を拒否する。
+    /// MCTSでは`Tune_`名も未知の名前として扱う。
     /// 未知の名前は`USI_Ponder`も含め無応答で無視する。
     /// 探索中の設定は待ち行列へ入り、探索終了後に適用されるため次の探索から効く。
     fn handle_setoption(
@@ -922,7 +940,9 @@ impl UsiProtocol {
         };
 
         #[cfg(feature = "tuning")]
-        if let Some(parameter) = name.strip_prefix("Tune_") {
+        if matches!(self.searcher, Some(Searcher::AlphaBeta(_)))
+            && let Some(parameter) = name.strip_prefix("Tune_")
+        {
             if TUNING_LOCKED.load(Ordering::Relaxed) {
                 return write_error(output, "tuning parameters cannot change after go");
             }
@@ -955,46 +975,51 @@ impl UsiProtocol {
                 }
                 None => write_error(output, "USI_Variant requires a value"),
             }
-        } else if name.eq_ignore_ascii_case("USI_Hash") {
+        } else if let Some(option) = self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own its searcher")
+            .options()
+            .into_iter()
+            .find(|option| name.eq_ignore_ascii_case(option.name))
+        {
+            let name = option.name;
             let Some(value) = value else {
-                return write_error(output, "USI_Hash requires a value");
+                return write_error(output, &format!("{name} requires a value"));
             };
-            let Some(size_mb) = value
-                .parse::<usize>()
-                .ok()
-                .filter(|&size| (1..=MAX_HASH_SIZE_MB).contains(&size))
-            else {
-                return write_error(
-                    output,
-                    &format!("USI_Hash must be an integer from 1 to {MAX_HASH_SIZE_MB}"),
-                );
+            let value = match option.kind {
+                SearchOptionKind::Spin { min, max, .. } => {
+                    let Some(value) = parse_spin(value, min, max) else {
+                        return write_error(
+                            output,
+                            &format!("{name} must be an integer from {min} to {max}"),
+                        );
+                    };
+                    SearchOptionValue::Spin(value)
+                }
+                SearchOptionKind::Combo { .. } => SearchOptionValue::Combo(value.to_owned()),
+                SearchOptionKind::String { .. } => {
+                    let index = tokens
+                        .iter()
+                        .position(|token| token.eq_ignore_ascii_case("value"))
+                        .expect("a value token was found");
+                    let value = tokens[index + 1..].join(" ");
+                    SearchOptionValue::String(if value == "<empty>" {
+                        String::new()
+                    } else {
+                        value
+                    })
+                }
             };
-            let result = match &mut self.transposition_table {
-                Some(transposition_table) => transposition_table.resize(size_mb),
-                None => TranspositionTable::new(size_mb).map(|table| {
-                    self.transposition_table = Some(table);
-                }),
-            };
-            if let Err(error) = result {
-                return write_error(output, &error.to_string());
-            }
-            self.histories
+            match self
+                .searcher
                 .as_mut()
-                .expect("idle protocol must own history tables")
-                .clear();
-            Ok(())
-        } else if name.eq_ignore_ascii_case("Threads") {
-            let Some(value) = value else {
-                return write_error(output, "Threads requires a value");
-            };
-            let Some(threads) = parse_threads(value) else {
-                return write_error(output, "Threads must be an integer from 1 to 256");
-            };
-            if self.threads != threads {
-                self.histories = Some(search::HistoryTables::new(threads));
-                self.threads = threads;
+                .expect("idle protocol must own its searcher")
+                .set_option(name, value)
+            {
+                Ok(()) => Ok(()),
+                Err(error) => write_error(output, &error.to_string()),
             }
-            Ok(())
         } else if name.eq_ignore_ascii_case("ResignValue") {
             let Some(value) = value else {
                 return write_error(output, "missing ResignValue value");
@@ -1041,13 +1066,10 @@ impl UsiProtocol {
             };
             if *current != value {
                 *current = value;
-                self.histories
+                self.searcher
                     .as_mut()
-                    .expect("idle protocol must own history tables")
+                    .expect("idle protocol must own its searcher")
                     .clear();
-                if let Some(table) = &mut self.transposition_table {
-                    table.clear();
-                }
             }
             Ok(())
         } else {
@@ -1305,6 +1327,9 @@ impl UsiProtocol {
         command: &str,
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        if command == "tt" && matches!(self.searcher, Some(Searcher::Mcts(_))) {
+            return write_error(output, "tt requires --search alphabeta");
+        }
         if engine.lifecycle() == EngineLifecycle::AwaitingStart {
             return write_error(
                 output,
@@ -1315,8 +1340,10 @@ impl UsiProtocol {
             "d" => diagnostic_position(engine),
             "eval" => diagnostic_evaluation(engine.game().position()),
             "tt" => self
-                .transposition_table
+                .searcher
                 .as_ref()
+                .expect("idle protocol must own its searcher")
+                .transposition_table()
                 .ok_or_else(|| "tt requires an allocated transposition table".to_owned())
                 .and_then(|table| diagnostic_table(engine, table)),
             _ => unreachable!("only diagnostic commands are dispatched here"),
@@ -1369,15 +1396,10 @@ impl UsiProtocol {
                     self.accepted_position = None;
                 }
                 if clears_transposition_table {
-                    self.histories
+                    self.searcher
                         .as_mut()
-                        .expect("idle protocol must own history tables")
+                        .expect("idle protocol must own its searcher")
                         .clear();
-                }
-                if clears_transposition_table
-                    && let Some(transposition_table) = &mut self.transposition_table
-                {
-                    transposition_table.clear();
                 }
                 Ok(())
             }
@@ -1626,11 +1648,11 @@ impl ActiveSearch {
     }
 }
 
-/// 探索スレッドの終了を待ち、貸し出していた置換表と履歴表を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<(TranspositionTable, search::HistoryTables)> {
+/// 探索スレッドの終了を待ち、貸し出していた探索器を回収する。
+fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
     handle
         .join()
-        .map_err(|_| io::Error::other("search thread panicked"))
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 /// 採用した読み筋の2手目だけから、検査済みの予想手を得る。
@@ -1818,13 +1840,12 @@ fn parse_draw_value(value: &str) -> Option<i32> {
         .filter(|value| (-search::DRAW_VALUE_LIMIT..=search::DRAW_VALUE_LIMIT).contains(value))
 }
 
-/// 1以上256以下のワーカー数を解析する。
-fn parse_threads(value: &str) -> Option<NonZeroUsize> {
+/// 宣言された範囲の整数オプションを解析する。
+fn parse_spin(value: &str, min: usize, max: usize) -> Option<usize> {
     value
         .parse::<usize>()
         .ok()
-        .and_then(NonZeroUsize::new)
-        .filter(|threads| threads.get() <= 256)
+        .filter(|value| (min..=max).contains(value))
 }
 
 /// `moves`以降の指し手列を解析し、局面を進めながら検証する。
@@ -2461,7 +2482,14 @@ mod tests {
                 assert_eq!(protocol.root_draw_value(other), other_value);
                 // readyokやttの空項目では、未確保と確保済みの空表を区別できない。
                 // 初回探索前の確保という契約に限り内部状態を観測する。
-                assert!(protocol.transposition_table.is_none());
+                assert!(
+                    protocol
+                        .searcher
+                        .as_ref()
+                        .unwrap()
+                        .transposition_table()
+                        .is_none()
+                );
             }
             for value in [
                 "29000",
@@ -2529,12 +2557,14 @@ mod tests {
                 assert!(error_lines(&output).is_empty(), "{output}");
                 // probeは探索層に限定されるため、それを呼ぶinspectで同じ照合を使う。
                 let before = protocol
-                    .transposition_table
+                    .searcher
                     .as_ref()
+                    .unwrap()
+                    .transposition_table()
                     .unwrap()
                     .inspect(engine.game().position(), 0)
                     .unwrap();
-                let histories = protocol.histories.as_mut().unwrap();
+                let histories = protocol.searcher.as_mut().unwrap().histories_mut_for_test();
                 for history in &mut histories.workers {
                     for value in history.iter_mut().flatten().flatten() {
                         *value = -100;
@@ -2554,8 +2584,10 @@ mod tests {
                     assert_eq!(output, "");
                 }
                 let after = protocol
-                    .transposition_table
+                    .searcher
                     .as_ref()
+                    .unwrap()
+                    .transposition_table()
                     .unwrap()
                     .inspect(engine.game().position(), 0);
                 if clears {
@@ -2567,7 +2599,7 @@ mod tests {
                         (before.best_move, before.static_eval, before.value)
                     );
                 }
-                let histories = protocol.histories.as_ref().unwrap();
+                let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
                 let quiet_expected = if clears { -5 } else { -100 };
                 let capture_expected = if clears { -742 } else { -100 };
                 assert_eq!(histories.workers.len(), 2);
@@ -2709,21 +2741,21 @@ mod tests {
     fn threads_accepts_boundaries_and_rejects_invalid_values() {
         // [`UsiProtocol::handle_setoption`]に従い、Threadsは1..=256だけを受理し、
         // 不正値には固定エラーを返す。正当値は無応答である。
-        assert_eq!(parse_threads("1").map(NonZeroUsize::get), Some(1));
-        assert_eq!(parse_threads("256").map(NonZeroUsize::get), Some(256));
+        assert_eq!(parse_spin("1", 1, 256), Some(1));
+        assert_eq!(parse_spin("256", 1, 256), Some(256));
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
-        for threads in [1, 2] {
+        for (value, threads) in [("1", 1), ("2", 2), ("+2", 2)] {
             assert_eq!(
                 run(
                     &mut protocol,
                     &mut engine,
-                    &format!("setoption name Threads value {threads}\n")
+                    &format!("setoption name tHREADS value {value}\n")
                 ),
                 ""
             );
-            assert_eq!(protocol.threads.get(), threads);
+            assert_eq!(protocol.searcher.as_ref().unwrap().threads().get(), threads);
         }
         let output = run(
             &mut protocol,
@@ -2745,7 +2777,7 @@ mod tests {
                 "info string error: Threads must be an integer from 1 to 256\n",
             )
         );
-        assert_eq!(protocol.threads.get(), 2);
+        assert_eq!(protocol.searcher.as_ref().unwrap().threads().get(), 2);
     }
 
     /// 王将の逃げ先が奔王、竪行、飛車に覆われ、反車でも捕獲を防げない局面。
@@ -3454,13 +3486,27 @@ mod tests {
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         let before = run(&mut protocol, &mut engine, "position startpos\nstate\n");
-        assert!(protocol.transposition_table.is_none());
+        assert!(
+            protocol
+                .searcher
+                .as_ref()
+                .unwrap()
+                .transposition_table()
+                .is_none()
+        );
         let output = run(&mut protocol, &mut engine, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(lines[0], "readyok");
         // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない。
         assert_eq!(before.lines().collect::<Vec<_>>(), [lines[1]]);
-        assert!(protocol.transposition_table.is_some());
+        assert!(
+            protocol
+                .searcher
+                .as_ref()
+                .unwrap()
+                .transposition_table()
+                .is_some()
+        );
     }
 
     // RULES.md第33条とSetRulesの契約: 受信時に検証し、拒否時は直前の正当な次局規則を保つ。

@@ -122,7 +122,8 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
         handle.events().recv_timeout(Duration::from_secs(1)),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
-    let (table, _) = handle.join().expect("search team must not panic");
+    let returned = handle.join().expect("search team must not panic");
+    let table = returned.transposition_table().unwrap();
     assert_eq!(table.generation(), 1);
 }
 
@@ -175,7 +176,8 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
         handle.events().recv_timeout(Duration::from_secs(1)),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
-    let (table, _) = handle.join().expect("search team must not panic");
+    let returned = handle.join().expect("search team must not panic");
+    let table = returned.transposition_table().unwrap();
     assert_eq!(table.generation(), 1);
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
@@ -322,7 +324,8 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
         handle.events().recv_timeout(Duration::from_secs(1)),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
-    let (table, _) = handle.join().expect("search team must not panic");
+    let returned = handle.join().expect("search team must not panic");
+    let table = returned.transposition_table().unwrap();
     assert_eq!(table.generation(), 1);
 
     let depths: Vec<_> = progress.iter().map(|entry| entry.0).collect();

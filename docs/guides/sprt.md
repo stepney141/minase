@@ -219,6 +219,10 @@ cargo run --release --bin minase -- match report \
 起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
 `--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
 規則コードP0とE0を導入する前のコミットを対戦相手とする測定では、規則コードを列挙した指定を旧版のバイナリが拒否するので、`engine-default`などのプリセット名で指定する。
+`commit:`のエンジンに起動引数を足すときは、`--candidate-args`または`--baseline-args`に空白で区切った引数を指定する。
+足した引数は`--protocol usi --rules <マッチ規則>`の後に続き、`manifest.json`のエンジンの同一性に記録されて、再開時に照合される（理由は[起動引数の拡張のADR](../adr/append-startup-arguments-to-commit-engine-specs.md)）。
+引数の相対パスは、`minase match run`を起動した作業ディレクトリから解決される。
+この2つの引数は`commit:`以外の指定には使えず、`--resume`とも併用できない。
 
 未コミットの作業ツリーや外部のUSIエンジンを測る場合は、パスと空白区切りの引数からなる起動コマンドで指定する。
 たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
@@ -239,6 +243,23 @@ USIのエンジンへ`go movetime`を送る`movetime=`とは別の指定であ�
 HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
 測定の詳細は[1手固定時間の測定記録](../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md)にある。
 規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+
+AlphaZero型探索のMCTSは、`--candidate-args "--search mcts --nn-model <ネットのファイル>"`のように起動引数で選ぶ。
+MCTSの推論にはONNX Runtimeが要るので、`tools/train/zero/setup.sh`で導入した環境の`tools/train/zero/env.sh`をbashで読み込んでから`minase match run`を起動する。
+ハーネスは推論の設定のUSIオプションを送らないので、MCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
+`XDG_CACHE_HOME`が設定されていないとminaseは`isready`でエラーになって終了するので、測定の前に設定する。
+TensorRTのエンジンの作成は、作業機の10ブロック128チャネルのネットで約11秒かかり、キャッシュの鍵には1回の推論の最大バッチ（`NnBatchSize`、既定256）が入る。
+同時に起動した複数の局が同じTensorRTのエンジンを作り始めないように、測定の前に同じネットと最大バッチでエンジンを1回起動してキャッシュを作っておく。
+
+```console
+source tools/train/zero/env.sh   # bashで実行する
+printf 'usi\nisready\nquit\n' | target/release/minase --protocol usi --rules engine-default \
+  --search mcts --nn-model <ネットのファイル>
+```
+
+MCTSの`Threads`は1だけを受け付け、USIの`nodes`はシミュレーションの回数を表し、`depth`の制限は受け付けない。
+同時対局数の自動計算はGPUを考慮しないので、MCTSを含む測定では`--concurrency`を明示する。
+手順の確認の記録は[ハーネスでのMCTSの起動の記録](../measurements/alphazero-mcts/alphazero-mcts-harness-smoke.md)にある。
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。

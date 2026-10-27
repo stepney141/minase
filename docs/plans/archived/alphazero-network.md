@@ -36,13 +36,13 @@ TensorRTのエンジンのキャッシュの鍵は、計画時の5つの値か�
 
 - 入力平面の符号化、方策のラベル、推論の抽象`Evaluator`、ortによる推論、試験用の一様評価器、およびTensorRTのエンジンのキャッシュを`crates/minase/src/nn/`に新設する。
 - ネットの構成（層の並びと大きさ）を定める。PyTorchによる実装は[学習器](../alphazero-trainer.md)が行う。
-- USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](../alphazero-mcts.md)の「共存の構造」の節）。
+- USIオプション`NnBackend`と`NnCacheDir`を定める。宣言はMCTSが行う（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
 - Pythonの符号化との照合に使う固定局面集の入力平面と方策ラベルを書き出す。
-- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](../alphazero-mcts.md)が、生成器では[自己対局生成器](../alphazero-selfplay.md)が実装する。
+- ONNXのファイルまたは埋め込みのバイト列からネットを読む処理と、出力の照合に使う開発用のサブコマンド`minase dev nn-eval`を実装する。起動引数`--nn-model`の受け付けは、エンジンでは[探索方式の共存とMCTS](alphazero-mcts.md)が、生成器では[自己対局生成器](../alphazero-selfplay.md)が実装する。
 
 次の項目は対象外とする。
 
-- MCTSの探索。[探索方式の共存とMCTS](../alphazero-mcts.md)で扱う。
+- MCTSの探索。[探索方式の共存とMCTS](alphazero-mcts.md)で扱う。
 - Pythonの符号化と学習。[学習器](../alphazero-trainer.md)で扱う。
 
 ## 依存関係
@@ -51,7 +51,7 @@ TensorRTのエンジンのキャッシュの鍵は、計画時の5つの値か�
 入力の駒の状態の区別は、NNUEとPSTの特徴が使う`crates/minase/src/eval/features.rs`の`piece_state`と同じにする。
 ONNX Runtime、TensorRT、およびcuDNNの版と導入は、環境定義`tools/train/zero/`（[実行環境の導入のADR](../../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）に従う。
 ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化のネット（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)で使ったもの）で確かめる。
-`crates/minase/src/nn/`は`minase-core`と、駒の状態番号のための`eval::features`だけに依存し、探索のモジュールを参照しない（[探索方式の共存とMCTS](../alphazero-mcts.md)の「共存の構造」の節）。
+`crates/minase/src/nn/`は`minase-core`と、駒の状態番号のための`eval::features`だけに依存し、探索のモジュールを参照しない（[探索方式の共存とMCTS](alphazero-mcts.md)の「共存の構造」の節）。
 
 ## 設計判断
 
@@ -73,7 +73,7 @@ ortによる推論の動作は、`tools/train/zero/feasibility/make_nets.py`が�
 
 入力は局面だけから決まり、過去の局面の履歴も反復の回数も含めない。
 dlshogiは履歴の面なしで強さを得ており、履歴を含めると同じ局面でも入力が変わるので、NNキャッシュの鍵と学習データの両方に履歴を持たせる必要が生じる。
-反復は探索木の側で規則どおりに扱い（[探索方式の共存とMCTS](../alphazero-mcts.md)の「反復と引き分けはαβ探索と同じ規則で扱う」の節）、ネットには判断させない。
+反復は探索木の側で規則どおりに扱い（[探索方式の共存とMCTS](alphazero-mcts.md)の「反復と引き分けはαβ探索と同じ規則で扱う」の節）、ネットには判断させない。
 NNキャッシュの鍵は、αβ探索の置換表と同じく、駒配置と手番のZobrist値に先獅子と成り権保留の状態を加えた値（`Position::zobrist`と`Position::rights_zobrist`の排他的論理和）とする。
 
 dlshogiは駒の利きと利き数の面が学習の短縮に有効だったと報告しているが、初版には入れない。
@@ -193,7 +193,7 @@ TensorRTはネットを替えるたびにエンジンを作り直して数分か
 lc0の`WeightsFile`は起動引数`--weights`を兼ね、埋め込みでビルドした場合だけ既定値が埋め込みのネットになる。
 dlshogiも、ネットのファイルをUSIオプション`DNN_Model`（既定値`model.onnx`、`cppshogi/usi.cpp` 103行、コミット79df19e）で指定する。
 本書がUSIオプションではなく起動引数で指定するのは、進捗測定で同じバイナリの候補と基準に別のネットを与えるとき、USIオプションではエンジンごとに任意の`setoption`を送る拡張がハーネスに要り、`setoption`のたびにネットを読み直す処理も要るからである。
-起動引数なら、ネットのパスはエンジンの起動コマンドに入るので、ハーネスの既存の起動コマンドの形式と、[探索方式の共存とMCTS](../alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節の拡張だけで指定できる。
+起動引数なら、ネットのパスはエンジンの起動コマンドに入るので、ハーネスの既存の起動コマンドの形式と、[探索方式の共存とMCTS](alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節の拡張だけで指定できる。
 
 ### TensorRTのエンジンのキャッシュ
 
@@ -205,7 +205,7 @@ GPUの機種名とメモリ容量は`nvidia-smi`で照会し、GPUがちょう�
 計画の時点では計算能力とTensorRTの版も鍵に入れるとしていたが、ONNX Runtimeはエンジンのファイル名に、ネットの識別子のハッシュ（ONNX Runtime、CUDA、およびTensorRTの版を含む）、精度、および計算能力を入れるので（`tensorrt_execution_provider_utils.h` 523〜596行、`tensorrt_execution_provider.cc` 3378〜3389行と3512〜3525行）、鍵から外した。
 このハッシュはネットのファイル名とノード名から作られ、メモリから読んだネットでは重みを含まないので、ネットの検査和は鍵に必須である。
 最大バッチを鍵に加えたのは、ONNX Runtimeが最適化プロファイルの異なるエンジンを同じ名前で作り直す（同 3555行）ので、最大バッチの異なる設定が同じディレクトリを交互に上書きしないようにするためである。
-`$XDG_CACHE_HOME`が設定されていない場合に`$HOME/.cache`で補うことはせず、`NnCacheDir`を与えないままTensorRTを選んだ起動はエラーで終了させる（宣言と検査は[探索方式の共存とMCTS](../alphazero-mcts.md)が実装する）。
+`$XDG_CACHE_HOME`が設定されていない場合に`$HOME/.cache`で補うことはせず、`NnCacheDir`を与えないままTensorRTを選んだ起動はエラーで終了させる（宣言と検査は[探索方式の共存とMCTS](alphazero-mcts.md)が実装する）。
 借りた機械には永続する記憶領域を置かないので、借りるたびにエンジンを作り直し、その時間は1サイクルの所要時間に含める（[Colab機の操作の手引き](../../guides/alphazero-machines.md)の6節）。
 エンジンの作成は`isready`の応答の前に行い、最初の`go`の持ち時間に含めない。
 ハーネスの応答タイムアウトは既定で120秒なので、測定の前にエンジンを1回起動してキャッシュを作っておく手順を手引きに書く。

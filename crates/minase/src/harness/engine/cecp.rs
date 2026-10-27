@@ -245,6 +245,7 @@ mod tests {
             None,
             "engine-default",
             Vec::new(),
+            None,
         );
         assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
     }
@@ -297,6 +298,7 @@ mod tests {
                 hash_mb,
                 "R1",
                 Vec::new(),
+                None,
             )
             .unwrap();
             assert_eq!(cecp_memory_text(player.hash_mb), expected);

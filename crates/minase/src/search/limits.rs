@@ -25,7 +25,7 @@ pub(super) struct FiniteSearchLimits {
 /// 秒読みが0で`movetime`を併用しない時計には、相手との残り時間の差で目安時間を補正するため、
 /// 相手の残り時間が必要である。秒読みが正の時計と`movetime`を併用する時計ではこの補正を使わない。
 /// 無期限探索にはsoftもhardもなく、外部停止要求だけを停止条件とする。
-/// [`crate::search::start_search`]で先読みとして開始すると、的中の通知まで時間の制限を使わない。
+/// [`crate::search::Searcher::start`]で先読みとして開始すると、的中の通知まで時間の制限を使わない。
 /// 深さの範囲は[`Self::new`]とプロトコル側の入力検査の両方で拒否する。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SearchLimits {

@@ -591,11 +591,11 @@ mod tests {
             serde_json::to_vec(&serde_json::json!({
                 "format_version": FORMAT_VERSION,
                 "candidate": {
-                    "identity": {"kind": "commit", "hash": "a", "sha256": "b"},
+                    "identity": {"kind": "commit", "hash": "a", "sha256": "b", "args": []},
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "baseline": {
-                    "identity": {"kind": "commit", "hash": "c", "sha256": "d"},
+                    "identity": {"kind": "commit", "hash": "c", "sha256": "d", "args": []},
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "mode": {"kind": "elo"},

@@ -146,7 +146,7 @@ mod tests {
             serde_json::from_value::<StoredSearchLimit>(json).unwrap(),
             stored
         );
-        assert_eq!(FORMAT_VERSION, 5);
+        assert_eq!(FORMAT_VERSION, 6);
     }
 
     // default_concurrencyのdocコメントと物理コア数からの既定値に関するADRに従う。
@@ -233,6 +233,7 @@ mod tests {
                     hash_mb,
                     "engine-default",
                     Vec::new(),
+                    None,
                 )
                 .unwrap()
             };

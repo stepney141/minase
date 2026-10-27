@@ -137,7 +137,8 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 ///
 /// 追加のUSIオプションは[`PlayerConfig::options`]に従う。
 /// CECP指定で追加オプションがあれば、プロセスを起動する前に入力エラーを返す。
-/// コミット指定は通常ビルドを使う。
+/// コミット指定は通常ビルドを使い、`startup_args`を`--protocol usi --rules <規則>`の後に足す。
+/// コミット以外に`startup_args`を指定すると、空配列でも起動前に入力エラーを返す。
 /// `random`は`std::env::current_exe()`で得た実行中の実行ファイルを`dev usi-random`で起動し、
 /// その同一性の記録にはSHA-256を持たない。
 pub fn resolve_player(
@@ -146,7 +147,14 @@ pub fn resolve_player(
     hash_mb: Option<u64>,
     rules_text: &str,
     options: Vec<(String, String)>,
+    startup_args: Option<Vec<String>>,
 ) -> io::Result<PlayerConfig> {
+    if startup_args.is_some() && !matches!(spec.kind, PlayerKind::Commit(_)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "startup arguments require a commit: engine",
+        ));
+    }
     if matches!(spec.kind, PlayerKind::Cecp { .. }) && !options.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -187,17 +195,25 @@ pub fn resolve_player(
         }
         PlayerKind::Commit(revision) => {
             let (path, hash, sha256) = resolve_commit(&revision, None)?;
+            let extra_args = startup_args.unwrap_or_default();
+            let mut args = vec![
+                "--protocol".to_owned(),
+                "usi".to_owned(),
+                "--rules".to_owned(),
+                rules_text.to_owned(),
+            ];
+            args.extend_from_slice(&extra_args);
             (
                 path,
-                vec![
-                    "--protocol".to_owned(),
-                    "usi".to_owned(),
-                    "--rules".to_owned(),
-                    rules_text.to_owned(),
-                ],
+                args,
                 Protocol::Usi,
                 false,
-                EngineIdentity::Commit { hash, sha256 },
+                EngineIdentity::Commit {
+                    hash,
+                    sha256,
+                    args: extra_args,
+                    working_directory,
+                },
             )
         }
         PlayerKind::Command { program, args } => (
@@ -248,6 +264,23 @@ mod tests {
     use crate::harness::engine::{EngineDefaults, probe_engine_defaults};
     use crate::harness::limit::parse_search_limit;
     use std::time::Duration;
+
+    #[test]
+    fn startup_arguments_reject_non_commit_players_before_resolution() {
+        for spec in ["random", "missing-engine", "cecp:missing-engine"] {
+            for args in [Vec::new(), vec!["--search".to_owned(), "mcts".to_owned()]] {
+                let result = resolve_player(
+                    parse_player_spec(spec).unwrap(),
+                    parse_search_limit("depth=1").unwrap(),
+                    None,
+                    "engine-default",
+                    Vec::new(),
+                    Some(args),
+                );
+                assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+            }
+        }
+    }
 
     // [`parse_player_spec`]の4形式と起動引数の契約を検査する。
     #[test]
@@ -341,6 +374,7 @@ mod tests {
                 None,
                 "R1",
                 Vec::new(),
+                None,
             );
             if accepted {
                 let player = result.unwrap_or_else(|e| panic!("{text}: {e}"));
@@ -370,6 +404,7 @@ mod tests {
             Some(300),
             "R1",
             Vec::new(),
+            None,
         )
         .unwrap();
         assert_eq!(player.protocol, Protocol::Usi);
@@ -393,6 +428,7 @@ mod tests {
                 Some(hash_mb),
                 "R1",
                 Vec::new(),
+                None,
             )
             .err()
             .expect("invalid or inapplicable hash size must fail resolution");
@@ -409,6 +445,7 @@ mod tests {
             None,
             "R1",
             vec![("Tune_First".to_owned(), "17".to_owned())],
+            None,
         );
         assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
     }

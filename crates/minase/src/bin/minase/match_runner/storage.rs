@@ -5,9 +5,11 @@
 //! 全JSONはUTF-8で、各構造体のフィールド名をそのままキーにする。
 //! 任意値の欠測は`null`として書き、列挙型の名前は小文字のスネークケースとする。
 //!
-//! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は5である。
+//! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は6である。
 //! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`と`limit`を持つエンジン設定である。
 //! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
+//! `kind="commit"`の`args`は追加の起動引数を文字列配列で持ち、省略時は空配列となる。
+//! `working_directory`は追加引数の有無によらず測定開始時の作業ディレクトリを記録する。
 //! `limit`は`kind="fixed"`なら`depth`と`nodes`、`kind="time"`なら
 //! `base_ms`、`increment_ms`、`byoyomi_ms`、`kind="movetime"`なら
 //! `movetime_ms`と`timemargin_ms`を持ち、時間の単位はミリ秒である。
@@ -45,9 +47,9 @@ use minase::harness::{
 };
 use serde::{Deserialize, Serialize};
 
-/// 再開で受け付ける実行記録形式の版5。
+/// 再開で受け付ける実行記録形式の版6。
 /// 旧版は、新しい欄を型として読み取る前に版番号で拒否する。
-pub(super) const FORMAT_VERSION: u32 = 5;
+pub(super) const FORMAT_VERSION: u32 = 6;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
@@ -271,7 +273,7 @@ impl RunStore {
         })
     }
 
-    /// 版5の実行ディレクトリを検証し、保存済みペアを読み込む。
+    /// 版6の実行ディレクトリを検証し、保存済みペアを読み込む。
     ///
     /// `requested_target`を指定する場合は直前の起動の目標より大きい値を要求し、
     /// 省略時は直前の目標を使う。条件は保存済みの`manifest.json`から読む。
@@ -607,6 +609,8 @@ mod tests {
                 identity: EngineIdentity::Commit {
                     hash: "a".repeat(40),
                     sha256: "d".repeat(64),
+                    args: Vec::new(),
+                    working_directory: std::env::current_dir().unwrap(),
                 },
                 limit: StoredSearchLimit::Fixed {
                     depth: None,
@@ -752,6 +756,40 @@ mod tests {
         assert_eq!(store.path(), &*path);
         assert_eq!(records.keys().copied().collect::<Vec<_>>(), vec![1, 2]);
         assert_eq!(records[&2], pair(2));
+    }
+
+    #[test]
+    fn version_six_manifest_round_trips_commit_arguments_and_working_directory() {
+        for args in [
+            Vec::new(),
+            vec![
+                "--search".to_owned(),
+                "mcts".to_owned(),
+                "--nn-model".to_owned(),
+                "net.onnx".to_owned(),
+            ],
+        ] {
+            let path = temporary_directory("commit-args");
+            let mut expected = manifest();
+            let EngineIdentity::Commit { args: recorded, .. } = &mut expected.candidate.identity
+            else {
+                panic!("fixture must have a commit engine");
+            };
+            *recorded = args.clone();
+            drop(RunStore::create(&path, expected.clone(), 1).unwrap());
+            let json: serde_json::Value = read_json(&path.join(MANIFEST_FILE)).unwrap();
+            assert_eq!(json["format_version"], 6);
+            assert_eq!(
+                json["candidate"]["identity"]["working_directory"],
+                serde_json::json!(std::env::current_dir().unwrap())
+            );
+            assert_eq!(
+                json["candidate"]["identity"]["args"],
+                serde_json::json!(args)
+            );
+            let (store, _) = RunStore::resume(&path, None).unwrap();
+            assert_eq!(store.manifest, expected);
+        }
     }
 
     #[test]
@@ -915,7 +953,7 @@ mod tests {
     // [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
     #[test]
     fn resume_rejects_old_versions_before_decoding_new_fields_without_writes() {
-        for version in [3, 4] {
+        for version in [3, 4, 5] {
             let path = temporary_directory("old-version");
             drop(RunStore::create(&path, manifest(), 1).unwrap());
             fs::write(
