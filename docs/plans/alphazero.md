@@ -24,7 +24,8 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 このとき学習したネットのTensorRTのFP16の出力は、照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
 各サブタスクは、完了のたびにmasterへマージする（「サブタスクの統合」の節）。
 初版の学習が動いてから検討すると定めた事項を除いて、設計判断は確定している。
-次の一手は、サブタスク6の[強化学習の実行](alphazero-rl.md)の前に、学習したネットのTensorRTのFP16の照合の許容誤差か照合する値（logitか合法手の確率か）を決め直すことである。着手は利用者の指示を待つ。
+TensorRTのFP16の照合は、logitではなく合法手の確率と価値の差で行うと決めた（2026年10月28日の利用者の決定。許容誤差の例として確率1×10⁻²、価値2×10⁻²を示した）。
+次の一手は、サブタスク6の[強化学習の実行](alphazero-rl.md)の前に、この決定に合わせて照合の道具`tools/train/zero/nn_compare.py`と[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)を改めることである。着手は利用者の指示を待つ。
 
 ## 目的
 
