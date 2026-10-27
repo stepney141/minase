@@ -124,10 +124,16 @@ wheels = [
 ]
 
 [[package]]
+name = "minase-mnsd-reader"
+version = "0.1.0"
+source = { directory = "mnsd_reader" }
+
+[[package]]
 name = "minase-zero"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "minase-mnsd-reader" },
     { name = "numpy" },
     { name = "onnx" },
     { name = "tensorrt-cu13-libs" },
@@ -136,6 +142,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "minase-mnsd-reader", directory = "mnsd_reader" },
     { name = "numpy" },
     { name = "onnx" },
     { name = "tensorrt-cu13-libs", specifier = "==10.14.1.48", index = "https://pypi.nvidia.com/" },

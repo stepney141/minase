@@ -1,0 +1,24 @@
+[package]
+name = "minase-mnsd-reader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone project: the Python extension that the AlphaZero trainer uses to read MNSD files.
+[workspace]
+
+[lib]
+name = "minase_mnsd_reader"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+minase = { path = "../../../../crates/minase" }
+minase-core = { path = "../../../../crates/minase-core" }
+pyo3 = { version = "=0.30.1", optional = true }
+
+[features]
+# Enabled only by maturin (pyproject.toml), so that `cargo test` builds the reader without libpython.
+python = ["dep:pyo3"]
+
+[dev-dependencies]
+minase-trainer = { path = "../../../../crates/minase-trainer" }

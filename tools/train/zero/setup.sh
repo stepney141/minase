@@ -14,7 +14,8 @@ fi
 rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
 
 cd -- "$ZERO_DIR"
-uv sync --frozen
+# uv builds the MNSD reader extension (mnsd_reader/) with cargo; pin it to the same toolchain.
+RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN" uv sync --frozen
 
 if [[ ! -d "$ORT_DIR" ]]; then
     mkdir -p .runtime
