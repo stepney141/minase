@@ -13,7 +13,7 @@
 
 ## 状態
 
-起案。2026年10月28日に起案し、同日に[やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../research/yaneuraou-check-detection-for-referee.md)の反映候補5件を取り込んで改訂した。着手は利用者の指示を待つ。次の一手は、masterから`referee-adjudication-movegen`ブランチとworktreeを作り、フェーズ1の参照試験から着手することである。
+進行中。2026年10月28日に起案し、同日に[やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../research/yaneuraou-check-detection-for-referee.md)の反映候補5件を取り込んで改訂したうえで、利用者の指示により`referee-adjudication-movegen`ブランチで着手した。次の一手は、フェーズ1の参照試験を現行の実装で通すことである。
 
 ## 目的
 
