@@ -148,19 +148,19 @@ class DataTests(unittest.TestCase):
         for paths in ([FIXTURE, FIXTURE], [FIXTURE, alias]):
             with self.subTest(paths=paths):
                 with self.assertRaises(ValueError):
-                    read_window(paths)
+                    read_window(paths, paths, 42)
 
     def test_copied_games_are_rejected(self) -> None:
         copy = self.directory / "copy.mnsd"
         shutil.copyfile(FIXTURE, copy)
         with self.assertRaises(ValueError):
-            read_window([FIXTURE, copy])
+            read_window([FIXTURE, copy], [copy], 42)
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
         write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "engine-default")
         write_small(second, [single_game(3, 1, 0, 456, (65535,))], "engine-default")
-        data, infos = read_window([first, second])
+        data, infos, _ = read_window([first, second], [first, second], 42)
         self.assertEqual([info.path for info in infos], [first, second])
         np.testing.assert_array_equal(data.games, [9, 3])
         np.testing.assert_array_equal(data.plies, [23, 23])
@@ -172,7 +172,7 @@ class DataTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(data.legal_offsets) > np.diff(data.policy_offsets)))
         # 方策の仕様表: 先手の王将の右・右前、後手の歩兵の前。移動元は0、0、131。
         np.testing.assert_array_equal(data.policy_labels, [3168, 1584, 12])
-        reversed_data, _ = read_window([second, first])
+        reversed_data, _, _ = read_window([second, first], [second, first], 42)
         np.testing.assert_array_equal(reversed_data.games, [3, 9])
         np.testing.assert_array_equal(reversed_data.policy_offsets, [0, 1, 3])
         np.testing.assert_array_equal(reversed_data.policy_labels, [12, 3168, 1584])
@@ -194,7 +194,7 @@ class DataTests(unittest.TestCase):
         changed = bytearray(first.read_bytes())
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
-        data, infos = read_window([first, second])
+        data, infos, _ = read_window([first, second], [first, second], 42)
         self.assertEqual([info.header.seed for info in infos], [20261038, 42])
         np.testing.assert_array_equal(data.games, [1, 1])
         np.testing.assert_array_equal(data.results, [0.5, 0.5])
@@ -207,22 +207,24 @@ class DataTests(unittest.TestCase):
         self.assertEqual(len(data), 0)
         self.assertEqual(info.game_numbers, (1,))
         with self.assertRaises(ValueError):
-            read_window([first, second])
+            read_window([first, second], [second], 42)
 
     def test_empty_files_and_empty_window(self) -> None:
         path = self.directory / "empty.mnsd"
         write_small(path, [], "engine-default")
-        data, infos = read_window([path])
+        data, info = read_file(path)
         self.assertEqual(len(data), 0)
         self.assertEqual(data.boards.shape, (0, 144))
         np.testing.assert_array_equal(data.policy_offsets, [0])
         np.testing.assert_array_equal(data.legal_offsets, [0])
         self.assertEqual(len(data.legal_labels), 0)
-        self.assertEqual(infos[0].header.origin, None)
-        self.assertEqual(infos[0].training_count, 0)
-        self.assertEqual(infos[0].validation_count, 0)
+        self.assertEqual(info.header.origin, None)
+        self.assertEqual(info.training_count, 0)
+        self.assertEqual(info.validation_count, 0)
         with self.assertRaises(ValueError):
-            read_window([])
+            read_window([path], [path], 42)
+        with self.assertRaises(ValueError):
+            read_window([], [], 42)
 
     def test_equivalent_rule_name_is_accepted_and_other_rules_rejected(self) -> None:
         path = self.directory / "rules.mnsd"

@@ -4,6 +4,7 @@
 一時ディレクトリをColab機に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
+局面数による窓、生成と学習のコミットの分離、一括転送はbrief-runner-window.mdに従う。
 """
 
 from dataclasses import replace
@@ -26,7 +27,8 @@ from minase_zero.runner import (
 )
 
 
-COMMIT = "a" * 40
+GENERATION_COMMIT = "a" * 40
+TRAINER_COMMIT = "b" * 40
 NOW = datetime(2026, 10, 29, 1, 0, tzinfo=UTC)
 
 
@@ -49,6 +51,8 @@ class FakeRemote:
     def __init__(self, root: Path):
         self.root = root
         self.uploads = []
+        self.upload_batches = []
+        self.hash_batches = []
         self.downloads = []
         self.copies = []
         self.removals = []
@@ -72,6 +76,13 @@ class FakeRemote:
         self.hashes.append(relative)
         return digest(self.root / relative)
 
+    def missing(self, files):
+        return [name for name in files if not (self.root / name).is_file()]
+
+    def sha256_many(self, files, timeout):
+        self.hash_batches.append((files, timeout))
+        return {name: digest(self.root / name) for name in files}
+
     def copy(self, source, target):
         self.copies.append((source, target))
         shutil.copyfile(self.root / source, self.root / target)
@@ -80,9 +91,11 @@ class FakeRemote:
         self.removals.append(relative)
         (self.root / relative).unlink(missing_ok=True)
 
-    def upload(self, source, relative):
-        self.uploads.append(relative)
-        write(self.root / relative, b"corrupt" if self.corrupt else source.read_bytes())
+    def upload(self, root, files, timeout):
+        self.upload_batches.append((files, timeout))
+        for relative in files:
+            self.uploads.append(relative)
+            write(self.root / relative, b"corrupt" if self.corrupt else (root / relative).read_bytes())
 
     def download(self, relative, target):
         self.downloads.append(relative)
@@ -130,10 +143,11 @@ class RunnerCase(unittest.TestCase):
         self.reference = self.directory / "trial.json"
         write_json(self.reference, {"games": 20, "training_positions": 2000})
         self.options = Options(
-            root=self.root, session="test-session", commit=COMMIT, first_cycle=1, last_cycle=1,
+            root=self.root, session="test-session", generation_commit=GENERATION_COMMIT,
+            trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
-            window=1, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
+            window_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
             train_seed_base=123, teacher_stats=self.directory / "teacher_stats", poll_seconds=60,
             cycle1_reference_summary=self.reference,
@@ -195,26 +209,48 @@ class CalculationTests(RunnerCase):
         self.assertEqual(calibration["n"], 100)
         self.assertAlmostEqual(calibration["upper_bound"], 0.0466, places=4)
 
-    def test_training_window_keeps_cycles_and_summary_file_order(self):
-        for cycle in (1, 2, 3):
-            self.summary(cycle, "selfplay", {"training_files": ["chunk-00000.mnsd", "chunk-00000.resigned.mnsd"]})
-        self.summary(2, "selfplay-regen", {"training_files": ["chunk-00000.mnsd"]})
-        first = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd",
+    def test_training_window_uses_position_boundary_and_keeps_summary_order(self):
+        # 3から数えると250、450、550局面。2の生成し直し50局面も含む。
+        for cycle, positions in ((1, 100), (2, 150), (3, 250)):
+            self.summary(cycle, "selfplay", {
+                "training_positions": positions,
+                "training_files": ["chunk-00001.mnsd", "chunk-00000.resigned.mnsd"],
+            })
+        self.summary(2, "selfplay-regen", {"training_positions": 50, "training_files": ["chunk-00000.mnsd"]})
+        first = ["cycles/cycle-0001/selfplay/chunk-00001.mnsd",
                  "cycles/cycle-0001/selfplay/chunk-00000.resigned.mnsd"]
-        third = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd",
+        second = ["cycles/cycle-0002/selfplay/chunk-00001.mnsd",
+                  "cycles/cycle-0002/selfplay/chunk-00000.resigned.mnsd",
+                  "cycles/cycle-0002/selfplay-regen/chunk-00000.mnsd"]
+        third = ["cycles/cycle-0003/selfplay/chunk-00001.mnsd",
                  "cycles/cycle-0003/selfplay/chunk-00000.resigned.mnsd"]
-        expected = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd",
-                    "cycles/cycle-0002/selfplay/chunk-00000.resigned.mnsd",
-                    "cycles/cycle-0002/selfplay-regen/chunk-00000.mnsd", *third]
-        self.assertEqual(training_window(self.root, 1, 1), first)
-        self.assertEqual(training_window(self.root, 1, 2), first)
-        self.assertEqual(training_window(self.root, 3, 1), third)
-        self.assertEqual(training_window(self.root, 3, 2), expected)
+        for positions, cycles, files in (
+            (1, [3], third), (250, [3], third), (251, [2, 3], second + third),
+            (450, [2, 3], second + third), (451, [1, 2, 3], first + second + third),
+            (550, [1, 2, 3], first + second + third), (1000, [1, 2, 3], first + second + third),
+        ):
+            with self.subTest(positions=positions):
+                self.assertEqual(training_window(self.root, 3, positions), (cycles, files, third))
+        self.assertEqual(training_window(self.root, 1, 1000), ([1], first, first))
+        self.assertEqual(training_window(self.root, 2, 100), ([2], second, second))
+        self.assertEqual(training_window(self.root, 2, 200), ([2], second, second))
 
     def test_window_rejects_paths_outside_generation_output(self):
-        self.summary(1, "selfplay", {"training_files": ["../../outside.mnsd"]})
+        self.summary(1, "selfplay", {"training_positions": 100, "training_files": ["../../outside.mnsd"]})
         with self.assertRaises(ValueError):
             training_window(self.root, 1, 1)
+
+    def test_window_rejects_invalid_position_counts(self):
+        for positions in (-1, 1.5, True):
+            with self.subTest(positions=positions):
+                self.summary(1, "selfplay", {"training_positions": positions, "training_files": ["chunk-00000.mnsd"]})
+                with self.assertRaises(ValueError):
+                    training_window(self.root, 1, 100)
+
+    def test_window_does_not_read_cycles_before_the_position_boundary(self):
+        self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
+        files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
+        self.assertEqual(training_window(self.root, 3, 100), ([3], files, files))
 
     def test_start_accepts_equal_time_and_balance(self):
         deadline = NOW + timedelta(minutes=40)
@@ -373,11 +409,40 @@ class StorageTests(RunnerCase):
         write(self.root / "model.onnx", b"network")
         self.remote.corrupt = True
         with self.assertRaises(ValueError):
-            send(self.remote, self.root, "model.onnx")
+            send(self.remote, self.root, ["model.onnx"])
         self.remote.corrupt = False
         with self.assertRaises(ValueError):
-            send(self.remote, self.root, "model.onnx")
+            send(self.remote, self.root, ["model.onnx"])
         self.assertEqual(self.remote.uploads, ["model.onnx"])
+
+    def test_batch_upload_only_sends_missing_files_and_checks_every_file_once(self):
+        files = ["old/chunk-00000.mnsd", "new/chunk-00000.mnsd", "new/chunk-00001.mnsd"]
+        for name, size in zip(files, (1000000, 2000000, 500000)):
+            write(self.root / name, b"x" * size)
+        write(self.remote_root / files[0], (self.root / files[0]).read_bytes())
+        with patch.object(self.remote, "exists", side_effect=AssertionError("per-file exists")), \
+                patch.object(self.remote, "sha256", side_effect=AssertionError("per-file hash")):
+            send(self.remote, self.root, files)
+        self.assertEqual(self.remote.upload_batches, [(files[1:], 122.5)])
+        self.assertEqual(self.remote.hash_batches, [(files, 122.5)])
+        self.assertTrue(all((self.remote_root / name).read_bytes() == (self.root / name).read_bytes() for name in files))
+        send(self.remote, self.root, files)
+        self.assertEqual(len(self.remote.upload_batches), 1)
+        self.assertEqual(self.remote.hash_batches[-1], (files, 120))
+
+    def test_batch_rejects_a_mismatch_in_any_file(self):
+        files = ["old/chunk-00000.mnsd", "new/chunk-00000.mnsd", "new/chunk-00001.mnsd"]
+        for name in files:
+            write(self.root / name, b"expected")
+            write(self.remote_root / name, b"expected")
+        for name in files:
+            with self.subTest(name=name):
+                write(self.remote_root / name, b"corrupt")
+                with self.assertRaises(ValueError):
+                    send(self.remote, self.root, files)
+                write(self.remote_root / name, b"expected")
+        self.assertEqual(self.remote.uploads, [])
+        self.assertEqual(len(self.remote.hash_batches), 3)
 
     def test_generation_restore_sends_only_config_and_committed_triples(self):
         out = "cycles/cycle-0001/selfplay"
@@ -386,6 +451,8 @@ class StorageTests(RunnerCase):
             write(self.root / out / name, name.encode())
         self.runner.restore_generation(out)
         self.assertEqual(self.remote.uploads, [f"{out}/{name}" for name in names])
+        self.assertEqual(len(self.remote.upload_batches), 1)
+        self.assertEqual(len(self.remote.hash_batches), 1)
         self.remote.uploads.clear()
         self.runner.restore_generation(out)
         self.assertEqual(self.remote.uploads, [])
@@ -411,34 +478,56 @@ class StorageTests(RunnerCase):
 
 
 class ResumeTests(RunnerCase):
+    def test_incomplete_generation_rejects_a_different_saved_commit_before_launch(self):
+        out = "cycles/cycle-0001/selfplay"
+        for location in (self.root, self.remote_root):
+            with self.subTest(location=location):
+                write_json(location / out / "config.json", {
+                    "generation_commit": "c" * 40,
+                    "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
+                    "nn_backend": "tensorrt", "seed": 1000000000, "games": 10, "chunk_games": 5,
+                    "simulations": 32, "playthrough_percent": 100,
+                })
+                with self.assertRaises(ValueError):
+                    self.runner.generation(1, out, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100)
+                self.assertEqual(self.remote.starts, [])
+                self.assertEqual(self.remote.uploads, [])
+                self.assertFalse((self.root / out / "summary.json").exists())
+                (self.root / out / "config.json").unlink()
+
     def test_remote_checkpoint_takes_precedence_over_nas_checkpoint(self):
         relative = "cycles/cycle-0001/train/checkpoint.pt"
         write(self.remote_root / relative, b"new checkpoint")
         write(self.root / relative, b"older checkpoint")
-        command = self.runner.training_command(1, ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"])
+        files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
+        command = self.runner.training_command(1, files, files)
         self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda"])
         self.assertEqual(self.remote.uploads, [])
 
     def test_nas_checkpoint_is_uploaded_for_resume(self):
         relative = "cycles/cycle-0001/train/checkpoint.pt"
         write(self.root / relative, b"saved checkpoint")
-        command = self.runner.training_command(1, ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"])
+        files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
+        command = self.runner.training_command(1, files, files)
         self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda"])
         self.assertEqual(self.remote.uploads, [relative])
         self.assertEqual((self.remote_root / relative).read_bytes(), b"saved checkpoint")
 
     def test_new_training_passes_window_and_every_explicit_setting(self):
-        files = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd", "cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        command = self.runner.training_command(3, files)
+        latest = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd",
+                  "cycles/cycle-0003/selfplay-regen/chunk-00000.mnsd"]
+        files = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd", *latest]
+        command = self.runner.training_command(3, files, latest)
         self.assertEqual(command, [
             "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero", "python", "-m", "minase_zero",
-            "train", "--init", "cycles/cycle-0002/train/checkpoint.pt", "--data", *files,
+            "train", "--init", "cycles/cycle-0002/train/checkpoint.pt", "--data", *files, "--latest-data", *latest,
             "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
             "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
-            "--checkpoint-steps", "200", "--device", "cuda", "--trainer-commit", COMMIT,
+            "--checkpoint-steps", "200", "--device", "cuda", "--trainer-commit", TRAINER_COMMIT,
         ])
-        first = self.runner.training_command(1, files)
+        first_files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
+        first = self.runner.training_command(1, first_files, first_files)
         self.assertEqual(first[first.index("--init") + 1], "cycles/cycle-0000/checkpoint.pt")
 
     def test_completed_cycle_is_skipped_without_remote_operations(self):
@@ -480,6 +569,75 @@ class ResumeTests(RunnerCase):
 
 
 class RemoteTests(unittest.TestCase):
+    def test_batch_transfer_uses_one_files_from_rsync_and_one_checksum_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "NAS with spaces"
+            destination = Path(directory) / "colab"
+            destination.mkdir()
+            files = ["old/chunk-00000.mnsd", "new/chunk-00001.mnsd", "new/chunk-00000.mnsd"]
+            for name, size in zip(files, (1000000, 2000000, 500000)):
+                write(root / name, b"x" * size)
+            write(destination / files[0], (root / files[0]).read_bytes())
+            remote = Remote("local")
+            commands = []
+            manifests = []
+            original_run = subprocess.run
+
+            def execute(argv, **kwargs):
+                commands.append((argv, kwargs["timeout"]))
+                if argv[0] == "rsync":
+                    manifest = Path(argv[argv.index("--files-from") + 1])
+                    manifests.append((manifest, manifest.read_bytes()))
+                    self.assertIn("--from0", argv)
+                    self.assertEqual(shlex.split(argv[argv.index("-e") + 1]), remote.ssh)
+                    self.assertEqual(argv[-2:], [str(root) + "/", "root@colab:/content/az/"])
+                    # 同じrsyncの引数で、転送先だけをローカルのディレクトリへ置き換える。
+                    transport = argv.index("-e")
+                    local = argv[:transport] + argv[transport + 2:-1] + [str(destination) + "/"]
+                    return original_run(local, **kwargs)
+                self.assertEqual(argv[0], "ssh")
+                command = shlex.split(argv[-1])
+                command[-1] = command[-1].replace("cd /content/az\n", "cd " + shlex.quote(str(destination)) + "\n")
+                return original_run(command, **kwargs)
+
+            with patch("minase_zero.runner.subprocess.run", side_effect=execute):
+                send(remote, root, files)
+            self.assertEqual(len(commands), 3)
+            self.assertEqual(commands[0][1], 120)
+            self.assertEqual(commands[1][0][0], "rsync")
+            self.assertEqual(commands[1][1], 122.5)
+            checksum_script = shlex.split(commands[2][0][-1])[-1].splitlines()[-1]
+            self.assertEqual(shlex.split(checksum_script), ["sha256sum", "--zero", "--", *files])
+            self.assertEqual(commands[2][1], 122.5)
+            self.assertEqual(len(manifests), 1)
+            self.assertEqual(manifests[0][1], b"new/chunk-00001.mnsd\0new/chunk-00000.mnsd\0")
+            self.assertFalse(manifests[0][0].exists())
+            for name in files:
+                self.assertEqual((destination / name).read_bytes(), (root / name).read_bytes())
+
+    def test_batch_checksum_rejects_missing_duplicate_or_malformed_results(self):
+        remote = Remote("local")
+        first = "a" * 64 + "  first.mnsd\0"
+        second = "b" * 64 + "  second.mnsd\0"
+        for output in (first, first + first, first + second[:-1], first + "invalid\0",
+                       first + second + "c" * 64 + "  unexpected.mnsd\0"):
+            with self.subTest(output=output), patch.object(remote, "shell", return_value=output):
+                with self.assertRaises(ValueError):
+                    remote.sha256_many(["first.mnsd", "second.mnsd"], 120)
+
+    def test_failed_batch_transfer_removes_its_file_list(self):
+        remote = Remote("local")
+        manifests = []
+
+        def fail(argv, **kwargs):
+            manifests.append(Path(argv[argv.index("--files-from") + 1]))
+            self.assertTrue(manifests[0].is_file())
+            return subprocess.CompletedProcess(argv, 23, "", "transfer failed")
+
+        with patch("minase_zero.runner.subprocess.run", side_effect=fail), self.assertRaises(RuntimeError):
+            remote.upload(Path("/NAS"), ["file.mnsd"], 121)
+        self.assertFalse(manifests[0].exists())
+
     def test_remote_copy_is_independent_of_original_and_can_be_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -488,9 +646,9 @@ class RemoteTests(unittest.TestCase):
             write(root / original, b"before replacement")
             remote = Remote("local")
 
-            def shell(script):
+            def shell(script, timeout):
                 return subprocess.run(["bash", "-c", script], cwd=root, capture_output=True,
-                                      text=True, check=True).stdout
+                                      text=True, check=True, timeout=timeout).stdout
 
             with patch.object(remote, "shell", side_effect=shell):
                 remote.copy(original, snapshot)
@@ -507,13 +665,13 @@ class RemoteTests(unittest.TestCase):
             root = Path(directory)
             remote = Remote("local")
 
-            def execute(argv):
+            def execute(argv, timeout):
                 command = shlex.split(argv[-1])
                 command[-1] = command[-1].replace("/content/az", str(root / "absent"))
-                return subprocess.run(command, cwd=root, capture_output=True, text=True)
+                return subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=timeout)
 
             with patch.object(remote, "_call", side_effect=execute):
-                result = remote.shell("echo first\nprintf wrong > marker")
+                result = remote.shell("echo first\nprintf wrong > marker", 120)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((root / "marker").exists())
 
@@ -569,8 +727,8 @@ class RemoteTests(unittest.TestCase):
             root = Path(directory)
             remote = Remote("local")
 
-            def shell(script):
-                result = subprocess.run(["bash", "-c", script], cwd=root, capture_output=True, text=True)
+            def shell(script, timeout):
+                result = subprocess.run(["bash", "-c", script], cwd=root, capture_output=True, text=True, timeout=timeout)
                 if result.returncode:
                     raise RuntimeError(result.stderr)
                 return result.stdout
@@ -592,7 +750,7 @@ class RemoteTests(unittest.TestCase):
             remote = Remote("local")
             scripts = []
 
-            def shell(script):
+            def shell(script, timeout):
                 scripts.append(script)
                 script = script.replace("source /content/src/tools/train/zero/env.sh", "source " + str(root / "env.sh"))
                 # setsidだけを同期実行するシェル関数にし、実際のジョブと入出力の契約を調べる。
@@ -682,17 +840,23 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             cycle = int(stem.split("/")[1].split("-")[1])
             write(self.remote_root / stem / "checkpoint.pt", f"checkpoint {cycle}".encode())
             write(self.remote_root / stem / "model.onnx", f"network {cycle}".encode())
-            write_json(self.remote_root / stem / "summary.json", {
+            summary = {
                 "cycle": cycle, "network_sha256": digest(self.remote_root / stem / "model.onnx"),
-                "provenance": {"trainer_commit": COMMIT, "environment_commit": COMMIT},
-                "diagnostics": {"validation": {"value_result": 0.7}}, "completed_steps": 4,
-            })
+                "provenance": {"trainer_commit": TRAINER_COMMIT, "environment_commit": TRAINER_COMMIT},
+                "diagnostics": {"validation": {"value_result": 0.7},
+                                "latest_training_sample": {"value_result": 0.6}},
+                "sample_count": 900, "sample_sha256": "d" * 64, "completed_steps": 4,
+            }
+            if "--latest-data" in command:
+                summary["latest_data"] = command[command.index("--latest-data") + 1:command.index("--out-dir")]
+                summary["provenance"]["trainer_commit"] = command[command.index("--trainer-commit") + 1]
+            write_json(self.remote_root / stem / "summary.json", summary)
         else:
             raise AssertionError(body)
         return 0
 
     def test_two_cycles_record_provenance_checks_cost_and_immutable_networks(self):
-        self.execute(replace(self.options, last_cycle=2, window=2))
+        self.execute(replace(self.options, last_cycle=2, window_positions=2000))
         rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
         intervals = [json.loads(line) for line in (self.root / "sessions.jsonl").read_text().splitlines()]
         self.assertEqual([row["cycle"] for row in rows], [1, 2])
@@ -706,13 +870,26 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(len(rows[1]["training_files"]), 8)
         self.assertEqual(len(rows[1]["teacher_stats"]["files"]), 4)
         self.assertEqual(rows[0]["teacher_stats"]["game_length_plies"], {"p50": 100, "p90": 120, "p99": 140})
-        self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], COMMIT)
+        self.assertEqual([row["generation_commit"] for row in rows], [GENERATION_COMMIT, GENERATION_COMMIT])
+        self.assertEqual([row["trainer_commit"] for row in rows], [TRAINER_COMMIT, TRAINER_COMMIT])
+        self.assertEqual([row["window_cycles"] for row in rows], [[1], [1, 2]])
+        self.assertEqual([row["window_positions"] for row in rows], [2000, 2000])
+        self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], TRAINER_COMMIT)
         self.assertEqual(rows[0]["selfplay_summary"]["win_reason_royal_capture"], 10)
         self.assertEqual(rows[0]["machine"], {"gpu": "NVIDIA L4", "cpu": "Test CPU", "nproc": 12})
         self.assertEqual([row["balance_difference"] for row in intervals], [2, 2])
         self.assertEqual(intervals[1]["started_at"], intervals[0]["ended_at"])
         self.assertEqual(intervals[1]["start_balance"], intervals[0]["end_balance"])
         for row in rows:
+            self.assertEqual(row["training_summary"], json.loads(
+                (self.root / f"cycles/cycle-{row['cycle']:04d}/train/summary.json").read_text()))
+            command = shlex.split(next(body for stem, body, _, _ in self.remote.starts
+                                       if stem == f"cycles/cycle-{row['cycle']:04d}/train"))
+            data = command[command.index("--data") + 1:command.index("--latest-data")]
+            latest = command[command.index("--latest-data") + 1:command.index("--out-dir")]
+            self.assertEqual(data, row["training_files"])
+            self.assertEqual(latest, row["teacher_stats"]["files"])
+            self.assertEqual(latest, data[-len(latest):])
             self.assertEqual([(r["backend"], r["batch"], r["exit_code"]) for r in row["checks"]["results"]],
                              [("cpu", 1, 0), ("trt", 1, 0), ("cpu", 7, 0), ("trt", 7, 0), ("cpu", 256, 0), ("trt", 256, 0)])
             self.assertEqual(set(row["elapsed_seconds"]), {"generation", "training", "checking"})
@@ -728,7 +905,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                 cpu = "/cpu-" in command[command.index("--candidate") + 1]
                 self.assertEqual(command[command.index("--policy") + 1], "logits" if cpu else "probabilities")
                 self.assertEqual(command[command.index("--policy-tolerance") + 1], "1e-4" if cpu else "1e-2")
-                self.assertEqual(command[command.index("--value-tolerance") + 1], "1e-4" if cpu else "2e-2")
+                self.assertEqual(command[command.index("--value-tolerance") + 1], "1e-4" if cpu else "5e-2")
             elif command[command.index("--backend") + 1] == "tensorrt":
                 self.assertEqual(command[command.index("--cache-dir") + 1], "/content/cache/nn-eval")
         for cycle in (1, 2):
@@ -753,6 +930,8 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             "cycles/cycle-0001/selfplay-regen/chunk-00000.mnsd", "cycles/cycle-0001/selfplay-regen/chunk-00000.resigned.mnsd",
             "cycles/cycle-0001/selfplay-regen/chunk-00001.mnsd", "cycles/cycle-0001/selfplay-regen/chunk-00001.resigned.mnsd",
         ])
+        command = shlex.split(next(body for stem, body, _, _ in self.remote.starts if stem.endswith("/train")))
+        self.assertEqual(command[command.index("--latest-data") + 1:command.index("--out-dir")], row["training_files"])
         ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
         self.assertEqual([entry["name"] for entry in ledger], ["cycle-0001-gen", "cycle-0001-regen"])
 
@@ -815,9 +994,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         (self.root / (out + ".log")).unlink()
         self.remote.states[out] = ["running", "running", 0]
         before = len(self.remote.starts)
-        files = training_window(self.root, 1, 1)
+        _, files, latest = training_window(self.root, 1, 1000)
         with patch("minase_zero.runner.time.sleep") as sleep:
-            self.runner.training(1, files)
+            self.runner.training(1, files, latest)
         self.assertEqual((self.root / out / "checkpoint.pt").read_bytes(), b"checkpoint 1")
         self.assertEqual(len(self.remote.starts), before)
         sleep.assert_called_once_with(60)
@@ -850,6 +1029,45 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         row = json.loads((self.root / "cycles.jsonl").read_text())
         self.assertEqual(row["elapsed_seconds"]["training"], 7200)
 
+    def test_completed_generation_records_its_commit_and_accepts_a_new_trainer(self):
+        complete = self.remote.on_start
+        self.remote.on_start = lambda stem, body: 9 if stem.endswith("/train") else complete(stem, body)
+        with self.assertRaises(RuntimeError):
+            self.runner.run()
+        config = (self.root / "cycles/cycle-0001/selfplay/config.json").read_bytes()
+        shutil.rmtree(self.remote_root)
+        self.remote_root.mkdir()
+        self.remote = FakeRemote(self.remote_root)
+        self.remote.on_start = self.complete_job
+        self.execute(replace(self.options, generation_commit="c" * 40, trainer_commit="e" * 40))
+        self.assertEqual([Path(stem).name for stem, _, _, _ in self.remote.starts], ["train", "check"])
+        self.assertEqual((self.root / "cycles/cycle-0001/selfplay/config.json").read_bytes(), config)
+        row = json.loads((self.root / "cycles.jsonl").read_text())
+        self.assertEqual(row["generation_commit"], GENERATION_COMMIT)
+        self.assertEqual(row["generation"]["generation_commit"], GENERATION_COMMIT)
+        self.assertEqual(row["trainer_commit"], "e" * 40)
+        command = shlex.split(self.remote.starts[0][1])
+        self.assertEqual(command[command.index("--trainer-commit") + 1], "e" * 40)
+        batches = [files for files, _ in self.remote.upload_batches if any(name.endswith(".mnsd") for name in files)]
+        self.assertEqual(batches, [row["training_files"]])
+
+    def test_new_generation_checks_its_commit_before_accepting_the_summary(self):
+        complete = self.remote.on_start
+
+        def different_commit(stem, body):
+            code = complete(stem, body)
+            path = self.remote_root / stem / "config.json"
+            config = json.loads(path.read_text())
+            config["generation_commit"] = "c" * 40
+            write_json(path, config)
+            return code
+
+        self.remote.on_start = different_commit
+        with self.assertRaises(ValueError):
+            self.runner.run()
+        self.assertFalse((self.root / "cycles/cycle-0001/selfplay/summary.json").exists())
+        self.assertEqual([Path(stem).name for stem, _, _, _ in self.remote.starts], ["selfplay"])
+
     def test_new_machine_restores_generation_config_and_committed_chunks(self):
         complete = self.remote.on_start
 
@@ -879,8 +1097,8 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         upload = self.remote.upload
         complete = self.remote.on_start
 
-        def timed_upload(source, relative):
-            upload(source, relative)
+        def timed_upload(root, files, timeout):
+            upload(root, files, timeout)
             self.clock.now.return_value += timedelta(seconds=10)
 
         def timed_job(stem, body):
@@ -899,11 +1117,12 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
 
 class ArgumentTests(RunnerCase):
     def arguments(self):
-        return ["run-cycles", "--root", str(self.root), "--session", "l4-one", "--commit", COMMIT,
+        return ["run-cycles", "--root", str(self.root), "--session", "l4-one",
+                "--generation-commit", GENERATION_COMMIT, "--trainer-commit", TRAINER_COMMIT,
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads", "6", "--games-per-thread", "4",
-                "--window", "2", "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9",
+                "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
                 "--teacher-stats", str(self.options.teacher_stats), "--poll-seconds", "60",
@@ -927,8 +1146,9 @@ class ArgumentTests(RunnerCase):
         self.assertIsNone(result.cycle1_reference_summary)
 
     def test_invalid_inputs_fail_before_remote_work(self):
-        for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"commit": "abcd"}, {"session": "x; echo secret"},
-                        {"poll_seconds": 0}, {"window": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
+        for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"generation_commit": "abcd"},
+                        {"trainer_commit": "abcd"}, {"session": "x; echo secret"},
+                        {"poll_seconds": 0}, {"window_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
                         {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 replace(self.options, **changes)

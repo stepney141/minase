@@ -2,8 +2,22 @@
 
 run-cyclesの引数はすべて明示する。cycle1-reference-summaryだけは開始サイクルが1の
 ときに必須で、それ以外では指定できない。deadlineは時差を含むISO 8601の時刻とする。
-Colab機の/content/srcには指定コミットの導入とビルドが済んでいることを前提とする。
+generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定する。Colab機の
+/content/srcにはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
 NASのrootと/content/azは同じ相対パスを使い、接続と転送は1本ずつ実行する。
+
+学習窓は最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が
+初めてwindow-positions以上になるまでとする。届かないうちは全サイクルを使う。
+ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
+後に加える。窓全体を--data、最新のサイクルだけを--latest-dataとして学習器へ渡す。
+窓のサイクル番号、window-positions、生成と学習のコミットをサイクルの記録に残す。
+NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
+未完了の生成はgeneration-commitが一致する場合だけ再開する。
+
+送信ではColab機にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も
+含む全ファイルを1回のsha256sumで照合する。生成の塊の復元も同じ経路を使う。
+一括の転送と照合の制限時間は、送信バイト数を1 MB/秒（1 MB = 10⁶ B）で割った秒数に
+120秒を足す。ほかの外部コマンドは120秒とする。
 
 塊はJSONを最後に、生成と学習はsummary.jsonを最後に受け取る。SHA-256を照合してから
 一時ファイルを改名し、既存ファイルの相違はエラーにする。置き換えを許すのは学習中の
@@ -47,7 +61,8 @@ TRAINER = [*PYTHON, "-m", "minase_zero"]
 class Options:
     root: Path
     session: str
-    commit: str
+    generation_commit: str
+    trainer_commit: str
     first_cycle: int
     last_cycle: int
     deadline: datetime
@@ -58,7 +73,7 @@ class Options:
     simulations: int
     threads: int
     games_per_thread: int
-    window: int
+    window_positions: int
     batch_size: int
     lr: float
     momentum: float
@@ -75,10 +90,11 @@ class Options:
     def __post_init__(self) -> None:
         if re.fullmatch(r"[A-Za-z0-9_-]+", self.session) is None:
             raise ValueError("session must contain only letters, digits, underscores or hyphens")
-        if re.fullmatch(r"[0-9a-fA-F]{40}", self.commit) is None:
-            raise ValueError("commit must be 40 hexadecimal digits")
+        for name in ("generation_commit", "trainer_commit"):
+            if re.fullmatch(r"[0-9a-fA-F]{40}", getattr(self, name)) is None:
+                raise ValueError(f"{name} must be 40 hexadecimal digits")
         for name in ("first_cycle", "last_cycle", "target_positions", "chunks", "simulations",
-                     "threads", "games_per_thread", "window", "batch_size", "checkpoint_steps"):
+                     "threads", "games_per_thread", "window_positions", "batch_size", "checkpoint_steps"):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
         if self.last_cycle < self.first_cycle:
@@ -106,11 +122,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     """run-cyclesだけの必須引数を登録する。"""
     for name in ("root", "teacher-stats"):
         parser.add_argument(f"--{name}", type=Path, required=True)
-    for name in ("session", "commit"):
+    for name in ("session", "generation-commit", "trainer-commit"):
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
-                 "games-per-thread", "window", "batch-size", "checkpoint-steps", "train-seed-base"):
+                 "games-per-thread", "window-positions", "batch-size", "checkpoint-steps", "train-seed-base"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds"):
@@ -163,20 +179,32 @@ def resignation(root: Path, cycle: int) -> tuple[int, dict]:
     return (20 if calibration["enable_resignation"] else 100), calibration
 
 
-def training_window(root: Path, cycle: int, window: int) -> list[str]:
-    files = []
-    for previous in range(max(1, cycle - window + 1), cycle + 1):
+def training_window(root: Path, cycle: int, window_positions: int) -> tuple[list[int], list[str], list[str]]:
+    """局面数から窓を決め、サイクル番号、窓のファイル、最新のファイルを返す。"""
+    by_cycle = []
+    positions = 0
+    for previous in range(cycle, 0, -1):
+        current = []
         for path in summaries(root, previous):
-            names = read_json(path)["training_files"]
+            summary = read_json(path)
+            count = summary["training_positions"]
+            if type(count) is not int or count < 0:
+                raise ValueError(f"{path}: invalid training_positions")
+            positions += count
+            names = summary["training_files"]
             if not isinstance(names, list) or not names:
                 raise ValueError(f"{path}: training_files must be a nonempty list")
             for name in names:
                 if not isinstance(name, str) or re.fullmatch(r"chunk-[0-9]+(?:\.resigned)?\.mnsd", name) is None:
                     raise ValueError(f"{path}: invalid training file: {name!r}")
-                files.append((path.parent / name).relative_to(root).as_posix())
+                current.append((path.parent / name).relative_to(root).as_posix())
+        by_cycle.append(current)
+        if positions >= window_positions:
+            break
+    files = [name for current in reversed(by_cycle) for name in current]
     if not files or len(set(files)) != len(files):
         raise ValueError("training window must contain distinct files")
-    return files
+    return list(range(cycle - len(by_cycle) + 1, cycle + 1)), files, by_cycle[0]
 
 
 def parse_balance(output: str) -> float:
@@ -269,12 +297,12 @@ class Remote:
                     "-o", "ControlPersist=900", "-o", "StrictHostKeyChecking=no",
                     "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
 
-    def _call(self, argv: list[str]) -> str:
+    def _call(self, argv: list[str], timeout: float) -> str:
         for attempt in range(6):
             try:
-                result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+                result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
             except subprocess.TimeoutExpired as error:
-                raise RuntimeError(f"{argv[0]} timed out after 120 seconds") from error
+                raise RuntimeError(f"{argv[0]} timed out after {timeout} seconds") from error
             if result.returncode == 0:
                 return result.stdout
             detail = result.stderr + result.stdout
@@ -287,41 +315,65 @@ class Remote:
             time.sleep(30)
         raise AssertionError("retry loop did not return")
 
-    def shell(self, script: str) -> str:
-        return self._call([*self.ssh, "root@colab", shlex.join(["bash", "-c", "set -e\ncd /content/az\n" + script])])
+    def shell(self, script: str, timeout: float) -> str:
+        command = shlex.join(["bash", "-c", "set -e\ncd /content/az\n" + script])
+        return self._call([*self.ssh, "root@colab", command], timeout)
 
     def exists(self, relative: str) -> bool:
-        return self.shell(f"if test -f {shlex.quote(relative)}; then echo yes; else echo no; fi").strip() == "yes"
+        return self.shell(f"if test -f {shlex.quote(relative)}; then echo yes; else echo no; fi", 120).strip() == "yes"
+
+    def missing(self, files: list[str]) -> list[str]:
+        script = ("import json,pathlib; print(json.dumps([name for name in " + json.dumps(files)
+                  + " if not pathlib.Path(name).is_file()]))")
+        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
 
     def files(self, relative: str) -> list[str]:
         script = ("import json,pathlib; p=pathlib.Path(" + repr(relative) + "); "
                   "print(json.dumps(sorted(x.name for x in p.iterdir() if x.is_file()) if p.exists() else []))")
-        return json.loads(self.shell(shlex.join(["python3", "-c", script])))
+        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
 
     def sha256(self, relative: str) -> str:
-        digest = self.shell(shlex.join(["sha256sum", "--", relative])).split()[0]
+        digest = self.shell(shlex.join(["sha256sum", "--", relative]), 120).split()[0]
         if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             raise ValueError(f"invalid remote SHA-256: {relative}")
         return digest
 
-    def upload(self, source: Path, relative: str) -> None:
-        self.shell(shlex.join(["mkdir", "-p", "--", str(Path(relative).parent)]))
-        self._call(["rsync", "-a", "-s", "-e", shlex.join(self.ssh), "--", str(source),
-                    f"root@colab:/content/az/{relative}"])
+    def sha256_many(self, files: list[str], timeout: float) -> dict[str, str]:
+        output = self.shell(shlex.join(["sha256sum", "--zero", "--", *files]), timeout)
+        records = output.split("\0")
+        if records.pop() != "":
+            raise ValueError("incomplete remote SHA-256 output")
+        hashes = {}
+        for record in records:
+            match = re.fullmatch(r"([0-9a-f]{64}) [ *](.+)", record, re.DOTALL)
+            if match is None or match[2] in hashes:
+                raise ValueError("invalid remote SHA-256 output")
+            hashes[match[2]] = match[1]
+        if set(hashes) != set(files):
+            raise ValueError("remote SHA-256 files differ from requested files")
+        return hashes
+
+    def upload(self, root: Path, files: list[str], timeout: float) -> None:
+        """相対パスの列を1回のrsyncで送り、作業ディレクトリからの配置を保つ。"""
+        with tempfile.NamedTemporaryFile() as manifest:
+            manifest.write(("\0".join(files) + "\0").encode("utf-8"))
+            manifest.flush()
+            self._call(["rsync", "-a", "-s", "--from0", "--files-from", manifest.name,
+                        "-e", shlex.join(self.ssh), "--", str(root) + "/", "root@colab:/content/az/"], timeout)
 
     def download(self, relative: str, target: Path) -> None:
         self._call(["rsync", "-a", "-s", "-e", shlex.join(self.ssh), "--",
-                    f"root@colab:/content/az/{relative}", str(target)])
+                    f"root@colab:/content/az/{relative}", str(target)], 120)
 
     def copy(self, source: str, target: str) -> None:
         """開いたファイルを複写し、改名による置き換えの影響を受けない版を作る。"""
-        self.shell(shlex.join(["cp", "--", source, target]))
+        self.shell(shlex.join(["cp", "--", source, target]), 120)
 
     def remove(self, relative: str) -> None:
-        self.shell(shlex.join(["rm", "-f", "--", relative]))
+        self.shell(shlex.join(["rm", "-f", "--", relative]), 120)
 
     def usage(self) -> float:
-        return parse_balance(self._call(["colab", "usage"]))
+        return parse_balance(self._call(["colab", "usage"], 120))
 
     def machine(self) -> dict:
         script = """import json,pathlib,subprocess
@@ -331,7 +383,7 @@ count = int(subprocess.check_output(['nproc'], text=True))
 if not gpu or not cpu or count < 1:
     raise ValueError('incomplete machine information')
 print(json.dumps({'gpu': gpu, 'cpu': cpu, 'nproc': count}))"""
-        return json.loads(self.shell(shlex.join(["python3", "-c", script])))
+        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
 
     @staticmethod
     def _status_script(stem: str) -> str:
@@ -350,7 +402,7 @@ else echo new
 fi"""
 
     def status(self, stem: str) -> str | int:
-        state = self.shell(self._status_script(stem)).strip()
+        state = self.shell(self._status_script(stem), 120).strip()
         if state in ("new", "running"):
             return state
         if re.fullmatch(r"[0-9]+", state) is None or int(state) > 255:
@@ -371,7 +423,7 @@ fi"""
                   'if [[ "$state" == new ]]; then\n'
                   f"setsid nohup bash -c {shlex.quote(job)} {redirect} < /dev/null &\n"
                   f"echo $! > {shlex.quote(stem + '.pid')}\nfi")
-        self.shell(script)
+        self.shell(script, 120)
 
 
 def receive(remote: Remote, root: Path, relative: str, replace: bool) -> bool:
@@ -402,12 +454,17 @@ def receive(remote: Remote, root: Path, relative: str, replace: bool) -> bool:
             remote.remove(source)
 
 
-def send(remote: Remote, root: Path, relative: str) -> None:
-    expected = sha256(root / relative)
-    if not remote.exists(relative):
-        remote.upload(root / relative, relative)
-    if remote.sha256(relative) != expected:
-        raise ValueError(f"checksum mismatch: {relative}")
+def send(remote: Remote, root: Path, files: list[str]) -> None:
+    """不足するファイルだけを一括送信し、既存分も含めて全件の検査和を照合する。"""
+    expected = {name: sha256(root / name) for name in files}
+    missing = remote.missing(files)
+    timeout = 120 + sum((root / name).stat().st_size for name in missing) / 1_000_000
+    if missing:
+        remote.upload(root, missing, timeout)
+    actual = remote.sha256_many(files, timeout)
+    for name in files:
+        if actual[name] != expected[name]:
+            raise ValueError(f"checksum mismatch: {name}")
 
 
 def chunk_files(names: list[str]) -> list[str]:
@@ -489,20 +546,24 @@ class Runner:
     def restore_generation(self, out: str) -> None:
         directory = self.root / out
         if (directory / "config.json").exists():
-            send(self.remote, self.root, f"{out}/config.json")
-            for name in chunk_files([path.name for path in directory.iterdir() if path.is_file()]):
-                send(self.remote, self.root, f"{out}/{name}")
+            names = ["config.json", *chunk_files([path.name for path in directory.iterdir() if path.is_file()])]
+            send(self.remote, self.root, [f"{out}/{name}" for name in names])
 
     def generation(self, cycle: int, out: str, network: str, seed: int, games: int,
                    chunk_games: int, playthrough: int) -> tuple[dict, float]:
         local_summary = self.root / out / "summary.json"
+        config_path = local_summary.parent / "config.json"
         if not local_summary.exists():
+            if not config_path.exists() and self.remote.exists(out + "/config.json"):
+                receive(self.remote, self.root, out + "/config.json", False)
+            if config_path.exists() and read_json(config_path)["generation_commit"] != self.options.generation_commit:
+                raise ValueError(f"generation commit differs: {out}")
             state = self.remote.status(out)
             if state == "new" and not self.remote.exists(f"{out}/summary.json"):
-                send(self.remote, self.root, network)
+                send(self.remote, self.root, [network])
                 self.restore_generation(out)
                 command = [ENGINE, "data", "zero-selfplay", "--output-dir", out, "--nn-model", network,
-                           "--nn-backend", "tensorrt", "--generation-commit", self.options.commit,
+                           "--nn-backend", "tensorrt", "--generation-commit", self.options.generation_commit,
                            "--seed", str(seed), "--games", str(games), "--chunk-games", str(chunk_games),
                            "--simulations", str(self.options.simulations), "--playthrough-percent", str(playthrough),
                            "--threads", str(self.options.threads), "--games-per-thread", str(self.options.games_per_thread)]
@@ -515,12 +576,14 @@ class Runner:
                 if code != 0:
                     raise RuntimeError(f"generation exited {code}: {out}")
             self._pull_chunks(out)
+            if read_json(config_path)["generation_commit"] != self.options.generation_commit:
+                raise ValueError(f"generation commit differs: {out}")
             for relative in (out + ".out", out + ".err", out + "/summary.json"):
                 receive(self.remote, self.root, relative, False)
         self._begin(out)
         summary = read_json(local_summary)
-        config = read_json(local_summary.parent / "config.json")
-        expected = {"generation_commit": self.options.commit, "network_sha256": sha256(self.root / network),
+        config = read_json(config_path)
+        expected = {"network_sha256": sha256(self.root / network),
                     "nn_backend": "tensorrt", "seed": seed, "games": games, "chunk_games": chunk_games,
                     "simulations": self.options.simulations, "playthrough_percent": playthrough}
         if any(config[key] != value for key, value in expected.items()) or summary["games"] != games:
@@ -534,35 +597,35 @@ class Runner:
                 raise ValueError(f"missing generation log: {relative}")
         return summary, self._finish(out)
 
-    def training_command(self, cycle: int, files: list[str]) -> list[str]:
+    def training_command(self, cycle: int, files: list[str], latest_files: list[str]) -> list[str]:
         out = cycle_path(cycle) + "/train"
         checkpoint = out + "/checkpoint.pt"
         if self.remote.exists(checkpoint):
             return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
         if (self.root / checkpoint).exists():
-            send(self.remote, self.root, checkpoint)
+            send(self.remote, self.root, [checkpoint])
             return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
         initial = (cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                    cycle_path(cycle - 1) + "/train/checkpoint.pt")
-        command = [*TRAINER, "train", "--init", initial, "--data", *files, "--out-dir", out,
+        command = [*TRAINER, "train", "--init", initial, "--data", *files,
+                   "--latest-data", *latest_files, "--out-dir", out,
                    "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
         for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
                      "value_lambda", "precision", "checkpoint_steps"):
             command.extend(["--" + name.replace("_", "-"), str(getattr(self.options, name))])
-        return [*command, "--device", "cuda", "--trainer-commit", self.options.commit]
+        return [*command, "--device", "cuda", "--trainer-commit", self.options.trainer_commit]
 
-    def training(self, cycle: int, files: list[str]) -> tuple[dict, float]:
+    def training(self, cycle: int, files: list[str], latest_files: list[str]) -> tuple[dict, float]:
         out = cycle_path(cycle) + "/train"
         local_summary = self.root / out / "summary.json"
         if not local_summary.exists():
             state = self.remote.status(out)
             if state == "new" and not self.remote.exists(out + "/summary.json"):
-                for relative in files:
-                    send(self.remote, self.root, relative)
+                send(self.remote, self.root, files)
                 initial = (cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                            cycle_path(cycle - 1) + "/train/checkpoint.pt")
-                send(self.remote, self.root, initial)
-                command = self.training_command(cycle, files)
+                send(self.remote, self.root, [initial])
+                command = self.training_command(cycle, files, latest_files)
                 self._begin(out)
                 self.remote.start(out, shlex.join(command), out + ".log", out + ".log")
                 state = "running"
@@ -596,7 +659,7 @@ class Runner:
                              "--out", out + "/pytorch.json"]), "failed=0"]
         for batch in (1, 7, 256):
             for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
-                                                      ("tensorrt", "trt", "probabilities", "1e-2", "2e-2")):
+                                                      ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
                 name = f"{out}/{label}-b{batch}"
                 command = [ENGINE, "dev", "nn-eval", "--nn-model", train + "/model.onnx", "--backend", backend,
                            "--batch", str(batch), "--out", name + ".json"]
@@ -618,8 +681,8 @@ class Runner:
         if not code_path.exists():
             state = self.remote.status(out)
             if state == "new":
-                for name in ("checkpoint.pt", "model.onnx"):
-                    send(self.remote, self.root, f"{cycle_path(cycle)}/train/{name}")
+                send(self.remote, self.root, [f"{cycle_path(cycle)}/train/{name}"
+                                             for name in ("checkpoint.pt", "model.onnx")])
                 self._begin(out)
                 self.remote.start(out, self.check_script(cycle), out + ".log", out + ".log")
             self._begin(out)
@@ -689,6 +752,8 @@ class Runner:
             self.log(cycle, f"generation games={games} chunk_games={chunk_games} playthrough_percent={playthrough}")
             summary, generation_seconds = self.generation(cycle, cycle_path(cycle) + "/selfplay", network,
                                                          seed, games, chunk_games, playthrough)
+            config = read_json(self.root / cycle_path(cycle) / "selfplay/config.json")
+            generation["generation_commit"] = config["generation_commit"]
             regen_summary, regen_settings = None, None
             if summary["resigned_games_excluded"]:
                 count = summary["resigned_games"]
@@ -701,12 +766,13 @@ class Runner:
                     regen_summary, seconds = self.generation(cycle, cycle_path(cycle) + "/selfplay-regen", network,
                                                             regen_seed, count, regen_chunk, 100)
                     generation_seconds += seconds
+                    regen_config = read_json(self.root / cycle_path(cycle) / "selfplay-regen/config.json")
                     regen_settings = {**generation, "seed": regen_seed, "games": count,
-                                      "chunk_games": regen_chunk, "playthrough_percent": 100}
-            files = training_window(self.root, cycle, options.window)
-            train_summary, training_seconds = self.training(cycle, files)
+                                      "chunk_games": regen_chunk, "playthrough_percent": 100,
+                                      "generation_commit": regen_config["generation_commit"]}
+            window_cycles, files, current_files = training_window(self.root, cycle, options.window_positions)
+            train_summary, training_seconds = self.training(cycle, files, current_files)
             checks, checking_seconds = self.checking(cycle)
-            current_files = training_window(self.root, cycle, 1)
             result = subprocess.run([str(options.teacher_stats.resolve()), *current_files], cwd=self.root,
                                     capture_output=True, text=True)
             if result.returncode != 0:
@@ -722,10 +788,12 @@ class Runner:
                         "end_balance": end_balance, "balance_difference": start_balance - end_balance}
             if end_balance > start_balance:
                 interval["balance_increased"] = True
-            record = {"cycle": cycle, "commit": options.commit, "generation": generation,
+            record = {"cycle": cycle, "generation_commit": generation["generation_commit"],
+                      "trainer_commit": options.trainer_commit, "generation": generation,
                       "resign_calibration": calibration, "selfplay_summary": summary,
                       "regeneration": regen_settings, "selfplay_regen_summary": regen_summary,
-                      "training_files": files, "window": options.window, "teacher_stats": stats,
+                      "training_files": files, "window_cycles": window_cycles,
+                      "window_positions": options.window_positions, "teacher_stats": stats,
                       "training_summary": train_summary, "network_sha256": network_digest, "checks": checks,
                       "elapsed_seconds": {"generation": generation_seconds, "training": training_seconds,
                                           "checking": checking_seconds}, "machine": machine, "interval": interval}

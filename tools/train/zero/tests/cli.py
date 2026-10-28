@@ -33,6 +33,7 @@ def train_arguments(initial: Path, out: Path) -> list[str]:
     """設計書の再開試験で使う1サイクル分の設定を返す。"""
     return [
         "train", "--init", str(initial), "--data", "fixtures/zero-selfplay-small.mnsd",
+        "--latest-data", "fixtures/zero-selfplay-small.mnsd",
         "--out-dir", str(out), "--cycle", "1", "--seed", "42", "--batch-size", "16",
         "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
         "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "fp32",

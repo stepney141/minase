@@ -9,7 +9,15 @@ use pyo3::{
     types::{PyBytes, PyDict},
 };
 
-use crate::Error;
+use crate::{Error, FileInfo, Records};
+
+fn python_error(path: &str, error: Error) -> PyErr {
+    let message = format!("{path}: {error}");
+    match error {
+        Error::Io(_) => PyOSError::new_err(message),
+        _ => PyValueError::new_err(message),
+    }
+}
 
 /// 配列を明示的なリトルエンディアンで詰め、Pythonの割り当て失敗を例外として返す。
 fn bytes<'py, T, const N: usize>(
@@ -50,16 +58,37 @@ fn bytes<'py, T, const N: usize>(
 fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
     let records = py
         .detach(|| crate::read_file(Path::new(&path)))
-        .map_err(|error| {
-            let message = format!("{path}: {error}");
-            match error {
-                Error::Io(_) => PyOSError::new_err(message),
-                _ => PyValueError::new_err(message),
-            }
-        })?;
-    let header = &records.header;
+        .map_err(|error| python_error(&path, error))?;
+    record_dict(py, &records)
+}
+
+/// 手順を再生せず、抽出前の件数と全対局番号を返す。
+#[pyfunction]
+fn scan(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
+    let info = py
+        .detach(|| crate::scan_file(Path::new(&path)))
+        .map_err(|error| python_error(&path, error))?;
+    info_dict(py, &info)
+}
+
+/// GILを解放して全手順を再生し、指定した局面だけをPythonへ渡す。
+#[pyfunction]
+fn read_selected(
+    py: Python<'_>,
+    path: String,
+    training_indices: Vec<u64>,
+    include_validation: bool,
+) -> PyResult<Bound<'_, PyDict>> {
+    let records = py
+        .detach(|| crate::read_selected(Path::new(&path), &training_indices, include_validation))
+        .map_err(|error| python_error(&path, error))?;
+    record_dict(py, &records)
+}
+
+fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDict>> {
+    let header = &info.header;
     let output = PyDict::new(py);
-    output.set_item("origin", records.origin.map(|origin| origin as u8))?;
+    output.set_item("origin", info.origin.map(|origin| origin as u8))?;
     output.set_item("teacher_kind", header.teacher_kind() as u8)?;
     output.set_item("rule_set", header.rule_set())?;
     output.set_item("engine_default", header.rules() == Rules::ENGINE_DEFAULT)?;
@@ -74,8 +103,15 @@ fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
     output.set_item("entry_count", header.entry_count())?;
     output.set_item(
         "game_numbers",
-        bytes(py, &records.game_numbers, |v| v.to_le_bytes())?,
+        bytes(py, &info.game_numbers, |v| v.to_le_bytes())?,
     )?;
+    output.set_item("training_count", info.training_count)?;
+    output.set_item("validation_count", info.validation_count)?;
+    Ok(output)
+}
+
+fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, PyDict>> {
+    let output = info_dict(py, &records.info)?;
     output.set_item("games", bytes(py, &records.games, |v| v.to_le_bytes())?)?;
     output.set_item("plies", bytes(py, &records.plies, |v| v.to_le_bytes())?)?;
     output.set_item("values", bytes(py, &records.values, |v| v.to_le_bytes())?)?;
@@ -115,5 +151,7 @@ fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
 fn minase_mnsd_reader(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("FORMAT_VERSION", minase::training::records::FORMAT_VERSION)?;
     module.add_function(wrap_pyfunction!(read, module)?)?;
+    module.add_function(wrap_pyfunction!(scan, module)?)?;
+    module.add_function(wrap_pyfunction!(read_selected, module)?)?;
     Ok(())
 }

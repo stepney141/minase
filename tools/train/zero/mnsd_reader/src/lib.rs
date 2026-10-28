@@ -6,9 +6,13 @@
 //! `entry_count`はint、`rule_set`と`generation_commit`はstr、`engine_default`はbool、
 //! `network_checksum`は32バイトのbytesである。
 //! `engine_default`は規則名ではなく、解釈した規則と`Rules::ENGINE_DEFAULT`の一致を表す。
+//! `scan(path)`は手順を再生せずにtraining_countとvalidation_countを数える。
+//! `read_selected(path, training_indices, include_validation)`は全手順を再生し、
+//! ファイル内の訓練局面の通し番号で指定した局面と、指定時だけ検証局面を返す。
+//! 両関数の件数は抽出前の値であり、完全な形式検査は再生時に行う。
 //!
 //! 配列はすべてリトルエンディアンのbytesであり、NumPyの`frombuffer`で読める。
-//! nは選別後の局面数、mは全候補数、lは全合法手数、gは対局数を表す。
+//! nは保持した局面数、mはその全候補数、lはその全合法手数、gはファイルの全対局数を表す。
 //! 合法手は反復の履歴を考えず、`MoveGenerator::generate_moves`で生成する。
 //! 各局面の手は`records::sorted_legal_moves`と同じ4バイト鍵の順で並べる。
 //!
@@ -42,8 +46,11 @@ use minase_core::{GameResult, Move, MoveGenerator};
 
 #[cfg(feature = "python")]
 mod python;
+mod scan;
 #[cfg(test)]
 mod tests;
+
+pub use scan::scan_file;
 
 /// 入出力、MNSDの形式、および学習用の内容検査の失敗。
 #[derive(Debug)]
@@ -62,6 +69,8 @@ pub enum Error {
     },
     /// 開始手数と項目の添字の和がu16に収まらない。
     PlyOverflow { game: u32, index: usize },
+    /// 抽出の番号が厳密な昇順でないか、訓練局面数の範囲外である。
+    InvalidSelection,
 }
 
 impl fmt::Display for Error {
@@ -82,6 +91,10 @@ impl fmt::Display for Error {
             Self::PlyOverflow { game, index } => {
                 write!(f, "game {game}, entry {index}: ply exceeds u16")
             }
+            Self::InvalidSelection => write!(
+                f,
+                "training indices must be strictly increasing and within the training position count"
+            ),
         }
     }
 }
@@ -105,12 +118,50 @@ impl From<records::Error> for Error {
     }
 }
 
-/// 復号済みのヘッダと、入力順の局面・候補・合法手の列。各列はモジュールの表に従う。
+/// ヘッダ、全対局番号、および抽出前の訓練と検証の局面数。
 #[derive(Debug)]
-pub struct Records {
+pub struct FileInfo {
     pub header: Header,
     pub origin: Option<Origin>,
     pub game_numbers: Vec<u32>,
+    pub training_count: u64,
+    pub validation_count: u64,
+}
+
+impl FileInfo {
+    fn new(header: Header) -> Self {
+        Self {
+            header,
+            origin: None,
+            game_numbers: Vec::new(),
+            training_count: 0,
+            validation_count: 0,
+        }
+    }
+
+    fn add_game(&mut self, number: u32, origin: Origin) -> Result<(), Error> {
+        if origin == Origin::Synthetic {
+            return Err(Error::SyntheticOrigin { game: number });
+        }
+        if let Some(expected) = self.origin
+            && expected != origin
+        {
+            return Err(Error::MixedOrigins {
+                game: number,
+                expected,
+                actual: origin,
+            });
+        }
+        self.origin = Some(origin);
+        self.game_numbers.push(number);
+        Ok(())
+    }
+}
+
+/// 復号済みのファイル情報と、入力順の局面、候補、合法手の列。
+#[derive(Debug)]
+pub struct Records {
+    pub info: FileInfo,
     pub games: Vec<u32>,
     pub plies: Vec<u16>,
     pub boards: Vec<u8>,
@@ -135,9 +186,7 @@ pub struct Records {
 impl Records {
     fn new(header: Header) -> Self {
         Self {
-            header,
-            origin: None,
-            game_numbers: Vec::new(),
+            info: FileInfo::new(header),
             games: Vec::new(),
             plies: Vec::new(),
             boards: Vec::new(),
@@ -178,28 +227,60 @@ impl Records {
 /// # Errors
 /// 入出力、形式、由来の混在、合成の由来、および手数の桁あふれを専用エラーで返す。
 pub fn read_file(path: &Path) -> Result<Records, Error> {
+    read_positions(path, |_, _| true)
+}
+
+/// 全手順を再生し、指定した訓練局面と、指定時だけ検証局面を保持する。
+///
+/// 訓練局面の番号は、価値があり除外されていない非検証局面に0から振る。
+/// 復号器が一時的に保持する1対局分を除き、局面のメモリは保持件数に比例する。
+///
+/// # Errors
+/// `read_file`の失敗に加え、番号の重複、順序違反、範囲外を返す。
+pub fn read_selected(
+    path: &Path,
+    training_indices: &[u64],
+    include_validation: bool,
+) -> Result<Records, Error> {
+    if training_indices.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(Error::InvalidSelection);
+    }
+    let mut selected = training_indices.iter().peekable();
+    let output = read_positions(path, |validation, index| {
+        if validation {
+            include_validation
+        } else if selected.peek().is_some_and(|&&next| next == index) {
+            selected.next();
+            true
+        } else {
+            false
+        }
+    })?;
+    if selected.next().is_some() {
+        return Err(Error::InvalidSelection);
+    }
+    Ok(output)
+}
+
+/// PythonとRust学習器のhash64と同じ折り返し演算で検証の対局を判定する。
+fn is_validation(seed: u64, game: u32) -> bool {
+    let mut value = seed ^ u64::from(game).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)).is_multiple_of(20)
+}
+
+fn read_positions(path: &Path, mut keep: impl FnMut(bool, u64) -> bool) -> Result<Records, Error> {
     let file = File::open(path).map_err(Error::Io)?;
     let mut reader = Reader::new(BufReader::new(file))?;
     let mut output = Records::new(reader.header().clone());
-    let generator = MoveGenerator::new(output.header.rules().moves);
+    let generator = MoveGenerator::new(output.info.header.rules().moves);
     let mut legal = Vec::new();
     while let Some(game) = reader.read_game()? {
         let record = game.record();
         let number = record.game_number();
-        if record.origin() == Origin::Synthetic {
-            return Err(Error::SyntheticOrigin { game: number });
-        }
-        if let Some(expected) = output.origin
-            && expected != record.origin()
-        {
-            return Err(Error::MixedOrigins {
-                game: number,
-                expected,
-                actual: record.origin(),
-            });
-        }
-        output.origin = Some(record.origin());
-        output.game_numbers.push(number);
+        output.info.add_game(number, record.origin())?;
+        let validation = is_validation(output.info.header.seed(), number);
         let outcome = match record.outcome() {
             Outcome::Game(GameResult::Win { winner, .. }) => winner as u8,
             Outcome::Game(GameResult::Draw { .. }) => 2,
@@ -215,6 +296,18 @@ pub fn read_file(path: &Path) -> Result<Records, Error> {
                 Value::AlphaBeta(value) => i32::from(value),
                 Value::Mcts(value) => i32::from(value),
             };
+            let index_in_split = if validation {
+                let index = output.info.validation_count;
+                output.info.validation_count += 1;
+                index
+            } else {
+                let index = output.info.training_count;
+                output.info.training_count += 1;
+                index
+            };
+            if !keep(validation, index_in_split) {
+                continue;
+            }
             let ply = u16::try_from(index)
                 .ok()
                 .and_then(|index| record.start_ply().checked_add(index))
@@ -222,7 +315,7 @@ pub fn read_file(path: &Path) -> Result<Records, Error> {
                     game: number,
                     index,
                 })?;
-            let visits = match (output.header.teacher_kind(), entry.visits()) {
+            let visits = match (output.info.header.teacher_kind(), entry.visits()) {
                 (records::TeacherKind::AlphaBeta, None) => 0,
                 (records::TeacherKind::Mcts, Some(visits)) => visits,
                 (records::TeacherKind::AlphaBeta, Some(_)) => {

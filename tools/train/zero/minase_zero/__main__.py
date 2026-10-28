@@ -5,14 +5,17 @@
 
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
 - train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（学習窓の
-  MNSDファイルの列）、--out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
+  MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
+  --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
 - train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
-- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。引数と再開の契約はrunner.pyにある。
+- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--window-positionsで学習窓の
+  局面数、--generation-commitと--trainer-commitで生成と学習のコミットを指定する。
+  引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
 出力先と学習の契約はtrain.pyのdocstringにある。
@@ -53,6 +56,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     else:
         train.add_argument("--init", required=True)
         train.add_argument("--data", nargs="+", required=True)
+        train.add_argument("--latest-data", nargs="+", required=True)
         train.add_argument("--out-dir", type=Path, required=True)
         for name in ("cycle", "seed", "batch-size", "checkpoint-steps"):
             train.add_argument(f"--{name}", type=int, required=True)

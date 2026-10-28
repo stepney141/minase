@@ -145,16 +145,16 @@ fn alpha_beta_matches_every_trainer_record_in_original_order() {
     }
     assert_eq!(actual.lions[0], 97);
     assert_eq!(actual.sides, [0, 1, 0, 1, 0, 1]);
-    assert_eq!(actual.origin, Some(Origin::RandomSelfplay));
-    assert_eq!(actual.header.rule_set(), "engine-default");
-    assert_eq!(actual.header.rules(), Rules::ENGINE_DEFAULT);
-    assert_eq!(actual.header.generation_commit(), "a1".repeat(20));
-    assert_eq!(actual.header.network_checksum(), &[37; 32]);
-    assert_eq!(actual.header.teacher_kind(), TeacherKind::AlphaBeta);
-    assert_eq!(actual.header.teacher_search_budget(), 1234);
-    assert_eq!(actual.header.seed(), 11);
-    assert_eq!(actual.header.game_count(), 2);
-    assert_eq!(actual.header.entry_count(), 14);
+    assert_eq!(actual.info.origin, Some(Origin::RandomSelfplay));
+    assert_eq!(actual.info.header.rule_set(), "engine-default");
+    assert_eq!(actual.info.header.rules(), Rules::ENGINE_DEFAULT);
+    assert_eq!(actual.info.header.generation_commit(), "a1".repeat(20));
+    assert_eq!(actual.info.header.network_checksum(), &[37; 32]);
+    assert_eq!(actual.info.header.teacher_kind(), TeacherKind::AlphaBeta);
+    assert_eq!(actual.info.header.teacher_search_budget(), 1234);
+    assert_eq!(actual.info.header.seed(), 11);
+    assert_eq!(actual.info.header.game_count(), 2);
+    assert_eq!(actual.info.header.entry_count(), 14);
 }
 
 #[test]
@@ -236,8 +236,8 @@ fn mcts_preserves_resignation_search_and_expands_played_policy() {
     .unwrap();
     let path = fixture.write(TeacherKind::Mcts, &[ordinary, resignation]);
     let actual = read_file(&path).unwrap();
-    assert_eq!(actual.header.teacher_kind(), TeacherKind::Mcts);
-    assert_eq!(actual.game_numbers, [2, 7]);
+    assert_eq!(actual.info.header.teacher_kind(), TeacherKind::Mcts);
+    assert_eq!(actual.info.game_numbers, [2, 7]);
     assert_eq!(actual.games, [2, 7]);
     assert_eq!(actual.plies, [1, 42]);
     assert_eq!(actual.sides, [1, 0]);
@@ -337,10 +337,10 @@ fn empty_file_and_unselected_games_keep_metadata_and_empty_offsets() {
     let fixture = Fixture::new();
     let path = fixture.write(TeacherKind::Mcts, &[]);
     let empty = read_file(&path).unwrap();
-    assert_eq!(empty.origin, None);
-    assert_eq!(empty.header.game_count(), 0);
-    assert_eq!(empty.header.entry_count(), 0);
-    assert!(empty.game_numbers.is_empty());
+    assert_eq!(empty.info.origin, None);
+    assert_eq!(empty.info.header.game_count(), 0);
+    assert_eq!(empty.info.header.entry_count(), 0);
+    assert!(empty.info.game_numbers.is_empty());
     assert!(empty.boards.is_empty());
     assert_eq!(empty.policy_offsets, [0]);
     assert_eq!(empty.legal_offsets, [0]);
@@ -350,8 +350,8 @@ fn empty_file_and_unselected_games_keep_metadata_and_empty_offsets() {
         &[unselected_game(99, Origin::HumanOpeningSelfplay)],
     );
     let unselected = read_file(&path).unwrap();
-    assert_eq!(unselected.origin, Some(Origin::HumanOpeningSelfplay));
-    assert_eq!(unselected.game_numbers, [99]);
+    assert_eq!(unselected.info.origin, Some(Origin::HumanOpeningSelfplay));
+    assert_eq!(unselected.info.game_numbers, [99]);
     assert!(unselected.games.is_empty());
     assert_eq!(unselected.policy_offsets, [0]);
     assert_eq!(unselected.legal_offsets, [0]);
@@ -476,4 +476,119 @@ fn legal_columns_match_generated_moves_in_record_order() {
         }
     }
     assert_eq!(index, actual.games.len());
+}
+
+#[test]
+fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
+    // 仕様: seed=11の対局1は訓練、対局4は検証。各対局の採用項目は0,1,6。
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[
+            alpha_game(1, 13, Position::initial()),
+            alpha_game(4, 30, Position::initial()),
+        ],
+    );
+    let info = scan_file(&path).unwrap();
+    assert_eq!(info.game_numbers, [1, 4]);
+    assert_eq!((info.training_count, info.validation_count), (3, 3));
+    let selected = read_selected(&path, &[1], true).unwrap();
+    assert_eq!(selected.games, [1, 4, 4, 4]);
+    assert_eq!(selected.plies, [14, 30, 31, 36]);
+    assert_eq!(selected.boards.len(), 4 * 144);
+    assert_eq!(
+        (selected.info.training_count, selected.info.validation_count),
+        (3, 3)
+    );
+    let empty = read_selected(&path, &[], false).unwrap();
+    assert!(empty.boards.is_empty());
+    assert_eq!(empty.policy_offsets, [0]);
+    assert_eq!(empty.legal_offsets, [0]);
+    assert_eq!(empty.info.game_numbers, [1, 4]);
+    for indices in [&[1, 1][..], &[2, 0], &[3]] {
+        assert!(matches!(
+            read_selected(&path, indices, false),
+            Err(Error::InvalidSelection)
+        ));
+    }
+
+    // 指した手を欠かしても計数できるが、抽出が空でも再生による検査は省かない。
+    let mut bytes = fs::read(&path).unwrap();
+    let entry = records::HEADER_LEN + records::GAME_HEADER_LEN;
+    bytes[entry..entry + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+    fs::write(&path, bytes).unwrap();
+    let info = scan_file(&path).unwrap();
+    assert_eq!((info.training_count, info.validation_count), (3, 3));
+    assert!(matches!(
+        read_selected(&path, &[], false),
+        Err(Error::Format(records::Error::MissingPlayedMove))
+    ));
+}
+
+#[test]
+fn mcts_scan_and_selected_columns_match_the_generated_fixture() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");
+    let all = read_file(&path).unwrap();
+    let info = scan_file(&path).unwrap();
+    let training: Vec<_> = all
+        .games
+        .iter()
+        .enumerate()
+        .filter(|&(_, &game)| !minase_trainer::data::is_validation(info.header.seed(), game))
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(info.training_count as usize, training.len());
+    assert_eq!(info.validation_count as usize, 1009 - training.len());
+    assert_eq!(info.game_numbers, all.info.game_numbers);
+    let ordinals = [0, 50, training.len() as u64 - 1];
+    let selected = read_selected(&path, &ordinals, false).unwrap();
+    assert_eq!(selected.games.len(), 3);
+    assert_eq!(selected.boards.len(), 3 * 144);
+    for (row, ordinal) in ordinals.into_iter().enumerate() {
+        let source = training[ordinal as usize];
+        assert_eq!(selected.games[row], all.games[source]);
+        assert_eq!(selected.plies[row], all.plies[source]);
+        assert_eq!(selected.values[row], all.values[source]);
+        assert_eq!(
+            &selected.boards[row * 144..(row + 1) * 144],
+            &all.boards[source * 144..(source + 1) * 144]
+        );
+        let policy =
+            selected.policy_offsets[row] as usize..selected.policy_offsets[row + 1] as usize;
+        let expected = all.policy_offsets[source] as usize..all.policy_offsets[source + 1] as usize;
+        assert_eq!(
+            selected.policy_probabilities[policy.clone()],
+            all.policy_probabilities[expected.clone()]
+        );
+        assert_eq!(selected.policy_from[policy], all.policy_from[expected]);
+        let legal = selected.legal_offsets[row] as usize..selected.legal_offsets[row + 1] as usize;
+        let expected = all.legal_offsets[source] as usize..all.legal_offsets[source + 1] as usize;
+        assert_eq!(selected.legal_from[legal], all.legal_from[expected]);
+    }
+}
+
+#[test]
+fn scan_rejects_truncation_counts_flags_and_trailing_bytes() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[alpha_game(1, 0, Position::initial())],
+    );
+    let original = fs::read(&path).unwrap();
+    let mut flags = original.clone();
+    flags[records::HEADER_LEN + records::GAME_HEADER_LEN + 4] = 16;
+    let mut counts = original.clone();
+    counts[144..152].copy_from_slice(&8_u64.to_le_bytes());
+    let mut trailing = original.clone();
+    trailing.push(0);
+    for bytes in [
+        original[..151].to_vec(),
+        original[..original.len() - 1].to_vec(),
+        flags,
+        counts,
+        trailing,
+    ] {
+        fs::write(&path, bytes).unwrap();
+        assert!(matches!(scan_file(&path), Err(Error::Format(_))));
+    }
 }

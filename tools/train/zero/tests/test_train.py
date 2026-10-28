@@ -28,6 +28,7 @@ from minase_zero.train import compute_losses
 
 from .cli import COMMIT, ZERO, environment, init_arguments, require_success, run_cli, train_arguments
 from .test_data import single_game, write_small
+from .test_window import reference_sample
 
 
 class LossTests(unittest.TestCase):
@@ -151,7 +152,9 @@ class TrainTests(unittest.TestCase):
         cls.state_b = torch.load(cls.b / "checkpoint.pt", weights_only=True)
         cls.summary_a = json.loads((cls.a / "summary.json").read_text())
         cls.summary_b = json.loads((cls.b / "summary.json").read_text())
-        cls.data, cls.infos = read_window([ZERO / "fixtures/zero-selfplay-small.mnsd"])
+        cls.data, cls.infos, _ = read_window(
+            [ZERO / "fixtures/zero-selfplay-small.mnsd"], [ZERO / "fixtures/zero-selfplay-small.mnsd"], 42,
+        )
 
     def assert_state_equal(self, left: object, right: object) -> None:
         """最適化器の入れ子を含め、全テンソルをtorch.equalで比べる。"""
@@ -183,8 +186,7 @@ class TrainTests(unittest.TestCase):
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
         training = np.flatnonzero(~self.data.validation)
-        permutation = np.random.Generator(np.random.PCG64(42)).permutation(len(training))
-        ordered = training[permutation].tolist()
+        ordered = reference_sample(len(training), len(training), 42)
         digest = bytes(32)
         for start in range(0, len(ordered), 16):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 16])).digest()
@@ -252,9 +254,9 @@ class TrainTests(unittest.TestCase):
             (validation_game, 0, 2, 32768, (65_535,)),
         ]
         write_small(path, [single_game(*game) for game in sorted(games)], "engine-default")
-        data, _ = read_window([path])
+        data, _, _ = read_window([path], [path], 42)
         indices = np.flatnonzero(~data.validation)
-        indices = indices[np.random.Generator(np.random.PCG64(42)).permutation(len(indices))]
+        indices = indices[reference_sample(len(indices), len(indices), 42)]
         model = ZeroNet(1, 16).train()
         model.load_state_dict(self.state_a["model"])
         inputs = encode_planes(*(torch.from_numpy(column[indices]) for column in (data.boards, data.sides, data.lions)))
@@ -285,7 +287,7 @@ class TrainTests(unittest.TestCase):
 
         out = self.root / "next-cycle"
         arguments = train_arguments(self.a / "checkpoint.pt", out)
-        for flag, value in (("--data", str(path)), ("--cycle", "2"), ("--batch-size", "2"),
+        for flag, value in (("--data", str(path)), ("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "2"),
                             ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
             arguments[arguments.index(flag) + 1] = value
@@ -350,6 +352,8 @@ class TrainTests(unittest.TestCase):
         data_path.write_bytes(content)
         state = torch.load(out / "checkpoint.pt", weights_only=True)
         state["config"]["data"] = [str(data_path)]
+        state["config"]["latest_data"] = [str(data_path)]
+        state["latest_data"] = [str(data_path)]
         state["provenance"]["files"][0]["path"] = str(data_path)
         recorded = state["provenance"]["files"][0]["sha256"]
         self.assertNotEqual(recorded, hashlib.sha256(content).hexdigest())
@@ -359,9 +363,10 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(summary["provenance"]["files"][0]["sha256"], recorded)
         self.assertEqual(summary["diagnostics"], self.summary_a["diagnostics"])
 
-    def test_summary_contains_both_final_diagnostics_and_loading_measurements(self) -> None:
+    def test_summary_contains_three_final_diagnostics_and_loading_measurements(self) -> None:
         seed = self.infos[0].header.seed
         for name, selected, remainder in (("training_sample", self.data.training_sample, 1),
+                                          ("latest_training_sample", self.data.training_sample, 1),
                                           ("validation", self.data.validation, 0)):
             diagnostic = self.summary_a["diagnostics"][name]
             games = np.unique(self.data.games[selected]).tolist()
@@ -392,6 +397,7 @@ class TrainTests(unittest.TestCase):
         out = self.root / "no-sample"
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
         arguments[arguments.index("--data") + 1] = str(path)
+        arguments[arguments.index("--latest-data") + 1] = str(path)
         result = run_cli(arguments)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("training diagnostic sample", result.stderr)
