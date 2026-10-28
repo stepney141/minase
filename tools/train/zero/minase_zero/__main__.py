@@ -10,16 +10,20 @@
   --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
 - train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
+- seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
+- resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
 出力先と学習の契約はtrain.pyのdocstringにある。
 """
 
 import argparse
+import json
 from pathlib import Path
 import pickle
 import sys
 
+from .rl import register_seed_range, resign_calibration
 from .train import fixture_eval, initialize, resume, train_new
 
 
@@ -58,6 +62,15 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     fixture = commands.add_parser("fixture-eval", allow_abbrev=False)
     for name in ("checkpoint", "onnx", "fixture", "out"):
         fixture.add_argument(f"--{name}", type=Path, required=True)
+
+    ledger = commands.add_parser("seed-ledger", allow_abbrev=False)
+    ledger.add_argument("--ledger", type=Path, required=True)
+    ledger.add_argument("--name", required=True)
+    for name in ("seed", "games"):
+        ledger.add_argument(f"--{name}", type=int, required=True)
+
+    calibration = commands.add_parser("resign-calibration", allow_abbrev=False)
+    calibration.add_argument("--summary", type=Path, nargs="+", required=True)
     return parser.parse_args(argv)
 
 
@@ -70,6 +83,10 @@ def main() -> int:
             initialize(**args)
         elif command == "fixture-eval":
             fixture_eval(**args)
+        elif command == "seed-ledger":
+            print(json.dumps(register_seed_range(**args), ensure_ascii=False, allow_nan=False))
+        elif command == "resign-calibration":
+            print(json.dumps(resign_calibration(**args), allow_nan=False))
         elif "resume" in args:
             resume(args["resume"], args["device"])
         else:
