@@ -12,6 +12,7 @@
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
+- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
 出力先と学習の契約はtrain.pyのdocstringにある。
@@ -24,6 +25,7 @@ import pickle
 import sys
 
 from .rl import register_seed_range, resign_calibration
+from .runner import Options, Remote, Runner, add_arguments
 from .train import fixture_eval, initialize, resume, train_new
 
 
@@ -71,6 +73,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
 
     calibration = commands.add_parser("resign-calibration", allow_abbrev=False)
     calibration.add_argument("--summary", type=Path, nargs="+", required=True)
+    add_arguments(commands.add_parser("run-cycles", allow_abbrev=False))
     return parser.parse_args(argv)
 
 
@@ -87,6 +90,9 @@ def main() -> int:
             print(json.dumps(register_seed_range(**args), ensure_ascii=False, allow_nan=False))
         elif command == "resign-calibration":
             print(json.dumps(resign_calibration(**args), allow_nan=False))
+        elif command == "run-cycles":
+            options = Options(**args)
+            Runner(options, Remote(options.session)).run()
         elif "resume" in args:
             resume(args["resume"], args["device"])
         else:
