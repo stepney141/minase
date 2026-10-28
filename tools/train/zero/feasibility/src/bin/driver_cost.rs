@@ -2,6 +2,8 @@
 //!
 //! 変更前のAPIでもビルドできる。`--adjudication before`では審判呼出し数と
 //! 裁定理由別件数を0にする。回数は測定後の木から数え、測定区間へ計測処理を入れない。
+//! 時間の項目（`elapsed_ms`、`summary_ms`、`snapshots`の計測値）以外の出力は、
+//! 同じ入力とシードで決定的であり、審判層の変更前後の回帰の検査に用いる。
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -169,7 +171,17 @@ fn evaluate(
     Ok(())
 }
 
-fn search(game: &Game, seed: u64, gumbel: bool) -> Result<(Driver, f64)> {
+enum SearchOutput {
+    Gumbel {
+        selected_edge: usize,
+        policy_target: Vec<f32>,
+    },
+    Puct {
+        best_move: Option<Move>,
+    },
+}
+
+fn search(game: &Game, seed: u64, gumbel: bool) -> Result<(Driver, f64, SearchOutput)> {
     let started = Instant::now();
     let snapshot = SearchSnapshot::from_game(game)?;
     let gumbel_config = if gumbel {
@@ -241,20 +253,25 @@ fn search(game: &Game, seed: u64, gumbel: bool) -> Result<(Driver, f64)> {
             evaluate(&mut driver, &requests, &mut logits, &mut values)?;
         }
     }
-    if let Some(gumbel_config) = gumbel_config {
-        black_box(gumbel_config.action(driver.tree().root())?);
-        black_box(policy_target(driver.tree().root())?);
+    let output = if let Some(gumbel_config) = gumbel_config {
+        SearchOutput::Gumbel {
+            selected_edge: black_box(gumbel_config.action(driver.tree().root())?),
+            policy_target: black_box(policy_target(driver.tree().root())?),
+        }
     } else {
-        black_box(driver.tree().best_move());
-    }
+        SearchOutput::Puct {
+            best_move: black_box(driver.tree().best_move()),
+        }
+    };
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
-    Ok((driver, elapsed_ms))
+    Ok((driver, elapsed_ms, output))
 }
 
 #[derive(Default)]
 struct Counts {
     depths: BTreeMap<usize, u64>,
     terminals: BTreeMap<String, u64>,
+    winners: BTreeMap<String, u64>,
     terminal_leaves: u64,
     classified: u64,
     replayed: u64,
@@ -288,11 +305,14 @@ fn count(node: &Node, depth: usize, game: Option<&Game>, counts: &mut Counts) ->
             if !child.edges.is_empty() {
                 return Err("exact terminal has children".into());
             }
-            let reason = match result {
-                GameResult::Win { reason, .. } => format!("win_{reason:?}"),
-                GameResult::Draw { reason } => format!("draw_{reason:?}"),
+            let (reason, winner) = match result {
+                GameResult::Win { winner, reason } => {
+                    (format!("win_{reason:?}"), format!("{winner:?}"))
+                }
+                GameResult::Draw { reason } => (format!("draw_{reason:?}"), "draw".into()),
             };
             *counts.terminals.entry(reason).or_default() += 1;
+            *counts.winners.entry(winner).or_default() += 1;
         }
         count(child, depth + 1, next.as_ref(), counts)?;
     }
@@ -371,15 +391,51 @@ fn main() -> Result<()> {
     for case in &cases {
         for (mode, gumbel) in [("gumbel", true), ("puct", false)] {
             let game = case.game()?;
-            let (driver, ms) = search(&game, case.seed, gumbel)?;
-            let mut counts = Counts::default();
+            let (driver, ms, output) = search(&game, case.seed, gumbel)?;
+            let mut counts = Counts {
+                winners: BTreeMap::from([
+                    ("Black".into(), 0),
+                    ("White".into(), 0),
+                    ("draw".into(), 0),
+                ]),
+                ..Counts::default()
+            };
             count(
                 driver.tree().root(),
                 0,
                 adjudication.then_some(&game),
                 &mut counts,
             )?;
-            rows.push(json!({"input": case.input()?, "mode": mode, "elapsed_ms": ms, "simulations": driver.simulations(), "replayed_moves": counts.replayed, "game_play_calls": if adjudication { counts.replayed } else { 0 }, "depth_counts": counts.depths, "classified_leaves": counts.classified, "fixed_leaves": counts.terminal_leaves, "terminal_leaves": counts.terminals.values().sum::<u64>(), "approximate_cutoffs": if adjudication { counts.terminal_leaves - counts.terminals.values().sum::<u64>() } else { 0 }, "terminal_reasons": counts.terminals}));
+            let mut row = json!({
+                "input": case.input()?,
+                "mode": mode,
+                "elapsed_ms": ms,
+                "simulations": driver.simulations(),
+                "replayed_moves": counts.replayed,
+                "game_play_calls": if adjudication { counts.replayed } else { 0 },
+                "depth_counts": counts.depths,
+                "classified_leaves": counts.classified,
+                "fixed_leaves": counts.terminal_leaves,
+                "terminal_leaves": counts.terminals.values().sum::<u64>(),
+                "approximate_cutoffs": if adjudication { counts.terminal_leaves - counts.terminals.values().sum::<u64>() } else { 0 },
+                "terminal_reasons": counts.terminals,
+                "terminal_winners": counts.winners,
+            });
+            match output {
+                SearchOutput::Gumbel {
+                    selected_edge,
+                    policy_target,
+                } => {
+                    let mv = driver.tree().root().edges[selected_edge].mv;
+                    row["selected_move"] = json!(usi::text_generated(game.position(), mv));
+                    row["policy_target"] = json!(policy_target);
+                }
+                SearchOutput::Puct { best_move } => {
+                    row["best_move"] =
+                        json!(best_move.map(|mv| usi::text_generated(game.position(), mv)));
+                }
+            }
+            rows.push(row);
             times.entry(mode.into()).or_default().push(ms);
             times
                 .entry(format!("{mode}/{}", case.category))
