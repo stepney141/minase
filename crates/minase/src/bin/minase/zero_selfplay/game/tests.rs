@@ -29,6 +29,7 @@ fn winning_child(repetition: bool) -> Child<'static> {
         outcome: ProofOutcome::Win,
         distance: 0,
         repetition,
+        approximate: repetition,
     })
 }
 
@@ -84,9 +85,31 @@ fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
 #[test]
 fn unresolved_root_with_unvisited_edges_resigns_only_without_repetition_cutoffs() {
     for (child, expected) in [
-        (Child::Draw(0.5), false),
+        (
+            Child::Draw {
+                value: 0.5,
+                approximate: true,
+            },
+            false,
+        ),
         (winning_child(true), false),
         (winning_child(false), true),
+        (
+            Child::Draw {
+                value: 0.5,
+                approximate: false,
+            },
+            true,
+        ),
+        (
+            Child::Proven(Proof {
+                outcome: ProofOutcome::Win,
+                distance: 0,
+                repetition: true,
+                approximate: false,
+            }),
+            true,
+        ),
     ] {
         let mut tree = small_tree(3);
         let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2).unwrap();
@@ -228,7 +251,13 @@ fn selfplay_driver_keeps_repetition_draw_at_half_despite_nonzero_draw_option() {
         ));
         let root = search.driver.tree().root();
         let edge = root.edges.iter().find(|edge| edge.mv == line[3]).unwrap();
-        assert_eq!(edge.child.as_ref().unwrap().state, NodeState::Draw(0.5));
+        assert_eq!(
+            edge.child.as_ref().unwrap().state,
+            NodeState::Draw {
+                value: 0.5,
+                approximate: true
+            }
+        );
         assert_eq!(edge.visits, 1);
         assert!(search.finished());
     }

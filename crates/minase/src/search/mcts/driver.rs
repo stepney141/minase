@@ -1,7 +1,11 @@
-//! 局面と対局履歴を扱い、木の選択をネットへの依頼へ写す駆動部。
+//! 根の対局を複製し、選択した経路を審判層の`Game::play`で再生する駆動部。
+//!
+//! 審判層の終局裁定を先に確定し、継続時だけ反復の近似と深さ上限を適用する。
+//! 子の辺は経路の`Game::legal_moves`から作り、再生の失敗は仮想損失を戻して返す。
 
 use minase_core::{
-    Color, Move, MoveGenerator, Position, PromotionRule, move_was_attacking, repetition_key,
+    Color, GameResult, GameStatus, Move, MoveGenerator, Position, PromotionRule, WinReason,
+    move_was_attacking, repetition_key,
 };
 
 use super::Error;
@@ -9,7 +13,7 @@ use super::tree::{Child, LeafKind, NodeState, Outcome, Proof, SelectionRule, Tre
 use crate::nn::Query;
 use crate::search::{SearchRepetition, SearchSnapshot};
 
-/// R1の引き分けを勝率へ写す方法。
+/// 成立理由を問わず、引き分けを勝率へ写す方法。
 #[derive(Clone, Copy, Debug)]
 pub enum DrawValue {
     /// 根の手番側から見たcpを、指定された勝率尺度で換算する。
@@ -95,13 +99,14 @@ impl Driver {
     /// 根の候補手から新しい探索を作る。
     ///
     /// # Errors
-    /// 成り規則、勝率尺度、または木の容量が不正なら拒否する。
+    /// 審判状態がない場合、成り規則、勝率尺度、または木の容量が不正な場合は拒否する。
     pub fn new(
         snapshot: SearchSnapshot,
         capacity_bytes: usize,
         draw: DrawValue,
     ) -> Result<Self, Error> {
         validate_rules(&snapshot)?;
+        snapshot.game().ok_or(Error::MissingGame)?;
         let draw_probability = draw.probability(&snapshot)?;
         let tree = Tree::new(snapshot.root_moves(), capacity_bytes)?;
         Ok(Self {
@@ -139,12 +144,18 @@ impl Driver {
                 Ok(Step::BackedUp)
             }
             LeafKind::New => {
-                let (position, moves, state) = self.classify_child(&selection.path);
+                let (position, moves, state) = match self.classify_child(&selection.path) {
+                    Ok(child) => child,
+                    Err(error) => {
+                        self.tree.cancel_leaf(&selection.path)?;
+                        return Err(error);
+                    }
+                };
                 let child = match state {
                     NodeState::Pending { unexpanded: false } => Child::Pending(&moves),
                     NodeState::Pending { unexpanded: true } => Child::Unexpanded,
                     NodeState::Proven(proof) => Child::Proven(proof),
-                    NodeState::Draw(value) => Child::Draw(value),
+                    NodeState::Draw { value, approximate } => Child::Draw { value, approximate },
                     _ => unreachable!("a new child is pending or terminal"),
                 };
                 if let Err(error) = self.tree.create_child(&selection.path, child) {
@@ -247,6 +258,7 @@ impl Driver {
         draw: DrawValue,
     ) -> Result<bool, Error> {
         validate_rules(snapshot)?;
+        let new_game = snapshot.game().ok_or(Error::MissingGame)?;
         let probability = draw.probability(snapshot)?;
         if self.root_pending
             || snapshot.rules() != self.snapshot.rules()
@@ -296,6 +308,19 @@ impl Driver {
         {
             return Ok(false);
         }
+        let mut game = self
+            .snapshot
+            .game()
+            .expect("Driver requires a game")
+            .clone();
+        for &mv in &moves {
+            if !matches!(game.play(mv), Ok(GameStatus::Ongoing)) {
+                return Ok(false);
+            }
+        }
+        if !game.same_state(new_game) {
+            return Ok(false);
+        }
         if self.tree.reroot(&moves).is_err() {
             return Ok(false);
         }
@@ -305,73 +330,84 @@ impl Driver {
         Ok(true)
     }
 
-    fn classify_child(&self, path: &[usize]) -> (Position, Vec<Move>, NodeState) {
-        let mut position = self.snapshot.position().clone();
-        let mut keys = vec![repetition_key(self.snapshot.repetition().rule(), &position)];
+    fn classify_child(&self, path: &[usize]) -> Result<(Position, Vec<Move>, NodeState), Error> {
+        let mut game = self
+            .snapshot
+            .game()
+            .expect("Driver requires a game")
+            .clone();
         let mut played = Vec::with_capacity(path.len());
         let mut node = self.tree.root();
-        let mut royal_capture = false;
         for (depth, &index) in path.iter().enumerate() {
-            let edge = &node.edges[index];
-            if depth + 1 == path.len() {
-                royal_capture = captures_last_royal(&position, edge.mv);
-            }
-            position.make_move_unchecked(edge.mv, self.snapshot.rules());
+            let edge = node.edges.get(index).ok_or(TreeError::InvalidPath)?;
             played.push(edge.mv);
             if depth + 1 < path.len() {
-                keys.push(repetition_key(self.snapshot.repetition().rule(), &position));
-                node = edge
-                    .child
-                    .as_deref()
-                    .expect("selection follows existing children");
+                node = edge.child.as_deref().ok_or(TreeError::InvalidPath)?;
             }
         }
-        let state = if royal_capture {
-            proven(Outcome::Loss, false)
-        } else if let Some(state) = self.repetition(&position, &keys, &played) {
+        let mut keys = Vec::with_capacity(path.len());
+        for (depth, &mv) in played.iter().enumerate() {
+            keys.push(repetition_key(
+                self.snapshot.repetition().rule(),
+                game.position(),
+            ));
+            let status = game.play(mv).map_err(|source| Error::Replay {
+                path: played.clone(),
+                ply: depth + 1,
+                source,
+            })?;
+            if let GameStatus::Finished(result) = status {
+                if depth + 1 < played.len() {
+                    return Err(Error::PrematureTerminal {
+                        path: played,
+                        ply: depth + 1,
+                        result,
+                    });
+                }
+                let state = match result {
+                    GameResult::Win { winner, reason } => proven(
+                        if winner == game.position().side_to_move() {
+                            Outcome::Win
+                        } else {
+                            Outcome::Loss
+                        },
+                        reason == WinReason::Repetition,
+                        false,
+                    ),
+                    GameResult::Draw { .. } => self.draw(game.position().side_to_move(), false),
+                };
+                return Ok((game.position().clone(), Vec::new(), state));
+            }
+        }
+        let position = game.position().clone();
+        let state = if let Some(state) = self.repetition(&position, &keys, &played) {
             state
         } else if path.len() == self.tree.depth_limit() as usize {
             NodeState::Pending { unexpanded: true }
         } else {
-            let generator = MoveGenerator::new(self.snapshot.rules());
-            let mut moves = Vec::new();
-            generator.generate_moves(&position, &mut moves);
-            if moves.is_empty() {
-                proven(Outcome::Loss, false)
-            } else {
-                keys.push(repetition_key(self.snapshot.repetition().rule(), &position));
-                moves.retain(|&mv| !self.move_is_forbidden(&mut position, mv, &keys));
-                if moves.is_empty() {
-                    proven(Outcome::Loss, true)
-                } else {
-                    return (position, moves, NodeState::Pending { unexpanded: false });
-                }
-            }
+            return Ok((
+                position,
+                game.legal_moves(),
+                NodeState::Pending { unexpanded: false },
+            ));
         };
-        (position, Vec::new(), state)
+        Ok((position, Vec::new(), state))
+    }
+
+    fn draw(&self, side: Color, approximate: bool) -> NodeState {
+        NodeState::Draw {
+            value: if side == self.snapshot.position().side_to_move() {
+                self.draw_probability
+            } else {
+                1.0 - self.draw_probability
+            },
+            approximate,
+        }
     }
 
     fn history_before_root(&self) -> &[u64] {
         let history = self.snapshot.history_keys();
         &history[..history.len().saturating_sub(1)]
-    }
-
-    fn move_is_forbidden(&self, position: &mut Position, mv: Move, keys: &[u64]) -> bool {
-        let limit = match self.snapshot.repetition() {
-            SearchRepetition::R1 { .. } => return false,
-            SearchRepetition::R2 => 1,
-            SearchRepetition::R3 => 3,
-        };
-        let undo = position.make_move_unchecked(mv, self.snapshot.rules());
-        let key = repetition_key(self.snapshot.repetition().rule(), position);
-        position.unmake_move(undo);
-        self.history_before_root()
-            .iter()
-            .chain(keys)
-            .filter(|&&past| past == key)
-            .take(limit)
-            .count()
-            == limit
     }
 
     fn repetition(&self, position: &Position, keys: &[u64], moves: &[Move]) -> Option<NodeState> {
@@ -391,7 +427,7 @@ impl Driver {
             consecutive_attacking_moves,
         } = self.snapshot.repetition()
         else {
-            return Some(NodeState::Draw(0.5));
+            return Some(self.draw(position.side_to_move(), true));
         };
         let mut attackers = [true; 2];
         let start = if let Some(index) = path_match {
@@ -421,36 +457,21 @@ impl Driver {
         let side = position.side_to_move();
         Some(
             match (attackers[side.index()], attackers[side.opposite().index()]) {
-                (true, false) => proven(Outcome::Loss, true),
-                (false, true) => proven(Outcome::Win, true),
-                _ => NodeState::Draw(if side == self.snapshot.position().side_to_move() {
-                    self.draw_probability
-                } else {
-                    1.0 - self.draw_probability
-                }),
+                (true, false) => proven(Outcome::Loss, true, true),
+                (false, true) => proven(Outcome::Win, true, true),
+                _ => self.draw(side, true),
             },
         )
     }
 }
 
-fn proven(outcome: Outcome, repetition: bool) -> NodeState {
+fn proven(outcome: Outcome, repetition: bool, approximate: bool) -> NodeState {
     NodeState::Proven(Proof {
         outcome,
         distance: 0,
         repetition,
+        approximate,
     })
-}
-
-fn captures_last_royal(position: &Position, mv: Move) -> bool {
-    let royals = position.royal_pieces(position.side_to_move().opposite());
-    !royals.is_empty()
-        && position
-            .captured_squares(mv)
-            .into_iter()
-            .flatten()
-            .filter(|&square| royals.contains(square))
-            .count()
-            == royals.popcount() as usize
 }
 
 #[cfg(test)]

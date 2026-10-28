@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::{fs, io, path::Path};
 
 /// 集計対象の実行記録形式。
-pub(super) const FORMAT_VERSION: u32 = 5;
+pub(super) use crate::match_runner::FORMAT_VERSION;
 
 /// 実行条件から集計に必要な部分。
 #[derive(Deserialize)]
@@ -26,6 +26,9 @@ pub(super) struct Manifest {
 #[derive(Deserialize)]
 pub(super) struct EngineRecord {
     pub(super) limit: SearchLimit,
+    /// 追加のUSIオプションは比較条件に残す。読み取りにも欄を必須とする。
+    #[serde(rename = "options")]
+    _options: Vec<(String, String)>,
 }
 
 /// 校正で許可する固定ペア数Eloモード。

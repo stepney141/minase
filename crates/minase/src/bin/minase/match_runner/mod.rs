@@ -26,11 +26,15 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+pub(super) use storage::FORMAT_VERSION;
 use storage::{ManifestMode, RunStore};
 use summary::{integrate_pair_statistics, print_elo_summary, print_gsprt_summary};
 
 /// 引数を検証し、ワーカープールでペア対局を実行して集計を出力する。
 pub(super) fn main(arguments: Arguments) {
+    if let Err(error) = arguments.validate_options() {
+        error.exit();
+    }
     if let Err(error) = arguments.validate_startup_args() {
         error.exit();
     }
@@ -105,7 +109,7 @@ pub(super) fn main(arguments: Arguments) {
             candidate_limit,
             arguments.candidate_hash,
             &arguments.rules.source,
-            Vec::new(),
+            arguments.options.candidate_option.clone(),
             arguments
                 .candidate_args
                 .as_ref()
@@ -122,7 +126,7 @@ pub(super) fn main(arguments: Arguments) {
             baseline_limit,
             arguments.baseline_hash,
             &arguments.rules.source,
-            Vec::new(),
+            arguments.options.baseline_option.clone(),
             arguments
                 .baseline_args
                 .as_ref()

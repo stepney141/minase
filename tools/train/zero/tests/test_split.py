@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from minase_zero.data import hash64, is_validation
+from minase_zero.data import hash64, is_training_sample, is_validation
 
 
 class SplitTests(unittest.TestCase):
@@ -37,6 +37,18 @@ class SplitTests(unittest.TestCase):
             with self.subTest(seed=seed, games=games):
                 with self.assertRaises(ValueError):
                     hash64(seed, games)
+
+    def test_training_sample_uses_remainder_one_and_never_overlaps_validation(self) -> None:
+        games = np.repeat(np.arange(1000, dtype=np.uint32), 3)
+        for seed in (0, 11, 20261038):
+            with self.subTest(seed=seed):
+                sample = is_training_sample(seed, games)
+                expected = hash64(seed, games) % np.uint64(20) == 1
+                np.testing.assert_array_equal(sample, expected)
+                self.assertTrue(np.any(sample))
+                self.assertFalse(np.any(sample & is_validation(seed, games)))
+                # 1局の全局面を一緒に選ぶ。
+                np.testing.assert_array_equal(sample.reshape(-1, 3)[:, 0], sample.reshape(-1, 3)[:, 2])
 
 
 if __name__ == "__main__":

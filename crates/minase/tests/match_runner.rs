@@ -536,7 +536,7 @@ fn resume_records_only_invocations_that_execute_games() {
     small_run(&dir);
     let manifest = std::fs::read(dir.join("manifest.json")).unwrap();
     let value = json_file(&dir.join("manifest.json"));
-    assert_eq!(value["format_version"], 6);
+    assert_eq!(value["format_version"], 7);
     assert!(value.get("runner").is_none());
     assert!(value.get("cpu").is_none());
     assert_eq!(
@@ -691,7 +691,7 @@ fn resume_rejects_recorded_commit_digest_mismatch_before_engine_start() {
     assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
 }
 
-/// コミットの追加引数は規則の後に渡し、版6へ記録して再開時にも復元する。
+/// コミットの追加引数は規則の後に渡し、記録して再開時にも復元する。
 #[cfg(unix)]
 #[test]
 fn commit_startup_arguments_are_forwarded_recorded_and_restored() {
@@ -782,7 +782,7 @@ done
         String::from_utf8_lossy(&output.stderr)
     );
     let manifest = json_file(&dir.join("manifest.json"));
-    assert_eq!(manifest["format_version"], 6);
+    assert_eq!(manifest["format_version"], 7);
     assert_eq!(
         manifest["candidate"]["identity"]["args"],
         serde_json::json!(["--search", "mcts", "--nn-model", "net.onnx"])
@@ -915,6 +915,333 @@ done
             .unwrap()
             .contains("setoption name USI_Hash value 32")
     );
+}
+
+/// 宣言を返し、各側が受け取ったコマンドを専用のログへ残すUSIエンジン。
+#[cfg(unix)]
+fn option_engine(parent: &std::path::Path) -> std::path::PathBuf {
+    let engine = parent.join("engine.sh");
+    std::fs::write(
+        &engine,
+        r#"
+while IFS= read -r line; do
+    printf '%s\n' "$line" >> "$1"
+    case "$line" in
+        usi) cat "$2"; echo usiok ;;
+        isready) echo readyok ;;
+        go*) echo 'bestmove resign' ;;
+        quit) exit 0 ;;
+    esac
+done
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        parent.join("declarations"),
+        concat!(
+            "option name Threads type spin default 1 min 1 max 8\n",
+            "option name USI_Hash type spin default 16 min 1 max 1024\n",
+            "option name NnBatchSize type spin default 256 min 1 max 1024\n",
+            "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu\n",
+            "option name Verify type check default false\n",
+            "option name Output File type string default <empty>\n",
+            "option name Label type string default <empty>\n",
+            "option name Clear type button\n",
+        ),
+    )
+    .unwrap();
+    engine
+}
+
+// フェーズ3の設計: 追加オプションは各側の宣言で検査し、管理用設定の後、isreadyの前に送る。
+#[cfg(unix)]
+#[test]
+fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
+    let parent = run_directory();
+    std::fs::create_dir(&parent).unwrap();
+    let engine = option_engine(&parent);
+    let declarations = parent.join("declarations");
+    let logs = [parent.join("candidate.log"), parent.join("baseline.log")];
+    let spec = |log: &std::path::Path| {
+        format!(
+            "/bin/sh {} {} {}",
+            engine.display(),
+            log.display(),
+            declarations.display()
+        )
+    };
+    let dir = parent.join("run");
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--run-dir"])
+        .arg(&dir)
+        .args([
+            "--candidate",
+            &spec(&logs[0]),
+            "--baseline",
+            &spec(&logs[1]),
+        ])
+        .args([
+            "--candidate-option",
+            "NnBatchSize=64",
+            "--candidate-option",
+            "NnBackend=cuda",
+            "--candidate-option",
+            "Verify=true",
+            "--candidate-option",
+            "Output File= candidate=a b ",
+            "--baseline-option",
+            "NnBatchSize=256",
+            "--baseline-option",
+            "NnBackend=cpu",
+            "--baseline-option",
+            "Verify=false",
+            "--baseline-option",
+            "Label=",
+            "--candidate-hash",
+            "32",
+            "--baseline-hash",
+            "64",
+            "--seed",
+            "42",
+            "--max-ply",
+            "100",
+            "--concurrency",
+            "1",
+            "--response-timeout",
+            "5",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let manifest = json_file(&dir.join("manifest.json"));
+    assert_eq!(manifest["format_version"], 7);
+    assert_eq!(
+        manifest["candidate"]["options"],
+        serde_json::json!([
+            ["NnBatchSize", "64"],
+            ["NnBackend", "cuda"],
+            ["Verify", "true"],
+            ["Output File", " candidate=a b "]
+        ])
+    );
+    assert_eq!(
+        manifest["baseline"]["options"],
+        serde_json::json!([
+            ["NnBatchSize", "256"],
+            ["NnBackend", "cpu"],
+            ["Verify", "false"],
+            ["Label", ""]
+        ])
+    );
+    let check_commands = || {
+        for (log, expected) in logs.iter().zip([
+            vec![
+                "setoption name RuleSet value engine-default",
+                "setoption name USI_Hash value 32",
+                "setoption name ResignValue value 99999",
+                "setoption name NnBatchSize value 64",
+                "setoption name NnBackend value cuda",
+                "setoption name Verify value true",
+                "setoption name Output File value  candidate=a b ",
+                "isready",
+                "usinewgame",
+            ],
+            vec![
+                "setoption name RuleSet value engine-default",
+                "setoption name USI_Hash value 64",
+                "setoption name ResignValue value 99999",
+                "setoption name NnBatchSize value 256",
+                "setoption name NnBackend value cpu",
+                "setoption name Verify value false",
+                "setoption name Label value ",
+                "isready",
+                "usinewgame",
+            ],
+        ]) {
+            let text = std::fs::read_to_string(log).unwrap();
+            let commands: Vec<_> = text
+                .lines()
+                .filter(|line| {
+                    line.starts_with("setoption ") || matches!(*line, "isready" | "usinewgame")
+                })
+                .collect();
+            assert_eq!(commands, expected.repeat(2), "{}", log.display());
+        }
+    };
+    check_commands();
+    for (flag, value) in [
+        ("--candidate-option", "NnBatchSize=64"),
+        ("--baseline-option", "NnBatchSize=256"),
+    ] {
+        let output = resume_run(&dir, &[flag, value]);
+        assert_eq!(output.status.code(), Some(2));
+    }
+    // 保存した列は再検査しない。資源の既定値だけを返すエンジンでも同じ列を復元する。
+    std::fs::write(
+        &declarations,
+        concat!(
+            "option name Threads type spin default 1 min 1 max 8\n",
+            "option name USI_Hash type spin default 16 min 1 max 1024\n",
+        ),
+    )
+    .unwrap();
+    for log in &logs {
+        std::fs::write(log, "").unwrap();
+    }
+    let output = resume_run(&dir, &["--target-pairs", "2"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    check_commands();
+    assert_eq!(json_file(&dir.join("manifest.json")), manifest);
+    assert!(dir.join("pairs/00000000000000000002.json").is_file());
+}
+
+// 未宣言の名前、不正な値、未対応の型は、測定記録を作る前に拒否する。
+#[cfg(unix)]
+#[test]
+fn usi_options_reject_unknown_names_invalid_values_and_unsupported_types() {
+    let parent = run_directory();
+    std::fs::create_dir(&parent).unwrap();
+    let engine = option_engine(&parent);
+    let log = parent.join("commands.log");
+    let spec = format!(
+        "/bin/sh {} {} {}",
+        engine.display(),
+        log.display(),
+        parent.join("declarations").display()
+    );
+    for side in ["candidate", "baseline"] {
+        for (option, message) in [
+            ("Unknown=1", "not declared"),
+            ("NnBatchSize=0", "must be in"),
+            ("NnBatchSize=1025", "must be in"),
+            ("NnBatchSize=1.5", "must be an integer"),
+            ("NnBackend=missing", "not a declared choice"),
+            ("Verify=1", "must be true or false"),
+            ("Clear=", "unsupported option type"),
+        ] {
+            let dir = parent.join("run");
+            let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+                .args(["match", "run", "--run-dir"])
+                .arg(&dir)
+                .args([
+                    &format!("--{side}"),
+                    &spec,
+                    &format!("--{side}-option"),
+                    option,
+                ])
+                .args([
+                    "--concurrency",
+                    "1",
+                    "--response-timeout",
+                    "5",
+                    "elo",
+                    "--pairs",
+                    "1",
+                ])
+                .output()
+                .unwrap();
+            assert!(!output.status.success(), "{side}: {option}");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains(message),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(!dir.exists());
+        }
+    }
+    assert!(!std::fs::read_to_string(log).unwrap().contains("setoption"));
+}
+
+#[test]
+fn usi_options_reject_random_and_cecp_before_engine_start() {
+    for side in ["candidate", "baseline"] {
+        for (spec, message) in [
+            ("random", "random engine"),
+            ("cecp:nonexistent-engine", "CECP engine"),
+        ] {
+            let dir = run_directory();
+            let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+                .args(["match", "run", "--run-dir"])
+                .arg(&dir)
+                .args([
+                    &format!("--{side}"),
+                    spec,
+                    &format!("--{side}-option"),
+                    "NnBatchSize=64",
+                ])
+                .args(["--concurrency", "1", "elo", "--pairs", "1"])
+                .output()
+                .unwrap();
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains(message));
+            assert!(!dir.exists());
+        }
+    }
+}
+
+// 形式7では両側のoptionsが必須であり、形式6も再開・集計の前に拒否する。
+#[test]
+fn old_manifests_and_missing_option_lists_are_rejected_without_writes() {
+    let dir = run_directory();
+    small_run(&dir);
+    let original = json_file(&dir.join("manifest.json"));
+    let history = std::fs::read(dir.join("invocations.json")).unwrap();
+    let summary = std::fs::read(dir.join("summary.json")).unwrap();
+    for missing in [None, Some("candidate"), Some("baseline")] {
+        let mut manifest = original.clone();
+        let message = if let Some(side) = missing {
+            manifest[side].as_object_mut().unwrap().remove("options");
+            "missing field `options`"
+        } else {
+            manifest["format_version"] = serde_json::json!(6);
+            for side in ["candidate", "baseline"] {
+                manifest[side].as_object_mut().unwrap().remove("options");
+            }
+            "version 6"
+        };
+        write_json(&dir.join("manifest.json"), &manifest);
+        let before = std::fs::read(dir.join("manifest.json")).unwrap();
+        let output = resume_run(&dir, &[]);
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "report", "--run-dir"])
+            .arg(&dir)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let report_message = if missing.is_some() {
+            message
+        } else {
+            "found 6"
+        };
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(report_message),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(std::fs::read(dir.join("manifest.json")).unwrap(), before);
+        assert_eq!(
+            std::fs::read(dir.join("invocations.json")).unwrap(),
+            history
+        );
+        assert_eq!(std::fs::read(dir.join("summary.json")).unwrap(), summary);
+    }
 }
 
 // --eachの既定値と各側の上書きは、解決後に保存された条件で検査する。

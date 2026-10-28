@@ -21,8 +21,8 @@ import unittest
 import numpy as np
 import torch
 
-from minase_zero.data import is_validation, read_window
-from minase_zero.encoding import encode_planes
+from minase_zero.data import is_training_sample, is_validation, read_window
+from minase_zero.encoding import encode_planes, policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import compute_losses
 
@@ -36,7 +36,7 @@ class LossTests(unittest.TestCase):
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous)
 
-    def test_losses_use_all_labels_quantized_probabilities_and_mixed_results(self) -> None:
+    def test_losses_use_masked_labels_quantized_probabilities_and_mixed_results(self) -> None:
         # 1局面目は候補1つ、2局面目は候補3つとし、候補数で平均する誤りも検出する。
         logits = torch.zeros(2, 35_856)
         logits[0, 17] = 2.0
@@ -46,11 +46,11 @@ class LossTests(unittest.TestCase):
         losses = compute_losses(
             logits, values, torch.tensor([0, 1, 1, 1]), torch.tensor([2, 4, 23, 500]),
             torch.tensor([65_535, 10_000, 20_000, 35_535]),
-            torch.tensor([1.0, 0.5]), torch.tensor([0, 65_535]), 0.333,
+            torch.tensor([1.0, 0.5]), torch.tensor([0, 65_535]), 0.333, torch.from_numpy(policy_mask()),
         )
         expected_policy = (
-            math.log(35_855 + math.exp(2))
-            + math.log(35_855 + math.exp(-3)) + 3 * 20_000 / 65_535
+            math.log(16_107 + math.exp(2))
+            + math.log(16_107 + math.exp(-3)) + 3 * 20_000 / 65_535
         ) / 2
 
         def bce(logit: float, target: float) -> float:
@@ -75,12 +75,39 @@ class LossTests(unittest.TestCase):
             torch.zeros(1, 35_856, dtype=torch.bfloat16),
             torch.tensor([[20.0]], dtype=torch.bfloat16),
             torch.tensor([0]), torch.tensor([7]), torch.tensor([65_535]),
-            torch.tensor([0.0]), torch.tensor([32_769]), 1.0,
+            torch.tensor([0.0]), torch.tensor([32_769]), 1.0, torch.from_numpy(policy_mask()),
         )
         expected = 20 + math.log1p(math.exp(-20)) - 20 * 32_769 / 65_535
         self.assertAlmostEqual(value.item(), expected, places=5)
         self.assertAlmostEqual(result.item(), 20, places=6)
-        self.assertAlmostEqual(policy.item(), math.log(35_856), places=5)
+        self.assertAlmostEqual(policy.item(), math.log(16_108), places=5)
+
+    def test_masked_targets_raise_including_out_of_range_labels(self) -> None:
+        for label in (143, -1, 35_856):
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                compute_losses(
+                    torch.zeros(1, 35_856), torch.zeros(1, 1),
+                    torch.tensor([0]), torch.tensor([label]), torch.tensor([65_535]),
+                    torch.tensor([1.0]), torch.tensor([0]), 0.333, torch.from_numpy(policy_mask()),
+                )
+
+    def test_masked_logits_have_no_effect_or_gradient_and_match_reference(self) -> None:
+        mask = torch.from_numpy(policy_mask())
+        logits = torch.full((2, 35_856), -1000.0)
+        logits[0, [2, 4, 23]] = torch.tensor([math.log(2), math.log(3), math.log(5)])
+        logits[1, [2, 4, 23]] = torch.tensor([math.log(7), math.log(11), math.log(13)])
+        targets = (torch.tensor([0, 1, 1]), torch.tensor([2, 4, 23]),
+                   torch.tensor([65_535, 21_845, 43_690]), torch.tensor([1.0, 0.0]), torch.tensor([0, 65_535]))
+        expected = (math.log(10 / 2) + math.log(31 / 11) / 3 + math.log(31 / 13) * 2 / 3) / 2
+        reference = compute_losses(logits, torch.zeros(2, 1), *targets, 0.333, mask)[0]
+        self.assertAlmostEqual(reference.item(), expected, places=6)
+        logits[:, ~mask] = 1_000_000
+        logits.requires_grad_()
+        changed = compute_losses(logits, torch.zeros(2, 1), *targets, 0.333, mask)[0]
+        self.assertTrue(torch.equal(reference, changed))
+        changed.backward()
+        self.assertTrue(torch.all(logits.grad[:, ~mask] == 0))
+        self.assertTrue(torch.any(logits.grad[:, mask] != 0))
 
 
 class TrainTests(unittest.TestCase):
@@ -150,7 +177,7 @@ class TrainTests(unittest.TestCase):
                     "data_order_sha256", "loss_sums", "learning_curve"):
             with self.subTest(key=key):
                 self.assert_state_equal(self.state_a[key], self.state_b[key])
-        self.assertEqual(self.summary_a["validation_losses"], self.summary_b["validation_losses"])
+        self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
         self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
         self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
 
@@ -190,7 +217,7 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(saved_bytes, (out / "checkpoint.pt").read_bytes())
         self.assertEqual((out / "model.onnx").read_bytes(), (self.a / "model.onnx").read_bytes())
         summary = json.loads((out / "summary.json").read_text())
-        for key in self.summary_a.keys() - {"elapsed_seconds", "positions_per_second"}:
+        for key in self.summary_a.keys() - {"elapsed_seconds", "positions_per_second", "loading_peak_rss_bytes"}:
             self.assertEqual(summary[key], self.summary_a[key], key)
 
     def test_provenance_preserves_argument_paths_header_and_environment(self) -> None:
@@ -215,7 +242,9 @@ class TrainTests(unittest.TestCase):
         self.addCleanup(torch.set_num_threads, previous_threads)
         numbers = np.arange(100, dtype=np.uint32)
         validation = is_validation(20261038, numbers)
-        train_games, validation_game = numbers[~validation][:2], int(numbers[validation][0])
+        sample = is_training_sample(20261038, numbers)
+        train_games = [int(numbers[sample][0]), int(numbers[~(validation | sample)][0])]
+        validation_game = int(numbers[validation][0])
         path = self.root / "one-update.mnsd"
         games = [
             (int(train_games[0]), 0, 0, 12345, (10_000, 55_535)),
@@ -237,7 +266,8 @@ class TrainTests(unittest.TestCase):
                 targets[row, int(data.policy_labels[candidate])] = int(data.policy_probabilities[candidate]) / 65_535
         results = torch.tensor(data.results[indices])
         roots = torch.tensor(data.values[indices], dtype=torch.float32) / 65_535
-        policy_loss = -(targets * policy.log_softmax(1)).sum(1).mean()
+        mask = torch.from_numpy(policy_mask())
+        policy_loss = -(targets[:, mask] * policy[:, mask].log_softmax(1)).sum(1).mean()
         result_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), results)
         root_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), roots)
         value_loss = 0.667 * result_loss + 0.333 * root_loss
@@ -327,7 +357,46 @@ class TrainTests(unittest.TestCase):
         require_success(run_cli(["train", "--resume", str(out), "--device", "cpu"]))
         summary = json.loads((out / "summary.json").read_text())
         self.assertEqual(summary["provenance"]["files"][0]["sha256"], recorded)
-        self.assertEqual(summary["validation_losses"], self.summary_a["validation_losses"])
+        self.assertEqual(summary["diagnostics"], self.summary_a["diagnostics"])
+
+    def test_summary_contains_both_final_diagnostics_and_loading_measurements(self) -> None:
+        seed = self.infos[0].header.seed
+        for name, selected, remainder in (("training_sample", self.data.training_sample, 1),
+                                          ("validation", self.data.validation, 0)):
+            diagnostic = self.summary_a["diagnostics"][name]
+            games = np.unique(self.data.games[selected]).tolist()
+            self.assertEqual(diagnostic["game_count"], len(games))
+            self.assertEqual(diagnostic["position_count"], int(selected.sum()))
+            self.assertEqual(diagnostic["games"], [{"seed": seed, "game": game} for game in games])
+            self.assertEqual(diagnostic["hash_modulus"], 20)
+            self.assertEqual(diagnostic["hash_remainder"], remainder)
+            for metric in ("policy", "value", "value_result", "legal_probability_mass",
+                           "log_legal_probability_mass", "policy_agreement"):
+                self.assertTrue(math.isfinite(diagnostic[metric]), metric)
+            self.assertGreater(diagnostic["legal_probability_mass"], 0)
+            self.assertLessEqual(diagnostic["legal_probability_mass"], 1)
+            self.assertLessEqual(diagnostic["log_legal_probability_mass"], 0)
+            self.assertGreaterEqual(diagnostic["policy_agreement"], 0)
+            self.assertLessEqual(diagnostic["policy_agreement"], 1)
+        for phase in ("loading", "training", "diagnostics"):
+            self.assertGreater(self.summary_a["elapsed_seconds"][phase], 0)
+        self.assertGreater(self.summary_a["loading_peak_rss_bytes"], 0)
+
+    def test_empty_training_diagnostic_sample_is_rejected_before_updates(self) -> None:
+        numbers = np.arange(100, dtype=np.uint32)
+        validation = is_validation(20261038, numbers)
+        sample = is_training_sample(20261038, numbers)
+        selected = sorted([int(numbers[validation][0]), int(numbers[~(validation | sample)][0])])
+        path = self.root / "no-sample.mnsd"
+        write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "engine-default")
+        out = self.root / "no-sample"
+        arguments = train_arguments(self.initial / "checkpoint.pt", out)
+        arguments[arguments.index("--data") + 1] = str(path)
+        result = run_cli(arguments)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("training diagnostic sample", result.stderr)
+        self.assertFalse((out / "checkpoint.pt").exists())
+        self.assertFalse((out / "summary.json").exists())
 
     def test_invalid_arguments_and_missing_files_return_one_error_line(self) -> None:
         wrong_commit = init_arguments(self.root / "bad-commit", 0)

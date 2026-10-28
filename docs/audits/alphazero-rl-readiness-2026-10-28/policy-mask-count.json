@@ -1,0 +1,21 @@
+{
+  "on_board_geometry_count": 18844,
+  "valid_including_promotion_zone": 16108,
+  "always_impossible_count": 19748,
+  "counts_by_family": [
+    5192,
+    2456,
+    880,
+    6424,
+    1012,
+    144
+  ],
+  "fixture_positions": 288,
+  "fixture_legal_moves": 24186,
+  "fixtures_not_masked": true,
+  "equal_logits_total_loss": 10.487266196040709,
+  "equal_logits_geometry_loss": 9.687071321971345,
+  "loss_difference": 0.8001948740693635,
+  "uniform_legal_mass_if_81": 0.002259036144578313,
+  "uniform_geometry_legal_mass_if_81": 0.005028557238639185
+}

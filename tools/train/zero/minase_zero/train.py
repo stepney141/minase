@@ -4,7 +4,8 @@ trainの出力先には、checkpoint.pt、model.onnx、およびsummary.jsonを�
 どれも同じディレクトリの一時ファイルへ書いて同期し、名前を変えてから親ディレクトリを
 同期して確定させる。checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に
 置き換え、最新の1つだけを残す。最後の更新の後は、最終のチェックポイントを確定させてから
-検証を行い、model.onnx、summary.jsonの順に確定させて、summary.jsonの存在をサイクルの完了とみなす。
+訓練標本と検証集合を診断し、model.onnx、summary.jsonの順に確定させて、
+summary.jsonの存在をサイクルの完了とみなす。
 すべての更新を終えたcheckpoint.ptが、次のサイクルの--initに与えるチェックポイントになる。
 
 訓練局面は、学習窓のファイルを指定順に並べ、各ファイルの局面をファイルの順に並べた
@@ -33,26 +34,42 @@ trainのsummary.jsonの欄は次のとおりである。
 | training_count / validation_count | 学習窓の訓練局面数と検証局面数。 |
 | completed_steps / total_steps | 完了した更新回数と、このサイクルの全更新回数。 |
 | positions_seen | 完了した更新で読んだ訓練局面数。 |
-| training_losses / validation_losses | 局面数で平均したpolicy、value、value_resultの損失。 |
+| training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したpolicy、value、value_result。 |
+| diagnostics.training_sample / diagnostics.validation | 最終の重み・推論モードで同じ関数により求めた診断。 |
+| diagnosticsの各集合のgame_count / position_count | 診断に含めた対局数と採用局面数。 |
+| diagnosticsの各集合のhash_modulus / hash_remainder | hash64(seed, game)の法20と剰余。訓練標本は1、検証は0。 |
+| diagnosticsの各集合のgames | 採用局面を持つ対局のseed（ヘッダの基本シード）とgame（対局番号）の列。 |
+| diagnosticsの各集合のpolicy / value / value_result | 局面単位の算術平均による3つの損失。 |
+| diagnosticsの各集合のlegal_probability_mass / log_legal_probability_mass | 全合法手に乗る確率質量の平均と、その自然対数の平均。 |
+| diagnosticsの各集合のpolicy_agreement | 合法手の最大logitの手が、教師の最大確率の手の集合に含まれる割合。 |
 | learning_curve | 保存間隔ごとのcompleted_stepsと、その区間のtraining_losses。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
-| elapsed_seconds | loading、training、validationの秒数。 |
+| elapsed_seconds | loading、training、diagnosticsの秒数。 |
+| loading_peak_rss_bytes | 読み込み直後までのプロセスの最大常駐メモリ。resource.getrusageで測り、バイトへ換算する。 |
 | positions_per_second | positions_seenをtrainingの秒数で割った値。 |
 
-policyは全35,856ラベルとの交差エントロピー、valueは結果と根の価値を混ぜた
+policyは定数マスクが真となる16,108ラベルで正規化した交差エントロピー、valueは結果と根の価値を混ぜた
 教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
 価値の教師は (1−λ)·結果 + λ·根の価値 であり、λは--value-lambdaで与える。
 損失は方策と価値の和で、最適化器はネステロフのモーメンタムつきSGDとする。
 --precision bf16では、ネットの順伝播だけをbf16のautocastで計算する。
-損失の計算と累計はfloat32で行う。訓練集合か検証集合が空なら、平均を定義できない
+損失の計算と累計はfloat32で行う。訓練集合・訓練標本・検証集合のいずれかが空なら、平均を定義できない
 ためエラーにする。シードはuint64、サイクルは0以上の整数とする。
 
 loadingは教師の読み込みと初回の検査和計算、trainingはバッチの準備と更新、
-validationは検証のバッチの準備と推論を測る。保存とONNX出力は含めない。
+diagnosticsは両集合のバッチの準備と推論を測る。保存とONNX出力は含めない。
+loading_peak_rss_bytesは読み込みだけの増分ではなく、プロセス開始後の最大値である。
+再開時は保存済みの値と今回の読み込み直後の値の大きい方を記録する。
 再開時は保存済みの時間に今回の読み込みと更新の時間を加え、中断で失われた更新や
 停止中の時間は含めない。再開に指定した機器は実行に使い、configとprovenanceには
 サイクル開始時の設定と環境を保持する。
+
+診断ではeval()とinference_mode()を使い、勾配・バッチ正規化の移動統計・乱数状態を変えない。
+合法手の確率質量は、定数マスク内の全ラベルを分母、反復の履歴を考えない全合法手を
+分子とする。最大値を引いて単精度で計算し、対数は質量の指数化前に求める。
+方策の一致率は、ネット側の同率なら最小ラベルを選び、教師側の同率はすべて正解とする。
+最後のチェックポイントで更新済みの重みから再開する場合も、両集合の診断をやり直す。
 
 initのsummary.jsonはblocks、channels、seed、parameters、network_sha256、
 provenanceだけを持つ。チェックポイントの内部形式は本モジュールだけで扱う。
@@ -69,6 +86,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import resource
 import sys
 import tempfile
 import time
@@ -79,12 +97,13 @@ import torch
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_window
-from .encoding import encode_planes
+from .encoding import encode_planes, policy_mask
 from .fixture import evaluate_fixture
 from .net import ZeroNet, export_onnx
 
 
 LOSS_NAMES = ("policy", "value", "value_result")
+DIAGNOSTIC_NAMES = (*LOSS_NAMES, "legal_probability_mass", "log_legal_probability_mass", "policy_agreement")
 
 
 @contextmanager
@@ -234,15 +253,19 @@ def initialize(blocks: int, channels: int, seed: int, out_dir: Path, trainer_com
 def compute_losses(
     policy_logits: torch.Tensor, value_logits: torch.Tensor,
     rows: torch.Tensor, labels: torch.Tensor, probabilities: torch.Tensor,
-    results: torch.Tensor, values: torch.Tensor, value_lambda: float,
+    results: torch.Tensor, values: torch.Tensor, value_lambda: float, mask: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """疎な方策と量子化した価値から、単精度の平均損失3つを計算する。
 
     rowsとlabelsは候補の行番号とラベル、probabilitiesとvaluesは0〜65,535、
-    resultsは手番側の結果である。結果だけの監視用損失には勾配を持たせない。
+    resultsは手番側の結果、maskは同じ機器に置いた方策の定数マスクである。
+    マスク外の教師ラベルはValueErrorとし、結果だけの監視用損失には勾配を持たせない。
     """
     policy_logits, value_logits = policy_logits.float(), value_logits.float().flatten()
     probabilities, results, values = probabilities.float(), results.float(), values.float()
+    if torch.any((labels < 0) | (labels >= len(mask))) or not torch.all(mask[labels]):
+        raise ValueError("policy target label is outside the constant mask")
+    policy_logits = policy_logits.masked_fill(~mask, -torch.inf)
     candidate_losses = -F.log_softmax(policy_logits, dim=1)[rows, labels] * (probabilities / 65_535)
     per_position = torch.zeros(len(results), dtype=torch.float32, device=policy_logits.device)
     policy_loss = per_position.scatter_add_(0, rows, candidate_losses).mean()
@@ -253,26 +276,98 @@ def compute_losses(
     return policy_loss, value_loss, result_loss
 
 
-def _batch_losses(
+def _sparse_indices(
+    offsets: NDArray[np.uint64], indices: NDArray[np.int64],
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    starts, ends = offsets[indices], offsets[indices + 1]
+    entries = np.concatenate([np.arange(start, end, dtype=np.int64) for start, end in zip(starts, ends)])
+    rows = np.repeat(np.arange(len(indices), dtype=np.int64), (ends - starts).astype(np.int64))
+    return rows, entries
+
+
+def _batch(
     model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
     device: torch.device, config: dict,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, ...]:
+    """順伝播の出力と疎な教師を、compute_lossesの先頭7引数の順に返す。"""
     boards, sides, lions = (
         torch.from_numpy(array[indices]).to(device) for array in (data.boards, data.sides, data.lions)
     )
     inputs = encode_planes(boards, sides, lions)
-    starts, ends = data.policy_offsets[indices], data.policy_offsets[indices + 1]
-    candidates = np.concatenate([np.arange(start, end, dtype=np.int64) for start, end in zip(starts, ends)])
-    rows = torch.from_numpy(np.repeat(np.arange(len(indices)), (ends - starts).astype(np.int64))).to(device)
+    row_indices, candidates = _sparse_indices(data.policy_offsets, indices)
+    rows = torch.from_numpy(row_indices).to(device)
     labels = torch.from_numpy(data.policy_labels[candidates].astype(np.int64)).to(device)
     probabilities = torch.from_numpy(data.policy_probabilities[candidates].astype(np.float32)).to(device)
     results = torch.from_numpy(data.results[indices]).to(device)
     values = torch.from_numpy(data.values[indices].astype(np.float32)).to(device)
     with torch.autocast("cuda", dtype=torch.bfloat16) if config["precision"] == "bf16" else nullcontext():
         policy_logits, value_logits = model.forward_logits(inputs)
-    return compute_losses(
-        policy_logits, value_logits, rows, labels, probabilities, results, values, config["value_lambda"],
+    return policy_logits, value_logits, rows, labels, probabilities, results, values
+
+
+def compute_policy_diagnostics(
+    policy_logits: torch.Tensor, rows: torch.Tensor, labels: torch.Tensor, probabilities: torch.Tensor,
+    legal_rows: torch.Tensor, legal_labels: torch.Tensor, mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """合法手の質量・その自然対数・教師との一致率を、局面単位で平均する。
+
+    legal_rowsとlegal_labelsは各局面の全合法手を重複なく表す。
+    ネットの最大logitが同率なら最小ラベルを選び、教師の同率はすべて正解とする。
+    マスク外の合法手、合法手がない局面、有限でない合法手の最大logitはValueErrorとする。
+    """
+    if torch.any((legal_labels < 0) | (legal_labels >= len(mask))) or not torch.all(mask[legal_labels]):
+        raise ValueError("legal label is outside the constant mask")
+    logits = policy_logits.float().masked_fill(~mask, -torch.inf)
+    maximum = logits.amax(dim=1)
+    shifted = logits - maximum[:, None]
+    log_denominator = shifted.exp().sum(dim=1).log()
+    legal_logits = logits[legal_rows, legal_labels]
+    count, size = logits.shape
+    legal_max = torch.full((count,), -torch.inf, dtype=torch.float32, device=logits.device).scatter_reduce_(
+        0, legal_rows, legal_logits, reduce="amax",
     )
+    if not torch.all(torch.isfinite(legal_max)):
+        raise ValueError("each position must have a finite maximum legal logit")
+    legal_sum = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_add_(
+        0, legal_rows, (legal_logits - legal_max[legal_rows]).exp(),
+    )
+    log_mass = (legal_max - maximum) + legal_sum.log() - log_denominator
+    best_labels = torch.full((count,), size, dtype=torch.int64, device=logits.device).scatter_reduce_(
+        0, legal_rows, torch.where(legal_logits == legal_max[legal_rows], legal_labels, size), reduce="amin",
+    )
+    probabilities = probabilities.float()
+    teacher_max = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_reduce_(
+        0, rows, probabilities, reduce="amax",
+    )
+    matches = (labels == best_labels[rows]) & (probabilities == teacher_max[rows])
+    agreement = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_add_(0, rows, matches.float()) > 0
+    return log_mass.exp().mean(), log_mass.mean(), agreement.float().mean()
+
+
+@torch.inference_mode()
+def diagnose(
+    model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
+    device: torch.device, config: dict, mask: torch.Tensor,
+) -> dict[str, float]:
+    """最終の重みのevalモードで、指定局面を入力順に診断する。乱数は使わない。"""
+    if len(indices) == 0:
+        raise ValueError("diagnostic set must contain positions")
+    model.eval()
+    sums = dict.fromkeys(DIAGNOSTIC_NAMES, 0.0)
+    for start in range(0, len(indices), config["batch_size"]):
+        batch = indices[start:start + config["batch_size"]]
+        tensors = _batch(model, data, batch, device, config)
+        losses = compute_losses(*tensors, config["value_lambda"], mask)
+        legal_rows, legal_entries = _sparse_indices(data.legal_offsets, batch)
+        metrics = compute_policy_diagnostics(
+            tensors[0], tensors[2], tensors[3], tensors[4],
+            torch.from_numpy(legal_rows).to(device),
+            torch.from_numpy(data.legal_labels[legal_entries].astype(np.int64)).to(device), mask,
+        )
+        if not all(torch.isfinite(value).item() for value in (*losses, *metrics)):
+            raise ValueError("non-finite diagnostic value")
+        _accumulate(sums, (*losses, *metrics), len(batch))
+    return _mean(sums, len(indices))
 
 
 def _zero_losses() -> dict[str, float]:
@@ -280,7 +375,7 @@ def _zero_losses() -> dict[str, float]:
 
 
 def _accumulate(sums: dict[str, float], losses: tuple[torch.Tensor, ...], count: int) -> None:
-    for name, loss in zip(LOSS_NAMES, losses):
+    for name, loss in zip(sums, losses, strict=True):
         sums[name] = float(np.float32(sums[name]) + np.float32(loss.detach().item()) * np.float32(count))
 
 
@@ -293,7 +388,14 @@ def _counts(data: Dataset) -> tuple[int, int]:
     training = len(data) - validation
     if training == 0 or validation == 0:
         raise ValueError("training and validation sets must both contain positions")
+    if not np.any(data.training_sample):
+        raise ValueError("training diagnostic sample must contain positions")
     return training, validation
+
+
+def _peak_rss_bytes() -> int:
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak if sys.platform == "darwin" else peak * 1024
 
 
 def train_new(config: dict, out_dir: Path) -> None:
@@ -307,6 +409,7 @@ def train_new(config: dict, out_dir: Path) -> None:
     config = {**config, "blocks": initial["config"]["blocks"], "channels": initial["config"]["channels"]}
     started = time.perf_counter()
     data, infos = read_window(config["data"])
+    loading_peak_rss = _peak_rss_bytes()
     training_count, validation_count = _counts(data)
     provenance = _environment(config["trainer_commit"], device)
     provenance["init_sha256"] = _sha256(Path(config["init"]))
@@ -319,6 +422,7 @@ def train_new(config: dict, out_dir: Path) -> None:
         "positions_seen": 0, "loss_sums": _zero_losses(), "learning_curve": [],
         "data_order_sha256": bytes(32).hex(),
         "elapsed_seconds": {"loading": time.perf_counter() - started, "training": 0.0},
+        "loading_peak_rss_bytes": loading_peak_rss,
     }
     _run(state, data, out_dir, device)
 
@@ -339,6 +443,7 @@ def resume(out_dir: Path, device_name: str) -> None:
         raise ValueError("training window path sequence differs from provenance")
     started = time.perf_counter()
     data, infos = read_window(paths)
+    state["loading_peak_rss_bytes"] = max(state["loading_peak_rss_bytes"], _peak_rss_bytes())
     for record, info in zip(records, infos):
         if (record["size"], record["training_count"], record["validation_count"]) != (
             info.size, info.training_count, info.validation_count,
@@ -359,6 +464,7 @@ def resume(out_dir: Path, device_name: str) -> None:
 def _run(state: dict, data: Dataset, out_dir: Path, device: torch.device) -> None:
     config = state["config"]
     model = _model(state).to(device).train()
+    mask = torch.from_numpy(policy_mask()).to(device)
     optimizer = torch.optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
@@ -376,7 +482,7 @@ def _run(state: dict, data: Dataset, out_dir: Path, device: torch.device) -> Non
     for step in range(state["completed_steps"], state["total_steps"]):
         batch = order[step * batch_size:(step + 1) * batch_size]
         optimizer.zero_grad(set_to_none=True)
-        losses = _batch_losses(model, data, batch, device, config)
+        losses = compute_losses(*_batch(model, data, batch, device, config), config["value_lambda"], mask)
         if not all(torch.isfinite(loss).item() for loss in losses):
             raise ValueError(f"non-finite training loss at update {step + 1}")
         (losses[0] + losses[1]).backward()
@@ -408,14 +514,21 @@ def _run(state: dict, data: Dataset, out_dir: Path, device: torch.device) -> Non
 
     model.eval()
     started = time.perf_counter()
-    validation = np.flatnonzero(data.validation)
-    sums = _zero_losses()
-    with torch.inference_mode():
-        for start in range(0, len(validation), batch_size):
-            batch = validation[start:start + batch_size]
-            losses = _batch_losses(model, data, batch, device, config)
-            _accumulate(sums, losses, len(batch))
-    validation_seconds = time.perf_counter() - started
+    diagnostics = {}
+    for name, selected, remainder in (("training_sample", data.training_sample, 1),
+                                      ("validation", data.validation, 0)):
+        indices = np.flatnonzero(selected)
+        games = [
+            {"seed": state["provenance"]["files"][int(file)]["header"]["seed"], "game": int(game)}
+            for file in np.unique(data.file_indices[indices])
+            for game in np.unique(data.games[indices][data.file_indices[indices] == file])
+        ]
+        diagnostics[name] = {
+            "game_count": len(games), "position_count": len(indices),
+            "hash_modulus": 20, "hash_remainder": remainder, "games": games,
+            **diagnose(model, data, indices, device, config, mask),
+        }
+    diagnostic_seconds = time.perf_counter() - started
     with _atomic_path(out_dir / "model.onnx") as temporary:
         export_onnx(copy.deepcopy(model).cpu().float().eval(), temporary)
     _write_json(out_dir / "summary.json", {
@@ -424,9 +537,10 @@ def _run(state: dict, data: Dataset, out_dir: Path, device: torch.device) -> Non
         "completed_steps": state["completed_steps"], "total_steps": state["total_steps"],
         "positions_seen": state["positions_seen"],
         "training_losses": _mean(state["loss_sums"], state["positions_seen"]),
-        "validation_losses": _mean(sums, len(validation)), "learning_curve": state["learning_curve"],
+        "diagnostics": diagnostics, "learning_curve": state["learning_curve"],
         "data_order_sha256": state["data_order_sha256"], "network_sha256": _sha256(out_dir / "model.onnx"),
-        "elapsed_seconds": {**state["elapsed_seconds"], "validation": validation_seconds},
+        "elapsed_seconds": {**state["elapsed_seconds"], "diagnostics": diagnostic_seconds},
+        "loading_peak_rss_bytes": state["loading_peak_rss_bytes"],
         "positions_per_second": state["positions_seen"] / state["elapsed_seconds"]["training"],
     })
 

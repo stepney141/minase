@@ -320,12 +320,15 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [探索方式は起動引数`--search`で起動時に選び、探索の境界の閉じた列挙型`Searcher`で束ねる](select-the-search-method-at-startup-through-a-closed-enum.md)
 - 2026年10月27日 [AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をmctxの既定値で行う](use-gumbel-alphazero-for-zero-self-play-search.md)
 - 2026年10月27日 [MCTSの対局の探索は、dlshogiの式のPUCTと仮想損失によるバッチ評価で行い、時間配分はαβ探索と同じ式を使う](search-mcts-games-by-puct-with-virtual-loss-batches.md)
-- 2026年10月27日 [MCTSは反復をαβ探索と同じ規則で扱い、引き分けの値は対局でだけcpから勝率へ換算する](score-repetition-in-mcts-by-the-alpha-beta-rules.md)
+- 2026年10月27日 [MCTSは反復をαβ探索と同じ規則で扱い、引き分けの値は対局でだけcpから勝率へ換算する](archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)（置き換え済み）
 - 2026年10月27日 [対局ハーネスの`commit:`のエンジンには`--candidate-args`と`--baseline-args`で起動引数を足し、実行条件に記録する](append-startup-arguments-to-commit-engine-specs.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局生成器は、多数の局の探索木から葉を1つずつ集めて推論をまとめ、各局はSequential Halvingが最後に残した手を指す](batch-zero-self-play-leaves-across-many-games.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合を較正してから有効にする](resign-zero-self-play-games-below-one-percent-after-calibration.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する](commit-zero-self-play-cycles-in-fixed-game-chunks.md)
 - 2026年10月27日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、入力の95面と方策の目標はPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)
-- 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](train-the-zero-value-on-mixed-results-and-root-values.md)
+- 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](archive/train-the-zero-value-on-mixed-results-and-root-values.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習は、シードで固定した順列と完了した更新の回数で再開し、チェックポイント、ONNX、および集計を原子的に確定させる](resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)
 - 2026年10月28日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、logitではなく合法手の確率と価値で照合する](compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)
+- 2026年10月28日 [MCTSは新しい節点を審判層の裁定で終局させてから反復の近似を適用し、引き分けの勝率を由来を問わず同じ値にする](adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)
+- 2026年10月28日 [AlphaZero型探索の学習器は、常に不可能な方策のラベルを損失の正規化から除き、価値を対局結果と根の価値の混合で学び、最終の重みで訓練集合の標本と検証集合を同じ条件で診断する](mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)
+- 2026年10月28日 [対局ハーネスは候補と基準のUSIオプションを`--candidate-option`と`--baseline-option`で受け取り、エンジンの宣言と照合して実行条件に記録する](pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)

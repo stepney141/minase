@@ -11,7 +11,7 @@ lc0は1227b4c（2026年9月19日）、DeepLearningShogi（以下dlshogi）は559
 第1に、1枚の消費者向けGPUでゼロから学習してminaseのαβ探索を超えることは、計算量の面で現実的でない。
 AlphaZeroの将棋は自己対局に第1世代TPUを5,000基使い、将棋でのAlphaZero追試であるAobaZeroは同じ規模の学習をデスクトップ1台で100年近いと見積もっている。
 第2に、将棋での先行2例が現実的な道筋を示している。
-dlshogiはαβエンジンの生成局面による教師あり学習で初期化してから強化学習へ進み、技巧とGumbel dlshogiは1手16〜64シミュレーションのGumbel AlphaZeroで学習を安定させた。
+dlshogiはαβエンジンの生成局面による教師あり学習で初期化してから強化学習へ進み、技巧は1手32〜128シミュレーション、Gumbel dlshogiは1手16〜64シミュレーションのGumbel AlphaZeroで学習を安定させた。
 第3に、探索の実装はlc0とdlshogiの構成がそのまま参考になり、Rustからの推論はortのload-dynamic機能を使えばビルド時にGPUライブラリを必要としない。
 第4に、複数の探索方式の共存は、lc0が2025年に導入した「起動時に探索を1つ選び、選んだ探索のオプションだけを公開する」方式が、minaseの規模では閉じた列挙型で再現できる。
 中将棋にAlphaZero型やNNUEを適用した公開例は見つからなかった。
@@ -53,10 +53,10 @@ Gumbel AlphaZeroは、ルートでGumbel-Top-k法により重複なしにm個の
 公式実装は [google-deepmind/mctx](https://github.com/deepmind/mctx) である。
 
 将棋では2つの適用例がある。
-技巧（WCSC34）は、既存の棋譜を使わずGumbel AlphaZeroで学習し、1手16〜64シミュレーションでも比較的安定して学習できたと述べている（[アピール文書](https://www.apply.computer-shogi.org/wcsc34/appeal/Gikou/gikou_appeal_detail.pdf)）。
+技巧（WCSC34）は、既存の棋譜を使わずGumbel AlphaZeroで約5,000万対局を学習し、1手のシミュレーション数を約1,000万対局まで32、約4,000万対局まで64、以後128と段階的に増やしたと述べている（[詳細アピール文書](https://www.apply.computer-shogi.org/wcsc34/appeal/Gikou/gikou_appeal_detail.pdf)第1節と第4節。GPUは約20台、対局実験のMCTSのバッチサイズは1）。
 技巧の実装はRustの探索とPythonの学習（PyTorch Lightning、Torch-TensorRT）の組合せである。
 Gumbel dlshogi（2025年7月）は、1サイクル100万局面の生成と学習を交互に行い、シミュレーション数を16、32、64、学習窓を1、2、4サイクルと段階的に増やして、106サイクルを約3日22時間で回した（[途中経過](https://tadaoyamaoka.hatenablog.com/entry/2025/07/25/230204)、[スケジューラ](https://tadaoyamaoka.hatenablog.com/entry/2025/07/22/212555)）。
-学習初期には最大手数で終わる入玉宣言勝ちが66.1%を占める退化戦略が生じ、最大手数で終わった対局を学習から除いて対処した。
+学習初期には入玉宣言で終わる対局が7サイクル目に66.1%を占める退化戦略が生じた。最大手数（512手）で終わった対局を学習から除いても割合は増え続け（3サイクル目に41.2%）、3手詰めで詰みが見つかった対局を勝ちとして終える処理を自己対局に入れた実験で多くて0.2%になった（[その7](https://tadaoyamaoka.hatenablog.com/entry/2025/07/18/223232)、[その8](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/085509)、[その9](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/140913)。2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 
 中将棋の合法手は1局面で100手を超えることが多く、800訪問の通常のPUCTでもルートの子を訪問し尽くせない。
 これはGumbel論文が少数シミュレーションでのAlphaZeroの失敗条件として挙げる状況であり、Gumbel方式を自己対局に採る理由になる（推論）。

@@ -152,15 +152,21 @@ fn observe_usi_default(defaults: &mut EngineDefaults, line: &str) {
 }
 
 impl EngineProcess {
-    /// USI `option`行を`usiok`まで読み、既定資源を返す。
-    pub(super) fn read_usi_defaults(&mut self) -> Result<EngineDefaults, EngineFailure> {
+    /// USI `option`行を`usiok`まで読み、既定資源と宣言の原文を返す。
+    pub(super) fn read_usi_declarations(
+        &mut self,
+    ) -> Result<(EngineDefaults, Vec<String>), EngineFailure> {
         self.send("usi")?;
         let mut defaults = EngineDefaults::default();
+        let mut declarations = Vec::new();
         self.receive_until(|line| {
             observe_usi_default(&mut defaults, line);
+            if line.starts_with("option ") {
+                declarations.push(line.to_owned());
+            }
             line.trim() == "usiok"
         })?;
-        Ok(defaults)
+        Ok((defaults, declarations))
     }
 }
 

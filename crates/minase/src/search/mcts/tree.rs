@@ -24,15 +24,17 @@ pub enum Outcome {
     Loss,
 }
 
-/// 勝敗の確定、その距離、および反復に由来するかの印。
+/// 勝敗の確定、その距離、評価値の帯、および反復の近似への依存。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Proof {
     /// この節点の手番側から見た勝敗。
     pub outcome: Outcome,
     /// この節点から終局までの手数。
     pub distance: u32,
-    /// 反復の判定に由来する確定なら真。
+    /// 反復の帯を使うなら真。正確なR1の裁定も含む。
     pub repetition: bool,
+    /// 反復の近似による打ち切りに依存するなら真。
+    pub approximate: bool,
 }
 
 impl Proof {
@@ -64,6 +66,7 @@ impl Proof {
             },
             distance: self.distance + 1,
             repetition: self.repetition,
+            approximate: self.approximate,
         }
     }
 }
@@ -83,7 +86,12 @@ pub enum NodeState {
     /// 手番側の勝敗が確定している。
     Proven(Proof),
     /// 手番側の勝率を固定した引き分け。
-    Draw(f32),
+    Draw {
+        /// この節点の手番側から見た引き分けの勝率。
+        value: f32,
+        /// 反復の近似による打ち切りなら真。審判層の裁定では偽。
+        approximate: bool,
+    },
 }
 
 /// 親から子への手と、親の手番側から見た統計。
@@ -133,15 +141,20 @@ pub struct Node {
 }
 
 impl Node {
-    /// この節点または子孫に、反復で打ち切った引き分けか勝敗の確定があるかを返す。
+    /// この節点または子孫に、反復の近似で打ち切った引き分けか勝敗の確定があるかを返す。
     /// 自己対局では、反復の近似値に基づく投了を避けるために使う。
-    pub fn has_repetition_cutoff(&self) -> bool {
-        matches!(self.state, NodeState::Draw(_))
-            || matches!(self.state, NodeState::Proven(proof) if proof.repetition)
+    pub fn has_approximate_result(&self) -> bool {
+        matches!(
+            self.state,
+            NodeState::Draw {
+                approximate: true,
+                ..
+            }
+        ) || matches!(self.state, NodeState::Proven(proof) if proof.approximate)
             || self.edges.iter().any(|edge| {
                 edge.child
                     .as_deref()
-                    .is_some_and(Node::has_repetition_cutoff)
+                    .is_some_and(Node::has_approximate_result)
             })
     }
 
@@ -168,7 +181,7 @@ impl Node {
     fn fixed_value(&self) -> Option<f32> {
         match self.state {
             NodeState::Proven(proof) => Some(proof.value()),
-            NodeState::Draw(value) => Some(value),
+            NodeState::Draw { value, .. } => Some(value),
             NodeState::Unexpanded => self.value,
             _ => None,
         }
@@ -181,6 +194,7 @@ impl Node {
         let mut best_win: Option<Proof> = None;
         let mut best_loss: Option<Proof> = None;
         let mut all_losses = true;
+        let mut approximate_loss = false;
         for edge in &self.edges {
             match edge.parent_proof() {
                 Some(proof) if proof.outcome == Outcome::Win => {
@@ -190,6 +204,7 @@ impl Node {
                     }
                 }
                 Some(proof) => {
+                    approximate_loss |= proof.approximate;
                     if best_loss.is_none_or(|best| proof.score() > best.score()) {
                         best_loss = Some(proof);
                     }
@@ -200,7 +215,9 @@ impl Node {
         if let Some(proof) = best_win {
             self.state = NodeState::Proven(proof);
         } else if all_losses {
-            self.state = NodeState::Proven(best_loss.expect("すべての辺に負けの確定がある"));
+            let mut proof = best_loss.expect("すべての辺に負けの確定がある");
+            proof.approximate |= approximate_loss;
+            self.state = NodeState::Proven(proof);
         }
     }
 
@@ -294,7 +311,12 @@ pub enum Child<'a> {
     /// 勝敗の確定した節点。作成と同時に逆伝播する。
     Proven(Proof),
     /// 手番側の勝率を固定した引き分け。作成と同時に逆伝播する。
-    Draw(f32),
+    Draw {
+        /// この節点の手番側から見た引き分けの勝率。
+        value: f32,
+        /// 反復の近似による打ち切りなら真。審判層の裁定では偽。
+        approximate: bool,
+    },
 }
 
 /// 木の操作が契約を満たさない場合、または容量や予算が尽きた場合のエラー。
@@ -518,9 +540,9 @@ impl Tree {
                 }
                 (&[], NodeState::Proven(proof))
             }
-            Child::Draw(value) => {
+            Child::Draw { value, approximate } => {
                 validate_value(value)?;
-                (&[], NodeState::Draw(value))
+                (&[], NodeState::Draw { value, approximate })
             }
         };
         let bytes = node_bytes(moves.len())?;

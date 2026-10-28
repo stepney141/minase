@@ -8,6 +8,7 @@ publish = false
 [workspace]
 
 [dependencies]
+mimalloc = "0.1.52"
 minase = { path = "../../../../crates/minase" }
 minase-core = { path = "../../../../crates/minase-core" }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "tensorrt", "cuda", "api-28"] }

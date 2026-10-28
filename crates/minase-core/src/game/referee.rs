@@ -18,8 +18,8 @@ use super::result::{DrawReason, GameResult, GameStatus, WinReason};
 /// 局面、完全な規則集合、生成器、審判状態、反復規則のキーの履歴、および対局結果を所有する。
 /// 履歴に依存する合法性（R2とR3）と終局の裁定を扱い、終局後の着手を拒否する。
 /// [`Position`]と[`MoveGenerator`]は履歴を知らない。
-/// 探索木の各節点では[`Self::play`]を呼ばず、最善手を決めた後に対局管理側が1回だけ呼ぶ。
-/// この分担を採る理由は`docs/adr/keep-game-history-out-of-position-and-movegen.md`にある。
+/// MCTSは根の複製に経路の着手を[`Self::play`]で再生し、審判状態と終局裁定を共有する。
+/// αβ探索は探索木でこのAPIを呼ばず、最善手を決めた後に対局管理側が呼ぶ。
 #[derive(Clone)]
 pub struct Game {
     /// 現在の局面。
@@ -37,6 +37,19 @@ pub struct Game {
 }
 
 impl Game {
+    /// 探索木の再利用に必要な対局状態がすべて一致するかを返す。
+    ///
+    /// 局面、完全な規則集合、反復履歴、攻撃連続数、連続可逆手数、駒枯れの猶予、
+    /// 対局の手数、対局結果、および反復規則のキーの列を比較する。
+    /// 生成器は規則集合から一意に決まるため、個別には比較しない。
+    pub fn same_state(&self, other: &Self) -> bool {
+        self.position == other.position
+            && self.rules == other.rules
+            && self.adjudication == other.adjudication
+            && self.repetition_key_history == other.repetition_key_history
+            && self.result == other.result
+    }
+
     /// 指定した規則で初期局面から対局を構築する。
     pub fn new(rules: Rules) -> Self {
         Self::from_position(rules, Position::initial())
@@ -211,5 +224,82 @@ impl Game {
         debug_assert!(self.result.is_none());
         self.result = Some(result);
         GameStatus::Finished(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::PieceKind;
+    use crate::rules::{ExhaustionRule, RepetitionRule};
+    use crate::test_util::{position, sq};
+
+    #[test]
+    fn same_state_compares_the_complete_referee_state() {
+        for repetition in [RepetitionRule::R1, RepetitionRule::R2, RepetitionRule::R3] {
+            let game = Game::new(Rules {
+                repetition,
+                ..Rules::ENGINE_DEFAULT
+            });
+            assert!(game.same_state(&game.clone()));
+            let mut changed = game.clone();
+            changed.rules.e1 = true;
+            assert!(!game.same_state(&changed));
+            let mut changed = game.clone();
+            changed.rules.exhaustion = ExhaustionRule::E2;
+            assert!(!game.same_state(&changed));
+            let mut changed = game.clone();
+            changed.adjudication.set_piece_exhaustion_grace(true);
+            assert!(!game.same_state(&changed));
+            let mut changed = game.clone();
+            changed.repetition_key_history.push(0);
+            assert!(!game.same_state(&changed));
+            let mut changed = game.clone();
+            changed.resign(Color::Black).unwrap();
+            assert_eq!(game.position(), changed.position());
+            assert!(!game.same_state(&changed));
+            let mut advanced = game.clone();
+            advanced.play(game.legal_moves()[0]).unwrap();
+            assert!(!game.same_state(&advanced));
+            // 同じ局面と規則でも、手数と反復の状態を失えば一致しない。
+            let fresh = Game::from_position(advanced.rules(), advanced.position().clone());
+            assert!(!advanced.same_state(&fresh));
+        }
+    }
+
+    #[test]
+    fn same_state_distinguishes_real_histories_ending_at_the_same_position() {
+        let mut game = Game::from_position(
+            Rules::ENGINE_DEFAULT,
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(3, 3), Color::Black, PieceKind::Rook),
+                    (sq(8, 8), Color::White, PieceKind::Rook),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                ],
+            ),
+        );
+        let before = game.clone();
+        for (from, to) in [
+            (sq(3, 3), sq(3, 4)),
+            (sq(8, 8), sq(8, 7)),
+            (sq(3, 4), sq(3, 3)),
+            (sq(8, 7), sq(8, 8)),
+        ] {
+            assert_eq!(
+                game.play(Move {
+                    from,
+                    mid: None,
+                    to,
+                    promote: false
+                }),
+                Ok(GameStatus::Ongoing)
+            );
+        }
+        assert_eq!(before.position(), game.position());
+        assert!(!before.same_state(&game));
+        assert!(game.same_state(&game.clone()));
     }
 }

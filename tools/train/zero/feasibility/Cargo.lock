@@ -618,6 +618,7 @@ dependencies = [
 name = "zero-feasibility"
 version = "0.1.0"
 dependencies = [
+ "mimalloc",
  "minase",
  "minase-core",
  "ort",

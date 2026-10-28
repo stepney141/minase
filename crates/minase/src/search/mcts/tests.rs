@@ -37,6 +37,7 @@ fn proof(outcome: Outcome, distance: u32, repetition: bool) -> Proof {
         outcome,
         distance,
         repetition,
+        approximate: repetition,
     }
 }
 
@@ -56,25 +57,28 @@ fn cutoff_descendant(child: Child<'_>) -> Tree {
 
 #[test]
 fn repetition_cutoff_finds_draw_descendants() {
-    let tree = cutoff_descendant(Child::Draw(0.5));
+    let tree = cutoff_descendant(Child::Draw {
+        value: 0.5,
+        approximate: true,
+    });
     assert_eq!(tree.root().state, NodeState::Expanded);
-    assert!(tree.root().has_repetition_cutoff());
-    assert!(tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+    assert!(tree.root().has_approximate_result());
+    assert!(tree.node(&[0, 0]).unwrap().has_approximate_result());
 }
 
 #[test]
 fn repetition_cutoff_finds_repetition_proof_descendants() {
     let tree = cutoff_descendant(Child::Proven(proof(Outcome::Win, 0, true)));
     assert_eq!(tree.root().state, NodeState::Expanded);
-    assert!(tree.root().has_repetition_cutoff());
-    assert!(tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+    assert!(tree.root().has_approximate_result());
+    assert!(tree.node(&[0, 0]).unwrap().has_approximate_result());
 }
 
 #[test]
 fn repetition_cutoff_does_not_classify_mate_proofs_as_repetition() {
     let tree = cutoff_descendant(Child::Proven(proof(Outcome::Win, 0, false)));
-    assert!(!tree.root().has_repetition_cutoff());
-    assert!(!tree.node(&[0, 0]).unwrap().has_repetition_cutoff());
+    assert!(!tree.root().has_approximate_result());
+    assert!(!tree.node(&[0, 0]).unwrap().has_approximate_result());
 }
 
 fn terminal(proof: Proof) -> Box<Node> {
@@ -673,7 +677,10 @@ fn best_move_orders_proven_results_and_treats_draw_as_unproven() {
     assert_eq!(node.best_edge(), Some(2));
     node.edges[2].child = Some(Box::new(Node {
         value: None,
-        state: NodeState::Draw(0.1),
+        state: NodeState::Draw {
+            value: 0.1,
+            approximate: true,
+        },
         edges: Box::new([]),
         visited_policy: 0.0,
     }));
@@ -696,7 +703,14 @@ fn principal_variation_requires_interior_visits_and_includes_the_draw_move() {
     tree.evaluate(&leaf.path, &[0.0], 0.5).unwrap();
     assert_eq!(tree.principal_variation(), [action]);
     let leaf = tree.select_leaf(SelectionRule::Puct(&config)).unwrap();
-    tree.create_child(&leaf.path, Child::Draw(0.75)).unwrap();
+    tree.create_child(
+        &leaf.path,
+        Child::Draw {
+            value: 0.75,
+            approximate: true,
+        },
+    )
+    .unwrap();
     assert_eq!(tree.principal_variation(), [action, action]);
     assert_eq!(tree.node(&[0]).unwrap().edges[0].value_sum, 0.25);
     let leaf = tree.select_leaf(SelectionRule::Puct(&config)).unwrap();
@@ -855,7 +869,14 @@ fn gumbel_cancellation_releases_the_pending_slot_and_budget() {
     tree.cancel_leaf(&leaf.path).unwrap();
     assert_eq!(tree.used_bytes(), before);
     let leaf = tree.select_leaf(SelectionRule::Gumbel(&config)).unwrap();
-    tree.create_child(&leaf.path, Child::Draw(0.5)).unwrap();
+    tree.create_child(
+        &leaf.path,
+        Child::Draw {
+            value: 0.5,
+            approximate: true,
+        },
+    )
+    .unwrap();
     let leaf = tree.select_leaf(SelectionRule::Gumbel(&config)).unwrap();
     assert_eq!(leaf.kind, LeafKind::Value(0.5));
     tree.backup_leaf(&leaf.path).unwrap();
@@ -941,7 +962,13 @@ fn invalid_configuration_and_child_requests_do_not_mutate_the_tree() {
         Err(TreeError::EmptyMoves)
     );
     assert_eq!(
-        tree.create_child(&leaf.path, Child::Draw(f32::NAN)),
+        tree.create_child(
+            &leaf.path,
+            Child::Draw {
+                value: f32::NAN,
+                approximate: true
+            }
+        ),
         Err(TreeError::InvalidEvaluation)
     );
     assert_eq!(
@@ -949,7 +976,13 @@ fn invalid_configuration_and_child_requests_do_not_mutate_the_tree() {
         Err(TreeError::DepthLimit)
     );
     assert_eq!(
-        tree.create_child(&[7], Child::Draw(0.5)),
+        tree.create_child(
+            &[7],
+            Child::Draw {
+                value: 0.5,
+                approximate: true
+            }
+        ),
         Err(TreeError::InvalidSelection)
     );
     assert_eq!(tree.used_bytes(), bytes);
@@ -976,4 +1009,53 @@ fn principal_variation_follows_proven_interior_nodes_to_the_terminal() {
         NodeState::Proven(proof(Outcome::Win, 3, false))
     );
     assert_eq!(tree.principal_variation(), vec![actions[0]; 3]);
+}
+
+#[test]
+fn exact_draws_and_r1_proofs_do_not_suppress_resignation() {
+    let exact_draw = cutoff_descendant(Child::Draw {
+        value: 0.5,
+        approximate: false,
+    });
+    assert!(!exact_draw.root().has_approximate_result());
+    for outcome in [Outcome::Win, Outcome::Loss] {
+        let exact = Proof {
+            outcome,
+            distance: 0,
+            repetition: true,
+            approximate: false,
+        };
+        let tree = cutoff_descendant(Child::Proven(exact));
+        assert!(!tree.root().has_approximate_result());
+        assert_eq!(tree.node(&[0, 0]).unwrap().state, NodeState::Proven(exact));
+    }
+}
+
+#[test]
+fn a_proven_loss_depends_on_every_reply_including_approximate_ones() {
+    let mut tree = tree(&[0.0, 0.0], 0.5);
+    let rule = PuctConfig::default();
+    for approximate in [false, true] {
+        let selection = tree.select_leaf(SelectionRule::Puct(&rule)).unwrap();
+        tree.create_child(
+            &selection.path,
+            Child::Proven(Proof {
+                outcome: Outcome::Win,
+                distance: 0,
+                repetition: true,
+                approximate,
+            }),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        tree.root().state,
+        NodeState::Proven(Proof {
+            outcome: Outcome::Loss,
+            distance: 1,
+            repetition: true,
+            approximate: true,
+        })
+    );
+    assert!(tree.root().has_approximate_result());
 }

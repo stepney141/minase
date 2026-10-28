@@ -29,6 +29,11 @@ def is_validation(seed: int, games: NDArray[np.integer]) -> NDArray[np.bool_]:
     return hash64(seed, games) % np.uint64(20) == 0
 
 
+def is_training_sample(seed: int, games: NDArray[np.integer]) -> NDArray[np.bool_]:
+    """ハッシュを20で割った余りが1の対局を、訓練側の診断の標本にする。"""
+    return hash64(seed, games) % np.uint64(20) == 1
+
+
 @dataclass(frozen=True)
 class Header:
     """拡張モジュールが検査したヘッダと、ファイル全体で共通の由来。"""
@@ -63,12 +68,15 @@ class FileInfo:
 
 @dataclass(frozen=True)
 class Dataset:
-    """局面順の配列と、候補を平坦に並べた疎な方策。
+    """局面順の配列と、平坦に並べた方策の候補・全合法手。
 
     boardsはuint8の(n,144)、sidesとlionsはuint8、valuesは量子化したままのint32、
-    resultsは手番側の勝ち1・引き分け0.5・負け0を表すfloat32、validationはboolである。
+    resultsは手番側の勝ち1・引き分け0.5・負け0を表すfloat32である。
+    validationとtraining_sampleは対局単位の検証集合と訓練診断標本を表すboolである。
     gamesはuint32、pliesはuint16、file_indicesは入力順の0始まりのuint32である。
     policy_offsetsはuint64の長さn+1、policy_labelsとpolicy_probabilitiesはuint16である。
+    legal_offsetsはuint64の長さn+1、legal_labelsはuint16で、反復の履歴を考えない
+    全合法手を保持する。平均81手なら100万局面で約170 MB増える計算になる。
     1ファイルだけを読む場合もfile_indicesを0として同じ構造で返す。
     """
 
@@ -78,12 +86,15 @@ class Dataset:
     values: NDArray[np.int32]
     results: NDArray[np.float32]
     validation: NDArray[np.bool_]
+    training_sample: NDArray[np.bool_]
     games: NDArray[np.uint32]
     plies: NDArray[np.uint16]
     file_indices: NDArray[np.uint32]
     policy_offsets: NDArray[np.uint64]
     policy_labels: NDArray[np.uint16]
     policy_probabilities: NDArray[np.uint16]
+    legal_offsets: NDArray[np.uint64]
+    legal_labels: NDArray[np.uint16]
 
     def __len__(self) -> int:
         """選別後の局面数を返す。"""
@@ -93,7 +104,7 @@ class Dataset:
 def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
     """MCTS・乱数開始の自己対局・engine-defaultの1ファイルを読み込む。
 
-    成り権の保留、候補の欠落、確率和の不一致もValueErrorとする。
+    成り権の保留、候補や合法手の欠落、確率和の不一致もValueErrorとする。
     規則名の別表記は、解釈した規則がengine-defaultと一致すれば受け付ける。
     0局のファイルは由来を問わず、空の局面配列と区切り[0]を返す。
     """
@@ -135,13 +146,25 @@ def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
         np.frombuffer(raw["policy_promote"], dtype=np.uint8),
         candidate_sides,
     ).astype(np.uint16)
+    legal_offsets = np.frombuffer(raw["legal_offsets"], dtype="<u8")
+    legal_counts = np.diff(legal_offsets)
+    if np.any(legal_counts == 0):
+        raise ValueError(f"{path}: every selected position must have legal moves")
+    legal_labels = policy_labels(
+        np.frombuffer(raw["legal_from"], dtype=np.uint8),
+        np.frombuffer(raw["legal_mid"], dtype=np.uint8),
+        np.frombuffer(raw["legal_to"], dtype=np.uint8),
+        np.frombuffer(raw["legal_promote"], dtype=np.uint8),
+        np.repeat(sides, legal_counts.astype(np.intp)),
+    ).astype(np.uint16)
     results = np.where(outcomes == 2, 0.5, outcomes == sides).astype(np.float32)
     validation = is_validation(header.seed, games)
     dataset = Dataset(
         boards=boards, sides=sides, lions=lions, values=values, results=results,
-        validation=validation, games=games, plies=plies,
+        validation=validation, training_sample=is_training_sample(header.seed, games), games=games, plies=plies,
         file_indices=np.zeros(len(games), dtype=np.uint32),
         policy_offsets=offsets, policy_labels=labels, policy_probabilities=probabilities,
+        legal_offsets=legal_offsets, legal_labels=legal_labels,
     )
     validation_count = int(np.count_nonzero(validation))
     info = FileInfo(
@@ -168,6 +191,8 @@ def read_window(paths: Sequence[str | Path]) -> tuple[Dataset, list[FileInfo]]:
     seen_games: set[tuple[int, int]] = set()
     offset_parts = []
     candidate_count = 0
+    legal_offset_parts = []
+    legal_count = 0
     for index, path in enumerate(normalized):
         dataset, info = read_file(path)
         for game in info.game_numbers:
@@ -178,13 +203,18 @@ def read_window(paths: Sequence[str | Path]) -> tuple[Dataset, list[FileInfo]]:
         dataset.file_indices.fill(index)
         offset_parts.append(dataset.policy_offsets[:-1] + np.uint64(candidate_count))
         candidate_count += len(dataset.policy_labels)
+        legal_offset_parts.append(dataset.legal_offsets[:-1] + np.uint64(legal_count))
+        legal_count += len(dataset.legal_labels)
         datasets.append(dataset)
         infos.append(info)
     columns = {
         field.name: np.concatenate([getattr(dataset, field.name) for dataset in datasets])
-        for field in fields(Dataset) if field.name != "policy_offsets"
+        for field in fields(Dataset) if field.name not in ("policy_offsets", "legal_offsets")
     }
     columns["policy_offsets"] = np.concatenate(
         [*offset_parts, np.array([candidate_count], dtype=np.uint64)]
+    )
+    columns["legal_offsets"] = np.concatenate(
+        [*legal_offset_parts, np.array([legal_count], dtype=np.uint64)]
     )
     return Dataset(**columns), infos

@@ -70,6 +70,7 @@ impl std::error::Error for ModeMismatch {}
 /// 記録した作業ディレクトリと同じ場所からだけ復元する。
 /// 任意の起動コマンドの実体と`random`にはSHA-256の照合がない。
 /// `random`は現在の実行プログラム自身を`dev usi-random`で起動する。
+/// 追加のUSIオプションは保存した列を復元し、宣言との照合は繰り返さない。
 ///
 /// 各エンジンを1回起動して読んだ`Threads`の既定値が記録と異なればエラーとする。
 /// 置換表容量は記録値と既定値が等しければ送らず、異なれば記録値を送る。
@@ -121,6 +122,7 @@ fn restore_player(
         return Err(ResumeError::ThreadsMismatch.into());
     }
     player.hash_mb = restored_hash(hash_mb, defaults.hash_mb)?;
+    player.options = record.options.clone();
     Ok(player)
 }
 

@@ -10,7 +10,7 @@
 lc0は引き分けの多いチェスで、勝ち・引き分け・負けの3分類（WDL）の出力を導入した。
 minaseの自己対局の引き分けは少なく、NNUEの教師を生成した1ファイルでは7,414局中98局（1.3%）であった（[記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）。
 将棋のdlshogiは、勝率1出力と二値交差エントロピーの組合せで学習している。
-lc0は残り手数を予測する出力（moves-left head、MLH）で勝ちを早く決めさせているが、Gumbel AlphaZeroを使うdlshogiは、手数の上限に達した対局を学習から除くだけで、勝ちの局面で手数を引き延ばす方策の劣化に対処している。
+lc0は残り手数を予測する出力（moves-left head、MLH）で勝ちを早く決めさせている。Gumbel AlphaZeroを使うdlshogiは、手数の上限に達した対局を学習から除いても引き延ばしの退化が止まらず、3手詰めの判定を自己対局に入れて対処した（この文の誤りは2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 決定の経緯は[ネットの入出力と推論の設計書](../plans/archived/alphazero-network.md)にある。
 
 ## 決定

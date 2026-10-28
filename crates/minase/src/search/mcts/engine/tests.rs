@@ -1,8 +1,8 @@
 use super::*;
 use crate::nn::{Query, UniformEvaluator};
+use crate::search::MATE;
 use crate::search::mcts::test_support::*;
 use crate::search::mcts::tree::{Edge, Node};
-use crate::search::{MATE, SearchRepetition};
 use minase_core::test_util::{position, sq};
 use minase_core::{Color, Game, GameStatus, PieceKind, PromotionRule, RepetitionRule};
 use std::error::Error as _;
@@ -297,11 +297,26 @@ fn reuse_rejects_changed_history_rules_position_candidates_and_draw_perspective(
         );
         let mut next = input;
         match change {
-            0 => next.history_keys[0] ^= 1,
-            1 => next.rules.l2 = !next.rules.l2,
-            2 => next.repetition = SearchRepetition::R3,
+            0 => {
+                let mut game = Game::new(rules(RepetitionRule::R1));
+                let mv = game.legal_moves()[0];
+                game.play(mv).unwrap();
+                next = SearchSnapshot::from_game(&Game::from_position(
+                    game.rules(),
+                    game.position().clone(),
+                ))
+                .unwrap();
+            }
+            1 => {
+                let mut configured = rules(RepetitionRule::R1);
+                configured.moves.l2 = !configured.moves.l2;
+                next = SearchSnapshot::from_game(&Game::new(configured)).unwrap();
+            }
+            2 => next = SearchSnapshot::from_game(&Game::new(rules(RepetitionRule::R3))).unwrap(),
             3 => {
-                next.position.make_null_move();
+                let mut game = Game::new(rules(RepetitionRule::R1));
+                game.play(*game.legal_moves().last().unwrap()).unwrap();
+                next = SearchSnapshot::from_game(&game).unwrap();
             }
             4 => {
                 next.root_moves.pop();
@@ -327,7 +342,7 @@ fn reuse_rejects_changed_history_rules_position_candidates_and_draw_perspective(
             }
             _ => unreachable!(),
         }
-        // 不整合な合成入力は探索せず、再利用の検査だけに使う。
+        // 候補の変更以外は、実際のGameから入力を作って再利用を検査する。
         engine.prepare_driver(next, nodes(2)).unwrap();
         assert!(!engine.reused, "case {change}");
     }

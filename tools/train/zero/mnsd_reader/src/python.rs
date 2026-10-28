@@ -42,6 +42,8 @@ fn bytes<'py, T, const N: usize>(
 /// games、plies、sides、lions、values、outcomes、visitsは局面数、各候補列は全候補数の長さを持つ。
 /// outcomesはu8で先手勝ち0、後手勝ち1、引き分け2、sidesは先手0、後手1である。
 /// lionsとpolicy_midのなしは255、升はdense_index、policy_promoteは0か1である。
+/// legal_offsetsはu64の局面数+1、legal_from、legal_mid、legal_to、legal_promoteは
+/// u8の全合法手数で、升と成りの表現は候補列と同じである。
 /// valuesはαβのセンチポーンまたはMCTSの0〜65,535、候補の確率は65,535を1とする。
 /// 入出力の失敗はOSError、形式と内容の誤りはValueErrorを送出する。
 #[pyfunction]
@@ -86,6 +88,10 @@ fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
         "policy_probabilities",
         bytes(py, &records.policy_probabilities, |v| v.to_le_bytes())?,
     )?;
+    output.set_item(
+        "legal_offsets",
+        bytes(py, &records.legal_offsets, |v| v.to_le_bytes())?,
+    )?;
     for (key, values) in [
         ("boards", &records.boards),
         ("sides", &records.sides),
@@ -95,6 +101,10 @@ fn read(py: Python<'_>, path: String) -> PyResult<Bound<'_, PyDict>> {
         ("policy_mid", &records.policy_mid),
         ("policy_to", &records.policy_to),
         ("policy_promote", &records.policy_promote),
+        ("legal_from", &records.legal_from),
+        ("legal_mid", &records.legal_mid),
+        ("legal_to", &records.legal_to),
+        ("legal_promote", &records.legal_promote),
     ] {
         output.set_item(key, bytes(py, values, |&v| [v])?)?;
     }

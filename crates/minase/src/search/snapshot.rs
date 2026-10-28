@@ -1,4 +1,4 @@
-//! 探索開始時の局面と履歴の写し。
+//! 探索開始時の対局の写し。MCTSの経路再生とαβ探索への入力を同じ対局から作る。
 
 use crate::search::error::SearchError;
 use crate::search::{DRAW_SCORE, DRAW_VALUE_LIMIT};
@@ -34,18 +34,21 @@ impl SearchRepetition {
 
 /// 探索スレッドへ渡す不変の入力。
 ///
-/// 局面、規則、対局履歴、根の候補手、および根の手番側から見た引き分けの値を持つ。
-/// RULES.md第31条R1の引き分けの値は[`DRAW_SCORE`]で初期化し、
+/// 根の対局の複製と、そこから導いた局面、規則、対局履歴、根の候補手を持つ。
+/// MCTSは対局の複製を経路再生に使い、αβ探索は従来の局面と履歴の入力だけを使う。
+/// 根の手番側から見た引き分けの値は[`DRAW_SCORE`]で初期化し、
 /// [`Self::with_draw_value`]で範囲を検査して設定する。
 #[derive(Clone)]
 pub struct SearchSnapshot {
+    /// 根の対局。αβ探索の人工履歴を使う単体試験に限り`None`。
+    game: Option<Game>,
     /// 探索を開始する局面。
     pub(super) position: Position,
     /// 探索内で着手へ適用する規則。
     pub(super) rules: MoveRules,
     /// 採用中の反復規則と、規則が要する根の時点の状態。
     pub(super) repetition: SearchRepetition,
-    /// 根の手番側から見た、R1の引き分けの再現に返す値。
+    /// 根の手番側から見た引き分けの値。
     pub(super) draw_value: i32,
     /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: Vec<u64>,
@@ -85,16 +88,27 @@ impl SearchSnapshot {
             RepetitionRule::R2 => SearchRepetition::R2,
             RepetitionRule::R3 => SearchRepetition::R3,
         };
-        Self::from_parts(
-            game.position().clone(),
-            game.rules().moves,
+        if root_moves.is_empty() {
+            return Err(SearchError::NoLegalMoves);
+        }
+        Ok(Self {
+            game: Some(game.clone()),
+            position: game.position().clone(),
+            rules: game.rules().moves,
             repetition,
-            game.repetition_key_history().to_vec(),
+            history_keys: game.repetition_key_history().to_vec(),
             root_moves,
-        )
+            draw_value: DRAW_SCORE,
+        })
     }
 
-    /// 検証済みの対局管理層が確定した各入力からスナップショットを構築する。
+    /// MCTSの経路再生に使う根の対局を借用する。
+    pub(super) fn game(&self) -> Option<&Game> {
+        self.game.as_ref()
+    }
+
+    /// αβ探索の単体試験だけで使う、人工履歴からの構築。MCTSはこの入力を拒否する。
+    #[cfg(test)]
     pub(super) fn from_parts(
         position: Position,
         rules: MoveRules,
@@ -106,6 +120,7 @@ impl SearchSnapshot {
             return Err(SearchError::NoLegalMoves);
         }
         Ok(Self {
+            game: None,
             position,
             rules,
             repetition,
@@ -115,10 +130,11 @@ impl SearchSnapshot {
         })
     }
 
-    /// RULES.md第31条R1の引き分けの再現に使う値を設定する。
+    /// 引き分けの値を設定する。
     ///
     /// 値は根の手番側から見たcpであり、`info score cp`と同じ単位である。
-    /// R1の引き分けの再現にだけ適用し、R2とR3では使わない。
+    /// αβ探索ではR1の引き分けの再現に適用する。
+    /// MCTSの対局用探索では、規則や成立理由を問わずすべての引き分けに適用する。
     /// [`crate::search::SearchLimits::new`]の深さと同じく、呼び出し元のUSIが
     /// 範囲を検査していても、ここでも範囲外の値を拒否する。
     ///
@@ -133,7 +149,7 @@ impl SearchSnapshot {
         Ok(self)
     }
 
-    /// 根の手番側から見た、RULES.md第31条R1の引き分けの値を返す。
+    /// 根の手番側から見た引き分けの値を返す。
     pub const fn draw_value(&self) -> i32 {
         self.draw_value
     }
