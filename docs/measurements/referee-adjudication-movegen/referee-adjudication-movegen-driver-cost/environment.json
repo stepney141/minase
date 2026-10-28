@@ -1,0 +1,147 @@
+{
+  "cpu": 2,
+  "seed": "20261028",
+  "games": "32",
+  "runs": [
+    {
+      "label": "before",
+      "round": 1,
+      "output": "before-1.json",
+      "started": "2026-10-28T17:12:46+09:00",
+      "finished": "2026-10-28T17:12:51+09:00",
+      "loadavg_at_start": [
+        1.49169921875,
+        3.19970703125,
+        4.21533203125
+      ],
+      "cpu_all_percent": 6.2317527433806505,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "after",
+      "round": 1,
+      "output": "after-1.json",
+      "started": "2026-10-28T17:12:51+09:00",
+      "finished": "2026-10-28T17:12:52+09:00",
+      "loadavg_at_start": [
+        1.4521484375,
+        3.1630859375,
+        4.19775390625
+      ],
+      "cpu_all_percent": 6.618531889290012,
+      "cpu2_percent": 97.61904761904762
+    },
+    {
+      "label": "before",
+      "round": 2,
+      "output": "before-2.json",
+      "started": "2026-10-28T17:12:52+09:00",
+      "finished": "2026-10-28T17:12:57+09:00",
+      "loadavg_at_start": [
+        1.4521484375,
+        3.1630859375,
+        4.19775390625
+      ],
+      "cpu_all_percent": 6.310581583198708,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "after",
+      "round": 2,
+      "output": "after-2.json",
+      "started": "2026-10-28T17:12:57+09:00",
+      "finished": "2026-10-28T17:12:57+09:00",
+      "loadavg_at_start": [
+        1.41552734375,
+        3.126953125,
+        4.18017578125
+      ],
+      "cpu_all_percent": 6.272189349112426,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "before",
+      "round": 3,
+      "output": "before-3.json",
+      "started": "2026-10-28T17:12:57+09:00",
+      "finished": "2026-10-28T17:13:02+09:00",
+      "loadavg_at_start": [
+        1.41552734375,
+        3.126953125,
+        4.18017578125
+      ],
+      "cpu_all_percent": 6.431159420289855,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "after",
+      "round": 3,
+      "output": "after-3.json",
+      "started": "2026-10-28T17:13:02+09:00",
+      "finished": "2026-10-28T17:13:02+09:00",
+      "loadavg_at_start": [
+        1.3818359375,
+        3.09130859375,
+        4.1630859375
+      ],
+      "cpu_all_percent": 6.257521058965103,
+      "cpu2_percent": 97.61904761904762
+    },
+    {
+      "label": "before",
+      "round": 4,
+      "output": "before-4.json",
+      "started": "2026-10-28T17:13:02+09:00",
+      "finished": "2026-10-28T17:13:07+09:00",
+      "loadavg_at_start": [
+        1.3818359375,
+        3.09130859375,
+        4.1630859375
+      ],
+      "cpu_all_percent": 6.079919069296914,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "after",
+      "round": 4,
+      "output": "after-4.json",
+      "started": "2026-10-28T17:13:07+09:00",
+      "finished": "2026-10-28T17:13:08+09:00",
+      "loadavg_at_start": [
+        1.35107421875,
+        3.05615234375,
+        4.14599609375
+      ],
+      "cpu_all_percent": 6.859205776173285,
+      "cpu2_percent": 100.0
+    },
+    {
+      "label": "before",
+      "round": 5,
+      "output": "before-5.json",
+      "started": "2026-10-28T17:13:08+09:00",
+      "finished": "2026-10-28T17:13:13+09:00",
+      "loadavg_at_start": [
+        1.35107421875,
+        3.05615234375,
+        4.14599609375
+      ],
+      "cpu_all_percent": 6.305488297013721,
+      "cpu2_percent": 99.79879275653923
+    },
+    {
+      "label": "after",
+      "round": 5,
+      "output": "after-5.json",
+      "started": "2026-10-28T17:13:13+09:00",
+      "finished": "2026-10-28T17:13:13+09:00",
+      "loadavg_at_start": [
+        1.4033203125,
+        3.03857421875,
+        4.13427734375
+      ],
+      "cpu_all_percent": 5.703883495145631,
+      "cpu2_percent": 100.0
+    }
+  ]
+}

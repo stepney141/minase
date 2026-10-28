@@ -1,0 +1,52 @@
+--- a/crates/minase-core/src/lib.rs
++++ b/crates/minase-core/src/lib.rs
+@@ -44,3 +44,6 @@
+     RuleCodeParseError, RuleGroup, RuleSetParseError, Rules, RulesError,
+ };
+ pub use notation::sfen::{SfenError, parse_sfen, to_sfen};
++
++/// 計測専用：詰み判定で逃れる手かを調べた候補手の数。
++pub static MATE_CANDIDATES: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+--- a/crates/minase-core/src/game/adjudication/mate.rs
++++ b/crates/minase-core/src/game/adjudication/mate.rs
+@@ -3,7 +3,6 @@
+ use super::super::repetition::repetition_is_forbidden;
+ use super::super::result::{GameResult, WinReason};
+ use super::AdjudicationContext;
+-use crate::board::Bitboard;
+ use crate::movegen::MoveGenerator;
+ use crate::mv::Move;
+ use crate::piece::{Color, PieceKind};
+@@ -87,23 +86,11 @@
+     context: &AdjudicationContext<'_>,
+ ) -> Option<WinReason> {
+     let mover = position.side_to_move();
+-    let occupied = position.occupied();
+-    let royals = position.royal_pieces(mover);
+-    let mut attackers = Bitboard::EMPTY;
+-    for royal in royals {
+-        attackers |= position.attackers_to_by(mover.opposite(), royal, occupied);
+-    }
+-    let mut capturers = Bitboard::EMPTY;
+-    for attacker in attackers {
+-        capturers |= position.attackers_to_by(mover, attacker, occupied);
+-    }
+-    capturers &= !royals;
+-    let remaining = position.pieces_of(mover) & !(royals | capturers);
+ 
+     let mut base_moves = Vec::new();
+     let mut moves = Vec::new();
+     let mut has_legal_move = false;
+-    for group in [royals, capturers, remaining] {
++    for group in [position.pieces_of(mover)] {
+         for kind in PieceKind::ALL {
+             for from in position.pieces_of_kind(mover, kind) & group {
+                 moves.clear();
+@@ -123,6 +110,7 @@
+                         return None;
+                     }
+ 
++                    crate::MATE_CANDIDATES.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                     let escapes_mate = captures_royals
+                         || match context.candidate_immediate_result(position, mv, &undo) {
+                             Some(GameResult::Win { winner, .. }) => winner == mover,

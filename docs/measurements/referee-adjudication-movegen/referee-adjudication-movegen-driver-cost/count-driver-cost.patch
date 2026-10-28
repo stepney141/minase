@@ -1,0 +1,22 @@
+diff --git a/tools/train/zero/feasibility/src/bin/driver_cost.rs b/tools/train/zero/feasibility/src/bin/driver_cost.rs
+index fbbeb0a..7960686 100644
+--- a/tools/train/zero/feasibility/src/bin/driver_cost.rs
++++ b/tools/train/zero/feasibility/src/bin/driver_cost.rs
+@@ -391,7 +391,9 @@ fn main() -> Result<()> {
+     for case in &cases {
+         for (mode, gumbel) in [("gumbel", true), ("puct", false)] {
+             let game = case.game()?;
++            minase_core::MATE_CANDIDATES.store(0, std::sync::atomic::Ordering::Relaxed);
+             let (driver, ms, output) = search(&game, case.seed, gumbel)?;
++            let mate_candidates = minase_core::MATE_CANDIDATES.load(std::sync::atomic::Ordering::Relaxed);
+             let mut counts = Counts {
+                 winners: BTreeMap::from([
+                     ("Black".into(), 0),
+@@ -420,6 +422,7 @@ fn main() -> Result<()> {
+                 "approximate_cutoffs": if adjudication { counts.terminal_leaves - counts.terminals.values().sum::<u64>() } else { 0 },
+                 "terminal_reasons": counts.terminals,
+                 "terminal_winners": counts.winners,
++                "mate_candidates": mate_candidates,
+             });
+             match output {
+                 SearchOutput::Gumbel {

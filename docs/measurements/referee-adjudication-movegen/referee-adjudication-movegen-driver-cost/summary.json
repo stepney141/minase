@@ -1,0 +1,309 @@
+{
+  "rounds": {
+    "before": 5,
+    "after": 5
+  },
+  "identical_outside_time_fields": true,
+  "groups": {
+    "gumbel/all": {
+      "before": {
+        "searches": 109,
+        "searches_with_replay": 109,
+        "median_ms": 0.554297,
+        "median_us_per_replayed_move": 12.293541666666668
+      },
+      "after": {
+        "searches": 109,
+        "searches_with_replay": 109,
+        "median_ms": 0.121221,
+        "median_us_per_replayed_move": 2.8363541666666667
+      },
+      "ratio_per_replayed_move": 0.23071904285786912
+    },
+    "gumbel/fixed_exhaustion_draw": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.043099,
+        "median_us_per_replayed_move": 1.1971944444444444
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.028908,
+        "median_us_per_replayed_move": 0.803
+      },
+      "ratio_per_replayed_move": 0.6707348198334069
+    },
+    "gumbel/fixed_exhaustion_win": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.024034,
+        "median_us_per_replayed_move": 2.670444444444444
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.013842,
+        "median_us_per_replayed_move": 1.538
+      },
+      "ratio_per_replayed_move": 0.5759340933677292
+    },
+    "gumbel/fixed_mate": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.137076,
+        "median_us_per_replayed_move": 2.85575
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.065164,
+        "median_us_per_replayed_move": 1.3575833333333334
+      },
+      "ratio_per_replayed_move": 0.4753859173013511
+    },
+    "gumbel/history_100": {
+      "before": {
+        "searches": 28,
+        "searches_with_replay": 28,
+        "median_ms": 0.560347,
+        "median_us_per_replayed_move": 11.836875
+      },
+      "after": {
+        "searches": 28,
+        "searches_with_replay": 28,
+        "median_ms": 0.128052,
+        "median_us_per_replayed_move": 2.7786666666666666
+      },
+      "ratio_per_replayed_move": 0.2347466427301688
+    },
+    "gumbel/history_300": {
+      "before": {
+        "searches": 14,
+        "searches_with_replay": 14,
+        "median_ms": 0.84635,
+        "median_us_per_replayed_move": 17.632291666666667
+      },
+      "after": {
+        "searches": 14,
+        "searches_with_replay": 14,
+        "median_ms": 0.146034,
+        "median_us_per_replayed_move": 3.059270833333333
+      },
+      "ratio_per_replayed_move": 0.17350386955751165
+    },
+    "gumbel/history_600": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 2.929577,
+        "median_us_per_replayed_move": 61.032854166666674
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.241269,
+        "median_us_per_replayed_move": 5.0264375
+      },
+      "ratio_per_replayed_move": 0.08235625825844481
+    },
+    "gumbel/near_Mate": {
+      "before": {
+        "searches": 8,
+        "searches_with_replay": 8,
+        "median_ms": 0.596386,
+        "median_us_per_replayed_move": 39.68979166666667
+      },
+      "after": {
+        "searches": 8,
+        "searches_with_replay": 8,
+        "median_ms": 0.048007999999999995,
+        "median_us_per_replayed_move": 7.397272727272727
+      },
+      "ratio_per_replayed_move": 0.1863772122917264
+    },
+    "gumbel/near_RoyalCapture": {
+      "before": {
+        "searches": 23,
+        "searches_with_replay": 23,
+        "median_ms": 2.51235,
+        "median_us_per_replayed_move": 73.54641666666666
+      },
+      "after": {
+        "searches": 23,
+        "searches_with_replay": 23,
+        "median_ms": 0.146877,
+        "median_us_per_replayed_move": 3.4688125000000003
+      },
+      "ratio_per_replayed_move": 0.047164942321005904
+    },
+    "gumbel/opening": {
+      "before": {
+        "searches": 32,
+        "searches_with_replay": 32,
+        "median_ms": 0.435001,
+        "median_us_per_replayed_move": 9.062520833333334
+      },
+      "after": {
+        "searches": 32,
+        "searches_with_replay": 32,
+        "median_ms": 0.099566,
+        "median_us_per_replayed_move": 2.074291666666667
+      },
+      "ratio_per_replayed_move": 0.22888683014521807
+    },
+    "puct/all": {
+      "before": {
+        "searches": 109,
+        "searches_with_replay": 109,
+        "median_ms": 19.173875,
+        "median_us_per_replayed_move": 11.542043294117645
+      },
+      "after": {
+        "searches": 109,
+        "searches_with_replay": 109,
+        "median_ms": 2.988713,
+        "median_us_per_replayed_move": 1.7394958061509787
+      },
+      "ratio_per_replayed_move": 0.15070952012781874
+    },
+    "puct/fixed_exhaustion_draw": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.37305900000000003,
+        "median_us_per_replayed_move": 1.1843142857142859
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.212756,
+        "median_us_per_replayed_move": 0.675415873015873
+      },
+      "ratio_per_replayed_move": 0.570301212408761
+    },
+    "puct/fixed_exhaustion_win": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.031353000000000006,
+        "median_us_per_replayed_move": 1.9595625000000003
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.017667,
+        "median_us_per_replayed_move": 1.1041874999999999
+      },
+      "ratio_per_replayed_move": 0.5634867476796477
+    },
+    "puct/fixed_mate": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.016059999999999998,
+        "median_us_per_replayed_move": 4.015
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 0.00718,
+        "median_us_per_replayed_move": 1.795
+      },
+      "ratio_per_replayed_move": 0.44707347447073476
+    },
+    "puct/history_100": {
+      "before": {
+        "searches": 28,
+        "searches_with_replay": 28,
+        "median_ms": 22.977071000000002,
+        "median_us_per_replayed_move": 11.542043294117645
+      },
+      "after": {
+        "searches": 28,
+        "searches_with_replay": 28,
+        "median_ms": 3.464182,
+        "median_us_per_replayed_move": 1.7394958061509787
+      },
+      "ratio_per_replayed_move": 0.15070952012781874
+    },
+    "puct/history_300": {
+      "before": {
+        "searches": 14,
+        "searches_with_replay": 14,
+        "median_ms": 22.518974,
+        "median_us_per_replayed_move": 15.242574701670643
+      },
+      "after": {
+        "searches": 14,
+        "searches_with_replay": 14,
+        "median_ms": 3.4886150000000002,
+        "median_us_per_replayed_move": 1.7338355325164938
+      },
+      "ratio_per_replayed_move": 0.11374951846727437
+    },
+    "puct/history_600": {
+      "before": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 149.12762099999998,
+        "median_us_per_replayed_move": 70.67659763033174
+      },
+      "after": {
+        "searches": 1,
+        "searches_with_replay": 1,
+        "median_ms": 7.540661,
+        "median_us_per_replayed_move": 3.5737729857819907
+      },
+      "ratio_per_replayed_move": 0.05056515318513665
+    },
+    "puct/near_Mate": {
+      "before": {
+        "searches": 8,
+        "searches_with_replay": 8,
+        "median_ms": 0.46036200000000005,
+        "median_us_per_replayed_move": 54.108391304347826
+      },
+      "after": {
+        "searches": 8,
+        "searches_with_replay": 8,
+        "median_ms": 0.060674,
+        "median_us_per_replayed_move": 5.515818181818182
+      },
+      "ratio_per_replayed_move": 0.10194016212370675
+    },
+    "puct/near_RoyalCapture": {
+      "before": {
+        "searches": 23,
+        "searches_with_replay": 23,
+        "median_ms": 4.008229,
+        "median_us_per_replayed_move": 103.88334782608696
+      },
+      "after": {
+        "searches": 23,
+        "searches_with_replay": 23,
+        "median_ms": 0.172209,
+        "median_us_per_replayed_move": 3.810970588235294
+      },
+      "ratio_per_replayed_move": 0.036685096004176826
+    },
+    "puct/opening": {
+      "before": {
+        "searches": 32,
+        "searches_with_replay": 32,
+        "median_ms": 19.272181999999997,
+        "median_us_per_replayed_move": 8.52462299349241
+      },
+      "after": {
+        "searches": 32,
+        "searches_with_replay": 32,
+        "median_ms": 3.045341,
+        "median_us_per_replayed_move": 1.3593951786482996
+      },
+      "ratio_per_replayed_move": 0.1594668972089493
+    }
+  }
+}

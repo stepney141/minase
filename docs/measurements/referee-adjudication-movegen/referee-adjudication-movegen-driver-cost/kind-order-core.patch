@@ -1,0 +1,35 @@
+--- a/crates/minase-core/src/game/adjudication/mate.rs
++++ b/crates/minase-core/src/game/adjudication/mate.rs
+@@ -3,7 +3,6 @@
+ use super::super::repetition::repetition_is_forbidden;
+ use super::super::result::{GameResult, WinReason};
+ use super::AdjudicationContext;
+-use crate::board::Bitboard;
+ use crate::movegen::MoveGenerator;
+ use crate::mv::Move;
+ use crate::piece::{Color, PieceKind};
+@@ -87,23 +86,10 @@
+     context: &AdjudicationContext<'_>,
+ ) -> Option<WinReason> {
+     let mover = position.side_to_move();
+-    let occupied = position.occupied();
+-    let royals = position.royal_pieces(mover);
+-    let mut attackers = Bitboard::EMPTY;
+-    for royal in royals {
+-        attackers |= position.attackers_to_by(mover.opposite(), royal, occupied);
+-    }
+-    let mut capturers = Bitboard::EMPTY;
+-    for attacker in attackers {
+-        capturers |= position.attackers_to_by(mover, attacker, occupied);
+-    }
+-    capturers &= !royals;
+-    let remaining = position.pieces_of(mover) & !(royals | capturers);
+-
+     let mut base_moves = Vec::new();
+     let mut moves = Vec::new();
+     let mut has_legal_move = false;
+-    for group in [royals, capturers, remaining] {
++    for group in [position.pieces_of(mover)] {
+         for kind in PieceKind::ALL {
+             for from in position.pieces_of_kind(mover, kind) & group {
+                 moves.clear();

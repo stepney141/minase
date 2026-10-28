@@ -332,3 +332,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月28日 [MCTSは新しい節点を審判層の裁定で終局させてから反復の近似を適用し、引き分けの勝率を由来を問わず同じ値にする](adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)
 - 2026年10月28日 [AlphaZero型探索の学習器は、常に不可能な方策のラベルを損失の正規化から除き、価値を対局結果と根の価値の混合で学び、最終の重みで訓練集合の標本と検証集合を同じ条件で診断する](mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)
 - 2026年10月28日 [対局ハーネスは候補と基準のUSIオプションを`--candidate-option`と`--baseline-option`で受け取り、エンジンの宣言と照合して実行条件に記録する](pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)
+- 2026年10月28日 [審判層は獅子でない駒の捕獲可能性を利きの逆引きで判定し、合法手なしと詰みを駒ごとの生成で最初の逃れる手で打ち切る](judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)

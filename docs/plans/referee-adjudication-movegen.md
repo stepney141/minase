@@ -10,10 +10,11 @@
 疑似利きによる判定は、獅子でない駒の升へ疑似利きが届くこととその駒を取る合法手があることが一致するという補題に基づき、この補題は`Position::gives_check`が既に使い、乱数局面での合法手生成との一致が試験で固定されている。
 これらにより、再生1手あたりの全件生成は通常の経路で約10回から1回未満になる見込みである。
 完了条件は、裁定の結果が独立した参照実装と一致する試験と既存の試験が通ること、同じ条件で実行した探索の測定の出力が変更の前後で時間の項目を除いて一致すること、および再生1手あたりに正規化した探索時間の中央値が序盤と王駒の捕獲の近傍の両方で変更前の半分以下になった測定記録を残してmasterへマージすることである。
+2026年10月28日の[測定](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)では、出力が時間の項目を除いて一致したうえで、再生1手あたりに正規化した探索時間の中央値が序盤で変更前の0.16〜0.23倍、王駒の捕獲の近傍で0.04〜0.05倍になり、変更後の`Game::play`の費用は再生1手あたり全件生成の約0.32回分になった。
 
 ## 状態
 
-進行中。2026年10月28日に起案し、同日に[やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../research/yaneuraou-check-detection-for-referee.md)の反映候補5件を取り込んで改訂したうえで、利用者の指示により`referee-adjudication-movegen`ブランチで着手した。次の一手は、フェーズ1の参照試験を現行の実装で通すことである。
+マージ待ち。2026年10月28日に起案して同日に着手し、フェーズ1からフェーズ3までを終えた。[測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)で完了条件の出力の一致と探索時間の半減を確かめ、補題と判定の範囲をdocコメントと[ADR](../adr/judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)へ移した。次の一手は、利用者の許可を得てmasterへマージし、本書を凍結して`archived/`へ移すことである。
 
 ## 目的
 

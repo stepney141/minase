@@ -1,0 +1,342 @@
+{
+  "gumbel/all": {
+    "base": {
+      "mate_candidates": 29733,
+      "replayed_moves": 4460,
+      "per_replayed_move": 6.666591928251121
+    },
+    "groups": {
+      "mate_candidates": 7112,
+      "replayed_moves": 4460,
+      "per_replayed_move": 1.5946188340807175
+    },
+    "kind_order": {
+      "mate_candidates": 29733,
+      "replayed_moves": 4460,
+      "per_replayed_move": 6.666591928251121
+    }
+  },
+  "gumbel/fixed_exhaustion_draw": {
+    "base": {
+      "mate_candidates": 35,
+      "replayed_moves": 36,
+      "per_replayed_move": 0.9722222222222222
+    },
+    "groups": {
+      "mate_candidates": 35,
+      "replayed_moves": 36,
+      "per_replayed_move": 0.9722222222222222
+    },
+    "kind_order": {
+      "mate_candidates": 35,
+      "replayed_moves": 36,
+      "per_replayed_move": 0.9722222222222222
+    }
+  },
+  "gumbel/fixed_exhaustion_win": {
+    "base": {
+      "mate_candidates": 9,
+      "replayed_moves": 9,
+      "per_replayed_move": 1.0
+    },
+    "groups": {
+      "mate_candidates": 9,
+      "replayed_moves": 9,
+      "per_replayed_move": 1.0
+    },
+    "kind_order": {
+      "mate_candidates": 9,
+      "replayed_moves": 9,
+      "per_replayed_move": 1.0
+    }
+  },
+  "gumbel/fixed_mate": {
+    "base": {
+      "mate_candidates": 61,
+      "replayed_moves": 48,
+      "per_replayed_move": 1.2708333333333333
+    },
+    "groups": {
+      "mate_candidates": 92,
+      "replayed_moves": 48,
+      "per_replayed_move": 1.9166666666666667
+    },
+    "kind_order": {
+      "mate_candidates": 61,
+      "replayed_moves": 48,
+      "per_replayed_move": 1.2708333333333333
+    }
+  },
+  "gumbel/history_100": {
+    "base": {
+      "mate_candidates": 3848,
+      "replayed_moves": 1176,
+      "per_replayed_move": 3.272108843537415
+    },
+    "groups": {
+      "mate_candidates": 1412,
+      "replayed_moves": 1176,
+      "per_replayed_move": 1.2006802721088434
+    },
+    "kind_order": {
+      "mate_candidates": 3848,
+      "replayed_moves": 1176,
+      "per_replayed_move": 3.272108843537415
+    }
+  },
+  "gumbel/history_300": {
+    "base": {
+      "mate_candidates": 5058,
+      "replayed_moves": 634,
+      "per_replayed_move": 7.977917981072555
+    },
+    "groups": {
+      "mate_candidates": 926,
+      "replayed_moves": 634,
+      "per_replayed_move": 1.4605678233438486
+    },
+    "kind_order": {
+      "mate_candidates": 5058,
+      "replayed_moves": 634,
+      "per_replayed_move": 7.977917981072555
+    }
+  },
+  "gumbel/history_600": {
+    "base": {
+      "mate_candidates": 881,
+      "replayed_moves": 48,
+      "per_replayed_move": 18.354166666666668
+    },
+    "groups": {
+      "mate_candidates": 828,
+      "replayed_moves": 48,
+      "per_replayed_move": 17.25
+    },
+    "kind_order": {
+      "mate_candidates": 881,
+      "replayed_moves": 48,
+      "per_replayed_move": 18.354166666666668
+    }
+  },
+  "gumbel/near_Mate": {
+    "base": {
+      "mate_candidates": 1601,
+      "replayed_moves": 163,
+      "per_replayed_move": 9.822085889570552
+    },
+    "groups": {
+      "mate_candidates": 738,
+      "replayed_moves": 163,
+      "per_replayed_move": 4.52760736196319
+    },
+    "kind_order": {
+      "mate_candidates": 1601,
+      "replayed_moves": 163,
+      "per_replayed_move": 9.822085889570552
+    }
+  },
+  "gumbel/near_RoyalCapture": {
+    "base": {
+      "mate_candidates": 16704,
+      "replayed_moves": 810,
+      "per_replayed_move": 20.622222222222224
+    },
+    "groups": {
+      "mate_candidates": 1536,
+      "replayed_moves": 810,
+      "per_replayed_move": 1.8962962962962964
+    },
+    "kind_order": {
+      "mate_candidates": 16704,
+      "replayed_moves": 810,
+      "per_replayed_move": 20.622222222222224
+    }
+  },
+  "gumbel/opening": {
+    "base": {
+      "mate_candidates": 1536,
+      "replayed_moves": 1536,
+      "per_replayed_move": 1.0
+    },
+    "groups": {
+      "mate_candidates": 1536,
+      "replayed_moves": 1536,
+      "per_replayed_move": 1.0
+    },
+    "kind_order": {
+      "mate_candidates": 1536,
+      "replayed_moves": 1536,
+      "per_replayed_move": 1.0
+    }
+  },
+  "puct/all": {
+    "base": {
+      "mate_candidates": 371345,
+      "replayed_moves": 149710,
+      "per_replayed_move": 2.480428829069534
+    },
+    "groups": {
+      "mate_candidates": 214958,
+      "replayed_moves": 149710,
+      "per_replayed_move": 1.435829269921849
+    },
+    "kind_order": {
+      "mate_candidates": 371345,
+      "replayed_moves": 149710,
+      "per_replayed_move": 2.480428829069534
+    }
+  },
+  "puct/fixed_exhaustion_draw": {
+    "base": {
+      "mate_candidates": 321,
+      "replayed_moves": 315,
+      "per_replayed_move": 1.019047619047619
+    },
+    "groups": {
+      "mate_candidates": 321,
+      "replayed_moves": 315,
+      "per_replayed_move": 1.019047619047619
+    },
+    "kind_order": {
+      "mate_candidates": 321,
+      "replayed_moves": 315,
+      "per_replayed_move": 1.019047619047619
+    }
+  },
+  "puct/fixed_exhaustion_win": {
+    "base": {
+      "mate_candidates": 16,
+      "replayed_moves": 16,
+      "per_replayed_move": 1.0
+    },
+    "groups": {
+      "mate_candidates": 16,
+      "replayed_moves": 16,
+      "per_replayed_move": 1.0
+    },
+    "kind_order": {
+      "mate_candidates": 16,
+      "replayed_moves": 16,
+      "per_replayed_move": 1.0
+    }
+  },
+  "puct/fixed_mate": {
+    "base": {
+      "mate_candidates": 12,
+      "replayed_moves": 4,
+      "per_replayed_move": 3.0
+    },
+    "groups": {
+      "mate_candidates": 9,
+      "replayed_moves": 4,
+      "per_replayed_move": 2.25
+    },
+    "kind_order": {
+      "mate_candidates": 12,
+      "replayed_moves": 4,
+      "per_replayed_move": 3.0
+    }
+  },
+  "puct/history_100": {
+    "base": {
+      "mate_candidates": 101970,
+      "replayed_moves": 50281,
+      "per_replayed_move": 2.028002625246117
+    },
+    "groups": {
+      "mate_candidates": 59445,
+      "replayed_moves": 50281,
+      "per_replayed_move": 1.1822557228376525
+    },
+    "kind_order": {
+      "mate_candidates": 101970,
+      "replayed_moves": 50281,
+      "per_replayed_move": 2.028002625246117
+    }
+  },
+  "puct/history_300": {
+    "base": {
+      "mate_candidates": 105239,
+      "replayed_moves": 23973,
+      "per_replayed_move": 4.389896967421683
+    },
+    "groups": {
+      "mate_candidates": 34648,
+      "replayed_moves": 23973,
+      "per_replayed_move": 1.44529262086514
+    },
+    "kind_order": {
+      "mate_candidates": 105239,
+      "replayed_moves": 23973,
+      "per_replayed_move": 4.389896967421683
+    }
+  },
+  "puct/history_600": {
+    "base": {
+      "mate_candidates": 47559,
+      "replayed_moves": 2110,
+      "per_replayed_move": 22.539810426540285
+    },
+    "groups": {
+      "mate_candidates": 44090,
+      "replayed_moves": 2110,
+      "per_replayed_move": 20.895734597156398
+    },
+    "kind_order": {
+      "mate_candidates": 47559,
+      "replayed_moves": 2110,
+      "per_replayed_move": 22.539810426540285
+    }
+  },
+  "puct/near_Mate": {
+    "base": {
+      "mate_candidates": 1997,
+      "replayed_moves": 164,
+      "per_replayed_move": 12.176829268292684
+    },
+    "groups": {
+      "mate_candidates": 1055,
+      "replayed_moves": 164,
+      "per_replayed_move": 6.432926829268292
+    },
+    "kind_order": {
+      "mate_candidates": 1997,
+      "replayed_moves": 164,
+      "per_replayed_move": 12.176829268292684
+    }
+  },
+  "puct/near_RoyalCapture": {
+    "base": {
+      "mate_candidates": 42785,
+      "replayed_moves": 1401,
+      "per_replayed_move": 30.538900785153462
+    },
+    "groups": {
+      "mate_candidates": 3928,
+      "replayed_moves": 1401,
+      "per_replayed_move": 2.8037116345467523
+    },
+    "kind_order": {
+      "mate_candidates": 42785,
+      "replayed_moves": 1401,
+      "per_replayed_move": 30.538900785153462
+    }
+  },
+  "puct/opening": {
+    "base": {
+      "mate_candidates": 71446,
+      "replayed_moves": 71446,
+      "per_replayed_move": 1.0
+    },
+    "groups": {
+      "mate_candidates": 71446,
+      "replayed_moves": 71446,
+      "per_replayed_move": 1.0
+    },
+    "kind_order": {
+      "mate_candidates": 71446,
+      "replayed_moves": 71446,
+      "per_replayed_move": 1.0
+    }
+  }
+}

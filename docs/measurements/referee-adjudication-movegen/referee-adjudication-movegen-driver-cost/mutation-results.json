@@ -1,0 +1,86 @@
+[
+  {
+    "name": "two_royals_judged_by_attacks",
+    "description": "can_capture_last_royalで王駒が2枚の場合も、いずれかへの疑似利きで真とする",
+    "file": "crates/minase-core/src/game/adjudication/mate.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::adjudication::tests::fixtures::article_22_grace_counts_either_royal_and_ignores_dead_pieces",
+      "game::adjudication::tests::fixtures::articles_8_12_20_last_royal_capture_counts_all_remaining_royals",
+      "game::adjudication::tests::reference::articles_21_23_31_32_random_games_match_full_generation"
+    ]
+  },
+  {
+    "name": "attacking_move_ignores_royals",
+    "description": "move_was_attackingの王駒の条件を外し、動かした駒の捕獲だけで判定する",
+    "file": "crates/minase-core/src/game/repetition/r1.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::adjudication::tests::fixtures::article_31_attacking_move_counts_any_royal_but_not_unmoved_nonroyal_threats",
+      "game::adjudication::tests::fixtures::article_31_r1_candidate_gates_match_recording_a_cloned_history",
+      "game::adjudication::tests::fixtures::article_31_r1_candidate_evaluates_attack_only_when_adjudicating",
+      "game::tests::adjudication_history::article_21_3_r1_eleven_and_twelve_reversible_plies_change_mate",
+      "game::tests::repetition::article_31_r1_standing_threat_to_either_royal_counts_as_attacking",
+      "game::adjudication::tests::reference::articles_21_23_31_32_random_games_match_full_generation",
+      "game::adjudication::tests::reference::articles_8_22_31_function_results_match_full_generation"
+    ]
+  },
+  {
+    "name": "attacking_move_counts_quiet_moves",
+    "description": "move_was_attackingの動かした駒の条件で、捕獲でない手も数える",
+    "file": "crates/minase-core/src/game/repetition/r1.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::adjudication::tests::fixtures::article_31_attacking_move_counts_any_royal_but_not_unmoved_nonroyal_threats",
+      "game::adjudication::tests::fixtures::article_31_r1_candidate_evaluates_attack_only_when_adjudicating",
+      "game::adjudication::tests::fixtures::article_31_r1_candidate_gates_match_recording_a_cloned_history",
+      "game::adjudication::tests::article_21_3_r1_repetition_loss_does_not_rescue_mate",
+      "game::adjudication::tests::reference::articles_21_23_31_32_random_games_match_full_generation",
+      "game::tests::adjudication_history::article_21_3_r1_eleven_and_twelve_reversible_plies_change_mate",
+      "game::adjudication::tests::fixtures::articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects",
+      "game::adjudication::tests::fixtures::articles_14_31_attacking_move_respects_lion_capture_restrictions",
+      "game::tests::adjudication_history::article_21_3_r1_repetition_loss_is_not_an_escape_through_play",
+      "game::adjudication::tests::reference::articles_8_22_31_function_results_match_full_generation",
+      "game::tests::repetition::article_31_r1_public_attack_counters_follow_moves_and_adjudication",
+      "game::tests::repetition::article_31_r1_sole_continuous_checker_loses",
+      "game::tests::repetition::article_31_r1_standing_threat_to_either_royal_counts_as_attacking",
+      "game::tests::root_repetition::article_31_r1_only_repetition_win_is_winning_when_royal_capture_also_exists",
+      "game::tests::root_repetition::article_31_r1_royal_capture_ends_before_any_reply_is_considered",
+      "game::tests::root_repetition::article_31_r1_root_classification_follows_repetition_outcomes",
+      "game::tests::win::article_21_3_c_and_31_r1_repetition_win_rescues_mate",
+      "game::tests::root_repetition::article_31_r1_classification_preserves_game_and_skips_unrepeated_history",
+      "game::tests::root_repetition::article_31_r1_key_filter_matches_exhaustive_classification_in_all_states",
+      "game::tests::root_repetition::articles_31_r1_and_3_13_lion_passes_require_twelve_reversible_plies"
+    ]
+  },
+  {
+    "name": "grace_judged_by_attacks",
+    "description": "駒枯れの猶予を、余分な駒と王駒の升への疑似利きで判定する（獅子の捕獲制限を無視する）",
+    "file": "crates/minase-core/src/game/adjudication/exhaustion.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::adjudication::tests::fixtures::articles_13_15_22_sente_lion_blocks_piece_exhaustion_grace"
+    ]
+  },
+  {
+    "name": "checked_move_skips_legality",
+    "description": "try_make_move_with_undoが合法性を検査せずに適用する",
+    "file": "crates/minase-core/src/movegen/checked.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::tests::illegal_move::article_27_1_rejected_moves_leave_the_game_state_unchanged",
+      "movegen::tests::legality::article_27_legality_and_checked_application_match_full_generation"
+    ]
+  },
+  {
+    "name": "mate_skips_immediate_results",
+    "description": "詰み判定で候補手の即時の勝ちと引き分けを逃れる手に数えない",
+    "file": "crates/minase-core/src/game/adjudication/mate.rs",
+    "detected": true,
+    "failed_tests": [
+      "game::adjudication::tests::fixtures::articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects",
+      "game::tests::win::article_21_3_d_r1_repetition_draw_rescues_mate",
+      "game::adjudication::tests::reference::articles_21_23_31_32_random_games_match_full_generation"
+    ]
+  }
+]

@@ -1,0 +1,13577 @@
+# callgrind format
+version: 1
+creator: callgrind-3.25.1
+pid: 3174946
+cmd:  /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/callgrind-target-before/release/driver_cost --seed 20261028 --games 32 --adjudication after
+part: 1
+
+
+desc: I1 cache: 
+desc: D1 cache: 
+desc: LL cache: 
+
+desc: Timerange: Basic block 0 - 18696576980
+desc: Trigger: Program termination
+
+positions: line
+events: Ir
+summary: 66225052225
+
+
+ob=(1) /usr/lib/ld-linux-x86-64.so.2
+fl=(1) ???
+fn=(0) 0x00000000000217e0
+cob=(7) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/callgrind-target-before/release/driver_cost
+cfi=(213) ???
+cfn=(738) (below main)
+calls=1 0 
+0 66225052225
+
+ob=(2) /usr/lib/libc.so.6
+fl=(294) /usr/src/debug/glibc/glibc/string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+fn=(1128) __memset_avx2_unaligned_erms
+193 68127
++1 136254
++5 68127
++1 68127
++1 67516
++1 67516
++1 67516
++2 8673
++1 8673
++1 17346
++9 2839
++1 2839
++2 5678
++5 58843
++1 58843
++6 58776
++1 58776
++12 58776
++3 58776
++1 58776
++12 55937
++1 55937
++13 55937
++1 55937
++2 55937
++3 34481
++3 34481
++3 34481
++1 34481
++1 34481
++1 34481
++1 34481
++1 34481
++1 34481
+-6 17935
++1 17935
++1 17935
++1 17935
++1 17935
++1 17935
++1 52416
++3 34481
++1 34481
++1 34481
++1 34481
++3 68962
+-6 21456
++1 21456
++1 21456
++1 21456
++3 42912
++15 67
++1 67
++1 67
++1 67
++1 67
++1 292723
++5 67
++2 134
++8 611
++9 611
++1 611
++5 44
++1 44
++25 567
++1 567
++1 567
++9 44
++1 44
++5 44
+
+fl=(242) /usr/src/debug/glibc/glibc/csu/../sysdeps/nptl/libc_start_call_main.h
+fn=(958) (below main)
+cob=(7)
+cfi=(213)
+cfn=(966) main
+calls=1 0 
+59 66225052225
+
+fl=(225) /usr/src/debug/glibc/glibc/time/../sysdeps/unix/sysv/linux/clock_gettime.c
+fn=(812) clock_gettime@@GLIBC_2.17
+30 32826
++8 65652
++2 65652
++28 98478
++1 65652
++17 32826
+
+fl=(214) /usr/src/debug/glibc/glibc/csu/../csu/libc-start.c
+fn=(740) __libc_start_main@@GLIBC_2.34
+cfi=(242)
+cfn=(958)
+calls=1 30 
+372 66225052225
+
+fl=(353) /usr/src/debug/glibc/glibc/string/../sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+fn=(1486) __memcmp_avx2_movbe
+73 18672462
++7 18672462
++1 18672462
++3 4807863
++1 4807863
++1 4807863
++4 4807863
++1 4807863
++2 43463
++1 43463
++62 18409506
++10 18409506
++1 18409506
++1 18409506
++3 36819012
+337 43463
++1 43463
++1 43463
++1 43463
++1 43463
++1 86926
++59 13864599
++1 13864599
++5 13864599
++1 13864599
++1 13864599
++1 13864599
++1 13864599
++3 13356197
++1 13356197
++1 13356197
++1 13356197
++3 13356197
++1 13356197
++1 126228
++1 252456
++6 508402
++1 508402
++2 89766
++1 89766
++30 86964
++1 86964
++2 86964
++10 89766
++1 89766
++1 89766
++1 89766
++1 2802
++1 2802
++1 2802
++2 2802
++2 2802
++26 418636
++1 418636
++1 418636
++1 418636
++1 418636
++4 3499
++1 3499
++1 3499
++1 3499
++1 3499
++1 3499
++2 3499
++2 3499
+
+fl=(282) /usr/src/debug/glibc/glibc/string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+fn=(1090) __memcpy_avx_unaligned_erms
+255 11773412
++1 11773412
++6 11773412
++1 11773412
++2 11727665
++1 11727665
++1 11727665
++3 5650893
++1 5650893
++1 5650893
++3 11301786
++30 45747
++1 45747
++2 9929
++1 9929
++33 35818
++1 35818
++1 35818
++1 35818
++2 35818
++17 9929
++1 9929
++1 9929
++1 9929
++1 9929
++7 2176809
++1 2176809
++1 2176809
++1 2176809
++1 2176809
++1 2176809
++1 4353618
++5 6076772
++1 6076772
++5 6075321
++1 6075321
++2 3922331
++1 3922331
++1 3922331
++2 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 1745522
++1 3491044
++4 2152990
++1 2152990
++4 2152990
++2 2152990
++4 2152990
++1 2152990
++11 2152990
++3 2152990
++2 2152990
++2 2152990
++4 2152990
++1 2152990
++9 2059993
++1 2059993
++2 2059993
++2 2059993
++1 2059993
++1 2059993
++3 2059993
++2 2059993
++2 2059993
++2 4119986
++6 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
++1 2059993
+-11 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++1 12680086
++2 2059993
++1 2059993
++1 2059993
++1 2059993
++2 2059993
++4 4119986
++13 92997
++1 92997
++2 92997
++1 92997
++1 92997
++2 92997
++2 92997
++2 185994
++6 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
++1 92997
+-11 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++1 587652
++2 92997
++1 92997
++1 92997
++1 92997
++2 92997
++1 185994
++9 1451
++7 1451
++1 1451
++6 1432
++3 1432
++2 1432
++3 1432
++1 1432
++2 1432
++2 28673944
++2 1432
++2 1432
++2 2864
++5 1451
++1 1451
++4 1451
++2 1451
++3 1451
++4 1451
++1 1451
++4 1451
++4 1451
++24 19
++2 19
++2 19
++2 19
++3 19
++1 19
++2 198675
++3 19
++2 19
++2 38
+
+fl=(231) /usr/src/debug/glibc/glibc/misc/../sysdeps/unix/syscall-template.S
+fn=(1284) madvise
+117 4845
++5 969
+
+ob=(7)
+fl=(413) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/lion_like.rs
+fn=(2270) minase_core::movegen::lion_like::generate_lion_like_double_and_jumps::<false, false, minase_core::movegen::generate::generate_piece_moves<false, false>::{closure#1}>
+18 3419880
+fi=(433) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/piece/color.rs
++5 427485
+fi=(422) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/mod.rs
++48 2137425
+fi=(433)
+-48 1282455
+fi=(422)
++48 2137425
+fi=(352) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ptr/non_null.rs
+1650 427485
+fi=(351) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs
+180 427485
+0 3419880
+180 8122215
+fe=(413)
+65 547252
+fi=(362) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/raw_vec/mod.rs
+615 136813
+fi=(358) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ptr/mut_ptr.rs
+970 136813
+fi=(350) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ptr/mod.rs
+1939 410439
+fi=(378) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs
+1044 273626
+0 410439
+fi=(352)
+1650 273626
+fi=(351)
+180 136813
+fi=(378)
+0 1021068
+fi=(352)
+1650 680712
+fi=(351)
+180 340356
+fi=(352)
+1650 321174
+fi=(351)
+180 160587
+0 637756
+fe=(413)
+33 637756
+fi=(416) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/attacks/fixed.rs
++35 1913268
+-68 434428
+68 987335
+-68 630813
+68 101849
+-68 169698
+68 84849
+-68 481574
+68 420542
+-68 841084
+fi=(367) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/board/square.rs
+93 203698
++1 203698
++2 407396
+fe=(413)
+-62 203698
+fi=(367)
++59 1071814
++1 1071814
++2 2143628
+fe=(413)
+-62 1071814
+-34 1804860
+fi=(422)
+65 1804860
+fi=(386) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/board/bitboard.rs
++10 1804860
+fi=(374) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/cmp.rs
+1916 601620
+1077 1203240
+fi=(422)
+65 601620
+fi=(386)
++10 2406480
+fe=(413)
+-38 1804860
++2 519304
+fi=(378)
+1035 216396
++3 432792
++1 20860
+cfi=(362)
+cfn=(1840) <alloc::raw_vec::RawVec<minase_core::mv::Move>>::grow_one
+calls=22446 186 
+* 2218843
+* 52150
+0 31290
+fi=(362)
+615 10430
+fi=(358)
+970 10430
+fi=(350)
+1939 31290
+fi=(378)
+1044 52150
+0 617898
+fi=(362)
+615 205966
+fi=(358)
+970 205966
+fi=(350)
+1939 617898
+fi=(378)
+1044 1029830
+0 1025904
+fi=(426) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/board/direction.rs
+52 1025904
+fi=(367)
++41 341968
++3 341968
+fe=(413)
+-48 341968
+fi=(378)
+-48 259652
+fi=(426)
+52 778956
+fi=(367)
++41 259652
++3 259652
+fe=(413)
+-48 3791732
+-48 1006228
+fi=(386)
+75 1509342
+fi=(374)
+1916 503114
+fi=(386)
+75 1509342
+fe=(413)
+-24 1006228
+fi=(378)
+1035 477169
++3 954338
++1 18666
+cfi=(362)
+cfn=(1840)
+calls=34824 186 
+* 1991427
+* 46665
+fe=(413)
+57 27999
+fi=(362)
+615 9333
+fi=(358)
+970 18666
+fi=(350)
+1939 27999
+fi=(378)
+1044 27999
+fe=(413)
+64 18666
+-7 1403508
+fi=(362)
+615 467836
+fi=(358)
+970 935672
+fi=(350)
+1939 1403508
+fi=(378)
+1044 1403508
+fe=(413)
+64 935672
+fi=(378)
+1038 273626
++1 10334
+cfi=(362)
+cfn=(1840)
+calls=14511 186 
+* 1107770
+* 31002
+fe=(413)
+74 854970
+fi=(378)
+1035 263160
++3 526320
++1 17618
+cfi=(362)
+cfn=(1840)
+calls=25386 186 
+* 1882414
+* 8809
+fi=(362)
+615 8809
+fi=(358)
+970 17618
+fi=(350)
+1939 26427
+fi=(378)
+1044 17618
+fe=(413)
+82 70472
+fi=(362)
+615 254351
+fi=(358)
+970 508702
+fi=(350)
+1939 763053
+fi=(378)
+1044 508702
+fe=(413)
+82 3349408
+
+fl=(518) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/adjudication/bare_king.rs
+fn=(3754) minase_core::game::adjudication::bare_king::can_capture_any_royal
+73 4312
+fi=(422)
+-41 784
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=502 255 
+* 77224
+fi=(433)
+-24 784
+fi=(430) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/make_move.rs
++85 392
+fi=(368) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/sync/atomic.rs
+3891 196
+fi=(369) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sync/once_lock.rs
+156 392
+fi=(430)
+50 392
++1 392
+fi=(422)
++26 4312
+fi=(386)
+182 196
+-2 196
++1 196
+-2 588
+fi=(378)
+462 980
+fe=(518)
+81 392
+cfi=(418) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/mod.rs
+cfn=(1818) <minase_core::movegen::MoveGenerator>::generate_moves
+calls=251 -12 
+* 549102
+fi=(422)
+-4 4312
+fi=(386)
+182 196
+-2 196
++1 196
+-2 588
+fi=(378)
+462 980
+fe=(518)
+81 392
+cfi=(418)
+cfn=(1818)
+calls=251 -12 
+* 678370
++2 1176
+fi=(352)
+1650 392
+fi=(434) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/vec/into_iter.rs
+395 392
+0 2744
+fi=(352)
+1650 4074
+fi=(434)
+395 2037
+fi=(350)
+1731 8148
+fe=(518)
+85 4074
+cfi=(422)
+cfn=(1856) <minase_core::position::Position>::captured_squares
+calls=2655 +14 
+* 79443
+fi=(387) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/flatten.rs
+819 4074
+fi=(350)
+1731 2037
+fi=(387)
+819 2037
+fi=(350)
+1731 288
+fi=(386)
+75 144
+fi=(374)
+1077 288
+fi=(386)
+75 288
+fi=(384) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/index_range.rs
++95 144
+fi=(362)
+0 1176
+635 392
+fi=(363) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/uint_macros.rs
+1361 392
+fi=(401) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/alloc.rs
+128 1176
+cfi=(312) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/mimalloc-0.1.52/src/lib.rs
+cfn=(1922) __rustc::__rust_dealloc
+calls=502 -67 
+* 8232
+fe=(518)
+-38 3528
+
+fl=(422)
+fn=(1856)
+99 842520915
++1 842520915
+fi=(381) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/piece/code.rs
+-26 842520915
+-74 842520915
+76 561680610
+fe=(422)
++28 561680610
+fi=(367)
+-24 10942878
+fe=(422)
++25 32828634
+fi=(381)
+-31 87543024
+-74 32828634
+fe=(422)
+108 43771512
+fi=(381)
+0 809692281
+fe=(422)
+108 1360430013
+fi=(381)
+-34 2527562745
+fe=(422)
++36 1685041830
+
+fl=(434)
+fn=(2054) <alloc::vec::into_iter::IntoIter<minase_core::mv::Move> as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<minase_core::mv::Move, minase_core::game::adjudication::mate::can_capture_last_royal::{closure#0}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>
+379 4406710
+0 801220
+fi=(352)
+1650 400610
+fe=(434)
+395 400610
+0 28952710
+fi=(352)
+1650 28952710
+fe=(434)
+395 28952710
+fi=(350)
+1731 58399536
+fi=(352)
+614 58399536
+fe=(434)
+400 29199768
+fi=(422)
+77 29199768
+fi=(386)
+182 29199768
+fi=(422)
+77 58399536
+fi=(386)
+180 29199768
+-1 58399536
+fi=(387)
+809 58399536
+0 3186700
+fi=(386)
+75 1593350
+fi=(374)
+1916 796675
+fi=(386)
+75 1593350
+fi=(439) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/filter.rs
++63 2390025
+fi=(429) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/mv.rs
+35 796675
+fi=(387)
+809 920170
+0 28403093
+fi=(429)
+35 28403093
+fi=(387)
+809 28403093
+fi=(386)
+75 57828978
+fi=(374)
+1916 28914489
+fi=(386)
+75 57828978
+fi=(515) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/accum.rs
+-20 57828978
+fi=(363)
++30 144572445
+fi=(386)
++10 57828978
+fe=(434)
+401 28914489
+fi=(363)
+85 1426395
+fi=(386)
++10 570558
+fe=(434)
+401 58684815
+fi=(352)
+1650 801220
+fe=(434)
+405 1602440
+
+fl=(327) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/rt.rs
+fn=(1408) std::rt::lang_start::<core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>>::{closure#0}
+cfi=(328) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs
+cfn=(1410) std::sys::backtrace::__rust_begin_short_backtrace::<fn() -> core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>, core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>>
+calls=1 162 
+206 66225052225
+
+fl=(375) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs
+fn=(2462) <core::iter::adapters::map::Map<core::iter::adapters::filter_map::FilterMap<std::collections::hash::map::IntoIter<u64, usize>, <minase_core::game::referee::Game>::repetition_root_moves::{closure#0}>, <hashbrown::set::HashSet<u64, std::hash::random::RandomState> as core::iter::traits::collect::Extend<u64>>::extend<core::iter::adapters::filter_map::FilterMap<std::collections::hash::map::IntoIter<u64, usize>, <minase_core::game::referee::Game>::repetition_root_moves::{closure#0}>>::{closure#0}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<(u64, ()), <hashbrown::map::HashMap<u64, (), std::hash::random::RandomState> as core::iter::traits::collect::Extend<(u64, ())>>::extend<core::iter::adapters::map::Map<core::iter::adapters::filter_map::FilterMap<std::collections::hash::map::IntoIter<u64, usize>, <minase_core::game::referee::Game>::repetition_root_moves::{closure#0}>, <hashbrown::set::HashSet<u64, std::hash::random::RandomState> as core::iter::traits::collect::Extend<u64>>::extend<core::iter::adapters::filter_map::FilterMap<std::collections::hash::map::IntoIter<u64, usize>, <minase_core::game::referee::Game>::repetition_root_moves::{closure#0}>>::{closure#0}>>::{closure#0}>::{closure#0}>
+124 1526
+fi=(410) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/collections/hash/map.rs
+2205 1308
+fi=(400) /rust/deps/hashbrown-0.17.1/src/raw.rs
+3853 436
+0 218
+fi=(410)
+2205 872
+0 133344
+fi=(400)
+3853 33336
+fi=(440) /rust/deps/hashbrown-0.17.1/src/control/bitmask.rs
+40 66672
+-40 3242
+fi=(407) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/x86/sse2.rs
+1326 3242
+fi=(358)
+1054 3242
+fi=(398) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ptr/const_ptr.rs
+872 3242
+fi=(440)
+103 6484
+-63 3242
+fi=(408) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/nonzero.rs
+628 33336
+fi=(358)
+1054 100008
+fi=(456) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/root_repetition.rs
+53 33336
+fi=(517) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/filter_map.rs
+-14 33336
+fi=(400)
+4052 1090
+0 218
+fi=(401)
+128 1962
+cfi=(312)
+cfn=(1922)
+calls=4222 -67 
+* 4578
+fe=(375)
+
+fl=(328)
+fn=(1410)
+fi=(392) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs
+cfi=(329) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/tools/train/zero/feasibility/src/bin/driver_cost.rs
+cfn=(1412) driver_cost::main
+calls=1 357 
+250 66225052225
+fe=(328)
+
+fl=(367)
+fn=(1898) <minase_core::attacks::tables::AttackTables>::sliding_control
+80 63691792
+fi=(412) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/attacks/tables.rs
++81 127383584
+fi=(426)
+46 63691792
+fi=(412)
+161 509534336
++20 191075376
+fi=(386)
+-18 127383584
++2 127383584
+fi=(426)
+62 127383584
+-10 127383584
++26 63691792
+fi=(412)
+182 63691792
+fi=(363)
+3049 319394460
+fi=(386)
+163 95818338
++2 127757784
+fi=(412)
++17 31939446
+0 31752346
+fi=(386)
+116 199350323
+0 13313114
+fi=(363)
+154 26626228
+fi=(386)
+-37 13313114
+fe=(367)
+-90 13313114
+fi=(412)
+189 13313114
+fi=(363)
+-35 28495354
+fi=(386)
+-37 14247677
+fe=(367)
+-90 14247677
+fi=(412)
+189 14247677
+0 27560791
+fe=(367)
+80 27560791
+fi=(412)
+191 110243164
+fi=(386)
+29 27560791
+163 55121582
+31 27560791
+165 55121582
+-3 55121582
+fi=(412)
++32 55121582
+fi=(386)
+-32 63878892
+fi=(412)
++32 72262002
+fe=(367)
+
+fl=(315) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/alloc.c
+fn=(1224) _mi_theap_malloc_zero
+232 392370
+fi=(232) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/include/mimalloc/internal.h
+512 69260
++69 34630
+fe=(315)
+41 34630
++1 69260
++4 13738
++3 6869
++1 6869
+-1 6869
++30 13738
++13 6869
+245 13738
+-69 378632
+cfi=(316) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/page.c
+cfn=(1228) _mi_malloc_generic
+calls=282789 972 
+* 43582040
+
+fn=(1390) _mi_page_malloc_zero
+41 4071152
++1 8142304
++7 4071152
++1 4071152
+-1 4071152
++30 8142304
++13 4071044
++29 8142088
+-33 218
+fi=(232)
+681 108
+1216 216
+fe=(315)
+119 108
+fi=(232)
+1220 324
+fe=(315)
+119 108
+fi=(232)
+1220 108
+cob=(2)
+cfi=(294)
+cfn=(1128)
+calls=108 193 
+* 1295
+* 108
+fe=(315)
+121 216
+
+fn=(1884) _mi_theap_realloc_zero
+361 126160740
++6 21026790
+fi=(232)
+648 10513395
+-4 21026790
++4 10513395
+-6 21026790
++1 10513395
++11 10513395
+fi=(343) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/free.c
+409 21026790
++1 21026790
+fi=(232)
+681 10513395
+fe=(315)
+375 21026790
++2 21026790
++10 42053580
+cfn=(1890) mi_theap_umalloc
+calls=23115293 -77 
+* 260696111
+* 10513395
++1 21026790
++1 42053580
++8 21026790
++1 21026790
+fi=(232)
+1207 21026790
+fe=(315)
+401 21026790
+cfi=(232)
+cfn=(1454) mi_free
+calls=23115293 648 
+* 210969779
++4 94620555
+-11 21026790
+fi=(232)
+1211 42053580
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=23115293 255 
+* 253159718
+* 10513395
+* 10513395
+fe=(315)
+
+fn=(1890)
+310 10513395
+-78 21026790
+fi=(232)
+512 20821908
++69 10410954
+fe=(315)
+41 10410954
++1 20821908
++4 20001352
++3 10000676
++1 10000676
+-1 10000676
+312 10000676
+81 10000676
+312 10000676
+176 204882
+cfi=(316)
+cfn=(1228)
+calls=274356 972 
+* 17681934
+* 410278
+cfi=(316)
+cfn=(1228)
+calls=769157 972 
+* 68387700
+
+fl=(421) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/lion_capture.rs
+fn=(1854) <minase_core::rules::set::MoveRules>::special_move_is_legal
+23 1231094350
++55 369328305
+cfi=(422)
+cfn=(1856)
+calls=278837957 +21 
+* 4859439597
+* 246218870
+fi=(345) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs
+1579 246218870
+fi=(367)
+80 4847636
+fi=(422)
+-22 24238180
+fi=(390) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/bool.rs
+-21 33933452
+fi=(423) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/array/mod.rs
+162 4847636
+0 9695272
+fi=(350)
+1731 4847636
+fi=(345)
+1579 4847636
+fi=(423)
+0 236523598
+fi=(350)
+1731 118261799
+fi=(345)
+1579 118261799
+fi=(422)
+58 40364922
+fi=(390)
+-21 94184818
+fi=(423)
+162 26909948
+0 13454974
+fi=(384)
+170 40364922
+fi=(423)
+0 109654461
+fi=(384)
+170 328963383
+0 2419524
+fi=(367)
+80 2419524
+fi=(422)
+-22 4032540
+fi=(390)
+-21 7258572
+-37 394658
+fi=(387)
+819 789316
+0 146752
+fi=(350)
+1731 293504
+fi=(367)
+62 293504
+fi=(363)
+3139 880512
+fi=(367)
+68 440256
+fi=(363)
+3139 880512
+fi=(374)
+1038 293504
+fe=(421)
+134 293504
+fi=(350)
+1731 394658
+fi=(387)
+819 394658
+fi=(367)
+62 495812
+fi=(363)
+3139 1487436
+fi=(367)
+68 743718
+fi=(363)
+3139 1487436
+fi=(374)
+1038 495812
+fe=(421)
+134 495812
+0 210263
+134 420526
++2 1051315
+cfn=(2146) minase_core::movegen::lion_capture::is_tsukegui
+calls=342921 -41 
+* 13514103
+* 420526
+0 179459
+137 717836
+cfn=(2286) minase_core::movegen::lion_capture::lion_has_foot_after_capture
+calls=292541 +19 
+* 282670220
+fi=(384)
++33 358918
+fi=(387)
+819 2091882
+0 146888
+fi=(350)
+1731 146888
+fe=(421)
+45 440664
+cfn=(2146)
+calls=296748 +50 
+* 7634776
+fi=(384)
+170 293776
+fi=(350)
+1731 697294
+fi=(387)
+819 697294
+fe=(421)
+45 2201624
+cfn=(2146)
+calls=1220716 +50 
+* 18721330
+fi=(384)
+170 1100812
+fi=(443) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/lion_trigger.rs
+70 666490
+fe=(421)
+-23 1332980
+-47 5106
+fi=(384)
+0 2553
+fi=(387)
+819 1702
+fi=(350)
+1731 1702
+fe=(421)
+59 1702
++5 5106
+cfn=(2286)
+calls=2341 +92 
+* 983728
+fi=(384)
+170 1702
+0 109388
+fe=(421)
+73 1107984915
+
+fn=(2146)
+95 6352899
+fi=(367)
+-15 907557
+fi=(422)
+-22 2722671
+fi=(390)
+-21 2722671
+fi=(381)
++51 4537785
+fi=(382) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/piece/kind.rs
++24 2722671
+0 520964
+fi=(367)
+62 1041928
+fi=(363)
+3139 1562892
+fi=(367)
+68 781446
+fi=(363)
+3139 1562892
+fi=(374)
+1038 781446
+fi=(367)
+20 260482
+fe=(421)
++87 487942
+0 300930
+111 100310
+cfi=(422)
+cfn=(1856)
+calls=158200 -12 
+* 5115810
+* 200620
+fi=(345)
+2442 601860
+fe=(421)
+112 702170
+fi=(367)
+-32 100310
+fi=(422)
+-22 401240
+fi=(390)
+-21 300930
+fe=(421)
++80 640688
+0 647075
+117 2588300
+fi=(381)
+-29 300930
+fi=(382)
++24 200620
+fe=(421)
++3 300930
++2 401240
+
+fn=(2286)
+156 1442480
+fi=(367)
+-76 180310
+fi=(422)
+-22 360620
+-58 180310
+58 180310
+fi=(390)
+-21 540930
+-37 721240
+fi=(345)
+968 540930
+2442 360620
+fi=(386)
+0 180310
+fe=(421)
+169 540930
+cfi=(451) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/virtual_board.rs
+cfn=(2294) <minase_core::movegen::virtual_board::VirtualBoard>::after_move
+calls=294882 35 
+* 18271050
+* 180310
++3 360620
++3 540930
+cfi=(422)
+cfn=(1856)
+calls=294882 -76 
+* 7494690
+* 721240
+fi=(345)
+2442 1262170
+fe=(421)
+0 38550
+fi=(367)
+80 38550
+fi=(422)
+-22 115650
+fi=(390)
+-21 115650
+fi=(381)
++51 38550
+fi=(382)
++24 115650
++1 38550
+fe=(421)
++69 269850
+cfi=(419) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/control.rs
+cfn=(2306) minase_core::movegen::control::piece_control_with_occupancy
+calls=56933 12 
+* 3353850
+fi=(386)
+75 154200
+fe=(421)
+190 77100
+fi=(368)
+3891 180200
+fi=(369)
+156 360400
+fi=(419)
+-89 1621800
+cfn=(2314) minase_core::movegen::control::ordinary_attackers_to
+calls=294080 +12 
+* 211965316
+* 180200
++1 901000
+cfn=(2328) minase_core::movegen::control::special_attackers_to
+calls=294080 +53 
+* 25703202
+fi=(386)
+180 360400
++1 540600
+-18 180200
+fi=(419)
+-94 180200
+fe=(421)
+191 180200
+fi=(386)
+-27 360400
+-1 180200
+62 901000
+fe=(421)
+193 1442480
+
+fl=(363)
+fn=(1530) minase_core::rng::derive_seed
+2612 327
+fi=(377) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/rng.rs
+19 436
+fe=(363)
+2688 109
+fi=(377)
+20 436
+fe=(363)
+2688 109
+fi=(377)
+21 327
++14 218
++4 109
+fe=(363)
+
+fl=(454) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/snapshot.rs
+fn=(2432) <minase::search::snapshot::SearchSnapshot>::from_game
+71 1744
+fi=(365) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/referee.rs
++57 436
+fi=(455) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/lib.rs
+0 436
+fe=(454)
+75 218
+cfi=(365)
+cfn=(1814) <minase_core::game::referee::Game>::legal_moves
+calls=4222 +84 
+* 8594577
+* 218
++1 436
+cfi=(456)
+cfn=(2436) <minase_core::game::referee::Game>::repetition_root_moves
+calls=4222 -38 
+* 16597602
++1 436
+fi=(378)
+1873 218
+fe=(454)
+79 436
+-79 436
+80 218
+cfi=(378)
+cfn=(2476) <alloc::vec::Vec<minase_core::mv::Move>>::retain::<<minase::search::snapshot::SearchSnapshot>::from_game::{closure#1}>
+calls=4222 3064 
+* 1526
+fi=(365)
+184 436
+fe=(454)
+82 218
+-82 218
+95 436
+cfi=(365)
+cfn=(2484) <minase_core::game::referee::Game as core::clone::Clone>::clone
+calls=4222 -72 
+* 568319
+-95 654
+95 436
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 45562
+fi=(350)
+1731 872
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 6540
+fi=(386)
+11 872
+fi=(350)
+1731 1526
+fi=(422)
+32 218
+fi=(350)
+1731 436
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 35098
+fi=(378)
+1873 218
+fi=(363)
+3172 1526
+fi=(405) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/intrinsics/mod.rs
+459 436
+fi=(391) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/repetition/mod.rs
+39 436
+fi=(432) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/repetition/r1.rs
++20 436
+fe=(454)
++32 436
+fi=(362)
+-91 3052
+461 436
+0 436
+cfi=(213)
+cfn=(1202) __rustc::__rust_no_alloc_shim_is_unstable_v2
+calls=4222 0 
+0 218
+0 218
+fi=(401)
+101 654
+cfi=(312)
+cfn=(1204) __rustc::__rust_alloc
+calls=4222 -50 
+* 26247
+fi=(362)
+470 436
+0 654
+fi=(441) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/slice.rs
+452 654
+fi=(350)
++97 654
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 30806
+fe=(454)
+100 1090
+-6 872
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 45562
+* 872
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=4222 255 
+* 40330
+* 5232
+fi=(362)
+425 436
+635 218
+425 436
+635 218
+fe=(454)
+103 1962
+
+fl=(430)
+fn=(1946) <minase_core::position::Position>::make_move_with_captures_unchecked
+140 8879152
+fi=(368)
+3891 554947
+fi=(369)
+156 2774735
+fe=(430)
+-9 1109894
++1 2219788
+fi=(367)
+-68 554947
+fe=(430)
++71 1664841
+fi=(381)
+-66 1664841
++3 1664841
+fi=(382)
++24 1109894
+0 4994523
+fe=(430)
+155 1109894
++1 6659364
++1 554947
+0 554947
+fi=(386)
+75 1109894
+fe=(430)
++92 2219788
+fi=(386)
+-92 3884629
+fe=(430)
++99 1664841
++12 1109894
+fi=(380) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/placement.rs
+48 1664841
+cfn=(1952) <minase_core::position::Position>::remove_piece_without_hash
+calls=1255140 +6 
+* 18868198
+fi=(381)
++40 1664841
+fi=(382)
++24 1109894
++1 1109894
+fi=(372) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/zobrist.rs
+-53 3329682
+fi=(561) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/convert/num.rs
+-9 1664841
+fi=(372)
++9 1664841
+fi=(367)
++8 1664841
++19 1664841
+-25 554947
++25 1109894
+fi=(372)
+-25 2219788
+-62 1664841
+62 554947
+fi=(380)
+-13 554947
+fe=(430)
+191 1109894
+0 550
+192 1650
+fi=(380)
+48 1650
+cfn=(1952)
+calls=2912 +6 
+* 18700
+* 550
+fi=(381)
++40 1100
+fi=(382)
++24 1100
++1 1100
+fi=(372)
+-53 3300
+fi=(561)
+-9 1650
+fi=(372)
++9 1650
+fi=(367)
++8 1650
++19 1650
+-25 1100
++25 1100
+fi=(372)
+-25 2750
+fi=(380)
+-13 3300
+fe=(430)
+190 1100
++1 550
+0 127246
+192 190869
+fi=(380)
+48 190869
+cfn=(1952)
+calls=155363 +6 
+* 2163182
+fi=(381)
++40 190869
+fi=(382)
++24 127246
++1 63623
+fi=(372)
+-53 381738
+fi=(561)
+-9 127246
+fi=(372)
++9 127246
+fi=(367)
++8 190869
++19 190869
+-25 127246
++25 127246
+fi=(372)
+-25 508984
+fi=(380)
+-13 254492
+fe=(430)
+198 134078
+0 1663191
+190 1108794
++1 554397
+0 2947944
+198 982648
+0 9697
+fi=(381)
+69 9697
+fi=(382)
++44 38788
++8 29091
+0 6082
+131 672
+0 1956
+124 1956
+0 666
+125 666
+0 256
+129 256
+0 298
+123 298
+0 219
+127 219
+0 1406
+128 1406
+0 1490
+130 1490
+0 13
+138 13
+0 48
+fi=(381)
+47 32
+-47 16
+fe=(430)
+205 64
+cfi=(380)
+cfn=(1596) <minase_core::position::Position>::put_piece
+calls=64 10 
+* 1072
+fi=(382)
+0 19362
+fi=(381)
+47 19362
+-47 9681
+fe=(430)
+205 38724
+cfi=(380)
+cfn=(1596)
+calls=31691 10 
+* 648627
+fi=(381)
+0 545250
+fe=(430)
+205 2181000
+cfi=(380)
+cfn=(1596)
+calls=1223385 10 
+* 36531750
+fi=(361) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs
+1181 1109894
+fi=(424) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/promotion.rs
+26 1109894
++2 1305840
+-28 337307
+27 1011921
+fe=(430)
+208 674614
+0 1349228
+174 1011921
++34 1686535
++1 2023842
++4 674614
+0 870560
+174 652920
++34 1088200
++1 1305840
++4 435280
+-57 2219788
++61 2774735
++4 2219788
+50 554947
++1 3884629
+fi=(382)
++61 554947
+0 30588
+112 7647
+fe=(430)
+0 1094600
+fi=(387)
+819 2736500
+0 62948
+fi=(381)
+85 377688
+fi=(384)
+212 125896
+0 3838
+212 1919
+fi=(387)
+819 1090762
+0 52
+fi=(381)
+85 156
+fi=(384)
+212 156
+fi=(381)
+85 52
+fi=(384)
+212 104
+fe=(430)
++15 104
+fi=(345)
+1227 104
+fe=(430)
+227 1109790
+fi=(345)
+1227 1109790
+0 1808
+fi=(367)
+68 3616
++19 1808
+-25 1808
++25 1808
+fi=(372)
+-8 7232
+-1 1808
++2 3616
+-80 1808
+78 1808
+fe=(430)
+240 7232
+fi=(345)
+1227 1109894
+0 553028
+1227 553028
+fi=(367)
+68 5757
++19 5757
+-25 1919
++25 3838
+fi=(372)
+-8 9595
++1 3838
+-80 3838
+78 3838
+fe=(430)
+240 9595
++6 47975
++9 15352
+-15 1659084
++6 13825700
++9 4424224
+
+fn=(2066) <minase_core::position::Position>::unmake_move
+262 2805425
++1 400775
++1 801550
+cfi=(380)
+cfn=(1952)
+calls=966231 54 
+* 13626350
++1 400775
+fi=(380)
+30 1202325
+-30 400775
+fi=(422)
+58 801550
+fi=(381)
+-1 400775
+fi=(390)
+-20 400775
+fi=(381)
++51 1202325
+fi=(382)
++24 801550
+0 400775
+113 400775
+fi=(380)
+-74 801550
+fi=(386)
++43 1202325
+fi=(382)
++31 400775
+fi=(433)
+-90 801550
+fi=(380)
++18 1202325
+fi=(386)
++41 400775
+fi=(382)
++31 400775
+fi=(380)
+-71 2003875
+fi=(386)
++40 400775
+fe=(430)
+267 2404650
+fi=(387)
+855 801550
++1 1603052
+0 355740
+227 101640
+fi=(380)
+30 203280
+fi=(367)
++50 50820
+fi=(422)
+-22 152460
+fi=(381)
+-1 50820
+fi=(390)
+-20 50820
+fi=(381)
++51 152460
+fi=(382)
++24 101640
+0 101640
+113 101640
+fi=(380)
+-74 101640
+fi=(386)
++43 203280
+fi=(433)
+-59 152460
+fi=(380)
++18 101640
+fi=(386)
++41 50820
+fi=(380)
+-40 203280
+fi=(386)
++40 50820
+fi=(384)
++49 101640
+0 144
+fi=(387)
+855 96
+0 16
+fi=(380)
+30 4
+-30 20
+fi=(422)
+58 4
+fi=(381)
+-1 4
+fi=(390)
+-20 4
+-37 20
+fi=(382)
+112 4
+0 36
+fi=(380)
+39 4
+fi=(386)
++43 8
+fi=(382)
++31 4
+fi=(386)
+-31 12
+fe=(430)
+271 8
++1 8
++5 16
++6 8
++3 24
+-15 801542
++1 801542
++5 1603084
++6 801542
++3 2404626
+
+fn=(2050) <minase_core::position::Position>::make_move_unchecked
+108 3606993
++1 1202331
+cfi=(422)
+cfn=(1856)
+calls=966233 -10 
+* 15630591
+* 4408547
+cfn=(1946)
+calls=966233 +31 
+* 144674751
+
+fl=(451)
+fn=(2294)
+35 1081860
+fi=(367)
++45 180310
+fi=(422)
+-22 540930
+fi=(390)
+-21 540930
+-37 360620
+fi=(381)
+76 540930
+fi=(422)
+-11 721240
+fi=(433)
+-42 180310
+fi=(422)
++48 1081860
+fe=(451)
+-45 180310
+fi=(422)
++45 721240
+fe=(451)
+-45 180310
++16 360620
+-42 77100
+fi=(386)
+89 154200
+fe=(451)
+-36 115650
+fi=(386)
++22 77100
+fi=(374)
+1916 77100
+1077 38550
+fe=(451)
+53 38550
+fi=(386)
++22 154200
+fe=(451)
+-22 77100
+fi=(386)
++36 231300
+-89 141760
+89 567040
+fe=(451)
+-36 425280
+fi=(386)
++22 283520
+fi=(374)
+1916 283520
+1077 141760
+fe=(451)
+53 141760
+fi=(386)
++22 567040
+fe=(451)
+-22 283520
+fi=(386)
++36 850560
+-7 115650
+fe=(451)
+-23 38550
++1 693900
+-9 38550
+fi=(386)
++38 154200
+fi=(374)
+1916 77100
+fi=(386)
+89 115650
+fe=(451)
+-36 115650
+fi=(386)
++22 77100
+fi=(374)
+1916 77100
+1077 38550
+fe=(451)
+53 38550
+fi=(386)
++22 154200
+fe=(451)
+-22 77100
+fi=(386)
++36 231300
+-7 425280
+fe=(451)
+-23 141760
++1 2551680
+fi=(386)
++22 115650
+fe=(451)
+-23 38550
++1 693900
+-13 154200
++13 141760
+-13 567040
+
+fl=(373) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed/iter.rs
+fn=(3054) <alloc::boxed::Box<[minase::search::mcts::tree::Edge]> as core::iter::traits::collect::FromIterator<minase::search::mcts::tree::Edge>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::Iter<minase_core::mv::Move>, <minase::search::mcts::tree::Node>::new::{closure#0}>>
+143 407806
+fi=(398)
+734 349548
+fi=(363)
+3172 116516
+fi=(405)
+459 174774
+fi=(362)
++2 116516
+0 232528
+cfi=(213)
+cfn=(1202)
+calls=58132 0 
+0 58132
+0 58132
+fi=(401)
+101 174396
+cfi=(312)
+cfn=(1204)
+calls=58132 -50 
+* 27497672
+fi=(362)
+470 116264
+0 232528
+fi=(352)
+1650 58132
+fi=(351)
+25 58132
+284 174396
+0 252
+fi=(352)
+1650 126
+fi=(351)
+25 126
+-25 126
+25 126
+-25 58132
+284 290660
+0 58132
+fi=(350)
+1939 813848
+fi=(562) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/vec/set_len_on_drop.rs
+19 58132
+fi=(351)
+284 174396
+fi=(350)
+1939 29079596
+fi=(562)
+19 2077114
+fi=(351)
+284 6347606
+fi=(352)
+614 29209
+fi=(350)
+1939 262881
+fi=(486) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter_nested.rs
+61 116836
+fe=(373)
++83 29209
+cfi=(378)
+cfn=(2852) <alloc::vec::Vec<minase::search::mcts::tree::Edge>>::into_boxed_slice
+calls=29209 1731 
+* 438135
+fi=(486)
+-83 116196
+fe=(373)
++83 29049
+cfi=(378)
+cfn=(2852)
+calls=29049 1731 
+* 435735
++1 466064
+
+fl=(213)
+fn=(738)
+cob=(2)
+cfi=(214)
+cfn=(740)
+calls=1 242 
+0 66225052225
+
+fn=(1202)
+0 3565302
+
+fn=(966)
+cfi=(246) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/std/src/rt.rs
+cfn=(968) std::rt::lang_start_internal
+calls=1 152 
+0 66225052225
+
+fl=(312)
+fn=(1204)
+51 3561575
+cfi=(235) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/include/mimalloc/prim.h
+cfn=(1206) mi_malloc_aligned
+calls=7064143 409 
+* 192326850
+
+fn=(1880) __rustc::__rust_realloc
+66 21026790
+cfi=(313) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/alloc-aligned.c
+cfn=(1882) mi_realloc_aligned
+calls=23115174 396 
+* 1639490973
+
+fn=(2820) __rustc::__rust_alloc_zeroed
+56 109
+cfi=(313)
+cfn=(2822) mi_zalloc_aligned
+calls=109 188 
+* 6488
+
+fn=(1922)
+61 3264773
+cfi=(232)
+cfn=(1454)
+calls=6705473 648 
+* 76423132
+
+fl=(317) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/arena.c
+fn=(1348) mi_heap_ensure_arena_pages
+666 51642
+-17 17214
++17 51642
+-17 17214
++22 34428
+-22 17214
++39 34428
+cfi=(218) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/init.c
+cfn=(910) _mi_is_heap_main
+calls=46711 455 
+* 275424
++2 86070
+
+fn=(1258) mi_arenas_try_find_free
+469 154926
++3 68856
++3 137712
+cfn=(1260) mi_arenas_get_count
+calls=46713 65 
+* 34428
+* 68856
+-75 17214
++75 17214
+-74 17214
+-1 17214
++1 34428
++74 68856
++16 86070
+-16 172140
++12 68856
+-12 103284
+cfn=(1324) mi_arena_from_index
+calls=46712 70 
+* 34428
+* 34428
+50 34428
+389 103284
++88 103284
+cfn=(1326) mi_arena_try_alloc_at
+calls=46712 217 
+* 10381828
++1 51642
+
+fn=(2172) _mi_arenas_page_free
+1032 86238
++9 43119
++1 14373
+cfi=(232)
+cfn=(1372) _mi_page_stats_bin
+calls=46705 798 
+* 287460
+* 57492
+cfi=(224) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/stats.c
+cfn=(2174) __mi_stat_decrease
+calls=46705 34 
+* 143730
++1 43119
+cfi=(224)
+cfn=(2174)
+calls=46705 34 
+* 143730
++34 28746
+cfi=(236) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/page-map.c
+cfn=(2176) _mi_page_map_unregister
+calls=46705 414 
+* 1070289
++1 43119
++28 86238
+cfn=(2186) _mi_arenas_free
+calls=46707 1246 
+* 4821525
++1 71865
+190 57492
+fi=(232)
+908 14373
++2 43119
+cfi=(218)
+cfn=(914) mi_heap_main
+calls=46707 451 
+* 244341
+fe=(317)
+649 14373
+1084 14373
+649 14373
+1084 28746
+cfi=(318) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/bitmap.c
+cfn=(2182) mi_bitmap_clear
+calls=46707 +97 
+* 1121944
++1 43119
+fi=(232)
+725 43119
+474 28746
+725 28746
+fe=(317)
+1105 14373
+197 43119
+fi=(232)
+733 14373
+fe=(317)
+
+fn=(3612) _mi_arenas_page_unabandon
+1191 5372
+fi=(232)
+908 1343
+fe=(317)
+1191 5372
+fi=(232)
+910 4029
+cfi=(218)
+cfn=(914)
+calls=3629 451 
+* 22831
+* 1343
+-95 1343
++5 1343
+fe=(317)
+1199 2686
++20 2686
++10 2686
++6 2686
+-5 2686
++5 2686
+-5 1343
+cfi=(224)
+cfn=(2174)
+calls=3627 34 
+* 13430
+
+fn=(2190) _mi_arenas_collect
+1302 54051
++1 18017
+-1 36034
++1 18017
+-1 54051
+2022 18017
+1302 72068
++1 18017
+2022 18017
+cfi=(222) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/options.c
+cfn=(780) mi_option_get
+calls=50467 271 
+* 432408
+* 54051
+cfi=(222)
+cfn=(780)
+calls=50467 271 
+* 432408
+* 18017
+2166 18017
+cfi=(218)
+cfn=(798) _mi_preloading
+calls=50467 989 
+* 36034
+* 90085
+1304 180170
+2169 18017
+cfi=(224)
+cfn=(806) _mi_clock_now
+calls=50467 523 
+* 612578
+* 18017
++1 18017
++1 144014
++2 21450
+cfn=(1260)
+calls=33133 65 
+* 21450
+* 10725
++1 21450
++4 42900
++4 32175
++1 42900
+-1 10725
++4 10725
++2 53625
++1 10725
+-1 21450
++1 10725
+cfn=(1324)
+calls=33133 70 
+* 21450
+* 10725
++1 21450
+-54 21450
++3 10725
++2 21450
++1 21372
++5 92
+-1 92
++1 368
+cfi=(220) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/include/mimalloc/atomic.h
+cfn=(894) __mi_stat_counter_increase_mt
+calls=166 136 
+* 184
++5 92
+2022 92
+2152 92
+2022 92
+cfi=(222)
+cfn=(780)
+calls=166 271 
+* 2208
+* 276
+cfi=(222)
+cfn=(780)
+calls=166 271 
+* 2208
+* 184
+2152 276
++3 92
+cfi=(226) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/os.c
+cfn=(2366) _mi_os_minimal_purge_size
+calls=166 55 
+* 8004
++1 276
+fi=(232)
+489 92
+fe=(317)
+2156 92
+fi=(232)
+489 92
+fe=(317)
+2156 92
+cfi=(318)
+cfn=(2368) _mi_bitmap_forall_setc_rangesn
+calls=166 1483 
+* 643111
++2 276
++37 243
+-9 31932
++18 21288
++1 50
+-27 46759
++15 21188
+
+fn=(2376) mi_arena_try_purge_visitor
+2108 5275
+-14 1055
++14 2110
+-14 1055
++14 2110
+-14 1055
++14 2110
+-14 1055
+cfi=(318)
+cfn=(2378) mi_bbitmap_try_clearNC
+calls=1799 1702 
+* 50870
+* 2695
++21 2340
++12 7385
+-31 1996
+cfn=(2380) mi_arena_purge.isra.0
+calls=1081 -68 
+* 160179
++3 1996
+cfi=(318)
+cfn=(2188) mi_bbitmap_setN
+calls=1081 1674 
+* 40918
++22 499
+-1 1038
+-2 40
++3 40
+-3 1912
++3 1832
+-3 3664
+-24 7488
+cfi=(318)
+cfn=(2378)
+calls=3068 1702 
+* 85089
+* 4243
++2 1880
+cfn=(2380)
+calls=858 -68 
+* 163014
++3 1880
+cfi=(318)
+cfn=(2188)
+calls=858 1674 
+* 43347
++14 1410
+
+fn=(2380)
+2028 12597
++5 969
+cfi=(232)
+cfn=(1334) mi_arena_slice_start
+calls=1939 1110 
+* 2907
++3 2907
+-3 969
++3 1938
+cfi=(318)
+cfn=(1336) mi_bitmap_setN
+calls=1939 1093 
+* 97416
++1 969
++1 969
+fi=(232)
+1110 969
+fe=(317)
+2038 2907
+fi=(232)
+1110 1938
+fe=(317)
+2038 1938
+fi=(232)
+1110 969
+fe=(317)
+2038 969
+cfi=(226)
+cfn=(2382) _mi_os_purge_ex
+calls=1939 641 
+* 177327
++2 1938
++6 1938
++8 10659
+
+fn=(1256) mi_arenas_try_alloc
+499 51642
++9 17214
+-9 17214
++9 17214
+-9 51642
++9 34428
+-9 154926
++9 86070
+cfn=(1258)
+calls=46712 -39 
+* 11810590
++1 51642
++30 189354
+
+fn=(1260)
+65 27939
++1 27939
+
+fn=(1326)
+217 206568
++2 17214
+-2 51642
+fi=(320) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/bitmap.h
+333 34428
++1 728
++2 100
++1 200
+fe=(317)
+219 34428
++3 51642
+cfi=(232)
+cfn=(1334)
+calls=46712 1110 
+* 51642
++1 17214
+-40 17214
++44 17214
+fi=(232)
+1120 17214
+fe=(317)
+222 17214
+fi=(232)
+1122 17214
+fe=(317)
+223 17214
+-42 17214
++1 17214
++1 17214
++40 34428
++1 17214
+-41 17214
++41 17214
++4 34428
++10 17214
+-2 34428
++2 68856
+cfi=(318)
+cfn=(1338) mi_bitmap_popcountN
+calls=46712 1150 
+* 1101064
+fi=(232)
+1110 34428
+fe=(317)
+239 34428
++65 206568
+-74 51642
+-1 17214
++1 17214
+cfi=(318)
+cfn=(1336)
+calls=46712 1093 
+* 1534936
++2 17214
++6 17214
+-6 17214
+-2 17214
++2 17214
++35 34428
+cfi=(226)
+cfn=(1342) _mi_os_reuse
+calls=46712 524 
+* 843486
++3 17214
+cfi=(226)
+cfn=(864) _mi_os_has_overcommit
+calls=46712 37 
+* 34428
+* 51670
++6 17214
++7 17214
+fi=(320)
++54 50
+cfi=(318)
+cfn=(1562) mi_bbitmap_try_find_and_clearNX
+calls=58 1856 
+* 24294
+* 50
+-4 33700
+cfi=(318)
+cfn=(1330) mi_bbitmap_try_find_and_clear
+calls=46310 1844 
+* 5226043
+* 16850
++1 628
+cfi=(318)
+cfn=(1762) mi_bbitmap_try_find_and_clear8
+calls=344 1848 
+* 118631
+* 314
+fe=(317)
+-64 28
++1 14
+fi=(232)
+1110 28
+fe=(317)
+271 28
+cfi=(224)
+cfn=(844) __mi_stat_increase_mt
+calls=48 24 
+* 210
+* 14
+
+fn=(2186)
+1246 57492
+-2 57492
+fi=(563) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/include/mimalloc/types.h
+263 14373
+fe=(317)
+1251 28746
++4 28746
++4 14373
++6 28746
+190 14373
+1271 71865
+191 14373
+1277 28746
++6 86238
+cfi=(318)
+cfn=(2188)
+calls=46707 1674 
+* 1184393
++1 43119
++15 28746
+2022 71865
+cfi=(222)
+cfn=(780)
+calls=46707 271 
+* 344952
+* 43119
+cfi=(222)
+cfn=(780)
+calls=46707 271 
+* 344952
+* 14373
++39 28746
+-39 14373
++39 86238
+cfi=(218)
+cfn=(798)
+calls=46707 989 
+* 28746
+* 57492
++3 28746
+1266 14373
+2070 28746
+cfi=(224)
+cfn=(806)
+calls=46707 523 
+* 488682
+* 14373
++2 14373
+-2 14373
++2 57492
++4 192
++5 672
+cfi=(318)
+cfn=(1336)
+calls=167 1093 
+* 9048
+* 99939
+cfi=(318)
+cfn=(1336)
+calls=46540 1093 
+* 1256347
+* 57492
+
+fn=(1250) mi_arenas_page_alloc_fresh
+829 17214
+fi=(232)
+1122 17214
+fe=(317)
+829 206568
+fi=(232)
+1110 51642
++12 34428
+-12 34428
+570 17214
+fe=(317)
+752 17214
++1 17214
++1 17214
+-2 17214
++1 17214
++1 34428
++4 17214
++2 17214
+-2 34428
++2 17214
+cfi=(222)
+cfn=(778) mi_option_is_enabled
+calls=46712 323 
+* 533634
+* 68856
+916 51642
++8 17214
+-4 17214
++1 17214
++3 17214
+-3 17214
++1 17214
++1 17214
++1 17214
++1 17214
+-1 17214
+fi=(232)
++24 17214
+fe=(317)
+-14 34428
+cfi=(236)
+cfn=(1356) _mi_page_map_register
+calls=46712 396 
+* 1581096
+* 34428
++6 51642
+cfi=(224)
+cfn=(1370) __mi_stat_increase
+calls=46712 34 
+* 191580
++1 34428
+cfi=(232)
+cfn=(1372)
+calls=46712 798 
+* 344280
+* 68856
+cfi=(224)
+cfn=(1370)
+calls=46712 34 
+* 192792
++9 206568
+97 34428
+cfi=(222)
+cfn=(1252) mi_option_get_size
+calls=46712 287 
+* 791844
++5 17214
+fi=(232)
+458 34428
+fe=(317)
+102 34428
+-3 51642
+762 17214
+-1 34428
++3 223782
+cfn=(1256)
+calls=46712 499 
+* 12481936
++1 17214
+-1 17214
++1 34428
++1 51642
+cfn=(1348)
+calls=46712 666 
+* 585276
++1 34428
++8 51642
+cfi=(318)
+cfn=(1352) mi_bitmap_set
+calls=46712 1177 
+* 1549260
++78 86070
++2 68856
++61 17214
++4 17214
+-4 17214
++4 34428
+-63 17214
++10 17214
+-10 34428
++14 51642
+fi=(232)
+445 1622
+fe=(317)
+867 3244
+fi=(232)
+1216 34428
++4 154926
+fe=(317)
+887 51642
++14 51642
+-15 34428
+
+fn=(1324)
+70 27939
++1 27939
+
+fn=(1246) _mi_arenas_page_alloc
+1003 34428
++4 34428
++3 728
++4 100
++1 150
+cfn=(1248) mi_arenas_page_regular_alloc
+calls=56 -61 
+* 108639
+-7 50550
+cfn=(1248)
+calls=46310 -54 
+* 24008129
++3 942
+cfn=(1248)
+calls=344 -57 
+* 503325
+
+fn=(3598) _mi_arenas_page_abandon
+1113 14308
+fi=(232)
+908 3577
+fe=(317)
+1113 14308
+fi=(232)
+910 10731
+cfi=(218)
+cfn=(914)
+calls=3629 451 
+* 60809
+* 3577
+fe=(317)
+1124 7154
++32 10731
+cfi=(224)
+cfn=(1370)
+calls=3629 34 
+* 41347
+604 7154
++3 7154
++11 10731
+1159 17885
+-35 10731
+
+fn=(1248)
+954 172140
+fi=(232)
+570 51642
+fe=(317)
+695 17214
++4 17214
+-3 17214
+-1 34428
++4 17214
+cfi=(314) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/page-queue.c
+cfn=(1234) _mi_bin
+calls=46710 105 
+* 275424
++5 51642
+962 34428
+cfi=(222)
+cfn=(780)
+calls=46710 271 
+* 413136
++2 52370
+-1 728
++2 103284
+cfn=(1250)
+calls=46710 829 
+* 20924734
+* 17214
++1 34428
++3 51642
+cfi=(316)
+cfn=(1376) _mi_page_init
+calls=46710 693 
+* 2127429
+* 34428
++6 172140
+
+fl=(456)
+fn=(2436)
+38 2180
++1 1308
+fi=(425) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/rules/set.rs
+-31 218
+fe=(456)
++35 218
++66 1962
+0 218
+fi=(365)
+128 436
+fi=(457) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs
+-23 654
+fi=(393) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/lazy.rs
+-46 436
+fi=(458) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/cell.rs
+555 436
+0 218
+fi=(363)
+2612 218
+fi=(337) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/mem/mod.rs
+968 218
+fi=(410)
+369 1308
+fi=(378)
+1873 218
+fi=(352)
+1650 654
+fi=(351)
+180 218
+0 37067
+fi=(350)
+549 36195
+fi=(407)
+1621 108585
+fi=(440)
+40 72390
+fi=(408)
+628 2844
+fi=(400)
+2032 5688
+fi=(358)
+1054 8532
+fi=(374)
+1878 2844
+fi=(405)
+436 2844
+fi=(408)
++50 2840
+fi=(440)
+40 8520
+-40 2728
+fi=(407)
+1621 8184
+fi=(405)
+436 5456
+fi=(407)
+1621 100389
+fi=(405)
+436 66926
+fi=(400)
+90 5710
+-1 2855
+2012 2855
+910 33336
+fi=(405)
+459 33336
+fi=(400)
+0 33336
+fi=(350)
+549 33336
+fi=(407)
+1621 33336
+fi=(440)
+40 66672
+fi=(408)
+628 33336
+fi=(400)
+1754 66672
+2646 33336
+fi=(405)
+459 66672
+fi=(363)
+2649 33336
+fi=(400)
+-60 33336
++4 33336
++1 33336
+fi=(358)
+1054 100008
+fi=(409) /rust/deps/hashbrown-0.17.1/src/control/tag.rs
+30 33336
+fi=(400)
+1076 33336
+fi=(358)
+-22 33336
+fi=(350)
+1939 66672
+fi=(400)
+1076 166680
+fe=(456)
+49 33336
+fi=(352)
+1650 33336
+fi=(351)
+180 33336
+fe=(456)
+49 4
+fi=(352)
+1650 4
+fi=(351)
+180 4
+fe=(456)
+48 66680
+fi=(399) /rust/deps/hashbrown-0.17.1/src/map.rs
+241 100020
+cfi=(403) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/hash/mod.rs
+cfn=(1716) <std::hash::random::RandomState as core::hash::BuildHasher>::hash_one::<&u64>
+calls=1038344 694 
+* 4734280
+fe=(456)
+0 66680
+fi=(409)
+47 100020
+fi=(400)
+2452 233380
+0 5775
+fi=(350)
+549 1925
+fi=(407)
+1621 1925
+fi=(440)
+40 5775
+fi=(400)
+-40 1480
+fi=(350)
+549 740
+fi=(407)
+1621 740
+fi=(440)
+40 2960
+fi=(400)
+914 6310
+cfn=(2448) <hashbrown::raw::RawTable<(u64, usize)>>::reserve_rehash::<hashbrown::map::make_hasher<u64, usize, std::hash::random::RandomState>::{closure#0}>
+calls=25286 +34 
+* 9187626
+1910 3786
+fi=(407)
+1326 78
+1621 78
+fi=(440)
+40 78
+fi=(400)
+1917 156
+fe=(456)
+51 654
+fi=(407)
+1326 436
+fi=(400)
+1454 436
+fi=(363)
+3172 436
+898 436
+fi=(358)
+1054 1308
+fi=(393)
+59 436
+fi=(458)
+555 436
+fi=(400)
+0 872
+fi=(407)
+1621 436
+fi=(363)
+2612 218
+fi=(337)
+968 218
+fi=(459) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/collections/hash/set.rs
+247 1308
+1190 2180
+fi=(338) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs
+887 218
+cfi=(375)
+cfn=(2462)
+calls=4222 124 
+* 468270
+fi=(459)
+1191 1308
+fe=(456)
+55 654
+-55 1526
+fi=(400)
+3496 218
+2271 436
+fe=(456)
+
+fl=(362)
+fn=(2912) <alloc::raw_vec::RawVec<f32>>::grow_one
+186 3076
+493 769
++30 769
+fi=(374)
+1038 2307
+fe=(362)
+529 4614
+cfn=(1842) <alloc::raw_vec::RawVecInner>::finish_grow
+calls=769 +15 
+* 155707
+fi=(361)
+2176 1538
++1 769
+fe=(362)
+777 769
++1 769
+189 3076
+
+fn=(2078) <alloc::raw_vec::RawVec<u64>>::grow_one
+186 233188
+493 58297
++30 58297
+fi=(374)
+1038 174891
+fe=(362)
+529 349782
+cfn=(1842)
+calls=119271 +15 
+* 23979875
+fi=(361)
+2176 116594
++1 58297
+fe=(362)
+777 58297
++1 58297
+189 233188
+
+fn=(3004) <alloc::raw_vec::RawVec<usize>>::grow_one
+186 238712
+493 59678
++30 59678
+fi=(374)
+1038 179034
+fe=(362)
+529 358068
+cfn=(1842)
+calls=59678 +15 
+* 4748134
+fi=(361)
+2176 119356
++1 59678
+fe=(362)
+777 59678
++1 59678
+189 238712
+
+fn=(2880) <alloc::raw_vec::RawVec<minase::search::mcts::driver::EvaluationRequest>>::grow_one
+186 20652
+493 5163
++30 5163
+fi=(374)
+1038 15489
+fe=(362)
+529 30978
+cfn=(1842)
+calls=5163 +15 
+* 1824846
+fi=(361)
+2176 10326
++1 5163
+fe=(362)
+777 5163
++1 5163
+189 20652
+
+fn=(3018) <alloc::raw_vec::RawVec<minase::search::mcts::tree::PendingSimulation>>::grow_one
+186 3080
+493 770
++30 770
+fi=(374)
+1038 2310
+fe=(362)
+529 4620
+cfn=(1842)
+calls=770 +15 
+* 265424
+fi=(361)
+2176 1540
++1 770
+fe=(362)
+777 770
++1 770
+189 3080
+
+fn=(1842)
+544 540144
+fi=(363)
+3172 540144
+fi=(405)
+459 202554
+0 67518
+fe=(362)
+635 67518
+fi=(363)
+1361 3685
+fi=(401)
+155 18425
+cfi=(312)
+cfn=(1880)
+calls=3685 -89 
+* 12007105
+fe=(362)
+564 7370
+fi=(401)
+206 127666
++4 63833
+cfi=(213)
+cfn=(1202)
+calls=63833 0 
+* 63833
+101 191499
+cfi=(312)
+cfn=(1204)
+calls=63833 -50 
+* 2787802
+fe=(362)
+564 127666
++1 202554
+0 135036
+568 405108
+-24 107703136
+fi=(363)
+3172 107703136
+fi=(405)
+459 40388676
+0 13462892
+fe=(362)
+635 13462892
+fi=(363)
+1361 10509710
+fi=(401)
+155 52548550
+cfi=(312)
+cfn=(1880)
+calls=23110147 -89 
+* 1648510658
+fe=(362)
+564 21019420
+fi=(401)
+206 5906364
++4 2953182
+cfi=(213)
+cfn=(1202)
+calls=6338832 0 
+* 2953182
+101 8859546
+cfi=(312)
+cfn=(1204)
+calls=6338832 -50 
+* 114304018
+fe=(362)
+564 5906364
++1 40388676
+0 26925784
+568 80777352
+
+fn=(1840)
+186 53618380
+493 13404595
++30 13404595
+fi=(374)
+1038 40213785
+fe=(362)
+529 80427570
+cfn=(1842)
+calls=29308870 +15 
+* 2280303663
+fi=(361)
+2176 26809190
++1 13404595
+fe=(362)
+777 13404595
++1 13404595
+189 53618380
+
+fn=(2898) <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global>
+662 4552
+512 2276
+fi=(363)
+898 1138
+fi=(405)
+459 1138
+0 1138
+fe=(362)
+523 2276
+fi=(374)
+1038 2276
+fe=(362)
+159 7966
+fi=(374)
+1038 3414
+fe=(362)
+529 4552
+cfn=(1842)
+calls=1138 +15 
+* 10565349
+fi=(361)
+2176 2276
++1 1138
+fe=(362)
+777 1138
++1 1138
+672 4552
+
+fl=(314)
+fn=(1220) _mi_bin_size
+110 588555
++1 196185
+
+fn=(3594) mi_page_queue_remove
+252 26050
++8 5210
+fi=(232)
+897 5210
+fe=(314)
+260 20840
++1 17057
++1 10420
++1 2854
++6 5210
++2 5210
+-1 5210
++1 5210
+fi=(232)
+830 5210
++10 5210
+fe=(314)
+274 10420
+-12 7566
++1 7566
+
+fn=(1214) mi_good_size
+114 588555
++1 392370
++1 196185
+cfi=(232)
+cfn=(1216) mi_bin
+calls=296656 512 
+* 2893027
++8 196185
+-8 392370
+cfn=(1220)
+calls=296656 -6 
+* 784740
+
+fn=(1234)
+105 719249
+cfi=(232)
+cfn=(1216)
+calls=1373012 512 
+* 10683895
+
+fl=(223) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/prim/unix/prim.c
+fn=(808) _mi_prim_clock_now
+691 32390
++3 32390
+-3 64780
++3 129560
+cob=(2)
+cfi=(225)
+cfn=(812)
+calls=97177 30 
+* 356290
+* 32390
++4 259120
++1 161950
+
+fn=(1346) _mi_prim_reuse
+491 34428
+
+fn=(2386) _mi_prim_decommit
+493 3876
+260 969
+493 969
+260 969
+cob=(2)
+cfi=(231)
+cfn=(1284)
+calls=1939 117 
+* 5814
+* 969
++1 1938
+504 969
++13 2907
+
+fl=(329)
+fn=(2778) driver_cost::search
+184 3706
++1 218
+cfi=(461) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/std/src/sys/time/unix.rs
+cfn=(2518) <std::time::Instant>::now
+calls=218 74 
+* 6322
+* 654
++1 436
+cfi=(454)
+cfn=(2432)
+calls=218 71 
+* 26025959
+fi=(361)
+2176 218
+0 436
+2176 436
++1 218
+fe=(329)
+186 218
+fi=(361)
+2177 436
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 255 
+* 79570
+fe=(329)
+186 654
++1 654
++1 327
+cfi=(363)
+cfn=(1530)
+calls=109 2612 
+* 2071
+fi=(377)
+50 109
+fi=(378)
+1873 109
+fi=(375)
+69 654
+fi=(490) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter.rs
+-36 109
+cfi=(486)
+cfn=(2784) <alloc::vec::Vec<f32> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<f32, core::iter::adapters::map::Map<core::ops::range::Range<usize>, driver_cost::search::{closure#0}>>>::from_iter
+calls=109 +17 
+* 1249599
+-33 218
+fe=(329)
+202 218
+cfi=(491) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/mcts/gumbel.rs
+cfn=(2802) <minase::search::mcts::gumbel::Gumbel>::new
+calls=109 28 
+* 151583
+fi=(361)
+2176 109
+0 109
+2176 218
++1 654
+fe=(329)
+202 763
++12 109
+-10 545
+fi=(492) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/mcts/puct.rs
+28 654
+fe=(329)
+212 327
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=109 +43 
+* 41093
+fi=(492)
+28 654
+fe=(329)
+212 327
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=109 +43 
+* 41093
+* 654
+-1 872
+cfi=(493) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/mcts/driver.rs
+cfn=(2836) <minase::search::mcts::driver::Driver>::new
+calls=218 103 
+* 349658
+fi=(361)
+2176 218
+0 1744
+2176 436
++1 218
+fe=(329)
+211 218
+fi=(361)
+2177 436
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 255 
+* 82186
+fe=(329)
+211 1962
+fi=(378)
+462 1744
+fi=(494) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/mcts/tree.rs
+-38 218
+fe=(329)
+226 436
+fi=(494)
+424 3551
+fe=(329)
+226 7102
++1 3234
+fi=(352)
+1650 3234
+fi=(351)
+25 3234
+fe=(329)
+-25 3234
+fi=(351)
+284 12936
+0 68
+284 34
+fe=(329)
+-51 535
++2 535
+0 934
+fi=(351)
+284 12800
+0 3200
+279 6400
+fi=(515)
+55 3200
+fi=(351)
+279 3200
+fi=(515)
+55 6400
+fi=(351)
+279 3200
+fi=(515)
+55 3200
+fi=(363)
+973 3200
+fi=(351)
+284 9600
+-5 117392
+fi=(515)
+55 58696
+fi=(351)
+279 58696
+fi=(515)
+55 117392
+fi=(351)
+279 58696
+fi=(515)
+55 58696
+fi=(363)
+973 58696
+fi=(351)
+284 196162
+0 2279
+279 2279
+fi=(515)
+55 2279
+fi=(351)
+284 6837
+-5 1864
+fi=(515)
+55 1864
+fi=(351)
+284 5592
+fe=(329)
+-57 3234
++8 3234
+0 3143
+235 7220
+fi=(378)
+462 14204
+fi=(362)
+615 58350
+fi=(358)
+970 58350
+fi=(350)
+1939 466800
+fi=(378)
+1044 116700
+fi=(374)
+1916 58350
+fi=(376) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/range.rs
+900 58350
+fi=(374)
+1916 1470
+fi=(376)
+900 1470
+fi=(494)
+424 60106
+fe=(329)
+240 120212
++1 120130
+fi=(378)
+3064 113880
+fe=(329)
+241 170820
++4 299985
+cfi=(493)
+cfn=(2866) <minase::search::mcts::driver::Driver>::select_leaf
+calls=59997 126 
+* 65608033676
+fi=(361)
+2176 59997
+0 539973
+2176 119994
+fe=(329)
+245 599970
+0 58350
+246 641850
+fi=(378)
+1035 58350
++3 116700
++1 10326
+cfi=(362)
+cfn=(2880)
+calls=5163 186 
+* 1948758
+* 5163
+3064 3483
+fe=(329)
+252 10653
+0 3509
+fi=(363)
+3172 7018
+fi=(362)
+0 3509
+cfi=(213)
+cfn=(1202)
+calls=3509 0 
+0 3509
+fi=(312)
+51 10527
+cfi=(235)
+cfn=(1206)
+calls=3509 409 
+* 277672
+fi=(362)
+470 7018
+fi=(486)
+0 3509
+fi=(351)
+284 10527
+0 3196
+284 5387
+0 313
+fi=(493)
+70 313
+fi=(362)
+615 313
+fi=(378)
+1873 313
+fi=(350)
++66 939
+fi=(493)
+70 313
+fi=(362)
+615 313
+fi=(378)
+1873 313
+fi=(350)
++66 939
+fi=(562)
+19 313
+fi=(351)
+284 1252
+fi=(493)
+70 27219
+fi=(362)
+615 27219
+fi=(378)
+1873 27219
+fi=(350)
++66 81657
+fi=(493)
+70 27219
+fi=(362)
+615 27219
+fi=(378)
+1873 27219
+fi=(350)
++66 81657
+fi=(562)
+19 27219
+fi=(351)
+284 109502
+fi=(352)
+614 3286
+fi=(493)
+70 3286
+fi=(362)
+615 3286
+fi=(378)
+1873 3286
+fi=(358)
+970 3286
+fi=(350)
+1939 9858
+fe=(329)
+164 23002
+cfi=(495) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/nn/evaluator.rs
+cfn=(2892) <minase::nn::evaluator::UniformEvaluator as minase::nn::evaluator::Evaluator>::evaluate
+calls=3286 45 
+* 2939653
+* 1561
+cfi=(495)
+cfn=(2892)
+calls=223 45 
+* 12206799
+fi=(361)
+2176 7018
+0 3509
+fi=(378)
+1873 3509
+fi=(374)
+1077 7018
+fi=(496) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/zip.rs
+300 7018
+0 14036
+fi=(378)
+1873 3509
+fe=(329)
+168 3509
+fi=(378)
+1873 3509
+fe=(329)
+168 3509
+fi=(363)
+1052 3509
+fi=(378)
+1873 54841
+fe=(329)
+168 54841
+fi=(378)
+1873 54841
+fe=(329)
+168 54841
+fi=(363)
+1052 171541
+fe=(329)
+0 58350
+fi=(389) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/slice/index.rs
+90 116700
+fe=(329)
++78 233400
+cfi=(493)
+cfn=(2920) <minase::search::mcts::driver::Driver>::evaluate
+calls=58350 +20 
+* 556769479
+fi=(361)
+2176 175050
+fe=(329)
+0 58350
+fi=(496)
+300 233400
+0 7018
+fi=(312)
+61 3509
+cfi=(232)
+cfn=(1454)
+calls=3509 648 
+* 79929
+fi=(378)
+4303 3509
+fi=(350)
+823 10527
+0 7018
+823 175050
+fi=(362)
+635 116700
+425 58132
+fi=(312)
+61 58132
+cfi=(232)
+cfn=(1454)
+calls=58132 648 
+* 1162640
+fi=(350)
+823 58350
+fi=(312)
+61 58350
+cfi=(232)
+cfn=(1454)
+calls=58350 648 
+* 2373710
+fi=(362)
+635 116700
+425 58350
+fi=(312)
+61 58350
+cfi=(232)
+cfn=(1454)
+calls=58350 648 
+* 1581994
+* 58350
+fi=(362)
+635 7102
+425 3509
+fi=(312)
+61 3509
+cfi=(232)
+cfn=(1454)
+calls=3509 648 
+* 82773
+* 3509
+fe=(329)
+268 218
+cfi=(232)
+cfn=(1454)
+calls=218 648 
+* 9839
+* 1744
+-12 1526
++2 109
+cfi=(491)
+cfn=(3134) <minase::search::mcts::gumbel::Gumbel>::action
+calls=109 54 
+* 521881
+* 109
+fi=(361)
+2176 218
+fi=(349) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc/src/boxed.rs
+0 109
+fe=(329)
+263 109
+cfi=(494)
+cfn=(3624) <minase::search::mcts::tree::Tree>::best_move
+calls=109 646 
+* 601219
+fi=(447) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/hint.rs
+491 436
+fe=(329)
+262 654
+-6 109
+fi=(361)
+2177 109
+fi=(447)
+491 218
+fi=(494)
+-67 218
+fe=(329)
+259 109
+cfi=(491)
+cfn=(3098) minase::search::mcts::gumbel::policy_target
+calls=109 -45 
+* 711548
+fi=(361)
+2176 109
+0 109
+2176 218
++1 436
+fi=(447)
+491 327
+fe=(329)
+257 545
++4 109
+cfi=(350)
+cfn=(3156) core::ptr::drop_glue::<minase::search::mcts::gumbel::Gumbel>
+calls=109 823 
+* 5618
+* 109
+0 109
+266 109
+cfi=(463) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/std/src/time.rs
+cfn=(2530) <std::time::Instant>::elapsed
+calls=109 388 
+* 9810
+0 109
+266 109
+cfi=(463)
+cfn=(2530)
+calls=109 388 
+* 9810
+fi=(464) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/time.rs
+867 2180
+fe=(329)
+266 654
++1 872
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 -12 
+* 82186
+* 1308
+fi=(362)
+635 436
+fe=(329)
+268 218
+fi=(312)
+61 218
+cfi=(232)
+cfn=(1454)
+calls=218 648 
+* 5000
+fi=(362)
+635 436
+fe=(329)
+268 218
+fi=(312)
+61 218
+fe=(329)
+
+fn=(1412)
+cfn=(2778)
+calls=218 184 
+394 66225052225
+
+fl=(349)
+fn=(3064) alloc::boxed::box_new_uninit
+247 58132
+fi=(401)
+99 58132
+cfi=(213)
+cfn=(1202)
+calls=58132 -99 
+* 58132
++2 174396
+cfi=(312)
+cfn=(1204)
+calls=58132 -50 
+* 18894842
+fe=(349)
+248 116264
++4 116264
+-5 116516
+fi=(401)
+99 58258
+cfi=(213)
+cfn=(1202)
+calls=58258 -99 
+* 58258
++2 174774
+cfi=(312)
+cfn=(1204)
+calls=58258 -50 
+* 2267054
+fe=(349)
+248 116516
++4 116516
+
+fl=(397) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/hash/random.rs
+fn=(1718) <std::hash::random::DefaultHasher as core::hash::Hasher>::write
+130 377675
+fi=(404) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/hash/sip.rs
+258 377675
++4 1133025
+0 755350
+278 377675
++1 1133025
++3 755350
+0 1888375
+fi=(350)
+549 377675
+fi=(404)
+288 377675
+fi=(363)
+2612 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 755350
+fi=(404)
+78 377675
+290 377675
++2 377675
+-10 755350
+0 1510700
+126 755350
+0 755350
+132 1510700
++5 755350
+298 377675
+0 377675
+fe=(397)
+132 755350
+
+fl=(235)
+fn=(890) _mi_subproc
+409 42462
+fi=(218)
++22 42462
++4 42462
++2 21231
+fe=(235)
+
+fn=(3606) mi_abandoned_page_try_reclaim
+409 2686
+fi=(232)
+574 2686
+-4 1343
++4 2686
+fi=(343)
+306 5372
+fe=(235)
+534 1343
++2 5372
+fi=(343)
+325 8058
++5 2686
++2 9401
+cfi=(222)
+cfn=(1798) _mi_option_get_fast
+calls=3627 -65 
+* 6715
+* 4029
++11 2686
++6 8058
+cfi=(317)
+cfn=(3612)
+calls=3627 1191 
+* 73865
++1 6715
+cfi=(316)
+cfn=(3616) _mi_theap_page_reclaim
+calls=3627 -62 
+* 134496
++1 5372
+cfi=(224)
+cfn=(1240) __mi_stat_counter_increase
+calls=3627 47 
+* 2686
+* 2686
++2 4029
+fe=(235)
+
+fn=(1206)
+409 3565193
+fi=(313)
+274 3565193
++1 10695579
+cfn=(1208) mi_theap_malloc_aligned
+calls=7318662 -87 
+* 174798365
+fe=(235)
+
+fl=(452) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/src/theap.c
+fn=(2352) mi_theap_collect
+146 134
+cfn=(2354) mi_theap_collect_ex
+calls=133 -28 
+* 565308
+
+fn=(2354)
+118 134
+fi=(232)
+570 67
++4 134
+fe=(452)
+117 268
++5 201
+-5 335
++5 201
+cfi=(316)
+cfn=(2234) _mi_deferred_free
+calls=133 893 
+* 335
++6 201
+cfi=(316)
+cfn=(1242) _mi_theap_collect_retired
+calls=133 471 
+* 6864
+26 268
++8 134
++1 201
++2 201
++1 134
+-1 14673
++1 17352
++1 3785
++57 3785
+-57 3785
++57 7570
+cfi=(316)
+cfn=(1796) _mi_page_free_collect
+calls=6860 206 
+* 64899
++1 7570
++2 104
+-64 15008
+135 402
+cfi=(317)
+cfn=(2190)
+calls=133 1302 
+* 39172
+fi=(232)
+570 67
+fe=(452)
+113 134
++26 268
+-26 67
+cfi=(224)
+cfn=(2358) _mi_stats_merge_into
+calls=133 433 
+* 376989
+
+fl=(378)
+fn=(3012) <alloc::vec::Vec<usize> as core::clone::Clone>::clone
+3821 298010
+1873 59602
+fi=(363)
+3172 417214
+fi=(405)
+459 119204
+fi=(362)
+0 119204
+461 119204
+0 59602
+cfi=(213)
+cfn=(1202)
+calls=59602 0 
+0 59602
+0 59602
+fi=(401)
+101 178806
+cfi=(312)
+cfn=(1204)
+calls=59602 -50 
+* 2325326
+fi=(362)
+470 119204
+0 119204
+fe=(378)
+975 178806
+fi=(441)
+452 119204
+fi=(350)
++97 238408
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=59602 255 
+* 689261
+fe=(378)
+2231 59602
+3824 417214
+
+fn=(2476)
+3064 218
+2520 436
+0 654
+2493 218
+
+fn=(2852)
+1731 233904
+fi=(362)
+620 58476
+fe=(378)
+1606 175428
+1734 116952
++5 292380
+
+fl=(427) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/lion.rs
+fn=(1912) minase_core::movegen::lion::generate_lion_double_and_jumps::<false, false, minase_core::movegen::generate::generate_piece_moves<false, false>::{closure#0}>
+21 8221833
+fi=(367)
++59 913537
+fi=(412)
++32 913537
++14 3654148
+0 15530129
+126 8221833
+fi=(386)
++38 1827074
++1 1827074
+-2 913537
+fe=(427)
+32 21924888
+fi=(386)
++96 679070
++1 3185214
+0 453144
+129 226572
+-1 4098105
++1 2732070
+-1 3474033
++1 2316022
+0 244474
+131 244474
+fi=(363)
++47 244474
+fi=(386)
+-47 488948
+fi=(367)
+27 733422
+fe=(427)
++5 244474
+fi=(386)
++99 434596
+fi=(363)
++47 434596
+fi=(386)
+-47 869192
+fi=(367)
+27 1303788
+fe=(427)
++5 434596
+-32 679070
+fi=(422)
+65 3395350
++6 7469770
+fi=(451)
+-45 2037210
+fi=(386)
++63 1358140
+fi=(451)
+-36 2716280
+fi=(386)
++22 3395350
+fi=(451)
+-22 1358140
+fi=(386)
++36 4074420
+-7 2037210
+fe=(427)
+-82 679070
+fi=(412)
+112 679070
++14 1358140
+fe=(427)
+0 2037210
+fi=(412)
+126 679070
+fi=(386)
+-97 2037210
++1 1358140
++1 1358140
+163 679070
++1 679070
+31 679070
+165 679070
+fe=(427)
+35 4074420
+-35 13483281
+fi=(362)
+615 4494427
+fi=(358)
+970 4494427
+fi=(350)
+1939 13483281
+fi=(378)
+1044 8988854
+fi=(386)
+128 4494427
++1 10346994
+0 3053604
+129 1526802
+-1 10940085
++1 7293390
+-1 6543585
++1 4362390
+0 1502125
+131 1502125
+fi=(363)
++47 1502125
+fi=(386)
+-47 3004250
+fi=(367)
+27 4506375
+fe=(427)
++8 1502125
+fi=(386)
++96 2992302
+fi=(363)
++47 2992302
+fi=(386)
+-47 5984604
+fi=(367)
+27 8976906
+fe=(427)
++8 2992302
+fi=(378)
+1035 4494427
++3 8988854
++1 606664
+cfi=(362)
+cfn=(1840)
+calls=639861 186 
+* 64104435
+* 303332
+fi=(412)
+155 1827074
+0 913537
+fi=(386)
+31 3654148
+-1 2740611
+-1 2740611
+fi=(412)
+155 1827074
+fi=(386)
++8 913537
++1 913537
++1 913537
+fe=(427)
+52 5481222
+-52 7628642
+53 15257284
+fi=(362)
+615 7628642
+fi=(358)
+970 7628642
+fi=(350)
+1939 22885926
+fi=(378)
+1044 15257284
+fi=(386)
+128 7628642
++1 17084358
+0 3254030
+129 1627015
+-1 20745492
++1 13830328
+-1 7730580
++1 5153720
+0 1663323
+131 1663323
+fi=(363)
++47 1663323
+fi=(386)
+-47 3326646
+fi=(367)
+27 4989969
+fe=(427)
++25 1663323
+fi=(386)
++79 5965319
+fi=(363)
++47 5965319
+fi=(386)
+-47 11930638
+fi=(367)
+27 17895957
+fe=(427)
++25 5965319
+fi=(378)
+1035 7628642
++3 15257284
++1 1181418
+cfi=(362)
+cfn=(1840)
+calls=1118599 186 
+* 123800013
+* 590709
+0 913537
+fi=(422)
+65 2740611
+fi=(386)
+-36 913537
+163 913537
+fi=(422)
+-98 913537
+fi=(386)
+-35 913537
+164 913537
+62 2740611
+fe=(427)
+-1 1827074
+-61 809270
+62 809270
+fi=(378)
+1035 809270
++3 1618540
++1 84386
+cfi=(362)
+cfn=(1840)
+calls=86964 186 
+* 9352432
+fi=(362)
+615 809270
+fi=(358)
+970 809270
+fi=(350)
+1939 2427810
+fi=(378)
+1044 1618540
+fe=(427)
+69 7308296
+
+fl=(428) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/checked.rs
+fn=(1930) <minase_core::position::Position>::try_make_move_with_undo
+33 1387530
+fi=(378)
+462 616680
+fe=(428)
+39 308340
+cfi=(418)
+cfn=(1818)
+calls=288907 +30 
+* 5816292051
+-39 1233360
+fi=(378)
+1873 154170
+fi=(352)
+1650 154170
+fi=(351)
+180 154170
+0 924494
+fi=(352)
+1650 88612
+fi=(351)
+180 44306
+fi=(429)
+27 89664
+fi=(367)
+-7 44322
+fi=(429)
++1 44322
+fi=(345)
+2442 14436
+fi=(367)
+20 3266
+fi=(429)
++3 3266
+fi=(367)
+-3 1802
+fi=(351)
+332 2328
+fi=(352)
+1650 5789151
+fi=(429)
+27 4166722
+fi=(367)
+-7 2026101
+fi=(429)
++1 2026101
+fi=(345)
+2442 557440
+fi=(367)
+20 273288
+fi=(351)
+332 273288
+fi=(418)
+148 154170
+fi=(430)
+-39 462510
+cfi=(422)
+cfn=(1856)
+calls=288907 -10 
+* 6018942
+0 154170
+109 770850
+cfn=(1946)
+calls=288907 +31 
+* 55071087
+fe=(428)
+-68 1233360
+-1 154170
+fi=(362)
+425 308340
+635 154170
+425 154170
+fi=(363)
+1361 154170
+fi=(401)
+128 308340
+cfi=(312)
+cfn=(1922)
+calls=288907 -67 
+* 4116042
+fe=(428)
+-83 1079190
+
+fl=(365)
+fn=(1814)
+159 466800
+fi=(345)
+634 58350
+fe=(365)
+160 58350
+fi=(378)
+0 58350
+462 175050
+fe=(365)
+165 350100
+cfi=(418)
+cfn=(1818)
+calls=71589 -96 
+* 2235996021
++1 116700
++12 233400
++1 525150
+
+fn=(1928) <minase_core::game::referee::Game>::play
+68 1079190
+fi=(345)
+634 154170
+fe=(365)
+215 154170
+0 308340
+fi=(422)
+83 308340
+fe=(365)
+-11 770850
+cfi=(428)
+cfn=(1930)
+calls=288907 -39 
+* 5906967061
+fi=(361)
+2176 154170
+0 462510
+2176 308340
++1 1541700
+fe=(365)
+72 1233360
++1 462510
+cfi=(431) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/repetition/prohibition.rs
+cfn=(1972) minase_core::game::repetition::prohibition::repetition_is_forbidden
+calls=288907 +3 
+* 770850
+* 308340
+fi=(411) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/adjudication/mod.rs
++6 154170
+fi=(363)
+898 154170
+fi=(405)
+459 154170
+fi=(411)
+79 154170
++5 154170
+-84 154170
+84 308340
++5 925020
+cfi=(432)
+cfn=(1978) minase_core::game::repetition::r1::move_was_attacking
+calls=288907 223 
+* 6452513533
+* 154170
+fi=(432)
+209 1372279
+0 140185
+fi=(381)
+85 420555
++3 280370
+fi=(382)
++24 280370
+fi=(432)
++99 420555
+fi=(411)
+0 6987
+85 11645
+cfi=(432)
+cfn=(2002) <minase_core::game::repetition::r1::R1History>::record_move
+calls=6587 -5 
+* 620373
+* 759205
+cfi=(432)
+cfn=(2002)
+calls=282320 -5 
+* 63193350
+* 154170
+-31 154170
+fi=(438) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/adjudication/mate.rs
+-40 308340
+fi=(433)
++9 154170
+fi=(422)
++54 308340
+fi=(386)
+182 154170
+-1 154170
+-1 154170
+62 154170
+fi=(390)
+-25 154170
+fi=(411)
+225 154170
++6 308244
+0 48
+225 48
+0 616488
+169 462366
+fi=(425)
+42 462366
+fi=(411)
+175 770610
+cfi=(435) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/adjudication/exhaustion.rs
+cfn=(2016) minase_core::game::adjudication::exhaustion::piece_exhaustion_transition
+calls=288788 -59 
+* 137594678
+* 308244
+fi=(345)
+634 616488
+fi=(411)
+241 308244
+-3 237
++4 79
+fi=(564) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/lib.rs
+0 79
+fi=(422)
+83 154043
+fi=(378)
+462 770215
+fi=(438)
+57 462129
+cfi=(418)
+cfn=(1818)
+calls=288646 +12 
+* 5894582892
+fi=(431)
++40 308086
+fi=(362)
+425 154043
+fi=(378)
+3064 308086
+fi=(362)
+635 154043
+425 154043
+fi=(363)
+1361 154043
+fi=(401)
+128 308086
+cfi=(312)
+cfn=(1922)
+calls=288646 -67 
+* 4152063
+fi=(378)
+3089 154043
+fi=(411)
+250 154043
+0 616172
+260 308086
+fi=(378)
+462 616172
+fi=(438)
+74 462129
+cfi=(418)
+cfn=(1818)
+calls=288646 -5 
+* 5894681623
+fi=(431)
++23 308086
+fi=(378)
+3064 154043
+fi=(438)
+81 308086
+fi=(422)
++2 308086
+fi=(438)
++3 462129
+fi=(358)
+970 770215
+fi=(350)
+1731 308086
+fi=(438)
+86 154043
+fi=(350)
+1731 494070
+fi=(438)
+86 247035
+-86 802156
+fi=(422)
+83 401078
+fi=(438)
+-58 401078
+fi=(422)
++52 1203234
+fi=(386)
+182 401078
+fi=(422)
+77 802156
+fi=(386)
+180 401078
+-1 802156
+fi=(387)
+809 802156
+fi=(367)
+80 24
+fi=(386)
+-5 24
+fi=(374)
+1916 24
+fi=(386)
+75 72
+fi=(439)
++63 96
+0 2005270
+fi=(429)
+35 401054
+fi=(387)
+809 401054
+fi=(439)
+0 96
+fi=(429)
+35 24
+fi=(387)
+809 24
+fi=(386)
+75 802128
+fi=(374)
+1916 401064
+fi=(386)
+75 1203192
+fi=(515)
+-20 802128
+fi=(363)
++30 2005320
+fi=(386)
++10 802128
+fi=(438)
+-8 401064
+fi=(363)
+-2 70
+fi=(386)
++10 28
+fi=(438)
+-8 802170
+-87 1202325
+91 2003875
+cfi=(430)
+cfn=(2050)
+calls=966231 +17 
+* 169522397
+fi=(411)
++61 801550
+fi=(422)
+-69 400775
+fi=(411)
++74 400775
+-93 801550
++93 2003875
+cfi=(432)
+cfn=(1978)
+calls=966231 +66 
+* 18316625892
+0 400775
+fi=(432)
+209 3158788
++3 347817
+fi=(381)
+85 1043451
++3 695634
+fi=(382)
++24 695634
+fi=(432)
++99 1043451
+0 15788
+fi=(411)
+153 39470
+cfi=(432)
+cfn=(2052) <minase_core::game::repetition::r1::R1History>::candidate_result
+calls=28030 -33 
+* 142092
+* 1964405
+cfi=(432)
+cfn=(2052)
+calls=938201 -33 
+* 9637298
+* 801550
+0 400775
+169 801550
+0 1202325
+175 1603100
+cfi=(435)
+cfn=(2016)
+calls=966231 -59 
+* 293658074
+* 400775
+0 400775
+fi=(438)
+92 802210
+fi=(378)
+462 1201830
+fi=(438)
+41 2003050
+cfi=(418)
+cfn=(1818)
+calls=966042 +28 
+* 17751933787
++1 1201830
+fi=(358)
+970 801220
+fi=(378)
+3979 1602440
+fi=(338)
+2897 1201830
+cfi=(434)
+cfn=(2054)
+calls=966042 379 
+* 1094953019
+fi=(438)
+44 400610
+fi=(434)
+203 801220
+fi=(362)
+635 400610
+fi=(434)
+203 400610
+fi=(363)
+1361 400610
+fi=(401)
+128 801220
+cfi=(312)
+cfn=(1922)
+calls=966042 -67 
+* 11000197
+fi=(438)
+-33 400610
++2 1602440
+cfi=(430)
+cfn=(2066)
+calls=966042 262 
+* 45254142
++2 801220
+-99 247058
+fi=(352)
+1650 494116
+fi=(434)
+262 247058
+0 46
+fi=(362)
+635 23
+fi=(363)
+1361 23
+fi=(401)
+128 69
+cfi=(312)
+cfn=(1922)
+calls=54 -67 
+* 483
+0 92
+fi=(390)
+37 23
+fi=(401)
+-37 165
+fi=(438)
+97 330
+cfi=(430)
+cfn=(2066)
+calls=189 262 
+* 17655
+-97 308040
+fi=(362)
+635 154020
+fi=(438)
+0 616080
+cfi=(312)
+cfn=(1922)
+calls=288592 61 
+0 4151468
+0 154020
+fi=(411)
+59 154020
+fi=(391)
+-40 308040
+fi=(411)
++40 150
+fi=(391)
+-40 300
+-19 154170
+19 154170
+fi=(378)
+1035 154170
++3 404213
+fe=(365)
+0 58297
+fi=(378)
+1039 58297
+cfi=(362)
+cfn=(2078)
+calls=119271 186 
+* 25379003
+fi=(362)
+615 154170
+fi=(350)
+1939 154170
+fi=(378)
+1044 462510
+fe=(365)
+94 308340
+-94 124
+225 372
+94 248
++1 372
+-95 154046
+98 2158380
+
+fn=(2484)
+23 526284
+fi=(350)
+1731 292380
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 1754280
+fi=(386)
+11 233904
+fi=(350)
+1731 409332
+fi=(422)
+32 58476
+fi=(350)
+1731 116952
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 9414636
+fi=(433)
+8 58476
+fi=(345)
+2277 116952
+fi=(422)
+32 116952
+fi=(425)
++39 58476
+fi=(418)
+-36 58476
+fi=(391)
+-9 58476
+-26 58476
+26 526284
+fi=(399)
+190 116952
++1 58476
+cfi=(400)
+cfn=(2492) <hashbrown::raw::RawTable<(minase_core::game::repetition::r1::R1Key, minase_core::game::repetition::r1::R1PositionState)> as core::clone::Clone>::clone
+calls=62480 3293 
+* 50585403
+* 58476
+-2 58476
+fi=(432)
+46 116952
+fi=(391)
+-20 233904
+fi=(411)
+-4 1052568
+fi=(378)
+1873 58476
+fi=(363)
+3172 409332
+fi=(405)
+459 116952
+fi=(362)
+0 116952
+461 116952
+0 116952
+cfi=(213)
+cfn=(1202)
+calls=62480 0 
+0 58476
+0 58476
+fi=(401)
+101 175428
+cfi=(312)
+cfn=(1204)
+calls=62480 -50 
+* 7082207
+fi=(362)
+470 116952
+0 175428
+fi=(441)
+452 116952
+fi=(350)
++97 175428
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 6158937
+fi=(345)
+2277 116952
+fe=(365)
+23 233904
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 10818060
+* 2689896
+
+fl=(350)
+fn=(3156)
+823 218
+fi=(362)
+635 218
+425 109
+fi=(312)
+61 109
+cfi=(232)
+cfn=(1454)
+calls=109 648 
+* 2239
+fi=(362)
+635 218
+425 109
+fi=(312)
+61 218
+cfi=(232)
+cfn=(1454)
+calls=109 648 
+* 2180
+fe=(350)
+
+fn=(3072) core::ptr::drop_glue::<core::option::Option<alloc::boxed::Box<minase::search::mcts::tree::Node>>>
+823 524322
+
+fl=(436) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/array/drain.rs
+fn=(2022) <&mut core::array::drain::Drain<minase_core::piece::color::Color, <core::ops::try_trait::NeverShortCircuit<minase_core::board::bitboard::Bitboard>>::wrap_mut_1<minase_core::piece::color::Color, minase_core::game::adjudication::exhaustion::piece_exhaustion_outcome::{closure#2}>::{closure#0}> as core::ops::function::FnMut<(usize,)>>::call_mut
+73 1109794
++20 2219588
++4 1109794
+fi=(352)
+614 1109794
+fe=(436)
+95 1109794
+fi=(350)
+1731 1109794
+fe=(436)
+97 1109794
+fi=(422)
+-26 3329382
++6 2219588
+fi=(386)
+182 1109794
+52 3329382
+fi=(422)
++25 2219588
+fi=(386)
+180 1109794
+53 2219588
+-53 1109794
+128 1109794
++1 2219588
+-1 10719410
++1 21438820
+0 3235899
+129 3235899
+-1 17186610
++1 17186610
+-1 9413128
++1 9413128
++2 10719410
+-1 21438820
+fi=(363)
++48 10719410
+fi=(386)
+-48 10719410
++1 21438820
+fi=(367)
+27 32158230
+fi=(338)
+2493 10719410
+0 2219588
+fi=(386)
+53 3329382
+fi=(435)
+166 85755280
+fi=(338)
+2494 21438820
+0 7713
+fi=(386)
+53 15426
++29 30852
+-29 7713
+213 3329382
+31 1109794
+213 1109794
+29 1109794
+163 1109794
++2 1109794
+fi=(437) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/try_trait.rs
+415 2219588
+fe=(436)
+99 1109794
+
+fl=(495)
+fn=(2892)
+45 31581
+fi=(378)
+3045 7018
+fi=(352)
+1650 3509
+fi=(351)
+180 3509
+0 35090
+fi=(362)
+615 58350
+fi=(350)
+1939 58350
+fi=(378)
+1044 116700
+fi=(352)
+1650 175050
+fi=(351)
+180 58350
+0 58350
+fe=(495)
+54 175050
+fi=(378)
+3535 116700
+fi=(362)
+620 58350
+fi=(363)
+2649 58350
+fi=(362)
+768 58350
+-94 58350
+-59 57212
+fi=(358)
+970 57212
+fi=(374)
+1916 57212
+fi=(376)
+900 115562
+fi=(350)
+1939 116700
+cob=(2)
+cfi=(294)
+cfn=(1128)
+calls=58350 193 
+* 1962345
+* 58350
+fi=(376)
+900 350100
+fi=(350)
+1939 58350
+fi=(562)
+19 58350
+fi=(378)
+1035 116700
+0 58350
+1038 116700
++1 1538
+cfi=(362)
+cfn=(2912)
+calls=769 186 
+* 174163
+* 1538
+fi=(362)
+676 6828
+cfn=(2898)
+calls=1138 -14 
+* 10606317
+* 1138
+fi=(378)
+3064 1138
+fi=(362)
+615 1138
+fi=(358)
+970 1138
+fi=(374)
+1916 1138
+fi=(376)
+900 1138
+0 3509
+fe=(495)
+57 3509
++1 28072
+
+fl=(232)
+fn=(1334)
+1110 18183
+fi=(317)
+142 18183
++1 18183
+fe=(232)
+
+fn=(1216)
+512 3020067
+fi=(314)
+71 2013378
++1 231882
++20 8712378
++4 968042
+fe=(232)
+
+fn=(1372)
+798 31587
+-1 63174
+fi=(314)
+182 63174
+cfi=(232)
+cfn=(1216)
+calls=93415 512 
+* 473805
+fe=(232)
+
+fn=(1454)
+648 13960672
+-4 13960672
+fi=(343)
+207 13960672
+fe=(232)
+644 13960672
++4 13960672
+-6 27921344
++1 13960672
++11 13960672
+fi=(343)
+181 27921344
+fe=(232)
+815 13960672
+fi=(343)
+186 27921344
+fe=(232)
+1069 27918658
+fi=(343)
+43 13959329
+-1 13959329
++1 13959329
+210 13943766
+44 57790
++1 15563
+cfi=(316)
+cfn=(1458) _mi_page_retire
+calls=57810 437 
+* 13010902
+185 1343
++6 2686
++5 2686
+fe=(232)
+927 1343
+fi=(343)
+75 2686
+fe=(232)
+927 1343
+-6 4029
+fi=(343)
+79 2686
++4 2686
++2 1343
+cfn=(3602) mi_free_try_collect_mt
+calls=3629 358 
+* 396310
+fe=(232)
+
+fl=(343)
+fn=(3602)
+358 8058
++5 2860
++5 174
+cfi=(316)
+cfn=(3712) _mi_page_free_collect_partly
+calls=213 244 
+* 1566
++7 2686
+cfi=(222)
+cfn=(1798)
+calls=3629 267 
+* 6715
+* 1343
+fi=(232)
+757 1343
+fe=(343)
+251 2686
+383 5372
++7 6715
+-18 1169
++1 1169
+-1 1169
+cfi=(316)
+cfn=(1796)
+calls=3416 206 
+* 53774
++1 1169
++11 2686
+cfi=(235)
+cfn=(3606)
+calls=3627 +25 
+* 292970
+* 2686
+
+fl=(313)
+fn=(1212) mi_theap_malloc_zero_aligned_at_generic
+154 784740
++3 784740
+22 1177110
+180 674380
++1 168595
+-1 337190
+cfn=(1404) mi_theap_malloc_zero_aligned_at_overalloc
+calls=258912 70 
+* 44214716
+23 1373295
+cfi=(314)
+cfn=(1214)
+calls=296656 +91 
+* 5443432
++1 1373295
+fi=(232)
+445 171118
+fe=(313)
+24 342236
++40 248310
+cfi=(315)
+cfn=(1224)
+calls=37744 232 
+* 6652811
+168 27590
++1 82770
+-1 27590
++1 110360
++12 223775
+24 337190
+
+fn=(1404)
+70 1517355
++6 337190
++18 337190
+-30 337190
++30 505785
+-30 168595
+cfi=(315)
+cfn=(1224)
+calls=258912 232 
+* 37976701
+* 168595
++32 337190
++5 168595
++1 337190
+fi=(232)
+648 168595
+-4 168595
+fe=(313)
+149 168595
+fi=(232)
+644 168595
++4 168595
+fe=(313)
+150 1180165
+
+fn=(2822)
+188 218
+fi=(232)
+445 109
+fe=(313)
+188 218
+fi=(235)
+409 218
+fe=(313)
+211 436
+fi=(232)
+512 218
++69 109
+fe=(313)
+215 327
++2 216
++3 540
+cfi=(315)
+cfn=(1390)
+calls=108 41 
+* 3650
++11 7
+cfn=(1212)
+calls=1 -77 
+* 222
+
+fn=(1882)
+396 31540185
+fi=(235)
++13 10513395
+fe=(313)
+-13 31540185
+fi=(235)
++13 10513395
+fe=(313)
+-50 21026790
++39 10513395
+-39 31540185
++39 10513395
+-39 31540185
++39 10513395
+-39 10513395
+cfi=(315)
+cfn=(1884)
+calls=23115293 +2 
+* 1429223073
+
+fn=(1208)
+188 7130386
+fi=(232)
+445 3565193
+fe=(313)
+188 7130386
++23 13937662
+fi=(232)
+512 6807276
++69 3403638
+fe=(313)
+215 10210914
++2 6738018
++3 13476036
+cfi=(315)
+cfn=(1390)
+calls=7022007 41 
+* 37059099
++11 784736
+cfn=(1212)
+calls=296655 -77 
+* 64555021
+
+fl=(486)
+fn=(3102) <alloc::vec::Vec<f32> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<f32, core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<minase::search::mcts::tree::Edge>, alloc::vec::into_iter::IntoIter<f32>>, minase::search::mcts::gumbel::policy_target::{closure#0}>>>::from_iter
+50 14130
+fi=(496)
+578 3140
+fi=(398)
+734 6280
+fi=(496)
+578 4710
+fi=(398)
+734 3140
+fi=(374)
+1077 3140
+fi=(363)
+3172 1570
+fi=(362)
+461 3140
+0 3140
+cfi=(213)
+cfn=(1202)
+calls=1570 0 
+0 1570
+fi=(401)
+101 4710
+cfi=(312)
+cfn=(1204)
+calls=1570 -50 
+* 96308
+fi=(362)
+470 3140
+0 3140
+fe=(486)
+60 1570
+fi=(362)
+461 1570
+fi=(376)
+900 1570
+0 1570
+900 3140
+0 170
+900 5584
+0 1719
+900 19346
+fi=(363)
++73 4200
+fi=(376)
+-73 28000
+fi=(363)
++73 2800
+fi=(376)
+0 2800
+fi=(363)
+973 1400
+0 2800
+973 9800
+0 1400
+fi=(350)
+1731 9800
+fi=(491)
+220 7000
+fi=(350)
+1939 2800
+fi=(376)
+900 5600
+fi=(350)
+1731 90881
+fi=(491)
+220 64915
+fi=(350)
+1939 25966
+fi=(376)
+900 54906
+fi=(496)
+263 823
+fi=(358)
+970 1646
+fi=(350)
+1731 823
+fi=(491)
+220 823
+fi=(350)
+1939 3292
+fi=(376)
+900 16154
+0 1209
+fi=(350)
+1731 1209
+fi=(491)
+220 1209
+fi=(350)
+1939 1209
+1731 1209
+fi=(491)
+220 1209
+fi=(350)
+1939 1209
+fi=(374)
+-23 3627
+fi=(376)
+900 1209
+fi=(350)
+1731 3109
+fi=(491)
+220 3109
+fi=(350)
+1939 3109
+1731 3109
+fi=(491)
+220 3109
+fi=(350)
+1939 3109
+fi=(374)
+-23 9327
+fi=(376)
+900 3109
+0 3627
+fi=(362)
+635 1209
+fi=(376)
+0 361
+fi=(362)
+635 361
+0 1570
+fi=(363)
+1361 1570
+fi=(401)
+128 3140
+cfi=(312)
+cfn=(1922)
+calls=1570 -67 
+* 32970
+fe=(486)
+-67 4710
++1 14130
+
+fn=(2784)
+50 872
++1 327
+fi=(376)
+990 327
+fi=(363)
+3172 763
+fi=(405)
+459 218
+fi=(362)
++2 218
+0 218
+cfi=(213)
+cfn=(1202)
+calls=109 0 
+0 109
+0 109
+fi=(312)
+51 327
+cfi=(235)
+cfn=(1206)
+calls=109 409 
+* 19808
+fi=(362)
+470 218
+0 218
+fi=(374)
+1916 109
+fi=(376)
+900 109
+0 436
+fi=(329)
+199 26910
+fi=(350)
+1939 8970
+fi=(562)
+19 8970
+fi=(374)
+1916 8970
+fi=(376)
+900 8970
+fi=(377)
+59 8970
++1 26910
++1 26910
++1 26910
++1 8970
+fi=(329)
+193 53820
++1 8970
+cob=(3) /usr/lib/libm.so.6
+cfi=(487) /usr/src/debug/glibc/glibc/math/./w_log_template.c
+cfn=(2792) log@@GLIBC_2.29
+calls=8970 31 
+* 463350
+* 26910
++5 17940
+fi=(489) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/num/f64.rs
+474 8970
+cob=(3)
+cfi=(487)
+cfn=(2792)
+calls=8970 31 
+* 464545
+* 17940
+fi=(376)
+0 109
+fe=(486)
+61 327
++1 872
+
+fl=(246)
+fn=(968)
+fi=(565) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/core/src/ops/function.rs
+cfi=(327)
+cfn=(1408)
+calls=1 206 
+287 66225052225
+fe=(246)
+
+fl=(418)
+fn=(1818)
+69 14765910
+fi=(378)
+462 4429773
+fi=(422)
+83 1476591
+fi=(415) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/generate.rs
+-59 17719092
+-24 42821139
+fi=(363)
+973 42821139
+fi=(384)
+131 85642278
+0 42821139
+fi=(350)
+1731 42821139
+fi=(422)
+77 385390251
+fi=(386)
++52 85642278
+0 38293086
+129 12764362
+0 17507050
+129 8753525
+-1 221809449
++1 147872966
+-1 194417901
++1 129611934
+0 21984828
+131 21984828
+fi=(363)
++47 21984828
+fi=(386)
+-48 21984828
++1 43969656
+fi=(367)
+27 65954484
+fi=(415)
+-2 21984828
+fi=(386)
+131 30648403
+fi=(363)
++47 30648403
+fi=(386)
+-48 30648403
++1 61296806
+fi=(367)
+27 91945209
+fi=(415)
+-2 30648403
++1 421065848
+cfn=(1826) minase_core::movegen::generate::generate_piece_moves::<false, false>
+calls=108158649 +9 
+* 57550894720
+fi=(386)
+128 52633231
++1 149146168
+fi=(362)
+425 2953182
+635 1476591
+425 1476591
+fi=(363)
+1361 1476591
+fi=(401)
+128 2953182
+cfi=(312)
+cfn=(1922)
+calls=3159528 -67 
+* 31136625
+fe=(418)
+-57 11812728
+
+fn=(3730) <minase_core::movegen::MoveGenerator>::new
+50 2
+fi=(368)
+3891 2
+fi=(369)
+156 4
+fe=(418)
+51 6
++4 2
+
+fl=(226)
+fn=(860) _mi_os_page_size
+47 72916
+
+fn=(2366)
+55 92
++1 92
+-1 184
++1 92
+cfi=(222)
+cfn=(1252)
+calls=167 287 
+* 4232
++1 184
++3 368
+cfi=(222)
+cfn=(780)
+calls=167 271 
+* 2208
+* 184
++6 92
+-2 92
+cfn=(860)
+calls=167 -17 
+* 184
+
+fn=(1342)
+524 68856
+627 137712
+527 17214
+cfn=(860)
+calls=46712 47 
+* 34428
+* 17214
+fi=(232)
+-71 17214
++2 17214
+-1 34428
+fe=(226)
++72 17214
+cfn=(860)
+calls=46712 47 
+* 34428
+* 34428
+fi=(232)
+-57 17214
++1 34428
++1 34428
+fe=(226)
++57 17214
++1 34428
+632 51642
+cfi=(223)
+cfn=(1346)
+calls=46712 491 
+* 34428
++1 34428
++3 103284
+fi=(232)
+458 51642
+fe=(226)
+
+fn=(864)
+37 34428
+
+fn=(2382)
+641 4845
++1 969
+-1 10659
++1 969
+cfi=(222)
+cfn=(780)
+calls=1939 271 
+* 23256
+* 1938
++1 969
+cfi=(235)
+cfn=(890)
+calls=1939 409 
+* 6783
+* 2907
+cfi=(220)
+cfn=(894)
+calls=1939 136 
+* 1938
++1 969
+cfi=(235)
+cfn=(890)
+calls=1939 409 
+* 6783
+* 2907
+cfi=(220)
+cfn=(894)
+calls=1939 136 
+* 1938
++2 1938
++4 1938
+cfi=(222)
+cfn=(778)
+calls=1939 323 
+* 30039
+* 1938
++1 969
+cfi=(218)
+cfn=(798)
+calls=1939 989 
+* 1938
+-1 1938
++13 10659
+524 969
+653 969
+524 4845
++3 969
+cfn=(860)
+calls=1939 47 
+* 1938
+* 969
+fi=(232)
+-71 969
++2 969
+-1 1938
++1 1938
+fe=(226)
++71 969
+cfn=(860)
+calls=1939 47 
+* 1938
+* 1938
+fi=(232)
+-57 969
++1 1938
++1 1938
+fe=(226)
++57 969
++1 1938
++54 2907
+-1 969
++1 969
+cfi=(223)
+cfn=(2386)
+calls=1939 -93 
+* 19380
++1 1938
++3 2907
+
+fl=(320)
+fn=(2370) _mi_bitmap_forall_setc_ranges
+118 92
+fi=(232)
+489 92
+fi=(318)
+1434 184
+-3 184
++3 184
+-3 920
++3 92
++1 92
+fi=(321) /home/stepney141/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libmimalloc-sys-0.1.49/c_src/mimalloc/v3/include/mimalloc/bits.h
+271 828
+-57 460
+fi=(318)
+1439 92
++3 644
+fi=(321)
+214 1052
+fi=(318)
+1459 1052
+fi=(321)
+214 1052
+fi=(318)
+1459 1052
+fi=(321)
+214 1052
+fi=(318)
+1459 1052
+cfi=(317)
+cfn=(2376)
+calls=1786 2108 
+* 599792
+* 2104
+82 4208
++1 2104
+1467 1052
+fi=(321)
+271 2104
+fi=(318)
+83 6
+1467 3
+fi=(321)
+271 280
+fi=(318)
+1442 2944
++2 1472
+fi=(321)
+271 2020
+-57 274
+fi=(318)
+1451 274
+fi=(321)
+214 274
+fi=(318)
+1451 274
+fi=(321)
+214 274
+fi=(318)
+1451 274
++4 274
+-4 274
+fi=(321)
+214 1329
+fi=(318)
+1451 781
+fi=(321)
+214 781
+fi=(318)
+1451 781
+fi=(321)
+214 781
+fi=(318)
+1451 781
++4 781
+-4 781
+fi=(321)
+214 1562
+fi=(318)
+1459 12
+cfi=(317)
+cfn=(2376)
+calls=13 2108 
+* 1788
+* 6
+82 6
+fi=(321)
+271 92
+fi=(318)
+39 92
+fi=(321)
+271 460
+fi=(318)
+1434 368
++40 92
+-1 92
++1 644
+fe=(320)
+
+fl=(318)
+fn=(1336)
+1093 497700
+fi=(320)
+118 49770
++4 49770
+fe=(318)
+1097 149310
++6 49770
++1 49770
+82 49770
+1108 49770
+-5 49770
++1 49770
+82 99540
+1108 348390
+82 99540
+1108 99540
+82 99540
+1109 49770
+351 99540
++3 1796
+-63 898
++4 898
+-3 1796
+-1 898
++1 898
++3 1796
+-2 2694
+82 5775
++1 2475
++53 825
++1 3300
++1 1650
+fi=(321)
++45 1650
+cfi=(319) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/compiler-builtins/compiler-builtins/./lib/builtins/popcountdi2.c
+cfn=(1312) __popcountdi2
+calls=1167 19 
+* 22275
+fe=(318)
+-44 825
+295 825
+fi=(321)
+183 825
+fe=(318)
+-44 825
+-1 825
+1110 825
++1 825
+277 825
+83 825
++12 825
+-12 825
+277 825
+83 825
++12 825
+1107 1650
++3 48945
++1 48945
+277 48945
+83 48945
++12 48945
+-12 48945
+277 48945
+83 48945
++12 48945
+1107 97890
++4 248850
++7 117723
++2 447930
+277 48872
+95 48872
+277 48872
++2 48872
+95 195488
+351 48872
+95 48872
++1 48872
+280 48872
+96 48872
+280 97744
++71 48872
+1107 248850
+82 292
++1 73
+-1 73
++1 146
++53 73
++1 292
++1 511
+fi=(321)
++45 73
+cfi=(319)
+cfn=(1312)
+calls=102 19 
+* 1971
+fe=(318)
+308 219
+fi=(321)
+183 73
+fe=(318)
+308 146
+82 73
+fi=(321)
+183 73
+fe=(318)
+82 365
+308 146
+136 146
++1 292
++1 146
+fi=(321)
++45 146
+cfi=(319)
+cfn=(1312)
+calls=102 19 
+* 1971
+* 73
+fe=(318)
+309 73
++1 73
+-1 73
++1 219
+
+fn=(2368)
+1483 184
++2 184
++1 276
+cfi=(320)
+cfn=(2370)
+calls=167 118 
+* 642467
+
+fn=(1568) mi_bchunk_try_find_and_clearNX
+763 150
+-1 50
+82 400
+762 100
+82 50
+762 50
+82 100
+762 150
++5 100
+fi=(321)
+271 100
+fe=(318)
+767 74
+fi=(321)
+271 74
+fe=(318)
+767 91
+fi=(321)
+214 273
+fe=(318)
+773 273
++2 7
++2 7
+-2 7
++2 21
++17 16
+fi=(321)
+271 8
+fe=(318)
+766 219
++1 230
+-1 230
++1 230
+fi=(321)
+271 460
+fe=(318)
+766 471
++52 300
+174 12
++4 15
+779 9
+82 100
+799 168
+fi=(321)
+238 336
+fe=(318)
+801 168
++1 74
+fi=(321)
+238 74
+-24 202
+fe=(318)
+803 81
+-37 111
++42 47
++3 47
+-6 188
+452 47
+-1 47
++2 47
+83 47
+451 94
++4 47
+-2 94
+82 141
++1 47
+-1 47
+185 47
+83 47
++91 188
++4 235
+468 47
+82 47
+468 47
+82 235
+185 47
+-11 188
++4 235
+
+fn=(1574) mi_bchunk_popcountNC
+378 188
++2 47
+-2 282
+82 282
++1 94
+-1 94
++1 94
+264 94
+fi=(321)
+-81 94
+cfi=(319)
+cfn=(1312)
+calls=104 19 
+* 2538
+* 94
+fe=(318)
+387 94
+-6 235
+-3 47
++4 47
+263 47
+382 47
++1 94
+82 94
+382 47
+263 47
+382 47
++1 94
+82 94
+394 329
+
+fn=(1762)
+1848 3140
+fi=(320)
+273 942
+fe=(318)
+1767 314
++1 628
+fi=(232)
+489 942
+fe=(318)
+82 942
+1778 942
+82 628
+1774 314
++4 942
+82 1884
+1778 628
+fi=(321)
+183 942
+cfi=(319)
+cfn=(1312)
+calls=344 19 
+* 8478
+* 628
+fe=(318)
+83 628
+1769 314
++13 314
+83 314
+1769 314
++13 314
+-4 2198
+fi=(321)
+214 314
+fe=(318)
+39 314
+fi=(321)
+214 314
+fe=(318)
+39 314
+fi=(321)
+214 314
+fe=(318)
+1781 314
++1 942
++1 628
++6 314
+-1 1256
++2 314
+-2 628
++3 314
++1 314
+-2 628
++2 314
++1 314
+-1 314
++1 314
+-3 628
++1 1256
++1 1256
+-2 2512
++2 1256
++1 1256
+-1 1256
++1 1256
+-3 2512
++17 628
+-7 628
++7 314
+-7 1570
++7 942
++6 628
+-6 314
++6 314
+-8 628
+82 628
+1805 1256
+82 1256
+1807 2512
+82 628
+fi=(321)
+183 314
+fe=(318)
+82 628
+fi=(321)
+183 314
+cfi=(319)
+cfn=(1312)
+calls=344 19 
+* 8478
+* 314
+fe=(318)
+83 628
+1807 628
+83 314
+1807 3140
+754 314
+1807 314
+fi=(321)
+214 942
+fe=(318)
+1813 314
++1 942
+754 314
+cfn=(1768) mi_bchunk_try_find_and_clear8
+calls=344 -56 
+* 26315
+1817 942
++1 942
++4 1570
++2 314
++26 3454
+fi=(320)
+241 1256
+fe=(318)
+1800 1256
+fi=(320)
+241 1256
+fe=(318)
+1802 1884
++3 628
+82 314
+
+fn=(2378)
+1702 20489
++6 2927
++3 10739
++6 14635
+-10 2927
++5 2927
+-5 2927
+557 5854
+1714 129
+cfn=(2388) mi_bbitmap_chunkmap_try_clear.isra.0
+calls=87 -63 
+* 1205
++2 1938
+451 2927
++1 2927
++1 5854
++2 2927
+-2 5854
+82 8781
++1 2927
+-1 11708
+185 2927
+83 2927
++91 11708
++4 5814
+1714 1981
+
+fn=(1352)
+1177 51642
+cfn=(1336)
+calls=46712 -84 
+* 1497618
+
+fn=(1562)
+1856 700
+fi=(320)
+273 50
+fe=(318)
+1767 50
+fi=(232)
+489 50
+fe=(318)
+1768 50
+fi=(232)
+489 50
+fe=(318)
+1768 100
+fi=(232)
+489 50
+fe=(318)
+82 100
+1778 100
+-9 50
++13 100
+-13 50
++13 100
+-13 50
+83 100
+1778 350
+fi=(321)
+214 50
+fe=(318)
+39 50
+fi=(321)
+214 50
+fe=(318)
+39 50
+fi=(321)
+214 50
+fe=(318)
+1781 50
++1 150
++1 100
+82 200
+fi=(321)
+183 100
+cfi=(319)
+cfn=(1312)
+calls=58 19 
+* 1350
+fi=(320)
++67 100
+fi=(321)
+-67 50
+fe=(318)
+1774 100
+fi=(320)
+250 150
++1 100
++2 150
+fe=(318)
+1778 250
+82 350
+1789 50
+-1 200
++2 50
+-2 100
++3 50
++1 50
+-2 100
++2 50
++1 50
+-1 50
++1 50
+-3 100
++1 200
++1 200
+-2 400
++2 200
++1 200
+-1 200
++1 200
+-3 400
++17 100
+-7 100
++7 50
+-7 200
++7 150
++6 100
+-6 50
++6 50
+-8 100
+82 100
+1805 300
+82 300
+1807 500
+82 100
+fi=(321)
+183 50
+fe=(318)
+82 50
+fi=(321)
+183 50
+cfi=(319)
+cfn=(1312)
+calls=58 19 
+* 1350
+fe=(318)
+82 50
+fi=(321)
+183 50
+fe=(318)
+83 200
+1807 300
++11 300
++4 50
++2 50
+-2 150
++37 550
+-52 50
++6 50
++4 50
+-10 50
+fi=(321)
+214 50
+fe=(318)
+1817 50
+fi=(321)
+214 100
+fe=(318)
+1813 50
++1 150
++3 50
+cfn=(1568)
+calls=59 763 
+* 7894
+* 150
+fi=(320)
+241 300
+fe=(318)
+1800 300
+fi=(320)
+241 300
++12 100
+fe=(318)
+1802 600
++3 100
+82 50
+
+fn=(2188)
+1674 76710
++4 15342
+-4 15342
+fi=(320)
+273 15342
++4 15342
+fe=(318)
+1678 30684
++9 61368
++10 76710
+-10 76710
+-3 15342
++1 30684
++3 15342
+-4 15342
++1 15342
+-53 15342
+82 30684
+1632 15342
++56 15342
+82 30684
+1688 15342
+82 30684
+1688 76710
+82 76710
+351 46026
++3 1068
+-63 534
++4 534
+-3 534
+-1 534
++4 1068
+-2 1602
+82 2032
++1 508
+-1 1524
++54 508
+-53 508
++54 2032
++2 508
+295 1016
+139 508
+1689 508
+945 1016
++1 1016
+1689 14834
+945 29668
++1 29668
+277 15342
+83 15342
++12 15342
+-12 15342
+277 15342
+83 15342
++12 15342
+1632 30684
++1 30684
++54 30684
+277 14808
+95 29616
+277 14808
++2 14808
+95 14808
++1 14808
+351 44424
+82 104
++1 26
+-1 26
++1 52
++53 26
++1 104
++1 26
+-56 26
+308 26
+138 26
+308 26
+82 130
+308 52
+136 26
++1 104
++1 26
+310 130
+
+fn=(1330)
+1844 185350
+fi=(320)
+273 16850
+fe=(318)
+1844 50550
+fi=(320)
+273 16850
+fe=(318)
+1767 16850
+fi=(232)
+489 16850
+fe=(318)
+1768 16850
+fi=(232)
+489 16850
+fe=(318)
+1768 33700
+fi=(232)
+489 16850
+fe=(318)
+82 33700
+1778 16850
+82 16850
+1778 33700
+82 33700
+1774 16850
++4 50550
+82 16850
+1778 33700
+82 84250
+1778 33700
+fi=(321)
+183 33700
+cfi=(319)
+cfn=(1312)
+calls=46310 19 
+* 454950
+* 33700
+fe=(318)
+1769 16850
+83 16850
+1769 33700
+83 33700
+1778 84250
+83 33700
+1778 33700
+fi=(321)
+214 50550
+fe=(318)
+39 33700
+1781 16850
++1 16850
+-1 16850
++1 33700
++1 33700
++6 16850
+-1 67400
++2 16850
+-2 33700
++3 16850
++1 16850
+-2 33700
++2 16850
++1 16850
+-1 16850
++1 16850
+-3 33700
++1 67400
++1 67400
+-2 134800
++2 67400
++1 67400
+-1 67400
++1 67400
+-3 134800
++17 33700
+-2 16850
++2 84250
+82 33700
+1807 33700
+83 33700
+1813 16850
+-7 33700
++7 16850
+83 33700
+1807 168500
+fi=(321)
+214 16850
+fe=(318)
+39 16850
+fi=(321)
+214 16850
+fe=(318)
+39 16850
+fi=(321)
+214 16850
+fe=(318)
+1813 101100
+583 16850
+fi=(321)
+271 33700
+fe=(318)
+583 62949
+fi=(321)
+271 125898
+-57 16850
+fe=(318)
+83 16850
+fi=(321)
+214 16850
+fe=(318)
+83 16850
++91 67400
++4 84250
+587 16850
+fi=(321)
+214 16850
+fe=(318)
+587 16850
+1818 33700
++4 67400
++2 16850
++22 185350
+682 251796
+1805 16850
+82 33700
+1807 33700
+82 33700
+fi=(321)
+183 50550
+fe=(318)
+82 16850
+fi=(321)
+183 16850
+cfi=(319)
+cfn=(1312)
+calls=46310 19 
+* 454950
+fe=(318)
+82 16850
+fi=(321)
+183 84250
+fe=(318)
+
+fn=(1338)
+1150 86070
++4 17214
+-4 17214
+fi=(320)
+118 17214
++4 17214
+fe=(318)
+1154 34428
++6 51642
++4 17214
+-4 17214
++1 34428
++3 223782
+401 17214
++1 17214
+-1 17214
++2 34428
++1 1092
+82 1268
+263 317
+82 634
+404 317
+82 317
+404 317
+263 317
+83 634
+264 317
+fi=(321)
+-81 317
+cfi=(319)
+cfn=(1312)
+calls=350 19 
+* 8559
+* 317
+fe=(318)
+1165 317
+-2 634
++2 16850
+-2 33700
+405 94
+cfn=(1574)
+calls=52 -27 
+* 5264
+1165 47
+-2 51736
++9 86070
+224 16850
+403 16850
+224 16850
+83 33700
+225 16850
+403 16850
+225 33700
+403 16850
+1163 103284
+404 141
+
+fn=(1768)
+698 314
++20 942
+-21 314
++21 1884
+-23 314
++3 942
++2 314
+fi=(321)
+271 628
+fe=(318)
+695 1279
++3 3837
++2 1279
+fi=(321)
+271 2558
+-57 314
+fe=(318)
+705 628
+174 1256
++4 1570
+706 314
+fi=(321)
+214 314
+fe=(318)
+750 314
+-44 628
++40 314
+-40 314
++44 628
+-5 5116
+
+fn=(2184) mi_bitmap_clearN
+1123 143730
++4 14373
+fi=(320)
+118 14373
++4 14373
+fe=(318)
+1127 28746
++6 14373
++1 14373
++3 14373
+-4 14373
++1 14373
++3 172476
++1 14373
+369 28746
+1139 14373
++1 28746
+-4 28746
++1 28746
++10 129357
+-7 170
+920 340
++1 340
+83 14373
+362 14373
+83 14373
+364 14373
+104 114984
++1 14373
++1 14373
+-1 14373
++1 14373
+369 14373
+105 14373
++1 14373
+369 14373
+1136 71865
+
+fn=(2182)
+1181 28746
+cfn=(2184)
+calls=46707 -58 
+* 1093198
+
+fn=(2388)
+1651 301
+921 396
+-1 465
+1665 43
+
+fl=(415)
+fn=(1826)
+35 631598772
+fi=(416)
+405 157899693
++36 157899693
+fi=(433)
+23 52633231
+fi=(422)
++48 473699079
+fi=(378)
+3045 105266462
+fi=(418)
+143 105266462
+fi=(422)
+-78 105266462
+fe=(415)
+-9 210532924
+cfi=(419)
+cfn=(1828) minase_core::movegen::control::piece_control_without_special
+calls=108158649 217 
+* 7024894994
+* 105266462
++1 368432617
+cfi=(419)
+cfn=(1834) minase_core::movegen::control::special_step_destinations
+calls=108158649 195 
+* 820454515
+fi=(386)
+180 52633231
++1 52633231
+-1 52633231
++1 52633231
++1 157899693
+29 52633231
+163 52633231
+30 52633231
+164 52633231
+31 52633231
+165 52633231
+fe=(415)
+59 368432617
+-59 109083558
+fi=(378)
+1002 218167116
+fi=(362)
+615 109083558
+fi=(350)
+1939 327250674
+fi=(378)
+1044 218167116
+fi=(386)
+128 109083558
+fe=(415)
+-69 109083558
+fi=(386)
++70 323433578
+0 75577816
+129 37788908
+-1 371783643
++1 247855762
+-1 256116549
++1 170744366
+0 32738952
+131 32738952
+fi=(363)
++47 32738952
+fi=(386)
+-47 65477904
+fi=(367)
+27 98216856
+fe=(415)
++32 32738952
+fi=(386)
++72 76344606
+fi=(363)
++47 76344606
+fi=(386)
+-47 152689212
+fi=(367)
+27 229033818
+fe=(415)
++32 76344606
+fi=(378)
+1038 218167116
++1 7941922
+cfi=(362)
+cfn=(1840)
+calls=8924463 186 
+* 662864033
+* 3970961
+0 52633231
+fe=(415)
+68 366722677
++8 913537
+-5 6394759
+cfi=(427)
+cfn=(1912)
+calls=1803946 -50 
+* 767409214
+* 913537
+-1 913537
++9 854970
++6 427485
+-5 2564910
+cfi=(413)
+cfn=(2270)
+calls=1044088 -62 
+* 93307282
+* 427485
++7 427485
+-87 51292209
+fi=(378)
+1873 51292209
+fi=(352)
+1650 153876627
+fi=(351)
+180 51292209
+fi=(378)
+1873 1341022
+fi=(352)
+1650 4023066
+fi=(351)
+180 1341022
+0 198866110
+fe=(415)
+89 198866110
++1 159092888
+cfi=(420) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/movegen/expand.rs
+cfn=(1852) minase_core::movegen::expand::push_with_promotion
+calls=84354314 -72 
+* 13037037312
+-1 416681065
++1 333344852
+cfi=(420)
+cfn=(1852)
+calls=194483643 -72 
+* 24708677693
+* 246218870
+fi=(352)
+1650 246218870
+fi=(351)
+180 123109435
+fe=(415)
+-88 421065848
+
+fl=(316)
+fn=(1228)
+972 7020350
+fi=(232)
+574 1404070
+-4 1404070
++4 1404070
+fe=(316)
+974 2808140
++21 3510175
++17 2808140
+cfn=(1232) mi_find_page
+calls=1326302 -68 
+* 83997392
+* 702035
++1 1404070
++17 1404070
++1 4914245
+cfi=(315)
+cfn=(1390)
+calls=1326302 41 
+* 7722408
++4 702035
+-4 702035
++4 2111304
++4 4914245
+-43 708
++3 1416
+-2 708
++2 708
+cfn=(2234)
+calls=1326 893 
+* 3540
++2 2124
+cfn=(1242)
+calls=1326 471 
+* 111271
++3 2832
+cfi=(222)
+cfn=(856) mi_option_get_clamp
+calls=1326 282 
+* 28320
++1 1416
++1 67
++1 201
+cfi=(452)
+cfn=(2352)
+calls=132 146 
+* 565442
+* 67
+
+fn=(1242)
+471 53967
++3 17989
+-3 17989
++3 17989
+-3 89945
++3 44480
+-1 4251
+-1 21255
++4 4251
++1 8502
+-1 31911
++1 161970
++1 17624
++2 8668
+-1 8668
++1 24612
++5 15944
++1 15944
+-12 39380
++20 3746
++2 3746
+-1 3746
++1 18730
+-22 505
++20 505
++2 505
+-1 505
++1 2525
+-2 13738
++2 13738
+-1 13738
++1 68690
+-15 1392
+cfn=(2166) _mi_page_free
+calls=945 -80 
+* 722226
+-7 114657
++16 288
+-17 13738
+-1 27476
+
+fn=(3712)
+244 522
+fi=(232)
+1057 174
+fe=(316)
+246 348
++9 522
+
+fn=(1376)
+693 86070
+fi=(232)
+570 17214
+fe=(316)
+693 17214
++3 17214
+cfi=(218)
+cfn=(910)
+calls=46712 455 
+* 275424
+* 68856
+fi=(232)
+863 17214
+-1 17214
++1 68856
+-48 17214
++55 51642
++1 34428
+fe=(316)
+634 34428
++2 17214
+736 68856
+cfn=(1380) mi_page_extend_free.part.0
+calls=46712 636 
+* 1318371
+
+fn=(1380)
+636 311588
+-7 77897
++18 77897
++3 77897
+-21 155794
++18 77897
+-18 77897
++18 77897
+-18 77897
+fi=(232)
++52 77897
+fe=(316)
+-31 334906
++4 179112
++10 179112
+-10 54579
++10 54579
++14 311588
+cfn=(1382) mi_page_free_list_extend
+calls=111797 -80 
+* 2292244
++6 77897
+-50 77897
++56 389485
+
+fn=(1458)
+437 31126
+-5 46689
+fi=(232)
+830 15563
++67 15563
+-99 15563
+fi=(314)
+175 31126
+fi=(232)
+797 31126
+fi=(314)
+175 31126
+cfi=(232)
+cfn=(1216)
+calls=57810 512 
+* 233445
+* 46689
+49 15563
+190 15563
+49 15563
+fe=(316)
+449 31126
++1 46689
++16 13677
++1 13677
+-1 13677
+cfn=(2166)
+calls=45760 -65 
+* 12315227
+-16 4780
++5 9430
++2 5658
++2 4183
++1 4301
++7 3772
+
+fn=(1244) mi_page_fresh_alloc
+318 172140
++6 17214
+cfi=(317)
+cfn=(1246)
+calls=46712 1003 
+* 24741419
+* 17214
++1 34428
+fi=(232)
+815 17214
++5 17214
+fe=(316)
+329 34428
++14 34428
+fi=(314)
+45 17214
+fi=(232)
+829 17214
+fi=(314)
+45 34428
+fi=(232)
+829 17214
++1 86070
++1 34428
++9 34428
+fi=(314)
+289 17214
++1 17214
+-1 17214
++2 34428
++2 16515
+-82 16515
++88 33030
+-87 33030
+-1 699
++88 1398
+-87 1398
+fi=(232)
+512 20830
+fi=(314)
+220 20830
++5 10415
+-1 20830
++6 10415
+cfi=(232)
+cfn=(1216)
+calls=35124 512 
+* 156225
++1 10415
++1 10415
+-2 10415
++2 41660
+cfi=(232)
+cfn=(1216)
+calls=35124 512 
+* 156225
+* 20830
+fi=(232)
+512 20830
+fi=(314)
+235 10415
++1 20830
++5 218715
++1 24
+-1 72
++1 114801
+-1 107779
++62 17214
+fe=(316)
++46 103284
+fi=(314)
+-52 1398
+fe=(316)
+
+fn=(2234)
+893 775
++1 775
++1 2325
+
+fn=(3616)
+288 10744
+fi=(232)
+862 1343
++1 5372
+-48 1343
++55 4029
++1 2686
+fe=(316)
+295 4029
+cfn=(1796)
+calls=3627 -89 
+* 24370
+fi=(314)
+175 2686
+fi=(232)
+798 1343
+-1 2686
+fi=(314)
+175 1343
+cfi=(232)
+cfn=(1216)
+calls=3627 512 
+* 20145
+* 5372
+45 5372
+fi=(232)
+829 1343
+fi=(314)
+45 2686
+fi=(232)
+829 1343
++2 2686
++9 2686
+fi=(314)
+316 4029
++1 1343
+-1 1343
++2 2686
++2 1343
++1 1343
++8 1343
+-3 1343
++3 2686
++3 1343
+fe=(316)
+-33 5372
+fi=(232)
+830 6715
+fe=(316)
+
+fn=(1382)
+598 77897
+fi=(232)
++88 77897
+fe=(316)
+-97 77897
+37 77897
+601 77897
+37 311588
+603 311588
+fi=(232)
+1069 233691
+fe=(316)
+603 155794
+fi=(232)
+1069 347106
+fe=(316)
+603 231404
+fi=(232)
+1069 155794
+fe=(316)
+610 77897
++1 77897
+
+fn=(2166)
+401 86238
+fi=(232)
+830 14373
+fi=(314)
+260 14373
+fi=(232)
+897 14373
+fi=(314)
+260 30586
++1 56292
++1 28746
++1 26346
++6 14373
++2 14373
+-1 14373
++1 14373
+fi=(232)
+830 14373
++12 14373
+-2 14373
++22 14373
+-47 14373
++55 28746
++1 28746
+fe=(316)
+418 43119
+cfi=(317)
+cfn=(2172)
+calls=46705 1032 
+* 8709772
++1 14373
++1 14373
+-1 14373
++1 14373
+-1 28746
+cfi=(317)
+cfn=(2190)
+calls=46705 1302 
+* 2541289
+fi=(314)
+262 2400
++1 2400
+-52 13453
++53 13453
+-52 26906
++3 20688
+fi=(232)
+512 20688
+fi=(314)
+215 10344
+fi=(232)
+512 10344
+fi=(314)
+219 20688
+fi=(232)
+512 10344
+fi=(314)
+220 20688
++5 10344
+-1 31032
++7 10344
++1 20688
+-2 20688
+cfi=(232)
+cfn=(1216)
+calls=34949 512 
+* 155160
+* 10344
++2 51720
+cfi=(232)
+cfn=(1216)
+calls=34949 512 
+* 155160
+* 20688
+fi=(232)
+512 10344
+fi=(314)
+236 20688
+fi=(232)
+512 10344
+fi=(314)
+236 10344
+-1 10344
++1 20688
++5 217224
++1 116
+-1 348
++1 112881
+-1 126974
+fe=(316)
+
+fn=(1238) mi_page_queue_find_free_ex.constprop.0
+744 79521
++72 79521
+-72 636168
++72 79521
++1 477126
+-68 396843
++2 79140
++2 158280
+-2 381
++2 79584
+-6 472932
++9 78822
++7 157644
+-7 130946
++7 261892
++18 19048
+fi=(232)
+-24 3203
+fe=(316)
++28 6406
++5 9609
+fi=(232)
+-6 6036
++1 3018
+-1 3018
++1 3018
+fe=(316)
++2 6036
++29 6036
++5 3018
+-5 3018
+cfi=(224)
+cfn=(1240)
+calls=3302 47 
+* 6036
+* 370
++5 185
+-5 185
+cfi=(224)
+cfn=(1240)
+calls=195 47 
+* 370
++1 9609
+cfi=(224)
+cfn=(1240)
+calls=3497 47 
+* 6406
++3 3203
+-55 617790
+-10 205930
++10 411860
+cfn=(1796)
+calls=269181 206 
+* 2888564
++6 1028726
+-14 205006
++14 410012
++10 121496
+-8 288516
+-20 664750
++30 3118
+cfi=(222)
+cfn=(1798)
+calls=4222 267 
+* 7795
++33 4677
+cfi=(224)
+cfn=(1240)
+calls=4222 47 
+* 3118
++1 4677
+cfi=(224)
+cfn=(1240)
+calls=4222 47 
+* 3118
++7 124614
+636 121366
+cfn=(1380)
+calls=65085 * 
+* 3723586
+826 121366
++8 68856
+cfn=(1242)
+calls=46710 471 
+* 1511398
+354 86070
+cfn=(1244)
+calls=46710 -36 
+* 26620217
+837 17214
+354 17214
+837 34428
++2 17214
+-2 17214
++17 715689
+388 10731
++2 17885
+cfn=(3596) _mi_page_abandon
+calls=3627 -89 
+* 1498048
+* 7154
+753 13466
++63 15780
+cfi=(224)
+cfn=(1240)
+calls=3196 47 
+* 6312
+* 354520
+cfi=(224)
+cfn=(1240)
+calls=104433 47 
+* 141808
++1 222180
+cfi=(224)
+cfn=(1240)
+calls=107629 47 
+* 148120
++3 148120
++1 115090
+fi=(314)
+338 186921
++1 6532
+cfn=(3594)
+calls=4522 -87 
+* 44718
+45 1633
+fi=(232)
+829 3266
+fi=(314)
+45 3266
+fi=(232)
+829 1633
++2 1633
++9 3266
+fi=(314)
+289 1633
++1 1633
+-1 1633
++2 3266
++2 1633
+-82 1633
++88 3266
+-87 3266
+fi=(232)
+512 623
+fi=(314)
+219 623
+fi=(232)
+512 623
+fi=(314)
+220 1246
++5 623
+-1 1246
++6 622
+cfi=(232)
+cfn=(1216)
+calls=1987 512 
+* 9330
++1 622
++1 622
+-2 622
++2 2488
+cfi=(232)
+cfn=(1216)
+calls=1987 512 
+* 9330
+* 1244
+fi=(232)
+512 1244
+fi=(314)
+235 622
++1 1244
++5 13083
++1 1
+-1 3
++1 7464
+-1 6845
++62 1633
+fe=(316)
+847 1633
++6 1633
+-6 60674
++6 60674
+-37 2097
+cfi=(224)
+cfn=(1240)
+calls=950 47 
+* 1398
++1 2097
+cfi=(224)
+cfn=(1240)
+calls=950 47 
+* 1398
++6 699
+fi=(232)
++7 8165
+fe=(316)
+-47 182244
+cfi=(222)
+cfn=(1798)
+calls=65366 267 
+* 303740
+* 60748
++11 60748
+-11 60748
++11 303740
+
+fn=(1796)
+206 647412
+-23 215804
++23 431608
+-23 215804
++3 431608
++27 643383
++1 13692
++14 2691
++1 2691
++1 2691
++5 431608
+fi=(232)
+927 1343
+fe=(316)
+188 1343
+fi=(232)
+927 1343
+fe=(316)
+188 8058
+fi=(232)
+921 1343
+fe=(316)
+147 1343
+fi=(232)
+921 1343
+1057 1343
+fe=(316)
+151 2686
++6 2686
++5 5372
+fi=(232)
+1069 1343
+fe=(316)
+174 1343
+fi=(232)
+1069 1343
+fe=(316)
+169 1343
++5 1343
++39 1343
++7 3746
+-71 2686
+
+fn=(3596)
+301 14308
++1 3577
+-1 7154
++1 3577
+cfn=(1796)
+calls=3629 -96 
+* 50078
++1 7154
++4 10731
+cfi=(314)
+cfn=(3594)
+calls=3629 -55 
+* 99735
++1 3577
+fi=(232)
+862 3577
+-47 3577
++55 7154
++1 7154
+fe=(316)
+310 3577
++1 10731
+cfi=(317)
+cfn=(3598)
+calls=3629 1113 
+* 220197
++1 3577
++2 3577
+-2 3577
++2 3577
+-2 3577
++2 3577
+-2 3577
+cfi=(317)
+cfn=(2190)
+calls=3629 1302 
+* 1017151
+
+fn=(1232)
+944 3510175
++2 1404070
++4 4914245
+fi=(232)
+803 702035
+cfi=(314)
+cfn=(1234)
+calls=1326302 105 
+* 11127720
+* 2106105
+fe=(316)
+952 1404070
+-88 702035
++1 1404070
+197 1402672
+872 622514
++1 1245028
++89 1867542
+198 1691589
++2 485041
++1 485041
++1 485041
++1 485041
+876 79521
++86 79521
+-86 159042
++86 79521
+-86 79521
+cfn=(1238)
+calls=116298 744 
+* 47476232
+
+fl=(424)
+fn=(1870) <minase_core::rules::set::MoveRules>::promotion_choice_for
+82 246000094
+-82 15488661
+145 15488661
+0 967602474
+fi=(382)
+121 537556930
+fe=(424)
+-95 973697796
++64 567990381
+-64 243424449
++64 243424449
+-1 162282966
++6 811414830
+-95 162282966
+110 324565932
++2 1287274
+-17 1342
++18 671
+0 162280276
+118 162280276
+0 1345
+118 2690
++10 484616844
+fi=(425)
+-97 243424449
+fe=(424)
++91 389017311
+0 2232054
+134 4464108
+0 473456574
+145 78909429
+0 143009785
+145 28601957
+-31 2022
+
+fn=(1862) <minase_core::rules::set::MoveRules>::promotion_choice
+34 861000329
++6 246000094
+fi=(422)
++18 246000094
+fi=(390)
+-21 369000141
+-37 123000047
+fe=(424)
+47 492000188
+-1 369000141
++6 123000047
+-6 492000188
++1 492000188
+cfi=(422)
+cfn=(1856)
+calls=278661409 +52 
+* 4854712689
+fi=(384)
+170 369000141
+fi=(381)
+-94 369000141
+fi=(566) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/position/promotion_rights.rs
+-63 492000188
+fi=(386)
++62 738000282
+fi=(381)
+-6 246000094
+fe=(424)
+-17 1230000470
+cfn=(1870)
+calls=278661409 +30 
+* 7444808996
+* 123000047
++9 984000376
+
+fl=(224)
+fn=(2358)
+433 134
+-2 201
+120 268
++3 67
+cfn=(2360) mi_stats_add.part.0
+calls=134 -4 
+* 81854
+fi=(232)
+1216 134
++4 201
+fe=(224)
+436 67
+fi=(232)
+1220 67
+cob=(2)
+cfi=(294)
+cfn=(1128)
+calls=134 193 
+* 293929
+* 67
+fe=(224)
+
+fn=(2174)
+34 60178
++2 90267
++1 60178
++1 60178
++24 30089
+
+fn=(2360)
+119 67
+-22 134
+fi=(220)
++42 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 138
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-1 67
++1 134
+fe=(224)
+-43 134
+fi=(220)
++42 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 136
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+fe=(224)
+-43 134
+fi=(220)
++42 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-4 134
+fe=(224)
+-29 67
+fi=(220)
++38 67
+fe=(224)
+-38 67
+fi=(220)
++39 134
+-7 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+-1 67
++1 134
+fe=(224)
+-10 402
+fi=(220)
++6 9916
+fe=(224)
+-29 4958
+fi=(220)
++38 4958
++1 9994
+fe=(224)
+-16 19832
+fi=(220)
++9 4958
++1 9916
++1 1530
+fe=(224)
+-8 67
+fi=(220)
++8 443
+-2 67
++1 134
++1 134
+fe=(224)
+
+fn=(1240)
+47 160385
++1 160385
+
+fn=(806)
+523 32390
+cfi=(223)
+cfn=(808)
+calls=97177 691 
+* 1068870
+
+fn=(844)
+24 28
+fi=(220)
+136 28
++9 14
+-9 14
+fe=(224)
+27 14
+fi=(220)
+146 56
+fe=(224)
+28 28
+fi=(220)
+136 14
+fe=(224)
+-84 14
+
+fn=(1370)
+34 76010
++2 114015
++1 83674
++1 114015
++17 38005
+
+fl=(491)
+fn=(2802)
+28 872
++1 436
+fi=(362)
+615 109
+fi=(351)
+331 327
+0 109
+fi=(352)
+1650 109
+fi=(351)
+180 109
+fi=(352)
+1650 8970
+fi=(351)
+180 8970
+0 8970
+fi=(497) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/f32.rs
+711 8970
+fi=(351)
+332 8970
+fi=(497)
+711 8970
+fi=(351)
+332 8970
+fi=(374)
+1077 654
+fe=(491)
+37 218
++1 218
+cfn=(2812) minase::search::mcts::gumbel::considered_visits
+calls=109 +83 
+* 83125
+fi=(361)
+2176 109
+0 109
+2176 218
++1 436
+fe=(491)
+36 763
++5 872
+
+fn=(3098)
+214 15700
++1 1570
+cfn=(2966) minase::search::mcts::gumbel::completed_qvalues
+calls=1570 -33 
+* 3432859
+fi=(361)
+2176 1570
+0 1570
+2176 3140
+fe=(491)
+215 1570
+fi=(361)
+2177 9420
+fe=(491)
+215 6280
++1 3140
+fi=(358)
+970 4710
+fi=(496)
+152 3140
+fi=(375)
+-83 12560
+fi=(490)
+-36 1570
+cfi=(486)
+cfn=(3102)
+calls=1570 +17 
+* 634163
+fi=(362)
+615 1570
+fi=(378)
+1873 1570
+fi=(352)
+1650 1570
+fi=(351)
+25 1570
+-25 1570
+284 3140
+0 76
+284 38
+fi=(361)
+0 12256
+fi=(351)
+279 3064
+fi=(497)
+1052 12256
+fi=(351)
+0 1532
+284 3064
+fi=(361)
+0 26716
+fi=(351)
+279 26716
+fi=(497)
+1052 106864
+fi=(351)
+0 13358
+284 68080
+0 1324
+fi=(497)
+1052 5296
+fi=(363)
+-79 2648
+fi=(351)
+284 2648
+fi=(497)
+1052 16316
+fi=(363)
+-79 8158
+fi=(351)
+284 8158
+0 4710
+cfi=(213)
+cfn=(1202)
+calls=1570 0 
+0 1570
+fi=(401)
+101 4710
+cfi=(312)
+cfn=(1204)
+calls=1570 -50 
+* 97285
+fi=(362)
+470 3140
+0 4710
+fi=(351)
+284 14130
+0 2
+284 1
+0 10983
+279 1569
+fi=(500) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/arith.rs
+-63 3138
+fi=(499) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/num/f32.rs
+414 1569
+cob=(3)
+cfi=(498) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/flt-32/e_expf.c
+cfn=(2936) __expf_fma
+calls=1569 54 
+* 47070
+fi=(351)
+279 29006
+fi=(500)
+-63 58012
+fi=(499)
+414 29006
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=29006 54 
+* 870180
+* 91725
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=30575 54 
+* 917250
+* 183450
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=30575 54 
+* 917250
+* 183450
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=30575 54 
+* 917250
+* 61150
+fi=(350)
+1939 30575
+fi=(352)
+614 30575
+fi=(351)
+284 61150
+0 1569
+284 4707
+0 1127
+284 4508
+0 3381
+279 1127
+fi=(500)
+-63 1127
+fi=(499)
+414 1127
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=1127 54 
+* 33810
+fi=(351)
+279 1096
+fi=(500)
+-63 1096
+fi=(499)
+414 1096
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=1096 54 
+* 32880
+* 2223
+fi=(350)
+1939 2223
+fi=(562)
+19 2223
+fi=(351)
+284 4446
+0 1127
+284 10788
+0 114
+284 7698
+0 1532
+fi=(500)
+104 12256
+fi=(363)
+973 1532
+fi=(351)
+284 3064
+fi=(500)
+104 106864
+fi=(363)
+973 13358
+fi=(351)
+284 32428
+0 1324
+fi=(500)
+104 1324
+fi=(351)
+284 3972
+fi=(500)
+104 4079
+fi=(351)
+284 12237
+180 6280
+0 13788
+fi=(501) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase/src/search/mcts/mod.rs
+33 10724
+fi=(351)
+180 3064
+fi=(501)
+33 93506
+fi=(351)
+180 29780
+0 2648
+fi=(501)
+33 3972
+fi=(352)
+614 1324
+1650 1324
+fi=(351)
+180 1324
+fi=(501)
+33 12237
+fi=(352)
+614 4079
+1650 4079
+fi=(351)
+180 4079
+fi=(501)
+35 4710
+fi=(362)
+425 3140
+635 1570
+fi=(363)
+1361 1570
+fi=(401)
+128 4710
+cfi=(312)
+cfn=(1922)
+calls=1570 -67 
+* 32970
+fe=(491)
++95 14130
+
+fn=(2812)
+121 981
++4 436
++7 109
+fi=(362)
+461 218
+0 327
+cfi=(213)
+cfn=(1202)
+calls=109 0 
+0 109
+fi=(401)
+101 327
+cfi=(312)
+cfn=(1204)
+calls=109 -50 
+* 8230
+fi=(362)
+470 218
+0 218
+fi=(378)
+975 327
+fi=(363)
+3172 763
+fi=(405)
+459 218
+fi=(362)
+0 109
+461 218
+0 109
+cfi=(213)
+cfn=(1202)
+calls=109 0 
+0 109
+0 109
+fi=(401)
+198 327
+cfi=(312)
+cfn=(2820)
+calls=109 56 
+* 6597
+fi=(362)
+470 218
+0 327
+fe=(491)
+136 218
+0 1090
+137 3057
+0 216
+fi=(363)
+1052 108
+fe=(491)
+0 219
+fi=(363)
+1052 219
+0 981
+973 1784
+fi=(362)
+615 3488
+fi=(350)
+1939 3488
+fi=(378)
+1044 6976
+fe=(491)
+144 3488
+fi=(352)
+1650 6976
+fi=(351)
+180 3488
+fe=(491)
+-40 6978
++3 3488
+fi=(378)
+1038 6976
+0 445
+fi=(374)
+1916 445
+fi=(376)
+900 445
+0 326
+fe=(491)
+147 326
+fi=(374)
+1038 978
+fe=(491)
+136 1956
++13 540
+fi=(362)
+635 108
+fe=(491)
+141 7
+fi=(362)
+635 1
+fi=(363)
+1361 109
+fi=(401)
+128 327
+cfi=(312)
+cfn=(1922)
+calls=109 -67 
+* 2289
+fe=(491)
++22 981
+
+fn=(3134)
+54 763
++1 218
++21 218
+241 654
++3 109
+-4 109
+56 254
+-56 18
+57 36
+cfi=(494)
+cfn=(3626) <minase::search::mcts::tree::Node>::best_edge
+calls=18 228 
+* 112299
+* 18
+fi=(345)
+1334 36
++1 36
++3 18
+fe=(491)
+73 890
+-10 91
+fi=(358)
+970 182
+fi=(345)
+743 273
+0 91
+743 273
+fe=(491)
+60 54
+fi=(392)
+310 91
+fi=(352)
+1650 273
+fi=(351)
+25 91
+-25 182
+28 455
+fi=(439)
++51 6872
+fi=(374)
+1717 13744
+fi=(351)
+284 20616
+fi=(345)
+743 20616
+fe=(491)
+60 2832
+fi=(439)
+-60 91
+fe=(491)
+101 182
+cfn=(2966)
+calls=91 +81 
+* 213756
+fi=(361)
+2176 91
+0 91
+2176 182
+fe=(491)
+101 91
+fi=(361)
+2177 637
+fi=(351)
+284 273
+0 3
+284 1
+fi=(345)
+0 36
+fe=(491)
+0 180
+fi=(351)
+284 450
+0 990
+fi=(497)
+1052 720
+fi=(351)
+284 270
+0 7400
+fi=(497)
+1052 5920
+fi=(351)
+284 5136
+0 81
+fi=(497)
+1052 324
+fi=(351)
+284 324
+fi=(497)
+1052 968
+fi=(351)
+284 968
+fi=(361)
+2177 182
+fe=(491)
+101 910
+254 34815
+fi=(352)
+1650 6963
+fi=(567) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/enumerate.rs
+82 13926
+fi=(352)
+1650 6963
+fi=(351)
+180 6963
+0 6963
+fe=(491)
+108 14287
+fi=(345)
+743 722
+fe=(491)
+60 722
+fi=(389)
+238 1444
+fe=(491)
+109 1444
+fi=(497)
+1052 722
+fi=(345)
+1334 182
++1 182
++3 91
+0 182
+fi=(362)
+635 91
+fi=(363)
+1361 91
+fi=(401)
+128 364
+cfi=(312)
+cfn=(1922)
+calls=91 -67 
+* 1913
+fe=(491)
+-55 182
+
+fn=(2966)
+182 32739
++59 9354
+fi=(406) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs
+430 4677
+fe=(491)
+241 4677
++3 18708
+-85 4677
+fi=(358)
+970 37416
+0 365273
+fi=(352)
+1650 730546
+fi=(351)
+180 365273
+fe=(491)
+-16 1095819
++1 730546
++1 38449
+fi=(497)
+1052 38449
+fe=(491)
+168 76898
+-1 38449
++1 153796
+0 4677
+171 9354
++1 19210
+fi=(392)
+310 3842
+fi=(352)
+1650 7684
+fi=(351)
+25 3842
+fi=(392)
+310 835
+fi=(352)
+1650 1670
+fi=(351)
+25 835
+fi=(398)
+734 23385
+fi=(351)
+28 9354
+-28 142
+28 71
+-28 18424
+28 13818
+-28 41454
+fi=(374)
+1717 9212
+fi=(351)
+284 13818
+0 307224
+fi=(374)
+1717 76806
+fi=(351)
+284 115209
+0 4606
+284 52332
+0 7742
+279 3871
+fi=(374)
+1717 7742
+fi=(351)
+284 11613
+0 12653
+279 12653
+fi=(374)
+1717 25306
+fi=(351)
+284 37959
+fi=(363)
+3172 4677
+fi=(362)
+0 4677
+cfi=(213)
+cfn=(1202)
+calls=4677 0 
+0 4677
+fi=(401)
+101 14031
+cfi=(312)
+cfn=(1204)
+calls=4677 -50 
+* 303018
+fi=(362)
+470 9354
+fe=(491)
+194 42093
+fi=(350)
+1939 181428
+fi=(562)
+19 181428
+fi=(351)
+284 544284
+-5 362856
+fe=(491)
+-85 362856
+fi=(351)
++85 19678
+fe=(491)
+-84 98390
+fi=(350)
+1939 19678
+fi=(351)
+279 39356
+fe=(491)
+-85 39356
+fi=(350)
+1939 161750
+fi=(351)
+279 323500
+fe=(491)
+-85 323500
+fi=(351)
++85 18460
+fe=(491)
+-84 110760
+-1 9354
+fi=(352)
+614 2417
+fi=(351)
+279 2417
+fe=(491)
+-85 4834
+fi=(351)
++85 622
+fe=(491)
+-84 1866
+fi=(350)
+1939 311
+fi=(351)
+284 622
+fi=(350)
+1939 2106
+fi=(351)
+284 8732
+0 142
+284 71
+0 36848
+279 9212
+fi=(497)
+1079 36848
+fi=(351)
+0 4606
+284 9212
+0 77994
+279 77994
+fi=(497)
+1079 311976
+fi=(351)
+0 38997
+284 202356
+0 8166
+fi=(497)
+1079 16332
+fi=(363)
+973 8166
+fi=(351)
+284 8166
+fi=(497)
+1079 49464
+fi=(363)
+973 24732
+fi=(351)
+284 34086
+0 142
+284 71
+0 36848
+279 9212
+fi=(497)
+1052 36848
+fi=(351)
+0 4606
+284 9212
+0 77994
+279 77994
+fi=(497)
+1052 311976
+fi=(351)
+0 38997
+284 202356
+0 8166
+fi=(497)
+1052 16332
+fi=(363)
+-79 8166
+fi=(351)
+284 8166
+fi=(497)
+1052 49464
+fi=(363)
+-79 24732
+fi=(351)
+284 24732
+fe=(491)
+-81 32739
+fi=(351)
+-23 18708
+0 59878
+fe=(491)
+205 50666
+fi=(351)
+-25 9212
+fe=(491)
++25 428967
+fi=(351)
+-25 87206
+0 12249
+fe=(491)
+205 20415
+fi=(352)
+614 4083
+1650 4083
+fi=(351)
+180 4083
+fe=(491)
++25 61830
+fi=(352)
+614 12366
+1650 12366
+fi=(351)
+180 12366
+fe=(491)
++27 14031
++1 37416
+
+fl=(319)
+fn=(1312)
+19 179050
++2 214860
++2 179050
++2 107430
++3 107430
++3 179050
+
+fl=(431)
+fn=(1972)
+76 462510
+fi=(400)
+-76 154170
+fe=(431)
+86 154170
+
+fl=(461)
+fn=(2518)
+74 436
+cfi=(462) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/std/src/sys/pal/unix/time.rs
+cfn=(2520) <std::sys::pal::unix::time::Timespec>::now
+calls=8218 +1 
+* 5886
+
+fl=(222)
+fn=(1798)
+267 259972
++1 64993
+
+fn=(778)
+323 36366
++1 18183
+cfn=(780)
+calls=48667 -53 
+* 436392
++1 18183
+-1 36366
++1 18183
+
+fn=(1252)
+287 86530
++1 17306
+cfn=(780)
+calls=46880 -17 
+* 415344
++1 51918
++1 86530
+fi=(232)
+523 34612
+fe=(222)
+292 51918
++4 51918
+
+fn=(780)
+271 716616
++2 238872
++3 955488
++3 358308
++1 597180
+
+fn=(856)
+282 4248
++1 708
+cfn=(780)
+calls=1327 -12 
+* 16992
++1 3540
++1 2832
+
+fl=(462)
+fn=(2532) <std::sys::pal::unix::time::Timespec>::sub_timespec
+112 1308
+fi=(307) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/core/src/cmp.rs
+2011 436
+fe=(462)
+25 1090
+fi=(307)
+539 218
+fe=(462)
+25 218
+fi=(307)
+539 218
+fe=(462)
+25 218
++94 436
++1 1744
+0 218
+fi=(568) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/core/src/time.rs
+195 436
+fe=(462)
+-59 654
++7 872
+
+fn=(2520)
+75 2180
++32 436
+cob=(2)
+cfi=(225)
+cfn=(812)
+calls=16436 -77 
+* 4796
+fi=(252) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/std/src/sys/pal/unix/mod.rs
+231 436
++10 436
+fe=(462)
+108 436
+-41 436
+fi=(322) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/core/src/result.rs
+1229 436
+fe=(462)
+108 436
++2 1744
+
+fl=(420)
+fn=(1852)
+18 1846641525
+fi=(418)
+148 123109435
+fe=(420)
+25 369328305
+cfi=(421)
+cfn=(1854)
+calls=278837957 -2 
+* 9638147056
+* 246218870
++6 615000235
+cfi=(424)
+cfn=(1862)
+calls=278661409 +3 
+* 20663524881
+-2 252696256
+fi=(378)
+1035 2232054
++3 4464108
++1 487520
+cfi=(362)
+cfn=(1840)
+calls=634823 186 
+* 40306914
+fi=(362)
+615 2232054
+fi=(358)
+970 2232054
+fi=(350)
+1939 4464108
+fi=(378)
+1044 4464108
+-42 4464108
++36 4464108
++1 311950
+cfi=(362)
+cfn=(1840)
+calls=368199 186 
+* 33250576
+fi=(362)
+615 2232054
+fi=(358)
+970 2232054
+fi=(350)
+1939 6696162
+fi=(378)
+1044 4464108
+-9 120767993
++3 241535986
++1 16127852
+cfi=(362)
+cfn=(1840)
+calls=17438559 186 
+* 1661135086
+fi=(362)
+615 120767993
+fi=(358)
+970 120767993
+fi=(350)
+1939 362303979
+fi=(378)
+1044 241535986
+fe=(420)
+40 966143944
+fi=(378)
+1044 2232054
+fe=(420)
+40 18731536
+
+fl=(218)
+fn=(910)
+455 172140
++2 68856
+cfn=(912) _mi_subproc_heap_main
+calls=93428 -17 
+* 137712
+* 34428
++1 68856
+-1 34428
++1 34428
+
+fn=(914)
+451 38586
++1 19293
+cfi=(235)
+cfn=(890)
+calls=53969 -43 
+* 135051
++1 19293
+-1 38586
+cfn=(912)
+calls=53969 -12 
+* 77172
+
+fn=(912)
+440 53721
++1 107442
++8 53721
+
+fn=(798)
+989 66718
+
+fl=(432)
+fn=(2052)
+120 3206200
++8 1144216
+fi=(372)
++4 12386
+fi=(391)
+20 12386
+fe=(432)
++9 12386
+fi=(399)
+1284 24772
+0 37158
+1287 37158
+241 24772
+cfi=(403)
+cfn=(1716)
+calls=32527 694 
+* 1758812
+* 24772
+fi=(409)
+47 24772
+fi=(400)
+2452 86702
+0 12386
+fi=(350)
+549 12386
+fi=(407)
+1621 37158
+fi=(440)
+40 37158
+fi=(400)
+-40 244
+fi=(350)
+549 244
+fi=(407)
+1621 732
+fi=(440)
+40 732
+-40 2616
+fi=(408)
+628 872
+fi=(400)
+2032 1744
+fi=(358)
+1054 2616
+fe=(432)
+24 872
+fi=(405)
+436 872
+fi=(440)
+0 15
+fi=(408)
+628 15
+fi=(400)
+2032 30
+fi=(358)
+1054 45
+fe=(432)
+24 15
+fi=(405)
+436 15
+fi=(408)
++50 887
+fi=(440)
+40 3548
+fi=(407)
+1621 25260
+fi=(405)
+436 25260
+fi=(400)
+90 488
+-1 244
+2012 244
+fe=(432)
+145 3206200
+
+fn=(1978)
+223 6659364
+fi=(422)
+32 1109894
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=1255140 255 
+* 109324555
+fi=(433)
+-24 1109894
+fi=(430)
++85 554947
+fi=(368)
+3891 554947
+fi=(369)
+156 1109894
+fi=(430)
+50 1109894
++1 1109894
+fi=(422)
++26 12208834
+fi=(386)
+182 554947
+-2 554947
++1 554947
+-2 1664841
+fi=(378)
+462 2774735
+fe=(432)
+233 1109894
+cfi=(418)
+cfn=(1818)
+calls=1255140 69 
+* 22665252080
++2 2219788
+fi=(352)
+1650 554947
+fi=(434)
+395 554947
+0 2774735
+fi=(352)
+1650 67382116
+fi=(434)
+395 33691058
+fi=(350)
+1731 169465690
+fe=(432)
+236 67786276
+cfi=(422)
+cfn=(1856)
+calls=77621946 99 
+* 1335591510
+fi=(387)
+819 67786276
+fi=(350)
+1731 2293188
+fi=(386)
+75 3439782
+fi=(374)
+1077 2293188
+fi=(386)
+75 2293188
+fi=(384)
++95 1146594
+fi=(350)
+1731 33893138
+fi=(387)
+819 33893138
+fi=(350)
+1731 7530726
+fi=(386)
+75 7530726
+fi=(374)
+1077 7530726
+fi=(386)
+75 7530726
+fi=(384)
++95 3765363
+fi=(367)
+20 33861806
+fe=(432)
+241 33861806
+0 1660841
+fi=(434)
+401 6814112
+0 1058601
+fi=(362)
+635 352867
+fi=(434)
+0 341496
+fi=(362)
+635 170748
+fi=(363)
+1361 554947
+fi=(401)
+128 1664841
+cfi=(312)
+cfn=(1922)
+calls=1255140 -67 
+* 15470145
+fe=(432)
+244 4994523
+0 93996
+fi=(362)
+635 31332
+fe=(432)
+
+fn=(2002)
+80 1541700
++8 308340
++3 44570
+fi=(363)
+898 44570
+fi=(405)
+459 44570
+fi=(363)
+898 44570
+fe=(432)
+88 44570
++8 133710
++93 89140
+88 109600
++8 328800
++93 219200
++1 118314
+fi=(363)
+898 39438
+fi=(405)
+459 39438
+fi=(363)
+898 39438
+fe=(432)
+0 157752
+197 78876
+95 39438
+fi=(372)
++37 39438
+fi=(391)
+20 78876
+fi=(569) /rust/deps/hashbrown-0.17.1/src/rustc_entry.rs
++16 78876
+fi=(399)
+241 78876
+cfi=(403)
+cfn=(1716)
+calls=90902 694 
+* 5600196
+fe=(432)
+0 458928
+197 229464
+95 114732
+fi=(372)
++37 114732
+fi=(391)
+20 229464
+fi=(569)
++16 229464
+fi=(399)
+241 229464
+cfi=(403)
+cfn=(1716)
+calls=198005 694 
+* 16291944
+fi=(409)
+47 462510
+fi=(400)
+2452 1079190
+0 154170
+fi=(350)
+549 154170
+fi=(407)
+1621 462510
+fi=(440)
+40 308340
+fi=(400)
+-40 11125
+fi=(350)
+549 11125
+fi=(407)
+1621 33375
+fi=(440)
+40 22250
+fi=(408)
+628 14146
+fi=(400)
+2032 28292
+fi=(358)
+1054 42438
+fe=(432)
+24 14146
+fi=(405)
+436 14146
+fi=(408)
++50 14144
+fi=(440)
+40 42432
+-40 13457
+fi=(407)
+1621 26914
+fi=(405)
+436 26914
+fi=(407)
+1621 303672
+fi=(405)
+436 303672
+fi=(400)
+90 22250
+-1 11125
+2012 11125
+910 154168
+fi=(405)
+459 154168
+fi=(400)
+0 154168
+fi=(350)
+549 154168
+fi=(407)
+1621 154168
+fi=(440)
+40 308336
+fi=(408)
+628 154168
+fi=(400)
+1754 308336
+2646 154168
+fi=(405)
+459 308336
+fi=(363)
+2649 154168
+fi=(400)
+-60 154168
++4 154168
++1 154168
+fi=(358)
+1054 462504
+fi=(409)
+30 154168
+fi=(400)
+1076 154168
+fi=(358)
+-22 154168
+fi=(350)
+1939 462504
+fi=(400)
+1076 770840
+fe=(432)
+104 616672
++1 308336
+-1 8
++1 4
++9 1079190
+fi=(345)
+0 26343
+fi=(350)
+549 8781
+fi=(407)
+1621 8781
+fi=(440)
+40 26343
+fi=(345)
+-40 4622
+fi=(350)
+549 2311
+fi=(407)
+1621 2311
+fi=(440)
+40 9244
+fi=(400)
+914 50040
+cfn=(1706) <hashbrown::raw::RawTable<(minase_core::game::repetition::r1::R1Key, minase_core::game::repetition::r1::R1PositionState)>>::reserve_rehash::<hashbrown::map::make_hasher<minase_core::game::repetition::r1::R1Key, minase_core::game::repetition::r1::R1PositionState, std::hash::random::RandomState>::{closure#0}>
+calls=14440 +34 
+* 26030043
+* 8340
+1910 25020
+fe=(432)
+
+fl=(380)
+fn=(1596)
+10 554947
++20 1664841
+-30 554947
+fi=(367)
+80 554947
+fi=(422)
+-22 1109894
+fi=(381)
+-1 554947
+fi=(390)
+-20 554947
+fi=(381)
++51 1664841
+fi=(382)
++24 1109894
+0 554947
+fi=(386)
+82 554947
+fi=(382)
++31 554947
+fe=(380)
+-74 554947
+fi=(386)
++43 1664841
+fi=(433)
+-59 2219788
+fe=(380)
++18 554947
+fi=(386)
++41 554947
+fi=(382)
++31 1109894
+fe=(380)
+-71 2219788
+fi=(386)
++40 554947
+fe=(380)
+-65 554947
+fi=(372)
++43 2774735
+fi=(561)
+-9 1109894
+fi=(372)
++9 1109894
+fi=(367)
++8 1664841
++19 1664841
+-25 554947
++25 1109894
+fi=(372)
+-25 2219788
+fe=(380)
+-45 554947
+fi=(372)
++45 554947
+fe=(380)
+-45 1109894
++27 554947
+-25 2219788
+
+fn=(1952)
+54 1019895
+fi=(367)
++26 1019895
+fe=(380)
+-25 3059685
+fi=(381)
++19 3059685
++14 3059685
+fi=(382)
++24 2039790
++1 3059685
+fe=(380)
+-53 2039790
+fi=(386)
++29 4079580
+fi=(433)
+-66 3059685
+fe=(380)
++39 1019895
+fi=(386)
++27 1019895
+fe=(380)
+-26 4079580
+fi=(386)
++26 1019895
+fe=(380)
+-24 2039790
+
+fl=(400)
+fn=(2492)
+3293 467808
+2656 58476
+3294 116952
+0 58476
+2635 58476
+fi=(363)
+3172 116952
+fi=(405)
+459 58476
+fi=(363)
+3172 58476
+fe=(400)
+223 58476
+fi=(363)
+898 350856
+fi=(405)
+459 116952
+fi=(401)
+206 116952
+0 58476
+99 58476
+cfi=(213)
+cfn=(1202)
+calls=62480 -99 
+* 58476
++2 175428
+cfi=(312)
+cfn=(1204)
+calls=62480 -50 
+* 11255397
+* 116952
+fi=(402) /rust/deps/hashbrown-0.17.1/src/alloc.rs
+-83 116952
+fi=(358)
+970 116952
+fe=(400)
+2624 175428
+fi=(350)
+549 175428
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 1885452
+fi=(460) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/int_macros.rs
+2225 58476
+fi=(358)
+475 116952
+fi=(460)
+2225 116952
+fi=(358)
+475 116952
+fi=(350)
++74 292380
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=62480 255 
+* 33234282
+fe=(400)
+3322 175428
+3423 58476
+3322 58476
++2 526284
+
+fn=(1706)
+948 83400
+2752 8340
+fi=(363)
+898 8340
+fi=(405)
+459 8340
+fe=(400)
+2755 8340
+183 66720
+2756 33360
++30 8340
+fi=(374)
+1038 16680
+fe=(400)
+109 33360
++32 534
+fi=(405)
+459 89
+fi=(442) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/iter/adapters/step_by.rs
+0 8251
+fi=(363)
+3172 16502
+fi=(405)
+459 8251
+fi=(363)
+3172 16502
+fe=(400)
+156 49506
+fi=(363)
+3868 8251
++5 8251
++1 33004
+3172 8251
+fi=(405)
+459 8251
+0 8251
+fi=(363)
+3172 16502
+fe=(400)
+223 8251
+fi=(363)
+898 49506
+fi=(405)
+459 16502
+fi=(363)
+3172 178
+fe=(400)
+223 89
+fi=(363)
+898 534
+fi=(405)
+459 178
+fe=(400)
+0 8340
+fi=(401)
+99 8340
+cfi=(213)
+cfn=(1202)
+calls=14912 -99 
+* 8340
++2 25020
+cfi=(312)
+cfn=(1204)
+calls=14912 -50 
+* 500950
+fi=(402)
+-83 16680
+fe=(400)
+-18 8340
+fi=(358)
+970 8340
+fe=(400)
+1604 8340
+183 75060
+fi=(350)
+711 25020
+cob=(2)
+cfi=(294)
+cfn=(1128)
+calls=14912 193 
+* 102613
+* 8340
+fe=(400)
+3992 16680
+0 16680
+2624 8340
+fi=(407)
+1326 8340
+fi=(570) /rust/deps/hashbrown-0.17.1/src/control/group/sse2.rs
+115 33360
+0 8340
+fi=(440)
+40 260542
+-40 1035
+fi=(407)
+1326 1035
+fi=(358)
+970 1035
+fi=(570)
+115 2070
+fe=(400)
+3977 1035
+fi=(440)
+40 2070
+fi=(408)
+628 130271
+fe=(400)
+3944 130271
+fi=(358)
+1054 911897
+fi=(399)
+241 130271
+cfi=(403)
+cfn=(1716)
+calls=307883 694 
+* 18498482
+fe=(400)
+0 521084
+fi=(350)
+549 130271
+fi=(407)
+1621 130271
+fi=(440)
+40 260542
+fi=(408)
+628 130271
+fe=(400)
+1754 260542
+fi=(405)
+459 390813
+fe=(400)
+0 390813
+fi=(409)
+47 130271
+fi=(363)
+2649 130271
+fe=(400)
+-60 130271
++4 130271
++1 130271
+2398 521084
+fi=(350)
+549 390813
+fe=(400)
+3992 268882
+0 8340
+975 66720
+0 16680
+3992 8340
+2945 8340
+fi=(350)
+1450 41700
+fe=(400)
+2705 16680
+fi=(363)
+3172 16680
+898 8340
+fe=(400)
+222 8340
++1 8340
+fi=(401)
+-3 16680
+fi=(358)
+1054 8340
+fi=(401)
+128 16680
+cfi=(312)
+cfn=(1922)
+calls=14440 -67 
+* 218431
+* 8340
+fe=(400)
+
+fn=(2448)
+948 12620
+2752 1262
+fi=(363)
+898 1262
+fi=(405)
+459 1262
+fe=(400)
+2755 1262
+183 10096
+2756 5048
++30 1262
+fi=(374)
+1038 2524
+fe=(400)
+109 5048
++32 3852
+fi=(405)
+459 642
+fi=(442)
+0 620
+fi=(363)
+3172 1240
+fi=(405)
+459 620
+fi=(363)
+3172 1240
+fe=(400)
+156 3720
+fi=(363)
+3868 620
++5 620
++1 2480
+3172 620
+fi=(405)
+459 620
+0 620
+fi=(363)
+3172 1240
+fe=(400)
+223 620
+fi=(363)
+898 3720
+fi=(405)
+459 1240
+fi=(363)
+3172 1284
+fe=(400)
+223 642
+fi=(363)
+898 3852
+fi=(405)
+459 1284
+fe=(400)
+0 1262
+fi=(401)
+99 1262
+cfi=(213)
+cfn=(1202)
+calls=25286 -99 
+* 1262
++2 3786
+cfi=(312)
+cfn=(1204)
+calls=25286 -50 
+* 177790
+fi=(402)
+-83 2524
+fe=(400)
+-18 1262
+fi=(358)
+970 1262
+fe=(400)
+1604 1262
+183 11358
+fi=(350)
+711 3786
+cob=(2)
+cfi=(294)
+cfn=(1128)
+calls=25286 193 
+* 23290
+* 1262
+fe=(400)
+3992 2524
+0 2088
+2624 1044
+fi=(407)
+1326 1044
+fi=(570)
+115 4176
+0 1044
+fi=(440)
+40 95016
+-40 2622
+fi=(407)
+1326 2622
+fi=(358)
+970 2622
+fi=(570)
+115 5244
+fe=(400)
+3977 2622
+fi=(440)
+40 5244
+fi=(408)
+628 47508
+fe=(400)
+3944 47508
+fi=(358)
+1054 332556
+fi=(399)
+241 47508
+cfi=(403)
+cfn=(1716)
+calls=1492952 694 
+* 6746136
+fe=(400)
+0 190032
+fi=(350)
+549 47508
+fi=(407)
+1621 47508
+fi=(440)
+40 95016
+fi=(408)
+628 47508
+fe=(400)
+1754 95016
+fi=(405)
+459 142524
+fe=(400)
+0 142524
+fi=(409)
+47 47508
+fi=(363)
+2649 47508
+fe=(400)
+-60 47508
++4 47508
++1 47508
+2398 190032
+fi=(350)
+549 142524
+fe=(400)
+3992 96060
+fi=(407)
+1326 1
+1621 1
+fi=(440)
+40 2
+fe=(400)
+-40 1044
+975 10096
+0 2088
+3992 1044
+0 218
+fi=(350)
+1448 654
+fe=(400)
+2945 218
+fi=(350)
+1450 1090
+fe=(400)
+2705 436
+2945 1044
+fi=(350)
+1450 5220
+fe=(400)
+2705 2088
+fi=(363)
+3172 2088
+898 1044
+fe=(400)
+222 1044
++1 1044
+fi=(401)
+-3 2088
+fi=(358)
+1054 1044
+fi=(401)
+128 2088
+cfi=(312)
+cfn=(1922)
+calls=21064 -67 
+* 23568
+* 1044
+fe=(400)
+
+fl=(493)
+fn=(2836)
+103 1526
+fi=(425)
+-72 218
+fe=(493)
++19 654
+fi=(345)
+743 436
+fe=(493)
+30 436
+-30 327
+43 2507
+-43 109
+fi=(561)
+72 109
+fe=(493)
+-37 109
+fi=(561)
++37 109
+fe=(493)
+-37 109
+fi=(489)
+414 218
+cob=(3)
+cfi=(513) /usr/src/debug/glibc/glibc/math/./w_exp_template.c
+cfn=(3566) exp@@GLIBC_2.29
+calls=109 31 
+* 3379
+* 109
+fe=(493)
+35 109
+-1 327
+-34 109
+fi=(362)
+615 109
+fi=(378)
+1873 218
+fe=(493)
+111 218
+cfi=(494)
+cfn=(2840) <minase::search::mcts::tree::Tree>::new
+calls=109 401 
+* 121761
+0 109
+fi=(362)
+615 109
+fi=(378)
+1873 218
+fe=(493)
+111 218
+cfi=(494)
+cfn=(2840)
+calls=109 401 
+* 127508
+fi=(361)
+2176 218
+0 218
+2176 436
++1 1308
+fe=(493)
+113 872
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 255 
+* 82186
+-1 1526
++8 1526
+
+fn=(2866)
+126 779961
++1 119994
++11 238680
+cfi=(494)
+cfn=(2952) <minase::search::mcts::tree::Tree>::select_leaf
+calls=59670 462 
+* 698742639
+fi=(361)
+2176 59670
+0 119340
+2176 119340
+fe=(493)
+138 59670
+fi=(361)
+2177 477360
+fe=(493)
+138 119340
+fi=(361)
+2177 119340
+fe=(493)
+139 122164
+fi=(494)
+614 1344
+445 2688
+0 1344
+fi=(352)
+1650 1344
+fi=(351)
+180 1344
+fi=(352)
+1650 1589
+fi=(351)
+180 1589
+0 1589
+fi=(494)
+445 3178
+fi=(389)
+184 3178
+fi=(494)
+446 1589
+fi=(389)
+186 1589
+fi=(345)
+743 6356
+fe=(493)
+128 654
+0 109
+129 327
+0 218
+131 218
+fi=(350)
+1731 1090
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 255 
+* 6540
+fi=(386)
+11 872
+fi=(350)
+1731 1526
+fi=(422)
+32 218
+fi=(350)
+1731 436
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 255 
+* 35098
+fi=(433)
+8 436
+fi=(345)
+2277 436
+fi=(422)
+32 218
+fi=(386)
+-21 872
+fi=(422)
++21 218
+fi=(401)
++67 218
+cfi=(213)
+cfn=(1202)
+calls=218 -99 
+* 218
++2 654
+cfi=(312)
+cfn=(1204)
+calls=218 -50 
+* 55789
+fi=(349)
+248 436
+0 436
+289 654
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=218 -34 
+* 40302
+* 2180
+fi=(494)
+424 218
+fe=(493)
+135 218
+fi=(362)
+461 436
+fe=(493)
+135 218
+fi=(362)
+0 436
+cfi=(213)
+cfn=(1202)
+calls=218 0 
+0 218
+fi=(401)
+101 654
+cfi=(312)
+cfn=(1204)
+calls=218 -50 
+* 32005
+fi=(362)
+470 654
+fi=(351)
+284 872
+0 2
+284 2
+fi=(345)
+743 116516
+0 116516
+fe=(493)
+338 116516
+cfi=(365)
+cfn=(2484)
+calls=58258 23 
+* 94484412
+0 58258
+fi=(363)
+3172 349548
+fi=(405)
+459 116516
+fi=(362)
+0 68
+fe=(493)
+140 68
+0 136
+fi=(351)
+284 864
+0 216
+279 432
+fi=(350)
+1939 432
+fi=(351)
+279 432
+fi=(350)
+1939 432
+fi=(351)
+279 432
+fi=(350)
+1939 432
+fi=(351)
+279 432
+fi=(350)
+1939 432
+fi=(562)
+19 216
+fi=(351)
+284 648
+-5 8396
+fi=(350)
+1939 8396
+fi=(351)
+279 8396
+fi=(350)
+1939 8396
+fi=(351)
+279 8396
+fi=(350)
+1939 8396
+fi=(351)
+279 8396
+fi=(350)
+1939 8396
+fi=(562)
+19 4198
+fi=(351)
+284 14090
+-5 304
+fi=(350)
+1939 304
+fi=(351)
+284 456
+-5 264
+fi=(350)
+1939 264
+fi=(351)
+284 396
+fe=(493)
+132 1526
++49 218
+fi=(362)
+461 233032
+0 58258
+cfi=(213)
+cfn=(1202)
+calls=58258 0 
+0 58258
+0 58258
+fi=(401)
+101 174774
+cfi=(312)
+cfn=(1204)
+calls=58258 -50 
+* 2255096
+fi=(362)
+470 116516
+0 233032
+fi=(494)
+182 4032
+fi=(378)
+975 174774
+fi=(352)
+1650 116516
+fi=(351)
+180 58258
+fe=(493)
+0 58258
+fi=(494)
+424 291290
+fi=(352)
+1650 616680
+fi=(351)
+180 154170
+0 154170
+fe=(493)
+341 616680
+fi=(389)
+184 308340
+0 154170
+fe=(493)
+342 154170
+fi=(389)
+186 154170
+fe=(493)
+343 462510
+fi=(378)
+1038 308340
+fe=(493)
+0 154170
+343 308340
+fi=(362)
+615 154170
+fi=(350)
+1939 462510
+fi=(378)
+1044 308340
+fe=(493)
+344 308340
+0 95912
+fi=(345)
+743 383648
+fi=(363)
+3172 466064
+fi=(405)
+459 116516
+fi=(494)
+184 1344
+617 5376
+cfn=(3076) <minase::search::mcts::tree::Tree>::finish
+calls=1344 719 
+* 908662
+fi=(361)
+2176 2688
+fe=(493)
+0 3076
+181 7690
+cfi=(312)
+cfn=(1922)
+calls=1538 61 
+* 32298
+* 539973
+-38 2688
++1 1344
+0 60946
+cfi=(213)
+cfn=(1202)
+calls=58258 0 
+0 58258
+0 58258
+fi=(401)
+101 174774
+cfi=(312)
+cfn=(1204)
+calls=58258 -50 
+* 2296631
+fi=(362)
+470 116516
+fi=(378)
+1873 58258
+975 174774
+fi=(362)
+615 174774
+fe=(493)
+349 233032
+0 58258
+fi=(352)
+1650 58258
+fi=(351)
+180 58258
+fi=(352)
+1650 154046
+fi=(351)
+180 154046
+0 154170
+fi=(454)
+27 154170
+-27 462510
+27 154170
+fe=(493)
+-27 154170
+fi=(378)
+1035 154170
++3 308340
+fe=(493)
+0 308340
+fi=(362)
+615 154170
+fi=(350)
+1939 154170
+fi=(378)
+1044 308340
+fe=(493)
+354 462510
+cfi=(365)
+cfn=(1928)
+calls=154170 68 
+* 62165769007
+* 616680
+fi=(361)
+964 308340
+fe=(493)
+359 154170
+fi=(567)
+82 154170
+fe=(493)
+359 308340
+0 124
+fi=(378)
+3064 124
+fe=(493)
+360 248
+fi=(350)
+1731 639474
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=58134 255 
+* 1744020
+fi=(386)
+11 232536
+fi=(350)
+1731 581340
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=58134 255 
+* 9359574
+* 116268
+fi=(433)
+8 174402
+fi=(345)
+2277 116268
+fi=(422)
+32 58134
+fi=(386)
+-21 232536
+fi=(422)
++21 58134
+fi=(362)
+615 58134
+fi=(378)
+1873 58134
+fi=(362)
+615 116268
+fi=(378)
+1873 58134
+fi=(454)
+27 116268
+fi=(351)
+405 348804
+fi=(352)
+1650 58134
+fi=(351)
+25 58134
+fi=(352)
+1650 153901
+fi=(351)
+25 153901
+406 153901
+fe=(493)
++9 153901
+fi=(351)
+-8 307802
+fi=(362)
+0 58134
+fe=(493)
+417 116268
+fi=(351)
+-12 348804
+fi=(352)
+1650 58134
+fi=(351)
+25 58134
+fi=(352)
+1650 6131895
+fi=(351)
+25 6131895
+407 6131897
+fe=(493)
++12 6131897
+fi=(351)
+-12 12263794
+0 2
+fe=(493)
+426 2
+fi=(422)
+83 124
+fe=(493)
+367 372
+0 31
+399 31
+fi=(433)
+8 62
+-8 36
+fe=(493)
+379 36
+-2 12
++2 57
+-2 19
+0 58132
+385 116264
+fi=(433)
+8 372
+fi=(448) /tmp/claude-1000/-home-stepney141-board-games-minase/5126b35f-9772-4372-bd23-cf52c90eb44e/scratchpad/baseline-src/crates/minase-core/src/game/result.rs
+-2 372
+fe=(493)
+469 465
+0 93
+fi=(350)
+1731 1116
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=93 255 
+* 2790
+fe=(493)
+0 31
+fi=(350)
+1731 372
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=31 255 
+* 930
+fi=(386)
+11 496
+fi=(350)
+1731 1240
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=124 255 
+* 19964
+fi=(345)
+2277 496
+fi=(422)
+32 248
+fi=(386)
+-21 496
+fi=(422)
++21 372
+fe=(493)
+379 372
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=124 255 
+* 22940
+* 620
+fi=(455)
+0 116388
+fe=(493)
+390 58132
+cfi=(365)
+cfn=(1814)
+calls=58132 159 
+* 2229443694
+* 58132
+0 116264
+388 116264
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=58132 255 
+* 10754420
+* 639452
+fi=(362)
++37 290660
+635 58132
+425 620
+635 124
+425 58258
+fi=(363)
+1361 58258
+fi=(401)
+128 116516
+cfi=(312)
+cfn=(1922)
+calls=58258 -67 
+* 1223418
+* 58258
+0 58258
+fe=(493)
+157 58258
+0 58258
+fi=(362)
+425 116516
+635 58258
+425 58258
+fi=(363)
+1361 58258
+fi=(401)
+128 116516
+cfi=(312)
+cfn=(1922)
+calls=58258 -67 
+* 1223418
+fi=(350)
+823 699096
+0 58258
+823 233032
+cfi=(312)
+cfn=(1922)
+calls=58258 61 
+* 2132188
+fi=(362)
+425 116516
+635 58258
+425 58258
+fi=(363)
+1361 58258
+fi=(401)
+128 116516
+cfi=(312)
+cfn=(1922)
+calls=58258 -67 
+* 2108390
+fe=(493)
++19 116516
+0 116516
+148 116516
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=58258 255 
+* 10777730
+* 291290
++6 116894
+0 33
+158 165
+-1 465
+0 58132
+154 116264
+0 58132
+155 232528
+0 116264
+161 232528
+cfi=(494)
+cfn=(3042) <minase::search::mcts::tree::Tree>::create_child
+calls=58132 507 
+* 276910727
+0 252
+161 504
+cfi=(494)
+cfn=(3042)
+calls=126 507 
+* 319263
+* 233032
++8 116516
++7 252
++1 504
+fi=(362)
+635 126
+fi=(349)
+286 58132
+cfn=(3064)
+calls=58132 -39 
+* 19476162
+0 116264
+289 581320
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=58132 -34 
+* 10748508
+* 871980
+fe=(493)
+170 639452
++11 58132
+fi=(362)
+0 4
+fi=(454)
+169 2
+fe=(493)
+441 2
+-8 2
+fi=(422)
+83 8
+fe=(493)
+439 8
++1 6
+-1 10
++1 6
+fi=(454)
+164 6
+fe=(493)
+445 2
+cfi=(418)
+cfn=(3730)
+calls=2 50 
+* 16
+fi=(350)
+1731 8
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=2 255 
+* 60
+fi=(386)
+11 8
+fi=(350)
+1731 14
+fi=(422)
+32 2
+fi=(350)
+1731 4
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=2 255 
+* 318
+fi=(345)
+2277 2
+fi=(422)
+32 2
+fi=(386)
+-21 8
+fi=(422)
++21 12
+fe=(493)
+447 12
++6 2
+fi=(567)
+82 2
+fi=(571) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/array/equality.rs
++75 4
+fi=(352)
+1650 2
+fi=(351)
+180 2
+0 2
+fe=(493)
+447 8
+fi=(422)
+83 2
+fe=(493)
+449 10
+cfi=(430)
+cfn=(2050)
+calls=2 108 
+* 816
++1 4
++1 10
+cfi=(432)
+cfn=(1978)
+calls=2 223 
+* 58970
+* 4
+0 2
+fi=(433)
+23 4
+fe=(493)
+459 16
+-60 4
+fi=(433)
+8 2
+fe=(493)
+399 2
+0 18
+394 4
+cob=(2)
+cfi=(282)
+cfn=(1090)
+calls=2 255 
+* 370
+* 12
+fi=(362)
++31 16
+635 2
+fe=(493)
+
+fn=(2920)
+188 233400
+fi=(378)
+3064 58350
+fe=(493)
+194 117136
+0 58350
+197 58350
+fi=(362)
+615 58350
+fe=(493)
+197 116700
+cfi=(494)
+cfn=(2922) <minase::search::mcts::tree::Tree>::evaluate
+calls=58350 571 
+* 555426775
+fi=(361)
+2176 116700
+fe=(493)
+198 116700
++2 218
++2 218
++1 218
++1 1090
+-2 58132
++1 58132
++1 290660
+
+fl=(220)
+fn=(894)
+136 2030
+fi=(224)
+-92 2030
+fe=(220)
+
+fl=(435)
+fn=(2016)
+116 4439176
++6 1109794
+0 554897
+fi=(422)
+77 554897
+fi=(386)
+180 554897
+fi=(422)
+77 2774485
+fi=(386)
+180 554897
++1 554897
++1 554897
+-1 554897
+62 554897
+fi=(437)
+444 1109794
+fi=(386)
+62 1664691
+fi=(384)
+170 554897
+fi=(386)
+62 1109794
+fi=(384)
+170 554897
+0 2219588
+fi=(572) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/mem/manually_drop.rs
+182 554897
+fi=(358)
+970 1109794
+fi=(436)
+30 4439176
+fi=(423)
+913 2219588
+cfi=(436)
+cfn=(2022)
+calls=1255019 73 
+* 170942470
+fi=(437)
+439 1664691
+fi=(573) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/control_flow.rs
+117 554897
+fi=(423)
+913 1109794
+fi=(356) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/mem/maybe_uninit.rs
+575 1109794
+fi=(423)
+913 2219588
+cfi=(436)
+cfn=(2022)
+calls=1255019 73 
+* 192667696
+fi=(437)
+439 1664691
+fi=(573)
+117 554897
+fi=(423)
+913 554897
+fi=(356)
+575 1109794
+fi=(437)
+444 4439176
+fi=(574) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/array/iter.rs
+70 2219588
+fi=(363)
++15 2219588
+fi=(386)
++10 1109794
+fe=(435)
+-95 1109794
+62 554897
+fi=(384)
+170 554897
+fi=(363)
+-85 2760
+fi=(386)
++10 2070
+fe=(435)
+-33 1380
+fi=(384)
+170 690
+0 1372
+fe=(435)
+65 784
+cfi=(518)
+cfn=(3754)
+calls=251 +8 
+* 799343
+fi=(384)
+170 392
+0 988
+fi=(363)
+85 2216828
+fi=(386)
++10 2216828
+fe=(435)
+-24 1108414
+fi=(386)
++24 1976
+fe=(435)
+-24 1109402
+-71 334
+71 666
+-71 2470
+71 1482
+-71 496
+fi=(386)
+29 992
++74 992
+0 490
+103 490
+0 1108080
+fe=(435)
+71 554040
+-6 784
+cfi=(518)
+cfn=(3754)
+calls=251 +8 
+* 653393
+* 196
+fi=(384)
+170 1960
+0 392
+fe=(435)
+77 30
+fi=(386)
+-47 12
++73 12
+fi=(363)
++75 496
+fi=(367)
+27 1488
+fe=(435)
++51 496
+fi=(422)
+-20 1488
+fi=(390)
+-21 1488
+fi=(381)
++51 1488
+fi=(382)
++24 992
+fi=(381)
+-43 496
+fe=(435)
++18 496
++1 2696
++7 164
+fi=(378)
+462 144
+fe=(435)
+101 108
+cfi=(418)
+cfn=(1818)
+calls=56 -32 
+* 124440
++1 108
+fi=(352)
+1650 36
+fi=(434)
+395 36
+0 360
+fi=(352)
+1650 110
+fi=(434)
+395 55
+fi=(350)
+1731 324
+fe=(435)
+104 162
+cfi=(422)
+cfn=(1856)
+calls=146 -5 
+* 3159
+fi=(387)
+819 162
+fi=(350)
+1731 81
+fi=(387)
+819 81
+fi=(350)
+1731 52
+fe=(435)
+107 104
+fi=(386)
+-32 26
+fi=(374)
+1077 52
+fi=(386)
+75 52
+fi=(384)
++95 26
+0 102
+fi=(362)
+635 10
+fi=(384)
+0 104
+fi=(362)
+635 26
+fi=(363)
+1361 36
+fi=(401)
+128 108
+cfi=(312)
+cfn=(1922)
+calls=56 -67 
+* 756
+0 554339
+fe=(435)
+141 44
+0 22
+152 242
+0 644
+152 6103625
+
+fl=(419)
+fn=(1834)
+195 157899693
++6 160581737
+fi=(367)
+80 913537
+fi=(412)
++32 913537
++14 8221833
+fe=(419)
++88 913537
+-12 153876627
++12 51292209
+-10 854970
++1 1282455
+fi=(352)
+1650 427485
+fi=(351)
+180 427485
+0 3955543
+fi=(352)
+1650 698418
+fi=(351)
+180 349209
+fe=(419)
++27 349209
+fi=(416)
+68 698418
+fi=(367)
++25 698418
++1 349209
++2 1396836
+fe=(419)
+207 698418
+fi=(367)
+96 650314
+fi=(386)
+-14 2276099
+-82 746792
+fi=(352)
+1650 577094
+fi=(351)
+180 288547
+fe=(419)
++27 288547
+fi=(416)
+68 577094
+fi=(367)
++25 577094
++1 288547
++2 1154188
+fe=(419)
+207 577094
+fi=(367)
+96 552926
+fi=(386)
+-14 1935241
+fe=(419)
+214 263166155
+
+fn=(2306)
+12 424050
+fi=(368)
+3891 38550
+fi=(369)
+156 77100
+fi=(416)
+405 192750
+0 96786
+405 32262
+0 18864
+407 6288
++34 77100
+fe=(419)
+172 308400
+cfn=(1828)
+calls=56933 +45 
+* 1619100
++2 115650
+19 346950
+
+fn=(2314)
+79 1441600
++7 720800
+fi=(367)
+-6 180200
+fi=(412)
++69 360400
+0 360400
+fi=(433)
+23 180200
+fi=(412)
+149 180200
+fi=(422)
+-78 1081200
+fi=(386)
++92 540600
++1 540600
++1 180200
+fe=(419)
+-78 3243600
+fi=(386)
++42 472948
+-1 1481788
++1 2963576
+-1 3028731
++1 2019154
+-1 2449782
++1 1813388
+0 1607048
+131 803524
+fi=(363)
++47 803524
+fi=(386)
+-47 1607048
+fi=(367)
+27 2410572
+fe=(419)
++60 803524
+fi=(386)
++44 829377
+fi=(363)
++47 829377
+fi=(386)
+-47 1658754
+fi=(367)
+27 2488131
+fe=(419)
++60 829377
+-87 3265802
+fi=(422)
+58 1632901
+fi=(390)
+-21 4898703
+fi=(381)
++51 3265802
+fi=(382)
++24 3265802
++1 8164505
+fi=(412)
+-1 6531604
++14 11430307
+fe=(419)
+-34 3265802
+fi=(386)
+-10 755565
++46 151113
++1 385330
+0 360400
+fi=(384)
+131 1621800
+fe=(419)
+-31 1982200
+0 1441600
+fi=(384)
+131 2883200
+fe=(419)
+-29 10091200
+cfi=(367)
+cfn=(1898)
+calls=2352640 -22 
+* 71532328
+* 1441600
+fi=(386)
++1 2883200
+0 334193
+103 334193
+0 2214814
+103 2214814
+0 2920230
+103 973410
+0 308855
+fi=(363)
+178 308855
+fi=(367)
+27 926565
+fe=(419)
++76 308855
+fi=(363)
++75 468190
+fi=(367)
+27 1404570
+fe=(419)
++76 468190
+fi=(422)
+-45 1554090
+fi=(390)
+-21 2331135
+fi=(381)
++51 1554090
+fi=(382)
++24 1554090
++1 777045
+fi=(426)
+-29 3108180
+fi=(382)
++29 1554090
+fi=(416)
+405 2331135
+fe=(419)
+112 2331135
+fi=(386)
+-30 773490
+fe=(419)
++30 128915
+0 180200
+117 1441600
+
+fn=(2328)
+121 1261400
++6 720800
++1 5766400
+0 540600
+fi=(384)
+131 1081200
+fi=(350)
+1731 540600
+fi=(422)
+77 3243600
+fi=(386)
+-15 2162400
+fe=(419)
++72 1081200
+0 206093
+fi=(416)
+405 1030465
+0 230736
+426 180200
+0 52411
+441 412186
+fe=(419)
+137 1030465
+0 360400
+fi=(412)
+126 180200
+0 180200
+155 180200
+0 180200
+155 360400
+fi=(386)
++27 180200
+-17 180200
+fi=(412)
+-39 180200
++29 180200
+fi=(386)
++25 180200
+-17 360400
++26 180200
+-9 180200
+-1 360400
+fe=(419)
+-40 180200
+0 25893
+fi=(351)
+180 51786
+0 77679
+fe=(419)
+144 25893
+fi=(416)
+-76 77679
+-68 126340
+68 75153
+-68 3125
+68 1875
+-68 1953
+fi=(426)
+62 651
+-62 1875
+fi=(416)
+68 1250
+fi=(367)
++25 79554
++1 79554
++2 106072
+fe=(419)
++49 53036
+0 3878
+fi=(386)
+75 5817
+fi=(374)
+1916 3878
+1077 1939
+fi=(386)
+75 5817
+fe=(419)
++71 3878
+fi=(426)
+-94 5817
+fi=(367)
++41 1939
++3 1939
+fe=(419)
++53 13573
+fi=(367)
+-53 3722
+fi=(386)
+-21 9305
+fe=(419)
++75 3722
+fi=(352)
+1650 53036
+fi=(351)
+180 26518
+fe=(419)
+-36 625
+fi=(416)
+-76 1875
+-68 180200
+fe=(419)
+160 1441600
+
+fn=(1828)
+217 474046029
+fi=(416)
+405 158015343
+fi=(412)
+112 263358905
+fi=(367)
+-32 52671781
+fi=(412)
++32 52671781
++14 579389591
+fi=(352)
+1650 52671781
+fi=(351)
+180 52671781
+0 288353488
+fi=(416)
+68 20093728
+fe=(419)
+228 50234320
+cfi=(367)
+cfn=(1898)
+calls=20707766 80 
+* 491876802
+fi=(351)
+0 65149947
+fi=(416)
+68 43433298
+fe=(419)
+228 108583245
+cfi=(367)
+cfn=(1898)
+calls=44295801 80 
+* 1034889639
+* 127054052
+fi=(386)
+-39 63527026
+-8 95290539
+-1 31763513
+fi=(352)
+1650 63527026
+fi=(351)
+180 41810377
+0 48982000
+fi=(416)
+68 19592800
+fe=(419)
+228 48982000
+cfi=(367)
+cfn=(1898)
+calls=20088558 80 
+* 461000558
+fi=(351)
+0 62070837
+fi=(416)
+68 41380558
+fe=(419)
+228 103451395
+cfi=(367)
+cfn=(1898)
+calls=42733541 80 
+* 1067238789
+* 121946716
+fi=(386)
+-39 60973358
+-8 91460037
+-1 30486679
+fi=(352)
+1650 60973358
+fi=(351)
+180 30486679
+0 19843264
+fi=(386)
+189 39686528
+fe=(419)
++42 178589376
+fi=(386)
+-42 32828517
+fe=(419)
++42 295456653
+
+fl=(403)
+fn=(1716)
+694 377675
++5 377675
+fi=(404)
+203 755350
++1 755350
+fi=(397)
+84 2266050
+fe=(403)
+943 377675
+fi=(363)
+4018 1133025
+fe=(403)
+381 755350
+cfi=(397)
+cfn=(1718)
+calls=3161085 130 
+* 21149800
+fi=(404)
+-67 1133025
+-2 755350
++4 755350
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(363)
+2612 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 755350
+fi=(404)
+78 377675
+318 377675
++2 377675
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 755350
+fi=(404)
+79 377675
+fi=(363)
+2612 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 755350
+fi=(404)
+79 377675
+fi=(363)
+2612 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 377675
+fi=(404)
+79 377675
+fi=(405)
+2037 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 377675
+fi=(363)
+2612 755350
+fi=(405)
+2037 377675
+fi=(404)
+78 377675
+fi=(405)
+2037 377675
+fi=(404)
+79 377675
+fi=(363)
+2612 377675
+fi=(405)
+2037 1510700
+fi=(404)
+323 1133025
+fe=(403)
+702 755350
+
+fl=(494)
+fn=(2952)
+462 596700
+fi=(378)
+3064 59670
+fe=(494)
+464 119340
+-1 56325
++2 56325
+fi=(362)
+615 56325
+fi=(351)
+331 112650
+fi=(352)
+1650 56325
+fi=(351)
+180 56325
+fi=(352)
+1650 6208372
+fi=(351)
+180 6208372
+332 12416744
+fi=(352)
+614 6208372
+fi=(351)
+332 6208372
+fe=(494)
+469 119340
++3 9048
++7 6032
+fi=(491)
+76 6032
+-76 3016
+241 3016
++3 3016
+-4 3016
+fi=(378)
+462 238680
+fe=(494)
++20 358020
+cfn=(2958) minase::search::mcts::tree::descend
+calls=59670 753 
+* 439146177
+0 59670
+483 238680
+fi=(358)
+970 178806
+fi=(362)
+615 119204
+fe=(494)
+464 59602
+fi=(351)
+180 59602
+0 393799
+fi=(492)
+41 56654
++2 963118
+fi=(351)
+332 56654
+fi=(492)
+41 56654
++2 963118
+fi=(351)
+332 56654
+fi=(492)
+0 56654
+43 1019772
+fi=(351)
+332 56654
+fi=(492)
+0 56654
+43 1019772
+fi=(351)
+332 56654
+fi=(492)
+44 56654
++2 1189734
+fi=(351)
+332 56654
+fi=(492)
+44 56654
++2 1189734
+fi=(351)
+332 113308
+fi=(352)
+1650 12407688
+fi=(351)
+180 6203844
+0 6203844
+fi=(344) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/slice/cmp.rs
+21 12407688
+-21 6177508
+fi=(351)
+332 18532524
+fi=(344)
+157 6177508
+cob=(2)
+cfi=(353)
+cfn=(1486)
+calls=6177508 -84 
+* 123289731
+* 6177508
+fi=(351)
+332 6177508
+fe=(494)
+500 537030
+-17 119204
++6 68
+-26 68
++23 68
+fi=(378)
+1873 204
+fi=(473) /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/slice/mod.rs
+199 138
+fe=(494)
+781 69
++1 345
++1 69
++1 207
+0 1
+fi=(345)
+765 3
+fe=(494)
+489 68
+-6 68
+fi=(361)
+835 68
++1 408
+0 119204
+fe=(494)
+496 59602
+cfi=(378)
+cfn=(3012)
+calls=59602 3821 
+* 5756279
+-1 238408
+fi=(378)
+1038 119204
++1 1540
+cfi=(362)
+cfn=(3018)
+calls=770 186 
+* 283904
+fi=(362)
+615 1540
+0 770
+fe=(494)
+495 2310
+fi=(350)
+1939 3850
+fi=(378)
+1044 1540
+fe=(494)
+499 5390
+fi=(362)
+0 58832
+fe=(494)
+495 176496
+fi=(350)
+1939 294160
+fi=(378)
+1044 117664
+fe=(494)
+499 411824
+-27 169962
+
+fn=(3076)
+719 476816
++1 119204
+fi=(352)
+1650 59602
+fi=(351)
+180 59602
+0 536418
+fi=(352)
+1650 6213758
+fi=(351)
+180 3106879
+fi=(344)
+21 6332962
+fi=(351)
+384 3140175
+fi=(344)
+157 9420525
+cob=(2)
+cfi=(353)
+cfn=(1486)
+calls=3140175 -84 
+* 62607351
+* 3140175
+fi=(351)
+384 3140175
+fi=(350)
+1731 238408
+fi=(378)
+2278 59602
+fi=(358)
+970 119204
+fi=(350)
+640 298010
+fi=(378)
+2231 59602
+fe=(494)
+722 119204
+fi=(561)
+72 59602
+fe=(494)
+722 178806
+cfn=(3084) minase::search::mcts::tree::backup
+calls=59602 +68 
+* 95813763
+0 119204
+fi=(362)
+635 59602
+fi=(363)
+1361 59602
+fi=(401)
+128 238408
+cfi=(312)
+cfn=(1922)
+calls=59602 -67 
+* 1251642
+* 119204
+fe=(494)
+724 476816
+
+fn=(2840)
+401 1526
++1 436
+0 218
+fi=(405)
+459 436
+0 654
+fe=(494)
+406 436
++14 1962
+0 436
+fi=(405)
+459 436
+fi=(362)
++2 436
+0 1090
+cfi=(213)
+cfn=(1202)
+calls=218 0 
+0 218
+0 218
+fi=(401)
+101 654
+cfi=(312)
+cfn=(1204)
+calls=218 -50 
+* 55873
+fi=(362)
+470 436
+0 1090
+fi=(351)
+25 436
+-25 218
+25 1090
+-25 218
+fi=(350)
+1939 3052
+fi=(562)
+19 218
+fi=(351)
+284 654
+fi=(350)
+1939 121772
+fi=(562)
+19 8698
+fi=(351)
+284 26094
+0 436
+284 436
+fi=(352)
+614 108
+fi=(350)
+1939 972
+fi=(486)
+61 432
+fi=(373)
++83 108
+cfi=(378)
+cfn=(2852)
+calls=108 1731 
+* 1620
+fi=(486)
+-83 440
+fi=(373)
++83 110
+cfi=(378)
+cfn=(2852)
+calls=110 1731 
+* 1650
+fe=(494)
++18 1090
+fi=(401)
+-63 218
+cfi=(213)
+cfn=(1202)
+calls=218 -99 
+* 218
++2 654
+cfi=(312)
+cfn=(1204)
+calls=218 -50 
+* 8284
+fi=(349)
+248 436
++41 1526
+fe=(494)
+409 1308
++11 218
+
+fn=(2922)
+571 583500
+fi=(473)
+137 116700
+fe=(494)
+577 58350
++1 116264
+fi=(352)
+1650 58132
+fi=(351)
+180 58132
+0 581320
+fi=(352)
+1650 6138866
+fi=(351)
+180 3069433
+fi=(344)
+21 6255130
+fi=(351)
+384 12510152
+fi=(344)
+157 3127538
+cob=(2)
+cfi=(353)
+cfn=(1486)
+calls=3127538 -84 
+* 62335246
+* 9382614
+fi=(351)
+384 3127538
+0 58132
+fe=(494)
+580 348792
+fi=(352)
+1650 58132
+fi=(351)
+180 58132
+fi=(352)
+1650 153899
+fi=(351)
+180 153899
+0 153899
+fe=(494)
+445 153899
+fi=(389)
+184 307798
+fe=(494)
+446 153899
+fi=(389)
+186 153899
+fi=(345)
+743 615596
+fe=(494)
+580 436
++1 350100
+0 58350
+582 58350
++15 58350
+735 933600
+fi=(361)
+2176 116700
+0 58350
+2176 116700
+fe=(494)
+587 116700
+fi=(351)
+331 175050
+0 58350
+fi=(352)
+1650 58350
+fi=(351)
+180 58350
+fi=(352)
+1650 4317641
+fi=(351)
+180 4317641
+0 4317641
+fi=(497)
+711 4317641
+fi=(351)
+332 4317641
+fi=(497)
+711 8635282
+fi=(352)
+1650 116700
+fi=(351)
+25 58350
+-25 58350
+284 233400
+0 158
+284 79
+0 116542
+284 291355
+0 174813
+279 116542
+fi=(497)
+1052 466168
+fi=(351)
+284 174813
+0 912510
+279 912510
+fi=(497)
+1052 3650040
+fi=(351)
+284 2942082
+0 100342
+fi=(497)
+1052 200684
+fi=(363)
+-79 100342
+fi=(351)
+284 100342
+fi=(497)
+1052 605048
+fi=(363)
+-79 302524
+fi=(351)
+284 302524
+0 175050
+cfi=(213)
+cfn=(1202)
+calls=58350 0 
+0 58350
+fi=(401)
+101 175050
+cfi=(312)
+cfn=(1204)
+calls=58350 -50 
+* 3560601
+fi=(362)
+470 116700
+0 175050
+fi=(351)
+284 175050
+0 4
+284 2
+0 408436
+284 233392
+0 58348
+279 58348
+fi=(500)
+-63 116696
+fi=(499)
+414 58348
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=58348 54 
+* 1750440
+fi=(351)
+279 999337
+fi=(500)
+-63 1998674
+fi=(499)
+414 999337
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=999337 54 
+* 29980110
+* 3173055
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=1057685 54 
+* 31730550
+* 6346110
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=1057685 54 
+* 31730550
+* 6346110
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=1057685 54 
+* 31730550
+* 2115370
+fi=(350)
+1939 1057685
+fi=(351)
+284 3173055
+0 58348
+284 291740
+0 86730
+279 43365
+fi=(500)
+-63 86730
+fi=(499)
+414 43365
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=43365 54 
+* 1300950
+fi=(351)
+279 43536
+fi=(500)
+-63 87072
+fi=(499)
+414 43536
+cob=(3)
+cfi=(498)
+cfn=(2936)
+calls=43536 54 
+* 1306080
+* 173802
+fi=(350)
+1939 86901
+fi=(562)
+19 86901
+fi=(351)
+284 407202
+0 474
+284 79
+0 58271
+284 407897
+fi=(500)
+104 466168
+fi=(363)
+973 58271
+fi=(351)
+284 116542
+fi=(500)
+104 3650040
+fi=(363)
+973 456255
+fi=(351)
+284 1179565
+0 50171
+fi=(500)
+104 50171
+fi=(351)
+284 150513
+fi=(500)
+104 151262
+fi=(351)
+284 453786
+180 233400
+0 582710
+fi=(501)
+33 407897
+fi=(351)
+180 116542
+fi=(501)
+33 3193785
+fi=(351)
+180 1029052
+0 150513
+fi=(501)
+33 150513
+fi=(352)
+614 50171
+1650 50171
+fi=(351)
+180 50171
+fi=(501)
+33 453786
+fi=(352)
+614 151262
+1650 151262
+fi=(351)
+180 151262
+fe=(494)
+743 116700
+0 58350
+fi=(352)
+1650 58350
+fi=(351)
+180 58350
+fi=(352)
+1650 153899
+fi=(351)
+180 153899
+0 153899
+fe=(494)
+743 153899
+fi=(389)
+195 307798
+fe=(494)
+744 153899
+fi=(389)
+197 153899
+fi=(345)
+765 615596
+fe=(494)
+592 58350
+fi=(374)
+1077 116700
+fi=(496)
+300 116700
+fe=(494)
+592 58350
+fi=(434)
+262 408450
+0 14738
+262 313255
+fi=(496)
++42 50981
+0 24351
+304 16234
+0 458829
+fi=(350)
+1731 50981
+fe=(494)
+592 50981
++1 152943
++1 50981
+-1 356867
+fi=(496)
+304 50981
+-4 152943
+fi=(350)
+1731 933415
+fe=(494)
+592 933415
++1 2800245
++1 933415
+-1 6533905
+fi=(496)
+304 933415
+-4 2800245
+0 50981
+fe=(494)
+592 101962
+fi=(434)
+262 203924
+fi=(352)
+1650 50981
+fi=(434)
+262 50981
+fe=(494)
+592 14738
+fi=(434)
+262 29476
+fi=(352)
+1650 7369
+fi=(434)
+262 7369
+fi=(352)
+1650 321707
+fi=(434)
+262 321707
+fi=(350)
+1731 380057
+fi=(352)
+614 380057
+fe=(494)
+-22 380057
+fi=(496)
+304 380057
+fe=(494)
+593 380057
++1 380057
+fi=(496)
+300 1140171
+fi=(352)
+1650 58350
+fi=(362)
+635 58350
+fi=(401)
+128 233400
+cfi=(312)
+cfn=(1922)
+calls=58350 -67 
+* 1268704
+* 116700
+fe=(494)
+596 175050
++1 58350
+fi=(473)
+137 58350
+fe=(494)
+602 58350
++1 639452
+cfn=(3076)
+calls=58132 719 
+* 196522713
+0 218
+606 1962
+
+fn=(2958)
+753 417690
+182 179010
+0 59670
+182 179010
+764 179010
+fi=(378)
+3064 3016
+fe=(494)
+766 6032
++12 596700
+fi=(378)
+3064 56654
+fi=(492)
+59 226616
+fi=(378)
+3089 56654
+fi=(492)
+59 226616
+-59 56654
+64 113308
+fi=(352)
+1650 113308
+fi=(351)
+25 56654
+284 226616
+0 1602
+284 801
+0 3016
+fi=(491)
+83 6032
+fi=(352)
+1650 3016
+fi=(351)
+25 3016
+284 12064
+0 64
+284 279297
+0 55853
+279 111706
+fi=(492)
+67 55853
+fi=(351)
+279 55853
+fi=(515)
+55 55853
+fi=(492)
++12 55853
+fi=(351)
+279 111706
+fi=(515)
+55 55853
+fi=(351)
+279 55853
+fi=(492)
+67 55853
+fi=(515)
+-12 55853
+fi=(351)
+279 111706
+fi=(492)
+67 55853
+fi=(515)
+-12 55853
+fi=(363)
+973 55853
+fi=(351)
+284 167559
+-5 1799874
+fi=(492)
+67 899937
+fi=(351)
+279 899937
+fi=(515)
+55 899937
+fi=(492)
++12 899937
+fi=(351)
+279 1799874
+fi=(515)
+55 899937
+fi=(351)
+279 899937
+fi=(492)
+67 899937
+fi=(515)
+-12 899937
+fi=(351)
+279 1799874
+fi=(492)
+67 899937
+fi=(515)
+-12 899937
+fi=(363)
+973 899937
+fi=(351)
+284 3112433
+0 42988
+279 85976
+fi=(492)
+67 42988
+fi=(515)
+-12 42988
+fi=(351)
+284 171952
+-5 74404
+fi=(492)
+67 37202
+fi=(515)
+-12 37202
+fi=(351)
+284 262116
+0 1602
+284 280066
+0 55853
+fi=(515)
+166 223412
+fi=(363)
+973 55853
+fi=(351)
+284 167559
+fi=(515)
+166 3599748
+fi=(363)
+973 899937
+fi=(351)
+284 3069445
+0 42988
+fi=(515)
+166 42988
+fi=(351)
+284 128964
+fi=(515)
+166 37202
+fi=(351)
+284 111606
+fi=(492)
+64 453232
+-64 283270
+78 113308
+-78 283270
+70 226616
+fi=(499)
+474 56654
+cob=(3)
+cfi=(516) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/flt-32/e_logf.c
+cfn=(3578) __logf_fma
+calls=56654 41 
+* 1926236
+* 113308
+fi=(492)
+72 226616
+-3 99556
++2 49778
+fi=(497)
+2103 99556
+fi=(492)
+71 49778
++2 149334
+fi=(497)
+1052 49778
+fi=(492)
+0 49778
+fi=(497)
+2103 99556
+fi=(492)
+78 99556
+-78 6876
+fi=(497)
+2103 13752
+fi=(492)
+78 13752
+-78 114725
+fi=(352)
+1650 109
+fi=(351)
+180 109
+fi=(492)
+0 791630
+fi=(352)
+1650 56545
+fi=(351)
+180 56545
+fi=(352)
+1650 3903350
+fi=(351)
+180 3903350
+fi=(492)
+-98 11710050
++1 7115576
+-83 5663
+fi=(567)
+82 5663
+fi=(492)
++3 11326
++8 11693061
++1 7795374
++3 10656375
+-4 7104250
++4 17760625
++2 10656375
+-99 3552125
+99 7104250
++1 7104250
+0 3552125
+100 14208500
+-19 3552125
++18 1036686
+-99 345562
+99 691124
++1 691124
+0 345562
+100 1382248
+-19 345562
+fi=(345)
+1334 113308
+fi=(492)
+106 396578
+fe=(494)
+771 56654
+fi=(378)
+1038 113308
++1 238680
+cfi=(362)
+cfn=(3004)
+calls=59670 186 
+* 6178683
+* 179010
+fi=(362)
+615 59670
+fi=(350)
+1939 59670
+fi=(378)
+1044 119340
+fi=(345)
+765 179010
+fe=(494)
++10 51312
+cfn=(2959) minase::search::mcts::tree::descend'2
+calls=51312 -22 
+* 244331344
++3 51312
+-3 102624
+0 8358
+fi=(345)
+765 8358
+fe=(494)
++4 27144
+fi=(378)
+1038 6032
+0 2984
+fi=(351)
+284 14920
+0 2984
+279 5968
+fi=(515)
+55 2984
+fi=(351)
+279 2984
+fi=(515)
+55 5968
+fi=(351)
+279 2984
+fi=(515)
+55 2984
+fi=(363)
+973 2984
+fi=(351)
+284 8952
+-5 108996
+fi=(515)
+55 54498
+fi=(351)
+279 54498
+fi=(515)
+55 108996
+fi=(351)
+279 54498
+fi=(515)
+55 54498
+fi=(363)
+973 54498
+fi=(351)
+284 185208
+0 2127
+279 2127
+fi=(515)
+55 2127
+fi=(351)
+284 6381
+-5 1732
+fi=(515)
+55 1732
+fi=(351)
+284 5196
+0 6032
+fi=(389)
+184 6032
+0 6032
+fi=(362)
+615 3016
+fi=(491)
+88 9048
++13 6032
+cfn=(2966)
+calls=3016 +81 
+* 6943608
+fi=(361)
+2176 3016
+0 3016
+2176 6032
++1 24128
+fi=(491)
+101 6032
+fi=(352)
+1650 6032
+fi=(351)
+25 3016
+-25 3016
+284 6032
+0 64
+284 32
+0 5968
+284 11936
+0 29840
+fi=(497)
+1052 23872
+fi=(351)
+284 8952
+0 248990
+fi=(497)
+1052 199192
+fi=(351)
+284 171333
+0 2678
+fi=(497)
+1052 10712
+fi=(351)
+284 10712
+fi=(497)
+1052 32180
+fi=(351)
+284 32180
+0 42224
+fi=(491)
+254 1168935
+fi=(352)
+1650 233787
+fi=(567)
+82 467574
+fi=(352)
+1650 233787
+fi=(351)
+180 233787
+0 233787
+fi=(491)
+108 467574
+fi=(389)
+238 493728
+fi=(392)
++72 123432
+fi=(491)
+109 370296
+fi=(497)
+1052 246864
+fi=(345)
+1334 6032
+0 6032
+fi=(362)
+635 3016
+fi=(363)
+1361 3016
+fi=(401)
+128 6032
+cfi=(312)
+cfn=(1922)
+calls=3016 -67 
+* 63350
++92 3016
+fe=(494)
+
+fn=(2959)
+753 682990
+182 292710
+0 97570
+182 292710
+0 68
+fi=(345)
+765 68
+fe=(494)
+-1 288474
+fi=(378)
+3064 1461
+fe=(494)
+766 2922
+0 7305
+fi=(491)
+226 4383
+cfn=(3098)
+calls=1461 -12 
+* 8894059
+fi=(361)
+2176 1461
+0 1461
+2176 2922
++1 7305
+fi=(491)
+226 7305
++1 1461
+fi=(352)
+1650 1461
+fi=(351)
+25 1461
+-25 5844
+284 5844
+fe=(494)
+184 1344
+0 1344
+778 975700
+fi=(378)
+3064 94697
+fi=(492)
+59 378788
+fi=(378)
+3089 94697
+fi=(492)
+59 378788
+-59 94697
+64 189394
+fi=(352)
+1650 189394
+fi=(351)
+25 94697
+284 852273
+0 94697
+279 189394
+fi=(492)
+67 94697
+fi=(351)
+279 94697
+fi=(515)
+55 94697
+fi=(492)
++12 94697
+fi=(351)
+279 189394
+fi=(515)
+55 94697
+fi=(351)
+279 94697
+fi=(492)
+67 94697
+fi=(515)
+-12 94697
+fi=(351)
+279 189394
+fi=(492)
+67 94697
+fi=(515)
+-12 94697
+fi=(363)
+973 94697
+fi=(351)
+284 284091
+-5 3152460
+fi=(492)
+67 1576230
+fi=(351)
+279 1576230
+fi=(515)
+55 1576230
+fi=(492)
++12 1576230
+fi=(351)
+279 3152460
+fi=(515)
+55 1576230
+fi=(351)
+279 1576230
+fi=(492)
+67 1576230
+fi=(515)
+-12 1576230
+fi=(351)
+279 3152460
+fi=(492)
+67 1576230
+fi=(515)
+-12 1576230
+fi=(363)
+973 1576230
+fi=(351)
+284 5402204
+0 69160
+279 138320
+fi=(492)
+67 69160
+fi=(515)
+-12 69160
+fi=(351)
+284 276640
+-5 136588
+fi=(492)
+67 68294
+fi=(515)
+-12 68294
+fi=(351)
+284 936055
+0 94697
+fi=(515)
+166 378788
+fi=(363)
+973 94697
+fi=(351)
+284 284091
+fi=(515)
+166 6304920
+fi=(363)
+973 1576230
+fi=(351)
+284 5333044
+0 69160
+fi=(515)
+166 69160
+fi=(351)
+284 207480
+fi=(515)
+166 68294
+fi=(351)
+284 204882
+fi=(492)
+64 757576
+-64 473485
+78 189394
+-78 473485
+70 378788
+fi=(499)
+474 94697
+cob=(3)
+cfi=(516)
+cfn=(3578)
+calls=94697 41 
+* 3219698
+* 189394
+fi=(492)
+72 378788
+-3 92610
++2 46305
+fi=(497)
+2103 92610
+fi=(492)
+71 46305
++2 138915
+fi=(497)
+1052 46305
+fi=(492)
+0 46305
+fi=(497)
+2103 92610
+fi=(492)
+78 92610
+-78 48392
+fi=(497)
+2103 96784
+fi=(492)
+78 96784
+-78 656913
+fi=(352)
+1650 35963
+fi=(351)
+180 35963
+fi=(492)
+0 822276
+fi=(352)
+1650 58734
+fi=(351)
+180 58734
+fi=(352)
+1650 6821162
+fi=(351)
+180 6821162
+fi=(492)
+-98 20463486
++1 376350
+-83 449
+fi=(567)
+82 449
+fi=(492)
++3 898
++8 20462139
++1 13641426
++3 563178
+-4 375452
++4 938630
++2 563178
+-99 187726
+99 375452
++1 375452
+0 187726
+100 750904
+-19 187726
++18 19898961
+-99 6632987
+99 13265974
++1 13265974
+0 6632987
+100 26531948
+-19 6632987
+fi=(345)
+1334 189394
+fi=(492)
+106 662879
+fe=(494)
+771 94697
+fi=(378)
+1038 189394
++1 32
+cfi=(362)
+cfn=(3004)
+calls=8 186 
+* 1723
+* 24
+fi=(362)
+615 8
+fi=(350)
+1939 8
+fi=(378)
+1044 16
+fi=(345)
+765 24
+fi=(362)
+615 96150
+fi=(350)
+1939 96150
+fi=(378)
+1044 192300
+fi=(345)
+765 288450
+fe=(494)
++10 46258
+cfn=(2959)
+calls=46258 -22 
+* 145909147
++3 46258
+-3 92516
+0 49900
+fi=(345)
+765 49900
+fi=(351)
+284 7305
+0 1461
+279 1461
+fi=(491)
+-49 2922
+fi=(351)
++49 1461
+fi=(491)
+-49 2922
+fi=(515)
+-64 2922
+fi=(351)
+279 1461
+fi=(491)
+-49 2922
+fi=(515)
+-64 1461
+fi=(351)
+279 1461
+fi=(491)
+-49 2922
+fi=(515)
+-64 1461
+fi=(363)
+973 1461
+fi=(351)
+284 4383
+-5 26907
+fi=(491)
+-49 53814
+fi=(351)
++49 26907
+fi=(491)
+-49 53814
+fi=(515)
+-64 53814
+fi=(351)
+279 26907
+fi=(491)
+-49 53814
+fi=(515)
+-64 26907
+fi=(351)
+279 26907
+fi=(491)
+-49 53814
+fi=(515)
+-64 26907
+fi=(363)
+973 26907
+fi=(351)
+284 89949
+0 1051
+279 1051
+fi=(491)
+-49 2102
+fi=(515)
+-64 1051
+fi=(351)
+284 3153
+-5 1030
+fi=(491)
+-49 2060
+fi=(515)
+-64 1030
+fi=(351)
+284 3090
+0 2922
+fi=(434)
+262 7305
+0 1461
+fi=(352)
+1650 1461
+fi=(434)
+262 1461
+fi=(352)
+1650 114092
+fi=(434)
+262 114092
+fi=(392)
++48 115553
+fi=(491)
+-74 231106
+fi=(350)
+1731 115553
+fi=(491)
+236 231106
++18 346659
+fi=(567)
+82 115553
+fi=(491)
+254 231106
+fi=(352)
+1650 462212
+fi=(351)
+180 115553
+0 1461
+fi=(362)
+635 1461
+fi=(363)
+1361 1461
+fi=(401)
+128 2922
+cfi=(312)
+cfn=(1922)
+calls=1461 -67 
+* 31767
+0 1461
+fi=(345)
+1334 2922
+fe=(494)
+769 13149
+fi=(378)
+1038 4383
+fe=(494)
+
+fn=(3084)
+790 417214
+fi=(473)
+199 119204
+0 59602
+fe=(494)
+791 59602
++3 298010
+fi=(345)
+-29 178806
+0 238408
+fe=(494)
+796 178806
+cfn=(3085) minase::search::mcts::tree::backup'2
+calls=59602 -6 
+* 55596798
+* 119204
+-1 59602
++7 119204
++1 119204
++1 119204
++1 56586
+fi=(358)
+970 536418
+0 4124426
+fi=(352)
+1650 8248852
+fi=(351)
+180 4124426
+fi=(352)
+1650 16374
+fi=(351)
+180 8187
+fe=(494)
++19 4132613
+fi=(345)
+743 8265226
+fe=(494)
+123 7728900
++1 32748
+-57 8187
+200 16374
+0 2272
+fi=(345)
+709 4544
+fe=(494)
+0 11360
+fi=(345)
+709 2272
+0 5915
+fe=(494)
+207 11830
+fi=(345)
+709 11830
+fe=(494)
+43 31311
+208 4473
+43 4473
+208 8946
+0 4326
+fi=(345)
+709 1442
+fe=(494)
+215 119204
++2 114660
+0 15904
+809 476816
+
+fn=(3085)
+790 1090313
+fi=(473)
+199 311518
+0 96157
+fe=(494)
+791 96157
++3 480785
+fi=(345)
+-29 288471
+0 384628
+fe=(494)
+796 288471
+cfn=(3085)
+calls=96157 -6 
+* 35463092
+* 192314
+-1 96157
++7 192314
++1 192314
++1 192314
++1 94696
+fi=(358)
+970 865413
+0 6936200
+fi=(352)
+1650 13872400
+fi=(351)
+180 6936200
+fi=(352)
+1650 1020
+fi=(351)
+180 510
+fe=(494)
++19 6936710
+fi=(345)
+743 13873420
+fe=(494)
+123 537050
++1 2040
+-57 510
+200 1020
+0 22
+fi=(345)
+709 44
+fe=(494)
+0 110
+fi=(345)
+709 22
+0 488
+fe=(494)
+207 976
+fi=(345)
+709 976
+fe=(494)
+43 2296
+208 328
+43 328
+208 656
+0 480
+fi=(345)
+709 160
+fe=(494)
+215 192314
++2 192270
+0 154
+809 1246072
+
+fn=(3626)
+228 889
++1 254
++4 127
+fi=(351)
+-53 254
+fe=(494)
+0 762
+234 762
+0 66
+fi=(352)
+1650 66
+fi=(567)
+82 66
+fi=(352)
+1650 66
+fi=(351)
+180 66
+fi=(352)
+1650 10784
+fi=(567)
+82 10784
+fi=(352)
+1650 10784
+fi=(351)
+180 10784
+fe=(494)
++54 21700
++20 21700
+fi=(345)
+743 21700
+fe=(494)
+123 20412
++1 128
+-57 64
+-5 64
++65 64
+-3 64
+234 64
++20 576
+-20 64
++20 128
+fi=(345)
+743 128
+fe=(494)
+234 10786
++20 97074
+-20 10786
++20 21572
+fi=(345)
+743 21572
+fe=(494)
+123 30861
++1 6014
+-57 3007
+-5 3007
++65 3007
+-3 3007
+254 27063
+fi=(374)
+657 3007
+501 3007
+657 3007
+fe=(494)
+254 70587
+fi=(374)
+657 7843
+501 7843
+657 7843
+0 7779
+fi=(345)
+743 15558
+fe=(494)
+123 20103
+0 7779
+fi=(345)
+743 15558
+fe=(494)
+123 21672
+261 46674
+fi=(374)
+2011 7779
+657 7779
+501 7779
+657 7779
+fe=(494)
+264 8120
+119 28104
+fi=(374)
+1958 10539
+fe=(494)
+234 20304
+0 1094
+fi=(374)
+1958 1641
+fi=(345)
+0 127
+fe=(494)
+239 1016
+
+fn=(3042)
+507 466064
++1 116516
+fi=(352)
+1650 58258
+fi=(351)
+180 58258
+0 524322
+fi=(352)
+1650 12338318
+fi=(351)
+180 6169159
+fi=(344)
+21 12454834
+fi=(351)
+384 12454482
+fi=(344)
+157 12454482
+cob=(2)
+cfi=(353)
+cfn=(1486)
+calls=6227241 -84 
+* 124192109
+* 6227241
+fi=(351)
+384 6227241
+0 58258
+fi=(473)
+241 116516
+0 58258
+fe=(494)
+509 116516
++2 58258
+-66 174774
+0 58258
+fi=(352)
+1650 58258
+fi=(351)
+180 58258
+fi=(352)
+1650 95912
+fi=(351)
+180 95912
+0 95912
+fe=(494)
+445 95912
+fi=(389)
+184 191824
+fe=(494)
+446 95912
+fi=(389)
+186 95912
+fi=(345)
+743 383648
+fe=(494)
+560 523188
+fi=(389)
+184 116516
+fe=(494)
+510 58258
+fi=(389)
+186 116516
+fi=(345)
+634 58258
+fe=(494)
+515 58258
+0 58258
+518 116516
+0 58258
+521 291290
++1 58132
++1 116264
++3 116264
+0 116264
+fi=(405)
+459 116264
+0 290660
+fe=(494)
+537 186
++1 279
+0 186
+537 651
++6 66
+735 495
+fi=(361)
+2176 66
+0 33
+2176 66
+0 66
+fe=(494)
+543 198
+0 116264
+549 291290
+0 233032
+fi=(358)
+970 116516
+fi=(338)
+2090 58258
+cfi=(373)
+cfn=(3054)
+calls=58258 143 
+* 70707158
+fe=(494)
+162 640838
+fi=(349)
+286 116516
+cfn=(3064)
+calls=58258 -39 
+* 2907892
+0 58258
+289 349548
+fe=(494)
+182 465713
+0 303
+183 12
+0 81
+183 81
++1 132
+0 116264
+554 58132
+fi=(352)
+1650 58132
+fi=(351)
+180 58132
+fe=(494)
+0 126
+554 126
+fi=(352)
+1650 126
+fi=(351)
+180 126
+fe=(494)
+554 95912
+fi=(352)
+1650 95912
+fi=(351)
+180 95912
+0 95912
+fe=(494)
+743 95912
+fi=(389)
+195 191824
+fe=(494)
+744 95912
+fi=(389)
+197 95912
+fi=(345)
+765 383648
+fi=(455)
+0 174774
+fe=(494)
+554 291290
+cfi=(350)
+cfn=(3072)
+calls=58258 823 
+* 524322
+* 174774
++1 174774
++1 174774
++1 1386
+cfn=(3076)
+calls=126 719 
+* 192946
+
+fn=(3624)
+646 109
++1 327
+cfn=(3626)
+calls=109 228 
+* 599148
+fi=(345)
+2872 218
+fe=(494)
+647 763
++1 654
+
+fl=(463)
+fn=(2530)
+388 1090
+fi=(461)
+74 436
+cfi=(462)
+cfn=(2520)
+calls=8218 +1 
+* 5886
+fe=(463)
+389 1962
+fi=(461)
+78 218
+cfi=(462)
+cfn=(2532)
+calls=8218 +34 
+* 8066
+* 218
+fi=(342) /rustc/88d9e12ae178fab0fb5cc050a94da85685d449ea/library/core/src/option.rs
+1095 872
+fe=(463)
+390 872
+
+fl=(236)
+fn=(2176)
+414 28746
+fi=(232)
+690 28746
+-4 14373
+489 14373
+fe=(236)
+-97 14373
+fi=(232)
++97 57492
+-15 57492
+fe=(236)
+-96 14373
++14 14373
+fi=(232)
+642 14373
++2 14373
+fe=(236)
+392 14373
+fi=(232)
+642 14373
+fe=(236)
+392 14373
+fi=(232)
+643 14373
+fe=(236)
+378 14373
+cfn=(1360) mi_page_map_set_range_prim
+calls=46707 -21 
+* 725337
+
+fn=(1356)
+396 51642
++4 34428
+fi=(232)
+690 51642
+-4 51642
+489 17214
+fe=(236)
+-97 17214
+fi=(232)
+642 17214
+489 68856
+-15 68856
+642 17214
++1 17214
++1 17214
+fe=(236)
+392 17214
+-14 34428
++14 34428
+-14 34428
+cfn=(1360)
+calls=46712 -21 
+* 875322
+* 103284
++30 51642
+
+fn=(1360)
+357 189522
++2 347457
+211 31587
++1 63174
++9 63174
++8 94761
++98 126348
++40 31587
++2 31587
+-3 63174
++1 8816
++2 8816
+-3 35264
++5 31587
+-12 252696
++15 31587
++1 189522
+
+ob=(3)
+fl=(513)
+fn=(3566)
+31 654
++1 109
+cfi=(514) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/dbl-64/e_exp.c
+cfn=(3568) __ieee754_exp_fma
+calls=109 +66 
+* 1308
++1 981
++4 327
+
+fl=(514)
+fn=(3568)
+98 109
+fi=(575) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/dbl-64/math_config.h
++15 109
+fe=(514)
+-25 218
++15 109
++1 327
++3 218
++3 218
+
+fl=(498)
+fn=(2936)
+54 4442164
+fi=(576) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/flt-32/math_config.h
++66 4442164
+fe=(498)
+-71 8884328
++11 4442164
++1 8884328
++18 4442164
++10 4442164
+-30 4442164
++38 4442164
++4 4442164
+-12 8884328
+fi=(576)
++53 4442164
+fe=(498)
+-51 4442164
++5 4442164
++1 4442164
+-1 4442164
+-3 4442164
++6 4442164
+-2 4442164
++2 4442164
++4 4442164
+-3 4442164
++1 4442164
++1 4442164
++1 4442164
++1 8884328
+
+fl=(516)
+fn=(3578)
+41 151351
+fi=(576)
++79 151351
+fe=(516)
+-71 302702
++3 454053
++17 151351
++5 151351
++5 151351
+-1 151351
+-8 151351
++13 151351
+-13 151351
++4 454053
+-2 151351
+-1 151351
++1 151351
++7 454053
+-7 151351
++3 302702
++3 151351
++5 151351
+-1 151351
++3 151351
+-1 151351
++2 454053
+
+fl=(488) /usr/src/debug/glibc/glibc/math/../sysdeps/ieee754/dbl-64/e_log.c
+fn=(2794) __ieee754_log_fma
+49 17940
++11 17940
+fi=(575)
++53 17940
+fe=(488)
+-53 71760
+-21 33886
++45 50829
++17 16943
++4 16943
++13 16943
+-5 16943
+-12 16943
++20 16943
++8 16943
+-27 16943
++27 16943
+-27 16943
++3 67772
+-1 33886
+-1 16943
++1 16943
++14 16943
++3 16943
+-8 33886
++16 16943
+-7 16943
++4 16943
+-3 33886
++6 118601
++1 16943
+-66 2991
++2 997
++3 997
++1 997
+-1 997
++1 1994
+-3 997
++3 997
+-1 997
++1 997
+-2 997
++2 2991
++4 997
+-4 997
++4 2991
++2 1994
+-1 997
++2 1994
++1 997
++1 997
+-1 997
++1 997
++1 1994
++1 997
++1 997
+
+fl=(487)
+fn=(2792)
+31 17940
++1 53820
++9 17940
+cfi=(488)
+cfn=(2794)
+calls=17940 +8 
+* 838195
+
+totals: 66225052225
