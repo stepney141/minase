@@ -1,5 +1,6 @@
 //! 審判の条文別試験と共通の補助関数。
 
+mod adjudication_history;
 mod exhaustion;
 mod illegal_move;
 mod local_rules;
