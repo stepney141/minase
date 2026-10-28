@@ -15,6 +15,7 @@
 - 推論に使うGPUの種別を変えたとき。
 
 TensorRTのエンジンはGPUの機種ごとに作られるので、照合は学習に使ったGPUの機械と、対局に使う作業機の両方で行う。
+PyTorchの出力（4節）は学習に使った機械で1回だけ作り、ほかの機械ではそのファイルを基準にして、3節のminaseの出力だけを作って照合する。
 
 ## 2. 準備
 
@@ -59,6 +60,9 @@ uv run --frozen python nn_torch_reference.py --onnx <ネット.onnx> --blocks 10
 
 学習したネットの出力は、学習器`minase_zero`の`fixture-eval`がチェックポイントから同じ形で書き出す。
 `fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
+書き出しはBatchNormを定数畳み込みで畳み込みの重みとバイアスへ融合し、その単精度の丸めはCPUによって変わるので、このバイト単位の一致は学習した機械でしか成り立たない。
+1サイクル分学習したネットを作業機で書き出し直すと、70個の初期値のうち28個が最大4.8×10⁻⁷異なった（[記録](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)）。
+このため`fixture-eval`は学習した機械で実行し、作業機などほかの機械では、そこで書いた出力を照合の基準に使う。
 
 ```console
 cd tools/train/zero
