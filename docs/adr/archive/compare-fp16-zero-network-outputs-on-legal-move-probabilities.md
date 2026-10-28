@@ -2,15 +2,15 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月28日。
+置き換え済み。決定日は2026年10月28日。[合法手の確率を1×10⁻²、価値を5×10⁻²で照合するADR](../compare-fp16-zero-network-values-within-five-hundredths.md)によって置き換えられた。
 
 ## コンテキスト
 
-学習したネットを推論に使う前に、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を固定局面集の288局面で照合する（[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)）。
+学習したネットを推論に使う前に、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を固定局面集の288局面で照合する（[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)）。
 照合は、ONNXへの書き出しで出力の並びがずれた場合や、minaseが別の着手のlogitを読む場合を検出するために行う。
-[ネットの入出力と推論の設計書](../plans/archived/alphazero-network.md)は、許容誤差の初期値を、合法手のlogitと価値の差についてCPUで1×10⁻⁴、FP16で1×10⁻²と定め、ランダムに初期化したネットで照合が通ることを確かめた。
+[ネットの入出力と推論の設計書](../../plans/archived/alphazero-network.md)は、許容誤差の初期値を、合法手のlogitと価値の差についてCPUで1×10⁻⁴、FP16で1×10⁻²と定め、ランダムに初期化したネットで照合が通ることを確かめた。
 
-1サイクル分学習した10ブロック128チャネルのネットでは、CPUの照合は通ったが、FP16のlogitの差は最大4.3×10⁻²、価値の差は最大1.1×10⁻²となり、1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
+1サイクル分学習した10ブロック128チャネルのネットでは、CPUの照合は通ったが、FP16のlogitの差は最大4.3×10⁻²、価値の差は最大1.1×10⁻²となり、1×10⁻²を超えた（[記録](../../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
 層ごとの値の最大は14.17で飽和はなく、差は値の大きさに比例するFP16の丸めの累積であった。
 MCTSが使うのは合法手のlogitをsoftmaxで正規化した確率であり、その差は最大2.8×10⁻³、KLダイバージェンスは最大8.4×10⁻⁵であった。
 各合法手のlogitを、合法手の列で隣にある着手のものと読み違えた場合、局面ごとの確率の差の最大は中央値3.5×10⁻²、全体で0.21になる。
@@ -32,7 +32,7 @@ FP16のlogitの許容誤差を単に大きくする案は採らなかった。
 
 ## 結果
 
-学習したネットは、新しい基準でバッチの大きさ1、7、および256のFP16の照合に通った（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
+学習したネットは、新しい基準でバッチの大きさ1、7、および256のFP16の照合に通った（[記録](../../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 ランダムに初期化したネットは確率がほぼ一様になるので、FP16の確率の照合では読み違えを検出できない。
 読み違えと価値の読み出しのずれは、CPUの1×10⁻⁴の照合で検出するので、CPUの照合は省略しない。
-低精度の推論の許容誤差を学習したネットの出力で決める規則は、[教訓](../lessons/judge-low-precision-inference-on-trained-outputs.md)にまとめた。
+低精度の推論の許容誤差を学習したネットの出力で決める規則は、[教訓](../../lessons/judge-low-precision-inference-on-trained-outputs.md)にまとめた。

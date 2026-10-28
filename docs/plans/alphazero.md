@@ -22,7 +22,7 @@ GPUを使う学習と自己対局は、Google Colabの有料プランで借り�
 サブタスク4では、多数の局の葉をまとめて推論する自己対局生成器`minase data zero-selfplay`を加え、生成を途中で強制終了しても、起動し直すと確定済みの塊を残して欠けた塊だけが生成し直されることを作業機で確かめた。
 サブタスク5では、MNSDをRustの拡張モジュールで読むPyTorchの学習器`minase_zero`を加え、作業機のGPUで途中で強制終了して再開した学習が、止めない学習と出力したネットのバイト列まで一致することを確かめた。
 このとき学習したネットのTensorRTのFP16の出力は、logitの照合の許容誤差の初期値1×10⁻²を超えた（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
-このため、FP16の照合をlogitではなく合法手の確率と価値の差で行うように改め（2026年10月28日の利用者の決定、[ADR](../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）、学習したネットが新しい基準で照合に通ることを確かめた（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
+このため、FP16の照合をlogitではなく合法手の確率と価値の差で行うように改め（2026年10月28日の利用者の決定、[ADR](../adr/archive/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）、学習したネットが新しい基準で照合に通ることを確かめた（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 各サブタスクは、完了のたびにmasterへマージする（「サブタスクの統合」の節）。
 初版の学習が動いてから検討すると定めた事項を除いて、設計判断は確定している。
 2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)が、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥と計画の空欄を確認したので、同日に[監査対応](archived/alphazero-audit-remediation.md)で直した。次の一手はサブタスク6の[強化学習の実行](alphazero-rl.md)である。着手は利用者の指示を待つ。
