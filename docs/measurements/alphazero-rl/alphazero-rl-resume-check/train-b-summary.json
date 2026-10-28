@@ -1,0 +1,1604 @@
+{
+  "cycle": 1,
+  "config": {
+    "device": "cuda",
+    "init": "cycles/cycle-0000/checkpoint.pt",
+    "data": [
+      "phase1/gen/chunk-00000.mnsd",
+      "phase1/gen/chunk-00000.resigned.mnsd",
+      "phase1/gen/chunk-00001.mnsd",
+      "phase1/gen/chunk-00001.resigned.mnsd",
+      "phase1/gen/chunk-00002.mnsd",
+      "phase1/gen/chunk-00002.resigned.mnsd",
+      "phase1/gen/chunk-00003.mnsd",
+      "phase1/gen/chunk-00003.resigned.mnsd",
+      "phase1/gen/chunk-00004.mnsd",
+      "phase1/gen/chunk-00004.resigned.mnsd",
+      "phase1/gen/chunk-00005.mnsd",
+      "phase1/gen/chunk-00005.resigned.mnsd"
+    ],
+    "cycle": 1,
+    "seed": 1001,
+    "batch_size": 256,
+    "checkpoint_steps": 200,
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "clip_grad_norm": 10.0,
+    "value_lambda": 0.333,
+    "precision": "bf16",
+    "trainer_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+    "blocks": 10,
+    "channels": 128
+  },
+  "provenance": {
+    "trainer_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.11.0+cu130",
+    "cuda_version": "13.0",
+    "numpy_version": "2.5.4",
+    "device_name": "NVIDIA L4",
+    "init_sha256": "82ab605ce08b310f959ce1631dec5303907b153d2af77efe15e1e9d10696599a",
+    "files": [
+      {
+        "path": "phase1/gen/chunk-00000.mnsd",
+        "size": 19812666,
+        "sha256": "63f270d6474d35d3007c3720b2dd431095986c19619a33cdbaa95110310763ca",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 65110
+        },
+        "position_count": 58550,
+        "training_count": 55824,
+        "validation_count": 2726
+      },
+      {
+        "path": "phase1/gen/chunk-00000.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "phase1/gen/chunk-00001.mnsd",
+        "size": 18802622,
+        "sha256": "91fad10628fb297fed42421f792babf5935b2f7e39cb799a6d8ca53778980f53",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 62158
+        },
+        "position_count": 55733,
+        "training_count": 53559,
+        "validation_count": 2174
+      },
+      {
+        "path": "phase1/gen/chunk-00001.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "phase1/gen/chunk-00002.mnsd",
+        "size": 17390578,
+        "sha256": "5b5e02ad1ade3237b134e1e071fdea802652ab82b90f4f41f987c164a9f00194",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 58862
+        },
+        "position_count": 52367,
+        "training_count": 50576,
+        "validation_count": 1791
+      },
+      {
+        "path": "phase1/gen/chunk-00002.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "phase1/gen/chunk-00003.mnsd",
+        "size": 18909378,
+        "sha256": "9f7bfdc7b184b081dfab37aa4a553258e5ba5b00f3d226f8ea1e9bd8620117e2",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 62566
+        },
+        "position_count": 56018,
+        "training_count": 54046,
+        "validation_count": 1972
+      },
+      {
+        "path": "phase1/gen/chunk-00003.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "phase1/gen/chunk-00004.mnsd",
+        "size": 17686908,
+        "sha256": "6f5e672ab77d8c892d853b11b28e67337c166ea4322ff71b10755a84cc63bc36",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 59504
+        },
+        "position_count": 53022,
+        "training_count": 49858,
+        "validation_count": 3164
+      },
+      {
+        "path": "phase1/gen/chunk-00004.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "phase1/gen/chunk-00005.mnsd",
+        "size": 17910011,
+        "sha256": "5282aebee49a75f286fe637969cd1974223e483adbeb394ecba6162fa7869244",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 500,
+          "entry_count": 60529
+        },
+        "position_count": 53999,
+        "training_count": 51099,
+        "validation_count": 2900
+      },
+      {
+        "path": "phase1/gen/chunk-00005.resigned.mnsd",
+        "size": 152,
+        "sha256": "cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "d786c5e12aa5134e1cc25353480d28962def5b36",
+          "network_checksum": "641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3",
+          "teacher_search_budget": 32,
+          "seed": 200000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      }
+    ]
+  },
+  "training_count": 314962,
+  "validation_count": 14727,
+  "completed_steps": 1231,
+  "total_steps": 1231,
+  "positions_seen": 314962,
+  "training_losses": {
+    "policy": 4.730667591094971,
+    "value": 0.5991860032081604,
+    "value_result": 0.5006336569786072
+  },
+  "diagnostics": {
+    "training_sample": {
+      "game_count": 159,
+      "position_count": 16325,
+      "hash_modulus": 20,
+      "hash_remainder": 1,
+      "games": [
+        {
+          "seed": 200000000,
+          "game": 34
+        },
+        {
+          "seed": 200000000,
+          "game": 44
+        },
+        {
+          "seed": 200000000,
+          "game": 132
+        },
+        {
+          "seed": 200000000,
+          "game": 190
+        },
+        {
+          "seed": 200000000,
+          "game": 216
+        },
+        {
+          "seed": 200000000,
+          "game": 218
+        },
+        {
+          "seed": 200000000,
+          "game": 222
+        },
+        {
+          "seed": 200000000,
+          "game": 224
+        },
+        {
+          "seed": 200000000,
+          "game": 231
+        },
+        {
+          "seed": 200000000,
+          "game": 244
+        },
+        {
+          "seed": 200000000,
+          "game": 252
+        },
+        {
+          "seed": 200000000,
+          "game": 258
+        },
+        {
+          "seed": 200000000,
+          "game": 278
+        },
+        {
+          "seed": 200000000,
+          "game": 281
+        },
+        {
+          "seed": 200000000,
+          "game": 288
+        },
+        {
+          "seed": 200000000,
+          "game": 291
+        },
+        {
+          "seed": 200000000,
+          "game": 327
+        },
+        {
+          "seed": 200000000,
+          "game": 339
+        },
+        {
+          "seed": 200000000,
+          "game": 356
+        },
+        {
+          "seed": 200000000,
+          "game": 358
+        },
+        {
+          "seed": 200000000,
+          "game": 381
+        },
+        {
+          "seed": 200000000,
+          "game": 396
+        },
+        {
+          "seed": 200000000,
+          "game": 426
+        },
+        {
+          "seed": 200000000,
+          "game": 468
+        },
+        {
+          "seed": 200000000,
+          "game": 475
+        },
+        {
+          "seed": 200000000,
+          "game": 495
+        },
+        {
+          "seed": 200000000,
+          "game": 497
+        },
+        {
+          "seed": 200000000,
+          "game": 533
+        },
+        {
+          "seed": 200000000,
+          "game": 540
+        },
+        {
+          "seed": 200000000,
+          "game": 563
+        },
+        {
+          "seed": 200000000,
+          "game": 566
+        },
+        {
+          "seed": 200000000,
+          "game": 568
+        },
+        {
+          "seed": 200000000,
+          "game": 585
+        },
+        {
+          "seed": 200000000,
+          "game": 617
+        },
+        {
+          "seed": 200000000,
+          "game": 674
+        },
+        {
+          "seed": 200000000,
+          "game": 692
+        },
+        {
+          "seed": 200000000,
+          "game": 698
+        },
+        {
+          "seed": 200000000,
+          "game": 716
+        },
+        {
+          "seed": 200000000,
+          "game": 755
+        },
+        {
+          "seed": 200000000,
+          "game": 758
+        },
+        {
+          "seed": 200000000,
+          "game": 769
+        },
+        {
+          "seed": 200000000,
+          "game": 788
+        },
+        {
+          "seed": 200000000,
+          "game": 791
+        },
+        {
+          "seed": 200000000,
+          "game": 803
+        },
+        {
+          "seed": 200000000,
+          "game": 824
+        },
+        {
+          "seed": 200000000,
+          "game": 830
+        },
+        {
+          "seed": 200000000,
+          "game": 844
+        },
+        {
+          "seed": 200000000,
+          "game": 871
+        },
+        {
+          "seed": 200000000,
+          "game": 876
+        },
+        {
+          "seed": 200000000,
+          "game": 936
+        },
+        {
+          "seed": 200000000,
+          "game": 949
+        },
+        {
+          "seed": 200000000,
+          "game": 987
+        },
+        {
+          "seed": 200000000,
+          "game": 1000
+        },
+        {
+          "seed": 200000000,
+          "game": 1035
+        },
+        {
+          "seed": 200000000,
+          "game": 1039
+        },
+        {
+          "seed": 200000000,
+          "game": 1050
+        },
+        {
+          "seed": 200000000,
+          "game": 1057
+        },
+        {
+          "seed": 200000000,
+          "game": 1129
+        },
+        {
+          "seed": 200000000,
+          "game": 1176
+        },
+        {
+          "seed": 200000000,
+          "game": 1184
+        },
+        {
+          "seed": 200000000,
+          "game": 1188
+        },
+        {
+          "seed": 200000000,
+          "game": 1191
+        },
+        {
+          "seed": 200000000,
+          "game": 1200
+        },
+        {
+          "seed": 200000000,
+          "game": 1218
+        },
+        {
+          "seed": 200000000,
+          "game": 1219
+        },
+        {
+          "seed": 200000000,
+          "game": 1220
+        },
+        {
+          "seed": 200000000,
+          "game": 1221
+        },
+        {
+          "seed": 200000000,
+          "game": 1230
+        },
+        {
+          "seed": 200000000,
+          "game": 1239
+        },
+        {
+          "seed": 200000000,
+          "game": 1240
+        },
+        {
+          "seed": 200000000,
+          "game": 1246
+        },
+        {
+          "seed": 200000000,
+          "game": 1308
+        },
+        {
+          "seed": 200000000,
+          "game": 1318
+        },
+        {
+          "seed": 200000000,
+          "game": 1322
+        },
+        {
+          "seed": 200000000,
+          "game": 1327
+        },
+        {
+          "seed": 200000000,
+          "game": 1340
+        },
+        {
+          "seed": 200000000,
+          "game": 1395
+        },
+        {
+          "seed": 200000000,
+          "game": 1416
+        },
+        {
+          "seed": 200000000,
+          "game": 1430
+        },
+        {
+          "seed": 200000000,
+          "game": 1439
+        },
+        {
+          "seed": 200000000,
+          "game": 1452
+        },
+        {
+          "seed": 200000000,
+          "game": 1468
+        },
+        {
+          "seed": 200000000,
+          "game": 1486
+        },
+        {
+          "seed": 200000000,
+          "game": 1495
+        },
+        {
+          "seed": 200000000,
+          "game": 1496
+        },
+        {
+          "seed": 200000000,
+          "game": 1501
+        },
+        {
+          "seed": 200000000,
+          "game": 1533
+        },
+        {
+          "seed": 200000000,
+          "game": 1544
+        },
+        {
+          "seed": 200000000,
+          "game": 1562
+        },
+        {
+          "seed": 200000000,
+          "game": 1586
+        },
+        {
+          "seed": 200000000,
+          "game": 1589
+        },
+        {
+          "seed": 200000000,
+          "game": 1610
+        },
+        {
+          "seed": 200000000,
+          "game": 1626
+        },
+        {
+          "seed": 200000000,
+          "game": 1657
+        },
+        {
+          "seed": 200000000,
+          "game": 1717
+        },
+        {
+          "seed": 200000000,
+          "game": 1721
+        },
+        {
+          "seed": 200000000,
+          "game": 1734
+        },
+        {
+          "seed": 200000000,
+          "game": 1784
+        },
+        {
+          "seed": 200000000,
+          "game": 1805
+        },
+        {
+          "seed": 200000000,
+          "game": 1813
+        },
+        {
+          "seed": 200000000,
+          "game": 1816
+        },
+        {
+          "seed": 200000000,
+          "game": 1819
+        },
+        {
+          "seed": 200000000,
+          "game": 1823
+        },
+        {
+          "seed": 200000000,
+          "game": 1833
+        },
+        {
+          "seed": 200000000,
+          "game": 1843
+        },
+        {
+          "seed": 200000000,
+          "game": 1874
+        },
+        {
+          "seed": 200000000,
+          "game": 1878
+        },
+        {
+          "seed": 200000000,
+          "game": 1879
+        },
+        {
+          "seed": 200000000,
+          "game": 1890
+        },
+        {
+          "seed": 200000000,
+          "game": 1898
+        },
+        {
+          "seed": 200000000,
+          "game": 1902
+        },
+        {
+          "seed": 200000000,
+          "game": 1983
+        },
+        {
+          "seed": 200000000,
+          "game": 2012
+        },
+        {
+          "seed": 200000000,
+          "game": 2081
+        },
+        {
+          "seed": 200000000,
+          "game": 2105
+        },
+        {
+          "seed": 200000000,
+          "game": 2111
+        },
+        {
+          "seed": 200000000,
+          "game": 2132
+        },
+        {
+          "seed": 200000000,
+          "game": 2141
+        },
+        {
+          "seed": 200000000,
+          "game": 2172
+        },
+        {
+          "seed": 200000000,
+          "game": 2173
+        },
+        {
+          "seed": 200000000,
+          "game": 2179
+        },
+        {
+          "seed": 200000000,
+          "game": 2183
+        },
+        {
+          "seed": 200000000,
+          "game": 2185
+        },
+        {
+          "seed": 200000000,
+          "game": 2189
+        },
+        {
+          "seed": 200000000,
+          "game": 2191
+        },
+        {
+          "seed": 200000000,
+          "game": 2193
+        },
+        {
+          "seed": 200000000,
+          "game": 2218
+        },
+        {
+          "seed": 200000000,
+          "game": 2269
+        },
+        {
+          "seed": 200000000,
+          "game": 2270
+        },
+        {
+          "seed": 200000000,
+          "game": 2297
+        },
+        {
+          "seed": 200000000,
+          "game": 2317
+        },
+        {
+          "seed": 200000000,
+          "game": 2328
+        },
+        {
+          "seed": 200000000,
+          "game": 2351
+        },
+        {
+          "seed": 200000000,
+          "game": 2376
+        },
+        {
+          "seed": 200000000,
+          "game": 2381
+        },
+        {
+          "seed": 200000000,
+          "game": 2423
+        },
+        {
+          "seed": 200000000,
+          "game": 2505
+        },
+        {
+          "seed": 200000000,
+          "game": 2506
+        },
+        {
+          "seed": 200000000,
+          "game": 2513
+        },
+        {
+          "seed": 200000000,
+          "game": 2516
+        },
+        {
+          "seed": 200000000,
+          "game": 2517
+        },
+        {
+          "seed": 200000000,
+          "game": 2540
+        },
+        {
+          "seed": 200000000,
+          "game": 2554
+        },
+        {
+          "seed": 200000000,
+          "game": 2606
+        },
+        {
+          "seed": 200000000,
+          "game": 2622
+        },
+        {
+          "seed": 200000000,
+          "game": 2623
+        },
+        {
+          "seed": 200000000,
+          "game": 2670
+        },
+        {
+          "seed": 200000000,
+          "game": 2710
+        },
+        {
+          "seed": 200000000,
+          "game": 2715
+        },
+        {
+          "seed": 200000000,
+          "game": 2716
+        },
+        {
+          "seed": 200000000,
+          "game": 2786
+        },
+        {
+          "seed": 200000000,
+          "game": 2789
+        },
+        {
+          "seed": 200000000,
+          "game": 2826
+        },
+        {
+          "seed": 200000000,
+          "game": 2875
+        },
+        {
+          "seed": 200000000,
+          "game": 2885
+        },
+        {
+          "seed": 200000000,
+          "game": 2915
+        },
+        {
+          "seed": 200000000,
+          "game": 2973
+        },
+        {
+          "seed": 200000000,
+          "game": 2977
+        },
+        {
+          "seed": 200000000,
+          "game": 2990
+        }
+      ],
+      "policy": 4.4974894523620605,
+      "value": 0.5349660515785217,
+      "value_result": 0.3550463914871216,
+      "legal_probability_mass": 0.927144467830658,
+      "log_legal_probability_mass": -0.07622763514518738,
+      "policy_agreement": 0.022664625197649002
+    },
+    "validation": {
+      "game_count": 144,
+      "position_count": 14727,
+      "hash_modulus": 20,
+      "hash_remainder": 0,
+      "games": [
+        {
+          "seed": 200000000,
+          "game": 12
+        },
+        {
+          "seed": 200000000,
+          "game": 29
+        },
+        {
+          "seed": 200000000,
+          "game": 33
+        },
+        {
+          "seed": 200000000,
+          "game": 41
+        },
+        {
+          "seed": 200000000,
+          "game": 49
+        },
+        {
+          "seed": 200000000,
+          "game": 56
+        },
+        {
+          "seed": 200000000,
+          "game": 95
+        },
+        {
+          "seed": 200000000,
+          "game": 107
+        },
+        {
+          "seed": 200000000,
+          "game": 129
+        },
+        {
+          "seed": 200000000,
+          "game": 165
+        },
+        {
+          "seed": 200000000,
+          "game": 176
+        },
+        {
+          "seed": 200000000,
+          "game": 177
+        },
+        {
+          "seed": 200000000,
+          "game": 217
+        },
+        {
+          "seed": 200000000,
+          "game": 251
+        },
+        {
+          "seed": 200000000,
+          "game": 263
+        },
+        {
+          "seed": 200000000,
+          "game": 301
+        },
+        {
+          "seed": 200000000,
+          "game": 313
+        },
+        {
+          "seed": 200000000,
+          "game": 350
+        },
+        {
+          "seed": 200000000,
+          "game": 365
+        },
+        {
+          "seed": 200000000,
+          "game": 384
+        },
+        {
+          "seed": 200000000,
+          "game": 393
+        },
+        {
+          "seed": 200000000,
+          "game": 402
+        },
+        {
+          "seed": 200000000,
+          "game": 410
+        },
+        {
+          "seed": 200000000,
+          "game": 414
+        },
+        {
+          "seed": 200000000,
+          "game": 458
+        },
+        {
+          "seed": 200000000,
+          "game": 461
+        },
+        {
+          "seed": 200000000,
+          "game": 500
+        },
+        {
+          "seed": 200000000,
+          "game": 501
+        },
+        {
+          "seed": 200000000,
+          "game": 556
+        },
+        {
+          "seed": 200000000,
+          "game": 557
+        },
+        {
+          "seed": 200000000,
+          "game": 587
+        },
+        {
+          "seed": 200000000,
+          "game": 600
+        },
+        {
+          "seed": 200000000,
+          "game": 623
+        },
+        {
+          "seed": 200000000,
+          "game": 638
+        },
+        {
+          "seed": 200000000,
+          "game": 657
+        },
+        {
+          "seed": 200000000,
+          "game": 690
+        },
+        {
+          "seed": 200000000,
+          "game": 693
+        },
+        {
+          "seed": 200000000,
+          "game": 717
+        },
+        {
+          "seed": 200000000,
+          "game": 724
+        },
+        {
+          "seed": 200000000,
+          "game": 732
+        },
+        {
+          "seed": 200000000,
+          "game": 735
+        },
+        {
+          "seed": 200000000,
+          "game": 745
+        },
+        {
+          "seed": 200000000,
+          "game": 751
+        },
+        {
+          "seed": 200000000,
+          "game": 810
+        },
+        {
+          "seed": 200000000,
+          "game": 818
+        },
+        {
+          "seed": 200000000,
+          "game": 820
+        },
+        {
+          "seed": 200000000,
+          "game": 822
+        },
+        {
+          "seed": 200000000,
+          "game": 863
+        },
+        {
+          "seed": 200000000,
+          "game": 877
+        },
+        {
+          "seed": 200000000,
+          "game": 888
+        },
+        {
+          "seed": 200000000,
+          "game": 918
+        },
+        {
+          "seed": 200000000,
+          "game": 929
+        },
+        {
+          "seed": 200000000,
+          "game": 930
+        },
+        {
+          "seed": 200000000,
+          "game": 1001
+        },
+        {
+          "seed": 200000000,
+          "game": 1070
+        },
+        {
+          "seed": 200000000,
+          "game": 1074
+        },
+        {
+          "seed": 200000000,
+          "game": 1077
+        },
+        {
+          "seed": 200000000,
+          "game": 1081
+        },
+        {
+          "seed": 200000000,
+          "game": 1115
+        },
+        {
+          "seed": 200000000,
+          "game": 1144
+        },
+        {
+          "seed": 200000000,
+          "game": 1171
+        },
+        {
+          "seed": 200000000,
+          "game": 1198
+        },
+        {
+          "seed": 200000000,
+          "game": 1213
+        },
+        {
+          "seed": 200000000,
+          "game": 1242
+        },
+        {
+          "seed": 200000000,
+          "game": 1250
+        },
+        {
+          "seed": 200000000,
+          "game": 1259
+        },
+        {
+          "seed": 200000000,
+          "game": 1296
+        },
+        {
+          "seed": 200000000,
+          "game": 1302
+        },
+        {
+          "seed": 200000000,
+          "game": 1323
+        },
+        {
+          "seed": 200000000,
+          "game": 1336
+        },
+        {
+          "seed": 200000000,
+          "game": 1358
+        },
+        {
+          "seed": 200000000,
+          "game": 1414
+        },
+        {
+          "seed": 200000000,
+          "game": 1441
+        },
+        {
+          "seed": 200000000,
+          "game": 1530
+        },
+        {
+          "seed": 200000000,
+          "game": 1531
+        },
+        {
+          "seed": 200000000,
+          "game": 1570
+        },
+        {
+          "seed": 200000000,
+          "game": 1580
+        },
+        {
+          "seed": 200000000,
+          "game": 1588
+        },
+        {
+          "seed": 200000000,
+          "game": 1633
+        },
+        {
+          "seed": 200000000,
+          "game": 1653
+        },
+        {
+          "seed": 200000000,
+          "game": 1662
+        },
+        {
+          "seed": 200000000,
+          "game": 1689
+        },
+        {
+          "seed": 200000000,
+          "game": 1699
+        },
+        {
+          "seed": 200000000,
+          "game": 1742
+        },
+        {
+          "seed": 200000000,
+          "game": 1753
+        },
+        {
+          "seed": 200000000,
+          "game": 1766
+        },
+        {
+          "seed": 200000000,
+          "game": 1768
+        },
+        {
+          "seed": 200000000,
+          "game": 1870
+        },
+        {
+          "seed": 200000000,
+          "game": 1872
+        },
+        {
+          "seed": 200000000,
+          "game": 1924
+        },
+        {
+          "seed": 200000000,
+          "game": 1927
+        },
+        {
+          "seed": 200000000,
+          "game": 2042
+        },
+        {
+          "seed": 200000000,
+          "game": 2048
+        },
+        {
+          "seed": 200000000,
+          "game": 2057
+        },
+        {
+          "seed": 200000000,
+          "game": 2075
+        },
+        {
+          "seed": 200000000,
+          "game": 2089
+        },
+        {
+          "seed": 200000000,
+          "game": 2092
+        },
+        {
+          "seed": 200000000,
+          "game": 2138
+        },
+        {
+          "seed": 200000000,
+          "game": 2155
+        },
+        {
+          "seed": 200000000,
+          "game": 2160
+        },
+        {
+          "seed": 200000000,
+          "game": 2195
+        },
+        {
+          "seed": 200000000,
+          "game": 2200
+        },
+        {
+          "seed": 200000000,
+          "game": 2234
+        },
+        {
+          "seed": 200000000,
+          "game": 2251
+        },
+        {
+          "seed": 200000000,
+          "game": 2277
+        },
+        {
+          "seed": 200000000,
+          "game": 2288
+        },
+        {
+          "seed": 200000000,
+          "game": 2289
+        },
+        {
+          "seed": 200000000,
+          "game": 2301
+        },
+        {
+          "seed": 200000000,
+          "game": 2304
+        },
+        {
+          "seed": 200000000,
+          "game": 2309
+        },
+        {
+          "seed": 200000000,
+          "game": 2352
+        },
+        {
+          "seed": 200000000,
+          "game": 2364
+        },
+        {
+          "seed": 200000000,
+          "game": 2380
+        },
+        {
+          "seed": 200000000,
+          "game": 2384
+        },
+        {
+          "seed": 200000000,
+          "game": 2390
+        },
+        {
+          "seed": 200000000,
+          "game": 2396
+        },
+        {
+          "seed": 200000000,
+          "game": 2438
+        },
+        {
+          "seed": 200000000,
+          "game": 2460
+        },
+        {
+          "seed": 200000000,
+          "game": 2468
+        },
+        {
+          "seed": 200000000,
+          "game": 2469
+        },
+        {
+          "seed": 200000000,
+          "game": 2515
+        },
+        {
+          "seed": 200000000,
+          "game": 2570
+        },
+        {
+          "seed": 200000000,
+          "game": 2571
+        },
+        {
+          "seed": 200000000,
+          "game": 2575
+        },
+        {
+          "seed": 200000000,
+          "game": 2577
+        },
+        {
+          "seed": 200000000,
+          "game": 2587
+        },
+        {
+          "seed": 200000000,
+          "game": 2612
+        },
+        {
+          "seed": 200000000,
+          "game": 2615
+        },
+        {
+          "seed": 200000000,
+          "game": 2634
+        },
+        {
+          "seed": 200000000,
+          "game": 2669
+        },
+        {
+          "seed": 200000000,
+          "game": 2673
+        },
+        {
+          "seed": 200000000,
+          "game": 2708
+        },
+        {
+          "seed": 200000000,
+          "game": 2731
+        },
+        {
+          "seed": 200000000,
+          "game": 2734
+        },
+        {
+          "seed": 200000000,
+          "game": 2737
+        },
+        {
+          "seed": 200000000,
+          "game": 2740
+        },
+        {
+          "seed": 200000000,
+          "game": 2839
+        },
+        {
+          "seed": 200000000,
+          "game": 2841
+        },
+        {
+          "seed": 200000000,
+          "game": 2860
+        },
+        {
+          "seed": 200000000,
+          "game": 2864
+        },
+        {
+          "seed": 200000000,
+          "game": 2871
+        },
+        {
+          "seed": 200000000,
+          "game": 2909
+        },
+        {
+          "seed": 200000000,
+          "game": 2945
+        },
+        {
+          "seed": 200000000,
+          "game": 2998
+        }
+      ],
+      "policy": 4.5159993171691895,
+      "value": 0.7826155424118042,
+      "value_result": 0.7532743811607361,
+      "legal_probability_mass": 0.9281272888183594,
+      "log_legal_probability_mass": -0.07512809336185455,
+      "policy_agreement": 0.020438650622963905
+    }
+  },
+  "learning_curve": [
+    {
+      "completed_steps": 200,
+      "training_losses": {
+        "policy": 5.4564290046691895,
+        "value": 0.6838089823722839,
+        "value_result": 0.6755648851394653
+      }
+    },
+    {
+      "completed_steps": 400,
+      "training_losses": {
+        "policy": 4.687186241149902,
+        "value": 0.6436813473701477,
+        "value_result": 0.5952990651130676
+      }
+    },
+    {
+      "completed_steps": 600,
+      "training_losses": {
+        "policy": 4.619081497192383,
+        "value": 0.5998889803886414,
+        "value_result": 0.5029561519622803
+      }
+    },
+    {
+      "completed_steps": 800,
+      "training_losses": {
+        "policy": 4.575674533843994,
+        "value": 0.5747877359390259,
+        "value_result": 0.4498531222343445
+      }
+    },
+    {
+      "completed_steps": 1000,
+      "training_losses": {
+        "policy": 4.549837112426758,
+        "value": 0.5568123459815979,
+        "value_result": 0.4120834767818451
+      }
+    },
+    {
+      "completed_steps": 1200,
+      "training_losses": {
+        "policy": 4.526147842407227,
+        "value": 0.5454630255699158,
+        "value_result": 0.38765254616737366
+      }
+    },
+    {
+      "completed_steps": 1231,
+      "training_losses": {
+        "policy": 4.530584812164307,
+        "value": 0.5376678705215454,
+        "value_result": 0.371295690536499
+      }
+    }
+  ],
+  "data_order_sha256": "9c708df6d5c6888c02b2e6d8c9a38b4106d029120b9f044a88c6212de81af778",
+  "network_sha256": "2bb1c1e6359de033dc012d324e69f75aa6f0e2d0f19f1e9a6a0462362b799851",
+  "elapsed_seconds": {
+    "loading": 38.510102765000056,
+    "training": 50.71732391800049,
+    "diagnostics": 1.665512551999882
+  },
+  "loading_peak_rss_bytes": 1437622272,
+  "positions_per_second": 6210.146270911868
+}

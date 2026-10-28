@@ -1,0 +1,208 @@
+2026-10-28T14:40:48+00:00
+info: downloading installer
+info: profile set to minimal
+info: default host tuple is x86_64-unknown-linux-gnu
+info: skipping toolchain installation
+
+
+Rust is installed now. Great!
+
+To get started you may need to restart your current shell.
+This would reload your PATH environment variable to include
+Cargo's bin directory ($HOME/.cargo/bin).
+
+To configure your current shell, you need to source the
+corresponding env file under $HOME/.cargo.
+
+Consider running the right command for your shell (note the leading DOT):
+. "$HOME/.cargo/env" # For sh/ash/dash/pdksh/bash
+cargo:rerun-if-env-changed=CC_x86_64-unknown-linux-gnu
+CC_x86_64-unknown-linux-gnu = None
+cargo:rerun-if-env-changed=CC_x86_64_unknown_linux_gnu
+CC_x86_64_unknown_linux_gnu = None
+cargo:rerun-if-env-changed=HOST_CC
+HOST_CC = None
+cargo:rerun-if-env-changed=CC
+CC = None
+cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+CRATE_CC_NO_DEFAULTS = None
+cargo:rerun-if-env-changed=CFLAGS
+CFLAGS = None
+cargo:rerun-if-env-changed=HOST_CFLAGS
+HOST_CFLAGS = None
+cargo:rerun-if-env-changed=CFLAGS_x86_64_unknown_linux_gnu
+CFLAGS_x86_64_unknown_linux_gnu = None
+cargo:rerun-if-env-changed=CFLAGS_x86_64-unknown-linux-gnu
+CFLAGS_x86_64-unknown-linux-gnu = None
+info: syncing channel updates for 1.98.0-x86_64-unknown-linux-gnu
+info: latest update on 2026-08-20 for version 1.98.0 (88d9e12ae 2026-08-18)
+info: downloading 3 components
+
+  1.98.0-x86_64-unknown-linux-gnu installed - rustc 1.98.0 (88d9e12ae 2026-08-18)
+
+info: default toolchain set to 1.98.0-x86_64-unknown-linux-gnu
+info: checking for self-update (current version: 1.29.2)
+Using CPython 3.13.16 interpreter at: /usr/bin/python3
+Creating virtual environment at: .venv
+   Building minase-mnsd-reader @ file:///content/src/tools/train/zero/mnsd_reader
+Downloading nvidia-cublas (403.5MiB)
+Downloading nvidia-curand (56.8MiB)
+Downloading nvidia-cuda-runtime (2.1MiB)
+Downloading sympy (6.0MiB)
+Downloading networkx (2.0MiB)
+Downloading nvidia-cuda-cupti (10.2MiB)
+Downloading nvidia-cusolver (191.6MiB)
+Downloading nvidia-cufile (1.2MiB)
+Downloading onnx (8.5MiB)
+Downloading triton (179.6MiB)
+Downloading numpy (15.9MiB)
+Downloading nvidia-cuda-nvrtc (86.0MiB)
+Downloading nvidia-cusparselt-cu13 (162.0MiB)
+Downloading nvidia-cufft (204.2MiB)
+Downloading nvidia-nvjitlink (38.8MiB)
+Downloading nvidia-nccl-cu13 (187.4MiB)
+Downloading torch (506.1MiB)
+Downloading nvidia-cudnn-cu13 (349.1MiB)
+Downloading nvidia-nvshmem-cu13 (57.6MiB)
+Downloading cuda-bindings (6.6MiB)
+Downloading nvidia-cusparse (139.2MiB)
+Downloading setuptools (1.0MiB)
+ Downloaded setuptools
+ Downloaded nvidia-cufile
+ Downloaded networkx
+ Downloaded nvidia-cuda-runtime
+ Downloaded sympy
+ Downloaded cuda-bindings
+ Downloaded onnx
+ Downloaded nvidia-cuda-cupti
+Downloading tensorrt-cu13-libs (3.2GiB)
+ Downloaded numpy
+ Downloaded nvidia-nvjitlink
+ Downloaded nvidia-curand
+ Downloaded nvidia-nvshmem-cu13
+ Downloaded nvidia-cuda-nvrtc
+ Downloaded nvidia-cusparse
+ Downloaded nvidia-cusparselt-cu13
+ Downloaded triton
+ Downloaded nvidia-nccl-cu13
+ Downloaded nvidia-cusolver
+ Downloaded nvidia-cufft
+ Downloaded nvidia-cudnn-cu13
+ Downloaded nvidia-cublas
+ Downloaded torch
+      Built minase-mnsd-reader @ file:///content/src/tools/train/zero/mnsd_reader
+ Downloaded tensorrt-cu13-libs
+Prepared 35 packages in 14m 30s
+Installed 35 packages in 202ms
+ + cuda-bindings==13.4.4
+ + cuda-pathfinder==1.8.4
+ + cuda-toolkit==13.0.2
+ + filelock==4.2.4
+ + fsspec==2026.9.0
+ + jinja2==3.1.6
+ + markupsafe==3.0.4
+ + minase-mnsd-reader==0.1.0 (from file:///content/src/tools/train/zero/mnsd_reader)
+ + ml-dtypes==0.6.0
+ + mpmath==1.3.0
+ + networkx==3.7
+ + numpy==2.5.4
+ + nvidia-cublas==13.1.0.3
+ + nvidia-cuda-cupti==13.0.85
+ + nvidia-cuda-nvrtc==13.0.88
+ + nvidia-cuda-runtime==13.0.96
+ + nvidia-cudnn-cu13==9.19.0.56
+ + nvidia-cufft==12.0.0.61
+ + nvidia-cufile==1.15.1.6
+ + nvidia-curand==10.4.0.35
+ + nvidia-cusolver==12.0.4.66
+ + nvidia-cusparse==12.6.3.3
+ + nvidia-cusparselt-cu13==0.8.0
+ + nvidia-nccl-cu13==2.28.9
+ + nvidia-nvjitlink==13.0.88
+ + nvidia-nvshmem-cu13==3.4.5
+ + nvidia-nvtx==13.0.85
+ + onnx==1.23.2
+ + protobuf==7.36.2
+ + setuptools==81.0.0
+ + sympy==1.14.0
+ + tensorrt-cu13-libs==10.14.1.48
+ + torch==2.11.0
+ + triton==3.6.0
+ + typing-extensions==4.16.0
+.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3.tgz: OK
+2.11.0+cu130 13.0 True
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+/content/src/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+2026-10-28T14:56:11+00:00
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /content/src/crates/minase/Cargo.toml
+workspace: /content/src/Cargo.toml
+    Updating crates.io index
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling version_check v0.9.5
+   Compiling typenum v1.20.1
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.10
+   Compiling serde_core v1.0.228
+   Compiling utf8parse v0.2.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling bitflags v2.13.1
+   Compiling serde v1.0.228
+   Compiling anstyle-parse v1.0.0
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.4
+   Compiling colorchoice v1.0.5
+   Compiling cc v1.4.2
+   Compiling rustix v1.1.4
+   Compiling ort-sys v2.0.0-rc.13
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling procfs v0.18.0
+   Compiling clap_lex v1.1.0
+   Compiling generic-array v0.14.7
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling anstream v1.0.0
+   Compiling serde_json v1.0.140
+   Compiling hex v0.4.3
+   Compiling linux-raw-sys v0.12.1
+   Compiling libloading v0.9.0
+   Compiling smallvec v1.16.4
+   Compiling clap_builder v4.6.2
+   Compiling procfs-core v0.18.0
+   Compiling ryu v1.0.10
+   Compiling syn v2.0.110
+   Compiling syn v3.0.3
+   Compiling memchr v2.7.6
+   Compiling cpufeatures v0.2.17
+   Compiling itoa v1.0.14
+   Compiling ort v2.0.0-rc.13
+   Compiling minase-core v0.2.0 (/content/src/crates/minase-core)
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling fs2 v0.4.3
+   Compiling digest v0.10.7
+   Compiling libmimalloc-sys v0.1.49
+   Compiling sha2 v0.10.9
+   Compiling serde_derive v1.0.228
+   Compiling clap_derive v4.6.4
+   Compiling clap v4.6.4
+   Compiling mimalloc v0.1.52
+   Compiling minase v2.6.0 (/content/src/crates/minase)
+    Finished `release` profile [optimized] target(s) in 1m 34s
+2026-10-28T14:57:45+00:00
+name, memory.total [MiB], driver_version, compute_cap
+NVIDIA L4, 23034 MiB, 580.82.07, 8.9
+12
+max 100000
+Model name:                              Intel(R) Xeon(R) CPU @ 2.20GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      6
+Socket(s):                               1
+               total        used        free      shared  buff/cache   available
+Mem:              52           1          26           0          25          51
+/usr/local/bin/uv
+setup-done
