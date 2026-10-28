@@ -290,6 +290,46 @@ fn article_22_lion_extra_piece_can_start_or_exhaust_the_grace() {
     }
 }
 
+/// RULES.md第13条第6項、第15条第1項、第22条第1項・第5項・第7項。
+/// 王将を足とする先獅子は、相手王将が余分な獅子に疑似利きを持っていても捕獲を禁じる。
+/// 相手王将は最後の王駒にも届かないため猶予は始まらず、先獅子がなければ猶予を与える。
+#[test]
+fn articles_13_15_22_sente_lion_blocks_piece_exhaustion_grace() {
+    let generator = MoveGenerator::standard();
+    let black_king = sq(5, 5);
+    let black_lion = sq(6, 6);
+    let white_king = sq(7, 7);
+    let mut board = position(
+        Color::White,
+        &[
+            (black_king, piece(Color::Black, PieceKind::King)),
+            (black_lion, piece(Color::Black, PieceKind::Lion)),
+            (white_king, piece(Color::White, PieceKind::King)),
+        ],
+    );
+    // 黒王が直前に白獅子を取った升を記録する。
+    board.set_lion_capture(Some(black_king)).unwrap();
+    assert!(
+        board
+            .attackers_to_by(Color::White, black_lion, board.occupied())
+            .contains(white_king)
+    );
+    assert_exhaustion(
+        &board,
+        &generator,
+        false,
+        PieceExhaustionOutcome::Win(Color::Black),
+    );
+
+    board.set_lion_capture(None).unwrap();
+    assert_exhaustion(
+        &board,
+        &generator,
+        false,
+        PieceExhaustionOutcome::GraceStart,
+    );
+}
+
 /// RULES.md第22条第4項・第5項・第9項。死に駒を除き、王将と太子のどちらを取る手も
 /// 猶予に数える。双方が王駒1枚なら同条第8項の引き分けとなる。
 #[test]
