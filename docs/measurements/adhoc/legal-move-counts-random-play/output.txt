@@ -1,0 +1,14 @@
+positions 74118
+mean 87.9
+median 88 p90 122 p99 151 max 206
+promote share 0.020
+lion-capture share 0.0052
+ply 0-49: mean 58.1 (n=14833)
+ply 50-99: mean 84.3 (n=13662)
+ply 100-149: mean 94.3 (n=11947)
+ply 150-199: mean 98.4 (n=10188)
+ply 200-249: mean 102.8 (n=8154)
+ply 250-299: mean 102.2 (n=6351)
+ply 300-349: mean 99.6 (n=5015)
+ply 350-399: mean 97.2 (n=3968)
+

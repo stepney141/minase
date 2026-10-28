@@ -1,0 +1,10 @@
+[package]
+name = "movecount"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minase-core = { path = "/home/stepney141/board-games/minase/crates/minase-core" }
+
+[profile.release]
+debug = false
