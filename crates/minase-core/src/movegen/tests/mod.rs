@@ -5,6 +5,7 @@
 
 mod attackers;
 mod gives_check;
+mod legality;
 mod lion_capture;
 mod lion_moves;
 mod movement;

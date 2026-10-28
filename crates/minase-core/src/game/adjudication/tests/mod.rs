@@ -1,5 +1,9 @@
 //! 反復・駒枯れによる即時勝利・引き分けと王駒の先取りによる詰み回避の試験。
 
+mod fixtures;
+mod oracle;
+mod reference;
+
 use super::*;
 use crate::board::Square;
 use crate::piece::{PieceCode, PieceKind};
