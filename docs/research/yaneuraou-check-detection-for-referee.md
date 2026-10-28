@@ -2,7 +2,7 @@
 
 ## 結論
 
-[審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/referee-adjudication-movegen.md)は、対局の審判層`Game::play`が1手ごとに行う4つの判定で合法手生成が繰り返されることを問題にしている。
+[審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/archived/referee-adjudication-movegen.md)は、対局の審判層`Game::play`が1手ごとに行う4つの判定で合法手生成が繰り返されることを問題にしている。
 4つの判定とは、着手の合法性検査、反復規則R1（Lishogi式の4回反復の裁定で、攻撃的着手を続けた側を負けとする）の攻撃的着手の記録、合法手なしの判定、および詰み判定である。
 本書は、将棋エンジンのやねうら王が合法手生成を避けて王手と合法性を判定する方法をソースコードで調べ、minaseの審判層へ適用できる考え方を整理した。
 やねうら王の方法は、次の3つの原則にまとめられる。
@@ -224,7 +224,7 @@ R2とR3の禁止手の除外、候補手ごとの即時の裁定、および試�
 ## 参考資料
 
 - やねうら王（コミット`c1b80eaa`）：`source/position.h`、`source/position.cpp`、`source/movegen.h`、`source/movegen.cpp`、`source/movepick.cpp`、`source/thread.cpp`、`source/config.h`、`source/extra/long_effect.h`、`source/extra/long_effect.cpp`、`source/mate/mate1ply_without_effect.cpp`、`source/engine/yaneuraou-engine/yaneuraou-search.cpp`（GPL-3.0）。[GitHubのリポジトリ](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30)。
-- [審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/referee-adjudication-movegen.md)：本書の反映先。
+- [審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/archived/referee-adjudication-movegen.md)：本書の反映先。
 - [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)：王手とピンの派生構造を持たない理由。
 - [MCTSは新しい節点を審判層の裁定で終局させるADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：合法性の検査を省く軽いAPIを先送りした条件。
 - [探索木の終局判定共有に伴う費用の測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：設計書が起点とする測定。

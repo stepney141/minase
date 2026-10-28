@@ -3,27 +3,34 @@
 ## 先に読む要約
 
 本書は、対局の審判層`minase_core::game::Game`の着手の適用`Game::play`を、裁定の結果を変えずに速くするマイルストーンの設計書である。
-[AlphaZero型探索の監査対応](archived/alphazero-audit-remediation.md)により、MCTS（モンテカルロ木探索）の探索木は新しい節点を作るたびに根の`Game`の複製へ経路の着手を`Game::play`で適用して審判層の裁定を得るようになり、自己対局用のGumbel AlphaZeroの32回の探索で根の探索時間の中央値が0.094 msから0.555 msへ増えた。
+[AlphaZero型探索の監査対応](alphazero-audit-remediation.md)により、MCTS（モンテカルロ木探索）の探索木は新しい節点を作るたびに根の`Game`の複製へ経路の着手を`Game::play`で適用して審判層の裁定を得るようになり、自己対局用のGumbel AlphaZeroの32回の探索で根の探索時間の中央値が0.094 msから0.555 msへ増えた。
 プロファイルでは、`Game::play`が着手の合法性検査、反復規則R1（Lishogi式の4回反復の裁定で、攻撃的着手を続けた側を負けとする規則）の攻撃的着手の判定、および合法手なしと詰みの判定で合法手の全件生成を繰り返し、再生する1手につき約10回呼んでいると推定できた。
 対策は3つである。第1に詰み判定が候補手ごとに払う費用を遅延評価と疑似利き（利き表による王手判定、attack bitboardによるcheck detection）で減らし、第2に合法性検査、R1の判定、および駒枯れの裁定の全件生成を動かす駒1枚の生成または利きの逆引きで置き換え、第3に合法手なしと詰みの判定で駒ごとに生成して最初の逃れる手で打ち切る。
 変更は審判層と、審判層が使う着手の検査`Position::try_make_move`および合法手生成器`MoveGenerator`の駒1枚の生成の入口に及ぶが、公開APIの互換性は壊さない。
 疑似利きによる判定は、獅子でない駒の升へ疑似利きが届くこととその駒を取る合法手があることが一致するという補題に基づき、この補題は`Position::gives_check`が既に使い、乱数局面での合法手生成との一致が試験で固定されている。
 これらにより、再生1手あたりの全件生成は通常の経路で約10回から1回未満になる見込みである。
 完了条件は、裁定の結果が独立した参照実装と一致する試験と既存の試験が通ること、同じ条件で実行した探索の測定の出力が変更の前後で時間の項目を除いて一致すること、および再生1手あたりに正規化した探索時間の中央値が序盤と王駒の捕獲の近傍の両方で変更前の半分以下になった測定記録を残してmasterへマージすることである。
-2026年10月28日の[測定](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)では、出力が時間の項目を除いて一致したうえで、再生1手あたりに正規化した探索時間の中央値が序盤で変更前の0.16〜0.23倍、王駒の捕獲の近傍で0.04〜0.05倍になり、変更後の`Game::play`の費用は再生1手あたり全件生成の約0.32回分になった。
+2026年10月28日の[測定](../../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)では、出力が時間の項目を除いて一致したうえで、再生1手あたりに正規化した探索時間の中央値が序盤で変更前の0.16〜0.23倍、王駒の捕獲の近傍で0.04〜0.05倍になり、変更後の`Game::play`の費用は再生1手あたり全件生成の約0.32回分になった。
 
 ## 状態
 
-マージ待ち。2026年10月28日に起案して同日に着手し、フェーズ1からフェーズ3までを終えた。[測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)で完了条件の出力の一致と探索時間の半減を確かめ、補題と判定の範囲をdocコメントと[ADR](../adr/judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)へ移した。次の一手は、利用者の許可を得てmasterへマージし、本書を凍結して`archived/`へ移すことである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+2026年10月28日に、採用で完了した。
+審判層の王駒の捕獲可能性とR1の攻撃的着手の王駒の条件を利きの逆引きで判定し、着手の合法性検査、R1の動かした駒の条件、および駒枯れの猶予を駒1枚の生成で判定するようにした。
+さらに、合法手なしと詰みの判定を駒ごとの生成で行って最初の逃れる手で打ち切るようにし、masterへマージした（[ADR](../../adr/judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)）。
+現行の全件生成による判定を複製した参照実装との突き合わせ、完全な規則と履歴を持つ固定例の試験、および既存の試験はすべて通り、`driver_cost`の出力とαβ探索の深さ6のbenchは変更の前後で経過時間の項目を除いて一致した。
+再生1手あたりに正規化した探索時間の中央値は、序盤で変更前の0.16〜0.23倍、王駒の捕獲の近傍で0.04〜0.05倍になった（[測定記録](../../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)）。
+詰み判定で試した候補手の数は、恒久の計測コードをライブラリに入れず、計測専用のパッチを当てた複製で数え、パッチを測定記録に残した。
+変更後のプロファイルでは、探索木の葉で呼ぶ`Game::legal_moves`の全件生成が探索の命令数の37.9%を占める最大の項目になり、「適用範囲」の節で対象外とした`Game`に合法手列を保持する案の前提（効果が約3%）は成り立たなくなった。
 
 ## 目的
 
-[AlphaZero型探索の監査対応](archived/alphazero-audit-remediation.md)は、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥を、根の`Game`の複製に経路を再生して裁定を得る方式で直した。
-その[測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)では、本番の駆動部を一様評価器で駆動した109局面で、根の探索時間の中央値が自己対局用のGumbelの32回の探索で0.094 msから0.555 msへ、対局用のPUCTの800回の探索で2.09 msから19.1 msへ増えた。
-自己対局の生成はGPUの推論が律速である見込みだが、再生の費用は経路の深さと探索回数に比例して積み上がるので、減らせる分は減らしてから[強化学習の実行](alphazero-rl.md)の試走に臨むほうが、試走の結果から再生の費用を切り分けやすい。
+[AlphaZero型探索の監査対応](alphazero-audit-remediation.md)は、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥を、根の`Game`の複製に経路を再生して裁定を得る方式で直した。
+その[測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)では、本番の駆動部を一様評価器で駆動した109局面で、根の探索時間の中央値が自己対局用のGumbelの32回の探索で0.094 msから0.555 msへ、対局用のPUCTの800回の探索で2.09 msから19.1 msへ増えた。
+自己対局の生成はGPUの推論が律速である見込みだが、再生の費用は経路の深さと探索回数に比例して積み上がるので、減らせる分は減らしてから[強化学習の実行](../alphazero-rl.md)の試走に臨むほうが、試走の結果から再生の費用を切り分けやすい。
 本書に現れる規則コードは、RULES.md第31条と第32条が定めるローカルルールの記号であり、R1はLishogi式の4回反復の裁定、R2とR3は既出局面の再現の禁止、E0は標準規則の駒枯れ、E1は王駒の実捕獲による終局、E3は裸玉の即時裁定を表す。
 
-費用の内訳は、同じ測定プログラム`driver_cost`（[tools/train/zero/feasibility/src/bin/driver_cost.rs](../../tools/train/zero/feasibility/src/bin/driver_cost.rs)）を探索関数の区間だけ集計するvalgrindのcallgrindで調べた。
+費用の内訳は、同じ測定プログラム`driver_cost`（[tools/train/zero/feasibility/src/bin/driver_cost.rs](../../../tools/train/zero/feasibility/src/bin/driver_cost.rs)）を探索関数の区間だけ集計するvalgrindのcallgrindで調べた。
 探索の費用に占める割合は次のとおりである。
 
 | 探索の費用の内訳（命令数の割合） | 割合 |
@@ -42,8 +49,8 @@
 全区間での呼出し回数の比（`generate_moves`が3,087,381回、`Game::play`が288,907回）は10.7回だが、この比には、測定の入力局面を作る処理と、結果の集計で着手を再生する処理が混ざる。
 根の`Game`の複製（反復の履歴を含む）は0.14%であり、対局の手数の長さは費用の要因ではない。
 
-`Game::play`は1手ごとに、合法性検査で1回、R1の攻撃的着手の記録で1回、合法手なしの判定で1回、詰み判定の冒頭で1回の合計4回の合法手生成を行う（[crates/minase-core/src/game/adjudication/mod.rs](../../crates/minase-core/src/game/adjudication/mod.rs)の`adjudicate_after_move`と`candidate_immediate_result`）。
-詰み判定はさらに、候補手を1つ試すごとに、即時結果の判定の中の攻撃的着手の判定と、相手が王駒を取れるかの判定で2回の生成を行う（[mate.rs](../../crates/minase-core/src/game/adjudication/mate.rs)の`is_mate`と`can_capture_last_royal`）。
+`Game::play`は1手ごとに、合法性検査で1回、R1の攻撃的着手の記録で1回、合法手なしの判定で1回、詰み判定の冒頭で1回の合計4回の合法手生成を行う（[crates/minase-core/src/game/adjudication/mod.rs](../../../crates/minase-core/src/game/adjudication/mod.rs)の`adjudicate_after_move`と`candidate_immediate_result`）。
+詰み判定はさらに、候補手を1つ試すごとに、即時結果の判定の中の攻撃的着手の判定と、相手が王駒を取れるかの判定で2回の生成を行う（[mate.rs](../../../crates/minase-core/src/game/adjudication/mate.rs)の`is_mate`と`can_capture_last_royal`）。
 詰み判定は逃れる候補手が1つ見つかった時点で打ち切るので、R1で早期に終局せず、各候補手の即時結果が定まらない通常の経路では、逃れる手が見つかるまでに試す候補手の数をkとして生成回数は4+2k回になる。
 命令数の比から推定したkは平均で約3手であり、合計が約10回になる。
 王駒が攻撃されている局面では、詰み判定で逃れる手が見つかるまでに試す候補手の数kが増え、通常のビルドの実測で、再生1手あたりに正規化した探索時間の中央値は序盤の局面で約9 µs、王駒の捕獲の近傍の局面で74〜104 µsだった。
@@ -51,7 +58,7 @@
 
 本書の目的は、この約10回を、裁定の結果を変えずに1回未満へ減らすことである。
 合法手生成そのものを速くすることは本書の対象ではない。
-置き換えの考え方の多くは、将棋エンジンのやねうら王が探索の中で合法手の全件生成を避ける方法を調べた[調査メモ](../research/yaneuraou-check-detection-for-referee.md)による。
+置き換えの考え方の多くは、将棋エンジンのやねうら王が探索の中で合法手の全件生成を避ける方法を調べた[調査メモ](../../research/yaneuraou-check-detection-for-referee.md)による。
 
 ## 適用範囲
 
@@ -70,7 +77,7 @@
 
 次の項目は対象外とする。
 
-- 経路の再生で着手の合法性検査を省く軽いAPIは、[ADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)が「GPUの試走で1サイクルの時間が予算に収まらず、再生の費用が主因だと確かめられた場合に限り検討する」と定めているので、本書では扱わない。本書の合法性検査の変更は検査を省かず、生成する駒を減らすだけである。
+- 経路の再生で着手の合法性検査を省く軽いAPIは、[ADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)が「GPUの試走で1サイクルの時間が予算に収まらず、再生の費用が主因だと確かめられた場合に限り検討する」と定めているので、本書では扱わない。本書の合法性検査の変更は検査を省かず、生成する駒を減らすだけである。
 - `Game`に合法手列を保持して`legal_moves()`に使う案は、効果が探索の約3%で、状態を増やす割に小さいので扱わない。
 - `generate_moves`の内部（着手ごとの成りの選択肢の決定、獅子の捕獲制限の検査、および`captured_squares`を着手ごとに2回計算していること）は、αβ探索にも効く汎用の高速化として別の設計書で扱う。
 - やねうら王の`checkersBB`のように王駒への利きを局面に付随させて差分更新する方式は、`attackers_to_by`の費用が測定で問題になるまで扱わない。
@@ -79,8 +86,8 @@
 
 ## 依存関係
 
-本書は、masterへマージ済みの[AlphaZero型探索の監査対応](archived/alphazero-audit-remediation.md)の実装を前提とする。
-[強化学習の実行](alphazero-rl.md)の内容は変えない。
+本書は、masterへマージ済みの[AlphaZero型探索の監査対応](alphazero-audit-remediation.md)の実装を前提とする。
+[強化学習の実行](../alphazero-rl.md)の内容は変えない。
 強化学習の試走の前に本書を完了するかどうかは、利用者が決める。
 測定には、監査対応の測定に使った`driver_cost`と同じ局面、乱数、および探索回数を使う。
 
@@ -102,8 +109,8 @@
 
 本書の疑似利きによる判定は、すべて次の補題に基づく。
 相手の駒が獅子でない升について、その升へ手番側の疑似利き（`Position::attackers_to_by`）が届くことと、その駒を取る合法手があることは一致する。
-王手を定める第8条（RULES.md）はこの一致を前提にしており、`Position::gives_check`（[crates/minase-core/src/movegen/gives_check.rs](../../crates/minase-core/src/movegen/gives_check.rs)）は同じ補題で王駒1枚の場合を疑似利きで判定し、[その試験](../../crates/minase-core/src/movegen/tests/gives_check.rs)が乱数局面と成りと獅子の規則の組合せで合法手生成による参照実装との一致を固定している。
-αβ探索の`royal_under_attack`（[crates/minase/src/search/alphabeta/royal.rs](../../crates/minase/src/search/alphabeta/royal.rs)）も同じ判定を使う。
+王手を定める第8条（RULES.md）はこの一致を前提にしており、`Position::gives_check`（[crates/minase-core/src/movegen/gives_check.rs](../../../crates/minase-core/src/movegen/gives_check.rs)）は同じ補題で王駒1枚の場合を疑似利きで判定し、[その試験](../../../crates/minase-core/src/movegen/tests/gives_check.rs)が乱数局面と成りと獅子の規則の組合せで合法手生成による参照実装との一致を固定している。
+αβ探索の`royal_under_attack`（[crates/minase/src/search/alphabeta/royal.rs](../../../crates/minase/src/search/alphabeta/royal.rs)）も同じ判定を使う。
 
 補題が成り立つ理由は次の4点である。
 第1に、着手の合法性を制限する規則のうち、獅子の捕獲制限（第14条）、先獅子（第15条）、および付け喰い（第16条）は獅子を取る手だけに掛かる。
@@ -139,7 +146,7 @@ E3の裸玉は着手の禁止ではなく着手後の即時の裁定なので、
 
 ### 着手の合法性検査を動かす駒1枚の生成にする
 
-`Position::try_make_move_with_undo`（[crates/minase-core/src/movegen/checked.rs](../../crates/minase-core/src/movegen/checked.rs)）は、全合法手を生成して`contains`で照合する。
+`Position::try_make_move_with_undo`（[crates/minase-core/src/movegen/checked.rs](../../../crates/minase-core/src/movegen/checked.rs)）は、全合法手を生成して`contains`で照合する。
 `MoveGenerator::is_legal_move`は、移動元の駒が手番側の駒であることを確かめてから、その駒1枚の合法手を`generate_piece_moves`で生成して照合する。
 `generate_moves`は手番側の全駒について同じ`generate_piece_moves`を呼ぶ和集合であり、獅子の捕獲制限と成りの展開は駒ごとの生成の中で着手ごとに行われる。
 そのため、全件生成の列に含まれることと`is_legal_move`が真を返すことは、生成の仕組みの上で一致する。
@@ -158,7 +165,7 @@ E3の裸玉は着手の禁止ではなく着手後の即時の裁定なので、
 
 ### R1の攻撃的着手を利きの逆引きと動かした駒1枚の捕獲生成で判定する
 
-`move_was_attacking`（[crates/minase-core/src/game/repetition/r1.rs](../../crates/minase-core/src/game/repetition/r1.rs)）は、着手側の全合法手を生成し、いずれかの相手の王駒を取る手があるか、または動かした駒（到達升にある駒）に捕獲手があるかを調べる。
+`move_was_attacking`（[crates/minase-core/src/game/repetition/r1.rs](../../../crates/minase-core/src/game/repetition/r1.rs)）は、着手側の全合法手を生成し、いずれかの相手の王駒を取る手があるか、または動かした駒（到達升にある駒）に捕獲手があるかを調べる。
 起案時の本書は、動かした駒が取れる相手の駒が獅子だけの場合に獅子を取る手が捕獲制限で不合法になり得るとして、この判定を全件生成のまま残していた。
 この理由は2つの条件をまとめて疑似利きで判定する案に対するものであり、条件ごとに分ければ全件生成なしに正確に判定できる。
 第1の条件「相手のいずれかの王駒を取る合法手がある」は、升ごとの補題により、王駒の升ごとに`attackers_to_by(mover, royal, occupied)`が非空かの論理和で判定する。
@@ -171,9 +178,9 @@ E3の裸玉は着手の禁止ではなく着手後の即時の裁定なので、
 
 ### いずれかの王駒の捕獲可能性と駒枯れの猶予を1駒の範囲で判定する
 
-駒枯れの引き分け（第22条第8項）と裸玉の裁定（第32条E3）が使う`can_capture_any_royal`（[crates/minase-core/src/game/adjudication/bare_king.rs](../../crates/minase-core/src/game/adjudication/bare_king.rs)）は、手番を入れ替えた局面の複製から全合法手を生成して「いずれかの王駒」を取る手を探す。
+駒枯れの引き分け（第22条第8項）と裸玉の裁定（第32条E3）が使う`can_capture_any_royal`（[crates/minase-core/src/game/adjudication/bare_king.rs](../../../crates/minase-core/src/game/adjudication/bare_king.rs)）は、手番を入れ替えた局面の複製から全合法手を生成して「いずれかの王駒」を取る手を探す。
 条文は升ごとの条件で書かれているので、升ごとの補題により王駒の升ごとの`attackers_to_by`の論理和へ置き換える。
-駒枯れの猶予（第22条第5項）の判定（[exhaustion.rs](../../crates/minase-core/src/game/adjudication/exhaustion.rs)の`piece_exhaustion_outcome`）は、王駒だけになった側の手番で、余分な駒または相手の最後の王駒を取れるかを全合法手の生成で調べ、`candidate_immediate_result`から候補手ごとにも到達する。
+駒枯れの猶予（第22条第5項）の判定（[exhaustion.rs](../../../crates/minase-core/src/game/adjudication/exhaustion.rs)の`piece_exhaustion_outcome`）は、王駒だけになった側の手番で、余分な駒または相手の最後の王駒を取れるかを全合法手の生成で調べ、`candidate_immediate_result`から候補手ごとにも到達する。
 余分な駒は獅子であり得るので補題は使えない。
 しかし、王駒だけになった側が動かせる駒は王駒1枚だけである（死に駒は動けず、第9項により王将と太子を併せ持つ側は余分な駒を持つ側になる）。
 したがって、その王駒1枚の生成で全件生成と一致する。
@@ -267,7 +274,7 @@ ADRを追加し、ROADMAPの状態表と現在地を更新する。
 - 固定の局面で、王駒1枚が疑似利きで攻撃されている詰み、2枚の王駒を獅子が1手で取れる詰み、2枚の王駒が隣接せず詰みにならない場合、候補手が即時の勝ちまたは引き分けになる場合の回避、および候補手が即時の負けになる場合に回避にならないことを確かめる。既存の固定例（監査が再現した駒枯れの勝ち、駒枯れの引き分け、および詰みの3例、R1の正確な裁定、駒枯れの猶予、E1での詰み判定の省略）は変えない。
 - 駒ごとの生成の順序を変えても`is_mate`と合法手なしの判定の結果が変わらないこと、および逃れる手が第1群から第3群のいずれの駒の手でも見つかることを、固定の局面で確かめる。
 
-マージの前に、[docs/guides/testing.md](../guides/testing.md)の「運用」の節が定める4つの検査を通す。
+マージの前に、[docs/guides/testing.md](../../guides/testing.md)の「運用」の節が定める4つの検査を通す。
 審判層、αβ探索の根の候補手の選別（`crates/minase-core/src/game/root_repetition.rs`の試験）、探索木の終局判定、対局ハーネス、および自己対局の生成器の既存の試験は、この検査の対象に含まれる。
 `driver_cost`の変更の前後の出力が時間の項目を除いて一致することを確かめ、記録に残す。
 αβ探索の根の候補手の選別は`Game::play`を使うので、深さ6のbench（`--depth 6 --threads 1`）の局面ごとの結果が比較元と一致することを確かめる。
@@ -286,11 +293,11 @@ ADRを追加し、ROADMAPの状態表と現在地を更新する。
 
 ## 参考資料
 
-- [AlphaZero型探索の監査対応](archived/alphazero-audit-remediation.md)と[終局判定の費用の測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：本書の起点。
-- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../research/yaneuraou-check-detection-for-referee.md)：升ごとの補題の適用範囲、1駒の生成への置き換え、および駒ごとの生成で打ち切る方式の根拠。
-- [MCTSは新しい節点を審判層の裁定で終局させるADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：軽いAPIの先送りの条件。
-- [探索木の終局判定は審判層の裁定を共有する](../lessons/share-terminal-adjudication-with-the-referee.md)：裁定の規則を探索側に書き直さない理由。
-- `Position::gives_check`（[crates/minase-core/src/movegen/gives_check.rs](../../crates/minase-core/src/movegen/gives_check.rs)）と[その試験](../../crates/minase-core/src/movegen/tests/gives_check.rs)：王駒1枚の補題と参照実装との突き合わせの型。
+- [AlphaZero型探索の監査対応](alphazero-audit-remediation.md)と[終局判定の費用の測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：本書の起点。
+- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../../research/yaneuraou-check-detection-for-referee.md)：升ごとの補題の適用範囲、1駒の生成への置き換え、および駒ごとの生成で打ち切る方式の根拠。
+- [MCTSは新しい節点を審判層の裁定で終局させるADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：軽いAPIの先送りの条件。
+- [探索木の終局判定は審判層の裁定を共有する](../../lessons/share-terminal-adjudication-with-the-referee.md)：裁定の規則を探索側に書き直さない理由。
+- `Position::gives_check`（[crates/minase-core/src/movegen/gives_check.rs](../../../crates/minase-core/src/movegen/gives_check.rs)）と[その試験](../../../crates/minase-core/src/movegen/tests/gives_check.rs)：王駒1枚の補題と参照実装との突き合わせの型。
 - Stockfish、コミット5c4cef0b（2026年10月13日）、`src/position.cpp` 502行：王手の有無を合法手生成ではなく王の升への利き`attackers_to`で求める（`st->checkersBB = attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)`）。利きによる王手判定の実装例としてだけ引く。チェスでは王を取る着手自体がFIDEの規則第1.4.1条で禁じられ、合法に動けない駒の利きも王手に数える（第3.1.3条）ので、本書の補題の根拠にはならない。
 - プロファイルの再現手順：通常のビルドは`target-cpu=native`の命令をvalgrindが解釈できないので、計測用に別ディレクトリへビルドする。`--toggle-collect`は命令数だけを区切り、呼出し回数は全区間の値のまま出る。
 
