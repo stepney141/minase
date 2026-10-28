@@ -88,16 +88,7 @@ impl MoveGenerator {
         base_moves: &mut Vec<Move>,
         output: &mut Vec<Move>,
     ) {
-        let piece = position.piece_at(from).expect("from must contain a piece");
-        let color = position.side_to_move();
-        assert!(
-            piece.color() == Some(color),
-            "from must contain a side-to-move piece"
-        );
-        let kind = piece.kind().expect("board piece must have a valid kind");
-        generate::generate_piece_moves::<false, false>(
-            self, position, color, kind, from, base_moves, output,
-        );
+        self.generate_from::<false>(position, from, base_moves, output);
     }
 
     /// `position`の手番側の捕獲を伴う合法手を`output`へ追加する。
@@ -142,6 +133,17 @@ impl MoveGenerator {
         base_moves: &mut Vec<Move>,
         output: &mut Vec<Move>,
     ) {
+        self.generate_from::<true>(position, from, base_moves, output);
+    }
+
+    /// 指定した駒と手番の前提を検査し、捕獲限定か全手かを選んで生成する。
+    fn generate_from<const CAPTURES_ONLY: bool>(
+        &self,
+        position: &Position,
+        from: Square,
+        base_moves: &mut Vec<Move>,
+        output: &mut Vec<Move>,
+    ) {
         let piece = position.piece_at(from).expect("from must contain a piece");
         let color = position.side_to_move();
         assert!(
@@ -149,7 +151,7 @@ impl MoveGenerator {
             "from must contain a side-to-move piece"
         );
         let kind = piece.kind().expect("board piece must have a valid kind");
-        generate::generate_piece_moves::<true, false>(
+        generate::generate_piece_moves::<CAPTURES_ONLY, false>(
             self, position, color, kind, from, base_moves, output,
         );
     }

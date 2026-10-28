@@ -518,7 +518,7 @@ fn article_31_r1_mutual_perpetual_attacks_draw() {
 
 /// 王手を受けている側にもR2の禁止は適用される(適用除外の
 /// 不採用)。捕獲を含む着手は既出局面を再現し得ず、決して
-/// 禁止されない（[`is_mate`](crate::game::adjudication::mate::is_mate)の捕獲と成りに関する補題）。
+/// 禁止されない（[`stalemate_or_mate`](crate::game::adjudication::mate::stalemate_or_mate)の捕獲と成りに関する補題）。
 #[test]
 fn article_31_r2_applies_to_the_checked_side_but_never_to_captures() {
     let mut game = game_with_codes(

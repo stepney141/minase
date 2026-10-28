@@ -12,20 +12,26 @@ use crate::rng::{XorShift64, derive_seed};
 use crate::rules::RuleCode;
 use crate::test_util::{bench_positions, capture_test_rules, sampled_random_positions};
 
-// フェーズ2で判定の入口が統合されても、呼出しの変更はこの2関数にまとめる。
 pub(super) fn production_is_mate(
     position: &mut Position,
     context: &AdjudicationContext<'_>,
 ) -> bool {
-    mate::is_mate(position, context)
+    // 参照版の詰み判定はE1による省略を含まないため、E1を外した文脈で照合する。
+    let context = AdjudicationContext {
+        rules: Rules {
+            e1: false,
+            ..context.rules
+        },
+        ..*context
+    };
+    mate::stalemate_or_mate(position, &context) == Some(WinReason::Mate)
 }
 
 pub(super) fn production_has_no_legal_move(
     position: &mut Position,
-    generator: &MoveGenerator,
-    state: &AdjudicationState,
+    context: &AdjudicationContext<'_>,
 ) -> bool {
-    mate::has_no_legal_move(position, generator, state.repetition())
+    mate::stalemate_or_mate(position, context) == Some(WinReason::Stalemate)
 }
 
 fn compare_mate_and_legal_moves(position: &mut Position, context: &AdjudicationContext<'_>) {
@@ -40,7 +46,7 @@ fn compare_mate_and_legal_moves(position: &mut Position, context: &AdjudicationC
         *position, before,
         "reference mate must restore the position"
     );
-    let actual = production_has_no_legal_move(position, context.generator, context.state);
+    let actual = production_has_no_legal_move(position, context);
     assert_eq!(*position, before);
     assert_eq!(
         actual,

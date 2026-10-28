@@ -865,7 +865,10 @@ fn article_23_no_legal_move_is_distinct_from_mate() {
         state.repetition()
     ));
     assert_eq!(board, before);
-    assert!(production_has_no_legal_move(&mut board, &generator, &state));
+    assert!(production_has_no_legal_move(
+        &mut board,
+        &AdjudicationContext::new(rules, &state, &generator)
+    ));
     assert_eq!(board, before);
     assert_mate(
         &mut board,

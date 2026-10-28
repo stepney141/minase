@@ -2,10 +2,12 @@
 
 mod fixtures;
 mod oracle;
+mod ordering;
 mod reference;
 
 use super::*;
 use crate::board::Square;
+use crate::game::result::WinReason;
 use crate::piece::{PieceCode, PieceKind};
 use crate::test_util::{position_from_codes as position, sq};
 
@@ -84,7 +86,10 @@ fn article_21_3_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
         None
     );
     position.unmake_move(undo);
-    assert!(is_mate(&mut position, &context));
+    assert_eq!(
+        stalemate_or_mate(&mut position, &context),
+        Some(WinReason::Mate)
+    );
     assert_eq!(position, before);
 }
 
@@ -127,10 +132,13 @@ fn article_21_3_r1_repetition_loss_does_not_rescue_mate() {
         );
     }
     let before = position.clone();
-    assert!(is_mate(
-        &mut position,
-        &AdjudicationContext::new(rules, &state, &generator)
-    ));
+    assert_eq!(
+        stalemate_or_mate(
+            &mut position,
+            &AdjudicationContext::new(rules, &state, &generator)
+        ),
+        Some(WinReason::Mate)
+    );
     assert_eq!(position, before);
 
     let candidate = step(sq(3, 10), sq(3, 9));
@@ -168,9 +176,12 @@ fn article_21_3_immediate_loss_overrides_royal_capture_avoidance() {
         .unwrap();
     assert!(!mate::can_capture_last_royal(&position, &generator));
     position.unmake_move(undo);
-    assert!(is_mate(
-        &mut position,
-        &AdjudicationContext::new(rules, &state, &generator)
-    ));
+    assert_eq!(
+        stalemate_or_mate(
+            &mut position,
+            &AdjudicationContext::new(rules, &state, &generator)
+        ),
+        Some(WinReason::Mate)
+    );
     assert_eq!(position, before);
 }

@@ -222,7 +222,7 @@ fn article_21_6_resignation_ends_the_game() {
 
 /// 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
 /// 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、
-/// R1では継続だがR2では詰みになる（RULES.md第31条R2、[`is_mate`](crate::game::adjudication::mate::is_mate)の契約）。
+/// R1では継続だがR2では詰みになる（RULES.md第31条R2、[`stalemate_or_mate`](crate::game::adjudication::mate::stalemate_or_mate)の契約）。
 #[test]
 fn articles_21_3_and_31_r2_mate_judgement_uses_the_filtered_move_set() {
     let pieces = [

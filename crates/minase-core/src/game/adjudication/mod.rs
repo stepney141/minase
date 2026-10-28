@@ -8,7 +8,7 @@ mod mate;
 mod tests;
 
 use super::repetition::{RepetitionHistory, move_is_irreversible, move_was_attacking};
-use super::result::{GameResult, WinReason};
+use super::result::GameResult;
 use crate::movegen::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::Color;
@@ -16,7 +16,7 @@ use crate::position::{Position, Undo};
 use crate::rules::{ExhaustionRule, RepetitionRule, Rules};
 use bare_king::bare_king_result;
 use exhaustion::{PieceExhaustionTransition, piece_exhaustion_transition};
-use mate::{has_no_legal_move, is_mate, royal_capture_result};
+use mate::{royal_capture_result, stalemate_or_mate};
 
 /// 対局裁定に必要な履歴依存状態。
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -212,9 +212,10 @@ impl PostMoveAdjudication {
 /// 同一局面の4回目の出現に達せず、R1との順序で結果は変わらない。
 /// 第22条第5項の猶予が始まった場合は、相手駒の捕獲を認めるため詰みを裁定しない。
 /// 駒枯れによる勝利と合法手なしまたは詰みが同時に成立する場合も、勝者は余分な駒を持つ側で一致し、
-/// 優先順位が変えるのは[`WinReason`]だけである。
+/// 優先順位が変えるのは[`WinReason`](super::result::WinReason)だけである。
 /// E3は駒枯れの位置で裸玉を裁定し、R2とR3は裁定の位置を持たず着手の受理で働く。
-/// E1は詰みの裁定だけを止める。
+/// 合法手なしと詰みは駒ごとの生成を共有して判定し、逃れる手が見つかれば打ち切る。
+/// E1は詰みの裁定だけを止め、反復で禁じられない合法手が1つあれば打ち切る。
 pub(crate) fn adjudicate_after_move(
     position: &mut Position,
     context: AdjudicationContext<'_>,
@@ -247,19 +248,9 @@ pub(crate) fn adjudicate_after_move(
 
     let context = context.with_piece_exhaustion_grace(exhaustion.next_grace);
     let side_to_move = position.side_to_move();
-    if has_no_legal_move(position, context.generator, context.state.repetition()) {
-        return PostMoveAdjudication {
-            result: Some(GameResult::Win {
-                winner: side_to_move.opposite(),
-                reason: WinReason::Stalemate,
-            }),
-            piece_exhaustion_grace: exhaustion.next_grace,
-        };
-    }
-
-    let result = (!context.rules.e1 && is_mate(position, &context)).then_some(GameResult::Win {
+    let result = stalemate_or_mate(position, &context).map(|reason| GameResult::Win {
         winner: side_to_move.opposite(),
-        reason: WinReason::Mate,
+        reason,
     });
     PostMoveAdjudication {
         result,
