@@ -2,7 +2,7 @@
 
 ## 目的
 
-[AlphaZero型探索の監査対応](../../plans/alphazero-audit-remediation.md)のフェーズ1として、審判層の終局裁定を共有したMCTSの本番駆動部を変更前と同じ局面と乱数で測り、経路再生の費用と探索量の変化を確かめる。
+[AlphaZero型探索の監査対応](../../plans/archived/alphazero-audit-remediation.md)のフェーズ1として、審判層の終局裁定を共有したMCTSの本番駆動部を変更前と同じ局面と乱数で測り、経路再生の費用と探索量の変化を確かめる。
 
 ## コマンドライン
 

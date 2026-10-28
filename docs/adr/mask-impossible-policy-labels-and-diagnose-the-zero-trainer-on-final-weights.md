@@ -13,7 +13,7 @@
 KataGoは`python/katago/train/model_pytorch.py`の`PolicyHead`で盤外のlogitを定数で抑え、lc0は`tf/tfprocess.py`の設定`mask_legal_moves`で合法手だけのsoftmaxにし、dlshogiはマスクなしで学習している（いずれも参照日2026年10月28日）。
 同じ決定は、対局結果だけに対する価値の検証損失を監視するとしていた。
 しかし、訓練の損失は更新中の重みと訓練モードで平均し、検証の損失は最終の重みと推論モードで測るので、[学習器の確認](../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)で見た訓練の損失0.326と検証の損失0.798の差からは、同一対局の勝敗の相関による過学習、バッチ正規化の移動統計のずれ、およびランダムな対局の結果の予測の難しさを区別できない。
-エンジンの開発者は、[監査対応の設計書](../plans/alphazero-audit-remediation.md)でこの決定を下した。
+エンジンの開発者は、[監査対応の設計書](../plans/archived/alphazero-audit-remediation.md)でこの決定を下した。
 
 ## 決定
 

@@ -10,7 +10,7 @@
 AlphaZero型探索のMCTSは、推論のバッチの大きさ`NnBatchSize`（既定256）をUSIオプションで受け取るので、進捗測定の条件として明示も変更もできなかった（2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)）。
 minaseのUSIは未知の名前のオプションを無視し、不正な値では直前の設定を保つので、送っただけでは設定されたことを保証できない。
 `commit:`のエンジンの起動引数は、[起動引数の拡張の決定](append-startup-arguments-to-commit-engine-specs.md)により`--candidate-args`と`--baseline-args`で追加でき、実行条件に記録している。
-エンジンの開発者は、[監査対応の設計書](../plans/alphazero-audit-remediation.md)でこの決定を下した。
+エンジンの開発者は、[監査対応の設計書](../plans/archived/alphazero-audit-remediation.md)でこの決定を下した。
 
 ## 決定
 

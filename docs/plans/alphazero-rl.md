@@ -19,8 +19,8 @@
 このため、FP16の照合を合法手の確率と価値の差で行うように照合の道具と手引きを改め（2026年10月28日の利用者の決定）、学習したネットが新しい基準で照合に通ることを確かめた（[記録](../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 同じ確認で、1,000局の学習の対局結果に対する価値の検証損失はln 2を上回った（[記録](../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
 2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)は、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥と、本書の設定の空欄を確認した。
-[監査対応](alphazero-audit-remediation.md)の完了が本書の着手の前提である。
-次の一手は、監査対応の完了後に、[実行環境と実現性の実測](archived/alphazero-environment.md)で選んだGPU種別（Colab機のL4）の機械を借り、借りた機械をまたぐ再開の確認を行うことである。
+欠陥と空欄は、同日に完了した[監査対応](archived/alphazero-audit-remediation.md)で直した。
+次の一手は、[実行環境と実現性の実測](archived/alphazero-environment.md)で選んだGPU種別（Colab機のL4）の機械を借り、借りた機械をまたぐ再開の確認を行うことである。
 
 ## 目的
 
@@ -50,7 +50,7 @@
 生成と学習の手順は[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](archived/alphazero-trainer.md)が、探索回数の上限を1にしたときの動作は[探索方式の共存とMCTS](archived/alphazero-mcts.md)が定める。
 PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の3者の出力の一致を確かめる手順は、[ネットの入出力と推論](archived/alphazero-network.md)が定める。
 進捗測定の固定局数とEloの読み方は[docs/guides/sprt.md](../guides/sprt.md)の進捗記録の固定局数Eloに従う。
-探索木の終局判定、学習器の定数マスクと診断、およびハーネスのUSIオプションの指定は[監査対応](alphazero-audit-remediation.md)が実装し、本書はその完了を前提とする。
+探索木の終局判定、学習器の定数マスクと診断、およびハーネスのUSIオプションの指定は[監査対応](archived/alphazero-audit-remediation.md)が実装した。
 
 ## 設計判断
 

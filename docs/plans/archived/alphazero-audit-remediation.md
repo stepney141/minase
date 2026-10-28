@@ -2,28 +2,28 @@
 
 ## 先に読む要約
 
-本書は、強化学習（RL）のサイクルを始める前に行った[AlphaZero型探索の実装と強化学習計画の監査](../audits/alphazero-rl-readiness-2026-10-28.md)で確認した欠陥への対応と、開始前に決めるべき事項をまとめたマイルストーンの設計書である。
+本書は、強化学習（RL）のサイクルを始める前に行った[AlphaZero型探索の実装と強化学習計画の監査](../../audits/alphazero-rl-readiness-2026-10-28.md)で確認した欠陥への対応と、開始前に決めるべき事項をまとめたマイルストーンの設計書である。
 確認した欠陥は、MCTS（モンテカルロ木探索）の探索木が、審判層が詰みまたは駒枯れで終局と裁定する葉を、方策と価値を出すニューラルネットワーク（以下ネット）の評価に渡すことである。
 この不一致は、自己対局の価値の教師と方策の目標を終局の近くで歪め、対局ではエンジンが規則上の詰みを見逃す原因になる。
 対策の第1は、探索木が新しい節点を作るときの終局判定を審判層の裁定と共有し、規則上の終局（詰み、駒枯れ、裸玉、合法手なし、および正確なR1の反復）をネットの評価より先に確定させることである。
 第2は、学習器の方策の損失で、盤面によらず常に不可能な方策のラベル（35,856のうち19,748）を正規化から除き、最終の重みで訓練集合の標本と検証集合を同じ条件で測る診断を集計に加えることである。
 第3は、対局ハーネスに候補と基準のエンジンのUSIオプションを指定する引数を足し、進捗測定の推論のバッチの大きさを明示できるようにすることである。
-第4は、監査が見つけた文献の記述の誤りを訂正し、[強化学習の実行](alphazero-rl.md)に初期の設定、学習窓と学習率の規則、投了の較正の標本数の条件、各サイクルの照合と監視の項目を書き足すことである。
+第4は、監査が見つけた文献の記述の誤りを訂正し、[強化学習の実行](../alphazero-rl.md)に初期の設定、学習窓と学習率の規則、投了の較正の標本数の条件、各サイクルの照合と監視の項目を書き足すことである。
 同一対局の局面が共有する勝敗の相関による過学習への対処は最初のサイクルの診断の後に、重みの移動平均（EMA）は10サイクル目の診断の後に利用者が決めるので、本書では実装しない。
 完了条件は、探索木の終局判定が審判層と一致することと追加した学習器と対局ハーネスの機能を確かめる試験、および関係する既存の試験がすべて通り、αβ探索の深さ6のbenchが固定した比較元と一致し、終局判定の費用（探索1回あたりの処理時間）の測定記録を残して、実装がmasterへマージされることである。
 
 ## 状態
 
-進行中。2026年10月28日に起案し、同日に着手した。
-監査報告は[docs/audits/alphazero-rl-readiness-2026-10-28.md](../audits/alphazero-rl-readiness-2026-10-28.md)にある。
-フェーズ1から4までを実装し、探索木の終局判定が審判層と一致する試験、学習器の定数マスクと診断の試験、およびハーネスのUSIオプションの試験が通り、αβ探索の深さ6のbenchはmasterの255fb48cと15局面すべてで一致した。
-本番の駆動部の測定では、根の探索時間の中央値がGumbelの32回の探索で0.094 msから0.555 msへ、PUCTの800回の探索で2.09 msから19.1 msへ増えた（[測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
-自己対局の生成はGPUの推論が律速である見込みのまま変わらないが、GPUの推論を含む1サイクルの時間は[強化学習の実行](alphazero-rl.md)の試走で確かめる。
-次の一手は、利用者の許可を得てmasterへマージし、本書を凍結することである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+2026年10月28日に、採用で完了した。
+探索木の終局判定を審判層の裁定と共有し、学習器の方策の損失に常に不可能なラベルの定数マスクと最終の重みでの診断を加え、対局ハーネスにUSIオプションを指定する引数を足し、文献の記述の訂正と[強化学習の実行](../alphazero-rl.md)の補足を行って、masterへマージした。
+探索木の終局判定が審判層と一致する試験、学習器とハーネスの試験、および既存の試験はすべて通り、αβ探索の深さ6のbenchは変更前と15局面すべてで一致した。
+終局判定の費用は、本番の駆動部の測定で、根の探索時間の中央値がGumbelの32回の探索で0.094 msから0.555 msへ、PUCTの800回の探索で2.09 msから19.1 msへ増えた（[測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
+完了後のプロファイルで、この費用の主因は根の`Game`の複製ではなく、経路の再生で`Game::play`が1手ごとに合法手生成を約10回呼ぶことだと分かり、その削減は別の設計書で扱う。
 
 ## 目的
 
-[AlphaZero型探索と深層強化学習の統括計画](alphazero.md)は、サブタスク6の[強化学習の実行](alphazero-rl.md)を次の一手としている。
+[AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)は、サブタスク6の[強化学習の実行](../alphazero-rl.md)を次の一手としている。
 RLは数か月に及び、長期の実行の後に探索や学習器の欠陥が見つかると、データの生成し直しや再学習が必要になる場合がある。
 本書は、監査で確認した欠陥のうちRLの開始前に直すべきものと、計画の空欄のうち開始前に決めるべきものを、1つのマイルストーンにまとめて対応する。
 規則コードR1、R2、R3、E0、E1、E2、E3、P0、およびP5は、RULES.md第29条から第33条が定めるローカルルールの記号である。
@@ -37,25 +37,25 @@ RLは数か月に及び、長期の実行の後に探索や学習器の欠陥が
 - 探索木が新しい節点を作るときの終局判定を、審判層の裁定（王駒の捕獲、R1の反復、駒枯れと裸玉、合法手なし、詰み）と共有する。引き分けの勝率の適用範囲を、反復による引き分けからすべての引き分けへ広げる。
 - 学習器の方策の損失で、常に不可能なラベルを正規化から除く。最終の重みでの訓練集合の標本と検証集合の損失、合法手に乗る確率質量、および方策の一致率を集計に加える。
 - 対局ハーネス`minase match run`に、候補と基準のUSIオプションを指定する引数を足す。これは開始前の欠陥の修正ではなく、10サイクル目の最初の進捗測定までに要る作業である。
-- 監査が確認した文献の記述の誤りを訂正し、[強化学習の実行](alphazero-rl.md)に設定と規則を書き足す。
+- 監査が確認した文献の記述の誤りを訂正し、[強化学習の実行](../alphazero-rl.md)に設定と規則を書き足す。
 - 終局判定の費用を、本番の駆動部で変更の前後に測って記録する。
 
 次の項目は対象外とする。
 
-- 同一対局の勝敗の相関による過学習への対処（価値の損失に使う局面の間引き、学習窓の拡大、λの変更）は、最初のサイクルの診断の値を見て利用者が決める（[学習器の設計書](archived/alphazero-trainer.md)が記録する2026年10月28日の利用者の決定）。
+- 同一対局の勝敗の相関による過学習への対処（価値の損失に使う局面の間引き、学習窓の拡大、λの変更）は、最初のサイクルの診断の値を見て利用者が決める（[学習器の設計書](alphazero-trainer.md)が記録する2026年10月28日の利用者の決定）。
 - 合法手だけで正規化する方策の損失は、最初のサイクルで合法手に乗る確率質量を測ってから判断する。
 - 重みの移動平均（EMA）は、10サイクル目の進捗測定の後に判断する。
 - 規則を超える詰み探索（dlshogiの3手詰めなど）は、終局判定を直した後も勝ちを取り逃す傾向が残る場合に検討する。
-- 推論のバッチの大きさの比較測定は、[強化学習の実行](alphazero-rl.md)が10サイクル目の進捗測定の前に行う。本書はオプションを指定できるようにするだけである。
-- 借りた機械のGPUでの試走は、[強化学習の実行](alphazero-rl.md)のフェーズ2で行う。本書の完了時点では、GPUでの速度は未検証である。
+- 推論のバッチの大きさの比較測定は、[強化学習の実行](../alphazero-rl.md)が10サイクル目の進捗測定の前に行う。本書はオプションを指定できるようにするだけである。
+- 借りた機械のGPUでの試走は、[強化学習の実行](../alphazero-rl.md)のフェーズ2で行う。本書の完了時点では、GPUでの速度は未検証である。
 
 ## 依存関係
 
-探索木と駆動部は[探索方式の共存とMCTS](archived/alphazero-mcts.md)、審判層は[対局管理層と審判層](archived/game-referee.md)と[審判ロジック再編とR0撤去](archived/adjudication-refactor.md)が作った。
-反復の扱いは[MCTSの反復のADR](../adr/archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)が、学習器の損失は[教師と損失のADR](../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)が定めていたので、本書はこれらを[MCTSの終局判定のADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)と[学習器の定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)で置き換える。
-[対局履歴を局面と合法手生成器から分離するADR](../adr/keep-game-history-out-of-position-and-movegen.md)と`Game`のdocコメントは、探索木の各節点で`Game::play`を呼ばないと記しており、本書はMCTSに限ってこの前提を改め、αβ探索の方式は維持する。
-方策のラベルの定義は[方策のADR](../adr/encode-the-zero-policy-as-249-planes-per-from-square.md)に従う。
-対局ハーネスの起動引数の記録は[探索方式の共存とMCTS](archived/alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節に従う。
+探索木と駆動部は[探索方式の共存とMCTS](alphazero-mcts.md)、審判層は[対局管理層と審判層](game-referee.md)と[審判ロジック再編とR0撤去](adjudication-refactor.md)が作った。
+反復の扱いは[MCTSの反復のADR](../../adr/archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)が、学習器の損失は[教師と損失のADR](../../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)が定めていたので、本書はこれらを[MCTSの終局判定のADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)と[学習器の定数マスクと診断のADR](../../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)で置き換える。
+[対局履歴を局面と合法手生成器から分離するADR](../../adr/keep-game-history-out-of-position-and-movegen.md)と`Game`のdocコメントは、探索木の各節点で`Game::play`を呼ばないと記しており、本書はMCTSに限ってこの前提を改め、αβ探索の方式は維持する。
+方策のラベルの定義は[方策のADR](../../adr/encode-the-zero-policy-as-249-planes-per-from-square.md)に従う。
+対局ハーネスの起動引数の記録は[探索方式の共存とMCTS](alphazero-mcts.md)の「ハーネスの起動引数の拡張」の節に従う。
 終局の規則はRULES.md第21条（王駒による勝敗）、第22条（駒枯れ）、第23条（合法手がない場合）、第31条（反復）、および第32条（終局に関するローカルルール）が定める。
 
 ## 設計判断
@@ -104,7 +104,7 @@ MCTSの履歴に依存する試験は実際の着手列で履歴を作り、αβ
 
 勝敗の確定と引き分けの節点は、評価値の帯の区分とは別に、反復の近似への依存を示す真偽値の印を持つ。
 近似の印は、既存の反復の近似による打ち切りだけで立て、正確なR1、駒枯れ、および裸玉の終局では立てない。
-自己対局の投了の抑止（[投了のADR](../adr/resign-zero-self-play-games-below-one-percent-after-calibration.md)）には、評価値の帯ではなく近似の印を使い、親への確定の伝播と部分木の走査で印を失わない。
+自己対局の投了の抑止（[投了のADR](../../adr/resign-zero-self-play-games-below-one-percent-after-calibration.md)）には、評価値の帯ではなく近似の印を使い、親への確定の伝播と部分木の走査で印を失わない。
 引き分けの勝率は、自己対局では0.5、対局ではR1の引き分けと同じ`DrawValue`を由来を問わずに使い、相手側の手番の節点では1から引く。
 教師データの対局結果は引き続き`Game`の結果（引き分けは0.5）で記録する。
 
@@ -164,16 +164,16 @@ CECPのエンジンへの指定は従来どおり起動前に拒否する。
 
 監査は、設計の根拠にした文献の記述の誤りを3件確認した。
 第1に、Gumbel dlshogiは、手数の上限に達した対局を除いた後も入玉宣言の割合が3サイクル目に41.2%となり、3手詰めの判定を加えた次の実験で多くて0.2%になった。
-[先行実装の調査](../research/alphazero-prior-art.md)と[価値のADR](../adr/predict-a-single-win-probability-in-the-zero-network.md)の文脈の記述を訂正する。
+[先行実装の調査](../../research/alphazero-prior-art.md)と[価値のADR](../../adr/predict-a-single-win-probability-in-the-zero-network.md)の文脈の記述を訂正する。
 第2に、技巧の自己対局の探索回数は、約1,000万対局まで32回、約4,000万対局まで64回、以後128回であり、16〜64回ではない。
-[先行実装の調査](../research/alphazero-prior-art.md)と[Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-for-zero-self-play-search.md)の文脈の記述を訂正する。
+[先行実装の調査](../../research/alphazero-prior-art.md)と[Gumbel AlphaZeroのADR](../../adr/use-gumbel-alphazero-for-zero-self-play-search.md)の文脈の記述を訂正する。
 第3に、KataGoの大域プーリングは残差ブロックのうち2〜3個に等間隔で入っており、すべてのブロックに入れたminaseの構成とは異なる。
-[ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の文脈の記述を訂正する。
+[ネットの構成のADR](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の文脈の記述を訂正する。
 凍結した設計書は書き直さず、監査報告が対応箇所を示す。
 ADRの決定は変えないので、文脈の誤った文だけを改める。
-`Game`のdocコメントには、MCTSでは`Game`を使い、αβ探索の方式は維持する変更を反映し、[対局履歴の分離のADR](../adr/keep-game-history-out-of-position-and-movegen.md)に対する例外は新しいADRのコンテキストに記す（承認済みのADRの本文は書き換えない）。
+`Game`のdocコメントには、MCTSでは`Game`を使い、αβ探索の方式は維持する変更を反映し、[対局履歴の分離のADR](../../adr/keep-game-history-out-of-position-and-movegen.md)に対する例外は新しいADRのコンテキストに記す（承認済みのADRの本文は書き換えない）。
 
-[強化学習の実行](alphazero-rl.md)には、次の事項を書き足す。
+[強化学習の実行](../alphazero-rl.md)には、次の事項を書き足す。
 初期10サイクルの設定の表を置き、学習率0.01、モーメンタム0.9、重み減衰1×10⁻⁴、勾配のノルムの上限10、バッチ256、bf16、λ=0.333、学習窓k=1、探索回数32、およびチェックポイントの間隔の初期値200更新（試走で保存と転送の時間を確かめる）を定める。
 投了は初回のサイクルを無効とし、以後は各サイクルの開始時に、直前のサイクルの較正の結果で有効化を判断する。
 較正は直前のサイクルで完了したすべての塊（対局数で決めた生成の単位）を使い、1対局を1標本として、誤った投了の数xと対象の対局数nから二項分布のClopper–Pearson法による片側95%上限を求める。
@@ -214,7 +214,7 @@ n≥100かつ上限が0.05以下の場合に限り次のサイクルの投了を
 
 ### フェーズ4　文書の改訂
 
-ADRの置き換え、文献の記述の訂正、[強化学習の実行](alphazero-rl.md)への補足、教訓の追加、およびROADMAPの更新を行う。
+ADRの置き換え、文献の記述の訂正、[強化学習の実行](../alphazero-rl.md)への補足、教訓の追加、およびROADMAPの更新を行う。
 フェーズ1から3と同じブランチで行い、マージの前にagy経由の推敲を受ける。
 
 ## 検証
@@ -235,11 +235,11 @@ ADRの置き換え、文献の記述の訂正、[強化学習の実行](alphazer
 
 本書の完了条件は、「検証」の節の試験と関係する既存の試験がすべて通り、αβ探索の深さ6のbenchが固定した比較元と一致し、本番の駆動部での終局判定の費用の測定記録が残り、実装の仕様をdocコメントへ、設計判断をADRへ、運用の手順を手引きへ移したうえで、実装と文書がmasterへマージされることである。
 マージと同時に完了とし、設計書を凍結する。
-GPUでの速度は、[強化学習の実行](alphazero-rl.md)のフェーズ2の試走で確かめる。
+GPUでの速度は、[強化学習の実行](../alphazero-rl.md)のフェーズ2の試走で確かめる。
 
 ## 参考資料
 
-- [AlphaZero型探索の実装と強化学習計画の監査](../audits/alphazero-rl-readiness-2026-10-28.md)：本書の要求の根拠。
+- [AlphaZero型探索の実装と強化学習計画の監査](../../audits/alphazero-rl-readiness-2026-10-28.md)：本書の要求の根拠。
 - Silver et al., "Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm", [arXiv:1712.01815](https://arxiv.org/abs/1712.01815)、補足資料Domain Knowledge：探索中の終局はゲームの規則で決める。
 - [LeelaChessZero/lc0](https://github.com/LeelaChessZero/lc0)、コミット1227b4c、`src/search/classic/search.cc` 1935〜1973行：葉の終局をネットの評価より先に確定する。
 - 山岡忠夫「Gumbel dlshogiを作る」[その8](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/085509)、[その9](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/140913)：手数の上限の除外の後も入玉宣言の割合は3サイクル目に41.2%となり、3手詰めの判定を加えた次の実験で多くて0.2%になった。

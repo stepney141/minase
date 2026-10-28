@@ -5,7 +5,7 @@
 監査は2026年10月28日に、Claude（Fable 5.1）とgpt-6-astra（codex経由）が、互いの所見を知らせずに独立に行い、その後2回の議論で所見を突き合わせて確定した。
 問いは4つである。実装に誤りや危うい設計がないか、計画している学習の進め方でよいか、先行実装（dlshogi、lc0、KataGo、ふかうら王、技巧、mctx、AlphaZero）で棄却された誤りが入っていないか、および先行実装の重要な技法が入っているかである。
 本文では、再現して確かめた事実、根拠のある推測、および確かめていない事項を区別して書く。
-対応の方針は[AlphaZero型探索の監査対応の設計書](../plans/alphazero-audit-remediation.md)にあり、本書は監査後に更新しない。
+対応の方針は[AlphaZero型探索の監査対応の設計書](../plans/archived/alphazero-audit-remediation.md)にあり、本書は監査後に更新しない。
 
 ## 要約
 

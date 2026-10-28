@@ -14,7 +14,7 @@
 [局面と合法手生成器を対局の履歴から独立させる決定](keep-game-history-out-of-position-and-movegen.md)は、探索は`Game`を経由しないと記しており、本決定はMCTSに限ってその例外を設ける。
 AlphaZeroは探索中の終局と得点をゲームの規則で決め（Silver et al., arXiv:1712.01815、補足資料Domain Knowledge）、lc0は葉の終局をネットの評価より先に確定する（`src/search/classic/search.cc`、コミット1227b4c）。
 Gumbel dlshogiは、手数の上限に達した対局を除くだけでは入玉宣言の退化が止まらず、3手詰めの判定を自己対局に入れて解消した（山岡忠夫「Gumbel dlshogiを作る」[その8](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/085509)、[その9](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/140913)）。
-エンジンの開発者は、[監査対応の設計書](../plans/alphazero-audit-remediation.md)でこの決定を下した。
+エンジンの開発者は、[監査対応の設計書](../plans/archived/alphazero-audit-remediation.md)でこの決定を下した。
 
 ## 決定
 
