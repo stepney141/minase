@@ -323,7 +323,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [MCTSは反復をαβ探索と同じ規則で扱い、引き分けの値は対局でだけcpから勝率へ換算する](archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)（置き換え済み）
 - 2026年10月27日 [対局ハーネスの`commit:`のエンジンには`--candidate-args`と`--baseline-args`で起動引数を足し、実行条件に記録する](append-startup-arguments-to-commit-engine-specs.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局生成器は、多数の局の探索木から葉を1つずつ集めて推論をまとめ、各局はSequential Halvingが最後に残した手を指す](batch-zero-self-play-leaves-across-many-games.md)
-- 2026年10月27日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合を較正してから有効にする](resign-zero-self-play-games-below-one-percent-after-calibration.md)
+- 2026年10月27日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合を較正してから有効にする](archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する](commit-zero-self-play-cycles-in-fixed-game-chunks.md)
 - 2026年10月27日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、入力の95面と方策の目標はPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)
 - 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](archive/train-the-zero-value-on-mixed-results-and-root-values.md)（置き換え済み）
@@ -333,3 +333,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月28日 [AlphaZero型探索の学習器は、常に不可能な方策のラベルを損失の正規化から除き、価値を対局結果と根の価値の混合で学び、最終の重みで訓練集合の標本と検証集合を同じ条件で診断する](mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)
 - 2026年10月28日 [対局ハーネスは候補と基準のUSIオプションを`--candidate-option`と`--baseline-option`で受け取り、エンジンの宣言と照合して実行条件に記録する](pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)
 - 2026年10月28日 [審判層は獅子でない駒の捕獲可能性を利きの逆引きで判定し、合法手なしと詰みを駒ごとの生成で最初の逃れる手で打ち切る](judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)
+- 2026年10月28日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)

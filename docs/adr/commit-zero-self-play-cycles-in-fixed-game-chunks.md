@@ -11,7 +11,7 @@ Colab機はセッションの上限時間、残高の枯渇、およびColab側�
 止まった機械で生成した結果は、作業機へ転送していなければ失われる。
 借りた機械は`git archive`で作ったソースの書庫からminaseをビルドするので、リポジトリを持たない。
 隣接する基本シードを使うと、1局ずれた同じ対局列ができる（[隣接する基本シードの教訓](../lessons/derive-seed-adjacent-collision.md)）。
-投了の誤りを判定する割合は、サイクルのすべての対局が終わるまで決まらない（[投了のADR](resign-zero-self-play-games-below-one-percent-after-calibration.md)）。
+投了の誤りを判定する割合は、サイクルのすべての対局が終わるまで決まらない（[投了のADR](archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)）。
 エンジンの開発者は、[自己対局生成器の設計書](../plans/archived/alphazero-selfplay.md)で塊ごとの確定と再開を決め、着手時に塊の定め方とファイルの構成を補った。
 
 ## 決定

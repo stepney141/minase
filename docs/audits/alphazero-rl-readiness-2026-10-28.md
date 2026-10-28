@@ -113,7 +113,7 @@ dlshogiはマスクなしで学習しているので、全体のsoftmaxが学習
 
 ### 投了の較正の標本数
 
-[投了のADR](../adr/resign-zero-self-play-games-below-one-percent-after-calibration.md)は、誤った投了の割合が5%以下なら次のサイクルから投了を有効にすると定める。
+[投了のADR](../adr/archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)は、誤った投了の割合が5%以下なら次のサイクルから投了を有効にすると定める。
 割合は点推定であり、標本数の条件がない。
 投了の条件が成立して最後まで指させた対局が1局で、その1局が負けなら、観測値0%で較正済みと読める。
 独立な二項試行で誤り0件を観測したときの片側95%上限は1−0.05^(1/n)であり、n=1なら95%、n=100なら約2.95%である。

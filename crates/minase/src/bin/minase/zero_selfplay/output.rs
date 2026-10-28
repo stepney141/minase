@@ -78,7 +78,7 @@
 //! `training_positions`はこの一覧に残したファイルで探索した局面数の合計とする。
 //! 割合が未定義の場合は投了のファイルも一覧に含め、除外する場合も確定したファイル自体は保持する。
 //! 除外した対局数の分を投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
-//! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+//! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};

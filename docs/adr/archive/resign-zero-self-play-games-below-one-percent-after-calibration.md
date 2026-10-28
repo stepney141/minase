@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](../resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)によって置き換えられた。
 
 ## コンテキスト
 
-minaseの自己対局は1局の平均が293〜435手と長く（[評価関数の設計書](../plans/archived/evaluation.md)、[世代1の設計書](../plans/archived/evaluation-gen1.md)）、投了がなければ、勝敗の決まった終盤に生成時間の多くを費やす。
+minaseの自己対局は1局の平均が293〜435手と長く（[評価関数の設計書](../../plans/archived/evaluation.md)、[世代1の設計書](../../plans/archived/evaluation-gen1.md)）、投了がなければ、勝敗の決まった終盤に生成時間の多くを費やす。
 一方、誤った投了で終えた対局は勝敗の教師が誤っており、投了した対局だけを見ても、どの対局の投了が誤りだったかは分からない。
 強化学習（RL）の初めのサイクルでは、ネットの価値の出力が意味を持たない。
 
 dlshogiの自己対局は、選んだ手（訪問回数が最大の手）の勝率pについて|2p−1|が0.99を超えた時点、つまり勝率が0.5%を下回るか99.5%を上回った時点で対局を終え、同じ勝率を教師の評価値にも使う（DeepLearningShogiの`selfplay/self_play.cpp`、コミット79df19e）。
 lc0は、投了の条件を満たしても投了させずに最後まで指させる対局の割合（`resign-playthrough`）を設け、誤った投了を監視する。
-自己対局の探索は、根の候補手の多くに少数の訪問を均等に配るGumbel AlphaZeroのSequential Halvingで行う（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-for-zero-self-play-search.md)）。
-探索木の中の反復の勝敗は、直近の出現からの1周だけを調べる近似で判定する（[反復のADR](archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)）。
-エンジンの開発者は、[自己対局生成器の設計書](../plans/archived/alphazero-selfplay.md)で投了の規則を決め、着手時に勝率の定義と誤った投了の数え方を補った。
+自己対局の探索は、根の候補手の多くに少数の訪問を均等に配るGumbel AlphaZeroのSequential Halvingで行う（[Gumbel AlphaZeroのADR](../use-gumbel-alphazero-for-zero-self-play-search.md)）。
+探索木の中の反復の勝敗は、直近の出現からの1周だけを調べる近似で判定する（[反復のADR](score-repetition-in-mcts-by-the-alpha-beta-rules.md)）。
+エンジンの開発者は、[自己対局生成器の設計書](../../plans/archived/alphazero-selfplay.md)で投了の規則を決め、着手時に勝率の定義と誤った投了の数え方を補った。
 
 ## 決定
 
@@ -22,7 +22,7 @@ lc0は、投了の条件を満たしても投了させずに最後まで指さ�
 学習データの各局面の価値（根の期待得点）にも、同じQを記録する。
 ただし、根の勝敗の確定が反復に由来する場合と、根の部分木に反復で打ち切った節点が1つでもある場合は、勝率によらず投了しない。
 最後に残った手が未訪問の場合も投了せず、価値にはGumbelの方式が未訪問の手に与える混合価値（mctxの`qtransform_completed_by_mix_value`の値）を記録する。
-訪問した候補手がすべて確定した負けになると、確定した負けを最後の手の候補から除く規則（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-for-zero-self-play-search.md)の結果の節）により、未訪問の手が最後に残る。
+訪問した候補手がすべて確定した負けになると、確定した負けを最後の手の候補から除く規則（[Gumbel AlphaZeroのADR](../use-gumbel-alphazero-for-zero-self-play-search.md)の結果の節）により、未訪問の手が最後に残る。
 探索がその手を調べていないので、勝率の根拠がないからである。
 
 投了は初めのサイクルでは無効にし、すべての対局を最後まで指させながら、投了の条件が成立した時点を記録する。
@@ -45,7 +45,7 @@ dlshogiと同じ0.5%を閾値とする案は採らなかった。
 ## 結果
 
 投了の有無と最後まで指させる割合は、生成器の起動引数`--playthrough-percent`で受け取り、100は投了の無効を表す。
-切り替えの判断は[強化学習の実行](../plans/alphazero-rl.md)が各サイクルの開始時に行う。
-誤った投了の割合はサイクルのすべての塊が確定するまで決まらないので、生成器は投了で終えた対局を塊ごとに別のファイルに書き、割合が5%を超えたサイクルでは、そのファイルを学習データのファイルの一覧から外す（[塊のADR](commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
+切り替えの判断は[強化学習の実行](../../plans/alphazero-rl.md)が各サイクルの開始時に行う。
+誤った投了の割合はサイクルのすべての塊が確定するまで決まらないので、生成器は投了で終えた対局を塊ごとに別のファイルに書き、割合が5%を超えたサイクルでは、そのファイルを学習データのファイルの一覧から外す（[塊のADR](../commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
 外した対局数の分を生成し直す処理は、強化学習の実行が別の出力先で生成器を起動して行う。
 閾値と上限は`crates/minase/src/bin/minase/zero_selfplay/`の定数`RESIGN_THRESHOLD`と`FALSE_RESIGNATION_LIMIT`にある。

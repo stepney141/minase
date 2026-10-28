@@ -23,7 +23,7 @@
 //! 終えた対局は塊の中で対局番号順に書き、投了で終えた対局は別のファイルに保存する。
 //! 全塊の確定後に、最後まで指させた対局から誤った投了の割合を求め、サイクルの集計と学習ファイルの一覧を書く。
 //! 保存と再開は`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`、
-//! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+//! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 
 mod cli;
 mod error;
@@ -42,11 +42,11 @@ use minase_core::{Rules, rules::parse_rule_set};
 const MAX_PLY: u32 = 1_000;
 
 /// 投了の閾値1%。選んだ手が訪問済みで、そのQが厳密に下回る場合に使う。
-/// `docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+/// `docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 const RESIGN_THRESHOLD: f32 = 0.01;
 
 /// 誤った投了の割合の上限5%。厳密に超えたサイクルの投了ファイルを学習の対象から除く。
-/// `docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+/// `docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 const FALSE_RESIGNATION_LIMIT: f64 = 0.05;
 
 /// 1局の探索木の容量16 MiB。容量不足はエラーにする。

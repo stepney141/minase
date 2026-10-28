@@ -33,7 +33,7 @@
 //! 反復の印は[`Node::has_approximate_result`]で調べ、反復の近似による勝敗の確定と引き分けの両方を含める。正確な裁定は含めない。
 //! 選んだ辺が未訪問なら投了せず、最後まで指させる対局では条件の成立だけを記録する。
 //! 最初に条件を満たした側が最終的に負けなかった場合を誤った投了とし、勝ち、引き分け、手数上限での打ち切りを含める。
-//! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-calibration.md`を参照。
+//! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 //!
 //! 序盤を含めて1,000手に達しても未終局の対局は、学習用の記録をすべて破棄し、集計だけに残す。
 //! `docs/adr/discard-zero-self-play-games-that-reach-1000-plies.md`を参照。

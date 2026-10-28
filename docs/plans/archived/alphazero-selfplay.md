@@ -16,7 +16,7 @@
 Gumbel AlphaZeroの自己対局を多数の局でまとめて推論し、MNSD版2の塊として確定させる生成器`minase data zero-selfplay`を`crates/minase/src/bin/minase/zero_selfplay/`に実装し、検証の節の試験がすべて通った。
 作業機で生成を途中で強制終了して同じ設定で起動し直すと、確定済みの塊は変わらず、欠けた塊だけが生成し直された（[記録](../../measurements/alphazero-selfplay/alphazero-selfplay-resume-check.md)）。
 本書が定めていなかった事項は、着手時にClaudeが決めて「着手時に補った決定」の節に記した。
-仕様は生成器のdocコメントへ、設計判断と着手時に補った決定は4本のADR（[多数の局から葉を集める構成](../../adr/batch-zero-self-play-leaves-across-many-games.md)、[1,000手での打ち切り](../../adr/discard-zero-self-play-games-that-reach-1000-plies.md)、[投了と較正](../../adr/resign-zero-self-play-games-below-one-percent-after-calibration.md)、[塊と再開](../../adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）へ移した。
+仕様は生成器のdocコメントへ、設計判断と着手時に補った決定は4本のADR（[多数の局から葉を集める構成](../../adr/batch-zero-self-play-leaves-across-many-games.md)、[1,000手での打ち切り](../../adr/discard-zero-self-play-games-that-reach-1000-plies.md)、[投了と較正](../../adr/archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)、[塊と再開](../../adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）へ移した。
 
 ## 目的
 
