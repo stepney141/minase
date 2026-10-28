@@ -9,6 +9,7 @@ mod legality;
 mod lion_capture;
 mod lion_moves;
 mod movement;
+mod piece_generation;
 mod pieces;
 mod promotion;
 mod properties;

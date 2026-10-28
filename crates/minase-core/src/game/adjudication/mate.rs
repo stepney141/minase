@@ -35,13 +35,31 @@ pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
 }
 
 /// 手番側が相手の残存王駒をすべて取れるかを返す。
+///
+/// 相手の獅子でない駒の升では、疑似利きが届くことと合法に取れることが一致する
+/// （RULES.md第8条）。王駒が1枚ならこの補題で判定し、2枚なら1手で両方を取る
+/// 必要があるため全合法手を生成する。0枚なら対象がなく、3枚以上なら1手の最大捕獲数
+/// である2枚を超えるので、いずれも偽を返す。
 /// 捕獲手は既出局面を再現しないので、[`is_mate`]の補題により反復のフィルタを掛けない。
 pub(crate) fn can_capture_last_royal(position: &Position, generator: &MoveGenerator) -> bool {
-    let mut moves = Vec::new();
-    generator.generate_moves(position, &mut moves);
-    moves
-        .into_iter()
-        .any(|mv| captures_last_royal(position, mv))
+    let mover = position.side_to_move();
+    let royals = position.royal_pieces(mover.opposite());
+    match royals.popcount() {
+        1 => {
+            let royal = royals.lsb().expect("one royal must be present");
+            !position
+                .attackers_to_by(mover, royal, position.occupied())
+                .is_empty()
+        }
+        2 => {
+            let mut moves = Vec::new();
+            generator.generate_moves(position, &mut moves);
+            moves
+                .into_iter()
+                .any(|mv| captures_last_royal(position, mv))
+        }
+        _ => false,
+    }
 }
 
 /// 手番側に対局規則上の合法手がないかを返す。

@@ -154,7 +154,7 @@ impl<'a> AdjudicationContext<'a> {
                 position,
                 self.state.ply(),
                 mover,
-                move_was_attacking(position, self.generator, mover, candidate),
+                || move_was_attacking(position, self.generator, mover, candidate),
                 move_is_irreversible(candidate, undo),
             )
         {
@@ -168,7 +168,7 @@ impl<'a> AdjudicationContext<'a> {
     fn exhaustion_transition(&self, position: &Position) -> PieceExhaustionTransition {
         if self.rules.exhaustion == ExhaustionRule::E3 {
             PieceExhaustionTransition {
-                result: bare_king_result(position, self.generator),
+                result: bare_king_result(position),
                 next_grace: false,
             }
         } else {

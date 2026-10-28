@@ -117,12 +117,15 @@ impl R1History {
     ///
     /// 仮想着手を含めて可逆手が12手以上続くことを要する(第31条R1)。
     /// 詰み判定（第21条第3項c・d）が回避手の即時勝利・引き分けを調べるために使う。
+    /// 不可逆手、可逆手の不足、および出現回数の不足による早期終了を通過した場合にだけ、
+    /// `is_attacking`を1回呼ぶ。攻撃的着手の判定は履歴を変えないので、
+    /// 呼ぶ時点を遅らせても裁定の結果は変わらない。
     pub(crate) fn candidate_result(
         &self,
         position: &Position,
         ply: u32,
         mover: Color,
-        is_attacking: bool,
+        is_attacking: impl FnOnce() -> bool,
         irreversible: bool,
     ) -> Option<GameResult> {
         if irreversible || self.reversible_plies < R1_MIN_REVERSIBLE_PLIES - 1 {
@@ -136,7 +139,7 @@ impl R1History {
             .checked_add(1)
             .expect("a game cannot exceed u32::MAX plies");
         let counters =
-            updated_attacking_counters(self.consecutive_attacking_moves, mover, is_attacking);
+            updated_attacking_counters(self.consecutive_attacking_moves, mover, is_attacking());
         Some(r1_repetition_result(
             candidate_ply,
             state.first_ply,
@@ -218,7 +221,12 @@ pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
 ///
 /// 着手側に相手のいずれかの王駒を取る局面合法手があるか、
 /// 動かした駒に捕獲の局面合法手があれば攻撃的である（第31条R1）。
-/// じっとも、元の升にいる駒が相手駒を取れる状態なら攻撃的着手に数える。
+/// 第1の条件では、対象が獅子でない王駒なので、升ごとの疑似利きと合法な捕獲の有無が
+/// 一致する補題を使う（RULES.md第8条）。第2の条件の捕獲先は獅子であり得るため、
+/// 到達升の駒1枚の捕獲手を生成し、獅子の捕獲制限と先獅子の状態も考慮する。
+/// この列は、全件生成から移動元が`played.to`の捕獲手を抜き出した列と一致する。
+/// `position`は着手後の局面で、`played.to`に`mover`の駒があることを前提とする。
+/// じっとは到達升が元の升なので同じ扱いでよく、その駒に捕獲手があれば攻撃的着手に数える。
 /// この真偽値を用いる判定区間は[`r1_repetition_result`]に従う。
 pub fn move_was_attacking(
     position: &Position,
@@ -226,19 +234,21 @@ pub fn move_was_attacking(
     mover: Color,
     played: Move,
 ) -> bool {
-    let probe = position.clone_with_side_to_move(mover);
-    let opponent_royals = probe.royal_pieces(mover.opposite());
-    let destination = played.to;
-    let mut moves = Vec::new();
-    generator.generate_moves(&probe, &mut moves);
+    if position
+        .royal_pieces(mover.opposite())
+        .into_iter()
+        .any(|royal| {
+            !position
+                .attackers_to_by(mover, royal, position.occupied())
+                .is_empty()
+        })
+    {
+        return true;
+    }
 
-    moves.into_iter().any(|candidate| {
-        let captures = probe.captured_squares(candidate);
-        captures
-            .into_iter()
-            .flatten()
-            .any(|square| opponent_royals.contains(square))
-            || (candidate.from == destination
-                && captures.into_iter().any(|capture| capture.is_some()))
-    })
+    let probe = position.clone_with_side_to_move(mover);
+    let mut base_moves = Vec::new();
+    let mut moves = Vec::new();
+    generator.generate_captures_from(&probe, played.to, &mut base_moves, &mut moves);
+    !moves.is_empty()
 }

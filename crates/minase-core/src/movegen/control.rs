@@ -61,7 +61,10 @@ impl Position {
     /// 結果と`occupied`の積を取ることで、交換列の途中で除いた駒が
     /// 固定利きや特殊移動の到達範囲から再び攻撃駒として現れることを防ぐ。
     /// 静的交換評価と王駒への利き判定は片側の色しか使わないため、反対側は計算しない。
-    /// 規則を考慮しない疑似利きなので、審判層の判定の代わりにはならない。
+    /// 実際の占有状態で、相手の獅子でない駒の升に疑似利きが届くことと、その駒を取る
+    /// 合法手があることは一致する。王手を定めるRULES.md第8条はこの一致を前提とし、
+    /// 審判層の王駒の捕獲可能性とR1の攻撃的着手の判定もこれに基づく。
+    /// 相手の獅子の升では捕獲制限があるため、疑似利きと合法な捕獲の有無は一致しない。
     pub fn attackers_to_by(&self, color: Color, square: Square, occupied: Bitboard) -> Bitboard {
         let tables = attack_tables();
         (ordinary_attackers_to(tables, self, color, square, occupied)

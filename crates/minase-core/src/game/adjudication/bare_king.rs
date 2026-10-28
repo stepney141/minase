@@ -3,15 +3,11 @@
 use super::super::result::{DrawReason, GameResult, WinReason};
 use super::exhaustion::dead_pieces;
 use crate::board::{Bitboard, Square};
-use crate::movegen::MoveGenerator;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 /// 裸玉即時裁定(第32条E3)の結果を現在局面から返す。
-pub(super) fn bare_king_result(
-    position: &Position,
-    generator: &MoveGenerator,
-) -> Option<GameResult> {
+pub(super) fn bare_king_result(position: &Position) -> Option<GameResult> {
     let bare_kings = Color::ALL.map(|color| bare_king_square(position, color));
 
     for bare_color in Color::ALL {
@@ -25,7 +21,7 @@ pub(super) fn bare_king_result(
         // 条件(c): 価値ある駒が3枚以上か、いずれも裸玉に隣接していない。
         if !position.royal_pieces(opponent).is_empty()
             && effective_pieces.popcount() >= 2
-            && !can_capture_any_royal(position, generator, bare_color)
+            && !can_capture_any_royal(position, bare_color)
             && (effective_pieces.popcount() >= 3
                 || effective_pieces
                     .into_iter()
@@ -42,7 +38,7 @@ pub(super) fn bare_king_result(
     if bare_kings.into_iter().all(|king| king.is_some())
         && Color::ALL
             .into_iter()
-            .all(|color| !can_capture_any_royal(position, generator, color))
+            .all(|color| !can_capture_any_royal(position, color))
     {
         Some(GameResult::Draw {
             reason: DrawReason::BareKing,
@@ -70,23 +66,18 @@ fn effective_pieces(position: &Position, color: Color) -> Bitboard {
 }
 
 /// 指定側の駒が相手のいずれかの王駒を次の着手で取れるかを返す（第22条第8項、第32条E3）。
-pub(super) fn can_capture_any_royal(
-    position: &Position,
-    generator: &MoveGenerator,
-    attacker: Color,
-) -> bool {
-    let probe = position.clone_with_side_to_move(attacker);
-    let opponent_royals = probe.royal_pieces(attacker.opposite());
-    let mut moves = Vec::new();
-    generator.generate_moves(&probe, &mut moves);
-
-    moves.into_iter().any(|candidate| {
-        probe
-            .captured_squares(candidate)
-            .into_iter()
-            .flatten()
-            .any(|square| opponent_royals.contains(square))
-    })
+///
+/// 王駒は獅子でないため、各升へ疑似利きが届くことと合法に取れることが一致する
+/// （RULES.md第8条）。王駒の枚数によらず、その升ごとの判定の論理和を返す。
+pub(super) fn can_capture_any_royal(position: &Position, attacker: Color) -> bool {
+    position
+        .royal_pieces(attacker.opposite())
+        .into_iter()
+        .any(|royal| {
+            !position
+                .attackers_to_by(attacker, royal, position.occupied())
+                .is_empty()
+        })
 }
 
 /// 2升がチェビシェフ距離1で隣接するかを返す。

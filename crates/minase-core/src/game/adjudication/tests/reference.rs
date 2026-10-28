@@ -69,7 +69,7 @@ fn articles_8_22_31_function_results_match_full_generation() {
                 );
                 for attacker in Color::ALL {
                     assert_eq!(
-                        can_capture_any_royal(&position, &generator, attacker),
+                        can_capture_any_royal(&position, attacker),
                         oracle_can_capture_any_royal(&position, &generator, attacker),
                         "rules={rules:?}, attacker={attacker:?}"
                     );

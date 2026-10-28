@@ -18,6 +18,7 @@ pub use checked::IllegalMove;
 pub use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 
 use crate::attacks::{AttackTables, attack_tables};
+use crate::board::Square;
 use crate::mv::Move;
 use crate::position::Position;
 use crate::rules::MoveRules;
@@ -70,6 +71,35 @@ impl MoveGenerator {
         generate::generate_moves::<false, false>(self, position, &mut Vec::new(), output);
     }
 
+    /// `from`にある手番側の駒1枚の合法手を`output`へ追記する。
+    ///
+    /// 追記する列は、[`Self::generate_moves`]の出力から移動元が`from`の手を
+    /// 抜き出した列と、要素、重複、順序まで一致する。
+    /// `base_moves`は生成開始時に消去する作業領域であり、消去と再利用の契約は
+    /// [`Self::generate_captures_with_scratch`]と同じである。呼び出し後の内容を結果として使わない。
+    ///
+    /// # Panics
+    ///
+    /// 呼び出し側は`from`に手番側の駒があることを保証する。駒がないか、色が違えばパニックする。
+    pub(crate) fn generate_moves_from(
+        &self,
+        position: &Position,
+        from: Square,
+        base_moves: &mut Vec<Move>,
+        output: &mut Vec<Move>,
+    ) {
+        let piece = position.piece_at(from).expect("from must contain a piece");
+        let color = position.side_to_move();
+        assert!(
+            piece.color() == Some(color),
+            "from must contain a side-to-move piece"
+        );
+        let kind = piece.kind().expect("board piece must have a valid kind");
+        generate::generate_piece_moves::<false, false>(
+            self, position, color, kind, from, base_moves, output,
+        );
+    }
+
     /// `position`の手番側の捕獲を伴う合法手を`output`へ追加する。
     ///
     /// 追加する列は、[`Self::generate_moves`]の出力を[`Position::captured_squares`]が1升以上を返す手に絞った列と、要素、重複、順序まで一致する。
@@ -93,6 +123,35 @@ impl MoveGenerator {
         output: &mut Vec<Move>,
     ) {
         generate::generate_moves::<true, false>(self, position, base_moves, output);
+    }
+
+    /// `from`にある手番側の駒1枚の捕獲を伴う合法手を`output`へ追記する。
+    ///
+    /// 追記する列は、[`Self::generate_captures`]の出力から移動元が`from`の手を
+    /// 抜き出した列と、要素、重複、順序まで一致する。
+    /// `base_moves`は生成開始時に消去する作業領域であり、消去と再利用の契約は
+    /// [`Self::generate_captures_with_scratch`]と同じである。呼び出し後の内容を結果として使わない。
+    ///
+    /// # Panics
+    ///
+    /// 呼び出し側は`from`に手番側の駒があることを保証する。駒がないか、色が違えばパニックする。
+    pub(crate) fn generate_captures_from(
+        &self,
+        position: &Position,
+        from: Square,
+        base_moves: &mut Vec<Move>,
+        output: &mut Vec<Move>,
+    ) {
+        let piece = position.piece_at(from).expect("from must contain a piece");
+        let color = position.side_to_move();
+        assert!(
+            piece.color() == Some(color),
+            "from must contain a side-to-move piece"
+        );
+        let kind = piece.kind().expect("board piece must have a valid kind");
+        generate::generate_piece_moves::<true, false>(
+            self, position, color, kind, from, base_moves, output,
+        );
     }
 
     /// [`Self::generate_moves`]の非捕獲手だけを、同じ順序で`output`へ追加する。
@@ -125,16 +184,7 @@ impl MoveGenerator {
         if piece.color() != Some(position.side_to_move()) {
             return false;
         }
-        let kind = piece.kind().expect("board piece must have a valid kind");
-        generate::generate_piece_moves::<false, false>(
-            self,
-            position,
-            position.side_to_move(),
-            kind,
-            candidate.from,
-            base_moves,
-            moves,
-        );
+        self.generate_moves_from(position, candidate.from, base_moves, moves);
         moves.contains(&candidate)
     }
 

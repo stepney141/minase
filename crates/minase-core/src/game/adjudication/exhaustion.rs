@@ -41,6 +41,9 @@ pub(super) struct PieceExhaustionTransition {
 /// 余分な駒が不成の歩兵または仲人なら成るまで勝ちとせず、成った後は通常の猶予を適用する
 /// （第2項・第3項）。猶予は、王駒だけの側に手番があり、余分な駒または相手の最後の王駒を
 /// 次の1手で取れる場合に与える（第5項）。余分な駒を持つ側の手番なら直ちにその側の勝ちとなる。
+/// 猶予の判定では、王駒だけの側の王駒1枚の合法手を生成する。死に駒は動けず、
+/// 王将と太子を併せ持つ側は第9項により余分な駒を持つ側になるため、動かせる駒はその1枚だけである。
+/// 余分な駒は獅子であり得るので、疑似利きではなく合法手生成で捕獲制限も検査する。
 /// 猶予中に余分な駒を取れば駒枯れによる勝利は成立せず、第8項の条件を改めて判定する。
 /// 死に駒を取っても余分な駒は残るので、その所有者の勝ちとなる（第6項・第7項）。
 /// 最後の王駒の捕獲による勝利は、呼び出し側が先に裁定する（第21条第1項）。
@@ -62,7 +65,7 @@ pub(crate) fn piece_exhaustion_outcome(
     if remaining.into_iter().all(|pieces| pieces.popcount() == 1)
         && Color::ALL
             .into_iter()
-            .all(|color| !can_capture_any_royal(position, generator, color))
+            .all(|color| !can_capture_any_royal(position, color))
     {
         return PieceExhaustionOutcome::Draw;
     }
@@ -97,8 +100,12 @@ pub(crate) fn piece_exhaustion_outcome(
     }
 
     // 第22条第4項・第5項・第9項: 死に駒を除く相手の王駒または余分な駒を取れる場合に限る。
+    let royal = royals[position.side_to_move().index()]
+        .lsb()
+        .expect("the side without an extra piece must have one royal");
+    let mut base_moves = Vec::new();
     let mut moves = Vec::new();
-    generator.generate_moves(position, &mut moves);
+    generator.generate_moves_from(position, royal, &mut base_moves, &mut moves);
     if moves.into_iter().any(|candidate| {
         position
             .captured_squares(candidate)

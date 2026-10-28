@@ -9,6 +9,7 @@ use super::*;
 use crate::game::result::DrawReason;
 use crate::position::{PositionBuilder, Undo};
 use crate::rules::RuleCode;
+use std::cell::Cell;
 
 fn promoted(color: Color, kind: PieceKind) -> PieceCode {
     PieceCode::new_promoted(color, kind).unwrap()
@@ -35,10 +36,7 @@ fn assert_any_royal(
         oracle_can_capture_any_royal(position, generator, attacker),
         expected
     );
-    assert_eq!(
-        can_capture_any_royal(position, generator, attacker),
-        expected
-    );
+    assert_eq!(can_capture_any_royal(position, attacker), expected);
 }
 
 fn assert_exhaustion(
@@ -379,11 +377,10 @@ fn article_32_bare_king_outcomes_match_the_reference() {
         }
         let board = position(Color::Black, &pieces);
         assert_eq!(oracle_bare_king_result(&board, &generator), expected);
-        assert_eq!(bare_king_result(&board, &generator), expected);
+        assert_eq!(bare_king_result(&board), expected);
     }
 }
 
-// フェーズ2で攻撃判定の引数がクロージャになった場合は、この入口だけを変える。
 fn production_r1_candidate(
     state: &AdjudicationState,
     position: &Position,
@@ -399,7 +396,7 @@ fn production_r1_candidate(
         position,
         state.ply(),
         mover,
-        move_was_attacking(position, generator, mover, candidate),
+        || move_was_attacking(position, generator, mover, candidate),
         move_is_irreversible(candidate, undo),
     )
 }
@@ -532,6 +529,108 @@ fn article_31_r1_candidate_gates_match_recording_a_cloned_history() {
     let moves: Vec<_> = cycle.into_iter().cycle().take(10).collect();
     record_sequence(&mut board, &mut state, &generator, &moves);
     assert_r1_candidate(board, &state, &generator, cycle[0], None);
+}
+
+fn assert_r1_candidate_attack_calls(
+    mut position: Position,
+    state: &AdjudicationState,
+    generator: &MoveGenerator,
+    candidate: Move,
+    expected_calls: u32,
+    expected_result: Option<GameResult>,
+) {
+    let RepetitionHistory::R1(history) = state.repetition() else {
+        panic!("R1 fixture requires R1 history");
+    };
+    let before = history.clone();
+    let mover = position.side_to_move();
+    let undo = position
+        .try_make_move_with_undo(candidate, generator)
+        .unwrap();
+    let calls = Cell::new(0);
+    let result = history.candidate_result(
+        &position,
+        state.ply(),
+        mover,
+        || {
+            calls.set(calls.get() + 1);
+            move_was_attacking(&position, generator, mover, candidate)
+        },
+        move_is_irreversible(candidate, &undo),
+    );
+    assert_eq!(calls.get(), expected_calls, "candidate={candidate:?}");
+    assert_eq!(result, expected_result);
+    assert_eq!(*history, before);
+}
+
+/// RULES.md第31条R1の前提を満たさない候補は攻撃判定を呼ばず、裁定する候補だけが
+/// 1回呼ぶ。局面と着手列は候補の裁定結果を照合する固定例と同じものを用いる。
+#[test]
+fn article_31_r1_candidate_evaluates_attack_only_when_adjudicating() {
+    let generator = MoveGenerator::standard();
+    let start = position(
+        Color::Black,
+        &[
+            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+            (sq(10, 9), piece(Color::Black, PieceKind::Pawn)),
+            (sq(11, 11), piece(Color::White, PieceKind::King)),
+        ],
+    );
+    let cycle = [
+        step(sq(0, 0), sq(0, 1)),
+        step(sq(11, 11), sq(11, 10)),
+        step(sq(0, 1), sq(0, 0)),
+        step(sq(11, 10), sq(11, 11)),
+    ];
+    let mut board = start.clone();
+    let mut state = r1_state(&board);
+    let moves: Vec<_> = cycle.into_iter().cycle().take(11).collect();
+    record_sequence(&mut board, &mut state, &generator, &moves);
+    assert_r1_candidate_attack_calls(
+        board.clone(),
+        &state,
+        &generator,
+        cycle[3],
+        1,
+        Some(GameResult::Draw {
+            reason: DrawReason::Repetition,
+        }),
+    );
+    // 不可逆な捕獲と未出現の局面への移動は、攻撃判定を必要としない。
+    for candidate in [step(sq(11, 10), sq(10, 9)), step(sq(11, 10), sq(10, 10))] {
+        assert_r1_candidate_attack_calls(board.clone(), &state, &generator, candidate, 0, None);
+    }
+
+    // 候補込み12手でも、6手周期の初期局面は3回目にとどまる。
+    let cycle = [
+        step(sq(0, 0), sq(0, 1)),
+        step(sq(11, 11), sq(11, 10)),
+        step(sq(0, 1), sq(1, 1)),
+        step(sq(11, 10), sq(10, 10)),
+        step(sq(1, 1), sq(0, 0)),
+        step(sq(10, 10), sq(11, 11)),
+    ];
+    let mut board = start;
+    let mut state = r1_state(&board);
+    let moves: Vec<_> = cycle.into_iter().cycle().take(11).collect();
+    record_sequence(&mut board, &mut state, &generator, &moves);
+    assert_r1_candidate_attack_calls(board, &state, &generator, cycle[5], 0, None);
+
+    // 4回以上出現していても、候補込み11手では可逆手が不足する。
+    let mut board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+            (sq(2, 2), piece(Color::Black, PieceKind::Lion)),
+            (sq(11, 11), piece(Color::White, PieceKind::King)),
+            (sq(9, 9), piece(Color::White, PieceKind::Lion)),
+        ],
+    );
+    let mut state = r1_state(&board);
+    let cycle = [step(sq(2, 2), sq(2, 2)), step(sq(9, 9), sq(9, 9))];
+    let moves: Vec<_> = cycle.into_iter().cycle().take(10).collect();
+    record_sequence(&mut board, &mut state, &generator, &moves);
+    assert_r1_candidate_attack_calls(board, &state, &generator, cycle[0], 0, None);
 }
 
 fn assert_mate(position: &mut Position, context: &AdjudicationContext<'_>, expected: bool) {
