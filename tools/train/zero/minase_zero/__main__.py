@@ -11,6 +11,7 @@
   --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
 - train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
+- external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
 - run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--window-positionsで学習窓の
@@ -27,6 +28,7 @@ from pathlib import Path
 import pickle
 import sys
 
+from .external import external_eval
 from .rl import register_seed_range, resign_calibration
 from .runner import Options, Remote, Runner, add_arguments
 from .train import fixture_eval, initialize, resume, train_new
@@ -69,6 +71,14 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     for name in ("checkpoint", "onnx", "fixture", "out"):
         fixture.add_argument(f"--{name}", type=Path, required=True)
 
+    external = commands.add_parser("external-eval", allow_abbrev=False)
+    for name in ("checkpoint", "out"):
+        external.add_argument(f"--{name}", type=Path, required=True)
+    external.add_argument("--data", nargs="+", required=True)
+    for name in ("games", "seed"):
+        external.add_argument(f"--{name}", type=int, required=True)
+    external.add_argument("--device", choices=("cuda", "cpu"), required=True)
+
     ledger = commands.add_parser("seed-ledger", allow_abbrev=False)
     ledger.add_argument("--ledger", type=Path, required=True)
     ledger.add_argument("--name", required=True)
@@ -90,6 +100,8 @@ def main() -> int:
             initialize(**args)
         elif command == "fixture-eval":
             fixture_eval(**args)
+        elif command == "external-eval":
+            external_eval(**args)
         elif command == "seed-ledger":
             print(json.dumps(register_seed_range(**args), ensure_ascii=False, allow_nan=False))
         elif command == "resign-calibration":

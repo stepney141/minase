@@ -1,6 +1,6 @@
 //! 読み込み中にGILを解放し、Rustの列をPythonのbytesへ渡す束縛。
 
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use minase_core::Rules;
 use pyo3::{
@@ -85,6 +85,19 @@ fn read_selected(
     record_dict(py, &records)
 }
 
+/// GILを解放して全手順を再生し、指定した基本シード・対局番号の集合の採用局面を返す。
+#[pyfunction]
+fn read_games(
+    py: Python<'_>,
+    path: String,
+    games: HashSet<(u64, u32)>,
+) -> PyResult<Bound<'_, PyDict>> {
+    let records = py
+        .detach(|| crate::read_games(Path::new(&path), &games))
+        .map_err(|error| python_error(&path, error))?;
+    record_dict(py, &records)
+}
+
 fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDict>> {
     let header = &info.header;
     let output = PyDict::new(py);
@@ -153,5 +166,6 @@ fn minase_mnsd_reader(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(read, module)?)?;
     module.add_function(wrap_pyfunction!(scan, module)?)?;
     module.add_function(wrap_pyfunction!(read_selected, module)?)?;
+    module.add_function(wrap_pyfunction!(read_games, module)?)?;
     Ok(())
 }

@@ -112,14 +112,15 @@ def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
     """
     path = Path(path).resolve(strict=True)
     raw = minase_mnsd_reader.read(str(path))
-    info = _file_info(path, raw)
+    info = _file_info(path, raw, teacher_kind=1)
     return _dataset(raw, info), info
 
 
-def _file_info(path: Path, raw: dict) -> FileInfo:
+def _file_info(path: Path, raw: dict, *, teacher_kind: int) -> FileInfo:
     header = Header(**{field.name: raw[field.name] for field in fields(Header)})
-    if header.teacher_kind != 1:
-        raise ValueError(f"{path}: teacher must be MCTS")
+    if header.teacher_kind != teacher_kind:
+        teacher = {0: "alpha-beta", 1: "MCTS"}[teacher_kind]
+        raise ValueError(f"{path}: teacher must be {teacher}")
     if header.game_count != 0 and header.origin != 0:
         raise ValueError(f"{path}: origin must be random selfplay")
     if not header.engine_default:
@@ -209,12 +210,12 @@ def sample_training_indices(total: int, count: int, seed: int) -> NDArray[np.int
 
 
 def _scan_file(path: Path) -> FileInfo:
-    return _file_info(path, minase_mnsd_reader.scan(str(path)))
+    return _file_info(path, minase_mnsd_reader.scan(str(path)), teacher_kind=1)
 
 
 def _read_selected(info: FileInfo, indices: list[int], include_validation: bool) -> Dataset:
     raw = minase_mnsd_reader.read_selected(str(info.path), indices, include_validation)
-    if _file_info(info.path, raw) != info:
+    if _file_info(info.path, raw, teacher_kind=1) != info:
         raise ValueError(f"{info.path}: file metadata changed between counting and replay")
     dataset = _dataset(raw, info)
     validation_count = info.validation_count if include_validation else 0

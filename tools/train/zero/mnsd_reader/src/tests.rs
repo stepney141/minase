@@ -526,6 +526,119 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
 }
 
 #[test]
+fn game_selection_uses_full_keys_without_the_training_validation_split() {
+    // 対局1は訓練、4は検証。選択した対局の採用項目0,1,6をすべて保持する。
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[
+            alpha_game(1, 13, Position::initial()),
+            alpha_game(4, 30, Position::initial()),
+        ],
+    );
+    for (keys, games, plies) in [
+        (vec![(11, 1), (12, 4)], vec![1, 1, 1], vec![13, 14, 19]),
+        (vec![(12, 1), (11, 4)], vec![4, 4, 4], vec![30, 31, 36]),
+        (
+            vec![(11, 4), (11, 1), (11, 99)],
+            vec![1, 1, 1, 4, 4, 4],
+            vec![13, 14, 19, 30, 31, 36],
+        ),
+    ] {
+        let selected = read_games(&path, &keys.into_iter().collect()).unwrap();
+        assert_eq!(selected.games, games);
+        assert_eq!(selected.plies, plies);
+        assert_eq!(selected.boards.len(), games.len() * 144);
+        assert_eq!(selected.info.game_numbers, [1, 4]);
+        assert_eq!(selected.info.header.game_count(), 2);
+        assert_eq!(selected.info.header.entry_count(), 14);
+        assert_eq!(
+            (selected.info.training_count, selected.info.validation_count),
+            (3, 3)
+        );
+        assert_eq!(selected.policy_offsets.len(), games.len() + 1);
+        assert_eq!(selected.legal_offsets.len(), games.len() + 1);
+        for values in selected.values.chunks_exact(3) {
+            assert_eq!(values, [100, -200, -32768]);
+        }
+        for probabilities in selected.policy_probabilities.chunks_exact(3) {
+            assert_eq!(probabilities, [65535, 10000, 55535]);
+        }
+    }
+}
+
+#[test]
+fn empty_game_selection_preserves_metadata_without_position_arrays() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[alpha_game(1, 0, Position::initial())],
+    );
+    for keys in [HashSet::new(), HashSet::from([(12, 1), (11, 99)])] {
+        let selected = read_games(&path, &keys).unwrap();
+        assert_eq!(selected.info.game_numbers, [1]);
+        assert_eq!(
+            (selected.info.training_count, selected.info.validation_count),
+            (3, 0)
+        );
+        assert!(selected.games.is_empty());
+        assert!(selected.boards.is_empty());
+        assert!(selected.policy_from.is_empty());
+        assert!(selected.legal_from.is_empty());
+        assert_eq!(selected.policy_offsets, [0]);
+        assert_eq!(selected.legal_offsets, [0]);
+    }
+    let path = fixture.write(TeacherKind::AlphaBeta, &[]);
+    let empty = read_games(&path, &HashSet::from([(11, 1)])).unwrap();
+    assert!(empty.info.game_numbers.is_empty());
+    assert!(empty.boards.is_empty());
+    assert_eq!(empty.policy_offsets, [0]);
+    assert_eq!(empty.legal_offsets, [0]);
+}
+
+#[test]
+fn game_selection_still_replays_and_rejects_invalid_unselected_games() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[
+            alpha_game(1, 0, Position::initial()),
+            alpha_game(4, 0, Position::initial()),
+        ],
+    );
+    // 選択しない対局1の最初の着手を欠かす。対局4だけを選んでも形式検査は必要である。
+    let mut bytes = fs::read(&path).unwrap();
+    let entry = records::HEADER_LEN + records::GAME_HEADER_LEN;
+    bytes[entry..entry + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+    fs::write(&path, bytes).unwrap();
+    for keys in [HashSet::new(), HashSet::from([(11, 4)])] {
+        assert!(matches!(
+            read_games(&path, &keys),
+            Err(Error::Format(records::Error::MissingPlayedMove))
+        ));
+    }
+}
+
+#[test]
+fn game_selection_accepts_mcts_games_without_retained_positions() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::Mcts,
+        &[unselected_game(4, Origin::RandomSelfplay)],
+    );
+    let selected = read_games(&path, &HashSet::from([(11, 4)])).unwrap();
+    assert_eq!(selected.info.header.teacher_kind(), TeacherKind::Mcts);
+    assert_eq!(selected.info.game_numbers, [4]);
+    assert_eq!(
+        (selected.info.training_count, selected.info.validation_count),
+        (0, 0)
+    );
+    assert!(selected.boards.is_empty());
+    assert_eq!(selected.policy_offsets, [0]);
+    assert_eq!(selected.legal_offsets, [0]);
+}
+
+#[test]
 fn mcts_scan_and_selected_columns_match_the_generated_fixture() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");
     let all = read_file(&path).unwrap();

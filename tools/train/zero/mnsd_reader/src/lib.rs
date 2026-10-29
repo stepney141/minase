@@ -9,7 +9,9 @@
 //! `scan(path)`は手順を再生せずにtraining_countとvalidation_countを数える。
 //! `read_selected(path, training_indices, include_validation)`は全手順を再生し、
 //! ファイル内の訓練局面の通し番号で指定した局面と、指定時だけ検証局面を返す。
-//! 両関数の件数は抽出前の値であり、完全な形式検査は再生時に行う。
+//! `read_games(path, games)`は基本シードと対局番号の組の集合を受け取り、
+//! 訓練・検証の分割を問わず、指定した対局の採用局面だけを返す。
+//! いずれも件数は抽出前の値であり、完全な形式検査は再生時に行う。
 //!
 //! 配列はすべてリトルエンディアンのbytesであり、NumPyの`frombuffer`で読める。
 //! nは保持した局面数、mはその全候補数、lはその全合法手数、gはファイルの全対局数を表す。
@@ -39,7 +41,7 @@
 //! | `legal_to` | u8 | l。移動先のdense_index |
 //! | `legal_promote` | u8 | l。成り0か1 |
 
-use std::{fmt, fs::File, io, io::BufReader, path::Path};
+use std::{collections::HashSet, fmt, fs::File, io, io::BufReader, path::Path};
 
 use minase::training::records::{self, Exclusion, Header, Origin, Outcome, Policy, Reader, Value};
 use minase_core::{GameResult, Move, MoveGenerator};
@@ -227,7 +229,20 @@ impl Records {
 /// # Errors
 /// 入出力、形式、由来の混在、合成の由来、および手数の桁あふれを専用エラーで返す。
 pub fn read_file(path: &Path) -> Result<Records, Error> {
-    read_positions(path, |_, _| true)
+    read_positions(path, |_, _, _| true)
+}
+
+/// 全手順を再生し、基本シードと対局番号の組が集合に含まれる対局の採用局面を返す。
+///
+/// 訓練・検証の分割を問わず、価値を持ち除外されていない項目を入力順に保持する。
+/// 集合は複数ファイルの対局を含めてよく、このファイルにない組は選択されない。
+/// 空集合なら局面は保持せず、ファイル全体のヘッダ・対局番号・件数だけを返す。
+/// 復号器が一時的に保持する1対局分を除き、局面のメモリは選択した局面数に比例する。
+///
+/// # Errors
+/// 選択しなかった対局も再生し、`read_file`と同じ形式・由来の検査を行う。
+pub fn read_games(path: &Path, games: &HashSet<(u64, u32)>) -> Result<Records, Error> {
+    read_positions(path, |key, _, _| games.contains(&key))
 }
 
 /// 全手順を再生し、指定した訓練局面と、指定時だけ検証局面を保持する。
@@ -246,7 +261,7 @@ pub fn read_selected(
         return Err(Error::InvalidSelection);
     }
     let mut selected = training_indices.iter().peekable();
-    let output = read_positions(path, |validation, index| {
+    let output = read_positions(path, |_, validation, index| {
         if validation {
             include_validation
         } else if selected.peek().is_some_and(|&&next| next == index) {
@@ -270,7 +285,10 @@ fn is_validation(seed: u64, game: u32) -> bool {
     (value ^ (value >> 31)).is_multiple_of(20)
 }
 
-fn read_positions(path: &Path, mut keep: impl FnMut(bool, u64) -> bool) -> Result<Records, Error> {
+fn read_positions(
+    path: &Path,
+    mut keep: impl FnMut((u64, u32), bool, u64) -> bool,
+) -> Result<Records, Error> {
     let file = File::open(path).map_err(Error::Io)?;
     let mut reader = Reader::new(BufReader::new(file))?;
     let mut output = Records::new(reader.header().clone());
@@ -279,6 +297,7 @@ fn read_positions(path: &Path, mut keep: impl FnMut(bool, u64) -> bool) -> Resul
     while let Some(game) = reader.read_game()? {
         let record = game.record();
         let number = record.game_number();
+        let key = (output.info.header.seed(), number);
         output.info.add_game(number, record.origin())?;
         let validation = is_validation(output.info.header.seed(), number);
         let outcome = match record.outcome() {
@@ -305,7 +324,7 @@ fn read_positions(path: &Path, mut keep: impl FnMut(bool, u64) -> bool) -> Resul
                 output.info.training_count += 1;
                 index
             };
-            if !keep(validation, index_in_split) {
+            if !keep(key, validation, index_in_split) {
                 continue;
             }
             let ply = u16::try_from(index)
