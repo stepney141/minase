@@ -144,10 +144,11 @@ class RunnerCase(unittest.TestCase):
         write_json(self.reference, {"games": 20, "training_positions": 2000})
         self.options = Options(
             root=self.root, session="test-session", generation_commit=GENERATION_COMMIT,
+            cycles_dir=Path("cycles"), base_cycles_dir=Path("cycles"), branch_from=0,
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
-            window_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
+            window_positions=1000, batch_size=256, lr=0.01, lr_schedule="constant", momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
             selfplay_weights="raw", ema_period_samples=0, ema_scale=0,
             train_seed_base=123, teacher_stats=self.directory / "teacher_stats", poll_seconds=60,
@@ -179,9 +180,9 @@ class CalculationTests(RunnerCase):
 
     def test_previous_cycle_ratio_includes_regenerated_games(self):
         self.summary(2, "selfplay", {"games": 100, "training_positions": 12000})
-        self.assertEqual(game_counts(summaries(self.root, 2), 1000000, 20), (8334, 417))
+        self.assertEqual(game_counts(summaries(self.options, 2), 1000000, 20), (8334, 417))
         self.summary(2, "selfplay-regen", {"games": 20, "training_positions": 3000})
-        self.assertEqual(game_counts(summaries(self.root, 2), 1000000, 20), (8000, 400))
+        self.assertEqual(game_counts(summaries(self.options, 2), 1000000, 20), (8000, 400))
 
     def test_zero_or_negative_reference_is_rejected(self):
         for games, positions in ((0, 100), (10, 0), (-1, 100)):
@@ -191,13 +192,13 @@ class CalculationTests(RunnerCase):
                     game_counts([self.reference], 1000, 20)
 
     def test_resignation_starts_disabled_and_uses_previous_calibration(self):
-        self.assertEqual(resignation(self.root, 1), (100, {
+        self.assertEqual(resignation(self.options, 1), (100, {
             "n": 0, "false_resignations": 0, "upper_bound": None, "enable_resignation": False,
         }))
         for n, errors, expected in ((100, 1, 20), (100, 2, 100), (99, 0, 100), (0, 0, 100)):
             with self.subTest(n=n, errors=errors):
                 self.summary(1, "selfplay", {"resign_triggered_playthrough_games": n, "false_resignations": errors})
-                percent, calibration = resignation(self.root, 2)
+                percent, calibration = resignation(self.options, 2)
                 self.assertEqual(percent, expected)
                 self.assertEqual(calibration["n"], n)
                 self.assertEqual(calibration["false_resignations"], errors)
@@ -205,7 +206,7 @@ class CalculationTests(RunnerCase):
     def test_resignation_adds_regenerated_samples(self):
         self.summary(2, "selfplay", {"resign_triggered_playthrough_games": 50, "false_resignations": 1})
         self.summary(2, "selfplay-regen", {"resign_triggered_playthrough_games": 50, "false_resignations": 0})
-        percent, calibration = resignation(self.root, 3)
+        percent, calibration = resignation(self.options, 3)
         self.assertEqual(percent, 20)
         self.assertEqual(calibration["n"], 100)
         self.assertAlmostEqual(calibration["upper_bound"], 0.0466, places=4)
@@ -231,27 +232,60 @@ class CalculationTests(RunnerCase):
             (550, [1, 2, 3], first + second + third), (1000, [1, 2, 3], first + second + third),
         ):
             with self.subTest(positions=positions):
-                self.assertEqual(training_window(self.root, 3, positions), (cycles, files, third))
-        self.assertEqual(training_window(self.root, 1, 1000), ([1], first, first))
-        self.assertEqual(training_window(self.root, 2, 100), ([2], second, second))
-        self.assertEqual(training_window(self.root, 2, 200), ([2], second, second))
+                self.assertEqual(training_window(self.options, 3, positions), (cycles, files, third))
+        self.assertEqual(training_window(self.options, 1, 1000), ([1], first, first))
+        self.assertEqual(training_window(self.options, 2, 100), ([2], second, second))
+        self.assertEqual(training_window(self.options, 2, 200), ([2], second, second))
 
     def test_window_rejects_paths_outside_generation_output(self):
         self.summary(1, "selfplay", {"training_positions": 100, "training_files": ["../../outside.mnsd"]})
         with self.assertRaises(ValueError):
-            training_window(self.root, 1, 1)
+            training_window(self.options, 1, 1)
 
     def test_window_rejects_invalid_position_counts(self):
         for positions in (-1, 1.5, True):
             with self.subTest(positions=positions):
                 self.summary(1, "selfplay", {"training_positions": positions, "training_files": ["chunk-00000.mnsd"]})
                 with self.assertRaises(ValueError):
-                    training_window(self.root, 1, 100)
+                    training_window(self.options, 1, 100)
 
     def test_window_does_not_read_cycles_before_the_position_boundary(self):
         self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
         files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(training_window(self.root, 3, 100), ([3], files, files))
+        self.assertEqual(training_window(self.options, 3, 100), ([3], files, files))
+
+    def test_branch_window_and_calibration_use_the_explicit_boundary(self):
+        options = replace(self.options, cycles_dir=Path("cycles-cosine"), base_cycles_dir=Path("baseline"),
+                          branch_from=2, first_cycle=3, last_cycle=4, cycle1_reference_summary=None)
+        for directory, cycle, positions, samples in (("baseline", 1, 100, 0), ("baseline", 2, 150, 50),
+                                                     ("cycles-cosine", 3, 250, 0)):
+            write_json(self.root / f"{directory}/cycle-{cycle:04d}/selfplay/summary.json", {
+                "games": 10, "training_positions": positions, "training_files": ["chunk-00000.mnsd"],
+                "resign_triggered_playthrough_games": samples, "false_resignations": 0,
+            })
+        write_json(self.root / "baseline/cycle-0002/selfplay-regen/summary.json", {
+            "games": 5, "training_positions": 50, "training_files": ["chunk-00001.mnsd"],
+            "resign_triggered_playthrough_games": 50, "false_resignations": 0,
+        })
+        # 反対側にも同じ番号を置き、存在する側を選ぶ処理では通らないようにする。
+        for directory, cycle in (("cycles-cosine", 2), ("baseline", 3), ("cycles", 2)):
+            write_json(self.root / f"{directory}/cycle-{cycle:04d}/selfplay/summary.json", {"wrong": True})
+        second = ["baseline/cycle-0002/selfplay/chunk-00000.mnsd",
+                  "baseline/cycle-0002/selfplay-regen/chunk-00001.mnsd"]
+        third = ["cycles-cosine/cycle-0003/selfplay/chunk-00000.mnsd"]
+        self.assertEqual(training_window(options, 3, 450), ([2, 3], second + third, third))
+        self.assertEqual(training_window(options, 3, 451), (
+            [1, 2, 3], ["baseline/cycle-0001/selfplay/chunk-00000.mnsd", *second, *third], third,
+        ))
+        self.assertEqual(game_counts(summaries(options, 2), 1000, 2), (75, 38))
+        self.assertEqual(resignation(options, 3)[0], 20)
+        self.assertEqual(resignation(options, 4)[0], 100)
+        (self.root / "baseline/cycle-0002/selfplay/summary.json").unlink()
+        with self.assertRaises(FileNotFoundError):
+            training_window(options, 3, 450)
+        (self.root / "cycles-cosine/cycle-0003/selfplay/summary.json").unlink()
+        with self.assertRaises(FileNotFoundError):
+            training_window(options, 3, 1)
 
     def test_start_accepts_equal_time_and_balance(self):
         deadline = NOW + timedelta(minutes=40)
@@ -469,15 +503,15 @@ class StorageTests(RunnerCase):
                 source = self.root / f"cycles/cycle-0001/train/model{suffix}.onnx"
                 content = f"trained {weights} network".encode()
                 write(source, content)
-                result = publish_network(self.root, 1, weights)
+                result = publish_network(self.options, 1, weights)
                 target = self.root / f"nets/cycle-0001{suffix}.onnx"
                 self.assertEqual(result, digest(source))
                 self.assertEqual(target.read_bytes(), content)
                 self.assertEqual(target.stat().st_mode & 0o222, 0)
-                self.assertEqual(publish_network(self.root, 1, weights), result)
+                self.assertEqual(publish_network(self.options, 1, weights), result)
                 write(source, b"different network")
                 with self.assertRaises(ValueError):
-                    publish_network(self.root, 1, weights)
+                    publish_network(self.options, 1, weights)
                 self.assertEqual(target.read_bytes(), content)
 
 
@@ -517,6 +551,29 @@ class ResumeTests(RunnerCase):
         self.assertEqual(self.remote.uploads, [relative])
         self.assertEqual((self.remote_root / relative).read_bytes(), b"saved checkpoint")
 
+    def test_branch_training_uses_only_its_checkpoint_and_the_explicit_initial_cycle(self):
+        options = replace(self.options, cycles_dir=Path("cycles-cosine"), branch_from=2,
+                          first_cycle=3, last_cycle=4, cycle1_reference_summary=None, lr_schedule="cosine")
+        runner = Runner(options, self.remote)
+        write(self.remote_root / "cycles/cycle-0003/train/checkpoint.pt", b"mainline checkpoint")
+        write(self.root / "cycles/cycle-0003/train/checkpoint.pt", b"mainline checkpoint")
+        for cycle, initial in ((3, "cycles/cycle-0002/train/checkpoint.pt"),
+                               (4, "cycles-cosine/cycle-0003/train/checkpoint.pt")):
+            files = [f"cycles-cosine/cycle-{cycle:04d}/selfplay/chunk-00000.mnsd"]
+            command = runner.training_command(cycle, files, files)
+            self.assertEqual(command[command.index("--init") + 1], initial)
+            self.assertEqual(command[command.index("--lr-schedule") + 1], "cosine")
+            self.assertEqual(command[command.index("--out-dir") + 1], f"cycles-cosine/cycle-{cycle:04d}/train")
+        checkpoint = "cycles-cosine/cycle-0003/train/checkpoint.pt"
+        write(self.root / checkpoint, b"branch checkpoint")
+        for location in ("nas", "remote"):
+            with self.subTest(location=location):
+                command = runner.training_command(3, files, files)
+                self.assertEqual(command[command.index("train"):],
+                                 ["train", "--resume", "cycles-cosine/cycle-0003/train", "--device", "cuda"])
+                self.assertEqual((self.remote_root / checkpoint).read_bytes(), b"branch checkpoint")
+        self.assertEqual(self.remote.uploads, [checkpoint])
+
     def test_new_training_passes_window_and_every_explicit_setting(self):
         latest = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd",
                   "cycles/cycle-0003/selfplay-regen/chunk-00000.mnsd"]
@@ -526,7 +583,7 @@ class ResumeTests(RunnerCase):
             "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero", "python", "-m", "minase_zero",
             "train", "--init", "cycles/cycle-0002/train/checkpoint.pt", "--data", *files, "--latest-data", *latest,
             "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
-            "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
+            "--batch-size", "256", "--lr", "0.01", "--lr-schedule", "constant", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
             "--checkpoint-steps", "200", "--ema-period-samples", "0", "--ema-scale", "0",
             "--device", "cuda", "--trainer-commit", TRAINER_COMMIT,
@@ -746,14 +803,16 @@ class RemoteTests(unittest.TestCase):
                 return result.stdout
 
             with patch.object(remote, "shell", side_effect=shell):
-                self.assertEqual(remote.status("job"), "new")
-                write(root / "job.pid", str(os.getpid()).encode())
-                self.assertEqual(remote.status("job"), "running")
-                write(root / "job.pid", b"2147483647")
-                with self.assertRaises(RuntimeError):
-                    remote.status("job")
-                write(root / "job.exit", b"7\n")
-                self.assertEqual(remote.status("job"), 7)
+                for stem in ("job", "experiments/cosine's run/cycle-0001/train"):
+                    with self.subTest(stem=stem):
+                        self.assertEqual(remote.status(stem), "new")
+                        write(root / (stem + ".pid"), str(os.getpid()).encode())
+                        self.assertEqual(remote.status(stem), "running")
+                        write(root / (stem + ".pid"), b"2147483647")
+                        with self.assertRaisesRegex(RuntimeError, "process disappeared without an exit code"):
+                            remote.status(stem)
+                        write(root / (stem + ".exit"), b"7\n")
+                        self.assertEqual(remote.status(stem), 7)
 
     def test_detached_start_redirects_all_streams_and_records_exit_after_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -854,17 +913,19 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                        "win_reason_royal_capture": count, "discarded_max_ply": 0}
             write_json(self.remote_root / stem / "summary.json", summary)
         elif "train" in command:
-            cycle = int(stem.split("/")[1].split("-")[1])
+            cycle = int(Path(stem).parent.name.removeprefix("cycle-"))
             write(self.remote_root / stem / "checkpoint.pt", f"checkpoint {cycle}".encode())
             write(self.remote_root / stem / "model.onnx", f"network {cycle}".encode())
             summary = {
                 "cycle": cycle, "network_sha256": digest(self.remote_root / stem / "model.onnx"),
+                "lr_schedule": "constant",
                 "provenance": {"trainer_commit": TRAINER_COMMIT, "environment_commit": TRAINER_COMMIT},
                 "diagnostics": {"validation": {"value_result": 0.7},
                                 "latest_training_sample": {"value_result": 0.6}},
                 "sample_count": 900, "sample_sha256": "d" * 64, "completed_steps": 4,
             }
             if "--latest-data" in command:
+                summary["lr_schedule"] = command[command.index("--lr-schedule") + 1]
                 summary["latest_data"] = command[command.index("--latest-data") + 1:command.index("--out-dir")]
                 summary["provenance"]["trainer_commit"] = command[command.index("--trainer-commit") + 1]
             if "--ema-period-samples" in command and int(command[command.index("--ema-period-samples") + 1]) > 0:
@@ -938,6 +999,119 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         start_count = len(self.remote.starts)
         self.execute(replace(self.options, last_cycle=2))
         self.assertEqual(len(self.remote.starts), start_count)
+
+    def test_branch_cycles_keep_outputs_records_seeds_and_networks_separate(self):
+        self.execute(replace(self.options, last_cycle=2, ema_period_samples=3, ema_scale=2))
+        unchanged = {path: path.read_bytes() for path in self.root.rglob("*")
+                     if path.is_file() and path.name != "seed-ledger.jsonl"}
+        self.remote.balances = [100, 98, 98, 96]
+        before = len(self.remote.starts)
+        options = replace(self.options, cycles_dir=Path("cycles-cosine"), branch_from=1,
+                          first_cycle=2, last_cycle=3, cycle1_reference_summary=None, lr_schedule="cosine",
+                          window_positions=2500, selfplay_weights="ema", ema_period_samples=3, ema_scale=2)
+        self.execute(options)
+        rows = [json.loads(line) for line in (self.root / "cycles-cosine.jsonl").read_text().splitlines()]
+        intervals = [json.loads(line) for line in (self.root / "cycles-cosine-sessions.jsonl").read_text().splitlines()]
+        self.assertEqual([row["cycle"] for row in rows], [2, 3])
+        self.assertEqual([row["generation"]["network"] for row in rows], [
+            "cycles/cycle-0001/train/model-ema.onnx", "cycles-cosine/cycle-0002/train/model-ema.onnx",
+        ])
+        self.assertEqual([row["generation"]["seed"] for row in rows], [2_700_000_000, 3_700_000_000])
+        self.assertEqual([row["window_cycles"] for row in rows], [[1, 2], [1, 2, 3]])
+        for row in [*rows, *intervals]:
+            self.assertEqual(row["lr_schedule"], "cosine")
+            self.assertEqual(row["cycles_dir"], "cycles-cosine")
+            self.assertEqual(row["base_cycles_dir"], "cycles")
+            self.assertEqual(row["branch_from"], 1)
+        expected_files = [f"{directory}/cycle-{cycle:04d}/selfplay/chunk-{chunk:05d}{suffix}.mnsd"
+                          for cycle, directory in ((1, "cycles"), (2, "cycles-cosine"), (3, "cycles-cosine"))
+                          for chunk in (0, 1) for suffix in ("", ".resigned")]
+        self.assertEqual(rows[1]["training_files"], expected_files)
+        self.assertEqual(rows[1]["teacher_stats"]["files"], expected_files[-4:])
+        starts = self.remote.starts[before:]
+        self.assertEqual([stem for stem, _, _, _ in starts], [
+            f"cycles-cosine/cycle-{cycle:04d}/{stage}" for cycle in (2, 3)
+            for stage in ("selfplay", "train", "check")
+        ])
+        for cycle, previous in ((2, "cycles/cycle-0001"), (3, "cycles-cosine/cycle-0002")):
+            command = shlex.split(next(body for stem, body, _, _ in starts
+                                      if stem == f"cycles-cosine/cycle-{cycle:04d}/train"))
+            self.assertEqual(command[command.index("--init") + 1], previous + "/train/checkpoint.pt")
+            self.assertEqual(command[command.index("--lr-schedule") + 1], "cosine")
+            for suffix, content in (("", f"network {cycle}"), ("-ema", f"ema network {cycle}")):
+                target = self.root / f"nets/cycles-cosine/cycle-{cycle:04d}{suffix}.onnx"
+                self.assertEqual(target.read_bytes(), content.encode())
+                self.assertEqual(target.stat().st_mode & 0o222, 0)
+            for stage in ("selfplay/summary.json", "train/summary.json", "check/cpu-b1-ema.compare.json"):
+                self.assertTrue((self.root / f"cycles-cosine/cycle-{cycle:04d}" / stage).is_file())
+        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
+        self.assertEqual([(row["name"], row["seed"]) for row in ledger], [
+            ("cycle-0001-gen", 1_000_000_000), ("cycle-0002-gen", 2_000_000_000),
+            ("cycles-cosine-0002-gen", 2_700_000_000), ("cycles-cosine-0003-gen", 3_700_000_000),
+        ])
+        for path, content in unchanged.items():
+            self.assertEqual(path.read_bytes(), content, str(path))
+        count = len(self.remote.starts)
+        self.execute(options)
+        self.assertEqual(len(self.remote.starts), count)
+        (self.root / "nets/cycles-cosine/cycle-0002.onnx").unlink()
+        with self.assertRaises(ValueError):
+            self.execute(options)
+        # 本線の同番号のネットや台帳では、別系列の未確定状態を補完しない。
+        (self.root / "cycles-cosine.jsonl").write_bytes(b"")
+        with self.assertRaises(ValueError):
+            self.execute(options)
+        self.assertEqual(len(self.remote.starts), count)
+
+    def test_branch_regeneration_uses_a_distinct_seed_and_ledger_name(self):
+        self.regenerate = True
+        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-gen", 1_000_000_000, 10)
+        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-regen", 1_500_000_000, 3)
+        seed_registration(self.root / "seed-ledger.jsonl", "cycle-0002-gen", 2_000_000_000, 10)
+        self.execute(replace(self.options, cycles_dir=Path("cycles-cosine"), lr_schedule="cosine"))
+        row = json.loads((self.root / "cycles-cosine.jsonl").read_text())
+        self.assertEqual(row["generation"]["network"], "cycles/cycle-0000/model.onnx")
+        self.assertEqual(row["generation"]["seed"], 1_700_000_000)
+        self.assertEqual(row["regeneration"]["seed"], 2_200_000_000)
+        self.assertTrue(all(name.startswith("cycles-cosine/cycle-0001/") for name in row["training_files"]))
+        self.assertTrue(any("/selfplay-regen/" in name for name in row["training_files"]))
+        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
+        self.assertEqual([(item["name"], item["seed"]) for item in ledger[-2:]], [
+            ("cycles-cosine-0001-gen", 1_700_000_000), ("cycles-cosine-0001-regen", 2_200_000_000),
+        ])
+
+    def test_training_summary_with_a_different_schedule_is_not_committed(self):
+        complete = self.remote.on_start
+
+        def wrong_schedule(stem, body):
+            code = complete(stem, body)
+            if stem.endswith("/train"):
+                path = self.remote_root / stem / "summary.json"
+                summary = json.loads(path.read_text())
+                summary["lr_schedule"] = "constant"
+                write_json(path, summary)
+            return code
+
+        self.remote.on_start = wrong_schedule
+        with self.assertRaisesRegex(ValueError, "lr-schedule"):
+            self.execute(replace(self.options, lr_schedule="cosine"))
+        self.assertFalse((self.root / "cycles/cycle-0001/train/summary.json").exists())
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertEqual([Path(stem).name for stem, _, _, _ in self.remote.starts], ["selfplay", "train"])
+
+    def test_nested_relative_directory_is_used_by_all_stages(self):
+        directory = "experiments/cosine's-run"
+        shutil.copytree(self.root / "cycles", self.root / "base cycles")
+        self.execute(replace(self.options, cycles_dir=Path(directory), base_cycles_dir=Path("base cycles"),
+                             lr_schedule="cosine"))
+        row = json.loads((self.root / f"{directory}.jsonl").read_text())
+        self.assertEqual(row["cycle"], 1)
+        self.assertEqual(row["generation"]["network"], "base cycles/cycle-0000/model.onnx")
+        self.assertTrue((self.root / f"{directory}-sessions.jsonl").is_file())
+        self.assertTrue((self.root / f"nets/{directory}/cycle-0001.onnx").is_file())
+        self.assertEqual([stem for stem, _, _, _ in self.remote.starts], [
+            f"{directory}/cycle-0001/{stage}" for stage in ("selfplay", "train", "check")
+        ])
 
     def test_raw_selfplay_with_ema_training_records_and_checks_both_networks(self):
         options = replace(self.options, last_cycle=2, ema_period_samples=500_000, ema_scale=8)
@@ -1150,7 +1324,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         (self.root / (out + ".log")).unlink()
         self.remote.states[out] = ["running", "running", 0]
         before = len(self.remote.starts)
-        _, files, latest = training_window(self.root, 1, 1000)
+        _, files, latest = training_window(self.options, 1, 1000)
         with patch("minase_zero.runner.time.sleep") as sleep:
             self.runner.training(1, files, latest)
         self.assertEqual((self.root / out / "checkpoint.pt").read_bytes(), b"checkpoint 1")
@@ -1274,11 +1448,13 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
 class ArgumentTests(RunnerCase):
     def arguments(self):
         return ["run-cycles", "--root", str(self.root), "--session", "l4-one",
+                "--cycles-dir", "cycles", "--base-cycles-dir", "cycles", "--branch-from", "0",
                 "--generation-commit", GENERATION_COMMIT, "--trainer-commit", TRAINER_COMMIT,
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads", "6", "--games-per-thread", "4",
-                "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9",
+                "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01", "--lr-schedule", "constant",
+                "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
                 "--selfplay-weights", "raw", "--ema-period-samples", "500000", "--ema-scale", "8",
@@ -1308,6 +1484,10 @@ class ArgumentTests(RunnerCase):
                         {"poll_seconds": 0}, {"window_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
                         {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1},
                         {"selfplay_weights": "invalid"}, {"ema_period_samples": 1}, {"ema_scale": 8},
+                        {"lr_schedule": "invalid"}, {"cycles_dir": Path("/absolute")},
+                        {"cycles_dir": Path("cycles cosine")},
+                        {"base_cycles_dir": Path("../outside")}, {"cycles_dir": Path(".")},
+                        {"branch_from": -1}, {"branch_from": 1}, {"branch_from": True},
                         {"ema_period_samples": -1}, {"ema_period_samples": 1.5},
                         {"ema_period_samples": 3, "ema_scale": float("nan")}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):

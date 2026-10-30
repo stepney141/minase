@@ -6,6 +6,18 @@ generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定す
 /content/srcにはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
 NASのrootと/content/azは同じ相対パスを使い、接続と転送は1本ずつ実行する。
 
+--cycles-dirと--base-cycles-dirはrootからの相対ディレクトリを必須とする。
+cycles-dirはシード台帳の名前にも使うため、空白文字を含められない。
+--branch-from以下のサイクルはbase-cycles-dirから、それより後はcycles-dirから読む。
+first-cycleはbranch-fromより後とし、生成、学習、照合の出力はcycles-dirに置く。
+本線は--cycles-dir cycles --base-cycles-dir cycles --branch-from 0で実行する。
+cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、
+確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxと同名の-ema.onnxに分ける。
+通常生成のシードはサイクル番号×10⁹を基本とし、別系列では7×10⁸を加える。
+再生成は通常生成のシードに5×10⁸を加える。共有のシード台帳には、本線ではcycle-NNNN-gen、
+別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
+--lr-scheduleはconstantかcosineを必須とし、学習器へ渡して両方の記録に残す。
+
 学習窓は最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が
 初めてwindow-positions以上になるまでとする。届かないうちは全サイクルを使う。
 ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
@@ -18,7 +30,7 @@ NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入�
 --selfplay-weightsはrawかemaを必須とし、前のサイクルのtrain/model.onnxか
 train/model-ema.onnxを生成に使う。最初のサイクルではcycle-0000直下を参照し、
 選んだネットがなければエラーにする。平均を持つサイクルでは両方のネットを各6通りで照合し、
-通常の重みをnets/cycle-NNNN.onnx、平均をnets/cycle-NNNN-ema.onnxへ読み取り専用で確定する。
+本線では通常の重みをnets/cycle-NNNN.onnx、平均をnets/cycle-NNNN-ema.onnxへ読み取り専用で確定する。
 記録には自己対局の重みの選択、EMAの引数、およびweightsで区別した各照合の結果を残す。
 
 送信ではColab機にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も
@@ -68,6 +80,9 @@ TRAINER = [*PYTHON, "-m", "minase_zero"]
 @dataclass(frozen=True)
 class Options:
     root: Path
+    cycles_dir: Path
+    base_cycles_dir: Path
+    branch_from: int
     session: str
     generation_commit: str
     trainer_commit: str
@@ -84,6 +99,7 @@ class Options:
     window_positions: int
     batch_size: int
     lr: float
+    lr_schedule: str
     momentum: float
     weight_decay: float
     clip_grad_norm: float
@@ -100,6 +116,16 @@ class Options:
 
     def __post_init__(self) -> None:
         validate_ema(self.ema_period_samples, self.ema_scale)
+        if self.lr_schedule not in ("constant", "cosine"):
+            raise ValueError("lr-schedule must be constant or cosine")
+        for name in ("cycles_dir", "base_cycles_dir"):
+            path = getattr(self, name)
+            if path.is_absolute() or not path.parts or ".." in path.parts:
+                raise ValueError(f"{name} must be a relative directory without '..'")
+        if any(character.isspace() for character in str(self.cycles_dir)):
+            raise ValueError("cycles_dir must contain no whitespace because it names seed-ledger entries")
+        if type(self.branch_from) is not int or not 0 <= self.branch_from < self.first_cycle:
+            raise ValueError("branch-from must be nonnegative and less than first-cycle")
         if self.selfplay_weights not in ("raw", "ema"):
             raise ValueError("selfplay-weights must be raw or ema")
         if re.fullmatch(r"[A-Za-z0-9_-]+", self.session) is None:
@@ -131,28 +157,36 @@ class Options:
                 or self.train_seed_base + self.last_cycle >= 2**64):
             raise ValueError("training seeds must fit uint64")
 
+    def cycle_path(self, cycle: int) -> str:
+        """分岐番号だけで参照先を決め、ファイルの有無では切り替えない。"""
+        directory = self.base_cycles_dir if cycle <= self.branch_from else self.cycles_dir
+        return (directory / f"cycle-{cycle:04d}").as_posix()
+
+    def network_path(self, cycle: int, weights: str) -> str:
+        """系列と重みの種類に対応する確定ネットの相対パスを返す。"""
+        directory = Path("nets") if self.cycles_dir == Path("cycles") else Path("nets") / self.cycles_dir
+        suffix = {"raw": "", "ema": "-ema"}[weights]
+        return (directory / f"cycle-{cycle:04d}{suffix}.onnx").as_posix()
+
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     """run-cyclesだけの必須引数を登録する。"""
-    for name in ("root", "teacher-stats"):
+    for name in ("root", "teacher-stats", "cycles-dir", "base-cycles-dir"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     for name in ("session", "generation-commit", "trainer-commit"):
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
                  "games-per-thread", "window-positions", "batch-size", "checkpoint-steps", "train-seed-base",
-                 "ema-period-samples"):
+                 "ema-period-samples", "branch-from"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds", "ema-scale"):
         parser.add_argument(f"--{name}", type=float, required=True)
     parser.add_argument("--precision", choices=("bf16", "fp32"), required=True)
+    parser.add_argument("--lr-schedule", choices=("constant", "cosine"), required=True)
     parser.add_argument("--selfplay-weights", choices=("raw", "ema"), required=True)
     parser.add_argument("--cycle1-reference-summary", type=Path)
-
-
-def cycle_path(cycle: int) -> str:
-    return f"cycles/cycle-{cycle:04d}"
 
 
 def read_json(path: Path) -> dict:
@@ -162,9 +196,9 @@ def read_json(path: Path) -> dict:
     return value
 
 
-def summaries(root: Path, cycle: int) -> list[Path]:
-    paths = [root / cycle_path(cycle) / "selfplay/summary.json"]
-    regen = root / cycle_path(cycle) / "selfplay-regen/summary.json"
+def summaries(options: Options, cycle: int) -> list[Path]:
+    paths = [options.root / options.cycle_path(cycle) / "selfplay/summary.json"]
+    regen = options.root / options.cycle_path(cycle) / "selfplay-regen/summary.json"
     if regen.exists():
         paths.append(regen)
     return paths
@@ -186,22 +220,22 @@ def game_counts(paths: list[Path], target_positions: int, chunks: int) -> tuple[
     return count, (count + chunks - 1) // chunks
 
 
-def resignation(root: Path, cycle: int) -> tuple[int, dict]:
+def resignation(options: Options, cycle: int) -> tuple[int, dict]:
     if cycle == 1:
         calibration = {"n": 0, "false_resignations": 0, "upper_bound": None,
                        "enable_resignation": False}
     else:
-        calibration = rl.resign_calibration(summaries(root, cycle - 1))
+        calibration = rl.resign_calibration(summaries(options, cycle - 1))
     return (20 if calibration["enable_resignation"] else 100), calibration
 
 
-def training_window(root: Path, cycle: int, window_positions: int) -> tuple[list[int], list[str], list[str]]:
+def training_window(options: Options, cycle: int, window_positions: int) -> tuple[list[int], list[str], list[str]]:
     """局面数から窓を決め、サイクル番号、窓のファイル、最新のファイルを返す。"""
     by_cycle = []
     positions = 0
     for previous in range(cycle, 0, -1):
         current = []
-        for path in summaries(root, previous):
+        for path in summaries(options, previous):
             summary = read_json(path)
             count = summary["training_positions"]
             if type(count) is not int or count < 0:
@@ -213,7 +247,7 @@ def training_window(root: Path, cycle: int, window_positions: int) -> tuple[list
             for name in names:
                 if not isinstance(name, str) or re.fullmatch(r"chunk-[0-9]+(?:\.resigned)?\.mnsd", name) is None:
                     raise ValueError(f"{path}: invalid training file: {name!r}")
-                current.append((path.parent / name).relative_to(root).as_posix())
+                current.append((path.parent / name).relative_to(options.root).as_posix())
         by_cycle.append(current)
         if positions >= window_positions:
             break
@@ -411,7 +445,7 @@ elif test -f {pid}; then
     if kill -0 "$pid" 2>/dev/null && [[ $(ps -p "$pid" -o stat=) != Z* ]]; then
         echo running
     else
-        echo 'process disappeared without an exit code: {stem}' >&2
+        echo {shlex.quote('process disappeared without an exit code: ' + stem)} >&2
         exit 1
     fi
 else echo new
@@ -496,10 +530,10 @@ def chunk_files(names: list[str]) -> list[str]:
     return files
 
 
-def publish_network(root: Path, cycle: int, weights: str) -> str:
+def publish_network(options: Options, cycle: int, weights: str) -> str:
     suffix = {"raw": "", "ema": "-ema"}[weights]
-    source = root / cycle_path(cycle) / f"train/model{suffix}.onnx"
-    target = root / f"nets/cycle-{cycle:04d}{suffix}.onnx"
+    source = options.root / options.cycle_path(cycle) / f"train/model{suffix}.onnx"
+    target = options.root / options.network_path(cycle, weights)
     digest = sha256(source)
     if target.exists():
         if sha256(target) != digest:
@@ -615,32 +649,32 @@ class Runner:
         return summary, self._finish(out)
 
     def training_command(self, cycle: int, files: list[str], latest_files: list[str]) -> list[str]:
-        out = cycle_path(cycle) + "/train"
+        out = self.options.cycle_path(cycle) + "/train"
         checkpoint = out + "/checkpoint.pt"
         if self.remote.exists(checkpoint):
             return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
         if (self.root / checkpoint).exists():
             send(self.remote, self.root, [checkpoint])
             return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
-        initial = (cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
-                   cycle_path(cycle - 1) + "/train/checkpoint.pt")
+        initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
+                   self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
         command = [*TRAINER, "train", "--init", initial, "--data", *files,
                    "--latest-data", *latest_files, "--out-dir", out,
                    "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
-        for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
+        for name in ("batch_size", "lr", "lr_schedule", "momentum", "weight_decay", "clip_grad_norm",
                      "value_lambda", "precision", "checkpoint_steps", "ema_period_samples", "ema_scale"):
             command.extend(["--" + name.replace("_", "-"), str(getattr(self.options, name))])
         return [*command, "--device", "cuda", "--trainer-commit", self.options.trainer_commit]
 
     def training(self, cycle: int, files: list[str], latest_files: list[str]) -> tuple[dict, float]:
-        out = cycle_path(cycle) + "/train"
+        out = self.options.cycle_path(cycle) + "/train"
         local_summary = self.root / out / "summary.json"
         if not local_summary.exists():
             state = self.remote.status(out)
             if state == "new" and not self.remote.exists(out + "/summary.json"):
                 send(self.remote, self.root, files)
-                initial = (cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
-                           cycle_path(cycle - 1) + "/train/checkpoint.pt")
+                initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
+                           self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
                 send(self.remote, self.root, [initial])
                 command = self.training_command(cycle, files, latest_files)
                 self._begin(out)
@@ -671,26 +705,29 @@ class Runner:
                 for name, key in networks:
                     if summary[key] != sha256(self.root / out / name):
                         raise ValueError(f"training summary does not match network: {out}/{name}")
-                if summary["cycle"] != cycle:
-                    raise ValueError(f"training summary does not match cycle: {out}")
+                if summary["cycle"] != cycle or summary["lr_schedule"] != self.options.lr_schedule:
+                    raise ValueError(f"training summary does not match cycle or lr-schedule: {out}")
                 _write(local_summary, (staging / out / "summary.json").read_bytes())
         self._begin(out)
         summary = read_json(local_summary)
         if summary["cycle"] != cycle or summary["network_sha256"] != sha256(self.root / out / "model.onnx"):
             raise ValueError(f"training summary does not match cycle or network: {out}")
+        if summary["lr_schedule"] != self.options.lr_schedule:
+            raise ValueError(f"training summary does not match lr-schedule: {out}")
         if "ema_network_sha256" in summary and summary["ema_network_sha256"] != sha256(self.root / out / "model-ema.onnx"):
             raise ValueError(f"training summary does not match EMA network: {out}")
         return summary, self._finish(out)
 
     def training_weights(self, cycle: int) -> tuple[str, ...]:
-        summary = read_json(self.root / cycle_path(cycle) / "train/summary.json")
+        summary = read_json(self.root / self.options.cycle_path(cycle) / "train/summary.json")
         return ("raw", "ema") if "ema_network_sha256" in summary else ("raw",)
 
     def check_script(self, cycle: int) -> str:
-        out = cycle_path(cycle) + "/check"
-        train = cycle_path(cycle) + "/train"
-        lines = [f"mkdir -p -- {out}", "check_started=$SECONDS",
-                 f"trap 'printf \"%s\\n\" \"$((SECONDS - check_started))\" > {out}/elapsed-seconds' EXIT", "failed=0"]
+        out = self.options.cycle_path(cycle) + "/check"
+        train = self.options.cycle_path(cycle) + "/train"
+        elapsed = f'printf "%s\\n" "$((SECONDS - check_started))" > {shlex.quote(out + "/elapsed-seconds")}'
+        lines = [f"mkdir -p -- {shlex.quote(out)}", "check_started=$SECONDS",
+                 f"trap {shlex.quote(elapsed)} EXIT", "failed=0"]
         for weights in self.training_weights(cycle):
             suffix = {"raw": "", "ema": "-ema"}[weights]
             network = f"{train}/model{suffix}.onnx"
@@ -710,14 +747,15 @@ class Runner:
                     compare = [*PYTHON, SOURCE + "/nn_compare.py", "--reference", reference,
                                "--candidate", name + ".json", "--policy", policy,
                                "--policy-tolerance", ptol, "--value-tolerance", vtol]
-                    lines.extend([f"if {shlex.join(compare)} > {name}.compare.json 2> {name}.compare.err; then",
+                    lines.extend([f"if {shlex.join(compare)} > {shlex.quote(name + '.compare.json')} "
+                                  f"2> {shlex.quote(name + '.compare.err')}; then",
                                   "    code=0", "else", "    code=$?", "    failed=1", "fi",
-                                  f"printf '%s\\n' \"$code\" > {name}.compare.exit"])
+                                  f"printf '%s\\n' \"$code\" > {shlex.quote(name + '.compare.exit')}"])
         lines.append('exit "$failed"')
         return "\n".join(lines)
 
     def checking(self, cycle: int) -> tuple[dict, float]:
-        out = cycle_path(cycle) + "/check"
+        out = self.options.cycle_path(cycle) + "/check"
         code_path = self.root / (out + ".exit")
         if not code_path.exists():
             state = self.remote.status(out)
@@ -725,7 +763,7 @@ class Runner:
                 names = ["checkpoint.pt", "model.onnx"]
                 if "ema" in self.training_weights(cycle):
                     names.append("model-ema.onnx")
-                send(self.remote, self.root, [f"{cycle_path(cycle)}/train/{name}"
+                send(self.remote, self.root, [f"{self.options.cycle_path(cycle)}/train/{name}"
                                              for name in names])
                 self._begin(out)
                 self.remote.start(out, self.check_script(cycle), out + ".log", out + ".log")
@@ -758,24 +796,28 @@ class Runner:
 
     def run(self) -> None:
         options = self.options
+        mainline = options.cycles_dir == Path("cycles")
+        cycles_log = self.root / f"{options.cycles_dir}.jsonl"
+        sessions_log = self.root / ("sessions.jsonl" if mainline else f"{options.cycles_dir}-sessions.jsonl")
+        seed_name = "cycle" if mainline else options.cycles_dir.as_posix()
         started = datetime.now(UTC)
-        cycles = read_rows(self.root / "cycles.jsonl")
+        cycles = read_rows(cycles_log)
         numbers = [row["cycle"] for row in cycles]
         if len(set(numbers)) != len(numbers):
-            raise ValueError("cycles.jsonl contains duplicate cycles")
+            raise ValueError(f"{cycles_log}: duplicate cycles")
         machine = None
         start_balance = None
         for cycle in range(options.first_cycle, options.last_cycle + 1):
             if cycle in numbers:
-                if not (self.root / f"nets/cycle-{cycle:04d}.onnx").is_file():
+                if not (self.root / options.network_path(cycle, "raw")).is_file():
                     raise ValueError(f"recorded cycle has no immutable network: {cycle}")
                 row = next(row for row in cycles if row["cycle"] == cycle)
-                if "ema_network_sha256" in row and not (self.root / f"nets/cycle-{cycle:04d}-ema.onnx").is_file():
+                if "ema_network_sha256" in row and not (self.root / options.network_path(cycle, "ema")).is_file():
                     raise ValueError(f"recorded cycle has no immutable EMA network: {cycle}")
                 self.log(cycle, "already complete")
                 continue
-            if any(row["cycle"] == cycle for row in read_rows(self.root / "sessions.jsonl")):
-                raise ValueError(f"sessions.jsonl: duplicate cycle {cycle}")
+            if any(row["cycle"] == cycle for row in read_rows(sessions_log)):
+                raise ValueError(f"{sessions_log}: duplicate cycle {cycle}")
             now = datetime.now(UTC)
             if now + timedelta(minutes=options.cycle_minutes) > options.deadline:
                 self.log(cycle, "deadline does not allow another cycle")
@@ -788,22 +830,22 @@ class Runner:
                 start_balance = balance
             if machine is None:
                 machine = self.remote.machine()
-            playthrough, calibration = resignation(self.root, cycle)
-            reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(self.root, cycle - 1))
+            playthrough, calibration = resignation(options, cycle)
+            reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(options, cycle - 1))
             games, chunk_games = game_counts(reference, options.target_positions, options.chunks)
-            seed = cycle * 10**9
+            seed = cycle * 10**9 + (0 if mainline else 7 * 10**8)
             suffix = {"raw": "", "ema": "-ema"}[options.selfplay_weights]
-            network = (cycle_path(0) + f"/model{suffix}.onnx" if cycle == 1 else
-                       cycle_path(cycle - 1) + f"/train/model{suffix}.onnx")
+            network = (self.options.cycle_path(0) + f"/model{suffix}.onnx" if cycle == 1 else
+                       self.options.cycle_path(cycle - 1) + f"/train/model{suffix}.onnx")
             generation = {"network": network, "network_sha256": sha256(self.root / network), "seed": seed,
                           "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
                           "threads": options.threads, "games_per_thread": options.games_per_thread,
                           "simulations": options.simulations}
-            seed_registration(self.root / "seed-ledger.jsonl", f"cycle-{cycle:04d}-gen", seed, games)
+            seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-gen", seed, games)
             self.log(cycle, f"generation games={games} chunk_games={chunk_games} playthrough_percent={playthrough}")
-            summary, generation_seconds = self.generation(cycle, cycle_path(cycle) + "/selfplay", network,
+            summary, generation_seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay", network,
                                                          seed, games, chunk_games, playthrough)
-            config = read_json(self.root / cycle_path(cycle) / "selfplay/config.json")
+            config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay/config.json")
             generation["generation_commit"] = config["generation_commit"]
             regen_summary, regen_settings = None, None
             if summary["resigned_games_excluded"]:
@@ -813,15 +855,15 @@ class Runner:
                 if count:
                     regen_seed = seed + 5 * 10**8
                     regen_chunk = (count + options.chunks - 1) // options.chunks
-                    seed_registration(self.root / "seed-ledger.jsonl", f"cycle-{cycle:04d}-regen", regen_seed, count)
-                    regen_summary, seconds = self.generation(cycle, cycle_path(cycle) + "/selfplay-regen", network,
+                    seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-regen", regen_seed, count)
+                    regen_summary, seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay-regen", network,
                                                             regen_seed, count, regen_chunk, 100)
                     generation_seconds += seconds
-                    regen_config = read_json(self.root / cycle_path(cycle) / "selfplay-regen/config.json")
+                    regen_config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay-regen/config.json")
                     regen_settings = {**generation, "seed": regen_seed, "games": count,
                                       "chunk_games": regen_chunk, "playthrough_percent": 100,
                                       "generation_commit": regen_config["generation_commit"]}
-            window_cycles, files, current_files = training_window(self.root, cycle, options.window_positions)
+            window_cycles, files, current_files = training_window(options, cycle, options.window_positions)
             train_summary, training_seconds = self.training(cycle, files, current_files)
             checks, checking_seconds = self.checking(cycle)
             result = subprocess.run([str(options.teacher_stats.resolve()), *current_files], cwd=self.root,
@@ -831,18 +873,21 @@ class Runner:
             stats = json.loads(result.stdout)
             if not isinstance(stats, dict):
                 raise ValueError("teacher_stats must output a JSON object")
-            network_digest = publish_network(self.root, cycle, "raw")
+            network_digest = publish_network(options, cycle, "raw")
             ema_network = {}
             if "ema_network_sha256" in train_summary:
-                ema_network["ema_network_sha256"] = publish_network(self.root, cycle, "ema")
+                ema_network["ema_network_sha256"] = publish_network(options, cycle, "ema")
             end_balance = self.remote.usage()
             ended = datetime.now(UTC)
-            interval = {"session": options.session, "cycle": cycle, "started_at": started.isoformat(),
+            settings = {"lr": options.lr, "lr_schedule": options.lr_schedule,
+                        "cycles_dir": options.cycles_dir.as_posix(),
+                        "base_cycles_dir": options.base_cycles_dir.as_posix(), "branch_from": options.branch_from}
+            interval = {**settings, "session": options.session, "cycle": cycle, "started_at": started.isoformat(),
                         "ended_at": ended.isoformat(), "start_balance": start_balance,
                         "end_balance": end_balance, "balance_difference": start_balance - end_balance}
             if end_balance > start_balance:
                 interval["balance_increased"] = True
-            record = {"cycle": cycle, "generation_commit": generation["generation_commit"],
+            record = {**settings, "cycle": cycle, "generation_commit": generation["generation_commit"],
                       "selfplay_weights": options.selfplay_weights,
                       "ema_period_samples": options.ema_period_samples, "ema_scale": options.ema_scale,
                       **ema_network,
@@ -856,7 +901,7 @@ class Runner:
                                           "checking": checking_seconds}, "machine": machine, "interval": interval}
             _json_bytes(record)
             # 各台帳は全体を改名する。2つの台帳の間で中断した場合は二重登録の検査で止める。
-            append_cycle(self.root / "sessions.jsonl", interval)
-            append_cycle(self.root / "cycles.jsonl", record)
+            append_cycle(sessions_log, interval)
+            append_cycle(cycles_log, record)
             self.log(cycle, f"complete balance={end_balance}")
             started, start_balance = ended, end_balance

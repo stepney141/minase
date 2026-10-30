@@ -28,6 +28,12 @@ data_order_sha256は、初期値を32バイトの0とし、更新のたびに「
 「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で
 置き換えた値の16進表記である。中断の有無にかかわらず、同じ学習窓とシードなら同じ値になる。
 
+--lr-scheduleはconstantかcosineを必須とする。constantは全更新で--lrを使う。
+cosineの式に限り、Tはこのサイクルの全更新回数、tは0始まりの更新番号を表す。
+lr * 0.5 * (1 + cos(pi * t / T))を更新直前に全パラメータ群へ設定する。
+最後の更新でも0にはならず、新しいサイクルではt=0から始め直す。
+lrとlr_scheduleはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
+
 checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BNの移動統計を
 含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、
 来歴、抽出条件とsample_sha256、累計の損失、学習曲線、およびdata_order_sha256を持つ。initのチェックポイントは
@@ -50,6 +56,7 @@ trainのsummary.jsonの欄は次のとおりである。
 |---|---|
 | cycle | サイクル番号。 |
 | config | ネットの大きさと、新しいサイクルに指定した設定。出力先は含めない。 |
+| lr / lr_schedule | 基準の学習率と、そのサイクルの予定。configにも記録する。 |
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
 | sample_count | 抽出数N。最新サイクルの訓練局面数に等しい。 |
@@ -69,7 +76,7 @@ trainのsummary.jsonの欄は次のとおりである。
 | diagnosticsの各集合のpolicy / value / value_result | 局面単位の算術平均による3つの損失。 |
 | diagnosticsの各集合のlegal_probability_mass / log_legal_probability_mass | 全合法手に乗る確率質量の平均と、その自然対数の平均。 |
 | diagnosticsの各集合のpolicy_agreement | 合法手の最大logitの手が、教師の最大確率の手の集合に含まれる割合。 |
-| learning_curve | 保存間隔ごとのcompleted_stepsと、その区間のtraining_losses。 |
+| learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlr。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
 | ema_network_sha256 | 平均を持つ場合のmodel-ema.onnxのSHA-256。 |
@@ -199,6 +206,8 @@ def _validate_device(device: str, precision: str) -> torch.device:
 def _validate_training(config: dict) -> None:
     _validate_common(config["seed"], config["trainer_commit"])
     validate_ema(config["ema_period_samples"], config["ema_scale"])
+    if config["lr_schedule"] not in ("constant", "cosine"):
+        raise ValueError("lr_schedule must be constant or cosine")
     for name in ("batch_size", "checkpoint_steps"):
         if config[name] <= 0:
             raise ValueError(f"{name} must be positive")
@@ -546,6 +555,11 @@ def _run(
             raise ValueError(f"non-finite training loss at update {step + 1}")
         (losses[0] + losses[1]).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), config["clip_grad_norm"], error_if_nonfinite=True)
+        lr = config["lr"]
+        if config["lr_schedule"] == "cosine":
+            lr *= 0.5 * (1 + math.cos(math.pi * step / state["total_steps"]))
+        for group in optimizer.param_groups:
+            group["lr"] = lr
         optimizer.step()
         if ema is not None:
             ema.update(model, len(batch))
@@ -562,7 +576,7 @@ def _run(
             elapsed = time.perf_counter() - interval_started
             state["elapsed_seconds"]["training"] += elapsed
             averages = _mean(interval_sums, interval_count)
-            state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages})
+            state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages, "lr": lr})
             state["model"], state["optimizer"] = model.state_dict(), optimizer.state_dict()
             if ema is not None:
                 state["ema"] = ema.state_dict()
@@ -612,6 +626,7 @@ def _run(
     _write_json(out_dir / "summary.json", {
         **ema_summary,
         "cycle": state["cycle"], "config": config, "provenance": state["provenance"],
+        "lr": config["lr"], "lr_schedule": config["lr_schedule"],
         "training_count": state["training_count"], "validation_count": state["validation_count"],
         **{key: state[key] for key in ("latest_data", "sample_count", "window_training_count",
                                       "file_training_counts", "sample_sha256")},

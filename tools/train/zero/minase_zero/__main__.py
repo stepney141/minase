@@ -6,7 +6,7 @@
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
 - train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（学習窓の
   MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
-  --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
+  --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、--lr-schedule（constantかcosine）、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--ema-period-samples、--ema-scale、--device（cudaかcpu）、
   --trainer-commit（40桁の16進数字）。EMAの2引数は両方0で無効、両方正で有効とする。
@@ -66,6 +66,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda", "ema-scale"):
             train.add_argument(f"--{name}", type=float, required=True)
         train.add_argument("--precision", choices=("bf16", "fp32"), required=True)
+        train.add_argument("--lr-schedule", choices=("constant", "cosine"), required=True)
         train.add_argument("--trainer-commit", required=True)
 
     fixture = commands.add_parser("fixture-eval", allow_abbrev=False)
