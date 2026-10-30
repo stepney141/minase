@@ -22,8 +22,15 @@
 サイクル1〜37の出力と記録は削除せず、NASの`/mnt/synology_nas/minase/alphazero/archive-20261031-no-lr-schedule/`へ移した。
 ランダム初期化のネット（`cycles/cycle-0000/`、`nets/cycle-0000.onnx`）、ソースの書庫、シードの台帳、および借用の記録は残した。
 この間の測定（[学習窓の事前確認](../measurements/alphazero-rl/alphazero-rl-window-precheck.md)、[10サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)と[20サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0020.md)の進捗測定、[重みの移動平均の比較](../measurements/alphazero-rl/alphazero-rl-ema-c0025.md)）は、学習率が一定の学習の記録として残す。
-学習率の予定を学習器と実行器に入れる実装を進めている。
+学習率の予定を学習器と実行器に入れる実装を、codexが作業ツリーで進めている（2026年10月31日の時点で未コミット、指示書は本節の末尾）。
 学習の再開は、利用者の指示を待つ。
+
+引き継ぐ人は、次の順に進める。
+
+1. 作業ツリーの未コミットの変更（`tools/train/zero/minase_zero/train.py`、`runner.py`、`__main__.py`、`tests/`）を確かめる。学習器の`train`に必須の`--lr-schedule {constant,cosine}`を、実行器に`--lr-schedule`、`--cycles-dir`、`--base-cycles-dir`、`--branch-from`を足すものである。cosineは、サイクルの全更新回数をT、0始まりの更新番号をtとして、学習率を`lr×(1＋cos(πt/T))/2`とし、サイクルごとに始め直す。`tools/train/zero`で`uv run --frozen python -m unittest discover -s tests -t .`を通し、差分を読んでからコミットする。
+2. 利用者に、学習率の予定の形（サイクルごとのcosine annealing、サイクル全体を通した減衰、ウォームアップの有無）、比べてから採るかどうか、および再開の時期を確かめる。
+3. 再開では、シードの台帳`seed-ledger.jsonl`の既存の名前`cycle-NNNN-gen`がリセット前の生成に使われているので、実行器のシードと名前を重ならないように変えてから始める（実行器は同じ名前があると、そのシードを再利用する）。
+4. 起動は[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の`launch-session.sh`による。`launch-session.sh`には、上の新しい必須の引数を足す必要がある。
 再開するときは、台帳の既存の名前（`cycle-NNNN-gen`）と重ならないシードと名前を使う必要がある。
 
 ## 目的
