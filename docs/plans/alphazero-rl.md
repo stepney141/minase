@@ -15,25 +15,16 @@
 
 ## 状態
 
-進行中。2026年10月26日に起案し、2026年10月28日に着手した。
-フェーズ1は完了し、Colab機を途中で破棄しても、NASで確定したファイルだけで生成と学習を再開できることを確かめた（[記録](../measurements/alphazero-rl/alphazero-rl-resume-check.md)）。
-[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)では、L4の生成は4スレッド、スレッドごとの同時対局数128で毎秒974局面であり、GPUの推論が律速していた。
-フェーズ2を終えてフェーズ3に入り、2026年10月30日までに、実行器`minase_zero run-cycles`でサイクル1〜21以上を回した（1サイクル約22〜37分、約0.6〜1.1 CU、残高は10月30日15時に336.22 CU）。
-サイクル1〜5の価値の過学習を受け、2026年10月29日の利用者の決定で、サイクル6の学習から学習窓からの抽出（「学習窓と局面の抽出」の節）に切り替え、TensorRTのFP16の照合の価値の許容誤差を5×10⁻²に上げた。
-[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)では、サイクル10のネットが800回の探索でランダム初期化のネットに400局すべてで勝ち、進捗測定の`NnBatchSize`を16に決めた。
-[20サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-progress-c0020.md)では、サイクル20がサイクル10に対してElo +456（95%信頼区間+405〜+525）であった。
-サイクル11〜20では、方策の検証の損失は3.24から2.70へ下がった一方、対局結果に対する価値の損失は、検証集合で0.69〜0.76、生成と無関係なαβの棋譜で0.68〜0.72と、ln 2の付近で横ばいである。
-2026年10月30日に利用者が重みの移動平均（EMA）の導入を決め、学習器と実行器に実装した（コミット4ec063c1）。サイクル21から平均を取り始め、自己対局には当面平均でないネットを使う。
-運用の手順は[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節にある。
-
-次にすることは次のとおりである。
-
-- サイクル31〜40はColab機`rl-c31`で回っている（`launch-session.sh rl-c31 31 40 4ec063c1b75190af80dc47f885fe5b20a2b37364 raw`、ログは`/mnt/synology_nas/minase/alphazero/logs/runner-rl-c31.log`、終われば自動で止まる）。終わったら、同じスクリプトでサイクル41からを回す。
-- 重みの移動平均の比較は、サイクル25で`H0`となった（[記録](../measurements/alphazero-rl/alphazero-rl-ema-c0025.md)、[ADR](../adr/keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)）。自己対局は`--selfplay-weights raw`のまま続ける。
-- 30サイクル目の進捗測定（サイクル30対サイクル20）を作業機で行い、記録する。
-- 各サイクルの後に、固定の検証用棋譜の診断を作業機で行う。
-- 学習窓の規則を変えてから10サイクル以上を回したので、cosine annealingの比較（「ふかうら王の学習の技法」の節）と、L4での`torch.compile`の測定を計画する。
-- 50サイクル目には、作業機でMCTSとαβ探索のSTCの固定200ペアを行う（「進捗測定」の節）。
+進行中（学習を停止中）。2026年10月26日に起案し、2026年10月28日に着手した。
+フェーズ1（[借りた機械をまたぐ再開の確認](../measurements/alphazero-rl/alphazero-rl-resume-check.md)）と[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)は完了した。
+2026年10月28日から31日にサイクル1〜37を回したが、学習率は全サイクルで0.01の一定のままであった。
+2026年10月29日に導入を決めた学習率の予定（cosine annealing）に着手していなかったので、2026年10月31日に利用者が、これまでの学習をすべてリセットし、学習を止めると決めた。
+サイクル1〜37の出力と記録は削除せず、NASの`/mnt/synology_nas/minase/alphazero/archive-20261031-no-lr-schedule/`へ移した。
+ランダム初期化のネット（`cycles/cycle-0000/`、`nets/cycle-0000.onnx`）、ソースの書庫、シードの台帳、および借用の記録は残した。
+この間の測定（[学習窓の事前確認](../measurements/alphazero-rl/alphazero-rl-window-precheck.md)、[10サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)と[20サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0020.md)の進捗測定、[重みの移動平均の比較](../measurements/alphazero-rl/alphazero-rl-ema-c0025.md)）は、学習率が一定の学習の記録として残す。
+学習率の予定を学習器と実行器に入れる実装を進めている。
+学習の再開は、利用者の指示を待つ。
+再開するときは、台帳の既存の名前（`cycle-NNNN-gen`）と重ならないシードと名前を使う必要がある。
 
 ## 目的
 
