@@ -1,0 +1,13 @@
+{"session":"rl-p1a","gpu_requested":"L4","rented_at":"2026-10-28T23:38:04+09:00","balance_before":359.07,"purpose":"phase1 machine A and trial run"}
+{"session":"rl-p1b","gpu_requested":"L4","rented_at":"2026-10-29T00:13:12+09:00","balance_before":358.24,"purpose":"phase1 machine B"}
+{"session":"rl-p1a","stopped_at":"2026-10-29T00:35:27+09:00","balance_after":357.28,"note":"balance_after also reflects rl-p1b running since 00:13:12; stopped deliberately after chunks 0 and 2 of phase1/gen were confirmed on the NAS"}
+{"session":"rl-p1b","stopped_at":"2026-10-29T00:41:58+09:00","balance_after":356.90,"note":"stopped deliberately after the step-400 checkpoint of phase1/train-b was confirmed on the NAS"}
+{"session":"rl-p1c","gpu_requested":"L4","rented_at":"2026-10-29T00:42:11+09:00","balance_before":356.90,"purpose":"phase1 machine C (training resume), then cycle 1"}
+{"session":"rl-p1c","interval":"before the first runner","started_at":"2026-10-29T00:42:11+09:00","ended_at":"2026-10-28T16:08:19Z","balance_start":356.90,"balance_end":356.30,"purpose":"setup, phase-1 training resume check, and reference training on machine C"}
+{"session":"rl-p1c","interval":"between runners","started_at":"2026-10-28T16:32:20Z","ended_at":"2026-10-28T16:37:11Z","balance_start":355.66,"purpose":"three-way network check of cycle 1 on the work machine before cycle 2 generation; balance_end is the start_balance of cycle 2 in sessions.jsonl"}
+{"session":"rl-p1c","stopped_at":"unknown, between 2026-10-28T19:11:31Z and 2026-10-28T22:51:36Z","balance_after":349.89,"note":"the runner stopped at 19:11:31Z when the cycle-6 TensorRT value difference exceeded the tolerance; Colab reclaimed the idle session while the operator waited for the user; colab sessions found none at 22:51:36Z"}
+{"session":"rl-c06","gpu_requested":"L4","rented_at":"2026-10-30T07:19:03+09:00","balance_before":349.89,"purpose":"cycles 6-10 with the multi-cycle window"}
+{"session":"rl-c06","stopped_at":"2026-10-30T09:21:04+09:00","balance_after":346.01,"note":"runner exit code 0"}
+{"session":"rl-c11","gpu_requested":"L4","rented_at":"2026-10-30T09:51:31+09:00","balance_before":346.01,"purpose":"cycles 11-20"}
+{"session":"rl-c11","stopped_at":"2026-10-30T14:57:54+09:00","balance_after":336.22,"note":"runner exit code 0"}
+{"session":"rl-c21","gpu_requested":"L4","rented_at":"2026-10-30T14:58:17+09:00","balance_before":336.22,"purpose":"cycles 21-30 with EMA"}

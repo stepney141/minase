@@ -114,6 +114,23 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 回収された時刻は分からず、回収までの間の消費は止まらない。
 このため、計算を止めた後に利用者の判断などで待つときは、必要なファイルを受け取ってから5節の手順でセッションを止め、待つ間に機械を借りたままにしない。
 
+### 4.1 強化学習のサイクルを回す一連の手順
+
+強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
+2026年10月の運用で実際に使った起動スクリプトは`docs/measurements/alphazero-rl/alphazero-rl-sessions/`にある（`run-c21.sh`が最新）。
+
+1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
+2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
+3. 書庫と`docs/measurements/alphazero-rl/alphazero-rl-trial/colab-setup.sh`をrsyncで`/content/`へ送り、`colab-setup.sh`を`setsid nohup`で起動する（導入は3〜17分）。
+4. 起動スクリプトを、`--first-cycle`、`--last-cycle`、`--deadline`、`C=<コミット>`、およびセッション名を書き換えて`nohup setsid bash`で起動する。スクリプトは導入の完了を待って`minase_zero run-cycles`を走らせ、終了コードによらず`colab stop`し、止めた時刻と残高を`rentals.jsonl`に足す。
+5. 進み具合は`/mnt/synology_nas/minase/alphazero/logs/runner-<セッション>-<時刻>.log`の末尾で見る。サイクルの結果は`cycles.jsonl`、CUの区間は`sessions.jsonl`にある。
+6. 実行器が異常で止まったら、ログの末尾のエラーと、該当サイクルの`cycles/cycle-NNNN/`の状態ファイル（`*.started.json`、`*.exit`、`*.log`）を見る。不合格の出力を退けて学び直すときは、削除せずに`cycles/cycle-NNNN/rejected-<理由>/`へ移す。
+
+各サイクルの後、作業機で次を行う（GPUが空いているとき）。
+
+- 固定の検証用棋譜の診断：`tools/train/zero`で`uv run --frozen python -m minase_zero external-eval --checkpoint /mnt/synology_nas/minase/alphazero/cycles/cycle-NNNN/train/checkpoint.pt --data <minaseのリポジトリ>/data/nnue-lr-schedule-gen/generated-8200000.bin --games 1000 --seed 20261030 --device cuda --out /mnt/synology_nas/minase/alphazero/external/cycle-NNNN.json`。
+- 10サイクルごとの進捗測定：`docs/measurements/alphazero-rl/alphazero-rl-progress-c0020/`の`check.sh`（作業機での3者の照合）と`progress-workstation.sh <新> <旧> 16 <シード> <シード> /mnt/synology_nas/minase/alphazero/progress`。`progress-workstation.sh`の後半の乱択との対局は最初の進捗測定でだけ要るもので、サイクル0の実行ディレクトリが既にあると失敗するので、次からはその部分を除いた版を使う。
+
 ## 5. 結果を受け取って終了する
 
 結果のファイルは、Colab機で検査和を求めてから、3節で定義した`RSH`を使うrsyncでNASの一時ファイルへ受け取る。
