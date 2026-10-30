@@ -117,7 +117,7 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 ### 4.1 強化学習のサイクルを回す一連の手順
 
 強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
-2026年10月の運用で実際に使った起動スクリプトは`docs/measurements/alphazero-rl/alphazero-rl-sessions/`にある（`run-c21.sh`が最新）。
+手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> <raw|ema> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
 
 1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
 2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
