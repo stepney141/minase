@@ -1,0 +1,26 @@
+NN session creation: 0.054545 s
+NN inference (288 positions): 0.734621 s
+NN session creation: 7.640010 s
+NN inference (288 positions): 0.088562 s
+NN session creation: 0.055682 s
+NN inference (288 positions): 2.806042 s
+NN session creation: 8.361648 s
+NN inference (288 positions): 0.027049 s
+NN session creation: 0.055110 s
+NN inference (288 positions): 0.435732 s
+NN session creation: 9.790011 s
+NN inference (288 positions): 0.022790 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":6.818969726651858e-06,"max_probability_abs_diff":5.959626079576896e-07,"max_value_abs_diff":7.390163421772122e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.04162788391113281,"max_probability_abs_diff":0.005514054147325698,"max_value_abs_diff":0.008988915623931892,"best_move_mismatches":7,"best_move_mismatch_gaps":[[46,0.006070137023925781],[65,0.008497238159179688],[157,0.008996963500976562],[212,0.008816719055175781],[228,0.00037384033203125],[267,0.001804351806640625],[272,0.0041179656982421875]]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":7.5849609366684945e-06,"max_probability_abs_diff":5.959626079576896e-07,"max_value_abs_diff":8.070712280150438e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.030391693115234375,"max_probability_abs_diff":0.006031805896949238,"max_value_abs_diff":0.004795519622726452,"best_move_mismatches":8,"best_move_mismatch_gaps":[[46,0.006070137023925781],[138,0.006703376770019531],[165,0.009888648986816406],[172,0.0021152496337890625],[212,0.008816719055175781],[228,0.00037384033203125],[231,0.00489044189453125],[272,0.0041179656982421875]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":7.5849609366684945e-06,"max_probability_abs_diff":5.959626079576896e-07,"max_value_abs_diff":8.070712280150438e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.04162788391113281,"max_probability_abs_diff":0.005166905447988396,"max_value_abs_diff":0.008285700024871834,"best_move_mismatches":8,"best_move_mismatch_gaps":[[6,0.010076522827148438],[46,0.006070137023925781],[111,0.0013074874877929688],[157,0.008996963500976562],[172,0.0021152496337890625],[212,0.008816719055175781],[228,0.00037384033203125],[267,0.001804351806640625]]}
+elapsed_seconds 32
+failed 0

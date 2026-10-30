@@ -1,0 +1,1718 @@
+run_dir: /mnt/synology_nas/minase/alphazero/progress/c0020-nodes1-vs-random
+rules: L0,P0,R1,E0
+seed: 20020
+max_ply: 4096
+candidate: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1
+baseline: random limit=nodes=1
+response_timeout: 120 s
+pair 1: pair_seed=12256636622909732160 opening_seed=3993145051164801787 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 1 opening: plies=12
+  1: move (8,2)->(8,1)
+  2: move (10,9)->(10,10)
+  3: move (5,2)->(4,4)
+  4: move (3,7)->(3,6)
+  5: move (2,3)->(2,4)
+  6: move (4,11)->(3,10)
+  7: move (3,2)->(2,3)
+  8: move (6,9)->(5,7)
+  9: move (7,1)->(8,2)
+  10: move (6,10)->(8,10)
+  11: move (2,0)->(3,1)
+  12: move (5,7)->(4,7)
+pair 1 game 1 settings: A=Black seed_a=16592698863522603155 B=White seed_b=1463659506691067316
+pair 1 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 1 game 2 settings: B=Black seed_b=17089698928953099267 A=White seed_a=8081059206419710136
+pair 1 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 1 result: score_a=2.0 category=4
+pair 2: pair_seed=8747729713999972899 opening_seed=13932491506800095387 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 2 opening: plies=10
+  1: move (2,0)->(3,1)
+  2: move (4,11)->(3,10)
+  3: move (8,0)->(8,1)
+  4: move (5,11)->(4,11)
+  5: move (5,3)->(5,4)
+  6: move (8,11)->(8,10)
+  7: move (5,1)->(5,3)
+  8: move (4,10)->(5,11)
+  9: move (4,2)->(5,1)
+  10: move (6,9)->(4,10)
+pair 2 game 1 settings: A=Black seed_a=6302044991568810031 B=White seed_b=3107129933264057763
+pair 2 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 2 game 2 settings: B=Black seed_b=15708884452753365331 A=White seed_a=4304862719555972904
+pair 2 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 2 result: score_a=2.0 category=4
+pair 3: pair_seed=1764078587581739336 opening_seed=6623800665785142166 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 3 opening: plies=9
+  1: move (8,0)->(8,1)
+  2: move (9,8)->(9,7)
+  3: move (5,2)->(6,4)
+  4: move (9,11)->(10,10)
+  5: move (4,2)->(5,2)
+  6: move (7,10)->(8,10)
+  7: move (6,4)->(5,4)
+  8: move (2,8)->(2,7)
+  9: move (4,1)->(3,1)
+pair 3 game 1 settings: A=Black seed_a=11508157819058822091 B=White seed_b=18134339448605983405
+pair 3 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 3 game 2 settings: B=Black seed_b=6474492216820864795 A=White seed_a=15199295166445820015
+pair 3 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 3 result: score_a=2.0 category=4
+pair 4: pair_seed=7783461980935129421 opening_seed=10882583890239096497 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 4 opening: plies=11
+  1: move (5,2)->(5,4)
+  2: move (4,11)->(3,10)
+  3: move (5,4)->(5,5)
+  4: move (9,8)->(9,7)
+  5: move (4,2)->(3,1)
+  6: move (1,9)->(1,10)
+  7: move (1,0)->(1,1)
+  8: move (2,10)->(1,9)
+  9: move (2,3)->(2,4)
+  10: move (6,9)->(7,7)
+  11: move (4,3)->(4,4)
+pair 4 game 1 settings: A=Black seed_a=5500634547250944279 B=White seed_b=15181917516517702307
+pair 4 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 4 game 2 settings: B=Black seed_b=3412321582808846351 A=White seed_a=15499721894060535540
+pair 4 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 4 result: score_a=2.0 category=4
+pair 5: pair_seed=3536285990509385849 opening_seed=14491800394430942788 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 5 opening: plies=9
+  1: move (3,2)->(3,1)
+  2: move (8,9)->(8,10)
+  3: move (5,2)->(3,2)
+  4: move (1,9)->(1,10)
+  5: move (2,3)->(2,4)
+  6: move (9,9)->(8,9)
+  7: move (7,2)->(8,1)
+  8: move (6,9)->(7,7)
+  9: move (8,1)->(7,2)
+pair 5 game 1 settings: A=Black seed_a=12220722929129742858 B=White seed_b=324979876396212263
+pair 5 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 5 game 2 settings: B=Black seed_b=13679854294611443217 A=White seed_a=17851430647170889703
+pair 5 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 5 result: score_a=2.0 category=4
+pair 6: pair_seed=11783114076644707919 opening_seed=5373422800131127408 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 6 opening: plies=9
+  1: move (5,2)->(3,1)
+  2: move (10,9)->(10,10)
+  3: move (4,2)->(5,2)
+  4: move (3,7)->(3,6)
+  5: move (9,0)->(8,1)
+  6: move (1,9)->(1,10)
+  7: move (2,3)->(2,4)
+  8: move (11,9)->(10,9)
+  9: move (5,2)->(4,2)
+pair 6 game 1 settings: A=Black seed_a=16094296123069453421 B=White seed_b=14913858343524714863
+pair 6 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 6 game 2 settings: B=Black seed_b=17221795364476466280 A=White seed_a=8083875773805002259
+pair 6 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 6 result: score_a=2.0 category=4
+pair 7: pair_seed=11246011179458889061 opening_seed=5638730058838614460 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 7 opening: plies=9
+  1: move (9,0)->(8,1)
+  2: move (6,10)->(8,10)
+  3: move (3,4)->(3,5)
+  4: move (6,9)->(4,7)
+  5: move (4,3)->(4,4)
+  6: move (11,8)->(11,7)
+  7: move (5,1)->(3,1)
+  8: move (8,10)->(10,10)
+  9: move (8,4)->(8,5)
+pair 7 game 1 settings: A=Black seed_a=17821532546022862046 B=White seed_b=14102620726002698246
+pair 7 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 7 game 2 settings: B=Black seed_b=5112967606542794967 A=White seed_a=15589846955019575698
+pair 7 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 7 result: score_a=2.0 category=4
+pair 8: pair_seed=16355007764187814932 opening_seed=18121836283374859303 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 8 opening: plies=12
+  1: move (5,2)->(7,4)
+  2: move (6,10)->(8,10)
+  3: move (7,4)->(5,5)
+  4: move (6,9)->(6,9)
+  5: move (4,3)->(4,4)
+  6: move (9,11)->(10,10)
+  7: move (4,4)->(4,5)
+  8: move (7,11)->(6,10)
+  9: move (10,0)->(10,1)
+  10: move (5,8)->(5,7)
+  11: move (7,0)->(8,1)
+  12: move (1,9)->(1,10)
+pair 8 game 1 settings: A=Black seed_a=16953159269507642287 B=White seed_b=1401252454457817035
+pair 8 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 8 game 2 settings: B=Black seed_b=10023191311007518533 A=White seed_a=8332725031394828977
+pair 8 game 2: plies=34 result=win winner=White reason=RoyalCapture
+pair 8 result: score_a=2.0 category=4
+pair 9: pair_seed=7713274141112807094 opening_seed=8267070268025933917 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 9 opening: plies=11
+  1: move (8,2)->(8,1)
+  2: move (6,9)->(7,7)
+  3: move (9,2)->(8,2)
+  4: move (6,10)->(8,10)
+  5: move (2,0)->(3,1)
+  6: move (4,10)->(3,10)
+  7: move (10,3)->(10,4)
+  8: move (7,10)->(6,9)
+  9: move (1,0)->(1,1)
+  10: move (10,8)->(10,7)
+  11: move (10,2)->(10,3)
+pair 9 game 1 settings: A=Black seed_a=9576121862370548786 B=White seed_b=6101084941501065824
+pair 9 game 1: plies=67 result=win winner=Black reason=RoyalCapture
+pair 9 game 2 settings: B=Black seed_b=14171734618111589319 A=White seed_a=10036508837668177413
+pair 9 game 2: plies=238 result=win winner=White reason=RoyalCapture
+pair 9 result: score_a=2.0 category=4
+pair 10: pair_seed=2294491265641319828 opening_seed=11721005678770711520 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 10 opening: plies=9
+  1: move (8,2)->(8,1)
+  2: move (9,8)->(9,7)
+  3: move (10,0)->(10,1)
+  4: move (4,8)->(4,7)
+  5: move (2,0)->(3,1)
+  6: move (3,9)->(8,4)
+  7: move (5,2)->(4,4)
+  8: move (9,11)->(10,10)
+  9: move (10,3)->(10,4)
+pair 10 game 1 settings: A=Black seed_a=15138692902324016548 B=White seed_b=15611031281306616557
+pair 10 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 10 game 2 settings: B=Black seed_b=12494511545562769059 A=White seed_a=13878283065107122081
+pair 10 game 2: plies=38 result=win winner=White reason=RoyalCapture
+pair 10 result: score_a=2.0 category=4
+pair 11: pair_seed=88818610354146235 opening_seed=12511683467380156139 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 11 opening: plies=12
+  1: move (5,2)->(3,1)
+  2: move (9,11)->(10,10)
+  3: move (3,4)->(3,5)
+  4: move (6,8)->(6,7)
+  5: move (9,0)->(10,1)
+  6: move (5,9)->(8,6)
+  7: move (4,3)->(4,4)
+  8: move (2,11)->(1,10)
+  9: move (3,1)->(5,2)
+  10: move (8,6)->(7,7)
+  11: move (4,1)->(3,1)
+  12: move (6,9)->(6,9)
+pair 11 game 1 settings: A=Black seed_a=10021818805707734234 B=White seed_b=15058987689284020478
+pair 11 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 11 game 2 settings: B=Black seed_b=15023117721156765865 A=White seed_a=13178762229201178251
+pair 11 game 2: plies=112 result=win winner=White reason=RoyalCapture
+pair 11 result: score_a=2.0 category=4
+pair 12: pair_seed=7196686434830592260 opening_seed=11532960843241352049 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 12 opening: plies=9
+  1: move (5,1)->(3,1)
+  2: move (8,11)->(8,10)
+  3: move (5,3)->(5,4)
+  4: move (7,10)->(8,11)
+  5: move (10,3)->(10,4)
+  6: move (11,8)->(11,7)
+  7: move (6,2)->(5,3)
+  8: move (2,11)->(1,10)
+  9: move (0,3)->(0,4)
+pair 12 game 1 settings: A=Black seed_a=13630812645568838260 B=White seed_b=8602598946709757108
+pair 12 game 1: plies=39 result=win winner=Black reason=RoyalCapture
+pair 12 game 2 settings: B=Black seed_b=9706865814487121293 A=White seed_a=17131522391957396675
+pair 12 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 12 result: score_a=2.0 category=4
+pair 13: pair_seed=11566512659678111708 opening_seed=15315920807421188219 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 13 opening: plies=9
+  1: move (1,2)->(1,1)
+  2: move (9,8)->(9,7)
+  3: move (10,3)->(10,4)
+  4: move (4,10)->(3,10)
+  5: move (10,0)->(10,1)
+  6: move (3,10)->(4,10)
+  7: move (0,2)->(1,2)
+  8: move (7,11)->(8,10)
+  9: move (1,2)->(0,2)
+pair 13 game 1 settings: A=Black seed_a=9306194896263426946 B=White seed_b=5914253022891227437
+pair 13 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 13 game 2 settings: B=Black seed_b=6954121350141553717 A=White seed_a=5506501634479717540
+pair 13 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 13 result: score_a=2.0 category=4
+pair 14: pair_seed=17939295063151028860 opening_seed=17888242950660836813 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 14 opening: plies=9
+  1: move (7,3)->(7,4)
+  2: move (8,7)->(8,6)
+  3: move (8,2)->(8,1)
+  4: move (9,8)->(9,7)
+  5: move (7,2)->(8,2)
+  6: move (8,6)->(8,5)
+  7: move (6,2)->(7,3)
+  8: move (7,9)->(8,10)
+  9: move (5,2)->(5,2)
+pair 14 game 1 settings: A=Black seed_a=10402604203867685400 B=White seed_b=670496671437171958
+pair 14 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 14 game 2 settings: B=Black seed_b=17659161549058575468 A=White seed_a=3012992445223795743
+pair 14 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 14 result: score_a=2.0 category=4
+pair 15: pair_seed=444725384281709892 opening_seed=10119026255624605409 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 15 opening: plies=9
+  1: move (10,2)->(10,1)
+  2: move (3,11)->(3,10)
+  3: move (2,3)->(2,4)
+  4: move (2,11)->(1,10)
+  5: move (3,2)->(2,3)
+  6: move (4,10)->(3,11)
+  7: move (1,3)->(1,4)
+  8: move (7,8)->(7,7)
+  9: move (3,4)->(3,5)
+pair 15 game 1 settings: A=Black seed_a=11039518099138106384 B=White seed_b=8180613866360307786
+pair 15 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 15 game 2 settings: B=Black seed_b=3517965505130044997 A=White seed_a=4436600375239170652
+pair 15 game 2: plies=40 result=win winner=White reason=RoyalCapture
+pair 15 result: score_a=2.0 category=4
+pair 16: pair_seed=13948425020611389593 opening_seed=13343855321728829232 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 16 opening: plies=11
+  1: move (1,3)->(1,4)
+  2: move (6,9)->(6,7)
+  3: move (4,2)->(3,1)
+  4: move (8,7)->(8,6)
+  5: move (8,4)->(8,5)
+  6: move (2,8)->(2,7)
+  7: move (6,3)->(6,4)
+  8: move (7,8)->(7,7)
+  9: move (7,2)->(8,1)
+  10: move (5,10)->(7,8)
+  11: move (10,0)->(10,1)
+pair 16 game 1 settings: A=Black seed_a=14952109919713580297 B=White seed_b=3745356756749441421
+pair 16 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 16 game 2 settings: B=Black seed_b=8276757889708332464 A=White seed_a=1038920841471126729
+pair 16 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 16 result: score_a=2.0 category=4
+pair 17: pair_seed=12220975817702107138 opening_seed=4891725835633865355 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 17 opening: plies=11
+  1: move (10,3)->(10,4)
+  2: move (10,8)->(10,7)
+  3: move (6,3)->(6,4)
+  4: move (8,11)->(8,10)
+  5: move (7,2)->(6,3)
+  6: move (7,10)->(8,11)
+  7: move (6,4)->(6,5)
+  8: move (5,8)->(5,7)
+  9: move (11,3)->(11,4)
+  10: move (2,11)->(3,10)
+  11: move (2,0)->(1,1)
+pair 17 game 1 settings: A=Black seed_a=5412474537956530094 B=White seed_b=18216325624702398311
+pair 17 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 17 game 2 settings: B=Black seed_b=6924764073125304540 A=White seed_a=1346342845527912336
+pair 17 game 2: plies=32 result=win winner=White reason=RoyalCapture
+pair 17 result: score_a=2.0 category=4
+pair 18: pair_seed=3037625008198164740 opening_seed=10188368002664413487 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 18 opening: plies=8
+  1: move (3,4)->(3,5)
+  2: move (6,9)->(6,7)
+  3: move (8,0)->(8,1)
+  4: move (7,9)->(6,9)
+  5: move (1,3)->(1,4)
+  6: move (6,9)->(7,9)
+  7: move (5,2)->(3,1)
+  8: move (6,7)->(7,7)
+pair 18 game 1 settings: A=Black seed_a=6343805342691987301 B=White seed_b=7936100080191955079
+pair 18 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 18 game 2 settings: B=Black seed_b=4187731145730222248 A=White seed_a=3029553883920178995
+pair 18 game 2: plies=198 result=win winner=White reason=RoyalCapture
+pair 18 result: score_a=2.0 category=4
+pair 19: pair_seed=9720007675378197484 opening_seed=13665254531490202635 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 19 opening: plies=9
+  1: move (10,0)->(10,1)
+  2: move (4,10)->(3,10)
+  3: move (9,1)->(10,0)
+  4: move (6,10)->(8,10)
+  5: move (2,3)->(2,4)
+  6: move (10,9)->(10,10)
+  7: move (4,1)->(3,1)
+  8: move (8,10)->(6,10)
+  9: move (5,0)->(4,1)
+pair 19 game 1 settings: A=Black seed_a=11205251121708926475 B=White seed_b=10128181565723947784
+pair 19 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 19 game 2 settings: B=Black seed_b=10081079454754055853 A=White seed_a=11945053188978606850
+pair 19 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 19 result: score_a=2.0 category=4
+pair 20: pair_seed=16859496410904251550 opening_seed=12199917865482792547 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 20 opening: plies=8
+  1: move (3,4)->(3,5)
+  2: move (9,8)->(9,7)
+  3: move (4,1)->(3,1)
+  4: move (8,9)->(11,6)
+  5: move (7,0)->(8,1)
+  6: move (3,9)->(3,10)
+  7: move (0,3)->(0,4)
+  8: move (7,9)->(8,10)
+pair 20 game 1 settings: A=Black seed_a=5870097374327334518 B=White seed_b=3622522236919723950
+pair 20 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 20 game 2 settings: B=Black seed_b=17731961582338447578 A=White seed_a=2116744365439522007
+pair 20 game 2: plies=34 result=win winner=White reason=RoyalCapture
+pair 20 result: score_a=2.0 category=4
+pair 21: pair_seed=15845984437281316133 opening_seed=10156861139854685423 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 21 opening: plies=8
+  1: move (9,3)->(9,4)
+  2: move (7,11)->(8,10)
+  3: move (4,3)->(4,4)
+  4: move (6,9)->(5,7)
+  5: move (5,2)->(4,3)
+  6: move (3,11)->(3,10)
+  7: move (4,3)->(2,4)
+  8: move (5,7)->(6,5)
+pair 21 game 1 settings: A=Black seed_a=4300995112004811083 B=White seed_b=6340126489334700331
+pair 21 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 21 game 2 settings: B=Black seed_b=4926840437247792696 A=White seed_a=16210118078981349929
+pair 21 game 2: plies=14 result=win winner=White reason=RoyalCapture
+pair 21 result: score_a=2.0 category=4
+pair 22: pair_seed=1373482300176920429 opening_seed=8082216933593624706 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 22 opening: plies=12
+  1: move (5,2)->(5,4)
+  2: move (6,10)->(8,10)
+  3: move (4,1)->(3,1)
+  4: move (6,9)->(6,9)
+  5: move (5,4)->(5,4)
+  6: move (7,8)->(7,7)
+  7: move (5,4)->(5,2)
+  8: move (6,11)->(6,10)
+  9: move (10,3)->(10,4)
+  10: move (3,9)->(3,10)
+  11: move (8,0)->(8,1)
+  12: move (0,8)->(0,7)
+pair 22 game 1 settings: A=Black seed_a=13894748702868510865 B=White seed_b=9042208295732140968
+pair 22 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 22 game 2 settings: B=Black seed_b=6937187075208750522 A=White seed_a=6203883469824713015
+pair 22 game 2: plies=28 result=win winner=White reason=RoyalCapture
+pair 22 result: score_a=2.0 category=4
+pair 23: pair_seed=6639580608436146468 opening_seed=13256434003178411591 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 23 opening: plies=10
+  1: move (9,3)->(9,4)
+  2: move (1,11)->(1,10)
+  3: move (3,4)->(3,5)
+  4: move (8,11)->(8,10)
+  5: move (10,2)->(10,1)
+  6: move (6,8)->(6,7)
+  7: move (7,0)->(8,1)
+  8: move (2,10)->(1,11)
+  9: move (0,3)->(0,4)
+  10: move (4,10)->(3,10)
+pair 23 game 1 settings: A=Black seed_a=3859869719230650793 B=White seed_b=4732963363365802766
+pair 23 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 23 game 2 settings: B=Black seed_b=5215998436517112327 A=White seed_a=7790196864344674083
+pair 23 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 23 result: score_a=2.0 category=4
+pair 24: pair_seed=6378391854818713228 opening_seed=10126351221395798867 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 24 opening: plies=11
+  1: move (10,3)->(10,4)
+  2: move (6,9)->(7,7)
+  3: move (11,3)->(11,4)
+  4: move (6,10)->(8,10)
+  5: move (4,3)->(4,4)
+  6: move (4,11)->(3,10)
+  7: move (8,2)->(8,1)
+  8: move (5,11)->(6,10)
+  9: move (4,2)->(4,3)
+  10: move (4,10)->(5,11)
+  11: move (3,0)->(3,1)
+pair 24 game 1 settings: A=Black seed_a=14018155544058837095 B=White seed_b=576748691654089101
+pair 24 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 24 game 2 settings: B=Black seed_b=2112854717672908773 A=White seed_a=5839920939455390671
+pair 24 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 24 result: score_a=2.0 category=4
+pair 25: pair_seed=2120758792991175004 opening_seed=5746036143498679200 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 25 opening: plies=11
+  1: move (7,2)->(8,1)
+  2: move (10,8)->(10,7)
+  3: move (10,2)->(10,1)
+  4: move (2,11)->(1,10)
+  5: move (11,3)->(11,4)
+  6: move (3,7)->(3,6)
+  7: move (1,3)->(1,4)
+  8: move (7,10)->(8,10)
+  9: move (5,2)->(7,2)
+  10: move (4,10)->(3,10)
+  11: move (4,2)->(3,1)
+pair 25 game 1 settings: A=Black seed_a=81232565289457162 B=White seed_b=917107951628803976
+pair 25 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 25 game 2 settings: B=Black seed_b=9432177653179445950 A=White seed_a=14756979500403645738
+pair 25 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 25 result: score_a=2.0 category=4
+pair 26: pair_seed=9565380644174660888 opening_seed=14327261582868812878 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 26 opening: plies=9
+  1: move (10,2)->(10,1)
+  2: move (7,10)->(8,10)
+  3: move (5,2)->(3,1)
+  4: move (8,7)->(8,6)
+  5: move (4,2)->(5,2)
+  6: move (10,8)->(10,7)
+  7: move (8,4)->(8,5)
+  8: move (6,9)->(6,9)
+  9: move (3,4)->(3,5)
+pair 26 game 1 settings: A=Black seed_a=10164028085535805931 B=White seed_b=11791408627106299550
+pair 26 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 26 game 2 settings: B=Black seed_b=8590942435251031025 A=White seed_a=16996106348844788896
+pair 26 game 2: plies=44 result=win winner=White reason=RoyalCapture
+pair 26 result: score_a=2.0 category=4
+pair 27: pair_seed=7607627656590549003 opening_seed=10565482408582558104 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 27 opening: plies=8
+  1: move (1,0)->(1,1)
+  2: move (0,8)->(0,7)
+  3: move (9,3)->(9,4)
+  4: move (4,11)->(3,10)
+  5: move (7,2)->(8,1)
+  6: move (1,9)->(1,10)
+  7: move (0,3)->(0,4)
+  8: move (0,7)->(0,6)
+pair 27 game 1 settings: A=Black seed_a=18076015017042512287 B=White seed_b=12019557208295916942
+pair 27 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 27 game 2 settings: B=Black seed_b=14954847904940002719 A=White seed_a=9787214727209463087
+pair 27 game 2: plies=38 result=win winner=White reason=RoyalCapture
+pair 27 result: score_a=2.0 category=4
+pair 28: pair_seed=13020990585197200638 opening_seed=5911682357042472774 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 28 opening: plies=11
+  1: move (5,2)->(6,4)
+  2: move (4,11)->(3,10)
+  3: move (6,4)->(8,5)
+  4: move (9,11)->(10,10)
+  5: move (2,0)->(1,1)
+  6: move (8,11)->(8,10)
+  7: move (8,5)->(7,5)
+  8: move (1,8)->(1,7)
+  9: move (7,5)->(7,6)
+  10: move (7,8)->(7,7)
+  11: move (7,6)->(9,6)
+pair 28 game 1 settings: A=Black seed_a=11707107998883586930 B=White seed_b=14137894622215268828
+pair 28 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 28 game 2 settings: B=Black seed_b=1951367650784044773 A=White seed_a=12623883434737465939
+pair 28 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 28 result: score_a=2.0 category=4
+pair 29: pair_seed=4314261197383448748 opening_seed=6071535227897427374 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 29 opening: plies=11
+  1: move (10,0)->(10,1)
+  2: move (6,9)->(4,7)
+  3: move (5,3)->(5,4)
+  4: move (2,8)->(2,7)
+  5: move (4,2)->(3,1)
+  6: move (2,7)->(2,6)
+  7: move (6,3)->(6,4)
+  8: move (7,10)->(8,10)
+  9: move (6,2)->(3,5)
+  10: move (9,8)->(9,7)
+  11: move (3,1)->(4,2)
+pair 29 game 1 settings: A=Black seed_a=12140468920555106557 B=White seed_b=9681346268449114234
+pair 29 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 29 game 2 settings: B=Black seed_b=16361908604427000190 A=White seed_a=4835261822487202193
+pair 29 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 29 result: score_a=2.0 category=4
+pair 30: pair_seed=1547063107088105477 opening_seed=17843952487510015620 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 30 opening: plies=12
+  1: move (9,3)->(9,4)
+  2: move (2,11)->(3,10)
+  3: move (3,4)->(3,5)
+  4: move (10,9)->(10,10)
+  5: move (3,5)->(3,4)
+  6: move (9,9)->(10,9)
+  7: move (10,0)->(10,1)
+  8: move (6,9)->(4,7)
+  9: move (8,4)->(8,5)
+  10: move (7,9)->(8,10)
+  11: move (4,1)->(3,1)
+  12: move (4,7)->(6,7)
+pair 30 game 1 settings: A=Black seed_a=12760597674041483184 B=White seed_b=15998254839294531759
+pair 30 game 1: plies=63 result=win winner=Black reason=RoyalCapture
+pair 30 game 2 settings: B=Black seed_b=12498682022998510974 A=White seed_a=15590740667204371101
+pair 30 game 2: plies=110 result=win winner=White reason=RoyalCapture
+pair 30 result: score_a=2.0 category=4
+pair 31: pair_seed=8714036462085125160 opening_seed=1588946319159074060 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 31 opening: plies=9
+  1: move (3,2)->(3,1)
+  2: move (6,9)->(4,7)
+  3: move (1,0)->(1,1)
+  4: move (1,9)->(1,10)
+  5: move (7,2)->(8,1)
+  6: move (7,9)->(6,9)
+  7: move (5,2)->(3,2)
+  8: move (4,7)->(3,6)
+  9: move (4,3)->(4,4)
+pair 31 game 1 settings: A=Black seed_a=12065962983371910567 B=White seed_b=7689245439949616921
+pair 31 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 31 game 2 settings: B=Black seed_b=15333215837971051211 A=White seed_a=7654314472968827806
+pair 31 game 2: plies=48 result=win winner=White reason=RoyalCapture
+pair 31 result: score_a=2.0 category=4
+pair 32: pair_seed=9264677506210638058 opening_seed=4079401359620336873 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 32 opening: plies=11
+  1: move (4,2)->(3,1)
+  2: move (3,9)->(3,10)
+  3: move (1,2)->(1,1)
+  4: move (3,10)->(3,9)
+  5: move (8,0)->(8,1)
+  6: move (10,8)->(10,7)
+  7: move (5,2)->(7,4)
+  8: move (9,11)->(10,10)
+  9: move (7,4)->(5,4)
+  10: move (1,8)->(1,7)
+  11: move (4,3)->(4,4)
+pair 32 game 1 settings: A=Black seed_a=11652962411625204374 B=White seed_b=8571857734644298616
+pair 32 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 32 game 2 settings: B=Black seed_b=15982781239506735481 A=White seed_a=13673202399049582362
+pair 32 game 2: plies=52 result=win winner=White reason=RoyalCapture
+pair 32 result: score_a=2.0 category=4
+pair 33: pair_seed=15998187793574551363 opening_seed=3599632795110602348 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 33 opening: plies=8
+  1: move (5,2)->(5,4)
+  2: move (6,9)->(5,7)
+  3: move (5,4)->(5,2)
+  4: move (10,8)->(10,7)
+  5: move (2,0)->(1,1)
+  6: move (7,10)->(8,10)
+  7: move (4,2)->(3,1)
+  8: move (5,7)->(6,9)
+pair 33 game 1 settings: A=Black seed_a=1120936546075687669 B=White seed_b=5038031495878835921
+pair 33 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 33 game 2 settings: B=Black seed_b=1993470770735109930 A=White seed_a=10253595041324885835
+pair 33 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 33 result: score_a=2.0 category=4
+pair 34: pair_seed=10584678527501897847 opening_seed=3802670778954361875 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 34 opening: plies=8
+  1: move (1,0)->(1,1)
+  2: move (6,8)->(6,7)
+  3: move (4,3)->(4,4)
+  4: move (3,7)->(3,6)
+  5: move (8,0)->(8,1)
+  6: move (3,6)->(3,7)
+  7: move (10,0)->(10,1)
+  8: move (8,9)->(8,10)
+pair 34 game 1 settings: A=Black seed_a=15501455955242104886 B=White seed_b=8768207236375920508
+pair 34 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 34 game 2 settings: B=Black seed_b=7520866141603717494 A=White seed_a=10968919186309511569
+pair 34 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 34 result: score_a=2.0 category=4
+pair 35: pair_seed=17591014067655166146 opening_seed=611476719513123178 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 35 opening: plies=8
+  1: move (4,3)->(4,4)
+  2: move (6,9)->(5,7)
+  3: move (10,2)->(10,1)
+  4: move (5,7)->(4,5)
+  5: move (6,1)->(4,3)
+  6: move (4,10)->(3,10)
+  7: move (4,3)->(2,5)
+  8: move (10,8)->(10,7)
+pair 35 game 1 settings: A=Black seed_a=7783198453896078541 B=White seed_b=5635861894904494408
+pair 35 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 35 game 2 settings: B=Black seed_b=1505928319644541728 A=White seed_a=3395402192613570995
+pair 35 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 35 result: score_a=2.0 category=4
+pair 36: pair_seed=7928404596295933779 opening_seed=1417512136116520042 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 36 opening: plies=11
+  1: move (4,1)->(3,1)
+  2: move (7,10)->(8,10)
+  3: move (9,3)->(9,4)
+  4: move (0,8)->(0,7)
+  5: move (7,1)->(8,1)
+  6: move (6,9)->(7,7)
+  7: move (9,4)->(9,5)
+  8: move (11,8)->(11,7)
+  9: move (8,0)->(7,1)
+  10: move (8,10)->(7,10)
+  11: move (5,2)->(4,1)
+pair 36 game 1 settings: A=Black seed_a=1422621522916043787 B=White seed_b=3789493127591221707
+pair 36 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 36 game 2 settings: B=Black seed_b=8800342056856414528 A=White seed_a=3888271760292363518
+pair 36 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 36 result: score_a=2.0 category=4
+pair 37: pair_seed=1833870668651560923 opening_seed=17983742922411558006 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 37 opening: plies=8
+  1: move (4,2)->(3,1)
+  2: move (1,8)->(1,7)
+  3: move (10,3)->(10,4)
+  4: move (4,9)->(3,10)
+  5: move (5,2)->(6,4)
+  6: move (3,10)->(4,9)
+  7: move (4,3)->(4,4)
+  8: move (1,11)->(1,10)
+pair 37 game 1 settings: A=Black seed_a=16100810078080137108 B=White seed_b=9499000680399197930
+pair 37 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 37 game 2 settings: B=Black seed_b=11446666734213487957 A=White seed_a=2867707205984684934
+pair 37 game 2: plies=68 result=win winner=White reason=RoyalCapture
+pair 37 result: score_a=2.0 category=4
+pair 38: pair_seed=9773462360689287293 opening_seed=8301486964960307941 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 38 opening: plies=9
+  1: move (10,2)->(10,1)
+  2: move (7,9)->(8,10)
+  3: move (11,3)->(11,4)
+  4: move (10,8)->(10,7)
+  5: move (5,2)->(3,1)
+  6: move (6,9)->(7,9)
+  7: move (2,0)->(1,1)
+  8: move (7,9)->(7,7)
+  9: move (3,4)->(3,5)
+pair 38 game 1 settings: A=Black seed_a=15443004925275779439 B=White seed_b=4318874221356648350
+pair 38 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 38 game 2 settings: B=Black seed_b=8115281175122193439 A=White seed_a=8433942468199324088
+pair 38 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 38 result: score_a=2.0 category=4
+pair 39: pair_seed=4578973688385479191 opening_seed=13894345633734648152 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 39 opening: plies=11
+  1: move (2,0)->(3,1)
+  2: move (4,8)->(4,7)
+  3: move (7,3)->(7,4)
+  4: move (4,9)->(4,8)
+  5: move (7,2)->(8,1)
+  6: move (4,10)->(3,10)
+  7: move (6,2)->(7,2)
+  8: move (11,8)->(11,7)
+  9: move (4,3)->(4,4)
+  10: move (8,7)->(8,6)
+  11: move (1,2)->(1,1)
+pair 39 game 1 settings: A=Black seed_a=4482326887155368334 B=White seed_b=16244176758866862841
+pair 39 game 1: plies=45 result=win winner=Black reason=RoyalCapture
+pair 39 game 2 settings: B=Black seed_b=17799736924753331139 A=White seed_a=14349385474020654089
+pair 39 game 2: plies=32 result=win winner=White reason=RoyalCapture
+pair 39 result: score_a=2.0 category=4
+pair 40: pair_seed=949132796863154637 opening_seed=1319642221190466301 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 40 opening: plies=9
+  1: move (2,3)->(2,4)
+  2: move (9,11)->(8,10)
+  3: move (10,0)->(10,1)
+  4: move (6,9)->(5,7)
+  5: move (4,2)->(3,1)
+  6: move (7,9)->(6,9)
+  7: move (3,1)->(4,2)
+  8: move (1,8)->(1,7)
+  9: move (2,2)->(2,3)
+pair 40 game 1 settings: A=Black seed_a=12388700948872807549 B=White seed_b=6013898453599188238
+pair 40 game 1: plies=33 result=win winner=Black reason=RoyalCapture
+pair 40 game 2 settings: B=Black seed_b=4627397808966436716 A=White seed_a=3426478242327727842
+pair 40 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 40 result: score_a=2.0 category=4
+pair 41: pair_seed=414946955754752854 opening_seed=14367313146057079903 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 41 opening: plies=10
+  1: move (4,0)->(3,1)
+  2: move (8,9)->(8,10)
+  3: move (5,2)->(4,4)
+  4: move (5,8)->(5,7)
+  5: move (3,4)->(3,5)
+  6: move (6,9)->(5,8)
+  7: move (4,4)->(2,6)
+  8: move (10,8)->(10,7)
+  9: double (2,6)->(3,7)->(3,6)
+  10: move (7,9)->(6,9)
+pair 41 game 1 settings: A=Black seed_a=5480236701712163306 B=White seed_b=2668488566593756616
+pair 41 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 41 game 2 settings: B=Black seed_b=4488023593221703367 A=White seed_a=14137147930248216088
+pair 41 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 41 result: score_a=2.0 category=4
+pair 42: pair_seed=1595041801974862710 opening_seed=6929888895271485862 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 42 opening: plies=10
+  1: move (3,2)->(3,1)
+  2: move (1,11)->(1,10)
+  3: move (6,3)->(6,4)
+  4: move (4,10)->(3,10)
+  5: move (4,2)->(3,2)
+  6: move (1,8)->(1,7)
+  7: move (8,2)->(8,1)
+  8: move (7,8)->(7,7)
+  9: move (5,1)->(4,2)
+  10: move (5,9)->(4,10)
+pair 42 game 1 settings: A=Black seed_a=11647899678047412278 B=White seed_b=17913780749251969390
+pair 42 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 42 game 2 settings: B=Black seed_b=214521219990421197 A=White seed_a=15915562276460365047
+pair 42 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 42 result: score_a=2.0 category=4
+pair 43: pair_seed=2727281453842917851 opening_seed=13891990774992165112 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 43 opening: plies=12
+  1: move (11,3)->(11,4)
+  2: move (6,9)->(4,7)
+  3: move (10,2)->(10,1)
+  4: move (5,8)->(5,7)
+  5: move (11,2)->(11,3)
+  6: move (10,9)->(10,10)
+  7: move (4,0)->(3,1)
+  8: move (1,9)->(1,10)
+  9: move (9,2)->(10,2)
+  10: move (0,8)->(0,7)
+  11: move (2,0)->(1,1)
+  12: move (9,8)->(9,7)
+pair 43 game 1 settings: A=Black seed_a=8894591099061397331 B=White seed_b=3940105162231879638
+pair 43 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 43 game 2 settings: B=Black seed_b=11995373051712827531 A=White seed_a=18239599069484917445
+pair 43 game 2: plies=36 result=win winner=White reason=RoyalCapture
+pair 43 result: score_a=2.0 category=4
+pair 44: pair_seed=1576080601075348341 opening_seed=3802604250252893441 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 44 opening: plies=11
+  1: move (2,3)->(2,4)
+  2: move (11,8)->(11,7)
+  3: move (7,1)->(8,1)
+  4: move (9,11)->(10,10)
+  5: move (8,1)->(7,1)
+  6: move (2,11)->(1,10)
+  7: move (2,2)->(2,3)
+  8: move (3,7)->(3,6)
+  9: move (2,4)->(2,5)
+  10: move (6,9)->(6,7)
+  11: move (8,2)->(8,1)
+pair 44 game 1 settings: A=Black seed_a=2608759355331647063 B=White seed_b=15944970586736533810
+pair 44 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 44 game 2 settings: B=Black seed_b=11763825193774320172 A=White seed_a=405639594481288728
+pair 44 game 2: plies=28 result=win winner=White reason=RoyalCapture
+pair 44 result: score_a=2.0 category=4
+pair 45: pair_seed=15037830960600580340 opening_seed=7781368514433947245 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 45 opening: plies=8
+  1: move (10,2)->(10,1)
+  2: move (1,11)->(1,10)
+  3: move (9,1)->(10,2)
+  4: move (11,8)->(11,7)
+  5: move (2,0)->(1,1)
+  6: move (2,8)->(2,7)
+  7: move (9,0)->(9,1)
+  8: move (3,7)->(3,6)
+pair 45 game 1 settings: A=Black seed_a=10046951050355352599 B=White seed_b=2566339200081934467
+pair 45 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 45 game 2 settings: B=Black seed_b=18417721004678801214 A=White seed_a=1303777219225822132
+pair 45 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 45 result: score_a=2.0 category=4
+pair 46: pair_seed=1816179843778077374 opening_seed=262072827818481981 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 46 opening: plies=9
+  1: move (8,4)->(8,5)
+  2: move (10,8)->(10,7)
+  3: move (10,3)->(10,4)
+  4: move (5,8)->(5,7)
+  5: move (9,0)->(10,1)
+  6: move (10,7)->(10,6)
+  7: move (3,4)->(3,5)
+  8: move (2,8)->(2,7)
+  9: move (8,2)->(8,1)
+pair 46 game 1 settings: A=Black seed_a=13841753178330023253 B=White seed_b=9220469247071798571
+pair 46 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 46 game 2 settings: B=Black seed_b=8392042424929891319 A=White seed_a=13145845690906798590
+pair 46 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 46 result: score_a=2.0 category=4
+pair 47: pair_seed=12464422042941785150 opening_seed=12649338011482705844 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 47 opening: plies=12
+  1: move (6,3)->(6,4)
+  2: move (6,9)->(7,7)
+  3: move (0,3)->(0,4)
+  4: move (7,7)->(7,5)
+  5: move (1,0)->(1,1)
+  6: double (7,5)->(8,4)->(9,5)
+  7: move (3,2)->(3,1)
+  8: move (0,8)->(0,7)
+  9: move (2,3)->(2,4)
+  10: move (6,10)->(8,10)
+  11: move (1,3)->(1,4)
+  12: move (9,5)->(9,5)
+pair 47 game 1 settings: A=Black seed_a=2351836362332280907 B=White seed_b=7334052962652181734
+pair 47 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 47 game 2 settings: B=Black seed_b=17512087597266847513 A=White seed_a=4900589363370346806
+pair 47 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 47 result: score_a=2.0 category=4
+pair 48: pair_seed=12474196795354643599 opening_seed=2161418143808142243 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 48 opening: plies=12
+  1: move (10,3)->(10,4)
+  2: move (4,9)->(3,10)
+  3: move (3,2)->(3,1)
+  4: move (1,11)->(1,10)
+  5: move (10,0)->(10,1)
+  6: move (9,11)->(10,10)
+  7: move (10,4)->(10,5)
+  8: move (6,9)->(6,7)
+  9: move (10,1)->(10,0)
+  10: move (1,8)->(1,7)
+  11: move (9,0)->(8,1)
+  12: move (6,7)->(6,6)
+pair 48 game 1 settings: A=Black seed_a=11856018885890764325 B=White seed_b=17869199510547250741
+pair 48 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 48 game 2 settings: B=Black seed_b=5689636589345518362 A=White seed_a=12711643945645073036
+pair 48 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 48 result: score_a=2.0 category=4
+pair 49: pair_seed=5114082871838867992 opening_seed=1375673119570597365 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 49 opening: plies=11
+  1: move (4,3)->(4,4)
+  2: move (3,7)->(3,6)
+  3: move (5,2)->(5,4)
+  4: move (10,11)->(10,10)
+  5: move (9,0)->(8,1)
+  6: move (2,11)->(3,10)
+  7: move (5,4)->(6,6)
+  8: move (3,8)->(3,7)
+  9: move (4,2)->(4,3)
+  10: move (6,9)->(4,7)
+  11: move (5,3)->(5,4)
+pair 49 game 1 settings: A=Black seed_a=16316059027632348046 B=White seed_b=18386327432282811332
+pair 49 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 49 game 2 settings: B=Black seed_b=6659215549268354913 A=White seed_a=1288706564325574739
+pair 49 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 49 result: score_a=2.0 category=4
+pair 50: pair_seed=5144442842631160182 opening_seed=11245787303230259427 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 50 opening: plies=8
+  1: move (5,2)->(3,1)
+  2: move (2,8)->(2,7)
+  3: move (7,2)->(8,1)
+  4: move (1,9)->(1,10)
+  5: move (5,3)->(5,4)
+  6: move (8,7)->(8,6)
+  7: move (6,2)->(1,7)
+  8: move (10,8)->(10,7)
+pair 50 game 1 settings: A=Black seed_a=7225205259720967482 B=White seed_b=1910575440615552205
+pair 50 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 50 game 2 settings: B=Black seed_b=9318676902141168779 A=White seed_a=18398849796575283029
+pair 50 game 2: plies=38 result=win winner=White reason=RoyalCapture
+pair 50 result: score_a=2.0 category=4
+pair 51: pair_seed=5286499141591377846 opening_seed=14872917107552625501 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 51 opening: plies=10
+  1: move (9,3)->(9,4)
+  2: move (10,11)->(10,10)
+  3: move (4,0)->(3,1)
+  4: move (6,9)->(6,7)
+  5: move (5,2)->(4,0)
+  6: move (3,11)->(3,10)
+  7: move (8,2)->(9,3)
+  8: move (10,10)->(10,11)
+  9: move (6,3)->(6,4)
+  10: move (5,9)->(6,9)
+pair 51 game 1 settings: A=Black seed_a=1347948501741106357 B=White seed_b=1033289644746327745
+pair 51 game 1: plies=33 result=win winner=Black reason=RoyalCapture
+pair 51 game 2 settings: B=Black seed_b=331615784334470983 A=White seed_a=6527175624677074215
+pair 51 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 51 result: score_a=2.0 category=4
+pair 52: pair_seed=17848697128141023137 opening_seed=6117886086469331849 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 52 opening: plies=8
+  1: move (1,3)->(1,4)
+  2: move (5,8)->(5,7)
+  3: move (5,1)->(3,1)
+  4: move (8,11)->(8,10)
+  5: move (9,3)->(9,4)
+  6: move (9,8)->(9,7)
+  7: move (5,2)->(5,2)
+  8: move (6,9)->(4,7)
+pair 52 game 1 settings: A=Black seed_a=5378733155682137769 B=White seed_b=4296977317649471507
+pair 52 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 52 game 2 settings: B=Black seed_b=1512545283838693038 A=White seed_a=5855098890869253331
+pair 52 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 52 result: score_a=2.0 category=4
+pair 53: pair_seed=11346722482768954353 opening_seed=6392100351493468175 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 53 opening: plies=11
+  1: move (9,3)->(9,4)
+  2: move (8,9)->(8,10)
+  3: move (8,2)->(10,4)
+  4: move (2,8)->(2,7)
+  5: move (2,0)->(3,1)
+  6: move (3,9)->(3,10)
+  7: move (10,4)->(10,5)
+  8: move (6,8)->(6,7)
+  9: move (5,3)->(5,4)
+  10: move (2,10)->(3,9)
+  11: move (10,2)->(10,1)
+pair 53 game 1 settings: A=Black seed_a=11882682784416178935 B=White seed_b=11510686014858463137
+pair 53 game 1: plies=53 result=win winner=Black reason=RoyalCapture
+pair 53 game 2 settings: B=Black seed_b=4010450556131353817 A=White seed_a=4116018942502149144
+pair 53 game 2: plies=64 result=win winner=White reason=RoyalCapture
+pair 53 result: score_a=2.0 category=4
+pair 54: pair_seed=291462806721566240 opening_seed=15160269261306507745 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 54 opening: plies=12
+  1: move (8,4)->(8,5)
+  2: move (2,11)->(3,10)
+  3: move (4,3)->(4,4)
+  4: move (10,11)->(10,10)
+  5: move (0,3)->(0,4)
+  6: move (6,9)->(7,7)
+  7: move (10,3)->(10,4)
+  8: move (7,10)->(8,10)
+  9: move (10,2)->(10,1)
+  10: move (7,7)->(5,5)
+  11: move (9,3)->(9,4)
+  12: move (5,5)->(3,6)
+pair 54 game 1 settings: A=Black seed_a=2183322315701460162 B=White seed_b=1979637760661934549
+pair 54 game 1: plies=41 result=win winner=Black reason=RoyalCapture
+pair 54 game 2 settings: B=Black seed_b=11821565044011977023 A=White seed_a=3666073257349513549
+pair 54 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 54 result: score_a=2.0 category=4
+pair 55: pair_seed=3326227842689801999 opening_seed=2978821074692898557 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 55 opening: plies=8
+  1: move (2,3)->(2,4)
+  2: move (7,9)->(8,10)
+  3: move (2,0)->(3,1)
+  4: move (10,8)->(10,7)
+  5: move (5,2)->(7,4)
+  6: move (3,11)->(3,10)
+  7: move (1,3)->(1,4)
+  8: move (6,9)->(6,9)
+pair 55 game 1 settings: A=Black seed_a=17293376995186236859 B=White seed_b=12510983235368119760
+pair 55 game 1: plies=15 result=win winner=Black reason=RoyalCapture
+pair 55 game 2 settings: B=Black seed_b=134855886710840793 A=White seed_a=14748216200590338472
+pair 55 game 2: plies=38 result=win winner=White reason=RoyalCapture
+pair 55 result: score_a=2.0 category=4
+pair 56: pair_seed=5771177077757281412 opening_seed=4555232614642006481 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 56 opening: plies=10
+  1: move (8,0)->(8,1)
+  2: move (4,11)->(3,10)
+  3: move (7,3)->(7,4)
+  4: move (4,8)->(4,7)
+  5: move (7,4)->(7,5)
+  6: move (7,9)->(8,10)
+  7: move (5,3)->(5,4)
+  8: move (10,11)->(10,10)
+  9: move (8,2)->(7,3)
+  10: move (5,8)->(5,7)
+pair 56 game 1 settings: A=Black seed_a=4430655655018723796 B=White seed_b=16245474443718072977
+pair 56 game 1: plies=47 result=win winner=Black reason=RoyalCapture
+pair 56 game 2 settings: B=Black seed_b=11264256377113574491 A=White seed_a=4191680148106808158
+pair 56 game 2: plies=36 result=win winner=White reason=RoyalCapture
+pair 56 result: score_a=2.0 category=4
+pair 57: pair_seed=8604259376278886837 opening_seed=17349583723831731799 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 57 opening: plies=9
+  1: move (3,0)->(3,1)
+  2: move (3,11)->(3,10)
+  3: move (10,2)->(10,1)
+  4: move (2,10)->(3,11)
+  5: move (11,2)->(10,2)
+  6: move (6,9)->(8,10)
+  7: move (9,3)->(9,4)
+  8: move (5,8)->(5,7)
+  9: move (4,1)->(3,0)
+pair 57 game 1 settings: A=Black seed_a=1555789068338000596 B=White seed_b=18061758281921996961
+pair 57 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 57 game 2 settings: B=Black seed_b=12628488709826798374 A=White seed_a=10782804646492436035
+pair 57 game 2: plies=72 result=win winner=White reason=RoyalCapture
+pair 57 result: score_a=2.0 category=4
+pair 58: pair_seed=7298790884607766991 opening_seed=16458761906562894009 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 58 opening: plies=9
+  1: move (4,3)->(4,4)
+  2: move (1,8)->(1,7)
+  3: move (5,3)->(5,4)
+  4: move (3,11)->(3,10)
+  5: move (7,3)->(7,4)
+  6: move (8,7)->(8,6)
+  7: move (4,2)->(3,1)
+  8: move (3,7)->(3,6)
+  9: move (8,2)->(3,7)
+pair 58 game 1 settings: A=Black seed_a=5436016963880780536 B=White seed_b=16589841384775849409
+pair 58 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 58 game 2 settings: B=Black seed_b=12015252381843026374 A=White seed_a=4003031167519602368
+pair 58 game 2: plies=36 result=win winner=White reason=RoyalCapture
+pair 58 result: score_a=2.0 category=4
+pair 59: pair_seed=8595578603989382354 opening_seed=12621935215482206537 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 59 opening: plies=10
+  1: move (1,2)->(1,1)
+  2: move (10,8)->(10,7)
+  3: move (8,4)->(8,5)
+  4: move (9,8)->(9,7)
+  5: move (4,0)->(3,1)
+  6: move (10,9)->(10,8)
+  7: move (5,2)->(7,4)
+  8: move (8,9)->(9,8)
+  9: move (10,3)->(10,4)
+  10: move (1,8)->(1,7)
+pair 59 game 1 settings: A=Black seed_a=7458458554741718635 B=White seed_b=9121778603738685979
+pair 59 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 59 game 2 settings: B=Black seed_b=16155809150414598905 A=White seed_a=4788427015944806122
+pair 59 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 59 result: score_a=2.0 category=4
+pair 60: pair_seed=14495286991868217422 opening_seed=2268993568651794618 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 60 opening: plies=8
+  1: move (4,0)->(3,1)
+  2: move (11,8)->(11,7)
+  3: move (7,2)->(8,1)
+  4: move (4,10)->(3,10)
+  5: move (8,1)->(7,2)
+  6: move (5,10)->(4,10)
+  7: move (4,1)->(4,0)
+  8: move (6,9)->(5,7)
+pair 60 game 1 settings: A=Black seed_a=963556109241462924 B=White seed_b=6392111589080714563
+pair 60 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 60 game 2 settings: B=Black seed_b=8282711624467172870 A=White seed_a=9562189804376959206
+pair 60 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 60 result: score_a=2.0 category=4
+pair 61: pair_seed=529067162456403532 opening_seed=12111564677181276384 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 61 opening: plies=11
+  1: move (1,2)->(1,1)
+  2: move (7,9)->(8,10)
+  3: move (3,4)->(3,5)
+  4: move (6,10)->(7,9)
+  5: move (7,1)->(8,1)
+  6: move (6,9)->(6,9)
+  7: move (9,3)->(9,4)
+  8: move (8,7)->(8,6)
+  9: move (7,0)->(7,1)
+  10: move (4,11)->(3,10)
+  11: move (9,4)->(9,5)
+pair 61 game 1 settings: A=Black seed_a=12715516050015560986 B=White seed_b=1478913922362152874
+pair 61 game 1: plies=35 result=win winner=Black reason=RoyalCapture
+pair 61 game 2 settings: B=Black seed_b=4190865470705036196 A=White seed_a=12764235860547947648
+pair 61 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 61 result: score_a=2.0 category=4
+pair 62: pair_seed=7257907602151782016 opening_seed=3212415585265024407 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 62 opening: plies=9
+  1: move (1,3)->(1,4)
+  2: move (0,8)->(0,7)
+  3: move (10,0)->(10,1)
+  4: move (4,9)->(3,10)
+  5: move (1,2)->(1,1)
+  6: move (6,9)->(4,7)
+  7: move (5,2)->(5,4)
+  8: move (0,7)->(0,6)
+  9: move (1,4)->(1,5)
+pair 62 game 1 settings: A=Black seed_a=5164446073498225385 B=White seed_b=4725572755445637949
+pair 62 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 62 game 2 settings: B=Black seed_b=13062446248282059368 A=White seed_a=7616906456750076641
+pair 62 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 62 result: score_a=2.0 category=4
+pair 63: pair_seed=11768467538774119708 opening_seed=213027502056080177 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 63 opening: plies=12
+  1: move (6,3)->(6,4)
+  2: move (0,8)->(0,7)
+  3: move (1,3)->(1,4)
+  4: move (6,9)->(7,7)
+  5: move (10,3)->(10,4)
+  6: move (8,11)->(8,10)
+  7: move (5,2)->(7,4)
+  8: move (2,11)->(3,10)
+  9: move (9,0)->(8,1)
+  10: move (7,7)->(8,5)
+  11: move (7,4)->(8,5)
+  12: move (6,8)->(6,7)
+pair 63 game 1 settings: A=Black seed_a=2716458373840729212 B=White seed_b=17489323888704296400
+pair 63 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 63 game 2 settings: B=Black seed_b=8957063271213208963 A=White seed_a=12108130630539685329
+pair 63 game 2: plies=132 result=win winner=White reason=RoyalCapture
+pair 63 result: score_a=2.0 category=4
+pair 64: pair_seed=2112943879565716124 opening_seed=12070928471693476593 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 64 opening: plies=9
+  1: move (4,2)->(3,1)
+  2: move (6,10)->(8,10)
+  3: move (9,0)->(8,1)
+  4: move (0,8)->(0,7)
+  5: move (1,2)->(1,1)
+  6: move (4,9)->(3,10)
+  7: move (6,3)->(6,4)
+  8: move (6,8)->(6,7)
+  9: move (11,3)->(11,4)
+pair 64 game 1 settings: A=Black seed_a=9216562242476125978 B=White seed_b=15796655066035511064
+pair 64 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 64 game 2 settings: B=Black seed_b=17442754991961287110 A=White seed_a=11501236091534150759
+pair 64 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 64 result: score_a=2.0 category=4
+pair 65: pair_seed=14755845660976952504 opening_seed=1294488120769149419 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 65 opening: plies=11
+  1: move (4,3)->(4,4)
+  2: move (2,11)->(1,10)
+  3: move (8,4)->(8,5)
+  4: move (10,9)->(10,10)
+  5: move (1,2)->(1,1)
+  6: move (11,8)->(11,7)
+  7: move (2,3)->(2,4)
+  8: move (3,7)->(3,6)
+  9: move (3,0)->(3,1)
+  10: move (3,11)->(3,10)
+  11: move (3,2)->(6,5)
+pair 65 game 1 settings: A=Black seed_a=9197434866806074944 B=White seed_b=10531810091471363516
+pair 65 game 1: plies=41 result=win winner=Black reason=RoyalCapture
+pair 65 game 2 settings: B=Black seed_b=7367575124662431097 A=White seed_a=11982949950617663266
+pair 65 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 65 result: score_a=2.0 category=4
+pair 66: pair_seed=16856350922124535242 opening_seed=10667532736575079782 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 66 opening: plies=10
+  1: move (10,0)->(10,1)
+  2: move (6,9)->(6,7)
+  3: move (4,0)->(3,1)
+  4: move (8,11)->(8,10)
+  5: move (6,3)->(6,4)
+  6: move (10,8)->(10,7)
+  7: move (7,2)->(6,3)
+  8: move (6,7)->(4,7)
+  9: move (6,3)->(5,4)
+  10: move (2,8)->(2,7)
+pair 66 game 1 settings: A=Black seed_a=15888231676473860333 B=White seed_b=8013584808233510021
+pair 66 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 66 game 2 settings: B=Black seed_b=17571982246990427398 A=White seed_a=1070978918627688675
+pair 66 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 66 result: score_a=2.0 category=4
+pair 67: pair_seed=11043868271790209549 opening_seed=5832003285017677231 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 67 opening: plies=11
+  1: move (8,4)->(8,5)
+  2: move (1,9)->(1,10)
+  3: move (7,2)->(8,1)
+  4: move (7,9)->(8,10)
+  5: move (11,3)->(11,4)
+  6: move (10,11)->(10,10)
+  7: move (6,2)->(7,2)
+  8: move (1,8)->(1,7)
+  9: move (8,3)->(8,4)
+  10: move (9,10)->(10,11)
+  11: move (10,3)->(10,4)
+pair 67 game 1 settings: A=Black seed_a=16073289394914451546 B=White seed_b=14167619335657686270
+pair 67 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 67 game 2 settings: B=Black seed_b=16600541398002130252 A=White seed_a=4075315695853807703
+pair 67 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 67 result: score_a=2.0 category=4
+pair 68: pair_seed=7236344516130241611 opening_seed=7151392831662839628 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 68 opening: plies=11
+  1: move (6,3)->(6,4)
+  2: move (7,9)->(8,10)
+  3: move (2,0)->(1,1)
+  4: move (2,11)->(3,10)
+  5: move (7,1)->(8,1)
+  6: move (6,9)->(7,9)
+  7: move (3,2)->(3,1)
+  8: move (11,8)->(11,7)
+  9: move (5,2)->(7,4)
+  10: move (7,9)->(7,9)
+  11: move (7,4)->(8,6)
+pair 68 game 1 settings: A=Black seed_a=15399327264356386424 B=White seed_b=6021499516264078941
+pair 68 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 68 game 2 settings: B=Black seed_b=4290080895673123727 A=White seed_a=9220187530244131960
+pair 68 game 2: plies=130 result=win winner=White reason=RoyalCapture
+pair 68 result: score_a=2.0 category=4
+pair 69: pair_seed=3625161978630050557 opening_seed=16546754567373890319 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 69 opening: plies=12
+  1: move (7,3)->(7,4)
+  2: move (0,8)->(0,7)
+  3: move (7,4)->(7,5)
+  4: move (1,9)->(1,10)
+  5: move (8,4)->(8,5)
+  6: move (9,11)->(8,10)
+  7: move (8,2)->(7,3)
+  8: move (11,8)->(11,7)
+  9: move (2,3)->(2,4)
+  10: move (3,11)->(3,10)
+  11: move (9,0)->(10,1)
+  12: move (8,7)->(8,6)
+pair 69 game 1 settings: A=Black seed_a=17591554744674358269 B=White seed_b=15674141790766465430
+pair 69 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 69 game 2 settings: B=Black seed_b=5258862782019583502 A=White seed_a=17056005922015009375
+pair 69 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 69 result: score_a=2.0 category=4
+pair 70: pair_seed=5624309532319578363 opening_seed=8450543818837582646 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 70 opening: plies=8
+  1: move (3,2)->(3,1)
+  2: move (2,8)->(2,7)
+  3: move (5,2)->(3,2)
+  4: move (4,11)->(3,10)
+  5: move (2,3)->(2,4)
+  6: move (7,8)->(7,7)
+  7: move (3,2)->(3,2)
+  8: move (8,9)->(3,4)
+pair 70 game 1 settings: A=Black seed_a=5398975222940072388 B=White seed_b=17522633624367790880
+pair 70 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 70 game 2 settings: B=Black seed_b=7577435796796062501 A=White seed_a=15168856039791672479
+pair 70 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 70 result: score_a=2.0 category=4
+pair 71: pair_seed=10446865405936669857 opening_seed=1103848897169971841 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 71 opening: plies=8
+  1: move (1,0)->(1,1)
+  2: move (8,9)->(8,10)
+  3: move (4,3)->(4,4)
+  4: move (3,7)->(3,6)
+  5: move (1,1)->(1,0)
+  6: move (6,8)->(6,7)
+  7: move (4,2)->(3,1)
+  8: move (10,9)->(10,10)
+pair 71 game 1 settings: A=Black seed_a=9656552050515850535 B=White seed_b=2531272425084578027
+pair 71 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 71 game 2 settings: B=Black seed_b=3967303952432270778 A=White seed_a=4564716331331502664
+pair 71 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 71 result: score_a=2.0 category=4
+pair 72: pair_seed=6415493950138436507 opening_seed=14220233914114560065 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 72 opening: plies=12
+  1: move (3,4)->(3,5)
+  2: move (4,9)->(3,10)
+  3: move (1,3)->(1,4)
+  4: move (6,9)->(5,7)
+  5: move (1,0)->(1,1)
+  6: move (3,7)->(3,6)
+  7: move (4,0)->(3,1)
+  8: move (7,11)->(8,10)
+  9: move (5,2)->(6,4)
+  10: move (1,11)->(1,10)
+  11: move (2,1)->(1,0)
+  12: move (3,9)->(4,9)
+pair 72 game 1 settings: A=Black seed_a=8126482209180967708 B=White seed_b=4179165273597531852
+pair 72 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 72 game 2 settings: B=Black seed_b=17661125397165639617 A=White seed_a=11712004385426190531
+pair 72 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 72 result: score_a=2.0 category=4
+pair 73: pair_seed=8080143533060025809 opening_seed=16730734849173323758 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 73 opening: plies=8
+  1: move (5,3)->(5,4)
+  2: move (9,11)->(10,10)
+  3: move (5,2)->(4,4)
+  4: move (7,11)->(8,10)
+  5: move (4,1)->(5,2)
+  6: move (1,9)->(1,10)
+  7: move (8,4)->(8,5)
+  8: move (3,11)->(3,10)
+pair 73 game 1 settings: A=Black seed_a=10063693196579316579 B=White seed_b=15610680264656716972
+pair 73 game 1: plies=15 result=win winner=Black reason=RoyalCapture
+pair 73 game 2 settings: B=Black seed_b=5136300838929179183 A=White seed_a=12774960639825081169
+pair 73 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 73 result: score_a=2.0 category=4
+pair 74: pair_seed=15005039520893569771 opening_seed=663765623733104773 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 74 opening: plies=10
+  1: move (8,4)->(8,5)
+  2: move (11,8)->(11,7)
+  3: move (7,0)->(8,1)
+  4: move (1,8)->(1,7)
+  5: move (5,3)->(5,4)
+  6: move (10,9)->(10,10)
+  7: move (5,4)->(5,5)
+  8: move (6,9)->(8,10)
+  9: move (6,2)->(3,5)
+  10: move (4,8)->(4,7)
+pair 74 game 1 settings: A=Black seed_a=2016984073683729952 B=White seed_b=15630131354724391513
+pair 74 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 74 game 2 settings: B=Black seed_b=2190629803830688167 A=White seed_a=696990503510722726
+pair 74 game 2: plies=38 result=win winner=White reason=RoyalCapture
+pair 74 result: score_a=2.0 category=4
+pair 75: pair_seed=13319093659735161190 opening_seed=7106677021863085927 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 75 opening: plies=8
+  1: move (3,0)->(3,1)
+  2: move (8,7)->(8,6)
+  3: move (5,2)->(7,4)
+  4: move (7,10)->(8,10)
+  5: move (3,4)->(3,5)
+  6: move (9,11)->(10,10)
+  7: move (4,1)->(3,0)
+  8: move (7,9)->(7,10)
+pair 75 game 1 settings: A=Black seed_a=5965490363146235710 B=White seed_b=11169328852302231836
+pair 75 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 75 game 2 settings: B=Black seed_b=5042886585059991193 A=White seed_a=3608023451221498557
+pair 75 game 2: plies=24 result=win winner=White reason=Mate
+pair 75 result: score_a=2.0 category=4
+pair 76: pair_seed=6318917090263803888 opening_seed=16338373326264098928 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 76 opening: plies=9
+  1: move (5,2)->(5,4)
+  2: move (10,8)->(10,7)
+  3: move (7,0)->(8,1)
+  4: move (0,8)->(0,7)
+  5: move (1,2)->(1,1)
+  6: move (2,11)->(1,10)
+  7: move (1,3)->(1,4)
+  8: move (9,11)->(8,10)
+  9: move (2,0)->(3,1)
+pair 76 game 1 settings: A=Black seed_a=7908959931944996955 B=White seed_b=2214684247985785267
+pair 76 game 1: plies=19 result=win winner=Black reason=RoyalCapture
+pair 76 game 2 settings: B=Black seed_b=15314034550878094609 A=White seed_a=823101304047310995
+pair 76 game 2: plies=92 result=win winner=White reason=RoyalCapture
+pair 76 result: score_a=2.0 category=4
+pair 77: pair_seed=10915039211278741349 opening_seed=10567475547695361333 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 77 opening: plies=12
+  1: move (8,2)->(8,1)
+  2: move (10,11)->(10,10)
+  3: move (9,2)->(8,2)
+  4: move (1,8)->(1,7)
+  5: move (9,0)->(10,1)
+  6: move (6,9)->(6,7)
+  7: move (5,2)->(6,4)
+  8: move (7,10)->(8,10)
+  9: move (8,4)->(8,5)
+  10: move (2,8)->(2,7)
+  11: move (6,4)->(5,4)
+  12: move (4,10)->(3,10)
+pair 77 game 1 settings: A=Black seed_a=9594106119292353111 B=White seed_b=6430777593792199225
+pair 77 game 1: plies=31 result=win winner=Black reason=RoyalCapture
+pair 77 game 2 settings: B=Black seed_b=5600242129087407476 A=White seed_a=5143421850252232416
+pair 77 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 77 result: score_a=2.0 category=4
+pair 78: pair_seed=4953113174899879966 opening_seed=11751728297853834958 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 78 opening: plies=12
+  1: move (5,1)->(3,1)
+  2: move (2,11)->(3,10)
+  3: move (11,3)->(11,4)
+  4: move (8,7)->(8,6)
+  5: move (10,3)->(10,4)
+  6: move (6,9)->(6,7)
+  7: move (6,3)->(6,4)
+  8: move (3,7)->(3,6)
+  9: move (8,4)->(8,5)
+  10: move (1,9)->(1,10)
+  11: move (5,2)->(4,4)
+  12: move (2,9)->(1,9)
+pair 78 game 1 settings: A=Black seed_a=11148360735672259039 B=White seed_b=14471879982432015432
+pair 78 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 78 game 2 settings: B=Black seed_b=17068251000085489197 A=White seed_a=18075390350520097273
+pair 78 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 78 result: score_a=2.0 category=4
+pair 79: pair_seed=18286412818514279617 opening_seed=3510811739933944087 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 79 opening: plies=11
+  1: move (3,2)->(3,1)
+  2: move (8,11)->(8,10)
+  3: move (2,0)->(1,1)
+  4: move (4,8)->(4,7)
+  5: move (1,3)->(1,4)
+  6: move (3,9)->(7,5)
+  7: move (8,4)->(8,5)
+  8: move (9,10)->(8,11)
+  9: move (8,3)->(8,4)
+  10: move (7,5)->(8,4)
+  11: move (4,1)->(3,2)
+pair 79 game 1 settings: A=Black seed_a=6648853339231218906 B=White seed_b=8950689022801217197
+pair 79 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 79 game 2 settings: B=Black seed_b=8766799949804018441 A=White seed_a=13034518246391133455
+pair 79 game 2: plies=58 result=win winner=White reason=RoyalCapture
+pair 79 result: score_a=2.0 category=4
+pair 80: pair_seed=13051238150456587716 opening_seed=799427978105193399 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 80 opening: plies=12
+  1: move (9,0)->(8,1)
+  2: move (8,11)->(8,10)
+  3: move (9,3)->(9,4)
+  4: move (3,11)->(3,10)
+  5: move (3,4)->(3,5)
+  6: move (5,8)->(5,7)
+  7: move (4,2)->(3,1)
+  8: move (10,9)->(10,10)
+  9: move (2,3)->(2,4)
+  10: move (3,7)->(3,6)
+  11: move (2,0)->(1,1)
+  12: move (4,11)->(3,11)
+pair 80 game 1 settings: A=Black seed_a=2175088566808503336 B=White seed_b=4104286933962855556
+pair 80 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 80 game 2 settings: B=Black seed_b=12695108752912457346 A=White seed_a=15208305119552419778
+pair 80 game 2: plies=36 result=win winner=White reason=RoyalCapture
+pair 80 result: score_a=2.0 category=4
+pair 81: pair_seed=6759712572993840875 opening_seed=2747947171372262725 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 81 opening: plies=11
+  1: move (4,1)->(3,1)
+  2: move (7,9)->(8,10)
+  3: move (3,4)->(3,5)
+  4: move (10,11)->(10,10)
+  5: move (0,3)->(0,4)
+  6: move (6,9)->(5,7)
+  7: move (4,3)->(4,4)
+  8: move (5,7)->(5,7)
+  9: move (10,3)->(10,4)
+  10: move (9,10)->(10,11)
+  11: move (3,2)->(7,6)
+pair 81 game 1 settings: A=Black seed_a=8811838234693486237 B=White seed_b=2066328553970296069
+pair 81 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 81 game 2 settings: B=Black seed_b=2203446184718244036 A=White seed_a=1906628340290390259
+pair 81 game 2: plies=36 result=win winner=White reason=RoyalCapture
+pair 81 result: score_a=2.0 category=4
+pair 82: pair_seed=890867603388166932 opening_seed=11277007799424269226 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 82 opening: plies=11
+  1: move (4,3)->(4,4)
+  2: move (3,7)->(3,6)
+  3: move (4,2)->(3,1)
+  4: move (2,8)->(2,7)
+  5: move (3,2)->(5,4)
+  6: move (0,8)->(0,7)
+  7: move (1,2)->(1,1)
+  8: move (9,11)->(8,10)
+  9: move (5,2)->(3,2)
+  10: move (10,8)->(10,7)
+  11: move (3,4)->(3,5)
+pair 82 game 1 settings: A=Black seed_a=11821447204078904074 B=White seed_b=3648348258806346179
+pair 82 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 82 game 2 settings: B=Black seed_b=14255038446897427991 A=White seed_a=5375163303277347296
+pair 82 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 82 result: score_a=2.0 category=4
+pair 83: pair_seed=7816028206724912477 opening_seed=5842820671483713282 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 83 opening: plies=12
+  1: move (9,0)->(10,1)
+  2: move (6,9)->(7,7)
+  3: move (3,4)->(3,5)
+  4: move (6,10)->(8,10)
+  5: move (7,2)->(8,1)
+  6: move (3,7)->(3,6)
+  7: move (8,2)->(7,2)
+  8: move (7,9)->(6,9)
+  9: move (3,5)->(3,6)
+  10: move (8,10)->(7,9)
+  11: move (7,1)->(8,2)
+  12: move (4,11)->(3,10)
+pair 83 game 1 settings: A=Black seed_a=13495763204825632902 B=White seed_b=10771350072821280819
+pair 83 game 1: plies=49 result=win winner=Black reason=RoyalCapture
+pair 83 game 2 settings: B=Black seed_b=17015196356473991758 A=White seed_a=11350255790700408585
+pair 83 game 2: plies=20 result=win winner=White reason=RoyalCapture
+pair 83 result: score_a=2.0 category=4
+pair 84: pair_seed=6195959664938566538 opening_seed=10756406777009101791 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 84 opening: plies=11
+  1: move (7,0)->(8,1)
+  2: move (1,9)->(1,10)
+  3: move (2,3)->(2,4)
+  4: move (7,8)->(7,7)
+  5: move (7,1)->(7,0)
+  6: move (2,11)->(3,10)
+  7: move (3,2)->(0,5)
+  8: move (6,10)->(8,10)
+  9: move (8,2)->(7,1)
+  10: move (10,9)->(10,10)
+  11: move (1,2)->(1,1)
+pair 84 game 1 settings: A=Black seed_a=5706669522064608820 B=White seed_b=4326606293528417016
+pair 84 game 1: plies=63 result=win winner=Black reason=RoyalCapture
+pair 84 game 2 settings: B=Black seed_b=18232307340919776166 A=White seed_a=14594793386785532879
+pair 84 game 2: plies=22 result=win winner=White reason=RoyalCapture
+pair 84 result: score_a=2.0 category=4
+pair 85: pair_seed=6060920436055495091 opening_seed=3262308644782347823 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 85 opening: plies=12
+  1: move (4,2)->(3,1)
+  2: move (4,11)->(3,10)
+  3: move (8,2)->(8,1)
+  4: move (4,10)->(4,11)
+  5: move (3,1)->(4,2)
+  6: move (6,10)->(4,10)
+  7: move (6,3)->(6,4)
+  8: move (6,9)->(6,7)
+  9: move (5,2)->(7,4)
+  10: move (4,10)->(6,10)
+  11: move (5,3)->(5,4)
+  12: move (6,7)->(4,5)
+pair 85 game 1 settings: A=Black seed_a=17853657850672004257 B=White seed_b=3623088801669297784
+pair 85 game 1: plies=43 result=win winner=Black reason=RoyalCapture
+pair 85 game 2 settings: B=Black seed_b=6684622094055446277 A=White seed_a=467529661444968484
+pair 85 game 2: plies=302 result=win winner=White reason=RoyalCapture
+pair 85 result: score_a=2.0 category=4
+pair 86: pair_seed=15982459184071580947 opening_seed=732461996244857478 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 86 opening: plies=8
+  1: move (2,0)->(1,1)
+  2: move (6,8)->(6,7)
+  3: move (8,4)->(8,5)
+  4: move (5,9)->(8,6)
+  5: move (9,0)->(10,1)
+  6: move (6,9)->(5,7)
+  7: move (0,3)->(0,4)
+  8: move (8,6)->(7,7)
+pair 86 game 1 settings: A=Black seed_a=17793433802413720424 B=White seed_b=5257058930089921034
+pair 86 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 86 game 2 settings: B=Black seed_b=14235256603696539488 A=White seed_a=2376657090201777928
+pair 86 game 2: plies=32 result=win winner=White reason=RoyalCapture
+pair 86 result: score_a=2.0 category=4
+pair 87: pair_seed=4071777827083793057 opening_seed=3111430273398696386 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 87 opening: plies=11
+  1: move (3,0)->(3,1)
+  2: move (2,11)->(1,10)
+  3: move (9,0)->(8,1)
+  4: move (9,11)->(8,10)
+  5: move (4,3)->(4,4)
+  6: move (6,9)->(5,7)
+  7: move (5,2)->(5,4)
+  8: move (8,7)->(8,6)
+  9: move (10,3)->(10,4)
+  10: move (7,8)->(7,7)
+  11: move (4,1)->(5,2)
+pair 87 game 1 settings: A=Black seed_a=1557740329476496880 B=White seed_b=5327052987262476522
+pair 87 game 1: plies=49 result=win winner=Black reason=RoyalCapture
+pair 87 game 2 settings: B=Black seed_b=1686260933198233151 A=White seed_a=2907268218209287479
+pair 87 game 2: plies=40 result=win winner=White reason=RoyalCapture
+pair 87 result: score_a=2.0 category=4
+pair 88: pair_seed=9645867752987961867 opening_seed=18152937399861110806 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 88 opening: plies=11
+  1: move (3,0)->(3,1)
+  2: move (1,8)->(1,7)
+  3: move (5,2)->(5,4)
+  4: move (5,8)->(5,7)
+  5: move (5,4)->(7,6)
+  6: move (2,8)->(2,7)
+  7: double (7,6)->(8,7)->(8,6)
+  8: move (4,8)->(4,7)
+  9: move (8,6)->(6,5)
+  10: move (4,11)->(3,10)
+  11: move (0,3)->(0,4)
+pair 88 game 1 settings: A=Black seed_a=893780831903764456 B=White seed_b=11202959341736879776
+pair 88 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 88 game 2 settings: B=Black seed_b=12457549244100081206 A=White seed_a=1330984014565519244
+pair 88 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 88 result: score_a=2.0 category=4
+pair 89: pair_seed=12388157669587680707 opening_seed=14103104533149172867 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 89 opening: plies=12
+  1: move (5,2)->(5,4)
+  2: move (11,8)->(11,7)
+  3: move (4,1)->(3,1)
+  4: move (4,9)->(3,10)
+  5: move (9,0)->(8,1)
+  6: move (6,9)->(4,9)
+  7: move (3,4)->(3,5)
+  8: move (4,9)->(6,9)
+  9: move (1,0)->(1,1)
+  10: move (6,9)->(4,7)
+  11: move (5,4)->(7,4)
+  12: move (4,7)->(4,7)
+pair 89 game 1 settings: A=Black seed_a=17150351429716258528 B=White seed_b=6416914192921903323
+pair 89 game 1: plies=29 result=win winner=Black reason=RoyalCapture
+pair 89 game 2 settings: B=Black seed_b=407303438146584390 A=White seed_a=17115250278301110540
+pair 89 game 2: plies=52 result=win winner=White reason=RoyalCapture
+pair 89 result: score_a=2.0 category=4
+pair 90: pair_seed=16464620522357246245 opening_seed=6349662253495732706 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 90 opening: plies=12
+  1: move (1,2)->(1,1)
+  2: move (10,8)->(10,7)
+  3: move (4,1)->(3,1)
+  4: move (4,10)->(3,10)
+  5: move (8,2)->(8,1)
+  6: move (8,9)->(8,10)
+  7: move (4,3)->(4,4)
+  8: move (6,10)->(4,10)
+  9: move (3,0)->(4,1)
+  10: move (2,11)->(1,10)
+  11: move (3,2)->(6,5)
+  12: move (7,9)->(8,9)
+pair 90 game 1 settings: A=Black seed_a=13341198253822347769 B=White seed_b=14743556205066931279
+pair 90 game 1: plies=27 result=win winner=Black reason=RoyalCapture
+pair 90 game 2 settings: B=Black seed_b=4384943682006096808 A=White seed_a=17087689129869648368
+pair 90 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 90 result: score_a=2.0 category=4
+pair 91: pair_seed=6309664966479633885 opening_seed=15338790250210293089 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 91 opening: plies=12
+  1: move (1,2)->(1,1)
+  2: move (6,9)->(7,7)
+  3: move (10,0)->(10,1)
+  4: move (7,7)->(6,5)
+  5: move (5,2)->(6,4)
+  6: move (6,5)->(7,6)
+  7: move (6,4)->(4,4)
+  8: move (7,6)->(6,7)
+  9: move (10,1)->(10,0)
+  10: move (7,10)->(8,10)
+  11: move (2,1)->(1,2)
+  12: move (2,11)->(3,10)
+pair 91 game 1 settings: A=Black seed_a=16039292022775732649 B=White seed_b=5313128984723996836
+pair 91 game 1: plies=49 result=win winner=Black reason=RoyalCapture
+pair 91 game 2 settings: B=Black seed_b=11833342599649951835 A=White seed_a=9848705364894582528
+pair 91 game 2: plies=32 result=win winner=White reason=RoyalCapture
+pair 91 result: score_a=2.0 category=4
+pair 92: pair_seed=14281117955282008665 opening_seed=5484441363531784875 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 92 opening: plies=8
+  1: move (10,0)->(10,1)
+  2: move (6,9)->(6,7)
+  3: move (5,2)->(4,4)
+  4: move (6,7)->(6,5)
+  5: move (4,1)->(3,1)
+  6: move (6,5)->(8,5)
+  7: move (2,3)->(2,4)
+  8: move (8,5)->(9,5)
+pair 92 game 1 settings: A=Black seed_a=6830584856915844724 B=White seed_b=10426777456756782261
+pair 92 game 1: plies=15 result=win winner=Black reason=RoyalCapture
+pair 92 game 2 settings: B=Black seed_b=16323985914267312500 A=White seed_a=14711205377892447317
+pair 92 game 2: plies=18 result=win winner=White reason=RoyalCapture
+pair 92 result: score_a=2.0 category=4
+pair 93: pair_seed=17054935137527477375 opening_seed=9579867641333457051 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 93 opening: plies=8
+  1: move (5,3)->(5,4)
+  2: move (2,11)->(3,10)
+  3: move (1,0)->(1,1)
+  4: move (10,11)->(10,10)
+  5: move (3,0)->(3,1)
+  6: move (6,9)->(8,10)
+  7: move (8,2)->(8,1)
+  8: move (8,10)->(6,9)
+pair 93 game 1 settings: A=Black seed_a=4090322980235247556 B=White seed_b=13884354651657850553
+pair 93 game 1: plies=21 result=win winner=Black reason=RoyalCapture
+pair 93 game 2 settings: B=Black seed_b=593477239829399858 A=White seed_a=8093225932331829986
+pair 93 game 2: plies=26 result=win winner=White reason=RoyalCapture
+pair 93 result: score_a=2.0 category=4
+pair 94: pair_seed=9356937434265824187 opening_seed=16747463441964121647 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 94 opening: plies=8
+  1: move (1,0)->(1,1)
+  2: move (6,8)->(6,7)
+  3: move (6,3)->(6,4)
+  4: move (5,9)->(6,8)
+  5: move (5,2)->(7,4)
+  6: move (6,9)->(5,9)
+  7: move (7,4)->(9,5)
+  8: move (7,10)->(6,9)
+pair 94 game 1 settings: A=Black seed_a=8894612697783454377 B=White seed_b=12501623060741705050
+pair 94 game 1: plies=17 result=win winner=Black reason=RoyalCapture
+pair 94 game 2 settings: B=Black seed_b=8465895795584773824 A=White seed_a=2847766184460334032
+pair 94 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 94 result: score_a=2.0 category=4
+pair 95: pair_seed=11317135401244834176 opening_seed=11880640638672080796 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 95 opening: plies=10
+  1: move (10,3)->(10,4)
+  2: move (6,9)->(6,7)
+  3: move (7,2)->(8,1)
+  4: move (9,11)->(10,10)
+  5: move (5,3)->(5,4)
+  6: move (2,8)->(2,7)
+  7: move (5,1)->(3,1)
+  8: move (6,7)->(7,6)
+  9: move (6,2)->(2,6)
+  10: move (7,6)->(6,6)
+pair 95 game 1 settings: A=Black seed_a=11000391783438245521 B=White seed_b=5727643900613536032
+pair 95 game 1: plies=43 result=win winner=Black reason=RoyalCapture
+pair 95 game 2 settings: B=Black seed_b=4754360656550997221 A=White seed_a=14884836973328296758
+pair 95 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 95 result: score_a=2.0 category=4
+pair 96: pair_seed=1568929054396906738 opening_seed=8796863028071942689 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 96 opening: plies=9
+  1: move (2,0)->(1,1)
+  2: move (9,11)->(10,10)
+  3: move (9,0)->(8,1)
+  4: move (6,10)->(8,10)
+  5: move (0,3)->(0,4)
+  6: move (6,9)->(6,10)
+  7: move (4,1)->(3,1)
+  8: move (1,11)->(1,10)
+  9: move (11,3)->(11,4)
+pair 96 game 1 settings: A=Black seed_a=6205017756856222027 B=White seed_b=14096556551513673936
+pair 96 game 1: plies=53 result=win winner=Black reason=RoyalCapture
+pair 96 game 2 settings: B=Black seed_b=5342337459494484225 A=White seed_a=16040474574166246396
+pair 96 game 2: plies=48 result=win winner=White reason=RoyalCapture
+pair 96 result: score_a=2.0 category=4
+pair 97: pair_seed=13569910582064418755 opening_seed=8199738334922935244 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 97 opening: plies=12
+  1: move (1,0)->(1,1)
+  2: move (6,9)->(7,7)
+  3: move (2,3)->(2,4)
+  4: move (7,7)->(7,5)
+  5: move (7,1)->(8,1)
+  6: double (7,5)->(8,4)->(8,3)
+  7: move (1,1)->(1,0)
+  8: double (8,3)->(7,3)->(8,4)
+  9: move (8,2)->(6,4)
+  10: double (8,4)->(9,3)->(8,3)
+  11: move (6,0)->(7,1)
+  12: move (3,9)->(3,10)
+pair 97 game 1 settings: A=Black seed_a=18004916806237996991 B=White seed_b=3436252401296762575
+pair 97 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 97 game 2 settings: B=Black seed_b=9077067754760939413 A=White seed_a=1203788025738881181
+pair 97 game 2: plies=16 result=win winner=White reason=RoyalCapture
+pair 97 result: score_a=2.0 category=4
+pair 98: pair_seed=5996010346770464465 opening_seed=2765809409022540977 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 98 opening: plies=9
+  1: move (8,0)->(8,1)
+  2: move (2,11)->(3,10)
+  3: move (4,1)->(3,1)
+  4: move (5,8)->(5,7)
+  5: move (5,2)->(5,4)
+  6: move (9,8)->(9,7)
+  7: move (4,3)->(4,4)
+  8: move (9,11)->(10,10)
+  9: move (4,0)->(4,1)
+pair 98 game 1 settings: A=Black seed_a=2162294991857092954 B=White seed_b=4827180115560111135
+pair 98 game 1: plies=25 result=win winner=Black reason=RoyalCapture
+pair 98 game 2 settings: B=Black seed_b=7932639076373037910 A=White seed_a=4804520146111190463
+pair 98 game 2: plies=30 result=win winner=White reason=RoyalCapture
+pair 98 result: score_a=2.0 category=4
+pair 99: pair_seed=16664504962310792837 opening_seed=4848785437372823220 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 99 opening: plies=12
+  1: move (4,2)->(3,1)
+  2: move (3,9)->(3,10)
+  3: move (7,0)->(8,1)
+  4: move (2,9)->(3,9)
+  5: move (0,3)->(0,4)
+  6: move (1,9)->(2,9)
+  7: move (9,0)->(10,1)
+  8: move (2,11)->(1,10)
+  9: move (5,1)->(4,2)
+  10: move (8,11)->(8,10)
+  11: move (1,0)->(1,1)
+  12: move (6,9)->(6,7)
+pair 99 game 1 settings: A=Black seed_a=8771851798122614700 B=White seed_b=17165546466083429591
+pair 99 game 1: plies=37 result=win winner=Black reason=RoyalCapture
+pair 99 game 2 settings: B=Black seed_b=1261687448939233754 A=White seed_a=12545705488577632606
+pair 99 game 2: plies=24 result=win winner=White reason=RoyalCapture
+pair 99 result: score_a=2.0 category=4
+pair 100: pair_seed=3965821612797794021 opening_seed=12364967440550213446 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0020.onnx limit=nodes=1 player_b=random limit=nodes=1 rules=L0,P0,R1,E0 max_ply=4096
+pair 100 opening: plies=10
+  1: move (1,3)->(1,4)
+  2: move (1,11)->(1,10)
+  3: move (10,3)->(10,4)
+  4: move (2,8)->(2,7)
+  5: move (1,2)->(1,1)
+  6: move (3,9)->(0,6)
+  7: move (10,2)->(10,3)
+  8: move (3,7)->(3,6)
+  9: move (7,1)->(8,1)
+  10: move (7,10)->(8,10)
+pair 100 game 1 settings: A=Black seed_a=3021580233397560793 B=White seed_b=3990971330710858522
+pair 100 game 1: plies=23 result=win winner=Black reason=RoyalCapture
+pair 100 game 2 settings: B=Black seed_b=15687501608665233470 A=White seed_a=8876783739453472255
+pair 100 game 2: plies=34 result=win winner=White reason=RoyalCapture
+pair 100 result: score_a=2.0 category=4
+ponder candidate: predictions=0 illegal_predictions=0 go_ponder=0 hits=0 moves=2396
+ponder baseline: predictions=0 illegal_predictions=0 go_ponder=0 hits=0 moves=2296
+summary: mode=elo pairs=100 valid_pairs=100 discarded_pairs=0
+pentanomial: [0, 0, 0, 0, 100]
+elo: estimate=+inf ci95=[+inf, +inf]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 122.748528 s
