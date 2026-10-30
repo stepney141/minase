@@ -38,6 +38,7 @@ def train_arguments(initial: Path, out: Path) -> list[str]:
         "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
         "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "fp32",
         "--checkpoint-steps", "4", "--device", "cpu", "--trainer-commit", COMMIT,
+        "--ema-period-samples", "37", "--ema-scale", "8",
     ]
 
 

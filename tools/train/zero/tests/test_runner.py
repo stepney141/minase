@@ -149,6 +149,7 @@ class RunnerCase(unittest.TestCase):
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
             window_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
+            selfplay_weights="raw", ema_period_samples=0, ema_scale=0,
             train_seed_base=123, teacher_stats=self.directory / "teacher_stats", poll_seconds=60,
             cycle1_reference_summary=self.reference,
         )
@@ -463,18 +464,21 @@ class StorageTests(RunnerCase):
         self.assertEqual(chunk_files(["chunk-00000.mnsd", "chunk-00000.json.tmp"]), [])
 
     def test_publish_network_is_read_only_and_rejects_different_existing_bytes(self):
-        source = self.root / "cycles/cycle-0001/train/model.onnx"
-        write(source, b"trained network")
-        result = publish_network(self.root, 1)
-        target = self.root / "nets/cycle-0001.onnx"
-        self.assertEqual(result, digest(source))
-        self.assertEqual(target.read_bytes(), b"trained network")
-        self.assertEqual(target.stat().st_mode & 0o222, 0)
-        self.assertEqual(publish_network(self.root, 1), result)
-        write(source, b"different network")
-        with self.assertRaises(ValueError):
-            publish_network(self.root, 1)
-        self.assertEqual(target.read_bytes(), b"trained network")
+        for weights, suffix in (("raw", ""), ("ema", "-ema")):
+            with self.subTest(weights=weights):
+                source = self.root / f"cycles/cycle-0001/train/model{suffix}.onnx"
+                content = f"trained {weights} network".encode()
+                write(source, content)
+                result = publish_network(self.root, 1, weights)
+                target = self.root / f"nets/cycle-0001{suffix}.onnx"
+                self.assertEqual(result, digest(source))
+                self.assertEqual(target.read_bytes(), content)
+                self.assertEqual(target.stat().st_mode & 0o222, 0)
+                self.assertEqual(publish_network(self.root, 1, weights), result)
+                write(source, b"different network")
+                with self.assertRaises(ValueError):
+                    publish_network(self.root, 1, weights)
+                self.assertEqual(target.read_bytes(), content)
 
 
 class ResumeTests(RunnerCase):
@@ -524,7 +528,8 @@ class ResumeTests(RunnerCase):
             "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
             "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
-            "--checkpoint-steps", "200", "--device", "cuda", "--trainer-commit", TRAINER_COMMIT,
+            "--checkpoint-steps", "200", "--ema-period-samples", "0", "--ema-scale", "0",
+            "--device", "cuda", "--trainer-commit", TRAINER_COMMIT,
         ])
         first_files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         first = self.runner.training_command(1, first_files, first_files)
@@ -541,6 +546,13 @@ class ResumeTests(RunnerCase):
 
     def test_record_without_network_is_an_error(self):
         append_cycle(self.root / "cycles.jsonl", {"cycle": 1})
+        with self.assertRaises(ValueError):
+            self.runner.run()
+        self.assertEqual(self.remote.starts, [])
+
+    def test_recorded_ema_cycle_requires_both_immutable_networks(self):
+        append_cycle(self.root / "cycles.jsonl", {"cycle": 1, "ema_network_sha256": "a" * 64})
+        write(self.root / "nets/cycle-0001.onnx", b"published raw")
         with self.assertRaises(ValueError):
             self.runner.run()
         self.assertEqual(self.remote.starts, [])
@@ -776,6 +788,7 @@ class CycleTests(RunnerCase):
         super().setUp()
         (self.root / "seed-ledger.jsonl").touch()
         self.compare_failure = False
+        self.compare_failure_weights = "raw"
         self.regenerate = False
         self.remote.on_start = self.complete_job
         teacher = """#!/usr/bin/env python3
@@ -794,7 +807,11 @@ with open('commands.jsonl', 'a') as output:
     output.write(json.dumps(args) + '\\n')
 if any(arg.endswith('/nn_compare.py') for arg in args):
     print(json.dumps({'positions': 288, 'max_value_abs_diff': 0.00001}))
-    sys.exit(1 if pathlib.Path('fail-comparison').exists() and args[args.index('--candidate') + 1].endswith('cpu-b7.json') else 0)
+    failure = pathlib.Path('fail-comparison')
+    if failure.exists():
+        name = 'cpu-b7-ema.json' if failure.read_text() == 'ema' else 'cpu-b7.json'
+        sys.exit(1 if args[args.index('--candidate') + 1].endswith(name) else 0)
+    sys.exit(0)
 out = pathlib.Path(args[args.index('--out') + 1])
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) + '\\n')
@@ -804,7 +821,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
     def complete_job(self, stem, body):
         if stem.endswith("/check"):
             if self.compare_failure:
-                write(self.remote_root / "fail-comparison", b"1")
+                write(self.remote_root / "fail-comparison", self.compare_failure_weights.encode())
             script = body.replace("/content/src/target/release/minase", shlex.quote(str(self.tool)))
             script = script.replace("uv run", shlex.quote(str(self.tool)) + " run")
             result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", script], cwd=self.remote_root,
@@ -850,6 +867,11 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             if "--latest-data" in command:
                 summary["latest_data"] = command[command.index("--latest-data") + 1:command.index("--out-dir")]
                 summary["provenance"]["trainer_commit"] = command[command.index("--trainer-commit") + 1]
+            if "--ema-period-samples" in command and int(command[command.index("--ema-period-samples") + 1]) > 0:
+                write(self.remote_root / stem / "model-ema.onnx", f"ema network {cycle}".encode())
+                summary["ema_network_sha256"] = digest(self.remote_root / stem / "model-ema.onnx")
+                summary["ema_period_samples"] = int(command[command.index("--ema-period-samples") + 1])
+                summary["ema_scale"] = float(command[command.index("--ema-scale") + 1])
             write_json(self.remote_root / stem / "summary.json", summary)
         else:
             raise AssertionError(body)
@@ -899,6 +921,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(fixture[fixture.index("fixture-eval"):], [
             "fixture-eval", "--checkpoint", "cycles/cycle-0001/train/checkpoint.pt", "--onnx", "cycles/cycle-0001/train/model.onnx",
             "--fixture", "/content/src/tools/train/zero/fixtures/nn-positions.jsonl", "--out", "cycles/cycle-0001/check/pytorch.json",
+            "--weights", "raw",
         ])
         for command in first_commands[1:]:
             if "--candidate" in command:
@@ -915,6 +938,139 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         start_count = len(self.remote.starts)
         self.execute(replace(self.options, last_cycle=2))
         self.assertEqual(len(self.remote.starts), start_count)
+
+    def test_raw_selfplay_with_ema_training_records_and_checks_both_networks(self):
+        options = replace(self.options, last_cycle=2, ema_period_samples=500_000, ema_scale=8)
+
+        def before_download(relative, target):
+            if "/train/" in relative:
+                cycle = relative.split("/")[1]
+                self.assertFalse((self.root / "cycles" / cycle / "train/summary.json").exists())
+
+        self.remote.on_download = before_download
+        self.execute(options)
+        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
+        self.assertEqual(rows[1]["generation"]["network"], "cycles/cycle-0001/train/model.onnx")
+        for row in rows:
+            cycle = row["cycle"]
+            self.assertEqual((row["selfplay_weights"], row["ema_period_samples"], row["ema_scale"]),
+                             ("raw", 500_000, 8))
+            expected = [(weights, backend, batch, 0) for weights in ("raw", "ema")
+                        for batch in (1, 7, 256) for backend in ("cpu", "trt")]
+            self.assertEqual([(r["weights"], r["backend"], r["batch"], r["exit_code"])
+                              for r in row["checks"]["results"]], expected)
+            for weights, suffix, key in (("raw", "", "network_sha256"), ("ema", "-ema", "ema_network_sha256")):
+                target = self.root / f"nets/cycle-{cycle:04d}{suffix}.onnx"
+                source = self.root / f"cycles/cycle-{cycle:04d}/train/model{suffix}.onnx"
+                self.assertEqual(target.read_bytes(), source.read_bytes())
+                self.assertEqual(target.stat().st_mode & 0o222, 0)
+                self.assertEqual(row[key], digest(target))
+                self.assertEqual(row["training_summary"][key], digest(target))
+            command = shlex.split(next(body for stem, body, _, _ in self.remote.starts
+                                       if stem == f"cycles/cycle-{cycle:04d}/train"))
+            self.assertEqual(command[command.index("--ema-period-samples") + 1], "500000")
+            self.assertEqual(command[command.index("--ema-scale") + 1], "8")
+        commands = [json.loads(line) for line in (self.remote_root / "commands.jsonl").read_text().splitlines()]
+        self.assertEqual(len(commands), 52)
+        for cycle, group in ((1, commands[:26]), (2, commands[26:])):
+            for weights, offset, suffix in (("raw", 0, ""), ("ema", 13, "-ema")):
+                fixture = group[offset]
+                self.assertEqual(fixture[fixture.index("--weights") + 1], weights)
+                self.assertEqual(fixture[fixture.index("--onnx") + 1], f"cycles/cycle-{cycle:04d}/train/model{suffix}.onnx")
+                reference = fixture[fixture.index("--out") + 1]
+                for command in group[offset + 1:offset + 13]:
+                    if "--candidate" in command:
+                        self.assertEqual(command[command.index("--reference") + 1], reference)
+                        cpu = "/cpu-" in command[command.index("--candidate") + 1]
+                        self.assertEqual(command[command.index("--policy") + 1], "logits" if cpu else "probabilities")
+                        self.assertEqual(command[command.index("--policy-tolerance") + 1], "1e-4" if cpu else "1e-2")
+                        self.assertEqual(command[command.index("--value-tolerance") + 1], "1e-4" if cpu else "5e-2")
+                    else:
+                        self.assertEqual(command[command.index("--nn-model") + 1],
+                                         f"cycles/cycle-{cycle:04d}/train/model{suffix}.onnx")
+
+    def test_selfplay_can_select_previous_cycles_average(self):
+        options = replace(self.options, ema_period_samples=500_000, ema_scale=8)
+        self.execute(options)
+        self.execute(replace(options, first_cycle=2, last_cycle=2, cycle1_reference_summary=None, selfplay_weights="ema"))
+        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
+        row = rows[1]
+        network = "cycles/cycle-0001/train/model-ema.onnx"
+        self.assertEqual(row["selfplay_weights"], "ema")
+        self.assertEqual(row["generation"]["network"], network)
+        self.assertEqual(row["generation"]["network_sha256"], digest(self.root / network))
+        self.assertEqual(row["generation"]["network_sha256"], rows[0]["ema_network_sha256"])
+        command = shlex.split(next(body for stem, body, _, _ in self.remote.starts
+                                   if stem == "cycles/cycle-0002/selfplay"))
+        self.assertEqual(command[command.index("--nn-model") + 1], network)
+
+    def test_missing_previous_average_stops_without_substituting_raw_weights(self):
+        self.runner.run()
+        ledger = (self.root / "seed-ledger.jsonl").read_bytes()
+        count = len(self.remote.starts)
+        with self.assertRaises(FileNotFoundError):
+            self.execute(replace(self.options, first_cycle=2, last_cycle=2,
+                                 cycle1_reference_summary=None, selfplay_weights="ema"))
+        self.assertEqual(len(self.remote.starts), count)
+        self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
+
+    def test_missing_initial_average_stops_before_generation(self):
+        with self.assertRaises(FileNotFoundError):
+            self.execute(replace(self.options, selfplay_weights="ema"))
+        self.assertEqual(self.remote.starts, [])
+        self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), b"")
+
+    def check_ema_cycle_failure(self, weights):
+        self.compare_failure = True
+        self.compare_failure_weights = weights
+        with self.assertRaises(RuntimeError):
+            self.execute(replace(self.options, last_cycle=2, ema_period_samples=500_000, ema_scale=8))
+        check = self.root / "cycles/cycle-0001/check"
+        self.assertEqual(len(list(check.glob("*.compare.json"))), 12)
+        self.assertEqual(len(list(check.glob("*.compare.exit"))), 12)
+        for suffix, expected in (("", "1" if weights == "raw" else "0"),
+                                 ("-ema", "1" if weights == "ema" else "0")):
+            self.assertEqual((check / f"cpu-b7{suffix}.compare.exit").read_text().strip(), expected)
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertFalse((self.root / "nets/cycle-0001.onnx").exists())
+        self.assertFalse((self.root / "nets/cycle-0001-ema.onnx").exists())
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["selfplay", "train", "check"])
+
+    def test_raw_comparison_failure_stops_an_ema_cycle_after_both_groups(self):
+        self.check_ema_cycle_failure("raw")
+
+    def test_ema_comparison_failure_stops_an_ema_cycle_after_both_groups(self):
+        self.check_ema_cycle_failure("ema")
+
+    def test_missing_remote_average_does_not_commit_training_summary(self):
+        def complete(stem, body):
+            code = self.complete_job(stem, body)
+            if stem.endswith("/train"):
+                (self.remote_root / stem / "model-ema.onnx").unlink()
+            return code
+
+        self.remote.on_start = complete
+        with self.assertRaises(FileNotFoundError):
+            self.execute(replace(self.options, ema_period_samples=500_000, ema_scale=8))
+        self.assertFalse((self.root / "cycles/cycle-0001/train/summary.json").exists())
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["selfplay", "train"])
+
+    def test_mismatched_average_hash_does_not_commit_training_summary(self):
+        def complete(stem, body):
+            code = self.complete_job(stem, body)
+            if stem.endswith("/train"):
+                path = self.remote_root / stem / "summary.json"
+                summary = json.loads(path.read_text())
+                summary["ema_network_sha256"] = "f" * 64
+                write_json(path, summary)
+            return code
+
+        self.remote.on_start = complete
+        with self.assertRaises(ValueError):
+            self.execute(replace(self.options, ema_period_samples=500_000, ema_scale=8))
+        self.assertFalse((self.root / "cycles/cycle-0001/train/summary.json").exists())
+        self.assertFalse((self.root / "cycles.jsonl").exists())
 
     def test_false_resignations_generate_replacements_and_append_them_to_window(self):
         self.regenerate = True
@@ -1125,6 +1281,7 @@ class ArgumentTests(RunnerCase):
                 "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
+                "--selfplay-weights", "raw", "--ema-period-samples", "500000", "--ema-scale", "8",
                 "--teacher-stats", str(self.options.teacher_stats), "--poll-seconds", "60",
                 "--cycle1-reference-summary", str(self.reference)]
 
@@ -1149,7 +1306,10 @@ class ArgumentTests(RunnerCase):
         for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"generation_commit": "abcd"},
                         {"trainer_commit": "abcd"}, {"session": "x; echo secret"},
                         {"poll_seconds": 0}, {"window_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
-                        {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1}):
+                        {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1},
+                        {"selfplay_weights": "invalid"}, {"ema_period_samples": 1}, {"ema_scale": 8},
+                        {"ema_period_samples": -1}, {"ema_period_samples": 1.5},
+                        {"ema_period_samples": 3, "ema_scale": float("nan")}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 replace(self.options, **changes)
 

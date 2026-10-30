@@ -37,7 +37,7 @@ class FixtureTests(unittest.TestCase):
     def test_fixture_eval_preserves_all_positions_and_legal_labels(self) -> None:
         output = self.root / "fixture.json"
         require_success(run_cli([
-            "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
+            "fixture-eval", "--weights", "raw", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(self.initial / "model.onnx"),
             "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
         ]))
@@ -58,7 +58,7 @@ class FixtureTests(unittest.TestCase):
         require_success(run_cli(init_arguments(different, 24)))
         output = self.root / "mismatch.json"
         result = run_cli([
-            "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
+            "fixture-eval", "--weights", "raw", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(different / "model.onnx"),
             "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
         ])

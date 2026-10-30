@@ -177,11 +177,15 @@ class TrainTests(unittest.TestCase):
         self.assertGreater(self.interrupted_state["completed_steps"], 0)
         self.assertLess(self.interrupted_state["completed_steps"], self.interrupted_state["total_steps"])
         for key in ("model", "optimizer", "completed_steps", "total_steps", "positions_seen",
-                    "data_order_sha256", "loss_sums", "learning_curve"):
+                    "data_order_sha256", "loss_sums", "learning_curve", "ema"):
             with self.subTest(key=key):
                 self.assert_state_equal(self.state_a[key], self.state_b[key])
         self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
+        self.assertEqual(self.summary_a["ema_diagnostics"], self.summary_b["ema_diagnostics"])
         self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
+        self.assertEqual((self.a / "model-ema.onnx").read_bytes(), (self.b / "model-ema.onnx").read_bytes())
+        self.assertEqual(self.summary_a["ema_updates"], len(self.data.boards[~self.data.validation]) // 37)
+        self.assertEqual(self.state_a["ema"]["samples_since_update"], int((~self.data.validation).sum()) % 37)
         self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
@@ -213,11 +217,13 @@ class TrainTests(unittest.TestCase):
         out = self.root / "final-only"
         shutil.copytree(self.a, out)
         (out / "model.onnx").unlink()
+        (out / "model-ema.onnx").unlink()
         (out / "summary.json").unlink()
         saved_bytes = (out / "checkpoint.pt").read_bytes()
         require_success(run_cli(["train", "--resume", str(out), "--device", "cpu"]))
         self.assertEqual(saved_bytes, (out / "checkpoint.pt").read_bytes())
         self.assertEqual((out / "model.onnx").read_bytes(), (self.a / "model.onnx").read_bytes())
+        self.assertEqual((out / "model-ema.onnx").read_bytes(), (self.a / "model-ema.onnx").read_bytes())
         summary = json.loads((out / "summary.json").read_text())
         for key in self.summary_a.keys() - {"elapsed_seconds", "positions_per_second", "loading_peak_rss_bytes"}:
             self.assertEqual(summary[key], self.summary_a[key], key)

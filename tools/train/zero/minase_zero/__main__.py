@@ -8,9 +8,10 @@
   MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
   --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
-  --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
+  --checkpoint-steps、--ema-period-samples、--ema-scale、--device（cudaかcpu）、
+  --trainer-commit（40桁の16進数字）。EMAの2引数は両方0で無効、両方正で有効とする。
 - train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
-- fixture-eval：--checkpoint、--onnx、--fixture、--out。
+- fixture-eval：--checkpoint、--onnx、--fixture、--out、--weights（rawかema）。
 - external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
@@ -60,9 +61,9 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--data", nargs="+", required=True)
         train.add_argument("--latest-data", nargs="+", required=True)
         train.add_argument("--out-dir", type=Path, required=True)
-        for name in ("cycle", "seed", "batch-size", "checkpoint-steps"):
+        for name in ("cycle", "seed", "batch-size", "checkpoint-steps", "ema-period-samples"):
             train.add_argument(f"--{name}", type=int, required=True)
-        for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda"):
+        for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda", "ema-scale"):
             train.add_argument(f"--{name}", type=float, required=True)
         train.add_argument("--precision", choices=("bf16", "fp32"), required=True)
         train.add_argument("--trainer-commit", required=True)
@@ -70,6 +71,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     fixture = commands.add_parser("fixture-eval", allow_abbrev=False)
     for name in ("checkpoint", "onnx", "fixture", "out"):
         fixture.add_argument(f"--{name}", type=Path, required=True)
+    fixture.add_argument("--weights", choices=("raw", "ema"), required=True)
 
     external = commands.add_parser("external-eval", allow_abbrev=False)
     for name in ("checkpoint", "out"):
