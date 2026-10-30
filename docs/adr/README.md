@@ -337,3 +337,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月29日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率を1×10⁻²、価値を5×10⁻²で照合する](compare-fp16-zero-network-values-within-five-hundredths.md)
 - 2026年10月29日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量だけを一様に抽出して学ぶ](sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)
 - 2026年10月29日 [AlphaZero型探索の学習は、方策の損失を局面ごとの合法手だけで正規化せず、常に不可能なラベルの定数マスクにとどめる](keep-the-constant-policy-label-mask-without-per-position-legal-masks.md)
+- 2026年10月30日 [AlphaZero型探索の自己対局には、重みの移動平均ではなく平均でない重みのネットを使う](keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)
