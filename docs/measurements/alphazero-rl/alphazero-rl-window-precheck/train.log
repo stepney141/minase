@@ -1,0 +1,17 @@
+steps=200/3250 policy=3.957776 value=0.648422 value_result=0.619166 positions_per_second=4251.60
+steps=400/3250 policy=3.937537 value=0.638047 value_result=0.601365 positions_per_second=4658.67
+steps=600/3250 policy=3.925227 value=0.635447 value_result=0.596588 positions_per_second=4647.53
+steps=800/3250 policy=3.924860 value=0.631716 value_result=0.589043 positions_per_second=4637.91
+steps=1000/3250 policy=3.923356 value=0.629050 value_result=0.585021 positions_per_second=4632.65
+steps=1200/3250 policy=3.920654 value=0.627233 value_result=0.580467 positions_per_second=4635.04
+steps=1400/3250 policy=3.922887 value=0.623860 value_result=0.573686 positions_per_second=4632.15
+steps=1600/3250 policy=3.917746 value=0.622422 value_result=0.571251 positions_per_second=4637.02
+steps=1800/3250 policy=3.916071 value=0.620422 value_result=0.567427 positions_per_second=4657.85
+steps=2000/3250 policy=3.917457 value=0.620876 value_result=0.566610 positions_per_second=4659.26
+steps=2200/3250 policy=3.914069 value=0.617734 value_result=0.560767 positions_per_second=4655.75
+steps=2400/3250 policy=3.914034 value=0.615135 value_result=0.556702 positions_per_second=4657.52
+steps=2600/3250 policy=3.911352 value=0.615755 value_result=0.557221 positions_per_second=4663.19
+steps=2800/3250 policy=3.918885 value=0.615807 value_result=0.557420 positions_per_second=4654.93
+steps=3000/3250 policy=3.910435 value=0.614331 value_result=0.554610 positions_per_second=4646.43
+steps=3200/3250 policy=3.914280 value=0.612549 value_result=0.550390 positions_per_second=4643.93
+steps=3250/3250 policy=3.913116 value=0.610114 value_result=0.545634 positions_per_second=4599.60

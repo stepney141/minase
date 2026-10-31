@@ -5,21 +5,33 @@
 
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
 - train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（学習窓の
-  MNSDファイルの列）、--out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
+  MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
+  --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、--lr-schedule（constantかcosine）、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
-  --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
+  --checkpoint-steps、--ema-period-samples、--ema-scale、--device（cudaかcpu）、
+  --trainer-commit（40桁の16進数字）。EMAの2引数は両方0で無効、両方正で有効とする。
 - train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
-- fixture-eval：--checkpoint、--onnx、--fixture、--out。
+- fixture-eval：--checkpoint、--onnx、--fixture、--out、--weights（rawかema）。
+- external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
+- seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
+- resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
+- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--window-positionsで学習窓の
+  局面数、--generation-commitと--trainer-commitで生成と学習のコミットを指定する。
+  引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
 出力先と学習の契約はtrain.pyのdocstringにある。
 """
 
 import argparse
+import json
 from pathlib import Path
 import pickle
 import sys
 
+from .external import external_eval
+from .rl import register_seed_range, resign_calibration
+from .runner import Options, Remote, Runner, add_arguments
 from .train import fixture_eval, initialize, resume, train_new
 
 
@@ -47,17 +59,38 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     else:
         train.add_argument("--init", required=True)
         train.add_argument("--data", nargs="+", required=True)
+        train.add_argument("--latest-data", nargs="+", required=True)
         train.add_argument("--out-dir", type=Path, required=True)
-        for name in ("cycle", "seed", "batch-size", "checkpoint-steps"):
+        for name in ("cycle", "seed", "batch-size", "checkpoint-steps", "ema-period-samples"):
             train.add_argument(f"--{name}", type=int, required=True)
-        for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda"):
+        for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda", "ema-scale"):
             train.add_argument(f"--{name}", type=float, required=True)
         train.add_argument("--precision", choices=("bf16", "fp32"), required=True)
+        train.add_argument("--lr-schedule", choices=("constant", "cosine"), required=True)
         train.add_argument("--trainer-commit", required=True)
 
     fixture = commands.add_parser("fixture-eval", allow_abbrev=False)
     for name in ("checkpoint", "onnx", "fixture", "out"):
         fixture.add_argument(f"--{name}", type=Path, required=True)
+    fixture.add_argument("--weights", choices=("raw", "ema"), required=True)
+
+    external = commands.add_parser("external-eval", allow_abbrev=False)
+    for name in ("checkpoint", "out"):
+        external.add_argument(f"--{name}", type=Path, required=True)
+    external.add_argument("--data", nargs="+", required=True)
+    for name in ("games", "seed"):
+        external.add_argument(f"--{name}", type=int, required=True)
+    external.add_argument("--device", choices=("cuda", "cpu"), required=True)
+
+    ledger = commands.add_parser("seed-ledger", allow_abbrev=False)
+    ledger.add_argument("--ledger", type=Path, required=True)
+    ledger.add_argument("--name", required=True)
+    for name in ("seed", "games"):
+        ledger.add_argument(f"--{name}", type=int, required=True)
+
+    calibration = commands.add_parser("resign-calibration", allow_abbrev=False)
+    calibration.add_argument("--summary", type=Path, nargs="+", required=True)
+    add_arguments(commands.add_parser("run-cycles", allow_abbrev=False))
     return parser.parse_args(argv)
 
 
@@ -70,6 +103,15 @@ def main() -> int:
             initialize(**args)
         elif command == "fixture-eval":
             fixture_eval(**args)
+        elif command == "external-eval":
+            external_eval(**args)
+        elif command == "seed-ledger":
+            print(json.dumps(register_seed_range(**args), ensure_ascii=False, allow_nan=False))
+        elif command == "resign-calibration":
+            print(json.dumps(resign_calibration(**args), allow_nan=False))
+        elif command == "run-cycles":
+            options = Options(**args)
+            Runner(options, Remote(options.session)).run()
         elif "resume" in args:
             resume(args["resume"], args["device"])
         else:

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[学習器の設計書](../../plans/archived/alphazero-trainer.md)の検証の節が求める、学習したネットのPyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の一致を、2026年10月28日に決め直した照合の基準（[ADR](../../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）で確かめる。
+[学習器の設計書](../../plans/archived/alphazero-trainer.md)の検証の節が求める、学習したネットのPyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の一致を、2026年10月28日に決め直した照合の基準（[ADR](../../adr/archive/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）で確かめる。
 CPUは合法手のlogitと価値の差を1×10⁻⁴で、FP16は合法手の確率の差を1×10⁻²、価値の差を2×10⁻²で比べ、バッチの大きさ1、7、および256のすべてで照合が通るかを調べる。
 
 ## コマンドライン

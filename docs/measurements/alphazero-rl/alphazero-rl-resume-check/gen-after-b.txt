@@ -1,0 +1,59 @@
+1793201996.825952497 chunks: 3/6 games: 1981 positions: 211766 elapsed_seconds: 231.516
+1793201997.563064437 chunks: 4/6 games: 1986 positions: 213499 elapsed_seconds: 232.253
+1793202002.639395512 chunks: 5/6 games: 1999 positions: 218208 elapsed_seconds: 237.329
+1793202003.145991636 chunks: 6/6 games: 2000 positions: 218772 elapsed_seconds: 237.836
+seed: 200000000
+rules: L0,P0,R1,E0
+commit: d786c5e12aa5134e1cc25353480d28962def5b36
+network_sha256: 641a311e3b9f7b23f5516a3785c2b7c44b5526328924bb269d10f3421b0c06e3
+simulations: 32
+max_ply: 1000
+black_wins: 1487
+discarded_max_ply: 0
+draw_reason_agreement: 0
+draw_reason_bare_king: 0
+draw_reason_piece_exhaustion: 0
+draw_reason_repetition: 0
+total 108008
+drwxr-xr-x 2 root   root       4096 2026-10-28 15:40:03.146880868 +0000 .
+drwxr-xr-x 3 root   root       4096 2026-10-28 15:40:03.529909739 +0000 ..
+-rw-r--r-- 1 root   root          0 2026-10-28 15:36:05.307948570 +0000 .zero_selfplay.lock
+-rw-r--r-- 1 ubuntu ubuntu      692 2026-10-28 15:33:54.611589169 +0000 chunk-00000.json
+-rw-r--r-- 1 ubuntu ubuntu 19812666 2026-10-28 15:33:54.545584430 +0000 chunk-00000.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      152 2026-10-28 15:33:54.545584430 +0000 chunk-00000.resigned.mnsd
+-rw-r--r-- 1 root   root        694 2026-10-28 15:39:57.555459413 +0000 chunk-00001.json
+-rw-r--r-- 1 root   root   18802622 2026-10-28 15:39:57.524457076 +0000 chunk-00001.mnsd
+-rw-r--r-- 1 root   root        152 2026-10-28 15:39:57.524457076 +0000 chunk-00001.resigned.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      695 2026-10-28 15:34:46.925345456 +0000 chunk-00002.json
+-rw-r--r-- 1 ubuntu ubuntu 17390578 2026-10-28 15:34:46.893343158 +0000 chunk-00002.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      152 2026-10-28 15:34:46.893343158 +0000 chunk-00002.resigned.mnsd
+-rw-r--r-- 1 root   root        695 2026-10-28 15:39:56.818403857 +0000 chunk-00003.json
+-rw-r--r-- 1 root   root   18909378 2026-10-28 15:39:56.786401445 +0000 chunk-00003.mnsd
+-rw-r--r-- 1 root   root        152 2026-10-28 15:39:56.786401445 +0000 chunk-00003.resigned.mnsd
+-rw-r--r-- 1 root   root        695 2026-10-28 15:40:03.138880265 +0000 chunk-00004.json
+-rw-r--r-- 1 root   root   17686908 2026-10-28 15:40:03.109878079 +0000 chunk-00004.mnsd
+-rw-r--r-- 1 root   root        152 2026-10-28 15:40:03.109878079 +0000 chunk-00004.resigned.mnsd
+-rw-r--r-- 1 root   root        695 2026-10-28 15:40:02.631842047 +0000 chunk-00005.json
+-rw-r--r-- 1 root   root   17910011 2026-10-28 15:40:02.598839559 +0000 chunk-00005.mnsd
+-rw-r--r-- 1 root   root        152 2026-10-28 15:40:02.598839559 +0000 chunk-00005.resigned.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      342 2026-10-28 15:30:07.724297973 +0000 config.json
+-rw-r--r-- 1 root   root       1138 2026-10-28 15:40:03.143880642 +0000 summary.json
+c6379b15f27c87337bea902e7e81abe4cc47994fb04e20dea38ad6a81360cc4b  chunk-00000.json
+63f270d6474d35d3007c3720b2dd431095986c19619a33cdbaa95110310763ca  chunk-00000.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00000.resigned.mnsd
+127556045470eb3290b344d84df5f662d555cd7d6f3324173dfb94f1631b4f62  chunk-00001.json
+91fad10628fb297fed42421f792babf5935b2f7e39cb799a6d8ca53778980f53  chunk-00001.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00001.resigned.mnsd
+061ad3e166b06b4810a1a64c2ca197419318af98fdfa2abecdcf7f6e33d8f0da  chunk-00002.json
+5b5e02ad1ade3237b134e1e071fdea802652ab82b90f4f41f987c164a9f00194  chunk-00002.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00002.resigned.mnsd
+d6b88844b5f48ecbb88ff30f39f0d113c59b824cb06e386eae77bad3b5fa1bd2  chunk-00003.json
+9f7bfdc7b184b081dfab37aa4a553258e5ba5b00f3d226f8ea1e9bd8620117e2  chunk-00003.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00003.resigned.mnsd
+a13b5377281d0bbf1df434f07735b0dea06df0466015904c931d4755b5b801ea  chunk-00004.json
+6f5e672ab77d8c892d853b11b28e67337c166ea4322ff71b10755a84cc63bc36  chunk-00004.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00004.resigned.mnsd
+650c3b9c6c55bbc3ece2f72fd446bee52793f3fc6f66e6affb7ac56a32177238  chunk-00005.json
+5282aebee49a75f286fe637969cd1974223e483adbeb394ecba6162fa7869244  chunk-00005.mnsd
+cf9fed620d69cf1babd4036b11a9b86bdc53023f7b8158927044c7bb4ee87e23  chunk-00005.resigned.mnsd
+d6d628f051659f903c4403385441e629bba1e000ce13b48082bd042f264fb10a  config.json

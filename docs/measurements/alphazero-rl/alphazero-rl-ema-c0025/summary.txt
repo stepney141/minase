@@ -1,0 +1,9 @@
+seed: 30025
+candidate: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0025-ema.onnx limit=nodes=800
+baseline: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/nets/cycle-0025.onnx limit=nodes=800
+summary: mode=gsprt pairs=433 valid_pairs=433 discarded_pairs=0
+pentanomial: [49, 108, 156, 85, 35]
+llr: -2.9668584874
+decision: H0
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 16115.531247 s

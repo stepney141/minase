@@ -48,7 +48,7 @@ echo 'import subprocess; print(subprocess.run("nvidia-smi --query-gpu=name,memor
 minaseのソースは、Colab機でリポジトリを取得せずに、作業機で固定したコミットから`git archive`で作った書庫を送る。
 
 ```console
-git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/minase-<コミット>.tar <コミット>
+git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>
 ```
 
 ファイルの転送には、`colab ssh --proxy-mode`をOpenSSHのProxyCommandにしたrsyncを使う。
@@ -56,9 +56,13 @@ git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/min
 数十MBまでのファイルなら、`colab upload`と`colab download`でも送れる。
 
 ```console
-RSH="ssh -o ProxyCommand='colab ssh --proxy-mode -s <名前>' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-rsync -a -e "$RSH" /mnt/synology_nas/minase/alphazero/minase-<コミット>.tar root@colab:/content/minase.tar
+RSH="ssh -o ProxyCommand='colab ssh --proxy-mode -s <名前>' -o ControlMaster=auto -o ControlPath=/tmp/colab-cm-<名前> -o ControlPersist=900 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+rsync -a -e "$RSH" /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar root@colab:/content/minase.tar
 ```
+
+Colab機は同時に1本の`colab ssh`しか受け付けず、2本目の接続はHTTP 429（「Already-active SSH session」）で拒否される。
+このため`RSH`は、OpenSSHのControlMasterで1本の接続を共有する設定にし、同じColab機へのsshとrsyncを同時に2つ起動しない。
+2026年10月28日には、借りた直後の最初の接続が2分で切れ、やり直すと通ったことがある。
 
 作業機の回線では、作業機からColab機への転送が約6.2 MB/秒、Colab機から作業機への転送が約9.7 MB/秒であった。
 学習データは圧縮したまま送り、Colab機で展開する。
@@ -68,6 +72,7 @@ Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導
 `setup.sh`は、uvのロックファイルからPythonの依存パッケージを、rustupから固定した版のRustのツールチェーンを、Microsoftの配布物からONNX Runtimeを導入し、版を表示して終わる。
 uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）も、固定した版のツールチェーンでビルドして導入する。
 新しいColab機での所要時間は、導入がL4で81秒、A100で214秒、G4で96〜98秒、minaseのビルドが40〜82秒であった。
+2026年10月28日から29日に借りた3台のL4では、依存パッケージの取得だけで2分2秒、10分52秒、14分30秒かかり、取得の時間は日と機械によって大きく変わった（[試走の記録](../measurements/alphazero-rl/alphazero-rl-trial.md)）。
 
 ```console
 mkdir -p /content/src && tar -xf /content/minase.tar -C /content/src
@@ -81,24 +86,20 @@ minaseのGPUの推論を使うコマンドは、この設定の下で実行す�
 
 ## 4. 計算を実行する
 
-`colab exec`はColab機のPythonのカーネルでコードを実行し、既定では30秒で打ち切る。
-数分を超える計算は、カーネルからPythonの`subprocess.Popen`で、カーネルとは別のプロセスグループ（`start_new_session=True`）として起動し、出力をファイルへ書き出させる。
-起動したプロセスは`colab exec`の終了後も動き続ける。
+数分を超える計算は、3節の`RSH`のsshで、`setsid`によって端末から切り離して起動し、標準入出力をすべてファイルへ向ける。
+切り離さないと、sshが計算の終わるまで戻らない。
 
-```python
-import subprocess
-log = open('/content/job.out', 'w')
-subprocess.Popen(['bash', '/content/job.sh'], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+```console
+eval "$RSH root@colab" "'setsid nohup bash /content/job.sh > /content/job.out 2>&1 < /dev/null &'"
+eval "$RSH root@colab" "'tail -n 20 /content/job.out'"
 ```
 
 `/content/job.sh`は、実行するコマンドを並べたシェルスクリプトであり、3節の方法で前もってColab機へ送っておく。
-上のPythonのコードを作業機にファイルとして保存し、`colab exec -s <名前> -f <ファイル> --timeout 120`で送って実行する。
-進み具合は、出力のファイルの末尾を表示する短い`colab exec`で確かめる。
+進み具合は、出力のファイルの末尾を表示する短いsshで確かめ、各呼び出しには`timeout`で時間の上限を付ける。
+`colab exec`はColab機のPythonのカーネルでコードを実行する別の経路であり、`subprocess.Popen`で同じように切り離した起動もできるが、2026年10月28日には待機のために繰り返し呼んだ`colab exec`が応答しなくなったので、起動と待機には使わない。
 
-```console
-echo 'import subprocess; print(subprocess.run("tail -n 20 /content/job.out", shell=True, capture_output=True, text=True).stdout)' \
-  | colab exec -s <名前> --timeout 60
-```
+強化学習のサイクルは、学習器の`minase_zero run-cycles`（`tools/train/zero/minase_zero/runner.py`）が、この節と5節の手順で、生成、学習、および出力の照合の起動、確定したファイルの受け取り、ならびにサイクルの記録の追記を順に行う。
+引数と、機械を替えたときの再開の規則は、同じモジュールのdocstringにある。
 
 セッションには、借りた時刻からの終了期限を設ける。
 期限は、進捗測定を含まないセッションでは8時間、進捗測定を含むセッションでは連続して動作を確かめた時間以内とする。
@@ -109,6 +110,26 @@ echo 'import subprocess; print(subprocess.run("tail -n 20 /content/job.out", she
 この間、作業機からは20分ごとに、すぐに終わる`colab exec`を実行して状態を確かめた。
 このため、進捗測定を含むセッションの終了期限は、借りた時刻から12時間とする。
 Colabは上限を公表しておらず、上限は利用状況によって変わり得るので、期限を延ばす前には確認をやり直す。
+一方、2026年10月29日には、実行器が19時11分（UTC）に止まった後、計算も接続もないまま置いたL4のセッションが、22時51分までにColab側に回収されていた。
+回収された時刻は分からず、回収までの間の消費は止まらない。
+このため、計算を止めた後に利用者の判断などで待つときは、必要なファイルを受け取ってから5節の手順でセッションを止め、待つ間に機械を借りたままにしない。
+
+### 4.1 強化学習のサイクルを回す一連の手順
+
+強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
+手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> <raw|ema> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
+
+1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
+2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
+3. 書庫と`docs/measurements/alphazero-rl/alphazero-rl-trial/colab-setup.sh`をrsyncで`/content/`へ送り、`colab-setup.sh`を`setsid nohup`で起動する（導入は3〜17分）。
+4. 起動スクリプトを、`--first-cycle`、`--last-cycle`、`--deadline`、`C=<コミット>`、およびセッション名を書き換えて`nohup setsid bash`で起動する。スクリプトは導入の完了を待って`minase_zero run-cycles`を走らせ、終了コードによらず`colab stop`し、止めた時刻と残高を`rentals.jsonl`に足す。
+5. 進み具合は`/mnt/synology_nas/minase/alphazero/logs/runner-<セッション>-<時刻>.log`の末尾で見る。サイクルの結果は`cycles.jsonl`、CUの区間は`sessions.jsonl`にある。
+6. 実行器が異常で止まったら、ログの末尾のエラーと、該当サイクルの`cycles/cycle-NNNN/`の状態ファイル（`*.started.json`、`*.exit`、`*.log`）を見る。不合格の出力を退けて学び直すときは、削除せずに`cycles/cycle-NNNN/rejected-<理由>/`へ移す。
+
+各サイクルの後、作業機で次を行う（GPUが空いているとき）。
+
+- 固定の検証用棋譜の診断：`tools/train/zero`で`uv run --frozen python -m minase_zero external-eval --checkpoint /mnt/synology_nas/minase/alphazero/cycles/cycle-NNNN/train/checkpoint.pt --data <minaseのリポジトリ>/data/nnue-lr-schedule-gen/generated-8200000.bin --games 1000 --seed 20261030 --device cuda --out /mnt/synology_nas/minase/alphazero/external/cycle-NNNN.json`。
+- 10サイクルごとの進捗測定：`docs/measurements/alphazero-rl/alphazero-rl-progress-c0020/`の`check.sh`（作業機での3者の照合）と`progress-workstation.sh <新> <旧> 16 <シード> <シード> /mnt/synology_nas/minase/alphazero/progress`。`progress-workstation.sh`の後半の乱択との対局は最初の進捗測定でだけ要るもので、サイクル0の実行ディレクトリが既にあると失敗するので、次からはその部分を除いた版を使う。
 
 ## 5. 結果を受け取って終了する
 
@@ -152,7 +173,7 @@ GPUの毎秒の評価数は、推論ストリーム（それぞれが自分の�
 推論ストリームが1本では、CPUの遅い機械でホスト側の処理が律速し、GPUの能力を測りきれないからである。
 CPUの値は、全vCPUで同時に測った毎秒のシミュレーション数の合計とする。
 1スレッドの値にスレッド数を掛けると、ハイパースレッディングの論理コアの分を多く見積もりすぎるからである。
-学習時間は、同じGPU種別で1ステップの所要時間を測り、学習窓の最大幅である4サイクル分（400万局面）のデータを読む場合の値を使う。
+学習時間は、同じGPU種別で1ステップの所要時間を測って、学習窓から抽出する局面の数（約100万）を学習する時間と、学習窓の全体（パラメータ数の10倍の局面）を読み込んで再生する時間とに分けて求める（[強化学習の実行](../plans/alphazero-rl.md)の「学習窓と局面の抽出」の節）。
 進捗測定の時間は、1手800シミュレーションの200ペアに要する評価の回数（1局は平均464手として数える）を、生成と同じ律速の値で割って求める。
 10で割るのは10サイクルに1回の頻度に合わせた按分であり、セッションの終了期限の判定には割らない値を使う。
 1サイクルのCUは、所要時間にそのGPU種別の消費レートを掛けて求める。

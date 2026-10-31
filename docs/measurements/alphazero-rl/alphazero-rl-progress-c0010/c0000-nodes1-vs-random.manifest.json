@@ -1,0 +1,66 @@
+{
+  "format_version": 7,
+  "ponder": false,
+  "candidate": {
+    "identity": {
+      "kind": "command",
+      "program": "/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/target/release/minase",
+      "args": [
+        "--protocol",
+        "usi",
+        "--rules",
+        "engine-default",
+        "--search",
+        "mcts",
+        "--nn-model",
+        "/mnt/synology_nas/minase/alphazero/nets/cycle-0000.onnx"
+      ],
+      "protocol": "usi",
+      "working_directory": "/home/stepney141/board-games/minase/data/worktrees/alphazero-rl/tools/train/zero"
+    },
+    "limit": {
+      "kind": "fixed",
+      "depth": null,
+      "nodes": 1
+    },
+    "options": [
+      [
+        "NnBatchSize",
+        "16"
+      ]
+    ]
+  },
+  "baseline": {
+    "identity": {
+      "kind": "random"
+    },
+    "limit": {
+      "kind": "fixed",
+      "depth": null,
+      "nodes": 1
+    },
+    "options": []
+  },
+  "rules_source": "engine-default",
+  "canonical_rules": [
+    "L0",
+    "P0",
+    "R1",
+    "E0"
+  ],
+  "mode": {
+    "kind": "elo"
+  },
+  "seed": 20010,
+  "max_ply": 4096,
+  "response_timeout_secs": 120,
+  "engine_threads": {
+    "candidate": 1,
+    "baseline": 1
+  },
+  "hash_mb": {
+    "candidate": 256,
+    "baseline": null
+  },
+  "concurrency": 2
+}

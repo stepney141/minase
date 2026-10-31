@@ -1,0 +1,11 @@
+total 36364
+drwxr-xr-x 2 root   root       4096 2026-10-28 15:36:04.675900911 +0000 .
+drwxr-xr-x 3 root   root       4096 2026-10-28 15:35:54.103103694 +0000 ..
+-rw-r--r-- 1 ubuntu ubuntu      692 2026-10-28 15:33:54.611589169 +0000 chunk-00000.json
+-rw-r--r-- 1 ubuntu ubuntu 19812666 2026-10-28 15:33:54.545584430 +0000 chunk-00000.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      152 2026-10-28 15:33:54.545584430 +0000 chunk-00000.resigned.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      695 2026-10-28 15:34:46.925345456 +0000 chunk-00002.json
+-rw-r--r-- 1 ubuntu ubuntu 17390578 2026-10-28 15:34:46.893343158 +0000 chunk-00002.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      152 2026-10-28 15:34:46.893343158 +0000 chunk-00002.resigned.mnsd
+-rw-r--r-- 1 ubuntu ubuntu      342 2026-10-28 15:30:07.724297973 +0000 config.json
+8862 /content/src/target/release/minase data zero-selfplay --output-dir phase1/gen --nn-model cycles/cycle-0000/model.onnx --nn-backend tensorrt --generation-commit d786c5e12aa5134e1cc25353480d28962def5b36 --seed 200000000 --games 3000 --chunk-games 500 --simulations 32 --playthrough-percent 100 --threads 4 --games-per-thread 128

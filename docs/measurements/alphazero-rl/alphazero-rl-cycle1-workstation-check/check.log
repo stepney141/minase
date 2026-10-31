@@ -1,0 +1,26 @@
+NN session creation: 0.096333 s
+NN inference (288 positions): 5.608076 s
+NN session creation: 13.013399 s
+NN inference (288 positions): 0.117901 s
+NN session creation: 0.099845 s
+NN inference (288 positions): 3.340399 s
+NN session creation: 11.834753 s
+NN inference (288 positions): 0.034428 s
+NN session creation: 0.064931 s
+NN inference (288 positions): 1.563120 s
+NN session creation: 12.914405 s
+NN inference (288 positions): 0.028427 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":7.343994139930032e-06,"max_probability_abs_diff":2.962902300868153e-07,"max_value_abs_diff":1.1293220519847935e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.03874492645263672,"max_probability_abs_diff":0.001143378834979912,"max_value_abs_diff":0.009417470519866966,"best_move_mismatches":7,"best_move_mismatch_gaps":[[6,0.014111518859863281],[24,0.011964797973632812],[79,0.009802818298339844],[133,0.033020973205566406],[154,0.00021839141845703125],[167,0.01190185546875],[240,0.0022792816162109375]]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":7.950317382210415e-06,"max_probability_abs_diff":2.962902300868153e-07,"max_value_abs_diff":1.1281813049324185e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.033481597900390625,"max_probability_abs_diff":0.0015880966078598985,"max_value_abs_diff":0.007937167916870158,"best_move_mismatches":8,"best_move_mismatch_gaps":[[20,0.008288383483886719],[48,0.0008296966552734375],[128,0.0018062591552734375],[154,0.00021839141845703125],[164,0.018281936645507812],[205,0.003993034362792969],[240,0.0022792816162109375],[252,7.534027099609375e-05]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":7.950317382210415e-06,"max_probability_abs_diff":2.962902300868153e-07,"max_value_abs_diff":1.1281813049324185e-06,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.03701972961425781,"max_probability_abs_diff":0.0018630030941607784,"max_value_abs_diff":0.009905730519866984,"best_move_mismatches":5,"best_move_mismatch_gaps":[[48,0.0008296966552734375],[85,0.0043621063232421875],[205,0.003993034362792969],[240,0.0022792816162109375],[252,7.534027099609375e-05]]}
+elapsed_seconds 53
+failed 0

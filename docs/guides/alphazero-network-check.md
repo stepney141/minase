@@ -15,6 +15,7 @@
 - 推論に使うGPUの種別を変えたとき。
 
 TensorRTのエンジンはGPUの機種ごとに作られるので、照合は学習に使ったGPUの機械と、対局に使う作業機の両方で行う。
+PyTorchの出力（4節）は学習に使った機械で1回だけ作り、ほかの機械ではそのファイルを基準にして、3節のminaseの出力だけを作って照合する。
 
 ## 2. 準備
 
@@ -59,6 +60,9 @@ uv run --frozen python nn_torch_reference.py --onnx <ネット.onnx> --blocks 10
 
 学習したネットの出力は、学習器`minase_zero`の`fixture-eval`がチェックポイントから同じ形で書き出す。
 `fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
+書き出しはBatchNormを定数畳み込みで畳み込みの重みとバイアスへ融合し、その単精度の丸めはCPUによって変わるので、このバイト単位の一致は学習した機械でしか成り立たない。
+1サイクル分学習したネットを作業機で書き出し直すと、70個の初期値のうち28個が最大4.8×10⁻⁷異なった（[記録](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)）。
+このため`fixture-eval`は学習した機械で実行し、作業機などほかの機械では、そこで書いた出力を照合の基準に使う。
 
 ```console
 cd tools/train/zero
@@ -70,13 +74,13 @@ uv run --frozen python -m minase_zero fixture-eval --checkpoint <出力先>/chec
 
 各出力を、PyTorchの出力を基準として`tools/train/zero/nn_compare.py`で照合する。
 ONNX RuntimeのCPUの出力の照合では、合法手のlogitと価値の差を、どちらも許容誤差1×10⁻⁴で比べる。
-TensorRTのFP16の出力の照合では、各局面の合法手のlogitをsoftmaxで正規化した確率の差を許容誤差1×10⁻²で、価値の差を2×10⁻²で比べる。
+TensorRTのFP16の出力の照合では、各局面の合法手のlogitをsoftmaxで正規化した確率の差を許容誤差1×10⁻²で、価値の差を5×10⁻²で比べる。
 
 ```console
 uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/cpu-b7.json \
   --policy logits --policy-tolerance 1e-4 --value-tolerance 1e-4
 uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/trt-b7.json \
-  --policy probabilities --policy-tolerance 1e-2 --value-tolerance 2e-2
+  --policy probabilities --policy-tolerance 1e-2 --value-tolerance 5e-2
 ```
 
 照合は、ネットのSHA-256、局面数、各局面のSFEN、ラベルの列が一致し、すべての値が有限であり、`--policy`で選んだ量と価値の差の絶対値の最大がそれぞれの許容誤差以下のときに、終了コード0で終了する。
@@ -85,7 +89,7 @@ uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candida
 FP16をlogitではなく確率で比べるのは、FP16の丸めの誤差が値の大きさに比例して層ごとに累積し、logitの大きい学習したネットではlogitの差も大きくなるからである。
 1サイクル分学習した10ブロック128チャネルのネットでは、合法手のlogitの最大が約14あり、FP16のlogitの差は最大4.3×10⁻²、価値の差は最大1.1×10⁻²であったが、MCTSが使う合法手の確率の差は最大2.8×10⁻³であった（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
 各合法手のlogitを、合法手の列で隣にある着手のものと読み違えた場合、同じネットで局面ごとの確率の差の最大は中央値3.5×10⁻²、全体で0.21になるので、確率の許容誤差1×10⁻²でも出力の並びのずれや読み違えは検出できる。
-FP16の照合をこの形にしたのは2026年10月28日の開発者の決定である（[ADR](../adr/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）。
+FP16の照合を確率と価値の形にしたのは2026年10月28日の開発者の決定であり、価値の許容誤差は、強化学習のサイクルが進むにつれて価値の差が丸めの累積で増え、サイクル6で0.0218になったことを受けて、2026年10月29日に2×10⁻²から5×10⁻²へ改めた（[ADR](../adr/compare-fp16-zero-network-values-within-five-hundredths.md)）。
 
 最大の手の不一致は合否に使わない。
 logitで比べる場合、各logitの差が許容誤差t以下なら、候補が最大とした手の基準のlogitは基準の最大から2t以内に収まるので、最大の手の一致は要素ごとの検査に含まれ、ほぼ同点の局面でだけ入れ替わる。

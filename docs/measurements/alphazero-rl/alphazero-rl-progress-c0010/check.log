@@ -1,0 +1,26 @@
+NN session creation: 0.115305 s
+NN inference (288 positions): 2.886100 s
+NN session creation: 9.454329 s
+NN inference (288 positions): 0.099484 s
+NN session creation: 0.054378 s
+NN inference (288 positions): 1.589079 s
+NN session creation: 8.869046 s
+NN inference (288 positions): 0.028468 s
+NN session creation: 0.054435 s
+NN inference (288 positions): 0.641835 s
+NN session creation: 10.311309 s
+NN inference (288 positions): 0.020783 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":7.510681152567145e-06,"max_probability_abs_diff":6.643607156631148e-07,"max_value_abs_diff":6.931655883724019e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.03719806671142578,"max_probability_abs_diff":0.002825656764776502,"max_value_abs_diff":0.005779267607421867,"best_move_mismatches":3,"best_move_mismatch_gaps":[[119,0.002887725830078125],[234,0.003673553466796875],[245,0.0060825347900390625]]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":7.520019531526145e-06,"max_probability_abs_diff":6.321388401064887e-07,"max_value_abs_diff":8.93500747667364e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.03373146057128906,"max_probability_abs_diff":0.0030014102287818367,"max_value_abs_diff":0.005307200070800766,"best_move_mismatches":3,"best_move_mismatch_gaps":[[38,0.0041561126708984375],[218,0.010771751403808594],[234,0.003673553466796875]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":7.520019531526145e-06,"max_probability_abs_diff":6.321388401064887e-07,"max_value_abs_diff":8.93500747667364e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.03044414520263672,"max_probability_abs_diff":0.006369877014712477,"max_value_abs_diff":0.00894268866958614,"best_move_mismatches":3,"best_move_mismatch_gaps":[[119,0.002887725830078125],[124,0.04035472869873047],[234,0.003673553466796875]]}
+elapsed_seconds 37
+failed 0
