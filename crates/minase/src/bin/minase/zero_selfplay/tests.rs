@@ -87,9 +87,15 @@ impl Evaluator for BiasedEvaluator {
 }
 
 fn generate(path: &Path, config: &Config, threads: usize, batch: usize) -> RunReport {
-    output::generate(path, config, &CHECKSUM, nz(threads), nz(batch), || {
-        Ok(Box::new(BiasedEvaluator))
-    })
+    output::generate(
+        path,
+        config,
+        u64::MAX,
+        &CHECKSUM,
+        nz(threads),
+        nz(batch),
+        || Ok(Box::new(BiasedEvaluator)),
+    )
     .unwrap()
 }
 
@@ -155,6 +161,8 @@ fn playthrough_hundred_disables_resignation_and_counts_false_triggers_including_
     assert_eq!(counts.positions, 0);
     assert_eq!(counts.resigned_positions, 0);
     assert_eq!(report.summary.training_positions, 0);
+    assert_eq!(report.summary.target_positions, u64::MAX);
+    assert_eq!(report.summary.chunks, 3);
     assert_eq!(report.summary.false_resignation_rate, Some(1.0));
     assert!(report.summary.resigned_games_excluded);
 }
@@ -285,7 +293,7 @@ fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_
         serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
     assert_eq!(saved_config["nn_backend"], "cpu");
     assert_eq!(saved_config.as_object().unwrap().len(), 10);
-    for absent in ["version", "threads", "games_per_thread"] {
+    for absent in ["version", "threads", "games_per_thread", "target_positions"] {
         assert!(saved_config.get(absent).is_none());
     }
 }
@@ -340,9 +348,15 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
             assert_ne!(fs::metadata(path).unwrap().modified().unwrap(), *modified);
         }
     }
-    let complete = output::generate(&directory.0, &config, &CHECKSUM, nz(3), nz(4), || {
-        panic!("completed cycles must not construct an evaluator")
-    })
+    let complete = output::generate(
+        &directory.0,
+        &config,
+        u64::MAX,
+        &CHECKSUM,
+        nz(3),
+        nz(4),
+        || panic!("completed cycles must not construct an evaluator"),
+    )
     .unwrap();
     assert_eq!(complete.generated_games, 0);
     assert_eq!(complete.generated_positions, 0);
@@ -351,12 +365,69 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
         seed: config.seed + 1,
         ..config.clone()
     };
-    let error = output::generate(&directory.0, &changed, &CHECKSUM, nz(1), nz(1), || {
-        panic!("mismatched conditions must fail before inference")
-    })
+    let error = output::generate(
+        &directory.0,
+        &changed,
+        u64::MAX,
+        &CHECKSUM,
+        nz(1),
+        nz(1),
+        || panic!("mismatched conditions must fail before inference"),
+    )
     .err()
     .unwrap();
     assert!(matches!(error, Error::ConfigMismatch(fields) if fields == ["seed"]));
+}
+
+#[test]
+fn reaching_target_stops_generation_and_removes_unfinished_chunk_files() {
+    let directory = TemporaryDirectory::new();
+    let config = Config {
+        seed: 1,
+        ..config()
+    };
+    let report = output::generate(&directory.0, &config, 1, &CHECKSUM, nz(1), nz(6), || {
+        Ok(Box::new(BiasedEvaluator))
+    })
+    .unwrap();
+    let saved: Summary =
+        serde_json::from_reader(File::open(directory.0.join("summary.json")).unwrap()).unwrap();
+    let first: output::ChunkSummary =
+        serde_json::from_reader(File::open(directory.0.join("chunk-00000.json")).unwrap()).unwrap();
+    assert_eq!(saved, report.summary);
+    assert_eq!(saved.target_positions, 1);
+    assert_eq!(saved.chunks, 1);
+    assert_eq!(saved.counts, first.counts);
+    assert_eq!(saved.counts.games, 2);
+    assert!(saved.counts.positions + saved.counts.resigned_positions >= 1);
+    let mut committed_games = 0;
+    for entry in fs::read_dir(&directory.0).unwrap() {
+        let path = entry.unwrap().path();
+        assert_ne!(
+            path.extension().and_then(|suffix| suffix.to_str()),
+            Some("tmp")
+        );
+        if path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("chunk-")
+            && path.extension().and_then(|suffix| suffix.to_str()) == Some("json")
+        {
+            let chunk: output::ChunkSummary =
+                serde_json::from_reader(File::open(path).unwrap()).unwrap();
+            committed_games += chunk.counts.games;
+        }
+    }
+    // 確定済みの局数との差により、書きかけの塊が実際にあったことも確かめる。
+    assert!(report.generated_games > committed_games);
+    assert!(committed_games > saved.counts.games);
+    assert!(report.generated_games < u64::from(config.games));
+    assert_eq!(
+        saved.training_files,
+        ["chunk-00000.mnsd", "chunk-00000.resigned.mnsd"]
+    );
 }
 
 struct BatchRecorder(Arc<Mutex<Vec<usize>>>);
@@ -383,9 +454,15 @@ fn inference_batches_contain_multiple_games_and_max_ply_discards_have_no_records
         ..config()
     };
     let batches = Arc::new(Mutex::new(Vec::new()));
-    let report = output::generate(&directory.0, &config, &CHECKSUM, nz(1), nz(3), || {
-        Ok(Box::new(BatchRecorder(Arc::clone(&batches))))
-    })
+    let report = output::generate(
+        &directory.0,
+        &config,
+        u64::MAX,
+        &CHECKSUM,
+        nz(1),
+        nz(3),
+        || Ok(Box::new(BatchRecorder(Arc::clone(&batches)))),
+    )
     .unwrap();
     let batches = batches.lock().unwrap();
     assert!(batches.contains(&3));
@@ -455,12 +532,20 @@ fn inference_failures_keep_typed_causes_join_all_workers_and_allow_resume() {
         let directory = TemporaryDirectory::new();
         let config = config();
         let dropped = Arc::new(AtomicUsize::new(0));
-        let error = output::generate(&directory.0, &config, &CHECKSUM, nz(2), nz(2), || {
-            Ok(Box::new(FailingEvaluator {
-                failure,
-                dropped: Arc::clone(&dropped),
-            }))
-        })
+        let error = output::generate(
+            &directory.0,
+            &config,
+            u64::MAX,
+            &CHECKSUM,
+            nz(2),
+            nz(2),
+            || {
+                Ok(Box::new(FailingEvaluator {
+                    failure,
+                    dropped: Arc::clone(&dropped),
+                }))
+            },
+        )
         .err()
         .unwrap();
         assert_eq!(dropped.load(Ordering::Relaxed), 2);

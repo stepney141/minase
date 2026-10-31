@@ -515,6 +515,70 @@ class StorageTests(RunnerCase):
                 self.assertEqual(target.read_bytes(), content)
 
 
+class GenerationTests(RunnerCase):
+    def setUp(self):
+        super().setUp()
+        self.out = "cycles/cycle-0001/selfplay"
+        self.summary_path = self.root / self.out / "summary.json"
+        write_json(self.root / self.out / "config.json", {
+            "generation_commit": GENERATION_COMMIT,
+            "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
+            "nn_backend": "tensorrt", "seed": 1000000000, "games": 11, "chunk_games": 5,
+            "simulations": 32, "playthrough_percent": 100,
+        })
+        self.saved_summary = {"target_positions": 1000, "chunks": 2, "games": 10}
+        write_json(self.summary_path, self.saved_summary)
+        for chunk in range(3):
+            for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+                write(self.root / self.out / f"chunk-{chunk:05d}{suffix}", b"committed chunk")
+        for suffix in (".out", ".err"):
+            write(self.root / (self.out + suffix), b"generation log")
+
+    def generation(self):
+        return self.runner.generation(1, self.out, "cycles/cycle-0000/model.onnx",
+                                      1000000000, 11, 5, 100, 1000)
+
+    def test_generation_accepts_and_preserves_chunks_after_the_target_prefix(self):
+        before = {path: path.read_bytes() for path in (self.root / self.out).iterdir()}
+        summary, _ = self.generation()
+        self.assertEqual(summary, self.saved_summary)
+        for path, content in before.items():
+            self.assertEqual(path.read_bytes(), content)
+        self.assertEqual(self.remote.starts, [])
+
+    def test_generation_does_not_require_chunks_after_the_target_prefix(self):
+        for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+            (self.root / self.out / f"chunk-00002{suffix}").unlink()
+        summary, _ = self.generation()
+        self.assertEqual(summary, self.saved_summary)
+
+    def test_generation_rejects_target_mismatch_invalid_chunks_and_games_above_the_cap(self):
+        # 上限より多い塊のファイルが揃っていても、集計の塊数は上限を超えられない。
+        for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+            write(self.root / self.out / f"chunk-00003{suffix}", b"extra chunk")
+        for field, invalid in [
+            ("target_positions", 999), ("target_positions", 1000.0), ("target_positions", True),
+            ("chunks", 0), ("chunks", -1), ("chunks", 4), ("chunks", 2.0),
+            ("chunks", True), ("chunks", None), ("chunks", "2"),
+            ("games", 12), ("games", 0), ("games", -1), ("games", 10.0), ("games", True),
+        ]:
+            with self.subTest(field=field, invalid=invalid):
+                write_json(self.summary_path, {**self.saved_summary, field: invalid})
+                with self.assertRaises(ValueError):
+                    self.generation()
+
+    def test_generation_requires_all_three_files_for_every_included_chunk(self):
+        for chunk in range(2):
+            for suffix in (".mnsd", ".resigned.mnsd", ".json"):
+                with self.subTest(chunk=chunk, suffix=suffix):
+                    path = self.root / self.out / f"chunk-{chunk:05d}{suffix}"
+                    contents = path.read_bytes()
+                    path.unlink()
+                    with self.assertRaises(ValueError):
+                        self.generation()
+                    write(path, contents)
+
+
 class ResumeTests(RunnerCase):
     def test_incomplete_generation_rejects_a_different_saved_commit_before_launch(self):
         out = "cycles/cycle-0001/selfplay"
@@ -527,7 +591,7 @@ class ResumeTests(RunnerCase):
                     "simulations": 32, "playthrough_percent": 100,
                 })
                 with self.assertRaises(ValueError):
-                    self.runner.generation(1, out, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100)
+                    self.runner.generation(1, out, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100, 1000)
                 self.assertEqual(self.remote.starts, [])
                 self.assertEqual(self.remote.uploads, [])
                 self.assertFalse((self.root / out / "summary.json").exists())
@@ -908,8 +972,10 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                 if not excluded:
                     files.append(name + ".resigned.mnsd")
             summary = {"games": count, "training_positions": count * 100, "training_files": files,
+                       "target_positions": int(value("--target-positions")), "chunks": (count + chunk - 1) // chunk,
                        "resign_triggered_playthrough_games": 100, "false_resignations": 0,
                        "resigned_games_excluded": excluded, "resigned_games": 3 if excluded else 0,
+                       "resigned_positions": 300 if excluded else 0,
                        "win_reason_royal_capture": count, "discarded_max_ply": 0}
             write_json(self.remote_root / stem / "summary.json", summary)
         elif "train" in command:
@@ -950,6 +1016,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(rows[1]["resign_calibration"]["n"], 100)
         self.assertEqual(rows[0]["generation"]["games"], 10)
         self.assertEqual(rows[0]["generation"]["chunk_games"], 5)
+        self.assertEqual([row["generation"]["target_positions"] for row in rows], [1000, 1000])
+        commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts if stem.endswith("/selfplay")]
+        self.assertEqual([command[command.index("--target-positions") + 1] for command in commands], ["1000", "1000"])
         self.assertEqual(len(rows[1]["training_files"]), 8)
         self.assertEqual(len(rows[1]["teacher_stats"]["files"]), 4)
         self.assertEqual(rows[0]["teacher_stats"]["game_length_plies"], {"p50": 100, "p90": 120, "p99": 140})
@@ -1254,7 +1323,14 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(row["regeneration"]["games"], 3)
         self.assertEqual(row["regeneration"]["chunk_games"], 2)
         self.assertEqual(row["regeneration"]["playthrough_percent"], 100)
+        self.assertEqual(row["regeneration"]["target_positions"], 300)
+        self.assertEqual(row["selfplay_regen_summary"]["target_positions"], 300)
         self.assertEqual(row["selfplay_regen_summary"]["games"], 3)
+        generation_commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts
+                               if Path(stem).name in ("selfplay", "selfplay-regen")]
+        self.assertEqual([command[command.index("--target-positions") + 1] for command in generation_commands],
+                         ["1000", "300"])
+        self.assertEqual([command[command.index("--games") + 1] for command in generation_commands], ["10", "3"])
         self.assertEqual(row["training_files"], [
             "cycles/cycle-0001/selfplay/chunk-00000.mnsd", "cycles/cycle-0001/selfplay/chunk-00001.mnsd",
             "cycles/cycle-0001/selfplay-regen/chunk-00000.mnsd", "cycles/cycle-0001/selfplay-regen/chunk-00000.resigned.mnsd",
@@ -1264,6 +1340,26 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(command[command.index("--latest-data") + 1:command.index("--out-dir")], row["training_files"])
         ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
         self.assertEqual([entry["name"] for entry in ledger], ["cycle-0001-gen", "cycle-0001-regen"])
+
+    def test_regeneration_rejects_missing_or_nonpositive_integer_resigned_positions(self):
+        self.regenerate = True
+        out = "cycles/cycle-0001/selfplay"
+        summary, _ = self.runner.generation(1, out, "cycles/cycle-0000/model.onnx",
+                                            1000000000, 10, 5, 100, 1000)
+        missing = object()
+        invalid_values = (0, -1, 300.0, True, "300", None, missing)
+        self.remote.balances = [100.0] * len(invalid_values)
+        for invalid in invalid_values:
+            with self.subTest(invalid=invalid):
+                changed = {**summary, "resigned_positions": invalid}
+                if invalid is missing:
+                    del changed["resigned_positions"]
+                write_json(self.root / out / "summary.json", changed)
+                with self.assertRaises(ValueError):
+                    self.runner.run()
+                self.assertEqual([Path(stem).name for stem, _, _, _ in self.remote.starts], ["selfplay"])
+        ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
+        self.assertEqual([entry["name"] for entry in ledger], ["cycle-0001-gen"])
 
     def test_comparison_failure_receives_all_outputs_and_blocks_next_cycle(self):
         self.compare_failure = True
@@ -1296,7 +1392,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.remote.states[stem] = ["running", "running", 0]
         before = len(self.remote.starts)
         with patch("minase_zero.runner.time.sleep") as sleep:
-            result, _ = self.runner.generation(1, stem, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100)
+            result, _ = self.runner.generation(1, stem, "cycles/cycle-0000/model.onnx", 1000000000, 10, 5, 100, 1000)
         self.assertEqual(result["games"], 10)
         self.assertEqual(len(self.remote.starts), before)
         sleep.assert_called_once_with(60)

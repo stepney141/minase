@@ -81,6 +81,11 @@ impl Workers {
         Ok(workers)
     }
 
+    /// 進行中の処理に停止を要求する。
+    pub(super) fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
     /// すべてを回収してから、最初の失敗を返す。
     pub(super) fn join(&mut self) -> Result<(), Error> {
         let mut first_error = None;
@@ -105,7 +110,7 @@ impl Workers {
 
 impl Drop for Workers {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        self.stop();
         let _ = self.join();
     }
 }

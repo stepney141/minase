@@ -18,6 +18,18 @@ cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-ses
 別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
 --lr-scheduleはconstantかcosineを必須とし、学習器へ渡して両方の記録に残す。
 
+通常生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から
+見積もった対局数を上限とする。
+塊の配置は対局数の上限と塊の対局数で固定し、塊0から連続する確定済み塊の
+positions + resigned_positionsが初めて目標以上になる塊までをサイクルに含める。
+全塊でも目標に届かない場合は全塊を含める。
+誤った投了による生成し直しでは、本体のresigned_positionsを目標、resigned_gamesを
+対局数の上限とし、投了を無効にする。
+目標は各対局の生成条件を変えないためconfig.jsonには保存せず、summary.jsonと
+サイクルのgenerationおよびregenerationに記録する。
+summary.jsonのchunksは含めた塊の数であり、その範囲の3種類のファイルをすべて検査する。
+範囲より後の確定済み塊も転送するが、学習にはsummary.jsonのtraining_filesだけを使う。
+
 学習窓は最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が
 初めてwindow-positions以上になるまでとする。届かないうちは全サイクルを使う。
 ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
@@ -601,7 +613,7 @@ class Runner:
             send(self.remote, self.root, [f"{out}/{name}" for name in names])
 
     def generation(self, cycle: int, out: str, network: str, seed: int, games: int,
-                   chunk_games: int, playthrough: int) -> tuple[dict, float]:
+                   chunk_games: int, playthrough: int, target_positions: int) -> tuple[dict, float]:
         local_summary = self.root / out / "summary.json"
         config_path = local_summary.parent / "config.json"
         if not local_summary.exists():
@@ -616,6 +628,7 @@ class Runner:
                 command = [ENGINE, "data", "zero-selfplay", "--output-dir", out, "--nn-model", network,
                            "--nn-backend", "tensorrt", "--generation-commit", self.options.generation_commit,
                            "--seed", str(seed), "--games", str(games), "--chunk-games", str(chunk_games),
+                           "--target-positions", str(target_positions),
                            "--simulations", str(self.options.simulations), "--playthrough-percent", str(playthrough),
                            "--threads", str(self.options.threads), "--games-per-thread", str(self.options.games_per_thread)]
                 self._begin(out)
@@ -637,11 +650,16 @@ class Runner:
         expected = {"network_sha256": sha256(self.root / network),
                     "nn_backend": "tensorrt", "seed": seed, "games": games, "chunk_games": chunk_games,
                     "simulations": self.options.simulations, "playthrough_percent": playthrough}
-        if any(config[key] != value for key, value in expected.items()) or summary["games"] != games:
+        if (any(config[key] != value for key, value in expected.items())
+                or type(summary["target_positions"]) is not int
+                or summary["target_positions"] != target_positions
+                or type(summary["games"]) is not int or not 1 <= summary["games"] <= games):
             raise ValueError(f"generation settings differ: {out}")
-        names = [path.name for path in local_summary.parent.iterdir() if path.is_file()]
-        expected_chunks = (games + chunk_games - 1) // chunk_games
-        if len(chunk_files(names)) != expected_chunks * 3:
+        chunks = summary["chunks"]
+        if type(chunks) is not int or not 1 <= chunks <= (games + chunk_games - 1) // chunk_games:
+            raise ValueError(f"invalid generation chunks: {out}")
+        if any(not (local_summary.parent / f"chunk-{chunk:05d}{suffix}").is_file()
+               for chunk in range(chunks) for suffix in (".mnsd", ".resigned.mnsd", ".json")):
             raise ValueError(f"missing committed chunks: {out}")
         for relative in (out + ".out", out + ".err"):
             if not (self.root / relative).is_file():
@@ -839,12 +857,13 @@ class Runner:
                        self.options.cycle_path(cycle - 1) + f"/train/model{suffix}.onnx")
             generation = {"network": network, "network_sha256": sha256(self.root / network), "seed": seed,
                           "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
+                          "target_positions": options.target_positions,
                           "threads": options.threads, "games_per_thread": options.games_per_thread,
                           "simulations": options.simulations}
             seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-gen", seed, games)
             self.log(cycle, f"generation games={games} chunk_games={chunk_games} playthrough_percent={playthrough}")
             summary, generation_seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay", network,
-                                                         seed, games, chunk_games, playthrough)
+                                                         seed, games, chunk_games, playthrough, options.target_positions)
             config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay/config.json")
             generation["generation_commit"] = config["generation_commit"]
             regen_summary, regen_settings = None, None
@@ -853,14 +872,18 @@ class Runner:
                 if type(count) is not int or count < 0:
                     raise ValueError("invalid resigned_games")
                 if count:
+                    regen_target = summary.get("resigned_positions")
+                    if type(regen_target) is not int or regen_target <= 0:
+                        raise ValueError("invalid resigned_positions")
                     regen_seed = seed + 5 * 10**8
                     regen_chunk = (count + options.chunks - 1) // options.chunks
                     seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-regen", regen_seed, count)
                     regen_summary, seconds = self.generation(cycle, self.options.cycle_path(cycle) + "/selfplay-regen", network,
-                                                            regen_seed, count, regen_chunk, 100)
+                                                            regen_seed, count, regen_chunk, 100, regen_target)
                     generation_seconds += seconds
                     regen_config = read_json(self.root / self.options.cycle_path(cycle) / "selfplay-regen/config.json")
                     regen_settings = {**generation, "seed": regen_seed, "games": count,
+                                      "target_positions": regen_target,
                                       "chunk_games": regen_chunk, "playthrough_percent": 100,
                                       "generation_commit": regen_config["generation_commit"]}
             window_cycles, files, current_files = training_window(options, cycle, options.window_positions)
