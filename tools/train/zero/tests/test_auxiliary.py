@@ -1,13 +1,29 @@
 """フェーズ4の目標分布、損失の重み、欠けた相手教師の分母を手計算で検証する。"""
 
+from dataclasses import replace
 import math
 import unittest
 
+import numpy as np
 import torch
 
 from minase_zero.encoding import policy_mask
 from minase_zero.net import TrainingLogits
-from minase_zero.train import PolicyTargets, compute_training_losses, soft_policy_targets, total_loss
+from minase_zero.train import PolicyTargets, _policy_batch, compute_training_losses, soft_policy_targets, total_loss
+
+from .test_diagnostics import example
+
+
+def make_targets(rows, labels, probabilities, legal_offsets, legal_labels):
+    """量子化した候補と合法手の区間から、CPUでソフト方策も準備する。"""
+    rows, labels, legal_offsets, legal_labels = (
+        np.array(column, dtype=np.int64) for column in (rows, labels, legal_offsets, legal_labels)
+    )
+    probabilities = np.array(probabilities, dtype=np.float32)
+    legal_rows = np.repeat(np.arange(len(legal_offsets) - 1), np.diff(legal_offsets))
+    soft = soft_policy_targets(rows, labels, probabilities, legal_offsets, legal_labels)
+    return PolicyTargets(*(torch.from_numpy(column)
+                           for column in (rows, labels, probabilities, legal_rows, legal_labels, soft)))
 
 
 class AuxiliaryLossTests(unittest.TestCase):
@@ -17,22 +33,47 @@ class AuxiliaryLossTests(unittest.TestCase):
         self.addCleanup(torch.set_num_threads, threads)
         self.mask = torch.from_numpy(policy_mask())
         self.opponent_mask = torch.from_numpy(policy_mask(opponent=True))
-        self.policy = PolicyTargets(
-            torch.tensor([0, 1, 1]), torch.tensor([2, 4, 23]), torch.tensor([65535, 21845, 43690]),
-            torch.tensor([0, 0, 1, 1, 1]), torch.tensor([2, 4, 2, 4, 23]),
-        )
+        self.policy = make_targets([0, 1, 1], [2, 4, 23], [65535, 21845, 43690],
+                                   [0, 2, 5], [2, 4, 2, 4, 23])
 
     def test_soft_targets_include_zero_probability_legal_moves(self):
         # 1候補と2合法手では確率1にならない。次の行には確率0、1/3、2/3を置く。
         a, b = (1 + 1e-7) ** 0.25, (1e-7) ** 0.25
         c, d = (1 / 3 + 1e-7) ** 0.25, (2 / 3 + 1e-7) ** 0.25
         expected = [a / (a + b), b / (a + b), b / (b + c + d), c / (b + c + d), d / (b + c + d)]
-        actual = soft_policy_targets(self.policy, 2, 35_856)
+        actual = self.policy.soft_probabilities
         torch.testing.assert_close(actual, torch.tensor(expected))
         self.assertLess(actual[0], 1)
         self.assertTrue(torch.all(actual > 0))
         self.assertAlmostEqual(actual[:2].sum().item(), 1)
         self.assertAlmostEqual(actual[2:].sum().item(), 1)
+
+    def test_empty_rows_before_between_and_after_targets_do_not_change_normalization(self):
+        targets = make_targets([1, 3, 3], [2, 4, 23], [65535, 21845, 43690],
+                               [0, 0, 2, 2, 5, 5], [2, 4, 2, 4, 23])
+        self.assertTrue(torch.equal(targets.soft_probabilities, self.policy.soft_probabilities))
+
+    def test_batches_prepare_reordered_and_repeated_soft_targets_before_device_transfer(self):
+        data, _ = example()
+        data = replace(data, **{f"opponent_{name}": getattr(data, name)
+                                for name in ("policy_offsets", "policy_labels", "policy_probabilities",
+                                             "legal_offsets", "legal_labels")})
+        large, small = (30_000 / 65_535 + 1e-7) ** 0.25, (5535 / 65_535 + 1e-7) ** 0.25
+        one, zero = (1 + 1e-7) ** 0.25, (1e-7) ** 0.25
+        # 元の行2、0、2、1の順。行0の合法手は23、4、2の順で、23の確率が最小である。
+        expected = torch.tensor([1, small / (2 * large + small), large / (2 * large + small),
+                                 large / (2 * large + small), 1, one / (one + zero), zero / (one + zero)])
+        indices = np.array([2, 0, 2, 1], dtype=np.int64)
+        for prefix in ("", "opponent_"):
+            with self.subTest(prefix=prefix):
+                actual = _policy_batch(data, indices, torch.device("cpu"), prefix)
+                torch.testing.assert_close(actual.soft_probabilities, expected)
+                self.assertFalse(actual.soft_probabilities.requires_grad)
+                # meta上では値を読めないので、教師の計算を転送前に完了する必要がある。
+                transferred = _policy_batch(data, indices, torch.device("meta"), prefix)
+                for before, after in zip(actual, transferred, strict=True):
+                    self.assertTrue(after.is_meta)
+                    self.assertEqual((after.shape, after.dtype), (before.shape, before.dtype))
 
     def test_all_loss_terms_and_weights_match_their_definitions(self):
         policy = torch.full((2, 35_856), -1000.0)
@@ -52,8 +93,7 @@ class AuxiliaryLossTests(unittest.TestCase):
                                [-math.log(3), -math.log(3), math.log(3), 0]])
         logits = TrainingLogits(*(tensor.clone().requires_grad_()
                                   for tensor in (policy, values, policy, opponent, opponent)))
-        targets = PolicyTargets(torch.tensor([0]), torch.tensor([promotion]), torch.tensor([65535]),
-                                torch.tensor([0, 0]), torch.tensor([promotion, 2]))
+        targets = make_targets([0], [promotion], [65535], [0, 2, 2], [promotion, 2])
         losses = compute_training_losses(
             logits, self.policy, torch.tensor([1.0, 0.0]), torch.tensor([0, 65535]), targets,
             torch.tensor([[1.0, 0.5, 0.0], [0.0, 0.0, 0.5]]), 0.25, self.mask, self.opponent_mask,
@@ -86,8 +126,7 @@ class AuxiliaryLossTests(unittest.TestCase):
         self.assertTrue(torch.all(logits.value.grad.abs().sum(dim=0) > 0))
 
     def test_missing_opponent_targets_give_zero_losses_and_gradients(self):
-        empty = torch.empty(0, dtype=torch.int64)
-        targets = PolicyTargets(empty, empty, empty, empty, empty)
+        targets = make_targets([], [], [], [0, 0, 0], [])
         logits = TrainingLogits(torch.zeros(2, 35_856, requires_grad=True),
                                 torch.zeros(2, 4, requires_grad=True),
                                 *(torch.zeros(2, 35_856, requires_grad=True) for _ in range(3)))

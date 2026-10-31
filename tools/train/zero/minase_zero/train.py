@@ -94,6 +94,8 @@ policyは定数マスクが真となる16,108ラベルで正規化した交差�
 教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
 価値の教師は (1−λ)·結果 + λ·根の価値 であり、λは--value-lambdaで与える。
 補助のsoft_policyは全合法手上で(p+1e-7)の1/4乗を正規化した目標への交差エントロピーである。
+ソフト方策の目標はバッチの準備時にCPUのNumPyで正規化してから機器へ移す。
+教師の値がGPUの原子的な加算の順序に依存しないよう、行ごとの和は合法手のオフセットで求める。
 opponent_policyとopponent_soft_policyは、直後の項目の方策とそのソフト方策を、
 成りの段を反転した定数マスクで正規化したlogitに対して学ぶ。
 相手の候補がない行は両項を0とし、平均の分母にはバッチの全局面を含める。
@@ -145,7 +147,7 @@ import torch
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_window
-from .encoding import encode_planes, policy_mask
+from .encoding import POLICY_SIZE, encode_planes, policy_mask
 from .fixture import evaluate_fixture
 from .net import Ema, TrainingLogits, ZeroNet, export_onnx, validate_ema
 
@@ -166,13 +168,17 @@ WARMUP_SAMPLES = 2_000_000
 
 
 class PolicyTargets(NamedTuple):
-    """バッチ内の候補と全合法手を表す疎な教師。確率は0〜65,535である。"""
+    """バッチ内の候補と全合法手、およびCPUで正規化したソフト方策の教師。
+
+    probabilitiesは0〜65,535、soft_probabilitiesは合法手の列順のfloat32確率である。
+    """
 
     rows: torch.Tensor
     labels: torch.Tensor
     probabilities: torch.Tensor
     legal_rows: torch.Tensor
     legal_labels: torch.Tensor
+    soft_probabilities: torch.Tensor
 
 
 @contextmanager
@@ -349,17 +355,20 @@ def compute_losses(
     return policy_loss, value_loss, result_loss
 
 
-def soft_policy_targets(targets: PolicyTargets, count: int, size: int) -> torch.Tensor:
-    """全合法手の上で(p+1e-7)の1/4乗を正規化し、合法手の列と同じ順で返す。"""
-    probabilities = torch.zeros((count, size), dtype=torch.float32, device=targets.probabilities.device)
-    probabilities[targets.rows, targets.labels] = targets.probabilities.float() / 65_535
-    weights = (probabilities[targets.legal_rows, targets.legal_labels] + SOFT_POLICY_EPSILON).pow(
-        SOFT_POLICY_EXPONENT,
-    )
-    totals = torch.zeros(count, dtype=torch.float32, device=weights.device).scatter_add_(
-        0, targets.legal_rows, weights,
-    )
-    return weights / totals[targets.legal_rows]
+def soft_policy_targets(
+    rows: NDArray[np.int64], labels: NDArray[np.int64], probabilities: NDArray[np.float32],
+    legal_offsets: NDArray[np.int64], legal_labels: NDArray[np.int64],
+) -> NDArray[np.float32]:
+    """CPUで(p+1e-7)の1/4乗を倍精度で正規化し、合法手の列順のfloat32で返す。"""
+    counts = np.diff(legal_offsets)
+    legal_rows = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    dense = np.zeros((len(counts), POLICY_SIZE), dtype=np.float32)
+    dense[rows, labels] = probabilities
+    weights = (dense[legal_rows, legal_labels].astype(np.float64) / 65_535 + SOFT_POLICY_EPSILON) ** SOFT_POLICY_EXPONENT
+    # 空の行は区間を持たない。末尾の空行もreduceatの開始位置に含めない。
+    nonempty = counts != 0
+    totals = np.add.reduceat(weights, legal_offsets[:-1][nonempty])
+    return (weights / np.repeat(totals, counts[nonempty])).astype(np.float32)
 
 
 def _policy_loss(
@@ -382,11 +391,11 @@ def compute_training_losses(
     main = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
                           policy.probabilities, results, values, value_lambda, mask)
     soft = _policy_loss(logits.soft_policy, policy.legal_rows, policy.legal_labels,
-                        soft_policy_targets(policy, len(results), len(mask)), mask)
+                        policy.soft_probabilities, mask)
     opponent_loss = _policy_loss(logits.opponent_policy, opponent.rows, opponent.labels,
                                  opponent.probabilities.float() / 65_535, opponent_mask)
     opponent_soft = _policy_loss(logits.opponent_soft_policy, opponent.legal_rows, opponent.legal_labels,
-                                 soft_policy_targets(opponent, len(results), len(mask)), opponent_mask)
+                                 opponent.soft_probabilities, opponent_mask)
     short_term = F.binary_cross_entropy_with_logits(
         logits.value[:, 1:].float(), short_term_values.float(), reduction="none",
     ).mean(dim=0)
@@ -417,14 +426,17 @@ def _policy_batch(
     data: Dataset, indices: NDArray[np.int64], device: torch.device, prefix: str,
 ) -> PolicyTargets:
     rows, candidates = _sparse_indices(getattr(data, f"{prefix}policy_offsets"), indices)
-    legal_rows, legal = _sparse_indices(getattr(data, f"{prefix}legal_offsets"), indices)
-    return PolicyTargets(
-        torch.from_numpy(rows).to(device),
-        torch.from_numpy(getattr(data, f"{prefix}policy_labels")[candidates].astype(np.int64)).to(device),
-        torch.from_numpy(getattr(data, f"{prefix}policy_probabilities")[candidates].astype(np.float32)).to(device),
-        torch.from_numpy(legal_rows).to(device),
-        torch.from_numpy(getattr(data, f"{prefix}legal_labels")[legal].astype(np.int64)).to(device),
-    )
+    offsets = getattr(data, f"{prefix}legal_offsets")
+    legal_rows, legal = _sparse_indices(offsets, indices)
+    labels = getattr(data, f"{prefix}policy_labels")[candidates].astype(np.int64)
+    probabilities = getattr(data, f"{prefix}policy_probabilities")[candidates].astype(np.float32)
+    legal_labels = getattr(data, f"{prefix}legal_labels")[legal].astype(np.int64)
+    legal_offsets = np.empty(len(indices) + 1, dtype=np.int64)
+    legal_offsets[0] = 0
+    np.cumsum(offsets[indices + 1] - offsets[indices], dtype=np.int64, out=legal_offsets[1:])
+    soft = soft_policy_targets(rows, labels, probabilities, legal_offsets, legal_labels)
+    columns = (rows, labels, probabilities, legal_rows, legal_labels, soft)
+    return PolicyTargets(*(torch.from_numpy(column).to(device) for column in columns))
 
 
 def _batch(
@@ -508,7 +520,8 @@ def diagnose(
         else:
             losses = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
                                     policy.probabilities, results, values, config["value_lambda"], mask)
-        metrics = compute_policy_diagnostics(logits.policy, *policy, mask)
+        metrics = compute_policy_diagnostics(logits.policy, policy.rows, policy.labels, policy.probabilities,
+                                             policy.legal_rows, policy.legal_labels, mask)
         if not all(torch.isfinite(value).item() for value in (*losses, *metrics)):
             raise ValueError("non-finite diagnostic value")
         _accumulate(sums, (*losses, *metrics), len(batch))
