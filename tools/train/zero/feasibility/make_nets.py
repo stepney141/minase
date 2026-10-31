@@ -6,6 +6,7 @@ import torch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from minase_zero.encoding import INPUT_PLANES
 from minase_zero.net import ResidualBlock, ZeroNet, export_onnx
 
 
@@ -19,7 +20,7 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(0)
-    sample = torch.zeros(1, 95, 12, 12, dtype=torch.float32)
+    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.float32)
     for blocks, channels in SIZES:
         model = ZeroNet(blocks, channels).eval()
         path = args.out_dir / f"zero-b{blocks}c{channels}.onnx"

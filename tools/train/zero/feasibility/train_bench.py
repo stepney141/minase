@@ -8,7 +8,7 @@ import time
 import torch
 from torch.nn import functional as F
 
-from make_nets import ZeroNet
+from make_nets import INPUT_PLANES, ZeroNet
 
 
 def positive_int(value: str) -> int:
@@ -38,7 +38,7 @@ def make_batch(
     batch: int, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     inputs = torch.empty(
-        batch, 95, 12, 12, device=device, dtype=torch.float32
+        batch, INPUT_PLANES, 12, 12, device=device, dtype=torch.float32
     ).bernoulli_(0.01)
     policy_target = torch.zeros(batch, 35_856, device=device, dtype=torch.float32)
     # Sampling with replacement leaves about 80 positive entries in each row.
