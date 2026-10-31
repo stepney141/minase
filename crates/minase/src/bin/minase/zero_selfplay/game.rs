@@ -7,7 +7,7 @@
 //! `derive_seed(対局のシード, 2) % 100 < playthrough_percent`を満たす対局は投了させずに最後まで指させる。
 //! 探索回数の乱択には`derive_seed(対局のシード, 3)`で初期化した専用の乱数列を使う。
 //! 探索する手番ごとに1つ引き、上位2ビットが0なら完全探索、それ以外なら速い探索を行う。
-//! シードと番号の扱いは`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
+//! シードと番号の扱いは`docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`を参照。
 //!
 //! 各手番は新しい探索木からGumbel AlphaZeroのSequential Halvingを行う。
 //! 最後に指す手の得点では、Gumbel乱数に[`move_temperature`]の倍率を掛ける。

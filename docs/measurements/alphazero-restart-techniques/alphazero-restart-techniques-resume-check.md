@@ -50,7 +50,7 @@ python -m minase_zero train --device cuda --init net-check/cycle-0000/checkpoint
 1回目の生成は、塊0、3、および4が確定した時点で止まった（[止めた後の一覧](alphazero-restart-techniques-resume-check/gen-after-run1.txt)）。
 同じ引数で起動し直した生成器は、欠けた塊1、2、5、6、7の640局だけを生成し、28.7秒で終えた（[標準エラー](alphazero-restart-techniques-resume-check/gen-run2.err)）。
 止める前に確定した9ファイルと`config.json`は、再開の後もSHA-256が変わらなかった（[再開の後の一覧](alphazero-restart-techniques-resume-check/gen-after-run2.txt)）。
-TensorRTの推論の数値はバッチの構成で変わるので、生成し直した塊が止まる前に生成しかけた内容と同じになることは求めない（[塊のADR](../../adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
+TensorRTの推論の数値はバッチの構成で変わるので、生成し直した塊が止まる前に生成しかけた内容と同じになることは求めない（[塊のADR](../../adr/archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
 
 8塊の[集計](alphazero-restart-techniques-resume-check/gen-summary.json)は、1,024局、89,441手を記録した。
 探索した手番は、完全探索が19,103、速い探索が58,050であり、完全探索の割合は0.248であった。

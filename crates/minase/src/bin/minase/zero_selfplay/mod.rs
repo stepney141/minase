@@ -2,7 +2,9 @@
 //! 規則は`engine-default`を使い、対局の進行と規則上の終局の裁定は[`minase_core::Game`]が担う。
 //! 探索した手を指しても未終局なら、次の手番側の王手限定の3手以内の勝ちを調べ、勝ちがあれば打ち切る。
 //! この打ち切りはMNSDの終局理由12で記録し、投了させない対局にも適用する。
-//! 1サイクルの生成量は`--games`で対局数を与え、`--chunk-games`局ずつの塊として確定させる。
+//! `--games`を対局数の上限とし、`--chunk-games`局ずつの塊として確定させる。
+//! 塊0から連続する確定済み塊の訓練局面数が、初めて`--target-positions`以上になる塊までをサイクルに含める。
+//! 目標の判定には投了ファイルの除外前の局面数を使い、全塊でも目標に届かない場合は全塊を含める。
 //!
 //! 起動引数はすべて必須で、既定値を持たない。
 //! `--output-dir`は出力先、`--nn-model`は評価するONNX形式のネット、
@@ -24,10 +26,13 @@
 //! この構成は`docs/adr/batch-zero-self-play-leaves-across-many-games.md`を参照。
 //!
 //! 生成開始時に出力先を排他的にロックし、生成条件を保存するか、保存済みの条件と照合する。
-//! 未確定の塊の対局だけをスレッドへ配り、序盤の乱択後は手ごとに新しい木で探索する。
+//! 確定済みの塊だけでサイクルの範囲が決まれば、推論器を作らずに集計を書く。
+//! 決まらなければ未確定の塊の対局を番号順にスレッドへ配り、序盤の乱択後は手ごとに新しい木で探索する。
 //! 終えた対局は塊の中で対局番号順に書き、投了で終えた対局は別のファイルに保存する。
-//! 全塊の確定後に、最後まで指させた対局から誤った投了の割合を求め、サイクルの集計と学習ファイルの一覧を書く。
-//! 保存と再開は`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`、
+//! 塊の確定でサイクルの範囲が決まったらワーカーを停止して回収し、書きかけの塊の一時ファイルを削除する。
+//! 含める塊の対局だけから誤った投了の割合、サイクルの集計、および学習ファイルの一覧を求める。
+//! 範囲より後の確定済みの塊はファイルを保持するが、集計と学習には含めない。
+//! 保存と再開は`docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`、
 //! 投了の扱いは`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 
 mod cli;
@@ -89,6 +94,7 @@ fn run(arguments: Arguments) -> Result<(), Error> {
     let report = output::generate(
         &arguments.output_dir,
         &config,
+        arguments.target_positions,
         network.sha256(),
         arguments.threads,
         arguments.games_per_thread,

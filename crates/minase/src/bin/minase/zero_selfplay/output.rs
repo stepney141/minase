@@ -16,11 +16,16 @@
 //! `nn_backend`の綴りは`tensorrt`、`cuda`、`cpu`とする。
 //! スレッド数、スレッドごとの同時対局数、GPUの種類、およびネットのファイルパスは照合しない。
 //! ネットの同一性は`network_sha256`で照合する。
+//! `target_positions`は各対局の結果を変えないため、生成条件には保存も照合もしない。
 //!
-//! 総対局数をN、塊の対局数をGとすると、塊の数はN/Gを切り上げた値になる。
-//! 0から数えてk番目の塊は、対局番号kG+1からmin((k+1)G, N)までを担当する。
+//! 対局数の上限をM、塊の対局数をGとすると、塊の総数はM/Gを切り上げた値になる。
+//! 0から数えてk番目の塊は、対局番号kG+1からmin((k+1)G, M)までを担当する。
 //! 各塊は対局番号順に記録し、最後の塊はG局未満でも確定する。
 //! 手数上限で破棄した対局も塊の対局数に含める。
+//! 塊は番号順に確定するとは限らない。
+//! 塊0から連続する確定済み塊の`positions + resigned_positions`が、初めて目標以上になる塊までをサイクルに含める。
+//! 全塊を確定しても目標に届かなければ全塊を含める。
+//! サイクルに含める最後の塊より後の確定済み塊は、ファイルを保持し、集計と学習ファイルの一覧からは外す。
 //!
 //! 書き込み中のファイル名には`.tmp`を付ける。
 //! 塊の全対局が揃ったら、2つのMNSDファイルのヘッダの件数を確定し、フラッシュと`sync_all`を行う。
@@ -31,8 +36,11 @@
 //!
 //! 再開時は確定済みの塊の集計だけを読み、その塊のMNSDファイルは読み直さず、書き換えない。
 //! 集計JSONのない塊は全対局を生成し直し、残った一時ファイルや未確定のMNSDファイルを置き換える。
-//! 全塊が確定済みなら推論器を作らず、保存済みの塊の集計から`summary.json`を作り直す。
-//! 保存と再開の方式は`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
+//! 保存済みの塊だけでサイクルの範囲が決まれば、対局番号を配らず、推論器も作らずに`summary.json`を作り直す。
+//! 決まらなければ未確定の塊の対局番号を番号順に配り、塊を確定するたびに目標への到達を調べる。
+//! 範囲が決まった時点で結果の受信を打ち切り、ワーカーを停止して回収し、書きかけの塊の一時ファイルを削除する。
+//! ワーカーがすべて終了しても範囲が決まらなければ、塊の未完了をエラーにする。
+//! 保存と再開の方式は`docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`を参照。
 //!
 //! MNSDヘッダの識別子は`MNSD`、版は2、予約欄はすべて0とする。
 //! 規則セット、生成コミット、ネットのSHA-256検査和、教師の種類、教師の探索規模、および基本シードを保存する。
@@ -42,7 +50,8 @@
 //! 各欄の符号化は[`minase::training::records`]に従う。
 //!
 //! 塊の集計は、塊の番号`chunk`と担当範囲の先頭の対局番号`first_game`に加え、次の件数を同じJSONオブジェクトに持つ。
-//! サイクルの集計にも次表の欄を置き、すべての塊の件数を合算する。
+//! サイクルの集計にも次表の欄を置き、サイクルに含めた塊の件数だけを合算する。
+//! サイクルの集計には、目標の`target_positions`と含めた塊の数`chunks`も保存する。
 //!
 //! | 欄 | 意味 |
 //! |---|---|
@@ -80,8 +89,9 @@
 //! この割合が5%を厳密に超えたときだけ、`resigned_games_excluded`を`true`にする。
 //! `training_files`は塊の番号順の学習ファイル一覧であり、投了以外のファイルは常に含め、投了のファイルは除外が決まった場合だけ外す。
 //! `training_positions`はこの一覧に残したファイルの訓練局面数の合計とする。
+//! 投了ファイルの除外はサイクルの範囲を決めた後に判定するため、`training_positions`は目標への到達の判定に使わない。
 //! 割合が未定義の場合は投了のファイルも一覧に含め、除外する場合も確定したファイル自体は保持する。
-//! 除外した対局数の分を投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
+//! 除外した訓練局面数を目標、除外した対局数を上限として投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
 //! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 
 use std::collections::BTreeMap;
@@ -106,7 +116,7 @@ use super::{Error, FALSE_RESIGNATION_LIMIT};
 /// CPUとTensorRTの16ビット浮動小数点演算では推論の数値が異なるため、
 /// `nn_backend`も照合し、同じサイクルに異なる実行プロバイダの結果を混ぜない。
 /// 推論の並列数は照合せず、借りた機械を替えて再開できるようGPUの種類も照合しない。
-/// `docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
+/// `docs/adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md`を参照。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct Config {
     pub(super) rules: String,
@@ -315,6 +325,8 @@ pub(super) struct ChunkSummary {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct Summary {
+    pub(super) target_positions: u64,
+    pub(super) chunks: u32,
     #[serde(flatten)]
     pub(super) counts: Counts,
     pub(super) false_resignation_rate: Option<f64>,
@@ -325,7 +337,7 @@ pub(super) struct Summary {
 
 /// 塊の集計だけから、サイクルの件数と学習ファイルを決める。
 /// 誤投了率の分母が0なら率は未定義とし、投了ファイルを除外しない。
-pub(super) fn summarize(chunks: &[ChunkSummary]) -> Summary {
+pub(super) fn summarize(chunks: &[ChunkSummary], target_positions: u64) -> Summary {
     let mut counts = Counts::default();
     for chunk in chunks {
         counts.add(&chunk.counts);
@@ -350,6 +362,8 @@ pub(super) fn summarize(chunks: &[ChunkSummary]) -> Summary {
             counts.resigned_positions
         };
     Summary {
+        target_positions,
+        chunks: chunks.len() as u32,
         counts,
         false_resignation_rate: rate,
         resigned_games_excluded: excluded,
@@ -392,10 +406,29 @@ impl RunReport {
     }
 }
 
-/// 確定済みの塊は読むだけにし、未確定の塊があるときだけ推論器を作る。
+/// 塊0から目標に届く最小の範囲か、目標未達で確定した全塊の数を返す。
+/// その範囲に未確定の塊があれば、まだサイクルを締められない。
+fn included_chunks(
+    completed: &BTreeMap<u32, ChunkSummary>,
+    chunk_count: u32,
+    target_positions: u64,
+) -> Option<u32> {
+    let mut positions = 0;
+    for chunk in 0..chunk_count {
+        let counts = &completed.get(&chunk)?.counts;
+        positions += counts.positions + counts.resigned_positions;
+        if positions >= target_positions {
+            return Some(chunk + 1);
+        }
+    }
+    Some(chunk_count)
+}
+
+/// 確定済みの塊は読むだけにし、サイクルの範囲がまだ決まらないときだけ推論器を作る。
 pub(super) fn generate(
     directory: &Path,
     config: &Config,
+    target_positions: u64,
     checksum: &[u8; 32],
     threads: NonZeroUsize,
     games_per_thread: NonZeroUsize,
@@ -403,6 +436,9 @@ pub(super) fn generate(
 ) -> Result<RunReport, Error> {
     let started = Instant::now();
     config.validate()?;
+    if target_positions == 0 {
+        return Err(Error::InvalidSettings("target_positions"));
+    }
     let header = Header::new(
         config.rules.clone(),
         config.generation_commit.clone(),
@@ -413,20 +449,22 @@ pub(super) fn generate(
     )?;
     let _lock = open_directory(directory, config)?;
     let mut completed = BTreeMap::new();
-    let mut numbers = Vec::new();
     for chunk in 0..config.chunk_count() {
         let path = directory.join(format!("chunk-{chunk:05}.json"));
         if path.try_exists()? {
             // JSONの存在が確定の印であり、MNSDや保存済み条件の再検証はしない。
             let summary = serde_json::from_reader(BufReader::new(File::open(path)?))?;
             completed.insert(chunk, summary);
-        } else {
-            numbers.extend(config.game_range(chunk).map(|number| number as u32));
         }
     }
+    let mut included = included_chunks(&completed, config.chunk_count(), target_positions);
     let mut generated_games = 0;
     let mut generated_positions = 0;
-    if !numbers.is_empty() {
+    if included.is_none() {
+        let numbers = (0..config.chunk_count())
+            .filter(|chunk| !completed.contains_key(chunk))
+            .flat_map(|chunk| config.game_range(chunk).map(|number| number as u32))
+            .collect();
         let mut evaluators = Vec::new();
         for _ in 0..threads.get() {
             evaluators.push(make_evaluator()?);
@@ -465,6 +503,10 @@ pub(super) fn generate(
                     .remove(&chunk)
                     .expect("the completed chunk has a writer");
                 completed.insert(chunk, writer.commit(directory)?);
+                included = included_chunks(&completed, config.chunk_count(), target_positions);
+                if included.is_some() {
+                    workers.stop();
+                }
                 writeln!(
                     io::stderr().lock(),
                     "chunks: {}/{} games: {generated_games} positions: {generated_positions} elapsed_seconds: {:.3}",
@@ -472,15 +514,20 @@ pub(super) fn generate(
                     config.chunk_count(),
                     started.elapsed().as_secs_f64()
                 )?;
+                if included.is_some() {
+                    break;
+                }
             }
         }
-        workers.join()?;
+        let result = workers.join();
+        for writer in active.into_values() {
+            writer.discard(directory)?;
+        }
+        result?;
     }
-    if completed.len() != config.chunk_count() as usize {
-        return Err(Error::IncompleteChunks);
-    }
-    let chunks: Vec<_> = completed.into_values().collect();
-    let summary = summarize(&chunks);
+    let included = included.ok_or(Error::IncompleteChunks)?;
+    let chunks: Vec<_> = completed.into_values().take(included as usize).collect();
+    let summary = summarize(&chunks, target_positions);
     atomic_json(directory, "summary.json", &summary)?;
     Ok(RunReport {
         summary,
@@ -614,6 +661,15 @@ impl ChunkWriter {
             &self.summary,
         )?;
         Ok(self.summary)
+    }
+
+    fn discard(self, directory: &Path) -> Result<(), Error> {
+        let chunk = self.summary.chunk;
+        drop(self);
+        for resigned in [false, true] {
+            fs::remove_file(directory.join(format!("{}.tmp", games_filename(chunk, resigned))))?;
+        }
+        Ok(())
     }
 }
 

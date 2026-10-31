@@ -324,7 +324,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [対局ハーネスの`commit:`のエンジンには`--candidate-args`と`--baseline-args`で起動引数を足し、実行条件に記録する](append-startup-arguments-to-commit-engine-specs.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局生成器は、多数の局の探索木から葉を1つずつ集めて推論をまとめ、各局はSequential Halvingが最後に残した手を指す](batch-zero-self-play-leaves-across-many-games.md)
 - 2026年10月27日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合を較正してから有効にする](archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)（置き換え済み）
-- 2026年10月27日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する](commit-zero-self-play-cycles-in-fixed-game-chunks.md)
+- 2026年10月27日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する](archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、入力の95面と方策の目標はPythonでバッチごとに作る](archive/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](archive/train-the-zero-value-on-mixed-results-and-root-values.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習は、シードで固定した順列と完了した更新の回数で再開し、チェックポイント、ONNX、および集計を原子的に確定させる](resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)
@@ -347,3 +347,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面と対局全体から決まる教師を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)
 - 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)
 - 2026年10月31日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)
+- 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)

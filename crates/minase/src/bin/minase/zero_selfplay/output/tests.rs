@@ -4,6 +4,138 @@ use super::*;
 use crate::zero_selfplay::tests::{TemporaryDirectory, config};
 
 #[test]
+fn target_requires_a_contiguous_prefix_and_counts_resigned_positions() {
+    let mut completed = BTreeMap::new();
+    for (chunk, positions, resigned_positions, included) in
+        [(2, 100, 0, None), (0, 20, 3, None), (1, 30, 7, Some(2))]
+    {
+        completed.insert(
+            chunk,
+            ChunkSummary {
+                chunk,
+                first_game: chunk * 10 + 1,
+                counts: Counts {
+                    games: 10,
+                    positions,
+                    resigned_positions,
+                    ..Counts::default()
+                },
+            },
+        );
+        assert_eq!(included_chunks(&completed, 3, 60), included);
+    }
+    assert_eq!(included_chunks(&completed, 3, 23), Some(1));
+    assert_eq!(included_chunks(&completed, 3, 61), Some(3));
+    assert_eq!(included_chunks(&completed, 3, 1000), Some(3));
+}
+
+#[test]
+fn resume_summarizes_only_the_target_prefix_without_inference_or_changing_committed_files() {
+    for (false_count, later_false_count, expected_rate, excluded) in
+        [(0, 20, 0.0, false), (2, 0, 0.1, true)]
+    {
+        let directory = TemporaryDirectory::new();
+        let config = Config {
+            games: 400,
+            chunk_games: 100,
+            ..config()
+        };
+        drop(open_directory(&directory.0, &config).unwrap());
+        // 塊2が塊1より先に確定し、塊3は未確定のまま再開する。
+        for (chunk, positions, resigned_positions, false_resignations, triggers) in [
+            (2, 1000, 80, later_false_count, 100),
+            (0, 20, 3, 0, 0),
+            (1, 30, 7, false_count, 20),
+        ] {
+            let summary = ChunkSummary {
+                chunk,
+                first_game: chunk * 100 + 1,
+                counts: Counts {
+                    games: 100,
+                    positions,
+                    resigned_positions,
+                    false_resignations,
+                    resign_triggered_playthrough_games: triggers,
+                    ..Counts::default()
+                },
+            };
+            for resigned in [false, true] {
+                // 再開時は集計だけを読み、MNSDを読み直さない。
+                fs::write(
+                    directory.0.join(games_filename(chunk, resigned)),
+                    b"retained bytes",
+                )
+                .unwrap();
+            }
+            atomic_json(&directory.0, &format!("chunk-{chunk:05}.json"), &summary).unwrap();
+        }
+        let old_time = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let mut before = Vec::new();
+        for entry in fs::read_dir(&directory.0).unwrap() {
+            let path = entry.unwrap().path();
+            File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(old_time))
+                .unwrap();
+            before.push((path.clone(), fs::read(&path).unwrap()));
+        }
+        let one = NonZeroUsize::new(1).unwrap();
+        let report = generate(&directory.0, &config, 60, &[23; 32], one, one, || {
+            panic!("a completed prefix must not construct an evaluator")
+        })
+        .unwrap();
+        assert_eq!(report.generated_games, 0);
+        assert_eq!(report.generated_positions, 0);
+        let summary: Summary =
+            serde_json::from_reader(File::open(directory.0.join("summary.json")).unwrap()).unwrap();
+        assert_eq!(summary, report.summary);
+        assert_eq!(summary.target_positions, 60);
+        assert_eq!(summary.chunks, 2);
+        assert_eq!(
+            summary.counts,
+            Counts {
+                games: 200,
+                positions: 50,
+                resigned_positions: 10,
+                false_resignations: false_count,
+                resign_triggered_playthrough_games: 20,
+                ..Counts::default()
+            }
+        );
+        assert_eq!(summary.false_resignation_rate, Some(expected_rate));
+        assert_eq!(summary.resigned_games_excluded, excluded);
+        assert_eq!(summary.training_positions, if excluded { 50 } else { 60 });
+        assert_eq!(
+            summary.training_files,
+            if excluded {
+                vec!["chunk-00000.mnsd", "chunk-00001.mnsd"]
+            } else {
+                vec![
+                    "chunk-00000.mnsd",
+                    "chunk-00000.resigned.mnsd",
+                    "chunk-00001.mnsd",
+                    "chunk-00001.resigned.mnsd",
+                ]
+            }
+        );
+        // 目標だけを変えても同じconfig.jsonで再開できる。
+        let smaller = generate(&directory.0, &config, 23, &[23; 32], one, one, || {
+            panic!("a smaller target must not construct an evaluator")
+        })
+        .unwrap();
+        assert_eq!(smaller.summary.target_positions, 23);
+        assert_eq!(smaller.summary.chunks, 1);
+        for (path, bytes) in before {
+            assert_eq!(fs::read(&path).unwrap(), bytes, "{}", path.display());
+            assert_eq!(fs::metadata(path).unwrap().modified().unwrap(), old_time);
+        }
+        assert!(!directory.0.join("chunk-00003.json").exists());
+    }
+}
+
+#[test]
 fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
     for (false_count, triggers, expected_rate, excluded) in [
         (1, 20, Some(0.05), false),
@@ -40,7 +172,7 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
                 },
             },
         ];
-        let summary = summarize(&chunks);
+        let summary = summarize(&chunks, 60);
         assert_eq!(summary.false_resignation_rate, expected_rate);
         assert_eq!(summary.resigned_games_excluded, excluded);
         assert_eq!(summary.counts.games, 20);

@@ -2,11 +2,12 @@
 # Colab機のL4を1台借り、導入して、強化学習の本線のサイクルを回し、終了コードによらず止める。
 # 使い方: launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット40桁> <raw|ema>
 # 作業機で nohup setsid bash launch-session.sh ... > <ログ> 2>&1 & として起動する。
+# 学習器と実行器は、このスクリプトを置いた作業ツリーのtools/train/zeroのものを使う。
 # 重みの移動平均はサイクル21の学習から始めるので、20以下と21以上のサイクルを1回の起動に混ぜない。
 # サイクル1の対局数は、学習技法の導入の試走の生成の集計（trial-restart のサイクル1）から決める。
 set -u
 session=$1; first=$2; last=$3; C=$4; weights=$5
-R=/home/stepney141/board-games/minase
+R=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 T=$R/docs/measurements/alphazero-rl/alphazero-rl-trial
 Z=$R/tools/train/zero
 A=/mnt/synology_nas/minase/alphazero

@@ -26,9 +26,12 @@ pub(crate) struct Arguments {
     /// サイクルの基本シード。
     #[arg(long, required = true)]
     pub(super) seed: u64,
-    /// サイクルで生成する総対局数。
+    /// サイクルで生成する対局数の上限。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) games: u32,
+    /// 投了ファイルの除外前に数える訓練局面数の目標。1以上とし、塊0からの累計で判定する。
+    #[arg(long, required = true, value_parser = clap::value_parser!(u64).range(1..))]
+    pub(super) target_positions: u64,
     /// 1つの塊の対局数。最後の塊は端数を許す。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) chunk_games: u32,

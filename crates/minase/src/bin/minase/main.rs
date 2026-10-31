@@ -214,6 +214,8 @@ mod tests {
             "1",
             "--games",
             "2",
+            "--target-positions",
+            "100",
             "--chunk-games",
             "2",
             "--simulations",
@@ -248,6 +250,9 @@ mod tests {
             ("--playthrough-percent", "0"),
             ("--playthrough-percent", "101"),
             ("--games", "0"),
+            ("--target-positions", "0"),
+            ("--target-positions", "-1"),
+            ("--target-positions", "18446744073709551616"),
             ("--chunk-games", "0"),
             ("--simulations", "0"),
             ("--simulations", "1"),
@@ -282,6 +287,15 @@ mod tests {
                 args[index + 1] = percent;
                 assert!(parse(args).is_ok());
             }
+        }
+        for target in ["1", "18446744073709551615"] {
+            let mut args = complete.clone();
+            let index = args
+                .iter()
+                .position(|&arg| arg == "--target-positions")
+                .unwrap();
+            args[index + 1] = target;
+            assert!(parse(args).is_ok());
         }
     }
 
