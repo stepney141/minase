@@ -10,7 +10,7 @@ use std::mem::size_of;
 
 use minase_core::Move;
 
-use super::gumbel::{self, Gumbel};
+use super::gumbel::Gumbel;
 use super::puct::{self, PuctConfig};
 use super::softmax;
 use crate::search::{MATE, MAX_PLY, REPETITION_WIN};
@@ -342,7 +342,7 @@ pub enum TreeError {
     PendingSimulation,
     /// PUCTの係数が不正である。
     InvalidPuctConfig,
-    /// Gumbel乱数の数、有限性、候補数、または予算が不正である。
+    /// Gumbel乱数の数、有限性、候補数、予算、Qの尺度、または乱数の倍率が不正である。
     InvalidGumbelConfig,
     /// Gumbelのシミュレーションの予算を使い切った。
     BudgetExhausted,
@@ -764,7 +764,7 @@ fn descend(
     let index = match rule {
         SelectionRule::Puct(config) => puct::select_child(node, path.is_empty(), config)?,
         SelectionRule::Gumbel(config) if path.is_empty() => config.select_root(node)?,
-        SelectionRule::Gumbel(_) => gumbel::select_interior(node)?,
+        SelectionRule::Gumbel(config) => config.select_interior(node)?,
     };
     let edge = &mut node.edges[index];
     if matches!(rule, SelectionRule::Puct(_)) {

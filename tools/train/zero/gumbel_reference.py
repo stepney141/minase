@@ -17,6 +17,7 @@ Rustの試験は、記録された節点の出力をネットの代わりに使�
 """
 
 import argparse
+from functools import partial
 import json
 from pathlib import Path
 
@@ -101,8 +102,13 @@ def export_nodes(tree, num_actions: int, num_simulations: int) -> list[dict]:
     ]
 
 
-def generate_case(num_actions: int, num_simulations: int, seed: int) -> dict:
+def generate_case(
+    num_actions: int, num_simulations: int, seed: int, value_scale: float
+) -> dict:
     case_key = jax.random.PRNGKey(seed)
+    qtransform = partial(
+        mctx.qtransform_completed_by_mix_value, value_scale=value_scale
+    )
 
     def evaluate_state(state_id):
         # 出力はケースの鍵と状態番号だけで決まり、探索の順序やrecurrent_fnの鍵に依存しない。
@@ -152,18 +158,20 @@ def generate_case(num_actions: int, num_simulations: int, seed: int) -> dict:
         num_simulations=num_simulations,
         max_num_considered_actions=MAX_NUM_CONSIDERED_ACTIONS,
         gumbel_scale=1.0,
+        qtransform=qtransform,
     )
     # qtransformはバッチなしの木と節点番号を受け取る。
     root_completed_qvalues = jax.vmap(
-        mctx.qtransform_completed_by_mix_value, in_axes=(0, None)
+        qtransform, in_axes=(0, None)
     )(result.search_tree, 0)[0]
     result = jax.device_get(result)
     tree = result.search_tree
 
     return {
-        "name": f"a{num_actions}-n{num_simulations}",
+        "name": f"a{num_actions}-n{num_simulations}-s{value_scale}",
         "num_actions": num_actions,
         "num_simulations": num_simulations,
+        "value_scale": value_scale,
         "max_num_considered_actions": MAX_NUM_CONSIDERED_ACTIONS,
         "seed": seed,
         "root_gumbel": float32_list(tree.extra_data.root_gumbel[0]),
@@ -205,7 +213,11 @@ def main() -> None:
             }
             for m, n in CONSIDERED_VISITS
         ],
-        "cases": [generate_case(a, n, seed) for a, n, seed in CASES],
+        "cases": [
+            generate_case(a, n, seed, value_scale)
+            for value_scale in (0.1, 1.0)
+            for a, n, seed in CASES
+        ],
     }
     serialized = json.dumps(reference, indent=2, allow_nan=False) + "\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)

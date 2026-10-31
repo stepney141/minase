@@ -7,6 +7,100 @@ use minase_core::test_util::{position, sq};
 use minase_core::{DrawReason, ExhaustionRule, GameStatus, PieceKind, WinReason};
 
 #[test]
+fn move_temperature_matches_the_schedule_at_specified_plies() {
+    // 設計書のT(t)=0.15+0.85×0.5^(t/12)から求めた倍精度の参照値。
+    for (ply, expected) in [
+        (0, 1.0),
+        (8, 0.6854664462053212),
+        (12, 0.575),
+        (16, 0.48732272354324235),
+        (50, 0.19732899440120552),
+    ] {
+        let actual = f64::from(move_temperature(ply));
+        assert!(
+            (actual - expected).abs() <= expected * 1e-6,
+            "t={ply}: {actual} != {expected}"
+        );
+    }
+}
+
+#[test]
+fn search_decision_counts_the_random_opening_in_its_temperature() {
+    let playing = PlayingGame::new(
+        1,
+        Settings {
+            rules: Rules::ENGINE_DEFAULT,
+            seed: 7,
+            simulations: 2,
+            playthrough_percent: 100,
+            max_ply: 20,
+        },
+    )
+    .unwrap();
+    let game = &playing.game;
+    assert!((8..=16).contains(&game.ply_count()));
+    let snapshot = SearchSnapshot::from_game(game).unwrap();
+    let moves = snapshot.root_moves().to_vec();
+    let mut search = Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2).unwrap();
+    let mut noise = vec![0.0; moves.len()];
+    noise[0] = 1.0;
+    search.gumbel = Gumbel::new(noise, 2, 1.0).unwrap();
+    for simulation in 0..=2 {
+        let Step::Evaluate(request) = search
+            .driver
+            .select_leaf(SelectionRule::Gumbel(&search.gumbel))
+            .unwrap()
+        else {
+            panic!("the root and its two children need evaluation");
+        };
+        let mut logits = vec![0.0; request.query().moves.len()];
+        if simulation == 0 {
+            logits.fill(-1000.0);
+            logits[0] = 0.0;
+            logits[1] = 0.75;
+        }
+        search.driver.evaluate(&request, &logits, 0.5).unwrap();
+    }
+    assert!(search.finished());
+    let root = search.driver.tree().root();
+    assert_eq!(root.edges[0].visits, 1);
+    assert_eq!(root.edges[1].visits, 1);
+    // 全Qが1/2なのでσは0。倍率1ではg=1の第1辺、8〜16手後の倍率ではlogit=0.75の第2辺。
+    assert_eq!(search.gumbel.action(root, 1.0).unwrap(), 0);
+    assert_eq!(search.decision(game).unwrap().mv, moves[1]);
+}
+
+#[test]
+fn search_uses_value_scale_one() {
+    let snapshot = SearchSnapshot::from_game(&Game::new(Rules::ENGINE_DEFAULT)).unwrap();
+    let mut search = Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2).unwrap();
+    for (simulation, value) in [0.5, 0.25, 0.75].into_iter().enumerate() {
+        let Step::Evaluate(request) = search
+            .driver
+            .select_leaf(SelectionRule::Gumbel(&search.gumbel))
+            .unwrap()
+        else {
+            panic!("the root and its two children need evaluation");
+        };
+        let mut logits = vec![0.0; request.query().moves.len()];
+        if simulation == 0 {
+            logits.fill(-1000.0);
+            logits[..2].fill(0.0);
+        }
+        search.driver.evaluate(&request, &logits, value).unwrap();
+    }
+    // Q=3/4と1/4の2辺を1回ずつ訪問したので、変換したQの最大値は(50+1)×1.0=51。
+    let completed = search
+        .gumbel
+        .completed_qvalues(search.driver.tree().root())
+        .unwrap();
+    assert_eq!(
+        completed.into_iter().fold(f32::NEG_INFINITY, f32::max),
+        51.0
+    );
+}
+
+#[test]
 fn gumbel_noise_is_finite_at_both_uniform_endpoints() {
     // 設計書の中点による乱数では、最小・最大の入力も有限なGumbel乱数に写る。
     let minimum = gumbel_noise(0);
@@ -36,7 +130,7 @@ fn winning_child(repetition: bool) -> Child<'static> {
 #[test]
 fn repetition_proven_loss_never_resigns_at_zero_q() {
     let mut tree = small_tree(2);
-    let gumbel = Gumbel::new(vec![1.0, 0.0], 2).unwrap();
+    let gumbel = Gumbel::new(vec![1.0, 0.0], 2, 1.0).unwrap();
     for _ in 0..2 {
         let selected = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
         tree.create_child(&selected.path, winning_child(true))
@@ -50,7 +144,7 @@ fn repetition_proven_loss_never_resigns_at_zero_q() {
             ..
         })
     ));
-    let action = gumbel.action(tree.root()).unwrap();
+    let action = gumbel.action(tree.root(), 1.0).unwrap();
     assert_eq!(tree.root().edges[action].q(), Some(0.0));
     assert!(!should_resign(tree.root(), action).unwrap());
 }
@@ -60,7 +154,7 @@ fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
     // 訪問済みの候補がすべて負けでも、未訪問の手を混合価値つきで選べる。
     for repetition in [false, true] {
         let mut tree = small_tree(3);
-        let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2).unwrap();
+        let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2, 1.0).unwrap();
         for _ in 0..2 {
             let selected = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
             tree.create_child(&selected.path, winning_child(repetition))
@@ -69,7 +163,7 @@ fn unvisited_final_action_uses_mixed_value_and_never_resigns() {
         let root = tree.root();
         assert_eq!(root.state, NodeState::Expanded);
         assert_eq!(root.edges.iter().filter(|edge| edge.visits > 0).count(), 2);
-        let action = gumbel.action(root).unwrap();
+        let action = gumbel.action(root, 1.0).unwrap();
         assert_eq!(root.edges[action].visits, 0);
         assert_eq!(root.edges[action].q(), None);
         let value = selected_value(root, action).unwrap();
@@ -112,7 +206,7 @@ fn unresolved_root_with_unvisited_edges_resigns_only_without_repetition_cutoffs(
         ),
     ] {
         let mut tree = small_tree(3);
-        let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2).unwrap();
+        let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2, 1.0).unwrap();
         let first = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
         let moves = Game::new(Rules::ENGINE_DEFAULT).legal_moves();
         tree.create_child(&first.path, Child::Pending(&moves[..2]))

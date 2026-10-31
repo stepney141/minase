@@ -7,8 +7,11 @@
 //! `derive_seed(対局のシード, 2) % 100 < playthrough_percent`を満たす対局は投了させずに最後まで指させる。
 //! シードと番号の扱いは`docs/adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md`を参照。
 //!
-//! 各手番は新しい探索木からGumbel AlphaZeroのSequential Halvingを行い、最後に残った手を指す。
-//! 温度による手の抽選とディリクレ雑音は使わない。
+//! 各手番は新しい探索木からGumbel AlphaZeroのSequential Halvingを行う。
+//! 最後に指す手の得点では、Gumbel乱数に[`move_temperature`]の倍率を掛ける。
+//! 手数は乱択の序盤を含めて数え、候補の抽出と逐次半減では倍率1.0の乱数を使う。
+//! 同じ乱数が候補と探索結果にも影響するため、残った候補の間で指す手の分布が
+//! `softmax((logit + σq) / T)`に一致する保証はない。ディリクレ雑音は使わない。
 //! 根の評価後に指定したシミュレーション数を終えるか、根の勝敗が確定したら探索を終える。
 //! 根の総訪問回数は根の辺の訪問回数の和であり、根自体の評価は数えない。
 //! 探索中の引き分けの価値は、引き分け値の設定によらず0.5とする。
@@ -20,6 +23,7 @@
 //! 有限な[0, 1]の値だけを受け付け、65,535倍して四捨五入した整数を記録する。
 //! 方策は根の候補手`SearchSnapshot::root_moves`だけについて求める`softmax(logit + σq)`であり、
 //! R1反復規則により根の候補から外れた合法手の確率は0になる。
+//! この方策の目標はGumbel乱数を含まないため、最後の選択で使う倍率の影響を受けない。
 //! 候補をMNSDの合法手の番号順に並べ、確率の合計が65,535になるよう最大剰余法で量子化し、0になった候補は記録しない。
 //!
 //! 対局記録は初期局面を開始局面、開始手数を0、由来を乱数開始の自己対局とする。
@@ -49,7 +53,7 @@ use minase::training::records::{
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{Color, Game, GameResult, Move, Position, Rules};
 
-use super::{Error, RESIGN_THRESHOLD, TREE_CAPACITY};
+use super::{Error, GUMBEL_VALUE_SCALE, RESIGN_THRESHOLD, TREE_CAPACITY};
 
 /// 全対局で共有する条件。手数上限は試験でも同じ経路から渡す。
 #[derive(Clone, Copy)]
@@ -238,7 +242,7 @@ impl Search {
             .collect();
         Ok(Self {
             driver: Driver::new(snapshot, TREE_CAPACITY, DrawValue::SelfPlay)?,
-            gumbel: Gumbel::new(noise, simulations)?,
+            gumbel: Gumbel::new(noise, simulations, GUMBEL_VALUE_SCALE)?,
             simulations,
         })
     }
@@ -256,10 +260,12 @@ impl Search {
 
     fn decision(&self, game: &Game) -> Result<Decision, Error> {
         let root = self.driver.tree().root();
-        let action = self.gumbel.action(root)?;
+        let action = self
+            .gumbel
+            .action(root, move_temperature(game.ply_count()))?;
         let value = selected_value(root, action)?;
         let legal = records::sorted_legal_moves(game)?;
-        let probabilities = gumbel::policy_target(root)?;
+        let probabilities = self.gumbel.policy_target(root)?;
         let weights = root
             .edges
             .iter()
@@ -293,6 +299,13 @@ struct Decision {
     policy: Policy,
     visits: u32,
     resign: bool,
+}
+
+/// 序盤を含む着手前の手数から、最後に指す手のGumbel乱数の倍率を求める。
+/// 初期値1.0はGumbel論文、終値0.15と半減期12手はKataGoの`chosenMoveTemperature`系の
+/// 既定値に基づき、半減期は19路盤の19手を盤面積に応じて12手に換算したものである。
+fn move_temperature(ply: u32) -> f32 {
+    0.15 + (1.0 - 0.15) * 0.5_f32.powf(ply as f32 / 12.0)
 }
 
 /// 53ビットの一様乱数を、区間の中点からGumbel乱数へ写す。

@@ -45,6 +45,9 @@ const MAX_PLY: u32 = 1_000;
 /// `docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 const RESIGN_THRESHOLD: f32 = 0.01;
 
+/// 自己対局のQの尺度。Gumbel AlphaZero論文の囲碁とチェスに合わせて1.0を使う。
+const GUMBEL_VALUE_SCALE: f32 = 1.0;
+
 /// 誤った投了の割合の上限5%。厳密に超えたサイクルの投了ファイルを学習の対象から除く。
 /// `docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
 const FALSE_RESIGNATION_LIMIT: f64 = 0.05;

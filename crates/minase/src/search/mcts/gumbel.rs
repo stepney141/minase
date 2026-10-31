@@ -4,12 +4,13 @@
 //! [`qtransforms.py`](https://github.com/google-deepmind/mctx/blob/428bfb7/mctx/_src/qtransforms.py)、
 //! [`seq_halving.py`](https://github.com/google-deepmind/mctx/blob/428bfb7/mctx/_src/seq_halving.py)、
 //! [`action_selection.py`](https://github.com/google-deepmind/mctx/blob/428bfb7/mctx/_src/action_selection.py)
-//! の既定の式に従う。価値は勝率へ写して保持し、節点内の再尺度化も単精度で行う。
+//! の式に従い、Qの尺度と最後に指す手のGumbel乱数の倍率を引数で指定する。
+//! 価値は勝率へ写して保持し、節点内の再尺度化も単精度で行う。
 
 use super::softmax;
 use super::tree::{Edge, Node, NodeState, Outcome, TreeError};
 
-/// 根のGumbel乱数とSequential Halvingの予算。
+/// 根のGumbel乱数、Sequential Halvingの予算、およびQの尺度。
 ///
 /// 根の評価後のシミュレーションだけを数える。選択番号は根の辺の訪問回数の和なので、
 /// 指定した回数を終えた木への追加の選択はエラーになる。
@@ -18,17 +19,26 @@ pub struct Gumbel {
     root_gumbel: Vec<f32>,
     considered_visits: Vec<u32>,
     num_considered: usize,
+    value_scale: f32,
 }
 
 impl Gumbel {
-    /// 全辺のGumbel乱数と正のシミュレーション回数から選択規則を作る。
+    /// 全辺のGumbel乱数、正のシミュレーション回数、およびQの尺度から選択規則を作る。
+    /// 尺度はmctxの`qtransform_completed_by_mix_value`の`value_scale`に当たる。
     ///
     /// # Errors
     /// 辺がない場合、回数が0の場合、および乱数が有限でない場合は拒否する。
-    pub fn new(root_gumbel: Vec<f32>, num_simulations: u32) -> Result<Self, TreeError> {
+    /// 尺度も有限かつ正でなければ拒否する。
+    pub fn new(
+        root_gumbel: Vec<f32>,
+        num_simulations: u32,
+        value_scale: f32,
+    ) -> Result<Self, TreeError> {
         if root_gumbel.is_empty()
             || num_simulations == 0
             || root_gumbel.iter().any(|x| !x.is_finite())
+            || !value_scale.is_finite()
+            || value_scale <= 0.0
         {
             return Err(TreeError::InvalidGumbelConfig);
         }
@@ -37,6 +47,7 @@ impl Gumbel {
             root_gumbel,
             considered_visits: considered_visits(num_considered, num_simulations)?,
             num_considered,
+            value_scale,
         })
     }
 
@@ -48,10 +59,16 @@ impl Gumbel {
     /// 確定した勝ちを優先し、確定した負けを除いた最大訪問回数の辺からスコアで選ぶ。
     ///
     /// 根が勝ちに確定した場合と全辺が負けの場合は、[`Node::best_edge`]と同じ順序を使う。
+    /// 得点は`gumbel_scale × g + (logit − max_logit) + σ(q̂)`とし、
+    /// 倍率はこの選択だけに使い、根の逐次半減や方策の目標には使わない。
     ///
     /// # Errors
     /// 根が未評価、辺がない、または乱数の数と辺の数が異なる場合は拒否する。
-    pub fn action(&self, root: &Node) -> Result<usize, TreeError> {
+    /// 倍率も有限かつ0以上でなければ拒否する。
+    pub fn action(&self, root: &Node, gumbel_scale: f32) -> Result<usize, TreeError> {
+        if !gumbel_scale.is_finite() || gumbel_scale < 0.0 {
+            return Err(TreeError::InvalidGumbelConfig);
+        }
         self.validate_root(root)?;
         if matches!(root.state, NodeState::Proven(proof) if proof.outcome == Outcome::Win) {
             return root.best_edge().ok_or(TreeError::NoSelectableEdge);
@@ -67,9 +84,71 @@ impl Gumbel {
             .map(|edge| edge.visits)
             .max();
         match considered {
-            Some(visits) => self.score_considered(root, visits, eligible),
+            Some(visits) => self.score_considered(root, visits, gumbel_scale, eligible),
             None => root.best_edge().ok_or(TreeError::NoSelectableEdge),
         }
+    }
+
+    /// 混合価値で未訪問の辺を補い、構築時に指定した尺度の変換σを施したQを返す。
+    ///
+    /// # Errors
+    /// ネットの評価または辺を持たない節点は拒否する。
+    pub fn completed_qvalues(&self, node: &Node) -> Result<Vec<f32>, TreeError> {
+        let mixed = mixed_value(node)?;
+        let max_visits = node
+            .edges
+            .iter()
+            .map(|edge| edge.visits)
+            .max()
+            .ok_or(TreeError::NoSelectableEdge)?;
+        let mut completed: Vec<_> = node
+            .edges
+            .iter()
+            .map(|edge| {
+                if edge.visits > 0 {
+                    edge.value_sum as f32 / edge.visits as f32
+                } else {
+                    mixed
+                }
+            })
+            .collect();
+        let min = completed.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = completed.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let scale = (50.0 + max_visits as f32) * self.value_scale;
+        for q in &mut completed {
+            *q = ((*q - min) / (max - min).max(1e-8)) * scale;
+        }
+        Ok(completed)
+    }
+
+    /// 節点の全辺に対する方策の目標`softmax(logit + σq)`を返す。
+    ///
+    /// # Errors
+    /// ネットの評価または辺を持たない節点は拒否する。
+    pub fn policy_target(&self, node: &Node) -> Result<Vec<f32>, TreeError> {
+        let completed = self.completed_qvalues(node)?;
+        let logits: Vec<_> = node
+            .edges
+            .iter()
+            .zip(completed)
+            .map(|(edge, q)| edge.logit + q)
+            .collect();
+        Ok(softmax(&logits))
+    }
+
+    pub(super) fn select_interior(&self, node: &Node) -> Result<usize, TreeError> {
+        let policy = self.policy_target(node)?;
+        let sum = node
+            .edges
+            .iter()
+            .map(|edge| edge.visits as f32)
+            .sum::<f32>();
+        argmax(
+            node.edges
+                .iter()
+                .zip(policy)
+                .map(|(edge, p)| p - edge.visits as f32 / (1.0 + sum)),
+        )
     }
 
     pub(super) fn validate_root(&self, root: &Node) -> Result<(), TreeError> {
@@ -89,16 +168,17 @@ impl Gumbel {
             .considered_visits
             .get(visits as usize)
             .ok_or(TreeError::BudgetExhausted)?;
-        self.score_considered(root, considered, |_| true)
+        self.score_considered(root, considered, 1.0, |_| true)
     }
 
     fn score_considered(
         &self,
         node: &Node,
         considered: u32,
+        gumbel_scale: f32,
         eligible: impl Fn(&Edge) -> bool,
     ) -> Result<usize, TreeError> {
-        let completed = completed_qvalues(node)?;
+        let completed = self.completed_qvalues(node)?;
         let max_logit = node
             .edges
             .iter()
@@ -106,7 +186,10 @@ impl Gumbel {
             .fold(f32::NEG_INFINITY, f32::max);
         argmax(node.edges.iter().enumerate().map(|(index, edge)| {
             if edge.visits == considered && eligible(edge) {
-                (self.root_gumbel[index] + (edge.logit - max_logit) + completed[index]).max(-1e9)
+                (gumbel_scale * self.root_gumbel[index]
+                    + (edge.logit - max_logit)
+                    + completed[index])
+                    .max(-1e9)
             } else {
                 f32::NEG_INFINITY
             }
@@ -173,68 +256,6 @@ pub fn mixed_value(node: &Node) -> Result<f32, TreeError> {
     } else {
         value
     })
-}
-
-/// 混合価値で未訪問の辺を補い、mctxの既定の変換σを施したQを返す。
-///
-/// # Errors
-/// ネットの評価または辺を持たない節点は拒否する。
-pub fn completed_qvalues(node: &Node) -> Result<Vec<f32>, TreeError> {
-    let mixed = mixed_value(node)?;
-    let max_visits = node
-        .edges
-        .iter()
-        .map(|edge| edge.visits)
-        .max()
-        .ok_or(TreeError::NoSelectableEdge)?;
-    let mut completed: Vec<_> = node
-        .edges
-        .iter()
-        .map(|edge| {
-            if edge.visits > 0 {
-                edge.value_sum as f32 / edge.visits as f32
-            } else {
-                mixed
-            }
-        })
-        .collect();
-    let min = completed.iter().copied().fold(f32::INFINITY, f32::min);
-    let max = completed.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let scale = (50.0 + max_visits as f32) * 0.1;
-    for q in &mut completed {
-        *q = ((*q - min) / (max - min).max(1e-8)) * scale;
-    }
-    Ok(completed)
-}
-
-/// 根の全辺に対する方策の目標`softmax(logit + σq)`を返す。
-///
-/// # Errors
-/// ネットの評価または辺を持たない節点は拒否する。
-pub fn policy_target(node: &Node) -> Result<Vec<f32>, TreeError> {
-    let completed = completed_qvalues(node)?;
-    let logits: Vec<_> = node
-        .edges
-        .iter()
-        .zip(completed)
-        .map(|(edge, q)| edge.logit + q)
-        .collect();
-    Ok(softmax(&logits))
-}
-
-pub(super) fn select_interior(node: &Node) -> Result<usize, TreeError> {
-    let policy = policy_target(node)?;
-    let sum = node
-        .edges
-        .iter()
-        .map(|edge| edge.visits as f32)
-        .sum::<f32>();
-    argmax(
-        node.edges
-            .iter()
-            .zip(policy)
-            .map(|(edge, p)| p - edge.visits as f32 / (1.0 + sum)),
-    )
 }
 
 fn check_evaluated(node: &Node) -> Result<(), TreeError> {
