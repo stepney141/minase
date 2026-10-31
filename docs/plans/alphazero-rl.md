@@ -16,7 +16,7 @@
 
 ## 状態
 
-進行中（学習を停止中）。2026年10月26日に起案し、2026年10月28日に着手した。
+進行中。2026年10月26日に起案し、2026年10月28日に着手した。
 フェーズ1（[借りた機械をまたぐ再開の確認](../measurements/alphazero-rl/alphazero-rl-resume-check.md)）と[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)は完了した。
 2026年10月28日から31日にサイクル1〜37を回したが、学習率は全サイクルで0.01の一定のままであった。
 2026年10月29日に導入を決めた学習率の予定（cosine annealing）に着手していなかったので、2026年10月31日に利用者が、これまでの学習をすべてリセットし、学習を止めると決めた。
@@ -30,10 +30,14 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 技法の実装は[学習技法の導入の設計書](archived/alphazero-restart-techniques.md)で行い、2026年10月31日に完了した。
 同じ設計書の[試走](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)では、別系列`trial-restart`のサイクル1が、窓が1サイクルのときに55.7分、1.76 CUで終わった。
 
-引き継ぐ人は、次の順に進める。
-
-1. 新しい構成のランダム初期化のネットを、NASの`cycles/cycle-0000/`（`checkpoint.pt`、`model.onnx`、`summary.json`）と`nets/cycle-0000.onnx`に置く。試走に使ったシード20261031のネット（NASの`trial-restart/cycle-0000/`、SHA-256 `b2de222c…7c48`）は、作業機で出力を照合済みなので、そのまま複製してよい（[照合の記録](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)）。
-2. 起動は[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の`launch-session.sh`による。最初のサイクルが1のとき、スクリプトはNASの`trial-restart/cycle-0001/selfplay/summary.json`を実行器の`--cycle1-reference-summary`に渡して対局数を決める。
+2026年10月31日に、利用者の指示で、新しい構成のランダム初期化のネットから本線の学習を改めて始めた。
+初期のネットには、試走と同じシード20261031のネット（SHA-256 `b2de222c…7c48`）を使う。
+このネットは作業機で出力を照合済みであり（[照合の記録](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)）、NASの`trial-restart/cycle-0000/`から`cycles/cycle-0000/`（`checkpoint.pt`、`model.onnx`、`summary.json`）と`nets/cycle-0000.onnx`へ複製した。
+生成器と学習器のコミットは、どちらもmasterの522192f3である。
+最初のセッション`rl-c01`は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の`launch-session.sh`により、Colab機のL4でサイクル1〜10を対象に起動した。
+実行器は、借りた時刻から8時間の終了期限に収まるサイクルだけを回して止まるので、残りのサイクルは次のセッションで続ける。
+サイクル1の対局数は、実行器が試走の生成の集計（NASの`trial-restart/cycle-0001/selfplay/summary.json`）から決める。
+10サイクル目の進捗測定は作業機のGPUでMCTSを動かすので、その前に作業機で`tools/train/zero/setup.sh`を実行し、削除したONNX RuntimeとTensorRTの実行環境を入れ直す。
 
 ## 目的
 
