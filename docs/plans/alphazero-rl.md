@@ -20,8 +20,10 @@
 フェーズ1（[借りた機械をまたぐ再開の確認](../measurements/alphazero-rl/alphazero-rl-resume-check.md)）と[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)は完了した。
 2026年10月28日から31日にサイクル1〜37を回したが、学習率は全サイクルで0.01の一定のままであった。
 2026年10月29日に導入を決めた学習率の予定（cosine annealing）に着手していなかったので、2026年10月31日に利用者が、これまでの学習をすべてリセットし、学習を止めると決めた。
-サイクル1〜37の出力と記録、およびリセット前のランダム初期化のネット（`cycles/cycle-0000/`、`nets/cycle-0000.onnx`）は、同じ日の利用者の決定でNASから削除した。
-ソースの書庫、シードの台帳、および借用の記録は残した。
+同じ日の利用者の決定で、旧構成の出力をすべて削除した。
+NASからは、サイクル1〜37の出力と記録、リセット前のランダム初期化のネット（`cycles/cycle-0000/`、`nets/cycle-0000.onnx`）、試走と再開の確認の出力、ソースの書庫、および実行器のログを削除し、シードの台帳を空にした。
+借用の記録は、費用の管理に使うので残した。
+作業機からも、旧構成のネット、TensorRTのエンジンのキャッシュ、およびONNX RuntimeとTensorRTの実行環境を削除した。
 この間の測定（[学習窓の事前確認](../measurements/alphazero-rl/alphazero-rl-window-precheck.md)、[10サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)と[20サイクル目](../measurements/alphazero-rl/alphazero-rl-progress-c0020.md)の進捗測定、[重みの移動平均の比較](../measurements/alphazero-rl/alphazero-rl-ema-c0025.md)）は、学習率が一定の学習の記録として残す。
 学習率の予定を学習器と実行器に入れる実装は、2026年10月31日にコミットした（試験212件が通過）。
 同じ日に利用者は、[学習効率と強さに効く技法の調査](../research/alphazero-rl-training-efficiency.md)を受けて、学習率の予定の3点（「学習率の予定」の節）と9つの技法を、1つずつ比べずにまとめて採ると決めた。
@@ -30,9 +32,8 @@
 引き継ぐ人は、次の順に進める。
 
 1. 学習技法の導入の設計書を完了させる。学習器と実行器のコードは2026年10月31日にmasterへマージしたので、実装はmasterから切ったブランチで行う。
-2. 同じ設計書のフェーズ4で作る新しい構成のランダム初期化のネットを、`cycles/cycle-0000/`と`nets/cycle-0000.onnx`に置く。
-3. 再開では、シードの台帳`seed-ledger.jsonl`の既存の名前`cycle-NNNN-gen`がリセット前の生成に使われているので、実行器のシードと名前を重ならないように変えてから始める（実行器は同じ名前があると、そのシードを再利用する）。
-4. 起動は[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の`launch-session.sh`による。`launch-session.sh`には、学習器の`--lr-schedule`など、学習技法の導入で増える必須の引数を足す必要がある。
+2. 同じ設計書のフェーズ4で作る新しい構成のランダム初期化のネットを、`cycles/cycle-0000/`と`nets/cycle-0000.onnx`に置く。作業機でネットの出力を照合する前に、`tools/train/zero/setup.sh`でONNX RuntimeとTensorRTの実行環境を入れ直す。
+3. 起動は[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の`launch-session.sh`による。`launch-session.sh`には、学習器の`--lr-schedule`など、学習技法の導入で増える必須の引数を足す必要がある。
 
 ## 目的
 
