@@ -28,6 +28,7 @@
 mod cli;
 mod error;
 mod game;
+mod mate;
 mod output;
 mod worker;
 
