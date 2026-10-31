@@ -46,6 +46,6 @@ dlshogiと同じ0.5%を閾値とする案は採らなかった。
 
 投了の有無と最後まで指させる割合は、生成器の起動引数`--playthrough-percent`で受け取り、100は投了の無効を表す。
 切り替えの判断は[強化学習の実行](../../plans/alphazero-rl.md)が各サイクルの開始時に行う。
-誤った投了の割合はサイクルのすべての塊が確定するまで決まらないので、生成器は投了で終えた対局を塊ごとに別のファイルに書き、割合が5%を超えたサイクルでは、そのファイルを学習データのファイルの一覧から外す（[塊のADR](../commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
+誤った投了の割合はサイクルのすべての塊が確定するまで決まらないので、生成器は投了で終えた対局を塊ごとに別のファイルに書き、割合が5%を超えたサイクルでは、そのファイルを学習データのファイルの一覧から外す（[塊のADR](commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
 外した対局数の分を生成し直す処理は、強化学習の実行が別の出力先で生成器を起動して行う。
 閾値と上限は`crates/minase/src/bin/minase/zero_selfplay/`の定数`RESIGN_THRESHOLD`と`FALSE_RESIGNATION_LIMIT`にある。

@@ -104,8 +104,9 @@ AlphaZeroはAlphaGo Zeroのゲーティングを廃止しても学習が進む�
 以後の学習は前のサイクルのネットから再開し、学習窓から抽出した局面を1回ずつ読む（「学習窓と局面の抽出」の節）。
 各サイクルの生成と学習は、[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](archived/alphazero-trainer.md)の手順に従う。
 投了は最初のサイクルでは無効にし、以後は各サイクルの開始時に、直前のサイクルの較正の結果で有効と無効を切り替える（「投了の有効化の条件」の節）。
-生成器`minase data zero-selfplay`は1サイクルの量を対局数で受け取り、決まった対局数の塊ごとに確定させる（[塊のADR](../adr/commit-zero-self-play-cycles-in-fixed-game-chunks.md)）。
-100万局面に要る対局数は、試走または前のサイクルの1局あたりの局面数から決める。
+生成器`minase data zero-selfplay`は、1サイクルの総対局数の上限と訓練局面数の目標を受け取り、決まった対局数の塊ごとに確定させ、訓練局面数の累計が目標に届いた最初の塊まででサイクルを締める（[塊のADR](../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
+目標は100万局面とし、総対局数の上限は、試走または前のサイクルの1局あたりの局面数から、100万局面に要る対局数として決める。
+対局が前のサイクルより長くなれば上限の手前で目標に届いて締まり、短くなれば上限で終わって目標に届かない。
 1局あたりの局面数は、生成器の集計`summary.json`の学習データの局面数`training_positions`を、上限到達で除いた対局を含む総対局数`games`で割った値とする。
 投了の誤りで生成し直したサイクルでは、元の出力先と生成し直しの出力先の`summary.json`を合わせ、両方の合計どうしで割る。
 

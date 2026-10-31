@@ -2,17 +2,17 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](../commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)によって置き換えられた。
 
 ## コンテキスト
 
 強化学習（RL）の自己対局は、Google ColabのColab機またはvast.aiとRunpodのレンタル機で生成する。
-Colab機はセッションの上限時間、残高の枯渇、およびColab側の都合で、レンタル機は貸し手の都合で止まり得る（[Colab機の操作の手引き](../guides/alphazero-machines.md)）。
+Colab機はセッションの上限時間、残高の枯渇、およびColab側の都合で、レンタル機は貸し手の都合で止まり得る（[Colab機の操作の手引き](../../guides/alphazero-machines.md)）。
 止まった機械で生成した結果は、作業機へ転送していなければ失われる。
 借りた機械は`git archive`で作ったソースの書庫からminaseをビルドするので、リポジトリを持たない。
-隣接する基本シードを使うと、1局ずれた同じ対局列ができる（[隣接する基本シードの教訓](../lessons/derive-seed-adjacent-collision.md)）。
-投了の誤りを判定する割合は、サイクルのすべての対局が終わるまで決まらない（[投了のADR](archive/resign-zero-self-play-games-below-one-percent-after-calibration.md)）。
-エンジンの開発者は、[自己対局生成器の設計書](../plans/archived/alphazero-selfplay.md)で塊ごとの確定と再開を決め、着手時に塊の定め方とファイルの構成を補った。
+隣接する基本シードを使うと、1局ずれた同じ対局列ができる（[隣接する基本シードの教訓](../../lessons/derive-seed-adjacent-collision.md)）。
+投了の誤りを判定する割合は、サイクルのすべての対局が終わるまで決まらない（[投了のADR](resign-zero-self-play-games-below-one-percent-after-calibration.md)）。
+エンジンの開発者は、[自己対局生成器の設計書](../../plans/archived/alphazero-selfplay.md)で塊ごとの確定と再開を決め、着手時に塊の定め方とファイルの構成を補った。
 
 ## 決定
 
@@ -23,7 +23,7 @@ Colab機はセッションの上限時間、残高の枯渇、およびColab側�
 
 出力先には生成条件を記録し、同じ出力先で起動し直すと、条件が記録と一致する場合に限って欠けた塊だけを生成する。
 照合する条件は生成の結果を変えるものに限り、推論の実行プロバイダは含め、スレッド数、スレッドごとの同時対局数、およびGPUの種類は含めない。
-CPUとTensorRTのFP16では推論の数値が異なる（[ネットの出力の照合](../measurements/alphazero-network/random-net-output-check.md)）ので、同じサイクルに混ぜない。
+CPUとTensorRTのFP16では推論の数値が異なる（[ネットの出力の照合](../../measurements/alphazero-network/random-net-output-check.md)）ので、同じサイクルに混ぜない。
 GPUの種類を照合しないのは、借りた機械を替えて再開することを認めるためである。
 全塊の確定後には、サイクルの集計と学習データのファイルの一覧を書く。
 出力先は排他的にロックする。
@@ -45,5 +45,5 @@ MNSDのヘッダに書く生成コミット（生成器をビルドしたソー�
 
 再開したサイクルでは、確定済みの塊のファイルは変わらない。
 推論の数値がバッチの構成で変わるTensorRTでは、生成し直した塊は止まる前に生成しかけた内容と同じにはならないが、同じ条件の対局として扱える。
-サイクルの間で基本シードを総対局数以上離すのは、[強化学習の実行](../plans/alphazero-rl.md)の手順が担う。
+サイクルの間で基本シードを総対局数以上離すのは、[強化学習の実行](../../plans/alphazero-rl.md)の手順が担う。
 出力先の構成と各ファイルの欄は、`crates/minase/src/bin/minase/zero_selfplay/`のdocコメントにある。
