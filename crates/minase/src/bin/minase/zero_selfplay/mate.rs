@@ -63,7 +63,7 @@ impl From<GameError> for Error {
 /// 着手直後の継続中の対局から、次に指す側の王手限定の3手以内の勝ちを調べる。
 ///
 /// 入力の対局を変更せず、各枝で複製した[`Game`]に着手して裁定を得る。
-/// 王手でない手を除くための利き調査だけは、局面の複製で行う。
+/// 攻め手の絞り込みと応手の並べ替えに使う利き調査は、局面の複製で行う。
 ///
 /// # Errors
 ///
@@ -132,7 +132,29 @@ fn winning_attack(game: &Game, attacker: Color, read_replies: bool) -> Result<bo
 
 /// m2を全合法手から調べ、受けが1つでもあれば打ち切る。
 fn all_replies_lose(game: &Game, attacker: Color) -> Result<bool, Error> {
-    for mv in game.legal_moves() {
+    let mut replies = game.legal_moves();
+    // 王駒の先取り、王駒への利きがない手、その他の順にし、同順位の順序は保つ。
+    // 順位は探索順にだけ使い、勝敗は各枝のGame::playで裁定する。
+    replies.sort_by_cached_key(|&mv| {
+        let mut position = game.position().clone();
+        position.make_move_unchecked(mv, game.rules().moves);
+        if position.royal_pieces(attacker).is_empty() {
+            0
+        } else if position
+            .royal_pieces(attacker.opposite())
+            .iter()
+            .all(|royal| {
+                position
+                    .attackers_to_by(attacker, royal, position.occupied())
+                    .is_empty()
+            })
+        {
+            1
+        } else {
+            2
+        }
+    });
+    for mv in replies {
         let mut next = game.clone();
         match next.play(mv)? {
             GameStatus::Finished(GameResult::Win { winner, .. }) if winner == attacker => {}
