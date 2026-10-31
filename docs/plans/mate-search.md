@@ -74,6 +74,9 @@ GUIからの`go mate`、詰め中将棋の作品や保存棋譜の検討、お�
 USIの状態機械と`go`のライフサイクルは[外部対局接続](archived/engine-connectivity.md)が、サブコマンドの形は[補助ツールのサブコマンド化](archived/cli-subcommands.md)が定める。
 規格先行テストの書き方は[テストスイートのspec-first再構築](archived/spec-first-tests.md)に従う。
 本書は完了済みのマイルストーンだけを前提とし、起案中の[探索部の反復負け回避](archived/search-repetition.md)には依存しない。
+AlphaZero型の自己対局を王手限定の3手以内の勝ちで打ち切る判定は、[学習技法の導入の設計書](alphazero-restart-techniques.md)が、本書とは別の、深さを3手に固定した探索として作る（2026年10月31日の利用者の決定）。
+本書の探索核と参照探索はその判定に依存せず、その判定を置き換えもしない。
+王手の定義と、受け方の王駒が2枚になる局面の扱いは、両者でそろえる。
 従う教訓は、[外部入力でパニックしない](../lessons/no-panic-on-external-input.md)、[不正状態を作れる公開型を避ける](../lessons/checked-constructors-for-public-types.md)、[エラーを文字列へ失わない](../lessons/typed-errors-over-strings.md)、[スレッドを所有するハンドルはDropで回収する](../lessons/join-threads-on-drop.md)、[回帰テストは修正を外して失敗を確認する](../lessons/confirm-regression-test-fails-without-fix.md)、および[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)である。
 
 ## 設計判断

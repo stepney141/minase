@@ -24,6 +24,7 @@
 | Gumbel dlshogi | TadaoYamaoka/gumbel-dlshogi、1cae574a（2025年12月24日） | LICENSEなし |
 | AobaZero | kobanium/aobazero、5eb94416（2026年7月20日） | 学習部は原則パブリックドメイン |
 | mctx | google-deepmind/mctx、428bfb7 | Apache-2.0 |
+| cshogi | TadaoYamaoka/cshogi、6985fe5b（2026年10月31日のmaster）。Gumbel dlshogiのコミットの時点の版ではない | GPL-3.0 |
 
 論文と文書は、AlphaZero（arXiv:1712.01815v1）、Gumbel AlphaZero（Danihelka et al., ICLR 2022のカメラレディ版の全文と、Danihelkaの博士論文）、MuZero（arXiv:1911.08265）、MuZero Unplugged（arXiv:2104.06294）、EfficientZero（arXiv:2111.00210）、ELF OpenGo（arXiv:1902.04522）、技巧のWCSC34詳細アピール文書、AobaZeroのWCSC35詳細PR文書、および山岡忠夫氏のブログ「TadaoYamaokaの開発日記」の記事を読んだ。
 OpenReviewのGumbel論文のPDFは取得できなかった。
@@ -214,7 +215,14 @@ lc0のmoves-left headは残り手数を予測し、探索で勝っている側�
 lc0のプルリクエスト#961は、対局で勝局が平均70手番短くなり、Eloが+39（誤差±15）上がったと報告したが、自己対局の手数への効果は報告していない。
 
 詰みについて、Gumbel dlshogiは、着手の後に手番側の3手詰めがあれば勝ちとして終局する処理を入れて、入玉宣言による退化を止めた（`selfplay.py` 121〜128、175〜183行、連載その9）。
+この3手詰めはcshogiの`mate_move(3)`であり（`selfplay.py` 127行）、cshogiは手数を固定した奇数手詰めの探索`mateMoveInOddPlyReturnMove`を呼ぶ（cshogi `src/cshogi.h` 242〜247行）。
+df-pnではない。
 dlshogiは、葉の展開で7手以内の奇数手詰めを調べ、勝ちなら価値を上書きする（`selfplay/self_play.cpp` 786〜806行）。
+この探索`mateMoveInOddPly`も手数を固定した全探索であり、攻め方の手を王手専用の生成（`generateCheckAllMoves`）で、受け方の手を王手を受ける手の生成で作る（`usi/mate.h` 18〜48行）。
+dlshogiがdf-pn（`usi/dfpn.cpp`）を使うのは、自己対局の根の局面を別スレッドで調べる場合と、対局エンジンが最善手順の詰みを調べる場合である。
+前者は引数`--mate_depth`の既定値が0なので、指定しなければ動かない（`self_play.cpp` 1187〜1191、1254〜1270、1736行）。
+後者はコンパイル時の`PV_MATE_SEARCH`で有効になる（`usi/PvMateSearch.h`）。
+dlshogiの3つのファイルとcshogiは、クローンではなく、版を指定した個々のファイルを2026年10月31日に取得して読んだ。
 minaseの自己対局は規則上の詰みと王駒の捕獲を審判層で裁定するだけであり、サイクル30では終局の77%が王駒の捕獲であった。
 
 ### 学習率の予定
