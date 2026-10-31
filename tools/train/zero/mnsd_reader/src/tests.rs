@@ -1,6 +1,8 @@
 //! Writerと既存のRust学習器を独立した参照元にして、選別と復号を照合する。
 
 use super::*;
+use minase::nn::control::CONTROL_SIZE;
+use minase::nn::{INPUT_SIZE, encode};
 use minase::training::records::{Entry, GameRecord, TeacherKind, Writer, sorted_legal_moves};
 use minase_core::{
     Color, DrawReason, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square,
@@ -16,6 +18,139 @@ use std::{
 };
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+#[test]
+fn control_planes_match_inference_for_every_retained_record() {
+    // フェーズ3: MNSDの再生で得た局面を推論で符号化し、盤の配列から得た64面と照合する。
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");
+    let records = read_file(&path).unwrap();
+    let actual = control_planes(&records.boards, &records.sides).unwrap();
+    assert_eq!(actual.len(), records.sides.len() * 64 * 144);
+    let mut reader = Reader::new(BufReader::new(File::open(&path).unwrap())).unwrap();
+    let mut input = vec![0.0; INPUT_SIZE];
+    let mut index = 0;
+    while let Some(game) = reader.read_game().unwrap() {
+        for (entry, position) in game.record().entries().iter().zip(game.positions()) {
+            if entry.exclusion() != Exclusion::None || entry.value() == Value::None {
+                continue;
+            }
+            encode(position, &mut input).unwrap();
+            assert_eq!(
+                actual[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
+                input[95 * 144..],
+                "record {index}"
+            );
+            index += 1;
+        }
+    }
+    assert_eq!(index, 1009);
+}
+
+#[test]
+fn control_planes_decode_promoted_pieces_and_both_sides_from_records() {
+    let fixture = Fixture::new();
+    let mut games = Vec::new();
+    for side in Color::ALL {
+        let mut builder = PositionBuilder::new(side);
+        for (file, rank, color, kind) in [
+            (2, 3, Color::Black, PieceKind::GoldGeneral),
+            (5, 5, Color::Black, PieceKind::HornedFalcon),
+            (8, 8, Color::White, PieceKind::Lion),
+            (10, 8, Color::White, PieceKind::SoaringEagle),
+        ] {
+            builder
+                .put(
+                    square(file, rank),
+                    PieceCode::new_promoted(color, kind).unwrap(),
+                )
+                .unwrap();
+        }
+        games.push(
+            GameRecord::new(
+                side as u32,
+                Origin::RandomSelfplay,
+                draw(),
+                0,
+                builder.finish().unwrap(),
+                vec![
+                    Entry::new(
+                        None,
+                        Value::AlphaBeta(0),
+                        Exclusion::None,
+                        Policy::None,
+                        None,
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap(),
+        );
+    }
+    let path = fixture.write(TeacherKind::AlphaBeta, &games);
+    let records = read_file(&path).unwrap();
+    let actual = control_planes(&records.boards, &records.sides).unwrap();
+    let mut reader = Reader::new(BufReader::new(File::open(path).unwrap())).unwrap();
+    for planes in actual.as_chunks::<CONTROL_SIZE>().0 {
+        let game = reader.read_game().unwrap().unwrap();
+        let mut input = vec![0.0; INPUT_SIZE];
+        encode(&game.positions()[0], &mut input).unwrap();
+        assert_eq!(planes, &input[95 * 144..]);
+    }
+    assert_eq!(records.sides, [0, 1]);
+    assert!(reader.read_game().unwrap().is_none());
+}
+
+#[test]
+fn control_planes_reject_invalid_codes_deferred_promotion_shapes_and_sides() {
+    // recordsの駒コードの仕様: 未成は1〜21、成駒は30+成った後の駒種、後手は64を足す。
+    let promoted = [
+        34, 35, 36, 37, 38, 39, 40, 42, 47, 50, 51, 52, 53, 54, 55, 56, 57, 58,
+    ];
+    let mut board = [0; 144];
+    for code in 1..=255 {
+        board[37] = code;
+        let valid =
+            code < 128 && ((1..=21).contains(&(code % 64)) || promoted.contains(&(code % 64)));
+        if valid {
+            assert!(control_planes(&board, &[0]).is_ok(), "valid code {code}");
+        } else if code & 128 != 0 {
+            assert!(matches!(
+                control_planes(&board, &[0]),
+                Err(Error::PromotionDeferred {
+                    position: 0,
+                    square: 37
+                })
+            ));
+        } else {
+            assert!(
+                matches!(control_planes(&board, &[0]), Err(Error::Format(records::Error::InvalidPieceCode(actual))) if actual == code)
+            );
+        }
+    }
+    for (boards, sides) in [
+        (vec![0; 143], vec![0]),
+        (vec![0; 145], vec![0]),
+        (vec![0; 288], vec![0]),
+        (vec![0; 144], vec![]),
+    ] {
+        assert!(matches!(
+            control_planes(&boards, &sides),
+            Err(Error::InvalidControlShape)
+        ));
+    }
+    for side in [2, 255] {
+        assert!(
+            matches!(control_planes(&[0; 144], &[side]), Err(Error::Format(records::Error::InvalidSideToMove(actual))) if actual == side)
+        );
+    }
+    assert!(control_planes(&[], &[]).unwrap().is_empty());
+    assert!(
+        control_planes(&[0; 144], &[0])
+            .unwrap()
+            .iter()
+            .all(|&value| value == 0.0)
+    );
+}
 
 struct Fixture(PathBuf);
 
@@ -558,10 +693,10 @@ fn game_selection_uses_full_keys_without_the_training_validation_split() {
         );
         assert_eq!(selected.policy_offsets.len(), games.len() + 1);
         assert_eq!(selected.legal_offsets.len(), games.len() + 1);
-        for values in selected.values.chunks_exact(3) {
+        for &values in selected.values.as_chunks::<3>().0 {
             assert_eq!(values, [100, -200, -32768]);
         }
-        for probabilities in selected.policy_probabilities.chunks_exact(3) {
+        for &probabilities in selected.policy_probabilities.as_chunks::<3>().0 {
             assert_eq!(probabilities, [65535, 10000, 55535]);
         }
     }

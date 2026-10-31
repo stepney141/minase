@@ -26,7 +26,8 @@ class KnownLogits(torch.nn.Module):
         self.register_buffer("value", value)
 
     def forward_logits(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        indices = inputs.sum(dim=1).flatten(1).argmax(1)
+        # 面0〜93の駒の配置から、歩兵を置いた升を求める。
+        indices = inputs[:, :94].sum(dim=1).flatten(1).argmax(1)
         return self.policy[indices], self.value[indices]
 
 

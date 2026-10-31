@@ -13,7 +13,11 @@
 //! 訓練・検証の分割を問わず、指定した対局の採用局面だけを返す。
 //! いずれも件数は抽出前の値であり、完全な形式検査は再生時に行う。
 //!
-//! 配列はすべてリトルエンディアンのbytesであり、NumPyの`frombuffer`で読める。
+//! `control_planes(boards, sides)`はuint8のNumPy配列`(n,144)`と`(n,)`を受け取り、
+//! 入力の面95〜158をfloat32のNumPy配列`(n,64,144)`として返す。
+//! 不正な駒コード、手番、形、型、および成り権の保留はValueErrorとする。
+//!
+//! 読み込み関数が返す配列はすべてリトルエンディアンのbytesであり、NumPyの`frombuffer`で読める。
 //! nは保持した局面数、mはその全候補数、lはその全合法手数、gはファイルの全対局数を表す。
 //! 合法手は反復の履歴を考えず、`MoveGenerator::generate_moves`で生成する。
 //! 各局面の手は`records::sorted_legal_moves`と同じ4バイト鍵の順で並べる。
@@ -46,12 +50,14 @@ use std::{collections::HashSet, fmt, fs::File, io, io::BufReader, path::Path};
 use minase::training::records::{self, Exclusion, Header, Origin, Outcome, Policy, Reader, Value};
 use minase_core::{GameResult, Move, MoveGenerator};
 
+mod control;
 #[cfg(feature = "python")]
 mod python;
 mod scan;
 #[cfg(test)]
 mod tests;
 
+pub use control::control_planes;
 pub use scan::scan_file;
 
 /// 入出力、MNSDの形式、および学習用の内容検査の失敗。
@@ -73,6 +79,12 @@ pub enum Error {
     PlyOverflow { game: u32, index: usize },
     /// 抽出の番号が厳密な昇順でないか、訓練局面数の範囲外である。
     InvalidSelection,
+    /// 盤と手番の配列長が合わないか、利きの出力要素数を表せない。
+    InvalidControlShape,
+    /// 利きの面の出力を確保できない。
+    AllocateControl(std::collections::TryReserveError),
+    /// ネットの入力では扱わない成り権の保留印がある。
+    PromotionDeferred { position: usize, square: usize },
 }
 
 impl fmt::Display for Error {
@@ -97,6 +109,15 @@ impl fmt::Display for Error {
                 f,
                 "training indices must be strictly increasing and within the training position count"
             ),
+            Self::InvalidControlShape => write!(
+                f,
+                "boards must contain 144 squares per side and the output size must fit in memory"
+            ),
+            Self::AllocateControl(error) => write!(f, "cannot allocate control planes: {error}"),
+            Self::PromotionDeferred { position, square } => write!(
+                f,
+                "position {position}, square {square}: deferred promotion cannot be encoded"
+            ),
         }
     }
 }
@@ -106,6 +127,7 @@ impl std::error::Error for Error {
         match self {
             Self::Io(error) => Some(error),
             Self::Format(error) => Some(error),
+            Self::AllocateControl(error) => Some(error),
             _ => None,
         }
     }

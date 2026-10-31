@@ -7,6 +7,7 @@ import unittest
 import onnx
 import torch
 
+from minase_zero.encoding import INPUT_PLANES
 from minase_zero.net import ZeroNet, export_onnx
 
 
@@ -19,7 +20,7 @@ class NetTests(unittest.TestCase):
     def test_forward_logits_preserves_policy_and_sigmoid_value(self) -> None:
         torch.manual_seed(7)
         model = ZeroNet(1, 16).eval()
-        inputs = torch.randn(3, 95, 12, 12)
+        inputs = torch.randn(3, INPUT_PLANES, 12, 12)
         with torch.inference_mode():
             policy, value = model(inputs)
             policy_logits, value_logits = model.forward_logits(inputs)
@@ -38,7 +39,7 @@ class NetTests(unittest.TestCase):
         self.assertEqual([entry.name for entry in model.graph.input], ["input"])
         self.assertEqual([entry.name for entry in model.graph.output], ["policy", "value"])
         for entry, shape in zip(
-            [*model.graph.input, *model.graph.output], [(95, 12, 12), (35_856,), (1,)],
+            [*model.graph.input, *model.graph.output], [(159, 12, 12), (35_856,), (1,)],
         ):
             tensor = entry.type.tensor_type
             self.assertEqual(tensor.elem_type, onnx.TensorProto.FLOAT)

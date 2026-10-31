@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .encoding import INPUT_PLANES
 from .net import ZeroNet
 
 
@@ -17,12 +18,12 @@ def evaluate_fixture(model: ZeroNet, fixture_path: Path, onnx_bytes: bytes) -> d
         fixtures = [json.loads(line) for line in source]
     if not fixtures:
         raise ValueError("fixture contains no positions")
-    inputs = np.zeros((len(fixtures), 95, 12, 12), dtype=np.float32)
+    inputs = np.zeros((len(fixtures), INPUT_PLANES, 12, 12), dtype=np.float32)
     flat = inputs.reshape(len(fixtures), -1)
     for index, fixture in enumerate(fixtures):
         active = fixture["input"]
         if not isinstance(active, list) or any(
-            type(offset) is not int or not 0 <= offset < 95 * 12 * 12 for offset in active
+            type(offset) is not int or not 0 <= offset < INPUT_PLANES * 12 * 12 for offset in active
         ):
             raise ValueError(f"position {index}: invalid input indices")
         flat[index, active] = 1.0

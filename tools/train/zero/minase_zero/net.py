@@ -8,6 +8,8 @@ import onnx
 import torch
 from torch import nn
 
+from .encoding import INPUT_PLANES
+
 
 def validate_ema(period_samples: int, scale: float) -> None:
     """平均の周期と係数は、ともに0か、ともに正の有限値に限る。"""
@@ -79,12 +81,12 @@ class ResidualBlock(nn.Module):
 
 
 class ZeroNet(nn.Module):
-    """95面から方策のlogitと手番側の勝率を返すネット。"""
+    """159面から方策のlogitと手番側の勝率を返すネット。"""
 
     def __init__(self, blocks: int, channels: int) -> None:
         super().__init__()
         self.trunk = nn.Sequential(
-            nn.Conv2d(95, channels, 3, padding=1, bias=False),
+            nn.Conv2d(INPUT_PLANES, channels, 3, padding=1, bias=False),
             nn.BatchNorm2d(channels),
             nn.ReLU(),
             *(ResidualBlock(channels) for _ in range(blocks)),
@@ -117,7 +119,7 @@ class ZeroNet(nn.Module):
 
 def export_onnx(model: ZeroNet, path: Path) -> None:
     """実現性の測定と参照推論で同じ設定のONNXを書き出し、検査する。"""
-    sample = torch.zeros(1, 95, 12, 12, dtype=torch.float32)
+    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.float32)
     with torch.inference_mode():
         torch.onnx.export(
             model,

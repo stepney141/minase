@@ -2,8 +2,10 @@
 
 use std::{collections::HashSet, path::Path};
 
-use minase_core::Rules;
+use minase::nn::control::CONTROL_PLANES;
+use minase_core::{BOARD_SQUARE_COUNT, Rules};
 use pyo3::{
+    buffer::PyBuffer,
     exceptions::{PyOSError, PyValueError},
     prelude::*,
     types::{PyBytes, PyDict},
@@ -98,6 +100,41 @@ fn read_games(
     record_dict(py, &records)
 }
 
+/// uint8の盤`(B,144)`と手番`(B,)`からfloat32の疑似利き`(B,64,144)`を返す。
+///
+/// 盤の駒コードはMNSDと同じで、手番は先手0、後手1とする。
+/// 不正な形・型・駒コード・手番と成り権の保留はValueErrorを送出する。
+/// 非連続な配列も受け付け、Rustでの符号化中はGILを解放する。
+#[pyfunction]
+fn control_planes<'py>(
+    py: Python<'py>,
+    boards: &Bound<'py, PyAny>,
+    sides: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let boards = PyBuffer::<u8>::get(boards)
+        .map_err(|_| PyValueError::new_err("boards must have dtype uint8"))?;
+    let sides = PyBuffer::<u8>::get(sides)
+        .map_err(|_| PyValueError::new_err("sides must have dtype uint8"))?;
+    if boards.dimensions() != 2 || boards.shape()[1] != BOARD_SQUARE_COUNT {
+        return Err(PyValueError::new_err("boards must have shape (B, 144)"));
+    }
+    let count = boards.shape()[0];
+    if sides.shape() != [count] {
+        return Err(PyValueError::new_err("sides must have shape (B,)"));
+    }
+    let boards = boards.to_vec(py)?;
+    let sides = sides.to_vec(py)?;
+    let planes = py
+        .detach(|| crate::control_planes(&boards, &sides))
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let output = py.import("numpy")?.call_method1(
+        "empty",
+        ((count, CONTROL_PLANES, BOARD_SQUARE_COUNT), "float32"),
+    )?;
+    PyBuffer::<f32>::get(&output)?.copy_from_slice(py, &planes)?;
+    Ok(output)
+}
+
 fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDict>> {
     let header = &info.header;
     let output = PyDict::new(py);
@@ -167,5 +204,6 @@ fn minase_mnsd_reader(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(scan, module)?)?;
     module.add_function(wrap_pyfunction!(read_selected, module)?)?;
     module.add_function(wrap_pyfunction!(read_games, module)?)?;
+    module.add_function(wrap_pyfunction!(control_planes, module)?)?;
     Ok(())
 }

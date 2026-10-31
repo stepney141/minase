@@ -10,7 +10,7 @@ import minase_mnsd_reader
 import numpy as np
 from numpy.typing import NDArray
 
-from .encoding import BOARD_SQUARES, policy_labels
+from .encoding import BOARD_SQUARES, INPUT_PLANES, policy_labels
 
 
 def hash64(seed: int, games: NDArray[np.integer]) -> NDArray[np.uint64]:
@@ -145,7 +145,7 @@ def _dataset(raw: dict, info: FileInfo) -> Dataset:
     offsets = np.frombuffer(raw["policy_offsets"], dtype="<u8")
     probabilities = np.frombuffer(raw["policy_probabilities"], dtype="<u2")
     if np.any(boards & 128):
-        raise ValueError(f"{path}: deferred promotion cannot be encoded in 95 planes")
+        raise ValueError(f"{path}: deferred promotion cannot be encoded in {INPUT_PLANES} planes")
     counts = np.diff(offsets)
     if np.any(counts == 0):
         raise ValueError(f"{path}: every selected position must have policy candidates")
