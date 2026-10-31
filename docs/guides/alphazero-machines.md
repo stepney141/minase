@@ -117,12 +117,12 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 ### 4.1 強化学習のサイクルを回す一連の手順
 
 強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
-手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> <raw|ema> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
+手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> <raw|ema> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。スクリプトは本線（`cycles/`）を回し、学習技法の導入の後の構成の引数（学習窓4,780.2万局面、cosine annealing、1サイクルの見込み80分と2.4 CU）を渡す。重みの移動平均はサイクル21の学習から始めるので、20以下と21以上のサイクルを1回の起動に混ぜるとエラーで止まる。最初のサイクルが1のときは、[学習技法の導入の試走](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)の生成の集計（NASの`trial-restart/cycle-0001/selfplay/summary.json`）から対局数を決める。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
 
 1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
 2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
 3. 書庫と`docs/measurements/alphazero-rl/alphazero-rl-trial/colab-setup.sh`をrsyncで`/content/`へ送り、`colab-setup.sh`を`setsid nohup`で起動する（導入は3〜17分）。
-4. 起動スクリプトを、`--first-cycle`、`--last-cycle`、`--deadline`、`C=<コミット>`、およびセッション名を書き換えて`nohup setsid bash`で起動する。スクリプトは導入の完了を待って`minase_zero run-cycles`を走らせ、終了コードによらず`colab stop`し、止めた時刻と残高を`rentals.jsonl`に足す。
+4. スクリプトは導入の完了を待って`minase_zero run-cycles`を走らせ、終了コードによらず`colab stop`し、止めた時刻と残高を`rentals.jsonl`に足す。
 5. 進み具合は`/mnt/synology_nas/minase/alphazero/logs/runner-<セッション>-<時刻>.log`の末尾で見る。サイクルの結果は`cycles.jsonl`、CUの区間は`sessions.jsonl`にある。
 6. 実行器が異常で止まったら、ログの末尾のエラーと、該当サイクルの`cycles/cycle-NNNN/`の状態ファイル（`*.started.json`、`*.exit`、`*.log`）を見る。不合格の出力を退けて学び直すときは、削除せずに`cycles/cycle-NNNN/rejected-<理由>/`へ移す。
 
