@@ -157,7 +157,7 @@ dlshogiの手数を固定した詰み探索は、攻め方の手を王手専用�
 利きの面は、`crates/minase/src/nn/`に置く1つの関数で作る。
 推論の符号化はこの関数を直接呼び、学習器は拡張モジュール`minase_mnsd_reader`を通してバッチごとに盤の配列から同じ関数を呼ぶ。
 教師データには面を書かないので、MNSDの大きさは変わらない。
-[入力のADR](../adr/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)が利きの面を初版で採らなかった理由（中将棋の規則をPythonで再実装するか、教師データを大きくする必要）は、Rustの1つの関数を推論と学習の両方から呼ぶこの構成で解消する。
+[入力のADR](../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)が利きの面を初版で採らなかった理由（中将棋の規則をPythonで再実装するか、教師データを大きくする必要）は、Rustの1つの関数を推論と学習の両方から呼ぶこの構成で解消する。
 固定局面集`tools/train/zero/fixtures/nn-positions.jsonl`はRustで書き出し直し、推論と学習器の159面の一致を同じ試験で固定する。
 
 ### 価値ヘッドと補助ヘッド
@@ -221,7 +221,7 @@ sには同じ局面が複数回現れてよいので、拡張モジュールに�
 更新回数はceil(4N/256)とし、`sample_sha256`と`data_order_sha256`は重複を含むs全体から求める。
 抽出数が窓を超えると拒否する学習器の`sample_training_indices`（`data.py` 196行）と、重複した番号を拒否する拡張モジュール（`tools/train/zero/mnsd_reader/src/lib.rs` 260行）は、この契約に合わせて改める。
 4倍は、KataGoの手引きが「conservative」として勧める、新しいデータ1行あたりの学習の回数である（`SelfplayTraining.md` 58、67行）。
-再開の照合は、[学習窓の抽出のADR](../adr/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
+再開の照合は、[学習窓の抽出のADR](../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
 
 ### 1サイクルの所要時間と費用の見積もり
 
@@ -238,10 +238,10 @@ L4のColab機で、リセット前のサイクル30の生成は1,115秒、学習
 
 完了時には、次のADRの該当する決定を置き換える新しいADRを書き、旧ADRを`docs/adr/archive/`へ移す。
 
-- [Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-for-zero-self-play-search.md)で定めた、Qの尺度0.1、毎手の倍率1.0のGumbel乱数、および手番ごとに同じ探索回数の3つの決定。
-- [入力のADR](../adr/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)で定めた、95面の入力と利きの面を入れない決定。
-- [ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)で定めた、1チャネルの価値ヘッド。
-- [学習窓の抽出のADR](../adr/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
+- [Gumbel AlphaZeroのADR](../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)で定めた、Qの尺度0.1、毎手の倍率1.0のGumbel乱数、および手番ごとに同じ探索回数の3つの決定。
+- [入力のADR](../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)で定めた、95面の入力と利きの面を入れない決定。
+- [ネットの構成のADR](../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)で定めた、1チャネルの価値ヘッド。
+- [学習窓の抽出のADR](../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
 
 補助目標、3手以内の勝ちによる打ち切り、およびRLの学習率の予定は、新しいADRに書く。
 

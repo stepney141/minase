@@ -161,7 +161,7 @@ c_scaleは、指す手と方策の目標softmax(logit＋σ(completedQ))に加え
 1.0にするとQの重みが増し、方策の改善の幅も大きくなるが、少ない訪問回数で推定した不正確なQも強める（推論）。
 Gumbel論文は、囲碁ではQの尺度に敏感でなく、c_visit≥50ならほぼ同じ結果になったと書く（付録F、図8a）。
 一方、Atariのbeam riderではc_scaleを大きくすると性能が落ちた（図5b）。
-minaseの値は、mctxの既定値に合わせた[Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-for-zero-self-play-search.md)の決定である。
+minaseの値は、mctxの既定値に合わせた[Gumbel AlphaZeroのADR](../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)の決定である。
 
 指す手の乱択を残したまま勝敗の教師を補正する方法として、lc0はdeblunderを使う（`src/trainingdata/rescorer.cc` 990〜1065行）。
 棋譜を末尾から先頭へたどり、最善手と指した手のQの差が閾値を超えた局面か、確定した勝ちを逃した局面を見つけると、その局面とそれより前の局面の勝敗の目標を、その局面の最善手のQで置き換える。
@@ -178,7 +178,7 @@ Eloへの効果の数値は一次資料に見つからなかった。
 | lc0（ResNet） | 1×1畳み込みで32チャネル、全結合128、ReLU、全結合3（勝ち、引き分け、負け） | lczero-training `tf/tfprocess.py` 1601〜1633行 |
 | KataGo（b10c128） | 1×1畳み込みで32チャネル、平均を基にした3種の大域プーリング、全結合96→80、出力。BNはない | `python/katago/train/model_pytorch.py` 2827〜2989行、`modelconfigs.py` 192〜195行 |
 
-minaseの価値ヘッドは、[ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の決定であり、AlphaGo Zeroの1フィルタの構成と同じ形である。
+minaseの価値ヘッドは、[ネットの構成のADR](../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の決定であり、AlphaGo Zeroの1フィルタの構成と同じ形である。
 調べた後発の実装はどれも、価値ヘッドの最初の畳み込みで27〜32チャネルを残す。
 KataGoは、それをプーリングして96値にしてから全結合へ渡すので、全結合の入力はminaseの144値より少ない。
 したがって、チャネル数の差だけでは容量の不足を示せず、効果は比べて確かめる必要がある（推論）。
@@ -279,7 +279,7 @@ minaseのMNSDは探索前の方策と価値を記録していないので、こ�
 dlshogiの入力は、各陣営について、駒種ごとの利きの14面（入力のチャネル）と、利きの本数を上限3で数えた3面を持つ（`cppshogi/cppshogi.cpp` 61〜103行）。
 2017年6月21日の記事は、20万局面の学習で利き数の面を加えると、方策の正解率が0.2984から0.3143へ、価値の正解率が0.7947から0.8158へ上がったと報告した（[記事](https://tadaoyamaoka.hatenablog.com/entry/2017/06/21/193836)）。
 同じ記事の1,000万局面の再実験では、駒種ごとの利きの面で方策の正解率が0.3655から0.3723へ上がり、価値の正解率は変わらなかった。
-minaseの[入力のADR](../adr/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)は、利きの面を初版の後に効果を測る候補として残している。
+minaseの[入力のADR](../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)は、利きの面を初版の後に効果を測る候補として残している。
 入力を変えると学習済みのネットを使えなくなるので、入れるなら再出発の前に決める必要がある。
 
 ### ネットの構造

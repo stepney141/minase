@@ -7,7 +7,7 @@
 ## コンテキスト
 
 AlphaZero型探索の強化学習（RL）では、自己対局のデータでネットを学習し直して次のサイクルの生成に使う。
-ネットは大域プーリングを入れた10ブロック128チャネルのResNetから始め（[ネットの構成のADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)）、minaseはONNXのファイルをONNX Runtimeで推論する（[推論のADR](run-zero-network-inference-through-ort-load-dynamic.md)）。
+ネットは大域プーリングを入れた10ブロック128チャネルのResNetから始め（[ネットの構成のADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)）、minaseはONNXのファイルをONNX Runtimeで推論する（[推論のADR](run-zero-network-inference-through-ort-load-dynamic.md)）。
 minaseの学習器`crates/minase-trainer`はRustで書かれ、NNUE、PST、およびFMを評価関数ごとのパイプラインで学習し、NNUEのGPUカーネルをCUDA C++の実行時コンパイル（NVRTC）で実装している（[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)）。
 ただし、ResNetの学習に要る畳み込み、バッチ正規化、大域プーリング、およびそれらの逆伝播のカーネルは持たない。
 NNUEの学習器がRustで得た速さは、疎な入力特徴の収集と逆索引の設計に由来し（[調査](../research/nnue-trainer-speed.md)）、入力が密なResNetには当てはまらない。

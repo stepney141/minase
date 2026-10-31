@@ -7,13 +7,13 @@
 //!
 //! 設計判断は`docs/adr/`の次の7本に記録している。
 //!
-//! - `encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md`
+//! - `encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md`
 //! - `encode-the-zero-policy-as-249-planes-per-from-square.md`
 //! - `predict-a-single-win-probability-in-the-zero-network.md`
 //! - `run-zero-network-inference-through-ort-load-dynamic.md`
 //! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
-//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md`
+//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
 //!
 //! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。
 

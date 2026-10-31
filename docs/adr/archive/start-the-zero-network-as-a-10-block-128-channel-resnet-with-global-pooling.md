@@ -2,15 +2,15 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](../start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)によって置き換えられた。決定日は2026年10月27日。
 
 ## コンテキスト
 
 ネットの構成は、学習器が学習してONNXへ書き出す計算グラフであり、minaseの推論はその入出力の名前と形だけに依存する。
-KataGoは、残差ブロックのうち2〜3個に等間隔で大域プーリング（チャネルごとの平均と最大値を他のチャネルへバイアスとして戻す層）を入れ、それを除くと学習の効率が1.60倍の差になると報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565、付録A.3と表2。配置の記述の誤りは2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
+KataGoは、残差ブロックのうち2〜3個に等間隔で大域プーリング（チャネルごとの平均と最大値を他のチャネルへバイアスとして戻す層）を入れ、それを除くと学習の効率が1.60倍の差になると報告している（Wu, "Accelerating Self-Play Learning in Go", arXiv:1902.10565、付録A.3と表2。配置の記述の誤りは2026年10月28日の[監査](../../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 KataGoは学習の最初の約1日で6ブロック96チャネルから10ブロック128チャネルへ移り、lc0のT70も10ブロック128チャネルである。
-[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)では、10ブロック128チャネルのネットによる強化学習の1サイクルを、Colab機のL4で約40分で回せる見込みが得られた。
-決定の経緯は[ネットの入出力と推論の設計書](../plans/archived/alphazero-network.md)にある。
+[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)では、10ブロック128チャネルのネットによる強化学習の1サイクルを、Colab機のL4で約40分で回せる見込みが得られた。
+決定の経緯は[ネットの入出力と推論の設計書](../../plans/archived/alphazero-network.md)にある。
 
 ## 決定
 
@@ -28,7 +28,7 @@ ONNXの入力の名前は`input`（形`[バッチ, 95, 12, 12]`）、出力の�
 
 ## 結果
 
-伸びが止まった場合にネットを大きくする段階は、[強化学習の実行の設計書](../plans/alphazero-rl.md)が定める。
-ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)）。
+伸びが止まった場合にネットを大きくする段階は、[強化学習の実行の設計書](../../plans/alphazero-rl.md)が定める。
+ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)）。
 minaseの推論は、セッションの作成時に入出力の名前、要素型、および形を確かめ、契約と異なるネットをエラーで拒否する。
 実装の基準は、ランダム初期化のネットを書き出す`tools/train/zero/feasibility/make_nets.py`の`ZeroNet`であり、学習器はこれと同じ構成を実装する。

@@ -166,9 +166,9 @@ CECPのエンジンへの指定は従来どおり起動前に拒否する。
 第1に、Gumbel dlshogiは、手数の上限に達した対局を除いた後も入玉宣言の割合が3サイクル目に41.2%となり、3手詰めの判定を加えた次の実験で多くて0.2%になった。
 [先行実装の調査](../../research/alphazero-prior-art.md)と[価値のADR](../../adr/predict-a-single-win-probability-in-the-zero-network.md)の文脈の記述を訂正する。
 第2に、技巧の自己対局の探索回数は、約1,000万対局まで32回、約4,000万対局まで64回、以後128回であり、16〜64回ではない。
-[先行実装の調査](../../research/alphazero-prior-art.md)と[Gumbel AlphaZeroのADR](../../adr/use-gumbel-alphazero-for-zero-self-play-search.md)の文脈の記述を訂正する。
+[先行実装の調査](../../research/alphazero-prior-art.md)と[Gumbel AlphaZeroのADR](../../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)の文脈の記述を訂正する。
 第3に、KataGoの大域プーリングは残差ブロックのうち2〜3個に等間隔で入っており、すべてのブロックに入れたminaseの構成とは異なる。
-[ネットの構成のADR](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の文脈の記述を訂正する。
+[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)の文脈の記述を訂正する。
 凍結した設計書は書き直さず、監査報告が対応箇所を示す。
 ADRの決定は変えないので、文脈の誤った文だけを改める。
 `Game`のdocコメントには、MCTSでは`Game`を使い、αβ探索の方式は維持する変更を反映し、[対局履歴の分離のADR](../../adr/keep-game-history-out-of-position-and-movegen.md)に対する例外は新しいADRのコンテキストに記す（承認済みのADRの本文は書き換えない）。
