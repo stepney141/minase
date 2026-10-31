@@ -52,34 +52,36 @@ class DataTests(unittest.TestCase):
         self.directory = Path(directory.name)
 
     def test_generator_fixture_metadata_and_selected_positions(self) -> None:
-        # 生成器の集計は8局・探索1009局面・先手3勝・後手5勝、基本シード20261038である。
+        # 生成器の集計は32局・完全探索741局面・速い探索2218局面・先手11勝・後手21勝、基本シード20261038である。
         data, info = self.dataset, self.info
         self.assertEqual(info.header.teacher_kind, 1)
         self.assertEqual(info.header.origin, 0)
         self.assertEqual(info.header.rule_set, "L0,P0,R1,E0")
         self.assertTrue(info.header.engine_default)
         self.assertEqual(info.header.seed, 20261038)
-        self.assertEqual(info.header.game_count, 8)
-        self.assertEqual(info.header.entry_count, 1099)
-        self.assertEqual(len(info.game_numbers), 8)
-        self.assertEqual(info.position_count, 1009)
-        self.assertEqual(len(data), 1009)
-        self.assertEqual(data.boards.shape, (1009, 144))
+        self.assertEqual(info.header.game_count, 32)
+        self.assertEqual(info.header.entry_count, 3375)
+        self.assertEqual(len(info.game_numbers), 32)
+        self.assertEqual(info.position_count, 741)
+        self.assertEqual(len(data), 741)
+        self.assertEqual(data.boards.shape, (741, 144))
         self.assertEqual(info.path, FIXTURE.resolve())
         self.assertEqual(info.size, FIXTURE.stat().st_size)
-        self.assertEqual(info.training_count + info.validation_count, 1009)
+        self.assertEqual(info.training_count + info.validation_count, 741)
         self.assertEqual(info.validation_count, np.count_nonzero(data.validation))
-        self.assertEqual(len(np.unique(data.games[data.validation])), 2)
+        self.assertEqual(len(np.unique(data.games[data.validation])), 4)
         outcomes = np.frombuffer(self.raw["outcomes"], dtype=np.uint8)
+        # 対局6は後手勝ちで、序盤の乱択と速い探索だけで打ち切られ、採用局面を持たない。
+        self.assertEqual(set(info.game_numbers) - set(data.games), {6})
         game_outcomes = []
-        for game in info.game_numbers:
+        for game in np.unique(data.games):
             mask = data.games == game
             self.assertEqual(len(np.unique(data.validation[mask])), 1)
             result = np.unique(outcomes[mask])
             self.assertEqual(len(result), 1)
             game_outcomes.append(int(result[0]))
-        self.assertEqual(game_outcomes.count(0), 3)
-        self.assertEqual(game_outcomes.count(1), 5)
+        self.assertEqual(game_outcomes.count(0), 11)
+        self.assertEqual(game_outcomes.count(1), 20)
         expected = np.where(outcomes == data.sides, 1.0, 0.0)
         np.testing.assert_array_equal(data.results, expected)
         self.assertEqual(data.results.dtype, np.float32)
@@ -87,7 +89,7 @@ class DataTests(unittest.TestCase):
 
     def test_generator_fixture_sparse_policy(self) -> None:
         data = self.dataset
-        self.assertEqual(data.policy_offsets.shape, (1010,))
+        self.assertEqual(data.policy_offsets.shape, (742,))
         self.assertEqual(data.policy_offsets[0], 0)
         self.assertEqual(data.policy_offsets[-1], len(data.policy_labels))
         self.assertEqual(len(data.policy_labels), len(data.policy_probabilities))
@@ -101,7 +103,7 @@ class DataTests(unittest.TestCase):
 
     def test_legal_labels_include_candidates_and_keep_extension_order(self) -> None:
         data = self.dataset
-        self.assertEqual(data.legal_offsets.shape, (1010,))
+        self.assertEqual(data.legal_offsets.shape, (742,))
         self.assertEqual(data.legal_offsets.dtype, np.uint64)
         self.assertEqual(data.legal_labels.dtype, np.uint16)
         self.assertEqual(data.legal_offsets[0], 0)
@@ -311,6 +313,55 @@ class DataTests(unittest.TestCase):
         path.write_bytes(b"MNSD")
         with self.assertRaises(ValueError):
             minase_mnsd_reader.read(str(path))
+
+    def test_auxiliary_columns_use_the_current_view_and_survive_window_concatenation(self) -> None:
+        paths = [self.directory / name for name in ("first.mnsd", "second.mnsd")]
+        for path, number in zip(paths, (9, 3), strict=True):
+            board = bytearray(144)
+            board[0], board[12], board[143], board[53] = 12, 8, 76, 65
+            # 王将0→1、相手の歩兵53→41の成り、王将1→0、合意引き分け。
+            # 白の歩兵の合法手番号0は不成、1は成りであり、両方とも同じ到達升になる。
+            header = struct.pack("<IBBBBHI", number, 0, 2, 11, 0, 23, 4)
+            entries = (
+                struct.pack("<HHBHIHH", 0, 65535, 0, 1, 4, 0, 65535)
+                + struct.pack("<HHBHIHH", 1, 0, 0, 1, 4, 1, 65535)
+                + struct.pack("<HHBHI", 0, 21845, 0, 0, 1)
+                + struct.pack("<HHBHI", 65535, 0, 4, 0, 0)
+            )
+            write_small(path, [header + board + bytes([0, 255, 0]) + entries], "engine-default")
+            contents = bytearray(path.read_bytes())
+            struct.pack_into("<Q", contents, 144, 4)
+            path.write_bytes(contents)
+        first, _ = read_file(paths[0])
+        raw = minase_mnsd_reader.read(str(paths[0]))
+        self.assertEqual(len(raw["short_term_values"]), 2 * 3 * 4)
+        self.assertEqual(first.short_term_values.dtype, np.float32)
+        expected = []
+        # v=(1,0,1/3)、末尾は1/2。2つの採用局面の式を展開して照合する。
+        for denominator in (3293, 1133, 413):
+            f = 125 / denominator
+            b = 1 - f
+            expected.append([1 - b * b * (1 / 2 + f / 6), b * (1 / 2 + f / 6)])
+        np.testing.assert_allclose(first.short_term_values, np.array(expected).T, atol=1e-7, rtol=0)
+        np.testing.assert_array_equal(first.opponent_policy_offsets, [0, 1, 1])
+        np.testing.assert_array_equal(first.opponent_policy_labels, [132 * 144 + 53])
+        np.testing.assert_array_equal(first.opponent_policy_probabilities, [65535])
+        self.assertTrue(np.all(policy_mask(opponent=True)[first.opponent_legal_labels]))
+        self.assertFalse(policy_mask()[first.opponent_policy_labels[0]])
+        self.assertEqual(first.opponent_policy_labels.dtype, np.uint16)
+        self.assertEqual(first.opponent_legal_labels.dtype, np.uint16)
+        self.assertGreater(first.opponent_legal_offsets[1], 1)
+        self.assertEqual(first.opponent_legal_offsets[1], first.opponent_legal_offsets[2])
+        combined, _, selected = read_window(paths, paths, 42)
+        self.assertEqual(len(combined), 4)
+        self.assertEqual(len(selected), 4 * int((~combined.validation).sum()))
+        np.testing.assert_array_equal(combined.short_term_values, np.tile(first.short_term_values, (2, 1)))
+        np.testing.assert_array_equal(combined.opponent_policy_offsets, [0, 1, 1, 2, 2])
+        np.testing.assert_array_equal(combined.opponent_policy_labels, np.tile(first.opponent_policy_labels, 2))
+        np.testing.assert_array_equal(combined.opponent_policy_probabilities, [65535, 65535])
+        count = len(first.opponent_legal_labels)
+        np.testing.assert_array_equal(combined.opponent_legal_offsets, [0, count, count, 2 * count, 2 * count])
+        np.testing.assert_array_equal(combined.opponent_legal_labels, np.tile(first.opponent_legal_labels, 2))
 
 
 if __name__ == "__main__":

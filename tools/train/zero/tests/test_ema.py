@@ -1,6 +1,6 @@
 """brief-ema.mdの周期、初期値、引き継ぎ、および出力の契約を検証する。
 
-周期3、係数2の例は手計算した値で確かめる。2標本ずつの実際の学習では、
+周期3、係数2の例は手計算した値で確かめる。8標本ずつの実際の学習では、
 最初のサイクルは更新0回、次は1回、その次は2回となる。
 BatchNormの係数だけを平均し、統計は更新時に複写するというKataGoの契約も固定する。
 中断からの再開による両ONNXのバイト一致はtest_train.pyの実プロセス試験で検証する。
@@ -133,7 +133,7 @@ class EmaTrainingTests(unittest.TestCase):
         args.pop("command")
         args.pop("out_dir")
         cls.config = {**args, "data": [str(cls.data_path)], "latest_data": [str(cls.data_path)],
-                      "batch_size": 2, "ema_period_samples": 3, "ema_scale": 2}
+                      "batch_size": 8, "ema_period_samples": 12, "ema_scale": 2}
         cls.states = [torch.load(cls.initial / "checkpoint.pt", weights_only=True)]
         cls.summaries = []
         for cycle in (1, 2, 3):
@@ -146,7 +146,7 @@ class EmaTrainingTests(unittest.TestCase):
     def test_initial_weights_and_sample_count_survive_a_cycle_without_an_update(self) -> None:
         self.assertNotIn("ema", self.states[0])
         ema = self.states[1]["ema"]
-        self.assertEqual((ema["updates"], ema["samples_since_update"]), (0, 2))
+        self.assertEqual((ema["updates"], ema["samples_since_update"]), (0, 8))
         for name, value in self.states[0]["model"].items():
             self.assertTrue(torch.equal(value, ema["model"][name]), name)
         self.assertFalse(torch.equal(self.states[0]["model"]["trunk.0.weight"],
@@ -157,7 +157,7 @@ class EmaTrainingTests(unittest.TestCase):
     def test_average_remainder_and_update_count_continue_across_cycles(self) -> None:
         names = dict(ZeroNet(1, 2).named_parameters())
         second, third = self.states[2], self.states[3]
-        self.assertEqual((second["ema"]["updates"], second["ema"]["samples_since_update"]), (1, 1))
+        self.assertEqual((second["ema"]["updates"], second["ema"]["samples_since_update"]), (1, 4))
         self.assertEqual((third["ema"]["updates"], third["ema"]["samples_since_update"]), (2, 0))
         for name in names:
             initial = self.states[0]["model"][name]
@@ -170,7 +170,7 @@ class EmaTrainingTests(unittest.TestCase):
                 self.assertTrue(torch.equal(state["ema"]["model"][name], state["model"][name]), name)
         for summary, updates in zip(self.summaries, (0, 1, 2), strict=True):
             self.assertEqual((summary["ema_period_samples"], summary["ema_scale"], summary["ema_updates"]),
-                             (3, 2, updates))
+                             (12, 2, updates))
             onnx = self.root / f"cycle-{summary['cycle']}/model-ema.onnx"
             self.assertEqual(summary["ema_network_sha256"], hashlib.sha256(onnx.read_bytes()).hexdigest())
 
@@ -208,7 +208,7 @@ class EmaTrainingTests(unittest.TestCase):
             actual = summary["ema_diagnostics"][name]
             for key in ("game_count", "position_count", "hash_modulus", "hash_remainder", "games"):
                 self.assertEqual(actual[key], summary["diagnostics"][name][key])
-            expected = diagnose(model, data, np.flatnonzero(membership), torch.device("cpu"), self.config, mask)
+            expected = diagnose(model, data, np.flatnonzero(membership), torch.device("cpu"), self.config, mask, auxiliary=True)
             for key, value in expected.items():
                 self.assertEqual(actual[key], value)
         self.assertNotEqual(summary["ema_diagnostics"], summary["diagnostics"])

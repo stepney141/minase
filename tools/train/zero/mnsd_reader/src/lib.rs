@@ -45,10 +45,17 @@
 //! | `legal_mid` | u8 | l。経由升のdense_index。なしは255 |
 //! | `legal_to` | u8 | l。移動先のdense_index |
 //! | `legal_promote` | u8 | l。成り0か1 |
+//!
+//! `short_term_values`はMCTSの保持局面数×3のf32で、短期の価値の目標である。
+//! αβの棋譜ではこの列は空である。
+//! `opponent_policy_*`と`opponent_legal_*`は、直後の項目の候補と全合法手を
+//! `policy_*`と`legal_*`と同じ型・正準座標で表す。候補がなければ両区間とも空とする。
 
 use std::{collections::HashSet, fmt, fs::File, io, io::BufReader, path::Path};
 
-use minase::training::records::{self, Exclusion, Header, Origin, Outcome, Policy, Reader, Value};
+use minase::training::records::{
+    self, Exclusion, GameRecord, Header, Origin, Outcome, Policy, Reader, TeacherKind, Value,
+};
 use minase_core::{GameResult, Move, MoveGenerator};
 
 mod control;
@@ -60,6 +67,9 @@ mod tests;
 
 pub use control::control_planes;
 pub use scan::scan_file;
+
+/// KataGo cpp/dataio/trainingwrite.cpp 574〜580行の短期価値の係数。
+const SHORT_TERM_COEFFICIENTS: [f64; 3] = [0.176, 0.056, 0.016];
 
 /// 入出力、MNSDの形式、および学習用の内容検査の失敗。
 #[derive(Debug)]
@@ -86,6 +96,8 @@ pub enum Error {
     AllocateControl(std::collections::TryReserveError),
     /// ネットの入力では扱わない成り権の保留印がある。
     PromotionDeferred { position: usize, square: usize },
+    /// 抽出した局面以降の、最終項目以外にMCTSの価値がない。
+    MissingShortTermValue { game: u32, index: usize },
 }
 
 impl fmt::Display for Error {
@@ -118,6 +130,10 @@ impl fmt::Display for Error {
             Self::PromotionDeferred { position, square } => write!(
                 f,
                 "position {position}, square {square}: deferred promotion cannot be encoded"
+            ),
+            Self::MissingShortTermValue { game, index } => write!(
+                f,
+                "game {game}, entry {index}: missing MCTS value for a short-term target"
             ),
         }
     }
@@ -206,6 +222,18 @@ pub struct Records {
     pub legal_mid: Vec<u8>,
     pub legal_to: Vec<u8>,
     pub legal_promote: Vec<u8>,
+    pub short_term_values: Vec<[f32; 3]>,
+    pub opponent_policy_offsets: Vec<u64>,
+    pub opponent_policy_from: Vec<u8>,
+    pub opponent_policy_mid: Vec<u8>,
+    pub opponent_policy_to: Vec<u8>,
+    pub opponent_policy_promote: Vec<u8>,
+    pub opponent_policy_probabilities: Vec<u16>,
+    pub opponent_legal_offsets: Vec<u64>,
+    pub opponent_legal_from: Vec<u8>,
+    pub opponent_legal_mid: Vec<u8>,
+    pub opponent_legal_to: Vec<u8>,
+    pub opponent_legal_promote: Vec<u8>,
 }
 
 impl Records {
@@ -231,6 +259,18 @@ impl Records {
             legal_mid: Vec::new(),
             legal_to: Vec::new(),
             legal_promote: Vec::new(),
+            short_term_values: Vec::new(),
+            opponent_policy_offsets: vec![0],
+            opponent_policy_from: Vec::new(),
+            opponent_policy_mid: Vec::new(),
+            opponent_policy_to: Vec::new(),
+            opponent_policy_promote: Vec::new(),
+            opponent_policy_probabilities: Vec::new(),
+            opponent_legal_offsets: vec![0],
+            opponent_legal_from: Vec::new(),
+            opponent_legal_mid: Vec::new(),
+            opponent_legal_to: Vec::new(),
+            opponent_legal_promote: Vec::new(),
         }
     }
 
@@ -242,6 +282,55 @@ impl Records {
         self.policy_promote.push(u8::from(mv.promote));
         self.policy_probabilities.push(probability);
     }
+
+    fn push_opponent_candidate(&mut self, mv: Move, probability: u16) {
+        self.opponent_policy_from.push(mv.from.dense_index() as u8);
+        self.opponent_policy_mid
+            .push(mv.mid.map_or(255, |square| square.dense_index() as u8));
+        self.opponent_policy_to.push(mv.to.dense_index() as u8);
+        self.opponent_policy_promote.push(u8::from(mv.promote));
+        self.opponent_policy_probabilities.push(probability);
+    }
+}
+
+/// 末尾から最初の抽出局面まで価値をたどり、抽出分だけを入力順に返す。
+fn short_term_targets(
+    record: &GameRecord,
+    final_side: u8,
+    outcome: u8,
+    selected: &[usize],
+) -> Result<Vec<[f32; 3]>, Error> {
+    let Some(&first) = selected.first() else {
+        return Ok(Vec::new());
+    };
+    let mut target = [if outcome == 2 {
+        0.5
+    } else {
+        f64::from(outcome == final_side)
+    }; 3];
+    let factors = SHORT_TERM_COEFFICIENTS.map(|c| 1.0 / (1.0 + 144.0 * c));
+    let mut targets = Vec::with_capacity(selected.len());
+    let mut selected = selected.iter().rev().peekable();
+    let entries = record.entries();
+    for index in (first..entries.len()).rev() {
+        if index + 1 < entries.len() {
+            let Value::Mcts(value) = entries[index].value() else {
+                return Err(Error::MissingShortTermValue {
+                    game: record.game_number(),
+                    index,
+                });
+            };
+            for (target, factor) in target.iter_mut().zip(factors) {
+                *target = factor * (f64::from(value) / 65_535.0) + (1.0 - factor) * (1.0 - *target);
+            }
+        }
+        if selected.peek().is_some_and(|&&next| next == index) {
+            targets.push(target.map(|value| value as f32));
+            selected.next();
+        }
+    }
+    targets.reverse();
+    Ok(targets)
 }
 
 /// 1ファイルを末尾まで検査し、価値と方策の候補を持ち除外されていない項目を返す。
@@ -330,6 +419,7 @@ fn read_positions(
             Outcome::Game(GameResult::Draw { .. }) => 2,
             Outcome::NotFromGame => return Err(Error::SyntheticOrigin { game: number }),
         };
+        let mut selected_entries = Vec::new();
         for (index, (entry, position)) in record.entries().iter().zip(game.positions()).enumerate()
         {
             if entry.exclusion() != Exclusion::None || entry.policy() == &Policy::None {
@@ -352,6 +442,7 @@ fn read_positions(
             if !keep(key, validation, index_in_split) {
                 continue;
             }
+            selected_entries.push(index);
             let ply = u16::try_from(index)
                 .ok()
                 .and_then(|index| record.start_ply().checked_add(index))
@@ -417,6 +508,57 @@ fn read_positions(
                 output.legal_promote.push(u8::from(mv.promote));
             }
             output.legal_offsets.push(output.legal_from.len() as u64);
+            if let Some(next) = record.entries().get(index + 1)
+                && next.policy() != &Policy::None
+            {
+                match next.policy() {
+                    Policy::None => {}
+                    Policy::PlayedMove => {
+                        let mv = next
+                            .played_move()
+                            .ok_or(records::Error::BestMoveWithoutPlayedMove)?;
+                        output.push_opponent_candidate(mv, u16::MAX);
+                    }
+                    Policy::Candidates(candidates) => {
+                        for &(mv, probability) in candidates {
+                            output.push_opponent_candidate(mv, probability);
+                        }
+                    }
+                }
+                legal.clear();
+                generator.generate_moves(&game.positions()[index + 1], &mut legal);
+                legal.sort_unstable_by_key(|mv| {
+                    (
+                        mv.from.dense_index(),
+                        mv.mid.map_or(255, |square| square.dense_index()),
+                        mv.to.dense_index(),
+                        mv.promote,
+                    )
+                });
+                for mv in &legal {
+                    output.opponent_legal_from.push(mv.from.dense_index() as u8);
+                    output
+                        .opponent_legal_mid
+                        .push(mv.mid.map_or(255, |square| square.dense_index() as u8));
+                    output.opponent_legal_to.push(mv.to.dense_index() as u8);
+                    output.opponent_legal_promote.push(u8::from(mv.promote));
+                }
+            }
+            output
+                .opponent_policy_offsets
+                .push(output.opponent_policy_probabilities.len() as u64);
+            output
+                .opponent_legal_offsets
+                .push(output.opponent_legal_from.len() as u64);
+        }
+        if output.info.header.teacher_kind() == TeacherKind::Mcts && !selected_entries.is_empty() {
+            let final_side = game.positions()[record.entries().len() - 1].side_to_move() as u8;
+            output.short_term_values.extend(short_term_targets(
+                record,
+                final_side,
+                outcome,
+                &selected_entries,
+            )?);
         }
     }
     Ok(output)

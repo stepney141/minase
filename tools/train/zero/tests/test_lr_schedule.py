@@ -1,7 +1,7 @@
 """指示書の学習率の式、一定の学習、サイクルのリセットと再開をCPUで検証する。
 
 T=4のcosineの倍率は1、(2+√2)/4、1/2、(2−√2)/4であり、最後も正となる。
-実際の最適化直前の値と保存区間の末尾を照合する。constantは予定を持たないSGDと比べ、
+実際の最適化直前の値と保存区間の末尾を照合する。constantにも累計標本数のウォームアップを掛け、
 中断後の通常重みと指数移動平均のONNXは連続学習とのバイト一致で確かめる。
 """
 
@@ -14,17 +14,13 @@ from unittest.mock import patch
 
 import numpy as np
 import torch
-from torch.nn import functional as F
 
 from minase_zero import train
 from minase_zero.__main__ import _parse
-from minase_zero.data import is_training_sample, is_validation, read_window
-from minase_zero.encoding import encode_planes, policy_mask
-from minase_zero.net import ZeroNet
+from minase_zero.data import is_training_sample, is_validation
 
 from .cli import COMMIT, require_success, run_cli, train_arguments
 from .test_data import single_game, write_small
-from .test_window import reference_sample
 
 
 class LearningRateTests(unittest.TestCase):
@@ -55,9 +51,9 @@ class LearningRateTests(unittest.TestCase):
     def test_every_group_uses_the_hand_calculated_rate_before_each_update(self):
         sgd = torch.optim.SGD
         for schedule in ("constant", "cosine"):
-            for batch_size, multipliers in ((8, [1]), (4, [1, 0.5]),
-                                            (3, [1, 0.75, 0.25]),
-                                            (2, [1, (2 + math.sqrt(2)) / 4, 0.5, (2 - math.sqrt(2)) / 4])):
+            for batch_size, multipliers in ((32, [1]), (16, [1, 0.5]),
+                                            (10, [1, 0.75, 0.25]),
+                                            (7, [1, (2 + math.sqrt(2)) / 4, 0.5, (2 - math.sqrt(2)) / 4])):
                 with self.subTest(schedule=schedule, batch_size=batch_size):
                     rates = []
 
@@ -74,6 +70,8 @@ class LearningRateTests(unittest.TestCase):
                         train.train_new({**self.config, "lr_schedule": schedule, "batch_size": batch_size}, out)
                     expected = ([0.01 * multiplier for multiplier in multipliers] if schedule == "cosine"
                                 else [0.01] * len(multipliers))
+                    expected = [rate * min(1, (step + 1) * batch_size / 2_000_000)
+                                for step, rate in enumerate(expected)]
                     self.assertEqual(len(rates), len(expected))
                     for groups, rate in zip(rates, expected, strict=True):
                         self.assertEqual(len(groups), 2)
@@ -92,50 +90,46 @@ class LearningRateTests(unittest.TestCase):
                         self.assertAlmostEqual(point["lr"], expected[end - 1], places=15)
                     self.assertEqual(state["learning_curve"], summary["learning_curve"])
 
-    def test_constant_matches_sgd_with_a_fixed_rate(self):
-        data, _, _ = read_window([self.data_path], [self.data_path], 42)
-        indices = np.flatnonzero(~data.validation)
-        self.assertEqual(len(indices), 7)
-        indices = indices[reference_sample(7, 7, 42)]
-        model = ZeroNet(1, 2)
-        model.load_state_dict(torch.load(self.initial / "checkpoint.pt", weights_only=True)["model"])
-        optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9,
-                                    weight_decay=0.0001, nesterov=True)
-        mask = torch.from_numpy(policy_mask())
-        for start in range(0, 7, 2):
-            batch = indices[start:start + 2]
-            inputs = encode_planes(*(torch.from_numpy(array[batch])
-                                     for array in (data.boards, data.sides, data.lions)))
-            optimizer.zero_grad(set_to_none=True)
-            policy, value = model.forward_logits(inputs)
-            # 各局面の教師は確率1の候補1つなので、通常の交差エントロピーに一致する。
-            labels = torch.tensor(data.policy_labels[data.policy_offsets[batch]], dtype=torch.int64)
-            policy_loss = F.cross_entropy(policy.masked_fill(~mask, -torch.inf), labels)
-            target = (0.667 * torch.from_numpy(data.results[batch])
-                      + 0.333 * torch.tensor(data.values[batch], dtype=torch.float32) / 65_535)
-            value_loss = F.binary_cross_entropy_with_logits(value.flatten(), target)
-            (policy_loss + value_loss).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10, error_if_nonfinite=True)
-            optimizer.step()
-        out = self.root / "constant-reference"
-        train.train_new({**self.config, "lr_schedule": "constant"}, out)
-        state = torch.load(out / "checkpoint.pt", weights_only=True)
-        for name, expected in model.state_dict().items():
-            torch.testing.assert_close(state["model"][name], expected, rtol=2e-6, atol=2e-7)
-        group = state["optimizer"]["param_groups"][0]
-        for parameter, identifier in zip(model.parameters(), group["params"], strict=True):
-            torch.testing.assert_close(state["optimizer"]["state"][identifier]["momentum_buffer"],
-                                       optimizer.state[parameter]["momentum_buffer"], rtol=2e-6, atol=2e-7)
+    def test_warmup_rates_cross_two_million_samples(self):
+        # B=256、s=1,999,488から始めると、倍率は0.999872、1、1、1となる。
+        multipliers = [1, (2 + math.sqrt(2)) / 4, 0.5, (2 - math.sqrt(2)) / 4]
+        for schedule in ("constant", "cosine"):
+            for step, warmup in enumerate((0.999872, 1, 1, 1)):
+                expected = 0.01 * warmup * (multipliers[step] if schedule == "cosine" else 1)
+                actual = train.learning_rate(0.01, schedule, step, 4, 1_999_488 + step * 256, 256)
+                self.assertAlmostEqual(actual, expected, places=15)
 
-    def test_cosine_restarts_at_the_base_rate_for_each_cycle(self):
+    def test_cycle_boundary_preserves_warmup_and_reaches_the_limit(self):
+        state = torch.load(self.initial / "checkpoint.pt", weights_only=True)
+        state["samples_seen"] = 1_999_970
+        initial = self.root / "near-warmup.pt"
+        torch.save(state, initial)
+        for cycle in (1, 2):
+            out = self.root / f"warmup-boundary-{cycle}"
+            train.train_new({**self.config, "init": str(initial), "cycle": cycle,
+                             "lr_schedule": "constant", "checkpoint_steps": 1}, out)
+            summary = json.loads((out / "summary.json").read_text())
+            start = 1_999_970 + (cycle - 1) * 28
+            self.assertEqual(summary["samples_seen_start"], start)
+            self.assertEqual(summary["samples_seen"], start + 28)
+            self.assertEqual(summary["positions_seen"], 28)
+            for step, point in enumerate(summary["learning_curve"]):
+                expected = 0.01 * min(1, (start + (step + 1) * 2) / 2_000_000)
+                self.assertAlmostEqual(point["lr"], expected, places=15)
+                self.assertEqual(point["samples_seen_start"], start)
+                self.assertEqual(point["samples_seen"], start + (step + 1) * 2)
+            self.assertEqual(summary["last_lr"], summary["learning_curve"][-1]["lr"])
+            initial = out / "checkpoint.pt"
+
+    def test_cosine_restarts_while_warmup_continues_for_each_cycle(self):
         initial = self.initial / "checkpoint.pt"
         for cycle in (1, 2):
             out = self.root / f"restart-{cycle}"
             train.train_new({**self.config, "init": str(initial), "cycle": cycle,
                              "lr_schedule": "cosine", "checkpoint_steps": 1}, out)
             curve = json.loads((out / "summary.json").read_text())["learning_curve"]
-            self.assertEqual(curve[0]["lr"], 0.01)
-            self.assertAlmostEqual(curve[-1]["lr"], 0.01 * (2 - math.sqrt(2)) / 4, places=15)
+            self.assertAlmostEqual(curve[0]["lr"], 0.01 * ((cycle - 1) * 28 + 2) / 2_000_000, places=15)
+            self.assertAlmostEqual(curve[-1]["lr"], 0.01 * 0.5 * (1 + math.cos(math.pi * 13 / 14)) * (cycle * 28 / 2_000_000), places=15)
             initial = out / "checkpoint.pt"
 
     def test_resume_preserves_onnx_bytes_and_learning_curve_with_and_without_ema(self):
@@ -146,10 +140,14 @@ class LearningRateTests(unittest.TestCase):
             if state["completed_steps"] == 2:
                 raise OSError("test interruption after a committed checkpoint")
 
+        initial_state = torch.load(self.initial / "checkpoint.pt", weights_only=True)
+        initial_state["samples_seen"] = 1_999_995
+        near_limit = self.root / "resume-near-warmup.pt"
+        torch.save(initial_state, near_limit)
         for schedule in ("constant", "cosine"):
             for period, scale in ((0, 0), (3, 2)):
                 with self.subTest(schedule=schedule, ema_period_samples=period):
-                    config = {**self.config, "lr_schedule": schedule,
+                    config = {**self.config, "init": str(near_limit), "lr_schedule": schedule,
                               "ema_period_samples": period, "ema_scale": scale}
                     continuous = self.root / f"continuous-{schedule}-{period}"
                     interrupted = self.root / f"interrupted-{schedule}-{period}"
@@ -157,12 +155,13 @@ class LearningRateTests(unittest.TestCase):
                     with patch("minase_zero.train._save_checkpoint", side_effect=interrupt), self.assertRaises(OSError):
                         train.train_new(config, interrupted)
                     checkpoint = torch.load(interrupted / "checkpoint.pt", weights_only=True)
-                    self.assertEqual((checkpoint["completed_steps"], checkpoint["total_steps"]), (2, 4))
+                    self.assertEqual((checkpoint["completed_steps"], checkpoint["total_steps"]), (2, 14))
                     self.assertFalse((interrupted / "summary.json").exists())
                     require_success(run_cli(["train", "--resume", str(interrupted), "--device", "cpu"]))
                     expected = json.loads((continuous / "summary.json").read_text())
                     resumed = json.loads((interrupted / "summary.json").read_text())
-                    for key in ("learning_curve", "training_losses", "diagnostics", "data_order_sha256"):
+                    for key in ("learning_curve", "training_losses", "diagnostics", "data_order_sha256",
+                                "samples_seen", "samples_seen_start", "last_lr"):
                         self.assertEqual(resumed[key], expected[key])
                     names = ["model.onnx"]
                     if period:

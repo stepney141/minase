@@ -31,7 +31,10 @@ fn control_planes_match_inference_for_every_retained_record() {
     let mut index = 0;
     while let Some(game) = reader.read_game().unwrap() {
         for (entry, position) in game.record().entries().iter().zip(game.positions()) {
-            if entry.exclusion() != Exclusion::None || entry.value() == Value::None {
+            if entry.exclusion() != Exclusion::None
+                || entry.value() == Value::None
+                || entry.policy() == &Policy::None
+            {
                 continue;
             }
             encode(position, &mut input).unwrap();
@@ -43,7 +46,7 @@ fn control_planes_match_inference_for_every_retained_record() {
             index += 1;
         }
     }
-    assert_eq!(index, 1009);
+    assert_eq!(index, 741);
 }
 
 #[test]
@@ -444,12 +447,7 @@ fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
                     8,
                 ),
                 3 => (Value::Mcts(333), Policy::PlayedMove, Exclusion::None, 8),
-                4 => (
-                    Value::None,
-                    Policy::Candidates(vec![(mv, 65535)]),
-                    Exclusion::None,
-                    0,
-                ),
+                4 => (Value::Mcts(444), Policy::None, Exclusion::None, 0),
                 5 => (
                     Value::Mcts(444),
                     Policy::Candidates(vec![(mv, 65535)]),
@@ -495,6 +493,307 @@ fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
     let by_game = read_games(&path, &HashSet::from([(11, 4)])).unwrap();
     assert_eq!(by_game.plies, [2, 3]);
     assert_eq!(by_game.outcomes, [1, 1]);
+}
+
+fn short_game(side: Color, values: &[Option<u16>], full: &[bool], outcome: Outcome) -> GameRecord {
+    let mut builder = PositionBuilder::new(side);
+    for (file, rank, color) in [(0, 0, Color::Black), (11, 11, Color::White)] {
+        builder
+            .put(
+                square(file, rank),
+                PieceCode::new(color, PieceKind::King).unwrap(),
+            )
+            .unwrap();
+    }
+    for (file, rank, color) in [(2, 1, Color::Black), (9, 10, Color::White)] {
+        builder
+            .put(
+                square(file, rank),
+                PieceCode::new(color, PieceKind::Rook).unwrap(),
+            )
+            .unwrap();
+    }
+    let start = builder.finish().unwrap();
+    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut entries = Vec::new();
+    let mut kings = [square(0, 0), square(11, 11)];
+    for (index, (&value, &full)) in values.iter().zip(full).enumerate() {
+        let side = game.position().side_to_move() as usize;
+        let (corner, adjacent) = [
+            (square(0, 0), square(1, 0)),
+            (square(11, 11), square(10, 11)),
+        ][side];
+        let mv = Move {
+            from: kings[side],
+            mid: None,
+            to: if kings[side] == corner {
+                adjacent
+            } else {
+                corner
+            },
+            promote: false,
+        };
+        let played = (index + 1 < values.len()).then_some(mv);
+        entries.push(
+            Entry::new(
+                played,
+                value.map_or(Value::None, Value::Mcts),
+                Exclusion::None,
+                if full {
+                    Policy::Candidates(vec![(mv, 65535)])
+                } else {
+                    Policy::None
+                },
+                Some(if value.is_some() { 8 } else { 0 }),
+            )
+            .unwrap(),
+        );
+        if let Some(mv) = played {
+            game.play(mv).unwrap();
+            kings[side] = mv.to;
+        }
+    }
+    GameRecord::new(1, Origin::RandomSelfplay, outcome, 0, start, entries).unwrap()
+}
+
+#[test]
+fn short_term_resignation_targets_use_the_result_even_when_the_final_value_disagrees() {
+    // 2項目で終わる投了。fは1/(1+144c)を分数に直した値であり、末尾の0は使わない。
+    let fixture = Fixture::new();
+    for side in Color::ALL {
+        for winner in Color::ALL {
+            let game = short_game(
+                side,
+                &[Some(65535), Some(0)],
+                &[true, true],
+                Outcome::Game(GameResult::Win {
+                    winner,
+                    reason: WinReason::Resignation,
+                }),
+            );
+            let path = fixture.write(TeacherKind::Mcts, &[game]);
+            let records = read_file(&path).unwrap();
+            let last = if winner == side { 0.0 } else { 1.0 };
+            for (column, denominator) in [3293.0, 1133.0, 413.0].into_iter().enumerate() {
+                let f = 125.0 / denominator;
+                let expected = if last == 1.0 { f } else { 1.0 };
+                assert!((f64::from(records.short_term_values[0][column]) - expected).abs() < 1e-7);
+                assert_eq!(records.short_term_values[1][column], last as f32);
+            }
+            assert_eq!(records.opponent_policy_offsets, [0, 1, 1]);
+        }
+    }
+}
+
+#[test]
+fn short_term_targets_include_fast_search_and_terminal_results_from_both_sides() {
+    let fixture = Fixture::new();
+    for side in Color::ALL {
+        for outcome in [
+            draw(),
+            Outcome::MateInThree {
+                winner: Color::Black,
+            },
+            Outcome::Game(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::Resignation,
+            }),
+        ] {
+            let game = short_game(
+                side,
+                &[Some(65535), Some(0), Some(21845), None],
+                &[true, false, true, false],
+                outcome,
+            );
+            let path = fixture.write(TeacherKind::Mcts, &[game]);
+            let records = read_file(&path).unwrap();
+            assert_eq!(records.plies, [0, 2]);
+            let last = match outcome {
+                Outcome::Game(GameResult::Draw { .. }) => 0.5,
+                Outcome::MateInThree { winner } | Outcome::Game(GameResult::Win { winner, .. }) => {
+                    if winner == side {
+                        0.0
+                    } else {
+                        1.0
+                    }
+                }
+                _ => unreachable!(),
+            };
+            for (column, denominator) in [3293.0, 1133.0, 413.0].into_iter().enumerate() {
+                let f = 125.0 / denominator;
+                let b = 1.0 - f;
+                // 3手分を展開した多項式。v=(1,0,1/3)、y3=last。
+                let expected = [
+                    f + f * b + b * b * (f / 3.0 + b * (1.0 - last)),
+                    f / 3.0 + b * (1.0 - last),
+                ];
+                for (row, target) in expected.into_iter().enumerate() {
+                    assert!(
+                        (f64::from(records.short_term_values[row][column]) - target).abs() < 1e-7
+                    );
+                }
+            }
+            // 直後が速い探索、または最終項目なら相手の手の教師を持たない。
+            assert_eq!(records.opponent_policy_offsets, [0, 0, 0]);
+            assert_eq!(records.opponent_legal_offsets, [0, 0, 0]);
+            let selected = read_selected(&path, &[1], false).unwrap();
+            assert_eq!(selected.short_term_values, [records.short_term_values[1]]);
+        }
+    }
+}
+
+#[test]
+fn short_term_targets_reject_missing_values_only_in_the_selected_suffix() {
+    let fixture = Fixture::new();
+    let game = short_game(
+        Color::Black,
+        &[Some(65535), None, Some(21845), None],
+        &[true, false, true, false],
+        draw(),
+    );
+    let path = fixture.write(TeacherKind::Mcts, &[game]);
+    assert!(matches!(
+        read_file(&path),
+        Err(Error::MissingShortTermValue { game: 1, index: 1 })
+    ));
+    assert!(read_selected(&path, &[1], false).is_ok());
+    assert!(read_selected(&path, &[], false).is_ok());
+}
+
+#[test]
+fn short_term_targets_end_at_a_royal_capture_without_a_terminal_value() {
+    let fixture = Fixture::new();
+    for side in Color::ALL {
+        let opponent = if side == Color::Black {
+            Color::White
+        } else {
+            Color::Black
+        };
+        let mut builder = PositionBuilder::new(side);
+        for (file, rank, color, kind) in [
+            (0, 0, side, PieceKind::King),
+            (11, 10, side, PieceKind::Rook),
+            (11, 11, opponent, PieceKind::King),
+            (2, 2, opponent, PieceKind::Pawn),
+        ] {
+            builder
+                .put(square(file, rank), PieceCode::new(color, kind).unwrap())
+                .unwrap();
+        }
+        let capture = Move {
+            from: square(11, 10),
+            mid: None,
+            to: square(11, 11),
+            promote: false,
+        };
+        let record = GameRecord::new(
+            1,
+            Origin::RandomSelfplay,
+            Outcome::Game(GameResult::Win {
+                winner: side,
+                reason: WinReason::RoyalCapture,
+            }),
+            0,
+            builder.finish().unwrap(),
+            vec![
+                Entry::new(
+                    Some(capture),
+                    Value::Mcts(21845),
+                    Exclusion::None,
+                    Policy::PlayedMove,
+                    Some(4),
+                )
+                .unwrap(),
+                Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap(),
+            ],
+        )
+        .unwrap();
+        let path = fixture.write(TeacherKind::Mcts, &[record]);
+        let actual = read_file(&path).unwrap();
+        assert_eq!(actual.short_term_values.len(), 1);
+        for (column, denominator) in [3293.0, 1133.0, 413.0].into_iter().enumerate() {
+            let expected = 1.0 - 2.0 * 125.0 / (3.0 * denominator);
+            assert!((f64::from(actual.short_term_values[0][column]) - expected).abs() < 1e-7);
+        }
+        assert_eq!(actual.opponent_policy_offsets, [0, 0]);
+        assert_eq!(actual.opponent_legal_offsets, [0, 0]);
+    }
+}
+
+#[test]
+fn opponent_moves_and_legal_columns_describe_the_immediate_next_position() {
+    let fixture = Fixture::new();
+    let mut builder = PositionBuilder::new(Color::Black);
+    for (file, rank, color, kind) in [
+        (0, 0, Color::Black, PieceKind::King),
+        (11, 11, Color::White, PieceKind::King),
+        (5, 4, Color::White, PieceKind::Pawn),
+    ] {
+        builder
+            .put(square(file, rank), PieceCode::new(color, kind).unwrap())
+            .unwrap();
+    }
+    let start = builder.finish().unwrap();
+    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let first = sorted_legal_moves(&game).unwrap()[0];
+    game.play(first).unwrap();
+    let expected_legal = sorted_legal_moves(&Game::from_position(
+        Rules::ENGINE_DEFAULT,
+        game.position().clone(),
+    ))
+    .unwrap();
+    let promotion = expected_legal
+        .iter()
+        .copied()
+        .find(|mv| mv.promote)
+        .unwrap();
+    let record = GameRecord::new(
+        1,
+        Origin::RandomSelfplay,
+        draw(),
+        0,
+        start,
+        vec![
+            Entry::new(
+                Some(first),
+                Value::Mcts(32768),
+                Exclusion::None,
+                Policy::PlayedMove,
+                Some(8),
+            )
+            .unwrap(),
+            Entry::new(
+                Some(promotion),
+                Value::Mcts(32768),
+                Exclusion::None,
+                Policy::PlayedMove,
+                Some(8),
+            )
+            .unwrap(),
+            Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap(),
+        ],
+    )
+    .unwrap();
+    let path = fixture.write(TeacherKind::Mcts, &[record]);
+    let actual = read_selected(&path, &[0], false).unwrap();
+    assert_eq!(actual.opponent_policy_offsets, [0, 1]);
+    assert_eq!(actual.opponent_policy_from, [53]);
+    assert_eq!(actual.opponent_policy_mid, [255]);
+    assert_eq!(actual.opponent_policy_to, [41]);
+    assert_eq!(actual.opponent_policy_promote, [1]);
+    assert_eq!(actual.opponent_policy_probabilities, [65535]);
+    let decoded: Vec<_> = actual
+        .opponent_legal_from
+        .iter()
+        .enumerate()
+        .map(|(i, &from)| Move {
+            from: Square::from_dense(from as usize).unwrap(),
+            mid: None,
+            to: Square::from_dense(actual.opponent_legal_to[i] as usize).unwrap(),
+            promote: actual.opponent_legal_promote[i] != 0,
+        })
+        .collect();
+    assert_eq!(decoded, expected_legal);
 }
 
 fn unselected_game(number: u32, origin: Origin) -> GameRecord {
@@ -666,7 +965,10 @@ fn legal_columns_match_generated_moves_in_record_order() {
     }
     while let Some(game) = reader.read_game().unwrap() {
         for (entry, position) in game.record().entries().iter().zip(game.positions()) {
-            if entry.exclusion() != Exclusion::None || entry.value() == Value::None {
+            if entry.exclusion() != Exclusion::None
+                || entry.value() == Value::None
+                || entry.policy() == &Policy::None
+            {
                 continue;
             }
             let mut generated = Vec::new();
@@ -866,7 +1168,7 @@ fn mcts_scan_and_selected_columns_match_the_generated_fixture() {
         .map(|(index, _)| index)
         .collect();
     assert_eq!(info.training_count as usize, training.len());
-    assert_eq!(info.validation_count as usize, 1009 - training.len());
+    assert_eq!(info.validation_count as usize, 741 - training.len());
     assert_eq!(info.game_numbers, all.info.game_numbers);
     let ordinals = [0, 50, training.len() as u64 - 1];
     let selected = read_selected(&path, &ordinals, false).unwrap();

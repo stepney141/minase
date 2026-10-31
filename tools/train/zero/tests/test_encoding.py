@@ -124,6 +124,29 @@ class EncodingTests(unittest.TestCase):
         self.assertFalse(mask[(184 + 7 * 7 + 1) * 144])
         self.assertTrue(mask[(184 + 7 * 7 + 1) * 144 + 1])
 
+    def test_opponent_mask_has_the_same_counts_and_accepts_moves_in_the_current_view(self) -> None:
+        mask = policy_mask(opponent=True)
+        self.assertEqual((mask.shape, mask.dtype), ((35_856,), np.bool_))
+        for start, end, expected in ((0, 88, 5192), (88, 176, 2456), (176, 184, 880),
+                                      (184, 240, 6424), (240, 248, 1012), (248, 249, 144)):
+            self.assertEqual(np.count_nonzero(mask[start * 144:end * 144]), expected)
+        for fixture in self.fixtures:
+            moves = np.array([[start, 255 if mid is None else mid, end, promote]
+                              for start, mid, end, promote, _ in fixture["moves"]], dtype=np.int64).reshape(-1, 4)
+            sides = np.full(len(moves), int(fixture["side_to_move"] != "white"), dtype=np.uint8)
+            labels = policy_labels(*(moves[:, column] for column in range(4)), sides)
+            self.assertTrue(np.all(mask[labels]))
+
+    def test_opponent_promotion_mask_reverses_only_the_zone(self) -> None:
+        mask = policy_mask(opponent=True)
+        # 後方への成りは相対段4→3が有効、5→4は無効。前方の3→4も有効。
+        self.assertTrue(mask[132 * 144 + 4 * 12])
+        self.assertFalse(mask[132 * 144 + 5 * 12])
+        self.assertTrue(mask[88 * 144 + 3 * 12])
+        self.assertFalse(policy_mask()[132 * 144 + 4 * 12])
+        self.assertFalse(mask[(184 + 7 * 7 + 1) * 144])
+        self.assertTrue(mask[(184 + 7 * 7 + 1) * 144 + 1])
+
     def test_empty_batches(self) -> None:
         empty = torch.empty(0, dtype=torch.uint8)
         actual = encode_planes(torch.empty((0, 144), dtype=torch.uint8), empty, empty)

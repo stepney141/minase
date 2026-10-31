@@ -11,7 +11,7 @@ scanで全対局を数えた後、選択対局を含むファイルを1つずつ
 局面だけをread_gamesで展開する。選択外の対局も再生して検査するが、盤面・方策・
 合法手の返却配列には保持しない。診断後に配列を破棄し、次のファイルを読む。
 
-診断はtrain.diagnoseをfp32、128局面ずつ、value_lambda=0で呼ぶ。αβの評価値を
+診断はtrain.diagnoseをfp32、128局面ずつ、value_lambda=0、auxiliary=Falseで呼ぶ。αβの評価値を
 価値の教師に混ぜず、valueは出力しない。ファイル間も局面数で重み付けして平均する。
 gamesは抽出した対局数、diagnostics.game_countは採用局面を持つ対局数であり、
 採用局面が全体で0件ならエラーとする。elapsed_secondsは開始から読み込み、
@@ -31,7 +31,7 @@ import torch
 
 from .data import Dataset, FileInfo, _dataset, _file_info
 from .encoding import policy_mask
-from .train import DIAGNOSTIC_NAMES, _load_checkpoint, _model, _sha256, _validate_device, diagnose
+from .train import POLICY_DIAGNOSTIC_NAMES, _load_checkpoint, _model, _sha256, _validate_device, diagnose
 
 
 def _read_games(info: FileInfo, games: list[int]) -> Dataset:
@@ -84,7 +84,7 @@ def external_eval(
     model = _model(state).to(target)
     mask = torch.from_numpy(policy_mask()).to(target)
     config = {"precision": "fp32", "batch_size": 128, "value_lambda": 0.0}
-    sums = {name: 0.0 for name in DIAGNOSTIC_NAMES if name != "value"}
+    sums = dict.fromkeys(("policy", "value_result", *POLICY_DIAGNOSTIC_NAMES), 0.0)
     game_count = position_count = 0
     for info in infos:
         numbers = [game for game in info.game_numbers if (info.header.seed, game) in selected_set]
@@ -92,7 +92,7 @@ def external_eval(
             continue
         dataset = _read_games(info, numbers)
         if len(dataset) != 0:
-            metrics = diagnose(model, dataset, np.arange(len(dataset)), target, config, mask)
+            metrics = diagnose(model, dataset, np.arange(len(dataset)), target, config, mask, auxiliary=False)
             for name in sums:
                 sums[name] += metrics[name] * len(dataset)
             position_count += len(dataset)

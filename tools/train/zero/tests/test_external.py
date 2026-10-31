@@ -72,7 +72,7 @@ class ExternalEvaluationTests(unittest.TestCase):
         with torch.no_grad():
             for parameter in model.parameters():
                 parameter.zero_()
-            model.value_head[-2].bias.fill_(math.log(3))
+            model.value_head[-1].bias.fill_(math.log(3))
         torch.save({"config": {"blocks": 1, "channels": 2}, "model": model.state_dict(),
                     "completed_steps": 0, "total_steps": 0}, self.checkpoint)
 

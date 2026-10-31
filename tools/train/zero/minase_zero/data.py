@@ -17,6 +17,10 @@ from numpy.typing import NDArray
 from .encoding import BOARD_SQUARES, INPUT_PLANES, policy_labels
 
 
+# KataGo SelfplayTraining.md 58、67行の新規データ1行あたりの学習回数。
+SAMPLE_MULTIPLIER = 4
+
+
 def hash64(seed: int, games: NDArray[np.integer]) -> NDArray[np.uint64]:
     """Rustのshuffle::hash64と同じu64の折り返し演算で対局番号を混合する。"""
     if not 0 <= seed <= 0xFFFF_FFFF_FFFF_FFFF:
@@ -83,6 +87,11 @@ class Dataset:
     policy_offsetsはuint64の長さn+1、policy_labelsとpolicy_probabilitiesはuint16である。
     legal_offsetsはuint64の長さn+1、legal_labelsはuint16で、反復の履歴を考えない
     全合法手を保持する。平均81手なら100万局面で約170 MB増える計算になる。
+    short_term_valuesはfloat32の(n,3)で、αβの外部診断では(0,3)とする。
+    opponent_policy_*とopponent_legal_*は直後の項目を手番tの視点で符号化し、
+    自手の列と同じ型で持つ。相手の候補がなければ両区間とも空である。
+    追加メモリは1局面あたり28+4C+2Lバイトで、CとLは相手の候補数と合法手数。
+    候補を持つ割合1/4、C=8、L=81なら平均76.5バイトとなる計算である。
     1ファイルだけを読む場合もfile_indicesを0として同じ構造で返す。
     """
 
@@ -101,6 +110,12 @@ class Dataset:
     policy_probabilities: NDArray[np.uint16]
     legal_offsets: NDArray[np.uint64]
     legal_labels: NDArray[np.uint16]
+    short_term_values: NDArray[np.float32]
+    opponent_policy_offsets: NDArray[np.uint64]
+    opponent_policy_labels: NDArray[np.uint16]
+    opponent_policy_probabilities: NDArray[np.uint16]
+    opponent_legal_offsets: NDArray[np.uint64]
+    opponent_legal_labels: NDArray[np.uint16]
 
     def __len__(self) -> int:
         """選別後の局面数を返す。"""
@@ -180,36 +195,49 @@ def _dataset(raw: dict, info: FileInfo) -> Dataset:
     ).astype(np.uint16)
     results = np.where(outcomes == 2, 0.5, outcomes == sides).astype(np.float32)
     validation = is_validation(header.seed, games)
+    opponent_columns = {}
+    for prefix in ("opponent_policy", "opponent_legal"):
+        opponent_offsets = np.frombuffer(raw[f"{prefix}_offsets"], dtype="<u8")
+        opponent_columns[f"{prefix}_offsets"] = opponent_offsets
+        opponent_columns[f"{prefix}_labels"] = policy_labels(
+            *(np.frombuffer(raw[f"{prefix}_{name}"], dtype=np.uint8)
+              for name in ("from", "mid", "to", "promote")),
+            np.repeat(sides, np.diff(opponent_offsets).astype(np.intp)),
+        ).astype(np.uint16)
     return Dataset(
         boards=boards, sides=sides, lions=lions, values=values, results=results,
         validation=validation, training_sample=is_training_sample(header.seed, games), games=games, plies=plies,
         file_indices=np.zeros(len(games), dtype=np.uint32),
         policy_offsets=offsets, policy_labels=labels, policy_probabilities=probabilities,
         legal_offsets=legal_offsets, legal_labels=legal_labels,
+        short_term_values=np.frombuffer(raw["short_term_values"], dtype="<f4").reshape(-1, 3),
+        opponent_policy_probabilities=np.frombuffer(raw["opponent_policy_probabilities"], dtype="<u2"),
+        **opponent_columns,
     )
 
 
 def sample_training_indices(total: int, count: int, seed: int) -> NDArray[np.int64]:
-    """[0,T)からN個を一様に重複なく選び、更新に使う順で返す。
+    """[0,T)の順列を繰り返し、残りを重複なく選んだcount個の更新列を返す。
 
-    T=total、N=count、A[j]=jから始め、専用のGenerator(PCG64(seed))を使う。
-    k=0,...,N-1でj=integers(k,T,dtype=int64)を引き、A[k]とA[j]を交換して
-    s[k]=A[k]とする部分的なFisher–Yates法である。返り値は(s[0],...,s[N-1])。
-    未使用のAのうち動かした要素だけを辞書に保持し、メモリをO(N)にする。
+    T=totalとし、専用のGenerator(PCG64(seed))を全順列と最後の抽出で使い続ける。
+    各回A[j]=jから始め、k=0,...,min(T,残数)-1でj=integers(k,T,dtype=int64)を引き、
+    A[k]とA[j]を交換してA[k]を出力する部分的なFisher–Yates法である。
+    未使用のAのうち動かした要素だけを辞書に保持する。
     """
-    if not 1 <= count <= total <= np.iinfo(np.int64).max:
-        raise ValueError("sample count must satisfy 1 <= N <= T <= int64 maximum")
+    if not (1 <= count <= np.iinfo(np.int64).max and 1 <= total <= np.iinfo(np.int64).max):
+        raise ValueError("sample count and total must be positive and fit in int64")
     if not 0 <= seed <= 0xFFFF_FFFF_FFFF_FFFF:
         raise ValueError("seed must fit in uint64")
     rng = np.random.Generator(np.random.PCG64(seed))
-    moved: dict[int, int] = {}
     selected = np.empty(count, dtype=np.int64)
-    for index in range(count):
-        other = int(rng.integers(index, total, dtype=np.int64))
-        selected[index] = moved[other] if other in moved else other
-        replacement = moved.pop(index) if index in moved else index
-        if other != index:
-            moved[other] = replacement
+    for start in range(0, count, total):
+        moved: dict[int, int] = {}
+        for index in range(min(total, count - start)):
+            other = int(rng.integers(index, total, dtype=np.int64))
+            selected[start + index] = moved[other] if other in moved else other
+            replacement = moved.pop(index) if index in moved else index
+            if other != index:
+                moved[other] = replacement
     return selected
 
 
@@ -234,9 +262,9 @@ def read_window(
     """抽出した訓練局面と最新の検証集合、全ファイル情報、更新順の通し番号を返す。
 
     latest_pathsはpathsの末尾と文字列で一致する必要がある。その訓練局面数Nを数え、
-    全訓練局面の通し番号[0,T)からsample_training_indicesでN個を選ぶ。
+    全訓練局面の通し番号[0,T)からsample_training_indicesで4N個の更新列を作る。
     計数は再生なしで行い、再生はGILを解放してファイルごとに並列に1回行う。
-    配列には抽出した訓練局面と最新の検証集合だけをファイル順に保持する。
+    配列には抽出した訓練局面の重複を除き、最新の検証集合とともにファイル順に保持する。
     正規化後のパス、または基本シードと対局番号の組が重複すればValueErrorとする。
     """
     if not paths:
@@ -261,8 +289,8 @@ def read_window(
                 seen_games.add(key)
         count = sum(info.training_count for info in infos[latest_start:])
         total = sum(info.training_count for info in infos)
-        selected = sample_training_indices(total, count, seed)
-        ordered = np.sort(selected)
+        selected = sample_training_indices(total, SAMPLE_MULTIPLIER * count, seed)
+        ordered = np.unique(selected)
         futures = []
         offset = 0
         for index, info in enumerate(infos):
@@ -272,24 +300,20 @@ def read_window(
             futures.append(pool.submit(_read_selected, info, indices, index >= latest_start))
             offset = end
         datasets = [future.result() for future in futures]
-    offset_parts = []
-    candidate_count = 0
-    legal_offset_parts = []
-    legal_count = 0
+    prefixes = ("policy", "legal", "opponent_policy", "opponent_legal")
+    offset_parts = {prefix: [] for prefix in prefixes}
+    counts = dict.fromkeys(prefixes, 0)
     for index, dataset in enumerate(datasets):
         dataset.file_indices.fill(index)
-        offset_parts.append(dataset.policy_offsets[:-1] + np.uint64(candidate_count))
-        candidate_count += len(dataset.policy_labels)
-        legal_offset_parts.append(dataset.legal_offsets[:-1] + np.uint64(legal_count))
-        legal_count += len(dataset.legal_labels)
+        for prefix in prefixes:
+            offset_parts[prefix].append(getattr(dataset, f"{prefix}_offsets")[:-1] + np.uint64(counts[prefix]))
+            counts[prefix] += len(getattr(dataset, f"{prefix}_labels"))
     columns = {
         field.name: np.concatenate([getattr(dataset, field.name) for dataset in datasets])
-        for field in fields(Dataset) if field.name not in ("policy_offsets", "legal_offsets")
+        for field in fields(Dataset) if field.name not in {f"{prefix}_offsets" for prefix in prefixes}
     }
-    columns["policy_offsets"] = np.concatenate(
-        [*offset_parts, np.array([candidate_count], dtype=np.uint64)]
-    )
-    columns["legal_offsets"] = np.concatenate(
-        [*legal_offset_parts, np.array([legal_count], dtype=np.uint64)]
-    )
+    for prefix in prefixes:
+        columns[f"{prefix}_offsets"] = np.concatenate(
+            [*offset_parts[prefix], np.array([counts[prefix]], dtype=np.uint64)]
+        )
     return Dataset(**columns), infos, selected
