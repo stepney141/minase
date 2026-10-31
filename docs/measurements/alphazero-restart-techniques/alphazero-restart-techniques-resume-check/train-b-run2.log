@@ -1,0 +1,5 @@
+resume: completed_steps=100/285
+steps=150/285 policy=9.537879 value=0.695319 value_result=0.695596 soft_policy=7.832357 opponent_policy=2.778355 opponent_soft_policy=2.604193 short_term_value_1=0.694496 short_term_value_2=0.696462 short_term_value_3=0.699435 positions_per_second=3253.75
+steps=200/285 policy=8.857377 value=0.694345 value_result=0.694411 soft_policy=7.430965 opponent_policy=2.678469 opponent_soft_policy=2.482348 short_term_value_1=0.694121 short_term_value_2=0.695052 short_term_value_3=0.695996 positions_per_second=3594.09
+steps=250/285 policy=8.561935 value=0.693765 value_result=0.693587 soft_policy=7.268796 opponent_policy=2.688293 opponent_soft_policy=2.465820 short_term_value_1=0.693939 short_term_value_2=0.694528 short_term_value_3=0.695154 positions_per_second=3598.61
+steps=285/285 policy=8.520844 value=0.694053 value_result=0.694024 soft_policy=7.216575 opponent_policy=2.739180 opponent_soft_policy=2.511445 short_term_value_1=0.693861 short_term_value_2=0.694442 short_term_value_3=0.694931 positions_per_second=3593.08

@@ -1,0 +1,2 @@
+steps=50/285 policy=10.618592 value=0.695868 value_result=0.695711 soft_policy=10.513375 opponent_policy=2.734875 opponent_soft_policy=2.622906 short_term_value_1=0.694715 short_term_value_2=0.694523 short_term_value_3=0.703451 positions_per_second=3248.00
+steps=100/285 policy=10.215892 value=0.696128 value_result=0.696214 soft_policy=8.889688 opponent_policy=2.666016 opponent_soft_policy=2.532231 short_term_value_1=0.694545 short_term_value_2=0.696119 short_term_value_3=0.702271 positions_per_second=3594.48
