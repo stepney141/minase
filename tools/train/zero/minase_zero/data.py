@@ -1,4 +1,8 @@
-"""学習窓から訓練局面を抽出し、最新の検証局面とともに入力順に保持する。"""
+"""学習窓から訓練局面を抽出し、最新の検証局面とともに入力順に保持する。
+
+訓練局面は価値と方策の候補の両方を持ち、除外されていない項目とする。
+指した手を確率1とする方策も候補に含め、方策のない速い探索は採用しない。
+"""
 
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor

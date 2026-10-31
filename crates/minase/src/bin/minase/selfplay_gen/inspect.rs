@@ -54,7 +54,7 @@ impl InspectionSummary {
         self.eligible_positions += 1;
         self.origins[game.origin() as usize] += 1;
         match game.outcome() {
-            Outcome::Game(GameResult::Win { winner, .. }) => {
+            Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner } => {
                 if winner == position.side_to_move() {
                     self.wins += 1;
                 } else {
@@ -210,8 +210,12 @@ fn print_entry(k: usize, game: &GameRecord, entry: &Entry, position: &Position) 
     let outcome = match game.outcome() {
         Outcome::NotFromGame => "none",
         Outcome::Game(GameResult::Draw { .. }) => "Draw",
-        Outcome::Game(GameResult::Win { winner, .. }) if winner == position.side_to_move() => "Win",
-        Outcome::Game(GameResult::Win { .. }) => "Loss",
+        Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner }
+            if winner == position.side_to_move() =>
+        {
+            "Win"
+        }
+        Outcome::Game(GameResult::Win { .. }) | Outcome::MateInThree { .. } => "Loss",
     };
     println!("outcome: {outcome}");
     println!("game_number: {}", game.game_number());

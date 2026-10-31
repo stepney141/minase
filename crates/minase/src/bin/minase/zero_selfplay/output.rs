@@ -38,7 +38,7 @@
 //! 規則セット、生成コミット、ネットのSHA-256検査和、教師の種類、教師の探索規模、および基本シードを保存する。
 //! 教師の種類はモンテカルロ木探索を表す`TeacherKind::Mcts`、探索規模は`simulations`、シードはサイクルの`seed`とする。
 //! 対局数と手順の項目の総数は、そのMNSDファイルに実際に書いた件数である。
-//! 項目の総数には序盤と最終項目も含み、下記の探索した局面数とは異なる。
+//! 項目の総数には序盤、速い探索、および最終項目も含み、下記の訓練局面数とは異なる。
 //! 各欄の符号化は[`minase::training::records`]に従う。
 //!
 //! 塊の集計は、塊の番号`chunk`と担当範囲の先頭の対局番号`first_game`に加え、次の件数を同じJSONオブジェクトに持つ。
@@ -50,8 +50,11 @@
 //! | `discarded_max_ply` | 手数上限で未終局のまま破棄した対局数を表す。 |
 //! | `resigned_games` | 投了のMNSDファイルへ保存した対局数を表す。 |
 //! | `games_file_games` | 投了以外のMNSDファイルへ保存した対局数を表す。 |
-//! | `positions` | 投了以外で終えた対局で探索した局面数を表す。 |
-//! | `resigned_positions` | 投了で終えた対局で探索した局面数を表し、投了した局面も数える。 |
+//! | `positions` | 投了以外で終えた対局の訓練局面数を表す。 |
+//! | `resigned_positions` | 投了で終えた対局の訓練局面数を表し、投了した局面も数える。 |
+//! | `full_searches` | 完全探索の手番数を表し、破棄した対局も含む。 |
+//! | `fast_searches` | 速い探索の手番数を表し、破棄した対局も含む。 |
+//! | `mate_in_three_games` | 王手限定の3手以内の勝ちで打ち切った対局数を表す。 |
 //! | `playthrough_games` | 最後まで指させる抽選に当たった対局数を表し、手数上限での破棄も含む。 |
 //! | `resign_triggered_playthrough_games` | 最後まで指させる対局のうち、投了条件が1回以上成立した対局数を表す。 |
 //! | `false_resignations` | その条件が最初に成立した側が負けなかった対局数を表し、引き分けと手数上限での破棄も含む。 |
@@ -71,11 +74,12 @@
 //! | `draw_reason_agreement` | 合意による引き分け数を表す。 |
 //! | `plies` | 序盤を含む着手数の合計を表し、破棄した対局の手数も含む。 |
 //!
-//! `positions`と`resigned_positions`は、破棄した対局、乱択の序盤、および探索していない終局の局面を数えない。
+//! 訓練局面は価値と方策の候補の両方を持つ項目であり、完全探索の手番だけが該当する。
+//! `positions`と`resigned_positions`は、破棄した対局、乱択の序盤、速い探索、および探索していない終局の局面を数えない。
 //! `false_resignation_rate`は`false_resignations / resign_triggered_playthrough_games`で求め、分母が0ならJSONの`null`とする。
 //! この割合が5%を厳密に超えたときだけ、`resigned_games_excluded`を`true`にする。
 //! `training_files`は塊の番号順の学習ファイル一覧であり、投了以外のファイルは常に含め、投了のファイルは除外が決まった場合だけ外す。
-//! `training_positions`はこの一覧に残したファイルで探索した局面数の合計とする。
+//! `training_positions`はこの一覧に残したファイルの訓練局面数の合計とする。
 //! 割合が未定義の場合は投了のファイルも一覧に含め、除外する場合も確定したファイル自体は保持する。
 //! 除外した対局数の分を投了無効で生成し直す処理は、呼び出し側が別の出力先を指定して行う。
 //! 投了の較正は`docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。
@@ -89,7 +93,7 @@ use std::time::{Duration, Instant};
 
 use fs2::FileExt;
 use minase::nn::Evaluator;
-use minase::training::records::{Header, TeacherKind, Writer};
+use minase::training::records::{Header, Outcome, TeacherKind, Writer};
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 use serde::{Deserialize, Serialize};
 
@@ -122,7 +126,10 @@ impl Config {
         for (invalid, field) in [
             (self.games == 0, "games"),
             (self.chunk_games == 0, "chunk_games"),
-            (self.simulations == 0, "simulations"),
+            (
+                self.simulations < 4 || !self.simulations.is_multiple_of(4),
+                "simulations",
+            ),
             (
                 !(1..=100).contains(&self.playthrough_percent),
                 "playthrough_percent",
@@ -177,7 +184,7 @@ impl Config {
     }
 }
 
-/// 塊とサイクルの双方で加算する件数。局面数には破棄した対局を含めない。
+/// 塊とサイクルの双方で加算する件数。訓練局面数には破棄した対局を含めない。
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct Counts {
     pub(super) games: u64,
@@ -186,6 +193,9 @@ pub(super) struct Counts {
     pub(super) games_file_games: u64,
     pub(super) positions: u64,
     pub(super) resigned_positions: u64,
+    pub(super) full_searches: u64,
+    pub(super) fast_searches: u64,
+    pub(super) mate_in_three_games: u64,
     pub(super) playthrough_games: u64,
     pub(super) resign_triggered_playthrough_games: u64,
     pub(super) false_resignations: u64,
@@ -210,6 +220,8 @@ impl Counts {
     fn add_game(&mut self, game: &CompletedGame) {
         self.games += 1;
         self.plies += u64::from(game.plies);
+        self.full_searches += game.full_searches;
+        self.fast_searches += game.fast_searches;
         self.playthrough_games += u64::from(game.playthrough);
         self.resign_triggered_playthrough_games +=
             u64::from(game.playthrough && game.first_trigger.is_some());
@@ -222,28 +234,33 @@ impl Counts {
             self.discarded_max_ply += 1;
         } else if game.resigned {
             self.resigned_games += 1;
-            self.resigned_positions += game.positions;
+            self.resigned_positions += game.full_searches;
         } else {
             self.games_file_games += 1;
-            self.positions += game.positions;
+            self.positions += game.full_searches;
+        }
+        let winner = match game.result {
+            Some(
+                Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner },
+            ) => Some(winner),
+            _ => None,
+        };
+        match winner {
+            Some(Color::Black) => self.black_wins += 1,
+            Some(Color::White) => self.white_wins += 1,
+            None => {}
         }
         match game.result {
-            Some(GameResult::Win { winner, reason }) => {
-                match winner {
-                    Color::Black => self.black_wins += 1,
-                    Color::White => self.white_wins += 1,
-                }
-                match reason {
-                    WinReason::RoyalCapture => self.win_reason_royal_capture += 1,
-                    WinReason::Repetition => self.win_reason_repetition += 1,
-                    WinReason::PieceExhaustion => self.win_reason_piece_exhaustion += 1,
-                    WinReason::BareKing => self.win_reason_bare_king += 1,
-                    WinReason::Stalemate => self.win_reason_stalemate += 1,
-                    WinReason::Mate => self.win_reason_mate += 1,
-                    WinReason::Resignation => self.win_reason_resignation += 1,
-                }
-            }
-            Some(GameResult::Draw { reason }) => {
+            Some(Outcome::Game(GameResult::Win { reason, .. })) => match reason {
+                WinReason::RoyalCapture => self.win_reason_royal_capture += 1,
+                WinReason::Repetition => self.win_reason_repetition += 1,
+                WinReason::PieceExhaustion => self.win_reason_piece_exhaustion += 1,
+                WinReason::BareKing => self.win_reason_bare_king += 1,
+                WinReason::Stalemate => self.win_reason_stalemate += 1,
+                WinReason::Mate => self.win_reason_mate += 1,
+                WinReason::Resignation => self.win_reason_resignation += 1,
+            },
+            Some(Outcome::Game(GameResult::Draw { reason })) => {
                 self.draws += 1;
                 match reason {
                     DrawReason::Repetition => self.draw_reason_repetition += 1,
@@ -252,7 +269,8 @@ impl Counts {
                     DrawReason::Agreement => self.draw_reason_agreement += 1,
                 }
             }
-            None => {}
+            Some(Outcome::MateInThree { .. }) => self.mate_in_three_games += 1,
+            Some(Outcome::NotFromGame) | None => {}
         }
     }
 
@@ -263,6 +281,9 @@ impl Counts {
         self.games_file_games += other.games_file_games;
         self.positions += other.positions;
         self.resigned_positions += other.resigned_positions;
+        self.full_searches += other.full_searches;
+        self.fast_searches += other.fast_searches;
+        self.mate_in_three_games += other.mate_in_three_games;
         self.playthrough_games += other.playthrough_games;
         self.resign_triggered_playthrough_games += other.resign_triggered_playthrough_games;
         self.false_resignations += other.false_resignations;
@@ -433,7 +454,7 @@ pub(super) fn generate(
             }
             generated_games += 1;
             if game.record.is_some() {
-                generated_positions += game.positions;
+                generated_positions += game.full_searches;
             }
             if active
                 .get_mut(&chunk)

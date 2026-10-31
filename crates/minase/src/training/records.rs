@@ -28,7 +28,7 @@
 //! | 0..4 | u32 | 対局番号。0も許す。ファイル内では厳密な昇順 |
 //! | 4 | u8 | 由来。乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3 |
 //! | 5 | u8 | 結果。先手勝ち0、後手勝ち1、引き分け2 |
-//! | 6 | u8 | 終局理由。下記の0〜11 |
+//! | 6 | u8 | 終局理由。下記の0〜12 |
 //! | 7 | u8 | 予約。0 |
 //! | 8..10 | u16 | 開始局面までの着手数。0〜65,535手 |
 //! | 10..14 | u32 | 項目数n。1以上で、開始手数+n−1が65,535以下 |
@@ -41,7 +41,9 @@
 //! 合成以外は理由0を使えない。勝ちの理由は王駒の捕獲1、反復2、駒枯れ3、裸玉4、
 //! 合法手なし5、詰み6、投了7で、結果0か1の場合に限る。
 //! 引き分けの理由は反復8、駒枯れ9、裸玉10、合意11で、結果2の場合に限る。
-//! 結果は来歴として保持する。再生だけで決まらない投了・合意もあるため、再生結果との一致は要求しない。
+//! 理由12は王手限定の3手以内の勝ちによる打ち切りで、結果0か1の場合に限る。
+//! この打ち切りは審判層の裁定ではなく、[`Outcome::MateInThree`]として保持する。
+//! 結果は来歴として保持する。投了・合意・理由12の打ち切りもあるため、再生結果との一致は要求しない。
 //!
 //! 空升は0、駒は`1 + PieceKind::index() + 29×成りビット + 64×陣営`で表す。
 //! 先手は1〜58、後手は65〜122のうち、`PieceCode`の検査付きコンストラクタが受理する組だけを許す。
@@ -143,7 +145,7 @@ pub enum Error {
     InvalidOrigin(u8),
     /// 結果が0〜2ではない。
     InvalidOutcome(u8),
-    /// 終局理由が0〜11ではない。
+    /// 終局理由が0〜12ではない。
     InvalidEndReason(u8),
     /// 結果と終局理由が整合しない。
     OutcomeReasonMismatch,
@@ -468,6 +470,11 @@ impl Origin {
 pub enum Outcome {
     /// 実際の対局の結果と終局理由。
     Game(GameResult),
+    /// 王手限定の3手以内の勝ちによる打ち切り。審判層の裁定とは区別する。
+    MateInThree {
+        /// 打ち切り時の手番側であり、勝ちが確認された側。
+        winner: Color,
+    },
     /// 合成局面であり対局結果がない。
     NotFromGame,
 }
@@ -475,6 +482,7 @@ impl Outcome {
     fn codes(self) -> (u8, u8) {
         match self {
             Self::NotFromGame => (2, 0),
+            Self::MateInThree { winner } => (winner as u8, 12),
             Self::Game(GameResult::Win { winner, reason }) => (
                 winner as u8,
                 match reason {
@@ -529,6 +537,7 @@ impl Outcome {
                     _ => DrawReason::Agreement,
                 },
             }),
+            12 => Self::MateInThree { winner },
             x => return Err(Error::InvalidEndReason(x)),
         };
         if value.codes().0 != result {
@@ -1287,6 +1296,55 @@ impl<R: Read> Reader<R> {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => return Err(Error::Io(e)),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn mate_in_three_round_trips_with_reason_twelve_and_rejects_a_draw() {
+        // MNSD版2の対局ヘッダ: 結果は5バイト目、理由は6バイト目。
+        // 理由12は両陣営の勝ちを表せるが、結果2とは組み合わせられない。
+        for winner in Color::ALL {
+            let header = Header::new(
+                "engine-default".into(),
+                "a".repeat(40),
+                [0; 32],
+                TeacherKind::Mcts,
+                32,
+                7,
+            )
+            .unwrap();
+            let record = GameRecord::new(
+                1,
+                Origin::RandomSelfplay,
+                Outcome::MateInThree { winner },
+                0,
+                Position::initial(),
+                vec![
+                    Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap(),
+                ],
+            )
+            .unwrap();
+            let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
+            writer.write_game(&record).unwrap();
+            let mut bytes = writer.finish().unwrap().into_inner();
+            assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+            assert_eq!(bytes[HEADER_LEN + 5], winner as u8);
+            assert_eq!(bytes[HEADER_LEN + 6], 12);
+            let mut reader = Reader::new(bytes.as_slice()).unwrap();
+            assert_eq!(reader.read_game().unwrap().unwrap().record(), &record);
+            assert!(reader.read_game().unwrap().is_none());
+            // 初期局面の再生結果は未終局でも、記録した打ち切りは受理する。
+            bytes[HEADER_LEN + 5] = 2;
+            assert!(matches!(
+                Reader::new(bytes.as_slice()).unwrap().read_game(),
+                Err(Error::OutcomeReasonMismatch)
+            ));
         }
     }
 }

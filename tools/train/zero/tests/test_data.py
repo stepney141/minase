@@ -5,6 +5,7 @@ import shutil
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import minase_mnsd_reader
 import numpy as np
@@ -264,13 +265,44 @@ class DataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             read_file(path)
 
-    def test_missing_candidates_and_wrong_probability_sum_are_rejected(self) -> None:
+    def test_value_without_policy_is_not_a_training_position(self) -> None:
         path = self.directory / "policy.mnsd"
-        for probabilities in ((), (65534,)):
-            with self.subTest(probabilities=probabilities):
-                write_small(path, [single_game(1, 0, 2, 123, probabilities)], "engine-default")
-                with self.assertRaises(ValueError):
-                    read_file(path)
+        write_small(path, [single_game(1, 0, 2, 123, ())], "engine-default")
+        info = minase_mnsd_reader.scan(str(path))
+        self.assertEqual((info["training_count"], info["validation_count"]), (0, 0))
+        data, metadata = read_file(path)
+        self.assertEqual(len(data), 0)
+        self.assertEqual(metadata.position_count, 0)
+        self.assertEqual(metadata.game_numbers, (1,))
+
+    def test_selected_positions_still_require_candidates(self) -> None:
+        path = self.directory / "policy.mnsd"
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "engine-default")
+        raw = minase_mnsd_reader.read(str(path))
+        # 拡張モジュールから不完全な局面が返った場合も、Python側の検査で拒否する。
+        raw["policy_offsets"] = struct.pack("<QQ", 0, 0)
+        raw["policy_probabilities"] = b""
+        with patch("minase_zero.data.minase_mnsd_reader.read", return_value=raw):
+            with self.assertRaisesRegex(ValueError, "must have policy candidates"):
+                read_file(path)
+
+    def test_wrong_probability_sum_is_rejected(self) -> None:
+        path = self.directory / "policy.mnsd"
+        write_small(path, [single_game(1, 0, 2, 123, (65534,))], "engine-default")
+        with self.assertRaises(ValueError):
+            read_file(path)
+
+    def test_mate_in_three_results_use_the_winners_color(self) -> None:
+        path = self.directory / "mate.mnsd"
+        games = []
+        for number, (side, winner) in enumerate(((0, 0), (0, 1), (1, 0), (1, 1)), 1):
+            game = bytearray(single_game(number, side, winner, 32768, (65535,)))
+            game[6] = 12
+            games.append(bytes(game))
+        write_small(path, games, "engine-default")
+        data, info = read_file(path)
+        self.assertEqual(info.position_count, 4)
+        np.testing.assert_array_equal(data.results, [1.0, 0.0, 0.0, 1.0])
 
     def test_extension_distinguishes_io_and_format_errors(self) -> None:
         path = self.directory / "missing.mnsd"

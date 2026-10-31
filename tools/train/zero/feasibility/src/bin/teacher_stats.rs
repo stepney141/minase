@@ -51,6 +51,7 @@ impl Histogram {
 fn end_reason(outcome: Outcome) -> &'static str {
     match outcome {
         Outcome::NotFromGame => "not_from_game",
+        Outcome::MateInThree { .. } => "win_mate_in_three",
         Outcome::Game(GameResult::Win { reason, .. }) => match reason {
             WinReason::RoyalCapture => "win_royal_capture",
             WinReason::Repetition => "win_repetition",
@@ -85,6 +86,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         "win_no_legal_move",
         "win_mate",
         "win_resignation",
+        "win_mate_in_three",
         "draw_repetition",
         "draw_piece_exhaustion",
         "draw_bare_king",

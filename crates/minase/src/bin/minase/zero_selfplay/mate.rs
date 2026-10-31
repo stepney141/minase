@@ -2,9 +2,6 @@
 //! 攻め方は最後の王駒の捕獲と王手だけを指し、受け方は全合法手を指す。
 //! 受け方の王駒が2枚なら対象外とし、応手で2枚になった場合も受けとする。
 
-// 生成器への組み込み前にも、測定道具から同じファイルを取り込んで使う。
-#![allow(dead_code)]
-
 use std::fmt;
 
 use minase_core::{Color, Game, GameError, GameResult, GameStatus, Move, Square};

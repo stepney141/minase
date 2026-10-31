@@ -18,6 +18,9 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
                     games: 10,
                     positions: 30,
                     resigned_positions: 7,
+                    full_searches: 40,
+                    fast_searches: 120,
+                    mate_in_three_games: 2,
                     false_resignations: false_count,
                     resign_triggered_playthrough_games: triggers,
                     ..Counts::default()
@@ -30,6 +33,9 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
                     games: 10,
                     positions: 20,
                     resigned_positions: 3,
+                    full_searches: 25,
+                    fast_searches: 75,
+                    mate_in_three_games: 3,
                     ..Counts::default()
                 },
             },
@@ -39,6 +45,9 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
         assert_eq!(summary.resigned_games_excluded, excluded);
         assert_eq!(summary.counts.games, 20);
         assert_eq!(summary.training_positions, if excluded { 50 } else { 60 });
+        assert_eq!(summary.counts.full_searches, 65);
+        assert_eq!(summary.counts.fast_searches, 195);
+        assert_eq!(summary.counts.mate_in_three_games, 5);
         let expected = if excluded {
             vec!["chunk-00000.mnsd", "chunk-00001.mnsd"]
         } else {
@@ -51,6 +60,59 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
         };
         assert_eq!(summary.training_files, expected);
     }
+}
+
+#[test]
+fn mate_in_three_counts_winners_and_full_search_training_positions() {
+    use minase::training::records::{Entry, Exclusion, GameRecord, Origin, Policy, Value};
+    use minase_core::Position;
+
+    let mut counts = Counts::default();
+    for winner in Color::ALL {
+        let result = Outcome::MateInThree { winner };
+        let record = GameRecord::new(
+            1,
+            Origin::RandomSelfplay,
+            result,
+            0,
+            Position::initial(),
+            vec![Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap()],
+        )
+        .unwrap();
+        counts.add_game(&CompletedGame {
+            number: 1,
+            record: Some(record),
+            resigned: false,
+            playthrough: true,
+            first_trigger: Some(winner.opposite()),
+            result: Some(result),
+            full_searches: 2,
+            fast_searches: 6,
+            plies: 20,
+        });
+    }
+    counts.add_game(&CompletedGame {
+        number: 3,
+        record: None,
+        resigned: false,
+        playthrough: false,
+        first_trigger: None,
+        result: None,
+        full_searches: 3,
+        fast_searches: 9,
+        plies: 1000,
+    });
+    assert_eq!(counts.games_file_games, 2);
+    assert_eq!((counts.black_wins, counts.white_wins), (1, 1));
+    assert_eq!(counts.mate_in_three_games, 2);
+    assert_eq!(counts.discarded_max_ply, 1);
+    assert_eq!((counts.full_searches, counts.fast_searches), (7, 21));
+    assert_eq!(counts.positions, 4);
+    assert_eq!(counts.resigned_positions, 0);
+    assert_eq!(counts.resign_triggered_playthrough_games, 2);
+    assert_eq!(counts.false_resignations, 0);
+    assert_eq!(counts.win_reason_mate, 0);
+    assert_eq!(counts.win_reason_resignation, 0);
 }
 
 #[test]

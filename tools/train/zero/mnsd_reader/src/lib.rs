@@ -1,4 +1,5 @@
-//! MNSDを再生し、価値を持ち除外されていない局面をファイル順に返す。
+//! MNSDを再生し、価値と方策の候補を持ち除外されていない局面をファイル順に返す。
+//! `Policy::PlayedMove`も確率1の候補として扱い、方策のない速い探索は訓練局面に数えない。
 //!
 //! Pythonの`read(path: str) -> dict`は、次のキーを持つ辞書を返す。
 //! ヘッダの`origin`はint（0〜3）、対局が0局ならNoneである。
@@ -243,7 +244,7 @@ impl Records {
     }
 }
 
-/// 1ファイルを末尾まで検査し、価値を持ち除外されていない項目を返す。
+/// 1ファイルを末尾まで検査し、価値と方策の候補を持ち除外されていない項目を返す。
 ///
 /// 最後の項目も同じ条件で選別するため、投了を決めた探索の価値と方策は残る。
 /// `Policy::PlayedMove`は確率65,535の候補1つへ展開する。
@@ -256,7 +257,7 @@ pub fn read_file(path: &Path) -> Result<Records, Error> {
 
 /// 全手順を再生し、基本シードと対局番号の組が集合に含まれる対局の採用局面を返す。
 ///
-/// 訓練・検証の分割を問わず、価値を持ち除外されていない項目を入力順に保持する。
+/// 訓練・検証の分割を問わず、価値と方策の候補を持ち除外されていない項目を入力順に保持する。
 /// 集合は複数ファイルの対局を含めてよく、このファイルにない組は選択されない。
 /// 空集合なら局面は保持せず、ファイル全体のヘッダ・対局番号・件数だけを返す。
 /// 復号器が一時的に保持する1対局分を除き、局面のメモリは選択した局面数に比例する。
@@ -269,7 +270,7 @@ pub fn read_games(path: &Path, games: &HashSet<(u64, u32)>) -> Result<Records, E
 
 /// 全手順を再生し、指定した訓練局面と、指定時だけ検証局面を保持する。
 ///
-/// 訓練局面の番号は、価値があり除外されていない非検証局面に0から振る。
+/// 訓練局面の番号は、価値と方策の候補があり除外されていない非検証局面に0から振る。
 /// 復号器が一時的に保持する1対局分を除き、局面のメモリは保持件数に比例する。
 ///
 /// # Errors
@@ -323,13 +324,15 @@ fn read_positions(
         output.info.add_game(number, record.origin())?;
         let validation = is_validation(output.info.header.seed(), number);
         let outcome = match record.outcome() {
-            Outcome::Game(GameResult::Win { winner, .. }) => winner as u8,
+            Outcome::Game(GameResult::Win { winner, .. }) | Outcome::MateInThree { winner } => {
+                winner as u8
+            }
             Outcome::Game(GameResult::Draw { .. }) => 2,
             Outcome::NotFromGame => return Err(Error::SyntheticOrigin { game: number }),
         };
         for (index, (entry, position)) in record.entries().iter().zip(game.positions()).enumerate()
         {
-            if entry.exclusion() != Exclusion::None {
+            if entry.exclusion() != Exclusion::None || entry.policy() == &Policy::None {
                 continue;
             }
             let value = match entry.value() {

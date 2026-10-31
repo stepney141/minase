@@ -1,6 +1,7 @@
 //! MNSD版2の項目フラグだけを読み、手順を再生せずに局面数を数える。
 //!
-//! 選別はフラグの下位3ビットが0の項目であり、検証の分割は対局ごとに決まる。
+//! 価値があり除外されていない項目のうち、方策の候補か指した手を確率1とする印を持つものを選ぶ。
+//! 方策のない速い探索は数えず、検証の分割は対局ごとに決まる。
 //! 候補は長さだけを読んで飛ばす。着手と候補の合法性などは後続の再生で検査する。
 
 use std::{
@@ -93,14 +94,14 @@ pub fn scan_file(path: &Path) -> Result<FileInfo, Error> {
             if flags & 4 != 0 && entry[2..4] != [0, 0] {
                 return Err(records::Error::NonzeroAbsentValue.into());
             }
-            if flags & 7 == 0 {
+            let candidates = u16::from_le_bytes([entry[5], entry[6]]);
+            if flags & 7 == 0 && (candidates > 0 || flags & 8 != 0) {
                 if validation {
                     info.validation_count += 1;
                 } else {
                     info.training_count += 1;
                 }
             }
-            let candidates = u16::from_le_bytes([entry[5], entry[6]]);
             skip_candidates(&mut source, usize::from(candidates) * 4)?;
         }
     }

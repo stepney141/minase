@@ -65,19 +65,23 @@ fn control_planes_decode_promoted_pieces_and_both_sides_from_records() {
                 )
                 .unwrap();
         }
+        let start = builder.finish().unwrap();
+        let candidate =
+            sorted_legal_moves(&Game::from_position(Rules::ENGINE_DEFAULT, start.clone())).unwrap()
+                [0];
         games.push(
             GameRecord::new(
                 side as u32,
                 Origin::RandomSelfplay,
                 draw(),
                 0,
-                builder.finish().unwrap(),
+                start,
                 vec![
                     Entry::new(
                         None,
                         Value::AlphaBeta(0),
                         Exclusion::None,
-                        Policy::None,
+                        Policy::Candidates(vec![(candidate, 65535)]),
                         None,
                     )
                     .unwrap(),
@@ -238,8 +242,8 @@ fn alpha_game(number: u32, start_ply: u16, start: Position) -> GameRecord {
 }
 
 #[test]
-fn alpha_beta_matches_every_trainer_record_in_original_order() {
-    // 設計書「検証」: 訓練・検証集合の区別によらず、全通し番号を順に比較する。
+fn alpha_beta_policy_positions_match_trainer_records_in_original_order() {
+    // 訓練・検証集合の区別によらず、価値と方策を持つ項目をαβ学習器の同じ項目と比較する。
     let fixture = Fixture::new();
     let mut black = Position::initial();
     black.set_lion_capture(Some(square(1, 8))).unwrap();
@@ -254,20 +258,21 @@ fn alpha_beta_matches_every_trainer_record_in_original_order() {
     let path = fixture.write(TeacherKind::AlphaBeta, &games);
     let actual = read_file(&path).unwrap();
     let trainer = Dataset::open(&[path], None, NonZeroUsize::new(1).unwrap()).unwrap();
-    assert_eq!(actual.games, [1, 1, 1, 4, 4, 4]);
-    assert_eq!(actual.plies, [13, 14, 19, 30, 31, 36]);
-    assert_eq!(actual.values, [100, -200, -32768, 100, -200, -32768]);
-    assert_eq!(actual.policy_offsets, [0, 0, 1, 3, 3, 4, 6]);
+    assert_eq!(actual.games, [1, 1, 4, 4]);
+    assert_eq!(actual.plies, [14, 19, 31, 36]);
+    assert_eq!(actual.values, [-200, -32768, -200, -32768]);
+    assert_eq!(actual.policy_offsets, [0, 1, 3, 4, 6]);
     assert_eq!(
         actual.policy_probabilities,
         [65535, 10000, 55535, 65535, 10000, 55535]
     );
-    assert_eq!(actual.visits, [0; 6]);
+    assert_eq!(actual.visits, [0; 4]);
     assert_eq!(trainer.record_count(), 6);
     assert_eq!(trainer.training_indices(), [0, 1, 2]);
     assert_eq!(trainer.validation_indices(), [3, 4, 5]);
     for (index, board) in actual.boards.as_chunks::<144>().0.iter().enumerate() {
-        let sample = trainer.record(index as u64).unwrap();
+        // αβの学習器は価値だけの項目も使う。方策を持つ項目だけを対応させる。
+        let sample = trainer.record([1, 2, 4, 5][index]).unwrap();
         assert_eq!(board, sample.board_codes());
         assert_eq!(actual.sides[index], sample.side_to_move() as u8);
         assert_eq!(
@@ -278,8 +283,7 @@ fn alpha_beta_matches_every_trainer_record_in_original_order() {
         assert_eq!(actual.games[index], sample.game_number());
         assert_eq!(actual.plies[index], sample.ply());
     }
-    assert_eq!(actual.lions[0], 97);
-    assert_eq!(actual.sides, [0, 1, 0, 1, 0, 1]);
+    assert_eq!(actual.sides, [1, 0, 0, 1]);
     assert_eq!(actual.info.origin, Some(Origin::RandomSelfplay));
     assert_eq!(actual.info.header.rule_set(), "engine-default");
     assert_eq!(actual.info.header.rules(), Rules::ENGINE_DEFAULT);
@@ -420,6 +424,79 @@ fn mcts_preserves_resignation_search_and_expands_played_policy() {
     }
 }
 
+#[test]
+fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
+    let fixture = Fixture::new();
+    let mut games = Vec::new();
+    // seed=11では対局1が訓練、対局4が検証。両方に同じ選別規則を適用する。
+    for (number, winner) in [(1, Color::Black), (4, Color::White)] {
+        let mut game = Game::with_default_rules();
+        let mut entries = Vec::new();
+        for index in 0..6 {
+            let mv = sorted_legal_moves(&game).unwrap()[0];
+            let (value, policy, exclusion, visits) = match index {
+                0 => (Value::None, Policy::None, Exclusion::None, 0),
+                1 => (Value::Mcts(111), Policy::None, Exclusion::None, 2),
+                2 => (
+                    Value::Mcts(222),
+                    Policy::Candidates(vec![(mv, 65535)]),
+                    Exclusion::None,
+                    8,
+                ),
+                3 => (Value::Mcts(333), Policy::PlayedMove, Exclusion::None, 8),
+                4 => (
+                    Value::None,
+                    Policy::Candidates(vec![(mv, 65535)]),
+                    Exclusion::None,
+                    0,
+                ),
+                5 => (
+                    Value::Mcts(444),
+                    Policy::Candidates(vec![(mv, 65535)]),
+                    Exclusion::Repetition,
+                    8,
+                ),
+                _ => unreachable!(),
+            };
+            entries.push(Entry::new(Some(mv), value, exclusion, policy, Some(visits)).unwrap());
+            game.play(mv).unwrap();
+        }
+        entries
+            .push(Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap());
+        games.push(
+            GameRecord::new(
+                number,
+                Origin::RandomSelfplay,
+                Outcome::MateInThree { winner },
+                0,
+                Position::initial(),
+                entries,
+            )
+            .unwrap(),
+        );
+    }
+    let path = fixture.write(TeacherKind::Mcts, &games);
+    assert_eq!(fs::read(&path).unwrap()[records::HEADER_LEN + 6], 12);
+    let info = scan_file(&path).unwrap();
+    let all = read_file(&path).unwrap();
+    assert_eq!((info.training_count, info.validation_count), (2, 2));
+    assert_eq!((all.info.training_count, all.info.validation_count), (2, 2));
+    assert_eq!(all.games, [1, 1, 4, 4]);
+    assert_eq!(all.plies, [2, 3, 2, 3]);
+    assert_eq!(all.values, [222, 333, 222, 333]);
+    assert_eq!(all.visits, [8; 4]);
+    assert_eq!(all.outcomes, [0, 0, 1, 1]);
+    assert_eq!(all.policy_offsets, [0, 1, 2, 3, 4]);
+    assert_eq!(all.policy_probabilities, [65535; 4]);
+    let selected = read_selected(&path, &[1], true).unwrap();
+    assert_eq!(selected.games, [1, 4, 4]);
+    assert_eq!(selected.plies, [3, 2, 3]);
+    assert_eq!(selected.outcomes, [0, 1, 1]);
+    let by_game = read_games(&path, &HashSet::from([(11, 4)])).unwrap();
+    assert_eq!(by_game.plies, [2, 3]);
+    assert_eq!(by_game.outcomes, [1, 1]);
+}
+
 fn unselected_game(number: u32, origin: Origin) -> GameRecord {
     let outcome = if origin == Origin::Synthetic {
         Outcome::NotFromGame
@@ -504,18 +581,21 @@ fn deferred_promotion_bit_and_maximum_ply_are_preserved() {
         )
         .unwrap();
     builder.mark_promotion_deferred(square(4, 8)).unwrap();
+    let start = builder.finish().unwrap();
+    let candidate =
+        sorted_legal_moves(&Game::from_position(Rules::ENGINE_DEFAULT, start.clone())).unwrap()[0];
     let game = GameRecord::new(
         1,
         Origin::RandomSelfplay,
         draw(),
         u16::MAX,
-        builder.finish().unwrap(),
+        start,
         vec![
             Entry::new(
                 None,
                 Value::AlphaBeta(0),
                 Exclusion::None,
-                Policy::None,
+                Policy::Candidates(vec![(candidate, 65535)]),
                 None,
             )
             .unwrap(),
@@ -615,7 +695,7 @@ fn legal_columns_match_generated_moves_in_record_order() {
 
 #[test]
 fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
-    // 仕様: seed=11の対局1は訓練、対局4は検証。各対局の採用項目は0,1,6。
+    // 仕様: seed=11の対局1は訓練、対局4は検証。価値と方策を持つ採用項目は1,6。
     let fixture = Fixture::new();
     let path = fixture.write(
         TeacherKind::AlphaBeta,
@@ -626,21 +706,21 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
     );
     let info = scan_file(&path).unwrap();
     assert_eq!(info.game_numbers, [1, 4]);
-    assert_eq!((info.training_count, info.validation_count), (3, 3));
+    assert_eq!((info.training_count, info.validation_count), (2, 2));
     let selected = read_selected(&path, &[1], true).unwrap();
-    assert_eq!(selected.games, [1, 4, 4, 4]);
-    assert_eq!(selected.plies, [14, 30, 31, 36]);
-    assert_eq!(selected.boards.len(), 4 * 144);
+    assert_eq!(selected.games, [1, 4, 4]);
+    assert_eq!(selected.plies, [19, 31, 36]);
+    assert_eq!(selected.boards.len(), 3 * 144);
     assert_eq!(
         (selected.info.training_count, selected.info.validation_count),
-        (3, 3)
+        (2, 2)
     );
     let empty = read_selected(&path, &[], false).unwrap();
     assert!(empty.boards.is_empty());
     assert_eq!(empty.policy_offsets, [0]);
     assert_eq!(empty.legal_offsets, [0]);
     assert_eq!(empty.info.game_numbers, [1, 4]);
-    for indices in [&[1, 1][..], &[2, 0], &[3]] {
+    for indices in [&[1, 1][..], &[1, 0], &[2]] {
         assert!(matches!(
             read_selected(&path, indices, false),
             Err(Error::InvalidSelection)
@@ -653,7 +733,7 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
     bytes[entry..entry + 2].copy_from_slice(&u16::MAX.to_le_bytes());
     fs::write(&path, bytes).unwrap();
     let info = scan_file(&path).unwrap();
-    assert_eq!((info.training_count, info.validation_count), (3, 3));
+    assert_eq!((info.training_count, info.validation_count), (2, 2));
     assert!(matches!(
         read_selected(&path, &[], false),
         Err(Error::Format(records::Error::MissingPlayedMove))
@@ -662,7 +742,7 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
 
 #[test]
 fn game_selection_uses_full_keys_without_the_training_validation_split() {
-    // 対局1は訓練、4は検証。選択した対局の採用項目0,1,6をすべて保持する。
+    // 対局1は訓練、4は検証。選択した対局の採用項目1,6をすべて保持する。
     let fixture = Fixture::new();
     let path = fixture.write(
         TeacherKind::AlphaBeta,
@@ -672,12 +752,12 @@ fn game_selection_uses_full_keys_without_the_training_validation_split() {
         ],
     );
     for (keys, games, plies) in [
-        (vec![(11, 1), (12, 4)], vec![1, 1, 1], vec![13, 14, 19]),
-        (vec![(12, 1), (11, 4)], vec![4, 4, 4], vec![30, 31, 36]),
+        (vec![(11, 1), (12, 4)], vec![1, 1], vec![14, 19]),
+        (vec![(12, 1), (11, 4)], vec![4, 4], vec![31, 36]),
         (
             vec![(11, 4), (11, 1), (11, 99)],
-            vec![1, 1, 1, 4, 4, 4],
-            vec![13, 14, 19, 30, 31, 36],
+            vec![1, 1, 4, 4],
+            vec![14, 19, 31, 36],
         ),
     ] {
         let selected = read_games(&path, &keys.into_iter().collect()).unwrap();
@@ -689,12 +769,12 @@ fn game_selection_uses_full_keys_without_the_training_validation_split() {
         assert_eq!(selected.info.header.entry_count(), 14);
         assert_eq!(
             (selected.info.training_count, selected.info.validation_count),
-            (3, 3)
+            (2, 2)
         );
         assert_eq!(selected.policy_offsets.len(), games.len() + 1);
         assert_eq!(selected.legal_offsets.len(), games.len() + 1);
-        for &values in selected.values.as_chunks::<3>().0 {
-            assert_eq!(values, [100, -200, -32768]);
+        for &values in selected.values.as_chunks::<2>().0 {
+            assert_eq!(values, [-200, -32768]);
         }
         for &probabilities in selected.policy_probabilities.as_chunks::<3>().0 {
             assert_eq!(probabilities, [65535, 10000, 55535]);
@@ -714,7 +794,7 @@ fn empty_game_selection_preserves_metadata_without_position_arrays() {
         assert_eq!(selected.info.game_numbers, [1]);
         assert_eq!(
             (selected.info.training_count, selected.info.validation_count),
-            (3, 0)
+            (2, 0)
         );
         assert!(selected.games.is_empty());
         assert!(selected.boards.is_empty());
