@@ -2,28 +2,33 @@
 
 ## 先に読む要約
 
-本書は、2026年10月31日にリセットした強化学習（RL）を、ランダムに初期化したネットから学び直す前に、先行実装の学習技法を自己対局生成器、ネット、および学習器へ入れるマイルストーンの設計書である。
-ネットは、局面から各合法手の確率（方策）と手番側の勝率（価値）を出すニューラルネットワークであり、技法の根拠は[学習効率と強さに効く技法の調査](../research/alphazero-rl-training-efficiency.md)にある。
-入れる技法は、利用者が2026年10月31日に選んだ9つと、学習率の予定のウォームアップである。
-自己対局では、Gumbel AlphaZeroのQの項の尺度c_scaleを0.1から1.0へ上げ、指す手を選ぶGumbel乱数に手数とともに小さくなる倍率（温度）を掛ける。
-playout cap randomization（以下PCR）は、手番の25%だけを通常の回数で探索して学習に使い、残りの手番は4分の1の回数で探索して指すだけにする方式である。
-さらに、着手の後に王手を続けて3手以内に勝てる局面を見つけたら、その側の勝ちとして対局を打ち切る。
-ネットの入力には駒の利きと利き数の面を足し、価値ヘッド（価値を出す枝）を1チャネルから32チャネルへ広げる。
-学習器には3つの補助目標を加える。
-将来の局面の価値の指数平均を予測する短期の価値の目標（KataGoのTD目標）、相手の次の手の予測、および方策の目標を平らにしたソフト方策の目標である。
-さらに、各局面を平均4回使うように抽出数を増やし、ランダム初期化から200万標本の間に学習率を線形に上げるウォームアップを入れる。
-利用者は、これらを1つずつ比べずにまとめて採り、効果は10サイクルごとの進捗測定で確かめると決めた。
-完了条件は、各技法の試験と既存の試験が通り、新しい構成のランダム初期化のネットで試走を行って1サイクルの所要時間とColabの計算単位（CU）の消費を測り直し、実装がmasterへマージされることである。
+本書は、2026年10月31日にリセットした強化学習（RL）を、ランダムに初期化したネットから学び直す前に、先行実装の学習技法を自己対局生成器、ネット、および学習器へ入れたマイルストーンの設計書である。
+ネットは、局面から各合法手の確率（方策）と手番側の勝率（価値）を出すニューラルネットワークであり、技法の根拠は[学習効率と強さに効く技法の調査](../../research/alphazero-rl-training-efficiency.md)にある。
+入れた技法は、利用者が2026年10月31日に選んだ9つと、学習率の予定のウォームアップであり、利用者はこれらを1つずつ比べずにまとめて採り、効果は10サイクルごとの進捗測定で確かめると決めた。
+自己対局では、Gumbel AlphaZeroのQの項の尺度c_scaleを0.1から1.0へ上げ、指す手を選ぶGumbel乱数に手数とともに小さくなる倍率（温度）を掛けた。
+playout cap randomization（以下PCR）により、手番の25%だけを通常の回数で探索して方策を記録し、残りの手番は4分の1の回数で探索して指した手と価値だけを記録する。
+着手の後に王手を続けて3手以内に勝てる局面を見つけたら、その側の勝ちとして対局を打ち切る。
+最初の実装では、この判定が自己対局の生成の時間を約165%延ばす見込みであったが、受けになりやすい応手を先に読む順序づけにより、判定の結果を変えずに延びの見込みを約4.3%に下げた。
+ネットの入力には駒種ごとの利きと利き数の64面を足して159面とし、価値ヘッド（価値を出す部分）を1チャネルから32チャネルへ広げ、パラメータ数は4,780,200になった。
+学習器には、将来の局面の価値の指数平均を予測する短期の価値の目標（KataGoのTD目標）、相手の次の手の予測、および方策の目標を平らにしたソフト方策の目標の3つの補助目標を加えた。
+さらに、各局面を平均4回使うように抽出数を新規局面数の4倍にし、ランダム初期化から200万標本の間に学習率を線形に上げるウォームアップを入れた。
+作業機では、強制終了から再開した生成と学習が止めない場合と一致することを確かめた。
+Colab機のL4の試走では、窓が1サイクル分のときの1サイクルが55.7分、1.76 CUであり、窓が満ちた後は約74〜77分、約2.2〜2.3 CUと見込む。
 
 ## 状態
 
-起案。2026年10月31日に起案した。
-着手は利用者の指示を待つ。
-本書が前提とする学習器と実行器のコードは、2026年10月31日に利用者の決定でブランチ`alphazero-rl`からmasterへマージしたので、実装はmasterから切ったブランチで行う。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年10月31日に起案し、同日に着手して完了した。
+実装はmasterから切ったブランチ`alphazero-restart-techniques`で行った。
+各技法の試験と既存の試験（workspaceの1,757件、学習器の230件、拡張モジュールの25件）が通り、αβ探索の深さ6のbenchは15局面すべてでmasterと一致した。
+測定の記録は、[判定の時間](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-mate3-cost.md)、[ランダム初期化のネットの出力の照合](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)、[作業機の再開の確認](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-resume-check.md)、および[試走](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)にある。
+設計判断は、[Gumbel探索](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択](../../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)、[3手以内の勝ちの打ち切り](../../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)、[入力](../../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)、[ネットの構成](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[補助目標](../../adr/train-the-zero-network-on-katago-auxiliary-targets.md)、[拡張モジュール](../../adr/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)、[抽出](../../adr/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)、および[学習率の予定](../../adr/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)の9本のADRへ移した。
+強化学習の再出発の手順は、[強化学習の実行の設計書](../alphazero-rl.md)の「状態」の節にある。
 
 ## 目的
 
-サイクル1〜37では、方策は改善したが、学習に使わない検証の対局で対局結果に対する価値の損失が、勝敗を常に五分と予測したときの値ln 2（約0.693）をわずかに下回るまでしか下がらなかった（[調査](../research/alphazero-rl-training-efficiency.md)の「サイクル1〜37の記録」の節）。
+サイクル1〜37では、方策は改善したが、学習に使わない検証の対局で対局結果に対する価値の損失が、勝敗を常に五分と予測したときの値ln 2（約0.693）をわずかに下回るまでしか下がらなかった（[調査](../../research/alphazero-rl-training-efficiency.md)の「サイクル1〜37の記録」の節）。
 調査は、先行実装との差として、Qの尺度、価値ヘッドの幅、入力の利き、指す手の乱択、1局から記録する局面の数、補助目標、および教師局面の使用回数を挙げた。
 本書の目的は、これらの差を埋めた構成を用意し、強化学習をその構成で最初からやり直せるようにすることである。
 再出発では、2026年10月31日の利用者の決定により、サイクル1〜37の教師データとネットを削除し、新しい構成のランダム初期化のネットから自己対局を生成し直す。
@@ -41,7 +46,7 @@ playout cap randomization（以下PCR）は、手番の25%だけを通常の回�
 - 学習器に、短期の価値の目標、相手の次の手の目標、およびソフト方策の目標を加える。
 - 学習器の抽出数を新規局面数の4倍にし、ランダム初期化からのウォームアップを入れる。
 - 新しい構成のランダム初期化のネットを作り、借りた機械で試走して、1サイクルの所要時間とCUを測り直す。
-- [強化学習の実行の設計書](alphazero-rl.md)の各サイクルの設定と見積もりを、新しい構成に合わせて改める。
+- [強化学習の実行の設計書](../alphazero-rl.md)の各サイクルの設定と見積もりを、新しい構成に合わせて改める。
 
 次の項目は対象外とする。
 
@@ -53,8 +58,8 @@ playout cap randomization（以下PCR）は、手番の25%だけを通常の回�
 ## 依存関係
 
 本書は、2026年10月31日にmasterへマージした強化学習の実行の学習器と実行器の実装（学習窓からの一様な抽出、`--lr-schedule`、重みの移動平均、および`runner`の`--cycles-dir`など）を前提とする。
-自己対局生成器、探索、ネットの入出力、および学習器の既存の仕様は、凍結した[自己対局生成器](archived/alphazero-selfplay.md)、[探索方式の共存とMCTS](archived/alphazero-mcts.md)、[ネットの入出力と推論](archived/alphazero-network.md)、[学習器](archived/alphazero-trainer.md)、および各ADRとコードのdocコメントにある。
-王手限定の3手以内の勝ちの判定は、2026年10月31日の利用者の決定により、起案中の[詰み探索（df-pn）の設計書](mate-search.md)とは別の探索として本書で作り、df-pnの探索核にも参照探索にも依存しない。
+自己対局生成器、探索、ネットの入出力、および学習器の既存の仕様は、凍結した[自己対局生成器](alphazero-selfplay.md)、[探索方式の共存とMCTS](alphazero-mcts.md)、[ネットの入出力と推論](alphazero-network.md)、[学習器](alphazero-trainer.md)、および各ADRとコードのdocコメントにある。
+王手限定の3手以内の勝ちの判定は、2026年10月31日の利用者の決定により、起案中の[詰み探索（df-pn）の設計書](../mate-search.md)とは別の探索として本書で作り、df-pnの探索核にも参照探索にも依存しない。
 王手の定義（受け方の唯一の王駒に攻め方の利きが届くこと）と、受け方の王駒が2枚の局面を判定の対象外とする扱いは、詰み探索の設計書と同じにする。
 
 ## 設計判断
@@ -121,17 +126,17 @@ m2が成功ならそのm2は受けにならず、m2が失敗ならそのm1は勝
 m2の後に終局していなければ、成功するSの手m3（最後の王駒を取る手か王手）が1つ以上要る。
 どのm2も受けにならないm1が1つあれば、王手限定の3手以内の勝ちがある。
 終局していない局面では`Game::legal_moves`が合法手を返すので、m2の集合が空のまま勝ちと判定することはない。
-王手は、[詰み探索の設計書](mate-search.md)と同じく、着手後の局面で、相手の唯一の王駒の升にSの利き（`Position::attackers_to_by`）が届くことをいう。
+王手は、[詰み探索の設計書](../mate-search.md)と同じく、着手後の局面で、相手の唯一の王駒の升にSの利き（`Position::attackers_to_by`）が届くことをいう。
 王駒は獅子ではないので、利きが届けば次の手でその王駒を取れる（同じ設計書の設計判断の表の「攻め方の手の集合」）。
 相手が王将または玉将と太子の2枚の王駒を持つ局面では判定を行わず、打ち切らない。
 m2で相手の醉象が成って王駒が2枚になった場合は、m3を読まず、そのm2を受けとする。
 RULES.md第8条第7項は、王駒が2枚の側には獅子が1手で両方を取れる状態を王手とするが、その判定は本書の範囲外とする。
 王駒が2枚の局面で判定しないことと、m2で王駒が2枚になればそのm2を受けとすることは、Claudeの提案を利用者が2026年10月31日に了承したものであり、詰み探索の設計書の対象外の扱いと保守的な近似にそろえた。
-自己対局の保存棋譜で、終局の20手前に負け側の王駒が2枚であった対局は0.3%である（[王駒の枚数と終局理由の診断](../measurements/mate-search/mate-search-royal-count-diag.md)）。
+自己対局の保存棋譜で、終局の20手前に負け側の王駒が2枚であった対局は0.3%である（[王駒の枚数と終局理由の診断](../../measurements/mate-search/mate-search-royal-count-diag.md)）。
 すべての着手と裁定は審判層`Game::play`で行い、反復、駒枯れ、および詰みの規則を探索の側で近似しない。
 王手限定の3手以内の勝ちを見つけたら、Sの勝ちとして対局を打ち切り、教師データ形式MNSDに、規則上の終局と区別できる終局理由で記録する。
 これは、Gumbel dlshogiが入玉宣言による退化を止めた、着手の後の3手詰めによる打ち切りを中将棋の規則に合わせたものである。
-Gumbel dlshogiの3手詰めも、df-pnではなく、手数を固定した奇数手詰めの探索である（[調査](../research/alphazero-rl-training-efficiency.md)の「対局の長さと記録する局面」の節）。
+Gumbel dlshogiの3手詰めも、df-pnではなく、手数を固定した奇数手詰めの探索である（[調査](../../research/alphazero-rl-training-efficiency.md)の「対局の長さと記録する局面」の節）。
 
 判定は、自己対局生成器（`crates/minase/src/bin/minase/zero_selfplay/`）の中に、独立したモジュールとして置く。
 使うのはminase-coreの公開API（`Game`、`Position::royal_pieces`、および`Position::attackers_to_by`）だけであり、詰み探索の設計書が`crate::search`に置く`mate`モジュールとは共有しない（Claudeの決定）。
@@ -140,6 +145,11 @@ Gumbel dlshogiの3手詰めも、df-pnではなく、手数を固定した奇数
 リセット前のサイクル30の局面を測る予定であったが、サイクル1〜37の教師データを削除したので、学習の進んだ段階に近い対局として、この棋譜に代えた（Claudeの決定）。
 1サイクルの生成の時間が10%を超えて延びる見込みになった場合は、測定の結果と、王手だけを生成する専用の生成器を作る案、および判定の範囲を狭める案を利用者に示し、判断を仰ぐ（Claudeの決定）。
 dlshogiの手数を固定した詰み探索は、攻め方の手を王手専用の生成で作るが、本書の判定は全合法手を生成してから利きで絞るからである（調査の同じ節）。
+
+[判定の時間の測定](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-mate3-cost.md)では、最初の実装の平均は1回1,097 µsで、生成の時間は約165%延びる見込みになり、この条件を超えた。
+命令数の75%は受け方の応手m2の`Game::play`であり、合法手の生成は約4%であったので、王手だけを生成する専用の生成器では費用はほとんど下がらない。
+そこで、受け方の応手を、攻め方の最後の王駒を取る手、着手後に受け方の王駒へ攻め方の利きが届かない手、その他の順に並べてから読むようにした。
+すべての応手を`Game::play`で裁定する点は変わらないので判定の結果は変わらず、平均は28.7 µs、延びの見込みは約4.3%になった（Claudeの決定）。
 
 ### 入力の利きの面
 
@@ -153,7 +163,7 @@ dlshogiの手数を固定した詰み探索は、攻め方の手を王手専用�
 利きの面は、`crates/minase/src/nn/`に置く1つの関数で作る。
 推論の符号化はこの関数を直接呼び、学習器は拡張モジュール`minase_mnsd_reader`を通してバッチごとに盤の配列から同じ関数を呼ぶ。
 教師データには面を書かないので、MNSDの大きさは変わらない。
-[入力のADR](../adr/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)が利きの面を初版で採らなかった理由（中将棋の規則をPythonで再実装するか、教師データを大きくする必要）は、Rustの1つの関数を推論と学習の両方から呼ぶこの構成で解消する。
+[入力のADR](../../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)が利きの面を初版で採らなかった理由（中将棋の規則をPythonで再実装するか、教師データを大きくする必要）は、Rustの1つの関数を推論と学習の両方から呼ぶこの構成で解消する。
 固定局面集`tools/train/zero/fixtures/nn-positions.jsonl`はRustで書き出し直し、推論と学習器の159面の一致を同じ試験で固定する。
 
 ### 価値ヘッドと補助ヘッド
@@ -217,7 +227,7 @@ sには同じ局面が複数回現れてよいので、拡張モジュールに�
 更新回数はceil(4N/256)とし、`sample_sha256`と`data_order_sha256`は重複を含むs全体から求める。
 抽出数が窓を超えると拒否する学習器の`sample_training_indices`（`data.py` 196行）と、重複した番号を拒否する拡張モジュール（`tools/train/zero/mnsd_reader/src/lib.rs` 260行）は、この契約に合わせて改める。
 4倍は、KataGoの手引きが「conservative」として勧める、新しいデータ1行あたりの学習の回数である（`SelfplayTraining.md` 58、67行）。
-再開の照合は、[学習窓の抽出のADR](../adr/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
+再開の照合は、[学習窓の抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
 
 ### 1サイクルの所要時間と費用の見積もり
 
@@ -234,10 +244,10 @@ L4のColab機で、リセット前のサイクル30の生成は1,115秒、学習
 
 完了時には、次のADRの該当する決定を置き換える新しいADRを書き、旧ADRを`docs/adr/archive/`へ移す。
 
-- [Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-for-zero-self-play-search.md)で定めた、Qの尺度0.1、毎手の倍率1.0のGumbel乱数、および手番ごとに同じ探索回数の3つの決定。
-- [入力のADR](../adr/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)で定めた、95面の入力と利きの面を入れない決定。
-- [ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)で定めた、1チャネルの価値ヘッド。
-- [学習窓の抽出のADR](../adr/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
+- [Gumbel AlphaZeroのADR](../../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)で定めた、Qの尺度0.1、毎手の倍率1.0のGumbel乱数、および手番ごとに同じ探索回数の3つの決定。
+- [入力のADR](../../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)で定めた、95面の入力と利きの面を入れない決定。
+- [ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)で定めた、1チャネルの価値ヘッド。
+- [学習窓の抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
 
 補助目標、3手以内の勝ちによる打ち切り、およびRLの学習率の予定は、新しいADRに書く。
 
@@ -274,7 +284,7 @@ ONNXに書き出す出力が方策と主の価値だけであることと、再�
 相手の次の手の目標は、相手の成りの手が反転した定数マスクの内に入ること、次の手番が速い探索の手番なら重み0になることを試験する。
 ソフト方策は、候補が1つの局面と、確率0の合法手がある局面で照合する。
 抽出は、T<4N（q≥1）とT≥4Nの両方で、列s、更新回数、および検査和を試験し、ウォームアップは累計200万標本とサイクルの境界をまたいで再開しても学習率の列が変わらないことを試験する。
-新しい構成のランダム初期化のネットを作り、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を[照合の手引き](../guides/alphazero-network-check.md)の基準で照合する。
+新しい構成のランダム初期化のネットを作り、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を[照合の手引き](../../guides/alphazero-network-check.md)の基準で照合する。
 
 ### フェーズ5　実行器、試走、および計画の改訂
 
@@ -297,7 +307,7 @@ ONNXに書き出す出力が方策と主の価値だけであることと、再�
 
 ## 参考資料
 
-- [research/alphazero-rl-training-efficiency.md](../research/alphazero-rl-training-efficiency.md)：本書の各技法の根拠とした一次資料の調査。版を固定した出典と行番号はこの調査にある。
+- [research/alphazero-rl-training-efficiency.md](../../research/alphazero-rl-training-efficiency.md)：本書の各技法の根拠とした一次資料の調査。版を固定した出典と行番号はこの調査にある。
 - Danihelka et al., "Policy improvement by planning with Gumbel", ICLR 2022：Qの尺度（囲碁とチェスでc_scale=1.0）と、指す手の選び方。
 - Wu, "Accelerating Self-Play Learning in Go", [arXiv:1902.10565](https://arxiv.org/abs/1902.10565)：PCR、補助の方策目標、および学習率の予定。
 - lightvector/KataGo、コミットd91ea855：指す手の温度、PCR、補助目標の重み、短期の価値の目標、ウォームアップ、および新しいデータ1行あたりの学習の回数。

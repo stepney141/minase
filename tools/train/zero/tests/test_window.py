@@ -29,12 +29,16 @@ VALIDATION_GAMES = {11: {4, 15, 22, 41, 48, 59, 70}, 22: {6, 8, 35, 44, 58, 63, 
 
 def reference_sample(total: int, count: int, seed: int) -> list[int]:
     """docstringの交換式を、全長Tの通常の配列で独立に評価する。"""
-    permutation = list(range(total))
     rng = np.random.Generator(np.random.PCG64(seed))
-    for index in range(count):
-        other = int(rng.integers(index, total, dtype=np.int64))
-        permutation[index], permutation[other] = permutation[other], permutation[index]
-    return permutation[:count]
+    result = []
+    while len(result) < count:
+        permutation = list(range(total))
+        length = min(total, count - len(result))
+        for index in range(length):
+            other = int(rng.integers(index, total, dtype=np.int64))
+            permutation[index], permutation[other] = permutation[other], permutation[index]
+        result.extend(permutation[:length])
+    return result
 
 
 def cycle_files(directory: Path) -> list[Path]:
@@ -65,13 +69,13 @@ class WindowTests(unittest.TestCase):
     def test_sparse_sampling_matches_the_exchange_contract_and_preserves_random_state(self) -> None:
         state = np.random.get_state()
         for total in (1, 2, 7, 31):
-            for count in (1, total // 2 + 1, total):
+            for count in (1, total // 2 + 1, total, 2 * total, 4 * total + 1):
                 for seed in (0, 42, (1 << 64) - 1):
                     with self.subTest(total=total, count=count, seed=seed):
                         selected = sample_training_indices(total, count, seed)
                         self.assertEqual(selected.dtype, np.int64)
                         self.assertEqual(selected.tolist(), reference_sample(total, count, seed))
-                        self.assertEqual(len(np.unique(selected)), count)
+                        self.assertEqual(len(np.unique(selected)), min(total, count))
                         self.assertTrue(np.all((0 <= selected) & (selected < total)))
         after = np.random.get_state()
         self.assertEqual(state[0], after[0])
@@ -83,18 +87,18 @@ class WindowTests(unittest.TestCase):
         repeated_data, _, repeated = read_window(self.paths, self.paths[1:], 42)
         _, _, different = read_window(self.paths, self.paths[1:], 43)
         self.assertEqual([info.training_count for info in infos], [73, 37, 36])
-        self.assertEqual(first.tolist(), reference_sample(146, 73, 42))
+        self.assertEqual(first.tolist(), reference_sample(146, 292, 42))
         np.testing.assert_array_equal(first, repeated)
-        self.assertNotEqual(set(first), set(different))
+        self.assertNotEqual(first.tolist(), different.tolist())
         for field in fields(Dataset):
             np.testing.assert_array_equal(getattr(data, field.name), getattr(repeated_data, field.name))
 
     def test_selected_positions_exclude_validation_and_keep_only_latest_validation(self) -> None:
         data, _, selected = read_window(self.paths, self.paths[1:], 42)
-        self.assertEqual(len(selected), 73)
-        self.assertEqual(len(set(selected)), 73)
+        self.assertEqual(len(selected), 292)
+        self.assertEqual(len(set(selected)), 146)
         keys = training_keys()
-        expected = [keys[index] for index in sorted(selected)]
+        expected = [keys[index] for index in sorted(set(selected))]
         actual = list(zip(data.file_indices[~data.validation].tolist(), data.games[~data.validation].tolist()))
         self.assertEqual(actual, expected)
         self.assertTrue(np.all(data.plies == 23))
@@ -107,12 +111,12 @@ class WindowTests(unittest.TestCase):
 
     def test_extension_and_python_keep_only_sampled_rows_and_latest_validation(self) -> None:
         data, infos, selected = read_window(self.paths, self.paths[1:], 42)
-        self.assertEqual(len(data), 73 + 7)
+        self.assertEqual(len(data), 146 + 7)
         self.assertLess(len(data), sum(info.position_count for info in infos))
         offset = 0
         rows = 0
         for index, info in enumerate(infos):
-            local = np.sort(selected[(selected >= offset) & (selected < offset + info.training_count)] - offset)
+            local = np.unique(selected[(selected >= offset) & (selected < offset + info.training_count)] - offset)
             raw = minase_mnsd_reader.read_selected(str(info.path), local.tolist(), index >= 1)
             kept = len(local) + (info.validation_count if index >= 1 else 0)
             self.assertEqual(len(raw["games"]), kept * 4)
@@ -132,7 +136,7 @@ class WindowTests(unittest.TestCase):
         # パス列を並べ替えれば通し番号も変わるが、新しい末尾に対する抽出は定義できる。
         _, infos, selected = read_window([third, second, first], [first], 42)
         self.assertEqual([info.training_count for info in infos], [36, 37, 73])
-        self.assertEqual(len(selected), 73)
+        self.assertEqual(len(selected), 292)
 
     def test_latest_with_no_training_positions_and_invalid_sampling_ranges_raise(self) -> None:
         path = self.paths[-1]
@@ -140,7 +144,7 @@ class WindowTests(unittest.TestCase):
         write_small(path, [single_game(100, 0, 2, None, ())], "engine-default")
         with self.assertRaises(ValueError):
             read_window(self.paths, [path], 42)
-        for total, count, seed in ((1, 0, 0), (1, 2, 0), (1, 1, -1), (1, 1, 1 << 64)):
+        for total, count, seed in ((1, 0, 0), (0, 2, 0), (1, 1, -1), (1, 1, 1 << 64)):
             with self.subTest(total=total, count=count, seed=seed), self.assertRaises(ValueError):
                 sample_training_indices(total, count, seed)
 
@@ -194,32 +198,62 @@ class WindowTrainTests(unittest.TestCase):
     def test_window_resume_preserves_order_learning_curve_and_onnx_bytes(self) -> None:
         resumed = torch.load(self.resumed / "checkpoint.pt", weights_only=True)
         summary = json.loads((self.resumed / "summary.json").read_text())
-        for key in ("data_order_sha256", "sample_sha256", "learning_curve", "positions_seen", "loss_sums"):
+        for key in ("data_order_sha256", "sample_sha256", "learning_curve", "positions_seen", "loss_sums", "samples_seen", "samples_seen_start"):
             self.assertEqual(self.state[key], resumed[key], key)
         self.assertEqual(self.summary["diagnostics"], summary["diagnostics"])
         self.assertEqual((self.continuous / "model.onnx").read_bytes(), (self.resumed / "model.onnx").read_bytes())
 
     def test_summary_and_checkpoint_record_sampling_contract_and_global_update_ordinals(self) -> None:
-        ordered = reference_sample(146, 73, 42)
+        ordered = reference_sample(146, 292, 42)
         sample_digest = hashlib.sha256(b"".join(struct.pack("<q", index) for index in ordered)).hexdigest()
-        expected = {"latest_data": [str(path) for path in self.paths[1:]], "sample_count": 73,
+        expected = {"latest_data": [str(path) for path in self.paths[1:]], "sample_count": 292,
                     "window_training_count": 146, "file_training_counts": [73, 37, 36],
                     "sample_sha256": sample_digest}
         for record in (self.state, self.summary, self.state["config"], self.summary["config"]):
             for key, value in expected.items():
                 self.assertEqual(record[key], value, key)
         digest = bytes(32)
-        for start in range(0, 73, 2):
+        for start in range(0, 292, 2):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 2])).digest()
         self.assertEqual(self.summary["data_order_sha256"], digest.hex())
-        self.assertEqual(self.summary["training_count"], 73)
+        self.assertEqual(self.summary["training_count"], 146)
         self.assertEqual(self.summary["validation_count"], 7)
-        self.assertEqual(self.summary["positions_seen"], 73)
-        self.assertEqual(self.summary["total_steps"], math.ceil(73 / 2))
+        self.assertEqual(self.summary["positions_seen"], 292)
+        self.assertEqual(self.summary["total_steps"], math.ceil(292 / 2))
+
+    def test_window_larger_than_four_times_latest_trains_the_distinct_sequence(self) -> None:
+        # 最新を対局0〜38の36訓練局面とし、診断用の対局32も含める。
+        # 窓は73+36+36=145局面、4N=144なので順列の反復が不要になる。
+        latest = self.root / "distinct-latest.mnsd"
+        write_small(latest, [single_game(game, game % 2, game % 3, 200 * game, (65_535,))
+                             for game in range(39)], "engine-default")
+        content = bytearray(latest.read_bytes())
+        struct.pack_into("<Q", content, 128, 22)
+        latest.write_bytes(content)
+        out = self.root / "distinct-sequence"
+        arguments = self.arguments(out)
+        first = arguments.index("--data") + 1
+        arguments[first:first + 3] = [str(self.paths[0]), str(self.paths[2]), str(latest)]
+        first = arguments.index("--latest-data") + 1
+        arguments[first:first + 2] = [str(latest)]
+        arguments[arguments.index("--batch-size") + 1] = "256"
+        require_success(run_cli(arguments))
+        summary = json.loads((out / "summary.json").read_text())
+        ordered = reference_sample(145, 144, 42)
+        encoded = b"".join(struct.pack("<q", index) for index in ordered)
+        self.assertEqual(len(set(ordered)), 144)
+        self.assertEqual(summary["sample_count"], 144)
+        self.assertEqual(summary["training_count"], 144)
+        self.assertEqual(summary["total_steps"], 1)
+        self.assertEqual(summary["positions_seen"], 144)
+        self.assertEqual(summary["samples_seen"], 144)
+        self.assertEqual(summary["last_lr"], 0.01 * (256 / 2_000_000))
+        self.assertEqual(summary["sample_sha256"], hashlib.sha256(encoded).hexdigest())
+        self.assertEqual(summary["data_order_sha256"], hashlib.sha256(bytes(32) + encoded).hexdigest())
 
     def test_diagnostics_use_sampled_games_and_latest_cycle_only(self) -> None:
         keys = training_keys()
-        selected = [keys[index] for index in reference_sample(146, 73, 42)]
+        selected = [keys[index] for index in sorted(set(reference_sample(146, 292, 42)))]
         samples = [(file, game) for file, game in selected
                    if is_training_sample(11 if file == 0 else 22, np.array([game], dtype=np.uint32))[0]]
         for name, positions in (("training_sample", samples),

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import unittest
 
+import minase_mnsd_reader
 import numpy as np
 import torch
 
@@ -17,32 +18,75 @@ class EncodingTests(unittest.TestCase):
         cls.fixtures = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
         cls.previous_threads = torch.get_num_threads()
         torch.set_num_threads(4)
+        cls.boards = np.zeros((len(cls.fixtures), 144), dtype=np.uint8)
+        cls.sides = np.empty(len(cls.fixtures), dtype=np.uint8)
+        cls.lions = np.empty(len(cls.fixtures), dtype=np.uint8)
+        for index, fixture in enumerate(cls.fixtures):
+            cls.sides[index] = int(fixture["side_to_move"] == "white")
+            cls.lions[index] = 255 if fixture["lion_capture"] is None else fixture["lion_capture"]
+            for square, piece in enumerate(fixture["board"]):
+                if piece is not None:
+                    color, kind, promoted = piece
+                    # recordsの駒コードの仕様式で変換する。面の期待値はfixtureのinputだけから得る。
+                    cls.boards[index, square] = 1 + kind + 29 * int(promoted) + 64 * color
 
     @classmethod
     def tearDownClass(cls) -> None:
         torch.set_num_threads(cls.previous_threads)
 
     def test_all_fixture_input_planes(self) -> None:
+        self.check_fixture_input_planes(torch.device("cpu"))
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is unavailable")
+    def test_all_fixture_input_planes_on_cuda(self) -> None:
+        self.check_fixture_input_planes(torch.device("cuda"))
+
+    def check_fixture_input_planes(self, device: torch.device) -> None:
         self.assertEqual(len(self.fixtures), 288)
-        boards = np.zeros((288, 144), dtype=np.uint8)
-        sides = np.empty(288, dtype=np.uint8)
-        lions = np.empty(288, dtype=np.uint8)
-        for index, fixture in enumerate(self.fixtures):
-            sides[index] = int(fixture["side_to_move"] == "white")
-            lions[index] = 255 if fixture["lion_capture"] is None else fixture["lion_capture"]
-            for square, piece in enumerate(fixture["board"]):
-                if piece is not None:
-                    color, kind, promoted = piece
-                    # recordsの駒コードの仕様式で変換する。面の期待値はfixtureのinputだけから得る。
-                    boards[index, square] = 1 + kind + 29 * int(promoted) + 64 * color
-        actual = encode_planes(torch.from_numpy(boards), torch.from_numpy(sides), torch.from_numpy(lions))
-        self.assertEqual(actual.shape, (288, 95, 12, 12))
+        actual = encode_planes(*(torch.from_numpy(array).to(device) for array in (self.boards, self.sides, self.lions)))
+        self.assertEqual(actual.shape, (288, 159, 12, 12))
         self.assertEqual(actual.dtype, torch.float32)
+        self.assertEqual(actual.device.type, device.type)
         self.assertTrue(torch.all((actual == 0) | (actual == 1)))
         flat = actual.reshape(288, -1)
         for index, fixture in enumerate(self.fixtures):
             with self.subTest(position=index):
                 self.assertEqual(flat[index].nonzero().flatten().tolist(), fixture["input"])
+
+    def test_extension_returns_float32_controls_for_strided_arrays(self) -> None:
+        # 拡張モジュール単体の形・型と、非連続なNumPy配列の受け渡しを検証する。
+        boards = np.zeros((576, 288), dtype=np.uint8)
+        sides = np.zeros(576, dtype=np.uint8)
+        boards[::2, ::2] = self.boards
+        sides[::2] = self.sides
+        actual = minase_mnsd_reader.control_planes(boards[::2, ::2], sides[::2])
+        self.assertEqual(actual.shape, (288, 64, 144))
+        self.assertEqual(actual.dtype, np.float32)
+        self.assertTrue(actual.flags.writeable)
+        for index, fixture in enumerate(self.fixtures):
+            expected = [offset - 95 * 144 for offset in fixture["input"] if offset >= 95 * 144]
+            with self.subTest(position=index):
+                self.assertEqual(np.flatnonzero(actual[index]).tolist(), expected)
+        empty = minase_mnsd_reader.control_planes(self.boards[:0], self.sides[:0])
+        self.assertEqual(empty.shape, (0, 64, 144))
+        self.assertEqual(empty.dtype, np.float32)
+
+    def test_extension_rejects_invalid_shapes_types_codes_and_sides(self) -> None:
+        boards = np.zeros((1, 144), dtype=np.uint8)
+        sides = np.zeros(1, dtype=np.uint8)
+        for board, side in (
+            (boards.ravel(), sides), (boards[:, :143], sides), (boards, sides[:0]),
+            (boards, sides[:, None]), (boards.astype(np.int8), sides),
+            (boards, sides.astype(np.float32)), (boards, sides + 2),
+        ):
+            with self.subTest(shape=board.shape, dtype=board.dtype, side=side):
+                with self.assertRaises(ValueError):
+                    minase_mnsd_reader.control_planes(board, side)
+        for code in (128, 129, 22, 30, 64, 127, 255):
+            boards[0, 37] = code
+            with self.subTest(code=code):
+                with self.assertRaises(ValueError):
+                    minase_mnsd_reader.control_planes(boards, sides)
 
     def test_all_fixture_policy_labels(self) -> None:
         moves = []
@@ -80,10 +124,33 @@ class EncodingTests(unittest.TestCase):
         self.assertFalse(mask[(184 + 7 * 7 + 1) * 144])
         self.assertTrue(mask[(184 + 7 * 7 + 1) * 144 + 1])
 
+    def test_opponent_mask_has_the_same_counts_and_accepts_moves_in_the_current_view(self) -> None:
+        mask = policy_mask(opponent=True)
+        self.assertEqual((mask.shape, mask.dtype), ((35_856,), np.bool_))
+        for start, end, expected in ((0, 88, 5192), (88, 176, 2456), (176, 184, 880),
+                                      (184, 240, 6424), (240, 248, 1012), (248, 249, 144)):
+            self.assertEqual(np.count_nonzero(mask[start * 144:end * 144]), expected)
+        for fixture in self.fixtures:
+            moves = np.array([[start, 255 if mid is None else mid, end, promote]
+                              for start, mid, end, promote, _ in fixture["moves"]], dtype=np.int64).reshape(-1, 4)
+            sides = np.full(len(moves), int(fixture["side_to_move"] != "white"), dtype=np.uint8)
+            labels = policy_labels(*(moves[:, column] for column in range(4)), sides)
+            self.assertTrue(np.all(mask[labels]))
+
+    def test_opponent_promotion_mask_reverses_only_the_zone(self) -> None:
+        mask = policy_mask(opponent=True)
+        # 後方への成りは相対段4→3が有効、5→4は無効。前方の3→4も有効。
+        self.assertTrue(mask[132 * 144 + 4 * 12])
+        self.assertFalse(mask[132 * 144 + 5 * 12])
+        self.assertTrue(mask[88 * 144 + 3 * 12])
+        self.assertFalse(policy_mask()[132 * 144 + 4 * 12])
+        self.assertFalse(mask[(184 + 7 * 7 + 1) * 144])
+        self.assertTrue(mask[(184 + 7 * 7 + 1) * 144 + 1])
+
     def test_empty_batches(self) -> None:
         empty = torch.empty(0, dtype=torch.uint8)
         actual = encode_planes(torch.empty((0, 144), dtype=torch.uint8), empty, empty)
-        self.assertEqual(actual.shape, (0, 95, 12, 12))
+        self.assertEqual(actual.shape, (0, 159, 12, 12))
         moves = np.empty(0, dtype=np.uint8)
         self.assertEqual(policy_labels(moves, moves, moves, moves, moves).shape, (0,))
 

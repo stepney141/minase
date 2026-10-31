@@ -1,0 +1,25 @@
+b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48  /home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/net-check/cycle-0000/model.onnx
+NN session creation: 0.046624 s
+NN inference (288 positions): 0.773128 s
+NN session creation: 0.466431 s
+NN inference (288 positions): 0.097155 s
+NN session creation: 0.061052 s
+NN inference (288 positions): 0.420053 s
+NN session creation: 0.459459 s
+NN inference (288 positions): 0.028982 s
+NN session creation: 0.064036 s
+NN inference (288 positions): 0.178333 s
+NN session creation: 0.390039 s
+NN inference (288 positions): 0.023033 s
+cpu-b1
+{"positions":288,"max_logit_abs_diff":2.3085756492569054e-07,"max_probability_abs_diff":4.688972914806966e-09,"max_value_abs_diff":6.433456423149408e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+trt-b1
+{"positions":288,"max_logit_abs_diff":0.0006436111730346653,"max_probability_abs_diff":1.3800321732107546e-05,"max_value_abs_diff":0.0001351410320282187,"best_move_mismatches":2,"best_move_mismatch_gaps":[[97,0.0002438277006149292],[252,7.887184619903564e-05]]}
+cpu-b7
+{"positions":288,"max_logit_abs_diff":2.4235816956097445e-07,"max_probability_abs_diff":4.292281013257293e-09,"max_value_abs_diff":6.433456423149408e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+trt-b7
+{"positions":288,"max_logit_abs_diff":0.000547957275581365,"max_probability_abs_diff":1.4532576407787212e-05,"max_value_abs_diff":0.00013743100852964263,"best_move_mismatches":1,"best_move_mismatch_gaps":[[252,7.887184619903564e-05]]}
+cpu-b256
+{"positions":288,"max_logit_abs_diff":2.4235816956097445e-07,"max_probability_abs_diff":4.292281013257293e-09,"max_value_abs_diff":6.433456423149408e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+trt-b256
+{"positions":288,"max_logit_abs_diff":0.000712759839679715,"max_probability_abs_diff":1.189488398913724e-05,"max_value_abs_diff":0.0001327034915923897,"best_move_mismatches":2,"best_move_mismatch_gaps":[[215,0.00012007355690002441],[252,7.887184619903564e-05]]}

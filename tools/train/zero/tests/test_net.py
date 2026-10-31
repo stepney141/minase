@@ -7,6 +7,7 @@ import unittest
 import onnx
 import torch
 
+from minase_zero.encoding import INPUT_PLANES
 from minase_zero.net import ZeroNet, export_onnx
 
 
@@ -16,16 +17,26 @@ class NetTests(unittest.TestCase):
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous)
 
+    def test_ten_blocks_128_channels_count_all_training_heads(self) -> None:
+        # 入力183,424、残差328,320×10、方策32,121×4、価値1,185,092。
+        model = ZeroNet(10, 128)
+        self.assertEqual(sum(parameter.numel() for parameter in model.parameters()), 4_780_200)
+
     def test_forward_logits_preserves_policy_and_sigmoid_value(self) -> None:
         torch.manual_seed(7)
         model = ZeroNet(1, 16).eval()
-        inputs = torch.randn(3, 95, 12, 12)
+        inputs = torch.randn(3, INPUT_PLANES, 12, 12)
         with torch.inference_mode():
             policy, value = model(inputs)
-            policy_logits, value_logits = model.forward_logits(inputs)
-        self.assertTrue(torch.equal(policy, policy_logits))
-        self.assertTrue(torch.equal(value, value_logits.sigmoid()))
-        self.assertIsInstance(model.value_head[-1], torch.nn.Sigmoid)
+            logits = model.forward_logits(inputs)
+        self.assertTrue(torch.equal(policy, logits.policy))
+        torch.testing.assert_close(value, logits.value[:, :1].sigmoid())
+        self.assertEqual(logits.value.shape, (3, 4))
+        for auxiliary in logits[2:]:
+            self.assertEqual(auxiliary.shape, (3, 35_856))
+        self.assertEqual(model.value_head[0].out_channels, 32)
+        self.assertIsNone(model.value_head[0].bias)
+        self.assertEqual((model.value_head[4].in_features, model.value_head[4].out_features), (4608, 256))
         self.assertEqual(policy.shape, (3, 35_856))
         self.assertEqual(value.shape, (3, 1))
 
@@ -34,11 +45,16 @@ class NetTests(unittest.TestCase):
             path = Path(directory) / "model.onnx"
             export_onnx(ZeroNet(1, 16).eval(), path)
             model = onnx.load(path)
+        self.assertFalse(any("soft_policy" in entry.name or "opponent_policy" in entry.name
+                             for entry in model.graph.initializer))
+        value_linear = [node for node in model.graph.node if node.op_type == "Gemm"][-1]
+        weights = next(entry for entry in model.graph.initializer if entry.name == value_linear.input[1])
+        self.assertEqual(list(weights.dims), [1, 256])
         self.assertEqual([(op.domain, op.version) for op in model.opset_import], [("", 17)])
         self.assertEqual([entry.name for entry in model.graph.input], ["input"])
         self.assertEqual([entry.name for entry in model.graph.output], ["policy", "value"])
         for entry, shape in zip(
-            [*model.graph.input, *model.graph.output], [(95, 12, 12), (35_856,), (1,)],
+            [*model.graph.input, *model.graph.output], [(159, 12, 12), (35_856,), (1,)],
         ):
             tensor = entry.type.tensor_type
             self.assertEqual(tensor.elem_type, onnx.TensorProto.FLOAT)

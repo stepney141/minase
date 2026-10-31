@@ -11,7 +11,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use minase::nn::{Evaluator, NnError, Query, UniformEvaluator};
 use minase::training::records::{DecodedGame, Header, Outcome, Policy, Reader, TeacherKind, Value};
-use minase_core::{Color, GameResult, WinReason, rng::derive_seed};
+use minase_core::{
+    Color, GameResult, WinReason,
+    rng::{XorShift64, derive_seed},
+};
 use output::{Config, RunReport, Summary};
 
 pub(super) struct TemporaryDirectory(pub(super) PathBuf);
@@ -50,7 +53,7 @@ pub(super) fn config() -> Config {
         seed: 7,
         games: 6,
         chunk_games: 2,
-        simulations: 2,
+        simulations: 4,
         playthrough_percent: 1,
         max_ply: 20,
     }
@@ -109,6 +112,22 @@ fn all_records(path: &Path, config: &Config, resigned: bool) -> Vec<DecodedGame>
     games
 }
 
+/// 基本シードと対局番号から、仕様で定める完全探索の手番列を求める。
+fn full_searches(config: &Config, number: u32) -> impl Iterator<Item = bool> {
+    let seed = derive_seed(config.seed, u64::from(number));
+    let mut rng = XorShift64::new(derive_seed(seed.get(), 3));
+    std::iter::from_fn(move || Some(rng.next() < (1_u64 << 62)))
+}
+
+fn first_full_black_search(config: &Config, number: u32) -> Option<usize> {
+    let seed = derive_seed(config.seed, u64::from(number));
+    let (game, _) =
+        minase::datagen::opening::generate_opening(engine_default_rules().unwrap(), seed).unwrap();
+    (game.ply_count()..config.max_ply)
+        .zip(full_searches(config, number))
+        .position(|(ply, full)| ply.is_multiple_of(2) && full)
+}
+
 #[test]
 fn playthrough_hundred_disables_resignation_and_counts_false_triggers_including_discards() {
     let directory = TemporaryDirectory::new();
@@ -121,23 +140,13 @@ fn playthrough_hundred_disables_resignation_and_counts_false_triggers_including_
     assert_eq!(counts.games, u64::from(config.games));
     assert_eq!(counts.playthrough_games, counts.games);
     assert_eq!(counts.resigned_games, 0);
-    assert_eq!(counts.resign_triggered_playthrough_games, counts.games);
+    let triggers = (1..=config.games)
+        .filter(|&number| first_full_black_search(&config, number).is_some())
+        .count() as u64;
+    assert_eq!(counts.resign_triggered_playthrough_games, triggers);
     assert!(all_records(&directory.0, &config, true).is_empty());
-    let normal = all_records(&directory.0, &config, false);
-    let false_from_records = normal
-        .iter()
-        .filter(|game| {
-            !matches!(
-                game.record().outcome(),
-                Outcome::Game(GameResult::Win {
-                    winner: Color::White,
-                    ..
-                })
-            )
-        })
-        .count() as u64
-        + counts.discarded_max_ply;
-    assert_eq!(counts.false_resignations, false_from_records);
+    assert!(all_records(&directory.0, &config, false).is_empty());
+    assert_eq!(counts.false_resignations, triggers);
     assert_eq!(counts.discarded_max_ply, u64::from(config.games));
     assert_eq!(
         counts.plies,
@@ -151,7 +160,7 @@ fn playthrough_hundred_disables_resignation_and_counts_false_triggers_including_
 }
 
 #[test]
-fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_visits() {
+fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_and_visits() {
     let directory = TemporaryDirectory::new();
     let config = Config {
         games: 8,
@@ -165,7 +174,9 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
         derive_seed(seed.get(), 2).get() % 100 < u64::from(config.playthrough_percent)
     };
     let expected: Vec<_> = (1..=config.games)
-        .filter(|&number| !playthrough(number))
+        .filter(|&number| {
+            !playthrough(number) && first_full_black_search(&config, number).is_some()
+        })
         .collect();
     assert!(!expected.is_empty());
     assert!(expected.len() < config.games as usize);
@@ -200,15 +211,11 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
     for decoded in resigned {
         let record = decoded.record();
         let seed = derive_seed(config.seed, u64::from(record.game_number()));
-        let (start, opening) =
+        let (_, opening) =
             minase::datagen::opening::generate_opening(engine_default_rules().unwrap(), seed)
                 .unwrap();
         let opening_len = opening.len();
-        let searched = if start.position().side_to_move() == Color::Black {
-            1
-        } else {
-            2
-        };
+        let searched = first_full_black_search(&config, record.game_number()).unwrap() + 1;
         assert_eq!(record.entries().len(), opening_len + searched);
         assert_eq!(record.start_position(), &minase_core::Position::initial());
         assert_eq!(record.start_ply(), 0);
@@ -221,6 +228,7 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
             })
         );
         let mut replay = minase_core::Game::new(engine_default_rules().unwrap());
+        let mut full = full_searches(&config, record.game_number());
         for (index, entry) in record.entries().iter().enumerate() {
             assert_eq!(entry.exclusion(), records::Exclusion::None);
             if index < opening_len {
@@ -229,26 +237,32 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
                 assert_eq!(entry.visits(), Some(0));
                 assert_eq!(entry.policy(), &Policy::None);
             } else {
-                positions += 1;
                 assert!(matches!(entry.value(), Value::Mcts(_)));
-                assert_eq!(entry.visits(), Some(config.simulations));
-                let Policy::Candidates(candidates) = entry.policy() else {
-                    panic!("search policy is required")
-                };
-                assert_eq!(
-                    candidates
+                if full.next().unwrap() {
+                    positions += 1;
+                    assert_eq!(entry.visits(), Some(config.simulations));
+                    let Policy::Candidates(candidates) = entry.policy() else {
+                        panic!("full search policy is required")
+                    };
+                    assert_eq!(
+                        candidates
+                            .iter()
+                            .map(|(_, probability)| u32::from(*probability))
+                            .sum::<u32>(),
+                        65535
+                    );
+                    assert!(candidates.iter().all(|(_, probability)| *probability > 0));
+                    let legal = records::sorted_legal_moves(&replay).unwrap();
+                    let indices: Vec<_> = candidates
                         .iter()
-                        .map(|(_, probability)| u32::from(*probability))
-                        .sum::<u32>(),
-                    65535
-                );
-                assert!(candidates.iter().all(|(_, probability)| *probability > 0));
-                let legal = records::sorted_legal_moves(&replay).unwrap();
-                let indices: Vec<_> = candidates
-                    .iter()
-                    .map(|(mv, _)| legal.iter().position(|legal| legal == mv).unwrap())
-                    .collect();
-                assert!(indices.windows(2).all(|pair| pair[0] < pair[1]));
+                        .map(|(mv, _)| legal.iter().position(|legal| legal == mv).unwrap())
+                        .collect();
+                    assert!(indices.windows(2).all(|pair| pair[0] < pair[1]));
+                } else {
+                    assert_eq!(entry.visits(), Some(config.simulations / 4));
+                    assert_eq!(entry.policy(), &Policy::None);
+                    assert!(entry.played_move().is_some());
+                }
             }
             if let Some(mv) = entry.played_move() {
                 replay.play(mv).unwrap();
@@ -263,6 +277,7 @@ fn enabled_resignation_records_first_black_search_with_mcts_headers_policy_and_v
         );
     }
     assert_eq!(positions, report.summary.counts.resigned_positions);
+    assert!(report.summary.counts.fast_searches > 0);
     let saved: Summary =
         serde_json::from_reader(File::open(directory.0.join("summary.json")).unwrap()).unwrap();
     assert_eq!(saved, report.summary);
@@ -281,11 +296,18 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
     let config = config();
     let first = generate(&directory.0, &config, 2, 2);
     assert!(first.summary.counts.resigned_games > 0);
+    let repeated_directory = TemporaryDirectory::new();
+    let repeated = generate(&repeated_directory.0, &config, 1, 3);
+    assert_eq!(repeated.summary, first.summary);
     let mut before = Vec::new();
     let old_time = UNIX_EPOCH + Duration::from_secs(1_000_000);
     for chunk in 0..3 {
         for suffix in [".mnsd", ".resigned.mnsd", ".json"] {
             let path = directory.0.join(format!("chunk-{chunk:05}{suffix}"));
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                fs::read(repeated_directory.0.join(path.file_name().unwrap())).unwrap()
+            );
             File::options()
                 .write(true)
                 .open(&path)

@@ -12,7 +12,7 @@ minaseの自己対局は1局の平均が293〜435手と長く（[評価関数の
 
 dlshogiの自己対局は、選んだ手（訪問回数が最大の手）の勝率pについて|2p−1|が0.99を超えた時点、つまり勝率が0.5%を下回るか99.5%を上回った時点で対局を終え、同じ勝率を教師の評価値にも使う（DeepLearningShogiの`selfplay/self_play.cpp`、コミット79df19e）。
 lc0は、投了の条件を満たしても投了させずに最後まで指させる対局の割合（`resign-playthrough`）を設け、誤った投了を監視する。
-自己対局の探索は、根の候補手の多くに少数の訪問を均等に配るGumbel AlphaZeroのSequential Halvingで行う（[Gumbel AlphaZeroのADR](../use-gumbel-alphazero-for-zero-self-play-search.md)）。
+自己対局の探索は、根の候補手の多くに少数の訪問を均等に配るGumbel AlphaZeroのSequential Halvingで行う（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-for-zero-self-play-search.md)）。
 探索木の中の反復の勝敗は、直近の出現からの1周だけを調べる近似で判定する（[反復のADR](score-repetition-in-mcts-by-the-alpha-beta-rules.md)）。
 エンジンの開発者は、[自己対局生成器の設計書](../../plans/archived/alphazero-selfplay.md)で投了の規則を決め、着手時に勝率の定義と誤った投了の数え方を補った。
 
@@ -22,7 +22,7 @@ lc0は、投了の条件を満たしても投了させずに最後まで指さ�
 学習データの各局面の価値（根の期待得点）にも、同じQを記録する。
 ただし、根の勝敗の確定が反復に由来する場合と、根の部分木に反復で打ち切った節点が1つでもある場合は、勝率によらず投了しない。
 最後に残った手が未訪問の場合も投了せず、価値にはGumbelの方式が未訪問の手に与える混合価値（mctxの`qtransform_completed_by_mix_value`の値）を記録する。
-訪問した候補手がすべて確定した負けになると、確定した負けを最後の手の候補から除く規則（[Gumbel AlphaZeroのADR](../use-gumbel-alphazero-for-zero-self-play-search.md)の結果の節）により、未訪問の手が最後に残る。
+訪問した候補手がすべて確定した負けになると、確定した負けを最後の手の候補から除く規則（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-for-zero-self-play-search.md)の結果の節）により、未訪問の手が最後に残る。
 探索がその手を調べていないので、勝率の根拠がないからである。
 
 投了は初めのサイクルでは無効にし、すべての対局を最後まで指させながら、投了の条件が成立した時点を記録する。

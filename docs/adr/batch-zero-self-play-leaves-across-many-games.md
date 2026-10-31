@@ -11,7 +11,7 @@ GPUの推論は、バッチを大きくするほど1局面あたりの推論時�
 10ブロック128チャネルのネットのFP16の推論は、作業機とColab機のL4のどちらでも、1つのセッションでバッチ256のときに最大の毎秒評価数の98%以上に達した。
 また、L4ではセッションを2つにすると毎秒の評価数が約2倍に伸びた（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)）。
 
-自己対局の探索はGumbel AlphaZeroで行う（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-for-zero-self-play-search.md)）。
+自己対局の探索はGumbel AlphaZeroで行う（[Gumbel AlphaZeroのADR](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)）。
 Gumbelの探索は仮想損失を使わず、1つの探索木で評価を待つ葉を1つまでとする。
 このため、1局の探索から一度に推論へ出せる局面は1つしかない。
 dlshogiの自己対局生成器は、多数の局を1つのプロセスで同時に進め、各局の葉をまとめて1回の推論にかける構成をとる（DeepLearningShogiの`selfplay/self_play.cpp`、コミット79df19e）。

@@ -7,7 +7,7 @@
 ## コンテキスト
 
 MCTS（モンテカルロ木探索）は、αβ探索と同等以上に強くなったかを判定するAlphaZero型探索の「到達の判定」で、作業機の時間制御の対局によりαβ探索と比べられる（[統括計画](../plans/alphazero.md)）。
-対局では1手に数千〜数万回の探索を行えるので、自己対局で使うGumbel AlphaZeroの候補の絞り込み（[自己対局の探索のADR](use-gumbel-alphazero-for-zero-self-play-search.md)）の利点は薄れる。
+対局では1手に数千〜数万回の探索を行えるので、自己対局で使うGumbel AlphaZeroの候補の絞り込み（[自己対局の探索のADR](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)）の利点は薄れる。
 lc0とdlshogiは、長い対局でPUCTと仮想損失によるバッチ評価の実績を積んでいる。
 仮想損失は、評価待ちにした経路を一時的に負けとして数え、同じ葉へ降下が集まらないようにして、複数の葉をまとめてGPUへ送る手法である。
 作業機のGPU（RTX 3060 Ti）では、10ブロック128チャネルのネットのFP16の推論が、1ストリームでもバッチ256で最大の毎秒評価数の98%に達した（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)）。

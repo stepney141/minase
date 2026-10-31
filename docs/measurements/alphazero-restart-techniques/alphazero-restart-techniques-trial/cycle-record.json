@@ -1,0 +1,412 @@
+{
+ "lr": 0.01,
+ "lr_schedule": "cosine",
+ "cycles_dir": "trial-restart",
+ "base_cycles_dir": "trial-restart",
+ "branch_from": 0,
+ "cycle": 1,
+ "generation_commit": "9a66eaaa086a00b21a529e9f67155eaf4bdc26a1",
+ "selfplay_weights": "raw",
+ "ema_period_samples": 0,
+ "ema_scale": 0.0,
+ "trainer_commit": "9a66eaaa086a00b21a529e9f67155eaf4bdc26a1",
+ "generation": {
+  "network": "trial-restart/cycle-0000/model.onnx",
+  "network_sha256": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+  "seed": 1700000000,
+  "games": 53605,
+  "chunk_games": 2681,
+  "playthrough_percent": 100,
+  "threads": 4,
+  "games_per_thread": 128,
+  "simulations": 32,
+  "generation_commit": "9a66eaaa086a00b21a529e9f67155eaf4bdc26a1"
+ },
+ "resign_calibration": {
+  "n": 0,
+  "false_resignations": 0,
+  "upper_bound": null,
+  "enable_resignation": false
+ },
+ "selfplay_summary": {
+  "games": 53605,
+  "discarded_max_ply": 0,
+  "resigned_games": 0,
+  "games_file_games": 53605,
+  "positions": 1019332,
+  "resigned_positions": 0,
+  "full_searches": 1019332,
+  "fast_searches": 3055447,
+  "mate_in_three_games": 53558,
+  "playthrough_games": 53605,
+  "resign_triggered_playthrough_games": 0,
+  "false_resignations": 0,
+  "black_wins": 26964,
+  "white_wins": 26641,
+  "draws": 0,
+  "win_reason_royal_capture": 46,
+  "win_reason_repetition": 0,
+  "win_reason_piece_exhaustion": 0,
+  "win_reason_bare_king": 0,
+  "win_reason_stalemate": 0,
+  "win_reason_mate": 1,
+  "win_reason_resignation": 0,
+  "draw_reason_repetition": 0,
+  "draw_reason_piece_exhaustion": 0,
+  "draw_reason_bare_king": 0,
+  "draw_reason_agreement": 0,
+  "plies": 4718188,
+  "false_resignation_rate": null,
+  "resigned_games_excluded": false,
+  "training_files": [
+   "chunk-00000.mnsd",
+   "chunk-00000.resigned.mnsd",
+   "chunk-00001.mnsd",
+   "chunk-00001.resigned.mnsd",
+   "chunk-00002.mnsd",
+   "chunk-00002.resigned.mnsd",
+   "chunk-00003.mnsd",
+   "chunk-00003.resigned.mnsd",
+   "chunk-00004.mnsd",
+   "chunk-00004.resigned.mnsd",
+   "chunk-00005.mnsd",
+   "chunk-00005.resigned.mnsd",
+   "chunk-00006.mnsd",
+   "chunk-00006.resigned.mnsd",
+   "chunk-00007.mnsd",
+   "chunk-00007.resigned.mnsd",
+   "chunk-00008.mnsd",
+   "chunk-00008.resigned.mnsd",
+   "chunk-00009.mnsd",
+   "chunk-00009.resigned.mnsd",
+   "chunk-00010.mnsd",
+   "chunk-00010.resigned.mnsd",
+   "chunk-00011.mnsd",
+   "chunk-00011.resigned.mnsd",
+   "chunk-00012.mnsd",
+   "chunk-00012.resigned.mnsd",
+   "chunk-00013.mnsd",
+   "chunk-00013.resigned.mnsd",
+   "chunk-00014.mnsd",
+   "chunk-00014.resigned.mnsd",
+   "chunk-00015.mnsd",
+   "chunk-00015.resigned.mnsd",
+   "chunk-00016.mnsd",
+   "chunk-00016.resigned.mnsd",
+   "chunk-00017.mnsd",
+   "chunk-00017.resigned.mnsd",
+   "chunk-00018.mnsd",
+   "chunk-00018.resigned.mnsd",
+   "chunk-00019.mnsd",
+   "chunk-00019.resigned.mnsd"
+  ],
+  "training_positions": 1019332
+ },
+ "regeneration": null,
+ "selfplay_regen_summary": null,
+ "training_files": [
+  "trial-restart/cycle-0001/selfplay/chunk-00000.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00000.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00001.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00001.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00002.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00002.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00003.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00003.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00004.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00004.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00005.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00005.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00006.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00006.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00007.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00007.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00008.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00008.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00009.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00009.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00010.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00010.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00011.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00011.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00012.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00012.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00013.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00013.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00014.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00014.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00015.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00015.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00016.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00016.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00017.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00017.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00018.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00018.resigned.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00019.mnsd",
+  "trial-restart/cycle-0001/selfplay/chunk-00019.resigned.mnsd"
+ ],
+ "window_cycles": [
+  1
+ ],
+ "window_positions": 47802000,
+ "teacher_stats": {
+  "bytes_per_position": 279.20747002227466,
+  "end_reasons": {
+   "draw_agreement": 0,
+   "draw_bare_king": 0,
+   "draw_piece_exhaustion": 0,
+   "draw_repetition": 0,
+   "not_from_game": 0,
+   "win_bare_king": 0,
+   "win_mate": 1,
+   "win_mate_in_three": 53558,
+   "win_no_legal_move": 0,
+   "win_piece_exhaustion": 0,
+   "win_repetition": 0,
+   "win_resignation": 0,
+   "win_royal_capture": 46
+  },
+  "files": 40,
+  "game_length_plies": {
+   "max": 562,
+   "mean": 88.01768491745173,
+   "p50": 72,
+   "p90": 174,
+   "p95": 211,
+   "p99": 292
+  },
+  "games": 53605,
+  "games_over_1000_plies_fraction": 0.0,
+  "gb_per_million_positions": 0.2792074700222747,
+  "legal_moves": {
+   "max": 197,
+   "mean": 67.05186750556867,
+   "p50": 67,
+   "p90": 95,
+   "p99": 122
+  },
+  "legal_moves_method": "MoveGenerator::generate_moves (without repetition history)",
+  "percentile_method": "nearest_rank",
+  "positions": 4771793
+ },
+ "network_sha256": "38032bcbd21e252b0ef13616b981e8b45a93ab673723fa491b9276d4eeaa43bf",
+ "checks": {
+  "results": [
+   {
+    "weights": "raw",
+    "backend": "cpu",
+    "batch": 1,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":8.046264648342571e-06,\"max_probability_abs_diff\":2.3026304202256043e-07,\"max_value_abs_diff\":3.597329711890751e-07,\"best_move_mismatches\":0,\"best_move_mismatch_gaps\":[]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 8.046264648342571e-06,
+     "max_probability_abs_diff": 2.3026304202256043e-07,
+     "max_value_abs_diff": 3.597329711890751e-07,
+     "best_move_mismatches": 0,
+     "best_move_mismatch_gaps": []
+    }
+   },
+   {
+    "weights": "raw",
+    "backend": "trt",
+    "batch": 1,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":0.03130626678466797,\"max_probability_abs_diff\":0.0009251770111906171,\"max_value_abs_diff\":0.0023401696358489876,\"best_move_mismatches\":9,\"best_move_mismatch_gaps\":[[84,0.0020189285278320312],[107,0.0051136016845703125],[112,0.0019321441650390625],[124,0.011073112487792969],[158,0.004439353942871094],[198,0.008145332336425781],[207,0.005671501159667969],[232,0.00061798095703125],[256,0.0066928863525390625]]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 0.03130626678466797,
+     "max_probability_abs_diff": 0.0009251770111906171,
+     "max_value_abs_diff": 0.0023401696358489876,
+     "best_move_mismatches": 9,
+     "best_move_mismatch_gaps": [
+      [
+       84,
+       0.0020189285278320312
+      ],
+      [
+       107,
+       0.0051136016845703125
+      ],
+      [
+       112,
+       0.0019321441650390625
+      ],
+      [
+       124,
+       0.011073112487792969
+      ],
+      [
+       158,
+       0.004439353942871094
+      ],
+      [
+       198,
+       0.008145332336425781
+      ],
+      [
+       207,
+       0.005671501159667969
+      ],
+      [
+       232,
+       0.00061798095703125
+      ],
+      [
+       256,
+       0.0066928863525390625
+      ]
+     ]
+    }
+   },
+   {
+    "weights": "raw",
+    "backend": "cpu",
+    "batch": 7,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":7.820190429441709e-06,\"max_probability_abs_diff\":1.8830635010319563e-07,\"max_value_abs_diff\":4.833084106259378e-07,\"best_move_mismatches\":0,\"best_move_mismatch_gaps\":[]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 7.820190429441709e-06,
+     "max_probability_abs_diff": 1.8830635010319563e-07,
+     "max_value_abs_diff": 4.833084106259378e-07,
+     "best_move_mismatches": 0,
+     "best_move_mismatch_gaps": []
+    }
+   },
+   {
+    "weights": "raw",
+    "backend": "trt",
+    "batch": 7,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":0.030330657958984375,\"max_probability_abs_diff\":0.0010180328993856236,\"max_value_abs_diff\":0.002102642001419075,\"best_move_mismatches\":11,\"best_move_mismatch_gaps\":[[33,0.009366035461425781],[74,0.0023794174194335938],[84,0.0020189285278320312],[107,0.0051136016845703125],[112,0.0019321441650390625],[124,0.011073112487792969],[144,2.384185791015625e-05],[190,0.01761627197265625],[198,0.008145332336425781],[207,0.005671501159667969],[214,0.00021839141845703125]]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 0.030330657958984375,
+     "max_probability_abs_diff": 0.0010180328993856236,
+     "max_value_abs_diff": 0.002102642001419075,
+     "best_move_mismatches": 11,
+     "best_move_mismatch_gaps": [
+      [
+       33,
+       0.009366035461425781
+      ],
+      [
+       74,
+       0.0023794174194335938
+      ],
+      [
+       84,
+       0.0020189285278320312
+      ],
+      [
+       107,
+       0.0051136016845703125
+      ],
+      [
+       112,
+       0.0019321441650390625
+      ],
+      [
+       124,
+       0.011073112487792969
+      ],
+      [
+       144,
+       2.384185791015625e-05
+      ],
+      [
+       190,
+       0.01761627197265625
+      ],
+      [
+       198,
+       0.008145332336425781
+      ],
+      [
+       207,
+       0.005671501159667969
+      ],
+      [
+       214,
+       0.00021839141845703125
+      ]
+     ]
+    }
+   },
+   {
+    "weights": "raw",
+    "backend": "cpu",
+    "batch": 256,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":7.820190429441709e-06,\"max_probability_abs_diff\":1.8830635010319563e-07,\"max_value_abs_diff\":4.833084106259378e-07,\"best_move_mismatches\":0,\"best_move_mismatch_gaps\":[]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 7.820190429441709e-06,
+     "max_probability_abs_diff": 1.8830635010319563e-07,
+     "max_value_abs_diff": 4.833084106259378e-07,
+     "best_move_mismatches": 0,
+     "best_move_mismatch_gaps": []
+    }
+   },
+   {
+    "weights": "raw",
+    "backend": "trt",
+    "batch": 256,
+    "exit_code": 0,
+    "stdout": "{\"positions\":288,\"max_logit_abs_diff\":0.02390682623290985,\"max_probability_abs_diff\":0.0007038490840336614,\"max_value_abs_diff\":0.0029467469284057968,\"best_move_mismatches\":4,\"best_move_mismatch_gaps\":[[43,0.0008945465087890625],[56,0.011406898498535156],[102,0.005547523498535156],[214,0.00021839141845703125]]}",
+    "result": {
+     "positions": 288,
+     "max_logit_abs_diff": 0.02390682623290985,
+     "max_probability_abs_diff": 0.0007038490840336614,
+     "max_value_abs_diff": 0.0029467469284057968,
+     "best_move_mismatches": 4,
+     "best_move_mismatch_gaps": [
+      [
+       43,
+       0.0008945465087890625
+      ],
+      [
+       56,
+       0.011406898498535156
+      ],
+      [
+       102,
+       0.005547523498535156
+      ],
+      [
+       214,
+       0.00021839141845703125
+      ]
+     ]
+    }
+   }
+  ],
+  "elapsed_seconds": 56.0
+ },
+ "elapsed_seconds": {
+  "generation": 2032.171288,
+  "training": 1185.708973,
+  "checking": 88.617225
+ },
+ "machine": {
+  "gpu": "NVIDIA L4",
+  "cpu": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+  "nproc": 12
+ },
+ "interval": {
+  "lr": 0.01,
+  "lr_schedule": "cosine",
+  "cycles_dir": "trial-restart",
+  "base_cycles_dir": "trial-restart",
+  "branch_from": 0,
+  "session": "rl-trial-r1",
+  "cycle": 1,
+  "started_at": "2026-10-31T03:55:40.923592+00:00",
+  "ended_at": "2026-10-31T04:51:24.708174+00:00",
+  "start_balance": 318.83,
+  "end_balance": 317.07,
+  "balance_difference": 1.759999999999991
+ }
+}

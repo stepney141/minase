@@ -72,12 +72,12 @@ Gumbel dlshogiは、手数の上限に達した対局を除くだけでは入玉
 先行実装の調査が記していた66.1%は、除外の前の第7サイクルの値である（[その7](https://tadaoyamaoka.hatenablog.com/entry/2025/07/18/223232)参照）。
 minaseの計画が手数の上限による除外だけを退化の対策とするのは、この前提の誤りに基づく。
 
-第2に、[先行実装の調査](../research/alphazero-prior-art.md)（56行）、[Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-for-zero-self-play-search.md)、および凍結済みの[探索方式の共存とMCTS](../plans/archived/alphazero-mcts.md)は、技巧が1手16〜64回の探索で学習したと記す。
+第2に、[先行実装の調査](../research/alphazero-prior-art.md)（56行）、[Gumbel AlphaZeroのADR](../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)、および凍結済みの[探索方式の共存とMCTS](../plans/archived/alphazero-mcts.md)は、技巧が1手16〜64回の探索で学習したと記す。
 技巧のWCSC34詳細アピール文書の第4節は、約1,000万対局まで32回、1,000万〜4,000万対局まで64回、4,000万対局以降128回と記し、第1.1節は約5,000万対局をGPU約20台で学習したと述べている。
 対局実験のMCTSのバッチサイズは1である（同文書の脚注）。
 16回から始めたのはGumbel dlshogiである。
 
-第3に、[ネットの構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)は、KataGoが各残差ブロックに大域プーリングを入れたと記す。
+第3に、[ネットの構成のADR](../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)は、KataGoが各残差ブロックに大域プーリングを入れたと記す。
 KataGoの論文の付録A.3は、残差ブロックのうち2〜3個だけに等間隔で大域プーリングを入れ、残りは通常のブロックとすると記す（表2では4つの大きさでそれぞれ2、2、2、3個）。
 minaseの学習器`tools/train/zero/minase_zero/net.py`は全ブロックに入れており、KataGoの構成そのものではない。
 学習が成り立たないという証拠はなく、構成の比較は同じデータと計算量で行う必要がある。

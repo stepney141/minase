@@ -1,11 +1,12 @@
 """MNSDの駒コードと正準形の着手を、Rustのnnと同じ入力面・方策ラベルへ写す。"""
 
+import minase_mnsd_reader
 import numpy as np
 from numpy.typing import NDArray
 import torch
 
 
-INPUT_PLANES = 95
+INPUT_PLANES = 159
 BOARD_SQUARES = 144
 POLICY_PLANES = 249
 POLICY_SIZE = 35_856
@@ -41,11 +42,12 @@ for _direction, (_dx, _dy) in enumerate(_KNIGHT_STEPS):
     _KNIGHT_DIRECTIONS[_dx + 2, _dy + 2] = _direction
 
 
-def policy_mask() -> NDArray[np.bool_]:
+def policy_mask(*, opponent: bool = False) -> NDArray[np.bool_]:
     """盤面によらず可能な16,108ラベルを真とする長さ35,856の定数マスクを返す。
 
     policy_labelsと同じ面・相対座標で、移動先と中継升が盤内にあることを検査する。
     成りの直線移動は、移動元か移動先の相対段が敵陣の8〜11であることも要求する。
+    opponent=Trueでは、自分の視点で表した相手の手のために成りの段を自陣0〜3へ反転する。
     駒の配置や種類、反復の履歴は参照しない。
     """
     squares = np.arange(BOARD_SQUARES)
@@ -62,7 +64,7 @@ def policy_mask() -> NDArray[np.bool_]:
             tx, ty = x + dx * (distance + 1), y + dy * (distance + 1)
             mask[plane] = inside(tx, ty)
             if plane >= 88:
-                mask[plane] &= (y >= 8) | (ty >= 8)
+                mask[plane] &= ((y <= 3) | (ty <= 3)) if opponent else ((y >= 8) | (ty >= 8))
         elif plane < 184:
             dx, dy = _KNIGHT_STEPS[plane - 176]
             mask[plane] = inside(x + dx, y + dy)
@@ -82,7 +84,7 @@ def policy_mask() -> NDArray[np.bool_]:
 
 
 def encode_planes(boards: torch.Tensor, sides: torch.Tensor, lions: torch.Tensor) -> torch.Tensor:
-    """同じ機器のuint8の(B,144)、(B)、(B)からfloat32の(B,95,12,12)を返す。
+    """同じ機器のuint8の(B,144)、(B)、(B)からfloat32の(B,159,12,12)を返す。
 
     後手番は升と陣営を反転する。先獅子なしは255で表す。
     成り権の保留印、不正な駒コード、形、型、手番、升はValueErrorとする。
@@ -97,7 +99,7 @@ def encode_planes(boards: torch.Tensor, sides: torch.Tensor, lions: torch.Tensor
     if boards.device != sides.device or boards.device != lions.device:
         raise ValueError("boards, sides and lions must be on the same device")
     if torch.any(boards & 128):
-        raise ValueError("deferred promotion cannot be encoded in 95 planes")
+        raise ValueError(f"deferred promotion cannot be encoded in {INPUT_PLANES} planes")
     if torch.any(sides > 1):
         raise ValueError("side must be 0 or 1")
     if torch.any((lions >= BOARD_SQUARES) & (lions != 255)):
@@ -118,6 +120,9 @@ def encode_planes(boards: torch.Tensor, sides: torch.Tensor, lions: torch.Tensor
     square = lions[batch].to(torch.int64)
     relative_square = torch.where(sides[batch] == 0, square, 143 - square)
     output[batch, 94, relative_square] = 1.0
+
+    control = minase_mnsd_reader.control_planes(boards.cpu().numpy(), sides.cpu().numpy())
+    output[:, 95:] = torch.from_numpy(control).to(device=boards.device)
     return output.reshape(count, INPUT_PLANES, 12, 12)
 
 

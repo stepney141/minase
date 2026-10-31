@@ -24,7 +24,7 @@ MNSDを読む拡張モジュール`minase_mnsd_reader`を`tools/train/zero/mnsd_
 差は飽和のない丸めの累積だったので、FP16の照合を合法手の確率と価値の差で行うように照合の道具と手引きを改め（2026年10月28日の利用者の決定、[ADR](../../adr/archive/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)）、同じネットがバッチの大きさ1、7、256のすべてで新しい基準の照合に通った（[記録](../../measurements/alphazero-trainer/alphazero-trainer-fp16-probability-check.md)）。
 `crates/`は変更しておらず、αβ探索の深さ6のbenchの局面ごとのノード数、最善手、および評価値はmasterと一致した。
 本書が定めていなかった事項は、着手時にClaudeが決めて「着手時に補った決定」の節に記した。
-仕様は学習器と拡張モジュールのdocコメントへ、設計判断は4本のADR（[PyTorchでの学習とONNXへの出力](../../adr/train-the-zero-network-in-pytorch-and-export-it-as-onnx.md)、[拡張モジュールによる読み込み](../../adr/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)、[教師と損失](../../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)、[チェックポイントと再開](../../adr/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）へ移した。
+仕様は学習器と拡張モジュールのdocコメントへ、設計判断は4本のADR（[PyTorchでの学習とONNXへの出力](../../adr/train-the-zero-network-in-pytorch-and-export-it-as-onnx.md)、[拡張モジュールによる読み込み](../../adr/archive/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)、[教師と損失](../../adr/archive/train-the-zero-value-on-mixed-results-and-root-values.md)、[チェックポイントと再開](../../adr/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）へ移した。
 
 ## 目的
 

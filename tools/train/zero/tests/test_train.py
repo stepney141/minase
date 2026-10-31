@@ -177,31 +177,31 @@ class TrainTests(unittest.TestCase):
         self.assertGreater(self.interrupted_state["completed_steps"], 0)
         self.assertLess(self.interrupted_state["completed_steps"], self.interrupted_state["total_steps"])
         for key in ("model", "optimizer", "completed_steps", "total_steps", "positions_seen",
-                    "data_order_sha256", "loss_sums", "learning_curve", "ema"):
+                    "data_order_sha256", "loss_sums", "learning_curve", "ema", "samples_seen", "samples_seen_start"):
             with self.subTest(key=key):
                 self.assert_state_equal(self.state_a[key], self.state_b[key])
         self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
         self.assertEqual(self.summary_a["ema_diagnostics"], self.summary_b["ema_diagnostics"])
         self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
         self.assertEqual((self.a / "model-ema.onnx").read_bytes(), (self.b / "model-ema.onnx").read_bytes())
-        self.assertEqual(self.summary_a["ema_updates"], len(self.data.boards[~self.data.validation]) // 37)
-        self.assertEqual(self.state_a["ema"]["samples_since_update"], int((~self.data.validation).sum()) % 37)
+        self.assertEqual(self.summary_a["ema_updates"], 4 * len(self.data.boards[~self.data.validation]) // 37)
+        self.assertEqual(self.state_a["ema"]["samples_since_update"], 4 * int((~self.data.validation).sum()) % 37)
         self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
         training = np.flatnonzero(~self.data.validation)
-        ordered = reference_sample(len(training), len(training), 42)
+        ordered = reference_sample(len(training), 4 * len(training), 42)
         digest = bytes(32)
         for start in range(0, len(ordered), 16):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 16])).digest()
-        updates = math.ceil(len(training) / 16)
+        updates = math.ceil(4 * len(training) / 16)
         self.assertGreaterEqual(updates, 30)
-        self.assertNotEqual(len(training) % 16, 0)
+        self.assertNotEqual(4 * len(training) % 16, 0)
         for state in (self.state_a, self.state_b, self.summary_a, self.summary_b):
             self.assertEqual(state["data_order_sha256"], digest.hex())
             self.assertEqual(state["completed_steps"], updates)
             self.assertEqual(state["total_steps"], updates)
-            self.assertEqual(state["positions_seen"], len(training))
+            self.assertEqual(state["positions_seen"], 4 * len(training))
         checkpoints = list(range(4, updates + 1, 4))
         if checkpoints[-1] != updates:
             checkpoints.append(updates)
@@ -262,13 +262,14 @@ class TrainTests(unittest.TestCase):
         write_small(path, [single_game(*game) for game in sorted(games)], "engine-default")
         data, _, _ = read_window([path], [path], 42)
         indices = np.flatnonzero(~data.validation)
-        indices = indices[reference_sample(len(indices), len(indices), 42)]
+        indices = indices[reference_sample(len(indices), 4 * len(indices), 42)]
         model = ZeroNet(1, 16).train()
         model.load_state_dict(self.state_a["model"])
         inputs = encode_planes(*(torch.from_numpy(column[indices]) for column in (data.boards, data.sides, data.lions)))
-        policy, value = model.forward_logits(inputs)
+        logits = model.forward_logits(inputs)
+        policy, value = logits.policy, logits.value[:, 0]
         # 参照計算では密な方策と、結果・根の価値に対する別々のBCEを使う。
-        targets = torch.zeros(2, 35_856)
+        targets = torch.zeros(8, 35_856)
         for row, index in enumerate(indices):
             for candidate in range(int(data.policy_offsets[index]), int(data.policy_offsets[index + 1])):
                 targets[row, int(data.policy_labels[candidate])] = int(data.policy_probabilities[candidate]) / 65_535
@@ -279,21 +280,34 @@ class TrainTests(unittest.TestCase):
         result_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), results)
         root_loss = torch.nn.functional.binary_cross_entropy_with_logits(value.flatten(), roots)
         value_loss = 0.667 * result_loss + 0.333 * root_loss
-        (policy_loss + value_loss).backward()
+        legal = torch.zeros_like(targets)
+        for row, index in enumerate(indices):
+            labels = data.legal_labels[data.legal_offsets[index]:data.legal_offsets[index + 1]]
+            legal[row, torch.tensor(labels.astype(np.int64))] = 1
+        softened = (targets + 1e-7).pow(0.25) * legal
+        softened /= softened.sum(dim=1, keepdim=True)
+        soft_loss = -(softened[:, mask] * logits.soft_policy[:, mask].log_softmax(1)).sum(1).mean()
+        # この棋譜は投了の最終項目だけなので、3つの短期目標はすべて対局結果となる。
+        short_loss = sum(torch.nn.functional.binary_cross_entropy_with_logits(logits.value[:, column], results)
+                         for column in (1, 2, 3))
+        loss = policy_loss + value_loss + 8 * soft_loss + short_loss
+        loss += 0 * (logits.opponent_policy.sum() + logits.opponent_soft_policy.sum())
+        loss.backward()
         norm = sum(parameter.grad.double().square().sum() for parameter in model.parameters()).sqrt().item()
         self.assertGreater(norm, 0.1)
         expected_parameters, expected_buffers = [], []
         old_optimizer = self.state_a["optimizer"]
+        rate = 0.03 * (self.state_a["samples_seen"] + 8) / 2_000_000
         for parameter, identifier in zip(model.parameters(), old_optimizer["param_groups"][0]["params"]):
             old_buffer = old_optimizer["state"][identifier]["momentum_buffer"].double()
             gradient = parameter.grad.double() * (0.1 / norm) + 0.0002 * parameter.detach().double()
             buffer = 0.8 * old_buffer + gradient
             expected_buffers.append(buffer)
-            expected_parameters.append(parameter.detach().double() - 0.03 * (gradient + 0.8 * buffer))
+            expected_parameters.append(parameter.detach().double() - rate * (gradient + 0.8 * buffer))
 
         out = self.root / "next-cycle"
         arguments = train_arguments(self.a / "checkpoint.pt", out)
-        for flag, value in (("--data", str(path)), ("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "2"),
+        for flag, value in (("--data", str(path)), ("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
                             ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
             arguments[arguments.index(flag) + 1] = value
@@ -302,9 +316,9 @@ class TrainTests(unittest.TestCase):
         summary = json.loads((out / "summary.json").read_text())
         self.assertEqual(state["cycle"], 2)
         self.assertEqual(state["completed_steps"], 1)
-        self.assertEqual(state["positions_seen"], 2)
+        self.assertEqual(state["positions_seen"], 8)
         group = state["optimizer"]["param_groups"][0]
-        self.assertEqual((group["lr"], group["momentum"], group["weight_decay"], group["nesterov"]), (0.03, 0.8, 0.0002, True))
+        self.assertEqual((group["lr"], group["momentum"], group["weight_decay"], group["nesterov"]), (rate, 0.8, 0.0002, True))
         names = [name for name, _ in model.named_parameters()]
         for name, identifier, expected_parameter, expected_buffer in zip(
             names, group["params"], expected_parameters, expected_buffers,
@@ -312,7 +326,7 @@ class TrainTests(unittest.TestCase):
             torch.testing.assert_close(state["model"][name].double(), expected_parameter, rtol=2e-6, atol=2e-7)
             torch.testing.assert_close(state["optimizer"]["state"][identifier]["momentum_buffer"].double(), expected_buffer,
                                        rtol=1e-5, atol=2e-6)
-        for key, expected in (("policy", policy_loss), ("value", value_loss), ("value_result", result_loss)):
+        for key, expected in (("policy", policy_loss), ("value", value_loss), ("value_result", result_loss), ("soft_policy", soft_loss)):
             self.assertAlmostEqual(summary["training_losses"][key], expected.item(), places=5)
 
     def test_finished_nonempty_unfinished_init_and_cpu_bf16_are_rejected(self) -> None:

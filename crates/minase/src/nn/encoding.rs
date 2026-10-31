@@ -1,15 +1,16 @@
-//! 手番側から見た局面を95面のネット入力へ符号化する。
+//! 手番側から見た局面を159面のネット入力へ符号化する。
 
+use super::control::{CONTROL_PLANES, encode_control};
 use super::{NnError, relative_square};
 use crate::eval::features::{PIECE_STATE_COUNT, piece_state};
 use minase_core::{BOARD_SQUARE_COUNT, Position};
 
-/// 駒の94面と先獅子の1面からなる入力平面数。
-pub const INPUT_PLANES: usize = 95;
-/// 95面×144升の入力要素数。
+/// 駒の94面、先獅子の1面、および疑似利きの64面からなる入力平面数。
+pub const INPUT_PLANES: usize = 95 + CONTROL_PLANES;
+/// 159面×144升の入力要素数。
 pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 
-/// 局面を手番側から見た95面へ符号化し、`out`を上書きする。
+/// 局面を手番側から見た159面へ符号化し、`out`を上書きする。
 ///
 /// 並びは`[面][升]`で、添字は`面 * 144 + 相対升`である。
 /// 相対升は先手番なら[`minase_core::Square::dense_index`]、後手番なら
@@ -17,14 +18,15 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 /// 面0〜93は`相対陣営 * 47 + piece_state(piece)`で、手番側の駒を陣営0、相手の駒を陣営1とする。
 /// 面94は、直前の着手で獅子以外の駒が相手獅子を取った升（[`Position::lion_capture_square`]）に1を置く。
 /// 先獅子（RULES.md第15条）の禁止は、この升と盤面から決まる。
+/// 面95〜158は[`encode_control`]が返す駒種ごとの疑似利きと利き数の面である。
 /// 全要素を0にした後に該当箇所へ1を置くため、値は0.0か1.0だけである。
 ///
-/// 規則セット`engine-default`（P0でP5なし）では、この95面で次の合法手が決まる。
+/// 規則セット`engine-default`（P0でP5なし）では、この159面で次の合法手が決まる。
 /// 過去の局面の履歴と反復の回数は含めない。
 ///
 /// # Errors
 /// 成り権の保留がある局面は[`NnError::PromotionDeferred`]を返す。
-/// 保留はP1・P2・P5で生じ得るが、この95面では表せない。エラー時の`out`の内容は未規定である。
+/// 保留はP1・P2・P5で生じ得るが、この159面では表せない。エラー時の`out`の内容は未規定である。
 ///
 /// # Panics
 /// `out.len()`が[`INPUT_SIZE`]でなければパニックする。
@@ -46,6 +48,7 @@ pub fn encode(position: &Position, out: &mut [f32]) -> Result<(), NnError> {
     if let Some(square) = position.lion_capture_square() {
         out[94 * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1.0;
     }
+    encode_control(position, &mut out[95 * BOARD_SQUARE_COUNT..]);
     Ok(())
 }
 
@@ -77,7 +80,7 @@ mod tests {
         position.set_lion_capture(Some(sq(5, 7))).unwrap();
         let mut input = vec![7.0; INPUT_SIZE];
         encode(&position, &mut input).unwrap();
-        let active: Vec<_> = input
+        let active: Vec<_> = input[..95 * BOARD_SQUARE_COUNT]
             .iter()
             .enumerate()
             .filter_map(|(i, &value)| (value != 0.0).then_some((i, value)))
@@ -90,6 +93,7 @@ mod tests {
                 (94 * 144 + 54, 1.0)
             ]
         );
+        assert!(input.iter().all(|&value| value == 0.0 || value == 1.0));
         encode(&Position::empty(Color::Black), &mut input).unwrap();
         assert!(input.iter().all(|&value| value == 0.0));
     }
@@ -137,7 +141,7 @@ mod tests {
         assert!(checked_positions >= 100);
     }
 
-    // [`encode`]の契約: 95面で表せない成り権の保留は、規則によらず専用エラーで拒む。
+    // [`encode`]の契約: 159面で表せない成り権の保留は、規則によらず専用エラーで拒む。
     #[test]
     fn deferred_promotion_is_rejected() {
         for (promotion, p5) in [

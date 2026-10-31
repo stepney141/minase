@@ -25,6 +25,7 @@ class FixtureTests(unittest.TestCase):
         state = torch.load(self.initial / "checkpoint.pt", weights_only=True)
         summary = json.loads((self.initial / "summary.json").read_text())
         self.assertIsNone(state["optimizer"])
+        self.assertEqual(state["samples_seen"], 0)
         self.assertEqual(state["completed_steps"], state["total_steps"])
         self.assertEqual(set(summary), {"blocks", "channels", "seed", "parameters", "network_sha256", "provenance"})
         self.assertEqual((summary["blocks"], summary["channels"], summary["seed"]), (1, 16, 23))

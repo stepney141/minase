@@ -1,0 +1,41 @@
+diff --git a/crates/minase/src/bin/minase/zero_selfplay/mate.rs b/crates/minase/src/bin/minase/zero_selfplay/mate.rs
+index 547ef374..ca75e672 100644
+--- a/crates/minase/src/bin/minase/zero_selfplay/mate.rs
++++ b/crates/minase/src/bin/minase/zero_selfplay/mate.rs
+@@ -1,6 +1,6 @@
+-//! 王手限定の3手以内の勝ちを、対局履歴を保った審判層の裁定で判定する。
+-//! 攻め方は最後の王駒の捕獲と王手だけを指し、受け方は全合法手を指す。
+-//! 受け方の王駒が2枚なら対象外とし、応手で2枚になった場合も受けとする。
++//! 王手限定の1手の勝ちを、対局履歴を保った審判層の裁定で判定する。
++//! 攻め方は最後の王駒の捕獲と王手だけを指す。
++//! 受け方の王駒が2枚なら対象外とする。
+ 
+ // 生成器への組み込み前にも、測定道具から同じファイルを取り込んで使う。
+ #![allow(dead_code)]
+@@ -12,7 +12,7 @@ use minase_core::{Color, Game, GameError, GameResult, GameStatus, Move, Square};
+ /// 手番側についての判定結果。
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum Verdict {
+-    /// 王手限定の3手以内に、手番側の勝ちを強制できる。
++    /// 王手限定の1手で、手番側が勝つ。
+     Win,
+     /// この手の制限と手数では勝ちを強制できない。
+     NoWin,
+@@ -63,7 +63,7 @@ impl From<GameError> for Error {
+     }
+ }
+ 
+-/// 着手直後の継続中の対局から、次に指す側の王手限定の3手以内の勝ちを調べる。
++/// 着手直後の継続中の対局から、次に指す側の王手限定の1手の勝ちを調べる。
+ ///
+ /// 入力の対局を変更せず、各枝で複製した[`Game`]に着手して裁定を得る。
+ /// 王手でない手を除くための利き調査だけは、局面の複製で行う。
+@@ -80,7 +80,7 @@ pub fn mate_in_three(game: &Game) -> Result<Verdict, Error> {
+     if sole_defender_royal(game, attacker)?.is_none() {
+         return Ok(Verdict::TwoRoyals);
+     }
+-    Ok(if winning_attack(game, attacker, true)? {
++    Ok(if winning_attack(game, attacker, false)? {
+         Verdict::Win
+     } else {
+         Verdict::NoWin

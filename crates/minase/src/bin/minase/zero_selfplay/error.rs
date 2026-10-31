@@ -12,6 +12,7 @@ use minase_core::GameError;
 #[derive(Debug)]
 pub(super) enum Error {
     Mcts(mcts::Error),
+    Mate(super::mate::Error),
     Inference(NnError),
     Records(records::Error),
     Game(GameError),
@@ -38,6 +39,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Mcts(error) => write!(f, "MCTS search failed: {error}"),
+            Self::Mate(error) => error.fmt(f),
             Self::Inference(error) => write!(f, "inference failed: {error}"),
             Self::Records(error) => write!(f, "MNSD record failed: {error}"),
             Self::Game(error) => write!(f, "game failed: {error}"),
@@ -91,6 +93,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Mcts(error) => Some(error),
+            Self::Mate(error) => Some(error),
             Self::Inference(error) => Some(error),
             Self::Records(error) => Some(error),
             Self::Game(error) => Some(error),
@@ -105,6 +108,11 @@ impl std::error::Error for Error {
 impl From<mcts::Error> for Error {
     fn from(error: mcts::Error) -> Self {
         Self::Mcts(error)
+    }
+}
+impl From<super::mate::Error> for Error {
+    fn from(error: super::mate::Error) -> Self {
+        Self::Mate(error)
     }
 }
 impl From<mcts::tree::TreeError> for Error {

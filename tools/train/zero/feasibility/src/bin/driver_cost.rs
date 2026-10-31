@@ -1,7 +1,8 @@
 //! 本番Driverと一様評価器による探索時間、経路再生量、スナップショット費用の測定。
 //!
-//! 変更前のAPIでもビルドできる。`--adjudication before`では審判呼出し数と
-//! 裁定理由別件数を0にする。回数は測定後の木から数え、測定区間へ計測処理を入れない。
+//! `--adjudication before`では審判呼出し数と裁定理由別件数を0にする。
+//! 回数は測定後の木から数え、測定区間へ計測処理を入れない。
+//! Gumbel探索はQの尺度0.1、最終着手の乱数の倍率1.0で測定する。
 //! 時間の項目（`elapsed_ms`、`summary_ms`、`snapshots`の計測値）以外の出力は、
 //! 同じ入力とシードで決定的であり、審判層の変更前後の回帰の検査に用いる。
 
@@ -14,7 +15,7 @@ use std::time::Instant;
 use minase::datagen::opening::generate_opening;
 use minase::nn::{Evaluator, UniformEvaluator};
 use minase::search::SearchSnapshot;
-use minase::search::mcts::gumbel::{Gumbel, policy_target};
+use minase::search::mcts::gumbel::Gumbel;
 use minase::search::mcts::puct::PuctConfig;
 use minase::search::mcts::tree::{Node, NodeState, SelectionRule};
 use minase::search::mcts::{DrawValue, Driver, EvaluationRequest, Step};
@@ -199,7 +200,7 @@ fn search(game: &Game, seed: u64, gumbel: bool) -> Result<(Driver, f64, SearchOu
                 -(-log_u).ln() as f32
             })
             .collect();
-        Some(Gumbel::new(noise, 32)?)
+        Some(Gumbel::new(noise, 32, 0.1)?)
     } else {
         None
     };
@@ -255,8 +256,8 @@ fn search(game: &Game, seed: u64, gumbel: bool) -> Result<(Driver, f64, SearchOu
     }
     let output = if let Some(gumbel_config) = gumbel_config {
         SearchOutput::Gumbel {
-            selected_edge: black_box(gumbel_config.action(driver.tree().root())?),
-            policy_target: black_box(policy_target(driver.tree().root())?),
+            selected_edge: black_box(gumbel_config.action(driver.tree().root(), 1.0)?),
+            policy_target: black_box(gumbel_config.policy_target(driver.tree().root())?),
         }
     } else {
         SearchOutput::Puct {

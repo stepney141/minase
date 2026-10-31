@@ -1,0 +1,2 @@
+{"session":"rl-trial-r1","gpu_requested":"L4","rented_at":"2026-10-31T12:52:05+09:00","balance_before":318.83,"purpose":"trial of the restart techniques (trial-restart cycle 1)"}
+{"session":"rl-trial-r1","stopped_at":"2026-10-31T13:51:26+09:00","balance_after":317.07,"note":"runner exit code 0"}

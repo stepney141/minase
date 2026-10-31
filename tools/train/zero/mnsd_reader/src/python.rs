@@ -2,8 +2,10 @@
 
 use std::{collections::HashSet, path::Path};
 
-use minase_core::Rules;
+use minase::nn::control::CONTROL_PLANES;
+use minase_core::{BOARD_SQUARE_COUNT, Rules};
 use pyo3::{
+    buffer::PyBuffer,
     exceptions::{PyOSError, PyValueError},
     prelude::*,
     types::{PyBytes, PyDict},
@@ -52,6 +54,8 @@ fn bytes<'py, T, const N: usize>(
 /// lionsとpolicy_midのなしは255、升はdense_index、policy_promoteは0か1である。
 /// legal_offsetsはu64の局面数+1、legal_from、legal_mid、legal_to、legal_promoteは
 /// u8の全合法手数で、升と成りの表現は候補列と同じである。
+/// opponent_policy_*とopponent_legal_*も同じ型で、直後の項目に候補がなければ空区間となる。
+/// short_term_valuesはMCTSでは局面数×3のf32を行順に詰め、αβでは空とする。
 /// valuesはαβのセンチポーンまたはMCTSの0〜65,535、候補の確率は65,535を1とする。
 /// 入出力の失敗はOSError、形式と内容の誤りはValueErrorを送出する。
 #[pyfunction]
@@ -98,6 +102,41 @@ fn read_games(
     record_dict(py, &records)
 }
 
+/// uint8の盤`(B,144)`と手番`(B,)`からfloat32の疑似利き`(B,64,144)`を返す。
+///
+/// 盤の駒コードはMNSDと同じで、手番は先手0、後手1とする。
+/// 不正な形・型・駒コード・手番と成り権の保留はValueErrorを送出する。
+/// 非連続な配列も受け付け、Rustでの符号化中はGILを解放する。
+#[pyfunction]
+fn control_planes<'py>(
+    py: Python<'py>,
+    boards: &Bound<'py, PyAny>,
+    sides: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let boards = PyBuffer::<u8>::get(boards)
+        .map_err(|_| PyValueError::new_err("boards must have dtype uint8"))?;
+    let sides = PyBuffer::<u8>::get(sides)
+        .map_err(|_| PyValueError::new_err("sides must have dtype uint8"))?;
+    if boards.dimensions() != 2 || boards.shape()[1] != BOARD_SQUARE_COUNT {
+        return Err(PyValueError::new_err("boards must have shape (B, 144)"));
+    }
+    let count = boards.shape()[0];
+    if sides.shape() != [count] {
+        return Err(PyValueError::new_err("sides must have shape (B,)"));
+    }
+    let boards = boards.to_vec(py)?;
+    let sides = sides.to_vec(py)?;
+    let planes = py
+        .detach(|| crate::control_planes(&boards, &sides))
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let output = py.import("numpy")?.call_method1(
+        "empty",
+        ((count, CONTROL_PLANES, BOARD_SQUARE_COUNT), "float32"),
+    )?;
+    PyBuffer::<f32>::get(&output)?.copy_from_slice(py, &planes)?;
+    Ok(output)
+}
+
 fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDict>> {
     let header = &info.header;
     let output = PyDict::new(py);
@@ -130,6 +169,26 @@ fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, P
     output.set_item("values", bytes(py, &records.values, |v| v.to_le_bytes())?)?;
     output.set_item("visits", bytes(py, &records.visits, |v| v.to_le_bytes())?)?;
     output.set_item(
+        "short_term_values",
+        bytes(py, records.short_term_values.as_flattened(), |v| {
+            v.to_le_bytes()
+        })?,
+    )?;
+    output.set_item(
+        "opponent_policy_offsets",
+        bytes(py, &records.opponent_policy_offsets, |v| v.to_le_bytes())?,
+    )?;
+    output.set_item(
+        "opponent_policy_probabilities",
+        bytes(py, &records.opponent_policy_probabilities, |v| {
+            v.to_le_bytes()
+        })?,
+    )?;
+    output.set_item(
+        "opponent_legal_offsets",
+        bytes(py, &records.opponent_legal_offsets, |v| v.to_le_bytes())?,
+    )?;
+    output.set_item(
         "policy_offsets",
         bytes(py, &records.policy_offsets, |v| v.to_le_bytes())?,
     )?;
@@ -154,6 +213,14 @@ fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, P
         ("legal_mid", &records.legal_mid),
         ("legal_to", &records.legal_to),
         ("legal_promote", &records.legal_promote),
+        ("opponent_policy_from", &records.opponent_policy_from),
+        ("opponent_policy_mid", &records.opponent_policy_mid),
+        ("opponent_policy_to", &records.opponent_policy_to),
+        ("opponent_policy_promote", &records.opponent_policy_promote),
+        ("opponent_legal_from", &records.opponent_legal_from),
+        ("opponent_legal_mid", &records.opponent_legal_mid),
+        ("opponent_legal_to", &records.opponent_legal_to),
+        ("opponent_legal_promote", &records.opponent_legal_promote),
     ] {
         output.set_item(key, bytes(py, values, |&v| [v])?)?;
     }
@@ -167,5 +234,6 @@ fn minase_mnsd_reader(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(scan, module)?)?;
     module.add_function(wrap_pyfunction!(read_selected, module)?)?;
     module.add_function(wrap_pyfunction!(read_games, module)?)?;
+    module.add_function(wrap_pyfunction!(control_planes, module)?)?;
     Ok(())
 }

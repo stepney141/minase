@@ -1,0 +1,1266 @@
+{
+  "cycle": 1,
+  "config": {
+    "device": "cuda",
+    "init": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/net-check/cycle-0000/checkpoint.pt",
+    "data": [
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.resigned.mnsd"
+    ],
+    "latest_data": [
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.resigned.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.mnsd",
+      "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.resigned.mnsd"
+    ],
+    "cycle": 1,
+    "seed": 20261101,
+    "batch_size": 256,
+    "checkpoint_steps": 50,
+    "ema_period_samples": 0,
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "clip_grad_norm": 10.0,
+    "value_lambda": 0.333,
+    "ema_scale": 0.0,
+    "precision": "bf16",
+    "lr_schedule": "cosine",
+    "trainer_commit": "5f3100063882d18aa17777995a801169a69ef1f9",
+    "blocks": 10,
+    "channels": 128,
+    "sample_count": 72808,
+    "window_training_count": 18202,
+    "file_training_counts": [
+      2243,
+      0,
+      2155,
+      0,
+      2735,
+      0,
+      2000,
+      0,
+      2230,
+      0,
+      2464,
+      0,
+      2125,
+      0,
+      2250,
+      0
+    ],
+    "sample_sha256": "3f0cba4cc5d77e31abc774e4a0e61697526252e1bc1e57c2b50925e91d06cd73"
+  },
+  "provenance": {
+    "trainer_commit": "5f3100063882d18aa17777995a801169a69ef1f9",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.11.0+cu130",
+    "cuda_version": "13.0",
+    "numpy_version": "2.5.4",
+    "device_name": "NVIDIA GeForce RTX 3060 Ti",
+    "init_sha256": "5a618674fb2f8427c80a25e8e085944414110addec24ab9e543d5ed14c7a7603",
+    "files": [
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.mnsd",
+        "size": 223177,
+        "sha256": "f18ef58f4dd991b82ae03e3b932d7e71bd2717bd6548c661a2b84d1cdd3df141",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 11383
+        },
+        "position_count": 2365,
+        "training_count": 2243,
+        "validation_count": 122
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.mnsd",
+        "size": 218032,
+        "sha256": "b1d4079ab1fb537ea9bebe5a38eded53ddf245eb3aac725e737d21c2bb3dc0bd",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 10980
+        },
+        "position_count": 2312,
+        "training_count": 2155,
+        "validation_count": 157
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.mnsd",
+        "size": 267329,
+        "sha256": "8218a8fd4ee1a42c0a97ee2d7f2cf71246bb99a9b697ae4368984a3b2267e6c4",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 13647
+        },
+        "position_count": 2975,
+        "training_count": 2735,
+        "validation_count": 240
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.mnsd",
+        "size": 195281,
+        "sha256": "0769526e38c0468e90dccec739106ba7c2129bf0a766d352eb302d306e63de58",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 9879
+        },
+        "position_count": 2039,
+        "training_count": 2000,
+        "validation_count": 39
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.mnsd",
+        "size": 216507,
+        "sha256": "bd75e29d066071435e7d3d1483e39c118eca081de94ca6c7c3dfbed87bd5efe3",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 10901
+        },
+        "position_count": 2303,
+        "training_count": 2230,
+        "validation_count": 73
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.mnsd",
+        "size": 231693,
+        "sha256": "04984eab3e06d60d07663a85b7cf0ec2ff56fe176f8e9a3f46d4d42fffe1bc6f",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 11783
+        },
+        "position_count": 2516,
+        "training_count": 2464,
+        "validation_count": 52
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.mnsd",
+        "size": 207845,
+        "sha256": "c31f3b8abc3c3fc05f4569496f5806567d8676a138519fdb16eb25915b4d386b",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 10555
+        },
+        "position_count": 2190,
+        "training_count": 2125,
+        "validation_count": 65
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.mnsd",
+        "size": 223599,
+        "sha256": "ec02bc2e8112da8c3b1ade7c0ebf677935e21375dc6eec649546c8a9f4575f78",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 128,
+          "entry_count": 11337
+        },
+        "position_count": 2403,
+        "training_count": 2250,
+        "validation_count": 153
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.resigned.mnsd",
+        "size": 152,
+        "sha256": "4dc6c87698b4a4f4b3c0e2d6e450e9c7f10662a95109571eb537e6596bd73986",
+        "header": {
+          "origin": null,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "8c6b72421c496f12f4c95fe0731c3c2ebf4fcbf7",
+          "network_checksum": "b2de222cdc9d013814d928bd507d71c502d541fdd25616c80c69491d3e527c48",
+          "teacher_search_budget": 32,
+          "seed": 300000000,
+          "game_count": 0,
+          "entry_count": 0
+        },
+        "position_count": 0,
+        "training_count": 0,
+        "validation_count": 0
+      }
+    ]
+  },
+  "lr": 0.01,
+  "lr_schedule": "cosine",
+  "training_count": 18202,
+  "validation_count": 901,
+  "latest_data": [
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00000.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00001.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00002.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00003.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00004.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00005.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00006.resigned.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.mnsd",
+    "/home/stepney141/board-games/minase/data/worktrees/alphazero-restart-techniques/data/alphazero-restart-techniques/resume-check/gen/chunk-00007.resigned.mnsd"
+  ],
+  "sample_count": 72808,
+  "window_training_count": 18202,
+  "file_training_counts": [
+    2243,
+    0,
+    2155,
+    0,
+    2735,
+    0,
+    2000,
+    0,
+    2230,
+    0,
+    2464,
+    0,
+    2125,
+    0,
+    2250,
+    0
+  ],
+  "sample_sha256": "3f0cba4cc5d77e31abc774e4a0e61697526252e1bc1e57c2b50925e91d06cd73",
+  "completed_steps": 285,
+  "total_steps": 285,
+  "positions_seen": 72808,
+  "samples_seen_start": 0,
+  "samples_seen": 72808,
+  "last_lr": 1.1081548871833036e-08,
+  "training_losses": {
+    "policy": 9.432822227478027,
+    "value": 0.6949604153633118,
+    "value_result": 0.6949729919433594,
+    "soft_policy": 8.245440483093262,
+    "opponent_policy": 2.712829351425171,
+    "opponent_soft_policy": 2.5378646850585938,
+    "short_term_value_1": 0.6943023800849915,
+    "short_term_value_2": 0.6952284574508667,
+    "short_term_value_3": 0.6987376809120178
+  },
+  "diagnostics": {
+    "training_sample": {
+      "game_count": 53,
+      "position_count": 1028,
+      "hash_modulus": 20,
+      "hash_remainder": 1,
+      "games": [
+        {
+          "seed": 300000000,
+          "game": 9
+        },
+        {
+          "seed": 300000000,
+          "game": 32
+        },
+        {
+          "seed": 300000000,
+          "game": 41
+        },
+        {
+          "seed": 300000000,
+          "game": 67
+        },
+        {
+          "seed": 300000000,
+          "game": 68
+        },
+        {
+          "seed": 300000000,
+          "game": 85
+        },
+        {
+          "seed": 300000000,
+          "game": 95
+        },
+        {
+          "seed": 300000000,
+          "game": 109
+        },
+        {
+          "seed": 300000000,
+          "game": 116
+        },
+        {
+          "seed": 300000000,
+          "game": 123
+        },
+        {
+          "seed": 300000000,
+          "game": 127
+        },
+        {
+          "seed": 300000000,
+          "game": 157
+        },
+        {
+          "seed": 300000000,
+          "game": 161
+        },
+        {
+          "seed": 300000000,
+          "game": 182
+        },
+        {
+          "seed": 300000000,
+          "game": 222
+        },
+        {
+          "seed": 300000000,
+          "game": 223
+        },
+        {
+          "seed": 300000000,
+          "game": 242
+        },
+        {
+          "seed": 300000000,
+          "game": 256
+        },
+        {
+          "seed": 300000000,
+          "game": 272
+        },
+        {
+          "seed": 300000000,
+          "game": 318
+        },
+        {
+          "seed": 300000000,
+          "game": 345
+        },
+        {
+          "seed": 300000000,
+          "game": 367
+        },
+        {
+          "seed": 300000000,
+          "game": 427
+        },
+        {
+          "seed": 300000000,
+          "game": 433
+        },
+        {
+          "seed": 300000000,
+          "game": 453
+        },
+        {
+          "seed": 300000000,
+          "game": 463
+        },
+        {
+          "seed": 300000000,
+          "game": 466
+        },
+        {
+          "seed": 300000000,
+          "game": 472
+        },
+        {
+          "seed": 300000000,
+          "game": 498
+        },
+        {
+          "seed": 300000000,
+          "game": 511
+        },
+        {
+          "seed": 300000000,
+          "game": 601
+        },
+        {
+          "seed": 300000000,
+          "game": 612
+        },
+        {
+          "seed": 300000000,
+          "game": 630
+        },
+        {
+          "seed": 300000000,
+          "game": 656
+        },
+        {
+          "seed": 300000000,
+          "game": 666
+        },
+        {
+          "seed": 300000000,
+          "game": 708
+        },
+        {
+          "seed": 300000000,
+          "game": 709
+        },
+        {
+          "seed": 300000000,
+          "game": 749
+        },
+        {
+          "seed": 300000000,
+          "game": 765
+        },
+        {
+          "seed": 300000000,
+          "game": 775
+        },
+        {
+          "seed": 300000000,
+          "game": 795
+        },
+        {
+          "seed": 300000000,
+          "game": 808
+        },
+        {
+          "seed": 300000000,
+          "game": 819
+        },
+        {
+          "seed": 300000000,
+          "game": 823
+        },
+        {
+          "seed": 300000000,
+          "game": 849
+        },
+        {
+          "seed": 300000000,
+          "game": 881
+        },
+        {
+          "seed": 300000000,
+          "game": 920
+        },
+        {
+          "seed": 300000000,
+          "game": 930
+        },
+        {
+          "seed": 300000000,
+          "game": 955
+        },
+        {
+          "seed": 300000000,
+          "game": 986
+        },
+        {
+          "seed": 300000000,
+          "game": 990
+        },
+        {
+          "seed": 300000000,
+          "game": 999
+        },
+        {
+          "seed": 300000000,
+          "game": 1010
+        }
+      ],
+      "policy": 8.503961563110352,
+      "value": 0.6945238709449768,
+      "value_result": 0.6947104930877686,
+      "soft_policy": 7.284984588623047,
+      "opponent_policy": 2.679157257080078,
+      "opponent_soft_policy": 2.4660401344299316,
+      "short_term_value_1": 0.6933838725090027,
+      "short_term_value_2": 0.694749653339386,
+      "short_term_value_3": 0.6950265169143677,
+      "legal_probability_mass": 0.08425061404705048,
+      "log_legal_probability_mass": -2.54781436920166,
+      "policy_agreement": 0.01653696410357952
+    },
+    "latest_training_sample": {
+      "game_count": 53,
+      "position_count": 1028,
+      "hash_modulus": 20,
+      "hash_remainder": 1,
+      "games": [
+        {
+          "seed": 300000000,
+          "game": 9
+        },
+        {
+          "seed": 300000000,
+          "game": 32
+        },
+        {
+          "seed": 300000000,
+          "game": 41
+        },
+        {
+          "seed": 300000000,
+          "game": 67
+        },
+        {
+          "seed": 300000000,
+          "game": 68
+        },
+        {
+          "seed": 300000000,
+          "game": 85
+        },
+        {
+          "seed": 300000000,
+          "game": 95
+        },
+        {
+          "seed": 300000000,
+          "game": 109
+        },
+        {
+          "seed": 300000000,
+          "game": 116
+        },
+        {
+          "seed": 300000000,
+          "game": 123
+        },
+        {
+          "seed": 300000000,
+          "game": 127
+        },
+        {
+          "seed": 300000000,
+          "game": 157
+        },
+        {
+          "seed": 300000000,
+          "game": 161
+        },
+        {
+          "seed": 300000000,
+          "game": 182
+        },
+        {
+          "seed": 300000000,
+          "game": 222
+        },
+        {
+          "seed": 300000000,
+          "game": 223
+        },
+        {
+          "seed": 300000000,
+          "game": 242
+        },
+        {
+          "seed": 300000000,
+          "game": 256
+        },
+        {
+          "seed": 300000000,
+          "game": 272
+        },
+        {
+          "seed": 300000000,
+          "game": 318
+        },
+        {
+          "seed": 300000000,
+          "game": 345
+        },
+        {
+          "seed": 300000000,
+          "game": 367
+        },
+        {
+          "seed": 300000000,
+          "game": 427
+        },
+        {
+          "seed": 300000000,
+          "game": 433
+        },
+        {
+          "seed": 300000000,
+          "game": 453
+        },
+        {
+          "seed": 300000000,
+          "game": 463
+        },
+        {
+          "seed": 300000000,
+          "game": 466
+        },
+        {
+          "seed": 300000000,
+          "game": 472
+        },
+        {
+          "seed": 300000000,
+          "game": 498
+        },
+        {
+          "seed": 300000000,
+          "game": 511
+        },
+        {
+          "seed": 300000000,
+          "game": 601
+        },
+        {
+          "seed": 300000000,
+          "game": 612
+        },
+        {
+          "seed": 300000000,
+          "game": 630
+        },
+        {
+          "seed": 300000000,
+          "game": 656
+        },
+        {
+          "seed": 300000000,
+          "game": 666
+        },
+        {
+          "seed": 300000000,
+          "game": 708
+        },
+        {
+          "seed": 300000000,
+          "game": 709
+        },
+        {
+          "seed": 300000000,
+          "game": 749
+        },
+        {
+          "seed": 300000000,
+          "game": 765
+        },
+        {
+          "seed": 300000000,
+          "game": 775
+        },
+        {
+          "seed": 300000000,
+          "game": 795
+        },
+        {
+          "seed": 300000000,
+          "game": 808
+        },
+        {
+          "seed": 300000000,
+          "game": 819
+        },
+        {
+          "seed": 300000000,
+          "game": 823
+        },
+        {
+          "seed": 300000000,
+          "game": 849
+        },
+        {
+          "seed": 300000000,
+          "game": 881
+        },
+        {
+          "seed": 300000000,
+          "game": 920
+        },
+        {
+          "seed": 300000000,
+          "game": 930
+        },
+        {
+          "seed": 300000000,
+          "game": 955
+        },
+        {
+          "seed": 300000000,
+          "game": 986
+        },
+        {
+          "seed": 300000000,
+          "game": 990
+        },
+        {
+          "seed": 300000000,
+          "game": 999
+        },
+        {
+          "seed": 300000000,
+          "game": 1010
+        }
+      ],
+      "policy": 8.503961563110352,
+      "value": 0.6945238709449768,
+      "value_result": 0.6947104930877686,
+      "soft_policy": 7.284984588623047,
+      "opponent_policy": 2.679157257080078,
+      "opponent_soft_policy": 2.4660401344299316,
+      "short_term_value_1": 0.6933838725090027,
+      "short_term_value_2": 0.694749653339386,
+      "short_term_value_3": 0.6950265169143677,
+      "legal_probability_mass": 0.08425061404705048,
+      "log_legal_probability_mass": -2.54781436920166,
+      "policy_agreement": 0.01653696410357952
+    },
+    "validation": {
+      "game_count": 49,
+      "position_count": 901,
+      "hash_modulus": 20,
+      "hash_remainder": 0,
+      "games": [
+        {
+          "seed": 300000000,
+          "game": 22
+        },
+        {
+          "seed": 300000000,
+          "game": 23
+        },
+        {
+          "seed": 300000000,
+          "game": 40
+        },
+        {
+          "seed": 300000000,
+          "game": 56
+        },
+        {
+          "seed": 300000000,
+          "game": 59
+        },
+        {
+          "seed": 300000000,
+          "game": 151
+        },
+        {
+          "seed": 300000000,
+          "game": 195
+        },
+        {
+          "seed": 300000000,
+          "game": 199
+        },
+        {
+          "seed": 300000000,
+          "game": 227
+        },
+        {
+          "seed": 300000000,
+          "game": 234
+        },
+        {
+          "seed": 300000000,
+          "game": 239
+        },
+        {
+          "seed": 300000000,
+          "game": 261
+        },
+        {
+          "seed": 300000000,
+          "game": 262
+        },
+        {
+          "seed": 300000000,
+          "game": 279
+        },
+        {
+          "seed": 300000000,
+          "game": 283
+        },
+        {
+          "seed": 300000000,
+          "game": 287
+        },
+        {
+          "seed": 300000000,
+          "game": 312
+        },
+        {
+          "seed": 300000000,
+          "game": 369
+        },
+        {
+          "seed": 300000000,
+          "game": 384
+        },
+        {
+          "seed": 300000000,
+          "game": 465
+        },
+        {
+          "seed": 300000000,
+          "game": 499
+        },
+        {
+          "seed": 300000000,
+          "game": 500
+        },
+        {
+          "seed": 300000000,
+          "game": 506
+        },
+        {
+          "seed": 300000000,
+          "game": 513
+        },
+        {
+          "seed": 300000000,
+          "game": 532
+        },
+        {
+          "seed": 300000000,
+          "game": 560
+        },
+        {
+          "seed": 300000000,
+          "game": 574
+        },
+        {
+          "seed": 300000000,
+          "game": 609
+        },
+        {
+          "seed": 300000000,
+          "game": 653
+        },
+        {
+          "seed": 300000000,
+          "game": 669
+        },
+        {
+          "seed": 300000000,
+          "game": 729
+        },
+        {
+          "seed": 300000000,
+          "game": 779
+        },
+        {
+          "seed": 300000000,
+          "game": 800
+        },
+        {
+          "seed": 300000000,
+          "game": 840
+        },
+        {
+          "seed": 300000000,
+          "game": 850
+        },
+        {
+          "seed": 300000000,
+          "game": 862
+        },
+        {
+          "seed": 300000000,
+          "game": 873
+        },
+        {
+          "seed": 300000000,
+          "game": 891
+        },
+        {
+          "seed": 300000000,
+          "game": 900
+        },
+        {
+          "seed": 300000000,
+          "game": 906
+        },
+        {
+          "seed": 300000000,
+          "game": 912
+        },
+        {
+          "seed": 300000000,
+          "game": 927
+        },
+        {
+          "seed": 300000000,
+          "game": 932
+        },
+        {
+          "seed": 300000000,
+          "game": 945
+        },
+        {
+          "seed": 300000000,
+          "game": 946
+        },
+        {
+          "seed": 300000000,
+          "game": 1001
+        },
+        {
+          "seed": 300000000,
+          "game": 1007
+        },
+        {
+          "seed": 300000000,
+          "game": 1009
+        },
+        {
+          "seed": 300000000,
+          "game": 1024
+        }
+      ],
+      "policy": 8.577399253845215,
+      "value": 0.6904359459877014,
+      "value_result": 0.6886135339736938,
+      "soft_policy": 7.444014549255371,
+      "opponent_policy": 2.7468414306640625,
+      "opponent_soft_policy": 2.534951686859131,
+      "short_term_value_1": 0.694189190864563,
+      "short_term_value_2": 0.6945528388023376,
+      "short_term_value_3": 0.6958125829696655,
+      "legal_probability_mass": 0.08128053694963455,
+      "log_legal_probability_mass": -2.579576015472412,
+      "policy_agreement": 0.016648169606924057
+    }
+  },
+  "learning_curve": [
+    {
+      "completed_steps": 50,
+      "training_losses": {
+        "policy": 10.618592262268066,
+        "value": 0.6958678364753723,
+        "value_result": 0.6957113146781921,
+        "soft_policy": 10.513375282287598,
+        "opponent_policy": 2.734875440597534,
+        "opponent_soft_policy": 2.622906446456909,
+        "short_term_value_1": 0.6947147250175476,
+        "short_term_value_2": 0.6945226192474365,
+        "short_term_value_3": 0.7034514546394348
+      },
+      "lr": 5.944448160166935e-05,
+      "samples_seen_start": 0,
+      "samples_seen": 12800
+    },
+    {
+      "completed_steps": 100,
+      "training_losses": {
+        "policy": 10.21589183807373,
+        "value": 0.6961276531219482,
+        "value_result": 0.6962141394615173,
+        "soft_policy": 8.889687538146973,
+        "opponent_policy": 2.666015863418579,
+        "opponent_soft_policy": 2.5322306156158447,
+        "short_term_value_1": 0.6945451498031616,
+        "short_term_value_2": 0.6961187720298767,
+        "short_term_value_3": 0.7022705674171448
+      },
+      "lr": 9.352583443063603e-05,
+      "samples_seen_start": 0,
+      "samples_seen": 25600
+    },
+    {
+      "completed_steps": 150,
+      "training_losses": {
+        "policy": 9.53787899017334,
+        "value": 0.6953192949295044,
+        "value_result": 0.6955961585044861,
+        "soft_policy": 7.832357406616211,
+        "opponent_policy": 2.778355121612549,
+        "opponent_soft_policy": 2.6041927337646484,
+        "short_term_value_1": 0.6944960951805115,
+        "short_term_value_2": 0.6964620351791382,
+        "short_term_value_3": 0.6994351744651794
+      },
+      "lr": 8.912744943580925e-05,
+      "samples_seen_start": 0,
+      "samples_seen": 38400
+    },
+    {
+      "completed_steps": 200,
+      "training_losses": {
+        "policy": 8.857377052307129,
+        "value": 0.6943454146385193,
+        "value_result": 0.6944105625152588,
+        "soft_policy": 7.430965423583984,
+        "opponent_policy": 2.678468704223633,
+        "opponent_soft_policy": 2.4823484420776367,
+        "short_term_value_1": 0.6941214203834534,
+        "short_term_value_2": 0.6950515508651733,
+        "short_term_value_3": 0.6959958076477051
+      },
+      "lr": 5.3335373235109563e-05,
+      "samples_seen_start": 0,
+      "samples_seen": 51200
+    },
+    {
+      "completed_steps": 250,
+      "training_losses": {
+        "policy": 8.561935424804688,
+        "value": 0.6937651038169861,
+        "value_result": 0.6935871243476868,
+        "soft_policy": 7.268796443939209,
+        "opponent_policy": 2.68829345703125,
+        "opponent_soft_policy": 2.4658195972442627,
+        "short_term_value_1": 0.6939387321472168,
+        "short_term_value_2": 0.6945284008979797,
+        "short_term_value_3": 0.6951544880867004
+      },
+      "lr": 1.2433639203618476e-05,
+      "samples_seen_start": 0,
+      "samples_seen": 64000
+    },
+    {
+      "completed_steps": 285,
+      "training_losses": {
+        "policy": 8.520843505859375,
+        "value": 0.6940529942512512,
+        "value_result": 0.6940235495567322,
+        "soft_policy": 7.2165751457214355,
+        "opponent_policy": 2.739180088043213,
+        "opponent_soft_policy": 2.511444568634033,
+        "short_term_value_1": 0.6938608288764954,
+        "short_term_value_2": 0.6944418549537659,
+        "short_term_value_3": 0.6949313282966614
+      },
+      "lr": 1.1081548871833036e-08,
+      "samples_seen_start": 0,
+      "samples_seen": 72808
+    }
+  ],
+  "data_order_sha256": "ace40e079206f5bd0f6600e1a77c27ba38ca9b6d641e0427f1e99fa96714c0b1",
+  "network_sha256": "bc742d489cee94aec89a44adde4544083d8aba9052141da5667d61c7707bdd22",
+  "elapsed_seconds": {
+    "loading": 0.3854935939889401,
+    "training": 21.00553816401225,
+    "diagnostics": 0.3424251950054895
+  },
+  "loading_peak_rss_bytes": 897826816,
+  "positions_per_second": 3466.1335230505233
+}

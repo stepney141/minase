@@ -11,32 +11,34 @@ summary.jsonの存在をサイクルの完了とみなす。
 
 --latest-dataは最新サイクルの生成ファイルの列で、--dataの末尾とパスの文字列も順も一致させる。
 窓のファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
-最新サイクルの訓練局面数Nを抽出数とし、Nは1以上とする。抽出には、ほかの用途と共有しない
-numpy.random.Generator(PCG64(seed))による部分的なFisher–Yates法を使う。
-A[j]=jから始め、k=0,...,N−1でj=integers(k,T,dtype=int64)を引き、A[k]とA[j]を
-交換してs[k]=A[k]とする。列sが抽出結果と更新順を同時に定める。
-未使用のAのうち動かした要素だけを保持し、抽出にもO(N)のメモリを使う。
+最新サイクルの訓練局面数Nの4倍を抽出数とし、Nは1以上とする。
+抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、
+Generator(PCG64(seed))を使い続けて、T個の順列をfloor(4N/T)回と残りの重複なし抽出をつなぐ。
+列sが抽出結果と更新順を同時に定め、保持する局面はその重複を除く。
 sample_sha256は列sをリトルエンディアンのint64で並べたバイト列のSHA-256である。
 計数はMNSDの項目フラグを読んで再生なしで行い、その後、全ファイルを並列に1回再生して、
 抽出した訓練局面と最新サイクルの検証局面だけを保持する。
 
-Bをバッチの大きさとして、k番目の更新はs[kB:min((k+1)B,N)]を使い、全更新回数はceil(N/B)となる。
-再開は完了した更新の回数kから先頭のmin(kB,N)個を飛ばす。保存したファイルの列を読み直して
+Bをバッチの大きさとして、k番目の更新はs[kB:min((k+1)B,4N)]を使い、全更新回数はceil(4N/B)となる。
+再開は完了した更新の回数kから先頭のmin(kB,4N)個を飛ばす。保存したファイルの列を読み直して
 抽出を作り直し、各ファイルの大きさ、訓練局面数、検証局面数、latest_data、N、T、
 およびsample_sha256を照合する。ファイルのSHA-256は初回に来歴として計算し、再開時は計算し直さない。
 data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と
 「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で
 置き換えた値の16進表記である。中断の有無にかかわらず、同じ学習窓とシードなら同じ値になる。
 
---lr-scheduleはconstantかcosineを必須とする。constantは全更新で--lrを使う。
+--lr-scheduleはconstantかcosineを必須とする。constantはサイクル内の減衰を使わない。
 cosineの式に限り、Tはこのサイクルの全更新回数、tは0始まりの更新番号を表す。
-lr * 0.5 * (1 + cos(pi * t / T))を更新直前に全パラメータ群へ設定する。
+cosineではlr * 0.5 * (1 + cos(pi * t / T))、constantではlrに、
+ウォームアップのmin(1, (samples_seen+B)/2,000,000)を掛けて全パラメータ群へ設定する。
+samples_seenは初期化時に0とし、各更新で実際に読んだ標本数を足し、--initと--resumeで引き継ぐ。
+Bは設定したバッチの大きさであり、末尾の端数でも学習率の式にはBを使う。
 最後の更新でも0にはならず、新しいサイクルではt=0から始め直す。
 lrとlr_scheduleはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
 
 checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BNの移動統計を
 含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、
-来歴、抽出条件とsample_sha256、累計の損失、学習曲線、およびdata_order_sha256を持つ。initのチェックポイントは
+来歴、抽出条件とsample_sha256、累計の損失、学習曲線、samples_seen、samples_seen_start、およびdata_order_sha256を持つ。initのチェックポイントは
 最適化器の状態を持たず、完了した更新の回数と全更新回数をともに0とする。
 
 重みの指数移動平均（EMA）は--ema-period-samples=P、--ema-scale=Sをともに正にすると有効になる。
@@ -59,24 +61,26 @@ trainのsummary.jsonの欄は次のとおりである。
 | lr / lr_schedule | 基準の学習率と、そのサイクルの予定。configにも記録する。 |
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
-| sample_count | 抽出数N。最新サイクルの訓練局面数に等しい。 |
+| sample_count | 重複を含む更新列の長さ4N。 |
 | window_training_count | 窓全体の抽出前の訓練局面数T。 |
 | file_training_counts | ファイルごとの抽出前の訓練局面数。dataの順に並ぶ。 |
 | sample_sha256 | 抽出した通し番号を更新順に並べた列sのSHA-256。 |
-| training_count / validation_count | 抽出した訓練局面数Nと、最新サイクルの検証局面数。 |
+| training_count / validation_count | 重複を除いて保持した訓練局面数と、最新サイクルの検証局面数。 |
 | completed_steps / total_steps | 完了した更新回数と、このサイクルの全更新回数。 |
-| positions_seen | 完了した更新で読んだ訓練局面数。 |
-| training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したpolicy、value、value_result。 |
+| positions_seen | このサイクルの完了した更新で読んだ標本数。重複を含む。 |
+| samples_seen_start / samples_seen | サイクル開始時と終了時の、初期化からの累計標本数。 |
+| last_lr | 最後の更新に使った学習率。 |
+| training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したLOSS_NAMESの各項。補助の項も重みを掛ける前の値。 |
 | diagnostics.training_sample | 抽出した訓練局面のうち標本の対局に属するものを、最終の重みの推論モードで診断した値。 |
 | diagnostics.latest_training_sample | training_sampleのうちlatest_dataに属する局面を、同じ関数で診断した値。 |
 | diagnostics.validation | latest_dataの検証局面を、同じ関数で診断した値。 |
 | diagnosticsの各集合のgame_count / position_count | 診断に含めた対局数と採用局面数。 |
 | diagnosticsの各集合のhash_modulus / hash_remainder | hash64(seed, game)の法20と剰余。訓練標本は1、検証は0。 |
 | diagnosticsの各集合のgames | 採用局面を持つ対局のseed（ヘッダの基本シード）とgame（対局番号）の列。 |
-| diagnosticsの各集合のpolicy / value / value_result | 局面単位の算術平均による3つの損失。 |
+| diagnosticsの各集合の損失 | LOSS_NAMESの各項の局面単位の算術平均。 |
 | diagnosticsの各集合のlegal_probability_mass / log_legal_probability_mass | 全合法手に乗る確率質量の平均と、その自然対数の平均。 |
 | diagnosticsの各集合のpolicy_agreement | 合法手の最大logitの手が、教師の最大確率の手の集合に含まれる割合。 |
-| learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlr。 |
+| learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlrとsamples_seen、サイクル開始時のsamples_seen_start。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
 | ema_network_sha256 | 平均を持つ場合のmodel-ema.onnxのSHA-256。 |
@@ -89,7 +93,15 @@ trainのsummary.jsonの欄は次のとおりである。
 policyは定数マスクが真となる16,108ラベルで正規化した交差エントロピー、valueは結果と根の価値を混ぜた
 教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
 価値の教師は (1−λ)·結果 + λ·根の価値 であり、λは--value-lambdaで与える。
-損失は方策と価値の和で、最適化器はネステロフのモーメンタムつきSGDとする。
+補助のsoft_policyは全合法手上で(p+1e-7)の1/4乗を正規化した目標への交差エントロピーである。
+ソフト方策の目標はバッチの準備時にCPUのNumPyで正規化してから機器へ移す。
+教師の値がGPUの原子的な加算の順序に依存しないよう、行ごとの和は合法手のオフセットで求める。
+opponent_policyとopponent_soft_policyは、直後の項目の方策とそのソフト方策を、
+成りの段を反転した定数マスクで正規化したlogitに対して学ぶ。
+相手の候補がない行は両項を0とし、平均の分母にはバッチの全局面を含める。
+short_term_value_1〜3は、拡張モジュールの短期価値目標への二値交差エントロピーである。
+更新する損失は主の方策と価値にこれらの補助項をLOSS_WEIGHTSの重みで足したものとし、
+最適化器はネステロフのモーメンタムつきSGDとする。
 --precision bf16では、ネットの順伝播だけをbf16のautocastで計算する。
 損失の計算と累計はfloat32で行う。訓練集合、2つの訓練標本、検証集合のいずれかが空なら、平均を定義できない
 ためエラーにする。シードはuint64、サイクルは0以上の整数とする。
@@ -127,6 +139,7 @@ import resource
 import sys
 import tempfile
 import time
+from typing import NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -134,13 +147,38 @@ import torch
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_window
-from .encoding import encode_planes, policy_mask
+from .encoding import POLICY_SIZE, encode_planes, policy_mask
 from .fixture import evaluate_fixture
-from .net import Ema, ZeroNet, export_onnx, validate_ema
+from .net import Ema, TrainingLogits, ZeroNet, export_onnx, validate_ema
 
 
-LOSS_NAMES = ("policy", "value", "value_result")
-DIAGNOSTIC_NAMES = (*LOSS_NAMES, "legal_probability_mass", "log_legal_probability_mass", "policy_agreement")
+MAIN_LOSS_NAMES = ("policy", "value", "value_result")
+LOSS_NAMES = (*MAIN_LOSS_NAMES, "soft_policy", "opponent_policy", "opponent_soft_policy",
+              "short_term_value_1", "short_term_value_2", "short_term_value_3")
+POLICY_DIAGNOSTIC_NAMES = ("legal_probability_mass", "log_legal_probability_mass", "policy_agreement")
+DIAGNOSTIC_NAMES = (*LOSS_NAMES, *POLICY_DIAGNOSTIC_NAMES)
+# 主の2項は1、value_resultは診断のみ。補助はKataGo metrics_pytorch.py 88、905〜930行、
+# python/train.py 155行の重み。短期価値は主の価値と同じ重みとする。
+LOSS_WEIGHTS = (1.0, 1.0, 0.0, 8.0, 0.15, 1.2, 1.0, 1.0, 1.0)
+# KataGo metrics_pytorch.py 596〜605行のソフト方策の変換。
+SOFT_POLICY_EPSILON = 1e-7
+SOFT_POLICY_EXPONENT = 0.25
+# KataGo python/train.py 1214〜1234行の初期ウォームアップの標本数。
+WARMUP_SAMPLES = 2_000_000
+
+
+class PolicyTargets(NamedTuple):
+    """バッチ内の候補と全合法手、およびCPUで正規化したソフト方策の教師。
+
+    probabilitiesは0〜65,535、soft_probabilitiesは合法手の列順のfloat32確率である。
+    """
+
+    rows: torch.Tensor
+    labels: torch.Tensor
+    probabilities: torch.Tensor
+    legal_rows: torch.Tensor
+    legal_labels: torch.Tensor
+    soft_probabilities: torch.Tensor
 
 
 @contextmanager
@@ -277,6 +315,7 @@ def initialize(blocks: int, channels: int, seed: int, out_dir: Path, trainer_com
     state = {
         "model": model.state_dict(), "optimizer": None,
         "completed_steps": 0, "total_steps": 0, "cycle": 0, "seed": seed,
+        "samples_seen": 0,
         "config": {"blocks": blocks, "channels": channels, "seed": seed, "trainer_commit": trainer_commit},
         "provenance": provenance,
     }
@@ -316,6 +355,64 @@ def compute_losses(
     return policy_loss, value_loss, result_loss
 
 
+def soft_policy_targets(
+    rows: NDArray[np.int64], labels: NDArray[np.int64], probabilities: NDArray[np.float32],
+    legal_offsets: NDArray[np.int64], legal_labels: NDArray[np.int64],
+) -> NDArray[np.float32]:
+    """CPUで(p+1e-7)の1/4乗を倍精度で正規化し、合法手の列順のfloat32で返す。"""
+    counts = np.diff(legal_offsets)
+    legal_rows = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    dense = np.zeros((len(counts), POLICY_SIZE), dtype=np.float32)
+    dense[rows, labels] = probabilities
+    weights = (dense[legal_rows, legal_labels].astype(np.float64) / 65_535 + SOFT_POLICY_EPSILON) ** SOFT_POLICY_EXPONENT
+    # 空の行は区間を持たない。末尾の空行もreduceatの開始位置に含めない。
+    nonempty = counts != 0
+    totals = np.add.reduceat(weights, legal_offsets[:-1][nonempty])
+    return (weights / np.repeat(totals, counts[nonempty])).astype(np.float32)
+
+
+def _policy_loss(
+    logits: torch.Tensor, rows: torch.Tensor, labels: torch.Tensor,
+    probabilities: torch.Tensor, mask: torch.Tensor,
+) -> torch.Tensor:
+    if torch.any((labels < 0) | (labels >= len(mask))) or not torch.all(mask[labels]):
+        raise ValueError("policy target label is outside the constant mask")
+    log_probabilities = F.log_softmax(logits.float().masked_fill(~mask, -torch.inf), dim=1)
+    # 候補がない行は和に寄与しないが、分母にはバッチの全局面を含める。
+    return -(log_probabilities[rows, labels] * probabilities).sum() / len(logits)
+
+
+def compute_training_losses(
+    logits: TrainingLogits, policy: PolicyTargets, results: torch.Tensor, values: torch.Tensor,
+    opponent: PolicyTargets, short_term_values: torch.Tensor,
+    value_lambda: float, mask: torch.Tensor, opponent_mask: torch.Tensor,
+) -> tuple[torch.Tensor, ...]:
+    """主と補助の平均損失をLOSS_NAMESの順で返す。重みは合計時に掛ける。"""
+    main = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
+                          policy.probabilities, results, values, value_lambda, mask)
+    soft = _policy_loss(logits.soft_policy, policy.legal_rows, policy.legal_labels,
+                        policy.soft_probabilities, mask)
+    opponent_loss = _policy_loss(logits.opponent_policy, opponent.rows, opponent.labels,
+                                 opponent.probabilities.float() / 65_535, opponent_mask)
+    opponent_soft = _policy_loss(logits.opponent_soft_policy, opponent.legal_rows, opponent.legal_labels,
+                                 opponent.soft_probabilities, opponent_mask)
+    short_term = F.binary_cross_entropy_with_logits(
+        logits.value[:, 1:].float(), short_term_values.float(), reduction="none",
+    ).mean(dim=0)
+    return (*main, soft, opponent_loss, opponent_soft, *short_term.unbind())
+
+
+def total_loss(losses: tuple[torch.Tensor, ...]) -> torch.Tensor:
+    """主と補助の各項に設計書の重みを掛け、更新用の損失を返す。"""
+    return sum(loss * weight for loss, weight in zip(losses, LOSS_WEIGHTS, strict=True))
+
+
+def learning_rate(base: float, schedule: str, step: int, total: int, samples_seen: int, batch_size: int) -> float:
+    """サイクル内の予定と、ランダム初期化から続くウォームアップを掛ける。"""
+    factor = 0.5 * (1 + math.cos(math.pi * step / total)) if schedule == "cosine" else 1.0
+    return base * factor * min(1.0, (samples_seen + batch_size) / WARMUP_SAMPLES)
+
+
 def _sparse_indices(
     offsets: NDArray[np.uint64], indices: NDArray[np.int64],
 ) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
@@ -325,24 +422,38 @@ def _sparse_indices(
     return rows, entries
 
 
+def _policy_batch(
+    data: Dataset, indices: NDArray[np.int64], device: torch.device, prefix: str,
+) -> PolicyTargets:
+    rows, candidates = _sparse_indices(getattr(data, f"{prefix}policy_offsets"), indices)
+    offsets = getattr(data, f"{prefix}legal_offsets")
+    legal_rows, legal = _sparse_indices(offsets, indices)
+    labels = getattr(data, f"{prefix}policy_labels")[candidates].astype(np.int64)
+    probabilities = getattr(data, f"{prefix}policy_probabilities")[candidates].astype(np.float32)
+    legal_labels = getattr(data, f"{prefix}legal_labels")[legal].astype(np.int64)
+    legal_offsets = np.empty(len(indices) + 1, dtype=np.int64)
+    legal_offsets[0] = 0
+    np.cumsum(offsets[indices + 1] - offsets[indices], dtype=np.int64, out=legal_offsets[1:])
+    soft = soft_policy_targets(rows, labels, probabilities, legal_offsets, legal_labels)
+    columns = (rows, labels, probabilities, legal_rows, legal_labels, soft)
+    return PolicyTargets(*(torch.from_numpy(column).to(device) for column in columns))
+
+
 def _batch(
     model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
     device: torch.device, config: dict,
-) -> tuple[torch.Tensor, ...]:
-    """順伝播の出力と疎な教師を、compute_lossesの先頭7引数の順に返す。"""
+) -> tuple[TrainingLogits, PolicyTargets, torch.Tensor, torch.Tensor]:
+    """順伝播の出力、疎な方策、対局結果、および根の価値を返す。"""
     boards, sides, lions = (
         torch.from_numpy(array[indices]).to(device) for array in (data.boards, data.sides, data.lions)
     )
     inputs = encode_planes(boards, sides, lions)
-    row_indices, candidates = _sparse_indices(data.policy_offsets, indices)
-    rows = torch.from_numpy(row_indices).to(device)
-    labels = torch.from_numpy(data.policy_labels[candidates].astype(np.int64)).to(device)
-    probabilities = torch.from_numpy(data.policy_probabilities[candidates].astype(np.float32)).to(device)
+    policy = _policy_batch(data, indices, device, "")
     results = torch.from_numpy(data.results[indices]).to(device)
     values = torch.from_numpy(data.values[indices].astype(np.float32)).to(device)
     with torch.autocast("cuda", dtype=torch.bfloat16) if config["precision"] == "bf16" else nullcontext():
-        policy_logits, value_logits = model.forward_logits(inputs)
-    return policy_logits, value_logits, rows, labels, probabilities, results, values
+        logits = model.forward_logits(inputs)
+    return logits, policy, results, values
 
 
 def compute_policy_diagnostics(
@@ -387,23 +498,30 @@ def compute_policy_diagnostics(
 @torch.inference_mode()
 def diagnose(
     model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
-    device: torch.device, config: dict, mask: torch.Tensor,
+    device: torch.device, config: dict, mask: torch.Tensor, *, auxiliary: bool,
 ) -> dict[str, float]:
     """最終の重みのevalモードで、指定局面を入力順に診断する。乱数は使わない。"""
     if len(indices) == 0:
         raise ValueError("diagnostic set must contain positions")
     model.eval()
-    sums = dict.fromkeys(DIAGNOSTIC_NAMES, 0.0)
+    names = DIAGNOSTIC_NAMES if auxiliary else (*MAIN_LOSS_NAMES, *POLICY_DIAGNOSTIC_NAMES)
+    sums = dict.fromkeys(names, 0.0)
+    opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     for start in range(0, len(indices), config["batch_size"]):
         batch = indices[start:start + config["batch_size"]]
         tensors = _batch(model, data, batch, device, config)
-        losses = compute_losses(*tensors, config["value_lambda"], mask)
-        legal_rows, legal_entries = _sparse_indices(data.legal_offsets, batch)
-        metrics = compute_policy_diagnostics(
-            tensors[0], tensors[2], tensors[3], tensors[4],
-            torch.from_numpy(legal_rows).to(device),
-            torch.from_numpy(data.legal_labels[legal_entries].astype(np.int64)).to(device), mask,
-        )
+        logits, policy, results, values = tensors
+        if auxiliary:
+            losses = compute_training_losses(
+                *tensors, _policy_batch(data, batch, device, "opponent_"),
+                torch.from_numpy(data.short_term_values[batch]).to(device),
+                config["value_lambda"], mask, opponent_mask,
+            )
+        else:
+            losses = compute_losses(logits.policy, logits.value[:, 0], policy.rows, policy.labels,
+                                    policy.probabilities, results, values, config["value_lambda"], mask)
+        metrics = compute_policy_diagnostics(logits.policy, policy.rows, policy.labels, policy.probabilities,
+                                             policy.legal_rows, policy.legal_labels, mask)
         if not all(torch.isfinite(value).item() for value in (*losses, *metrics)):
             raise ValueError("non-finite diagnostic value")
         _accumulate(sums, (*losses, *metrics), len(batch))
@@ -470,11 +588,12 @@ def train_new(config: dict, out_dir: Path) -> None:
     provenance["files"] = [_file_provenance(path, info) for path, info in zip(config["data"], infos)]
     state = {
         "model": initial["model"], "optimizer": initial["optimizer"],
-        "completed_steps": 0, "total_steps": (training_count + config["batch_size"] - 1) // config["batch_size"],
+        "completed_steps": 0, "total_steps": (len(selected) + config["batch_size"] - 1) // config["batch_size"],
         "cycle": config["cycle"], "seed": config["seed"], "config": config, "provenance": provenance,
         "training_count": training_count, "validation_count": validation_count,
         **sampling,
         "positions_seen": 0, "loss_sums": _zero_losses(), "learning_curve": [],
+        "samples_seen": initial["samples_seen"], "samples_seen_start": initial["samples_seen"],
         "data_order_sha256": bytes(32).hex(),
         "elapsed_seconds": {"loading": time.perf_counter() - started, "training": 0.0},
         "loading_peak_rss_bytes": loading_peak_rss,
@@ -513,9 +632,9 @@ def resume(out_dir: Path, device_name: str) -> None:
     if _counts(data, len(infos) - len(config["latest_data"])) != (state["training_count"], state["validation_count"]):
         raise ValueError("training window total position counts differ")
     batch_size = config["batch_size"]
-    if state["total_steps"] != (state["training_count"] + batch_size - 1) // batch_size:
-        raise ValueError("checkpoint total_steps disagrees with training_count and batch_size")
-    if state["positions_seen"] != min(state["completed_steps"] * batch_size, state["training_count"]):
+    if state["total_steps"] != (state["sample_count"] + batch_size - 1) // batch_size:
+        raise ValueError("checkpoint total_steps disagrees with sample_count and batch_size")
+    if state["positions_seen"] != min(state["completed_steps"] * batch_size, state["sample_count"]):
         raise ValueError("checkpoint positions_seen disagrees with completed_steps")
     state["elapsed_seconds"]["loading"] += time.perf_counter() - started
     print(f"resume: completed_steps={state['completed_steps']}/{state['total_steps']}", file=sys.stderr, flush=True)
@@ -532,6 +651,7 @@ def _run(
         ema = Ema(model, config["ema_period_samples"], config["ema_scale"])
         ema.load_state_dict(state["ema"])
     mask = torch.from_numpy(policy_mask()).to(device)
+    opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     optimizer = torch.optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
@@ -543,21 +663,24 @@ def _run(
                          dampening=0, nesterov=True)
     indices = np.flatnonzero(~data.validation)
     # 保持した訓練局面は通し番号の昇順なので、抽出した順から配列の行番号へ戻す。
-    order = indices[np.searchsorted(np.sort(selected), selected)]
+    order = indices[np.searchsorted(np.unique(selected), selected)]
     batch_size = config["batch_size"]
     interval_sums, interval_count = _zero_losses(), 0
     interval_started = time.perf_counter()
     for step in range(state["completed_steps"], state["total_steps"]):
         batch = order[step * batch_size:(step + 1) * batch_size]
         optimizer.zero_grad(set_to_none=True)
-        losses = compute_losses(*_batch(model, data, batch, device, config), config["value_lambda"], mask)
+        losses = compute_training_losses(
+            *_batch(model, data, batch, device, config), _policy_batch(data, batch, device, "opponent_"),
+            torch.from_numpy(data.short_term_values[batch]).to(device),
+            config["value_lambda"], mask, opponent_mask,
+        )
         if not all(torch.isfinite(loss).item() for loss in losses):
             raise ValueError(f"non-finite training loss at update {step + 1}")
-        (losses[0] + losses[1]).backward()
+        total_loss(losses).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), config["clip_grad_norm"], error_if_nonfinite=True)
-        lr = config["lr"]
-        if config["lr_schedule"] == "cosine":
-            lr *= 0.5 * (1 + math.cos(math.pi * step / state["total_steps"]))
+        lr = learning_rate(config["lr"], config["lr_schedule"], step, state["total_steps"],
+                           state["samples_seen"], batch_size)
         for group in optimizer.param_groups:
             group["lr"] = lr
         optimizer.step()
@@ -566,6 +689,7 @@ def _run(
         _accumulate(state["loss_sums"], losses, len(batch))
         _accumulate(interval_sums, losses, len(batch))
         state["positions_seen"] += len(batch)
+        state["samples_seen"] += len(batch)
         interval_count += len(batch)
         state["completed_steps"] = step + 1
         state["data_order_sha256"] = hashlib.sha256(
@@ -576,7 +700,9 @@ def _run(
             elapsed = time.perf_counter() - interval_started
             state["elapsed_seconds"]["training"] += elapsed
             averages = _mean(interval_sums, interval_count)
-            state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages, "lr": lr})
+            state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages, "lr": lr,
+                                            "samples_seen_start": state["samples_seen_start"],
+                                            "samples_seen": state["samples_seen"]})
             state["model"], state["optimizer"] = model.state_dict(), optimizer.state_dict()
             if ema is not None:
                 state["ema"] = ema.state_dict()
@@ -608,9 +734,9 @@ def _run(
             "game_count": len(games), "position_count": len(indices),
             "hash_modulus": 20, "hash_remainder": remainder, "games": games,
         }
-        diagnostics[name] = {**metadata, **diagnose(model, data, indices, device, config, mask)}
+        diagnostics[name] = {**metadata, **diagnose(model, data, indices, device, config, mask, auxiliary=True)}
         if ema is not None:
-            ema_diagnostics[name] = {**metadata, **diagnose(ema.model, data, indices, device, config, mask)}
+            ema_diagnostics[name] = {**metadata, **diagnose(ema.model, data, indices, device, config, mask, auxiliary=True)}
     diagnostic_seconds = time.perf_counter() - started
     with _atomic_path(out_dir / "model.onnx") as temporary:
         export_onnx(copy.deepcopy(model).cpu().float().eval(), temporary)
@@ -632,6 +758,8 @@ def _run(
                                       "file_training_counts", "sample_sha256")},
         "completed_steps": state["completed_steps"], "total_steps": state["total_steps"],
         "positions_seen": state["positions_seen"],
+        "samples_seen_start": state["samples_seen_start"], "samples_seen": state["samples_seen"],
+        "last_lr": state["learning_curve"][-1]["lr"],
         "training_losses": _mean(state["loss_sums"], state["positions_seen"]),
         "diagnostics": diagnostics, "learning_curve": state["learning_curve"],
         "data_order_sha256": state["data_order_sha256"], "network_sha256": _sha256(out_dir / "model.onnx"),

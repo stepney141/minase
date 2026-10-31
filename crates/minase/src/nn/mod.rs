@@ -1,19 +1,19 @@
 //! モンテカルロ木探索（MCTS）が使うネットの入力平面、方策のラベル、および評価器。
 //!
 //! AlphaZero型探索のMCTS、自己対局生成器、およびPythonの学習器が共有するネットの入出力の契約を定める。
-//! 入力は95面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
+//! 入力は159面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
 //! 推論には評価器の抽象[`Evaluator`]、試験用の[`UniformEvaluator`]、およびONNX Runtimeによる[`OnnxEvaluator`]を用意する。
 //! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
 //!
 //! 設計判断は`docs/adr/`の次の7本に記録している。
 //!
-//! - `encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md`
+//! - `encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md`
 //! - `encode-the-zero-policy-as-249-planes-per-from-square.md`
 //! - `predict-a-single-win-probability-in-the-zero-network.md`
 //! - `run-zero-network-inference-through-ort-load-dynamic.md`
 //! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
-//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md`
+//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
 //!
 //! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。
 
@@ -23,6 +23,7 @@ use std::collections::TryReserveError;
 use std::io;
 use std::path::PathBuf;
 
+pub mod control;
 pub mod encoding;
 pub mod evaluator;
 pub mod onnx;
@@ -38,7 +39,7 @@ use tensorrt_cache::GpuQueryError;
 /// ネットの読み込み、推論の準備、入力の符号化、または評価に失敗した理由。
 #[derive(Debug)]
 pub enum NnError {
-    /// 95面の入力では表せない成り権の保留がある。
+    /// 159面の入力では表せない成り権の保留がある。
     PromotionDeferred,
     /// `ORT_DYLIB_PATH`が未設定または空である。
     RuntimeLibraryPathUnset,
@@ -143,7 +144,10 @@ impl fmt::Display for NnError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::PromotionDeferred => {
-                formatter.write_str("deferred promotion rights cannot be encoded in 95 planes")
+                write!(
+                    formatter,
+                    "deferred promotion rights cannot be encoded in {INPUT_PLANES} planes"
+                )
             }
             Self::RuntimeLibraryPathUnset => {
                 formatter.write_str("ORT_DYLIB_PATH is unset or empty")

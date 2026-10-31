@@ -1,0 +1,1 @@
+{"lr": 0.01, "lr_schedule": "cosine", "cycles_dir": "trial-restart", "base_cycles_dir": "trial-restart", "branch_from": 0, "session": "rl-trial-r1", "cycle": 1, "started_at": "2026-10-31T03:55:40.923592+00:00", "ended_at": "2026-10-31T04:51:24.708174+00:00", "start_balance": 318.83, "end_balance": 317.07, "balance_difference": 1.759999999999991}

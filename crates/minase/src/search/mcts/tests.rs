@@ -10,7 +10,7 @@ use std::mem::size_of;
 use minase_core::{Move, MoveGenerator, Position, Rules};
 use serde::Deserialize;
 
-use super::gumbel::{Gumbel, completed_qvalues, considered_visits, policy_target};
+use super::gumbel::{Gumbel, considered_visits};
 use super::puct::{PuctConfig, select_child};
 use super::tree::{
     Child, Edge, LeafKind, Node, NodeState, Outcome, Proof, SelectionRule, Tree, TreeError,
@@ -98,8 +98,8 @@ fn gumbel_action_keeps_a_proven_win_despite_a_losing_edges_higher_logit() {
     root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
     root.edges[1].child = Some(terminal(proof(Outcome::Loss, 0, false)));
     root.state = NodeState::Proven(proof(Outcome::Win, 1, false));
-    let gumbel = Gumbel::new(vec![0.0; 2], 2).unwrap();
-    assert_eq!(gumbel.action(&root).unwrap(), 1);
+    let gumbel = Gumbel::new(vec![0.0; 2], 2, 1.0).unwrap();
+    assert_eq!(gumbel.action(&root, 1.0).unwrap(), 1);
 }
 
 #[test]
@@ -114,8 +114,8 @@ fn gumbel_action_compares_visits_and_scores_after_excluding_proven_losses() {
         root.edges[1].logit = 0.0;
         root.edges[2].logit = 1.0;
         root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
-        let gumbel = Gumbel::new(vec![0.0; 3], losing_visits + 2).unwrap();
-        assert_eq!(gumbel.action(&root).unwrap(), 2);
+        let gumbel = Gumbel::new(vec![0.0; 3], losing_visits + 2, 1.0).unwrap();
+        assert_eq!(gumbel.action(&root, 1.0).unwrap(), 2);
     }
 }
 
@@ -128,9 +128,94 @@ fn gumbel_action_uses_proof_order_when_every_edge_is_a_loss() {
         root.edges[0].child = Some(terminal(proof(Outcome::Win, 0, false)));
         root.edges[1].child = Some(terminal(proof(Outcome::Win, 20, repetition)));
         root.state = NodeState::Proven(proof(Outcome::Loss, 21, repetition));
-        let gumbel = Gumbel::new(vec![0.0; 2], 5).unwrap();
+        let gumbel = Gumbel::new(vec![0.0; 2], 5, 1.0).unwrap();
         // 同じ負けなら遅い詰みを選び、反復負けは詰み負けより優先する。
-        assert_eq!(gumbel.action(&root).unwrap(), 1);
+        assert_eq!(gumbel.action(&root, 1.0).unwrap(), 1);
+    }
+}
+
+#[test]
+fn gumbel_action_temperature_only_changes_the_final_choice() {
+    // Q=(3/4,1/4,1)、最多訪問2なので、尺度0.1のσQ=(52/15,0,5.2)。
+    // 第1辺はlogitでln(2)だけ劣るが、倍率0なら第2辺より得点が高い。
+    // 第3辺はlogit + σQも乱数も最大だが、訪問が1回なので最終候補に入らない。
+    let root = statistics_node(&[(0.2, 2, 1.5), (0.4, 2, 0.5), (0.4, 1, 1.0)], 0.5, 0.0);
+    for value_scale in [0.1, 1.0] {
+        let gumbel = Gumbel::new(vec![0.0, 100.0, 1000.0], 8, value_scale).unwrap();
+        let policy = gumbel.policy_target(&root).unwrap();
+        // 3候補・予算8の第6回は訪問2の辺を比較し、倍率1の乱数で第2辺を選ぶ。
+        assert_eq!(gumbel.select_root(&root).unwrap(), 1);
+        for (gumbel_scale, expected) in [(0.0, 0), (1.0, 1)] {
+            assert_eq!(gumbel.action(&root, gumbel_scale).unwrap(), expected);
+            assert_eq!(gumbel.policy_target(&root).unwrap(), policy);
+            assert_eq!(gumbel.select_root(&root).unwrap(), 1);
+        }
+    }
+}
+
+#[test]
+fn gumbel_value_scale_applies_to_root_action_and_interior_selection() {
+    let mut root = statistics_node(&[(0.5, 2, 1.5), (0.5, 2, 0.5)], 0.5, 0.0);
+    root.edges[0].logit = 0.0;
+    root.edges[1].logit = 10.0;
+    // σQは尺度0.1で(5.2,0)、尺度1.0で(52,0)。logitの差10を超えるかで選択が逆転する。
+    // 内部節点でも訪問比が等しいため、方策の目標が大きい辺を選ぶ。
+    for (value_scale, expected) in [(0.1, 1), (1.0, 0)] {
+        let gumbel = Gumbel::new(vec![0.0; 2], 8, value_scale).unwrap();
+        assert_eq!(gumbel.select_root(&root).unwrap(), expected);
+        assert_eq!(gumbel.action(&root, 1.0).unwrap(), expected);
+        assert_eq!(gumbel.select_interior(&root).unwrap(), expected);
+    }
+}
+
+#[test]
+fn gumbel_tree_uses_the_configured_scale_below_root() {
+    for (value_scale, expected) in [(0.1, 1), (1.0, 0)] {
+        let mut tree = tree(&[0.0], 0.5);
+        let gumbel = Gumbel::new(vec![0.0], 3, value_scale).unwrap();
+        let first = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
+        tree.create_child(&first.path, Child::Pending(&moves(2)))
+            .unwrap();
+        tree.evaluate(&first.path, &[0.0, 10.0], 0.5).unwrap();
+        let second = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
+        assert_eq!(second.path, [0, 1]);
+        tree.create_child(&second.path, Child::Pending(&moves(1)))
+            .unwrap();
+        tree.evaluate(&second.path, &[0.0], 0.75).unwrap();
+        // 内部節点のQ=(未訪問,1/4)、混合価値3/8から、σQ=(51×尺度,0)。
+        // 尺度0.1ではlogit=10の訪問済み辺、1.0ではlogit=0の未訪問辺を選ぶ。
+        let third = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
+        assert_eq!(&third.path[..2], &[0, expected]);
+        tree.cancel_leaf(&third.path).unwrap();
+    }
+}
+
+#[test]
+fn gumbel_rejects_nonpositive_or_nonfinite_value_scales() {
+    for value_scale in [0.0, -0.1, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        assert!(matches!(
+            Gumbel::new(vec![0.0], 1, value_scale),
+            Err(TreeError::InvalidGumbelConfig)
+        ));
+    }
+}
+
+#[test]
+fn gumbel_action_rejects_negative_or_nonfinite_temperatures() {
+    let mut root = statistics_node(&[(1.0, 1, 0.5)], 0.5, 0.0);
+    let gumbel = Gumbel::new(vec![0.0], 1, 1.0).unwrap();
+    for state in [
+        NodeState::Expanded,
+        NodeState::Proven(proof(Outcome::Win, 1, false)),
+        NodeState::Proven(proof(Outcome::Loss, 1, false)),
+    ] {
+        root.state = state;
+        for gumbel_scale in [-0.1, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(
+                gumbel.action(&root, gumbel_scale),
+                Err(TreeError::InvalidGumbelConfig)
+            );
+        }
     }
 }
 
@@ -181,6 +266,7 @@ struct SearchCase {
     name: String,
     num_actions: usize,
     num_simulations: u32,
+    value_scale: f32,
     root_gumbel: Vec<f32>,
     nodes: Vec<ReferenceNode>,
     expected: Expected,
@@ -223,14 +309,18 @@ fn sequential_halving_matches_all_mctx_sequences() {
 // 最終結果だけでなく各シミュレーションの新規葉も照合し、途中の選択の誤りを検出する。
 #[test]
 fn gumbel_matches_mctx_paths_visits_action_qvalues_and_policy() {
-    for case in reference().cases {
+    let cases = reference().cases;
+    for value_scale in [0.1, 1.0] {
+        assert!(cases.iter().any(|case| case.value_scale == value_scale));
+    }
+    for case in cases {
         let actions = moves(case.num_actions);
         let mut tree = Tree::new(&actions, 1 << 20).unwrap();
         let root = &case.nodes[0];
         assert!(root.path.is_empty());
         tree.evaluate(&[], &root.prior_logits, (root.value + 1.0) / 2.0)
             .unwrap();
-        let gumbel = Gumbel::new(case.root_gumbel, case.num_simulations).unwrap();
+        let gumbel = Gumbel::new(case.root_gumbel, case.num_simulations, case.value_scale).unwrap();
         assert_eq!(
             gumbel.num_considered(),
             16.min(case.num_actions).min(case.num_simulations as usize)
@@ -259,7 +349,7 @@ fn gumbel_matches_mctx_paths_visits_action_qvalues_and_policy() {
             .unwrap();
         }
         assert_eq!(
-            gumbel.action(tree.root()).unwrap(),
+            gumbel.action(tree.root(), 1.0).unwrap(),
             case.expected.action,
             "{}",
             case.name
@@ -267,18 +357,24 @@ fn gumbel_matches_mctx_paths_visits_action_qvalues_and_policy() {
         let visits: Vec<_> = tree.root().edges.iter().map(|edge| edge.visits).collect();
         assert_eq!(visits, case.expected.root_children_visits, "{}", case.name);
         assert_eq!(visits.iter().sum::<u32>(), case.num_simulations);
-        let policy = policy_target(tree.root()).unwrap();
+        let policy = gumbel.policy_target(tree.root()).unwrap();
         assert_eq!(policy.len(), case.expected.action_weights.len());
         for (actual, expected) in policy.into_iter().zip(case.expected.action_weights) {
             close(actual, expected);
         }
-        let qvalues = completed_qvalues(tree.root()).unwrap();
+        let qvalues = gumbel.completed_qvalues(tree.root()).unwrap();
         assert_eq!(qvalues.len(), case.expected.root_completed_qvalues.len());
+        // 完成Qのf32丸め差も尺度に比例する。尺度0.1では絶対誤差1e-5を許す。
+        let q_tolerance = 1e-4 * case.value_scale;
         for (actual, expected) in qvalues
             .into_iter()
             .zip(case.expected.root_completed_qvalues)
         {
-            close(actual, expected);
+            assert!(
+                (actual - expected).abs() <= q_tolerance,
+                "{}: actual={actual}, expected={expected}, tolerance={q_tolerance}",
+                case.name
+            );
         }
         assert_eq!(
             tree.select_leaf(SelectionRule::Gumbel(&gumbel)),
@@ -288,39 +384,47 @@ fn gumbel_matches_mctx_paths_visits_action_qvalues_and_policy() {
 }
 
 // Q=(3/4,1/4)、訪問済みの方策=(1/2,1/4)なので重みつき平均は7/12。
-// v=1/2、総訪問3から混合価値は9/16。尺度5.2でσQ=(5.2,0,3.25)となる。
+// v=1/2、総訪問3から混合価値は9/16。
+// c_scale=0.1ならσQ=(5.2,0,3.25)、1.0ならσQ=(52,0,32.5)となる。
 #[test]
 fn completed_q_uses_policy_weighted_mix_and_single_precision_scale() {
     let node = statistics_node(&[(0.5, 2, 1.5), (0.25, 1, 0.25), (0.25, 0, 0.0)], 0.5, 0.0);
-    for (actual, expected) in completed_qvalues(&node)
-        .unwrap()
-        .into_iter()
-        .zip([5.2, 0.0, 3.25])
-    {
-        close(actual, expected);
-    }
-    // 未訪問だけなら全Qがvになり、σは0で、方策は元のsoftmaxに戻る。
-    let node = statistics_node(&[(0.5, 0, 0.0), (0.25, 0, 0.0), (0.25, 0, 0.0)], 0.125, 0.0);
-    assert_eq!(completed_qvalues(&node).unwrap(), vec![0.0; 3]);
-    for (actual, expected) in policy_target(&node)
-        .unwrap()
-        .into_iter()
-        .zip([0.5, 0.25, 0.25])
-    {
-        close(actual, expected);
+    for (value_scale, expected) in [(0.1, [5.2, 0.0, 3.25]), (1.0, [52.0, 0.0, 32.5])] {
+        let gumbel = Gumbel::new(vec![0.0; 3], 8, value_scale).unwrap();
+        for (actual, expected) in gumbel
+            .completed_qvalues(&node)
+            .unwrap()
+            .into_iter()
+            .zip(expected)
+        {
+            close(actual, expected);
+        }
+        // 未訪問だけなら全Qがvになり、σは0で、方策は元のsoftmaxに戻る。
+        let unvisited =
+            statistics_node(&[(0.5, 0, 0.0), (0.25, 0, 0.0), (0.25, 0, 0.0)], 0.125, 0.0);
+        assert_eq!(gumbel.completed_qvalues(&unvisited).unwrap(), vec![0.0; 3]);
+        for (actual, expected) in gumbel
+            .policy_target(&unvisited)
+            .unwrap()
+            .into_iter()
+            .zip([0.5, 0.25, 0.25])
+        {
+            close(actual, expected);
+        }
     }
 }
 
 // 方策が単精度で0へ丸められた訪問済みの辺にも最小正規化数を使う。
 #[test]
 fn completed_q_clamps_underflowed_prior_before_mixing() {
+    let gumbel = Gumbel::new(vec![0.0; 2], 2, 0.1).unwrap();
     let mut node = statistics_node(&[(0.5, 1, 0.25), (0.5, 0, 0.0)], 0.75, 0.0);
     node.edges[0].logit = -1000.0;
     node.edges[0].policy = 0.0;
     node.edges[1].logit = 0.0;
     node.edges[1].policy = 1.0;
     // 混合価値=(3/4+1/4)/2=1/2なので、変換後は(0,5.1)。
-    let values = completed_qvalues(&node).unwrap();
+    let values = gumbel.completed_qvalues(&node).unwrap();
     close(values[0], 0.0);
     close(values[1], 5.1);
 }
@@ -832,7 +936,7 @@ fn depth_limit_leaf_is_evaluated_once_and_remains_unexpanded_after_reroot() {
 #[test]
 fn gumbel_enforces_one_pending_leaf_and_uses_no_virtual_loss() {
     let mut tree = tree(&[0.0, 0.0], 0.5);
-    let config = Gumbel::new(vec![0.0, 1.0], 1).unwrap();
+    let config = Gumbel::new(vec![0.0, 1.0], 1, 1.0).unwrap();
     assert_eq!(config.num_considered(), 1);
     let leaf = tree.select_leaf(SelectionRule::Gumbel(&config)).unwrap();
     assert_eq!(leaf.path, [1]);
@@ -855,13 +959,13 @@ fn gumbel_enforces_one_pending_leaf_and_uses_no_virtual_loss() {
     assert_eq!(tree.root().edges[1].value_sum, 0.75);
     assert_eq!(tree.root().edges[1].virtual_loss, 0);
     assert_eq!(tree.root().visited_policy, 0.0);
-    assert_eq!(config.action(tree.root()).unwrap(), 1);
+    assert_eq!(config.action(tree.root(), 1.0).unwrap(), 1);
 }
 
 #[test]
 fn gumbel_cancellation_releases_the_pending_slot_and_budget() {
     let mut tree = tree(&[0.0], 0.5);
-    let config = Gumbel::new(vec![0.0], 2).unwrap();
+    let config = Gumbel::new(vec![0.0], 2, 1.0).unwrap();
     let before = tree.used_bytes();
     let leaf = tree.select_leaf(SelectionRule::Gumbel(&config)).unwrap();
     tree.create_child(&leaf.path, Child::Pending(&moves(1)))
@@ -881,7 +985,7 @@ fn gumbel_cancellation_releases_the_pending_slot_and_budget() {
     assert_eq!(leaf.kind, LeafKind::Value(0.5));
     tree.backup_leaf(&leaf.path).unwrap();
     assert_eq!(tree.root().edges[0].visits, 2);
-    assert_eq!(policy_target(tree.root()).unwrap(), vec![1.0]);
+    assert_eq!(config.policy_target(tree.root()).unwrap(), vec![1.0]);
     assert_eq!(
         tree.select_leaf(SelectionRule::Gumbel(&config)),
         Err(TreeError::BudgetExhausted)
@@ -934,9 +1038,9 @@ fn invalid_evaluations_preserve_pending_state_and_can_be_retried() {
 #[test]
 fn invalid_configuration_and_child_requests_do_not_mutate_the_tree() {
     assert!(matches!(Tree::new(&[], 4096), Err(TreeError::EmptyMoves)));
-    assert!(Gumbel::new(vec![], 1).is_err());
-    assert!(Gumbel::new(vec![0.0], 0).is_err());
-    assert!(Gumbel::new(vec![f32::INFINITY], 1).is_err());
+    assert!(Gumbel::new(vec![], 1, 1.0).is_err());
+    assert!(Gumbel::new(vec![0.0], 0, 1.0).is_err());
+    assert!(Gumbel::new(vec![f32::INFINITY], 1, 1.0).is_err());
     assert!(considered_visits(0, 1).is_err());
     assert!(considered_visits(2, 0).unwrap().is_empty());
     let mut tree = tree(&[0.0], 0.5);
@@ -948,7 +1052,7 @@ fn invalid_configuration_and_child_requests_do_not_mutate_the_tree() {
         tree.select_leaf(SelectionRule::Puct(&config)),
         Err(TreeError::InvalidPuctConfig)
     );
-    let gumbel = Gumbel::new(vec![0.0, 0.0], 1).unwrap();
+    let gumbel = Gumbel::new(vec![0.0, 0.0], 1, 1.0).unwrap();
     assert_eq!(
         tree.select_leaf(SelectionRule::Gumbel(&gumbel)),
         Err(TreeError::InvalidGumbelConfig)

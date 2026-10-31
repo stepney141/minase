@@ -13,7 +13,7 @@ import torch
 
 from minase_zero.data import Dataset
 from minase_zero.encoding import encode_planes, policy_mask
-from minase_zero.net import ZeroNet
+from minase_zero.net import TrainingLogits, ZeroNet
 from minase_zero.train import compute_policy_diagnostics, diagnose
 
 
@@ -25,9 +25,11 @@ class KnownLogits(torch.nn.Module):
         self.register_buffer("policy", policy)
         self.register_buffer("value", value)
 
-    def forward_logits(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        indices = inputs.sum(dim=1).flatten(1).argmax(1)
-        return self.policy[indices], self.value[indices]
+    def forward_logits(self, inputs: torch.Tensor) -> TrainingLogits:
+        # 面0〜93の駒の配置から、歩兵を置いた升を求める。
+        indices = inputs[:, :94].sum(dim=1).flatten(1).argmax(1)
+        return TrainingLogits(self.policy[indices], self.value[indices].expand(-1, 4),
+                              self.policy[indices], self.policy[indices], self.policy[indices])
 
 
 def example() -> tuple[Dataset, KnownLogits]:
@@ -44,6 +46,12 @@ def example() -> tuple[Dataset, KnownLogits]:
         policy_probabilities=np.array([30_000, 30_000, 5535, 65_535, 65_535], dtype=np.uint16),
         legal_offsets=np.array([0, 3, 5, 6], dtype=np.uint64),
         legal_labels=np.array([23, 4, 2, 4, 2, 23], dtype=np.uint16),
+        short_term_values=np.full((3, 3), 0.5, dtype=np.float32),
+        opponent_policy_offsets=np.zeros(4, dtype=np.uint64),
+        opponent_policy_labels=np.empty(0, dtype=np.uint16),
+        opponent_policy_probabilities=np.empty(0, dtype=np.uint16),
+        opponent_legal_offsets=np.zeros(4, dtype=np.uint64),
+        opponent_legal_labels=np.empty(0, dtype=np.uint16),
     )
     logits = torch.full((3, 35_856), -1000.0)
     logits[0, [2, 4, 23, 42]] = torch.tensor([0, math.log(4), math.log(2), math.log(7)])
@@ -75,8 +83,25 @@ class DiagnosticTests(unittest.TestCase):
         for batch_size in (1, 2, 3):
             with self.subTest(batch_size=batch_size):
                 actual = diagnose(model, data, np.arange(3), torch.device("cpu"),
-                                  {"precision": "fp32", "value_lambda": 0.25, "batch_size": batch_size}, self.mask)
+                                  {"precision": "fp32", "value_lambda": 0.25, "batch_size": batch_size}, self.mask, auxiliary=False)
                 self.assertEqual(actual.keys(), expected.keys())
+                for name, value in expected.items():
+                    self.assertAlmostEqual(actual[name], value, places=6, msg=name)
+
+    def test_auxiliary_diagnostics_average_positions_across_partial_batches(self) -> None:
+        data, model = example()
+        large = (30_000 / 65_535 + 1e-7) ** 0.25
+        small = (5535 / 65_535 + 1e-7) ** 0.25
+        first_soft = math.log(14) - (large * math.log(4) + small * math.log(2)) / (2 * large + small)
+        short_value = (2 * (math.log(4) - 0.5 * math.log(3)) + math.log(2)) / 3
+        expected = {"soft_policy": (first_soft + 2 * math.log(4)) / 3,
+                    "opponent_policy": 0, "opponent_soft_policy": 0,
+                    **{f"short_term_value_{index}": short_value for index in (1, 2, 3)}}
+        for batch_size in (1, 2, 3):
+            with self.subTest(batch_size=batch_size):
+                actual = diagnose(model, data, np.arange(3), torch.device("cpu"),
+                                  {"precision": "fp32", "value_lambda": 0.25, "batch_size": batch_size},
+                                  self.mask, auxiliary=True)
                 for name, value in expected.items():
                     self.assertAlmostEqual(actual[name], value, places=6, msg=name)
 
@@ -102,7 +127,7 @@ class DiagnosticTests(unittest.TestCase):
         data, model = example()
         with self.assertRaises(ValueError):
             diagnose(model, data, np.empty(0, dtype=np.int64), torch.device("cpu"),
-                     {"precision": "fp32", "value_lambda": 0.25, "batch_size": 2}, self.mask)
+                     {"precision": "fp32", "value_lambda": 0.25, "batch_size": 2}, self.mask, auxiliary=False)
 
     def test_large_nonlegal_logit_does_not_create_a_false_legal_tie(self) -> None:
         logits = torch.zeros(1, 35_856)
@@ -117,13 +142,13 @@ class DiagnosticTests(unittest.TestCase):
         data, _ = example()
         model = ZeroNet(1, 16).train()
         inputs = encode_planes(*(torch.from_numpy(column) for column in (data.boards, data.sides, data.lions)))
-        policy, value = model.forward_logits(inputs)
-        (policy.mean() + value.mean()).backward()
+        logits = model.forward_logits(inputs)
+        sum(output.mean() for output in logits).backward()
         weights = {name: tensor.clone() for name, tensor in model.state_dict().items()}
         gradients = [parameter.grad.clone() for parameter in model.parameters()]
         python_rng, numpy_rng, torch_rng = random.getstate(), np.random.get_state(), torch.get_rng_state()
         diagnose(model, data, np.arange(3), torch.device("cpu"),
-                 {"precision": "fp32", "value_lambda": 0.25, "batch_size": 2}, self.mask)
+                 {"precision": "fp32", "value_lambda": 0.25, "batch_size": 2}, self.mask, auxiliary=True)
         self.assertFalse(model.training)
         for name, before in weights.items():
             self.assertTrue(torch.equal(model.state_dict()[name], before), name)

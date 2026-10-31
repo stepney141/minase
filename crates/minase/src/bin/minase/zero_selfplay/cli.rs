@@ -32,8 +32,8 @@ pub(crate) struct Arguments {
     /// 1つの塊の対局数。最後の塊は端数を許す。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) chunk_games: u32,
-    /// 根の評価後に行う1手のシミュレーション数。
-    #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
+    /// 完全探索のシミュレーション数。4以上の4の倍数。速い探索はこの4分の1。
+    #[arg(long, required = true, value_parser = parse_simulations)]
     pub(super) simulations: u32,
     /// 最後まで指させる対局の割合。100なら投了を無効にする。
     #[arg(long, required = true, value_parser = clap::value_parser!(u8).range(1..=100))]
@@ -71,4 +71,12 @@ impl Backend {
 fn parse_commit(text: &str) -> Result<String, std::io::Error> {
     validate_commit_hash(text)?;
     Ok(text.to_owned())
+}
+
+fn parse_simulations(text: &str) -> Result<u32, String> {
+    let simulations = text.parse::<u32>().map_err(|error| error.to_string())?;
+    if simulations < 4 || !simulations.is_multiple_of(4) {
+        return Err("simulations must be a multiple of 4 and at least 4".into());
+    }
+    Ok(simulations)
 }

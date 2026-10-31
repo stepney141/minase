@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をQの尺度1.0で行い、指す手のGumbel乱数にだけ手数で減る倍率を掛ける](../use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)によって置き換えられた。決定日は2026年10月27日。
 
 ## コンテキスト
 
 AlphaZero型探索の強化学習（RL）では、計算の大半を自己対局の生成が占める。
 1手あたりの探索回数を減らせれば、同じGPU時間で生成できる局面数が比例して増える。
-中将棋の合法手は多く、現行のNNUEの教師データでは1局面あたり平均80.7手、99パーセンタイルで142手あった（[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)）。
+中将棋の合法手は多く、現行のNNUEの教師データでは1局面あたり平均80.7手、99パーセンタイルで142手あった（[実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)）。
 AlphaZeroの通常のPUCT（方策の確率が大きく訪問の少ない手ほど優先する選択式）とディリクレ雑音では、800回の探索でも根の子を一巡できず、探索回数を減らすと方策の目標が雑音に支配される。
 これは、Gumbel AlphaZeroの論文（Danihelka et al., "Policy improvement by planning with Gumbel", ICLR 2022）が通常の方式の失敗条件として挙げる状況である。
 同論文では、9路盤の囲碁で通常のMuZeroが1手16回以下の探索で学習に失敗したのに対し、Gumbel MuZeroは1手2回でも学習が安定した。
-将棋では、技巧が1手32〜128回、Gumbel dlshogiが1手16〜64回の探索で学習を安定させている（技巧の回数の誤りは2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
+将棋では、技巧が1手32〜128回、Gumbel dlshogiが1手16〜64回の探索で学習を安定させている（技巧の回数の誤りは2026年10月28日の[監査](../../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 論文の著者らは、実装をDeepMindのmctxとして公開している。
-エンジンの開発者は、[探索方式の共存とMCTSの設計書](../plans/archived/alphazero-mcts.md)でこの方式を決めた。
+エンジンの開発者は、[探索方式の共存とMCTSの設計書](../../plans/archived/alphazero-mcts.md)でこの方式を決めた。
 
 ## 決定
 
@@ -42,6 +42,6 @@ mctxは勝敗の確定を扱わないが、minaseの探索木は確定を伝播�
 方策の目標はmctxの式のまま変えない。
 Gumbelの探索は仮想損失を使わず、1つの探索木で評価を待つ葉は1つまでとする。
 このため、自己対局生成器は多数の局の探索木から葉を1つずつ集め、1回の推論にまとめる。
-係数の中将棋での調整と探索回数の引き上げは、RLが動いてから[強化学習の実行](../plans/alphazero-rl.md)の段階に従って行う。
+係数の中将棋での調整と探索回数の引き上げは、RLが動いてから[強化学習の実行](../../plans/alphazero-rl.md)の段階に従って行う。
 mctxとjaxは参照値の生成スクリプトだけが使い、学習器のロックファイルには入れない。
 実装は`crates/minase/src/search/mcts/gumbel.rs`、照合の試験は同じディレクトリの`tests.rs`にある。

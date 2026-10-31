@@ -260,7 +260,7 @@ fn corrupt_fields_are_classified_by_their_specific_error() {
         (40, b'g', Error::InvalidGenerationCommit),
         (H + 4, 4, Error::InvalidOrigin(4)),
         (H + 5, 3, Error::InvalidOutcome(3)),
-        (H + 6, 12, Error::InvalidEndReason(12)),
+        (H + 6, 13, Error::InvalidEndReason(13)),
         (H + 6, 1, Error::OutcomeReasonMismatch),
         (H + 6, 0, Error::OriginOutcomeMismatch),
         (H + 4, 3, Error::OriginOutcomeMismatch),

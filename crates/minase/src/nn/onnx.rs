@@ -137,7 +137,7 @@ impl OnnxEvaluator {
     ///
     /// `ORT_DYLIB_PATH`が示すファイルからONNX Runtimeをプロセスで1回だけ初期化する。
     /// TensorRTとCUDAではCPUへの部分的な退避も禁じる。
-    /// 入力はf32の`input: [動的バッチ, 95, 12, 12]`、出力はf32の
+    /// 入力はf32の`input: [動的バッチ, 159, 12, 12]`、出力はf32の
     /// `policy: [動的バッチ, 35856]`と`value: [動的バッチ, 1]`でなければならない。
     ///
     /// # Errors
@@ -169,9 +169,9 @@ impl OnnxEvaluator {
                     path: path.clone(),
                     source,
                 })?;
-                let profile = format!("input:{}x95x12x12", max_batch.get());
+                let profile = format!("input:{}x{INPUT_PLANES}x12x12", max_batch.get());
                 ep::TensorRT::default()
-                    .with_profile_min_shapes("input:1x95x12x12")
+                    .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
                     .with_profile_opt_shapes(&profile)
                     .with_profile_max_shapes(&profile)
                     .with_fp16(true)
@@ -236,12 +236,12 @@ fn validate_signature(
     };
     if inputs.len() != 1
         || outputs.len() != 2
-        || !matches(&inputs, "input", &[-1, 95, 12, 12])
+        || !matches(&inputs, "input", &[-1, INPUT_PLANES as i64, 12, 12])
         || !matches(&outputs, "policy", &[-1, 35856])
         || !matches(&outputs, "value", &[-1, 1])
     {
         return Err(NnError::ModelSignature {
-            expected: "input f32 [-1, 95, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]",
+            expected: "input f32 [-1, 159, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]",
             inputs,
             outputs,
         });
@@ -386,7 +386,11 @@ mod tests {
     // [`OnnxEvaluator::new`]の契約: 出力の順序によらず、名前・f32・動的バッチ・固定幅を検査する。
     #[test]
     fn model_signature_requires_named_float_tensors_with_dynamic_batches() {
-        let input = tensor_port("input", &[-1, 95, 12, 12], TensorElementType::Float32);
+        let input = tensor_port(
+            "input",
+            &[-1, INPUT_PLANES as i64, 12, 12],
+            TensorElementType::Float32,
+        );
         let outputs = vec![
             tensor_port("value", &[-1, 1], TensorElementType::Float32),
             tensor_port("policy", &[-1, 35856], TensorElementType::Float32),
@@ -397,12 +401,12 @@ mod tests {
             vec![input.clone(), input.clone()],
             vec![tensor_port(
                 "other",
-                &[-1, 95, 12, 12],
+                &[-1, INPUT_PLANES as i64, 12, 12],
                 TensorElementType::Float32,
             )],
             vec![tensor_port(
                 "input",
-                &[7, 95, 12, 12],
+                &[7, INPUT_PLANES as i64, 12, 12],
                 TensorElementType::Float32,
             )],
             vec![tensor_port(
@@ -412,7 +416,7 @@ mod tests {
             )],
             vec![tensor_port(
                 "input",
-                &[-1, 95, 12, 12],
+                &[-1, INPUT_PLANES as i64, 12, 12],
                 TensorElementType::Float16,
             )],
         ] {

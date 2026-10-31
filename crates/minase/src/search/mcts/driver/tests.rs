@@ -1,6 +1,6 @@
 use super::*;
 use crate::nn::UniformEvaluator;
-use crate::search::mcts::gumbel::{Gumbel, policy_target};
+use crate::search::mcts::gumbel::Gumbel;
 use crate::search::mcts::puct::PuctConfig;
 use crate::search::mcts::test_support::*;
 use crate::search::{MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_WIN, in_repetition_band};
@@ -550,7 +550,7 @@ fn gumbel_driver_completes_32_simulations_and_targets_all_legal_moves() {
     let moves = input.root_moves().to_vec();
     let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
     advance(&mut driver, &mut UniformEvaluator);
-    let gumbel = Gumbel::new(vec![0.0; moves.len()], 32).unwrap();
+    let gumbel = Gumbel::new(vec![0.0; moves.len()], 32, 1.0).unwrap();
     for _ in 0..32 {
         match driver.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap() {
             Step::Evaluate(request) => evaluate(&mut driver, &mut UniformEvaluator, &request),
@@ -560,8 +560,8 @@ fn gumbel_driver_completes_32_simulations_and_targets_all_legal_moves() {
     }
     assert_eq!(driver.simulations(), 33);
     let root = driver.tree().root();
-    assert!(moves.contains(&root.edges[gumbel.action(root).unwrap()].mv));
-    let target = policy_target(root).unwrap();
+    assert!(moves.contains(&root.edges[gumbel.action(root, 1.0).unwrap()].mv));
+    let target = gumbel.policy_target(root).unwrap();
     assert_eq!(target.len(), moves.len());
     assert!(target.iter().all(|p| *p > 0.0));
     assert!((target.iter().sum::<f32>() - 1.0).abs() < 1e-5);
