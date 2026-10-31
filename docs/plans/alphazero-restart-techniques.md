@@ -19,8 +19,7 @@ playout cap randomization（以下PCR）は、手番の25%だけを通常の回�
 
 起案。2026年10月31日に起案した。
 着手は利用者の指示を待つ。
-実装のブランチをどこから切るかが未決である。
-本書の変更は、ブランチ`alphazero-rl`にだけある学習器と実行器のコード（学習窓からの抽出、学習率の予定、重みの移動平均、実行器`runner`）の上に積むので、`alphazero-rl`のコードを先にmasterへマージしてからmasterから切るか、`alphazero-rl`から切るかを決める必要がある。
+本書が前提とする学習器と実行器のコードは、2026年10月31日に利用者の決定でブランチ`alphazero-rl`からmasterへマージしたので、実装はmasterから切ったブランチで行う。
 
 ## 目的
 
@@ -53,7 +52,7 @@ playout cap randomization（以下PCR）は、手番の25%だけを通常の回�
 
 ## 依存関係
 
-本書は、ブランチ`alphazero-rl`の学習器と実行器の実装（学習窓からの一様な抽出、`--lr-schedule`、重みの移動平均、および`runner`の`--cycles-dir`など）を前提とする。
+本書は、2026年10月31日にmasterへマージした強化学習の実行の学習器と実行器の実装（学習窓からの一様な抽出、`--lr-schedule`、重みの移動平均、および`runner`の`--cycles-dir`など）を前提とする。
 自己対局生成器、探索、ネットの入出力、および学習器の既存の仕様は、凍結した[自己対局生成器](archived/alphazero-selfplay.md)、[探索方式の共存とMCTS](archived/alphazero-mcts.md)、[ネットの入出力と推論](archived/alphazero-network.md)、[学習器](archived/alphazero-trainer.md)、および各ADRとコードのdocコメントにある。
 王手の定義と、王手限定の勝ちの読み筋を審判層`Game`で確かめる考え方は、起案中の[詰み探索（df-pn）の設計書](mate-search.md)と共通にするが、df-pnの実装には依存しない。
 
