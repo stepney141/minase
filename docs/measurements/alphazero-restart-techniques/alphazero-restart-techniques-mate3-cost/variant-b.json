@@ -1,0 +1,217 @@
+{
+  "call_count": 468537,
+  "data": {
+    "path": "/home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8200000.bin",
+    "sha256": "e22a09e67584f43335d078621a7d45ac4dca94f1bf3020c1551a038fab7b7d0d",
+    "size": 25195651
+  },
+  "latency_us": {
+    "max": 178.15800000000002,
+    "mean": 6.19002206656039,
+    "median": 5.613,
+    "p90": 9.902,
+    "p99": 19.578000000000003,
+    "p99_9": 32.011,
+    "total": 2900254.3690000055
+  },
+  "measured_game_count": 1000,
+  "outcomes": {
+    "no_win": {
+      "count": 459943,
+      "max_us": 178.15800000000002,
+      "mean_us": 6.278357703019815
+    },
+    "skipped_two_royals": {
+      "count": 7718,
+      "max_us": 0.032999999999999995,
+      "mean_us": 0.012530707437159934
+    },
+    "win": {
+      "count": 876,
+      "max_us": 89.90700000000001,
+      "mean_us": 14.236278538812789
+    }
+  },
+  "ply_bins": [
+    {
+      "count": 99887,
+      "first_ply": 1,
+      "last_ply": 100,
+      "mean_us": 4.535831709832146
+    },
+    {
+      "count": 99311,
+      "first_ply": 101,
+      "last_ply": 200,
+      "mean_us": 6.172302363282952
+    },
+    {
+      "count": 96230,
+      "first_ply": 201,
+      "last_ply": 300,
+      "mean_us": 7.547984079808767
+    },
+    {
+      "count": 79512,
+      "first_ply": 301,
+      "last_ply": 400,
+      "mean_us": 7.505961163094916
+    },
+    {
+      "count": 43796,
+      "first_ply": 401,
+      "last_ply": 500,
+      "mean_us": 6.407776212439473
+    },
+    {
+      "count": 18429,
+      "first_ply": 501,
+      "last_ply": 600,
+      "mean_us": 5.384189538227797
+    },
+    {
+      "count": 7700,
+      "first_ply": 601,
+      "last_ply": 700,
+      "mean_us": 4.739770389610321
+    },
+    {
+      "count": 4013,
+      "first_ply": 701,
+      "last_ply": 800,
+      "mean_us": 4.219713680538289
+    },
+    {
+      "count": 2795,
+      "first_ply": 801,
+      "last_ply": 900,
+      "mean_us": 4.28829445438287
+    },
+    {
+      "count": 2301,
+      "first_ply": 901,
+      "last_ply": 1000,
+      "mean_us": 4.17289308996091
+    },
+    {
+      "count": 1943,
+      "first_ply": 1001,
+      "last_ply": 1100,
+      "mean_us": 3.8466773031394768
+    },
+    {
+      "count": 1639,
+      "first_ply": 1101,
+      "last_ply": 1200,
+      "mean_us": 3.747292861500916
+    },
+    {
+      "count": 1280,
+      "first_ply": 1201,
+      "last_ply": 1300,
+      "mean_us": 3.2222273437500015
+    },
+    {
+      "count": 1124,
+      "first_ply": 1301,
+      "last_ply": 1400,
+      "mean_us": 3.3171165480427067
+    },
+    {
+      "count": 1009,
+      "first_ply": 1401,
+      "last_ply": 1500,
+      "mean_us": 3.135070366699703
+    },
+    {
+      "count": 1000,
+      "first_ply": 1501,
+      "last_ply": 1600,
+      "mean_us": 3.303860000000002
+    },
+    {
+      "count": 1000,
+      "first_ply": 1601,
+      "last_ply": 1700,
+      "mean_us": 3.590258000000002
+    },
+    {
+      "count": 990,
+      "first_ply": 1701,
+      "last_ply": 1800,
+      "mean_us": 3.528437373737375
+    },
+    {
+      "count": 900,
+      "first_ply": 1801,
+      "last_ply": 1900,
+      "mean_us": 4.5345622222222275
+    },
+    {
+      "count": 831,
+      "first_ply": 1901,
+      "last_ply": 2000,
+      "mean_us": 5.192935018050543
+    },
+    {
+      "count": 603,
+      "first_ply": 2001,
+      "last_ply": 2100,
+      "mean_us": 4.527847429519066
+    },
+    {
+      "count": 512,
+      "first_ply": 2101,
+      "last_ply": 2200,
+      "mean_us": 4.450552734375001
+    },
+    {
+      "count": 500,
+      "first_ply": 2201,
+      "last_ply": 2300,
+      "mean_us": 4.606926000000001
+    },
+    {
+      "count": 371,
+      "first_ply": 2301,
+      "last_ply": 2400,
+      "mean_us": 4.650838274932613
+    },
+    {
+      "count": 248,
+      "first_ply": 2401,
+      "last_ply": 2500,
+      "mean_us": 4.14697983870968
+    },
+    {
+      "count": 200,
+      "first_ply": 2501,
+      "last_ply": 2600,
+      "mean_us": 3.8259000000000003
+    },
+    {
+      "count": 200,
+      "first_ply": 2601,
+      "last_ply": 2700,
+      "mean_us": 4.352815
+    },
+    {
+      "count": 163,
+      "first_ply": 2701,
+      "last_ply": 2800,
+      "mean_us": 4.184067484662577
+    },
+    {
+      "count": 50,
+      "first_ply": 2801,
+      "last_ply": 2900,
+      "mean_us": 7.442020000000002
+    }
+  ],
+  "selected_game_count": 1000,
+  "selection": {
+    "path": "docs/measurements/alphazero-rl/alphazero-rl-progress-c0010/external/cycle-0001.json",
+    "sha256": "d278669652b69663b00ede2480fe2c2303235f2863d13373d6d421b0c62d4f07",
+    "size": 55743
+  }
+}
