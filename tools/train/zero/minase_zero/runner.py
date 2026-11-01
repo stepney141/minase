@@ -31,10 +31,12 @@ summary.jsonのchunksは含めた塊の数であり、その範囲の3種類の�
 範囲より後の確定済み塊も転送するが、学習にはsummary.jsonのtraining_filesだけを使う。
 
 学習窓は最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が
-初めてwindow-positions以上になるまでとする。届かないうちは全サイクルを使う。
+初めてwindow-positions以上になるまでとする。
+--window-first-cycleは1以上、first-cycle以下の整数を必須とし、別系列でも同じ通し番号を使う。
+合計が目標に届かない場合もwindow-first-cycleでさかのぼりを止め、それより前の集計は読まない。
 ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
 後に加える。窓全体を--data、最新のサイクルだけを--latest-dataとして学習器へ渡す。
-窓のサイクル番号、window-positions、生成と学習のコミットをサイクルの記録に残す。
+窓のサイクル番号、window-first-cycle、window-positions、生成と学習のコミットをサイクルの記録に残す。
 NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
 未完了の生成はgeneration-commitが一致する場合だけ再開する。
 
@@ -108,6 +110,7 @@ class Options:
     simulations: int
     threads: int
     games_per_thread: int
+    window_first_cycle: int
     window_positions: int
     batch_size: int
     lr: float
@@ -146,11 +149,14 @@ class Options:
             if re.fullmatch(r"[0-9a-fA-F]{40}", getattr(self, name)) is None:
                 raise ValueError(f"{name} must be 40 hexadecimal digits")
         for name in ("first_cycle", "last_cycle", "target_positions", "chunks", "simulations",
-                     "threads", "games_per_thread", "window_positions", "batch_size", "checkpoint_steps"):
+                     "threads", "games_per_thread", "window_first_cycle", "window_positions",
+                     "batch_size", "checkpoint_steps"):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
         if self.last_cycle < self.first_cycle:
             raise ValueError("last_cycle must be at least first_cycle")
+        if self.window_first_cycle > self.first_cycle:
+            raise ValueError("window_first_cycle must be at most first_cycle")
         if (self.first_cycle == 1) != (self.cycle1_reference_summary is not None):
             raise ValueError("cycle1-reference-summary is required exactly when first-cycle is 1")
         if self.deadline.utcoffset() is None:
@@ -189,8 +195,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
-                 "games-per-thread", "window-positions", "batch-size", "checkpoint-steps", "train-seed-base",
-                 "ema-period-samples", "branch-from"):
+                 "games-per-thread", "window-first-cycle", "window-positions", "batch-size", "checkpoint-steps",
+                 "train-seed-base", "ema-period-samples", "branch-from"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds", "ema-scale"):
@@ -245,7 +251,7 @@ def training_window(options: Options, cycle: int, window_positions: int) -> tupl
     """局面数から窓を決め、サイクル番号、窓のファイル、最新のファイルを返す。"""
     by_cycle = []
     positions = 0
-    for previous in range(cycle, 0, -1):
+    for previous in range(cycle, options.window_first_cycle - 1, -1):
         current = []
         for path in summaries(options, previous):
             summary = read_json(path)
@@ -918,6 +924,7 @@ class Runner:
                       "resign_calibration": calibration, "selfplay_summary": summary,
                       "regeneration": regen_settings, "selfplay_regen_summary": regen_summary,
                       "training_files": files, "window_cycles": window_cycles,
+                      "window_first_cycle": options.window_first_cycle,
                       "window_positions": options.window_positions, "teacher_stats": stats,
                       "training_summary": train_summary, "network_sha256": network_digest, "checks": checks,
                       "elapsed_seconds": {"generation": generation_seconds, "training": training_seconds,
