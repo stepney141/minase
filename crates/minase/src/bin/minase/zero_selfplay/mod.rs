@@ -48,9 +48,9 @@ use minase::nn::{Network, OnnxEvaluator};
 use minase::training::records;
 use minase_core::{Rules, rules::parse_rule_set};
 
-/// 序盤を含む手数の上限1,000手。到達しても未終局なら対局全体を破棄する。
-/// `docs/adr/discard-zero-self-play-games-that-reach-1000-plies.md`を参照。
-const MAX_PLY: u32 = 1_000;
+/// 序盤を含む手数の上限3,000手。到達しても未終局なら対局全体を破棄する。
+/// `docs/adr/discard-zero-self-play-games-that-reach-3000-plies.md`を参照。
+const MAX_PLY: u32 = 3_000;
 
 /// 投了の閾値1%。選んだ手が訪問済みで、そのQが厳密に下回る場合に使う。
 /// `docs/adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md`を参照。

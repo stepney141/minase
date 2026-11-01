@@ -48,8 +48,8 @@
 //! 勝ちがあれば、その側の勝ちとしてMNSDの理由12で打ち切り、探索していない最終項目を追加する。
 //! 序盤の乱択後には調べず、投了させない対局でも調べる。相手の王駒が2枚なら打ち切らない。
 //!
-//! 序盤を含めて1,000手に達しても未終局の対局は、学習用の記録をすべて破棄し、集計だけに残す。
-//! `docs/adr/discard-zero-self-play-games-that-reach-1000-plies.md`を参照。
+//! 序盤を含めて3,000手に達しても未終局の対局は、学習用の記録をすべて破棄し、集計だけに残す。
+//! `docs/adr/discard-zero-self-play-games-that-reach-3000-plies.md`を参照。
 
 use minase::datagen::opening::generate_opening;
 use minase::search::SearchSnapshot;
