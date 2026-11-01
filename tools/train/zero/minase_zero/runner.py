@@ -12,11 +12,10 @@ cycles-dirはシード台帳の名前にも使うため、空白文字を含め�
 first-cycleはbranch-fromより後とし、生成、学習、照合の出力はcycles-dirに置く。
 本線は--cycles-dir cycles --base-cycles-dir cycles --branch-from 0で実行する。
 cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、
-確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxと同名の-ema.onnxに分ける。
+確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxに置く。
 通常生成のシードはサイクル番号×10⁹を基本とし、別系列では7×10⁸を加える。
 再生成は通常生成のシードに5×10⁸を加える。共有のシード台帳には、本線ではcycle-NNNN-gen、
 別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
---lr-scheduleはconstantかcosineを必須とし、学習器へ渡して両方の記録に残す。
 
 通常生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から
 見積もった対局数を上限とする。
@@ -40,12 +39,10 @@ summary.jsonのchunksは含めた塊の数であり、その範囲の3種類の�
 NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
 未完了の生成はgeneration-commitが一致する場合だけ再開する。
 
---ema-period-samplesと--ema-scaleは学習器に渡し、両方0で無効、両方正で有効とする。
---selfplay-weightsはrawかemaを必須とし、前のサイクルのtrain/model.onnxか
-train/model-ema.onnxを生成に使う。最初のサイクルではcycle-0000直下を参照し、
-選んだネットがなければエラーにする。平均を持つサイクルでは両方のネットを各6通りで照合し、
-本線では通常の重みをnets/cycle-NNNN.onnx、平均をnets/cycle-NNNN-ema.onnxへ読み取り専用で確定する。
-記録には自己対局の重みの選択、EMAの引数、およびweightsで区別した各照合の結果を残す。
+自己対局は前のサイクルのtrain/model.onnxを使う。最初のサイクルではcycle-0000/model.onnxを
+参照し、ネットがなければエラーにする。学習後のネットはCPUとTensorRTのバッチ1、7、256の
+6通りで照合し、本線ではnets/cycle-NNNN.onnxへ読み取り専用で確定する。
+記録には各照合の結果を残す。
 
 送信ではColab機にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も
 含む全ファイルを1回のsha256sumで照合する。生成の塊の復元も同じ経路を使う。
@@ -82,7 +79,6 @@ import tempfile
 import time
 
 from . import rl
-from .net import validate_ema
 
 
 SOURCE = "/content/src/tools/train/zero"
@@ -114,25 +110,18 @@ class Options:
     window_positions: int
     batch_size: int
     lr: float
-    lr_schedule: str
     momentum: float
     weight_decay: float
     clip_grad_norm: float
     value_lambda: float
     precision: str
     checkpoint_steps: int
-    selfplay_weights: str
-    ema_period_samples: int
-    ema_scale: float
     train_seed_base: int
     teacher_stats: Path
     poll_seconds: float
     cycle1_reference_summary: Path | None
 
     def __post_init__(self) -> None:
-        validate_ema(self.ema_period_samples, self.ema_scale)
-        if self.lr_schedule not in ("constant", "cosine"):
-            raise ValueError("lr-schedule must be constant or cosine")
         for name in ("cycles_dir", "base_cycles_dir"):
             path = getattr(self, name)
             if path.is_absolute() or not path.parts or ".." in path.parts:
@@ -141,8 +130,6 @@ class Options:
             raise ValueError("cycles_dir must contain no whitespace because it names seed-ledger entries")
         if type(self.branch_from) is not int or not 0 <= self.branch_from < self.first_cycle:
             raise ValueError("branch-from must be nonnegative and less than first-cycle")
-        if self.selfplay_weights not in ("raw", "ema"):
-            raise ValueError("selfplay-weights must be raw or ema")
         if re.fullmatch(r"[A-Za-z0-9_-]+", self.session) is None:
             raise ValueError("session must contain only letters, digits, underscores or hyphens")
         for name in ("generation_commit", "trainer_commit"):
@@ -180,11 +167,10 @@ class Options:
         directory = self.base_cycles_dir if cycle <= self.branch_from else self.cycles_dir
         return (directory / f"cycle-{cycle:04d}").as_posix()
 
-    def network_path(self, cycle: int, weights: str) -> str:
-        """系列と重みの種類に対応する確定ネットの相対パスを返す。"""
+    def network_path(self, cycle: int) -> str:
+        """系列に対応する確定ネットの相対パスを返す。"""
         directory = Path("nets") if self.cycles_dir == Path("cycles") else Path("nets") / self.cycles_dir
-        suffix = {"raw": "", "ema": "-ema"}[weights]
-        return (directory / f"cycle-{cycle:04d}{suffix}.onnx").as_posix()
+        return (directory / f"cycle-{cycle:04d}.onnx").as_posix()
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -196,14 +182,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
                  "games-per-thread", "window-first-cycle", "window-positions", "batch-size", "checkpoint-steps",
-                 "train-seed-base", "ema-period-samples", "branch-from"):
+                 "train-seed-base", "branch-from"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
-                 "value-lambda", "poll-seconds", "ema-scale"):
+                 "value-lambda", "poll-seconds"):
         parser.add_argument(f"--{name}", type=float, required=True)
     parser.add_argument("--precision", choices=("bf16", "fp32"), required=True)
-    parser.add_argument("--lr-schedule", choices=("constant", "cosine"), required=True)
-    parser.add_argument("--selfplay-weights", choices=("raw", "ema"), required=True)
     parser.add_argument("--cycle1-reference-summary", type=Path)
 
 
@@ -548,10 +532,9 @@ def chunk_files(names: list[str]) -> list[str]:
     return files
 
 
-def publish_network(options: Options, cycle: int, weights: str) -> str:
-    suffix = {"raw": "", "ema": "-ema"}[weights]
-    source = options.root / options.cycle_path(cycle) / f"train/model{suffix}.onnx"
-    target = options.root / options.network_path(cycle, weights)
+def publish_network(options: Options, cycle: int) -> str:
+    source = options.root / options.cycle_path(cycle) / "train/model.onnx"
+    target = options.root / options.network_path(cycle)
     digest = sha256(source)
     if target.exists():
         if sha256(target) != digest:
@@ -685,8 +668,8 @@ class Runner:
         command = [*TRAINER, "train", "--init", initial, "--data", *files,
                    "--latest-data", *latest_files, "--out-dir", out,
                    "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
-        for name in ("batch_size", "lr", "lr_schedule", "momentum", "weight_decay", "clip_grad_norm",
-                     "value_lambda", "precision", "checkpoint_steps", "ema_period_samples", "ema_scale"):
+        for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
+                     "value_lambda", "precision", "checkpoint_steps"):
             command.extend(["--" + name.replace("_", "-"), str(getattr(self.options, name))])
         return [*command, "--device", "cuda", "--trainer-commit", self.options.trainer_commit]
 
@@ -716,35 +699,21 @@ class Runner:
                 code = self._monitor(cycle, out, pull_checkpoint)
                 if code != 0:
                     raise RuntimeError(f"training exited {code}: {out}")
-            # 集計を一時領域で読み、そこに記載された全ネットを受信・照合してから完了印を置く。
+            # 集計を一時領域で読み、ネットを受信・照合してから完了印を置く。
             with tempfile.TemporaryDirectory(prefix="minase-zero-summary-") as directory:
                 staging = Path(directory)
                 receive(self.remote, staging, out + "/summary.json", False)
                 summary = read_json(staging / out / "summary.json")
-                networks = [("model.onnx", "network_sha256")]
-                if "ema_network_sha256" in summary:
-                    networks.append(("model-ema.onnx", "ema_network_sha256"))
-                for relative in (checkpoint, *(out + "/" + name for name, _ in networks), out + ".log"):
+                for relative in (checkpoint, out + "/model.onnx", out + ".log"):
                     receive(self.remote, self.root, relative, relative == checkpoint)
-                for name, key in networks:
-                    if summary[key] != sha256(self.root / out / name):
-                        raise ValueError(f"training summary does not match network: {out}/{name}")
-                if summary["cycle"] != cycle or summary["lr_schedule"] != self.options.lr_schedule:
-                    raise ValueError(f"training summary does not match cycle or lr-schedule: {out}")
+                if summary["cycle"] != cycle or summary["network_sha256"] != sha256(self.root / out / "model.onnx"):
+                    raise ValueError(f"training summary does not match cycle or network: {out}")
                 _write(local_summary, (staging / out / "summary.json").read_bytes())
         self._begin(out)
         summary = read_json(local_summary)
         if summary["cycle"] != cycle or summary["network_sha256"] != sha256(self.root / out / "model.onnx"):
             raise ValueError(f"training summary does not match cycle or network: {out}")
-        if summary["lr_schedule"] != self.options.lr_schedule:
-            raise ValueError(f"training summary does not match lr-schedule: {out}")
-        if "ema_network_sha256" in summary and summary["ema_network_sha256"] != sha256(self.root / out / "model-ema.onnx"):
-            raise ValueError(f"training summary does not match EMA network: {out}")
         return summary, self._finish(out)
-
-    def training_weights(self, cycle: int) -> tuple[str, ...]:
-        summary = read_json(self.root / self.options.cycle_path(cycle) / "train/summary.json")
-        return ("raw", "ema") if "ema_network_sha256" in summary else ("raw",)
 
     def check_script(self, cycle: int) -> str:
         out = self.options.cycle_path(cycle) + "/check"
@@ -752,29 +721,27 @@ class Runner:
         elapsed = f'printf "%s\\n" "$((SECONDS - check_started))" > {shlex.quote(out + "/elapsed-seconds")}'
         lines = [f"mkdir -p -- {shlex.quote(out)}", "check_started=$SECONDS",
                  f"trap {shlex.quote(elapsed)} EXIT", "failed=0"]
-        for weights in self.training_weights(cycle):
-            suffix = {"raw": "", "ema": "-ema"}[weights]
-            network = f"{train}/model{suffix}.onnx"
-            reference = f"{out}/pytorch{suffix}.json"
-            lines.append(shlex.join([*TRAINER, "fixture-eval", "--checkpoint", train + "/checkpoint.pt",
-                                     "--onnx", network, "--fixture", SOURCE + "/fixtures/nn-positions.jsonl",
-                                     "--out", reference, "--weights", weights]))
-            for batch in (1, 7, 256):
-                for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
-                                                          ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
-                    name = f"{out}/{label}-b{batch}{suffix}"
-                    command = [ENGINE, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
-                               "--batch", str(batch), "--out", name + ".json"]
-                    if backend == "tensorrt":
-                        command += ["--cache-dir", "/content/cache/nn-eval"]
-                    lines.append(shlex.join(command))
-                    compare = [*PYTHON, SOURCE + "/nn_compare.py", "--reference", reference,
-                               "--candidate", name + ".json", "--policy", policy,
-                               "--policy-tolerance", ptol, "--value-tolerance", vtol]
-                    lines.extend([f"if {shlex.join(compare)} > {shlex.quote(name + '.compare.json')} "
-                                  f"2> {shlex.quote(name + '.compare.err')}; then",
-                                  "    code=0", "else", "    code=$?", "    failed=1", "fi",
-                                  f"printf '%s\\n' \"$code\" > {shlex.quote(name + '.compare.exit')}"])
+        network = f"{train}/model.onnx"
+        reference = f"{out}/pytorch.json"
+        lines.append(shlex.join([*TRAINER, "fixture-eval", "--checkpoint", train + "/checkpoint.pt",
+                                 "--onnx", network, "--fixture", SOURCE + "/fixtures/nn-positions.jsonl",
+                                 "--out", reference]))
+        for batch in (1, 7, 256):
+            for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
+                                                      ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
+                name = f"{out}/{label}-b{batch}"
+                command = [ENGINE, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
+                           "--batch", str(batch), "--out", name + ".json"]
+                if backend == "tensorrt":
+                    command += ["--cache-dir", "/content/cache/nn-eval"]
+                lines.append(shlex.join(command))
+                compare = [*PYTHON, SOURCE + "/nn_compare.py", "--reference", reference,
+                           "--candidate", name + ".json", "--policy", policy,
+                           "--policy-tolerance", ptol, "--value-tolerance", vtol]
+                lines.extend([f"if {shlex.join(compare)} > {shlex.quote(name + '.compare.json')} "
+                              f"2> {shlex.quote(name + '.compare.err')}; then",
+                              "    code=0", "else", "    code=$?", "    failed=1", "fi",
+                              f"printf '%s\\n' \"$code\" > {shlex.quote(name + '.compare.exit')}"])
         lines.append('exit "$failed"')
         return "\n".join(lines)
 
@@ -784,11 +751,8 @@ class Runner:
         if not code_path.exists():
             state = self.remote.status(out)
             if state == "new":
-                names = ["checkpoint.pt", "model.onnx"]
-                if "ema" in self.training_weights(cycle):
-                    names.append("model-ema.onnx")
                 send(self.remote, self.root, [f"{self.options.cycle_path(cycle)}/train/{name}"
-                                             for name in names])
+                                             for name in ("checkpoint.pt", "model.onnx")])
                 self._begin(out)
                 self.remote.start(out, self.check_script(cycle), out + ".log", out + ".log")
             self._begin(out)
@@ -802,17 +766,15 @@ class Runner:
         if code != 0:
             raise RuntimeError(f"network check exited {code}; outputs saved in {self.root / out}")
         results = []
-        for weights in self.training_weights(cycle):
-            suffix = {"raw": "", "ema": "-ema"}[weights]
-            for batch in (1, 7, 256):
-                for backend in ("cpu", "trt"):
-                    path = self.root / out / f"{backend}-b{batch}{suffix}.compare"
-                    status = int(Path(str(path) + ".exit").read_text(encoding="utf-8"))
-                    output = Path(str(path) + ".json").read_text(encoding="utf-8").strip()
-                    if status != 0 or len(output.splitlines()) != 1:
-                        raise ValueError(f"failed or malformed comparison: {path}")
-                    results.append({"weights": weights, "backend": backend, "batch": batch, "exit_code": status,
-                                    "stdout": output, "result": json.loads(output)})
+        for batch in (1, 7, 256):
+            for backend in ("cpu", "trt"):
+                path = self.root / out / f"{backend}-b{batch}.compare"
+                status = int(Path(str(path) + ".exit").read_text(encoding="utf-8"))
+                output = Path(str(path) + ".json").read_text(encoding="utf-8").strip()
+                if status != 0 or len(output.splitlines()) != 1:
+                    raise ValueError(f"failed or malformed comparison: {path}")
+                results.append({"backend": backend, "batch": batch, "exit_code": status,
+                                "stdout": output, "result": json.loads(output)})
         elapsed = float((self.root / out / "elapsed-seconds").read_text(encoding="utf-8"))
         if not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError("invalid remote check elapsed seconds")
@@ -833,11 +795,8 @@ class Runner:
         start_balance = None
         for cycle in range(options.first_cycle, options.last_cycle + 1):
             if cycle in numbers:
-                if not (self.root / options.network_path(cycle, "raw")).is_file():
+                if not (self.root / options.network_path(cycle)).is_file():
                     raise ValueError(f"recorded cycle has no immutable network: {cycle}")
-                row = next(row for row in cycles if row["cycle"] == cycle)
-                if "ema_network_sha256" in row and not (self.root / options.network_path(cycle, "ema")).is_file():
-                    raise ValueError(f"recorded cycle has no immutable EMA network: {cycle}")
                 self.log(cycle, "already complete")
                 continue
             if any(row["cycle"] == cycle for row in read_rows(sessions_log)):
@@ -858,9 +817,8 @@ class Runner:
             reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(options, cycle - 1))
             games, chunk_games = game_counts(reference, options.target_positions, options.chunks)
             seed = cycle * 10**9 + (0 if mainline else 7 * 10**8)
-            suffix = {"raw": "", "ema": "-ema"}[options.selfplay_weights]
-            network = (self.options.cycle_path(0) + f"/model{suffix}.onnx" if cycle == 1 else
-                       self.options.cycle_path(cycle - 1) + f"/train/model{suffix}.onnx")
+            network = (self.options.cycle_path(0) + "/model.onnx" if cycle == 1 else
+                       self.options.cycle_path(cycle - 1) + "/train/model.onnx")
             generation = {"network": network, "network_sha256": sha256(self.root / network), "seed": seed,
                           "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
                           "target_positions": options.target_positions,
@@ -902,13 +860,10 @@ class Runner:
             stats = json.loads(result.stdout)
             if not isinstance(stats, dict):
                 raise ValueError("teacher_stats must output a JSON object")
-            network_digest = publish_network(options, cycle, "raw")
-            ema_network = {}
-            if "ema_network_sha256" in train_summary:
-                ema_network["ema_network_sha256"] = publish_network(options, cycle, "ema")
+            network_digest = publish_network(options, cycle)
             end_balance = self.remote.usage()
             ended = datetime.now(UTC)
-            settings = {"lr": options.lr, "lr_schedule": options.lr_schedule,
+            settings = {"lr": options.lr,
                         "cycles_dir": options.cycles_dir.as_posix(),
                         "base_cycles_dir": options.base_cycles_dir.as_posix(), "branch_from": options.branch_from}
             interval = {**settings, "session": options.session, "cycle": cycle, "started_at": started.isoformat(),
@@ -917,9 +872,6 @@ class Runner:
             if end_balance > start_balance:
                 interval["balance_increased"] = True
             record = {**settings, "cycle": cycle, "generation_commit": generation["generation_commit"],
-                      "selfplay_weights": options.selfplay_weights,
-                      "ema_period_samples": options.ema_period_samples, "ema_scale": options.ema_scale,
-                      **ema_network,
                       "trainer_commit": options.trainer_commit, "generation": generation,
                       "resign_calibration": calibration, "selfplay_summary": summary,
                       "regeneration": regen_settings, "selfplay_regen_summary": regen_summary,

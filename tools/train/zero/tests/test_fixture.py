@@ -38,7 +38,7 @@ class FixtureTests(unittest.TestCase):
     def test_fixture_eval_preserves_all_positions_and_legal_labels(self) -> None:
         output = self.root / "fixture.json"
         require_success(run_cli([
-            "fixture-eval", "--weights", "raw", "--checkpoint", str(self.initial / "checkpoint.pt"),
+            "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(self.initial / "model.onnx"),
             "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
         ]))
@@ -54,12 +54,27 @@ class FixtureTests(unittest.TestCase):
             self.assertTrue(0 <= actual["value"] <= 1)
             self.assertTrue(all(math.isfinite(move[1]) for move in actual["moves"]))
 
+    def test_legacy_checkpoint_uses_regular_weights(self) -> None:
+        # 移行前のチェックポイントの余分な重みは、固定局面の評価でも読み込まない。
+        state = torch.load(self.initial / "checkpoint.pt", weights_only=True)
+        state["ema"] = {"model": {}}
+        checkpoint = self.root / "legacy-checkpoint.pt"
+        torch.save(state, checkpoint)
+        output = self.root / "legacy-fixture.json"
+        require_success(run_cli([
+            "fixture-eval", "--checkpoint", str(checkpoint), "--onnx", str(self.initial / "model.onnx"),
+            "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
+        ]))
+        result = json.loads(output.read_text())
+        self.assertEqual(result["network_sha256"], hashlib.sha256((self.initial / "model.onnx").read_bytes()).hexdigest())
+        self.assertEqual(len(result["positions"]), 288)
+
     def test_other_weights_are_rejected_before_output(self) -> None:
         different = self.root / "different"
         require_success(run_cli(init_arguments(different, 24)))
         output = self.root / "mismatch.json"
         result = run_cli([
-            "fixture-eval", "--weights", "raw", "--checkpoint", str(self.initial / "checkpoint.pt"),
+            "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(different / "model.onnx"),
             "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
         ])
