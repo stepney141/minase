@@ -49,16 +49,7 @@ CUDAの実行プロバイダ（`--backend cuda`）は、ONNX Runtime 1.28.3で�
 ## 4. PyTorchの出力を書き出す
 
 PyTorchの出力は、照合する`minase dev nn-eval`の出力と同じ形のJSON（`"backend": "pytorch"`）で書き出す。
-ランダム初期化のネット（`tools/train/zero/feasibility/make_nets.py`が書き出すもの）は、`tools/train/zero/nn_torch_reference.py`で書き出す。
-このスクリプトは、同じシードからネットを作り直し、書き出したONNXのバイト列が`--onnx`のファイルと一致しなければ失敗する。
-
-```console
-cd tools/train/zero
-uv run --frozen python nn_torch_reference.py --onnx <ネット.onnx> --blocks 10 --channels 128 \
-  --fixture fixtures/nn-positions.jsonl --out <出力>/pytorch.json
-```
-
-学習したネットと、学習器の`init`が書き出す強化学習の初期ネットの出力は、学習器`minase_zero`の`fixture-eval`がチェックポイントから同じ形で書き出す。
+学習したネットと、学習器の`init`が書き出す強化学習の初期ネットの出力は、どちらも学習器`minase_zero`の`fixture-eval`がチェックポイントから書き出す。
 `fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
 書き出しはBatchNormを定数畳み込みで畳み込みの重みとバイアスへ融合し、その単精度の丸めはCPUによって変わるので、このバイト単位の一致は学習した機械でしか成り立たない。
 1サイクル分学習したネットを作業機で書き出し直すと、70個の初期値のうち28個が最大4.8×10⁻⁷異なった（[記録](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)）。
