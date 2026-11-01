@@ -243,7 +243,7 @@ n=100でx=0なら上限は約2.95%、x=1なら約4.66%、x=2なら約6.16%であ
 - 価値の過学習への対処は、2026年10月29日に利用者が決め、学習窓を広げて局面を抽出する方式を採った（「学習窓と局面の抽出」の節）。
 - 方策の損失を局面ごとの合法手だけで正規化する方式（lc0の`mask_legal_moves`）は、2026年10月29日に利用者が採らないと決めた。常に不可能なラベルを除く定数マスク（[学習器の定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)）は維持する。調べた先行実装のうち、学習で合法手だけに正規化するのはlc0の任意の設定とPolygamesだけで、AlphaGo Zero、Leela Zero、Minigo、KataGo、dlshogi、Gumbel dlshogi、およびAobaZeroは全出力のsoftmaxで学習する。minaseの合法手に乗る確率質量は、マスクなしで、サイクル1の0.957からサイクル5の0.994へ上がった。
 - 重みの移動平均（EMA）は、2026年10月30日の利用者の決定で学習器に入れたが、リセット前のサイクル25の比較で平均のネットが強いと言えなかったので、2026年11月2日の利用者の決定で取り除いた（[ADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)）。
-- 審判層の裁定より先の詰みを探す詰み探索（dlshogiの3手詰め）は、2026年10月31日の利用者の決定により、[学習技法の導入](archived/alphazero-restart-techniques.md)で、王手限定の3手以内の勝ちによる打ち切りとして自己対局に入れた（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)）。
+- 審判層の裁定より先の詰みを探す詰み探索（dlshogiの3手詰め）は、2026年10月31日の利用者の決定により、[学習技法の導入](archived/alphazero-restart-techniques.md)で、王手限定の3手以内の勝ちによる打ち切りとして自己対局に入れた（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)）。
 
 これらを採る場合は、「各サイクルの設定」の節の初期10サイクルの固定の例外とし、変えた時点と理由を記録に残す。
 

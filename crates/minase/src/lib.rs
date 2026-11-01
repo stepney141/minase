@@ -8,6 +8,13 @@
 //! `search`と`eval`は`training`を参照しない。
 //! `datagen`はデータ生成と棋譜取り込みの共有処理を持ち、`training`と`minase_core`に依存し、探索と評価には依存しない。
 //!
+//! 探索として再利用できるコードは、実行ファイルのソースではなく`search`の下に置く。
+//! たとえば自己対局生成器が呼ぶ王手限定の3手以内の勝ちの判定は[`search::mate_in_three`]にある。
+//! `src/bin/minase/`は、起動引数、入出力、および開発者向けのサブコマンドの層である。
+//! 試験専用のコードは本番の型と関数の中に置かず、試験用の子モジュールへ分ける。
+//! 別の実行ファイルの試験から使う補助は、`test-util`フィーチャの`nn::test_util`のように公開する。
+//! 理由は`docs/adr/keep-test-only-code-out-of-production-types-and-functions.md`にある。
+//!
 //! `harness`、`datagen`、`stats`は実行ファイル向けの内部層として`#[doc(hidden)]`で公開する。
 //! 規則ライブラリの型は`minase_core::`から参照し、本crateから再公開しない。
 //! 理由は`docs/adr/do-not-re-export-moved-items-at-old-paths.md`にある。
