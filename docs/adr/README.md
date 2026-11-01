@@ -345,7 +345,8 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、主の方策と価値に、KataGoの既定の重みで短期の価値、相手の次の手、およびソフト方策の補助目標を足して学ぶ](train-the-zero-network-on-katago-auxiliary-targets.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面と対局全体から決まる教師を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)
-- 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)
+- 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](archive/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)
 - 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)
 - 2026年11月1日 [AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)
+- 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)

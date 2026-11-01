@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](../sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)によって置き換えられた。決定日は2026年10月29日。
+置き換え済み。[AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)によって置き換えられた。決定日は2026年10月29日。
 
 ## コンテキスト
 

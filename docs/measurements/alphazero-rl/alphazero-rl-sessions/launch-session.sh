@@ -4,6 +4,7 @@
 # 作業機で nohup setsid bash launch-session.sh ... > <ログ> 2>&1 & として起動する。
 # 学習器と実行器は、このスクリプトを置いた作業ツリーのtools/train/zeroのものを使う。
 # 重みの移動平均はサイクル21の学習から始めるので、20以下と21以上のサイクルを1回の起動に混ぜない。
+# 学習窓はサイクル3より前にさかのぼらない（学習窓のADR）。最初のサイクルは3以上で起動する。
 # サイクル1の対局数は、学習技法の導入の試走の生成の集計（trial-restart のサイクル1）から決める。
 set -u
 session=$1; first=$2; last=$3; C=$4; weights=$5
@@ -39,7 +40,7 @@ cd "$Z" && uv run --frozen python -m minase_zero run-cycles --root "$A" --sessio
     --generation-commit "$C" --trainer-commit "$C" --first-cycle "$first" --last-cycle "$last" \
     --deadline "$deadline" --cycle-minutes 80 --cycle-cu 2.4 \
     --target-positions 1000000 --chunks 20 --simulations 32 --threads 4 --games-per-thread 128 \
-    --window-positions 47802000 --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 \
+    --window-first-cycle 3 --window-positions 47802000 --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 \
     --clip-grad-norm 10 --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 --lr-schedule cosine \
     --train-seed-base 20261100 --teacher-stats "$Z/feasibility/target/release/teacher_stats" \
     --poll-seconds 60 --selfplay-weights "$weights" "${ema[@]}"
