@@ -32,7 +32,7 @@ minase data zero-selfplay --output-dir trial/<組> \
 | t6g64 | 6 | 64 | 105,000,000 | 1,536 | 192 |
 
 出力はColab機で求めたSHA-256と照合してNASへ受け取り（[pull.sh](alphazero-rl-trial/pull.sh)）、[summarize.py](alphazero-rl-trial/summarize.py)で集計した。
-手数の分位点は`tools/train/zero/feasibility`の`teacher_stats`で、5通りの全塊のMNSDから求めた。
+手数の分位点はコミットd786c5e1の`tools/train/zero/feasibility`の`teacher_stats`で、5通りの全塊のMNSDから求めた。
 
 ## エンジン
 

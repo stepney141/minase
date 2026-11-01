@@ -30,7 +30,7 @@ cargo build --release --bin minase
 
 ## 3. minaseの出力を書き出す
 
-`minase dev nn-eval`は、`tools/train/zero/fixtures/nn-positions.jsonl`と同じ288局面の固定局面集を、指定した実行プロバイダとバッチの大きさで推論し、各局面の合法手のラベルとlogit、および価値をJSONで書き出す。
+`minase dev nn-eval`は、`crates/minase/tests/fixtures/nn-positions.jsonl`と同じ288局面の固定局面集を、指定した実行プロバイダとバッチの大きさで推論し、各局面の合法手のラベルとlogit、および価値をJSONで書き出す。
 CPUとTensorRTのFP16を、それぞれバッチの大きさ1、7、および256で実行する。
 
 ```console
@@ -58,7 +58,7 @@ PyTorchの出力は、照合する`minase dev nn-eval`の出力と同じ形のJS
 ```console
 cd tools/train/zero
 uv run --frozen python -m minase_zero fixture-eval --checkpoint <出力先>/checkpoint.pt \
-  --onnx <出力先>/model.onnx --fixture fixtures/nn-positions.jsonl --out <出力>/pytorch.json
+  --onnx <出力先>/model.onnx --fixture ../../../crates/minase/tests/fixtures/nn-positions.jsonl --out <出力>/pytorch.json
 ```
 
 ## 5. 照合する
@@ -102,7 +102,7 @@ CPUの照合が通り、TensorRTの照合だけが許容誤差を超えた場合
 入力の符号化か方策のラベルを変えると、学習済みのネットはすべて使えなくなる。
 
 ```console
-cargo run --release --bin minase -- dev nn-fixture --out tools/train/zero/fixtures/nn-positions.jsonl
+cargo run --release --bin minase -- dev nn-fixture --out crates/minase/tests/fixtures/nn-positions.jsonl
 ```
 
 minaseのテストは、生成した内容とこのファイルがバイト単位で一致することを確かめる。

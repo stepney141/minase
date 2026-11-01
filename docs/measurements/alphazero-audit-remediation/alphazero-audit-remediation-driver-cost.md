@@ -7,14 +7,15 @@
 ## コマンドライン
 
 測定日は2026年10月28日である。
-[driver_cost.rs](../../../tools/train/zero/feasibility/src/bin/driver_cost.rs)は、`minase::search::mcts::Driver`を`UniformEvaluator`で駆動する。
+コミット7c644847の`tools/train/zero/feasibility/src/bin/driver_cost.rs`は、`minase::search::mcts::Driver`を`UniformEvaluator`で駆動する。
 各局面で、Gumbelは根の評価に加えて最大32回、候補数は最大16手、PUCTは根の評価を含めて最大800回、バッチは256葉とした。
 Gumbel乱数は自己対局と同じ53ビットの中点から作り、局面ごとの固定シードを変更前後で共有した。
 成り規則と終局規則は全局面で`engine-default`とした。
 
 変更前は、道具のソースとCargo.tomlを次の一時ディレクトリへ複製し、path依存だけをmasterのcrateへ向けた。
 本体のリポジトリとgit管理領域は変更していない。
-依存の版は`tools/train/zero/feasibility/Cargo.lock`で固定する。
+依存の版は、同じコミットの`tools/train/zero/feasibility/Cargo.lock`で固定する。
+次のコマンドは、この道具を含むコミットのソースで動く。
 
 ```console
 task_root=/home/stepney141/board-games/minase/data/worktrees/alphazero-audit-remediation

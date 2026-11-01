@@ -33,7 +33,7 @@ python3 -I long_game_overhead.py <minase> zero-b10c128.onnx \
 ## エンジン
 
 測定したエンジンは、ブランチ`alphazero-mcts`のコミット0bbbcbb7（レビューの所見を直した最終のコミット）をリリースビルドした`minase`である。
-ネットは、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化の10ブロック128チャネルのネット`zero-b10c128.onnx`（SHA-256は`61a62a623067f9328f1baa91700dc98c81b7c43146ef8448f8263cc570d01600`）である。
+ネットは、コミット0bbbcbb7の`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化の10ブロック128チャネルのネット`zero-b10c128.onnx`（SHA-256は`61a62a623067f9328f1baa91700dc98c81b7c43146ef8448f8263cc570d01600`）である。
 規則セットは`engine-default`（L0＋P0＋R1＋E0）である。
 ONNX Runtimeは1.28.3である。
 

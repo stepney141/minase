@@ -50,7 +50,7 @@ def main() -> None:
     model = ZeroNet(state["config"]["blocks"], state["config"]["channels"])
     model.load_state_dict(state["model"])
     model.eval()
-    fixtures = [json.loads(line) for line in Path("fixtures/nn-positions.jsonl").open(encoding="utf-8")]
+    fixtures = [json.loads(line) for line in Path("../../../crates/minase/tests/fixtures/nn-positions.jsonl").open(encoding="utf-8")]
     inputs = np.zeros((len(fixtures), 95 * 144), dtype=np.float32)
     for index, fixture in enumerate(fixtures):
         inputs[index, fixture["input"]] = 1.0

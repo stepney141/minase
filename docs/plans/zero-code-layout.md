@@ -191,6 +191,7 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 | `docs/measurements/`のMarkdownとスクリプトにある、移したファイルのパス | 新しいパスへ書き換える |
 | `docs/measurements/`のMarkdownにある、削除したファイルへのリンク | リンクをやめ、「コミット`<ハッシュ>`の`<パス>`」と書く。ハッシュは、その記録が測定に使ったコミットとする。記録にコミットがなければ、そのファイルを削除する直前のコミットとする |
 | `docs/measurements/`のスクリプトのうち、削除したツールを呼ぶもの（`measure.sh`、`measure-trt.sh`、`longrun.sh`、`alphazero-network/random-net-output-check/run.sh`） | 移したファイルのパスも含めて本文を書き換えず、測定に使ったコミットのソースで動くことを先頭のコメントに書く。削除したツールは新しいパスを持たず、一部のパスだけを直すとどのコミットでも動かなくなるからである |
+| `docs/measurements/`のMarkdownのコマンド例のうち、削除したツールを呼ぶもの | 同じ理由で本文を書き換えず、測定に使ったコミットのソースで動くことをコマンド例の前に書く |
 | 機械が出力した生データ（`.json`、`.out`、`.log`、`.patch`） | 書き換えない |
 | 固定したコミットのworktreeを指すスクリプト（`run-c06.sh`、`run-c11.sh`、`run-c21.sh`、`launch-trial.sh`） | 書き換えない |
 | `docs/guides/`、進行中の設計書、`docs/ROADMAP.md`、およびソースのdocコメント | 新しいパスと手順へ書き換える |

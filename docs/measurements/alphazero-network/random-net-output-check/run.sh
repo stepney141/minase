@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This script runs on the source of the measured commit (982d772d). The tools it calls are not in the current source.
 # Usage: run.sh <worktree> <out-dir>
 # Reproduces random-net-output-check.md: writes the random-initialized networks, evaluates the
 # fixed positions with each execution provider and batch size, computes the PyTorch reference,

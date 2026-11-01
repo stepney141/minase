@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# このスクリプトは、測定に使ったコミット（eda8f146など）のソースで動く。呼び出す道具は現在のソースにはない。
 # alphazero-feasibility のTensorRTの推論速度を測る。measure.sh が呼び、TensorRTの段階だけを測り直すときは単独でも使う。
 # 使い方: measure-trt.sh <展開したソースのルート> <measure.sh の出力ディレクトリ（nets/ を含む）>
 # 出力の受け取りは、ONNX Runtimeに出力を確保させる方式（--io copy）だけを使う。

@@ -41,5 +41,5 @@ AlphaZeroとlc0は、方策を移動元の升ごとの面として畳み込み�
 2歩系の64種がHaChuの「第1歩方向×第2歩方向」の符号化と同型なので、HaChuとの照合にも使える。
 方策の出力はFP32で1局面あたり約143 KBあり、全要素の複写と非有限値の検査はCPUでの処理時間を大きくする。
 このため評価器`nn::Evaluator`は合法手のlogitだけを返し、非有限値の検査も取り出したlogitと価値だけに行う。
-ラベルの割り当てを変えると学習済みのネットと固定局面集`tools/train/zero/fixtures/nn-positions.jsonl`が使えなくなる。
+ラベルの割り当てを変えると学習済みのネットと固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl`が使えなくなる。
 面の内訳と方向の番号は`crates/minase/src/nn/policy.rs`のdocコメントにある。

@@ -7,7 +7,7 @@
 ## コマンドライン
 
 計数を加えるパッチは[ranges.patch](search-revival-ranges/ranges.patch)であり、探索の挙動を変えずに計数だけを加える。
-係数の値は、`src/search/alphabeta/params.rs`の既定値を1つだけ書き換えて再ビルドして与えた（`bench`は調整用オプションを受け付けない）。
+係数の値は、`src/search/params.rs`の既定値を1つだけ書き換えて再ビルドして与えた（`bench`は調整用オプションを受け付けない）。
 
 ```console
 git apply ranges.patch
