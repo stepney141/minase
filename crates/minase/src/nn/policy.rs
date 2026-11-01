@@ -118,7 +118,7 @@ pub fn softmax(logits: &mut [f32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nn::test_util::{random_positions, rotate};
+    use crate::nn::test_support::{random_positions, rotate};
     use minase_core::test_util::sq;
     use minase_core::{MoveGenerator, Rules};
     use std::collections::HashSet;

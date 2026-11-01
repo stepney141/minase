@@ -1,5 +1,6 @@
 use super::*;
-use crate::nn::{Query, UniformEvaluator};
+use crate::nn::Query;
+use crate::nn::test_util::UniformEvaluator;
 use crate::search::MATE;
 use crate::search::mcts::test_support::*;
 use crate::search::mcts::tree::{Edge, Node};
@@ -85,13 +86,17 @@ fn nodes_one_chooses_the_maximum_policy_logit_even_after_a_previous_search() {
     let input = initial();
     let mv = *input.root_moves().last().unwrap();
     let evaluator = ScriptedEvaluator::line(input.position(), &[mv]);
-    let (engine, _) = finish(
+    let (mut engine, _) = finish(
         engine(evaluator)
             .start(input.clone(), nodes(8), 1, false)
             .unwrap(),
     );
-    let (engine, event) = finish(engine.start(input, nodes(1), 2, false).unwrap());
-    assert!(!engine.reused);
+    engine.prepare_driver(input.clone(), nodes(1)).unwrap();
+    assert_eq!(
+        engine.driver.as_ref().unwrap().tree().root().state,
+        NodeState::Pending { unexpanded: false }
+    );
+    let (_, event) = finish(engine.start(input, nodes(1), 2, false).unwrap());
     assert!(
         matches!(event, SearchEvent::Finished { best_move, score: 0, depth: 1, nodes: 1, stop_reason: StopReason::NodeLimit, .. } if best_move == mv)
     );
@@ -173,7 +178,7 @@ fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
     previous.config.batch_size = NonZeroUsize::new(256).unwrap();
     let mut fresh_engine = engine(ScriptedEvaluator::line(input.position(), &[quiet, reply]));
     fresh_engine.config = previous.config;
-    let (previous, _) = finish(previous.start(input, nodes(10_000), 1, false).unwrap());
+    let (mut previous, _) = finish(previous.start(input, nodes(10_000), 1, false).unwrap());
     let mv = minase_core::notation::usi::parse(game.position(), "4h5i4h").unwrap();
     game.play(mv).unwrap();
     let next = SearchSnapshot::from_game(&game).unwrap();
@@ -181,6 +186,11 @@ fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
         fresh_engine
             .start(next.clone(), nodes(128), 2, false)
             .unwrap(),
+    );
+    previous.prepare_driver(next.clone(), nodes(128)).unwrap();
+    assert_eq!(
+        previous.driver.as_ref().unwrap().tree().root().state,
+        NodeState::Pending { unexpanded: false }
     );
     let (continued, continued_event) = finish(previous.start(next, nodes(128), 2, false).unwrap());
     let SearchEvent::Finished {
@@ -203,7 +213,6 @@ fn ambiguous_lion_reuse_matches_a_fresh_repetition_win() {
         continued.driver.as_ref().unwrap().tree().root().state,
         fresh.driver.as_ref().unwrap().tree().root().state
     );
-    assert!(!continued.reused);
 }
 
 #[test]
@@ -241,8 +250,17 @@ fn played_subtree_is_reused_and_clear_or_draw_changes_discard_it() {
         if change == 2 {
             next = next.with_draw_value(100).unwrap();
         }
+        engine.prepare_driver(next.clone(), nodes(2)).unwrap();
+        assert_eq!(
+            engine.driver.as_ref().unwrap().tree().root().state,
+            if change == 0 {
+                NodeState::Expanded
+            } else {
+                NodeState::Pending { unexpanded: false }
+            },
+            "case {change}"
+        );
         let (engine, _) = finish(engine.start(next, nodes(2), 2, false).unwrap());
-        assert_eq!(engine.reused, change == 0);
         assert_eq!(engine.driver.unwrap().simulations(), 2);
     }
 }
@@ -253,7 +271,7 @@ fn new_root_at_a_repetition_terminal_is_rebuilt_from_snapshot_candidates() {
     let mut game = Game::from_position(rules(RepetitionRule::R1), root.clone());
     let mut engine = engine(ScriptedEvaluator::line(&root, &line));
     engine.config.batch_size = NonZeroUsize::new(1).unwrap();
-    let (engine, _) = finish(
+    let (mut engine, _) = finish(
         engine
             .start(
                 SearchSnapshot::from_game(&game).unwrap(),
@@ -268,8 +286,12 @@ fn new_root_at_a_repetition_terminal_is_rebuilt_from_snapshot_candidates() {
     }
     let input = SearchSnapshot::from_game(&game).unwrap();
     let expected = input.root_moves().to_vec();
+    engine.prepare_driver(input.clone(), nodes(2)).unwrap();
+    assert_eq!(
+        engine.driver.as_ref().unwrap().tree().root().state,
+        NodeState::Pending { unexpanded: false }
+    );
     let (engine, _) = finish(engine.start(input, nodes(2), 2, false).unwrap());
-    assert!(!engine.reused);
     let driver = engine.driver.unwrap();
     assert_eq!(driver.tree().root().state, NodeState::Expanded);
     assert_eq!(
@@ -344,7 +366,11 @@ fn reuse_rejects_changed_history_rules_position_candidates_and_draw_perspective(
         }
         // 候補の変更以外は、実際のGameから入力を作って再利用を検査する。
         engine.prepare_driver(next, nodes(2)).unwrap();
-        assert!(!engine.reused, "case {change}");
+        assert_eq!(
+            engine.driver.as_ref().unwrap().tree().root().state,
+            NodeState::Pending { unexpanded: false },
+            "case {change}"
+        );
     }
 }
 
@@ -360,7 +386,10 @@ fn reordered_root_candidates_keep_the_reused_edge_logit_mapping() {
     let mut next = input;
     next.root_moves.reverse();
     engine.prepare_driver(next, nodes(2)).unwrap();
-    assert!(engine.reused);
+    assert_eq!(
+        engine.driver.as_ref().unwrap().tree().root().state,
+        NodeState::Expanded
+    );
     let driver = engine.driver.as_mut().unwrap();
     let Step::Evaluate(request) = driver
         .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
@@ -947,4 +976,109 @@ fn malformed_inference_output_is_an_error_without_panicking_or_finishing() {
             ..
         }))
     ));
+}
+
+#[test]
+fn cache_default_uses_only_nonempty_xdg_cache_home() {
+    for (input, expected) in [
+        (None, ""),
+        (Some(""), ""),
+        (Some("/cache"), "/cache/minase/tensorrt"),
+        (
+            Some("/cache with spaces/"),
+            "/cache with spaces/minase/tensorrt",
+        ),
+    ] {
+        assert_eq!(
+            default_cache_dir(input.map(OsStr::new)),
+            PathBuf::from(expected)
+        );
+    }
+}
+
+#[test]
+fn inference_options_accept_boundaries_and_map_backends_without_fallback() {
+    let mut engine = Engine::ready_for_test();
+    for (value, expected) in [("CuDa", "cuda"), ("CPU", "cpu"), ("TensorRT", "tensorrt")] {
+        engine
+            .set_option("NnBackend", SearchOptionValue::Combo(value.to_owned()))
+            .unwrap();
+        engine
+            .set_option(
+                "NnCacheDir",
+                SearchOptionValue::String("/cache with spaces".to_owned()),
+            )
+            .unwrap();
+        assert_eq!(engine.backend, expected);
+        let provider = engine.execution_provider().unwrap();
+        assert_eq!(provider.name(), expected);
+        if let ExecutionProvider::TensorRt { cache_root } = provider {
+            assert_eq!(cache_root, PathBuf::from("/cache with spaces"));
+        }
+    }
+    for size in [1, 1024] {
+        engine
+            .set_option("NnBatchSize", SearchOptionValue::Spin(size))
+            .unwrap();
+        assert_eq!(engine.config.batch_size.get(), size);
+    }
+    for size in [0, 1025, usize::MAX] {
+        assert!(matches!(
+            engine.set_option("NnBatchSize", SearchOptionValue::Spin(size)),
+            Err(SetOptionError::OutOfRange { .. })
+        ));
+        assert_eq!(engine.config.batch_size.get(), 1024);
+    }
+    assert!(matches!(
+        engine.set_option("NnBackend", SearchOptionValue::Combo("vulkan".to_owned())),
+        Err(SetOptionError::InvalidValue { .. })
+    ));
+    assert_eq!(engine.backend, "tensorrt");
+}
+
+#[test]
+fn changed_inference_options_require_preparation_again_but_identical_values_do_not() {
+    for (name, same, changed) in [
+        (
+            "NnBackend",
+            SearchOptionValue::Combo("TENSORRT".to_owned()),
+            SearchOptionValue::Combo("cpu".to_owned()),
+        ),
+        (
+            "NnCacheDir",
+            SearchOptionValue::String(String::new()),
+            SearchOptionValue::String("/cache".to_owned()),
+        ),
+        (
+            "NnBatchSize",
+            SearchOptionValue::Spin(256),
+            SearchOptionValue::Spin(1),
+        ),
+    ] {
+        let mut engine = Engine::ready_for_test();
+        engine.set_option(name, same).unwrap();
+        engine.prepare().unwrap(); // 注入済みの推論器を保持しており、Runtimeは読まない。
+        assert!(engine.evaluator.is_some(), "{name}");
+        engine.set_option(name, changed).unwrap();
+        assert!(
+            matches!(
+                engine.prepare_driver(initial(), nodes(1)),
+                Err(Error::MissingEvaluator)
+            ),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn hash_capacity_change_discards_tree_and_keeps_evaluator() {
+    let mut engine = Engine::ready_for_test();
+    engine.prepare_driver(initial(), nodes(1)).unwrap();
+    assert!(engine.driver.is_some());
+    engine
+        .set_option("USI_Hash", SearchOptionValue::Spin(2))
+        .unwrap();
+    assert!(engine.driver.is_none());
+    assert_eq!(engine.config.capacity_bytes, 2 * 1024 * 1024);
+    assert!(engine.evaluator.is_some());
 }

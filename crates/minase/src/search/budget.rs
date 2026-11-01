@@ -42,13 +42,6 @@ pub(super) fn time_advantage_factor(
     1000 - time_advantage * difference / (remaining + opponent + 1)
 }
 
-/// [`ClockCoefficients::budget`]を安全余裕30 msで適用する。
-/// 秒読みだけの特別な締切や、指定された秒読み余裕の適用は[`time_budget`]で選ぶ。
-#[cfg(test)]
-pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
-    ClockCoefficients::current().budget(clock, 30)
-}
-
 /// 持ち時間から探索時間を配分する式に渡す調整係数。
 #[derive(Clone, Copy)]
 pub(super) struct ClockCoefficients {

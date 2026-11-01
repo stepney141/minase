@@ -100,7 +100,7 @@ use crate::search::alphabeta::tt::{
     CRITICAL_RESERVED_MASK, CRITICAL_SCORE_MASK, NO_MOVE, pack_move, unpack_move,
 };
 #[cfg(feature = "tuning")]
-use crate::search::budget::clock_budget;
+use crate::search::budget::ClockCoefficients;
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::SearchClock;
 use crate::search::error::SearchError;
@@ -123,6 +123,11 @@ use minase_core::{MoveGenerator, Square, repetition_key};
 // ---------------------------------------------------------------------------
 // ヘルパ
 // ---------------------------------------------------------------------------
+
+#[cfg(feature = "tuning")]
+fn clock_budget(clock: ClockLimits) -> TimeBudget {
+    ClockCoefficients::current().budget(clock, 30)
+}
 
 /// 対角の隅に王将だけを置き、先手が指す静穏局面。
 fn bare_kings() -> Position {

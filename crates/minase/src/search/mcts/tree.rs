@@ -389,8 +389,7 @@ pub struct Tree {
     capacity_bytes: usize,
     used_bytes: usize,
     pending: Vec<PendingSimulation>,
-    #[cfg(test)]
-    pub(super) max_ply: u32,
+    pub(super) depth_limit: u32,
 }
 
 impl Tree {
@@ -414,21 +413,13 @@ impl Tree {
             capacity_bytes,
             used_bytes,
             pending: Vec::new(),
-            #[cfg(test)]
-            max_ply: MAX_PLY,
+            depth_limit: MAX_PLY,
         })
     }
 
     /// 現在の根を返す。
     pub fn root(&self) -> &Node {
         &self.root
-    }
-
-    pub(super) fn depth_limit(&self) -> u32 {
-        #[cfg(test)]
-        return self.max_ply;
-        #[cfg(not(test))]
-        MAX_PLY
     }
 
     /// 節点と辺が使用する容量をバイト単位で返す。
@@ -515,7 +506,7 @@ impl Tree {
         if edge.child.is_some() {
             return Err(TreeError::InvalidState);
         }
-        if path.len() > self.depth_limit() as usize {
+        if path.len() > self.depth_limit as usize {
             return Err(TreeError::DepthLimit);
         }
         let (moves, state): (&[Move], _) = match child {
@@ -523,13 +514,13 @@ impl Tree {
                 if moves.is_empty() {
                     return Err(TreeError::EmptyMoves);
                 }
-                if path.len() == self.depth_limit() as usize {
+                if path.len() == self.depth_limit as usize {
                     return Err(TreeError::DepthLimit);
                 }
                 (moves, NodeState::Pending { unexpanded: false })
             }
             Child::Unexpanded => {
-                if path.len() != self.depth_limit() as usize {
+                if path.len() != self.depth_limit as usize {
                     return Err(TreeError::DepthLimit);
                 }
                 (&[], NodeState::Pending { unexpanded: true })

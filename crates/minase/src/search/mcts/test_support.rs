@@ -9,7 +9,7 @@ use super::{Driver, EvaluationRequest};
 use crate::nn::{Evaluator, NnError, Query};
 use crate::search::{SearchLimits, SearchSnapshot};
 
-pub(super) const SCALE: f32 = 1072.65;
+pub(crate) const SCALE: f32 = 1072.65;
 pub(super) const CAPACITY: usize = 1024 * 1024;
 
 pub(super) fn rules(repetition: RepetitionRule) -> Rules {

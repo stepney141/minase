@@ -33,6 +33,8 @@ invariants = ["minase-core/invariants"]
 search-stats = []
 # Expose bounded Tune_ USI options for search and time-management coefficients.
 tuning = []
+# Expose neural-network test helpers to integration and binary tests.
+test-util = []
 
 [dependencies]
 minase-core = { version = "0.2.0", path = "../minase-core" }
@@ -54,5 +56,5 @@ flate2 = "1"
 # `cargo test`では整合検査を常に有効にする（docs/adr/enable-invariant-checks-in-tests-by-feature.md）。
 # Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
 # `cargo build`と`cargo run`のバイナリには検査が入らない。
-minase = { path = ".", features = ["invariants"] }
+minase = { path = ".", features = ["invariants", "test-util"] }
 minase-core = { version = "0.2.0", path = "../minase-core", features = ["test-util", "invariants"] }

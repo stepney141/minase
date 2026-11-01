@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use minase::nn::{Evaluator, NnError, Query, UniformEvaluator};
+use minase::nn::test_util::UniformEvaluator;
+use minase::nn::{Evaluator, NnError, Query};
 use minase::training::records::{DecodedGame, Header, Outcome, Policy, Reader, TeacherKind, Value};
 use minase_core::{
     Color, GameResult, WinReason,

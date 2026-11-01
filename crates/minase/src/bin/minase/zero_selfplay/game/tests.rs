@@ -1,7 +1,8 @@
 //! 反復による投了の抑止、誤投了の分類、および自己対局の引き分け値の契約。
 
 use super::*;
-use minase::nn::{Evaluator, NnError, Query, UniformEvaluator};
+use minase::nn::test_util::UniformEvaluator;
+use minase::nn::{Evaluator, NnError, Query};
 use minase::search::mcts::tree::{Child, Outcome as ProofOutcome, Proof, Tree};
 use minase_core::test_util::{position, sq};
 use minase_core::{DrawReason, ExhaustionRule, GameStatus, PieceKind, WinReason};

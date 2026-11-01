@@ -2,7 +2,8 @@
 //!
 //! AlphaZero型探索のMCTS、自己対局生成器、およびPythonの学習器が共有するネットの入出力の契約を定める。
 //! 入力は159面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
-//! 推論には評価器の抽象[`Evaluator`]、試験用の[`UniformEvaluator`]、およびONNX Runtimeによる[`OnnxEvaluator`]を用意する。
+//! 推論には評価器の抽象[`Evaluator`]とONNX Runtimeによる[`OnnxEvaluator`]を用意する。
+//! `test-util`フィーチャでは、各着手に同じ方策logitを返す試験用の評価器も公開する。
 //! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
 //!
 //! 設計判断は`docs/adr/`の次の7本に記録している。
@@ -26,10 +27,12 @@ pub mod evaluator;
 pub mod onnx;
 pub mod policy;
 pub mod tensorrt_cache;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
 
 pub use encoding::{INPUT_PLANES, INPUT_SIZE, encode};
 pub use error::NnError;
-pub use evaluator::{Evaluator, Query, UniformEvaluator};
+pub use evaluator::{Evaluator, Query};
 pub use onnx::{ExecutionProvider, Network, OnnxEvaluator};
 pub use policy::{POLICY_PLANES, POLICY_SIZE, policy_label, softmax};
 
@@ -42,40 +45,4 @@ fn relative_square(square: Square, side: Color) -> usize {
 }
 
 #[cfg(test)]
-mod test_util {
-    use minase_core::rng::XorShift64;
-    use minase_core::{Color, MoveGenerator, Position, Rules, Square};
-    use std::num::{NonZeroU64, NonZeroUsize};
-
-    pub(super) fn rotate(square: Square) -> Square {
-        Square::new(11 - square.file(), 11 - square.rank()).unwrap()
-    }
-
-    /// 3局を最大500手ずつ進め、王駒の消失または合法手なしで打ち切る。
-    pub(super) fn random_positions() -> Vec<Position> {
-        let rules = Rules::ENGINE_DEFAULT.moves;
-        let generator = MoveGenerator::new(rules);
-        let mut positions = Vec::new();
-        let mut moves = Vec::new();
-        for seed in [1, 71, 2026] {
-            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
-            let mut position = Position::initial();
-            for _ in 0..500 {
-                positions.push(position.clone());
-                if Color::ALL
-                    .iter()
-                    .any(|&side| position.royal_pieces(side).is_empty())
-                {
-                    break;
-                }
-                moves.clear();
-                generator.generate_moves(&position, &mut moves);
-                let Some(count) = NonZeroUsize::new(moves.len()) else {
-                    break;
-                };
-                position.make_move_unchecked(moves[rng.index(count)], rules);
-            }
-        }
-        positions
-    }
-}
+mod test_support;

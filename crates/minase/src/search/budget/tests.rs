@@ -4,6 +4,10 @@ use super::*;
 use crate::search::{ClockLimits, SearchLimits};
 use std::time::Duration;
 
+fn clock_budget(clock: ClockLimits) -> TimeBudget {
+    ClockCoefficients::current().budget(clock, 30)
+}
+
 fn depth_limits(depth: u32) -> SearchLimits {
     SearchLimits::new(Some(depth), None, None, None).expect("test depth must be valid")
 }
