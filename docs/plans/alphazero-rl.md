@@ -52,7 +52,7 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 [長い対局の調査](../measurements/alphazero-rl/alphazero-rl-long-games.md)で、上限に達する対局は少ない駒で有利な側が勝ちきれない終盤であり、上限を外すと大半が3,000手までに終わると分かった。
 そこで2026年11月1日の利用者の決定により、サイクル10から手数の上限を3,000手に上げた（[手数の上限のADR](../adr/discard-zero-self-play-games-that-reach-3000-plies.md)）。
 これは「各サイクルの設定」の節の初期10サイクルの固定に対する例外である。
-10サイクル目の進捗測定に使う作業機のONNX RuntimeとTensorRTの実行環境は、`tools/train/zero/setup.sh`で入れ直した。
+[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0010.md)では、サイクル10のネットがサイクル0に400局中398.5点で勝ち、生成と無関係なαβの棋譜に対する価値の損失は、サイクル4以後0.60前後で横ばいであった。
 
 ## 目的
 
