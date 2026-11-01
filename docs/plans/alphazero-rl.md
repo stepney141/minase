@@ -54,7 +54,8 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 これは「各サイクルの設定」の節の初期10サイクルの固定に対する例外である。
 [10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0010.md)では、サイクル10のネットがサイクル0に400局中398.5点で勝ち、生成と無関係なαβの棋譜に対する価値の損失は、サイクル4以後0.60前後で横ばいであった。
 2026年11月1日の利用者の決定により、ほぼ乱択の対局からなるサイクル1と2を、サイクル14の学習から学習窓の外に出した（[学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)）。
-サイクル20までを回した後、「ふかうら王の学習の技法」の節の手順で、サイクル20の最終のチェックポイントから分岐して、cosine annealingの本線のサイクル21〜25と、一定の学習率の系列`cycles-constant/`のサイクル21〜25を、別々のColab機で同時に回している。
+[20サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0020.md)では、サイクル20のネットがサイクル10にEloの点推定+199［+171, +229］で勝った。
+サイクル20の後は、「ふかうら王の学習の技法」の節の手順で、サイクル20の最終のチェックポイントから分岐して、cosine annealingの本線のサイクル21〜25と、一定の学習率の系列`cycles-constant/`のサイクル21〜25を、別々のColab機で同時に回している。
 2台の消費は同じ残高から引かれるので、この間の`sessions.jsonl`と`cycles-constant-sessions.jsonl`のCUの区間は他方の消費を含み、合計の消費は`rentals.jsonl`の残高から求める。
 両系列の5サイクル目のネットを、PUCTの1手800シミュレーションのGSPRTで比べ、採った側の系列でサイクルを続ける。
 
