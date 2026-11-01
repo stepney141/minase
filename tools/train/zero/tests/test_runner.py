@@ -1102,7 +1102,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         fixture = first_commands[0]
         self.assertEqual(fixture[fixture.index("fixture-eval"):], [
             "fixture-eval", "--checkpoint", "cycles/cycle-0001/train/checkpoint.pt", "--onnx", "cycles/cycle-0001/train/model.onnx",
-            "--fixture", "/content/src/tools/train/zero/fixtures/nn-positions.jsonl", "--out", "cycles/cycle-0001/check/pytorch.json",
+            "--fixture", FIXTURE, "--out", "cycles/cycle-0001/check/pytorch.json",
         ])
         for command in first_commands[1:]:
             if "--candidate" in command:

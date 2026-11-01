@@ -1,7 +1,7 @@
 //! 学習器との符号化の照合と推論の比較に使う固定局面集を書き出す。
 //!
 //! 本モジュールは固定局面集のJSON Lines形式の正本を定める。
-//! 固定局面集は`tools/train/zero/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`minase dev nn-eval`の推論に使われる。
+//! 固定局面集は`crates/minase/tests/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`minase dev nn-eval`の推論に使われる。
 //! 1行につき1局面を記録し、キーの順は[`Fixture`]のフィールド順に固定する。
 
 use std::fs;
@@ -228,9 +228,9 @@ mod tests {
 
     const FIXTURE_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/train/zero/fixtures/nn-positions.jsonl"
+        "/tests/fixtures/nn-positions.jsonl"
     );
-    const REGENERATE: &str = "再生成: cargo run --release --offline --bin minase -- dev nn-fixture --out tools/train/zero/fixtures/nn-positions.jsonl";
+    const REGENERATE: &str = "再生成: cargo run --release --offline --bin minase -- dev nn-fixture --out crates/minase/tests/fixtures/nn-positions.jsonl";
 
     // [`fixture_positions`]の契約: 288局面が両手番・先獅子・両軍の成駒・全ラベル族・長い移動を含む。
     #[test]

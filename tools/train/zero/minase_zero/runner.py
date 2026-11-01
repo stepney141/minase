@@ -83,7 +83,7 @@ from . import rl
 
 
 SOURCE = "/content/src/tools/train/zero"
-FIXTURE = SOURCE + "/fixtures/nn-positions.jsonl"
+FIXTURE = "/content/src/crates/minase/tests/fixtures/nn-positions.jsonl"
 ENGINE = "/content/src/target/release/minase"
 PYTHON = ["uv", "run", "--frozen", "--project", SOURCE, "python"]
 TRAINER = [*PYTHON, "-m", "minase_zero"]

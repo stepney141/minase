@@ -14,7 +14,7 @@ from minase_zero.encoding import encode_planes, policy_labels, policy_mask
 class EncodingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        fixture = Path(__file__).resolve().parents[1] / "fixtures" / "nn-positions.jsonl"
+        fixture = Path(__file__).resolve().parents[4] / "crates/minase/tests/fixtures/nn-positions.jsonl"
         cls.fixtures = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
         cls.previous_threads = torch.get_num_threads()
         torch.set_num_threads(4)
