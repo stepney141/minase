@@ -180,11 +180,8 @@ impl Fm {
         #[cfg(not(feature = "tuning"))]
         let correction = numerator / (1_i64 << (2 * self.exponent + 1));
         #[cfg(feature = "tuning")]
-        let correction = scaled_correction(
-            numerator,
-            self.exponent,
-            crate::search::alphabeta::params::fm_scale(),
-        );
+        let correction =
+            scaled_correction(numerator, self.exponent, crate::search::params::fm_scale());
         correction
     }
     fn numerator(&self, accumulator: &FmAccumulator) -> i64 {
@@ -338,8 +335,7 @@ mod tests {
             fm.add(&mut accumulator, 0);
             fm.add(&mut accumulator, 1);
             // 積6を指数1で4除算する。商を写さず剰余の幅と符号で検査する。
-            let product =
-                i64::from(sign) * 6 * i64::from(crate::search::alphabeta::params::fm_scale());
+            let product = i64::from(sign) * 6 * i64::from(crate::search::params::fm_scale());
             let value = fm.correction(&accumulator);
             let residual = product - value * 4096;
             assert!(residual.abs() < 4096);

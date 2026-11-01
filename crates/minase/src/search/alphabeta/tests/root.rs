@@ -2,11 +2,11 @@
 
 use super::*;
 use crate::search::REPETITION_BAND_START;
-use crate::search::alphabeta::params;
 use crate::search::alphabeta::root::{
     FailHighReduction, RootMoveStats, grow_aspiration_delta, increase_depth_reduction,
     initial_aspiration_delta, root_move_weight,
 };
+use crate::search::params;
 
 fn set_root_move_averages(searcher: &mut Searcher<'_>, mv: Move, averages: Option<(i32, i64)>) {
     if let Some((_, stats)) = searcher

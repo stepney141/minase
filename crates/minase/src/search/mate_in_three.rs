@@ -170,5 +170,4 @@ fn all_replies_lose(game: &Game, attacker: Color) -> Result<bool, Error> {
 }
 
 #[cfg(test)]
-#[path = "mate_tests.rs"]
 mod tests;

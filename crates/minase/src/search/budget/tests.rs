@@ -1,7 +1,7 @@
 //! 時間配分の算術と入力条件を検査する。
 
-use super::budget::*;
-use super::{ClockLimits, SearchLimits};
+use super::*;
+use crate::search::{ClockLimits, SearchLimits};
 use std::time::Duration;
 
 fn depth_limits(depth: u32) -> SearchLimits {

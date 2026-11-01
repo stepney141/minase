@@ -2,7 +2,7 @@
 
 use super::*;
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::params;
+use crate::search::params;
 use minase_core::test_util::{bench_positions, sampled_random_positions};
 
 fn capture(from: Square, to: Square, promote: bool) -> Move {

@@ -4,8 +4,9 @@
 
 use super::*;
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::{
-    params, pruning::corrected_static_eval, quiesce::qsearch_post_search_score,
+use crate::search::{
+    alphabeta::{pruning::corrected_static_eval, quiesce::qsearch_post_search_score},
+    params,
 };
 
 fn ordinary(from: Square, to: Square) -> Move {

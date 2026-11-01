@@ -19,10 +19,10 @@ use super::history::{
     ContinuationHistory, HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT,
     LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, PawnHistory, history_gravity,
 };
-use super::params;
 use super::royal::captures_last_royal;
 use super::searcher::{KILLER_COUNT, MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
+use crate::search::params;
 
 /// Continuation historyを更新する文脈の距離と重み。
 /// Stockfishの値を使う（src/search.cpp:2049-2051）。

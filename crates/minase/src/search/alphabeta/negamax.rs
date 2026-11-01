@@ -21,7 +21,6 @@ use super::ordering::{
     HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
     piece_at_for_ordering,
 };
-use super::params;
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
     NULL_MOVE_VERIFICATION_PLY_DENOMINATOR, NULL_MOVE_VERIFICATION_PLY_NUMERATOR,
@@ -37,6 +36,7 @@ use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
+use crate::search::params;
 
 /// 打ち切り前に置換表の手を指した局面を照合する深さの下限。
 /// Stockfishの`depth >= 7`に対応する（src/search.cpp:917）。

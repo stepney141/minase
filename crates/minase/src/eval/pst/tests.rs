@@ -1171,7 +1171,7 @@ fn zero_rank_requires_zero_exponent_and_checksums_the_fm_section() {
 fn fm_scale_for_test() -> i64 {
     #[cfg(feature = "tuning")]
     {
-        i64::from(crate::search::alphabeta::params::fm_scale())
+        i64::from(crate::search::params::fm_scale())
     }
     #[cfg(not(feature = "tuning"))]
     {

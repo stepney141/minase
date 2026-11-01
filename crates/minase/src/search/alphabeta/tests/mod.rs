@@ -63,6 +63,7 @@ use crate::search::alphabeta::deepening::{
     IterationScalingCoefficients, auxiliary_depths, run_auxiliary_worker, run_main_worker,
     run_main_worker_with_iteration_hook, update_ponder_mate_early_stop,
 };
+use crate::search::alphabeta::engine::start_search_with_clock;
 use crate::search::alphabeta::history::{
     HistoryTable, LOW_PLY_HISTORY_INITIAL, LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, pawn_key,
 };
@@ -105,7 +106,6 @@ use crate::search::clock::SearchClock;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::handle::SearchHandle;
-use crate::search::handle::start_search_with_clock;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchRepetition, SearchSnapshot, search_key};
 use crate::search::{

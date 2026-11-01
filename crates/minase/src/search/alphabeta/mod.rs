@@ -7,7 +7,6 @@ mod engine;
 pub(crate) mod history;
 mod negamax;
 mod ordering;
-pub(crate) mod params;
 mod pruning;
 mod quiesce;
 mod root;
@@ -30,5 +29,5 @@ const INFINITY: i32 = MATE + 1;
 /// USIの履歴持ち越しテストで使う減衰率。
 #[cfg(test)]
 pub(crate) fn history_decay_for_test() -> i32 {
-    params::history_decay()
+    crate::search::params::history_decay()
 }

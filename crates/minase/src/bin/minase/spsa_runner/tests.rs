@@ -1266,7 +1266,7 @@ fn apply_rounds_half_values_away_from_zero_including_negative_values() {
 
 #[test]
 fn apply_parses_actual_search_parameter_table_and_valid_defaults() {
-    let entries = apply::parse_table(include_str!("../../../search/alphabeta/params.rs")).unwrap();
+    let entries = apply::parse_table(include_str!("../../../search/params.rs")).unwrap();
     assert!(!entries.is_empty());
     for entry in entries {
         assert!(

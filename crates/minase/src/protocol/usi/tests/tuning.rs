@@ -2,7 +2,7 @@
 #![cfg(feature = "tuning")]
 
 use super::*;
-use crate::search::alphabeta::params;
+use crate::search::params;
 
 // 係数とgo後の固定状態がプロセス全体に属するので、各会話を別のプロセスで実行する。
 #[test]

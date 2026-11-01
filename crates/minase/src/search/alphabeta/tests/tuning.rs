@@ -3,8 +3,6 @@
 #[cfg(feature = "tuning")]
 use super::*;
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::params;
-#[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
     correction::{
         CorrectionTable, CorrectionTableKind, correction_from_weighted_sum, correction_update_bonus,
@@ -15,6 +13,8 @@ use crate::search::alphabeta::{
     },
     root::{grow_aspiration_delta, initial_aspiration_delta},
 };
+#[cfg(feature = "tuning")]
+use crate::search::params;
 
 /// 全係数の計算への反映を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。

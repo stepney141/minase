@@ -3,7 +3,7 @@
 //! 判断の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
 use super::*;
-use crate::search::alphabeta::params;
+use crate::search::params;
 
 fn capture(from: Square, to: Square) -> Move {
     Move {

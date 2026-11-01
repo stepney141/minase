@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 use crate::eval::nnue::EVALUATION_LIMIT;
 use crate::search::{MAX_PLY, REPETITION_BAND_START, in_repetition_band};
 
-use super::params;
 use super::tt::Bound;
+use crate::search::params;
 
 /// 詰みを探す局面の閾値の切片。歩兵価値に対する百分率。
 /// Stockfishの750を歩兵価値208で換算した固定値（src/search.cpp:394-395）。

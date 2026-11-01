@@ -1,7 +1,7 @@
 //! 探索方式が共有する持ち時間の配分と入力の選別。
 
-use crate::search::alphabeta::params;
 use crate::search::limits::{ClockLimits, SearchLimits};
+use crate::search::params;
 use std::time::Duration;
 
 /// 1手に使う時間の予算。softはhard以下、hardは1 ms以上である。
@@ -239,3 +239,6 @@ pub(super) fn time_budget_with_coefficients(
 pub(super) fn to_u64_ms(milliseconds: u128) -> u64 {
     milliseconds.min(u128::from(u64::MAX)) as u64
 }
+
+#[cfg(test)]
+mod tests;

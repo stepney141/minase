@@ -53,6 +53,7 @@
 
 use minase::datagen::opening::generate_opening;
 use minase::search::SearchSnapshot;
+use minase::search::mate_in_three::{Verdict, mate_in_three};
 use minase::search::mcts::gumbel::{self, Gumbel};
 use minase::search::mcts::tree::{Node, NodeState, SelectionRule};
 use minase::search::mcts::{DrawValue, Driver, EvaluationRequest, Step};
@@ -62,7 +63,6 @@ use minase::training::records::{
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{Color, Game, GameResult, Move, Position, Rules};
 
-use super::mate::{Verdict, mate_in_three};
 use super::{Error, GUMBEL_VALUE_SCALE, RESIGN_THRESHOLD, TREE_CAPACITY};
 
 /// 全対局で共有する条件。手数上限は試験でも同じ経路から渡す。

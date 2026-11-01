@@ -11,12 +11,12 @@ use std::sync::atomic::{AtomicI16, Ordering};
 
 use super::history::history_gravity;
 use super::ordering::oriented_square;
-use super::params;
 use super::royal::royal_under_attack;
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::tt::Bound;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::REPETITION_BAND_START;
+use crate::search::params;
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Undo;

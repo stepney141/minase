@@ -21,10 +21,10 @@ use minase_core::rules::MoveRules;
 
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
-use super::params;
 use super::time::{InstabilityScaling, ponder_bonus_time_budget, uses_partial_results};
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::SearchClock;
+use crate::search::params;
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {

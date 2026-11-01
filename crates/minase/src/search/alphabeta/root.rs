@@ -6,6 +6,7 @@ use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 
+use super::INFINITY;
 use super::correction::correction_from_weighted_sum;
 use super::negamax::{SEARCHED_LIST_CAPACITY, should_record_searched_move};
 use super::ordering::{HistoryUpdateCoefficients, move_order_key};
@@ -15,7 +16,7 @@ use super::pruning::{
 };
 use super::searcher::Searcher;
 use super::tt::{Bound, Hit};
-use super::{INFINITY, params};
+use crate::search::params;
 
 /// 根の手の平均を更新する尺度（Stockfish `src/search.cpp:1480`）。
 const ROOT_MOVE_AVERAGE_SCALE: u32 = 32;

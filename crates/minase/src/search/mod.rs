@@ -7,14 +7,14 @@
 
 pub mod alphabeta;
 mod budget;
-#[cfg(test)]
-mod budget_tests;
 mod clock;
 mod error;
 mod events;
 mod handle;
 mod limits;
+pub mod mate_in_three;
 pub mod mcts;
+pub(crate) mod params;
 mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
