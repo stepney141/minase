@@ -117,7 +117,7 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 ### 4.1 強化学習のサイクルを回す一連の手順
 
 強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
-手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> <raw|ema> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。スクリプトは本線（`cycles/`）を回し、学習技法の導入の後の構成の引数（学習窓4,780.2万局面、cosine annealing、1サイクルの見込み80分と2.4 CU）を渡す。重みの移動平均はサイクル21の学習から始めるので、20以下と21以上のサイクルを1回の起動に混ぜるとエラーで止まる。最初のサイクルが1のときは、[学習技法の導入の試走](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)の生成の集計（NASの`trial-restart/cycle-0001/selfplay/summary.json`）から対局数を決める。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
+手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。スクリプトは本線（`cycles/`）を回し、学習技法の導入の後の構成の引数（学習窓4,780.2万局面、cosine annealing、1サイクルの見込み80分と2.4 CU）を渡す。最初のサイクルが1のときは、[学習技法の導入の試走](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)の生成の集計（NASの`trial-restart/cycle-0001/selfplay/summary.json`）から対局数を決める。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
 
 1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
 2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
@@ -129,7 +129,7 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 各サイクルの後、作業機で次を行う（GPUが空いているとき）。
 
 - 固定の検証用棋譜の診断：`tools/train/zero`で`uv run --frozen python -m minase_zero external-eval --checkpoint /mnt/synology_nas/minase/alphazero/cycles/cycle-NNNN/train/checkpoint.pt --data <minaseのリポジトリ>/data/nnue-lr-schedule-gen/generated-8200000.bin --games 1000 --seed 20261030 --device cuda --out /mnt/synology_nas/minase/alphazero/external/cycle-NNNN.json`。
-- 10サイクルごとの進捗測定：`docs/measurements/alphazero-rl/alphazero-rl-progress-c0020/`の`check.sh`（作業機での3者の照合）と`progress-workstation.sh <新> <旧> 16 <シード> <シード> /mnt/synology_nas/minase/alphazero/progress`。`progress-workstation.sh`の後半の乱択との対局は最初の進捗測定でだけ要るもので、サイクル0の実行ディレクトリが既にあると失敗するので、次からはその部分を除いた版を使う。
+- 10サイクルごとの進捗測定：`docs/measurements/alphazero-rl/alphazero-rl-restart-progress-c0020/`の`check.sh`（作業機での3者の照合）と`progress-workstation.sh <新> <旧> 16 <シード> <シード> /mnt/synology_nas/minase/alphazero/progress`。あわせて、引き延ばしの兆候を`docs/measurements/alphazero-rl/alphazero-rl-long-games/`の`long_trend.py`で集計する。
 
 ## 5. 結果を受け取って終了する
 

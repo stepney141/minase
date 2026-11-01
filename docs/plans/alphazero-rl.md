@@ -55,7 +55,7 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 [10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0010.md)では、サイクル10のネットがサイクル0に400局中398.5点で勝ち、生成と無関係なαβの棋譜に対する価値の損失は、サイクル4以後0.60前後で横ばいであった。
 2026年11月1日の利用者の決定により、ほぼ乱択の対局からなるサイクル1と2を、サイクル14の学習から学習窓の外に出した（[学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)）。
 [20サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0020.md)では、サイクル20のネットがサイクル10にEloの点推定+199［+171, +229］で勝った。
-サイクル21からは、重みの移動平均も書き出している。
+2026年11月2日の利用者の決定で、重みの移動平均を学習器と実行器から取り除いた（[移動平均のADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)）。サイクル21〜25の出力には平均が残るが、サイクル26からは書き出さない。
 サイクル20から分岐した一定の学習率の系列`cycles-constant/`は、サイクル22の出力の照合で止まり、2026年11月2日の利用者の決定で打ち切った（[学習率の予定のADR](../adr/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)）。
 
 ## 目的
@@ -242,7 +242,7 @@ n=100でx=0なら上限は約2.95%、x=1なら約4.66%、x=2なら約6.16%であ
 
 - 価値の過学習への対処は、2026年10月29日に利用者が決め、学習窓を広げて局面を抽出する方式を採った（「学習窓と局面の抽出」の節）。
 - 方策の損失を局面ごとの合法手だけで正規化する方式（lc0の`mask_legal_moves`）は、2026年10月29日に利用者が採らないと決めた。常に不可能なラベルを除く定数マスク（[学習器の定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)）は維持する。調べた先行実装のうち、学習で合法手だけに正規化するのはlc0の任意の設定とPolygamesだけで、AlphaGo Zero、Leela Zero、Minigo、KataGo、dlshogi、Gumbel dlshogi、およびAobaZeroは全出力のsoftmaxで学習する。minaseの合法手に乗る確率質量は、マスクなしで、サイクル1の0.957からサイクル5の0.994へ上がった。
-- 重みの移動平均（EMA）は、2026年10月30日の利用者の決定で学習器に入れたが、リセット前のサイクル25の比較で平均のネットが強いと言えなかったので、自己対局と進捗測定には平均でない重みのネットを使う（[ADR](../adr/keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)）。平均はKataGoの既定に従い、約50万標本の学習ごとに現在の重みを1/8の割合で混ぜる。再出発の後も、リセット前と同じくサイクル21の学習から平均を始めて書き出し、学習の伸びが落ちた後に同じ比較をやり直せるようにする（Claudeの決定）。
+- 重みの移動平均（EMA）は、2026年10月30日の利用者の決定で学習器に入れたが、リセット前のサイクル25の比較で平均のネットが強いと言えなかったので、2026年11月2日の利用者の決定で取り除いた（[ADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)）。
 - 審判層の裁定より先の詰みを探す詰み探索（dlshogiの3手詰め）は、2026年10月31日の利用者の決定により、[学習技法の導入](archived/alphazero-restart-techniques.md)で、王手限定の3手以内の勝ちによる打ち切りとして自己対局に入れた（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)）。
 
 これらを採る場合は、「各サイクルの設定」の節の初期10サイクルの固定の例外とし、変えた時点と理由を記録に残す。
@@ -368,7 +368,6 @@ vast.aiの値は、GPU1枚、CPU12スレッド以上、および直接のSSH接�
 改善が見られなければ、当該局の着手列を再生して原因を調べる。
 第1の対局は思考時間に依存しないので、借りた機械で行う。
 第2に、3者の出力の照合（「記録」の節）を、学習に使ったGPU種別に加えて作業機でも行う。
-最初の進捗測定の後には、重みの移動平均の採否も決める（「学習が動いてから決める技法」の節）。
 
 統括計画の到達の判定の材料として、進捗測定の5回ごと（50サイクルごと）と段階を進める前に、作業機で最新のネットのMCTSとαβ探索をSTCで固定200ペア対局させ、MCTSから見たEloを測定記録に残して利用者へ報告する。
 候補のMCTSと基準のαβ探索は、masterの同じコミットを`commit:`で指定し、候補にだけ`--candidate-args`で`--search mcts --nn-model <NASのネットのファイル>`を与える。

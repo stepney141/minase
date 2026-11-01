@@ -177,15 +177,11 @@ class TrainTests(unittest.TestCase):
         self.assertGreater(self.interrupted_state["completed_steps"], 0)
         self.assertLess(self.interrupted_state["completed_steps"], self.interrupted_state["total_steps"])
         for key in ("model", "optimizer", "completed_steps", "total_steps", "positions_seen",
-                    "data_order_sha256", "loss_sums", "learning_curve", "ema", "samples_seen", "samples_seen_start"):
+                    "data_order_sha256", "loss_sums", "learning_curve", "samples_seen", "samples_seen_start"):
             with self.subTest(key=key):
                 self.assert_state_equal(self.state_a[key], self.state_b[key])
         self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
-        self.assertEqual(self.summary_a["ema_diagnostics"], self.summary_b["ema_diagnostics"])
         self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
-        self.assertEqual((self.a / "model-ema.onnx").read_bytes(), (self.b / "model-ema.onnx").read_bytes())
-        self.assertEqual(self.summary_a["ema_updates"], 4 * len(self.data.boards[~self.data.validation]) // 37)
-        self.assertEqual(self.state_a["ema"]["samples_since_update"], 4 * int((~self.data.validation).sum()) % 37)
         self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
@@ -217,13 +213,11 @@ class TrainTests(unittest.TestCase):
         out = self.root / "final-only"
         shutil.copytree(self.a, out)
         (out / "model.onnx").unlink()
-        (out / "model-ema.onnx").unlink()
         (out / "summary.json").unlink()
         saved_bytes = (out / "checkpoint.pt").read_bytes()
         require_success(run_cli(["train", "--resume", str(out), "--device", "cpu"]))
         self.assertEqual(saved_bytes, (out / "checkpoint.pt").read_bytes())
         self.assertEqual((out / "model.onnx").read_bytes(), (self.a / "model.onnx").read_bytes())
-        self.assertEqual((out / "model-ema.onnx").read_bytes(), (self.a / "model-ema.onnx").read_bytes())
         summary = json.loads((out / "summary.json").read_text())
         for key in self.summary_a.keys() - {"elapsed_seconds", "positions_per_second", "loading_peak_rss_bytes"}:
             self.assertEqual(summary[key], self.summary_a[key], key)
@@ -244,7 +238,7 @@ class TrainTests(unittest.TestCase):
             self.assertTrue(provenance[key])
         self.assertIn("cuda_version", provenance)
 
-    def test_next_cycle_carries_momentum_replaces_settings_and_clips_gradients(self) -> None:
+    def test_init_ignores_legacy_fields_and_carries_momentum_with_new_settings(self) -> None:
         previous_threads = torch.get_num_threads()
         torch.set_num_threads(1)
         self.addCleanup(torch.set_num_threads, previous_threads)
@@ -306,7 +300,15 @@ class TrainTests(unittest.TestCase):
             expected_parameters.append(parameter.detach().double() - rate * (gradient + 0.8 * buffer))
 
         out = self.root / "next-cycle"
-        arguments = train_arguments(self.a / "checkpoint.pt", out)
+        # 本線のサイクル21〜25から26への移行を守る試験。余分な設定は引き継がず、
+        # 余分な重みを読み込めない状態でも、通常の重みとモーメンタムで次の学習を始める。
+        legacy = torch.load(self.a / "checkpoint.pt", weights_only=True)
+        legacy["ema"] = {"model": {}, "samples_since_update": 0, "updates": 1}
+        obsolete_settings = {"ema_period_samples": 500_000, "ema_scale": 8, "lr_schedule": "constant"}
+        legacy["config"].update(obsolete_settings)
+        initial = self.root / "legacy-checkpoint.pt"
+        torch.save(legacy, initial)
+        arguments = train_arguments(initial, out)
         for flag, value in (("--data", str(path)), ("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
                             ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
@@ -314,6 +316,10 @@ class TrainTests(unittest.TestCase):
         require_success(run_cli(arguments))
         state = torch.load(out / "checkpoint.pt", weights_only=True)
         summary = json.loads((out / "summary.json").read_text())
+        self.assertNotIn("ema", state)
+        for record in (state["config"], summary["config"], summary):
+            self.assertTrue(obsolete_settings.keys().isdisjoint(record))
+        self.assertEqual({path.name for path in out.iterdir()}, {"checkpoint.pt", "model.onnx", "summary.json"})
         self.assertEqual(state["cycle"], 2)
         self.assertEqual(state["completed_steps"], 1)
         self.assertEqual(state["positions_seen"], 8)

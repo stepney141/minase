@@ -159,6 +159,18 @@ class ExternalEvaluationTests(unittest.TestCase):
         self.assertGreater(summary["elapsed_seconds"], 0)
         self.assertTrue(math.isfinite(summary["elapsed_seconds"]))
 
+    def test_legacy_checkpoint_uses_regular_weights(self) -> None:
+        expected = self.evaluate("regular-weights.json", 5, 42)
+        # 移行前のチェックポイントの余分な重みは、外部棋譜の評価でも読み込まない。
+        state = torch.load(self.checkpoint, weights_only=True)
+        state["ema"] = {"model": {}}
+        torch.save(state, self.checkpoint)
+        output = self.directory / "legacy-weights.json"
+        require_success(run_cli(self.arguments(output)))
+        actual = json.loads(output.read_text())
+        self.assertEqual(actual["diagnostics"], expected["diagnostics"])
+        self.assertEqual(actual["selected_games"], expected["selected_games"])
+
     def test_every_cli_argument_is_required_and_device_is_restricted(self) -> None:
         groups = [["--checkpoint", str(self.checkpoint)], ["--data", *map(str, self.paths)],
                   ["--games", "5"], ["--seed", "42"], ["--device", "cpu"],

@@ -4,8 +4,7 @@ trainの出力先には、checkpoint.pt、model.onnx、およびsummary.jsonを�
 どれも同じディレクトリの一時ファイルへ書いて同期し、名前を変えてから親ディレクトリを
 同期して確定させる。checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に
 置き換え、最新の1つだけを残す。最後の更新の後は、最終のチェックポイントを確定させてから
-窓全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、平均を持つ場合の
-model-ema.onnx、summary.jsonの順に確定させて、
+窓全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、summary.jsonの順に確定させて、
 summary.jsonの存在をサイクルの完了とみなす。
 すべての更新を終えたcheckpoint.ptが、次のサイクルの--initに与えるチェックポイントになる。
 
@@ -27,30 +26,18 @@ data_order_sha256は、初期値を32バイトの0とし、更新のたびに「
 「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で
 置き換えた値の16進表記である。中断の有無にかかわらず、同じ学習窓とシードなら同じ値になる。
 
---lr-scheduleはconstantかcosineを必須とする。constantはサイクル内の減衰を使わない。
-cosineの式に限り、Tはこのサイクルの全更新回数、tは0始まりの更新番号を表す。
-cosineではlr * 0.5 * (1 + cos(pi * t / T))、constantではlrに、
+学習率はcosine annealingで減衰させる。この式のTはサイクルの全更新回数、tは0始まりの更新番号を表す。
+lr * 0.5 * (1 + cos(pi * t / T))に、
 ウォームアップのmin(1, (samples_seen+B)/2,000,000)を掛けて全パラメータ群へ設定する。
 samples_seenは初期化時に0とし、各更新で実際に読んだ標本数を足し、--initと--resumeで引き継ぐ。
 Bは設定したバッチの大きさであり、末尾の端数でも学習率の式にはBを使う。
 最後の更新でも0にはならず、新しいサイクルではt=0から始め直す。
-lrとlr_scheduleはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
+lrはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
 
 checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BNの移動統計を
 含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、
 来歴、抽出条件とsample_sha256、累計の損失、学習曲線、samples_seen、samples_seen_start、およびdata_order_sha256を持つ。initのチェックポイントは
 最適化器の状態を持たず、完了した更新の回数と全更新回数をともに0とする。
-
-重みの指数移動平均（EMA）は--ema-period-samples=P、--ema-scale=Sをともに正にすると有効になる。
-両方0なら平均を作らず、保存もしない。平均がない--initからはその重みを初期値として始め、
-平均があれば重み、周期の余りの標本数、更新回数の累計を引き継ぐ。
-各バッチの最適化後に読んだ標本数を加え、Pに達するたびに平均←平均+(現在の重み−平均)/Sとし、
-Pを引いた余りを残す。1バッチで複数の周期を越えた場合も、その回数だけ更新する。
-初期値の設定は更新回数に含めない。新しいサイクルでは指定されたPとSを使う。
-checkpoint.ptのemaにはmodel、samples_since_update、updatesを保存し、--resumeでも復元する。
-KataGoのAveragedModel(use_buffers=False)に合わせ、BatchNormの学習する係数は平均し、
-running_mean、running_var、num_batches_trackedは平均の更新時の値を複写する。
-診断とONNX出力はこの保存した統計を使い、統計の再計算や最終の通常重みからの複写は行わない。
 
 trainのsummary.jsonの欄は次のとおりである。
 
@@ -58,7 +45,7 @@ trainのsummary.jsonの欄は次のとおりである。
 |---|---|
 | cycle | サイクル番号。 |
 | config | ネットの大きさと、新しいサイクルに指定した設定。出力先は含めない。 |
-| lr / lr_schedule | 基準の学習率と、そのサイクルの予定。configにも記録する。 |
+| lr | 基準の学習率。configにも記録する。 |
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
 | sample_count | 重複を含む更新列の長さ4N。 |
@@ -83,9 +70,6 @@ trainのsummary.jsonの欄は次のとおりである。
 | learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlrとsamples_seen、サイクル開始時のsamples_seen_start。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
-| ema_network_sha256 | 平均を持つ場合のmodel-ema.onnxのSHA-256。 |
-| ema_period_samples / ema_scale / ema_updates | 平均を持つ場合のP、S、およびサイクルをまたぐ更新回数の累計。 |
-| ema_diagnostics | 平均を持つ場合に、diagnosticsと同じ3集合と関数で求めた診断。 |
 | elapsed_seconds | loading、training、diagnosticsの秒数。 |
 | loading_peak_rss_bytes | 読み込み直後までのプロセスの最大常駐メモリ。resource.getrusageで測り、バイトへ換算する。 |
 | positions_per_second | positions_seenをtrainingの秒数で割った値。 |
@@ -107,7 +91,7 @@ short_term_value_1〜3は、拡張モジュールの短期価値目標への二�
 ためエラーにする。シードはuint64、サイクルは0以上の整数とする。
 
 loadingは教師の読み込みと初回の検査和計算、trainingはバッチの準備と更新、
-diagnosticsは3集合のバッチの準備と推論を、平均を持つ場合はその診断も含めて測る。保存とONNX出力は含めない。
+diagnosticsは3集合のバッチの準備と推論を測る。保存とONNX出力は含めない。
 loading_peak_rss_bytesは読み込みだけの増分ではなく、プロセス開始後の最大値である。
 再開時は保存済みの値と今回の読み込み直後の値の大きい方を記録する。
 再開時は保存済みの時間に今回の読み込みと更新の時間を加え、中断で失われた更新や
@@ -149,7 +133,7 @@ from torch.nn import functional as F
 from .data import Dataset, FileInfo, read_window
 from .encoding import POLICY_SIZE, encode_planes, policy_mask
 from .fixture import evaluate_fixture
-from .net import Ema, TrainingLogits, ZeroNet, export_onnx, validate_ema
+from .net import TrainingLogits, ZeroNet, export_onnx
 
 
 MAIN_LOSS_NAMES = ("policy", "value", "value_result")
@@ -243,9 +227,6 @@ def _validate_device(device: str, precision: str) -> torch.device:
 
 def _validate_training(config: dict) -> None:
     _validate_common(config["seed"], config["trainer_commit"])
-    validate_ema(config["ema_period_samples"], config["ema_scale"])
-    if config["lr_schedule"] not in ("constant", "cosine"):
-        raise ValueError("lr_schedule must be constant or cosine")
     for name in ("batch_size", "checkpoint_steps"):
         if config[name] <= 0:
             raise ValueError(f"{name} must be positive")
@@ -407,9 +388,9 @@ def total_loss(losses: tuple[torch.Tensor, ...]) -> torch.Tensor:
     return sum(loss * weight for loss, weight in zip(losses, LOSS_WEIGHTS, strict=True))
 
 
-def learning_rate(base: float, schedule: str, step: int, total: int, samples_seen: int, batch_size: int) -> float:
-    """サイクル内の予定と、ランダム初期化から続くウォームアップを掛ける。"""
-    factor = 0.5 * (1 + math.cos(math.pi * step / total)) if schedule == "cosine" else 1.0
+def learning_rate(base: float, step: int, total: int, samples_seen: int, batch_size: int) -> float:
+    """cosine annealingの係数と、ランダム初期化から続くウォームアップを掛ける。"""
+    factor = 0.5 * (1 + math.cos(math.pi * step / total))
     return base * factor * min(1.0, (samples_seen + batch_size) / WARMUP_SAMPLES)
 
 
@@ -598,9 +579,6 @@ def train_new(config: dict, out_dir: Path) -> None:
         "elapsed_seconds": {"loading": time.perf_counter() - started, "training": 0.0},
         "loading_peak_rss_bytes": loading_peak_rss,
     }
-    if config["ema_period_samples"] > 0:
-        state["ema"] = (initial["ema"] if "ema" in initial else
-                        {"model": initial["model"], "samples_since_update": 0, "updates": 0})
     _run(state, data, selected, out_dir, device)
 
 
@@ -646,10 +624,6 @@ def _run(
 ) -> None:
     config = state["config"]
     model = _model(state).to(device).train()
-    ema = None
-    if config["ema_period_samples"] > 0:
-        ema = Ema(model, config["ema_period_samples"], config["ema_scale"])
-        ema.load_state_dict(state["ema"])
     mask = torch.from_numpy(policy_mask()).to(device)
     opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     optimizer = torch.optim.SGD(
@@ -679,13 +653,11 @@ def _run(
             raise ValueError(f"non-finite training loss at update {step + 1}")
         total_loss(losses).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), config["clip_grad_norm"], error_if_nonfinite=True)
-        lr = learning_rate(config["lr"], config["lr_schedule"], step, state["total_steps"],
+        lr = learning_rate(config["lr"], step, state["total_steps"],
                            state["samples_seen"], batch_size)
         for group in optimizer.param_groups:
             group["lr"] = lr
         optimizer.step()
-        if ema is not None:
-            ema.update(model, len(batch))
         _accumulate(state["loss_sums"], losses, len(batch))
         _accumulate(interval_sums, losses, len(batch))
         state["positions_seen"] += len(batch)
@@ -704,8 +676,6 @@ def _run(
                                             "samples_seen_start": state["samples_seen_start"],
                                             "samples_seen": state["samples_seen"]})
             state["model"], state["optimizer"] = model.state_dict(), optimizer.state_dict()
-            if ema is not None:
-                state["ema"] = ema.state_dict()
             _save_checkpoint(out_dir / "checkpoint.pt", state)
             print(
                 f"steps={step + 1}/{state['total_steps']} "
@@ -719,7 +689,6 @@ def _run(
     model.eval()
     started = time.perf_counter()
     diagnostics = {}
-    ema_diagnostics = {}
     latest = data.file_indices >= len(config["data"]) - len(config["latest_data"])
     for name, membership, remainder in (("training_sample", data.training_sample, 1),
                                         ("latest_training_sample", data.training_sample & latest, 1),
@@ -735,24 +704,12 @@ def _run(
             "hash_modulus": 20, "hash_remainder": remainder, "games": games,
         }
         diagnostics[name] = {**metadata, **diagnose(model, data, indices, device, config, mask, auxiliary=True)}
-        if ema is not None:
-            ema_diagnostics[name] = {**metadata, **diagnose(ema.model, data, indices, device, config, mask, auxiliary=True)}
     diagnostic_seconds = time.perf_counter() - started
     with _atomic_path(out_dir / "model.onnx") as temporary:
         export_onnx(copy.deepcopy(model).cpu().float().eval(), temporary)
-    ema_summary = {}
-    if ema is not None:
-        with _atomic_path(out_dir / "model-ema.onnx") as temporary:
-            export_onnx(copy.deepcopy(ema.model).cpu().float().eval(), temporary)
-        ema_summary = {
-            "ema_network_sha256": _sha256(out_dir / "model-ema.onnx"),
-            "ema_period_samples": config["ema_period_samples"], "ema_scale": config["ema_scale"],
-            "ema_updates": ema.updates, "ema_diagnostics": ema_diagnostics,
-        }
     _write_json(out_dir / "summary.json", {
-        **ema_summary,
         "cycle": state["cycle"], "config": config, "provenance": state["provenance"],
-        "lr": config["lr"], "lr_schedule": config["lr_schedule"],
+        "lr": config["lr"],
         "training_count": state["training_count"], "validation_count": state["validation_count"],
         **{key: state[key] for key in ("latest_data", "sample_count", "window_training_count",
                                       "file_training_counts", "sample_sha256")},
@@ -769,15 +726,9 @@ def _run(
     })
 
 
-def fixture_eval(checkpoint: Path, onnx: Path, fixture: Path, out: Path, weights: str) -> None:
-    """指定した通常または平均の重みとONNXの一致を確かめ、固定局面集をCPUで推論する。"""
+def fixture_eval(checkpoint: Path, onnx: Path, fixture: Path, out: Path) -> None:
+    """チェックポイントの重みとONNXの一致を確かめ、固定局面集をCPUで推論する。"""
     state = _load_checkpoint(checkpoint)
-    if weights == "ema":
-        if "ema" not in state:
-            raise ValueError("checkpoint does not contain EMA weights")
-        state["model"] = state["ema"]["model"]
-    elif weights != "raw":
-        raise ValueError("weights must be raw or ema")
     model = _model(state).eval()
     onnx_bytes = onnx.read_bytes()
     with tempfile.TemporaryDirectory(prefix="minase-zero-fixture-") as directory:
