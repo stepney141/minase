@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本マイルストーンでは、[AlphaZero型探索の計画](alphazero.md)で追加したコードのうち、置き場所が責務に合わないものを移し、役目を終えた測定用のツールを削除し、試験専用のコードを本番のコードから分離する。
+本マイルストーンでは、[AlphaZero型探索の計画](../alphazero.md)で追加したコードのうち、置き場所が責務に合わないものを移し、役目を終えた測定用のツールを削除し、試験専用のコードを本番のコードから分離する。
 AlphaZero型探索は、方策と価値を出力するニューラルネットで導くモンテカルロ木探索（PV-MCTS）と、その探索の自己対局から学習する仕組みである。
 移す主なものは、次の3つである。
 1つ目は、自己対局生成器の中にある「王手限定の3手以内の勝ちの判定」（手番側が王手だけを続けて3手以内に勝ちを強制できるかを調べ、できれば対局を打ち切る処理）である。
@@ -17,10 +17,12 @@ AlphaZero型探索は、方策と価値を出力するニューラルネット�
 
 ## 状態
 
-起案。2026年11月2日に起案した。
-いま詰まっている点はない。
-実装は学習中でも別のworktreeで進められるが、masterへのマージは「依存関係」節の条件を満たすまで待つ。
-次の一手は、利用者の着手指示を受けてフェーズ1から始めることである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年11月2日に完了した。
+探索の結果を変える変更を含まず、αβ探索のbench（52,746ノード）と自己対局の出力が整理の前後で一致した（[挙動の一致の確認](../../measurements/zero-code-layout/zero-code-layout-behavior-check.md)）。
+設計判断は[測定用の道具の削除のADR](../../adr/delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)、[試験専用のコードのADR](../../adr/keep-test-only-code-out-of-production-types-and-functions.md)、および[3手の判定のADR](../../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)にある。
+本書が定めていなかった事項は、着手時にClaudeが決めて「着手時に補った決定」の節に記した。
 
 ## 目的
 
@@ -49,15 +51,15 @@ AlphaZero型探索の6本のサブタスクでは、それぞれの設計書が�
 - 重複する`softmax`の実装を`crate::nn`の1か所にまとめる。
 - `tools/train/zero/feasibility/`と`tools/train/zero/nn_torch_reference.py`を削除する（「ツールごとの判定」節）。
 - 集計ツール`teacher_stats`を`minase data teacher-stats`へ移し、強化学習の実行器`minase_zero run-cycles`の引数を改める（「`teacher_stats`の移動」節）。
-- 「試験専用のコードの分離」節の項目を分離し、規則を[テストの手引き](../guides/testing.md)へ加える。
-- [詰み探索（df-pn）の設計書](mate-search.md)の置き場所を改める。
+- 「試験専用のコードの分離」節の項目を分離し、規則を[テストの手引き](../../guides/testing.md)へ加える。
+- [詰み探索（df-pn）の設計書](../mate-search.md)の置き場所を改める。
 - 「文書のパスの書き換え」節のとおりに文書を書き換える。
 
 次の項目は対象外とする。
 
 - `tools/train/zero/mnsd_reader/src/scan.rs`が、教師データの形式MNSDのバイト列を`crates/minase/src/training/records.rs`とは別に解釈している重複は、直さない。解消には公開APIの設計が要るので、別の設計書で扱う。
 - αβ探索などにある`#[cfg(test)]`の項目（`search/alphabeta/`の35か所と、`search/mod.rs`、`search/snapshot.rs`、`eval/`の5か所）は動かさない。AlphaZero型探索の計画より前のコードであり、同じ規則を別の設計書で適用する。
-- `#[cfg(test)] mod tests`のファイル内モジュールは動かさない。[テストの手引き](../guides/testing.md)が標準の置き方と定めており、リポジトリの95ファイルが使っている（`git grep -l '^mod tests {'`の件数）。
+- `#[cfg(test)] mod tests`のファイル内モジュールは動かさない。[テストの手引き](../../guides/testing.md)が標準の置き方と定めており、リポジトリの95ファイルが使っている（`git grep -l '^mod tests {'`の件数）。
 - `search/handle.rs`の公開関数`search`は動かさない。αβ探索専用だが、この計画より前からあり、公開パスを変える利点が小さい。
 - `tools/train/zero/gumbel_reference.py`と`tools/train/zero/nn_compare.py`は動かさない。crateの配下へ移すと、crates.ioへ配布するPythonのファイルが増えるからである。
 - `zero_selfplay/game.rs`の`gumbel_noise`（Gumbel AlphaZeroの乱数の変換）は動かさない。同じ変換の複製があった`driver_cost`を削除すると、呼び出し元が1つになるので、共有のために移す理由がない。
@@ -65,9 +67,9 @@ AlphaZero型探索の6本のサブタスクでは、それぞれの設計書が�
 ## 依存関係
 
 本書はコードの配置だけを変え、探索、学習、および規則の定義を変えない。
-配置の方針は、[補助ツールのサブコマンド化のADR](../adr/run-developer-tools-as-engine-subcommands.md)と[探索方式の共存のADR](../adr/select-the-search-method-at-startup-through-a-closed-enum.md)に従う。
-公開パスの扱いは、[移動した項目を古いパスで再公開しないADR](../adr/do-not-re-export-moved-items-at-old-paths.md)に従う。
-試験専用の項目を別の実行ファイルの試験へ公開するフィーチャ`test-util`は、minase-coreが同じ目的で持つものであり（[ライブラリとエンジンの分割のADR](../adr/split-rules-library-from-engine.md)）、本書はその形に合わせる。
+配置の方針は、[補助ツールのサブコマンド化のADR](../../adr/run-developer-tools-as-engine-subcommands.md)と[探索方式の共存のADR](../../adr/select-the-search-method-at-startup-through-a-closed-enum.md)に従う。
+公開パスの扱いは、[移動した項目を古いパスで再公開しないADR](../../adr/do-not-re-export-moved-items-at-old-paths.md)に従う。
+試験専用の項目を別の実行ファイルの試験へ公開するフィーチャ`test-util`は、minase-coreが同じ目的で持つものであり（[ライブラリとエンジンの分割のADR](../../adr/split-rules-library-from-engine.md)）、本書はその形に合わせる。
 
 マージには、実行中の処理との順序の制約がある。
 強化学習の実行器は本体の作業ツリーの`tools/train/zero`から起動し、対局ハーネスは本体の`target/release/minase`を対局ごとに起動する。
@@ -91,8 +93,8 @@ masterへのマージは、次の処理が動いていないことを`pgrep`で�
 
 | 項目 | 決定 | 棄却した代案 |
 |---|---|---|
-| 3手以内の勝ちの判定の場所 | `crates/minase/src/search/mate_in_three.rs`へ移し、`minase::search::mate_in_three`として公開する。依存はminase-coreだけのままとし、[詰み探索（df-pn）](mate-search.md)とコードを共有しない | 生成器の中に残す。探索なのに`search`の下に見つからず、対局用の探索からも呼べない |
-| df-pn（深さ優先の証明数探索）の場所 | [詰み探索の設計書](mate-search.md)の置き場所を`crates/minase/src/mate/`から`crates/minase/src/search/mate/`へ改める | `src/mate/`のままにする。3手の判定と別の階層に分かれ、`crate::search`の王駒の判定を使うこととも合わない |
+| 3手以内の勝ちの判定の場所 | `crates/minase/src/search/mate_in_three.rs`へ移し、`minase::search::mate_in_three`として公開する。依存はminase-coreだけのままとし、[詰み探索（df-pn）](../mate-search.md)とコードを共有しない | 生成器の中に残す。探索なのに`search`の下に見つからず、対局用の探索からも呼べない |
+| df-pn（深さ優先の証明数探索）の場所 | [詰み探索の設計書](../mate-search.md)の置き場所を`crates/minase/src/mate/`から`crates/minase/src/search/mate/`へ改める | `src/mate/`のままにする。3手の判定と別の階層に分かれ、`crate::search`の王駒の判定を使うこととも合わない |
 | 共有の調整係数 | `search/alphabeta/params.rs`をファイルごと`search/params.rs`へ移す。表の内容と順序は変えない | 時間配分の6係数だけを別の表へ分ける。`protocol/usi.rs`の列挙と設定、および`minase spsa apply`が2つの表を扱う必要が生じ、変更が大きい。ファイルごと移すとαβ探索専用の係数も共有の階層に置かれるが、このファイルの冒頭の説明は、探索と時間管理の両方の係数の表としている |
 | 固定局面集の場所 | `crates/minase/tests/fixtures/nn-positions.jsonl`へ移し、Pythonの学習器もこのパスを読む。正本は1つとする | 学習ツールの側に残す（crate単体で試験できない）。両方に複製する（内容が食い違うおそれがある）。ファイルは2.0 MBでgzipでは0.35 MBであり、crates.ioの上限10 MBに対して既存の重みと合わせても余裕がある |
 | 重複する`softmax` | `search/mcts/mod.rs`の実装を消し、`crates/minase/src/nn/policy.rs`の`softmax`を使う | 探索の側に残して`nn`の側を消す。ネットの出力の扱いは`nn`の責務であり、`search`から`nn`への依存は既にある |
@@ -132,15 +134,15 @@ masterへのマージは、次の処理が動いていないことを`pgrep`で�
 | `sim_cost.rs` | 探索の速さの測定 | 削除 | MCTSの本番の駆動部`Driver`を使わず、独自の探索（`sim_cost.rs`の関数`search`）を測っている |
 | `train_bench.py` | 学習の1ステップの時間の測定 | 削除 | 合成データで`model(inputs)`を学習し、現行の学習器が方策と価値のほかに学ぶ補助目標（`forward_logits`）を通らない |
 | `make_nets.py`、`tools/train/zero/nn_torch_reference.py` | ランダム初期化のネットの生成と照合 | 削除 | 現行の初期ネットは`minase_zero init`が作り、照合は`minase_zero fixture-eval`が行う。2026年10月31日の学び直しでも、この2つで照合した |
-| `batch_probe.rs` | `NnBatchSize`の比較 | 削除 | 最初の進捗測定で値を決め、以後は固定すると[強化学習の実行](alphazero-rl.md)が定めており、決定は済んでいる |
-| `driver_cost.rs` | 探索木の経路の再生の費用の測定 | 削除 | 使った2つのマイルストーンは完了している。再び使うのはCPUの探索が生成の速さを決めている場合だが、[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)ではGPUが速さを決めていた |
+| `batch_probe.rs` | `NnBatchSize`の比較 | 削除 | 最初の進捗測定で値を決め、以後は固定すると[強化学習の実行](../alphazero-rl.md)が定めており、決定は済んでいる |
+| `driver_cost.rs` | 探索木の経路の再生の費用の測定 | 削除 | 使った2つのマイルストーンは完了している。再び使うのはCPUの探索が生成の速さを決めている場合だが、[試走](../../measurements/alphazero-rl/alphazero-rl-trial.md)ではGPUが速さを決めていた |
 | `mate_cost.rs` | 3手の判定の時間の測定 | 削除 | 判定の方式を決める測定は完了している。より深い判定を調べるときは、履歴から取り出して広げる |
 
-この判定により、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の6節と7節の手順を改める。
+この判定により、[借りる機械の操作の手引き](../../guides/alphazero-machines.md)の6節と7節の手順を改める。
 現在の手順は、`measure.sh`、`measure-trt.sh`、および`estimate.py`で処理ごとの速さを測り、式で1サイクルの時間を見積もる。
 改めた後は、まだ測っていない機械の構成で`minase_zero run-cycles`の1サイクルを実際に回し（試走）、その時間と料金から見積もる。
 現在の手引きも、部品からの見積もりには並列化の効率、推論との受け渡し、および記録の書き込みが含まれないと述べ、確定の判定を試走に委ねている。
-[強化学習の実行](alphazero-rl.md)の、手引きの6節の式を参照する記述も合わせて改める。
+[強化学習の実行](../alphazero-rl.md)の、手引きの6節の式を参照する記述も合わせて改める。
 
 ## `teacher_stats`の移動
 
@@ -195,17 +197,25 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 | 機械が出力した生データ（`.json`、`.out`、`.log`、`.patch`） | 書き換えない |
 | 固定したコミットのworktreeを指すスクリプト（`run-c06.sh`、`run-c11.sh`、`run-c21.sh`、`launch-trial.sh`） | 書き換えない |
 | `docs/guides/`、進行中の設計書、`docs/ROADMAP.md`、およびソースのdocコメント | 新しいパスと手順へ書き換える |
-| `docs/adr/`（`archive/`を除く）のパス | 決定の内容は変えず、[ADRの規則](../adr/README.md)のリンク切れの修正として、移したファイルのパスだけを直す。削除したツールを述べる文（`train-the-zero-network-in-pytorch-and-export-it-as-onnx.md`の`make_nets.py`など）は当時の事実の記述なので残す |
+| `docs/adr/`（`archive/`を除く）のパス | 決定の内容は変えず、[ADRの規則](../../adr/README.md)のリンク切れの修正として、移したファイルのパスだけを直す。削除したツールを述べる文（`train-the-zero-network-in-pytorch-and-export-it-as-onnx.md`の`make_nets.py`など）は当時の事実の記述なので残す |
 | `docs/plans/archived/`、`docs/adr/archive/`、`docs/audits/`、`docs/research/` | 凍結された記録なので書き換えない |
 
 2026年11月2日の時点で、`docs/measurements/`の中のファイルを`git grep -l`で数えると、`zero/feasibility`を含むものは19件、`nn-positions`を含むものは8件、`alphabeta/params`を含むものは1件、`zero_selfplay/mate`を含むものは2件である。
 
-[王手限定の3手以内の勝ちのADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)の「判定のモジュールは自己対局生成器の中に置き」は決定の変更に当たるので、完了時に新しいADRを書き、古いADRを置き換え済みとして`docs/adr/archive/`へ移す。
+[王手限定の3手以内の勝ちのADR](../../adr/archive/stop-zero-self-play-at-check-only-wins-within-three-plies.md)の「判定のモジュールは自己対局生成器の中に置き」は決定の変更に当たるので、完了時に新しいADRを書き、古いADRを置き換え済みとして`docs/adr/archive/`へ移す。
+
+## 着手時に補った決定
+
+- 実行器の起動時の確認のうち、固定局面集の確認はフェーズ2では移動前のパスで入れ、フェーズ7で定数`FIXTURE`の1行だけを新しいパスへ改めた。新しいパスのまま入れると、フェーズ7まで実行器が起動時の確認で止まるからである。
+- `launch-session.sh`は、機械を借りる前に`minase data teacher-stats --help`を実行する。実行器の確認は環境の導入の後に走るので、実行器の確認だけに任せると導入にかかった時間の料金が無駄になるからである。
+- `params.rs`のrustdocのリンクは、リンクにせず`alphabeta::searcher::Searcher::quiesce`の文字列とした。リンクにすると、文書のためだけにαβ探索の`searcher`モジュールの可視性を広げることになるからである。
+- 「文書のパスの書き換え」節の表に、Markdownのコマンド例の行を加えた。削除したツールを呼ぶスクリプトと同じ理由である。
+- フェーズ5の検証で、`crates/minase/tests/match_runner.rs`の`usi_options_are_forwarded_recorded_and_restored_for_each_engine`がmasterでも約30回に1回失敗する不安定なテストであることが分かった。[テストの手引き](../../guides/testing.md)の規則に従い、別のコミットで直した。先手が直ちに投了すると、後手が`usinewgame`を読む前にハーネスに止められることが原因なので、この行を比較から外した。`isready`と`usinewgame`の順序は`harness/engine/tests.rs`の試験で検証している。
 
 ## 実装フェーズ
 
 各フェーズを1コミットとし、移動だけのコミットと挙動に関わるコミットを分ける。
-実装は[codexへの実装委任の手引き](../guides/codex-delegation.md)に従って委任する。
+実装は[codexへの実装委任の手引き](../../guides/codex-delegation.md)に従って委任する。
 同じ手引きのとおりcodexはworktreeでコミットできないので、1回の委任を1フェーズとし、委任元が検証してコミットする。
 
 後のフェーズで参照が壊れないように、測定用のcrateを先に消す。
@@ -218,15 +228,15 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 5. `softmax`の統合。完了条件は、mctxとの照合試験を含むテストが通り、自己対局の出力が基準と一致すること。
 6. 試験専用のコードの分離。`options_tests.rs`の分割はここで行う。完了条件は、「検証」節の7を満たし、`cargo build --release --bin minase`が`test-util`なしで通ること。
 7. 固定局面集の移動。完了条件は、Rustの試験とPythonの試験が新しいパスで通ること。
-8. 文書のパスの書き換え。[詰み探索の設計書](mate-search.md)の置き場所もここで改める。完了条件は、「検証」節の6と8を満たすこと。
+8. 文書のパスの書き換え。[詰み探索の設計書](../mate-search.md)の置き場所もここで改める。完了条件は、「検証」節の6と8を満たすこと。
 
 ## 検証
 
 マージの前に、次のすべてを確かめる。
 
-1. [テストの手引き](../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`cargo test -p minase --lib --features search-stats,tuning`）が通ること。
+1. [テストの手引き](../../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`cargo test -p minase --lib --features search-stats,tuning`）が通ること。
 2. αβ探索の`minase dev bench`（固定の15局面を深さ6まで探索する検査）の探索ノード数が、整理の前と一致すること。
-3. 自己対局の出力が、整理の前と後で一致すること。次のコマンドを、毎回新しい出力先で実行し、MNSDのファイルをバイト単位で比べる。完了済みの塊は再利用されるので、同じ出力先では比べられない。ネットは[学び直しの最初のランダム初期化のネット](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)を使う。対局が短いので所要時間は短いと見込むが、フェーズ1で実測する。学習に使わないので、シードの台帳には登録しない。このコマンドで、`softmax`、3手の判定の移動、および`depth_limit`の変更を確かめる。
+3. 自己対局の出力が、整理の前と後で一致すること。次のコマンドを、毎回新しい出力先で実行し、MNSDのファイルをバイト単位で比べる。完了済みの塊は再利用されるので、同じ出力先では比べられない。ネットは[学び直しの最初のランダム初期化のネット](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)を使う。対局が短いので所要時間は短いと見込むが、フェーズ1で実測する。学習に使わないので、シードの台帳には登録しない。このコマンドで、`softmax`、3手の判定の移動、および`depth_limit`の変更を確かめる。
 
    ```console
    target/release/minase data zero-selfplay --output-dir <新しい出力先> \
@@ -246,17 +256,17 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 
 「検証」節のすべてを満たし、「依存関係」節の条件を確かめてmasterへマージしたうえで、次の作業を終えたときに完了（採用）とする。
 
-- 試験専用のコードの規則を[テストの手引き](../guides/testing.md)へ加える。
+- 試験専用のコードの規則を[テストの手引き](../../guides/testing.md)へ加える。
 - ツールの削除と試験専用のコードの規則の判断を新しいADRへ書き、3手の判定のADRを置き換える。
 - 本書の完了後も有効な配置の説明を`crates/minase/src/lib.rs`と各モジュールのdocコメントへ移す。
 
 ## 参考資料
 
-- [AlphaZero型探索と深層強化学習の統括計画](alphazero.md)
-- [強化学習の実行](alphazero-rl.md)
-- [詰み探索（df-pn）の設計書](mate-search.md)
-- [借りる機械の操作の手引き](../guides/alphazero-machines.md)
-- [ネットの出力の照合の手引き](../guides/alphazero-network-check.md)
-- [テストの手引き](../guides/testing.md)
-- [codexへの実装委任の手引き](../guides/codex-delegation.md)
-- [学習ツールの再配置](archived/train-tools-layout.md)：測定スクリプトのパスを書き換えた先例
+- [AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)
+- [強化学習の実行](../alphazero-rl.md)
+- [詰み探索（df-pn）の設計書](../mate-search.md)
+- [借りる機械の操作の手引き](../../guides/alphazero-machines.md)
+- [ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)
+- [テストの手引き](../../guides/testing.md)
+- [codexへの実装委任の手引き](../../guides/codex-delegation.md)
+- [学習ツールの再配置](train-tools-layout.md)：測定スクリプトのパスを書き換えた先例
