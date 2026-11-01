@@ -36,7 +36,7 @@ cosine annealingを採るか一定の学習率を採るかを、1サイクルの
 
 ## 結果
 
-抽出の数を新規局面数の4倍にしたので（[抽出のADR](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)）、最初のサイクルは約400万標本を学び、ウォームアップは最初のサイクルの前半で終わる。
+抽出の数を新規局面数の4倍にしたので（[抽出のADR](archive/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)）、最初のサイクルは約400万標本を学び、ウォームアップは最初のサイクルの前半で終わる。
 学習曲線は、各区間の最後の更新の学習率とsを持ち、終了報告はサイクルの開始時と終了時のs（`samples_seen_start`、`samples_seen`）と最後の学習率を持つ。
 強制終了から再開した学習と、前のサイクルのチェックポイントから`train --init`で続けた学習のどちらでも、学習率の列は止めない学習と変わらない。
 伸びが止まったときに基準の学習率を下げる規則は、強化学習の実行の設計書が定める。

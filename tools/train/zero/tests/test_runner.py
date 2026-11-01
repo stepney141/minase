@@ -148,6 +148,7 @@ class RunnerCase(unittest.TestCase):
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
+            window_first_cycle=1,
             window_positions=1000, batch_size=256, lr=0.01, lr_schedule="constant", momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
             selfplay_weights="raw", ema_period_samples=0, ema_scale=0,
@@ -254,6 +255,24 @@ class CalculationTests(RunnerCase):
         files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
         self.assertEqual(training_window(self.options, 3, 100), ([3], files, files))
 
+    def test_window_does_not_read_cycles_before_window_first_cycle(self):
+        options = replace(self.options, first_cycle=3, last_cycle=3, window_first_cycle=3,
+                          cycle1_reference_summary=None)
+        self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
+        files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
+        self.assertEqual(training_window(options, 3, 1000), ([3], files, files))
+
+    def test_window_starts_at_window_first_cycle_when_positions_are_insufficient(self):
+        options = replace(self.options, first_cycle=4, last_cycle=4, window_first_cycle=3,
+                          cycle1_reference_summary=None)
+        for cycle, positions in ((1, 1000), (2, 1000), (3, 100), (4, 200)):
+            self.summary(cycle, "selfplay", {
+                "training_positions": positions, "training_files": ["chunk-00000.mnsd"],
+            })
+        third = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
+        fourth = ["cycles/cycle-0004/selfplay/chunk-00000.mnsd"]
+        self.assertEqual(training_window(options, 4, 1000), ([3, 4], third + fourth, fourth))
+
     def test_branch_window_and_calibration_use_the_explicit_boundary(self):
         options = replace(self.options, cycles_dir=Path("cycles-cosine"), base_cycles_dir=Path("baseline"),
                           branch_from=2, first_cycle=3, last_cycle=4, cycle1_reference_summary=None)
@@ -277,6 +296,10 @@ class CalculationTests(RunnerCase):
         self.assertEqual(training_window(options, 3, 451), (
             [1, 2, 3], ["baseline/cycle-0001/selfplay/chunk-00000.mnsd", *second, *third], third,
         ))
+        self.assertEqual(training_window(replace(options, window_first_cycle=2), 3, 1000),
+                         ([2, 3], second + third, third))
+        self.assertEqual(training_window(replace(options, window_first_cycle=3), 3, 1000),
+                         ([3], third, third))
         self.assertEqual(game_counts(summaries(options, 2), 1000, 2), (75, 38))
         self.assertEqual(resignation(options, 3)[0], 20)
         self.assertEqual(resignation(options, 4)[0], 100)
@@ -1025,6 +1048,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual([row["generation_commit"] for row in rows], [GENERATION_COMMIT, GENERATION_COMMIT])
         self.assertEqual([row["trainer_commit"] for row in rows], [TRAINER_COMMIT, TRAINER_COMMIT])
         self.assertEqual([row["window_cycles"] for row in rows], [[1], [1, 2]])
+        self.assertEqual([row["window_first_cycle"] for row in rows], [1, 1])
         self.assertEqual([row["window_positions"] for row in rows], [2000, 2000])
         self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], TRAINER_COMMIT)
         self.assertEqual(rows[0]["selfplay_summary"]["win_reason_royal_capture"], 10)
@@ -1068,6 +1092,15 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         start_count = len(self.remote.starts)
         self.execute(replace(self.options, last_cycle=2))
         self.assertEqual(len(self.remote.starts), start_count)
+
+    def test_cycles_record_configured_window_first_cycle(self):
+        self.execute(replace(self.options, last_cycle=2))
+        self.remote.balances = [96, 94]
+        self.execute(replace(self.options, first_cycle=3, last_cycle=3, window_first_cycle=2,
+                             cycle1_reference_summary=None))
+        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
+        self.assertEqual([row["window_first_cycle"] for row in rows], [1, 1, 2])
+        self.assertEqual([row["window_cycles"] for row in rows], [[1], [2], [3]])
 
     def test_branch_cycles_keep_outputs_records_seeds_and_networks_separate(self):
         self.execute(replace(self.options, last_cycle=2, ema_period_samples=3, ema_scale=2))
@@ -1549,6 +1582,7 @@ class ArgumentTests(RunnerCase):
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads", "6", "--games-per-thread", "4",
+                "--window-first-cycle", "1",
                 "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01", "--lr-schedule", "constant",
                 "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
@@ -1561,6 +1595,7 @@ class ArgumentTests(RunnerCase):
         args = self.arguments()
         parsed = vars(_parse(args))
         self.assertEqual(parsed.pop("command"), "run-cycles")
+        self.assertEqual(parsed["window_first_cycle"], 1)
         self.assertEqual(Options(**parsed).deadline, datetime(2026, 10, 29, 3, 0, tzinfo=UTC))
         for index in range(1, len(args) - 2, 2):
             with self.subTest(missing=args[index]), self.assertRaises(ValueError):
@@ -1573,6 +1608,17 @@ class ArgumentTests(RunnerCase):
             replace(self.options, first_cycle=2, last_cycle=3)
         result = replace(self.options, first_cycle=2, last_cycle=3, cycle1_reference_summary=None)
         self.assertIsNone(result.cycle1_reference_summary)
+
+    def test_window_first_cycle_bounds_apply_to_mainline_and_branches(self):
+        for directory, branch_from in (("cycles", 0), ("cycles-cosine", 2)):
+            options = replace(self.options, cycles_dir=Path(directory), branch_from=branch_from,
+                              first_cycle=4, last_cycle=4, cycle1_reference_summary=None)
+            for first in (1, 2, 3, 4):
+                with self.subTest(directory=directory, first=first):
+                    self.assertEqual(replace(options, window_first_cycle=first).window_first_cycle, first)
+            for first in (-1, 0, 5, True, 1.5):
+                with self.subTest(directory=directory, first=first), self.assertRaises(ValueError):
+                    replace(options, window_first_cycle=first)
 
     def test_invalid_inputs_fail_before_remote_work(self):
         for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"generation_commit": "abcd"},

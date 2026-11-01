@@ -38,7 +38,7 @@ lc0の全結合128の価値ヘッドは採らなかった。
 ## 結果
 
 パラメータ数は、価値ヘッドで約115万、入力の面で約7万、補助ヘッドで約10万増え、約346万から4,780,200になった。
-学習窓はパラメータ数の10倍の規則のままなので、窓は約4,780万局面に広がる（[抽出のADR](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)）。
+学習窓はパラメータ数の10倍の規則のままなので、窓は約4,780万局面に広がる（[抽出のADR](archive/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)）。
 ネットを大きくする段階は[強化学習の実行の設計書](../plans/alphazero-rl.md)が定め、その段階でも価値ヘッドと補助ヘッドの形は保つ。
 ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)）。
 新しい構成のランダム初期化のネットの照合の結果は、[記録](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)にある。

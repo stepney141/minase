@@ -2,8 +2,8 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
-[生成量だけを抽出するADR](archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)を置き換える。
+置き換え済み。[AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](../sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)によって置き換えられた。
+[生成量だけを抽出するADR](sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)を置き換える。
 
 ## コンテキスト
 
@@ -11,7 +11,7 @@
 窓の決め方と、1回の学習に1つの対局の全局面が入らないようにする理由は、置き換えたADRと同じである。
 置き換えたADRは、抽出の数をそのサイクルの生成の訓練局面数Nとしたので、窓が満ちると各局面は平均約1回しか使われなかった。
 KataGoの手引きは、新しいデータ1行あたりの学習の回数として、4を慎重な値（conservative）として勧める（`SelfplayTraining.md` 58、67行）。
-ふかうら王の学習も、教師局面の使用回数を設計の項目として挙げる（[調査](../research/alphazero-rl-training-efficiency.md)）。
+ふかうら王の学習も、教師局面の使用回数を設計の項目として挙げる（[調査](../../research/alphazero-rl-training-efficiency.md)）。
 利用者は2026年10月31日に、使用回数を増やすことを含む9つの技法をまとめて採ると決めた。
 
 ## 決定
@@ -43,5 +43,5 @@ KataGoの手引きが慎重な値として勧めるのは4であり、窓が4,78
 最初のサイクルはT=Nなので、全局面の順列を4回つないだ列を読む。
 メモリは重複を除いた抽出の数に比例し、読み込みの時間は窓全体の局面数に比例する。
 再開の照合は、置き換えたADRと同じ規則を列sに当てはめる。
-学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)が定める。
+学習率の予定は[学習率の予定のADR](../warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)が定める。
 実装は`tools/train/zero/minase_zero/data.py`の`sample_training_indices`と`read_window`、および`train.py`にある。
