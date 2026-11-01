@@ -49,4 +49,4 @@ Gumbel dlshogiのように、初めのうちは直近の数サイクルだけを
 変更の前のサイクルの学習窓はサイクル1から始まっており、各サイクルの記録の`window_cycles`と`window_first_cycle`で区別できる。
 窓が満ちた後は、サイクル3より前は自然に窓から外れるので、この決定の影響は窓が満ちるまでの学習に限られる。
 実装は`tools/train/zero/minase_zero/runner.py`の`training_window`にある。
-学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)が定める。
+学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。

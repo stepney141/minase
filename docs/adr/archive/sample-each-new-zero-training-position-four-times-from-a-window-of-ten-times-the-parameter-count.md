@@ -43,5 +43,5 @@ KataGoの手引きが慎重な値として勧めるのは4であり、窓が4,78
 最初のサイクルはT=Nなので、全局面の順列を4回つないだ列を読む。
 メモリは重複を除いた抽出の数に比例し、読み込みの時間は窓全体の局面数に比例する。
 再開の照合は、置き換えたADRと同じ規則を列sに当てはめる。
-学習率の予定は[学習率の予定のADR](../warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)が定める。
+学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)が定める。
 実装は`tools/train/zero/minase_zero/data.py`の`sample_training_indices`と`read_window`、および`train.py`にある。
