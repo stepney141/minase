@@ -232,7 +232,7 @@ fn mate_in_three_counts_winners_and_full_search_training_positions() {
         result: None,
         full_searches: 3,
         fast_searches: 9,
-        plies: 1000,
+        plies: 3_000,
     });
     assert_eq!(counts.games_file_games, 2);
     assert_eq!((counts.black_wins, counts.white_wins), (1, 1));

@@ -242,7 +242,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月14日 [教師データの着手を整列した合法手の番号で表し、方策を量子化した確率で持つ](index-moves-into-sorted-legal-moves-and-store-policies-as-probabilities.md)
 - 2026年10月14日 [詰み帯、捕獲または成りの最善手、および対局内の再出現の局面を、除外の理由を付けて教師データに記録する](record-excluded-positions-with-a-reason.md)
 - 2026年10月14日 [`unsafe`は学習器のGPUの処理だけに許し、エンジンとライブラリでは禁じ続ける](allow-unsafe-only-in-the-trainer-gpu-code.md)
-- 2026年10月14日 [AlphaZero型探索の自己対局は1,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-1000-plies.md)
+- 2026年10月14日 [AlphaZero型探索の自己対局は1,000手で打ち切り、打ち切った対局を学習データから除く](archive/discard-zero-self-play-games-that-reach-1000-plies.md)（置き換え済み）
 - 2026年10月15日 [反復による勝敗を、詰み帯の内側の専用の帯で表し、置換表の打ち切りに使わない](reserve-a-path-dependent-band-for-repetition-outcomes.md)
 - 2026年10月15日 [R2とR3が禁じる着手を探索木の中で読まず、禁止手しかない局面を負けとする](skip-forbidden-repetition-moves-inside-the-tree.md)
 - 2026年10月15日 [R1の反復負けは根の候補手の選別で避け、探索木の中の周回は攻撃側の負けとして読む](avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)
@@ -348,3 +348,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)
 - 2026年10月31日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)
 - 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)
+- 2026年11月1日 [AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)
