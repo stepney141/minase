@@ -4,6 +4,7 @@ run-cyclesの引数はすべて明示する。cycle1-reference-summaryだけは�
 ときに必須で、それ以外では指定できない。deadlineは時差を含むISO 8601の時刻とする。
 generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定する。Colab機の
 /content/srcにはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
+--minaseは作業機で集計に使う実行ファイルを指定し、借りた機械で使うENGINEとは別である。
 NASのrootと/content/azは同じ相対パスを使い、接続と転送は1本ずつ実行する。
 
 --cycles-dirと--base-cycles-dirはrootからの相対ディレクトリを必須とする。
@@ -82,6 +83,7 @@ from . import rl
 
 
 SOURCE = "/content/src/tools/train/zero"
+FIXTURE = SOURCE + "/fixtures/nn-positions.jsonl"
 ENGINE = "/content/src/target/release/minase"
 PYTHON = ["uv", "run", "--frozen", "--project", SOURCE, "python"]
 TRAINER = [*PYTHON, "-m", "minase_zero"]
@@ -117,7 +119,7 @@ class Options:
     precision: str
     checkpoint_steps: int
     train_seed_base: int
-    teacher_stats: Path
+    minase: Path
     poll_seconds: float
     cycle1_reference_summary: Path | None
 
@@ -175,7 +177,7 @@ class Options:
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     """run-cyclesだけの必須引数を登録する。"""
-    for name in ("root", "teacher-stats", "cycles-dir", "base-cycles-dir"):
+    for name in ("root", "minase", "cycles-dir", "base-cycles-dir"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     for name in ("session", "generation-commit", "trainer-commit"):
         parser.add_argument(f"--{name}", required=True)
@@ -724,7 +726,7 @@ class Runner:
         network = f"{train}/model.onnx"
         reference = f"{out}/pytorch.json"
         lines.append(shlex.join([*TRAINER, "fixture-eval", "--checkpoint", train + "/checkpoint.pt",
-                                 "--onnx", network, "--fixture", SOURCE + "/fixtures/nn-positions.jsonl",
+                                 "--onnx", network, "--fixture", FIXTURE,
                                  "--out", reference]))
         for batch in (1, 7, 256):
             for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
@@ -782,6 +784,15 @@ class Runner:
 
     def run(self) -> None:
         options = self.options
+        try:
+            result = subprocess.run([str(options.minase.resolve()), "data", "teacher-stats", "--help"],
+                                    capture_output=True, text=True)
+        except OSError as error:
+            raise RuntimeError(f"cannot run minase data teacher-stats: {options.minase}: {error}") from error
+        if result.returncode != 0:
+            raise RuntimeError(f"minase data teacher-stats --help exited {result.returncode}: {result.stderr}")
+        if not self.remote.exists(FIXTURE):
+            raise RuntimeError(f"deployed commit {options.trainer_commit} is missing fixture: {FIXTURE}")
         mainline = options.cycles_dir == Path("cycles")
         cycles_log = self.root / f"{options.cycles_dir}.jsonl"
         sessions_log = self.root / ("sessions.jsonl" if mainline else f"{options.cycles_dir}-sessions.jsonl")
@@ -853,13 +864,13 @@ class Runner:
             window_cycles, files, current_files = training_window(options, cycle, options.window_positions)
             train_summary, training_seconds = self.training(cycle, files, current_files)
             checks, checking_seconds = self.checking(cycle)
-            result = subprocess.run([str(options.teacher_stats.resolve()), *current_files], cwd=self.root,
+            result = subprocess.run([str(options.minase.resolve()), "data", "teacher-stats", *current_files], cwd=self.root,
                                     capture_output=True, text=True)
             if result.returncode != 0:
-                raise RuntimeError(f"teacher_stats exited {result.returncode}: {result.stderr}")
+                raise RuntimeError(f"minase data teacher-stats exited {result.returncode}: {result.stderr}")
             stats = json.loads(result.stdout)
             if not isinstance(stats, dict):
-                raise ValueError("teacher_stats must output a JSON object")
+                raise ValueError("minase data teacher-stats must output a JSON object")
             network_digest = publish_network(options, cycle)
             end_balance = self.remote.usage()
             ended = datetime.now(UTC)

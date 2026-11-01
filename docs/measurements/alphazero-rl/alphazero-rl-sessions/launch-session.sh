@@ -3,6 +3,7 @@
 # 使い方: launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット40桁>
 # 作業機で nohup setsid bash launch-session.sh ... > <ログ> 2>&1 & として起動する。
 # 学習器と実行器は、このスクリプトを置いた作業ツリーのtools/train/zeroのものを使う。
+# 集計には作業ツリーのtarget/release/minaseを使うので、起動前にcargo build --release --bin minaseを実行する。
 # 学習窓はサイクル3より前にさかのぼらない（学習窓のADR）。最初のサイクルは3以上で起動する。
 # サイクル1の対局数は、学習技法の導入の試走の生成の集計（trial-restart のサイクル1）から決める。
 set -u
@@ -13,6 +14,7 @@ Z=$R/tools/train/zero
 A=/mnt/synology_nas/minase/alphazero
 reference=()
 [ "$first" -eq 1 ] && reference=(--cycle1-reference-summary "$A/trial-restart/cycle-0001/selfplay/summary.json")
+"$R/target/release/minase" data teacher-stats --help > /dev/null || exit 1
 [ -e "$A/src/minase-$C.tar" ] || git -C "$R" archive --format=tar -o "$A/src/minase-$C.tar" "$C"
 colab new -s "$session" --gpu L4 || exit 1
 rented=$(date -Is)
@@ -38,7 +40,7 @@ cd "$Z" && uv run --frozen python -m minase_zero run-cycles --root "$A" --sessio
     --target-positions 1000000 --chunks 20 --simulations 32 --threads 4 --games-per-thread 128 \
     --window-first-cycle 3 --window-positions 47802000 --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 \
     --clip-grad-norm 10 --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
-    --train-seed-base 20261100 --teacher-stats "$Z/feasibility/target/release/teacher_stats" \
+    --train-seed-base 20261100 --minase "$R/target/release/minase" \
     --poll-seconds 60
 rc=$?
 echo "runner exit $rc at $(date -Is)"
