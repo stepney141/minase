@@ -12,7 +12,7 @@ use minase_core::Move;
 
 use super::gumbel::Gumbel;
 use super::puct::{self, PuctConfig};
-use super::softmax;
+use crate::nn::softmax;
 use crate::search::{MATE, MAX_PLY, REPETITION_WIN};
 
 /// 節点の手番側から見た確定済みの勝敗。
@@ -587,7 +587,8 @@ impl Tree {
         if logits.len() != node.edges.len() || logits.iter().any(|x| !x.is_finite()) {
             return Err(TreeError::InvalidEvaluation);
         }
-        let probabilities = softmax(logits);
+        let mut probabilities = logits.to_vec();
+        softmax(&mut probabilities);
         let node = node_mut(&mut self.root, path)?;
         for ((edge, &logit), policy) in node.edges.iter_mut().zip(logits).zip(probabilities) {
             edge.logit = logit;

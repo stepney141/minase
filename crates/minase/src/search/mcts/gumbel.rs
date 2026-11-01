@@ -7,8 +7,8 @@
 //! の式に従い、Qの尺度と最後に指す手のGumbel乱数の倍率を引数で指定する。
 //! 価値は勝率へ写して保持し、節点内の再尺度化も単精度で行う。
 
-use super::softmax;
 use super::tree::{Edge, Node, NodeState, Outcome, TreeError};
+use crate::nn::softmax;
 
 /// 根のGumbel乱数、Sequential Halvingの予算、およびQの尺度。
 ///
@@ -127,13 +127,14 @@ impl Gumbel {
     /// ネットの評価または辺を持たない節点は拒否する。
     pub fn policy_target(&self, node: &Node) -> Result<Vec<f32>, TreeError> {
         let completed = self.completed_qvalues(node)?;
-        let logits: Vec<_> = node
+        let mut logits: Vec<_> = node
             .edges
             .iter()
             .zip(completed)
             .map(|(edge, q)| edge.logit + q)
             .collect();
-        Ok(softmax(&logits))
+        softmax(&mut logits);
+        Ok(logits)
     }
 
     pub(super) fn select_interior(&self, node: &Node) -> Result<usize, TreeError> {
