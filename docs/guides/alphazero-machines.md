@@ -114,27 +114,9 @@ Colabは上限を公表しておらず、上限は利用状況によって変わ
 回収された時刻は分からず、回収までの間の消費は止まらない。
 このため、計算を止めた後に利用者の判断などで待つときは、必要なファイルを受け取ってから5節の手順でセッションを止め、待つ間に機械を借りたままにしない。
 
-### 4.1 強化学習のサイクルを回す一連の手順
+### 4.1 強化学習のサイクル
 
-強化学習のサイクルは、次の手順で1台のColab機に数サイクルずつ回す。
-手順2〜5は`docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh`が1本で行い、`nohup setsid bash launch-session.sh <セッション名> <最初のサイクル> <最後のサイクル> <コミット> > /mnt/synology_nas/minase/alphazero/logs/runner-<セッション名>.log 2>&1 &`として起動する。スクリプトは本線（`cycles/`）を回し、学習技法の導入の後の構成の引数（学習窓4,780.2万局面、cosine annealing、1サイクルの見込み80分と2.4 CU）を渡す。最初のサイクルが1のときは、[学習技法の導入の試走](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)の生成の集計（NASの`trial-restart/cycle-0001/selfplay/summary.json`）から対局数を決める。同じディレクトリの`run-c06.sh`などは、2026年10月に個別に使った起動スクリプトの記録である。
-
-起動の前に、スクリプトを置いた作業ツリーで`cargo build --release --bin minase`を実行する。
-実行器は各サイクルの終わりに、この`target/release/minase`の`data teacher-stats`で手数の分位点と終局理由を集計する。
-スクリプトは機械を借りる前に、実行器は学習を始める前に、このサブコマンドがあることを確かめ、なければエラーで終了する。
-実行器は同時に、借りた機械に展開したソースに固定局面集があることも確かめるので、作業ツリーの版と展開するコミットの両方を新しくしておく。
-
-1. 学習器と実行器のコミットの書庫を作る：`git -C <worktree> archive --format=tar -o /mnt/synology_nas/minase/alphazero/src/minase-<コミット>.tar <コミット>`。
-2. `colab new -s rl-cNN --gpu L4`で借り、借りた時刻と`colab usage`の残高を`rentals.jsonl`に1行足す。終了期限は借りた時刻の8時間後とする。
-3. 書庫と`docs/measurements/alphazero-rl/alphazero-rl-trial/colab-setup.sh`をrsyncで`/content/`へ送り、`colab-setup.sh`を`setsid nohup`で起動する（導入は3〜17分）。
-4. スクリプトは導入の完了を待って`minase_zero run-cycles`を走らせ、終了コードによらず`colab stop`し、止めた時刻と残高を`rentals.jsonl`に足す。
-5. 進み具合は`/mnt/synology_nas/minase/alphazero/logs/runner-<セッション>-<時刻>.log`の末尾で見る。サイクルの結果は`cycles.jsonl`、CUの区間は`sessions.jsonl`にある。
-6. 実行器が異常で止まったら、ログの末尾のエラーと、該当サイクルの`cycles/cycle-NNNN/`の状態ファイル（`*.started.json`、`*.exit`、`*.log`）を見る。不合格の出力を退けて学び直すときは、削除せずに`cycles/cycle-NNNN/rejected-<理由>/`へ移す。
-
-各サイクルの後、作業機で次を行う（GPUが空いているとき）。
-
-- 固定の検証用棋譜の診断：`tools/train/zero`で`uv run --frozen python -m minase_zero external-eval --checkpoint /mnt/synology_nas/minase/alphazero/cycles/cycle-NNNN/train/checkpoint.pt --data <minaseのリポジトリ>/data/nnue-lr-schedule-gen/generated-8200000.bin --games 1000 --seed 20261030 --device cuda --out /mnt/synology_nas/minase/alphazero/external/cycle-NNNN.json`。
-- 10サイクルごとの進捗測定：`docs/measurements/alphazero-rl/alphazero-rl-restart-progress-c0020/`の`check.sh`（作業機での3者の照合）と`progress-workstation.sh <新> <旧> 16 <シード> <シード> /mnt/synology_nas/minase/alphazero/progress`。あわせて、引き延ばしの兆候を`docs/measurements/alphazero-rl/alphazero-rl-long-games/`の`long_trend.py`で集計する。
+強化学習のサイクルを起動し、経過を確かめ、止めて再開する手順は、[深層強化学習を回す手引き](alphazero-rl.md)にある。
 
 ## 5. 結果を受け取って終了する
 
