@@ -63,6 +63,7 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 
 引き継ぐ人は、次の順に進める。
 
+1. 再開の前に、探索回数を増やす案とネットを大きくする案を利用者と検討する（2026年11月2日の利用者の要望）。「伸びが止まったらネットと探索回数を段階的に増やす」の節は伸びが止まってから段階を進めると定めるが、αβ探索との差が大きいので、早めに進めるかどうかも検討の対象とする。決まった内容に応じて、次の手順の引数を変える。
 1. 本体のリポジトリで`cargo build --release --bin minase`を実行してから、`nohup setsid bash docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh rl-r33 33 50 <masterの先端の40桁> > /mnt/synology_nas/minase/alphazero/logs/runner-rl-r33.log 2>&1 &`で、サイクル33から再開する。セッションは終了期限の8時間に収まるサイクルだけを回して自動で止まり、機械を返す（約7サイクル）。止まったら、`cycles.jsonl`の最後のサイクルの次から、セッション名を変えて同じ手順で起動する。
 2. 実行器が照合の失敗で止まったら、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の手順で原因を調べる。FP16の方策の確率の差の許容誤差は1×10⁻²のままであり、通常の重みのネットの差はこれまで最大で0.0096である。超えて止まった場合は、許容誤差の扱いを利用者に諮る。
 3. サイクル40が終わったら、作業機で進捗測定を行う。`alphazero-rl-restart-progress-c0030/`の`check.sh`と`progress-workstation.sh`を`alphazero-rl-restart-progress-c0040/`へ複製し、`check.sh 0040`と`progress-workstation.sh 0040 0030 16 <新しいシード> <新しいシード> /mnt/synology_nas/minase/alphazero/progress`を実行する。手引きの4.1節の`external-eval`をサイクル31〜40について実行し、`alphazero-rl-long-games/long_trend.py`をサイクル40について実行して、記録を書く。
