@@ -8,11 +8,11 @@
 ## コマンドライン
 
 `NnBatchSize`は、コミットfe68a8b2の`tools/train/zero/feasibility`の`batch_probe`で、固定局面集の288局面、1手800シミュレーションを、上限16、64、256で比べて決めた（[出力](alphazero-rl-progress-c0010/batch-probe.json)）。
-次のコマンドは、この道具を含むコミットのソースで動く。
+次のコマンドの`batch_probe`はこのコミットのソースにあり、固定局面集のパスは現在の位置で示す。
 
 ```console
 batch_probe --nn-model nets/cycle-0010.onnx --backend tensorrt --cache-dir <キャッシュ> \
-  --fixture tools/train/zero/fixtures/nn-positions.jsonl --positions 288 --simulations 800 --batch-sizes 16,64,256
+  --fixture crates/minase/tests/fixtures/nn-positions.jsonl --positions 288 --simulations 800 --batch-sizes 16,64,256
 ```
 
 対局は[progress-workstation.sh](alphazero-rl-progress-c0010/progress-workstation.sh)で、`progress-workstation.sh 0010 0000 16 10010 20010 <出力先>`として行った。
