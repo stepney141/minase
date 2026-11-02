@@ -26,7 +26,7 @@ fn parse_usi_evaluation(line: &str) -> Result<Option<EngineEvaluation>, EngineFa
             "-" => EngineScore::MatedIn(None),
             value => {
                 let moves = value.parse::<i32>().map_err(|_| EngineFailure::Crash)?;
-                if moves >= 0 {
+                if !value.starts_with('-') {
                     EngineScore::MateIn(Some(moves.unsigned_abs()))
                 } else {
                     EngineScore::MatedIn(Some(moves.unsigned_abs()))
@@ -218,6 +218,22 @@ mod tests {
             Ok(Some(EngineEvaluation {
                 depth: Some(5),
                 score: EngineScore::MatedIn(Some(3)),
+                bound: ScoreBound::Exact,
+            }))
+        );
+        assert_eq!(
+            parse_usi_evaluation("info score mate -0"),
+            Ok(Some(EngineEvaluation {
+                depth: None,
+                score: EngineScore::MatedIn(Some(0)),
+                bound: ScoreBound::Exact,
+            }))
+        );
+        assert_eq!(
+            parse_usi_evaluation("info score mate +0"),
+            Ok(Some(EngineEvaluation {
+                depth: None,
+                score: EngineScore::MateIn(Some(0)),
                 bound: ScoreBound::Exact,
             }))
         );
