@@ -56,6 +56,19 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 2026年11月1日の利用者の決定により、ほぼ乱択の対局からなるサイクル1と2を、サイクル14の学習から学習窓の外に出した（[学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)）。
 [20サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0020.md)では、サイクル20のネットがサイクル10にEloの点推定+199［+171, +229］で勝った。
 2026年11月2日の利用者の決定で、重みの移動平均を学習器と実行器から取り除いた（[移動平均のADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)）。サイクル21〜25の出力には平均が残るが、サイクル26からは書き出さない。
+[30サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0030.md)では、サイクル30のネットがサイクル20にEloの点推定+237［+206, +271］で勝った。
+学習はサイクル32で止めてあり、借りた機械はない。
+利用者の決定で前倒しした[サイクル32のMCTSとαβ探索のSTCの対局](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)は、97ペアで2勝192敗（Eloの点推定−793）であった。
+事前に定めた規則のとおり、学習を続けてサイクル50で同じ条件の対局をやり直す。
+
+引き継ぐ人は、次の順に進める。
+
+1. 本体のリポジトリで`cargo build --release --bin minase`を実行してから、`nohup setsid bash docs/measurements/alphazero-rl/alphazero-rl-sessions/launch-session.sh rl-r33 33 50 <masterの先端の40桁> > /mnt/synology_nas/minase/alphazero/logs/runner-rl-r33.log 2>&1 &`で、サイクル33から再開する。セッションは終了期限の8時間に収まるサイクルだけを回して自動で止まり、機械を返す（約7サイクル）。止まったら、`cycles.jsonl`の最後のサイクルの次から、セッション名を変えて同じ手順で起動する。
+2. 実行器が照合の失敗で止まったら、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4.1節の手順で原因を調べる。FP16の方策の確率の差の許容誤差は1×10⁻²のままであり、通常の重みのネットの差はこれまで最大で0.0096である。超えて止まった場合は、許容誤差の扱いを利用者に諮る。
+3. サイクル40が終わったら、作業機で進捗測定を行う。`alphazero-rl-restart-progress-c0030/`の`check.sh`と`progress-workstation.sh`を`alphazero-rl-restart-progress-c0040/`へ複製し、`check.sh 0040`と`progress-workstation.sh 0040 0030 16 <新しいシード> <新しいシード> /mnt/synology_nas/minase/alphazero/progress`を実行する。手引きの4.1節の`external-eval`をサイクル31〜40について実行し、`alphazero-rl-long-games/long_trend.py`をサイクル40について実行して、記録を書く。
+4. 引き延ばしの兆候を見張る。800手以上の対局で600手目に評価値が有利な側が勝つ割合は、サイクル20の86.8%からサイクル30の78.4%へ下がった。サイクル40でも続けて下がるなら、差のついた対局が早く終わる偏りによるのか、評価値の精度によるのかを調べる。
+5. サイクル50が終わったら、進捗測定に加えて、`alphazero-rl-restart-stc-c0032/run-stc.sh`を複製し、ネットとシードだけを変えて、同じ条件のSTCの対局を行う。その結果を添えて、段階を進めるか、学習を続けるかを利用者に諮る。伸びが止まったときの手順は「伸びが止まったらネットと探索回数を段階的に増やす」の節が定める。
+6. 残高は2026年11月2日の時点で247.87 CUであり、L4を1台で休まず回すと1日に約47 CUを使う。月次付与は毎月200 CUである。レンタル機の準備（実行器の対応と、vast.aiのRTX 3090と4090の試走）は利用者に提案済みで、まだ返事を得ていない。
 サイクル20から分岐した一定の学習率の系列`cycles-constant/`は、サイクル22の出力の照合で止まり、2026年11月2日の利用者の決定で打ち切った（[学習率の予定のADR](../adr/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)）。
 
 ## 目的

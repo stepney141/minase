@@ -1,0 +1,68 @@
+{
+  "format_version": 7,
+  "ponder": false,
+  "candidate": {
+    "identity": {
+      "kind": "commit",
+      "hash": "45d5db5498e1739b2307b3719891a1eec24f7fbd",
+      "sha256": "f77e71c60bf3a591f53c5336689becf7a78a8ff56db9dbfbd2925b98f78a072a",
+      "args": [
+        "--search",
+        "mcts",
+        "--nn-model",
+        "/mnt/synology_nas/minase/alphazero/nets/cycle-0032.onnx"
+      ],
+      "working_directory": "/home/stepney141/board-games/minase"
+    },
+    "limit": {
+      "kind": "time",
+      "base_ms": 10000,
+      "increment_ms": 100,
+      "byoyomi_ms": 0
+    },
+    "options": [
+      [
+        "NnBatchSize",
+        "16"
+      ]
+    ]
+  },
+  "baseline": {
+    "identity": {
+      "kind": "commit",
+      "hash": "45d5db5498e1739b2307b3719891a1eec24f7fbd",
+      "sha256": "f77e71c60bf3a591f53c5336689becf7a78a8ff56db9dbfbd2925b98f78a072a",
+      "args": [],
+      "working_directory": "/home/stepney141/board-games/minase"
+    },
+    "limit": {
+      "kind": "time",
+      "base_ms": 10000,
+      "increment_ms": 100,
+      "byoyomi_ms": 0
+    },
+    "options": []
+  },
+  "rules_source": "engine-default",
+  "canonical_rules": [
+    "L0",
+    "P0",
+    "R1",
+    "E0"
+  ],
+  "mode": {
+    "kind": "elo"
+  },
+  "seed": 2026110232,
+  "max_ply": 4096,
+  "response_timeout_secs": 120,
+  "engine_threads": {
+    "candidate": 1,
+    "baseline": 1
+  },
+  "hash_mb": {
+    "candidate": 256,
+    "baseline": 256
+  },
+  "concurrency": 1
+}
