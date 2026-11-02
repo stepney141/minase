@@ -3,8 +3,10 @@
 use core::num::NonZeroUsize;
 use std::sync::Arc;
 
-use crate::search::clock::MonotonicClock;
-use crate::search::handle::start_search_with_clock;
+use crate::eval::Nnue;
+use crate::search::alphabeta::team::run_search_team;
+use crate::search::clock::{MonotonicClock, SearchClock};
+use crate::search::events::SearchEvent;
 use crate::search::{
     DEFAULT_THREADS, DEFAULT_TT_SIZE_MB, HistoryTables, SearchHandle, SearchLimits, SearchOption,
     SearchOptionKind, SearchOptionValue, SearchSnapshot, Searcher, SetOptionError, StartError,
@@ -155,4 +157,57 @@ impl Engine {
             Arc::new(MonotonicClock::new()),
         ))
     }
+}
+
+/// 指定した重みと時計を使い、置換表を確保済みの探索器を開始する。
+/// 時計は探索チームと的中通知で共有する。
+pub(in crate::search) fn start_search_with_clock(
+    mut engine: crate::search::alphabeta::Engine,
+    nnue: Arc<Nnue>,
+    snapshot: SearchSnapshot,
+    limits: SearchLimits,
+    search_id: u64,
+    ponder: bool,
+    clock: Arc<dyn SearchClock>,
+) -> SearchHandle {
+    SearchHandle::spawn(
+        clock,
+        ponder,
+        move |thread_clock, thread_hit_ns, thread_stop, sender| {
+            let outcome = run_search_team(
+                &nnue,
+                &snapshot.position,
+                snapshot.rules(),
+                snapshot.repetition(),
+                snapshot.draw_value(),
+                &snapshot.root_moves,
+                &snapshot.history_keys,
+                &limits,
+                &thread_stop,
+                engine.threads,
+                engine
+                    .transposition_table
+                    .as_ref()
+                    .expect("a prepared search engine must own its transposition table"),
+                &mut engine.histories,
+                Some((&sender, search_id)),
+                thread_clock.as_ref(),
+                &thread_hit_ns,
+                ponder,
+            );
+            let result = outcome.result;
+            let _ = sender.send(SearchEvent::Finished {
+                partial_score: outcome.partial_score,
+                search_id,
+                best_move: result.best_move,
+                score: result.score,
+                depth: result.depth,
+                nodes: result.nodes,
+                elapsed: outcome.elapsed,
+                pv: outcome.pv,
+                stop_reason: outcome.stop_reason,
+            });
+            Ok(Searcher::AlphaBeta(engine))
+        },
+    )
 }

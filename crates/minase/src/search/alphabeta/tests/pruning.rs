@@ -4,7 +4,6 @@ use super::*;
 use crate::search::REPETITION_BAND_START;
 use crate::search::alphabeta::history::CONTINUATION_HISTORY_LIMIT;
 use crate::search::alphabeta::ordering::continuation_index;
-use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{
     CaptureFutilityCoefficients, FutilityCoefficients, SeeCoefficients, applies_lmr,
     continuation_history_prunes, corrected_static_eval, history_lmr_divisor,
@@ -14,6 +13,7 @@ use crate::search::alphabeta::pruning::{
     razoring_margin_with_coefficient, reverse_futility_margin, reverse_futility_value,
     seek_mate_null_move_reduction, should_raise_futility_best_score,
 };
+use crate::search::params;
 
 use crate::search::alphabeta::pruning::{LmrCoefficients, LmrContext};
 #[cfg(feature = "tuning")]

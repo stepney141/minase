@@ -33,6 +33,6 @@ TensorFlowで書かれ、lc0に固有の学習データの形式に結びつい�
 ## 結果
 
 学習器はPythonとPyTorchに依存するが、minaseのビルドはPyTorchに依存しない。
-ネットの入力の符号化と方策のラベルは、Rustの`nn`とPythonの`minase_zero.encoding`の両方に実装され、両者の一致は固定局面集`tools/train/zero/fixtures/nn-positions.jsonl`による試験で確かめる。
+ネットの入力の符号化と方策のラベルは、Rustの`nn`とPythonの`minase_zero.encoding`の両方に実装され、両者の一致は固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl`による試験で確かめる。
 学習したネットは、使う前に、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)の手順で照合する。
 撤去した以前のPython学習器（[撤去の設計書](../plans/archived/python-trainer-retirement.md)）とは別の学習器であり、NNUE、PST、およびFMの学習は引き続き`minase-trainer`が担う。

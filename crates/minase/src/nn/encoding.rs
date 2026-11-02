@@ -55,7 +55,7 @@ pub fn encode(position: &Position, out: &mut [f32]) -> Result<(), NnError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nn::test_util::{random_positions, rotate};
+    use crate::nn::test_support::{random_positions, rotate};
     use minase_core::rules::PromotionRule;
     use minase_core::test_util::{position, sq};
     use minase_core::{Color, Move, MoveGenerator, PieceCode, PieceKind, PositionBuilder, Rules};

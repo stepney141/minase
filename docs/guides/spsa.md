@@ -18,7 +18,7 @@
 
 調整対象は、評価関数と探索の構成が確定したコミットとする。
 評価関数が変わると探索係数の最適値も動くので、採否の測定が進行中の構成を調整しない。
-係数の表は `crates/minase/src/search/alphabeta/params.rs` にあり、表の既定値が調整の開始値になる。
+係数の表は `crates/minase/src/search/params.rs` にあり、表の既定値が調整の開始値になる。
 
 ## 2. パラメーターファイルを作る
 
@@ -109,7 +109,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 
 ## 7. 値の採否を判定する
 
-1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `crates/minase/src/search/alphabeta/params.rs` の表の既定値へ書き込む。
+1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `crates/minase/src/search/params.rs` の表の既定値へ書き込む。
    `apply` は実行ディレクトリから最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。
    `invocations.json` を持たない以前の形式のセッションも反映できる。
    検査と書き換えの規則は`spsa_runner`の`apply`モジュールのdocコメントにあり、この方式を選んだ理由は[反映のADR](../adr/apply-spsa-results-by-rewriting-default-literals.md)にある。
@@ -117,7 +117,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
    ```console
    git switch -c <候補ブランチ> <調整対象コミット>
    target/release/minase spsa apply \
-     --run-dir data/spsa/<セッション名> --source crates/minase/src/search/alphabeta/params.rs
+     --run-dir data/spsa/<セッション名> --source crates/minase/src/search/params.rs
    ```
 
    `git diff` で既定値だけが変わったことを確かめ、セッションの実行ディレクトリ名と調整対象のコミットを書いたメッセージで1つのコミットにする。
@@ -273,6 +273,7 @@ nohup python3 scripts/vast-spsa/fetch.py <セッション名> > data/vast-spsa/<
 認証し直す前に調整機を止める必要があるときは、調整機にSSHで入り、PID 1の環境変数（`/proc/1/environ`）にある`CONTAINER_ID`と`CONTAINER_API_KEY`を使って、起動時スクリプト`scripts/vast/onstart.sh`の自己停止と同じ停止の要求を送る。
 調整機の削除は、認証し直した後に行う。
 セッションが全反復を終えると、`fetch.py`は測定機のrunnerで`minase spsa apply`を`params.rs`の一時的な写しに対して実行して記録の整合性を検査し、検査に通れば調整機を削除して終了コード0で終わる。
+写しは、調整の対象のコミットの`crates/minase/src/search/params.rs`を`git show`で読んで作るので、係数の表がこのパスへ移る前のコミットで始めたセッションは、そのコミットの`fetch.py`で取得を終える。
 事前確認や本番が失敗した場合は調整機を停止し、所要時間の見込みが上限を超えた場合は調整機を削除して、どちらも0以外の終了コードで止まる。
 
 ### 再開する

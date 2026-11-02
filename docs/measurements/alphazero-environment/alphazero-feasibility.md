@@ -8,10 +8,11 @@
 
 ## コマンドライン
 
-測定用の道具は`tools/train/zero/feasibility/`にあり、測定のときはブランチ`alphazero-environment`で作った。
+測定用の道具はコミットeda8f146の`tools/train/zero/feasibility/`にあり、測定のときはブランチ`alphazero-environment`で作った。
 `make_nets.py`はランダムに初期化した4つの大きさのネットをONNXへ出力し、`trt_bench`はONNX RuntimeのTensorRT実行プロバイダで推論の速度を、`sim_cost`はGumbel AlphaZero（1手32回、候補16手）の探索の1シミュレーションあたりのCPUの処理時間を、`train_bench.py`は学習の1ステップの速度を測り、`teacher_stats`は教師データの分布を集計する。
 本記録と同じ名前のディレクトリ`alphazero-feasibility/`に置いた`measure.sh`は、1台の機械で導入、ビルド、ネットの作成、推論、CPUの処理、および学習を順に測り、推論の段階は`measure-trt.sh`が受け持つ。
 `summarize.py`は`measure.sh`の出力を表の値にまとめ、`estimate.py`は`estimate-input.json`の値から見積もりを計算する。
+`measure.sh`、`measure-trt.sh`、および`longrun.sh`は、道具を含む測定に使ったコミットのソースで動く。
 
 ```console
 # 作業機（<wt> は alphazero-environment の worktree、$F は本ディレクトリ）

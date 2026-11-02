@@ -42,7 +42,7 @@ GUIからの`go mate`、詰め中将棋の作品や保存棋譜の検討、お�
 
 本マイルストーンでは、次の作業を行う。
 
-- `crates/minase/src/mate/`に、詰みの探索木の定義、df-pnの探索核、専用の置換表、証明木と反証木の検証器、結果型、およびそれらを束ねるソルバの実体`MateSolver`を実装する。呼び出しの契約は「呼び出しの契約」節に従う。
+- `crates/minase/src/search/mate/`に、詰みの探索木の定義、df-pnの探索核、専用の置換表、証明木と反証木の検証器、結果型、およびそれらを束ねるソルバの実体`MateSolver`を実装する。呼び出しの契約は「呼び出しの契約」節に従う。
 - `crates/minase/src/search/alphabeta/royal.rs`の王駒の判定（`royal_under_attack`、`captures_last_royal`）を、`crate::search`配下で詰み探索からも使える可視性へ広げる。minase-coreのAPIは変更しない。詰み探索が必要とする`Position::royal_pieces`、`Position::attackers_to_by`、`Position::captured_squares`、`make_move_unchecked`と`unmake_move`、`zobrist`と`rights_zobrist`、`repetition_key`、`MoveGenerator::generate_moves`、および`Game`と`Game::repetition_key_history`は、いずれもminase-coreが公開している（`crates/minase-core/src/lib.rs`の再エクスポート）。
 - `crates/minase/src/protocol/usi.rs`に、`go mate <ms>|infinite`と節点予算`nodes <N>`の受理、統計の行と`checkmate`の出力、探索中の`stop`と`quit`の扱いを実装する。現在は`go`の引数に`mate`が含まれると無条件に`checkmate notimplemented`を返している。ワーカーには、`crates/minase/src/protocol/engine.rs`の`Engine`が`position`で受けて保持している`Game`の複製を渡す。
 - 固定局面集を`go mate`で解いて集計するPythonの測定スクリプトを、測定記録の再現用として書く。
@@ -73,7 +73,7 @@ USIの状態機械と`go`のライフサイクルは[外部対局接続](archive
 規格先行テストの書き方は[テストスイートのspec-first再構築](archived/spec-first-tests.md)に従う。
 本書は完了済みのマイルストーンだけを前提とする。
 PV-MCTSの探索木と経路の再生は[AlphaZero型探索](alphazero.md)のサブタスク[探索方式の共存とMCTS](archived/alphazero-mcts.md)が定め、AlphaZero型探索の初版は詰み探索との統合を対象外としている。
-AlphaZero型の自己対局を王手限定の3手以内の勝ちで打ち切る判定は、本書とは別の、深さを3手に固定した探索として[学習技法の導入の設計書](archived/alphazero-restart-techniques.md)で作られている（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)）。
+AlphaZero型の自己対局を王手限定の3手以内の勝ちで打ち切る判定は、本書とは別の、深さを3手に固定した探索として[学習技法の導入の設計書](archived/alphazero-restart-techniques.md)で作られている（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)）。
 本書の探索核と参照探索はその判定に依存せず、その判定を置き換えもしない。
 王手の定義と、受け方の王駒が2枚になる局面の扱いは、本書のソルバとその判定でそろえる。
 従う教訓は、[外部入力でパニックしない](../lessons/no-panic-on-external-input.md)、[不正状態を作れる公開型を避ける](../lessons/checked-constructors-for-public-types.md)、[エラーを文字列へ失わない](../lessons/typed-errors-over-strings.md)、[スレッドを所有するハンドルはDropで回収する](../lessons/join-threads-on-drop.md)、[回帰テストは修正を外して失敗を確認する](../lessons/confirm-regression-test-fails-without-fix.md)、および[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)である。

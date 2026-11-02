@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 from minase_zero.__main__ import _parse
 from minase_zero.runner import (
-    Options, Remote, Runner, append_cycle, can_start, chunk_files, game_counts, parse_balance,
+    FIXTURE, Options, Remote, Runner, append_cycle, can_start, chunk_files, game_counts, parse_balance,
     publish_network, receive, resignation, seed_registration, send, summaries, training_window,
 )
 
@@ -50,6 +50,8 @@ class FakeRemote:
 
     def __init__(self, root: Path):
         self.root = root
+        self.source_files = {FIXTURE}
+        self.existence_checks = []
         self.uploads = []
         self.upload_batches = []
         self.hash_batches = []
@@ -66,6 +68,9 @@ class FakeRemote:
         self.on_download = None
 
     def exists(self, relative):
+        self.existence_checks.append(relative)
+        if Path(relative).is_absolute():
+            return relative in self.source_files
         return (self.root / relative).is_file()
 
     def files(self, relative):
@@ -151,9 +156,22 @@ class RunnerCase(unittest.TestCase):
             window_first_cycle=1,
             window_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
-            train_seed_base=123, teacher_stats=self.directory / "teacher_stats", poll_seconds=60,
+            train_seed_base=123, minase=self.directory / "minase", poll_seconds=60,
             cycle1_reference_summary=self.reference,
         )
+        executable = """#!/usr/bin/env python3
+import json, pathlib, sys
+args = sys.argv[1:]
+if args == ['data', 'teacher-stats', '--help']:
+    sys.exit(0)
+elif (args[:2] == ['data', 'teacher-stats'] and len(args) > 2
+      and all(pathlib.Path(name).is_file() for name in args[2:])):
+    print(json.dumps({'files': args[2:], 'game_length_plies': {'p50': 100, 'p90': 120, 'p99': 140}}))
+else:
+    sys.exit(2)
+"""
+        write(self.options.minase, executable.encode())
+        self.options.minase.chmod(0o755)
         self.runner = Runner(self.options, self.remote)
         write(self.root / "cycles/cycle-0000/model.onnx", b"initial network")
         write(self.root / "cycles/cycle-0000/checkpoint.pt", b"initial checkpoint")
@@ -675,7 +693,7 @@ class ResumeTests(RunnerCase):
         first = self.runner.training_command(1, first_files, first_files)
         self.assertEqual(first[first.index("--init") + 1], "cycles/cycle-0000/checkpoint.pt")
 
-    def test_completed_cycle_is_skipped_without_remote_operations(self):
+    def test_completed_cycle_is_skipped_without_remote_jobs(self):
         append_cycle(self.root / "cycles.jsonl", {"cycle": 1})
         write(self.root / "nets/cycle-0001.onnx", b"published")
         self.runner.run()
@@ -925,14 +943,6 @@ class CycleTests(RunnerCase):
         self.compare_failure = False
         self.regenerate = False
         self.remote.on_start = self.complete_job
-        teacher = """#!/usr/bin/env python3
-import json, pathlib, sys
-if any(not pathlib.Path(name).is_file() for name in sys.argv[1:]):
-    sys.exit(2)
-print(json.dumps({'files': sys.argv[1:], 'game_length_plies': {'p50': 100, 'p90': 120, 'p99': 140}}))
-"""
-        write(self.options.teacher_stats, teacher.encode())
-        self.options.teacher_stats.chmod(0o755)
         self.tool = self.directory / "fake-tool"
         write(self.tool, b'''#!/usr/bin/env python3
 import json, pathlib, sys
@@ -1008,6 +1018,30 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             raise AssertionError(body)
         return 0
 
+    def test_unsupported_teacher_stats_stops_before_any_remote_command(self):
+        write(self.options.minase, b"#!/bin/sh\nexit 2\n")
+        with self.assertRaises(RuntimeError):
+            self.runner.run()
+        self.assertEqual(self.remote.existence_checks, [])
+        self.assertEqual(self.remote.machine_calls, 0)
+        self.assertEqual(len(self.remote.balances), 4)
+        self.assertEqual(self.remote.starts, [])
+        self.assertFalse((self.remote_root / "commands.jsonl").exists())
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+
+    def test_missing_remote_fixture_stops_before_cycle_work(self):
+        self.remote.source_files.remove(FIXTURE)
+        with self.assertRaises(RuntimeError) as error:
+            self.runner.run()
+        self.assertIn(FIXTURE, str(error.exception))
+        self.assertIn(TRAINER_COMMIT, str(error.exception))
+        self.assertEqual(self.remote.existence_checks, [FIXTURE])
+        self.assertEqual(self.remote.machine_calls, 0)
+        self.assertEqual(len(self.remote.balances), 4)
+        self.assertEqual(self.remote.starts, [])
+        self.assertFalse((self.remote_root / "commands.jsonl").exists())
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+
     def test_two_cycles_record_provenance_checks_cost_and_immutable_networks(self):
         def before_download(relative, target):
             if "/train/" in relative:
@@ -1068,7 +1102,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         fixture = first_commands[0]
         self.assertEqual(fixture[fixture.index("fixture-eval"):], [
             "fixture-eval", "--checkpoint", "cycles/cycle-0001/train/checkpoint.pt", "--onnx", "cycles/cycle-0001/train/model.onnx",
-            "--fixture", "/content/src/tools/train/zero/fixtures/nn-positions.jsonl", "--out", "cycles/cycle-0001/check/pytorch.json",
+            "--fixture", FIXTURE, "--out", "cycles/cycle-0001/check/pytorch.json",
         ])
         for command in first_commands[1:]:
             if "--candidate" in command:
@@ -1474,7 +1508,7 @@ class ArgumentTests(RunnerCase):
                 "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
-                "--teacher-stats", str(self.options.teacher_stats), "--poll-seconds", "60",
+                "--minase", str(self.options.minase), "--poll-seconds", "60",
                 "--cycle1-reference-summary", str(self.reference)]
 
     def test_all_arguments_other_than_reference_are_required(self):

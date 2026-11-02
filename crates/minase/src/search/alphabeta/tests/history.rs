@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::search::HistoryTables;
-use crate::search::alphabeta::params;
+use crate::search::params;
 
 // 単一ワーカーが深さ1を完了したとき、採用評価値と返却手の最初の平均値を持ち越す。
 #[test]

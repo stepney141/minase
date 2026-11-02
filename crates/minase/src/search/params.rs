@@ -411,7 +411,7 @@ parameters! {
     QsearchSeeMargin(qsearch_see_margin): 83, 0, 200;
     /// 静止探索の候補の列で、現在の候補より前に取り出した候補数の上限。単位は手である。
     /// 開始値2はStockfishの値に当たり（src/search.cpp:1825）、範囲1〜16はStockfishの2と起点の6を含む。
-    /// 例外は[`super::searcher::Searcher::quiesce`]に従う。この形での値はSPSAで未調整である。
+    /// 例外は`alphabeta::searcher::Searcher::quiesce`に従う。この形での値はSPSAで未調整である。
     QsearchMoveLimit(qsearch_move_limit): 8, 1, 16;
     /// 1局の開始から終局までに見込む両側の合計着手数。単位は手である。
     /// 値はSPSAで調整した。

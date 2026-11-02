@@ -377,7 +377,7 @@ class WorkflowTests(unittest.TestCase):
         manifest = json.loads(manifest_path.read_text())
         manifest['settings']['iterations'] = 2
         manifest_path.write_text(json.dumps(manifest))
-        self.fake.add('git', ['show', CONFIG['commit'] + ':crates/minase/src/search/alphabeta/params.rs'], 'source')
+        self.fake.add('git', ['show', CONFIG['commit'] + ':crates/minase/src/search/params.rs'], 'source')
         binary = self.root / 'target/release/minase'
         binary.parent.mkdir(parents=True)
         binary.symlink_to(self.fake.bin / 'minase')

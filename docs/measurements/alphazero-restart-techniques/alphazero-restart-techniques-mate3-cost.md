@@ -10,9 +10,10 @@
 ## コマンドライン
 
 測定日は2026年10月31日である。
-測定道具[mate_cost.rs](../../../tools/train/zero/feasibility/src/bin/mate_cost.rs)は、生成器の判定のファイル`crates/minase/src/bin/minase/zero_selfplay/mate.rs`を`#[path]`で取り込み、選んだ対局を教師データの形式MNSDのヘッダの規則で再生しながら、全着手の直後の局面（終局していない局面）で判定を1回ずつ呼んで経過時間を測る。
+測定道具であるコミット47bf34a6の`tools/train/zero/feasibility/src/bin/mate_cost.rs`は、判定のファイル（現在の`crates/minase/src/search/mate_in_three.rs`）を`#[path]`で取り込み、選んだ対局を教師データの形式MNSDのヘッダの規則で再生しながら、全着手の直後の局面（終局していない局面）で判定を1回ずつ呼んで経過時間を測る。
 対局は、学習器の`external-eval`が固定の検証用棋譜に使う選択と同じく、αβ探索の自己対局の教師データ`generated-8200000.bin`（SHA-256 `e22a09e6…7d0d`）からシード20261030で選んだ1,000局である。
 選択の一覧は、リセット前の[10サイクル目の進捗測定](../alphazero-rl/alphazero-rl-progress-c0010.md)が保存した`external-eval`の出力の`selected_games`の欄から読んだ。
+次のコマンドは、この道具を含むコミットのソースで動く。
 
 ```console
 cd tools/train/zero/feasibility

@@ -24,18 +24,7 @@ pub use driver::{DrawValue, Driver, EvaluationRequest, Step};
 pub use engine::{Config, Engine};
 pub use error::Error;
 
-/// 最大値を引いてから指数を取る、単精度のsoftmax。
-fn softmax(logits: &[f32]) -> Vec<f32> {
-    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let mut probabilities: Vec<_> = logits.iter().map(|logit| (logit - max).exp()).collect();
-    let sum: f32 = probabilities.iter().sum();
-    for probability in &mut probabilities {
-        *probability /= sum;
-    }
-    probabilities
-}
-
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;

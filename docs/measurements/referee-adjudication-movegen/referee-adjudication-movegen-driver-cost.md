@@ -9,7 +9,7 @@
 ## コマンドライン
 
 測定日は2026年10月28日である。
-測定道具は[driver_cost.rs](../../../tools/train/zero/feasibility/src/bin/driver_cost.rs)であり、`minase::search::mcts::Driver`を一様評価器`UniformEvaluator`で駆動する。
+測定道具はコミット55342445の`tools/train/zero/feasibility/src/bin/driver_cost.rs`であり、`minase::search::mcts::Driver`を一様評価器`UniformEvaluator`で駆動する。
 条件は[監査対応の測定](../alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)と同じであり、Gumbelは根の評価に加えて最大32回、候補数は最大16手、PUCTは根の評価を含めて最大800回、バッチは256葉、規則は全局面で`engine-default`とした。
 本測定の前に、Gumbelが選んだ手と方策の目標、PUCTの最善手、および終局の勝者を出力へ加え、比較元と候補の両方を同じ`driver_cost.rs`でビルドした。
 
@@ -18,6 +18,7 @@
 ビルドはどちらもworktreeを作業ディレクトリとして実行し、同じ`.cargo/config.toml`（`target-cpu=native`）を適用した。
 交互測定のスクリプト`run_rounds.py`は、比較元と候補を同じCPUで交互に5回ずつ`nice -n 19 taskset -c 2 <実行ファイル> --seed 20261028 --games 32 --adjudication after`の形で実行し、各回の出力と実行環境を保存する。
 `analyze.py`は、時間の項目（各探索の`elapsed_ms`、全体の`summary_ms`、および`snapshots`）を除いた出力が同じ版の各回の間、および比較元と候補の間で一致することを確かめ、一致しなければ集計せずに終了する。
+次のコマンドは、この道具を含むコミットのソースで動く。
 
 ```console
 task_root=/home/stepney141/board-games/minase/data/worktrees/referee-adjudication-movegen

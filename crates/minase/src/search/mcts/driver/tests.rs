@@ -1,5 +1,5 @@
 use super::*;
-use crate::nn::UniformEvaluator;
+use crate::nn::test_util::UniformEvaluator;
 use crate::search::mcts::gumbel::Gumbel;
 use crate::search::mcts::puct::PuctConfig;
 use crate::search::mcts::test_support::*;
@@ -390,8 +390,8 @@ fn depth_limit_is_a_network_leaf_and_score_bands_include_max_ply() {
     let mut input = initial();
     input.root_moves.truncate(1);
     let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
-    assert_eq!(driver.tree.depth_limit(), MAX_PLY);
-    driver.tree.max_ply = 2;
+    assert_eq!(driver.tree.depth_limit, MAX_PLY);
+    driver.tree.depth_limit = 2;
     advance(&mut driver, &mut UniformEvaluator);
     advance(&mut driver, &mut UniformEvaluator);
     let Step::Evaluate(request) = driver
@@ -754,7 +754,7 @@ fn check_transition(game: &Game, mv: Move, expected: GameStatus) -> Driver {
     input.root_moves = vec![mv];
     let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
     if matches!(expected, GameStatus::Finished(_)) {
-        driver.tree.max_ply = 1;
+        driver.tree.depth_limit = 1;
     }
     advance(&mut driver, &mut UniformEvaluator);
     let evaluated = advance(&mut driver, &mut UniformEvaluator).is_some();
@@ -1154,7 +1154,7 @@ fn exact_r1_wins_losses_and_draws_precede_the_cycle_approximation() {
 fn exact_terminal_and_approximate_repetition_precede_the_depth_limit() {
     let (game, establish) = grace_game();
     let mut driver = check_transition(&game, establish, GameStatus::Ongoing);
-    driver.tree.max_ply = 2;
+    driver.tree.depth_limit = 2;
     let index = driver
         .tree()
         .node(&[0])
@@ -1169,7 +1169,7 @@ fn exact_terminal_and_approximate_repetition_precede_the_depth_limit() {
     );
     let (start, cycle) = rook_cycle(false, false);
     let mut driver = Driver::new(snapshot(&start), CAPACITY, DrawValue::SelfPlay).unwrap();
-    driver.tree.max_ply = 4;
+    driver.tree.depth_limit = 4;
     let mut evaluator = ScriptedEvaluator::line(&start, &cycle);
     for _ in 0..4 {
         advance(&mut driver, &mut evaluator);

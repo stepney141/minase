@@ -14,8 +14,8 @@ use minase_core::position::Position;
 
 use super::history::history_gravity;
 use super::ordering::piece_at_for_ordering;
-use super::params;
 use super::searcher::MoveRecord;
+use crate::search::params;
 
 /// 捕獲履歴の絶対値の上限。
 /// Stockfishの`CapturePieceToHistory`と同じ10692を使う（src/history.h:135）。

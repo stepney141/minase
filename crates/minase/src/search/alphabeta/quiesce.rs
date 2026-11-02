@@ -25,12 +25,12 @@ use super::correction::{correction_piece_keys, material_key};
 use super::history::pawn_key;
 use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
-use super::params;
 use super::pruning::{corrected_static_eval, pruning_eval, should_raise_futility_best_score};
 use super::royal::captures_all_royals;
 use super::searcher::{MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
+use crate::search::params;
 
 /// 入口の打ち切りで使う最善値の重み（Stockfish `src/search.cpp:1783`）。
 const ENTRY_CUTOFF_BEST_WEIGHT: i32 = 441;

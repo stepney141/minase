@@ -1,8 +1,8 @@
 //! 先読みを検査する。
 
 use super::*;
-use crate::search::alphabeta::params;
 use crate::search::alphabeta::root::RootMoveStats;
+use crate::search::params;
 
 /// 指定した`elapsed`呼び出しで先読みの的中時刻を記録する時計。
 struct HitOnElapsedCallClock<'a> {
@@ -264,7 +264,7 @@ fn completed_ponder_iteration_clears_mate_stop_before_hit() {
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     let ms = Duration::from_millis;
     let ns = Duration::from_nanos;
-    let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
+    let ratio = crate::search::params::iteration_ratio() as u64;
     let budget = TimeBudget {
         deadline: false,
         soft: ms(100),

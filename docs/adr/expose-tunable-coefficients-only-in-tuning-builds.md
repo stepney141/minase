@@ -16,7 +16,7 @@ HobbesとakimboはRustのマクロで係数ごとに定数版と調整版の関�
 
 ## 決定
 
-調整する係数は`crates/minase/src/search/alphabeta/params.rs`の1つの表に定義し、マクロが、通常ビルドでは既定値を返す`const fn`を、cargo feature `tuning`を付けた調整用ビルドでは`AtomicI32`を読む関数を生成する。
+調整する係数は`crates/minase/src/search/params.rs`の1つの表に定義し、マクロが、通常ビルドでは既定値を返す`const fn`を、cargo feature `tuning`を付けた調整用ビルドでは`AtomicI32`を読む関数を生成する。
 調整用ビルドだけが係数を`Tune_<名前>`のUSIオプションとして宣言し、範囲外の値と最初の`go`より後の変更を拒否する。
 係数はすべて`i32`とし、小数や倍率は既定値で従来の式と一致する整数表現で持ち、各係数の意味と単位は`params.rs`のdocコメントに従う。
 

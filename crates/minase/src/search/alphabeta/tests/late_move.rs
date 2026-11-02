@@ -4,11 +4,11 @@ use super::*;
 #[cfg(feature = "tuning")]
 use crate::search::REPETITION_BAND_START;
 #[cfg(feature = "tuning")]
-use crate::search::alphabeta::params;
-#[cfg(feature = "tuning")]
 use crate::search::alphabeta::pruning::{futility_value, late_move_limit, pruning_lmr_depth};
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::quiesce::qsearch_entry_cutoff_score;
+#[cfg(feature = "tuning")]
+use crate::search::params;
 
 // 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
 // 各着手の評価を引き分けより高く保ち、静かな手の上限と探索順序を観測する。

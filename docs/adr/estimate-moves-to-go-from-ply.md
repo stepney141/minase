@@ -17,7 +17,7 @@
 
 手番側が今後指す手数の見積りを`max(MinMoves, (ExpectedPlies − ply) / 2)`とし、plyは開始局面からの絶対手数とする。
 softを`min(soft_raw, hard)`へ縮め、softがhardを超えないようにする。
-式の全体は`moves_to_go`と`clock_budget_with_margin`のdocコメントに、係数の現行値は`crates/minase/src/search/alphabeta/params.rs`にある。
+式の全体は`moves_to_go`と`clock_budget_with_margin`のdocコメントに、係数の現行値は`crates/minase/src/search/params.rs`にある。
 
 ## 検討した代案
 

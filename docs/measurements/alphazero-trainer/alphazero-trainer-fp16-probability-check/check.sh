@@ -7,7 +7,7 @@ OUT=$D/check
 mkdir -p "$OUT"
 cd "$W/tools/train/zero"
 uv run --frozen python -m minase_zero fixture-eval --checkpoint "$D/train-a/checkpoint.pt" \
-  --onnx "$D/train-a/model.onnx" --fixture fixtures/nn-positions.jsonl --out "$OUT/pytorch.json"
+  --onnx "$D/train-a/model.onnx" --fixture ../../../crates/minase/tests/fixtures/nn-positions.jsonl --out "$OUT/pytorch.json"
 source "$W/tools/train/zero/env.sh"
 for b in 1 7 256; do
   "$W/target/release/minase" dev nn-eval --nn-model "$D/train-a/model.onnx" --backend cpu \

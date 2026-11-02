@@ -94,7 +94,7 @@ def validate_result(root: Path, directory: Path, config: remote.Session, instanc
     try:
         remote.check_manifest(directory / 'run/manifest.json', config)
         with tempfile.NamedTemporaryFile(prefix='.params.', suffix='.rs', dir=directory) as source:
-            subprocess.run(['git', 'show', config['commit'] + ':crates/minase/src/search/alphabeta/params.rs'],
+            subprocess.run(['git', 'show', config['commit'] + ':crates/minase/src/search/params.rs'],
                            cwd=root, stdout=source, check=True)
             binary = root / 'target/release/minase'
             if not os.access(binary, os.X_OK):

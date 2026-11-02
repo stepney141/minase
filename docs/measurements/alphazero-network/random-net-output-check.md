@@ -13,7 +13,7 @@ cargo build --release --bin minase
 bash docs/measurements/alphazero-network/random-net-output-check/run.sh <wt> <out-dir>
 ```
 
-`run.sh`は、`tools/train/zero/env.sh`で環境を設定し、`feasibility/make_nets.py`でネットを作り、固定局面集の288局面を`minase dev nn-eval`で推論する。
+`run.sh`はコミット982d772dのソースで動き、`tools/train/zero/env.sh`で環境を設定し、`feasibility/make_nets.py`でネットを作り、固定局面集の288局面を`minase dev nn-eval`で推論する。
 推論は、CPUではバッチ1、7、256で各1回、TensorRTではバッチ1、7、256でエンジンの作成と読み込みの各1回、CUDAではバッチ7で4回行う。
 続いて`nn_torch_reference.py`でPyTorchの出力を求め、`nn_compare.py`で各出力をPyTorchの出力と照合する。
 許容誤差は、CPUが1×10⁻⁴、TensorRTのFP16とCUDAが1×10⁻²である。

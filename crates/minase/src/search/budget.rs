@@ -1,7 +1,7 @@
 //! 探索方式が共有する持ち時間の配分と入力の選別。
 
-use crate::search::alphabeta::params;
 use crate::search::limits::{ClockLimits, SearchLimits};
+use crate::search::params;
 use std::time::Duration;
 
 /// 1手に使う時間の予算。softはhard以下、hardは1 ms以上である。
@@ -40,13 +40,6 @@ pub(super) fn time_advantage_factor(
     let opponent = u128::from(opponent_remaining_ms);
     let difference = opponent.saturating_sub(remaining);
     1000 - time_advantage * difference / (remaining + opponent + 1)
-}
-
-/// [`ClockCoefficients::budget`]を安全余裕30 msで適用する。
-/// 秒読みだけの特別な締切や、指定された秒読み余裕の適用は[`time_budget`]で選ぶ。
-#[cfg(test)]
-pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
-    ClockCoefficients::current().budget(clock, 30)
 }
 
 /// 持ち時間から探索時間を配分する式に渡す調整係数。
@@ -239,3 +232,6 @@ pub(super) fn time_budget_with_coefficients(
 pub(super) fn to_u64_ms(milliseconds: u128) -> u64 {
     milliseconds.min(u128::from(u64::MAX)) as u64
 }
+
+#[cfg(test)]
+mod tests;

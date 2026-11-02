@@ -1,8 +1,12 @@
 //! 時間配分の算術と入力条件を検査する。
 
-use super::budget::*;
-use super::{ClockLimits, SearchLimits};
+use super::*;
+use crate::search::{ClockLimits, SearchLimits};
 use std::time::Duration;
+
+fn clock_budget(clock: ClockLimits) -> TimeBudget {
+    ClockCoefficients::current().budget(clock, 30)
+}
 
 fn depth_limits(depth: u32) -> SearchLimits {
     SearchLimits::new(Some(depth), None, None, None).expect("test depth must be valid")

@@ -57,7 +57,7 @@ fn assert_matches_attackers(position: &Position) {
 fn all_fixture_controls_match_attackers_by_kind_and_count() {
     let fixtures = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/train/zero/fixtures/nn-positions.jsonl"
+        "/tests/fixtures/nn-positions.jsonl"
     ));
     assert_eq!(INPUT_PLANES, 159);
     assert_eq!(fixtures.lines().count(), 288);

@@ -4,7 +4,7 @@ use std::{any::Any, fmt, io, path::PathBuf};
 
 use minase::{
     nn::NnError,
-    search::{SearchError, mcts},
+    search::{SearchError, mate_in_three, mcts},
     training::records,
 };
 use minase_core::GameError;
@@ -12,7 +12,7 @@ use minase_core::GameError;
 #[derive(Debug)]
 pub(super) enum Error {
     Mcts(mcts::Error),
-    Mate(super::mate::Error),
+    Mate(mate_in_three::Error),
     Inference(NnError),
     Records(records::Error),
     Game(GameError),
@@ -110,8 +110,8 @@ impl From<mcts::Error> for Error {
         Self::Mcts(error)
     }
 }
-impl From<super::mate::Error> for Error {
-    fn from(error: super::mate::Error) -> Self {
+impl From<mate_in_three::Error> for Error {
+    fn from(error: mate_in_three::Error) -> Self {
         Self::Mate(error)
     }
 }

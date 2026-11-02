@@ -4,17 +4,19 @@
 //! [`SearchLimits`]、[`SearchSnapshot`]、[`SearchEvent`]は各方式が共通に使う。
 //! αβ探索に固有の処理は`alphabeta`へ閉じ、同期版の[`search()`]は
 //! 呼び出し側が用意した置換表と[`HistoryTables`]でαβ探索を実行する。
+//! 探索方式の間で共有する調整係数の表は`params`に、持ち時間の配分は`budget`に置く。
+//! [`mate_in_three`]は、王手限定の3手以内の勝ちを審判層の裁定で判定し、探索方式にも評価関数にも依存しない。
 
 pub mod alphabeta;
 mod budget;
-#[cfg(test)]
-mod budget_tests;
 mod clock;
 mod error;
 mod events;
 mod handle;
 mod limits;
+pub mod mate_in_three;
 pub mod mcts;
+pub(crate) mod params;
 mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]

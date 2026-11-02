@@ -19,7 +19,7 @@ bash docs/measurements/alphazero-trainer/alphazero-trainer-trained-net-output-ch
 
 ネットは、[GPUでの学習の記録](alphazero-trainer-gpu-resume-check.md)の止めない学習（A）が書いた10ブロック128チャネルの`model.onnx`（SHA-256 `45204684…a6bb`）と、同じ出力先の`checkpoint.pt`である。
 学習器はブランチ`alphazero-trainer`のコミットdb2119a8、`minase`は`crates/`がmasterのae6a3723と同一のworktreeからリリースビルドしたものである。
-固定局面集は`tools/train/zero/fixtures/nn-positions.jsonl`、規則セットは`engine-default`である。
+固定局面集は`crates/minase/tests/fixtures/nn-positions.jsonl`、規則セットは`engine-default`である。
 
 ## 環境
 

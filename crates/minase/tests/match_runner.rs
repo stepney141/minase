@@ -1051,7 +1051,6 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 "setoption name Verify value true",
                 "setoption name Output File value  candidate=a b ",
                 "isready",
-                "usinewgame",
             ],
             vec![
                 "setoption name RuleSet value engine-default",
@@ -1062,15 +1061,13 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 "setoption name Verify value false",
                 "setoption name Label value ",
                 "isready",
-                "usinewgame",
             ],
         ]) {
             let text = std::fs::read_to_string(log).unwrap();
+            // usinewgameは数えない。先手が直ちに投了すると、後手は読む前に止められる。
             let commands: Vec<_> = text
                 .lines()
-                .filter(|line| {
-                    line.starts_with("setoption ") || matches!(*line, "isready" | "usinewgame")
-                })
+                .filter(|line| line.starts_with("setoption ") || *line == "isready")
                 .collect();
             assert_eq!(commands, expected.repeat(2), "{}", log.display());
         }

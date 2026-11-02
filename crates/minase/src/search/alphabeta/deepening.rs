@@ -14,7 +14,6 @@ use minase_core::rules::MoveRules;
 use super::capture_history::CaptureHistory;
 use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 use super::history::{ContinuationHistory, HistoryTable, PawnHistory};
-use super::params;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
@@ -25,6 +24,7 @@ use super::time::{
     should_start_next_iteration, stable_signal,
 };
 use crate::search::budget::TimeBudget;
+use crate::search::params;
 
 /// 完了反復ごとの時間伸縮と安定判定に使う係数。
 ///

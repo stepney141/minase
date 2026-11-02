@@ -340,7 +340,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月30日 [AlphaZero型探索の自己対局には、重みの移動平均ではなく平均でない重みのネットを使う](archive/keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をQの尺度1.0で行い、指す手のGumbel乱数にだけ手数で減る倍率を掛ける](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)
 - 2026年10月31日 [AlphaZero型探索の自己対局は、手番の25%だけを通常の回数で探索して方策を記録し、残りの手番は4分の1の回数で探索して指した手と価値だけを記録する](randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)
-- 2026年10月31日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切る](stop-zero-self-play-at-check-only-wins-within-three-plies.md)
+- 2026年10月31日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切る](archive/stop-zero-self-play-at-check-only-wins-within-three-plies.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索のネットの入力は、手番側から見た盤の95面に駒種ごとの利きと利き数の64面を足した159面とし、履歴と左右反転による水増しを入れない](encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)
 - 2026年10月31日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、主の方策と価値に、KataGoの既定の重みで短期の価値、相手の次の手、およびソフト方策の補助目標を足して学ぶ](train-the-zero-network-on-katago-auxiliary-targets.md)
@@ -352,3 +352,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)
 - 2026年11月2日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)
 - 2026年11月2日 [AlphaZero型探索の学習器は重みの移動平均を持たず、自己対局と進捗測定には学習の最後の重みのネットを使う](do-not-keep-a-moving-average-of-the-zero-network-weights.md)
+- 2026年11月2日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切り、判定は探索のモジュールに置く](stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)
+- 2026年11月2日 [役目を終えたAlphaZero型探索の測定用の道具を削除し、1サイクルの見積もりは実際に1サイクル回して行う](delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)
+- 2026年11月2日 [本番の型と関数の中に`#[cfg(test)]`の項目を置かず、試験専用のコードは子モジュールと`test-util`へ分ける](keep-test-only-code-out-of-production-types-and-functions.md)

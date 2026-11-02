@@ -8,7 +8,7 @@ use crate::search::budget::{TimeBudget, byoyomi_clock, movetime_deadline, to_u64
 use crate::search::limits::SearchLimits;
 use minase_core::mv::Move;
 
-use super::params;
+use crate::search::params;
 
 /// 次の探索へ持ち越す値と、表の初期化後に先読みの探索を始めたかを示す印。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

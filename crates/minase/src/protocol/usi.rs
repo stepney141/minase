@@ -876,7 +876,7 @@ impl UsiProtocol {
         }
         #[cfg(feature = "tuning")]
         if matches!(self.searcher, Some(Searcher::AlphaBeta(_))) {
-            for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
+            for &(name, default, min, max) in crate::search::params::PARAMETERS {
                 writeln!(
                     output,
                     "option name Tune_{name} type spin default {default} min {min} max {max}"
@@ -952,7 +952,7 @@ impl UsiProtocol {
             let Ok(value) = value.parse::<i32>() else {
                 return write_error(output, &format!("{name} must be an integer"));
             };
-            return match search::alphabeta::params::set(parameter, value) {
+            return match crate::search::params::set(parameter, value) {
                 Ok(()) => Ok(()),
                 Err(error) => write_error(output, &error.to_string()),
             };
@@ -2189,6 +2189,7 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     mod history;
+    mod mcts_options;
     mod tuning;
     use std::collections::HashSet;
 

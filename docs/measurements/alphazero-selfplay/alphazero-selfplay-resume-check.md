@@ -26,7 +26,7 @@ minase data zero-selfplay --output-dir <出力先> \
 ## エンジン
 
 生成器は、ブランチ`alphazero-selfplay`のコミット4e149184（レビューの指摘を直した最終のコミット）をリリースビルドした`minase`である。
-ネットは、`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化の10ブロック128チャネルのネット`zero-b10c128.onnx`（SHA-256は`61a62a623067f9328f1baa91700dc98c81b7c43146ef8448f8263cc570d01600`）である。
+ネットは、コミット4e149184の`tools/train/zero/feasibility/make_nets.py`が作るランダム初期化の10ブロック128チャネルのネット`zero-b10c128.onnx`（SHA-256は`61a62a623067f9328f1baa91700dc98c81b7c43146ef8448f8263cc570d01600`）である。
 規則セットは`engine-default`（L0＋P0＋R1＋E0）である。
 推論は、ONNX Runtime 1.28.3のTensorRTの実行プロバイダ（TensorRT 10.14.1.48、FP16）で行った。
 

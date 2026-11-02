@@ -382,7 +382,7 @@ impl Driver {
         let position = game.position().clone();
         let state = if let Some(state) = self.repetition(&position, &keys, &played) {
             state
-        } else if path.len() == self.tree.depth_limit() as usize {
+        } else if path.len() == self.tree.depth_limit as usize {
             NodeState::Pending { unexpanded: true }
         } else {
             return Ok((

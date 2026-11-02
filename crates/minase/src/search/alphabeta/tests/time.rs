@@ -1150,7 +1150,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         increase_depth: AtomicBool::new(true),
         node_limit: None,
         clock: &ManualClock::new(Duration::from_millis(
-            100000 / super::super::params::iteration_ratio() as u64 + 1,
+            100000 / crate::search::params::iteration_ratio() as u64 + 1,
         )),
         hard_limit: Some(HardLimit {
             duration: budget.hard,

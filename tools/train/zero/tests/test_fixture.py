@@ -12,6 +12,9 @@ import torch
 from .cli import COMMIT, ZERO, init_arguments, require_success, run_cli
 
 
+FIXTURE = ZERO.parents[2] / "crates/minase/tests/fixtures/nn-positions.jsonl"
+
+
 class FixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -40,10 +43,10 @@ class FixtureTests(unittest.TestCase):
         require_success(run_cli([
             "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(self.initial / "model.onnx"),
-            "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
+            "--fixture", str(FIXTURE), "--out", str(output),
         ]))
         result = json.loads(output.read_text())
-        fixtures = [json.loads(line) for line in (ZERO / "fixtures/nn-positions.jsonl").read_text().splitlines()]
+        fixtures = [json.loads(line) for line in FIXTURE.read_text().splitlines()]
         self.assertEqual(result["network_sha256"], hashlib.sha256((self.initial / "model.onnx").read_bytes()).hexdigest())
         self.assertEqual(result["backend"], "pytorch")
         self.assertEqual(result["batch"], 288)
@@ -63,7 +66,7 @@ class FixtureTests(unittest.TestCase):
         output = self.root / "legacy-fixture.json"
         require_success(run_cli([
             "fixture-eval", "--checkpoint", str(checkpoint), "--onnx", str(self.initial / "model.onnx"),
-            "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
+            "--fixture", str(FIXTURE), "--out", str(output),
         ]))
         result = json.loads(output.read_text())
         self.assertEqual(result["network_sha256"], hashlib.sha256((self.initial / "model.onnx").read_bytes()).hexdigest())
@@ -76,7 +79,7 @@ class FixtureTests(unittest.TestCase):
         result = run_cli([
             "fixture-eval", "--checkpoint", str(self.initial / "checkpoint.pt"),
             "--onnx", str(different / "model.onnx"),
-            "--fixture", "fixtures/nn-positions.jsonl", "--out", str(output),
+            "--fixture", str(FIXTURE), "--out", str(output),
         ])
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)

@@ -19,6 +19,7 @@ mod perft;
 mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
+mod teacher_stats;
 mod usi_random;
 mod zero_selfplay;
 
@@ -131,6 +132,8 @@ enum DataCommand {
     Selfplay(selfplay_gen::Arguments),
     /// Gumbel AlphaZeroの自己対局から学習データを生成する。
     ZeroSelfplay(zero_selfplay::Arguments),
+    /// 教師データの手数、終局理由、合法手数を集計する。
+    TeacherStats(teacher_stats::Arguments),
     /// lishogiの棋譜を取り込む。
     Lishogi(lishogi_import::Arguments),
 }
@@ -182,6 +185,7 @@ fn main() -> ExitCode {
         Some(Command::Spsa(arguments)) => spsa_runner::main(arguments),
         Some(Command::Data(DataCommand::Selfplay(arguments))) => selfplay_gen::main(arguments),
         Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
+        Some(Command::Data(DataCommand::TeacherStats(arguments))) => teacher_stats::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
         Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
         Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
@@ -296,6 +300,30 @@ mod tests {
                 .unwrap();
             args[index + 1] = target;
             assert!(parse(args).is_ok());
+        }
+    }
+
+    // teacher-statsは1つ以上の入力ファイルを位置引数に取る。
+    #[test]
+    fn teacher_stats_requires_one_or_more_files() {
+        let parse =
+            |args: Vec<&str>| Arguments::try_parse_from(std::iter::once("minase").chain(args));
+        let error = parse(vec!["data", "teacher-stats"]).err().unwrap();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        for files in [vec!["first.mnsd"], vec!["first.mnsd", "second.mnsd"]] {
+            let mut args = vec!["data", "teacher-stats"];
+            args.extend(&files);
+            let parsed = parse(args).unwrap();
+            let Some(Command::Data(DataCommand::TeacherStats(arguments))) = parsed.command else {
+                panic!("expected teacher-stats");
+            };
+            assert_eq!(
+                arguments.files,
+                files.into_iter().map(PathBuf::from).collect::<Vec<_>>()
+            );
         }
     }
 

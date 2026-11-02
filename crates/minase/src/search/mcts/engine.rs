@@ -54,8 +54,6 @@ pub struct Engine {
     evaluator: Option<Box<dyn Evaluator + Send>>,
     driver: Option<Box<Driver>>,
     config: Config,
-    #[cfg(test)]
-    reused: bool,
 }
 
 impl Engine {
@@ -71,20 +69,7 @@ impl Engine {
             evaluator: None,
             driver: None,
             config,
-            #[cfg(test)]
-            reused: false,
         }
-    }
-
-    /// ONNX Runtimeを使わない試験でだけ推論器を注入する。
-    #[cfg(test)]
-    pub(crate) fn with_evaluator(
-        evaluator: Option<Box<dyn Evaluator + Send>>,
-        config: Config,
-    ) -> Self {
-        let mut engine = Self::new(Network::from_bytes(Vec::new()), config);
-        engine.evaluator = evaluator;
-        engine
     }
 
     pub(in crate::search) fn options(&self) -> Vec<SearchOption> {
@@ -320,10 +305,6 @@ impl Engine {
                 draw,
             )?));
         }
-        #[cfg(test)]
-        {
-            self.reused = reused;
-        }
         Ok(())
     }
 }
@@ -485,6 +466,6 @@ fn evaluate_batch(
 }
 
 #[cfg(test)]
-mod options_tests;
+mod test_support;
 #[cfg(test)]
 mod tests;

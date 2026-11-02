@@ -853,8 +853,8 @@ fn extended_search_stops_at_max_ply() {
 /// F4の数値例で初回の値を固定し、零窓と全窓の再探索が調整後の深さを使うことを確かめる。
 #[test]
 fn lmr_search_move_researches_at_adjusted_depth() {
-    let deeper = 50 + crate::search::alphabeta::params::lmr_deeper_margin();
-    let shallower = 50 + crate::search::alphabeta::params::lmr_shallower_margin();
+    let deeper = 50 + crate::search::params::lmr_deeper_margin();
+    let shallower = 50 + crate::search::params::lmr_shallower_margin();
     let board = bare_kings();
     let mv = legal_moves(&board)[0];
     let mut child = board.clone();

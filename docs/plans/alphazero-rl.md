@@ -84,8 +84,8 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 ## 依存関係
 
 本書は、サブタスク1から5の成果をすべて使う。
-借りた機械の操作、転送と保管の手順、終了手順、および1サイクルの所要時間とCUの見積もりの式は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)が定める。
-レンタル機の料金は、同じ手引きの7節が、6節の式で見積もると定める。
+借りた機械の操作、転送と保管の手順、終了手順、および1サイクルの所要時間とCUの見積もりの手順は、[借りる機械の操作の手引き](../guides/alphazero-machines.md)が定める。
+レンタル機の料金は、同じ手引きの7節が、6節の試走で見積もると定める。
 生成と学習の手順は[自己対局生成器](archived/alphazero-selfplay.md)と[学習器](archived/alphazero-trainer.md)が、探索回数の上限を1にしたときの動作は[探索方式の共存とMCTS](archived/alphazero-mcts.md)が定める。
 PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の3者の出力の照合の手順は、[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)が定める。
 進捗測定の固定局数とEloの読み方は、[docs/guides/sprt.md](../guides/sprt.md)の進捗記録の固定局数Eloに従う。
@@ -217,7 +217,7 @@ Gumbel dlshogiは、初期の質の悪いデータを含めないように、初
 
 L4で1サイクル約40分という見積もりは、探索木が経路を再生して審判層の裁定を得る変更より前の、処理ごとの実測による。
 作業機の109局面で測った根の探索時間の中央値は、Gumbelの32回の探索で、この変更により0.094 msから0.555 msへ増え（[監査対応の測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）、審判層の合法手生成の削減の後は0.121 msになった（[削減の測定記録](../measurements/referee-adjudication-movegen/referee-adjudication-movegen-driver-cost.md)）。
-このため試走では、GPUとCPUの使用率を`nvidia-smi`と`top`で記録し、生成の速さを、手引きの6節の式でGPUの毎秒の評価数から求めた値と比べて、どちらが律速しているかを確かめる。
+このため試走では、GPUとCPUの使用率を`nvidia-smi`と`top`で記録し、生成の速さを、GPUの毎秒の評価数を1局面あたりのネットの評価の回数（根の展開の1回と、1手の探索回数n）で割った値と比べて、どちらが律速しているかを確かめる。
 これらの値から、1サイクルの所要時間と料金の見積もりと、1サイクルの対局数を更新する。
 
 作業機での再開の確認では、ランダム初期化のネットの24局がすべて王駒の捕獲で終わり、1局は乱択の序盤を含めて平均108手、学習データは平均約97局面であった（[記録](../measurements/alphazero-selfplay/alphazero-selfplay-resume-check.md)）。
@@ -243,7 +243,7 @@ n=100でx=0なら上限は約2.95%、x=1なら約4.66%、x=2なら約6.16%であ
 - 価値の過学習への対処は、2026年10月29日に利用者が決め、学習窓を広げて局面を抽出する方式を採った（「学習窓と局面の抽出」の節）。
 - 方策の損失を局面ごとの合法手だけで正規化する方式（lc0の`mask_legal_moves`）は、2026年10月29日に利用者が採らないと決めた。常に不可能なラベルを除く定数マスク（[学習器の定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)）は維持する。調べた先行実装のうち、学習で合法手だけに正規化するのはlc0の任意の設定とPolygamesだけで、AlphaGo Zero、Leela Zero、Minigo、KataGo、dlshogi、Gumbel dlshogi、およびAobaZeroは全出力のsoftmaxで学習する。minaseの合法手に乗る確率質量は、マスクなしで、サイクル1の0.957からサイクル5の0.994へ上がった。
 - 重みの移動平均（EMA）は、2026年10月30日の利用者の決定で学習器に入れたが、リセット前のサイクル25の比較で平均のネットが強いと言えなかったので、2026年11月2日の利用者の決定で取り除いた（[ADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)）。
-- 審判層の裁定より先の詰みを探す詰み探索（dlshogiの3手詰め）は、2026年10月31日の利用者の決定により、[学習技法の導入](archived/alphazero-restart-techniques.md)で、王手限定の3手以内の勝ちによる打ち切りとして自己対局に入れた（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies.md)）。
+- 審判層の裁定より先の詰みを探す詰み探索（dlshogiの3手詰め）は、2026年10月31日の利用者の決定により、[学習技法の導入](archived/alphazero-restart-techniques.md)で、王手限定の3手以内の勝ちによる打ち切りとして自己対局に入れた（[ADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)）。
 
 これらを採る場合は、「各サイクルの設定」の節の初期10サイクルの固定の例外とし、変えた時点と理由を記録に残す。
 
@@ -353,8 +353,9 @@ vast.aiの値は、GPU1枚、CPU12スレッド以上、および直接のSSH接�
 
 `NnBatchSize`の値は、最初の進捗測定の前に、学習したネットと固定した局面で16、64、256を比べて決め、以後の進捗測定でも同じ値に固定して記録に残す。
 比べる量は、実際のバッチの長さの分布、衝突の数、推論の回数、探索の深さ、および根の訪問の分布である。
-これらは現行のエンジンも測定用のプログラム`driver_cost`も出力しないので、比較の前に、これらを数えて出力する測定用のプログラムを用意する。
-同じ機会に、決めた値と同時対局数2で1局あたりの所要時間を測り、手引きの6節の式による進捗測定の時間の見積もりを確かめる。
+この比較は[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)で行い、値を16に決めた。
+使った測定用のプログラムは、その記録が示すコミットから取り出せる。
+同じ機会に、決めた値と同時対局数2で1局あたりの所要時間を測り、進捗測定の時間を見積もる。
 
 固定200ペアのEloは95%信頼区間の幅が約65 Eloあり、1回の測定でEloが下がっても雑音によることがある。
 このため、10サイクル前のネットに対するEloの点推定が2回続けて0以下になった場合に限り、伸びが止まったとみなして「伸びが止まったらネットと探索回数を段階的に増やす」の節の手順をとる。
@@ -417,7 +418,7 @@ vast.aiの値は、GPU1枚、CPU12スレッド以上、および直接のSSH接�
 学習の統計は、ネットの検査和、学習損失、最終の重みでの訓練集合の標本と検証集合の損失（方策、混合した教師に対する価値、対局結果に対する価値）、合法手に乗る確率質量、方策の一致率、およびFP16の照合の結果である。
 実行環境は、機械の構成、生成と学習と進捗測定と照合の経過時間、ならびに消費したCUまたはレンタル機の料金である。
 終局理由、上限到達で除いた対局数、および投了の較正の件数は生成器の`summary.json`から、学習損失と診断は学習器の`summary.json`から取る。
-手数の分位点は`summary.json`にないので、測定用のプログラム[`teacher_stats`](../../tools/train/zero/feasibility/src/bin/teacher_stats.rs)で塊の対局のファイル（MNSD）から求める。
+手数の分位点は`summary.json`にないので、`minase data teacher-stats`で塊の対局のファイル（MNSD）から求める。
 上限到達で除いた対局はファイルに残らないので、分位点は保存した対局だけのものであり、除いた対局は件数で別に記録する。
 
 各サイクルの学習の直後、次の生成の前に、学習に使った機械で、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を、[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)の確率と価値の基準（[FP16の照合のADR](../adr/compare-fp16-zero-network-values-within-five-hundredths.md)）で照合する。

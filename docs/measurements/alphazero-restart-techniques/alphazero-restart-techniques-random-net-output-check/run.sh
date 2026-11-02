@@ -12,7 +12,7 @@ cd "$W/tools/train/zero"
   --out-dir "$O/cycle-0000" --trainer-commit "$(git rev-parse HEAD)"
 sha256sum "$N"
 uv run --frozen python -m minase_zero fixture-eval --checkpoint "$O/cycle-0000/checkpoint.pt" --onnx "$N" \
-  --fixture fixtures/nn-positions.jsonl --weights raw --out "$O/out/pytorch.json"
+  --fixture ../../../crates/minase/tests/fixtures/nn-positions.jsonl --weights raw --out "$O/out/pytorch.json"
 for b in 1 7 256; do
   "$W/target/release/minase" dev nn-eval --nn-model "$N" --backend cpu --batch $b --out "$O/out/cpu-b$b.json"
   "$W/target/release/minase" dev nn-eval --nn-model "$N" --backend tensorrt --cache-dir "$O/trt-cache" --batch $b --out "$O/out/trt-b$b.json"

@@ -47,7 +47,7 @@ improvingの項を含めない上限式は、Stockfishにある項目は入れ�
 
 ## 結果
 
-係数は`crates/minase/src/search/alphabeta/params.rs`の`LmpBase`、`LmpSlope`、および`LmpNonImproving`であり、数え方と上限の詳細は`pruning.rs`の`late_move_limit`と`LateMoveCoefficients`、および`negamax.rs`の`negamax`のdocコメントにある。
+係数は`crates/minase/src/search/params.rs`の`LmpBase`、`LmpSlope`、および`LmpNonImproving`であり、数え方と上限の詳細は`pruning.rs`の`late_move_limit`と`LateMoveCoefficients`、および`negamax.rs`の`negamax`のdocコメントにある。
 3つの係数の開始値は、起点の既定値である。
 improvingはnull move pruningの後の更新を反映した値を使う（[improvingのADR](judge-improving-on-the-corrected-static-eval-and-use-it-in-null-move-pruning-but-not-futility-margins.md)）。
 killer手は数える対象にならないので、枝刈りもされない。

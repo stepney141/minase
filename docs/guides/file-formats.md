@@ -126,8 +126,8 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| 固定局面集`tools/train/zero/fixtures/nn-positions.jsonl` | なし | `minase dev nn-fixture` | minaseのテスト、`tools/train/zero/nn_torch_reference.py`、学習器の試験 | `crates/minase/src/bin/minase/nn_fixture.rs` |
-| 固定局面集の推論の結果（`--out`で指定） | なし | `minase dev nn-eval`、`tools/train/zero/nn_torch_reference.py` | `tools/train/zero/nn_compare.py` | `crates/minase/src/bin/minase/nn_eval.rs` |
+| 固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl` | なし | `minase dev nn-fixture` | minaseのテスト、学習器の`fixture-eval`、学習器の試験 | `crates/minase/src/bin/minase/nn_fixture.rs` |
+| 固定局面集の推論の結果（`--out`で指定） | なし | `minase dev nn-eval`、学習器の`fixture-eval` | `tools/train/zero/nn_compare.py` | `crates/minase/src/bin/minase/nn_eval.rs` |
 
 ## 同じ名前で中身が違うファイル
 

@@ -1,10 +1,79 @@
-use minase::training::records::{Outcome, Reader};
+//! 教師データから手数の分位点、終局理由、各局面の合法手数を集計し、JSONを標準出力へ書く。
+//! `minase_zero run-cycles`が各サイクルの終わりに呼び、生成した対局の分布を記録する。
+
+use clap::Parser;
+use minase::training::records::{self, Outcome, Reader};
 use minase_core::{DrawReason, GameResult, MoveGenerator, WinReason};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::error::Error;
+use std::fmt;
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{self, BufReader, Write};
+use std::path::PathBuf;
+
+/// 集計する教師データファイル。
+#[derive(Parser)]
+pub(super) struct Arguments {
+    /// 教師データ形式MNSDの入力ファイル。
+    #[arg(required = true, num_args = 1..)]
+    pub(super) files: Vec<PathBuf>,
+}
+
+#[derive(Debug)]
+enum Error {
+    Open {
+        path: PathBuf,
+        source: io::Error,
+    },
+    Read {
+        path: PathBuf,
+        source: records::Error,
+    },
+    NoGames(Vec<PathBuf>),
+    Json(serde_json::Error),
+    Write(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Open { path, source } => write!(f, "{}: {source}", path.display()),
+            Self::Read { path, source } => write!(f, "{}: {source}", path.display()),
+            Self::NoGames(paths) => {
+                f.write_str("入力ファイルに対局がない:")?;
+                for path in paths {
+                    write!(f, " {}", path.display())?;
+                }
+                Ok(())
+            }
+            Self::Json(error) => write!(f, "cannot write JSON: {error}"),
+            Self::Write(error) => write!(f, "cannot write stdout: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Open { source, .. } | Self::Write(source) => Some(source),
+            Self::Read { source, .. } => Some(source),
+            Self::Json(source) => Some(source),
+            Self::NoGames(_) => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Self {
+        Self::Write(error)
+    }
+}
 
 #[derive(Default)]
 struct Histogram {
@@ -70,11 +139,7 @@ fn end_reason(outcome: Outcome) -> &'static str {
     }
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
-    let paths: Vec<_> = std::env::args_os().skip(1).collect();
-    if paths.is_empty() {
-        return Err("usage: teacher_stats <MNSD file> [MNSD file ...]".into());
-    }
+fn summarize(paths: &[PathBuf]) -> Result<Value, Error> {
     let mut lengths = Histogram::default();
     let mut legal_counts = Histogram::default();
     let mut reasons: BTreeMap<&str, u64> = [
@@ -96,12 +161,20 @@ fn run() -> Result<(), Box<dyn Error>> {
     .map(|reason| (reason, 0))
     .collect();
     let mut moves = Vec::new();
-    for path in &paths {
-        let label = std::path::Path::new(path).display();
-        let file = File::open(path).map_err(|e| format!("{label}: {e}"))?;
-        let mut reader = Reader::new(BufReader::new(file)).map_err(|e| format!("{label}: {e}"))?;
+    for path in paths {
+        let file = File::open(path).map_err(|source| Error::Open {
+            path: path.clone(),
+            source,
+        })?;
+        let mut reader = Reader::new(BufReader::new(file)).map_err(|source| Error::Read {
+            path: path.clone(),
+            source,
+        })?;
         let generator = MoveGenerator::new(reader.header().rules().moves);
-        while let Some(game) = reader.read_game().map_err(|e| format!("{label}: {e}"))? {
+        while let Some(game) = reader.read_game().map_err(|source| Error::Read {
+            path: path.clone(),
+            source,
+        })? {
             let record = game.record();
             lengths.record(usize::from(record.start_ply()) + record.entries().len() - 1);
             *reasons
@@ -115,7 +188,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     }
     if lengths.count == 0 {
-        return Err("入力ファイルに対局がない".into());
+        return Err(Error::NoGames(paths.to_vec()));
     }
     let mut game_length = lengths.summary();
     game_length["p95"] = json!(lengths.percentile(95));
@@ -134,6 +207,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         "percentile_method": "nearest_rank",
         "legal_moves_method": "MoveGenerator::generate_moves (without repetition history)",
     });
+    Ok(output)
+}
+
+fn run(arguments: Arguments) -> Result<(), Error> {
+    let output = summarize(&arguments.files)?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     serde_json::to_writer_pretty(&mut out, &output)?;
@@ -141,31 +219,13 @@ fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("teacher_stats: {error}");
+/// コマンドを実行し、失敗の説明を標準エラーへ出して非0終了する。
+pub(super) fn main(arguments: Arguments) {
+    if let Err(error) = run(arguments) {
+        eprintln!("error: {error}");
         std::process::exit(1);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn histogram_uses_nearest_rank_and_counts_duplicates() {
-        let mut histogram = Histogram::default();
-        for value in [1001, 0, 10, 10, 1000] {
-            histogram.record(value);
-        }
-        assert_eq!(histogram.mean(), 404.2);
-        assert_eq!(histogram.percentile(50), 10);
-        assert_eq!(histogram.percentile(90), 1001);
-        assert_eq!(histogram.percentile(95), 1001);
-        assert_eq!(histogram.percentile(99), 1001);
-        assert_eq!(
-            histogram.bins.range(1001..).map(|(_, &n)| n).sum::<u64>(),
-            1
-        );
-    }
-}
+mod tests;

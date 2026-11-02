@@ -128,7 +128,7 @@ fn r1_repetition_band_quiesce_ignores_every_bound_but_searches_tt_capture_first(
                 searcher.delta_margin = INFINITY;
                 searcher.interrupt_at = Some((1, StopReason::NodeLimit));
                 let result = searcher.quiesce(&mut board.clone(), alpha, beta, 0);
-                if super::super::params::qsearch_move_limit() > 1 {
+                if crate::search::params::qsearch_move_limit() > 1 {
                     assert_eq!(result, None);
                 } else {
                     assert!(result.is_some());
