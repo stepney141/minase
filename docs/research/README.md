@@ -29,6 +29,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [AlphaZero型の深層強化学習の先行実装調査](alphazero-prior-art.md)は、lc0とdlshogiを中心に、学習アルゴリズム、MCTSの実装、Rustからの推論ランタイム、および複数の探索方式の共存方法を調べる。
 - [AlphaZero型の学習の局面の選び方と方策の損失の正規化の先行実装調査](alphazero-training-sample-selection.md)は、自己対局の棋譜から学習の局面を選ぶ窓と間引きの方式、および方策の損失を合法手だけで正規化するかどうかを、9つの実装と4本の論文で比べる。
 - [AlphaZero型の強化学習の学習効率と強さに効く技法の先行実装調査](alphazero-rl-training-efficiency.md)は、ふかうら王の学習のページ、lc0、KataGo、dlshogi系、およびGumbel AlphaZeroの論文の技法をminaseの実装と突き合わせ、サイクル1〜37で価値が学べなかった症状と結びつけて優先度を付ける。
+- [AlphaZero型探索がαβ探索に大敗する原因とDL系将棋ソフトから移せる点の調査](alphazero-strength-gap.md)は、サイクル32の2勝192敗を学習量、探索回数、およびネットの大きさに分けて先行例と比べ、王駒を取られる手を避けきれない盲点と自己対局の外の局面での価値の過大評価を示し、dlshogi、ふかうら王、AobaZero、KataGoなどの技法を費用と効果の報告とともに並べる。詳細は[規模](alphazero-strength-gap/scale.md)、[探索](alphazero-strength-gap/search.md)、および[価値](alphazero-strength-gap/value-bias.md)の3本にある。
 - [将棋のResNet系公開モデルを中将棋のネットへ転移する実験台の調査](shogi-resnet-transfer-sources.md)は、dlshogi、ふかうら王、AobaZero、DL水匠、python-dlshogi2、およびnshogiの公開重みの形式、構成、利用条件、学習データの出所、および強さを一次資料で調べ、minaseのネットへ載るのは残差ブロックと入力層の一部だけで価値と方策のヘッドは再初期化になることを示し、Soemersらの将棋の系統の間の転移の結果とともに、目的ごとに向く実験台を挙げる。
 - [詰み探索（df-pn）の先行研究と既存実装の調査](mate-search-prior-art.md)は、証明数探索の一次文献と将棋の詰将棋ソルバ6系統のソースを調べ、持ち駒と単一の王に依存する技法を除いて中将棋へ持ち込める要素と、中将棋の規則から定義し直す終端条件と反復の扱いを整理する。
 - [詰中将棋ソルバfmcs（ｆｍ／fmza系）の調査](fm-fmcs-survey.md)は、神無次郎氏の詰中将棋ソルバfmcsを説明書、作品集、逆コンパイルの読解（Claudeとcodexの独立解析の突き合わせ）、およびwine上の実行で調べ、手数上限つきdf-pnであること、王手を最後の王駒への脅威と定義すること、反復と駒枯れとじっとの扱いがRULES.mdと異なることを示す。
