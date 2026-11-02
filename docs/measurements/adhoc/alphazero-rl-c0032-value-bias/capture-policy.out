@@ -1,0 +1,6 @@
+royal capture nodes=1: same move 2 of 125; wanted capture 3 of 125 (0.024); side-to-move win probability median 0.974 (n=125)
+royal capture nodes=800: same move 65 of 125; wanted capture 71 of 125 (0.568); side-to-move win probability median 0.973 (n=30)
+unanswered capture of value >= 8 nodes=1: same move 372 of 600; wanted capture 536 of 600 (0.893); side-to-move win probability median 0.506 (n=600)
+unanswered capture of value >= 8 nodes=800: same move 138 of 200; wanted capture 187 of 200 (0.935); side-to-move win probability median 0.534 (n=200)
+alpha-beta quiet move nodes=1: same move 7 of 161; wanted capture 139 of 161 (0.863); side-to-move win probability median 0.435 (n=161)
+alpha-beta quiet move nodes=800: same move 14 of 161; wanted capture 149 of 161 (0.925); side-to-move win probability median 0.489 (n=161)

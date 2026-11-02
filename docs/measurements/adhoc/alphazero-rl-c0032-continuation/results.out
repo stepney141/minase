@@ -1,0 +1,5 @@
+summary: mode=elo pairs=200 valid_pairs=200 discarded_pairs=0
+pentanomial: [6, 16, 155, 19, 4]
+elo: estimate=-0.868591 ci95=[-15.622131, 13.881816]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 7501.978547 s

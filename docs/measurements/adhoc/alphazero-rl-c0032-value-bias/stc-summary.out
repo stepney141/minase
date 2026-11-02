@@ -1,0 +1,12 @@
+perspective != side: 0
+endings: {('RoyalCapture', 'alpha-beta'): 125, ('Mate', 'alpha-beta'): 67, ('RoyalCapture', 'MCTS'): 2}
+first ply where alpha-beta stays above +500 after reaching +1000: median 65.0 n 192
+MCTS cp at that point: median 1017.5 share >= 0 0.932
+plies before the end at which MCTS last evaluated >= 0: median 95.0
+ply 20: n=190 material for MCTS median 0.0 p10 -2 p90 3
+ply 40: n=190 material for MCTS median 0.0 p10 -10 p90 3
+ply 60: n=190 material for MCTS median -2.0 p10 -20 p90 3
+ply 80: n=190 material for MCTS median -7.0 p10 -28 p90 3
+ply 100: n=190 material for MCTS median -13.0 p10 -45 p90 0
+ply 150: n=179 material for MCTS median -29 p10 -84 p90 -10
+ply 200: n=144 material for MCTS median -48.0 p10 -117 p90 -23

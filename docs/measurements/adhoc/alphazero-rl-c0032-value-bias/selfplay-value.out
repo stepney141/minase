@@ -1,0 +1,35 @@
+== cycle-0032: positions 964124; the rows use plies 40 to 299
+material [-999, -40) n=  13456 actual score 0.044 search win probability median 0.052 mean 0.071
+material [ -40, -20) n=  53003 actual score 0.163 search win probability median 0.169 mean 0.197
+material [ -20, -10) n=  58547 actual score 0.307 search win probability median 0.345 mean 0.353
+material [ -10,  -5) n=  48544 actual score 0.403 search win probability median 0.445 mean 0.443
+material [  -5,   0) n=  82683 actual score 0.471 search win probability median 0.500 mean 0.501
+material [   0,   1) n=  31703 actual score 0.507 search win probability median 0.513 mean 0.521
+material [   1,   5) n=  67827 actual score 0.544 search win probability median 0.540 mean 0.554
+material [   5,  10) n=  49552 actual score 0.609 search win probability median 0.608 mean 0.619
+material [  10,  20) n=  54072 actual score 0.721 search win probability median 0.726 mean 0.723
+material [  20, 999) n=  61398 actual score 0.879 search win probability median 0.895 mean 0.883
+correlation of material and search win probability: 0.900
+calibration by the predicted win probability:
+predicted [0.0,0.1) n=  20689 mean predicted 0.060 actual score 0.043
+predicted [0.1,0.2) n=  31506 mean predicted 0.151 actual score 0.132
+predicted [0.2,0.3) n=  32051 mean predicted 0.251 actual score 0.214
+predicted [0.3,0.4) n=  42995 mean predicted 0.353 actual score 0.317
+predicted [0.4,0.5) n=  97293 mean predicted 0.461 actual score 0.444
+predicted [0.5,0.6) n= 130944 mean predicted 0.540 actual score 0.516
+predicted [0.6,0.7) n=  55773 mean predicted 0.646 actual score 0.628
+predicted [0.7,0.8) n=  39690 mean predicted 0.748 actual score 0.738
+predicted [0.8,0.9) n=  37662 mean predicted 0.851 actual score 0.844
+predicted [0.9,1.0) n=  30066 mean predicted 0.943 actual score 0.938
+expected calibration error: 0.020
+== generated-8200000.bin: positions 2762570; the rows use plies 40 to 299
+material [-999, -40) n=  21739 actual score 0.007
+material [ -40, -20) n= 116097 actual score 0.065
+material [ -20, -10) n= 103766 actual score 0.230
+material [ -10,  -5) n= 120778 actual score 0.376
+material [  -5,   0) n= 335105 actual score 0.480
+material [   0,   1) n= 181376 actual score 0.499
+material [   1,   5) n= 288497 actual score 0.513
+material [   5,  10) n= 139990 actual score 0.594
+material [  10,  20) n= 109650 actual score 0.747
+material [  20, 999) n= 135703 actual score 0.936

@@ -1,0 +1,2 @@
+alpha_beta_to_move: n=100; win probability of the original MCTS side at the start: median 0.670 mean 0.676
+mcts_to_move: n=100; win probability of the original MCTS side at the start: median 0.698 mean 0.704

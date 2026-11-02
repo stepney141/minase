@@ -1,0 +1,68 @@
+diff --git a/crates/minase/src/harness/opening.rs b/crates/minase/src/harness/opening.rs
+index ca433a05..80c161bd 100644
+--- a/crates/minase/src/harness/opening.rs
++++ b/crates/minase/src/harness/opening.rs
+@@ -25,6 +25,10 @@ pub struct Opening {
+ /// 添字は[`XorShift64::index`]で生成し、剰余による偏りを補正しない。
+ /// 途中で終局したら`derive_seed(直前の開始シード, 0)`でシードを更新し、初形から作り直す。
+ pub fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
++    if let Some(path) = std::env::var_os("MINASE_DIAG_OPENINGS") {
++        return generate_diagnostic_opening(rules, pair_seed, &path);
++    }
++
+     let mut opening_seed = derive_seed(pair_seed.get(), 0);
+     loop {
+         let mut game = Game::new(rules);
+@@ -72,6 +76,52 @@ pub fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
+     }
+ }
+ 
++/// 1回の診断のための一時的な処理であり、本線には入れない。
++fn generate_diagnostic_opening(
++    rules: Rules,
++    pair_seed: NonZeroU64,
++    path: &std::ffi::OsStr,
++) -> Opening {
++    let base_seed = std::env::var("MINASE_DIAG_BASE_SEED")
++        .expect("MINASE_DIAG_BASE_SEED must be set to a decimal u64")
++        .parse::<u64>()
++        .expect("MINASE_DIAG_BASE_SEED must be a decimal u64");
++    let openings = std::fs::read_to_string(path)
++        .unwrap_or_else(|error| panic!("failed to read MINASE_DIAG_OPENINGS {path:?}: {error}"));
++    let (line_number, line) = (1..)
++        .zip(openings.lines())
++        .find(|(line_number, _)| derive_seed(base_seed, *line_number) == pair_seed)
++        .unwrap_or_else(|| {
++            panic!("MINASE_DIAG_OPENINGS has no line matching pair_seed {pair_seed}")
++        });
++
++    let mut game = Game::new(rules);
++    let mut moves = Vec::new();
++    let mut usi_moves = Vec::new();
++    for (index, text) in line.split_whitespace().enumerate() {
++        let ply = index + 1;
++        let mv = usi::parse(game.position(), text).unwrap_or_else(|error| {
++            panic!("invalid USI move at line {line_number}, ply {ply}: {text}: {error}")
++        });
++        let status = game.play(mv).unwrap_or_else(|error| {
++            panic!("illegal move at line {line_number}, ply {ply}: {text}: {error}")
++        });
++        assert!(
++            !matches!(status, GameStatus::Finished(_)),
++            "game finished at line {line_number}, ply {ply}: {text}"
++        );
++        moves.push(mv);
++        usi_moves.push(text.to_owned());
++    }
++
++    Opening {
++        game,
++        seed: derive_seed(pair_seed.get(), 0),
++        moves,
++        usi_moves,
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;

@@ -1,0 +1,6 @@
+batch 16 clock: nodes median 2086.0 min 1834 max 2310; time median 147.5 ms; simulations per second median 13934
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 60.0 ms; simulations per second median 13333
+batch 64 clock: nodes median 2605.5 min 2339 max 2797; time median 149.0 ms; simulations per second median 16893
+batch 64 nodes800: nodes median 800.0 min 800 max 800; time median 52.0 ms; simulations per second median 15390
+batch 256 clock: nodes median 2601.5 min 2123 max 2811; time median 152.5 ms; simulations per second median 16606
+batch 256 nodes800: nodes median 800.0 min 800 max 800; time median 52.5 ms; simulations per second median 15239

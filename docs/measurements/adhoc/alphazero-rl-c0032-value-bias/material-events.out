@@ -1,0 +1,7 @@
+alpha-beta captures answered on the same square: 1501, value 14471
+alpha-beta captures not answered: 4272, value 25172, of which value >= 8: 1211
+value captured by MCTS: 27260
+decided self-play games with a recorded position: 8615; game length median 373
+last recorded position, material for the eventual winner: median 24 p10 -8 p90 57; share <= 0: 0.187; share < 10: 0.298
+last recorded position, win probability for the eventual winner: median 0.872; share < 0.5: 0.166
+last recorded position on the eventual winner's turn: 3959 games; share of search win probability < 0.5: 0.120

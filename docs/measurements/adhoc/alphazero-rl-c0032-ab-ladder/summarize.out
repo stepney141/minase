@@ -1,0 +1,10 @@
+alphazero-rl-c0032-ab-ladder-m800-a250: games 200; plies median 273.0; endings [(('Mate', 'MCTS'), 159), (('Mate', 'alpha-beta'), 4), (('Repetition', 'alpha-beta'), 3), (('RoyalCapture', 'MCTS'), 5), (('RoyalCapture', 'alpha-beta'), 29)]
+  royal-capture losses 29: material for MCTS median -19, share >= 0 0.345, share >= -20 0.517; MCTS win probability median 0.433, share >= 0.5 0.448
+alphazero-rl-c0032-ab-ladder-m800-a500: games 200; plies median 362.5; endings [(('Mate', 'MCTS'), 77), (('Mate', 'alpha-beta'), 26), (('Repetition', 'alpha-beta'), 4), (('RoyalCapture', 'MCTS'), 1), (('RoyalCapture', 'alpha-beta'), 92)]
+  royal-capture losses 92: material for MCTS median -63.0, share >= 0 0.087, share >= -20 0.185; MCTS win probability median 0.060, share >= 0.5 0.174
+alphazero-rl-c0032-ab-ladder-m800-a1000: games 200; plies median 353.0; endings [(('Mate', 'MCTS'), 25), (('Mate', 'alpha-beta'), 45), (('Repetition', 'alpha-beta'), 1), (('RoyalCapture', 'MCTS'), 2), (('RoyalCapture', 'alpha-beta'), 127)]
+  royal-capture losses 126: material for MCTS median -91.0, share >= 0 0.016, share >= -20 0.048; MCTS win probability median 0.026, share >= 0.5 0.032
+alphazero-rl-c0032-ab-ladder-m800-a4000: games 60; plies median 289.0; endings [(('Mate', 'MCTS'), 1), (('Mate', 'alpha-beta'), 22), (('RoyalCapture', 'alpha-beta'), 37)]
+  royal-capture losses 37: material for MCTS median -90, share >= 0 0.000, share >= -20 0.081; MCTS win probability median 0.032, share >= 0.5 0.081
+alphazero-rl-c0032-ab-ladder-m3200-a1000: games 200; plies median 330.5; endings [(('Mate', 'MCTS'), 73), (('Mate', 'alpha-beta'), 26), (('RoyalCapture', 'alpha-beta'), 101)]
+  royal-capture losses 101: material for MCTS median -74, share >= 0 0.099, share >= -20 0.178; MCTS win probability median 0.045, share >= 0.5 0.160

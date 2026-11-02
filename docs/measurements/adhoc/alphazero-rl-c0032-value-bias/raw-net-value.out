@@ -1,0 +1,281 @@
+== the win probabilities recorded in the games
+  material [-999, -40) n=  7384 win probability median 0.141 share >= 0.5 0.041
+  material [ -40, -20) n=  4010 win probability median 0.527 share >= 0.5 0.570
+  material [ -20, -10) n=  2710 win probability median 0.685 share >= 0.5 0.928
+  material [ -10,  -5) n=  1436 win probability median 0.741 share >= 0.5 0.992
+  material [  -5,   0) n=  1781 win probability median 0.769 share >= 0.5 0.999
+  material [   0,   1) n=   657 win probability median 0.768 share >= 0.5 0.998
+  material [   1,   5) n=   593 win probability median 0.790 share >= 0.5 1.000
+  material [   5,  10) n=   142 win probability median 0.901 share >= 0.5 1.000
+  material [  10,  20) n=   186 win probability median 0.913 share >= 0.5 1.000
+  material [  20, 999) n=   223 win probability median 0.948 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n= 1260 win probability median 0.718
+  plies [ 60, 80) material within 5 n=  850 win probability median 0.789
+  plies [ 80,120) material within 5 n=  685 win probability median 0.841
+  plies [120,180) material within 5 n=  219 win probability median 0.834
+  plies [180,300) material within 5 n=   17 win probability median 0.816
+== c0030's own record in c0030 vs c0020
+  material [-999, -40) n=   326 win probability median 0.100 share >= 0.5 0.003
+  material [ -40, -20) n=  1587 win probability median 0.214 share >= 0.5 0.064
+  material [ -20, -10) n=  2168 win probability median 0.411 share >= 0.5 0.271
+  material [ -10,  -5) n=  2586 win probability median 0.491 share >= 0.5 0.466
+  material [  -5,   0) n=  5293 win probability median 0.534 share >= 0.5 0.748
+  material [   0,   1) n=  2292 win probability median 0.540 share >= 0.5 0.832
+  material [   1,   5) n=  5729 win probability median 0.572 share >= 0.5 0.898
+  material [   5,  10) n=  5717 win probability median 0.665 share >= 0.5 0.985
+  material [  10,  20) n=  8111 win probability median 0.754 share >= 0.5 0.998
+  material [  20, 999) n= 11140 win probability median 0.905 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n= 2931 win probability median 0.528
+  plies [ 60, 80) material within 5 n= 2235 win probability median 0.534
+  plies [ 80,120) material within 5 n= 2740 win probability median 0.550
+  plies [120,180) material within 5 n= 2644 win probability median 0.591
+  plies [180,300) material within 5 n= 2764 win probability median 0.620
+== c0020's own record in c0030 vs c0020
+  material [-999, -40) n=  3040 win probability median 0.046 share >= 0.5 0.003
+  material [ -40, -20) n=  8719 win probability median 0.155 share >= 0.5 0.010
+  material [ -20, -10) n=  8341 win probability median 0.298 share >= 0.5 0.035
+  material [ -10,  -5) n=  5482 win probability median 0.372 share >= 0.5 0.091
+  material [  -5,   0) n=  6953 win probability median 0.460 share >= 0.5 0.259
+  material [   0,   1) n=  2225 win probability median 0.486 share >= 0.5 0.383
+  material [   1,   5) n=  4210 win probability median 0.499 share >= 0.5 0.490
+  material [   5,  10) n=  2326 win probability median 0.545 share >= 0.5 0.711
+  material [  10,  20) n=  1925 win probability median 0.656 share >= 0.5 0.961
+  material [  20, 999) n=  1730 win probability median 0.827 share >= 0.5 0.999
+  plies [ 40, 60) material within 5 n= 2988 win probability median 0.491
+  plies [ 60, 80) material within 5 n= 2275 win probability median 0.486
+  plies [ 80,120) material within 5 n= 2711 win probability median 0.475
+  plies [120,180) material within 5 n= 2576 win probability median 0.461
+  plies [180,300) material within 5 n= 2838 win probability median 0.444
+== c0032 nodes=1 on c0032 vs alpha-beta, MCTS to move: n=5000 overall median 0.608
+  material [-999, -40) n=  1875 win probability median 0.185 share >= 0.5 0.100
+  material [ -40, -20) n=  1121 win probability median 0.615 share >= 0.5 0.723
+  material [ -20, -10) n=   704 win probability median 0.751 share >= 0.5 0.966
+  material [ -10,  -5) n=   380 win probability median 0.803 share >= 0.5 0.995
+  material [  -5,   0) n=   463 win probability median 0.813 share >= 0.5 1.000
+  material [   0,   1) n=   184 win probability median 0.818 share >= 0.5 1.000
+  material [   1,   5) n=   145 win probability median 0.840 share >= 0.5 1.000
+  material [   5,  10) n=    33 win probability median 0.927 share >= 0.5 1.000
+  material [  10,  20) n=    41 win probability median 0.942 share >= 0.5 1.000
+  material [  20, 999) n=    54 win probability median 0.963 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=  322 win probability median 0.749
+  plies [ 60, 80) material within 5 n=  220 win probability median 0.834
+  plies [ 80,120) material within 5 n=  175 win probability median 0.880
+  plies [120,180) material within 5 n=   73 win probability median 0.875
+== c0032 nodes=1 on c0032 vs alpha-beta, MCTS to move, the same positions: n=800 overall median 0.584
+  material [-999, -40) n=   315 win probability median 0.169 share >= 0.5 0.076
+  material [ -40, -20) n=   180 win probability median 0.606 share >= 0.5 0.728
+  material [ -20, -10) n=   103 win probability median 0.750 share >= 0.5 0.932
+  material [ -10,  -5) n=    61 win probability median 0.768 share >= 0.5 1.000
+  material [  -5,   0) n=    75 win probability median 0.816 share >= 0.5 1.000
+  material [   0,   1) n=    25 win probability median 0.796 share >= 0.5 1.000
+  material [   1,   5) n=    25 win probability median 0.840 share >= 0.5 1.000
+  material [  20, 999) n=    10 win probability median 0.957 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   58 win probability median 0.766
+  plies [ 60, 80) material within 5 n=   33 win probability median 0.841
+  plies [ 80,120) material within 5 n=   27 win probability median 0.875
+== c0032 nodes=32 on c0032 vs alpha-beta, MCTS to move, the same positions: n=800 overall median 0.533
+  material [-999, -40) n=   315 win probability median 0.149 share >= 0.5 0.044
+  material [ -40, -20) n=   180 win probability median 0.554 share >= 0.5 0.661
+  material [ -20, -10) n=   103 win probability median 0.709 share >= 0.5 0.961
+  material [ -10,  -5) n=    61 win probability median 0.731 share >= 0.5 1.000
+  material [  -5,   0) n=    75 win probability median 0.773 share >= 0.5 1.000
+  material [   0,   1) n=    25 win probability median 0.748 share >= 0.5 1.000
+  material [   1,   5) n=    25 win probability median 0.809 share >= 0.5 1.000
+  material [  20, 999) n=    10 win probability median 0.942 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   58 win probability median 0.723
+  plies [ 60, 80) material within 5 n=   33 win probability median 0.804
+  plies [ 80,120) material within 5 n=   27 win probability median 0.850
+== c0032 nodes=800 on c0032 vs alpha-beta, MCTS to move, the same positions: n=800 overall median 0.514
+  material [-999, -40) n=   315 win probability median 0.141 share >= 0.5 0.025
+  material [ -40, -20) n=   180 win probability median 0.528 share >= 0.5 0.578
+  material [ -20, -10) n=   103 win probability median 0.684 share >= 0.5 0.932
+  material [ -10,  -5) n=    61 win probability median 0.715 share >= 0.5 1.000
+  material [  -5,   0) n=    75 win probability median 0.767 share >= 0.5 1.000
+  material [   0,   1) n=    25 win probability median 0.735 share >= 0.5 1.000
+  material [   1,   5) n=    25 win probability median 0.809 share >= 0.5 1.000
+  material [  20, 999) n=    10 win probability median 0.942 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   58 win probability median 0.706
+  plies [ 60, 80) material within 5 n=   33 win probability median 0.798
+  plies [ 80,120) material within 5 n=   27 win probability median 0.839
+
+== c0032 nodes=1 on c0032 vs alpha-beta, alpha-beta to move: n=5000 overall median 0.435
+  material [ -40, -20) n=    59 win probability median 0.058 share >= 0.5 0.000
+  material [ -20, -10) n=    71 win probability median 0.096 share >= 0.5 0.000
+  material [ -10,  -5) n=    55 win probability median 0.141 share >= 0.5 0.000
+  material [  -5,   0) n=   215 win probability median 0.201 share >= 0.5 0.000
+  material [   0,   1) n=   175 win probability median 0.244 share >= 0.5 0.000
+  material [   1,   5) n=   426 win probability median 0.225 share >= 0.5 0.002
+  material [   5,  10) n=   389 win probability median 0.236 share >= 0.5 0.013
+  material [  10,  20) n=   727 win probability median 0.303 share >= 0.5 0.078
+  material [  20, 999) n=  2883 win probability median 0.705 share >= 0.5 0.738
+  plies [ 40, 60) material within 5 n=  323 win probability median 0.274
+  plies [ 60, 80) material within 5 n=  255 win probability median 0.200
+  plies [ 80,120) material within 5 n=  163 win probability median 0.154
+  plies [120,180) material within 5 n=   70 win probability median 0.177
+== c0032 nodes=1 on c0032 vs alpha-beta, alpha-beta to move, the same positions: n=800 overall median 0.436
+  material [ -40, -20) n=    13 win probability median 0.070 share >= 0.5 0.000
+  material [ -20, -10) n=    16 win probability median 0.102 share >= 0.5 0.000
+  material [  -5,   0) n=    39 win probability median 0.198 share >= 0.5 0.000
+  material [   0,   1) n=    28 win probability median 0.227 share >= 0.5 0.000
+  material [   1,   5) n=    68 win probability median 0.245 share >= 0.5 0.000
+  material [   5,  10) n=    58 win probability median 0.223 share >= 0.5 0.017
+  material [  10,  20) n=   106 win probability median 0.304 share >= 0.5 0.047
+  material [  20, 999) n=   464 win probability median 0.675 share >= 0.5 0.718
+  plies [ 40, 60) material within 5 n=   49 win probability median 0.297
+  plies [ 60, 80) material within 5 n=   42 win probability median 0.197
+  plies [ 80,120) material within 5 n=   31 win probability median 0.159
+  plies [120,180) material within 5 n=   12 win probability median 0.220
+== c0032 nodes=32 on c0032 vs alpha-beta, alpha-beta to move, the same positions: n=800 overall median 0.433
+  material [ -40, -20) n=    13 win probability median 0.057 share >= 0.5 0.000
+  material [ -20, -10) n=    16 win probability median 0.091 share >= 0.5 0.000
+  material [  -5,   0) n=    39 win probability median 0.192 share >= 0.5 0.000
+  material [   0,   1) n=    28 win probability median 0.227 share >= 0.5 0.000
+  material [   1,   5) n=    68 win probability median 0.235 share >= 0.5 0.015
+  material [   5,  10) n=    58 win probability median 0.237 share >= 0.5 0.017
+  material [  10,  20) n=   106 win probability median 0.309 share >= 0.5 0.047
+  material [  20, 999) n=   464 win probability median 0.692 share >= 0.5 0.739
+  plies [ 40, 60) material within 5 n=   49 win probability median 0.275
+  plies [ 60, 80) material within 5 n=   42 win probability median 0.195
+  plies [ 80,120) material within 5 n=   31 win probability median 0.167
+  plies [120,180) material within 5 n=   12 win probability median 0.227
+== c0032 nodes=800 on c0032 vs alpha-beta, alpha-beta to move, the same positions: n=800 overall median 0.497
+  material [ -40, -20) n=    13 win probability median 0.064 share >= 0.5 0.000
+  material [ -20, -10) n=    16 win probability median 0.111 share >= 0.5 0.000
+  material [  -5,   0) n=    39 win probability median 0.199 share >= 0.5 0.026
+  material [   0,   1) n=    28 win probability median 0.264 share >= 0.5 0.036
+  material [   1,   5) n=    68 win probability median 0.270 share >= 0.5 0.015
+  material [   5,  10) n=    58 win probability median 0.272 share >= 0.5 0.069
+  material [  10,  20) n=   106 win probability median 0.338 share >= 0.5 0.085
+  material [  20, 999) n=   464 win probability median 0.729 share >= 0.5 0.821
+  plies [ 40, 60) material within 5 n=   49 win probability median 0.301
+  plies [ 60, 80) material within 5 n=   42 win probability median 0.223
+  plies [ 80,120) material within 5 n=   31 win probability median 0.195
+  plies [120,180) material within 5 n=   12 win probability median 0.299
+
+== c0032 nodes=1 on alpha-beta vs alpha-beta: n=5000 overall median 0.512
+  material [-999, -40) n=    21 win probability median 0.258 share >= 0.5 0.048
+  material [ -40, -20) n=   224 win probability median 0.349 share >= 0.5 0.116
+  material [ -20, -10) n=   200 win probability median 0.447 share >= 0.5 0.345
+  material [ -10,  -5) n=   354 win probability median 0.472 share >= 0.5 0.393
+  material [  -5,   0) n=  1353 win probability median 0.493 share >= 0.5 0.476
+  material [   0,   1) n=   881 win probability median 0.514 share >= 0.5 0.577
+  material [   1,   5) n=  1195 win probability median 0.527 share >= 0.5 0.608
+  material [   5,  10) n=   350 win probability median 0.559 share >= 0.5 0.697
+  material [  10,  20) n=   177 win probability median 0.579 share >= 0.5 0.740
+  material [  20, 999) n=   245 win probability median 0.703 share >= 0.5 0.963
+  plies [ 40, 60) material within 5 n=  331 win probability median 0.511
+  plies [ 60, 80) material within 5 n=  331 win probability median 0.504
+  plies [ 80,120) material within 5 n=  648 win probability median 0.516
+  plies [120,180) material within 5 n=  847 win probability median 0.506
+  plies [180,300) material within 5 n= 1272 win probability median 0.515
+== c0032 nodes=1 on alpha-beta vs alpha-beta, the same positions: n=800 overall median 0.507
+  material [ -40, -20) n=    39 win probability median 0.362 share >= 0.5 0.154
+  material [ -20, -10) n=    42 win probability median 0.463 share >= 0.5 0.452
+  material [ -10,  -5) n=    76 win probability median 0.473 share >= 0.5 0.434
+  material [  -5,   0) n=   204 win probability median 0.489 share >= 0.5 0.461
+  material [   0,   1) n=   124 win probability median 0.507 share >= 0.5 0.548
+  material [   1,   5) n=   198 win probability median 0.517 share >= 0.5 0.596
+  material [   5,  10) n=    53 win probability median 0.533 share >= 0.5 0.547
+  material [  10,  20) n=    23 win probability median 0.621 share >= 0.5 0.696
+  material [  20, 999) n=    37 win probability median 0.669 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   54 win probability median 0.507
+  plies [ 60, 80) material within 5 n=   56 win probability median 0.509
+  plies [ 80,120) material within 5 n=   85 win probability median 0.502
+  plies [120,180) material within 5 n=  134 win probability median 0.499
+  plies [180,300) material within 5 n=  197 win probability median 0.511
+== c0032 nodes=32 on alpha-beta vs alpha-beta, the same positions: n=800 overall median 0.516
+  material [ -40, -20) n=    39 win probability median 0.372 share >= 0.5 0.051
+  material [ -20, -10) n=    42 win probability median 0.493 share >= 0.5 0.476
+  material [ -10,  -5) n=    76 win probability median 0.480 share >= 0.5 0.434
+  material [  -5,   0) n=   204 win probability median 0.505 share >= 0.5 0.525
+  material [   0,   1) n=   124 win probability median 0.502 share >= 0.5 0.516
+  material [   1,   5) n=   198 win probability median 0.534 share >= 0.5 0.616
+  material [   5,  10) n=    53 win probability median 0.557 share >= 0.5 0.736
+  material [  10,  20) n=    23 win probability median 0.622 share >= 0.5 0.783
+  material [  20, 999) n=    37 win probability median 0.671 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   54 win probability median 0.515
+  plies [ 60, 80) material within 5 n=   56 win probability median 0.494
+  plies [ 80,120) material within 5 n=   85 win probability median 0.523
+  plies [120,180) material within 5 n=  134 win probability median 0.528
+  plies [180,300) material within 5 n=  197 win probability median 0.505
+== c0032 nodes=800 on alpha-beta vs alpha-beta, the same positions: n=800 overall median 0.545
+  material [ -40, -20) n=    39 win probability median 0.405 share >= 0.5 0.103
+  material [ -20, -10) n=    42 win probability median 0.505 share >= 0.5 0.571
+  material [ -10,  -5) n=    76 win probability median 0.521 share >= 0.5 0.605
+  material [  -5,   0) n=   204 win probability median 0.539 share >= 0.5 0.686
+  material [   0,   1) n=   124 win probability median 0.538 share >= 0.5 0.702
+  material [   1,   5) n=   198 win probability median 0.569 share >= 0.5 0.783
+  material [   5,  10) n=    53 win probability median 0.602 share >= 0.5 0.906
+  material [  10,  20) n=    23 win probability median 0.641 share >= 0.5 0.870
+  material [  20, 999) n=    37 win probability median 0.710 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   54 win probability median 0.520
+  plies [ 60, 80) material within 5 n=   56 win probability median 0.531
+  plies [ 80,120) material within 5 n=   85 win probability median 0.557
+  plies [120,180) material within 5 n=  134 win probability median 0.559
+  plies [180,300) material within 5 n=  197 win probability median 0.550
+
+== c0032 nodes=1 on c0030 vs c0020: n=5000 overall median 0.521
+  material [-999, -40) n=   170 win probability median 0.044 share >= 0.5 0.000
+  material [ -40, -20) n=   598 win probability median 0.153 share >= 0.5 0.018
+  material [ -20, -10) n=   519 win probability median 0.304 share >= 0.5 0.069
+  material [ -10,  -5) n=   470 win probability median 0.400 share >= 0.5 0.202
+  material [  -5,   0) n=   686 win probability median 0.489 share >= 0.5 0.449
+  material [   0,   1) n=   253 win probability median 0.519 share >= 0.5 0.640
+  material [   1,   5) n=   547 win probability median 0.550 share >= 0.5 0.733
+  material [   5,  10) n=   469 win probability median 0.654 share >= 0.5 0.896
+  material [  10,  20) n=   564 win probability median 0.763 share >= 0.5 0.986
+  material [  20, 999) n=   724 win probability median 0.911 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=  369 win probability median 0.511
+  plies [ 60, 80) material within 5 n=  222 win probability median 0.516
+  plies [ 80,120) material within 5 n=  310 win probability median 0.521
+  plies [120,180) material within 5 n=  311 win probability median 0.520
+  plies [180,300) material within 5 n=  274 win probability median 0.545
+== c0032 nodes=1 on c0030 vs c0020, the same positions: n=800 overall median 0.507
+  material [-999, -40) n=    22 win probability median 0.043 share >= 0.5 0.000
+  material [ -40, -20) n=    95 win probability median 0.159 share >= 0.5 0.011
+  material [ -20, -10) n=    85 win probability median 0.309 share >= 0.5 0.047
+  material [ -10,  -5) n=    71 win probability median 0.409 share >= 0.5 0.127
+  material [  -5,   0) n=   115 win probability median 0.456 share >= 0.5 0.304
+  material [   0,   1) n=    45 win probability median 0.494 share >= 0.5 0.444
+  material [   1,   5) n=    84 win probability median 0.549 share >= 0.5 0.798
+  material [   5,  10) n=    68 win probability median 0.622 share >= 0.5 0.868
+  material [  10,  20) n=    95 win probability median 0.742 share >= 0.5 1.000
+  material [  20, 999) n=   120 win probability median 0.908 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   53 win probability median 0.511
+  plies [ 60, 80) material within 5 n=   38 win probability median 0.496
+  plies [ 80,120) material within 5 n=   59 win probability median 0.503
+  plies [120,180) material within 5 n=   51 win probability median 0.514
+  plies [180,300) material within 5 n=   43 win probability median 0.438
+== c0032 nodes=32 on c0030 vs c0020, the same positions: n=800 overall median 0.490
+  material [-999, -40) n=    22 win probability median 0.044 share >= 0.5 0.000
+  material [ -40, -20) n=    95 win probability median 0.138 share >= 0.5 0.000
+  material [ -20, -10) n=    85 win probability median 0.289 share >= 0.5 0.059
+  material [ -10,  -5) n=    71 win probability median 0.390 share >= 0.5 0.113
+  material [  -5,   0) n=   115 win probability median 0.459 share >= 0.5 0.330
+  material [   0,   1) n=    45 win probability median 0.476 share >= 0.5 0.400
+  material [   1,   5) n=    84 win probability median 0.531 share >= 0.5 0.679
+  material [   5,  10) n=    68 win probability median 0.585 share >= 0.5 0.750
+  material [  10,  20) n=    95 win probability median 0.714 share >= 0.5 0.958
+  material [  20, 999) n=   120 win probability median 0.887 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   53 win probability median 0.503
+  plies [ 60, 80) material within 5 n=   38 win probability median 0.500
+  plies [ 80,120) material within 5 n=   59 win probability median 0.483
+  plies [120,180) material within 5 n=   51 win probability median 0.505
+  plies [180,300) material within 5 n=   43 win probability median 0.438
+== c0032 nodes=800 on c0030 vs c0020, the same positions: n=800 overall median 0.500
+  material [-999, -40) n=    22 win probability median 0.049 share >= 0.5 0.000
+  material [ -40, -20) n=    95 win probability median 0.141 share >= 0.5 0.021
+  material [ -20, -10) n=    85 win probability median 0.311 share >= 0.5 0.082
+  material [ -10,  -5) n=    71 win probability median 0.392 share >= 0.5 0.127
+  material [  -5,   0) n=   115 win probability median 0.454 share >= 0.5 0.330
+  material [   0,   1) n=    45 win probability median 0.483 share >= 0.5 0.356
+  material [   1,   5) n=    84 win probability median 0.540 share >= 0.5 0.702
+  material [   5,  10) n=    68 win probability median 0.608 share >= 0.5 0.809
+  material [  10,  20) n=    95 win probability median 0.720 share >= 0.5 1.000
+  material [  20, 999) n=   120 win probability median 0.889 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=   53 win probability median 0.500
+  plies [ 60, 80) material within 5 n=   38 win probability median 0.501
+  plies [ 80,120) material within 5 n=   59 win probability median 0.490
+  plies [120,180) material within 5 n=   51 win probability median 0.498
+  plies [180,300) material within 5 n=   43 win probability median 0.434
+
