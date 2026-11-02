@@ -1,0 +1,30 @@
+NN session creation: 0.081277 s
+NN inference (288 positions): 0.729433 s
+NN session creation: 8.993625 s
+NN inference (288 positions): 0.100508 s
+NN session creation: 0.060256 s
+NN inference (288 positions): 0.451825 s
+NN session creation: 7.935377 s
+NN inference (288 positions): 0.028150 s
+NN session creation: 0.061416 s
+NN inference (288 positions): 0.180871 s
+NN session creation: 10.436634 s
+NN inference (288 positions): 0.021365 s
+== cpu batch 1
+   Building minase-mnsd-reader @ file:///home/stepney141/board-games/minase/tools/train/zero/mnsd_reader
+      Built minase-mnsd-reader @ file:///home/stepney141/board-games/minase/tools/train/zero/mnsd_reader
+Uninstalled 1 package in 1ms
+Installed 1 package in 0.82ms
+{"positions":288,"max_logit_abs_diff":6.683898925885501e-06,"max_probability_abs_diff":1.157403722584771e-06,"max_value_abs_diff":2.6827590943190316e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.04802937276001007,"max_probability_abs_diff":0.00719842807684401,"max_value_abs_diff":0.0017248800651550322,"best_move_mismatches":4,"best_move_mismatch_gaps":[[34,0.0032663345336914062],[150,0.01987457275390625],[196,0.009917259216308594],[209,0.0018358230590820312]]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":9.374176025644942e-06,"max_probability_abs_diff":1.1901643046097199e-06,"max_value_abs_diff":3.143646239989195e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.034202625683593446,"max_probability_abs_diff":0.0068475110953302165,"max_value_abs_diff":0.0012024653536987229,"best_move_mismatches":2,"best_move_mismatch_gaps":[[196,0.009917259216308594],[209,0.0018358230590820312]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":9.374176025644942e-06,"max_probability_abs_diff":1.1901643046097199e-06,"max_value_abs_diff":3.143646239989195e-07,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.04508638381958008,"max_probability_abs_diff":0.006859590293363471,"max_value_abs_diff":0.0017861723899841309,"best_move_mismatches":1,"best_move_mismatch_gaps":[[190,0.0050048828125]]}
+elapsed_seconds 35
+failed 0
