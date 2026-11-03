@@ -80,9 +80,9 @@ extern "C" __global__ void optimizer_first(
     if (!isfinite(expanded[i])) atomicOr(nonfinite, 2u);
 }
 
-// gradient_sums already contains the sum of both P halves. Keep one free
-// parameter per unit and expand both copies from the same updated value.
-// This also expands every W1 row. Unshared biases and w2 use units=H=1.
+// Only accumulator biases expand the shared P halves. The head keeps its free
+// parameters; o and W1 receive gradients from folded inputs and use units=H=1,
+// as do b, b1, W2, b2 and v.
 // The host passes the same parameter limits as Model::constrain.
 extern "C" __global__ void optimizer_head(
     float* values, const double* gradient_sums, float* moment, float* variance,

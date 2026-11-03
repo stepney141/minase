@@ -35,7 +35,7 @@ fn args() -> Args {
         training: crate::nnue::options::TrainingOptions::new(1.0),
         lr_schedule: LrSchedule::default(),
         feature_set: crate::nnue::data::InputFeatureSet::P,
-        head: crate::nnue::model::HeadKind::DirectScrelu,
+        head: crate::nnue::model::HeadKind::PairwiseL16L32,
         width: 8,
         data: vec!["records.bin".into()],
         train_subsample: None,
@@ -159,9 +159,14 @@ fn validation_statistics() -> Validation {
         upper: 0,
         positions: 1,
         activations: 16,
-        hidden_lower: 0,
-        hidden_upper: 0,
-        hidden_activations: 0,
+        hidden1_lower: 0,
+        hidden1_upper: 0,
+        hidden1_activations: 15,
+        hidden2_lower: 0,
+        hidden2_upper: 0,
+        hidden2_activations: 32,
+        pairwise_positive: 0,
+        pairwise_products: 8,
     }
 }
 
@@ -494,7 +499,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         "device",
         "lr_linear",
         "lr_schedule",
-        "head",
         "weight_decay_linear",
         "lr_ft",
         "weight_decay_ft",
@@ -576,7 +580,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             continue;
         }
         match change {
-            "head" => args.head = crate::nnue::model::HeadKind::ScreluHidden16,
             "settings" => args.seed += 1,
             "device" => args.device = crate::nnue::options::DeviceKind::Cpu,
             "lr_linear" => args.training.lr_linear *= 2.0,
@@ -619,7 +622,6 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         let expected = match change {
             "origin" => MismatchField::Preprocessing,
             "base" | "data" => MismatchField::Inputs,
-            "head" => MismatchField::Settings,
             "settings" => MismatchField::Seed,
             "device" => MismatchField::Device,
             "lr_linear" => MismatchField::LrLinear,
@@ -649,7 +651,16 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
         samples: 24,
         decisive_samples: 16,
         nonlinear_std_cp: 3.5,
-        hidden_saturation: None,
+        hidden1_saturation: Saturation {
+            acc_le_zero: 0.0,
+            acc_ge_one: 0.0,
+        },
+        hidden2_saturation: Saturation {
+            acc_le_zero: 0.0,
+            acc_ge_one: 0.0,
+        },
+        pairwise_both_positive: 0.0,
+        first_layer_at_limit: 0.0,
         saturation: Saturation {
             acc_le_zero: 0.25,
             acc_ge_one: 0.125,
@@ -954,7 +965,7 @@ fn compare_checkpoint(left: &Path, right: &Path) {
 fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
     training_two_epochs_match_resume(
         crate::nnue::options::DeviceKind::Cuda,
-        crate::nnue::model::HeadKind::DirectScrelu,
+        crate::nnue::model::HeadKind::PairwiseL16L32,
     );
 }
 
@@ -1267,14 +1278,18 @@ fn training_two_epochs_match_resume(
         for (left, right) in continuous.iter().zip(&resumed) {
             for row in [left, right] {
                 assert_eq!(row["device"], serde_json::to_value(device).unwrap());
-                assert_eq!(row["hidden_saturation"].is_null(), !head.hidden());
+                assert!(row["hidden1_saturation"].is_object());
+                assert!(row["hidden2_saturation"].is_object());
                 if device == crate::nnue::options::DeviceKind::Cpu {
                     assert!(row["gpu_memory_used_bytes"].is_null());
                     assert!(row["gpu_memory_total_bytes"].is_null());
                 }
             }
             for key in [
-                "hidden_saturation",
+                "hidden1_saturation",
+                "hidden2_saturation",
+                "pairwise_both_positive",
+                "first_layer_at_limit",
                 "epoch",
                 "train_loss",
                 "validation_loss",
@@ -1472,7 +1487,7 @@ fn cpu_result_only_training_records_null_teacher_cp_per_logit_and_resumes() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
     args.device = crate::nnue::options::DeviceKind::Cpu;
-    args.width = 2;
+    args.width = 4;
     args.batch = 128;
     args.epochs = 1;
     args.training.lambda = 0.0;

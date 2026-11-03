@@ -8,7 +8,7 @@ use common::*;
 use minase::eval::nnue::{
     self, Network,
     feature_set::{HalfKpHmB8, P},
-    head::DirectScrelu,
+    head::PairwiseL16L32,
 };
 use minase_trainer::nnue::{
     data::{InputFeatureSet, Observations},
@@ -32,7 +32,7 @@ fn initialization_is_seeded_and_consumes_only_observed_canonical_rows() {
         InputFeatureSet::P,
         4,
         1000.0,
-        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
     )
     .unwrap();
     let a = Model::initialize(shape, &initial, masks(&[3, 5]), 7, 0.05).unwrap();
@@ -85,9 +85,9 @@ fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let shape = Shape::new(
             set,
-            2,
+            4,
             1000.0,
-            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+            minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
         )
         .unwrap();
         let masks = Masks::new(set, vec![false; 6841], vec![false; set.dimensions() + 1]).unwrap();
@@ -98,6 +98,7 @@ fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
                 initial[right][endpoint] = 1.0;
                 let model = Model::initialize(shape, &initial, masks.clone(), 7, 0.05).unwrap();
                 assert_eq!(model.expanded_linear(), initial);
+                assert!(model.first_layer_at_limit().is_err());
 
                 // 隣接するf32値の差にも許容誤差や平均化を適用しない。
                 initial[right][endpoint] = f32::from_bits(1.0_f32.to_bits() + 1);
@@ -112,9 +113,9 @@ fn initialization_standard_deviation_scales_first_layer_and_virtual_rows() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let shape = Shape::new(
             set,
-            6,
+            8,
             1000.0,
-            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+            minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
         )
         .unwrap();
         let initial = vec![[17.0, -23.0]; 13680];
@@ -150,7 +151,7 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
                     set,
                     4,
                     1000.0,
-                    minase_trainer::nnue::model::HeadKind::DirectScrelu,
+                    minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
                 )
                 .unwrap(),
                 &vec![[100.0, 120.0]; 13680],
@@ -199,12 +200,12 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
                 model
                     .expanded_first_layer()
                     .iter()
-                    .all(|&x| x.abs() <= 220.0 / 127.0)
+                    .all(|&x| x.abs() <= 220.0 / 255.0)
             );
             assert!(
                 model.parameters()[Parameter::Biases]
                     .iter()
-                    .all(|&x| x == sign * (510.0 / 127.0))
+                    .all(|&x| x == sign * (510.0 / 255.0))
             );
             assert!(
                 model.parameters()[Parameter::OutputWeights]
@@ -234,7 +235,7 @@ fn halfkp_unobserved_feature_inherits_updated_virtual_row() {
             InputFeatureSet::HalfKpHmB8,
             4,
             1000.0,
-            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+            minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
         )
         .unwrap(),
         &vec![[0.0; 2]; 13680],
@@ -256,23 +257,23 @@ fn quantization_ties_even_rotation_and_overflow_match_python_examples() {
     for (row, value) in [0.0625, 0.1875, -0.0625, -0.1875].into_iter().enumerate() {
         model.parameter_mut(Parameter::Linear)[row * 2] = value;
     }
-    model.parameter_mut(Parameter::FirstLayer)[..4].copy_from_slice(&[0.5, 1.5, -0.5, -1.5]);
+    model.parameter_mut(Parameter::FirstLayer)[..4].copy_from_slice(&[0.5, 0.25, -0.5, -0.25]);
     model
         .parameter_mut(Parameter::Biases)
         .copy_from_slice(&[-0.5, -1.5]);
     model
         .parameter_mut(Parameter::OutputWeights)
-        .copy_from_slice(&[0.5 / 4096.0, 1.5 / 4096.0, -0.5 / 4096.0, -1.5 / 4096.0]);
+        .copy_from_slice(&[1.5 / 4096.0, -1.5 / 4096.0]);
     model.parameter_mut(Parameter::OutputBias)[0] = 1.0 / 8192.0;
     let q = quantize(&model).unwrap();
     assert_eq!(
         q.linear[..4].iter().map(|v| v[0]).collect::<Vec<_>>(),
         [0, 2, 0, -2]
     );
-    assert_eq!(&q.weights[..4], &[64, 190, -64, -190]);
-    assert_eq!(&q.weights[44..48], &[-64, -190, 64, 190]);
-    assert_eq!(q.biases, [-64, -190, -64, -190]);
-    assert_eq!(q.output_weights, [0, 2, 0, 2, 0, -2, 0, -2]);
+    assert_eq!(&q.weights[..4], &[128, 64, -128, -64]);
+    assert_eq!(&q.weights[44..48], &[-128, -64, 128, 64]);
+    assert_eq!(q.biases, [-128, -382, -128, -382]);
+    assert_eq!(q.output_weights, [2, 2, -2, -2]);
     assert_eq!(q.output_bias, 64);
     for (p, v) in [
         (Parameter::Linear, 4096.0),
@@ -299,7 +300,7 @@ fn quantization_obeys_first_layer_integer_bounds() {
         model.parameter_mut(Parameter::Virtual).fill(0.0);
         for (parameter, limit) in [(Parameter::FirstLayer, 220), (Parameter::Biases, 510)] {
             for sign in [-1, 1] {
-                model.parameter_mut(parameter)[0] = (sign * limit) as f32 / 127.0;
+                model.parameter_mut(parameter)[0] = (sign * limit) as f32 / 255.0;
                 let quantized = quantize(&model).unwrap();
                 let actual = match parameter {
                     Parameter::FirstLayer => i32::from(quantized.weights[0]),
@@ -310,7 +311,7 @@ fn quantization_obeys_first_layer_integer_bounds() {
                 quantized
                     .encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
                     .unwrap();
-                model.parameter_mut(parameter)[0] = (sign * (limit + 1)) as f32 / 127.0;
+                model.parameter_mut(parameter)[0] = (sign * (limit + 1)) as f32 / 255.0;
                 assert!(matches!(
                     quantize(&model),
                     Err(minase_trainer::nnue::model::Error::Quantization(actual)) if actual == parameter
@@ -328,7 +329,7 @@ fn quantized_mnue_v5_round_trip_has_small_mean_integer_evaluation_error() {
     positions.extend(positions.clone().iter().map(mirror));
     let fixture = Fixture::new(&positions);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let mut m = model(set, 6);
+        let mut m = model(set, 8);
         m.parameter_mut(Parameter::Biases).fill(0.2);
         for (i, x) in m
             .parameter_mut(Parameter::OutputWeights)
@@ -345,11 +346,11 @@ fn quantized_mnue_v5_round_trip_has_small_mean_integer_evaluation_error() {
         assert_eq!(&bytes[..8], b"MNUE\x05\0\0\0");
         let integer: Vec<_> = match set {
             InputFeatureSet::P => {
-                let net = Network::<P, DirectScrelu>::decode(&bytes).unwrap();
+                let net = Network::<P, PairwiseL16L32>::decode(&bytes).unwrap();
                 positions.iter().map(|p| nnue::evaluate(&net, p)).collect()
             }
             InputFeatureSet::HalfKpHmB8 => {
-                let net = Network::<HalfKpHmB8, DirectScrelu>::decode(&bytes).unwrap();
+                let net = Network::<HalfKpHmB8, PairwiseL16L32>::decode(&bytes).unwrap();
                 positions.iter().map(|p| nnue::evaluate(&net, p)).collect()
             }
         };
@@ -441,24 +442,24 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_
 
 #[test]
 fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
-    for width in [0, 1, 3, 513, usize::MAX] {
+    for width in [0, 1, 2, 3, 6, 510, 513, usize::MAX] {
         assert!(
             Shape::new(
                 InputFeatureSet::P,
                 width,
                 1000.0,
-                minase_trainer::nnue::model::HeadKind::DirectScrelu
+                minase_trainer::nnue::model::HeadKind::PairwiseL16L32
             )
             .is_err()
         );
     }
-    for width in [2, 6, 512] {
+    for width in [4, 8, 512] {
         assert!(
             Shape::new(
                 InputFeatureSet::P,
                 width,
                 1000.0,
-                minase_trainer::nnue::model::HeadKind::DirectScrelu
+                minase_trainer::nnue::model::HeadKind::PairwiseL16L32
             )
             .is_ok()
         );
@@ -469,7 +470,7 @@ fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
                 InputFeatureSet::P,
                 4,
                 cp_per_logit,
-                minase_trainer::nnue::model::HeadKind::DirectScrelu
+                minase_trainer::nnue::model::HeadKind::PairwiseL16L32
             )
             .is_err()
         );
@@ -481,7 +482,7 @@ fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
                 InputFeatureSet::P,
                 4,
                 1000.0,
-                minase_trainer::nnue::model::HeadKind::DirectScrelu
+                minase_trainer::nnue::model::HeadKind::PairwiseL16L32
             )
             .unwrap(),
             &[],
@@ -500,9 +501,9 @@ fn model_rejects_invalid_width_cp_per_logit_initial_and_mask_shapes() {
                 &Parameters::zeros(
                     Shape::new(
                         InputFeatureSet::P,
-                        6,
+                        8,
                         1000.0,
-                        minase_trainer::nnue::model::HeadKind::DirectScrelu
+                        minase_trainer::nnue::model::HeadKind::PairwiseL16L32
                     )
                     .unwrap()
                 )
@@ -557,4 +558,92 @@ fn checkpoint_rejects_the_removed_penalty_scalar() {
             "unexpected checkpoint array"
         ))
     ));
+}
+
+#[test]
+fn every_parameter_constrains_and_quantizes_to_its_documented_limit() {
+    use minase_trainer::nnue::model::Parameter::*;
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        for sign in [-1.0, 1.0] {
+            let mut model = model(set, 4);
+            for (p, limit) in [
+                (FirstLayer, 220.0 / 255.0),
+                (Virtual, 220.0 / 255.0),
+                (Biases, 2.0),
+                (OutputWeights, 1.98),
+                (OutputBias, 8.0),
+                (Hidden1Weights, 127.0 / 64.0),
+                (Hidden1Biases, 8.0),
+                (Hidden2Weights, 127.0 / 64.0),
+                (Hidden2Biases, 8.0),
+                (Hidden2Output, 1.98),
+            ] {
+                model.parameter_mut(p).fill(sign * (limit + 0.0001));
+            }
+            model.constrain().unwrap();
+            let q = quantize(&model).unwrap();
+            let integer = |value| (sign * value) as i32;
+            assert_eq!(i32::from(q.weights[0]), integer(220.0));
+            assert_eq!(q.biases[0], integer(510.0));
+            // ±1.98 is the training constraint; 8192 is the wider file-format limit.
+            assert_eq!(i32::from(q.output_weights[0]), integer(8110.0));
+            assert_eq!(i32::from(q.hidden2_output[0]), integer(8110.0));
+            assert_eq!(i32::from(q.hidden1_weights[0]), integer(127.0));
+            assert_eq!(i32::from(q.hidden2_weights[0]), integer(127.0));
+            assert_eq!(q.hidden1_biases[0], integer(65024.0));
+            assert_eq!(q.hidden2_biases[0], integer(65024.0));
+            assert_eq!(q.output_bias, integer(4161536.0));
+            q.encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
+                .unwrap();
+            for p in [OutputWeights, Hidden2Output] {
+                model.parameter_mut(p).fill(sign * 2.0);
+            }
+            let q = quantize(&model).unwrap();
+            assert_eq!(i32::from(q.output_weights[0]), integer(8192.0));
+            assert_eq!(i32::from(q.hidden2_output[0]), integer(8192.0));
+            q.encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
+                .unwrap();
+            for p in [OutputWeights, Hidden2Output] {
+                model.parameter_mut(p).fill(sign * (2.0 + 1.0 / 4096.0));
+            }
+            assert!(quantize(&model).is_err());
+        }
+    }
+}
+
+#[test]
+fn first_layer_limit_fraction_excludes_unobserved_and_padding_rows() {
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut canonical = vec![false; 6841];
+        canonical[0] = true;
+        canonical[1] = true;
+        let mut input = vec![false; set.dimensions() + 1];
+        input[0] = true;
+        input[1] = true;
+        let mut model = Model::initialize(
+            Shape::new(
+                set,
+                4,
+                1000.0,
+                minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
+            )
+            .unwrap(),
+            &vec![[0.0; 2]; 13680],
+            Masks::new(set, canonical, input).unwrap(),
+            7,
+            0.0,
+        )
+        .unwrap();
+        let limit = 220.0 / 255.0;
+        model.parameter_mut(Parameter::FirstLayer)[0] = limit;
+        model.parameter_mut(Parameter::FirstLayer)[4] = -limit;
+        model.parameter_mut(Parameter::FirstLayer)[5] = limit;
+        // 未観測行と埋め草を範囲外へ動かしても分子・分母に入らない。
+        model.parameter_mut(Parameter::FirstLayer)[8..].fill(limit);
+        if set == InputFeatureSet::HalfKpHmB8 {
+            model.parameter_mut(Parameter::FirstLayer)[0] = 0.0;
+            model.parameter_mut(Parameter::Virtual)[0] = limit;
+        }
+        assert_eq!(model.first_layer_at_limit().unwrap(), 3.0 / 8.0);
+    }
 }

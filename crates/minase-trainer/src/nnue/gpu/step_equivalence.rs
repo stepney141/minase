@@ -116,10 +116,9 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64, config: AdamWConfig) -> R
     }
     model.parameter_mut(Parameter::OutputBias)[0] = random.centered() * 0.1;
     for parameter in [
-        Parameter::OutputWeightsEnd,
-        Parameter::OutputBiasEnd,
-        Parameter::HiddenOutput,
-        Parameter::HiddenOutputEnd,
+        Parameter::Hidden2Output,
+        Parameter::Hidden2Weights,
+        Parameter::Hidden2Biases,
     ] {
         for value in model.parameter_mut(parameter) {
             *value = random.centered() * 0.01;
@@ -291,10 +290,9 @@ fn clipping_fixture(
     for parameter in super::engine::HEAD_PARAMETERS {
         let limit = match parameter {
             Parameter::OutputWeights
-            | Parameter::OutputWeightsEnd
-            | Parameter::HiddenWeights
-            | Parameter::HiddenOutput
-            | Parameter::HiddenOutputEnd => 2.5,
+            | Parameter::Hidden1Weights
+            | Parameter::Hidden2Output
+            | Parameter::Hidden2Weights => 2.5,
             _ => 9.0,
         };
         for (j, value) in model.parameter_mut(parameter).iter_mut().enumerate() {
@@ -415,26 +413,13 @@ fn compare_expanded(report: &mut Report, cpu: &Model, first: &Step, repeated: &S
     let expected = [
         ("folded first layer", reference::fold(cpu)?),
         ("expanded biases", cpu.expanded_biases()),
-        ("expanded output", cpu.expanded_output_weights()),
-        (
-            "output bias",
-            cpu.parameters()[Parameter::OutputBias].to_vec(),
-        ),
-        ("expanded end output", cpu.expanded_output_weights_end()),
-        (
-            "end bias",
-            cpu.parameters()[Parameter::OutputBiasEnd].to_vec(),
-        ),
-        ("expanded W1", cpu.expanded_hidden_weights()),
-        ("b1", cpu.parameters()[Parameter::HiddenBiases].to_vec()),
-        (
-            "w2 open",
-            cpu.parameters()[Parameter::HiddenOutput].to_vec(),
-        ),
-        (
-            "w2 end",
-            cpu.parameters()[Parameter::HiddenOutputEnd].to_vec(),
-        ),
+        ("o", cpu.parameters()[Parameter::OutputWeights].to_vec()),
+        ("b", cpu.parameters()[Parameter::OutputBias].to_vec()),
+        ("W1", cpu.parameters()[Parameter::Hidden1Weights].to_vec()),
+        ("b1", cpu.parameters()[Parameter::Hidden1Biases].to_vec()),
+        ("W2", cpu.parameters()[Parameter::Hidden2Weights].to_vec()),
+        ("b2", cpu.parameters()[Parameter::Hidden2Biases].to_vec()),
+        ("v", cpu.parameters()[Parameter::Hidden2Output].to_vec()),
     ];
     for (((name, expected), actual), again) in expected
         .into_iter()
@@ -664,7 +649,7 @@ mod tests {
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape =
-                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
@@ -715,26 +700,32 @@ mod tests {
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_step_rejects_nonfinite_gradients_with_finite_loss() {
         // 契約: 損失だけが有限でも、勾配が非有限なら回収時に明示的に失敗する。
-        // 相殺する大きな出力重みでロジットを有限に保ち、SCReLUの微分で
-        // 第1層の勾配だけをオーバーフローさせる。
+        // aの最初の2要素を0.5にそろえ、vの正負を相殺してロジットを有限に保つ。
+        // W2の正負は逆伝播で加算され、第1層へ戻る勾配をオーバーフローさせる。
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape =
-                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let batch = synthetic_batch(set, 1, 71).unwrap();
             let mut model = super::super::equivalence::random_model(shape, 293).unwrap();
             for parameter in Parameter::ALL {
                 model.parameter_mut(parameter).fill(0.0);
             }
-            model.parameter_mut(Parameter::Biases).fill(0.6);
-            for (index, weight) in model
-                .parameter_mut(Parameter::OutputWeights)
-                .iter_mut()
-                .enumerate()
-            {
-                *weight = if index % 4 < 2 { f32::MAX } else { -f32::MAX };
-            }
+            model.parameter_mut(Parameter::Biases).fill(0.5);
+            model.parameter_mut(Parameter::Hidden1Weights)[0] = 1.0;
+            let z = if set == InputFeatureSet::P { 0.5 } else { 0.25 };
+            model.parameter_mut(Parameter::Hidden2Weights)[15] = 4.0;
+            model.parameter_mut(Parameter::Hidden2Weights)[30 + 15] = -4.0;
+            model.parameter_mut(Parameter::Hidden2Biases)[0] = 0.5 - 4.0 * z;
+            model.parameter_mut(Parameter::Hidden2Biases)[1] = 0.5 + 4.0 * z;
+            model.parameter_mut(Parameter::Hidden2Output)[0] = f32::MAX;
+            model.parameter_mut(Parameter::Hidden2Output)[1] = -f32::MAX;
             model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
+            let forward =
+                reference::forward(&model, &batch, &reference::fold(&model).unwrap()).unwrap();
+            let output = reference::output_backward(&model, &batch, &forward, &[1.0]).unwrap();
+            assert!(output.loss.iter().all(|x| x.is_finite()));
+            assert!(output.d_acc.iter().any(|x| !x.is_finite()));
             let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
             let mut step = Step::new(device.clone(), &model, &optimizer, 1).unwrap();
             let mut ring = HostRing::new(&device, set, 1).unwrap();
@@ -769,7 +760,7 @@ mod tests {
     fn step_inputs_cover_zero_gradients_and_unobserved_moments() {
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape =
-                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let batch = synthetic_batch(set, 129, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
@@ -808,9 +799,9 @@ mod tests {
                 (
                     Parameter::FirstLayer,
                     fixture.model.masks().first_layer(),
-                    6,
+                    8,
                 ),
-                (Parameter::Virtual, fixture.model.masks().virtual_rows(), 6),
+                (Parameter::Virtual, fixture.model.masks().virtual_rows(), 8),
             ] {
                 if !mask.is_empty() {
                     let row = mask[..mask.len() - 1]
@@ -840,7 +831,7 @@ mod tests {
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape =
-                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, training.optimizer()).unwrap();
             let targets =
@@ -896,7 +887,7 @@ mod tests {
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape =
-                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let batches: Vec<_> = [129, 64, 3]
                 .into_iter()
                 .map(|n| synthetic_batch(set, n, 71 + n as u64).unwrap())
@@ -965,14 +956,14 @@ mod tests {
             }
         };
     }
-    gpu_case!(gpu_step_p_width_2, InputFeatureSet::P, 2);
-    gpu_case!(gpu_step_p_width_6, InputFeatureSet::P, 6);
+    gpu_case!(gpu_step_p_width_4, InputFeatureSet::P, 4);
+    gpu_case!(gpu_step_p_width_12, InputFeatureSet::P, 12);
     gpu_case!(gpu_step_p_width_8, InputFeatureSet::P, 8);
     gpu_case!(gpu_step_p_width_128, InputFeatureSet::P, 128);
-    gpu_case!(gpu_step_p_width_130, InputFeatureSet::P, 130);
-    gpu_case!(gpu_step_halfkp_width_2, InputFeatureSet::HalfKpHmB8, 2);
-    gpu_case!(gpu_step_halfkp_width_6, InputFeatureSet::HalfKpHmB8, 6);
+    gpu_case!(gpu_step_p_width_132, InputFeatureSet::P, 132);
+    gpu_case!(gpu_step_halfkp_width_4, InputFeatureSet::HalfKpHmB8, 4);
+    gpu_case!(gpu_step_halfkp_width_12, InputFeatureSet::HalfKpHmB8, 12);
     gpu_case!(gpu_step_halfkp_width_8, InputFeatureSet::HalfKpHmB8, 8);
     gpu_case!(gpu_step_halfkp_width_128, InputFeatureSet::HalfKpHmB8, 128);
-    gpu_case!(gpu_step_halfkp_width_130, InputFeatureSet::HalfKpHmB8, 130);
+    gpu_case!(gpu_step_halfkp_width_132, InputFeatureSet::HalfKpHmB8, 132);
 }

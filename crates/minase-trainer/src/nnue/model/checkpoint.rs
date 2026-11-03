@@ -1,32 +1,26 @@
 //! NNUE学習器の無圧縮NPZチェックポイント。
 //! `latest.npz`と`best.npz`は次の配列を持ち、余分・欠落・型や形状の違いを拒否する。
-//! Hは幅、Rは第1層の行数（P型6841、HalfKP型109441）、Vは仮想行数（P型0、HalfKP型13681）、
-//! Uは共有後の出力幅（P型H/2、HalfKP型H）である。
+//! Hは幅、Rは第1層の行数、Vは仮想行数で、いずれも埋め草を含む。
+//! Bはバイアスの独立な個数（P型H/2、HalfKP型H）、Uは視点ごとの出力の独立な個数（B/2）である。
+//! `weights`、`m`、`v`の各接頭辞で、次の11区画をf32の行優先で保存する。
 //!
-//! | 名前 | dtype | 形状 | 内容 |
-//! | --- | --- | --- | --- |
-//! | `weights.linear.weight`, `m.linear.weight`, `v.linear.weight` | `<f4` | `[6841, 2]` | 線形重みと両モーメント。 |
-//! | `weights.ft.embedding.weight`, `m.ft.embedding.weight`, `v.ft.embedding.weight` | `<f4` | `[R, H]` | 第1層と両モーメント。 |
-//! | `weights.ft.virtual.weight`, `m.ft.virtual.weight`, `v.ft.virtual.weight` | `<f4` | `[V, H]` | 仮想行と両モーメント。 |
-//! | `weights.head.biases`, `m.head.biases`, `v.head.biases` | `<f4` | `[U]` | バイアスと両モーメント。 |
-//! | `weights.head.output_weights`, `m.head.output_weights`, `v.head.output_weights` | `<f4` | `[2, U]` | 出力重みと両モーメント。 |
-//! | `weights.head.output_bias`, `m.head.output_bias`, `v.head.output_bias` | `<f4` | `[1]` | 出力バイアスと両モーメント。 |
-//! | `weights.head.output_weights_end`, `m.head.output_weights_end`, `v.head.output_weights_end` | `<f4` | `[2, U]` | 終盤端点の直接出力重みと両モーメント。 |
-//! | `weights.head.output_bias_end`, `m.head.output_bias_end`, `v.head.output_bias_end` | `<f4` | `[1]` | 終盤端点の出力バイアスと両モーメント。 |
-//! | `weights.head.hidden_weights`, `m.head.hidden_weights`, `v.head.hidden_weights` | `<f4` | `[16, 2U]` | 隠れ層の自由重みと両モーメント。 |
-//! | `weights.head.hidden_biases`, `m.head.hidden_biases`, `v.head.hidden_biases` | `<f4` | `[16]` | 隠れ層のバイアスと両モーメント。 |
-//! | `weights.head.hidden_output`, `m.head.hidden_output`, `v.head.hidden_output` | `<f4` | `[16]` | 序盤端点の隠れ層出力重みと両モーメント。 |
-//! | `weights.head.hidden_output_end`, `m.head.hidden_output_end`, `v.head.hidden_output_end` | `<f4` | `[16]` | 終盤端点の隠れ層出力重みと両モーメント。 |
-//! | `canonical_mask`, `first_layer_mask`, `virtual_mask` | `\|b1` | `[6841]`, `[R]`, `[V]` | 観測マスク。 |
-//! | `initial_linear`, `initial_virtual` | `<f4` | `[6841, 2]`, `[V, H]` | 未観測行を固定する初期値。 |
-//! | `cp_per_logit` | `<f4` | `[]` | 勝率尺度（1ロジットあたりのcp）。 |
-//! | `width`, `feature_set`, `head`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、出力部（宣言順0〜3）、更新数。 |
-//! | `optimizer_groups` | `<f8` | `[3, 2]` | 線形、第1層、出力部の順の学習率と重み減衰。 |
-//! | `lambda` | `<f8` | `[]` | 教師混合比。 |
-//! | `meta` | `\|u1` | `[JSONのバイト長]` | UTF-8のJSON。 |
+//! | 区画 | 形状 |
+//! | --- | --- |
+//! | `linear.weight` | `[6841, 2]` |
+//! | `ft.embedding.weight` | `[R, H]` |
+//! | `ft.virtual.weight` | `[V, H]` |
+//! | `head.biases` | `[B]` |
+//! | `head.output_weights` | `[2, U]` |
+//! | `head.output_bias` | `[1]` |
+//! | `head.hidden1_weights` | `[15, 2, U]` |
+//! | `head.hidden1_biases` | `[15]` |
+//! | `head.hidden2_weights` | `[32, 30]` |
+//! | `head.hidden2_biases` | `[32]` |
+//! | `head.hidden2_output` | `[32]` |
 //!
-//! 出力部が持たない区画も保存し、表の形の先頭次元を0とする。
-//! `head`の値はdirect-screlu=0、direct-screlu-phase2=1、screlu-hidden16=2、screlu-hidden16-phase2=3である。
+//! 観測マスク3配列、固定行の初期値2配列、幅、入力特徴集合、勝率尺度、更新数、教師混合比、
+//! 最適化器の3群の学習率と重み減衰、およびJSONの進捗も保存する。
+//! `head`はu64の0であり、pairwise-l16-l32を表す。区画の欠落と余分を拒否する。
 //! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
 //! `meta`は`kind = "nnue"`、`epoch`、`best`、`elapsed_seconds`、`seed`、`config`を持つ。
 //! `best`は`{epoch, validation_loss}`で更新前はnull。時間は秒である。
@@ -50,7 +44,6 @@ use std::path::Path;
 /// パラメータ、固定行の初期値とマスク、AdamWの状態、進捗を保存する。
 /// 配列の配置はこのモジュールの表に定める。
 /// 復号時の受理条件は[`Self::decode`]に従う。
-/// `removal_penalty`を持つ以前のチェックポイントは余分な配列として拒否される。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
     /// f32モデル。
@@ -181,10 +174,7 @@ impl Checkpoint {
             _ => return Err(Error::Format("checkpoint feature set")),
         };
         let head = match r.scalar::<u64>("head")? {
-            0 => HeadKind::DirectScrelu,
-            1 => HeadKind::DirectScreluPhase2,
-            2 => HeadKind::ScreluHidden16,
-            3 => HeadKind::ScreluHidden16Phase2,
+            0 => HeadKind::PairwiseL16L32,
             _ => return Err(Error::Format("checkpoint head")),
         };
         let shape = Shape::new(set, width, r.scalar("cp_per_logit")?, head)?;
@@ -262,17 +252,12 @@ fn dimensions(shape: Shape, parameter: Parameter) -> Vec<usize> {
         Parameter::Linear => vec![super::CANONICAL_ROWS, 2],
         Parameter::FirstLayer => vec![shape.rows(), shape.width()],
         Parameter::Virtual => vec![shape.len(parameter) / shape.width(), shape.width()],
-        Parameter::Biases => vec![shape.units()],
-        Parameter::OutputWeights => vec![2, shape.units()],
+        Parameter::Biases => vec![shape.bias_units()],
+        Parameter::OutputWeights => vec![2, shape.output_units()],
         Parameter::OutputBias => vec![1],
-        Parameter::OutputWeightsEnd => vec![shape.len(parameter) / shape.units(), shape.units()],
-        Parameter::HiddenWeights => vec![
-            shape.len(parameter) / (2 * shape.units()),
-            2 * shape.units(),
-        ],
-        Parameter::OutputBiasEnd
-        | Parameter::HiddenBiases
-        | Parameter::HiddenOutput
-        | Parameter::HiddenOutputEnd => vec![shape.len(parameter)],
+        Parameter::Hidden1Weights => vec![15, 2, shape.output_units()],
+        Parameter::Hidden1Biases => vec![15],
+        Parameter::Hidden2Weights => vec![32, 30],
+        Parameter::Hidden2Biases | Parameter::Hidden2Output => vec![32],
     }
 }

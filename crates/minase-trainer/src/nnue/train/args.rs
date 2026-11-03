@@ -39,9 +39,9 @@ pub struct Args {
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
     /// 出力部を指定する。学習の再開時にも一致を要求する。
-    #[arg(long, value_enum, default_value = "direct-screlu")]
+    #[arg(long, value_enum, default_value = "pairwise-l16-l32")]
     pub head: crate::nnue::model::HeadKind,
-    /// 第1層の幅を2以上512以下の偶数で指定する。
+    /// 第1層の幅を4以上512以下の4の倍数で指定する。
     #[arg(long)]
     pub width: usize,
     /// MNSDファイルを、全体のレコード順に指定する。

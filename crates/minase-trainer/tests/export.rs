@@ -18,7 +18,7 @@ use minase::{
         nnue::{
             self, Network,
             feature_set::{FeatureSet, HalfKpHmB8, P},
-            head::DirectScrelu,
+            head::PairwiseL16L32,
         },
     },
     training::records::Header,
@@ -127,7 +127,7 @@ fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Che
         set,
         8,
         cp_per_logit,
-        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
     )
     .unwrap();
     let mut model = Model::initialize(
@@ -162,7 +162,7 @@ fn checkpoint(set: InputFeatureSet, cp_per_logit: f32, linear_value: f32) -> Che
 }
 
 fn check_network<F: FeatureSet>(bytes: &[u8], values: &[i32; PIECE_STATE_COUNT]) {
-    let network = Network::<F, DirectScrelu>::decode(bytes).unwrap();
+    let network = Network::<F, PairwiseL16L32>::decode(bytes).unwrap();
     assert_eq!(network.width(), 8);
     assert_eq!(network.cp_per_logit(), 1000.0);
     assert_eq!(network.rule_set(), RULE_SET);

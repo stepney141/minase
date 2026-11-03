@@ -23,7 +23,7 @@ use minase::eval::{
     nnue::{
         self, Network,
         feature_set::{FeatureSet, HalfKpHmB8, P},
-        head::{DirectScrelu, DirectScreluPhase2, Head, ScreluHidden16, ScreluHidden16Phase2},
+        head::PairwiseL16L32,
     },
     pst::Pst,
 };
@@ -32,7 +32,7 @@ use minase_core::{Color, Position};
 use super::Result;
 use crate::nnue::data::InputFeatureSet;
 
-/// MNUE版5の2つの入力特徴集合と4つの出力部を扱う診断用整数ネット。
+/// MNUE版5の2つの入力特徴集合とpairwise-l16-l32出力部を扱う診断用整数ネット。
 pub(crate) struct IntegerNetwork {
     network: Box<dyn DiagnosticNetwork>,
     feature_set: InputFeatureSet,
@@ -44,7 +44,7 @@ trait DiagnosticNetwork {
     fn evaluate(&self, position: &Position, side: Color) -> i32;
 }
 
-impl<F: FeatureSet, H: Head> DiagnosticNetwork for Network<F, H> {
+impl<F: FeatureSet> DiagnosticNetwork for Network<F, PairwiseL16L32> {
     fn width(&self) -> usize {
         self.width()
     }
@@ -57,7 +57,7 @@ impl<F: FeatureSet, H: Head> DiagnosticNetwork for Network<F, H> {
 }
 
 impl IntegerNetwork {
-    /// 入力特徴集合と出力部を選び、構造記述全体と本体を`Network::decode`で検査する。
+    /// 入力特徴集合を選び、構造記述全体と本体を`Network::decode`で検査する。
     pub(super) fn read(path: &Path) -> Result<Self> {
         let bytes = std::fs::read(path)?;
         Ok(Self::decode(&bytes)?)
@@ -65,7 +65,6 @@ impl IntegerNetwork {
     pub(crate) fn decode(bytes: &[u8]) -> std::result::Result<Self, nnue::Error> {
         let architecture = nnue::architecture(bytes)?;
         let feature = architecture.split(';').next();
-        let head = architecture.rsplit(';').next();
         let feature_set = match feature {
             Some("features=P") => InputFeatureSet::P,
             Some("features=HalfKP-hm-b8") => InputFeatureSet::HalfKpHmB8,
@@ -75,34 +74,15 @@ impl IntegerNetwork {
                 });
             }
         };
-        let network = match feature_set {
-            InputFeatureSet::P => Self::decode_head::<P>(bytes, head)?,
-            InputFeatureSet::HalfKpHmB8 => Self::decode_head::<HalfKpHmB8>(bytes, head)?,
+        let network: Box<dyn DiagnosticNetwork> = match feature_set {
+            InputFeatureSet::P => Box::new(Network::<P, PairwiseL16L32>::decode(bytes)?),
+            InputFeatureSet::HalfKpHmB8 => {
+                Box::new(Network::<HalfKpHmB8, PairwiseL16L32>::decode(bytes)?)
+            }
         };
         Ok(Self {
             network,
             feature_set,
-        })
-    }
-
-    fn decode_head<F: FeatureSet + 'static>(
-        bytes: &[u8],
-        head: Option<&str>,
-    ) -> std::result::Result<Box<dyn DiagnosticNetwork>, nnue::Error> {
-        Ok(match head {
-            Some("head=direct-screlu") => Box::new(Network::<F, DirectScrelu>::decode(bytes)?),
-            Some("head=direct-screlu-phase2") => {
-                Box::new(Network::<F, DirectScreluPhase2>::decode(bytes)?)
-            }
-            Some("head=screlu-hidden16") => Box::new(Network::<F, ScreluHidden16>::decode(bytes)?),
-            Some("head=screlu-hidden16-phase2") => {
-                Box::new(Network::<F, ScreluHidden16Phase2>::decode(bytes)?)
-            }
-            _ => {
-                return Err(nnue::Error::UnexpectedArchitecture {
-                    actual: nnue::architecture(bytes)?.into(),
-                });
-            }
         })
     }
 
@@ -136,8 +116,9 @@ pub(super) fn read_baseline(path: &Path) -> Result<Pst> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase::eval::nnue::head::Head;
 
-    /// 実ファイルを読み、全8種類の型選択と診断APIを検査する。
+    /// 実ファイルを読み、両入力特徴集合の型選択と診断APIを検査する。
     #[test]
     fn integer_network_reads_all_feature_and_head_combinations() {
         fn check<F: FeatureSet, H: Head>(head: H, expected_feature: InputFeatureSet) {
@@ -230,40 +211,15 @@ mod tests {
         fn heads<F: FeatureSet>(feature: InputFeatureSet) {
             let width = 64;
             check::<F, _>(
-                DirectScrelu::new(width, &[128; 128], -65_536, true).unwrap(),
-                feature,
-            );
-            check::<F, _>(
-                DirectScreluPhase2::new(
+                PairwiseL16L32::new(
                     width,
-                    [&[128; 128], &[-128; 128]],
-                    [-65_536, 131_072],
-                    true,
-                )
-                .unwrap(),
-                feature,
-            );
-            check::<F, _>(
-                ScreluHidden16::new(
-                    width,
-                    [&[128; 128]],
-                    [-65_536],
-                    &[1; 2048],
-                    [64; 16],
-                    [[4096; 16]],
-                    true,
-                )
-                .unwrap(),
-                feature,
-            );
-            check::<F, _>(
-                ScreluHidden16Phase2::new(
-                    width,
-                    [&[128; 128], &[-128; 128]],
-                    [-65_536, 131_072],
-                    &[1; 2048],
-                    [64; 16],
-                    [[4096; 16], [-4096; 16]],
+                    &[128; 64],
+                    -65_536,
+                    &[1; 15 * 64],
+                    [64; 15],
+                    &[1; 32 * 30],
+                    [64; 32],
+                    [4096; 32],
                     true,
                 )
                 .unwrap(),

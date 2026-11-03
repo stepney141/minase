@@ -117,7 +117,7 @@ impl KernelProfile {
     fn array_bytes(&self, kernel: Kernel) -> (u64, u64) {
         let b = self.batch as u64;
         let h = self.shape.width() as u64;
-        let u = self.shape.units() as u64;
+        let u = self.shape.output_units() as u64;
         let r = self.shape.rows() as u64;
         let f = self.first_entries as u64;
         let e = self.linear_entries as u64;
@@ -129,26 +129,18 @@ impl KernelProfile {
         let l = CANONICAL_ROWS as u64;
         let columns = FEATURE_COLUMNS as u64;
         let parameter_len = |p| self.shape.len(p) as u64;
-        let phase2 = u64::from(self.shape.head().phase2());
-        let hidden = self.shape.len(Parameter::HiddenBiases) as u64;
-        let extra_contributions = phase2 * (2 * h + 1) + hidden * (2 * u + 2 + phase2);
+        let contributions = 2 * u + 1 + 15 * 2 * u + 15 + 32 * 30 + 32 + 32;
         let gradient_columns = super::engine::gradient_columns(self.shape) as u64;
         match kernel {
             Kernel::ForwardAcc => (4 * (2 * b * columns * g + f * h + 2 * b * h), 8 * b * h),
             Kernel::ForwardLinear => (8 * (b * columns + e), 8 * b),
             Kernel::OutputBackward => (
-                24 * b * h
-                    + 8 * b * u
-                    + 17 * b
-                    + 4 * b
-                        * (phase2 * (2 * u + 1 + 4 * h)
-                            + hidden * (6 * h + 2 * u + 3 + 2 * phase2)),
-                32 * b * h + 24 * b + 4 * b * (extra_contributions + 2 * hidden) + 8 * head_blocks,
+                // 前進と後退の重み、累算値、線形値、教師値。キャッシュ内の再利用は含まない。
+                4 * b * (4 * h + 2 * (2 * u + 15 * 2 * u + 32 * 30 + 32) + 15 + 32 + 1 + 3) + b,
+                4 * b * (2 * u + 3 + 2 * h + 2 + contributions + 15 + 30 + 32 + 32)
+                    + 8 * head_blocks,
             ),
-            Kernel::GradientPartials => (
-                4 * b * (4 * h + 1 + extra_contributions),
-                8 * q * gradient_columns,
-            ),
+            Kernel::GradientPartials => (4 * b * (2 * h + contributions), 8 * q * gradient_columns),
             Kernel::ReducePartials { blocks, columns } => {
                 (8 * blocks as u64 * columns as u64, 8 * columns as u64)
             }
@@ -526,21 +518,14 @@ impl Step {
             &self.model.bias,
             &self.model.output,
             &self.model.output_bias,
-            &self.model.output_end,
-            &self.model.bias_end,
             &self.model.w1,
             &self.model.b1,
             &self.model.w2,
-            &self.model.w2_end,
+            &self.model.b2,
+            &self.model.v,
         ]
         .into_iter()
-        .map(|values| {
-            if values.is_empty() {
-                Ok(Vec::new())
-            } else {
-                Ok(self.device.compute.clone_dtoh(values)?)
-            }
-        })
+        .map(|values| Ok(self.device.compute.clone_dtoh(values)?))
         .collect()
     }
 }
@@ -560,7 +545,8 @@ mod tests {
     fn gpu_enqueue_rejects_invalid_multipliers_without_poisoning_later_updates() {
         let device = Device::new(0).unwrap();
         let set = InputFeatureSet::P;
-        let shape = Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+        let shape =
+            Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
         let model = random_model(shape, 71).unwrap();
         let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
         let batch = synthetic_batch(set, 5, 293).unwrap();

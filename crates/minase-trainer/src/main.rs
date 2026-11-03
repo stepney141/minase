@@ -66,10 +66,10 @@ enum NnueCommand {
         /// 入力の特徴集合を指定する。
         #[arg(long, value_enum)]
         feature_set: minase_trainer::nnue::data::InputFeatureSet,
-        /// CUDAで検査する出力部を4種類から指定する。
-        #[arg(long, value_enum, default_value = "direct-screlu")]
+        /// CUDAで検査する出力部pairwise-l16-l32を指定する。
+        #[arg(long, value_enum, default_value = "pairwise-l16-l32")]
         head: minase_trainer::nnue::model::HeadKind,
-        /// 第1層の幅を2以上512以下の偶数で指定する。
+        /// 第1層の幅を4以上512以下の4の倍数で指定する。
         #[arg(long)]
         width: usize,
         /// バッチの局面数を指定する。

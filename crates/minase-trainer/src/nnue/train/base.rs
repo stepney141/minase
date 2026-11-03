@@ -205,7 +205,7 @@ mod tests {
             )
             .unwrap();
             let model = Model::initialize(
-                Shape::new(set, 2, base.cp_per_logit, HeadKind::DirectScrelu).unwrap(),
+                Shape::new(set, 4, base.cp_per_logit, HeadKind::PairwiseL16L32).unwrap(),
                 &base.initial_linear(),
                 Masks::from_observations(set, &observations).unwrap(),
                 1,

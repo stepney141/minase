@@ -1,15 +1,17 @@
 use crate::nnue::model::{Model, Parameter};
 
-/// 直接経路と隠れ層の前進結果。zとhは隠れ層がない場合は空。
+/// 要素積を共有に従って畳み込んだ入力と、2段の隠れ層の前進結果。
 pub(crate) struct HeadOutput {
     pub value: f32,
-    pub z: Vec<f32>,
-    pub h: Vec<f32>,
+    pub f: Vec<f32>,
+    pub z: [f32; 15],
+    pub u: [f32; 30],
+    pub a: [f32; 32],
+    pub y: [f32; 32],
 }
 
-/// 32レーンの各レーンが添字lane, lane+32, ...をf32で足し、
-/// 距離16、8、4、2、1の固定木で縮約する。末尾の空レーンは0とする。
-/// CUDAのhead_warp_sumと同じ順序で、積和は融合しない。
+/// 32レーンが添字lane, lane+32, ...をf32で足し、距離16、8、4、2、1で縮約する。
+/// CUDAのhead_warp_sumと同じ固定木を使い、積和は融合しない。
 fn warp_dot(weights: &[f32], activations: &[f32]) -> f32 {
     let mut lanes = [0.0_f32; 32];
     for (i, (&weight, &activation)) in weights.iter().zip(activations).enumerate() {
@@ -23,100 +25,114 @@ fn warp_dot(weights: &[f32], activations: &[f32]) -> f32 {
     lanes[0]
 }
 
-/// SCReLU済みの2H成分から出力部を計算する。phiは序盤端点の係数。
-/// D0=o·s+b、D2=phi×D0_open+(1−phi)×D0_end。
-/// S1/S2は各端点へw2·clamp(W1s+b1,0,1)を加える。
-/// 直接内積は各視点をwarp_dotで縮約して足す。W1は2視点を連結してwarp_dotで縮約する。
-/// w2は0〜15の順にf32で足す。
-/// 各端点は(直接内積+w2内積)+バイアスの順とし、最後に位相で補間する。
-pub(crate) fn head(model: &Model, s: &[f32], phi: f32) -> HeadOutput {
+/// 1視点内の要素積iに対応する、第1層の2因子の添字。
+pub(crate) fn factors(i: usize, width: usize) -> (usize, usize) {
+    let q = width / 4;
+    let left = i / q * 2 * q + i % q;
+    (left, left + q)
+}
+
+/// 2視点の累算値から出力を計算する。P型の要素積jとj+H/4を先に足す。
+/// W1は全入力をwarp_dotで縮約し、W2は列0〜29を昇順にf32で足してからバイアスを足す。
+/// 直接内積は視点ごとに縮約し、vの内積は0〜31の順で足す。最後は(直接内積+v内積)+b。
+pub(crate) fn head(model: &Model, acc: &[f32]) -> HeadOutput {
     let shape = model.shape();
+    let h = shape.width();
+    let units = shape.output_units();
     let p = model.parameters();
-    let folded: Vec<_> = (0..2 * shape.units())
+    let pair = |view: usize, i: usize| {
+        let (left, right) = factors(i, h);
+        acc[view * h + left].clamp(0.0, 1.0) * acc[view * h + right].clamp(0.0, 1.0)
+    };
+    let f: Vec<_> = (0..2 * units)
         .map(|i| {
-            let j = i / shape.units() * shape.width() + i % shape.units();
-            if shape.units() == shape.width() {
-                s[j]
+            let value = pair(i / units, i % units);
+            if units == h / 2 {
+                value
             } else {
-                s[j] + s[j + shape.units()]
+                value + pair(i / units, i % units + units)
             }
         })
         .collect();
-    let z: Vec<_> = p[Parameter::HiddenWeights]
-        .chunks_exact(2 * shape.units())
-        .zip(&p[Parameter::HiddenBiases])
-        .map(|(w, &b)| warp_dot(w, &folded) + b)
-        .collect();
-    let h: Vec<_> = z.iter().map(|&x| x.clamp(0.0, 1.0)).collect();
-    let endpoint = |o, w, b| {
-        let mut hidden = 0.0;
-        for (&activation, &weight) in h.iter().zip(&p[w]) {
-            hidden += activation * weight;
+    let z = std::array::from_fn(|k| {
+        warp_dot(
+            &p[Parameter::Hidden1Weights][k * 2 * units..(k + 1) * 2 * units],
+            &f,
+        ) + p[Parameter::Hidden1Biases][k]
+    });
+    let u = std::array::from_fn(|i| {
+        if i < 15 {
+            ((127.0 / 128.0 * z[i]) * z[i]).min(1.0)
+        } else {
+            z[i - 15].clamp(0.0, 1.0)
         }
-        (warp_dot(&p[o][..shape.units()], &folded[..shape.units()])
-            + warp_dot(&p[o][shape.units()..], &folded[shape.units()..]))
-            + hidden
-            + p[b][0]
-    };
-    let open = endpoint(
-        Parameter::OutputWeights,
-        Parameter::HiddenOutput,
-        Parameter::OutputBias,
-    );
-    let value = if shape.head().phase2() {
-        let end = endpoint(
-            Parameter::OutputWeightsEnd,
-            Parameter::HiddenOutputEnd,
-            Parameter::OutputBiasEnd,
-        );
-        phi * open + (1.0 - phi) * end
-    } else {
-        open
-    };
-    HeadOutput { value, z, h }
+    });
+    let a = std::array::from_fn(|k| {
+        let mut sum = 0.0;
+        for (i, &value) in u.iter().enumerate() {
+            sum += p[Parameter::Hidden2Weights][k * 30 + i] * value;
+        }
+        sum + p[Parameter::Hidden2Biases][k]
+    });
+    let y = a.map(|x| x.clamp(0.0, 1.0));
+    let mut hidden = 0.0;
+    for (k, &value) in y.iter().enumerate() {
+        hidden += p[Parameter::Hidden2Output][k] * value;
+    }
+    let direct = warp_dot(&p[Parameter::OutputWeights][..units], &f[..units])
+        + warp_dot(&p[Parameter::OutputWeights][units..], &f[units..]);
+    HeadOutput {
+        value: (direct + hidden) + p[Parameter::OutputBias][0],
+        f,
+        z,
+        u,
+        a,
+        y,
+    }
 }
 
-/// 量子化検査と駒除去診断に共通の出力部。s、clamp、位相補間をf64で計算する。
-pub(crate) fn head_f64(model: &Model, s: &[f64], phi: f64) -> f64 {
+/// 量子化検査と駒除去診断用。要素積と2段の隠れ層を実数の式どおりf64で計算する。
+/// 整数推論の丸めは使わず、2乗の枝の係数127/128は含める。
+pub(crate) fn head_f64(model: &Model, acc: &[f64]) -> f64 {
     let shape = model.shape();
+    let h = shape.width();
+    let units = shape.output_units();
     let p = model.parameters();
+    let s: Vec<_> = (0..h)
+        .map(|i| {
+            let (left, right) = factors(i % (h / 2), h);
+            let view = i / (h / 2) * h;
+            acc[view + left].clamp(0.0, 1.0) * acc[view + right].clamp(0.0, 1.0)
+        })
+        .collect();
     let dot = |weights: &[f32]| {
         s.iter()
             .enumerate()
-            .map(|(i, &x)| {
-                x * f64::from(
-                    weights[i / shape.width() * shape.units() + i % shape.width() % shape.units()],
-                )
+            .map(|(i, &value)| {
+                value * f64::from(weights[i / (h / 2) * units + i % (h / 2) % units])
             })
             .sum::<f64>()
     };
-    let h: Vec<_> = p[Parameter::HiddenWeights]
-        .chunks_exact(2 * shape.units())
-        .zip(&p[Parameter::HiddenBiases])
-        .map(|(w, &b)| (dot(w) + f64::from(b)).clamp(0.0, 1.0))
-        .collect();
-    let endpoint = |o, w, b| {
-        dot(&p[o])
-            + h.iter()
-                .zip(&p[w])
-                .map(|(&x, &weight)| x * f64::from(weight))
-                .sum::<f64>()
-            + f64::from(p[b][0])
-    };
-    let open = endpoint(
-        Parameter::OutputWeights,
-        Parameter::HiddenOutput,
-        Parameter::OutputBias,
-    );
-    if shape.head().phase2() {
-        phi * open
-            + (1.0 - phi)
-                * endpoint(
-                    Parameter::OutputWeightsEnd,
-                    Parameter::HiddenOutputEnd,
-                    Parameter::OutputBiasEnd,
-                )
-    } else {
-        open
+    let z: [f64; 15] = std::array::from_fn(|k| {
+        dot(&p[Parameter::Hidden1Weights][k * 2 * units..(k + 1) * 2 * units])
+            + f64::from(p[Parameter::Hidden1Biases][k])
+    });
+    let u: [f64; 30] = std::array::from_fn(|i| {
+        if i < 15 {
+            (127.0 / 128.0 * z[i] * z[i]).min(1.0)
+        } else {
+            z[i - 15].clamp(0.0, 1.0)
+        }
+    });
+    let mut hidden = 0.0;
+    for k in 0..32 {
+        let a = u
+            .iter()
+            .enumerate()
+            .map(|(i, &value)| f64::from(p[Parameter::Hidden2Weights][k * 30 + i]) * value)
+            .sum::<f64>()
+            + f64::from(p[Parameter::Hidden2Biases][k]);
+        hidden += f64::from(p[Parameter::Hidden2Output][k]) * a.clamp(0.0, 1.0);
     }
+    (dot(&p[Parameter::OutputWeights]) + hidden) + f64::from(p[Parameter::OutputBias][0])
 }

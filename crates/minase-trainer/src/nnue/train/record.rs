@@ -66,9 +66,17 @@ pub struct EpochRecord {
     pub nonlinear_std_cp: f64,
     /// 活性化の飽和率。
     pub saturation: Saturation,
-    /// 隠れ層hの0以下・1以上の割合。隠れ層がない場合はnull。
-    /// Saturationのacc_le_zeroとacc_ge_oneに、ここではhの割合を記録する。
-    pub hidden_saturation: Option<Saturation>,
+    /// 幅15の層のz≤0とz≥1の割合。clipped ReLUの枝の飽和を記録する。
+    /// 2乗の枝はzが負でも勾配が流れ、|z|≥√(128/127)で飽和する。
+    /// 境界点そのものの逆伝播は設計の規約に従い、内側の微分を使う。
+    pub hidden1_saturation: Saturation,
+    /// 幅32の層のa≤0とa≥1の割合。
+    pub hidden2_saturation: Saturation,
+    /// 全検証局面、全視点、全要素積のうち、両因子の累算値が正である割合。
+    pub pairwise_both_positive: f64,
+    /// エポック境界のホストの第1層の展開後の重みのうち、絶対値が上限に達した割合。
+    /// HalfKPはW+Vで判定し、未観測行と埋め草を分母から除く。
+    pub first_layer_at_limit: f64,
     /// 初期線形重みからの絶対移動量、センチポーン。
     pub linear_movement: LinearMovement,
     /// 当該エポックの学習秒数。順列作成と供給、転送を含み、途中検証の秒数は除く。
@@ -167,6 +175,9 @@ pub(super) fn linear_movement(model: &Model) -> LinearMovement {
 pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
     if v.positions == 0
         || v.activations == 0
+        || v.positions.checked_mul(15) != Some(v.hidden1_activations)
+        || v.positions.checked_mul(32) != Some(v.hidden2_activations)
+        || v.pairwise_products.checked_mul(2) != Some(v.activations)
         || ![v.loss_sum, v.nonlinear_sum, v.nonlinear_square_sum]
             .iter()
             .all(|v| v.is_finite())
@@ -174,7 +185,9 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
         || v.nonlinear_square_sum < 0.0
         || v.correct > v.decisive
         || v.decisive > v.positions as u64
-        || v.hidden_lower + v.hidden_upper > v.hidden_activations as u64
+        || v.hidden1_lower + v.hidden1_upper > v.hidden1_activations as u64
+        || v.hidden2_lower + v.hidden2_upper > v.hidden2_activations as u64
+        || v.pairwise_positive > v.pairwise_products as u64
         || v.lower + v.upper > v.activations as u64
     {
         return Err(Error::Invalid("non-finite or invalid validation statistics").into());

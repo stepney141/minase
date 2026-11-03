@@ -4,7 +4,7 @@ use super::*;
 use minase::{
     eval::{
         features::{BOARD_FEATURE_COUNT, PIECE_STATE_COUNT},
-        nnue::{EncodeInput, Nnue, feature_set::P, head::DirectScrelu},
+        nnue::{EncodeInput, Nnue, feature_set::P, head::PairwiseL16L32},
     },
     training::records::{
         Entry, Exclusion, GameRecord, Header, Outcome as GameOutcome, Policy, TeacherKind, Value,
@@ -52,15 +52,26 @@ fn encode(linear: &[[i16; 2]]) -> Vec<u8> {
     let mut values = [100; PIECE_STATE_COUNT];
     values[11] = 200;
     values[21] = 200;
-    let head = DirectScrelu::new(2, &[5, 5, -5, -5], 0, true).unwrap();
+    let head = PairwiseL16L32::new(
+        4,
+        &[5, 5, -5, -5],
+        0,
+        &[0; 60],
+        [0; 15],
+        &[0; 960],
+        [0; 32],
+        [0; 32],
+        true,
+    )
+    .unwrap();
     nnue::encode::<P, _>(&EncodeInput {
-        width: 2,
+        width: 4,
         cp_per_logit: 200.0,
         rule_set: "engine-default",
         piece_values: &values,
         linear,
-        weights: &vec![1; FEATURE_COUNT * 2],
-        biases: &[2, 2],
+        weights: &vec![1; FEATURE_COUNT * 4],
+        biases: &[2; 4],
         head: &head,
     })
     .unwrap()
