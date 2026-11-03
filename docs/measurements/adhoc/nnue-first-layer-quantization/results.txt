@@ -1,0 +1,79 @@
+sample: 10000 positions, indices_sha256 equals summary.json (80d9536123420a7836835cdb44f837f99068cb751eb0d599c5cdf350fde44b54)
+cp_per_logit=1072.6529541015625, shipped conversion factor scale=135 (unrounded 135.137380, relative -0.1017%)
+ladder 1 passed: nnue.bin arrays equal quantize(best.npz) and my rounding at S=127
+ladder 2 passed: lin_f64 + cp_per_logit*head equals evaluate_f64 within 1e-6 cp on all positions
+reference nonlinear path: sd=512.691 cp, mean abs=330.245 cp, min=-3513.6, max=3725.3
+reference total: sd=3357.882 cp; reference linear path: sd=3110.201 cp
+
+id                 MAE      p99      max     mean       sd |  shipMAE  shipP99  shipMax shipMean |   totMAE   totP99   totMax | MAE/SD%  description
+1               15.515   59.172  163.245   -3.307   20.030 |   15.577   59.742  163.885   -3.351 |   15.657   59.975  162.920 |   3.026  S=127, a=(c*c)>>7 (shipped)
+2               14.509   54.395  144.987   -2.126   18.862 |   14.482   54.292  145.885   -2.168 |   14.544   54.514  144.920 |   2.830  S=127, a=c*c/127 exact
+3               15.351   57.679  151.374   -2.935   19.806 |   15.350   57.577  151.885   -2.977 |   15.416   57.378  150.920 |   2.994  S=127, a=floor(c*c/127)
+extra-a         14.559   56.103  150.424   -2.576   18.921 |   14.606   56.193  150.885   -2.612 |   14.684   55.955  149.920 |   2.840  S=127, a=c*c/128 exact (mismatch kept, floor removed)
+4a-254           8.051   29.310   55.527   -0.423   10.441 |    8.115   29.482   56.304   -0.465 |    8.132   29.984   56.484 |   1.570  S=254, a=floor(c*c*127/S^2)
+4a-508           5.764   22.190   40.032   -1.435    7.409 |    5.861   22.354   40.969   -1.479 |    5.990   22.551   41.654 |   1.124  S=508, a=floor(c*c*127/S^2)
+4a-1016          5.017   19.224   32.685   -0.951    6.543 |    5.124   19.997   32.889   -0.997 |    5.187   20.140   32.533 |   0.979  S=1016, a=floor(c*c*127/S^2)
+4b-254           6.246   23.116   49.252    0.430    8.116 |    6.264   23.334   50.304    0.384 |    6.275   23.251   50.484 |   1.218  S=254, a=c*c*127/S^2 exact
+4b-508           3.254   12.161   22.706   -0.568    4.183 |    3.296   12.463   22.723   -0.616 |    3.475   12.618   22.932 |   0.635  S=508, a=c*c*127/S^2 exact
+4b-1016          1.694    6.110   12.247   -0.059    2.182 |    1.749    6.310   12.414   -0.105 |    1.862    6.388   12.870 |   0.331  S=1016, a=c*c*127/S^2 exact
+extra-b-254      8.795   33.493   70.293   -0.857   11.527 |    8.958   34.129   72.378   -0.901 |    9.000   34.593   73.270 |   1.715  S=254, a=(c*c)>>9 (literal shift, mismatch kept)
+extra-b-508      6.931   28.957   48.958   -1.913    9.152 |    7.147   30.150   51.049   -1.957 |    7.278   30.668   51.844 |   1.352  S=508, a=(c*c)>>11 (literal shift, mismatch kept)
+extra-b-1016     6.334   27.106   49.366   -1.434    8.499 |    6.553   28.406   51.923   -1.482 |    6.628   28.904   52.844 |   1.235  S=1016, a=(c*c)>>13 (literal shift, mismatch kept)
+extra-c          0.172    0.533    1.012   -0.143    0.155 |    0.484    2.093    4.284   -0.190 |    0.923    2.753    5.055 |   0.033  S=inf (f64 accumulators), exact activation, output weights at 4096 only
+
+gain 1             slope=-0.7657% of reference, error sd after removing the slope=19.641 cp
+gain 2             slope=+0.2037% of reference, error sd after removing the slope=18.833 cp
+gain 3             slope=-0.0891% of reference, error sd after removing the slope=19.800 cp
+gain 4a-1016       slope=-0.3118% of reference, error sd after removing the slope=6.344 cp
+gain 4a-254        slope=-0.3478% of reference, error sd after removing the slope=10.288 cp
+gain 4a-508        slope=-0.3393% of reference, error sd after removing the slope=7.202 cp
+gain 4b-1016       slope=+0.0040% of reference, error sd after removing the slope=2.182 cp
+gain 4b-254        slope=-0.0526% of reference, error sd after removing the slope=8.112 cp
+gain 4b-508        slope=-0.0276% of reference, error sd after removing the slope=4.181 cp
+gain extra-a       slope=-0.5792% of reference, error sd after removing the slope=18.686 cp
+gain extra-b-1016  slope=-1.0871% of reference, error sd after removing the slope=6.417 cp
+gain extra-b-254   slope=-1.1087% of reference, error sd after removing the slope=10.028 cp
+gain extra-b-508   slope=-1.0995% of reference, error sd after removing the slope=7.210 cp
+gain extra-c       slope=-0.0023% of reference, error sd after removing the slope=0.154 cp
+
+baseline nonlinear error (shipped conversion): RMS=20.397 cp. Order A: reference -> output weights -> first layer -> floor -> 127/128 -> conversion
+step A output weights at 4096 [extra-c - reference]             MAE=  0.172 RMS=  0.211 mean= -0.143 share of baseline MSE=  +0.18%
+step A first layer S=127 [2 - extra-c]                          MAE= 14.491 RMS= 18.958 mean= -1.983 share of baseline MSE= +85.55%
+step A floor [3 - 2]                                            MAE=  4.619 RMS=  6.135 mean= -0.809 share of baseline MSE=  +9.38%
+step A 127/128 [1 - 3]                                          MAE=  3.088 RMS=  4.642 mean= -0.372 share of baseline MSE=  +4.38%
+step A conversion scale=135 and rounding [shipped 1 - exact 1]  MAE=  0.430 RMS=  0.593 mean= -0.044 share of baseline MSE=  +0.52%
+Order B swaps the last two activation steps: 127/128 first, floor second
+step B 127/128 [extra-a - 2]                                    MAE=  2.609 RMS=  4.041 mean= -0.450 share of baseline MSE=  +3.98%
+step B floor [1 - extra-a]                                      MAE=  4.344 RMS=  5.724 mean= -0.731 share of baseline MSE=  +9.77%
+
+per-scale components (per-position differences, exact conversion):
+S=127   first layer MAE= 14.491 RMS= 18.958 | floor MAE= 4.619 RMS= 6.135 mean= -0.809 | 127/128 MAE= 3.088 RMS= 4.642 mean= -0.372
+S=254   first layer MAE=  6.255 RMS=  8.132 | floor MAE= 4.775 RMS= 6.353 mean= -0.853 | 127/128 MAE= 3.724 RMS= 5.393 mean= -0.434
+S=508   first layer MAE=  3.236 RMS=  4.207 | floor MAE= 4.737 RMS= 6.288 mean= -0.866 | 127/128 MAE= 4.084 RMS= 5.778 mean= -0.478
+S=1016  first layer MAE=  1.692 RMS=  2.179 | floor MAE= 4.693 RMS= 6.247 mean= -0.892 | 127/128 MAE= 4.165 RMS= 5.872 mean= -0.483
+
+ladder 3 passed: Head::output and the decoded total are equal per position on all 10000 positions; positions at the +-28999 clamp: 0
+ladder 4: baseline total MAE=15.657320758262443 vs summary 15.657320758262468 (diff -2.487e-14); max=162.91960032935276 vs summary 162.91960032935276 (diff 0.000e0)
+linear path alone (integer minus f64): MAE=0.632, p99=1.867, max=2.397, mean=-0.411, sd=0.659
+
+active features per perspective: mean=58.236, min=4, p1=5, p50=63, p99=92, max=92; lion-trigger positions=8
+S=127 pooled accumulators (2560000 values): min=-731, max=657, p0.1=-542, p1=-304, p5=-149, p25=-33, p50=18, p75=65, p95=241, p99=387, p99.9=483; fraction<=0=0.39506, fraction>=127=0.13669, fraction strictly inside=0.46825
+S=127 per-unit min: across 128 units min=-731.0000, p25=-242.0000, median=-180.0000, p75=-132.0000, max=-26.0000
+S=127 per-unit max: across 128 units min=117.0000, p25=160.0000, median=181.0000, p75=220.0000, max=657.0000
+S=127 per-unit p50: across 128 units min=-268.0000, p25=-34.0000, median=15.0000, p75=42.0000, max=275.0000
+S=127 per-unit fraction<=0: across 128 units min=0.0003, p25=0.1533, median=0.3290, p75=0.6629, max=0.9519
+S=127 per-unit fraction>=127: across 128 units min=0.0000, p25=0.0008, median=0.0013, p75=0.0103, max=0.8667
+S=127 per-unit fraction inside: across 128 units min=0.0479, p25=0.2416, median=0.4031, p75=0.7053, max=0.8922
+
+S=127: observed |acc|max=731 (min=-731, max=657), fits i16 observed=true, fraction strictly inside (0,S)=0.46825, max|w|=235, max|b|=73
+S=127 static worst case N=92: L1(per-row max)=10459 fits i16=true, L2(per-unit)=6612 fits i16=true, L3(per-unit, one row per square)=6248 fits i16=true
+S=127 static worst case N=145: L1(per-row max)=15247 fits i16=true, L2(per-unit)=9362 fits i16=true, L3(per-unit, one row per square)=8130 fits i16=true
+S=254: observed |acc|max=1454 (min=-1454, max=1312), fits i16 observed=true, fraction strictly inside (0,S)=0.46957, max|w|=471, max|b|=147
+S=254 static worst case N=92: L1(per-row max)=20915 fits i16=true, L2(per-unit)=13230 fits i16=true, L3(per-unit, one row per square)=12503 fits i16=true
+S=254 static worst case N=145: L1(per-row max)=30490 fits i16=true, L2(per-unit)=18724 fits i16=true, L3(per-unit, one row per square)=16268 fits i16=true
+S=508: observed |acc|max=2917 (min=-2917, max=2627), fits i16 observed=true, fraction strictly inside (0,S)=0.47082, max|w|=941, max|b|=293
+S=508 static worst case N=92: L1(per-row max)=41839 fits i16=false, L2(per-unit)=26459 fits i16=true, L3(per-unit, one row per square)=25002 fits i16=true
+S=508 static worst case N=145: L1(per-row max)=60991 fits i16=false, L2(per-unit)=37454 fits i16=false, L3(per-unit, one row per square)=32535 fits i16=true
+S=1016: observed |acc|max=5821 (min=-5821, max=5250), fits i16 observed=true, fraction strictly inside (0,S)=0.47114, max|w|=1882, max|b|=586
+S=1016 static worst case N=92: L1(per-row max)=83678 fits i16=false, L2(per-unit)=52916 fits i16=false, L3(per-unit, one row per square)=49999 fits i16=false
+S=1016 static worst case N=145: L1(per-row max)=121980 fits i16=false, L2(per-unit)=74908 fits i16=false, L3(per-unit, one row per square)=65065 fits i16=false

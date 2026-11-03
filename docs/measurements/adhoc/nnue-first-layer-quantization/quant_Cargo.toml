@@ -1,0 +1,23 @@
+[package]
+name = "quant"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "quant"
+path = "src/main.rs"
+
+[workspace]
+
+[dependencies]
+minase = { path = "/home/stepney141/board-games/minase/crates/minase" }
+minase-core = { path = "/home/stepney141/board-games/minase/crates/minase-core" }
+minase-trainer = { path = "/home/stepney141/board-games/minase/crates/minase-trainer" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
+
+# Same release flags as the repository's workspace root.
+[profile.release]
+lto = true
+codegen-units = 1
