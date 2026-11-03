@@ -270,7 +270,29 @@ minase-trainer diag nnue-moves \
 `--base`には、PSTとFMの両方を持つMNPTを与える。
 片方のモデルにしかない合法手があった場合は、`error`を含む報告を保存して終了コード1で終わるので、規則か局面の復元の不一致として調べる。
 
-## 9. 採否を測定して記録する
+## 9. 線形の経路を対局結果で補正する
+
+学習したネットは教師の探索値を写すので、対局結果に現れる配置や駒の損得の情報を持たない。
+`nnue fit-linear`は、第1層と出力部を固定し、線形の経路の序中盤の列を教師の対局結果へのロジスティック回帰（Texel tuningと同種）で補正する。
+式と局面の選び方は`crates/minase-trainer/src/nnue/fit_linear/mod.rs`のdocコメントにあり、方式を選んだ理由は[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)にある。
+
+```sh
+minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
+  --data <学習に使ったデータ...> --tau 10 20 40 80 --seed <シード> \
+  --output-dir <新規のディレクトリ>
+```
+
+CPUだけで動き、教師30ファイルで約1分、最大常駐メモリは約4 GBである。
+`--output-dir`に補正した`nnue.bin`と`summary.json`を書く。
+`summary.json`の`decision.d`は、学習の検証分割の対局で、補正ありの損失から補正なしの損失を引いた値Dである。
+Dの95%区間は`decision.games`の対局ごとの損失から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。
+区間の上限が0未満でなければ、補正は予測を改善していない。
+
+補正は`--base`に与えたネットに対して求めたものなので、ネットを学び直したら求め直す。
+学び直したネットのDと補正の大きさは、教師や`--lambda`を変えたときに偏りがどれだけ残っているかの目安になる。
+補正したネットも、次節の段階ゲートで採否を決める。
+
+## 10. 採否を測定して記録する
 
 診断を確認した後、基準コミットから候補ブランチを作り、学習した`nnue.bin`を候補の`crates/minase/nets/nnue.bin`へコピーし、候補で`cargo test --locked`を実行してから、[段階ゲート](sprt.md#機能採否の段階ゲートstcとltc)で採否を決める。
 検証損失、符号一致率、および診断の値の改善だけを、棋力が向上した根拠にはしない。

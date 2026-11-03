@@ -2,7 +2,7 @@
 
 ## 目的
 
-線形の経路を対局結果への回帰で補正したネット（補正ネット）の配置の距離Mが、[基準の対局](nnue-outcome-regression-reference-stc.md)のmasterより統計的に減っているかを、[設計書](../../plans/nnue-outcome-regression.md)の規則で判定する。
+線形の経路を対局結果への回帰で補正したネット（補正ネット）の配置の距離Mが、[基準の対局](nnue-outcome-regression-reference-stc.md)のmasterより統計的に減っているかを、[設計書](../../plans/archived/nnue-outcome-regression.md)の規則で判定する。
 
 ## コマンドライン
 

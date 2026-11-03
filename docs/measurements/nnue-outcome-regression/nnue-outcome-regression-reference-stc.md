@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/nnue-outcome-regression.md)の配置の距離の基準とするため、master同士の短時間の時間制御（STC）の対局を200ペア行い、`--candidate`側の駒の配置と、教師より新しい対局での予測の損失の差Dを求める。
+[設計書](../../plans/archived/nnue-outcome-regression.md)の配置の距離の基準とするため、master同士の短時間の時間制御（STC）の対局を200ペア行い、`--candidate`側の駒の配置と、教師より新しい対局での予測の損失の差Dを求める。
 
 ## コマンドライン
 

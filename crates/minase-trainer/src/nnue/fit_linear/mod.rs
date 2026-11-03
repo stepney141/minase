@@ -22,6 +22,7 @@
 //! 持ち主の段を反転してその負値として足す。対象外の状態、終盤の列、先獅子、非線形部分は変えない。
 //! 判定は書き出したバイト列を復号した整数評価e′を用いる。対局ごとの平均BCEをさらに対局について平均し、
 //! `D = corrected_loss − base_loss`とする。再標本化は行わず、判定対局ごとの損失をJSONへ残す。
+//! 方式を選んだ理由は`docs/adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md`にある。
 
 mod error;
 mod solver;
@@ -572,6 +573,8 @@ fn validate_args(args: &Args) -> Result<()> {
 
 /// 基点と自己対局を検査し、補正した`nnue.bin`と判定を含む`summary.json`を書き出す。
 /// 入力と計算の失敗は原因別に返す。並列読み込み後の集約順と数値演算順は固定する。
+///
+/// `summary.json`は、入力の`base`と`data`、`seed`と`taus`、集合ごとの`games`と`positions`、勝率尺度と手番の切片の`calibration`、τごとの`tau_losses`、補正なしの`tau_selection_base_loss`、`selected_tau`、駒種名の`kinds`、段の区分ごとの係数`rank_coefficients`と筋の区分ごとの係数`file_coefficients`（単位はセンチポーン）、判定の`decision`（`base_loss`、`corrected_loss`、`d`、対局ごとの`games`）、および出力の`output`を持つ。
 pub fn run(args: Args) -> Result<()> {
     validate_args(&args)?;
     let threads = workers(args.threads).map_err(Error::Workers)?;
