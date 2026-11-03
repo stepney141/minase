@@ -33,9 +33,9 @@ GPUを載せた機械で次を実行し、すべて成功することを確認�
 nice -n 19 cargo test -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
 for FEATURE_SET in P HalfKP-hm-b8; do
   nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
-    --feature-set "$FEATURE_SET" --width 6 --batch 100 --seed 71 --lambda 1.0
+    --feature-set "$FEATURE_SET" --width 8 --batch 100 --seed 71 --lambda 1.0
   nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
-    --feature-set "$FEATURE_SET" --width 128 --batch 4096 --seed 71 --lambda 1.0
+    --feature-set "$FEATURE_SET" --width 256 --batch 4096 --seed 71 --lambda 1.0
 done
 ```
 
@@ -75,7 +75,7 @@ cargo run --release --offline -j 2 -p minase-trainer -- data calibrate \
 ## 3. 試走する
 
 本番の学習の前に、1ファイルと1エポックで試走し、前処理、更新、検証、および保存が最後まで通ることを確かめる。
-本体のデータを使って世代3の1ファイルを両方の入力特徴集合、幅128、1エポックで試走する場合は、リポジトリのルートから次を実行する。
+本体のデータを使って世代3の1ファイルを両方の入力特徴集合、幅256、1エポックで試走する場合は、リポジトリのルートから次を実行する。
 `TRAIN_DATA_ROOT`には、学習データを置いた本体のリポジトリの`data`ディレクトリの絶対パスを指定する。
 出力先が既にある場合は、新規実行用の空のパスに変える。
 
@@ -83,7 +83,7 @@ cargo run --release --offline -j 2 -p minase-trainer -- data calibrate \
 TRAIN_DATA_ROOT=/absolute/path/to/minase/data
 for FEATURE_SET in P HalfKP-hm-b8; do
   cargo run --release --offline -j 2 -p minase-trainer -- nnue train \
-    --feature-set "$FEATURE_SET" --width 128 \
+    --feature-set "$FEATURE_SET" --width 256 \
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
     --base crates/minase/nets/pst.bin \
     --lambda 1.0 --teacher-cp-per-logit calibrate \
@@ -102,13 +102,18 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 学習率、重み減衰、およびλは共通の引数で変えられ、既定値と値域は`crates/minase-trainer/src/nnue/options.rs`のdocコメントにある。
 エポック数、時間、および打ち切りの上限と既定値は`crates/minase-trainer/src/nnue/train/args.rs`の`Args`のdocコメントにある。
 
-ネットの出力部は`--head`で選ぶ。
-`direct-screlu`（既定。両視点の活性化と出力重みの直接内積）、`direct-screlu-phase2`（序盤用と終盤用の2つの出力を盤上総駒数で補間する）、`screlu-hidden16`（幅16の隠れ層の寄与を直接内積に加える）、および`screlu-hidden16-phase2`（隠れ層を共有した2端点の補間）の4つであり、名前は重みファイルの構造記述文字列の`head=`と同じである。
-出力部ごとの式、パラメータの配列、初期値、および切り詰めは`crates/minase-trainer/src/nnue/model/mod.rs`の`HeadKind`と`Parameter`、`crates/minase-trainer/src/nnue/reference/head.rs`のdocコメントにある。
+ネットの出力部は`--head`で指定し、値は`pairwise-l16-l32`（既定）だけである。
+名前は重みファイルの構造記述文字列の`head=`と同じである。
+第1層の幅`--width`は4以上512以下の4の倍数であり、探索が使うネットの幅は256である。
+出力部の式、パラメータの配列、初期値、および切り詰めは`crates/minase-trainer/src/nnue/model/mod.rs`の`HeadKind`と`Parameter`、`crates/minase-trainer/src/nnue/reference/head.rs`のdocコメントにある。
 出力部は学習の軌跡を変えるので、再開時に変えることはできない。
 `check-equivalence`と`bench-step`にも同じ`--head`がある。
-隠れ層を持つ出力部では、`training.jsonl`の`hidden_saturation`に隠れ層の活性化が0以下と1以上であった割合が記録され、他の出力部では`null`である。
-エンジンは`crates/minase/src/eval/nnue/mod.rs`の`ActiveHead`に決めた出力部の重みだけを読むので、別の出力部で学んだ`nnue.bin`を埋め込むには`ActiveHead`も合わせて変える。
+`training.jsonl`には、活性化の状態を表す次の欄が記録される。
+`saturation`は第1層の累算値が0以下と1以上であった割合である。
+`hidden1_saturation`は幅15の層の$`z`$が0以下と1以上であった割合であり、clipped ReLUの枝の飽和を表す。2乗の枝は$`z`$が負でも勾配が流れ、$`|z| \ge \sqrt{128/127}`$で飽和する。
+`hidden2_saturation`は幅32の層の切り詰めの入力が0以下と1以上であった割合である。
+`pairwise_both_positive`は要素積の両因子がともに正である割合であり、`first_layer_at_limit`は第1層の重みが切り詰めの範囲に達した割合である。
+エンジンは`crates/minase/src/eval/nnue/mod.rs`の`ActiveHead`に決めた出力部の重みだけを読む。
 
 学習率は、更新ごとに倍率を掛けて変えられる。
 `--lr-schedule`に、一定の倍率`constant:<c>`、半減期をエポック数で与える指数減衰`exponential:<半減期>:<下限>`、または総長をエポック数で与えるcosine annealing `cosine:<総長>:<下限>`を指定する。
@@ -205,7 +210,7 @@ GPUメモリ使用量の欄はGPU全体の使用量であり、他のプロセ�
 DATA=/absolute/path/to/generated-1500000.bin
 for FEATURE_SET in P HalfKP-hm-b8; do
   CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p minase-trainer -- nnue bench-step \
-    --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
+    --feature-set "$FEATURE_SET" --width 256 --batch 16384 --steps 20 \
     --threads 6 --profile --lambda 1.0 --data "$DATA"
 done
 ```
