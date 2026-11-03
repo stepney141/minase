@@ -1,0 +1,36 @@
+validation 415592 sample 10000
+nonlinear std 1734.2 cp
+--- each stage alone
+first layer rounding               mean_abs   5.61  mean    0.11  sd   7.40  max   61.6
+s floor                            mean_abs   5.20  mean    0.28  sd   9.03  max   93.5
+W1 rounding                        mean_abs  15.11  mean    3.26  sd  18.33  max  109.8
+b1 rounding                        mean_abs   0.02  mean   -0.00  sd   0.02  max    0.1
+u square floor                     mean_abs   0.98  mean   -0.59  sd   1.43  max   11.1
+u clip floor                       mean_abs   0.83  mean    0.27  sd   1.30  max    7.6
+W2 rounding                        mean_abs  20.55  mean   20.54  sd   5.18  max   36.5
+b2 rounding                        mean_abs   0.03  mean    0.03  sd   0.01  max    0.1
+y floor                            mean_abs   1.61  mean   -0.43  sd   2.16  max   13.8
+o rounding                         mean_abs   0.99  mean   -0.99  sd   0.36  max    2.2
+v rounding                         mean_abs   0.06  mean   -0.03  sd   0.12  max    0.5
+b rounding                         mean_abs   0.00  mean    0.00  sd    NaN  max    0.0
+cp scale                           mean_abs   1.06  mean    0.03  sd   1.76  max    8.6
+--- full integer and leave one out
+all stages                         mean_abs  29.74  mean   22.69  sd  24.67  max  125.4
+  without first layer rounding     mean_abs  28.96  mean   22.54  sd  23.13  max  113.8
+  without s floor                  mean_abs  28.33  mean   22.59  sd  22.54  max   99.0
+  without W1 rounding              mean_abs  20.71  mean   19.10  sd  12.50  max   75.9
+  without u floors                 mean_abs  29.38  mean   23.00  sd  23.78  max  114.8
+  without W2 rounding              mean_abs  18.20  mean    1.92  sd  23.40  max  143.3
+  without y floor                  mean_abs  29.72  mean   23.13  sd  24.16  max  120.0
+--- variants of the integer formula
+round nearest in s                 mean_abs  28.53  mean   22.47  sd  23.08  max   98.4
+round nearest in u                 mean_abs  29.42  mean   23.00  sd  23.82  max  117.3
+round nearest in y                 mean_abs  29.74  mean   23.12  sd  24.22  max  119.9
+round nearest in s,u,y             mean_abs  28.06  mean   23.21  sd  21.62  max   94.6
+round nearest in u,y               mean_abs  29.40  mean   23.41  sd  23.38  max  116.7
+W1,W2 scale 256                    mean_abs   9.51  mean    2.27  sd  11.94  max   83.4
+W1,W2 scale 1024                   mean_abs   9.14  mean   -4.04  sd  11.68  max   83.8
+y finer x16                        mean_abs  29.73  mean   23.11  sd  24.19  max  120.1
+u finer x16                        mean_abs  29.40  mean   22.98  sd  23.83  max  114.8
+u,y finer x16                      mean_abs  29.38  mean   23.38  sd  23.35  max  115.8
+W scale 256, u,y finer x16         mean_abs   9.31  mean    3.01  sd  11.48  max   77.1
