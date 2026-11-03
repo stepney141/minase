@@ -1,0 +1,24 @@
+tau=80, D=-0.007092995135574931, parameters=273
+	Command being timed: "nice -n 19 /home/stepney141/board-games/minase/data/nnue-outcome-regression/minase-trainer nnue fit-linear --base crates/minase/nets/nnue.bin --data /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-10100000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7100000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7200000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7300000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7400000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7500000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7600000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7700000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7800000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-7900000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8000000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8100000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8200000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8300000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8400000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8500000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8600000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8700000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8800000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-8900000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9000000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9100000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9200000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9300000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9400000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9500000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9600000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9700000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9800000.bin /home/stepney141/board-games/minase/data/nnue-lr-schedule-gen/generated-9900000.bin --tau 10 20 40 80 --seed 20261103 --output-dir /home/stepney141/board-games/minase/data/nnue-outcome-regression/fit --threads 12"
+	User time (seconds): 510.37
+	System time (seconds): 1.29
+	Percent of CPU this job got: 698%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:13.23
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 3830144
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 789771
+	Voluntary context switches: 123
+	Involuntary context switches: 5458
+	Swaps: 0
+	File system inputs: 1486896
+	File system outputs: 10400
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

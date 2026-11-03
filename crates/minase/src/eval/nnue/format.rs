@@ -152,6 +152,44 @@ pub fn encode<F: FeatureSet, H: Head>(input: &EncodeInput<'_, H>) -> Result<Vec<
     Ok(bytes)
 }
 
+/// MNUE版5の線形の経路の序中盤の列へ`corrections`を足し、検査和を更新する。
+/// 序中盤の列とヘッダのSHA-256以外のバイトは変更しない。
+/// ヘッダと線形区画の長さだけを検査するため、本体の検証は呼び手が復号して行う。
+///
+/// # Errors
+/// 補正の要素数、ヘッダまたは線形区画の長さが不正な場合、または加算結果がi16を超える場合に返す。
+pub fn add_to_linear_midgame(bytes: &[u8], corrections: &[i16]) -> Result<Vec<u8>, Error> {
+    if corrections.len() != FEATURE_COUNT {
+        return Err(Error::InvalidParameterLength {
+            parameter: "corrections",
+            expected: FEATURE_COUNT,
+            actual: corrections.len(),
+        });
+    }
+    architecture(bytes)?;
+    let end = HEADER_LENGTH + FEATURE_COUNT * 4;
+    if bytes.len() < end {
+        return Err(Error::InvalidLength {
+            expected: end,
+            actual: bytes.len(),
+        });
+    }
+    let mut result = bytes.to_vec();
+    for (index, &correction) in corrections.iter().enumerate() {
+        let offset = HEADER_LENGTH + index * 4;
+        let value = i32::from(read_i16(bytes, offset)) + i32::from(correction);
+        let value = i16::try_from(value).map_err(|_| Error::ParameterOutOfRange {
+            parameter: "linear",
+            index,
+            value,
+        })?;
+        result[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+    }
+    let checksum = Sha256::digest(&result[HEADER_LENGTH..]);
+    result[144..176].copy_from_slice(&checksum);
+    Ok(result)
+}
+
 /// `features=<入力特徴集合名>;ft=<H>;linear=tapered2;head=<出力部名>`を組み立てる。
 /// `linear=tapered2`は基底特徴上の2端点を盤上総駒数で補間する線形の経路を表す。
 fn architecture_text<F: FeatureSet, H: Head>(width: usize) -> String {

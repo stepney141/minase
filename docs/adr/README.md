@@ -355,3 +355,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月2日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切り、判定は探索のモジュールに置く](stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)
 - 2026年11月2日 [役目を終えたAlphaZero型探索の測定用の道具を削除し、1サイクルの見積もりは実際に1サイクル回して行う](delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)
 - 2026年11月2日 [本番の型と関数の中に`#[cfg(test)]`の項目を置かず、試験専用のコードは子モジュールと`test-util`へ分ける](keep-test-only-code-out-of-production-types-and-functions.md)
+- 2026年11月3日 [NNUEの線形の経路の序中盤の列を、学習後に対局結果へのロジスティック回帰で補正する](correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)

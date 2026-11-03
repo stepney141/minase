@@ -29,6 +29,7 @@ GPU側では第1層の前進、駒除去差分の補助損失、全パラメー�
 | `fm train`、`fm quarter`、`fm scale` | 固定PSTへ加えるFM補正をCPUで学習し、補正の縮小と倍率の焼き込みを行う。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/fm/` |
 | `joint train` | PSTとFMを同時学習する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#6-fmの補正を学習する) | `src/joint/` |
 | `nnue train` | NNUEをCUDAまたはCPUで学習する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md) | `src/nnue/train/`、`src/nnue/options.rs` |
+| `nnue fit-linear` | 学習済みのNNUEの線形の経路の序中盤の列を、対局結果へのロジスティック回帰で補正する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#9-線形の経路を対局結果で補正する) | `src/nnue/fit_linear/` |
 | `nnue check-equivalence`、`nnue bench-step` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#1-学習器を検査する)の1節と[7節](../../docs/guides/nnue-training.md#7-gpuでの1更新の時間を測る) | `src/nnue/gpu/equivalence.rs`、`src/nnue/gpu/bench.rs` |
 | `diag pst-compare` | 2つのPSTを教師分類と位相帯ごとに比較する。 | [PSTとFMの学習手順](../../docs/guides/pst-training.md#5-pstを診断する) | `src/diagnostics/pst_compare.rs`、`src/diagnostics/pst_statistics.rs` |
 | `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves` | NNUEの評価分布、駒除去差分、合法手の評価差を診断する。 | [NNUEの学習と診断の手順](../../docs/guides/nnue-training.md#8-学習した重みを診断する) | `src/diagnostics/nnue_distribution.rs`、`src/diagnostics/nnue_removal.rs`、`src/diagnostics/nnue_moves.rs` |

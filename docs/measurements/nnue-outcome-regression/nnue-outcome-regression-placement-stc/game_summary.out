@@ -1,0 +1,18 @@
+== nnue-outcome-regression-reference-stc
+候補の結果 {'win': 184, 'loss': 181, 'draw': 33, 'cutoff': 2}
+候補の手番ごと {'black:cutoff': 1, 'black:draw': 14, 'black:loss': 82, 'black:win': 103, 'white:cutoff': 1, 'white:draw': 19, 'white:loss': 99, 'white:win': 81}
+終わり方 {'cutoff/cutoff/None': 2, 'draw/adjudicated_draw/Repetition': 33, 'loss/adjudicated_win/Mate': 179, 'loss/adjudicated_win/PieceExhaustion': 2, 'win/adjudicated_win/Mate': 179, 'win/adjudicated_win/PieceExhaustion': 5}
+手数の中央値 win: 489.5（184局）
+手数の中央値 loss: 485（181局）
+手数の中央値 draw: 297（33局）
+1手の思考時間の平均 候補 128.9 ms  基準 128.7 ms
+到達深さの平均 候補 17.83  基準 17.91
+== nnue-outcome-regression-placement-stc
+候補の結果 {'loss': 112, 'win': 281, 'draw': 5, 'cutoff': 2}
+候補の手番ごと {'black:draw': 3, 'black:loss': 52, 'black:win': 145, 'white:cutoff': 2, 'white:draw': 2, 'white:loss': 60, 'white:win': 136}
+終わり方 {'cutoff/cutoff/None': 2, 'draw/adjudicated_draw/PieceExhaustion': 1, 'draw/adjudicated_draw/Repetition': 4, 'loss/adjudicated_win/Mate': 111, 'loss/adjudicated_win/PieceExhaustion': 1, 'win/adjudicated_win/Mate': 280, 'win/adjudicated_win/PieceExhaustion': 1}
+手数の中央値 win: 458（281局）
+手数の中央値 loss: 473.5（112局）
+手数の中央値 draw: 773（5局）
+1手の思考時間の平均 候補 131.4 ms  基準 135.3 ms
+到達深さの平均 候補 16.29  基準 16.35

@@ -23,7 +23,8 @@ c0032はまだ弱く、その局面では配置の損得を測れない可能性
 c0032はSTCでαβ探索に2勝192敗であり、癖を示さないことが正しい配置を学んだ結果とは限らないので、その局面で比べても配置の損得を測れない可能性が高い。
 再開の条件は、AlphaZero型のネットを強くする作業が進み、利用者が再開を決めることである。
 再開したら、その時点の最新のネットについて、フェーズ2の確認から始める。
-なお、通常の自己対局だけでも結果回帰の信号が見られた（[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)）ので、c0032に依存しない結果回帰は[別の設計書](nnue-outcome-regression.md)で扱う。
+なお、c0032に依存しない結果回帰は[別の設計書](archived/nnue-outcome-regression.md)で行って採用し、奔王、龍馬、醉象、および麒麟の配置は大きく減った（[記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。
+再開するときは、この結果を踏まえて本書の目的を見直す。
 
 ## 目的
 

@@ -22,7 +22,7 @@ mod tests;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
 use feature_set::{FeatureSet, P};
-pub use format::{EncodeInput, Error, architecture, encode};
+pub use format::{EncodeInput, Error, add_to_linear_midgame, architecture, encode};
 use head::{DirectScrelu, Head};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
 pub use stats::AccumulatorStats;

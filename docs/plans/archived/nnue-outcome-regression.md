@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 中将棋エンジンminaseの評価関数NNUE（着手ごとに差分で更新できる小さなニューラルネット）は、自己対局の探索値だけを教師として学び、対局結果を教師値に使わない。
-保存済みの対局のロジスティック回帰では、評価値と駒の枚数の差で条件付けても、駒の配置が対局結果を予測した（[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)）。
+保存済みの対局のロジスティック回帰では、評価値と駒の枚数の差で条件付けても、駒の配置が対局結果を予測した（[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)）。
 つまり、現行のネットは対局結果に現れる配置の情報の一部を評価に取り込めていない可能性がある。
 本書では、学習済みの非線形部分を固定し、線形の経路（駒と升ごとの点数の表、Stockfishの用語ではPSQT）の序中盤の列だけを、既存の教師の対局結果へのロジスティック回帰で補正する（Texel tuningと同種の回帰）。
 補正は駒種ごとの段と筋の粗い区分で行い、新しい教師の生成も、AlphaZero型のネットも使わない。
@@ -15,20 +15,22 @@
 
 ## 状態
 
-起案。2026年11月3日に起案した。
-着手は利用者の指示を待つ。
-次の一手は、masterからブランチ`nnue-outcome-regression`のworktreeを切り、フェーズ1の実装をcodexへ委任することである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年11月3日に完了した。
+補正ネットは配置の距離の判定で「偏りが減った」となり（[記録](../../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）、[STC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)と[LTC](../../measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)でともに`H1`となったので採用した。
+LTCの時間切れ1件の扱いは[ADR](../../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)に記録した。
 
 ## 目的
 
 2026年11月3日に利用者は、NNUEの偏りを減らしつつ強くする方法の検討を求めた。
-[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)では、保存済みの6,254局で配置を加えると、対局結果の予測の損失が静的評価を基準に0.0033（95%区間0.0015〜0.0052）減った。
+[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)では、保存済みの6,254局で配置を加えると、対局結果の予測の損失が静的評価を基準に0.0033（95%区間0.0015〜0.0052）減った。
 一方で、癖の向きは一様ではない。
 回帰の係数を評価値のcpへ換算すると、醉象が3〜5筋の配置は−45 cpで評価が対局結果より高すぎる傾向にあり、龍馬が1〜2段の配置は+77 cpで低すぎる傾向にあった。
-[先例の調査](../research/self-play-bias-prior-art.md)にも、自己対局の閉ループの偏りを完全に解消した例はない。
+[先例の調査](../../research/self-play-bias-prior-art.md)にも、自己対局の閉ループの偏りを完全に解消した例はない。
 
 本書の目的は、この信号を線形の補正として評価に入れ、棋力と配置の偏りの両方が改善するかを対局で確かめることである。
-[配置の偏りの計画](nnue-placement-bias.md)はAlphaZero型のネットの局面を前提にするので待機中だが、本書はその局面を使わず、既存の教師だけで試す。
+[配置の偏りの計画](../nnue-placement-bias.md)はAlphaZero型のネットの局面を前提にするので待機中だが、本書はその局面を使わず、既存の教師だけで試す。
 
 本書で使う語を次のとおり定める。
 
@@ -40,9 +42,9 @@
 - **c0032**：AlphaZero型の計画が、人間の棋譜も既存の評価関数も使わず、強化学習でサイクル32まで学んだネット。
 - **配置の距離M**：全21駒種の配置の分布が、人間の上位者、HaChu、およびc0032の配置からどれだけ離れているかを1つにまとめた値（「配置の距離」の節）。
 - **PST**：駒と升ごとの点数の表だけで評価する、NNUEより前の世代の評価関数。**FM**はPSTに足す2駒の関係の補正である。
-- **MNUE**と**MNSD**：重みファイルと教師データの形式（[手引き](../guides/file-formats.md)）。**検査和**はMNUEの本体のSHA-256である。
+- **MNUE**と**MNSD**：重みファイルと教師データの形式（[手引き](../../guides/file-formats.md)）。**検査和**はMNUEの本体のSHA-256である。
 - **cp**：評価値の単位のセンチポーン。**Elo**は勝率の差の尺度である。
-- **STC**、**LTC**：[測定の手引き](../guides/sprt.md)が定める短時間（持ち時間10秒、1手0.1秒加算）と長時間（持ち時間60秒、1手0.2秒加算）の時間制御。
+- **STC**、**LTC**：[測定の手引き](../../guides/sprt.md)が定める短時間（持ち時間10秒、1手0.1秒加算）と長時間（持ち時間60秒、1手0.2秒加算）の時間制御。
 - **GSPRT**：自己対局の勝敗から強さの差を逐次判定する検定。**LLR**は対数尤度比であり、境界を越えると`H0`か`H1`の判定を出す。
 
 ## 適用範囲
@@ -63,18 +65,18 @@
 
 ## 依存関係
 
-教師は`data/nnue-lr-schedule-gen/generated-*.bin`の30ファイルであり、[線形経路の計画](archived/nnue-material-linear-init.md)が現行のネットの学習に使ったものと同じである。
+教師は`data/nnue-lr-schedule-gen/generated-*.bin`の30ファイルであり、[線形経路の計画](nnue-material-linear-init.md)が現行のネットの学習に使ったものと同じである。
 生成器は初代のNNUE（`31c2a46`）なので、対局は現行のネットより弱いエンジンが指している。
 現行のネットは、この教師の対局のうち20分の1を対局単位で検証に分け（`is_validation`）、残りの対局の探索値で学んだ。
 
 基点のネットは`crates/minase/nets/nnue.bin`である。
-配置の距離の基準には、[集計](../measurements/adhoc/piece-placement-census.md)の対局を固定して使う。
+配置の距離の基準には、[集計](../../measurements/adhoc/piece-placement-census.md)の対局を固定して使う。
 
-[配置の偏りの計画](nnue-placement-bias.md)とは、結果回帰の考え方を共有するが、実装と測定は重ならない。
+[配置の偏りの計画](../nnue-placement-bias.md)とは、結果回帰の考え方を共有するが、実装と測定は重ならない。
 本書で作る`fit-linear`は、その計画を再開するときに使える。
 
 本書は線形の経路を残すことを前提にする。
-Stockfishは線形の経路を非退行の試験で削除し、やねうら王の標準型は持たず、tataraの既定は無効だが（[調査](../research/tatara-nnue-transfer.md)）、削除の是非は再学習して比べるまで分からないので、本書では扱わない。
+Stockfishは線形の経路を非退行の試験で削除し、やねうら王の標準型は持たず、tataraの既定は無効だが（[調査](../../research/tatara-nnue-transfer.md)）、削除の是非は再学習して比べるまで分からないので、本書では扱わない。
 別の変更でネットが替わった場合は、補正はそのネットに対して求め直す。
 
 本書以外の候補（Pairwise、非線形の経路の倍率など）の採用条件は、棋力の`H1`と配置の偏りが悪化しないことであり、本書の条件とは異なる（2026年11月3日の利用者の決定）。
@@ -84,11 +86,11 @@ Stockfishは線形の経路を非退行の試験で削除し、やねうら王�
 
 | 項目 | 決定 | 棄却した代案 |
 |---|---|---|
-| 信号の入れ方（Texel tuning） | 非線形部分を固定し、線形の経路の補正だけを対局結果へのロジスティック回帰で求める。補正の項は表の足し算なので、推論の費用は増えない。 | ネット全体をλ<1で学ぶ案は、非線形部分が対局を識別して結果を記憶するおそれがある（[教訓](../lessons/game-constant-target-memorization.md)）。λ=0.95のような小さな混合は、表現に制約がなければ予測を探索値の確率と結果の確率の95:5へ動かすだけなので、40 cpの過大評価を約2 cpしか動かせない。 |
-| 補正の入れ先 | 線形の経路に、駒種ごとの段と筋の区分で足す。保存済みの対局では、同じ分割で損失の減少幅が0.00390であり、出力重みだけの回帰の0.00181より大きかった。両方を入れても、段と筋の補正からの改善は確かめられなかった（[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)）。 | 第1層を固定して出力重みだけを回帰する案は、非線形部分の中で完結するが、信号の取り込みが半分程度にとどまる。線形の経路を外して非線形部分だけにする案は、補正の入れ先がなくなるので本書では扱わない。 |
+| 信号の入れ方（Texel tuning） | 非線形部分を固定し、線形の経路の補正だけを対局結果へのロジスティック回帰で求める。補正の項は表の足し算なので、推論の費用は増えない。 | ネット全体をλ<1で学ぶ案は、非線形部分が対局を識別して結果を記憶するおそれがある（[教訓](../../lessons/game-constant-target-memorization.md)）。λ=0.95のような小さな混合は、表現に制約がなければ予測を探索値の確率と結果の確率の95:5へ動かすだけなので、40 cpの過大評価を約2 cpしか動かせない。 |
+| 補正の入れ先 | 線形の経路に、駒種ごとの段と筋の区分で足す。保存済みの対局では、同じ分割で損失の減少幅が0.00390であり、出力重みだけの回帰の0.00181より大きかった。両方を入れても、段と筋の補正からの改善は確かめられなかった（[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)）。 | 第1層を固定して出力重みだけを回帰する案は、非線形部分の中で完結するが、信号の取り込みが半分程度にとどまる。線形の経路を外して非線形部分だけにする案は、補正の入れ先がなくなるので本書では扱わない。 |
 | データ | 現行の教師の対局結果を使う。追加の生成なしで約22万局を使える。 | 現行のネットで新しく生成する案は、約17時間の生成を要するので、既存のデータで信号を確かめてから考える。AlphaZero型のネットの局面を使う案は、c0032がαβ探索に2勝192敗で局面の質が確かでないので使わない。 |
 | 回帰の基準 | 現行のネットの静的評価を基準にする。補正を足す先が静的評価だからである。 | 探索値を基準にする案は、探索値への補正をそのまま静的評価へ移せない。 |
-| 補正の粗さ | 成っていない21駒種の、段7区分と中央からの筋6区分の和にする。[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)で信号を確かめた形であり、パラメータは最大273個である。 | 全升を自由にする案は、パラメータが約6,800個に増え、少ない局面の升に雑音が乗りやすい。粗い補正で信号がなければ、細かくする理由もない。 |
+| 補正の粗さ | 成っていない21駒種の、段7区分と中央からの筋6区分の和にする。[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)で信号を確かめた形であり、パラメータは最大273個である。 | 全升を自由にする案は、パラメータが約6,800個に増え、少ない局面の升に雑音が乗りやすい。粗い補正で信号がなければ、細かくする理由もない。 |
 | 補正する列 | 序中盤の列だけを変え、終盤の列は変えない。対象の局面が手数60〜159なので、盤上の駒が少ない局面への外挿を避けるためである。 | 両方の列に同じ補正を足す案は、確かめていない終盤にまで影響が及ぶ。 |
 | 左右と先後の束ね | 筋の区分は中央からの距離なので、線形の経路の左右鏡映の共有を自動的に満たす。自駒の行と、段を反転した升の相手駒の行は、符号だけが異なる同じ値にする。 | 自駒と相手駒を別のパラメータにする案は、自由度が2倍になり、手番による偏りを拾いやすい。 |
 | 手数と手番の調整 | 手数帯ごとの勝率尺度Kと手番の切片を、補正なしで先に求めて固定する。対局の結果は手番と手数帯で評価値との関係が変わるので、その差を配置の補正が肩代わりしないようにする。これらは回帰の中だけで使い、ネットへ書き出さない。 | 全局面に共通のKだけを使う案は、手番の有利さを配置が代理する恐れがある。 |
@@ -98,12 +100,12 @@ Stockfishは線形の経路を非退行の試験で削除し、やねうら王�
 
 ## 先行実装
 
-対局結果へのロジスティック回帰は、Texelの作者が自分の対局64,000局から約880万局面を採って約400個の係数を調整した方法と同種である（[調査](../research/handcrafted-evaluation-selfplay.md)）。
-ネットの微調整を対局結果で行った例として、Astraは対局結果だけの微調整で+47.35 ± 7.76 Eloを記録し、tanuki-は60手目以降を対局結果だけにする設定で、付け直した値だけの設定よりR+41.4強かった（[調査](../research/teacher-generation-strong-engines.md)）。
+対局結果へのロジスティック回帰は、Texelの作者が自分の対局64,000局から約880万局面を採って約400個の係数を調整した方法と同種である（[調査](../../research/handcrafted-evaluation-selfplay.md)）。
+ネットの微調整を対局結果で行った例として、Astraは対局結果だけの微調整で+47.35 ± 7.76 Eloを記録し、tanuki-は60手目以降を対局結果だけにする設定で、付け直した値だけの設定よりR+41.4強かった（[調査](../../research/teacher-generation-strong-engines.md)）。
 どちらもネット全体を学ぶ方法である。
-tataraの線形の経路も非線形の経路と同じ損失で同時に学ぶ（[調査](../research/tatara-nnue-transfer.md)）。
+tataraの線形の経路も非線形の経路と同じ損失で同時に学ぶ（[調査](../../research/tatara-nnue-transfer.md)）。
 学習済みのニューラルネットの線形の経路だけを、この回帰で後から補正した先例は、調査した資料には見つかっていない。
-分野の外では、画像分類で最終層だけを学び直すと頑健さが上がる報告がある（[調査](../research/self-play-bias-prior-art.md)）。
+分野の外では、画像分類で最終層だけを学び直すと頑健さが上がる報告がある（[調査](../../research/self-play-bias-prior-art.md)）。
 
 ## 結果回帰の定義
 
@@ -163,25 +165,24 @@ Dは補正ありの損失から補正なしの損失を引いた値であり、�
 ## 配置の距離
 
 指標は人間の棋譜、HaChu、およびc0032の対局を基準に使うが、学習には入れない。
-人間の棋譜を偏りの診断の基準に使うことは、[ADR](../adr/do-not-use-human-games-to-strengthen-the-engine.md)の禁止事項に該当しない。
+人間の棋譜を偏りの診断の基準に使うことは、[ADR](../../adr/do-not-use-human-games-to-strengthen-the-engine.md)の禁止事項に該当しない。
 
 配置の距離Mは、全21駒種の144升の分布について、3つの手数帯（20〜59手、60〜99手、100〜159手）と3つの基準（人間のレーティング2000以上、HaChu、c0032）で総変動距離（分布の差の絶対値の総和の半分）を求め、駒種、手数帯、および基準のすべての組で平均した値である。
 分布は駒種ごとに合計を1に正規化し、測る側の駒だけを数える。
-集計の方法は[集計の記録](../measurements/adhoc/piece-placement-census.md)に従う。
+集計の方法は[集計の記録](../../measurements/adhoc/piece-placement-census.md)に従う。
 同じ定義で求めると、現行のネットは0.461、PST＋FMは0.432、PST世代1は0.330である（基準が自分自身になる組を除く）。
 
 比べるときは、相手と開始局面を固定する。
 masterどうしの対局（基準の対局）と、補正ネットとmasterの対局を、同じシードと同じペア数のSTCで行い、どちらも`--candidate`側の駒についてMを求める。
 2回の対局は時間制御なので、同じシードでも探索の列は再現されない。
-そこで、開始局面ごとに2回の対局の計4局をまとめて復元抽出し、各回で分布とMを計算し直して、Mの差（補正ネット−基準）の95%区間を求める（1,000回、乱数のシード1。[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。
+そこで、開始局面ごとに2回の対局の計4局をまとめて復元抽出し、各回で分布とMを計算し直して、Mの差（補正ネット−基準）の95%区間を求める（1,000回、乱数のシード1。[教訓](../../lessons/compare-nets-with-paired-game-bootstrap.md)）。
 区間の上限が0より小さければ「偏りが減った」とする。
 
-ペア数はフェーズ2で固定する。
-検出したい減少を、PST世代1からPST＋FMの差（0.102）の約3割にあたる0.03とする。
-正規近似で検出力80%を得るには、区間の半幅を0.021以下にする必要がある。
-既存の対局から、ペア数200、400、および800のときの半幅を上と同じ再抽出で見積もり、この条件を満たす最小のペア数を選ぶ（[教訓](../lessons/simulate-acceptance-criteria-on-the-candidate.md)）。
-800ペアでも満たさなければ、測定へ進まずに利用者へ報告する。
-ほとんど同じ2つのネットの対局へ判定を当て、誤って「偏りが減った」とならないことも確かめる（[教訓](../lessons/validate-diagnostic-rule-on-current-config.md)）。
+ペア数は200とする。
+検出したい減少を、PST世代1からPST＋FMの差（0.102）の約3割にあたる0.03としたとき、正規近似で検出力80%を得るには区間の半幅を0.021以下にする必要があり、既存の対局の再抽出では200ペアの半幅が0.0081だった（[教訓](../../lessons/simulate-acceptance-criteria-on-the-candidate.md)、[記録](../../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
+0.03は検出力の計算に使う効果量であり、採用に必要な最小の改善幅ではない。
+学び直しただけのネットにもMの差が0.01程度あるので、判定が「偏りが減った」でも、その大きさと駒種ごとの内訳を記録に添える。
+判定が差のないネットを誤って「偏りが減った」としないことは、基準の対局と同じシードとペア数でmaster同士の対局をもう1回行い、同じ手順でMの差を求めて確かめる（対照の対局。[教訓](../../lessons/validate-diagnostic-rule-on-current-config.md)）。
 
 あわせて5配置の割合と、駒種ごとの総変動距離を記録する。
 これらは判定に使わず、探索が補正を追って新しい癖を作っていないかを見るために使う。
@@ -196,7 +197,7 @@ masterどうしの対局（基準の対局）と、補正ネットとmasterの�
 | フェーズ4　LTC | 標準のGSPRT | `H1`で、エンジン異常、時間切れ、および拒否着手が0件なら採用する。`H0`なら不採用とする。`pending`は`--resume`と`--target-pairs`で延長する。 |
 
 診断として、教師より新しいエンジンの対局でも同じDを求める。
-対象は[回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)の6,254局と、フェーズ3の基準の対局である。
+対象は[回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)の6,254局と、フェーズ3の基準の対局である。
 これらの対局はK_tとc_uの条件が教師と異なるので、ペアを半分に分け、片方でK_tとc_uを推定し直して、もう片方でDを求める。
 Dの下限が0より大きければ、教師の対局と新しい対局で補正の向きが食い違っているので、先へ進まずに利用者へ報告する。
 回帰の記録の6,254局は補正の形を決めるのに使ったので、この診断だけでは独立な確認にならない。
@@ -237,7 +238,7 @@ Dの下限が0より大きければ、教師の対局と新しい対局で補正
 評価値はエンジンと同じ整数推論で計算し、CPUだけで動かす。
 
 完了条件は、次をテストで確かめていることである。
-テストの期待値は実装からではなく本節の定義から導く（[手引き](../guides/testing-minase-rules.md)）。
+テストの期待値は実装からではなく本節の定義から導く（[手引き](../../guides/testing-minase-rules.md)）。
 
 - 既知のaとbを与えて結果を合成した、配置の差のある小さなデータから、a+bとδの符号と大きさを推定できる。
 - τを小さくすると、パラメータ全体の二乗ノルムが単調に減る（個々の成分の単調性は求めない）。
@@ -259,21 +260,23 @@ Dの下限が0より大きければ、教師の対局と新しい対局で補正
 
 masterの`crates/minase/nets/nnue.bin`を補正ネットへ差し替えたコミットを作り、`cargo test --locked`を通す。
 探索の深さ9のbenchで、NPSがmasterと変わらないことを確かめる。
-同じシードとペア数で次の2つのSTCを行い、再生してMを求める。
+同じシードとペア数で次の3つのSTCを行い、再生してMを求める。
 
 ```console
 minase match run --run-dir data/matches/nnue-outcome-regression-reference-stc --seed <シード> \
+  --candidate commit:<master> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
+minase match run --run-dir data/matches/nnue-outcome-regression-control-stc --seed <シード> \
   --candidate commit:<master> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
 minase match run --run-dir data/matches/nnue-outcome-regression-placement-stc --seed <シード> \
   --candidate commit:<補正ネット> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
 ```
 
-シードは既存の測定のシードから上限ペア数以上離れた未使用の値を選ぶ（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
-完了条件は、2回の対局の結果が測定記録`nnue-outcome-regression-reference-stc`と`nnue-outcome-regression-placement-stc`に、Mの判定が後者に書かれていることである。
+シードは既存の測定のシードから上限ペア数以上離れた未使用の値を選ぶ（[教訓](../../lessons/derive-seed-adjacent-collision.md)）。
+完了条件は、3回の対局の結果が測定記録`nnue-outcome-regression-reference-stc`、`nnue-outcome-regression-control-stc`、および`nnue-outcome-regression-placement-stc`に、Mの判定が最後の記録に書かれていることである。
 
 ### フェーズ4　段階ゲート
 
-[SPRTの手引き](../guides/sprt.md)の標準コマンドで、候補を補正ネットのコミット、基準をmasterとしてSTCとLTCを行う。
+[SPRTの手引き](../../guides/sprt.md)の標準コマンドで、候補を補正ネットのコミット、基準をmasterとしてSTCとLTCを行う。
 測定名は`nnue-outcome-regression-stc`と`nnue-outcome-regression-ltc`とする。
 LTCのシードは、STCの基本シードからペア数以上離れた値とする。
 完了条件は、採否が測定記録に書かれていることである。
@@ -281,9 +284,9 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 ### フェーズ5　文書の移し替えと凍結
 
 採用した場合は、利用者の許可を得てmasterへ統合する。
-方式はADRに書き、結果回帰の定義はコードのdocコメントへ移し、[学習の手引き](../guides/nnue-training.md)と[ROADMAP](../ROADMAP.md)を改める。
+方式はADRに書き、結果回帰の定義はコードのdocコメントへ移し、[学習の手引き](../../guides/nnue-training.md)と[ROADMAP](../../ROADMAP.md)を改める。
 不採用の場合は、ブランチを統合しない。
-[配置の偏りの計画](nnue-placement-bias.md)が再開するときは、ブランチの`fit-linear`を取り込むかどうかをその時点で決める。
+[配置の偏りの計画](../nnue-placement-bias.md)が再開するときは、ブランチの`fit-linear`を取り込むかどうかをその時点で決める。
 最後に「状態」節を完了の段落に書き換えて本書を凍結し、`docs/plans/archived/`へ移す。
 
 ## 検証
@@ -292,7 +295,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 
 - `cargo test`の全体、`cargo clippy`、および`cargo fmt --check`が通る。
 - 補正ネットと基点のネットの非線形部分が、バイト単位で一致する。
-- 補正ネットが[手引き](../guides/nnue-training.md)の評価値の分布と合法手の評価差の診断で計算経路の不一致を示さない。駒除去差分の診断は実数のチェックポイントを要するので、補正量の式と整数評価の変化の照合で代える。
+- 補正ネットが[手引き](../../guides/nnue-training.md)の評価値の分布と合法手の評価差の診断で計算経路の不一致を示さない。駒除去差分の診断は実数のチェックポイントを要するので、補正量の式と整数評価の変化の照合で代える。
 - 対局を行った場合は、エンジン異常、時間切れ、および拒否着手が0件である。
 
 途中の判定で止めた場合は、止めた段階までの測定記録があれば足りる。
@@ -307,10 +310,10 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 
 ## 参考資料
 
-- [配置と対局結果の回帰の記録](../measurements/adhoc/nnue-placement-outcome-regression.md)
-- [全駒種の配置の集計](../measurements/adhoc/piece-placement-census.md)
-- [配置の偏りの計画（待機中）](nnue-placement-bias.md)
-- [自己対局の閉ループが生む偏りと盲点の先行事例](../research/self-play-bias-prior-art.md)
-- [評価項目の自己対局による調整の調査（Texelの方法）](../research/handcrafted-evaluation-selfplay.md)
-- [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
-- [NNUEの出力を駒価値で初期化した線形の経路と直接内積の和にするADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)
+- [配置と対局結果の回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)
+- [全駒種の配置の集計](../../measurements/adhoc/piece-placement-census.md)
+- [配置の偏りの計画（待機中）](../nnue-placement-bias.md)
+- [自己対局の閉ループが生む偏りと盲点の先行事例](../../research/self-play-bias-prior-art.md)
+- [評価項目の自己対局による調整の調査（Texelの方法）](../../research/handcrafted-evaluation-selfplay.md)
+- [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
+- [NNUEの出力を駒価値で初期化した線形の経路と直接内積の和にするADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)

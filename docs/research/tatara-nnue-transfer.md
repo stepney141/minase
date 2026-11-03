@@ -206,7 +206,7 @@ Stockfishは[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17
 (c) minaseの線形の経路はこれにあたり、駒価値の初期化も既に同じである。
 開発者は線形の経路を残すと決めており（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 39行）、本書は再提案しない。
 
-(d) 線形の経路は[結果回帰の設計書](../plans/nnue-outcome-regression.md)の補正先でもあるので、偏りの対策の面でも残す意味がある（推論）。
+(d) 線形の経路は[結果回帰の設計書](../plans/archived/nnue-outcome-regression.md)の補正先でもあるので、偏りの対策の面でも残す意味がある（推論）。
 
 ## 入力特徴
 
@@ -454,7 +454,7 @@ Pairwiseも同じ形で書けるので同様にベクトル化される見込み
 1回の所要時間の目安は、学習が約30分（1エポック71〜78秒、[採用したネットは22エポック](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）、STCが上限3,000ペアで約7時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)の8.2秒/ペア）、LTCが1,500ペアで約11時間（[記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)の26秒/ペア）である。
 大きな差が出れば早く止まり、先読みを外したネットのLTCは237ペア、55分で決着した（[記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)）。
 
-各候補のLTCの棋譜から、[集計](../measurements/adhoc/piece-placement-census.md)の5配置と[結果回帰の設計書](../plans/nnue-outcome-regression.md)の距離を計算して記録する。
+各候補のLTCの棋譜から、[集計](../measurements/adhoc/piece-placement-census.md)の5配置と[結果回帰の設計書](../plans/archived/nnue-outcome-regression.md)の距離を計算して記録する。
 追加の対局は要らない。
 偏りが減らなかったことを理由に棋力の採用を止めるかどうかは、利用者の判断である。
 
@@ -493,7 +493,7 @@ Stockfishの第2層の拡大は短時間で棄却されて長時間で採択さ�
 
 試さない候補は、threatとeffect（速度の費用と入力の規模）、HalfKP系（2回の大敗とADR）、リスコア（教師にできる強い評価器がない）、norm lossとdense QAT（根拠がなく、後者は対象がない）、およびWRMの既定の係数（チェス向けの値で、中将棋での根拠がない）である。
 
-[結果回帰の設計書](../plans/nnue-outcome-regression.md)との関係も順序に影響する。
+[結果回帰の設計書](../plans/archived/nnue-outcome-regression.md)との関係も順序に影響する。
 結果回帰は学習済みの非線形部分を固定して線形の経路を補正するので、第1段階か第2段階でネットが変わると測り直しになる。
 結果回帰を先に行う場合は、この測り直しの費用を見込む。
 

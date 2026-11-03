@@ -55,6 +55,8 @@ enum PstCommand {
 
 #[derive(Subcommand)]
 enum NnueCommand {
+    /// 自己対局の結果への回帰で、線形の経路の序中盤の列を補正する。
+    FitLinear(minase_trainer::nnue::fit_linear::Args),
     /// CUDAまたはCPUで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
     Train(Box<minase_trainer::nnue::train::Args>),
     /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
@@ -119,6 +121,7 @@ fn main() -> std::process::ExitCode {
 
 fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
+        NnueCommand::FitLinear(args) => minase_trainer::nnue::fit_linear::run(args).map_err(Into::into),
         NnueCommand::Train(args) => minase_trainer::nnue::train::run(*args).map(|summary| {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
