@@ -5,7 +5,7 @@ use super::feature_set::{HalfKpContext, HalfKpHmB8, Mirror, P};
 use super::format::HEADER_LENGTH;
 use super::head::{DirectScreluPhase2, ScreluHidden16, ScreluHidden16Phase2, from_direct};
 use super::*;
-use crate::eval::features::mirror_feature;
+use crate::eval::features::{lion_feature_index, mirror_feature};
 use minase_core::test_util::{position_from_codes, sq};
 use minase_core::{Move, MoveGenerator, MoveRules};
 use sha2::{Digest, Sha256};
@@ -381,6 +381,128 @@ fn assert_move_accumulator<F: FeatureSet, H: Head>(
     );
     position.unmake_move(undo);
     assert_eq!(before, nnue.refresh_accumulator(position));
+}
+
+/// 盤面から行を列挙し、i16の累算処理を使わずi32でバイアスと重みを足す。
+fn assert_accumulator_matches_i32<F: FeatureSet>(
+    net: &Network<F, DirectScrelu>,
+    position: &Position,
+    accumulator: &Accumulator<F>,
+) {
+    for side in Color::ALL {
+        let context = F::context(position, side);
+        let mut expected: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+        let board_rows = position
+            .occupied()
+            .into_iter()
+            .map(|square| feature_index(side, position.piece_at(square).unwrap(), square));
+        let lion_row = position
+            .lion_taken_by_non_lion()
+            .map(|trigger| lion_feature_index(side, trigger.square));
+        for base in board_rows.chain(lion_row) {
+            let row = F::index(context, base);
+            for (j, value) in expected.iter_mut().enumerate() {
+                *value += i32::from(net.weights[row * net.width() + j]);
+            }
+        }
+        for (&actual, expected) in accumulator.hidden[side.index()].iter().zip(expected) {
+            assert!((-32_630..=32_630).contains(&expected));
+            assert!(i16::try_from(expected).is_ok());
+            assert_eq!(i32::from(actual), expected);
+        }
+    }
+    assert_eq!(*accumulator, net.refresh_accumulator(position));
+    #[cfg(feature = "invariants")]
+    net.assert_accumulator(position, accumulator, 0);
+}
+
+both_feature_sets!(dense_accumulators_at_parameter_limits_match_i32);
+/// 144升と先獅子を発火させ、境界の重みで移動、捕獲、先獅子、王駒移動、null moveを検査する。
+fn dense_accumulators_at_parameter_limits_match_i32<F: FeatureSet>() {
+    let pieces: Vec<_> = minase_core::Square::all()
+        .map(|square| {
+            let (side, kind) = match (square.file(), square.rank()) {
+                (5, 0) => (Color::Black, PieceKind::King),
+                (11, 11) => (Color::White, PieceKind::King),
+                (4, 5) => (Color::Black, PieceKind::Rook),
+                (5, 5) => (Color::White, PieceKind::Rook),
+                (5, 4) => (Color::Black, PieceKind::Lion),
+                _ => (Color::White, PieceKind::Pawn),
+            };
+            (square, PieceCode::new(side, kind).unwrap())
+        })
+        .collect();
+    let mut initial = position_from_codes(Color::Black, &pieces);
+    initial.set_lion_capture(Some(sq(5, 5))).unwrap();
+    assert_eq!(initial.occupied().popcount(), 144);
+    // 通常の捕獲で先獅子が消え、獅子捕獲で発生し、空升への移動で再び消える。
+    // 最後の王駒移動はHalfKPの鏡映文脈を変える。
+    let moves = [
+        (sq(4, 5), sq(4, 4), 143, None),
+        (sq(5, 5), sq(5, 4), 142, Some(sq(5, 4))),
+        (sq(4, 4), sq(4, 5), 142, None),
+        (sq(5, 4), sq(5, 5), 142, None),
+        (sq(5, 0), sq(6, 0), 141, None),
+    ];
+    for weight in [-220_i16, 220] {
+        for bias in [-510_i32, 510] {
+            let template = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
+            let bytes = encode::<F, _>(&EncodeInput {
+                weights: &vec![weight; F::DIMENSIONS * 4],
+                ..encoding_input(&template, &[bias; 4])
+            })
+            .unwrap();
+            let net = Network::<F, DirectScrelu>::decode(&bytes).unwrap();
+            let mut position = initial.clone();
+            let mut accumulator = net.refresh_accumulator(&position);
+            for hidden in &accumulator.hidden {
+                assert!(
+                    hidden
+                        .iter()
+                        .all(|&value| i32::from(value) == bias + 145 * i32::from(weight))
+                );
+            }
+            let mut history = Vec::new();
+            for step in 0..=moves.len() {
+                assert_accumulator_matches_i32(&net, &position, &accumulator);
+                let lion_before = position.lion_capture_square();
+                let null_undo = position.make_null_move();
+                let mut after_null = Accumulator::new(net.width());
+                net.update_accumulator_after_null(&accumulator, &mut after_null, lion_before);
+                assert_eq!(position.lion_capture_square(), None);
+                assert_accumulator_matches_i32(&net, &position, &after_null);
+                position.unmake_null_move(null_undo);
+                assert_eq!(position.lion_capture_square(), lion_before);
+                assert_accumulator_matches_i32(&net, &position, &accumulator);
+                let Some(&(from, to, count, lion)) = moves.get(step) else {
+                    break;
+                };
+                let undo = position.make_move_unchecked(
+                    Move {
+                        from,
+                        mid: None,
+                        to,
+                        promote: false,
+                    },
+                    MoveRules::standard(),
+                );
+                assert_eq!(position.occupied().popcount(), count);
+                assert_eq!(position.lion_capture_square(), lion);
+                let mut after = Accumulator::new(net.width());
+                net.update_accumulator_after_move(&accumulator, &mut after, &position, &undo);
+                if step == moves.len() - 1 && F::MIRROR == Mirror::Normalized {
+                    assert_ne!(accumulator.contexts[0], after.contexts[0]);
+                }
+                history.push((undo, accumulator));
+                accumulator = after;
+            }
+            for (undo, parent) in history.into_iter().rev() {
+                position.unmake_move(undo);
+                assert_accumulator_matches_i32(&net, &position, &parent);
+            }
+            assert_eq!(position, initial);
+        }
+    }
 }
 
 both_feature_sets!(quiet_move_pst_delta_matches_refreshed_linear_numerator);
@@ -785,8 +907,11 @@ fn embedded_metadata_and_search_values_match_baseline() {
     );
 }
 
-/// 出力部へ零の累算値を渡すと、仕様上は出力バイアスだけが残る。
-fn encoding_input<F: FeatureSet, H: Head>(net: &Network<F, H>) -> EncodeInput<'_, H> {
+/// 復号後の重みを、ファイル上のi32バイアスとともに符号化へ渡す。
+fn encoding_input<'a, F: FeatureSet, H: Head>(
+    net: &'a Network<F, H>,
+    biases: &'a [i32],
+) -> EncodeInput<'a, H> {
     EncodeInput {
         width: net.width() as u32,
         cp_per_logit: net.cp_per_logit(),
@@ -794,7 +919,7 @@ fn encoding_input<F: FeatureSet, H: Head>(net: &Network<F, H>) -> EncodeInput<'_
         piece_values: &net.piece_values,
         linear: &net.linear,
         weights: &net.weights,
-        biases: &net.biases,
+        biases,
         head: &net.head,
     }
 }
@@ -804,7 +929,15 @@ fn encoding_input<F: FeatureSet, H: Head>(net: &Network<F, H>) -> EncodeInput<'_
 fn embedded_encode_round_trip_is_byte_identical() {
     let net = Nnue::decode(EMBEDDED).unwrap();
     assert_eq!(
-        encode::<ActiveFeatureSet, _>(&encoding_input(&net)).unwrap(),
+        encode::<ActiveFeatureSet, _>(&encoding_input(
+            &net,
+            &net.biases
+                .iter()
+                .copied()
+                .map(i32::from)
+                .collect::<Vec<_>>()
+        ))
+        .unwrap(),
         EMBEDDED
     );
 }
@@ -815,11 +948,13 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet, H: Head>() {
         // 独立した既存の符号化で作った重みを参照値とする。
         let original = random_head_bytes::<F, H>(width);
         let net = Network::<F, H>::decode(&original).unwrap();
-        let input = encoding_input(&net);
+        let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+        let input = encoding_input(&net, &biases);
         let bytes = encode::<F, _>(&input).unwrap();
         assert_eq!(bytes, original);
         let decoded = Network::<F, H>::decode(&bytes).unwrap();
-        let actual = encoding_input(&decoded);
+        let decoded_biases: Vec<i32> = decoded.biases.iter().copied().map(i32::from).collect();
+        let actual = encoding_input(&decoded, &decoded_biases);
         assert_eq!(actual.width, input.width);
         assert_eq!(actual.cp_per_logit.to_bits(), input.cp_per_logit.to_bits());
         assert_eq!(actual.rule_set, input.rule_set);
@@ -836,7 +971,8 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet, H: Head>() {
 #[test]
 fn encode_validates_width_and_cp_per_logit() {
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     for width in [0, 1, 3, 513, 514, u32::MAX] {
         assert_eq!(
             encode::<P, _>(&EncodeInput { width, ..input }).unwrap_err(),
@@ -892,7 +1028,8 @@ fn encode_validates_width_and_cp_per_logit() {
 both_feature_sets!(encode_rejects_invalid_parameter_lengths);
 fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
     let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     let extra_linear = vec![[0; 2]; input.linear.len() + 1];
     let extra_weights = vec![0; input.weights.len() + 1];
     let extra_biases = vec![0; input.biases.len() + 1];
@@ -947,9 +1084,10 @@ fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
 both_feature_sets!(encode_validates_parameter_ranges);
 fn encode_validates_parameter_ranges<F: FeatureSet>() {
     let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     let mut weights = input.weights.to_vec();
-    for value in [-1017, 1017, i16::MIN, i16::MAX] {
+    for value in [-221, 221, i16::MIN, i16::MAX] {
         weights[0] = value;
         assert_eq!(
             encode::<F, _>(&EncodeInput {
@@ -965,7 +1103,7 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
         );
     }
     let mut biases = input.biases.to_vec();
-    for value in [-1017, 1017, i32::MIN, i32::MAX] {
+    for value in [-511, 511, i32::MIN, i32::MAX] {
         biases[0] = value;
         assert_eq!(
             encode::<F, _>(&EncodeInput {
@@ -1009,8 +1147,8 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
     // 整数推論の仕様は端点を含み、線形重みにはi16の全範囲を許す。
     let linear = vec![[i16::MIN, i16::MAX]; FEATURE_COUNT];
     for sign in [-1, 1] {
-        weights.fill(sign * 1016);
-        biases.fill(i32::from(sign) * 1016);
+        weights.fill(sign * 220);
+        biases.fill(i32::from(sign) * 510);
         output_weights.fill(sign * 8192);
         let bytes = encode::<F, _>(&EncodeInput {
             linear: &linear,
@@ -1033,7 +1171,8 @@ fn encode_validates_parameter_ranges<F: FeatureSet>() {
 both_feature_sets!(encode_validates_mirror_sharing);
 fn encode_validates_mirror_sharing<F: FeatureSet>() {
     let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     let mut linear = input.linear.to_vec();
     linear[0][0] ^= 1;
     assert!(matches!(
@@ -1095,7 +1234,8 @@ fn encode_validates_mirror_sharing<F: FeatureSet>() {
 #[test]
 fn encode_validates_rule_set_names() {
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     for rule_set in [
         String::new(),
         "x".repeat(32),
@@ -1177,7 +1317,8 @@ fn encode_validates_feature_set_metadata() {
     format_feature_set!(ShortDimensions, "small", 0);
 
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     let bytes = encode::<FullName, _>(&input).unwrap();
     assert_eq!(architecture(&bytes).unwrap().len(), 96);
     assert!(Network::<FullName, DirectScrelu>::decode(&bytes).is_ok());
@@ -1206,7 +1347,8 @@ fn encode_validates_feature_set_metadata() {
 #[test]
 fn encode_rejects_invalid_piece_values() {
     let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
-    let input = encoding_input(&net);
+    let biases: Vec<i32> = net.biases.iter().copied().map(i32::from).collect();
+    let input = encoding_input(&net, &biases);
     for value in [-1, 29_000, i32::MAX] {
         let mut piece_values = *input.piece_values;
         piece_values[0] = value;
@@ -1348,7 +1490,7 @@ fn parameter_ranges_and_mirror_sharing_are_validated<F: FeatureSet>() {
     let bias = hidden + F::DIMENSIONS * width * 2;
     let output = bias + width * 4;
     for (offset, values) in [
-        (hidden, vec![-1017_i16, 1017, i16::MIN]),
+        (hidden, vec![-221_i16, 221, i16::MIN, i16::MAX]),
         (output, vec![-8193, 8193, i16::MIN]),
     ] {
         for value in values {
@@ -1361,8 +1503,8 @@ fn parameter_ranges_and_mirror_sharing_are_validated<F: FeatureSet>() {
             ));
         }
     }
-    for (offset, limit) in [(bias, 1016_i32), (output + width * 4, 4_161_536)] {
-        for value in [-limit - 1, limit + 1, i32::MIN] {
+    for (offset, limit) in [(bias, 510_i32), (output + width * 4, 4_161_536)] {
+        for value in [-limit - 1, limit + 1, i32::MIN, i32::MAX] {
             let mut bad = bytes.clone();
             bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
             refresh_checksum(&mut bad);
@@ -1457,17 +1599,24 @@ fn integer_activation_and_signed_rounding_follow_the_specification<F: FeatureSet
     let position = Position::initial();
     // cp_per_logit=127/16によりscale=1。出力重み4096を4成分足すとa/4 cp。
     for (input, expected) in [
-        (-1016, 0),
+        (i16::MIN, 0),
         (0, 0),
         (1, 0),
         (63, 8),
         (64, 8),
         (126, 31),
         (127, 32),
-        (1016, 32),
+        (i16::MAX, 32),
     ] {
-        let net = constant_network::<F>(2, input, 4096, 0, 7.9375, 0);
-        assert_eq!(evaluate(&net, &position), expected);
+        let net = constant_network::<F>(2, 0, 4096, 0, 7.9375, 0);
+        let mut accumulator = net.refresh_accumulator(&position);
+        for hidden in &mut accumulator.hidden {
+            hidden.fill(input);
+        }
+        assert_eq!(
+            net.evaluate_accumulator(&accumulator, Color::Black),
+            expected
+        );
     }
     for (bias, expected) in [(32767, 0), (32768, 1), (-32768, 0), (-32769, -1)] {
         let net = constant_network::<F>(2, 0, 0, bias, 7.9375, 0);
@@ -2277,8 +2426,8 @@ fn zero_hidden_output_and_equal_endpoints_preserve_direct_output_for_all_phases(
         let hidden_weights =
             std::array::from_fn::<_, 128, _>(|_| ((next(&mut state) % 255) as i16 - 127) as i8);
         let biases = std::array::from_fn(|_| (next(&mut state) % 130_049) as i32 - 65_024);
-        let us = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i32 - 100);
-        let them = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i32 - 100);
+        let us = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i16 - 100);
+        let them = std::array::from_fn::<_, 4, _>(|_| (next(&mut state) % 300) as i16 - 100);
         let direct = DirectScrelu::new(4, &weights, -731, false).unwrap();
         let phase = DirectScreluPhase2::new(4, [&weights; 2], [-731; 2], false).unwrap();
         let hidden = ScreluHidden16::new(
@@ -2490,7 +2639,14 @@ fn encode_rechecks_head_width_and_feature_sharing<F: FeatureSet, H: Head>() {
     assert!(matches!(
         encode::<F, _>(&EncodeInput {
             head: &wrong_width.head,
-            ..encoding_input(&net)
+            ..encoding_input(
+                &net,
+                &net.biases
+                    .iter()
+                    .copied()
+                    .map(i32::from)
+                    .collect::<Vec<_>>()
+            )
         }),
         Err(Error::InvalidLength { .. })
     ));
@@ -2501,7 +2657,14 @@ fn encode_rechecks_head_width_and_feature_sharing<F: FeatureSet, H: Head>() {
     let head = H::decode(&bytes, 4, false).unwrap();
     let encoded = encode::<F, _>(&EncodeInput {
         head: &head,
-        ..encoding_input(&net)
+        ..encoding_input(
+            &net,
+            &net.biases
+                .iter()
+                .copied()
+                .map(i32::from)
+                .collect::<Vec<_>>(),
+        )
     });
     if F::MIRROR == Mirror::Shared {
         assert!(matches!(
@@ -2541,7 +2704,12 @@ fn network_passes_piece_count_phase_to_output<F: FeatureSet>() {
             piece_values: &direct.piece_values,
             linear: &direct.linear,
             weights: &direct.weights,
-            biases: &direct.biases,
+            biases: &direct
+                .biases
+                .iter()
+                .copied()
+                .map(i32::from)
+                .collect::<Vec<_>>(),
         })
         .unwrap(),
     )
@@ -2555,7 +2723,12 @@ fn network_passes_piece_count_phase_to_output<F: FeatureSet>() {
             piece_values: &direct.piece_values,
             linear: &direct.linear,
             weights: &direct.weights,
-            biases: &direct.biases,
+            biases: &direct
+                .biases
+                .iter()
+                .copied()
+                .map(i32::from)
+                .collect::<Vec<_>>(),
         })
         .unwrap(),
     )

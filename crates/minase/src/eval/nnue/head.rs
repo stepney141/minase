@@ -19,7 +19,7 @@ pub trait Head: Sized {
     fn to_bytes(&self) -> Vec<u8>;
     /// 手番側と相手側の非線形累算値から、尺度変換前の出力を計算する。
     /// 呼び手は線形経路と同じ係数qを渡し、0..=90を保証する。
-    fn output(&self, us: &[i32], them: &[i32], q: i32) -> i32;
+    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32;
 }
 
 /// SCReLU活性化後の両視点と出力重みの直接内積。
@@ -61,18 +61,18 @@ impl Head for DirectScrelu {
     /// 各累算値を`c = clamp(acc, 0, 127)`、`a = (c×c) >> 7`で活性化する。
     /// 127で割る代わりに128で切り捨てる近似で、評価1回あたり2H回の除算を省く。
     /// aは0〜126で、出力の絶対値は`2H×126×8,192 + 4,161,536`以下となり、H=512でもi32に収まる。
-    fn output(&self, us: &[i32], them: &[i32], _q: i32) -> i32 {
+    fn output(&self, us: &[i16], them: &[i16], _q: i32) -> i32 {
         let width = self.weights.len() / 2;
         let mut out = self.bias;
         for (&value, &weight) in us.iter().zip(&self.weights[..width]) {
             let c = value.clamp(0, 127);
             let a = (c * c) >> 7;
-            out += i32::from(weight) * a;
+            out += i32::from(weight) * i32::from(a);
         }
         for (&value, &weight) in them.iter().zip(&self.weights[width..]) {
             let c = value.clamp(0, 127);
             let a = (c * c) >> 7;
-            out += i32::from(weight) * a;
+            out += i32::from(weight) * i32::from(a);
         }
         out
     }
@@ -161,7 +161,7 @@ fn validate_mirror<T: PartialEq>(
     Ok(())
 }
 
-fn activate<'a>(us: &[i32], them: &[i32], buffer: &'a mut [u8; 1024]) -> &'a [u8] {
+fn activate<'a>(us: &[i16], them: &[i16], buffer: &'a mut [u8; 1024]) -> &'a [u8] {
     let values = &mut buffer[..us.len() + them.len()];
     for (a, &value) in values[..us.len()].iter_mut().zip(us) {
         let c = value.clamp(0, 127);
@@ -277,7 +277,7 @@ impl Head for DirectScreluPhase2 {
         }
         bytes
     }
-    fn output(&self, us: &[i32], them: &[i32], q: i32) -> i32 {
+    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32 {
         let mut buffer = [0; 1024];
         let activated = activate(us, them, &mut buffer);
         interpolate(
@@ -382,7 +382,7 @@ impl Head for ScreluHidden16 {
         }
         bytes
     }
-    fn output(&self, us: &[i32], them: &[i32], _q: i32) -> i32 {
+    fn output(&self, us: &[i16], them: &[i16], _q: i32) -> i32 {
         let mut buffer = [0; 1024];
         let activated = activate(us, them, &mut buffer);
         let h = self.hidden.output(activated);
@@ -486,7 +486,7 @@ impl Head for ScreluHidden16Phase2 {
         }
         bytes
     }
-    fn output(&self, us: &[i32], them: &[i32], q: i32) -> i32 {
+    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32 {
         let mut buffer = [0; 1024];
         let activated = activate(us, them, &mut buffer);
         let h = self.hidden.output(activated);

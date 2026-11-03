@@ -20,6 +20,15 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+/// 保存形式における第1層の重みの絶対値の上限。
+pub(crate) const FIRST_LAYER_WEIGHT_MAX: i32 = 220;
+/// 保存形式における第1層のバイアスの絶対値の上限。
+pub(crate) const FIRST_LAYER_BIAS_MAX: i32 = 510;
+/// 尺度127で保存範囲に収まる、第1層と仮想行の実数重みの上限。
+pub(crate) const FIRST_LAYER_WEIGHT_LIMIT: f32 = FIRST_LAYER_WEIGHT_MAX as f32 / 127.0;
+/// 尺度127で保存範囲に収まる、第1層の実数バイアスの上限。
+pub(crate) const FIRST_LAYER_BIAS_LIMIT: f32 = FIRST_LAYER_BIAS_MAX as f32 / 127.0;
+
 /// モデルと参照計算の失敗。
 #[derive(Debug)]
 pub enum Error {
@@ -539,10 +548,10 @@ impl Model {
         result
     }
     /// 線形、仮想行、第1層、出力部の順に保存範囲へ制限する。
-    /// 線形は[−4096,4095.875]、仮想行は±8、第1層はP型なら±8、HalfKPなら[−8−V,8−V]とする。
-    /// W1は±127/64、各バイアスは±8、両端点の直接出力重みとw2は±1.98とする。
+    /// 線形は[−4096,4095.875]、仮想行は±L、第1層はP型なら±L、HalfKPなら[−L−V,L−V]とする。
+    /// L=220/127であり、第1層のバイアスは±510/127とする。
+    /// W1は±127/64、隠れ層と出力のバイアスは±8、両端点の直接出力重みとw2は±1.98とする。
     /// 最後に[`Self::fix_unobserved`]で未観測行を復元する。
-    /// ±8は第1層の量子化値を±1,016に収める範囲であり、線形成分には適用しない。
     pub fn constrain(&mut self) -> Result<()> {
         self.parameters.validate()?;
         let s = self.shape();
@@ -550,7 +559,7 @@ impl Model {
             *value = value.clamp(-4096.0, 4095.875);
         }
         for value in &mut self.parameters[Parameter::Virtual] {
-            *value = value.clamp(-8.0, 8.0);
+            *value = value.clamp(-FIRST_LAYER_WEIGHT_LIMIT, FIRST_LAYER_WEIGHT_LIMIT);
         }
         for i in 0..s.len(Parameter::FirstLayer) {
             let v = if s.feature_set == InputFeatureSet::P {
@@ -563,8 +572,8 @@ impl Model {
                 };
                 self.parameters[Parameter::Virtual][base * s.width + i % s.width]
             };
-            self.parameters[Parameter::FirstLayer][i] =
-                self.parameters[Parameter::FirstLayer][i].clamp(-8.0 - v, 8.0 - v);
+            self.parameters[Parameter::FirstLayer][i] = self.parameters[Parameter::FirstLayer][i]
+                .clamp(-FIRST_LAYER_WEIGHT_LIMIT - v, FIRST_LAYER_WEIGHT_LIMIT - v);
         }
         for p in [
             Parameter::Biases,
@@ -578,6 +587,7 @@ impl Model {
             Parameter::HiddenOutputEnd,
         ] {
             let limit = match p {
+                Parameter::Biases => FIRST_LAYER_BIAS_LIMIT,
                 Parameter::OutputWeights
                 | Parameter::OutputWeightsEnd
                 | Parameter::HiddenOutput

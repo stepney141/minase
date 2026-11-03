@@ -40,8 +40,8 @@ pub struct Network<F: FeatureSet, H: Head> {
     linear: Box<[[i16; 2]]>,
     /// 特徴ごとにH個が連続する第1層のi16重み。実数に対する尺度は127である。
     weights: Box<[i16]>,
-    /// 第1層のi32バイアス。実数に対する尺度は127である。
-    biases: Box<[i32]>,
+    /// 第1層のi16バイアス。実数に対する尺度は127であり、ファイルではi32で保存する。
+    biases: Box<[i16]>,
     head: H,
     feature_set: PhantomData<F>,
     width: usize,

@@ -43,7 +43,7 @@ extern "C" __global__ void optimizer_rows(
 // A separate launch establishes the virtual-row update before W reads V.
 extern "C" __global__ void optimizer_virtual(
     float* values, const float* gradient, float* moment, float* variance,
-    const unsigned char* observed, unsigned count, unsigned H,
+    const unsigned char* observed, unsigned count, unsigned H, float limit,
     double correction1, double correction2, double lr, double decay, unsigned* nonfinite) {
     unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= count) return;
@@ -51,13 +51,13 @@ extern "C" __global__ void optimizer_virtual(
     if (!observed[i / H]) return;
     float value = adamw_value(values[i], gradient[i], moment + i,
                              variance + i, correction1, correction2, lr, decay, nonfinite);
-    values[i] = fminf(8.0f, fmaxf(-8.0f, value));
+    values[i] = fminf(limit, fmaxf(-limit, value));
 }
 
 extern "C" __global__ void optimizer_first(
     float* values, const float* gradient, float* moment, float* variance,
     const unsigned char* observed, const float* virtual_rows, float* expanded,
-    unsigned count, unsigned H, double correction1, double correction2,
+    unsigned count, unsigned H, float limit, double correction1, double correction2,
     double lr, double decay, unsigned* nonfinite) {
     unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= count) return;
@@ -73,7 +73,7 @@ extern "C" __global__ void optimizer_first(
     if (observed[row]) {
         float value = adamw_value(values[i], gradient[i], moment + i,
                                  variance + i, correction1, correction2, lr, decay, nonfinite);
-        values[i] = fminf(8.0f - v, fmaxf(-8.0f - v, value));
+        values[i] = fminf(limit - v, fmaxf(-limit - v, value));
     }
     // Unobserved W stays fixed, but C must still inherit the current V.
     expanded[i] = values[i] + v;
@@ -83,7 +83,7 @@ extern "C" __global__ void optimizer_first(
 // gradient_sums already contains the sum of both P halves. Keep one free
 // parameter per unit and expand both copies from the same updated value.
 // This also expands every W1 row. Unshared biases and w2 use units=H=1.
-// The host passes limits from Model::constrain: W1=127/64, biases=8, outputs=1.98.
+// The host passes the same parameter limits as Model::constrain.
 extern "C" __global__ void optimizer_head(
     float* values, const double* gradient_sums, float* moment, float* variance,
     float* expanded, unsigned gradient_offset, unsigned count, unsigned units,

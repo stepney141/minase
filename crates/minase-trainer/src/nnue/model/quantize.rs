@@ -1,4 +1,6 @@
-use super::{Error, HeadKind, Model, Parameter, Result, Shape};
+use super::{
+    Error, FIRST_LAYER_BIAS_MAX, FIRST_LAYER_WEIGHT_MAX, HeadKind, Model, Parameter, Result, Shape,
+};
 use crate::nnue::data::InputFeatureSet;
 use minase::eval::{
     features::PIECE_STATE_COUNT,
@@ -142,7 +144,8 @@ fn rounded(value: f32, scale: f64, low: i32, high: i32, parameter: Parameter) ->
     Ok(value as i32)
 }
 /// f32をf64へ広げて尺度を掛け、`round_ties_even`で偶数丸めする。
-/// 線形は×8でi16、第1層とバイアスは×127で±1,016、出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
+/// 線形は×8でi16、第1層は×127で±220、そのバイアスは×127で±510に収める。
+/// 出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
 /// W1は×64で±127、b1は×127×64で±65,024、両端点のw2は×4,096で±8,192に収める。
 /// 第1層は畳み込み済みの重みを使い、埋め草を除く。
 /// 範囲外は切り詰めず[`Error::Quantization`]を返す。
@@ -161,12 +164,29 @@ pub fn quantize(model: &Model) -> Result<Quantized> {
         .collect::<Result<Vec<_>>>()?;
     let weights = model.expanded_first_layer()[..shape.feature_set().dimensions() * shape.width()]
         .iter()
-        .map(|&v| rounded(v, 127.0, -1016, 1016, Parameter::FirstLayer).map(|x| x as i16))
+        .map(|&v| {
+            rounded(
+                v,
+                127.0,
+                -FIRST_LAYER_WEIGHT_MAX,
+                FIRST_LAYER_WEIGHT_MAX,
+                Parameter::FirstLayer,
+            )
+            .map(|x| x as i16)
+        })
         .collect::<Result<Vec<_>>>()?;
     let biases = model
         .expanded_biases()
         .iter()
-        .map(|&v| rounded(v, 127.0, -1016, 1016, Parameter::Biases))
+        .map(|&v| {
+            rounded(
+                v,
+                127.0,
+                -FIRST_LAYER_BIAS_MAX,
+                FIRST_LAYER_BIAS_MAX,
+                Parameter::Biases,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     let output_weights = model
         .expanded_output_weights()

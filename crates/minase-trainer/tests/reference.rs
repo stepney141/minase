@@ -599,6 +599,7 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
             let (upper, lower) = match p {
                 Parameter::Linear => (4095.875, -4096.0),
                 Parameter::OutputWeights => (1.98, -1.98),
+                Parameter::Biases => (510.0 / 127.0, -510.0 / 127.0),
                 _ => (8.0, -8.0),
             };
             assert_eq!(model.parameters()[p][0], upper);
@@ -607,11 +608,14 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
             }
         }
         let folded = reference::fold(&model).unwrap();
-        assert_eq!(&folded[..4], &[8.0, -8.0, 8.0, -8.0]);
+        assert_eq!(
+            &folded[..4],
+            &[220.0 / 127.0, -220.0 / 127.0, 220.0 / 127.0, -220.0 / 127.0]
+        );
         if set == InputFeatureSet::HalfKpHmB8 {
             assert_eq!(
                 &model.parameters()[Parameter::Virtual][..4],
-                &[8.0, -8.0, 8.0, -8.0]
+                &[220.0 / 127.0, -220.0 / 127.0, 220.0 / 127.0, -220.0 / 127.0]
             );
             assert_eq!(&model.parameters()[Parameter::FirstLayer][..4], &[0.0; 4]);
         }

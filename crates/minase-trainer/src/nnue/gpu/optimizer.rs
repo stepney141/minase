@@ -8,7 +8,9 @@ use super::{
 use crate::nn::AdamWGroup;
 use crate::nnue::{
     data::InputFeatureSet,
-    model::{Model, Parameter, Parameters, Shape},
+    model::{
+        FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_WEIGHT_LIMIT, Model, Parameter, Parameters, Shape,
+    },
     reference::{AdamW, AdamWConfig},
 };
 use cudarc::driver::{CudaSlice, PushKernelArg};
@@ -321,7 +323,7 @@ impl Group {
         let row_width = row_width as u32;
         let (lower, upper) = match self.parameter {
             Parameter::Linear => (-4096.0_f32, 4095.875_f32),
-            Parameter::FirstLayer => (-8.0_f32, 8.0_f32),
+            Parameter::FirstLayer => (-FIRST_LAYER_WEIGHT_LIMIT, FIRST_LAYER_WEIGHT_LIMIT),
             _ => return Err(Error::Invalid("optimizer row parameter")),
         };
         let observed = self
@@ -368,6 +370,7 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
+        let limit = FIRST_LAYER_WEIGHT_LIMIT;
         let observed = self
             .observed
             .as_ref()
@@ -380,6 +383,7 @@ impl Group {
             .arg(observed)
             .arg(&count)
             .arg(&h)
+            .arg(&limit)
             .arg(&update.correction1)
             .arg(&update.correction2)
             .arg(&update.group.lr)
@@ -410,6 +414,7 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
+        let limit = FIRST_LAYER_WEIGHT_LIMIT;
         let observed = self
             .observed
             .as_ref()
@@ -424,6 +429,7 @@ impl Group {
             .arg(expanded)
             .arg(&count)
             .arg(&h)
+            .arg(&limit)
             .arg(&update.correction1)
             .arg(&update.correction2)
             .arg(&update.group.lr)
@@ -454,10 +460,8 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let limit = match self.parameter {
-            Parameter::Biases
-            | Parameter::OutputBias
-            | Parameter::OutputBiasEnd
-            | Parameter::HiddenBiases => 8.0_f32,
+            Parameter::Biases => FIRST_LAYER_BIAS_LIMIT,
+            Parameter::OutputBias | Parameter::OutputBiasEnd | Parameter::HiddenBiases => 8.0_f32,
             Parameter::OutputWeights
             | Parameter::OutputWeightsEnd
             | Parameter::HiddenOutput

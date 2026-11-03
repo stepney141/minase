@@ -195,11 +195,16 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
                     );
                 }
             }
-            assert!(model.expanded_first_layer().iter().all(|&x| x.abs() <= 8.0));
+            assert!(
+                model
+                    .expanded_first_layer()
+                    .iter()
+                    .all(|&x| x.abs() <= 220.0 / 127.0)
+            );
             assert!(
                 model.parameters()[Parameter::Biases]
                     .iter()
-                    .all(|&x| x == sign * 8.0)
+                    .all(|&x| x == sign * (510.0 / 127.0))
             );
             assert!(
                 model.parameters()[Parameter::OutputWeights]
@@ -207,7 +212,12 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
                     .all(|&x| x == sign * 1.98)
             );
             assert_eq!(model.parameters()[Parameter::OutputBias][0], sign * 8.0);
-            quantize(&model).unwrap();
+            let quantized = quantize(&model).unwrap();
+            assert!(quantized.weights.iter().all(|&w| (-220..=220).contains(&w)));
+            assert!(quantized.biases.iter().all(|&b| b == (sign * 510.0) as i32));
+            quantized
+                .encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
+                .unwrap();
         }
     }
 }
@@ -279,6 +289,36 @@ fn quantization_ties_even_rotation_and_overflow_match_python_examples() {
     bad.parameter_mut(Parameter::OutputBias)[0] = f32::NAN;
     assert!(bad.constrain().is_err());
     assert!(quantize(&bad).is_err());
+}
+
+#[test]
+fn quantization_obeys_first_layer_integer_bounds() {
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut model = model(set, 4);
+        model.parameter_mut(Parameter::FirstLayer).fill(0.0);
+        model.parameter_mut(Parameter::Virtual).fill(0.0);
+        for (parameter, limit) in [(Parameter::FirstLayer, 220), (Parameter::Biases, 510)] {
+            for sign in [-1, 1] {
+                model.parameter_mut(parameter)[0] = (sign * limit) as f32 / 127.0;
+                let quantized = quantize(&model).unwrap();
+                let actual = match parameter {
+                    Parameter::FirstLayer => i32::from(quantized.weights[0]),
+                    Parameter::Biases => quantized.biases[0],
+                    _ => unreachable!(),
+                };
+                assert_eq!(actual, sign * limit);
+                quantized
+                    .encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
+                    .unwrap();
+                model.parameter_mut(parameter)[0] = (sign * (limit + 1)) as f32 / 127.0;
+                assert!(matches!(
+                    quantize(&model),
+                    Err(minase_trainer::nnue::model::Error::Quantization(actual)) if actual == parameter
+                ));
+                model.parameter_mut(parameter)[0] = 0.0;
+            }
+        }
+    }
 }
 
 #[test]

@@ -26,7 +26,9 @@
 //! `w2`はさらに64バイト後であり、端点別の`w2`は32バイトずつ並ぶ。
 //! `W1`は絶対値127以下、`b1`は65,024以下、`w2`は8,192以下とする。
 //! 線形重みは特徴番号順に序中盤、終盤の順で並び、尺度は1/8センチポーンである。
-//! 第1層は特徴番号ごとにH個を連続して置き、重みとバイアスの絶対値は1,016以下とする。
+//! 第1層は特徴番号ごとにH個を連続して置き、重みの絶対値は220以下、バイアスは510以下とする。
+//! 発火は最大145行なので、1行分の余裕を含む累算値の上限`146×220 + 510 = 32,630`はi16に収まる。
+//! バイアスはファイル上のi32を検証してからi16へ変換する。
 //! 直接出力部の重みは手番側H個、相手側H個の順で、絶対値は8,192以下とする。
 //! 出力バイアスの絶対値は4,161,536以下とする。
 //! 構造記述は`features=<特徴集合名>;ft=<H>;linear=tapered2;head=<出力部名>`で、
@@ -235,7 +237,7 @@ pub fn architecture(bytes: &[u8]) -> Result<&str, Error> {
 impl<F: FeatureSet, H: Head> Network<F, H> {
     /// MNUE版5を検証して復号する。
     /// 識別子、版、幅、型から組み立てた構造記述との完全一致、勝率尺度、予約域0、規則セット名、構造から導いた長さ、本体のSHA-256を検査する。
-    /// 第1層の重みとバイアスは絶対値1,016以下、直接出力部の重みは8,192以下、バイアスは4,161,536以下を要求する。
+    /// 第1層の重みは絶対値220以下、バイアスは510以下、直接出力部の重みは8,192以下、バイアスは4,161,536以下を要求する。
     /// 全型で線形の鏡映対を検査し、[`Mirror::Shared`]では第1層、バイアス、出力重みの半幅の共有も検査する。
     /// 駒価値には[`Self::piece_value`]の正値性と王駒の条件を課す。
     /// 換算係数は`round_ties_even(f64(cp_per_logit)×65,536/(127×4,096))`で求める。
@@ -306,6 +308,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         offset += width * 4;
         let head = H::decode(&body[offset..], width, F::MIRROR == Mirror::Shared)?;
         validate_features::<F>(width, &linear, &weights, &biases)?;
+        let biases = biases.iter().map(|&value| value as i16).collect();
         let max_promotion_gain = PieceKind::ALL
             .into_iter()
             .filter_map(|kind| PieceCode::new(Color::Black, kind))
@@ -356,8 +359,8 @@ fn validate_features<F: FeatureSet>(
             actual: F::DIMENSIONS,
         });
     }
-    validate_range("weights", weights.iter().copied().map(i32::from), 1_016)?;
-    validate_range("biases", biases.iter().copied(), 1_016)?;
+    validate_range("weights", weights.iter().copied().map(i32::from), 220)?;
+    validate_range("biases", biases.iter().copied(), 510)?;
     for feature in 0..FEATURE_COUNT {
         let mirrored = mirror_feature(feature);
         if linear[feature] != linear[mirrored] {

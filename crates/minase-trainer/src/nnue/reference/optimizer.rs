@@ -3,7 +3,10 @@ use crate::nn::parallel;
 use crate::nn::{AdamCoefficients, AdamWGroup};
 use crate::nnue::{
     data::InputFeatureSet,
-    model::{Error, Model, Parameter, Parameters, Result, Shape},
+    model::{
+        Error, FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_WEIGHT_LIMIT, Model, Parameter, Parameters,
+        Result, Shape,
+    },
 };
 use minase::eval::features::FEATURE_COUNT;
 use serde::Serialize;
@@ -203,8 +206,12 @@ impl AdamW {
                             {
                                 let base = i / shape.width() % FEATURE_COUNT;
                                 let v = virtual_rows[base * shape.width() + i % shape.width()];
-                                (-8.0 - v, 8.0 - v)
+                                (-FIRST_LAYER_WEIGHT_LIMIT - v, FIRST_LAYER_WEIGHT_LIMIT - v)
                             }
+                            Parameter::FirstLayer | Parameter::Virtual => {
+                                (-FIRST_LAYER_WEIGHT_LIMIT, FIRST_LAYER_WEIGHT_LIMIT)
+                            }
+                            Parameter::Biases => (-FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_BIAS_LIMIT),
                             _ => (-8.0, 8.0),
                         };
                         coefficients.update(value, gradient[p][i], m, v);

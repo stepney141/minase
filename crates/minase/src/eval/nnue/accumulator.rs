@@ -8,14 +8,15 @@ use minase_core::position::Undo;
 use minase_core::{Color, Position, Square};
 
 /// 両視点の線形2成分、非線形H成分、および王駒を含む盤上総駒数。
-/// 非線形成分はバイアスと発火した行の和であり、絶対値は`146×1,016 = 148,336`以下である。
-/// 線形成分は`145×32,768 = 4,751,360`以下であり、どちらもi32に収まる。
+/// 非線形成分はバイアスと最大145行の和である。重みは絶対値220以下、バイアスは510以下なので、
+/// 1行分の余裕を含む上限`146×220 + 510 = 32,630`はi16に収まる。
+/// 線形成分は`145×32,768 = 4,751,360`以下であり、i32に収まる。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Accumulator<F: FeatureSet> {
     /// 第1層の特徴番号を定める、視点ごとの文脈。
     pub(super) contexts: [F::Context; 2],
     pub(super) sums: [[i32; 2]; 2],
-    hidden: [Box<[i32]>; 2],
+    pub(super) hidden: [Box<[i16]>; 2],
     /// 王駒を含む盤上総駒数。先獅子の特徴は含めない。
     pub(super) piece_count: u32,
 }
@@ -72,11 +73,16 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
     ) {
         let index = perspective.index();
         let feature = F::index(accumulator.contexts[index], base);
-        for (value, &weight) in accumulator.hidden[index]
-            .iter_mut()
-            .zip(&self.weights[feature * self.width..(feature + 1) * self.width])
-        {
-            *value += sign * i32::from(weight);
+        let row = &self.weights[feature * self.width..(feature + 1) * self.width];
+        // 最終値はi16に収まる。加減算の途中で範囲を超えても、剰余演算なら同じ最終値を得る。
+        if sign > 0 {
+            for (value, &weight) in accumulator.hidden[index].iter_mut().zip(row) {
+                *value = value.wrapping_add(weight);
+            }
+        } else {
+            for (value, &weight) in accumulator.hidden[index].iter_mut().zip(row) {
+                *value = value.wrapping_sub(weight);
+            }
         }
     }
 

@@ -33,7 +33,9 @@
 //! `config`は`config.json`の`settings`、`inputs`、`preprocessing`をそのまま保持する。
 //! GPUの状態は学習バックエンドのスナップショットでホストへ集めてから保存する。
 
-use super::{Error, HeadKind, Masks, Model, Parameter, Parameters, Result, Shape};
+use super::{
+    Error, FIRST_LAYER_WEIGHT_LIMIT, HeadKind, Masks, Model, Parameter, Parameters, Result, Shape,
+};
 pub use crate::nn::checkpoint::Progress;
 use crate::nn::{
     AdamWGroup,
@@ -88,7 +90,7 @@ impl Checkpoint {
             || model
                 .initial_virtual
                 .iter()
-                .any(|v| !v.is_finite() || v.abs() > 8.0)
+                .any(|v| !v.is_finite() || v.abs() > FIRST_LAYER_WEIGHT_LIMIT)
         {
             return Err(Error::Invalid("fixed initial values"));
         }
