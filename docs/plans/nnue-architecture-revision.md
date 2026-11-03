@@ -21,10 +21,12 @@ masterの埋め込みネットの置き換えは、世代反復の最終候補�
 進行中。2026年11月3日に起案し、同日に着手した。
 結果は構成の選択だけに使い、masterの置き換えは世代反復の最終候補で行う（2026年11月3日の開発者の決定）。
 基準はブランチ`nnue-architecture-revision-baseline`のコミット`ee1d6e08`である。
-フェーズ1は完了した（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
+フェーズ1とフェーズ2は完了した（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
 差分更新のまとめは速くならなかったので入れず、累算値の16ビット化は機械の負荷のため親の幅を超える基準を満たさなかったが、3回の増分の一致と命令数の減少から採用した。
+出力部の積和の畳み込みは親の幅を超えて速くなったので採用した。
+フェーズ2のコミットから学習器はコンパイルできず、フェーズ3で直す。
 いま詰まっている点はない。
-次の一手は、フェーズ2の実装をcodexへ委任することである。
+次の一手は、フェーズ3の実装をcodexへ委任することである。
 
 ## 目的
 
