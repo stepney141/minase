@@ -17,7 +17,8 @@
 
 進行中。2026年11月3日に起案し、同日に着手した。
 フェーズ1の実装とフェーズ2の回帰を終え、判定の対局の予測は改善した（[記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
-次の一手は、フェーズ3の配置の距離の対局である。
+フェーズ3では配置の距離の判定が「偏りが減った」となった（[記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。
+次の一手は、フェーズ4の段階ゲートである。
 
 ## 目的
 
