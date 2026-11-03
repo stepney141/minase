@@ -2,6 +2,7 @@
 
 pub mod data;
 pub mod export;
+pub mod fit_linear;
 pub mod gpu;
 pub mod model;
 pub mod options;

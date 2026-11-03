@@ -124,7 +124,7 @@
 | NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/archived/nnue-material-linear-init.md](plans/archived/nnue-material-linear-init.md) | 完了（採用） | 2026年10月26日 |
 | 審判層の裁定が繰り返す合法手生成の削減 | [plans/archived/referee-adjudication-movegen.md](plans/archived/referee-adjudication-movegen.md) | 完了（採用） | 2026年10月28日 |
 | NNUEの駒の配置の偏りの解消 | [plans/nnue-placement-bias.md](plans/nnue-placement-bias.md) | 待機中 | |
-| NNUEの線形の経路の対局結果への回帰 | [plans/nnue-outcome-regression.md](plans/nnue-outcome-regression.md) | 起案 | |
+| NNUEの線形の経路の対局結果への回帰 | [plans/nnue-outcome-regression.md](plans/nnue-outcome-regression.md) | 進行中 | |
 
 ## 現在地
 

@@ -26,7 +26,7 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | MNSD（教師データ） | `MNSD`、版2 | `minase data selfplay generate`、`minase data zero-selfplay`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、AlphaZero型探索の学習器（拡張モジュール`minase_mnsd_reader`）、診断、`minase data selfplay inspect`、`minase-trainer fm scale --data`、`nnue bench-step` | `crates/minase/src/training/records.rs` |
-| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断、`nnue train`（書き出した重みの検査） | `crates/minase/src/eval/nnue/format.rs` |
+| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train`、`nnue fit-linear` | エンジン、診断、`nnue train`（書き出した重みの検査）、`nnue fit-linear`（基点の重み） | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
@@ -59,6 +59,7 @@ NNUEの学習器が`--buckets`を2以上にしたときに作業ディレクト�
 | FMのエポックの記録`training.jsonl` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs`の`EpochRecord` |
 | 同時学習のエポックの記録`training.jsonl` | なし | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/record.rs`の`EpochRecord` |
 | NNUEの終了報告`summary.json` | なし | `nnue train` | なし | `crates/minase-trainer/src/nnue/train/mod.rs`の`Summary` |
+| NNUEの線形の経路の結果回帰の報告`summary.json` | なし | `nnue fit-linear` | なし | `crates/minase-trainer/src/nnue/fit_linear/mod.rs`の`run` |
 | PSTの終了報告`summary.json` | なし | `pst train` | なし | `crates/minase-trainer/src/pst/record.rs`の`Summary` |
 | FMの終了報告`summary.json` | なし | `fm train` | なし | `crates/minase-trainer/src/fm/record.rs`の`Summary` |
 | 同時学習の終了報告`summary.json` | なし | `joint train` | なし | `crates/minase-trainer/src/joint/record.rs`の`Summary` |

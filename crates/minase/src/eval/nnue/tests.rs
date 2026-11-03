@@ -104,6 +104,103 @@ fn next(state: &mut u32) -> u32 {
     *state
 }
 
+/// 線形補正APIの検査には、埋め込みネットによらない幅2の固定重みを使う。
+fn linear_correction_base() -> Vec<u8> {
+    let mut values = [100; PIECE_STATE_COUNT];
+    values[11] = 200;
+    values[21] = 200;
+    let mut linear = vec![[1, -2]; FEATURE_COUNT];
+    linear[12][0] = -1;
+    linear[23][0] = -1;
+    let head = DirectScrelu::new(2, &[1; 4], 0, true).unwrap();
+    encode::<P, _>(&EncodeInput {
+        width: 2,
+        cp_per_logit: 200.0,
+        rule_set: "engine-default",
+        piece_values: &values,
+        linear: &linear,
+        weights: &vec![1; FEATURE_COUNT * 2],
+        biases: &[2; 2],
+        head: &head,
+    })
+    .unwrap()
+}
+
+#[test]
+fn add_to_linear_midgame_rejects_wrong_lengths_and_headers() {
+    let bytes = linear_correction_base();
+    assert!(matches!(
+        add_to_linear_midgame(&bytes, &[0; 3]),
+        Err(Error::InvalidParameterLength {
+            expected: FEATURE_COUNT,
+            actual: 3,
+            ..
+        })
+    ));
+    let corrections = vec![0; FEATURE_COUNT];
+    for length in [0, 191, 192, 192 + FEATURE_COUNT * 4 - 1] {
+        assert!(matches!(
+            add_to_linear_midgame(&bytes[..length], &corrections),
+            Err(Error::InvalidLength { .. })
+        ));
+    }
+    let mut invalid = bytes;
+    invalid[4..8].copy_from_slice(&4_u32.to_le_bytes());
+    assert!(matches!(
+        add_to_linear_midgame(&invalid, &corrections),
+        Err(Error::UnsupportedVersion { actual: 4 })
+    ));
+}
+
+#[test]
+fn add_to_linear_midgame_checks_overflow_and_accepts_exact_i16_limits() {
+    let bytes = linear_correction_base();
+    let mut corrections = vec![0; FEATURE_COUNT];
+    corrections[0] = i16::MAX;
+    assert_eq!(
+        add_to_linear_midgame(&bytes, &corrections),
+        Err(Error::ParameterOutOfRange {
+            parameter: "linear",
+            index: 0,
+            value: 32768,
+        })
+    );
+    corrections[0] = 0;
+    corrections[12] = i16::MIN;
+    assert_eq!(
+        add_to_linear_midgame(&bytes, &corrections),
+        Err(Error::ParameterOutOfRange {
+            parameter: "linear",
+            index: 12,
+            value: -32769,
+        })
+    );
+    corrections[0] = i16::MAX - 1;
+    corrections[11] = i16::MAX - 1;
+    corrections[12] = i16::MIN + 1;
+    corrections[23] = i16::MIN + 1;
+    let written = add_to_linear_midgame(&bytes, &corrections).unwrap();
+    let network = Nnue::decode(&written).unwrap();
+    assert_eq!(network.linear[0][0], i16::MAX);
+    assert_eq!(network.linear[12][0], i16::MIN);
+    assert_eq!(
+        &written[144..176],
+        Sha256::digest(&written[192..]).as_slice()
+    );
+    for offset in 0..bytes.len() {
+        if (144..176).contains(&offset)
+            || (192..192 + FEATURE_COUNT * 4).contains(&offset) && (offset - 192) % 4 < 2
+        {
+            continue;
+        }
+        assert_eq!(written[offset], bytes[offset], "offset {offset}");
+    }
+    assert_eq!(
+        add_to_linear_midgame(&bytes, &vec![0; FEATURE_COUNT]).unwrap(),
+        bytes
+    );
+}
+
 /// 任意の許容幅で、鏡映共有された非零の重みを独立に符号化する。
 fn random_bytes<F: FeatureSet>(width: usize) -> Vec<u8> {
     let mut state = 17;
