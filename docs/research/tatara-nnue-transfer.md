@@ -400,7 +400,7 @@ tataraのシャッフルの窓は、高速な記憶装置では0.43〜6.41%遅�
 
 (c) minaseの全体シャッフルと対局単位の検証分割はtataraより厳密である（[ADR](../adr/shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)）。
 対局の間の重複の割合は確認していない。
-minaseは静止探索の末端への置換を、PSTの学習の不採用と元の局面と末端の値の差（静かな局面でも平均185.8 cp）を理由に退けているが（[旧ADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)）、NNUEでは測っていない。
+minaseは静止探索の末端への置換を、PSTの学習の不採用と元の局面と末端の値の差（静かな局面でも平均185.8 cp）を理由に退けているが（[旧ADR](../adr/archive/train-the-nnue-on-search-value-lookahead-teachers.md)）、この理由は成り立たなかった。その後のP型の幅128での[比較](../measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)は`H0`だった（[ADR](../adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。
 minaseの生成器は最善手が捕獲または成りの局面を既に除いており、役割が一部重なる（[調査](teacher-generation-prior-art.md)の表）。
 
 (d) minaseのネットは隠れ層がないので、効果の大きかったHalfKPに近い可能性があるものの、隠れ層の有無が効果を分けたとは確かめられていない（推論）。
@@ -506,7 +506,7 @@ Stockfishの第2層の拡大は短時間で棄却されて長時間で採択さ�
 どちらも学習器だけで済み、エンジンの費用を増やさないが、対局の根拠が間接的なので後に置く。
 1本ずつ別に測り、同時に変えない。
 
-第6段階以降の候補は、静止探索の末端の置換、対局の間の重複の除去、127/128の係数、およびチェックポイントの平均である。
+第6段階以降の候補は、対局の間の重複の除去、127/128の係数、およびチェックポイントの平均である。
 いずれも上の段階で頭打ちが見えた後に、低費用の順で試す。
 
 試さない候補は、threatとeffect（速度の費用と入力の規模）、HalfKP系（2回の大敗とADR）、リスコア（教師にできる強い評価器がない）、norm lossとdense QAT（根拠がなく、後者は対象がない）、およびWRMの既定の係数（チェス向けの値で、中将棋での根拠がない）である。

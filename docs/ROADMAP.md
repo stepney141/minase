@@ -123,6 +123,7 @@
 | NNUEの線形経路を升によらない駒価値で初期化する学習 | [plans/archived/nnue-material-linear-init.md](plans/archived/nnue-material-linear-init.md) | 完了（採用） | 2026年10月26日 |
 | 審判層の裁定が繰り返す合法手生成の削減 | [plans/archived/referee-adjudication-movegen.md](plans/archived/referee-adjudication-movegen.md) | 完了（採用） | 2026年10月28日 |
 | NNUEの線形の経路の対局結果への回帰 | [plans/archived/nnue-outcome-regression.md](plans/archived/nnue-outcome-regression.md) | 完了（採用） | 2026年11月3日 |
+| NNUEの教師局面を静止探索の末端へ置き換える比較 | [plans/archived/nnue-qsearch-leaf.md](plans/archived/nnue-qsearch-leaf.md) | 完了（不採用） | 2026年11月4日 |
 | NNUEの世代反復をv0からやり直す | [plans/nnue-generation-reset.md](plans/nnue-generation-reset.md) | 起案 | |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/nnue-architecture-revision.md](plans/nnue-architecture-revision.md) | 起案 | |
 
@@ -130,9 +131,9 @@
 
 ### 直近の完了
 
+- [NNUEの教師局面を静止探索の末端へ置き換える比較](plans/archived/nnue-qsearch-leaf.md)は2026年11月4日に、不採用で完了した。やねうら王の`qsearch_psv`と同じ置き換え（qsearch leaf replacement）で学んだネットは、補正前のネットに対するSTCで`H0`だった（406有効ペア、得点率45.7%、[記録](measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)、[ADR](adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。結論はP型の幅128での結果であり、世代反復の教師には入れない。
 - [NNUEの線形の経路の対局結果への回帰](plans/archived/nnue-outcome-regression.md)は2026年11月3日に、採用で完了した。学習済みのネットの第1層と出力部を固定し、線形の経路の序中盤の列を教師の対局結果へのロジスティック回帰（Texel tuningと同種）で補正した（[ADR](adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。判定の対局の予測の損失は0.0071下がり（[記録](measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）、配置の距離は0.4602から0.4332へ下がった（[記録](measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。20〜99手に奔王が1〜2段にいる割合は86.0%から14.6%へ、麒麟が右端2筋にいる割合は39.9%から1.2%へ減ったが、仲人、銀将、王将、および金将の配置の距離は増えた。[STC](measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)は117ペア、[LTC](measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)は122ペアでともに`H1`となった。LTCでは機械の一時的な停止による時間切れが1件あり、該当ペアを除いたLLRも判定境界を超える。
 - [AlphaZero型探索のコードの配置と試験専用コードの整理](plans/archived/zero-code-layout.md)は2026年11月2日に、採用で完了した。王手限定の3手以内の勝ちの判定を`search/mate_in_three.rs`へ、共有の調整係数の表を`search/params.rs`へ、固定局面集を`crates/minase/tests/fixtures/`へ移し、役目を終えた測定用のcrateを削除して、毎サイクル使う集計だけを`minase data teacher-stats`へ移した（[ADR](adr/delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)）。本番の型と関数の中の試験専用のコードは子モジュールへ分け、規則を[テストの手引き](guides/testing-minase-rules.md)に加えた（[ADR](adr/keep-test-only-code-out-of-production-types-and-functions.md)）。探索の結果は変わらず、αβ探索のbench（52,746ノード）と自己対局の出力が整理の前後で一致した（[記録](measurements/zero-code-layout/zero-code-layout-behavior-check.md)）。次の強化学習のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。
-- [AlphaZero型探索の強化学習の再出発に向けた学習技法の導入](plans/archived/alphazero-restart-techniques.md)は2026年10月31日に、採用で完了した。強化学習を学び直す前に、利用者が選んだ9つの技法と学習率のウォームアップを、1つずつ比べずにまとめて入れた。自己対局では、Gumbel AlphaZeroのQの尺度を1.0にし、指す手の乱数に手数で減る倍率を掛けた。また、手番の25%だけを通常の回数で探索して方策を記録し、着手の後に王手限定の3手以内の勝ちがあれば打ち切る。この判定は、受けになりやすい応手を先に読む順序づけにより、結果を変えずに自己対局の生成の時間の延びの見込みを約165%から約4.3%に下げた（[記録](measurements/alphazero-restart-techniques/alphazero-restart-techniques-mate3-cost.md)）。ネットは入力に駒種ごとの利きと利き数の64面を足して159面にし、価値ヘッドを32チャネルに広げ、学習器はKataGoの3つの補助目標、新規局面数の4倍の抽出、および200万標本のウォームアップで学ぶ。Colab機のL4の[試走](measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)では、窓が1サイクル分のときの1サイクルが55.7分、1.76 CUであり、窓が満ちた後は約74〜77分、約2.2〜2.3 CUと見込む。
 
 ### 次の候補
 
