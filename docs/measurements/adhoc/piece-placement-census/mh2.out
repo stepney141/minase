@@ -1,0 +1,7 @@
+sep [(('勝', 'resign'), 78), (('負', 'resign'), 23), (('勝', 'royalsLost'), 19), (('勝', 'outoftime'), 6), (('負', 'royalsLost'), 5), (('負', 'outoftime'), 5), (('負', 'perpetualCheck'), 1), (('負', 'bareKing'), 1)]
+mid [(('勝', 'resign'), 28), (('負', 'resign'), 15), (('負', 'outoftime'), 10), (('勝', 'royalsLost'), 7), (('勝', 'outoftime'), 2), (('負', 'bareKing'), 1)]
+nnue [(('勝', 'resign'), 81), (('負', 'resign'), 20), (('勝', 'outoftime'), 8), (('勝', 'royalsLost'), 4), (('負', 'outoftime'), 3), (('負', 'bareKing'), 1), (('負', 'perpetualCheck'), 1)]
+Bot側の時間切れ負けを除く:
+ 9月〜10/4→2.0.0〜2.3.0 (5, 101, 36, -378, -633, -123)
+ 2.0.0〜2.3.0→NNUE (8, 49, 98, 237, 69, 405)
+ 9月〜10/4→NNUE (7, 106, 88, -14, -150, 122)
