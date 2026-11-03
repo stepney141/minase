@@ -28,6 +28,8 @@ def summarize(data, run):
             color = game["candidate_color"]
             if termination["kind"] == "cutoff":
                 result = "cutoff"
+            elif termination["kind"] == "forfeit":
+                result = "loss" if termination["loser"] == color else "win"
             elif winner is None:
                 result = "draw"
             else:
