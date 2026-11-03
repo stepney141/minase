@@ -30,7 +30,7 @@ LTCの時間切れ1件の扱いは[ADR](../../adr/correct-the-nnue-linear-path-b
 [先例の調査](../../research/self-play-bias-prior-art.md)にも、自己対局の閉ループの偏りを完全に解消した例はない。
 
 本書の目的は、この信号を線形の補正として評価に入れ、棋力と配置の偏りの両方が改善するかを対局で確かめることである。
-[配置の偏りの計画](../nnue-placement-bias.md)はAlphaZero型のネットの局面を前提にするので待機中だが、本書はその局面を使わず、既存の教師だけで試す。
+配置の偏りの計画（後に起案のまま取り下げた）はAlphaZero型のネットの局面を前提にするので待機中だが、本書はその局面を使わず、既存の教師だけで試す。
 
 本書で使う語を次のとおり定める。
 
@@ -72,7 +72,7 @@ LTCの時間切れ1件の扱いは[ADR](../../adr/correct-the-nnue-linear-path-b
 基点のネットは`crates/minase/nets/nnue.bin`である。
 配置の距離の基準には、[集計](../../measurements/adhoc/piece-placement-census.md)の対局を固定して使う。
 
-[配置の偏りの計画](../nnue-placement-bias.md)とは、結果回帰の考え方を共有するが、実装と測定は重ならない。
+配置の偏りの計画（後に起案のまま取り下げた）とは、結果回帰の考え方を共有するが、実装と測定は重ならない。
 本書で作る`fit-linear`は、その計画を再開するときに使える。
 
 本書は線形の経路を残すことを前提にする。
@@ -286,7 +286,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 採用した場合は、利用者の許可を得てmasterへ統合する。
 方式はADRに書き、結果回帰の定義はコードのdocコメントへ移し、[学習の手引き](../../guides/nnue-training.md)と[ROADMAP](../../ROADMAP.md)を改める。
 不採用の場合は、ブランチを統合しない。
-[配置の偏りの計画](../nnue-placement-bias.md)が再開するときは、ブランチの`fit-linear`を取り込むかどうかをその時点で決める。
+配置の偏りの計画（後に起案のまま取り下げた）が再開するときは、ブランチの`fit-linear`を取り込むかどうかをその時点で決める。
 最後に「状態」節を完了の段落に書き換えて本書を凍結し、`docs/plans/archived/`へ移す。
 
 ## 検証
@@ -312,7 +312,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 
 - [配置と対局結果の回帰の記録](../../measurements/adhoc/nnue-placement-outcome-regression.md)
 - [全駒種の配置の集計](../../measurements/adhoc/piece-placement-census.md)
-- [配置の偏りの計画（待機中）](../nnue-placement-bias.md)
+- 配置の偏りの計画（起案のまま取り下げた）
 - [自己対局の閉ループが生む偏りと盲点の先行事例](../../research/self-play-bias-prior-art.md)
 - [評価項目の自己対局による調整の調査（Texelの方法）](../../research/handcrafted-evaluation-selfplay.md)
 - [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
