@@ -16,8 +16,8 @@
 ## 状態
 
 進行中。2026年11月3日に起案し、同日に着手した。
-フェーズ1の実装を終えた。
-次の一手は、フェーズ2の回帰と判定である。
+フェーズ1の実装とフェーズ2の回帰を終え、判定の対局の予測は改善した（[記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
+次の一手は、フェーズ3の配置の距離の対局である。
 
 ## 目的
 
@@ -176,12 +176,11 @@ masterどうしの対局（基準の対局）と、補正ネットとmasterの�
 そこで、開始局面ごとに2回の対局の計4局をまとめて復元抽出し、各回で分布とMを計算し直して、Mの差（補正ネット−基準）の95%区間を求める（1,000回、乱数のシード1。[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）。
 区間の上限が0より小さければ「偏りが減った」とする。
 
-ペア数はフェーズ2で固定する。
-検出したい減少を、PST世代1からPST＋FMの差（0.102）の約3割にあたる0.03とする。
-正規近似で検出力80%を得るには、区間の半幅を0.021以下にする必要がある。
-既存の対局から、ペア数200、400、および800のときの半幅を上と同じ再抽出で見積もり、この条件を満たす最小のペア数を選ぶ（[教訓](../lessons/simulate-acceptance-criteria-on-the-candidate.md)）。
-800ペアでも満たさなければ、測定へ進まずに利用者へ報告する。
-ほとんど同じ2つのネットの対局へ判定を当て、誤って「偏りが減った」とならないことも確かめる（[教訓](../lessons/validate-diagnostic-rule-on-current-config.md)）。
+ペア数は200とする。
+検出したい減少を、PST世代1からPST＋FMの差（0.102）の約3割にあたる0.03としたとき、正規近似で検出力80%を得るには区間の半幅を0.021以下にする必要があり、既存の対局の再抽出では200ペアの半幅が0.0081だった（[教訓](../lessons/simulate-acceptance-criteria-on-the-candidate.md)、[記録](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）。
+0.03は検出力の計算に使う効果量であり、採用に必要な最小の改善幅ではない。
+学び直しただけのネットにもMの差が0.01程度あるので、判定が「偏りが減った」でも、その大きさと駒種ごとの内訳を記録に添える。
+判定が差のないネットを誤って「偏りが減った」としないことは、基準の対局と同じシードとペア数でmaster同士の対局をもう1回行い、同じ手順でMの差を求めて確かめる（対照の対局。[教訓](../lessons/validate-diagnostic-rule-on-current-config.md)）。
 
 あわせて5配置の割合と、駒種ごとの総変動距離を記録する。
 これらは判定に使わず、探索が補正を追って新しい癖を作っていないかを見るために使う。
@@ -259,17 +258,19 @@ Dの下限が0より大きければ、教師の対局と新しい対局で補正
 
 masterの`crates/minase/nets/nnue.bin`を補正ネットへ差し替えたコミットを作り、`cargo test --locked`を通す。
 探索の深さ9のbenchで、NPSがmasterと変わらないことを確かめる。
-同じシードとペア数で次の2つのSTCを行い、再生してMを求める。
+同じシードとペア数で次の3つのSTCを行い、再生してMを求める。
 
 ```console
 minase match run --run-dir data/matches/nnue-outcome-regression-reference-stc --seed <シード> \
+  --candidate commit:<master> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
+minase match run --run-dir data/matches/nnue-outcome-regression-control-stc --seed <シード> \
   --candidate commit:<master> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
 minase match run --run-dir data/matches/nnue-outcome-regression-placement-stc --seed <シード> \
   --candidate commit:<補正ネット> --baseline commit:<master> --each time=10000+100 elo --pairs <ペア数>
 ```
 
 シードは既存の測定のシードから上限ペア数以上離れた未使用の値を選ぶ（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
-完了条件は、2回の対局の結果が測定記録`nnue-outcome-regression-reference-stc`と`nnue-outcome-regression-placement-stc`に、Mの判定が後者に書かれていることである。
+完了条件は、3回の対局の結果が測定記録`nnue-outcome-regression-reference-stc`、`nnue-outcome-regression-control-stc`、および`nnue-outcome-regression-placement-stc`に、Mの判定が最後の記録に書かれていることである。
 
 ### フェーズ4　段階ゲート
 
