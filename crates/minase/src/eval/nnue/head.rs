@@ -42,6 +42,13 @@ pub struct PairwiseL16L32 {
     hidden2_weights: Box<[i8]>,
     hidden2_biases: [i32; 32],
     hidden2_output: [i16; 32],
+    shared_mirror_weights: Option<SharedMirrorWeights>,
+}
+
+/// 各視点の鏡映対から片側だけを取り出した、半幅の推論用重み。
+struct SharedMirrorWeights {
+    output_weights: Box<[i16]>,
+    hidden1_weights: Box<[i8]>,
 }
 
 impl PairwiseL16L32 {
@@ -99,6 +106,16 @@ impl PairwiseL16L32 {
             hidden2_weights: hidden2_weights.into(),
             hidden2_biases,
             hidden2_output,
+            shared_mirror_weights: shared_mirror.then(|| SharedMirrorWeights {
+                output_weights: output_weights
+                    .chunks_exact(width / 2)
+                    .flat_map(|view| view[..width / 4].iter().copied())
+                    .collect(),
+                hidden1_weights: hidden1_weights
+                    .chunks_exact(width / 2)
+                    .flat_map(|view| view[..width / 4].iter().copied())
+                    .collect(),
+            }),
         })
     }
 }
@@ -181,10 +198,34 @@ impl Head for PairwiseL16L32 {
         pairwise(us, &mut s[..width / 2]);
         pairwise(them, &mut s[width / 2..]);
 
+        let mut folded = [0_u8; 256];
+        let (input, output_weights, hidden1_weights) =
+            if let Some(weights) = &self.shared_mirror_weights {
+                let f = &mut folded[..width / 2];
+                // 各視点内のs[j]とs[j+H/4]を足す。和は0〜254に収まる。
+                for (view, values) in s.chunks_exact(width / 2).zip(f.chunks_exact_mut(width / 4)) {
+                    let (left, right) = view.split_at(width / 4);
+                    for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
+                        *value = a + b;
+                    }
+                }
+                (
+                    &*f,
+                    weights.output_weights.as_ref(),
+                    weights.hidden1_weights.as_ref(),
+                )
+            } else {
+                (
+                    &*s,
+                    self.output_weights.as_ref(),
+                    self.hidden1_weights.as_ref(),
+                )
+            };
+
         let mut u = [0_u8; 30];
-        for (k, row) in self.hidden1_weights.chunks_exact(width).enumerate() {
+        for (k, row) in hidden1_weights.chunks_exact(input.len()).enumerate() {
             let mut z = self.hidden1_biases[k];
-            for (&w, &a) in row.iter().zip(s.iter()) {
+            for (&w, &a) in row.iter().zip(input) {
                 z += i32::from(i16::from(w)) * i32::from(i16::from(a));
             }
             u[k] = ((i64::from(z) * i64::from(z)) >> 19).min(127) as u8;
@@ -199,7 +240,7 @@ impl Head for PairwiseL16L32 {
             y[k] = (z >> 6).clamp(0, 127) as u8;
         }
         let mut out = self.output_bias;
-        for (&w, &a) in self.output_weights.iter().zip(s.iter()) {
+        for (&w, &a) in output_weights.iter().zip(input) {
             out += i32::from(w) * i32::from(i16::from(a));
         }
         for (&w, &a) in self.hidden2_output.iter().zip(&y) {

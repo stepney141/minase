@@ -2184,11 +2184,14 @@ fn pairwise_output_matches_independent_integer_reference() {
     let mut saw_square_saturation = false;
     let mut saw_y_zero = false;
     let mut saw_y_saturation = false;
-    for width in [4, 8, 64, 256, 512] {
+    for width in [4, 8, 12, 64, 256, 260, 512] {
         for shared in [false, true] {
             for _ in 0..8 {
                 let p = HeadParameters::random(width, &mut state, shared);
                 let head = p.build(shared).unwrap();
+                let decoded = PairwiseL16L32::decode(&p.bytes(), width, shared).unwrap();
+                assert_eq!(head.to_bytes(), p.bytes());
+                assert_eq!(decoded.to_bytes(), p.bytes());
                 for case in 0..16 {
                     let mut inputs = [vec![0; width], vec![0; width]];
                     for acc in &mut inputs {
@@ -2211,16 +2214,14 @@ fn pairwise_output_matches_independent_integer_reference() {
                     assert_eq!(
                         i64::from(head.output(us, them)),
                         expected.out,
-                        "H={width}, case={case}"
+                        "new: H={width}, shared_mirror={shared}, case={case}"
+                    );
+                    assert_eq!(
+                        i64::from(decoded.output(us, them)),
+                        expected.out,
+                        "decode: H={width}, shared_mirror={shared}, case={case}"
                     );
                 }
-                assert_eq!(head.to_bytes(), p.bytes());
-                let decoded = PairwiseL16L32::decode(&p.bytes(), width, shared).unwrap();
-                assert_eq!(decoded.to_bytes(), p.bytes());
-                assert_eq!(
-                    decoded.output(&vec![255; width], &vec![-80; width]),
-                    head.output(&vec![255; width], &vec![-80; width])
-                );
             }
         }
     }
