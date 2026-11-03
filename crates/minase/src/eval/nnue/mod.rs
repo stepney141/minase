@@ -1,16 +1,15 @@
 //! MNUE版5の復号、差分更新、および線形と非線形の和による整数評価。
 //! 線形の経路は[`crate::eval::features`]の13,680個の基底特徴に載る序中盤用と終盤用のi16重みを、手番側視点で足す。
 //! 重みの単位は1/8センチポーンであり、王駒を含む盤上総駒数Nから`q = min(90, max(0, N − 2))`を求め、`(q×mg + (90−q)×eg)/720`で補間する。
-//! 非線形の経路は両視点の幅Hの第1層を、値を制限してから2乗する活性化関数SCReLUに通す。
-//! 出力部は`direct-screlu`（直接内積）、`direct-screlu-phase2`（2端点補間）、
-//! `screlu-hidden16`（幅16の隠れ層を加算）、`screlu-hidden16-phase2`（隠れ層を共有する2端点補間）を扱う。
-//! 各端点の区画は出力重み`i16[2H]`とバイアス`i32`で、序盤、終盤の順に置く。
-//! 隠れ層つきでは、続いて行優先の`W1: i8[16][2H]`、`b1: i32[16]`、各端点の`w2: i16[16]`を置く。
-//! 出力区画はファイル先頭から`192 + 13,680×4 + 47×4 + D×2H + 4H`バイト目に始まり、
-//! 全長はその位置に`Head::byte_len(H)`を足した値となる。Dは入力特徴数、Hは第1層の幅である。
-//! 補間は線形経路と同じqを使い、負値も床方向へ丸める。
-//! PST＋FMを置き換えた理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
-//! 構造の理由は`docs/adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md`、型引数を使う理由は`docs/adr/parameterize-the-nnue-by-feature-set-and-head-types.md`にある。
+//! 非線形の経路は尺度255のi16累算値を両視点でH個ずつ持ち、Hは4以上512以下の4の倍数とする。
+//! 各視点を4等分し、`c = clamp(acc, 0, 255)`から`(c[j]×c[j+H/4]) >> 9`を前後の半分で計算する。
+//! 手番側H/2個、相手側H/2個を連結し、[`head::PairwiseL16L32`]の幅15と幅32の隠れ層、および直接内積へ渡す。
+//! 出力部は位相に依存せず、尺度127×4,096のi32出力を`(i64(out)×scale + 32,768) >> 16`でセンチポーンへ戻す。
+//! 出力区画は`o: i16[H]`、`b: i32`、`W1: i8[15][H]`、`b1: i32[15]`、
+//! `W2: i8[32][30]`、`b2: i32[32]`、`v: i16[32]`の順に並ぶ。
+//! ファイル先頭から`192 + 13,680×4 + 47×4 + D×2H + 4H`バイト目に始まり、
+//! 全長はその位置に`Head::byte_len(H)`を足した値となる。Dは入力特徴数である。
+//! 出力部の式と値域は[`head`]、バイト配置と検証条件は[`Network::decode`]に定める。
 
 pub(crate) mod accumulator;
 pub mod feature_set;
@@ -23,7 +22,7 @@ mod tests;
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
 use feature_set::{FeatureSet, P};
 pub use format::{EncodeInput, Error, add_to_linear_midgame, architecture, encode};
-use head::{DirectScrelu, Head};
+use head::{Head, PairwiseL16L32};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
 pub use stats::AccumulatorStats;
 use std::marker::PhantomData;
@@ -38,9 +37,9 @@ pub struct Network<F: FeatureSet, H: Head> {
     accumulator_stats: stats::SharedStats,
     /// 基底特徴ごとの[序中盤, 終盤]。単位は1/8センチポーンである。
     linear: Box<[[i16; 2]]>,
-    /// 特徴ごとにH個が連続する第1層のi16重み。実数に対する尺度は127である。
+    /// 特徴ごとにH個が連続する第1層のi16重み。実数に対する尺度は255である。
     weights: Box<[i16]>,
-    /// 第1層のi16バイアス。実数に対する尺度は127であり、ファイルではi32で保存する。
+    /// 第1層のi16バイアス。実数に対する尺度は255であり、ファイルではi32で保存する。
     biases: Box<[i16]>,
     head: H,
     feature_set: PhantomData<F>,
@@ -65,7 +64,7 @@ pub struct Network<F: FeatureSet, H: Head> {
 /// 理由は`docs/adr/use-p-type-input-features-for-the-nnue.md`にある。
 pub type ActiveFeatureSet = P;
 /// 探索が使う出力部。
-pub type ActiveHead = DirectScrelu;
+pub type ActiveHead = PairwiseL16L32;
 /// 探索が使う具体化済みのNNUE。
 pub type Nnue = Network<ActiveFeatureSet, ActiveHead>;
 
@@ -216,7 +215,7 @@ pub(crate) fn breakdown(nnue: &Nnue, position: &Position) -> Breakdown {
         q,
         board: [0; 144],
         lion: 0,
-        nonlinear: nnue.nonlinear_cp(&accumulator, side, q as i32),
+        nonlinear: nnue.nonlinear_cp(&accumulator, side),
     };
     for square in position.occupied() {
         let piece = position

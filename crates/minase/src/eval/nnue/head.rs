@@ -1,119 +1,232 @@
-//! 両視点の非線形累算値を整数の出力へ変換する。
-//! 隠れ層の重みW1は尺度64で絶対値127以下、バイアスb1は尺度127×64で65,024以下とする。
-//! 隠れ層の出力重みw2は尺度4,096で絶対値8,192以下とする。
-//! P型では、W1の各行も各視点内の前半と後半で共有する。b1とw2には共有を課さない。
+//! 要素積、幅15と幅32の隠れ層、および直接内積で両視点の累算値を整数出力へ変換する。
+//! 第1層の尺度は255で、各視点のH成分を4等分し、隣り合う区画の要素積を取る。
+//! `c = clamp(acc, 0, 255)`をu16で持ち、`s = (c₁×c₂) >> 9`をu8へ格納する。
+//! 積の上限は65,025、sの範囲は0〜127であり、手番側H/2個、相手側H/2個の順に並べる。
+//!
+//! 幅15の層は`z = W1·s + b1`をi32で求め、
+//! `u[k] = min(127, (i64(z[k])²) >> 19)`と`u[15+k] = clamp(z[k] >> 6, 0, 127)`を連結する。
+//! 負のzも2乗し、幅32の層は`y = clamp((W2·u + b2) >> 6, 0, 127)`とする。
+//! 最終出力はi32の`o·s + v·y + b`であり、センチポーンへの換算は呼び手が行う。
+//! zと第2隠れ層の和の右シフトは算術シフト、要素積の右シフトは論理シフトである。
+//!
+//! oとvは尺度4,096のi16で絶対値8,192以下、W1とW2は尺度64のi8で絶対値127以下とする。
+//! b1とb2は尺度127×64のi32で絶対値65,024以下、bは尺度127×4,096のi32で絶対値4,161,536以下とする。
+//! P型ではoとW1の各行を、各視点内の成分jとj+H/4で共有する。後続の層には共有を課さない。
 
 use super::Error;
 use super::format::{read_i16, read_i32, validate_range};
 
 /// 出力区画の復号と、両視点の非線形累算値からの読み出し。
-/// 新しい出力部はこのトレイトの実装と構造記述の`head=`の名前を追加して定義し、入力特徴集合と第1層は変更しない。
 pub trait Head: Sized {
     /// 構造記述文字列での名前。
     const NAME: &'static str;
     /// 幅Hに対応する出力区画のバイト数。
     fn byte_len(width: usize) -> usize;
-    /// 出力区画の長さと範囲を検証し、`shared_mirror`ならjとj+H/2の共有も検査する。
+    /// 幅、区画長、値域を検査し、`shared_mirror`なら出力部の鏡映共有も検査する。
     fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error>;
     /// 検査済みの整数配列をリトルエンディアンで符号化する。
     fn to_bytes(&self) -> Vec<u8>;
-    /// 手番側と相手側の非線形累算値から、尺度変換前の出力を計算する。
-    /// 呼び手は線形経路と同じ係数qを渡し、0..=90を保証する。
-    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32;
+    /// 各視点の幅Hの累算値から、尺度変換前の出力を計算する。
+    fn output(&self, us: &[i16], them: &[i16]) -> i32;
 }
 
-/// SCReLU活性化後の両視点と出力重みの直接内積。
-/// 出力重みは手番側視点のH個に相手側視点のH個が続くi16で、尺度4,096、絶対値8,192以下である。
-/// 出力バイアスはi32で、尺度127×4,096、絶対値4,161,536以下である。
-pub struct DirectScrelu {
-    weights: Box<[i16]>,
-    bias: i32,
+/// `pairwise-l16-l32`の検査済み出力区画。幅Hは4以上512以下の4の倍数とする。
+/// バイト列は`o: i16[H]`、`b: i32`、`W1: i8[15][H]`、`b1: i32[15]`、
+/// `W2: i8[32][30]`、`b2: i32[32]`、`v: i16[32]`の順で、行列は行優先である。
+/// H=256で5,568バイトとなる。
+pub struct PairwiseL16L32 {
+    output_weights: Box<[i16]>,
+    output_bias: i32,
+    hidden1_weights: Box<[i8]>,
+    hidden1_biases: [i32; 15],
+    hidden2_weights: Box<[i8]>,
+    hidden2_biases: [i32; 32],
+    hidden2_output: [i16; 32],
 }
 
-impl Head for DirectScrelu {
-    const NAME: &'static str = "direct-screlu";
-
-    fn byte_len(width: usize) -> usize {
-        4 * width + 4
-    }
-
-    fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
-        validate_bytes::<Self>(bytes, width)?;
-        let weights: Box<[i16]> = bytes[..width * 4]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|b| read_i16(b, 0))
-            .collect();
-        let bias = read_i32(bytes, width * 4);
-        Self::new(width, &weights, bias, shared_mirror)
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(Self::byte_len(self.weights.len() / 2));
-        for value in &self.weights {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.bias.to_le_bytes());
-        bytes
-    }
-
-    /// 各累算値を`c = clamp(acc, 0, 127)`、`a = (c×c) >> 7`で活性化する。
-    /// 127で割る代わりに128で切り捨てる近似で、評価1回あたり2H回の除算を省く。
-    /// aは0〜126で、出力の絶対値は`2H×126×8,192 + 4,161,536`以下となり、H=512でもi32に収まる。
-    fn output(&self, us: &[i16], them: &[i16], _q: i32) -> i32 {
-        let width = self.weights.len() / 2;
-        let mut out = self.bias;
-        for (&value, &weight) in us.iter().zip(&self.weights[..width]) {
-            let c = value.clamp(0, 127);
-            let a = (c * c) >> 7;
-            out += i32::from(weight) * i32::from(a);
-        }
-        for (&value, &weight) in them.iter().zip(&self.weights[width..]) {
-            let c = value.clamp(0, 127);
-            let a = (c * c) >> 7;
-            out += i32::from(weight) * i32::from(a);
-        }
-        out
-    }
-}
-
-impl DirectScrelu {
-    /// 幅、配列長、値域、鏡映共有の順に検査する。
+impl PairwiseL16L32 {
+    /// 幅、配列長、全値域、鏡映共有の順に検査する。
+    /// W1とW2は行優先で、要素数はそれぞれ15Hと32×30である。
+    /// `shared_mirror`ではoとW1の各行の各視点内で、jとj+H/4の一致を要求する。
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         width: usize,
-        weights: &[i16],
-        bias: i32,
+        output_weights: &[i16],
+        output_bias: i32,
+        hidden1_weights: &[i8],
+        hidden1_biases: [i32; 15],
+        hidden2_weights: &[i8],
+        hidden2_biases: [i32; 32],
+        hidden2_output: [i16; 32],
         shared_mirror: bool,
     ) -> Result<Self, Error> {
         validate_width(width)?;
-        validate_length("output_weights", weights.len(), 2 * width)?;
+        validate_length("output_weights", output_weights.len(), width)?;
+        validate_length("hidden1_weights", hidden1_weights.len(), 15 * width)?;
+        validate_length("hidden2_weights", hidden2_weights.len(), 32 * 30)?;
         validate_range(
             "output_weights",
-            weights.iter().copied().map(i32::from),
+            output_weights.iter().copied().map(i32::from),
             8_192,
         )?;
-        validate_range("output_bias", [bias], 4_161_536)?;
+        validate_range("output_bias", [output_bias], 4_161_536)?;
+        validate_range(
+            "hidden1_weights",
+            hidden1_weights.iter().copied().map(i32::from),
+            127,
+        )?;
+        validate_range("hidden1_biases", hidden1_biases, 65_024)?;
+        validate_range(
+            "hidden2_weights",
+            hidden2_weights.iter().copied().map(i32::from),
+            127,
+        )?;
+        validate_range("hidden2_biases", hidden2_biases, 65_024)?;
+        validate_range(
+            "hidden2_output",
+            hidden2_output.into_iter().map(i32::from),
+            8_192,
+        )?;
         if shared_mirror {
-            validate_mirror("output_weights", weights, width)?;
+            validate_mirror("output_weights", output_weights, width)?;
+            validate_mirror("hidden1_weights", hidden1_weights, width)?;
         }
         Ok(Self {
-            weights: weights.into(),
-            bias,
+            output_weights: output_weights.into(),
+            output_bias,
+            hidden1_weights: hidden1_weights.into(),
+            hidden1_biases,
+            hidden2_weights: hidden2_weights.into(),
+            hidden2_biases,
+            hidden2_output,
         })
     }
+}
 
-    fn dot(&self, activated: &[u8]) -> i32 {
-        let mut out = self.bias;
-        for (&w, &a) in self.weights.iter().zip(activated) {
+impl Head for PairwiseL16L32 {
+    const NAME: &'static str = "pairwise-l16-l32";
+
+    fn byte_len(width: usize) -> usize {
+        2 * width + 4 + 15 * width + 15 * 4 + 32 * 30 + 32 * 4 + 32 * 2
+    }
+
+    fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
+        validate_width(width)?;
+        let expected = Self::byte_len(width);
+        if bytes.len() != expected {
+            return Err(Error::InvalidLength {
+                expected,
+                actual: bytes.len(),
+            });
+        }
+        let output_weights: Vec<i16> = (0..width).map(|i| read_i16(bytes, 2 * i)).collect();
+        let output_bias = read_i32(bytes, 2 * width);
+        let mut offset = 2 * width + 4;
+        let hidden1_weights: Vec<i8> = bytes[offset..offset + 15 * width]
+            .iter()
+            .map(|&value| value as i8)
+            .collect();
+        offset += 15 * width;
+        let hidden1_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
+        offset += 15 * 4;
+        let hidden2_weights: Vec<i8> = bytes[offset..offset + 32 * 30]
+            .iter()
+            .map(|&value| value as i8)
+            .collect();
+        offset += 32 * 30;
+        let hidden2_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
+        offset += 32 * 4;
+        let hidden2_output = std::array::from_fn(|k| read_i16(bytes, offset + 2 * k));
+        Self::new(
+            width,
+            &output_weights,
+            output_bias,
+            &hidden1_weights,
+            hidden1_biases,
+            &hidden2_weights,
+            hidden2_biases,
+            hidden2_output,
+            shared_mirror,
+        )
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::byte_len(self.output_weights.len()));
+        for value in &self.output_weights {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.output_bias.to_le_bytes());
+        bytes.extend(self.hidden1_weights.iter().map(|&value| value as u8));
+        for value in self.hidden1_biases {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend(self.hidden2_weights.iter().map(|&value| value as u8));
+        for value in self.hidden2_biases {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.hidden2_output {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    /// H=512でも`|z| ≤ 512×127² + 65,024`と
+    /// `|out| ≤ (512+32)×127×8,192 + 4,161,536`はi32に収まる。
+    fn output(&self, us: &[i16], them: &[i16]) -> i32 {
+        let width = self.output_weights.len();
+        assert_eq!(us.len(), width);
+        assert_eq!(them.len(), width);
+        let mut buffer = [0_u8; 512];
+        let s = &mut buffer[..width];
+        pairwise(us, &mut s[..width / 2]);
+        pairwise(them, &mut s[width / 2..]);
+
+        let mut u = [0_u8; 30];
+        for (k, row) in self.hidden1_weights.chunks_exact(width).enumerate() {
+            let mut z = self.hidden1_biases[k];
+            for (&w, &a) in row.iter().zip(s.iter()) {
+                z += i32::from(i16::from(w)) * i32::from(i16::from(a));
+            }
+            u[k] = ((i64::from(z) * i64::from(z)) >> 19).min(127) as u8;
+            u[15 + k] = (z >> 6).clamp(0, 127) as u8;
+        }
+        let mut y = [0_u8; 32];
+        for (k, row) in self.hidden2_weights.as_chunks::<30>().0.iter().enumerate() {
+            let mut z = self.hidden2_biases[k];
+            for (&w, &a) in row.iter().zip(&u) {
+                z += i32::from(i16::from(w)) * i32::from(i16::from(a));
+            }
+            y[k] = (z >> 6).clamp(0, 127) as u8;
+        }
+        let mut out = self.output_bias;
+        for (&w, &a) in self.output_weights.iter().zip(s.iter()) {
+            out += i32::from(w) * i32::from(i16::from(a));
+        }
+        for (&w, &a) in self.hidden2_output.iter().zip(&y) {
             out += i32::from(w) * i32::from(i16::from(a));
         }
         out
     }
 }
 
+/// 1視点の[A, B, Aの鏡映, Bの鏡映]を、2つの要素積へ縮める。
+fn pairwise(acc: &[i16], output: &mut [u8]) {
+    let quarter = acc.len() / 4;
+    for (half, values) in acc
+        .chunks_exact(2 * quarter)
+        .zip(output.chunks_exact_mut(quarter))
+    {
+        let (left, right) = half.split_at(quarter);
+        for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
+            let a = a.clamp(0, 255) as u16;
+            let b = b.clamp(0, 255) as u16;
+            *value = ((a * b) >> 9) as u8;
+        }
+    }
+}
+
 fn validate_width(width: usize) -> Result<(), Error> {
-    if !(2..=512).contains(&width) || !width.is_multiple_of(2) {
+    if !(4..=512).contains(&width) || !width.is_multiple_of(4) {
         return Err(Error::InvalidWidth {
             actual: width as u32,
         });
@@ -132,397 +245,21 @@ fn validate_length(parameter: &'static str, actual: usize, expected: usize) -> R
     Ok(())
 }
 
-fn validate_bytes<H: Head>(bytes: &[u8], width: usize) -> Result<(), Error> {
-    validate_width(width)?;
-    if bytes.len() != H::byte_len(width) {
-        return Err(Error::InvalidLength {
-            expected: H::byte_len(width),
-            actual: bytes.len(),
-        });
-    }
-    Ok(())
-}
-
 fn validate_mirror<T: PartialEq>(
     parameter: &'static str,
     weights: &[T],
     width: usize,
 ) -> Result<(), Error> {
-    for (row_index, row) in weights.chunks_exact(width).enumerate() {
-        for j in 0..width / 2 {
-            if row[j] != row[j + width / 2] {
+    let half = width / 2;
+    for (block, row) in weights.chunks_exact(half).enumerate() {
+        for j in 0..width / 4 {
+            if row[j] != row[j + width / 4] {
                 return Err(Error::MirrorMismatch {
                     parameter,
-                    index: row_index * width + j,
+                    index: block * half + j,
                 });
             }
         }
     }
     Ok(())
-}
-
-fn activate<'a>(us: &[i16], them: &[i16], buffer: &'a mut [u8; 1024]) -> &'a [u8] {
-    let values = &mut buffer[..us.len() + them.len()];
-    for (a, &value) in values[..us.len()].iter_mut().zip(us) {
-        let c = value.clamp(0, 127);
-        *a = ((c * c) >> 7) as u8;
-    }
-    for (a, &value) in values[us.len()..].iter_mut().zip(them) {
-        let c = value.clamp(0, 127);
-        *a = ((c * c) >> 7) as u8;
-    }
-    values
-}
-
-fn interpolate(open: i32, end: i32, q: i32) -> i32 {
-    debug_assert!((0..=90).contains(&q));
-    (i64::from(q) * i64::from(open) + i64::from(90 - q) * i64::from(end)).div_euclid(90) as i32
-}
-
-/// 尺度64の重みと尺度127×64のバイアスを持つ、幅16の隠れ層。
-struct Hidden16 {
-    weights: Box<[i8]>,
-    biases: [i32; 16],
-}
-
-impl Hidden16 {
-    fn new(width: usize, weights: &[i8], biases: [i32; 16]) -> Result<Self, Error> {
-        validate_length("hidden_weights", weights.len(), 16 * 2 * width)?;
-        validate_range(
-            "hidden_weights",
-            weights.iter().copied().map(i32::from),
-            127,
-        )?;
-        validate_range("hidden_biases", biases, 65_024)?;
-        Ok(Self {
-            weights: weights.into(),
-            biases,
-        })
-    }
-
-    fn output(&self, activated: &[u8]) -> [u8; 16] {
-        let mut output = [0; 16];
-        for (k, value) in output.iter_mut().enumerate() {
-            let row = &self.weights[k * activated.len()..(k + 1) * activated.len()];
-            let mut z = self.biases[k];
-            for (&w, &a) in row.iter().zip(activated) {
-                z += i32::from(i16::from(w)) * i32::from(i16::from(a));
-            }
-            *value = (z >> 6).clamp(0, 127) as u8;
-        }
-        output
-    }
-
-    fn append_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(self.weights.iter().map(|&w| w as u8));
-        for bias in self.biases {
-            bytes.extend_from_slice(&bias.to_le_bytes());
-        }
-    }
-}
-
-/// `direct-screlu-phase2`の検査済み出力区画。端点は序盤、終盤の順に並ぶ。
-pub struct DirectScreluPhase2 {
-    endpoints: [DirectScrelu; 2],
-}
-impl DirectScreluPhase2 {
-    /// 整数配列の長さ、全値域、鏡映共有の順に検査する。
-    /// 出力重みの尺度は4,096であり、両端点の値域は直接出力部と同じである。
-    pub fn new(
-        width: usize,
-        output_weights: [&[i16]; 2],
-        output_biases: [i32; 2],
-        shared_mirror: bool,
-    ) -> Result<Self, Error> {
-        validate_width(width)?;
-        for weights in output_weights {
-            validate_length("output_weights", weights.len(), 2 * width)?;
-        }
-        let endpoints = [
-            DirectScrelu::new(width, output_weights[0], output_biases[0], false)?,
-            DirectScrelu::new(width, output_weights[1], output_biases[1], false)?,
-        ];
-        if shared_mirror {
-            for endpoint in &endpoints {
-                validate_mirror("output_weights", &endpoint.weights, width)?;
-            }
-        }
-        Ok(Self { endpoints })
-    }
-}
-impl Head for DirectScreluPhase2 {
-    const NAME: &'static str = "direct-screlu-phase2";
-    fn byte_len(width: usize) -> usize {
-        2 * (4 * width + 4)
-    }
-    fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
-        validate_bytes::<Self>(bytes, width)?;
-        let weights: [Vec<i16>; 2] = std::array::from_fn(|e| {
-            (0..2 * width)
-                .map(|i| read_i16(bytes, e * (4 * width + 4) + 2 * i))
-                .collect()
-        });
-        let biases = std::array::from_fn(|e| read_i32(bytes, e * (4 * width + 4) + 4 * width));
-        Self::new(
-            width,
-            weights.each_ref().map(Vec::as_slice),
-            biases,
-            shared_mirror,
-        )
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for endpoint in &self.endpoints {
-            bytes.extend(endpoint.to_bytes());
-        }
-        bytes
-    }
-    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32 {
-        let mut buffer = [0; 1024];
-        let activated = activate(us, them, &mut buffer);
-        interpolate(
-            self.endpoints[0].dot(activated),
-            self.endpoints[1].dot(activated),
-            q,
-        )
-    }
-}
-
-/// `screlu-hidden16`の検査済み出力区画。直接内積に幅16の隠れ層の寄与を加算する。
-pub struct ScreluHidden16 {
-    endpoints: [DirectScrelu; 1],
-    hidden: Hidden16,
-    hidden_output: [[i16; 16]; 1],
-}
-impl ScreluHidden16 {
-    /// 整数配列の長さ、全値域、鏡映共有の順に検査する。
-    /// 出力重みの尺度は4,096、隠れ層の重みの尺度は64である。
-    pub fn new(
-        width: usize,
-        output_weights: [&[i16]; 1],
-        output_biases: [i32; 1],
-        hidden_weights: &[i8],
-        hidden_biases: [i32; 16],
-        hidden_output: [[i16; 16]; 1],
-        shared_mirror: bool,
-    ) -> Result<Self, Error> {
-        validate_width(width)?;
-        for weights in output_weights {
-            validate_length("output_weights", weights.len(), 2 * width)?;
-        }
-        validate_length("hidden_weights", hidden_weights.len(), 32 * width)?;
-        let endpoints = [DirectScrelu::new(
-            width,
-            output_weights[0],
-            output_biases[0],
-            false,
-        )?];
-        let hidden = Hidden16::new(width, hidden_weights, hidden_biases)?;
-        validate_range(
-            "hidden_output",
-            hidden_output.iter().flatten().copied().map(i32::from),
-            8_192,
-        )?;
-        if shared_mirror {
-            for endpoint in &endpoints {
-                validate_mirror("output_weights", &endpoint.weights, width)?;
-            }
-            validate_mirror("hidden_weights", &hidden.weights, width)?;
-        }
-        Ok(Self {
-            endpoints,
-            hidden,
-            hidden_output,
-        })
-    }
-}
-impl Head for ScreluHidden16 {
-    const NAME: &'static str = "screlu-hidden16";
-    fn byte_len(width: usize) -> usize {
-        4 * width + 4 + 32 * width + 64 + 32
-    }
-    fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
-        validate_bytes::<Self>(bytes, width)?;
-        let weights: [Vec<i16>; 1] = std::array::from_fn(|e| {
-            (0..2 * width)
-                .map(|i| read_i16(bytes, e * (4 * width + 4) + 2 * i))
-                .collect()
-        });
-        let biases = std::array::from_fn(|e| read_i32(bytes, e * (4 * width + 4) + 4 * width));
-        let offset = 4 * width + 4;
-        let hidden_weights: Vec<i8> = bytes[offset..offset + 32 * width]
-            .iter()
-            .map(|&b| b as i8)
-            .collect();
-        let offset = offset + 32 * width;
-        let hidden_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
-        let hidden_output = std::array::from_fn(|e| {
-            std::array::from_fn(|k| read_i16(bytes, offset + 64 + e * 32 + 2 * k))
-        });
-        Self::new(
-            width,
-            weights.each_ref().map(Vec::as_slice),
-            biases,
-            &hidden_weights,
-            hidden_biases,
-            hidden_output,
-            shared_mirror,
-        )
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for endpoint in &self.endpoints {
-            bytes.extend(endpoint.to_bytes());
-        }
-        self.hidden.append_bytes(&mut bytes);
-        for row in self.hidden_output {
-            for value in row {
-                bytes.extend_from_slice(&value.to_le_bytes());
-            }
-        }
-        bytes
-    }
-    fn output(&self, us: &[i16], them: &[i16], _q: i32) -> i32 {
-        let mut buffer = [0; 1024];
-        let activated = activate(us, them, &mut buffer);
-        let h = self.hidden.output(activated);
-        let mut out = self.endpoints[0].dot(activated);
-        for (&w, &a) in self.hidden_output[0].iter().zip(&h) {
-            out += i32::from(w) * i32::from(i16::from(a));
-        }
-        out
-    }
-}
-
-/// `screlu-hidden16-phase2`の検査済み出力区画。端点は序盤、終盤の順に並ぶ。
-pub struct ScreluHidden16Phase2 {
-    endpoints: [DirectScrelu; 2],
-    hidden: Hidden16,
-    hidden_output: [[i16; 16]; 2],
-}
-impl ScreluHidden16Phase2 {
-    /// 整数配列の長さ、全値域、鏡映共有の順に検査する。
-    /// 出力重みの尺度は4,096、隠れ層の重みの尺度は64である。
-    pub fn new(
-        width: usize,
-        output_weights: [&[i16]; 2],
-        output_biases: [i32; 2],
-        hidden_weights: &[i8],
-        hidden_biases: [i32; 16],
-        hidden_output: [[i16; 16]; 2],
-        shared_mirror: bool,
-    ) -> Result<Self, Error> {
-        validate_width(width)?;
-        for weights in output_weights {
-            validate_length("output_weights", weights.len(), 2 * width)?;
-        }
-        validate_length("hidden_weights", hidden_weights.len(), 32 * width)?;
-        let endpoints = [
-            DirectScrelu::new(width, output_weights[0], output_biases[0], false)?,
-            DirectScrelu::new(width, output_weights[1], output_biases[1], false)?,
-        ];
-        let hidden = Hidden16::new(width, hidden_weights, hidden_biases)?;
-        validate_range(
-            "hidden_output",
-            hidden_output.iter().flatten().copied().map(i32::from),
-            8_192,
-        )?;
-        if shared_mirror {
-            for endpoint in &endpoints {
-                validate_mirror("output_weights", &endpoint.weights, width)?;
-            }
-            validate_mirror("hidden_weights", &hidden.weights, width)?;
-        }
-        Ok(Self {
-            endpoints,
-            hidden,
-            hidden_output,
-        })
-    }
-}
-impl Head for ScreluHidden16Phase2 {
-    const NAME: &'static str = "screlu-hidden16-phase2";
-    fn byte_len(width: usize) -> usize {
-        2 * (4 * width + 4) + 32 * width + 64 + 2 * 32
-    }
-    fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
-        validate_bytes::<Self>(bytes, width)?;
-        let weights: [Vec<i16>; 2] = std::array::from_fn(|e| {
-            (0..2 * width)
-                .map(|i| read_i16(bytes, e * (4 * width + 4) + 2 * i))
-                .collect()
-        });
-        let biases = std::array::from_fn(|e| read_i32(bytes, e * (4 * width + 4) + 4 * width));
-        let offset = 2 * (4 * width + 4);
-        let hidden_weights: Vec<i8> = bytes[offset..offset + 32 * width]
-            .iter()
-            .map(|&b| b as i8)
-            .collect();
-        let offset = offset + 32 * width;
-        let hidden_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
-        let hidden_output = std::array::from_fn(|e| {
-            std::array::from_fn(|k| read_i16(bytes, offset + 64 + e * 32 + 2 * k))
-        });
-        Self::new(
-            width,
-            weights.each_ref().map(Vec::as_slice),
-            biases,
-            &hidden_weights,
-            hidden_biases,
-            hidden_output,
-            shared_mirror,
-        )
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for endpoint in &self.endpoints {
-            bytes.extend(endpoint.to_bytes());
-        }
-        self.hidden.append_bytes(&mut bytes);
-        for row in self.hidden_output {
-            for value in row {
-                bytes.extend_from_slice(&value.to_le_bytes());
-            }
-        }
-        bytes
-    }
-    fn output(&self, us: &[i16], them: &[i16], q: i32) -> i32 {
-        let mut buffer = [0; 1024];
-        let activated = activate(us, them, &mut buffer);
-        let h = self.hidden.output(activated);
-        let mut outputs = [0; 2];
-        for (e, out) in outputs.iter_mut().enumerate() {
-            *out = self.endpoints[e].dot(activated);
-            for (&w, &a) in self.hidden_output[e].iter().zip(&h) {
-                *out += i32::from(w) * i32::from(i16::from(a));
-            }
-        }
-        interpolate(outputs[0], outputs[1], q)
-    }
-}
-
-/// 直接出力の区画から、全位相で同じ評価を返すテスト用区画を作る。
-#[cfg(test)]
-pub(crate) fn from_direct<H: Head>(
-    bytes: &[u8],
-    width: usize,
-    shared_mirror: bool,
-) -> Result<H, Error> {
-    let direct = DirectScrelu::decode(bytes, width, shared_mirror)?;
-    let mut bytes = direct.to_bytes();
-    match H::NAME {
-        DirectScrelu::NAME => {}
-        DirectScreluPhase2::NAME => bytes.extend(direct.to_bytes()),
-        ScreluHidden16::NAME => bytes.resize(H::byte_len(width), 0),
-        ScreluHidden16Phase2::NAME => {
-            bytes.extend(direct.to_bytes());
-            bytes.resize(H::byte_len(width), 0);
-        }
-        _ => {
-            return Err(Error::UnexpectedArchitecture {
-                actual: H::NAME.into(),
-            });
-        }
-    }
-    H::decode(&bytes, width, shared_mirror)
 }
