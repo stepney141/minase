@@ -16,7 +16,7 @@ crates.ioへの公開は取り消せない。
 
 2つのcrateは別々の版数を持ち、cargo-releaseを1つのcrateずつ実行してリリースする。
 タグはライブラリが`minase-core-vX.Y.Z`、エンジンが従来の系列を引き継ぐ`vX.Y.Z`とし、各crateの変更履歴にはそのcrateのディレクトリ以下を変更したコミットだけを載せる。
-cargo-releaseはpushとcrates.ioへの公開を行わず、公開はタグとpushを確かめた後に`cargo publish`で手動で行う（手順はCONTRIBUTING.mdの「リリースの手順」にある）。
+cargo-releaseはpushとcrates.ioへの公開を行わず、公開はタグとpushを確かめた後に`cargo publish`で手動で行う（手順は[リリースの手引き](../guides/release.md)にある）。
 
 ## 検討した代案
 

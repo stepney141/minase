@@ -12,6 +12,7 @@
 | [debugging.md](debugging.md) | 症状を再現し、原因の局面と処理まで絞り込み、修正を確かめる手順 | 不具合を調べるとき |
 | [codex-delegation.md](codex-delegation.md) | codexへ実装を委任する手順と既知の落とし穴 | 実装をcodexへ任せるとき |
 | [file-formats.md](file-formats.md) | ディスクに読み書きするファイル形式と、その仕様の場所の一覧 | ファイル形式の仕様を探すとき |
+| [release.md](release.md) | 版数の決定からタグのpush、およびcrates.ioへの公開までの手順 | ライブラリまたはエンジンをリリースするとき |
 
 ## 棋力の測定と係数の調整
 

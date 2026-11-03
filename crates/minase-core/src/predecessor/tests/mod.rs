@@ -156,7 +156,7 @@ fn assert_admissible(rules: MoveRules, p: &Position) {
         };
         *origins.entry((pc.color().unwrap(), origin)).or_insert(0) += 1;
     }
-    // RULES.md第5条の配置から独立に記した由来別枚数。
+    // chu-shogi.md第5条の配置から独立に記した由来別枚数。
     for (&(_, kind), &count) in &origins {
         let maximum = match kind {
             PieceKind::Pawn => 12,

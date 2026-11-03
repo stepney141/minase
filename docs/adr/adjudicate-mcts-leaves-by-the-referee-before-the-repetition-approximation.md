@@ -7,7 +7,7 @@
 ## コンテキスト
 
 [MCTSの反復の扱いを定めた決定](archive/score-repetition-in-mcts-by-the-alpha-beta-rules.md)は、探索木の中の反復をαβ探索と同じ規則で近似し、引き分けの値をR1の反復に限ってcpから勝率へ換算すると定めていた。
-この決定の下で、探索木の駆動部`crates/minase/src/search/mcts/driver.rs`は、新しい節点について相手の最後の王駒の捕獲と合法手なしだけを終局とし、審判層`crates/minase-core/src/game/adjudication/`が裁定する詰み（RULES.md第21条第2項）、駒枯れ（第22条）、裸玉（E3）、および正確なR1の4回目の出現を判定していなかった。
+この決定の下で、探索木の駆動部`crates/minase/src/search/mcts/driver.rs`は、新しい節点について相手の最後の王駒の捕獲と合法手なしだけを終局とし、審判層`crates/minase-core/src/game/adjudication/`が裁定する詰み（chu-shogi.md第21条第2項）、駒枯れ（第22条）、裸玉（E3）、および正確なR1の4回目の出現を判定していなかった。
 2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)は、駒枯れの勝ちと引き分け、および詰みの3例で、審判層が終局とする局面を探索木がネットに評価させ、確定した結果と異なるQを返すことを再現した。
 自己対局の価値の教師は選んだ手のQであり、方策の目標も同じ探索木から作るので、この不一致は終局の近くの教師を歪め、1手32回の探索では規則上の詰みを見逃す。
 αβ探索は[探索木の中では駒枯れ、裸玉、および詰みの裁定を近似する決定](approximate-exhaustion-and-mate-inside-search-tree.md)に従い、詰みは1手深く読んで王駒の捕獲として得るが、探索回数の少ないMCTSではその代用が働かない。

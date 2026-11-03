@@ -8,7 +8,7 @@ The library contains no search or evaluation, and it is the rules layer of the [
 
 The rules follow the Japan Chu Shogi Association by default.
 Local rules used by lishogi, HaChu, and other sources are selected through rule codes from four groups (lion rules L, promotion rules P, repetition rules R, and bare-king rules E), or through the presets `engine-default` and `lishogi`.
-The rule book that defines each code and cites its sources is [RULES.md](https://github.com/stepney141/minase/blob/master/docs/rules/RULES.md) (Japanese) in the repository.
+The rule book that defines each code and cites its sources is [chu-shogi.md](https://github.com/stepney141/minase/blob/master/docs/rules/chu-shogi.md) (Japanese) in the repository.
 
 ## Example
 

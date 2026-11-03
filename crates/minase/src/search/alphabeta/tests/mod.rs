@@ -1,6 +1,6 @@
 //! 探索の共通試験補助。
 
-// RULES.md第20条から第23条により、最後の王駒の捕獲と合法手なしを負けとし、王駒が残る間は探索を続ける。
+// chu-shogi.md第20条から第23条により、最後の王駒の捕獲と合法手なしを負けとし、王駒が残る間は探索を続ける。
 // 探索は捕獲までを含む手数で詰み値を表し、深さ0では静止探索へ移る。
 // 第31条R1の反復は1周で攻撃側の負けを近似し、双方またはどちらも攻撃側でなければ引き分けとする。
 // 近似の理由は docs/adr/archive/approximate-adjudication-inside-search-tree.md にある。
@@ -449,7 +449,7 @@ fn with_repetition_root_searcher(
     with_draw_value_root_searcher(nnue, position, rules, repetition, DRAW_SCORE, history, test);
 }
 
-/// RULES.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
+/// chu-shogi.md第31条R1の引き分けの値も指定し、時間制限のない単一ワーカーで検査する。
 fn with_draw_value_root_searcher(
     nnue: &Nnue,
     position: &Position,

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn article_7_9_gold_steps_and_captures_for_both_sides_and_corners() {
-    // RULES.md第7条、第9条に基づき、金将の1升移動、捕獲、および盤端を逆生成する。
+    // chu-shogi.md第7条、第9条に基づき、金将の1升移動、捕獲、および盤端を逆生成する。
     for color in Color::ALL {
         for corner in [false, true] {
             let rank = if color == Color::Black { 4 } else { 7 };

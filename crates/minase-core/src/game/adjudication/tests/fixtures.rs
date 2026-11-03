@@ -55,7 +55,7 @@ fn assert_exhaustion(
     );
 }
 
-/// RULES.md第8条第1項・第7項、第12条第4項、第20条第4項。
+/// chu-shogi.md第8条第1項・第7項、第12条第4項、第20条第4項。
 /// 太子だけでも最後の王駒であり、王駒2枚は1手で両方取る必要がある。
 /// 3枚は最大捕獲数2枚を超え、0枚なら取るべき王駒がない。
 #[test]
@@ -83,7 +83,7 @@ fn articles_8_12_20_last_royal_capture_counts_all_remaining_royals() {
     }
 }
 
-/// RULES.md第11条第1項d・第2項・第4項、第12条第5項・第7項。
+/// chu-shogi.md第11条第1項d・第2項・第4項、第12条第5項・第7項。
 /// 自駒または第15条の先獅子で取れない獅子を跳び越して王駒を取れる。
 #[test]
 fn articles_11_12_15_royal_capture_jumps_over_uncapturable_blockers() {
@@ -129,7 +129,7 @@ fn articles_11_12_15_royal_capture_jumps_over_uncapturable_blockers() {
     }
 }
 
-/// RULES.md第30条P5・P6は最奥段への成りを強制しても、王駒の捕獲手を消さない。
+/// chu-shogi.md第30条P5・P6は最奥段への成りを強制しても、王駒の捕獲手を消さない。
 #[test]
 fn article_30_p5_p6_forced_promotion_preserves_royal_capture() {
     for (kind, code, deferred) in [
@@ -164,7 +164,7 @@ fn article_30_p5_p6_forced_promotion_preserves_royal_capture() {
     }
 }
 
-/// RULES.md第19条第2項・第3項。最奥段の不成の歩兵・香車は近くの王駒を取れない。
+/// chu-shogi.md第19条第2項・第3項。最奥段の不成の歩兵・香車は近くの王駒を取れない。
 #[test]
 fn article_19_dead_pawns_and_lances_cannot_capture_a_royal() {
     let generator = MoveGenerator::standard();
@@ -193,7 +193,7 @@ fn assert_attacking(mut board: Position, mv: Move, expected: bool) {
     assert_eq!(move_was_attacking(&board, &generator, mover, mv), expected);
 }
 
-/// RULES.md第14条第2項・第3項、第31条R1。
+/// chu-shogi.md第14条第2項・第3項、第31条R1。
 /// 動かした獅子の唯一の捕獲対象が、隣接しない足のある獅子なら攻撃的着手ではない。
 #[test]
 fn articles_14_31_attacking_move_respects_lion_capture_restrictions() {
@@ -215,7 +215,7 @@ fn articles_14_31_attacking_move_respects_lion_capture_restrictions() {
     }
 }
 
-/// RULES.md第12条第9項、第31条R1。じっとの後も元の升から捕獲できれば攻撃的である。
+/// chu-shogi.md第12条第9項、第31条R1。じっとの後も元の升から捕獲できれば攻撃的である。
 /// Moveの正準形では、空升を経由するじっとはmid: Noneで表す。
 #[test]
 fn articles_12_31_jitto_keeps_the_moved_pieces_capture_threat() {
@@ -231,7 +231,7 @@ fn articles_12_31_jitto_keeps_the_moved_pieces_capture_threat() {
     assert_attacking(board, step(sq(5, 5), sq(5, 5)), true);
 }
 
-/// RULES.md第31条R1は動かさなかった駒による王駒への利きも数え、
+/// chu-shogi.md第31条R1は動かさなかった駒による王駒への利きも数え、
 /// 王将と太子の片方への利きだけでも攻撃的とする。他の駒への既存の利きは数えない。
 #[test]
 fn article_31_attacking_move_counts_any_royal_but_not_unmoved_nonroyal_threats() {
@@ -261,7 +261,7 @@ fn article_31_attacking_move_counts_any_royal_but_not_unmoved_nonroyal_threats()
     }
 }
 
-/// RULES.md第22条第1項・第5項・第7項。余分な獅子を王将で取れれば1手猶予、
+/// chu-shogi.md第22条第1項・第5項・第7項。余分な獅子を王将で取れれば1手猶予、
 /// 取れない場合または猶予消化後は余分な駒を持つ側が勝つ。
 #[test]
 fn article_22_lion_extra_piece_can_start_or_exhaust_the_grace() {
@@ -290,7 +290,7 @@ fn article_22_lion_extra_piece_can_start_or_exhaust_the_grace() {
     }
 }
 
-/// RULES.md第13条第6項、第15条第1項、第22条第1項・第5項・第7項。
+/// chu-shogi.md第13条第6項、第15条第1項、第22条第1項・第5項・第7項。
 /// 王将を足とする先獅子は、相手王将が余分な獅子に疑似利きを持っていても捕獲を禁じる。
 /// 相手王将は最後の王駒にも届かないため猶予は始まらず、先獅子がなければ猶予を与える。
 #[test]
@@ -330,7 +330,7 @@ fn articles_13_15_22_sente_lion_blocks_piece_exhaustion_grace() {
     );
 }
 
-/// RULES.md第22条第4項・第5項・第9項。死に駒を除き、王将と太子のどちらを取る手も
+/// chu-shogi.md第22条第4項・第5項・第9項。死に駒を除き、王将と太子のどちらを取る手も
 /// 猶予に数える。双方が王駒1枚なら同条第8項の引き分けとなる。
 #[test]
 fn article_22_grace_counts_either_royal_and_ignores_dead_pieces() {
@@ -386,7 +386,7 @@ fn article_22_grace_counts_either_royal_and_ignores_dead_pieces() {
     }
 }
 
-/// RULES.md第32条E3。価値ある駒2枚の側から離れた裸玉は負けとなり、
+/// chu-shogi.md第32条E3。価値ある駒2枚の側から離れた裸玉は負けとなり、
 /// 双方の裸玉が互いを取れなければ引き分ける。隣接する余分な駒は取り返せる。
 #[test]
 fn article_32_bare_king_outcomes_match_the_reference() {
@@ -491,7 +491,7 @@ fn assert_r1_candidate(
     );
 }
 
-/// RULES.md第31条R1。可逆手12手かつ4回目が裁定の境界であり、
+/// chu-shogi.md第31条R1。可逆手12手かつ4回目が裁定の境界であり、
 /// 不可逆手、候補込み11手、未出現、候補で3回目のそれぞれでは裁定しない。
 #[test]
 fn article_31_r1_candidate_gates_match_recording_a_cloned_history() {
@@ -603,7 +603,7 @@ fn assert_r1_candidate_attack_calls(
     assert_eq!(*history, before);
 }
 
-/// RULES.md第31条R1の前提を満たさない候補は攻撃判定を呼ばず、裁定する候補だけが
+/// chu-shogi.md第31条R1の前提を満たさない候補は攻撃判定を呼ばず、裁定する候補だけが
 /// 1回呼ぶ。局面と着手列は候補の裁定結果を照合する固定例と同じものを用いる。
 #[test]
 fn article_31_r1_candidate_evaluates_attack_only_when_adjudicating() {
@@ -681,7 +681,7 @@ fn assert_mate(position: &mut Position, context: &AdjudicationContext<'_>, expec
     assert_eq!(*position, before);
 }
 
-/// RULES.md第21条第3項a・第5項、第15条第9項。
+/// chu-shogi.md第21条第3項a・第5項、第15条第9項。
 /// 王駒1枚への全逃走先の利きと、先獅子で取れない獅子による王駒2枚取りは詰みとなる。
 /// 王将と太子が離れていれば1手では両方を取れず、回避手が残る。
 #[test]
@@ -754,7 +754,7 @@ fn article_21_mate_handles_one_two_and_separated_royals_and_restores_position() 
     );
 }
 
-/// RULES.md第21条第3項c・d、第31条R1。反復による即時勝利と引き分けは詰みを回避し、
+/// chu-shogi.md第21条第3項c・d、第31条R1。反復による即時勝利と引き分けは詰みを回避し、
 /// 自分の反復負けは回避にならない。既存の固定例と同じ合法な往復で履歴を作る。
 #[test]
 fn articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects() {
@@ -845,7 +845,7 @@ fn articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects() {
     }
 }
 
-/// RULES.md第21条第3項、第22条第1項。王駒の捕獲を回避しても、
+/// chu-shogi.md第21条第3項、第22条第1項。王駒の捕獲を回避しても、
 /// その手で駒枯れ負けが確定する場合は詰みから逃れられない。
 #[test]
 fn articles_21_22_immediate_exhaustion_loss_is_not_a_mate_escape() {
@@ -882,7 +882,7 @@ fn articles_21_22_immediate_exhaustion_loss_is_not_a_mate_escape() {
     assert_eq!(board, before);
 }
 
-/// RULES.md第23条。王手がなくても合法手がなければ負けとなり、詰みとは区別する。
+/// chu-shogi.md第23条。王手がなくても合法手がなければ負けとなり、詰みとは区別する。
 #[test]
 fn article_23_no_legal_move_is_distinct_from_mate() {
     let rules = Rules::ENGINE_DEFAULT;

@@ -565,7 +565,7 @@ mod tests {
         builder.finish().unwrap()
     }
 
-    /// royal_position上の王駒捕獲手（RULES.md第21条）。
+    /// royal_position上の王駒捕獲手（chu-shogi.md第21条）。
     fn royal_capture() -> Move {
         step(sq(5, 5), sq(5, 8))
     }
@@ -586,7 +586,7 @@ mod tests {
             EngineReply::Accepted { .. }
         ));
 
-        // 初期配置の(0,0)香車は自駒のある(0,1)へ動けない（RULES.md第26条）。
+        // 初期配置の(0,0)香車は自駒のある(0,1)へ動けない（chu-shogi.md第26条）。
         let illegal = step(sq(0, 0), sq(0, 1));
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
@@ -604,7 +604,7 @@ mod tests {
             EngineReply::Rejected(RejectReason::GameNotStarted)
         ));
         // pendingは失敗をまたいで保持され、次のcommitの検証にはpending規則(R2)が使われる。
-        // R2は既出局面の再現を禁止する（RULES.md第31条R2、第27条第4項）。
+        // R2は既出局面の再現を禁止する（chu-shogi.md第31条R2、第27条第4項）。
         let moves = kings_cycle();
         let repeated = moves[3];
         assert_eq!(
@@ -662,7 +662,7 @@ mod tests {
                 newly_finished: Some(result),
             }
         );
-        // RULES.md第26条第12項により終局後の着手は成立せず、GameAlreadyOverを返す。
+        // chu-shogi.md第26条第12項により終局後の着手は成立せず、GameAlreadyOverを返す。
         assert_eq!(
             engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Rejected(RejectReason::GameAlreadyOver)
@@ -815,7 +815,7 @@ mod tests {
     #[test]
     fn set_rules_validates_on_receipt_and_keeps_pending_on_failure() {
         // [`crate::protocol::engine`]のライフサイクル表: SetRulesの検証はfrom_codesで反復規則を含む各群の存在を検査し、
-        // commit時ではなく受信時に弾く。RULES.md第33条第5項（反復規則は常にいずれか1つ）・
+        // commit時ではなく受信時に弾く。chu-shogi.md第33条第5項（反復規則は常にいずれか1つ）・
         // 第9項（矛盾する組合せは無効）。
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]).unwrap();

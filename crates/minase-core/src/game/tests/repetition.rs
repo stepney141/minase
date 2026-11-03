@@ -269,7 +269,7 @@ fn article_24_1_occurrences_accumulate_across_different_paths() {
 }
 
 /// 不可逆手の前に可逆手を11手指していても、その後の可逆手が
-/// 12手になるまで裁定しない（RULES.md第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
+/// 12手になるまで裁定しない（chu-shogi.md第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
     let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];

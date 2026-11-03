@@ -39,7 +39,7 @@ killer表の更新は、旧ADRまでと同じくβ打ち切りのときだけ行
 深さの2乗の加点と減点を残す案は、Stockfishの形に合わせる決定に反するので採らなかった。
 同点破りを外す案は、旧ADRの直接対局で決めた仕組みなので、エンジンの開発者の決定により採らなかった。
 
-並べ替えの王手の判定に、RULES.md第8条どおりの`Position::gives_check`をすべての静かな手で使う案は、実装して測ると探索時間の約19%を占めたので採らなかった（[探索ノード数と探索速度の記録](../measurements/history-forms/history-forms-bench.md)）。
+並べ替えの王手の判定に、chu-shogi.md第8条どおりの`Position::gives_check`をすべての静かな手で使う案は、実装して測ると探索時間の約19%を占めたので採らなかった（[探索ノード数と探索速度の記録](../measurements/history-forms/history-forms-bench.md)）。
 直接の王手の集合はStockfishの判定と同じ範囲であり、枝刈りでは規則どおりの`gives_check`を使い続ける（[王手の判定のADR](judge-gives-check-on-the-post-move-occupancy-without-precomputation.md)）。
 
 Stockfishは、現在のノードか直前の手のノードが王手を受けていれば、静的評価の変化による更新とfail lowの加点の一部の項を行わない（`src/search.cpp:1001, 1618-1619`）。

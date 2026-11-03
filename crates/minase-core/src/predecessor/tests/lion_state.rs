@@ -4,7 +4,7 @@ use super::*;
 use crate::LionRule;
 
 /// 非獅子の捕獲で先獅子記録が新設されても、以前の記録を復元できる。
-/// RULES.md第15条と[`Position::make_move_with_captures_unchecked`]の契約により、新しい記録升は以前の記録升に依存しない。
+/// chu-shogi.md第15条と[`Position::make_move_with_captures_unchecked`]の契約により、新しい記録升は以前の記録升に依存しない。
 #[test]
 fn article_15_lion_capture_restores_previous_records() {
     let from = sq(5, 5);
@@ -75,7 +75,7 @@ fn empty_record_requires_enemy_falcon_or_eagle() {
 /// L1とL2の併用で、麒麟が獅子を取りながら成った升への取り返しを復元できる。
 #[test]
 fn l2_allows_recapture_of_just_promoted_kirin() {
-    // RULES.md第15条7項・第29条L2: 実際の麒麟成りから作った記録を復元する。
+    // chu-shogi.md第15条7項・第29条L2: 実際の麒麟成りから作った記録を復元する。
     let start = position(
         Color::White,
         &[

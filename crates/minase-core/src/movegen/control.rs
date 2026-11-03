@@ -8,7 +8,7 @@ use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 /// 指定した占有状態での駒の利きを返す。
-/// 獅子を取った段階の直後の仮想盤面で足を判定する際に使う（RULES.md第13条第4項と第9項）。
+/// 獅子を取った段階の直後の仮想盤面で足を判定する際に使う（chu-shogi.md第13条第4項と第9項）。
 pub(crate) fn piece_control_with_occupancy(
     occupied: Bitboard,
     color: Color,
@@ -62,7 +62,7 @@ impl Position {
     /// 固定利きや特殊移動の到達範囲から再び攻撃駒として現れることを防ぐ。
     /// 静的交換評価と王駒への利き判定は片側の色しか使わないため、反対側は計算しない。
     /// 実際の占有状態で、相手の獅子でない駒の升に疑似利きが届くことと、その駒を取る
-    /// 合法手があることは一致する。王手を定めるRULES.md第8条はこの一致を前提とし、
+    /// 合法手があることは一致する。王手を定めるchu-shogi.md第8条はこの一致を前提とし、
     /// 審判層の王駒の捕獲可能性とR1の攻撃的着手の判定もこれに基づく。
     /// 相手の獅子の升では捕獲制限があるため、疑似利きと合法な捕獲の有無は一致しない。
     pub fn attackers_to_by(&self, color: Color, square: Square, occupied: Bitboard) -> Bitboard {

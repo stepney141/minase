@@ -80,7 +80,7 @@ c0032はSTCでαβ探索に2勝192敗であり、癖を示さないことが正�
 ## 依存関係
 
 開始局面の元データは、NASの`/mnt/synology_nas/minase/alphazero/cycles/cycle-00NN/selfplay/chunk-*.mnsd`にあるAlphaZero型の自己対局である。
-規則セットは`L0,P0,R1,E0`（[RULES.md](../rules/RULES.md)第33条の規則コード）で教師と同じであり、サイクル28〜32に約4.3万局、サイクル11〜32に約17.6万局ある。
+規則セットは`L0,P0,R1,E0`（[chu-shogi.md](../rules/chu-shogi.md)第33条の規則コード）で教師と同じであり、サイクル28〜32に約4.3万局、サイクル11〜32に約17.6万局ある。
 生成の基点はmasterの現行の埋め込みネット（`crates/minase/nets/nnue.bin`、[線形経路の計画](archived/nnue-material-linear-init.md)で採用）である。
 
 学習器は`minase-trainer`であり、本番の学習は現行のネットと同じ標準のコマンド（[手引き](../guides/nnue-training.md)）を使う。

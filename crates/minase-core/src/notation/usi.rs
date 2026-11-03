@@ -77,7 +77,7 @@ pub fn text(
 /// 移動元、経由升があれば経由升、到達升の順に升名を連結する。
 /// 成りには`+`を付け、不成には接尾辞を付けない。升名の文法は[`square_to_text`]による。
 /// 正準じっとは中間升を保持しないため、局面上で第1段階として使える
-/// 空升のうち[`Square::dense_index`]が最小の升を補う（RULES.md第11条・第12条）。
+/// 空升のうち[`Square::dense_index`]が最小の升を補う（chu-shogi.md第11条・第12条）。
 /// 正準じっとは、局面の合法手として生成された値であることを前提とする。
 pub fn text_generated(position: &Position, mv: Move) -> String {
     let mid = if mv.mid.is_none() && mv.to == mv.from {
@@ -339,7 +339,7 @@ mod tests {
 
     // 3升連結の具体例（二段捕獲6f5e6d・居喰い6i5h6i・じっと6f6g6f）が
     // 実際の合法手として存在する（docs/research/protocols/usi-lishogi.md「指し手の文字列表記」第3項、
-    // RULES.md第3条・第12条）。
+    // chu-shogi.md第3条・第12条）。
     #[test]
     fn lishogi_documented_three_square_examples_are_legal_moves() {
         // 6fの獅子が5eの相手駒を取って6dへ達する二段捕獲。
@@ -363,7 +363,7 @@ mod tests {
         assert!(generated(&capture_position).contains(&capture));
         assert_eq!(text_generated(&capture_position, capture), "6f5e6d");
 
-        // 5hの相手駒を取って6iへ戻る居喰い（RULES.md第3条第14項・第12条第8項）。
+        // 5hの相手駒を取って6iへ戻る居喰い（chu-shogi.md第3条第14項・第12条第8項）。
         let igui_position = position(
             Color::Black,
             &[
@@ -384,7 +384,7 @@ mod tests {
         assert!(generated(&igui_position).contains(&igui));
         assert_eq!(text_generated(&igui_position, igui), "6i5h6i");
 
-        // 空の中間升6gを経て元の升へ戻るじっと（RULES.md第3条第13項・第12条第9項）。
+        // 空の中間升6gを経て元の升へ戻るじっと（chu-shogi.md第3条第13項・第12条第9項）。
         let jitto_position = single_piece_position(Color::Black, PieceKind::Lion, sq(6, 6));
         let jitto = parse(&jitto_position, "6f6g6f").unwrap();
         assert_eq!(jitto, canonical_jitto(sq(6, 6)));
@@ -486,7 +486,7 @@ mod tests {
     }
 
     /// [`text_generated`]がじっとに補う升の適格性と選択の決定性を検査する。
-    /// 方向はRULES.md第11条・第12条、選択順は[`Square::dense_index`]による。
+    /// 方向はchu-shogi.md第11条・第12条、選択順は[`Square::dense_index`]による。
     /// 複数候補時の具体的な升はこのテストでは固定しない。
     #[test]
     fn jitto_text_supplies_a_deterministic_legal_first_step_square() {
@@ -520,7 +520,7 @@ mod tests {
             "12l12k12l"
         );
 
-        // 角鷹の第1段階は前方1方向だけ（RULES.md第11条第1項・第7項）。先後で向きが変わる。
+        // 角鷹の第1段階は前方1方向だけ（chu-shogi.md第11条第1項・第7項）。先後で向きが変わる。
         for (color, forward) in [(Color::Black, sq(5, 6)), (Color::White, sq(5, 4))] {
             let falcon = single_promoted_piece_position(color, PieceKind::HornedFalcon, sq(5, 5));
             let expected = format!(
@@ -533,7 +533,7 @@ mod tests {
         }
 
         // 飛鷲は前斜め2方向のうち片方だけが空なら、その方向が代表升になる
-        // （RULES.md第11条第2項・第8項。候補一意のため直値を断定できる）。
+        // （chu-shogi.md第11条第2項・第8項。候補一意のため直値を断定できる）。
         let eagle_from = sq(5, 5);
         let blocked = position_from_codes(
             Color::Black,
@@ -633,7 +633,7 @@ mod tests {
                 ),
             ],
         );
-        // (d) 成りと不成が選択できる局面（RULES.md第18条）。
+        // (d) 成りと不成が選択できる局面（chu-shogi.md第18条）。
         let promotion = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
         // (a) 初期局面と、じっとを含む単駒局面群。
         let positions = [

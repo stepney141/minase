@@ -29,7 +29,7 @@ JAPANESE = {
     "麒": "Kirin", "飛": "Rook", "馬": "DragonHorse", "龍": "DragonKing", "奔": "FreeKing", "獅": "Lion",
     "王": "King", "玉": "King",
 }
-# RULES.md第5条の初期配置。各段の左端が12筋である。
+# chu-shogi.md第5条の初期配置。各段の左端が12筋である。
 INITIAL = [
     "香 猛 銅 銀 金 醉 玉 金 銀 銅 猛 香",
     "反 . 角 . 盲 鳳 麒 盲 . 角 . 反",

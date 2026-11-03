@@ -14,7 +14,7 @@ use crate::position::Position;
 /// 1升目が相手駒なら続けて2段階捕獲を出す。
 /// いずれかの許可方向の1升目が空升なら、じっとを全体で1手だけ出す。
 /// 1升目に相手駒がある方向は捕獲になるので、じっとの根拠にはしない
-/// （RULES.md第11条第7項、第8項）。
+/// （chu-shogi.md第11条第7項、第8項）。
 pub(super) fn generate_lion_like_double_and_jumps<
     const CAPTURES_ONLY: bool,
     const QUIETS_ONLY: bool,

@@ -1,4 +1,4 @@
-//! RULES.md第31条R1の攻撃側の負けと、R2・R3および第23条の禁止手しかない負けを保護する。
+//! chu-shogi.md第31条R1の攻撃側の負けと、R2・R3および第23条の禁止手しかない負けを保護する。
 //! 専用の帯は対局履歴と探索経路に依存する。経路に依存する値を置換表や補正履歴へ保存せず、枝刈りから保護する。
 
 use super::*;
@@ -266,7 +266,7 @@ fn r1_repetition_band_protection_leaves_draw_reuse_as_a_known_approximation() {
         searcher.history_keys = &[];
         searcher.nodes = 0;
         // DRAW_SCOREの0は通常評価と区別できない。履歴を変えても祖先に保存された0を
-        // 再利用し得ることは、RULES.md第31条R1を探索で近似する際の既知の制約である。
+        // 再利用し得ることは、chu-shogi.md第31条R1を探索で近似する際の既知の制約である。
         assert_eq!(
             searcher.negamax(&mut board.clone(), 2, -INFINITY, INFINITY, 0, false),
             Some(DRAW_SCORE)

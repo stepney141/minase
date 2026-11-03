@@ -20,7 +20,7 @@ cargo run --release --bin match_runner -- \
 ## エンジン
 
 候補は再学習した学習PSTのコミット`af200b4c4b38e0493dabcfa23c2b4c0b4558bf2b`であり、バイナリのSHA-256は`4f0db5ba4a19fb03766803f352bc046884840232abb3b701a4ebb300c0c3cc9e`である。
-基準はH. G. Muller作のHaChuで、Debianパッケージ収録のオリジナル版コミット`df26f4a`（RULES.md［E5］）を`../hachu-debian/hachu`としてビルドし、既定設定（“Okazaki rule” 無効、“Promote on entry” 有効、“Allow repeats” 無効）でCECPプロトコルにより対局させた。
+基準はH. G. Muller作のHaChuで、Debianパッケージ収録のオリジナル版コミット`df26f4a`（chu-shogi.md［E5］）を`../hachu-debian/hachu`としてビルドし、既定設定（“Okazaki rule” 無効、“Promote on entry” 有効、“Allow repeats” 無効）でCECPプロトコルにより対局させた。
 規則セットはHaChuの既定設定に対応する`L1,L3,P0,P5,P6,R2,E1,E2`を審判層とminase側に与えた。
 
 ## 環境

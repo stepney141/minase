@@ -9,7 +9,7 @@
 [探索木の中では規則の裁定を近似する決定](archive/approximate-adjudication-inside-search-tree.md)は、反復規則R1からR3、第22条の駒枯れ、E3の裸玉裁定、および第21条の詰みの裁定を、探索木の中では近似すると定めていた。
 このうち反復の扱いは、[根の反復負け回避と探索木の中の周回の勝敗](avoid-r1-repetition-losses-at-the-root-and-score-cycles-by-attacker.md)と[R2とR3の禁止手の処理](skip-forbidden-repetition-moves-inside-the-tree.md)によって置き換えられた。
 駒枯れ、裸玉、および詰みの扱いは変わっていないので、本ADRがその部分を引き継ぐ。
-中将棋では王手放置も自殺手も合法なので（RULES.md第8条）、探索の合法手では王の安全を確認しなくてよい。
+中将棋では王手放置も自殺手も合法なので（chu-shogi.md第8条）、探索の合法手では王の安全を確認しなくてよい。
 駒枯れ、裸玉、および詰みの裁定は、局面全体の条件と対局の履歴（駒枯れの1手の猶予）に依存する。
 
 ## 決定

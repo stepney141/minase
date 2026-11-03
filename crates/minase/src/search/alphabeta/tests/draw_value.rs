@@ -1,4 +1,4 @@
-//! RULES.md第31条R1の引き分けの値と、R2・R3への非適用を検査する。
+//! chu-shogi.md第31条R1の引き分けの値と、R2・R3への非適用を検査する。
 
 use super::*;
 use crate::search::{REPETITION_WIN, in_repetition_band};

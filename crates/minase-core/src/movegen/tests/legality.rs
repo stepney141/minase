@@ -45,7 +45,7 @@ fn candidates(mv: Move) -> Vec<Move> {
     candidates
 }
 
-/// RULES.md第6条から第19条、第29条・第30条の局面合法手を受理し、
+/// chu-shogi.md第6条から第19条、第29条・第30条の局面合法手を受理し、
 /// 第27条第1項により不合法手では局面を変えない。
 #[test]
 fn article_27_legality_and_checked_application_match_full_generation() {

@@ -1,4 +1,4 @@
-//! RULES.md第31条R2・R3の反復禁止と、第23条の合法手なしの負けを検査する。
+//! chu-shogi.md第31条R2・R3の反復禁止と、第23条の合法手なしの負けを検査する。
 
 use super::*;
 use crate::search::REPETITION_WIN;

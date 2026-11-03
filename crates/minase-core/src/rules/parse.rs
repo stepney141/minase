@@ -48,7 +48,7 @@ impl From<RuleCodeParseError> for RuleSetParseError {
 /// 規則セット名と、名前が表す規則集合の対応表。
 ///
 /// `engine-default`は[`Rules::ENGINE_DEFAULT`]と同じ規則を表す。
-/// `lishogi`の組合せはRULES.md第33条第6項に基づき、名前と組合せの一致は
+/// `lishogi`の組合せはchu-shogi.md第33条第6項に基づき、名前と組合せの一致は
 /// `tests/lishogi_replay.rs`の棋譜リプレイ照合が検証する。
 const RULE_SET_PRESETS: &[(&str, Rules)] = &[
     ("engine-default", Rules::ENGINE_DEFAULT),

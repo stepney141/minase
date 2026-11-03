@@ -1,5 +1,5 @@
 //! 獅子特殊規則とローカルルールのテスト。
-//! 期待値の根拠はRULES.md第13条から第16条、および第29条である。
+//! 期待値の根拠はchu-shogi.md第13条から第16条、および第29条である。
 //! 座標は筋1〜12、段a〜lの表記をmsqで盤座標へ変換して用いる。
 
 use crate::board::Square;
@@ -902,7 +902,7 @@ fn articles_16_8_to_16_10_a_go_between_as_the_only_foot_does_not_vanish_mid_move
 
 #[test]
 fn articles_16_8_to_16_10_a_pawn_as_the_only_foot_does_not_vanish_mid_move() {
-    // 第16条8・9・10項の歩兵への拡張はRULES.mdが敷衍と明記する。
+    // 第16条8・9・10項の歩兵への拡張はchu-shogi.mdが敷衍と明記する。
     // 仲人と同一の判定になる。
     let position = f13();
 

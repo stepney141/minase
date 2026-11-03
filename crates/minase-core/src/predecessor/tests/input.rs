@@ -1,6 +1,6 @@
 use super::*;
 
-/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第5条により、歩兵12枚を超える入力を拒否する。
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とchu-shogi.md第5条により、歩兵12枚を超える入力を拒否する。
 #[test]
 fn article_5_material_overflow_reports_origin_and_owner() {
     for color in Color::ALL {
@@ -20,7 +20,7 @@ fn article_5_material_overflow_reports_origin_and_owner() {
     }
 }
 
-/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第9条により、成獅子は麒麟、成金は歩兵の在庫を使う。
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とchu-shogi.md第9条により、成獅子は麒麟、成金は歩兵の在庫を使う。
 #[test]
 fn article_9_promoted_material_has_its_own_origin() {
     let target = position_from_codes(

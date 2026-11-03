@@ -380,7 +380,7 @@ mod tests {
         let output_directory = directory.0.join("output");
         fs::create_dir(&output_directory).unwrap();
         let openings = directory.0.join("openings.txt");
-        // RULES.md第21条: 7g7dで最後の王駒を捕獲する。飛車2枚により開始時の駒枯れを避ける。
+        // chu-shogi.md第21条: 7g7dで最後の王駒を捕獲する。飛車2枚により開始時の駒枯れを避ける。
         use minase_core::{
             Color::{Black, White},
             PieceKind::{King, Rook},

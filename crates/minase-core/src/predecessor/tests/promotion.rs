@@ -31,7 +31,7 @@ fn article_18_and_30_entering_zone_without_promotion_has_its_predecessor() {
     }
 }
 
-/// RULES.md第17条、第18条と[`predecessor`](crate::predecessor)の集合の定義により、不成からの成りと既成駒の移動は別局面になる。
+/// chu-shogi.md第17条、第18条と[`predecessor`](crate::predecessor)の集合の定義により、不成からの成りと既成駒の移動は別局面になる。
 #[test]
 fn article_17_18_newly_promoted_and_already_promoted_are_distinct_predecessors() {
     let from = sq(5, 7);
@@ -83,7 +83,7 @@ fn p6_rejects_unpromoted_pawn_on_last_rank() {
     }
 }
 
-/// RULES.md第30条P1と[`candidates`](crate::predecessor::transient::candidates)の契約により、移動元と捕獲升の保留を独立に復元する。
+/// chu-shogi.md第30条P1と[`candidates`](crate::predecessor::transient::candidates)の契約により、移動元と捕獲升の保留を独立に復元する。
 /// 両側の敵陣は重ならないため、相手の保留駒は敵陣を出る走りで捕獲する。
 #[test]
 fn p1_restores_mover_and_captured_deferred_bits_independently() {
@@ -128,7 +128,7 @@ fn p1_restores_mover_and_captured_deferred_bits_independently() {
     assert!(targets.iter().all(|target| *target == targets[0]));
 }
 
-/// RULES.md第30条P5と[`candidates`](crate::predecessor::transient::candidates)の契約により、移動歩兵の保留を復元し、無関係な保留を維持する。
+/// chu-shogi.md第30条P5と[`candidates`](crate::predecessor::transient::candidates)の契約により、移動歩兵の保留を復元し、無関係な保留を維持する。
 #[test]
 fn p5_restores_only_pawn_deferral_and_keeps_unrelated_bits() {
     let rules = MoveRules {

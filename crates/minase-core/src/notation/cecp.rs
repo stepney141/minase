@@ -117,7 +117,7 @@ pub fn parse(position: &Position, input: &str) -> Result<Move, CecpError> {
 /// 指し手をCECPの`move`行の本文列へ変換する。
 ///
 /// 経由升のない移動は1行、経由升のある移動は2行で表し、第1レグの末尾にコンマを付ける。
-/// 正準じっとは`@@@@`の1行で表す（RULES.md第11条・第12条）。
+/// 正準じっとは`@@@@`の1行で表す（chu-shogi.md第11条・第12条）。
 /// 成りの`+`は最終レグの末尾だけに付け、不成には接尾辞を付けない。
 /// 升名の文法は[`parse`]を参照する。
 pub fn legs(mv: Move) -> Vec<String> {

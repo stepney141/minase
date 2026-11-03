@@ -1,11 +1,11 @@
-//! 根の合法手を反復規則R1の終局裁定で分類する（RULES.md第31条R1）。
+//! 根の合法手を反復規則R1の終局裁定で分類する（chu-shogi.md第31条R1）。
 
 use std::collections::{HashMap, HashSet};
 
 use super::{Game, GameResult, GameStatus, WinReason};
 use crate::{Move, MoveGenerator, MoveRules, Position, RepetitionRule};
 
-/// 根の合法手を反復規則R1の裁定で分類した結果（RULES.md第31条R1）。
+/// 根の合法手を反復規則R1の裁定で分類した結果（chu-shogi.md第31条R1）。
 pub struct RepetitionRootMoves {
     winning: Vec<Move>,
     losing: Vec<Move>,
@@ -27,7 +27,7 @@ impl RepetitionRootMoves {
 impl Game {
     /// 根の合法手を、反復勝ちの手と反復負けに直結する手に分類する。
     ///
-    /// RULES.md第31条R1の対局が継続中の場合だけ、根から2手以内の裁定を調べる。
+    /// chu-shogi.md第31条R1の対局が継続中の場合だけ、根から2手以内の裁定を調べる。
     /// R1以外の規則と終局済みの対局では、両方の一覧を空にする。
     /// 判定は写しに対する[`Self::play`]の結果だけに基づき、元の対局を変更しない。
     /// 各一覧は[`Self::legal_moves`]の順序を保ち、重複を含まない。
@@ -122,7 +122,7 @@ fn returns_to_repeated_position(
     repeated
 }
 
-/// 同一局面の条件に成り権保留状態を含める（RULES.md第24条第1項d）。
+/// 同一局面の条件に成り権保留状態を含める（chu-shogi.md第24条第1項d）。
 fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
 }

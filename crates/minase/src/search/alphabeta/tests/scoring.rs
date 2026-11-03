@@ -3,7 +3,7 @@
 use super::*;
 
 // 相手の最後の王駒を取る
-// 着手はMATE−(ply+1)。根ply=0のためMATE−1=29999。RULES.md第21条第1項。
+// 着手はMATE−(ply+1)。根ply=0のためMATE−1=29999。chu-shogi.md第21条第1項。
 #[test]
 fn article_21_1_depth_one_capture_of_the_last_royal_scores_mate() {
     // 後手: 玉将6一（唯一の王駒）。先手: 飛車6十、王将6十二。先手番。
@@ -36,7 +36,7 @@ fn article_21_1_depth_one_capture_of_the_last_royal_scores_mate() {
 }
 
 // 王駒を2枚持つ側の
-// 1枚目の王駒は駒割上の損得。RULES.md第20条第3〜5項。
+// 1枚目の王駒は駒割上の損得。chu-shogi.md第20条第3〜5項。
 #[test]
 fn article_20_3_capture_of_the_first_of_two_royals_scores_as_material_gain() {
     // 後手: 玉将6一、太子8三（王駒2枚）。先手: 飛車8十、王将6十二。先手番。
@@ -124,7 +124,7 @@ fn article_14_5_free_lion_capture_is_preferred_without_entering_the_mate_band() 
 }
 
 // 獅子の2枚取りは両王駒が
-// 消えた時点の判定として自然に扱える。RULES.md第21条第5項、第12条第4項。
+// 消えた時点の判定として自然に扱える。chu-shogi.md第21条第5項、第12条第4項。
 #[test]
 fn article_21_5_lion_double_capture_of_both_royals_scores_mate() {
     // 先手: 獅子6六、王将6十二。後手: 玉将6五、太子6四（隣接して直列）。
@@ -164,7 +164,7 @@ fn article_21_5_lion_double_capture_of_both_royals_scores_mate() {
 
 // 合法手が1つもない場合は
 // 第23条により−MATE+ply。先手のどの着手でも後手は合法手ゼロとなるため、
-// 根の評価はMATE−1。RULES.md第23条第2〜3項（利きの除外ではなく物理的に
+// 根の評価はMATE−1。chu-shogi.md第23条第2〜3項（利きの除外ではなく物理的に
 // 手が尽きる場合だけが対象）。
 #[test]
 fn article_23_2_opponent_with_no_legal_moves_scores_mate_minus_one_ply() {

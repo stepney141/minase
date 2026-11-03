@@ -3,7 +3,7 @@
 use super::*;
 
 /// P2は非移動駒を含む着手側の待機を高々1個だけ復元する。
-/// RULES.md第30条P2と[`candidates`](crate::predecessor::transient::candidates)のk+1通りの列挙により、新設と非移動駒の満了を検査する。
+/// chu-shogi.md第30条P2と[`candidates`](crate::predecessor::transient::candidates)のk+1通りの列挙により、新設と非移動駒の満了を検査する。
 #[test]
 fn p2_restores_expired_waiting_and_new_entry() {
     let rules = MoveRules {

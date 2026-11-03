@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn article_33_rules_argument_shares_the_wire_value_grammar() {
         // --rulesはUSIの規則オプションと同じ文法を[`minase_core::rules::parse_rule_set`]で解析する。
-        // RULES.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
+        // chu-shogi.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
         let parse = |value: &str| {
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
                 .map(|arguments| arguments.rules.unwrap().0)

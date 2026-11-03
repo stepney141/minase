@@ -23,7 +23,7 @@ pub use validate::PositionError;
 /// 一時状態は先獅子の状態と成り権保留集合であり、着手履歴は持たない。
 /// 履歴を分離する理由は`docs/adr/keep-game-history-out-of-position-and-movegen.md`にある。
 /// 導出した`PartialEq`と`Eq`はZobrist値などの派生値を含む全フィールドを比較する。
-/// RULES.md第24条の同一局面の判定そのものではなく、反復は対局管理層の局面キーで判定する。
+/// chu-shogi.md第24条の同一局面の判定そのものではなく、反復は対局管理層の局面キーで判定する。
 ///
 /// 着手の適用は、駒の配置と除去によって触れた升とその集計だけを増分更新する。
 /// [`Self::unmake_move`]は[`Undo`]から全フィールドと両Zobrist値を復元し、局面を複製しない。

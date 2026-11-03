@@ -17,7 +17,7 @@ match_runner --run-dir data/matches/strength-stage4-hachu-elo200 --seed 20470903
 
 候補はfutility pruningを採用したコミットa641083である。
 基準はHaChu（Debianパッケージ収録のオリジナル版、コミットdf26f4a、`../hachu-debian/hachu`としてビルド済み）で、規則オプションは既定設定（“Okazaki rule” 無効、“Promote on entry” 有効、“Allow repeats” 無効）である。
-規則セットは両者ともRULES.md第33条第7項の`L1,L3,P0,P5,P6,R2,E1,E2`である。
+規則セットは両者ともchu-shogi.md第33条第7項の`L1,L3,P0,P5,P6,R2,E1,E2`である。
 
 ## 環境
 

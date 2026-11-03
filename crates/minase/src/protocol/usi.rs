@@ -1916,7 +1916,7 @@ fn diagnostic_grid(width: usize, mut cell: impl FnMut(Square) -> String) -> Vec<
     lines
 }
 
-/// RULES.md第5条・第9条・第10条に従い、現在の駒種を漢字1文字にする。
+/// chu-shogi.md第5条・第9条・第10条に従い、現在の駒種を漢字1文字にする。
 fn diagnostic_piece_kanji(piece: PieceCode) -> char {
     match piece.kind().expect("a board piece must have a kind") {
         PieceKind::Pawn => '歩',
@@ -2148,7 +2148,7 @@ fn position_reject_reason_text(reason: &RejectReason, rejected_text: Option<&str
 /// 勝者は`black`か`white`である。
 /// 勝ちの理由は`royal-capture`、`repetition`、`piece-exhaustion`、`bare-king`、`stalemate`、`mate`、
 /// 引き分けの理由は`repetition`、`piece-exhaustion`、`bare-king`である。
-/// `piece-exhaustion`はRULES.md第22条の駒枯れ、`bare-king`は第32条E3の裸玉裁定に対応する。
+/// `piece-exhaustion`はchu-shogi.md第22条の駒枯れ、`bare-king`は第32条E3の裸玉裁定に対応する。
 /// 投了は`state cannot represent resignation`、合意引き分けは`state cannot represent agreement`として拒否する。
 fn state_status_text(status: GameStatus) -> Result<String, &'static str> {
     match status {
@@ -2197,7 +2197,7 @@ mod tests {
     use minase_core::Rules;
     use minase_core::rules::RuleCode;
 
-    /// RULES.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部）。
+    /// chu-shogi.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部）。
     const INITIAL_BOARD: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b";
 
     /// 王駒捕獲1手前の局面。7g7dで先手が後手の最後の王駒を取る。
@@ -2418,7 +2418,7 @@ mod tests {
         assert!(!output.contains("USI_Ponder"));
     }
 
-    /// RULES.md第31条R1の引き分け値は、両手番とも既定値0、範囲±28,999で宣言する。
+    /// chu-shogi.md第31条R1の引き分け値は、両手番とも既定値0、範囲±28,999で宣言する。
     #[test]
     fn draw_value_r1_handshake_declares_defaults_and_bounds() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -2446,7 +2446,7 @@ mod tests {
         assert_eq!(protocol.draw_value_white, 0);
     }
 
-    /// RULES.md第31条R1の引き分け値は、符号と範囲を検査し、もう一方の設定を保つ。
+    /// chu-shogi.md第31条R1の引き分け値は、符号と範囲を検査し、もう一方の設定を保つ。
     #[test]
     fn draw_value_r1_parsing_accepts_signed_bounds_and_preserves_rejected_values() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -2535,7 +2535,7 @@ mod tests {
         }
     }
 
-    /// RULES.md第31条R1の引き分け値が変わった受理だけが、置換表と全ワーカーの履歴を消す。
+    /// chu-shogi.md第31条R1の引き分け値が変わった受理だけが、置換表と全ワーカーの履歴を消す。
     #[test]
     fn draw_value_r1_clears_tables_only_when_an_accepted_value_changes() {
         for name in ["DrawValueBlack", "DrawValueWhite"] {
@@ -2622,7 +2622,7 @@ mod tests {
         }
     }
 
-    /// RULES.md第31条R1の引き分け値は、根の手番に対応するオプションを選ぶ。
+    /// chu-shogi.md第31条R1の引き分け値は、根の手番に対応するオプションを選ぶ。
     #[test]
     fn draw_value_r1_selects_the_root_side_option() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -2650,7 +2650,7 @@ mod tests {
         }
     }
 
-    /// RULES.md第31条R1の既定値0では、新規対局を挟んだ同じ探索の最善手と最終評価値が一致する。
+    /// chu-shogi.md第31条R1の既定値0では、新規対局を挟んだ同じ探索の最善手と最終評価値が一致する。
     #[test]
     fn draw_value_r1_default_search_is_deterministic_across_new_games() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -3034,7 +3034,7 @@ mod tests {
         }
     }
 
-    // RULES.md第31条R1の反復負けは1回の再現による見込みなので、実際の裁定より早く投了しない。
+    // chu-shogi.md第31条R1の反復負けは1回の再現による見込みなので、実際の裁定より早く投了しない。
     // 実行中のstopが受信端から結果を回収する経路には評価値の差し替え口がないため、
     // その経路も使う共有判定を直接検査する。
     #[test]
@@ -3138,7 +3138,7 @@ mod tests {
         }
     }
 
-    // RULES.md第31条R1: 反復負けの見込みでは投了せず、詰み帯の境界では投了する。
+    // chu-shogi.md第31条R1: 反復負けの見込みでは投了せず、詰み帯の境界では投了する。
     #[test]
     fn article_31_resignation_repetition_band_returns_a_legal_move_or_resigns() {
         for (release, running_hit, score) in [
@@ -3510,7 +3510,7 @@ mod tests {
         );
     }
 
-    // RULES.md第33条とSetRulesの契約: 受信時に検証し、拒否時は直前の正当な次局規則を保つ。
+    // chu-shogi.md第33条とSetRulesの契約: 受信時に検証し、拒否時は直前の正当な次局規則を保つ。
     #[test]
     fn article_33_ruleset_values_are_validated_and_pending_survives_rejection() {
         for (name, settings, errors, expected) in [
@@ -3556,7 +3556,7 @@ mod tests {
 
     #[test]
     fn article_33_presets_expand_to_code_lists() {
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびRULES.md第33条第5項と第6項に従う。
+        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびchu-shogi.md第33条第5項と第6項に従う。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -3631,7 +3631,7 @@ mod tests {
 
     #[test]
     fn startpos_is_read_as_the_chu_shogi_initial_position() {
-        // モジュールdocのstartposの解釈とRULES.md第5条に従う。
+        // モジュールdocのstartposの解釈とchu-shogi.md第5条に従う。
         let startpos = session(&[RuleCode::R1], "position startpos\nstate\nmoves\n");
         let sfen = session(
             &[RuleCode::R1],
@@ -4170,7 +4170,7 @@ mod tests {
         let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
         let mut protocol = UsiProtocol::new(&engine);
 
-        // 王駒捕獲（RULES.md第21条）で終局しても、USI経路には自発出力が一切ない。
+        // 王駒捕獲（chu-shogi.md第21条）で終局しても、USI経路には自発出力が一切ない。
         assert_eq!(
             run(
                 &mut protocol,
@@ -4319,7 +4319,7 @@ mod tests {
         }
     }
 
-    /// debugging.mdの駒表記とRULES.md第5条の初期配置を検証する。
+    /// debugging.mdの駒表記とchu-shogi.md第5条の初期配置を検証する。
     /// 枠線の幅と空白の数は契約ではない。
     #[test]
     fn diagnostic_startpos_board_matches_rules() {

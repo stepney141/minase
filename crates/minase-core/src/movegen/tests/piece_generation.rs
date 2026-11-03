@@ -58,7 +58,7 @@ fn piece_generation_matches_full_generation_in_order_for_all_rules_and_sides() {
     }
 }
 
-/// RULES.md第11条第1項・第2項。居喰いと経由升だけで取る手は捕獲列に残り、
+/// chu-shogi.md第11条第1項・第2項。居喰いと経由升だけで取る手は捕獲列に残り、
 /// 捕獲のない駒の生成は既存の出力をそのまま保つ。
 #[test]
 fn article_11_piece_generation_preserves_igui_mid_only_capture_and_empty_captures() {

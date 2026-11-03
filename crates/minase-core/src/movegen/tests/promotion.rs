@@ -259,7 +259,7 @@ fn article_19_4_lance_gets_no_last_rank_relief() {
     assert_both_choices(&generated(&capture), msq(6, 3), msq(6, 1));
 }
 
-/// RULES.md第19条第1項、第18条第1項、第2項、および第30条P3を検査する。
+/// chu-shogi.md第19条第1項、第18条第1項、第2項、および第30条P3を検査する。
 /// 成りの機会が重なっても、[`Move`]の正準形では同じ物理的行動は1つの値になる。
 #[test]
 fn article_19_18_overlapping_promotion_chances_yield_two_moves() {

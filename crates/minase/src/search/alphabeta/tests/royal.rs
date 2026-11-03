@@ -19,7 +19,7 @@ fn royal_under_attack_includes_crown_prince_alone() {
     }
 }
 
-// RULES.md第8条、第12条第5項。獅子は間の駒を跳び越えて距離2の王駒を取れる。
+// chu-shogi.md第8条、第12条第5項。獅子は間の駒を跳び越えて距離2の王駒を取れる。
 #[test]
 fn article_8_royal_under_attack_includes_lion_jump_and_only_opponents() {
     for (lion, side, attacked) in [

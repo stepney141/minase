@@ -945,7 +945,7 @@ mod tests {
         );
     }
 
-    // RULES.md第14条第5項: 獅子が非獅子を取る段階は通常の交換とし、
+    // chu-shogi.md第14条第5項: 獅子が非獅子を取る段階は通常の交換とし、
     // 非獅子の取り返しと獅子による取り返しの価値を反映する。
     #[test]
     fn article_14_5_see_values_lion_captures_of_non_lions() {
@@ -995,7 +995,7 @@ mod tests {
         );
     }
 
-    // RULES.md第11条: 角鷹と飛鷲は、2升目への特殊到達範囲だけで
+    // chu-shogi.md第11条: 角鷹と飛鷲は、2升目への特殊到達範囲だけで
     // 届く場合も、非獅子を1枚取る取り返しとして評価する。
     #[test]
     fn article_11_see_values_lion_like_special_recaptures() {
@@ -1125,7 +1125,7 @@ mod tests {
         );
     }
 
-    // RULES.md第11条: 角鷹と飛鷲がmidなしで1枚だけ取る初手は、隣接移動でも
+    // chu-shogi.md第11条: 角鷹と飛鷲がmidなしで1枚だけ取る初手は、隣接移動でも
     // 2升目への直接跳びでも通常の交換として扱う。
     #[test]
     fn article_11_see_accepts_single_capture_lion_like_moves_without_mid() {

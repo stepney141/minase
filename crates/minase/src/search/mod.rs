@@ -80,7 +80,7 @@ pub(crate) fn in_repetition_band(score: i32) -> bool {
 /// 引き分けを表す評価値。
 pub const DRAW_SCORE: i32 = 0;
 
-/// RULES.md第31条R1の引き分けの値の絶対値の上限。
+/// chu-shogi.md第31条R1の引き分けの値の絶対値の上限。
 /// 評価関数の出力の範囲と同じであり、[`REPETITION_BAND_START`]以上の
 /// 反復の勝敗の専用の帯にも、詰みの帯にも入らない。
 pub const DRAW_VALUE_LIMIT: i32 = crate::eval::nnue::EVALUATION_LIMIT;

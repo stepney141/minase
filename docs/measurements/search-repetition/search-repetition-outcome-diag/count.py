@@ -1,4 +1,4 @@
-"""保存済みの対局記録から、反復（RULES.md第31条R1）による終局の件数と直前の評価値を数える。
+"""保存済みの対局記録から、反復（chu-shogi.md第31条R1）による終局の件数と直前の評価値を数える。
 
 使い方: python3 count.py <data/matchesのパス> > totals.json
 

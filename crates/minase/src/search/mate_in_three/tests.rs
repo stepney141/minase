@@ -1,4 +1,4 @@
-//! 学習技法の導入の設計書「フェーズ2」とRULES.md第21条・第22条・第31条R1の固定例。
+//! 学習技法の導入の設計書「フェーズ2」とchu-shogi.md第21条・第22条・第31条R1の固定例。
 
 use super::{Error, Verdict, all_replies_lose, mate_in_three};
 use Color::{Black, White};

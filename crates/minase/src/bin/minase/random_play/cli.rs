@@ -133,7 +133,7 @@ mod tests {
         );
     }
 
-    // RULES.md第33条: 正常なプリセットと不正な併記で共通parserへの接続を検査する。
+    // chu-shogi.md第33条: 正常なプリセットと不正な併記で共通parserへの接続を検査する。
     #[test]
     fn article_33_rules_argument_resolves_presets_case_insensitively_and_rejects_combinations() {
         let preset = Arguments::try_parse_from(["random_play", "--rules", "LISHOGI"])

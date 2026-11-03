@@ -25,6 +25,12 @@ STCはfishtestの標準値と同じであり、LTCの加算0.2秒は片側の総
 固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
 STCとLTCは別の測定として扱い、測定名と実行ディレクトリを接尾辞`-stc`と`-ltc`で分ける。
 
+測定を始める前に、変更の種類に応じて次の教訓を確かめる。
+
+- どの測定でも、[測定機で重い計算を始める前に進行中の測定を確認する](../lessons/check-running-measurements-before-cpu-load.md)に従う。
+- 探索の改良では、[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)と[保守的な適用除外は実装直後に除外率を測ってから確定する](../lessons/measure-conservative-guard-coverage.md)に従う。
+- 時間管理の変更では、[時間管理を変える前に保存記録から時計を再構成する](../lessons/reconstruct-clock-from-match-records.md)、[打ち切り上限は残り時間の割合でも抑える](../lessons/cap-hard-limit-by-remaining-fraction.md)、[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)、および[煙試験の指標は破棄局とエンジンの起動直後の手を分けて見る](../lessons/separate-discarded-games-and-engine-startup-in-smoke-metrics.md)に従う。
+
 STCの標準コマンドは次のとおりである。
 
 ```console
@@ -41,6 +47,8 @@ STCの判定は、次の振分け規則で扱う。
 - 上限3,000ペアに達した`decision: pending`は、停止時点の対数尤度比LLRが0以上ならLTCへ進め、負なら進めない。
 
 候補の棄却はSTCでもLTCでも起こるが、採用の決定はLTCの判定だけが下し、STCの通過を採用の根拠にしない。
+棄却した候補の扱いは、[不採用の比較候補はマージの前に戻し、採用候補との差分を確かめる](../lessons/revert-rejected-candidates-before-merge.md)に従う。
+枝刈りの候補を捨てる前には、[不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../lessons/retune-rejected-pruning-before-discarding.md)に従う。
 
 LTCの標準コマンドは次のとおりである。
 
@@ -89,7 +97,8 @@ cargo run --release --bin minase -- match run \
 
 HaChuのような外部エンジンとの比較は、対等な時間制御のGSPRTで行う。
 深さ固定では探索1段の意味がエンジンごとに異なるため、強さの比較には使わない。
-規則はHaChuの既定設定（RULES.md第33条第7項、`L1,L3,P0,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
+規則はHaChuの既定設定（chu-shogi.md第33条第7項、`L1,L3,P0,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
+接続の前に、[外部エンジンは接続前に棋譜照合と着手転送で検証する](../lessons/verify-external-engine-before-cecp-match.md)に従う。
 
 ```console
 cargo run --release --bin minase -- match run \
@@ -198,6 +207,7 @@ cargo run --release --bin minase -- match report \
 ```
 
 時間制御の比較と校正用の2主指標は、機能採否の標準手順には含まれない診断用途であり、測定条件そのものを調べるときにだけ使う。
+測定条件を比べる対戦カードは、[効果量が極端な対は測定条件の比較情報を持たない](../lessons/calibration-card-needs-contested-pair.md)に従って選ぶ。
 `--ponder`の測定では先読みの探索時間もプロセスのCPU時間に含まれるので、CPU時間に依存する校正用の指標は`--ponder`なしの測定と比較できない。
 時間制御を比較する場合は、比較対象に候補時間制御の実行ディレクトリ、`--compare-to`に基準時間制御の実行ディレクトリを指定する。
 両方の実行は、時間制御を除く実行条件、測定機、および保存済みペア番号が一致していなければならない。
@@ -227,6 +237,7 @@ cargo run --release --bin minase -- match report \
 未コミットの作業ツリーや外部のUSIエンジンを測る場合は、パスと空白区切りの引数からなる起動コマンドで指定する。
 たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
 minase本体は`--protocol`と`--rules`の指定が必須なので、この形式では両方の引数を必ず書く。
+数時間を超える測定で作業ツリーのバイナリを使うときは、[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)に従う。
 
 USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名前=値'`でそれぞれ繰り返し指定でき、最初の`=`で名前と値を分ける。
 名前と値に改行を含む指定と、同じ側で名前が重複する指定は拒否する。
@@ -248,6 +259,7 @@ USIのエンジンへ`go movetime`を送る`movetime=`とは別の指定であ�
 `nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。
 HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
 測定の詳細は[1手固定時間の測定記録](../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md)にある。
+外部エンジンに1手固定時間を与える測定では、[外部エンジンの固定時間は時間切れ判定との余裕を本測定前に見積もる](../lessons/fixed-time-forfeit-margin.md)に従う。
 規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 AlphaZero型探索のMCTSは、`--candidate-args "--search mcts --nn-model <ネットのファイル>"`のように起動引数で選ぶ。

@@ -164,13 +164,13 @@ fn positional_value(kind: PieceKind, color: Color, square: Square) -> i32 {
 #[cfg(test)]
 mod tests {
     // 期待値の根拠は本ファイルのPIECE_VALUESとその出典のコメント、
-    // およびRULES.md第5条と第20条に限る。PSTの個別値は固定しない。
+    // およびchu-shogi.md第5条と第20条に限る。PSTの個別値は固定しない。
 
     use super::*;
     use minase_core::piece::PieceCode;
     use minase_core::test_util::{position_from_codes, sq};
 
-    // RULES.md第5条の初期配置は王将⇄玉将の対応を除き点対称で
+    // chu-shogi.md第5条の初期配置は王将⇄玉将の対応を除き点対称で
     // あり、negamax（`crate::search`のdocコメント）が要求する手番対称性の下で
     // 自己対称局面の評価は0でなければならない。
     #[test]
@@ -221,7 +221,7 @@ mod tests {
         for pieces in fixtures {
             let original = position_from_codes(Color::Black, &pieces);
             // 180度回転（升(f, r)→(11−f, 11−r)）と所有者の入れ替え。王将⇄
-            // 玉将は駒種として同一（RULES.md第5条: 性能同一）に読み替える。
+            // 玉将は駒種として同一（chu-shogi.md第5条: 性能同一）に読み替える。
             let rotated_pieces: Vec<(Square, PieceCode)> = pieces
                 .iter()
                 .map(|&(square, piece)| {

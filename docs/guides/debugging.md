@@ -12,7 +12,7 @@
 minaseの道具の多くは、この照合の形をとる（差分更新と全再計算、最適化した実装と素朴な参照実装、2つのコミットのbench出力など）。
 修正の後は、修正を外すと失敗する回帰テストを残す（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。
 
-調査を始める前に、[教訓の索引](../lessons/README.md)に目を通す。
+調査を始める前に、[教訓の索引](../lessons/README.md)の該当する節を読む。
 過去に同じ症状で詰まった記録があれば、その「以後の規則」から始める。
 
 ## 調査用の道具
@@ -76,7 +76,7 @@ for rules in L0,P0,R1,E0 L0,P0,R2,E0 L0,P0,R3,E0 lishogi L0,L3,P0,R1,E0 \
 done
 ```
 
-この9セットは、設計書の完了後にRULES.md第13版で追加されたL4、P5、およびP6を含まない。
+この9セットは、設計書の完了後にchu-shogi.md第13版で追加されたL4、P5、およびP6を含まない。
 これらの規則を疑うときは、HaChuの既定設定に対応する`L1,L3,P0,P5,P6,R2,E1,E2`のように、該当するコードを含む組を加える。
 
 **自己対局の測定**：`minase match run`の実行ディレクトリの`pairs/NNN.json`は、各局の開始局面の着手列と全着手を保存している。
@@ -98,7 +98,7 @@ done
 
 合法手の過不足、不正な局面への遷移、Zobristキーの不一致は、次の順で調べる。
 
-1. RULES.mdの該当条文を読み、期待する挙動を条文から決める。実装の出力を正としない。
+1. chu-shogi.mdの該当条文を読み、期待する挙動を条文から決める。実装の出力を正としない。
 2. `minase dev random-play`を`--verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
 3. 失敗した局面を`minase dev perft`へ与え、`--divide`で根の手ごとの件数を出す。
 4. 条文から数えた期待値と食い違う手を1手進め、深さを1減らして`--divide`を繰り返し、誤りのある局面と手まで絞り込む。
@@ -267,6 +267,6 @@ RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi --rules engine-d
 
 修正は、次の3点を確かめてから採用する。
 
-1. 修正を一時的に外すと失敗する回帰テストを追加する（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。規則に関わるテストは、期待値をRULES.mdの条文から導き、条文の番号をテストに書く。`cargo test`は整合検査（フィーチャ`invariants`）を常に有効にして走るので、テストの中の着手と探索も全検査を受ける。
+1. 修正を一時的に外すと失敗する回帰テストを追加する（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。規則に関わるテストは、期待値をchu-shogi.mdの条文から導き、条文の番号をテストに書く。`cargo test`は整合検査（フィーチャ`invariants`）を常に有効にして走るので、テストの中の着手と探索も全検査を受ける。
 2. 探索木を変えないはずの修正は、`minase dev bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
 3. 探索木を変える修正のうち、棋力に影響し得るものは、[sprt.md](sprt.md)の手順で採否を決める。

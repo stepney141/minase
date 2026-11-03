@@ -30,7 +30,7 @@ fn r1_state(position: &Position) -> AdjudicationState {
 
 /// 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
 /// 可逆手が11手なら勝利も引き分けも成立せず詰みとなる
-/// （RULES.md第21条第3項c・d、第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
+/// （chu-shogi.md第21条第3項c・d、第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_21_3_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
     let start = position(

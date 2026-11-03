@@ -55,7 +55,7 @@ fn compare_mate_and_legal_moves(position: &mut Position, context: &AdjudicationC
     assert_eq!(*position, before);
 }
 
-/// RULES.md第8条・第20条・第22条・第31条R1について、両手番と着手後を照合する。
+/// chu-shogi.md第8条・第20条・第22条・第31条R1について、両手番と着手後を照合する。
 #[test]
 fn articles_8_22_31_function_results_match_full_generation() {
     let mut positions = 0;
@@ -361,7 +361,7 @@ fn compare_random_game(
     outcomes.capped += 1;
 }
 
-/// RULES.md第21条から第23条、第31条・第32条の裁定順序と履歴更新を照合する。
+/// chu-shogi.md第21条から第23条、第31条・第32条の裁定順序と履歴更新を照合する。
 #[test]
 fn articles_21_23_31_32_random_games_match_full_generation() {
     let mut outcomes = Outcomes::default();

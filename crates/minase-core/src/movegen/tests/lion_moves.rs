@@ -399,7 +399,7 @@ fn article_12_12_second_stage_judged_sequentially() {
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(5, 4), false)));
 }
 
-/// RULES.md第12条第1項から第10項と[`Move`]の正準形を検査する。
+/// chu-shogi.md第12条第1項から第10項と[`Move`]の正準形を検査する。
 /// 裸獅子の25手は、1升移動8手、2升跳び16手、およびじっと1手からなる。
 #[test]
 fn article_12_lone_lion_generates_25_canonical_moves() {

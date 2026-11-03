@@ -180,7 +180,7 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
         "lambda is zero"
     );
     assert!(report["bands"][5]["base"].is_null());
-    // 代表は初期局面、疎局面、初期局面。RULES.md第18条第1項により、
+    // 代表は初期局面、疎局面、初期局面。chu-shogi.md第18条第1項により、
     // 成れる手は疎局面の先手歩がrank=7から敵陣のrank=8へ進む1手。
     assert_eq!(
         report["rust_promotion_agreement"],

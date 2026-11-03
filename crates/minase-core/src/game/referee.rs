@@ -140,13 +140,13 @@ impl Game {
     /// 対局開始から現局面までの、採用中の反復規則のキーを返す。
     ///
     /// 各局面のキーは[`repetition_key`]で作る。R1では成り権保留状態を含め、
-    /// R2・R3では含めない（RULES.md第24条第1項、第31条R2・R3の補充規定）。
+    /// R2・R3では含めない（chu-shogi.md第24条第1項、第31条R2・R3の補充規定）。
     #[inline]
     pub fn repetition_key_history(&self) -> &[u64] {
         &self.repetition_key_history
     }
 
-    /// R1の対局で、直近まで連続した攻撃的着手の数を対局者ごとに返す（RULES.md第31条R1）。
+    /// R1の対局で、直近まで連続した攻撃的着手の数を対局者ごとに返す（chu-shogi.md第31条R1）。
     /// 添字は[`Color::index`]に従う。R2またはR3の対局では`None`を返す。
     pub fn consecutive_attacking_moves(&self) -> Option<[u32; 2]> {
         self.adjudication.consecutive_attacking_moves()

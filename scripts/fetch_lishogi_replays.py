@@ -17,7 +17,7 @@ from pathlib import Path
 # draw(合意) 2局、resign 2局。lishogiは王駒実捕獲制(E1)のため
 # status "mate" の中将棋棋譜は存在しない(2026年8月10日時点の
 # 上位8プレイヤー695局の観測)。
-# 末尾の3局は、反復裁定の前提条件(RULES.md第31条R1、直前の不可逆手から
+# 末尾の3局は、反復裁定の前提条件(chu-shogi.md第31条R1、直前の不可逆手から
 # 可逆手が12手以上続いていること)で裁定が分かれる対局である
 # (docs/plans/lishogi-bot.md「反復裁定の整合」)。
 GAME_IDS = [

@@ -36,7 +36,7 @@ python -m minase_zero train --device cuda --init net-check/cycle-0000/checkpoint
 生成器はコミット8c6b7242、学習器はコミット5f310006でビルドした。
 2つのコミットの間の差分は学習器のソフト方策の目標の計算だけであり、生成器は変わらない。
 ネットは、[ランダム初期化のネットの出力の照合](alphazero-restart-techniques-random-net-output-check.md)で照合したシード20261031のネット（SHA-256 `b2de222c…7c48`）である。
-規則セットは`engine-default`（RULES.md第33条のL0＋P0＋R1＋E0）、探索はGumbel AlphaZeroのQの尺度1.0、完全探索32回、速い探索8回であり、投了は無効である。
+規則セットは`engine-default`（chu-shogi.md第33条のL0＋P0＋R1＋E0）、探索はGumbel AlphaZeroのQの尺度1.0、完全探索32回、速い探索8回であり、投了は無効である。
 
 ## 環境
 

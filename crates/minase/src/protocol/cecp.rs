@@ -1078,7 +1078,7 @@ mod tests {
     use minase_core::rules::RuleCode;
     use minase_core::{Game, Rules};
 
-    /// RULES.md第5条の初期配置に対応するSFEN盤面部（setboard・position共用）。
+    /// chu-shogi.md第5条の初期配置に対応するSFEN盤面部（setboard・position共用）。
     const INITIAL_BOARD: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL";
 
     /// 先手玉d4・後手玉i9の2王局面。反復系台本の基底に使う。
@@ -1108,7 +1108,7 @@ mod tests {
     /// じっと可能な駒が存在しない2王局面。
     const KINGS_ONLY: &str = "11k/12/12/12/12/12/12/12/12/12/12/K11";
 
-    /// 先手歩兵e8が次の前進e9で敵陣（RULES.md第18条）へ入る局面。
+    /// 先手歩兵e8が次の前進e9で敵陣（chu-shogi.md第18条）へ入る局面。
     const PAWN_PROMO: &str = "11k/12/12/12/4P7/12/12/12/12/12/12/K11";
 
     fn make_engine(codes: &[RuleCode]) -> Engine {
@@ -1411,7 +1411,7 @@ mod tests {
             "0-1 {royal capture}\n"
         );
 
-        // R1の4回目の同一局面は引き分け裁定でありIllegal moveではない（RULES.md第31条R1）。
+        // R1の4回目の同一局面は引き分け裁定でありIllegal moveではない（chu-shogi.md第31条R1）。
         // force相当（起動直後）の棋譜再生中でも裁定は生きている。
         let cycles = KINGS_CYCLE.repeat(3);
         assert_eq!(
@@ -1440,7 +1440,7 @@ mod tests {
             ),
             "Illegal move: e6d6,b6a6\n"
         );
-        // 居喰い（RULES.md第12条）は@@@@ではなく明示レグで送る。
+        // 居喰い（chu-shogi.md第12条）は@@@@ではなく明示レグで送る。
         assert_eq!(
             session(
                 &[RuleCode::R1, RuleCode::E2],
@@ -1453,7 +1453,7 @@ mod tests {
     #[test]
     fn promotion_suffixes_are_interpreted_on_the_final_leg_only() {
         // [`minase_core::notation::cecp::parse`]の契約: +は最終レグの末尾だけ、=は不成として受理。
-        // 成りの成立は、成駒（歩兵→金将の動き、RULES.md第9条）の横移動の受理で観測する。
+        // 成りの成立は、成駒（歩兵→金将の動き、chu-shogi.md第9条）の横移動の受理で観測する。
         assert_eq!(
             session(
                 &[RuleCode::R1, RuleCode::E2],
@@ -1475,7 +1475,7 @@ mod tests {
                 "Illegal move: e9f9\n"
             );
         }
-        // 成れない着手への+も拒否する（RULES.md第26条）。
+        // 成れない着手への+も拒否する（chu-shogi.md第26条）。
         assert_eq!(
             session(&[RuleCode::R1], "new\nforce\nusermove g4g5+\n"),
             "Illegal move: g4g5+\n"
@@ -1534,7 +1534,7 @@ mod tests {
     #[test]
     fn illegal_moves_use_the_two_canonical_forms() {
         // [`CecpProtocol::handle_usermove`]の拒否形式: Movementは省略形、Repetitionは注記付き
-        // である。RULES.md第27条第4項により、R2の禁止手は不合法な着手として扱う。
+        // である。chu-shogi.md第27条第4項により、R2の禁止手は不合法な着手として扱う。
         let output = session(
             &[RuleCode::R1],
             "new\nforce\nusermove a1b1\nusermove g4g5\n",

@@ -460,6 +460,6 @@ STCは、事前対局と同じ調整機で、同じ同時対局数で行う。
 - [探索と時間管理の係数の関数形に関する既存実装との比較](../../research/search-coefficient-forms-prior-art.md)と[前向き枝刈りの第3層に関する既存実装の調査](../../research/forward-pruning-prior-art.md)。
 - Stockfish（コミット5c4cef0b）の`src/search.cpp`。followPVは791〜794行、`priorNMPFailHigh`の初期化は830行、razoringは1017〜1018行、reverse futility pruningの返り値は1033行、null move pruningを試す条件は1037〜1039行、減深量は1044行、打ち切りと検証探索は1052〜1076行、枝刈りの前の減深量は1183〜1192行、浅い枝刈りの前提条件は1196行、late move pruningは1199行、lmrDepthは1203行、捕獲手と王手になる手の枝は1205行、捕獲手のfutility pruningは1208〜1217行、捕獲手のSEEは1220〜1225行、静かな手の枝の条件は1227行、historyによるlmrDepthの増減は1229〜1240行、静かな手のfutility pruningは1242〜1252行、静かな手のSEEは1255〜1259行、LMRの定数697は1350行、`reduction()`は1917〜1920行。王手の判定は`src/position.cpp`の731〜774行、capture historyの上限10692は`src/history.h:135`、歩兵価値208は`src/types.h:199`。
 - YaneuraOu（コミットc1b80eaa）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`。razoringは3191〜3192行、reverse futility pruningは3214〜3227行、null move pruningを試す条件は3236〜3245行、減深量は3252行、検証探索は3278〜3297行、浅い枝刈りの前提条件は3585〜3588行、late move pruningは3593行、lmrDepthは3600行、捕獲手のfutility pruningは3611〜3621行、捕獲手のSEEは3631〜3641行、historyによるlmrDepthの増減は3661行、静かな手のfutility pruningは3663〜3677行、静かな手のSEEは3684〜3697行。歩兵価値90は`source/evaluate.h:78`。
-- [RULES.md](../../rules/RULES.md)の第8条と第23条。前者は王手を、後者は合法手がない場合を定める。
+- [RULES.md](../../rules/chu-shogi.md)の第8条と第23条。前者は王手を、後者は合法手がない場合を定める。
 - [不採用だった探索部の改良の再調整](search-revival-spsa.md)と[一括採用のADR](../../adr/adopt-revived-search-items-as-a-bundle.md)。
 - [SPSAによる係数調整の手引き](../../guides/spsa.md)と[SPRTによる棋力測定の手引き](../../guides/sprt.md)。

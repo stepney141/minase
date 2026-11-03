@@ -16,7 +16,7 @@ match_runner --seed 20260825 --candidate commit:a49bd46 \
 ## エンジン
 
 候補はコミットa49bd46（`Threads=1`）、基準はHaChuのDebianパッケージ収録のオリジナル版（コミットdf26f4a、`gcc -O2`でビルド、規則オプションは既定）である。
-規則セットは`L1,L3,P5,P6,R2,E1,E2`（RULES.md第13版当時の表記。第14版以後は`L1,L3,P0,P5,P6,R2,E1,E2`）である。
+規則セットは`L1,L3,P5,P6,R2,E1,E2`（chu-shogi.md第13版当時の表記。第14版以後は`L1,L3,P0,P5,P6,R2,E1,E2`）である。
 
 ## 環境
 

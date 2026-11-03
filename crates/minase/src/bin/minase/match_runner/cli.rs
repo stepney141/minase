@@ -723,7 +723,7 @@ mod tests {
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
-    // RULES.md第33条: 共通parserへの接続と指定原文の保持を検査する。
+    // chu-shogi.md第33条: 共通parserへの接続と指定原文の保持を検査する。
     // docs/guides/sprt.md: --rules省略時にはengine-defaultを使う。
     #[test]
     fn rules_presets_resolve_per_article_33() {

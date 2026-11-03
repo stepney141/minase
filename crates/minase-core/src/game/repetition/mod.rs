@@ -11,7 +11,7 @@ use r1::R1History;
 pub(crate) use r1::move_is_irreversible;
 pub use r1::move_was_attacking;
 
-/// 採用中の反復規則の同一局面のキーを局面から作る（RULES.md第24条第1項、第31条）。
+/// 採用中の反復規則の同一局面のキーを局面から作る（chu-shogi.md第24条第1項、第31条）。
 ///
 /// R1は盤面・手番・先獅子状態の[`Position::zobrist`]に成り権保留状態の[`Position::rights_zobrist`]を
 /// 合成する（第24条第1項aからd）。R2とR3は成り権保留状態を含めず`zobrist`だけを使う（第31条R2・R3の補充規定）。

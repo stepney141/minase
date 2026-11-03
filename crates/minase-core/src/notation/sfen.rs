@@ -395,7 +395,7 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
 /// 成れる不成駒がなければならない。規則ごとの保留枚数や駒種の制限は検査しない。
 ///
 /// 獅子捕獲升は検証して[`SetupPosition::lion_capture`]へ保持する。
-/// 先獅子状態の復元には[`SetupPosition::restore_position`]を使う（RULES.md第15条）。
+/// 先獅子状態の復元には[`SetupPosition::restore_position`]を使う（chu-shogi.md第15条）。
 pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition, SfenError> {
     let fields: Vec<_> = sfen.split_whitespace().collect();
     if !matches!(fields.len(), 4 | 5) {
@@ -767,7 +767,7 @@ mod tests {
     }
 
     // 成駒18種の`+`前置と出自保存、成れない3種k・n・qへの`+`の拒否
-    // （docs/research/protocols/usi-lishogi.md「駒種の文字表記」、RULES.md第17条）。引き継ぎ資産の駒文字表。
+    // （docs/research/protocols/usi-lishogi.md「駒種の文字表記」、chu-shogi.md第17条）。引き継ぎ資産の駒文字表。
     #[test]
     fn promoted_prefix_covers_18_kinds_and_unpromotable_pieces_reject_it() {
         let promoted = [
@@ -807,7 +807,7 @@ mod tests {
             }
         }
 
-        // 成らない駒への`+`の拒否（RULES.md第17条第1項）。
+        // 成らない駒への`+`の拒否（chu-shogi.md第17条第1項）。
         for letter in ['k', 'n', 'q', 'K', 'N', 'Q'] {
             let sfen = format!("{} b", board_with_row(0, &format!("+{letter}11")));
             assert!(
@@ -915,7 +915,7 @@ mod tests {
     }
 
     // lishogi正準4欄構文と初期局面SFENの厳密一致を検査する
-    // （docs/research/protocols/usi-lishogi.md「SFENの全体構文」、RULES.md第5条、
+    // （docs/research/protocols/usi-lishogi.md「SFENの全体構文」、chu-shogi.md第5条、
     // docs/research/protocols/cecp.md第7章）。
     #[test]
     fn lishogi_initial_four_field_sfen_matches_the_initial_position() {
@@ -1097,7 +1097,7 @@ mod tests {
 
     /// [`parse_extended_sfen`]の保留升の順序と往復保存を検査する。
     /// 内部密番号は[`Square::dense_index`]で定義する。このテストでは決定性と順序の
-    /// 単調性を検査し、特定の並びは固定しない（RULES.md第30条）。
+    /// 単調性を検査し、特定の並びは固定しない（chu-shogi.md第30条）。
     #[test]
     fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
         let p1 = MoveRules {
@@ -1176,7 +1176,7 @@ mod tests {
     }
 
     /// [`parse_extended_sfen`]の契約に従い、保留升には成れる不成駒を要する。
-    /// 成れる駒種はRULES.md第17条第1項による。
+    /// 成れる駒種はchu-shogi.md第17条第1項による。
     #[test]
     fn deferred_squares_must_hold_an_unpromoted_promotable_piece() {
         let p1 = MoveRules {

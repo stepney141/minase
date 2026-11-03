@@ -68,7 +68,7 @@ fn effective_pieces(position: &Position, color: Color) -> Bitboard {
 /// 指定側の駒が相手のいずれかの王駒を次の着手で取れるかを返す（第22条第8項、第32条E3）。
 ///
 /// 王駒は獅子でないため、各升へ疑似利きが届くことと合法に取れることが一致する
-/// （RULES.md第8条）。王駒の枚数によらず、その升ごとの判定の論理和を返す。
+/// （chu-shogi.md第8条）。王駒の枚数によらず、その升ごとの判定の論理和を返す。
 pub(super) fn can_capture_any_royal(position: &Position, attacker: Color) -> bool {
     position
         .royal_pieces(attacker.opposite())
