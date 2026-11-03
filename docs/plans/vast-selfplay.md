@@ -316,4 +316,4 @@ vast.aiの資料と出品は2026年10月17日に参照した。価格と出品�
 - [Finding & Renting](https://docs.vast.ai/guides/instances/choosing/find-and-rent)と[Verification Stages](https://docs.vast.ai/host/verification-stages)は、検証済み、未検証、および検証取り消しの区別の根拠である。
 - [PassMarkのEPYC 9B14とEPYC 9654の比較](https://www.cpubenchmark.net/compare/5763vs5088/AMD-EPYC-9B14-vs-AMD-EPYC-9654)と[PassMarkのXeon Platinum 8581CとEPYC 9R45の比較](https://www.cpubenchmark.net/compare/6592vs6952/Intel-Xeon-Platinum-8581C-vs-AMD-EPYC-9R45)は、1スレッド性能の比の根拠である。公開ベンチマークは探索の負荷を直接測るものではないので、フェーズ0の実測で置き換える。
 - [EC2の価格表](https://aws.amazon.com/ec2/pricing/on-demand/)と[オンデマンドのvCPU上限](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html)は、比較に挙げたAWSの費用と利用枠の根拠である。
-- [教師生成の手引き](../guides/pst-training.md)、[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)、[シードの教訓](../lessons/derive-seed-adjacent-collision.md)、および[テストの手引き](../guides/testing.md)は、本リポジトリ内での作業規則を定める。
+- [教師生成の手引き](../guides/pst-training.md)、[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)、[シードの教訓](../lessons/derive-seed-adjacent-collision.md)、および[テストの手引き](../guides/testing-minase-rules.md)は、本リポジトリ内での作業規則を定める。

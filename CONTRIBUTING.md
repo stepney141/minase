@@ -6,7 +6,7 @@
 - 設計書の「先に読む要約」「状態」と ROADMAP.md の「現在地」は追記せず上書きする。着手ログ、レビュー記録、コミットハッシュは書かず、過去の経緯は git 履歴に任せる。
 - 測定の記録は、その測定を計画した設計書ごとのディレクトリ`docs/measurements/<設計書名>/`に`<測定名>.md`として1測定1ファイルで置き、どの設計書も計画していない測定は`docs/measurements/adhoc/`に置く。設計書からは測定名でリンクする。置き場所の決め方は docs/plans/README.md の「測定記録」節に従う。
 - 作業で得た汎用的な教訓は docs/lessons/ に集約する。設計書を書く前、codexへ委任する前、および測定、学習、または最適化を始める前に、docs/lessons/README.md の該当する節を読む。
-- テストの目的、書く範囲、検証の層、およびマージ前のローカル検査は [docs/guides/testing.md](docs/guides/testing.md) に従う。
+- テストの書く範囲、検証の層、およびマージ前のローカル検査は [docs/guides/testing-minase-rules.md](docs/guides/testing-minase-rules.md) に従う。
 - docs/ 直下には ROADMAP.md と README.md だけを置く。手引き、監査報告、調査メモなどその他の文書は docs/README.md の分類表に従って下位ディレクトリへ置く。
 
 ## コミットとリリース

@@ -326,11 +326,11 @@ Q5の入口の処理には、全候補を先に生成する参照実装を置か
 Q1、Q4、Q5、およびQ7は静止探索ノードの処理を増やすので、`search-stats`と`invariants`のない同じビルド条件で、`taskset -c 3`で1つのコアに固定した`minase dev bench --depth 9 --repetitions 3`の中央値を、起点と形の変更で交互に3回ずつ測り、探索時間、探索ノード数、および1秒あたりのノード数を併記して記録する（[教訓](../../lessons/pin-bench-to-performance-core.md)）。Q1の直前と直後のコミットも同じ方法で比べ、補正値を読む処理の時間を記録する。
 新しい係数は`params.rs`の表へ追加し、`QsearchMoveLimit`の既定値、範囲、およびdocコメントと、`DeltaMargin`の既定値を改め、固定する定数は名前つきの定数として出典の行番号をdocコメントに書き、調整用ビルド（`--features tuning`つきのビルド）が`Tune_<係数名>`のUSIオプションとして宣言することを確かめる。
 `crates/minase/src/search/alphabeta/tests/qsearch_move_limit.rs`のテストは、削除せず新しい数え方と免除に合わせて書き直す。
-新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../../guides/testing.md)）。
+新しい式の単体テストは、式の写しではなく数値の例で書く（[テストの手引き](../../guides/testing-minase-rules.md)）。
 `see_prunes`は、負、0、正の閾値のそれぞれで、交換列を最後まで逆算した参照値との照合テストで確かめる。照合には、経由升、成り益、獅子の規則による判定不能、および等号の場合を含める。
 `quiesce`、`QsearchBuffers`、`see_prunes`、`Searcher::previous_capture`の後継、`Searcher`と`MoveRecord`、`tt.rs`、および`correction.rs`のdocコメントを、新しい契約に合わせて書き直す。
 形の変更を終えたら、SPSAの前に、`params.rs`の既定値を範囲の1/3と2/3の位置に置いた一時的な表でそれぞれテストを走らせ、落ちたテストを、係数を固定の値に設定するか係数によらず結果が決まる局面で確かめる形に直す。
-完了条件は、[テストの手引き](../../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、および`cargo test -p minase --lib --features search-stats,tuning`）の通過、純粋な移行でのノード数の一致、各項目のノード数の記録、静止探索の鍵と着手の記録の一致、既定値を1/3と2/3に置いたテストの通過、探索速度の記録、および発動回数の記録である。
+完了条件は、[テストの手引き](../../guides/testing-minase-rules.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、および`cargo test -p minase --lib --features search-stats,tuning`）の通過、純粋な移行でのノード数の一致、各項目のノード数の記録、静止探索の鍵と着手の記録の一致、既定値を1/3と2/3に置いたテストの通過、探索速度の記録、および発動回数の記録である。
 
 ### フェーズ2　パラメーターファイルと時間切れの事前確認
 
