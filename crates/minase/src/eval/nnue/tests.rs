@@ -67,9 +67,9 @@ fn next(state: &mut u32) -> u32 {
 struct HeadParameters {
     output_weights: Vec<i16>,
     output_bias: i32,
-    hidden1_weights: Vec<i8>,
+    hidden1_weights: Vec<i16>,
     hidden1_biases: [i32; 15],
-    hidden2_weights: Vec<i8>,
+    hidden2_weights: Vec<i16>,
     hidden2_biases: [i32; 32],
     hidden2_output: [i16; 32],
 }
@@ -94,16 +94,16 @@ impl HeadParameters {
         }
         result.output_bias = (next(state) % 8_323_073) as i32 - 4_161_536;
         for value in &mut result.hidden1_weights {
-            *value = ((next(state) % 255) as i16 - 127) as i8;
+            *value = (next(state) % 1_017) as i16 - 508;
         }
         for value in &mut result.hidden1_biases {
-            *value = (next(state) % 130_049) as i32 - 65_024;
+            *value = (next(state) % 520_193) as i32 - 260_096;
         }
         for value in &mut result.hidden2_weights {
-            *value = ((next(state) % 255) as i16 - 127) as i8;
+            *value = (next(state) % 1_017) as i16 - 508;
         }
         for value in &mut result.hidden2_biases {
-            *value = (next(state) % 130_049) as i32 - 65_024;
+            *value = (next(state) % 520_193) as i32 - 260_096;
         }
         for value in &mut result.hidden2_output {
             *value = (next(state) % 16_385) as i16 - 8_192;
@@ -148,11 +148,15 @@ impl HeadParameters {
             bytes.extend(value.to_le_bytes());
         }
         bytes.extend(self.output_bias.to_le_bytes());
-        bytes.extend(self.hidden1_weights.iter().map(|&value| value as u8));
+        for value in &self.hidden1_weights {
+            bytes.extend(value.to_le_bytes());
+        }
         for value in self.hidden1_biases {
             bytes.extend(value.to_le_bytes());
         }
-        bytes.extend(self.hidden2_weights.iter().map(|&value| value as u8));
+        for value in &self.hidden2_weights {
+            bytes.extend(value.to_le_bytes());
+        }
         for value in self.hidden2_biases {
             bytes.extend(value.to_le_bytes());
         }
@@ -195,15 +199,15 @@ fn reference_head(p: &HeadParameters, us: &[i16], them: &[i16], scale: i64) -> R
     });
     let mut u = [0; 30];
     for k in 0..15 {
-        u[k] = (z[k] * z[k] / 524_288).min(127);
-        u[15 + k] = z[k].div_euclid(64).clamp(0, 127);
+        u[k] = (z[k] * z[k] / 8_388_608).min(127);
+        u[15 + k] = z[k].div_euclid(256).clamp(0, 127);
     }
     let y = std::array::from_fn(|k| {
         let sum = i64::from(p.hidden2_biases[k])
             + (0..30)
                 .map(|i| i64::from(p.hidden2_weights[k * 30 + i]) * u[i])
                 .sum::<i64>();
-        sum.div_euclid(64).clamp(0, 127)
+        sum.div_euclid(256).clamp(0, 127)
     });
     let out = i64::from(p.output_bias)
         + (0..width)
@@ -1378,7 +1382,8 @@ both_feature_sets!(header_validation_and_runtime_lengths);
 fn header_validation_and_runtime_lengths<F: FeatureSet>() {
     let a = random_bytes::<F>(4);
     let b = random_bytes::<F>(8);
-    assert_eq!(b.len() - a.len(), F::DIMENSIONS * 8 + 84);
+    // 幅の増分4ごとに、第1層2D、バイアス4、oの2、W1の15×2バイトが増える。
+    assert_eq!(b.len() - a.len(), 4 * (F::DIMENSIONS * 2 + 4 + 2 + 15 * 2));
     for width in [4, 8, 512] {
         let bytes = random_bytes::<F>(width);
         assert_eq!(
@@ -2244,30 +2249,35 @@ fn pairwise_clamping_shift_and_perspective_order_follow_specification() {
 }
 
 #[test]
-fn dual_activation_squares_negative_inputs_and_preserves_8128_boundary() {
-    // W2を尺度64の単位行にすると、最終出力からuの各成分を個別に読める。
+fn dual_activation_squares_negative_inputs_and_preserves_32512_boundary() {
+    // W2を尺度256の単位行にすると、最終出力からuの各成分を個別に読める。
+    // 2乗の枝は2^23で割る。2,896² < 2^23 ≤ 2,897²、32,512² / 2^23 = 126.0078125。
     for (z, squared, clipped) in [
-        (-65_024, 127, 0),
-        (-8192, 127, 0),
-        (-8128, 126, 0),
-        (-1024, 2, 0),
+        (-260_096, 127, 0),
+        (-32768, 127, 0),
+        (-32512, 126, 0),
+        (-4096, 2, 0),
+        (-2897, 1, 0),
+        (-2896, 0, 0),
         (-1, 0, 0),
         (0, 0, 0),
         (1, 0, 0),
-        (63, 0, 0),
-        (64, 0, 1),
-        (724, 0, 11),
-        (725, 1, 11),
-        (8127, 125, 126),
-        (8128, 126, 127),
-        (8191, 127, 127),
-        (8192, 127, 127),
-        (65_024, 127, 127),
+        (255, 0, 0),
+        (256, 0, 1),
+        (2896, 0, 11),
+        (2897, 1, 11),
+        (32510, 125, 126),
+        (32511, 126, 126),
+        (32512, 126, 127),
+        (32639, 126, 127),
+        (32640, 127, 127),
+        (32768, 127, 127),
+        (260_096, 127, 127),
     ] {
         let mut p = HeadParameters::zero(4);
         p.hidden1_biases[0] = z;
-        p.hidden2_weights[0] = 64;
-        p.hidden2_weights[30 + 15] = 64;
+        p.hidden2_weights[0] = 256;
+        p.hidden2_weights[30 + 15] = 256;
         let reference = reference_head(&p, &[0; 4], &[0; 4], 1);
         assert_eq!(reference.u[0], squared);
         assert_eq!(reference.u[15], clipped);
@@ -2286,16 +2296,16 @@ fn dual_activation_squares_negative_inputs_and_preserves_8128_boundary() {
 #[test]
 fn second_hidden_layer_shift_and_clamping_follow_specification() {
     for (bias, expected) in [
-        (-65_024, 0),
-        (-65, 0),
+        (-260_096, 0),
+        (-257, 0),
         (-1, 0),
         (0, 0),
-        (63, 0),
-        (64, 1),
-        (8127, 126),
-        (8128, 127),
-        (8192, 127),
-        (65_024, 127),
+        (255, 0),
+        (256, 1),
+        (32511, 126),
+        (32512, 127),
+        (32768, 127),
+        (260_096, 127),
     ] {
         let mut p = HeadParameters::zero(4);
         p.hidden2_biases[31] = bias;
@@ -2309,40 +2319,48 @@ fn pairwise_output_fits_i32_at_width_512_parameter_limits() {
     let mut p = HeadParameters::zero(512);
     p.output_weights.fill(8192);
     p.output_bias = 4_161_536;
-    p.hidden1_weights.fill(127);
-    p.hidden1_biases.fill(65_024);
-    p.hidden2_weights.fill(127);
-    p.hidden2_biases.fill(65_024);
+    p.hidden1_weights.fill(508);
+    p.hidden1_biases.fill(260_096);
+    p.hidden2_weights.fill(508);
+    p.hidden2_biases.fill(260_096);
     p.hidden2_output.fill(8192);
     let expected = reference_head(&p, &[i16::MAX; 512], &[i16::MAX; 512], 135);
-    // z = 512×127²+65,024、out = (512+32)×127×8,192+4,161,536。
-    assert_eq!(expected.z, [8_323_072; 15]);
+    // z = 512×127×508+260,096、out = (512+32)×127×8,192+4,161,536。
+    assert_eq!(expected.z, [33_292_288; 15]);
     assert_eq!(expected.out, 570_130_432);
     assert!(i32::try_from(expected.z[0]).is_ok());
     assert!(i32::try_from(expected.out).is_ok());
-    assert_eq!(
-        p.build(true)
-            .unwrap()
-            .output(&[i16::MAX; 512], &[i16::MAX; 512]),
-        570_130_432
-    );
+    for shared in [false, true] {
+        assert_eq!(
+            p.build(shared)
+                .unwrap()
+                .output(&[i16::MAX; 512], &[i16::MAX; 512]),
+            570_130_432
+        );
+    }
     p.output_weights.fill(-8192);
     p.output_bias = -4_161_536;
     p.hidden2_output.fill(-8192);
-    assert_eq!(
-        p.build(true).unwrap().output(&[255; 512], &[255; 512]),
-        -570_130_432
-    );
-    p.hidden1_weights.fill(-127);
-    p.hidden1_biases.fill(-65_024);
-    p.hidden2_weights.fill(-127);
-    p.hidden2_biases.fill(-65_024);
+    for shared in [false, true] {
+        assert_eq!(
+            p.build(shared).unwrap().output(&[255; 512], &[255; 512]),
+            -570_130_432
+        );
+    }
+    p.hidden1_weights.fill(-508);
+    p.hidden1_biases.fill(-260_096);
+    p.hidden2_weights.fill(-508);
+    p.hidden2_biases.fill(-260_096);
     let expected = reference_head(&p, &[255; 512], &[255; 512], 135);
-    assert_eq!(expected.z, [-8_323_072; 15]);
-    assert_eq!(
-        i64::from(p.build(true).unwrap().output(&[255; 512], &[255; 512])),
-        expected.out
-    );
+    assert_eq!(expected.z, [-33_292_288; 15]);
+    assert!(i32::try_from(expected.z[0]).is_ok());
+    assert!(i32::try_from(expected.out).is_ok());
+    for shared in [false, true] {
+        assert_eq!(
+            i64::from(p.build(shared).unwrap().output(&[255; 512], &[255; 512])),
+            expected.out
+        );
+    }
 }
 
 both_feature_sets!(nonlinear_conversion_matches_reference_without_piece_count_phase);
@@ -2410,9 +2428,9 @@ fn head_sections_reject_invalid_lengths_ranges_and_mirrors<F: FeatureSet>() {
         + F::DIMENSIONS * 2 * width
         + 4 * width;
     // 区画表からの独立な計算。o, b, W1, b1, W2, b2, vの順。
-    let section_length = 16 + 4 + 120 + 60 + 960 + 128 + 64;
+    let section_length = 16 + 4 + 240 + 60 + 1920 + 128 + 64;
     assert_eq!(PairwiseL16L32::byte_len(width), section_length);
-    assert_eq!(PairwiseL16L32::byte_len(256), 5568);
+    assert_eq!(PairwiseL16L32::byte_len(256), 10_368);
     assert_eq!(bytes.len(), offset + section_length);
     for length in 0..section_length {
         assert!(matches!(
@@ -2470,7 +2488,7 @@ fn head_sections_reject_invalid_lengths_ranges_and_mirrors<F: FeatureSet>() {
         bad.output_bias = value;
         assert_invalid(&bad, "output_bias", 0, value);
     }
-    for value in [-65_025, 65_025, i32::MIN, i32::MAX] {
+    for value in [-260_097, 260_097, i32::MIN, i32::MAX] {
         let mut bad = p.clone();
         bad.hidden1_biases[14] = value;
         assert_invalid(&bad, "hidden1_biases", 14, value);
@@ -2478,27 +2496,28 @@ fn head_sections_reject_invalid_lengths_ranges_and_mirrors<F: FeatureSet>() {
         bad.hidden2_biases[31] = value;
         assert_invalid(&bad, "hidden2_biases", 31, value);
     }
-    // i8の上限127の次のビット列も−128になる。
-    for (parameter, index) in [
-        ("hidden1_weights", 15 * width - 1),
-        ("hidden2_weights", 32 * 30 - 1),
-    ] {
-        let mut bad = p.clone();
-        if parameter == "hidden1_weights" {
-            bad.hidden1_weights[index] = -128;
-        } else {
-            bad.hidden2_weights[index] = -128;
+    for value in [-509_i16, 509, i16::MIN, i16::MAX] {
+        for (parameter, index) in [
+            ("hidden1_weights", 15 * width - 1),
+            ("hidden2_weights", 32 * 30 - 1),
+        ] {
+            let mut bad = p.clone();
+            if parameter == "hidden1_weights" {
+                bad.hidden1_weights[index] = value;
+            } else {
+                bad.hidden2_weights[index] = value;
+            }
+            assert_invalid(&bad, parameter, index, i32::from(value));
         }
-        assert_invalid(&bad, parameter, index, -128);
     }
     for sign in [-1, 1] {
         let mut p = HeadParameters::zero(width);
         p.output_weights.fill(sign * 8192);
         p.output_bias = i32::from(sign) * 4_161_536;
-        p.hidden1_weights.fill((sign * 127) as i8);
-        p.hidden1_biases.fill(i32::from(sign) * 65_024);
-        p.hidden2_weights.fill((sign * 127) as i8);
-        p.hidden2_biases.fill(i32::from(sign) * 65_024);
+        p.hidden1_weights.fill(sign * 508);
+        p.hidden1_biases.fill(i32::from(sign) * 260_096);
+        p.hidden2_weights.fill(sign * 508);
+        p.hidden2_biases.fill(i32::from(sign) * 260_096);
         p.hidden2_output.fill(sign * 8192);
         assert!(p.build(true).is_ok());
         assert!(PairwiseL16L32::decode(&p.bytes(), width, true).is_ok());

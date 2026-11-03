@@ -26,13 +26,13 @@ pub struct Quantized {
     pub output_weights: Vec<i16>,
     /// 出力バイアスb。尺度127×4096。
     pub output_bias: i32,
-    /// W1`[15, H]`。尺度64。
-    pub hidden1_weights: Vec<i8>,
-    /// b1`[15]`。尺度127×64。
+    /// W1`[15, H]`。尺度256。
+    pub hidden1_weights: Vec<i16>,
+    /// b1`[15]`。尺度127×256。
     pub hidden1_biases: [i32; 15],
-    /// W2`[32, 30]`。尺度64。
-    pub hidden2_weights: Vec<i8>,
-    /// b2`[32]`。尺度127×64。
+    /// W2`[32, 30]`。尺度256。
+    pub hidden2_weights: Vec<i16>,
+    /// b2`[32]`。尺度127×256。
     pub hidden2_biases: [i32; 32],
     /// 隠れ層の出力重みv`[32]`。尺度4096。
     pub hidden2_output: [i16; 32],
@@ -85,7 +85,7 @@ fn rounded(value: f32, scale: f64, low: i32, high: i32, parameter: Parameter) ->
 /// f32をf64へ広げて尺度を掛け、`round_ties_even`で偶数丸めする。
 /// 線形は×8でi16、第1層は×255で±220、そのバイアスは×255で±510に収める。
 /// 出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
-/// W1とW2は×64で±127、b1とb2は×127×64で±65,024、vは×4,096で±8,192に収める。
+/// W1とW2は×256で±508のi16、b1とb2は×127×256で±260,096、vは×4,096で±8,192に収める。
 /// 第1層は畳み込み済みの重みを使い、埋め草を除く。
 /// 範囲外は切り詰めず[`Error::Quantization`]を返す。
 pub fn quantize(model: &Model) -> Result<Quantized> {
@@ -149,22 +149,22 @@ pub fn quantize(model: &Model) -> Result<Quantized> {
         hidden1_weights: model
             .expanded_hidden1_weights()
             .iter()
-            .map(|&v| rounded(v, 64.0, -127, 127, Parameter::Hidden1Weights).map(|x| x as i8))
+            .map(|&v| rounded(v, 256.0, -508, 508, Parameter::Hidden1Weights).map(|x| x as i16))
             .collect::<Result<_>>()?,
         hidden1_biases: quantized_array(
             &model.parameters()[Parameter::Hidden1Biases],
-            127.0 * 64.0,
-            65_024,
+            127.0 * 256.0,
+            260_096,
             Parameter::Hidden1Biases,
         )?,
         hidden2_weights: model.parameters()[Parameter::Hidden2Weights]
             .iter()
-            .map(|&v| rounded(v, 64.0, -127, 127, Parameter::Hidden2Weights).map(|x| x as i8))
+            .map(|&v| rounded(v, 256.0, -508, 508, Parameter::Hidden2Weights).map(|x| x as i16))
             .collect::<Result<_>>()?,
         hidden2_biases: quantized_array(
             &model.parameters()[Parameter::Hidden2Biases],
-            127.0 * 64.0,
-            65_024,
+            127.0 * 256.0,
+            260_096,
             Parameter::Hidden2Biases,
         )?,
         hidden2_output: quantized_array(

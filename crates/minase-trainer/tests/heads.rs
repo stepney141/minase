@@ -56,9 +56,9 @@ fn integer_reference(bytes: &[u8], set: InputFeatureSet, batch: &BatchSlot, b: u
         }
     }
     let w1 = head + 2 * h + 4;
-    let b1 = w1 + 15 * h;
+    let b1 = w1 + 15 * h * 2;
     let w2 = b1 + 15 * 4;
-    let b2 = w2 + 32 * 30;
+    let b2 = w2 + 32 * 30 * 2;
     let v = b2 + 32 * 4;
     assert_eq!(bytes.len(), v + 32 * 2);
     let mut u = [0_i64; 30];
@@ -68,11 +68,11 @@ fn integer_reference(bytes: &[u8], set: InputFeatureSet, batch: &BatchSlot, b: u
             .iter()
             .enumerate()
             .fold(i32_at(b1 + k * 4), |sum, (i, &x)| {
-                sum + (bytes[w1 + k * h + i] as i8 as i64) * x
+                sum + i16_at(w1 + (k * h + i) * 2) * x
             });
         // 3. 負のzも2乗し、2枝を連結する。
-        u[k] = ((z * z) >> 19).min(127);
-        u[15 + k] = (z >> 6).clamp(0, 127);
+        u[k] = ((z * z) >> 23).min(127);
+        u[15 + k] = (z >> 8).clamp(0, 127);
     }
     let y: [i64; 32] = std::array::from_fn(|k| {
         // 4. W2の積和、バイアス、算術シフト、切り詰め。
@@ -80,9 +80,9 @@ fn integer_reference(bytes: &[u8], set: InputFeatureSet, batch: &BatchSlot, b: u
             .iter()
             .enumerate()
             .fold(i32_at(b2 + k * 4), |sum, (i, &x)| {
-                sum + (bytes[w2 + k * 30 + i] as i8 as i64) * x
+                sum + i16_at(w2 + (k * 30 + i) * 2) * x
             });
-        (a >> 6).clamp(0, 127)
+        (a >> 8).clamp(0, 127)
     });
     // 5. 直接内積、幅32の内積、b。
     let out = s

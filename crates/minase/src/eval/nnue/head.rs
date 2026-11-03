@@ -4,13 +4,14 @@
 //! 積の上限は65,025、sの範囲は0〜127であり、手番側H/2個、相手側H/2個の順に並べる。
 //!
 //! 幅15の層は`z = W1·s + b1`をi32で求め、
-//! `u[k] = min(127, (i64(z[k])²) >> 19)`と`u[15+k] = clamp(z[k] >> 6, 0, 127)`を連結する。
-//! 負のzも2乗し、幅32の層は`y = clamp((W2·u + b2) >> 6, 0, 127)`とする。
+//! `u[k] = min(127, (i64(z[k])²) >> 23)`と`u[15+k] = clamp(z[k] >> 8, 0, 127)`を連結する。
+//! 負のzも2乗し、幅32の層は`y = clamp((W2·u + b2) >> 8, 0, 127)`とする。
+//! 実数のz=1は整数の32,512にあたり、2乗の枝は126、切り詰めの枝は127となる。
 //! 最終出力はi32の`o·s + v·y + b`であり、センチポーンへの換算は呼び手が行う。
 //! zと第2隠れ層の和の右シフトは算術シフト、要素積の右シフトは論理シフトである。
 //!
-//! oとvは尺度4,096のi16で絶対値8,192以下、W1とW2は尺度64のi8で絶対値127以下とする。
-//! b1とb2は尺度127×64のi32で絶対値65,024以下、bは尺度127×4,096のi32で絶対値4,161,536以下とする。
+//! oとvは尺度4,096のi16で絶対値8,192以下、W1とW2は尺度256のi16で絶対値508以下とする。
+//! b1とb2は尺度127×256のi32で絶対値260,096以下、bは尺度127×4,096のi32で絶対値4,161,536以下とする。
 //! P型ではoとW1の各行を、各視点内の成分jとj+H/4で共有する。後続の層には共有を課さない。
 
 use super::Error;
@@ -31,15 +32,15 @@ pub trait Head: Sized {
 }
 
 /// `pairwise-l16-l32`の検査済み出力区画。幅Hは4以上512以下の4の倍数とする。
-/// バイト列は`o: i16[H]`、`b: i32`、`W1: i8[15][H]`、`b1: i32[15]`、
-/// `W2: i8[32][30]`、`b2: i32[32]`、`v: i16[32]`の順で、行列は行優先である。
-/// H=256で5,568バイトとなる。
+/// バイト列は`o: i16[H]`、`b: i32`、`W1: i16[15][H]`、`b1: i32[15]`、
+/// `W2: i16[32][30]`、`b2: i32[32]`、`v: i16[32]`の順で、行列は行優先である。
+/// H=256で10,368バイトとなる。
 pub struct PairwiseL16L32 {
     output_weights: Box<[i16]>,
     output_bias: i32,
-    hidden1_weights: Box<[i8]>,
+    hidden1_weights: Box<[i16]>,
     hidden1_biases: [i32; 15],
-    hidden2_weights: Box<[i8]>,
+    hidden2_weights: Box<[i16]>,
     hidden2_biases: [i32; 32],
     hidden2_output: [i16; 32],
     shared_mirror_weights: Option<SharedMirrorWeights>,
@@ -48,7 +49,7 @@ pub struct PairwiseL16L32 {
 /// 各視点の鏡映対から片側だけを取り出した、半幅の推論用重み。
 struct SharedMirrorWeights {
     output_weights: Box<[i16]>,
-    hidden1_weights: Box<[i8]>,
+    hidden1_weights: Box<[i16]>,
 }
 
 impl PairwiseL16L32 {
@@ -60,9 +61,9 @@ impl PairwiseL16L32 {
         width: usize,
         output_weights: &[i16],
         output_bias: i32,
-        hidden1_weights: &[i8],
+        hidden1_weights: &[i16],
         hidden1_biases: [i32; 15],
-        hidden2_weights: &[i8],
+        hidden2_weights: &[i16],
         hidden2_biases: [i32; 32],
         hidden2_output: [i16; 32],
         shared_mirror: bool,
@@ -80,15 +81,15 @@ impl PairwiseL16L32 {
         validate_range(
             "hidden1_weights",
             hidden1_weights.iter().copied().map(i32::from),
-            127,
+            508,
         )?;
-        validate_range("hidden1_biases", hidden1_biases, 65_024)?;
+        validate_range("hidden1_biases", hidden1_biases, 260_096)?;
         validate_range(
             "hidden2_weights",
             hidden2_weights.iter().copied().map(i32::from),
-            127,
+            508,
         )?;
-        validate_range("hidden2_biases", hidden2_biases, 65_024)?;
+        validate_range("hidden2_biases", hidden2_biases, 260_096)?;
         validate_range(
             "hidden2_output",
             hidden2_output.into_iter().map(i32::from),
@@ -124,7 +125,7 @@ impl Head for PairwiseL16L32 {
     const NAME: &'static str = "pairwise-l16-l32";
 
     fn byte_len(width: usize) -> usize {
-        2 * width + 4 + 15 * width + 15 * 4 + 32 * 30 + 32 * 4 + 32 * 2
+        2 * width + 4 + 15 * width * 2 + 15 * 4 + 32 * 30 * 2 + 32 * 4 + 32 * 2
     }
 
     fn decode(bytes: &[u8], width: usize, shared_mirror: bool) -> Result<Self, Error> {
@@ -139,18 +140,16 @@ impl Head for PairwiseL16L32 {
         let output_weights: Vec<i16> = (0..width).map(|i| read_i16(bytes, 2 * i)).collect();
         let output_bias = read_i32(bytes, 2 * width);
         let mut offset = 2 * width + 4;
-        let hidden1_weights: Vec<i8> = bytes[offset..offset + 15 * width]
-            .iter()
-            .map(|&value| value as i8)
+        let hidden1_weights: Vec<i16> = (0..15 * width)
+            .map(|i| read_i16(bytes, offset + 2 * i))
             .collect();
-        offset += 15 * width;
+        offset += 15 * width * 2;
         let hidden1_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
         offset += 15 * 4;
-        let hidden2_weights: Vec<i8> = bytes[offset..offset + 32 * 30]
-            .iter()
-            .map(|&value| value as i8)
+        let hidden2_weights: Vec<i16> = (0..32 * 30)
+            .map(|i| read_i16(bytes, offset + 2 * i))
             .collect();
-        offset += 32 * 30;
+        offset += 32 * 30 * 2;
         let hidden2_biases = std::array::from_fn(|k| read_i32(bytes, offset + 4 * k));
         offset += 32 * 4;
         let hidden2_output = std::array::from_fn(|k| read_i16(bytes, offset + 2 * k));
@@ -173,11 +172,15 @@ impl Head for PairwiseL16L32 {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(&self.output_bias.to_le_bytes());
-        bytes.extend(self.hidden1_weights.iter().map(|&value| value as u8));
+        for value in &self.hidden1_weights {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
         for value in self.hidden1_biases {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        bytes.extend(self.hidden2_weights.iter().map(|&value| value as u8));
+        for value in &self.hidden2_weights {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
         for value in self.hidden2_biases {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
@@ -187,7 +190,7 @@ impl Head for PairwiseL16L32 {
         bytes
     }
 
-    /// H=512でも`|z| ≤ 512×127² + 65,024`と
+    /// H=512でも`|z| ≤ 512×127×508 + 260,096`と
     /// `|out| ≤ (512+32)×127×8,192 + 4,161,536`はi32に収まる。
     fn output(&self, us: &[i16], them: &[i16]) -> i32 {
         let width = self.output_weights.len();
@@ -226,18 +229,18 @@ impl Head for PairwiseL16L32 {
         for (k, row) in hidden1_weights.chunks_exact(input.len()).enumerate() {
             let mut z = self.hidden1_biases[k];
             for (&w, &a) in row.iter().zip(input) {
-                z += i32::from(i16::from(w)) * i32::from(i16::from(a));
+                z += i32::from(w) * i32::from(i16::from(a));
             }
-            u[k] = ((i64::from(z) * i64::from(z)) >> 19).min(127) as u8;
-            u[15 + k] = (z >> 6).clamp(0, 127) as u8;
+            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as u8;
+            u[15 + k] = (z >> 8).clamp(0, 127) as u8;
         }
         let mut y = [0_u8; 32];
         for (k, row) in self.hidden2_weights.as_chunks::<30>().0.iter().enumerate() {
             let mut z = self.hidden2_biases[k];
             for (&w, &a) in row.iter().zip(&u) {
-                z += i32::from(i16::from(w)) * i32::from(i16::from(a));
+                z += i32::from(w) * i32::from(i16::from(a));
             }
-            y[k] = (z >> 6).clamp(0, 127) as u8;
+            y[k] = (z >> 8).clamp(0, 127) as u8;
         }
         let mut out = self.output_bias;
         for (&w, &a) in output_weights.iter().zip(input) {

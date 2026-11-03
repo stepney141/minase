@@ -265,6 +265,17 @@ fn quantization_ties_even_rotation_and_overflow_match_python_examples() {
         .parameter_mut(Parameter::OutputWeights)
         .copy_from_slice(&[1.5 / 4096.0, -1.5 / 4096.0]);
     model.parameter_mut(Parameter::OutputBias)[0] = 1.0 / 8192.0;
+    for parameter in [Parameter::Hidden1Weights, Parameter::Hidden2Weights] {
+        model.parameter_mut(parameter)[..4].copy_from_slice(&[
+            0.5 / 256.0,
+            1.5 / 256.0,
+            -0.5 / 256.0,
+            -1.5 / 256.0,
+        ]);
+    }
+    for parameter in [Parameter::Hidden1Biases, Parameter::Hidden2Biases] {
+        model.parameter_mut(parameter)[..4].copy_from_slice(&[1.0, -1.0, 0.5, -0.5]);
+    }
     let q = quantize(&model).unwrap();
     assert_eq!(
         q.linear[..4].iter().map(|v| v[0]).collect::<Vec<_>>(),
@@ -275,6 +286,11 @@ fn quantization_ties_even_rotation_and_overflow_match_python_examples() {
     assert_eq!(q.biases, [-128, -382, -128, -382]);
     assert_eq!(q.output_weights, [2, 2, -2, -2]);
     assert_eq!(q.output_bias, 64);
+    // P型のH=4では、W1の各視点の1成分を鏡映の対へ複写する。
+    assert_eq!(&q.hidden1_weights[..8], &[0, 0, 2, 2, 0, 0, -2, -2]);
+    assert_eq!(&q.hidden2_weights[..4], &[0, 2, 0, -2]);
+    assert_eq!(&q.hidden1_biases[..4], &[32512, -32512, 16256, -16256]);
+    assert_eq!(&q.hidden2_biases[..4], &[32512, -32512, 16256, -16256]);
     for (p, v) in [
         (Parameter::Linear, 4096.0),
         (Parameter::FirstLayer, 9.0),
@@ -318,6 +334,29 @@ fn quantization_obeys_first_layer_integer_bounds() {
                 ));
                 model.parameter_mut(parameter)[0] = 0.0;
             }
+        }
+    }
+}
+
+#[test]
+fn quantization_rejects_hidden_parameters_one_unit_beyond_integer_limits() {
+    use minase_trainer::nnue::model::Parameter::*;
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut model = model(set, 4);
+        for (parameter, scale, limit) in [
+            (Hidden1Weights, 256.0, 508),
+            (Hidden2Weights, 256.0, 508),
+            (Hidden1Biases, 32512.0, 260096),
+            (Hidden2Biases, 32512.0, 260096),
+        ] {
+            for sign in [-1, 1] {
+                model.parameter_mut(parameter)[0] = (sign * (limit + 1)) as f32 / scale;
+                assert!(matches!(
+                    quantize(&model),
+                    Err(minase_trainer::nnue::model::Error::Quantization(actual)) if actual == parameter
+                ));
+            }
+            model.parameter_mut(parameter)[0] = 0.0;
         }
     }
 }
@@ -588,10 +627,10 @@ fn every_parameter_constrains_and_quantizes_to_its_documented_limit() {
             // ±1.98 is the training constraint; 8192 is the wider file-format limit.
             assert_eq!(i32::from(q.output_weights[0]), integer(8110.0));
             assert_eq!(i32::from(q.hidden2_output[0]), integer(8110.0));
-            assert_eq!(i32::from(q.hidden1_weights[0]), integer(127.0));
-            assert_eq!(i32::from(q.hidden2_weights[0]), integer(127.0));
-            assert_eq!(q.hidden1_biases[0], integer(65024.0));
-            assert_eq!(q.hidden2_biases[0], integer(65024.0));
+            assert_eq!(i32::from(q.hidden1_weights[0]), integer(508.0));
+            assert_eq!(i32::from(q.hidden2_weights[0]), integer(508.0));
+            assert_eq!(q.hidden1_biases[0], integer(260096.0));
+            assert_eq!(q.hidden2_biases[0], integer(260096.0));
             assert_eq!(q.output_bias, integer(4161536.0));
             q.encode(&reference::v0_piece_values(), "L0,P0,R1,E0")
                 .unwrap();
