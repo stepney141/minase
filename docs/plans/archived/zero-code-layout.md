@@ -51,7 +51,7 @@ AlphaZero型探索の6本のサブタスクでは、それぞれの設計書が�
 - 重複する`softmax`の実装を`crate::nn`の1か所にまとめる。
 - `tools/train/zero/feasibility/`と`tools/train/zero/nn_torch_reference.py`を削除する（「ツールごとの判定」節）。
 - 集計ツール`teacher_stats`を`minase data teacher-stats`へ移し、強化学習の実行器`minase_zero run-cycles`の引数を改める（「`teacher_stats`の移動」節）。
-- 「試験専用のコードの分離」節の項目を分離し、規則を[テストの手引き](../../guides/testing.md)へ加える。
+- 「試験専用のコードの分離」節の項目を分離し、規則を[テストの手引き](../../guides/testing-minase-rules.md)へ加える。
 - [詰み探索（df-pn）の設計書](../mate-search.md)の置き場所を改める。
 - 「文書のパスの書き換え」節のとおりに文書を書き換える。
 
@@ -59,7 +59,7 @@ AlphaZero型探索の6本のサブタスクでは、それぞれの設計書が�
 
 - `tools/train/zero/mnsd_reader/src/scan.rs`が、教師データの形式MNSDのバイト列を`crates/minase/src/training/records.rs`とは別に解釈している重複は、直さない。解消には公開APIの設計が要るので、別の設計書で扱う。
 - αβ探索などにある`#[cfg(test)]`の項目（`search/alphabeta/`の35か所と、`search/mod.rs`、`search/snapshot.rs`、`eval/`の5か所）は動かさない。AlphaZero型探索の計画より前のコードであり、同じ規則を別の設計書で適用する。
-- `#[cfg(test)] mod tests`のファイル内モジュールは動かさない。[テストの手引き](../../guides/testing.md)が標準の置き方と定めており、リポジトリの95ファイルが使っている（`git grep -l '^mod tests {'`の件数）。
+- `#[cfg(test)] mod tests`のファイル内モジュールは動かさない。[テストの手引き](../../guides/testing-minase-rules.md)が標準の置き方と定めており、リポジトリの95ファイルが使っている（`git grep -l '^mod tests {'`の件数）。
 - `search/handle.rs`の公開関数`search`は動かさない。αβ探索専用だが、この計画より前からあり、公開パスを変える利点が小さい。
 - `tools/train/zero/gumbel_reference.py`と`tools/train/zero/nn_compare.py`は動かさない。crateの配下へ移すと、crates.ioへ配布するPythonのファイルが増えるからである。
 - `zero_selfplay/game.rs`の`gumbel_noise`（Gumbel AlphaZeroの乱数の変換）は動かさない。同じ変換の複製があった`driver_cost`を削除すると、呼び出し元が1つになるので、共有のために移す理由がない。
@@ -210,7 +210,7 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 - `launch-session.sh`は、機械を借りる前に`minase data teacher-stats --help`を実行する。実行器の確認は環境の導入の後に走るので、実行器の確認だけに任せると導入にかかった時間の料金が無駄になるからである。
 - `params.rs`のrustdocのリンクは、リンクにせず`alphabeta::searcher::Searcher::quiesce`の文字列とした。リンクにすると、文書のためだけにαβ探索の`searcher`モジュールの可視性を広げることになるからである。
 - `docs/measurements/`のMarkdownにある削除したツールのコマンド例と、ツールを名前で述べる文は、起案時の表の対象外であった。コマンドの中には修飾語を入れられないので、書き換えずにコミットを先に書く案を利用者へ示し、利用者がこの扱いを決めた（「文書のパスの書き換え」節の表の該当行）。
-- フェーズ5の検証で、`crates/minase/tests/match_runner.rs`の`usi_options_are_forwarded_recorded_and_restored_for_each_engine`がmasterでも約30回に1回失敗する不安定なテストであることが分かった。[テストの手引き](../../guides/testing.md)の規則に従い、別のコミットで直した。先手が直ちに投了すると、後手が`usinewgame`を読む前にハーネスに止められることが原因なので、この行を比較から外した。`isready`と`usinewgame`の順序は`harness/engine/tests.rs`の試験で検証している。
+- フェーズ5の検証で、`crates/minase/tests/match_runner.rs`の`usi_options_are_forwarded_recorded_and_restored_for_each_engine`がmasterでも約30回に1回失敗する不安定なテストであることが分かった。[テストの手引き](../../guides/testing-minase-rules.md)の規則に従い、別のコミットで直した。先手が直ちに投了すると、後手が`usinewgame`を読む前にハーネスに止められることが原因なので、この行を比較から外した。`isready`と`usinewgame`の順序は`harness/engine/tests.rs`の試験で検証している。
 
 ## 実装フェーズ
 
@@ -234,7 +234,7 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 
 マージの前に、次のすべてを確かめる。
 
-1. [テストの手引き](../../guides/testing.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`cargo test -p minase --lib --features search-stats,tuning`）が通ること。
+1. [テストの手引き](../../guides/testing-minase-rules.md)の4つの検査（`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`cargo test -p minase --lib --features search-stats,tuning`）が通ること。
 2. αβ探索の`minase dev bench`（固定の15局面を深さ6まで探索する検査）の探索ノード数が、整理の前と一致すること。
 3. 自己対局の出力が、整理の前と後で一致すること。次のコマンドを、毎回新しい出力先で実行し、MNSDのファイルをバイト単位で比べる。完了済みの塊は再利用されるので、同じ出力先では比べられない。ネットは[学び直しの最初のランダム初期化のネット](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)を使う。対局が短いので所要時間は短いと見込むが、フェーズ1で実測する。学習に使わないので、シードの台帳には登録しない。このコマンドで、`softmax`、3手の判定の移動、および`depth_limit`の変更を確かめる。
 
@@ -256,7 +256,7 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 
 「検証」節のすべてを満たし、「依存関係」節の条件を確かめてmasterへマージしたうえで、次の作業を終えたときに完了（採用）とする。
 
-- 試験専用のコードの規則を[テストの手引き](../../guides/testing.md)へ加える。
+- 試験専用のコードの規則を[テストの手引き](../../guides/testing-minase-rules.md)へ加える。
 - ツールの削除と試験専用のコードの規則の判断を新しいADRへ書き、3手の判定のADRを置き換える。
 - 本書の完了後も有効な配置の説明を`crates/minase/src/lib.rs`と各モジュールのdocコメントへ移す。
 
@@ -267,6 +267,6 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 - [詰み探索（df-pn）の設計書](../mate-search.md)
 - [借りる機械の操作の手引き](../../guides/alphazero-machines.md)
 - [ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)
-- [テストの手引き](../../guides/testing.md)
+- [テストの手引き](../../guides/testing-minase-rules.md)
 - [codexへの実装委任の手引き](../../guides/codex-delegation.md)
 - [学習ツールの再配置](train-tools-layout.md)：測定スクリプトのパスを書き換えた先例

@@ -8,7 +8,8 @@
 
 | 手引き | 内容 | 読むとき |
 |---|---|---|
-| [testing.md](testing.md) | テストの目的、書く範囲、検証の層、およびマージ前の検査 | テストを書くとき、マージの前 |
+| [testing-minase-rules.md](testing-minase-rules.md) | minaseのテストの書く範囲、検証の層、期待値の根拠、決定性、およびマージ前の検査 | テストを書くとき、マージの前 |
+| [testing-general-principles.md](testing-general-principles.md) | テスト一般の原則（良いテストの条件、依存の使い分け、カバレッジと変異テスト、不安定なテストの扱い）と出典 | テストを設計またはレビューするとき、手引きの規則の理由を確かめるとき |
 | [debugging.md](debugging.md) | 症状を再現し、原因の局面と処理まで絞り込み、修正を確かめる手順 | 不具合を調べるとき |
 | [codex-delegation.md](codex-delegation.md) | codexへ実装を委任する手順と既知の落とし穴 | 実装をcodexへ任せるとき |
 | [file-formats.md](file-formats.md) | ディスクに読み書きするファイル形式と、その仕様の場所の一覧 | ファイル形式の仕様を探すとき |

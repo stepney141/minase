@@ -29,7 +29,7 @@ STCとLTCは別の測定として扱い、測定名と実行ディレクトリ�
 
 - どの測定でも、[測定機で重い計算を始める前に進行中の測定を確認する](../lessons/check-running-measurements-before-cpu-load.md)に従う。
 - 探索の改良では、[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)と[保守的な適用除外は実装直後に除外率を測ってから確定する](../lessons/measure-conservative-guard-coverage.md)に従う。
-- 時間管理の変更では、[時間管理を変える前に保存記録から時計を再構成する](../lessons/reconstruct-clock-from-match-records.md)、[打ち切り上限は残り時間の割合でも抑える](../lessons/cap-hard-limit-by-remaining-fraction.md)、[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)、および[煙試験の指標は破棄局とエンジンの起動直後の手を分けて見る](../lessons/separate-discarded-games-and-engine-startup-in-smoke-metrics.md)に従う。
+- 時間管理の変更では、[時間管理を変える前に保存記録から時計を再構成する](../lessons/reconstruct-clock-from-match-records.md)、[打ち切り上限は残り時間の割合でも抑える](../lessons/cap-hard-limit-by-remaining-fraction.md)、[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)、および[スモークテストの指標は破棄局とエンジンの起動直後の手を分けて見る](../lessons/separate-discarded-games-and-engine-startup-in-smoke-metrics.md)に従う。
 
 STCの標準コマンドは次のとおりである。
 
@@ -245,7 +245,7 @@ USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名
 新規実行時にエンジンの宣言と照合し、`spin`は宣言範囲の整数、`combo`は選択肢、`check`は`true`か`false`、`string`は指定した文字列を受理する一方、未宣言の名前、未対応の型、`random`または`cecp:`への指定は拒否する。
 受理した列は`manifest.json`に保存して再開時に復元し、`--resume`との同時指定は同じ値でも引数のエラーにする。
 
-ハーネス自体の煙試験には`random`を指定する。
+ハーネス自体のスモークテストには`random`を指定する。
 この指定では同一ビルドの`minase dev usi-random`が起動され、合法手から一様ランダムに着手する校正用エンジンとして動く。
 `random`同士の対局は、真のElo差が0であると分かっている唯一の対戦カードである。
 

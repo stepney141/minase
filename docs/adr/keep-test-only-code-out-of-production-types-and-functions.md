@@ -40,6 +40,6 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 `crates/minase/Cargo.toml`は、minase-coreと同じ形で、自分自身を指す開発依存で`test-util`を有効にするので、`cargo build`の実行ファイルには入らない。
 探索木の手数の上限は常に存在するフィールドになり、試験と本番が同じコードを通る。
 探索木の容量の計算は`Tree`自身の大きさを含まないので、容量の上限は変わらない。
-この規則は`docs/guides/testing.md`に書く。
+この規則は`docs/guides/testing-minase-rules.md`に書く。
 αβ探索と評価関数の`#[cfg(test)]`の項目は、この決定より前のコードであり、別の設計書で同じ規則を適用する。
 `#[cfg(test)] mod tests`のファイル内モジュールは、モジュールの宣言なので規則に反しない。
