@@ -75,7 +75,6 @@
 | 静止探索の出力を学ぶPSTの学習 | [plans/archived/qsearch-output-training.md](plans/archived/qsearch-output-training.md) | 完了（不採用） | 2026年9月30日 |
 | 浅い探索の手の順位を学ぶ損失 | [plans/archived/rank-loss-training.md](plans/archived/rank-loss-training.md) | 完了（不採用） | 2026年10月1日 |
 | 残存誤りに対応する関係補正項 | [plans/archived/relational-correction.md](plans/archived/relational-correction.md) | 完了（不採用） | 2026年10月2日 |
-| 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/archived/debugging-tools.md](plans/archived/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
 | 探索部の不具合修正 | [plans/archived/search-bug-fixes.md](plans/archived/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
 | 評価関数の候補と探索係数の共適応の検証 | [plans/archived/eval-search-coadaptation.md](plans/archived/eval-search-coadaptation.md) | 完了（一部不採用） | 2026年10月5日 |
@@ -175,4 +174,4 @@
 
 #### 前提の見直しが要る計画
 
-- [Athénanの計画](plans/athenan.md)と[王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、どちらもPSTを既定の評価関数とする前提で書かれており、2026年10月12日にNNUEへ置き換わった後の扱いが決まっていない。前提を改めて続けるか、取り下げるかを利用者が決める。
+- [Athénanの計画](plans/athenan.md)は、PSTを既定の評価関数とする前提で書かれており、2026年10月12日にNNUEへ置き換わった後の扱いが決まっていない。対局用の探索UBFMsは評価関数によらない試みなので計画は残し（2026年11月3日の利用者の判断）、着手の前に前提を見直す。

@@ -337,7 +337,7 @@ T20では、Rust側に書き出し処理がない追加特徴ファイルの読�
 削除対象は [tools/train/tests/test_mnsd.py](../../../tools/train/tests/test_mnsd.py) の `KingFeatureSelectionTests` と `KingFeaturesTests`（計5件）、および [:399](../../../tools/train/tests/test_mnsd.py:399) のうちMNKFを扱う部分である。
 あわせて、`minase_train` のMNKF読み込みコードも削除する。
 
-MNKFの書き出しは段階9の完了時にmasterから外れており（[evaluation-terms-relearning.md](../../plans/evaluation-terms-relearning.md) の78行）、Rust側にも書き出すコードはない。
+MNKFの書き出しは段階9の完了時にmasterから外れており（コミット`a5daac42`の`docs/plans/evaluation-terms-relearning.md`の78行）、Rust側にも書き出すコードはない。
 したがって、この読み込みコードに入力を与える経路が現在のmasterに存在せず、テストは未使用コードを検査している。
 CLAUDE.md の方針は未使用コードの温存を禁じている。
 評価特徴の再学習の計画はMNKFの書き出しと学習器の追加特徴の経路を戻す予定なので、そのときに書き出し側と合わせて git 履歴から復元する。

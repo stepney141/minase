@@ -184,7 +184,7 @@ Pythonの同時学習器は、ブランチ`pst-fm-joint-training`のコミット
 
 `--replay`、`--replay-sample`、`tools/train/`のPythonの学習ツール、`minase dev pst-probe`、`minase dev nnue-probe`、`.gitignore`の`/tools/train/.venv`を削除する。
 `docs/guides/pst-training.md`をRustのコマンドの列で書き直し、`tools/train/README.md`の記録の項目の定義を`crates/minase-trainer/README.md`へ移す。
-[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「Pythonとの等価性」の節を書き換え、[NNUEの完全代替](nnue-replacement.md)、[Athénanの計画](../athenan.md)、[評価特徴の再学習](../evaluation-terms-relearning.md)、[デバッグの手引き](../../guides/debugging.md)、[独立の参照で診断を照合する教訓](../../lessons/compare-diagnostics-with-independent-reference.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)のPythonの学習器への参照を直す。
+[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「Pythonとの等価性」の節を書き換え、[NNUEの完全代替](nnue-replacement.md)、[Athénanの計画](../athenan.md)、評価特徴の再学習の計画（後に取り下げた）、[デバッグの手引き](../../guides/debugging.md)、[独立の参照で診断を照合する教訓](../../lessons/compare-diagnostics-with-independent-reference.md)、[NNUEの隠れ層と位相補間の出力](../nnue-hidden-layer.md)のPythonの学習器への参照を直す。
 `pst-probe`と`nnue-probe`を参照する文書とテストも直す。
 
 完了条件は、Pythonの学習ツール（`minase_train`、`tools/train/`のPythonの学習器）、`minase dev pst-probe`、`minase dev nnue-probe`への参照が、コード、現在の手順を書いた文書（`docs/guides/`、`docs/lessons/`、起案中と進行中の設計書、README）から無くなり、ワークスペースのテストが通ることである。
