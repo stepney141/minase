@@ -317,6 +317,7 @@ RGSCでは、収束したネットに一様な再開を続けても対KataGoの�
 [棋力向上段階9の診断C](../measurements/strength-stage9/strength-stage9-human-start-signal.md)では、実戦の局面から始めた自己対局2,000局でも、PSTの予測に王の安全度の10列を加えた予測の改善は区間が0をまたいだ。
 tanuki-の戦型の間引きも、開始局面の割合だけでは特化した評価関数を作れなかった。
 対象の特徴も局数も違うので結論は移せないが、草稿のフェーズ5が信号なしで止まる場合は十分にあり得る。
+一方、本書の後に行った[回帰](../measurements/adhoc/nnue-placement-outcome-regression.md)では、通常の自己対局の6,254局でも配置が対局結果を予測した。
 線形の経路だけを結果で補正した先例は、今回も見つからなかった。
 近いのは、結果だけで微調整したAstraの+47.35 ± 7.76 Eloと、60手以降を結果だけにしたtanuki-のR+41.4であり、どちらもネット全体を学ぶ（[本編の結論](teacher-generation-strong-engines.md)）。
 分野の外では、画像分類で最終層だけを疑似相関の成り立たない少量のデータで学び直すと頑健さが上がるという報告がある（[Kirichenko et al. 要旨と1節](https://arxiv.org/abs/2204.02937v2)）。
