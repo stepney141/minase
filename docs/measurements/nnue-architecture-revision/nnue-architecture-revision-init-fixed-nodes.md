@@ -2,7 +2,7 @@
 
 ## 目的
 
-[第1層の初期値を小さくした候補のSTC](nnue-architecture-revision-init-stc.md)が`H0`となったので、探索速度を除いた評価の質を基準と比べ、あわせて教師の分布の外の誤差、隠れ層の寄与、および同時実行時の速度を調べて、[設計書](../../plans/nnue-architecture-revision.md)の切り分けの判断材料を得る。
+[第1層の初期値を小さくした候補のSTC](nnue-architecture-revision-init-stc.md)が`H0`となったので、探索速度を除いた評価の質を基準と比べ、あわせて教師の分布の外の誤差、隠れ層の寄与、および同時実行時の速度を調べて、[設計書](../../plans/archived/nnue-architecture-revision.md)の切り分けの判断材料を得る。
 固定ノードの測定は診断であり、採否の根拠には使わない。
 
 ## コマンドライン

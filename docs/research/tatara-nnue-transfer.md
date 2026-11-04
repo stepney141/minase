@@ -24,7 +24,7 @@ Eloはチェス由来のロジスティックなEloであり、tanuki-の開発�
 norm loss、勝率モデル損失の一般化、L2とL3のshared項、dense QAT、チェックポイントの平均、および学習率の減衰率は、PRやissueに対局の結果が記録されていない。
 
 第2に、tataraと将棋の構造の利得は、教師の規模を確認できたものはいずれも約80億局面以上の上で測られている。
-minaseは約8,000万局面と幅128で学習しており、幅16の隠れ層を足すと訓練損失だけが下がって検証損失は下がらなかった（[ADR](../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
+minaseは約8,000万局面と幅128で学習しており、幅16の隠れ層を足すと訓練損失だけが下がって検証損失は下がらなかった（[ADR](../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
 したがって転移の見込みは、データの規模に依存しない技法かどうかで分かれる（推論）。
 
 第3に、tataraにも周辺の記録にも、駒の配置の偏りを測った記録はない。
@@ -53,7 +53,7 @@ minaseは約8,000万局面と幅128で学習しており、幅16の隠れ層を�
 ## 本書の順序の見直し
 
 2026年11月3日に開発者は、教師の生成の前にアーキテクチャを見直し、隠れ層を追加する前提で計画すると決めた。
-本書の順序は[構成の見直しの設計書](../plans/nnue-architecture-revision.md)で置き換えられた。
+本書の順序は[構成の見直しの設計書](../plans/archived/nnue-architecture-revision.md)で置き換えられた。
 同日の再調査で、本書の次の記述に修正が要ると分かった。
 
 - 「容量より教師の対局数が先に尽きる」という読みの根拠（S1の検証損失、間引きの比較、およびHalfKP-hm-b8の2回の敗北）は、いずれも翌日に廃止された先読み教師での結果である。先読みを外すと最良エポックは2から17へ移るので、現行の教師での容量の限界を示さない。また、HalfKP-hm-b8の敗北は入力の細分化の結果であり、幅の拡大の反証にならない（推論）。
@@ -98,7 +98,7 @@ tataraは2026年10月22日のコミット`1046cb7`で設計記録`docs/decisions
 | 教師 | 公開データの約80億局面を2周（160億局面）。[実験のリリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607)の条件 | 訓練79,458,082局面、210,788局（[記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)） |
 | 第1層 | 入力73,305、幅1536で約1.1億個の重み（arch-string.md 95行） | 入力13,680、幅128、鏡映の共有で独立重み889,200個（[考察](nnue-architecture-discussion.md)） |
 | 1重みあたりの局面数 | 約71局面（推論の計算） | 約89局面（同上） |
-| 後段 | 16と32の隠れ層をbucket別に持つ（layerstack_weights.rs 5〜20行） | 隠れ層なしの直接内積（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)） |
+| 後段 | 16と32の隠れ層をbucket別に持つ（layerstack_weights.rs 5〜20行） | 隠れ層なしの直接内積（[ADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)） |
 | 活性化 | CReLUの後に前半と後半の要素積（同上） | SCReLU（[head.rs](../../crates/minase/src/eval/nnue/head.rs) 61〜77行） |
 | 累算値の型 | tataraは学習専用で推論部がない。Stockfishはi16（nnue_accumulator.h 44行） | i32（[accumulator.rs](../../crates/minase/src/eval/nnue/accumulator.rs) 18行） |
 | 最適化器 | Ranger（β1=0.99、k=6、α=0.5。optimizer.rs 96〜129行） | AdamW（[options.rs](../../crates/minase-trainer/src/nnue/options.rs) 26〜42行） |
@@ -127,7 +127,7 @@ minaseの第1層の重みは±8へ切り詰めて量子化値を±1,016に収め
 総当たりの各組の誤差は±48 nEloあり、確定しているのはPairwiseとSCReLUの差だけである。
 これは隠れ層2段のネットの結果であり、隠れ層のない直接内積での記録はない。
 
-(c) minaseのADRは、第1層の後の要素積を試していないと記している（[ADR](../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md) 30行）。
+(c) minaseのADRは、第1層の後の要素積を試していないと記している（[ADR](../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md) 30行）。
 実装は`Head`トレイトの新しい実装（[head.rs](../../crates/minase/src/eval/nnue/head.rs) 9〜11行）、学習器のカーネルと参照実装、および構造記述文字列の3か所である。
 [層積みの設計書](../plans/nnue-layer-stack.md)は要素積を対象外としているので（49行）、固定の出力部として先に試せる。
 第1層の幅をHとすると、積の回数はHで現行の2Hの半分であり、内積の長さも半分になるので、推論費用は現行の17.2 ns以下に収まる（推論。[速度の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)）。
@@ -153,7 +153,7 @@ LayerStackのL1は出力の1成分をskip接続（最終出力へ直接足す経
 Stockfishは利き特徴を入れた後に第1層を縮め、現行は幅1024である（nnue_architecture.h 45行）。
 第2層を16から32へ広げた[SFNNv13](https://github.com/official-stockfish/Stockfish/commit/a6d055d7)は短時間でほぼ0 Elo（+0.03、189,184局でSPRT棄却）、長時間で+2.97 Eloであり、SFNNv16も短時間で棄却されて長時間で採択された（[付録](tatara-nnue-transfer/sources.md)）ので、費用の重い変更は短時間の判定に落ちることがある。
 
-(c) minaseでは、幅16の隠れ層の候補S1、S1に位相補間を加えた候補S2、および序盤用と終盤用の出力を盤上総駒数で補間する候補D2のコードが残っており（[ADR](../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）、`ActiveHead`の変更と学び直しだけで対局にかけられる。
+(c) minaseでは、幅16の隠れ層の候補S1、S1に位相補間を加えた候補S2、および序盤用と終盤用の出力を盤上総駒数で補間する候補D2のコードが残っており（[ADR](../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）、`ActiveHead`の変更と学び直しだけで対局にかけられる。
 ただし当時の計画は検証損失で基準を下回った候補だけを段階ゲートへ出す規則だったので、これらは対局で測られていない。
 出力部の費用は、S1とS2で探索時間の+18%と+19%であり、持ち時間の感度（2倍で+216 Elo。PSTの時代の値で、線形性は未確認）で換算すると約−51 Eloと約−54 Eloに相当する（推論）。
 幅256は形式上は読めて（[format.rs](../../crates/minase/src/eval/nnue/format.rs) 183行）、重みあたりの局面数は約45へ半減する。
@@ -222,7 +222,7 @@ P型の絶対位置の特徴だけで回帰すれば、進行度は線形の経�
 Stockfishは[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17c0ce2)でPSQTを廃止し、非劣性の検定を短時間で+1.82 Elo、長時間で+1.91 Elo（再計算）で通した。
 
 (c) minaseの線形の経路はこれにあたり、駒価値の初期化も既に同じである。
-開発者は線形の経路を残すと決めており（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 39行）、本書は再提案しない。
+開発者は線形の経路を残すと決めており（[ADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 39行）、本書は再提案しない。
 
 (d) 線形の経路は[結果回帰の設計書](../plans/archived/nnue-outcome-regression.md)の補正先でもあるので、偏りの対策の面でも残す意味がある（推論）。
 
@@ -353,7 +353,7 @@ tataraの記録はCReLUとPairwiseのネットであり、SCReLUの微分は2x�
 そこでPairwiseの結論が出てから、1点だけ試す。
 
 (d) 棋力の見込みは不明である（推論）。
-線形の経路の初期値を変えても麒麟の選好は弱まらなかった（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 21行）ので、第1層の初期値にも偏りへの効果は見込まない。
+線形の経路の初期値を変えても麒麟の選好は弱まらなかった（[ADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 21行）ので、第1層の初期値にも偏りへの効果は見込まない。
 
 ### 非線形の経路の倍率（FV_SCALE）
 
@@ -373,7 +373,7 @@ NNUEの非線形の経路の倍率を対局で調整した記録は、確かめ�
 
 (d) 棋力の見込みは正である（推論）。
 偏りにも効く可能性がある。
-升ごとの評価の差は大部分を非線形の経路が担うので（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 45行）、倍率を下げれば配置の選好の強さそのものが弱まる（推論）。
+升ごとの評価の差は大部分を非線形の経路が担うので（[ADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md) 45行）、倍率を下げれば配置の選好の強さそのものが弱まる（推論）。
 ただし評価の順序は変わらないので、選ぶ配置が変わるかどうかは測らないと分からない。
 
 ### 教師のリスコア

@@ -316,4 +316,4 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 - [自己対局の閉ループが生む偏りと盲点の先行事例](../../research/self-play-bias-prior-art.md)
 - [評価項目の自己対局による調整の調査（Texelの方法）](../../research/handcrafted-evaluation-selfplay.md)
 - [NNUEは先読みを使わない探索値だけの教師で学ぶADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
-- [NNUEの出力を駒価値で初期化した線形の経路と直接内積の和にするADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)
+- [NNUEの出力を駒価値で初期化した線形の経路と直接内積の和にするADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)

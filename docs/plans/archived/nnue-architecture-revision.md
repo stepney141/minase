@@ -4,34 +4,41 @@
 
 中将棋エンジンminaseの評価関数NNUE（着手ごとに第1層の値を差分で更新できる小さなニューラルネット）は、第1層の出力に重みを掛けて足すだけで評価値を出しており、第1層の後に隠れ層を持たない。
 StockfishやtataraのNNUEは第1層の後に全結合の隠れ層を持っており、この層がないと3駒以上の関係を少ないユニットで表しにくいと推測される。
-本書では、評価関数の学習データ（教師）を生成し直す計画である[世代反復](nnue-generation-reset.md)の前に、評価関数を隠れ層のある構成へ改める方法を定める。
+本書では、評価関数の学習データ（教師）を生成し直す計画である[世代反復](../nnue-generation-reset.md)の前に、評価関数を隠れ層のある構成へ改める方法を定める。
 隠れ層の追加は開発者の決定による前提であり、有無の比較は行わない。
 
 新しい構成は、幅256の第1層、2つの成分を掛け合わせる活性化（pairwise multiplication）、2段の隠れ層、および出力へ直接足す経路（skip接続）からなり、後段の配置はtataraのLayerStackと同じ16（15成分とskip1成分）、32、1である。
 あわせて、第1層の重みを整数にするときの倍率を127から255へ上げ、丸めの誤差を減らす。
 遅くなる分は、評価値を変えない2つの高速化（第1層の値の16ビット化と更新処理のまとめ）で取り戻す。
 
-既存の教師で1本学習し、基準のネットと短時間の対局（STC）で比べて、有意に強いという判定（`H1`）を取れば、この構成を世代反復で使う。
+既存の教師で1本学習し、基準のネットと短時間の対局（STC）で比べて、有意に強いという判定（`H1`）を取れば、この構成を世代反復で使う計画だった。
 基準は、現行の埋め込みネットから学習後の補正を除いた幅128のネットである。
+作業の結果、隠れ層の重みをi16へ改め、第1層の初期値を小さくしたが、`H1`は取れなかった。
+同じノード数では基準と区別できず、時間制御では速度の分だけ負けた。
+開発者は、この構成を`H1`なしで確定し、世代反復で検証すると決めた。
 masterの埋め込みネットの置き換えは、世代反復の最終候補で行う。
-完了条件は、新しい構成の整数の推論と学習器の照合が通り、学習したネットが判定を通って、世代反復の設計書と起点のコミットがこの構成へ更新されていることである。
 
 ## 状態
 
-進行中。2026年11月3日に起案し、同日に着手した。
-結果は構成の選択だけに使い、masterの置き換えは世代反復の最終候補で行う（2026年11月3日の開発者の決定）。
-基準はブランチ`nnue-architecture-revision-baseline`のコミット`ee1d6e08`である。
-フェーズ1からフェーズ3までは完了した（[速度の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
-差分更新のまとめは速くならなかったので入れず、累算値の16ビット化は機械の負荷のため親の幅を超える基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した。
-出力部の積和の畳み込みは親の幅を超えて速くなったので採用した。
-GPUと参照実装の照合は、両方の入力特徴集合の幅8、128、および256で一致した。
-フェーズ4の本学習は、量子化誤差の平均が29.80センチポーンとなって学習器の検査の上限26.82センチポーンを超え、止まった（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。
-誤差の大半はi8で持つ隠れ層の重みの丸めから来ていたので、2026年11月4日の開発者の決定によりW1とW2をi16の尺度256へ改め、再学習せずに`best.npz`から書き出し直して、9.45センチポーンで検査を通った。
-候補のコミットは`77e11950`である。
-[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-stc.md)は241ペアで`H0`（得点率41.6%）、[固定ノード](../measurements/nnue-architecture-revision/nnue-architecture-revision-fixed-nodes.md)は−34.2 Elo（95%区間−65.4〜−3.5）であった。
-開発者は、切り分けの表を第1層の初期値から順に試すと決めた（2026年11月4日）。
-初期値を小さくした候補`9af68a00`は、[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)が`H0`（306ペア、得点率43.6%）で、[固定ノード](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)が−2.6 Elo（95%区間−35.8〜+30.5）であった。
-いま詰まっている点は、切り分けの続きが開発者の判断待ちであることである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（一部不採用）。2026年11月3日に起案して着手し、2026年11月4日に完了した。
+幅256の第1層、要素積、2段の隠れ層、skip接続、第1層の尺度255、および累算値の16ビット化を採用し、世代反復で使う構成として確定した（[ADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。
+候補は幅128の基準に`H1`を取っていない。
+第1層の初期値を小さくした最終の候補は、[STC](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)が`H0`（306ペア、得点率43.6%）で、[固定ノードの対局](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)が−2.6 Elo（95%区間−35.8〜+30.5）であり、探索速度は基準の約0.91倍である。
+2026年11月4日の開発者の決定により、この構成を`H1`なしで確定し、[世代反復](../nnue-generation-reset.md)で検証する。
+
+本書の計画から次の点を変えた。
+隠れ層の重みはi8の尺度64で[学習が量子化誤差の検査に落ちた](../../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)ので、開発者の決定によりi16の尺度256へ改めた。
+第1層の初期値は、判定に通らなかった場合の切り分けの最初の候補として、開発者の決定により小さくした。
+累算値の16ビット化は、機械の負荷のため「増分が親の幅を超える」という基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した（[速度の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
+差分更新のまとめは速くならなかったので採用せず、16ビットの一時配列の変種も採用しなかった。
+フェーズ4の対局単位の汎化差は、集計の道具が見当たらず未計算である。
+
+基準はブランチ`nnue-architecture-revision-baseline`にある。
+ブランチ`nnue-architecture-revision`はmasterへ統合していない。
+統合は世代反復の最終候補の採用時に行う。
+フェーズ1の高速化だけを先にmasterへ入れるかと、[層積みの設計書](../nnue-layer-stack.md)を書き直すか取り下げるかは、開発者が決める。
 
 ## 目的
 
@@ -56,8 +63,8 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 隠れ層はユニットの出力をさらに組み合わせるので、この関係を表しやすくなると推測される。
 
 現在の構成に隠れ層がないのは、不要だと確かめたからではない。
-費用の小さい方から試すという理由で直接内積を選び（[考察](../research/nnue-architecture-discussion.md)）、幅16の隠れ層（以下S1）は検証損失がわずかに高いという理由で対局せずに見送った（[ADR](../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
-その比較で使った先読み教師は、訓練対局への過剰な適合を強めるとして翌日に廃止された（[ADR](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
+費用の小さい方から試すという理由で直接内積を選び（[考察](../../research/nnue-architecture-discussion.md)）、幅16の隠れ層（以下S1）は検証損失がわずかに高いという理由で対局せずに見送った（[ADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
+その比較で使った先読み教師は、訓練対局への過剰な適合を強めるとして翌日に廃止された（[ADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
 
 本書で使う語を次のとおり定める。
 
@@ -74,11 +81,11 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 - **dual activation**：同じ値を2乗とclipped ReLUの両方に通して連結することである。
 - **線形の経路**：駒の種類と升ごとの点数を足す表である。他のエンジンのPSQT（piece-square table）にあたる。
 - **P型**：入力特徴を駒と升の組だけで作るminaseの現行の入力特徴集合である（13,680個）。**HalfKP-hm-b8**は、自玉の位置の区分で条件付ける別の入力特徴集合である（109,440個）。
-- **結果回帰**：学習の後に線形の経路の一部を対局結果へ回帰する補正である（[ADR](../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。現行のmasterのネットにはこの補正が入っている。
+- **結果回帰**：学習の後に線形の経路の一部を対局結果へ回帰する補正である（[ADR](../../adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。現行のmasterのネットにはこの補正が入っている。
 - **基準**：masterの探索のコードに、補正前の幅128のネット`5257f374…`（コミット`6d47da2a`で埋め込んだもの）を載せたコミットである。
 - **NPS**：1秒あたりの探索局面数である。**bench**は固定の局面を固定の深さで探索する速度の測定である。
 - **飽和率**：活性化の入力が0以下または1以上になって、勾配が流れない成分の割合である。**汎化差**は、検証の対局と訓練の対局の損失の差である。
-- **STC**、**LTC**：[測定の手引き](../guides/sprt.md)が定める短時間（持ち時間10秒、1手0.1秒加算）と長時間（持ち時間60秒、1手0.2秒加算）の時間制御である。
+- **STC**、**LTC**：[測定の手引き](../../guides/sprt.md)が定める短時間（持ち時間10秒、1手0.1秒加算）と長時間（持ち時間60秒、1手0.2秒加算）の時間制御である。
 - **GSPRT**：自己対局の勝敗から強さの差を逐次判定する検定である。既定の仮説はH0が0 Elo、H1が+10 Eloであり、`H1`は候補が有意に強いという判定、`H0`は10 Elo以上強いとは言えないという判定、`pending`は未決着である。**LLR**は判定に使う対数尤度比である。先後を入れ替えた2局の組を1ペアと数える。
 
 ## 適用範囲
@@ -98,7 +105,7 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 - 出力bucket（獅子の有無、盤上の駒数、局面進行度による後段の切り替え）。本書の判定の後で、別の設計書で扱う。
 - 入力特徴集合の変更。
 - 最適化器、損失の形、第1層の初期値、およびチェックポイントの平均の変更。
-- 世代反復の実行と、対局結果の扱い（λと結果回帰）。これらは[世代反復の設計書](nnue-generation-reset.md)で扱う。
+- 世代反復の実行と、対局結果の扱い（λと結果回帰）。これらは[世代反復の設計書](../nnue-generation-reset.md)で扱う。
 - masterの埋め込みネットの置き換え。
 
 ## 依存関係
@@ -108,46 +115,46 @@ masterの学習器は、幅と出力部を引数で選べる（`--width`と`--he
 学習器のCUDAカーネルには幅16の隠れ層の順伝播と逆伝播がある。
 本書はこれらを土台にする。
 
-[世代反復の設計書](nnue-generation-reset.md)の作業は、本書の完了後に行う。
+[世代反復の設計書](../nnue-generation-reset.md)の作業は、本書の完了後に行う。
 同書はmasterから着手し、幅128と現行の出力部を前提に書かれている。
 本書で構成を確定したら、同書の起点を本書の確定コミットへ変える。
 書き換える項目は、「フェーズ6」に挙げる。
 
-[層積みの設計書](nnue-layer-stack.md)には依存しない。
+[層積みの設計書](../nnue-layer-stack.md)には依存しない。
 同書は4つの固定の出力部を1つの構成可能な型へ統一する計画であるが、本書の後では出力部が1つになるので、前提が変わる。
 書き直すか取り下げるかは、本書の完了後に開発者が決める。
 
 本書が完了すると、次のADRを新しいADRで置き換える。
 
-- [直接内積の出力部を維持するADR](../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
-- [線形の経路と直接内積でNNUEの出力を組み立てるADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)のうち、直接内積に関する部分。線形の経路は残す。
+- [直接内積の出力部を維持するADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
+- [線形の経路と直接内積でNNUEの出力を組み立てるADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)のうち、直接内積に関する部分。線形の経路は残す。
 
 ## 設計判断
 
 | 項目 | 決定 | 棄却した代案 |
 |---|---|---|
 | 隠れ層の有無 | 入れる（開発者の決定）。 | S1を現行の教師で測り直してから決める案は、開発者が不要とした。 |
-| 第1層の幅 | $`H=256`$とする。鏡映の共有で独立な列は128本になる。[静的な集計](../measurements/adhoc/nnue-first-layer-quantization.md)では、現行の64本は特異値がすべて初期値の雑音の上限より大きく、死んだ列もない。これは今の幅が使われていることを示すだけで、広げれば強くなることは示さない。幅を増やしても各行の観測回数は減らないので、入力の細分化と違って教師を薄めない（推測）。 | 幅128のままにする案は、開発者の目的に合わない。幅512は、幅256に比べて更新の費用が約2倍になり、学習のGPUメモリも幅128の実績2.33 GiBからの比例で約9 GiBとなって作業機のGPU（8 GB）を超えるので、幅256の結果を見てから考える。 |
+| 第1層の幅 | $`H=256`$とする。鏡映の共有で独立な列は128本になる。[静的な集計](../../measurements/adhoc/nnue-first-layer-quantization.md)では、現行の64本は特異値がすべて初期値の雑音の上限より大きく、死んだ列もない。これは今の幅が使われていることを示すだけで、広げれば強くなることは示さない。幅を増やしても各行の観測回数は減らないので、入力の細分化と違って教師を薄めない（推測）。 | 幅128のままにする案は、開発者の目的に合わない。幅512は、幅256に比べて更新の費用が約2倍になり、学習のGPUメモリも幅128の実績2.33 GiBからの比例で約9 GiBとなって作業機のGPU（8 GB）を超えるので、幅256の結果を見てから考える。 |
 | 活性化（pairwise multiplication） | 要素積に固定する。隠れ層への入力が半分になるので、積和も半分で済む。tataraとStockfishの隠れ層つきの構成はいずれも要素積を使う。tataraの隠れ層つきの`512x2-8-64`では、要素積がSCReLUより+29.5 ±13.2 nElo強かった（ただし後段の活性化と尺度も異なる）。 | SCReLUのままにする案は、隠れ層への入力が2倍の512個になり、積和も2倍になる。両方を学んで対局で選ぶ案は、学習と対局が1組増えるので、判定に失敗した場合の候補へ回す。 |
 | 要素積の組み方 | 256成分を4等分して$`[A,B,A^m,B^m]`$とし、$`A\times B`$と$`A^m\times B^m`$を計算する。$`m`$は鏡映を表す。独立な2本の列を掛けるので、tataraの形に近い。 | 成分$`j`$と鏡映の相手$`j+H/2`$を掛ける案は、掛け合わせる2本が独立でなくなる。 |
 | 第1層の尺度 | 255とし、`(c₁×c₂)>>9`で0〜127へ戻す（255×255÷512≒127）。Stockfishの上限と同じである。試算の尺度254は、現行の整数の重みを正確に2倍にできる値として使った。重みの丸めの誤差の上限が半分になる。実数の式との目盛りのずれは、現行の127/128（約0.8%）から65,025/65,024（約0.0015%）へ縮む。 | 尺度127を保つ案は、丸めが量子化誤差の大半を占めるので採らない（「整数化の精度の根拠」）。尺度508以上は、$`c^2`$が16ビットに収まらず、累算値もi16に収める範囲が狭くなりすぎる。 |
 | 隠れ層の形（LayerStack） | 要素積の出力$`H`$個を入力とする幅15の層、その2乗とclipped ReLUの連結30個（dual activation）、幅32の層の順とする。skip1成分と合わせて、tataraのLayerStackの既定（16、32）とやねうら王のSFNN-1536（15＋1、32）と同じ配置である。 | S1と同じ1段の形は、2段目での組合せを持たず、2乗の項も持たない。Stockfishの32、32で各段を出力へ連結する形は、1段目の積和が2倍になる。 |
-| 第1層の初期値 | 判定に通らなかった場合の最初の候補として、重みを標準偏差$`\sqrt{1/(3\times13{,}680)}\approx0.00494`$の正規分布で初期化する（2026年11月4日の開発者の決定）。tataraの`uniform:fanin`（半値幅0.01から0.0037への縮小で+31.17 ±13.79 nElo）とnnue-pytorchの一様分布±$`\sqrt{1/D}`$と同じ分散である。 | 標準偏差0.05のままにする案は、この構成で基準に負けた。0.05と0.00494の中間の値を選ぶ案は、先例がない。[教訓](../lessons/nnue-first-layer-init-saturation.md)は入力和の標準偏差の下限を0.2と書くが、この値では約0.05になる。下限は測定で決めた値ではなく、結果を見て教訓を改める。 |
-| 隠れ層の重みの型 | W1とW2はi16の尺度256とする（2026年11月4日の開発者の決定）。tataraやStockfishと同じi8の尺度64で学んだネットは、量子化誤差の平均が29.80 cpとなって検査の上限を超えた。[切り分け](../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)では誤差の大半がこの重みの丸めから来ており、尺度256で再学習なしに9.51 cpへ下がった。勝率尺度が約1,072 cpあるので、skip接続の行と同じ理由で1刻みが粗くなる。 | 尺度64のまま検査を越えてSTCへ進む案は、幅32の層の丸めが手番側に約+20 cpの偏りを残す。切り捨てを最近接の丸めに変える案は28.06 cpにしか下がらない。 |
+| 第1層の初期値 | 判定に通らなかった場合の最初の候補として、重みを標準偏差$`\sqrt{1/(3\times13{,}680)}\approx0.00494`$の正規分布で初期化する（2026年11月4日の開発者の決定）。tataraの`uniform:fanin`（半値幅0.01から0.0037への縮小で+31.17 ±13.79 nElo）とnnue-pytorchの一様分布±$`\sqrt{1/D}`$と同じ分散である。 | 標準偏差0.05のままにする案は、この構成で基準に負けた。0.05と0.00494の中間の値を選ぶ案は、先例がない。[教訓](../../lessons/nnue-first-layer-init-saturation.md)は入力和の標準偏差の下限を0.2と書くが、この値では約0.05になる。下限は測定で決めた値ではなく、結果を見て教訓を改める。 |
+| 隠れ層の重みの型 | W1とW2はi16の尺度256とする（2026年11月4日の開発者の決定）。tataraやStockfishと同じi8の尺度64で学んだネットは、量子化誤差の平均が29.80 cpとなって検査の上限を超えた。[切り分け](../../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)では誤差の大半がこの重みの丸めから来ており、尺度256で再学習なしに9.51 cpへ下がった。勝率尺度が約1,072 cpあるので、skip接続の行と同じ理由で1刻みが粗くなる。 | 尺度64のまま検査を越えてSTCへ進む案は、幅32の層の丸めが手番側に約+20 cpの偏りを残す。切り捨てを最近接の丸めに変える案は28.06 cpにしか下がらない。 |
 | skip接続 | tataraの幅16の層の1成分にあたる線形和を、現行と同じ直接内積$`o\cdot s`$として持つ。隠れ層の出力重みを0で始めれば学習の始点が直接内積だけの関数になり、隠れ層が働かなくても直接内積の表現を失わない。重みだけはtataraのi8（尺度64）ではなくi16（尺度4,096）にする。tataraの尺度（1.0が約290 cp）ではi8の1刻みが約4.5 cpだが、minaseの勝率尺度（約1,072 cp）では約17 cpと粗くなるからである。i16なら1刻みは約0.26 cpである。 | i8の1行としてtataraと完全に同じ形にする案は、上の理由で量子化誤差が増えると見込まれる（推測）。 |
 | 鏡映の共有 | 第1層は現行どおり成分$`j`$と$`j+H/2`$を鏡映の対にする。要素積の出力は$`j`$と$`j+H/4`$が対になるので、直接内積の重みと幅15の層の各行をこの対で共有する。幅15の層の出力は鏡映で不変になり、それより後ろは共有しない。 | 幅15の層のユニットも鏡映の対にする案は、左右を区別できるが、積和の削減が使えず実装も増える。判定に失敗した場合の候補へ回す。 |
 | bucket（局面に応じた後段の切り替え） | 本書では入れない。負けたときの切り分けに対照の学習が要るからである。 | 自他の獅子の有無の4区分を入れる案は、検証局面の分布（両者あり53.8%、両者なし23.9%、片方だけ各約11%）から実現性はあるが、次の設計書へ回す。 |
 | 線形の経路（PSQT） | 残す。開発者の既存の決定であり、世代反復の出発点である手書きの評価関数v0を表す経路でもある。学習の方式は変えず、tataraの`--psqt --psqt-init material`と同じく、駒価値で初期化してネット全体の1つの損失で学ぶ。 | 廃止する案は、Stockfishが非劣性の検定を通して廃止し、tataraも最良のレシピで使っていないが、これらは「なくても負けない」という記録であり、v0を表す経路の代わりが要る。 |
 | 累算値の型 | i16にする。尺度254での観測の最大の絶対値は1,454であり、i16の上限32,767よりはるかに小さく、1命令で処理する成分が2倍になる（推測）。評価値が完全に一致し、NPSが上がる場合に限って入れる。線形の経路の和はi32のまま変えない。 | i32のままにする案は、速度の測定で利得がない場合に限る。 |
-| 第1層の値域 | 重みを$`\lvert w\rvert\le220`$、バイアスを$`\lvert b\rvert\le510`$とする。発火は最大145行（全144升の駒と先獅子の特徴）で、バイアスを合わせた上限は1行の余裕を見て$`146\times220+510=32{,}630`$であり、i16の上限32,767に収まる。220はこの式から決まる上限に近い切りのよい値である。学習器も同じ範囲（実数で±220/255と±2）へ切り詰める。[既存の2本のネット](../measurements/adhoc/nnue-first-layer-quantization.md)でこの重みの範囲を超えるのは0.004〜0.011%である。 | ネットごとに上界を計算する案は、学習の最後まで収まるかが分からず、[教訓](../lessons/training-weights-must-fit-export-format.md)に反する。発火の上限を実際の駒数から93行と見積もる案は、`position sfen`で与えた局面で上限を超え得る。 |
+| 第1層の値域 | 重みを$`\lvert w\rvert\le220`$、バイアスを$`\lvert b\rvert\le510`$とする。発火は最大145行（全144升の駒と先獅子の特徴）で、バイアスを合わせた上限は1行の余裕を見て$`146\times220+510=32{,}630`$であり、i16の上限32,767に収まる。220はこの式から決まる上限に近い切りのよい値である。学習器も同じ範囲（実数で±220/255と±2）へ切り詰める。[既存の2本のネット](../../measurements/adhoc/nnue-first-layer-quantization.md)でこの重みの範囲を超えるのは0.004〜0.011%である。 | ネットごとに上界を計算する案は、学習の最後まで収まるかが分からず、[教訓](../../lessons/training-weights-must-fit-export-format.md)に反する。発火の上限を実際の駒数から93行と見積もる案は、`position sfen`で与えた局面で上限を超え得る。 |
 | 差分更新（accumulator update） | 親局面の累算値の複写と重みの足し引きを1回の走査にまとめる。足し引きの順序は現行と同じく動いた駒の元の行を最初に引くので、途中の発火は145行を超えない。評価値が完全に一致し、NPSが上がる場合に限って入れる。 | 評価が要る局面でだけ計算する遅延更新（lazy accumulator update）は、未計算の祖先の管理が要るので、判定に失敗した場合の候補へ回す。 |
 | 重みファイル | 版5のまま、構造記述の`head=`を`pairwise-l16-l32`とする。旧い出力部の名前は復号で拒否し、変換器は作らない。 | 版を上げる案は、構造記述で既に区別できる。 |
 | 既存の出力部 | `DirectScrelu`、`DirectScreluPhase2`、`ScreluHidden16`、`ScreluHidden16Phase2`を削除する。位相補間の係数`q`も出力部から除く。基準との比較はコミット対コミットなので残す必要がない。 | 比較用に残す案は、未使用のコードを温存しない方針に反する。 |
-| 層の幅の持ち方 | 16と32は定数にする。実験で変えるときは定数を変えて再学習する。 | 構造記述から幅を読む汎用の型は、本書の目的に対して実装と検査が多い（[層積みの設計書](nnue-layer-stack.md)の範囲）。 |
+| 層の幅の持ち方 | 16と32は定数にする。実験で変えるときは定数を変えて再学習する。 | 構造記述から幅を読む汎用の型は、本書の目的に対して実装と検査が多い（[層積みの設計書](../nnue-layer-stack.md)の範囲）。 |
 | 学習の条件 | 現行のネットと同じく、λ=1.0、先読みなし、既存の30ファイル、`--lr-schedule cosine:3:0.1`、バッチ16,384、シード1とする。教師を変えないので、構成の効果だけを見られる。 | 世代反復の第1世代の教師で比べる案は、教師の生成の前に構成を決める目的に合わない。 |
 | 比較の基準 | 補正前の幅128のネットを使う。候補にも結果回帰の補正を掛けないので、補正の有無がそろう。 | 補正済みのmasterを基準にする案は、候補にも回帰を掛けることになり、世代反復で作り直すネットに手間をかける。 |
 | 結果の使い道 | 世代反復で使う構成の決定だけに使う。masterの置き換えは世代反復の最終候補で行う（2026年11月3日の開発者の決定）。 | 本書の候補に結果回帰をかけて補正済みのネットと比べ、直ちにmasterを置き換える案は、最大約18時間半の測定が増えるが、構成の選択には影響しない。世代反復が長引いた場合は、後から同じ測定を行える。 |
-| 判定 | [測定の手引き](../guides/sprt.md)の標準のGSPRTのSTCを行い、`H1`なら確定する。上限で`pending`かつLLRが0以上なら、手引きの振分けと同じくLTCへ進む。 | 常にLTCまで行う案は、masterの採否でないので省く。費用の重い変更はSTCで落ちてLTCで通ることがある（StockfishのSFNNv13）ので、`pending`の場合だけLTCへ進む。 |
+| 判定 | [測定の手引き](../../guides/sprt.md)の標準のGSPRTのSTCを行い、`H1`なら確定する。上限で`pending`かつLLRが0以上なら、手引きの振分けと同じくLTCへ進む。 | 常にLTCまで行う案は、masterの採否でないので省く。費用の重い変更はSTCで落ちてLTCで通ることがある（StockfishのSFNNv13）ので、`pending`の場合だけLTCへ進む。 |
 
 ## 出力部の定義
 
@@ -222,7 +229,7 @@ HalfKP-hm-b8は文脈の正規化で不変性を得るので共有を課さず�
 ## 整数化の精度の根拠
 
 先読みなしの幅128のネット（`faa5fbe2…`）を、再学習せずに尺度だけ変えて再量子化し、検証の10,000局面で実数の参照と比べた試算は次のとおりである。
-試算はオフラインの集計であり、対局は行っていない（[記録](../measurements/adhoc/nnue-first-layer-quantization.md)）。
+試算はオフラインの集計であり、対局は行っていない（[記録](../../measurements/adhoc/nnue-first-layer-quantization.md)）。
 
 | 尺度と活性化 | 非線形の経路の誤差の平均 | 99パーセンタイル | 最大 |
 |---|---:|---:|---:|
@@ -239,7 +246,7 @@ HalfKP-hm-b8は文脈の正規化で不変性を得るので共有を課さず�
 ## 費用の見積り
 
 出力部の積和は、要素積の出力が256個なので、幅15の層が3,840回、幅32の層が960回、最終の内積が288回の合計5,088回である。
-[既存の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)のS1（4,368回で136.5 ns）から比例で見積もると、出力部1回は約159 nsである。
+[既存の記録](../../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)のS1（4,368回で136.5 ns）から比例で見積もると、出力部1回は約159 nsである。
 同じ記録の深さ9のbenchの評価回数の上限6,400,021回と所要時間4.23秒を使うと、現行の17.2 nsからの増分は探索時間の約+21%になる。
 幅15の層の行は鏡映の対で共有するので、対の和を先に取れば積和を半分にできる。
 この削減は評価値を変えないので、実測で速度の向上を確かめて採用する。
@@ -251,8 +258,8 @@ HalfKP-hm-b8は文脈の正規化で不変性を得るので共有を課さず�
 ## 実装フェーズ
 
 作業はmasterから切ったブランチ`nnue-architecture-revision`のworktreeで行い、データは`data/nnue-architecture-revision/`に置く。
-実装はcodexへ委任し（[委任の手引き](../guides/codex-delegation.md)）、指示書に関連する教訓を写す。
-GPUを要する学習は本環境で実行する（[教訓](../lessons/run-gpu-training-outside-codex-sandbox.md)）。
+実装はcodexへ委任し（[委任の手引き](../../guides/codex-delegation.md)）、指示書に関連する教訓を写す。
+GPUを要する学習は本環境で実行する（[教訓](../../lessons/run-gpu-training-outside-codex-sandbox.md)）。
 
 ### フェーズ1　評価値を変えない高速化
 
@@ -264,7 +271,7 @@ GPUを要する学習は本環境で実行する（[教訓](../lessons/run-gpu-t
 完了条件は、各段階が次を満たすことである。
 
 - `scripts/bench_compare.py`で局面別のノード数と評価値が基準と一致する。
-- 直前の版との交互測定5回で、NPSの中央値の増分が直前の版の測定の幅を超える（[教訓](../lessons/alternate-speed-rounds-against-parent.md)）。満たさない段階は採用しない。
+- 直前の版との交互測定5回で、NPSの中央値の増分が直前の版の測定の幅を超える（[教訓](../../lessons/alternate-speed-rounds-against-parent.md)）。満たさない段階は採用しない。
 - 差分更新と全再計算が、着手の形ごとの局面とランダム対局の全手で一致する。
 - 値域の上限の重みを持つネットと、盤を埋めた過密の局面で、累算値がi16に収まる。P型とHalfKP-hm-b8の両方で、HalfKP-hm-b8の文脈の変更、null move、および`invariants`の検査を含めて確かめる。
 
@@ -277,13 +284,13 @@ GPUを要する学習は本環境で実行する（[教訓](../lessons/run-gpu-t
 ### フェーズ2　推論の新しい出力部
 
 第1層の尺度を255にし、「出力部の定義」の`Head`を実装して、既存の4つの出力部を削除する。
-活性化は16ビットの乗算へ自動ベクトル化される形で書き、`objdump`で確かめる（[教訓](../lessons/check-autovectorization-before-explicit-simd.md)）。
+活性化は16ビットの乗算へ自動ベクトル化される形で書き、`objdump`で確かめる（[教訓](../../lessons/check-autovectorization-before-explicit-simd.md)）。
 出力部1回の時間を、既存の記録と同じ方法で測る。
 幅15の層の積和の削減は、評価値の一致とNPSの向上を確かめて採用する。
 
 試験用のネットはエポック0のP型を新しい形式で作り直す。
-探索のテストは固定ネットだけに依存させる（[教訓](../lessons/search-tests-use-a-fixed-net.md)）。
-この時点の埋め込みネットはエポック0のネットであり、線形の経路だけなので探索は止まらない（[教訓](../lessons/random-init-net-stalls-search.md)）。
+探索のテストは固定ネットだけに依存させる（[教訓](../../lessons/search-tests-use-a-fixed-net.md)）。
+この時点の埋め込みネットはエポック0のネットであり、線形の経路だけなので探索は止まらない（[教訓](../../lessons/random-init-net-stalls-search.md)）。
 
 完了条件は、次をテストで確かめていることである。
 
@@ -297,7 +304,7 @@ GPUを要する学習は本環境で実行する（[教訓](../lessons/run-gpu-t
 
 `HeadKind`と`Parameter`を新しい構成へ改め、CPU参照、CUDAカーネル（`kernels/head.cu`など）、切り詰め、量子化、チェックポイント、および診断の`IntegerNetwork`を対応させる。
 SCReLUを独立に実装している経路も要素積へ改める（`diagnostics/nnue_removal.rs`の駒除去の診断と、`nnue/reference/mod.rs`の倍精度の評価）。
-カーネルの内側のループは単精度で計算し（[教訓](../lessons/no-f64-in-gpu-kernel-inner-loops.md)）、GPUとCPU参照の加算順は固定の木で定める（[教訓](../lessons/define-reduction-order-on-the-gpu.md)）。
+カーネルの内側のループは単精度で計算し（[教訓](../../lessons/no-f64-in-gpu-kernel-inner-loops.md)）、GPUとCPU参照の加算順は固定の木で定める（[教訓](../../lessons/define-reduction-order-on-the-gpu.md)）。
 隠れ層の活性化が0以下と1以上であった割合を、幅15と幅32の層の両方について`training.jsonl`へ記録する。
 第1層の重みが切り詰めの範囲に達した割合も記録する。
 
@@ -331,16 +338,16 @@ systemd-run --user --scope --quiet -p MemoryMax=13G -p MemorySwapMax=0 \
   --output-dir data/nnue-architecture-revision/train
 ```
 
-学習の後に[学習の手引き](../guides/nnue-training.md)の8節の診断を行い、次を`nnue-architecture-revision-training`に記録する。
+学習の後に[学習の手引き](../../guides/nnue-training.md)の8節の診断を行い、次を`nnue-architecture-revision-training`に記録する。
 このうち判定に使うのは量子化誤差だけで、残りは負けた場合の手がかりとする。
 
-- 最良エポック、検証損失、および対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)）
+- 最良エポック、検証損失、および対局単位の汎化差（[教訓](../../lessons/compare-nets-with-paired-game-bootstrap.md)）
 - 第1層と隠れ層の飽和率、および要素積の両因子がともに正である割合
 - 量子化誤差（平均が`勝率尺度/40`以下でなければ、学習器の既存の書き出しの検査で止まる）
 - 第1層の重みが切り詰めの範囲に達した割合
 - 駒除去差分の符号反転（駒を除いた局面の評価が上がる割合）と評価値の分布
 
-学習が進まない場合は、データを増やす前に飽和率を確かめる（[教訓](../lessons/nnue-first-layer-init-saturation.md)）。
+学習が進まない場合は、データを増やす前に飽和率を確かめる（[教訓](../../lessons/nnue-first-layer-init-saturation.md)）。
 
 ### フェーズ5　判定
 
@@ -362,7 +369,7 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 | 上限で`pending`かつLLRが0以上 | シード`20261111000000`、測定名`nnue-architecture-revision-ltc`で、同じ組合せのLTC（`time=60000+200`）を行う。`H1`なら構成を確定する。`H0`なら下の切り分けへ進む。`pending`なら手引きのとおり`--resume`と`--target-pairs`で延長する。 |
 | 上記以外 | 下の切り分けへ進む。`H0`は「10 Elo以上強いとは言えない」という判定であり、基準より弱いことを意味しない。 |
 
-配置の距離（全駒種の配置の分布が人間の上位者などからどれだけ離れているかを表す値、定義は[結果回帰の設計書](archived/nnue-outcome-regression.md#配置の距離)）は、STCの棋譜から候補側の値を計算して参考として記録し、追加の対局は行わない。
+配置の距離（全駒種の配置の分布が人間の上位者などからどれだけ離れているかを表す値、定義は[結果回帰の設計書](nnue-outcome-regression.md#配置の距離)）は、STCの棋譜から候補側の値を計算して参考として記録し、追加の対局は行わない。
 採否の条件としての配置の距離は、世代反復の最終候補で判定する。
 
 ### 判定を通らなかった場合の切り分け
@@ -371,14 +378,14 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 いずれの変更も新しい候補であり、変更後のネットは最初の判定からやり直す。
 
 まず過去の診断と同じ固定ノード（1手10万ノード）で対局し、速度を除いた評価の質を見る。
-これは[手引き](../guides/sprt.md)のとおり診断に限り、採否には使わない。
+これは[手引き](../../guides/sprt.md)のとおり診断に限り、採否には使わない。
 200ペアは所要時間を抑えるための暫定の規模で、精度は高くないので、結果は仮説として扱う。
 対局にかかる時間は記録がなく、最初に測る。
 
 | 固定ノードの結果 | 読み方（仮説） | 候補 |
 |---|---|---|
 | 基準より有意に強い | 評価は良くなったが速度で負けた | 遅延更新（lazy accumulator update）、幅15の層の疎な入力の省略（sparse input）、および積和の削減 |
-| 基準より有意に弱い | 学習または表現に問題がある | 飽和率と汎化差の確認、第1層の初期値、幅15の層の鏡映の扱い、SCReLU、および教師の増量（vast.aiの[見積り](vast-selfplay.md)で30ファイルあたり約5.6〜18米ドル） |
+| 基準より有意に弱い | 学習または表現に問題がある | 飽和率と汎化差の確認、第1層の初期値、幅15の層の鏡映の扱い、SCReLU、および教師の増量（vast.aiの[見積り](../vast-selfplay.md)で30ファイルあたり約5.6〜18米ドル） |
 | 区間が0をまたぐ | 判別できない | ペアを足すか、上の候補のどれを先に試すかを開発者が決める |
 
 候補の並びは、評価値を変えないものと費用の小さいものを先に置いた。
@@ -391,7 +398,7 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 - 学習の引数の幅と出力部（`--width 256 --head pairwise-l16-l32`）を変える。
 - 手書きの評価関数v0の書き出しを新しい形式へ変える。非線形部分の全区画を0にすれば新しい値域に収まる。
 - 対象外の項から、ネットの拡幅と活性化の変更を除く。
-- 隠れ層は対局の記憶を強めるおそれがあるので、対局単位の汎化差の監視を保つ（[教訓](../lessons/game-constant-target-memorization.md)）。
+- 隠れ層は対局の記憶を強めるおそれがあるので、対局単位の汎化差の監視を保つ（[教訓](../../lessons/game-constant-target-memorization.md)）。
 - 所要時間の見積りを、フェーズ4の実績で置き換える。
 
 ## 検証
@@ -399,7 +406,7 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 完了の前に次を確かめる。
 
 - `cargo test --locked --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`、および`cargo fmt --all --check`が通る。
-- [テストの手引き](../guides/testing-minase-rules.md)のマージ前の検査を行う。
+- [テストの手引き](../../guides/testing-minase-rules.md)のマージ前の検査を行う。
 - 候補の測定で、エンジン異常、時間切れ、および拒否着手が0件である。
 
 ## 所要時間の見積り
@@ -410,11 +417,11 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 | 工程 | 見積り | 根拠 |
 |---|---:|---|
 | フェーズ1 | 約1日 | 委任と測定の過去の作業量からの推定 |
-| フェーズ2 | 約1日 | [層積みの設計書](nnue-layer-stack.md)の推論側の見積りと同程度 |
+| フェーズ2 | 約1日 | [層積みの設計書](../nnue-layer-stack.md)の推論側の見積りと同程度 |
 | フェーズ3 | 約2日 | 同書のCPU側とCUDA側の見積りと同程度 |
-| フェーズ4 | 約4時間 | 幅128の[実績](../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)は2時間4分。幅256は未測定で、更新の測定で置き換える |
-| STC | 最大約6時間50分 | [実績](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)の8.2秒/ペアで3,000ペア |
-| LTC（必要な場合だけ） | 約10時間50分 | [実績](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)の26秒/ペアで1,500ペア。この時点で判定が出るとは限らない |
+| フェーズ4 | 約4時間 | 幅128の[実績](../../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)は2時間4分。幅256は未測定で、更新の測定で置き換える |
+| STC | 最大約6時間50分 | [実績](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)の8.2秒/ペアで3,000ペア |
+| LTC（必要な場合だけ） | 約10時間50分 | [実績](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)の26秒/ペアで1,500ペア。この時点で判定が出るとは限らない |
 
 ## 完了条件
 
@@ -423,10 +430,10 @@ minase match run --run-dir data/matches/nnue-architecture-revision-stc --seed 20
 - フェーズ1〜3の完了条件を満たし、測定記録が`docs/measurements/nnue-architecture-revision/`にある。
 - 候補が「フェーズ5」の判定を通っている。通らない場合は、切り分けの結果を受けて開発者が方針を決めている。
 - 「フェーズ6」の引き継ぎを終えている。
-- [評価関数の手引き](../guides/evaluation-nnue.md)と[学習の手引き](../guides/nnue-training.md)が新しい構成に合っている。
+- [評価関数の手引き](../../guides/evaluation-nnue.md)と[学習の手引き](../../guides/nnue-training.md)が新しい構成に合っている。
 
 完了の処理として、出力部の式、型、および値域をコードのdocコメントへ書き、設計判断を新しいADRに記録して、置き換えたADRを`docs/adr/archive/`へ移す。
-[ROADMAP](../ROADMAP.md)の状態表と現在地を更新し、本書の「状態」を完了の段落へ書き換えて、`docs/plans/archived/`へ移す。
+[ROADMAP](../../ROADMAP.md)の状態表と現在地を更新し、本書の「状態」を完了の段落へ書き換えて、`docs/plans/archived/`へ移す。
 
 masterへの統合は、世代反復の最終候補の採用時に行う。
 フェーズ1の高速化だけを先にmasterへ入れるかは、測定の結果を見て開発者が決める。
@@ -439,4 +446,4 @@ tataraはMITであり、Stockfishとやねうら王はGPL-3.0である。
 - [tatara](https://github.com/SH11235/tatara/tree/875f39dccf3c09061af93337dce7fbd21178dc5b) `875f39d`：`crates/nnue-format/src/layerstack_weights.rs`の1〜20行（LayerStackの構成）、`crates/nnue-format/src/simple_weights.rs`の36〜39行（活性化ごとの尺度）、`bins/nnue_train/src/cli.rs`の1273〜1303行（線形の経路）、`docs/dense-qat.md`（skipの1成分は切り詰めない）、[issue #165](https://github.com/SH11235/tatara/issues/165)（要素積とSCReLUの比較）。
 - [Stockfish](https://github.com/official-stockfish/Stockfish/tree/5c4cef0bfe61fb3249178b2bcf21f5673557efe7) `5c4cef0b`：`src/nnue/nnue_architecture.h`の44〜61行（層の構成）、`src/nnue/nnue_common.h`の69行（上限255）、`src/nnue/layers/sqr_clipped_relu.h`の238〜239行（負の入力も2乗する）、`src/nnue/nnue_feature_transformer.h`の240〜320行（要素積）、[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17c0ce2)（線形の経路の廃止）。
 - [やねうら王](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30) `c1b80eaa`：`source/eval/nnue/architectures/sfnn-1536.h`（幅1,536、15＋1、32の構成）。
-- [tataraの調査](../research/tatara-nnue-transfer.md)、[NNUEのアーキテクチャの考察](../research/nnue-architecture-discussion.md)。
+- [tataraの調査](../../research/tatara-nnue-transfer.md)、[NNUEのアーキテクチャの考察](../../research/nnue-architecture-discussion.md)。

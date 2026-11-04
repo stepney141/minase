@@ -20,7 +20,7 @@
 
 完了（一部不採用）。2026年10月12日に起案し、2026年10月16日に着手して同日に完了した。
 補助損失の削除（フェーズ0）は学習器の変更として採用した（[ADR](../../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)）。
-3候補（D2、S1、S2）はいずれも最良の検証損失が基準D0を下回らなかったので、段階ゲートは行わず、エンジンの`ActiveHead`は`DirectScrelu`のまま残した（[ADR](../../adr/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
+3候補（D2、S1、S2）はいずれも最良の検証損失が基準D0を下回らなかったので、段階ゲートは行わず、エンジンの`ActiveHead`は`DirectScrelu`のまま残した（[ADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
 加えた出力部のコードは、利用者の判断で削除せず、汎用の層積みを設計する次の設計書へ引き継ぐ。
 記録は[検査の記録](../../measurements/nnue-trainer-rust/nnue-trainer-rust-checks.md)、[学習の記録](../../measurements/nnue-hidden-layer/nnue-hidden-layer-training.md)、および[速度の記録](../../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)にある。
 フェーズ3は、本書の遂行を求める利用者の指示を承認に代わるものとみなして始めた。

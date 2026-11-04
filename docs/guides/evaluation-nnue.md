@@ -431,8 +431,9 @@ v0の表では各駒の寄与が100 cp以上の正の値なので、$`\omega`$ �
 線形の経路の初期値は、基準の重みファイル `pst.bin` の探索用駒価値から作る。
 盤上の駒の行には、自駒ならその駒状態の駒価値を、相手駒なら符号を反転した値を、144升と序中盤用・終盤用の2列に同じく置き、王駒と先獅子の対象升の行は0とする。
 置き換え前のPSTの升ごとの重みは、初期値に使わない。
-第1層の重みは、訓練集合に現れた特徴の正準行に、平均0、標準偏差0.05の正規分布に従う乱数で初期化する。
-標準偏差0.05は、初期の第1層の出力が切り詰めに張り付かないように選んだ値である（[NNUEの第1層の初期値の教訓](../lessons/nnue-first-layer-init-saturation.md)）。
+第1層の重みは、訓練集合に現れた特徴の正準行に、平均0、標準偏差 $`\sqrt{1/(3 \times 13680)} \approx 0.00494`$ の正規分布に従う乱数で初期化する。
+この値は、tataraとnnue-pytorchが使う一様分布 $`\pm \sqrt{1/D}`$（$`D`$ は入力次元）と同じ分散である。
+標準偏差0.05から下げると、検証損失が下がり、固定ノードの対局でも改善した（[NNUEの第1層の初期値の教訓](../lessons/nnue-first-layer-init-saturation.md)）。
 幅15の層の重みとバイアスは一様分布 $`\pm 1/\sqrt{H}`$、幅32の層の重みとバイアスは一様分布 $`\pm 1/\sqrt{30}`$ で初期化する。
 第1層のバイアス、skip接続の重み、幅32の層の出力重み、および出力バイアスは0で初期化する。
 出力につながる重みがすべて0なので、学習前（エポック0）のネットの評価は、王駒以外の盤上の駒の探索用駒価値を手番側から足し引きした駒割りと一致する。
@@ -481,12 +482,14 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 
 ### 採用したネットの学習
 
-探索が使う `nnue.bin` は、2026年10月17日に学習した幅128のP型のネットであり、先読み教師を使わずに学んだものである。
+本書の構成の `nnue.bin` は、2026年11月4日に学習した幅256のP型のネットであり、先読み教師を使わずに学んだものである。
 学習データは、初代のNNUEを埋め込んだmaster `31c2a46`のエンジンが1局面2万ノードで生成した30ファイルであり（[学習率スケジュールの学習の記録](../measurements/nnue-lr-schedule/nnue-lr-schedule-training.md)）、訓練は79,458,082局面、検証は4,153,303局面だった。
 教師の勝率尺度 $`K_g`$ は1,039.6だった。
-検証損失はエポック17で最良の0.4575547（学習前は0.4643992）となり、22エポックで早期終了した。
-量子化誤差は平均15.66 cp、最大162.9 cpだった。
-数値の詳細は[学習の記録](../measurements/nnue-early-best-epoch/nnue-no-lookahead-training.md)にあり、先読み教師で学んだ前のネットに対して[STC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-stc.md)と[LTC](../measurements/nnue-early-best-epoch/nnue-no-lookahead-ltc.md)の両方で有意に強いと判定された。
+検証損失はエポック3で最良の0.4575541（学習前は0.4903012）となり、8エポックで早期終了した。
+量子化誤差は平均9.60 cp、最大86.5 cpだった。
+数値の詳細は[学習の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)にある。
+同じ教師で学んだ幅128のネットに対して、[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`であり、[固定ノードの対局](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)では差を区別できなかった。
+このネットは世代反復で使う構成を確定するためのものであり、masterの置き換えは世代反復の最終候補で行う。
 
 ## 損失で決めないもの
 
@@ -513,7 +516,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)
 - [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)
 - [NNUEの入力特徴集合に王の位置で条件付けないP型を使う](../adr/use-p-type-input-features-for-the-nnue.md)
-- [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)
+- [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)
 - [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
 - [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)

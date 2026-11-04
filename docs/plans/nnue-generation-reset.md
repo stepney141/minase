@@ -15,11 +15,10 @@
 
 ## 状態
 
-起案。2026年11月3日に起案した。
+起案。2026年11月3日に起案し、2026年11月4日に[NNUEの構成の見直し](archived/nnue-architecture-revision.md)の結果で前提を更新した。
 着手は利用者の指示を待つ。
-2026年11月3日の利用者の決定により、本書はAlphaZero型の強化学習の再開より先に、[NNUEの構成の見直し](nnue-architecture-revision.md)より後に行う。
-次の一手は、構成の見直しの完了を待つことである。
-完了したら、同書のフェーズ6のとおり本書の前提を更新し、同書の確定コミットからブランチ`nnue-generation-reset`のworktreeを切って、フェーズ1の実装をcodexへ委任する。
+2026年11月3日の利用者の決定により、本書はAlphaZero型の強化学習の再開より先に行う。
+次の一手は、利用者の指示の後に、ブランチ`nnue-architecture-revision`の先頭からブランチ`nnue-generation-reset`のworktreeを切って、フェーズ1の実装をcodexへ委任することである。
 
 ## 目的
 
@@ -62,7 +61,7 @@
 - λ=1.0とλ=0.5の系統（2026年11月3日の利用者の判断）。偏りが再発した場合にλ=0.5を第1世代の教師から始めるかは、その時点で利用者が決める。
 - 世代の途中での`fit-linear`の適用。Dの測定にだけ使い、教師の生成に使うネットには補正を足さない。
 - 探索の係数の再調整（SPSA）と探索用駒価値の導き直し。
-- ネットの拡幅、入力特徴集合の変更、および活性化の変更（Pairwiseなど）。
+- 入力特徴集合の変更とネットの構成の変更。構成は[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定したものを使う。
 - 局面の多様化と[記録する局面の間引き](sparse-teacher-recording.md)。
 - vast.aiでの生成。費用がかかるので、使う場合は費用を示して利用者が決める。
 
@@ -70,7 +69,9 @@
 
 基準はmasterの補正ネット（検査和`84529f38…`）である。
 masterの探索のコードは変えないので、世代ごとのコミットの差は埋め込みのネットだけになる。
-本書の幅、出力部、および学習の引数は、[NNUEの構成の見直し](nnue-architecture-revision.md)が確定した時点で同書の構成へ改める。
+本書の幅、出力部、および学習の引数は、[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定した構成（[ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）を使う。
+この構成は同じ教師で学んだ幅128のネットに`H1`を取らないまま確定した（固定ノードで−2.6 Elo、STCで`H0`）。
+2026年11月4日の開発者の決定により、世代の判定と最終候補の判定が、この構成の検証を兼ねる。
 
 [AlphaZero型の強化学習](alphazero-rl.md)の再開は本書の後とする。
 これは、教師生成の見直しをAlphaZero型の計画の後に回すとした2026年10月25日の決定を、この世代反復について改めるものである。
@@ -118,7 +119,7 @@ minase自身の記録では、v0から始めた系統はλ=0.75のまま進み�
 
 1. 第N−1世代のネットを埋め込んだコミットの生成器で、教師を生成する（[教訓](../lessons/pin-generation-binary-to-worktree.md)）。条件は現行の教師と同じ`--games 7500 --nodes 20000 --random-moves 0 --max-ply 4000 --hash-mb 16`であり、同時対局数は作業機が`--concurrency 18`、ryzen0が`--concurrency 60`である。シードは`30,000,000 + 1,000,000×N + 100,000×i`（iは本の通し番号）とする。
 2. 第1世代の最初の4本に限り、`minase-trainer data calibrate`で教師の勝率尺度を求め、その値をKとしたv0のMNUEを`--base`用に書き出す。Kはここで一度だけ決め、第1世代を学び直すときも変えない。
-3. `nnue train --lambda 0.75 --teacher-cp-per-logit calibrate --base <第N−1世代のネット>`で学ぶ。他の引数は現行のネットと同じ`--feature-set P --width 128 --batch 16384 --epochs 50 --patience 5 --seed 1 --device cuda --validation-interval 1000`であり、`--lr-schedule`は上の判断で決めたものを使う。
+3. `nnue train --lambda 0.75 --teacher-cp-per-logit calibrate --base <第N−1世代のネット>`で学ぶ。他の引数は構成の見直しの学習と同じ`--feature-set P --width 256 --head pairwise-l16-l32 --batch 16384 --epochs 50 --patience 5 --seed 1 --device cuda --validation-interval 1000`であり、`--lr-schedule`は上の判断で決めたものを使う。第1層の初期値は学習器の既定（入力次元に応じた小さい値）のままとする。
 4. 学習の健全性を確かめる（「世代ごとに測るもの」）。
 5. 学んだネットと同じ教師で`fit-linear`を実行し、Dと補正の大きさを求める。書き出された補正ネットは使わない。
 6. 学んだネットを埋め込んでコミットし、第N−1世代のコミットとSTCのGSPRTを行う。シードは`20,261,200,000,000 + 1,000,000×N`とする。学び直しのネットは別の候補なので、シードに500,000を足し、実行ディレクトリと記録の測定名の末尾を`-gen<N>-retry-stc`とする。
@@ -155,7 +156,7 @@ minase match run --run-dir data/matches/nnue-generation-reset-gen<N>-stc --seed 
 | 棋力 | 前の世代とのGSPRTの度数、LLR、および判定 | 世代の進退を決める。 |
 | 配置 | STCの対局の候補側のMと5配置の割合、駒種ごとの総変動距離 | 偏りが世代のどこで入るかの目安にする。相手と標本数が世代ごとに違うので参考値であり、最終候補の判定には使わない。[集計](../measurements/adhoc/piece-placement-census.md)の補正前のネットの0.461、PST世代1の0.330と見比べる。 |
 | D | `fit-linear`のDの95%区間、選んだτ、および駒種ごとの補正の大きさ | 区間が0をまたげば、その世代で後付けの補正による改善は確認できない。区間の幅と補正の大きさも併せて読み、改善がないとは結論しない。 |
-| 学習の健全性 | 最良のエポック、検証損失、および対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)） | λ<1では対局の記憶のおそれがあるので、1エポック目からの乖離を見る（[教訓](../lessons/game-constant-target-memorization.md)）。 |
+| 学習の健全性 | 最良のエポック、検証損失、および対局単位の汎化差（[教訓](../lessons/compare-nets-with-paired-game-bootstrap.md)） | λ<1では対局の記憶のおそれがあり、隠れ層はそれを強めるおそれがあるので、1エポック目からの乖離を見る（[教訓](../lessons/game-constant-target-memorization.md)）。 |
 | 評価の形 | [学習の手引き](../guides/nnue-training.md)の8節の評価値の分布、駒除去差分の符号反転、および合法手の評価差 | 学習器の不具合と駒価値の歪みを点検する（[教訓](../lessons/validation-loss-hides-material-distortion.md)）。 |
 
 対局の記憶が見えても、それだけでは止めない。
@@ -204,10 +205,10 @@ v0と初期の世代の生成の速さは測っていない。
 |---|---|---|
 | フェーズ1 実装 | 約1作業日 | codexへ委任する。 |
 | 生成 | 4本で約2.6時間、30本で約19時間 | 2台で分担した場合。作業機だけなら約1.9倍。 |
-| 学習 | 最大約2時間 | 30本の現行の学習の実績。少ない本数での時間は測っていない。 |
+| 学習 | 30本で約45分 | 幅256の構成の実績（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)。早期終了はエポック8、最大GPUメモリ1.22 GB、最大常駐メモリ10.8 GB）。少ない本数での時間は測っていない。 |
 | 第1世代の学習率の比較 | 約2時間増える | 2通り学ぶ。 |
 | `fit-linear`と診断 | 約30分 | |
-| 世代のSTC | 差が大きければ1時間未満、最大約7時間 | 1ペア約8.5秒。 |
+| 世代のSTC | 差が大きければ1時間未満、最大約8時間 | 幅256の構成の実績は1ペア約9.3秒。 |
 | 最終候補の配置の距離 | 約1時間 | 2回の対局。 |
 | 最終候補のSTCとLTC | STCは最大約7.6時間、LTCは約3〜20時間 | |
 
@@ -215,16 +216,17 @@ v0と初期の世代の生成の速さは測っていない。
 
 ## 実装フェーズ
 
-作業は、masterから切ったブランチ`nnue-generation-reset`のworktreeで行う。
+作業は、ブランチ`nnue-architecture-revision`の先頭から切ったブランチ`nnue-generation-reset`のworktreeで行う。
 データは`data/nnue-generation-reset/gen-<N>/`に置く。
 
 ### フェーズ1　土台の実装
 
 次を実装する。実装はcodexへ委任し、テストの事例は設計者が指示書で与える（[手引き](../guides/testing-minase-rules.md)）。
 
-- `minase-trainer nnue export-handcrafted --cp-per-logit <K> --output <パス>`。v0を、線形の経路の2列に同じ値（1/8 cp単位）を置き、第1層、バイアス、および出力部を0としたMNUEへ書き出す。探索用駒価値はv0の駒価値を駒状態へ写した値とする。
+- `minase-trainer nnue export-handcrafted --cp-per-logit <K> --output <パス>`。v0を、線形の経路の2列に同じ値（1/8 cp単位）を置き、第1層、バイアス、および出力部を0としたMNUEへ書き出す。幅は256、出力区画は`pairwise-l16-l32`の配置とし、全区画を0にする。探索用駒価値はv0の駒価値を駒状態へ写した値とする。
 - `nnue train --base`をMNPTではなくMNUEから読むように改める。読む値は探索用駒価値、K、および規則セット名である。形式の版を増やさず、MNPTの読み込みはこの引数から外す。
 - `placement_distance.py`に、1回の対局の候補側のM、5配置の割合、および駒種ごとの総変動距離を求める`single`を加える。これは設計者が書く。
+- 対局単位の汎化差を求める集計を作る。構成の見直しでは道具が見当たらず未計算で終えたので、世代の記録の前に用意する。これも設計者が書く。
 
 完了条件は、次をテストで確かめていることである。
 

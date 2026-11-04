@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/nnue-architecture-revision.md)の切り分けの最初の候補として、第1層の重みの初期値を入力次元に応じた小さい値へ改めてネットを学習し、[標準偏差0.05の学習](nnue-architecture-revision-training.md)と比べる。
+[設計書](../../plans/archived/nnue-architecture-revision.md)の切り分けの最初の候補として、第1層の重みの初期値を入力次元に応じた小さい値へ改めてネットを学習し、[標準偏差0.05の学習](nnue-architecture-revision-training.md)と比べる。
 棋力の判定は別の測定で行う。
 
 ## コマンドライン

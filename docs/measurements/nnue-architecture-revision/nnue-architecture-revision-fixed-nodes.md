@@ -2,7 +2,7 @@
 
 ## 目的
 
-[STC](nnue-architecture-revision-stc.md)で`H0`となった候補について、探索速度を除いた評価の質を基準と比べ、[設計書](../../plans/nnue-architecture-revision.md)の切り分けの手がかりを得る。
+[STC](nnue-architecture-revision-stc.md)で`H0`となった候補について、探索速度を除いた評価の質を基準と比べ、[設計書](../../plans/archived/nnue-architecture-revision.md)の切り分けの手がかりを得る。
 固定ノードの測定は診断であり、採否の根拠には使わない。
 200ペアは所要時間を抑えるための暫定の規模であり、結果は仮説として扱う。
 
