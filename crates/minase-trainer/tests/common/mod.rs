@@ -169,7 +169,7 @@ pub fn model(set: InputFeatureSet, width: usize) -> Model {
     model_with_head(
         set,
         width,
-        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
     )
 }
 pub fn model_with_head(

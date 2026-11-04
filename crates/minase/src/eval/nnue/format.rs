@@ -12,23 +12,18 @@
 //! 本体の先頭を0としたバイト位置は、線形重みが0、駒価値が54,720、第1層が54,908、
 //! バイアスが`54,908 + 2DH`、出力区画が`54,908 + 2DH + 4H`である。
 //! ファイル先頭からの位置は、それぞれ192を足す。
-//! 出力区画は次の順に並ぶ。`o`は`i16[2H]`、`b`は`i32`であり、端点1組は`4H + 4`バイトである。
-//! `W1`は行優先の`i8[16][2H]`、`b1`は`i32[16]`、`w2`は`i16[16]`である。
-//!
-//! | head | 区画の順序 |
-//! |---|---|
-//! | `direct-screlu` | `o, b` |
-//! | `direct-screlu-phase2` | `o_open, b_open, o_end, b_end` |
-//! | `screlu-hidden16` | `o, b, W1, b1, w2` |
-//! | `screlu-hidden16-phase2` | `o_open, b_open, o_end, b_end, W1, b1, w2_open, w2_end` |
-//!
-//! 端点数をEとすると、出力区画内の`W1`の位置は`E(4H + 4)`、`b1`はそこから`32H`後、
-//! `w2`はさらに64バイト後であり、端点別の`w2`は32バイトずつ並ぶ。
-//! `W1`は絶対値127以下、`b1`は65,024以下、`w2`は8,192以下とする。
-//! 線形重みは特徴番号順に序中盤、終盤の順で並び、尺度は1/8センチポーンである。
-//! 第1層は特徴番号ごとにH個を連続して置き、重みとバイアスの絶対値は1,016以下とする。
-//! 直接出力部の重みは手番側H個、相手側H個の順で、絶対値は8,192以下とする。
-//! 出力バイアスの絶対値は4,161,536以下とする。
+//! 出力部`pairwise-l16-l32`は幅Hを4以上512以下の4の倍数に制限する。
+//! 出力区画内では、`o: i16[H]`が0、`b: i32`が2H、`W1: i16[15][H]`が2H+4、
+//! `b1: i32[15]`が32H+4、`W2: i16[32][30]`が32H+64、
+//! `b2: i32[32]`が32H+1,984、`v: i16[32]`が32H+2,112バイト目に始まる。
+//! 行列は行優先であり、全長は32H+2,176バイト、H=256では10,368バイトである。
+//! oは手番側H/2個、相手側H/2個の順で、oとvの絶対値は8,192以下、bは4,161,536以下とする。
+//! W1とW2は尺度256で絶対値508以下、b1とb2は尺度32,512で絶対値260,096以下とする。
+//! 線形重みは特徴番号順に序中盤、終盤の順で並び、単位は1/8センチポーンである。
+//! 第1層は特徴番号ごとにH個を連続して置き、重みとバイアスの尺度は255である。
+//! 重みの絶対値は220以下、バイアスは510以下とする。
+//! 発火は最大145行なので、1行分の余裕を含む累算値の上限`146×220 + 510 = 32,630`はi16に収まる。
+//! バイアスはファイル上のi32を検証してからi16へ変換する。
 //! 構造記述は`features=<特徴集合名>;ft=<H>;linear=tapered2;head=<出力部名>`で、
 //! 復号する型から組み立てた文字列と完全一致しなければならない。
 //! 線形の鏡映共有、特徴集合ごとの共有条件、および駒価値の値域は[`Network::decode`]で検査する。
@@ -47,7 +42,7 @@ pub(super) const HEADER_LENGTH: usize = 192;
 /// MNUE版5へ書き出す量子化済みの重みとメタデータ。
 #[derive(Clone, Copy)]
 pub struct EncodeInput<'a, H: Head> {
-    /// 第1層の幅H。2以上512以下の偶数を指定する。
+    /// 第1層の幅H。ヘッダでは2以上512以下の偶数、出力部では4の倍数を要求する。
     pub width: u32,
     /// 勝率尺度。正の有限値で100,000以下を指定する。
     pub cp_per_logit: f32,
@@ -235,8 +230,9 @@ pub fn architecture(bytes: &[u8]) -> Result<&str, Error> {
 impl<F: FeatureSet, H: Head> Network<F, H> {
     /// MNUE版5を検証して復号する。
     /// 識別子、版、幅、型から組み立てた構造記述との完全一致、勝率尺度、予約域0、規則セット名、構造から導いた長さ、本体のSHA-256を検査する。
-    /// 第1層の重みとバイアスは絶対値1,016以下、直接出力部の重みは8,192以下、バイアスは4,161,536以下を要求する。
-    /// 全型で線形の鏡映対を検査し、[`Mirror::Shared`]では第1層、バイアス、出力重みの半幅の共有も検査する。
+    /// 第1層の重みは絶対値220以下、バイアスは510以下を要求し、出力区画は[`Head::decode`]で検査する。
+    /// 全型で線形の鏡映対を検査し、[`Mirror::Shared`]では第1層とバイアスのjとj+H/2の共有も検査する。
+    /// 出力部のoとW1の各行は、各視点内のjとj+H/4を共有する。
     /// 駒価値には[`Self::piece_value`]の正値性と王駒の条件を課す。
     /// 換算係数は`round_ties_even(f64(cp_per_logit)×65,536/(127×4,096))`で求める。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
@@ -306,6 +302,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         offset += width * 4;
         let head = H::decode(&body[offset..], width, F::MIRROR == Mirror::Shared)?;
         validate_features::<F>(width, &linear, &weights, &biases)?;
+        let biases = biases.iter().map(|&value| value as i16).collect();
         let max_promotion_gain = PieceKind::ALL
             .into_iter()
             .filter_map(|kind| PieceCode::new(Color::Black, kind))
@@ -356,8 +353,8 @@ fn validate_features<F: FeatureSet>(
             actual: F::DIMENSIONS,
         });
     }
-    validate_range("weights", weights.iter().copied().map(i32::from), 1_016)?;
-    validate_range("biases", biases.iter().copied(), 1_016)?;
+    validate_range("weights", weights.iter().copied().map(i32::from), 220)?;
+    validate_range("biases", biases.iter().copied(), 510)?;
     for feature in 0..FEATURE_COUNT {
         let mirrored = mirror_feature(feature);
         if linear[feature] != linear[mirrored] {
@@ -465,7 +462,7 @@ pub enum Error {
         /// 読み取った構造記述文字列。
         actual: String,
     },
-    /// 幅が2以上512以下の偶数ではない。
+    /// 幅がヘッダの範囲または出力部の倍数条件を満たさない。
     InvalidWidth {
         /// 読み取った幅。
         actual: u32,

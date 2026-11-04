@@ -3,7 +3,7 @@
 ## 目的
 
 NNUEの第1層の尺度を変えたときの量子化誤差、累算値の範囲、および列の使われ方を、再学習も対局もせずに調べ、尺度と累算値の型を決める材料にする。
-[NNUEの構成の見直しの設計書](../../plans/nnue-architecture-revision.md)の起案の前に行った予備の集計である。
+[NNUEの構成の見直しの設計書](../../plans/archived/nnue-architecture-revision.md)の起案の前に行った予備の集計である。
 
 ## コマンドライン
 

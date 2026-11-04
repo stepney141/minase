@@ -70,7 +70,8 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [GPUを要する学習はcodexへ委任しない](run-gpu-training-outside-codex-sandbox.md) — codexのサンドボックスからGPUは見えないので、学習器のコードだけを委任し、学習の実行は本環境で直接行う。
 - [GeForceのGPUで学習する大きな中間配列を倍精度にしない](avoid-float64-tensors-on-geforce-gpu.md) — 損失の中間配列は埋め込みと同じ単精度で計算し、倍精度は集約後の小さな値に限り、学習前に1更新の時間と最大GPUメモリを試走で測る。
 - [学習前に1エポックのステップ数を確認する](check-steps-per-epoch-before-training.md) — 局面数÷バッチサイズで1エポックのステップ数を計算し、総ステップ数が数千回以上になる設定にしてから学習曲線を評価する。
-- [NNUE第1層の既定初期化がclipped ReLUを飽和させる](nnue-first-layer-init-saturation.md) — 疎特徴を加算する第1層は発火数の平方根の逆数程度の標準偏差で初期化し、停滞時はデータを増やす前に活性化の飽和率を測る。
+- [NNUE第1層の既定初期化がclipped ReLUを飽和させる](nnue-first-layer-init-saturation.md) — 疎特徴を加算する第1層は発火数の平方根の逆数を上限の目安に小さく初期化し、停滞時はデータを増やす前に活性化の飽和率を測る。
+- [先行エンジンの量子化の尺度は勝率尺度に照らして確かめる](check-quantization-scale-against-the-win-rate-scale.md) — 重みの型と尺度を先行エンジンから流用するときは、活性化の1.0が何cpにあたるかを比べ、本学習の前に整数化の段ごとの誤差を測って見直す。
 - [教師不足と判定する前に学習曲線を確認する](check-learning-before-blaming-data.md) — 訓練損失の低下と過学習への転化を学習曲線で確認し、どちらも見られなければ学習器の欠陥を先に疑う。
 - [検証分割を変えたら旧分割の重みを基準にしない](validation-split-change-invalidates-old-baseline.md) — 検証分割を変更したら、旧分割で学習した重みを新分割での比較基準に使わない。
 - [対局内で一定な教師成分は関係を表せるモデルに記憶される](game-constant-target-memorization.md) — 駒の組や隠れ層を持つ評価関数の学習では対局結果を教師に混ぜず探索値だけを使い、混ぜるなら対局単位の検証損失を1エポック目から監視する。

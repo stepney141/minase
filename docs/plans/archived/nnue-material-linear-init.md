@@ -27,7 +27,7 @@ lishogiのBotの対局では、麒麟が成る前に盤上にいた手数の59%�
 非劣性の[STC](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)は1,752ペアで、[LTC](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)は1,579ペアでともに`H0`となり、どちらもエンジン異常、時間切れ、および拒否着手は0件だったので、採用とした。
 2026年10月26日に、利用者の許可を得てmasterへ統合した。
 統合後のツリーでは、新しいネットと固定時間の探索の変更を合わせた状態で`cargo test --locked`の1,515件がすべて成功した。
-採否の決定は[ADR](../../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)に記録し、旧ADRを置き換えた。
+採否の決定は[ADR](../../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)に記録し、旧ADRを置き換えた。
 
 ## 目的
 

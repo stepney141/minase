@@ -48,6 +48,7 @@ use crate::{
 };
 pub use args::Args;
 use backend::Backend;
+use minase::eval::features::FEATURE_COUNT;
 pub use record::{EpochRecord, LinearMovement, Saturation};
 use record::{
     IntervalRecord, append_epoch, append_interval, append_resume, configuration, linear_movement,
@@ -83,6 +84,12 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 /// 原因の型を保持する、学習の結果。
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// 第1層の正規分布の標準偏差を、基底特徴数Dに対してsqrt(1/(3D))とする。
+/// HalfKPも乱数を置く仮想行の基底特徴数を使い、P型と初期値を揃える。
+fn initial_standard_deviation() -> f32 {
+    (1.0 / (3.0 * FEATURE_COUNT as f32)).sqrt()
+}
 
 /// 学習を停止した理由。診断値だけでは停止しない。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -224,7 +231,7 @@ impl Session {
             &initial,
             Masks::from_observations(args.feature_set, &observations)?,
             args.seed,
-            0.05,
+            initial_standard_deviation(),
         )?;
         let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
         let mut dataset_info = store::DatasetInfo::from(&dataset);
@@ -366,7 +373,7 @@ impl Session {
                     &validation,
                     None,
                     validation_started.elapsed().as_secs_f64(),
-                );
+                )?;
                 append_epoch(&session.log_path(), &record)?;
                 session.save_latest()?;
             }
@@ -537,7 +544,7 @@ impl Session {
             &validation,
             Some((&training, elapsed_seconds)),
             validation_seconds,
-        );
+        )?;
         append_epoch(&self.log_path(), &record)?;
         // latestがコミット点。新しいbestを公開する前に保存し、中断時にはlatestからbestを復元する。
         self.save_latest()?;
@@ -560,13 +567,13 @@ impl Session {
         validation: &Validation,
         training: Option<(&pipeline::Training, f64)>,
         validation_seconds: f64,
-    ) -> EpochRecord {
+    ) -> Result<EpochRecord> {
         let timing = training.map(|(t, elapsed)| {
             record::training_timing(t.positions, elapsed, t.interval_validation_seconds)
         });
         let saturation = validation.saturation();
         let train_loss = training.map(|(t, _)| t.bce / t.positions as f64);
-        EpochRecord {
+        Ok(EpochRecord {
             device: self.args.device,
             epoch: self.checkpoint.progress.epoch,
             train_loss,
@@ -575,14 +582,20 @@ impl Session {
             samples: validation.positions,
             decisive_samples: validation.decisive,
             nonlinear_std_cp: validation.nonlinear_std_cp(),
-            hidden_saturation: validation.hidden_saturation().map(|s| Saturation {
-                acc_le_zero: s[0],
-                acc_ge_one: s[1],
-            }),
             saturation: Saturation {
                 acc_le_zero: saturation[0],
                 acc_ge_one: saturation[1],
             },
+            hidden1_saturation: Saturation {
+                acc_le_zero: validation.hidden1_saturation()[0],
+                acc_ge_one: validation.hidden1_saturation()[1],
+            },
+            hidden2_saturation: Saturation {
+                acc_le_zero: validation.hidden2_saturation()[0],
+                acc_ge_one: validation.hidden2_saturation()[1],
+            },
+            pairwise_both_positive: validation.pairwise_both_positive(),
+            first_layer_at_limit: self.checkpoint.model.first_layer_at_limit()?,
             linear_movement: linear_movement(&self.checkpoint.model),
             training_seconds: timing.as_ref().map(|t| t.training_seconds),
             validation_seconds,
@@ -598,7 +611,7 @@ impl Session {
             total_steps: self.checkpoint.optimizer.step(),
             lr_multiplier_first: training.and_then(|(t, _)| t.first_multiplier),
             lr_multiplier_last: training.and_then(|(t, _)| t.last_multiplier),
-        }
+        })
     }
 
     fn best_checkpoint(&self) -> Result<Checkpoint> {
@@ -817,9 +830,14 @@ fn validate_batches<T>(
             total.upper += statistics.upper;
             total.positions += statistics.positions;
             total.activations += statistics.activations;
-            total.hidden_lower += statistics.hidden_lower;
-            total.hidden_upper += statistics.hidden_upper;
-            total.hidden_activations += statistics.hidden_activations;
+            total.hidden1_lower += statistics.hidden1_lower;
+            total.hidden2_lower += statistics.hidden2_lower;
+            total.pairwise_positive += statistics.pairwise_positive;
+            total.pairwise_products += statistics.pairwise_products;
+            total.hidden1_upper += statistics.hidden1_upper;
+            total.hidden2_upper += statistics.hidden2_upper;
+            total.hidden1_activations += statistics.hidden1_activations;
+            total.hidden2_activations += statistics.hidden2_activations;
         } else {
             total = Some(statistics);
         }

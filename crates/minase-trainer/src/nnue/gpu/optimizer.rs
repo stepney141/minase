@@ -8,7 +8,9 @@ use super::{
 use crate::nn::AdamWGroup;
 use crate::nnue::{
     data::InputFeatureSet,
-    model::{Model, Parameter, Parameters, Shape},
+    model::{
+        FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_WEIGHT_LIMIT, Model, Parameter, Parameters, Shape,
+    },
     reference::{AdamW, AdamWConfig},
 };
 use cudarc::driver::{CudaSlice, PushKernelArg};
@@ -32,7 +34,7 @@ struct Update<'a> {
 /// 自由パラメータ、観測マスク、AdamWの状態をデバイス上に保持する。
 pub(super) struct Optimizer {
     shape: Shape,
-    groups: [Option<Group>; 12],
+    groups: [Option<Group>; 11],
     step: u64,
     config: AdamWConfig,
 }
@@ -93,7 +95,7 @@ impl Optimizer {
 
     /// 全群をLinear、P型ならFirstLayer、HalfKPならVirtual→FirstLayer、出力部の全区画の順に計算ストリームへ投入する。
     /// 補正係数はCPUと同じ`powf`で`1/(1−0.9^t)`と`1/(1−0.999^t)`を求める。
-    /// 出力部は`gradient_sums`の位置0から出力重み、2Uからバイアス、3Uから出力バイアスをf32にして使う。
+    /// 出力部は`HEAD_PARAMETERS`の区画順で`gradient_sums`を読み、各勾配をf32にして使う。
     /// ホストへの転送は行わない。
     /// multiplierは有限かつ正で、3群の基準学習率に掛ける。保存する基準係数は変えない。
     #[allow(clippy::too_many_arguments)]
@@ -196,16 +198,12 @@ impl Optimizer {
             (Parameter::Biases, &mut model.bias),
             (Parameter::OutputWeights, &mut model.output),
             (Parameter::OutputBias, &mut model.output_bias),
-            (Parameter::OutputWeightsEnd, &mut model.output_end),
-            (Parameter::OutputBiasEnd, &mut model.bias_end),
-            (Parameter::HiddenWeights, &mut model.w1),
-            (Parameter::HiddenBiases, &mut model.b1),
-            (Parameter::HiddenOutput, &mut model.w2),
-            (Parameter::HiddenOutputEnd, &mut model.w2_end),
+            (Parameter::Hidden1Weights, &mut model.w1),
+            (Parameter::Hidden1Biases, &mut model.b1),
+            (Parameter::Hidden2Weights, &mut model.w2),
+            (Parameter::Hidden2Biases, &mut model.b2),
+            (Parameter::Hidden2Output, &mut model.v),
         ] {
-            if shape.len(parameter) == 0 {
-                continue;
-            }
             require_len(expanded.len(), expanded_len(shape, parameter))?;
             self.group_mut(parameter)?.head(
                 d,
@@ -266,7 +264,7 @@ impl Optimizer {
         require_len(model.linear.len(), s.len(Parameter::Linear))?;
         require_len(model.weights.len(), s.len(Parameter::FirstLayer))?;
         require_len(model.bias.len(), s.width())?;
-        require_len(model.output.len(), 2 * s.width())?;
+        require_len(model.output.len(), s.len(Parameter::OutputWeights))?;
         require_len(model.output_bias.len(), 1)?;
         require_len(b.d_linear.len(), s.len(Parameter::Linear))?;
         require_len(b.d_first.len(), s.len(Parameter::FirstLayer))?;
@@ -321,7 +319,7 @@ impl Group {
         let row_width = row_width as u32;
         let (lower, upper) = match self.parameter {
             Parameter::Linear => (-4096.0_f32, 4095.875_f32),
-            Parameter::FirstLayer => (-8.0_f32, 8.0_f32),
+            Parameter::FirstLayer => (-FIRST_LAYER_WEIGHT_LIMIT, FIRST_LAYER_WEIGHT_LIMIT),
             _ => return Err(Error::Invalid("optimizer row parameter")),
         };
         let observed = self
@@ -368,6 +366,7 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
+        let limit = FIRST_LAYER_WEIGHT_LIMIT;
         let observed = self
             .observed
             .as_ref()
@@ -380,6 +379,7 @@ impl Group {
             .arg(observed)
             .arg(&count)
             .arg(&h)
+            .arg(&limit)
             .arg(&update.correction1)
             .arg(&update.correction2)
             .arg(&update.group.lr)
@@ -410,6 +410,7 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
+        let limit = FIRST_LAYER_WEIGHT_LIMIT;
         let observed = self
             .observed
             .as_ref()
@@ -424,6 +425,7 @@ impl Group {
             .arg(expanded)
             .arg(&count)
             .arg(&h)
+            .arg(&limit)
             .arg(&update.correction1)
             .arg(&update.correction2)
             .arg(&update.group.lr)
@@ -454,25 +456,14 @@ impl Group {
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let limit = match self.parameter {
-            Parameter::Biases
-            | Parameter::OutputBias
-            | Parameter::OutputBiasEnd
-            | Parameter::HiddenBiases => 8.0_f32,
-            Parameter::OutputWeights
-            | Parameter::OutputWeightsEnd
-            | Parameter::HiddenOutput
-            | Parameter::HiddenOutputEnd => 1.98_f32,
-            Parameter::HiddenWeights => 127.0_f32 / 64.0,
+            Parameter::Biases => FIRST_LAYER_BIAS_LIMIT,
+            Parameter::OutputBias | Parameter::Hidden1Biases | Parameter::Hidden2Biases => 8.0_f32,
+            Parameter::OutputWeights | Parameter::Hidden2Output => 1.98_f32,
+            Parameter::Hidden1Weights | Parameter::Hidden2Weights => 127.0_f32 / 64.0,
             _ => return Err(Error::Invalid("optimizer head parameter")),
         };
-        let (units, h) = if matches!(
-            self.parameter,
-            Parameter::Biases
-                | Parameter::OutputWeights
-                | Parameter::OutputWeightsEnd
-                | Parameter::HiddenWeights
-        ) {
-            (shape.units(), shape.width())
+        let (units, h) = if self.parameter == Parameter::Biases {
+            (shape.bias_units(), shape.width())
         } else {
             (1, 1)
         };
@@ -495,8 +486,8 @@ impl Group {
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay)
             .arg(update.nonfinite);
-        // SAFETY: 出力部の全区画の勾配と各群の自由・展開配列を検査済み。Pの両半分は
-        // 同じスレッドが書く。unitsはHまたはH/2で正であり、全要素の書込先は重ならない。
+        // SAFETY: 全区画の勾配と各群の配列を検査済み。累算値バイアスのPの両半分は
+        // 同じスレッドが書き、他の群はunits=H=1で各要素を1回だけ書く。
         // 非有限フラグの1要素だけは全スレッドがatomicOrで共有する。
         unsafe {
             launch_kernel(
@@ -594,7 +585,7 @@ mod tests {
             InputFeatureSet::P,
             8,
             1000.0,
-            crate::nnue::model::HeadKind::DirectScrelu,
+            crate::nnue::model::HeadKind::PairwiseL16L32,
         )
         .unwrap();
         let model = super::super::equivalence::random_model(shape, 71).unwrap();

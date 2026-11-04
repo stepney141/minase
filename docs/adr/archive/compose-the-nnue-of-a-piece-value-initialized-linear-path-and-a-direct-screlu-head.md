@@ -2,23 +2,23 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月26日。
+置き換え済み。決定日は2026年10月26日。[NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)によって置き換えられた。
 
 ## コンテキスト
 
-[旧ADR](archive/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)は、2026年10月12日に、NNUEの評価を線形の経路と非線形の経路の和とし、線形の経路を置き換え前の学習済みPSTで初期化すると決めた。
+[旧ADR](compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)は、2026年10月12日に、NNUEの評価を線形の経路と非線形の経路の和とし、線形の経路を置き換え前の学習済みPSTで初期化すると決めた。
 基底特徴とは、駒状態、陣営、および升の組に先獅子の対象升を加えた13,680個の特徴であり、PSTとFMの入力と同じである。
-構造の根拠は、FMの補正が第2層なしで当時の採用PSTに勝っていたこと、FMの補正は二乗の活性化を持つ隠れ層と線形の項の組合せとして書けること、およびStockfishの特徴変換部も特徴ごとの線形項と非線形部の和を出力していたことである（[アーキテクチャの考察](../research/nnue-architecture-discussion.md)）。
-PSTの移植は、蒸留を使わずに旧評価関数の知識を取り込む手段だった（[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)）。
+構造の根拠は、FMの補正が第2層なしで当時の採用PSTに勝っていたこと、FMの補正は二乗の活性化を持つ隠れ層と線形の項の組合せとして書けること、およびStockfishの特徴変換部も特徴ごとの線形項と非線形部の和を出力していたことである（[アーキテクチャの考察](../../research/nnue-architecture-discussion.md)）。
+PSTの移植は、蒸留を使わずに旧評価関数の知識を取り込む手段だった（[NNUEによるPST＋FMの完全代替](../../plans/archived/nnue-replacement.md)）。
 
-2026年10月25日に、lishogiのBotの対局で、minaseの麒麟は、成る前に盤上にいた手数の59%を持ち主から見て右端の2筋で過ごしており、人間の上位者の0.3%と大きく異なることが分かった（[分析の記録](../measurements/adhoc/kirin-right-edge-bias.md)）。
+2026年10月25日に、lishogiのBotの対局で、minaseの麒麟は、成る前に盤上にいた手数の59%を持ち主から見て右端の2筋で過ごしており、人間の上位者の0.3%と大きく異なることが分かった（[分析の記録](../../measurements/adhoc/kirin-right-edge-bias.md)）。
 開発者は、前の世代の学習済みPSTをネットへ移すことはNNUEの構成として筋が悪いと判断し、線形の経路を升によらない駒価値で初期化して学習すると決めた。
 Fairy-Stockfishの学習器は線形の経路を駒の種類ごとの駒価値だけで初期化し、Stockfishは2026年9月30日のSFNNv17で線形の経路そのものを廃止していた。
 
-[線形経路を駒価値で初期化する計画](../plans/archived/nnue-material-linear-init.md)では、現行のネットと同じ教師データ、引数、およびシードで、初期値だけを探索用駒価値に変えたネットを学習した。
-最良の検証損失は現行のネットより3.1×10⁻⁵高く、線形重みの初期値からの移動量は平均で1センチポーン前後にとどまり、位置による評価の差は非線形部分が担った（[学習の記録](../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)）。
-masterを候補とする非劣性のGSPRTは、[STC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)が1,752ペア、[LTC](../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)が1,579ペアでともに`H0`となり、新しいネットが約10 Elo以上弱い可能性を退けた。
-人間同士の対局の局面で麒麟を同じ段の3筋と7筋へ置き直した評価の差は、現行のネットが121.2センチポーン、新しいネットが128.8センチポーンであり、右側の筋への選好は弱まらなかった（[麒麟の診断](../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)）。
+[線形経路を駒価値で初期化する計画](../../plans/archived/nnue-material-linear-init.md)では、現行のネットと同じ教師データ、引数、およびシードで、初期値だけを探索用駒価値に変えたネットを学習した。
+最良の検証損失は現行のネットより3.1×10⁻⁵高く、線形重みの初期値からの移動量は平均で1センチポーン前後にとどまり、位置による評価の差は非線形部分が担った（[学習の記録](../../measurements/nnue-material-linear-init/nnue-material-linear-init-training.md)）。
+masterを候補とする非劣性のGSPRTは、[STC](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-stc.md)が1,752ペア、[LTC](../../measurements/nnue-material-linear-init/nnue-material-linear-init-noninferiority-ltc.md)が1,579ペアでともに`H0`となり、新しいネットが約10 Elo以上弱い可能性を退けた。
+人間同士の対局の局面で麒麟を同じ段の3筋と7筋へ置き直した評価の差は、現行のネットが121.2センチポーン、新しいネットが128.8センチポーンであり、右側の筋への選好は弱まらなかった（[麒麟の診断](../../measurements/nnue-material-linear-init/nnue-material-linear-init-kirin.md)）。
 
 ## 決定
 
@@ -33,7 +33,7 @@ NNUEの評価を、線形の経路と非線形の経路の和とする。
 
 学習済みPSTの移植を続ける案は、前の世代の評価関数の偏りまで初期値として引き継ぐので、開発者の決定により採らなかった。
 線形の経路を0で初期化する案は、学習の初めに駒の損得まで学習し直すことになり、収束が遅れるので採らなかった。
-手書きの評価関数v0の駒価値で初期化する案は、学習した評価関数が駒に与える価値との差が大きいので採らなかった（[駒の価値の比較](../research/evaluator-piece-values.md)）。
+手書きの評価関数v0の駒価値で初期化する案は、学習した評価関数が駒に与える価値との差が大きいので採らなかった（[駒の価値の比較](../../research/evaluator-piece-values.md)）。
 王駒の行に探索用駒価値を置く案は採らなかった。
 王駒の探索用駒価値は「最大の非王駒価値と歩兵の価値の和」という探索のための値であり、醉象が太子に成って王駒が2枚になった局面などで、王駒の数の差に大きすぎる値を与えるからである。
 線形の経路を廃止する案（StockfishのSFNNv17に相当）は、開発者は経路を残して初期値から学習すると決めており、手の順序付けの同点破りとUSIの評価の内訳表示が線形の経路の重みを参照するので、今回は採らなかった。
@@ -48,5 +48,5 @@ PSTをネットの外に凍結して残し、ネットにはその補正だけ�
 麒麟の右側の筋への選好は初期値を変えても残ったので、この偏りは教師データに由来する。
 偏りを減らすには、教師データの作り方を見直す必要がある。
 線形の経路の学習率を駒価値からの学習に合わせて調整することは、今回の比較の対象外であり、行っていない。
-盤上総駒数による補間の式とその選択の理由は、[線形の評価の2組の重みを盤上総駒数で補間する](interpolate-the-linear-path-by-total-piece-count.md)が扱う。
+盤上総駒数による補間の式とその選択の理由は、[線形の評価の2組の重みを盤上総駒数で補間する](../interpolate-the-linear-path-by-total-piece-count.md)が扱う。
 重みファイルのヘッダの構造記述文字列のうち、この出力の構造を表す`linear=tapered2;head=direct-screlu`の部分は変わらない。

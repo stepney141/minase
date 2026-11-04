@@ -227,7 +227,7 @@ fn model(set: InputFeatureSet, linear: &[[f32; 2]], cp_per_logit: f32) -> Model 
         set,
         linear,
         cp_per_logit,
-        minase_trainer::nnue::model::HeadKind::DirectScrelu,
+        minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
     )
 }
 fn model_with_head(
@@ -622,7 +622,7 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
             row.copy_from_slice(&[0.1, 0.2, 0.1, 0.2]);
         }
         m.parameter_mut(Parameter::Biases).fill(0.3);
-        let units = m.shape().units();
+        let units = m.shape().output_units();
         m.parameter_mut(Parameter::OutputWeights)[..units].fill(0.125);
         m.parameter_mut(Parameter::OutputBias)[0] = 0.1;
         f.checkpoint(m);
@@ -632,15 +632,15 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
             &model(set, &vec![[0.0; 2]; FEATURE_COUNT], 1000.0),
         );
         let report = f.success(&removal_args("1"), "report.json");
-        // 実数の差分は -80 +1000*0.25*(2*0.3²-0.4²-0.5²) = -137.5 cp。
+        // 実数の差分は -80 +1000*0.125*2*(0.3²-0.4*0.5) = -107.5 cp。
         assert_close(
             &report["float_vs_integer_recomputed"]["mean_absolute_cp"],
-            137.5,
+            107.5,
             1e-4,
         );
         assert_close(
             &report["float_vs_integer_recomputed"]["max_absolute_cp"],
-            137.5,
+            107.5,
             1e-4,
         );
         assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
@@ -665,10 +665,10 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
         f.records("data.mnsd", &[record], 11, "engine-default");
         fs::remove_file(f.path("report.json")).unwrap();
         let report = f.success(&removal_args("1"), "report.json");
-        // 先獅子の特徴は除去後も残り、-80+1000*0.25*(0.4²+0.5²-0.5²-0.7²)=-162.5。
+        // 先獅子の特徴は除去後も残り、-80+1000*0.125*2*(0.4*0.5-0.5*0.7)=-117.5。
         assert_close(
             &report["float_vs_integer_recomputed"]["mean_absolute_cp"],
-            162.5,
+            117.5,
             1e-4,
         );
         assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
@@ -780,13 +780,13 @@ fn removal_checks_phase_boundaries_and_both_sides_with_nonlinear_weights() {
         let report = f.success(&removal_args("12"), "report.json");
         assert_eq!(report["removal_count"], 564);
         assert_eq!(report["float_batch_vs_recomputed"]["passed"], true);
-        // 先獅子を含むn+1特徴により、隠れ値は(n+3)/16、出力係数の総和は1。
+        // 先獅子を含むn+1特徴により、隠れ値は(n+3)/16、要素積4個の出力係数の総和は0.5。
         // 最大は3駒局面の自分の歩の除去。線形差分は-36 cp、非線形差分は
-        // 1000*((5/16)^2-(6/16)^2)=-42.96875 cpで、合計の絶対値は78.96875 cp。
-        // 1,2駒ではそれぞれ63.34375,71.15625 cp以下。91駒以上では活性化が飽和し、差分は40 cp以下。
+        // 500*((5/16)^2-(6/16)^2)=-21.484375 cpで、合計の絶対値は57.484375 cp。
+        // 1,2駒ではそれぞれ49.671875,53.578125 cp以下。91駒以上では活性化が飽和し、差分は40 cp以下。
         assert_close(
             &report["float_vs_integer_recomputed"]["max_absolute_cp"],
-            78.96875,
+            57.484375,
             1e-9,
         );
         assert!(report["error"].is_null());
@@ -1039,15 +1039,14 @@ fn all_heads_support_distribution_moves_and_float_removal_diagnostics() {
             model.parameter_mut(Parameter::FirstLayer).fill(0.01);
             model.fix_unobserved();
             model.parameter_mut(Parameter::Biases).fill(0.3);
-            model.parameter_mut(Parameter::HiddenWeights).fill(0.01);
-            model.parameter_mut(Parameter::HiddenBiases).fill(0.2);
+            model.parameter_mut(Parameter::Hidden1Weights).fill(0.01);
+            model.parameter_mut(Parameter::Hidden1Biases).fill(0.2);
             for (p, value) in [
                 (Parameter::OutputWeights, 0.02),
-                (Parameter::OutputWeightsEnd, -0.01),
                 (Parameter::OutputBias, 0.03),
-                (Parameter::OutputBiasEnd, -0.02),
-                (Parameter::HiddenOutput, 0.01),
-                (Parameter::HiddenOutputEnd, -0.01),
+                (Parameter::Hidden2Output, 0.01),
+                (Parameter::Hidden2Weights, 0.03),
+                (Parameter::Hidden2Biases, 0.2),
             ] {
                 model.parameter_mut(p).fill(value);
             }

@@ -14,7 +14,10 @@
 
 ## 以後の規則
 
-疎な特徴を加算する第1層の初期化は、発火する特徴数の平方根の逆数の程度の標準偏差（約55個なら0.05程度）で行い、初期局面で入力和の標準偏差が0.2〜1.0に収まり線形領域のユニットが4割以上あることをテストで固定する。
+疎な特徴を加算する第1層の初期化は、入力和が活性化の切り詰めに張り付かない大きさで行い、初期局面で飽和するユニットが少ないことを確かめる。
+上限の目安は発火する特徴数の平方根の逆数の標準偏差（約55個なら0.05程度）である。
+これより小さい分には停滞しない。
+入力次元に応じたfan-in則（標準偏差$`\sqrt{1/(3D)}`$）はtataraとnnue-pytorchの先例があり、minaseの幅256の要素積のネットでは標準偏差0.05より検証損失が下がり、固定ノードの対局でも改善した。
 学習が停滞したときは、データを増やす前に活性化の飽和率（clipped ReLUなら[0, 1]の外側にあるユニットの割合）を測る。
 
 ## 出典
@@ -22,3 +25,4 @@
 - [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「学習の構成」節と「教師不足の判定の検証結果と次期候補」節。
 - 修正コミット`eca5276`（分岐`nnue-gen1`、rebase後は`82aa0e6`）。
 - [measurements/evaluation-gen1/nnue-gen1-nodes100k.md](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md) と [measurements/evaluation-gen1/nnue-gen1-tc.md](../measurements/evaluation-gen1/nnue-gen1-tc.md)。
+- fan-in則の結果は[第1層の初期値を小さくしたネットの学習](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)と[固定ノードの記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)。

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月12日。[NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](../compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月12日。[NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)によって置き換えられた。
 
 ## コンテキスト
 

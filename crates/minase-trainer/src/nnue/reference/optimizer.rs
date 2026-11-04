@@ -3,7 +3,10 @@ use crate::nn::parallel;
 use crate::nn::{AdamCoefficients, AdamWGroup};
 use crate::nnue::{
     data::InputFeatureSet,
-    model::{Error, Model, Parameter, Parameters, Result, Shape},
+    model::{
+        Error, FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_WEIGHT_LIMIT, Model, Parameter, Parameters,
+        Result, Shape,
+    },
 };
 use minase::eval::features::FEATURE_COUNT;
 use serde::Serialize;
@@ -16,7 +19,7 @@ pub struct AdamWConfig {
     pub linear: AdamWGroup,
     /// 第1層と仮想行。
     pub ft: AdamWGroup,
-    /// 第1層のバイアス、および両端点と隠れ層を含む出力部の全パラメータ。
+    /// 第1層のバイアス、および2段の隠れ層を含む出力部の全パラメータ。
     pub head: AdamWGroup,
 }
 impl Default for AdamWConfig {
@@ -99,8 +102,9 @@ impl AdamW {
     }
     /// Linear、Virtual、FirstLayer、続いて出力部をParameterの宣言順に更新する。
     /// 更新式は[`AdamCoefficients::update`]に従い、勾配0の観測行も更新する。
-    /// 線形は[−4096, 4095.875]、W1は±127/64、両端点の直接出力重みとw2は±1.98、その他は±8に切り詰める。
-    /// HalfKPの第1層だけは今回更新した仮想行Vを使い、[−8−V, 8−V]に制限する。
+    /// 線形は[−4096, 4095.875]、W1とW2は±127/64、oとvは±1.98に切り詰める。
+    /// 第1層の重みと仮想行は±220/255、バイアスは±2、出力部のバイアスは±8に制限する。
+    /// HalfKPの第1層は今回更新した仮想行Vを使い、[−220/255−V, 220/255−V]に制限する。
     /// 未観測行は更新も切り詰めもせず、パラメータと両モーメントを保持する。
     pub fn update(&mut self, model: &mut Model, gradient: &Parameters) -> Result<()> {
         self.update_parallel(model, gradient, 1, 1.0)
@@ -155,12 +159,11 @@ impl AdamW {
             Parameter::Biases,
             Parameter::OutputWeights,
             Parameter::OutputBias,
-            Parameter::OutputWeightsEnd,
-            Parameter::OutputBiasEnd,
-            Parameter::HiddenWeights,
-            Parameter::HiddenBiases,
-            Parameter::HiddenOutput,
-            Parameter::HiddenOutputEnd,
+            Parameter::Hidden1Weights,
+            Parameter::Hidden1Biases,
+            Parameter::Hidden2Output,
+            Parameter::Hidden2Weights,
+            Parameter::Hidden2Biases,
         ] {
             let coefficients = AdamCoefficients::new(step, config.group(p))?;
             // 第1層の切り詰めは、先に更新した仮想行を読みながら行う。
@@ -193,18 +196,21 @@ impl AdamW {
                         }
                         let (lower, upper) = match p {
                             Parameter::Linear => (-4096.0, 4095.875),
-                            Parameter::OutputWeights
-                            | Parameter::OutputWeightsEnd
-                            | Parameter::HiddenOutput
-                            | Parameter::HiddenOutputEnd => (-1.98, 1.98),
-                            Parameter::HiddenWeights => (-127.0 / 64.0, 127.0 / 64.0),
+                            Parameter::OutputWeights | Parameter::Hidden2Output => (-1.98, 1.98),
+                            Parameter::Hidden1Weights | Parameter::Hidden2Weights => {
+                                (-127.0 / 64.0, 127.0 / 64.0)
+                            }
                             Parameter::FirstLayer
                                 if shape.feature_set() == InputFeatureSet::HalfKpHmB8 =>
                             {
                                 let base = i / shape.width() % FEATURE_COUNT;
                                 let v = virtual_rows[base * shape.width() + i % shape.width()];
-                                (-8.0 - v, 8.0 - v)
+                                (-FIRST_LAYER_WEIGHT_LIMIT - v, FIRST_LAYER_WEIGHT_LIMIT - v)
                             }
+                            Parameter::FirstLayer | Parameter::Virtual => {
+                                (-FIRST_LAYER_WEIGHT_LIMIT, FIRST_LAYER_WEIGHT_LIMIT)
+                            }
+                            Parameter::Biases => (-FIRST_LAYER_BIAS_LIMIT, FIRST_LAYER_BIAS_LIMIT),
                             _ => (-8.0, 8.0),
                         };
                         coefficients.update(value, gradient[p][i], m, v);
@@ -230,7 +236,7 @@ mod tests {
         let mut input = vec![false; set.dimensions() + 1];
         input[0] = true;
         let mut model = Model::initialize(
-            Shape::new(set, 2, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap(),
+            Shape::new(set, 4, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap(),
             &vec![[1.0; 2]; FEATURE_COUNT],
             Masks::new(set, canonical, input).unwrap(),
             1,

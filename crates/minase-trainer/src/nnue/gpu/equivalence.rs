@@ -2,7 +2,7 @@
 //! 浮動小数点は`|GPU−CPU| ≤ ATOL + RTOL×|CPU|`で比較し、ATOL=1e-6、RTOL=1e-5とする。
 //! 整数と真偽値は完全一致を要求し、非有限値を拒否する。
 //! 同じ入力を2回実行し、GPUの反復間のビット一致も検査する。
-//! テストでは幅2、6、8、128、130ごとに同じ評価器へ64、4,096、100、1、129局面を順に渡す。
+//! テストでは幅4、8、12、128、132ごとに同じ評価器へ64、4,096、100、1、129局面を順に渡す。
 //! 回転、番兵、先獅子、補間率の境界、空の逆索引範囲、および3分類の教師値を含める。
 
 use super::{Device, Error, Evaluation, Evaluator, Result};
@@ -112,31 +112,23 @@ pub fn check(
 ) -> Result<Report> {
     let weights = reference::fold(model)?;
     let f = reference::forward(model, batch, &weights)?;
-    let mut output = reference::output_backward(model, batch, &f, targets)?;
+    let output = reference::output_backward(model, batch, &f, targets)?;
     let mut gradients = Parameters::zeros(model.shape());
     let losses = reference::reduce_partials(model, &output, &mut gradients)?;
     reference::first_layer_backward(model, batch, &output, &mut gradients)?;
     reference::linear_backward(model, batch, &output, &mut gradients)?;
     reference::reduce_virtual(&mut gradients)?;
     let validation = reference::validation_forward(model, batch, &f, targets)?;
-    // GPU stores W1 contributions in the free (mirror-folded) layout.
-    // Fold the independently computed CPU contributions for comparison only.
-    if model.shape().units() != model.shape().width() {
-        let h = model.shape().width();
-        let u = model.shape().units();
-        output.d_hidden_weights = output
-            .d_hidden_weights
-            .chunks_exact(h)
-            .flat_map(|row| (0..u).map(move |j| row[j] + row[j + u]))
-            .collect();
-    }
-    let mut hidden_z = Vec::new();
-    let mut hidden_h = Vec::new();
-    for (b, activations) in output.f.chunks_exact(2 * model.shape().width()).enumerate() {
-        let phi = reference::phase(batch.piece_counts()[b])[0];
-        let hidden = reference::head(model, activations, phi);
-        hidden_z.extend(hidden.z);
-        hidden_h.extend(hidden.h);
+    let mut hidden1_z = Vec::new();
+    let mut hidden1_u = Vec::new();
+    let mut hidden2_a = Vec::new();
+    let mut hidden2_y = Vec::new();
+    for acc in f.acc.chunks_exact(2 * model.shape().width()) {
+        let hidden = reference::head(model, acc);
+        hidden1_z.extend(hidden.z);
+        hidden1_u.extend(hidden.u);
+        hidden2_a.extend(hidden.a);
+        hidden2_y.extend(hidden.y);
     }
     let expected = Evaluation {
         forward: f,
@@ -148,8 +140,10 @@ pub fn check(
         output_weights: gradients[Parameter::OutputWeights].to_vec(),
         biases: gradients[Parameter::Biases].to_vec(),
         output_bias: gradients[Parameter::OutputBias][0],
-        hidden_z,
-        hidden_h,
+        hidden1_z,
+        hidden1_u,
+        hidden2_a,
+        hidden2_y,
         head_gradients: std::array::from_fn(|i| {
             gradients[super::engine::HEAD_PARAMETERS[i + 3]].to_vec()
         }),
@@ -212,24 +206,24 @@ pub fn check(
 }
 fn arrays(e: &Evaluation) -> Vec<(&'static str, &[f32])> {
     let mut arrays: Vec<(&'static str, &[f32])> = vec![
-        ("hidden z", &e.hidden_z),
-        ("hidden h", &e.hidden_h),
+        ("hidden1 z", &e.hidden1_z),
+        ("hidden1 u", &e.hidden1_u),
+        ("hidden2 a", &e.hidden2_a),
+        ("hidden2 y", &e.hidden2_y),
         ("acc", &e.forward.acc),
         ("lin", e.forward.lin.as_flattened()),
         ("f", &e.output.f),
-        ("h", &e.output.h),
         ("logits", &e.output.logits),
         ("loss", &e.output.loss),
         ("g", &e.output.g),
         ("d_acc", &e.output.d_acc),
         ("d_output", &e.output.d_output),
         ("d_output_bias", &e.output.d_output_bias),
-        ("d_output_end", &e.output.d_output_end),
-        ("d_output_bias_end", &e.output.d_output_bias_end),
-        ("d_hidden_weights (folded)", &e.output.d_hidden_weights),
-        ("d_hidden_biases", &e.output.d_hidden_biases),
-        ("d_hidden_output", &e.output.d_hidden_output),
-        ("d_hidden_output_end", &e.output.d_hidden_output_end),
+        ("d_hidden1_weights", &e.output.d_hidden1_weights),
+        ("d_hidden1_biases", &e.output.d_hidden1_biases),
+        ("d_hidden2_weights", &e.output.d_hidden2_weights),
+        ("d_hidden2_biases", &e.output.d_hidden2_biases),
+        ("d_hidden2_output", &e.output.d_hidden2_output),
         ("c", e.output.c.as_flattened()),
         ("first layer", &e.first_layer),
         ("linear", &e.linear),
@@ -287,12 +281,11 @@ pub(super) fn random_model(shape: Shape, seed: u64) -> Result<Model> {
         Parameter::Linear,
         Parameter::OutputWeights,
         Parameter::OutputBias,
-        Parameter::OutputWeightsEnd,
-        Parameter::OutputBiasEnd,
-        Parameter::HiddenWeights,
-        Parameter::HiddenBiases,
-        Parameter::HiddenOutput,
-        Parameter::HiddenOutputEnd,
+        Parameter::Hidden1Weights,
+        Parameter::Hidden1Biases,
+        Parameter::Hidden2Output,
+        Parameter::Hidden2Weights,
+        Parameter::Hidden2Biases,
     ] {
         let scale = if p == Parameter::Linear { 12.0 } else { 0.3 };
         for x in model.parameter_mut(p) {
@@ -421,7 +414,7 @@ mod tests {
                 }));
             }
             let shape =
-                Shape::new(set, 6, 1000.0, crate::nnue::model::HeadKind::DirectScrelu).unwrap();
+                Shape::new(set, 8, 1000.0, crate::nnue::model::HeadKind::PairwiseL16L32).unwrap();
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
             assert!(super::super::engine::validate_inputs(shape, 100, &batch, &targets).is_ok());
             assert!(super::super::engine::validate_inputs(shape, 99, &batch, &targets).is_err());
@@ -487,11 +480,11 @@ mod tests {
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             run(
                 set,
-                6,
+                8,
                 5,
                 293,
                 training,
-                crate::nnue::model::HeadKind::DirectScrelu,
+                crate::nnue::model::HeadKind::PairwiseL16L32,
             )
             .unwrap();
         }
@@ -500,23 +493,20 @@ mod tests {
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_hidden_clipping_boundaries_match_reference() {
-        // The head contract includes both z=0 and z=1 in the derivative.
-        // Values outside the interval must contribute zero to W1 and b1.
+        // clipped ReLUの両境界と、負のzにも勾配が流れる2乗の枝を検査する。
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            for head in [
-                crate::nnue::model::HeadKind::ScreluHidden16,
-                crate::nnue::model::HeadKind::ScreluHidden16Phase2,
-            ] {
+            for head in crate::nnue::model::HeadKind::ALL {
                 let shape = Shape::new(set, 8, 1000.0, head).unwrap();
                 let mut model = random_model(shape, 71).unwrap();
-                model.parameter_mut(Parameter::HiddenWeights).fill(0.0);
+                model.parameter_mut(Parameter::Hidden1Weights).fill(0.0);
                 for (k, value) in model
-                    .parameter_mut(Parameter::HiddenBiases)
+                    .parameter_mut(Parameter::Hidden1Biases)
                     .iter_mut()
                     .enumerate()
                 {
-                    *value = [-0.25, 0.0, 0.25, 1.0, 1.25][k % 5];
+                    let edge = (128.0_f32 / 127.0).sqrt();
+                    *value = [-1.25, -edge, -0.25, 0.0, 0.25, 1.0, edge, 1.25][k % 8];
                 }
                 let batch = synthetic_batch(set, 129, 43).unwrap();
                 let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[0.75; 3]).unwrap();
@@ -535,15 +525,15 @@ mod tests {
             }
         };
     }
-    gpu_case!(gpu_p_width_2, InputFeatureSet::P, 2);
-    gpu_case!(gpu_p_width_6, InputFeatureSet::P, 6);
+    gpu_case!(gpu_p_width_4, InputFeatureSet::P, 4);
+    gpu_case!(gpu_p_width_12, InputFeatureSet::P, 12);
     gpu_case!(gpu_p_width_8, InputFeatureSet::P, 8);
     gpu_case!(gpu_p_width_128, InputFeatureSet::P, 128);
     // H > block size and a partial warp of units exercise the strided kernels.
-    gpu_case!(gpu_p_width_130, InputFeatureSet::P, 130);
-    gpu_case!(gpu_halfkp_width_2, InputFeatureSet::HalfKpHmB8, 2);
-    gpu_case!(gpu_halfkp_width_6, InputFeatureSet::HalfKpHmB8, 6);
+    gpu_case!(gpu_p_width_132, InputFeatureSet::P, 132);
+    gpu_case!(gpu_halfkp_width_4, InputFeatureSet::HalfKpHmB8, 4);
+    gpu_case!(gpu_halfkp_width_12, InputFeatureSet::HalfKpHmB8, 12);
     gpu_case!(gpu_halfkp_width_8, InputFeatureSet::HalfKpHmB8, 8);
     gpu_case!(gpu_halfkp_width_128, InputFeatureSet::HalfKpHmB8, 128);
-    gpu_case!(gpu_halfkp_width_130, InputFeatureSet::HalfKpHmB8, 130);
+    gpu_case!(gpu_halfkp_width_132, InputFeatureSet::HalfKpHmB8, 132);
 }

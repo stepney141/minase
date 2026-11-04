@@ -20,7 +20,7 @@ fn close(actual: f64, expected: f64, tolerance: f64) {
     );
 }
 fn nonzero_model(set: InputFeatureSet) -> Model {
-    nonzero_model_with_head(set, HeadKind::DirectScrelu)
+    nonzero_model_with_head(set, HeadKind::PairwiseL16L32)
 }
 fn nonzero_model_with_head(set: InputFeatureSet, head: HeadKind) -> Model {
     let mut result = model_with_head(set, 4, head);
@@ -42,14 +42,16 @@ fn nonzero_model_with_head(set: InputFeatureSet, head: HeadKind) -> Model {
     }
     result.parameter_mut(Parameter::OutputBias)[0] = 0.04;
     for (p, value) in [
-        (Parameter::OutputWeightsEnd, -0.013),
-        (Parameter::OutputBiasEnd, -0.02),
-        (Parameter::HiddenWeights, 0.07),
-        (Parameter::HiddenBiases, 0.2),
-        (Parameter::HiddenOutput, 0.03),
-        (Parameter::HiddenOutputEnd, -0.01),
+        (Parameter::Hidden1Weights, 0.07),
+        (Parameter::Hidden1Biases, 0.2),
+        (Parameter::Hidden2Output, 0.03),
+        (Parameter::Hidden2Weights, 0.025),
+        (Parameter::Hidden2Biases, 0.2),
     ] {
         result.parameter_mut(p).fill(value);
+    }
+    for k in 0..15 {
+        result.parameter_mut(Parameter::Hidden1Biases)[k] = if k % 2 == 0 { -0.3 } else { 0.2 };
     }
     result
 }
@@ -95,53 +97,57 @@ fn dense_loss(model: &Model, batch: &BatchSlot) -> f64 {
                 }
             }
         }
+        let quarter = width / 4;
         let s: Vec<_> = hidden
             .iter()
-            .flatten()
-            .map(|x| x.clamp(0.0, 1.0).powi(2))
+            .flat_map(|view| {
+                [0, width / 2].into_iter().flat_map(move |start| {
+                    (0..quarter).map(move |j| {
+                        view[start + j].clamp(0.0, 1.0) * view[start + quarter + j].clamp(0.0, 1.0)
+                    })
+                })
+            })
             .collect();
         let p = model.parameters();
-        let u = model.shape().units();
-        let index = |i: usize| i / width * u + i % width % u;
-        let hidden: Vec<_> = (0..if model.shape().head().hidden() { 16 } else { 0 })
+        let units = model.shape().output_units();
+        let index = |i: usize| i / (width / 2) * units + i % (width / 2) % units;
+        let z: Vec<_> = (0..15)
             .map(|k| {
-                (s.iter()
+                s.iter()
                     .enumerate()
-                    .map(|(i, &x)| x * f64::from(p[Parameter::HiddenWeights][k * 2 * u + index(i)]))
+                    .map(|(i, &x)| {
+                        x * f64::from(p[Parameter::Hidden1Weights][k * 2 * units + index(i)])
+                    })
                     .sum::<f64>()
-                    + f64::from(p[Parameter::HiddenBiases][k]))
+                    + f64::from(p[Parameter::Hidden1Biases][k])
+            })
+            .collect();
+        let dual: Vec<_> = z
+            .iter()
+            .map(|&x| (127.0 / 128.0 * x * x).min(1.0))
+            .chain(z.iter().map(|&x| x.clamp(0.0, 1.0)))
+            .collect();
+        let y: Vec<_> = (0..32)
+            .map(|k| {
+                (dual
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &x)| x * f64::from(p[Parameter::Hidden2Weights][k * 30 + i]))
+                    .sum::<f64>()
+                    + f64::from(p[Parameter::Hidden2Biases][k]))
                 .clamp(0.0, 1.0)
             })
             .collect();
-        let endpoint = |o, w, b| {
-            f64::from(p[b][0])
-                + s.iter()
-                    .enumerate()
-                    .map(|(i, &x)| x * f64::from(p[o][index(i)]))
-                    .sum::<f64>()
-                + hidden
-                    .iter()
-                    .zip(&p[w])
-                    .map(|(&x, &w)| x * f64::from(w))
-                    .sum::<f64>()
-        };
-        let open = endpoint(
-            Parameter::OutputWeights,
-            Parameter::HiddenOutput,
-            Parameter::OutputBias,
-        );
-        let nonlinear = if model.shape().head().phase2() {
-            (q * open
-                + (90.0 - q)
-                    * endpoint(
-                        Parameter::OutputWeightsEnd,
-                        Parameter::HiddenOutputEnd,
-                        Parameter::OutputBiasEnd,
-                    ))
-                / 90.0
-        } else {
-            open
-        };
+        let nonlinear = s
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| x * f64::from(p[Parameter::OutputWeights][index(i)]))
+            .sum::<f64>()
+            + y.iter()
+                .zip(&p[Parameter::Hidden2Output])
+                .map(|(&x, &w)| x * f64::from(w))
+                .sum::<f64>()
+            + f64::from(p[Parameter::OutputBias][0]);
         (q * linear_sums[0] + (90.0 - q) * linear_sums[1])
             / 90.0
             / f64::from(model.shape().cp_per_logit())
@@ -171,24 +177,38 @@ fn finite_differences_cover_all_parameter_groups() {
             .unwrap();
             close(gradients.losses.bce, dense_loss(&model, &batch), 3e-5);
             for p in Parameter::ALL {
-                let mut indices: Vec<_> = gradients.parameters[p]
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, g)| g.abs() > 1e-7)
-                    .map(|(i, _)| i)
-                    .collect();
-                if matches!(
-                    p,
-                    Parameter::Linear | Parameter::FirstLayer | Parameter::Virtual
-                ) && indices.len() > 16
-                {
-                    let step = indices.len() / 16;
-                    indices = indices.into_iter().step_by(step).take(16).collect();
-                }
-                if !model.parameters()[p].is_empty() {
-                    assert!(!indices.is_empty(), "no tested gradient in {p:?}");
-                    indices.push(model.parameters()[p].len() - 1);
-                }
+                let indices: Vec<usize> = match p {
+                    Parameter::Linear => {
+                        let row = batch
+                            .linear_features()
+                            .iter()
+                            .copied()
+                            .find(|&f| f != SENTINEL)
+                            .unwrap() as usize;
+                        vec![2 * row, 2 * row + 1, model.parameters()[p].len() - 1]
+                    }
+                    Parameter::FirstLayer | Parameter::Virtual
+                        if !model.parameters()[p].is_empty() =>
+                    {
+                        let feature = batch
+                            .features()
+                            .iter()
+                            .copied()
+                            .find(|&f| f != SENTINEL)
+                            .unwrap() as usize;
+                        let row = if p == Parameter::Virtual {
+                            feature % FEATURE_COUNT
+                        } else if set == InputFeatureSet::P {
+                            feature / 2
+                        } else {
+                            feature
+                        };
+                        (row * 4..row * 4 + 4)
+                            .chain([model.parameters()[p].len() - 1])
+                            .collect()
+                    }
+                    _ => (0..model.parameters()[p].len()).collect(),
+                };
                 for i in indices {
                     let original = model.parameters()[p][i];
                     let epsilon = if p == Parameter::Linear { 1e-3 } else { 1e-4 };
@@ -201,8 +221,11 @@ fn finite_differences_cover_all_parameter_groups() {
                     model.parameter_mut(p)[i] = original;
                     let expected = (plus - minus) / f64::from(plus_value - minus_value);
                     let actual = f64::from(gradients.parameters[p][i]);
+                    // 活性化は境界から離れ、非線形の重みは0.07以下、各積和は32項以下。
+                    // 差分の打切り誤差O(epsilon²)とf64の桁落ちO(2^-53/epsilon)は約10^-8以下。
+                    // f32の前進誤差を2段へ伝播する分を含め、絶対誤差2×10^-6を許す。
                     assert!(
-                        (actual - expected).abs() <= 8e-5 + expected.abs() * 3e-4,
+                        (actual - expected).abs() <= 2e-6,
                         "{set:?} {head:?} {p:?}[{i}] actual={actual}, finite difference={expected}"
                     );
                 }
@@ -225,7 +248,7 @@ fn quantization_evaluation_uses_double_precision_at_every_stage() {
     let epsilon = 2.0_f32.powi(-24);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = fixture.batch(set, &[0]);
-        let mut zero = model(set, 2);
+        let mut zero = model(set, 4);
         for p in Parameter::ALL {
             zero.parameter_mut(p).fill(0.0);
         }
@@ -239,9 +262,9 @@ fn quantization_evaluation_uses_double_precision_at_every_stage() {
                 InputFeatureSet::P => feature as usize / 2,
                 InputFeatureSet::HalfKpHmB8 => feature as usize,
             };
-            hidden.parameter_mut(Parameter::FirstLayer)[row * 2..row * 2 + 2].fill(value);
+            hidden.parameter_mut(Parameter::FirstLayer)[row * 4..row * 4 + 4].fill(value);
         }
-        let units = hidden.shape().units();
+        let units = hidden.shape().output_units();
         hidden.parameter_mut(Parameter::OutputWeights)[..units].fill(1.0);
         // 1 + 2^-24 - 1は、線形和でも隠れ和でも倍精度なら2^-24を保つ。
         for (model, expected) in [
@@ -298,7 +321,7 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
     let fixture = Fixture::new(&positions()[..1]);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = fixture.batch(set, &[0]);
-        let model = model_with_head(set, 2, HeadKind::ScreluHidden16Phase2);
+        let model = model_with_head(set, 4, HeadKind::PairwiseL16L32);
         let weights = reference::fold(&model).unwrap();
         let mut forward = reference::forward(&model, &batch, &weights).unwrap();
         let reference = RemovalReference::v0();
@@ -319,19 +342,17 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
             output,
             check_output,
             f,
-            h,
             logits,
             loss,
             g,
             d_acc,
             d_output,
             d_output_bias,
-            d_output_end,
-            d_output_bias_end,
-            d_hidden_weights,
-            d_hidden_biases,
-            d_hidden_output,
-            d_hidden_output_end,
+            d_hidden1_weights,
+            d_hidden1_biases,
+            d_hidden2_weights,
+            d_hidden2_biases,
+            d_hidden2_output,
             c
         );
         assert_eq!(gradient, unchanged);
@@ -346,9 +367,9 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         assert!(reference.deltas(&batch, batch.len()).is_err());
         let shape = minase_trainer::nnue::model::Shape::new(
             set,
-            4,
+            8,
             1000.0,
-            minase_trainer::nnue::model::HeadKind::DirectScrelu,
+            minase_trainer::nnue::model::HeadKind::PairwiseL16L32,
         )
         .unwrap();
         let mut wrong_gradient = Parameters::zeros(shape);
@@ -366,7 +387,7 @@ fn p_mirror_preserves_evaluation_and_canonical_gradients() {
     let fixture = Fixture::new(&[original.clone(), mirror(&original)]);
     let first = fixture.batch(InputFeatureSet::P, &[0]);
     let mirrored = fixture.batch(InputFeatureSet::P, &[1]);
-    for width in [2, 4, 6] {
+    for width in [4, 8, 12] {
         let mut model = model(InputFeatureSet::P, width);
         model.parameter_mut(Parameter::Biases).fill(0.2);
         model.parameter_mut(Parameter::OutputWeights).fill(0.03);
@@ -409,7 +430,7 @@ fn epoch_zero_halfkp_matches_p_and_nonzero_shared_head() {
     p.parameter_mut(Parameter::Biases)
         .copy_from_slice(&[0.2, 0.3]);
     p.parameter_mut(Parameter::OutputWeights)
-        .copy_from_slice(&[0.04, 0.02, -0.03, 0.01]);
+        .copy_from_slice(&[0.04, -0.03]);
     half.parameter_mut(Parameter::Biases)
         .copy_from_slice(&p.expanded_biases());
     half.parameter_mut(Parameter::OutputWeights)
@@ -420,20 +441,6 @@ fn epoch_zero_halfkp_matches_p_and_nonzero_shared_head() {
         .zip(reference::evaluate(&half, &h_batch).unwrap())
     {
         close(f64::from(a), f64::from(b), 1e-5);
-    }
-}
-
-#[test]
-fn screlu_derivative_includes_one_but_excludes_saturated_region() {
-    for (x, f, h) in [
-        (-1.0, 0.0, 0.0),
-        (0.0, 0.0, 0.0),
-        (0.5, 0.25, 1.0),
-        (1.0, 1.0, 2.0),
-        (1.01, 1.0, 0.0),
-    ] {
-        assert_eq!(reference::screlu(x), f);
-        assert_eq!(reference::screlu_derivative(x), h);
     }
 }
 
@@ -505,7 +512,7 @@ fn adamw_preserves_unobserved_parameters_and_moments_without_clipping() {
     // AdamW::updateは訓練集合で未観測の行のp,m,vを保持する一方、
     // 今回だけ勾配0の観測行は過去のモーメントと減衰で動く。
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-        let mut warm = model(set, 2);
+        let mut warm = model(set, 4);
         let shape = warm.shape();
         let group = AdamWGroup {
             lr: 0.01,
@@ -549,7 +556,11 @@ fn adamw_preserves_unobserved_parameters_and_moments_without_clipping() {
         assert_eq!(optimizer.step(), 2);
         for p in [Parameter::Linear, Parameter::FirstLayer, Parameter::Virtual] {
             for i in 0..shape.len(p) {
-                if i < 2 {
+                if i < if p == Parameter::Linear {
+                    2
+                } else {
+                    shape.width()
+                } {
                     assert!(model.parameters()[p][i] < before[p][i] * 0.999);
                     assert!(optimizer.m()[p][i] < m_before[p][i]);
                     assert!(optimizer.v()[p][i] < v_before[p][i]);
@@ -599,6 +610,7 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
             let (upper, lower) = match p {
                 Parameter::Linear => (4095.875, -4096.0),
                 Parameter::OutputWeights => (1.98, -1.98),
+                Parameter::Biases => (510.0 / 255.0, -510.0 / 255.0),
                 _ => (8.0, -8.0),
             };
             assert_eq!(model.parameters()[p][0], upper);
@@ -607,11 +619,14 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
             }
         }
         let folded = reference::fold(&model).unwrap();
-        assert_eq!(&folded[..4], &[8.0, -8.0, 8.0, -8.0]);
+        assert_eq!(
+            &folded[..4],
+            &[220.0 / 255.0, -220.0 / 255.0, 220.0 / 255.0, -220.0 / 255.0]
+        );
         if set == InputFeatureSet::HalfKpHmB8 {
             assert_eq!(
                 &model.parameters()[Parameter::Virtual][..4],
-                &[8.0, -8.0, 8.0, -8.0]
+                &[220.0 / 255.0, -220.0 / 255.0, 220.0 / 255.0, -220.0 / 255.0]
             );
             assert_eq!(&model.parameters()[Parameter::FirstLayer][..4], &[0.0; 4]);
         }
@@ -777,7 +792,7 @@ fn cpu_rejects_zero_threads_without_changing_state() {
         None,
     )]);
     let batch = fixture.batch(InputFeatureSet::P, &[0]);
-    let mut model = model(InputFeatureSet::P, 2);
+    let mut model = model(InputFeatureSet::P, 4);
     for parameter in Parameter::ALL {
         model.parameter_mut(parameter).fill(0.0);
     }

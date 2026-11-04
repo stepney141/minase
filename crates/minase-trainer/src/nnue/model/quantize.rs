@@ -1,11 +1,14 @@
-use super::{Error, HeadKind, Model, Parameter, Result, Shape};
+use super::{
+    Error, FIRST_LAYER_BIAS_MAX, FIRST_LAYER_SCALE, FIRST_LAYER_WEIGHT_MAX, Model, Parameter,
+    Result, Shape,
+};
 use crate::nnue::data::InputFeatureSet;
 use minase::eval::{
     features::PIECE_STATE_COUNT,
     nnue::{
         self, EncodeInput,
         feature_set::{HalfKpHmB8, P},
-        head::{DirectScrelu, DirectScreluPhase2, Head, ScreluHidden16, ScreluHidden16Phase2},
+        head::PairwiseL16L32,
     },
 };
 
@@ -15,26 +18,24 @@ pub struct Quantized {
     shape: Shape,
     /// 線形重み`[13680, 2]`。尺度8。
     pub linear: Vec<[i16; 2]>,
-    /// 展開・畳み込み済みの第1層`[D, H]`。尺度127。
+    /// 展開・畳み込み済みの第1層`[D, H]`。尺度255。
     pub weights: Vec<i16>,
-    /// バイアス`[H]`。尺度127。
+    /// 第1層バイアス`[H]`。尺度255。
     pub biases: Vec<i32>,
-    /// 出力重み`[2, H]`。尺度4096。
+    /// 直接出力o`[H]`。尺度4096。
     pub output_weights: Vec<i16>,
-    /// 出力バイアス。尺度127×4096。
+    /// 出力バイアスb。尺度127×4096。
     pub output_bias: i32,
-    /// 終盤端点の直接重み`[2, H]`。尺度4096。端点が1つなら空。
-    pub output_weights_end: Vec<i16>,
-    /// 終盤端点のバイアス`[1]`。尺度127×4096。端点が1つなら空。
-    pub output_bias_end: Vec<i32>,
-    /// 展開済みW1`[16, 2H]`。尺度64。隠れ層がなければ空。
-    pub hidden_weights: Vec<i8>,
-    /// b1`[16]`。尺度127×64。隠れ層がなければ空。
-    pub hidden_biases: Vec<i32>,
-    /// 序盤端点のw2`[16]`。尺度4096。隠れ層がなければ空。
-    pub hidden_output: Vec<i16>,
-    /// 終盤端点のw2`[16]`。尺度4096。対応する区画がなければ空。
-    pub hidden_output_end: Vec<i16>,
+    /// W1`[15, H]`。尺度256。
+    pub hidden1_weights: Vec<i16>,
+    /// b1`[15]`。尺度127×256。
+    pub hidden1_biases: [i32; 15],
+    /// W2`[32, 30]`。尺度256。
+    pub hidden2_weights: Vec<i16>,
+    /// b2`[32]`。尺度127×256。
+    pub hidden2_biases: [i32; 32],
+    /// 隠れ層の出力重みv`[32]`。尺度4096。
+    pub hidden2_output: [i16; 32],
 }
 impl Quantized {
     /// 推論側のEncodeInputを使い、MNUE版5の全検査を経てバイト列を作る。
@@ -45,78 +46,18 @@ impl Quantized {
     ) -> Result<Vec<u8>> {
         let width = self.shape.width();
         let shared = self.shape.feature_set() == InputFeatureSet::P;
-        let array16 = |values: &[i16]| -> Result<[i16; 16]> {
-            values
-                .try_into()
-                .map_err(|_| Error::Invalid("quantized hidden output shape"))
-        };
-        let hidden_biases = || -> Result<[i32; 16]> {
-            self.hidden_biases
-                .as_slice()
-                .try_into()
-                .map_err(|_| Error::Invalid("quantized hidden bias shape"))
-        };
-        let end_bias = || match self.output_bias_end.as_slice() {
-            &[bias] => Ok(bias),
-            _ => Err(Error::Invalid("quantized end bias shape")),
-        };
-        match self.shape.head() {
-            HeadKind::DirectScrelu => self.encode_head(
-                &DirectScrelu::new(width, &self.output_weights, self.output_bias, shared)
-                    .map_err(Error::Mnue)?,
-                piece_values,
-                rule_set,
-            ),
-            HeadKind::DirectScreluPhase2 => self.encode_head(
-                &DirectScreluPhase2::new(
-                    width,
-                    [&self.output_weights, &self.output_weights_end],
-                    [self.output_bias, end_bias()?],
-                    shared,
-                )
-                .map_err(Error::Mnue)?,
-                piece_values,
-                rule_set,
-            ),
-            HeadKind::ScreluHidden16 => self.encode_head(
-                &ScreluHidden16::new(
-                    width,
-                    [&self.output_weights],
-                    [self.output_bias],
-                    &self.hidden_weights,
-                    hidden_biases()?,
-                    [array16(&self.hidden_output)?],
-                    shared,
-                )
-                .map_err(Error::Mnue)?,
-                piece_values,
-                rule_set,
-            ),
-            HeadKind::ScreluHidden16Phase2 => self.encode_head(
-                &ScreluHidden16Phase2::new(
-                    width,
-                    [&self.output_weights, &self.output_weights_end],
-                    [self.output_bias, end_bias()?],
-                    &self.hidden_weights,
-                    hidden_biases()?,
-                    [
-                        array16(&self.hidden_output)?,
-                        array16(&self.hidden_output_end)?,
-                    ],
-                    shared,
-                )
-                .map_err(Error::Mnue)?,
-                piece_values,
-                rule_set,
-            ),
-        }
-    }
-    fn encode_head<H: Head>(
-        &self,
-        head: &H,
-        piece_values: &[i32; PIECE_STATE_COUNT],
-        rule_set: &str,
-    ) -> Result<Vec<u8>> {
+        let head = PairwiseL16L32::new(
+            width,
+            &self.output_weights,
+            self.output_bias,
+            &self.hidden1_weights,
+            self.hidden1_biases,
+            &self.hidden2_weights,
+            self.hidden2_biases,
+            self.hidden2_output,
+            shared,
+        )
+        .map_err(Error::Mnue)?;
         let input = EncodeInput {
             width: self.shape.width() as u32,
             cp_per_logit: self.shape.cp_per_logit(),
@@ -125,7 +66,7 @@ impl Quantized {
             linear: &self.linear,
             weights: &self.weights,
             biases: &self.biases,
-            head,
+            head: &head,
         };
         match self.shape.feature_set() {
             InputFeatureSet::P => nnue::encode::<P, _>(&input),
@@ -142,8 +83,9 @@ fn rounded(value: f32, scale: f64, low: i32, high: i32, parameter: Parameter) ->
     Ok(value as i32)
 }
 /// f32をf64へ広げて尺度を掛け、`round_ties_even`で偶数丸めする。
-/// 線形は×8でi16、第1層とバイアスは×127で±1,016、出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
-/// W1は×64で±127、b1は×127×64で±65,024、両端点のw2は×4,096で±8,192に収める。
+/// 線形は×8でi16、第1層は×255で±220、そのバイアスは×255で±510に収める。
+/// 出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
+/// W1とW2は×256で±508のi16、b1とb2は×127×256で±260,096、vは×4,096で±8,192に収める。
 /// 第1層は畳み込み済みの重みを使い、埋め草を除く。
 /// 範囲外は切り詰めず[`Error::Quantization`]を返す。
 pub fn quantize(model: &Model) -> Result<Quantized> {
@@ -161,12 +103,29 @@ pub fn quantize(model: &Model) -> Result<Quantized> {
         .collect::<Result<Vec<_>>>()?;
     let weights = model.expanded_first_layer()[..shape.feature_set().dimensions() * shape.width()]
         .iter()
-        .map(|&v| rounded(v, 127.0, -1016, 1016, Parameter::FirstLayer).map(|x| x as i16))
+        .map(|&v| {
+            rounded(
+                v,
+                f64::from(FIRST_LAYER_SCALE),
+                -FIRST_LAYER_WEIGHT_MAX,
+                FIRST_LAYER_WEIGHT_MAX,
+                Parameter::FirstLayer,
+            )
+            .map(|x| x as i16)
+        })
         .collect::<Result<Vec<_>>>()?;
     let biases = model
         .expanded_biases()
         .iter()
-        .map(|&v| rounded(v, 127.0, -1016, 1016, Parameter::Biases))
+        .map(|&v| {
+            rounded(
+                v,
+                f64::from(FIRST_LAYER_SCALE),
+                -FIRST_LAYER_BIAS_MAX,
+                FIRST_LAYER_BIAS_MAX,
+                Parameter::Biases,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     let output_weights = model
         .expanded_output_weights()
@@ -187,41 +146,47 @@ pub fn quantize(model: &Model) -> Result<Quantized> {
         biases,
         output_weights,
         output_bias,
-        output_weights_end: model
-            .expanded_output_weights_end()
+        hidden1_weights: model
+            .expanded_hidden1_weights()
             .iter()
-            .map(|&v| {
-                rounded(v, 4096.0, -8192, 8192, Parameter::OutputWeightsEnd).map(|x| x as i16)
-            })
+            .map(|&v| rounded(v, 256.0, -508, 508, Parameter::Hidden1Weights).map(|x| x as i16))
             .collect::<Result<_>>()?,
-        output_bias_end: model.parameters()[Parameter::OutputBiasEnd]
+        hidden1_biases: quantized_array(
+            &model.parameters()[Parameter::Hidden1Biases],
+            127.0 * 256.0,
+            260_096,
+            Parameter::Hidden1Biases,
+        )?,
+        hidden2_weights: model.parameters()[Parameter::Hidden2Weights]
             .iter()
-            .map(|&v| {
-                rounded(
-                    v,
-                    127.0 * 4096.0,
-                    -4_161_536,
-                    4_161_536,
-                    Parameter::OutputBiasEnd,
-                )
-            })
+            .map(|&v| rounded(v, 256.0, -508, 508, Parameter::Hidden2Weights).map(|x| x as i16))
             .collect::<Result<_>>()?,
-        hidden_weights: model
-            .expanded_hidden_weights()
-            .iter()
-            .map(|&v| rounded(v, 64.0, -127, 127, Parameter::HiddenWeights).map(|x| x as i8))
-            .collect::<Result<_>>()?,
-        hidden_biases: model.parameters()[Parameter::HiddenBiases]
-            .iter()
-            .map(|&v| rounded(v, 127.0 * 64.0, -65_024, 65_024, Parameter::HiddenBiases))
-            .collect::<Result<_>>()?,
-        hidden_output: model.parameters()[Parameter::HiddenOutput]
-            .iter()
-            .map(|&v| rounded(v, 4096.0, -8192, 8192, Parameter::HiddenOutput).map(|x| x as i16))
-            .collect::<Result<_>>()?,
-        hidden_output_end: model.parameters()[Parameter::HiddenOutputEnd]
-            .iter()
-            .map(|&v| rounded(v, 4096.0, -8192, 8192, Parameter::HiddenOutputEnd).map(|x| x as i16))
-            .collect::<Result<_>>()?,
+        hidden2_biases: quantized_array(
+            &model.parameters()[Parameter::Hidden2Biases],
+            127.0 * 256.0,
+            260_096,
+            Parameter::Hidden2Biases,
+        )?,
+        hidden2_output: quantized_array(
+            &model.parameters()[Parameter::Hidden2Output],
+            4096.0,
+            8192,
+            Parameter::Hidden2Output,
+        )?
+        .map(|x| x as i16),
     })
+}
+
+fn quantized_array<const N: usize>(
+    values: &[f32],
+    scale: f64,
+    limit: i32,
+    p: Parameter,
+) -> Result<[i32; N]> {
+    values
+        .iter()
+        .map(|&v| rounded(v, scale, -limit, limit, p))
+        .collect::<Result<Vec<_>>>()?
+        .try_into()
+        .map_err(|_| Error::Invalid("quantized array shape"))
 }

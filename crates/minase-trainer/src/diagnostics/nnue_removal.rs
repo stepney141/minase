@@ -86,7 +86,7 @@ pub(super) struct Report {
 ///
 /// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
 /// `cp_per_logit`には整数ネットの勝率尺度（1ロジットあたりのcp）を使う。
-/// 除去後のSCReLU活性化を作り、参照実装の共通出力部へ除去後の位相とともに渡す。
+/// 除去後の累算値を作り、要素積と2段の隠れ層を持つ参照実装の出力部へ渡す。
 /// 除去前後の非線形出力の差へ勝率尺度を掛け、線形差分へ加える。
 fn float_removal_deltas(
     model: &Model,
@@ -120,25 +120,21 @@ fn float_removal_deltas(
                 + f64::from(biases[i % h])
         })
         .collect();
-    let activation = |x: f64| x.clamp(0.0, 1.0).powi(2);
-    let before_s: Vec<_> = acc.iter().copied().map(activation).collect();
-    let before_head = reference::head_f64(model, &before_s, q);
+    let before_head = reference::head_f64(model, &acc);
     for (col, value) in delta.iter_mut().enumerate() {
-        let after_s: Vec<_> = acc
+        let after_acc: Vec<_> = acc
             .iter()
             .enumerate()
             .map(|(i, &x)| {
-                activation(
-                    x - f64::from(row_value(
-                        model,
-                        weights,
-                        batch.features()[i / h * FEATURE_COLUMNS + col],
-                        i % h,
-                    )),
-                )
+                x - f64::from(row_value(
+                    model,
+                    weights,
+                    batch.features()[i / h * FEATURE_COLUMNS + col],
+                    i % h,
+                ))
             })
             .collect();
-        *value += cp_per_logit * (reference::head_f64(model, &after_s, after_q) - before_head);
+        *value += cp_per_logit * (reference::head_f64(model, &after_acc) - before_head);
     }
     delta
 }

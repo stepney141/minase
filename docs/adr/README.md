@@ -251,7 +251,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月16日 [NNUEの学習率をcosine annealingで減らす](anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)
 - 2026年10月16日 [勝率尺度を重みファイルの1定数とし、教師の勝率尺度は較正コマンドで求めて学習の引数で与える](hold-cp-per-logit-in-the-weight-header-and-pass-the-teacher-scale-explicitly.md)
 - 2026年10月16日 [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
-- 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)
+- 2026年10月16日 [隠れ層と位相補間の出力部は検証損失で基準を下回らなかったので採用せず、出力部のコードは汎用の層積みの設計へ引き継ぐ](archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)（置き換え済み）
 - 2026年10月16日 [保存するファイル形式の版は1つにし、実行専用の一時ファイルだけは独自の配置を認める](keep-one-version-per-saved-format-and-allow-run-private-scratch-files.md)
 - 2026年10月16日 [NNUEの学習は毎エポック訓練集合全体を一様に並べ替え、メモリに収まらないデータは実行専用の一時ファイルのbucketへ振り分ける](shuffle-the-whole-training-set-per-epoch-with-rao-sandelius-buckets.md)
 - 2026年10月17日 [SPSAの利得は範囲の1/6の摂動幅まで減衰させ、標準の規模を30,000ペアにする](decay-spsa-gains-over-30000-pair-sessions.md)
@@ -305,7 +305,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月23日 [探索の関数形の各サブタスクはSTCの結果によらず採用し、7本を通した版だけを統括計画の前のmasterと測定機のLTCで比べる](adopt-search-form-subtasks-regardless-of-stc-and-check-the-whole-chain-by-ltc-on-the-measurement-machine.md)
 - 2026年10月25日 [強くする手段に人間の棋譜を使わない](do-not-use-human-games-to-strengthen-the-engine.md)
 - 2026年10月25日 [時計と併用しない固定時間の探索も締切まで反復を始め、締切で打ち切った反復の途中結果で指す](search-movetime-only-limits-to-the-deadline-and-play-partial-results.md)
-- 2026年10月26日 [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)
+- 2026年10月26日 [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)（置き換え済み）
 - 2026年10月26日 [AlphaZero型探索のネットはPyTorchで学習し、ONNXへ出力してminaseで推論する](train-the-zero-network-in-pytorch-and-export-it-as-onnx.md)
 - 2026年10月27日 [AlphaZero型探索のGPUはColab機を公式CLIで借り、状態は作業機のNASにだけ置く](rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)
 - 2026年10月27日 [AlphaZero型探索の実行環境は、独自のコンテナイメージを作らず、同じロックファイルと固定した版を用いてすべての機械へ導入する](install-the-zero-toolchain-from-one-lock-on-every-machine.md)
@@ -357,3 +357,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月2日 [本番の型と関数の中に`#[cfg(test)]`の項目を置かず、試験専用のコードは子モジュールと`test-util`へ分ける](keep-test-only-code-out-of-production-types-and-functions.md)
 - 2026年11月3日 [NNUEの線形の経路の序中盤の列を、学習後に対局結果へのロジスティック回帰で補正する](correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)
 - 2026年11月4日 [NNUEの教師局面を静止探索の末端へ置き換えない](do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)
+- 2026年11月4日 [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
