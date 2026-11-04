@@ -6,7 +6,7 @@ NNUE（efficiently updatable neural network）は、着手で変わった入力�
 minaseの探索は2026年10月12日からNNUEだけを使う。
 それまで既定だった評価関数は、駒と升ごとの点数の表PST（piece-square table）と、2駒の組の関係を補うFactorization Machineの補正項FMの和である。
 PSTとFMの評価関数は、比較用のコードとしてソースに残っている（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
-NNUEは置き換え前のPSTと同じ式の線形の経路を持ち、その重みもPSTから学習を始めるので、PSTの式と学習を説明した[PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)を先に読むと理解しやすい。
+NNUEは置き換え前のPSTと同じ式の線形の経路を持つので、PSTの式と学習を説明した[PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md)を先に読むと理解しやすい。
 本書の式は、仕様の正である`crates/minase/src/eval/nnue/`と`crates/minase-trainer/src/nnue/`のdocコメントに合わせて記す。
 方式を選んだ理由は、各節で示すADR（設計判断の記録）にある。
 
@@ -374,14 +374,12 @@ NNUEの教師値は、探索値だけを使い、最終結果を混ぜない。
 
 学習は、訓練局面を16,384局面ずつの組（ミニバッチ）に分け、組ごとに損失を計算して重みを1回更新する。
 訓練局面を一通り使い終えるまでを1エポックと呼ぶ。
-ミニバッチ $`\mathcal{B}`$ の損失は、教師値に対する二値交差エントロピー（BCE、binary cross-entropy）に、駒除去差分の補助損失を加えたものである。
+ミニバッチ $`\mathcal{B}`$ の損失は、教師値に対する二値交差エントロピー（BCE、binary cross-entropy）である。
 
 ```math
-J_{\mathcal{B}}(\theta) = \frac{1}{|\mathcal{B}|} \sum_{p \in \mathcal{B}} \ell\bigl(z_\theta(p),\ \tau(p)\bigr) + \eta\, R_{\mathcal{B}}(\theta),
+J_{\mathcal{B}}(\theta) = \frac{1}{|\mathcal{B}|} \sum_{p \in \mathcal{B}} \ell\bigl(z_\theta(p),\ \tau(p)\bigr),
 \qquad
-\ell(z, \tau) = \log\bigl(1 + \exp(z)\bigr) - \tau\, z,
-\qquad
-\eta = 1000.
+\ell(z, \tau) = \log\bigl(1 + \exp(z)\bigr) - \tau\, z.
 ```
 
 $`\ell`$ は、予測した勝率 $`\sigma(z)`$ が教師値 $`\tau`$ に一致するときに最小になる。
@@ -389,42 +387,12 @@ $`\ell`$ は、予測した勝率 $`\sigma(z)`$ が教師値 $`\tau`$ に一致�
 PSTとFMの同時学習の損失にあったFMの補正の2乗平均の項は、NNUEの損失にはない。
 非線形の経路の大きさは、後述する重み減衰と値の範囲の切り詰めで抑える。
 
-### 駒除去差分の補助損失
+### 駒除去差分
 
-第2項の $`R`$ は、王駒以外の駒を盤上から1枚取り除いたときの評価の変化の向きを制約する。
-自分の駒を除けば評価は下がり、相手の駒を除けば上がることが望ましいが、二値交差エントロピーは勝率が飽和する大差の局面で評価値の誤差に鈍く、この向きを保証しないからである。
-式の意味と罰則の形はPSTとFMの学習と同じなので、ここではNNUEで変わる点を中心に記す（[PSTとFMの解説の「駒除去差分の補助損失」](evaluation-pst-fm.md#駒除去差分の補助損失)）。
-
-局面 $`p`$ から駒 $`m`$ を除いた局面を $`p \setminus m`$ と書く。
-これは合法手を指した局面ではなく、評価の性質を調べるための仮想的な入力である。
-除去では、両方の視点の累算値と線形の経路の和から駒 $`m`$ の特徴を引き、補間係数を総駒数が1つ減った $`q(p \setminus m) = \min(90, \max(0, N(p) - 3))`$ で計算し直す。
-手番と先獅子の特徴は変えない。
-学習中のモデルの除去差分 $`\Delta_\theta`$ は、線形の経路と非線形の経路を合わせたcp単位の評価の変化である。
-
-```math
-\Delta_\theta(p, m) = K\, z_\theta(p \setminus m) - K\, z_\theta(p).
-```
-
-出力バイアス $`\beta`$ は除去の前後で打ち消し合う。
-非線形の部分は、各視点の第1層の出力から除いた駒の特徴の行 $`u_{i_v(m),\, j}`$ を引いて活性化を計算し直すことで、除去した局面ごとに全ての特徴を足し直さずに求める。
-ここで $`i_v(m)`$ は、視点 $`v`$ から見た駒 $`m`$ の特徴の番号である。
-
-向きの基準には、手書きの評価関数v0の駒価値（H. G. Muller作の中将棋エンジンHaChuの駒価値を、歩兵100へ換算した値）を全升と両端点に同じ値で置いた表を常に使う。
-基準の整数評価の差の符号を $`\varepsilon_0(p, m)`$、整数化しない差の大きさを $`|\Delta_0(p, m)|`$ とし、王駒（王将と玉将、および太子）を除く盤上の駒のうち $`\varepsilon_0 \neq 0`$ のものを対象の集合 $`\mathcal{M}(p)`$ とする。
-1回の除去の罰則と、ミニバッチの補助損失は次のとおりである。
-
-```math
-\pi(p, m) = \max\Bigl(0,\ \min\bigl(|\Delta_0|,\ 0.25\bigr) - \varepsilon_0\, \Delta_\theta\Bigr) + \omega\, \max\Bigl(0,\ \varepsilon_0\, \Delta_\theta - |\Delta_0|\Bigr),
-\qquad
-R_{\mathcal{B}}(\theta) = \frac{1}{K} \cdot \frac{1}{|\mathcal{B}|} \sum_{p \in \mathcal{B}} \frac{1}{\max\bigl(1,\ |\mathcal{M}(p)|\bigr)} \sum_{m \in \mathcal{M}(p)} \pi(p, m).
-```
-
-$`\omega`$ は、基準自身の向きが駒の持ち主から期待される向きと逆なら1、そうでなければ0である。
-v0の表では各駒の寄与が100 cp以上の正の値なので、$`\omega`$ は常に0であり、最小の幅は常に0.25 cpである。
-したがって $`R`$ は「自駒を除けば少なくとも0.25 cp下がり、相手の駒を除けば少なくとも0.25 cp上がる」ことを求める片側の罰則として働く。
-学習器の試走（世代3の1ファイル、幅128、1エポック）では、この罰則が発火した除去は対象の除去の10万分の1未満であり、補助損失は学習をほとんど束縛しない安全装置として働いた。
-試走の内訳は[学習の記録](../measurements/nnue-replacement/nnue-replacement-training.md)にある。
-補助損失を選んだ理由は[駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)にあり、計算の契約は `crates/minase-trainer/src/nnue/reference/removal.rs` のdocコメントにある。
+駒を盤上から1枚除いた局面の評価の変化を、駒除去差分と呼ぶ。
+自分の駒を除けば評価は下がり、相手の駒を除けば上がることが望ましい。
+以前はこの向きを保たせる補助損失を学習に加えていたが、罰則がほとんど働かないのにGPUの更新の大半を占めたので、学習の損失から外した（[NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)）。
+現在は、学習器が書き出しのときに、向きが手書きの評価関数v0の駒価値の差と逆になる除去の割合（`removal_sign`）を記録し、[学習の手引き](nnue-training.md#8-学習した重みを診断する)の診断でも確かめる。
 
 ### 初期値
 
@@ -452,7 +420,8 @@ v0の表では各駒の寄与が100 cp以上の正の値なので、$`\omega`$ �
 | 第1層のバイアスと出力部の全パラメータ | $`10^{-3}`$ | $`10^{-4}`$ |
 
 線形の経路の値はPSTの学習器の設定を、他の2群の値はFMの学習器の設定を引き継いだものであり、NNUEの構成で最適だと確かめた値ではない（[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)の「最適化と停止」）。
-学習率は学習の全体を通じて一定である。
+学習率には、更新ごとに同じ倍率を掛ける。
+既定の`cosine:3:0.1`では、倍率を学習の初めの3エポックで1から0.1までcosine annealingで下げ、その後は0.1のまま保つ（[NNUEの学習率をcosine annealingで減らす](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）。
 AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}`$ であり、PyTorchと同じバイアス補正つきの式を使う（[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)）。
 
 各更新の後で、重みを整数の保存範囲に収まる区間へ切り詰める。
@@ -466,7 +435,6 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 学習データは対局単位で訓練集合と検証集合に分け、約5%の対局を検証に充てる。
 同じ対局の局面を両方に入れると、隣接する局面が似ているために検証損失が実際より良く見えるからである。
 各エポックの後に、検証集合での二値交差エントロピー（検証損失）を測る。
-重みを選ぶ基準は勝率の予測の良さなので、検証損失には補助損失を含めない。
 最良値を厳密に下回ったエポックの重みを保持し、5エポック続けて最良値が更新されなければ学習を止める。
 この止め方は一般に早期終了（early stopping）と呼ばれ、学習データに合わせすぎて未知の局面での予測が悪くなる過学習を防ぐ。
 上限は50エポックと、前処理と検証を含めた24時間の早い方である。
@@ -499,7 +467,7 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 評価関数の採否は、検証損失ではなく対局の勝敗で決める。
 新しい評価関数は、短時間条件のSTCで選別してから長時間条件のLTCで最終判定する段階ゲートにかける。
 STCは持ち時間10秒と1手ごとの加算0.1秒、LTCは持ち時間60秒と1手ごとの加算0.2秒であり、手順は[棋力測定の手引き](sprt.md)にある。
-採用したネットは、置き換え前のPST＋FM（コミット`8d0e382`）に対して、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)と[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)の両方で有意に強いと判定された。
+初代のNNUEは、置き換え前のPST＋FM（コミット`8d0e382`）に対して、[STC](../measurements/nnue-replacement/nnue-replacement-stc.md)と[LTC](../measurements/nnue-replacement/nnue-replacement-ltc.md)の両方で有意に強いと判定された。
 入力特徴集合の選択も、検証損失ではなく、P型とHalfKP-hm-b8の直接対局で決めた（[記録](../measurements/nnue-replacement/nnue-replacement-features-stc.md)）。
 
 ## 学習器の使い方
@@ -519,7 +487,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
 - [P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)
 - [NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)
-- [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)
+- [NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
 - [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)
 - [NNUEの初代のネットの学習と診断](../measurements/nnue-replacement/nnue-replacement-training.md)

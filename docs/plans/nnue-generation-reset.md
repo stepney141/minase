@@ -235,7 +235,7 @@ v0と初期の世代の生成の速さは測っていない。
 - `minase-trainer nnue export-handcrafted --cp-per-logit <K> --output <パス>`。v0を、線形の経路の2列に同じ値（1/8 cp単位）を置き、第1層、バイアス、および出力部を0としたMNUEへ書き出す。幅は256、出力区画は`pairwise-l16-l32`の配置とし、全区画を0にする。探索用駒価値はv0の駒価値を駒状態へ写した値とする。
 - `nnue train --base`をMNPTではなくMNUEから読むように改める。読む値は探索用駒価値、K、および規則セット名である。形式の版を増やさず、MNPTの読み込みはこの引数から外す。
 - `placement_distance.py`に、1回の対局の候補側のM、5配置の割合、および駒種ごとの総変動距離を求める`single`を加える。これは設計者が書く。
-- 対局単位の汎化差を求める集計を作る。構成の見直しでは道具が見当たらず未計算で終えたので、世代の記録の前に用意する。これも設計者が書く。
+- 対局単位の汎化差は、構成の見直しの[集計](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training/outcome_gap.rs)を世代のネットへ当てて求める。λ<1の教師では対局結果の成分が目標に入るので、検証の対局との差を見る。
 
 完了条件は、次をテストで確かめていることである。
 

@@ -34,7 +34,7 @@ masterの埋め込みネットの置き換えは、世代反復の最終候補�
 第1層の初期値は、判定に通らなかった場合の切り分けの最初の候補として小さくした。
 累算値の16ビット化は、測定機の負荷のため「増分が直前の版の測定の幅を超える」という基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した（[速度の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
 差分更新のまとめは速くならなかったので採用せず、一時配列を16ビットにする案も採用しなかった。
-フェーズ4の対局単位の汎化差は、集計の道具が手元になく未計算である。
+最終の候補の対局単位の汎化差は基準と区別できず、対局結果を目標とした検証の損失は基準より有意に低い（[記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md#対局結果を目標とした汎化差)）。
 
 基準はブランチ`nnue-architecture-revision-baseline`にある。
 ブランチ`nnue-architecture-revision`はmasterへ統合していない。

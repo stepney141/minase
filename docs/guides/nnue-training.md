@@ -180,6 +180,7 @@ Bは、学習プロセスの固定のメモリ（ネット、最適化器、GPU�
 - 量子化した重みとCPUの浮動小数点参照の平均絶対誤差が上限を超え、`summary.json`に`quantization_error`が記録された。
 
 量子化の誤差で失敗した場合も保存物は残るので、`summary.json`の誤差と`training.jsonl`の推移を見て原因を調べ、その重みを採否の測定にかけない。
+原因は、整数化の段を1つずつ適用して誤差を測ると特定できる（[教訓](../lessons/check-quantization-scale-against-the-win-rate-scale.md)）。
 時間の上限で終わった学習は、`summary.json`に収束を確認していない旨が記録されるので、測定記録にもそのことを書く。
 
 学習曲線は`training.jsonl`で確認する。
@@ -287,7 +288,7 @@ minase-trainer nnue fit-linear --base <出力ディレクトリ>/nnue.bin \
   --output-dir <新規のディレクトリ>
 ```
 
-CPUだけで動き、教師30ファイルで約1分、最大常駐メモリは約4 GBである。
+CPUだけで動き、教師30ファイルで約2分（幅256、`--threads 8`）、最大常駐メモリは約3.3 GBである。
 `--output-dir`に補正した`nnue.bin`と`summary.json`を書く。
 `summary.json`の`decision.d`は、学習の検証分割の対局で、補正ありの損失から補正なしの損失を引いた値Dである。
 Dの95%区間は`decision.games`の対局ごとの損失から対局単位のブートストラップで求める（例は[`fit_report.py`](../measurements/nnue-outcome-regression/nnue-outcome-regression-fit/fit_report.py)）。
