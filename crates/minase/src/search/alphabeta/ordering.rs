@@ -7,7 +7,7 @@
 
 use core::cmp::Reverse;
 
-use crate::eval::Nnue;
+use crate::eval::{Nnue, PIECE_STATE_COUNT, piece_state_of};
 use minase_core::MoveGenerator;
 use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard, Square};
 use minase_core::mv::Move;
@@ -19,6 +19,7 @@ use super::history::{
     ContinuationHistory, HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT,
     LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, PawnHistory, history_gravity,
 };
+use super::quiesce::CaptureRanks;
 use super::royal::captures_last_royal;
 use super::searcher::{KILLER_COUNT, MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
@@ -82,55 +83,49 @@ pub(super) fn quiet_ordering_value(
     value + input.threat_value * i64::from(input.threat_delta)
 }
 
-/// 相手の同価値の駒をまとめた、価値順の累積疑似利き。
+/// 駒価値の降順の各順位について、それより安い相手駒の累積疑似利きを保持する。
 pub(super) struct LesserPieceThreats {
-    /// 各要素は駒価値と、その価値以下の相手駒の疑似利きの和集合である。
-    pub(super) groups: Vec<(i32, Bitboard)>,
+    below_rank: [Bitboard; PIECE_STATE_COUNT],
 }
 
 impl LesserPieceThreats {
-    /// 相手の盤上の各駒を実際の駒コードで評価し、同価値の群ごとに累積疑似利きを作る。
-    pub(super) fn with_piece_values(
-        position: &Position,
-        mut piece_value: impl FnMut(PieceCode) -> i32,
-    ) -> Self {
-        let enemy = position.side_to_move().opposite();
-        let mut controls: Vec<_> = position
-            .pieces_of(enemy)
+    /// 同価値の駒状態を共有順位へまとめ、厳密に安い駒だけの和集合を作る。
+    /// 手番側の非王駒の最高価値以上の相手駒は、どの採点にも寄与しないので省く。
+    pub(super) fn new(position: &Position, ranks: &CaptureRanks) -> Self {
+        let mut below_rank = [Bitboard::EMPTY; PIECE_STATE_COUNT];
+        let side = position.side_to_move();
+        let movers = position.pieces_of(side) & !position.royal_pieces(side);
+        let Some(highest_rank) = movers
             .into_iter()
-            .map(|square| {
-                let piece = position
-                    .piece_at(square)
-                    .expect("enemy piece square must contain a piece");
-                (piece_value(piece), position.piece_control(square))
+            .map(|from| {
+                ranks.rank_of_state[piece_state_of(piece_at_for_ordering(position, from))] as usize
             })
-            .collect();
-        controls.sort_unstable_by_key(|&(value, _)| value);
-
-        let mut groups = Vec::with_capacity(controls.len());
-        let mut cumulative = Bitboard::EMPTY;
-        let mut index = 0;
-        while index < controls.len() {
-            let value = controls[index].0;
-            while index < controls.len() && controls[index].0 == value {
-                cumulative |= controls[index].1;
-                index += 1;
+            .min()
+        else {
+            return Self { below_rank };
+        };
+        for from in position.pieces_of(side.opposite()) {
+            let rank =
+                ranks.rank_of_state[piece_state_of(piece_at_for_ordering(position, from))] as usize;
+            if rank > highest_rank {
+                below_rank[rank] |= position.piece_control(from);
             }
-            groups.push((value, cumulative));
         }
-        Self { groups }
+        let mut cumulative = Bitboard::EMPTY;
+        for group in below_rank[highest_rank..ranks.values.len()]
+            .iter_mut()
+            .rev()
+        {
+            let controls = *group;
+            *group = cumulative;
+            cumulative |= controls;
+        }
+        Self { below_rank }
     }
 
-    /// `piece_value`より価値が厳密に小さい相手駒の疑似利きの和集合を返す。
-    pub(super) fn below(&self, piece_value: i32) -> Bitboard {
-        let count = self
-            .groups
-            .partition_point(|&(value, _)| value < piece_value);
-        if count == 0 {
-            Bitboard::EMPTY
-        } else {
-            self.groups[count - 1].1
-        }
+    /// 指定順位より価値が厳密に小さい相手駒の疑似利きを返す。王駒の採点には使わない。
+    pub(super) fn below(&self, rank: u8) -> Bitboard {
+        self.below_rank[usize::from(rank)]
     }
 }
 
@@ -894,6 +889,7 @@ pub(super) enum MovePickerStage {
 /// 手選択器が静かな手の並べ替えと捕獲履歴の換算に使う探索状態。
 #[derive(Clone, Copy)]
 pub(super) struct MovePickerContext<'a> {
+    pub(super) ranks: &'a CaptureRanks,
     pub(super) history: &'a HistoryTable,
     pub(super) capture_history: &'a CaptureHistory,
     pub(super) continuation_history: &'a ContinuationHistory,
@@ -935,7 +931,7 @@ impl<'a> QuietPiece<'a> {
             continuation_kind_offset: kind.index() * BOARD_SQUARE_COUNT,
             butterfly: &context.history[piece.color().expect("quiet ordering mover color").index()]
                 [from.dense_index()],
-            threats: threats.below(value),
+            threats: threats.below(context.ranks.rank_of_state[piece_state_of(piece)]),
         }
     }
 }
@@ -1164,9 +1160,7 @@ impl MovePicker {
                                 continuation_row_offset(record, position.side_to_move(), distance)
                             })
                     });
-                    let threats = LesserPieceThreats::with_piece_values(position, |piece| {
-                        nnue.piece_value(piece)
-                    });
+                    let threats = LesserPieceThreats::new(position, context.ranks);
                     let mut direct_checks = DirectCheckSquares::new(position);
                     let mut offset = 0;
                     for moves in self.quiets.chunk_by(|a, b| a.from == b.from) {

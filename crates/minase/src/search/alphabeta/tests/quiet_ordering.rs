@@ -44,40 +44,65 @@ fn direct_check_reference(position: &Position, mv: Move) -> bool {
 
 #[test]
 fn lesser_piece_threats_group_equal_values_and_use_strictly_lower_groups() {
-    let pawn_a = sq(3, 3);
-    let pawn_b = sq(8, 8);
+    use crate::eval::piece_state_of;
+    let pawn = sq(3, 3);
+    let copper = sq(8, 8);
     let rook = sq(5, 5);
-    let king = sq(11, 11);
     let board = position(
         Color::Black,
         &[
             (sq(0, 0), Color::Black, PieceKind::King),
-            (pawn_a, Color::White, PieceKind::Pawn),
-            (pawn_b, Color::White, PieceKind::Pawn),
+            (sq(1, 1), Color::Black, PieceKind::FreeKing),
+            (pawn, Color::White, PieceKind::Pawn),
+            (copper, Color::White, PieceKind::CopperGeneral),
             (rook, Color::White, PieceKind::Rook),
-            (king, Color::White, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
         ],
     );
-    let threats = LesserPieceThreats::with_piece_values(&board, |piece| {
-        match piece.kind().expect("board piece has a kind") {
-            PieceKind::Pawn => 10,
-            PieceKind::Rook => 20,
-            PieceKind::King => 40,
-            kind => panic!("unexpected piece kind: {kind:?}"),
-        }
-    });
-    let pawns = board.piece_control(pawn_a) | board.piece_control(pawn_b);
-    let through_rook = pawns | board.piece_control(rook);
-    let all = through_rook | board.piece_control(king);
+    // 異なる駒状態を同価値にする。順位0の相手駒は最高価値の自駒にも寄与しない。
+    let mut ranks = CaptureRanks::new(test_nnue());
+    ranks.values = vec![40, 20, 10];
+    ranks.rank_of_state.fill(2);
+    for (kind, rank) in [
+        (PieceKind::King, 0),
+        (PieceKind::FreeKing, 0),
+        (PieceKind::Rook, 1),
+    ] {
+        ranks.rank_of_state[piece_state_of(PieceCode::new(Color::Black, kind).unwrap())] = rank;
+    }
+    let threats = LesserPieceThreats::new(&board, &ranks);
+    let cheapest = board.piece_control(pawn) | board.piece_control(copper);
+    assert_eq!(threats.below(2), Bitboard::EMPTY);
+    assert_eq!(threats.below(1), cheapest);
+    assert_eq!(threats.below(0), cheapest | board.piece_control(rook));
+}
 
-    assert_eq!(
-        threats.groups,
-        vec![(10, pawns), (20, through_rook), (40, all)]
-    );
-    assert_eq!(threats.below(10), Bitboard::EMPTY);
-    assert_eq!(threats.below(20), pawns);
-    assert_eq!(threats.below(40), through_rook);
-    assert_eq!(threats.below(41), all);
+/// 実際の駒状態で照会し、昇順の整列と二分探索を使う参照処理と一致する。
+#[test]
+fn ranked_threats_match_reference_for_every_nonroyal_mover() {
+    let nnue = test_nnue();
+    let ranks = CaptureRanks::new(nnue);
+    for rules in minase_core::test_util::capture_test_rules() {
+        for board in minase_core::test_util::capture_test_positions()
+            .into_iter()
+            .chain(minase_core::test_util::sampled_random_positions(rules))
+        {
+            let threats = LesserPieceThreats::new(&board, &ranks);
+            let reference = ReferenceLesserPieceThreats::with_piece_values(&board, |piece| {
+                nnue.piece_value(piece)
+            });
+            for from in
+                board.pieces_of(board.side_to_move()) & !board.royal_pieces(board.side_to_move())
+            {
+                let piece = board.piece_at(from).unwrap();
+                assert_eq!(
+                    threats.below(ranks.rank_of_state[crate::eval::piece_state_of(piece)]),
+                    reference.below(nnue.piece_value(piece)),
+                    "rules={rules:?}, from={from:?}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

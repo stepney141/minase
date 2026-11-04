@@ -367,6 +367,7 @@ fn isolated_move_picker_context<'a>(
     history: &'a HistoryTable,
     capture_history: &'a crate::search::alphabeta::capture_history::CaptureHistory,
 ) -> MovePickerContext<'a> {
+    static RANKS: OnceLock<CaptureRanks> = OnceLock::new();
     static SHARED_HISTORIES: OnceLock<crate::search::HistoryTables> = OnceLock::new();
     static LOW_PLY_HISTORY: OnceLock<Box<LowPlyHistory>> = OnceLock::new();
     let shared =
@@ -378,6 +379,7 @@ fn isolated_move_picker_context<'a>(
         )
     });
     MovePickerContext {
+        ranks: RANKS.get_or_init(|| CaptureRanks::new(test_nnue())),
         history,
         capture_history,
         continuation_history: &shared.continuation,
@@ -395,6 +397,7 @@ fn isolated_move_picker_context<'a>(
 
 fn searcher_move_picker_context<'a>(searcher: &'a Searcher<'_>, ply: u32) -> MovePickerContext<'a> {
     MovePickerContext {
+        ranks: &searcher.capture_ranks,
         history: searcher.history,
         capture_history: searcher.capture_history,
         continuation_history: searcher.continuation_history,

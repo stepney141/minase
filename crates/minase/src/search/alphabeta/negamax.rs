@@ -394,6 +394,7 @@ impl Searcher<'_> {
             self.nnue,
             &self.generator,
             MovePickerContext {
+                ranks: &self.capture_ranks,
                 history: &*self.history,
                 capture_history: &*self.capture_history,
                 continuation_history: self.continuation_history,
