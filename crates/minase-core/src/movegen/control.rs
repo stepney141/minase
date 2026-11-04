@@ -271,6 +271,33 @@ pub(super) fn piece_control_without_special(
     result
 }
 
+/// 固定利きと走りによって`from`から`to`へ届くかを返す。
+/// 固定利きと遮蔽なしの範囲で絞り、到達升を含む1方向だけ遮蔽を調べるので、
+/// `piece_control_without_special(...).contains(to)`と同じ判定になる。
+pub(super) fn reaches_without_special(
+    tables: &AttackTables,
+    occupied: Bitboard,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    to: Square,
+) -> bool {
+    let id = movement_profile(kind);
+    if tables.fixed(color, id, from).contains(to) {
+        return true;
+    }
+    if !tables.reach(color, id, from).contains(to) {
+        return false;
+    }
+    movement_profile_data(id).slides.iter().any(|slide| {
+        let direction = slide.direction.for_color(color);
+        tables.ray(from, direction).contains(to)
+            && tables
+                .sliding_control(from, direction, occupied)
+                .contains(to)
+    })
+}
+
 /// 固定利きと走りによって取れる`enemy`の升だけを返す。`enemy`は占有升の部分集合とする。
 /// 遮蔽なしの範囲で絞り、各走り線では最初の遮蔽駒だけを調べるので、
 /// 結果は`piece_control_without_special(...) & enemy`と一致する。

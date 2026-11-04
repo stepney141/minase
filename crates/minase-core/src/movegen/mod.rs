@@ -233,14 +233,14 @@ impl MoveGenerator {
         if candidate.mid.is_some()
             || candidate.from == candidate.to
             || position.pieces_of(color).contains(candidate.to)
-            || !control::piece_control_without_special(
+            || !control::reaches_without_special(
                 self.tables,
                 position.occupied(),
                 color,
                 kind,
                 candidate.from,
+                candidate.to,
             )
-            .contains(candidate.to)
         {
             return false;
         }

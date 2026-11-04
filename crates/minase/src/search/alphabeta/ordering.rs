@@ -6,6 +6,7 @@
 //! Butterfly historyと捕獲履歴は、それぞれ上限7183と10692の重力式で更新する。
 
 use core::cmp::Reverse;
+use std::cell::OnceCell;
 
 use crate::eval::{Nnue, PIECE_STATE_COUNT, piece_state_of};
 use minase_core::MoveGenerator;
@@ -1083,26 +1084,32 @@ impl MovePicker {
 
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
     /// Killer手は合法性と非捕獲を単独で確認し、静かな手の全件生成をその段階まで遅らせる。
+    /// `tt_capture`は同じ局面と置換表の手に対する合法性・捕獲分類を探索側と共有する。
     pub(super) fn next(
         &mut self,
         position: &Position,
         nnue: &Nnue,
         generator: &MoveGenerator,
         context: MovePickerContext<'_>,
+        tt_capture: &OnceCell<Option<bool>>,
     ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
                 MovePickerStage::Tt => {
                     self.stage = MovePickerStage::Captures;
                     if let Some(tt_move) = self.tt_move
-                        && generator.is_legal_move(
-                            position,
-                            tt_move,
-                            &mut self.base_moves,
-                            &mut self.quiets,
-                        )
+                        && let Some(capture) = *tt_capture.get_or_init(|| {
+                            generator
+                                .is_legal_move(
+                                    position,
+                                    tt_move,
+                                    &mut self.base_moves,
+                                    &mut self.quiets,
+                                )
+                                .then(|| move_order_key(position, nnue, tt_move).is_some())
+                        })
                     {
-                        return Some((tt_move, move_order_key(position, nnue, tt_move).is_some()));
+                        return Some((tt_move, capture));
                     }
                 }
                 MovePickerStage::Captures => {

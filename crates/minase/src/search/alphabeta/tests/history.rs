@@ -557,6 +557,7 @@ fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) ->
             searcher.nnue,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
+            &std::cell::OnceCell::new(),
         )
     })
     .collect()

@@ -507,10 +507,17 @@ fn move_picker_reads_butterfly_pawn_and_all_available_continuations() {
             threat_weight: 0,
         };
         let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
-        let ordered: Vec<_> =
-            std::iter::from_fn(|| picker.next(&board, searcher.nnue, &searcher.generator, context))
-                .map(|(mv, _)| mv)
-                .collect();
+        let ordered: Vec<_> = std::iter::from_fn(|| {
+            picker.next(
+                &board,
+                searcher.nnue,
+                &searcher.generator,
+                context,
+                &std::cell::OnceCell::new(),
+            )
+        })
+        .map(|(mv, _)| mv)
+        .collect();
         let first_index = ordered.iter().position(|&mv| mv == first).unwrap();
         let second_index = ordered.iter().position(|&mv| mv == second).unwrap();
         assert!(first_index < second_index);
@@ -687,7 +694,13 @@ fn cached_quiet_scores_preserve_reference_order_with_all_history_terms() {
                     });
                     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
                     let actual: Vec<_> = std::iter::from_fn(|| {
-                        picker.next(&board, searcher.nnue, &generator, context)
+                        picker.next(
+                            &board,
+                            searcher.nnue,
+                            &generator,
+                            context,
+                            &std::cell::OnceCell::new(),
+                        )
                     })
                     .filter_map(|(mv, capture)| (!capture).then_some(mv))
                     .collect();

@@ -159,6 +159,7 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
             searcher.nnue,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
+            &std::cell::OnceCell::new(),
         )
     })
     .collect()

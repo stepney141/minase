@@ -34,9 +34,62 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
                 nnue,
                 &generator,
                 isolated_move_picker_context(&history, &capture_history),
+                &std::cell::OnceCell::new(),
             )
             .unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
+    }
+}
+
+/// 合法・不合法と捕獲分類を先に求めても、手選択器が求めても同じ列を返す。
+/// 同一ノードの共有値は、手選択器の後で探索側が参照しても保持される。
+#[test]
+fn staged_picker_shares_tt_legality_and_capture_classification() {
+    let board = staged_picker_fixture();
+    let nnue = test_nnue();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = empty_capture_history();
+    let mut legal = Vec::new();
+    generator.generate_moves(&board, &mut legal);
+    let capture = *legal
+        .iter()
+        .find(|&&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .unwrap();
+    let quiet = *legal
+        .iter()
+        .find(|&&mv| board.captured_squares(mv).iter().all(Option::is_none))
+        .unwrap();
+    let illegal = Move {
+        to: capture.from,
+        ..capture
+    };
+    assert!(!legal.contains(&illegal));
+    for tt in [Some(capture), Some(quiet), Some(illegal), None] {
+        let classified = tt
+            .filter(|mv| legal.contains(mv))
+            .map(|mv| board.captured_squares(mv).iter().any(Option::is_some));
+        for known in [false, true] {
+            let cached = std::cell::OnceCell::new();
+            if known {
+                cached.set(classified).unwrap();
+            }
+            let mut picker = MovePicker::new(tt, [None; KILLER_COUNT]);
+            let actual: Vec<_> = std::iter::from_fn(|| {
+                picker.next(
+                    &board,
+                    nnue,
+                    &generator,
+                    isolated_move_picker_context(&history, &capture_history),
+                    &cached,
+                )
+            })
+            .collect();
+            assert_eq!(actual, reference_sequence(&board, tt, [None; KILLER_COUNT]));
+            if tt.is_some() || known {
+                assert_eq!(cached.get(), Some(&classified));
+            }
+        }
     }
 }
 
@@ -224,6 +277,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                         nnue,
                         &generator,
                         isolated_move_picker_context(&history, &capture_history),
+                        &std::cell::OnceCell::new(),
                     );
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
@@ -294,6 +348,7 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
             nnue,
             &generator,
             isolated_move_picker_context(&history, &capture_history),
+            &std::cell::OnceCell::new(),
         )
     })
     .collect()
@@ -464,6 +519,7 @@ fn assert_killer_hint(
                     nnue,
                     &generator,
                     isolated_move_picker_context(&history, &capture_history),
+                    &std::cell::OnceCell::new(),
                 )
             })
             .collect();
@@ -667,7 +723,13 @@ fn limited_quiet_picker_preserves_original_ordinals_and_promotions() {
                     let mut ordinal = 0;
                     let mut counted = 0;
                     let mut skipping = false;
-                    while let Some(actual) = picker.next(&board, nnue, &generator, context) {
+                    while let Some(actual) = picker.next(
+                        &board,
+                        nnue,
+                        &generator,
+                        context,
+                        &std::cell::OnceCell::new(),
+                    ) {
                         let skipped = picker.take_skipped_quiets();
                         assert!(
                             expected[ordinal..ordinal + skipped]

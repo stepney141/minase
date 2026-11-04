@@ -1011,6 +1011,7 @@ pub(super) fn futility_protects_quiet_checks_before_late_move_limit() {
             searcher.nnue,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
+            &std::cell::OnceCell::new(),
         ) {
             assert!(!capture && !mv.promote);
             ordered.push(mv);
@@ -1205,6 +1206,7 @@ fn capture_futility_context(
             searcher.nnue,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
+            &std::cell::OnceCell::new(),
         ) {
             if mv == target {
                 target_index = Some(index);

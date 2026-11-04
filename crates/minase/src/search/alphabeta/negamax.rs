@@ -409,6 +409,7 @@ impl Searcher<'_> {
                 ply,
                 coefficients: quiet_ordering_coefficients,
             },
+            &tt_capture,
         ) {
             // 次の成り手が参照する順位へ、省いた非捕獲・不成の手数を戻す。
             let skipped = self.move_pickers[ply as usize].take_skipped_quiets();

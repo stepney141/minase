@@ -307,3 +307,47 @@ fn article_30_direct_legality_preserves_promotion_choices() {
         }
     }
 }
+
+/// 第7条4〜7項: 走りは最初の駒まで、固定の跳びは中間駒に依存せず受理する。
+/// 遮蔽の省略と、固定利きに遮蔽を適用する誤りをそれぞれ固定例で検出する。
+#[test]
+fn article_7_direct_legality_preserves_blockers_and_jumps() {
+    use crate::piece::PieceKind;
+    use crate::test_util::{position, sq};
+    let generator = MoveGenerator::standard();
+    for color in Color::ALL {
+        for kind in [PieceKind::Rook, PieceKind::Kirin] {
+            let from = sq(5, 5);
+            let board = position(
+                color,
+                &[
+                    (from, color, kind),
+                    (sq(5, 6), color.opposite(), PieceKind::Pawn),
+                    (sq(6, 5), color, PieceKind::Pawn),
+                ],
+            );
+            for (to, rook, kirin) in [
+                (sq(5, 6), true, false),
+                (sq(5, 7), false, true),
+                (sq(5, 8), false, false),
+                (sq(6, 5), false, false),
+                (sq(7, 5), false, true),
+                (sq(4, 5), true, false),
+                (sq(4, 4), false, true),
+            ] {
+                let candidate = Move {
+                    from,
+                    mid: None,
+                    to,
+                    promote: false,
+                };
+                let expected = if kind == PieceKind::Rook { rook } else { kirin };
+                assert_eq!(generated_legality(&board, &generator, candidate), expected);
+                assert_eq!(
+                    generator.is_legal_move(&board, candidate, &mut Vec::new(), &mut Vec::new()),
+                    expected
+                );
+            }
+        }
+    }
+}

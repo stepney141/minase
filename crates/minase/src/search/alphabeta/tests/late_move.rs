@@ -377,6 +377,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 searcher.nnue,
                 &searcher.generator,
                 searcher_move_picker_context(searcher, 0),
+                &std::cell::OnceCell::new(),
             ) {
                 ordered.push((mv, capture));
             }
@@ -506,6 +507,7 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
             searcher.nnue,
             &searcher.generator,
             searcher_move_picker_context(searcher, 0),
+            &std::cell::OnceCell::new(),
         ) {
             assert!(!capture && !mv.promote);
             ordered.push(mv);
