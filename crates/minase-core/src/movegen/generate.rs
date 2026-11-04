@@ -1,7 +1,9 @@
 //! 合法手生成の駆動。
 
 use super::MoveGenerator;
-use super::control::{piece_control_without_special, special_step_destinations};
+use super::control::{
+    capture_targets_without_special, piece_control_without_special, special_step_destinations,
+};
 use super::expand::{promoting_variant, push_with_promotion};
 use super::lion::generate_lion_double_and_jumps;
 use super::lion_like::generate_lion_like_double_and_jumps;
@@ -51,10 +53,21 @@ pub(super) fn generate_piece_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY:
     let own = position.pieces_of(color);
     let enemy = position.pieces_of(color.opposite());
     let destinations = if CAPTURES_ONLY { enemy } else { !own };
-    let step_destinations =
-        (piece_control_without_special(generator.tables(), position.occupied(), color, kind, from)
-            | special_step_destinations(generator.tables(), color, from, profile.special))
-            & destinations;
+    let ordinary = if CAPTURES_ONLY {
+        capture_targets_without_special(
+            generator.tables(),
+            position.occupied(),
+            color,
+            kind,
+            from,
+            enemy,
+        )
+    } else {
+        piece_control_without_special(generator.tables(), position.occupied(), color, kind, from)
+    };
+    let step_destinations = (ordinary
+        | special_step_destinations(generator.tables(), color, from, profile.special))
+        & destinations;
     for to in step_destinations {
         base_moves.push(Move {
             from,

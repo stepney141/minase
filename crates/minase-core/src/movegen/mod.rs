@@ -26,6 +26,36 @@ use crate::position::Position;
 use crate::promotion::PromotionChoice;
 use crate::rules::MoveRules;
 
+/// 特殊移動を持たない駒種を、公開生成と同じ順序で並べる。
+const ORDINARY_KINDS: [PieceKind; 26] = [
+    PieceKind::Pawn,
+    PieceKind::GoBetween,
+    PieceKind::Lance,
+    PieceKind::ReverseChariot,
+    PieceKind::SideMover,
+    PieceKind::VerticalMover,
+    PieceKind::Bishop,
+    PieceKind::Rook,
+    PieceKind::DragonHorse,
+    PieceKind::DragonKing,
+    PieceKind::FreeKing,
+    PieceKind::King,
+    PieceKind::DrunkElephant,
+    PieceKind::FerociousLeopard,
+    PieceKind::BlindTiger,
+    PieceKind::CopperGeneral,
+    PieceKind::SilverGeneral,
+    PieceKind::GoldGeneral,
+    PieceKind::Kirin,
+    PieceKind::Phoenix,
+    PieceKind::CrownPrince,
+    PieceKind::WhiteHorse,
+    PieceKind::Whale,
+    PieceKind::FlyingOx,
+    PieceKind::FreeBoar,
+    PieceKind::FlyingStag,
+];
+
 /// 局面合法手を列挙する生成器。
 ///
 /// 駒の動き、捕獲、成り、獅子の捕獲制限（chu-shogi.md第13条から第16条）、

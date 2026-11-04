@@ -604,7 +604,7 @@ impl QsearchBuffers {
         self.tt_pending = self.tt_move.is_some();
     }
 
-    /// 特殊捕獲を生成し、すべての相手駒を捕獲価値の群へ登録して通常駒の利きを保存する。
+    /// 特殊捕獲を生成し、通常駒が取れる相手駒だけを捕獲価値の群へ登録する。
     /// 合法な捕獲の有無は調べず、群の候補は[`Self::next`]が必要になったときに生成する。
     /// 獅子が経由升で取り、移動元と異なる空升へ進む手は探索候補から除く。
     pub(super) fn initialize(
@@ -631,12 +631,19 @@ impl QsearchBuffers {
         });
         self.special
             .sort_unstable_by_key(|c| (Reverse(c.captured_value), c.seq));
-        let mut allowed = Bitboard::EMPTY;
+        let allowed = generator.collect_ordinary_capturers(
+            position,
+            position.pieces_of(opponent),
+            &mut self.capturers,
+        );
         for kind in PieceKind::ALL {
-            let pieces = position.pieces_of_kind(opponent, kind);
+            let pieces = position.pieces_of_kind(opponent, kind) & allowed;
+            if pieces.is_empty() {
+                continue;
+            }
             let [unpromoted, promoted] = ranks.ranks_of_kind[kind.index()];
             if unpromoted == promoted {
-                self.add_targets(pieces, unpromoted, &mut allowed);
+                self.add_targets(pieces, unpromoted);
             } else {
                 for square in pieces {
                     let rank = if piece_at_for_ordering(position, square).is_promoted() {
@@ -644,15 +651,14 @@ impl QsearchBuffers {
                     } else {
                         unpromoted
                     };
-                    self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
+                    self.add_targets(Bitboard::from_square(square), rank);
                 }
             }
         }
-        generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
     }
 
-    /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位と全対象升の集合を更新する。
-    fn add_targets(&mut self, targets: Bitboard, rank: u8, allowed: &mut Bitboard) {
+    /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位を更新する。
+    fn add_targets(&mut self, targets: Bitboard, rank: u8) {
         if targets.is_empty() {
             return;
         }
@@ -663,7 +669,6 @@ impl QsearchBuffers {
         } else {
             self.targets_by_rank[rank as usize] |= targets;
         }
-        *allowed |= targets;
     }
 
     /// 通常捕獲と特殊捕獲の残りから最大の捕獲価値を選び、同価値の候補を1群だけ生成する。

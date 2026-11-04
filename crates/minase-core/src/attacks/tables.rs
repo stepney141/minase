@@ -178,6 +178,23 @@ impl AttackTables {
         self.rays[direction.index()][from.raw_index()]
     }
 
+    /// 指定した走り線上の最初の遮蔽升を返す。空の線なら`None`となる。
+    /// 捕獲できる駒はこの1枚だけなので、捕獲生成では途中の空升を求める必要がない。
+    #[inline]
+    pub(crate) fn first_blocker(
+        &self,
+        from: Square,
+        direction: Direction,
+        occupied: Bitboard,
+    ) -> Option<Square> {
+        let blockers = self.ray(from, direction) & occupied;
+        if direction.increases_raw_index() {
+            blockers.lsb()
+        } else {
+            blockers.msb()
+        }
+    }
+
     /// 遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
     /// (第7条第4項・第5項)。
     ///
@@ -262,6 +279,15 @@ mod tests {
         for occupied in occupancies {
             for from in Square::all() {
                 for direction in Direction::ALL {
+                    for enemy in [occupied, occupied & diagonal, Bitboard::EMPTY] {
+                        let capture = tables
+                            .first_blocker(from, direction, occupied)
+                            .filter(|&square| enemy.contains(square));
+                        assert_eq!(
+                            Bitboard::from_squares(capture),
+                            tables.sliding_control(from, direction, occupied) & enemy
+                        );
+                    }
                     assert_eq!(
                         tables.sliding_control(from, direction, occupied),
                         walk(from, direction, occupied),

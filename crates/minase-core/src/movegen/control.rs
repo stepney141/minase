@@ -240,3 +240,31 @@ pub(super) fn piece_control_without_special(
     }
     result
 }
+
+/// 固定利きと走りによって取れる`enemy`の升だけを返す。`enemy`は占有升の部分集合とする。
+/// 遮蔽なしの範囲で絞り、各走り線では最初の遮蔽駒だけを調べるので、
+/// 結果は`piece_control_without_special(...) & enemy`と一致する。
+pub(super) fn capture_targets_without_special(
+    tables: &AttackTables,
+    occupied: Bitboard,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    enemy: Bitboard,
+) -> Bitboard {
+    let id = movement_profile(kind);
+    if !tables.reach(color, id, from).intersects(enemy) {
+        return Bitboard::EMPTY;
+    }
+    let mut captures = tables.fixed(color, id, from) & enemy;
+    for slide in movement_profile_data(id).slides {
+        let direction = slide.direction.for_color(color);
+        if tables.ray(from, direction).intersects(enemy)
+            && let Some(blocker) = tables.first_blocker(from, direction, occupied)
+            && enemy.contains(blocker)
+        {
+            captures.set(blocker);
+        }
+    }
+    captures
+}
