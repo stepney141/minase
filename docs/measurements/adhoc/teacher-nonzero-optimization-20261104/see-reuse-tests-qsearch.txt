@@ -1,0 +1,22 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/see-reuse/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/see-reuse/Cargo.toml
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase-79ff998e26549811)
+
+running 12 tests
+test search::alphabeta::tests::pruning::qsearch_see_floor_matches_numeric_examples ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_does_not_judge_check_without_a_pruning_condition ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_exemption_stats_use_recapture_then_promotion_then_check_priority ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_delta_pruning_exempts_recapture_promotion_and_check ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_gives_check_matches_post_move_reference_for_sampled_captures ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_see_floor_still_prunes_each_exemption_kind ... ok
+test search::alphabeta::tests::qsearch_exemptions::qsearch_see_threshold_exempts_recapture_promotion_and_check ... ok
+test search::alphabeta::tests::qsearch_move_limit::qsearch_limit_quiet_move_records_previous_destination ... ok
+test search::alphabeta::tests::qsearch_move_limit::qsearch_limit_null_move_clears_previous_destination ... ok
+test search::alphabeta::tests::quiesce::qsearch_post_search_score_blends_only_strict_fail_highs ... ok
+test search::alphabeta::tests::quiesce::qsearch_score_blending_skips_values_outside_the_normal_range ... ok
+test search::alphabeta::tests::quiesce::qsearch_entry_cutoff_score_blends_toward_beta ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 876 filtered out; finished in 0.18s
+

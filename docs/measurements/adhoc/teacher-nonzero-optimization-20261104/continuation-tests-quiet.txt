@@ -1,0 +1,20 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/continuation/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/continuation/Cargo.toml
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase-79ff998e26549811)
+
+running 10 tests
+test search::alphabeta::tests::quiet_ordering::direct_check_bonus_is_disabled_when_the_opponent_has_two_royals ... ok
+test search::alphabeta::tests::quiet_ordering::check_bonus_requires_a_check_whose_see_is_not_below_the_margin ... ok
+test search::alphabeta::tests::quiet_ordering::direct_check_bonus_uses_the_promoted_piece_kind ... ok
+test search::alphabeta::tests::quiet_ordering::discovered_check_alone_does_not_receive_the_direct_check_bonus ... ok
+test search::alphabeta::tests::quiet_ordering::lesser_piece_threats_group_equal_values_and_use_strictly_lower_groups ... ok
+test search::alphabeta::tests::quiet_ordering::direct_check_squares_match_forward_control_on_bench_and_random_quiets ... ok
+test search::alphabeta::tests::quiet_ordering::quiet_ordering_value_matches_fixed_history_and_coefficient_examples ... ok
+test search::alphabeta::tests::quiet_ordering::royal_move_has_no_lesser_piece_threat_term ... ok
+test search::alphabeta::tests::quiet_ordering::vacating_the_origin_does_not_extend_direct_check_squares ... ok
+test search::alphabeta::tests::quiet_ordering::move_picker_reads_butterfly_pawn_and_all_available_continuations ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 878 filtered out; finished in 0.03s
+

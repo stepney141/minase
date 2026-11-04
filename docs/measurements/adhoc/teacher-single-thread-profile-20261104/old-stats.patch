@@ -1,0 +1,25 @@
+diff --git a/crates/minase/src/bin/minase/selfplay_gen/play.rs b/crates/minase/src/bin/minase/selfplay_gen/play.rs
+index 96007f19..3709230d 100644
+--- a/crates/minase/src/bin/minase/selfplay_gen/play.rs
++++ b/crates/minase/src/bin/minase/selfplay_gen/play.rs
+@@ -150,6 +150,20 @@ pub(super) fn play_game_from_opening(
+             &mut histories,
+         )
+         .map_err(|error| invalid_data(error.to_string()))?;
++        #[cfg(feature = "search-stats")]
++        {
++            let ply = game.ply_count() + ply_offset;
++            eprintln!(
++                "DIAG_TEACHER_STATS game={game_number} ply={ply} {}",
++                search_result.stats
++            );
++            let accumulators = nnue.take_accumulator_stats();
++            eprintln!(
++                "DIAG_TEACHER_ACCUMULATORS game={game_number} ply={ply} updates={} refreshes={}",
++                accumulators.updates(),
++                accumulators.refreshes
++            );
++        }
+         stats.searched_positions += 1;
+         stats.searched_nodes = stats
+             .searched_nodes

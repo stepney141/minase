@@ -1,0 +1,16 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/continuation/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/continuation/Cargo.toml
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase-79ff998e26549811)
+
+running 6 tests
+test search::alphabeta::tests::ordering::early_killers_do_not_precede_last_royal_capture ... ok
+test search::alphabeta::tests::ordering::early_killers_leave_ineligible_nodes_and_tt_duplicates_in_reference_order ... ok
+test search::alphabeta::tests::ordering::early_killers_leave_non_losing_or_absent_captures_in_reference_order ... ok
+test search::alphabeta::tests::ordering::staged_picker_classifies_capture_and_quiet_tt_moves ... ok
+test search::alphabeta::tests::ordering::early_killers_preserve_capture_order_and_return_every_legal_move_once ... ok
+test search::alphabeta::tests::ordering::staged_picker_matches_reference_sequence_with_changing_history ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 882 filtered out; finished in 0.04s
+

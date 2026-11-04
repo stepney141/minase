@@ -1,0 +1,4 @@
+{
+  "time": "2026-11-04T21:56:56.862538+09:00",
+  "processes": "    PID    PPID     ELAPSED %CPU COMMAND\n2668581 2668580       05:59  334 minase\n2668992 2668991       05:32  360 minase\n"
+}

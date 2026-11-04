@@ -155,7 +155,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年9月15日 [静止探索の捕獲は、取る駒の価値の群ごとに駒別の利きから生成する](generate-qsearch-captures-by-value-group-per-piece.md)
 - 2026年9月17日 [releaseビルドのコード生成単位を1つにし、パニックは巻き戻しのままにする](build-release-with-one-codegen-unit.md)
 - 2026年9月17日 [効果が測定の幅に収まった、または数%以下と見込まれた生成とSEEの高速化を実装しない](skip-low-yield-movegen-and-see-speedups.md)
-- 2026年9月17日 [探索内の反復検出は対局履歴と探索経路の線形走査で行う](check-repetition-by-linear-scan.md)
+- 2026年9月17日 [探索内の反復検出は対局履歴と探索経路の線形走査で行う](archive/check-repetition-by-linear-scan.md)（置き換え済み）
 - 2026年9月17日 [置換表の行を先読みしない](do-not-prefetch-transposition-table-entries.md)
 - 2026年9月17日 [静止探索は置換表の照会より先にstand-patと候補の有無を判定し、獅子の経由升捕獲から空升へ進む手を読まない](archive/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md)（置き換え済み）
 - 2026年9月18日 [序盤の係数は予算式の秒読みの項にだけ掛ける](scale-only-the-byoyomi-term-in-the-opening.md)
@@ -358,3 +358,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月3日 [NNUEの線形の経路の序中盤の列を、学習後に対局結果へのロジスティック回帰で補正する](correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)
 - 2026年11月4日 [NNUEの教師局面を静止探索の末端へ置き換えない](do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)
 - 2026年11月4日 [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
+- 2026年11月5日 [ビルドのLLVMインライン閾値を1000へ上げる](raise-the-llvm-inline-threshold-to-1000.md)
+- 2026年11月5日 [探索内の反復検出は、対局履歴のビットフィルタを通してから線形走査で行う](filter-the-game-history-before-the-repetition-scan.md)

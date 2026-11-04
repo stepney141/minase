@@ -1,0 +1,68 @@
+{
+  "data": "target/teacher-bottleneck/results/gen0-lbr.data",
+  "samples": 9749,
+  "period": 106709904845,
+  "empty_stack_samples": 0,
+  "inclusive": [
+    {
+      "term": "::negamax",
+      "samples": 9501,
+      "period": 104088400895,
+      "period_percent": 97.5433358751394
+    },
+    {
+      "term": "::quiesce",
+      "samples": 4315,
+      "period": 47269272348,
+      "period_percent": 44.296986691779296
+    },
+    {
+      "term": "::head::",
+      "samples": 1377,
+      "period": 15030380239,
+      "period_percent": 14.085271897517078
+    },
+    {
+      "term": "attackers_to_by",
+      "samples": 1307,
+      "period": 14326785431,
+      "period_percent": 13.42591903892162
+    },
+    {
+      "term": "::see::",
+      "samples": 1181,
+      "period": 12948175734,
+      "period_percent": 12.133996139165989
+    },
+    {
+      "term": "piece_control_without_special",
+      "samples": 756,
+      "period": 8280614600,
+      "period_percent": 7.759930638142628
+    },
+    {
+      "term": "ordinary_capturer",
+      "samples": 696,
+      "period": 7624507767,
+      "period_percent": 7.145079716896827
+    },
+    {
+      "term": "sliding_control",
+      "samples": 621,
+      "period": 6805564295,
+      "period_percent": 6.377631303190953
+    },
+    {
+      "term": "::gives_check",
+      "samples": 603,
+      "period": 6609040101,
+      "period_percent": 6.19346452477853
+    },
+    {
+      "term": "checking_move_exempts_qsearch_pruning",
+      "samples": 320,
+      "period": 3506300470,
+      "period_percent": 3.2858247555304527
+    }
+  ]
+}

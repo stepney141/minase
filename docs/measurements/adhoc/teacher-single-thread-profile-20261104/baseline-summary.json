@@ -1,0 +1,48 @@
+{
+  "old": {
+    "revision": "9f393ecce304ba2b8aa83abdf624562224c879b5",
+    "binary_sha256": "3b9bd55af772c961456d798f9557d09e1f2bfbd5e3f2e11df4f0d21e6de49c38",
+    "network_sha256": "046be0e6e21b42e491eec06689e80683daa9b1e2ff639b7af2cdaa0ced706e4d",
+    "nps_median": 1293024.0574213315,
+    "nps_range": [
+      1292766.6164797843,
+      1375781.3375813342
+    ],
+    "cycles_per_node": 4014.4672631684493,
+    "instructions_per_node": 17104.124876804814,
+    "counters_per_node": {
+      "cpu_core/cycles/u": 4014.4672631684493,
+      "cpu_core/instructions/u": 17104.124876804814,
+      "cpu_core/mem_load_retired.l1_miss/u": 5.2059657754010695,
+      "cpu_core/mem_load_retired.l2_miss/u": 0.5278465909090909,
+      "cpu_core/mem_load_retired.l3_miss/u": 0.4134187834224599,
+      "cpu_core/branches/u": 2382.5377112967913,
+      "cpu_core/branch-misses/u": 16.13009017379679
+    },
+    "fixed_nodes": 14960000,
+    "positions": 748
+  },
+  "gen0": {
+    "revision": "6f874692fb91544c94394ca0e8df25299ef2e02d",
+    "binary_sha256": "63fc3cc339825313b645bd47589d6ebdc1d7a2eb3f1371041739bc4e84ed955e",
+    "network_sha256": "6f5e16b040c063954040ac190c7722adaf224cddd153587f749254bc5869792d",
+    "nps_median": 647304.2503918224,
+    "nps_range": [
+      627570.3747182436,
+      671817.7182492592
+    ],
+    "cycles_per_node": 8177.392633957219,
+    "instructions_per_node": 29882.27618001337,
+    "counters_per_node": {
+      "cpu_core/cycles/u": 8177.392633957219,
+      "cpu_core/instructions/u": 29882.27618001337,
+      "cpu_core/mem_load_retired.l1_miss/u": 31.639380147058823,
+      "cpu_core/mem_load_retired.l2_miss/u": 2.220897192513369,
+      "cpu_core/mem_load_retired.l3_miss/u": 1.045673462566845,
+      "cpu_core/branches/u": 3871.8325315508023,
+      "cpu_core/branch-misses/u": 40.35716590909091
+    },
+    "fixed_nodes": 14960000,
+    "positions": 748
+  }
+}

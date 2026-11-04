@@ -1,0 +1,25 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/continuation/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/continuation/Cargo.toml
+   Compiling minase-core v0.2.0 (/home/stepney141/board-games/minase/target/teacher-optimization/continuation/crates/minase-core)
+   Compiling minase v2.6.0 (/home/stepney141/board-games/minase/target/teacher-optimization/continuation/crates/minase)
+    Finished `release` profile [optimized + debuginfo] target(s) in 1m 06s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase-79ff998e26549811)
+
+running 13 tests
+test search::alphabeta::tests::history_forms::continuation_and_quiet_history_updates_match_numeric_examples ... ok
+test search::alphabeta::tests::history_forms::continuation_history_index_uses_rotation_parity_capture_and_pre_move_kind ... ok
+test search::alphabeta::tests::history_forms::eval_difference_history_updates_match_clamp_examples ... ok
+test search::alphabeta::tests::history_forms::fail_low_history_updates_match_numeric_examples ... ok
+test search::alphabeta::tests::history_forms::fail_low_updates_recorded_capture_history ... ok
+test search::alphabeta::tests::history_forms::continuation_history_skips_missing_contexts_and_null_moves_independently ... ok
+test search::alphabeta::tests::history_forms::history_form_limits_and_stat_score_numeric_examples ... ok
+test search::alphabeta::tests::history_forms::negamax_and_root_record_stat_score_before_searching_each_move ... ok
+test search::alphabeta::tests::history_forms::post_lmr_continuation_bonus_requires_alpha_improvement ... ok
+test search::alphabeta::tests::history_forms::previous_quiet_updates_skip_root_null_and_capture ... ok
+test search::alphabeta::tests::history_forms::pv_alpha_improvement_updates_history_without_killer ... ok
+test search::alphabeta::tests::history_forms::refutation_penalty_requires_previous_node_move_count ... ok
+test search::alphabeta::tests::history_forms::tt_cutoff_history_updates_obey_move_and_parent_conditions ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 875 filtered out; finished in 0.29s
+

@@ -1,0 +1,362 @@
+{
+  "binary": "/home/stepney141/board-games/minase/target/teacher-bottleneck/bin/old",
+  "data": "target/teacher-bottleneck/results/old-cycles.data",
+  "events": {
+    "cpu_core/cycles/u": {
+      "total": {
+        "samples": 35365,
+        "period": 64288011899
+      },
+      "categories": [
+        {
+          "category": "movegen_attacks",
+          "samples": 13939,
+          "period": 25356729047,
+          "period_percent": 39.44239104304052
+        },
+        {
+          "category": "search_other",
+          "samples": 6500,
+          "period": 11811866056,
+          "period_percent": 18.373357189139853
+        },
+        {
+          "category": "transposition_table",
+          "samples": 2350,
+          "period": 4273339323,
+          "period_percent": 6.647179150155788
+        },
+        {
+          "category": "nnue_update",
+          "samples": 2335,
+          "period": 4245725543,
+          "period_percent": 6.604225916443439
+        },
+        {
+          "category": "sorting",
+          "samples": 2129,
+          "period": 3869649469,
+          "period_percent": 6.019239598013129
+        },
+        {
+          "category": "position",
+          "samples": 2049,
+          "period": 3723573215,
+          "period_percent": 5.79201799061688
+        },
+        {
+          "category": "unclassified",
+          "samples": 1419,
+          "period": 2571822254,
+          "period_percent": 4.000469415729443
+        },
+        {
+          "category": "ordering_other",
+          "samples": 1163,
+          "period": 2114310857,
+          "period_percent": 3.288810455550715
+        },
+        {
+          "category": "nnue_head",
+          "samples": 1030,
+          "period": 1872160886,
+          "period_percent": 2.9121461851103247
+        },
+        {
+          "category": "nnue_other",
+          "samples": 908,
+          "period": 1643616951,
+          "period_percent": 2.5566461031369467
+        },
+        {
+          "category": "capture_history",
+          "samples": 803,
+          "period": 1460489427,
+          "period_percent": 2.2717912467016546
+        },
+        {
+          "category": "see",
+          "samples": 548,
+          "period": 997789088,
+          "period_percent": 1.5520608874444297
+        },
+        {
+          "category": "allocator",
+          "samples": 124,
+          "period": 223656082,
+          "period_percent": 0.34789702682263063
+        },
+        {
+          "category": "search_setup",
+          "samples": 51,
+          "period": 92489416,
+          "period_percent": 0.14386728297852164
+        },
+        {
+          "category": "correction_other",
+          "samples": 11,
+          "period": 19969240,
+          "period_percent": 0.031062152040683376
+        },
+        {
+          "category": "nnue_refresh",
+          "samples": 6,
+          "period": 10825045,
+          "period_percent": 0.016838357075043386
+        }
+      ],
+      "top_symbols": [
+        {
+          "symbol": "<minase::search::alphabeta::searcher::Searcher>::negamax",
+          "period": 8103250448,
+          "period_percent": 12.60460575562774
+        },
+        {
+          "symbol": "<minase::search::alphabeta::searcher::Searcher>::quiesce",
+          "period": 6431539063,
+          "period_percent": 10.004258761500202
+        },
+        {
+          "symbol": "<minase_core::position::Position>::attackers_to_by",
+          "period": 6351898558,
+          "period_percent": 9.880377959080741
+        },
+        {
+          "symbol": "<minase::search::alphabeta::searcher::Searcher>::search_move",
+          "period": 5625206131,
+          "period_percent": 8.750007917242032
+        },
+        {
+          "symbol": "<minase_core::movegen::MoveGenerator>::ordinary_capturer",
+          "period": 4973208070,
+          "period_percent": 7.735824958801313
+        },
+        {
+          "symbol": "<minase::eval::nnue::Network<minase::eval::nnue::feature_set::P, minase::eval::nnue::head::DirectScrelu>>::update_accumulator_after_move",
+          "period": 4242232783,
+          "period_percent": 6.598792928399747
+        },
+        {
+          "symbol": "<minase::search::alphabeta::tt::TranspositionTable>::probe",
+          "period": 4024216705,
+          "period_percent": 6.2596689275790105
+        },
+        {
+          "symbol": "minase_core::movegen::control::piece_control_without_special",
+          "period": 3802932692,
+          "period_percent": 5.915461653993308
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::small_sort_general::<(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize), <(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt>",
+          "period": 2163574903,
+          "period_percent": 3.365440677181144
+        },
+        {
+          "symbol": "<minase::eval::nnue::Network<minase::eval::nnue::feature_set::P, minase::eval::nnue::head::DirectScrelu>>::evaluate_accumulator",
+          "period": 2124790910,
+          "period_percent": 3.305112177583222
+        },
+        {
+          "symbol": "minase_core::movegen::expand::push_with_promotion",
+          "period": 1971916306,
+          "period_percent": 3.0673157370272843
+        },
+        {
+          "symbol": "<minase_core::position::Position>::captured_squares",
+          "period": 1903435456,
+          "period_percent": 2.960793777524808
+        },
+        {
+          "symbol": "minase::search::alphabeta::see::see_prunes",
+          "period": 1352927236,
+          "period_percent": 2.1044782627988607
+        },
+        {
+          "symbol": "minase::search::alphabeta::capture_history::index",
+          "period": 1280855755,
+          "period_percent": 1.9923710769160117
+        },
+        {
+          "symbol": "<minase_core::rules::set::MoveRules>::promotion_choice_for",
+          "period": 961564473,
+          "period_percent": 1.4957135002256263
+        },
+        {
+          "symbol": "<minase_core::rules::set::MoveRules>::special_move_is_legal",
+          "period": 930762046,
+          "period_percent": 1.4478003262292172
+        },
+        {
+          "symbol": "core::slice::sort::unstable::quicksort::quicksort::<(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize), <(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt>",
+          "period": 764500383,
+          "period_percent": 1.1891803159212204
+        },
+        {
+          "symbol": "[unknown]",
+          "period": 635227240,
+          "period_percent": 0.9880959470297151
+        },
+        {
+          "symbol": "<minase_core::position::Position>::make_move_with_captures_unchecked",
+          "period": 621661074,
+          "period_percent": 0.9669937763461464
+        },
+        {
+          "symbol": "<minase::search::alphabeta::quiesce::QsearchBuffers>::initialize::{closure#0}",
+          "period": 507918364,
+          "period_percent": 0.7900669953800527
+        },
+        {
+          "symbol": "<minase::search::alphabeta::searcher::Searcher>::enter_node",
+          "period": 458543102,
+          "period_percent": 0.7132637772659643
+        },
+        {
+          "symbol": "<core::option::Option<minase_core::mv::Move> as core::slice::cmp::SliceContains>::slice_contains",
+          "period": 429403005,
+          "period_percent": 0.6679363575196815
+        },
+        {
+          "symbol": "core::slice::sort::stable::quicksort::quicksort::<minase_core::mv::Move, <[minase_core::mv::Move]>::sort_by_key<core::cmp::Reverse<u64>, <minase::search::alphabeta::searcher::Searcher>::order_root_moves::{closure#3}>::{closure#0}>",
+          "period": 421932180,
+          "period_percent": 0.6563154895237368
+        },
+        {
+          "symbol": "<minase_core::movegen::MoveGenerator>::generate_special_piece_captures::<<minase::search::alphabeta::quiesce::QsearchBuffers>::initialize::{closure#0}>::{closure#0}",
+          "period": 420102489,
+          "period_percent": 0.653469405244642
+        },
+        {
+          "symbol": "<minase_core::position::Position>::remove_piece_without_hash",
+          "period": 362873023,
+          "period_percent": 0.5644489731150708
+        },
+        {
+          "symbol": "<minase_core::position::Position>::unmake_move",
+          "period": 314494830,
+          "period_percent": 0.489196695791571
+        },
+        {
+          "symbol": "<minase::search::alphabeta::tt::TranspositionTable>::store",
+          "period": 249122618,
+          "period_percent": 0.38751022257677736
+        },
+        {
+          "symbol": "<[minase_core::mv::Move]>::sort_by_key::<core::cmp::Reverse<u64>, <minase::search::alphabeta::searcher::Searcher>::order_root_moves::{closure#3}>::{closure#0}",
+          "period": 241905387,
+          "period_percent": 0.3762838200379359
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<(minase_core::mv::Move, minase::search::alphabeta::ordering::MoveOrderKey), <[(minase_core::mv::Move, minase::search::alphabeta::ordering::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::alphabeta::ordering::MovePicker>::next::{closure#2}>::{closure#0}>",
+          "period": 240482530,
+          "period_percent": 0.37407056602996414
+        },
+        {
+          "symbol": "<minase_core::movegen::MoveGenerator>::is_excluded_lion_capture",
+          "period": 232918425,
+          "period_percent": 0.36230460099765976
+        },
+        {
+          "symbol": "<minase_core::position::Position>::put_piece",
+          "period": 224771774,
+          "period_percent": 0.3496324856850898
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::sort4_stable::<(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize), <(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt>",
+          "period": 210501838,
+          "period_percent": 0.3274356007939862
+        },
+        {
+          "symbol": "minase::search::alphabeta::ordering::move_order_key",
+          "period": 209065993,
+          "period_percent": 0.3252021439525213
+        },
+        {
+          "symbol": "minase_core::movegen::generate::generate_piece_moves::<false, false>",
+          "period": 194202792,
+          "period_percent": 0.3020824353770704
+        },
+        {
+          "symbol": "minase::search::alphabeta::team::run_search_team",
+          "period": 179610889,
+          "period_percent": 0.27938473083003185
+        },
+        {
+          "symbol": "<minase::search::alphabeta::searcher::Searcher>::search_iteration",
+          "period": 130784701,
+          "period_percent": 0.20343559730151548
+        },
+        {
+          "symbol": "minase_core::movegen::lion_capture::lion_has_foot_after_capture",
+          "period": 121828739,
+          "period_percent": 0.18950459876002954
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::alphabeta::quiesce::QsearchCapture, <[minase::search::alphabeta::quiesce::QsearchCapture]>::sort_unstable_by_key<(core::cmp::Reverse<i32>, u16), <minase::search::alphabeta::quiesce::QsearchBuffers>::initialize::{closure#1}>::{closure#0}>",
+          "period": 79841882,
+          "period_percent": 0.12419404433510245
+        },
+        {
+          "symbol": "core::slice::sort::shared::pivot::median3_rec::<(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize), <(core::cmp::Reverse<i32>, core::cmp::Reverse<i64>, usize) as core::cmp::PartialOrd>::lt>",
+          "period": 56363206,
+          "period_percent": 0.08767296473337781
+        },
+        {
+          "symbol": "_mi_theap_realloc_zero",
+          "period": 56308391,
+          "period_percent": 0.08758770000301701
+        },
+        {
+          "symbol": "mi_free",
+          "period": 56308386,
+          "period_percent": 0.08758769222551721
+        },
+        {
+          "symbol": "core::slice::sort::stable::quicksort::quicksort::<(minase_core::mv::Move, minase::search::alphabeta::ordering::MoveOrderKey), <[(minase_core::mv::Move, minase::search::alphabeta::ordering::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::alphabeta::ordering::MovePicker>::next::{closure#2}>::{closure#0}>",
+          "period": 43776259,
+          "period_percent": 0.06809396916609416
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::alphabeta::quiesce::QsearchCapture, <[minase::search::alphabeta::quiesce::QsearchCapture]>::sort_unstable_by_key<(core::cmp::Reverse<i32>, i32,",
+          "period": 43697315,
+          "period_percent": 0.06797117177717502
+        },
+        {
+          "symbol": "minase_core::movegen::lion_capture::is_tsukegui",
+          "period": 38166662,
+          "period_percent": 0.05936824125151346
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::small_sort_general::<(minase::search::alphabeta::ordering::OrderedMoveKey, usize), <(minase::search::alphabeta::ordering::OrderedMoveKey, usize) as core::cmp::PartialOrd>::lt>",
+          "period": 34641901,
+          "period_percent": 0.05388547565357026
+        },
+        {
+          "symbol": "<alloc::raw_vec::RawVecInner>::finish_grow",
+          "period": 34623159,
+          "period_percent": 0.05385632247330169
+        },
+        {
+          "symbol": "core::slice::sort::stable::drift::sort::<minase_core::mv::Move, <[minase_core::mv::Move]>::sort_by_key<core::cmp::Reverse<u64>, <minase::search::alphabeta::searcher::Searcher>::order_root_moves::{closure#3}>::{closure#0}>",
+          "period": 34535345,
+          "period_percent": 0.0537197277997287
+        },
+        {
+          "symbol": "_mi_page_malloc_zero",
+          "period": 29099206,
+          "period_percent": 0.04526381379737866
+        },
+        {
+          "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::alphabeta::quiesce::QsearchCapture, <[minase::search::alphabeta::quiesce::QsearchCapture]>::sort_unstable_by_key<(core::cmp::Reverse<i32>, i32, u16), <minase::search::alphabeta::quiesce::QsearchBuffers>::generate_group::{closure#4}>::{closure#0}>",
+          "period": 29068965,
+          "period_percent": 0.045216773923058846
+        },
+        {
+          "symbol": "mi_theap_umalloc",
+          "period": 23618057,
+          "period_percent": 0.03673788674178518
+        }
+      ]
+    }
+  }
+}

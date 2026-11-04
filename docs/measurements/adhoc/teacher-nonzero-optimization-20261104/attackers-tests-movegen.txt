@@ -1,0 +1,125 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/attackers/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/attackers/Cargo.toml
+   Compiling serde v1.0.228
+   Compiling minase-core v0.2.0 (/home/stepney141/board-games/minase/target/teacher-optimization/attackers/crates/minase-core)
+   Compiling serde_json v1.0.140
+    Finished `release` profile [optimized + debuginfo] target(s) in 20.04s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase_core-c6d3367e678aaddf)
+
+running 112 tests
+test movegen::tests::attackers::piece_control_covers_fixed_sliding_and_two_stage_destinations ... ok
+test movegen::tests::attackers::piece_control_rejects_empty_square - should panic ... ok
+test movegen::tests::attackers::piece_control_with_occupancy_accepts_a_hypothetical_piece ... ok
+test movegen::tests::gives_check::article_8_7_two_royal_check_requires_adjacent_royals ... ok
+test movegen::tests::gives_check::article_8_a_move_cannot_check_three_royals_at_once ... ok
+test movegen::tests::gives_check::article_8_attacking_slider_can_move_away_along_the_same_line ... ok
+test movegen::tests::gives_check::article_8_capturing_one_royal_and_attacking_the_other_is_check ... ok
+test movegen::tests::gives_check::article_8_directional_control_is_correct_for_both_colors ... ok
+test movegen::tests::gives_check::article_8_existing_slider_check_continues_unless_the_move_blocks_it ... ok
+test movegen::tests::attackers::attackers_to_by_matches_piece_control_on_reference_positions ... ok
+test movegen::tests::gives_check::article_8_king_and_crown_prince_can_give_check ... ok
+test movegen::tests::gives_check::article_8_moved_piece_gives_direct_check ... ok
+test movegen::tests::gives_check::article_8_moving_a_blocker_out_of_line_gives_discovered_check ... ok
+test movegen::tests::gives_check::articles_8_11_3_12_4_mid_capture_can_open_a_slider_check ... ok
+test movegen::tests::gives_check::articles_8_and_21_capturing_the_last_royal_is_not_check ... ok
+test movegen::tests::gives_check::articles_8_and_9_promotion_uses_the_promoted_piece_control ... ok
+test movegen::tests::gives_check::article_8_gives_check_matches_post_move_legal_capture_reference ... ok
+test movegen::tests::lion_capture::article_13_1_a_footed_lion_cannot_be_captured_by_a_lion_at_distance_two ... ok
+test movegen::tests::lion_capture::article_13_3_a_piece_that_cannot_reach_the_lion_square_is_not_a_foot ... ok
+test movegen::tests::lion_capture::article_13_4_a_defender_captured_after_the_lion_still_counts_as_a_foot ... ok
+test movegen::tests::lion_capture::article_13_4_the_capturers_second_stage_move_does_not_block_a_sliding_foot ... ok
+test movegen::tests::lion_capture::article_13_4_the_foot_is_judged_on_the_board_just_after_the_capture ... ok
+test movegen::tests::lion_capture::article_13_5_a_foot_that_can_itself_be_captured_still_counts ... ok
+test movegen::tests::lion_capture::article_13_6_a_king_as_the_only_foot_still_counts ... ok
+test movegen::tests::lion_capture::article_13_7_the_foot_judgement_is_not_recursive ... ok
+test movegen::tests::lion_capture::article_14_1_an_adjacent_lion_can_be_captured_unconditionally ... ok
+test movegen::tests::lion_capture::article_14_6_promoted_lions_follow_the_same_capture_rules ... ok
+test movegen::tests::lion_capture::article_15_10_each_remaining_footed_lion_is_protected_independently ... ok
+test movegen::tests::lion_capture::article_15_1_and_2_first_stage_capture_depends_on_the_lion_square_foot ... ok
+test movegen::tests::lion_capture::article_15_1_and_2_igui_depends_on_the_lion_square_foot ... ok
+test movegen::tests::lion_capture::article_15_2_without_a_foot_the_lion_can_be_recaptured_immediately ... ok
+test movegen::tests::lion_capture::article_15_7_senjishi_can_protect_a_kirin_promoted_lion ... ok
+test movegen::tests::lion_capture::article_15_9_senjishi_blocks_even_an_adjacent_lion_recapture ... ok
+test movegen::tests::lion_capture::article_16_3_capturing_a_pawn_in_the_mid_square_is_not_tsukegui ... ok
+test movegen::tests::lion_capture::article_29_l1_forbids_non_lion_recapture_regardless_of_foot ... ok
+test movegen::tests::lion_capture::article_29_l1_plus_l2_reproduces_the_english_source_rule ... ok
+test movegen::tests::lion_capture::article_29_l1_restricts_only_non_lion_pieces ... ok
+test movegen::tests::lion_capture::article_29_l2_exempts_only_the_new_promoted_lion ... ok
+test movegen::tests::lion_capture::article_29_l3_adopts_stage_wise_foot_judgement ... ok
+test movegen::tests::lion_capture::article_29_l4_limits_senjishi_to_non_lion_recaptures ... ok
+test movegen::tests::lion_capture::articles_13_4_and_16_3_a_captured_pawn_is_not_restored_to_block_slider_feet ... ok
+test movegen::tests::lion_capture::articles_14_5_and_15_1_an_eagle_may_capture_two_lions_and_triggers_senjishi ... ok
+test movegen::tests::lion_capture::articles_15_4_and_15_5_senjishi_lasts_only_for_the_very_next_move ... ok
+test movegen::tests::lion_capture::articles_15_5_and_3_13_jitto_is_a_move_that_expires_senjishi ... ok
+test movegen::tests::lion_capture::articles_16_1_and_16_11_a_lion_captured_in_the_mid_square_is_a_valuable_piece ... ok
+test movegen::tests::lion_capture::articles_16_1_and_16_4_tsukegui_captures_a_footed_lion ... ok
+test movegen::tests::lion_capture::articles_16_4_and_16_5_tsukegui_stands_even_if_a_sliding_foot_opens ... ok
+test movegen::tests::lion_capture::articles_16_7_and_15_8_tsukegui_overrides_an_established_senjishi ... ok
+test movegen::tests::lion_capture::articles_16_8_to_16_10_a_go_between_as_the_only_foot_does_not_vanish_mid_move ... ok
+test movegen::tests::lion_capture::articles_16_8_to_16_10_a_pawn_as_the_only_foot_does_not_vanish_mid_move ... ok
+test movegen::tests::lion_moves::article_11_1_falcon_has_four_forward_actions ... ok
+test movegen::tests::lion_moves::article_11_2_eagle_has_four_forward_diagonal_actions ... ok
+test movegen::tests::lion_moves::article_11_4_direct_jump_ignores_intermediate_occupancy ... ok
+test movegen::tests::lion_moves::article_11_5_falcon_igui_captures_and_returns ... ok
+test movegen::tests::lion_moves::article_11_6_jitto_is_generated_exactly_once ... ok
+test movegen::tests::lion_moves::article_11_7_falcon_jitto_requires_empty_forward_square ... ok
+test movegen::tests::lion_moves::article_11_8_eagle_jitto_requires_an_empty_forward_diagonal ... ok
+test movegen::tests::lion_moves::article_11_9_second_stage_uses_board_after_first_capture ... ok
+test movegen::tests::lion_moves::article_12_10_lion_jitto_requires_an_empty_adjacent_square ... ok
+test movegen::tests::lion_moves::article_12_12_second_stage_judged_sequentially ... ok
+test movegen::tests::lion_moves::article_12_4_7_jump_capture_and_path_capture_are_distinct_moves ... ok
+test movegen::tests::lion_moves::article_12_4_lion_path_capture_double_move ... ok
+test movegen::tests::lion_moves::article_12_8_lion_igui ... ok
+test movegen::tests::lion_moves::article_12_lone_lion_generates_25_canonical_moves ... ok
+test movegen::tests::movement::article_7_4_5_sliders_stop_at_first_piece_and_capture_enemies ... ok
+test movegen::tests::movement::article_7_6_7_jumps_ignore_and_preserve_intermediate_pieces ... ok
+test movegen::tests::movement::article_8_3_king_may_move_into_enemy_control ... ok
+test movegen::tests::movement::article_8_4_5_check_needs_no_declaration_and_may_be_ignored ... ok
+test movegen::tests::piece_generation::article_11_piece_generation_preserves_igui_mid_only_capture_and_empty_captures ... ok
+test movegen::tests::piece_generation::piece_generation_matches_full_generation_in_order_for_all_rules_and_sides ... ok
+test movegen::tests::piece_generation::piece_generation_panics_unless_from_contains_a_side_to_move_piece ... ok
+test movegen::tests::pieces::article_10_7_horned_falcon_moves ... ok
+test movegen::tests::pieces::article_10_8_soaring_eagle_moves ... ok
+test movegen::tests::pieces::article_10_promoted_only_piece_destinations_match_the_rule ... ok
+test movegen::tests::pieces::article_9_7_1_moves_are_truncated_at_the_board_edge ... ok
+test movegen::tests::pieces::article_9_initial_piece_destinations_match_the_rule ... ok
+test movegen::tests::promotion::article_17_1_king_lion_and_free_king_never_promote ... ok
+test movegen::tests::promotion::article_17_4_promoted_pieces_never_promote_again ... ok
+test movegen::tests::promotion::article_18_1_entry_into_the_zone_offers_promotion_choice ... ok
+test movegen::tests::promotion::article_18_2a_capture_inside_the_zone_offers_promotion ... ok
+test movegen::tests::promotion::article_18_2b_capture_leaving_the_zone_offers_promotion ... ok
+test movegen::tests::promotion::article_18_2c_reentry_offers_promotion_again ... ok
+test movegen::tests::promotion::article_19_18_overlapping_promotion_chances_yield_two_moves ... ok
+test movegen::tests::promotion::article_19_1_pawn_reaching_last_rank_may_promote ... ok
+test movegen::tests::promotion::article_19_2_unpromoted_pawn_on_last_rank_is_immobile ... ok
+test movegen::tests::promotion::article_19_4_lance_gets_no_last_rank_relief ... ok
+test movegen::tests::promotion::article_30_p1_promotion_right_recovers_after_one_wait_and_toggles ... ok
+test movegen::tests::promotion::article_30_p2_entry_defers_quiet_promotion_until_the_following_own_turn ... ok
+test movegen::tests::promotion::article_30_p2_p5_deferred_pawn_stays_unpromotable_after_waiting_expires ... ok
+test movegen::tests::promotion::article_30_p2_quiet_exit_from_zone_offers_promotion ... ok
+test movegen::tests::promotion::article_30_p2_quiet_move_started_in_zone_does_not_create_waiting ... ok
+test movegen::tests::promotion::article_30_p2_waiting_does_not_block_a_capture_promotion ... ok
+test movegen::tests::promotion::article_30_p2_waiting_expires_when_another_piece_moves ... ok
+test movegen::tests::promotion::article_30_p3_lance_gains_last_rank_relief ... ok
+test movegen::tests::promotion::article_30_p4_go_between_gains_last_rank_relief ... ok
+test movegen::tests::promotion::article_30_p5_deferred_pawn_cannot_promote_on_a_later_capture ... ok
+test movegen::tests::promotion::article_30_p5_deferred_pawn_last_rank_promotion_depends_on_the_adopted_rule ... ok
+test movegen::tests::promotion::article_30_p5_unmarked_pawn_has_no_quiet_last_rank_relief ... ok
+test movegen::tests::promotion::article_30_p6_forces_promotion_only_for_forward_only_pieces_on_the_last_rank ... ok
+test movegen::tests::promotion::article_9_17_promotion_maps_the_eighteen_pairs ... ok
+test movegen::tests::properties::article_6_7_17_18_mc_canonical_move_invariants_hold_in_seeded_playouts ... ok
+test movegen::tests::properties::article_9_black_and_white_move_sets_are_180_degree_symmetric ... ok
+test movegen::tests::properties::capture_generation_matches_full_generation_for_every_kind_at_representative_squares ... ok
+test movegen::tests::properties::capture_generation_matches_full_generation_for_special_and_promoting_captures ... ok
+test movegen::tests::properties::capture_generation_matches_full_generation_in_seeded_playouts ... ok
+test movegen::tests::properties::mc_make_unmake_round_trips_every_generated_move ... ok
+test movegen::tests::properties::quiet_generation_preserves_order_for_special_moves_and_all_rules ... ok
+test movegen::tests::search_captures::lion_capture_exclusion_keeps_igui_double_stop_and_jump ... ok
+test movegen::tests::search_captures::ordinary_targets_select_exactly_the_public_subsequence ... ok
+test movegen::tests::search_captures::split_captures_preserve_public_order_and_captured_squares ... ok
+test movegen::tests::search_captures::tt_capture_validation_matches_filtered_public_captures ... ok
+test movegen::tests::legality::article_27_legality_and_checked_application_match_full_generation ... ok
+
+test result: ok. 112 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 0.17s
+
