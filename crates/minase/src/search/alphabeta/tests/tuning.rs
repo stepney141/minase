@@ -445,11 +445,10 @@ fn tuning_parameters_in_isolated_process() {
                 mv,
                 super::super::capture_history::CAPTURE_HISTORY_LIMIT,
             );
-            result = i64::from(
-                searcher
-                    .capture_history
-                    .adjustment(&board, searcher.nnue, mv),
-            );
+            result = i64::from(super::super::capture_history::CaptureHistory::adjustment(
+                searcher.nnue,
+                searcher.capture_history.read(&board, searcher.nnue, mv),
+            ));
         });
         result
     }

@@ -1125,10 +1125,17 @@ impl MovePicker {
                                 .drain(..)
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let mut key = move_order_key(position, nnue, mv)
-                                        .expect("capture generator must not return a quiet move");
-                                    key.captured_value +=
-                                        context.capture_history.adjustment(position, nnue, mv);
+                                    let info = CaptureInfo::new(position, nnue, mv);
+                                    let history = context.capture_history.read_parts(
+                                        info.mover,
+                                        mv.to,
+                                        info.victim,
+                                    );
+                                    let key = MoveOrderKey {
+                                        captured_value: info.value
+                                            + CaptureHistory::adjustment(nnue, history),
+                                        attacker_value: nnue.piece_value(info.mover),
+                                    };
                                     (mv, key)
                                 }),
                         );
@@ -1290,6 +1297,42 @@ pub(super) struct MoveOrderKey {
     pub(super) captured_value: i32,
     /// 動かす駒の駒価値。
     pub(super) attacker_value: i32,
+}
+
+/// 捕獲升、合計価値、履歴の被捕獲駒種を1回の走査で求めた着手前の情報。
+/// 各候補の枝刈りとstatScoreの計算に使い、履歴値は候補ごとに読み直す。
+#[derive(Clone, Copy)]
+pub(super) struct CaptureInfo {
+    pub(super) captured: [Option<Square>; 2],
+    pub(super) value: i32,
+    pub(super) mover: PieceCode,
+    pub(super) victim: PieceKind,
+}
+
+impl CaptureInfo {
+    /// 合法な捕獲手の情報を返す。2枚取りの同値では、従来どおり到達升の駒種を選ぶ。
+    pub(super) fn new(position: &Position, nnue: &Nnue, mv: Move) -> Self {
+        let captured = position.captured_squares(mv);
+        let mut value = 0;
+        let mut victim = None;
+        for square in captured.into_iter().flatten() {
+            let piece = piece_at_for_ordering(position, square);
+            let piece_value = nnue.piece_value(piece);
+            value += piece_value;
+            if victim.is_none_or(|(_, highest)| piece_value >= highest) {
+                victim = Some((
+                    piece.kind().expect("captured piece has a kind"),
+                    piece_value,
+                ));
+            }
+        }
+        Self {
+            captured,
+            value,
+            mover: piece_at_for_ordering(position, mv.from),
+            victim: victim.expect("capture information requires a capture").0,
+        }
+    }
 }
 
 /// 捕獲手なら駒価値だけの整列キーを返し、非捕獲手なら`None`を返す。

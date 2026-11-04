@@ -78,6 +78,13 @@ fn capture_history_equal_victims_prefer_destination() {
     };
     let mut history = empty_capture_history();
     history.update(&board, nnue, mv, 4);
+    let info = super::super::ordering::CaptureInfo::new(&board, nnue, mv);
+    assert_eq!(info.victim, PieceKind::CrownPrince);
+    assert_eq!(history.read_parts(info.mover, mv.to, info.victim), 4);
+    assert!(super::super::royal::captured_last_royal(
+        &board,
+        info.captured
+    ));
     assert_eq!(history.read(&board, nnue, capture(mv.from, mv.to)), 4);
     let king = position(
         Color::Black,
@@ -205,15 +212,19 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             -super::super::capture_history::CAPTURE_HISTORY_LIMIT
         );
         assert_eq!(
-            searcher
-                .capture_history
-                .adjustment(&board, searcher.nnue, winner),
+            super::super::capture_history::CaptureHistory::adjustment(
+                searcher.nnue,
+                searcher.capture_history.read(&board, searcher.nnue, winner)
+            ),
             params::capture_history_scale()
         );
         assert_eq!(
-            searcher
-                .capture_history
-                .adjustment(&board, searcher.nnue, captures[0]),
+            super::super::capture_history::CaptureHistory::adjustment(
+                searcher.nnue,
+                searcher
+                    .capture_history
+                    .read(&board, searcher.nnue, captures[0])
+            ),
             -params::capture_history_scale()
         );
         let after = picked(searcher, &board, None);
@@ -336,8 +347,20 @@ fn capture_history_adjustment_truncates_toward_zero() {
         nnue.pawn_value() * params::capture_history_scale()
             < 100 * super::super::capture_history::CAPTURE_HISTORY_LIMIT
     );
-    assert_eq!(history.adjustment(&board, nnue, winner), 0);
-    assert_eq!(history.adjustment(&board, nnue, loser), 0);
+    assert_eq!(
+        super::super::capture_history::CaptureHistory::adjustment(
+            nnue,
+            history.read(&board, nnue, winner)
+        ),
+        0
+    );
+    assert_eq!(
+        super::super::capture_history::CaptureHistory::adjustment(
+            nnue,
+            history.read(&board, nnue, loser)
+        ),
+        0
+    );
 }
 
 /// S3は整列用の駒価値への換算値ではなく、capture historyの生の値を余裕値に使う。
@@ -371,7 +394,10 @@ fn see_pruning_uses_raw_capture_history_in_margin() {
         -super::super::capture_history::CAPTURE_HISTORY_LIMIT,
     );
     let raw = penalized.read(&board, nnue, target);
-    let adjustment = penalized.adjustment(&board, nnue, target);
+    let adjustment = super::super::capture_history::CaptureHistory::adjustment(
+        nnue,
+        penalized.read(&board, nnue, target),
+    );
     let base_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, 0);
     let raw_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, raw);
     let adjusted_margin = super::super::pruning::see_margin(nnue.pawn_value(), 1, adjustment);
@@ -1009,6 +1035,20 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                     piece,
                     captured: Some(victim),
                 };
+                // 捕獲情報の共有は、従来の別々の捕獲升走査と同じ値を返す。
+                let info = super::super::ordering::CaptureInfo::new(&board, nnue, mv);
+                assert_eq!(info.mover, piece);
+                assert_eq!(info.victim, victim);
+                assert_eq!(info.captured, board.captured_squares(mv));
+                assert_eq!(
+                    info.value,
+                    board
+                        .captured_squares(mv)
+                        .into_iter()
+                        .flatten()
+                        .map(|square| nnue.piece_value(board.piece_at(square).unwrap()))
+                        .sum::<i32>()
+                );
                 for bonus in bonuses {
                     let b = bonus.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT);
                     let value = &mut reference[index];
@@ -1019,6 +1059,7 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
                         actual.update_record(record, bonus);
                     }
                     assert_eq!(actual.read(&board, nnue, mv), *value);
+                    assert_eq!(actual.read_parts(info.mover, mv.to, info.victim), *value);
                     assert_eq!(actual.read_record(record), *value);
                     updates += 1;
                 }

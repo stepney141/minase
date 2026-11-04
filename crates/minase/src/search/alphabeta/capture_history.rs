@@ -7,7 +7,7 @@
 //! 上限と適用範囲の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
 use crate::eval::Nnue;
-use minase_core::board::BOARD_SQUARE_COUNT;
+use minase_core::board::{BOARD_SQUARE_COUNT, Square};
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
@@ -72,14 +72,19 @@ impl CaptureHistory {
         i32::from(self.values[index(position, nnue, mv)])
     }
 
+    /// 既に選んだ被捕獲駒種で履歴を引く。2枚取りの同値では到達升の駒種を渡す。
+    pub(super) fn read_parts(&self, mover: PieceCode, to: Square, victim: PieceKind) -> i32 {
+        i32::from(self.values[index_from_parts(mover, to.dense_index(), victim)])
+    }
+
     /// 履歴値を駒価値へ換算し、捕獲価値に加える値を返す。
     ///
     /// `尺度 = 歩兵価値 × CaptureHistoryScale / 100` を先に整数で求め、`履歴値 × 尺度 / 10692` を返す。
     /// 整数除算は0方向へ丸め、換算値の絶対値は尺度以下に保つ。
     /// 捕獲価値の差が大きい手の順序を履歴だけで覆さないための制限である。
-    pub(super) fn adjustment(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+    pub(super) fn adjustment(nnue: &Nnue, history: i32) -> i32 {
         let scale = i64::from(nnue.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
-        (i64::from(self.read(position, nnue, mv)) * scale / i64::from(CAPTURE_HISTORY_LIMIT)) as i32
+        (i64::from(history) * scale / i64::from(CAPTURE_HISTORY_LIMIT)) as i32
     }
 
     /// 指定した捕獲手の要素へ、上限10692の重力式で符号つきの更新量を与える。

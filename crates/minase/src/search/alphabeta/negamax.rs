@@ -19,8 +19,8 @@ use super::correction::{
 };
 use super::history::pawn_key_after_move;
 use super::ordering::{
-    HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
-    piece_at_for_ordering,
+    CaptureInfo, HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients,
+    capture_stat_score, move_order_key, piece_at_for_ordering,
 };
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
@@ -33,7 +33,7 @@ use super::pruning::{
     reverse_futility_margin, reverse_futility_value, see_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
-use super::royal::{captures_last_royal, royal_under_attack};
+use super::royal::{captured_last_royal, captures_last_royal, royal_under_attack};
 use super::searcher::{AccumulatorUpdate, MoveRecord, PathMove, PendingAccumulator, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
@@ -421,6 +421,14 @@ impl Searcher<'_> {
                 continue;
             }
             self.move_counts[ply as usize] = index + 1;
+            // 枝刈りからstatScoreまで履歴の更新はないので、捕獲升と履歴を1回だけ読む。
+            let capture_info = capture.then(|| {
+                let info = CaptureInfo::new(position, self.nnue, mv);
+                let history = self
+                    .capture_history
+                    .read_parts(info.mover, mv.to, info.victim);
+                (info, history)
+            });
             // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
             // killer手はこの制限から除くが、futilityの対象にはなり得る。
             let counted_quiet = Some(mv) != tt_move
@@ -451,10 +459,11 @@ impl Searcher<'_> {
                     continue;
                 }
 
-                if capture {
+                if let Some((info, history)) = capture_info {
+                    let last_royal = captured_last_royal(position, info.captured);
                     // Stockfish src/search.cpp:1208-1217。捕獲価値は整列値を流用せず、
                     // 2枚取りを含む実際の捕獲升から求める。
-                    if window_outside_bands && !mv.promote && !captures_last_royal(position, mv) {
+                    if window_outside_bands && !mv.promote && !last_royal {
                         let lmr_depth = pruning_lmr_depth(
                             depth,
                             index,
@@ -462,53 +471,35 @@ impl Searcher<'_> {
                             pv_node,
                             self.tt_pv[ply as usize],
                         );
-                        if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT {
-                            let captured_value = position
-                                .captured_squares(mv)
-                                .into_iter()
-                                .flatten()
-                                .map(|square| {
-                                    self.nnue.piece_value(
-                                        position
-                                            .piece_at(square)
-                                            .expect("capture square must contain a piece"),
-                                    )
-                                })
-                                .sum();
-                            let history = self.capture_history.read(position, self.nnue, mv);
-                            if capture_futility_value(
+                        if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT
+                            && capture_futility_value(
                                 self.nnue.pawn_value(),
                                 static_eval,
                                 lmr_depth,
-                                captured_value,
+                                info.value,
                                 history,
                             ) <= alpha
                                 // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
                                 && !check_context.gives_check(position, &self.generator, mv)
                                 && !*royal_attacked
                                     .get_or_insert_with(|| royal_under_attack(position))
-                            {
-                                index += 1;
-                                continue;
-                            }
+                        {
+                            index += 1;
+                            continue;
                         }
                     }
                     // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
                     // docs/adr/prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md にある。
                     if window_outside_bands
-                        && !captures_last_royal(position, mv)
+                        && !last_royal
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                         && see_prunes(
                             position,
                             self.rules,
                             self.nnue,
                             mv,
-                            -see_margin(
-                                self.nnue.pawn_value(),
-                                depth,
-                                self.capture_history.read(position, self.nnue, mv),
-                            ),
+                            -see_margin(self.nnue.pawn_value(), depth, history),
                         )
                     {
                         index += 1;
@@ -609,7 +600,12 @@ impl Searcher<'_> {
             }
             // 子がこのノードへ至った手の値として読み、LMRの連続量にも使う。
             // 枝刈りを通った後、減深量を求める前に1回だけ計算する（src/search.cpp:1371-1381）。
-            let stat_score = self.move_stat_score(position, mv, capture, ply);
+            let stat_score = match capture_info {
+                Some((info, history)) => {
+                    capture_stat_score(info.value, self.nnue.pawn_value(), history)
+                }
+                None => self.move_stat_score(position, mv, false, ply),
+            };
             self.stat_scores[ply as usize] = stat_score;
             // 残り深さ2以上、2手目以降に適用する（Stockfish src/search.cpp:1395）。
             let lmr = applies_lmr(depth, index);
