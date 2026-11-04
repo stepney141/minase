@@ -385,7 +385,7 @@ impl Model {
     /// P型では第1層へ置き、HalfKPではVirtual`[base]`へ正準行を回転して置いて特徴行を0にするため、同じ初期値とシードでは両型の初期評価が一致する。
     /// 続く同じ乱数列からW1、b1を一様分布±1/√H、W2、b2を一様分布±1/√30の順に引く。
     /// 直接重みo、隠れ層の出力重みv、出力バイアスbは0とする。
-    /// `init_std`は有限かつ非負の標準偏差で、学習時は0.05を使う。
+    /// `init_std`は有限かつ非負の標準偏差で、学習時は両型とも基底特徴数D = `FEATURE_COUNT`に対してsqrt(1/(3D))を使う。
     /// 選び方は`docs/lessons/nnue-first-layer-init-saturation.md`にある。
     pub fn initialize(
         shape: Shape,

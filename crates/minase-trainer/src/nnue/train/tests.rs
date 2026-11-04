@@ -19,6 +19,7 @@ use minase::training::records::{GAME_HEADER_LEN, HEADER_LEN, Header};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 use std::{
     cell::Cell,
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -303,10 +304,85 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
         &base.initial_linear(),
         Masks::from_observations(args.feature_set, &observations).unwrap(),
         args.seed,
-        0.05,
+        initial_standard_deviation(),
     )
     .unwrap();
     (model, observations)
+}
+
+fn check_training_initialization(feature_set: InputFeatureSet) {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    args.feature_set = feature_set;
+    args.width = 32;
+    let session = Session::new(args.clone()).unwrap();
+    let model = &session.checkpoint.model;
+    assert_eq!(session.checkpoint.optimizer.step(), 0);
+    let (weights, mask) = match feature_set {
+        InputFeatureSet::P => (
+            &model.parameters()[Parameter::FirstLayer],
+            model.masks().first_layer(),
+        ),
+        InputFeatureSet::HalfKpHmB8 => (
+            &model.parameters()[Parameter::Virtual],
+            model.masks().virtual_rows(),
+        ),
+    };
+    let mut seen = HashSet::new();
+    let mut samples = Vec::new();
+    for (row, (values, &observed)) in weights.chunks_exact(args.width).zip(mask).enumerate() {
+        if !observed {
+            continue;
+        }
+        // HalfKPの鏡映対は同じ乱数を回転して共有するので、片側だけを標本にする。
+        let canonical = match feature_set {
+            InputFeatureSet::P => row,
+            InputFeatureSet::HalfKpHmB8 => row.min(minase::eval::features::mirror_feature(row)),
+        };
+        if seen.insert(canonical) {
+            samples.extend(values.iter().map(|&value| f64::from(value)));
+        }
+    }
+    assert!(samples.len() > 1);
+    let n = samples.len() as f64;
+    let mean = samples.iter().sum::<f64>() / n;
+    let sample_std = (samples
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / (n - 1.0))
+        .sqrt();
+    // 仕様のD = 13,680から期待値を求め、実装の初期化関数には依存しない。
+    let expected_std = (1.0_f64 / (3.0 * 13_680.0)).sqrt();
+    // 正規標本の標本標準偏差の標準誤差は近似的にσ/sqrt(2(n−1))。6倍を許容する。
+    let tolerance = 6.0 * expected_std / (2.0 * (n - 1.0)).sqrt();
+    assert!(
+        (sample_std - expected_std).abs() <= tolerance,
+        "{feature_set:?}: n={n}, sample_std={sample_std}, expected={expected_std}, tolerance={tolerance}"
+    );
+    let config: Value =
+        serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap()).unwrap();
+    let recorded_std = config["settings"]["initial_standard_deviation"]
+        .as_f64()
+        .unwrap();
+    assert!(
+        (recorded_std - expected_std).abs() <= expected_std * f64::from(f32::EPSILON),
+        "{feature_set:?}: recorded_std={recorded_std}, expected={expected_std}"
+    );
+    eprintln!(
+        "{feature_set:?}: n={n}, sample_std={sample_std}, tolerance={tolerance}, recorded_std={recorded_std}"
+    );
+}
+
+#[test]
+fn cpu_initialization_p_uses_base_feature_variance() {
+    check_training_initialization(InputFeatureSet::P);
+}
+
+#[test]
+fn cpu_initialization_halfkp_uses_base_feature_variance() {
+    check_training_initialization(InputFeatureSet::HalfKpHmB8);
 }
 
 #[test]

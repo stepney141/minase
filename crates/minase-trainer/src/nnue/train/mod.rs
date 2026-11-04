@@ -48,6 +48,7 @@ use crate::{
 };
 pub use args::Args;
 use backend::Backend;
+use minase::eval::features::FEATURE_COUNT;
 pub use record::{EpochRecord, LinearMovement, Saturation};
 use record::{
     IntervalRecord, append_epoch, append_interval, append_resume, configuration, linear_movement,
@@ -83,6 +84,12 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 /// 原因の型を保持する、学習の結果。
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// 第1層の正規分布の標準偏差を、基底特徴数Dに対してsqrt(1/(3D))とする。
+/// HalfKPも乱数を置く仮想行の基底特徴数を使い、P型と初期値を揃える。
+fn initial_standard_deviation() -> f32 {
+    (1.0 / (3.0 * FEATURE_COUNT as f32)).sqrt()
+}
 
 /// 学習を停止した理由。診断値だけでは停止しない。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -224,7 +231,7 @@ impl Session {
             &initial,
             Masks::from_observations(args.feature_set, &observations)?,
             args.seed,
-            0.05,
+            initial_standard_deviation(),
         )?;
         let selection = subsample::Selection::new(&mut dataset, args.train_subsample)?;
         let mut dataset_info = store::DatasetInfo::from(&dataset);
