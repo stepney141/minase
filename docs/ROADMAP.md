@@ -123,7 +123,7 @@
 | 審判層の裁定が繰り返す合法手生成の削減 | [plans/archived/referee-adjudication-movegen.md](plans/archived/referee-adjudication-movegen.md) | 完了（採用） | 2026年10月28日 |
 | NNUEの線形の経路の対局結果への回帰 | [plans/archived/nnue-outcome-regression.md](plans/archived/nnue-outcome-regression.md) | 完了（採用） | 2026年11月3日 |
 | NNUEの教師局面を静止探索の末端へ置き換える比較 | [plans/archived/nnue-qsearch-leaf.md](plans/archived/nnue-qsearch-leaf.md) | 完了（不採用） | 2026年11月4日 |
-| NNUEの世代反復をv0からやり直す | [plans/nnue-generation-reset.md](plans/nnue-generation-reset.md) | 起案 | |
+| NNUEの世代反復をv0からやり直す | [plans/nnue-generation-reset.md](plans/nnue-generation-reset.md) | 進行中 | |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 
 ## 現在地
@@ -141,7 +141,7 @@
 
 #### 評価関数（NNUE）
 
-- [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、次に着手する候補であり、構成の見直しで確定した構成を使う。masterから切る。手書きの評価関数v0の教師からλ=0.75で世代反復をやり直し、後付けの補正なしで偏りの少ないネットを学べるかを確かめる。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。2026年11月4日の利用者の決定により、教師はvast.aiで借りた1台の計算機で第8世代まで判定を待たずに生成し、第1世代だけ並行して判定して、第2世代以降は後から最後に`H1`を取った世代と比べる。生成機の費用の見込みは約68米ドルである。
+- [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、2026年11月4日に着手した進行中の計画であり、構成の見直しで確定した構成を使う。作業はブランチ`nnue-generation-reset`で行う。手書きの評価関数v0の教師からλ=0.75で世代反復をやり直し、後付けの補正なしで偏りの少ないネットを学べるかを確かめる。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。2026年11月4日の利用者の決定により、教師はvast.aiで借りた1台の計算機で第8世代まで判定を待たずに生成し、第1世代だけ並行して判定して、第2世代以降は後から最後に`H1`を取った世代と比べる。生成機の費用の見込みは約68米ドルである。
 - [tataraの調査](research/tatara-nnue-transfer.md)の残りの候補（出力bucket、損失の形など）は、設計書がまだなく、世代反復の結果を見て起案する。採用条件は、棋力が向上し、配置の偏りが悪化しないことである（2026年11月3日の開発者の決定）。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は待機中である。現行のP型では探索中に全再計算が起きないので、自玉の位置で条件付けるネットを対局で測るか、累算器の更新方式を変えた時点で再開する。
 

@@ -15,11 +15,11 @@
 
 ## 状態
 
-起案。2026年11月3日に起案し、着手は利用者の指示を待つ。
+進行中。2026年11月4日に利用者の指示で着手し、masterからブランチ`nnue-generation-reset`のworktreeを`data/worktrees/nnue-generation-reset`に作った。
 前提は、[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定した構成と、そのブランチを統合したmasterである。
 2026年11月3日の利用者の決定により、本書はAlphaZero型の強化学習の再開より先に行う。
 いま詰まっている点はない。
-次の一手は、利用者の指示の後に、masterからブランチ`nnue-generation-reset`のworktreeを切って、フェーズ1の実装をcodexへ委任することである。
+次の一手は、フェーズ1の実装を終え、安い機械で連続生成スクリプトの通し試験を行うことである。
 
 ## 目的
 
