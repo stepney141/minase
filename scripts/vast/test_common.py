@@ -223,6 +223,24 @@ class CommonTests(unittest.TestCase):
                 common.copy(17, '/workspace/job/logs/', self.root)
         self.assertFalse(self.fake.remaining())
 
+    def test_rsync_to_uses_saved_address_without_account_query(self) -> None:
+        """保存済みのIPv4とIPv6の接続先を使い、口座への照会を行わない。"""
+        for host, expected in (('192.0.2.1', '192.0.2.1'), ('2001:db8::1', '[2001:db8::1]')):
+            self.fake.add('rsync', ['-a', '-e'])
+            common.rsync_to(host, 2222, '/workspace/job/teacher/', self.root / 'received')
+            self.assertEqual(self.fake.calls()[-1][-2:],
+                             [f'root@{expected}:/workspace/job/teacher/', str(self.root / 'received') + '/'])
+        self.assertEqual([call[0] for call in self.fake.calls()], ['rsync', 'rsync'])
+        with self.assertRaises(common.VastError):
+            common.rsync_to('192.0.2.1', 2222, '/workspace/job/teacher/', Path('relative'))
+
+    def test_rsync_to_preserves_failure(self) -> None:
+        """転送元がまだない場合も終了コード23を呼び出し元へ返す。"""
+        self.fake.add('rsync', ['-a', '-e'], code=23)
+        with self.assertRaises(subprocess.CalledProcessError) as raised:
+            common.rsync_to('192.0.2.1', 2222, '/workspace/job/teacher/', self.root / 'received')
+        self.assertEqual(raised.exception.returncode, 23)
+
     def test_nonzero_copy_exit_is_preserved(self) -> None:
         """完了行があっても外部コマンドの失敗を伝える。"""
         self.fake.add('vastai', ['copy'], 'total size is 1 speedup is 1\n', code=23)
