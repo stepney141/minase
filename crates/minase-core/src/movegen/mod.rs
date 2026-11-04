@@ -15,6 +15,7 @@ mod search_captures;
 mod virtual_board;
 
 pub use checked::IllegalMove;
+pub use gives_check::CheckContext;
 pub use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 
 use crate::attacks::{AttackTables, attack_tables};

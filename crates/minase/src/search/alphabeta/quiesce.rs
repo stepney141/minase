@@ -8,7 +8,7 @@ use crate::search::snapshot::{SearchRepetition, search_key};
 use crate::search::{MATE, MAX_PLY, REPETITION_BAND_START, in_repetition_band};
 use minase_core::MoveGenerator;
 use minase_core::board::Bitboard;
-use minase_core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
+use minase_core::movegen::{CaptureCache, CaptureCandidate, CheckContext, OrdinaryCapturer};
 use minase_core::mv::Move;
 use minase_core::piece::{PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
@@ -238,6 +238,7 @@ impl Searcher<'_> {
         let mut best = best;
         let mut best_move = None;
         let mut candidate_count = 0;
+        let mut check_context = CheckContext::default();
         let futility_base = s + self.delta_margin;
         #[cfg(feature = "search-stats")]
         let low_value_threshold = alpha - futility_base;
@@ -310,7 +311,11 @@ impl Searcher<'_> {
                                 self.stats.quiesce_lion_double_move_count_exemptions += 1;
                             }
                         } else {
-                            if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                            if self.checking_move_exempts_qsearch_pruning(
+                                position,
+                                mv,
+                                &mut check_context,
+                            ) {
                                 break 'pruning;
                             }
                             #[cfg(feature = "search-stats")]
@@ -322,7 +327,11 @@ impl Searcher<'_> {
                     }
 
                     if futility_value <= alpha {
-                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                        if self.checking_move_exempts_qsearch_pruning(
+                            position,
+                            mv,
+                            &mut check_context,
+                        ) {
                             break 'pruning;
                         }
                         if should_raise_futility_best_score(best, futility_value) {
@@ -337,7 +346,11 @@ impl Searcher<'_> {
 
                     let see_threshold = alpha - futility_base;
                     if see_prunes(position, self.rules, self.nnue, mv, see_threshold) {
-                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                        if self.checking_move_exempts_qsearch_pruning(
+                            position,
+                            mv,
+                            &mut check_context,
+                        ) {
                             break 'pruning;
                         }
                         #[cfg(feature = "search-stats")]
@@ -433,12 +446,17 @@ impl Searcher<'_> {
     }
 
     /// 枝刈り条件に当たった候補が王手になる手なら、免除として記録する。
-    fn checking_move_exempts_qsearch_pruning(&mut self, position: &Position, mv: Move) -> bool {
+    fn checking_move_exempts_qsearch_pruning(
+        &mut self,
+        position: &Position,
+        mv: Move,
+        context: &mut CheckContext,
+    ) -> bool {
         #[cfg(feature = "search-stats")]
         {
             self.stats.quiesce_gives_check_calls += 1;
         }
-        let gives_check = position.gives_check(&self.generator, mv);
+        let gives_check = context.gives_check(position, &self.generator, mv);
         #[cfg(feature = "search-stats")]
         if gives_check {
             self.stats.quiesce_check_exemptions += 1;

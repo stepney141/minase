@@ -27,6 +27,8 @@ pub(crate) struct AttackTables {
     slide_directions: [[u8; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT],
     /// 各升を中心とする5×5の近傍。固定利きの逆引きに使う。
     neighbourhoods: [Bitboard; RAW_SQUARE_COUNT],
+    /// 対象升への利きが依存する8方向の利き線と5×5近傍の和集合。
+    attack_dependencies: [Bitboard; RAW_SQUARE_COUNT],
     /// 各升から獅子が直接跳べる2升先の集合(第12条第5項・第6項)。
     lion_jumps: [Bitboard; RAW_SQUARE_COUNT],
 }
@@ -80,6 +82,12 @@ impl AttackTables {
             }
         }
 
+        let mut attack_dependencies = neighbourhoods;
+        for from in Square::all() {
+            for direction in Direction::ALL {
+                attack_dependencies[from.raw_index()] |= rays[direction.index()][from.raw_index()];
+            }
+        }
         let reach = fixed.clone();
         let mut tables = Self {
             reach,
@@ -88,6 +96,7 @@ impl AttackTables {
             slide_directions,
             lion_jumps,
             neighbourhoods,
+            attack_dependencies,
         };
         for color in Color::ALL {
             for profile_id in all_profiles() {
@@ -147,6 +156,14 @@ impl AttackTables {
     #[inline]
     pub(crate) fn neighbourhood(&self, square: Square) -> Bitboard {
         self.neighbourhoods[square.raw_index()]
+    }
+
+    /// 指定升への利きに影響する占有升の範囲を返す。
+    /// 固定利きと特殊移動の到達範囲は5×5近傍に収まり、走りの逆引きは8方向の遮蔽だけを見る。
+    /// したがって、この和集合の外で占有が変わっても`attackers_to_by`の結果は変わらない。
+    #[inline]
+    pub(crate) fn attack_dependencies(&self, square: Square) -> Bitboard {
+        self.attack_dependencies[square.raw_index()]
     }
 
     /// 獅子が直接跳べる2升先の集合を返す。

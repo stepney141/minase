@@ -7,6 +7,7 @@ use crate::search::{
     MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition,
     in_repetition_band,
 };
+use minase_core::movegen::CheckContext;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::repetition_key;
@@ -379,6 +380,7 @@ impl Searcher<'_> {
         let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
+        let mut check_context = CheckContext::default();
         let mut counted_quiets = 0;
         let mut had_forbidden_move = false;
         let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
@@ -471,7 +473,7 @@ impl Searcher<'_> {
                                 history,
                             ) <= alpha
                                 // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
-                                && !position.gives_check(&self.generator, mv)
+                                && !check_context.gives_check(position, &self.generator, mv)
                                 && !*royal_attacked
                                     .get_or_insert_with(|| royal_under_attack(position))
                             {
@@ -518,8 +520,9 @@ impl Searcher<'_> {
                             depth,
                             params::continuation_pruning(),
                         ) && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                            && !*gives_check
-                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                            && !*gives_check.get_or_insert_with(|| {
+                                check_context.gives_check(position, &self.generator, mv)
+                            })
                         {
                             index += 1;
                             continue;
@@ -546,7 +549,7 @@ impl Searcher<'_> {
                             // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
                             if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                                 && !*gives_check.get_or_insert_with(|| {
-                                    position.gives_check(&self.generator, mv)
+                                    check_context.gives_check(position, &self.generator, mv)
                                 })
                             {
                                 if should_raise_futility_best_score(best_score, futility_value) {
@@ -568,8 +571,9 @@ impl Searcher<'_> {
                                 mv,
                                 -quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
                             )
-                            && !*gives_check
-                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                            && !*gives_check.get_or_insert_with(|| {
+                                check_context.gives_check(position, &self.generator, mv)
+                            })
                         {
                             index += 1;
                             continue;
@@ -585,8 +589,9 @@ impl Searcher<'_> {
                             mv,
                             -see_margin(self.nnue.pawn_value(), depth, 0),
                         )
-                        && *gives_check
-                            .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                        && *gives_check.get_or_insert_with(|| {
+                            check_context.gives_check(position, &self.generator, mv)
+                        })
                     {
                         index += 1;
                         continue;
@@ -625,7 +630,9 @@ impl Searcher<'_> {
                     eval,
                     pawn: self.nnue.pawn_value(),
                     correction_weighted_sum,
-                    seek_mate_gives_check: self.lmr_seek_mate_gives_check(position, mv),
+                    seek_mate_gives_check: self
+                        .seek_mate
+                        .then(|| check_context.gives_check(position, &self.generator, mv)),
                 });
                 if lmr {
                     lmr_depth(depth, reduction, pv_node, ply, self.root_depth)
