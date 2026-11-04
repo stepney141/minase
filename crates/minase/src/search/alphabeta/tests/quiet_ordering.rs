@@ -369,8 +369,7 @@ fn quiet_ordering_value_matches_fixed_history_and_coefficient_examples() {
         from,
         to,
         check: false,
-        moving_piece_value: 275,
-        pawn_value: 100,
+        threat_value: 275 * 37 / 100,
         threat_delta: 0,
     };
 
@@ -490,5 +489,186 @@ fn move_picker_reads_butterfly_pawn_and_all_available_continuations() {
         let first_index = ordered.iter().position(|&mv| mv == first).unwrap();
         let second_index = ordered.iter().position(|&mv| mv == second).unwrap();
         assert!(first_index < second_index);
+    });
+}
+
+/// 相手の同価値の駒をまとめた、価値順の累積疑似利き。
+struct ReferenceLesserPieceThreats {
+    /// 各要素は駒価値と、その価値以下の相手駒の疑似利きの和集合である。
+    groups: Vec<(i32, Bitboard)>,
+}
+
+impl ReferenceLesserPieceThreats {
+    /// 相手の盤上の各駒を実際の駒コードで評価し、同価値の群ごとに累積疑似利きを作る。
+    fn with_piece_values(
+        position: &Position,
+        mut piece_value: impl FnMut(PieceCode) -> i32,
+    ) -> Self {
+        let enemy = position.side_to_move().opposite();
+        let mut controls: Vec<_> = position
+            .pieces_of(enemy)
+            .into_iter()
+            .map(|square| {
+                let piece = position
+                    .piece_at(square)
+                    .expect("enemy piece square must contain a piece");
+                (piece_value(piece), position.piece_control(square))
+            })
+            .collect();
+        controls.sort_unstable_by_key(|&(value, _)| value);
+
+        let mut groups = Vec::with_capacity(controls.len());
+        let mut cumulative = Bitboard::EMPTY;
+        let mut index = 0;
+        while index < controls.len() {
+            let value = controls[index].0;
+            while index < controls.len() && controls[index].0 == value {
+                cumulative |= controls[index].1;
+                index += 1;
+            }
+            groups.push((value, cumulative));
+        }
+        Self { groups }
+    }
+
+    /// `piece_value`より価値が厳密に小さい相手駒の疑似利きの和集合を返す。
+    fn below(&self, piece_value: i32) -> Bitboard {
+        let count = self
+            .groups
+            .partition_point(|&(value, _)| value < piece_value);
+        if count == 0 {
+            Bitboard::EMPTY
+        } else {
+            self.groups[count - 1].1
+        }
+    }
+}
+
+/// 採点の高速化前の処理。移動元ごとの値を各手で引き直す。
+fn reference_quiet_value(
+    board: &Position,
+    nnue: &Nnue,
+    generator: &MoveGenerator,
+    context: MovePickerContext<'_>,
+    threats: &ReferenceLesserPieceThreats,
+    direct: &mut DirectCheckSquares,
+    mv: Move,
+) -> i64 {
+    let piece = board.piece_at(mv.from).unwrap();
+    let kind = piece.kind().unwrap();
+    let value = nnue.piece_value(piece);
+    let continuation = [1, 2, 3, 4, 6]
+        .into_iter()
+        .filter_map(|distance| {
+            let ply = context.ply.checked_sub(distance as u32)? as usize;
+            let record = context.path_moves[ply].record?;
+            Some(
+                context
+                    .continuation_history
+                    .read(continuation_index(record, piece, mv, distance)),
+            )
+        })
+        .sum();
+    quiet_ordering_value(
+        QuietOrderingInput {
+            butterfly: context.history[piece.color().unwrap().index()][mv.from.dense_index()]
+                [mv.to.dense_index()],
+            pawn: context.pawn_history.read(context.pawn_key, piece, mv.to),
+            continuation,
+            ply: context.ply,
+            from: mv.from,
+            to: mv.to,
+            check: qualifies_for_check_bonus(board, generator, nnue, direct, kind, mv),
+            threat_value: i64::from(value) * i64::from(context.coefficients.threat_weight)
+                / i64::from(nnue.pawn_value()),
+            threat_delta: lesser_threat_delta(kind, threats.below(value), mv),
+        },
+        context.low_ply_history,
+        context.coefficients,
+    )
+}
+
+/// 5規則セットの乱数対局で、履歴と脅威を含む全採点の順序を従来処理と照合する。
+#[test]
+fn cached_quiet_scores_preserve_reference_order_with_all_history_terms() {
+    with_root_searcher(&Position::initial(), &[], |searcher| {
+        searcher.path_moves = (0..6)
+            .map(|i| PathMove {
+                record: (i != 3).then_some(MoveRecord {
+                    mv: step(sq(i, 1), sq(i, 2)),
+                    piece: PieceCode::new(Color::White, PieceKind::Rook).unwrap(),
+                    captured: (i % 2 == 0).then_some(PieceKind::Pawn),
+                }),
+                attacking: None,
+            })
+            .collect();
+        for rule_name in [
+            "engine-default",
+            "lishogi",
+            "L1,L3,P0,P5,P6,R2,E1,E2",
+            "L0,P1,R1,E0",
+            "L1,L2,P2,P3,P4,R2,E0",
+        ] {
+            let rules = minase_core::rules::Rules::from_codes(
+                &minase_core::rules::parse_rule_set(rule_name).unwrap(),
+            )
+            .unwrap();
+            let generator = MoveGenerator::new(rules.moves);
+            for board in minase_core::test_util::bench_positions().into_iter().chain(
+                minase_core::test_util::sampled_random_positions(rules.moves),
+            ) {
+                let mut quiets = Vec::new();
+                generator.generate_quiets(&board, &mut Vec::new(), &mut quiets);
+                for (i, &mv) in quiets.iter().enumerate() {
+                    let piece = board.piece_at(mv.from).unwrap();
+                    searcher.history[board.side_to_move().index()][mv.from.dense_index()]
+                        [mv.to.dense_index()] = i as i32 % 37 - 18;
+                    searcher
+                        .pawn_history
+                        .store(0, piece, mv.to, i as i16 % 29 - 14);
+                    for (j, path) in searcher.path_moves.iter().enumerate() {
+                        if let Some(record) = path.record {
+                            searcher.continuation_history.store(
+                                continuation_index(record, piece, mv, 6 - j),
+                                (i as i16 * 3 + j as i16) % 53 - 26,
+                            );
+                        }
+                    }
+                }
+                for ply in [0, 4, 6] {
+                    let mut context = searcher_move_picker_context(searcher, ply);
+                    context.coefficients = QuietOrderingCoefficients {
+                        check_bonus: 1003,
+                        threat_weight: 97,
+                    };
+                    let threats = ReferenceLesserPieceThreats::with_piece_values(&board, |piece| {
+                        searcher.nnue.piece_value(piece)
+                    });
+                    let mut direct = DirectCheckSquares::new(&board);
+                    let mut expected = quiets.clone();
+                    expected.sort_by_cached_key(|&mv| {
+                        (
+                            Reverse(reference_quiet_value(
+                                &board,
+                                searcher.nnue,
+                                &generator,
+                                context,
+                                &threats,
+                                &mut direct,
+                                mv,
+                            )),
+                            Reverse(searcher.nnue.quiet_move_pst_delta(&board, mv)),
+                        )
+                    });
+                    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+                    let actual: Vec<_> = std::iter::from_fn(|| {
+                        picker.next(&board, searcher.nnue, &generator, context)
+                    })
+                    .filter_map(|(mv, capture)| (!capture).then_some(mv))
+                    .collect();
+                    assert_eq!(actual, expected, "rules={rule_name}, ply={ply}");
+                }
+            }
+        }
     });
 }

@@ -58,8 +58,7 @@ pub(super) struct QuietOrderingInput {
     pub(super) from: minase_core::Square,
     pub(super) to: minase_core::Square,
     pub(super) check: bool,
-    pub(super) moving_piece_value: i32,
-    pub(super) pawn_value: i32,
+    pub(super) threat_value: i64,
     pub(super) threat_delta: i32,
 }
 
@@ -72,7 +71,6 @@ pub(super) fn quiet_ordering_value(
     low_ply_history: &LowPlyHistory,
     coefficients: QuietOrderingCoefficients,
 ) -> i64 {
-    assert!(input.pawn_value > 0, "pawn value must be positive");
     let mut value =
         2 * i64::from(input.butterfly) + 2 * i64::from(input.pawn) + i64::from(input.continuation);
     if input.ply < LOW_PLY_HISTORY_PLY_COUNT as u32 {
@@ -81,9 +79,7 @@ pub(super) fn quiet_ordering_value(
         value += 8 * i64::from(low_ply) / (1 + i64::from(input.ply));
     }
     value += i64::from(coefficients.check_bonus) * i64::from(input.check);
-    let threat = i64::from(input.moving_piece_value) * i64::from(coefficients.threat_weight)
-        / i64::from(input.pawn_value);
-    value + threat * i64::from(input.threat_delta)
+    value + input.threat_value * i64::from(input.threat_delta)
 }
 
 /// 相手の同価値の駒をまとめた、価値順の累積疑似利き。
@@ -909,6 +905,42 @@ pub(super) struct MovePickerContext<'a> {
     pub(super) coefficients: QuietOrderingCoefficients,
 }
 
+/// 同じ移動元の静かな手で共有する、局面と表の添字だけの情報。
+/// 履歴の値は保持せず、各手の採点時に従来と同じ順序で読む。
+struct QuietPiece<'a> {
+    piece: PieceCode,
+    threat_value: i64,
+    kind: PieceKind,
+    continuation_kind_offset: usize,
+    butterfly: &'a [i32; BOARD_SQUARE_COUNT],
+    threats: Bitboard,
+}
+
+impl<'a> QuietPiece<'a> {
+    fn new(
+        position: &Position,
+        nnue: &Nnue,
+        context: MovePickerContext<'a>,
+        threats: &LesserPieceThreats,
+        from: Square,
+    ) -> Self {
+        let piece = piece_at_for_ordering(position, from);
+        let value = nnue.piece_value(piece);
+        let kind = piece.kind().expect("quiet ordering mover kind");
+        Self {
+            piece,
+            threat_value: i64::from(value) * i64::from(context.coefficients.threat_weight)
+                / i64::from(nnue.pawn_value()),
+            kind,
+            continuation_kind_offset: kind.index() * BOARD_SQUARE_COUNT,
+            butterfly: &context.history[piece.color().expect("quiet ordering mover color").index()]
+                [from.dense_index()],
+            threats: threats.below(value),
+        }
+    }
+}
+
+/// 移動元ごとの不変情報を使い、履歴の読み出しと採点は各手について行う。
 #[allow(clippy::too_many_arguments)]
 fn quiet_move_ordering_value(
     position: &Position,
@@ -916,14 +948,11 @@ fn quiet_move_ordering_value(
     generator: &MoveGenerator,
     context: MovePickerContext<'_>,
     continuation_offsets: &[Option<usize>; CONTINUATION_WEIGHTS.len()],
-    lesser_piece_threats: &LesserPieceThreats,
+    piece: &QuietPiece<'_>,
     direct_checks: &mut DirectCheckSquares,
     mv: Move,
 ) -> i64 {
-    let piece = piece_at_for_ordering(position, mv.from);
-    let piece_value = nnue.piece_value(piece);
-    let moving_kind = piece.kind().expect("quiet ordering mover kind");
-    let continuation_suffix = moving_kind.index() * BOARD_SQUARE_COUNT
+    let continuation_suffix = piece.continuation_kind_offset
         + oriented_square(mv.to.dense_index(), position.side_to_move());
     let continuation = continuation_offsets
         .iter()
@@ -934,12 +963,12 @@ fn quiet_move_ordering_value(
                 .read(offset + continuation_suffix)
         })
         .sum();
-    let threats = lesser_piece_threats.below(piece_value);
     quiet_ordering_value(
         QuietOrderingInput {
-            butterfly: context.history[piece.color().expect("quiet ordering mover color").index()]
-                [mv.from.dense_index()][mv.to.dense_index()],
-            pawn: context.pawn_history.read(context.pawn_key, piece, mv.to),
+            butterfly: piece.butterfly[mv.to.dense_index()],
+            pawn: context
+                .pawn_history
+                .read(context.pawn_key, piece.piece, mv.to),
             continuation,
             ply: context.ply,
             from: mv.from,
@@ -949,12 +978,11 @@ fn quiet_move_ordering_value(
                 generator,
                 nnue,
                 direct_checks,
-                moving_kind,
+                piece.kind,
                 mv,
             ),
-            moving_piece_value: piece_value,
-            pawn_value: nnue.pawn_value(),
-            threat_delta: lesser_threat_delta(moving_kind, threats, mv),
+            threat_value: piece.threat_value,
+            threat_delta: lesser_threat_delta(piece.kind, piece.threats, mv),
         },
         context.low_ply_history,
         context.coefficients,
@@ -1140,24 +1168,31 @@ impl MovePicker {
                         nnue.piece_value(piece)
                     });
                     let mut direct_checks = DirectCheckSquares::new(position);
-                    for (index, &mv) in self.quiets.iter().enumerate() {
-                        if self.used_quiets.contains(&Some(index)) {
-                            continue;
+                    let mut offset = 0;
+                    for moves in self.quiets.chunk_by(|a, b| a.from == b.from) {
+                        let piece =
+                            QuietPiece::new(position, nnue, context, &threats, moves[0].from);
+                        for (local_index, &mv) in moves.iter().enumerate() {
+                            let index = offset + local_index;
+                            if self.used_quiets.contains(&Some(index)) {
+                                continue;
+                            }
+                            self.quiet_order.push((
+                                Reverse(quiet_move_ordering_value(
+                                    position,
+                                    nnue,
+                                    generator,
+                                    context,
+                                    &continuation_offsets,
+                                    &piece,
+                                    &mut direct_checks,
+                                    mv,
+                                )),
+                                Reverse(nnue.quiet_move_pst_delta(position, mv)),
+                                index,
+                            ));
                         }
-                        self.quiet_order.push((
-                            Reverse(quiet_move_ordering_value(
-                                position,
-                                nnue,
-                                generator,
-                                context,
-                                &continuation_offsets,
-                                &threats,
-                                &mut direct_checks,
-                                mv,
-                            )),
-                            Reverse(nnue.quiet_move_pst_delta(position, mv)),
-                            index,
-                        ));
+                        offset += moves.len();
                     }
                     self.quiet_order.sort_unstable();
                     self.stage = MovePickerStage::Done;
