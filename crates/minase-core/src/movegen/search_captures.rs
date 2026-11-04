@@ -12,6 +12,7 @@ use super::control::{
     capture_targets_without_special, piece_control_without_special, special_step_destinations,
 };
 use super::expand::promoting_variant;
+use super::generate::single_step_origins;
 use super::lion::generate_lion_double_and_jumps;
 use super::lion_like::generate_lion_like_double_and_jumps;
 use super::{MoveGenerator, ORDINARY_KINDS};
@@ -171,7 +172,12 @@ impl MoveGenerator {
         }
         let color = position.side_to_move();
         for kind in ORDINARY_KINDS {
-            for from in position.pieces_of_kind(color, kind) {
+            let origins = if matches!(kind, PieceKind::Pawn | PieceKind::GoBetween) {
+                single_step_origins(position, kind, allowed)
+            } else {
+                position.pieces_of_kind(color, kind)
+            };
+            for from in origins {
                 if let Some(capturer) = self.ordinary_capturer(position, from, kind, allowed) {
                     targets |= capturer.captures;
                     output.push(capturer);

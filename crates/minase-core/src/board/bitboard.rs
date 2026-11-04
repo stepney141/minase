@@ -38,6 +38,28 @@ impl Bitboard {
         &self.0
     }
 
+    /// 全升を北へ1段移し、最北段から盤外へ出る升を除く。
+    /// 16ビット単位の移動なので筋と番兵ビットは変わらない。
+    #[inline]
+    pub(crate) const fn shift_north(self) -> Self {
+        Self([
+            self.0[0] << 16,
+            (self.0[1] << 16) | (self.0[0] >> 48),
+            (self.0[2] << 16) | (self.0[1] >> 48),
+        ])
+    }
+
+    /// 全升を南へ1段移し、最南段から盤外へ出る升を除く。
+    /// 16ビット単位の移動なので筋と番兵ビットは変わらない。
+    #[inline]
+    pub(crate) const fn shift_south(self) -> Self {
+        Self([
+            (self.0[0] >> 16) | (self.0[1] << 48),
+            (self.0[1] >> 16) | (self.0[2] << 48),
+            self.0[2] >> 16,
+        ])
+    }
+
     /// 指定した1升だけを含む集合を作る。
     #[inline]
     pub fn from_square(square: Square) -> Self {
@@ -288,6 +310,27 @@ mod tests {
             Square::all().filter(|square| square.dense_index() % 2 == 0),
         ));
         sets
+    }
+
+    /// 第4条の12段と第9条の前後1升移動。語境界をまたぎ、盤端では消える。
+    #[test]
+    fn rank_shifts_match_square_offsets_without_wrapping_or_sentinels() {
+        for set in sample_sets()
+            .into_iter()
+            .chain(Square::all().map(Bitboard::from_square))
+        {
+            for (shifted, delta) in [(set.shift_north(), 1), (set.shift_south(), -1)] {
+                let expected =
+                    Bitboard::from_squares(set.iter().filter_map(|s| s.offset(0, delta)));
+                assert_eq!(shifted, expected);
+                assert!(
+                    shifted
+                        .words()
+                        .iter()
+                        .all(|w| w & !Bitboard::VALID_WORD == 0)
+                );
+            }
+        }
     }
 
     // 実装上の契約として、ビットボードは升の集合として振る舞う。
