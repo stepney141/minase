@@ -17,6 +17,7 @@ mod history;
 mod history_forms;
 mod improving;
 mod late_move;
+mod lazy_accumulators;
 mod limits;
 mod negamax;
 mod null_move;

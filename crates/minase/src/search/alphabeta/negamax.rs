@@ -33,7 +33,7 @@ use super::pruning::{
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
-use super::searcher::{MoveRecord, PathMove, Searcher};
+use super::searcher::{AccumulatorUpdate, MoveRecord, PathMove, PendingAccumulator, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 use crate::search::params;
@@ -232,9 +232,6 @@ impl Searcher<'_> {
         // 補正はノードの最初に1回読み、すべての静的評価の判定で共有する。
         // Stockfish src/search.cpp:832, 846-884。
         let side = position.side_to_move();
-        #[cfg(feature = "invariants")]
-        self.nnue
-            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
         let raw = if let Some(static_eval) = tt_hit.and_then(|hit| hit.static_eval) {
             #[cfg(feature = "search-stats")]
             {
@@ -242,9 +239,7 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            let raw = self
-                .nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], side);
+            let raw = self.evaluate_at(position, ply);
             if tt_hit.is_none()
                 && self
                     .tt
@@ -780,18 +775,17 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
     ) -> Option<i32> {
+        self.ensure_accumulator(position, ply);
         let lion_before = position
             .lion_taken_by_non_lion()
             .map(|trigger| trigger.square);
         let undo = position.make_null_move();
         self.follow_pv[(ply + 1) as usize] = false;
         self.previous_move_to[(ply + 1) as usize] = None;
-        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.nnue.update_accumulator_after_null(
-            &parents[ply as usize],
-            &mut children[0],
-            lion_before,
-        );
+        self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+            update: AccumulatorUpdate::Null(lion_before),
+            computed: false,
+        });
         self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
         self.pawn_keys[(ply + 1) as usize] = self.pawn_keys[ply as usize];
         self.minor_keys[(ply + 1) as usize] = self.minor_keys[ply as usize];
@@ -819,6 +813,7 @@ impl Searcher<'_> {
         self.path_moves.pop();
         self.null_move_boundary = previous_null_move_boundary;
         self.null_move_ply = previous_null_move_ply;
+        self.pending_accumulators[(ply + 1) as usize] = None;
         position.unmake_null_move(undo);
         score
     }
@@ -903,6 +898,7 @@ impl Searcher<'_> {
         if !self.enter_node() {
             return None;
         }
+        self.ensure_accumulator(position, ply);
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
         let repetition_key = match self.repetition {
@@ -917,13 +913,6 @@ impl Searcher<'_> {
             return Some(score);
         }
 
-        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.nnue.update_accumulator_after_move(
-            &parents[ply as usize],
-            &mut children[0],
-            position,
-            &undo,
-        );
         self.material_keys[(ply + 1) as usize] =
             key_after_move(self.material_keys[ply as usize], &undo);
         self.pawn_keys[(ply + 1) as usize] =
@@ -941,6 +930,10 @@ impl Searcher<'_> {
         self.path_moves.push(PathMove {
             record: Some(MoveRecord::from_undo(self.nnue, &undo)),
             attacking: None,
+        });
+        self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+            update: AccumulatorUpdate::Move(undo),
+            computed: false,
         });
         let mut score = if first {
             self.negamax(
@@ -1015,7 +1008,7 @@ impl Searcher<'_> {
         }
         self.path_keys.pop();
         self.path_moves.pop();
-        position.unmake_move(undo);
+        position.unmake_move(self.take_accumulator_move(ply + 1));
         score
     }
 }

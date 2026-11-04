@@ -27,7 +27,7 @@ use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::pruning::{corrected_static_eval, pruning_eval, should_raise_futility_best_score};
 use super::royal::captures_all_royals;
-use super::searcher::{MoveRecord, PathMove, Searcher};
+use super::searcher::{AccumulatorUpdate, MoveRecord, PathMove, PendingAccumulator, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 use crate::search::params;
@@ -137,8 +137,6 @@ impl Searcher<'_> {
         {
             assert_eq!(self.path_moves.len(), ply as usize);
             assert_eq!(self.path_moves.len() + 1, self.path_keys.len());
-            self.nnue
-                .assert_accumulator(position, &self.accumulators[ply as usize], ply);
             assert_eq!(self.material_keys[ply as usize], material_key(position));
             assert_eq!(self.pawn_keys[ply as usize], pawn_key(position));
             let correction_keys = correction_piece_keys(position);
@@ -147,12 +145,7 @@ impl Searcher<'_> {
         }
 
         if ply >= MAX_PLY {
-            return Some(
-                self.nnue.evaluate_accumulator(
-                    &self.accumulators[ply as usize],
-                    position.side_to_move(),
-                ),
-            );
+            return Some(self.evaluate_at(position, ply));
         }
 
         let key = search_key(position);
@@ -201,8 +194,7 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            self.nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], side)
+            self.evaluate_at(position, ply)
         };
         let s = corrected_static_eval(
             v,
@@ -368,17 +360,11 @@ impl Searcher<'_> {
                 }
                 self.enter_node().then_some(())?;
                 self.previous_move_to[(ply + 1) as usize] = Some(mv.to);
+                self.ensure_accumulator(position, ply);
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,
                     candidate.capture.captured,
-                );
-                let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-                self.nnue.update_accumulator_after_move(
-                    &parents[ply as usize],
-                    &mut children[0],
-                    position,
-                    &undo,
                 );
                 self.material_keys[(ply + 1) as usize] =
                     key_after_move(self.material_keys[ply as usize], &undo);
@@ -404,12 +390,16 @@ impl Searcher<'_> {
                     record: Some(MoveRecord::from_undo(self.nnue, &undo)),
                     attacking: None,
                 });
+                self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+                    update: AccumulatorUpdate::Move(undo),
+                    computed: false,
+                });
                 let score = self
                     .quiesce(position, -beta, -alpha, ply + 1)
                     .map(|value| -value);
                 self.path_keys.pop();
                 self.path_moves.pop();
-                position.unmake_move(undo);
+                position.unmake_move(self.take_accumulator_move(ply + 1));
                 score?
             };
             if score > best {
