@@ -2054,6 +2054,115 @@ fn see_pruning_skips_losing_quiet_check() {
     assert_quiet_see_search(&board, target, true, true, false, false);
 }
 
+/// 最初のSEEで残っても、王手用の閾値がより高ければ再判定して枝刈りする。
+/// 履歴で最初の許容損を増やし、対象手を読んだ場合だけβ打ち切りとなる子の値を置く。
+#[cfg(feature = "tuning")]
+pub(super) fn quiet_check_rechecks_see_when_the_second_threshold_is_higher() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(5, 8), Color::White, PieceKind::King),
+            (sq(4, 4), Color::Black, PieceKind::Rook),
+            (sq(6, 3), Color::White, PieceKind::Bishop),
+            (sq(0, 11), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let target = Move {
+        from: sq(4, 4),
+        mid: None,
+        to: sq(5, 4),
+        promote: false,
+    };
+    let leading = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    let nnue = test_nnue();
+    let moves = legal_moves(&board);
+    assert!(moves.contains(&target) && moves.contains(&leading));
+    assert!(board.gives_check(&MoveGenerator::new(engine_rules()), target));
+    let depth = 1;
+    let butterfly = super::super::history::HISTORY_LIMIT;
+    let pawn_history = super::super::history::PAWN_HISTORY_LIMIT;
+    let lmr_depth = history_pruning_lmr_depth(
+        pruning_lmr_depth(depth, 1, false, true, true),
+        depth,
+        pawn_history,
+        butterfly,
+    );
+    assert!(!see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        target,
+        -quiet_see_margin(nnue.pawn_value(), lmr_depth)
+    ));
+    assert!(see_prunes(
+        &board,
+        engine_rules(),
+        nnue,
+        target,
+        -super::super::pruning::see_margin(nnue.pawn_value(), depth, 0)
+    ));
+    let alpha = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(nnue, &child)
+        })
+        .min()
+        .unwrap()
+        - 1;
+    let beta = alpha + 2;
+    let table = TranspositionTable::new(16).unwrap();
+    for &mv in &moves {
+        let mut child = board.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        let score = if mv == target { beta } else { alpha - 1 };
+        table.store(
+            search_key(&child),
+            MAX_PLY,
+            -score,
+            None,
+            Bound::Exact,
+            None,
+            1,
+            false,
+        );
+    }
+    table.store(
+        search_key(&board),
+        0,
+        0,
+        None,
+        Bound::Upper,
+        Some(leading),
+        0,
+        false,
+    );
+    run_configured_negamax(&board, depth, alpha, beta, 0, &table, |searcher| {
+        searcher.follow_pv[0] = false;
+        searcher.killers[0][0] = Some(target);
+        searcher.history[Color::Black.index()][target.from.dense_index()]
+            [target.to.dense_index()] = butterfly;
+        searcher.pawn_history.update(
+            searcher.pawn_keys[0],
+            board.piece_at(target.from).unwrap(),
+            target.to,
+            pawn_history,
+        );
+    });
+    assert_ne!(
+        table.probe(search_key(&board), 0).unwrap().best_move,
+        Some(target)
+    );
+}
+
 fn losing_quiet_non_check() -> (Position, Move) {
     let board = position(
         Color::Black,
@@ -2094,6 +2203,74 @@ pub(super) fn quiet_see_pruning_searches_follow_pv_move() {
 fn quiet_see_pruning_searches_tt_move() {
     let (board, target) = losing_quiet_non_check();
     assert_quiet_see_search(&board, target, false, false, true, true);
+}
+
+/// SEEの契約により、閾値を下げても偽から真へ変わらない。
+/// 王手判定のキャッシュは候補の評価順にも、SEEとの呼出し順にも依存しない。
+#[test]
+fn quiet_see_is_monotone_and_check_evaluation_order_is_irrelevant() {
+    use minase_core::movegen::CheckContext;
+    use minase_core::test_util::{bench_positions, sampled_random_positions};
+
+    let nnue = test_nnue();
+    let mut pruned_count = 0;
+    let mut retained_count = 0;
+    for text in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = minase_core::rules::Rules::from_codes(
+            &minase_core::rules::parse_rule_set(text).unwrap(),
+        )
+        .unwrap()
+        .moves;
+        let generator = MoveGenerator::new(rules);
+        for board in bench_positions()
+            .into_iter()
+            .chain(sampled_random_positions(rules))
+        {
+            let mut quiets = Vec::new();
+            generator.generate_quiets(&board, &mut Vec::new(), &mut quiets);
+            let mut before_see = CheckContext::default();
+            let expected_checks: Vec<_> = quiets
+                .iter()
+                .map(|&mv| before_see.gives_check(&board, &generator, mv))
+                .collect();
+            let mut after_see = CheckContext::default();
+            for (&mv, &expected_check) in quiets.iter().zip(&expected_checks).rev() {
+                let mut previously_pruned = false;
+                for threshold in [
+                    i32::MIN,
+                    -10_000,
+                    -1000,
+                    -100,
+                    -1,
+                    0,
+                    1,
+                    100,
+                    10_000,
+                    i32::MAX,
+                ] {
+                    let pruned = see_prunes(&board, rules, nnue, mv, threshold);
+                    assert!(
+                        !previously_pruned || pruned,
+                        "{text}: {mv:?}, threshold={threshold}"
+                    );
+                    previously_pruned = pruned;
+                    pruned_count += usize::from(pruned);
+                    retained_count += usize::from(!pruned);
+                }
+                assert_eq!(
+                    after_see.gives_check(&board, &generator, mv),
+                    expected_check
+                );
+            }
+        }
+    }
+    assert!(pruned_count > 0 && retained_count > 0);
 }
 
 // 成る角行の静かな手は王手になりSEEが負でも、成る手の保護により読む。

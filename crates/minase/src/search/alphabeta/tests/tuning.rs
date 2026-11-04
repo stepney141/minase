@@ -49,6 +49,7 @@ fn tuning_parameters_in_isolated_process() {
             "fixed shallow pruning behavior",
             "fixed correction behavior",
             "fixed history and capture pruning",
+            "quiet SEE recheck",
         ] {
             let output = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -264,6 +265,11 @@ fn tuning_parameters_in_isolated_process() {
     }
 
     match scenario.as_str() {
+        "quiet SEE recheck" => {
+            params::set("QuietSeeMargin", 100).unwrap();
+            super::pruning::quiet_check_rechecks_see_when_the_second_threshold_is_higher();
+            return;
+        }
         "lmr max reduction" => {
             super::pruning::lmr_max_reduction_parameter_sets_cap();
             return;
