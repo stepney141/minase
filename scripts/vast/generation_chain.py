@@ -246,13 +246,17 @@ class Chain:
             if str(header[key]) != str(value):
                 raise ChainStop(f'第{generation}世代の本{number}: {key}が一致しません')
 
+    def recorded_positions(self, generation: int, number: int) -> int:
+        """学習に使える局面の数を、検査済みの本の生成ログから読む。"""
+        log = (self.root / f'gen-{generation}/logs/book-{number}.log').read_text()
+        return int(output_fields(log)['recorded_positions'])
+
     def books(self, generation: int, commit: str, checksum: str) -> dict[int, int]:
         result = {}
         for path in self.book_paths(generation):
             number = book_number(path)
-            header = read_header(path)
-            self.check_header(header, generation, number, commit, checksum)
-            result[number] = header['entry_count']
+            self.check_header(read_header(path), generation, number, commit, checksum)
+            result[number] = self.recorded_positions(generation, number)
         return result
 
     def ssh(self, command: str, seconds: float) -> str:
@@ -435,9 +439,11 @@ class Chain:
                     if int(log[key]) != value:
                         raise ChainStop(f'本{number}の生成ログの{key}が一致しません')
                 games, discarded = int(header['game_count']), int(log['games_discarded_max_ply'])
-                entries = int(header['entry_count'])
+                entries = int(header['eligible_positions'])
                 if games < 0 or discarded < 0 or games + discarded != self.args.games or entries < 0:
                     raise ChainStop(f'本{number}の局数または局面数が不正です')
+                if int(log['recorded_positions']) != entries:
+                    raise ChainStop(f'本{number}の生成ログの局面数が本の内容と一致しません')
                 os.link(path, teacher / path.name)
                 books[number] = entries
                 print(f'第{generation}世代の本{number}: 経過{time.monotonic() - self.started:.1f}秒、'
@@ -680,7 +686,8 @@ class Chain:
         pending = [generation for generation in range(self.args.first_generation, self.args.last_generation + 1)
                    if self.commit_for(generation) is None]
         if pending:
-            needs_generation = any(sum(read_header(path)['entry_count'] for path in self.book_paths(generation))
+            needs_generation = any(sum(self.recorded_positions(generation, book_number(path))
+                                       for path in self.book_paths(generation))
                                    < self.args.positions_per_generation for generation in pending)
             self.prepare_machine(pending, needs_generation)
             self.start_stc()

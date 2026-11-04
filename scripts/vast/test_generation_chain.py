@@ -59,7 +59,8 @@ def inspect_book(path: Path) -> dict:
     return {'rule_set': data[8:40].rstrip(b'\0').decode(), 'generation_commit': data[40:80].decode(),
             'network_checksum': data[80:112].hex(), 'teacher_search_budget': int.from_bytes(data[120:128], 'little'),
             'seed': int.from_bytes(data[128:136], 'little'), 'game_count': int.from_bytes(data[136:144], 'little'),
-            'entry_count': int.from_bytes(data[144:152], 'little')}
+            'entry_count': int.from_bytes(data[144:152], 'little'),
+            'eligible_positions': int.from_bytes(data[144:152], 'little')}
 
 
 def cli_values(root: Path) -> dict[str, str]:
@@ -283,7 +284,8 @@ class Commands:
                             log = self.local(f'/workspace/job/logs/gen-{job["generation"]}/book-{number}.log')
                             log.parent.mkdir(parents=True, exist_ok=True)
                             values = {'games_completed': 10, 'nodes': 20000, 'max_ply': 4000,
-                                      'hash_mb': 16, 'random_moves_max': 0, 'games_discarded_max_ply': 1} | self.bad_log
+                                      'hash_mb': 16, 'random_moves_max': 0, 'games_discarded_max_ply': 1,
+                                      'recorded_positions': self.entries} | self.bad_log
                             log.write_text(''.join(f'{key}: {value}\n' for key, value in values.items()))
                             self.generated.append((job['generation'], number))
                             break
@@ -372,6 +374,9 @@ class ChainTests(unittest.TestCase):
     def save_book(self, generation: int, number: int, entries: int) -> Path:
         path = self.root / f'run/gen-{generation}/teacher/book-{number}.mnsd'
         write_book(path, header_fields(generation, number, entries))
+        log = self.root / f'run/gen-{generation}/logs/book-{number}.log'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(f'recorded_positions: {entries}\n')
         return path
 
     def test_every_required_argument_is_required_before_creating(self) -> None:
@@ -623,7 +628,7 @@ class ChainTests(unittest.TestCase):
         headers = {'rule_set': 'L0,P0,R2,E0', 'network_checksum': 'ff' * 32,
                    'teacher_search_budget': 19999, 'seed': 9010000001}
         logs = {'games_completed': 9, 'nodes': 19999, 'max_ply': 3999,
-                'hash_mb': 15, 'random_moves_max': 1}
+                'hash_mb': 15, 'random_moves_max': 1, 'recorded_positions': 1}
         for field, value in [*headers.items(), *logs.items()]:
             with self.subTest(field=field):
                 self.commands.bad_header = {field: value} if field in headers else {}
