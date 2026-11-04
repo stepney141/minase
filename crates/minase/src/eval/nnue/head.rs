@@ -44,6 +44,8 @@ pub struct PairwiseL16L32 {
     hidden2_biases: [i32; 32],
     hidden2_output: [i16; 32],
     shared_mirror_weights: Option<SharedMirrorWeights>,
+    /// 各行の末尾2要素を0で埋めた推論用重み。符号化にはhidden2_weightsを使う。
+    hidden2_inference_weights: [[i16; 32]; 32],
 }
 
 /// 各視点の鏡映対から片側だけを取り出した、半幅の推論用重み。
@@ -116,6 +118,11 @@ impl PairwiseL16L32 {
                     .chunks_exact(width / 2)
                     .flat_map(|view| view[..width / 4].iter().copied())
                     .collect(),
+            }),
+            hidden2_inference_weights: std::array::from_fn(|k| {
+                let mut row = [0; 32];
+                row[..30].copy_from_slice(&hidden2_weights[k * 30..(k + 1) * 30]);
+                row
             }),
         })
     }
@@ -218,20 +225,21 @@ impl Head for PairwiseL16L32 {
                 )
             };
 
-        let mut u = [0_u8; 30];
+        // 末尾2要素と対応する重みは0なので、32要素で計算しても積和は変わらない。
+        let mut u = [0_i16; 32];
         for (k, row) in hidden1_weights.chunks_exact(input.len()).enumerate() {
             let mut z = self.hidden1_biases[k];
             for (&w, &a) in row.iter().zip(input) {
                 z += i32::from(w) * i32::from(a);
             }
-            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as u8;
-            u[15 + k] = (z >> 8).clamp(0, 127) as u8;
+            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as i16;
+            u[15 + k] = (z >> 8).clamp(0, 127) as i16;
         }
         let mut y = [0_u8; 32];
-        for (k, row) in self.hidden2_weights.as_chunks::<30>().0.iter().enumerate() {
+        for (k, row) in self.hidden2_inference_weights.iter().enumerate() {
             let mut z = self.hidden2_biases[k];
             for (&w, &a) in row.iter().zip(&u) {
-                z += i32::from(w) * i32::from(i16::from(a));
+                z += i32::from(w) * i32::from(a);
             }
             y[k] = (z >> 8).clamp(0, 127) as u8;
         }

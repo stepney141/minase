@@ -2451,6 +2451,25 @@ fn dual_activation_squares_negative_inputs_and_preserves_32512_boundary() {
 }
 
 #[test]
+fn second_hidden_layer_padding_preserves_every_row_and_last_input() {
+    // u[29]だけを非零にし、30要素の各行の末尾がゼロ埋めで失われないことを検査する。
+    let mut p = HeadParameters::zero(4);
+    p.hidden1_biases[14] = 256;
+    for row in 0..32 {
+        p.hidden2_weights[row * 30 + 29] = 256;
+        p.hidden2_output[row] = 1;
+        for shared in [false, true] {
+            let bytes = p.bytes();
+            let head = PairwiseL16L32::decode(&bytes, 4, shared).unwrap();
+            assert_eq!(head.output(&[0; 4], &[0; 4]), 1, "row={row}");
+            assert_eq!(head.to_bytes(), bytes);
+        }
+        p.hidden2_weights[row * 30 + 29] = 0;
+        p.hidden2_output[row] = 0;
+    }
+}
+
+#[test]
 fn second_hidden_layer_shift_and_clamping_follow_specification() {
     for (bias, expected) in [
         (-260_096, 0),
