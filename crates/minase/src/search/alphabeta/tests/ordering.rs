@@ -617,3 +617,94 @@ fn article_30_killers_preserve_forced_and_deferred_promotions() {
         );
     }
 }
+
+/// 部分整列、枝刈りの遅延、成り手の継続で、全件整列した列の順位を保存する。
+#[test]
+fn limited_quiet_picker_preserves_original_ordinals_and_promotions() {
+    let nnue = test_nnue();
+    let mut history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = empty_capture_history();
+    let promoted_late = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(3, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(5, 7), Color::Black, PieceKind::Rook),
+        ],
+    );
+    // 最初の静かな手より後に成り手を残す。係数や学習済み重みの既定値に依存しない。
+    history[Color::Black.index()][sq(5, 7).dense_index()].fill(-1000);
+    let mut skipped_total = 0;
+    let mut retained_promotions = 0;
+    for name in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = minase_core::rules::Rules::from_codes(
+            &minase_core::rules::parse_rule_set(name).unwrap(),
+        )
+        .unwrap()
+        .moves;
+        let generator = MoveGenerator::new(rules);
+        for board in [promoted_late.clone(), position(Color::Black, &[])]
+            .into_iter()
+            .chain(minase_core::test_util::bench_positions())
+            .chain(minase_core::test_util::sampled_random_positions(rules))
+        {
+            let mut reference = ReferenceMovePicker::new(None, [None; KILLER_COUNT]);
+            let expected: Vec<_> =
+                std::iter::from_fn(|| reference.next(&board, nnue, &generator, &history)).collect();
+            for limit in [0, 1, 5, 38, 1000] {
+                // 途中まで枝刈りが成立しない場合と、最後まで成立しない場合も通す。
+                for delay in [0, 2, usize::MAX] {
+                    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+                    let mut context = isolated_move_picker_context(&history, &capture_history);
+                    context.quiet_sort_limit = Some(limit);
+                    let mut ordinal = 0;
+                    let mut counted = 0;
+                    let mut skipping = false;
+                    while let Some(actual) = picker.next(&board, nnue, &generator, context) {
+                        let skipped = picker.take_skipped_quiets();
+                        assert!(
+                            expected[ordinal..ordinal + skipped]
+                                .iter()
+                                .all(|&(mv, capture)| !capture && !mv.promote)
+                        );
+                        ordinal += skipped;
+                        counted += skipped;
+                        skipped_total += skipped;
+                        assert_eq!(
+                            actual, expected[ordinal],
+                            "limit={limit}, delay={delay}, ordinal={ordinal}"
+                        );
+                        let (mv, capture) = actual;
+                        retained_promotions += usize::from(skipping && mv.promote);
+                        if !capture && !mv.promote {
+                            if counted >= limit && counted - limit >= delay {
+                                picker.skip_nonpromoting_quiets();
+                                skipping = true;
+                            }
+                            counted += 1;
+                        }
+                        ordinal += 1;
+                    }
+                    let skipped = picker.take_skipped_quiets();
+                    assert!(
+                        expected[ordinal..ordinal + skipped]
+                            .iter()
+                            .all(|&(mv, capture)| !capture && !mv.promote)
+                    );
+                    ordinal += skipped;
+                    skipped_total += skipped;
+                    assert_eq!(ordinal, expected.len());
+                }
+            }
+        }
+    }
+    assert!(skipped_total > 0);
+    assert!(retained_promotions > 0);
+}

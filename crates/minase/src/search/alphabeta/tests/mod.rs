@@ -379,6 +379,7 @@ fn isolated_move_picker_context<'a>(
         )
     });
     MovePickerContext {
+        quiet_sort_limit: None,
         ranks: RANKS.get_or_init(|| CaptureRanks::new(test_nnue())),
         history,
         capture_history,
@@ -397,6 +398,7 @@ fn isolated_move_picker_context<'a>(
 
 fn searcher_move_picker_context<'a>(searcher: &'a Searcher<'_>, ply: u32) -> MovePickerContext<'a> {
     MovePickerContext {
+        quiet_sort_limit: None,
         ranks: &searcher.capture_ranks,
         history: searcher.history,
         capture_history: searcher.capture_history,

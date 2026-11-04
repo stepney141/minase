@@ -889,6 +889,8 @@ pub(super) enum MovePickerStage {
 /// 手選択器が静かな手の並べ替えと捕獲履歴の換算に使う探索状態。
 #[derive(Clone, Copy)]
 pub(super) struct MovePickerContext<'a> {
+    /// R1のlate move pruningで数える上限。Noneでは全件を整列する。
+    pub(super) quiet_sort_limit: Option<usize>,
     pub(super) ranks: &'a CaptureRanks,
     pub(super) history: &'a HistoryTable,
     pub(super) capture_history: &'a CaptureHistory,
@@ -1001,6 +1003,9 @@ pub(super) struct MovePicker {
     captures_generated: bool,
     quiets: Vec<Move>,
     quiet_index: usize,
+    quiet_sorted: usize,
+    skip_quiets: bool,
+    skipped_quiets: usize,
     base_moves: Vec<Move>,
     /// 静かな手の並べ替え値の降順、線形経路の移動差分の降順、生成順の整列キー。
     /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
@@ -1023,6 +1028,9 @@ impl MovePicker {
             captures_generated: false,
             quiets: Vec::new(),
             quiet_index: 0,
+            quiet_sorted: 0,
+            skip_quiets: false,
+            skipped_quiets: 0,
             base_moves: Vec::new(),
             quiet_order: Vec::new(),
             used_quiets: [None; KILLER_COUNT],
@@ -1047,9 +1055,30 @@ impl MovePicker {
         self.captures_generated = false;
         self.quiets.clear();
         self.quiet_index = 0;
+        self.quiet_sorted = 0;
+        self.skip_quiets = false;
+        self.skipped_quiets = 0;
         self.killers_tried = false;
         self.quiet_order.clear();
         self.used_quiets = [None; KILLER_COUNT];
+    }
+
+    /// R1でlate move pruningが成立した後、成らない静かな手を返さず、その数を保持する。
+    /// 成る手とその元の順位は保ち、成る手が残らなければ未整列の末尾もまとめて省く。
+    pub(super) fn skip_nonpromoting_quiets(&mut self) {
+        self.skip_quiets = true;
+        if !self.quiet_order[self.quiet_index..]
+            .iter()
+            .any(|key| self.quiets[key.2].promote)
+        {
+            self.skipped_quiets += self.quiet_order.len() - self.quiet_index;
+            self.quiet_index = self.quiet_order.len();
+        }
+    }
+
+    /// 直前の取り出しまでに省いた手数を返し、呼び出し元のindexとmove_countsへ渡す。
+    pub(super) fn take_skipped_quiets(&mut self) -> usize {
+        core::mem::take(&mut self.skipped_quiets)
     }
 
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
@@ -1197,15 +1226,48 @@ impl MovePicker {
                         }
                         offset += moves.len();
                     }
-                    self.quiet_order.sort_unstable();
+                    let len = self.quiet_order.len();
+                    // 成り手を数えない上限までと、その次の1手を必ず整列済みの先頭に含める。
+                    let prefix = match context.quiet_sort_limit {
+                        Some(limit) => {
+                            let promotions = self
+                                .quiet_order
+                                .iter()
+                                .filter(|key| self.quiets[key.2].promote)
+                                .count();
+                            (limit + promotions + 1).min(len)
+                        }
+                        None => len,
+                    };
+                    if prefix < len {
+                        self.quiet_order.select_nth_unstable(prefix);
+                    }
+                    self.quiet_order[..prefix].sort_unstable();
+                    self.quiet_sorted = prefix;
                     self.stage = MovePickerStage::Done;
                 }
                 MovePickerStage::Done => {
-                    if let Some(&(_, _, index)) = self.quiet_order.get(self.quiet_index) {
-                        self.quiet_index += 1;
-                        return Some((self.quiets[index], false));
+                    if self.quiet_index == self.quiet_sorted
+                        && self.quiet_sorted < self.quiet_order.len()
+                    {
+                        let tail = &mut self.quiet_order[self.quiet_sorted..];
+                        if self.skip_quiets && !tail.iter().any(|key| self.quiets[key.2].promote) {
+                            self.skipped_quiets += tail.len();
+                            self.quiet_index = self.quiet_order.len();
+                            return None;
+                        }
+                        // 枝刈りが成立しない場合と、残る成り手の元の順位が必要な場合に整列する。
+                        tail.sort_unstable();
+                        self.quiet_sorted = self.quiet_order.len();
                     }
-                    return None;
+                    let &key = self.quiet_order.get(self.quiet_index)?;
+                    self.quiet_index += 1;
+                    let mv = self.quiets[key.2];
+                    if self.skip_quiets && !mv.promote {
+                        self.skipped_quiets += 1;
+                        continue;
+                    }
+                    return Some((mv, false));
                 }
             }
         }

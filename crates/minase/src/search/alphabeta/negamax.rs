@@ -368,6 +368,12 @@ impl Searcher<'_> {
         // null moveを試さなかった場合も更新する（Stockfish src/search.cpp:1080）。
         improving |= static_eval >= beta;
         let late_move_limit = late_move_node.then(|| late_move_limit(depth, improving));
+        let quiet_sort_limit = if matches!(self.repetition, SearchRepetition::R1 { .. }) {
+            late_move_limit
+                .map(|limit| usize::try_from(limit).expect("late move limit is nonnegative"))
+        } else {
+            None
+        };
         // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
             tt_move,
@@ -394,6 +400,7 @@ impl Searcher<'_> {
             self.nnue,
             &self.generator,
             MovePickerContext {
+                quiet_sort_limit,
                 ranks: &self.capture_ranks,
                 history: &*self.history,
                 capture_history: &*self.capture_history,
@@ -406,6 +413,10 @@ impl Searcher<'_> {
                 coefficients: quiet_ordering_coefficients,
             },
         ) {
+            // 次の成り手が参照する順位へ、省いた非捕獲・不成の手数を戻す。
+            let skipped = self.move_pickers[ply as usize].take_skipped_quiets();
+            index += skipped;
+            counted_quiets += i32::try_from(skipped).expect("generated move count must fit i32");
             // 禁止手は探索順位、枝刈りの静かな手数、履歴の更新対象、ノード数に含めない。
             if self.move_is_forbidden(position, mv) {
                 had_forbidden_move = true;
@@ -435,6 +446,9 @@ impl Searcher<'_> {
                     && !capture
                     && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                 {
+                    if quiet_sort_limit.is_some() {
+                        self.move_pickers[ply as usize].skip_nonpromoting_quiets();
+                    }
                     index += 1;
                     continue;
                 }
@@ -688,6 +702,12 @@ impl Searcher<'_> {
                 }
             }
             index += 1;
+        }
+        // 最後の成り手より後の省略分も、子孫が参照する手数と一致させる。
+        let skipped = self.move_pickers[ply as usize].take_skipped_quiets();
+        if skipped != 0 {
+            index += skipped;
+            self.move_counts[ply as usize] = index;
         }
         #[cfg(feature = "search-stats")]
         if !beta_cutoff {
