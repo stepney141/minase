@@ -227,6 +227,90 @@ fn reference_head(p: &HeadParameters, us: &[i16], them: &[i16], scale: i64) -> R
     }
 }
 
+/// 入力型と鏡映対の畳み込みを変えても整数出力が一致することを、変更前のu8処理で検査する。
+fn reference_u8_output(p: &HeadParameters, shared: bool, us: &[i16], them: &[i16]) -> i32 {
+    let width = p.output_weights.len();
+    assert_eq!(us.len(), width);
+    assert_eq!(them.len(), width);
+    let mut buffer = [0_u8; 512];
+    let s = &mut buffer[..width];
+    reference_u8_pairwise(us, &mut s[..width / 2]);
+    reference_u8_pairwise(them, &mut s[width / 2..]);
+
+    let shared_weights = shared.then(|| {
+        let output_weights: Vec<i16> = p
+            .output_weights
+            .chunks_exact(width / 2)
+            .flat_map(|view| view[..width / 4].iter().copied())
+            .collect();
+        let hidden1_weights: Vec<i16> = p
+            .hidden1_weights
+            .chunks_exact(width / 2)
+            .flat_map(|view| view[..width / 4].iter().copied())
+            .collect();
+        (output_weights, hidden1_weights)
+    });
+    let mut folded = [0_u8; 256];
+    let (input, output_weights, hidden1_weights) = if let Some(weights) = &shared_weights {
+        let f = &mut folded[..width / 2];
+        // 各視点内のs[j]とs[j+H/4]を足す。和は0〜254に収まる。
+        for (view, values) in s.chunks_exact(width / 2).zip(f.chunks_exact_mut(width / 4)) {
+            let (left, right) = view.split_at(width / 4);
+            for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
+                *value = a + b;
+            }
+        }
+        (&*f, weights.0.as_slice(), weights.1.as_slice())
+    } else {
+        (
+            &*s,
+            p.output_weights.as_slice(),
+            p.hidden1_weights.as_slice(),
+        )
+    };
+
+    let mut u = [0_u8; 30];
+    for (k, row) in hidden1_weights.chunks_exact(input.len()).enumerate() {
+        let mut z = p.hidden1_biases[k];
+        for (&w, &a) in row.iter().zip(input) {
+            z += i32::from(w) * i32::from(i16::from(a));
+        }
+        u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as u8;
+        u[15 + k] = (z >> 8).clamp(0, 127) as u8;
+    }
+    let mut y = [0_u8; 32];
+    for (k, row) in p.hidden2_weights.as_chunks::<30>().0.iter().enumerate() {
+        let mut z = p.hidden2_biases[k];
+        for (&w, &a) in row.iter().zip(&u) {
+            z += i32::from(w) * i32::from(i16::from(a));
+        }
+        y[k] = (z >> 8).clamp(0, 127) as u8;
+    }
+    let mut out = p.output_bias;
+    for (&w, &a) in output_weights.iter().zip(input) {
+        out += i32::from(w) * i32::from(i16::from(a));
+    }
+    for (&w, &a) in p.hidden2_output.iter().zip(&y) {
+        out += i32::from(w) * i32::from(i16::from(a));
+    }
+    out
+}
+
+fn reference_u8_pairwise(acc: &[i16], output: &mut [u8]) {
+    let quarter = acc.len() / 4;
+    for (half, values) in acc
+        .chunks_exact(2 * quarter)
+        .zip(output.chunks_exact_mut(quarter))
+    {
+        let (left, right) = half.split_at(quarter);
+        for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
+            let a = a.clamp(0, 255) as u16;
+            let b = b.clamp(0, 255) as u16;
+            *value = ((a * b) >> 9) as u8;
+        }
+    }
+}
+
 /// 線形補正APIの検査には、埋め込みネットによらない幅4の固定重みを使う。
 fn linear_correction_base() -> Vec<u8> {
     let mut values = [100; PIECE_STATE_COUNT];
@@ -2183,7 +2267,7 @@ fn encode_rechecks_head_width_and_feature_sharing<F: FeatureSet>() {
 }
 
 #[test]
-fn pairwise_output_matches_independent_integer_reference() {
+fn pairwise_output_matches_u8_and_independent_integer_references() {
     let mut state = 0x9e37_79b9;
     let mut saw_negative_square = false;
     let mut saw_square_saturation = false;
@@ -2206,12 +2290,20 @@ fn pairwise_output_matches_independent_integer_reference() {
                                 1 => 0,
                                 2 => 255,
                                 3 => i16::MAX,
+                                4 => next(&mut state) as i16,
+                                5 => [i16::MIN, -1, 0, 1, 254, 255, 256, i16::MAX]
+                                    [(next(&mut state) >> 16) as usize % 8],
                                 _ => (next(&mut state) % 421) as i16 - 80,
                             };
                         }
                     }
                     let [us, them] = &inputs;
                     let expected = reference_head(&p, us, them, 135);
+                    assert_eq!(
+                        i64::from(reference_u8_output(&p, shared, us, them)),
+                        expected.out,
+                        "u8 reference: H={width}, shared_mirror={shared}, case={case}"
+                    );
                     saw_negative_square |= (0..15).any(|k| expected.z[k] < 0 && expected.u[k] > 0);
                     saw_square_saturation |= expected.u[..15].contains(&127);
                     saw_y_zero |= expected.y.contains(&0);
@@ -2234,6 +2326,55 @@ fn pairwise_output_matches_independent_integer_reference() {
 }
 
 #[test]
+fn pairwise_output_matches_u8_reference_in_random_games() {
+    use minase_core::rng::XorShift64;
+    use minase_core::rules::parse_rule_set;
+    use minase_core::{Game, GameStatus, Rules};
+    use std::num::NonZeroU64;
+
+    // 第33条の規則セットで得た累算値を使い、出力の計算だけを旧処理と比較する。
+    let net = Network::<P, PairwiseL16L32>::decode(&random_bytes::<P>(256)).unwrap();
+    let mut state = 0x26a1_8d73;
+    let parameters = [false, true].map(|shared| {
+        let p = HeadParameters::random(256, &mut state, shared);
+        let head = p.build(shared).unwrap();
+        (shared, p, head)
+    });
+    for rule_set in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P0,R3,E0",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = Rules::from_codes(&parse_rule_set(rule_set).unwrap()).unwrap();
+        let mut game = Game::new(rules);
+        let mut rng = XorShift64::new(NonZeroU64::new(0x5255_4c45_4741_4d09).unwrap());
+        for ply in 0..256 {
+            let acc = net.refresh_accumulator(game.position());
+            for side in Color::ALL {
+                let us = &acc.hidden[side.index()];
+                let them = &acc.hidden[side.opposite().index()];
+                for (shared, p, head) in &parameters {
+                    assert_eq!(
+                        head.output(us, them),
+                        reference_u8_output(p, *shared, us, them),
+                        "rules={rule_set}, ply={ply}, side={side:?}, shared_mirror={shared}"
+                    );
+                }
+            }
+            let moves = game.legal_moves();
+            assert!(!moves.is_empty(), "rules={rule_set}, ply={ply}");
+            let selected = moves[rng.next() as usize % moves.len()];
+            if matches!(game.play(selected).unwrap(), GameStatus::Finished(_)) {
+                break;
+            }
+        }
+    }
+}
+
+#[test]
 fn pairwise_clamping_shift_and_perspective_order_follow_specification() {
     let us = [255, 64, 255, 128, 192, 128, 255, 64];
     let them = [-1, 0, 255, 255, 256, i16::MAX, 255, 255];
@@ -2245,6 +2386,22 @@ fn pairwise_clamping_shift_and_perspective_order_follow_specification() {
         let head = p.build(false).unwrap();
         assert_eq!(head.output(&us, &them), expected);
         assert_eq!(reference_head(&p, &us, &them, 1).s[i], i64::from(expected));
+    }
+}
+
+#[test]
+fn pairwise_mirror_folding_preserves_individual_truncation() {
+    let mut p = HeadParameters::zero(4);
+    p.output_weights[..2].fill(1);
+    for (us, expected) in [
+        // 16² >> 9は0だが、先に2つの積を足してからシフトすると1になる。
+        ([16; 4], 0),
+        ([255; 4], 254),
+        ([i16::MIN, i16::MAX, i16::MAX, i16::MAX], 127),
+    ] {
+        for shared in [false, true] {
+            assert_eq!(p.build(shared).unwrap().output(&us, &[0; 4]), expected);
+        }
     }
 }
 
@@ -2290,6 +2447,25 @@ fn dual_activation_squares_negative_inputs_and_preserves_32512_boundary() {
                 "z={z}, row={k}"
             );
         }
+    }
+}
+
+#[test]
+fn second_hidden_layer_padding_preserves_every_row_and_last_input() {
+    // u[29]だけを非零にし、30要素の各行の末尾がゼロ埋めで失われないことを検査する。
+    let mut p = HeadParameters::zero(4);
+    p.hidden1_biases[14] = 256;
+    for row in 0..32 {
+        p.hidden2_weights[row * 30 + 29] = 256;
+        p.hidden2_output[row] = 1;
+        for shared in [false, true] {
+            let bytes = p.bytes();
+            let head = PairwiseL16L32::decode(&bytes, 4, shared).unwrap();
+            assert_eq!(head.output(&[0; 4], &[0; 4]), 1, "row={row}");
+            assert_eq!(head.to_bytes(), bytes);
+        }
+        p.hidden2_weights[row * 30 + 29] = 0;
+        p.hidden2_output[row] = 0;
     }
 }
 
