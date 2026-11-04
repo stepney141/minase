@@ -457,7 +457,8 @@ AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}
 量子化誤差は平均9.60 cp、最大86.5 cpだった。
 数値の詳細は[学習の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-training.md)にある。
 同じ教師で学んだ幅128のネットに対して、[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`であり、[固定ノードの対局](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)では差を区別できなかった。
-このネットは世代反復で使う構成を確定するためのものであり、masterの置き換えは世代反復の最終候補で行う。
+このネットは世代反復の起点であり、結果回帰の補正を持つ統合前のネット（ブランチ`nnue-width128-regressed`）より弱いと見込まれる。
+世代反復の最終候補は、統合前のネットと比べて採否を決める。
 
 ## 損失で決めないもの
 
