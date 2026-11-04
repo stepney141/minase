@@ -126,6 +126,64 @@ impl PairwiseL16L32 {
             }),
         })
     }
+
+    /// 幅256の鏡映共有では、128要素の入力と重みの各行を固定長で扱う。
+    /// 要素積とシフトの順序を保ち、入力を全要素から直接構築してゼロ初期化を省く。
+    fn output_shared_256(
+        &self,
+        us: &[i16; 256],
+        them: &[i16; 256],
+        weights: &SharedMirrorWeights,
+    ) -> i32 {
+        let input: [[i16; 64]; 2] = [us, them].map(|acc| {
+            std::array::from_fn(|j| {
+                pairwise_product(acc[j], acc[j + 64]) + pairwise_product(acc[j + 128], acc[j + 192])
+            })
+        });
+        let input = input.as_flattened();
+        let mut u = [0_i16; 32];
+        for (k, (&bias, row)) in self
+            .hidden1_biases
+            .iter()
+            .zip(weights.hidden1_weights.as_chunks::<128>().0)
+            .enumerate()
+        {
+            let mut z = bias;
+            for (&w, &a) in row.iter().zip(input) {
+                z += i32::from(w) * i32::from(a);
+            }
+            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as i16;
+            u[15 + k] = (z >> 8).clamp(0, 127) as i16;
+        }
+        let output_weights: &[i16; 128] = weights
+            .output_weights
+            .as_ref()
+            .try_into()
+            .expect("shared output weights must have half the network width");
+        let mut out = self.output_bias;
+        for (&w, &a) in output_weights.iter().zip(input) {
+            out += i32::from(w) * i32::from(a);
+        }
+        out + self.hidden2_sum(&u)
+    }
+
+    /// ゼロ埋めした第2隠れ層の出力内積を求める。
+    /// 内積の絶対値は32×127×8,192以下なので、直接出力への加算をまとめてもi32に収まる。
+    fn hidden2_sum(&self, u: &[i16; 32]) -> i32 {
+        let mut y = [0_u8; 32];
+        for (k, row) in self.hidden2_inference_weights.iter().enumerate() {
+            let mut z = self.hidden2_biases[k];
+            for (&w, &a) in row.iter().zip(u) {
+                z += i32::from(w) * i32::from(a);
+            }
+            y[k] = (z >> 8).clamp(0, 127) as u8;
+        }
+        let mut out = 0;
+        for (&w, &a) in self.hidden2_output.iter().zip(&y) {
+            out += i32::from(w) * i32::from(i16::from(a));
+        }
+        out
+    }
 }
 
 impl Head for PairwiseL16L32 {
@@ -203,6 +261,13 @@ impl Head for PairwiseL16L32 {
         let width = self.output_weights.len();
         assert_eq!(us.len(), width);
         assert_eq!(them.len(), width);
+        if let (256, Some(weights)) = (width, &self.shared_mirror_weights) {
+            return self.output_shared_256(
+                us.try_into().expect("accumulator width was checked"),
+                them.try_into().expect("accumulator width was checked"),
+                weights,
+            );
+        }
         let mut buffer = [0_i16; 512];
         let (input, output_weights, hidden1_weights) =
             if let Some(weights) = &self.shared_mirror_weights {
@@ -235,22 +300,11 @@ impl Head for PairwiseL16L32 {
             u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as i16;
             u[15 + k] = (z >> 8).clamp(0, 127) as i16;
         }
-        let mut y = [0_u8; 32];
-        for (k, row) in self.hidden2_inference_weights.iter().enumerate() {
-            let mut z = self.hidden2_biases[k];
-            for (&w, &a) in row.iter().zip(&u) {
-                z += i32::from(w) * i32::from(a);
-            }
-            y[k] = (z >> 8).clamp(0, 127) as u8;
-        }
         let mut out = self.output_bias;
         for (&w, &a) in output_weights.iter().zip(input) {
             out += i32::from(w) * i32::from(a);
         }
-        for (&w, &a) in self.hidden2_output.iter().zip(&y) {
-            out += i32::from(w) * i32::from(i16::from(a));
-        }
-        out
+        out + self.hidden2_sum(&u)
     }
 }
 
