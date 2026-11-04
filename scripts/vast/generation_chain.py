@@ -33,6 +33,11 @@ REMOTE = '/workspace/job'
 NETWORK = 'crates/minase/nets/nnue.bin'
 
 
+def low_priority() -> None:
+    """学習、ビルド、および検査を、STCとlishogi Botの対局より低い優先度で動かす。"""
+    os.nice(19)
+
+
 class ChainStop(RuntimeError):
     """教師、学習、または検定が継続の条件を満たしていない。"""
 
@@ -420,7 +425,7 @@ class Chain:
                 if number >= self.args.max_books:
                     raise ChainStop(f'本の番号{number}がmax-books以上です')
                 output = self.children.run([str(self.args.minase_bin), 'data', 'selfplay', 'inspect', str(path)],
-                                           text=True, stdout=subprocess.PIPE).stdout
+                                           text=True, stdout=subprocess.PIPE, preexec_fn=low_priority).stdout
                 header = output_fields(output)
                 self.check_header(header, generation, number, commit, checksum)
                 log = output_fields(log_path.read_text())
@@ -451,7 +456,8 @@ class Chain:
         calibration = self.root / 'calibration.json'
         if not calibration.is_file():
             self.children.run([str(self.args.trainer_bin), 'data', 'calibrate', '--data',
-                               *map(str, books[:self.args.calibration_books]), '--output', str(calibration)])
+                               *map(str, books[:self.args.calibration_books]), '--output', str(calibration)],
+                              preexec_fn=low_priority)
         classes = json.loads(calibration.read_text())['classes']
         if len(classes) != 1:
             raise ChainStop('較正結果のclassesが1項目ではありません')
@@ -578,7 +584,8 @@ class Chain:
             if (train / 'latest.npz').is_file():
                 command.extend(['--resume', str(train)])
             with (directory / 'train.log').open('a') as log:
-                self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT)
+                self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
+                                  preexec_fn=low_priority)
         result = json.loads(summary.read_text())
         if result['status'] != 'candidate':
             raise ChainStop(f'第{generation}世代の学習結果がcandidateではありません: {result["status"]}')
@@ -587,7 +594,7 @@ class Chain:
             self.children.run([str(args.trainer_bin), 'diag', 'nnue-removal', '--float', str(train / 'best.npz'),
                                '--net', str(train / 'nnue.bin'), '--data', *map(str, books),
                                '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
-                               '--output', str(removal)], cwd=args.worktree)
+                               '--output', str(removal)], cwd=args.worktree, preexec_fn=low_priority)
         return result
 
     def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int]) -> None:
@@ -597,7 +604,8 @@ class Chain:
         if data != trained.read_bytes():
             shutil.copyfile(trained, self.args.worktree / NETWORK)
             try:
-                self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree)
+                self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree,
+                                  preexec_fn=low_priority)
                 self.children.run([str(self.args.worktree / 'target/release/minase'), 'dev', 'bench',
                                    '--depth', str(self.args.bench_depth)], cwd=self.args.worktree)
             except BaseException:
