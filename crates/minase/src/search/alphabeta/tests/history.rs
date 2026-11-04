@@ -148,7 +148,8 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(worker_count(4));
     let quiet_values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
-    let capture_values = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
+    let limit = i16::try_from(super::super::capture_history::CAPTURE_HISTORY_LIMIT).unwrap();
+    let capture_values = [-limit, -100, -7, -4, -1, 0, 1, 4, 7, 100, limit];
     for (worker, history) in histories.workers.iter_mut().enumerate() {
         for (index, value) in history.iter_mut().flatten().flatten().enumerate() {
             *value = quiet_values[(index + worker) % quiet_values.len()];
@@ -399,7 +400,7 @@ fn history_carry_workers_update_their_own_table() {
         history[1][50][51] = index as i32 + 10;
     }
     for (index, history) in histories.capture.iter_mut().enumerate() {
-        history.values_mut()[0] = -(index as i32 + 20);
+        history.values_mut()[0] = -(i16::try_from(index).unwrap() + 20);
     }
     let mv = legal_moves(&Position::initial())[0];
     let mut worker_histories: Vec<_> = histories
@@ -412,7 +413,7 @@ fn history_carry_workers_update_their_own_table() {
         &shared,
         |index, (history, capture)| {
             assert_eq!(history[1][50][51], index as i32 + 10);
-            assert_eq!(capture.values()[0], -(index as i32 + 20));
+            assert_eq!(i32::from(capture.values()[0]), -(index as i32 + 20));
             history[1][50][51] += 100;
             capture.values_mut()[0] -= 100;
             WorkerOutcome {
@@ -438,7 +439,7 @@ fn history_carry_workers_update_their_own_table() {
         assert_eq!(history[1][50][51], index as i32 + 110);
     }
     for (index, history) in histories.capture.iter().enumerate() {
-        assert_eq!(history.values()[0], -(index as i32 + 120));
+        assert_eq!(i32::from(history.values()[0]), -(index as i32 + 120));
     }
 }
 
