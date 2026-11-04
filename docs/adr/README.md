@@ -356,4 +356,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月2日 [役目を終えたAlphaZero型探索の測定用の道具を削除し、1サイクルの見積もりは実際に1サイクル回して行う](delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)
 - 2026年11月2日 [本番の型と関数の中に`#[cfg(test)]`の項目を置かず、試験専用のコードは子モジュールと`test-util`へ分ける](keep-test-only-code-out-of-production-types-and-functions.md)
 - 2026年11月3日 [NNUEの線形の経路の序中盤の列を、学習後に対局結果へのロジスティック回帰で補正する](correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)
+- 2026年11月4日 [NNUEの教師局面を静止探索の末端へ置き換えない](do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)
 - 2026年11月4日 [NNUEを、探索用駒価値で初期化した線形の経路と、要素積と2段の隠れ層を持つ非線形の経路で組み立てる](compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)
