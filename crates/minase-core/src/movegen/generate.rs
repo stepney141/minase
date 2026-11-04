@@ -8,7 +8,7 @@ use super::expand::{promoting_variant, push_with_promotion};
 use super::lion::generate_lion_double_and_jumps;
 use super::lion_like::generate_lion_like_double_and_jumps;
 use crate::attacks::{SpecialMovement, movement_profile, movement_profile_data};
-use crate::board::Square;
+use crate::board::{Bitboard, Square};
 use crate::mv::Move;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
@@ -25,12 +25,44 @@ pub(super) fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>
 ) {
     let color = position.side_to_move();
     for kind in PieceKind::ALL {
-        for from in position.pieces_of_kind(color, kind) {
+        let origins = if matches!(kind, PieceKind::Pawn | PieceKind::GoBetween)
+            && (CAPTURES_ONLY || QUIETS_ONLY)
+        {
+            let destinations = if CAPTURES_ONLY {
+                position.pieces_of(color.opposite())
+            } else {
+                !position.occupied()
+            };
+            single_step_origins(position, kind, destinations)
+        } else {
+            position.pieces_of_kind(color, kind)
+        };
+        for from in origins {
             generate_piece_moves::<CAPTURES_ONLY, QUIETS_ONLY>(
                 generator, position, color, kind, from, base_moves, output,
             );
         }
     }
+}
+
+/// 指定した到達升へ動ける歩兵・仲人の移動元を一括で求める。
+/// 到達升を移動方向と逆に1段ずらした集合との積は、各駒の移動先を選別して戻す操作と等しい。
+/// 移動元の昇順、成りの展開、および獅子捕獲の検査は駒別の生成に従う。
+pub(super) fn single_step_origins(
+    position: &Position,
+    kind: PieceKind,
+    destinations: Bitboard,
+) -> Bitboard {
+    let color = position.side_to_move();
+    let origins = if kind == PieceKind::GoBetween {
+        destinations.shift_south() | destinations.shift_north()
+    } else {
+        match color {
+            Color::Black => destinations.shift_south(),
+            Color::White => destinations.shift_north(),
+        }
+    };
+    origins & position.pieces_of_kind(color, kind)
 }
 
 /// 指定した1枚の駒について合法手を生成する。

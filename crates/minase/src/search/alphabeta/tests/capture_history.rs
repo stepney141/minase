@@ -311,7 +311,7 @@ fn capture_history_update_uses_shared_gravity() {
     for old in [-limit, -10, 0, 10, limit] {
         for bonus in [-(limit + 1), -9, 0, 9, limit + 1] {
             let mut history = empty_capture_history();
-            history.values_mut().fill(old);
+            history.values_mut().fill(i16::try_from(old).unwrap());
             history.update(&board, nnue, mv, bonus);
             assert_eq!(
                 history.read(&board, nnue, mv),
@@ -931,7 +931,7 @@ fn capture_history_gravity_stays_bounded_at_limit_extremes() {
     let mut history = empty_capture_history();
     for old in [-limit, -limit + 1, -10, 0, 10, limit - 1, limit] {
         for bonus in [0, 1, 9, limit, limit + 1] {
-            history.values_mut().fill(old);
+            history.values_mut().fill(i16::try_from(old).unwrap());
             history.update(&board, nnue, winner, bonus);
             history.update(&board, nnue, earlier, -bonus);
             let rewarded = history.read(&board, nnue, winner);
@@ -947,5 +947,128 @@ fn capture_history_gravity_stays_bounded_at_limit_extremes() {
                 assert_eq!((rewarded, penalized), (-1, -19));
             }
         }
+    }
+}
+
+/// 保存形式だけを変える契約に従い、変更前の32ビット表と更新・減衰・初期化を照合する。
+#[test]
+fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
+    use super::super::capture_history::{CAPTURE_HISTORY_LIMIT, CaptureHistory};
+    use minase_core::piece::PIECE_KIND_COUNT;
+    use minase_core::test_util::{bench_positions, sampled_random_positions};
+
+    // 変更前の添字と重力式を使う参照表。保存値と途中計算はどちらもi32である。
+    let mut reference =
+        vec![-742_i32; COLOR_COUNT * PIECE_KIND_COUNT * BOARD_SQUARE_COUNT * PIECE_KIND_COUNT];
+    let mut actual = CaptureHistory::new();
+    assert_eq!(
+        std::mem::size_of_val(actual.values()) * 2,
+        std::mem::size_of_val(reference.as_slice())
+    );
+    let nnue = test_nnue();
+    let bonuses = [i32::MIN, -10_692, -1001, -9, 0, 9, 1001, 10_692, i32::MAX];
+    let mut updates = 0_usize;
+    for text in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = minase_core::rules::Rules::from_codes(
+            &minase_core::rules::parse_rule_set(text).unwrap(),
+        )
+        .unwrap()
+        .moves;
+        let generator = MoveGenerator::new(rules);
+        for (sample, board) in bench_positions()
+            .into_iter()
+            .chain(sampled_random_positions(rules))
+            .enumerate()
+        {
+            let mut captures = Vec::new();
+            generator.generate_captures(&board, &mut captures);
+            for mv in captures {
+                let piece = board.piece_at(mv.from).unwrap();
+                let victim = board
+                    .captured_squares(mv)
+                    .into_iter()
+                    .flatten()
+                    .map(|square| board.piece_at(square).unwrap())
+                    .max_by_key(|&piece| nnue.piece_value(piece))
+                    .unwrap()
+                    .kind()
+                    .unwrap();
+                let code = piece.color().unwrap().index() * PIECE_KIND_COUNT
+                    + piece.kind().unwrap().index();
+                let index = (code * BOARD_SQUARE_COUNT + mv.to.dense_index()) * PIECE_KIND_COUNT
+                    + victim.index();
+                let record = MoveRecord {
+                    mv,
+                    piece,
+                    captured: Some(victim),
+                };
+                for bonus in bonuses {
+                    let b = bonus.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT);
+                    let value = &mut reference[index];
+                    *value += b - *value * b.abs() / CAPTURE_HISTORY_LIMIT;
+                    if updates.is_multiple_of(2) {
+                        actual.update(&board, nnue, mv, bonus);
+                    } else {
+                        actual.update_record(record, bonus);
+                    }
+                    assert_eq!(actual.read(&board, nnue, mv), *value);
+                    assert_eq!(actual.read_record(record), *value);
+                    updates += 1;
+                }
+            }
+            let percent = [0, 1, 23, 79, 100][sample % 5];
+            actual.decay(percent);
+            for value in &mut reference {
+                *value = *value * percent / 100;
+            }
+            assert!(
+                actual
+                    .values()
+                    .iter()
+                    .map(|&v| i32::from(v))
+                    .eq(reference.iter().copied())
+            );
+        }
+        actual.clear();
+        reference.fill(-742);
+        assert!(
+            actual
+                .values()
+                .iter()
+                .map(|&v| i32::from(v))
+                .eq(reference.iter().copied())
+        );
+    }
+    assert!(updates > 0);
+}
+
+/// ±10692の全整数について、積を16ビットで計算せず、負の端数も0方向へ丸める。
+#[test]
+fn capture_history_i16_decay_matches_i32_for_the_entire_value_range() {
+    use super::super::capture_history::CAPTURE_HISTORY_LIMIT;
+    let mut history = empty_capture_history();
+    for percent in [0, 1, 23, 79, 100] {
+        let reference: Vec<i32> = (0..history.values().len())
+            .map(|index| {
+                (index % (2 * CAPTURE_HISTORY_LIMIT as usize + 1)) as i32 - CAPTURE_HISTORY_LIMIT
+            })
+            .collect();
+        for (actual, &value) in history.values_mut().iter_mut().zip(&reference) {
+            *actual = i16::try_from(value).unwrap();
+        }
+        history.decay(percent);
+        assert!(
+            history
+                .values()
+                .iter()
+                .zip(&reference)
+                .all(|(&actual, &value)| i32::from(actual) == value * percent / 100)
+        );
     }
 }

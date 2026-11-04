@@ -517,6 +517,7 @@ impl Searcher<'_> {
                     // Stockfishの「捕獲手か王手ならS3、それ以外ならS1、S5」と同じ結果になるよう、
                     // S1で王手と判明した手はS5を通さずS3へ進める（src/search.cpp:1205, 1227-1259）。
                     let mut gives_check = None;
+                    let mut see_not_pruned_at = None;
                     if !(self.follow_pv[ply as usize] && pv_node) {
                         let piece = piece_at_for_ordering(position, mv.from);
                         let history = self.continuation_value(ply, piece, mv, 1).unwrap_or(0)
@@ -574,31 +575,28 @@ impl Searcher<'_> {
                         if gives_check != Some(true)
                             && mv.mid.is_none()
                             && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                            && see_prunes(
-                                position,
-                                self.rules,
-                                self.nnue,
-                                mv,
-                                -quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
-                            )
-                            && !*gives_check.get_or_insert_with(|| {
-                                check_context.gives_check(position, &self.generator, mv)
-                            })
                         {
-                            index += 1;
-                            continue;
+                            let threshold = -quiet_see_margin(self.nnue.pawn_value(), lmr_depth);
+                            let pruned = see_prunes(position, self.rules, self.nnue, mv, threshold);
+                            if !pruned {
+                                see_not_pruned_at = Some(threshold);
+                            } else if !*gives_check.get_or_insert_with(|| {
+                                check_context.gives_check(position, &self.generator, mv)
+                            }) {
+                                index += 1;
+                                continue;
+                            }
                         }
                     }
                     // 王手になる静かな手にはS3の余裕値を使う。王手か未判定なら、
                     // S3のSEEで枝刈りできる場合にだけ判定する（Stockfish src/search.cpp:1205, 1220-1225）。
-                    if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                        && see_prunes(
-                            position,
-                            self.rules,
-                            self.nnue,
-                            mv,
-                            -see_margin(self.nnue.pawn_value(), depth, 0),
-                        )
+                    // SEEが閾値以上または判定不能なら、それ以下の閾値でも枝刈りしない。
+                    // 王手と判明していない手では、必要なときだけ同じ局面の王手判定を行う。
+                    let threshold = -see_margin(self.nnue.pawn_value(), depth, 0);
+                    if gives_check != Some(false)
+                        && see_not_pruned_at.is_none_or(|previous| threshold > previous)
+                        && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                        && see_prunes(position, self.rules, self.nnue, mv, threshold)
                         && *gives_check.get_or_insert_with(|| {
                             check_context.gives_check(position, &self.generator, mv)
                         })
