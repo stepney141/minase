@@ -129,7 +129,7 @@ minaseの第1層の重みは±8へ切り詰めて量子化値を±1,016に収め
 
 (c) minaseのADRは、第1層の後の要素積を試していないと記している（[ADR](../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md) 30行）。
 実装は`Head`トレイトの新しい実装（[head.rs](../../crates/minase/src/eval/nnue/head.rs) 9〜11行）、学習器のカーネルと参照実装、および構造記述文字列の3か所である。
-[層積みの設計書](../plans/nnue-layer-stack.md)は要素積を対象外としているので（49行）、固定の出力部として先に試せる。
+本書を書いた時点の層積みの設計書（後に取り下げた。`git show e2539378:docs/plans/nnue-layer-stack.md`の49行）は要素積を対象外としていたので、固定の出力部として先に試せる。
 第1層の幅をHとすると、積の回数はHで現行の2Hの半分であり、内積の長さも半分になるので、推論費用は現行の17.2 ns以下に収まる（推論。[速度の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)）。
 
 minaseには、tataraにない注意点が1つある。
@@ -190,7 +190,7 @@ D2の補間の係数も同じ駒数から作るので、D2が検証損失を下�
 P型の絶対位置の特徴だけで回帰すれば、進行度は線形の経路と同じ形の和を1つ増やすだけで差分更新でき、やねうら王も同じ考え方で和をキャッシュしている（evaluate_nnue.cpp 188〜280行、[コミット`9a0df6a5`](https://github.com/yaneurao/YaneuraOu/commit/9a0df6a5)）。
 隠れ層のない直接内積なら、bucketで切り替わるのは出力重みの組だけなので積和の回数は変わらない。
 学習器の改修は回帰の学習ツール、bucket別の出力重み、および構造記述の3点で、3〜5日を見込む。
-[層積みの設計書](../plans/nnue-layer-stack.md)は境界で重みを切り替えるbucketと進行度の推定を対象外としているので（49行）、構成名の文法の拡張が要る。
+本書を書いた時点の層積みの設計書（同じ版の49行）は、境界で重みを切り替えるbucketと進行度の推定を対象外としていた。
 
 過去の議論は、境界で重みを切り替えるbucketを着手間の評価の不連続を理由に見送った（[考察](nnue-architecture-discussion.md) 161〜163行）。
 この不連続が問題になるかは対局で測らないと分からない。
@@ -427,7 +427,7 @@ SWA（stochastic weight averaging）は[issue #268](https://github.com/SH11235/t
 (b) dense QATの棋力は測られていない（dense-qat.md 56〜57行、[PR #413](https://github.com/SH11235/tatara/pull/413)）。
 
 (c) minaseの直接内積には量子化する隠れ層がないのでdense QATの対象がない。
-一方で、実数の式は`clamp(x,0,1)²`、整数の式は`(c×c) >> 7`で目盛りが約0.8%ずれ（[層積みの設計書](../plans/nnue-layer-stack.md) 83行）、隠れ層の比較の基準D0の量子化誤差は平均13.61 cp、最大99.7 cpである（[記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-training.md) 65行）。
+一方で、実数の式は`clamp(x,0,1)²`、整数の式は`(c×c) >> 7`で目盛りが約0.8%ずれ（本書を書いた時点の層積みの設計書、`git show e2539378:docs/plans/nnue-layer-stack.md`の83行）、隠れ層の比較の基準D0の量子化誤差は平均13.61 cp、最大99.7 cpである（[記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-training.md) 65行）。
 127/128の係数を実数の式へ入れる変更は小さく、誤差の減少は既存の検査で確かめられる（推論）。
 
 (d) 棋力への寄与は不明であり、非線形の経路の倍率の調整と重なる部分がある（推論）。
@@ -497,7 +497,7 @@ Stockfishの第2層の拡大は短時間で棄却されて長時間で採択さ�
 利得が見えなければ、容量ではなく教師が律速であると読み、[教師の間引きの計画](../plans/sparse-teacher-recording.md)と対局数を増やす計画を優先する。
 
 第4段階は進行度bucketである。
-第3段階の結果を見て、直接内積のbucketか隠れ層つきのbucketかを選び、[層積みの設計書](../plans/nnue-layer-stack.md)の文法を拡張する。
+第3段階の結果を見て、直接内積のbucketか隠れ層つきのbucketかを選び、構造記述の出力部の名前に区分を加える。
 区分は8を出発点とし、共通項を同時に入れる。
 王の段のbucketは、自玉の分布から採らない。
 1局の前半の区分を分けることで配置の偏りが変わるかが、この段階の偏りに関する問いである。

@@ -98,7 +98,6 @@
 | Rust製NNUE学習器（GPU） | [plans/archived/nnue-trainer-rust.md](plans/archived/nnue-trainer-rust.md) | 完了（採用） | 2026年10月12日 |
 | NNUE学習器の学習率スケジュール | [plans/archived/nnue-lr-schedule.md](plans/archived/nnue-lr-schedule.md) | 完了（採用） | 2026年10月16日 |
 | NNUEの隠れ層と位相補間の出力 | [plans/archived/nnue-hidden-layer.md](plans/archived/nnue-hidden-layer.md) | 完了（一部不採用） | 2026年10月16日 |
-| NNUEの出力部の層積みへの統一 | [plans/nnue-layer-stack.md](plans/nnue-layer-stack.md) | 起案 | |
 | Python学習器のRustへの移植と撤去 | [plans/archived/python-trainer-retirement.md](plans/archived/python-trainer-retirement.md) | 完了（採用） | 2026年10月13日 |
 | ファイル形式の整理と形式の仕様の整備 | [plans/archived/file-format-consolidation.md](plans/archived/file-format-consolidation.md) | 完了（採用） | 2026年10月13日 |
 | 教師データ形式の統一 | [plans/archived/unified-teacher-format.md](plans/archived/unified-teacher-format.md) | 完了（採用） | 2026年10月14日 |
@@ -144,7 +143,6 @@
 
 - [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、次に着手する候補であり、構成の見直しで確定した構成を使う。masterから切る。手書きの評価関数v0の教師からλ=0.75で世代反復をやり直し、後付けの補正なしで偏りの少ないネットを学べるかを確かめる。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。2026年11月4日の利用者の決定により、教師はvast.aiで借りた1台の計算機で第8世代まで判定を待たずに生成し、第1世代だけ並行して判定して、第2世代以降は後から最後に`H1`を取った世代と比べる。生成機の費用の見込みは約68米ドルである。
 - [tataraの調査](research/tatara-nnue-transfer.md)の残りの候補（出力bucket、損失の形など）は、設計書がまだなく、世代反復の結果を見て起案する。採用条件は、棋力が向上し、配置の偏りが悪化しないことである（2026年11月3日の開発者の決定）。
-- [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、4つの固定の出力部を、構成名で指定する1つの型へ置き換える構造の整理である。構成の見直しで出力部が1つになったので、書き直すか取り下げるかを開発者が決める。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は待機中である。現行のP型では探索中に全再計算が起きないので、自玉の位置で条件付けるネットを対局で測るか、累算器の更新方式を変えた時点で再開する。
 
 #### 教師生成
