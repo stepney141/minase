@@ -185,7 +185,8 @@ minase match run --run-dir data/matches/nnue-generation-reset-gen<N>-stc --seed 
 ## 最終候補の採否
 
 最終候補を旧基準と比べる。
-比較の前にmasterの探索のコードが変わっていれば、その変更をブランチ`nnue-width128-regressed`にも取り込み、探索のコードをそろえてから測る。
+比較の前にmasterの探索のコードが変わっていれば、`crates/minase/src/search/`の変更だけをブランチ`nnue-width128-regressed`へcherry-pickで取り込み、探索のコードをそろえてから測る。
+masterをこのブランチへマージしてはならない。新しい形式のコードが入ると、旧基準のネットを復号できなくなるからである。
 
 | 段階 | 判定量 | 結論 |
 |---|---|---|
