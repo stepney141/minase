@@ -142,7 +142,7 @@
 
 #### 評価関数（NNUE）
 
-- [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、次に着手する候補であり、構成の見直しで確定した構成を使う。masterから切る。手書きの評価関数v0の教師からλ=0.75で世代反復をやり直し、後付けの補正なしで偏りの少ないネットを学べるかを確かめる。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。
+- [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、次に着手する候補であり、構成の見直しで確定した構成を使う。masterから切る。手書きの評価関数v0の教師からλ=0.75で世代反復をやり直し、後付けの補正なしで偏りの少ないネットを学べるかを確かめる。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。2026年11月4日の利用者の決定により、教師はvast.aiで借りた1台の計算機で第8世代まで判定を待たずに生成し、第1世代だけ並行して判定して、第2世代以降は後から最後に`H1`を取った世代と比べる。生成機の費用の見込みは約68米ドルである。
 - [tataraの調査](research/tatara-nnue-transfer.md)の残りの候補（出力bucket、損失の形など）は、設計書がまだなく、世代反復の結果を見て起案する。採用条件は、棋力が向上し、配置の偏りが悪化しないことである（2026年11月3日の開発者の決定）。
 - [NNUEの出力部の層積みへの統一](plans/nnue-layer-stack.md)は、4つの固定の出力部を、構成名で指定する1つの型へ置き換える構造の整理である。構成の見直しで出力部が1つになったので、書き直すか取り下げるかを開発者が決める。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は待機中である。現行のP型では探索中に全再計算が起きないので、自玉の位置で条件付けるネットを対局で測るか、累算器の更新方式を変えた時点で再開する。
@@ -152,7 +152,7 @@
 強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 
 - [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md)と[記録する局面の間引き](plans/sparse-teacher-recording.md)は、同じ計算時間でより多くの対局から教師を作る一連の計画であり、前者の判定が後者の着手の前提になる。どちらも現行の探索値だけの教師を前提に書かれているので、世代反復の結果を見て続けるかを決める。
-- [vast.aiでの教師生成](plans/vast-selfplay.md)は、教師の生成をvast.aiで借りる計算機へ移す計画である。試走では30ファイルを約5.5時間、約5.6米ドルと見込み（[記録](measurements/vast-selfplay/vast-selfplay-trial.md)）、作業機で同じ条件を測るフェーズ0の作業が残っている。世代反復の生成を急ぐときに使える。
+- [vast.aiでの教師生成](plans/vast-selfplay.md)は、教師の生成をvast.aiで借りる計算機へ移す計画である。試走では30ファイルを約5.5時間、約5.6米ドルと見込み（[記録](measurements/vast-selfplay/vast-selfplay-trial.md)）、作業機で同じ条件を測るフェーズ0の作業が残っている。世代反復は同書の選定条件と検査の方式を使うが、世代をまたいで同じ計算機を使うので専用のスクリプトで生成し、同書のフェーズ0の残りとフェーズ1を待たない。
 - AlphaZero型のネットの評価値で教師の値を付け直す案は、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、AlphaZero型の計画の後に起案する（2026年10月25日の開発者の決定）。tanuki-はこの方法でレーティング差R+104.3を得ている。付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で、そのネットに偏りがないことを確かめる。
 - 設計書のない着想は調査メモにある。対局途中のランダム化と評価が食い違う局面の採取は[教師生成の調査](research/teacher-generation-strong-engines.md)に、教師の予算の重点配分は[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)に、別系統の局面を開始局面に加える案は[偏りの先行事例](research/self-play-bias-prior-art.md)にある。
 
