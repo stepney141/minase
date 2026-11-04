@@ -20,7 +20,9 @@ pub use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 use crate::attacks::{AttackTables, attack_tables};
 use crate::board::Square;
 use crate::mv::Move;
+use crate::piece::PieceKind;
 use crate::position::Position;
+use crate::promotion::PromotionChoice;
 use crate::rules::MoveRules;
 
 /// 局面合法手を列挙する生成器。
@@ -172,6 +174,8 @@ impl MoveGenerator {
     }
 
     /// 候補手が`position`で手番側の合法手かを返す。
+    /// 通常駒は移動範囲、獅子捕獲の制限、成りの選択を直接調べ、全件生成と同じ集合を受理する。
+    /// 獅子・角鷹・飛鷲は2段階移動の正準形も検査するため、駒1枚の生成で照合する。
     pub fn is_legal_move(
         &self,
         position: &Position,
@@ -183,11 +187,52 @@ impl MoveGenerator {
         let Some(piece) = position.piece_at(candidate.from) else {
             return false;
         };
-        if piece.color() != Some(position.side_to_move()) {
+        let color = position.side_to_move();
+        if piece.color() != Some(color) {
             return false;
         }
-        self.generate_moves_from(position, candidate.from, base_moves, moves);
-        moves.contains(&candidate)
+        let kind = piece.kind().expect("board piece must have a valid kind");
+        if matches!(
+            kind,
+            PieceKind::Lion | PieceKind::HornedFalcon | PieceKind::SoaringEagle
+        ) {
+            self.generate_moves_from(position, candidate.from, base_moves, moves);
+            return moves.contains(&candidate);
+        }
+        if candidate.mid.is_some()
+            || candidate.from == candidate.to
+            || position.pieces_of(color).contains(candidate.to)
+            || !control::piece_control_without_special(
+                self.tables,
+                position.occupied(),
+                color,
+                kind,
+                candidate.from,
+            )
+            .contains(candidate.to)
+        {
+            return false;
+        }
+        if position
+            .pieces_of_kind(color.opposite(), PieceKind::Lion)
+            .contains(candidate.to)
+            && !self.rules.special_move_is_legal(position, candidate)
+        {
+            return false;
+        }
+        match self.rules.promotion_choice_for(
+            color,
+            kind,
+            piece.is_promoted(),
+            candidate.from,
+            candidate.to,
+            position.pieces_of(color.opposite()).contains(candidate.to),
+            position.promotion_deferred().contains(candidate.from),
+        ) {
+            PromotionChoice::NoPromotion => !candidate.promote,
+            PromotionChoice::PromotionOptional => true,
+            PromotionChoice::PromotionForced => candidate.promote,
+        }
     }
 
     /// 利きの前計算テーブルを返す。
