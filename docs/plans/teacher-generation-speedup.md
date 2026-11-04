@@ -146,5 +146,5 @@ NUMAノードごとの2プロセスと本の重ね方も、同じ機会に測る
 - [mimallocの環境変数と置換表の大きさの測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)
 - [単独スレッドの測定](../measurements/adhoc/teacher-single-thread-profile-20261104.md)
 - [3つの変更の評価](../measurements/adhoc/teacher-nonzero-optimization-20261104.md)
-- [生成機での教師生成の速さ](../measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)（ブランチ`nnue-generation-reset`）
+- 生成機での教師生成の速さ（ブランチ`nnue-generation-reset`の`docs/measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md`）
 - [合法手生成と利き計算の高速化（第3期）](movegen-speedup-3.md)

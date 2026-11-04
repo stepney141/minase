@@ -37,6 +37,7 @@ python3 ecore_cmp.py --cwd <固定のworktree> --cpus 8-19 --concurrency 12 --ro
 
 負荷の内訳は、`-C force-frame-pointers=yes`を足したビルドを`perf record --user-callchains --call-graph fp`で採取し、`inline_prof.py`でインライン展開まで解決して集計した。
 使ったスクリプトと基準の結果は[付属資料](teacher-generation-speedup-engine/)にある。
+呼び出し回数は、`stats_patch*.py`で計数用のカウンタを入れた使い捨てのビルドで数えた。
 
 ## エンジン
 
