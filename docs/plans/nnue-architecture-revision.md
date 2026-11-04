@@ -22,14 +22,14 @@ masterの埋め込みネットの置き換えは、世代反復の最終候補�
 結果は構成の選択だけに使い、masterの置き換えは世代反復の最終候補で行う（2026年11月3日の開発者の決定）。
 基準はブランチ`nnue-architecture-revision-baseline`のコミット`ee1d6e08`である。
 フェーズ1からフェーズ3までは完了した（[速度の記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
-差分更新のまとめは速くならなかったので入れず、累算値の16ビット化は機械の負荷のため親の幅を超える基準を満たさなかったが、3回の増分の一致と命令数の減少から採用した。
+差分更新のまとめは速くならなかったので入れず、累算値の16ビット化は機械の負荷のため親の幅を超える基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した。
 出力部の積和の畳み込みは親の幅を超えて速くなったので採用した。
 GPUと参照実装の照合は、両方の入力特徴集合の幅8、128、および256で一致した。
 フェーズ4の本学習は、量子化誤差の平均が29.80センチポーンとなって学習器の検査の上限26.82センチポーンを超え、止まった（[記録](../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。
 誤差の大半はi8で持つ隠れ層の重みの丸めから来ていたので、2026年11月4日の開発者の決定によりW1とW2をi16の尺度256へ改め、再学習せずに`best.npz`から書き出し直して、9.45センチポーンで検査を通った。
 候補のコミットは`77e11950`である。
-いま詰まっている点はない。
-次の一手は、フェーズ5のSTCの結果を待つことである。
+[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-stc.md)は241ペアで`H0`（得点率41.6%）、[固定ノード](../measurements/nnue-architecture-revision/nnue-architecture-revision-fixed-nodes.md)は−34.2 Elo（95%区間−65.4〜−3.5）であった。
+いま詰まっている点は、切り分けの方針が開発者の判断待ちであることである。
 
 ## 目的
 
