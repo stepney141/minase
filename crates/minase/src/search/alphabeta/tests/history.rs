@@ -344,6 +344,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 clock: &ManualClock::new(Duration::ZERO),
                 hard_limit: None,
             };
+            let repetition_history = RepetitionHistory::new(&[]);
             let searcher = new_searcher(
                 test_nnue(),
                 &board,
@@ -351,7 +352,7 @@ fn history_carry_orders_quiets_with_a_fresh_transposition_table() {
                 snapshot.repetition(),
                 DRAW_SCORE,
                 0,
-                &[],
+                &repetition_history,
                 &shared,
                 &table,
                 &mut histories.workers[0],

@@ -468,3 +468,89 @@ fn article_31_r1_snapshot_selects_the_rule_and_r2_r3_keep_draws() {
         });
     }
 }
+
+/// フィルタ導入前の線形走査。探索経路を優先し、null moveの境界をまたがない。
+fn linear_repetition(searcher: &Searcher<'_>, key: u64) -> Option<RepetitionMatch> {
+    if let Some(boundary) = searcher.null_move_boundary {
+        return searcher.path_keys[boundary..]
+            .iter()
+            .rposition(|&past| past == key)
+            .map(|index| RepetitionMatch::Path(boundary + index));
+    }
+    searcher
+        .path_keys
+        .iter()
+        .rposition(|&past| past == key)
+        .map(RepetitionMatch::Path)
+        .or_else(|| {
+            searcher
+                .history_keys
+                .iter()
+                .rposition(|&past| past == key)
+                .map(RepetitionMatch::History)
+        })
+}
+
+#[test]
+fn repetition_filter_preserves_collisions_nearest_occurrence_and_null_boundary() {
+    let root = Position::initial();
+    let key = 63;
+    let collision = key + (1 << 15);
+    for history in [vec![], vec![key, 64, key, u64::MAX], vec![collision]] {
+        with_root_searcher(&root, &history, |searcher| {
+            searcher.path_keys = vec![64, 65, 64];
+            for boundary in [None, Some(1), Some(2), Some(3)] {
+                searcher.null_move_boundary = boundary;
+                for query in [key, collision, 64, 65, u64::MAX, 0] {
+                    assert_eq!(
+                        searcher.find_repetition(query),
+                        linear_repetition(searcher, query)
+                    );
+                }
+            }
+        });
+    }
+    with_root_searcher(&root, &[key, 64, key], |searcher| {
+        assert_eq!(
+            searcher.find_repetition(key),
+            Some(RepetitionMatch::History(2))
+        );
+        assert_eq!(searcher.find_repetition(collision), None);
+    });
+}
+
+#[test]
+fn repetition_filter_matches_linear_scan_on_random_game_positions() {
+    for specification in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules =
+            Rules::from_codes(&minase_core::rules::parse_rule_set(specification).unwrap()).unwrap();
+        let positions = minase_core::test_util::sampled_random_positions(rules.moves);
+        let mut keys: Vec<_> = positions
+            .iter()
+            .map(|position| minase_core::repetition_key(rules.repetition, position))
+            .collect();
+        keys.extend_from_within(..);
+        for history_len in [0, 1, keys.len()] {
+            with_root_searcher(&positions[0], &keys[..history_len], |searcher| {
+                searcher.path_keys = keys[..4].to_vec();
+                for boundary in [None, Some(0), Some(2), Some(4)] {
+                    searcher.null_move_boundary = boundary;
+                    for &key in &keys {
+                        for query in [key, key ^ (1 << 15), !key] {
+                            assert_eq!(
+                                searcher.find_repetition(query),
+                                linear_repetition(searcher, query)
+                            );
+                        }
+                    }
+                }
+            });
+        }
+    }
+}

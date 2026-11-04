@@ -42,6 +42,32 @@ pub(super) const KILLER_COUNT: usize = 2;
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
+/// 対局履歴と、キーの下位15ビットを登録した4 KiBのフィルタ。
+/// ビットの衝突は線形走査で解決するため、最も新しい出現位置を変えない。
+pub(super) struct RepetitionHistory {
+    keys: Vec<u64>,
+    bits: [u64; 512],
+}
+
+impl RepetitionHistory {
+    /// 探索開始時に1回構築し、全ワーカーで不変の参照を共有する。
+    pub(super) fn new(keys: &[u64]) -> Self {
+        let mut history = Self {
+            keys: keys.to_vec(),
+            bits: [0; 512],
+        };
+        for &key in keys {
+            history.bits[(key as usize >> 6) & 511] |= 1 << (key & 63);
+        }
+        history
+    }
+
+    /// 偽なら履歴に存在しない。真の場合は完全なキーの照合が必要である。
+    fn may_contain(&self, key: u64) -> bool {
+        self.bits[(key as usize >> 6) & 511] & (1 << (key & 63)) != 0
+    }
+}
+
 /// ワーカー固有の探索状態を構築する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn new_searcher<'a>(
@@ -51,7 +77,7 @@ pub(super) fn new_searcher<'a>(
     repetition: SearchRepetition,
     draw_value: i32,
     worker_index: usize,
-    history_keys: &'a [u64],
+    repetition_history: &'a RepetitionHistory,
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
     history: &'a mut HistoryTable,
@@ -82,7 +108,8 @@ pub(super) fn new_searcher<'a>(
         worker_index,
         root_position: position.clone(),
         generator: MoveGenerator::new(rules),
-        history_keys,
+        history_keys: &repetition_history.keys,
+        repetition_history,
         path_keys: vec![repetition_key(repetition.rule(), position)],
         path_moves: Vec::new(),
         null_move_ply: None,
@@ -244,6 +271,8 @@ pub(super) struct Searcher<'a> {
     pub(super) generator: MoveGenerator,
     /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: &'a [u64],
+    /// 対局履歴の線形走査を省けるかを判定する、全ワーカー共通のフィルタ。
+    repetition_history: &'a RepetitionHistory,
     /// 探索経路上の反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) path_keys: Vec<u64>,
     /// `path_keys[i + 1]`の局面へ至る着手を`i`番目に持つスタック。
@@ -395,6 +424,9 @@ impl Searcher<'_> {
             .rposition(|&past| past == key)
             .map(RepetitionMatch::Path)
             .or_else(|| {
+                if !self.repetition_history.may_contain(key) {
+                    return None;
+                }
                 self.history_keys
                     .iter()
                     .rposition(|&past| past == key)
