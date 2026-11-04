@@ -276,6 +276,7 @@ impl Searcher<'_> {
                     .is_some_and(|square| candidate.capture.captured.contains(&Some(square)));
                 let is_double_lion = candidate.capture.piece.kind() == Some(PieceKind::Lion)
                     && candidate.capture.captured.iter().all(Option::is_some);
+                let mut see_floor_passed = false;
                 'pruning: {
                     if is_recapture || mv.promote {
                         #[cfg(feature = "search-stats")]
@@ -334,7 +335,8 @@ impl Searcher<'_> {
                         continue 'candidates;
                     }
 
-                    if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
+                    let see_threshold = alpha - futility_base;
+                    if see_prunes(position, self.rules, self.nnue, mv, see_threshold) {
                         if self.checking_move_exempts_qsearch_pruning(position, mv) {
                             break 'pruning;
                         }
@@ -352,8 +354,12 @@ impl Searcher<'_> {
                         }
                         continue 'candidates;
                     }
+                    // 同じ候補が厳しい閾値を通過したなら、下限でも枝刈りしない。
+                    see_floor_passed = see_threshold >= self.qsearch_see_floor;
                 }
-                if see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor) {
+                if !see_floor_passed
+                    && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
+                {
                     #[cfg(feature = "search-stats")]
                     {
                         self.stats.quiesce_see_floor_prunes += 1;
