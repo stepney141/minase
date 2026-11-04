@@ -29,16 +29,17 @@ masterの埋め込みネットの置き換えは、世代反復の最終候補�
 2026年11月4日の開発者の決定により、この構成を`H1`なしで確定し、[世代反復](../nnue-generation-reset.md)で検証する。
 
 本書の計画から次の点を変えた。
-隠れ層の重みはi8の尺度64で[学習が量子化誤差の検査に落ちた](../../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)ので、開発者の決定によりi16の尺度256へ改めた。
-第1層の初期値は、判定に通らなかった場合の切り分けの最初の候補として、開発者の決定により小さくした。
-累算値の16ビット化は、機械の負荷のため「増分が親の幅を超える」という基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した（[速度の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
-差分更新のまとめは速くならなかったので採用せず、16ビットの一時配列の変種も採用しなかった。
-フェーズ4の対局単位の汎化差は、集計の道具が見当たらず未計算である。
+次の2点は、2026年11月4日の開発者の決定による。
+隠れ層の重みは、i8の尺度64では[学習が量子化誤差の検査を通らなかった](../../measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)ので、i16の尺度256へ改めた。
+第1層の初期値は、判定に通らなかった場合の切り分けの最初の候補として小さくした。
+累算値の16ビット化は、測定機の負荷のため「増分が直前の版の測定の幅を超える」という基準を満たさなかったが、4回の増分がいずれも正であることと命令数の減少から採用した（[速度の記録](../../measurements/nnue-architecture-revision/nnue-architecture-revision-speed.md)）。
+差分更新のまとめは速くならなかったので採用せず、一時配列を16ビットにする案も採用しなかった。
+フェーズ4の対局単位の汎化差は、集計の道具が手元になく未計算である。
 
 基準はブランチ`nnue-architecture-revision-baseline`にある。
 ブランチ`nnue-architecture-revision`はmasterへ統合していない。
 統合は世代反復の最終候補の採用時に行う。
-フェーズ1の高速化だけを先にmasterへ入れるかと、[層積みの設計書](../nnue-layer-stack.md)を書き直すか取り下げるかは、開発者が決める。
+フェーズ1の高速化だけを先にmasterへ入れるかどうか、および[層積みの設計書](../nnue-layer-stack.md)を書き直すか取り下げるかは、開発者が決める。
 
 ## 目的
 
