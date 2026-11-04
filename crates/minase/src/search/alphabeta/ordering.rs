@@ -1006,8 +1006,8 @@ pub(super) struct MovePicker {
     /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
     /// 同点破りの理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     quiet_order: Vec<(Reverse<i64>, Reverse<i64>, usize)>,
-    used_quiets: [Option<usize>; KILLER_COUNT],
-    quiets_generated: bool,
+    used_quiets: [Option<Move>; KILLER_COUNT],
+    killers_tried: bool,
 }
 
 impl MovePicker {
@@ -1026,7 +1026,7 @@ impl MovePicker {
             base_moves: Vec::new(),
             quiet_order: Vec::new(),
             used_quiets: [None; KILLER_COUNT],
-            quiets_generated: false,
+            killers_tried: false,
         }
     }
 
@@ -1047,12 +1047,13 @@ impl MovePicker {
         self.captures_generated = false;
         self.quiets.clear();
         self.quiet_index = 0;
-        self.quiets_generated = false;
+        self.killers_tried = false;
         self.quiet_order.clear();
         self.used_quiets = [None; KILLER_COUNT];
     }
 
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
+    /// Killer手は合法性と非捕獲を単独で確認し、静かな手の全件生成をその段階まで遅らせる。
     pub(super) fn next(
         &mut self,
         position: &Position,
@@ -1113,7 +1114,7 @@ impl MovePicker {
                         self.capture_index += 1;
                         return Some((mv, true));
                     }
-                    self.stage = if self.quiets_generated {
+                    self.stage = if self.killers_tried {
                         MovePickerStage::Quiets
                     } else {
                         MovePickerStage::Killer0
@@ -1123,11 +1124,7 @@ impl MovePicker {
                 | MovePickerStage::EarlyKiller1
                 | MovePickerStage::Killer0
                 | MovePickerStage::Killer1 => {
-                    if !self.quiets_generated {
-                        generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
-                        self.quiets.retain(|&mv| Some(mv) != self.tt_move);
-                        self.quiets_generated = true;
-                    }
+                    self.killers_tried = true;
                     let (killer_index, next_stage) = match self.stage {
                         MovePickerStage::EarlyKiller0 => (0, MovePickerStage::EarlyKiller1),
                         MovePickerStage::EarlyKiller1 => (1, MovePickerStage::Captures),
@@ -1137,18 +1134,30 @@ impl MovePicker {
                     };
                     self.stage = next_stage;
                     if let Some(killer) = self.killers[killer_index]
-                        && let Some(index) =
-                            self.quiets.iter().enumerate().find_map(|(index, &mv)| {
-                                (mv == killer && !self.used_quiets.contains(&Some(index)))
-                                    .then_some(index)
-                            })
+                        && Some(killer) != self.tt_move
+                        && !self.used_quiets.contains(&Some(killer))
+                        && generator.is_legal_move(
+                            position,
+                            killer,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        )
+                        && position
+                            .captured_squares(killer)
+                            .iter()
+                            .all(Option::is_none)
                     {
-                        self.used_quiets[killer_index] = Some(index);
-                        return Some((self.quiets[index], false));
+                        self.used_quiets[killer_index] = Some(killer);
+                        return Some((killer, false));
                     }
                 }
+
                 // killer手を除き、quiet_orderの3つのキーで順序を確定する。
                 MovePickerStage::Quiets => {
+                    // killer段の単独検査と同じ非捕獲の合法手を、ここで初めて全件生成する。
+                    self.quiets.clear();
+                    generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
+                    self.quiets.retain(|&mv| Some(mv) != self.tt_move);
                     let continuation_offsets = CONTINUATION_WEIGHTS.map(|(distance, _)| {
                         let context_ply = context.ply.checked_sub(distance as u32)? as usize;
                         context
@@ -1168,7 +1177,7 @@ impl MovePicker {
                             QuietPiece::new(position, nnue, context, &threats, moves[0].from);
                         for (local_index, &mv) in moves.iter().enumerate() {
                             let index = offset + local_index;
-                            if self.used_quiets.contains(&Some(index)) {
+                            if self.used_quiets.contains(&Some(mv)) {
                                 continue;
                             }
                             self.quiet_order.push((
