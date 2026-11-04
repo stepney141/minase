@@ -75,7 +75,7 @@ impl Position {
 
 /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
 ///
-/// 全固定移動が5×5近傍に収まるので、その範囲の指定側の駒について固定利き表が`square`を含むか調べる。
+/// 全固定移動が5×5近傍に収まるので、その範囲で相対升ごとの駒種集合に含まれる駒を調べる。
 /// 走りは`square`から8方向の最初の遮蔽駒を求め、それが指定側の駒であり、
 /// 逆方向へ走る動きの定義を持つ場合に加える。全プロファイルの
 /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
@@ -87,23 +87,54 @@ fn ordinary_attackers_to(
     occupied: Bitboard,
 ) -> Bitboard {
     let mut attackers = Bitboard::EMPTY;
-    for from in tables.neighbourhood(square) & position.pieces_of(color) {
+    let own = position.pieces_of(color) & occupied;
+    for from in tables.neighbourhood(square) & own {
+        let kinds = tables.fixed_attacker_kinds(color, square, from);
+        if kinds == 0 {
+            continue;
+        }
         let kind = position
             .piece_at(from)
             .and_then(|piece| piece.kind())
             .expect("own square must contain a piece");
-        if tables
-            .fixed(color, movement_profile(kind), from)
-            .contains(square)
-        {
+        if kinds & (1 << kind.index()) != 0 {
             attackers.set(from);
         }
     }
-    let own = position.pieces_of(color) & occupied;
-    for direction in Direction::ALL {
-        // 相手駒や仮想の占有升を飛び越さないよう、全占有から最初の遮蔽を求める。
+    attackers
+        | sliding_attackers_to::<true>(tables, position, color, square, occupied, own)
+        | sliding_attackers_to::<false>(tables, position, color, square, occupied, own)
+}
+
+/// 生値が増える方向と減る方向を別々に走査し、最初の遮蔽駒の逆方向の走りを調べる。
+/// 全占有から遮蔽を選び、指定側の駒だけを残すので、仮想占有や相手駒も飛び越さない。
+fn sliding_attackers_to<const INCREASING: bool>(
+    tables: &AttackTables,
+    position: &Position,
+    color: Color,
+    square: Square,
+    occupied: Bitboard,
+    own: Bitboard,
+) -> Bitboard {
+    let directions = if INCREASING {
+        [
+            Direction::East,
+            Direction::North,
+            Direction::NorthEast,
+            Direction::NorthWest,
+        ]
+    } else {
+        [
+            Direction::West,
+            Direction::South,
+            Direction::SouthEast,
+            Direction::SouthWest,
+        ]
+    };
+    let mut attackers = Bitboard::EMPTY;
+    for direction in directions {
         let blockers = tables.ray(square, direction) & occupied;
-        let blocker = if direction.increases_raw_index() {
+        let blocker = if INCREASING {
             blockers.lsb()
         } else {
             blockers.msb()
@@ -119,8 +150,7 @@ fn ordinary_attackers_to(
             .and_then(|piece| piece.kind())
             .expect("blocker must be a piece");
         let mask = tables.slide_directions(color, movement_profile(kind));
-        let reverse = direction.opposite();
-        if (mask >> reverse.index()) & 1 != 0 {
+        if (mask >> direction.opposite().index()) & 1 != 0 {
             attackers.set(blocker);
         }
     }

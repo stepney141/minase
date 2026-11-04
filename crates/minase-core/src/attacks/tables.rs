@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use crate::board::Bitboard;
 use crate::board::Direction;
 use crate::board::{RAW_SQUARE_COUNT, Square};
-use crate::piece::{COLOR_COUNT, Color};
+use crate::piece::{COLOR_COUNT, Color, PieceKind};
 
 use super::fixed::{
     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
@@ -21,6 +21,8 @@ pub(crate) struct AttackTables {
     rays: Box<RayTable>,
     /// 色×プロファイル×升ごとの固定利き。
     fixed: FixedAttackTable,
+    /// 5×5近傍の相対升から固定利きが届く駒種の集合。添字は生値の差に34を足した値。
+    fixed_attacker_kinds: [[u32; 69]; COLOR_COUNT],
     /// 遮蔽のない盤面での固定利きと走りの和。
     reach: FixedAttackTable,
     /// 色×プロファイルごとの走りの絶対方向マスク。
@@ -41,6 +43,18 @@ impl AttackTables {
             vec![Bitboard::EMPTY; COLOR_COUNT * MOVEMENT_PROFILE_COUNT * RAW_SQUARE_COUNT]
                 .into_boxed_slice();
 
+        let mut fixed_attacker_kinds = [[0; 69]; COLOR_COUNT];
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                for delta in
+                    movement_profile_data(super::fixed::movement_profile(kind)).fixed_deltas
+                {
+                    let (file, rank) = delta.for_color(color);
+                    let index = (i16::from(rank) * 16 + i16::from(file) + 34) as usize;
+                    fixed_attacker_kinds[color.index()][index] |= 1 << kind.index();
+                }
+            }
+        }
         let mut slide_directions = [[0; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT];
         for color in Color::ALL {
             for profile_id in all_profiles() {
@@ -93,6 +107,7 @@ impl AttackTables {
             reach,
             rays,
             fixed,
+            fixed_attacker_kinds,
             slide_directions,
             lion_jumps,
             neighbourhoods,
@@ -133,6 +148,14 @@ impl AttackTables {
     #[inline]
     pub(crate) fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
         self.fixed[Self::fixed_index(color, profile, from)]
+    }
+
+    /// 5×5近傍内の`from`から`target`へ固定利きが届く駒種をビット集合で返す。
+    /// 生値は段幅16なので、この範囲の相対升は−34から34の差で一意に表せる。
+    #[inline]
+    pub(crate) fn fixed_attacker_kinds(&self, color: Color, target: Square, from: Square) -> u32 {
+        let index = (i16::from(target.raw()) - i16::from(from.raw()) + 34) as usize;
+        self.fixed_attacker_kinds[color.index()][index]
     }
 
     /// 遮蔽を考慮しない固定利きと走りの到達範囲を返す。
