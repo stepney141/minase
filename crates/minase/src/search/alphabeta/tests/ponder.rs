@@ -101,7 +101,7 @@ fn run_fixed_scaled_ponder(
         },
         DRAW_SCORE,
         &root_moves,
-        &[search_key(&position)],
+        &RepetitionHistory::new(&[search_key(&position)]),
         depth_limit,
         Some(budget),
         Some(InstabilityScaling::new(previous, threads)),
@@ -152,6 +152,7 @@ fn with_timed_ponder_searcher(
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
+    let repetition_history = RepetitionHistory::new(&[]);
     let mut searcher = new_searcher(
         test_nnue(),
         &position,
@@ -161,7 +162,7 @@ fn with_timed_ponder_searcher(
         },
         DRAW_SCORE,
         0,
-        &[],
+        &repetition_history,
         &shared,
         &table,
         &mut butterfly_history,
@@ -552,6 +553,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &position,
@@ -561,7 +563,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -748,7 +750,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 },
                 DRAW_SCORE,
                 &roots,
-                &[],
+                &RepetitionHistory::new(&[]),
                 1,
                 worker_index.max(1),
                 &shared,
@@ -765,6 +767,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             }
             assert_eq!(completed.result.depth, 1);
             completed_depth.store(u64::from(completed.result.depth), AtomicOrdering::Relaxed);
+            let repetition_history = RepetitionHistory::new(&[]);
             let mut searcher = new_searcher(
                 test_nnue(),
                 &position,
@@ -774,7 +777,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
                 },
                 DRAW_SCORE,
                 0,
-                &[],
+                &repetition_history,
                 &shared,
                 &table,
                 history,
@@ -880,7 +883,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     },
                     DRAW_SCORE,
                     &roots,
-                    &[],
+                    &RepetitionHistory::new(&[]),
                     2,
                     1,
                     &shared,
@@ -898,6 +901,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
             let mut butterfly_history =
                 Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
             let mut capture_history = empty_capture_history();
+            let repetition_history = RepetitionHistory::new(&[]);
             let mut searcher = new_searcher(
                 nnue,
                 &position,
@@ -907,7 +911,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 },
                 DRAW_SCORE,
                 0,
-                &[],
+                &repetition_history,
                 &shared,
                 &table,
                 &mut butterfly_history,
@@ -1057,6 +1061,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
                 let mut capture_history = empty_capture_history();
                 let correction_values = new_correction_values();
+                let repetition_history = RepetitionHistory::new(&[]);
                 let mut searcher = new_searcher(
                     nnue,
                     &position,
@@ -1066,7 +1071,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     },
                     DRAW_SCORE,
                     0,
-                    &[],
+                    &repetition_history,
                     &shared,
                     &table,
                     &mut history,
