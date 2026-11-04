@@ -192,6 +192,31 @@ runnerと測定機は照合しないので、作業ツリーの`minase`を再ビ
 時間制御の対局結果と逐次検定は再開後も有効だが、強制終了した測定は処理停止から記録更新までの時間を確定できないため、スループット校正には使わない。
 同様に、起動ごとの測定機が異なる測定も、校正用の指標の意味が定まらないので`minase match report`の集計対象外とする。
 
+### 終わった測定の圧縮
+
+実行ディレクトリは`pairs/`のJSONで大きくなるので、ディスクが足りなくなったら、終わった測定を実行ディレクトリごとに`data/matches/<測定名>.tar.zst`へ圧縮する。
+JSONのサイズは約20分の1になる。
+全記録を読む診断が設計や既定値を決めた例（[反復負けの診断](../measurements/search-repetition/search-repetition-outcome-diag.md)、[投了閾値の診断](../research/usi-resignation-diagnosis.md)）があるので、終わった測定は削除せず、圧縮して残す。
+2026年10月31日以前に終わった247件は、2026年11月4日にこの形式へ圧縮した。
+
+圧縮では、アーカイブを作り、内容が元と一致することを確かめてから元のディレクトリを消す。
+実行中の測定と、再開する予定の測定は圧縮しない。
+
+```console
+tar -I 'zstd -3 -T2 -q' -cf data/matches/<測定名>.tar.zst -C data/matches <測定名> \
+  && tar -I 'zstd -d -q' -df data/matches/<測定名>.tar.zst -C data/matches <測定名> \
+  && rm -rf data/matches/<測定名>
+```
+
+圧縮した測定は、`--resume`、`minase match report`、および`pairs/`を読むスクリプトではそのまま使えないので、先に元の場所へ展開する。
+
+```console
+tar -I 'zstd -d -q' -xf data/matches/<測定名>.tar.zst -C data/matches
+```
+
+`scripts/resign_diagnosis.py`のように`data/matches`を走査するスクリプトは、圧縮した測定をエラーを出さずにスキップする。
+全記録を対象にする診断では、先にすべて展開し、対象の局数を確かめる。
+
 ## 保存記録の集計
 
 `minase match report`は、同一時間制御の固定局数Eloで完了した実行ディレクトリから、Elo、95%信頼区間、異常件数、CPU時間、局時間、最大常駐メモリ、および校正用の2主指標をJSONで再計算する。
