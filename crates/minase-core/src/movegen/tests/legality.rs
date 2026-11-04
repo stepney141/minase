@@ -285,6 +285,15 @@ fn article_30_direct_legality_preserves_promotion_choices() {
                 to,
                 promote,
             };
+            if !capture {
+                let mut quiets = Vec::new();
+                generator.generate_quiets(&board, &mut Vec::new(), &mut quiets);
+                assert_eq!(
+                    quiets.contains(&candidate),
+                    expected,
+                    "quiet {text}: {candidate:?}"
+                );
+            }
             assert_eq!(
                 generated_legality(&board, &generator, candidate),
                 expected,

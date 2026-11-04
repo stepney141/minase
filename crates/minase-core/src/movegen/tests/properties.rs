@@ -598,3 +598,130 @@ fn quiet_generation_preserves_order_for_special_moves_and_all_rules() {
         }
     }
 }
+
+/// 変更前の全手生成と、非捕獲部分列の要素・順序・重複が一致する。
+#[test]
+fn quiet_generation_matches_reference_in_all_rule_variants() {
+    for rules in super::rule_variants() {
+        let generator = MoveGenerator::new(rules);
+        for position in crate::test_util::bench_positions()
+            .into_iter()
+            .chain(crate::test_util::sampled_random_positions(rules))
+        {
+            let mut expected = Vec::new();
+            generation_before::<false, true>(&generator, &position, &mut Vec::new(), &mut expected);
+            let mut actual = Vec::new();
+            generator.generate_quiets(&position, &mut Vec::new(), &mut actual);
+            assert_eq!(actual, expected, "rules={rules:?}");
+        }
+    }
+}
+
+/// 第17条の再成り禁止は、動きの駒種が成れる駒でも元の駒の成否に従う。
+#[test]
+fn article_17_quiet_generation_never_promotes_an_already_promoted_piece() {
+    for kind in [
+        PieceKind::GoldGeneral,
+        PieceKind::Rook,
+        PieceKind::DragonKing,
+    ] {
+        let board = crate::test_util::position_from_codes(
+            Color::Black,
+            &[(
+                msq(6, 5),
+                PieceCode::new_promoted(Color::Black, kind).unwrap(),
+            )],
+        );
+        let mut quiets = Vec::new();
+        MoveGenerator::standard().generate_quiets(&board, &mut Vec::new(), &mut quiets);
+        assert!(!quiets.is_empty());
+        assert!(quiets.iter().all(|mv| !mv.promote));
+    }
+}
+
+// 最適化前の作業領域と規則判定を使う参照実装。高速経路を呼び出さない。
+
+use crate::attacks::{SpecialMovement, movement_profile, movement_profile_data};
+use crate::movegen::control::{piece_control_without_special, special_step_destinations};
+use crate::movegen::expand::push_with_promotion;
+use crate::movegen::lion::generate_lion_double_and_jumps;
+use crate::movegen::lion_like::generate_lion_like_double_and_jumps;
+/// 手番側の全駒について合法手を生成する。
+/// 走査と出力の順序は[`MoveGenerator::generate_moves`]に従い、
+/// 捕獲限定と非捕獲限定でも該当する手の相対順序を保つ。
+pub(super) fn generation_before<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
+    generator: &MoveGenerator,
+    position: &Position,
+    base_moves: &mut Vec<Move>,
+    output: &mut Vec<Move>,
+) {
+    let color = position.side_to_move();
+    for kind in PieceKind::ALL {
+        for from in position.pieces_of_kind(color, kind) {
+            piece_generation_before::<CAPTURES_ONLY, QUIETS_ONLY>(
+                generator, position, color, kind, from, base_moves, output,
+            );
+        }
+    }
+}
+
+/// 指定した1枚の駒について合法手を生成する。
+/// [`MoveGenerator::generate_moves`]の駒ごとの順序で基本の着手を作り、成りを展開する。
+pub(super) fn piece_generation_before<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
+    generator: &MoveGenerator,
+    position: &Position,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    base_moves: &mut Vec<Move>,
+    output: &mut Vec<Move>,
+) {
+    let profile = movement_profile_data(movement_profile(kind));
+    let own = position.pieces_of(color);
+    let enemy = position.pieces_of(color.opposite());
+    let destinations = if CAPTURES_ONLY {
+        enemy
+    } else if QUIETS_ONLY {
+        !position.occupied()
+    } else {
+        !own
+    };
+    base_moves.clear();
+    let step_destinations =
+        (piece_control_without_special(generator.tables(), position.occupied(), color, kind, from)
+            | special_step_destinations(generator.tables(), color, from, profile.special))
+            & destinations;
+    for to in step_destinations {
+        base_moves.push(Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        });
+    }
+
+    match profile.special {
+        SpecialMovement::None => {}
+        SpecialMovement::Lion => {
+            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
+                generator.tables(),
+                position,
+                color,
+                from,
+                &mut |mv| base_moves.push(mv),
+            );
+        }
+        SpecialMovement::LionLike(profile) => {
+            generate_lion_like_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
+                position,
+                color,
+                from,
+                profile,
+                &mut |mv| base_moves.push(mv),
+            );
+        }
+    }
+    for &base in base_moves.iter() {
+        push_with_promotion(generator, position, kind, base, output);
+    }
+}
