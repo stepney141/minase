@@ -18,8 +18,10 @@
 進行中。2026年11月4日に利用者の指示で着手し、masterからブランチ`nnue-generation-reset`のworktreeを`data/worktrees/nnue-generation-reset`に作った。
 前提は、[NNUEの構成の見直し](archived/nnue-architecture-revision.md)で確定した構成と、そのブランチを統合したmasterである。
 2026年11月3日の利用者の決定により、本書はAlphaZero型の強化学習の再開より先に行う。
+フェーズ1は[通し試験](../measurements/nnue-generation-reset/nnue-generation-reset-chain-trial.md)を含めて終えた。
+フェーズ2として、2026年11月4日にvast.aiの生成機を借りて第1世代の生成を始めた。
 いま詰まっている点はない。
-次の一手は、フェーズ1の実装を終え、安い機械で連続生成スクリプトの通し試験を行うことである。
+次の一手は、第1世代の学習の後に作業機で第0世代とのSTCを測ることであり、連続生成スクリプトが自動で行う。
 
 ## 目的
 

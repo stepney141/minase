@@ -49,11 +49,14 @@ done
 学習器は開始時に全ファイルを読み、各対局の手順を再生して局面を復元する。
 読み込みはファイル単位で`--threads`のスレッドに分けて行い、その時間は`config.json`の`preprocessing_seconds`に含まれる。
 
-評価値を勝率へ変換する勝率尺度（1ロジットあたりのcp）、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNPT形式）から引き継ぐ。
+評価値を勝率へ変換する勝率尺度（1ロジットあたりのcp）、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNUE形式）から引き継ぐ。
 線形の経路の初期値も、この探索用駒価値から作る。
 盤上の駒に対応する行には、自駒ならその駒状態の探索用駒価値を、相手駒なら符号を反転した値を、144升と序中盤用・終盤用の2列に同じく置き、王駒と先獅子の対象升の行は0とする。
-`--base`のPSTの部分は使わないので、初期値は升ごとの選好を持たない。
+`--base`の線形の経路、第1層、および出力部は使わないので、初期値は升ごとの選好を持たない。
 学習データの規則セットも、`--base`の規則セットと一致していなければならない。
+
+手書きの評価関数v0を出発点にする学習では、`minase-trainer nnue export-handcrafted --cp-per-logit <K> --output <新規のパス>`でv0をMNUEへ書き出して`--base`に与える。
+このネットは線形の経路だけでv0を表し、非線形部分をすべて0とするので、埋め込むと探索はv0の評価で動く。
 
 教師値で探索値と対局結果を混ぜる比λは`--lambda`で必ず指定し、NNUEの学習では探索値だけを教師とする1.0を指定する。
 λは自己対局のデータにだけ適用され、実戦対局のデータでは常に0である。
@@ -85,7 +88,7 @@ for FEATURE_SET in P HalfKP-hm-b8; do
   cargo run --release --offline -j 2 -p minase-trainer -- nnue train \
     --feature-set "$FEATURE_SET" --width 256 \
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
-    --base crates/minase/nets/pst.bin \
+    --base crates/minase/nets/nnue.bin \
     --lambda 1.0 --teacher-cp-per-logit calibrate \
     --batch 16384 --epochs 1 --seed 1 \
     --output-dir "/tmp/nnue-rust-phase3-${FEATURE_SET}"
