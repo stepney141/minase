@@ -1,0 +1,28 @@
+{
+  "pairs": 1500,
+  "seed": 1,
+  "candidate1": {
+    "mean": -81.802,
+    "stdev": 489.359251943464,
+    "mean_absolute": 198.094,
+    "median_absolute": 61.0,
+    "p90_absolute": 470,
+    "p99_absolute": 2657
+  },
+  "candidate2": {
+    "mean": -87.556,
+    "stdev": 488.161758911941,
+    "mean_absolute": 191.70266666666666,
+    "median_absolute": 52.0,
+    "p90_absolute": 417,
+    "p99_absolute": 2574
+  },
+  "baseline": {
+    "mean": -83.57733333333333,
+    "stdev": 479.8885315218756,
+    "mean_absolute": 191.65066666666667,
+    "median_absolute": 58.0,
+    "p90_absolute": 430,
+    "p99_absolute": 2585
+  }
+}

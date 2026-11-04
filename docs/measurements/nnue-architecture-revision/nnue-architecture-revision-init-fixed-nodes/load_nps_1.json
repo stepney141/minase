@@ -1,0 +1,26 @@
+{
+  "copies": 1,
+  "depth": 13,
+  "rounds": {
+    "candidate2": [
+      514846,
+      511671,
+      516975
+    ],
+    "baseline": [
+      560037,
+      562148,
+      561160
+    ],
+    "candidate1": [
+      583271,
+      529372,
+      529118
+    ]
+  },
+  "median": {
+    "candidate2": 514846,
+    "baseline": 561160,
+    "candidate1": 529372
+  }
+}

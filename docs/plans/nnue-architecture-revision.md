@@ -30,8 +30,8 @@ GPUと参照実装の照合は、両方の入力特徴集合の幅8、128、お�
 候補のコミットは`77e11950`である。
 [STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-stc.md)は241ペアで`H0`（得点率41.6%）、[固定ノード](../measurements/nnue-architecture-revision/nnue-architecture-revision-fixed-nodes.md)は−34.2 Elo（95%区間−65.4〜−3.5）であった。
 開発者は、切り分けの表を第1層の初期値から順に試すと決めた（2026年11月4日）。
-いま詰まっている点はない。
-次の一手は、初期値を改めた学習器で本学習を行い、同じ基準と`nnue-architecture-revision-init-stc`で比べることである。
+初期値を小さくした候補`9af68a00`は、[STC](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)が`H0`（306ペア、得点率43.6%）で、[固定ノード](../measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)が−2.6 Elo（95%区間−35.8〜+30.5）であった。
+いま詰まっている点は、切り分けの続きが開発者の判断待ちであることである。
 
 ## 目的
 
