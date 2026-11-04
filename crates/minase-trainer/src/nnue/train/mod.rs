@@ -195,8 +195,8 @@ impl Session {
     /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
     /// `--base`の探索用駒価値から[`base::Base::initial_linear`]で線形初期値を作る。
     /// 王駒と先獅子は0とし、非王駒は自駒を正、相手駒を負として全升と2端点へ同じ値を置く。
-    /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
-    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
+    /// 全MNSDの規則セット名は基準MNUEと一致し、訓練集合と検証集合はどちらも空であってはならない。
+    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNUEから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
     /// 初期値の鏡映対称性と保存範囲は[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
     /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。

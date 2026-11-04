@@ -40,7 +40,7 @@ fn args() -> Args {
         width: 8,
         data: vec!["records.bin".into()],
         train_subsample: None,
-        base: "pst.bin".into(),
+        base: "base.bin".into(),
         output_dir: "output".into(),
         lookahead_gamma: None,
         lookahead_plies: None,
@@ -222,14 +222,14 @@ impl Fixture {
     fn training_args(&self) -> Args {
         let mut args = args();
         args.data = vec![self.0.join("records.bin")];
-        args.base = self.0.join("pst.bin");
+        args.base = self.0.join("base.bin");
         args.output_dir = self.0.join("continuous");
         args.epochs = 2;
         args.lookahead_gamma = Some(0.9);
         args.lookahead_plies = Some(40);
         fs::write(
             &args.base,
-            include_bytes!("../../../../minase/nets/pst.bin"),
+            include_bytes!("../../../../minase/nets/nnue-epoch0.bin"),
         )
         .unwrap();
         // seed=11では0..40のうち4、15、22が検証対局である。
@@ -386,6 +386,91 @@ fn cpu_initialization_halfkp_uses_base_feature_variance() {
 }
 
 #[test]
+fn cpu_training_inherits_mnue_metadata_and_initializes_only_from_search_values() {
+    use minase::eval::{
+        Nnue,
+        features::{PIECE_STATE_COUNT, piece_state},
+        nnue::{
+            EncodeInput, encode,
+            feature_set::P,
+            head::{Head, PairwiseL16L32},
+        },
+    };
+
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    args.epochs = 1;
+    args.batch = 296;
+    // 入力ネットの線形重みと探索用駒価値を別々に与え、重みの継続学習との混同を検出する。
+    let mut values: [i32; PIECE_STATE_COUNT] = std::array::from_fn(|state| 40 + state as i32 * 3);
+    let royal = values.iter().copied().max().unwrap()
+        + values[piece_state(PieceCode::new(Color::Black, PieceKind::Pawn).unwrap())];
+    values[PieceKind::King.index()] = royal;
+    values[PieceKind::CrownPrince.index()] = royal;
+    let scale = 317.25;
+    let rules = minase_core::Rules::ENGINE_DEFAULT.to_string();
+    let head = PairwiseL16L32::decode(&vec![0; PairwiseL16L32::byte_len(4)], 4, true).unwrap();
+    fs::write(
+        &args.base,
+        encode::<P, PairwiseL16L32>(&EncodeInput {
+            width: 4,
+            cp_per_logit: scale,
+            rule_set: &rules,
+            piece_values: &values,
+            linear: &vec![[777, -333]; FEATURE_COUNT],
+            weights: &vec![0; FEATURE_COUNT * 4],
+            biases: &[0; 4],
+            head: &head,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let base = base::read(&args.base).unwrap();
+    let mut initial_args = args.clone();
+    initial_args.output_dir = fixture.0.join("initialization");
+    let session = Session::new(initial_args).unwrap();
+    assert_eq!(session.checkpoint.optimizer.step(), 0);
+    assert_eq!(
+        session.checkpoint.model.expanded_linear(),
+        base.initial_linear()
+    );
+    let initial = session.checkpoint.model.initial_linear().to_vec();
+    drop(session);
+
+    let summary = run(args.clone()).unwrap();
+    assert_eq!(summary.last_epoch, 1);
+    assert_eq!(summary.total_steps, 1);
+    let net = Nnue::decode(&fs::read(args.output_dir.join("nnue.bin")).unwrap()).unwrap();
+    assert_eq!(net.cp_per_logit(), scale);
+    assert_eq!(net.rule_set(), rules);
+    for (state, value) in values.into_iter().enumerate() {
+        assert_eq!(net.piece_value_of_state(state), value);
+    }
+    let saved = Checkpoint::read(args.output_dir.join("best.npz")).unwrap();
+    assert_eq!(saved.model.initial_linear(), initial);
+}
+
+#[test]
+fn mnpt_base_is_rejected_before_reading_training_data_or_creating_output() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    fs::write(
+        &args.base,
+        include_bytes!("../../../../minase/nets/pst.bin"),
+    )
+    .unwrap();
+    fs::remove_file(&args.data[0]).unwrap();
+    let error = run(args.clone()).unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<minase::eval::nnue::Error>(),
+        Some(minase::eval::nnue::Error::InvalidMagic { actual }) if actual == b"MNPT"
+    ));
+    assert!(!args.output_dir.exists());
+}
+
+#[test]
 fn resume_config_allows_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
@@ -428,10 +513,10 @@ fn resume_config_allows_budget_and_worker_changes() {
             .len(),
         1
     );
-    // MNPT版3の検査和は80バイトのヘッダを除く本体全体のSHA-256。
+    // MNUE版5の検査和は192バイトのヘッダを除く本体全体のSHA-256。
     assert_eq!(
         configuration.document["inputs"]["base"]["checksum"],
-        crate::nn::hex(&sha256(&fs::read(&args.base).unwrap()[80..]))
+        crate::nn::hex(&sha256(&fs::read(&args.base).unwrap()[192..]))
     );
     assert!(configuration.document["inputs"].get("init_pst").is_none());
     let input = &configuration.document["inputs"]["files"][0];
@@ -668,10 +753,10 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             "lambda" => args.training.lambda = 0.75,
             "base" => {
                 let mut bytes = fs::read(&args.base).unwrap();
-                let last = bytes.len() - 1;
+                let last = bytes.len() - 2;
                 bytes[last] ^= 1;
-                let checksum = sha256(&bytes[80..]);
-                bytes[48..80].copy_from_slice(&checksum);
+                let checksum = sha256(&bytes[192..]);
+                bytes[144..176].copy_from_slice(&checksum);
                 fs::write(&args.base, bytes).unwrap();
             }
             "data" => {

@@ -23,7 +23,7 @@ fn argv() -> Vec<&'static str> {
         "--data",
         "first.bin",
         "--base",
-        "pst.bin",
+        "base.bin",
         "--output-dir",
         "output",
         "--teacher-cp-per-logit",

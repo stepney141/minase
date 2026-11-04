@@ -832,8 +832,8 @@ impl Training {
     fn new() -> Self {
         // 320対局のうちseed=11の検証対局を除いた訓練局面を33件ずつのバッチに分ける。
         let data = Data::new(&[(11, [2; 32], 320)]);
-        let base = include_bytes!("../../minase/nets/pst.bin");
-        fs::write(data.temp.join("pst.bin"), base).unwrap();
+        let base = include_bytes!("../../minase/nets/nnue-epoch0.bin");
+        fs::write(data.temp.join("base.bin"), base).unwrap();
         Self { data }
     }
     fn path(&self, name: &str) -> String {
@@ -849,7 +849,7 @@ impl Training {
             "--data".into(),
             self.data.paths[0].to_str().unwrap().into(),
             "--base".into(),
-            self.path("pst.bin"),
+            self.path("base.bin"),
             "--output-dir".into(),
             self.path(output),
             "--teacher-cp-per-logit".into(),

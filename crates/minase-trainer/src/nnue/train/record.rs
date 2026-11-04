@@ -224,7 +224,7 @@ pub(super) struct Configuration {
 /// 教師と最適化の係数は[`crate::nnue::options::TrainingOptions`]に従う。
 /// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
 /// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
-/// `inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
+/// `inputs.base`はMNUEの`{path, checksum}`であり、パスは正規化済みである。
 /// `preprocessing`は`teacher_classes`、`teacher_cp_per_logit`、`teacher_lambdas`、`teacher_cp_per_logit_source`、
 /// `cp_per_logit`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師の勝率尺度（1ロジットあたりのcp）は`null`である。

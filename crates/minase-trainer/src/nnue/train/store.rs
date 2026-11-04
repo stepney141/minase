@@ -67,7 +67,7 @@ impl Store {
             Self::Spill(d) => d.headers().all(|header| header.rule_set() == rule_set),
         };
         if !matches {
-            return Err(Error::Invalid("MNSD rule set differs from baseline MNPT").into());
+            return Err(Error::Invalid("MNSD rule set differs from baseline MNUE").into());
         }
         Ok(())
     }

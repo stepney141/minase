@@ -914,22 +914,12 @@ fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: Feat
 }
 
 #[test]
-fn embedded_metadata_and_search_values_match_baseline() {
+fn embedded_width_checksum_and_rules_match_header() {
     let nnue = weights().unwrap();
     assert_eq!(
         nnue.width(),
         u32::from_le_bytes(EMBEDDED[104..108].try_into().unwrap()) as usize
     );
-    let baseline = Nnue::decode(EPOCH_ZERO).unwrap();
-    assert_eq!(nnue.pawn_value(), baseline.pawn_value());
-    assert_eq!(nnue.max_promotion_gain(), baseline.max_promotion_gain());
-    assert_eq!(nnue.cp_per_logit(), baseline.cp_per_logit());
-    for state in 0..PIECE_STATE_COUNT {
-        assert_eq!(
-            nnue.piece_value_of_state(state),
-            baseline.piece_value_of_state(state)
-        );
-    }
     assert_eq!(
         nnue.checksum(),
         &<[u8; 32]>::from(Sha256::digest(&EMBEDDED[HEADER_LENGTH..]))

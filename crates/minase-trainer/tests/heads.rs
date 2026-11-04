@@ -131,8 +131,8 @@ fn cpu_training_exports_a_network_matching_the_independent_integer_reference() {
     let fixture = Fixture::new(&positions());
     let input = fixture.root.join("training.bin");
     std::fs::write(&input, common::training::records(false, true)).unwrap();
-    let base = fixture.root.join("pst.bin");
-    std::fs::write(&base, include_bytes!("../../minase/nets/pst.bin")).unwrap();
+    let base = fixture.root.join("base.bin");
+    std::fs::write(&base, include_bytes!("../../minase/nets/nnue-epoch0.bin")).unwrap();
     let dataset = minase_trainer::data::Dataset::open(
         std::slice::from_ref(&input),
         None,

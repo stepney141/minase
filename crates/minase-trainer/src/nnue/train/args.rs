@@ -55,7 +55,7 @@ pub struct Args {
     /// 教師の勝率尺度をcalibrateで推定するか、較正JSONのパスで指定する。
     #[arg(long, value_name = "calibrate|FILE")]
     pub teacher_cp_per_logit: crate::data::TeacherCpPerLogitSource,
-    /// 線形初期値に使う探索用駒価値、勝率尺度（1ロジットあたりのcp）、規則セット名を持つMNPTファイルを指定する。
+    /// 線形初期値に使う探索用駒価値、勝率尺度（1ロジットあたりのcp）、規則セット名を持つMNUEファイルを指定する。
     #[arg(long)]
     pub base: PathBuf,
     /// 設定、ログ、チェックポイント、学習済みネットワークの保存先を指定する。

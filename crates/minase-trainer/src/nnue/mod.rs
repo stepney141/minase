@@ -4,6 +4,7 @@ pub mod data;
 pub mod export;
 pub mod fit_linear;
 pub mod gpu;
+pub mod handcrafted;
 pub mod model;
 pub mod options;
 pub mod reference;
