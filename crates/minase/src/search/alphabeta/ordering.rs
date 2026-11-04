@@ -7,7 +7,7 @@
 
 use core::cmp::Reverse;
 
-use crate::eval::Nnue;
+use crate::eval::{Nnue, PIECE_STATE_COUNT, piece_state_of};
 use minase_core::MoveGenerator;
 use minase_core::board::{BOARD_SQUARE_COUNT, Bitboard, Square};
 use minase_core::mv::Move;
@@ -19,6 +19,7 @@ use super::history::{
     ContinuationHistory, HISTORY_LIMIT, HistoryTable, LOW_PLY_HISTORY_LIMIT,
     LOW_PLY_HISTORY_PLY_COUNT, LowPlyHistory, PawnHistory, history_gravity,
 };
+use super::quiesce::CaptureRanks;
 use super::royal::captures_last_royal;
 use super::searcher::{KILLER_COUNT, MoveRecord, PathMove, Searcher};
 use super::see::see_prunes;
@@ -58,8 +59,7 @@ pub(super) struct QuietOrderingInput {
     pub(super) from: minase_core::Square,
     pub(super) to: minase_core::Square,
     pub(super) check: bool,
-    pub(super) moving_piece_value: i32,
-    pub(super) pawn_value: i32,
+    pub(super) threat_value: i64,
     pub(super) threat_delta: i32,
 }
 
@@ -72,7 +72,6 @@ pub(super) fn quiet_ordering_value(
     low_ply_history: &LowPlyHistory,
     coefficients: QuietOrderingCoefficients,
 ) -> i64 {
-    assert!(input.pawn_value > 0, "pawn value must be positive");
     let mut value =
         2 * i64::from(input.butterfly) + 2 * i64::from(input.pawn) + i64::from(input.continuation);
     if input.ply < LOW_PLY_HISTORY_PLY_COUNT as u32 {
@@ -81,60 +80,52 @@ pub(super) fn quiet_ordering_value(
         value += 8 * i64::from(low_ply) / (1 + i64::from(input.ply));
     }
     value += i64::from(coefficients.check_bonus) * i64::from(input.check);
-    let threat = i64::from(input.moving_piece_value) * i64::from(coefficients.threat_weight)
-        / i64::from(input.pawn_value);
-    value + threat * i64::from(input.threat_delta)
+    value + input.threat_value * i64::from(input.threat_delta)
 }
 
-/// 相手の同価値の駒をまとめた、価値順の累積疑似利き。
+/// 駒価値の降順の各順位について、それより安い相手駒の累積疑似利きを保持する。
 pub(super) struct LesserPieceThreats {
-    /// 各要素は駒価値と、その価値以下の相手駒の疑似利きの和集合である。
-    pub(super) groups: Vec<(i32, Bitboard)>,
+    below_rank: [Bitboard; PIECE_STATE_COUNT],
 }
 
 impl LesserPieceThreats {
-    /// 相手の盤上の各駒を実際の駒コードで評価し、同価値の群ごとに累積疑似利きを作る。
-    pub(super) fn with_piece_values(
-        position: &Position,
-        mut piece_value: impl FnMut(PieceCode) -> i32,
-    ) -> Self {
-        let enemy = position.side_to_move().opposite();
-        let mut controls: Vec<_> = position
-            .pieces_of(enemy)
+    /// 同価値の駒状態を共有順位へまとめ、厳密に安い駒だけの和集合を作る。
+    /// 手番側の非王駒の最高価値以上の相手駒は、どの採点にも寄与しないので省く。
+    pub(super) fn new(position: &Position, ranks: &CaptureRanks) -> Self {
+        let mut below_rank = [Bitboard::EMPTY; PIECE_STATE_COUNT];
+        let side = position.side_to_move();
+        let movers = position.pieces_of(side) & !position.royal_pieces(side);
+        let Some(highest_rank) = movers
             .into_iter()
-            .map(|square| {
-                let piece = position
-                    .piece_at(square)
-                    .expect("enemy piece square must contain a piece");
-                (piece_value(piece), position.piece_control(square))
+            .map(|from| {
+                ranks.rank_of_state[piece_state_of(piece_at_for_ordering(position, from))] as usize
             })
-            .collect();
-        controls.sort_unstable_by_key(|&(value, _)| value);
-
-        let mut groups = Vec::with_capacity(controls.len());
-        let mut cumulative = Bitboard::EMPTY;
-        let mut index = 0;
-        while index < controls.len() {
-            let value = controls[index].0;
-            while index < controls.len() && controls[index].0 == value {
-                cumulative |= controls[index].1;
-                index += 1;
+            .min()
+        else {
+            return Self { below_rank };
+        };
+        for from in position.pieces_of(side.opposite()) {
+            let rank =
+                ranks.rank_of_state[piece_state_of(piece_at_for_ordering(position, from))] as usize;
+            if rank > highest_rank {
+                below_rank[rank] |= position.piece_control(from);
             }
-            groups.push((value, cumulative));
         }
-        Self { groups }
+        let mut cumulative = Bitboard::EMPTY;
+        for group in below_rank[highest_rank..ranks.values.len()]
+            .iter_mut()
+            .rev()
+        {
+            let controls = *group;
+            *group = cumulative;
+            cumulative |= controls;
+        }
+        Self { below_rank }
     }
 
-    /// `piece_value`より価値が厳密に小さい相手駒の疑似利きの和集合を返す。
-    pub(super) fn below(&self, piece_value: i32) -> Bitboard {
-        let count = self
-            .groups
-            .partition_point(|&(value, _)| value < piece_value);
-        if count == 0 {
-            Bitboard::EMPTY
-        } else {
-            self.groups[count - 1].1
-        }
+    /// 指定順位より価値が厳密に小さい相手駒の疑似利きを返す。王駒の採点には使わない。
+    pub(super) fn below(&self, rank: u8) -> Bitboard {
+        self.below_rank[usize::from(rank)]
     }
 }
 
@@ -898,6 +889,9 @@ pub(super) enum MovePickerStage {
 /// 手選択器が静かな手の並べ替えと捕獲履歴の換算に使う探索状態。
 #[derive(Clone, Copy)]
 pub(super) struct MovePickerContext<'a> {
+    /// R1のlate move pruningで数える上限。Noneでは全件を整列する。
+    pub(super) quiet_sort_limit: Option<usize>,
+    pub(super) ranks: &'a CaptureRanks,
     pub(super) history: &'a HistoryTable,
     pub(super) capture_history: &'a CaptureHistory,
     pub(super) continuation_history: &'a ContinuationHistory,
@@ -909,6 +903,42 @@ pub(super) struct MovePickerContext<'a> {
     pub(super) coefficients: QuietOrderingCoefficients,
 }
 
+/// 同じ移動元の静かな手で共有する、局面と表の添字だけの情報。
+/// 履歴の値は保持せず、各手の採点時に従来と同じ順序で読む。
+struct QuietPiece<'a> {
+    piece: PieceCode,
+    threat_value: i64,
+    kind: PieceKind,
+    continuation_kind_offset: usize,
+    butterfly: &'a [i32; BOARD_SQUARE_COUNT],
+    threats: Bitboard,
+}
+
+impl<'a> QuietPiece<'a> {
+    fn new(
+        position: &Position,
+        nnue: &Nnue,
+        context: MovePickerContext<'a>,
+        threats: &LesserPieceThreats,
+        from: Square,
+    ) -> Self {
+        let piece = piece_at_for_ordering(position, from);
+        let value = nnue.piece_value(piece);
+        let kind = piece.kind().expect("quiet ordering mover kind");
+        Self {
+            piece,
+            threat_value: i64::from(value) * i64::from(context.coefficients.threat_weight)
+                / i64::from(nnue.pawn_value()),
+            kind,
+            continuation_kind_offset: kind.index() * BOARD_SQUARE_COUNT,
+            butterfly: &context.history[piece.color().expect("quiet ordering mover color").index()]
+                [from.dense_index()],
+            threats: threats.below(context.ranks.rank_of_state[piece_state_of(piece)]),
+        }
+    }
+}
+
+/// 移動元ごとの不変情報を使い、履歴の読み出しと採点は各手について行う。
 #[allow(clippy::too_many_arguments)]
 fn quiet_move_ordering_value(
     position: &Position,
@@ -916,14 +946,11 @@ fn quiet_move_ordering_value(
     generator: &MoveGenerator,
     context: MovePickerContext<'_>,
     continuation_offsets: &[Option<usize>; CONTINUATION_WEIGHTS.len()],
-    lesser_piece_threats: &LesserPieceThreats,
+    piece: &QuietPiece<'_>,
     direct_checks: &mut DirectCheckSquares,
     mv: Move,
 ) -> i64 {
-    let piece = piece_at_for_ordering(position, mv.from);
-    let piece_value = nnue.piece_value(piece);
-    let moving_kind = piece.kind().expect("quiet ordering mover kind");
-    let continuation_suffix = moving_kind.index() * BOARD_SQUARE_COUNT
+    let continuation_suffix = piece.continuation_kind_offset
         + oriented_square(mv.to.dense_index(), position.side_to_move());
     let continuation = continuation_offsets
         .iter()
@@ -934,12 +961,12 @@ fn quiet_move_ordering_value(
                 .read(offset + continuation_suffix)
         })
         .sum();
-    let threats = lesser_piece_threats.below(piece_value);
     quiet_ordering_value(
         QuietOrderingInput {
-            butterfly: context.history[piece.color().expect("quiet ordering mover color").index()]
-                [mv.from.dense_index()][mv.to.dense_index()],
-            pawn: context.pawn_history.read(context.pawn_key, piece, mv.to),
+            butterfly: piece.butterfly[mv.to.dense_index()],
+            pawn: context
+                .pawn_history
+                .read(context.pawn_key, piece.piece, mv.to),
             continuation,
             ply: context.ply,
             from: mv.from,
@@ -949,12 +976,11 @@ fn quiet_move_ordering_value(
                 generator,
                 nnue,
                 direct_checks,
-                moving_kind,
+                piece.kind,
                 mv,
             ),
-            moving_piece_value: piece_value,
-            pawn_value: nnue.pawn_value(),
-            threat_delta: lesser_threat_delta(moving_kind, threats, mv),
+            threat_value: piece.threat_value,
+            threat_delta: lesser_threat_delta(piece.kind, piece.threats, mv),
         },
         context.low_ply_history,
         context.coefficients,
@@ -977,13 +1003,16 @@ pub(super) struct MovePicker {
     captures_generated: bool,
     quiets: Vec<Move>,
     quiet_index: usize,
+    quiet_sorted: usize,
+    skip_quiets: bool,
+    skipped_quiets: usize,
     base_moves: Vec<Move>,
     /// 静かな手の並べ替え値の降順、線形経路の移動差分の降順、生成順の整列キー。
     /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
     /// 同点破りの理由は`docs/adr/order-quiets-by-the-stockfish-history-sum-and-update-histories-in-stockfish-form.md`にある。
     quiet_order: Vec<(Reverse<i64>, Reverse<i64>, usize)>,
-    used_quiets: [Option<usize>; KILLER_COUNT],
-    quiets_generated: bool,
+    used_quiets: [Option<Move>; KILLER_COUNT],
+    killers_tried: bool,
 }
 
 impl MovePicker {
@@ -999,10 +1028,13 @@ impl MovePicker {
             captures_generated: false,
             quiets: Vec::new(),
             quiet_index: 0,
+            quiet_sorted: 0,
+            skip_quiets: false,
+            skipped_quiets: 0,
             base_moves: Vec::new(),
             quiet_order: Vec::new(),
             used_quiets: [None; KILLER_COUNT],
-            quiets_generated: false,
+            killers_tried: false,
         }
     }
 
@@ -1023,12 +1055,34 @@ impl MovePicker {
         self.captures_generated = false;
         self.quiets.clear();
         self.quiet_index = 0;
-        self.quiets_generated = false;
+        self.quiet_sorted = 0;
+        self.skip_quiets = false;
+        self.skipped_quiets = 0;
+        self.killers_tried = false;
         self.quiet_order.clear();
         self.used_quiets = [None; KILLER_COUNT];
     }
 
+    /// R1でlate move pruningが成立した後、成らない静かな手を返さず、その数を保持する。
+    /// 成る手とその元の順位は保ち、成る手が残らなければ未整列の末尾もまとめて省く。
+    pub(super) fn skip_nonpromoting_quiets(&mut self) {
+        self.skip_quiets = true;
+        if !self.quiet_order[self.quiet_index..]
+            .iter()
+            .any(|key| self.quiets[key.2].promote)
+        {
+            self.skipped_quiets += self.quiet_order.len() - self.quiet_index;
+            self.quiet_index = self.quiet_order.len();
+        }
+    }
+
+    /// 直前の取り出しまでに省いた手数を返し、呼び出し元のindexとmove_countsへ渡す。
+    pub(super) fn take_skipped_quiets(&mut self) -> usize {
+        core::mem::take(&mut self.skipped_quiets)
+    }
+
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
+    /// Killer手は合法性と非捕獲を単独で確認し、静かな手の全件生成をその段階まで遅らせる。
     pub(super) fn next(
         &mut self,
         position: &Position,
@@ -1089,7 +1143,7 @@ impl MovePicker {
                         self.capture_index += 1;
                         return Some((mv, true));
                     }
-                    self.stage = if self.quiets_generated {
+                    self.stage = if self.killers_tried {
                         MovePickerStage::Quiets
                     } else {
                         MovePickerStage::Killer0
@@ -1099,11 +1153,7 @@ impl MovePicker {
                 | MovePickerStage::EarlyKiller1
                 | MovePickerStage::Killer0
                 | MovePickerStage::Killer1 => {
-                    if !self.quiets_generated {
-                        generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
-                        self.quiets.retain(|&mv| Some(mv) != self.tt_move);
-                        self.quiets_generated = true;
-                    }
+                    self.killers_tried = true;
                     let (killer_index, next_stage) = match self.stage {
                         MovePickerStage::EarlyKiller0 => (0, MovePickerStage::EarlyKiller1),
                         MovePickerStage::EarlyKiller1 => (1, MovePickerStage::Captures),
@@ -1113,18 +1163,30 @@ impl MovePicker {
                     };
                     self.stage = next_stage;
                     if let Some(killer) = self.killers[killer_index]
-                        && let Some(index) =
-                            self.quiets.iter().enumerate().find_map(|(index, &mv)| {
-                                (mv == killer && !self.used_quiets.contains(&Some(index)))
-                                    .then_some(index)
-                            })
+                        && Some(killer) != self.tt_move
+                        && !self.used_quiets.contains(&Some(killer))
+                        && generator.is_legal_move(
+                            position,
+                            killer,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        )
+                        && position
+                            .captured_squares(killer)
+                            .iter()
+                            .all(Option::is_none)
                     {
-                        self.used_quiets[killer_index] = Some(index);
-                        return Some((self.quiets[index], false));
+                        self.used_quiets[killer_index] = Some(killer);
+                        return Some((killer, false));
                     }
                 }
+
                 // killer手を除き、quiet_orderの3つのキーで順序を確定する。
                 MovePickerStage::Quiets => {
+                    // killer段の単独検査と同じ非捕獲の合法手を、ここで初めて全件生成する。
+                    self.quiets.clear();
+                    generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
+                    self.quiets.retain(|&mv| Some(mv) != self.tt_move);
                     let continuation_offsets = CONTINUATION_WEIGHTS.map(|(distance, _)| {
                         let context_ply = context.ply.checked_sub(distance as u32)? as usize;
                         context
@@ -1136,38 +1198,76 @@ impl MovePicker {
                                 continuation_row_offset(record, position.side_to_move(), distance)
                             })
                     });
-                    let threats = LesserPieceThreats::with_piece_values(position, |piece| {
-                        nnue.piece_value(piece)
-                    });
+                    let threats = LesserPieceThreats::new(position, context.ranks);
                     let mut direct_checks = DirectCheckSquares::new(position);
-                    for (index, &mv) in self.quiets.iter().enumerate() {
-                        if self.used_quiets.contains(&Some(index)) {
-                            continue;
+                    let mut offset = 0;
+                    for moves in self.quiets.chunk_by(|a, b| a.from == b.from) {
+                        let piece =
+                            QuietPiece::new(position, nnue, context, &threats, moves[0].from);
+                        for (local_index, &mv) in moves.iter().enumerate() {
+                            let index = offset + local_index;
+                            if self.used_quiets.contains(&Some(mv)) {
+                                continue;
+                            }
+                            self.quiet_order.push((
+                                Reverse(quiet_move_ordering_value(
+                                    position,
+                                    nnue,
+                                    generator,
+                                    context,
+                                    &continuation_offsets,
+                                    &piece,
+                                    &mut direct_checks,
+                                    mv,
+                                )),
+                                Reverse(nnue.quiet_move_pst_delta(position, mv)),
+                                index,
+                            ));
                         }
-                        self.quiet_order.push((
-                            Reverse(quiet_move_ordering_value(
-                                position,
-                                nnue,
-                                generator,
-                                context,
-                                &continuation_offsets,
-                                &threats,
-                                &mut direct_checks,
-                                mv,
-                            )),
-                            Reverse(nnue.quiet_move_pst_delta(position, mv)),
-                            index,
-                        ));
+                        offset += moves.len();
                     }
-                    self.quiet_order.sort_unstable();
+                    let len = self.quiet_order.len();
+                    // 成り手を数えない上限までと、その次の1手を必ず整列済みの先頭に含める。
+                    let prefix = match context.quiet_sort_limit {
+                        Some(limit) => {
+                            let promotions = self
+                                .quiet_order
+                                .iter()
+                                .filter(|key| self.quiets[key.2].promote)
+                                .count();
+                            (limit + promotions + 1).min(len)
+                        }
+                        None => len,
+                    };
+                    if prefix < len {
+                        self.quiet_order.select_nth_unstable(prefix);
+                    }
+                    self.quiet_order[..prefix].sort_unstable();
+                    self.quiet_sorted = prefix;
                     self.stage = MovePickerStage::Done;
                 }
                 MovePickerStage::Done => {
-                    if let Some(&(_, _, index)) = self.quiet_order.get(self.quiet_index) {
-                        self.quiet_index += 1;
-                        return Some((self.quiets[index], false));
+                    if self.quiet_index == self.quiet_sorted
+                        && self.quiet_sorted < self.quiet_order.len()
+                    {
+                        let tail = &mut self.quiet_order[self.quiet_sorted..];
+                        if self.skip_quiets && !tail.iter().any(|key| self.quiets[key.2].promote) {
+                            self.skipped_quiets += tail.len();
+                            self.quiet_index = self.quiet_order.len();
+                            return None;
+                        }
+                        // 枝刈りが成立しない場合と、残る成り手の元の順位が必要な場合に整列する。
+                        tail.sort_unstable();
+                        self.quiet_sorted = self.quiet_order.len();
                     }
-                    return None;
+                    let &key = self.quiet_order.get(self.quiet_index)?;
+                    self.quiet_index += 1;
+                    let mv = self.quiets[key.2];
+                    if self.skip_quiets && !mv.promote {
+                        self.skipped_quiets += 1;
+                        continue;
+                    }
+                    return Some((mv, false));
                 }
             }
         }

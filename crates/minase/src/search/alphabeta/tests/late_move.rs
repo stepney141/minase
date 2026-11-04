@@ -570,3 +570,33 @@ pub(super) fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_
         });
     }
 }
+
+/// 読み切ったノードの手数には、手選択器の内部で省いた末尾も含める。
+#[test]
+fn late_move_skipping_preserves_final_move_count() {
+    let with_promotions = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(3, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(5, 7), Color::Black, PieceKind::Rook),
+        ],
+    );
+    for board in [quiet_board(), with_promotions] {
+        let expected = legal_moves(&board).len();
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.seek_mate = true;
+            searcher.history[Color::Black.index()][sq(5, 7).dense_index()].fill(-1000);
+            let alpha = crate::search::REPETITION_BAND_START - 2;
+            let score = searcher
+                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0, false)
+                .unwrap();
+            assert!(
+                score <= alpha,
+                "the fixture must finish without a beta cutoff"
+            );
+            assert_eq!(searcher.move_counts[0], expected);
+        });
+    }
+}
