@@ -1,0 +1,15 @@
+total samples 78253
+  incl%   self%  function
+  99.99    9.65  [libc.so.6]
+--- callers
+  99.99  [libc.so.6]  <- [libc.so.6]
+   9.49  [libc.so.6]  <- <searcher::Searcher>::evaluate_at
+   0.13  _mi_memcpy  <- _mi_theap_realloc_zero
+   0.06  [libc.so.6]  <- <searcher::Searcher>::search_null_move
+   0.03  [libc.so.6]  <- deepening::run_main_worker_with_iteration_hook::<deepening::run_main_w
+   0.03  [libc.so.6]  <- <mimalloc::MiMalloc as core::alloc::global::GlobalAlloc>::realloc
+   0.03  [libc.so.6]  <- <searcher::Searcher>::search_move
+   0.01  [libc.so.6]  <- <search::snapshot::SearchSnapshot>::from_game
+   0.01  [libc.so.6]  <- selfplay_gen::play::play_game_from_opening
+   0.00  [libc.so.6]  <- _start
+   0.00  [libc.so.6]  <- <search::clock::MonotonicClock as search::clock::SearchClock>::elapsed
