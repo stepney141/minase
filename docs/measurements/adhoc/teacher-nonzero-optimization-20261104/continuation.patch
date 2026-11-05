@@ -1,0 +1,95 @@
+diff --git a/crates/minase/src/search/alphabeta/ordering.rs b/crates/minase/src/search/alphabeta/ordering.rs
+index 65e83d06..d0debbb0 100644
+--- a/crates/minase/src/search/alphabeta/ordering.rs
++++ b/crates/minase/src/search/alphabeta/ordering.rs
+@@ -475,6 +475,24 @@ pub(super) fn continuation_index(
+         + current_to
+ }
+ 
++/// 現在の駒種と到達升を除く、continuation historyの行先頭を返す。
++fn continuation_row_offset(context: MoveRecord, color: Color, distance: usize) -> usize {
++    let context_to = oriented_square(context.mv.to.dense_index(), color);
++    let context_kind = context
++        .piece
++        .kind()
++        .expect("continuation context piece kind")
++        .index();
++    (((usize::from(context.captured.is_some()) * COLOR_COUNT
++        + usize::from(distance.is_multiple_of(2)))
++        * PIECE_KIND_COUNT
++        + context_kind)
++        * BOARD_SQUARE_COUNT
++        + context_to)
++        * PIECE_KIND_COUNT
++        * BOARD_SQUARE_COUNT
++}
++
+ pub(super) fn oriented_square(square: usize, color: Color) -> usize {
+     if color == Color::White {
+         BOARD_SQUARE_COUNT - 1 - square
+@@ -891,11 +909,13 @@ pub(super) struct MovePickerContext<'a> {
+     pub(super) coefficients: QuietOrderingCoefficients,
+ }
+ 
++#[allow(clippy::too_many_arguments)]
+ fn quiet_move_ordering_value(
+     position: &Position,
+     nnue: &Nnue,
+     generator: &MoveGenerator,
+     context: MovePickerContext<'_>,
++    continuation_offsets: &[Option<usize>; CONTINUATION_WEIGHTS.len()],
+     lesser_piece_threats: &LesserPieceThreats,
+     direct_checks: &mut DirectCheckSquares,
+     mv: Move,
+@@ -903,17 +923,15 @@ fn quiet_move_ordering_value(
+     let piece = piece_at_for_ordering(position, mv.from);
+     let piece_value = nnue.piece_value(piece);
+     let moving_kind = piece.kind().expect("quiet ordering mover kind");
+-    let continuation = CONTINUATION_WEIGHTS
++    let continuation_suffix = moving_kind.index() * BOARD_SQUARE_COUNT
++        + oriented_square(mv.to.dense_index(), position.side_to_move());
++    let continuation = continuation_offsets
+         .iter()
+-        .filter_map(|&(distance, _)| {
+-            continuation_value(
+-                context.continuation_history,
+-                context.path_moves,
+-                context.ply,
+-                piece,
+-                mv,
+-                distance,
+-            )
++        .flatten()
++        .map(|&offset| {
++            context
++                .continuation_history
++                .read(offset + continuation_suffix)
+         })
+         .sum();
+     let threats = lesser_piece_threats.below(piece_value);
+@@ -1107,6 +1125,17 @@ impl MovePicker {
+                 }
+                 // killer手を除き、quiet_orderの3つのキーで順序を確定する。
+                 MovePickerStage::Quiets => {
++                    let continuation_offsets = CONTINUATION_WEIGHTS.map(|(distance, _)| {
++                        let context_ply = context.ply.checked_sub(distance as u32)? as usize;
++                        context
++                            .path_moves
++                            .get(context_ply)
++                            .expect("continuation context ply must exist in the path")
++                            .record
++                            .map(|record| {
++                                continuation_row_offset(record, position.side_to_move(), distance)
++                            })
++                    });
+                     let threats = LesserPieceThreats::with_piece_values(position, |piece| {
+                         nnue.piece_value(piece)
+                     });
+@@ -1121,6 +1150,7 @@ impl MovePicker {
+                                 nnue,
+                                 generator,
+                                 context,
++                                &continuation_offsets,
+                                 &threats,
+                                 &mut direct_checks,
+                                 mv,

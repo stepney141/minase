@@ -2,8 +2,10 @@
 
 use super::MoveGenerator;
 use super::control::piece_control_with_occupancy;
-use crate::board::Bitboard;
+use crate::attacks::{AttackTables, SpecialMovement, movement_profile, movement_profile_data};
+use crate::board::{Bitboard, Square};
 use crate::mv::Move;
+use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 impl Position {
@@ -16,9 +18,31 @@ impl Position {
     /// `mv`は、まさにこの局面に対して`generator`が生成した合法手でなければならない。
     /// このメソッドは`self`を変更しない。
     pub fn gives_check(&self, generator: &MoveGenerator, mv: Move) -> bool {
-        let mover = self.side_to_move();
-        let captured = self.captured_squares(mv);
-        let mut remaining_royals = self.royal_pieces(mover.opposite());
+        CheckContext::default().gives_check(self, generator, mv)
+    }
+}
+
+/// 同じ局面の候補手で、現在の王駒への利きを遅延計算して共有する文脈。
+/// 子局面を探索した後は元の局面へ戻して使い、別局面には新しい文脈を作る。
+#[derive(Default)]
+pub struct CheckContext {
+    known_royals: Bitboard,
+    attacked_royals: Bitboard,
+}
+
+impl CheckContext {
+    /// [`Position::gives_check`]と同じ判定を、同じ局面の候補手に繰り返し適用する。
+    /// 固定利きと特殊移動は5×5近傍、走りの遮蔽は8方向の利き線の中だけに依存するので、
+    /// 移動元・経由捕獲升・到達升がその和集合の外なら、着手前の逆引きの結果を再利用できる。
+    pub fn gives_check(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        mv: Move,
+    ) -> bool {
+        let mover = position.side_to_move();
+        let captured = position.captured_squares(mv);
+        let mut remaining_royals = position.royal_pieces(mover.opposite());
         for square in captured.into_iter().flatten() {
             remaining_royals.clear(square);
         }
@@ -29,14 +53,30 @@ impl Position {
                 let royal = remaining_royals
                     .lsb()
                     .expect("one remaining royal must have a square");
-                let mut occupied = self.occupied();
+                let affected = generator.tables().attack_dependencies(royal);
+                if !affected.contains(mv.from)
+                    && !affected.contains(mv.to)
+                    && !captured[0].is_some_and(|mid| affected.contains(mid))
+                {
+                    if !self.known_royals.contains(royal) {
+                        if !position
+                            .attackers_to_by(mover, royal, position.occupied())
+                            .is_empty()
+                        {
+                            self.attacked_royals.set(royal);
+                        }
+                        self.known_royals.set(royal);
+                    }
+                    return self.attacked_royals.contains(royal);
+                }
+                let mut occupied = position.occupied();
                 occupied.clear(mv.from);
                 if let Some(mid_capture) = captured[0] {
                     occupied.clear(mid_capture);
                 }
                 occupied.set(mv.to);
 
-                let moving_piece = self
+                let moving_piece = position
                     .piece_at(mv.from)
                     .expect("move origin must contain a piece");
                 let moving_kind = if mv.promote {
@@ -50,12 +90,18 @@ impl Position {
                         .kind()
                         .expect("board piece must have a valid kind")
                 };
-                if piece_control_with_occupancy(occupied, mover, moving_kind, mv.to).contains(royal)
-                {
+                if directly_attacks_royal(
+                    generator.tables(),
+                    occupied,
+                    mover,
+                    moving_kind,
+                    mv.to,
+                    royal,
+                ) {
                     return true;
                 }
 
-                let mut other_attackers = self.attackers_to_by(mover, royal, occupied);
+                let mut other_attackers = position.attackers_to_by(mover, royal, occupied);
                 other_attackers.clear(mv.from);
                 !other_attackers.is_empty()
             }
@@ -70,7 +116,7 @@ impl Position {
                     return false;
                 }
 
-                let mut after = self.clone();
+                let mut after = position.clone();
                 after.make_move_unchecked(mv, generator.rules());
                 let checking_position = after.clone_with_side_to_move(mover);
                 can_capture_all_royals(&checking_position, generator, remaining_royals)
@@ -94,5 +140,35 @@ fn can_capture_all_royals(
         royals
             .into_iter()
             .all(|royal| captured.contains(&Some(royal)))
+    })
+}
+
+/// 固定利きと遮蔽なしの範囲で直接王手を絞り、王駒を含む走り線だけ遮蔽を調べる。
+/// 特殊移動は専用の利き計算を使い、すべての駒で通常の疑似利きと同じ判定を返す。
+fn directly_attacks_royal(
+    tables: &AttackTables,
+    occupied: Bitboard,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    royal: Square,
+) -> bool {
+    let id = movement_profile(kind);
+    let profile = movement_profile_data(id);
+    if !matches!(profile.special, SpecialMovement::None) {
+        return piece_control_with_occupancy(occupied, color, kind, from).contains(royal);
+    }
+    if tables.fixed(color, id, from).contains(royal) {
+        return true;
+    }
+    if !tables.reach(color, id, from).contains(royal) {
+        return false;
+    }
+    profile.slides.iter().any(|slide| {
+        let direction = slide.direction.for_color(color);
+        tables.ray(from, direction).contains(royal)
+            && tables
+                .sliding_control(from, direction, occupied)
+                .contains(royal)
     })
 }

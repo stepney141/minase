@@ -49,7 +49,7 @@ nice -n 19 teacherstat --threads 4 --stride 10 --boot 1000 --boot-seed 1 --bin-t
 ```
 
 `la`はD0bの先読み教師、`rawc`は候補の先読みなしの教師、`rawf`は対照の先読みなしの教師である。
-候補の診断は、[学習の手引き](../../guides/nnue-training.md)の8節の3つのコマンドで行った。
+候補の診断は、[学習の手引き](../../guides/nnue-training.md#学習した重みを診断する)の3つのコマンドで行った。
 評価値の分布は30ファイルの全局面から2万局面（シード1）を選び、基準を`crates/minase/nets/pst.bin`として候補とD0bを同じ標本で比べた。
 駒除去差分は検証集合の1万局面（シード1）、合法手の評価差は[一様シャッフルの照合](../out-of-core-shuffle/out-of-core-shuffle-equivalence.md)のlishogiの47局面（`data/out-of-core-shuffle/teacher/lishogi.bin`）で行った。
 

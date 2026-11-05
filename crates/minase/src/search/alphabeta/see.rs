@@ -29,7 +29,8 @@ const MAX_GAINS: usize = 93;
 /// `threshold`は駒価値と同じ単位の符号付きの閾値であり、等号では枝刈りしない。
 /// 呼び出し側は合法な捕獲手、または経由升を持たない合法な静かな手を渡す。
 /// 捕獲手では、相手の最後の王駒を取る手を呼び出し側で除く。
-/// 捕獲の有無は[`Position::captured_squares`]で決め、移動元と到達升が同じじっとも静かな手として扱う。
+/// 経由升のない合法手は、移動元と異なる到達升の駒だけを取るため、捕獲の判定は[`Position::captured_squares`]と一致する。
+/// 移動元と到達升が同じじっとは、捕獲価値0の静かな手として扱う。
 /// 交換列を最後まで逆算した値が得られる場合と同じ閾値判定を返し、規則依存で判定不能なら偽を返す。
 /// 2段階移動の手は偽を返す。
 /// 最初の取り返しで交換評価が閾値以上と確定したら、残る逆引きと逆算を省く。
@@ -46,7 +47,11 @@ pub(super) fn see_prunes(
 
     let moving_piece = piece_at(position, mv.from);
     let moving_kind = moving_piece.kind().expect("moving piece has a kind");
-    let captured_piece = position.captured_squares(mv)[1].map(|square| piece_at(position, square));
+    let captured_piece = if mv.to == mv.from {
+        None
+    } else {
+        position.piece_at(mv.to)
+    };
     if moving_kind == PieceKind::Kirin
         && mv.promote
         && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
@@ -62,15 +67,16 @@ pub(super) fn see_prunes(
     } else {
         moving_piece
     };
+    let moving_value = nnue.piece_value(moving_piece);
+    let mut piece_value = nnue.piece_value(piece_after_move);
     let mut gains = [0_i32; MAX_GAINS];
-    gains[0] = captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
+    gains[0] = captured_value + piece_value - moving_value;
     // 相手の成り益を最大に見積もっても交換評価が閾値以上なら、取り返しの列挙を省く。
     if gains[0] >= threshold
-        && captured_value - nnue.piece_value(moving_piece) - nnue.max_promotion_gain() >= threshold
+        && captured_value - moving_value - nnue.max_promotion_gain() >= threshold
     {
         return false;
     }
-    let mut piece_value = nnue.piece_value(piece_after_move);
     let mut lion_on_square =
         moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
     let mut side = moving_piece
@@ -95,8 +101,7 @@ pub(super) fn see_prunes(
         debug_assert!(depth < MAX_GAINS);
         gains[depth] = piece_value - gains[depth - 1];
 
-        let next = least_valuable_attacker(position, nnue, attackers);
-        let next_piece = piece_at(position, next);
+        let (next, next_piece, next_value) = least_valuable_attacker(position, nnue, attackers);
         let next_kind = next_piece.kind().expect("attacking piece has a kind");
         let promotion_choice = rules.promotion_choice_for(
             side,
@@ -109,18 +114,18 @@ pub(super) fn see_prunes(
         );
         match promotion_choice {
             PromotionChoice::NoPromotion => {
-                piece_value = nnue.piece_value(next_piece);
+                piece_value = next_value;
             }
             PromotionChoice::PromotionOptional => {
                 let promoted = promoted_piece(side, next_kind);
-                let unpromoted_value = nnue.piece_value(next_piece);
+                let unpromoted_value = next_value;
                 let promoted_value = nnue.piece_value(promoted);
                 gains[depth] += (promoted_value - unpromoted_value).max(0);
                 piece_value = unpromoted_value.max(promoted_value);
             }
             PromotionChoice::PromotionForced => {
                 let promoted = promoted_piece(side, next_kind);
-                let unpromoted_value = nnue.piece_value(next_piece);
+                let unpromoted_value = next_value;
                 let promoted_value = nnue.piece_value(promoted);
                 gains[depth] += promoted_value - unpromoted_value;
                 piece_value = promoted_value;
@@ -144,110 +149,6 @@ pub(super) fn see_prunes(
         depth -= 1;
     }
     gains[0] < threshold
-}
-
-/// 捕獲手または経由升のない静かな手について、到達升での駒の取り合いを手番側視点で見積もる。
-///
-/// 経由升を持つ着手、麒麟が獅子を取って成る着手、および到達升の
-/// 獅子を獅子または成れる麒麟が取る段階を含む場合は`None`を返す。
-/// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
-/// 静かな手では初手の捕獲価値を0とする。その他は最も安い攻撃駒で交互に取り返す利得列を作り、
-/// 末尾から取り返さない選択肢と比較して逆算する。
-/// 初手と取り返しの成り益はモジュールの契約に従って利得へ加える。
-#[cfg(test)]
-fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -> Option<i32> {
-    if mv.mid.is_some() {
-        return None;
-    }
-
-    let moving_piece = piece_at(position, mv.from);
-    let moving_kind = moving_piece.kind().expect("moving piece has a kind");
-    let captured_piece = position.captured_squares(mv)[1].map(|square| piece_at(position, square));
-    if moving_kind == PieceKind::Kirin
-        && mv.promote
-        && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
-    {
-        return None;
-    }
-    let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
-
-    let piece_after_move = if mv.promote {
-        moving_piece
-            .promote()
-            .expect("a promoting capture must move a promotable piece")
-    } else {
-        moving_piece
-    };
-    let mut gains = [0_i32; MAX_GAINS];
-    gains[0] = captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
-    let mut piece_value = nnue.piece_value(piece_after_move);
-    let mut lion_on_square =
-        moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
-    let mut side = moving_piece
-        .color()
-        .expect("moving piece has a color")
-        .opposite();
-    let mut occupied = position.occupied();
-    occupied.clear(mv.from);
-    let mut depth = 0_usize;
-
-    loop {
-        let attackers = position.attackers_to_by(side, mv.to, occupied);
-        if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
-        {
-            return None;
-        }
-        if attackers.is_empty() {
-            break;
-        }
-
-        depth += 1;
-        debug_assert!(depth < MAX_GAINS);
-        gains[depth] = piece_value - gains[depth - 1];
-
-        let next = least_valuable_attacker(position, nnue, attackers);
-        let next_piece = piece_at(position, next);
-        let next_kind = next_piece.kind().expect("attacking piece has a kind");
-        let promotion_choice = rules.promotion_choice_for(
-            side,
-            next_kind,
-            next_piece.is_promoted(),
-            next,
-            mv.to,
-            true,
-            position.promotion_deferred().contains(next),
-        );
-        match promotion_choice {
-            PromotionChoice::NoPromotion => {
-                piece_value = nnue.piece_value(next_piece);
-            }
-            PromotionChoice::PromotionOptional => {
-                let promoted = promoted_piece(side, next_kind);
-                let unpromoted_value = nnue.piece_value(next_piece);
-                let promoted_value = nnue.piece_value(promoted);
-                gains[depth] += (promoted_value - unpromoted_value).max(0);
-                piece_value = unpromoted_value.max(promoted_value);
-            }
-            PromotionChoice::PromotionForced => {
-                let promoted = promoted_piece(side, next_kind);
-                let unpromoted_value = nnue.piece_value(next_piece);
-                let promoted_value = nnue.piece_value(promoted);
-                gains[depth] += promoted_value - unpromoted_value;
-                piece_value = promoted_value;
-            }
-        }
-        lion_on_square = next_kind == PieceKind::Lion
-            || (next_kind == PieceKind::Kirin && promotion_choice != PromotionChoice::NoPromotion);
-
-        occupied.clear(next);
-        side = side.opposite();
-    }
-
-    while depth >= 1 {
-        gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
-        depth -= 1;
-    }
-    Some(gains[0])
 }
 
 /// 到達升の獅子を取ると規則依存になる攻撃駒が含まれるかを返す。
@@ -277,15 +178,20 @@ fn lion_capture_is_rule_dependent(
         })
 }
 
-/// 最小駒価値の攻撃駒を返す。同値なら生の升番号が小さい駒を選ぶ。
+/// 最小駒価値の攻撃駒と、その駒コード・価値を返す。同値なら生の升番号が小さい駒を選ぶ。
+/// 選択中に読んだ情報を交換列にも渡し、同じ升を引き直さない。
 fn least_valuable_attacker(
     position: &Position,
     nnue: &Nnue,
     attackers: Bitboard,
-) -> minase_core::Square {
+) -> (minase_core::Square, PieceCode, i32) {
     attackers
         .into_iter()
-        .min_by_key(|&square| (nnue.piece_value(piece_at(position, square)), square.raw()))
+        .map(|square| {
+            let piece = piece_at(position, square);
+            (square, piece, nnue.piece_value(piece))
+        })
+        .min_by_key(|&(square, _, value)| (value, square.raw()))
         .expect("non-empty attacker set has a least valuable piece")
 }
 
@@ -317,6 +223,141 @@ mod tests {
     use minase_core::test_util::{
         bench_positions, position_from_codes, sampled_random_positions, sq,
     };
+
+    /// 捕獲手または経由升のない静かな手について、到達升での駒の取り合いを手番側視点で見積もる。
+    ///
+    /// 経由升を持つ着手、麒麟が獅子を取って成る着手、および到達升の
+    /// 獅子を獅子または成れる麒麟が取る段階を含む場合は`None`を返す。
+    /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
+    /// 静かな手では初手の捕獲価値を0とする。その他は最も安い攻撃駒で交互に取り返す利得列を作り、
+    /// 末尾から取り返さない選択肢と比較して逆算する。
+    /// 初手と取り返しの成り益はモジュールの契約に従って利得へ加える。
+    fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -> Option<i32> {
+        if mv.mid.is_some() {
+            return None;
+        }
+
+        let moving_piece = piece_at(position, mv.from);
+        let moving_kind = moving_piece.kind().expect("moving piece has a kind");
+        let captured_piece =
+            position.captured_squares(mv)[1].map(|square| piece_at(position, square));
+        if moving_kind == PieceKind::Kirin
+            && mv.promote
+            && captured_piece.is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+        {
+            return None;
+        }
+        let captured_value = captured_piece.map_or(0, |piece| nnue.piece_value(piece));
+
+        let piece_after_move = if mv.promote {
+            moving_piece
+                .promote()
+                .expect("a promoting capture must move a promotable piece")
+        } else {
+            moving_piece
+        };
+        let mut gains = [0_i32; MAX_GAINS];
+        gains[0] =
+            captured_value + nnue.piece_value(piece_after_move) - nnue.piece_value(moving_piece);
+        let mut piece_value = nnue.piece_value(piece_after_move);
+        let mut lion_on_square =
+            moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
+        let mut side = moving_piece
+            .color()
+            .expect("moving piece has a color")
+            .opposite();
+        let mut occupied = position.occupied();
+        occupied.clear(mv.from);
+        let mut depth = 0_usize;
+
+        loop {
+            let attackers = position.attackers_to_by(side, mv.to, occupied);
+            if lion_on_square
+                && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+            {
+                return None;
+            }
+            if attackers.is_empty() {
+                break;
+            }
+
+            depth += 1;
+            debug_assert!(depth < MAX_GAINS);
+            gains[depth] = piece_value - gains[depth - 1];
+
+            let next = least_valuable_attacker(position, nnue, attackers);
+            let next_piece = piece_at(position, next);
+            let next_kind = next_piece.kind().expect("attacking piece has a kind");
+            let promotion_choice = rules.promotion_choice_for(
+                side,
+                next_kind,
+                next_piece.is_promoted(),
+                next,
+                mv.to,
+                true,
+                position.promotion_deferred().contains(next),
+            );
+            match promotion_choice {
+                PromotionChoice::NoPromotion => {
+                    piece_value = nnue.piece_value(next_piece);
+                }
+                PromotionChoice::PromotionOptional => {
+                    let promoted = promoted_piece(side, next_kind);
+                    let unpromoted_value = nnue.piece_value(next_piece);
+                    let promoted_value = nnue.piece_value(promoted);
+                    gains[depth] += (promoted_value - unpromoted_value).max(0);
+                    piece_value = unpromoted_value.max(promoted_value);
+                }
+                PromotionChoice::PromotionForced => {
+                    let promoted = promoted_piece(side, next_kind);
+                    let unpromoted_value = nnue.piece_value(next_piece);
+                    let promoted_value = nnue.piece_value(promoted);
+                    gains[depth] += promoted_value - unpromoted_value;
+                    piece_value = promoted_value;
+                }
+            }
+            lion_on_square = next_kind == PieceKind::Lion
+                || (next_kind == PieceKind::Kirin
+                    && promotion_choice != PromotionChoice::NoPromotion);
+
+            occupied.clear(next);
+            side = side.opposite();
+        }
+
+        while depth >= 1 {
+            gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
+            depth -= 1;
+        }
+        Some(gains[0])
+    }
+
+    /// 最小駒価値の攻撃駒を返す。同値なら生の升番号が小さい駒を選ぶ。
+    fn least_valuable_attacker(
+        position: &Position,
+        nnue: &Nnue,
+        attackers: Bitboard,
+    ) -> minase_core::Square {
+        attackers
+            .into_iter()
+            .min_by_key(|&square| (nnue.piece_value(piece_at(position, square)), square.raw()))
+            .expect("non-empty attacker set has a least valuable piece")
+    }
+
+    /// 保留と強制成りを含む5規則セットを交換列の照合に使う。
+    fn see_test_rules() -> [MoveRules; 5] {
+        [
+            "engine-default",
+            "lishogi",
+            "L1,L3,P0,P5,P6,R2,E1,E2",
+            "L0,P1,R1,E0",
+            "L1,L2,P2,P3,P4,R2,E0",
+        ]
+        .map(|text| {
+            Rules::from_codes(&minase_core::rules::parse_rule_set(text).unwrap())
+                .unwrap()
+                .moves
+        })
+    }
 
     /// 負、0、正の閾値と期待値の境界で契約を検査する。
     fn assert_prune_contract(
@@ -351,7 +392,7 @@ mod tests {
     #[test]
     fn see_prunes_matches_reference_on_bench_and_random_captures() {
         let nnue = test_nnue();
-        for rules in [Rules::ENGINE_DEFAULT.moves, Rules::LISHOGI.moves] {
+        for rules in see_test_rules() {
             let generator = MoveGenerator::new(rules);
             let mut checked = 0;
             for (index, board) in bench_positions()
@@ -391,7 +432,7 @@ mod tests {
     #[test]
     fn see_prunes_matches_reference_on_bench_and_random_quiets() {
         let nnue = test_nnue();
-        for rules in [Rules::ENGINE_DEFAULT.moves, Rules::LISHOGI.moves] {
+        for rules in see_test_rules() {
             let generator = MoveGenerator::new(rules);
             let mut checked = 0;
             let mut negative = 0;

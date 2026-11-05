@@ -13,7 +13,8 @@ fn split_captures_preserve_public_order_and_captured_squares() {
             let mut split = Vec::new();
             let enemy = position.pieces_of(position.side_to_move().opposite());
             let mut capturers = Vec::new();
-            generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
+            let targets = generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
+            assert_eq!(targets, ordinary_targets_reference(&position, enemy));
             generator.emit_ordinary_captures(&position, &capturers, enemy, &mut |c| split.push(c));
             generator.generate_special_captures(&position, &mut |c| split.push(c));
             // 安定整列は公開生成順を表すキーによる、テスト専用の独立したマージ。
@@ -53,7 +54,8 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
             let enemy = position.pieces_of(position.side_to_move().opposite());
             let mut all = Vec::new();
             let mut capturers = Vec::new();
-            generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
+            let targets = generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
+            assert_eq!(targets, ordinary_targets_reference(&position, enemy));
             generator.emit_ordinary_captures(&position, &capturers, enemy, &mut |c| all.push(c));
             let mut masks = vec![Bitboard::EMPTY, enemy];
             masks.extend(enemy.into_iter().map(|s| Bitboard::from_squares([s])));
@@ -71,7 +73,9 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
                     actual.push(c)
                 });
                 let mut restricted = Vec::new();
-                generator.collect_ordinary_capturers(&position, targets, &mut restricted);
+                let reachable =
+                    generator.collect_ordinary_capturers(&position, targets, &mut restricted);
+                assert_eq!(reachable, ordinary_targets_reference(&position, targets));
                 let mut recollected = Vec::new();
                 generator.emit_ordinary_captures(&position, &restricted, targets, &mut |c| {
                     recollected.push(c)
@@ -190,6 +194,45 @@ fn lion_capture_exclusion_keeps_igui_double_stop_and_jump() {
                     "color={color:?}, kind={kind:?}, mv={mv:?}"
                 );
             }
+        }
+    }
+}
+
+/// 公開の駒別疑似利きを使い、通常駒が届く対象升の和を独立に求める。
+fn ordinary_targets_reference(position: &Position, allowed: Bitboard) -> Bitboard {
+    let mut targets = Bitboard::EMPTY;
+    for from in position.pieces_of(position.side_to_move()) {
+        let kind = position.piece_at(from).unwrap().kind().unwrap();
+        if !TWO_STAGE_KINDS.contains(&kind) {
+            targets |= position.piece_control(from) & allowed;
+        }
+    }
+    targets
+}
+
+/// 捕獲の出力列と通常駒の対象升は、変更前の生成と公開の利きの契約に一致する。
+#[test]
+fn captures_match_reference_in_all_rule_variants() {
+    for rules in rule_variants() {
+        let generator = MoveGenerator::new(rules);
+        for board in crate::test_util::bench_positions()
+            .into_iter()
+            .chain(crate::test_util::sampled_random_positions(rules))
+        {
+            let mut expected = Vec::new();
+            super::properties::generation_before::<true, false>(
+                &generator,
+                &board,
+                &mut Vec::new(),
+                &mut expected,
+            );
+            let mut actual = Vec::new();
+            generator.generate_captures(&board, &mut actual);
+            assert_eq!(actual, expected, "rules={rules:?}");
+            let enemy = board.pieces_of(board.side_to_move().opposite());
+            let mut capturers = Vec::new();
+            let targets = generator.collect_ordinary_capturers(&board, enemy, &mut capturers);
+            assert_eq!(targets, ordinary_targets_reference(&board, enemy));
         }
     }
 }

@@ -11,10 +11,16 @@
 線形のPSTは駒の組を使えないので、同じ教師値でもこの問題は顕在化しない。
 教師値を探索値だけ（λ=1.0）にすると、同じデータで検証損失が20エポックまで単調に下がった。
 
+隠れ層を持つ幅256のNNUEでも同じことが起きた。
+v0の教師約6,235万局面、約18万局をλ=0.75で学習すると、検証損失は1,000更新目から上がり続け、結果を目標とした汎化差は+0.0427となり、第0世代に対して得点率28.4%で`H0`だった。
+同じ教師をλ=1.0で学習すると、汎化差は第0世代と同じ+0.0051に留まり、得点率88.3%で`H1`だった。
+このときλ=0.75のネットは、検証対局の勝敗予測では最も良かった。
+
 ## 以後の規則
 
 駒の組や隠れ層のように対局を識別できる表現力を持つ評価関数を学習するときは、対局結果のような対局内で一定な教師成分を混ぜず、探索値だけを教師にするか、混ぜる場合は対局単位で検証損失を監視して1エポック目の乖離で判定する。
+検証対局の勝敗予測が良くても棋力の根拠にはならないので、λを選ぶときは同じ教師でλだけを変えたネットを対局で比べる。
 
 ## 出典
 
-[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)、[学習記録](../measurements/factorization-machine/fm-phase1-training.md)。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)、[学習記録](../measurements/factorization-machine/fm-phase1-training.md)、[世代反復の第1世代の学習](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-training.md)、[STC](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)。

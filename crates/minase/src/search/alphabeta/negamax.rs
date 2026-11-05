@@ -7,6 +7,7 @@ use crate::search::{
     MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_BAND_START, REPETITION_WIN, SearchRepetition,
     in_repetition_band,
 };
+use minase_core::movegen::CheckContext;
 use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::repetition_key;
@@ -18,8 +19,8 @@ use super::correction::{
 };
 use super::history::pawn_key_after_move;
 use super::ordering::{
-    HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients, move_order_key,
-    piece_at_for_ordering,
+    CaptureInfo, HistoryUpdateCoefficients, MovePickerContext, QuietOrderingCoefficients,
+    capture_stat_score, move_order_key, piece_at_for_ordering,
 };
 use super::pruning::{
     CAPTURE_FUTILITY_LMR_DEPTH_LIMIT, LmrContext, NULL_MOVE_VERIFICATION_MIN_DEPTH,
@@ -32,8 +33,8 @@ use super::pruning::{
     reverse_futility_margin, reverse_futility_value, see_margin, seek_mate_null_move_reduction,
     should_raise_futility_best_score, zero_window_tt_cutoff,
 };
-use super::royal::{captures_last_royal, royal_under_attack};
-use super::searcher::{MoveRecord, PathMove, Searcher};
+use super::royal::{captured_last_royal, captures_last_royal, royal_under_attack};
+use super::searcher::{AccumulatorUpdate, MoveRecord, PathMove, PendingAccumulator, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 use crate::search::params;
@@ -232,9 +233,6 @@ impl Searcher<'_> {
         // 補正はノードの最初に1回読み、すべての静的評価の判定で共有する。
         // Stockfish src/search.cpp:832, 846-884。
         let side = position.side_to_move();
-        #[cfg(feature = "invariants")]
-        self.nnue
-            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
         let raw = if let Some(static_eval) = tt_hit.and_then(|hit| hit.static_eval) {
             #[cfg(feature = "search-stats")]
             {
@@ -242,9 +240,7 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            let raw = self
-                .nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], side);
+            let raw = self.evaluate_at(position, ply);
             if tt_hit.is_none()
                 && self
                     .tt
@@ -368,6 +364,12 @@ impl Searcher<'_> {
         // null moveを試さなかった場合も更新する（Stockfish src/search.cpp:1080）。
         improving |= static_eval >= beta;
         let late_move_limit = late_move_node.then(|| late_move_limit(depth, improving));
+        let quiet_sort_limit = if matches!(self.repetition, SearchRepetition::R1 { .. }) {
+            late_move_limit
+                .map(|limit| usize::try_from(limit).expect("late move limit is nonnegative"))
+        } else {
+            None
+        };
         // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
             tt_move,
@@ -379,6 +381,7 @@ impl Searcher<'_> {
         let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
+        let mut check_context = CheckContext::default();
         let mut counted_quiets = 0;
         let mut had_forbidden_move = false;
         let mut searched_captures = Vec::with_capacity(SEARCHED_LIST_CAPACITY);
@@ -394,6 +397,8 @@ impl Searcher<'_> {
             self.nnue,
             &self.generator,
             MovePickerContext {
+                quiet_sort_limit,
+                ranks: &self.capture_ranks,
                 history: &*self.history,
                 capture_history: &*self.capture_history,
                 continuation_history: self.continuation_history,
@@ -404,13 +409,26 @@ impl Searcher<'_> {
                 ply,
                 coefficients: quiet_ordering_coefficients,
             },
+            &tt_capture,
         ) {
+            // 次の成り手が参照する順位へ、省いた非捕獲・不成の手数を戻す。
+            let skipped = self.move_pickers[ply as usize].take_skipped_quiets();
+            index += skipped;
+            counted_quiets += i32::try_from(skipped).expect("generated move count must fit i32");
             // 禁止手は探索順位、枝刈りの静かな手数、履歴の更新対象、ノード数に含めない。
             if self.move_is_forbidden(position, mv) {
                 had_forbidden_move = true;
                 continue;
             }
             self.move_counts[ply as usize] = index + 1;
+            // 枝刈りからstatScoreまで履歴の更新はないので、捕獲升と履歴を1回だけ読む。
+            let capture_info = capture.then(|| {
+                let info = CaptureInfo::new(position, self.nnue, mv);
+                let history = self
+                    .capture_history
+                    .read_parts(info.mover, mv.to, info.victim);
+                (info, history)
+            });
             // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
             // killer手はこの制限から除くが、futilityの対象にはなり得る。
             let counted_quiet = Some(mv) != tt_move
@@ -434,14 +452,18 @@ impl Searcher<'_> {
                     && !capture
                     && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                 {
+                    if quiet_sort_limit.is_some() {
+                        self.move_pickers[ply as usize].skip_nonpromoting_quiets();
+                    }
                     index += 1;
                     continue;
                 }
 
-                if capture {
+                if let Some((info, history)) = capture_info {
+                    let last_royal = captured_last_royal(position, info.captured);
                     // Stockfish src/search.cpp:1208-1217。捕獲価値は整列値を流用せず、
                     // 2枚取りを含む実際の捕獲升から求める。
-                    if window_outside_bands && !mv.promote && !captures_last_royal(position, mv) {
+                    if window_outside_bands && !mv.promote && !last_royal {
                         let lmr_depth = pruning_lmr_depth(
                             depth,
                             index,
@@ -449,53 +471,35 @@ impl Searcher<'_> {
                             pv_node,
                             self.tt_pv[ply as usize],
                         );
-                        if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT {
-                            let captured_value = position
-                                .captured_squares(mv)
-                                .into_iter()
-                                .flatten()
-                                .map(|square| {
-                                    self.nnue.piece_value(
-                                        position
-                                            .piece_at(square)
-                                            .expect("capture square must contain a piece"),
-                                    )
-                                })
-                                .sum();
-                            let history = self.capture_history.read(position, self.nnue, mv);
-                            if capture_futility_value(
+                        if lmr_depth < CAPTURE_FUTILITY_LMR_DEPTH_LIMIT
+                            && capture_futility_value(
                                 self.nnue.pawn_value(),
                                 static_eval,
                                 lmr_depth,
-                                captured_value,
+                                info.value,
                                 history,
                             ) <= alpha
                                 // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
-                                && !position.gives_check(&self.generator, mv)
+                                && !check_context.gives_check(position, &self.generator, mv)
                                 && !*royal_attacked
                                     .get_or_insert_with(|| royal_under_attack(position))
-                            {
-                                index += 1;
-                                continue;
-                            }
+                        {
+                            index += 1;
+                            continue;
                         }
                     }
                     // SEEの損が深さとcapture historyの余裕値を超える捕獲手を飛ばす。
                     // 相手の最後の王駒を取る手は除き、規則依存で判定不能な交換は展開する。理由は
                     // docs/adr/prune-captures-and-quiet-moves-by-signed-see-thresholds-and-capture-futility-with-depth-scaled-margins.md にある。
                     if window_outside_bands
-                        && !captures_last_royal(position, mv)
+                        && !last_royal
                         && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                         && see_prunes(
                             position,
                             self.rules,
                             self.nnue,
                             mv,
-                            -see_margin(
-                                self.nnue.pawn_value(),
-                                depth,
-                                self.capture_history.read(position, self.nnue, mv),
-                            ),
+                            -see_margin(self.nnue.pawn_value(), depth, history),
                         )
                     {
                         index += 1;
@@ -505,6 +509,7 @@ impl Searcher<'_> {
                     // Stockfishの「捕獲手か王手ならS3、それ以外ならS1、S5」と同じ結果になるよう、
                     // S1で王手と判明した手はS5を通さずS3へ進める（src/search.cpp:1205, 1227-1259）。
                     let mut gives_check = None;
+                    let mut see_not_pruned_at = None;
                     if !(self.follow_pv[ply as usize] && pv_node) {
                         let piece = piece_at_for_ordering(position, mv.from);
                         let history = self.continuation_value(ply, piece, mv, 1).unwrap_or(0)
@@ -518,8 +523,9 @@ impl Searcher<'_> {
                             depth,
                             params::continuation_pruning(),
                         ) && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                            && !*gives_check
-                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                            && !*gives_check.get_or_insert_with(|| {
+                                check_context.gives_check(position, &self.generator, mv)
+                            })
                         {
                             index += 1;
                             continue;
@@ -546,7 +552,7 @@ impl Searcher<'_> {
                             // 王手と王駒への利きは、安い条件をすべて満たした後に調べる。
                             if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
                                 && !*gives_check.get_or_insert_with(|| {
-                                    position.gives_check(&self.generator, mv)
+                                    check_context.gives_check(position, &self.generator, mv)
                                 })
                             {
                                 if should_raise_futility_best_score(best_score, futility_value) {
@@ -561,32 +567,31 @@ impl Searcher<'_> {
                         if gives_check != Some(true)
                             && mv.mid.is_none()
                             && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                            && see_prunes(
-                                position,
-                                self.rules,
-                                self.nnue,
-                                mv,
-                                -quiet_see_margin(self.nnue.pawn_value(), lmr_depth),
-                            )
-                            && !*gives_check
-                                .get_or_insert_with(|| position.gives_check(&self.generator, mv))
                         {
-                            index += 1;
-                            continue;
+                            let threshold = -quiet_see_margin(self.nnue.pawn_value(), lmr_depth);
+                            let pruned = see_prunes(position, self.rules, self.nnue, mv, threshold);
+                            if !pruned {
+                                see_not_pruned_at = Some(threshold);
+                            } else if !*gives_check.get_or_insert_with(|| {
+                                check_context.gives_check(position, &self.generator, mv)
+                            }) {
+                                index += 1;
+                                continue;
+                            }
                         }
                     }
                     // 王手になる静かな手にはS3の余裕値を使う。王手か未判定なら、
                     // S3のSEEで枝刈りできる場合にだけ判定する（Stockfish src/search.cpp:1205, 1220-1225）。
-                    if !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-                        && see_prunes(
-                            position,
-                            self.rules,
-                            self.nnue,
-                            mv,
-                            -see_margin(self.nnue.pawn_value(), depth, 0),
-                        )
-                        && *gives_check
-                            .get_or_insert_with(|| position.gives_check(&self.generator, mv))
+                    // SEEが閾値以上または判定不能なら、それ以下の閾値でも枝刈りしない。
+                    // 王手と判明していない手では、必要なときだけ同じ局面の王手判定を行う。
+                    let threshold = -see_margin(self.nnue.pawn_value(), depth, 0);
+                    if gives_check != Some(false)
+                        && see_not_pruned_at.is_none_or(|previous| threshold > previous)
+                        && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                        && see_prunes(position, self.rules, self.nnue, mv, threshold)
+                        && *gives_check.get_or_insert_with(|| {
+                            check_context.gives_check(position, &self.generator, mv)
+                        })
                     {
                         index += 1;
                         continue;
@@ -595,7 +600,12 @@ impl Searcher<'_> {
             }
             // 子がこのノードへ至った手の値として読み、LMRの連続量にも使う。
             // 枝刈りを通った後、減深量を求める前に1回だけ計算する（src/search.cpp:1371-1381）。
-            let stat_score = self.move_stat_score(position, mv, capture, ply);
+            let stat_score = match capture_info {
+                Some((info, history)) => {
+                    capture_stat_score(info.value, self.nnue.pawn_value(), history)
+                }
+                None => self.move_stat_score(position, mv, false, ply),
+            };
             self.stat_scores[ply as usize] = stat_score;
             // 残り深さ2以上、2手目以降に適用する（Stockfish src/search.cpp:1395）。
             let lmr = applies_lmr(depth, index);
@@ -625,7 +635,9 @@ impl Searcher<'_> {
                     eval,
                     pawn: self.nnue.pawn_value(),
                     correction_weighted_sum,
-                    seek_mate_gives_check: self.lmr_seek_mate_gives_check(position, mv),
+                    seek_mate_gives_check: self
+                        .seek_mate
+                        .then(|| check_context.gives_check(position, &self.generator, mv)),
                 });
                 if lmr {
                     lmr_depth(depth, reduction, pv_node, ply, self.root_depth)
@@ -687,6 +699,12 @@ impl Searcher<'_> {
                 }
             }
             index += 1;
+        }
+        // 最後の成り手より後の省略分も、子孫が参照する手数と一致させる。
+        let skipped = self.move_pickers[ply as usize].take_skipped_quiets();
+        if skipped != 0 {
+            index += skipped;
+            self.move_counts[ply as usize] = index;
         }
         #[cfg(feature = "search-stats")]
         if !beta_cutoff {
@@ -780,18 +798,17 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
     ) -> Option<i32> {
+        self.ensure_accumulator(position, ply);
         let lion_before = position
             .lion_taken_by_non_lion()
             .map(|trigger| trigger.square);
         let undo = position.make_null_move();
         self.follow_pv[(ply + 1) as usize] = false;
         self.previous_move_to[(ply + 1) as usize] = None;
-        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.nnue.update_accumulator_after_null(
-            &parents[ply as usize],
-            &mut children[0],
-            lion_before,
-        );
+        self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+            update: AccumulatorUpdate::Null(lion_before),
+            computed: false,
+        });
         self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
         self.pawn_keys[(ply + 1) as usize] = self.pawn_keys[ply as usize];
         self.minor_keys[(ply + 1) as usize] = self.minor_keys[ply as usize];
@@ -819,6 +836,7 @@ impl Searcher<'_> {
         self.path_moves.pop();
         self.null_move_boundary = previous_null_move_boundary;
         self.null_move_ply = previous_null_move_ply;
+        self.pending_accumulators[(ply + 1) as usize] = None;
         position.unmake_null_move(undo);
         score
     }
@@ -903,6 +921,7 @@ impl Searcher<'_> {
         if !self.enter_node() {
             return None;
         }
+        self.ensure_accumulator(position, ply);
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
         let repetition_key = match self.repetition {
@@ -917,13 +936,6 @@ impl Searcher<'_> {
             return Some(score);
         }
 
-        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.nnue.update_accumulator_after_move(
-            &parents[ply as usize],
-            &mut children[0],
-            position,
-            &undo,
-        );
         self.material_keys[(ply + 1) as usize] =
             key_after_move(self.material_keys[ply as usize], &undo);
         self.pawn_keys[(ply + 1) as usize] =
@@ -941,6 +953,10 @@ impl Searcher<'_> {
         self.path_moves.push(PathMove {
             record: Some(MoveRecord::from_undo(self.nnue, &undo)),
             attacking: None,
+        });
+        self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+            update: AccumulatorUpdate::Move(undo),
+            computed: false,
         });
         let mut score = if first {
             self.negamax(
@@ -1015,7 +1031,7 @@ impl Searcher<'_> {
         }
         self.path_keys.pop();
         self.path_moves.pop();
-        position.unmake_move(undo);
+        position.unmake_move(self.take_accumulator_move(ply + 1));
         score
     }
 }

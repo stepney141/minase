@@ -1,0 +1,8 @@
+# started on Wed Nov  4 21:55:58 2026
+
+63088892730,,cpu_core/cycles/u,12182882092,100.00,,
+230548539984,,cpu_core/instructions/u,12182882092,100.00,,
+274528777,,cpu_core/mem_load_retired.l1_miss/u,12182882092,100.00,,
+15311624,,cpu_core/mem_load_retired.l2_miss/u,12182882092,100.00,,
+7488102,,cpu_core/mem_load_retired.l3_miss/u,12182882092,100.00,,
+286261280,,cpu_core/branch-misses/u,12182882092,100.00,,

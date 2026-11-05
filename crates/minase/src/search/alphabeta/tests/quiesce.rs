@@ -993,8 +993,22 @@ fn quiescence_capture_history_preserves_group_order_and_tt_priority() {
             if depth == 1 {
                 assert_eq!(history.read(&board, nnue, moves[winner]), 1, "{case}");
                 assert_eq!(history.read(&board, nnue, moves[loser]), -1, "{case}");
-                assert_eq!(history.adjustment(&board, nnue, moves[winner]), 0, "{case}");
-                assert_eq!(history.adjustment(&board, nnue, moves[loser]), 0, "{case}");
+                assert_eq!(
+                    super::super::capture_history::CaptureHistory::adjustment(
+                        nnue,
+                        history.read(&board, nnue, moves[winner])
+                    ),
+                    0,
+                    "{case}"
+                );
+                assert_eq!(
+                    super::super::capture_history::CaptureHistory::adjustment(
+                        nnue,
+                        history.read(&board, nnue, moves[loser])
+                    ),
+                    0,
+                    "{case}"
+                );
             }
         }
         assert_eq!(

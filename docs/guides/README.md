@@ -26,7 +26,7 @@
 
 | 手引き | 内容 | 読むとき |
 |---|---|---|
-| [nnue-training.md](nnue-training.md) | NNUEの重みの学習、GPUの実装の検査、および重みの診断の手順 | NNUEを学習するとき |
+| [nnue-training.md](nnue-training.md) | NNUEの標準学習レシピ、学習と検査と診断の手順、およびオプションの一覧 | NNUEを学習するとき、学習の引数を調べるとき |
 | [evaluation-nnue.md](evaluation-nnue.md) | 探索が使うNNUEの計算式と、学習の目的関数の解説 | NNUEの式を確かめるとき |
 | [pst-training.md](pst-training.md) | PSTとFMの学習手順 | PSTとFMを学習するとき |
 | [evaluation-pst-fm.md](evaluation-pst-fm.md) | 比較用に残すPSTとFMの計算式と、学習の目的関数の解説 | PSTとFMの式を確かめるとき |

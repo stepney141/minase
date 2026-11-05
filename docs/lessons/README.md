@@ -60,6 +60,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [明示的SIMDの前に自動ベクトル化の機械語を確かめる](check-autovectorization-before-explicit-simd.md) — SIMDライブラリの導入を検討する前に、対象の核を`#[inline(never)]`にした診断用ビルドの機械語で命令名ごとの出現数を数え、候補のライブラリで同じ核を書いた検証用のcrateの出現数と比べ、命令数が減るかコンパイラが出さない命令を使う核に限って試作する。
 - [インライン展開されたSHA-256はSSEとAVXの混在の罰で遅くなる](sse-avx-transition-penalty-in-inlined-sha.md) — SSE形式しかない命令（SHA-NIなど）で計算するクレートの処理は`#[inline(never)]`の薄い関数に閉じ込め、検査和が遅いときは`assists.sse_avx_mix`を数えて`vzeroupper`の有無を機械語で確かめる。
 - [探索木を変えない高速化は親との交互測定5回で選別する](alternate-speed-rounds-against-parent.md) — 段階ごとの速度による選別では`bench_compare.py`で局面別の一致を確かめ、候補と親を`--rounds 5`で交互に測って増分が親の幅を超える段階だけを残し、まとめた版を段階ゲートにかける。
+- [ビルド設定を変えた後はコミットのビルドを混ぜて比べない](do-not-mix-builds-across-cargo-config-changes.md) — `.cargo/config.toml`のビルド設定が変わった後は、キャッシュ済みのビルドと新しいビルドを混ぜて比べず、変更前の設定のビルドが要るときはリポジトリの外のworktreeでビルドする。
 
 ## 評価関数の学習とGPU
 
@@ -106,6 +107,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [長時間の生成は生成コミットを固定したworktreeで実行する](pin-generation-binary-to-worktree.md) — 数時間を超える生成や測定は、対象コミットを固定したworktreeのバイナリから実行する。
 - [測定機で重い計算を始める前に進行中の測定を確認する](check-running-measurements-before-cpu-load.md) — CPUを多く使う処理の前に`pgrep -af '[m]inase (match run|spsa)|[m]atch_runner|[s]psa_runner'`で進行中の測定を確かめ、走っていればスレッド数（ビルドの並列数と検査内の探索スレッドの和、niceは数えない）を空きコア数以内に抑えるか終了を待つ。
 - [判断を待つ前に借りた機械を止める](stop-rented-machines-before-waiting-for-a-decision.md) — 借りた機械の長い処理には正常終了でも異常終了でも機械を止める処理を連鎖させ、利用者の判断を仰ぐ前にはファイルを受け取って機械を止める。
+- [機械を借りる前に現行のコードの全負荷の速さを測り直す](remeasure-generation-speed-with-current-code-before-renting.md) — 借りる機械の費用は、本番と同じコミットと同時実行数で短時間動かして全体の処理速度と常駐メモリを測ってから見積もり、最初の出力が見積もりから大きく外れたら報告して進め方を決める。
 
 ## 文書とリリース
 

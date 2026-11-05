@@ -1,0 +1,32 @@
+{
+  "base": {
+    "nps_median": 596166.1745646099,
+    "nps_min": 595877.3865485209,
+    "nps_max": 596565.3110157455,
+    "nps_width": 0.0011539139531474266,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8688.721270133334,
+      "cpu_core/instructions/u": 31783.845714666666,
+      "cpu_core/mem_load_retired.l1_miss/u": 35.65830786666667,
+      "cpu_core/mem_load_retired.l2_miss/u": 1.9368477333333334,
+      "cpu_core/mem_load_retired.l3_miss/u": 1.1796146666666667,
+      "cpu_core/branch-misses/u": 37.23656893333333
+    },
+    "nps_ratio_to_first": 1.0
+  },
+  "combined": {
+    "nps_median": 639865.952348756,
+    "nps_min": 638917.8673637175,
+    "nps_max": 640796.7615669583,
+    "nps_width": 0.0029363872172661998,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8096.995968533333,
+      "cpu_core/instructions/u": 28581.726560533334,
+      "cpu_core/mem_load_retired.l1_miss/u": 36.23831333333333,
+      "cpu_core/mem_load_retired.l2_miss/u": 1.9998697333333333,
+      "cpu_core/mem_load_retired.l3_miss/u": 1.1310365333333334,
+      "cpu_core/branch-misses/u": 37.5112112
+    },
+    "nps_ratio_to_first": 1.0733013371918674
+  }
+}

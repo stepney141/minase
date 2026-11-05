@@ -1,4 +1,4 @@
-//! 最良チェックポイントのMNUE版5への書き出しと、整数推論の量子化誤差と駒除去差分の符号反転の検査。
+//! 完了済みチェックポイントのMNUE版5への書き出しと、整数推論の量子化誤差と駒除去差分の符号反転の検査。
 
 use std::{fmt, fs, path::Path};
 
@@ -35,7 +35,7 @@ pub enum Error {
     Model(model::Error),
     /// 書き出したMNUEを推論側で復号できなかった。
     Mnue(nnue::Error),
-    /// 最良エポックまたは検証標本の条件を満たさない。
+    /// 書き出すエポックまたは検証標本の条件を満たさない。
     Invalid(&'static str),
     /// 浮動小数点の評価または誤差が非有限になった。
     NonFinite {
@@ -164,12 +164,7 @@ impl<'a> From<&'a crate::data::SpillStore> for ValidationSource<'a> {
 /// 最良モデルを`nnue.bin`へ書き、同じ検証標本の量子化誤差と駒除去差分の符号反転を求める。
 ///
 /// `checkpoint`は`best.npz`に保存した1以上の最良エポックそのものを渡す。
-/// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
-/// B=1では検証集合を`epoch_permutation(seed, 0)`で並べた先頭から、B≥2ではFloydの方法で標本を取る。
-/// 標本数の上限は`--validation-sample`であり、既定は10,000件である。
-/// 平均絶対誤差が`cp_per_logit / 40`を超えても重みと測定値は保持し、`passed = false`を返す。
-/// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
-/// 符号反転は参照差分が非零の除去を母数とし、閾値を設けない。母数0や非有限値はエラーにする。
+/// `progress.best.epoch == progress.epoch`を要求し、書き出しと検査は[`write_completed`]に従う。
 pub fn write_best<'a>(
     source: impl Into<ValidationSource<'a>>,
     checkpoint: &Checkpoint,
@@ -178,8 +173,43 @@ pub fn write_best<'a>(
     rule_set: &str,
     validation_sample_size: usize,
 ) -> Result<(QuantizationReport, RemovalSignReport)> {
+    match checkpoint.progress.best {
+        Some(best) if best.epoch > 0 && best.epoch == checkpoint.progress.epoch => {}
+        _ => return Err(Error::Invalid("checkpoint is not a completed best epoch")),
+    }
+    write_completed(
+        source,
+        checkpoint,
+        output_dir,
+        piece_values,
+        rule_set,
+        validation_sample_size,
+    )
+}
+
+/// 完了済みモデルを`nnue.bin`へ書き、同じ検証標本の量子化誤差と駒除去差分の符号反転を求める。
+///
+/// `checkpoint`は検証と保存を終えたエポックを渡す。メモリ経路、一時ファイル経路とも
+/// `progress.epoch >= 1`を要求し、最良エポックとの一致は要求しない。
+/// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
+/// B=1では検証集合を`epoch_permutation(seed, 0)`で並べた先頭から、B≥2ではFloydの方法で標本を取る。
+/// 標本数の上限は`--validation-sample`であり、既定は10,000件である。
+/// 平均絶対誤差が`cp_per_logit / 40`を超えても重みと測定値は保持し、`passed = false`を返す。
+/// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
+/// 符号反転は参照差分が非零の除去を母数とし、閾値を設けない。母数0や非有限値はエラーにする。
+pub fn write_completed<'a>(
+    source: impl Into<ValidationSource<'a>>,
+    checkpoint: &Checkpoint,
+    output_dir: &Path,
+    piece_values: &[i32; PIECE_STATE_COUNT],
+    rule_set: &str,
+    validation_sample_size: usize,
+) -> Result<(QuantizationReport, RemovalSignReport)> {
+    if checkpoint.progress.epoch == 0 {
+        return Err(Error::Invalid("checkpoint is not a completed epoch"));
+    }
     match source.into() {
-        ValidationSource::Memory(dataset) => write_best_memory(
+        ValidationSource::Memory(dataset) => write_memory(
             dataset,
             checkpoint,
             output_dir,
@@ -187,7 +217,7 @@ pub fn write_best<'a>(
             rule_set,
             validation_sample_size,
         ),
-        ValidationSource::Spill(store) => write_best_spill(
+        ValidationSource::Spill(store) => write_spill(
             store,
             checkpoint,
             output_dir,
@@ -199,7 +229,7 @@ pub fn write_best<'a>(
 }
 
 /// メモリ経路の標本抽出、書き出しと検査を同じ順で実行する。
-fn write_best_memory(
+fn write_memory(
     dataset: &Dataset,
     checkpoint: &Checkpoint,
     output_dir: &Path,
@@ -207,10 +237,6 @@ fn write_best_memory(
     rule_set: &str,
     validation_sample_size: usize,
 ) -> Result<(QuantizationReport, RemovalSignReport)> {
-    match checkpoint.progress.best {
-        Some(best) if best.epoch > 0 && best.epoch == checkpoint.progress.epoch => {}
-        _ => return Err(Error::Invalid("checkpoint is not a completed best epoch")),
-    }
     let indices = validation_sample(dataset, validation_sample_size, checkpoint.progress.seed)?;
     let quantized = quantize(&checkpoint.model)?.encode(piece_values, rule_set)?;
     fs::create_dir_all(output_dir)?;
@@ -345,9 +371,9 @@ fn measure_removal_sign(
     })
 }
 
-/// 一時ファイルからFloydの方法で検証標本を選び、最良モデルを書き出して検査する。
+/// 一時ファイルからFloydの方法で検証標本を選び、完了済みモデルを書き出して検査する。
 /// 標本の通し番号は昇順であり、検査の演算と判定基準はメモリ経路と共通である。
-fn write_best_spill(
+fn write_spill(
     store: &crate::data::SpillStore,
     checkpoint: &Checkpoint,
     output_dir: &Path,
@@ -355,10 +381,6 @@ fn write_best_spill(
     rule_set: &str,
     validation_sample_size: usize,
 ) -> Result<(QuantizationReport, RemovalSignReport)> {
-    match checkpoint.progress.best {
-        Some(best) if best.epoch > 0 && best.epoch == checkpoint.progress.epoch => {}
-        _ => return Err(Error::Invalid("checkpoint is not a completed best epoch")),
-    }
     if validation_sample_size == 0 {
         return Err(Error::Invalid("validation sample must be positive"));
     }

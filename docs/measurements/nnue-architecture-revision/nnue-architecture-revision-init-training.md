@@ -21,7 +21,7 @@ systemd-run --user --unit=nar-train-init --same-dir -p MemoryMax=13G -p MemorySw
   --output-dir data/nnue-architecture-revision/train-init
 ```
 
-診断は[学習の手引き](../../guides/nnue-training.md)の8節の3つのコマンドで、前回と同じ標本の条件で行った。
+診断は[学習の手引き](../../guides/nnue-training.md#学習した重みを診断する)の3つのコマンドで、前回と同じ標本の条件で行った。
 
 ## 環境
 

@@ -551,6 +551,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &root,
@@ -560,7 +561,7 @@ fn article_31_r1_null_moves_restore_repetition_scope_after_completion_or_interru
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,

@@ -143,11 +143,21 @@ pub fn evaluate(position: &Position) -> i32 {
 
 /// 駒種に応じたPSTの加点を、後手は盤を上下反転した先手視点で返す。
 fn positional_value(kind: PieceKind, color: Color, square: Square) -> i32 {
-    let black_rank = match color {
+    let owner_rank = match color {
         Color::Black => square.rank(),
         Color::White => BOARD_RANKS - 1 - square.rank(),
     };
-    let black_index = black_rank as usize * BOARD_FILES as usize + square.file() as usize;
+    square_value(kind, owner_rank, square.file())
+}
+
+/// 駒の持ち主から見た段と筋に対応する位置評価をセンチポーンで返す。
+/// 段0は自陣の最下段であり、成りビットによらず駒種の成り可否を使う。
+///
+/// # Panics
+/// 段または筋が盤の範囲0〜11を外れる場合にパニックする。
+pub fn square_value(kind: PieceKind, owner_rank: u8, file: u8) -> i32 {
+    assert!(owner_rank < BOARD_RANKS && file < BOARD_FILES);
+    let black_index = owner_rank as usize * BOARD_FILES as usize + file as usize;
     let mut value = 0;
     if kind.can_promote() {
         value += FORWARD_PST[black_index];

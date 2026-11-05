@@ -1,0 +1,36 @@
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index 35cc487a..d66b5fe2 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -76,7 +76,7 @@ impl Position {
+ /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
+ ///
+ /// 全固定移動が5×5近傍に収まるので、その範囲の指定側の駒について固定利き表が`square`を含むか調べる。
+-/// 走りは`square`から8方向へ占有を考慮した利き線を引き、最初の遮蔽駒が指定側の駒であり、
++/// 走りは`square`から8方向の最初の遮蔽駒を求め、それが指定側の駒であり、
+ /// 逆方向へ走る動きの定義を持つ場合に加える。全プロファイルの
+ /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
+ fn ordinary_attackers_to(
+@@ -101,11 +101,19 @@ fn ordinary_attackers_to(
+     }
+     let own = position.pieces_of(color) & occupied;
+     for direction in Direction::ALL {
+-        // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
+-        let ray = tables.sliding_control(square, direction, occupied);
+-        let Some(blocker) = (ray & own).lsb() else {
++        // 相手駒や仮想の占有升を飛び越さないよう、全占有から最初の遮蔽を求める。
++        let blockers = tables.ray(square, direction) & occupied;
++        let blocker = if direction.increases_raw_index() {
++            blockers.lsb()
++        } else {
++            blockers.msb()
++        };
++        let Some(blocker) = blocker else {
+             continue;
+         };
++        if !own.contains(blocker) {
++            continue;
++        }
+         let kind = position
+             .piece_at(blocker)
+             .and_then(|piece| piece.kind())

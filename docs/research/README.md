@@ -41,6 +41,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 全体の方針は3つの観点で整理した総論から読み、必要に応じて構成案と一次資料を参照する。
 個別の評価項目については、追加候補、計算の土台、係数の学習方法の順に読むとつながる。
 
+- [強豪のNNUE学習器の学習レシピとminaseの学習条件の比較](nnue-training-recipes.md)は、tatara、やねうら王、nnue-pytorch、variant-nnue-pytorch、およびbullet系の学習率の予定と学習量を周回数と更新回数へ直して比べ、対局で測られた設定と慣習にすぎない設定を分け、minaseの標準学習レシピの候補を比較の案とともに示す。
 - [評価関数を改善する3つの観点](evaluation-improvement-strategy.md)は、評価モデルの表現、教師局面と教師値、学習目標と更新方法ごとに、確認された問題、有望な方法、次の検証を整理する。
 - [評価関数の表現と更新費用の候補](evaluation-architecture-candidates.md)は、局所2駒表、低ランク分解、王駒の射線表、小型NNUEの入力、数式、容量、差分更新を具体化する。
 - [評価モデル、教師生成、学習方法の一次資料](evaluation-learning-primary-sources-2026-09.md)は、Bonanza、Stockfish、やねうら王、elmo、NineDayFever、およびRootStrapなどの研究を3つの観点で整理する。

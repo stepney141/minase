@@ -15,7 +15,7 @@ use super::capture_history::CaptureHistory;
 use super::correction::{ContinuationCorrectionHistory, CorrectionValues};
 use super::history::{ContinuationHistory, HistoryTable, PawnHistory};
 use super::root::RootResults;
-use super::searcher::{PonderIteration, Searcher, new_searcher};
+use super::searcher::{PonderIteration, RepetitionHistory, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{
     FallingEvalCoefficients, InstabilityScaling, TimeEffortCoefficients,
@@ -147,7 +147,7 @@ pub(super) fn run_main_worker(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
-    history_keys: &[u64],
+    repetition_history: &RepetitionHistory,
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
     instability_scaling: Option<InstabilityScaling>,
@@ -170,7 +170,7 @@ pub(super) fn run_main_worker(
         repetition,
         draw_value,
         root_moves,
-        history_keys,
+        repetition_history,
         depth_limit,
         time_budget,
         instability_scaling,
@@ -200,7 +200,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
-    history_keys: &[u64],
+    repetition_history: &RepetitionHistory,
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
     mut instability_scaling: Option<InstabilityScaling>,
@@ -225,7 +225,7 @@ pub(super) fn run_main_worker_with_iteration_hook(
         repetition,
         draw_value,
         0,
-        history_keys,
+        repetition_history,
         shared,
         tt,
         history,
@@ -454,7 +454,7 @@ pub(super) fn run_auxiliary_worker(
     repetition: SearchRepetition,
     draw_value: i32,
     root_moves: &[Move],
-    history_keys: &[u64],
+    repetition_history: &RepetitionHistory,
     depth_limit: u32,
     worker_index: usize,
     shared: &SharedSearch<'_>,
@@ -473,7 +473,7 @@ pub(super) fn run_auxiliary_worker(
         repetition,
         draw_value,
         worker_index,
-        history_keys,
+        repetition_history,
         shared,
         tt,
         history,

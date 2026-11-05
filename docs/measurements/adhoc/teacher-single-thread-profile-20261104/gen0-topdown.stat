@@ -1,0 +1,14 @@
+# started on Wed Nov  4 19:14:46 2026
+
+
+ Performance counter stats for '/home/stepney141/board-games/minase/target/teacher-bottleneck/bin/gen0 data selfplay generate --output /home/stepney141/board-games/minase/target/teacher-bottleneck/results/gen0-topdown.mnsd --seed 9010200000 --games 2 --concurrency 1 --nodes 20000 --random-moves 0 --max-ply 4000 --hash-mb 16':
+
+ %  tma_bad_speculation %  tma_frontend_bound      %  tma_retiring  %  tma_memory_bound    %  tma_core_bound 
+                   9.3                 15.7                42.3                12.4                20.3
+
+      19.552741423 seconds time elapsed
+
+      19.488388000 seconds user
+       0.030996000 seconds sys
+
+

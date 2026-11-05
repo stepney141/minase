@@ -9,6 +9,7 @@
   placement_distance.py check   --data <repoのdata>
   placement_distance.py power   --data <repoのdata> --run <実行ディレクトリ名>
   placement_distance.py compare --data <repoのdata> --reference <実行ディレクトリ名> --placement <実行ディレクトリ名>
+  placement_distance.py single  --data <repoのdata> --run <実行ディレクトリ名>
 """
 import argparse
 import glob
@@ -267,6 +268,22 @@ def command_compare(args):
         print(f"  {NAMES[kind]}: 基準 {base_value:.3f}  補正 {fitted_value:.3f}  差 {fitted_value - base_value:+.3f}")
 
 
+def command_single(args):
+    """1回の対局の候補側のM、5配置の割合、および駒種ごとの総変動距離を表示する。"""
+    distance = Distance(load_counts(args.data))
+    _, _, candidate, _ = load_run(args.data, args.run_name)
+    merged = candidate.sum(axis=0)
+    print(f"{args.run_name}: {len(candidate)}ペア")
+    print(f"M(候補側) = {distance.m(merged):.4f}")
+    print("5配置の割合（20〜99手）")
+    for name, rate in placement_rates(merged).items():
+        print(f"  {name}: {rate:.1%}")
+    print("駒種ごとの総変動距離（手数帯と基準で平均）")
+    tv = distance.tv(merged)
+    for index, kind in enumerate(KINDS):
+        print(f"  {NAMES[kind]}: {np.nanmean(tv[:, :, index]):.3f}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -282,6 +299,10 @@ def main():
     compare.add_argument("--reference", required=True)
     compare.add_argument("--placement", required=True)
     compare.set_defaults(run=command_compare)
+    single = subparsers.add_parser("single")
+    single.add_argument("--data", required=True)
+    single.add_argument("--run", dest="run_name", required=True)
+    single.set_defaults(run=command_single)
     args = parser.parse_args()
     args.run(args)
 

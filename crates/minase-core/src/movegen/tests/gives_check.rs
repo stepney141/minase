@@ -1,14 +1,17 @@
 //! `Position::gives_check`の契約テスト。
 
-use super::{generated_with, mv};
+use super::{generated_with, mv, rule_variants};
+use crate::Bitboard;
 use crate::board::Square;
+use crate::movegen::CheckContext;
 use crate::movegen::MoveGenerator;
+use crate::movegen::control::piece_control_with_occupancy;
 use crate::mv::Move;
 use crate::piece::{Color, PieceCode, PieceKind};
 use crate::position::Position;
 use crate::test_util::{
-    bench_positions, capture_test_rules, position, position_from_codes,
-    reflect_ranks_and_swap_colors, sampled_random_positions, sq,
+    bench_positions, position, position_from_codes, reflect_ranks_and_swap_colors,
+    sampled_random_positions, sq,
 };
 
 fn piece(color: Color, kind: PieceKind) -> PieceCode {
@@ -30,6 +33,10 @@ fn assert_generated_check(
         "test move must be legal: {mv:?}"
     );
     let before = position.clone();
+    let mut context = CheckContext::default();
+    assert_eq!(context.gives_check(position, generator, mv), expected);
+    assert_eq!(context.gives_check(position, generator, mv), expected);
+    assert_eq!(gives_check_before(position, generator, mv), expected);
     assert_eq!(position.gives_check(generator, mv), expected, "mv={mv:?}");
     assert_eq!(
         position, &before,
@@ -64,15 +71,18 @@ fn article_8_gives_check_matches_post_move_legal_capture_reference() {
     let mut compared = 0_usize;
     let mut checks = 0_usize;
 
-    for rules in capture_test_rules() {
+    for rules in rule_variants() {
         let generator = MoveGenerator::new(rules);
         let positions = bench_positions()
             .into_iter()
             .chain(sampled_random_positions(rules));
         for position in positions {
+            let mut context = CheckContext::default();
             for mv in generated_with(&generator, &position) {
                 let expected = gives_check_reference(&position, &generator, mv);
-                let actual = position.gives_check(&generator, mv);
+                let actual = context.gives_check(&position, &generator, mv);
+                assert_eq!(gives_check_before(&position, &generator, mv), expected);
+                assert_eq!(position.gives_check(&generator, mv), expected);
                 assert_eq!(actual, expected, "rules={rules:?}, mv={mv:?}");
                 compared += 1;
                 checks += usize::from(actual);
@@ -388,4 +398,147 @@ fn article_8_a_move_cannot_check_three_royals_at_once() {
         mv(sq(5, 5), None, sq(5, 6), false),
         false,
     );
+}
+
+/// 単一王駒でも全利きを求める変更前の判定。最適化の集合保存を検査する。
+fn gives_check_before(position: &Position, generator: &MoveGenerator, mv: Move) -> bool {
+    let mover = position.side_to_move();
+    let captured = position.captured_squares(mv);
+    let mut remaining_royals = position.royal_pieces(mover.opposite());
+    for square in captured.into_iter().flatten() {
+        remaining_royals.clear(square);
+    }
+
+    match remaining_royals.popcount() {
+        0 => false,
+        1 => {
+            let royal = remaining_royals
+                .lsb()
+                .expect("one remaining royal must have a square");
+            let mut occupied = position.occupied();
+            occupied.clear(mv.from);
+            if let Some(mid_capture) = captured[0] {
+                occupied.clear(mid_capture);
+            }
+            occupied.set(mv.to);
+
+            let moving_piece = position
+                .piece_at(mv.from)
+                .expect("move origin must contain a piece");
+            let moving_kind = if mv.promote {
+                moving_piece
+                    .promote()
+                    .expect("promoting move must have a promotable piece")
+                    .kind()
+                    .expect("promoted board piece must have a kind")
+            } else {
+                moving_piece
+                    .kind()
+                    .expect("board piece must have a valid kind")
+            };
+            if piece_control_with_occupancy(occupied, mover, moving_kind, mv.to).contains(royal) {
+                return true;
+            }
+
+            let mut other_attackers = position.attackers_to_by(mover, royal, occupied);
+            other_attackers.clear(mv.from);
+            !other_attackers.is_empty()
+        }
+        2 => {
+            let first = remaining_royals
+                .lsb()
+                .expect("two remaining royals must have a first square");
+            let second = remaining_royals
+                .msb()
+                .expect("two remaining royals must have a second square");
+            if !generator.tables().king_steps(first).contains(second) {
+                return false;
+            }
+
+            let mut after = position.clone();
+            after.make_move_unchecked(mv, generator.rules());
+            let checking_position = after.clone_with_side_to_move(mover);
+            can_capture_all_royals_before(&checking_position, generator, remaining_royals)
+        }
+        // 1手の最大捕獲数は2枚なので、到達不能な構築局面に3枚以上あっても王手ではない。
+        _ => false,
+    }
+}
+
+/// 手番側に`royals`の全駒を1手で取る合法手があるかを返す。
+fn can_capture_all_royals_before(
+    position: &Position,
+    generator: &MoveGenerator,
+    royals: Bitboard,
+) -> bool {
+    let mut moves = Vec::new();
+    generator.generate_moves(position, &mut moves);
+    moves.into_iter().any(|mv| {
+        let captured = position.captured_squares(mv);
+        royals
+            .into_iter()
+            .all(|royal| captured.contains(&Some(royal)))
+    })
+}
+
+/// 同じ局面で利きを共有しても、到達升が遮蔽する手には現在の占有の判定を流用しない。
+#[test]
+fn article_8_check_context_distinguishes_unrelated_moves_from_blockers() {
+    let generator = MoveGenerator::standard();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 2), Color::Black, PieceKind::Rook),
+            (sq(4, 4), Color::Black, PieceKind::SideMover),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    let mut context = CheckContext::default();
+    for (to, expected) in [(sq(3, 4), true), (sq(5, 4), false), (sq(2, 4), true)] {
+        let candidate = mv(sq(4, 4), None, to, false);
+        assert!(generated_with(&generator, &board).contains(&candidate));
+        assert_eq!(context.gives_check(&board, &generator, candidate), expected);
+        assert_eq!(gives_check_before(&board, &generator, candidate), expected);
+    }
+}
+
+/// 第12条の獅子の跳びには、8方向の線に載らない2升先も含まれる。
+#[test]
+fn article_12_check_context_tracks_lion_jumps_outside_the_rays() {
+    let generator = MoveGenerator::standard();
+    let board = position(
+        Color::Black,
+        &[
+            (sq(4, 6), Color::Black, PieceKind::Lion),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ],
+    );
+    assert!(board.piece_control(sq(4, 6)).contains(sq(5, 8)));
+    assert_generated_check(
+        &board,
+        &generator,
+        mv(sq(4, 6), None, sq(3, 5), false),
+        false,
+    );
+}
+
+/// 逆引きの契約から、依存範囲外の占有を反転しても攻撃駒の集合は同じである。
+#[test]
+fn attack_dependencies_bound_all_occupancy_changes() {
+    for board in bench_positions()
+        .into_iter()
+        .chain(sampled_random_positions(crate::rules::MoveRules::standard()))
+    {
+        for royal in Square::all() {
+            let outside = !crate::attacks::attack_tables().attack_dependencies(royal);
+            for color in Color::ALL {
+                let occupied = board.occupied();
+                assert_eq!(
+                    board.attackers_to_by(color, royal, occupied),
+                    board.attackers_to_by(color, royal, occupied ^ outside)
+                );
+            }
+        }
+    }
 }

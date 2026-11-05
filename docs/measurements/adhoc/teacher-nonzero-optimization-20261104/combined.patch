@@ -1,0 +1,167 @@
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index 35cc487a..d66b5fe2 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -76,7 +76,7 @@ impl Position {
+ /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
+ ///
+ /// 全固定移動が5×5近傍に収まるので、その範囲の指定側の駒について固定利き表が`square`を含むか調べる。
+-/// 走りは`square`から8方向へ占有を考慮した利き線を引き、最初の遮蔽駒が指定側の駒であり、
++/// 走りは`square`から8方向の最初の遮蔽駒を求め、それが指定側の駒であり、
+ /// 逆方向へ走る動きの定義を持つ場合に加える。全プロファイルの
+ /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
+ fn ordinary_attackers_to(
+@@ -101,11 +101,19 @@ fn ordinary_attackers_to(
+     }
+     let own = position.pieces_of(color) & occupied;
+     for direction in Direction::ALL {
+-        // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
+-        let ray = tables.sliding_control(square, direction, occupied);
+-        let Some(blocker) = (ray & own).lsb() else {
++        // 相手駒や仮想の占有升を飛び越さないよう、全占有から最初の遮蔽を求める。
++        let blockers = tables.ray(square, direction) & occupied;
++        let blocker = if direction.increases_raw_index() {
++            blockers.lsb()
++        } else {
++            blockers.msb()
++        };
++        let Some(blocker) = blocker else {
+             continue;
+         };
++        if !own.contains(blocker) {
++            continue;
++        }
+         let kind = position
+             .piece_at(blocker)
+             .and_then(|piece| piece.kind())
+diff --git a/crates/minase/src/search/alphabeta/ordering.rs b/crates/minase/src/search/alphabeta/ordering.rs
+index 65e83d06..d0debbb0 100644
+--- a/crates/minase/src/search/alphabeta/ordering.rs
++++ b/crates/minase/src/search/alphabeta/ordering.rs
+@@ -475,6 +475,24 @@ pub(super) fn continuation_index(
+         + current_to
+ }
+ 
++/// 現在の駒種と到達升を除く、continuation historyの行先頭を返す。
++fn continuation_row_offset(context: MoveRecord, color: Color, distance: usize) -> usize {
++    let context_to = oriented_square(context.mv.to.dense_index(), color);
++    let context_kind = context
++        .piece
++        .kind()
++        .expect("continuation context piece kind")
++        .index();
++    (((usize::from(context.captured.is_some()) * COLOR_COUNT
++        + usize::from(distance.is_multiple_of(2)))
++        * PIECE_KIND_COUNT
++        + context_kind)
++        * BOARD_SQUARE_COUNT
++        + context_to)
++        * PIECE_KIND_COUNT
++        * BOARD_SQUARE_COUNT
++}
++
+ pub(super) fn oriented_square(square: usize, color: Color) -> usize {
+     if color == Color::White {
+         BOARD_SQUARE_COUNT - 1 - square
+@@ -891,11 +909,13 @@ pub(super) struct MovePickerContext<'a> {
+     pub(super) coefficients: QuietOrderingCoefficients,
+ }
+ 
++#[allow(clippy::too_many_arguments)]
+ fn quiet_move_ordering_value(
+     position: &Position,
+     nnue: &Nnue,
+     generator: &MoveGenerator,
+     context: MovePickerContext<'_>,
++    continuation_offsets: &[Option<usize>; CONTINUATION_WEIGHTS.len()],
+     lesser_piece_threats: &LesserPieceThreats,
+     direct_checks: &mut DirectCheckSquares,
+     mv: Move,
+@@ -903,17 +923,15 @@ fn quiet_move_ordering_value(
+     let piece = piece_at_for_ordering(position, mv.from);
+     let piece_value = nnue.piece_value(piece);
+     let moving_kind = piece.kind().expect("quiet ordering mover kind");
+-    let continuation = CONTINUATION_WEIGHTS
++    let continuation_suffix = moving_kind.index() * BOARD_SQUARE_COUNT
++        + oriented_square(mv.to.dense_index(), position.side_to_move());
++    let continuation = continuation_offsets
+         .iter()
+-        .filter_map(|&(distance, _)| {
+-            continuation_value(
+-                context.continuation_history,
+-                context.path_moves,
+-                context.ply,
+-                piece,
+-                mv,
+-                distance,
+-            )
++        .flatten()
++        .map(|&offset| {
++            context
++                .continuation_history
++                .read(offset + continuation_suffix)
+         })
+         .sum();
+     let threats = lesser_piece_threats.below(piece_value);
+@@ -1107,6 +1125,17 @@ impl MovePicker {
+                 }
+                 // killer手を除き、quiet_orderの3つのキーで順序を確定する。
+                 MovePickerStage::Quiets => {
++                    let continuation_offsets = CONTINUATION_WEIGHTS.map(|(distance, _)| {
++                        let context_ply = context.ply.checked_sub(distance as u32)? as usize;
++                        context
++                            .path_moves
++                            .get(context_ply)
++                            .expect("continuation context ply must exist in the path")
++                            .record
++                            .map(|record| {
++                                continuation_row_offset(record, position.side_to_move(), distance)
++                            })
++                    });
+                     let threats = LesserPieceThreats::with_piece_values(position, |piece| {
+                         nnue.piece_value(piece)
+                     });
+@@ -1121,6 +1150,7 @@ impl MovePicker {
+                                 nnue,
+                                 generator,
+                                 context,
++                                &continuation_offsets,
+                                 &threats,
+                                 &mut direct_checks,
+                                 mv,
+diff --git a/crates/minase/src/search/alphabeta/quiesce.rs b/crates/minase/src/search/alphabeta/quiesce.rs
+index cfa895aa..86f29be4 100644
+--- a/crates/minase/src/search/alphabeta/quiesce.rs
++++ b/crates/minase/src/search/alphabeta/quiesce.rs
+@@ -276,6 +276,7 @@ impl Searcher<'_> {
+                     .is_some_and(|square| candidate.capture.captured.contains(&Some(square)));
+                 let is_double_lion = candidate.capture.piece.kind() == Some(PieceKind::Lion)
+                     && candidate.capture.captured.iter().all(Option::is_some);
++                let mut see_floor_passed = false;
+                 'pruning: {
+                     if is_recapture || mv.promote {
+                         #[cfg(feature = "search-stats")]
+@@ -334,7 +335,8 @@ impl Searcher<'_> {
+                         continue 'candidates;
+                     }
+ 
+-                    if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
++                    let see_threshold = alpha - futility_base;
++                    if see_prunes(position, self.rules, self.nnue, mv, see_threshold) {
+                         if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                             break 'pruning;
+                         }
+@@ -352,8 +354,12 @@ impl Searcher<'_> {
+                         }
+                         continue 'candidates;
+                     }
++                    // 同じ候補が厳しい閾値を通過したなら、下限でも枝刈りしない。
++                    see_floor_passed = see_threshold >= self.qsearch_see_floor;
+                 }
+-                if see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor) {
++                if !see_floor_passed
++                    && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
++                {
+                     #[cfg(feature = "search-stats")]
+                     {
+                         self.stats.quiesce_see_floor_prunes += 1;

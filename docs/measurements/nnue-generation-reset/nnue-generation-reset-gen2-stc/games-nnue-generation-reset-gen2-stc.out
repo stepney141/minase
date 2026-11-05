@@ -1,0 +1,24 @@
+games 236 cand wins 191 base wins 43 draws 2
+mean depth cand 16.57 base 16.26 cpu per game cand 28.3 base 29.8
+by plies bucket (cand wins/base wins/draw):
+  0 100 2 1 1 0
+  100 200 0 0 0 0
+  200 300 4 4 0 0
+  300 400 72 63 9 0
+  400 600 138 110 27 1
+  600 2000 19 13 6 0
+short games:
+  128 0 1 C black adjudicated_win RoyalCapture ['7b7a6a'] ccp [None] bcp []
+  128 1 1 B white adjudicated_win RoyalCapture ['7b7a6a'] ccp [] bcp [None]
+  108 0 249 C black adjudicated_win Mate ['4h4g', '5d5e', '2l2k', '12d12e', '9h9g', '10d10e', '9i9h', '2a2b', '5l4k', '3a4b', '6l5l', '1c1d'] ccp [None, None, None] bcp [None, None, None]
+  7 0 254 C black adjudicated_win Mate ['5e5g', '5i5h', '5g7e', '9l8k', '12d12e', '7j9l', '1d1e', '4h4g', '1c1d', '3i3h', '2a2b', '9h9g'] ccp [None, None, None] bcp [None, None, None]
+  88 1 295 C white adjudicated_win Mate ['11a11b', '8i8h', '4d4e', '10i10h', '9e9f', '12i12h', '5d5e', '11l11k', '2a2b', '12j12i', '8a9b', '6k8i'] ccp [None, None, None] bcp [None, None, None]
+  84 0 299 C black adjudicated_win Mate ['8l8k', '8d8e', '7j8l', '11a10b', '9h9g', '9d9e', '11h8h', '5e6e', '10i10h', '7b9d', '9g9f', '9e9f'] ccp [None, None, None] bcp [None, None, None]
+  24 1 301 C white adjudicated_win Mate ['9e9f', '8l7k', '6c5a', '8i8h', '8d8e', '1i1h', '4e4f', '12i12h', '10b8d', '12j12i', '11a10b', '1j1i'] ccp [None, None, None] bcp [-2880, None, None]
+  78 1 311 B white adjudicated_win Mate ['6l7l', '9e9f', '7k6l', '9f9g', '9h9g', '6c5a', '8i8h', '8d8e', '5i5h', '11a11b', '7l7k', '1d1e'] ccp [None, None, None] bcp [None, None, None]
+abs cp cand p50/p90 437 2479 base p50/p90 628 2553
+ply 10 n 234 mean cand cp (own view) 36 mean base cp (own view) 71 std 510 562
+ply 30 n 234 mean cand cp (own view) 79 mean base cp (own view) 144 std 516 567
+ply 60 n 234 mean cand cp (own view) 113 mean base cp (own view) 259 std 545 589
+ply 100 n 234 mean cand cp (own view) 132 mean base cp (own view) 402 std 605 637
+ply 150 n 234 mean cand cp (own view) 118 mean base cp (own view) 498 std 696 726

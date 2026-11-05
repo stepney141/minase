@@ -99,7 +99,18 @@ fn generated(rules: MoveRules, position: &Position) -> Vec<Move> {
 }
 
 fn is_generated(rules: MoveRules, position: &Position, expected: Move) -> bool {
-    generated(rules, position).contains(&expected)
+    let contains = generated(rules, position).contains(&expected);
+    assert_eq!(
+        MoveGenerator::new(rules).is_legal_move(
+            position,
+            expected,
+            &mut Vec::new(),
+            &mut Vec::new()
+        ),
+        contains,
+        "獅子捕獲の固定例で直接判定と全件生成が一致する: {expected:?}"
+    );
+    contains
 }
 
 /// 指定升の駒を取る着手だけを合法手集合から抽出する(符号化に依存しない観測)。

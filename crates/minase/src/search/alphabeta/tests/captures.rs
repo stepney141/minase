@@ -275,6 +275,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                     nnue,
                     &generator,
                     isolated_move_picker_context(&history, &capture_history),
+                    &std::cell::OnceCell::new(),
                 ) {
                     if !is_capture {
                         break;
@@ -327,6 +328,7 @@ pub(super) fn zero_capture_scale_preserves_reference_order() {
                     nnue,
                     &generator,
                     isolated_move_picker_context(&history, &capture_history),
+                    &std::cell::OnceCell::new(),
                 ) {
                     if !is_capture {
                         break;

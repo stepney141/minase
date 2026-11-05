@@ -19,6 +19,9 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 sha2 = "0.10"
 
+[dev-dependencies]
+minase-core = { path = "../minase-core", features = ["test-util"] }
+
 [lints.rust]
 missing_docs = "warn"
 unsafe_op_in_unsafe_fn = "warn"

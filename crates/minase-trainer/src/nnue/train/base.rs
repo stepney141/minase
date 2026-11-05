@@ -1,20 +1,20 @@
-//! 基準MNPTから探索用の固定値を読み、駒価値からNNUEの線形初期値を作る。
+//! 基準MNUEから探索用の固定値を読み、駒価値からNNUEの線形初期値を作る。
 
 use minase::eval::{
+    Nnue,
     features::{BOARD_FEATURE_COUNT, FEATURE_COUNT, PIECE_STATE_COUNT},
-    pst::Pst,
 };
 use minase_core::PieceKind;
 use std::{error::Error, path::Path};
 
-/// 線形初期値と書き出しに使う、基準MNPTの固定値。
+/// 線形初期値と書き出しに使う、基準MNUEの固定値。
 #[derive(Debug)]
 pub struct Base {
     /// 駒状態番号順の探索用駒価値。単位はセンチポーン。
     pub piece_values: [i32; PIECE_STATE_COUNT],
     /// 勝率尺度（1ロジットあたりのcp）。
     pub cp_per_logit: f32,
-    /// 元のMNPTが指定する規則セット名。
+    /// 元のMNUEが指定する規則セット名。
     pub rule_set: String,
 }
 
@@ -36,17 +36,17 @@ impl Base {
     }
 }
 
-/// MNPT全体をminaseの読み手で検証し、NNUEで引き継ぐ値を返す。
+/// MNUE全体をminaseの読み手で検証し、NNUEで引き継ぐ値を返す。
 pub fn read(path: &Path) -> Result<Base, Box<dyn Error>> {
     decode(&std::fs::read(path)?)
 }
 
 fn decode(bytes: &[u8]) -> Result<Base, Box<dyn Error>> {
-    let pst = Pst::decode(bytes)?;
+    let net = Nnue::decode(bytes)?;
     Ok(Base {
-        piece_values: std::array::from_fn(|state| pst.piece_value_of_state(state)),
-        cp_per_logit: pst.cp_per_logit(),
-        rule_set: pst.rule_set().to_owned(),
+        piece_values: std::array::from_fn(|state| net.piece_value_of_state(state)),
+        cp_per_logit: net.cp_per_logit(),
+        rule_set: net.rule_set().to_owned(),
     })
 }
 
@@ -56,36 +56,47 @@ mod tests {
     use crate::nnue::{
         data::{BatchSlot, InputFeatureSet, Observations},
         model::{HeadKind, Masks, Model, Shape},
-        reference::{self, v0_piece_values},
+        reference,
     };
     use minase::eval::{
-        features::mirror_feature,
-        pst::{FM_RANK, FmWeights},
+        features::{mirror_feature, piece_state},
+        nnue::{
+            EncodeInput, encode,
+            feature_set::P,
+            head::{Head, PairwiseL16L32},
+        },
     };
     use minase_core::{Color, PieceCode, Position, PositionBuilder, Square};
 
-    /// MNPT版3の配置で作る。
-    /// 両端点、規則名、勝率尺度は基準の埋め込み値と異なる既知の値を使う。
+    fn piece_values() -> [i32; PIECE_STATE_COUNT] {
+        let mut values = std::array::from_fn(|state| 40 + state as i32 * 3);
+        let royal = values.iter().copied().max().unwrap()
+            + values[piece_state(PieceCode::new(Color::Black, PieceKind::Pawn).unwrap())];
+        values[PieceKind::King.index()] = royal;
+        values[PieceKind::CrownPrince.index()] = royal;
+        values
+    }
+
+    /// MNUE版5を、学習済みの埋め込み値に依存しない重みとメタデータから作る。
     fn fixture() -> Vec<u8> {
-        Pst::from_weights_with_fm(
-            &vec![[123, -456]; FEATURE_COUNT],
-            v0_piece_values(),
-            317.25,
-            "L1,P0,R1,E0",
-            FmWeights {
-                embeddings: &vec![[0; FM_RANK]; FEATURE_COUNT],
-                signs: &[1; FM_RANK],
-                exponent: 7,
-            },
-        )
+        let head = PairwiseL16L32::decode(&vec![0; PairwiseL16L32::byte_len(4)], 4, true).unwrap();
+        encode::<P, PairwiseL16L32>(&EncodeInput {
+            width: 4,
+            cp_per_logit: 317.25,
+            rule_set: "L1,P0,R1,E0",
+            piece_values: &piece_values(),
+            linear: &vec![[123, -456]; FEATURE_COUNT],
+            weights: &vec![0; FEATURE_COUNT * 4],
+            biases: &[0; 4],
+            head: &head,
+        })
         .unwrap()
-        .encode()
     }
 
     #[test]
-    fn mnpt_base_preserves_fixed_metadata() {
+    fn mnue_base_preserves_fixed_metadata() {
         let base = decode(&fixture()).unwrap();
-        assert_eq!(base.piece_values, v0_piece_values());
+        assert_eq!(base.piece_values, piece_values());
         assert_eq!(base.cp_per_logit.to_bits(), 317.25_f32.to_bits());
         assert_eq!(base.rule_set, "L1,P0,R1,E0");
     }
@@ -106,7 +117,7 @@ mod tests {
                 .as_chunks::<144>()
                 .0
                 .iter()
-                .zip(v0_piece_values())
+                .zip(piece_values())
                 .enumerate()
             {
                 let expected =
@@ -146,6 +157,15 @@ mod tests {
         }
 
         let base = decode(&fixture()).unwrap();
+        let value = |kind, promoted| {
+            let piece = if promoted {
+                PieceCode::new_promoted(Color::Black, kind)
+            } else {
+                PieceCode::new(Color::Black, kind)
+            }
+            .unwrap();
+            base.piece_values[piece_state(piece)] as f32
+        };
         let initial_position = Position::initial();
         let mut reduced: Vec<_> = initial_position
             .occupied()
@@ -161,11 +181,22 @@ mod tests {
             let index = reduced.iter().position(|&(_, code)| code == piece).unwrap();
             reduced.remove(index);
         }
-        // v0表では歩兵100、飛車750、獅子2500。初期局面からの除去で先手に2500−750−100=1650。
+        // 初期局面から自分の歩兵と飛車、相手の獅子を除いた駒割の差を使う。
+        let removed_score = value(PieceKind::Lion, false)
+            - value(PieceKind::Rook, false)
+            - value(PieceKind::Pawn, false);
         let mut cases = vec![
             ("initial", initial_position, 0.0),
-            ("removed, black", position(Color::Black, &reduced), 1650.0),
-            ("removed, white", position(Color::White, &reduced), -1650.0),
+            (
+                "removed, black",
+                position(Color::Black, &reduced),
+                removed_score,
+            ),
+            (
+                "removed, white",
+                position(Color::White, &reduced),
+                -removed_score,
+            ),
         ];
         let promoted: Vec<_> = [
             (4, 0, Color::Black, PieceKind::King, false),
@@ -186,11 +217,13 @@ mod tests {
             (Square::new(file, rank).unwrap(), piece.unwrap())
         })
         .collect();
-        // 成った金将378と飛牛1000、相手の飛車750と醉象503で378+1000−750−503=125。
-        // 先手だけが持つ太子は0。先獅子の有無でも和は変わらない。
+        // 成った金将と飛牛から相手の飛車と醉象を引く。太子と先獅子の寄与は0。
+        let promoted_score = value(PieceKind::GoldGeneral, true) + value(PieceKind::FlyingOx, true)
+            - value(PieceKind::Rook, false)
+            - value(PieceKind::DrunkElephant, false);
         for (side, expected, target) in [
-            (Color::Black, 125.0, Square::new(8, 7).unwrap()),
-            (Color::White, -125.0, Square::new(2, 4).unwrap()),
+            (Color::Black, promoted_score, Square::new(8, 7).unwrap()),
+            (Color::White, -promoted_score, Square::new(2, 4).unwrap()),
         ] {
             let mut promoted_position = position(side, &promoted);
             cases.push(("promoted", promoted_position.clone(), expected));

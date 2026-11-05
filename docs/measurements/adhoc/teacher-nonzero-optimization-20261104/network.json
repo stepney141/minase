@@ -1,0 +1,41 @@
+{
+  "sha256": "987f060d545c09f0a42b4c668ea8b24cbf83c1770d11d663a94e4b82601274cd",
+  "body_sha256_verified": true,
+  "architecture": "features=P;ft=256;linear=tapered2;head=pairwise-l16-l32",
+  "first_layer_elements": 3502080,
+  "first_layer_nonzero_elements": 2417882,
+  "nonlinear_sections": {
+    "input_bias": {
+      "elements": 256,
+      "nonzero_elements": 256
+    },
+    "head_o": {
+      "elements": 256,
+      "nonzero_elements": 256
+    },
+    "head_b": {
+      "elements": 1,
+      "nonzero_elements": 1
+    },
+    "head_W1": {
+      "elements": 3840,
+      "nonzero_elements": 3762
+    },
+    "head_b1": {
+      "elements": 15,
+      "nonzero_elements": 15
+    },
+    "head_W2": {
+      "elements": 960,
+      "nonzero_elements": 944
+    },
+    "head_b2": {
+      "elements": 32,
+      "nonzero_elements": 32
+    },
+    "head_v": {
+      "elements": 32,
+      "nonzero_elements": 29
+    }
+  }
+}

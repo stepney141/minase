@@ -205,11 +205,27 @@ def rsync(instance_id: int, source: str, destination: Path) -> None:
     if not destination.is_absolute():
         raise VastError(f'取得先は絶対パスで指定してください: {destination}')
     host, port = ssh_address(instance_id, 600)
+    rsync_to(host, port, source, destination)
+
+
+def rsync_to(host: str, port: int, source: str, destination: Path) -> None:
+    """接続先を照会せず、保存済みのSSH接続先から取得する。"""
+    if not destination.is_absolute():
+        raise VastError(f'取得先は絶対パスで指定してください: {destination}')
     if ':' in host:
         host = f'[{host}]'
     command = shlex.join(['ssh', *ssh_options(port, '-p')])
     run_timed(['rsync', '-a', '-e', command, f'root@{host}:{source}',
                str(destination) + '/'], 3600)
+
+
+def rsync_push(host: str, port: int, source: Path, destination: str) -> None:
+    """生成機にないファイルだけを、保存済みのSSH接続先へ送る。"""
+    if ':' in host:
+        host = f'[{host}]'
+    command = shlex.join(['ssh', *ssh_options(port, '-p')])
+    run_timed(['rsync', '-a', '--ignore-existing', '-e', command, str(source) + '/',
+               f'root@{host}:{destination.rstrip("/")}/'], 3600)
 
 
 def copy_complete(output: str) -> bool:

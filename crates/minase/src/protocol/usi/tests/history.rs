@@ -25,7 +25,9 @@ fn seed(protocol: &mut UsiProtocol) {
         history.store(CORRECTION_INDEX, worker as i16 + 400);
     }
     for (worker, history) in histories.capture.iter_mut().enumerate() {
-        history.values_mut().fill(worker as i32 + 100);
+        history
+            .values_mut()
+            .fill(i16::try_from(worker).unwrap() + 100);
     }
     for (worker, history) in histories.workers.iter_mut().enumerate() {
         history[0][60][60] = 160 + worker as i32 * 16;
@@ -54,7 +56,7 @@ fn assert_seed(protocol: &UsiProtocol, command: &str) {
             history
                 .values()
                 .iter()
-                .all(|&value| value == worker as i32 + 100),
+                .all(|&value| i32::from(value) == worker as i32 + 100),
             "{command}: capture worker {worker}"
         );
     }

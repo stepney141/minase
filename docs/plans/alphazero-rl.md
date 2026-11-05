@@ -17,7 +17,7 @@
 ## 状態
 
 進行中。2026年10月26日に起案し、2026年10月28日に着手した。
-2026年11月3日の利用者の決定により、学習の再開は[NNUEの世代反復のやり直し](nnue-generation-reset.md)の後とする。
+2026年11月3日の利用者の決定により、学習の再開は[NNUEの世代反復のやり直し](archived/nnue-generation-reset.md)の後とする。
 フェーズ1（[借りた機械をまたぐ再開の確認](../measurements/alphazero-rl/alphazero-rl-resume-check.md)）と[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)は完了した。
 2026年10月28日から31日にサイクル1〜37を回したが、学習率は全サイクルで0.01の一定のままであった。
 2026年10月29日に導入を決めた学習率の予定（cosine annealing）に着手していなかったので、2026年10月31日に利用者が、これまでの学習をすべてリセットし、学習を止めると決めた。

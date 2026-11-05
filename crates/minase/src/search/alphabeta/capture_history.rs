@@ -7,7 +7,7 @@
 //! 上限と適用範囲の理由は`docs/adr/update-capture-history-in-stockfish-form-and-use-it-in-ordering-qsearch-and-lmr.md`にある。
 
 use crate::eval::Nnue;
-use minase_core::board::BOARD_SQUARE_COUNT;
+use minase_core::board::{BOARD_SQUARE_COUNT, Square};
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
@@ -23,11 +23,13 @@ pub(super) const CAPTURE_HISTORY_LIMIT: i32 = 10692;
 
 /// 新しい対局での捕獲履歴の初期値。
 /// Stockfishの初期化と同じ−742を使う（src/search.cpp:715）。
-const CAPTURE_HISTORY_INITIAL: i32 = -742;
+const CAPTURE_HISTORY_INITIAL: i16 = -742;
 
 /// 着手前の駒コード、到達升、被捕獲駒種で参照するワーカー専用の表。
+/// 初期値−742と重力式の更新値は±10692内にあり、0〜100%の減衰でも範囲を広げない。
+/// 計算時は従来どおり`i32`へ戻し、保存だけ`i16`にしても値と整数除算の丸めは変わらない。
 pub(crate) struct CaptureHistory {
-    values: Box<[i32]>,
+    values: Box<[i16]>,
 }
 
 impl CaptureHistory {
@@ -48,25 +50,31 @@ impl CaptureHistory {
     }
 
     /// 探索間に残す百分率で全要素を減衰させる。整数除算は0方向へ丸める。
+    /// `percent`は探索係数の契約どおり0〜100とし、積は`i32`で求める。
     pub(super) fn decay(&mut self, percent: i32) {
         for value in &mut self.values {
-            *value = *value * percent / 100;
+            *value = (i32::from(*value) * percent / 100) as i16;
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn values(&self) -> &[i32] {
+    pub(crate) fn values(&self) -> &[i16] {
         &self.values
     }
 
     #[cfg(test)]
-    pub(crate) fn values_mut(&mut self) -> &mut [i32] {
+    pub(crate) fn values_mut(&mut self) -> &mut [i16] {
         &mut self.values
     }
 
     /// 捕獲手の履歴値を返す。
     pub(super) fn read(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
-        self.values[index(position, nnue, mv)]
+        i32::from(self.values[index(position, nnue, mv)])
+    }
+
+    /// 既に選んだ被捕獲駒種で履歴を引く。2枚取りの同値では到達升の駒種を渡す。
+    pub(super) fn read_parts(&self, mover: PieceCode, to: Square, victim: PieceKind) -> i32 {
+        i32::from(self.values[index_from_parts(mover, to.dense_index(), victim)])
     }
 
     /// 履歴値を駒価値へ換算し、捕獲価値に加える値を返す。
@@ -74,27 +82,27 @@ impl CaptureHistory {
     /// `尺度 = 歩兵価値 × CaptureHistoryScale / 100` を先に整数で求め、`履歴値 × 尺度 / 10692` を返す。
     /// 整数除算は0方向へ丸め、換算値の絶対値は尺度以下に保つ。
     /// 捕獲価値の差が大きい手の順序を履歴だけで覆さないための制限である。
-    pub(super) fn adjustment(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+    pub(super) fn adjustment(nnue: &Nnue, history: i32) -> i32 {
         let scale = i64::from(nnue.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
-        (i64::from(self.read(position, nnue, mv)) * scale / i64::from(CAPTURE_HISTORY_LIMIT)) as i32
+        (i64::from(history) * scale / i64::from(CAPTURE_HISTORY_LIMIT)) as i32
     }
 
     /// 指定した捕獲手の要素へ、上限10692の重力式で符号つきの更新量を与える。
     pub(super) fn update(&mut self, position: &Position, nnue: &Nnue, mv: Move, bonus: i32) {
         let value = &mut self.values[index(position, nnue, mv)];
-        *value = history_gravity(*value, bonus, CAPTURE_HISTORY_LIMIT);
+        *value = history_gravity(i32::from(*value), bonus, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
     /// 探索経路に記録した捕獲手の要素へ更新量を与える。
     pub(super) fn update_record(&mut self, record: MoveRecord, bonus: i32) {
         let value = &mut self.values[index_from_record(record)];
-        *value = history_gravity(*value, bonus, CAPTURE_HISTORY_LIMIT);
+        *value = history_gravity(i32::from(*value), bonus, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
     /// 探索経路に記録した捕獲手の履歴値を返す。
     #[cfg(test)]
     pub(super) fn read_record(&self, record: MoveRecord) -> i32 {
-        self.values[index_from_record(record)]
+        i32::from(self.values[index_from_record(record)])
     }
 }
 

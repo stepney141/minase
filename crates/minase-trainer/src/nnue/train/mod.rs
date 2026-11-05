@@ -13,9 +13,9 @@
 //! | `training.jsonl` | エポック0の検証と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ追記する。 |
 //! | `validation-interval.jsonl` | `--validation-interval`が正のときだけ、エポック途中の全検証集合の評価を[`record::IntervalRecord`]として追記する。エポック境界は除く。 |
 //! | `latest.npz` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用設定を[`Checkpoint`]で保存する。 |
-//! | `best.npz` | 最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
-//! | `nnue.bin` | 最良モデルを量子化したMNUE版5を保存する。 |
-//! | `summary.json` | 停止理由、最良エポック、量子化検査を[`Summary`]で保存する。 |
+//! | `best.npz` | `--export-epoch`によらず、最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
+//! | `nnue.bin` | `--export-epoch best`（既定）なら`best.npz`、`last`なら`latest.npz`のモデルを量子化したMNUE版5を保存する。 |
+//! | `summary.json` | 停止理由、最良エポック、書き出しの選択`export_epoch`と実際の番号`exported_epoch`、書き出したモデルの量子化検査と符号反転を[`Summary`]で保存する。 |
 //!
 //! 新規実行の出力ディレクトリは存在しないか空でなければならず、空でなければ`--resume`の使用を求めるエラーで終了する。
 //! 停止条件はエポック開始前と終了時に、累積時間、改善のないエポック数、完了エポック数の順に判定する。
@@ -46,7 +46,7 @@ use crate::{
         reference::{AdamW, Validation},
     },
 };
-pub use args::Args;
+pub use args::{Args, ExportEpoch};
 use backend::Backend;
 use minase::eval::features::FEATURE_COUNT;
 pub use record::{EpochRecord, LinearMovement, Saturation};
@@ -103,12 +103,12 @@ pub enum StopReason {
     TimeLimit,
 }
 
-/// 終了理由、最良エポック、量子化検査と符号反転の集計を`summary.json`へ保存する。
+/// 終了理由、最良エポック、書き出したエポック、量子化検査と符号反転の集計を`summary.json`へ保存する。
 ///
 /// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
-/// 平均絶対誤差が`cp_per_logit / 40`を超えると`"quantization_error"`となり、`nnue.bin`と`best.npz`を残して終了コード1を返す。
+/// 平均絶対誤差が`cp_per_logit / 40`を超えると`"quantization_error"`となり、`nnue.bin`とチェックポイントを残して終了コード1を返す。
 /// このとき`reason`は`"quantization_error: mean absolute error exceeds cp_per_logit / 40"`である。
-/// 1エポックも検証を終えず時間切れになった場合と、最良重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
+/// 1エポックも検証を終えず時間切れになった場合と、選択した重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
 /// 前者の`reason`は`"time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"`である。
 /// `stopped_by = "time_limit"`なら`convergence`は`"予算の上限で終了し、収束は未確認"`、それ以外は`null`である。
 /// 学習ループ中のエラーで保存する簡略な報告は[`run`]に定める。
@@ -124,6 +124,10 @@ pub struct Summary {
     pub convergence: Option<&'static str>,
     /// 検証を終えた最終エポック。
     pub last_epoch: u64,
+    /// 書き出すエポックの選び方。
+    pub export_epoch: ExportEpoch,
+    /// 書き出しと検査を終えたエポック番号。未完了ならnull。量子化誤差の閾値超過時も番号を残す。
+    pub exported_epoch: Option<u64>,
     /// 1以上の最良エポック。未完了ならnull。
     pub best_epoch: Option<u64>,
     /// 最良エポックの検証損失。
@@ -195,11 +199,11 @@ impl Session {
     /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
     /// `--base`の探索用駒価値から[`base::Base::initial_linear`]で線形初期値を作る。
     /// 王駒と先獅子は0とし、非王駒は自駒を正、相手駒を負として全升と2端点へ同じ値を置く。
-    /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
-    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
+    /// 全MNSDの規則セット名は基準MNUEと一致し、訓練集合と検証集合はどちらも空であってはならない。
+    /// 勝率尺度、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNUEから引き継ぎ、勝率尺度を[`Shape`]へ渡す。
     /// 初期値の鏡映対称性と保存範囲は[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
-    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
+    /// settingsからは出力先、再開指定、入力パス、epochs、patience、export_epoch、time_limit_hours、threads、validation_interval、bucket_positions、scratch_dirを除く。
     /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
     /// 教師の勝率尺度、先読み教師、観測マスクは全訓練集合から作り、その後で更新用の集合を間引く。
@@ -645,6 +649,8 @@ impl Session {
             convergence: (reason == StopReason::TimeLimit)
                 .then_some("予算の上限で終了し、収束は未確認"),
             last_epoch: self.checkpoint.progress.epoch,
+            export_epoch: self.args.export_epoch,
+            exported_epoch: None,
             best_epoch: best.map(|v| v.epoch),
             best_validation_loss: best.map(|v| v.validation_loss),
             initial_validation_loss: self.initial_validation_loss,
@@ -661,18 +667,25 @@ impl Session {
             write_json(&self.args.output_dir.join("summary.json"), &summary)?;
             return Err(Error::NoCompletedEpoch.into());
         }
-        let checkpoint = self.best_checkpoint()?;
-        let exported = match &self.dataset {
-            Store::Memory(dataset) => export::write_best(
-                dataset,
+        let checkpoint = match self.args.export_epoch {
+            ExportEpoch::Best => self.best_checkpoint()?,
+            ExportEpoch::Last => Checkpoint::read(self.args.output_dir.join("latest.npz"))?,
+        };
+        let source = match &self.dataset {
+            Store::Memory(dataset) => export::ValidationSource::Memory(dataset),
+            Store::Spill(store) => export::ValidationSource::Spill(store),
+        };
+        let exported = match self.args.export_epoch {
+            ExportEpoch::Best => export::write_best(
+                source,
                 &checkpoint,
                 &self.args.output_dir,
                 &self.base.piece_values,
                 &self.base.rule_set,
                 self.args.validation_sample,
             ),
-            Store::Spill(store) => export::write_best(
-                store,
+            ExportEpoch::Last => export::write_completed(
+                source,
                 &checkpoint,
                 &self.args.output_dir,
                 &self.base.piece_values,
@@ -688,6 +701,7 @@ impl Session {
                 return Err(error.into());
             }
         };
+        summary.exported_epoch = Some(checkpoint.progress.epoch);
         let passed = quantization.passed;
         summary.status = if passed {
             "candidate"
@@ -887,13 +901,13 @@ fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> 
     Ok(atomic_write(&path, &latest.encode()?)?)
 }
 
-/// 指定デバイスで初期検証、学習、保存、最良重みの書き出しを順に行う。
+/// 指定デバイスで初期検証、学習、保存、選択した重みの書き出しを順に行う。
 ///
 /// 成功時と最終検査の失敗時の報告、および終了コードは[`Summary`]に従う。
 /// 学習ループ中のエラーでは、この型の代わりに`status = "error"`、`reason`、`last_epoch`、
-/// `elapsed_seconds`の4欄だけを`summary.json`へ書き、コマンドは終了コード1で終わる。
+/// `elapsed_seconds`、`export_epoch`、`exported_epoch = null`の6欄を`summary.json`へ書き、コマンドは終了コード1で終わる。
 /// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.npz`へ保存する。
-/// 最良エポックがあれば`best.npz`から`nnue.bin`を書き出す。
+/// 完了済みエポックがあれば、`--export-epoch`に従って`best.npz`か`latest.npz`から`nnue.bin`を書き出す。
 /// 再開後も同じシード、エポック番号とbucket数から順列を再生成する。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;
@@ -905,7 +919,8 @@ pub fn run(args: Args) -> Result<Summary> {
                 write_json(
                     &session.args.output_dir.join("summary.json"),
                     &json!({"status":"error", "reason":error.to_string(),
-                    "last_epoch": session.checkpoint.progress.epoch, "elapsed_seconds": session.elapsed()}),
+                    "last_epoch": session.checkpoint.progress.epoch, "elapsed_seconds": session.elapsed(),
+                    "export_epoch": session.args.export_epoch, "exported_epoch": null}),
                 )?;
                 return Err(error);
             }

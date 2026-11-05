@@ -17,6 +17,7 @@ mod history;
 mod history_forms;
 mod improving;
 mod late_move;
+mod lazy_accumulators;
 mod limits;
 mod negamax;
 mod null_move;
@@ -78,8 +79,8 @@ use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::AspirationWindow;
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
-    KILLER_COUNT, MoveRecord, PathMove, PathStateSnapshot, PonderIteration, RepetitionMatch,
-    STOP_CHECK_INTERVAL, Searcher, new_searcher,
+    KILLER_COUNT, MoveRecord, PathMove, PathStateSnapshot, PonderIteration, RepetitionHistory,
+    RepetitionMatch, STOP_CHECK_INTERVAL, Searcher, new_searcher,
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
@@ -367,6 +368,7 @@ fn isolated_move_picker_context<'a>(
     history: &'a HistoryTable,
     capture_history: &'a crate::search::alphabeta::capture_history::CaptureHistory,
 ) -> MovePickerContext<'a> {
+    static RANKS: OnceLock<CaptureRanks> = OnceLock::new();
     static SHARED_HISTORIES: OnceLock<crate::search::HistoryTables> = OnceLock::new();
     static LOW_PLY_HISTORY: OnceLock<Box<LowPlyHistory>> = OnceLock::new();
     let shared =
@@ -378,6 +380,8 @@ fn isolated_move_picker_context<'a>(
         )
     });
     MovePickerContext {
+        quiet_sort_limit: None,
+        ranks: RANKS.get_or_init(|| CaptureRanks::new(test_nnue())),
         history,
         capture_history,
         continuation_history: &shared.continuation,
@@ -395,6 +399,8 @@ fn isolated_move_picker_context<'a>(
 
 fn searcher_move_picker_context<'a>(searcher: &'a Searcher<'_>, ply: u32) -> MovePickerContext<'a> {
     MovePickerContext {
+        quiet_sort_limit: None,
+        ranks: &searcher.capture_ranks,
         history: searcher.history,
         capture_history: searcher.capture_history,
         continuation_history: searcher.continuation_history,
@@ -466,6 +472,7 @@ fn with_draw_value_root_searcher(
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let repetition_history = RepetitionHistory::new(history);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -473,7 +480,7 @@ fn with_draw_value_root_searcher(
         repetition,
         draw_value,
         0,
-        history,
+        &repetition_history,
         &shared,
         &table,
         &mut butterfly_history,
@@ -630,6 +637,7 @@ fn run_quiesce(
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let repetition_history = RepetitionHistory::new(&history);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -639,7 +647,7 @@ fn run_quiesce(
         },
         DRAW_SCORE,
         0,
-        &history,
+        &repetition_history,
         &shared,
         table,
         &mut butterfly_history,
@@ -700,6 +708,7 @@ fn run_configured_negamax(
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
     let mut shared_histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    let repetition_history = RepetitionHistory::new(&history);
     let mut searcher = new_searcher(
         nnue,
         position,
@@ -709,7 +718,7 @@ fn run_configured_negamax(
         },
         DRAW_SCORE,
         0,
-        &history,
+        &repetition_history,
         &shared,
         table,
         &mut butterfly_history,
