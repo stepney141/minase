@@ -125,12 +125,13 @@
 | NNUEの教師局面を静止探索の末端へ置き換える比較 | [plans/archived/nnue-qsearch-leaf.md](plans/archived/nnue-qsearch-leaf.md) | 完了（不採用） | 2026年11月4日 |
 | NNUEの世代反復をv0からやり直す | [plans/nnue-generation-reset.md](plans/nnue-generation-reset.md) | 進行中 | |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
-| NNUE教師生成を探索結果を変えずに速くする | [plans/teacher-generation-speedup.md](plans/teacher-generation-speedup.md) | 待機中 | |
+| NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [NNUE教師生成を探索結果を変えずに速くする計画](plans/archived/teacher-generation-speedup.md)は2026年11月6日に完了した。教師ファイルがバイト単位で一致する変更だけで、生成機の代理環境の探索速度が基準版の1.580倍になった（[測定](measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)）。変更は世代反復のブランチ`nnue-generation-reset`の統合でmasterへ入った。統合後は親ディレクトリの`.cargo/config.toml`にインライン化の指定が入るので、古いコミットと比べる対局ではビルドを混ぜない（[教訓](lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 - [NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)は2026年11月4日に、一部不採用で完了した。幅256の第1層、要素積、2段の隠れ層、skip接続、および16ビットの累算値を、同じ教師で学んだ幅128のネットに`H1`を取らないまま世代反復で使う構成として確定した（[ADR](adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。[STC](measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`（得点率43.6%）、[固定ノードの対局](measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)は−2.6 Elo（95%区間−35.8〜+30.5）、探索速度は約0.91倍である。隠れ層の重みをi8からi16へ改めると、量子化誤差は29.80 cpから9.45 cpへ下がった（[記録](measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。開発者の決定により世代反復の起点としてmasterへ統合したので、masterのエンジンは統合前より弱いと見込まれる。統合前のコミットはブランチ`nnue-width128-regressed`に残し、世代反復の最終候補の比較の基準にする。最終候補が決まるまで、masterからのリリースとBotの更新ではエンジンが弱くなる。
 - [NNUEの教師局面を静止探索の末端へ置き換える比較](plans/archived/nnue-qsearch-leaf.md)は2026年11月4日に、不採用で完了した。やねうら王の`qsearch_psv`と同じ置き換え（qsearch leaf replacement）で学んだネットは、補正前のネットに対するSTCで`H0`だった（406有効ペア、得点率45.7%、[記録](measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)、[ADR](adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。結論はP型の幅128での結果であり、世代反復の教師には入れない。
 - [NNUEの線形の経路の対局結果への回帰](plans/archived/nnue-outcome-regression.md)は2026年11月3日に、採用で完了した。学習済みのネットの第1層と出力部を固定し、線形の経路の序中盤の列を教師の対局結果へのロジスティック回帰（Texel tuningと同種）で補正した（[ADR](adr/correct-the-nnue-linear-path-by-regressing-on-game-outcomes.md)）。判定の対局の予測の損失は0.0071下がり（[記録](measurements/nnue-outcome-regression/nnue-outcome-regression-fit.md)）、配置の距離は0.4602から0.4332へ下がった（[記録](measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)）。20〜99手に奔王が1〜2段にいる割合は86.0%から14.6%へ、麒麟が右端2筋にいる割合は39.9%から1.2%へ減ったが、仲人、銀将、王将、および金将の配置の距離は増えた。[STC](measurements/nnue-outcome-regression/nnue-outcome-regression-stc.md)は117ペア、[LTC](measurements/nnue-outcome-regression/nnue-outcome-regression-ltc.md)は122ペアでともに`H1`となった。LTCでは機械の一時的な停止による時間切れが1件あり、該当ペアを除いたLLRも判定境界を超える。
@@ -139,6 +140,8 @@
 
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
+
+- 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 #### 評価関数（NNUE）
 
@@ -150,7 +153,6 @@
 
 強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 
-- [NNUE教師生成を探索結果を変えずに速くする計画](plans/teacher-generation-speedup.md)は待機中である。教師ファイルがバイト単位で一致する変更だけで、生成機の代理環境の探索速度が基準版の1.580倍になった（[測定](measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)）。変更はブランチ`nnue-generation-reset`に入っており、そのブランチをmasterへ統合するときに同時に入る。
 - [先読みなしの教師での間引きの比較](plans/nnue-subsample-no-lookahead.md)と[記録する局面の間引き](plans/sparse-teacher-recording.md)は、同じ計算時間でより多くの対局から教師を作る一連の計画であり、前者の判定が後者の着手の前提になる。どちらも現行の探索値だけの教師を前提に書かれているので、世代反復の結果を見て続けるかを決める。
 - [vast.aiでの教師生成](plans/vast-selfplay.md)は、教師の生成をvast.aiで借りる計算機へ移す計画である。試走では30ファイルを約5.5時間、約5.6米ドルと見込み（[記録](measurements/vast-selfplay/vast-selfplay-trial.md)）、作業機で同じ条件を測るフェーズ0の作業が残っている。世代反復は同書の選定条件と検査の方式を使うが、教師の取得の後に学習と補正まで続けて行うので専用のスクリプトで生成し、同書のフェーズ0の残りとフェーズ1を待たない。
 - AlphaZero型のネットの評価値で教師の値を付け直す案は、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、AlphaZero型の計画の後に起案する（2026年10月25日の開発者の決定）。tanuki-はこの方法でレーティング差R+104.3を得ている。付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で、そのネットに偏りがないことを確かめる。

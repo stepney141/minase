@@ -7,28 +7,32 @@ vast.aiの生成機（AMD EPYC 9654の2基構成、384スレッド）で、起�
 本書は、同じシードから同じ教師ファイルが得られる変更だけで、生成機の時間あたりの記録局面数を起案時の2倍へ近づける。
 探索結果が変わらないので、固定ノードの棋力も教師の品質も変わらない。
 調査の結論は、遅い主因はメモリ待ちではなく命令数であり、ノードあたりの命令数が試走時の版の1.87倍になっていたことである。
-コンパイラのインライン閾値の引き上げ、手生成と王手判定（gives_check）と反復検出の高速化、手選択器の整列の省略などで、[測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)の探索速度は基準版の1.555倍（性能コア）と1.580倍（生成機の代理環境）になり、教師ファイルはバイト単位で一致した。
-高速化の後は旧版との差の主因が命令数ではなくなり、[残る負荷](../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)はメモリの待ち、命令の供給不足、および分岐予測ミスに分かれ、自己時間が8%を超える関数はない。
-変更は[世代反復](nnue-generation-reset.md)のブランチ`nnue-generation-reset`に入っており、第2世代の生成で使っている。
+コンパイラのインライン閾値の引き上げ、手生成と王手判定（gives_check）と反復検出の高速化、手選択器の整列の省略などで、[測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)の探索速度は基準版の1.555倍（性能コア）と1.580倍（生成機の代理環境）になり、教師ファイルはバイト単位で一致した。
+高速化の後は旧版との差の主因が命令数ではなくなり、[残る負荷](../../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)はメモリの待ち、命令の供給不足、および分岐予測ミスに分かれ、自己時間が8%を超える関数はない。
+変更は[世代反復](../nnue-generation-reset.md)のブランチ`nnue-generation-reset`に入っており、第2世代の生成で使っている。
 第2世代の最初の本（教師の1ファイル）の探索速度は第1世代の約2.9倍であるが、生成機の機種と評価関数のネットも違うので、高速化の寄与は分かっていない。
-生成の運用では、本の終わりに最長の対局を待つ間、[全計算資源の11.1%が使われておらず](../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)、これを回収すれば1.125倍、NUMAノードごとの2プロセスへの分割で1.06〜1.09倍が見込めるが、どちらも行っていない。
+生成の運用では、本の終わりに最長の対局を待つ間、[全計算資源の11.1%が使われておらず](../../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)、これを回収すれば1.125倍、NUMAノードごとの2プロセスへの分割で1.06〜1.09倍が見込めるが、どちらも行っていない。
 完了条件は、世代反復のブランチの統合によって変更がmasterへ入ることである。
 
 ## 状態
 
-待機中。2026年11月4日に利用者の指示で起案し、同日に着手した。
-worktreeは`data/worktrees/teacher-speedup`、ブランチは`teacher-speedup`である。
-フェーズ1とフェーズ2を終え、探索結果の一致と全テストの成功を確かめた。
-変更は2026年11月5日に[世代反復](nnue-generation-reset.md)のブランチ`nnue-generation-reset`へ統合され、同じ日に始めた第2世代の生成で使われている。
-同じ日の利用者の決定により、masterへはそのブランチの統合によって入れ、生成機での比較と本書だけのSTC、LTCは行わない。
-いま詰まっている点はない。
-次の一手は、世代反復のブランチをmasterへ統合するときにフェーズ3を行うことである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了。2026年11月4日に利用者の指示で起案し、同日に着手した。
+フェーズ1とフェーズ2で、探索結果の一致と全テストの成功を確かめた。
+変更は2026年11月5日に[世代反復](../nnue-generation-reset.md)のブランチ`nnue-generation-reset`へ統合され、第2世代の生成で使われた。
+2026年11月6日に、そのブランチをmasterへ統合したことで、変更がmasterへ入った（フェーズ3）。
+統合の前に、masterの作業ツリーに残っていた先行測定の記録2件を、ブランチの内容との一致を確かめて削除し、利用者の指示で`target/match-cache`を削除した。
+統合の後に、worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`を削除した。
+本の末尾で次の本を重ねて始める案は、2026年11月5日に第2世代の生成機で実測し（約1.12〜1.14倍の見込み、[記録](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）、同じ日の利用者の決定で見送った。
+NUMAノードごとの分割は行っていない。
+どちらも[ROADMAP](../../ROADMAP.md)の次の候補に置いた。
 
 ## 目的
 
 2026年11月4日の第1世代の生成は1本（7,500局）に約29分かかり、試走の見積もりの2倍以上になった。
 利用者は、強さを損なわずに現在の教師生成を2倍くらいに速くすることを求めた。
-先行測定は[単独スレッドの比較](../measurements/adhoc/teacher-single-thread-profile-20261104.md)と[3つの変更の評価](../measurements/adhoc/teacher-nonzero-optimization-20261104.md)であり、後者の改善は7.33%にとどまった。
+先行測定は[単独スレッドの比較](../../measurements/adhoc/teacher-single-thread-profile-20261104.md)と[3つの変更の評価](../../measurements/adhoc/teacher-nonzero-optimization-20261104.md)であり、後者の改善は7.33%にとどまった。
 
 本書で使う語を次のとおり定める。
 
@@ -46,20 +50,20 @@ worktreeは`data/worktrees/teacher-speedup`、ブランチは`teacher-speedup`�
 - `crates/minase-core/src/movegen/`の合法性判定、王手判定、手生成、利きの逆引き。
 - `crates/minase/src/search/alphabeta/`の反復検出、手選択器、静止探索の初期化、SEE（静的交換評価）。
 - `crates/minase/src/eval/nnue/accumulator.rs`の差分更新。
-- 生成機での本の始め方とNUMAの扱いの提案。スクリプトは[世代反復](nnue-generation-reset.md)の担当なので、本書では提案までとする。
+- 生成機での本の始め方とNUMAの扱いの提案。スクリプトは[世代反復](../nnue-generation-reset.md)の担当なので、本書では提案までとする。
 
 次の事項は対象外とする。
 
 - 探索木を変える変更（探索の係数、表の大きさ、枝刈りの条件）。教師のノード数の変更。
-- `unsafe`による先読み（[ADR](../adr/do-not-prefetch-transposition-table-entries.md)）とPGO。いずれも利用者の決定により提案しない。
+- `unsafe`による先読み（[ADR](../../adr/do-not-prefetch-transposition-table-entries.md)）とPGO。いずれも利用者の決定により提案しない。
 - 履歴表を未更新の要素だけ読み飛ばす案。読み出しの93%は対局内で既に更新された行と駒種に当たるので、読み出しをほとんど省けない。
-- 置換表の縮小とmimallocの環境変数。どちらも[測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)で採らないと判断した。
+- 置換表の縮小とmimallocの環境変数。どちらも[測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)で採らないと判断した。
 
 ## 依存関係
 
 基準はmasterのコミット`9380aa7f`である。
-測定機は別セッションの測定とlishogi Botと共用するので、[測定機の確認](../lessons/check-running-measurements-before-cpu-load.md)に従う。
-変更は[世代反復](nnue-generation-reset.md)のブランチの統合によってmasterへ入るので、本書を完了できるのは同書の採否が決まった後である。
+測定機は別セッションの測定とlishogi Botと共用するので、[測定機の確認](../../lessons/check-running-measurements-before-cpu-load.md)に従う。
+変更は[世代反復](../nnue-generation-reset.md)のブランチの統合によってmasterへ入るので、本書を完了できるのは同書の採否が決まった後である。
 
 ## 設計判断
 
@@ -67,12 +71,12 @@ worktreeは`data/worktrees/teacher-speedup`、ブランチは`teacher-speedup`�
 |---|---|---|
 | 探索結果 | 教師ファイルのバイト一致を保つ変更だけを行う | 探索木を変える案は、固定ノードの棋力を対局で確かめる必要があり、教師の品質の検証に世代単位の時間がかかる。 |
 | インライン閾値 | `-C llvm-args=-inline-threshold=1000`を全ビルドに適用する | 閾値400は効果が小さく（サイクル−8.7%）、2500はこれ以上減らない。個別の`#[inline(always)]`は保守の手間が増える。`panic=abort`は差がなかった。 |
-| 反復検出（repetition detection） | 対局履歴のキーを探索開始時にビットフィルタへ登録し、一致の可能性があるときだけ従来の線形走査を行う | [線形走査の以前のADR](../adr/archive/check-repetition-by-linear-scan.md)は現行の評価関数と長い履歴での再測定を求めていた。現行では全サイクルの5%であり、走査の結果は変えない。`HashSet`は1回の照会が重い。 |
+| 反復検出（repetition detection） | 対局履歴のキーを探索開始時にビットフィルタへ登録し、一致の可能性があるときだけ従来の線形走査を行う | [線形走査の以前のADR](../../adr/archive/check-repetition-by-linear-scan.md)は現行の評価関数と長い履歴での再測定を求めていた。現行では全サイクルの5%であり、走査の結果は変えない。`HashSet`は1回の照会が重い。 |
 | 王手判定（gives_check） | 移動元、経由の捕獲升、および到達升が残る王駒の8方向と5×5近傍から外れる手には、その王駒について1回求めた既存の利きの有無を使い、それ以外は動かす駒の到達範囲で直接の王手を絞ってから従来どおり調べる。王駒が2枚残る手は従来の処理のままとする | ノードごとの全手の前計算は、1ノードで数手しか判定しない場合に損をする。 |
 | 合法性の判定 | 特殊駒以外の置換表の手とkiller手は、駒1枚の全手を生成せず、利き、獅子の規則、および成りの選択肢を直接調べる | 結果を2回使い回すだけでは1回あたり約1,000サイクルの費用が残る。 |
 | 静かな手の順位付け | 手選択器が1段階で65手を採点して54手を取り出す実態に合わせ、同じ移動元の間で駒ごとの値を使い回し、相手の利きの集計から確保と整列を除き、killer手の段階では全手を生成せず、late move pruningが成立した後は上位だけを整列して飛ばした手数を`index`へ加える | 採点を遅らせる案は、子探索中の履歴更新を拾って順序が変わる。整列キーの`u128`化は効果がなかった。 |
 | 本の末尾 | 動いているスレッドが100以下になった時点で次の本を始める案を、測定結果とともに世代反復の担当へ提案する | 1本の局数を増やす案は、途中で失う量と検査の単位が変わる。 |
-| masterへの統合と棋力の確認 | 世代反復のブランチの統合によってmasterへ入れ、生成機での比較と本書だけのSTC、LTCは行わない（2026年11月5日の利用者の決定） | 本書だけの統合は、世代反復のブランチに変更が入っているので不要である。[STCとLTC](../guides/sprt.md)は、固定ノードの探索結果が同じなので探索速度の効果しか測れない。生成機での比較は、第2世代がすでに高速化を含めて動いており、寄与を分けても次の判断が変わらない。 |
+| masterへの統合と棋力の確認 | 世代反復のブランチの統合によってmasterへ入れ、生成機での比較と本書だけのSTC、LTCは行わない（2026年11月5日の利用者の決定） | 本書だけの統合は、世代反復のブランチに変更が入っているので不要である。[STCとLTC](../../guides/sprt.md)は、固定ノードの探索結果が同じなので探索速度の効果しか測れない。生成機での比較は、第2世代がすでに高速化を含めて動いており、寄与を分けても次の判断が変わらない。 |
 
 Stockfish（`../stockfish`）のMovePickerは全静かな手を採点してから`partial_insertion_sort`で一部だけを整列し、`Position::gives_check`は直接の王手と開き王手を分けて先に判定する。
 本書の王手判定と部分整列は同じ考え方であるが、中将棋には走り駒と2段階移動があるので線と近傍で判定し、整列は探索結果を保つために全順序のまま行い、Stockfishの`skip_quiet_moves`と違って飛ばした手数を`index`へ戻す。
@@ -103,7 +107,7 @@ Stockfish（`../stockfish`）のMovePickerは全静かな手を採点してか�
 
 ### フェーズ1：ビルド設定と既存の3変更
 
-インライン閾値を上げ、[先行の評価](../measurements/adhoc/teacher-nonzero-optimization-20261104.md)の3変更を取り込む。
+インライン閾値を上げ、[先行の評価](../../measurements/adhoc/teacher-nonzero-optimization-20261104.md)の3変更を取り込む。
 完了条件は探索結果の一致と全テストの成功である。
 
 ### フェーズ2：委任する作業
@@ -133,20 +137,20 @@ cargoは親ディレクトリの`.cargo/config.toml`の`rustflags`も連結し�
 そのため、masterへ統合した後は、古いコミットを新しくビルドしてもインライン閾値の指定が入り、キャッシュ済みのビルドには入らない。
 キャッシュ済みの基準（指定なし）と新しくビルドした候補（指定あり）を比べると、候補だけ約10%速くなる。
 2026年11月5日の利用者の判断により、ビルドの手順は直さない。
-比較のときの規則は[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)にある。
+比較のときの規則は[教訓](../../lessons/do-not-mix-builds-across-cargo-config-changes.md)にある。
 
-統合後は、[完了時の手順](README.md#完了時の移し替えと凍結)に従って本書を凍結する。
-本の末尾で次の本を重ねて始める案とNUMAノードごとの分割は、凍結時に行っていなければ[ROADMAP](../ROADMAP.md)の次の候補へ移す。
+統合後は、[完了時の手順](../README.md#完了時の移し替えと凍結)に従って本書を凍結する。
+本の末尾で次の本を重ねて始める案とNUMAノードごとの分割は、凍結時に行っていなければ[ROADMAP](../../ROADMAP.md)の次の候補へ移す。
 worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`は、統合後に削除する。
 
 ## 検証
 
 変更ごとに次を実行する。
 
-- 探索結果の一致：[測定の付属資料](../measurements/teacher-generation-speedup/teacher-generation-speedup-engine/)の`verify_identical.py`で、`dev bench --depth 9`の全局面、2通りのシードの教師ファイルのSHA-256、および6通りの規則セットの固定ノード探索を基準版と比べる。
+- 探索結果の一致：[測定の付属資料](../../measurements/teacher-generation-speedup/teacher-generation-speedup-engine)の`verify_identical.py`で、`dev bench --depth 9`の全局面、2通りのシードの教師ファイルのSHA-256、および6通りの規則セットの固定ノード探索を基準版と比べる。
 - 全テスト：`cargo test -p minase -p minase-core`、`cargo fmt --check`、`cargo clippy`。
-- 高速経路の試験：従来の遅い経路を試験側の参照として残し、乱数対局の局面と複数の規則セットで一致を確かめる。獅子の捕獲制限、先獅子、および成り権保留は固定例でも試験し、[置き換えの教訓](../lessons/pin-rule-exceptions-when-replacing-generation-with-attacks.md)に従って誤りを入れて失敗することを確かめる。
-- 速度：[交互測定の教訓](../lessons/alternate-speed-rounds-against-parent.md)に従い、性能コアでの単独スレッドと代理環境で親と交互に5回測る。
+- 高速経路の試験：従来の遅い経路を試験側の参照として残し、乱数対局の局面と複数の規則セットで一致を確かめる。獅子の捕獲制限、先獅子、および成り権保留は固定例でも試験し、[置き換えの教訓](../../lessons/pin-rule-exceptions-when-replacing-generation-with-attacks.md)に従って誤りを入れて失敗することを確かめる。
+- 速度：[交互測定の教訓](../../lessons/alternate-speed-rounds-against-parent.md)に従い、性能コアでの単独スレッドと代理環境で親と交互に5回測る。
 
 ## 完了条件
 
@@ -157,11 +161,11 @@ worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、お�
 
 ## 参考資料
 
-- [探索結果を変えない高速化の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)
-- [生成機の本の末尾で使われない計算資源の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)
-- [mimallocの環境変数と置換表の大きさの測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)
-- [高速化の後に残る負荷の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)
-- [単独スレッドの測定](../measurements/adhoc/teacher-single-thread-profile-20261104.md)
-- [3つの変更の評価](../measurements/adhoc/teacher-nonzero-optimization-20261104.md)
+- [探索結果を変えない高速化の測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)
+- [生成機の本の末尾で使われない計算資源の測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)
+- [mimallocの環境変数と置換表の大きさの測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)
+- [高速化の後に残る負荷の測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)
+- [単独スレッドの測定](../../measurements/adhoc/teacher-single-thread-profile-20261104.md)
+- [3つの変更の評価](../../measurements/adhoc/teacher-nonzero-optimization-20261104.md)
 - 生成機での教師生成の速さ（ブランチ`nnue-generation-reset`の`docs/measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md`）
-- [合法手生成と利き計算の高速化（第3期）](movegen-speedup-3.md)
+- [合法手生成と利き計算の高速化（第3期）](../movegen-speedup-3.md)

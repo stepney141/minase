@@ -25,6 +25,6 @@
 
 ## 出典
 
-- [教師生成の高速化の設計書](../plans/teacher-generation-speedup.md)のフェーズ3
+- [教師生成の高速化の設計書](../plans/archived/teacher-generation-speedup.md)のフェーズ3
 - [インライン閾値のADR](../adr/raise-the-llvm-inline-threshold-to-1000.md)
 - ブランチ`nnue-generation-reset`の`docs/measurements/nnue-generation-reset/nnue-generation-reset-gen1-review.md`（統合前の作業ツリーから実行した理由）

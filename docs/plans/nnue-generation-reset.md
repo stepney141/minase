@@ -37,8 +37,12 @@
 [学習率の予定と書き出すネットの比較](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)では、`cosine:10:0.1`のネットが第2世代に、同じ学習の最後のネットが最良のネットに、どちらも`H0`だった。
 [教師の量の比較](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)では、全量のネットが半分（得点率63.2%）にも4分の1（79.8%）にも`H1`を取った。
 先行例に合わせた50周の候補は、長い学習と最後のネットがどちらも負けたので、2026年11月6日の利用者の決定により測らずに取りやめた。
+同じ日の利用者の指示で、標準レシピと本書を見直す前に、本ブランチをmasterへ一旦統合した。
+統合の前に、本ブランチの先頭の埋め込みのネットをmasterのネット（構成の見直しの候補）へ戻したので、統合でエンジンの評価は変わっていない。
+世代のネットは参照`refs/nnue-generation-reset/gen-<N>`に残り、反復は本ブランチで続ける。
+統合の後は、旧基準との比較のために統合前の設定でビルドするときは、親ディレクトリの設定が届かないリポジトリの外に作業ツリーを作る（[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 いま詰まっている点はない。
-次の一手は、第3世代の教師を増やすか、標準レシピを現行のまま確定するかを利用者に尋ねることである。
+次の一手は、標準レシピと本書を見直し、第3世代の教師の量を決めることである。
 
 ## 目的
 
@@ -392,7 +396,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 採用した場合は、ブランチの先頭の埋め込みのネットを最終候補のネットへ戻すコミットを作る。
 判定に落ちた世代のネットが先頭に残っていれば、先頭のネットは最終候補と異なるからである。
 重みファイルのSHA-256が最終候補のコミットと一致し、対局の挙動に関わるコードに差がないことを確かめてから（[教訓](../lessons/revert-rejected-candidates-before-merge.md)）、利用者の許可を得てmasterへ統合する。
-統合のときに[教師生成の高速化の設計書](teacher-generation-speedup.md)のフェーズ3を行う。内容は、masterの作業ツリーに未コミットで残る2件の測定記録の削除、`target/match-cache`を削除するかの確認、作業物（worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`）の削除、および同書の凍結である。
+統合のときに[教師生成の高速化の設計書](archived/teacher-generation-speedup.md)のフェーズ3を行う。内容は、masterの作業ツリーに未コミットで残る2件の測定記録の削除、`target/match-cache`を削除するかの確認、作業物（worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`）の削除、および同書の凍結である。
 方式をADRに書き、「依存関係」のADRに本書の結果を加え、[学習の手引き](../guides/nnue-training.md)と[ROADMAP](../ROADMAP.md)を改める。
 連続生成スクリプトの操作は、スクリプト冒頭の説明と手引きへ移す。
 不採用の場合は、ブランチを統合しない。

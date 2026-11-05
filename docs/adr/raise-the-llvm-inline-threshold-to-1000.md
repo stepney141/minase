@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[教師生成の高速化](../plans/teacher-generation-speedup.md)の調査で、手生成と利き計算の小さな関数（`piece_control_without_special`、`sliding_control`など）がインライン展開されずに関数呼び出しのまま残り、`Bitboard`を値で受け渡す費用が命令数の増加として現れていた。
+[教師生成の高速化](../plans/archived/teacher-generation-speedup.md)の調査で、手生成と利き計算の小さな関数（`piece_control_without_special`、`sliding_control`など）がインライン展開されずに関数呼び出しのまま残り、`Bitboard`を値で受け渡す費用が命令数の増加として現れていた。
 workspaceのreleaseプロファイルはLTOと`codegen-units = 1`を使っており、残る調整項目はLLVMのインライン閾値である。
 PGOは開発者の決定により使わない。
 
