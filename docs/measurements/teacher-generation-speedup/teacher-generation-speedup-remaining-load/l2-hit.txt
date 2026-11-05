@@ -1,0 +1,36 @@
+total samples 65829
+  incl%   self%  function
+  99.99    0.00  selfplay_gen::play::play_game_from_opening
+  99.99    0.00  <selfplay_gen::generate::write_training_data::{closure#1}::{closure#0}::{closure#0} as core::ops::function::Fn
+  99.99    0.00  selfplay_gen::generate::write_training_data::{closure#1}::{closure#0}::{closure#0}
+  99.99    0.00  selfplay_gen::generate::write_training_data::{closure#1}::{closure#0}
+  99.99    1.33  [libc.so.6]
+  99.95    0.00  search::handle::search
+  99.95    0.00  team::run_search_team
+  99.95    0.00  team::run_worker_guarded::<team::WorkerOutcome, team::run_worker_team<(&mut alloc::boxed::Box<[[[i32; 144]; 14
+  99.95    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.95    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.95    0.00  team::run_worker_team::<(&mut alloc::boxed::Box<[[[i32; 144]; 144]; 2]>, &mut capture_history::CaptureHistory,
+  99.95    0.00  team::run_search_team::{closure#5}
+  99.94    0.00  deepening::run_main_worker_with_iteration_hook::<deepening::run_main_worker::{closure#0}>
+  99.94    0.00  deepening::run_main_worker
+  99.68    0.00  <searcher::Searcher>::search_iteration
+  99.68    0.10  <searcher::Searcher>::search_root
+  99.26    1.39  <searcher::Searcher>::search_move
+  98.81    2.90  <searcher::Searcher>::negamax
+  41.38    1.51  <searcher::Searcher>::quiesce
+  28.91    1.93  <ordering::MovePicker>::next
+  16.95    5.31  mc:movegen::control::capture_targets_without_special
+  16.08    0.38  <quiesce::QsearchBuffers>::initialize
+  13.74    0.75  <mc:movegen::MoveGenerator>::collect_ordinary_capturers
+  13.70    0.03  <searcher::Searcher>::search_null_move
+  12.66    0.22  <mc:position::Position>::attackers_to_by
+  11.98    0.00  <searcher::Searcher>::evaluate_at
+  11.60    0.15  <mc:movegen::MoveGenerator>::ordinary_capturer
+  11.09    0.63  mc:movegen::control::ordinary_attackers_to
+   9.36    0.24  see::see_prunes
+   8.78    0.00  <mc:movegen::MoveGenerator>::generate_captures_with_scratch
+   8.78    0.22  mc:movegen::generate::generate_moves::<true, false>
+   7.99    0.78  mc:movegen::generate::generate_piece_moves::<true, false>
+   6.68    0.01  <searcher::Searcher>::ensure_accumulator
+   6.67    0.41  <Network>::update_accumulator_after_move
