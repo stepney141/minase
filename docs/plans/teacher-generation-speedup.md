@@ -133,9 +133,11 @@ cargoは親ディレクトリの`.cargo/config.toml`の`rustflags`も連結し�
 そのため、masterへ統合した後は、古いコミットを新しくビルドしてもインライン閾値の指定が入り、キャッシュ済みのビルドには入らない。
 キャッシュ済みの基準（指定なし）と新しくビルドした候補（指定あり）を比べると、候補だけ約10%速くなる。
 2026年11月5日の利用者の判断により、ビルドの手順は直さない。
+比較のときの規則は[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)にある。
 
 統合後は、[完了時の手順](README.md#完了時の移し替えと凍結)に従って本書を凍結する。
-本の末尾で次の本を重ねて始める案とNUMAノードごとの分割は行っていないので、凍結時に[ROADMAP](../ROADMAP.md)の次の候補へ移す。
+本の末尾で次の本を重ねて始める案とNUMAノードごとの分割は、凍結時に行っていなければ[ROADMAP](../ROADMAP.md)の次の候補へ移す。
+worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`は、統合後に削除する。
 
 ## 検証
 

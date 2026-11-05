@@ -60,6 +60,7 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [明示的SIMDの前に自動ベクトル化の機械語を確かめる](check-autovectorization-before-explicit-simd.md) — SIMDライブラリの導入を検討する前に、対象の核を`#[inline(never)]`にした診断用ビルドの機械語で命令名ごとの出現数を数え、候補のライブラリで同じ核を書いた検証用のcrateの出現数と比べ、命令数が減るかコンパイラが出さない命令を使う核に限って試作する。
 - [インライン展開されたSHA-256はSSEとAVXの混在の罰で遅くなる](sse-avx-transition-penalty-in-inlined-sha.md) — SSE形式しかない命令（SHA-NIなど）で計算するクレートの処理は`#[inline(never)]`の薄い関数に閉じ込め、検査和が遅いときは`assists.sse_avx_mix`を数えて`vzeroupper`の有無を機械語で確かめる。
 - [探索木を変えない高速化は親との交互測定5回で選別する](alternate-speed-rounds-against-parent.md) — 段階ごとの速度による選別では`bench_compare.py`で局面別の一致を確かめ、候補と親を`--rounds 5`で交互に測って増分が親の幅を超える段階だけを残し、まとめた版を段階ゲートにかける。
+- [ビルド設定を変えた後はコミットのビルドを混ぜて比べない](do-not-mix-builds-across-cargo-config-changes.md) — `.cargo/config.toml`のビルド設定が変わった後は、キャッシュ済みのビルドと新しいビルドを混ぜて比べず、変更前の設定のビルドが要るときはリポジトリの外のworktreeでビルドする。
 
 ## 評価関数の学習とGPU
 
