@@ -140,6 +140,7 @@ class Commands:
         self.stopped = False
         self.created = False
         self.deny_account_after_start = False
+        self.fail_stop = False
         self.generated = []
         self.jobs = []
         self.bad_header = {}
@@ -234,6 +235,8 @@ class Commands:
             if words[-1] == 'cpu-info':
                 return self.result(command, json.dumps(self.cpu), 0, kwargs)
             if words[-1] == 'stop':
+                if self.fail_stop:
+                    return self.result(command, '', 7, kwargs)
                 self.stopped = True
                 return self.result(command, '', 0, kwargs)
             if words[:2] == ['test', '-f']:
@@ -575,6 +578,40 @@ class ChainTests(unittest.TestCase):
         self.assertEqual(self.commands.generated, [(1, 1), (1, 2)])
         self.assertEqual((self.root / 'run/gen-1/teacher/book-0.mnsd').read_bytes(), saved)
 
+    def test_failed_stop_and_destroy_prevent_training(self) -> None:
+        """停止要求と削除がともに失敗したら、生成機の停止と課金の確認を求めて学習前に終了する。"""
+        self.values['last-generation'] = '1'
+        self.commands.fail_stop = True
+        self.commands.deny_account_after_start = True
+        self.assertEqual(self.execute(), 1, self.errors.getvalue())
+        self.assertEqual(self.commands.generated, [(1, 0)])
+        self.assertFalse(self.train_calls(1))
+        self.assertFalse(self.fit_calls(1))
+        self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
+        self.assertEqual((self.root / 'run/instance-id').read_text().strip(), '17')
+        message = self.errors.getvalue().splitlines()[-1]
+        for text in ('生成機 17', '管理画面', '停止', '課金'):
+            self.assertIn(text, message)
+
+    def test_confirmed_stop_allows_training_when_destroy_fails(self) -> None:
+        """SSH切断で停止を確認できたら学習、補正、コミットを行い、最後の削除失敗で終了コード1となる。"""
+        self.values['last-generation'] = '1'
+        self.commands.deny_account_after_start = True
+        self.assertEqual(self.execute(), 1, self.errors.getvalue())
+        self.assertTrue(self.commands.stopped)
+        self.assertEqual(len(self.train_calls(1)), 1)
+        self.assertEqual(len(self.fit_calls(1)), 1)
+        commits = [call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit']
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        destroys = [index for index, call in enumerate(self.commands.calls)
+                    if call[:3] == ['vastai', 'destroy', 'instance']]
+        self.assertEqual(len(destroys), 2)
+        self.assertLess(destroys[0], self.commands.calls.index(self.train_calls(1)[0]))
+        self.assertLess(self.commands.calls.index(commits[0]), destroys[-1])
+        self.assertTrue((self.root / 'run/instance-id').is_file())
+        self.assertIn('削除が未確認', self.errors.getvalue())
+
     def test_expired_account_allows_generation_and_stop_but_not_completion(self) -> None:
         """事例9: 作成後の認証切れでも2世代を作り、削除未確認を成功にしない。"""
         self.commands.deny_account_after_start = True
@@ -631,6 +668,16 @@ class ChainTests(unittest.TestCase):
         del self.values['offer']
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertFalse(any(call[0] in ('vastai', 'scp', 'ssh', 'rsync') for call in self.commands.calls))
+        self.assertEqual(len(self.train_calls(1)), 1)
+
+    def test_completed_books_without_machine_ignore_offer(self) -> None:
+        """本が目標に達していて保存した生成機がなければ、--offerがあっても検索も作成もしない。"""
+        self.save_book(1, 0, 100)
+        self.values['last-generation'] = '1'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertFalse(any(call[0] == 'vastai' and call[1:3] in (['search', 'offers'], ['create', 'instance'])
+                             for call in self.commands.calls))
+        self.assertFalse((self.root / 'run/instance-id').exists())
         self.assertEqual(len(self.train_calls(1)), 1)
 
     def test_training_summary_skips_train_and_latest_resumes(self) -> None:

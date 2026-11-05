@@ -309,6 +309,8 @@ class Chain:
         """借り直しが明示されたときだけ口座を照会し、通常の再開はSSHだけを使う。"""
         args = self.args
         offer_given = hasattr(args, 'offer')
+        if self.instance_id is None and not needs_generation:
+            return
         if self.instance_id is not None and offer_given:
             if common.instance(self.instance_id, 600) is not None:
                 raise ChainStop(f'生成機 {self.instance_id} はまだ存在します。--offerを外して再開してください')
@@ -600,9 +602,11 @@ class Chain:
         self.clear_instance()
         return True
 
-    def stop_machine(self) -> None:
+    def stop_machine(self) -> bool:
+        """SSH切断で停止を確認できた場合、削除に成功した場合、管理する生成機がない場合にTrueを返す。"""
         if self.instance_id is None:
-            return
+            return True
+        stopped = False
         try:
             self.ssh(f'python3 {REMOTE}/generation_worker.py stop', 1860)
             end = time.monotonic() + 300
@@ -610,6 +614,7 @@ class Chain:
                 try:
                     self.ssh('true', min(20, remaining))
                 except TransportFailure:
+                    stopped = True
                     break
                 time.sleep(min(self.args.poll_seconds, max(0, end - time.monotonic())))
             else:
@@ -618,7 +623,7 @@ class Chain:
         except Exception as error:
             print(f'生成機 {self.instance_id} の停止を確認できません: {error}。'
                   '管理画面で停止し、課金状態を確認してください', file=sys.stderr)
-        self.destroy()
+        return self.destroy() or stopped
 
     def salvage(self) -> None:
         if self.current is None or self.address is None:
@@ -665,7 +670,9 @@ class Chain:
             if generation == 1 and not (self.root / 'base.bin').is_file():
                 raise ChainStop('第1世代の較正に必要な本数が足りません')
             if generation == self.args.last_generation:
-                self.stop_machine()
+                if not self.stop_machine():
+                    raise ChainStop(f'生成機 {self.instance_id} の停止も削除も確認できません。'
+                                    '管理画面で停止と課金状態を確認してください')
             summary = self.train(generation)
             fit = self.fit(generation)
             self.commit_generation(generation, summary, books, fit['decision']['d'])
