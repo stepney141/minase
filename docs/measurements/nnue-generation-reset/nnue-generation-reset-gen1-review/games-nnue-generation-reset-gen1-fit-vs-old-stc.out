@@ -1,0 +1,24 @@
+games 206 cand wins 18 base wins 188 draws 0
+mean depth cand 15.2 base 15.32 cpu per game cand 25.0 base 23.4
+by plies bucket (cand wins/base wins/draw):
+  0 100 2 1 1 0
+  100 200 2 0 2 0
+  200 300 20 3 17 0
+  300 400 110 5 105 0
+  400 600 68 7 61 0
+  600 2000 4 2 2 0
+short games:
+  106 0 1 B black adjudicated_win RoyalCapture ['5k6l7l'] ccp [] bcp [None]
+  106 1 1 C white adjudicated_win RoyalCapture ['5k6l7l'] ccp [None] bcp []
+  95 0 183 B black adjudicated_win Mate ['8d8e', '5i5h', '6b8b', '4i4h', '8b8d', '6k4i', '7a6b', '6l6k', '6b5c', '2l2k', '6d6e', '7k6l'] ccp [None, None, None] bcp [None, None, None]
+  4 1 190 B white adjudicated_win Mate ['10d10e', '8k7j', '8d8e', '8l8k', '5d5e', '7k8l', '5c5b', '8i8h', '12d12e', '5l4k', '12c12d', '6l7k'] ccp [None, None, None] bcp [None, None, None]
+  9 1 225 B white adjudicated_win Mate ['7h8f', '8d8e', '8f7g', '5d5e', '7i7h', '11d11e', '7k7i', '7d7e', '6l7k', '7b5d', '5i5h', '7a7b'] ccp [-6261, None, None] bcp [None, None, None]
+  43 0 235 B black adjudicated_win Mate ['8a9b', '5i5h', '4e4f', '5l5k', '6b5a', '7i7h', '5b6b', '1i1h', '4d4e', '1j1i', '8d8e', '10i10h'] ccp [-4867, None, None] bcp [None, None, None]
+  22 1 238 C white adjudicated_win Mate ['7k6j', '7c6d', '8l9k', '5a4b', '8i8h', '3d3e', '5i5h', '10d10e', '6l7k', '8b7c', '6j5i', '1d1e'] ccp [5900, None, None] bcp [-9347, None, None]
+  4 0 239 B black adjudicated_win Mate ['8d8e', '11l11k', '6d6e', '10i10h', '6b6d', '5i5h', '6a5b', '12j12i', '5d5e', '8i8h', '7b5d', '6k8i'] ccp [-4512, None, None] bcp [None, None, None]
+abs cp cand p50/p90 635 2983 base p50/p90 1218 5705
+ply 10 n 204 mean cand cp (own view) 43 mean base cp (own view) 143 std 881 1138
+ply 30 n 204 mean cand cp (own view) 160 mean base cp (own view) 403 std 882 1141
+ply 60 n 204 mean cand cp (own view) 319 mean base cp (own view) 615 std 913 1177
+ply 100 n 204 mean cand cp (own view) 447 mean base cp (own view) 726 std 929 1202
+ply 150 n 204 mean cand cp (own view) 466 mean base cp (own view) 888 std 1052 1442
