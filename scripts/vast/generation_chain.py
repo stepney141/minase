@@ -536,9 +536,12 @@ class Chain:
         for key in ('feature_set', 'width', 'head', 'batch', 'epochs', 'patience', 'device',
                     'validation_interval', 'lr_schedule'):
             command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        if args.export_epoch == 'last':
+            command.extend(['--export-epoch', 'last'])
+        checkpoint = {'best': 'best.npz', 'last': 'latest.npz'}[args.export_epoch]
         return {
             'train': command,
-            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / 'best.npz'),
+            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / checkpoint),
                         '--net', str(train / 'nnue.bin'), '--data', *map(str, books),
                         '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
                         '--output', str(directory / 'removal.json')],
@@ -891,6 +894,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         run.add_argument('--' + name, required=True, type=positive_float, help='正の有限値')
     run.add_argument('--fit-tau', required=True, nargs='+', type=positive_float, help='1個以上の正の有限値')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
+    run.add_argument('--export-epoch', required=True, choices=('best', 'last'),
+                     help='nnue.binへ書き出すエポック。bestは検証損失が最良、lastは最後に完了したエポック。'
+                          '生成機でlastを使うには、前の世代のコミットの学習器が--export-epochに対応する必要がある')
     run.add_argument('--offer', type=positive_int, help='新しく借りる出品ID。通常の再開では省略する')
     run.add_argument('--train-place', required=True, choices=('generator', 'local'),
                      help='学習・診断・補正をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')

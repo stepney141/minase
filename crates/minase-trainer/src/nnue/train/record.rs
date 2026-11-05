@@ -216,7 +216,7 @@ pub(super) struct Configuration {
 /// 最上位の`device`は`"cuda"`または`"cpu"`、`arguments`は新規実行時の全引数[`Args`]、
 /// `resolved_threads`は実効ワーカー数である。
 /// `settings`は引数から`output_dir`、`resume`、`data`、`base`、`epochs`、
-/// `patience`、`time_limit_hours`、`threads`、`validation_interval`、`bucket_positions`、`scratch_dir`を除き、`optimizer`と第1層の標準偏差`initial_standard_deviation`を加える。
+/// `patience`、`export_epoch`、`time_limit_hours`、`threads`、`validation_interval`、`bucket_positions`、`scratch_dir`を除き、`optimizer`と第1層の標準偏差`initial_standard_deviation`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
 /// `lr_schedule`は`arguments`と`settings`の両方に、`kind`と形ごとの引数を持つオブジェクトとして保存する。
 /// 学習の軌跡を変える設定なので、再開時の照合に含める。
@@ -244,6 +244,7 @@ pub(super) struct Configuration {
 /// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
 /// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`、`validation_interval`である。
 /// `validation_interval`は学習の軌跡を変えない診断用の予算なので、再開時に変更できる。
+/// `export_epoch`も学習の軌跡を変えず、再開時に変更できる。
 /// `buckets`は順列を決めるので照合する。`bucket_positions`と`scratch_dir`は再開時に変更できる。
 /// 尺度の出所は`"calibrate"`または正規化した較正ファイルのパスと全内容で、`preprocessing`で照合する。
 /// `teacher_score_multiplier`は勝率尺度と教師の勝率尺度の比、`teacher_cp_per_logit_at_search_bound`は推定の境界到達状況である。
@@ -264,6 +265,7 @@ pub(super) fn configuration<'a>(
     // 保存先と再開操作は数値計算の設定ではない。入力パスは別途正規化して照合する。
     // エポック数、改善なしの許容数、時間の上限、ワーカー数、途中検証の間隔は予算と並列度であり、
     // 学習の軌跡を変えないので、再開時に変えてよい（比較に含めない）。
+    // 書き出すエポックの選択も、学習の軌跡を変えない。
     for key in [
         "output_dir",
         "resume",
@@ -272,6 +274,7 @@ pub(super) fn configuration<'a>(
         "base",
         "epochs",
         "patience",
+        "export_epoch",
         "time_limit_hours",
         "threads",
         "validation_interval",
@@ -333,6 +336,7 @@ pub(super) fn configuration<'a>(
 /// 再開のたびに、呼び出し元から受け取った時刻を`config.json`の`resumes`へ追記して書き直す。
 /// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
+/// 書き出しの選択`export_epoch`、
 /// 実効ワーカー数`workers`、途中検証の間隔`validation_interval`、再開時点の完了エポック番号`epoch`、
 /// bucketの上限`bucket_positions`と作業ディレクトリ`scratch_dir`を持つ。
 pub(super) fn append_resume(
@@ -354,6 +358,7 @@ pub(super) fn append_resume(
         "resumed_at_unix_seconds": resumed_at,
         "epochs": args.epochs,
         "patience": args.patience,
+        "export_epoch": args.export_epoch,
         "time_limit_hours": args.time_limit_hours,
         "workers": workers,
         "validation_interval": args.validation_interval,

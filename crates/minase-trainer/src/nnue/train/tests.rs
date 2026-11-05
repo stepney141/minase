@@ -1,4 +1,6 @@
 use crate::nn::checkpoint::MismatchField;
+#[path = "tests_export.rs"]
+mod export_tests;
 #[path = "../../../tests/common/mnsd.rs"]
 mod mnsd;
 #[path = "tests_subsample.rs"]
@@ -47,6 +49,7 @@ fn args() -> Args {
         batch: 33,
         epochs: 50,
         patience: 5,
+        export_epoch: ExportEpoch::Best,
         seed: 1,
         time_limit_hours: 24.0,
         validation_sample: 24,

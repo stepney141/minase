@@ -76,6 +76,7 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
             'seed-generation-step': '10000000', 'seed-book-step': '100000', 'max-books': '100',
             'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
             'head': 'pairwise-l16-l32', 'batch': '16384', 'epochs': '50', 'patience': '5', 'train-seed': '1',
+            'export-epoch': 'best',
             'device': 'cuda', 'validation-interval': '1000', 'lr-schedule': 'cosine:3:0.1', 'train-threads': '8',
             'removal-sample': '10', 'removal-seed': '3', 'bench-depth': '5',
             'fit-tau': ['0.5', '1.5'], 'fit-seed': '0', 'fit-threads': '3',
@@ -437,6 +438,30 @@ class ChainTestCase(unittest.TestCase):
 
 class ChainTests(ChainTestCase):
 
+    def test_export_epoch_selects_the_matching_float_checkpoint(self) -> None:
+        """bestは学習器の既定を使い、lastだけ明示して対応するチェックポイントを診断する。"""
+        directory = self.root / 'run/gen-1'
+        for choice, checkpoint in (('best', 'best.npz'), ('last', 'latest.npz')):
+            with self.subTest(export_epoch=choice):
+                runner = chain.Chain(chain.arguments(argv(self.values | {'export-epoch': choice})))
+                commands = runner.training_commands(self.root / 'trainer', [self.root / 'book.mnsd'],
+                                                    self.root / 'base.bin', directory)
+                if choice == 'best':
+                    self.assertNotIn('--export-epoch', commands['train'])
+                else:
+                    self.assertEqual(option_values(commands['train'], '--export-epoch'), ['last'])
+                self.assertEqual(option_values(commands['removal'], '--float'),
+                                 [str(directory / 'train' / checkpoint)])
+                self.assertEqual(option_values(commands['removal'], '--net'),
+                                 [str(directory / 'train/nnue.bin')])
+
+    def test_export_epoch_rejects_invalid_choices(self) -> None:
+        for value in ('', 'latest', '0', 'Best'):
+            with self.subTest(export_epoch=value), self.assertRaises(SystemExit) as raised:
+                chain.main(argv(self.values | {'export-epoch': value}))
+            self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.commands.calls)
+
     def test_every_required_argument_is_required_before_creating(self) -> None:
         """事例1: どの必須条件を省略しても、出品の作成には進まない。"""
         for name in self.values.keys() - {'offer'}:
@@ -496,6 +521,7 @@ class ChainTests(ChainTestCase):
             self.assertEqual(call[call.index('--base') + 1], str(self.root / 'run' / base))
             self.assertEqual(call[call.index('--lambda') + 1], '1.0')
             self.assertEqual(call[call.index('--teacher-cp-per-logit') + 1], 'calibrate')
+            self.assertNotIn('--export-epoch', call)
             directory = self.root / f'run/gen-{generation}'
             diagnostic = next(call for call in self.commands.calls if call[1:3] == ['diag', 'nnue-removal']
                               and str(directory / 'removal.json') in call)

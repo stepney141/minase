@@ -11,6 +11,16 @@ use crate::{
 use serde::Serialize;
 use std::path::PathBuf;
 
+/// `nnue.bin`へ書き出す、完了済みエポックの選び方。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportEpoch {
+    /// 検証損失が最良のエポックを`best.npz`から書き出す。
+    Best,
+    /// 最後に検証と保存を終えたエポックを`latest.npz`から書き出す。
+    Last,
+}
+
 /// 学習の入力、係数と実行条件。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
@@ -76,6 +86,10 @@ pub struct Args {
     /// 改善しないエポックが指定数だけ連続して完了したら停止する。
     #[arg(long, default_value_t = 5)]
     pub patience: u64,
+    /// nnue.binへ書き出すエポックを選ぶ。bestはbest.npz、lastはlatest.npzを使う。
+    /// best.npzは常に検証損失が最良のモデルを保存する。再開時に変更できる。
+    #[arg(long, value_enum, default_value = "best")]
+    pub export_epoch: ExportEpoch,
     /// 初期化、順列作成、検証標本抽出の乱数シードを指定する。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
