@@ -39,7 +39,7 @@
 |---|---|
 | λ=0.75では、対局結果の項を通じて訓練の対局の勝敗を覚え、第0世代に`H0`だった。 | [見直しの比較](../../measurements/nnue-generation-reset/nnue-generation-reset-gen1-review.md) |
 | 検証損失はエポック2〜3で最良になり、以後はほぼ平らである。学習率の予定（`cosine:10:0.1`）、第1層の幅（128）、および教師の量を変えても最良は2〜3から動かず、原因は分かっていない。同じ教師で、隠れ層を持たない以前の構成の最良はエポック19だった。 | [予定と書き出すネットの比較](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md) |
-| 学習率を長く保つ学習（`cosine:10:0.1`の最後のネット）は第2世代に`H0`（45.4%）、同じ学習の最後のネットは最良のネットに`H0`（46.2%）だった。 | 同上 |
+| 学習率を長く保つ学習（`cosine:10:0.1`）の最後のネットは、第2世代に`H0`（45.4%）、同じ学習の最良のネットにも`H0`（46.2%）だった。 | 同上 |
 | 予定の総長、重み減衰、および基準の学習率は、値を選んだ根拠の記録がないか、当時の症状に合わせて事前に決めた範囲の値である。 | [学習レシピの調査](../../research/nnue-training-recipes.md) |
 | 教師を減らすと弱くなり、全量（約28万局）は半分に`H1`（63.2%）、4分の1に`H1`（79.8%）を取った。1世代1億局面は足りていない。 | [教師の量の比較](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md) |
 | 局面数をそろえると、多くの対局から疎に採った教師のネットが`H1`（56.5%）を取った。教師の価値は対局の数に大きく依存する。 | [対局数と局面数の比較](../../measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md) |
@@ -55,7 +55,7 @@
 - 第1世代と第2世代の教師（`data/nnue-generation-reset/gen-1/`、`gen-2/`）、世代のネットを指す参照`refs/nnue-generation-reset/gen-<N>`、および比較用のネットの参照。
 
 2026年11月6日の利用者の指示で、本書のブランチをmasterへ統合した。
-統合の前に、ブランチの先頭の埋め込みのネットをmasterのネット（構成の見直しの候補）へ戻したので、統合でエンジンの評価は変わっていない。
+統合の前に、ブランチの先頭に埋め込んだネットをmasterのネット（構成の見直しの候補）へ戻したので、統合でエンジンの評価は変わっていない。
 統合で[教師生成の高速化](teacher-generation-speedup.md)もmasterへ入った。
 統合の後は、親ディレクトリの`.cargo/config.toml`にインライン化の指定が入るので、統合前の設定でビルドするときは、リポジトリの外に作業ツリーを作る（[教訓](../../lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 

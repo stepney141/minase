@@ -41,7 +41,7 @@ minase match run --run-dir data/matches/nnue-generation-reset-gen2-diversity-stc
 
 ### 学習
 
-`--train-subsample`は検証集合を間引かず、教師の勝率尺度、観測マスク、および初期値を間引く前の訓練集合全体から作るので、次の条件が2つでそろう。
+`--train-subsample`は検証集合を間引かず、教師の勝率尺度、観測マスク、および初期値を間引く前の訓練集合全体から作るので、対局半分と局面半分で次の条件がそろう。
 
 | 項目 | 対局半分 | 局面半分 | 全量（参考） |
 |---|---:|---:|---:|
