@@ -251,6 +251,7 @@ cargo run --release --bin minase -- match report \
 ハーネスは当該コミットを`git archive`で展開して`cargo build --release --bin minase`を実行し、成果物を`target/match-cache/`へキャッシュする。
 キャッシュの検証と再ビルドの規則は、`crates/minase/src/harness/commit.rs`の`resolve_commit`のdocコメントにある。
 作業ツリーにある未コミットの変更は、この形式のビルドには含まれない。
+ビルドには実行した作業ツリーの`.cargo/config.toml`の`rustflags`も連結されて適用されるので、ビルド設定を変えた後の比較は[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)に従う。
 起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
 `--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
 規則コードP0とE0を導入する前のコミットを対戦相手とする測定では、規則コードを列挙した指定を旧版のバイナリが拒否するので、`engine-default`などのプリセット名で指定する。
