@@ -34,9 +34,62 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
                 nnue,
                 &generator,
                 isolated_move_picker_context(&history, &capture_history),
+                &std::cell::OnceCell::new(),
             )
             .unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
+    }
+}
+
+/// 合法・不合法と捕獲分類を先に求めても、手選択器が求めても同じ列を返す。
+/// 同一ノードの共有値は、手選択器の後で探索側が参照しても保持される。
+#[test]
+fn staged_picker_shares_tt_legality_and_capture_classification() {
+    let board = staged_picker_fixture();
+    let nnue = test_nnue();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = empty_capture_history();
+    let mut legal = Vec::new();
+    generator.generate_moves(&board, &mut legal);
+    let capture = *legal
+        .iter()
+        .find(|&&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .unwrap();
+    let quiet = *legal
+        .iter()
+        .find(|&&mv| board.captured_squares(mv).iter().all(Option::is_none))
+        .unwrap();
+    let illegal = Move {
+        to: capture.from,
+        ..capture
+    };
+    assert!(!legal.contains(&illegal));
+    for tt in [Some(capture), Some(quiet), Some(illegal), None] {
+        let classified = tt
+            .filter(|mv| legal.contains(mv))
+            .map(|mv| board.captured_squares(mv).iter().any(Option::is_some));
+        for known in [false, true] {
+            let cached = std::cell::OnceCell::new();
+            if known {
+                cached.set(classified).unwrap();
+            }
+            let mut picker = MovePicker::new(tt, [None; KILLER_COUNT]);
+            let actual: Vec<_> = std::iter::from_fn(|| {
+                picker.next(
+                    &board,
+                    nnue,
+                    &generator,
+                    isolated_move_picker_context(&history, &capture_history),
+                    &cached,
+                )
+            })
+            .collect();
+            assert_eq!(actual, reference_sequence(&board, tt, [None; KILLER_COUNT]));
+            if tt.is_some() || known {
+                assert_eq!(cached.get(), Some(&classified));
+            }
+        }
     }
 }
 
@@ -172,7 +225,18 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
     let nnue = test_nnue();
     let capture_history = empty_capture_history();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
-    for rules in minase_core::test_util::capture_test_rules() {
+    for name in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = minase_core::rules::Rules::from_codes(
+            &minase_core::rules::parse_rule_set(name).unwrap(),
+        )
+        .unwrap()
+        .moves;
         let generator = MoveGenerator::new(rules);
         let positions = std::iter::once(staged_picker_fixture())
             .chain(minase_core::test_util::sampled_random_positions(rules));
@@ -213,6 +277,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                         nnue,
                         &generator,
                         isolated_move_picker_context(&history, &capture_history),
+                        &std::cell::OnceCell::new(),
                     );
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
@@ -283,6 +348,7 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
             nnue,
             &generator,
             isolated_move_picker_context(&history, &capture_history),
+            &std::cell::OnceCell::new(),
         )
     })
     .collect()
@@ -401,4 +467,306 @@ fn early_killers_do_not_precede_last_royal_capture() {
     let mut picker = MovePicker::new(None, killers);
     picker.reset(None, killers, true);
     assert_eq!(picker_sequence(&mut picker, &board), expected);
+}
+
+/// Killer候補が全件生成の非捕獲列に含まれることと、単独検査の同値を確かめる。
+fn assert_killer_hint(
+    board: &Position,
+    rules: minase_core::rules::MoveRules,
+    candidate: Move,
+    legal: bool,
+    quiet: bool,
+) {
+    let nnue = test_nnue();
+    let generator = MoveGenerator::new(rules);
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = empty_capture_history();
+    let mut all = Vec::new();
+    generator.generate_moves(board, &mut all);
+    assert_eq!(all.contains(&candidate), legal, "candidate={candidate:?}");
+    if legal {
+        assert_eq!(
+            board
+                .captured_squares(candidate)
+                .iter()
+                .all(Option::is_none),
+            quiet
+        );
+    }
+    for tt in [None, Some(candidate)] {
+        let killers = [Some(candidate); KILLER_COUNT];
+        let mut reference = ReferenceMovePicker::new(tt, killers);
+        let expected: Vec<_> =
+            std::iter::from_fn(|| reference.next(board, nnue, &generator, &history)).collect();
+        for early in [false, true] {
+            let mut expected = expected.clone();
+            if early
+                && legal
+                && quiet
+                && tt != Some(candidate)
+                && let Some(&(first, true)) = expected.first()
+                && !captures_last_royal(board, first)
+                && see_prunes(board, rules, nnue, first, 0)
+            {
+                expected.retain(|&(mv, _)| mv != candidate);
+                expected.insert(0, (candidate, false));
+            }
+            let mut picker = MovePicker::new(tt, killers);
+            picker.reset(tt, killers, early);
+            let actual: Vec<_> = std::iter::from_fn(|| {
+                picker.next(
+                    board,
+                    nnue,
+                    &generator,
+                    isolated_move_picker_context(&history, &capture_history),
+                    &std::cell::OnceCell::new(),
+                )
+            })
+            .collect();
+            assert_eq!(actual, expected, "candidate={candidate:?}, early={early}");
+        }
+    }
+}
+
+/// 第11・12条のじっとと居喰いは、到達升の占有だけでは分類できない。
+#[test]
+fn article_12_killers_distinguish_jitto_and_mid_capture() {
+    let from = sq(5, 5);
+    let board = position(
+        Color::Black,
+        &[
+            (from, Color::Black, PieceKind::Lion),
+            (sq(5, 6), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let rules = engine_rules();
+    assert_killer_hint(&board, rules, step(from, from), true, true);
+    for to in [from, sq(6, 6)] {
+        assert_killer_hint(
+            &board,
+            rules,
+            Move {
+                from,
+                mid: Some(sq(5, 6)),
+                to,
+                promote: false,
+            },
+            true,
+            false,
+        );
+    }
+    let mut pieces = vec![(from, Color::Black, PieceKind::Lion)];
+    for file in 4..=6 {
+        for rank in 4..=6 {
+            if sq(file, rank) != from {
+                pieces.push((sq(file, rank), Color::Black, PieceKind::Pawn));
+            }
+        }
+    }
+    let blocked = position(Color::Black, &pieces);
+    assert_killer_hint(&blocked, rules, step(from, from), false, false);
+}
+
+/// 第14〜16条の捕獲制限、付け喰い、先獅子がある候補も非捕獲のkillerへ混ぜない。
+#[test]
+fn articles_14_15_16_killers_preserve_lion_capture_exceptions() {
+    let from = sq(5, 5);
+    let to = sq(5, 7);
+    let mut pieces = vec![
+        (from, Color::Black, PieceKind::Lion),
+        (to, Color::White, PieceKind::Lion),
+        (sq(6, 7), Color::White, PieceKind::Rook),
+    ];
+    let defended = position(Color::Black, &pieces);
+    assert!(defended.piece_control(from).contains(to));
+    assert_killer_hint(&defended, engine_rules(), step(from, to), false, false);
+    for (kind, legal) in [(PieceKind::Pawn, false), (PieceKind::GoldGeneral, true)] {
+        pieces.push((sq(5, 6), Color::White, kind));
+        let board = position(Color::Black, &pieces);
+        assert_killer_hint(
+            &board,
+            engine_rules(),
+            Move {
+                from,
+                mid: Some(sq(5, 6)),
+                to,
+                promote: false,
+            },
+            legal,
+            false,
+        );
+        pieces.pop();
+    }
+    let mut sente = position(
+        Color::Black,
+        &[
+            (from, Color::Black, PieceKind::Rook),
+            (to, Color::White, PieceKind::Lion),
+            (sq(6, 7), Color::White, PieceKind::Rook),
+        ],
+    );
+    assert!(sente.piece_control(from).contains(to));
+    assert_killer_hint(&sente, engine_rules(), step(from, to), true, false);
+    sente.set_lion_capture(Some(sq(1, 1))).unwrap();
+    assert_killer_hint(&sente, engine_rules(), step(from, to), false, false);
+}
+
+/// 第30条P6の強制成りとP1・P2の保留は、到達できる升への手でも合法性を変える。
+#[test]
+fn article_30_killers_preserve_forced_and_deferred_promotions() {
+    use minase_core::rules::{MoveRules, PromotionRule};
+    let forced = MoveRules {
+        p6: true,
+        ..engine_rules()
+    };
+    let board = position(Color::Black, &[(sq(5, 7), Color::Black, PieceKind::Lance)]);
+    let mv = step(sq(5, 7), sq(5, 11));
+    assert!(board.piece_control(mv.from).contains(mv.to));
+    assert_killer_hint(&board, forced, mv, false, false);
+    assert_killer_hint(
+        &board,
+        forced,
+        Move {
+            promote: true,
+            ..mv
+        },
+        true,
+        true,
+    );
+    for promotion in [PromotionRule::P1, PromotionRule::P2] {
+        let rules = MoveRules {
+            promotion,
+            ..engine_rules()
+        };
+        let mut board = position(
+            Color::Black,
+            &[
+                (sq(5, 7), Color::Black, PieceKind::FerociousLeopard),
+                (sq(1, 5), Color::White, PieceKind::GoBetween),
+            ],
+        );
+        board.make_move_unchecked(step(sq(5, 7), sq(5, 8)), rules);
+        board.make_move_unchecked(step(sq(1, 5), sq(1, 4)), rules);
+        let waiting = Move {
+            promote: true,
+            ..step(sq(5, 8), sq(5, 9))
+        };
+        assert!(board.piece_control(waiting.from).contains(waiting.to));
+        assert_killer_hint(&board, rules, waiting, false, false);
+        board.make_move_unchecked(
+            Move {
+                promote: false,
+                ..waiting
+            },
+            rules,
+        );
+        board.make_move_unchecked(step(sq(1, 4), sq(1, 5)), rules);
+        assert_killer_hint(
+            &board,
+            rules,
+            Move {
+                promote: true,
+                ..step(sq(5, 9), sq(5, 10))
+            },
+            true,
+            true,
+        );
+    }
+}
+
+/// 部分整列、枝刈りの遅延、成り手の継続で、全件整列した列の順位を保存する。
+#[test]
+fn limited_quiet_picker_preserves_original_ordinals_and_promotions() {
+    let nnue = test_nnue();
+    let mut history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = empty_capture_history();
+    let promoted_late = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(3, 2), Color::Black, PieceKind::GoldGeneral),
+            (sq(5, 7), Color::Black, PieceKind::Rook),
+        ],
+    );
+    // 最初の静かな手より後に成り手を残す。係数や学習済み重みの既定値に依存しない。
+    history[Color::Black.index()][sq(5, 7).dense_index()].fill(-1000);
+    let mut skipped_total = 0;
+    let mut retained_promotions = 0;
+    for name in [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ] {
+        let rules = minase_core::rules::Rules::from_codes(
+            &minase_core::rules::parse_rule_set(name).unwrap(),
+        )
+        .unwrap()
+        .moves;
+        let generator = MoveGenerator::new(rules);
+        for board in [promoted_late.clone(), position(Color::Black, &[])]
+            .into_iter()
+            .chain(minase_core::test_util::bench_positions())
+            .chain(minase_core::test_util::sampled_random_positions(rules))
+        {
+            let mut reference = ReferenceMovePicker::new(None, [None; KILLER_COUNT]);
+            let expected: Vec<_> =
+                std::iter::from_fn(|| reference.next(&board, nnue, &generator, &history)).collect();
+            for limit in [0, 1, 5, 38, 1000] {
+                // 途中まで枝刈りが成立しない場合と、最後まで成立しない場合も通す。
+                for delay in [0, 2, usize::MAX] {
+                    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+                    let mut context = isolated_move_picker_context(&history, &capture_history);
+                    context.quiet_sort_limit = Some(limit);
+                    let mut ordinal = 0;
+                    let mut counted = 0;
+                    let mut skipping = false;
+                    while let Some(actual) = picker.next(
+                        &board,
+                        nnue,
+                        &generator,
+                        context,
+                        &std::cell::OnceCell::new(),
+                    ) {
+                        let skipped = picker.take_skipped_quiets();
+                        assert!(
+                            expected[ordinal..ordinal + skipped]
+                                .iter()
+                                .all(|&(mv, capture)| !capture && !mv.promote)
+                        );
+                        ordinal += skipped;
+                        counted += skipped;
+                        skipped_total += skipped;
+                        assert_eq!(
+                            actual, expected[ordinal],
+                            "limit={limit}, delay={delay}, ordinal={ordinal}"
+                        );
+                        let (mv, capture) = actual;
+                        retained_promotions += usize::from(skipping && mv.promote);
+                        if !capture && !mv.promote {
+                            if counted >= limit && counted - limit >= delay {
+                                picker.skip_nonpromoting_quiets();
+                                skipping = true;
+                            }
+                            counted += 1;
+                        }
+                        ordinal += 1;
+                    }
+                    let skipped = picker.take_skipped_quiets();
+                    assert!(
+                        expected[ordinal..ordinal + skipped]
+                            .iter()
+                            .all(|&(mv, capture)| !capture && !mv.promote)
+                    );
+                    ordinal += skipped;
+                    skipped_total += skipped;
+                    assert_eq!(ordinal, expected.len());
+                }
+            }
+        }
+    }
+    assert!(skipped_total > 0);
+    assert!(retained_promotions > 0);
 }

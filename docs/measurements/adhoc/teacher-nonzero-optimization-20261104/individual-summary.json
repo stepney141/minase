@@ -1,0 +1,62 @@
+{
+  "base": {
+    "nps_median": 640374.9215860909,
+    "nps_min": 597192.4311672022,
+    "nps_max": 641530.8054111328,
+    "nps_width": 0.06923814901138316,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8533.1853036,
+      "cpu_core/instructions/u": 31783.8410388,
+      "cpu_core/mem_load_retired.l1_miss/u": 36.3625828,
+      "cpu_core/mem_load_retired.l2_miss/u": 2.0700810666666665,
+      "cpu_core/mem_load_retired.l3_miss/u": 0.7208810666666666,
+      "cpu_core/branch-misses/u": 37.22857186666667
+    },
+    "nps_ratio_to_first": 1.0
+  },
+  "attackers": {
+    "nps_median": 653685.4042246729,
+    "nps_min": 615766.883465871,
+    "nps_max": 655665.0729925699,
+    "nps_width": 0.061035766239911055,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8350.8377344,
+      "cpu_core/instructions/u": 30739.8053312,
+      "cpu_core/mem_load_retired.l1_miss/u": 36.6015484,
+      "cpu_core/mem_load_retired.l2_miss/u": 2.1006901333333334,
+      "cpu_core/mem_load_retired.l3_miss/u": 0.7310013333333333,
+      "cpu_core/branch-misses/u": 38.16817066666667
+    },
+    "nps_ratio_to_first": 1.0207854526932667
+  },
+  "continuation": {
+    "nps_median": 665889.4996328729,
+    "nps_min": 628082.7347425723,
+    "nps_max": 669485.4085208889,
+    "nps_width": 0.06217649294836946,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8199.5301456,
+      "cpu_core/instructions/u": 29855.235478533334,
+      "cpu_core/mem_load_retired.l1_miss/u": 36.650606933333336,
+      "cpu_core/mem_load_retired.l2_miss/u": 2.0824561333333333,
+      "cpu_core/mem_load_retired.l3_miss/u": 0.7247437333333333,
+      "cpu_core/branch-misses/u": 36.638078533333335
+    },
+    "nps_ratio_to_first": 1.0398431874620997
+  },
+  "see-reuse": {
+    "nps_median": 645816.4954621489,
+    "nps_min": 639061.8640003074,
+    "nps_max": 647066.9791108661,
+    "nps_width": 0.012395340111017445,
+    "counters_per_node_median": {
+      "cpu_core/cycles/u": 8465.538685333333,
+      "cpu_core/instructions/u": 31513.482906133333,
+      "cpu_core/mem_load_retired.l1_miss/u": 35.60335453333333,
+      "cpu_core/mem_load_retired.l2_miss/u": 2.0695448,
+      "cpu_core/mem_load_retired.l3_miss/u": 0.7065932,
+      "cpu_core/branch-misses/u": 36.95565706666667
+    },
+    "nps_ratio_to_first": 1.0084974812295588
+  }
+}

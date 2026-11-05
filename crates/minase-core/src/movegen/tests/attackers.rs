@@ -3,8 +3,9 @@
 //! 期待値は[`Position::attackers_to_by`]の契約である、
 //! [`piece_control_with_occupancy`]による駒別利きとの同値関係から導く。
 
-use crate::board::Bitboard;
+use crate::attacks::{AttackTables, SpecialMovement, movement_profile, movement_profile_data};
 use crate::board::Square;
+use crate::board::{Bitboard, Direction, step_square};
 use crate::movegen::control::piece_control_with_occupancy;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
@@ -131,4 +132,125 @@ fn piece_control_with_occupancy_accepts_a_hypothetical_piece() {
 fn piece_control_rejects_empty_square() {
     let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::King)]);
     let _ = board.piece_control(msq(5, 5));
+}
+
+/// 変更前の固定利き表と8方向走査による逆引き。集合の保存を検査する。
+fn ordinary_attackers_before(
+    tables: &AttackTables,
+    position: &Position,
+    color: Color,
+    square: Square,
+    occupied: Bitboard,
+) -> Bitboard {
+    let mut attackers = Bitboard::EMPTY;
+    for from in tables.neighbourhood(square) & position.pieces_of(color) {
+        let kind = position
+            .piece_at(from)
+            .and_then(|piece| piece.kind())
+            .expect("own square must contain a piece");
+        if tables
+            .fixed(color, movement_profile(kind), from)
+            .contains(square)
+        {
+            attackers.set(from);
+        }
+    }
+    let own = position.pieces_of(color) & occupied;
+    for direction in Direction::ALL {
+        // 相手駒や仮想の占有升を飛び越さないよう、全占有から最初の遮蔽を求める。
+        let blockers = tables.ray(square, direction) & occupied;
+        let blocker = if direction.increases_raw_index() {
+            blockers.lsb()
+        } else {
+            blockers.msb()
+        };
+        let Some(blocker) = blocker else {
+            continue;
+        };
+        if !own.contains(blocker) {
+            continue;
+        }
+        let kind = position
+            .piece_at(blocker)
+            .and_then(|piece| piece.kind())
+            .expect("blocker must be a piece");
+        let mask = tables.slide_directions(color, movement_profile(kind));
+        let reverse = direction.opposite();
+        if (mask >> reverse.index()) & 1 != 0 {
+            attackers.set(blocker);
+        }
+    }
+    attackers
+}
+
+/// 5規則セットの局面と仮想占有で、固定利きと走りの逆引きが変更前と一致する。
+#[test]
+fn ordinary_attackers_match_reference_in_all_rule_variants() {
+    let tables = crate::attacks::attack_tables();
+    for rules in super::rule_variants() {
+        for board in bench_positions()
+            .into_iter()
+            .chain(sampled_random_positions(rules))
+        {
+            for target in Square::all() {
+                for color in Color::ALL {
+                    let occupied = board.occupied();
+                    let reduced = Bitboard::from_squares(
+                        occupied
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(i, s)| (i % 3 != 0).then_some(s)),
+                    );
+                    for occupied in [occupied, reduced] {
+                        let expected =
+                            (ordinary_attackers_before(tables, &board, color, target, occupied)
+                                | special_attackers_before(tables, &board, color, target))
+                                & occupied;
+                        assert_eq!(board.attackers_to_by(color, target, occupied), expected);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn special_attackers_before(
+    tables: &AttackTables,
+    position: &Position,
+    color: Color,
+    square: Square,
+) -> Bitboard {
+    let mut attackers = Bitboard::EMPTY;
+    for kind in [
+        PieceKind::Lion,
+        PieceKind::HornedFalcon,
+        PieceKind::SoaringEagle,
+    ] {
+        let pieces = position.pieces_of_kind(color, kind);
+        if pieces.is_empty() {
+            continue;
+        }
+        match movement_profile_data(movement_profile(kind)).special {
+            SpecialMovement::None => {}
+            SpecialMovement::Lion => {
+                attackers |= (tables.king_steps(square) | tables.lion_jumps(square)) & pieces;
+            }
+            SpecialMovement::LionLike(profile) => {
+                for relative in profile.directions {
+                    let reverse = relative.for_color(color).opposite();
+                    if let Some(first) = step_square(square, reverse) {
+                        if pieces.contains(first) {
+                            attackers.set(first);
+                        }
+                        if let Some(second) = step_square(first, reverse)
+                            && pieces.contains(second)
+                        {
+                            attackers.set(second);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    attackers
 }

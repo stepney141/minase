@@ -9,6 +9,7 @@ mod legality;
 mod lion_capture;
 mod lion_moves;
 mod movement;
+mod pawn_batch;
 mod piece_generation;
 mod pieces;
 mod promotion;
@@ -22,6 +23,22 @@ use crate::board::Square;
 use crate::mv::Move;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
+
+/// 標準・lishogiと、獅子捕獲・成り権保留・強制成りの規則を組み合わせた照合集合。
+pub(super) fn rule_variants() -> [crate::rules::MoveRules; 5] {
+    [
+        "engine-default",
+        "lishogi",
+        "L1,L3,P0,P5,P6,R2,E1,E2",
+        "L0,P1,R1,E0",
+        "L1,L2,P2,P3,P4,R2,E0",
+    ]
+    .map(|text| {
+        crate::rules::Rules::from_codes(&crate::rules::parse_rule_set(text).unwrap())
+            .unwrap()
+            .moves
+    })
+}
 
 /// テストで用いる升表記 (筋f, 段r)（各1〜12、段1=後手側最奥、段12=先手側最奥）を
 /// 盤座標へ写す。先手の「前」は段が減る方向である（第3条3号）。

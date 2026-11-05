@@ -8,11 +8,14 @@
 //! [`MoveGenerator::generate_special_captures`]で全捕獲を別に生成する。
 //! 方式を採る理由は`docs/adr/generate-qsearch-captures-by-value-group-per-piece.md`にある。
 
-use super::MoveGenerator;
-use super::control::{piece_control_without_special, special_step_destinations};
+use super::control::{
+    capture_targets_without_special, piece_control_without_special, special_step_destinations,
+};
 use super::expand::promoting_variant;
+use super::generate::single_step_origins;
 use super::lion::generate_lion_double_and_jumps;
 use super::lion_like::generate_lion_like_double_and_jumps;
+use super::{MoveGenerator, ORDINARY_KINDS};
 use crate::attacks::{SpecialMovement, movement_profile, movement_profile_data};
 use crate::board::{Bitboard, Square};
 use crate::mv::Move;
@@ -156,65 +159,55 @@ impl MoveGenerator {
     ///
     /// `allowed`には相手駒の升の部分集合を渡す。
     /// [`Self::generate_moves`]と同じ駒種と移動元の順に`output`へ追加し、
-    /// 同じ局面の[`Self::emit_ordinary_captures`]で利きを再利用する。
+    /// 同じ局面の[`Self::emit_ordinary_captures`]で利きを再利用し、追加した駒の疑似利きが届く対象升の和を返す。
     pub fn collect_ordinary_capturers(
         &self,
         position: &Position,
         allowed: Bitboard,
         output: &mut Vec<OrdinaryCapturer>,
-    ) {
+    ) -> Bitboard {
+        let mut targets = Bitboard::EMPTY;
         if allowed.is_empty() {
-            return;
+            return targets;
         }
         let color = position.side_to_move();
-        for kind in PieceKind::ALL {
-            if !matches!(
-                movement_profile_data(movement_profile(kind)).special,
-                SpecialMovement::None
-            ) {
-                continue;
-            }
-            for from in position.pieces_of_kind(color, kind) {
-                let piece = position.piece_at(from).expect("capture origin has a piece");
-                if let Some(capturer) = self.ordinary_capturer(position, from, piece, allowed) {
+        for kind in ORDINARY_KINDS {
+            let origins = if matches!(kind, PieceKind::Pawn | PieceKind::GoBetween) {
+                single_step_origins(position, kind, allowed)
+            } else {
+                position.pieces_of_kind(color, kind)
+            };
+            for from in origins {
+                if let Some(capturer) = self.ordinary_capturer(position, from, kind, allowed) {
+                    targets |= capturer.captures;
                     output.push(capturer);
                 }
             }
         }
+        targets
     }
 
-    /// 通常駒1枚について、対象升へ実際に届く利きを求める。
-    ///
-    /// 遮蔽なしの到達範囲が`allowed`と交わらなければ省き、固定利きと`allowed`の積を取る。
-    /// 走りは遮蔽なしの利き線が`allowed`と交わる方向だけ計算する。
-    /// 利き線は実際の到達升の上位集合なので、結果は
-    /// `piece_control_without_special(...) & allowed`と一致する。
+    /// 通常駒1枚の捕獲可能升を求め、候補がある場合だけ駒コードを読む。
+    /// 到達範囲と各方向の最初の遮蔽を調べるので、全利きと対象升の積に一致する。
     fn ordinary_capturer(
         &self,
         position: &Position,
         from: Square,
-        piece: PieceCode,
+        kind: PieceKind,
         allowed: Bitboard,
     ) -> Option<OrdinaryCapturer> {
-        let color = position.side_to_move();
-        let kind = piece.kind().expect("capture origin has a kind");
-        let tables = self.tables();
-        let profile_id = movement_profile(kind);
-        if (tables.reach(color, profile_id, from) & allowed).is_empty() {
-            return None;
-        }
-        let mut captures = tables.fixed(color, profile_id, from) & allowed;
-        let profile = movement_profile_data(profile_id);
-        for slide in profile.slides {
-            let direction = slide.direction.for_color(color);
-            if !(tables.ray(from, direction) & allowed).is_empty() {
-                captures |= tables.sliding_control(from, direction, position.occupied()) & allowed;
-            }
-        }
-        (!captures.is_empty()).then_some(OrdinaryCapturer {
+        let captures = capture_targets_without_special(
+            self.tables(),
+            position.occupied(),
+            position.side_to_move(),
+            kind,
+            from,
+            allowed,
+        );
+        (!captures.is_empty()).then(|| OrdinaryCapturer {
             from,
             kind,
-            piece,
+            piece: position.piece_at(from).expect("capture origin has a piece"),
             captures,
         })
     }
@@ -289,7 +282,7 @@ impl MoveGenerator {
                 return false;
             }
             let enemy = position.pieces_of(position.side_to_move().opposite());
-            if let Some(capturer) = self.ordinary_capturer(position, mv.from, piece, enemy)
+            if let Some(capturer) = self.ordinary_capturer(position, mv.from, kind, enemy)
                 && capturer.captures.contains(mv.to)
             {
                 let mut legal = false;

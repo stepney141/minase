@@ -1,0 +1,26 @@
+{
+  "searches": 885,
+  "reported_nodes": 17700000,
+  "stats": {
+    "normal_nodes": 7159149,
+    "quiesce_nodes": 11299512,
+    "tt_probes": 7159149,
+    "tt_hits": 2975198,
+    "tt_cutoffs": 1764732,
+    "quiesce_tt_probes": 4211007,
+    "quiesce_tt_hits": 593137,
+    "quiesce_tt_cutoffs": 538824,
+    "beta_cutoffs": 2763566,
+    "first_move_beta_cutoffs": 2348447,
+    "best_move_rank_1": 12828,
+    "best_move_rank_2": 635,
+    "best_move_rank_3": 752,
+    "best_move_rank_4_plus": 8219
+  },
+  "accumulator": {
+    "updates": 18224821,
+    "refreshes": 885
+  },
+  "mnsd_sha256": "2b36533d835df0a42e5026ecb1bcc6e122b6fb3680fd8fa767da4c002b9de3be",
+  "matches_cycle_profile_data": true
+}

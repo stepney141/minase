@@ -31,6 +31,6 @@ SEEの利得配列を作業領域へ移す変更は、[第2期の段階6の記�
 効果を確認できない状態、表、および実行経路をコードに残さない。
 単位Eが見送った候補のうち、固定利きの逆引きの近傍走査と、走りの利きの増える方向の減算による計算は、第2期の段階4で測り直して採用したので、この決定に含めない。
 ノード数の一括反映と対局履歴の`HashSet`化も第2期の段階6の記録で外したが、この決定には含めず、他のADRに委ねる。
-一括反映と同じ案は[ノード数の数え方](count-nodes-per-move-on-shared-counter.md)が2026年8月23日の測定で退けており、`HashSet`化は[反復検出の方式](check-repetition-by-linear-scan.md)が扱う。
+一括反映と同じ案は[ノード数の数え方](count-nodes-per-move-on-shared-counter.md)が2026年8月23日の測定で退けており、`HashSet`化は[反復検出の方式](filter-the-game-history-before-the-repetition-scan.md)が扱う。
 置換表の先読みは[置換表の行を先読みしない](do-not-prefetch-transposition-table-entries.md)が扱う。
 いずれの測定も評価関数がNNUEへ置き換わる前のものであり、ノードあたりの費用の配分が変わっているので、再提案には現行の評価関数での測り直しが要る。

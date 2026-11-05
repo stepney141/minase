@@ -1,0 +1,28 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/stepney141/board-games/minase/target/teacher-optimization/see-reuse/crates/minase/Cargo.toml
+workspace: /home/stepney141/board-games/minase/target/teacher-optimization/see-reuse/Cargo.toml
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (/home/stepney141/board-games/minase/target/teacher-bottleneck/build/release/deps/minase-79ff998e26549811)
+
+running 18 tests
+test search::alphabeta::see::tests::article_11_see_accepts_single_capture_lion_like_moves_without_mid ... ok
+test search::alphabeta::see::tests::article_11_see_values_lion_like_special_recaptures ... ok
+test search::alphabeta::see::tests::article_14_5_see_values_lion_captures_of_non_lions ... ok
+test search::alphabeta::see::tests::p5_see_respects_p5_deferred_pawn_on_recapture ... ok
+test search::alphabeta::see::tests::see_accounts_for_promotions_in_initial_and_recapture_moves ... ok
+test search::alphabeta::see::tests::see_prunes_accounts_for_value_loss_on_forced_initial_promotion ... ok
+test search::alphabeta::see::tests::see_prunes_includes_recapture_promotion_before_early_exit ... ok
+test search::alphabeta::see::tests::see_prunes_matches_reference_on_bench_and_random_captures ... ok
+test search::alphabeta::see::tests::see_prunes_preserves_late_rule_dependence_with_and_without_early_exit ... ok
+test search::alphabeta::see::tests::see_prunes_preserves_zero_value_exchanges ... ok
+test search::alphabeta::see::tests::see_prunes_matches_reference_on_bench_and_random_quiets ... ok
+test search::alphabeta::see::tests::see_prunes_respects_threshold_and_strict_boundary ... ok
+test search::alphabeta::see::tests::see_returns_none_for_quiet_lion_move_into_rule_dependent_attack ... ok
+test search::alphabeta::see::tests::see_returns_none_for_rule_dependent_initial_moves ... ok
+test search::alphabeta::see::tests::see_returns_none_for_rule_dependent_recaptures ... ok
+test search::alphabeta::see::tests::see_values_match_hand_calculated_exchange_sequences ... ok
+test search::alphabeta::see::tests::see_values_match_hand_calculated_quiet_moves_and_jitto ... ok
+test search::alphabeta::see::tests::see_prunes_respects_the_promotion_gain_bound ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 870 filtered out; finished in 0.03s
+

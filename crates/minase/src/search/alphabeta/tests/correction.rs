@@ -39,6 +39,7 @@ fn with_history_worker_searcher(
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
+    let repetition_history = RepetitionHistory::new(&[]);
     let mut searcher = new_searcher(
         test_nnue(),
         board,
@@ -48,7 +49,7 @@ fn with_history_worker_searcher(
         },
         DRAW_SCORE,
         0,
-        &[],
+        &repetition_history,
         &shared,
         &table,
         &mut butterfly_history,
@@ -409,6 +410,7 @@ fn correction_negamax_update_conditions() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -418,7 +420,7 @@ fn correction_negamax_update_conditions() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -506,6 +508,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -515,7 +518,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -568,6 +571,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -577,7 +581,7 @@ fn correction_negamax_score_boundaries_tt_cutoffs_and_interruption() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -640,6 +644,7 @@ fn correction_root_updates_only_after_completed_search() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -649,7 +654,7 @@ fn correction_root_updates_only_after_completed_search() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -712,6 +717,7 @@ pub(super) fn correction_changes_futility_estimate() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&history);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -721,7 +727,7 @@ pub(super) fn correction_changes_futility_estimate() {
             },
             -1000,
             0,
-            &history,
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -779,6 +785,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = empty_capture_history();
         let correction_values = new_correction_values();
+        let repetition_history = RepetitionHistory::new(&[]);
         let mut searcher = new_searcher(
             nnue,
             &board,
@@ -788,7 +795,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
             },
             DRAW_SCORE,
             0,
-            &[],
+            &repetition_history,
             &shared,
             &table,
             &mut butterfly_history,
@@ -840,6 +847,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = empty_capture_history();
     let correction_values = new_correction_values();
+    let repetition_history = RepetitionHistory::new(&[]);
     let mut searcher = new_searcher(
         nnue,
         &board,
@@ -849,7 +857,7 @@ fn correction_search_move_and_null_move_propagate_position_keys() {
         },
         DRAW_SCORE,
         0,
-        &[],
+        &repetition_history,
         &shared,
         &table,
         &mut butterfly_history,

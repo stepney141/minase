@@ -42,6 +42,32 @@ pub(super) const KILLER_COUNT: usize = 2;
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
+/// 対局履歴と、キーの下位15ビットを登録した4 KiBのフィルタ。
+/// ビットの衝突は線形走査で解決するため、最も新しい出現位置を変えない。
+pub(super) struct RepetitionHistory {
+    keys: Vec<u64>,
+    bits: [u64; 512],
+}
+
+impl RepetitionHistory {
+    /// 探索開始時に1回構築し、全ワーカーで不変の参照を共有する。
+    pub(super) fn new(keys: &[u64]) -> Self {
+        let mut history = Self {
+            keys: keys.to_vec(),
+            bits: [0; 512],
+        };
+        for &key in keys {
+            history.bits[(key as usize >> 6) & 511] |= 1 << (key & 63);
+        }
+        history
+    }
+
+    /// 偽なら履歴に存在しない。真の場合は完全なキーの照合が必要である。
+    fn may_contain(&self, key: u64) -> bool {
+        self.bits[(key as usize >> 6) & 511] & (1 << (key & 63)) != 0
+    }
+}
+
 /// ワーカー固有の探索状態を構築する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn new_searcher<'a>(
@@ -51,7 +77,7 @@ pub(super) fn new_searcher<'a>(
     repetition: SearchRepetition,
     draw_value: i32,
     worker_index: usize,
-    history_keys: &'a [u64],
+    repetition_history: &'a RepetitionHistory,
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
     history: &'a mut HistoryTable,
@@ -82,7 +108,8 @@ pub(super) fn new_searcher<'a>(
         worker_index,
         root_position: position.clone(),
         generator: MoveGenerator::new(rules),
-        history_keys,
+        history_keys: &repetition_history.keys,
+        repetition_history,
         path_keys: vec![repetition_key(repetition.rule(), position)],
         path_moves: Vec::new(),
         null_move_ply: None,
@@ -114,6 +141,7 @@ pub(super) fn new_searcher<'a>(
             .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
+        pending_accumulators: (0..=MAX_PLY).map(|_| None).collect(),
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         pawn_keys: [root_pawn_key; MAX_PLY as usize + 1],
         minor_keys: [root_correction_keys.minor; MAX_PLY as usize + 1],
@@ -209,6 +237,18 @@ pub(super) enum RepetitionMatch {
     History(usize),
 }
 
+/// 累算値を確定するときに反映する実着手またはnull move。
+pub(super) enum AccumulatorUpdate {
+    Move(Undo),
+    Null(Option<Square>),
+}
+
+/// 子の探索中に保持する更新記録。実着手のUndoは子から戻るときに回収する。
+pub(super) struct PendingAccumulator {
+    pub(super) update: AccumulatorUpdate,
+    pub(super) computed: bool,
+}
+
 /// 1回の探索実行の可変状態。
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
@@ -244,6 +284,8 @@ pub(super) struct Searcher<'a> {
     pub(super) generator: MoveGenerator,
     /// 対局開始から現局面までの反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) history_keys: &'a [u64],
+    /// 対局履歴の線形走査を省けるかを判定する、全ワーカー共通のフィルタ。
+    repetition_history: &'a RepetitionHistory,
     /// 探索経路上の反復規則のキー。R2・R3では成り権保留状態を含めない。
     pub(super) path_keys: Vec<u64>,
     /// `path_keys[i + 1]`の局面へ至る着手を`i`番目に持つスタック。
@@ -303,6 +345,8 @@ pub(super) struct Searcher<'a> {
     pub(super) capture_ranks: CaptureRanks,
     /// plyごとのNNUE累算値。
     pub(super) accumulators: Vec<NnueAccumulator>,
+    /// 評価または子の探索まで保留する更新。親は子へ進む前に必ず確定する。
+    pub(super) pending_accumulators: Vec<Option<PendingAccumulator>>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
     /// plyごとの歩兵と仲人の絶対配置の鍵。null moveでは変化しない。
@@ -339,6 +383,55 @@ pub(super) struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
+    /// 現局面の未計算の累算値を1回だけ確定する。根と確定済みの値は更新しない。
+    /// 親は着手適用前に確定しているため、従来と同じ親とUndoで差分更新できる。
+    pub(super) fn ensure_accumulator(&mut self, position: &Position, ply: u32) {
+        let index = ply as usize;
+        let Some(pending) = &mut self.pending_accumulators[index] else {
+            return;
+        };
+        if pending.computed {
+            return;
+        }
+        let (parents, children) = self.accumulators.split_at_mut(index);
+        match &pending.update {
+            AccumulatorUpdate::Move(undo) => self.nnue.update_accumulator_after_move(
+                &parents[index - 1],
+                &mut children[0],
+                position,
+                undo,
+            ),
+            AccumulatorUpdate::Null(lion) => self.nnue.update_accumulator_after_null(
+                &parents[index - 1],
+                &mut children[0],
+                *lion,
+            ),
+        }
+        pending.computed = true;
+    }
+
+    /// 評価が要求された時点で累算値を確定し、現在の手番側の静的評価を返す。
+    pub(super) fn evaluate_at(&mut self, position: &Position, ply: u32) -> i32 {
+        self.ensure_accumulator(position, ply);
+        #[cfg(feature = "invariants")]
+        self.nnue
+            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
+        self.nnue
+            .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
+    }
+
+    /// 子の探索終了後に実着手のUndoを回収し、保留記録を消す。
+    pub(super) fn take_accumulator_move(&mut self, ply: u32) -> Undo {
+        match self.pending_accumulators[ply as usize]
+            .take()
+            .expect("searched child has an accumulator update")
+            .update
+        {
+            AccumulatorUpdate::Move(undo) => undo,
+            AccumulatorUpdate::Null(_) => unreachable!("real move requires a move undo"),
+        }
+    }
+
     /// 実際に反復を始めるとき、共有状態が偽なら回数を1増やす
     /// （Stockfish src/search.cpp:369-370）。
     pub(super) fn begin_iteration(&mut self) {
@@ -395,6 +488,9 @@ impl Searcher<'_> {
             .rposition(|&past| past == key)
             .map(RepetitionMatch::Path)
             .or_else(|| {
+                if !self.repetition_history.may_contain(key) {
+                    return None;
+                }
                 self.history_keys
                     .iter()
                     .rposition(|&past| past == key)

@@ -21,6 +21,7 @@ use minase_core::rules::MoveRules;
 
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::HistoryTables;
+use super::searcher::RepetitionHistory;
 use super::time::{InstabilityScaling, ponder_bonus_time_budget, uses_partial_results};
 use crate::search::budget::{TimeBudget, time_budget};
 use crate::search::clock::SearchClock;
@@ -269,7 +270,7 @@ pub(in crate::search) fn run_search_team(
         }),
     };
 
-    let history_keys: Vec<u64> = history_keys.to_vec();
+    let repetition_history = RepetitionHistory::new(history_keys);
     let correction = &histories.correction;
     let mut worker_histories: Vec<_> = histories
         .workers
@@ -294,7 +295,7 @@ pub(in crate::search) fn run_search_team(
                     repetition,
                     draw_value,
                     root_moves,
-                    &history_keys,
+                    &repetition_history,
                     depth_limit,
                     time_budget,
                     instability_scaling,
@@ -318,7 +319,7 @@ pub(in crate::search) fn run_search_team(
                     repetition,
                     draw_value,
                     root_moves,
-                    &history_keys,
+                    &repetition_history,
                     depth_limit,
                     worker_index,
                     &shared,

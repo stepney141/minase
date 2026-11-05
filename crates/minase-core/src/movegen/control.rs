@@ -75,8 +75,8 @@ impl Position {
 
 /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
 ///
-/// 全固定移動が5×5近傍に収まるので、その範囲の指定側の駒について固定利き表が`square`を含むか調べる。
-/// 走りは`square`から8方向へ占有を考慮した利き線を引き、最初の遮蔽駒が指定側の駒であり、
+/// 全固定移動が5×5近傍に収まるので、その範囲で相対升ごとの駒種集合に含まれる駒を調べる。
+/// 走りは`square`から8方向の最初の遮蔽駒を求め、それが指定側の駒であり、
 /// 逆方向へ走る動きの定義を持つ場合に加える。全プロファイルの
 /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
 fn ordinary_attackers_to(
@@ -87,32 +87,70 @@ fn ordinary_attackers_to(
     occupied: Bitboard,
 ) -> Bitboard {
     let mut attackers = Bitboard::EMPTY;
-    for from in tables.neighbourhood(square) & position.pieces_of(color) {
+    let own = position.pieces_of(color) & occupied;
+    for from in tables.neighbourhood(square) & own {
+        let kinds = tables.fixed_attacker_kinds(color, square, from);
+        if kinds == 0 {
+            continue;
+        }
         let kind = position
             .piece_at(from)
             .and_then(|piece| piece.kind())
             .expect("own square must contain a piece");
-        if tables
-            .fixed(color, movement_profile(kind), from)
-            .contains(square)
-        {
+        if kinds & (1 << kind.index()) != 0 {
             attackers.set(from);
         }
     }
-    let own = position.pieces_of(color) & occupied;
-    for direction in Direction::ALL {
-        // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
-        let ray = tables.sliding_control(square, direction, occupied);
-        let Some(blocker) = (ray & own).lsb() else {
+    attackers
+        | sliding_attackers_to::<true>(tables, position, color, square, occupied, own)
+        | sliding_attackers_to::<false>(tables, position, color, square, occupied, own)
+}
+
+/// 生値が増える方向と減る方向を別々に走査し、最初の遮蔽駒の逆方向の走りを調べる。
+/// 全占有から遮蔽を選び、指定側の駒だけを残すので、仮想占有や相手駒も飛び越さない。
+fn sliding_attackers_to<const INCREASING: bool>(
+    tables: &AttackTables,
+    position: &Position,
+    color: Color,
+    square: Square,
+    occupied: Bitboard,
+    own: Bitboard,
+) -> Bitboard {
+    let directions = if INCREASING {
+        [
+            Direction::East,
+            Direction::North,
+            Direction::NorthEast,
+            Direction::NorthWest,
+        ]
+    } else {
+        [
+            Direction::West,
+            Direction::South,
+            Direction::SouthEast,
+            Direction::SouthWest,
+        ]
+    };
+    let mut attackers = Bitboard::EMPTY;
+    for direction in directions {
+        let blockers = tables.ray(square, direction) & occupied;
+        let blocker = if INCREASING {
+            blockers.lsb()
+        } else {
+            blockers.msb()
+        };
+        let Some(blocker) = blocker else {
             continue;
         };
+        if !own.contains(blocker) {
+            continue;
+        }
         let kind = position
             .piece_at(blocker)
             .and_then(|piece| piece.kind())
             .expect("blocker must be a piece");
         let mask = tables.slide_directions(color, movement_profile(kind));
-        let reverse = direction.opposite();
-        if (mask >> reverse.index()) & 1 != 0 {
+        if (mask >> direction.opposite().index()) & 1 != 0 {
             attackers.set(blocker);
         }
     }
@@ -231,4 +269,59 @@ pub(super) fn piece_control_without_special(
         result |= tables.sliding_control(from, slide.direction.for_color(color), occupied);
     }
     result
+}
+
+/// 固定利きと走りによって`from`から`to`へ届くかを返す。
+/// 固定利きと遮蔽なしの範囲で絞り、到達升を含む1方向だけ遮蔽を調べるので、
+/// `piece_control_without_special(...).contains(to)`と同じ判定になる。
+pub(super) fn reaches_without_special(
+    tables: &AttackTables,
+    occupied: Bitboard,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    to: Square,
+) -> bool {
+    let id = movement_profile(kind);
+    if tables.fixed(color, id, from).contains(to) {
+        return true;
+    }
+    if !tables.reach(color, id, from).contains(to) {
+        return false;
+    }
+    movement_profile_data(id).slides.iter().any(|slide| {
+        let direction = slide.direction.for_color(color);
+        tables.ray(from, direction).contains(to)
+            && tables
+                .sliding_control(from, direction, occupied)
+                .contains(to)
+    })
+}
+
+/// 固定利きと走りによって取れる`enemy`の升だけを返す。`enemy`は占有升の部分集合とする。
+/// 遮蔽なしの範囲で絞り、各走り線では最初の遮蔽駒だけを調べるので、
+/// 結果は`piece_control_without_special(...) & enemy`と一致する。
+pub(super) fn capture_targets_without_special(
+    tables: &AttackTables,
+    occupied: Bitboard,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    enemy: Bitboard,
+) -> Bitboard {
+    let id = movement_profile(kind);
+    if !tables.reach(color, id, from).intersects(enemy) {
+        return Bitboard::EMPTY;
+    }
+    let mut captures = tables.fixed(color, id, from) & enemy;
+    for slide in movement_profile_data(id).slides {
+        let direction = slide.direction.for_color(color);
+        if tables.ray(from, direction).intersects(enemy)
+            && let Some(blocker) = tables.first_blocker(from, direction, occupied)
+            && enemy.contains(blocker)
+        {
+            captures.set(blocker);
+        }
+    }
+    captures
 }

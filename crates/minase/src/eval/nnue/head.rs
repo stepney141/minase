@@ -1,6 +1,6 @@
 //! 要素積、幅15と幅32の隠れ層、および直接内積で両視点の累算値を整数出力へ変換する。
 //! 第1層の尺度は255で、各視点のH成分を4等分し、隣り合う区画の要素積を取る。
-//! `c = clamp(acc, 0, 255)`をu16で持ち、`s = (c₁×c₂) >> 9`をu8へ格納する。
+//! `c = clamp(acc, 0, 255)`をu16で持ち、`s = (c₁×c₂) >> 9`をi16へ格納する。
 //! 積の上限は65,025、sの範囲は0〜127であり、手番側H/2個、相手側H/2個の順に並べる。
 //!
 //! 幅15の層は`z = W1·s + b1`をi32で求め、
@@ -44,6 +44,8 @@ pub struct PairwiseL16L32 {
     hidden2_biases: [i32; 32],
     hidden2_output: [i16; 32],
     shared_mirror_weights: Option<SharedMirrorWeights>,
+    /// 各行の末尾2要素を0で埋めた推論用重み。符号化にはhidden2_weightsを使う。
+    hidden2_inference_weights: [[i16; 32]; 32],
 }
 
 /// 各視点の鏡映対から片側だけを取り出した、半幅の推論用重み。
@@ -117,7 +119,70 @@ impl PairwiseL16L32 {
                     .flat_map(|view| view[..width / 4].iter().copied())
                     .collect(),
             }),
+            hidden2_inference_weights: std::array::from_fn(|k| {
+                let mut row = [0; 32];
+                row[..30].copy_from_slice(&hidden2_weights[k * 30..(k + 1) * 30]);
+                row
+            }),
         })
+    }
+
+    /// 幅256の鏡映共有では、128要素の入力と重みの各行を固定長で扱う。
+    /// 要素積とシフトの順序を保ち、入力を全要素から直接構築してゼロ初期化を省く。
+    fn output_shared_256(
+        &self,
+        us: &[i16; 256],
+        them: &[i16; 256],
+        weights: &SharedMirrorWeights,
+    ) -> i32 {
+        let input: [[i16; 64]; 2] = [us, them].map(|acc| {
+            std::array::from_fn(|j| {
+                pairwise_product(acc[j], acc[j + 64]) + pairwise_product(acc[j + 128], acc[j + 192])
+            })
+        });
+        let input = input.as_flattened();
+        let mut u = [0_i16; 32];
+        for (k, (&bias, row)) in self
+            .hidden1_biases
+            .iter()
+            .zip(weights.hidden1_weights.as_chunks::<128>().0)
+            .enumerate()
+        {
+            let mut z = bias;
+            for (&w, &a) in row.iter().zip(input) {
+                z += i32::from(w) * i32::from(a);
+            }
+            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as i16;
+            u[15 + k] = (z >> 8).clamp(0, 127) as i16;
+        }
+        let output_weights: &[i16; 128] = weights
+            .output_weights
+            .as_ref()
+            .try_into()
+            .expect("shared output weights must have half the network width");
+        let mut out = self.output_bias;
+        for (&w, &a) in output_weights.iter().zip(input) {
+            out += i32::from(w) * i32::from(a);
+        }
+        out + self.hidden2_sum(&u)
+    }
+
+    /// ゼロ埋めした第2隠れ層の出力内積を求める。
+    /// 内積の絶対値は32×127×8,192以下なので、直接出力への加算をまとめてもi32に収まる。
+    fn hidden2_sum(&self, u: &[i16; 32]) -> i32 {
+        let mut y = [0_u8; 32];
+        for (k, row) in self.hidden2_inference_weights.iter().enumerate() {
+            let mut z = self.hidden2_biases[k];
+            for (&w, &a) in row.iter().zip(u) {
+                z += i32::from(w) * i32::from(a);
+            }
+            y[k] = (z >> 8).clamp(0, 127) as u8;
+        }
+        let mut out = 0;
+        for (&w, &a) in self.hidden2_output.iter().zip(&y) {
+            out += i32::from(w) * i32::from(i16::from(a));
+        }
+        out
     }
 }
 
@@ -196,28 +261,28 @@ impl Head for PairwiseL16L32 {
         let width = self.output_weights.len();
         assert_eq!(us.len(), width);
         assert_eq!(them.len(), width);
-        let mut buffer = [0_u8; 512];
-        let s = &mut buffer[..width];
-        pairwise(us, &mut s[..width / 2]);
-        pairwise(them, &mut s[width / 2..]);
-
-        let mut folded = [0_u8; 256];
+        if let (256, Some(weights)) = (width, &self.shared_mirror_weights) {
+            return self.output_shared_256(
+                us.try_into().expect("accumulator width was checked"),
+                them.try_into().expect("accumulator width was checked"),
+                weights,
+            );
+        }
+        let mut buffer = [0_i16; 512];
         let (input, output_weights, hidden1_weights) =
             if let Some(weights) = &self.shared_mirror_weights {
-                let f = &mut folded[..width / 2];
-                // 各視点内のs[j]とs[j+H/4]を足す。和は0〜254に収まる。
-                for (view, values) in s.chunks_exact(width / 2).zip(f.chunks_exact_mut(width / 4)) {
-                    let (left, right) = view.split_at(width / 4);
-                    for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
-                        *value = a + b;
-                    }
-                }
+                let f = &mut buffer[..width / 2];
+                pairwise_folded(us, &mut f[..width / 4]);
+                pairwise_folded(them, &mut f[width / 4..]);
                 (
                     &*f,
                     weights.output_weights.as_ref(),
                     weights.hidden1_weights.as_ref(),
                 )
             } else {
+                let s = &mut buffer[..width];
+                pairwise(us, &mut s[..width / 2]);
+                pairwise(them, &mut s[width / 2..]);
                 (
                     &*s,
                     self.output_weights.as_ref(),
@@ -225,36 +290,26 @@ impl Head for PairwiseL16L32 {
                 )
             };
 
-        let mut u = [0_u8; 30];
+        // 末尾2要素と対応する重みは0なので、32要素で計算しても積和は変わらない。
+        let mut u = [0_i16; 32];
         for (k, row) in hidden1_weights.chunks_exact(input.len()).enumerate() {
             let mut z = self.hidden1_biases[k];
             for (&w, &a) in row.iter().zip(input) {
-                z += i32::from(w) * i32::from(i16::from(a));
+                z += i32::from(w) * i32::from(a);
             }
-            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as u8;
-            u[15 + k] = (z >> 8).clamp(0, 127) as u8;
-        }
-        let mut y = [0_u8; 32];
-        for (k, row) in self.hidden2_weights.as_chunks::<30>().0.iter().enumerate() {
-            let mut z = self.hidden2_biases[k];
-            for (&w, &a) in row.iter().zip(&u) {
-                z += i32::from(w) * i32::from(i16::from(a));
-            }
-            y[k] = (z >> 8).clamp(0, 127) as u8;
+            u[k] = ((i64::from(z) * i64::from(z)) >> 23).min(127) as i16;
+            u[15 + k] = (z >> 8).clamp(0, 127) as i16;
         }
         let mut out = self.output_bias;
         for (&w, &a) in output_weights.iter().zip(input) {
-            out += i32::from(w) * i32::from(i16::from(a));
+            out += i32::from(w) * i32::from(a);
         }
-        for (&w, &a) in self.hidden2_output.iter().zip(&y) {
-            out += i32::from(w) * i32::from(i16::from(a));
-        }
-        out
+        out + self.hidden2_sum(&u)
     }
 }
 
 /// 1視点の[A, B, Aの鏡映, Bの鏡映]を、2つの要素積へ縮める。
-fn pairwise(acc: &[i16], output: &mut [u8]) {
+fn pairwise(acc: &[i16], output: &mut [i16]) {
     let quarter = acc.len() / 4;
     for (half, values) in acc
         .chunks_exact(2 * quarter)
@@ -262,11 +317,29 @@ fn pairwise(acc: &[i16], output: &mut [u8]) {
     {
         let (left, right) = half.split_at(quarter);
         for ((value, &a), &b) in values.iter_mut().zip(left).zip(right) {
-            let a = a.clamp(0, 255) as u16;
-            let b = b.clamp(0, 255) as u16;
-            *value = ((a * b) >> 9) as u8;
+            *value = pairwise_product(a, b);
         }
     }
+}
+
+/// 鏡映共有する2つの要素積を直接足し、各行が再利用するi16入力へ格納する。
+/// 個々の積は0〜127なので和は0〜254であり、共有重みとの積和は展開前と等しい。
+fn pairwise_folded(acc: &[i16], output: &mut [i16]) {
+    let quarter = acc.len() / 4;
+    let (left, right) = acc.split_at(2 * quarter);
+    let (a, b) = left.split_at(quarter);
+    let (c, d) = right.split_at(quarter);
+    for ((((value, &a), &b), &c), &d) in output.iter_mut().zip(a).zip(b).zip(c).zip(d) {
+        *value = pairwise_product(a, b) + pairwise_product(c, d);
+    }
+}
+
+/// 0〜255へ切り詰めた2値の積をu16の論理シフトで縮める。
+/// 積は最大65,025でu16に収まり、9ビットのシフト後は0〜127なのでi16でも同じ値を保つ。
+fn pairwise_product(a: i16, b: i16) -> i16 {
+    let a = a.clamp(0, 255) as u16;
+    let b = b.clamp(0, 255) as u16;
+    ((a * b) >> 9) as i16
 }
 
 fn validate_width(width: usize) -> Result<(), Error> {

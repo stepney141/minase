@@ -1,0 +1,17 @@
+position=initial depth=9 nodes=2627 best=5l4k score=28 elapsed=0.005018s
+position=game-2-ply-40 depth=9 nodes=8399 best=3i2h score=1747 elapsed=0.012477s
+position=game-2-ply-60 depth=9 nodes=8917 best=3d4f score=9147 elapsed=0.010938s
+position=game-3-ply-310 depth=9 nodes=11038 best=7k7i score=-4161 elapsed=0.017307s
+position=game-3-ply-465 depth=9 nodes=12216 best=8g8i score=8555 elapsed=0.015523s
+position=game-4-ply-164 depth=9 nodes=7911 best=3i4j3j score=-1727 elapsed=0.010028s
+position=game-4-ply-246 depth=9 nodes=5337 best=5h7h score=-3387 elapsed=0.008361s
+position=game-5-ply-170 depth=9 nodes=19092 best=2j2g score=4084 elapsed=0.027971s
+position=game-5-ply-255 depth=9 nodes=12810 best=5a1e score=-9086 elapsed=0.019975s
+position=game-6-ply-51 depth=9 nodes=9142 best=6d8d score=1 elapsed=0.011410s
+position=game-6-ply-77 depth=9 nodes=10852 best=6d6f score=45 elapsed=0.017846s
+position=game-8-ply-183 depth=9 nodes=5588 best=9b8c score=-683 elapsed=0.008319s
+position=game-8-ply-275 depth=9 nodes=3816 best=5e2e score=-1087 elapsed=0.004481s
+position=game-10-ply-277 depth=9 nodes=4351 best=5b12i+ score=2994 elapsed=0.005664s
+position=game-10-ply-416 depth=9 nodes=14601 best=4k11k score=-3651 elapsed=0.014901s
+summary: positions=15 depth=9 nodes=136697 elapsed=0.190218s nps=718632
+accumulators: accumulator_updates=150766 accumulator_refreshes=15 refresh_fraction=0.000099

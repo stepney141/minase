@@ -1,0 +1,126 @@
+{
+  "old": {
+    "path": "source-old/crates/minase/nets/nnue.bin",
+    "revision": "9f393ecce304ba2b8aa83abdf624562224c879b5",
+    "sha256": "046be0e6e21b42e491eec06689e80683daa9b1e2ff639b7af2cdaa0ced706e4d",
+    "body_sha256_verified": true,
+    "architecture": "features=P;ft=128;linear=tapered2;head=direct-screlu",
+    "file_bytes": 3558208,
+    "nonlinear_all_zero": false,
+    "sections": {
+      "linear": {
+        "offset": 192,
+        "elements": 27360,
+        "zero_elements": 0,
+        "nonzero_elements": 27360
+      },
+      "piece_values": {
+        "offset": 54912,
+        "elements": 47,
+        "zero_elements": 0,
+        "nonzero_elements": 47
+      },
+      "input_weights": {
+        "offset": 55100,
+        "elements": 1751040,
+        "zero_elements": 549544,
+        "nonzero_elements": 1201496
+      },
+      "input_bias": {
+        "offset": 3557180,
+        "elements": 128,
+        "zero_elements": 6,
+        "nonzero_elements": 122
+      },
+      "head_output_weights": {
+        "offset": 3557692,
+        "elements": 256,
+        "zero_elements": 0,
+        "nonzero_elements": 256
+      },
+      "head_output_bias": {
+        "offset": 3558204,
+        "elements": 1,
+        "zero_elements": 0,
+        "nonzero_elements": 1
+      }
+    }
+  },
+  "gen0": {
+    "path": "source-gen0/crates/minase/nets/nnue.bin",
+    "revision": "6f874692fb91544c94394ca0e8df25299ef2e02d",
+    "sha256": "6f5e16b040c063954040ac190c7722adaf224cddd153587f749254bc5869792d",
+    "body_sha256_verified": true,
+    "architecture": "features=P;ft=256;linear=tapered2;head=pairwise-l16-l32",
+    "file_bytes": 7070652,
+    "nonlinear_all_zero": true,
+    "sections": {
+      "linear": {
+        "offset": 192,
+        "elements": 27360,
+        "zero_elements": 288,
+        "nonzero_elements": 27072
+      },
+      "piece_values": {
+        "offset": 54912,
+        "elements": 47,
+        "zero_elements": 0,
+        "nonzero_elements": 47
+      },
+      "input_weights": {
+        "offset": 55100,
+        "elements": 3502080,
+        "zero_elements": 3502080,
+        "nonzero_elements": 0
+      },
+      "input_bias": {
+        "offset": 7059260,
+        "elements": 256,
+        "zero_elements": 256,
+        "nonzero_elements": 0
+      },
+      "head_o": {
+        "offset": 7060284,
+        "elements": 256,
+        "zero_elements": 256,
+        "nonzero_elements": 0
+      },
+      "head_b": {
+        "offset": 7060796,
+        "elements": 1,
+        "zero_elements": 1,
+        "nonzero_elements": 0
+      },
+      "head_W1": {
+        "offset": 7060800,
+        "elements": 3840,
+        "zero_elements": 3840,
+        "nonzero_elements": 0
+      },
+      "head_b1": {
+        "offset": 7068480,
+        "elements": 15,
+        "zero_elements": 15,
+        "nonzero_elements": 0
+      },
+      "head_W2": {
+        "offset": 7068540,
+        "elements": 960,
+        "zero_elements": 960,
+        "nonzero_elements": 0
+      },
+      "head_b2": {
+        "offset": 7070460,
+        "elements": 32,
+        "zero_elements": 32,
+        "nonzero_elements": 0
+      },
+      "head_v": {
+        "offset": 7070588,
+        "elements": 32,
+        "zero_elements": 32,
+        "nonzero_elements": 0
+      }
+    }
+  }
+}

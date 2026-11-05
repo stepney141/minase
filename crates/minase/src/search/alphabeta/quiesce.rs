@@ -8,7 +8,7 @@ use crate::search::snapshot::{SearchRepetition, search_key};
 use crate::search::{MATE, MAX_PLY, REPETITION_BAND_START, in_repetition_band};
 use minase_core::MoveGenerator;
 use minase_core::board::Bitboard;
-use minase_core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
+use minase_core::movegen::{CaptureCache, CaptureCandidate, CheckContext, OrdinaryCapturer};
 use minase_core::mv::Move;
 use minase_core::piece::{PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
@@ -27,7 +27,7 @@ use super::history::pawn_key_after_move;
 use super::ordering::piece_at_for_ordering;
 use super::pruning::{corrected_static_eval, pruning_eval, should_raise_futility_best_score};
 use super::royal::captures_all_royals;
-use super::searcher::{MoveRecord, PathMove, Searcher};
+use super::searcher::{AccumulatorUpdate, MoveRecord, PathMove, PendingAccumulator, Searcher};
 use super::see::see_prunes;
 use super::tt::Bound;
 use crate::search::params;
@@ -137,8 +137,6 @@ impl Searcher<'_> {
         {
             assert_eq!(self.path_moves.len(), ply as usize);
             assert_eq!(self.path_moves.len() + 1, self.path_keys.len());
-            self.nnue
-                .assert_accumulator(position, &self.accumulators[ply as usize], ply);
             assert_eq!(self.material_keys[ply as usize], material_key(position));
             assert_eq!(self.pawn_keys[ply as usize], pawn_key(position));
             let correction_keys = correction_piece_keys(position);
@@ -147,12 +145,7 @@ impl Searcher<'_> {
         }
 
         if ply >= MAX_PLY {
-            return Some(
-                self.nnue.evaluate_accumulator(
-                    &self.accumulators[ply as usize],
-                    position.side_to_move(),
-                ),
-            );
+            return Some(self.evaluate_at(position, ply));
         }
 
         let key = search_key(position);
@@ -201,8 +194,7 @@ impl Searcher<'_> {
             }
             static_eval
         } else {
-            self.nnue
-                .evaluate_accumulator(&self.accumulators[ply as usize], side)
+            self.evaluate_at(position, ply)
         };
         let s = corrected_static_eval(
             v,
@@ -238,6 +230,7 @@ impl Searcher<'_> {
         let mut best = best;
         let mut best_move = None;
         let mut candidate_count = 0;
+        let mut check_context = CheckContext::default();
         let futility_base = s + self.delta_margin;
         #[cfg(feature = "search-stats")]
         let low_value_threshold = alpha - futility_base;
@@ -276,6 +269,7 @@ impl Searcher<'_> {
                     .is_some_and(|square| candidate.capture.captured.contains(&Some(square)));
                 let is_double_lion = candidate.capture.piece.kind() == Some(PieceKind::Lion)
                     && candidate.capture.captured.iter().all(Option::is_some);
+                let mut see_floor_passed = false;
                 'pruning: {
                     if is_recapture || mv.promote {
                         #[cfg(feature = "search-stats")]
@@ -309,7 +303,11 @@ impl Searcher<'_> {
                                 self.stats.quiesce_lion_double_move_count_exemptions += 1;
                             }
                         } else {
-                            if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                            if self.checking_move_exempts_qsearch_pruning(
+                                position,
+                                mv,
+                                &mut check_context,
+                            ) {
                                 break 'pruning;
                             }
                             #[cfg(feature = "search-stats")]
@@ -321,7 +319,11 @@ impl Searcher<'_> {
                     }
 
                     if futility_value <= alpha {
-                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                        if self.checking_move_exempts_qsearch_pruning(
+                            position,
+                            mv,
+                            &mut check_context,
+                        ) {
                             break 'pruning;
                         }
                         if should_raise_futility_best_score(best, futility_value) {
@@ -334,8 +336,13 @@ impl Searcher<'_> {
                         continue 'candidates;
                     }
 
-                    if see_prunes(position, self.rules, self.nnue, mv, alpha - futility_base) {
-                        if self.checking_move_exempts_qsearch_pruning(position, mv) {
+                    let see_threshold = alpha - futility_base;
+                    if see_prunes(position, self.rules, self.nnue, mv, see_threshold) {
+                        if self.checking_move_exempts_qsearch_pruning(
+                            position,
+                            mv,
+                            &mut check_context,
+                        ) {
                             break 'pruning;
                         }
                         #[cfg(feature = "search-stats")]
@@ -352,8 +359,12 @@ impl Searcher<'_> {
                         }
                         continue 'candidates;
                     }
+                    // 同じ候補が厳しい閾値を通過したなら、下限でも枝刈りしない。
+                    see_floor_passed = see_threshold >= self.qsearch_see_floor;
                 }
-                if see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor) {
+                if !see_floor_passed
+                    && see_prunes(position, self.rules, self.nnue, mv, self.qsearch_see_floor)
+                {
                     #[cfg(feature = "search-stats")]
                     {
                         self.stats.quiesce_see_floor_prunes += 1;
@@ -362,17 +373,11 @@ impl Searcher<'_> {
                 }
                 self.enter_node().then_some(())?;
                 self.previous_move_to[(ply + 1) as usize] = Some(mv.to);
+                self.ensure_accumulator(position, ply);
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,
                     candidate.capture.captured,
-                );
-                let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-                self.nnue.update_accumulator_after_move(
-                    &parents[ply as usize],
-                    &mut children[0],
-                    position,
-                    &undo,
                 );
                 self.material_keys[(ply + 1) as usize] =
                     key_after_move(self.material_keys[ply as usize], &undo);
@@ -398,12 +403,16 @@ impl Searcher<'_> {
                     record: Some(MoveRecord::from_undo(self.nnue, &undo)),
                     attacking: None,
                 });
+                self.pending_accumulators[(ply + 1) as usize] = Some(PendingAccumulator {
+                    update: AccumulatorUpdate::Move(undo),
+                    computed: false,
+                });
                 let score = self
                     .quiesce(position, -beta, -alpha, ply + 1)
                     .map(|value| -value);
                 self.path_keys.pop();
                 self.path_moves.pop();
-                position.unmake_move(undo);
+                position.unmake_move(self.take_accumulator_move(ply + 1));
                 score?
             };
             if score > best {
@@ -427,12 +436,17 @@ impl Searcher<'_> {
     }
 
     /// 枝刈り条件に当たった候補が王手になる手なら、免除として記録する。
-    fn checking_move_exempts_qsearch_pruning(&mut self, position: &Position, mv: Move) -> bool {
+    fn checking_move_exempts_qsearch_pruning(
+        &mut self,
+        position: &Position,
+        mv: Move,
+        context: &mut CheckContext,
+    ) -> bool {
         #[cfg(feature = "search-stats")]
         {
             self.stats.quiesce_gives_check_calls += 1;
         }
-        let gives_check = position.gives_check(&self.generator, mv);
+        let gives_check = context.gives_check(position, &self.generator, mv);
         #[cfg(feature = "search-stats")]
         if gives_check {
             self.stats.quiesce_check_exemptions += 1;
@@ -580,7 +594,7 @@ impl QsearchBuffers {
         self.tt_pending = self.tt_move.is_some();
     }
 
-    /// 特殊捕獲を生成し、すべての相手駒を捕獲価値の群へ登録して通常駒の利きを保存する。
+    /// 特殊捕獲を生成し、通常駒が取れる相手駒だけを捕獲価値の群へ登録する。
     /// 合法な捕獲の有無は調べず、群の候補は[`Self::next`]が必要になったときに生成する。
     /// 獅子が経由升で取り、移動元と異なる空升へ進む手は探索候補から除く。
     pub(super) fn initialize(
@@ -607,12 +621,19 @@ impl QsearchBuffers {
         });
         self.special
             .sort_unstable_by_key(|c| (Reverse(c.captured_value), c.seq));
-        let mut allowed = Bitboard::EMPTY;
+        let allowed = generator.collect_ordinary_capturers(
+            position,
+            position.pieces_of(opponent),
+            &mut self.capturers,
+        );
         for kind in PieceKind::ALL {
-            let pieces = position.pieces_of_kind(opponent, kind);
+            let pieces = position.pieces_of_kind(opponent, kind) & allowed;
+            if pieces.is_empty() {
+                continue;
+            }
             let [unpromoted, promoted] = ranks.ranks_of_kind[kind.index()];
             if unpromoted == promoted {
-                self.add_targets(pieces, unpromoted, &mut allowed);
+                self.add_targets(pieces, unpromoted);
             } else {
                 for square in pieces {
                     let rank = if piece_at_for_ordering(position, square).is_promoted() {
@@ -620,15 +641,14 @@ impl QsearchBuffers {
                     } else {
                         unpromoted
                     };
-                    self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
+                    self.add_targets(Bitboard::from_square(square), rank);
                 }
             }
         }
-        generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
     }
 
-    /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位と全対象升の集合を更新する。
-    fn add_targets(&mut self, targets: Bitboard, rank: u8, allowed: &mut Bitboard) {
+    /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位を更新する。
+    fn add_targets(&mut self, targets: Bitboard, rank: u8) {
         if targets.is_empty() {
             return;
         }
@@ -639,7 +659,6 @@ impl QsearchBuffers {
         } else {
             self.targets_by_rank[rank as usize] |= targets;
         }
-        *allowed |= targets;
     }
 
     /// 通常捕獲と特殊捕獲の残りから最大の捕獲価値を選び、同価値の候補を1群だけ生成する。

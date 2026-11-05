@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use crate::board::Bitboard;
 use crate::board::Direction;
 use crate::board::{RAW_SQUARE_COUNT, Square};
-use crate::piece::{COLOR_COUNT, Color};
+use crate::piece::{COLOR_COUNT, Color, PieceKind};
 
 use super::fixed::{
     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
@@ -21,12 +21,16 @@ pub(crate) struct AttackTables {
     rays: Box<RayTable>,
     /// 色×プロファイル×升ごとの固定利き。
     fixed: FixedAttackTable,
+    /// 5×5近傍の相対升から固定利きが届く駒種の集合。添字は生値の差に34を足した値。
+    fixed_attacker_kinds: [[u32; 69]; COLOR_COUNT],
     /// 遮蔽のない盤面での固定利きと走りの和。
     reach: FixedAttackTable,
     /// 色×プロファイルごとの走りの絶対方向マスク。
     slide_directions: [[u8; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT],
     /// 各升を中心とする5×5の近傍。固定利きの逆引きに使う。
     neighbourhoods: [Bitboard; RAW_SQUARE_COUNT],
+    /// 対象升への利きが依存する8方向の利き線と5×5近傍の和集合。
+    attack_dependencies: [Bitboard; RAW_SQUARE_COUNT],
     /// 各升から獅子が直接跳べる2升先の集合(第12条第5項・第6項)。
     lion_jumps: [Bitboard; RAW_SQUARE_COUNT],
 }
@@ -39,6 +43,18 @@ impl AttackTables {
             vec![Bitboard::EMPTY; COLOR_COUNT * MOVEMENT_PROFILE_COUNT * RAW_SQUARE_COUNT]
                 .into_boxed_slice();
 
+        let mut fixed_attacker_kinds = [[0; 69]; COLOR_COUNT];
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                for delta in
+                    movement_profile_data(super::fixed::movement_profile(kind)).fixed_deltas
+                {
+                    let (file, rank) = delta.for_color(color);
+                    let index = (i16::from(rank) * 16 + i16::from(file) + 34) as usize;
+                    fixed_attacker_kinds[color.index()][index] |= 1 << kind.index();
+                }
+            }
+        }
         let mut slide_directions = [[0; MOVEMENT_PROFILE_COUNT]; COLOR_COUNT];
         for color in Color::ALL {
             for profile_id in all_profiles() {
@@ -80,14 +96,22 @@ impl AttackTables {
             }
         }
 
+        let mut attack_dependencies = neighbourhoods;
+        for from in Square::all() {
+            for direction in Direction::ALL {
+                attack_dependencies[from.raw_index()] |= rays[direction.index()][from.raw_index()];
+            }
+        }
         let reach = fixed.clone();
         let mut tables = Self {
             reach,
             rays,
             fixed,
+            fixed_attacker_kinds,
             slide_directions,
             lion_jumps,
             neighbourhoods,
+            attack_dependencies,
         };
         for color in Color::ALL {
             for profile_id in all_profiles() {
@@ -126,6 +150,14 @@ impl AttackTables {
         self.fixed[Self::fixed_index(color, profile, from)]
     }
 
+    /// 5×5近傍内の`from`から`target`へ固定利きが届く駒種をビット集合で返す。
+    /// 生値は段幅16なので、この範囲の相対升は−34から34の差で一意に表せる。
+    #[inline]
+    pub(crate) fn fixed_attacker_kinds(&self, color: Color, target: Square, from: Square) -> u32 {
+        let index = (i16::from(target.raw()) - i16::from(from.raw()) + 34) as usize;
+        self.fixed_attacker_kinds[color.index()][index]
+    }
+
     /// 遮蔽を考慮しない固定利きと走りの到達範囲を返す。
     #[inline]
     pub(crate) fn reach(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
@@ -149,6 +181,14 @@ impl AttackTables {
         self.neighbourhoods[square.raw_index()]
     }
 
+    /// 指定升への利きに影響する占有升の範囲を返す。
+    /// 固定利きと特殊移動の到達範囲は5×5近傍に収まり、走りの逆引きは8方向の遮蔽だけを見る。
+    /// したがって、この和集合の外で占有が変わっても`attackers_to_by`の結果は変わらない。
+    #[inline]
+    pub(crate) fn attack_dependencies(&self, square: Square) -> Bitboard {
+        self.attack_dependencies[square.raw_index()]
+    }
+
     /// 獅子が直接跳べる2升先の集合を返す。
     #[inline]
     pub(crate) fn lion_jumps(&self, from: Square) -> Bitboard {
@@ -159,6 +199,23 @@ impl AttackTables {
     #[inline]
     pub(crate) fn ray(&self, from: Square, direction: Direction) -> Bitboard {
         self.rays[direction.index()][from.raw_index()]
+    }
+
+    /// 指定した走り線上の最初の遮蔽升を返す。空の線なら`None`となる。
+    /// 捕獲できる駒はこの1枚だけなので、捕獲生成では途中の空升を求める必要がない。
+    #[inline]
+    pub(crate) fn first_blocker(
+        &self,
+        from: Square,
+        direction: Direction,
+        occupied: Bitboard,
+    ) -> Option<Square> {
+        let blockers = self.ray(from, direction) & occupied;
+        if direction.increases_raw_index() {
+            blockers.lsb()
+        } else {
+            blockers.msb()
+        }
     }
 
     /// 遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
@@ -245,6 +302,15 @@ mod tests {
         for occupied in occupancies {
             for from in Square::all() {
                 for direction in Direction::ALL {
+                    for enemy in [occupied, occupied & diagonal, Bitboard::EMPTY] {
+                        let capture = tables
+                            .first_blocker(from, direction, occupied)
+                            .filter(|&square| enemy.contains(square));
+                        assert_eq!(
+                            Bitboard::from_squares(capture),
+                            tables.sliding_control(from, direction, occupied) & enemy
+                        );
+                    }
                     assert_eq!(
                         tables.sliding_control(from, direction, occupied),
                         walk(from, direction, occupied),

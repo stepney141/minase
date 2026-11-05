@@ -1,0 +1,8 @@
+warning: Maximum frequency rate (2700 Hz) exceeded, throttling from 3001 Hz to 2700 Hz.
+         The limit can be raised via /proc/sys/kernel/perf_event_max_sample_rate.
+         The kernel will lower it when perf's interrupts take too long.
+         Use --strict-freq to disable this throttling, refusing to record.
+progress: games=1/2 records=0 elapsed_seconds=6.391
+progress: games=2/2 records=0 elapsed_seconds=12.615
+[ perf record: Woken up 35 times to write data ]
+[ perf record: Captured and wrote 1.965 MB /home/stepney141/board-games/minase/target/teacher-optimization/results/base-cycles.data (34038 samples) ]
