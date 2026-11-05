@@ -2,7 +2,7 @@
 
 ## 目的
 
-[世代反復の設計書](../../plans/nnue-generation-reset.md)の第2世代の判定として、[第2世代のネット](nnue-generation-reset-gen2-training.md)を暫定最良世代の第1世代と対局で比べる。
+[世代反復の設計書](../../plans/archived/nnue-generation-reset.md)の第2世代の判定として、[第2世代のネット](nnue-generation-reset-gen2-training.md)を暫定最良世代の第1世代と対局で比べる。
 
 ## コマンドライン
 

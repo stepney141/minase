@@ -2,7 +2,7 @@
 
 ## 目的
 
-[世代反復の設計書](../../plans/nnue-generation-reset.md)の第1世代の生成が、[試走](../vast-selfplay/vast-selfplay-trial.md)から見積もった1本約12分の2倍以上かかったので、同じ生成機で過去のコードや同時対局数の条件と比べて、遅くなった理由と速くする余地を調べる。
+[世代反復の設計書](../../plans/archived/nnue-generation-reset.md)の第1世代の生成が、[試走](../vast-selfplay/vast-selfplay-trial.md)から見積もった1本約12分の2倍以上かかったので、同じ生成機で過去のコードや同時対局数の条件と比べて、遅くなった理由と速くする余地を調べる。
 
 ## コマンドライン
 

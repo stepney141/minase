@@ -123,7 +123,7 @@
 | 審判層の裁定が繰り返す合法手生成の削減 | [plans/archived/referee-adjudication-movegen.md](plans/archived/referee-adjudication-movegen.md) | 完了（採用） | 2026年10月28日 |
 | NNUEの線形の経路の対局結果への回帰 | [plans/archived/nnue-outcome-regression.md](plans/archived/nnue-outcome-regression.md) | 完了（採用） | 2026年11月3日 |
 | NNUEの教師局面を静止探索の末端へ置き換える比較 | [plans/archived/nnue-qsearch-leaf.md](plans/archived/nnue-qsearch-leaf.md) | 完了（不採用） | 2026年11月4日 |
-| NNUEの世代反復をv0からやり直す | [plans/nnue-generation-reset.md](plans/nnue-generation-reset.md) | 進行中 | |
+| NNUEの世代反復をv0からやり直す | [plans/archived/nnue-generation-reset.md](plans/archived/nnue-generation-reset.md) | 中断 | 2026年11月6日 |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 
@@ -131,6 +131,7 @@
 
 ### 直近の完了
 
+- [NNUEの世代反復をv0からやり直す計画](plans/archived/nnue-generation-reset.md)は2026年11月6日に、利用者の決定で中断した。第2世代まで作り、第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較で、学習条件に根拠の弱い点が多く見つかり、検証損失がエポック2〜3で最良になる原因も分からないままである（[状態](plans/archived/nnue-generation-reset.md#状態)）。教師は足りておらず、局面数が同じなら対局が多いほうが強い（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)）。標準の学習条件を決め直してから、v0の教師生成からやり直す。統合の前にブランチの埋め込みのネットをmasterのネットへ戻したので、masterのエンジンの評価は変わっていない。
 - [NNUE教師生成を探索結果を変えずに速くする計画](plans/archived/teacher-generation-speedup.md)は2026年11月6日に完了した。教師ファイルがバイト単位で一致する変更だけで、生成機の代理環境の探索速度が基準版の1.580倍になった（[測定](measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)）。変更は世代反復のブランチ`nnue-generation-reset`の統合でmasterへ入った。統合後は親ディレクトリの`.cargo/config.toml`にインライン化の指定が入るので、古いコミットと比べる対局ではビルドを混ぜない（[教訓](lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 - [NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)は2026年11月4日に、一部不採用で完了した。幅256の第1層、要素積、2段の隠れ層、skip接続、および16ビットの累算値を、同じ教師で学んだ幅128のネットに`H1`を取らないまま世代反復で使う構成として確定した（[ADR](adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。[STC](measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`（得点率43.6%）、[固定ノードの対局](measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)は−2.6 Elo（95%区間−35.8〜+30.5）、探索速度は約0.91倍である。隠れ層の重みをi8からi16へ改めると、量子化誤差は29.80 cpから9.45 cpへ下がった（[記録](measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。開発者の決定により世代反復の起点としてmasterへ統合したので、masterのエンジンは統合前より弱いと見込まれる。統合前のコミットはブランチ`nnue-width128-regressed`に残し、世代反復の最終候補の比較の基準にする。最終候補が決まるまで、masterからのリリースとBotの更新ではエンジンが弱くなる。
 - [NNUEの教師局面を静止探索の末端へ置き換える比較](plans/archived/nnue-qsearch-leaf.md)は2026年11月4日に、不採用で完了した。やねうら王の`qsearch_psv`と同じ置き換え（qsearch leaf replacement）で学んだネットは、補正前のネットに対するSTCで`H0`だった（406有効ペア、得点率45.7%、[記録](measurements/nnue-qsearch-leaf/nnue-qsearch-leaf-stc.md)、[ADR](adr/do-not-replace-nnue-teacher-positions-with-qsearch-leaves.md)）。結論はP型の幅128での結果であり、世代反復の教師には入れない。
@@ -141,11 +142,11 @@
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
+- NNUEの標準の学習条件を決め直す計画と、v0からの世代反復の計画は、まだ設計書がない（2026年11月6日の利用者の決定）。中断した世代反復の[状態](plans/archived/nnue-generation-reset.md#状態)が見つかったことと引き継ぐ成果物をまとめ、[学習レシピの調査](research/nnue-training-recipes.md)が先行の学習器との差をまとめている。1世代の量を局面数でなく対局数で定めることを検討する。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 #### 評価関数（NNUE）
 
-- [NNUEの世代反復をv0からやり直す計画](plans/nnue-generation-reset.md)は、2026年11月4日に着手した進行中の計画であり、構成の見直しで確定した構成を使う。作業はブランチ`nnue-generation-reset`で行う。手書きの評価関数v0の教師から世代反復をやり直す。[線形の経路の結果回帰](plans/archived/nnue-outcome-regression.md)が学習の後に補正を足す2段階の手順であることを受けた計画であり、2026年11月3日の利用者の決定により、AlphaZero型の強化学習の再開より先に行う。教師はvast.aiで借りた1台の計算機で生成する。2026年11月4日の利用者の決定により、反復は第4世代までとし、第1世代の本がそろった時点で計算機を返して、第1世代の判定の後に第2世代以降の進め方を決める。2026年11月5日に計算機が障害で使えなくなったので、同じ日の利用者の決定により、第1世代はそれまでに届いた約6,566万局面で学習した。第1世代のネットはλ=0.75で第0世代に`H0`、同じ教師をλ=1.0で学習した比較のネットは`H1`であり（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)）、λ=1.0のネットに`fit-linear`を足すとさらに`H1`を取ったので（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen1-review.md)）、2026年11月5日の利用者の決定により、λ=1.0で学習して`fit-linear`で補正する手順へ改めた。補正後のネットは旧基準には`H0`（得点率8.4%）である。第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較では、学習率を長く保つ学習と最後のネットはどちらも強くならず、教師を半分にすると弱くなった。次の世代へ進むかと教師の量を利用者が決める。
 - [tataraの調査](research/tatara-nnue-transfer.md)の残りの候補（出力bucket、損失の形など）は、設計書がまだなく、世代反復の結果を見て起案する。採用条件は、棋力が向上し、配置の偏りが悪化しないことである（2026年11月3日の開発者の決定）。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は待機中である。現行のP型では探索中に全再計算が起きないので、自玉の位置で条件付けるネットを対局で測るか、累算器の更新方式を変えた時点で再開する。
 
@@ -160,7 +161,7 @@
 
 #### AlphaZero型探索
 
-- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する（[調査](research/alphazero-strength-gap.md)）。再開は、2026年11月3日の利用者の決定により、[NNUEの世代反復のやり直し](plans/nnue-generation-reset.md)の後とする。
+- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する（[調査](research/alphazero-strength-gap.md)）。再開は、2026年11月3日の利用者の決定により、[NNUEの世代反復のやり直し](plans/archived/nnue-generation-reset.md)の後とする。
 
 #### 探索
 

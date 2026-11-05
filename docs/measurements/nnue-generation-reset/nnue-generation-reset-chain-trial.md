@@ -2,7 +2,7 @@
 
 ## 目的
 
-[世代反復の設計書](../../plans/nnue-generation-reset.md)のフェーズ1の完了条件として、連続生成スクリプト`scripts/vast/generation_chain.py`を、vast.aiで借りた安い機械と少ない局数で動かし、世代の連鎖、失敗時の停止、借り直し後の再開、待ちの上限での自己停止、および口座のAPIが使えない間の動作を確かめる。
+[世代反復の設計書](../../plans/archived/nnue-generation-reset.md)のフェーズ1の完了条件として、連続生成スクリプト`scripts/vast/generation_chain.py`を、vast.aiで借りた安い機械と少ない局数で動かし、世代の連鎖、失敗時の停止、借り直し後の再開、待ちの上限での自己停止、および口座のAPIが使えない間の動作を確かめる。
 
 ## コマンドライン
 

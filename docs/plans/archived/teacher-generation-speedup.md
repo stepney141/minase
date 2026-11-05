@@ -9,7 +9,7 @@ vast.aiの生成機（AMD EPYC 9654の2基構成、384スレッド）で、起�
 調査の結論は、遅い主因はメモリ待ちではなく命令数であり、ノードあたりの命令数が試走時の版の1.87倍になっていたことである。
 コンパイラのインライン閾値の引き上げ、手生成と王手判定（gives_check）と反復検出の高速化、手選択器の整列の省略などで、[測定](../../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)の探索速度は基準版の1.555倍（性能コア）と1.580倍（生成機の代理環境）になり、教師ファイルはバイト単位で一致した。
 高速化の後は旧版との差の主因が命令数ではなくなり、[残る負荷](../../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)はメモリの待ち、命令の供給不足、および分岐予測ミスに分かれ、自己時間が8%を超える関数はない。
-変更は[世代反復](../nnue-generation-reset.md)のブランチ`nnue-generation-reset`に入っており、第2世代の生成で使っている。
+変更は[世代反復](nnue-generation-reset.md)のブランチ`nnue-generation-reset`に入っており、第2世代の生成で使っている。
 第2世代の最初の本（教師の1ファイル）の探索速度は第1世代の約2.9倍であるが、生成機の機種と評価関数のネットも違うので、高速化の寄与は分かっていない。
 生成の運用では、本の終わりに最長の対局を待つ間、[全計算資源の11.1%が使われておらず](../../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)、これを回収すれば1.125倍、NUMAノードごとの2プロセスへの分割で1.06〜1.09倍が見込めるが、どちらも行っていない。
 完了条件は、世代反復のブランチの統合によって変更がmasterへ入ることである。
@@ -20,7 +20,7 @@ vast.aiの生成機（AMD EPYC 9654の2基構成、384スレッド）で、起�
 
 完了。2026年11月4日に利用者の指示で起案し、同日に着手した。
 フェーズ1とフェーズ2で、探索結果の一致と全テストの成功を確かめた。
-変更は2026年11月5日に[世代反復](../nnue-generation-reset.md)のブランチ`nnue-generation-reset`へ統合され、第2世代の生成で使われた。
+変更は2026年11月5日に[世代反復](nnue-generation-reset.md)のブランチ`nnue-generation-reset`へ統合され、第2世代の生成で使われた。
 2026年11月6日に、そのブランチをmasterへ統合したことで、変更がmasterへ入った（フェーズ3）。
 統合の前に、masterの作業ツリーに残っていた先行測定の記録2件を、ブランチの内容との一致を確かめて削除し、利用者の指示で`target/match-cache`を削除した。
 統合の後に、worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`を削除した。
@@ -50,7 +50,7 @@ NUMAノードごとの分割は行っていない。
 - `crates/minase-core/src/movegen/`の合法性判定、王手判定、手生成、利きの逆引き。
 - `crates/minase/src/search/alphabeta/`の反復検出、手選択器、静止探索の初期化、SEE（静的交換評価）。
 - `crates/minase/src/eval/nnue/accumulator.rs`の差分更新。
-- 生成機での本の始め方とNUMAの扱いの提案。スクリプトは[世代反復](../nnue-generation-reset.md)の担当なので、本書では提案までとする。
+- 生成機での本の始め方とNUMAの扱いの提案。スクリプトは[世代反復](nnue-generation-reset.md)の担当なので、本書では提案までとする。
 
 次の事項は対象外とする。
 
@@ -63,7 +63,7 @@ NUMAノードごとの分割は行っていない。
 
 基準はmasterのコミット`9380aa7f`である。
 測定機は別セッションの測定とlishogi Botと共用するので、[測定機の確認](../../lessons/check-running-measurements-before-cpu-load.md)に従う。
-変更は[世代反復](../nnue-generation-reset.md)のブランチの統合によってmasterへ入るので、本書を完了できるのは同書の採否が決まった後である。
+変更は[世代反復](nnue-generation-reset.md)のブランチの統合によってmasterへ入るので、本書を完了できるのは同書の採否が決まった後である。
 
 ## 設計判断
 

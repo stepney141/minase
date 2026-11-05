@@ -21,4 +21,4 @@ NNUEの世代反復の設計書は、教師1本の生成を約12分と見積も�
 
 ## 出典
 
-[世代反復の設計書](../plans/nnue-generation-reset.md)、[生成機での教師生成の速さ](../measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)。
+[世代反復の設計書](../plans/archived/nnue-generation-reset.md)、[生成機での教師生成の速さ](../measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)。

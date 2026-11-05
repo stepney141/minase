@@ -20,7 +20,7 @@
 
 ## 標準レシピ
 
-2026年11月6日時点の暫定の標準であり、[世代反復](../plans/nnue-generation-reset.md)の第2世代の学習と同じ条件である。
+2026年11月6日時点の暫定の標準であり、[世代反復](../plans/archived/nnue-generation-reset.md)の第2世代の学習と同じ条件である。
 世代反復の第2世代の教師での比較を受けて見直している。
 世代反復では、`scripts/vast/generation_chain.py`がこの手順を続けて実行する。
 

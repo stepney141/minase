@@ -190,7 +190,7 @@ minaseの`--train-subsample`は同じ部分集合を毎周使うので、同じ�
 | variant-nnue-pytorch | 別のファイルか同じファイル。1回100万局面（[train.py 39行](https://github.com/fairy-stockfish/variant-nnue-pytorch/blob/0536db20871d5d849402e1541c8a29722dc5a69d/train.py#L39)） | 毎エポック保存し、利用者が選んで対局で確かめる（[Step-by-Step Guide 41〜42行](https://github.com/fairy-stockfish/variant-nnue-pytorch/wiki/Step-by-Step-Guide/668804196697bb157ae3f066382e60a8c46f0215)） | `--resume-from-model` |
 | bullet | 任意（[settings.rs 23行](https://github.com/jw1912/bullet/blob/5d70177680437b7c0ddf958bd4722d95afa78b0c/crates/bullet_lib/src/trainer/settings.rs#L22-L23)） | 例は定期の保存と最後の保存。Viridithasはエポックを対局で選ぶ | 同じ最適化器のまま次の段へ進む例がある |
 | やねうら王の旧学習器 | `validation_set_file_name`、なければ先頭の局面の一部 | 検証損失が最良の重みへ戻しながら進み、不採用が続くと止まる（[learner.cpp 2171〜2201行](https://github.com/yaneurao/YaneuraOu/blob/15c1cc6ae0ee87998af0251149dc6f1b175d95a3/source/learn/learner.cpp#L2171-L2201)） | 既存のネットを読んで続ける |
-| minase | 対局単位で分けた約5% | 検証損失が最良の周の重み。採否は段階ゲート | 行わない。毎世代初期化する（[設計書](../plans/nnue-generation-reset.md)） |
+| minase | 対局単位で分けた約5% | 検証損失が最良の周の重み。採否は段階ゲート | 行わない。毎世代初期化する（[設計書](../plans/archived/nnue-generation-reset.md)） |
 
 ### 正則化、クリップ、量子化、因子化、および初期値
 
@@ -385,7 +385,7 @@ minaseの過去の記録には、λ<1で[対局の勝敗を覚える](../lessons
 | 重み減衰 | 1e-4 | 0が多数。Stockfishは因子化の層だけ4e-5、bulletは0.01 | 第1層に減衰を掛ける先例はbulletの既定だけである |
 | 勾配クリップ | なし | Stockfishはノルム2.0、tataraはなし | 効果の記録はない |
 | 量子化を考慮した学習 | なし | Stockfishは既定で有効、tataraは任意 | StockfishにSTC +4.38、LTC +1.76 Eloの採用の記録があるが、量子化方式の変更と同時である。tataraの任意の機能は未測定である |
-| λ | 1.0、学習後に線形の経路を補正 | 0.667、1.0→0.7→1.0、1.0など | [設計書](../plans/nnue-generation-reset.md)の2026年11月5日の決定による。線形の経路を学習後に補正する先例は[tatara調査](tatara-nnue-transfer.md)でも見つかっていない |
+| λ | 1.0、学習後に線形の経路を補正 | 0.667、1.0→0.7→1.0、1.0など | [設計書](../plans/archived/nnue-generation-reset.md)の2026年11月5日の決定による。線形の経路を学習後に補正する先例は[tatara調査](tatara-nnue-transfer.md)でも見つかっていない |
 | 損失 | 二値交差エントロピー | 差の2〜2.75乗 | [tatara調査](tatara-nnue-transfer.md)が扱う |
 | 局面の間引き | 生成時だけ | Stockfishは1/4に間引き、variantも既定で1/4、tatara公開実験はなし | 周をまたいで別の局面を使う操作はminaseにない |
 | 検証 | 対局単位の分割 | 局面単位か外部の棋譜 | minaseのほうが厳密である |
@@ -441,10 +441,10 @@ minaseの過去の記録には、λ<1で[対局の勝敗を覚える](../lessons
 - 0.992という値は、1億局面単位の階段の値なので当てはまらない。minaseの1周に換算すると半減に86周かかり、前の[設計書](../plans/archived/nnue-lr-schedule.md)が見送った理由のとおりである。
 - 固定局面数のエポックは当てはまらない。データが数千億局面ある学習の都合であり、minaseは全局面を毎周並べ替えるので周回数がそのまま読める。
 - BulletOuのエポックごとに学習率を戻す形は当てはまらない。第2世代のように2周で頭打ちになる条件で学習率を戻す根拠が見つからない。
-- λ<1とλの周期は扱わない。[設計書](../plans/nnue-generation-reset.md)の2026年11月5日の決定により、第1世代のλ=0.75が第0世代に`H0`（得点率28.4%）だったことを受けて対象外とした。
+- λ<1とλの周期は扱わない。[設計書](../plans/archived/nnue-generation-reset.md)の2026年11月5日の決定により、第1世代のλ=0.75が第0世代に`H0`（得点率28.4%）だったことを受けて対象外とした。
 - 入力の因子化はP型には意味を持たない（[tatara調査](tatara-nnue-transfer.md)）。HalfKP-hm-b8用の仮想行は実装済みである。
 - Stockfishのlc0の評価による付け直しと、段ごとに別のデータを使う学習は、自分より強い評価器も別系統の教師データもないので当てはまらない（[調査](teacher-generation-strong-engines.md)）。
-- 既存のネットから続けて学ぶ追加学習は、世代のやり直しの方針と衝突する。`--base`は探索用駒価値と尺度だけを読み、毎世代初期化する（[設計書](../plans/nnue-generation-reset.md)）。
+- 既存のネットから続けて学ぶ追加学習は、世代のやり直しの方針と衝突する。`--base`は探索用駒価値と尺度だけを読み、毎世代初期化する（[設計書](../plans/archived/nnue-generation-reset.md)）。
 - Stockfishの本番の更新回数と総局面数は当てはまらない。同じ延べ局面数を1億局面で流すと約6,700周になる（推論）。
 
 ## 未確認の事項

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[世代反復の設計書](../../plans/nnue-generation-reset.md)の第2世代として、第1世代のネットで教師を生成し、λ=1.0で学習して`fit-linear`で補正する。
+[世代反復の設計書](../../plans/archived/nnue-generation-reset.md)の第2世代として、第1世代のネットで教師を生成し、λ=1.0で学習して`fit-linear`で補正する。
 本書は、生成、生成機での学習、補正、および診断を記録する。
 棋力は[第2世代のSTC](nnue-generation-reset-gen2-stc.md)に記録する。
 

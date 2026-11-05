@@ -2,7 +2,7 @@
 
 ## 目的
 
-[世代反復の設計書](../../plans/nnue-generation-reset.md)の第1世代の判定として、[第1世代のネット](nnue-generation-reset-gen1-training.md)を第0世代（手書きの評価関数v0）と対局で比べる。
+[世代反復の設計書](../../plans/archived/nnue-generation-reset.md)の第1世代の判定として、[第1世代のネット](nnue-generation-reset-gen1-training.md)を第0世代（手書きの評価関数v0）と対局で比べる。
 設計書の条件であるλ=0.75のネットに加えて、同じ教師をλ=1.0で学習した比較のネットも測り、λの影響を切り分ける。
 
 ## コマンドライン
