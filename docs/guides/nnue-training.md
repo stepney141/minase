@@ -464,16 +464,16 @@ done
 
 | 項目 | 値 | 根拠 |
 |---|---|---|
-| 教師の量 | 1世代約1億局面、1手2万ノード | 世代反復の設計判断（量を対局で比べてはいない） |
+| 教師の量 | 1世代約1億局面、1手2万ノード | 世代反復の設計判断。第2世代の教師では、全量が半分にSTCで`H1`（得点率63.2%）で、まだ頭打ちではない（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-volume.md)） |
 | λ | 1.0 | 第1世代で、第0世代に対してλ=0.75は`H0`、λ=1.0は`H1`（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)） |
 | 対局結果の反映 | 学習の後に`fit-linear`で線形の経路だけを補正する | 補正後のネットがλ=1.0のネットに`H1`（[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-review.md)） |
 | 構成 | P型、幅256、`pairwise-l16-l32` | [ADR](../adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)で確定（`H1`なしで確定し、世代の判定で検証中） |
 | 最適化手法 | AdamW（β1=0.9、β2=0.999、ε=1e-8） | Stockfishの本番と同じ値（[調査メモ](../research/nnue-training-recipes.md)） |
 | 基準の学習率 | 第1層と出力部0.001、線形の経路0.03 | 0.001は先行の初期値の範囲内（線形の経路は単位が違うので比べられない） |
-| 学習率の予定 | `cosine:3:0.1` | 倍率が一定の1倍に対してSTCで`H1`（[ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）。総長は未決であり、`cosine:10:0.1`との比較（測定名`nnue-generation-reset-gen2-cosine10-stc`）の結果で見直す |
+| 学習率の予定 | `cosine:3:0.1` | 倍率が一定の1倍に対してSTCで`H1`（[ADR](../adr/anneal-the-nnue-learning-rate-with-a-cosine-schedule.md)）。`cosine:10:0.1`で10エポック学習したネットは第2世代に`H0`（得点率45.4%、[記録](../measurements/nnue-generation-reset/nnue-generation-reset-gen2-cosine10.md)） |
 | 重み減衰 | 第1層と出力部1e-4、線形の経路0 | 値を選んだ根拠の記録なし（先行の多くは0） |
 | バッチ | 16,384局面 | 先行の多くと同じ |
-| 停止とネットの選択 | 改善なし5エポックで止め、検証損失が最良のネットを書き出す | 慣習（検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけ） |
+| 停止とネットの選択 | 改善なし5エポックで止め、検証損失が最良のネットを書き出す | 同じ学習の最後のネットは最良のネットに`H0`（得点率46.2%、同じ記録）。検証損失で選ぶのを標準とする学習器は、調べた範囲ではminaseだけ |
 
 ## 詳細の置き場所
 
