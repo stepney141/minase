@@ -1,6 +1,7 @@
 """第2世代のSTCの終了を待ち、学習率の予定だけを変えて学び直したネットを第2世代と対局で比べる。
 
 同じ教師、初期値、およびシードで`cosine:10:0.1`により学習し、`fit-linear`で補正して別のコミットにする。
+予定の総長の効果を測るので、早期終了で止めず10エポックまで学習する（`--epochs 10 --patience 50`）。
 学習と補正の出力が残っていれば、その工程から再開する。参照`gen-2`は動かさない。
 """
 import json
@@ -50,8 +51,8 @@ def train():
     command = [TRAINER, 'nnue', 'train', '--data', *BOOKS, '--base', str(BASE), '--lambda', str(a['lambda']),
                '--teacher-cp-per-logit', 'calibrate', '--seed', str(a['seed']), '--threads', '8',
                '--output-dir', str(TRAIN), '--feature-set', a['feature_set'], '--width', str(a['width']),
-               '--head', a['head'], '--batch', str(a['batch']), '--epochs', str(a['epochs']),
-               '--patience', str(a['patience']), '--device', a['device'],
+               '--head', a['head'], '--batch', str(a['batch']), '--epochs', '10',
+               '--patience', '50', '--device', a['device'],
                '--validation-interval', str(a['validation_interval']), '--lr-schedule', 'cosine:10:0.1']
     if (TRAIN / 'latest.npz').is_file():
         command.extend(['--resume', str(TRAIN)])
