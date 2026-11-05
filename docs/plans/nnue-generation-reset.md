@@ -376,7 +376,7 @@ LTCのシードは、STCの基本シードからペア数以上離れた値と�
 採用した場合は、ブランチの先頭の埋め込みのネットを最終候補のネットへ戻すコミットを作る。
 判定に落ちた世代のネットが先頭に残っていれば、先頭のネットは最終候補と異なるからである。
 重みファイルのSHA-256が最終候補のコミットと一致し、対局の挙動に関わるコードに差がないことを確かめてから（[教訓](../lessons/revert-rejected-candidates-before-merge.md)）、利用者の許可を得てmasterへ統合する。
-統合のときに[教師生成の高速化の設計書](teacher-generation-speedup.md)のフェーズ3を行う。内容は、masterの作業ツリーに未コミットで残る2件の測定記録の削除、`target/match-cache`を削除するかの確認、および同書の凍結である。
+統合のときに[教師生成の高速化の設計書](teacher-generation-speedup.md)のフェーズ3を行う。内容は、masterの作業ツリーに未コミットで残る2件の測定記録の削除、`target/match-cache`を削除するかの確認、作業物（worktree`data/worktrees/teacher-speedup`、ブランチ`teacher-speedup`、および`target/teacher-speedup/`）の削除、および同書の凍結である。
 方式をADRに書き、「依存関係」のADRに本書の結果を加え、[学習の手引き](../guides/nnue-training.md)と[ROADMAP](../ROADMAP.md)を改める。
 連続生成スクリプトの操作は、スクリプト冒頭の説明と手引きへ移す。
 不採用の場合は、ブランチを統合しない。
