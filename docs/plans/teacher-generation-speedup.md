@@ -8,6 +8,7 @@ vast.aiの生成機（AMD EPYC 9654の2基構成、384スレッド）で、現�
 探索結果が変わらないので、固定ノードの棋力も教師の品質も変わらない。
 調査の結論は、遅い主因はメモリ待ちではなく命令数であり、ノードあたりの命令数が試走時の版の1.87倍になっていたことである。
 コンパイラのインライン閾値の引き上げ、手生成と王手判定（gives_check）と反復検出の高速化、手選択器の整列の省略などで、[測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)の探索速度は基準版の1.555倍（性能コア）と1.580倍（生成機の代理環境）になり、教師ファイルはバイト単位で一致した。
+高速化の後は旧版との差の主因が命令数ではなくなり、[残る負荷](../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)はメモリの待ち、命令の供給不足、および分岐予測ミスに分かれ、自己時間が8%を超える関数はない。
 残りの差は生成の運用で埋める見込みである。
 本（教師の1ファイル）の終わりに最長の対局を待つ間、[全計算資源の11.1%が使われておらず](../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)、これを回収すれば1.125倍、NUMAノードごとの2プロセスへの分割で1.06〜1.09倍が見込める。
 全部が独立に効けば約1.9倍であるが、生成機では探索の変更も運用の変更もまだ測っていない。
@@ -18,8 +19,9 @@ vast.aiの生成機（AMD EPYC 9654の2基構成、384スレッド）で、現�
 進行中。2026年11月4日に利用者の指示で起案し、同日に着手した。
 worktreeは`data/worktrees/teacher-speedup`、ブランチは`teacher-speedup`である。
 フェーズ1とフェーズ2を終え、探索結果の一致と全テストの成功を確かめた。
-いま詰まっている点は、生成機が[世代反復](nnue-generation-reset.md)の生成で使用中であり、フェーズ3の比較に利用者の許可が要ることである。
-次の一手は、生成機での比較の時期と、段階ゲートの開始の時期を利用者と決めることである。
+2026年11月5日に、変更を[世代反復](nnue-generation-reset.md)のブランチ`nnue-generation-reset`へ統合した。masterへは統合していない。
+いま詰まっている点は、世代反復の生成機が同じ日の障害で削除され、第2世代も学習の設計の見直しのため保留になったので、フェーズ3の比較を行う機会がないことである。
+次の一手は、段階ゲートとmasterへの統合の時期を利用者と決めることである。
 
 ## 目的
 
@@ -119,11 +121,17 @@ Stockfish（`../stockfish`）のMovePickerは全静かな手を採点してか�
 
 利用者の許可を得て、生成機で現行版と候補を同時384局で比べる。
 NUMAノードごとの2プロセスと本の重ね方も、同じ機会に測る。
+比較の次の機会は、世代反復の第2世代を始めるときである。
 
 ### フェーズ4：段階ゲート
 
 固定ノードの探索結果は同じでも、持ち時間の対局では探索速度の分だけ棋力が変わるので、[測定の手引き](../guides/sprt.md)に従って候補とmasterのSTCとLTCを実行する。
 測定機の混雑に応じて、開始の時期は利用者と決める。
+
+cargoは親ディレクトリの`.cargo/config.toml`の`rustflags`も連結し、`minase match run`は作業ツリーの下でコミットをビルドする。
+そのため、masterへ統合した後は、古いコミットを新しくビルドしてもインライン閾値の指定が入り、キャッシュ済みのビルドには入らない。
+キャッシュ済みの基準（指定なし）と新しくビルドした候補（指定あり）を比べると、候補だけ約10%速くなる。
+2026年11月5日の利用者の判断によりビルドの手順は直さず、統合のときに`target/match-cache`を消すかを利用者に尋ねる。
 
 ## 検証
 
@@ -144,6 +152,7 @@ NUMAノードごとの2プロセスと本の重ね方も、同じ機会に測る
 - [探索結果を変えない高速化の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)
 - [生成機の本の末尾で使われない計算資源の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-book-tail.md)
 - [mimallocの環境変数と置換表の大きさの測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-allocator-and-hash.md)
+- [高速化の後に残る負荷の測定](../measurements/teacher-generation-speedup/teacher-generation-speedup-remaining-load.md)
 - [単独スレッドの測定](../measurements/adhoc/teacher-single-thread-profile-20261104.md)
 - [3つの変更の評価](../measurements/adhoc/teacher-nonzero-optimization-20261104.md)
 - 生成機での教師生成の速さ（ブランチ`nnue-generation-reset`の`docs/measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md`）
