@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""教師の生成、検査、学習、世代のコミットを順に実行する。
+"""教師の生成、検査、学習、補正、世代のコミットを順に実行する。
 
 使い方: python3 scripts/vast/generation_chain.py run --help
 表示される条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
 --offerだけは省略でき、保存した生成機へ接続するときには指定しない。
-作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train}を置く。
+作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train,fit}を置く。
 --worktreeにネットをコミットし、refs/nnue-generation-reset/gen-<N>で完了を表す。
 生成機には同じディレクトリのgeneration_worker.pyを/workspace/job/へ送る。
 SIGTERMとSIGINTでは子プロセスだけを止め、同じ引数での再実行に備える。
@@ -34,12 +34,12 @@ NETWORK = 'crates/minase/nets/nnue.bin'
 
 
 def low_priority() -> None:
-    """学習、ビルド、および検査を、STCとlishogi Botの対局より低い優先度で動かす。"""
+    """学習、補正、ビルド、および検査を、lishogi Botの対局より低い優先度で動かす。"""
     os.nice(19)
 
 
 class ChainStop(RuntimeError):
-    """教師、学習、または検定が継続の条件を満たしていない。"""
+    """教師、学習、または補正が継続の条件を満たしていない。"""
 
 
 class TransportFailure(RuntimeError):
@@ -54,7 +54,7 @@ class Interrupted(BaseException):
 
 
 class Children:
-    """学習と検定を通常の子として起動し、中断時にはその子孫まで回収する。"""
+    """外部コマンドを子プロセスとして起動し、中断時にはその子孫まで回収する。"""
 
     def __init__(self) -> None:
         self.processes: list[subprocess.Popen] = []
@@ -200,9 +200,6 @@ class Chain:
         self.manage_remote = False
         self.concurrency: int | None = None
         self.current: int | None = None
-        self.stc: subprocess.Popen | None = None
-        self.stc_offset = 0
-        self.stc_passed = False
         self.started = time.monotonic()
 
     def git(self, *args: str) -> str:
@@ -483,7 +480,6 @@ class Chain:
         last_book = time.monotonic()
         failed_since = None
         while True:
-            self.check_stc()
             try:
                 if bundle is None:
                     bundle = self.send_bundle(generation)
@@ -496,7 +492,6 @@ class Chain:
                 if len(books) > count:
                     last_book = time.monotonic()
                 self.calibrate(generation)
-                self.check_stc()
                 if self.remote_exists(REMOTE + '/logs/exit-status'):
                     code = self.ssh(f'cat {REMOTE}/logs/exit-status', 60).strip()
                     raise ChainStop(f'生成機の作業者が終了しました: 終了コード{code}')
@@ -515,61 +510,6 @@ class Chain:
                 raise ChainStop('検査に通った新しい本が得られないまま上限時間に達しました')
             time.sleep(self.args.poll_seconds)
 
-    def start_stc(self) -> None:
-        if self.args.last_generation == 1 or self.commit_for(2) is not None or self.stc is not None or self.stc_passed:
-            return
-        candidate = self.commit_for(1)
-        if candidate is None:
-            return
-        self.args.match_root.mkdir(parents=True, exist_ok=True)
-        directory = self.args.match_root / 'nnue-generation-reset-gen1-stc'
-        command = [str(self.args.match_runner), 'match', 'run']
-        if directory.exists():
-            command.extend(['--resume', str(directory)])
-        else:
-            command.extend(['--run-dir', str(directory), '--seed', str(self.args.stc_seed_base + self.args.stc_seed_step),
-                            '--candidate', 'commit:' + candidate, '--baseline', 'commit:' + self.previous_commit(1),
-                            '--each', self.args.stc_each, '--concurrency', str(self.args.stc_concurrency),
-                            'gsprt', '--max-pairs', str(self.args.stc_max_pairs)])
-        log_path = self.args.match_root / 'nnue-generation-reset-gen1-stc.log'
-        with log_path.open('ab') as log:
-            self.stc_offset = log.tell()
-            self.stc = self.children.start(command, cwd=self.args.worktree, stdout=log, stderr=subprocess.STDOUT)
-
-    def check_stc(self) -> bool:
-        if self.stc is None:
-            return self.stc_passed
-        code = self.stc.poll()
-        path = self.args.match_root / 'nnue-generation-reset-gen1-stc.log'
-        with path.open('rb') as log:
-            log.seek(self.stc_offset)
-            output = log.read()
-        # 実行中の末尾はUTF-8文字や判定の行の途中であり得る。
-        if code is None:
-            output = output[:output.rfind(b'\n') + 1]
-        decisions = re.findall(rb'^decision: ([^\s]+)[ \t]*\r?$', output, re.M)
-        if code is not None and code != 0:
-            raise ChainStop(f'第1世代のSTCが終了コード{code}で失敗しました')
-        if decisions and decisions[-1] != b'H1':
-            raise ChainStop(f'第1世代のSTCの判定が{decisions[-1].decode("ascii", errors="replace")}です')
-        if code is None:
-            return False
-        if not decisions:
-            raise ChainStop('第1世代のSTCが判定の行を出さずに終了しました')
-        self.children.processes.remove(self.stc)
-        self.stc = None
-        self.stc_passed = True
-        return True
-
-    def wait_stc(self, generation: int) -> None:
-        if generation != 2 or self.commit_for(2) is not None:
-            return
-        self.start_stc()
-        if self.stc is None and not self.stc_passed:
-            raise ChainStop('第2世代の学習に必要な第1世代のSTCがありません')
-        while not self.check_stc():
-            time.sleep(self.args.poll_seconds)
-
     def train(self, generation: int) -> dict[str, Any]:
         args = self.args
         directory = self.root / f'gen-{generation}'
@@ -578,7 +518,7 @@ class Chain:
         books = self.book_paths(generation)
         summary = train / 'summary.json'
         if not summary.is_file():
-            base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/train/nnue.bin')
+            base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
             if not base.is_file():
                 raise ChainStop(f'学習の初期値がありません: {base}')
             command = [str(args.trainer_bin), 'nnue', 'train', '--data', *map(str, books), '--base', str(base),
@@ -603,12 +543,37 @@ class Chain:
                                '--output', str(removal)], cwd=args.worktree, preexec_fn=low_priority)
         return result
 
-    def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int]) -> None:
-        trained = self.root / f'gen-{generation}/train/nnue.bin'
+    def fit(self, generation: int) -> dict[str, Any]:
+        args = self.args
+        directory = self.root / f'gen-{generation}'
+        fit = directory / 'fit'
+        summary = fit / 'summary.json'
+        if not summary.is_file():
+            # fit-linearは空でない出力先を拒否し、完了時にsummary.jsonを書くため、未完了の出力を消す。
+            if fit.exists():
+                shutil.rmtree(fit)
+            command = [str(args.trainer_bin), 'nnue', 'fit-linear', '--base', str(directory / 'train/nnue.bin'),
+                       '--data', *map(str, self.book_paths(generation)), '--tau', *map(str, args.fit_tau),
+                       '--seed', str(args.fit_seed), '--threads', str(args.fit_threads), '--output-dir', str(fit)]
+            with (directory / 'fit.log').open('a') as log:
+                self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
+                                  preexec_fn=low_priority)
+        result = json.loads(summary.read_text())
+        try:
+            d = result['decision']['d']
+        except (KeyError, TypeError) as error:
+            raise ChainStop(f'第{generation}世代の補正結果にdecision.dがありません') from error
+        if type(d) not in (int, float) or not math.isfinite(d) or d >= 0:
+            raise ChainStop(f'第{generation}世代の補正結果のdecision.dが負の有限値ではありません: {d}。'
+                            '継続には利用者の判断が必要です')
+        return result
+
+    def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int], d: float) -> None:
+        fitted = self.root / f'gen-{generation}/fit/nnue.bin'
         data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'HEAD:{NETWORK}'],
                                  stdout=subprocess.PIPE).stdout
-        if data != trained.read_bytes():
-            shutil.copyfile(trained, self.args.worktree / NETWORK)
+        if data != fitted.read_bytes():
+            shutil.copyfile(fitted, self.args.worktree / NETWORK)
             try:
                 self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree,
                                   preexec_fn=low_priority)
@@ -619,7 +584,7 @@ class Chain:
                 raise
             self.git('add', '--', NETWORK)
             self.git('commit', '-m', f'feat(eval): embed the NNUE of generation {generation}',
-                     '-m', f'教師{len(books)}本、{sum(books.values())}局面、最良エポック{summary["best_epoch"]}。',
+                     '-m', f'教師{len(books)}本、{sum(books.values())}局面、最良エポック{summary["best_epoch"]}、D={d:.6f}。',
                      '-m', 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>', '--', NETWORK)
         self.git('update-ref', reference(generation), 'HEAD')
 
@@ -690,7 +655,6 @@ class Chain:
                                        for path in self.book_paths(generation))
                                    < self.args.positions_per_generation for generation in pending)
             self.prepare_machine(pending, needs_generation)
-            self.start_stc()
         for generation in pending:
             self.current = generation
             commit = self.previous_commit(generation)
@@ -702,10 +666,9 @@ class Chain:
                 raise ChainStop('第1世代の較正に必要な本数が足りません')
             if generation == self.args.last_generation:
                 self.stop_machine()
-            self.wait_stc(generation)
             summary = self.train(generation)
-            self.commit_generation(generation, summary, books)
-            self.start_stc()
+            fit = self.fit(generation)
+            self.commit_generation(generation, summary, books, fit['decision']['d'])
         self.manage_remote = False
         if not self.destroy():
             raise ChainStop(f'世代の作成は終了しましたが、生成機 {self.instance_id} の削除が未確認です。'
@@ -761,24 +724,25 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     run = sub.add_parser('run', help='世代の生成と学習を開始または再開する', argument_default=argparse.SUPPRESS)
-    for name in ('run-dir', 'worktree', 'match-root'):
+    for name in ('run-dir', 'worktree'):
         run.add_argument('--' + name, required=True, type=absolute_path, help='配置先の絶対パス')
-    for name in ('minase-bin', 'match-runner', 'trainer-bin'):
+    for name in ('minase-bin', 'trainer-bin'):
         run.add_argument('--' + name, required=True, type=lambda value: Path(value).resolve(), help='固定した実行ファイルのパス')
-    for name in ('gen0-commit', 'feature-set', 'head', 'device', 'lr-schedule', 'stc-each', 'image', 'cpu-pattern'):
+    for name in ('gen0-commit', 'feature-set', 'head', 'device', 'lr-schedule', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
     for name in ('first-generation', 'last-generation', 'positions-per-generation', 'books-estimate', 'games', 'nodes',
                  'max-ply', 'hash-mb', 'max-books', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
-                 'validation-interval', 'train-threads', 'removal-sample', 'bench-depth', 'stc-concurrency',
-                 'stc-max-pairs', 'disk', 'min-cpu-cores'):
+                 'validation-interval', 'train-threads', 'fit-threads', 'removal-sample', 'bench-depth',
+                 'disk', 'min-cpu-cores'):
         run.add_argument('--' + name, required=True, type=positive_int, help='正の整数')
     for name in ('random-moves', 'seed-base', 'seed-generation-step', 'seed-book-step', 'train-seed',
-                 'removal-seed', 'stc-seed-base', 'stc-seed-step'):
+                 'removal-seed', 'fit-seed'):
         run.add_argument('--' + name, required=True, type=nonnegative_int, help='0以上の整数')
     for name in ('max-price', 'min-duration-days', 'min-reliability', 'min-inet-up', 'min-disk', 'book-minutes',
                  'deadline-margin', 'training-wait-hours', 'idle-limit-hours', 'poll-seconds', 'book-stall-minutes',
                  'ssh-failure-minutes'):
         run.add_argument('--' + name, required=True, type=positive_float, help='正の有限値')
+    run.add_argument('--fit-tau', required=True, nargs='+', type=positive_float, help='1個以上の正の有限値')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
     run.add_argument('--offer', type=positive_int, help='新しく借りる出品ID。通常の再開では省略する')
     args = parser.parse_args(argv)
@@ -791,8 +755,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     if args.min_reliability > 1:
         parser.error('min-reliabilityは1以下にしてください')
     if (args.seed_base + args.seed_generation_step * args.last_generation
-            + args.seed_book_step * (args.max_books - 1) >= 2**64
-            or args.stc_seed_base + args.stc_seed_step >= 2**64):
+            + args.seed_book_step * (args.max_books - 1) >= 2**64):
         parser.error('計算したシードが2^64以上です')
     try:
         re.compile(args.cpu_pattern)

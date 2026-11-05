@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""指示書Bの世代反復と生成機の契約を、外部サービスを呼ばずに検証する。
+"""世代反復と生成機の契約を、外部サービスを呼ばずに検証する。
 
 使い方: python3 scripts/vast/test_generation_chain.py
 本ファイルはgeneration_chain.py、generation_worker.pyと同じディレクトリに置く。
-指示書の事例1〜14を、引数と出品の拒否、教師の受理、学習と検定の再開、
-停止と削除、作業者の公開順序と自己停止に分けて検証する。
+引数と出品の拒否、教師の受理、学習と補正の再開、補正後のネットのコミット、
+停止と削除、作業者の公開順序と自己停止を検証する。
 期待値は指示書の式とコマンド、およびtraining/records.rsのMNSD版2の形式に基づく。
 外部コマンドは注入した実行関数で置き換え、時計も進めるだけにする。
 """
@@ -13,7 +13,6 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
-import re
 import shlex
 import shutil
 import signal
@@ -63,19 +62,19 @@ def inspect_book(path: Path) -> dict:
             'eligible_positions': int.from_bytes(data[144:152], 'little')}
 
 
-def cli_values(root: Path) -> dict[str, str]:
+def cli_values(root: Path) -> dict[str, str | list[str]]:
     """必須条件を省略せずに与える。テストの既定値を本体へ持ち込まない。"""
-    return {'run-dir': str(root / 'run'), 'worktree': str(root / 'tree'), 'match-root': str(root / 'matches'),
-            'minase-bin': str(root / 'inspect'), 'match-runner': str(root / 'match'), 'trainer-bin': str(root / 'trainer'),
+    return {'run-dir': str(root / 'run'), 'worktree': str(root / 'tree'),
+            'minase-bin': str(root / 'inspect'), 'trainer-bin': str(root / 'trainer'),
             'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2',
             'positions-per-generation': '100', 'books-estimate': '2', 'games': '10', 'nodes': '20000',
             'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'seed-base': '9000000000',
             'seed-generation-step': '10000000', 'seed-book-step': '100000', 'max-books': '100',
-            'calibration-books': '1', 'lambda': '0.75', 'feature-set': 'P', 'width': '256',
+            'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
             'head': 'pairwise-l16-l32', 'batch': '16384', 'epochs': '50', 'patience': '5', 'train-seed': '1',
             'device': 'cuda', 'validation-interval': '1000', 'lr-schedule': 'cosine:3:0.1', 'train-threads': '8',
-            'removal-sample': '10', 'removal-seed': '3', 'bench-depth': '5', 'stc-seed-base': '20261200000000',
-            'stc-seed-step': '1000000', 'stc-each': 'time=10000+100', 'stc-concurrency': '16', 'stc-max-pairs': '3000',
+            'removal-sample': '10', 'removal-seed': '3', 'bench-depth': '5',
+            'fit-tau': ['0.5', '1.5'], 'fit-seed': '0', 'fit-threads': '3',
             'offer': '42', 'image': 'rust:1.98.0-bookworm', 'disk': '50', 'max-price': '0.5',
             'min-cpu-cores': '384', 'cpu-pattern': 'EPYC.*9', 'min-duration-days': '5', 'min-reliability': '0.95',
             'min-inet-up': '100', 'min-disk': '50', 'book-minutes': '12', 'deadline-margin': '1.3',
@@ -83,8 +82,21 @@ def cli_values(root: Path) -> dict[str, str]:
             'book-stall-minutes': '0.05', 'ssh-failure-minutes': '0.05'}
 
 
-def argv(values: dict[str, str]) -> list[str]:
-    return ['run', *[part for key, value in values.items() for part in ('--' + key, value)]]
+def argv(values: dict[str, str | list[str]]) -> list[str]:
+    result = ['run']
+    for key, value in values.items():
+        result.extend(['--' + key, *(value if isinstance(value, list) else [value])])
+    return result
+
+
+def option_values(command: list[str], option: str) -> list[str]:
+    """外部コマンドの引数を、オプションの順序に依存せず読む。"""
+    result = []
+    for value in command[command.index(option) + 1:]:
+        if value.startswith('--'):
+            break
+        result.append(value)
+    return result
 
 
 class Clock:
@@ -105,25 +117,6 @@ class Clock:
         self.now += seconds
 
 
-class MatchProcess:
-    """所定回数の状態確認後に検定ログを書いて終了する。"""
-
-    def __init__(self, log: Path, output: str, code: int, polls: int) -> None:
-        self.log, self.output, self.code, self.remaining = log, output, code, polls
-        self.returncode = None
-        self.written = False
-
-    def poll(self) -> int | None:
-        self.remaining -= 1
-        if self.remaining <= 0:
-            if not self.written:
-                with self.log.open('a') as output:
-                    output.write(self.output)
-                self.written = True
-            self.returncode = self.code
-        return self.returncode
-
-
 class Commands:
     """Git、Vast.ai、SSH、学習器の外部契約だけを代行する。"""
 
@@ -132,7 +125,6 @@ class Commands:
         self.remote = root / 'remote'
         self.remote.mkdir()
         self.calls = []
-        self.processes = []
         self.refs = {}
         self.head = '0' * 40
         self.nets = {self.head: network(0)}
@@ -157,12 +149,11 @@ class Commands:
         self.worker_exit = False
         self.transfer_failures = 0
         self.missing_transfers = 0
-        self.match_output = 'decision: H1\n'
-        self.match_code = 0
-        self.match_polls = 2
         self.fail_command = None
         self.interrupt_command = None
         self.train_status = 'candidate'
+        self.fit_result = {'decision': {'d': -0.123456789}}
+        self.fit_options = []
 
     def local(self, remote: str) -> Path:
         return self.remote / remote.removeprefix('/workspace/job/').rstrip('/')
@@ -304,8 +295,18 @@ class Commands:
                 directory.mkdir(parents=True, exist_ok=True)
                 generation = int(directory.parent.name.removeprefix('gen-'))
                 (directory / 'summary.json').write_text(json.dumps({'status': self.train_status, 'best_epoch': 3}))
-                (directory / 'nnue.bin').write_bytes(network(generation))
+                (directory / 'nnue.bin').write_bytes(network(generation) + '補正前の重み'.encode())
                 (directory / 'best.npz').touch()
+            elif args[:2] == ['nnue', 'fit-linear']:
+                self.fit_options.append(kwargs)
+                directory = Path(args[args.index('--output-dir') + 1])
+                if directory.exists() and any(directory.iterdir()):
+                    return self.result(command, '補正の出力先が空ではありません', 7, kwargs)
+                directory.mkdir(parents=True, exist_ok=True)
+                generation = int(directory.parent.name.removeprefix('gen-'))
+                (directory / 'nnue.bin').write_bytes(network(generation))
+                (directory / 'summary.json').write_text(json.dumps(self.fit_result))
+                kwargs['stdout'].write('補正のログ\n')
             elif args[:2] == ['diag', 'nnue-removal']:
                 Path(args[args.index('--output') + 1]).write_text('{}')
             else:
@@ -324,18 +325,8 @@ class Commands:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 
-    def start(self, command: list[str], **kwargs: object) -> MatchProcess:
-        self.calls.append(command)
-        assert Path(command[0]).name == 'match'
-        assert kwargs['cwd'] == self.root / 'tree'
-        flag = '--resume' if '--resume' in command else '--run-dir'
-        Path(command[command.index(flag) + 1]).mkdir(parents=True, exist_ok=True)
-        process = MatchProcess(Path(kwargs['stdout'].name), self.match_output, self.match_code, self.match_polls)
-        self.processes.append(process)
-        return process
-
     def finish(self) -> None:
-        self.processes.clear()
+        pass
 
 
 class ChainTests(unittest.TestCase):
@@ -367,6 +358,10 @@ class ChainTests(unittest.TestCase):
         return [call for call in self.commands.calls if call[:3] == [str(self.root / 'trainer'), 'nnue', 'train']
                 and str(self.root / f'run/gen-{generation}/train') in call]
 
+    def fit_calls(self, generation: int) -> list[list[str]]:
+        return [call for call in self.commands.calls if call[:3] == [str(self.root / 'trainer'), 'nnue', 'fit-linear']
+                and str(self.root / f'run/gen-{generation}/fit') in call]
+
     def assert_stopped(self) -> None:
         self.assertTrue(any(call[0] == 'ssh' and call[-1].endswith('generation_worker.py stop')
                             for call in self.commands.calls))
@@ -385,6 +380,18 @@ class ChainTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(SystemExit) as raised:
                 chain.main(argv({key: value for key, value in self.values.items() if key != name}))
             self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.commands.calls)
+
+    def test_fit_arguments_reject_invalid_values_before_creating(self) -> None:
+        """補正には1個以上の正の有限なtau、非負のシード、正のスレッド数が必要である。"""
+        cases = [('fit-tau', []), ('fit-tau', '0'), ('fit-tau', '-1'), ('fit-tau', 'nan'),
+                 ('fit-tau', 'inf'), ('fit-tau', ['0.5', 'nan']), ('fit-seed', '-1'),
+                 ('fit-seed', '0.5'), ('fit-threads', '0'), ('fit-threads', '-1'), ('fit-threads', '1.5')]
+        for name, value in cases:
+            with self.subTest(name=name, value=value):
+                with self.assertRaises(SystemExit) as raised:
+                    chain.main(argv(self.values | {name: value}))
+                self.assertEqual(raised.exception.code, 2)
         self.assertFalse(self.commands.calls)
 
     def test_duplicate_label_is_not_created_or_destroyed(self) -> None:
@@ -408,7 +415,7 @@ class ChainTests(unittest.TestCase):
         self.assertFalse(any(call[1:3] == ['create', 'instance'] for call in self.commands.calls))
 
     def test_two_generations_use_validated_books_and_generation_commits(self) -> None:
-        """条件の境界値を受理し、生成、較正、学習、限定したコミットを2世代続ける。"""
+        """条件の境界値を受理し、生成、較正、学習、補正、限定したコミットを2世代続ける。"""
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual(self.commands.generated, [(1, 0), (2, 0)])
         self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-2'], '2' * 40)
@@ -422,39 +429,113 @@ class ChainTests(unittest.TestCase):
         self.assertEqual(exports[0][exports[0].index('--cp-per-logit') + 1], '1234')
         for generation in (1, 2):
             call = self.train_calls(generation)[0]
-            base = 'base.bin' if generation == 1 else 'gen-1/train/nnue.bin'
+            base = 'base.bin' if generation == 1 else 'gen-1/fit/nnue.bin'
             self.assertEqual(call[call.index('--base') + 1], str(self.root / 'run' / base))
-            self.assertEqual(call[call.index('--lambda') + 1], '0.75')
+            self.assertEqual(call[call.index('--lambda') + 1], '1.0')
             self.assertEqual(call[call.index('--teacher-cp-per-logit') + 1], 'calibrate')
+            directory = self.root / f'run/gen-{generation}'
+            diagnostic = next(call for call in self.commands.calls if call[1:3] == ['diag', 'nnue-removal']
+                              and str(directory / 'removal.json') in call)
+            self.assertEqual(option_values(diagnostic, '--float'), [str(directory / 'train/best.npz')])
+            self.assertEqual(option_values(diagnostic, '--net'), [str(directory / 'train/nnue.bin')])
+            self.assertEqual(len(self.fit_calls(generation)), 1)
+            self.assertEqual(self.commands.nets[str(generation) * 40], (directory / 'fit/nnue.bin').read_bytes())
         commits = [call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit']
         self.assertEqual(len(commits), 2)
         self.assertTrue(all(call[-2:] == ['--', 'crates/minase/nets/nnue.bin'] for call in commits))
         self.assertIn('完了', self.output.getvalue())
 
-    def test_stc_failures_prevent_second_training_and_stop_machine(self) -> None:
-        """事例4: 判定なし、H0、pending、非0終了のいずれでも第2世代を学習しない。"""
-        for output, code in (('', 0), ('decision: H0\n', 0), ('decision: pending\n', 0), ('decision: H1\n', 7)):
-            with self.subTest(output=output, code=code):
-                self.commands.match_output, self.commands.match_code = output, code
-                self.assertNotEqual(self.execute(), 0)
-                self.assertFalse(self.train_calls(2))
-                self.assert_stopped()
-                self.assertFalse(self.commands.processes)
-                # 保存した本と第1世代のコミットを使う、同じ中断点からの再開を試す。
-                self.commands.stopped = False
-
-    def test_stc_resume_restores_h1_and_allows_second_training(self) -> None:
-        """事例5: 中断後の--resumeがH1を出した場合だけ、第2世代の学習へ進む。"""
-        self.commands.match_output = ''
-        self.assertNotEqual(self.execute(), 0)
-        self.assertFalse(self.train_calls(2))
-        self.commands.match_output = 'decision: H1\n'
-        del self.values['offer']
+    def test_fit_uses_all_books_after_training_and_commits_fitted_network(self) -> None:
+        """学習後に指定した条件で全教師を補正に使い、補正済みのネットとDをコミットする。"""
+        self.values['last-generation'] = '1'
+        self.commands.entries = 40
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
-        matches = [call for call in self.commands.calls if Path(call[0]).name == 'match']
-        self.assertEqual(matches[-1][1:], ['match', 'run', '--resume',
-                                         str(self.root / 'matches/nnue-generation-reset-gen1-stc')])
-        self.assertEqual(len(self.train_calls(2)), 1)
+        directory = self.root / 'run/gen-1'
+        self.assertEqual(len(self.fit_calls(1)), 1)
+        call = self.fit_calls(1)[0]
+        expected = {'--base': [str(directory / 'train/nnue.bin')],
+                    '--data': [str(directory / f'teacher/book-{number}.mnsd') for number in (0, 1, 2)],
+                    '--tau': ['0.5', '1.5'], '--seed': ['0'], '--threads': ['3'],
+                    '--output-dir': [str(directory / 'fit')]}
+        self.assertEqual({part for part in call if part.startswith('--')}, set(expected))
+        for option, values in expected.items():
+            self.assertEqual(option_values(call, option), values)
+        options = self.commands.fit_options[0]
+        self.assertEqual(options['cwd'], self.root / 'tree')
+        self.assertEqual(Path(options['stdout'].name), directory / 'fit.log')
+        self.assertEqual(options['stderr'], subprocess.STDOUT)
+        self.assertIs(options['preexec_fn'], chain.low_priority)
+        self.assertEqual((directory / 'fit.log').read_text(), '補正のログ\n')
+        commits = [item for item in self.commands.calls if item[0] == 'git' and item[3] == 'commit']
+        self.assertEqual(len(commits), 1)
+        self.assertLess(self.commands.calls.index(self.train_calls(1)[0]), self.commands.calls.index(call))
+        self.assertLess(self.commands.calls.index(call), self.commands.calls.index(commits[0]))
+        self.assertIn('教師3本、120局面、最良エポック3、D=-0.123457。', commits[0])
+        fitted = (directory / 'fit/nnue.bin').read_bytes()
+        self.assertNotEqual(fitted, (directory / 'train/nnue.bin').read_bytes())
+        self.assertEqual(self.commands.nets[self.commands.head], fitted)
+
+    def test_nonnegative_fit_stops_before_commit(self) -> None:
+        """Dが0以上ならChainStopで終了コード1となり、コミットも次世代の学習もしない。"""
+        for d in (0.0, -0.0, 0.125):
+            with self.subTest(d=d):
+                self.commands.fit_result = {'decision': {'d': d}}
+                (self.root / 'run/gen-1/fit/summary.json').unlink(missing_ok=True)
+                self.assertEqual(self.execute(), 1, self.errors.getvalue())
+                runner = chain.Chain(chain.arguments(argv(self.values)))
+                with self.assertRaises(chain.ChainStop):
+                    runner.fit(1)
+                self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+                self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
+                self.assertFalse(self.train_calls(2))
+                self.assertEqual((self.root / 'tree/crates/minase/nets/nnue.bin').read_bytes(), network(0))
+                self.assert_stopped()
+
+    def test_fit_rejects_nonfinite_and_invalid_decisions(self) -> None:
+        """完了した要約でも、Dが有限の数値でなければ補正結果を採用しない。"""
+        directory = self.root / 'run/gen-1/fit'
+        directory.mkdir(parents=True)
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        summaries = [{'decision': {'d': value}} for value in
+                     (float('nan'), float('inf'), float('-inf'), None, True, '-0.1')]
+        summaries.extend([{}, {'decision': {}}, {'decision': None}])
+        for summary in summaries:
+            with self.subTest(summary=summary):
+                (directory / 'summary.json').write_text(json.dumps(summary))
+                with self.assertRaises(chain.ChainStop):
+                    runner.fit(1)
+        self.assertFalse(self.fit_calls(1))
+
+    def test_fit_summary_skips_fitting_and_preserves_output(self) -> None:
+        """summary.jsonがあれば保存済みの要約を返し、補正を再実行せず成果物を残す。"""
+        directory = self.root / 'run/gen-1/fit'
+        directory.mkdir(parents=True)
+        summary = {'decision': {'d': -0.25}}
+        (directory / 'summary.json').write_text(json.dumps(summary))
+        (directory / 'nnue.bin').write_bytes(network(1))
+        (directory / 'retained.txt').write_text('完了済みの補正結果')
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        self.assertEqual(runner.fit(1), summary)
+        self.assertFalse(self.fit_calls(1))
+        self.assertEqual(json.loads((directory / 'summary.json').read_text()), summary)
+        self.assertEqual((directory / 'nnue.bin').read_bytes(), network(1))
+        self.assertEqual((directory / 'retained.txt').read_text(), '完了済みの補正結果')
+
+    def test_incomplete_fit_output_is_removed_before_fitting(self) -> None:
+        """要約のない出力先だけを消して補正をやり直し、既存のログには追記する。"""
+        self.values['last-generation'] = '1'
+        directory = self.root / 'run/gen-1/fit'
+        (directory / 'partial').mkdir(parents=True)
+        (directory / 'partial/weights').write_bytes(b'partial')
+        (directory / 'nnue.bin').write_bytes(b'incomplete')
+        log = directory.parent / 'fit.log'
+        log.write_text('前回のログ\n')
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertFalse((directory / 'partial').exists())
+        self.assertEqual(len(self.fit_calls(1)), 1)
+        self.assertEqual((directory / 'nnue.bin').read_bytes(), network(1))
+        self.assertTrue((directory / 'summary.json').is_file())
+        self.assertEqual(log.read_text(), '前回のログ\n補正のログ\n')
 
     def test_seed_book_count_and_deadline_formulas(self) -> None:
         """事例6、13: 指示書の数式を数値例と境界で確かめる。"""
@@ -509,7 +590,7 @@ class ChainTests(unittest.TestCase):
         self.commands.deny_account_after_start = False
         mark = len(calls)
         self.assertEqual(self.execute(), 0)
-        self.assertFalse(any(Path(call[0]).name in ('trainer', 'ssh', 'rsync', 'match', 'cargo') for call in calls[mark:]))
+        self.assertFalse(any(Path(call[0]).name in ('trainer', 'ssh', 'rsync', 'cargo') for call in calls[mark:]))
         self.assertFalse((self.root / 'run/instance-id').exists())
 
     def test_worker_exit_status_stops_chain(self) -> None:
@@ -599,7 +680,6 @@ class ChainTests(unittest.TestCase):
         self.assertFalse(any(call[0] == 'ssh' and call[-1].endswith('generation_worker.py stop')
                              for call in self.commands.calls))
         self.assertTrue((self.root / 'run/instance-id').exists())
-        self.assertFalse(self.commands.processes)
 
     def test_failed_bench_restores_network_without_touching_other_files(self) -> None:
         unrelated = self.root / 'tree/other.txt'
@@ -612,13 +692,13 @@ class ChainTests(unittest.TestCase):
 
     def test_commit_already_written_only_creates_reference(self) -> None:
         self.save_book(1, 0, 100)
-        train = self.root / 'run/gen-1/train'
-        train.mkdir()
-        (train / 'nnue.bin').write_bytes(network(1))
+        fit = self.root / 'run/gen-1/fit'
+        fit.mkdir()
+        (fit / 'nnue.bin').write_bytes(network(1))
         self.commands.head = '1' * 40
         self.commands.nets[self.commands.head] = network(1)
         runner = chain.Chain(chain.arguments(argv(self.values)))
-        runner.commit_generation(1, {'best_epoch': 3}, {0: 100})
+        runner.commit_generation(1, {'best_epoch': 3}, {0: 100}, -0.1)
         self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
         self.assertFalse(any(call[0] == 'cargo' or (call[0] == 'git' and call[3] == 'commit')
                              for call in self.commands.calls))
@@ -663,8 +743,8 @@ class ChainTests(unittest.TestCase):
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertTrue(all(job['target_books'] <= 2 for job in self.commands.jobs))
 
-    def test_failed_training_or_diagnostic_stops_before_commit(self) -> None:
-        for failure in (['nnue', 'train'], ['diag', 'nnue-removal']):
+    def test_failed_training_diagnostic_or_fit_stops_before_commit(self) -> None:
+        for failure in (['nnue', 'train'], ['diag', 'nnue-removal'], ['nnue', 'fit-linear']):
             with self.subTest(failure=failure):
                 self.commands.fail_command = [str(self.root / 'trainer'), *failure]
                 self.assertNotEqual(self.execute(), 0)
@@ -691,31 +771,6 @@ class ChainTests(unittest.TestCase):
         path.write_text('{"classes": [{"teacher_cp_per_logit": 4000, "at_search_bound": true}]}')
         with self.assertRaises(chain.ChainStop):
             runner.calibrate(1)
-
-    def test_partial_stc_line_and_early_h1_do_not_allow_training(self) -> None:
-        self.commands.refs['refs/nnue-generation-reset/gen-0'] = '0' * 40
-        self.commands.refs['refs/nnue-generation-reset/gen-1'] = '1' * 40
-        self.commands.nets['1' * 40] = network(1)
-        self.commands.match_polls = 5
-        self.commands.match_output = ''
-        self.commands.match_code = 7
-        runner = chain.Chain(chain.arguments(argv(self.values)))
-        runner.start_stc()
-        path = self.root / 'matches/nnue-generation-reset-gen1-stc.log'
-        path.write_bytes(b'decision: H')
-        self.assertFalse(runner.check_stc())
-        path.write_bytes(b'decision: H1\n\xe7')
-        self.assertFalse(runner.check_stc())
-        with self.assertRaises(chain.ChainStop):
-            runner.wait_stc(2)
-
-    def test_stale_h1_is_not_a_decision_for_resumed_process(self) -> None:
-        directory = self.root / 'matches/nnue-generation-reset-gen1-stc'
-        directory.mkdir(parents=True)
-        directory.with_suffix('.log').write_text('decision: H1\n')
-        self.commands.match_output = ''
-        self.assertNotEqual(self.execute(), 0)
-        self.assertFalse(self.train_calls(2))
 
     def test_cpu_quota_boundary_is_accepted(self) -> None:
         self.commands.cpu['cpu_limit'] = 345.6
