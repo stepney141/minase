@@ -340,7 +340,7 @@ systemd-run --user --scope --quiet -p MemoryMax=13G -p MemorySwapMax=0 \
   --output-dir data/nnue-architecture-revision/train
 ```
 
-学習の後に[学習の手引き](../../guides/nnue-training.md)の8節の診断を行い、次を`nnue-architecture-revision-training`に記録する。
+学習の後に[学習の手引き](../../guides/nnue-training.md#学習した重みを診断する)の診断を行い、次を`nnue-architecture-revision-training`に記録する。
 このうち判定に使うのは量子化誤差だけで、残りは負けた場合の手がかりとする。
 
 - 最良エポック、検証損失、および対局単位の汎化差（[教訓](../../lessons/compare-nets-with-paired-game-bootstrap.md)）

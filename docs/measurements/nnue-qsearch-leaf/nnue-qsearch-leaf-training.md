@@ -26,7 +26,7 @@ systemd-run --user --scope --quiet --unit=nql-train -p MemoryMax=16G -p MemorySw
 学習は、エポック6の完了後に、機械全体のメモリ不足によってClaude Codeの機構に止められた。
 機械の空きを確かめてから、同じ引数に`--resume $D/train`を加え、`systemd-run --user`の独立したサービスとして再開した。
 
-診断は[学習の手引き](../../guides/nnue-training.md)の8節の3つのコマンドで、基準の学習の記録と同じ標本の条件で行った。
+診断は[学習の手引き](../../guides/nnue-training.md#学習した重みを診断する)の3つのコマンドで、基準の学習の記録と同じ標本の条件で行った。
 
 ```console
 $D/minase-trainer-leaf diag nnue-distribution \

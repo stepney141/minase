@@ -30,7 +30,7 @@ minaseの現行の学習は次のとおりである。
 最適化手法はAdamW（β1=0.9、β2=0.999、ε=1e-8）で、学習率は第1層と出力部が0.001、線形の経路が0.03、重み減衰は1e-4（線形の経路は0）である（[options.rs](../../crates/minase-trainer/src/nnue/options.rs)、[adam.rs](../../crates/minase-trainer/src/nn/adam.rs)）。
 バッチは16,384局面で、予定は`cosine:3:0.1`であり、3周で倍率を0.1まで下げて以後は0.1のままとする（[schedule.rs](../../crates/minase-trainer/src/nnue/schedule.rs)）。
 検証損失が5周続けて改善しなければ止め、検証損失が最良の周の重みを書き出す（[args.rs](../../crates/minase-trainer/src/nnue/train/args.rs)）。
-λ=1.0で学習した後に、線形の経路を対局結果へ補正する（[手引き](../guides/nnue-training.md)の9節）。
+λ=1.0で学習した後に、線形の経路を対局結果へ補正する（[手引き](../guides/nnue-training.md#線形の経路を対局結果で補正する)）。
 第2世代の教師は訓練96,462,343局面、検証5,162,867局面、1周は5,888更新である。
 
 ## 要約
@@ -173,7 +173,7 @@ tataraの0.992は、nnue-pytorchに揃えた変更でありSPRTは未実施と�
 | tatara（公開実験） | なし（「fen skipping / score clamp なし」）。評価値の大きい局面を除く引数はある | [実験](https://nnue-lab.sh11235.com/t/sh11235/experiments/01JTGQISAM5AD660DC041F20F7)、[cli.rs 410〜420行](https://github.com/SH11235/tatara/blob/87f19551ceeffa072b8274d5bec88981ab33ffe1/bins/nnue_train/src/cli.rs#L410-L420) |
 | bullet | 読み込み器の関数で指定する。例は16手目以上、王手なし、評価値の絶対値1万以下、捕獲でない通常の手だけ。`advanced`は確率的な読み飛ばしも行う | [simple.rs 96〜102行](https://github.com/jw1912/bullet/blob/5d70177680437b7c0ddf958bd4722d95afa78b0c/examples/simple.rs#L96-L102) |
 | Viridithas | 6局面に5局面を読み飛ばす変更をwarmupと同時に測り、STCで+3.12 ±2.63 Elo | [1405〜1411行](https://github.com/cosmobobak/viridithas/blob/7489e701bb07ff9a7223136bac7393f417aa588e/notes/networkhistory.txt#L1405-L1411) |
-| minase | 生成時に最善手が捕獲または成りの局面を記録しない。学習時の読み飛ばしはなく、`--train-subsample`は固定の部分集合を選ぶ比較用の引数である | [teacher-generation-prior-art.md](teacher-generation-prior-art.md)、[手引き](../guides/nnue-training.md)の4節 |
+| minase | 生成時に最善手が捕獲または成りの局面を記録しない。学習時の読み飛ばしはなく、`--train-subsample`は固定の部分集合を選ぶ比較用の引数である | [teacher-generation-prior-art.md](teacher-generation-prior-art.md)、[手引き](../guides/nnue-training.md#学習する) |
 
 Stockfishとvariant-nnue-pytorchの読み飛ばしは読むたびに抽選するので、周をまたいで別の局面を使う。
 minaseの`--train-subsample`は同じ部分集合を毎周使うので、同じ操作ではない。

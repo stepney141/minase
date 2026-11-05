@@ -37,7 +37,7 @@ systemd-run --user --scope --quiet --unit=nmli-train -p MemoryMax=13G -p MemoryS
   --output-dir data/nnue-material-linear-init/train
 ```
 
-診断は[学習の手引き](../../guides/nnue-training.md)の8節の3つのコマンドで、[現行のネットの学習の記録](../nnue-early-best-epoch/nnue-no-lookahead-training.md)と同じ標本の条件で行った。
+診断は[学習の手引き](../../guides/nnue-training.md#学習した重みを診断する)の3つのコマンドで、[現行のネットの学習の記録](../nnue-early-best-epoch/nnue-no-lookahead-training.md)と同じ標本の条件で行った。
 評価値の分布では、現行のネットと新しいネットを同じ標本で比べた。
 
 ```console
