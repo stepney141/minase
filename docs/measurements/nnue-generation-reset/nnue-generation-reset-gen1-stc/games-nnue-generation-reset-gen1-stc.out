@@ -1,0 +1,24 @@
+games 284 cand wins 80 base wins 201 draws 3
+mean depth cand 15.01 base 15.42 cpu per game cand 24.5 base 22.4
+by plies bucket (cand wins/base wins/draw):
+  0 100 5 1 1 3
+  100 200 15 9 6 0
+  200 300 72 26 46 0
+  300 400 113 20 93 0
+  400 600 72 20 52 0
+  600 2000 7 4 3 0
+short games:
+  106 0 1 B black adjudicated_win RoyalCapture ['5k6l7l'] ccp [] bcp [None]
+  106 1 1 C white adjudicated_win RoyalCapture ['5k6l7l'] ccp [None] bcp []
+  114 0 10 draw black adjudicated_draw Repetition ['10k9j', '5b6c', '9j10k', '6c5b', '10k9j', '5b6c', '9j10k', '6c5b', '10k9j', '5b6c'] ccp [0, 0, 0] bcp [0, 0, 0]
+  22 1 18 draw white adjudicated_draw Repetition ['6h7f', '5d6e', '7f6f7g', '6e7e', '7g6h', '7e6f', '6h7h', '6f7f', '7h6h', '7f6f', '6h7h', '6f7f'] ccp [0, 0, 0] bcp [0, 0, 0]
+  140 1 19 draw white adjudicated_draw Repetition ['7j5h', '6c6e', '6j9g', '5d5e', '9g6g', '6e8f', '6g6h', '8f8g', '6h5g', '8g8f', '5g6h', '8f8g'] ccp [0, 0, 0] bcp [0, 0, 0]
+  5 1 106 C white adjudicated_win Mate ['8j8h', '8d8e', '8h10f', '6e5g', '10f9e9f', '7c12h', '9f11f', '12h7c', '11f12e11f', '5g4h4g', '11f9f', '9b9c'] ccp [None, None, None] bcp [None, None, None]
+  64 0 110 C black adjudicated_win Mate ['2h6d', '7j7h', '8e8f', '7h5f', '8f7g8g', '5f4e5f', '5d5e', '5f4f', '6d8f', '4f4g', '8g9g10g', '5i5h'] ccp [563, 524, None] bcp [-169, -161, -192]
+  125 1 128 B white adjudicated_win Mate ['10f8g', '7j7i', '5d5e', '8i8h', '8g9h10g', '7i8i', '10g9f', '4k4j', '5b6c', '4j7g', '4c6e', '8i6g'] ccp [-696, -791, -901] bcp [977, 978, None]
+abs cp cand p50/p90 816 4271 base p50/p90 1498 5104
+ply 10 n 281 mean cand cp (own view) 28 mean base cp (own view) 32 std 874 855
+ply 30 n 279 mean cand cp (own view) 135 mean base cp (own view) 53 std 861 901
+ply 60 n 279 mean cand cp (own view) 332 mean base cp (own view) 85 std 823 980
+ply 100 n 278 mean cand cp (own view) 451 mean base cp (own view) 294 std 923 1214
+ply 150 n 275 mean cand cp (own view) 372 mean base cp (own view) 809 std 1273 1687
