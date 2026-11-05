@@ -4,6 +4,8 @@
 使い方: python3 scripts/vast/generation_chain.py run --help
 表示される条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
 --offerだけは省略でき、保存した生成機へ接続するときには指定しない。
+--train-place generatorは生成機で学習・診断・補正し、localは作業機で実行する。
+生成機の障害後はlocalを明示して再開する。コミットとbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train,fit}を置く。
 --worktreeにネットをコミットし、refs/nnue-generation-reset/gen-<N>で完了を表す。
 生成機には同じディレクトリのgeneration_worker.pyを/workspace/job/へ送る。
@@ -145,10 +147,10 @@ def target_books(count: int, total: int, positions: int, estimate: int) -> int:
 
 
 def deadline_hours(generations: int, count: int, args: argparse.Namespace) -> float:
-    """残りの本の生成時間に、最後を除く各世代の学習待ちを加える。"""
+    """残りの本の生成時間に、生成機の停止前に必要な各世代の学習待ちを加える。"""
     books = generations * args.books_estimate - count
     hours = args.book_minutes * books * args.deadline_margin / 60
-    hours += args.training_wait_hours * (generations - 1)
+    hours += args.training_wait_hours * (generations if args.train_place == 'generator' else generations - 1)
     if hours <= 0 or not math.isfinite(hours):
         raise ChainStop('残りの本数から正の停止期限を計算できません。books-estimateを見直してください')
     return hours
@@ -170,9 +172,12 @@ def select_offer(offers: list[dict[str, Any]], args: argparse.Namespace) -> dict
     if len(matches) != 1:
         raise ChainStop('指定した出品が見つからないか、照会結果に重複しています')
     offer = matches[0]
-    for key, minimum in (('cpu_cores', args.min_cpu_cores), ('duration', args.min_duration_days * 86400),
-                         ('reliability2', args.min_reliability), ('direct_port_count', 1),
-                         ('inet_up', args.min_inet_up), ('disk_space', args.min_disk)):
+    minimums = [('cpu_cores', args.min_cpu_cores), ('duration', args.min_duration_days * 86400),
+                ('reliability2', args.min_reliability), ('direct_port_count', 1),
+                ('inet_up', args.min_inet_up), ('disk_space', args.min_disk)]
+    if args.train_place == 'generator':
+        minimums.extend([('num_gpus', 1), ('cuda_max_good', 13.0)])
+    for key, minimum in minimums:
         value = offer[key]
         if type(value) not in (int, float) or not math.isfinite(value) or value < minimum:
             raise ChainStop(f'出品の{key}が条件を満たしません: {value}')
@@ -315,8 +320,16 @@ class Chain:
             if common.instance(self.instance_id, 600) is not None:
                 raise ChainStop(f'生成機 {self.instance_id} はまだ存在します。--offerを外して再開してください')
             self.clear_instance()
-        if self.instance_id is not None and not needs_generation:
+            if args.train_place == 'generator' and not needs_generation:
+                return
+        needs_training = args.train_place == 'generator' and any(
+            not self.training_complete(generation) for generation in pending)
+        if self.instance_id is not None and not needs_generation and not needs_training:
             # 残りが最後の世代の学習だけなら、生成機はすでに停止済みであり得るので接続を求めない。
+            address = self.root / 'ssh-address'
+            if address.is_file():
+                host, port = address.read_text().split()
+                self.address = host, int(port)
             self.manage_remote = True
             return
         if self.instance_id is not None:
@@ -512,23 +525,152 @@ class Chain:
                 raise ChainStop('検査に通った新しい本が得られないまま上限時間に達しました')
             time.sleep(self.args.poll_seconds)
 
+    def training_commands(self, trainer: Path, books: list[Path], base: Path,
+                          directory: Path) -> dict[str, list[str]]:
+        """実行場所によらず、同じ条件で学習・診断・補正のコマンドを組み立てる。"""
+        args = self.args
+        train = directory / 'train'
+        command = [str(trainer), 'nnue', 'train', '--data', *map(str, books), '--base', str(base),
+                   '--lambda', str(args.mix), '--teacher-cp-per-logit', 'calibrate',
+                   '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
+        for key in ('feature_set', 'width', 'head', 'batch', 'epochs', 'patience', 'device',
+                    'validation_interval', 'lr_schedule'):
+            command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+        return {
+            'train': command,
+            'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / 'best.npz'),
+                        '--net', str(train / 'nnue.bin'), '--data', *map(str, books),
+                        '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
+                        '--output', str(directory / 'removal.json')],
+            'fit': [str(trainer), 'nnue', 'fit-linear', '--base', str(train / 'nnue.bin'),
+                    '--data', *map(str, books), '--tau', *map(str, args.fit_tau),
+                    '--seed', str(args.fit_seed), '--threads', str(args.fit_threads),
+                    '--output-dir', str(directory / 'fit')],
+        }
+
+    def training_complete(self, generation: int) -> bool:
+        directory = self.root / f'gen-{generation}'
+        return all((directory / name).is_file() for name in
+                   ('train/summary.json', 'removal.json', 'fit/summary.json'))
+
+    def receive_training(self, generation: int) -> None:
+        """全成果物を取得してから、補正結果を最後に移して世代の完了を公開する。"""
+        if self.address is None:
+            raise ChainStop('学習結果を取得する生成機がありません')
+        directory = self.root / f'gen-{generation}'
+        received = directory / 'training-received'
+        if received.exists():
+            shutil.rmtree(received)
+        received.mkdir(parents=True)
+        try:
+            common.rsync_to(*self.address, f'{REMOTE}/training/gen-{generation}/', received)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise TransportFailure('生成機からの学習結果の取得に失敗しました') from error
+        for name in ('train/summary.json', 'removal.json', 'fit/summary.json'):
+            if not (received / name).is_file():
+                raise ChainStop(f'第{generation}世代の学習結果がそろっていません: {name}。'
+                                '本は作業機にあるので、--train-place localで再開できます')
+        # 古い補正結果が残っていても、移動の途中で完了と判定しない。
+        for name in ('train', 'removal.json', 'fit'):
+            destination = directory / name
+            if destination.is_dir():
+                shutil.rmtree(destination)
+            elif destination.exists():
+                destination.unlink()
+        for name in ('train', 'removal.json', 'fit'):
+            os.replace(received / name, directory / name)
+        shutil.rmtree(received)
+
+    def train_on_generator(self, generation: int, commit: str, books: dict[int, int]) -> None:
+        """生成とは独立した作業者へ学習を渡し、結果を取得するまで生成機を保持する。"""
+        if self.training_complete(generation):
+            return
+        resume = '本は作業機にあるので、--train-place localで再開できます'
+        if self.address is None:
+            raise ChainStop(f'学習できる生成機がありません。{resume}')
+        directory = Path(REMOTE) / 'training' / f'gen-{generation}'
+        teacher = Path(REMOTE) / 'teacher' / f'gen-{generation}'
+        logs = self.root / f'gen-{generation}/training-logs'
+        logs.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        failed_since = None
+        prepared = False
+        while True:
+            if time.monotonic() - started >= self.args.training_wait_hours * 3600:
+                raise ChainStop(f'第{generation}世代の学習待ちが上限時間に達しました。ログ: {logs}。{resume}')
+            try:
+                if not prepared:
+                    bundle = self.send_bundle(generation)
+                    self.send_job(generation, commit, bundle, books)
+                    self.upload(Path(__file__).with_name('generation_worker.py'), REMOTE + '/generation_worker.py.tmp')
+                    self.ssh(f'mv {REMOTE}/generation_worker.py.tmp {REMOTE}/generation_worker.py', 60)
+                    if not self.remote_exists(str(directory / 'job.json')):
+                        self.ssh(f'mkdir -p {directory} {teacher}', 60)
+                        try:
+                            common.rsync_push(*self.address, self.root / f'gen-{generation}/teacher', str(teacher))
+                        except (OSError, subprocess.SubprocessError) as error:
+                            raise TransportFailure('生成機への教師の転送に失敗しました') from error
+                        base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
+                        if not base.is_file():
+                            raise ChainStop(f'学習の初期値がありません: {base}')
+                        self.upload(base, str(directory / 'base.bin'))
+                        commands = self.training_commands(
+                            Path(REMOTE) / 'minase/target/release/minase-trainer',
+                            [teacher / f'book-{number}.mnsd' for number in sorted(books)],
+                            directory / 'base.bin', directory)
+                        steps = [{'name': 'build',
+                                  'command': ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
+                                  'done': None, 'clean': None, 'resume_file': None, 'resume_args': None}]
+                        for name, done in (('train', 'train/summary.json'), ('removal', 'removal.json'),
+                                           ('fit', 'fit/summary.json')):
+                            steps.append({'name': name, 'command': commands[name], 'done': str(directory / done),
+                                          'clean': str(directory / name) if name in ('train', 'fit') else None,
+                                          'resume_file': str(directory / 'train/latest.npz') if name == 'train' else None,
+                                          'resume_args': ['--resume', str(directory / 'train')] if name == 'train' else None})
+                        with tempfile.TemporaryDirectory() as temporary:
+                            path = Path(temporary) / 'job.json'
+                            path.write_text(json.dumps({'steps': steps}) + '\n')
+                            self.upload(path, str(directory / 'job.json.tmp'))
+                        self.ssh(f'mv {directory}/job.json.tmp {directory}/job.json', 60)
+                    prepared = True
+                try:
+                    common.rsync_to(*self.address, str(directory / 'logs') + '/', logs)
+                except subprocess.CalledProcessError as error:
+                    if error.returncode != 23:
+                        raise TransportFailure('生成機からの学習ログの取得に失敗しました') from error
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    raise TransportFailure('生成機からの学習ログの取得に失敗しました') from error
+                if self.remote_exists(str(directory / 'exit-status')):
+                    code = self.ssh(f'cat {directory}/exit-status', 60).strip()
+                    raise ChainStop(f'生成機の学習作業者が終了しました: 終了コード{code}。ログ: {logs}。{resume}')
+                if self.remote_exists(str(directory / 'done')):
+                    self.receive_training(generation)
+                    return
+                self.ssh(f'nohup setsid python3 {REMOTE}/generation_worker.py train {generation} '
+                         f'>> {REMOTE}/logs/train-worker.log 2>&1 < /dev/null &', 60)
+                failed_since = None
+            except TransportFailure as error:
+                now = time.monotonic()
+                if failed_since is None:
+                    failed_since = now
+                if now - failed_since >= self.args.ssh_failure_minutes * 60:
+                    raise ChainStop(f'SSHまたはrsyncの失敗が上限時間まで続きました: {error}。{resume}') from error
+                print(f'{error}。再試行します', file=sys.stderr)
+            time.sleep(self.args.poll_seconds)
+
     def train(self, generation: int) -> dict[str, Any]:
         args = self.args
         directory = self.root / f'gen-{generation}'
         train = directory / 'train'
         train.mkdir(parents=True, exist_ok=True)
         books = self.book_paths(generation)
+        base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
+        commands = self.training_commands(args.trainer_bin, books, base, directory)
         summary = train / 'summary.json'
         if not summary.is_file():
-            base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
             if not base.is_file():
                 raise ChainStop(f'学習の初期値がありません: {base}')
-            command = [str(args.trainer_bin), 'nnue', 'train', '--data', *map(str, books), '--base', str(base),
-                       '--lambda', str(args.mix), '--teacher-cp-per-logit', 'calibrate',
-                       '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
-            for key in ('feature_set', 'width', 'head', 'batch', 'epochs', 'patience', 'device',
-                        'validation_interval', 'lr_schedule'):
-                command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
+            command = commands['train']
             if (train / 'latest.npz').is_file():
                 command.extend(['--resume', str(train)])
             with (directory / 'train.log').open('a') as log:
@@ -539,10 +681,7 @@ class Chain:
             raise ChainStop(f'第{generation}世代の学習結果がcandidateではありません: {result["status"]}')
         removal = directory / 'removal.json'
         if not removal.is_file():
-            self.children.run([str(args.trainer_bin), 'diag', 'nnue-removal', '--float', str(train / 'best.npz'),
-                               '--net', str(train / 'nnue.bin'), '--data', *map(str, books),
-                               '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
-                               '--output', str(removal)], cwd=args.worktree, preexec_fn=low_priority)
+            self.children.run(commands['removal'], cwd=args.worktree, preexec_fn=low_priority)
         return result
 
     def fit(self, generation: int) -> dict[str, Any]:
@@ -554,9 +693,8 @@ class Chain:
             # fit-linearは空でない出力先を拒否し、完了時にsummary.jsonを書くため、未完了の出力を消す。
             if fit.exists():
                 shutil.rmtree(fit)
-            command = [str(args.trainer_bin), 'nnue', 'fit-linear', '--base', str(directory / 'train/nnue.bin'),
-                       '--data', *map(str, self.book_paths(generation)), '--tau', *map(str, args.fit_tau),
-                       '--seed', str(args.fit_seed), '--threads', str(args.fit_threads), '--output-dir', str(fit)]
+            base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
+            command = self.training_commands(args.trainer_bin, self.book_paths(generation), base, directory)['fit']
             with (directory / 'fit.log').open('a') as log:
                 self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
                                   preexec_fn=low_priority)
@@ -669,6 +807,8 @@ class Chain:
             self.calibrate(generation)
             if generation == 1 and not (self.root / 'base.bin').is_file():
                 raise ChainStop('第1世代の較正に必要な本数が足りません')
+            if self.args.train_place == 'generator':
+                self.train_on_generator(generation, commit, books)
             if generation == self.args.last_generation:
                 if not self.stop_machine():
                     raise ChainStop(f'生成機 {self.instance_id} の停止も削除も確認できません。'
@@ -752,6 +892,8 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     run.add_argument('--fit-tau', required=True, nargs='+', type=positive_float, help='1個以上の正の有限値')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
     run.add_argument('--offer', type=positive_int, help='新しく借りる出品ID。通常の再開では省略する')
+    run.add_argument('--train-place', required=True, choices=('generator', 'local'),
+                     help='学習・診断・補正をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')
     args = parser.parse_args(argv)
     if args.first_generation > args.last_generation:
         parser.error('first-generationはlast-generation以下にしてください')

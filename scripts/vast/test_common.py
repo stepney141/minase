@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -240,6 +241,24 @@ class CommonTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError) as raised:
             common.rsync_to('192.0.2.1', 2222, '/workspace/job/teacher/', self.root / 'received')
         self.assertEqual(raised.exception.returncode, 23)
+
+    def test_rsync_push_ignores_existing_files_and_uses_saved_ssh_address(self) -> None:
+        """生成機への送信には既存ファイルの保護、末尾のスラッシュ、3,600秒の上限を指定する。"""
+        for host, expected in (('192.0.2.1', '192.0.2.1'), ('2001:db8::1', '[2001:db8::1]')):
+            with self.subTest(host=host):
+                self.fake.add('rsync', ['-a', '--ignore-existing', '-e'])
+                with patch.object(common, 'run_timed', wraps=common.run_timed) as timed:
+                    common.rsync_push(host, 2222, self.root / 'books with spaces', '/workspace/job/teacher/gen-1/')
+                call = self.fake.calls()[-1]
+                self.assertEqual(call[:4], ['rsync', '-a', '--ignore-existing', '-e'])
+                self.assertEqual(shlex.split(call[4]),
+                                 ['ssh', '-i', str(Path.home() / '.ssh/id_vastai'), '-p', '2222',
+                                  '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+                                  '-o', 'ConnectTimeout=20', '-o', 'ServerAliveInterval=30'])
+                self.assertEqual(call[-2:], [str(self.root / 'books with spaces') + '/',
+                                            f'root@{expected}:/workspace/job/teacher/gen-1/'])
+                self.assertEqual(timed.call_args.args[1], 3600)
+        self.assertEqual([call[0] for call in self.fake.calls()], ['rsync', 'rsync'])
 
     def test_nonzero_copy_exit_is_preserved(self) -> None:
         """完了行があっても外部コマンドの失敗を伝える。"""

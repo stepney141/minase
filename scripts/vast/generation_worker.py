@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""生成機で世代ごとの教師を生成し、完了した本だけを公開する。
+"""生成機で世代ごとの教師を生成し、別プロセスで学習・診断・補正を実行する。
 
-使い方: python3 /workspace/job/generation_worker.py {run,cpu-info,stop}
+使い方: python3 /workspace/job/generation_worker.py {run,cpu-info,stop} または train <世代>
 generation_chain.pyが本ファイルとworker.jsonを/workspace/job/へ配置する。
 job.jsonを作業の入力とし、teacher/に本、logs/にログ、work/に生成中の出力を置く。
+学習はtraining/gen-<世代>/job.jsonを読み、同じディレクトリに成果物とログを置く。
+doneがnullでないステップは、成功と成果物を確認してfinished/<名前>を作り、再開時はこの目印で完了を判定する。
 Python 3.11の標準ライブラリだけで動作し、作業機のcommon.pyは必要としない。
 """
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,6 +23,13 @@ import time
 from typing import Any
 import urllib.error
 import urllib.request
+import zipfile
+
+NVRTC_URL = ('https://files.pythonhosted.org/packages/c3/68/'
+             '483a78f5e8f31b08fb1bb671559968c0ca3a065ac7acabfc7cee55214fd6/'
+             'nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl')
+NVRTC_SHA256 = 'ad9b6d2ead2435f11cbb6868809d2adeeee302e9bb94bcf0539c7a40d80e8575'
+NVRTC_LIB = 'nvidia/cu13/lib'
 
 
 def cpu_info(cgroup: Path) -> dict[str, Any]:
@@ -148,11 +159,88 @@ def generate_book(root: Path, job: dict[str, Any], number: int, prepared: str | 
     return job['commit']
 
 
-def write_exit_status(root: Path, code: int) -> None:
+def write_exit_status(directory: Path, code: int) -> None:
     """終了コードは完成した1行だけを公開する。"""
-    temporary = root / 'logs/.exit-status.tmp'
+    temporary = directory / '.exit-status.tmp'
     temporary.write_text(f'{code}\n')
-    temporary.replace(root / 'logs/exit-status')
+    temporary.replace(directory / 'exit-status')
+
+
+def install_nvrtc(root: Path) -> Path:
+    """固定したホイールのSHA-256を検証し、CUDAの実行時コンパイラを配置する。"""
+    directory = root / 'nvrtc'
+    library = directory / NVRTC_LIB
+    if (directory / 'complete').is_file():
+        return library
+    if directory.exists():
+        shutil.rmtree(directory)
+    directory.mkdir()
+    wheel = directory / 'nvrtc.whl'
+    with urllib.request.urlopen(NVRTC_URL, timeout=60) as response, wheel.open('wb') as stream:
+        shutil.copyfileobj(response, stream)
+    with wheel.open('rb') as stream:
+        checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+    if checksum != NVRTC_SHA256:
+        raise ValueError('NVRTCホイールのSHA-256が一致しません')
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(directory)
+    (library / 'libnvrtc.so').symlink_to('libnvrtc.so.13')
+    wheel.unlink()
+    (directory / 'complete').touch()
+    return library
+
+
+def run_training(root: Path, generation: int) -> int:
+    """世代のロックを子プロセスへ継承し、finishedの目印があるステップを飛ばす。"""
+    directory = root / 'training' / f'gen-{generation}'
+    logs = directory / 'logs'
+    logs.mkdir(parents=True, exist_ok=True)
+    with (directory / 'lock').open('w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        if (directory / 'done').is_file() or (directory / 'exit-status').is_file():
+            return 0
+        try:
+            job = json.loads((directory / 'job.json').read_text())
+            library = install_nvrtc(root)
+            environment = os.environ.copy()
+            search_path = str(library)
+            if 'LD_LIBRARY_PATH' in environment and environment['LD_LIBRARY_PATH']:
+                search_path += os.pathsep + environment['LD_LIBRARY_PATH']
+            environment['LD_LIBRARY_PATH'] = search_path
+            for step in job['steps']:
+                done = Path(step['done']) if step['done'] is not None else None
+                finished = directory / 'finished' / step['name']
+                if done is not None and finished.is_file():
+                    continue
+                command = list(step['command'])
+                if step['resume_file'] is not None and Path(step['resume_file']).is_file():
+                    command.extend(step['resume_args'])
+                elif step['clean'] is not None:
+                    clean = Path(step['clean'])
+                    if clean.exists():
+                        shutil.rmtree(clean)
+                with (logs / f'{step["name"]}.log').open('a') as log:
+                    subprocess.run(command, cwd=root / 'minase', check=True, env=environment,
+                                   stdout=log, stderr=subprocess.STDOUT, pass_fds=(lock.fileno(),))
+                if done is not None:
+                    if not done.is_file():
+                        raise ValueError(f'ステップ{step["name"]}が成功しましたが、完了ファイルがありません: {done}')
+                    finished.parent.mkdir(exist_ok=True)
+                    finished.touch()
+            temporary = directory / '.done.tmp'
+            temporary.write_text('done\n')
+            temporary.replace(directory / 'done')
+            return 0
+        except Exception as error:
+            print(f'学習作業を停止します: {error}', file=sys.stderr)
+            code = 1
+            if isinstance(error, subprocess.CalledProcessError):
+                code = error.returncode if error.returncode > 0 else 128 - error.returncode
+            write_exit_status(directory, code)
+            return code
 
 
 def run_worker(root: Path) -> int:
@@ -184,7 +272,7 @@ def run_worker(root: Path) -> int:
                 print('次の本が指定されないまま待ち時間の上限に達したため、自己停止します', flush=True)
                 code = stop_instance(Path('/proc/1/environ'))
                 if code:
-                    write_exit_status(root, code)
+                    write_exit_status(root / 'logs', code)
                 return code
             time.sleep(min(2, remaining))
     except Exception as error:
@@ -192,14 +280,18 @@ def run_worker(root: Path) -> int:
         code = 1
         if isinstance(error, subprocess.CalledProcessError):
             code = error.returncode if error.returncode > 0 else 128 - error.returncode
-        write_exit_status(root, code)
+        write_exit_status(root / 'logs', code)
         return code
 
 
 def main(argv: list[str]) -> int:
-    """固定の配置で作業、CPU照会、または停止を実行する。"""
+    """教師の生成、学習、CPU照会、または停止を実行する。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('run', 'cpu-info', 'stop'))
+    sub = parser.add_subparsers(dest='command', required=True)
+    for name in ('run', 'cpu-info', 'stop'):
+        sub.add_parser(name)
+    train = sub.add_parser('train')
+    train.add_argument('generation', type=int)
     args = parser.parse_args(argv)
     try:
         if args.command == 'cpu-info':
@@ -207,6 +299,8 @@ def main(argv: list[str]) -> int:
             return 0
         if args.command == 'stop':
             return stop_instance(Path('/proc/1/environ'))
+        if args.command == 'train':
+            return run_training(Path(__file__).resolve().parent, args.generation)
         return run_worker(Path('/workspace/job'))
     except Exception as error:
         print(f'生成機の操作に失敗しました: {error}', file=sys.stderr)

@@ -10,8 +10,11 @@
 """
 
 from contextlib import redirect_stderr, redirect_stdout
+import fcntl
+import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import shlex
 import shutil
@@ -23,6 +26,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.error
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
@@ -66,7 +70,7 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
     """必須条件を省略せずに与える。テストの既定値を本体へ持ち込まない。"""
     return {'run-dir': str(root / 'run'), 'worktree': str(root / 'tree'),
             'minase-bin': str(root / 'inspect'), 'trainer-bin': str(root / 'trainer'),
-            'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2',
+            'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2', 'train-place': 'local',
             'positions-per-generation': '100', 'books-estimate': '2', 'games': '10', 'nodes': '20000',
             'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'seed-base': '9000000000',
             'seed-generation-step': '10000000', 'seed-book-step': '100000', 'max-books': '100',
@@ -97,6 +101,18 @@ def option_values(command: list[str], option: str) -> list[str]:
             break
         result.append(value)
     return result
+
+
+def write_training_result(directory: Path, generation: int) -> None:
+    """学習器の出力形式で、実際の重みや損失に依存しない成果物を置く。"""
+    (directory / 'train').mkdir(parents=True, exist_ok=True)
+    (directory / 'train/summary.json').write_text('{"status": "candidate", "best_epoch": 4}')
+    (directory / 'train/nnue.bin').write_bytes(network(generation) + b'unfitted')
+    (directory / 'train/best.npz').write_bytes(b'checkpoint')
+    (directory / 'removal.json').write_text('{}')
+    (directory / 'fit').mkdir(exist_ok=True)
+    (directory / 'fit/summary.json').write_text('{"decision": {"d": -0.25}}')
+    (directory / 'fit/nnue.bin').write_bytes(network(generation))
 
 
 class Clock:
@@ -133,6 +149,7 @@ class Commands:
         (root / 'tree/crates/minase/nets/nnue.bin').write_bytes(network(0))
         self.instances = []
         self.offer = {'id': 42, 'gpu_frac': 1, 'cpu_cores_effective': 384, 'cpu_cores': 384,
+                      'num_gpus': 1, 'cuda_max_good': 13.0,
                       'cpu_name': 'AMD EPYC 9R14', 'verification': 'verified', 'reliability2': 0.95,
                       'duration': 432000, 'direct_port_count': 1, 'inet_up': 100, 'disk_space': 50, 'dph_total': 0.5}
         self.cpu = {'nproc': 384, 'cpu_limit': 384}
@@ -155,6 +172,28 @@ class Commands:
         self.train_status = 'candidate'
         self.fit_result = {'decision': {'d': -0.123456789}}
         self.fit_options = []
+        self.training_jobs = []
+        self.training_exit = None
+        self.training_stall = False
+        self.interrupt_training = False
+        self.training_done_failures = 0
+        self.training_missing = []
+
+    def start_training(self, generation: int) -> None:
+        directory = self.remote / f'training/gen-{generation}'
+        (directory / 'logs').mkdir(parents=True, exist_ok=True)
+        (directory / 'logs/train.log').write_text('生成機での学習ログ\n')
+        if self.interrupt_training:
+            raise chain.Interrupted(signal.SIGTERM)
+        if self.training_exit is not None:
+            (directory / 'exit-status').write_text(f'{self.training_exit}\n')
+            return
+        if self.training_stall:
+            return
+        write_training_result(directory, generation)
+        for name in self.training_missing:
+            (directory / name).unlink()
+        (directory / 'done').write_text('done\n')
 
     def local(self, remote: str) -> Path:
         return self.remote / remote.removeprefix('/workspace/job/').rstrip('/')
@@ -240,18 +279,26 @@ class Commands:
                 self.stopped = True
                 return self.result(command, '', 0, kwargs)
             if words[:2] == ['test', '-f']:
+                if words[2].endswith('/done') and '/training/' in words[2] and self.training_done_failures:
+                    self.training_done_failures -= 1
+                    return self.result(command, '', 255, kwargs)
                 return self.result(command, '', 0 if self.local(words[2]).is_file() else 1, kwargs)
             if words[0] == 'mkdir':
-                self.local(words[-1]).mkdir(parents=True, exist_ok=True)
+                for path in words[2:]:
+                    self.local(path).mkdir(parents=True, exist_ok=True)
             elif words[0] == 'touch':
                 self.local(words[1]).touch()
                 self.started = True
             elif words[0] == 'mv':
                 self.local(words[1]).replace(self.local(words[2]))
-                if words[2].endswith('/job.json'):
+                if words[2] == '/workspace/job/job.json':
                     self.jobs.append(json.loads(self.local(words[2]).read_text()))
+                elif words[2].endswith('/job.json'):
+                    self.training_jobs.append(json.loads(self.local(words[2]).read_text()))
             elif words[0] == 'cat':
                 return self.result(command, self.local(words[1]).read_text(), 0, kwargs)
+            elif words[:5] == ['nohup', 'setsid', 'python3', '/workspace/job/generation_worker.py', 'train']:
+                self.start_training(int(words[5]))
             else:
                 raise AssertionError(command)
             return self.result(command, '', 0, kwargs)
@@ -262,8 +309,18 @@ class Commands:
             if self.missing_transfers:
                 self.missing_transfers -= 1
                 return self.result(command, '', 23, kwargs)
+            if '--ignore-existing' in args:
+                destination = self.local('/workspace/job/' + args[-1].split('/workspace/job/', 1)[1])
+                source = Path(args[-2])
+                for path in source.iterdir():
+                    target = destination / path.name
+                    if not target.exists():
+                        shutil.copyfile(path, target)
+                return self.result(command, '', 0, kwargs)
             remote = '/workspace/job/' + args[-2].split('/workspace/job/', 1)[1]
             source = self.local(remote)
+            if '/training/' in remote and not source.exists():
+                return self.result(command, '', 23, kwargs)
             source.mkdir(parents=True, exist_ok=True)
             if '/teacher/' in remote:
                 if self.worker_exit:
@@ -332,7 +389,7 @@ class Commands:
         pass
 
 
-class ChainTests(unittest.TestCase):
+class ChainTestCase(unittest.TestCase):
     """指示書の作業機側の観測可能な結果と外部コマンドを確かめる。"""
 
     def setUp(self) -> None:
@@ -376,6 +433,9 @@ class ChainTests(unittest.TestCase):
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(f'recorded_positions: {entries}\n')
         return path
+
+
+class ChainTests(ChainTestCase):
 
     def test_every_required_argument_is_required_before_creating(self) -> None:
         """事例1: どの必須条件を省略しても、出品の作成には進まない。"""
@@ -830,6 +890,316 @@ class ChainTests(unittest.TestCase):
         self.assertFalse((self.root / 'run/instance-id').exists())
 
 
+class GeneratorTrainingTests(ChainTestCase):
+    """生成機での学習、取得、停止、再開を、指示書の順序と外部入出力で検証する。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.values.update({'train-place': 'generator', 'last-generation': '1'})
+
+    def saved_machine(self) -> None:
+        directory = self.root / 'run'
+        directory.mkdir(exist_ok=True)
+        (directory / 'instance-id').write_text('17\n')
+        (directory / 'ssh-address').write_text('192.0.2.1 2222\n')
+        del self.values['offer']
+
+    def completed_books(self) -> None:
+        self.save_book(1, 0, 100)
+        (self.root / 'run/base.bin').write_bytes(network(0))
+
+    def assert_no_local_training(self) -> None:
+        self.assertEqual([call for call in self.commands.calls
+                          if call[0] == str(self.root / 'trainer') and call[1:3] in
+                          (['nnue', 'train'], ['diag', 'nnue-removal'], ['nnue', 'fit-linear'])], [])
+
+    def assert_no_commit(self) -> None:
+        self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+        self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
+
+    def test_generator_receives_fitted_network_before_stopping_and_committing(self) -> None:
+        """事例1: 検査済みの本だけを番号順に渡し、全結果の取得後に停止して補正済みネットを使う。"""
+        for number in (2, 0, 1):
+            self.save_book(1, number, 40)
+        self.saved_machine()
+        write_book(self.commands.remote / 'teacher/gen-1/book-9.mnsd', header_fields(1, 9, 120))
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(self.commands.jobs[-1]['target_books'], 3)
+        self.assertEqual(self.commands.jobs[-1]['skip_books'], [0, 1, 2])
+        self.assertEqual(len(self.commands.training_jobs), 1)
+        steps = self.commands.training_jobs[0]['steps']
+        directory = '/workspace/job/training/gen-1'
+        trainer = '/workspace/job/minase/target/release/minase-trainer'
+        books = [f'/workspace/job/teacher/gen-1/book-{number}.mnsd' for number in (0, 1, 2)]
+        expected = [
+            ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
+            [trainer, 'nnue', 'train', '--data', *books, '--base', directory + '/base.bin',
+             '--lambda', '1.0', '--teacher-cp-per-logit', 'calibrate', '--seed', '1', '--threads', '8',
+             '--output-dir', directory + '/train', '--feature-set', 'P', '--width', '256',
+             '--head', 'pairwise-l16-l32', '--batch', '16384', '--epochs', '50', '--patience', '5',
+             '--device', 'cuda', '--validation-interval', '1000', '--lr-schedule', 'cosine:3:0.1'],
+            [trainer, 'diag', 'nnue-removal', '--float', directory + '/train/best.npz',
+             '--net', directory + '/train/nnue.bin', '--data', *books, '--sample', '10', '--seed', '3',
+             '--output', directory + '/removal.json'],
+            [trainer, 'nnue', 'fit-linear', '--base', directory + '/train/nnue.bin', '--data', *books,
+             '--tau', '0.5', '1.5', '--seed', '0', '--threads', '3', '--output-dir', directory + '/fit'],
+        ]
+        self.assertEqual([step['name'] for step in steps], ['build', 'train', 'removal', 'fit'])
+        self.assertEqual([step['command'] for step in steps], expected)
+        self.assertEqual([step['done'] for step in steps],
+                         [None, directory + '/train/summary.json', directory + '/removal.json',
+                          directory + '/fit/summary.json'])
+        self.assertEqual([step['clean'] for step in steps], [None, directory + '/train', None, directory + '/fit'])
+        self.assertEqual([step['resume_file'] for step in steps],
+                         [None, directory + '/train/latest.npz', None, None])
+        self.assertEqual([step['resume_args'] for step in steps],
+                         [None, ['--resume', directory + '/train'], None, None])
+        calls = self.commands.calls
+        received = next(index for index, call in enumerate(calls)
+                        if call[0] == 'rsync' and call[-1] == str(self.root / 'run/gen-1/training-received') + '/')
+        stopped = next(index for index, call in enumerate(calls)
+                       if call[0] == 'ssh' and call[-1].endswith('generation_worker.py stop'))
+        committed = next(index for index, call in enumerate(calls) if call[0] == 'git' and call[3] == 'commit')
+        self.assertLess(received, stopped)
+        self.assertLess(stopped, committed)
+        fitted = (self.root / 'run/gen-1/fit/nnue.bin').read_bytes()
+        self.assertEqual(self.commands.nets[self.commands.head], fitted)
+        self.assertNotEqual(fitted, (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
+        self.assertEqual((self.root / 'run/gen-1/training-logs/train.log').read_text(), '生成機での学習ログ\n')
+        self.assertFalse((self.root / 'run/gen-1/training-received').exists())
+        self.assertTrue(any(call[1:3] == ['dev', 'bench'] for call in calls))
+        self.assert_no_local_training()
+
+    def test_training_worker_upload_replaces_final_file_after_transfer(self) -> None:
+        """学習用の作業者は一時名へ転送してからmvで公開する。"""
+        self.completed_books()
+        self.saved_machine()
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        calls = self.commands.calls
+        uploads = [index for index, call in enumerate(calls)
+                   if call[0] == 'scp' and Path(call[-2]).name == 'generation_worker.py']
+        self.assertEqual(len(uploads), 1)
+        uploaded = uploads[0]
+        self.assertEqual(calls[uploaded][-1], '/workspace/job/generation_worker.py.tmp')
+        replacements = [index for index, call in enumerate(calls)
+                        if call[0] == 'ssh' and call[-1] ==
+                        'mv /workspace/job/generation_worker.py.tmp /workspace/job/generation_worker.py']
+        self.assertEqual(len(replacements), 1)
+        self.assertLess(uploaded, replacements[0])
+        self.assertEqual((self.commands.remote / 'generation_worker.py').read_bytes(),
+                         Path(worker.__file__).read_bytes())
+        self.assertFalse((self.commands.remote / 'generation_worker.py.tmp').exists())
+
+    def test_training_failure_stops_without_committing_or_local_training(self) -> None:
+        """事例2: 生成機の終了コードとログの場所を示して止め、localでの再開を案内する。"""
+        self.commands.training_exit = 7
+        self.assertEqual(self.execute(), 1)
+        self.assert_stopped()
+        self.assert_no_commit()
+        self.assert_no_local_training()
+        for value in ('終了コード7', str(self.root / 'run/gen-1/training-logs'), '--train-place local'):
+            self.assertIn(value, self.errors.getvalue())
+
+    def test_training_timeout_stops_without_committing(self) -> None:
+        """事例3: 接続できても学習の待ち時間を超えたら停止する。"""
+        self.values['training-wait-hours'] = '0.001'
+        self.commands.training_stall = True
+        self.assertEqual(self.execute(), 1)
+        self.assertEqual(sum(self.clock.sleeps), 4)
+        self.assertIn('学習待ちが上限時間', self.errors.getvalue())
+        self.assertIn('--train-place local', self.errors.getvalue())
+        self.assert_stopped()
+        self.assert_no_commit()
+        self.assert_no_local_training()
+
+    def test_interrupted_training_reuses_published_job_and_base(self) -> None:
+        """事例4: 中断では生成機を止めず、再実行は仕事と初期値を送り直さずに完了する。"""
+        self.commands.interrupt_training = True
+        self.assertEqual(self.execute(), 128 + signal.SIGTERM)
+        self.assertFalse(self.commands.stopped)
+        self.assertTrue((self.root / 'run/instance-id').is_file())
+        self.assertFalse(any(call[:3] == ['vastai', 'destroy', 'instance'] for call in self.commands.calls))
+        job = (self.commands.remote / 'training/gen-1/job.json').read_bytes()
+        base = (self.commands.remote / 'training/gen-1/base.bin').read_bytes()
+        mark = len(self.commands.calls)
+        self.commands.interrupt_training = False
+        del self.values['offer']
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        later = self.commands.calls[mark:]
+        self.assertFalse(any(call[0] == 'scp' and call[-1] in
+                             ('/workspace/job/training/gen-1/job.json.tmp', '/workspace/job/training/gen-1/base.bin')
+                             for call in later))
+        self.assertFalse(any(call[0] == 'rsync' and '--ignore-existing' in call for call in later))
+        self.assertEqual((self.commands.remote / 'training/gen-1/job.json').read_bytes(), job)
+        self.assertEqual((self.commands.remote / 'training/gen-1/base.bin').read_bytes(), base)
+        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(len(self.commands.training_jobs), 1)
+        self.assert_no_local_training()
+
+    def test_completed_books_without_machine_stop_without_account_queries(self) -> None:
+        """事例5: 本だけがある場合は出品指定の有無にかかわらず借りず、localを案内する。"""
+        self.completed_books()
+        for offer in (True, False):
+            with self.subTest(offer=offer):
+                if not offer:
+                    del self.values['offer']
+                runner = chain.Chain(chain.arguments(argv(self.values)))
+                with self.assertRaisesRegex(chain.ChainStop, '--train-place local'):
+                    runner.execute()
+                self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+                self.assert_no_local_training()
+                self.assert_no_commit()
+
+    def test_completed_results_skip_remote_training(self) -> None:
+        """事例7: 3つの要約がそろっていれば生成機に接続せず、検査とコミットを行う。"""
+        self.completed_books()
+        write_training_result(self.root / 'run/gen-1', 1)
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
+        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assert_no_local_training()
+
+    def test_received_results_resume_stops_via_saved_ssh_when_account_fails(self) -> None:
+        """最終結果の取得後に再開すると、接続確認を挟まず保存先へSSHで停止を要求する。"""
+        self.completed_books()
+        self.saved_machine()
+        write_training_result(self.root / 'run/gen-1', 1)
+        self.commands.fail_command = ['vastai']
+        self.assertEqual(self.execute(), 1)
+        calls = self.commands.calls
+        ssh_calls = [call for call in calls if call[0] == 'ssh']
+        self.assertTrue(ssh_calls)
+        self.assertEqual(ssh_calls[0][-2:], ['root@192.0.2.1', 'python3 /workspace/job/generation_worker.py stop'])
+        self.assertEqual(ssh_calls[0][ssh_calls[0].index('-p') + 1], '2222')
+        self.assertTrue(self.commands.stopped)
+        self.assertTrue(any(call[:3] == ['vastai', 'destroy', 'instance'] for call in calls))
+        self.assertFalse(any(call[0] in ('scp', 'rsync') for call in calls))
+        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertIn('削除が未確認', self.errors.getvalue())
+        self.assert_no_local_training()
+
+    def test_result_move_interruption_fetches_again_and_replaces_old_outputs(self) -> None:
+        """事例8: trainの移動直後に中断しても完了扱いせず、全結果を取得し直す。"""
+        self.completed_books()
+        self.saved_machine()
+        directory = self.root / 'run/gen-1'
+        write_training_result(directory, 1)
+        (directory / 'removal.json').unlink()
+        (directory / 'train/stale').touch()
+        (directory / 'fit/stale').touch()
+        replace = os.replace
+
+        def interrupt(source: Path, destination: Path) -> None:
+            replace(source, destination)
+            if Path(destination) == directory / 'train':
+                raise chain.Interrupted(signal.SIGTERM)
+
+        with patch.object(chain.os, 'replace', side_effect=interrupt):
+            self.assertEqual(self.execute(), 128 + signal.SIGTERM)
+        self.assertTrue((directory / 'train/summary.json').is_file())
+        self.assertFalse((directory / 'removal.json').exists())
+        self.assertFalse((directory / 'fit').exists())
+        self.assertFalse(chain.Chain(chain.arguments(argv(self.values))).training_complete(1))
+        self.assertFalse(self.commands.stopped)
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        received = [call for call in self.commands.calls if call[0] == 'rsync'
+                    and call[-1] == str(directory / 'training-received') + '/']
+        self.assertEqual(len(received), 2)
+        self.assertFalse((directory / 'train/stale').exists())
+        self.assertFalse((directory / 'fit/stale').exists())
+        self.assertFalse((directory / 'training-received').exists())
+        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assert_no_local_training()
+
+    def test_replacement_machine_receives_previously_validated_books(self) -> None:
+        """事例9: 借り直した生成機にない本を送り、初期値には前世代の補正結果を使う。"""
+        saved = self.save_book(1, 0, 40).read_bytes()
+        (self.root / 'run/instance-id').write_text('99\n')
+        self.commands.entries = 40
+        self.values['last-generation'] = '2'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        pushes = [call for call in self.commands.calls if call[0] == 'rsync' and '--ignore-existing' in call]
+        self.assertEqual(len(pushes), 2)
+        self.assertEqual(pushes[0][-2:], [str(self.root / 'run/gen-1/teacher') + '/',
+                                        'root@192.0.2.1:/workspace/job/teacher/gen-1/'])
+        self.assertEqual((self.commands.remote / 'teacher/gen-1/book-0.mnsd').read_bytes(), saved)
+        self.assertNotIn((1, 0), self.commands.generated)
+        self.assertEqual((self.commands.remote / 'training/gen-1/base.bin').read_bytes(),
+                         (self.root / 'run/base.bin').read_bytes())
+        self.assertEqual((self.commands.remote / 'training/gen-2/base.bin').read_bytes(),
+                         (self.root / 'run/gen-1/fit/nnue.bin').read_bytes())
+        self.assert_no_local_training()
+
+    def test_done_check_transport_failures_retry_and_recover(self) -> None:
+        """事例10: doneの照会の失敗も再試行し、短い障害では学習結果を取得できる。"""
+        self.completed_books()
+        self.saved_machine()
+        self.commands.training_done_failures = 2
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertGreaterEqual(sum(self.clock.sleeps), 2)
+        self.assertEqual(len(self.commands.training_jobs), 1)
+        self.assert_no_local_training()
+
+    def test_done_check_transport_failures_stop_at_limit(self) -> None:
+        """事例10: 他の通信が成功していても、doneの照会の連続失敗を上限で打ち切る。"""
+        self.completed_books()
+        self.saved_machine()
+        self.commands.training_done_failures = 20
+        self.assertEqual(self.execute(), 1)
+        self.assertEqual(sum(self.clock.sleeps), 3)
+        self.assertIn('SSHまたはrsyncの失敗が上限時間', self.errors.getvalue())
+        self.assertIn('--train-place local', self.errors.getvalue())
+        self.assert_stopped()
+        self.assert_no_commit()
+        self.assert_no_local_training()
+
+    def test_teacher_upload_failure_retries_preparation(self) -> None:
+        """準備中の教師転送が失敗しても、job.jsonを公開するまで再試行する。"""
+        self.completed_books()
+        self.saved_machine()
+        self.commands.transfer_failures = 1
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(len(self.commands.training_jobs), 1)
+        self.assert_no_local_training()
+
+    def test_missing_received_summary_never_starts_local_training(self) -> None:
+        """結果のdoneだけでは完了にせず、不足を検出したら作業機の学習器を呼ばず停止する。"""
+        self.completed_books()
+        self.saved_machine()
+        self.commands.training_missing = ['removal.json']
+        stale = self.root / 'run/gen-1/training-received'
+        write_training_result(stale, 1)
+        self.assertEqual(self.execute(), 1)
+        self.assertIn('学習結果がそろっていません', self.errors.getvalue())
+        self.assert_stopped()
+        self.assert_no_commit()
+        self.assert_no_local_training()
+
+    def test_gpu_offer_requirements_apply_only_to_generator_training(self) -> None:
+        """事例11: GPU数とCUDA版の下限を生成機学習だけに適用し、作成前に拒否する。"""
+        original = self.commands.offer.copy()
+        for field, value in (('num_gpus', 0), ('cuda_max_good', 12.9)):
+            with self.subTest(field=field):
+                self.commands.offer = original | {field: value}
+                self.assertEqual(self.execute(), 1)
+                self.assertFalse(any(call[:3] == ['vastai', 'create', 'instance'] for call in self.commands.calls))
+                local = chain.arguments(argv(self.values | {'train-place': 'local'}))
+                self.assertEqual(chain.select_offer([self.commands.offer], local)['id'], 42)
+        self.commands.offer = original
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+
+    def test_deadline_includes_last_training_only_on_generator(self) -> None:
+        """事例12: 生成時間が57.72時間なら6世代の学習待ち7.2時間または6時間を加える。"""
+        args = chain.arguments(argv(self.values))
+        args.books_estimate = 37
+        self.assertAlmostEqual(chain.deadline_hours(6, 0, args), 64.92)
+        self.assertAlmostEqual(chain.deadline_hours(1, 37, args), 1.2)
+        args.train_place = 'local'
+        self.assertAlmostEqual(chain.deadline_hours(6, 0, args), 63.72)
+        with self.assertRaises(chain.ChainStop):
+            chain.deadline_hours(1, 37, args)
+
+
 class WorkerTests(unittest.TestCase):
     """事例12の公開順序、失敗、CPU上限、自己停止を外部契約から検証する。"""
 
@@ -994,6 +1364,308 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(worker.stop_instance(self.environ), 1)
         self.assertEqual(sum(self.clock.sleeps), 1800)
         self.assertNotIn('private-test-key', self.output.getvalue() + self.errors.getvalue())
+
+
+class TrainingWorkerTests(unittest.TestCase):
+    """事例13〜17: 世代ごとの排他制御、ステップの再開、終了状態の公開を検証する。"""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.directory = self.root / 'training/gen-3'
+        self.directory.mkdir(parents=True)
+        self.library = self.root / 'nvrtc/nvidia/cu13/lib'
+        self.install = self.enterContext(patch.object(worker, 'install_nvrtc', return_value=self.library))
+        self.steps = []
+        for name, done in (('build', None), ('train', 'train/summary.json'),
+                           ('removal', 'removal.json'), ('fit', 'fit/summary.json')):
+            self.steps.append({'name': name, 'command': ['tool', name],
+                               'done': str(self.directory / done) if done is not None else None,
+                               'clean': str(self.directory / name) if name in ('train', 'fit') else None,
+                               'resume_file': str(self.directory / 'train/latest.npz') if name == 'train' else None,
+                               'resume_args': ['--resume', str(self.directory / 'train')] if name == 'train' else None})
+        (self.directory / 'job.json').write_text(json.dumps({'steps': self.steps}))
+        self.calls = []
+        self.failure = None
+        self.missing_done = None
+        self.errors = io.StringIO()
+        self.enterContext(redirect_stderr(self.errors))
+        self.enterContext(patch.object(subprocess, 'run', side_effect=self.command))
+        self.enterContext(patch.object(subprocess, 'Popen', side_effect=AssertionError('実コマンドは禁止です')))
+
+    def command(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        self.calls.append((command, kwargs))
+        name = command[1]
+        self.assertFalse((self.directory / 'done').exists())
+        self.assertFalse((self.directory / 'exit-status').exists())
+        self.assertFalse((self.directory / 'finished' / name).exists())
+        self.assertEqual(kwargs['cwd'], self.root / 'minase')
+        self.assertEqual(kwargs['stderr'], subprocess.STDOUT)
+        self.assertTrue(kwargs['check'])
+        self.assertEqual(Path(kwargs['stdout'].name), self.directory / f'logs/{name}.log')
+        kwargs['stdout'].write(name + '\n')
+        if name == 'train' and self.failure is not None:
+            raise subprocess.CalledProcessError(self.failure, command)
+        if name == 'train' and '--resume' not in command:
+            self.assertFalse((self.directory / 'train').exists())
+        if name == 'fit':
+            self.assertFalse((self.directory / 'fit').exists())
+        if name != 'build' and name != self.missing_done:
+            relative = {'train': 'train/summary.json', 'removal': 'removal.json', 'fit': 'fit/summary.json'}[name]
+            done = self.directory / relative
+            done.parent.mkdir(parents=True, exist_ok=True)
+            done.write_text('{}')
+        return subprocess.CompletedProcess(command, 0)
+
+    def test_steps_run_in_order_with_environment_and_publish_done_last(self) -> None:
+        """事例13: 全ステップに環境を渡し、追記ログと成果物の完成後にdoneを置く。"""
+        (self.directory / 'logs').mkdir()
+        (self.directory / 'logs/train.log').write_text('previous\n')
+        publications = []
+        replace = Path.replace
+
+        def publish(source: Path, destination: Path) -> Path:
+            publications.append(destination)
+            self.assertEqual(destination, self.directory / 'done')
+            self.assertEqual([command[1] for command, _ in self.calls], ['build', 'train', 'removal', 'fit'])
+            self.assertTrue(source.is_file())
+            self.assertFalse(destination.exists())
+            for name in ('train/summary.json', 'removal.json', 'fit/summary.json'):
+                self.assertTrue((self.directory / name).is_file())
+            return replace(source, destination)
+
+        with patch.dict(os.environ, {'LD_LIBRARY_PATH': '/existing/lib', 'TRAINING_TEST_VALUE': 'retained'}), \
+                patch.object(Path, 'replace', publish):
+            self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertEqual(publications, [self.directory / 'done'])
+        self.assertTrue((self.directory / 'done').is_file())
+        self.assertFalse((self.directory / '.done.tmp').exists())
+        self.assertEqual({path.name for path in (self.directory / 'finished').iterdir()}, {'train', 'removal', 'fit'})
+        for _, options in self.calls:
+            self.assertEqual(options['env']['LD_LIBRARY_PATH'], str(self.library) + ':/existing/lib')
+            self.assertEqual(options['env']['TRAINING_TEST_VALUE'], 'retained')
+        self.assertEqual((self.directory / 'logs/train.log').read_text(), 'previous\ntrain\n')
+        self.install.assert_called_once_with(self.root)
+
+    def test_environment_without_library_path_gets_nvrtc_directory(self) -> None:
+        """LD_LIBRARY_PATHが未設定でも、空の探索先を足さずにNVRTCの場所を渡す。"""
+        with patch.dict(os.environ, {'TRAINING_TEST_VALUE': 'retained'}, clear=True):
+            self.assertEqual(worker.run_training(self.root, 3), 0)
+        for _, options in self.calls:
+            self.assertEqual(options['env']['LD_LIBRARY_PATH'], str(self.library))
+            self.assertEqual(options['env']['TRAINING_TEST_VALUE'], 'retained')
+
+    def test_output_without_finished_marker_does_not_skip_step(self) -> None:
+        """成果物だけでは成功と判定せず、目印のないステップを実行する。"""
+        for relative in ('train/summary.json', 'removal.json', 'fit/summary.json'):
+            path = self.directory / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('{}')
+        self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
+        self.assertEqual([command[1] for command, _ in self.calls], ['build', 'train', 'removal', 'fit'])
+
+    def test_finished_steps_skip_cleaning_and_null_done_runs_each_time(self) -> None:
+        """事例14: 目印があれば実行と削除を省き、doneがnullなら毎回実行して目印を作らない。"""
+        train = self.directory / 'train'
+        train.mkdir()
+        (train / 'summary.json').write_text('{}')
+        (train / 'latest.npz').touch()
+        (self.directory / 'finished').mkdir()
+        (self.directory / 'finished/train').touch()
+        fit = self.directory / 'fit'
+        fit.mkdir()
+        (fit / 'partial').touch()
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertEqual([command for command, _ in self.calls], [['tool', 'build'], ['tool', 'removal'], ['tool', 'fit']])
+        self.assertFalse((fit / 'partial').exists())
+        (fit / 'retained').touch()
+        (self.directory / 'done').unlink()
+        (train / 'summary.json').unlink()
+        self.calls.clear()
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertEqual([command for command, _ in self.calls], [['tool', 'build']])
+        self.assertTrue((train / 'latest.npz').is_file())
+        self.assertTrue((fit / 'retained').is_file())
+        self.assertFalse((self.directory / 'finished/build').exists())
+
+    def test_training_without_checkpoint_cleans_config_before_running(self) -> None:
+        """チェックポイントの保存前に中断したtrainは、config.jsonを消して最初から実行する。"""
+        train = self.directory / 'train'
+        train.mkdir()
+        (train / 'config.json').write_text('{}')
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertIn(['tool', 'train'], [command for command, _ in self.calls])
+        self.assertFalse((train / 'config.json').exists())
+
+    def test_training_with_checkpoint_preserves_output_and_resumes(self) -> None:
+        """latest.npzがあれば出力を消さず、resume_argsを付けて再開する。"""
+        train = self.directory / 'train'
+        train.mkdir()
+        (train / 'config.json').write_text('{"seed": 1}')
+        (train / 'latest.npz').write_bytes(b'checkpoint')
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertIn(['tool', 'train', '--resume', str(train)], [command for command, _ in self.calls])
+        self.assertEqual((train / 'config.json').read_text(), '{"seed": 1}')
+        self.assertEqual((train / 'latest.npz').read_bytes(), b'checkpoint')
+
+    def test_steps_inherit_generation_lock(self) -> None:
+        """各ステップのpass_fdsに、保持中の世代ロックの記述子を渡す。"""
+        def command(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            self.assertIn('pass_fds', list(kwargs))
+            self.assertIsInstance(kwargs['pass_fds'], tuple)
+            self.assertEqual(len(kwargs['pass_fds']), 1)
+            self.assertTrue(os.path.samestat(os.fstat(kwargs['pass_fds'][0]), (self.directory / 'lock').stat()))
+            return self.command(argv, **kwargs)
+
+        with patch.object(subprocess, 'run', side_effect=command):
+            self.assertEqual(worker.run_training(self.root, 3), 0, self.errors.getvalue())
+        self.assertEqual([argv[1] for argv, _ in self.calls], ['build', 'train', 'removal', 'fit'])
+
+    def test_failed_diagnostic_report_does_not_mark_step_finished(self) -> None:
+        """失敗時の報告には成功の目印を付けず、再開時には診断を実行し直す。"""
+        def command(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            result = self.command(argv, **kwargs)
+            if argv[1] == 'removal':
+                raise subprocess.CalledProcessError(7, argv)
+            return result
+
+        with patch.object(subprocess, 'run', side_effect=command):
+            self.assertEqual(worker.run_training(self.root, 3), 7)
+        self.assertTrue((self.directory / 'removal.json').is_file())
+        self.assertFalse((self.directory / 'finished/removal').exists())
+        self.assertFalse((self.directory / 'done').exists())
+        (self.directory / 'exit-status').unlink()
+        self.calls.clear()
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertEqual([argv[1] for argv, _ in self.calls], ['build', 'removal', 'fit'])
+        self.assertTrue((self.directory / 'finished/removal').is_file())
+
+    def test_step_failure_publishes_exit_status_and_does_not_run_later_steps(self) -> None:
+        """事例15: 失敗とシグナル終了のコードを1行で公開し、後続を動かさない。"""
+        replace = Path.replace
+        for failure, expected in ((7, 7), (-9, 137)):
+            with self.subTest(failure=failure):
+                self.failure = failure
+                self.calls.clear()
+                (self.directory / 'exit-status').unlink(missing_ok=True)
+                publications = []
+
+                def publish(source: Path, destination: Path) -> Path:
+                    publications.append(destination)
+                    self.assertEqual(destination, self.directory / 'exit-status')
+                    self.assertEqual(source.read_text(), f'{expected}\n')
+                    self.assertFalse(destination.exists())
+                    return replace(source, destination)
+
+                with patch.object(Path, 'replace', publish):
+                    self.assertEqual(worker.run_training(self.root, 3), expected)
+                self.assertEqual([command[1] for command, _ in self.calls], ['build', 'train'])
+                self.assertEqual(publications, [self.directory / 'exit-status'])
+                self.assertEqual((self.directory / 'exit-status').read_text(), f'{expected}\n')
+                self.assertFalse((self.directory / '.exit-status.tmp').exists())
+                self.assertFalse((self.directory / 'done').exists())
+                self.assertFalse((self.directory / 'finished/train').exists())
+
+    def test_missing_step_output_is_failure(self) -> None:
+        """事例16: 終了コード0でも指定した完了ファイルがなければ失敗する。"""
+        self.missing_done = 'train'
+        self.assertEqual(worker.run_training(self.root, 3), 1)
+        self.assertEqual([command[1] for command, _ in self.calls], ['build', 'train'])
+        self.assertEqual((self.directory / 'exit-status').read_text(), '1\n')
+        self.assertFalse((self.directory / 'done').exists())
+        self.assertFalse((self.directory / 'finished/train').exists())
+        self.assertIn('完了ファイルがありません', self.errors.getvalue())
+
+    def test_existing_lock_prevents_installation_and_execution(self) -> None:
+        """事例17: 別の呼び出しが世代のロックを持つ間は、何も実行せず0を返す。"""
+        with (self.directory / 'lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertEqual(worker.run_training(self.root, 3), 0)
+        self.assertFalse(self.calls)
+        self.install.assert_not_called()
+        self.assertFalse((self.directory / 'done').exists())
+        self.assertFalse((self.directory / 'exit-status').exists())
+        self.assertEqual(worker.run_training(self.root, 3), 0)
+
+    def test_finished_or_failed_jobs_do_not_execute_again(self) -> None:
+        """事例17: doneまたはexit-statusがあれば、既存の結果を変えずに0を返す。"""
+        for name, content in (('done', 'done\n'), ('exit-status', '7\n')):
+            with self.subTest(name=name):
+                marker = self.directory / name
+                marker.write_text(content)
+                self.assertEqual(worker.run_training(self.root, 3), 0)
+                self.assertEqual(marker.read_text(), content)
+                self.assertFalse(self.calls)
+                self.install.assert_not_called()
+                marker.unlink()
+
+    def test_installation_failure_is_published_without_running_steps(self) -> None:
+        """NVRTCの準備失敗も終了コードを公開し、学習を開始しない。"""
+        self.install.side_effect = ValueError('SHA-256 mismatch')
+        self.assertEqual(worker.run_training(self.root, 3), 1)
+        self.assertFalse(self.calls)
+        self.assertEqual((self.directory / 'exit-status').read_text(), '1\n')
+        self.assertFalse((self.directory / 'done').exists())
+
+    def test_train_subcommand_uses_script_directory(self) -> None:
+        """trainはスクリプトの配置先をrootとし、指定した世代の仕事を実行する。"""
+        with patch.object(worker, '__file__', str(self.root / 'generation_worker.py')):
+            self.assertEqual(worker.main(['train', '3']), 0)
+        self.assertTrue((self.directory / 'done').is_file())
+
+
+class NvrtcInstallTests(unittest.TestCase):
+    """事例18: ダウンロードをメモリ上のホイールで代行し、照合と再利用を検証する。"""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as archive:
+            archive.writestr('nvidia/cu13/lib/libnvrtc.so.13', b'test library')
+            archive.writestr('nvidia/cu13/lib/libnvrtc-builtins.so.13.0', b'test builtins')
+        self.wheel = buffer.getvalue()
+        self.checksum = hashlib.sha256(self.wheel).hexdigest()
+        self.download = self.enterContext(patch.object(worker.urllib.request, 'urlopen',
+                                                       side_effect=lambda *args, **kwargs: io.BytesIO(self.wheel)))
+
+    def test_verified_wheel_installs_symlink_and_is_reused(self) -> None:
+        """一致するホイールは展開してcompleteを作り、2回目のダウンロードを省く。"""
+        directory = self.root / 'nvrtc'
+        directory.mkdir()
+        (directory / 'partial').touch()
+        self.assertEqual(worker.NVRTC_SHA256, 'ad9b6d2ead2435f11cbb6868809d2adeeee302e9bb94bcf0539c7a40d80e8575')
+        with patch.object(worker, 'NVRTC_SHA256', self.checksum):
+            library = worker.install_nvrtc(self.root)
+            self.assertEqual(library, directory / 'nvidia/cu13/lib')
+            self.assertTrue((library / 'libnvrtc.so').is_symlink())
+            self.assertEqual((library / 'libnvrtc.so').readlink(), Path('libnvrtc.so.13'))
+            self.assertEqual((library / 'libnvrtc.so').read_bytes(), b'test library')
+            self.assertEqual((library / 'libnvrtc-builtins.so.13.0').read_bytes(), b'test builtins')
+            self.assertTrue((directory / 'complete').is_file())
+            self.assertFalse((directory / 'partial').exists())
+            self.assertFalse(list(directory.glob('*.whl')))
+            self.assertEqual(worker.install_nvrtc(self.root), library)
+        self.download.assert_called_once()
+        self.assertEqual(self.download.call_args.args[0],
+                         'https://files.pythonhosted.org/packages/c3/68/'
+                         '483a78f5e8f31b08fb1bb671559968c0ca3a065ac7acabfc7cee55214fd6/'
+                         'nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl')
+
+    def test_checksum_mismatch_does_not_publish_complete_or_extract(self) -> None:
+        """SHA-256が違うとValueErrorとなり、未検証の内容は展開せず、次回は取り直す。"""
+        with patch.object(worker, 'NVRTC_SHA256', '0' * 64):
+            with self.assertRaisesRegex(ValueError, 'SHA-256'):
+                worker.install_nvrtc(self.root)
+        self.assertFalse((self.root / 'nvrtc/complete').exists())
+        self.assertFalse((self.root / 'nvrtc/nvidia').exists())
+        with patch.object(worker, 'NVRTC_SHA256', self.checksum):
+            library = worker.install_nvrtc(self.root)
+        self.assertEqual(self.download.call_count, 2)
+        self.assertTrue((library / 'libnvrtc.so').is_symlink())
+        self.assertTrue((self.root / 'nvrtc/complete').is_file())
 
 
 if __name__ == '__main__':

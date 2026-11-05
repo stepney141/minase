@@ -219,6 +219,15 @@ def rsync_to(host: str, port: int, source: str, destination: Path) -> None:
                str(destination) + '/'], 3600)
 
 
+def rsync_push(host: str, port: int, source: Path, destination: str) -> None:
+    """生成機にないファイルだけを、保存済みのSSH接続先へ送る。"""
+    if ':' in host:
+        host = f'[{host}]'
+    command = shlex.join(['ssh', *ssh_options(port, '-p')])
+    run_timed(['rsync', '-a', '--ignore-existing', '-e', command, str(source) + '/',
+               f'root@{host}:{destination.rstrip("/")}/'], 3600)
+
+
 def copy_complete(output: str) -> bool:
     """rsyncの完了行とエラーの有無を確認する。"""
     complete = re.search(r'^total size is [0-9,]+\s+speedup is [0-9,.]+\s*$', output, re.M)
