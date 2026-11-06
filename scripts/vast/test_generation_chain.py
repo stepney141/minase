@@ -71,9 +71,10 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
     return {'run-dir': str(root / 'run'), 'worktree': str(root / 'tree'),
             'minase-bin': str(root / 'inspect'), 'trainer-bin': str(root / 'trainer'),
             'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2', 'train-place': 'local',
-            'positions-per-generation': '100', 'books-estimate': '2', 'games': '10', 'nodes': '20000',
+            'ref-prefix': 'refs/nnue-standard-recipe', 'books-per-generation': '1',
+            'window': '1', 'fit': 'yes', 'lr-linear': '0.67903', 'games': '10', 'nodes': '20000',
             'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'seed-base': '9000000000',
-            'seed-generation-step': '10000000', 'seed-book-step': '100000', 'max-books': '100',
+            'seed-generation-step': '10000000', 'seed-book-step': '100000',
             'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
             'head': 'pairwise-l16-l32', 'batch': '16384', 'epochs': '50', 'patience': '5', 'train-seed': '1',
             'export-epoch': 'best',
@@ -104,16 +105,17 @@ def option_values(command: list[str], option: str) -> list[str]:
     return result
 
 
-def write_training_result(directory: Path, generation: int) -> None:
+def write_training_result(directory: Path, generation: int, fit: bool) -> None:
     """学習器の出力形式で、実際の重みや損失に依存しない成果物を置く。"""
     (directory / 'train').mkdir(parents=True, exist_ok=True)
     (directory / 'train/summary.json').write_text('{"status": "candidate", "best_epoch": 4}')
     (directory / 'train/nnue.bin').write_bytes(network(generation) + b'unfitted')
     (directory / 'train/best.npz').write_bytes(b'checkpoint')
     (directory / 'removal.json').write_text('{}')
-    (directory / 'fit').mkdir(exist_ok=True)
-    (directory / 'fit/summary.json').write_text('{"decision": {"d": -0.25}}')
-    (directory / 'fit/nnue.bin').write_bytes(network(generation))
+    if fit:
+        (directory / 'fit').mkdir(exist_ok=True)
+        (directory / 'fit/summary.json').write_text('{"decision": {"d": -0.25}}')
+        (directory / 'fit/nnue.bin').write_bytes(network(generation))
 
 
 class Clock:
@@ -191,7 +193,8 @@ class Commands:
             return
         if self.training_stall:
             return
-        write_training_result(directory, generation)
+        job = json.loads((directory / 'job.json').read_text())
+        write_training_result(directory, generation, any(step['name'] == 'fit' for step in job['steps']))
         for name in self.training_missing:
             (directory / name).unlink()
         (directory / 'done').write_text('done\n')
@@ -445,7 +448,7 @@ class ChainTests(ChainTestCase):
             with self.subTest(export_epoch=choice):
                 runner = chain.Chain(chain.arguments(argv(self.values | {'export-epoch': choice})))
                 commands = runner.training_commands(self.root / 'trainer', [self.root / 'book.mnsd'],
-                                                    self.root / 'base.bin', directory)
+                                                    [self.root / 'book.mnsd'], self.root / 'base.bin', directory)
                 if choice == 'best':
                     self.assertNotIn('--export-epoch', commands['train'])
                 else:
@@ -464,10 +467,13 @@ class ChainTests(ChainTestCase):
 
     def test_every_required_argument_is_required_before_creating(self) -> None:
         """事例1: どの必須条件を省略しても、出品の作成には進まない。"""
-        for name in self.values.keys() - {'offer'}:
-            with self.subTest(name=name), self.assertRaises(SystemExit) as raised:
-                chain.main(argv({key: value for key, value in self.values.items() if key != name}))
-            self.assertEqual(raised.exception.code, 2)
+        with patch.object(common, 'call') as call, patch.object(common, 'create') as create:
+            for name in self.values.keys() - {'offer'}:
+                with self.subTest(name=name), self.assertRaises(SystemExit) as raised:
+                    chain.main(argv({key: value for key, value in self.values.items() if key != name}))
+                self.assertEqual(raised.exception.code, 2)
+            call.assert_not_called()
+            create.assert_not_called()
         self.assertFalse(self.commands.calls)
 
     def test_fit_arguments_reject_invalid_values_before_creating(self) -> None:
@@ -506,7 +512,7 @@ class ChainTests(ChainTestCase):
         """条件の境界値を受理し、生成、較正、学習、補正、限定したコミットを2世代続ける。"""
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual(self.commands.generated, [(1, 0), (2, 0)])
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-2'], '2' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-2'], '2' * 40)
         self.assertEqual(self.commands.jobs[-1]['commit'], '1' * 40)
         path = self.root / 'run/gen-2/teacher/book-0.mnsd'
         self.assertEqual(inspect_book(path)['network_checksum'], '01' * 32)
@@ -536,7 +542,7 @@ class ChainTests(ChainTestCase):
 
     def test_fit_uses_all_books_after_training_and_commits_fitted_network(self) -> None:
         """学習後に指定した条件で全教師を補正に使い、補正済みのネットとDをコミットする。"""
-        self.values['last-generation'] = '1'
+        self.values.update({'last-generation': '1', 'books-per-generation': '3'})
         self.commands.entries = 40
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         directory = self.root / 'run/gen-1'
@@ -574,7 +580,7 @@ class ChainTests(ChainTestCase):
                 runner = chain.Chain(chain.arguments(argv(self.values)))
                 with self.assertRaises(chain.ChainStop):
                     runner.fit(1)
-                self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+                self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
                 self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
                 self.assertFalse(self.train_calls(2))
                 self.assertEqual((self.root / 'tree/crates/minase/nets/nnue.bin').read_bytes(), network(0))
@@ -626,18 +632,16 @@ class ChainTests(ChainTestCase):
         self.assertTrue((directory / 'summary.json').is_file())
         self.assertEqual(log.read_text(), '前回のログ\n補正のログ\n')
 
-    def test_seed_book_count_and_deadline_formulas(self) -> None:
-        """事例6、13: 指示書の数式を数値例と境界で確かめる。"""
+    def test_seed_and_remaining_book_deadline_formulas(self) -> None:
+        """事例6: 各世代の残りの本数に生成時間と余裕係数を掛ける。"""
         args = chain.arguments(argv(self.values))
         self.assertEqual(chain.Chain(args).seed(2, 3), 9020300000)
-        self.assertEqual(chain.target_books(0, 0, 100000000, 37), 37)
-        self.assertEqual(chain.target_books(10, 27500000, 100000000, 37), 37)
-        self.assertEqual(chain.target_books(10, 100000000, 100000000, 37), 10)
-        with self.assertRaises(chain.ChainStop):
-            chain.target_books(1, 0, 100, 2)
-        args.books_estimate = 37
-        self.assertAlmostEqual(chain.deadline_hours(8, 0, args), 85.36)
-        self.assertAlmostEqual(chain.deadline_hours(6, 7, args), 61.9)
+        args.books_per_generation = 37
+        for count, remaining in ((26, 11), (0, 37)):
+            with self.subTest(count=count):
+                self.assertAlmostEqual(chain.deadline_hours([count], args), 12 * remaining * 1.3 / 60)
+        self.assertAlmostEqual(chain.deadline_hours([26, 0], args), 12 * (11 + 37) * 1.3 / 60 + 1.2)
+        self.assertAlmostEqual(chain.deadline_hours([74, 0], args), 12 * 37 * 1.3 / 60 + 1.2)
 
     def test_invalid_book_is_never_linked(self) -> None:
         """事例7: 不一致の本を検査済みの入力へ入れず、反復を停止する。"""
@@ -657,7 +661,7 @@ class ChainTests(ChainTestCase):
         """事例8: 作業機に保存済みの本はskip_booksへ入り、生成し直さない。"""
         saved = self.save_book(1, 0, 40).read_bytes()
         self.commands.entries = 40
-        self.values['last-generation'] = '1'
+        self.values.update({'last-generation': '1', 'books-per-generation': '3'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual(self.commands.jobs[0]['skip_books'], [0])
         self.assertEqual(self.commands.jobs[0]['target_books'], 3)
@@ -689,7 +693,7 @@ class ChainTests(ChainTestCase):
         self.assertEqual(len(self.fit_calls(1)), 1)
         commits = [call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit']
         self.assertEqual(len(commits), 1)
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         destroys = [index for index, call in enumerate(self.commands.calls)
                     if call[:3] == ['vastai', 'destroy', 'instance']]
         self.assertEqual(len(destroys), 2)
@@ -702,7 +706,7 @@ class ChainTests(ChainTestCase):
         """事例9: 作成後の認証切れでも2世代を作り、削除未確認を成功にしない。"""
         self.commands.deny_account_after_start = True
         self.assertNotEqual(self.execute(), 0)
-        self.assertIn('refs/nnue-generation-reset/gen-2', self.commands.refs)
+        self.assertIn('refs/nnue-standard-recipe/gen-2', self.commands.refs)
         self.assert_stopped()
         self.assertTrue((self.root / 'run/instance-id').is_file())
         calls = self.commands.calls
@@ -821,7 +825,7 @@ class ChainTests(ChainTestCase):
         self.assertNotEqual(self.execute(), 0)
         self.assertEqual((self.root / 'tree/crates/minase/nets/nnue.bin').read_bytes(), network(0))
         self.assertEqual(unrelated.read_text(), '作業中の変更')
-        self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
 
     def test_commit_already_written_only_creates_reference(self) -> None:
         self.save_book(1, 0, 100)
@@ -832,7 +836,7 @@ class ChainTests(ChainTestCase):
         self.commands.nets[self.commands.head] = network(1)
         runner = chain.Chain(chain.arguments(argv(self.values)))
         runner.commit_generation(1, {'best_epoch': 3}, {0: 100}, -0.1)
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assertFalse(any(call[0] == 'cargo' or (call[0] == 'git' and call[3] == 'commit')
                              for call in self.commands.calls))
 
@@ -865,29 +869,26 @@ class ChainTests(ChainTestCase):
         api = [call[1:3] for call in self.commands.calls[mark:] if call[0] == 'vastai']
         self.assertEqual(api, [['destroy', 'instance'], ['show', 'instances']])
 
-    def test_max_books_boundary_and_overflow(self) -> None:
-        self.values.update({'last-generation': '1', 'books-estimate': '1', 'max-books': '2',
-                            'positions-per-generation': '80'})
-        self.commands.entries = 20
-        self.assertNotEqual(self.execute(), 0)
-        self.assertIn('max-books', self.errors.getvalue())
-        self.assertFalse(self.train_calls(1))
-        self.values.update({'positions-per-generation': '40', 'books-estimate': '2'})
+    def test_books_per_generation_ignores_position_counts(self) -> None:
+        """事例5: 局面が0でも本数がそろったら、生成を止めて学習へ進む。"""
+        self.values.update({'last-generation': '1', 'books-per-generation': '2'})
+        self.commands.entries = 0
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
-        self.assertTrue(all(job['target_books'] <= 2 for job in self.commands.jobs))
+        self.assertEqual(self.commands.generated, [(1, 0), (1, 1)])
+        self.assertTrue(all(job['target_books'] == 2 for job in self.commands.jobs))
 
     def test_failed_training_diagnostic_or_fit_stops_before_commit(self) -> None:
         for failure in (['nnue', 'train'], ['diag', 'nnue-removal'], ['nnue', 'fit-linear']):
             with self.subTest(failure=failure):
                 self.commands.fail_command = [str(self.root / 'trainer'), *failure]
                 self.assertNotEqual(self.execute(), 0)
-                self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+                self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
                 self.assert_stopped()
 
     def test_non_candidate_summary_stops_before_commit(self) -> None:
         self.commands.train_status = 'error'
         self.assertNotEqual(self.execute(), 0)
-        self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
 
     def test_calibration_reuses_report_and_rejects_multiple_classes(self) -> None:
         self.save_book(1, 0, 100)
@@ -916,6 +917,347 @@ class ChainTests(ChainTestCase):
         self.assertFalse((self.root / 'run/instance-id').exists())
 
 
+class StandardRecipeTests(ChainTestCase):
+    """標準レシピの指示書の事例2〜12を、外部コマンドと成果物で検証する。"""
+
+    def disable_fit(self) -> None:
+        self.values['fit'] = 'no'
+        for key in ('fit-tau', 'fit-seed', 'fit-threads'):
+            del self.values[key]
+
+    def remote_commands(self, generation: int) -> dict[str, list[str]]:
+        job = json.loads((self.commands.remote / f'training/gen-{generation}/job.json').read_text())
+        return {step['name']: step['command'] for step in job['steps']}
+
+    def local_commands(self, generation: int) -> dict[str, list[str]]:
+        removal = str(self.root / f'run/gen-{generation}/removal.json')
+        return {'train': self.train_calls(generation)[0], 'fit': self.fit_calls(generation)[0],
+                'removal': next(call for call in self.commands.calls
+                                if call[1:3] == ['diag', 'nnue-removal'] and removal in call)}
+
+    def test_fit_yes_requires_each_fit_argument(self) -> None:
+        """事例2: 補正ありではtau、seed、threadsのどれも省略できない。"""
+        for key in ('fit-tau', 'fit-seed', 'fit-threads'):
+            with self.subTest(key=key), self.assertRaises(SystemExit) as raised:
+                chain.main(argv({name: value for name, value in self.values.items() if name != key}))
+            self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.commands.calls)
+
+    def test_fit_no_rejects_each_fit_argument(self) -> None:
+        """事例2: 補正なしで使わない引数を1個でも指定すれば拒否する。"""
+        self.disable_fit()
+        for key, value in (('fit-tau', ['10', '20']), ('fit-seed', '0'), ('fit-threads', '1')):
+            with self.subTest(key=key), self.assertRaises(SystemExit) as raised:
+                chain.main(argv(self.values | {key: value}))
+            self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.commands.calls)
+
+    def test_recipe_arguments_reject_invalid_values_before_creating(self) -> None:
+        """事例2: 窓、補正、学習率、検証間隔、参照名の不正を起動前に拒否する。"""
+        cases = [('window', '3'), ('fit', 'maybe'), ('lr-linear', '0'), ('lr-linear', 'nan'),
+                 ('lr-linear', 'inf'), ('lr-linear', '-1'), ('validation-interval', '-1'),
+                 ('books-per-generation', '0'), ('books-per-generation', '1.5')]
+        cases.extend(('ref-prefix', prefix) for prefix in
+                     ('nnue/x', 'refs/x/', 'refs//x', 'refs/a..b', 'refs/a b', 'refs/a\tb',
+                      'refs/.x', 'refs/x.lock', 'refs/x@{y', 'refs/x:y', 'refs/x\\y', 'refs/x[y',
+                      'refs/x~y', 'refs/x^y', 'refs/x?y', 'refs/x*y', 'refs/x\x7fy'))
+        with patch.object(common, 'call') as call, patch.object(common, 'create') as create:
+            for key, value in cases:
+                with self.subTest(key=key, value=value), self.assertRaises(SystemExit) as raised:
+                    chain.main(argv(self.values | {key: value}))
+                self.assertEqual(raised.exception.code, 2)
+            call.assert_not_called()
+            create.assert_not_called()
+        self.assertFalse(self.commands.calls)
+
+    def test_validation_interval_zero_is_accepted(self) -> None:
+        """事例2: 途中検証なしの0を、既定値で置き換えず保持する。"""
+        args = chain.arguments(argv(self.values | {'validation-interval': '0'}))
+        self.assertEqual(args.validation_interval, 0)
+        self.assertFalse(self.commands.calls)
+
+    def test_calibration_and_seed_bounds_use_books_per_generation(self) -> None:
+        """指定本数を超える較正と、最後の本のシードが2^64になる条件を拒否する。"""
+        with self.assertRaises(SystemExit):
+            chain.arguments(argv(self.values | {'books-per-generation': '37', 'calibration-books': '38'}))
+        values = self.values | {'books-per-generation': '37', 'calibration-books': '37',
+                               'seed-generation-step': '1', 'seed-book-step': '1',
+                               'seed-base': str(2**64 - 39)}
+        args = chain.arguments(argv(values))
+        self.assertEqual(chain.Chain(args).seed(2, 36), 2**64 - 1)
+        with self.assertRaises(SystemExit):
+            chain.arguments(argv(values | {'seed-base': str(2**64 - 38)}))
+        self.assertFalse(self.commands.calls)
+
+    def test_two_generations_preserve_legacy_refs_and_use_requested_prefix(self) -> None:
+        """事例3: 新しい接頭辞だけを更新し、既存の系列の参照は維持する。"""
+        self.values['ref-prefix'] = 'refs/recipe-test/series-a'
+        legacy = 'refs/nnue-generation-reset/gen-1'
+        self.commands.refs[legacy] = 'f' * 40
+        self.commands.nets['f' * 40] = network(9)
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(self.commands.refs, {legacy: 'f' * 40,
+                                              'refs/recipe-test/series-a/gen-0': '0' * 40,
+                                              'refs/recipe-test/series-a/gen-1': '1' * 40,
+                                              'refs/recipe-test/series-a/gen-2': '2' * 40})
+        git = [call[3:] for call in self.commands.calls if call[0] == 'git']
+        self.assertEqual([call[1:] for call in git if call[0] == 'update-ref'],
+                         [['refs/recipe-test/series-a/gen-0', '0' * 40],
+                          ['refs/recipe-test/series-a/gen-1', 'HEAD'],
+                          ['refs/recipe-test/series-a/gen-2', 'HEAD']])
+        self.assertEqual([call[-1] for call in git if call[:2] == ['bundle', 'create']],
+                         ['refs/recipe-test/series-a/gen-0', 'refs/recipe-test/series-a/gen-1'])
+        self.assertFalse(any('refs/nnue-generation-reset/' in argument for call in git for argument in call))
+
+    def test_generation_jobs_carry_the_previous_generation_reference(self) -> None:
+        """事例4: 各生成ジョブが、bundleから取得する完全な参照名を持つ。"""
+        self.values['ref-prefix'] = 'refs/recipe-test/series-b'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual([(job['generation'], job['reference']) for job in self.commands.jobs],
+                         [(1, 'refs/recipe-test/series-b/gen-0'), (2, 'refs/recipe-test/series-b/gen-1')])
+
+    def test_resume_26_books_generates_only_26_through_36(self) -> None:
+        """事例5: 既存26本の局面数によらず、37本までの11本だけを生成して受理する。"""
+        self.values.update({'last-generation': '1', 'books-per-generation': '37'})
+        for number in range(26):
+            self.save_book(1, number, 100_000_000)
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(self.commands.generated, [(1, number) for number in range(26, 37)])
+        self.assertEqual(self.commands.jobs[0]['skip_books'], list(range(26)))
+        self.assertTrue(all(job['target_books'] == 37 for job in self.commands.jobs))
+        inspected = [Path(call[-1]).name for call in self.commands.calls if Path(call[0]).name == 'inspect']
+        self.assertEqual(inspected, [f'book-{number}.mnsd' for number in range(26, 37)])
+        self.assertEqual({path.name for path in (self.root / 'run/gen-1/teacher').iterdir()},
+                         {f'book-{number}.mnsd' for number in range(37)})
+
+    def test_received_book_37_is_rejected_even_after_37_books_are_complete(self) -> None:
+        """事例5: 上限外の本はログの有無や目標達成にかかわらず拒否し、リンクしない。"""
+        self.values['books-per-generation'] = '37'
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        directory = self.root / 'run/gen-1'
+        write_book(directory / 'received/book-37.mnsd', header_fields(1, 37, 1))
+        for count in (26, 37):
+            with self.subTest(count=count):
+                for number in range(count):
+                    self.save_book(1, number, 0)
+                books = {number: 0 for number in range(count)}
+                with self.assertRaises(chain.ChainStop):
+                    runner.accept_books(1, '0' * 40, '00' * 32, books, False)
+                self.assertEqual(len(books), count)
+                self.assertFalse((directory / 'teacher/book-37.mnsd').exists())
+        self.assertFalse(self.commands.calls)
+
+    def test_verified_books_outside_target_do_not_satisfy_generation(self) -> None:
+        """本数だけが合っていても、番号0〜指定本数の直前の集合でなければ止める。"""
+        self.values.update({'last-generation': '1', 'books-per-generation': '2'})
+        self.save_book(1, 0, 120)
+        self.save_book(1, 2, 120)
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        with self.assertRaises(chain.ChainStop):
+            runner.execute()
+        self.assertFalse(self.train_calls(1))
+
+    def test_salvage_does_not_fetch_when_required_book_count_is_complete(self) -> None:
+        """事例5: 局面数が0でも、指定本数がそろった学習入力を終了時の回収で増やさない。"""
+        self.save_book(1, 0, 0)
+        self.commands.refs['refs/nnue-standard-recipe/gen-0'] = '0' * 40
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        runner.current = 1
+        runner.address = ('192.0.2.1', 2222)
+        runner.salvage()
+        self.assertFalse(any(call[0] == 'rsync' for call in self.commands.calls))
+
+    def test_machine_deadline_counts_saved_books_in_every_pending_generation(self) -> None:
+        """事例6: 未完了の2世代に26本と5本がある場合、残り11本と32本から期限を決める。"""
+        self.values['books-per-generation'] = '37'
+        for generation, count in ((1, 26), (2, 5)):
+            for number in range(count):
+                self.save_book(generation, number, 120)
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        runner.prepare_machine([1, 2], True)
+        # (12分 × (11本 + 32本) × 1.3 / 60 + 学習待ち1.2時間) × 3600 = 44568秒。
+        self.assertEqual(int((self.root / 'run/deadline').read_text()), 2_000_001_000 + 44_568)
+
+    def test_window_two_local_training_uses_previous_then_current_books(self) -> None:
+        """事例7: 窓2の学習だけに前世代を加え、各世代の番号は数値順に並べる。"""
+        self.values.update({'window': '2', 'books-per-generation': '12'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        commands = self.local_commands(2)
+        previous = [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(12)]
+        current = [str(self.root / f'run/gen-2/teacher/book-{number}.mnsd') for number in range(12)]
+        self.assertEqual(option_values(commands['train'], '--data'), previous + current)
+        for name in ('removal', 'fit'):
+            self.assertEqual(option_values(commands[name], '--data'), current)
+
+    def test_window_two_generator_uploads_and_trains_previous_then_current_books(self) -> None:
+        """事例7: 空の生成機へ前世代から順に転送し、遠隔パスで学習、診断、補正する。"""
+        self.values.update({'train-place': 'generator', 'window': '2', 'books-per-generation': '12',
+                            'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        mark = len(self.commands.calls)
+        self.values.update({'first-generation': '2', 'last-generation': '2'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        commands = self.remote_commands(2)
+        previous = [f'/workspace/job/teacher/gen-1/book-{number}.mnsd' for number in range(12)]
+        current = [f'/workspace/job/teacher/gen-2/book-{number}.mnsd' for number in range(12)]
+        self.assertEqual(option_values(commands['train'], '--data'), previous + current)
+        for name in ('removal', 'fit'):
+            self.assertEqual(option_values(commands[name], '--data'), current)
+        pushes = [call[-2:] for call in self.commands.calls[mark:]
+                  if call[0] == 'rsync' and '--ignore-existing' in call]
+        self.assertEqual(pushes, [[str(self.root / f'run/gen-{generation}/teacher') + '/',
+                                   f'root@192.0.2.1:/workspace/job/teacher/gen-{generation}/']
+                                  for generation in (1, 2)])
+        for number in range(12):
+            self.assertEqual((self.commands.remote / f'teacher/gen-1/book-{number}.mnsd').read_bytes(),
+                             (self.root / f'run/gen-1/teacher/book-{number}.mnsd').read_bytes())
+
+    def test_window_two_rejects_missing_previous_books_before_training(self) -> None:
+        """事例7: 前世代の教師がなければ窓を縮めず、学習前に止める。"""
+        self.values.update({'window': '2', 'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        (self.root / 'run/gen-1/teacher/book-0.mnsd').unlink()
+        self.save_book(2, 0, 120)
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        with self.assertRaises(chain.ChainStop):
+            runner.train(2)
+        self.assertFalse(self.train_calls(2))
+
+    def test_window_two_checks_previous_books_against_their_generation_commit(self) -> None:
+        """事例7: 前世代の教師は、その生成コミットとネットの検査和で照合する。"""
+        self.values.update({'window': '2', 'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.save_book(2, 0, 120)
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        for field, value in (('generation_commit', '1' * 40), ('network_checksum', '01' * 32)):
+            with self.subTest(field=field):
+                write_book(self.root / 'run/gen-1/teacher/book-0.mnsd', header_fields(1, 0, 120) | {field: value})
+                with self.assertRaises(chain.ChainStop):
+                    runner.train(2)
+                self.assertFalse(self.train_calls(2))
+
+    def test_window_two_preserves_a_larger_previous_generation(self) -> None:
+        """前世代を増量していても、その教師を当世代の指定本数で切り詰めない。"""
+        self.values.update({'window': '2', 'books-per-generation': '3', 'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.values.update({'books-per-generation': '1', 'first-generation': '2', 'last-generation': '2'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(option_values(self.train_calls(2)[0], '--data'),
+                         [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(3)]
+                         + [str(self.root / 'run/gen-2/teacher/book-0.mnsd')])
+
+    def test_window_one_second_generation_uses_only_current_books(self) -> None:
+        """事例8: 窓1の第2世代は当世代の教師だけを使う。"""
+        self.values.update({'window': '1', 'books-per-generation': '12'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(option_values(self.train_calls(2)[0], '--data'),
+                         [str(self.root / f'run/gen-2/teacher/book-{number}.mnsd') for number in range(12)])
+
+    def test_window_two_first_generation_uses_only_current_books(self) -> None:
+        """事例8: 窓2でも第1世代には前世代の教師を要求しない。"""
+        self.values.update({'window': '2', 'books-per-generation': '12', 'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(option_values(self.train_calls(1)[0], '--data'),
+                         [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(12)])
+
+    def test_fit_no_local_commits_trained_network_without_fitting_or_d_check(self) -> None:
+        """事例9: 古い補正結果のDが正でも検査せず、当世代の学習ネットをコミットする。"""
+        self.disable_fit()
+        self.values['last-generation'] = '1'
+        fit = self.root / 'run/gen-1/fit'
+        fit.mkdir(parents=True)
+        (fit / 'summary.json').write_text('{"decision": {"d": 1}}')
+        (fit / 'nnue.bin').write_bytes(network(9))
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual(len(self.train_calls(1)), 1)
+        self.assertFalse(self.fit_calls(1))
+        self.assertEqual(self.commands.nets[self.commands.head],
+                         (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
+        commit = next(call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit')
+        self.assertIn('教師1本、120局面、最良エポック3。', commit)
+        self.assertFalse(any('D=' in argument for argument in commit))
+
+    def test_fit_no_generator_completes_and_receives_without_fit_artifacts(self) -> None:
+        """事例9: 補正ステップと成果物を要求せず、trainとremovalだけで完了する。"""
+        self.disable_fit()
+        self.values.update({'train-place': 'generator', 'last-generation': '1'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.assertEqual([step['name'] for step in self.commands.training_jobs[0]['steps']],
+                         ['build', 'train', 'removal'])
+        self.assertFalse((self.commands.remote / 'training/gen-1/fit').exists())
+        self.assertFalse((self.root / 'run/gen-1/fit').exists())
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        self.assertTrue(runner.training_complete(1))
+        self.assertEqual(self.commands.nets[self.commands.head],
+                         (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
+        commit = next(call for call in self.commands.calls if call[0] == 'git' and call[3] == 'commit')
+        self.assertIn('教師1本、120局面、最良エポック4。', commit)
+        self.assertFalse(any('D=' in argument for argument in commit))
+        (self.root / 'run/gen-1/removal.json').unlink()
+        self.assertFalse(runner.training_complete(1))
+
+    def test_linear_learning_rate_and_zero_validation_reach_local_training(self) -> None:
+        """事例10: 作業機の学習コマンドに線形の学習率と検証間隔0を渡す。"""
+        self.values.update({'last-generation': '1', 'lr-linear': '0.67903', 'validation-interval': '0'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        command = self.train_calls(1)[0]
+        self.assertEqual(option_values(command, '--lr-linear'), ['0.67903'])
+        self.assertEqual(option_values(command, '--validation-interval'), ['0'])
+
+    def test_linear_learning_rate_and_zero_validation_reach_generator_training(self) -> None:
+        """事例10: 生成機の学習ジョブにも線形の学習率と検証間隔0を渡す。"""
+        self.values.update({'train-place': 'generator', 'last-generation': '1',
+                            'lr-linear': '0.67903', 'validation-interval': '0'})
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        command = self.remote_commands(1)['train']
+        self.assertEqual(option_values(command, '--lr-linear'), ['0.67903'])
+        self.assertEqual(option_values(command, '--validation-interval'), ['0'])
+
+    def test_fit_no_two_local_generations_use_previous_trained_network_as_base(self) -> None:
+        """事例11: 補正なしの第2世代は、第1世代でコミットした学習ネットを引き継ぐ。"""
+        self.disable_fit()
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        base = self.root / 'run/gen-1/train/nnue.bin'
+        self.assertEqual(option_values(self.train_calls(2)[0], '--base'), [str(base)])
+        self.assertEqual(base.read_bytes(), self.commands.nets['1' * 40])
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-2'], '2' * 40)
+
+    def test_fit_no_two_generator_generations_upload_previous_trained_network_as_base(self) -> None:
+        """事例11: 補正なしの第2世代に、第1世代の学習ネットをbase.binとして送る。"""
+        self.disable_fit()
+        self.values['train-place'] = 'generator'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        base = self.root / 'run/gen-1/train/nnue.bin'
+        self.assertEqual(option_values(self.remote_commands(2)['train'], '--base'),
+                         ['/workspace/job/training/gen-2/base.bin'])
+        self.assertIn(['scp', '192.0.2.1', '2222', str(base), '/workspace/job/training/gen-2/base.bin'],
+                      self.commands.calls)
+        self.assertEqual((self.commands.remote / 'training/gen-2/base.bin').read_bytes(), base.read_bytes())
+        self.assertEqual(base.read_bytes(), self.commands.nets['1' * 40])
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-2'], '2' * 40)
+
+    def assert_fit_switch_rejects_uncommitted_base(self) -> None:
+        self.values['last-generation'] = '1'
+        self.assertEqual(self.execute(), 0, self.errors.getvalue())
+        self.disable_fit()
+        self.values.update({'first-generation': '2', 'last-generation': '2'})
+        runner = chain.Chain(chain.arguments(argv(self.values)))
+        with self.assertRaises(chain.ChainStop):
+            runner.execute()
+        self.assertFalse(self.train_calls(2))
+        self.assertFalse((self.commands.remote / 'training/gen-2/job.json').exists())
+        self.assertNotIn('refs/nnue-standard-recipe/gen-2', self.commands.refs)
+
+    def test_changed_fit_rejects_uncommitted_base_before_local_training(self) -> None:
+        """事例12: 補正ありからなしへ変えたとき、未コミットの重みでは作業機で学ばない。"""
+        self.assert_fit_switch_rejects_uncommitted_base()
+
+    def test_changed_fit_rejects_uncommitted_base_before_generator_training(self) -> None:
+        """事例12: 生成機へ学習ジョブを公開する前にも、前世代のネット全体を照合する。"""
+        self.values['train-place'] = 'generator'
+        self.assert_fit_switch_rejects_uncommitted_base()
+
+
 class GeneratorTrainingTests(ChainTestCase):
     """生成機での学習、取得、停止、再開を、指示書の順序と外部入出力で検証する。"""
 
@@ -940,11 +1282,12 @@ class GeneratorTrainingTests(ChainTestCase):
                           (['nnue', 'train'], ['diag', 'nnue-removal'], ['nnue', 'fit-linear'])], [])
 
     def assert_no_commit(self) -> None:
-        self.assertNotIn('refs/nnue-generation-reset/gen-1', self.commands.refs)
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
         self.assertFalse(any(call[0] == 'git' and call[3] == 'commit' for call in self.commands.calls))
 
     def test_generator_receives_fitted_network_before_stopping_and_committing(self) -> None:
         """事例1: 検査済みの本だけを番号順に渡し、全結果の取得後に停止して補正済みネットを使う。"""
+        self.values['books-per-generation'] = '3'
         for number in (2, 0, 1):
             self.save_book(1, number, 40)
         self.saved_machine()
@@ -963,7 +1306,8 @@ class GeneratorTrainingTests(ChainTestCase):
              '--lambda', '1.0', '--teacher-cp-per-logit', 'calibrate', '--seed', '1', '--threads', '8',
              '--output-dir', directory + '/train', '--feature-set', 'P', '--width', '256',
              '--head', 'pairwise-l16-l32', '--batch', '16384', '--epochs', '50', '--patience', '5',
-             '--device', 'cuda', '--validation-interval', '1000', '--lr-schedule', 'cosine:3:0.1'],
+             '--device', 'cuda', '--validation-interval', '1000', '--lr-schedule', 'cosine:3:0.1',
+             '--lr-linear', '0.67903'],
             [trainer, 'diag', 'nnue-removal', '--float', directory + '/train/best.npz',
              '--net', directory + '/train/nnue.bin', '--data', *books, '--sample', '10', '--seed', '3',
              '--output', directory + '/removal.json'],
@@ -1058,7 +1402,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertFalse(any(call[0] == 'rsync' and '--ignore-existing' in call for call in later))
         self.assertEqual((self.commands.remote / 'training/gen-1/job.json').read_bytes(), job)
         self.assertEqual((self.commands.remote / 'training/gen-1/base.bin').read_bytes(), base)
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assertEqual(len(self.commands.training_jobs), 1)
         self.assert_no_local_training()
 
@@ -1079,17 +1423,17 @@ class GeneratorTrainingTests(ChainTestCase):
     def test_completed_results_skip_remote_training(self) -> None:
         """事例7: 3つの要約がそろっていれば生成機に接続せず、検査とコミットを行う。"""
         self.completed_books()
-        write_training_result(self.root / 'run/gen-1', 1)
+        write_training_result(self.root / 'run/gen-1', 1, True)
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertFalse(any(call[0] in ('vastai', 'ssh', 'scp', 'rsync') for call in self.commands.calls))
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assert_no_local_training()
 
     def test_received_results_resume_stops_via_saved_ssh_when_account_fails(self) -> None:
         """最終結果の取得後に再開すると、接続確認を挟まず保存先へSSHで停止を要求する。"""
         self.completed_books()
         self.saved_machine()
-        write_training_result(self.root / 'run/gen-1', 1)
+        write_training_result(self.root / 'run/gen-1', 1, True)
         self.commands.fail_command = ['vastai']
         self.assertEqual(self.execute(), 1)
         calls = self.commands.calls
@@ -1100,7 +1444,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertTrue(self.commands.stopped)
         self.assertTrue(any(call[:3] == ['vastai', 'destroy', 'instance'] for call in calls))
         self.assertFalse(any(call[0] in ('scp', 'rsync') for call in calls))
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assertIn('削除が未確認', self.errors.getvalue())
         self.assert_no_local_training()
 
@@ -1109,7 +1453,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.completed_books()
         self.saved_machine()
         directory = self.root / 'run/gen-1'
-        write_training_result(directory, 1)
+        write_training_result(directory, 1, True)
         (directory / 'removal.json').unlink()
         (directory / 'train/stale').touch()
         (directory / 'fit/stale').touch()
@@ -1134,7 +1478,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertFalse((directory / 'train/stale').exists())
         self.assertFalse((directory / 'fit/stale').exists())
         self.assertFalse((directory / 'training-received').exists())
-        self.assertEqual(self.commands.refs['refs/nnue-generation-reset/gen-1'], '1' * 40)
+        self.assertEqual(self.commands.refs['refs/nnue-standard-recipe/gen-1'], '1' * 40)
         self.assert_no_local_training()
 
     def test_replacement_machine_receives_previously_validated_books(self) -> None:
@@ -1142,7 +1486,7 @@ class GeneratorTrainingTests(ChainTestCase):
         saved = self.save_book(1, 0, 40).read_bytes()
         (self.root / 'run/instance-id').write_text('99\n')
         self.commands.entries = 40
-        self.values['last-generation'] = '2'
+        self.values.update({'last-generation': '2', 'books-per-generation': '3'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         pushes = [call for call in self.commands.calls if call[0] == 'rsync' and '--ignore-existing' in call]
         self.assertEqual(len(pushes), 2)
@@ -1194,7 +1538,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.saved_machine()
         self.commands.training_missing = ['removal.json']
         stale = self.root / 'run/gen-1/training-received'
-        write_training_result(stale, 1)
+        write_training_result(stale, 1, True)
         self.assertEqual(self.execute(), 1)
         self.assertIn('学習結果がそろっていません', self.errors.getvalue())
         self.assert_stopped()
@@ -1217,13 +1561,13 @@ class GeneratorTrainingTests(ChainTestCase):
     def test_deadline_includes_last_training_only_on_generator(self) -> None:
         """事例12: 生成時間が57.72時間なら6世代の学習待ち7.2時間または6時間を加える。"""
         args = chain.arguments(argv(self.values))
-        args.books_estimate = 37
-        self.assertAlmostEqual(chain.deadline_hours(6, 0, args), 64.92)
-        self.assertAlmostEqual(chain.deadline_hours(1, 37, args), 1.2)
+        args.books_per_generation = 37
+        self.assertAlmostEqual(chain.deadline_hours([0] * 6, args), 64.92)
+        self.assertAlmostEqual(chain.deadline_hours([37], args), 1.2)
         args.train_place = 'local'
-        self.assertAlmostEqual(chain.deadline_hours(6, 0, args), 63.72)
+        self.assertAlmostEqual(chain.deadline_hours([0] * 6, args), 63.72)
         with self.assertRaises(chain.ChainStop):
-            chain.deadline_hours(1, 37, args)
+            chain.deadline_hours([37], args)
 
 
 class WorkerTests(unittest.TestCase):
@@ -1240,6 +1584,7 @@ class WorkerTests(unittest.TestCase):
         self.enterContext(patch.object(worker, 'time', self.clock))
         self.enterContext(patch.object(subprocess, 'Popen', side_effect=AssertionError('実コマンドは禁止です')))
         self.job = {'generation': 1, 'commit': '0' * 40, 'bundle': '/workspace/job/bundles/gen-0.bundle',
+                    'reference': 'refs/nnue-standard-recipe/gen-0',
                     'generation_seed': 9010000000, 'book_step': 100000, 'target_books': 3, 'skip_books': [0],
                     'games': 10, 'nodes': 20000, 'random_moves': 0, 'max_ply': 4000, 'hash_mb': 16, 'concurrency': 384}
         (self.root / 'worker.json').write_text('{"idle_limit_seconds": 5}')
@@ -1282,6 +1627,43 @@ class WorkerTests(unittest.TestCase):
         (path.parent / 'book-2.mnsd').touch()
         self.assertIsNone(worker.next_book(self.job, self.root))
 
+    def test_prepare_commit_fetches_the_exact_job_reference(self) -> None:
+        """事例4: 作業者は名前空間を補わず、ジョブで受け取った完全な参照名を取得する。"""
+        self.job['reference'] = 'refs/recipe-test/worker/gen-0'
+        with patch.object(subprocess, 'run', side_effect=self.command):
+            worker.prepare_commit(self.root, self.job, io.StringIO())
+        self.assertEqual([call for call in self.calls if call[:2] == ['git', 'fetch']],
+                         [['git', 'fetch', '/workspace/job/bundles/gen-0.bundle',
+                           'refs/recipe-test/worker/gen-0']])
+        self.assertFalse(any('refs/nnue-generation-reset/' in argument
+                             for call in self.calls if call[0] == 'git' for argument in call))
+
+    def test_missing_job_reference_stops_worker_and_writes_exit_status(self) -> None:
+        """事例4: 参照名の欠落は生成待ちでも拒否し、終了コードを公開する。"""
+        del self.job['reference']
+        for skipped in ([0], [0, 1, 2]):
+            with self.subTest(skipped=skipped):
+                (self.root / 'job.json').write_text(json.dumps(self.job | {'skip_books': skipped}))
+                with patch.object(subprocess, 'run', side_effect=self.command), \
+                        patch.object(worker, 'stop_instance') as stop:
+                    self.assertEqual(worker.run_worker(self.root), 1)
+                self.assertEqual((self.root / 'logs/exit-status').read_text(), '1\n')
+                self.assertFalse(list(self.root.glob('teacher/**/*.mnsd')))
+                self.assertFalse(self.calls)
+                stop.assert_not_called()
+        with self.assertRaises(KeyError), patch.object(subprocess, 'run', side_effect=self.command):
+            worker.prepare_commit(self.root, self.job, io.StringIO())
+
+    def test_next_book_resumes_26_verified_books_until_37_are_complete(self) -> None:
+        """事例5: 26本が検査済みなら番号26から36を返し、番号37へ進まない。"""
+        self.job.update({'target_books': 37, 'skip_books': list(range(26))})
+        teacher = self.root / 'teacher/gen-1'
+        teacher.mkdir(parents=True)
+        for number in range(26, 37):
+            self.assertEqual(worker.next_book(self.job, self.root), number)
+            (teacher / f'book-{number}.mnsd').touch()
+        self.assertIsNone(worker.next_book(self.job, self.root))
+
     def test_worker_publishes_log_before_book_and_stops_after_idle(self) -> None:
         (self.root / 'job.json').write_text(json.dumps(self.job))
         work = self.root / 'work'
@@ -1311,7 +1693,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual([call[call.index('--seed') + 1] for call in generated], ['9010100000', '9010200000'])
         self.assertEqual([call for call in self.calls if call[0] == 'cargo'],
                          [['cargo', 'build', '--release', '--locked', '--bin', 'minase']])
-        self.assertIn(['git', 'fetch', '/workspace/job/bundles/gen-0.bundle', 'refs/nnue-generation-reset/gen-0'], self.calls)
+        self.assertIn(['git', 'fetch', '/workspace/job/bundles/gen-0.bundle', 'refs/nnue-standard-recipe/gen-0'], self.calls)
 
     def test_preparation_failure_writes_failed_log_and_atomic_status(self) -> None:
         (self.root / 'job.json').write_text(json.dumps(self.job))
