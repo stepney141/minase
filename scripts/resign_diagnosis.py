@@ -4,7 +4,7 @@
 `table` は閾値ごとの発火数、誤投了数、放棄する得点の割合、および削減時間の割合を、
 全記録と現行構成群（両エンジンが境界日以降のコミットで、時間制御、engine-default）
 について出力する。`detail` は指定閾値の誤投了局を1局ずつ列挙する。
-設計は docs/plans/usi-resignation.md、結果は docs/research/usi-resignation-diagnosis.md。
+設計は docs/plans/usi-resignation.md、結果は docs/audits/usi-resignation-diagnosis-2026-09-23.md。
 """
 import argparse
 import collections

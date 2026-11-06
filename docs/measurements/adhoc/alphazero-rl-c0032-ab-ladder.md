@@ -4,7 +4,7 @@
 
 [サイクル32のMCTSとαβ探索のSTCの対局](../alphazero-rl/alphazero-rl-restart-stc-c0032.md)は2勝192敗で飽和し、以後の改善を測れない。
 そこで、MCTSのシミュレーション数とαβ探索のノード数を固定した対局で、両者が釣り合うノード数と、MCTSだけの探索回数を増やしたときの伸びを求める。
-この測定は[DL系将棋ソフトの調査](../../research/alphazero-strength-gap.md)の「勧める順序」の1番目であり、どの設計書の計画にも属さない。
+この測定は[DL系将棋ソフトの調査](../../proposals/alphazero-strength-gap.md)の「勧める順序」の1番目であり、どの設計書の計画にも属さない。
 
 ## コマンドライン
 

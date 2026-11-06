@@ -8,7 +8,7 @@ USI層はこの応答を送出でき、対局ハーネス`match_runner`は当該
 lishogiのBotブリッジ（Bot APIとUSIエンジンを仲介するプログラム）は、フォークの改修によって`bestmove resign`を対局APIの投了へ写す。
 本書は、探索が停止したときに`bestmove`の根拠として採る最終結果（以下、採用結果）の評価値が、自分の視点で閾値以下のときにUSI層が`bestmove resign`を返す方式を採る。
 閾値はUSIオプション`ResignValue`（やねうら王と同じ名前と意味）で与え、探索部は変更しないので、投了しない探索のノード数は変わらない。
-閾値の既定値は、保存済みの自己対局記録（約10万局、各着手の評価値と最終結果を含む）へ仮想的な投了条件を当てた[診断](../../research/usi-resignation-diagnosis.md)から選ぶ。
+閾値の既定値は、保存済みの自己対局記録（約10万局、各着手の評価値と最終結果を含む）へ仮想的な投了条件を当てた[診断](../../audits/usi-resignation-diagnosis-2026-09-23.md)から選ぶ。
 診断では、どの閾値でも投了した側が結局は勝つか引き分ける局（以下、誤投了）が0件にはならず、詰みを読み切った報告でも0.03%の局で逆転していた。利用者はこの表から既定値を20,000 cpと決めた。通常の評価値はほとんど6,000 cpを超えないので、既定では詰まされる読みが出た局面だけで投了する。
 棋力測定の対局ハーネス`match_runner`は、両エンジンへ`ResignValue`の無効化を送って対局を規則上の終局まで指させる。投了が測定の勝敗に入ると、相手が先に投了した局面からの勝ち切りの差が測れなくなり、保存記録も完走した対局でなくなるからである。
 したがって投了は自己対局の測定に影響せず、GSPRT（勝敗から強さの差を逐次判定する統計検定、[docs/guides/sprt.md](../../guides/sprt.md)）による採否判定の対象にならない。
@@ -34,7 +34,7 @@ minaseが、USIの`bestmove resign`によって自ら投了できるようにす
 
 - `crates/minase/src/protocol/usi.rs`に、USIオプション`ResignValue`の宣言と受理、および`bestmove`送出時の投了判定を実装する。
 - `crates/minase/src/harness/engine/process.rs`のUSIエンジンの起動手順に`setoption name ResignValue value 99999`を加え、棋力測定の対局を規則上の終局まで指させる。[docs/guides/sprt.md](../../guides/sprt.md)にこの条件を記す。
-- 保存済み対局記録へ仮想的な投了条件を当てる診断スクリプト`scripts/resign_diagnosis.py`を置き、結果を[調査メモ](../../research/usi-resignation-diagnosis.md)に残して`ResignValue`の既定値を確定する。
+- 保存済み対局記録へ仮想的な投了条件を当てる診断スクリプト`scripts/resign_diagnosis.py`を置き、結果を[調査メモ](../../audits/usi-resignation-diagnosis-2026-09-23.md)に残して`ResignValue`の既定値を確定する。
 - 挙動とその典拠を先に定めてからテストを書く方式（spec-first、[設計書](spec-first-tests.md)）のマトリクス[D6-USI](spec-first-tests/matrices/d6-protocol.md)へ投了の挙動を追加し、台帳を改訂する。
 - [外部対局接続](engine-connectivity.md)の「`bestmove resign`を送出する経路は本マイルストーンには存在せず」の段落と、[lishogi Bot接続](../lishogi-bot.md)の対象外の項目「評価値による任意投了」を、採用時に本書への参照へ書き換える。
 - フォークstepney141/lishogi-botに`bestmove resign`を対局APIの投了へ写す改修を入れ、`minase-lishogi-bot`の配備環境で投了の通信を確かめる。
@@ -105,7 +105,7 @@ bestmove resign
 
 ## 診断
 
-診断の方法と結果は[調査メモ](../../research/usi-resignation-diagnosis.md)が持つ。
+診断の方法と結果は[調査メモ](../../audits/usi-resignation-diagnosis-2026-09-23.md)が持つ。
 本節は、既定値の確定に使う規則だけを定める。
 
 仮想条件は、着手した側の視点へ換算した評価値が閾値以下、深さが1以上、上下界の種別が`exact`の着手を発火とし、時系列で最初の発火でその局を仮想的に終える。
@@ -161,7 +161,7 @@ bestmove resign
 ## 参考資料
 
 - [issue #6](https://github.com/stepney141/minase/issues/6)：USIプロトコルで投了できるようにする。
-- [保存済み対局記録による投了閾値の診断](../../research/usi-resignation-diagnosis.md)：閾値ごとの費用と削減時間。
+- [保存済み対局記録による投了閾値の診断](../../audits/usi-resignation-diagnosis-2026-09-23.md)：閾値ごとの費用と削減時間。
 - [USI原典仕様とlishogi系の中将棋表記](../../research/protocols/usi-lishogi.md)：`bestmove resign`と`setoption`の仕様。
 - やねうら王`source/engine/yaneuraou-engine/yaneuraou-search.cpp`：`ResignValue`（既定99999、0〜99999）の判定と投了時の読み筋出力。
 - HaChu `hachu.c`：合法手がない場合だけ`resign`を出し、評価値による投了を持たない。

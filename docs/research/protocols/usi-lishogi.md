@@ -1,5 +1,10 @@
 # USI原典仕様とlishogi系拡張の調査
 
+本書のminaseに関する記述は2026年8月10日時点のものである。
+「minase現行parse_sfenとの照合」の節で挙げた乖離のうち、4欄の正準SFEN、獅子捕獲升、および手数部の欠落は、同日の[プロトコル層の設計書](../../plans/archived/protocol-layer.md)に従って`position sfen`が4欄または5欄の拡張SFENを受理するようになって解消した。
+`position startpos`も、同書の決定により中将棋の初期局面と解釈する。
+`_`区切りと欄の省略は今も受理せず、盤面と手番の2欄だけを読み書きする基本形の`to_sfen`と`parse_sfen`は本書の決定どおり残っている。
+
 ## 本文書の位置づけ
 
 本文書は、プロトコル層マイルストーン（../plans/protocol-layer.md）フェーズ1の調査成果物であり、USI原典仕様とlishogi系の中将棋表記を一次資料で確認した結果を記録する。ランダム対局検証ハーネス（../plans/random-play.md）のフェーズ2は、`to_sfen`の表記規範として本文書を参照する。つまり、「lishogi系の中将棋表記」の章に記す座標系、駒種文字およびSFEN盤面部の構文が、`to_sfen`と`parse_sfen`の正である。

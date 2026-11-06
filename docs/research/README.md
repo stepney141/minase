@@ -1,8 +1,17 @@
 # 調査メモの索引
 
-本ディレクトリは、外部資料、他エンジンのソースコード、および保存棋譜を調べた調査メモを収める。
-各文書は結論を先に書いて一次資料へリンクし、設計書が方式の根拠として参照する。
-本書は1行1文書の索引であり、新しい調査メモを追加したときは該当する節へ行を加える。
+本ディレクトリは、他エンジンのソースコード、論文、および公開の記録を調べた先行研究の調査メモを収める。
+各文書は結論を先に書いて一次資料へリンクし、設計書とADRが方式の根拠として参照する。
+調べた事実を minase へどう当てはめるかの提案と議論は [proposals/](../proposals/README.md) に、ある時点の minase のコード、棋譜、またはデータを調べた診断は [audits/](../audits/) に置く。
+
+調査メモは、作成した後に別の場所へ移さない。
+外部の事実は確認した版と日付を添えて書くので、その時点の記述として有効であり続けるからである。
+一方、調査メモの中の minase に関する記述は、その後の採否で古くなる。
+古くなったときは本文を書き換えず、冒頭に短い段落を置いて、記述の時点と、その後の決定を記した設計書またはADRへのリンクを書き足す。
+
+本書は節ごとに表を持つ索引であり、各表は作成日（初回のコミット日）の古い順に並べる。
+新しい調査メモを追加したときは、該当する節の表の末尾へ行を加える。
+ただし、通信プロトコルと外部エンジンの調査は [protocols/](protocols/) に置き、[protocols/README.md](protocols/README.md) に加える。
 Stockfishのコミットを引用するときは、ローカルにクローンしたStockfishのリポジトリで件名と勝敗数を照合し、Eloを再計算してから書く。
 [未導入の棋力向上手法の調査](unplanned-strength-techniques-survey.md)の作成時に、引用したコミットの参照先と数値に誤りがあったためである。
 
@@ -10,102 +19,110 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 
 個別の設計書に入る前の段階で、未導入の手法を横断的に洗い出した調査である。
 
-- [minaseに未導入の棋力向上手法の調査](unplanned-strength-techniques-survey.md)は、チェスと将棋のエンジンで効果が測定され、minaseのソースにも設計書にも現れない手法50件を、導入の見込みとともに列挙する。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月24日 | [minaseに未導入の棋力向上手法の調査](unplanned-strength-techniques-survey.md) | チェスと将棋のエンジンで効果が測定され、2026年9月23日の時点でminaseのソースにも設計書にも現れなかった手法50件を、導入の見込みとともに列挙する。 |
 
 ## 探索
 
-探索の各機構について、StockfishやYaneuraOuなどの実装を一次資料で照合した調査である。
+αβ探索の各機構について、StockfishやYaneuraOuなどの実装を一次資料で照合した調査である。
 
-- [前向き枝刈りの第3層に関する既存実装の調査](forward-pruning-prior-art.md)は、棋力向上段階8の4項目（correction history、improving、SEE pruning、history pruning）の更新条件と閾値を、StockfishとYaneuraOuのソースで確認する。
-- [手の順序付けの改善余地に関する調査と議論](move-ordering-discussion.md)は、現行の順序付けでβカットの遅れが件数では置換表の記録手がない残り深さ1のノードに集中する一方、初手βカット率ではノード数の損失を測れないことを示し、Claudeとcodexの議論を経た8候補の順位とStockfishの現行方式を記す。
-- [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
-- [引き分けの評価値（contempt）の既存実装と測定の調査](draw-value-prior-art.md)は、Stockfish、やねうら王、dlshogi、技巧、Lc0などが千日手の引き分けに返す値を設定する仕組みと、その効果を対局で測った記録をまとめる。
-- [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
-- [探索と時間管理の係数の関数形に関する既存実装との比較](search-coefficient-forms-prior-art.md)は、SPSAで調整する探索と時間管理の係数の関数形と適用条件をStockfishとYaneuraOuのソースで照合し、reverse futility pruningの余裕値が深さに比例しないこと、浅い枝刈りが残り深さ3以下に限られること、correction historyの補正がfutility pruningにしか使われないことなど、係数の値の調整では埋まらない構造の差を示す。
-- [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
-- [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md)は、雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。
-- [SPSAの反復予算の決め方](spsa-iteration-budget.md)は、対局予算から反復数を決め、停止後に原因と採否を分けて扱う方法をまとめる。
-- [チェスエンジンのSPSA調整で使われた対局数](chess-engine-spsa-session-sizes.md)は、StockfishとOpenBench上の公開記録から係数の数と実績局数を集める。
-- [AlphaZero型の深層強化学習の先行実装調査](alphazero-prior-art.md)は、lc0とdlshogiを中心に、学習アルゴリズム、MCTSの実装、Rustからの推論ランタイム、および複数の探索方式の共存方法を調べる。
-- [AlphaZero型の学習の局面の選び方と方策の損失の正規化の先行実装調査](alphazero-training-sample-selection.md)は、自己対局の棋譜から学習の局面を選ぶ窓と間引きの方式、および方策の損失を合法手だけで正規化するかどうかを、9つの実装と4本の論文で比べる。
-- [AlphaZero型の強化学習の学習効率と強さに効く技法の先行実装調査](alphazero-rl-training-efficiency.md)は、ふかうら王の学習のページ、lc0、KataGo、dlshogi系、およびGumbel AlphaZeroの論文の技法をminaseの実装と突き合わせ、サイクル1〜37で価値が学べなかった症状と結びつけて優先度を付ける。
-- [AlphaZero型探索がαβ探索に大敗する原因とDL系将棋ソフトから移せる点の調査](alphazero-strength-gap.md)は、サイクル32の2勝192敗を学習量、探索回数、およびネットの大きさに分けて先行例と比べ、王駒を取られる手を避けきれない盲点と自己対局の外の局面での価値の過大評価を示し、dlshogi、ふかうら王、AobaZero、KataGoなどの技法を費用と効果の報告とともに並べる。詳細は[規模](alphazero-strength-gap/scale.md)、[探索](alphazero-strength-gap/search.md)、および[価値](alphazero-strength-gap/value-bias.md)の3本にある。
-- [将棋のResNet系公開モデルを中将棋のネットへ転移する実験台の調査](shogi-resnet-transfer-sources.md)は、dlshogi、ふかうら王、AobaZero、DL水匠、python-dlshogi2、およびnshogiの公開重みの形式、構成、利用条件、学習データの出所、および強さを一次資料で調べ、minaseのネットへ載るのは残差ブロックと入力層の一部だけで価値と方策のヘッドは再初期化になることを示し、Soemersらの将棋の系統の間の転移の結果とともに、目的ごとに向く実験台を挙げる。
-- [詰み探索（df-pn）の先行研究と既存実装の調査](mate-search-prior-art.md)は、証明数探索の一次文献と将棋の詰将棋ソルバ6系統のソースを調べ、持ち駒と単一の王に依存する技法を除いて中将棋へ持ち込める要素と、中将棋の規則から定義し直す終端条件と反復の扱いを整理する。
-- [詰中将棋ソルバfmcs（ｆｍ／fmza系）の調査](fm-fmcs-survey.md)は、神無次郎氏の詰中将棋ソルバfmcsを説明書、作品集、逆コンパイルの読解（Claudeとcodexの独立解析の突き合わせ）、およびwine上の実行で調べ、手数上限つきdf-pnであること、王手を最後の王駒への脅威と定義すること、反復と駒枯れとじっとの扱いがRULES.mdと異なることを示す。
-- [Onsite Fairy Mateの詰め中将棋資料](k7ro-tsume-chu-shogi-survey.md)は、サイト内の問題図と古典作品集の入力データ、および別サイトの関連誌に掲載された問題を確認し、収録内容と走査範囲を記す。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月19日 | [前向き枝刈りの第3層に関する既存実装の調査](forward-pruning-prior-art.md) | 棋力向上段階8の4項目（correction history、improving、SEE pruning、history pruning）の更新条件と閾値を、StockfishとYaneuraOuのソースで確認する。 |
+| 2026年9月23日 | [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md) | 13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。 |
+| 2026年10月15日 | [引き分けの評価値（contempt）の既存実装と測定の調査](draw-value-prior-art.md) | Stockfish、やねうら王、dlshogi、技巧、Lc0などが千日手の引き分けに返す値を設定する仕組みと、その効果を対局で測った記録をまとめる。 |
+| 2026年10月17日 | [探索と時間管理の係数の関数形に関する既存実装との比較](search-coefficient-forms-prior-art.md) | SPSAで調整する探索と時間管理の係数の関数形と適用条件をStockfishとYaneuraOuのソースで照合し、reverse futility pruningの余裕値が深さに比例しないこと、浅い枝刈りが残り深さ3以下に限られること、correction historyの補正がfutility pruningにしか使われないことなど、2026年10月17日の時点で係数の値の調整では埋まらなかった構造の差を示す。 |
+
+## 係数の調整
+
+探索と時間管理の係数をSPSA（同時摂動確率近似）で調整する方法と規模について、先行例と一次資料を調べた調査である。
+
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月22日 | [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md) | やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。 |
+| 2026年9月25日 | [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md) | 雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。 |
+| 2026年9月25日 | [SPSAの反復予算の決め方](spsa-iteration-budget.md) | 対局予算から反復数を決め、停止後に原因と採否を分けて扱う方法をまとめる。 |
+| 2026年9月25日 | [チェスエンジンのSPSA調整で使われた対局数](chess-engine-spsa-session-sizes.md) | StockfishとOpenBench上の公開記録から係数の数と実績局数を集める。 |
+
+## AlphaZero型探索と深層強化学習
+
+モンテカルロ木探索と深層強化学習によるエンジンについて、lc0、dlshogi、KataGoなどの実装と論文を調べた調査である。
+
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月24日 | [AlphaZero型の深層強化学習の先行実装調査](alphazero-prior-art.md) | lc0とdlshogiを中心に、学習アルゴリズム、MCTSの実装、Rustからの推論ランタイム、および複数の探索方式の共存方法を調べる。 |
+| 2026年10月29日 | [AlphaZero型の学習の局面の選び方と方策の損失の正規化の先行実装調査](alphazero-training-sample-selection.md) | 自己対局の棋譜から学習の局面を選ぶ窓と間引きの方式、および方策の損失を合法手だけで正規化するかどうかを、9つの実装と4本の論文で比べる。 |
+| 2026年10月31日 | [AlphaZero型の強化学習の学習効率と強さに効く技法の先行実装調査](alphazero-rl-training-efficiency.md) | ふかうら王の学習のページ、lc0、KataGo、dlshogi系、およびGumbel AlphaZeroの論文の技法をminaseの実装と突き合わせ、リセット前のサイクル1〜37で価値が学べなかった症状と結びつけて優先度を付ける。 |
+| 2026年11月1日 | [将棋のResNet系公開モデルを中将棋のネットへ転移する実験台の調査](shogi-resnet-transfer-sources.md) | dlshogi、ふかうら王、AobaZero、DL水匠、python-dlshogi2、およびnshogiの公開重みの形式、構成、利用条件、学習データの出所、および強さを一次資料で調べ、minaseのネットへ載るのは残差ブロックと入力層の一部だけで価値と方策のヘッドは再初期化になることを示し、Soemersらの将棋の系統の間の転移の結果とともに、目的ごとに向く実験台を挙げる。 |
+
+## 詰み探索
+
+詰み探索の理論、詰将棋と詰中将棋のソルバ、および問題資料を調べた調査である。
+
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年10月11日 | [詰み探索（df-pn）の先行研究と既存実装の調査](mate-search-prior-art.md) | 証明数探索の一次文献と将棋の詰将棋ソルバ6系統のソースを調べ、持ち駒と単一の王に依存する技法を除いて中将棋へ持ち込める要素と、中将棋の規則から定義し直す終端条件と反復の扱いを整理する。 |
+| 2026年10月11日 | [詰中将棋ソルバfmcs（ｆｍ／fmza系）の調査](fm-fmcs-survey.md) | 神無次郎氏の詰中将棋ソルバfmcsを説明書、作品集、逆コンパイルの読解、およびwine上の実行で調べ、手数上限つきdf-pnであること、王手を最後の王駒への脅威と定義すること、反復と駒枯れとじっとの扱いが規則書と異なることを示す。逆コンパイルの読解は、Claudeとcodexが独立に行って突き合わせた。 |
+| 2026年10月11日 | [Onsite Fairy Mateの詰め中将棋資料](k7ro-tsume-chu-shogi-survey.md) | サイト内の問題図と古典作品集の入力データ、および別サイトの関連誌に掲載された問題を確認し、収録内容と走査範囲を記す。 |
 
 ## 評価関数と教師データ
 
-評価関数の構成、追加する評価項目、および学習に使う教師の作り方を扱う調査である。
-全体の方針は3つの観点で整理した総論から読み、必要に応じて構成案と一次資料を参照する。
-個別の評価項目については、追加候補、計算の土台、係数の学習方法の順に読むとつながる。
+評価関数の構成、学習器、学習の条件、および教師の作り方について、他エンジンの実装と論文を調べた調査である。
+2026年10月12日に探索の評価関数がPSTとFMからNNUEへ替わったので、それより前の調査はPSTを前提にminaseへの示唆を書いている。
+NNUEの標準の学習条件を決める現在の計画は、[学習レシピの比較](nnue-training-recipes.md)と[強豪エンジンの教師生成](teacher-generation-strong-engines.md)を根拠に引く。
 
-- [強豪のNNUE学習器の学習レシピとminaseの学習条件の比較](nnue-training-recipes.md)は、tatara、やねうら王、nnue-pytorch、variant-nnue-pytorch、およびbullet系の学習率の予定と学習量を周回数と更新回数へ直して比べ、対局で測られた設定と慣習にすぎない設定を分け、minaseの標準学習レシピの候補を比較の案とともに示す。
-- [評価関数を改善する3つの観点](evaluation-improvement-strategy.md)は、評価モデルの表現、教師局面と教師値、学習目標と更新方法ごとに、確認された問題、有望な方法、次の検証を整理する。
-- [評価関数の表現と更新費用の候補](evaluation-architecture-candidates.md)は、局所2駒表、低ランク分解、王駒の射線表、小型NNUEの入力、数式、容量、差分更新を具体化する。
-- [評価モデル、教師生成、学習方法の一次資料](evaluation-learning-primary-sources-2026-09.md)は、Bonanza、Stockfish、やねうら王、elmo、NineDayFever、およびRootStrapなどの研究を3つの観点で整理する。
-- [局面の進行度に応じた駒位置評価](tapered-pst.md)は、PSTを序中盤用と終盤用に分けて補間する方式の先例を、HaChuを含む一次資料で確認する。
-- [評価項目の追加候補の調査](evaluation-terms-survey.md)は、lishogi対局yO464dzlの敗因を受けて、王の遮蔽と開いた筋から王基準の関係表までの評価項目を導入の優先順に10段階へ分ける。
-- [評価項目が依存する土台の調査](evaluation-infrastructure-survey.md)は、先行エンジンが評価項目をどのデータ構造の上でどの時点の費用として得ているかを調べ、段階9でNPSが82.2%下がった原因と照合する。
-- [評価項目の自己対局による係数学習](evaluation-terms-selfplay-feasibility.md)は、評価項目の係数を自己対局結果から学習する定式化と、既存データからの識別可能性を検討する。
-- [手作り評価項目の係数を自己対局から学ぶ先行研究](handcrafted-evaluation-selfplay.md)は、Texelと、BealとSmithの1999年の論文を中心に、手作りの評価項目の係数を自己対局から学ぶ先例を確認する。
-- [チェス評価関数の教師と混合比](chess-evaluation-targets.md)は、教師評価値と対局結果の混合比について、Stockfish、Texel、Ethereal、およびViridithasの設定と比較記録を調べる。
-- [チェスと将棋の教師混合比](chess-shogi-teacher-mixing.md)は、Stockfish、elmo、やねうら王、dlshogi、AobaZeroなどの一次資料から、混合比の実採用例、学習器の既定値、およびminaseと係数の定義が異なる場合の換算を確認する。
-- [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](win-rate-scale-k-prior-art.md)は、やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealなどで尺度Kが定数か推定値かを一次資料で確認し、重みと同時に学習する例はなく、実行ごとの推定はTexel系とdlshogiの`--use_evalfix`に限られることを示す。
-- [将棋の教師生成と学習ツールの調査（GenSfenとtatara）](teacher-generation-prior-art.md)は、やねうら王のGenSfenとNNUE学習ツールtataraのソースから、将棋の教師の質を作る要素を整理する。
-- [強豪エンジンの教師生成と自己参照の偏りへの対策](teacher-generation-strong-engines.md)は、Stockfish、lc0、自己生成だけで育てたチェスエンジン、Fairy-Stockfish、および将棋の強豪の教師生成を一次資料で調べ、自己生成の反復が伸びにくくなった記録、偏りの主因として開発者が挙げる局面の偏り、外部の局面を使う対策の効果（AobaZeroが人間に似た局面から始めて+20 Eloなど）、およびランダムな手の効果が手の選び方と条件で分かれることを整理し、minaseの教師生成の候補を既存の決定との関係とともに並べる。
-- [将棋のNNUE学習器tataraからminaseへ移せる技法](tatara-nnue-transfer.md)は、tataraのアーキテクチャと学習の技法をソース、PR、および公開の対局記録で調べ、対局の記録がある技法は少なく、構造の利得は確認できたものが約80億局面以上の規模の結果であり、配置の偏りを測った記録はないことを示したうえで、Pairwiseを先頭とする試す順序を推論として示す。詳細は[付録](tatara-nnue-transfer/sources.md)にある。
-- [自己対局の閉ループが生む偏りと盲点の先行事例](self-play-bias-prior-art.md)は、囲碁のシチョウと循環した石、AlphaZeroのパズルと序盤、KnightCap、将棋の入玉と定跡の盲点、およびリーグ学習を一次資料で調べ、検出の方法、解消の手段、測られた効果、および解消しなかった例を先例ごとに整理する。駒の配置を有害な癖として追跡した先例はなく、局面を足す対策は与えた型の近くにしか効かないと結論する。
-- [探索で使う局面に合わせた評価関数の学習](search-aware-evaluation.md)は、過去のNNUEの不採用を踏まえ、候補自身が選ぶ局面の再評価を先に検証し、利きの補助学習とモデル構造を条件付きで比較する案を示す。
-- [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md)は、Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。
-- [Athénanの先行事例の調査](athenan-prior-art.md)は、学習にDescent、対局にUBFMsを使うAthénanの定義、構成要素ごとの効果の証拠、Olympiadの成績、および公開実装を一次資料で確認し、中将棋へ適用するときの問題として循環、長い対局、線形の評価関数での実証の欠如、比較相手のαβ探索の弱さ、およびメモリの増加を挙げる。
-- [NNUEの再挑戦に向けたアーキテクチャの考察](nnue-architecture-discussion.md)は、P型NNUEの2回の不採用を記録から読み直し、敗因は入力特徴ではなく教師と学習手順にあると判定したうえで、利用者が決定したPST＋FMの完全代替と「現行をずっと上回る」目標について、学習可能な線形経路と浅いSCReLUを内包する単一ネットをPSTで初期化し、NNUE自身を生成器にした世代反復で強くする計画の全体像、先例の一次資料、および自己対局測定の偏りへの疑いを記す。
-- [NNUEの13,680入力を採る根拠と限界](nnue-input-features.md)は、入力が保持する情報と有限幅での学習を区別し、チェスや将棋の入力との特徴数の差が主に王の位置の掛け合わせによることを示し、既存の教師データで太子の頻度、自玉の升の分布、および自玉が動く着手の割合を数えて、王の位置を掛けたHalfKP型が太子とデータ量の面では成り立つことを確かめたうえで、既存の測定とStockfish、やねうら王、Fairy-Stockfishの一次資料から、採用理由と未検証事項を整理する。
-- [NNUE学習器の速度の調査](nnue-trainer-speed.md)は、将棋のNNUE学習器tataraが速い理由をソースと設計記録から解明し（速さはRustではなく、疎なgather、逆索引の後退、融合した最適化器、特徴分解の畳み込みと縮約、非同期の供給に由来する）、bulletとvariant-nnue-pytorchと比べ、minaseの現行Python学習器の1更新をプロファイラで分けて、GPU時間の65〜69%が駒除去差分の補助損失、残りの約半分がスライスの後退であることを示す。
-- [4つの評価関数が駒に与える価値の比較](evaluator-piece-values.md)は、手書き評価v0、単独PST、PST＋FM、およびNNUEの駒除去差分を現行NNUEの自己対局5万局面で駒状態ごとに平均し、学習した3つは成っていない駒の比率がほぼ一致してv0とは大きく違うこと、3つの差は成駒に集中すること、および探索用の固定駒価値が学習した価値から離れていることを示す。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月7日 | [局面の進行度に応じた駒位置評価](tapered-pst.md) | PSTを序中盤用と終盤用に分けて補間する方式の先例を、HaChuを含む一次資料で確認する。 |
+| 2026年9月22日 | [評価項目が依存する土台の調査](evaluation-infrastructure-survey.md) | 先行エンジンが評価項目をどのデータ構造の上でどの時点の費用として得ているかを調べ、段階9でNPSが82.2%下がった原因と照合する。 |
+| 2026年9月22日 | [将棋の教師生成と学習ツールの調査（GenSfenとtatara）](teacher-generation-prior-art.md) | やねうら王のGenSfenとNNUE学習ツールtataraのソースから、将棋の教師の質を作る要素を整理する。 |
+| 2026年9月22日 | [チェス評価関数の教師と混合比](chess-evaluation-targets.md) | 教師評価値と対局結果の混合比について、Stockfish、Texel、Ethereal、およびViridithasの設定と比較記録を調べる。 |
+| 2026年9月23日 | [手作り評価項目の係数を自己対局から学ぶ先行研究](handcrafted-evaluation-selfplay.md) | Texelと、BealとSmithの1999年の論文を中心に、手作りの評価項目の係数を自己対局から学ぶ先例を確認する。 |
+| 2026年9月25日 | [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md) | Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。 |
+| 2026年9月27日 | [評価モデル、教師生成、学習方法の一次資料](evaluation-learning-primary-sources-2026-09.md) | Bonanza、Stockfish、やねうら王、elmo、NineDayFever、およびRootStrapなどの研究を3つの観点で整理する。 |
+| 2026年10月1日 | [Athénanの先行事例の調査](athenan-prior-art.md) | 学習にDescent、対局にUBFMsを使うAthénanの定義、構成要素ごとの効果の証拠、Olympiadの成績、および公開実装を一次資料で確認し、評価関数がPSTだった時点の前提で、中将棋へ適用するときの問題として循環、長い対局、線形の評価関数での実証の欠如、比較相手のαβ探索の弱さ、およびメモリの増加を挙げる。 |
+| 2026年10月12日 | [NNUE学習器の速度の調査](nnue-trainer-speed.md) | 将棋のNNUE学習器tataraが速い理由をソースと設計記録から解明し、bulletとvariant-nnue-pytorchと比べる。tataraの速さはRustではなく、疎なgather、逆索引の後退、融合した最適化器、特徴分解の畳み込みと縮約、および非同期の供給に由来する。当時のminaseのPython学習器の1更新もプロファイラで分け、GPU時間の65〜69%が駒除去差分の補助損失、残りの約半分がスライスの後退であることを示す。 |
+| 2026年10月12日 | [チェスと将棋の教師混合比](chess-shogi-teacher-mixing.md) | Stockfish、elmo、やねうら王、dlshogi、AobaZeroなどの一次資料から、混合比の実採用例、学習器の既定値、およびminaseと係数の定義が異なる場合の換算を確認する。 |
+| 2026年10月15日 | [評価値を勝率へ換算する尺度Kの決め方に関する既存実装の調査](win-rate-scale-k-prior-art.md) | やねうら王、elmo、tanuki-、dlshogi、Stockfishのnnue-pytorch、bullet、Texel法、Etherealなどで尺度Kが定数か推定値かを一次資料で確認し、重みと同時に学習する例はなく、実行ごとの推定はTexel系とdlshogiの`--use_evalfix`に限られることを示す。 |
+| 2026年10月25日 | [強豪エンジンの教師生成と自己参照の偏りへの対策](teacher-generation-strong-engines.md) | Stockfish、lc0、自己生成だけで育てたチェスエンジン、Fairy-Stockfish、および将棋の強豪の教師生成を一次資料で調べ、自己生成の反復が伸びにくくなった記録、偏りの主因として開発者が挙げる局面の偏り、外部の局面を使う対策の効果（AobaZeroが人間に似た局面から始めて+20 Eloなど）、およびランダムな手の効果が手の選び方と条件で分かれることを整理し、minaseの教師生成の候補を既存の決定との関係とともに並べる。 |
+| 2026年11月3日 | [自己対局の閉ループが生む偏りと盲点の先行事例](self-play-bias-prior-art.md) | 囲碁のシチョウと循環した石、AlphaZeroのパズルと序盤、KnightCap、将棋の入玉と定跡の盲点、およびリーグ学習を一次資料で調べ、検出の方法、解消の手段、測られた効果、および解消しなかった例を先例ごとに整理する。駒の配置を有害な癖として追跡した先例はなく、局面を足す対策は与えた型の近くにしか効かないと結論する。 |
+| 2026年11月3日 | [将棋のNNUE学習器tataraからminaseへ移せる技法](tatara-nnue-transfer.md) | tataraのアーキテクチャと学習の技法をソース、PR、および公開の対局記録で調べ、対局の記録がある技法は少なく、構造の利得は確認できたものが約80億局面以上の規模の結果であり、配置の偏りを測った記録はないことを示したうえで、Pairwiseを先頭とする試す順序を推論として示す。示した段階のうち、Pairwise、fan-in則の初期値、および幅256と隠れ層は、2026年11月4日に世代反復で使う構成として確定した。詳細は[付録](tatara-nnue-transfer/sources.md)にある。 |
+| 2026年11月6日 | [強豪のNNUE学習器の学習レシピとminaseの学習条件の比較](nnue-training-recipes.md) | tatara、やねうら王、nnue-pytorch、variant-nnue-pytorch、およびbullet系の学習率の予定と学習量を周回数と更新回数へ直して比べ、対局で測られた設定と慣習にすぎない設定を分け、minaseの標準学習レシピの候補を比較の案とともに示す。 |
 
 ## 実行速度の改善
 
-合法手生成、利きの計算、および評価の計算を速くする案について、処理件数の診断、機械語の読解、および一次資料をまとめた調査である。
+利きの計算とビットボードの構成について、他エンジンの実装と一次資料を調べた調査である。
 
-- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](yaneuraou-check-detection-for-referee.md)は、やねうら王が探索の中で合法手の全件生成を避け、1手の合法性を1手の検査で、王手の有無を利きの逆引きで、連続王手の千日手を整数のカウンタで判定する方法をソースで確かめ、審判層の着手の合法性検査とR1の攻撃的着手の判定を動かした駒1枚の生成と利きの逆引きへ置き換える根拠と、駒枯れの猶予の判定を王駒1枚の生成へ置き換える根拠、および合法手なしと詰みの判定を駒ごとの生成で打ち切る案を示す。
-- [やねうら王の合法手生成の構造をMCTSの葉の全件生成へ応用する調査](yaneuraou-movegen-for-leaf-legal-moves.md)は、審判層の削減後にMCTSの探索の命令数の37.9%を占める`Game::legal_moves`の全件生成について、費用の6割が利きの計算ではなく着手ごとの成りと獅子の捕獲制限の判定にあることをプロファイルで示し、やねうら王が成りの可否を駒ごとの集合演算で決めて着手ごとに盤面を読まない構造から、成りの判定の集合化、獅子の捕獲制限の検査の限定、および出力バッファの再利用の3候補と、過去に棄却した候補E2との関係を整理する。
-- [合法手生成の高速化計画への追加候補](movegen-speedup-ideas.md)は、2026年9月13日時点の高速化計画に対して、静止探索で不要な捕獲を生成前に除く案と段階的に生成する案を、処理件数の診断から提案する。
-- [Magic bitboardの一次資料](magic-bitboard-primary-sources.md)は、Stockfish、やねうら王、およびFairy-Stockfishの利きの求め方を調べ、12×12盤では方向ごとに表を分割する方式を先に比較する価値があると示す。
-- [12×12盤へのmagic bitboardの適用](magic-bitboard-feasibility.md)は、斜線のmagicと横線の小表の試作がいずれも現行の算術方式を上回らなかった結果を記録する。付属の計算スクリプトは[magic-bitboard-feasibility/](magic-bitboard-feasibility/)にある。
-- [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)は、Stockfishとやねうら王のビットボードを語構成、走りの利きの算法、および局面の派生構造の3点でminaseと比べ、王手とピンの機構がないことが規則の帰結であることと、未測定の改善案3件を示す。
-- [fearless_simdによる安全なSIMDの適用可能性](fearless-simd-feasibility.md)は、`unsafe`なしで実行時に命令集合を選ぶRustのSIMDライブラリfearless_simd 1.1.0が現行のminaseを速くできるかを、FMの4つの核の機械語の読解と移植可能ビルドとの速度比較で見積もり、標準ビルドでは自動ベクトル化が既に同じ命令を出しているため試作を見送り、再検討はNNUEの推論を実装する時点とする。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月21日 | [Magic bitboardの一次資料](magic-bitboard-primary-sources.md) | Stockfish、やねうら王、およびFairy-Stockfishの利きの求め方を調べ、12×12盤では方向ごとに表を分割する方式を先に比較する価値があると示す。 |
+| 2026年10月1日 | [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md) | Stockfishとやねうら王のビットボードを語構成、走りの利きの算法、および局面の派生構造の3点でminaseと比べ、王手とピンの機構がないことが規則の帰結であることと、未測定の改善案3件を示す。 |
 
-## 時間管理と投了
+## 時間管理
 
-持ち時間の配分と投了の判断を、他エンジンの実装と保存済み対局記録から調べた調査である。
+持ち時間の配分と固定時間の探索について、他エンジンの実装を調べた調査である。
 
-- [秒読みつき時間制御における既存エンジンの持ち時間配分](time-management-byoyomi-survey.md)は、将棋、チェス、囲碁のエンジン7本が持ち時間と秒読みをどう配るかを比較し、持ち時間を温存するエンジンがないことを示す。
-- [lishogi実戦における持ち時間と秒読みの使い方](lishogi-byoyomi-time-usage.md)は、Botの公開棋譜とログから、秒読み期の手が秒読みの平均55%しか使わず、短い対局では持ち時間が1手の読みをほとんど深くしていないことを示す。
-- [固定時間（movetime）の探索の先行実装とlishogi通信対局での使われ方](movetime-prior-art-and-correspondence-usage.md)は、StockfishとYaneuraOuが固定時間の探索を指定時間まで続けて打ち切った反復の途中結果で指すことを確かめ、Botの通信対局ではminase 2.5.0の探索の47%が300秒で打ち切られ、主ワーカーが最後に反復を完了した時刻が平均192秒だったことを示す。
-- [保存済み対局記録による投了閾値の診断](usi-resignation-diagnosis.md)は、自己対局記録104,224局へ仮想の投了条件を当て、誤投了を0件にできる閾値がないことを示す。
-
-## 対局の分析
-
-lishogiでの実戦と外部エンジンとの対局棋譜から、minaseの弱点を調べた分析である。
-
-- [lishogi対局 yO464dzl の敗因分析](lishogi-game-yO464dzl-loss-analysis.md)は、517手で負けた対局の敗因を、評価関数が王の安全度を測れないことに求める。
-- [lishogi対局 WPgmFqSa の時間配分](lishogi-game-WPgmFqSa-time-management.md)は、160手目で本時間を使い切った対局のログから、反復の開始条件と序盤の配分を見直す根拠を示す。
-- [HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)は、HaChuとの400局の保存棋譜から、両エンジンが勝つ局と負ける局の典型的な経過を比較する。
-- [Minaseが駒を前に出さない傾向の切り分け](forward-play-diagnosis.md)は、Botの棋譜、教師データでの特徴の分布、および合法手ごとの静的評価から、前に出ない傾向の原因が教師データの偏りでも探索でもなく、評価関数が学んだ値そのものにあることを示す。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月17日 | [秒読みつき時間制御における既存エンジンの持ち時間配分](time-management-byoyomi-survey.md) | 将棋、チェス、囲碁のエンジン7本が持ち時間と秒読みをどう配るかを比較し、持ち時間を温存するエンジンがないことを示す。 |
+| 2026年10月25日 | [固定時間（movetime）の探索の先行実装とlishogi通信対局での使われ方](movetime-prior-art-and-correspondence-usage.md) | StockfishとYaneuraOuが固定時間の探索を指定時間まで続けて打ち切った反復の途中結果で指すことを確かめ、Botの通信対局ではminase 2.5.0の探索の47%が300秒で打ち切られ、主ワーカーが最後に反復を完了した時刻が平均192秒だったことを示す。 |
 
 ## 開発の道具
 
 エンジン開発の道具について、外部資料と他エンジンの実装を調べた調査である。
 
-- [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md)は、Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年9月27日 | [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md) | Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。 |
 
 ## 競技規則
 
-RULES.mdの条文と実装上の規則解釈を、規則書の典拠と照合した調査である。
+規則書 [chu-shogi.md](../rules/chu-shogi.md) の条文と実装上の規則解釈を、規則書の典拠と照合した調査である。
 
-- [RULES.mdに書かれていない実装上の規則解釈と先行文献の照合](rules-unwritten-interpretations.md)は、minase-coreが実装しながら条文にない解釈13点を典拠と照合し、駒枯れで歩兵・仲人が非捕獲で成った直後の即時勝ちと、相手の最後の王駒を取れる場合に猶予を与えない点が英語資料と食い違うことを示す。
+| 作成日 | 文書 | 内容 |
+|---|---|---|
+| 2026年10月13日 | [RULES.mdに書かれていない実装上の規則解釈と先行文献の照合](rules-unwritten-interpretations.md) | minase-coreが実装しながら条文になかった解釈13点を典拠と照合し、駒枯れで歩兵・仲人が非捕獲で成った直後の即時勝ちと、相手の最後の王駒を取れる場合に猶予を与えない点が英語資料と食い違うことを示す。食い違いは、同じ2026年10月13日に規則書の第16版で条文と実装を典拠に合わせて解消した。 |
 
 ## 通信プロトコルと外部エンジン
 

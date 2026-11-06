@@ -1,5 +1,9 @@
 # 将棋の教師生成と学習ツールの調査（GenSfenとtatara）
 
+本書のminaseに関する記述は2026年9月22日時点のものである。
+「結論」の節の第3が新しい候補とした実戦棋譜の局面から始める自己対局は、2026年9月23日の[深い探索の付け直し、人間の棋譜の局面、および棋譜から始めた自己対局を教師に加えない](../adr/keep-deep-rescoring-and-human-games-out-of-the-teacher.md)と2026年10月25日の[強くする手段に人間の棋譜を使わない](../adr/do-not-use-human-games-to-strengthen-the-engine.md)で採らないことに決まった。
+評価関数はその後NNUEへ置き換わり、教師は1局面2万ノードの探索値だけからなる（[NNUEの標準レシピv1を対局で決め、v0から世代反復をやり直す設計書](../plans/nnue-standard-recipe.md)の用語の定義）ので、本書が比較の表と「計画書への含意」の節に書いたminaseの探索量、混合比、および線形の評価関数は当時の条件である。
+
 ## 結論
 
 [棋力向上段階9](../plans/archived/strength-stage9.md)の教師データの改善の参考として、やねうら王の教師生成スクリプトGenSfenと、将棋のNNUE学習ツールtataraのソースを調べた。

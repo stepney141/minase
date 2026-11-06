@@ -45,18 +45,18 @@ cpはセンチポーンであり、歩兵1枚を100とする評価値の単位�
 
 ## 対象と方法
 
-調査は3つの部分からなり、それぞれのスクリプトと出力を[forward-play-diagnosis/](forward-play-diagnosis/)に置いた。
+調査は3つの部分からなり、それぞれのスクリプトと出力を[forward-play-diagnosis/](forward-play-diagnosis-2026-10-10/)に置いた。
 棋譜は、lishogiのAPI `/api/games/user/minase-bot?perfType=chushogi` から2026年10月10日に取得した201局である。
 Botが使っていた版は、Botのログに残るエンジンの名乗り（`id name`）の切替時刻から判定した。
 
 ### Botと人間の前進量
 
-[bot_advancement.py](forward-play-diagnosis/bot_advancement.py)は、初期局面から始まった対局の着手列を再生し、60手目、100手目、140手目の時点で、両者の王駒以外の駒の平均段数を数える。
+[bot_advancement.py](forward-play-diagnosis-2026-10-10/bot_advancement.py)は、初期局面から始まった対局の着手列を再生し、60手目、100手目、140手目の時点で、両者の王駒以外の駒の平均段数を数える。
 取られた駒は集計から抜けるので、平均段数は目安の値である。
 
 ### 教師データでの特徴の分布
 
-[feature_profile.py](forward-play-diagnosis/feature_profile.py)は、現行PST（[PSTの長期学習](../plans/archived/pst-longer-training.md)の候補L）の学習に使った世代2と世代3の教師データ10ファイル、計29,208,818局面を読み、手番側から見た自駒の特徴ごとに次の3つを集計する。
+[feature_profile.py](forward-play-diagnosis-2026-10-10/feature_profile.py)は、現行PST（[PSTの長期学習](../plans/archived/pst-longer-training.md)の候補L）の学習に使った世代2と世代3の教師データ10ファイル、計29,208,818局面を読み、手番側から見た自駒の特徴ごとに次の3つを集計する。
 
 - 出現回数
 - 学習による重みの変化
@@ -70,7 +70,7 @@ FMの周辺寄与は、各局面でその特徴と他の全特徴との組が評
 
 ### 指し手の選択と静的評価
 
-[move_choice.py](forward-play-diagnosis/move_choice.py)は、Botの対局の各局面で、全合法手を1手ずつ適用した後の静的評価を比べる。
+[move_choice.py](forward-play-diagnosis-2026-10-10/move_choice.py)は、Botの対局の各局面で、全合法手を1手ずつ適用した後の静的評価を比べる。
 静的評価の計算には、`minase dev pst-probe --moves`が出力する評価差（着手前の手番側から見た、着手後の評価と着手前の評価の差）を使った。
 局面は、`minase data lishogi games`で棋譜から取り込んだ。
 この取り込みツールはBotの対局と非レーティング戦を除くので、診断用の写しでBotの称号を消し、レーティング欄を埋めてから取り込んだ。
@@ -91,7 +91,7 @@ v1.1.0以前の重みは特徴の形式が異なり、現行の`pst-probe`で読
 
 ### Botは人間より駒を後ろに置く
 
-140手目の平均段数と、敵陣側の半分（6段以上）にいる駒の枚数を次に示す（[出力](forward-play-diagnosis/bot_advancement.txt)）。
+140手目の平均段数と、敵陣側の半分（6段以上）にいる駒の枚数を次に示す（[出力](forward-play-diagnosis-2026-10-10/bot_advancement.txt)）。
 
 | Botの版 | 対局数 | Botの平均段数 | 人間の平均段数 | 6段以上の駒（Bot／人間） |
 |---|---|---|---|---|
@@ -104,7 +104,7 @@ v1.1.0以前の重みは特徴の形式が異なり、現行の`pst-probe`で読
 
 ### 学習PSTは前進を大きく加点している
 
-自駒の特徴について、段ごとの1局面あたりの出現数と重みの変化を抜粋する（[全出力](forward-play-diagnosis/feature_profile.txt)）。
+自駒の特徴について、段ごとの1局面あたりの出現数と重みの変化を抜粋する（[全出力](forward-play-diagnosis-2026-10-10/feature_profile.txt)）。
 
 | 駒 | 0段 | 2段 | 4段 | 6段 | 7段 | 8〜11段 |
 |---|---|---|---|---|---|---|
@@ -126,7 +126,7 @@ FMの周辺寄与も前進とともに増え、獅子・奔王では0段の+12cp
 
 ### 前進手を嫌っているのは静的評価である
 
-静かな手のうち前進手が占める割合を次に示す（[出力](forward-play-diagnosis/move_choice.txt)）。
+静かな手のうち前進手が占める割合を次に示す（[出力](forward-play-diagnosis-2026-10-10/move_choice.txt)）。
 
 | 評価に使った重み | 指し手 | 局面数 | 指した手 | 静的評価で1位 | PSTだけで1位 | 合法な静かな手 |
 |---|---|---|---|---|---|---|

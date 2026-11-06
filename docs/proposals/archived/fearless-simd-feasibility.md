@@ -1,5 +1,8 @@
 # fearless_simdによる安全なSIMDの適用可能性
 
+本提案は、2026年10月8日に本書の判断で試作を見送ることで決着した。
+評価関数が2026年10月12日にNNUEへ替わった後、再検討の条件とした隠れ層の推論は[NNUEの隠れ層（layer stack）と位相補間の出力の設計書](../../plans/archived/nnue-hidden-layer.md)で実装され、積和が自動ベクトル化で`vpmaddwd`になったので、SIMDのクレートは試していない。
+
 **fearless_simd**は、Linebenderが2026年9月に1.0を公開したRustのSIMDライブラリであり、利用者側のコードに`unsafe`を書かせずに、実行時に検出した命令集合（SSE2、SSE4.2、AVX2、AVX-512、NEON）へ処理を振り分ける。
 minaseのワークスペースは`unsafe_code = "forbid"`を掲げているので、このライブラリはその方針と両立する明示的SIMDの選択肢になる。
 本書は、fearless_simd 1.1.0を現行のminaseへ適用した場合にどれだけ速くなるかを、試作を本体へ組み込む前に機械語の読解と移植可能ビルドとの速度比較で見積もった記録である。
@@ -9,11 +12,11 @@ fearless_simd自体はminaseの方針と両立し、`#![forbid(unsafe_code)]`の
 しかし、現行のminaseでSIMDの形をした処理はFM（factorization machine）の累算と補正の4つの核だけであり、その4つはLLVMが既にAVX2の命令へ自動ベクトル化している。
 fearless_simdで書き直した累算の核は現行と同一の命令列になり、補正の核は符号つきの拡張乗算（`vpmuldq`）をライブラリが公開していないため、乗算に関係する命令が現行の約5倍になった。
 したがって、測定機の標準ビルド（`target-cpu=native`）では書き換えで速度向上を期待する根拠が得られず、本体への試作は見送った。
-残る利点は、`.cargo/config.toml`を使わない移植可能ビルド（`cargo install minase`など）でもAVX2を使えることだが、標準ビルドと移植可能ビルドの速度差は現行で約1.7%である（[測定記録](../measurements/adhoc/bench-target-cpu-fm.md)）。
+残る利点は、`.cargo/config.toml`を使わない移植可能ビルド（`cargo install minase`など）でもAVX2を使えることだが、標準ビルドと移植可能ビルドの速度差は現行で約1.7%である（[測定記録](../../measurements/adhoc/bench-target-cpu-fm.md)）。
 fearless_simdを再検討する時期は、設計中のNNUEで幅64以上の隠れ層の推論を実装するときである。
 
 調査対象は2026年10月8日のmasterのコミット`bc0617a`である。
-確認に使った検証用のcrateとベンチの手順は[fearless-simd-feasibility/](fearless-simd-feasibility/)に置き、命令の内訳と速度の数値は[測定記録](../measurements/adhoc/bench-target-cpu-fm.md)に置いた。
+確認に使った検証用のcrateとベンチの手順は[fearless-simd-feasibility/](fearless-simd-feasibility/)に置き、命令の内訳と速度の数値は[測定記録](../../measurements/adhoc/bench-target-cpu-fm.md)に置いた。
 
 ## fearless_simdの仕組みと制約
 
@@ -26,7 +29,7 @@ fearless_simdは、命令集合ごとのトークン型（`Avx2`など）を`Sim
 採用には2つの制約がある。
 第1に、1.1.0の最小対応Rustは1.89であり、minaseが宣言する1.88より新しい。
 版を指定しない`cargo info fearless_simd`は、1.88に収まる0.5.0を表示した（`version: 0.5.0 (latest 1.1.0)`）。
-採用するなら`rust-version`を1.89へ上げ、[最小対応版の教訓](../lessons/verify-msrv-with-toolchain.md)に従ってその版のツールチェーンで検査する。
+採用するなら`rust-version`を1.89へ上げ、[最小対応版の教訓](../../lessons/verify-msrv-with-toolchain.md)に従ってその版のツールチェーンで検査する。
 lishogiのBotのDockerイメージはRust 1.98でビルドしているので、引き上げの支障はない。
 第2に、公開している整数演算の範囲がNNUE向けの組み込み関数より狭い。
 1.1.0の`Simd`トレイトにあるのは、整数の加減乗、幅の拡張と縮小（`widen`、`narrow`）、水平和（`reduce_sum`）などであり、符号つき32ビット同士の64ビット積（`vpmuldq`）や16ビット積和（`vpmaddwd`）はない。
@@ -35,9 +38,9 @@ lishogiのBotのDockerイメージはRust 1.98でビルドしているので、�
 
 ## minaseでSIMDの形をした処理
 
-探索の自己時間の内訳（[第2期高速化の最終プロファイル](../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)）では、静止探索の本体が27.7%、通常駒の捕獲可能升の計算が11.9%、SEE（static exchange evaluation、駒の取り合いの静的評価）の逆引きが11.3%、置換表の照合が10.5%、主探索の本体が9.2%を占める。
+探索の自己時間の内訳（[第2期高速化の最終プロファイル](../../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)）では、静止探索の本体が27.7%、通常駒の捕獲可能升の計算が11.9%、SEE（static exchange evaluation、駒の取り合いの静的評価）の逆引きが11.3%、置換表の照合が10.5%、主探索の本体が9.2%を占める。
 これらは3個の`u64`からなるビットボードのビット演算、分岐、および置換表のメモリ待ちであり、同じ演算を多数の要素へ並列に施す形をしていない。
-`target-cpu=native`と移植可能な`x86-64`のビルドに速度差がなかった[以前の測定](../measurements/adhoc/bench-target-cpu.md)も、主要な処理が整数のスカラー演算であることを示している。
+`target-cpu=native`と移植可能な`x86-64`のビルドに速度差がなかった[以前の測定](../../measurements/adhoc/bench-target-cpu.md)も、主要な処理が整数のスカラー演算であることを示している。
 
 SIMDの形をしているのは、評価関数のFMである。
 FMは特徴ごとに潜在次元32の埋め込み（`i16`）を持ち、累算値（`i32`の32要素）へ特徴の行を足し引きし、評価のたびに累算値の符号つき二乗和（`i64`）から補正を求める。
@@ -53,7 +56,7 @@ FMの採用によるNPS（1秒あたりの探索ノード数）の低下は約14
 
 移植可能な`x86-64`のビルドでは、累算の3つはSSE2の128ビット命令になり、符号拡張が`punpcklwd`と`psrad`の組になるため命令数は`native`の約2倍である。
 `correction`は、SSE2に符号つきの32ビット拡張乗算がないためスカラーへ戻り、`imul`64回と符号拡張の`movslq`60回の列になる。
-命令の内訳は[測定記録](../measurements/adhoc/bench-target-cpu-fm.md)にある。
+命令の内訳は[測定記録](../../measurements/adhoc/bench-target-cpu-fm.md)にある。
 
 ## fearless_simdで書いた同じ核の機械語
 
@@ -69,7 +72,7 @@ FMの採用によるNPS（1秒あたりの探索ノード数）の低下は約14
 
 fearless_simdが速度に寄与し得る唯一の状況は、`.cargo/config.toml`の`target-cpu=native`が効かないビルドである。
 `cargo install minase`で導入した利用者や、別の配備手順でビルドした場合がこれにあたる。
-その見込みを測るため、同じコミットの`native`と`x86-64`のビルドを[測定記録](../measurements/adhoc/bench-target-cpu-fm.md)の手順で交互に測った。
+その見込みを測るため、同じコミットの`native`と`x86-64`のビルドを[測定記録](../../measurements/adhoc/bench-target-cpu-fm.md)の手順で交互に測った。
 NPSの差は約1.7%、命令数の差は4.2%だった。
 `target-cpu`はエンジン全体の機械語に作用するので、この差をFMだけに帰属させることはできないが、FM採用前の同じ比較では差が0.3%で測定の幅に埋もれていたので、FMの命令列の差が主に寄与したと読める。
 fearless_simdで回復できるのはFMの分だけであり、FM単独の寄与は測っていないので、見込みは約1.7%を超えない目安である。

@@ -18,5 +18,5 @@
 
 ## 出典
 
-- [research/node-count-definition.md](../research/node-count-definition.md)
+- [audits/node-count-definition-2026-09-19.md](../audits/node-count-definition-2026-09-19.md)
 - [plans/lazy-smp.md](../plans/archived/lazy-smp.md) の総ノード数カウンタの設計判断（共有カウンタの費用を検討した先例）

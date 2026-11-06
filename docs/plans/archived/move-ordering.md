@@ -14,7 +14,7 @@
 ## 状態
 
 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
-完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../../measurements/move-ordering/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../../measurements/move-ordering/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../../measurements/move-ordering/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
+完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../../proposals/archived/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../../measurements/move-ordering/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../../measurements/move-ordering/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../../measurements/move-ordering/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../../measurements/move-ordering/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
 
 ## 目的
 
@@ -31,7 +31,7 @@
 
 ## 依存関係
 
-候補と順位の根拠は[手の順序付けの改善余地に関する調査と議論](../../research/move-ordering-discussion.md)にあり、本書を読む前に、その「結論」と「確認した機構」の節を読んでおく必要がある。
+候補と順位の根拠は[手の順序付けの改善余地に関する調査と議論](../../proposals/archived/move-ordering-discussion.md)にあり、本書を読む前に、その「結論」と「確認した機構」の節を読んでおく必要がある。
 採否の測定は[SPRTによる棋力測定の手引き](../../guides/sprt.md)の段階ゲートに従う。
 history表とLMRの現行設計は[棋力向上段階5](strength-stage5.md)、捕獲履歴と表の持ち越しは[棋力向上段階12](strength-stage12.md)と[再調整](search-revival-spsa.md)が所有し、本書はそれらの表の更新規則と寿命だけを変える。
 探索統計のフィーチャ`search-stats`は[デバッグ機能の整備](debugging-tools.md)が定め、本書の診断はこの統計に項目を加える形で行う。
@@ -245,7 +245,7 @@ Stockfishは加点と減点を、それぞれ上限付きの深さの一次式�
 
 ## 参考資料
 
-- [手の順序付けの改善余地に関する調査と議論](../../research/move-ordering-discussion.md)（2026年10月9日）。本書の候補と順位の根拠である。
+- [手の順序付けの改善余地に関する調査と議論](../../proposals/archived/move-ordering-discussion.md)（2026年10月9日）。本書の候補と順位の根拠である。
 - [最初の手でβカットが起きる割合の原因調査](../../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日）。
 - [move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)。起案時点の探索統計。
 - Stockfish `src/movepick.cpp`、`src/search.cpp`、`src/history.h`（コミット17a6c8f1、2026年9月19日取得、GPL-3.0-or-later）: [movepick.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/movepick.cpp)、[search.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp)。

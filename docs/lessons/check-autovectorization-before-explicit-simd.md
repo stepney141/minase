@@ -15,4 +15,4 @@ SIMDライブラリを組み込めば評価関数の累算が速くなると見�
 
 ## 出典
 
-[fearless_simdによる安全なSIMDの適用可能性](../research/fearless-simd-feasibility.md)、2026年10月8日。
+[fearless_simdによる安全なSIMDの適用可能性](../proposals/archived/fearless-simd-feasibility.md)、2026年10月8日。

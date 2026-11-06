@@ -1,5 +1,9 @@
 # 固定時間（movetime）の探索の先行実装とlishogi通信対局での使われ方
 
+本書のminaseに関する記述は2026年10月25日時点のものである。
+結論の第2点と「minaseの現行の扱い」の節の記述はminase 2.5.0までの挙動であり、[固定時間（movetime）の探索の締切と途中結果](../plans/archived/movetime-deadline.md)により、2.6.0からは時計と併用しない固定時間の探索も締切まで反復を始め、締切で打ち切った反復の途中結果で指す。
+[固定時間の探索の締切と途中結果の配備後の確認（lishogiのBotの通信対局）](../measurements/movetime-deadline/movetime-deadline-bot-correspondence.md)では、照合できた105件の探索はすべて300秒まで続き、16件で途中結果を採った。
+
 USIの`go movetime <ms>`は、1手の思考時間を固定して探索させる指定である。
 lishogiのBot（minase-bot）は通信対局の各手を`go movetime 300000`（300秒）で探索させ、通常対局の初手を`go movetime 1000`で探索させる。
 開発用GUI（minase-gui）も、USIのエンジンとの固定時間の対局では、利用者が設定した値で`go movetime`を送る（`web/src/shared/state.ts:608`）。

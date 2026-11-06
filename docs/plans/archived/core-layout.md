@@ -284,7 +284,7 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 現在存在しないファイル（`src/core/movegen/tests/invariants.rs`、`src/core/movegen/tests/articles.rs`など）への参照と、特定のコミットに固定した引用（`docs/research/protocols/usi-lishogi.md`の［M1］など）は、書かれた時点の記録として残す。
 `crates/minase-core/src/`を前置せずファイル名だけを書いた言及（`rules.rs`、`position.rs`など）も、試験の再構築の台帳（`docs/plans/spec-first-tests/`）の旧テストの所在のように、書かれた時点の文脈での略記として残す。
 ただし、現行の配置を述べる文（`docs/plans/archived/movegen.md`の「着手生成の構成」の節、`docs/plans/archived/move-canonicalization.md`の`is_tsukegui`の所在など）は新しい配置へ改める。
-行番号の付いた参照（`docs/research/movegen-speedup-ideas.md`の`crates/minase-core/src/movegen/mod.rs#L297`）は、同じ文の関数名から移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
+行番号の付いた参照（`docs/proposals/archived/movegen-speedup-ideas.md`の`crates/minase-core/src/movegen/mod.rs#L297`）は、同じ文の関数名から移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
 
 [src構成の整理](src-layout.md)の「core内部はフラット構成を維持する」の節は、本書の配置の方針（1関心事1ファイル、非公開の範囲を表す必要がある型はディレクトリへ昇格し、定義を`mod.rs`に置く）に書き換え、配置の詳細は本書を参照させる。
 

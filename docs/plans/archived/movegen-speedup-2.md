@@ -317,7 +317,7 @@ SEEの逆引きの固定利きも本段階に含める。
 
 ### 段階9　捕獲対象が空のノードでの置換表アクセスの省略（探索木を変える）
 
-第1期の[処理件数診断](../../research/movegen-speedup-ideas.md)では、静止探索で候補生成へ進むノードの30.0%で全捕獲が入口の閾値で捨てられていた。
+第1期の[処理件数診断](../../proposals/archived/movegen-speedup-ideas.md)では、静止探索で候補生成へ進むノードの30.0%で全捕獲が入口の閾値で捨てられていた。
 この値は段階生成の前の版で測った旧診断であり、仮説の根拠に限る。
 これらのノードでも現在は置換表の照合と保存を行っている。
 現行の対象升の集合は相手の王駒の升を常に含むので、対象升が空かどうかでは判定できない。
@@ -386,6 +386,6 @@ SPRTは測定名`movegen-speedup-2-<段階名>-stc`および`-ltc`で`docs/measu
 - [起案時の診断](../../measurements/movegen-speedup-2/movegen-speedup-2-diagnostics-depth5.md)は、本書の残存負荷の内訳、静止探索の件数、および試作の速度の根拠である。
 - [単位Eの残存負荷の記録](../../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)は、第1期の完了時点の残存負荷と着手しなかった候補の理由を記録する。
 - [単位Cの記録](../../measurements/movegen-speedup/movegen-speedup-unit-c-bench-depth5.md)は、SEEの逆引き回数の分布を記録する。
-- [処理件数診断](../../research/movegen-speedup-ideas.md)は、第1期の起案時に数えた捕獲生成とSEEの件数であり、段階9の仮説の根拠に使う。
+- [処理件数診断](../../proposals/archived/movegen-speedup-ideas.md)は、第1期の起案時に数えた捕獲生成とSEEの件数であり、段階9の仮説の根拠に使う。
 - [SPRTによる棋力測定の手引き](../../guides/sprt.md)は、段階ゲートの手順と禁止事項を定める。
 - [段階生成の固定費の教訓](../../lessons/staged-generation-fixed-cost.md)は、段階ごとの固定費を包含時間で測る規則を定める。

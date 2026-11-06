@@ -1,8 +1,11 @@
 # 評価項目の追加候補の調査
 
+本提案は、2026年9月23日に[棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴）の設計書](../../plans/archived/strength-stage9.md)が上位7項目をいずれも採用せずに完了し、利きの土台も[升ごとの利き数の表を差分更新で持たず、利きに基づく評価特徴を入れない](../../adr/omit-the-incremental-attack-count-table.md)で採らないと決まったことで決着した。
+本書が範囲外としたNNUEは、2026年10月12日に[NNUEの共通土台と初代のネットによるPST＋FMの完全代替の設計書](../../plans/archived/nnue-replacement.md)で既定の評価関数になった。
+
 ## 結論
 
-[lishogi対局 yO464dzl の敗因分析](lishogi-game-yO464dzl-loss-analysis.md)を受けて、評価関数へ加える評価項目の候補を、導入の優先順に10段階へ分けた。
+[lishogi対局 yO464dzl の敗因分析](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)を受けて、評価関数へ加える評価項目の候補を、導入の優先順に10段階へ分けた。
 段階1は王の遮蔽と開いた筋、段階2は王の周囲の攻撃域、段階3は王の守備駒と囲いであり、この3段階が今回の敗因に直接対応する。
 段階4以降は、安全な可動性、成り込みと侵入、獅子の接近と退路、駒への脅威、王の退路、歩と仲人の閉塞、王を基準にした駒の関係表の順である。
 
@@ -10,7 +13,7 @@
 2本の調査は段階1、段階4、段階7で一致し、残りの順位は「測定の切り分けやすさ」「現行評価との費用差」「Minaseの過去の不採用実績」の3点で決めた。
 統合の経緯は「2本の調査の差と統合の判断」の節に記す。
 
-順位は実験の優先順位であり、各段階の採否は [SPRTの手引き](../guides/sprt.md) の段階ゲートで個別に判定する。
+順位は実験の優先順位であり、各段階の採否は [SPRTの手引き](../../guides/sprt.md) の段階ゲートで個別に判定する。
 NNUEへの移行は10段階に含めず、範囲外にした理由と再開の条件を別の節に記す。
 現行の評価は差分更新の累算器から値を読むだけなので、どの段階も1ノードあたりの費用を必ず増やす。
 費用の大きさは本書では見積もらず、各段階の実装直後にbenchで測る。
@@ -53,12 +56,12 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 
 ## 現行の評価と前提
 
-現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../crates/minase/src/eval/pst/features.rs)）。
-探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/alphabeta/negamax.rs](../../crates/minase/src/search/alphabeta/negamax.rs) 112行）。
+現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../../crates/minase/src/eval/pst/features.rs)）。
+探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/alphabeta/negamax.rs](../../../crates/minase/src/search/alphabeta/negamax.rs) 112行）。
 したがって、盤面を走査する項を1つでも加えると、評価の費用の性質が「定数時間」から「盤面に依存する時間」へ変わる。
 
 利きを計算する部品は既にある。
-`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/control.rs](../../crates/minase-core/src/movegen/control.rs) 10行から128行）。
+`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/control.rs](../../../crates/minase-core/src/movegen/control.rs) 10行から128行）。
 一方、全升の利き数を局面に保持する表はなく、HaChuの `attacks` 配列ややねうら王の `board_effect` に当たるものは存在しない。
 疑似利きは合法な捕獲の集合ではなく、獅子の捕獲制限は反映しない。
 ただし王駒への利きは、王手放置が合法であるため、疑似利きと捕獲可能性が一致する（search/alphabeta/royal.rs 7行から18行）。
@@ -69,7 +72,7 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 成り権の保留状態は保存されないため、段階5で履歴に依存する成りの合法性を特徴にする場合は、データ形式の拡張が必要になる。
 
 過去の不採用実績も前提になる。
-2駒関係を学習するFactorization Machineは、検証損失を改善しながらSTCで得点率19.6%となり不採用だった（[設計書](../plans/archived/factorization-machine.md)）。
+2駒関係を学習するFactorization Machineは、検証損失を改善しながらSTCで得点率19.6%となり不採用だった（[設計書](../../plans/archived/factorization-machine.md)）。
 探索値を教師にした関係項が戦術上の期待を静的評価へ取り込み、探索と二重に計上した可能性が指摘されている。
 この実績は、学習で関係を表す方式より、意味の明確な少数の特徴を1つずつ測る方式を先に試す理由になる。
 
@@ -86,7 +89,7 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 検証では、生の静的評価、深さ1の値、深い探索の値を分けて記録する。
 
 敗因分析の「鯨鯢が玉と同じ段に回った」という記述は、王への直接の利きを意味しない。
-鯨鯢は前後と後斜めへ走り、横には走らない（[fixed.rs](../../crates/minase-core/src/attacks/fixed.rs) 282行から287行）。
+鯨鯢は前後と後斜めへ走り、横には走らない（[fixed.rs](../../../crates/minase-core/src/attacks/fixed.rs) 282行から287行）。
 侵入した成駒の価値は、実際に制圧する升と、他の攻撃駒との連携で測る必要がある。
 
 ## 段階1　王の遮蔽と開いた筋
@@ -148,7 +151,7 @@ Fairy-Stockfishの二乗の形は、駒種の重みを学習しながらその�
 準備段階の危険は段階1が、侵入の予兆は段階5が受け持つ。
 
 計算は、各王駒の25升への逆引きで始める。
-この勧めは、段階9の費用の測定で毎秒の探索ノード数を82.2%下げると分かり、採れなくなった。各段階が依存する土台と、minaseでの有無は[土台の調査](evaluation-infrastructure-survey.md)にまとめた。
+この勧めは、段階9の費用の測定で毎秒の探索ノード数を82.2%下げると分かり、採れなくなった。各段階が依存する土台と、minaseでの有無は[土台の調査](../../research/evaluation-infrastructure-survey.md)にまとめた。
 段階4で全駒の疑似利きを作るようになれば、その結果と共有するかを実測で決める。
 利きの差分保持は、遠方の走り駒の遮蔽の変化まで追う必要があるので、最初の実装には含めない。
 長い非捕獲の攻めを直接に評価する中心の項であり、段階1が示す弱点が実際に利用されているかを区別できるので、2番目に置く。
@@ -237,7 +240,7 @@ HaChuの `LIONTRAP` は、双方に獅子がいる場合に、敵陣の隅へ進
 敗局では、先手の獅子が174手目の2fから175手目の2eへ進み、後手玉との距離が5から4へ縮む動きを評価できる。
 後手の獅子の2cへの後退は守備として評価できるが、そこが竪行の標的になる危険は段階7が受け持つ。
 
-[HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)は、HaChuが勝った局の最後の王駒の捕獲の多くを獅子が行ったと報告しており、中将棋に固有の項として優先度を支える。
+[HaChuとMinaseの勝ち方・負け方](../../audits/hachu-minase-playing-style-analysis-2026-09-05.md)は、HaChuが勝った局の最後の王駒の捕獲の多くを獅子が行ったと報告しており、中将棋に固有の項として優先度を支える。
 一方、原因を切り分けた実験ではないので、一般の王の安全度の項を先に測る。
 
 ## 段階7　駒への脅威と浮き駒
@@ -259,7 +262,7 @@ Minaseでは、29駒種の全組を独立に学習せず、攻撃側と標的側
 
 敗局では、175手目の2f2eで龍馬が後手の獅子に当たる変化を検出できる。
 一方、178手目の香車による龍馬の捕獲は目先の駒得であり、この項を過大にすると実戦の誤りを強める。
-[correction historyの教訓](../lessons/correction-history-exclude-tactical-gains.md)が示すとおり、捕獲で実現する利得を直接に加点すると、静止探索と二重に計上しやすい。
+[correction historyの教訓](../../lessons/correction-history-exclude-tactical-gains.md)が示すとおり、捕獲で実現する利得を直接に加点すると、静止探索と二重に計上しやすい。
 味方の支援や、駒の移動を制約する圧力は、静止探索では表せない位置的な意味を持つので、特徴は支えの数と敵の利きの数の区分を中心に作る。
 2本の調査が一致して7番目に置いた理由は、この重複の危険と、非捕獲の長い攻めを単独では説明しないことにある。
 
@@ -325,8 +328,8 @@ NNUEの入力特徴であるHalfKPとHalfKPE9は、段階10の先行例として
 
 範囲外にした理由は、Minaseでの2回の実測にある。
 世代0の100万局面で学習したP型NNUEは、固定ノードのGSPRTで学習PSTに `H0` となった。
-世代1では1,106万局面へ増やし、第1層の初期化がclipped ReLUを94.5%飽和させていた欠陥も直したが、再学習PSTに対する検証損失の改善は0.00018にとどまった（[設計書](../plans/archived/evaluation-gen1.md)）。
-対局の得点率は固定ノードで46.1%、時間制御で29.6%であり、どちらも `H0` だった（[nnue-gen1-nodes100k](../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../measurements/evaluation-gen1/nnue-gen1-tc.md)）。
+世代1では1,106万局面へ増やし、第1層の初期化がclipped ReLUを94.5%飽和させていた欠陥も直したが、再学習PSTに対する検証損失の改善は0.00018にとどまった（[設計書](../../plans/archived/evaluation-gen1.md)）。
+対局の得点率は固定ノードで46.1%、時間制御で29.6%であり、どちらも `H0` だった（[nnue-gen1-nodes100k](../../measurements/evaluation-gen1/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../../measurements/evaluation-gen1/nnue-gen1-tc.md)）。
 benchの毎秒の探索ノード数は、採用PSTより18.5%低かった。
 
 同設計書は、劣った理由を教師値に求めている。

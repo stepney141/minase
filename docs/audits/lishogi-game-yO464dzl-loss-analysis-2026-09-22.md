@@ -157,7 +157,7 @@ l   香   ・   銅   馬   ・   王   奔   龍   ・   銅   角   香
 さらに、静的評価が大きく正の局面では、null move pruningとfutility pruningが受けの手を刈り込み、見落としを広げた可能性がある。
 この可能性は今回検証していない。
 
-この観測は、[HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)が報告した傾向と一致する。
+この観測は、[HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis-2026-09-05.md)が報告した傾向と一致する。
 同書は、Minaseが負ける局では自身を有利とする評価を終盤まで維持し、その後に急落することが多いと述べている。
 
 ## 今後の改良への含意

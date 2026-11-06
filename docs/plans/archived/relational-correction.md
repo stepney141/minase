@@ -58,7 +58,7 @@ mと安定した根の定義は[探索局面の計画](search-aware-evaluation.m
 
 ## 依存関係
 
-補正項の数式、容量、および差分更新は[評価表現の構成案](../../research/evaluation-architecture-candidates.md)を正とする。
+補正項の数式、容量、および差分更新は[評価表現の構成案](../../proposals/archived/evaluation-architecture-candidates.md)を正とする。
 局所2駒表の学習の契約、出現の少ない要素の扱い、自己選択の診断、および倍率の決め方は、[相対2駒評価の計画](relative-pair-eval.md)の設計判断を引き継ぎ、射線表と小型NNUEにも同じ契約を当てる。
 教師値については本書の比較条件を優先し、着手時の採用構成と同じ定義、混合比、および尺度を使う。
 小型NNUEの初期化は[第1層の飽和の教訓](../../lessons/nnue-first-layer-init-saturation.md)に従う。
@@ -299,8 +299,8 @@ STCとLTCの幅は、静止探索の計画の見積りと同じ根拠による�
 
 ## 参考資料
 
-- [評価関数を改善する3つの観点](../../research/evaluation-improvement-strategy.md)
-- [評価関数の表現と更新費用の候補](../../research/evaluation-architecture-candidates.md)
+- [評価関数を改善する3つの観点](../../proposals/archived/evaluation-improvement-strategy.md)
+- [評価関数の表現と更新費用の候補](../../proposals/archived/evaluation-architecture-candidates.md)
 - [評価モデル、教師生成、学習方法の一次資料](../../research/evaluation-learning-primary-sources-2026-09.md)
 - [相対位置の局所2駒関係による評価の補正](relative-pair-eval.md)
 - [相対2駒評価の準備記録](../../measurements/relative-pair-eval/relative-pair-prep.md)

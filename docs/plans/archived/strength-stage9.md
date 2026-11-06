@@ -3,14 +3,14 @@
 ## 先に読む要約
 
 本マイルストーンは、評価関数（局面の有利不利を数値にする関数）が王の危険と駒の利き（駒が届く升）を評価できるようにして、棋力を上げることを目的とする。
-現行の評価関数は学習PST（駒の種類と位置ごとの重みを足し合わせる表、piece-square table）だけで構成され、2026年9月21日のlishogiでの[敗局](../../research/lishogi-game-yO464dzl-loss-analysis.md)では、玉の正面の筋が開いて敵の走り駒が集まる間も、歩兵10枚分に当たる+1000センチポーンを超える評価値を返し続けた。
+現行の評価関数は学習PST（駒の種類と位置ごとの重みを足し合わせる表、piece-square table）だけで構成され、2026年9月21日のlishogiでの[敗局](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)では、玉の正面の筋が開いて敵の走り駒が集まる間も、歩兵10枚分に当たる+1000センチポーンを超える評価値を返し続けた。
 着手後の測定で、評価特徴を足すだけでは解けない問題が2つ見つかった。
 第1の問題は費用であり、利きを使う特徴を升ごとの逆引きで計算すると毎秒の探索ノード数（NPS）が82.2%下がって0.18倍になり、先行エンジンが持つ利きの土台（利きを保持または共有するデータ構造）がminaseにないことが原因だった。
 第2の問題は教師であり、現行の教師データ（自己対局の局面に探索値と対局結果を付けたデータ）で学習した王の遮蔽の重みは終盤でだけ大きく、敗局の中盤の局面では評価値を28センチポーンしか動かさなかった。
 本書は、第1の問題を解く土台の柱、第2の問題を解く教師の柱、および特徴の柱の3つで進める。
 土台の柱は、1つの探索ノードの中で静的評価を重ねて計算しないようにし（評価の償却）、升ごとの利き数の表を着手のたびに差分更新する（やねうら王の long effect library の `board_effect` に当たる）。
 教師の柱は、深い探索による付け直し（一般に rescoring と呼ぶ）、人間の実戦棋譜の局面、および実戦棋譜の局面から始める自己対局の3つの追加を、それぞれ事前に固定した基準の診断にかけ、基準を満たした追加だけで教師の構成を確定する。
-特徴の柱は、[評価項目の調査](../../research/evaluation-terms-survey.md)の上位7段階を、王駒の近くを見るA群（遮蔽と開いた筋、攻撃域、守備駒）と盤全体を見るB群（安全な可動性、成りと侵入、獅子、駒への脅威）に分け、確定した教師で1項目ずつ重みを学習して、短時間（STC）と長時間（LTC）の時間制御GSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定、[docs/guides/sprt.md](../../guides/sprt.md)）で採否を判定する。
+特徴の柱は、[評価項目の調査](../../proposals/archived/evaluation-terms-survey.md)の上位7段階を、王駒の近くを見るA群（遮蔽と開いた筋、攻撃域、守備駒）と盤全体を見るB群（安全な可動性、成りと侵入、獅子、駒への脅威）に分け、確定した教師で1項目ずつ重みを学習して、短時間（STC）と長時間（LTC）の時間制御GSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定、[docs/guides/sprt.md](../../guides/sprt.md)）で採否を判定する。
 完了条件は、土台の速度、教師の3つの診断、および7項目の採否または見送りが測定記録とともに残り、本段階の着手時点の版とHaChuのそれぞれに対する固定200ペアのElo（採否には使わない進捗指標）が記録されていることである。
 
 ## 状態
@@ -33,7 +33,7 @@
 敗局の分析では、182手目の局面で深さ1の探索値と深さ16の探索値の差が約2800センチポーンに達し、その差は目前の駒の取り合いでは説明できなかった。
 先手の攻めは駒を取らない手が7手から9手続く手順であり、対局時の探索深さ10から16では駒損が見える前に探索が打ち切られた。
 探索の深さでこの種の攻めを捕捉することは現実的でないので、攻めの準備が整った配置を静的に減点できる特徴を評価関数へ加える。
-[HaChuとMinaseの勝ち方・負け方](../../research/hachu-minase-playing-style-analysis.md)は、Minaseが負ける局では自身を有利とする評価を終盤まで維持してから急落する傾向を報告しており、この敗局は孤立した事例ではない。
+[HaChuとMinaseの勝ち方・負け方](../../audits/hachu-minase-playing-style-analysis-2026-09-05.md)は、Minaseが負ける局では自身を有利とする評価を終盤まで維持してから急落する傾向を報告しており、この敗局は孤立した事例ではない。
 
 特徴を足すだけでは足りないことを、着手後の測定が示した。
 
@@ -102,7 +102,7 @@ minaseにはこのどれもない。
 教師値の定義、教師Kの推定、および生成時の3つの除外は[評価関数](evaluation.md)が、鏡映の重み共有、出力Kの固定、学習重みの保存範囲への射影、および学習後の診断の基準は[段階7](strength-stage7.md)が定める。
 疑似利きの逆引き `attackers_to_by` は[段階3](strength-stage3.md)が導入し、[合法手生成と利き計算の高速化（第2期）](movegen-speedup-2.md)が現行の実装を定める。本書は、利き数の表の正しさを確かめる独立の参照として使う。
 [高速化（第3期）](../movegen-speedup-3.md)の段階1は、方向ごとの走り駒の集合を局面に持たせて静的交換評価の逆引きの空振りを省く案であり、本書の走りの方向の表と対象が重なる。どちらかが先に採用された時点で、他方は診断をやり直し、効果を重複して数えない。
-項目の選定と順位の根拠は[評価項目の調査](../../research/evaluation-terms-survey.md)が、先行エンジンの土台の一次情報とminaseの部品の棚卸しは[土台の調査](../../research/evaluation-infrastructure-survey.md)が、将棋の教師の作り方は[将棋の教師生成と学習ツールの調査](../../research/teacher-generation-prior-art.md)が持ち、本書は繰り返さない。
+項目の選定と順位の根拠は[評価項目の調査](../../proposals/archived/evaluation-terms-survey.md)が、先行エンジンの土台の一次情報とminaseの部品の棚卸しは[土台の調査](../../research/evaluation-infrastructure-survey.md)が、将棋の教師の作り方は[将棋の教師生成と学習ツールの調査](../../research/teacher-generation-prior-art.md)が持ち、本書は繰り返さない。
 lishogiの棋譜の取得方法と取得時の落とし穴は、2026年8月26日の全棋譜照合の作業で確認済みであり、取得の道具はリポジトリに収録されていないので作り直す。
 
 ## 設計判断
@@ -560,11 +560,11 @@ Gだけで判定すると、両方の群で予測が悪化していても、悪�
 
 ## 参考資料
 
-- [評価項目の追加候補の調査](../../research/evaluation-terms-survey.md)。項目の順位、先行実装の式と行番号、NNUEを範囲外にした理由を記す。
+- [評価項目の追加候補の調査](../../proposals/archived/evaluation-terms-survey.md)。項目の順位、先行実装の式と行番号、NNUEを範囲外にした理由を記す。
 - [評価項目が依存する土台の調査](../../research/evaluation-infrastructure-survey.md)。先行エンジンが費用を払う場所、評価項目と土台の対応、minaseの部品の棚卸しを記す。
 - [将棋の教師生成と学習ツールの調査](../../research/teacher-generation-prior-art.md)。やねうら王の教師生成の道具GenSfenと、NNUEの学習器tataraについて、開始局面の取り方、実戦棋譜の教師への変換、付け直した値を別ファイルで持つ方式、利きの入力特徴、および検証の指標を記す。
-- [lishogi対局 yO464dzl の敗因分析](../../research/lishogi-game-yO464dzl-loss-analysis.md)。検証局面と再現手順を記す。
-- [HaChuとMinaseの勝ち方・負け方](../../research/hachu-minase-playing-style-analysis.md)。
+- [lishogi対局 yO464dzl の敗因分析](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)。検証局面と再現手順を記す。
+- [HaChuとMinaseの勝ち方・負け方](../../audits/hachu-minase-playing-style-analysis-2026-09-05.md)。
 - 前提とする測定の記録。[発火率の診断](../../measurements/strength-stage9/strength-stage9-activation-diag.md)、[逆引きの費用の測定](../../measurements/strength-stage9/strength-stage9-cost-bench.md)、[項目1の学習と診断](../../measurements/strength-stage9/strength-stage9-shelter-training.md)、[教師値の成分ごとの残差の診断](../../measurements/strength-stage9/teacher-quality-residual-diag.md)。
 - [評価関数](evaluation.md)と[評価関数の世代反復](evaluation-gen1.md)。教師値の定義、ノード数100,000の根拠、および教師値の質を次期の候補とした結論を記す。
 - [Factorization Machineによる2駒関係評価](factorization-machine.md)。学習で関係を表す方式が検証損失を改善しながら対局で劣った実績を記す。

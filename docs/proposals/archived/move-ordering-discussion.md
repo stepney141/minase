@@ -1,17 +1,20 @@
 # 手の順序付け（move ordering）の改善余地に関する調査と議論
 
+本提案は、2026年10月10日に[手の順序付け（move ordering）の改善の設計書](../../plans/archived/move-ordering.md)で決着した。
+候補6を除く7候補をまとめて採用し、候補6のうちcontinuation historyは2026年10月19日に[historyの更新量の形とcontinuation historyの設計書](../../plans/archived/history-forms.md)で入れた。
+
 ## 結論
 
 minaseの通常探索の手の順序付けには改善の余地がある。βカットの遅れは、件数で見ると「置換表（探索済み局面の結果を保存して再利用する表）の記録手がなく、残り深さが1で、最初の捕獲手が静的交換評価（SEE、到達升での駒の取り合いを見積もる計算で、正なら得、負なら損）で負になる」というノードに集中するが、その遅れが探索ノード数としてどれほどの損失に当たるかは測られておらず、これまでの指標では換算できない。
 2026年10月9日に、Claude（本書の書き手）とcodexが現行のソースと測定記録を読み合わせ、2巡の反論を経て次の結論に達した。
 
-- 初手βカット率（通常探索のβカットのうち最初に探索した手によるものの割合）は、現行masterで深さ5では66.4%、深さ8では70.1%である（[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)）。この値は、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
-- この指標はβカットを件数で集計するので、件数の83〜87%を占める残り深さ1のノード（[2026年9月27日の監査](../audits/beta-cutoff-first-move-2026-09-27.md)の値であり、現行masterでは再測定していない）に支配される。残り深さ1でβカットが遅れたときに無駄になるのは静止探索（読みの末端で捕獲手だけを読み進める探索）の部分木であり、残り深さの大きいノードで遅れたときに無駄になるのは通常探索の部分木である。両者の大きさの差は未測定であり、件数の指標ではこの差を区別できない。したがって順序付けの損失をノード数で測るには、βカットした手より前に読んだ手の部分木ノード数の和（以下、先行費用W）を残り深さ別・先頭手の種別別に集計する診断が必要であり、これが設計書の最初のフェーズになる。
+- 初手βカット率（通常探索のβカットのうち最初に探索した手によるものの割合）は、現行masterで深さ5では66.4%、深さ8では70.1%である（[move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)）。この値は、Chess Programming Wikiが順序付けの目安とする90%超を下回る。
+- この指標はβカットを件数で集計するので、件数の83〜87%を占める残り深さ1のノード（[2026年9月27日の監査](../../audits/beta-cutoff-first-move-2026-09-27.md)の値であり、現行masterでは再測定していない）に支配される。残り深さ1でβカットが遅れたときに無駄になるのは静止探索（読みの末端で捕獲手だけを読み進める探索）の部分木であり、残り深さの大きいノードで遅れたときに無駄になるのは通常探索の部分木である。両者の大きさの差は未測定であり、件数の指標ではこの差を区別できない。したがって順序付けの損失をノード数で測るには、βカットした手より前に読んだ手の部分木ノード数の和（以下、先行費用W）を残り深さ別・先頭手の種別別に集計する診断が必要であり、これが設計書の最初のフェーズになる。
 - 各枝刈りはいずれも「探索済みの最善値が詰み帯（詰みを表す評価値の範囲）の外である」ことを適用条件にするので、手のループの最初の手は決して枝刈りされない。置換表の記録手がないノードではMVV-LVA順（取る駒の価値の降順、取る側の駒の価値の昇順）の先頭がSEEで負になる捕獲手であることが多く、その手だけは枝刈りの対象にならずに必ず読まれる。
 - history表（βカットを起こした静かな手の統計。静かな手とは相手の駒を取らない手）の値は、加点、半減、減衰の更新しか行われないので負にならない。したがってLMR（late move reductions、順序付けの後方の静かな手を浅く読む手法）の減深量を決める`pruning.rs`の`lmr_reduction`にある「history値が−146以下なら減深を1増やす」分岐は、現行では発動しない。
 - 候補は8件に絞り、実装費用が小さく新しい表や手生成を要しないものから、1主張1測定で順に検証する。費用の小さい候補を先にするのは、効果の有無を早く確かめ、大きな表を要する候補の設計をその結果の後に回すためである。各候補の順位は本書の「候補の順位」節に記す。
 
-具体的な設計は[手の順序付けの改善](../plans/archived/move-ordering.md)で定める。
+具体的な設計は[手の順序付けの改善](../../plans/archived/move-ordering.md)で定める。
 
 ## 調査した版
 
@@ -42,7 +45,7 @@ history表は根の探索ごとに`HistoryDecay`（現行23%）だけを残し�
 以下はソースで確認した事実である。
 
 - `negamax.rs`のfutility pruning、late move pruning、SEE pruningの3つの枝刈りは、いずれも`best_score > -MATE_THRESHOLD`を条件に含む。`best_score`は`-INFINITY`から始まるので、手のループの最初の手はこれらで枝刈りされない。2手目以降のSEEが負の捕獲手は、残り深さ3以下の零窓ノードで損が余裕値を超える場合に枝刈りされる。
-- 2026年9月27日の監査では、捕獲段の候補の42%がSEEで負と判定された。βカットしたノードのうち最初に探索した手がSEE負の捕獲手だった局面において、その手自身がβカットを起こした割合は深さ5で18.4%、深さ8で40.3%だった（残り深さは限定していない。[監査](../audits/beta-cutoff-first-move-2026-09-27.md)）。
+- 2026年9月27日の監査では、捕獲段の候補の42%がSEEで負と判定された。βカットしたノードのうち最初に探索した手がSEE負の捕獲手だった局面において、その手自身がβカットを起こした割合は深さ5で18.4%、深さ8で40.3%だった（残り深さは限定していない。[監査](../../audits/beta-cutoff-first-move-2026-09-27.md)）。
 - butterfly historyの更新は`depth²`の加点、上限超過時の全体の半減、および根ごとの減衰だけなので、値は常に非負である。したがって`pruning.rs`の`lmr_reduction`にある「`history <= -threshold`なら減深を1増やす」という条件は成立しない。
 - `bench`は局面ごとに置換表とhistory表を消す（`bench.rs`）。したがって`bench`の統計は対局内の持ち越しの効果を含まない。
 - 捕獲履歴の更新は、捕獲手がβカットを起こしたときにだけ行われる。静かな手がβカットを起こしたノードで先に読んだ捕獲手は減点されない（`negamax.rs`の`record_cutoff`の呼び出し条件）。
@@ -50,7 +53,7 @@ history表は根の探索ごとに`HistoryDecay`（現行23%）だけを残し�
 
 ## 現状の測定
 
-[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)の値は次のとおりである。
+[move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)の値は次のとおりである。
 
 | 深さ | βカット | 初手βカット | 初手βカット率 | 全手走査ノードの最善手順位 1位 / 4位以降 |
 |---:|---:|---:|---:|---|
@@ -109,7 +112,7 @@ codexは追加の候補として、静かな手がβカットしたときにも�
 
 - Stockfish `src/movepick.cpp`、`src/search.cpp`、`src/history.h`（コミット17a6c8f1、GPL-3.0-or-later）: [movepick.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/movepick.cpp)、[search.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp)、[history.h](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/history.h)。
 - Chess Programming Wiki「Move Ordering」: <https://www.chessprogramming.org/Move_Ordering>。初手βカット率の目安の出典である。
-- [最初の手でβカットが起きる割合の原因調査](../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日、コミットdb716df）。
-- [棋力向上段階5](../plans/archived/strength-stage5.md)、[棋力向上段階12](../plans/archived/strength-stage12.md)、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)。
-- 測定記録: [strength-stage5-malus-stc](../measurements/strength-stage5/strength-stage5-malus-stc.md)、[strength-stage5-malus-bench](../measurements/strength-stage5/strength-stage5-malus-bench.md)、[strength-stage5-piece-history-stc](../measurements/strength-stage5/strength-stage5-piece-history-stc.md)、[strength-stage5-cmh-bench](../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../measurements/strength-stage5/strength-stage5-continuation-bench.md)、[strength-stage12-bad-captures-stc](../measurements/strength-stage12/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../measurements/strength-stage12/strength-stage12-bad-captures-bench.md)、[strength-stage6-iteration-diag](../measurements/strength-stage6/strength-stage6-iteration-diag.md)、[move-ordering-baseline-bench](../measurements/move-ordering/move-ordering-baseline-bench.md)。
-- 教訓: [不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../lessons/retune-rejected-pruning-before-discarding.md)、[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../lessons/recall-loss-does-not-bound-recursive-pruning.md)。
+- [最初の手でβカットが起きる割合の原因調査](../../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日、コミットdb716df）。
+- [棋力向上段階5](../../plans/archived/strength-stage5.md)、[棋力向上段階12](../../plans/archived/strength-stage12.md)、[不採用だった探索部の改良の再調整](../../plans/archived/search-revival-spsa.md)。
+- 測定記録: [strength-stage5-malus-stc](../../measurements/strength-stage5/strength-stage5-malus-stc.md)、[strength-stage5-malus-bench](../../measurements/strength-stage5/strength-stage5-malus-bench.md)、[strength-stage5-piece-history-stc](../../measurements/strength-stage5/strength-stage5-piece-history-stc.md)、[strength-stage5-cmh-bench](../../measurements/strength-stage5/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../../measurements/strength-stage5/strength-stage5-continuation-bench.md)、[strength-stage12-bad-captures-stc](../../measurements/strength-stage12/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../../measurements/strength-stage12/strength-stage12-bad-captures-bench.md)、[strength-stage6-iteration-diag](../../measurements/strength-stage6/strength-stage6-iteration-diag.md)、[move-ordering-baseline-bench](../../measurements/move-ordering/move-ordering-baseline-bench.md)。
+- 教訓: [不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../../lessons/retune-rejected-pruning-before-discarding.md)、[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../../lessons/recall-loss-does-not-bound-recursive-pruning.md)。

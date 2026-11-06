@@ -34,7 +34,7 @@ PSTは駒の種類と升ごとに点数を持つ表であり、局面段階を�
 
 現行の評価関数は、47種類の駒状態、先後、144升の組と先獅子の対象升からなる13,680特徴の線形モデルを、序中盤と終盤の2端点で補間したものである（[PSTの序中盤と終盤の補間](tapered-pst.md)）。
 局面段階を固定すると評価値は盤上の各駒の寄与の和に分解されるので、2枚以上の駒の配置に依存する価値は表せない。
-[lishogiの敗局](../../research/lishogi-game-yO464dzl-loss-analysis.md)では、駒を取らない手が7手から9手続く攻めが探索の届く深さの外にあり、評価は+1000センチポーンを超える値を返し続けた。
+[lishogiの敗局](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)では、駒を取らない手が7手から9手続く攻めが探索の届く深さの外にあり、評価は+1000センチポーンを超える値を返し続けた。
 駒がぶつかった後の取り合いは静止探索（駒を取る手だけを読み進める探索）が読むので、取り合いが始まる前の駒の組み方の判断は、静的評価を改善する候補になる。
 ただし、この敗局だけで評価構造の不足とは断定せず、着手前に教師と学習の問題を切り分ける。
 攻めの準備が整った形や、受けの駒が連携していない形は、近くにいる駒の組の形として現れると考えられる。
@@ -468,5 +468,5 @@ LTCの判定保留は、同じ実行ディレクトリを `--resume` で再開�
 - tatara（コミット 752df92 の `feature_set.rs` 462行から491行）。駒種の組ごとの仮想行による階層共有の典拠である。
 - nnue-pytorch（コミット 3276b3b5 の `data_loader/cpp/training_data_loader.cpp` 909行）。駒取りと王手の局面を学習から除く典拠である。
 - 設計書：[評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、[PSTの序中盤と終盤の補間](tapered-pst.md)、[教師値の混合比](teacher-mixing-ratio.md)、[探索局面を用いた評価関数の学習](search-aware-evaluation.md)、[Factorization Machineによる2駒関係評価](factorization-machine.md)、[先読み教師値](lookahead-teacher.md)、[棋力向上段階9](strength-stage9.md)。
-- 調査：[評価項目の追加候補の調査](../../research/evaluation-terms-survey.md)。
+- 調査：[評価項目の追加候補の調査](../../proposals/archived/evaluation-terms-survey.md)。
 - 教訓：[game-constant-target-memorization.md](../../lessons/game-constant-target-memorization.md)、[validation-loss-hides-material-distortion.md](../../lessons/validation-loss-hides-material-distortion.md)、[training-weights-must-fit-export-format.md](../../lessons/training-weights-must-fit-export-format.md)、[check-steps-per-epoch-before-training.md](../../lessons/check-steps-per-epoch-before-training.md)、[check-learning-before-blaming-data.md](../../lessons/check-learning-before-blaming-data.md)、[validate-diagnostic-rule-on-current-config.md](../../lessons/validate-diagnostic-rule-on-current-config.md)。

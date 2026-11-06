@@ -1,5 +1,10 @@
 # 将棋のNNUE学習器tataraからminaseへ移せる技法
 
+本書のminaseに関する記述は2026年11月3日時点のものである。
+「試す順序」の節のうち、第1段階のPairwise、学習だけで済む第2段階の3件のうち第1層の初期値のfan-in則への縮小、および第3段階の幅256と隠れ層は、2026年11月4日に[NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる設計書](../plans/archived/nnue-architecture-revision.md)で、幅128の基準に`H1`を取らないまま世代反復で使う構成として確定した。
+第2段階の残る2件のうち、一定のλ=0.75は、[NNUEの世代反復を手書きの評価関数v0からやり直す設計書](../plans/archived/nnue-generation-reset.md)の第1世代が第0世代に`H0`となったので、2026年11月5日に対象から外れた。
+非線形の経路の倍率の調整、第4段階の進行度bucket、および第5段階のRangerとMSE型の損失には、まだ設計書がない。
+
 本書は、将棋のNNUE学習器tataraが採用しているアーキテクチャと学習の技法のうち、中将棋エンジンminaseへ移すと棋力を上げ、駒の配置の偏りを減らせる見込みがあるものを、ソース、コミット、PR、および公開された対局記録から調べた調査メモである。
 資料は2026年11月3日に参照した。
 
@@ -96,7 +101,7 @@ tataraは2026年10月22日のコミット`1046cb7`で設計記録`docs/decisions
 | 観点 | tataraの標準 | minaseの現行 |
 |---|---|---|
 | 教師 | 公開データの約80億局面を2周（160億局面）。[実験のリリース](https://github.com/SH11235/rshogi/releases/tag/nnue-experiments-202607)の条件 | 訓練79,458,082局面、210,788局（[記録](../measurements/nnue-early-best-epoch/nnue-train-subsample.md)） |
-| 第1層 | 入力73,305、幅1536で約1.1億個の重み（arch-string.md 95行） | 入力13,680、幅128、鏡映の共有で独立重み889,200個（[考察](nnue-architecture-discussion.md)） |
+| 第1層 | 入力73,305、幅1536で約1.1億個の重み（arch-string.md 95行） | 入力13,680、幅128、鏡映の共有で独立重み889,200個（[考察](../proposals/archived/nnue-architecture-discussion.md)） |
 | 1重みあたりの局面数 | 約71局面（推論の計算） | 約89局面（同上） |
 | 後段 | 16と32の隠れ層をbucket別に持つ（layerstack_weights.rs 5〜20行） | 隠れ層なしの直接内積（[ADR](../adr/archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)） |
 | 活性化 | CReLUの後に前半と後半の要素積（同上） | SCReLU（[head.rs](../../crates/minase/src/eval/nnue/head.rs) 61〜77行） |
@@ -180,7 +185,7 @@ Stockfishの[SFNNv18](https://github.com/official-stockfish/Stockfish/commit/5c4
 同コミットの入力の変更と合わせた効果は長時間で+3.60 Elo（再計算）であり、作者は出力bucketの単独の追加が最も有望だったと記している。
 
 (c) 王の段のbucketでは、minaseのほとんどの局面が同じ区分に入る。
-自玉は最下段中央の2升に全観測の63.0%があり、盤上の駒が50枚以上の局面では観測の90%が2升に集まる（[調査](nnue-input-features.md) 65〜69行）。
+自玉は最下段中央の2升に全観測の63.0%があり、盤上の駒が50枚以上の局面では観測の90%が2升に集まる（[調査](../proposals/archived/nnue-input-features.md) 65〜69行）。
 
 駒数によるbucketも、偏りが出る手数帯では働きにくい。
 現行の対局で最初に駒を取るまでの手数の中央値は52手であり（[集計](../measurements/adhoc/piece-placement-census.md) 110行）、それまで駒数は変わらない。
@@ -192,13 +197,13 @@ P型の絶対位置の特徴だけで回帰すれば、進行度は線形の経�
 学習器の改修は回帰の学習ツール、bucket別の出力重み、および構造記述の3点で、3〜5日を見込む。
 本書を書いた時点の層積みの設計書（同じ版の49行）は、境界で重みを切り替えるbucketと進行度の推定を対象外としていた。
 
-過去の議論は、境界で重みを切り替えるbucketを着手間の評価の不連続を理由に見送った（[考察](nnue-architecture-discussion.md) 161〜163行）。
+過去の議論は、境界で重みを切り替えるbucketを着手間の評価の不連続を理由に見送った（[考察](../proposals/archived/nnue-architecture-discussion.md) 161〜163行）。
 この不連続が問題になるかは対局で測らないと分からない。
 ただし直接内積をbucketに分けても第1層は共有のままなので、将棋の記録のような利得はbucket別の隠れ層から出ている可能性があり、直接内積だけの結果が負けても方式全体の否定にはならない（推論）。
 
 (d) 棋力の見込みは正の可能性がある（推論）。
 偏りにも効く可能性がある。
-教師の隣接局面の70.6%は150手目以降にあるので（[調査](nnue-input-features.md) 91〜92行）、1組の出力重みは終盤の局面に強く引かれ、20〜99手目の配置の評価がその副作用である可能性を、序盤のbucketを分けることで調べられる（推論）。
+教師の隣接局面の70.6%は150手目以降にあるので（[調査](../proposals/archived/nnue-input-features.md) 91〜92行）、1組の出力重みは終盤の局面に強く引かれ、20〜99手目の配置の評価がその副作用である可能性を、序盤のbucketを分けることで調べられる（推論）。
 
 ### L1とL2、L3のshared項
 
@@ -368,7 +373,7 @@ rshogiの[PR #1028](https://github.com/SH11235/rshogi/pull/1028)と[#1029](https
 (c) minaseには強い先例がある。
 FMの補正は、縮小前のものが1/4倍のmasterに約67 Elo負け、同時学習で得た補正も倍率1のままでは約8 Elo負けたが、その補正の倍率をSPSAで0.597へ下げて焼き込んだ候補はLTCでmasterに約+120 Eloだった（[設計書](../plans/archived/fm-scale-spsa.md) 19行、27〜31行）。
 NNUEの非線形の経路の倍率を対局で調整した記録は、確かめた範囲では見つからなかった。
-手順はFMと同じで、学習も形式の変更も要らず、SPSAは約8時間である（[考察](nnue-architecture-discussion.md) 133行）。
+手順はFMと同じで、学習も形式の変更も要らず、SPSAは約8時間である（[考察](../proposals/archived/nnue-architecture-discussion.md) 133行）。
 倍率が1未満なら出力重みとバイアスへ焼き込める。
 
 (d) 棋力の見込みは正である（推論）。

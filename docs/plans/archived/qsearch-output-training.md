@@ -73,7 +73,7 @@ QもQcも採用しない場合、これらのコードはmasterへ入れない�
 
 ## 依存関係
 
-方式の根拠は総論、[評価表現の構成案](../../research/evaluation-architecture-candidates.md)、および[一次資料の調査](../../research/evaluation-learning-primary-sources-2026-09.md)に置く。
+方式の根拠は総論、[評価表現の構成案](../../proposals/archived/evaluation-architecture-candidates.md)、および[一次資料の調査](../../research/evaluation-learning-primary-sources-2026-09.md)に置く。
 PSTの評価、量子化、駒除去の診断、および学習の手順は、[評価関数](evaluation.md)、[先読み教師値](lookahead-teacher.md)、および[学習の手引き](../../guides/pst-training.md)を引き継ぐ。
 棋力の採否は[SPRTの手引き](../../guides/sprt.md)に従う。
 
@@ -394,8 +394,8 @@ Qcを実施せずQが採否測定へ進む経路ではSTC 2本とLTC 1本にな�
 
 ## 参考資料
 
-- [評価関数を改善する3つの観点](../../research/evaluation-improvement-strategy.md)
-- [評価関数の表現と更新費用の候補](../../research/evaluation-architecture-candidates.md)
+- [評価関数を改善する3つの観点](../../proposals/archived/evaluation-improvement-strategy.md)
+- [評価関数の表現と更新費用の候補](../../proposals/archived/evaluation-architecture-candidates.md)
 - [評価モデル、教師生成、学習方法の一次資料](../../research/evaluation-learning-primary-sources-2026-09.md)
 - [探索局面を用いた評価関数の学習](search-aware-evaluation.md)
 - [相対2駒評価の準備記録](../../measurements/relative-pair-eval/relative-pair-prep.md)

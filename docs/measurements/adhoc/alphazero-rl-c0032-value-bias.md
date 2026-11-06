@@ -3,7 +3,7 @@
 ## 目的
 
 [サイクル32のMCTSとαβ探索のSTCの対局](../alphazero-rl/alphazero-rl-restart-stc-c0032.md)が2勝192敗に終わった原因を、探索回数、価値の較正、および王駒を取られる手の扱いに分けて、保存済みの記録とネットで調べる。
-この診断は学習も長い対局も行わず、[規模と探索と学習の質の調査](../../research/alphazero-strength-gap.md)の材料とする。
+この診断は学習も長い対局も行わず、[規模と探索と学習の質の調査](../../proposals/alphazero-strength-gap.md)の材料とする。
 
 ## コマンドライン
 

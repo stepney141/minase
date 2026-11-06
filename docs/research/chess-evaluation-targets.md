@@ -1,5 +1,10 @@
 # チェス評価関数の教師と混合比
 
+本書のminaseに関する記述は2026年9月22日時点のものである。
+評価関数は2026年10月12日に[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)でNNUEへ置き換わった。
+NNUEは[NNUEは先読みを使わない探索値だけの教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)のとおりλ=1.0で学ぶので、本書が扱う教師の混合比75:25は、[PST全体を学び直すときは、教師の混合比を0.75に保つ](../adr/keep-the-mixing-ratio-at-0-75-for-pst-retraining.md)が定めるPSTの再学習にだけ残る。
+2026年11月5日には、世代反復の第1世代をλ=0.75で学んだNNUEが第0世代の手書きの評価関数v0に`H0`となり、同じ教師をλ=1.0で学んだNNUEは`H1`だった（[世代反復の第1世代と第0世代のSTC](../measurements/nnue-generation-reset/nnue-generation-reset-gen1-stc.md)）。
+
 2026年9月22日に、公開コード、開発者の説明、および採用ネットの学習記録を確認した。
 対象は、minaseの「探索値75%と対局結果25%」に対応する教師の作り方であり、学習器の既定値、実際の学習設定、および混合比を変えた比較を区別する。
 

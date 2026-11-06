@@ -1,5 +1,9 @@
 # エンジン開発のデバッグ手法の調査
 
+本書のminaseに関する記述は2026年9月27日時点のものである。
+結論でminaseが持たないとした局面と評価値の表示、置換表の照会、入出力のログ、および探索統計は、同日の[デバッグ機能の整備の設計書](../plans/archived/debugging-tools.md)により、USIの独自コマンド`d`、`eval`、`tt`、起動引数`--io-log`、およびCargoフィーチャ`search-stats`として加わった。
+評価関数は2026年10月12日にNNUEへ替わり、[P型のNNUEは左右鏡映の対で第1層の重みを半幅だけ回して共有する](../adr/share-p-type-mirror-weights-by-half-width-rotation.md)ので、「minaseへの適用の可否」の第3点と異なり、現行の評価は左右鏡映でも変わらない。
+
 本書は、Chess Programming Wiki（以下CPW）の「Debugging」頁とその関連頁および引用投稿、ならびにStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースを調べ、エンジン開発で使われるデバッグ手法を整理した調査メモである。
 [デバッグ機能の整備](../plans/archived/debugging-tools.md)の設計書が方式の根拠として参照し、[デバッグの手引き](../guides/debugging.md)が手法の出典として参照する。
 調査日は2026年9月27日である。

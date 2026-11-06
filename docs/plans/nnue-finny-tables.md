@@ -153,7 +153,7 @@ P型では、`P::context_after_move`が常に同じ文脈を返すので、`upda
 
 HalfKP-hm-b8では、文脈を変える着手のたびに、その視点の第1層を全再計算する。
 文脈を変え得る着手は王将または太子の移動、醉象の成り、および王駒の捕獲であり、そのうち区分か鏡映の有無が実際に変わる着手だけが全再計算になる。
-[入力特徴の調査](../research/nnue-input-features.md)で教師データの隣接局面26,225,953組を集計すると、着手した側の王将が動いた着手は全体の7.54%だった。手数で分けると、この割合は150手目より前では0.15%以下、150手目以降では10.63%である。
+[入力特徴の調査](../proposals/archived/nnue-input-features.md)で教師データの隣接局面26,225,953組を集計すると、着手した側の王将が動いた着手は全体の7.54%だった。手数で分けると、この割合は150手目より前では0.15%以下、150手目以降では10.63%である。
 また、太子が現れた対局は同じ教師データの1.77%であり、太子のない側の王駒の捕獲は対局の終わりなので、太子の移動、醉象の成り、および王駒の捕獲による文脈の変化は少なく、王将の移動の割合がおおよその上限になる。
 王将の移動がどれだけ文脈を変えるかは局面による。自陣の最下段から3段目より前の升はすべて同じ区分だが、盤の中央の筋をまたぐ移動は鏡映の有無を変える。
 [HalfKP-hm-b8の初回の比較](../measurements/nnue-replacement/nnue-replacement-features-stc.md)では、HalfKP-hm-b8の側が232局のそれぞれで自分の最初の40手として指した9,280手のうち、王将の着手は228手であり、その86%が文脈を変えた。
@@ -255,7 +255,7 @@ scripts/bench_compare.py --reference <表を入れる前の候補> --baseline <�
 - やねうら王（`https://github.com/yaneurao/YaneuraOu`、確認したHEADは`c1b80eaa09fe13d5f12b1599d1ae4d53c224de30`）。導入は`72c91d8101512741f6a286f57e80cfd3f5fdc6c3`である。
 - やねうら王の作者による解説記事[「finny tables、やねうら王に実装される」](https://yaneuraou.yaneu.com/2026/08/11/finny-tables-implemented-in-yaneuraou/)（2026年8月11日）。
 - Fairy-Stockfish（`https://github.com/fairy-stockfish/Fairy-Stockfish`、確認したmasterは`2e591089558a5afa72ab5a22192208e71848a30c`）。移植はブランチ`sf19-merge`の`5d78e936281f0f7c69770afe7de3a0a31b949634`である。
-- [NNUEの13,680入力を採る根拠と限界](../research/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数え、Finny tablesに触れている。
+- [NNUEの13,680入力を採る根拠と限界](../proposals/archived/nnue-input-features.md)は、自玉が動く着手の割合を教師データで数え、Finny tablesに触れている。
 - [NNUEの入力特徴集合の比較（HalfKP-hm-b8対P型、幅128、STC）](../measurements/nnue-replacement/nnue-replacement-features-stc.md)と[再学習したHalfKP-hm-b8のSTC](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)は、HalfKP-hm-b8が負けた記録である。
 - [P型を採るADR](../adr/use-p-type-input-features-for-the-nnue.md)は、入力特徴集合の決定と、HalfKP型を再提案する前の条件を記す。
 - [NNUEの出力部の計算時間の記録](../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md)は、深さ9のbenchの累算器の更新回数と全再計算の回数を含む。

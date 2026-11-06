@@ -158,7 +158,7 @@ tools/train/.venv/bin/python tools/train/pst/king_features_diag.py \
 
 ### 敗局の検証局面
 
-[敗局](../../research/lishogi-game-yO464dzl-loss-analysis.md)の各局面について、後手玉の特徴値を次に示す。
+[敗局](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)の各局面について、後手玉の特徴値を次に示す。
 項目1は距離0から2の合計、項目2は攻める側の利きが1つ以上ある升の数である。
 同じ局面の先手の王は、項目1の12列がすべて0であった。
 

@@ -72,7 +72,7 @@ PST＋FMとNNUEには、評価式から直接読める駒価値がない。
 ## 結果
 
 各欄は「生のcp値（全軍換算値）」である。手書き評価は換算の基準であり倍率が1なので、生のcp値だけを書く。
-全47状態のうち実戦に現れた35状態の値と、中央値およびNNUEの標準偏差は[removal.tsv](evaluator-piece-values/removal.tsv)に、全軍換算値は[normalized.tsv](evaluator-piece-values/normalized.tsv)にある。
+全47状態のうち実戦に現れた35状態の値と、中央値およびNNUEの標準偏差は[removal.tsv](evaluator-piece-values-2026-10-15/removal.tsv)に、全軍換算値は[normalized.tsv](evaluator-piece-values-2026-10-15/normalized.tsv)にある。
 
 | 駒 | 件数 | 手書き | PST | PST＋FM | NNUE |
 |---|---|---|---|---|---|
@@ -134,18 +134,18 @@ ADRが「結果」の節で予期した、評価関数が学ぶ駒の価値と�
 
 ## 再現手順
 
-計測用のcrateは[evaluator-piece-values/](evaluator-piece-values/)にあり、minaseのワークスペースから独立した単独のcrateである。
+計測用のcrateは[evaluator-piece-values/](evaluator-piece-values-2026-10-15/)にあり、minaseのワークスペースから独立した単独のcrateである。
 依存するminaseに埋め込まれた重みを使うので、本調査と同じ重みで再現するには、本調査を行った時点のコミット4d1f3e7のminaseでビルドする。
 リポジトリのルートで次を実行する。
 
 ```console
 git show 5b6ec1f:crates/minase/nets/pst.bin > /tmp/pst-L-v2.bin
 CARGO_TARGET_DIR=/tmp/evaluator-piece-values cargo build --release \
-  --manifest-path docs/research/evaluator-piece-values/Cargo.toml
+  --manifest-path docs/audits/evaluator-piece-values-2026-10-15/Cargo.toml
 /tmp/evaluator-piece-values/release/evaluator-piece-values \
   data/nnue-lr-schedule-gen/generated-7100000.bin /tmp/pst-L-v2.bin 10 50000 \
   > removal.tsv
-python3 docs/research/evaluator-piece-values/normalize.py removal.tsv > normalized.tsv
+python3 docs/audits/evaluator-piece-values-2026-10-15/normalize.py removal.tsv > normalized.tsv
 ```
 
 計測器の引数`10`は局面の抽出間隔、`50000`は抽出する局面数の上限であり、計測は1スレッドで約30秒かかる。

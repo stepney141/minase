@@ -77,7 +77,7 @@
 
 ## 読んだ対照と読めなかった対照
 
-- Fairy-Stockfish@2e59108: 大盤版は `unsigned __int128`（src/types.h 113行から115行）で最大120升であり、src/ に獅子と2段階移動の生成はない（lion の出現は src/variants.ini のコメントだけ）。中将棋の生成の出典にはなり得ない。表の分割は docs/research/magic-bitboard-feasibility.md が参照しているが、minase の本体は分割表を採用していない。
+- Fairy-Stockfish@2e59108: 大盤版は `unsigned __int128`（src/types.h 113行から115行）で最大120升であり、src/ に獅子と2段階移動の生成はない（lion の出現は src/variants.ini のコメントだけ）。中将棋の生成の出典にはなり得ない。表の分割は docs/proposals/archived/magic-bitboard-feasibility.md が参照しているが、minase の本体は分割表を採用していない。
 - python-shogi@a814cbf: 中将棋の実装を持たない（chu・lion の出現は CSA.py の "CHUDAN" だけ）。比較対象がないため判定2の根拠にも反証にもならない。
 - YaneuraOu@c1b80ea: 中将棋の実装を持たない。zobrist の乱数器は source/position.cpp 85行の `PRNG rng(20151225)`（xorshift64*）であり、minase の xorshift64 と種 "MINASEZ1" とは異なる。
 - apery_rust@8e64bc4、rshogi@871a5b8、shakmaty@6a96078: いずれも中将棋と獅子の実装を持たない。minase の特徴的な識別子（sliding_control、king_steps、lion_jumps、captured_squares、pieces_of_kind、dense_index、SquareIter、FILE_MASKS、VALID_WORD、ZOBRIST_SEED）を検索し、shakmaty の EN_PASSANT_FILE_MASKS 以外に一致はなかった。rshogi の zobrist は YaneuraOu 準拠（seed 20151225、xorshift64*）である。

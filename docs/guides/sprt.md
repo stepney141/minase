@@ -196,7 +196,7 @@ runnerと測定機は照合しないので、作業ツリーの`minase`を再ビ
 
 実行ディレクトリは`pairs/`のJSONで大きくなるので、ディスクが足りなくなったら、終わった測定を実行ディレクトリごとに`data/matches/<測定名>.tar.zst`へ圧縮する。
 JSONのサイズは約20分の1になる。
-全記録を読む診断が設計や既定値を決めた例（[反復負けの診断](../measurements/search-repetition/search-repetition-outcome-diag.md)、[投了閾値の診断](../research/usi-resignation-diagnosis.md)）があるので、終わった測定は削除せず、圧縮して残す。
+全記録を読む診断が設計や既定値を決めた例（[反復負けの診断](../measurements/search-repetition/search-repetition-outcome-diag.md)、[投了閾値の診断](../audits/usi-resignation-diagnosis-2026-09-23.md)）があるので、終わった測定は削除せず、圧縮して残す。
 2026年10月31日以前に終わった247件は、2026年11月4日にこの形式へ圧縮した。
 
 圧縮では、アーカイブを作り、内容が元と一致することを確かめてから元のディレクトリを消す。

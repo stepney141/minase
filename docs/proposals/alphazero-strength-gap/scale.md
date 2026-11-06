@@ -8,7 +8,7 @@ WCSCは世界コンピュータ将棋選手権、floodgateはコンピュータ�
 出典のない見積もりには「推論」と付け、グラフから読んだ値には「目視」と付ける。
 
 既存の調査に書かれた事実は再掲を避け、次の文書を参照先として示す。
-[alphazero-prior-art.md](../alphazero-prior-art.md)、[alphazero-rl-training-efficiency.md](../alphazero-rl-training-efficiency.md)、[shogi-resnet-transfer-sources.md](../shogi-resnet-transfer-sources.md)、および[teacher-generation-strong-engines/shogi.md](../teacher-generation-strong-engines/shogi.md)である。
+[alphazero-prior-art.md](../../research/alphazero-prior-art.md)、[alphazero-rl-training-efficiency.md](../../research/alphazero-rl-training-efficiency.md)、[shogi-resnet-transfer-sources.md](../../research/shogi-resnet-transfer-sources.md)、および[teacher-generation-strong-engines/shogi.md](../../research/teacher-generation-strong-engines/shogi.md)である。
 
 ## 結論
 
@@ -37,7 +37,7 @@ dlshogiでは、20b256→30b384が同一ノードでR+163、同一持ち時間�
 
 | 対象 | 局面数 | 対局数 | 計算量 | ネット | 自己対局の探索回数 | 到達した強さと条件 |
 |---|---|---|---|---|---|---|
-| minase サイクル32 | 3,159万 | 37.0万局 | 約32時間、L4 1枚（1サイクル約60分、1.94 CU） | 10b128c、346万パラメータ | 25%の手番は32回、他は8回 | 各10秒+0.1秒でαβ＋NNUE（1スレッド）に2勝192敗、Elo −793。サイクル30はサイクル20に+237（1手800回） |
+| minase サイクル32 | 3,159万 | 37.0万局 | 約32時間、L4 1枚（1サイクル約60分、1.94 CU） | 10b128c、補助ヘッドを含めて4,780,200パラメータ | 25%の手番は32回、他は8回 | 各10秒+0.1秒でαβ＋NNUE（1スレッド）に2勝192敗、Elo −793。サイクル30はサイクル20に+237（1手800回） |
 | KataGo g104 b6c96 | 2,300万 | 40万局 | 0.75日、V100 16枚 | 6b96c | 完全探索600回から1,000回、他は100回から200回 | LZとELFの混合に−1276（1手1,600ノード）、Strong/Top Amateur |
 | KataGo g104 b10c128 | 5,500万 | 100万局 | 1.75日、V100 16枚 | 10b128c | 同上 | −850、Strong Professional |
 | KataGo g104 b15c192 | 1.4億 | 250万局 | 7.5日 | 15b192c | 同上 | −329、Superhuman |
@@ -62,7 +62,7 @@ Gumbel dlshogiは[その12](https://tadaoyamaoka.hatenablog.com/entry/2025/07/25
 技巧は[詳細アピール文書](https://www.apply.computer-shogi.org/wcsc34/appeal/Gikou/gikou_appeal_detail.pdf)の1.1節と4節、および[WCSC34の決勝表](https://www.computer-shogi.org/wcsc34/final.html)である。
 nshogiは[WCSC35のアピール文書](https://www.apply.computer-shogi.org/wcsc35/appeal/nshogi/nshogi_appeal_v3.pdf)と[floodgateの集計](https://wdoor.c.u-tokyo.ac.jp/shogi/x/rating/players-floodgate-20261030.html)である。
 AobaZeroは[WCSC31](https://www.apply.computer-shogi.org/wcsc31/appeal/AobaZero/20210322aoba_appeal.pdf)、[WCSC34](https://www.apply.computer-shogi.org/wcsc34/appeal/AobaZero/2024csa_appeal.pdf)、[WCSC35の2本目](https://www.apply.computer-shogi.org/wcsc35/appeal/AobaZero/2025csa_appeal2.pdf)、[プロジェクトのページ](http://www.yss-aya.com/aobazero/)、および同じfloodgateの集計である。
-dlshogiは[60b768cの記事](https://tadaoyamaoka.hatenablog.com/entry/2025/11/16/144404)と既存の[教師生成の調査](../teacher-generation-strong-engines/shogi.md) 252行、298行、302行である。
+dlshogiは[60b768cの記事](https://tadaoyamaoka.hatenablog.com/entry/2025/11/16/144404)と既存の[教師生成の調査](../../research/teacher-generation-strong-engines/shogi.md) 252行、298行、302行である。
 lc0はLeelaChessZero/lc0のwikiの[Project-History.md](https://github.com/LeelaChessZero/lc0/wiki/Project-History) 4〜13行、[training_runs](https://training.lczero.org/training_runs)、[networks](https://training.lczero.org/networks/1)、および[BT4の記事](https://lczero.org/blog/2024/02/transformer-progress/)である。
 
 推論の根拠は次のとおりである。
@@ -74,7 +74,7 @@ GPU時間は、技巧が20台×7日、nshogiが1台×10か月、KataGoが1.4年�
 
 Gumbel dlshogiは、106サイクルの後の対局の強さを公表していない。
 記事の結論は「グラフは横ばいになっているため、これ以上大きく向上はしないかもしれない」「しばらく学習を続けて様子を見る」であり、その後の記事はカテゴリの一覧に現れない。
-リポジトリのその後のコミットは2025年7月28日、11月25日、12月23日（UTC）の3件だけで、最後のものが[Qの尺度の変更](../alphazero-rl-training-efficiency.md)である。
+リポジトリのその後のコミットは2025年7月28日、11月25日、12月23日（UTC）の3件だけで、最後のものが[Qの尺度の変更](../../research/alphazero-rl-training-efficiency.md)である。
 32サイクルの時点の方策の正解率は21.4%、価値は53%付近で横ばいであり（[その11](https://tadaoyamaoka.hatenablog.com/entry/2025/07/22/212555)）、100サイクル目以降に探索回数を32回から64回へ増やした時点で評価損失と価値の正解率が改善した。
 dlshogiの評価用データの方策の正解率は15b224cで0.52、40b512cで0.57であるが、Gumbel dlshogiの評価データが同じかどうかは記事から確かめられなかった。
 この系列については、1億局面の時点の対局の強さを示す記録が公開されていない。
@@ -95,7 +95,7 @@ minaseの37.0万局はこの局数に当たるが、最初の2サイクルの10.
 ### dlshogiの大会ごとのネットと強さ
 
 dlshogiは、精度が飽和するたびにネットを大きくしてきた（[30ブロックの記事](https://tadaoyamaoka.hatenablog.com/entry/2022/11/12/142026)）。
-次の表の順位は[既存の調査](../shogi-resnet-transfer-sources.md) 172〜174行による。
+次の表の順位は[既存の調査](../../research/shogi-resnet-transfer-sources.md) 172〜174行による。
 
 | 大会 | ネット | 使用した計算機 | 成績 | 出典 |
 |---|---|---|---|---|
@@ -223,8 +223,8 @@ AlphaZeroの記録は、持ち時間の差を大きくしてもDL系が耐える
 
 minaseの今回の条件は、ノード数の比ではDL系に有利である。
 [サイクル32の対局](../../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)の1手の思考時間の中央値はMCTSが134ミリ秒、αβ探索が82ミリ秒であった。
-対局の条件のMCTSの1手は約2,100回である（[測定記録](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)）。推論：NNUEの1スレッド毎秒約145万ノード（[benchの記録](../../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md) 36行）なら82ミリ秒で約12万ノードであり、比は約57:1である。
-この比は、αβ側を盤面へ着手を適用した回数（[ノード数の定義](../node-count-definition.md)によればStockfishとやねうら王と同じ数え方）、MCTS側をネットの評価回数で数えたものであり、wikiの125:1や技巧の312:1と同じ数え方である。
+対局の条件のMCTSの1手は約2,100回である（[測定記録](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)）。推論：2026年11月4日に構成を見直す前の幅128のNNUEは1スレッド毎秒約145万ノード（[benchの記録](../../measurements/nnue-hidden-layer/nnue-hidden-layer-bench.md) 36行）であり、対局に使ったコミット45d5db54のαβ探索がこの速さなら、82ミリ秒で約12万ノードとなり、比は約57:1である。
+この比は、αβ側を盤面へ着手を適用した回数（[ノード数の定義](../../audits/node-count-definition-2026-09-19.md)によればStockfishとやねうら王と同じ数え方）、MCTS側をネットの評価回数で数えたものであり、wikiの125:1や技巧の312:1と同じ数え方である。
 GPU 1枚対1スレッドなので、ハードウェアもDL系に有利である。
 上の表の比125:1や312:1でも、成熟したネットは水匠7にR159差まで迫るか、水匠5に勝ち越す。
 
@@ -278,7 +278,7 @@ BT4の記事は、T78（1.945億パラメータ、12.45 GFLOPS）よりBT4（1.9
 
 | ネット | パラメータ数（推論） | 毎秒の評価数 | 134ミリ秒の探索回数（推論） | 10倍の局面数（推論） |
 |---|---|---|---|---|
-| 10b128c | 346万 | 28,235 | 約2,100（対局の条件の実測） | 3,500万 |
+| 10b128c | 補助ヘッドを含めて478万 | 28,235 | 約2,100（対局の条件の実測） | 4,780万 |
 | 15b192c | 約1,100万 | 12,863 | 約860 | 1.1億 |
 | 20b256c | 約2,400万 | 6,593 | 約440 | 2.4億 |
 
@@ -301,7 +301,7 @@ AobaZeroは101.8万局で64×15bから256×20bへ移ったが、この切り替�
 dlshogi互換モデルは2,690万局から5.7億局面を抽出し、バッチ2048、学習率0.1から0.001のcosineで学び（WCSC34 5節）、384×30bの大会版は3億3,000万局面を60エポック、RTX 3090で10日である（WCSC35の2本目）。
 
 第3の型は蒸留である。
-dlshogiは50b640c用に40b512cで付け替えた10億局面、60b768c用に50b640cで付け替えた約10億局面を使い、ふかうら王はResNet 80×512から40×384、20×256へ二段に蒸留した（[既存の調査](../teacher-generation-strong-engines/shogi.md) 231行）。
+dlshogiは50b640c用に40b512cで付け替えた10億局面、60b768c用に50b640cで付け替えた約10億局面を使い、ふかうら王はResNet 80×512から40×384、20×256へ二段に蒸留した（[既存の調査](../../research/teacher-generation-strong-engines/shogi.md) 231行）。
 lc0の公式の推奨にも`T1-256x10-distilled`のような蒸留の小さいネットがある（Networks.md 11行）。
 副作用として、付け替えたデータでは方策のエントロピーが下がった（[50ブロック](https://tadaoyamaoka.hatenablog.com/entry/2025/04/01/225222)）。
 蒸留のデータを除いて追加学習した60b768cは逆に弱くなり、著者は分布の外れを原因の候補に挙げる。

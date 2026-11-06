@@ -58,7 +58,7 @@
 
 本書の目的は、この約10回を、裁定の結果を変えずに1回未満へ減らすことである。
 合法手生成そのものを速くすることは本書の対象ではない。
-置き換えの考え方の多くは、将棋エンジンのやねうら王が探索の中で合法手の全件生成を避ける方法を調べた[調査メモ](../../research/yaneuraou-check-detection-for-referee.md)による。
+置き換えの考え方の多くは、将棋エンジンのやねうら王が探索の中で合法手の全件生成を避ける方法を調べた[調査メモ](../../proposals/archived/yaneuraou-check-detection-for-referee.md)による。
 
 ## 適用範囲
 
@@ -294,7 +294,7 @@ ADRを追加し、ROADMAPの状態表と現在地を更新する。
 ## 参考資料
 
 - [AlphaZero型探索の監査対応](alphazero-audit-remediation.md)と[終局判定の費用の測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：本書の起点。
-- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../../research/yaneuraou-check-detection-for-referee.md)：升ごとの補題の適用範囲、1駒の生成への置き換え、および駒ごとの生成で打ち切る方式の根拠。
+- [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](../../proposals/archived/yaneuraou-check-detection-for-referee.md)：升ごとの補題の適用範囲、1駒の生成への置き換え、および駒ごとの生成で打ち切る方式の根拠。
 - [MCTSは新しい節点を審判層の裁定で終局させるADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：軽いAPIの先送りの条件。
 - [探索木の終局判定は審判層の裁定を共有する](../../lessons/share-terminal-adjudication-with-the-referee.md)：裁定の規則を探索側に書き直さない理由。
 - `Position::gives_check`（[crates/minase-core/src/movegen/gives_check.rs](../../../crates/minase-core/src/movegen/gives_check.rs)）と[その試験](../../../crates/minase-core/src/movegen/tests/gives_check.rs)：王駒1枚の補題と参照実装との突き合わせの型。

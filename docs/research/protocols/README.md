@@ -1,6 +1,6 @@
 # プロトコル調査文書の索引
 
-本ディレクトリは、プロトコル層マイルストーン（../plans/protocol-layer.md）のフェーズ1で作成した仕様調査の成果物を収める。各文書は、RULES.mdと同じ様式で参照日付きの典拠を明記した永続的な参照資料であり、フェーズ2の設計確定はこれらを正として行う。3文書の初版の参照日はいずれも2026年8月10日である。
+本ディレクトリは、[プロトコル層の設計書](../../plans/archived/protocol-layer.md)のフェーズ1で作成した仕様調査の成果物を収める。各文書は、RULES.mdと同じ様式で参照日付きの典拠を明記した永続的な参照資料であり、2026年8月10日の同書のフェーズ2の設計確定はこれらを正として行った。3文書の初版の参照日はいずれも2026年8月10日である。
 
 ## 各文書の範囲
 
@@ -8,7 +8,7 @@
 
 [hachu.md](hachu.md) は、中将棋エンジンHaChuのソースコードを扱う。CECPでの中将棋対局の実装例として、起動時のfeature送信、指し手表記の実際の送受信（じっとの`@@@@`転用を含む）、setboardの受理形式と駒文字表、規則実装とRULES.mdの規則コードとの対応、仕様文書と実装の乖離を記録する。設計書の調査対象「HaChuのソースコード」に対応する。
 
-[usi-lishogi.md](usi-lishogi.md) は、USI原典仕様とlishogi系の中将棋表記を扱う。USIのコマンド体系、option宣言とsetoptionの仕様、shogiopsとscalashogiの座標系・駒種文字・SFEN4欄構文・指し手表記、lishogi-botによる接続経路、現行`parse_sfen`との照合結果を記録する。設計書の調査対象「USI原典仕様とlishogi系拡張」に対応し、ランダム対局検証ハーネス（../plans/random-play.md）フェーズ2の`to_sfen`が参照する表記規範である。
+[usi-lishogi.md](usi-lishogi.md) は、USI原典仕様とlishogi系の中将棋表記を扱う。USIのコマンド体系、option宣言とsetoptionの仕様、shogiopsとscalashogiの座標系・駒種文字・SFEN4欄構文・指し手表記、lishogi-botによる接続経路、2026年8月10日時点の`parse_sfen`との照合結果を記録する。設計書の調査対象「USI原典仕様とlishogi系拡張」に対応し、[ランダム対局検証ハーネスの設計書](../../plans/archived/random-play.md)のフェーズ2の`to_sfen`が参照する表記規範である。
 
 ## 文書間の分担
 

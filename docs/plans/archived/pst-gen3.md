@@ -149,4 +149,4 @@ G3は`pst-gen3-g3-stc`（基本シード60000921）、G23は`pst-gen3-g23-stc`�
 - [評価関数の世代反復](evaluation-gen1.md)。世代を混ぜて学習する理由と、世代別の教師Kの扱いを記す。
 - [棋力向上段階7](strength-stage7.md)。世代2の生成条件と、生成コミットを固定する手順を記す。
 - [学習シードだけを変えたPSTの棋力の散らばり](../../measurements/pst-gen3/pst-seed-spread-nodes.md)。シードの違いでは重みがほとんど変わらないことを記す。
-- [評価関数を改善する3つの観点](../../research/evaluation-improvement-strategy.md)。評価モデル、教師、学習方法に分けた失敗の分析を記す。
+- [評価関数を改善する3つの観点](../../proposals/archived/evaluation-improvement-strategy.md)。評価モデル、教師、学習方法に分けた失敗の分析を記す。

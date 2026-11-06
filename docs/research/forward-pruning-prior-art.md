@@ -1,5 +1,10 @@
 # 前向き枝刈りの第3層に関する既存実装の調査
 
+本書のminaseに関する記述は2026年9月19日時点のものである。
+SEE pruningとcorrection historyは[棋力向上段階8（前向き枝刈りの第3層）の設計書](../plans/archived/strength-stage8.md)で採用した。
+improvingは2026年10月4日に[不採用だった探索部の改良をSPSAで調整し直す計画の設計書](../plans/archived/search-revival-spsa.md)で、history pruningは2026年10月19日に[historyの更新量の形とcontinuation historyの設計書](../plans/archived/history-forms.md)で導入した。
+history pruningは、減点で負の値もとるStockfishの形のhistoryを前提にしており、結論の最後の項の「履歴値が非負の本エンジン」は調査時点の実装を指す。
+
 ## 結論
 
 [棋力向上段階8](../plans/archived/strength-stage8.md)が扱う4項目について、StockfishとYaneuraOuのソースを調べた結論は次のとおりである。

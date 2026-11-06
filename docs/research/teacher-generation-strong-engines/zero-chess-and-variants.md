@@ -5,7 +5,7 @@
 本書は、外部の強い教師に頼らずに評価関数を育てたチェスエンジンと、Fairy-Stockfishの変種用NNUEについて、教師データの生成手順を一次資料で確かめた結果である。
 NNUEは、差分更新できる小さなニューラルネット評価関数を指す。
 参照日は2026年10月25日である。
-探索値と対局結果の混合比、Viridithasのbasilisk群・eleison・noumenaの比較、およびFairy-Stockfishの手引きが挙げる「少なくとも1億局面」の目安は、minaseの既存の調査 `docs/research/chess-evaluation-targets.md`、`docs/research/chess-shogi-teacher-mixing.md`、`docs/research/nnue-architecture-discussion.md` が扱っているので、本書では参照するだけにとどめる。
+探索値と対局結果の混合比、Viridithasのbasilisk群・eleison・noumenaの比較、およびFairy-Stockfishの手引きが挙げる「少なくとも1億局面」の目安は、minaseの既存の調査 `docs/research/chess-evaluation-targets.md`、`docs/research/chess-shogi-teacher-mixing.md`、`docs/proposals/archived/nnue-architecture-discussion.md` が扱っているので、本書では参照するだけにとどめる。
 
 ## 結論
 
@@ -531,7 +531,7 @@ minaseは、非線形部分だけでも右端に約+110 cpの選好を学んだ�
 1世代の新規局面は、Astraのv4からv6で1.25億〜3.5億、Saplingの5番と6番で5,500万〜1.1億局面であり、minaseの1世代約8,300万局面はこの範囲にある。
 チェスの1手5,000〜30,000ノードに対し、minaseの20,000ノードは数値としては同じ範囲だが、中将棋は合法手がはるかに多いので、同じノード数で読める深さはずっと浅いと考えられる。
 データの混ぜ方については、Viridithasの記録が、最新ネットの小さな新データだけで学ぶと負けること、同じ量なら新しいデータが古いデータより強いことの両方を示している。
-`docs/research/nnue-architecture-discussion.md` が初期設定とした抽出比率、すなわち新規50%、直前の世代25%、それ以前25%は、この2つの結果のどちらとも矛盾しない。
+`docs/proposals/archived/nnue-architecture-discussion.md` が初期設定とした抽出比率、すなわち新規50%、直前の世代25%、それ以前25%は、この2つの結果のどちらとも矛盾しない。
 
 第6に、Fairy-Stockfishの既定のランダム化は、24手目までの5手を、最善手との差がエンジン内部の単位で100以内の上位5手から抽選する。
 minaseは対局途中のランダムな手を使っていないが、この方式は手の質を大きく落とさずに序盤の分岐を増やすので、開始局面を作る8〜16手のランダム化に加える候補になる。

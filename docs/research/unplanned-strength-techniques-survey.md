@@ -1,5 +1,11 @@
 # minaseに未導入の棋力向上手法の調査
 
+本書のminaseに関する記述は2026年9月24日時点のものである。
+その後、捕獲履歴、静止探索の手数制限、およびhistory表の持ち越しは、2026年10月4日に[不採用だった探索部の改良をSPSAで調整し直す計画の設計書](../plans/archived/search-revival-spsa.md)で導入した。
+負の捕獲手より先にkiller手を返す段は、2026年10月10日に[手の順序付け（move ordering）の改善の設計書](../plans/archived/move-ordering.md)で導入した。
+cut/all-node LMR、cutoffCnt、doDeeper/doShallower、ttPv、low-ply history、pawn history、補正表の鍵の追加、null moveの前提条件、aspiration windowsのfail-high時の減深、および相手の残り時間を考慮した配分は、2026年10月23日までに[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)がStockfishの形で導入した。
+反復の先読みは[反復の先読み（upcoming repetition detection）を採らない](../adr/reject-upcoming-repetition-detection.md)で棄却した。
+
 ## 結論
 
 チェスと将棋のエンジンで効果が測定され、minaseの`src/`にも`docs/plans/`の設計書にもまだ現れない手法は、本書の照合で50件残った。
@@ -165,7 +171,7 @@ minaseの学習PSTは静かな局面の選別、引き分けの保持、細か�
 | 駒量に応じた評価出力の縮尺（material-dependent output scaling） | 評価関数の出力全体に、盤上の駒量で変わる倍率を掛ける。優勢側が駒を残し、劣勢側が交換を避ける方向に働く。 | Stockfish | 駒量による倍率はSTCで≈+4.05、LTCで≈+4.64 Elo（[1dbd2a1ad5](https://github.com/official-stockfish/Stockfish/commit/1dbd2a1ad5)）。歩を含めた版はSTCで≈+3.71、LTCで≈+1.96 Elo（[5af09cfda5](https://github.com/official-stockfish/Stockfish/commit/5af09cfda5)）。 | 実装済みの序中盤と終盤の補間は2つの表を混ぜるが、出力全体への倍率は持たない。倍率の係数は既存のSPSAの対象に加えられる。 |
 | 楽観値（optimism） | 根の評価に応じた小さな楽観値を加えてから駒量の倍率を掛け、劣勢側に緊張を保たせる。 | Stockfish | 導入はSTCで≈+0.20、LTCで≈+1.36 Elo（[a5a89b27c8](https://github.com/official-stockfish/Stockfish/commit/a5a89b27c8)）。非対称版はSTCで≈+1.46、LTCで≈+1.76 Elo（[908811c24a](https://github.com/official-stockfish/Stockfish/commit/908811c24a)）。 | 反復負け回避の設計書が辞退したcontemptは引き分け値を動かすが、本手法は全局面の評価の縮尺を動かす点が異なる。効果が小さく優先度は低い。 |
 | NNUEの構成要素のうち段階10の列挙外（pairwise multiplication、SCReLU、factoriser、threat inputs） | 第1層の出力の対ごとの積、二乗した切り詰め活性化、学習時だけの仮想特徴、および「駒Xが駒Yに利く」組の入力特徴。 | Stockfish、bullet、Viridithas | 対ごとの積はSTCで≈+5.21、LTCで≈+5.37 Elo（[cb9c2594fc](https://github.com/official-stockfish/Stockfish/commit/cb9c2594fc)）。二乗活性化はSTCで≈+3.40、LTCで≈+3.86 Elo（[c079acc26f](https://github.com/official-stockfish/Stockfish/commit/c079acc26f)）。脅威入力を含む版はStockfish 17比で累積+32.87 Eloだが単独の値ではない（[Regression Tests](https://github.com/official-stockfish/Stockfish/wiki/Regression-Tests)）。仮想特徴は学習初期に効くと説明される（[nnue-pytorch docs](https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md)）。 | 段階10はNNUEの再挑戦を予定するが、列挙は拡幅、出力バケット、相対王駒特徴、並列演算命令（SIMD）の方針、正則化に限られる。仮想特徴は、第1層の初期化の飽和というminaseの教訓と同じ学習初期の問題を扱う。脅威入力は利き集合を要し、利き数の表の不採用と同じ費用の壁に当たる。 |
-| 歩兵と仲人の閉塞、並進する小駒（pawn block、tandem） | 自駒が歩兵や仲人の前進を塞ぐことを減点し、敵陣の境で支え合う小駒の組を加点する。 | HaChu | 個別の測定は見つからなかった（[hachu.c](https://salsa.debian.org/debian/hachu)）。 | 調査メモで言及済み、計画なし（[evaluation-terms-survey.md](evaluation-terms-survey.md)）。段階9の7項目には含まれない。 |
+| 歩兵と仲人の閉塞、並進する小駒（pawn block、tandem） | 自駒が歩兵や仲人の前進を塞ぐことを減点し、敵陣の境で支え合う小駒の組を加点する。 | HaChu | 個別の測定は見つからなかった（[hachu.c](https://salsa.debian.org/debian/hachu)）。 | 調査メモで言及済み、計画なし（[evaluation-terms-survey.md](../proposals/archived/evaluation-terms-survey.md)）。段階9の7項目には含まれない。 |
 | 知識蒸留（knowledge distillation） | 強い評価器の値で自己対局の局面を付け直し、軽い評価関数を学習する。 | INUGAMI | 構成の記述だけで、単独の効果量は示されていない（[INUGAMIの第35回世界コンピュータ将棋選手権アピール文書](https://www.apply.computer-shogi.org/wcsc35/appeal/appeal_round2_250503b.pdf)）。 | 調査メモで言及済み、計画なし（[teacher-generation-prior-art.md](teacher-generation-prior-art.md)）。同メモは中将棋に強い教師がないため適用不能と判断した。 |
 
 評価の後処理は、学習をやり直さずにSPSAで係数を合わせられる点で、NNUEの構成要素より安い。

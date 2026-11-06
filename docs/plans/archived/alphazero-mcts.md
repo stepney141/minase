@@ -222,7 +222,7 @@ Kは現行のNNUEの重みファイルが持つ勝率尺度であり、1ロジ�
 丸めにより評価値の絶対値は約7,400以下となり、評価関数の出力の上限`EVALUATION_LIMIT`（28,999）より小さく保たれる。
 このため、プロトコル層が反復の勝敗の帯または詰みの帯と取り違えて表示または投了することはない。
 この写像により、投了判定`ResignValue`と読み筋の表示を方式によらず共通にできる。
-深さは主変化の長さ、ノード数はシミュレーションの回数とし、αβ探索のノード数（make_moveの適用回数、[research/node-count-definition.md](../../research/node-count-definition.md)）とは定義が異なることをUSIの`info string`と文書に明記する。
+深さは主変化の長さ、ノード数はシミュレーションの回数とし、αβ探索のノード数（make_moveの適用回数、[audits/node-count-definition-2026-09-19.md](../../audits/node-count-definition-2026-09-19.md)）とは定義が異なることをUSIの`info string`と文書に明記する。
 
 方式の選択は、起動引数`--search alphabeta|mcts`で起動時に1回だけ行い、既定は`alphabeta`とする。
 MCTSのネットは起動引数`--nn-model`で起動時に指定する（[ネットの入出力と推論](alphazero-network.md)の「ネットの指定と置き場所」の節）。

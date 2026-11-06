@@ -1,7 +1,7 @@
 """教師データでの特徴の出現回数、PSTの初期値からの変化、FM補正の周辺寄与を段ごとに集計する。
 
 使い方（リポジトリのルートで実行する）:
-  uv run --project tools/train python docs/research/forward-play-diagnosis/feature_profile.py \
+  uv run --project tools/train python docs/audits/forward-play-diagnosis-2026-10-10/feature_profile.py \
       data/pst-longer-training.toml <集計結果.npz>
 集計結果のファイルが既にあれば、集計を省いて表だけを出力する。
 """

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[fearless_simdの適用可能性の調査](../../research/fearless-simd-feasibility.md)の一部として、FM（factorization machine）の補正を採用した現行のエンジンで、`.cargo/config.toml`が指定する`-C target-cpu=native`のビルドと、移植可能な`x86-64`のビルドの探索速度の差を測る。
+[fearless_simdの適用可能性の調査](../../proposals/archived/fearless-simd-feasibility.md)の一部として、FM（factorization machine）の補正を採用した現行のエンジンで、`.cargo/config.toml`が指定する`-C target-cpu=native`のビルドと、移植可能な`x86-64`のビルドの探索速度の差を測る。
 あわせて、FMの4つの核（累算と補正を担う小さな関数）の機械語の命令の内訳を、両ビルドと、fearless_simdで書いた検証用のcrateについて数える。
 FM採用前の同じ速度比較は[bench-target-cpu](bench-target-cpu.md)にある。
 
@@ -26,8 +26,8 @@ taskset -c 3 perf stat -x, -e instructions:u,cycles:u <構成のminase> dev benc
 ```
 
 命令の内訳は、`crates/minase/src/eval/pst/fm.rs`の`add`、`remove`、`replace`、`correction`に`#[inline(never)]`を付けた診断用ビルドを構成ごとに別のターゲットディレクトリへ作り、`objdump -d`で各関数の範囲を切り出して命令名（ニーモニック）ごとの出現数を数えた。
-検証用のcrateは[fearless-simd-feasibility/](../../research/fearless-simd-feasibility/)にあり、`cargo build --release`のAVX2向けの単相化を同じ方法で数えた。
-手順の全体は[bench-native-vs-x86-64.sh](../../research/fearless-simd-feasibility/bench-native-vs-x86-64.sh)にある。
+検証用のcrateは[fearless-simd-feasibility/](../../proposals/archived/fearless-simd-feasibility/)にあり、`cargo build --release`のAVX2向けの単相化を同じ方法で数えた。
+手順の全体は[bench-native-vs-x86-64.sh](../../proposals/archived/fearless-simd-feasibility/bench-native-vs-x86-64.sh)にある。
 
 ## エンジン
 
@@ -48,7 +48,7 @@ Rustは`rustc 1.98.0 (88d9e12ae 2026-08-18)`を使った。
 ### 速度
 
 ノード数は2構成で一致した（5,711,806）。
-[生出力](../../research/fearless-simd-feasibility/bench-native-vs-x86-64.txt)から求めた構成ごとの中央値は次のとおりである。
+[生出力](../../proposals/archived/fearless-simd-feasibility/bench-native-vs-x86-64.txt)から求めた構成ごとの中央値は次のとおりである。
 幅は、5巡の最大と最小の差の中央値に対する割合である。
 
 | 構成 | bench NPS | x86-64に対する比 | 5巡の幅 | 命令数 | サイクル数 |

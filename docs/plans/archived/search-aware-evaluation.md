@@ -74,7 +74,7 @@ PSTで改善しなかった場合も、関係を表せるモデルでの同じ�
 
 ## 依存関係
 
-方式の根拠は、[考察メモ](../../research/search-aware-evaluation.md)と[一次資料の調査](../../research/relational-evaluation-primary-sources.md)に置く。
+方式の根拠は、[考察メモ](../../proposals/archived/search-aware-evaluation.md)と[一次資料の調査](../../research/relational-evaluation-primary-sources.md)に置く。
 PSTの評価、量子化、駒除去診断は、[評価関数](evaluation.md)、[PSTの補間](tapered-pst.md)、[段階7](strength-stage7.md)、[学習の手引き](../../guides/pst-training.md)を引き継ぐ。
 棋力の採否は[SPRTの手引き](../../guides/sprt.md)に従う。
 
@@ -475,7 +475,7 @@ B対A、A対S0のSTC、通過した場合はB対S0、Bを採用しない場合�
 
 ## 参考資料
 
-- [探索で使う局面に合わせた評価関数の学習](../../research/search-aware-evaluation.md)は、本書の研究上の根拠と条件付きの後続案を示す。
+- [探索で使う局面に合わせた評価関数の学習](../../proposals/archived/search-aware-evaluation.md)は、本書の研究上の根拠と条件付きの後続案を示す。
 - [複数駒の関係と探索結果を学ぶ評価関数の一次資料](../../research/relational-evaluation-primary-sources.md)は、RootStrap、TreeStrap、学習分布の更新、利きの費用を一次資料で確認する。
 - [評価関数の世代反復](evaluation-gen1.md)は、初期化修正後もNNUEが不採用だった結果と、固定ノード比較の限界を示す。
 - [相対2駒評価](relative-pair-eval.md)は、FMの自己選択と補正1/4版の結果を整理する。

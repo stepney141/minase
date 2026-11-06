@@ -1,5 +1,9 @@
 # NNUE学習器の速度の調査：tataraが速い理由と現行学習器の律速
 
+本書のminaseに関する記述は2026年10月12日時点のものである。
+本書が遅さの原因を測ったPython学習器は、本書を根拠とした[Rust製NNUE学習器（GPU）の設計書](../plans/archived/nnue-trainer-rust.md)の完了後、2026年10月13日に[Pythonの学習器は一度だけ照合した後に撤去し、Rustの学習器だけを正とする](../adr/retire-the-python-trainer-after-a-one-time-cross-check.md)で撤去された。
+GPU時間の65〜69%を占めた駒除去差分の補助損失も、2026年10月16日に[NNUEの学習器から駒除去差分の補助損失を外し、書き出し時に符号反転の割合を記録する](../adr/drop-the-piece-removal-auxiliary-loss-from-the-nnue-trainer.md)で学習器から外された。
+
 本書は、将棋のNNUE学習器tatara（SH11235/tatara、コミット`db08ed2`、MITライセンス）がなぜ高速に学習できるのかをソースコードと設計記録から解明し、minaseの現行のPython学習器（`tools/train`の`train-nnue`）がなぜ遅いのかをプロファイラで測った結果をまとめる。
 調査は2026年10月12日に、Claudeのサブエージェント2本とcodexがそれぞれ独立に行い、結論は一致した。
 相違は1点だけで、codexが「特徴分解を`simple`構成に適用しないとする設計記録（`docs/decisions/2026-06-12-ft-factorizer.md`）は現状と異なり、現行コードでは`simple`でも既定で有効である（`bins/nnue_train/src/training.rs`2271行）」と指摘した。

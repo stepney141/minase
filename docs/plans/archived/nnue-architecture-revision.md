@@ -65,7 +65,7 @@ minaseの非線形の経路は$`\sum_j w_j\,\mathrm{clamp}(x_j,0,1)^2`$であり
 隠れ層はユニットの出力をさらに組み合わせるので、この関係を表しやすくなると推測される。
 
 現在の構成に隠れ層がないのは、不要だと確かめたからではない。
-費用の小さい方から試すという理由で直接内積を選び（[考察](../../research/nnue-architecture-discussion.md)）、幅16の隠れ層（以下S1）は検証損失がわずかに高いという理由で対局せずに見送った（[ADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
+費用の小さい方から試すという理由で直接内積を選び（[考察](../../proposals/archived/nnue-architecture-discussion.md)）、幅16の隠れ層（以下S1）は検証損失がわずかに高いという理由で対局せずに見送った（[ADR](../../adr/archive/keep-the-direct-screlu-head-after-the-hidden-layer-candidates-did-not-lower-validation-loss.md)）。
 その比較で使った先読み教師は、訓練対局への過剰な適合を強めるとして翌日に廃止された（[ADR](../../adr/train-the-nnue-on-search-value-teachers-without-lookahead.md)）。
 
 本書で使う語を次のとおり定める。
@@ -448,4 +448,4 @@ tataraはMITであり、Stockfishとやねうら王はGPL-3.0である。
 - [tatara](https://github.com/SH11235/tatara/tree/875f39dccf3c09061af93337dce7fbd21178dc5b) `875f39d`：`crates/nnue-format/src/layerstack_weights.rs`の1〜20行（LayerStackの構成）、`crates/nnue-format/src/simple_weights.rs`の36〜39行（活性化ごとの尺度）、`bins/nnue_train/src/cli.rs`の1273〜1303行（線形の経路）、`docs/dense-qat.md`（skipの1成分は切り詰めない）、[issue #165](https://github.com/SH11235/tatara/issues/165)（要素積とSCReLUの比較）。
 - [Stockfish](https://github.com/official-stockfish/Stockfish/tree/5c4cef0bfe61fb3249178b2bcf21f5673557efe7) `5c4cef0b`：`src/nnue/nnue_architecture.h`の44〜61行（層の構成）、`src/nnue/nnue_common.h`の69行（上限255）、`src/nnue/layers/sqr_clipped_relu.h`の238〜239行（負の入力も2乗する）、`src/nnue/nnue_feature_transformer.h`の240〜320行（要素積）、[SFNNv17](https://github.com/official-stockfish/Stockfish/commit/a17c0ce2)（線形の経路の廃止）。
 - [やねうら王](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30) `c1b80eaa`：`source/eval/nnue/architectures/sfnn-1536.h`（幅1,536、15＋1、32の構成）。
-- [tataraの調査](../../research/tatara-nnue-transfer.md)、[NNUEのアーキテクチャの考察](../../research/nnue-architecture-discussion.md)。
+- [tataraの調査](../../research/tatara-nnue-transfer.md)、[NNUEのアーキテクチャの考察](../../proposals/archived/nnue-architecture-discussion.md)。

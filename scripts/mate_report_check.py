@@ -4,7 +4,7 @@
 保存記録から、`mated_in`を報告した側が最終的に勝った局を抽出し、報告した局面の
 次の局面（記録された着手の後）を攻撃側として反復深化で探索して、詰みを初めて
 見つける深さと、実戦で攻撃側が到達した深さを並べる。
-結果の読み方は docs/research/usi-resignation-diagnosis.md の「詰み帯の誤投了の内訳」。
+結果の読み方は docs/audits/usi-resignation-diagnosis-2026-09-23.md の「詰み帯の誤投了の内訳」。
 
     python3 scripts/mate_report_check.py --binary target/release/minase [--max-depth 14]
 """

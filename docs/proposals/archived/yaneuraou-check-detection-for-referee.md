@@ -1,8 +1,12 @@
 # やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査
 
+本提案は、2026年10月28日に[審判層の裁定が繰り返す合法手生成の削減の設計書](../../plans/archived/referee-adjudication-movegen.md)の完了で決着した。
+「設計書への反映候補」の5件はすべて採用され、判断は[審判層は獅子でない駒の捕獲可能性を利きの逆引きで判定し、合法手なしと詰みを駒ごとの生成で最初の逃れる手で打ち切る](../../adr/judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)に移った。
+着手の合法性の検査はその後、2026年11月5日に[NNUE教師生成を探索結果を変えずに速くする設計書](../../plans/archived/teacher-generation-speedup.md)で、獅子、角鷹、および飛鷲を除く駒について駒1枚の生成も使わない直接の判定になった。
+
 ## 結論
 
-[審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/archived/referee-adjudication-movegen.md)は、対局の審判層`Game::play`が1手ごとに行う4つの判定で合法手生成が繰り返されることを問題にしている。
+[審判層の裁定が繰り返す合法手生成の削減の設計書](../../plans/archived/referee-adjudication-movegen.md)は、対局の審判層`Game::play`が1手ごとに行う4つの判定で合法手生成が繰り返されることを問題にしている。
 4つの判定とは、着手の合法性検査、反復規則R1（Lishogi式の4回反復の裁定で、攻撃的着手を続けた側を負けとする）の攻撃的着手の記録、合法手なしの判定、および詰み判定である。
 本書は、将棋エンジンのやねうら王が合法手生成を避けて王手と合法性を判定する方法をソースコードで調べ、minaseの審判層へ適用できる考え方を整理した。
 やねうら王の方法は、次の3つの原則にまとめられる。
@@ -33,7 +37,7 @@
 やねうら王は、手元のクローン（`/home/stepney141/board-games/YaneuraOu`、コミット`c1b80eaa09fe13d5f12b1599d1ae4d53c224de30`、2026年9月14日、改変なし）を参照した。
 行番号はすべてこのコミットの`source/`以下のものである。
 minaseはmasterの`e206a8e7`（2026年10月28日）である。
-やねうら王のビットボードと局面の派生構造をminaseと比べた調査は[既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)にあり、本書はその「局面の表現と派生構造」の節を審判層の裁定の観点から掘り下げる。
+やねうら王のビットボードと局面の派生構造をminaseと比べた調査は[既存エンジンとminaseのビットボードの比較](../../research/bitboard-comparison.md)にあり、本書はその「局面の表現と派生構造」の節を審判層の裁定の観点から掘り下げる。
 やねうら王のソースの読解は、王手情報と合法性判定、および合法手生成と利きライブラリの2つの範囲に分けて別々に行い、本書で突き合わせた。
 引用した行は本書の執筆時に改めて確認し、別のエージェント（codex）のレビューでソースとの事実関係を照合した。
 
@@ -74,7 +78,7 @@ if (pos.pseudo_legal_s<true>(m) && pos.legal(m))
 これらはすべて、将棋の合法性が王の安全を含むことを前提にしている。
 中将棋では王駒を相手の利きへ移す手も王手の放置も合法なので（RULES.md第8条第3項から第5項）、合法性の判定としては適用できない。
 適用できるのは、「王駒に利きが届いているか」を合法手生成ではなく利きの逆引きで判定するという考え方だけである。
-minaseの`Position::attackers_to_by`（[control.rs](../../crates/minase-core/src/movegen/control.rs) 65行）は、やねうら王の`attackers_to`に相当する逆引きであり、`Position::gives_check`（[gives_check.rs](../../crates/minase-core/src/movegen/gives_check.rs)）が王駒1枚の場合にこれを使う。
+minaseの`Position::attackers_to_by`（[control.rs](../../../crates/minase-core/src/movegen/control.rs) 65行）は、やねうら王の`attackers_to`に相当する逆引きであり、`Position::gives_check`（[gives_check.rs](../../../crates/minase-core/src/movegen/gives_check.rs)）が王駒1枚の場合にこれを使う。
 
 ### 連続王手の千日手は整数のカウンタで裁定する
 
@@ -91,7 +95,7 @@ st->repetition_type = (i <= st->continuousCheck[sideToMove])  ? REPETITION_LOSE
 この判定は直前の同一局面までの区間しか見ないので、3回目以降の出現では、前回の出現で求めた種別と今回の種別が異なれば通常の千日手（引き分け）へ落とす（同2176行から2181行）。
 最初の出現からの区間全体の連続王手は、区間ごとの種別の引き継ぎで表している。
 
-minaseの反復規則R1の実装は、同じ構造の「攻撃連続数」`consecutive_attacking_moves`を`R1History`に持ち、最初の同一局面の出現より後の自分の着手数と直接に比べる（[r1.rs](../../crates/minase-core/src/game/repetition/r1.rs)の`r1_repetition_result`）。
+minaseの反復規則R1の実装は、同じ構造の「攻撃連続数」`consecutive_attacking_moves`を`R1History`に持ち、最初の同一局面の出現より後の自分の着手数と直接に比べる（[r1.rs](../../../crates/minase-core/src/game/repetition/r1.rs)の`r1_repetition_result`）。
 区間の扱いは異なるが、カウンタへ入れる真偽値を着手ごとに求める点は同じであり、差は、やねうら王が利きの表から得るのに対し、minaseの`move_was_attacking`（同223行）が合法手の全件生成から得ている点にある。
 
 ### 利きの差分更新は既定のビルドで使われない
@@ -110,37 +114,37 @@ minaseの反復規則R1の実装は、同じ構造の「攻撃連続数」`conse
 
 ## minaseの審判層への当てはめ
 
-minaseの`Game::play`（[referee.rs](../../crates/minase-core/src/game/referee.rs)）は、1手ごとに次の判定で合法手を生成する。
+minaseの`Game::play`（[referee.rs](../../../crates/minase-core/src/game/referee.rs)）は、1手ごとに次の判定で合法手を生成する。
 設計書の「目的」の節が命令数から推定した回数は、合法性検査で1回、R1の記録で1回、合法手なしと詰み判定の冒頭で2回、詰み判定の候補手ごとに2回である。
 逃れる手が見つかるまでに試す候補手の数をkとすると合計は4+2k回であり、kの平均は約3である。
 
 ### 着手の合法性検査は動かす駒1枚の生成で足りる
 
-`Position::try_make_move_with_undo`（[checked.rs](../../crates/minase-core/src/movegen/checked.rs) 33行から45行）は、全合法手を生成して`contains`で照合する。
-一方、`MoveGenerator::is_legal_move`（[movegen/mod.rs](../../crates/minase-core/src/movegen/mod.rs) 114行から139行）は、移動元の駒が手番側の駒であることを確かめてから、その駒1枚の合法手を`generate_piece_moves`で生成して照合する。
-`generate_moves`は手番側の全駒について同じ`generate_piece_moves`を呼ぶ和集合である（[generate.rs](../../crates/minase-core/src/movegen/generate.rs) 17行から31行）。
-獅子の捕獲制限と成りの展開は駒ごとの生成の中で着手ごとに行われる（[expand.rs](../../crates/minase-core/src/movegen/expand.rs) 25行）ので、全件生成の列に含まれることと`is_legal_move`が真を返すことは構成から一致する。
+`Position::try_make_move_with_undo`（[checked.rs](../../../crates/minase-core/src/movegen/checked.rs) 33行から45行）は、全合法手を生成して`contains`で照合する。
+一方、`MoveGenerator::is_legal_move`（[movegen/mod.rs](../../../crates/minase-core/src/movegen/mod.rs) 114行から139行）は、移動元の駒が手番側の駒であることを確かめてから、その駒1枚の合法手を`generate_piece_moves`で生成して照合する。
+`generate_moves`は手番側の全駒について同じ`generate_piece_moves`を呼ぶ和集合である（[generate.rs](../../../crates/minase-core/src/movegen/generate.rs) 17行から31行）。
+獅子の捕獲制限と成りの展開は駒ごとの生成の中で着手ごとに行われる（[expand.rs](../../../crates/minase-core/src/movegen/expand.rs) 25行）ので、全件生成の列に含まれることと`is_legal_move`が真を返すことは構成から一致する。
 着手を逆算して前局面の候補を作る`predecessor/reverse.rs`（75行から89行）は、既にこの一致に依存している。
 
 これは、やねうら王が`MoveList<LEGAL>.contains()`を`pseudo_legal_s<true>(m) && legal(m)`へ置き換えた変更（`yaneuraou-search.cpp` 5898行から5900行）と同じ方針である。
-合法性の検査自体は省かないので、[MCTSの葉を審判層で裁定するADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)が条件付きで先送りした「合法性の検査を省く軽いAPI」には当たらない。
+合法性の検査自体は省かないので、[MCTSの葉を審判層で裁定するADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)が条件付きで先送りした「合法性の検査を省く軽いAPI」には当たらない。
 生成する駒は最大46枚から1枚になるので、設計書の内訳で8.8%を占める合法性検査の生成の費用は、ごくわずかになる。
 `is_legal_move`と`generate_moves`の一致を確かめる試験は`crates/minase-core`にないので、置き換えるなら参照試験として加える。
 
 ### R1の攻撃的着手の判定は利きの逆引きと動かした駒1枚の捕獲生成で足りる
 
-`move_was_attacking`は、着手側の全合法手を生成し、いずれかの相手の王駒を取る手があるか、または動かした駒（到達升にある駒）に捕獲手があるかを調べる（[r1.rs](../../crates/minase-core/src/game/repetition/r1.rs) 223行から244行）。
+`move_was_attacking`は、着手側の全合法手を生成し、いずれかの相手の王駒を取る手があるか、または動かした駒（到達升にある駒）に捕獲手があるかを調べる（[r1.rs](../../../crates/minase-core/src/game/repetition/r1.rs) 223行から244行）。
 設計書は、この判定を候補手では遅延評価にする一方、`record_move`での1回は全件生成のまま残す。
 残す理由として設計書が挙げるのは、動かした駒が取れる相手の駒が獅子だけの場合に、獅子を取る手が捕獲制限で不合法になり得て、疑似利きの有無だけでは判定できないことである。
 この理由は、2つの条件をまとめて疑似利きで判定する案に対するものであり、条件ごとに別の方法で判定すれば、全件生成なしに正確に判定できる。
 
 第1の条件「相手のいずれかの王駒を取る合法手がある」は、王駒の升ごとに`attackers_to_by(mover, royal, occupied)`が非空かを調べれば足りる。
 設計書が王駒1枚の捕獲可能性に使う補題は、対象の升に対して成り立つ。
-捕獲の制限（第14条から第16条）は獅子を取る手にしか掛からず（[lion_capture.rs](../../crates/minase-core/src/movegen/lion_capture.rs) 23行から26行は、取る獅子がなければ無条件に真を返す）、王駒は獅子ではない。
-獅子が経由升で取る手は移動元へ戻る居喰いが常に生成され（[lion.rs](../../crates/minase-core/src/movegen/lion.rs)の「移動元へ戻る居喰いも含む」）、距離2の升へは中間升の占有を問わず直接跳べる（`lion_jumps`は距離2の升の集合）。
+捕獲の制限（第14条から第16条）は獅子を取る手にしか掛からず（[lion_capture.rs](../../../crates/minase-core/src/movegen/lion_capture.rs) 23行から26行は、取る獅子がなければ無条件に真を返す）、王駒は獅子ではない。
+獅子が経由升で取る手は移動元へ戻る居喰いが常に生成され（[lion.rs](../../../crates/minase-core/src/movegen/lion.rs)の「移動元へ戻る居喰いも含む」）、距離2の升へは中間升の占有を問わず直接跳べる（`lion_jumps`は距離2の升の集合）。
 したがって、2段階目で別の駒を取る手が捕獲制限で不合法になっても、王駒だけを取る1段階の着手が必ず残る。
-角鷹と飛鷲も同様である（[lion_like.rs](../../crates/minase-core/src/movegen/lion_like.rs)）。
-成りの展開は不成と成りの少なくとも一方を出す（[expand.rs](../../crates/minase-core/src/movegen/expand.rs) 33行から38行）。
+角鷹と飛鷲も同様である（[lion_like.rs](../../../crates/minase-core/src/movegen/lion_like.rs)）。
+成りの展開は不成と成りの少なくとも一方を出す（[expand.rs](../../../crates/minase-core/src/movegen/expand.rs) 33行から38行）。
 したがって、王駒が2枚でも「いずれかを取れるか」は升ごとの判定の論理和で求められ、全件生成と一致する。
 これは、やねうら王が`continuousCheck`へ入れる真偽値を、合法手生成ではなく`gives_check`の表参照（`checkSquares`と`blockersForKing`）から得ることに相当する。
 
@@ -155,18 +159,18 @@ minaseの`Game::play`（[referee.rs](../../crates/minase-core/src/game/referee.r
 
 ### 「いずれかの王駒を取れるか」と駒枯れの猶予の判定も1駒の範囲で足りる
 
-駒枯れの引き分け（第22条第8項）と裸玉の裁定（第32条E3）は、`can_capture_any_royal`（[bare_king.rs](../../crates/minase-core/src/game/adjudication/bare_king.rs) 73行から90行）で、手番を入れ替えた局面の複製から全合法手を生成し、「いずれかの王駒」を取る手を探す。
+駒枯れの引き分け（第22条第8項）と裸玉の裁定（第32条E3）は、`can_capture_any_royal`（[bare_king.rs](../../../crates/minase-core/src/game/adjudication/bare_king.rs) 73行から90行）で、手番を入れ替えた局面の複製から全合法手を生成し、「いずれかの王駒」を取る手を探す。
 条文はいずれも「いずれの王駒も」「いずれかの王駒を」と升ごとの条件で書かれているので、前節と同じ升ごとの補題で`attackers_to_by`の論理和へ置き換えられる。
 この判定が走るのは、双方が王駒だけになった引き分けの判定と、片側が裸玉で相手が価値ある駒を2枚以上持つ敗北の判定（同27行）であり、設計書の測定の経路では費用を占めないが、同じ補題の適用なので同じ変更で扱える。
 
-駒枯れの猶予（第22条第5項）の判定も合法手生成を使う（[exhaustion.rs](../../crates/minase-core/src/game/adjudication/exhaustion.rs) 101行）。
-王駒だけになった側の手番で、余分な駒または相手の最後の王駒を取れるかを調べる判定であり、`candidate_immediate_result`（[adjudication/mod.rs](../../crates/minase-core/src/game/adjudication/mod.rs) 164行）から候補手ごとにも到達する。
+駒枯れの猶予（第22条第5項）の判定も合法手生成を使う（[exhaustion.rs](../../../crates/minase-core/src/game/adjudication/exhaustion.rs) 101行）。
+王駒だけになった側の手番で、余分な駒または相手の最後の王駒を取れるかを調べる判定であり、`candidate_immediate_result`（[adjudication/mod.rs](../../../crates/minase-core/src/game/adjudication/mod.rs) 164行）から候補手ごとにも到達する。
 余分な駒は獅子であり得るので、升ごとの補題は使えない。
 しかし、王駒だけになった側が動かせる駒は王駒1枚だけである（死に駒は動けず、第9項により王将と太子を併せ持つ側は余分な駒を持つ側になる）。
 したがって、その王駒1枚についての着手生成で全件生成と一致する。
 
 一方、詰み判定の`can_capture_last_royal`は「残存王駒をすべて1手で取れるか」であり、2枚のときは1手で両方を取る合法手が要るので、設計書のとおり合法手生成を残す。
-αβ探索の根の候補手の選別（[root_repetition.rs](../../crates/minase-core/src/game/root_repetition.rs) 69行）にも応手の全件生成があるが、`Game::play`の外の処理なので本書の対象外とする。
+αβ探索の根の候補手の選別（[root_repetition.rs](../../../crates/minase-core/src/game/root_repetition.rs) 69行）にも応手の全件生成があるが、`Game::play`の外の処理なので本書の対象外とする。
 
 ### 合法手なしと詰みの判定は駒ごとの生成で打ち切る
 
@@ -224,7 +228,7 @@ R2とR3の禁止手の除外、候補手ごとの即時の裁定、および試�
 ## 参考資料
 
 - やねうら王（コミット`c1b80eaa`）：`source/position.h`、`source/position.cpp`、`source/movegen.h`、`source/movegen.cpp`、`source/movepick.cpp`、`source/thread.cpp`、`source/config.h`、`source/extra/long_effect.h`、`source/extra/long_effect.cpp`、`source/mate/mate1ply_without_effect.cpp`、`source/engine/yaneuraou-engine/yaneuraou-search.cpp`（GPL-3.0）。[GitHubのリポジトリ](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30)。
-- [審判層の裁定が繰り返す合法手生成の削減の設計書](../plans/archived/referee-adjudication-movegen.md)：本書の反映先。
-- [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)：王手とピンの派生構造を持たない理由。
-- [MCTSは新しい節点を審判層の裁定で終局させるADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：合法性の検査を省く軽いAPIを先送りした条件。
-- [探索木の終局判定共有に伴う費用の測定記録](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：設計書が起点とする測定。
+- [審判層の裁定が繰り返す合法手生成の削減の設計書](../../plans/archived/referee-adjudication-movegen.md)：本書の反映先。
+- [既存エンジンとminaseのビットボードの比較](../../research/bitboard-comparison.md)：王手とピンの派生構造を持たない理由。
+- [MCTSは新しい節点を審判層の裁定で終局させるADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：合法性の検査を省く軽いAPIを先送りした条件。
+- [探索木の終局判定共有に伴う費用の測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)：設計書が起点とする測定。

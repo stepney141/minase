@@ -74,7 +74,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 | 評価値全体の駒除去差分のRustとの一致 | 352件で一致し、除外は0件 |
 | 成りによる評価値の差のRustとの一致 | 一致した |
 
-[敗局](../../research/lishogi-game-yO464dzl-loss-analysis.md)の局面での候補の静的評価（後手視点、センチポーン）は次のとおりである。
+[敗局](../../audits/lishogi-game-yO464dzl-loss-analysis-2026-09-22.md)の局面での候補の静的評価（後手視点、センチポーン）は次のとおりである。
 
 | 局面 | 盤上の駒数 | 学習PSTの部分 | 追加特徴の部分 |
 |---|---:|---:|---:|

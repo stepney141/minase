@@ -1,5 +1,9 @@
 # 自己対局の閉ループが生む偏りと盲点の先行事例
 
+本書のminaseに関する記述は2026年11月3日時点のものである。
+冒頭に書いた奔王の割合85.8%は、同日に採用した[NNUEの線形の経路を対局結果への回帰（Texel tuning）で補正する設計書](../plans/archived/nnue-outcome-regression.md)による補正の前のネットの値である。
+補正の前後のネットを比べた[nnue-outcome-regression-placement-stc](../measurements/nnue-outcome-regression/nnue-outcome-regression-placement-stc.md)では、20〜99手目に奔王が1〜2段にいる割合が86.0%から14.6%へ下がった。
+
 本書は、強化学習や自己対局で育てたゲームAIで、自己対局の閉ループが特定の配置、戦型、または盲点への偏りを生む現象を一次資料で調べ、検出の方法、解消の手段、効果の測定、および解消しなかった例を先例ごとに整理した調査メモである。
 きっかけは、minaseの現行のNNUEで指すと、20〜99手目の奔王が85.8%の手数で自陣の最下段から2段以内にいるなど、人間の上位者、既存の中将棋エンジンHaChu、およびゼロから学んだAlphaZero型のネットの3者がそろって示さない配置が複数の駒に現れたことである（[集計](../measurements/adhoc/piece-placement-census.md)）。
 解消の計画の草稿はコミット`7e368921`の`docs/plans/nnue-placement-bias.md`にあり（2026年11月3日に取り下げた）、最後の節でこの草稿との関係を推論として述べる。
@@ -9,7 +13,7 @@
 AobaZeroの振り飛車と別系統の棋譜の混合、tanuki-の評価値の付け直し、開始局面、および方策の抽選は[付録「将棋」](teacher-generation-strong-engines/shogi.md)にある。
 Stockfishの食い違い局面の採取とWDL選別（評価値と対局結果が矛盾する局面を確率的に捨てる選別）は[付録「チェスの主流エンジン」](teacher-generation-strong-engines/chess-mainstream.md)にある。
 自己生成で育てたチェスエンジンの記録は[付録「自己生成で育てたチェスエンジンと変種」](teacher-generation-strong-engines/zero-chess-and-variants.md)にある。
-AlphaZero型のネットの過信と診断の候補は[価値の過大評価の調査](alphazero-strength-gap/value-bias.md)にある。
+AlphaZero型のネットの過信と診断の候補は[価値の過大評価の調査](../proposals/alphazero-strength-gap/value-bias.md)にある。
 
 NNUEは着手ごとに差分で更新できる小さなニューラルネット評価関数である。
 MCTSはモンテカルロ木探索、探索回数はMCTSが1手に行うシミュレーションの回数を指す。
@@ -119,7 +123,7 @@ Tsengらはさらに3つの防御を試した（[Tseng et al.](https://arxiv.org
 Vision Transformerは、画像を小片に分けて注意機構で処理するネットである。
 畳み込みネットをVision Transformerに替えても、65,536回の探索で78%負けた（[Tseng et al. 5節](https://arxiv.org/abs/2406.12843v3)）。
 著者は、固定の攻撃を防ぐ計算量は少ないが、防御が新しい攻撃へ汎化しないと結論し、反復の中で攻撃は防御の18倍の計算量を要したと書く（[Tseng et al. 7節と表5](https://arxiv.org/abs/2406.12843v3)）。
-これらの主要な数値は、既存の[価値の調査](alphazero-strength-gap/value-bias.md)が要約器を通した値と記していたものであり、本書でPDFの本文と照合して一致を確かめた。
+これらの主要な数値は、既存の[価値の調査](../proposals/alphazero-strength-gap/value-bias.md)が要約器を通した値と記していたものであり、本書でPDFの本文と照合して一致を確かめた。
 
 KataGoの作者は、敵対的学習の後に循環した石の誤りが少しずつ減っていると書き、最新のネットへの報告は学習の材料になるとして、報告を求めている（[#808](https://github.com/lightvector/KataGo/issues/808)）。
 同じ作者は、盲点は人間を含むすべての対局者に共通し、弱い相手とだけ指すと問題が少なく見えると書く（[#705](https://github.com/lightvector/KataGo/issues/705)）。
@@ -286,7 +290,7 @@ AlphaZeroの再実装を相手に、相手の方策ヘッドを探索中の相�
 
 本節はすべて推論であり、minaseで測った結果ではない。
 対象はコミット`7e368921`の`docs/plans/nnue-placement-bias.md`の計画の草稿である（2026年11月3日に取り下げた）。
-この草稿は、c0032がまだ弱いことを理由に、2026年11月3日に待機とした。
+この草稿は、対局結果への回帰の部分を[NNUEの線形の経路を対局結果への回帰（Texel tuning）で補正する設計書](../plans/archived/nnue-outcome-regression.md)が既に扱い、c0032の系統の局面から始める残りの部分にはc0032より強いネットが要るので、2026年11月3日に取り下げた。
 以下は、再開するときに考える点である。
 
 第1に、草稿の方針は先例の型に合い、狙う偏りは先例の中でも検出と解消が難しい側にある。

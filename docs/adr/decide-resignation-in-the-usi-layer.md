@@ -9,7 +9,7 @@
 issue #6は、minaseが明らかに負けた局面で自ら投了できるようにすることを求めた。
 USIでは、エンジンが着手の代わりに`bestmove resign`を返すと投了になる。
 やねうら王は探索の結果に投了を表す指し手を含め、閾値をUSIオプション`ResignValue`で与える（[USI投了の参考資料](../plans/archived/usi-resignation.md#参考資料)）。
-保存済みの自己対局記録104,224局へ仮想の投了条件を当てた[診断](../research/usi-resignation-diagnosis.md)では、どの閾値でも投了した側が結局は勝つか引き分ける局が0件にならなかった。
+保存済みの自己対局記録104,224局へ仮想の投了条件を当てた[診断](../audits/usi-resignation-diagnosis-2026-09-23.md)では、どの閾値でも投了した側が結局は勝つか引き分ける局が0件にならなかった。
 詰まされる読みだけを条件にしても、その読みを出した側が実際の対局で勝った局が、発火した局の0.03%あった。
 決定は[USI投了](../plans/archived/usi-resignation.md)で下した。
 

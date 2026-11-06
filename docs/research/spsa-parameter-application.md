@@ -1,5 +1,9 @@
 # SPSAで調整した係数をソースへ反映する先行例
 
+本書のminaseに関する記述は2026年9月22日時点のものである。
+「minaseへの示唆」の節が提案した`apply`コマンドは、同日に[SPSAの調整結果をソースへ反映するコマンドの設計書](../plans/archived/spsa-apply.md)で実装し、現在は`minase spsa apply`として使える。
+反映の方式は[SPSAの結果は係数表の既定値のリテラルだけを書き換えて反映する](../adr/apply-spsa-results-by-rewriting-default-literals.md)にある。
+
 SPSA（同時摂動確率近似法）の調整結果を、通常ビルドで使うソースの定数へ自動転記する先行例はある。
 やねうら王の`tune.py apply`、Stockfish向け外部ツールのfishutils、およびRust製エンジンapeironの`spsa apply`で、結果の読み込みからソースファイルへの書き込みまでを確認した。
 minaseが採用した「通常ビルドでは定数、調整用ビルドでは実行時に変更可能」という方式と、調整結果の自動転記は両立する。

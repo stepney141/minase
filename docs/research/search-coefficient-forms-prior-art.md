@@ -1,5 +1,9 @@
 # 探索と時間管理の係数の関数形に関する既存実装との比較
 
+本書のminaseに関する記述は2026年10月17日時点のものである。
+本書が示した構造の差は、[探索の関数形の見直しの統括計画](../plans/archived/search-forms.md)の7本のサブタスクで扱い、2026年10月23日までにすべて採用した。
+本書が棄却済みと記したaspiration windowsのfail high時の減深と反対側の端を寄せる形も、[aspiration windowsの幅と窓の移し方の見直しの設計書](../plans/archived/aspiration-window-forms.md)でStockfishの形として採用した。
+
 ## 結論
 
 minaseがSPSAで調整する探索と時間管理の係数（`crates/minase/src/search/alphabeta/params.rs`の表）の多くは、StockfishとYaneuraOuが共通に持つ関数形と違う形で使われている。

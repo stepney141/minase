@@ -45,7 +45,7 @@ Rustの将棋ライブラリyasaiも調べたが、ビットボードの定義�
 2語の境界は、升が7筋以内かどうかで決まる（[bitboard.h 141行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/bitboard.h#L141)）。
 
 minaseの空きビットは段ごとに4ビットあり、HaChuの番兵つき盤配列（hachu.c 68行から72行の盤幅の定義と、93行の`STEP(X,Y) = BW*(X)+(Y)`）と同じ形の升番号を、ビット位置にもそのまま使うことから生じる。
-1語に4段がちょうど収まるので、横線は必ず1語に収まるが、縦線と斜線は最大3語にまたがる（[magic bitboardの適用の調査](magic-bitboard-feasibility.md)）。
+1語に4段がちょうど収まるので、横線は必ず1語に収まるが、縦線と斜線は最大3語にまたがる（[magic bitboardの適用の調査](../proposals/archived/magic-bitboard-feasibility.md)）。
 中将棋では、縦の走りを持ち横の走りを持たない駒が香車、反車、竪行、白駒、鯨鯢、飛鹿、飛牛の7種あるのに対し、その逆は横行と奔猪の2種にとどまる（RULES.md第9条、第10条）。
 やねうら王と同じ筋優先の3語配置のほうが有利かどうかは測定しておらず、現時点では仮説にとどまる。
 
@@ -100,7 +100,7 @@ Stockfishの`attackers_to`は`rookAttacks & pieces(ROOK, QUEEN)`の形で書か�
 minaseの利き計算の表は、利き線表が36 KiB、固定利き表と遮蔽なしの到達範囲表が2色×28定義×192升×24バイトで各252 KiB、5×5の近傍表と獅子の跳び先表が各4.5 KiBであり、合計は約549 KiBになる。
 
 minaseでも、マジックと小さな表の試作は済んでいる。
-どちらも現行の算術方式（1方向あたり中央値6.21 ns）を上回らず、主な原因は関数のインライン展開が失われたことだった（[試作の測定](../measurements/adhoc/magic-bitboard-prototype.md)、[magic bitboardの適用の調査](magic-bitboard-feasibility.md)）。
+どちらも現行の算術方式（1方向あたり中央値6.21 ns）を上回らず、主な原因は関数のインライン展開が失われたことだった（[試作の測定](../measurements/adhoc/magic-bitboard-prototype.md)、[magic bitboardの適用の調査](../proposals/archived/magic-bitboard-feasibility.md)）。
 したがって、minaseが算術系統に属するのは192ビットの盤で表が大きくなるという消極的な理由だけによるのではなく、実測に基づく選択である。
 
 ## 局面の表現と派生構造

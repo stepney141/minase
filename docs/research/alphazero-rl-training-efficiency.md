@@ -1,5 +1,12 @@
 # AlphaZero型の強化学習の学習効率と強さに効く技法の先行実装調査
 
+本書のminaseに関する記述は2026年10月31日時点のものである。
+同日に[AlphaZero型探索の強化学習の再出発に向けた学習技法の導入の設計書](../plans/archived/alphazero-restart-techniques.md)が、技法ごとに比べずに9つの技法をまとめて採った。
+採ったのは、Qの尺度1.0、指す手の温度、playout cap randomization、王手による3手以内の勝ちの打ち切り、利きの入力面、32チャネルの価値ヘッド、KataGoの3つの補助目標、4倍の抽出、および学習率のウォームアップである。
+残り手数の出力、勝敗の決まった局面での探索の削減、policy surprise weighting、およびdeblunderは採らなかった。
+重みの移動平均は2026年11月2日に[AlphaZero型探索の学習器は重みの移動平均を持たず、自己対局と進捗測定には学習の最後の重みのネットを使う](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)で取り除いた。
+「再出発の前の診断」の節の診断は、元のネットと記録を同じ2026年10月31日に削除したので実施していない。
+
 本書は、minaseのAlphaZero型の強化学習（RL）をゼロからやり直す前に、学習を速め、ネットを強くする技法を一次資料で調べた調査メモである。
 調べた対象は、YaneuraOuのwikiの「ふかうら王の学習」、Leela Chess Zero（以下lc0）、KataGo、dlshogiとGumbel dlshogi、AobaZero、技巧、Gumbel AlphaZeroの論文とmctx、およびMuZeroのReanalyseである。
 調査の動機は2つある。

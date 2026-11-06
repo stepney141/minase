@@ -64,7 +64,7 @@ masterに統合していないブランチのうち12本が、docs/measurements/
 
 git は統合の際に、名前の変更を検出したファイル（既定では内容の50%以上が一致するもの）への変更を移動先へ追従させる。
 しかし、ブランチで新しく作った記録は直下に置かれたまま統合され、ブランチで追加または変更した文書の中の旧形式のリンクとパスもそのまま残る。
-例えば fm-eval ブランチの docs/research/evaluation-improvement-strategy.md は、本文で`docs/measurements/fm-quarter-vs-pst-stc.md`に触れている。
+例えば fm-eval ブランチの docs/proposals/archived/evaluation-improvement-strategy.md は、本文で`docs/measurements/fm-quarter-vs-pst-stc.md`に触れている。
 そこで、これらのブランチを本書の完了後にmasterへ統合するときは、統合のコミットの中で、直下に置かれた記録を本書の規則に従って移し、ブランチ由来の文書のリンクと、保守する文書の本文中のパスを書き換える。
 そのうえで、統合後の木で次の3点を確かめる。
 1点目は、統合で追加または変更された Markdown の相対リンクがすべて解決できることである。
@@ -111,7 +111,7 @@ git は統合の際に、名前の変更を検出したファイル（既定で�
 3つの手がかりに優先順位はつけず、得られた手がかりがすべて同じ設計書を指す記録を、その設計書の候補とする。
 起案の時点では411件のうち365件がこれに当たった。
 ほかの文書から記録へのリンクは、引用であって計画を示さないので、手がかりに使わない。
-例えば magic-bitboard-prototype は crate-split の設計書だけから参照されるが、その参照は第三者のコードの来歴に触れたものであり、測定は docs/research/ の調査メモ[magic bitboardの適用可能性](../../research/magic-bitboard-feasibility.md)のために行った。
+例えば magic-bitboard-prototype は crate-split の設計書だけから参照されるが、その参照は第三者のコードの来歴に触れたものであり、測定は docs/research/ の調査メモ[magic bitboardの適用可能性](../../proposals/archived/magic-bitboard-feasibility.md)のために行った。
 
 手がかりが食い違うか1つも得られない記録は46件あった。
 候補が決まった365件のうち、手がかりが1つしかない148件は、目的節の冒頭または追加したコミットの件名を読んで確かめ、手がかりが誤っていた5件を改めた（次の表で※を付けた記録）。

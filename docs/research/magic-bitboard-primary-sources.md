@@ -1,5 +1,9 @@
 # Magic bitboardの一次資料
 
+本書のminaseに関する記述は2026年9月21日時点のものである。
+「minaseで比較する候補」の節で勧めた線ごとの表のうち、横線の小表と斜線の乗算magicは同日の試作で現行の算術方式を上回らず、採用候補へ進めなかった。
+試作の構成と判断は[12×12盤へのmagic bitboardの適用](../proposals/archived/magic-bitboard-feasibility.md)に、差分と速度は[Magic bitboard試作の実現可能性と速度](../measurements/adhoc/magic-bitboard-prototype.md)にある。
+
 12×12盤へ適用するなら、飛車や角の全方向を1表にまとめる方式より、縦線、横線、各斜線へ分割する方式を先に比較する価値がある。
 大盤用のFairy-Stockfishにも表の分割例があり、Stockfishとやねうら王には表を使わず減算で利きを求める実装もある。
 これらは実装可能性の根拠であり、minaseでの高速化率を示すものではない。

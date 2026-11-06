@@ -3,7 +3,7 @@
 中将棋エンジンminaseの評価関数を改善するため、先行する将棋エンジンとチェスエンジンの評価モデル、教師生成、学習方法を調査した。
 本書は2026年9月26〜27日に確認した一次資料を、表現できる関係、学ぶ局面と教師値、重みを更新する方法の3つに分けて整理したものである。
 各資料から確認できた事実と、minaseへの適用を検討するための推論を併記する。
-minaseの不採用結果と次の比較は[評価改善方針](evaluation-improvement-strategy.md)、入力と容量の具体案は[評価アーキテクチャ候補](evaluation-architecture-candidates.md)を参照する。
+minaseの不採用結果と次の比較は[評価改善方針](../proposals/archived/evaluation-improvement-strategy.md)、入力と容量の具体案は[評価アーキテクチャ候補](../proposals/archived/evaluation-architecture-candidates.md)を参照する。
 
 局面 \(s\) を重み \(\theta\) で評価するモデルを \(F_\theta(s)\)、学習で最小化する損失を \(L(\theta)\) と書く。
 玉1枚と駒2枚の関係を使うKPPや、効率よく差分更新するニューラルネットワークであるNNUEは、前者の構造を定める。
@@ -145,4 +145,4 @@ minaseで深い教師が安定して区別する候補手の順位を学ぶ案�
 
 minaseの完了済み実験は、教師への検証損失を下げることだけでは棋力改善を保証しないと示した。
 一方、局所2駒表は未実装で、静止探索末端への置換や学習中の末端更新も直接検証されていない。
-これらの未検証の手法については、[評価改善方針の実験結果と比較順序](evaluation-improvement-strategy.md)に基づいて、minaseでの学習効率と対局棋力を測る必要がある。
+これらの未検証の手法については、[評価改善方針の実験結果と比較順序](../proposals/archived/evaluation-improvement-strategy.md)に基づいて、minaseでの学習効率と対局棋力を測る必要がある。

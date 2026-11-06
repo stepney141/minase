@@ -1,8 +1,12 @@
 # 評価項目が依存する土台の調査
 
+本書のminaseに関する記述は2026年9月22日時点のものである。
+土台Cにあたる升ごとの利き数の表は、段階9の開始時の版に比べて速度が0.816倍となって条件を満たさず、2026年9月23日に[升ごとの利き数の表を差分更新で持たず、利きに基づく評価特徴を入れない](../adr/omit-the-incremental-attack-count-table.md)で採らないことに決まった。
+その後、評価関数は2026年10月12日に[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)でNNUEへ置き換わり、静的評価は2026年10月21日の[置換表のエントリを16バイトの2語の原子値に保ち、補正前の静的評価と探索値なしの記録を持たせる](../adr/store-static-evals-and-eval-only-records-in-two-word-tt-entries.md)で置換表に保存するようになった。
+
 ## 結論
 
-[評価項目の調査](evaluation-terms-survey.md)が順位づけた10段階の評価項目について、先行エンジンがその項目をどのデータ構造の上で、どの時点の費用として得ているかを調べ、minaseの現状と照合した。
+[評価項目の調査](../proposals/archived/evaluation-terms-survey.md)が順位づけた10段階の評価項目について、先行エンジンがその項目をどのデータ構造の上で、どの時点の費用として得ているかを調べ、minaseの現状と照合した。
 調査の動機は、[棋力向上段階9](../plans/archived/strength-stage9.md)が王の周囲の攻撃域と守備駒を升ごとの利きの逆引きで実装し、毎秒の探索ノード数が82.2%下がったことである（[費用の測定](../measurements/strength-stage9/strength-stage9-cost-bench.md)）。
 
 結論は4点ある。
@@ -213,5 +217,5 @@ minaseで土台Bを使うには、評価値の保存や、王の近傍へ届き�
 - [Stockfish](https://github.com/official-stockfish/Stockfish/tree/17a6c8f1eb0da45c2ca405321919519bf4e211ba)
 - [やねうら王](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30)
 - [HaChu（Debian収録版）](https://salsa.debian.org/debian/hachu/-/tree/822d512180b7d94bb85a55f871445b30393f7f8a)
-- [評価項目の調査](evaluation-terms-survey.md)
+- [評価項目の調査](../proposals/archived/evaluation-terms-survey.md)
 - [棋力向上段階9の設計書](../plans/archived/strength-stage9.md)

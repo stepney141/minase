@@ -1,29 +1,32 @@
 # 12×12盤へのmagic bitboardの適用
 
+本提案は、2026年9月21日に[Magic bitboard試作の実現可能性と速度](../../measurements/adhoc/magic-bitboard-prototype.md)の速度比較で決着した。
+横線の小表と斜線の乗算magicはどちらも現行の算術方式を上回らなかったので不採用とし、設計書とADRは作成していない。
+
 斜線のmagic bitboardを現在の盤表現へ実装し、必要な定数の生成と規則との一致を確認できた。
-しかし、横線の小表と斜線のmagicをそれぞれ探索へ組み込んだ[試作比較](../measurements/adhoc/magic-bitboard-prototype.md)では、どちらも現行方式を上回らなかった。
+しかし、横線の小表と斜線のmagicをそれぞれ探索へ組み込んだ[試作比較](../../measurements/adhoc/magic-bitboard-prototype.md)では、どちらも現行方式を上回らなかった。
 今回の構成は採用候補へ進めず、現在の算術方式を維持することを勧める。
 飛車4方向を一括で列挙して24バイトの利きを保存する約1.15 GiBの構成は試作対象から外し、分割した表で実装可能性と実行時の費用を確認した。
 
 調査対象は2026年9月21日のコミット`1633f534cf0e8c96738b11158e68f31f0f144f01`である。
 試作は独立cloneのブランチで行い、本体の実装とマイルストーンの状態は変更していない。
-外部実装の根拠は[一次資料メモ](magic-bitboard-primary-sources.md)、現行版の負荷は[プロファイル](../measurements/adhoc/magic-bitboard-profile-depth5.md)、試作の差分と再現手順は[測定記録](../measurements/adhoc/magic-bitboard-prototype.md)にまとめた。
+外部実装の根拠は[一次資料メモ](../../research/magic-bitboard-primary-sources.md)、現行版の負荷は[プロファイル](../../measurements/adhoc/magic-bitboard-profile-depth5.md)、試作の差分と再現手順は[測定記録](../../measurements/adhoc/magic-bitboard-prototype.md)にまとめた。
 
 ## 現行方式との比較
 
-現在の[盤表現](../../crates/minase-core/src/board/bitboard.rs)は3個の`u64`からなり、[升の生インデックス](../../crates/minase-core/src/board/square.rs)は`16 × rank + file`である。
+現在の[盤表現](../../../crates/minase-core/src/board/bitboard.rs)は3個の`u64`からなり、[升の生インデックス](../../../crates/minase-core/src/board/square.rs)は`16 × rank + file`である。
 各語は4段を持ち、各段の下位12ビットだけを使うため、有効升は144個、格納領域は192ビットである。
 この配置では横線は1語に収まるが、縦線と斜線は最大3語にまたがる。
 
-現在の[`sliding_control`](../../crates/minase-core/src/attacks/tables.rs)は、あらかじめ保存した利き線と占有集合の積から遮蔽を求める。
+現在の[`sliding_control`](../../../crates/minase-core/src/attacks/tables.rs)は、あらかじめ保存した利き線と占有集合の積から遮蔽を求める。
 生インデックスが増える4方向では、3語を通じた借り伝播つき減算によって`ray & (b ^ (b - 1))`を計算する。
 減る4方向では最上位の遮蔽ビットを求め、その先の利き線を除く。
 したがって比較相手は、1升ずつ歩く参照計算ではなく、既に定数回のビット演算へ改良された方式である。
 現行の利き線表は`8 × 192 × 24 = 36,864`バイト、36 KiBであり、新しい表は命令数とキャッシュの両方に影響する。
 
 走り計算の呼び出し方も、チェスの飛車と角を一括計算する場合とは異なる。
-通常の[捕獲生成](../../crates/minase-core/src/movegen/search_captures.rs)は、捕獲対象と交わる方向だけを選んで計算する。
-[利きの逆引き](../../crates/minase-core/src/movegen/control.rs)は8方向を個別に調べ、最初の遮蔽駒が逆方向へ走れるかを判定する。
+通常の[捕獲生成](../../../crates/minase-core/src/movegen/search_captures.rs)は、捕獲対象と交わる方向だけを選んで計算する。
+[利きの逆引き](../../../crates/minase-core/src/movegen/control.rs)は8方向を個別に調べ、最初の遮蔽駒が逆方向へ走れるかを判定する。
 中将棋の香車、横行、竪行、鯨なども方向の組合せが異なるため、直線ごとに求めた利きへ方向マスクを掛ける構成が合う。
 一方、片方向だけが必要な呼び出しで両方向を常に計算すると、現在の事前選別による節約を減らす可能性がある。
 
@@ -98,7 +101,7 @@ PEXT（Parallel Bits Extract）は、マスクが指定したビットを下位�
 3語から抽出した結果を各マスクのビット数に応じて連結すれば密な添字を得られ、その後のmagic乗算は不要になる。
 しかし、現在の`unsafe_code = "forbid"`のもとでは、`target-cpu=native`だけでRustのintrinsicを通常の関数から直接呼べるとは限らない。
 今回のコンパイル確認ではその呼び出しは拒否されたため、直接PEXTを使う方式は現在の方針で直ちに実装できる候補から外す。
-根拠と再現方法は[測定記録](../measurements/adhoc/magic-bitboard-profile-depth5.md)と[Rustの呼び出し制約](https://doc.rust-lang.org/reference/attributes/codegen.html#attributes.codegen.target_feature.safety-restrictions)を参照する。
+根拠と再現方法は[測定記録](../../measurements/adhoc/magic-bitboard-profile-depth5.md)と[Rustの呼び出し制約](https://doc.rust-lang.org/reference/attributes/codegen.html#attributes.codegen.target_feature.safety-restrictions)を参照する。
 
 ## 試作から得た判断
 
@@ -115,7 +118,7 @@ PEXT（Parallel Bits Extract）は、マスクが指定したビットを下位�
 確認したStockfishは一部の命令集合で反転と減算による方式を使い、やねうら王も飛角に算術方式を使う。
 このため、magicという方式名だけで現在の減算方式より速いと判断できない。[Stockfishの方式選択](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/attacks.h#L30-L165)、[やねうら王の実装](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/bitboard.cpp#L852-L922)
 
-また、[第3期の計画](../plans/movegen-speedup-3.md)には、利き線上に該当する走り駒がいない方向の計算を省く案がある。
+また、[第3期の計画](../../plans/movegen-speedup-3.md)には、利き線上に該当する走り駒がいない方向の計算を省く案がある。
 呼び出しを減らす案と1回の計算を速くする案は同じ処理へ効くため、それぞれの改善率を足して見積もれない。
 第3期の変更を先に採用する場合は、その後の版を基準に走り計算の割合を測り直す。
 
@@ -127,7 +130,7 @@ PEXT（Parallel Bits Extract）は、マスクが指定したビットを下位�
 利き集合の一致に加え、生成順と獅子規則を含む既存テスト、局面別の探索ノード数、最善手、探索値、および`perft`を確認する。
 
 速度はまず現行探索から得た入力で、占有変換、表参照、出力復元を含めて比較する。
-次に、計測用の変更を外したreleaseビルドで、[既存の比較手順](../plans/movegen-speedup-3.md)に従って親と候補を交互に測り、1秒あたりの探索ノード数の増分が測定のばらつきを超えるかを判定する。
+次に、計測用の変更を外したreleaseビルドで、[既存の比較手順](../../plans/movegen-speedup-3.md)に従って親と候補を交互に測り、1秒あたりの探索ノード数の増分が測定のばらつきを超えるかを判定する。
 表の初期化は定常速度と分けて測り、表の追加による探索中のキャッシュへの影響は全体測定へ含める。
 最終的な採否は、固定コミット同士の自己対局による逐次確率比検定（SPRT）で決める。
 今回の試作は速度比較で改善を示さなかったので、SPRTへは進めない。

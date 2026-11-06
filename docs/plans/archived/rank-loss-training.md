@@ -242,7 +242,7 @@ LTCが`H1`で、エンジン異常、時間切れ、および拒否着手が0件
 
 ## 参考資料
 
-- [評価関数を改善する3つの観点](../../research/evaluation-improvement-strategy.md)
+- [評価関数を改善する3つの観点](../../proposals/archived/evaluation-improvement-strategy.md)
 - [評価モデル、教師生成、学習方法の一次資料](../../research/evaluation-learning-primary-sources-2026-09.md)
 - [静止探索の出力を学ぶPSTの学習](qsearch-output-training.md)
 - [探索局面を用いた評価関数の学習](search-aware-evaluation.md)

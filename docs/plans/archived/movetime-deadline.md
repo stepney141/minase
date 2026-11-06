@@ -249,7 +249,7 @@ benchは深さ固定の探索なので、対象の探索の変更はノード数
 
 - [固定時間（movetime）の探索の先行実装とlishogi通信対局での使われ方](../../research/movetime-prior-art-and-correspondence-usage.md)
 - [秒読みつき時計での持ち時間と秒読みの活用](byoyomi-time-usage.md)
-- [lishogi実戦における持ち時間と秒読みの使い方](../../research/lishogi-byoyomi-time-usage.md)
+- [lishogi実戦における持ち時間と秒読みの使い方](../../audits/lishogi-byoyomi-time-usage-2026-10-06.md)
 - Stockfish `src/search.h`、`src/search.cpp`（`iterative_deepening`、`search<Root>`の根の手の更新、`check_time`）、`src/thread.cpp`（`get_best_thread`）、コミット5c4cef0b、2026年10月24日参照
 - YaneuraOu `source/search.h`、`source/timeman.cpp`、`source/engine/yaneuraou-engine/yaneuraou-search.cpp`、コミットc1b80eaa、2026年10月24日参照
 - HaChu `hachu.c`（`SetSearchTimes`、反復の開始と打ち切りの判定）、Debianのhachuパッケージのソースのコミット822d512、2026年10月25日参照
