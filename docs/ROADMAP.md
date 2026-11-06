@@ -126,6 +126,7 @@
 | NNUEの世代反復をv0からやり直す | [plans/archived/nnue-generation-reset.md](plans/archived/nnue-generation-reset.md) | 中断 | 2026年11月6日 |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
+| NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 起案 | |
 
 ## 現在地
 
@@ -142,7 +143,7 @@
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
-- NNUEの標準の学習条件を決め直す計画と、v0からの世代反復の計画は、まだ設計書がない（2026年11月6日の利用者の決定）。見つかったことと引き継ぐ成果物は中断した世代反復の[状態](plans/archived/nnue-generation-reset.md#状態)に、先行の学習器との差は[学習レシピの調査](research/nnue-training-recipes.md)にある。1世代の量を局面数でなく対局数で定めることを検討する。
+- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は起案済みで、着手は利用者の指示を待つ。中断した系列の教師で、線形の経路の学習率、補正の要否、および直前の世代の教師の併用を対局で決めてから、1世代を教師37本と定めてv0から世代反復をやり直す。第1世代は、中断した系列でv0が生成した26本を使い、11本だけを足す。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 #### 評価関数（NNUE）
@@ -161,7 +162,7 @@
 
 #### AlphaZero型探索
 
-- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する（[調査](research/alphazero-strength-gap.md)）。再開は、2026年11月3日の利用者の決定により、[NNUEの世代反復のやり直し](plans/archived/nnue-generation-reset.md)の後とする。
+- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する（[調査](research/alphazero-strength-gap.md)）。再開は、2026年11月3日の利用者の決定により、NNUEの世代反復のやり直しの後とする。中断した[世代反復](plans/archived/nnue-generation-reset.md)は[標準レシピv1の計画](plans/nnue-standard-recipe.md)が引き継いだので、再開はその計画の後になる。
 
 #### 探索
 
