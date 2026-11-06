@@ -29,7 +29,7 @@ minase match run --run-dir data/matches/nnue-standard-recipe-lr-linear-stc --see
 
 `<出力先>`は`data/nnue-standard-recipe/recipe/lr-linear`である。
 学習器は対照と同じ実行ファイル`data/nnue-generation-reset/bin/minase-trainer`を使い、学習のコマンドを`/usr/bin/time -v`経由で実行して最大常駐メモリを測った。
-対局は本書の作業ツリー`data/worktrees/nnue-standard-recipe`から実行し、候補と対照をその作業ツリーの`target/match-cache/`で新しくビルドした（[教訓](../../lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
+対局は設計書の作業ツリー`data/worktrees/nnue-standard-recipe`から実行し、候補と対照をその作業ツリーの`target/match-cache/`で新しくビルドした（[教訓](../../lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 
 ## エンジン
 
@@ -65,6 +65,7 @@ STCの途中から、測定3の候補の学習（4スレッド、nice値19、メ
 | 選ばれたτ | 80 | 80 |
 | 学習の時間 | 1,399秒 | 1,355秒 |
 
+Dは補正ありの予測の損失から補正なしの損失を引いた値で、負なら補正が予測の損失を下げている。
 線形の経路の移動量は、初期値（探索用駒価値から作った表）からの、左右の鏡映で共有した6,840行の変化の大きさである（`training.jsonl`の`linear_movement`）。
 学習率を約23倍にすると線形の経路は約16倍動いたが、検証損失の差は0.000002だった。
 候補の学習の最大常駐メモリは12.39 GB（12,392,844 kB）で、`/usr/bin/time`が測ったプロセス全体の経過時間は23分22秒だった。
