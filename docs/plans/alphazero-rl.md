@@ -210,7 +210,7 @@ KataGoは窓を行数とともに広げ、1行の使用を平均4〜8回まで�
 Gumbel dlshogiは、初期の質の悪いデータを含めないように、初めのうちは直近のデータだけを使った。
 2026年11月1日の利用者の決定により、10サイクル目の進捗測定を見て、ほぼ乱択の対局からなるサイクル1と2を窓から外し、窓をサイクル3以後に限った（[学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)）。
 実行器は、窓をさかのぼる最初のサイクルを`--window-first-cycle`で受け取る。
-リセット前のサイクル1〜37の学習の経過は、測定記録と[学習効率と強さに効く技法の調査](../research/alphazero-rl-training-efficiency.md)の「サイクル1〜37の記録」の節にだけ残っている。
+リセット前のサイクル1〜37の学習の経過は、[リセット前のサイクル1〜37の学習の経過](../measurements/alphazero-rl/alphazero-rl-pre-reset-history.md)とほかの測定記録にだけ残っている。
 以後の記録には、生成器のコミットと学習器のコミットを別々に書く。
 
 ### 学習率の予定
