@@ -227,7 +227,7 @@ impl AttackTables {
     /// `b`が空なら差分の全ビットが立ち、利き線全体が残る。
     /// 生値が減る4方向では、最上位の遮蔽駒を求め、その先の利き線を除く。
     /// 減る方向を`leading_zeros`と番兵表で書き換えない理由は
-    /// `docs/adr/skip-low-yield-movegen-and-see-speedups.md`にある。
+    /// `docs/adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md`にある。
     pub(crate) fn sliding_control(
         &self,
         from: Square,

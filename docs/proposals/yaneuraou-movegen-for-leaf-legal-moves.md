@@ -15,7 +15,7 @@
 3つとも生成する着手の集合と順序を変えないので、既存の契約テストと参照実装との突き合わせで正しさを固定できる。
 命令数の勘定では、3つを合わせると全件生成の費用は半分前後になり、MCTSの探索全体では2割前後の削減に当たるが、これは概算であり、採否は実際の探索の時間で判断する。
 
-なお、同じ方向の変更は、αβ探索の速度測定で2026年9月に一度試され、約1.8%遅くなって棄却されている（[ADR](../adr/skip-low-yield-movegen-and-see-speedups.md)）。
+なお、同じ方向の変更は、αβ探索の速度測定で2026年9月に一度試され、約1.8%遅くなって棄却されている（[ADR](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)）。
 本書では、ライブラリの公開API`MoveGenerator::generate_moves`による全合法手の生成を「公開の全手生成」と呼ぶ。
 その棄却は、公開の全手生成の費用が小さいαβ探索の負荷で測られたものであり、全件生成が最大の項目であるMCTSの葉では費用の配分が異なる。
 本書はこれを根拠に、同じADRが認める「測り直し」として候補を挙げる。
@@ -249,7 +249,7 @@ MCTSの駆動部は`Game`の複製に対して`legal_moves`を呼び、返った
 
 ### 過去に棄却した候補との関係
 
-[効果が測定の幅に収まった生成とSEEの高速化を実装しないADR](../adr/skip-low-yield-movegen-and-see-speedups.md)は、「公開の全手生成の判定省略と固定利き専用経路」を実装しない変更に挙げている。
+[歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)は、「公開の全手生成の判定省略と固定利き専用経路」を実装しない変更に挙げている。
 [単位Eの記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)によれば、この候補E2は、公開の全手生成でも捕獲升を1回だけ求めて獅子規則と成りの判定を省き、走りを持たない駒では利き線の検査を省いて固定利きと対象升の積を直接使う変更であり、αβ探索のbench（深さ5）で約1.8%遅くなった。
 本書の候補1と候補2は、E2のうち判定の省略に当たる部分と目的が重なる。
 
@@ -288,6 +288,6 @@ E2が遅くなった原因が関数の肥大によるインライン展開の変
 - [やねうら王の王手判定と合法手生成の使い分けを審判層の裁定へ応用する調査](archived/yaneuraou-check-detection-for-referee.md)：審判層への応用を扱った先行の調査。
 - [既存エンジンとminaseのビットボードの比較](../research/bitboard-comparison.md)：ビットボードと利きの算法の比較。
 - [合法手生成の高速化計画への追加候補](archived/movegen-speedup-ideas.md)：固定利きを移動量ごとにまとめる案の初出。
-- [効果が測定の幅に収まった生成とSEEの高速化を実装しないADR](../adr/skip-low-yield-movegen-and-see-speedups.md)と[単位Eの測定記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)：棄却された候補E2の内容と条件。
+- [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](../adr/shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)と[単位Eの測定記録](../measurements/movegen-speedup/movegen-speedup-unit-e-bench-depth5.md)：棄却された候補E2の内容と条件。
 - [αβ探索の最終の残存負荷](../measurements/movegen-speedup-2/movegen-speedup-2-final-profile-depth5.md)：αβ探索での着手ごとの判定の割合。
 - [MCTSは新しい節点を審判層の裁定で終局させるADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)：葉で全件生成が要る理由。

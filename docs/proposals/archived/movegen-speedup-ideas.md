@@ -2,7 +2,7 @@
 
 本提案は、2026年9月15日に[合法手生成と利き計算の高速化の設計書](../../plans/archived/movegen-speedup.md)の完了で決着した。
 生成前の閾値除外と静止探索の段階生成は単位Bとして、SEEの早期終了は単位Cとして採用された。
-PGOは[プロファイル誘導最適化（PGO）でビルドしない](../../adr/do-not-build-with-pgo.md)で、SEEの準備の共有は[効果が測定の幅に収まった、または数%以下と見込まれた生成とSEEの高速化を実装しない](../../adr/skip-low-yield-movegen-and-see-speedups.md)で、それぞれ採らないと決めた。
+PGOは[プロファイル誘導最適化（PGO）でビルドしない](../../adr/do-not-build-with-pgo.md)で、SEEの準備の共有は[効果が測定の幅に収まった、または数%以下と見込まれた生成とSEEの高速化を実装しない](../../adr/archive/skip-low-yield-movegen-and-see-speedups.md)で、それぞれ採らないと決めた。
 歩兵と仲人の移動元の一括選択と、最初の遮蔽駒だけを求める利きの照会は、2026年11月4日から5日にかけて[NNUE教師生成を探索結果を変えずに速くする設計書](../../plans/archived/teacher-generation-speedup.md)で入った。
 
 2026年9月13日時点の[高速化計画書](../../plans/archived/movegen-speedup.md)と作業ツリーを調べた結果、追加案の優先候補は、静止探索で不要になる捕獲を生成前に除くことと、必要になった捕獲だけを段階的に生成することである。
