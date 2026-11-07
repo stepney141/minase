@@ -2,14 +2,26 @@
 """教師の生成、検査、学習、補正、世代のコミットを順に実行する。
 
 使い方: python3 scripts/vast/generation_chain.py run --help
-表示される条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
---offerだけは省略でき、保存した生成機へ接続するときには指定しない。
---train-place generatorは生成機で学習・診断・補正し、localは作業機で実行する。
+必須条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
+--offerは新しく生成機を借りるときだけ指定する。
+--books-per-generationで1世代の本数を定め、番号0から指定本数の直前までを生成する。
+--window 1はその世代の本だけ、2は直前の世代の本も先に並べて学習に使う。
+第1世代の学習と各世代の診断、補正には、その世代の本だけを使う。
+--fit yesでは--fit-tau、--fit-seed、--fit-threadsも指定し、補正したネットをコミットする。
+--fit noではこれらの補正引数を指定せず、学習したネットをそのままコミットする。
+--lr-linearで線形の経路の学習率を指定し、--validation-interval 0で途中検証を省く。
+--train-place generatorは生成機で学習、診断、補正し、localは作業機で実行する。
 生成機の障害後はlocalを明示して再開する。コミットとbenchはどちらも作業機で行う。
 作業機では--run-dirに接続先とgen-<N>/{received,teacher,logs,train,fit}を置く。
---worktreeにネットをコミットし、refs/nnue-generation-reset/gen-<N>で完了を表す。
+--worktreeにネットをコミットし、--ref-prefixで指定した<接頭辞>/gen-<N>で完了を表す。
 生成機には同じディレクトリのgeneration_worker.pyを/workspace/job/へ送る。
 SIGTERMとSIGINTでは子プロセスだけを止め、同じ引数での再実行に備える。
+
+暫定最良世代に勝てなかった第N世代を37本から74本へ増量して学び直すときは、まずgen-<N>/のtrain、removal.json、fit（補正した場合）、train.log、fit.log、training-logsのうち存在するものをgen-<N>/books37/へ移す。
+参照<接頭辞>/gen-<N>が指すコミットを<接頭辞>/gen-<N>-books37として残す。
+次にgit update-ref -d <接頭辞>/gen-<N>で世代の参照を消し、ネットをコミットしたブランチの先頭を第N−1世代のコミットへ戻す。
+--books-per-generationを74、--first-generationと--last-generationをNにして再実行する。
+番号37〜73の本だけが生成され、74本で学び直す。
 """
 
 import argparse
@@ -99,10 +111,6 @@ class Children:
             self.terminate(process)
 
 
-def reference(generation: int) -> str:
-    return f'refs/nnue-generation-reset/gen-{generation}'
-
-
 def book_number(path: Path) -> int:
     match = re.fullmatch(r'book-(0|[1-9][0-9]*)\.mnsd', path.name)
     if match is None:
@@ -135,24 +143,14 @@ def output_fields(output: str) -> dict[str, str]:
     return fields
 
 
-def target_books(count: int, total: int, positions: int, estimate: int) -> int:
-    """目標に達した入力には本を足さず、未達なら平均局面数から必要数を求める。"""
-    if total >= positions:
-        return count
-    if count == 0:
-        return estimate
-    if total == 0:
-        raise ChainStop('検査済みの本に局面がなく、必要な本数を推定できません')
-    return count + max(1, ((positions - total) * count + total - 1) // total)
-
-
-def deadline_hours(generations: int, count: int, args: argparse.Namespace) -> float:
+def deadline_hours(counts: list[int], args: argparse.Namespace) -> float:
     """残りの本の生成時間に、生成機の停止前に必要な各世代の学習待ちを加える。"""
-    books = generations * args.books_estimate - count
+    generations = len(counts)
+    books = sum(max(0, args.books_per_generation - count) for count in counts)
     hours = args.book_minutes * books * args.deadline_margin / 60
     hours += args.training_wait_hours * (generations if args.train_place == 'generator' else generations - 1)
     if hours <= 0 or not math.isfinite(hours):
-        raise ChainStop('残りの本数から正の停止期限を計算できません。books-estimateを見直してください')
+        raise ChainStop('残りの本数と学習待ちから正の停止期限を計算できません')
     return hours
 
 
@@ -211,9 +209,12 @@ class Chain:
         return self.children.run(['git', '-C', str(self.args.worktree), *args],
                                  text=True, stdout=subprocess.PIPE).stdout.strip()
 
+    def reference(self, generation: int) -> str:
+        return f'{self.args.ref_prefix}/gen-{generation}'
+
     def commit_for(self, generation: int) -> str | None:
         try:
-            return self.git('rev-parse', '--verify', '--quiet', reference(generation) + '^{commit}')
+            return self.git('rev-parse', '--verify', '--quiet', self.reference(generation) + '^{commit}')
         except subprocess.CalledProcessError as error:
             if error.returncode == 1:
                 return None
@@ -356,7 +357,7 @@ class Chain:
                  f'duration>={args.min_duration_days} direct_port_count>=1 dph_total<={args.max_price}')
         raw = common.call(600, 'search', 'offers', query, '--type', 'on-demand', '--raw', '--limit', '1000')
         offer = select_offer(json.loads(raw), args)
-        hours = deadline_hours(len(pending), len(self.book_paths(pending[0])), args)
+        hours = deadline_hours([len(self.book_paths(generation)) for generation in pending], args)
         credit = json.loads(common.call(600, 'show', 'user', '--raw'))['credit']
         print(f'出品 {offer["id"]}: CPU={offer["cpu_name"]}、単価={offer["dph_total"]}米ドル/時、'
               f'期限まで={hours:.3f}時間、見込み費用={offer["dph_total"] * hours:.3f}米ドル、'
@@ -386,21 +387,21 @@ class Chain:
             self.ssh(f'mkdir -p {REMOTE}/bundles', 60)
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / 'source.bundle'
-                self.git('bundle', 'create', str(path), reference(generation - 1))
+                self.git('bundle', 'create', str(path), self.reference(generation - 1))
                 self.upload(path, destination + '.tmp')
             self.ssh(f'mv {destination}.tmp {destination}', 60)
         return destination
 
     def send_job(self, generation: int, commit: str, bundle: str, books: dict[int, int]) -> None:
-        count = target_books(len(books), sum(books.values()), self.args.positions_per_generation,
-                             self.args.books_estimate)
-        if count > self.args.max_books or any(number >= self.args.max_books for number in books):
-            raise ChainStop(f'第{generation}世代の必要本数がmax-booksを超えました')
+        if any(number >= self.args.books_per_generation for number in books):
+            raise ChainStop(f'第{generation}世代の本の番号がbooks-per-generation以上です')
         if self.concurrency is None:
             raise ChainStop('生成機の同時対局数がありません')
         job = {'generation': generation, 'commit': commit, 'bundle': bundle,
+               'reference': self.reference(generation - 1),
                'generation_seed': self.seed(generation, 0), 'book_step': self.args.seed_book_step,
-               'target_books': count, 'skip_books': sorted(books), 'concurrency': self.concurrency}
+               'target_books': self.args.books_per_generation,
+               'skip_books': sorted(books), 'concurrency': self.concurrency}
         for key in ('games', 'nodes', 'random_moves', 'max_ply', 'hash_mb'):
             job[key] = getattr(self.args, key)
         with tempfile.TemporaryDirectory() as temporary:
@@ -431,15 +432,15 @@ class Chain:
         teacher = directory / 'teacher'
         teacher.mkdir(parents=True, exist_ok=True)
         for path in sorted((directory / 'received').glob('book-*.mnsd'), key=book_number):
-            if sum(books.values()) >= self.args.positions_per_generation:
-                break
             number = book_number(path)
+            if number >= self.args.books_per_generation:
+                raise ChainStop(f'本の番号{number}がbooks-per-generation以上です')
+            if len(books) >= self.args.books_per_generation:
+                continue
             log_path = directory / 'logs' / f'book-{number}.log'
             if number in books or not log_path.is_file():
                 continue
             try:
-                if number >= self.args.max_books:
-                    raise ChainStop(f'本の番号{number}がmax-books以上です')
                 output = self.children.run([str(self.args.minase_bin), 'data', 'selfplay', 'inspect', str(path)],
                                            text=True, stdout=subprocess.PIPE, preexec_fn=low_priority).stdout
                 header = output_fields(output)
@@ -488,7 +489,9 @@ class Chain:
                            str(scale), '--output', str(self.root / 'base.bin')])
 
     def generate(self, generation: int, commit: str, checksum: str, books: dict[int, int]) -> None:
-        if sum(books.values()) >= self.args.positions_per_generation:
+        if any(number >= self.args.books_per_generation for number in books):
+            raise ChainStop(f'第{generation}世代の本の番号がbooks-per-generation以上です')
+        if len(books) >= self.args.books_per_generation:
             return
         bundle = None
         sent: tuple[tuple[int, int], ...] | None = None
@@ -519,45 +522,76 @@ class Chain:
                     raise ChainStop(f'SSHまたはrsyncの失敗が上限時間まで続きました: {error}') from error
                 print(f'{error}。再試行します', file=sys.stderr)
             else:
-                if sum(books.values()) >= self.args.positions_per_generation:
+                if len(books) >= self.args.books_per_generation:
                     return
             if time.monotonic() - last_book >= self.args.book_stall_minutes * 60:
                 raise ChainStop('検査に通った新しい本が得られないまま上限時間に達しました')
             time.sleep(self.args.poll_seconds)
 
-    def training_commands(self, trainer: Path, books: list[Path], base: Path,
+    def training_books(self, generation: int) -> list[Path]:
+        """窓に含める直前の世代の本を検査し、世代順と番号順で学習入力を返す。"""
+        previous = []
+        if self.args.window == 2 and generation >= 2:
+            commit = self.previous_commit(generation - 1)
+            if not self.books(generation - 1, commit, self.checksum(commit)):
+                raise ChainStop(f'第{generation - 1}世代の教師がありません')
+            previous = self.book_paths(generation - 1)
+        return previous + self.book_paths(generation)
+
+    def network_path(self, generation: int) -> Path:
+        stage = 'fit' if self.args.fit == 'yes' else 'train'
+        return self.root / f'gen-{generation}' / stage / 'nnue.bin'
+
+    def training_base(self, generation: int) -> Path:
+        """次の学習が、前の世代で実際にコミットしたネットを引き継ぐことを確かめる。"""
+        base = self.root / 'base.bin' if generation == 1 else self.network_path(generation - 1)
+        if not base.is_file():
+            raise ChainStop(f'学習の初期値がありません: {base}')
+        if generation >= 2:
+            commit = self.previous_commit(generation)
+            data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'{commit}:{NETWORK}'],
+                                     stdout=subprocess.PIPE).stdout
+            if base.read_bytes() != data:
+                raise ChainStop(f'学習の初期値が第{generation - 1}世代のコミットのネットと一致しません: {base}')
+        return base
+
+    def training_commands(self, trainer: Path, training_books: list[Path], current_books: list[Path], base: Path,
                           directory: Path) -> dict[str, list[str]]:
         """実行場所によらず、同じ条件で学習・診断・補正のコマンドを組み立てる。"""
         args = self.args
         train = directory / 'train'
-        command = [str(trainer), 'nnue', 'train', '--data', *map(str, books), '--base', str(base),
+        command = [str(trainer), 'nnue', 'train', '--data', *map(str, training_books), '--base', str(base),
                    '--lambda', str(args.mix), '--teacher-cp-per-logit', 'calibrate',
                    '--seed', str(args.train_seed), '--threads', str(args.train_threads), '--output-dir', str(train)]
         for key in ('feature_set', 'width', 'head', 'batch', 'epochs', 'patience', 'device',
-                    'validation_interval', 'lr_schedule'):
+                    'validation_interval', 'lr_schedule', 'lr_linear'):
             command.extend(['--' + key.replace('_', '-'), str(getattr(args, key))])
         if args.export_epoch == 'last':
             command.extend(['--export-epoch', 'last'])
         checkpoint = {'best': 'best.npz', 'last': 'latest.npz'}[args.export_epoch]
-        return {
+        commands = {
             'train': command,
             'removal': [str(trainer), 'diag', 'nnue-removal', '--float', str(train / checkpoint),
-                        '--net', str(train / 'nnue.bin'), '--data', *map(str, books),
+                        '--net', str(train / 'nnue.bin'), '--data', *map(str, current_books),
                         '--sample', str(args.removal_sample), '--seed', str(args.removal_seed),
                         '--output', str(directory / 'removal.json')],
-            'fit': [str(trainer), 'nnue', 'fit-linear', '--base', str(train / 'nnue.bin'),
-                    '--data', *map(str, books), '--tau', *map(str, args.fit_tau),
-                    '--seed', str(args.fit_seed), '--threads', str(args.fit_threads),
-                    '--output-dir', str(directory / 'fit')],
         }
+        if args.fit == 'yes':
+            commands['fit'] = [str(trainer), 'nnue', 'fit-linear', '--base', str(train / 'nnue.bin'),
+                               '--data', *map(str, current_books), '--tau', *map(str, args.fit_tau),
+                               '--seed', str(args.fit_seed), '--threads', str(args.fit_threads),
+                               '--output-dir', str(directory / 'fit')]
+        return commands
 
     def training_complete(self, generation: int) -> bool:
         directory = self.root / f'gen-{generation}'
-        return all((directory / name).is_file() for name in
-                   ('train/summary.json', 'removal.json', 'fit/summary.json'))
+        summaries = ['train/summary.json', 'removal.json']
+        if self.args.fit == 'yes':
+            summaries.append('fit/summary.json')
+        return all((directory / name).is_file() for name in summaries)
 
     def receive_training(self, generation: int) -> None:
-        """全成果物を取得してから、補正結果を最後に移して世代の完了を公開する。"""
+        """必要な成果物を取得してから移し、最後の移動で学習の完了を公開する。"""
         if self.address is None:
             raise ChainStop('学習結果を取得する生成機がありません')
         directory = self.root / f'gen-{generation}'
@@ -569,18 +603,22 @@ class Chain:
             common.rsync_to(*self.address, f'{REMOTE}/training/gen-{generation}/', received)
         except (OSError, subprocess.SubprocessError) as error:
             raise TransportFailure('生成機からの学習結果の取得に失敗しました') from error
-        for name in ('train/summary.json', 'removal.json', 'fit/summary.json'):
+        artifacts = ['train', 'removal.json']
+        if self.args.fit == 'yes':
+            artifacts.append('fit')
+        for artifact in artifacts:
+            name = artifact if artifact == 'removal.json' else artifact + '/summary.json'
             if not (received / name).is_file():
                 raise ChainStop(f'第{generation}世代の学習結果がそろっていません: {name}。'
                                 '本は作業機にあるので、--train-place localで再開できます')
-        # 古い補正結果が残っていても、移動の途中で完了と判定しない。
-        for name in ('train', 'removal.json', 'fit'):
+        # 古い成果物が残っていても、移動の途中で完了と判定しない。
+        for name in artifacts:
             destination = directory / name
             if destination.is_dir():
                 shutil.rmtree(destination)
             elif destination.exists():
                 destination.unlink()
-        for name in ('train', 'removal.json', 'fit'):
+        for name in artifacts:
             os.replace(received / name, directory / name)
         shutil.rmtree(received)
 
@@ -591,6 +629,8 @@ class Chain:
         resume = '本は作業機にあるので、--train-place localで再開できます'
         if self.address is None:
             raise ChainStop(f'学習できる生成機がありません。{resume}')
+        base = self.training_base(generation)
+        training_books = self.training_books(generation)
         directory = Path(REMOTE) / 'training' / f'gen-{generation}'
         teacher = Path(REMOTE) / 'teacher' / f'gen-{generation}'
         logs = self.root / f'gen-{generation}/training-logs'
@@ -608,24 +648,26 @@ class Chain:
                     self.upload(Path(__file__).with_name('generation_worker.py'), REMOTE + '/generation_worker.py.tmp')
                     self.ssh(f'mv {REMOTE}/generation_worker.py.tmp {REMOTE}/generation_worker.py', 60)
                     if not self.remote_exists(str(directory / 'job.json')):
-                        self.ssh(f'mkdir -p {directory} {teacher}', 60)
+                        self.ssh(f'mkdir -p {directory}', 60)
                         try:
-                            common.rsync_push(*self.address, self.root / f'gen-{generation}/teacher', str(teacher))
+                            for source in dict.fromkeys(path.parent for path in training_books):
+                                destination = Path(REMOTE) / 'teacher' / source.parent.name
+                                self.ssh(f'mkdir -p {destination}', 60)
+                                common.rsync_push(*self.address, source, str(destination))
                         except (OSError, subprocess.SubprocessError) as error:
                             raise TransportFailure('生成機への教師の転送に失敗しました') from error
-                        base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
-                        if not base.is_file():
-                            raise ChainStop(f'学習の初期値がありません: {base}')
                         self.upload(base, str(directory / 'base.bin'))
                         commands = self.training_commands(
                             Path(REMOTE) / 'minase/target/release/minase-trainer',
+                            [Path(REMOTE) / 'teacher' / path.parent.parent.name / path.name
+                             for path in training_books],
                             [teacher / f'book-{number}.mnsd' for number in sorted(books)],
                             directory / 'base.bin', directory)
                         steps = [{'name': 'build',
                                   'command': ['cargo', 'build', '--release', '--locked', '--bin', 'minase-trainer'],
                                   'done': None, 'clean': None, 'resume_file': None, 'resume_args': None}]
-                        for name, done in (('train', 'train/summary.json'), ('removal', 'removal.json'),
-                                           ('fit', 'fit/summary.json')):
+                        for name in commands:
+                            done = 'removal.json' if name == 'removal' else f'{name}/summary.json'
                             steps.append({'name': name, 'command': commands[name], 'done': str(directory / done),
                                           'clean': str(directory / name) if name in ('train', 'fit') else None,
                                           'resume_file': str(directory / 'train/latest.npz') if name == 'train' else None,
@@ -666,13 +708,11 @@ class Chain:
         directory = self.root / f'gen-{generation}'
         train = directory / 'train'
         train.mkdir(parents=True, exist_ok=True)
-        books = self.book_paths(generation)
-        base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
-        commands = self.training_commands(args.trainer_bin, books, base, directory)
+        base = self.training_base(generation)
+        commands = self.training_commands(args.trainer_bin, self.training_books(generation),
+                                          self.book_paths(generation), base, directory)
         summary = train / 'summary.json'
         if not summary.is_file():
-            if not base.is_file():
-                raise ChainStop(f'学習の初期値がありません: {base}')
             command = commands['train']
             if (train / 'latest.npz').is_file():
                 command.extend(['--resume', str(train)])
@@ -696,8 +736,9 @@ class Chain:
             # fit-linearは空でない出力先を拒否し、完了時にsummary.jsonを書くため、未完了の出力を消す。
             if fit.exists():
                 shutil.rmtree(fit)
-            base = self.root / ('base.bin' if generation == 1 else f'gen-{generation - 1}/fit/nnue.bin')
-            command = self.training_commands(args.trainer_bin, self.book_paths(generation), base, directory)['fit']
+            base = self.root / 'base.bin' if generation == 1 else self.network_path(generation - 1)
+            books = self.book_paths(generation)
+            command = self.training_commands(args.trainer_bin, books, books, base, directory)['fit']
             with (directory / 'fit.log').open('a') as log:
                 self.children.run(command, cwd=args.worktree, stdout=log, stderr=subprocess.STDOUT,
                                   preexec_fn=low_priority)
@@ -711,12 +752,12 @@ class Chain:
                             '継続には利用者の判断が必要です')
         return result
 
-    def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int], d: float) -> None:
-        fitted = self.root / f'gen-{generation}/fit/nnue.bin'
+    def commit_generation(self, generation: int, summary: dict[str, Any], books: dict[int, int], d: float | None) -> None:
+        network = self.network_path(generation)
         data = self.children.run(['git', '-C', str(self.args.worktree), 'show', f'HEAD:{NETWORK}'],
                                  stdout=subprocess.PIPE).stdout
-        if data != fitted.read_bytes():
-            shutil.copyfile(fitted, self.args.worktree / NETWORK)
+        if data != network.read_bytes():
+            shutil.copyfile(network, self.args.worktree / NETWORK)
             try:
                 self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree,
                                   preexec_fn=low_priority)
@@ -726,10 +767,13 @@ class Chain:
                 self.git('checkout', 'HEAD', '--', NETWORK)
                 raise
             self.git('add', '--', NETWORK)
+            body = f'教師{len(books)}本、{sum(books.values())}局面、最良エポック{summary["best_epoch"]}'
+            if self.args.fit == 'yes':
+                body += f'、D={d:.6f}'
             self.git('commit', '-m', f'feat(eval): embed the NNUE of generation {generation}',
-                     '-m', f'教師{len(books)}本、{sum(books.values())}局面、最良エポック{summary["best_epoch"]}、D={d:.6f}。',
+                     '-m', body + '。',
                      '-m', 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>', '--', NETWORK)
-        self.git('update-ref', reference(generation), 'HEAD')
+        self.git('update-ref', self.reference(generation), 'HEAD')
 
     def destroy(self) -> bool:
         if self.instance_id is None:
@@ -774,7 +818,7 @@ class Chain:
             checksum = self.checksum(commit)
             books = self.books(self.current, commit, checksum)
             # 学習開始後に教師を増やすと、再開時の入力が変わる。
-            if sum(books.values()) >= self.args.positions_per_generation:
+            if len(books) >= self.args.books_per_generation:
                 return
             try:
                 self.fetch(self.current)
@@ -790,16 +834,15 @@ class Chain:
         if path.is_file():
             self.instance_id = int(path.read_text())
         gen0 = self.git('rev-parse', '--verify', '--end-of-options', self.args.gen0_commit + '^{commit}')
-        self.git('update-ref', reference(0), gen0)
+        self.git('update-ref', self.reference(0), gen0)
         for generation in range(self.args.first_generation):
             if self.commit_for(generation) is None:
                 raise ChainStop(f'開始世代より前の第{generation}世代のコミット参照がありません')
         pending = [generation for generation in range(self.args.first_generation, self.args.last_generation + 1)
                    if self.commit_for(generation) is None]
         if pending:
-            needs_generation = any(sum(self.recorded_positions(generation, book_number(path))
-                                       for path in self.book_paths(generation))
-                                   < self.args.positions_per_generation for generation in pending)
+            needs_generation = any(len(self.book_paths(generation)) < self.args.books_per_generation
+                                   for generation in pending)
             self.prepare_machine(pending, needs_generation)
         for generation in pending:
             self.current = generation
@@ -817,8 +860,8 @@ class Chain:
                     raise ChainStop(f'生成機 {self.instance_id} の停止も削除も確認できません。'
                                     '管理画面で停止と課金状態を確認してください')
             summary = self.train(generation)
-            fit = self.fit(generation)
-            self.commit_generation(generation, summary, books, fit['decision']['d'])
+            d = self.fit(generation)['decision']['d'] if self.args.fit == 'yes' else None
+            self.commit_generation(generation, summary, books, d)
         self.manage_remote = False
         if not self.destroy():
             raise ChainStop(f'世代の作成は終了しましたが、生成機 {self.instance_id} の削除が未確認です。'
@@ -878,21 +921,26 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         run.add_argument('--' + name, required=True, type=absolute_path, help='配置先の絶対パス')
     for name in ('minase-bin', 'trainer-bin'):
         run.add_argument('--' + name, required=True, type=lambda value: Path(value).resolve(), help='固定した実行ファイルのパス')
-    for name in ('gen0-commit', 'feature-set', 'head', 'device', 'lr-schedule', 'image', 'cpu-pattern'):
+    for name in ('gen0-commit', 'ref-prefix', 'feature-set', 'head', 'device', 'lr-schedule', 'image', 'cpu-pattern'):
         run.add_argument('--' + name, required=True, help='実行条件を明示する')
-    for name in ('first-generation', 'last-generation', 'positions-per-generation', 'books-estimate', 'games', 'nodes',
-                 'max-ply', 'hash-mb', 'max-books', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
-                 'validation-interval', 'train-threads', 'fit-threads', 'removal-sample', 'bench-depth',
+    for name in ('first-generation', 'last-generation', 'books-per-generation', 'games', 'nodes',
+                 'max-ply', 'hash-mb', 'calibration-books', 'width', 'batch', 'epochs', 'patience',
+                 'train-threads', 'removal-sample', 'bench-depth',
                  'disk', 'min-cpu-cores'):
         run.add_argument('--' + name, required=True, type=positive_int, help='正の整数')
     for name in ('random-moves', 'seed-base', 'seed-generation-step', 'seed-book-step', 'train-seed',
-                 'removal-seed', 'fit-seed'):
+                 'removal-seed'):
         run.add_argument('--' + name, required=True, type=nonnegative_int, help='0以上の整数')
     for name in ('max-price', 'min-duration-days', 'min-reliability', 'min-inet-up', 'min-disk', 'book-minutes',
                  'deadline-margin', 'training-wait-hours', 'idle-limit-hours', 'poll-seconds', 'book-stall-minutes',
-                 'ssh-failure-minutes'):
+                 'ssh-failure-minutes', 'lr-linear'):
         run.add_argument('--' + name, required=True, type=positive_float, help='正の有限値')
-    run.add_argument('--fit-tau', required=True, nargs='+', type=positive_float, help='1個以上の正の有限値')
+    run.add_argument('--window', required=True, type=int, choices=(1, 2), help='学習に使う教師の世代数')
+    run.add_argument('--validation-interval', required=True, type=int, help='0以上の整数。0は途中検証なし')
+    run.add_argument('--fit', required=True, choices=('yes', 'no'), help='線形の経路を補正するか')
+    run.add_argument('--fit-tau', nargs='+', type=positive_float, help='補正する場合に必要な1個以上の正の有限値')
+    run.add_argument('--fit-seed', type=nonnegative_int, help='補正する場合に必要な0以上の整数')
+    run.add_argument('--fit-threads', type=positive_int, help='補正する場合に必要な正の整数')
     run.add_argument('--lambda', dest='mix', required=True, type=float, help='探索値の割合。0以上1以下')
     run.add_argument('--export-epoch', required=True, choices=('best', 'last'),
                      help='nnue.binへ書き出すエポック。bestは検証損失が最良、lastは最後に完了したエポック。'
@@ -901,16 +949,30 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     run.add_argument('--train-place', required=True, choices=('generator', 'local'),
                      help='学習・診断・補正をgeneratorでは生成機、localでは作業機で行う。障害後の作業機での再開はlocalを指定する')
     args = parser.parse_args(argv)
+    prefix = args.ref_prefix
+    if (not prefix.startswith('refs/') or prefix.endswith('/')
+            or any(not part or part.startswith('.') or part.endswith('.lock') for part in prefix.split('/'))
+            or '..' in prefix or '@{' in prefix
+            or any(character.isspace() for character in prefix)
+            or re.search(r'[\x00-\x20\x7f~^:?*\[\\]', prefix)):
+        parser.error('ref-prefixはrefs/で始まり、末尾に/のない有効なGit参照の接頭辞にしてください')
+    for name in ('fit_tau', 'fit_seed', 'fit_threads'):
+        if args.fit == 'yes' and not hasattr(args, name):
+            parser.error('--fit yesには--' + name.replace('_', '-') + 'が必要です')
+        if args.fit == 'no' and hasattr(args, name):
+            parser.error('--fit noでは--' + name.replace('_', '-') + 'を指定できません')
     if args.first_generation > args.last_generation:
         parser.error('first-generationはlast-generation以下にしてください')
+    if args.validation_interval < 0:
+        parser.error('validation-intervalは0以上にしてください')
     if not math.isfinite(args.mix) or not 0 <= args.mix <= 1:
         parser.error('lambdaは0以上1以下の有限値にしてください')
-    if args.books_estimate > args.max_books or args.calibration_books > args.max_books:
-        parser.error('books-estimateとcalibration-booksはmax-books以下にしてください')
+    if args.calibration_books > args.books_per_generation:
+        parser.error('calibration-booksはbooks-per-generation以下にしてください')
     if args.min_reliability > 1:
         parser.error('min-reliabilityは1以下にしてください')
     if (args.seed_base + args.seed_generation_step * args.last_generation
-            + args.seed_book_step * (args.max_books - 1) >= 2**64):
+            + args.seed_book_step * (args.books_per_generation - 1) >= 2**64):
         parser.error('計算したシードが2^64以上です')
     try:
         re.compile(args.cpu_pattern)

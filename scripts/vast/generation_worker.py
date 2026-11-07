@@ -101,6 +101,7 @@ def next_book(job: dict[str, Any], root: Path) -> int | None:
 
 def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
     """bundleから指定コミットを展開し、起動後の最初の本の前にビルドする。"""
+    reference = job['reference']
     repository = root / 'minase'
     if not repository.exists():
         subprocess.run(['git', 'init', str(repository)], check=True, stdout=log, stderr=subprocess.STDOUT)
@@ -109,7 +110,6 @@ def prepare_commit(root: Path, job: dict[str, Any], log: Any) -> Path:
     if head.returncode not in (0, 1, 128):
         head.check_returncode()
     if head.returncode or head.stdout.strip() != job['commit']:
-        reference = f'refs/nnue-generation-reset/gen-{job["generation"] - 1}'
         subprocess.run(['git', 'fetch', job['bundle'], reference], cwd=repository,
                        check=True, stdout=log, stderr=subprocess.STDOUT)
         subprocess.run(['git', 'checkout', '--detach', job['commit']], cwd=repository,
@@ -262,6 +262,8 @@ def run_worker(root: Path) -> int:
             path = root / 'job.json'
             if path.is_file():
                 job = json.loads(path.read_text())
+                if 'reference' not in job:
+                    raise ValueError('生成のジョブにreferenceがありません')
                 number = next_book(job, root)
                 if number is not None:
                     prepared = generate_book(root, job, number, prepared)

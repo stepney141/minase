@@ -126,7 +126,7 @@
 | NNUEの世代反復をv0からやり直す | [plans/archived/nnue-generation-reset.md](plans/archived/nnue-generation-reset.md) | 中断 | 2026年11月6日 |
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
-| NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 起案 | |
+| NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 待機中 | |
 
 ## 現在地
 
@@ -143,7 +143,7 @@
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
-- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は起案済みで、着手は利用者の指示を待つ。中断した系列の教師で、線形の経路の学習率、補正の要否、および直前の世代の教師の併用を対局で決めてから、1世代を教師37本と定めてv0から世代反復をやり直す。第1世代は、中断した系列でv0が生成した26本を使い、11本だけを足す。
+- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。中断した系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 #### 評価関数（NNUE）
