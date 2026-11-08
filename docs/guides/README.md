@@ -35,6 +35,6 @@
 
 | 手引き | 内容 | 読むとき |
 |---|---|---|
-| [alphazero-rl.md](alphazero-rl.md) | 深層強化学習のサイクルを起動し、経過を確かめ、止めて再開する手順と、定例の測定 | 強化学習を回すとき（最初に読む） |
+| [alphazero-rl.md](alphazero-rl.md) | 深層強化学習の標準レシピ、サイクルの起動、経過の確認、定例の測定、止めて再開する手順、およびオプションの一覧 | 強化学習を回すとき（最初に読む）、引数を調べるとき |
 | [alphazero-machines.md](alphazero-machines.md) | GPUの機械を借りて環境を導入し、計算を実行して返すまでの操作 | 機械を手で操作するとき、新しいGPU種別やレンタル機を試すとき |
 | [alphazero-network-check.md](alphazero-network-check.md) | PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を照合する手順 | ネットの大きさを変えたとき、照合が不合格になったとき |
