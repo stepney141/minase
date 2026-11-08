@@ -28,8 +28,8 @@ STCは145ペアで`H1`となった（[STC](../measurements/mcts-royal-capture-te
 LTCは、2026年11月8日の利用者の決定（「LTCも多分合格する気がするのでこのまま次のフェーズに進んで欲しい」）により行わず、STCの`H1`をもって採用とした。
 これは、[SPRTの手引き](../guides/sprt.md)の「採用の決定はLTCの判定だけが下す」という規則の、利用者の判断による例外である。
 LTCの条件の2ペアのスモークテストだけは行い、時間切れとエンジンの異常はなかった（記録は`mcts-royal-capture-temperature-royal-ltc`のディレクトリの`smoke.out`）。
-フェーズ2では、`PolicyTemperature`の実装をcodexへ委任した。
-次の一手は、実装を検証してコミットし、そのコミットで温度1.0、1.4、および1.74の固定ノードの対局を行うことである。
+フェーズ2では、`PolicyTemperature`を実装し、2026年11月8日19時41分から温度1.0、1.4、および1.74の固定ノードの対局（測定名`mcts-royal-capture-temperature-t100-ladder`、`-t140-ladder`、および`-t174-ladder`）を順に行っている。
+次の一手は、3条件の結果から段階ゲートにかける値を1つ選ぶことである。
 
 ## 目的
 
