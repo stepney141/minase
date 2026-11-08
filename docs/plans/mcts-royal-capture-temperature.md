@@ -28,8 +28,10 @@ STCは145ペアで`H1`となった（[STC](../measurements/mcts-royal-capture-te
 LTCは、2026年11月8日の利用者の決定（「LTCも多分合格する気がするのでこのまま次のフェーズに進んで欲しい」）により行わず、STCの`H1`をもって採用とした。
 これは、[SPRTの手引き](../guides/sprt.md)の「採用の決定はLTCの判定だけが下す」という規則の、利用者の判断による例外である。
 LTCの条件の2ペアのスモークテストだけは行い、時間切れとエンジンの異常はなかった（記録は`mcts-royal-capture-temperature-royal-ltc`のディレクトリの`smoke.out`）。
-フェーズ2では、`PolicyTemperature`を実装し、2026年11月8日19時41分から温度1.0、1.4、および1.74の固定ノードの対局（測定名`mcts-royal-capture-temperature-t100-ladder`、`-t140-ladder`、および`-t174-ladder`）を順に行っている。
-次の一手は、3条件の結果から段階ゲートにかける値を1つ選ぶことである。
+フェーズ2では、`PolicyTemperature`を実装し、温度1.0、1.4、および1.74の固定ノードの対局で、Eloの点推定がそれぞれ+3.5、+56.1、および+50.7となった（[温度1.0](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t100-ladder.md)、[1.4](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t140-ladder.md)、[1.74](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t174-ladder.md)）。
+温度1.0の結果はフェーズ1の固定ノードの対局と一致した。
+点推定が最も高い1.4を段階ゲートの候補とし、本ブランチの先端から切ったブランチ`mcts-policy-temperature-140`で既定値を140にしたコミットを作っている。
+次の一手は、そのコミットを本ブランチの先端に対してSTCにかけることである。
 
 ## 目的
 
