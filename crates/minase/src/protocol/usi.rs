@@ -804,7 +804,7 @@ impl UsiProtocol {
     /// ```
     ///
     /// 上の探索オプションはαβ探索の場合である。MCTSは`Threads`の上限を1とし、
-    /// `NnBackend`、`NnCacheDir`、`NnBatchSize`を続ける。空の文字列は`<empty>`と表記する。
+    /// `NnBackend`、`NnCacheDir`、`NnBatchSize`、`PolicyTemperature`を続ける。空の文字列は`<empty>`と表記する。
     /// αβ探索の`tuning`ビルドだけ係数表の順に`option name Tune_<名前> type spin default <既定値> min <最小> max <最大>`を続け、
     /// 最後に`usiok`を出す。オプション名と範囲の変更は互換性を壊す変更として扱う。
     /// 時間予算が値に依存しないため`USI_Ponder`は宣言しない。
@@ -900,6 +900,7 @@ impl UsiProtocol {
     /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
     /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
     /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
+    /// `PolicyTemperature`は方策の温度の100倍を表す10〜1,000の整数で、変更すると木を捨てる。
     /// `ResignValue`はASCII数字だけの1〜99,999、`ByoyomiMargin`はASCII数字だけの0〜60,000 msである。
     /// この2値は先頭ゼロを許すが、符号、小数点、指数表記を許さない。
     /// `DrawValueBlack`と`DrawValueWhite`は先頭の`-`を1つ許すASCII数字の列で、絶対値が28,999以下である。
@@ -918,6 +919,7 @@ impl UsiProtocol {
     /// | `NnBackend` | `NnBackend requires a value`を返す。 | `invalid NnBackend value '<値>'`を返す。 |
     /// | `NnCacheDir` | `NnCacheDir requires a value`を返す。 | 文字列として受理する。 |
     /// | `NnBatchSize` | `NnBatchSize requires a value`を返す。 | `NnBatchSize must be an integer from 1 to 1024`を返す。 |
+    /// | `PolicyTemperature` | `PolicyTemperature requires a value`を返す。 | `PolicyTemperature must be an integer from 10 to 1000`を返す。 |
     /// | `ResignValue` | `missing ResignValue value`を返す。 | `invalid ResignValue value`を返す。 |
     /// | `ByoyomiMargin` | `missing ByoyomiMargin value`を返す。 | `invalid ByoyomiMargin value`を返す。 |
     /// | `DrawValueBlack` | `missing DrawValueBlack value`を返す。 | `invalid DrawValueBlack value`を返す。 |
