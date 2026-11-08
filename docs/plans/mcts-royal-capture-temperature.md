@@ -31,10 +31,12 @@ LTCの条件の2ペアのスモークテストだけは行い、時間切れと�
 フェーズ2では、`PolicyTemperature`を実装し、温度1.0、1.4、および1.74の固定ノードの対局で、Eloの点推定がそれぞれ+3.5、+56.1、および+50.7となった（[温度1.0](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t100-ladder.md)、[1.4](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t140-ladder.md)、[1.74](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t174-ladder.md)）。
 温度1.0の結果はフェーズ1の固定ノードの対局と一致した。
 点推定が最も高い1.4を段階ゲートの候補とし、本ブランチの先端から切ったブランチ`mcts-policy-temperature-140`で既定値を140にしたコミットを作っている。
-2026年11月8日21時41分に、利用者の承認を得て、そのコミットを本ブランチのコミットdb685ca9に対するSTC（測定名`mcts-royal-capture-temperature-temperature-stc`、シード20261108600000、同時対局数2）にかけた。
-利用者は同時に、STCが`H1`ならLTCを省いて採用すると決めた（「STCを始めてください。STCでH1だったら採用していいです」）。
-候補1と同じく、SPRTの手引きの規則の利用者の判断による例外である。
-次の一手は、STCの判定を待ち、`H1`なら候補2のブランチを本ブランチへ取り込むことである。
+2026年11月8日21時41分から、そのコミットをコミットdb685ca9に対するSTCにかけ、111ペアで`H1`となった（[STC](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)、得点率71.1%）。
+利用者は開始の時点で、STCが`H1`ならLTCを省いて採用すると決めていた（「STCを始めてください。STCでH1だったら採用していいです」）ので、候補2も採用とし、候補のブランチを本ブランチへマージした。
+フェーズ3では、2つの決定をADR（[判定](../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度](../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）へ移し、[強化学習の実行の設計書](alphazero-rl.md)の再開の手順に自己対局の探索が変わることを書き加えた。
+αβ探索の深さ6のbenchは、15局面すべてでmasterと一致した。
+いまは、masterへのマージの許可を利用者に求めている。
+次の一手は、許可を得て本書を凍結し、masterへマージすることである。
 
 ## 目的
 
