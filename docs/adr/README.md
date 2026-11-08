@@ -361,3 +361,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月5日 [ビルドのLLVMインライン閾値を1000へ上げる](raise-the-llvm-inline-threshold-to-1000.md)
 - 2026年11月5日 [探索内の反復検出は、対局履歴のビットフィルタを通してから線形走査で行う](filter-the-game-history-before-the-repetition-scan.md)
 - 2026年11月5日 [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)
+- 2026年11月8日 [MCTSは、新しい節点の手番側が相手の最後の王駒を取れるなら、反復の近似より前に1手の勝ちに確定させる](prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)
+- 2026年11月9日 [対局用MCTSは、ネットの方策のlogitを温度1.4で割ってからPUCTの事前確率を作る](divide-mcts-policy-logits-by-a-temperature-of-1-4.md)
