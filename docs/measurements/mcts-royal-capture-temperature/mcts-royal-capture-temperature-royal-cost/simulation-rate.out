@@ -1,0 +1,18 @@
+round 1 base
+batch 16 clock: nodes median 2182.0 min 1898 max 2358; time median 148.0 ms; simulations per second median 14509
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 58.0 ms; simulations per second median 13793
+round 1 candidate
+batch 16 clock: nodes median 2144.0 min 2042 max 2422; time median 147.5 ms; simulations per second median 14637
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 58.0 ms; simulations per second median 13797
+round 2 base
+batch 16 clock: nodes median 2160.0 min 2026 max 2406; time median 147.5 ms; simulations per second median 14648
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 58.5 ms; simulations per second median 13676
+round 2 candidate
+batch 16 clock: nodes median 2144.0 min 2010 max 2422; time median 147.5 ms; simulations per second median 14631
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 57.5 ms; simulations per second median 13914
+round 3 base
+batch 16 clock: nodes median 2145.0 min 2026 max 2358; time median 148.0 ms; simulations per second median 14493
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 59.0 ms; simulations per second median 13559
+round 3 candidate
+batch 16 clock: nodes median 2168.0 min 2026 max 2374; time median 147.5 ms; simulations per second median 14493
+batch 16 nodes800: nodes median 800.0 min 800 max 800; time median 57.5 ms; simulations per second median 13914

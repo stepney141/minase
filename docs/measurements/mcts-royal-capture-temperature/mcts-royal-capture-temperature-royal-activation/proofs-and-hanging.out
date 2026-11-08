@@ -1,0 +1,11 @@
+2026-11-08T12:56:00+09:00
+MCTS stop reasons: {'soft': 23044, 'depth': 7}
+root stopped with a claimed win of at least 20000 cp: 1 games 1 of which the MCTS side won: 0
+examples (pair, ply, game length, MCTS won): [('00065.json', 9, 215, False)]
+royal-capture losses: 123; final MCTS win probability median 0.027; share >= 0.5 0.042; share >= 0.2 0.143
+material for MCTS at the final move: median -103
+control: the detector marks 123 of 123 actual final moves
+positions 123; forced loss seen by alpha-beta at depth 8: 55; not forced: 68
+nodes 2000: leaves the royal capturable in 34 of 123; among the positions without a forced loss 0 of 68; root proven lost 41; simulations median 2000, stopped before the limit 41
+nodes 20000: leaves the royal capturable in 35 of 123; among the positions without a forced loss 0 of 68; root proven lost 47; simulations median 20000, stopped before the limit 47
+2026-11-08T12:58:15+09:00

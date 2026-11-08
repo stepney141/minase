@@ -7,6 +7,42 @@ use crate::search::{MATE, MATE_THRESHOLD, MAX_PLY, REPETITION_WIN, in_repetition
 use minase_core::test_util::{position, sq};
 use minase_core::{Game, GameStatus, PieceKind, RepetitionRule, Rules};
 
+const WIN_IN_ONE: NodeState = NodeState::Proven(Proof {
+    outcome: Outcome::Win,
+    distance: 1,
+    repetition: false,
+    approximate: false,
+});
+
+// 第21条第1項・第5項の神託。補題を呼ばず、審判が受理した捕獲手の結果を調べる。
+fn has_royal_capture(game: &Game) -> bool {
+    game.legal_moves().into_iter().any(|mv| {
+        game.clone().play(mv).unwrap()
+            == win(game.position().side_to_move(), WinReason::RoyalCapture)
+    })
+}
+
+// 黒王の合法手は3手で、(1, 1)へ進む手だけが白角に取られる（第8条）。
+fn exposed_king_game() -> (Game, Move) {
+    (
+        Game::from_position(
+            Rules {
+                e1: true,
+                ..rules(RepetitionRule::R1)
+            },
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), Color::Black, PieceKind::King),
+                    (sq(3, 3), Color::White, PieceKind::Bishop),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                ],
+            ),
+        ),
+        step(sq(0, 0), sq(1, 1)),
+    )
+}
+
 fn advance(driver: &mut Driver, evaluator: &mut dyn crate::nn::Evaluator) -> Option<Vec<usize>> {
     match driver
         .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
@@ -46,6 +82,235 @@ fn last_royal_capture_is_proven_without_evaluating_the_child() {
     assert_eq!(driver.tree().best_move(), Some(mv));
     assert_eq!(driver.tree().principal_variation(), [mv]);
     assert_eq!(driver.tree().node(&[0]).unwrap().value, None);
+}
+
+// 第20条・第21条第5項: 2枚の王駒を別々に取れるだけでは1手の勝ちにならない。
+#[test]
+fn royal_capture_in_one_requires_both_royals_in_a_single_lion_move() {
+    use minase_core::PieceCode;
+    use minase_core::test_util::position_from_codes;
+    for (king, prince, expected) in [(sq(5, 6), sq(6, 6), true), (sq(4, 7), sq(6, 7), false)] {
+        let game = Game::from_position(
+            Rules {
+                e1: true,
+                ..rules(RepetitionRule::R1)
+            },
+            position_from_codes(
+                Color::White,
+                &[
+                    (
+                        sq(0, 0),
+                        PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                    ),
+                    (
+                        sq(5, 5),
+                        PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+                    ),
+                    (king, PieceCode::new(Color::White, PieceKind::King).unwrap()),
+                    (
+                        prince,
+                        PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
+                    ),
+                    (
+                        sq(11, 6),
+                        PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                    ),
+                ],
+            ),
+        );
+        let mv = step(sq(11, 6), sq(11, 5));
+        let mut next = game.clone();
+        assert_eq!(next.play(mv), Ok(GameStatus::Ongoing));
+        assert_eq!(has_royal_capture(&next), expected);
+        let driver = check_transition(&game, mv, GameStatus::Ongoing);
+        let child = driver.tree().node(&[0]).unwrap();
+        assert_eq!(child.state == WIN_IN_ONE, expected);
+        if expected {
+            assert!(child.edges.is_empty());
+            assert_eq!(child.value, None);
+            assert_eq!(driver.score(SCALE).unwrap(), -(MATE - 2));
+        } else {
+            assert_eq!(child.state, NodeState::Expanded);
+        }
+    }
+}
+
+#[test]
+fn royal_capture_in_one_precedes_a_repetition_loss() {
+    let mut game = Game::from_position(
+        Rules {
+            e1: true,
+            ..rules(RepetitionRule::R1)
+        },
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(3, 3), Color::Black, PieceKind::Rook),
+                (sq(8, 8), Color::White, PieceKind::Rook),
+                (sq(3, 9), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    let cycle = [
+        step(sq(3, 3), sq(3, 4)),
+        step(sq(8, 8), sq(8, 7)),
+        step(sq(3, 4), sq(3, 3)),
+        step(sq(8, 7), sq(8, 8)),
+    ];
+    for &mv in &cycle[..3] {
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+    }
+    let mut next = game.clone();
+    assert_eq!(next.play(cycle[3]), Ok(GameStatus::Ongoing));
+    assert!(has_royal_capture(&next));
+    let driver = check_transition(&game, cycle[3], GameStatus::Ongoing);
+    // この局面には実際に反復の近似が適用され、黒の連続王手による負けになる。
+    assert_eq!(
+        driver.repetition(
+            next.position(),
+            &[repetition_key(RepetitionRule::R1, game.position())],
+            &cycle[3..],
+        ),
+        Some(proven(Outcome::Loss, true, true))
+    );
+    assert_eq!(driver.tree().node(&[0]).unwrap().state, WIN_IN_ONE);
+    assert!(!driver.tree().root().has_approximate_result());
+    assert_eq!(driver.score(SCALE).unwrap(), -(MATE - 2));
+}
+
+#[test]
+fn royal_capture_in_one_at_the_depth_limit_still_requests_evaluation() {
+    let (game, mv) = exposed_king_game();
+    let mut next = game.clone();
+    assert_eq!(next.play(mv), Ok(GameStatus::Ongoing));
+    assert!(has_royal_capture(&next));
+    let mut input = SearchSnapshot::from_game(&game).unwrap();
+    input.root_moves = vec![mv];
+    let mut driver = Driver::new(input, CAPACITY, DrawValue::SelfPlay).unwrap();
+    driver.tree.depth_limit = 1;
+    advance(&mut driver, &mut UniformEvaluator);
+    let Step::Evaluate(request) = driver
+        .select_leaf(SelectionRule::Puct(&PuctConfig::default()))
+        .unwrap()
+    else {
+        panic!("the depth-limit leaf must request evaluation even with a royal capture");
+    };
+    assert_eq!(request.path, [0]);
+    assert_eq!(request.query().position, next.position());
+    assert!(request.query().moves.is_empty());
+    assert_eq!(
+        driver.tree().node(&[0]).unwrap().state,
+        NodeState::Pending { unexpanded: true }
+    );
+    evaluate(&mut driver, &mut UniformEvaluator, &request);
+    let child = driver.tree().node(&[0]).unwrap();
+    assert_eq!(child.state, NodeState::Unexpanded);
+    assert_eq!(child.value, Some(0.5));
+    assert!(child.edges.is_empty());
+    assert_eq!(driver.tree().root().state, NodeState::Expanded);
+}
+
+#[test]
+fn puct_never_revisits_the_only_move_allowing_royal_capture() {
+    let (game, losing) = exposed_king_game();
+    let legal = game.legal_moves();
+    let capturable: Vec<_> = legal
+        .iter()
+        .copied()
+        .filter(|&mv| {
+            let mut next = game.clone();
+            assert_eq!(next.play(mv), Ok(GameStatus::Ongoing));
+            has_royal_capture(&next)
+        })
+        .collect();
+    assert_eq!(legal.len(), 3);
+    assert_eq!(capturable, [losing]);
+    let mut driver = Driver::new(
+        SearchSnapshot::from_game(&game).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    let index = driver
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .position(|edge| edge.mv == losing)
+        .unwrap();
+    // 一様な方策・価値で全3辺を1回ずつ訪問する。
+    for _ in 0..=legal.len() {
+        advance(&mut driver, &mut UniformEvaluator);
+    }
+    assert_eq!(driver.tree().root().edges[index].visits, 1);
+    for _ in 0..64 {
+        advance(&mut driver, &mut UniformEvaluator);
+        assert_eq!(
+            driver.tree().root().edges[index].visits,
+            1,
+            "PUCT revisited the move allowing immediate royal capture"
+        );
+    }
+    let edge = &driver.tree().root().edges[index];
+    assert_eq!(edge.child.as_ref().unwrap().state, WIN_IN_ONE);
+    assert_eq!(edge.child.as_ref().unwrap().value, None);
+    assert_eq!(edge.q(), Some(0.0));
+    assert_ne!(driver.tree().best_move(), Some(losing));
+}
+
+#[test]
+fn puct_returns_a_move_when_every_move_allows_royal_capture() {
+    let game = Game::from_position(
+        Rules {
+            e1: true,
+            ..rules(RepetitionRule::R1)
+        },
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(0, 2), Color::White, PieceKind::Rook),
+                (sq(1, 2), Color::White, PieceKind::Rook),
+                (sq(11, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    );
+    let legal = game.legal_moves();
+    assert_eq!(legal.len(), 3);
+    for &mv in &legal {
+        let mut next = game.clone();
+        assert_eq!(next.play(mv), Ok(GameStatus::Ongoing));
+        assert!(has_royal_capture(&next));
+    }
+    let mut driver = Driver::new(
+        SearchSnapshot::from_game(&game).unwrap(),
+        CAPACITY,
+        DrawValue::SelfPlay,
+    )
+    .unwrap();
+    advance(&mut driver, &mut UniformEvaluator);
+    for _ in &legal {
+        assert_eq!(advance(&mut driver, &mut UniformEvaluator), None);
+    }
+    assert_eq!(
+        driver.tree().root().state,
+        NodeState::Proven(Proof {
+            outcome: Outcome::Loss,
+            distance: 2,
+            repetition: false,
+            approximate: false,
+        })
+    );
+    assert_eq!(driver.score(SCALE).unwrap(), -(MATE - 2));
+    assert!(legal.contains(&driver.tree().best_move().unwrap()));
+    for edge in &driver.tree().root().edges {
+        assert_eq!(edge.visits, 1);
+        assert_eq!(edge.child.as_ref().unwrap().state, WIN_IN_ONE);
+        assert_eq!(edge.q(), Some(0.0));
+    }
+    // 根が確定した後も、選べる辺がないというエラーにはしない。
+    assert_eq!(advance(&mut driver, &mut UniformEvaluator), None);
 }
 
 // R1は直近の周回の一方だけが攻撃を続けた場合に、その側の負けとする。
@@ -813,8 +1078,15 @@ fn check_transition(game: &Game, mv: Move, expected: GameStatus) -> Driver {
             }
         }
         GameStatus::Ongoing => {
+            let captures_royal = has_royal_capture(&oracle);
+            assert_eq!(child.state == WIN_IN_ONE, captures_royal);
+            if captures_royal {
+                assert!(!evaluated);
+                assert_eq!(child.value, None);
+                assert!(child.edges.is_empty());
+            }
             assert!(
-                evaluated || child.has_approximate_result(),
+                evaluated || captures_royal || child.has_approximate_result(),
                 "ongoing game classified as {:?}",
                 child.state
             );
@@ -1249,31 +1521,50 @@ fn seeded_games_match_the_referee_without_terminal_inference() {
     use std::num::{NonZeroU64, NonZeroUsize};
     let mut checked = 0;
     let mut terminal = 0;
-    for seed in [1, 17, 123, 20261028] {
-        let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
-        let mut game = Game::with_default_rules();
-        for _ in 0..600 {
-            let moves = game.legal_moves();
-            let mv = moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())];
-            let mut next = game.clone();
-            let expected = next.play(mv).unwrap();
-            if SearchSnapshot::from_game(&game)
-                .unwrap()
-                .root_moves()
-                .contains(&mv)
-            {
-                check_transition(&game, mv, expected);
+    let mut captures_in_one = 0;
+    let mut no_capture = 0;
+    for repetition in [RepetitionRule::R1, RepetitionRule::R2, RepetitionRule::R3] {
+        for seed in [1, 17, 123, 20261028] {
+            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
+            let mut game = Game::new(Rules {
+                repetition,
+                ..Rules::ENGINE_DEFAULT
+            });
+            for _ in 0..600 {
+                let moves = game.legal_moves();
+                let mv = moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())];
+                let mut next = game.clone();
+                let expected = next.play(mv).unwrap();
+                let driver = check_transition(&game, mv, expected);
+                if expected == GameStatus::Ongoing {
+                    if driver.tree().node(&[0]).unwrap().state == WIN_IN_ONE {
+                        captures_in_one += 1;
+                    } else {
+                        no_capture += 1;
+                    }
+                }
                 checked += 1;
-            }
-            game = next;
-            if matches!(expected, GameStatus::Finished(_)) {
-                terminal += 1;
-                break;
+                game = next;
+                if matches!(expected, GameStatus::Finished(_)) {
+                    terminal += 1;
+                    break;
+                }
             }
         }
     }
+    eprintln!(
+        "referee comparison: checked={checked}, terminal={terminal}, captures_in_one={captures_in_one}, no_capture={no_capture}"
+    );
     assert!(checked >= 600, "only {checked} plies checked");
     assert!(terminal > 0, "random coverage must include a terminal move");
+    assert!(
+        captures_in_one > 0,
+        "random coverage must include a win in one"
+    );
+    assert!(
+        no_capture > 0,
+        "random coverage must include a position without a win in one"
+    );
 }
 
 #[test]

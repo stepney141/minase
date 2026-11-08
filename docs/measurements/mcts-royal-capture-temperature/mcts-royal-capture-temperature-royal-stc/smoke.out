@@ -1,0 +1,56 @@
+2026-11-08T13:29:51+09:00
+resolving commit eb7e3081919af5d64facadd7b935c600bba042a8...
+cached: /home/stepney141/board-games/minase/target/match-cache/eb7e3081919af5d64facadd7b935c600bba042a8/minase
+resolving commit 4885ccb76ee79fde500f7a5055b771621c4734cf...
+building commit 4885ccb76ee79fde500f7a5055b771621c4734cf...
+cached: /home/stepney141/board-games/minase/target/match-cache/4885ccb76ee79fde500f7a5055b771621c4734cf/minase
+run_dir: data/matches/mcts-royal-capture-temperature-royal-smoke
+rules: L0,P0,R1,E0
+seed: 20261108100000
+max_ply: 4096
+candidate: commit:eb7e3081919af5d64facadd7b935c600bba042a8 limit=time=10000+100
+baseline: commit:4885ccb76ee79fde500f7a5055b771621c4734cf limit=time=10000+100
+response_timeout: 120 s
+pair 1: pair_seed=5256797937259090754 opening_seed=8835539486329315851 player_a=commit:eb7e3081919af5d64facadd7b935c600bba042a8 limit=time=10000+100 player_b=commit:4885ccb76ee79fde500f7a5055b771621c4734cf limit=time=10000+100 rules=L0,P0,R1,E0 max_ply=4096
+pair 1 opening: plies=10
+  1: move (10,3)->(10,4)
+  2: move (9,11)->(10,10)
+  3: move (2,0)->(3,1)
+  4: move (6,9)->(6,7)
+  5: move (5,2)->(4,4)
+  6: move (8,7)->(8,6)
+  7: move (8,4)->(8,5)
+  8: move (5,8)->(5,7)
+  9: move (4,4)->(3,5)
+  10: move (1,8)->(1,7)
+pair 1 game 1 settings: A=Black seed_a=5263264390900143032 B=White seed_b=3791895956615302341
+pair 1 game 1: plies=249 result=win winner=Black reason=Mate
+pair 1 game 2 settings: B=Black seed_b=5157772067479381743 A=White seed_a=9731449734372887408
+pair 1 game 2: plies=442 result=win winner=White reason=Mate
+pair 1 result: score_a=2.0 category=4
+pair 2: pair_seed=15215022231710728884 opening_seed=9873825497676627095 player_a=commit:eb7e3081919af5d64facadd7b935c600bba042a8 limit=time=10000+100 player_b=commit:4885ccb76ee79fde500f7a5055b771621c4734cf limit=time=10000+100 rules=L0,P0,R1,E0 max_ply=4096
+pair 2 opening: plies=11
+  1: move (1,0)->(1,1)
+  2: move (7,10)->(8,10)
+  3: move (7,2)->(8,1)
+  4: move (4,8)->(4,7)
+  5: move (5,2)->(7,4)
+  6: move (1,11)->(1,10)
+  7: move (1,1)->(1,0)
+  8: move (3,9)->(7,5)
+  9: move (7,4)->(9,4)
+  10: move (7,8)->(7,7)
+  11: move (9,4)->(11,4)
+pair 2 game 1 settings: A=Black seed_a=16045198029832985573 B=White seed_b=4281617089227651710
+pair 2 game 1: plies=766 result=win winner=White reason=Mate
+pair 2 game 2 settings: B=Black seed_b=17711121324254954040 A=White seed_a=5065882261131073545
+pair 2 game 2: plies=430 result=win winner=White reason=Mate
+pair 2 result: score_a=1.0 category=2
+ponder candidate: predictions=917 illegal_predictions=0 go_ponder=0 hits=0 moves=923
+ponder baseline: predictions=917 illegal_predictions=0 go_ponder=0 hits=0 moves=922
+summary: mode=elo pairs=2 valid_pairs=2 discarded_pairs=0
+pentanomial: [0, 0, 1, 0, 1]
+elo: estimate=190.848502 ci95=[-67.894005, +inf]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 158.836980 s
+2026-11-08T13:33:22+09:00

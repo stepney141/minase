@@ -26,6 +26,28 @@ impl Evaluator for UniformEvaluator {
     }
 }
 
+/// 先頭の着手のlogitをln(4)、残りを0.0、価値を0.5にする試験用の評価器。
+pub struct NonUniformEvaluator;
+
+impl Evaluator for NonUniformEvaluator {
+    fn evaluate(
+        &mut self,
+        queries: &[Query<'_>],
+        logits: &mut Vec<f32>,
+        values: &mut Vec<f32>,
+    ) -> Result<(), NnError> {
+        UniformEvaluator.evaluate(queries, logits, values)?;
+        let mut offset = 0;
+        for query in queries {
+            if !query.moves.is_empty() {
+                logits[offset] = 4.0_f32.ln();
+            }
+            offset += query.moves.len();
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

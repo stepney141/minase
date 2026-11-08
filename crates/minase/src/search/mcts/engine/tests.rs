@@ -1,6 +1,6 @@
 use super::*;
 use crate::nn::Query;
-use crate::nn::test_util::UniformEvaluator;
+use crate::nn::test_util::{NonUniformEvaluator, UniformEvaluator};
 use crate::search::MATE;
 use crate::search::mcts::test_support::*;
 use crate::search::mcts::tree::{Edge, Node};
@@ -100,6 +100,155 @@ fn nodes_one_chooses_the_maximum_policy_logit_even_after_a_previous_search() {
     assert!(
         matches!(event, SearchEvent::Finished { best_move, score: 0, depth: 1, nodes: 1, stop_reason: StopReason::NodeLimit, .. } if best_move == mv)
     );
+}
+
+// 設計書の「方策の温度の掛け方」に基づき、ln(4)と0のsoftmaxを確かめる。
+fn assert_policy_weights(node: &Node, first_weight: f32) {
+    assert!(node.edges.len() > 1);
+    let total = first_weight + (node.edges.len() - 1) as f32;
+    for (index, edge) in node.edges.iter().enumerate() {
+        let expected = if index == 0 { first_weight } else { 1.0 } / total;
+        assert!(
+            (edge.policy - expected).abs() < 1e-6,
+            "edge {index}: expected {expected}, got {}",
+            edge.policy
+        );
+    }
+    assert_eq!(node.value, Some(0.5));
+}
+
+#[test]
+fn policy_temperature_explicit_default_matches_default_priors_and_visits() {
+    let input = initial();
+    let default_engine = engine(NonUniformEvaluator);
+    let default_temperature = default_engine
+        .options()
+        .into_iter()
+        .find_map(|option| match (option.name, option.kind) {
+            ("PolicyTemperature", SearchOptionKind::Spin { default, .. }) => Some(default),
+            _ => None,
+        })
+        .expect("PolicyTemperature must be a spin option");
+    let mut explicit_engine = engine(NonUniformEvaluator);
+    explicit_engine
+        .set_option(
+            "PolicyTemperature",
+            SearchOptionValue::Spin(default_temperature),
+        )
+        .unwrap();
+    let (default_engine, _) = finish(
+        default_engine
+            .start(input.clone(), nodes(40), 1, false)
+            .unwrap(),
+    );
+    let (explicit_engine, _) = finish(explicit_engine.start(input, nodes(40), 2, false).unwrap());
+    let root_edges = |engine: &Engine| {
+        let driver = engine.driver.as_ref().unwrap();
+        assert_eq!(driver.simulations(), 40);
+        driver
+            .tree()
+            .root()
+            .edges
+            .iter()
+            .map(|edge| (edge.mv, edge.policy, edge.visits))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(root_edges(&default_engine), root_edges(&explicit_engine));
+}
+
+#[test]
+fn policy_temperature_scales_priors_in_root_and_batched_leaves() {
+    // exp(ln(4) / 1) = 4、exp(ln(4) / 2) = 2なので、残りの手との比を直接比較できる。
+    for (temperature, first_weight) in [(100, 4.0), (200, 2.0)] {
+        let mut engine = engine(NonUniformEvaluator);
+        engine
+            .set_option("PolicyTemperature", SearchOptionValue::Spin(temperature))
+            .unwrap();
+        let (engine, _) = finish(engine.start(initial(), nodes(10), 1, false).unwrap());
+        let root = engine.driver.as_ref().unwrap().tree().root();
+        assert_policy_weights(root, first_weight);
+        let children: Vec<_> = root
+            .edges
+            .iter()
+            .filter_map(|edge| edge.child.as_deref())
+            .collect();
+        assert!(children.len() > 1);
+        for child in children {
+            assert_policy_weights(child, first_weight);
+        }
+    }
+}
+
+#[test]
+fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
+    let mut engine = engine(NonUniformEvaluator);
+    for (value, expected) in [(10, 0.1), (1000, 10.0)] {
+        engine
+            .set_option("PolicyTemperature", SearchOptionValue::Spin(value))
+            .unwrap();
+        assert_eq!(engine.config.policy_temperature, expected);
+    }
+    for value in [9, 1001] {
+        assert_eq!(
+            engine.set_option("PolicyTemperature", SearchOptionValue::Spin(value)),
+            Err(SetOptionError::OutOfRange {
+                name: "PolicyTemperature",
+                value,
+                min: 10,
+                max: 1000,
+            })
+        );
+        assert_eq!(engine.config.policy_temperature, 10.0);
+    }
+}
+
+#[test]
+fn policy_temperature_change_discards_tree_and_rebuilds_priors() {
+    let input = initial();
+    let mut engine = engine(NonUniformEvaluator);
+    engine
+        .set_option("PolicyTemperature", SearchOptionValue::Spin(100))
+        .unwrap();
+    let (mut engine, _) = finish(engine.start(input.clone(), nodes(40), 1, false).unwrap());
+    let driver = engine.driver.as_ref().unwrap();
+    assert_policy_weights(driver.tree().root(), 4.0);
+    let visits: Vec<_> = driver
+        .tree()
+        .root()
+        .edges
+        .iter()
+        .map(|edge| edge.visits)
+        .collect();
+    assert!(visits.iter().any(|&visits| visits > 0));
+    let used_bytes = driver.tree().used_bytes();
+    engine
+        .set_option("PolicyTemperature", SearchOptionValue::Spin(100))
+        .unwrap();
+    let driver = engine.driver.as_ref().unwrap();
+    assert_eq!(driver.tree().used_bytes(), used_bytes);
+    assert_eq!(
+        driver
+            .tree()
+            .root()
+            .edges
+            .iter()
+            .map(|edge| edge.visits)
+            .collect::<Vec<_>>(),
+        visits
+    );
+    engine
+        .set_option("PolicyTemperature", SearchOptionValue::Spin(200))
+        .unwrap();
+    assert!(engine.driver.is_none());
+    assert!(engine.evaluator.is_some());
+    // nodes 1は温度によらず木を作り直すため、再利用の起こるnodes 5で検査する。
+    let (engine, _) = finish(engine.start(input, nodes(5), 2, false).unwrap());
+    let root = engine.driver.as_ref().unwrap().tree().root();
+    assert_policy_weights(root, 2.0);
+    assert_eq!(root.edges.iter().map(|edge| edge.visits).sum::<u32>(), 4);
+    for child in root.edges.iter().filter_map(|edge| edge.child.as_deref()) {
+        assert_policy_weights(child, 2.0);
+    }
 }
 
 struct RecordingEvaluator {
@@ -780,13 +929,17 @@ fn mcts_options_are_bounded_and_prepare_does_not_allocate_a_transposition_table(
             Some((option.name, default, min, max))
         })
         .collect();
-    assert_eq!(
-        options,
-        [
-            ("USI_Hash", 256, 1, 65_536),
-            ("Threads", 1, 1, 1),
-            ("NnBatchSize", 256, 1, 1024)
-        ]
+    assert!(
+        matches!(
+            options.as_slice(),
+            [
+                ("USI_Hash", 256, 1, 65_536),
+                ("Threads", 1, 1, 1),
+                ("NnBatchSize", 256, 1, 1024),
+                ("PolicyTemperature", default, 10, 1000)
+            ] if (10..=1000).contains(default)
+        ),
+        "unexpected spin options: {options:?}"
     );
     for (name, value) in [
         ("USI_Hash", 0),

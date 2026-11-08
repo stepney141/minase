@@ -1,0 +1,37 @@
+2026-11-08T13:40:36+09:00
+resolving commit eb7e3081919af5d64facadd7b935c600bba042a8...
+cached: /home/stepney141/board-games/minase/target/match-cache/eb7e3081919af5d64facadd7b935c600bba042a8/minase
+resolving commit 4885ccb76ee79fde500f7a5055b771621c4734cf...
+cached: /home/stepney141/board-games/minase/target/match-cache/4885ccb76ee79fde500f7a5055b771621c4734cf/minase
+run_dir: data/matches/mcts-royal-capture-temperature-royal-smoke-contention
+rules: L0,P0,R1,E0
+seed: 20261108110000
+max_ply: 4096
+candidate: commit:eb7e3081919af5d64facadd7b935c600bba042a8 limit=time=10000+100
+baseline: commit:4885ccb76ee79fde500f7a5055b771621c4734cf limit=time=10000+100
+response_timeout: 120 s
+pair 1: pair_seed=10022925245300865696 opening_seed=3647722701989661719 player_a=commit:eb7e3081919af5d64facadd7b935c600bba042a8 limit=time=10000+100 player_b=commit:4885ccb76ee79fde500f7a5055b771621c4734cf limit=time=10000+100 rules=L0,P0,R1,E0 max_ply=4096
+pair 1 opening: plies=10
+  1: move (5,2)->(7,4)
+  2: move (10,9)->(10,10)
+  3: move (9,0)->(10,1)
+  4: move (4,8)->(4,7)
+  5: move (7,4)->(6,6)
+  6: move (7,9)->(8,10)
+  7: move (6,6)->(5,7)
+  8: move (10,10)->(10,9)
+  9: move (5,7)->(3,6)
+  10: move (1,11)->(1,10)
+pair 1 game 1 settings: A=Black seed_a=5064246802794846174 B=White seed_b=15800844050667977663
+pair 1 game 1: plies=610 result=win winner=White reason=Mate
+pair 1 game 2 settings: B=Black seed_b=5979125115674981706 A=White seed_a=3067417547228667094
+pair 1 game 2: plies=831 result=win winner=Black reason=Mate
+pair 1 result: score_a=0.0 category=0
+ponder candidate: predictions=710 illegal_predictions=0 go_ponder=0 hits=0 moves=710
+ponder baseline: predictions=703 illegal_predictions=0 go_ponder=0 hits=0 moves=711
+summary: mode=elo pairs=1 valid_pairs=1 discarded_pairs=0
+pentanomial: [1, 0, 0, 0, 0]
+elo: estimate=-inf ci95=[-inf, -inf]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 183.430539 s
+2026-11-08T13:43:40+09:00

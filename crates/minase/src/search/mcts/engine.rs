@@ -29,17 +29,23 @@ pub struct Config {
     pub batch_size: NonZeroUsize,
     /// PUCTの係数。
     pub puct: PuctConfig,
+    /// 方策の温度T。USIオプションでは100倍の整数で指定する。
+    ///
+    /// logitをTで割り、PUCTが使う事前確率だけを変える。
+    /// Tは正なので、未訪問の辺を比較するときのlogitの大小は変わらない。
+    pub policy_temperature: f32,
     /// 1ロジットあたりのcp。
     pub cp_per_logit: f32,
 }
 
 impl Config {
-    /// 容量256 MiB、バッチ256、および既定のPUCT係数を使う。
+    /// 容量256 MiB、バッチ256、既定のPUCT係数、および方策の温度1.4を使う。
     pub fn new(cp_per_logit: f32) -> Self {
         Self {
             capacity_bytes: 256 * 1024 * 1024,
             batch_size: NonZeroUsize::new(256).unwrap(),
             puct: PuctConfig::default(),
+            policy_temperature: 1.4,
             cp_per_logit,
         }
     }
@@ -111,6 +117,16 @@ impl Engine {
                     max: 1024,
                 },
             },
+            SearchOption {
+                name: "PolicyTemperature",
+                kind: SearchOptionKind::Spin {
+                    // 固定ノードの対局で1.0、1.4、1.74を比べ、1.4を選んだ
+                    // （測定名: mcts-royal-capture-temperature-t140-ladder）。
+                    default: 140,
+                    min: 10,
+                    max: 1000,
+                },
+            },
         ]
     }
 
@@ -163,6 +179,13 @@ impl Engine {
                 if self.config.batch_size != batch_size {
                     self.config.batch_size = batch_size;
                     self.evaluator = None;
+                }
+            }
+            ("PolicyTemperature", SearchOptionValue::Spin(value)) => {
+                let temperature = value as f32 / 100.0;
+                if self.config.policy_temperature != temperature {
+                    self.clear();
+                    self.config.policy_temperature = temperature;
                 }
             }
             _ => unreachable!("all validated MCTS options are handled"),
@@ -336,7 +359,14 @@ fn run(
             super::tree::TreeError::InvalidState.into(),
         ));
     };
-    evaluate_batch(driver, evaluator, &[root], &mut logits, &mut values)?;
+    evaluate_batch(
+        driver,
+        evaluator,
+        config.policy_temperature,
+        &[root],
+        &mut logits,
+        &mut values,
+    )?;
     let mut time_per_leaf = clock.elapsed().saturating_sub(started);
     let mut capacity_exhausted = false;
     loop {
@@ -390,7 +420,14 @@ fn run(
             }
         }
         if !requests.is_empty() {
-            evaluate_batch(driver, evaluator, &requests, &mut logits, &mut values)?;
+            evaluate_batch(
+                driver,
+                evaluator,
+                config.policy_temperature,
+                &requests,
+                &mut logits,
+                &mut values,
+            )?;
             time_per_leaf = clock.elapsed().saturating_sub(started) / requests.len() as u32;
         }
     }
@@ -433,6 +470,7 @@ fn timed_batch_size(
 fn evaluate_batch(
     driver: &mut Driver,
     evaluator: &mut dyn Evaluator,
+    policy_temperature: f32,
     requests: &[EvaluationRequest],
     logits: &mut Vec<f32>,
     values: &mut Vec<f32>,
@@ -457,8 +495,12 @@ fn evaluate_batch(
     let mut offset = 0;
     for (request, &value) in requests.iter().zip(values.iter()) {
         let end = offset + request.query().moves.len();
+        let logits = &mut logits[offset..end];
+        for logit in logits.iter_mut() {
+            *logit /= policy_temperature;
+        }
         driver
-            .evaluate(request, &logits[offset..end], value)
+            .evaluate(request, logits, value)
             .map_err(SearchJoinError::Mcts)?;
         offset = end;
     }

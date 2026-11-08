@@ -1,6 +1,8 @@
 //! 対局の進行管理。着手の受理と検証、終局裁定の呼出し、対局結果の保持を担う。
 
-use super::adjudication::{AdjudicationContext, AdjudicationState, adjudicate_after_move};
+use super::adjudication::{
+    AdjudicationContext, AdjudicationState, adjudicate_after_move, can_capture_last_royal,
+};
 use super::repetition::{
     RepetitionHistory, repetition_is_forbidden, repetition_key, retain_repetition_allowed_moves,
 };
@@ -150,6 +152,16 @@ impl Game {
     /// 添字は[`Color::index`]に従う。R2またはR3の対局では`None`を返す。
     pub fn consecutive_attacking_moves(&self) -> Option<[u32; 2]> {
         self.adjudication.consecutive_attacking_moves()
+    }
+
+    /// 現在の局面で、手番側が1手で相手の残存王駒をすべて取れるかを返す。
+    ///
+    /// 王手放置も合法とするchu-shogi.md第8条に従い、王駒が1枚なら疑似利きで判定する。
+    /// 王駒が2枚なら、1手で両方を取れる場合に限る（第20条、第21条第1項・第5項）。
+    /// 捕獲手は既出局面を再現しないため、反復の履歴による除外は要らない。
+    /// 審判層の補題を共有し、終局の裁定や対局結果の変更は行わない。
+    pub fn can_capture_last_royal(&self) -> bool {
+        can_capture_last_royal(&self.position, &self.generator)
     }
 
     /// 現在の対局状態で合法な着手をすべて返す。
