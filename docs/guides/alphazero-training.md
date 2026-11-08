@@ -493,5 +493,5 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | 実行器の引数、記録の欄、機械をまたぐ再開の規則 | `tools/train/zero/minase_zero/runner.py`のdocstring |
 | 学習の出力の欄、損失、抽出、学習率の式、再開 | `tools/train/zero/minase_zero/train.py`のdocstring |
 | 生成の条件、塊、投了、教師の記録 | `crates/minase/src/bin/minase/zero_selfplay/`の`mod.rs`、`game.rs`、`output.rs` |
-| 対局用MCTSのUSIオプション（`NnBackend`、`NnCacheDir`、`NnBatchSize`） | `crates/minase/src/search/mcts/engine.rs` |
+| 対局用MCTSのUSIオプション（`NnBackend`、`NnCacheDir`、`NnBatchSize`、`PolicyTemperature`） | `crates/minase/src/search/mcts/engine.rs` |
 | ファイル形式の一覧 | [ファイル形式の手引き](file-formats.md) |
