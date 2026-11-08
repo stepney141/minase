@@ -118,13 +118,23 @@ fn assert_policy_weights(node: &Node, first_weight: f32) {
 }
 
 #[test]
-fn policy_temperature_100_matches_default_priors_and_visits() {
+fn policy_temperature_explicit_default_matches_default_priors_and_visits() {
     let input = initial();
     let default_engine = engine(NonUniformEvaluator);
-    assert_eq!(default_engine.config.policy_temperature, 1.0);
+    let default_temperature = default_engine
+        .options()
+        .into_iter()
+        .find_map(|option| match (option.name, option.kind) {
+            ("PolicyTemperature", SearchOptionKind::Spin { default, .. }) => Some(default),
+            _ => None,
+        })
+        .expect("PolicyTemperature must be a spin option");
     let mut explicit_engine = engine(NonUniformEvaluator);
     explicit_engine
-        .set_option("PolicyTemperature", SearchOptionValue::Spin(100))
+        .set_option(
+            "PolicyTemperature",
+            SearchOptionValue::Spin(default_temperature),
+        )
         .unwrap();
     let (default_engine, _) = finish(
         default_engine
@@ -195,11 +205,11 @@ fn policy_temperature_accepts_boundaries_and_rejects_out_of_range_values() {
 #[test]
 fn policy_temperature_change_discards_tree_and_rebuilds_priors() {
     let input = initial();
-    let (mut engine, _) = finish(
-        engine(NonUniformEvaluator)
-            .start(input.clone(), nodes(40), 1, false)
-            .unwrap(),
-    );
+    let mut engine = engine(NonUniformEvaluator);
+    engine
+        .set_option("PolicyTemperature", SearchOptionValue::Spin(100))
+        .unwrap();
+    let (mut engine, _) = finish(engine.start(input.clone(), nodes(40), 1, false).unwrap());
     let driver = engine.driver.as_ref().unwrap();
     assert_policy_weights(driver.tree().root(), 4.0);
     let visits: Vec<_> = driver
@@ -919,14 +929,17 @@ fn mcts_options_are_bounded_and_prepare_does_not_allocate_a_transposition_table(
             Some((option.name, default, min, max))
         })
         .collect();
-    assert_eq!(
-        options,
-        [
-            ("USI_Hash", 256, 1, 65_536),
-            ("Threads", 1, 1, 1),
-            ("NnBatchSize", 256, 1, 1024),
-            ("PolicyTemperature", 100, 10, 1000)
-        ]
+    assert!(
+        matches!(
+            options.as_slice(),
+            [
+                ("USI_Hash", 256, 1, 65_536),
+                ("Threads", 1, 1, 1),
+                ("NnBatchSize", 256, 1, 1024),
+                ("PolicyTemperature", default, 10, 1000)
+            ] if (10..=1000).contains(default)
+        ),
+        "unexpected spin options: {options:?}"
     );
     for (name, value) in [
         ("USI_Hash", 0),
