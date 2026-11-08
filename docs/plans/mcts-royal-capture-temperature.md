@@ -25,8 +25,8 @@ minaseはdlshogiから探索の係数を取り入れたが、dlshogiがそれと
 毎秒の探索回数の低下は検出できなかった（[費用](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-cost.md)）。
 MCTS 800回対αβ 500ノードのEloの点推定は、分岐元の−70から+3.5へ上がった（[固定ノードの対局](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-ladder.md)）。
 STCの条件の3ペアのスモークテストでは、時間切れとエンジンの異常はなく、1局の平均は約550手、1ペアは同時対局数2で約80〜90秒であった。
-いまは、STCの段階ゲートを始める承認を利用者に求めている。
-次の一手は、承認を得てSTC（測定名`mcts-royal-capture-temperature-royal-stc`）を始めることである。
+2026年11月8日15時10分に、利用者の承認を得てSTC（測定名`mcts-royal-capture-temperature-royal-stc`、シード20261108200000、同時対局数2）を始めた。
+次の一手は、STCの判定を待ち、LTCへ進む結果なら、LTCの条件のスモークテストで所要時間を測り直して利用者に示すことである。
 
 ## 目的
 
