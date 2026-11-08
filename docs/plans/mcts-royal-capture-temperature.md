@@ -123,6 +123,18 @@ MCTSの探索木が深さ256に届くことは、対局でも自己対局でも�
 本書は補題を1つ公開するが、終局の裁定とその順序は引き続き`Game::play`だけが持つ。
 本書の判定は終局の裁定ではなく、まだ終局していない局面での1手の勝ちの証明だからである。
 
+### 先行実装との対応
+
+チェスと将棋では、自分の王を取られる状態に置く手は反則なので、合法手の生成がその手を除く。
+lc0は新しい節点の合法手を`GenerateLegalMoves`で作り（`src/search/classic/search.cc` 1921行）、CrazyAraも合法手だけを列挙する（`engine/src/environments/chess_related/board.cpp` 169行）。
+したがって、王を取られる手の先の局面はそもそも探索木に現れず、本書の判定が扱う局面は中将棋に固有である。
+この2つのエンジンが新しい節点で判定するのは、王手を受けて合法手がない詰み、駒不足、50手規則、および反復の、すでに終局した局面だけである（lc0の同1925〜1951行、CrazyAraの`engine/src/environments/chess_related/boardstate.cpp` 143〜215行）。
+短い詰みは、子を展開した後の勝敗の確定の伝播で見つける。
+dlshogiはさらに、新しい節点で奇数手の詰み探索を5手まで行い、詰みが見つかればネットに評価させずに勝ちに確定させる（`usi/UctSearch.cpp` 1554〜1579行）。
+本書の判定は、dlshogiの葉の詰み探索と同じく規則で値が決まる局面をネットに評価させない仕組みであり、深さは最も浅い1手である。
+dlshogiは詰み探索の前に16手以内の反復を判定する（同1520行）が、本書は前節の理由で1手の勝ちを反復の近似より前に置く。
+lc0は、合法手がない局面の判定を反復の判定より前に置く。
+
 ### 自己対局との共有
 
 この節の判断は、利用者の決定ではなく、本書の起案時にClaude（本書を起案したAIエージェント）が補ったものである。
@@ -314,3 +326,4 @@ masterへのマージは、利用者の許可を得てから行う。
 - [対局用の探索の先行実装調査](../proposals/alphazero-strength-gap/search.md)は、葉の扱いとPUCTの既定値の出典を、ソースの行番号つきで記す。
 - [サイクル32の価値の診断](../measurements/adhoc/alphazero-rl-c0032-value-bias.md)と[固定ノードの対局](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)は、本書の基準の値を記す。
 - DeepLearningShogiの`cppshogi/usi.cpp`の120〜135行は、温度1.74とPUCTの係数の既定値を定める（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「既定値」の表）。
+- 「先行実装との対応」の節の行番号は、2026年11月8日に取得したlc0のコミットfcabd174、DeepLearningShogiのコミット26bbc67b、およびCrazyAraのコミットbb3b5b65のものである。
