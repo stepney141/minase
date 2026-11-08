@@ -23,6 +23,7 @@ bash $W/docs/measurements/mcts-royal-capture-temperature/mcts-royal-capture-temp
 
 基準は分岐元のmasterのコミット4885ccb7、候補はブランチ`mcts-royal-capture-temperature`のコミットeb7e3081である。
 どちらも同じビルド設定で、それぞれのworktreeで`cargo build --release --bin minase`によりビルドした。
+基準のworktree`data/worktrees/mcts-royal-capture-base`は、測定の後に削除した。
 MCTSにはNASの`nets/cycle-0032.onnx`を与え、推論はTensorRTのFP16である。
 規則は`engine-default`（`L0,P0,R1,E0`）である。
 
