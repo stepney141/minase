@@ -16,6 +16,7 @@ use crate::position::{Position, Undo};
 use crate::rules::{ExhaustionRule, RepetitionRule, Rules};
 use bare_king::bare_king_result;
 use exhaustion::{PieceExhaustionTransition, piece_exhaustion_transition};
+pub(super) use mate::can_capture_last_royal;
 use mate::{royal_capture_result, stalemate_or_mate};
 
 /// 対局裁定に必要な履歴依存状態。

@@ -7,15 +7,18 @@ use minase::search::mcts::tree::{Child, Outcome as ProofOutcome, Proof, Tree};
 use minase_core::test_util::{position, sq};
 use minase_core::{DrawReason, ExhaustionRule, GameStatus, PieceKind, WinReason};
 
-fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) {
+fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) -> usize {
     let mut logits = Vec::new();
     let mut values = Vec::new();
+    let mut evaluations = 0;
     while let Some(request) = game.advance().unwrap() {
         evaluator
             .evaluate(&[request.query()], &mut logits, &mut values)
             .unwrap();
         game.evaluate(&request, &logits, values[0]).unwrap();
+        evaluations += 1;
     }
+    evaluations
 }
 
 #[test]
@@ -686,15 +689,7 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
         ),
     );
     game.entries.clear();
-    let mut evaluator = FavorMove(capture);
-    while let Some(request) = game.advance().unwrap() {
-        let mut logits = Vec::new();
-        let mut values = Vec::new();
-        evaluator
-            .evaluate(&[request.query()], &mut logits, &mut values)
-            .unwrap();
-        game.evaluate(&request, &logits, values[0]).unwrap();
-    }
+    assert_eq!(play_to_end(&mut game, &mut FavorMove(capture)), 1);
     let completed = game.finish().unwrap();
     assert!(!completed.resigned);
     assert_eq!(
@@ -714,4 +709,168 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
     assert_eq!(last.value(), Value::None);
     assert_eq!(last.policy(), &Policy::None);
     assert_eq!(last.visits(), Some(0));
+}
+
+// 第8条・第21条: 王手放置後の1手の勝ちは、探索の確定と着手後の打ち切りの双方に効く。
+#[test]
+fn royal_capture_proven_root_preserves_resignation_and_playthrough_cutoffs() {
+    let rules = Rules {
+        e1: true,
+        exhaustion: ExhaustionRule::E2,
+        ..Rules::ENGINE_DEFAULT
+    };
+    for full_search in [false, true] {
+        for playthrough_percent in [1, 100] {
+            let mut game = PlayingGame::new(
+                1,
+                Settings {
+                    rules,
+                    seed: 7,
+                    simulations: 32,
+                    playthrough_percent,
+                    max_ply: 1,
+                },
+            )
+            .unwrap();
+            game.game = Game::from_position(
+                rules,
+                position(
+                    Color::Black,
+                    &[
+                        (sq(0, 0), Color::Black, PieceKind::King),
+                        (sq(0, 2), Color::White, PieceKind::Rook),
+                        (sq(1, 2), Color::White, PieceKind::Rook),
+                        (sq(11, 11), Color::White, PieceKind::King),
+                    ],
+                ),
+            );
+            game.entries.clear();
+            assert_eq!(game.playthrough, playthrough_percent == 100);
+            let legal = game.game.legal_moves();
+            assert_eq!(legal.len(), 3);
+            let mut search = Search::new(
+                SearchSnapshot::from_game(&game.game).unwrap(),
+                &mut game.rng,
+                if full_search { 32 } else { 8 },
+                full_search,
+            )
+            .unwrap();
+            let mut evaluations = 0;
+            while !search.finished() {
+                match search
+                    .driver
+                    .select_leaf(SelectionRule::Gumbel(&search.gumbel))
+                    .unwrap()
+                {
+                    Step::Evaluate(request) => {
+                        let mut logits = Vec::new();
+                        let mut values = Vec::new();
+                        UniformEvaluator
+                            .evaluate(&[request.query()], &mut logits, &mut values)
+                            .unwrap();
+                        search
+                            .driver
+                            .evaluate(&request, &logits, values[0])
+                            .unwrap();
+                        evaluations += 1;
+                    }
+                    Step::BackedUp => {}
+                    _ => panic!("sequential search has sufficient capacity"),
+                }
+            }
+            assert_eq!(evaluations, 1, "only the root requires inference");
+            let root = search.driver.tree().root();
+            assert_eq!(
+                root.state,
+                NodeState::Proven(Proof {
+                    outcome: ProofOutcome::Loss,
+                    distance: 2,
+                    repetition: false,
+                    approximate: false,
+                })
+            );
+            for edge in &root.edges {
+                assert_eq!(edge.visits, 1);
+                assert_eq!(edge.q(), Some(0.0));
+                assert_eq!(
+                    edge.child.as_ref().unwrap().state,
+                    NodeState::Proven(Proof {
+                        outcome: ProofOutcome::Win,
+                        distance: 1,
+                        repetition: false,
+                        approximate: false,
+                    })
+                );
+            }
+            let target = search.gumbel.policy_target(root).unwrap();
+            assert_eq!(target.len(), legal.len());
+            assert!(
+                target
+                    .iter()
+                    .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
+            );
+            assert!((target.iter().sum::<f32>() - 1.0).abs() < 1e-6);
+            let decision = search.decision(&game.game).unwrap();
+            assert!(legal.contains(&decision.mv));
+            assert_eq!(decision.value, Value::Mcts(0));
+            assert_eq!(decision.visits, 3);
+            assert!(decision.visits < search.simulations);
+            assert_eq!(decision.resign, full_search);
+            if full_search {
+                let Policy::Candidates(candidates) = &decision.policy else {
+                    panic!("a full search records its policy");
+                };
+                assert_eq!(candidates.len(), legal.len());
+                assert_eq!(
+                    candidates.iter().map(|(_, p)| u32::from(*p)).sum::<u32>(),
+                    65535
+                );
+            } else {
+                assert_eq!(decision.policy, Policy::None);
+            }
+            game.search = Some(search);
+            assert_eq!(play_to_end(&mut game, &mut UniformEvaluator), 0);
+            let resigned = full_search && !game.playthrough;
+            if !resigned {
+                assert_eq!(game.game.status(), GameStatus::Ongoing);
+                assert_eq!(mate_in_three(&game.game).unwrap(), Verdict::Win);
+                assert_eq!(game.mate_winner, Some(Color::White));
+            }
+            let completed = game.finish().unwrap();
+            assert_eq!(completed.resigned, resigned);
+            assert_eq!(completed.first_trigger, full_search.then_some(Color::Black));
+            assert_eq!(completed.plies, u32::from(!resigned));
+            assert_eq!(
+                (completed.full_searches, completed.fast_searches),
+                (u64::from(full_search), u64::from(!full_search))
+            );
+            assert_eq!(
+                completed.result,
+                Some(if resigned {
+                    Outcome::Game(GameResult::Win {
+                        winner: Color::White,
+                        reason: WinReason::Resignation,
+                    })
+                } else {
+                    Outcome::MateInThree {
+                        winner: Color::White,
+                    }
+                })
+            );
+            let record = completed.record.unwrap();
+            assert_eq!(record.entries().len(), if resigned { 1 } else { 2 });
+            let entry = &record.entries()[0];
+            assert_eq!(entry.played_move(), (!resigned).then_some(decision.mv));
+            assert_eq!(entry.value(), Value::Mcts(0));
+            assert_eq!(entry.policy(), &decision.policy);
+            assert_eq!(entry.visits(), Some(3));
+            if !resigned {
+                let last = &record.entries()[1];
+                assert_eq!(last.played_move(), None);
+                assert_eq!(last.value(), Value::None);
+                assert_eq!(last.policy(), &Policy::None);
+                assert_eq!(last.visits(), Some(0));
+            }
+        }
+    }
 }

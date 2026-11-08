@@ -1,6 +1,6 @@
 //! 根の対局を複製し、選択した経路を審判層の`Game::play`で再生する駆動部。
 //!
-//! 審判層の終局裁定を先に確定し、継続時だけ反復の近似と深さ上限を適用する。
+//! 審判層の終局、1手の王駒捕獲、反復の近似、深さ上限の順に判定する。
 //! 子の辺は経路の`Game::legal_moves`から作り、再生の失敗は仮想損失を戻して返す。
 
 use minase_core::{
@@ -330,6 +330,7 @@ impl Driver {
         Ok(true)
     }
 
+    // Game::playの終局裁定を優先し、継続時だけ1手の勝ちと反復の近似を調べる。
     fn classify_child(&self, path: &[usize]) -> Result<(Position, Vec<Move>, NodeState), Error> {
         let mut game = self
             .snapshot
@@ -380,7 +381,16 @@ impl Driver {
             }
         }
         let position = game.position().clone();
-        let state = if let Some(state) = self.repetition(&position, &keys, &played) {
+        // 深さ上限では距離1の確定を作らず、反復でなければネットの評価に回す。
+        let state = if path.len() < self.tree.depth_limit as usize && game.can_capture_last_royal()
+        {
+            NodeState::Proven(Proof {
+                outcome: Outcome::Win,
+                distance: 1,
+                repetition: false,
+                approximate: false,
+            })
+        } else if let Some(state) = self.repetition(&position, &keys, &played) {
             state
         } else if path.len() == self.tree.depth_limit as usize {
             NodeState::Pending { unexpanded: true }
