@@ -1,0 +1,257 @@
+== c0032 nodes=1 on c0032 vs alpha-beta, MCTS to move: n=5000 overall median 0.608
+  material [-999, -40) n=  1875 win probability median 0.185 share >= 0.5 0.100
+  material [ -40, -20) n=  1121 win probability median 0.615 share >= 0.5 0.723
+  material [ -20, -10) n=   704 win probability median 0.751 share >= 0.5 0.966
+  material [ -10,  -5) n=   380 win probability median 0.803 share >= 0.5 0.995
+  material [  -5,   0) n=   463 win probability median 0.813 share >= 0.5 1.000
+  material [   0,   1) n=   184 win probability median 0.818 share >= 0.5 1.000
+  material [   1,   5) n=   145 win probability median 0.840 share >= 0.5 1.000
+  material [   5,  10) n=    33 win probability median 0.927 share >= 0.5 1.000
+  material [  10,  20) n=    41 win probability median 0.942 share >= 0.5 1.000
+  material [  20, 999) n=    54 win probability median 0.963 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=  322 win probability median 0.749
+  plies [ 60, 80) material within 5 n=  220 win probability median 0.834
+  plies [ 80,120) material within 5 n=  175 win probability median 0.880
+  plies [120,180) material within 5 n=   73 win probability median 0.875
+== counts on c0032 vs alpha-beta, MCTS to move: evaluated=5000
+  N missing: n=0 share of evaluated 0.000
+  N available: n=5000 share of evaluated 1.000
+  quiet: n=3130 share of N available 0.626
+  tactical: n=1870 share of N available 0.374
+  mate: n=7 share of N available 0.001
+== quiet on c0032 vs alpha-beta, MCTS to move, recorded material
+  material [-999, -40) n=  1156 N median 0.166 Q median 0.000 N-Q median 0.166
+  material [ -40, -20) n=   693 N median 0.598 Q median 0.014 N-Q median 0.578
+  material [ -20, -10) n=   420 N median 0.753 Q median 0.093 N-Q median 0.659
+  material [ -10,  -5) n=   247 N median 0.798 Q median 0.197 N-Q median 0.597
+  material [  -5,   0) n=   305 N median 0.806 Q median 0.303 N-Q median 0.497
+  material [   0,   1) n=   135 N median 0.815 Q median 0.366 N-Q median 0.444
+  material [   1,   5) n=    93 N median 0.840 Q median 0.355 N-Q median 0.492
+  material [   5,  10) n=    22 N median 0.935 Q median 0.534 N-Q median 0.416
+  material [  10,  20) n=    26 N median 0.940 Q median 0.617 N-Q median 0.306
+  material [  20, 999) n=    33 N median 0.963 Q median 0.897 N-Q median 0.068
+== tactical on c0032 vs alpha-beta, MCTS to move, recorded material
+  material [-999, -40) n=   719 N median 0.230 Q median 0.000 N-Q median 0.229
+  material [ -40, -20) n=   428 N median 0.646 Q median 0.021 N-Q median 0.609
+  material [ -20, -10) n=   284 N median 0.748 Q median 0.114 N-Q median 0.630
+  material [ -10,  -5) n=   133 N median 0.812 Q median 0.196 N-Q median 0.597
+  material [  -5,   0) n=   158 N median 0.842 Q median 0.283 N-Q median 0.541
+  material [   0,   1) n=    49 N median 0.830 Q median 0.342 N-Q median 0.497
+  material [   1,   5) n=    52 N median 0.842 Q median 0.377 N-Q median 0.457
+  material [   5,  10) n=    11 N median 0.864 Q median 0.367 N-Q median 0.440
+  material [  10,  20) n=    15 N median 0.956 Q median 0.743 N-Q median 0.228
+  material [  20, 999) n=    21 N median 0.959 Q median 0.890 N-Q median 0.071
+== tactical on c0032 vs alpha-beta, MCTS to move, material after PV
+  material [-999, -40) n=   707 N median 0.225 Q median 0.000 N-Q median 0.225
+  material [ -40, -20) n=   417 N median 0.625 Q median 0.020 N-Q median 0.590
+  material [ -20, -10) n=   286 N median 0.747 Q median 0.104 N-Q median 0.645
+  material [ -10,  -5) n=   150 N median 0.810 Q median 0.194 N-Q median 0.598
+  material [  -5,   0) n=   160 N median 0.840 Q median 0.281 N-Q median 0.542
+  material [   0,   1) n=    29 N median 0.791 Q median 0.323 N-Q median 0.464
+  material [   1,   5) n=    66 N median 0.845 Q median 0.366 N-Q median 0.490
+  material [   5,  10) n=     9 N median 0.825 Q median 0.367 N-Q median 0.436
+  material [  10,  20) n=    26 N median 0.937 Q median 0.670 N-Q median 0.289
+  material [  20, 999) n=    20 N median 0.963 Q median 0.894 N-Q median 0.064
+== quiet on c0032 vs alpha-beta, MCTS to move, recorded material within 5 by plies
+  plies [ 40, 60) n=   234 N median 0.751
+  plies [ 60, 80) n=   147 N median 0.833
+  plies [ 80,120) n=   110 N median 0.879
+  plies [120,180) n=    40 N median 0.837
+  plies [180,300) n=     2 N median 0.906
+
+== c0032 nodes=1 on c0032 vs alpha-beta, alpha-beta to move: n=5000 overall median 0.435
+  material [ -40, -20) n=    59 win probability median 0.058 share >= 0.5 0.000
+  material [ -20, -10) n=    71 win probability median 0.096 share >= 0.5 0.000
+  material [ -10,  -5) n=    55 win probability median 0.141 share >= 0.5 0.000
+  material [  -5,   0) n=   215 win probability median 0.201 share >= 0.5 0.000
+  material [   0,   1) n=   175 win probability median 0.244 share >= 0.5 0.000
+  material [   1,   5) n=   426 win probability median 0.225 share >= 0.5 0.002
+  material [   5,  10) n=   389 win probability median 0.236 share >= 0.5 0.013
+  material [  10,  20) n=   727 win probability median 0.303 share >= 0.5 0.078
+  material [  20, 999) n=  2883 win probability median 0.705 share >= 0.5 0.738
+  plies [ 40, 60) material within 5 n=  323 win probability median 0.274
+  plies [ 60, 80) material within 5 n=  255 win probability median 0.200
+  plies [ 80,120) material within 5 n=  163 win probability median 0.154
+  plies [120,180) material within 5 n=   70 win probability median 0.177
+== counts on c0032 vs alpha-beta, alpha-beta to move: evaluated=5000
+  N missing: n=0 share of evaluated 0.000
+  N available: n=5000 share of evaluated 1.000
+  quiet: n=2908 share of N available 0.582
+  tactical: n=2092 share of N available 0.418
+  mate: n=0 share of N available 0.000
+== quiet on c0032 vs alpha-beta, alpha-beta to move, recorded material
+  material [-999, -40) n=     0 N median NA Q median NA N-Q median NA
+  material [ -40, -20) n=    37 N median 0.062 Q median 0.109 N-Q median -0.050
+  material [ -20, -10) n=    33 N median 0.087 Q median 0.357 N-Q median -0.266
+  material [ -10,  -5) n=    20 N median 0.086 Q median 0.438 N-Q median -0.331
+  material [  -5,   0) n=   100 N median 0.196 Q median 0.640 N-Q median -0.444
+  material [   0,   1) n=   123 N median 0.243 Q median 0.638 N-Q median -0.391
+  material [   1,   5) n=   251 N median 0.219 Q median 0.719 N-Q median -0.497
+  material [   5,  10) n=   217 N median 0.239 Q median 0.798 N-Q median -0.560
+  material [  10,  20) n=   399 N median 0.297 Q median 0.905 N-Q median -0.606
+  material [  20, 999) n=  1728 N median 0.708 Q median 1.000 N-Q median -0.289
+== tactical on c0032 vs alpha-beta, alpha-beta to move, recorded material
+  material [-999, -40) n=     0 N median NA Q median NA N-Q median NA
+  material [ -40, -20) n=    22 N median 0.056 Q median 0.133 N-Q median -0.077
+  material [ -20, -10) n=    38 N median 0.135 Q median 0.517 N-Q median -0.307
+  material [ -10,  -5) n=    35 N median 0.190 Q median 0.742 N-Q median -0.462
+  material [  -5,   0) n=   115 N median 0.212 Q median 0.689 N-Q median -0.495
+  material [   0,   1) n=    52 N median 0.246 Q median 0.678 N-Q median -0.455
+  material [   1,   5) n=   175 N median 0.226 Q median 0.740 N-Q median -0.509
+  material [   5,  10) n=   172 N median 0.234 Q median 0.837 N-Q median -0.591
+  material [  10,  20) n=   328 N median 0.313 Q median 0.918 N-Q median -0.608
+  material [  20, 999) n=  1155 N median 0.702 Q median 1.000 N-Q median -0.295
+== tactical on c0032 vs alpha-beta, alpha-beta to move, material after PV
+  material [-999, -40) n=     0 N median NA Q median NA N-Q median NA
+  material [ -40, -20) n=    16 N median 0.054 Q median 0.123 N-Q median -0.070
+  material [ -20, -10) n=    23 N median 0.076 Q median 0.331 N-Q median -0.243
+  material [ -10,  -5) n=    20 N median 0.132 Q median 0.596 N-Q median -0.439
+  material [  -5,   0) n=    79 N median 0.199 Q median 0.652 N-Q median -0.459
+  material [   0,   1) n=    32 N median 0.204 Q median 0.682 N-Q median -0.480
+  material [   1,   5) n=   155 N median 0.215 Q median 0.714 N-Q median -0.478
+  material [   5,  10) n=   165 N median 0.226 Q median 0.793 N-Q median -0.560
+  material [  10,  20) n=   328 N median 0.276 Q median 0.899 N-Q median -0.611
+  material [  20, 999) n=  1274 N median 0.664 Q median 0.999 N-Q median -0.331
+== quiet on c0032 vs alpha-beta, alpha-beta to move, recorded material within 5 by plies
+  plies [ 40, 60) n=   219 N median 0.274
+  plies [ 60, 80) n=   147 N median 0.193
+  plies [ 80,120) n=    74 N median 0.155
+  plies [120,180) n=    32 N median 0.176
+  plies [180,300) n=     2 N median 0.192
+
+== c0032 nodes=1 on alpha-beta vs alpha-beta: n=5000 overall median 0.512
+  material [-999, -40) n=    21 win probability median 0.258 share >= 0.5 0.048
+  material [ -40, -20) n=   224 win probability median 0.349 share >= 0.5 0.116
+  material [ -20, -10) n=   200 win probability median 0.447 share >= 0.5 0.345
+  material [ -10,  -5) n=   354 win probability median 0.472 share >= 0.5 0.393
+  material [  -5,   0) n=  1353 win probability median 0.493 share >= 0.5 0.476
+  material [   0,   1) n=   881 win probability median 0.514 share >= 0.5 0.577
+  material [   1,   5) n=  1195 win probability median 0.527 share >= 0.5 0.608
+  material [   5,  10) n=   350 win probability median 0.559 share >= 0.5 0.697
+  material [  10,  20) n=   177 win probability median 0.579 share >= 0.5 0.740
+  material [  20, 999) n=   245 win probability median 0.703 share >= 0.5 0.963
+  plies [ 40, 60) material within 5 n=  331 win probability median 0.511
+  plies [ 60, 80) material within 5 n=  331 win probability median 0.504
+  plies [ 80,120) material within 5 n=  648 win probability median 0.516
+  plies [120,180) material within 5 n=  847 win probability median 0.506
+  plies [180,300) material within 5 n= 1272 win probability median 0.515
+== counts on alpha-beta vs alpha-beta: evaluated=5000
+  N missing: n=0 share of evaluated 0.000
+  N available: n=5000 share of evaluated 1.000
+  quiet: n=3233 share of N available 0.647
+  tactical: n=1767 share of N available 0.353
+  mate: n=0 share of N available 0.000
+== quiet on alpha-beta vs alpha-beta, recorded material
+  material [-999, -40) n=     7 N median 0.390 Q median 0.013 N-Q median 0.377
+  material [ -40, -20) n=   136 N median 0.344 Q median 0.047 N-Q median 0.295
+  material [ -20, -10) n=    87 N median 0.443 Q median 0.216 N-Q median 0.200
+  material [ -10,  -5) n=   175 N median 0.462 Q median 0.410 N-Q median 0.067
+  material [  -5,   0) n=   860 N median 0.494 Q median 0.497 N-Q median 0.001
+  material [   0,   1) n=   680 N median 0.514 Q median 0.501 N-Q median 0.014
+  material [   1,   5) n=   788 N median 0.527 Q median 0.514 N-Q median 0.005
+  material [   5,  10) n=   229 N median 0.542 Q median 0.590 N-Q median -0.043
+  material [  10,  20) n=   113 N median 0.579 Q median 0.775 N-Q median -0.185
+  material [  20, 999) n=   158 N median 0.703 Q median 0.954 N-Q median -0.240
+== tactical on alpha-beta vs alpha-beta, recorded material
+  material [-999, -40) n=    14 N median 0.242 Q median 0.017 N-Q median 0.217
+  material [ -40, -20) n=    88 N median 0.353 Q median 0.053 N-Q median 0.271
+  material [ -20, -10) n=   113 N median 0.462 Q median 0.345 N-Q median 0.144
+  material [ -10,  -5) n=   179 N median 0.483 Q median 0.453 N-Q median 0.043
+  material [  -5,   0) n=   493 N median 0.488 Q median 0.491 N-Q median -0.003
+  material [   0,   1) n=   201 N median 0.512 Q median 0.514 N-Q median -0.008
+  material [   1,   5) n=   407 N median 0.528 Q median 0.521 N-Q median -0.001
+  material [   5,  10) n=   121 N median 0.582 Q median 0.591 N-Q median -0.013
+  material [  10,  20) n=    64 N median 0.581 Q median 0.777 N-Q median -0.172
+  material [  20, 999) n=    87 N median 0.702 Q median 0.957 N-Q median -0.244
+== tactical on alpha-beta vs alpha-beta, material after PV
+  material [-999, -40) n=    10 N median 0.280 Q median 0.019 N-Q median 0.257
+  material [ -40, -20) n=    85 N median 0.357 Q median 0.047 N-Q median 0.275
+  material [ -20, -10) n=    77 N median 0.462 Q median 0.280 N-Q median 0.186
+  material [ -10,  -5) n=   177 N median 0.477 Q median 0.434 N-Q median 0.047
+  material [  -5,   0) n=   462 N median 0.484 Q median 0.488 N-Q median 0.004
+  material [   0,   1) n=   145 N median 0.529 Q median 0.497 N-Q median 0.035
+  material [   1,   5) n=   420 N median 0.520 Q median 0.518 N-Q median 0.004
+  material [   5,  10) n=   188 N median 0.535 Q median 0.596 N-Q median -0.072
+  material [  10,  20) n=   105 N median 0.588 Q median 0.677 N-Q median -0.095
+  material [  20, 999) n=    98 N median 0.704 Q median 0.955 N-Q median -0.242
+== quiet on alpha-beta vs alpha-beta, recorded material within 5 by plies
+  plies [ 40, 60) n=   306 N median 0.514
+  plies [ 60, 80) n=   280 N median 0.504
+  plies [ 80,120) n=   504 N median 0.517
+  plies [120,180) n=   554 N median 0.508
+  plies [180,300) n=   684 N median 0.516
+
+== c0032 nodes=1 on c0030 vs c0020: n=5000 overall median 0.521
+  material [-999, -40) n=   170 win probability median 0.044 share >= 0.5 0.000
+  material [ -40, -20) n=   598 win probability median 0.153 share >= 0.5 0.018
+  material [ -20, -10) n=   519 win probability median 0.304 share >= 0.5 0.069
+  material [ -10,  -5) n=   470 win probability median 0.400 share >= 0.5 0.202
+  material [  -5,   0) n=   686 win probability median 0.489 share >= 0.5 0.449
+  material [   0,   1) n=   253 win probability median 0.519 share >= 0.5 0.640
+  material [   1,   5) n=   547 win probability median 0.550 share >= 0.5 0.733
+  material [   5,  10) n=   469 win probability median 0.654 share >= 0.5 0.896
+  material [  10,  20) n=   564 win probability median 0.763 share >= 0.5 0.986
+  material [  20, 999) n=   724 win probability median 0.911 share >= 0.5 1.000
+  plies [ 40, 60) material within 5 n=  369 win probability median 0.511
+  plies [ 60, 80) material within 5 n=  222 win probability median 0.516
+  plies [ 80,120) material within 5 n=  310 win probability median 0.521
+  plies [120,180) material within 5 n=  311 win probability median 0.520
+  plies [180,300) material within 5 n=  274 win probability median 0.545
+== counts on c0030 vs c0020: evaluated=5000
+  N missing: n=0 share of evaluated 0.000
+  N available: n=5000 share of evaluated 1.000
+  quiet: n=3194 share of N available 0.639
+  tactical: n=1806 share of N available 0.361
+  mate: n=2 share of N available 0.000
+== quiet on c0030 vs c0020, recorded material
+  material [-999, -40) n=   111 N median 0.043 Q median 0.002 N-Q median 0.041
+  material [ -40, -20) n=   366 N median 0.138 Q median 0.029 N-Q median 0.100
+  material [ -20, -10) n=   313 N median 0.283 Q median 0.155 N-Q median 0.130
+  material [ -10,  -5) n=   282 N median 0.382 Q median 0.314 N-Q median 0.077
+  material [  -5,   0) n=   404 N median 0.476 Q median 0.473 N-Q median 0.018
+  material [   0,   1) n=   169 N median 0.511 Q median 0.514 N-Q median 0.001
+  material [   1,   5) n=   363 N median 0.549 Q median 0.553 N-Q median -0.002
+  material [   5,  10) n=   303 N median 0.655 Q median 0.700 N-Q median -0.060
+  material [  10,  20) n=   377 N median 0.750 Q median 0.851 N-Q median -0.111
+  material [  20, 999) n=   506 N median 0.913 Q median 0.986 N-Q median -0.063
+== tactical on c0030 vs c0020, recorded material
+  material [-999, -40) n=    59 N median 0.047 Q median 0.003 N-Q median 0.044
+  material [ -40, -20) n=   232 N median 0.191 Q median 0.058 N-Q median 0.111
+  material [ -20, -10) n=   206 N median 0.342 Q median 0.211 N-Q median 0.098
+  material [ -10,  -5) n=   188 N median 0.415 Q median 0.352 N-Q median 0.059
+  material [  -5,   0) n=   282 N median 0.500 Q median 0.482 N-Q median 0.016
+  material [   0,   1) n=    84 N median 0.532 Q median 0.509 N-Q median 0.012
+  material [   1,   5) n=   184 N median 0.551 Q median 0.552 N-Q median -0.016
+  material [   5,  10) n=   166 N median 0.653 Q median 0.695 N-Q median -0.074
+  material [  10,  20) n=   187 N median 0.779 Q median 0.885 N-Q median -0.096
+  material [  20, 999) n=   218 N median 0.908 Q median 0.987 N-Q median -0.068
+== tactical on c0030 vs c0020, material after PV
+  material [-999, -40) n=    48 N median 0.041 Q median 0.001 N-Q median 0.039
+  material [ -40, -20) n=   182 N median 0.168 Q median 0.039 N-Q median 0.114
+  material [ -20, -10) n=   191 N median 0.285 Q median 0.155 N-Q median 0.113
+  material [ -10,  -5) n=   167 N median 0.389 Q median 0.311 N-Q median 0.075
+  material [  -5,   0) n=   261 N median 0.496 Q median 0.463 N-Q median 0.031
+  material [   0,   1) n=    78 N median 0.511 Q median 0.497 N-Q median 0.014
+  material [   1,   5) n=   215 N median 0.539 Q median 0.539 N-Q median -0.004
+  material [   5,  10) n=   168 N median 0.606 Q median 0.670 N-Q median -0.072
+  material [  10,  20) n=   220 N median 0.726 Q median 0.841 N-Q median -0.087
+  material [  20, 999) n=   276 N median 0.892 Q median 0.981 N-Q median -0.078
+== quiet on c0030 vs c0020, recorded material within 5 by plies
+  plies [ 40, 60) n=   250 N median 0.510
+  plies [ 60, 80) n=   110 N median 0.511
+  plies [ 80,120) n=   175 N median 0.527
+  plies [120,180) n=   193 N median 0.499
+  plies [180,300) n=   208 N median 0.538
+
+== 判定（互角は記録時の損得が-5以上5未満、Nの欠測は除外）
+  4部分集合のいずれかが100局面未満なら「読めない」。
+  それ以外で |G_all| < 0.1 なら「偏りが小さく読めない」。
+  それ以外は R >= 2/3 なら「局面の型が主」、R <= 1/3 なら「戦術が主」、間は「混合」。
+  c0032 vs alpha-beta, MCTS to move: all n=792 N median 0.820; quiet n=533 N median 0.814
+  c0032 vs alpha-beta, alpha-beta to move: all n=816 N median 0.223; quiet n=474 N median 0.220
+  alpha-beta vs alpha-beta: all n=3429 N median 0.511; quiet n=2328 N median 0.512
+  c0030 vs c0020: all n=1486 N median 0.517; quiet n=936 N median 0.514
+  基準は c0030 vs c0020。G_allとG_quietは対象から基準を引いた中央値の差、RはG_quiet/G_all。
+  c0032 vs alpha-beta, MCTS to move: G_all=0.303 G_quiet=0.300 R=0.989 判定=局面の型が主
+  c0032 vs alpha-beta, alpha-beta to move: G_all=-0.293 G_quiet=-0.294 R=1.002 判定=局面の型が主
+  alpha-beta vs alpha-beta: G_all=-0.006 G_quiet=-0.002 R=0.320 判定=偏りが小さく読めない
