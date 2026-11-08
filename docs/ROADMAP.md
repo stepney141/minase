@@ -127,7 +127,7 @@
 | NNUEに隠れ層を加えて第1層を広げ、整数化の精度を上げる | [plans/archived/nnue-architecture-revision.md](plans/archived/nnue-architecture-revision.md) | 完了（一部不採用） | 2026年11月4日 |
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 待機中 | |
-| MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/mcts-royal-capture-temperature.md](plans/mcts-royal-capture-temperature.md) | 起案 | |
+| MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/mcts-royal-capture-temperature.md](plans/mcts-royal-capture-temperature.md) | 進行中 | |
 
 ## 現在地
 
@@ -163,7 +163,7 @@
 
 #### AlphaZero型探索
 
-- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する。[大敗の原因の調査](proposals/alphazero-strength-gap.md)は、探索回数もネットの大きさもいまの段階の主因ではないと結論し、葉で王駒を取られるかの判定、温度と係数の調整、および自己対局の局面の分布の拡大を先に試すよう勧めている。前の2つは、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](plans/mcts-royal-capture-temperature.md)で、サイクル32のネットのままMCTS同士の対局にかけて採否を決める（2026年11月8日起案）。再開は、2026年11月3日の利用者の決定により、NNUEの世代反復のやり直しの後とする。中断した[世代反復](plans/archived/nnue-generation-reset.md)は[標準レシピv1の計画](plans/nnue-standard-recipe.md)が引き継いだので、再開はその計画の後になる。
+- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する。[大敗の原因の調査](proposals/alphazero-strength-gap.md)は、探索回数もネットの大きさもいまの段階の主因ではないと結論し、葉で王駒を取られるかの判定、温度と係数の調整、および自己対局の局面の分布の拡大を先に試すよう勧めている。前の2つは、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](plans/mcts-royal-capture-temperature.md)で、サイクル32のネットのままMCTS同士の対局にかけて採否を決める。1つ目の判定は固定ノードのαβとの対局でEloの点推定を−70から+3.5へ上げ、STCの段階ゲートの承認を待っている。再開は、2026年11月3日の利用者の決定により、NNUEの世代反復のやり直しの後とする。中断した[世代反復](plans/archived/nnue-generation-reset.md)は[標準レシピv1の計画](plans/nnue-standard-recipe.md)が引き継いだので、再開はその計画の後になる。
 
 #### 探索
 
