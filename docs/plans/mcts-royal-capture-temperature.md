@@ -31,7 +31,10 @@ LTCの条件の2ペアのスモークテストだけは行い、時間切れと�
 フェーズ2では、`PolicyTemperature`を実装し、温度1.0、1.4、および1.74の固定ノードの対局で、Eloの点推定がそれぞれ+3.5、+56.1、および+50.7となった（[温度1.0](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t100-ladder.md)、[1.4](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t140-ladder.md)、[1.74](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t174-ladder.md)）。
 温度1.0の結果はフェーズ1の固定ノードの対局と一致した。
 点推定が最も高い1.4を段階ゲートの候補とし、本ブランチの先端から切ったブランチ`mcts-policy-temperature-140`で既定値を140にしたコミットを作っている。
-次の一手は、そのコミットを本ブランチの先端に対してSTCにかけることである。
+2026年11月8日21時41分に、利用者の承認を得て、そのコミットを本ブランチのコミットdb685ca9に対するSTC（測定名`mcts-royal-capture-temperature-temperature-stc`、シード20261108600000、同時対局数2）にかけた。
+利用者は同時に、STCが`H1`ならLTCを省いて採用すると決めた（「STCを始めてください。STCでH1だったら採用していいです」）。
+候補1と同じく、SPRTの手引きの規則の利用者の判断による例外である。
+次の一手は、STCの判定を待ち、`H1`なら候補2のブランチを本ブランチへ取り込むことである。
 
 ## 目的
 
