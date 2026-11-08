@@ -1,0 +1,6 @@
+summary: mode=gsprt pairs=145 valid_pairs=144 discarded_pairs=1
+pentanomial: [4, 13, 71, 28, 28]
+llr: 2.9558130749
+decision: H1
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 10324.585725 s
