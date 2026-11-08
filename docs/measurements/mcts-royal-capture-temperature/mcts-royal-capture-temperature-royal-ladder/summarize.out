@@ -1,0 +1,2 @@
+mcts-royal-capture-temperature-royal-ladder: games 200; plies median 382.5; endings [(('Mate', 'MCTS'), 99), (('Mate', 'alpha-beta'), 68), (('Repetition', 'alpha-beta'), 2), (('RoyalCapture', 'MCTS'), 1), (('RoyalCapture', 'alpha-beta'), 30)]
+royal-capture losses 30: material for MCTS median -73.0; the last MCTS score was mated_in in all 30 (no cp score, so the win-probability statistics of summarize.py are not defined)
