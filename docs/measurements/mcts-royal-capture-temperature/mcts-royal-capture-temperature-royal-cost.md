@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ1の候補が、MCTSの毎秒の探索回数を下げるかを、基準と候補のバイナリで同じ局面を交互に探索して確かめる。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ1の候補が、MCTSの毎秒の探索回数を下げるかを、基準と候補のバイナリで同じ局面を交互に探索して確かめる。
 
 ## コマンドライン
 

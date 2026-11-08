@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ1の候補の効果の大きさの目安として、候補のMCTS 800回とαβ探索 500ノードの対局のEloを、分岐元と同じMCTSで指した同じ条件の[固定ノードの対局](../adhoc/alphazero-rl-c0032-ab-ladder.md)（Eloの点推定−70）と比べる。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ1の候補の効果の大きさの目安として、候補のMCTS 800回とαβ探索 500ノードの対局のEloを、分岐元と同じMCTSで指した同じ条件の[固定ノードの対局](../adhoc/alphazero-rl-c0032-ab-ladder.md)（Eloの点推定−70）と比べる。
 固定ノードの対局は診断であり、採否は段階ゲートで決める。
 
 ## コマンドライン

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ1の候補（新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定）が、王駒を取られる手を選ぶ局面で実際に働くかを、[サイクル32の価値の診断](../adhoc/alphazero-rl-c0032-value-bias.md)と同じ123局面で確かめる。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ1の候補（新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定）が、王駒を取られる手を選ぶ局面で実際に働くかを、[サイクル32の価値の診断](../adhoc/alphazero-rl-c0032-value-bias.md)と同じ123局面で確かめる。
 
 ## コマンドライン
 

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ2で、方策の温度（`PolicyTemperature`）の候補の値を1つに絞るため、温度1.74のMCTS 800回とαβ探索 500ノードの対局のEloを、温度1.0、1.4、および1.74の3条件で比べる。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ2で、方策の温度（`PolicyTemperature`）の候補の値を1つに絞るため、温度1.74のMCTS 800回とαβ探索 500ノードの対局のEloを、温度1.0、1.4、および1.74の3条件で比べる。
 固定ノードの対局は段階ゲートの前の探索的な選別であり、採否は段階ゲートで決める。
 
 ## コマンドライン

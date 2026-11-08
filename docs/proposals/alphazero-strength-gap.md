@@ -286,7 +286,7 @@ minaseは既に自己対局の開始局面に8〜16手の乱択を入れ、Gumbe
 以下はClaudeの判断である。
 
 固定ノードの対局と指し継ぎの診断は2026年11月2日に終えた。
-1と2は、2026年11月8日と9日に[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](../plans/mcts-royal-capture-temperature.md)で採用した。
+1と2は、2026年11月8日と9日に[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](../plans/archived/mcts-royal-capture-temperature.md)で採用した。
 葉の判定はSTCで得点率60.9%、温度1.4はSTCで得点率71.1%であり、どちらもLTCは利用者の決定で省いた。
 3の候補と起案の前に決めることは、[自己対局の分布の提案](alphazero-selfplay-distribution.md)にまとめた。
 残りの順序は次のとおりである。

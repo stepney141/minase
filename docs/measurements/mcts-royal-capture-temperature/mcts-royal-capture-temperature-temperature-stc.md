@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ2の候補（`PolicyTemperature`の既定値を1.4にしたMCTS）を、既定値1.0のMCTSとSTCのGSPRTで比べ、採否を判定する。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ2の候補（`PolicyTemperature`の既定値を1.4にしたMCTS）を、既定値1.0のMCTSとSTCのGSPRTで比べ、採否を判定する。
 2026年11月8日の利用者の決定により、この測定が`H1`なら、LTCを省いて採用とする。
 
 ## コマンドライン

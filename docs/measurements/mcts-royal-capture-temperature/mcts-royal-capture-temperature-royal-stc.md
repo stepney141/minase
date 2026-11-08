@@ -2,7 +2,7 @@
 
 ## 目的
 
-[設計書](../../plans/mcts-royal-capture-temperature.md)のフェーズ1の候補（新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させるMCTS）を、分岐元のMCTSとSTCのGSPRTで比べ、LTCへ進めるかを判定する。
+[設計書](../../plans/archived/mcts-royal-capture-temperature.md)のフェーズ1の候補（新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させるMCTS）を、分岐元のMCTSとSTCのGSPRTで比べ、LTCへ進めるかを判定する。
 
 ## コマンドライン
 

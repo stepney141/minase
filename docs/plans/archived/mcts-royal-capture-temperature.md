@@ -4,7 +4,7 @@
 
 minaseのAlphaZero型探索は、ネットが出す方策（各合法手の確率）と価値（手番側の勝率）を使って、モンテカルロ木探索（MCTS）で手を選ぶ。
 強化学習で育てたサイクル32のネットのMCTSは、同じエンジンのαβ探索に、各10秒+0.1秒の対局（STC）で2勝192敗であった。
-[大敗の原因の調査](../proposals/alphazero-strength-gap.md)は、ネットを学び直さずに試せる対策として、葉での王駒の捕獲の判定と、方策の温度の調整を最初に勧めた。
+[大敗の原因の調査](../../proposals/alphazero-strength-gap.md)は、ネットを学び直さずに試せる対策として、葉での王駒の捕獲の判定と、方策の温度の調整を最初に勧めた。
 本書は、この2つを1つずつ候補として実装し、サイクル32のネットのままMCTS同士の対局で採否を決める。
 1つ目の候補は、探索木に新しい局面を加えるとき、その手番側が相手の最後の王駒（王将、玉将、または太子）を次の1手で取れるなら、ネットに評価させずに勝ちと確定させる判定である。
 中将棋では自分の王駒を取られる手も合法である。この判定がないと、探索はそうした手の先の局面をネットの値で評価するので、親の局面から見て負けが決まっている手を負けと識別できず、王駒を取られる手を選んでしまうことがある。
@@ -12,47 +12,36 @@ minaseのAlphaZero型探索は、ネットが出す方策（各合法手の確�
 温度は、探索が候補手を広げるときに使う方策の確率を平らにする係数である。
 minaseはdlshogiから探索の係数を取り入れたが、dlshogiがそれと組で使う温度1.74は取り入れておらず、温度1.0と同じ状態にある。
 温度は、固定ノードの対局で3つの値から1つに絞ってから採否にかける。
-採否は[SPRTの手引き](../guides/sprt.md)の段階ゲートで決める。
+採否は[SPRTの手引き](../../guides/sprt.md)の段階ゲートで決める。
 段階ゲートでは、まずSTCで逐次検定（GSPRT）にかけて選別し、通った候補を各60秒+0.2秒の対局（LTC）の逐次検定で判定する。
 完了条件は、2つの候補の採否が測定記録とともに決まり、採った方式を設計判断の記録（ADR）とコードのdocコメントへ移し、利用者の許可を得てmasterへマージしていることである。
 原因の調査が3番目に勧めた、自己対局の局面の分布を広げる対策は、別の設計書で扱う。
 
 ## 状態
 
-進行中。2026年11月8日に起案し、同日にフェーズ1を終えてフェーズ2に着手した。
-フェーズ1では葉での王駒の捕獲の判定を実装し、候補1を採用とした。
-判定は発動し、αβ探索の深さ8が強制負けを読まなかった68局面で王駒を取られる手を選ぶ局面がなくなった（[発動の確認](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-activation.md)）。
-毎秒の探索回数の低下は検出できなかった（[費用](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-cost.md)）。
-MCTS 800回対αβ 500ノードのEloの点推定は、分岐元の−70から+3.5へ上がった（[固定ノードの対局](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-ladder.md)）。
-STCは145ペアで`H1`となった（[STC](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)、得点率60.9%）。
-LTCは、2026年11月8日の利用者の決定（「LTCも多分合格する気がするのでこのまま次のフェーズに進んで欲しい」）により行わず、STCの`H1`をもって採用とした。
-これは、[SPRTの手引き](../guides/sprt.md)の「採用の決定はLTCの判定だけが下す」という規則の、利用者の判断による例外である。
-LTCの条件の2ペアのスモークテストだけは行い、時間切れとエンジンの異常はなかった（記録は`mcts-royal-capture-temperature-royal-ltc`のディレクトリの`smoke.out`）。
-フェーズ2では、`PolicyTemperature`を実装し、温度1.0、1.4、および1.74の固定ノードの対局で、Eloの点推定がそれぞれ+3.5、+56.1、および+50.7となった（[温度1.0](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t100-ladder.md)、[1.4](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t140-ladder.md)、[1.74](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t174-ladder.md)）。
-温度1.0の結果はフェーズ1の固定ノードの対局と一致した。
-点推定が最も高い1.4を段階ゲートの候補とし、本ブランチの先端から切ったブランチ`mcts-policy-temperature-140`で既定値を140にしたコミットを作っている。
-2026年11月8日21時41分から、そのコミットをコミットdb685ca9に対するSTCにかけ、111ペアで`H1`となった（[STC](../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)、得点率71.1%）。
-利用者は開始の時点で、STCが`H1`ならLTCを省いて採用すると決めていた（「STCを始めてください。STCでH1だったら採用していいです」）ので、候補2も採用とし、候補のブランチを本ブランチへマージした。
-フェーズ3では、2つの決定をADR（[判定](../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度](../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）へ移し、[強化学習の実行の設計書](alphazero-rl.md)の再開の手順に自己対局の探索が変わることを書き加えた。
-αβ探索の深さ6のbenchは、15局面すべてでmasterと一致した。
-いまは、masterへのマージの許可を利用者に求めている。
-次の一手は、許可を得て本書を凍結し、masterへマージすることである。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年11月8日に起案して着手し、2026年11月9日に完了した。
+葉での王駒の捕獲の判定と方策の温度1.4をともに採用した。
+判定はMCTS同士のSTCで145ペアで`H1`（得点率60.9%、[STC](../../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、温度1.4は111ペアで`H1`（得点率71.1%、[STC](../../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）となった。
+どちらもLTCは、利用者の決定により行わず、STCの`H1`をもって採用とした（[判定のADR](../../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](../../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。
+温度は、固定ノードの対局で1.0、1.4、および1.74を比べて選んだ（[温度1.4の選別](../../measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-t140-ladder.md)）。
 
 ## 目的
 
 原因の調査の診断では、王駒の捕獲で負けた123局について、王駒を取られる直前にMCTSが手を選んだ局面を、サイクル32のネットで探索し直した。
-その結果、2,000回の探索では121局面で、20,000回の探索でも106局面で、直後に最後の王駒を取られる手を選んだ（[診断の記録](../measurements/adhoc/alphazero-rl-c0032-value-bias.md)）。
+その結果、2,000回の探索では121局面で、20,000回の探索でも106局面で、直後に最後の王駒を取られる手を選んだ（[診断の記録](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)）。
 探索を10倍にしても直らない理由は、2つの事情が重なることにあるとみられる。
 1つ目は、探索が新しい局面で王駒の捕獲を判定しないことである。
 2つ目は、ネットが最後の王駒を取れる局面を教わっていないことである。
-自己対局は、着手のたびに王手だけを読む3手以内の勝ちを調べ、見つかった時点で対局を打ち切る。最後の王駒を取れる局面は1手の勝ちにあたるので、その局面に至った対局は必ずそこで打ち切られ、局面が教師にほとんど入らない（[打ち切りのADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)）。
+自己対局は、着手のたびに王手だけを読む3手以内の勝ちを調べ、見つかった時点で対局を打ち切る。最後の王駒を取れる局面は1手の勝ちにあたるので、その局面に至った対局は必ずそこで打ち切られ、局面が教師にほとんど入らない（[打ち切りのADR](../../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)）。
 実際に、STCの対局でαβがMCTSの最後の王駒を取った125局面で、探索なしのネットの方策の最大の手が王駒を取る手だったのは3局面だけである。
-MCTS 800回とαβ 500ノードの固定ノードの対局では、MCTSの負け92局が王駒の捕獲によるものだった（[固定ノードの対局](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)）。
+MCTS 800回とαβ 500ノードの固定ノードの対局では、MCTSの負け92局が王駒の捕獲によるものだった（[固定ノードの対局](../../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)）。
 その92局のうち約17%では、取られる手を指した時点で、MCTS自身の勝率の見積もりが0.5以上であった。
 
 温度については、minaseのPUCTの係数に問題がある。
 PUCTは方策の確率で探索の広がりを決める選択式である。
-その6つの係数のうち5つは、dlshogiが温度1.74と同時に調整した値をminaseが取り入れたものである（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「PUCTの周辺」の節）。
+その6つの係数のうち5つは、dlshogiが温度1.74と同時に調整した値をminaseが取り入れたものである（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「PUCTの周辺」の節）。
 サイクル32の自己対局では、1局面の合法手が平均84手、最大205手ある（NASの`cycles.jsonl`のサイクル32の`teacher_stats`）。
 合法手が多い局面では、温度1.0の方策は下位の手の確率が小さく、探索が下位の手に届きにくい（推論）。
 本書の目的は、この2点が実際に棋力を損なっているかを学習の再開より前に対局で確かめ、損なっているなら塞ぐことである。
@@ -78,10 +67,10 @@ PUCTの6つの係数の調整と、自己対局の局面の分布を広げる対
 ## 依存関係
 
 ネットは、NASの`/mnt/synology_nas/minase/alphazero/nets/cycle-0032.onnx`を使う。
-MCTSの推論には、`tools/train/zero/setup.sh`で導入した実行環境を使い、`tools/train/zero/env.sh`をbashで読み込む（[SPRTの手引き](../guides/sprt.md)の「エンジンの指定方法」の節）。
-固定ノードの対局の相手は、[固定ノードの対局](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)と同じコミット45d5db54のαβ探索と、そのコミットに埋め込まれたNNUEに固定する。
+MCTSの推論には、`tools/train/zero/setup.sh`で導入した実行環境を使い、`tools/train/zero/env.sh`をbashで読み込む（[SPRTの手引き](../../guides/sprt.md)の「エンジンの指定方法」の節）。
+固定ノードの対局の相手は、[固定ノードの対局](../../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)と同じコミット45d5db54のαβ探索と、そのコミットに埋め込まれたNNUEに固定する。
 診断に使う元の対局の記録は、`data/matches/alphazero-rl-restart-stc-c0032`と`data/matches/alphazero-rl-c0032-ab-ladder-m800-a500`である。
-規則の根拠は、[chu-shogi.md](../rules/chu-shogi.md)の第8条（王手）、第20条（王駒）、および第21条第1項と第5項（最後の王駒の捕獲による勝ち）である。
+規則の根拠は、[chu-shogi.md](../../rules/chu-shogi.md)の第8条（王手）、第20条（王駒）、および第21条第1項と第5項（最後の王駒の捕獲による勝ち）である。
 
 ## 設計判断
 
@@ -100,7 +89,7 @@ MCTSの推論には、`tools/train/zero/setup.sh`で導入した実行環境を�
 駆動部の`classify_child`は、新しい節点を作るとき、根の対局の状態（`Game`）を複製し、根からその節点までの着手を`Game::play`で順に指し直す。
 本書ではこれを経路の再生と呼ぶ。
 審判層が再生の途中で終局と裁定すれば、その節点は勝敗が確定した節点になる。
-終局しなければ、反復の近似と深さの上限を順に判定し、どちらにも当たらなければネットに評価させる（[葉の裁定のADR](../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)）。
+終局しなければ、反復の近似と深さの上限を順に判定し、どちらにも当たらなければネットに評価させる（[葉の裁定のADR](../../adr/adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)）。
 反復の近似とは、同じ局面の繰り返しを、探索木の中では直近の出現から1周した時点で打ち切って判定する近似である。
 深さの上限は、根から数えて256手（`MAX_PLY`）である。
 
@@ -111,8 +100,8 @@ MCTSの推論には、`tools/train/zero/setup.sh`で導入した実行環境を�
 相手の王駒が1枚なら疑似利きが届くことと合法に取れることが一致することは、補題のdocコメントが第8条をもとに述べている。
 
 判定は反復の近似より前に置く。
-反復の近似を先に適用すると、王駒を取れる側が近似で負けと判定され、受ける側がその手順へ引き寄せられるからである（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「王手放置が合法の規則での葉の扱い」の節）。
-これは、正確な裁定を近似より先に適用するという[終局判定の教訓](../lessons/share-terminal-adjudication-with-the-referee.md)と同じ順序である。
+反復の近似を先に適用すると、王駒を取れる側が近似で負けと判定され、受ける側がその手順へ引き寄せられるからである（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「王手放置が合法の規則での葉の扱い」の節）。
+これは、正確な裁定を近似より先に適用するという[終局判定の教訓](../../lessons/share-terminal-adjudication-with-the-referee.md)と同じ順序である。
 
 深さの上限の葉では判定しない。
 探索木は、確定の距離が「`MAX_PLY`から節点の深さを引いた値」を超える節点を作らない（`crates/minase/src/search/mcts/tree.rs`の`create_child`）。
@@ -154,13 +143,13 @@ lc0は、合法手がない局面の判定を反復の判定より前に置く�
 王駒を取られる手の先をネットの値で評価することは、規則で値が決まる局面を誤った値で評価することであり、自己対局の方策の目標と価値の教師もその誤りを含むからである。
 対局だけで判定する切替を設けると、同じ局面の扱いが2通り残り、片方の経路の試験が欠けやすい。
 
-[打ち切りのADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)は、探索木の葉で詰みを調べる案を2つの理由で棄却した。
+[打ち切りのADR](../../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)は、探索木の葉で詰みを調べる案を2つの理由で棄却した。
 1つ目は、探索の結果と方策の目標が変わることである。
 本書は、この変化を、誤った値を正す意図した変化として採る。
 2つ目は、すべての葉で判定すると費用が探索回数に比例して増えることである。
 本書の判定も探索回数に比例する費用を持つが、1回あたりの費用は小さいと見込む。
 相手の王駒が1枚の局面では疑似利きを1回参照するだけである。2枚の局面では合法手を生成するが、2枚になるのは醉象が成って太子になった後に限られる（第20条第2項）。
-一方、1回の探索の経路の再生は約40 µsかかる（[駆動部の費用の測定](../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
+一方、1回の探索の経路の再生は約40 µsかかる（[駆動部の費用の測定](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)）。
 この見込みは、フェーズ1で同じ局面の毎秒の探索回数を判定の前後で比べて確かめてから採る。
 自己対局の着手の後に3手以内の勝ちで対局を打ち切る規則は変えない。
 
@@ -168,7 +157,7 @@ lc0は、合法手がない局面の判定を反復の判定より前に置く�
 この方式の根の選択と内部の節点の選択は、負けに確定した辺を除外せず、除外は最後に指す手を選ぶときだけ行う（`crates/minase/src/search/mcts/gumbel.rs`）。
 したがって自己対局では、王駒を取られる手にも探索回数が配られうるが、その手の価値は負けの0として集計される。
 自己対局への効果は、学習を再開するまで測れない。
-学習の再開の時点は[強化学習の実行の設計書](alphazero-rl.md)が定め、本書の採否はそれを待たずに対局で決める。
+学習の再開の時点は[強化学習の実行の設計書](../alphazero-rl.md)が定め、本書の採否はそれを待たずに対局で決める。
 
 ### 方策の温度の掛け方
 
@@ -196,12 +185,12 @@ PUCTの6つの係数のUSIオプションは、本書が係数を動かさない
 
 dlshogiの1.74をそのまま写すことはしない。
 dlshogiでは、学習法を変えて方策のエントロピーが1.12から1.40へ上がった後、温度を1.74のまま使うと旧モデルに約28 Elo負けた。
-その後に調整された最適値は1.40〜1.50である（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）。
+その後に調整された最適値は1.40〜1.50である（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「調整の記録と効果の大きさ」の節）。
 minaseの方策は、Gumbel AlphaZeroの方式で、探索で補正した確率を目標として学んでいる。
 これはdlshogiの訪問回数の分布の目標とは別の目標であり、分布の形が異なり得る。
 
 SPSA（同時摂動確率近似法、パラメータを同時に揺らして対局の勝敗から勾配を推定する調整法）で係数と同時に調整することもしない。
-MCTS 800回同士の対局は、同時対局数2で1ペア約42秒かかった（[30サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0030.md)の200ペアの経過時間）。
+MCTS 800回同士の対局は、同時対局数2で1ペア約42秒かかった（[30サイクル目の進捗測定](../../measurements/alphazero-rl/alphazero-rl-restart-progress-c0030.md)の200ペアの経過時間）。
 SPSAを5,000ペアの規模で回すと、約58時間かかる。
 
 そこで、温度1.0、1.4、および1.74の3条件を、MCTS 800回対αβ 500ノードの固定ノードの対局で各100ペアずつ比べる。
@@ -217,7 +206,7 @@ SPSAを5,000ペアの規模で回すと、約58時間かかる。
 
 ### 採否の判定
 
-[統括計画](alphazero.md)の「到達の判定」の節は、MCTSの内部の変更の採否を、MCTS同士のコミット対コミットの段階ゲートで決めると定める。
+[統括計画](../alphazero.md)の「到達の判定」の節は、MCTSの内部の変更の採否を、MCTS同士のコミット対コミットの段階ゲートで決めると定める。
 SPRTの手引きは、固定ノードの対局を、探索の速さの差を含まない診断に限り、採否の根拠には使わないと定める。
 したがって、αβ 500ノードとの対局は、効果の大きさの目安と温度の絞り込みにだけ使う。
 
@@ -226,7 +215,7 @@ GSPRTの判定は、候補が基準より約10 Elo以上強いと判断する`H1
 候補1は、2026年11月8日の利用者の決定により、LTCを省いてSTCの`H1`で採用とした（「状態」の節）。
 候補2の基準は、候補1の後に`PolicyTemperature`を既定値100で足したコミットとする。
 このコミットの探索は、温度1.0では候補1のコミットと同じである。
-候補2で段階ゲートにかけるコミットは、その基準のコミットから切った別のブランチで、温度の既定値を変えたコミットとする（[不採用の候補の扱いの教訓](../lessons/revert-rejected-candidates-before-merge.md)）。
+候補2で段階ゲートにかけるコミットは、その基準のコミットから切った別のブランチで、温度の既定値を変えたコミットとする（[不採用の候補の扱いの教訓](../../lessons/revert-rejected-candidates-before-merge.md)）。
 両側にサイクル32のネットを起動引数`--nn-model`で与える。
 `NnBatchSize`は16、`Threads`は1とする。
 MCTSは`Threads`に1だけを受け付ける。
@@ -234,7 +223,7 @@ MCTSは`Threads`に1だけを受け付ける。
 ## 測定の条件と所要時間
 
 STCとLTCの対局は、同時対局数を2とする。
-同時対局数1のLTCは1回の判定に数日から2週間かかり得るので（[統括計画](alphazero.md)の「到達の判定」の節）、待ち時間を半分にする。
+同時対局数1のLTCは1回の判定に数日から2週間かかり得るので（[統括計画](../alphazero.md)の「到達の判定」の節）、待ち時間を半分にする。
 両側が同じネットを同じ設定で使うので、GPUの取り合いは両側に対称に働く。
 同時に2局を指すと、両側のエンジンで計4つのプロセスがそれぞれTensorRTのエンジンを持つ。
 これらが作業機のGPU（RTX 3060 Ti、8 GB）のメモリに収まること、時間切れが出ないこと、および1手あたりの探索回数を、本測定の前に2ペアのスモークテストで確かめる。
@@ -263,8 +252,8 @@ LTCには段階ゲートとしての上限がない。
 段階ゲートを始める前に、スモークテストの実測から作り直した見込みを利用者へ示し、承認を得る。
 
 測定は作業機で行い、lishogiのBotと並行する。
-CPUを使う処理を始める前には、[進行中の測定の確認の教訓](../lessons/check-running-measurements-before-cpu-load.md)に従う。
-シードは、使用済みの値からペア数以上離した値を測定ごとに選ぶ（[隣接シードの教訓](../lessons/derive-seed-adjacent-collision.md)）。
+CPUを使う処理を始める前には、[進行中の測定の確認の教訓](../../lessons/check-running-measurements-before-cpu-load.md)に従う。
+シードは、使用済みの値からペア数以上離した値を測定ごとに選ぶ（[隣接シードの教訓](../../lessons/derive-seed-adjacent-collision.md)）。
 
 ## 実装フェーズ
 
@@ -275,10 +264,10 @@ CPUを使う処理を始める前には、[進行中の測定の確認の教訓]
 
 実装の後、段階ゲートの前に次の3つを測り、測定記録に残す。
 1つ目は発動の確認である。
-[診断のスクリプト](../measurements/adhoc/alphazero-rl-c0032-value-bias/proofs_and_hanging.py)を候補のバイナリで実行し、王駒の捕獲で負けた123局面のうち、2,000回の探索で王駒を取られる手を選ぶ局面の数を、基準の121局面と比べる（測定名`mcts-royal-capture-temperature-royal-activation`）。
+[診断のスクリプト](../../measurements/adhoc/alphazero-rl-c0032-value-bias/proofs_and_hanging.py)を候補のバイナリで実行し、王駒の捕獲で負けた123局面のうち、2,000回の探索で王駒を取られる手を選ぶ局面の数を、基準の121局面と比べる（測定名`mcts-royal-capture-temperature-royal-activation`）。
 減らなければ、判定が発動していないか、王駒を取られる手を選ぶ理由が別にあるので、段階ゲートへ進まずに原因を調べる。
 2つ目は費用である。
-[探索回数の測定のスクリプト](../measurements/adhoc/alphazero-rl-c0032-value-bias/simulation_rate.py)で、基準と候補の毎秒の探索回数を同じ局面で比べる（測定名`mcts-royal-capture-temperature-royal-cost`）。
+[探索回数の測定のスクリプト](../../measurements/adhoc/alphazero-rl-c0032-value-bias/simulation_rate.py)で、基準と候補の毎秒の探索回数を同じ局面で比べる（測定名`mcts-royal-capture-temperature-royal-cost`）。
 3つ目は効果の目安である。
 MCTS 800回対αβ 500ノードの固定ノードの対局を100ペア行い、分岐元と同じMCTSで指した同じ条件の対局の結果（Eloの点推定−70、王駒の捕獲による負け92局）と比べる（測定名`mcts-royal-capture-temperature-royal-ladder`）。
 シードは基準の対局と同じ20261103300000とし、開始局面をそろえる。
@@ -303,19 +292,19 @@ MCTS 800回対αβ 500ノードの固定ノードの対局を100ペア行い、�
 
 採った方式と棄却した代案をADRへ、判定と温度の契約をdocコメントへ移す。
 候補1を採用した場合は、打ち切りのADRが棄却した「探索木の葉で詰みを調べる案」のうち、1手の王駒の捕獲だけを例外として採ったことを、新しいADRに記す。
-あわせて、自己対局の探索が変わることを、[強化学習の実行の設計書](alphazero-rl.md)の再開の手順に書き加える。
+あわせて、自己対局の探索が変わることを、[強化学習の実行の設計書](../alphazero-rl.md)の再開の手順に書き加える。
 masterへのマージは、利用者の許可を得てから行う。
 
 ## 検証
 
 王駒の捕獲の判定について、次の試験を書く。
-試験の期待値は、学習したネットに依存させない（[探索のテストの教訓](../lessons/search-tests-use-a-fixed-net.md)）。
+試験の期待値は、学習したネットに依存させない（[探索のテストの教訓](../../lessons/search-tests-use-a-fixed-net.md)）。
 
 - 乱数対局の各局面で、駆動部が子の節点を1手の勝ちに確定させることと、その局面の`Game::legal_moves`のいずれかの手を`Game::play`で指すと王駒の捕獲による手番側の勝ちになることが、互いに必要十分であることを確かめる。
 - 王駒が2枚の局面で、獅子が1手で両方を取れる場合と取れない場合を、固定例で確かめる。
 - 反復の近似にかかる局面でも、王駒を取れる節点が反復ではなく1手の勝ちに確定することを、固定例で確かめる。
 - 深さの上限の葉では判定せず、従来どおりネットに評価させることを確かめる。
-- PUCTの探索で、合法手の1つだけが最後の王駒を取られる手である局面を一様な評価器（全合法手に同じ確率と同じ価値を返す試験用の評価器）で探索し、その辺を1回訪れた後に二度と選ばないことを確かめる。判定を外すとこの試験が失敗することも確かめる（[回帰テストの教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。
+- PUCTの探索で、合法手の1つだけが最後の王駒を取られる手である局面を一様な評価器（全合法手に同じ確率と同じ価値を返す試験用の評価器）で探索し、その辺を1回訪れた後に二度と選ばないことを確かめる。判定を外すとこの試験が失敗することも確かめる（[回帰テストの教訓](../../lessons/confirm-regression-test-fails-without-fix.md)）。
 - すべての合法手が最後の王駒を取られる手である局面で、PUCTの探索の根が負けに確定し、エラーなく指す手を返すことを確かめる。
 - 自己対局の1局を進める処理（`zero_selfplay`の`PlayingGame`）の既存の試験を広げ、距離1の確定を含む探索で、方策の目標が有限の確率になること、根が確定した場合の投了と最後まで指させる対局の扱い、および着手の後の3手以内の勝ちによる打ち切りが変わらないことを確かめる。
 
@@ -326,7 +315,7 @@ masterへのマージは、利用者の許可を得てから行う。
 - 範囲外の値をUSIオプションが拒否することを確かめる。
 - 探索木を持つエンジンで温度を変えると、保持していた探索木が捨てられ、次の探索が新しい温度の確率だけを使うことを確かめる。
 
-マージの前には、[テストの手引き](../guides/testing-minase-rules.md)の「マージ前の検査」の4つの検査（書式、clippy、全テスト、およびフィーチャ`search-stats`と`tuning`を有効にしたテスト）を通す。
+マージの前には、[テストの手引き](../../guides/testing-minase-rules.md)の「マージ前の検査」の4つの検査（書式、clippy、全テスト、およびフィーチャ`search-stats`と`tuning`を有効にしたテスト）を通す。
 あわせて、αβ探索の固定15局面を深さ6で探索するbenchの出力が、masterと一致することを確かめる。
 
 ## 完了条件
@@ -335,8 +324,8 @@ masterへのマージは、利用者の許可を得てから行う。
 
 ## 参考資料
 
-- [AlphaZero型探索がαβ探索に大敗する原因とDL系将棋ソフトから移せる点の調査](../proposals/alphazero-strength-gap.md)は、本書の2つの候補を最初に勧めた調査である。
-- [対局用の探索の先行実装調査](../proposals/alphazero-strength-gap/search.md)は、葉の扱いとPUCTの既定値の出典を、ソースの行番号つきで記す。
-- [サイクル32の価値の診断](../measurements/adhoc/alphazero-rl-c0032-value-bias.md)と[固定ノードの対局](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)は、本書の基準の値を記す。
-- DeepLearningShogiの`cppshogi/usi.cpp`の120〜135行は、温度1.74とPUCTの係数の既定値を定める（[探索の調査](../proposals/alphazero-strength-gap/search.md)の「既定値」の表）。
+- [AlphaZero型探索がαβ探索に大敗する原因とDL系将棋ソフトから移せる点の調査](../../proposals/alphazero-strength-gap.md)は、本書の2つの候補を最初に勧めた調査である。
+- [対局用の探索の先行実装調査](../../proposals/alphazero-strength-gap/search.md)は、葉の扱いとPUCTの既定値の出典を、ソースの行番号つきで記す。
+- [サイクル32の価値の診断](../../measurements/adhoc/alphazero-rl-c0032-value-bias.md)と[固定ノードの対局](../../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)は、本書の基準の値を記す。
+- DeepLearningShogiの`cppshogi/usi.cpp`の120〜135行は、温度1.74とPUCTの係数の既定値を定める（[探索の調査](../../proposals/alphazero-strength-gap/search.md)の「既定値」の表）。
 - 「先行実装との対応」の節の行番号は、2026年11月8日に取得したlc0のコミットfcabd174、DeepLearningShogiのコミット26bbc67b、およびCrazyAraのコミットbb3b5b65のものである。

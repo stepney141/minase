@@ -62,7 +62,7 @@ NASからは、サイクル1〜37の出力と記録、リセット前のラン�
 利用者の決定で前倒しした[サイクル32のMCTSとαβ探索のSTCの対局](../measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)は、97ペアで2勝192敗（Eloの点推定−793）であった。
 事前に定めた規則のとおり、学習を続けてサイクル50で同じ条件の対局をやり直す。
 
-2026年11月8日と9日に、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](mcts-royal-capture-temperature.md)で、対局と自己対局が共有するMCTSの駆動部に、新しい節点で最後の王駒を取れるかの判定を入れた（[判定のADR](../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)）。
+2026年11月8日と9日に、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](archived/mcts-royal-capture-temperature.md)で、対局と自己対局が共有するMCTSの駆動部に、新しい節点で最後の王駒を取れるかの判定を入れた（[判定のADR](../adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)）。
 このため、再開した後のサイクルの自己対局の探索は、サイクル32までと異なる。
 同じ設計書で入れた対局用MCTSの既定の温度1.4（[温度のADR](../adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）は、自己対局に影響しない。
 引き継ぐ人は、次の順に進める。
