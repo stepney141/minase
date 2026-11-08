@@ -39,13 +39,13 @@ pub struct Config {
 }
 
 impl Config {
-    /// 容量256 MiB、バッチ256、既定のPUCT係数、および方策の温度1.0を使う。
+    /// 容量256 MiB、バッチ256、既定のPUCT係数、および方策の温度1.4を使う。
     pub fn new(cp_per_logit: f32) -> Self {
         Self {
             capacity_bytes: 256 * 1024 * 1024,
             batch_size: NonZeroUsize::new(256).unwrap(),
             puct: PuctConfig::default(),
-            policy_temperature: 1.0,
+            policy_temperature: 1.4,
             cp_per_logit,
         }
     }
@@ -120,7 +120,9 @@ impl Engine {
             SearchOption {
                 name: "PolicyTemperature",
                 kind: SearchOptionKind::Spin {
-                    default: 100,
+                    // 固定ノードの対局で1.0、1.4、1.74を比べ、1.4を選んだ
+                    // （測定名: mcts-royal-capture-temperature-t140-ladder）。
+                    default: 140,
                     min: 10,
                     max: 1000,
                 },
