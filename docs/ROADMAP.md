@@ -63,6 +63,7 @@
 | AlphaZero型探索の自己対局生成器 | [plans/archived/alphazero-selfplay.md](plans/archived/alphazero-selfplay.md) | 完了（採用） | 2026年10月27日 |
 | AlphaZero型探索の学習器 | [plans/archived/alphazero-trainer.md](plans/archived/alphazero-trainer.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
+| AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/alphazero-rl-2-prep.md](plans/alphazero-rl-2-prep.md) | 起案 | |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/alphazero-multi-gpu.md](plans/alphazero-multi-gpu.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
@@ -135,8 +136,8 @@
 
 ### 直近の完了
 
-- [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)で、20ブロック256チャネルのネットを新しくランダムに初期化してやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
-- [MCTSの葉での王駒の捕獲の判定と方策の温度](plans/archived/mcts-royal-capture-temperature.md)は2026年11月9日に、採用で完了した。新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定は、MCTS同士のSTCで得点率60.9%の`H1`となり（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、MCTS 800回対αβ 500ノードのEloの点推定を−70から+3.5へ上げた。方策の温度は固定ノードの対局で1.4を選び、STCで得点率71.1%の`H1`となった（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。どちらもLTCは開発者の決定で省いた（[判定のADR](adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。判定は自己対局の探索にも効くので、強化学習を再開した後の自己対局はサイクル32までと異なる。
+- [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)でサイクル0からやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
+- [MCTSの葉での王駒の捕獲の判定と方策の温度](plans/archived/mcts-royal-capture-temperature.md)は2026年11月9日に、採用で完了した。新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定は、MCTS同士のSTCで得点率60.9%の`H1`となり（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、MCTS 800回対αβ 500ノードのEloの点推定を−70から+3.5へ上げた。方策の温度は固定ノードの対局で1.4を選び、STCで得点率71.1%の`H1`となった（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。どちらもLTCは開発者の決定で省いた（[判定のADR](adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。
 - [NNUEの世代反復をv0からやり直す計画](plans/archived/nnue-generation-reset.md)は2026年11月6日に、利用者の決定で中断した。第2世代まで作り、第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較で、学習条件に根拠の弱い点が多く見つかり、検証損失がエポック2〜3で最良になる原因も分からないままである（[状態](plans/archived/nnue-generation-reset.md#状態)）。教師は足りておらず、局面数が同じなら対局が多いほうが強い（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)）。標準の学習条件を決め直してから、v0の教師生成からやり直す。統合の前にブランチに埋め込んだネットをmasterのネットへ戻したので、masterのエンジンの評価は変わっていない。
 - [NNUE教師生成を探索結果を変えずに速くする計画](plans/archived/teacher-generation-speedup.md)は2026年11月6日に完了した。教師ファイルがバイト単位で一致する変更だけで、生成機の代理環境の探索速度が基準版の1.580倍になった（[測定](measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)）。変更は世代反復のブランチ`nnue-generation-reset`の統合でmasterへ入った。統合後は親ディレクトリの`.cargo/config.toml`にインライン化の指定が入るので、古いコミットと比べる対局ではビルドを混ぜない（[教訓](lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
 - [NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)は2026年11月4日に、一部不採用で完了した。幅256の第1層、要素積、2段の隠れ層、skip接続、および16ビットの累算値を、同じ教師で学んだ幅128のネットに`H1`を取らないまま世代反復で使う構成として確定した（[ADR](adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。[STC](measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`（得点率43.6%）、[固定ノードの対局](measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)は−2.6 Elo（95%区間−35.8〜+30.5）、探索速度は約0.91倍である。隠れ層の重みをi8からi16へ改めると、量子化誤差は29.80 cpから9.45 cpへ下がった（[記録](measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。開発者の決定により世代反復の起点としてmasterへ統合したので、masterのエンジンは統合前より弱いと見込まれる。統合前のコミットはブランチ`nnue-width128-regressed`に残し、世代反復の最終候補の比較の基準にする。最終候補が決まるまで、masterからのリリースとBotの更新ではエンジンが弱くなる。
@@ -165,22 +166,25 @@
 
 #### AlphaZero型探索
 
-- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とし、6本のサブタスクに分かれている。
-  - サブタスク1〜5の[実行環境と実現性の実測](plans/archived/alphazero-environment.md)、[ネットの入出力と推論](plans/archived/alphazero-network.md)、[探索方式の共存とMCTS](plans/archived/alphazero-mcts.md)、[自己対局生成器](plans/archived/alphazero-selfplay.md)、および[学習器](plans/archived/alphazero-trainer.md)は完了した。
-  - サブタスク6の[1回目の実行](plans/archived/alphazero-rl.md)は、[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませて再出発し、サイクル32まで回した後、2026年11月9日に利用者の決定で中断した。
-    - サイクル32のネットのMCTSは、STCでαβ探索に2勝192敗であった。
-    - [大敗の原因の調査](proposals/alphazero-strength-gap.md)は、探索回数もネットの大きさもいまの段階の主因ではないと結論し、3つの対策を先に試すよう勧めた。
-      - 葉で王駒を取られるかの判定と、方策の温度1.4は、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](plans/archived/mcts-royal-capture-temperature.md)で採用した。PUCTの6つの係数の調整は、その設計書の範囲外であり、まだ行っていない。
-      - 自己対局の局面の分布の拡大は、[候補と起案前に決めたこと](proposals/alphazero-selfplay-distribution.md)を提案にまとめ、2回目の実行で試す。
-    - 中断したのは、手数の上限、リプレイバッファの最古のサイクル、および重みの移動平均の書き出しを途中で変え、続けるとサイクル33から自己対局の探索も変わるからである。
-  - サブタスク6の[2回目の実行の設計書](plans/alphazero-rl-2.md)は起案の段階であり、2026年11月9日に利用者の決定で20ブロック256チャネルのネットから始める形に改め、利用者の承認を待っている。
-    - 20ブロック256チャネルのネットを新しくランダムに初期化してやり直し、1回目の途中で入れた変更と葉の王駒の判定を、最初のサイクルから入れる。
-    - 自己対局は、前半を初期配置を組み替えた局面から、後半を1回目と同じく初期局面から8〜16手を乱択で指した局面から始める。
-    - 前半で初めて伸びが止まったら、次のサイクルから後半の開始局面へ切り替える。
-    - 機械はColabに限らず1サイクルの料金で選ぶ。ColabのG4では1サイクル約1時間、約9 CUで、サイクル30までの約270 CUは11月2日の残高247.87 CUを上回る見込みである。
-    - サイクル1の前に、[複数GPU化の設計書](plans/alphazero-multi-gpu.md)で、学習器をLightning FabricのDDPへ移し、自己対局の生成も同じ機種の複数GPUで回せるようにする。全体のバッチは1,024、基準の学習率は0.04に改める。この設計書は起案の段階である。
-    - 承認の後は、[標準レシピv1の計画](plans/nnue-standard-recipe.md)と並行して進める。
-    - [コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、学習のセッションを次に起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。
+[統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
+統括計画のサブタスクは、実行環境、ネットの入出力と推論、探索方式の共存とMCTS、自己対局生成器、学習器、および強化学習の実行の6本であり、状態表のそのほかのAlphaZero型探索の行は、サブタスクを補う設計書である。
+サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
+
+2回目の実行は、次の3本の設計書で進める。
+3本とも起案の段階であり、利用者の承認を待っている。
+
+| 順 | 設計書 | 内容 | 前提 |
+|---|---|---|---|
+| 1 | [2回目の実行の準備](plans/alphazero-rl-2-prep.md) | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
+| 2 | [複数GPU化](plans/alphazero-multi-gpu.md) | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | フェーズ1は1と並行できる。フェーズ2以降は1の完了の後 |
+| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了の後、サイクル1は2の完了の後 |
+
+次の2件は、2回目の実行と独立に進められる。
+
+- 対局用MCTSのPUCTの6つの係数の調整は、[大敗の原因の調査](proposals/alphazero-strength-gap.md)が勧めた対策のうちまだ行っていないものであり、設計書はまだない。自己対局の探索はPUCTの係数を使わず、進捗測定はサイクル1を始めたときのバイナリに固定するので、調整しても2回目の学習の途中で条件が変わることはない。
+- 2回目の実行と[NNUEの標準レシピv1](plans/nnue-standard-recipe.md)は、借りる計算機が競合しないので並行して進め、作業機での対局の測定だけを重ならないように順番を調整する。
+
+統括計画の完了の後には、AlphaZero型のネットで教師の値を付け直す案（「教師生成」の節）を起案する。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
 
 #### 探索
 
