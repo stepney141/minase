@@ -19,7 +19,7 @@ import torch
 
 from minase_zero.data import Dataset, is_training_sample, read_replay_buffer, sample_training_indices
 
-from .cli import ZERO, environment, init_arguments, require_success, run_cli, train_arguments
+from .cli import ZERO, environment, init_arguments, require_success, run_cli, set_training_data, train_arguments
 from .test_data import single_game, write_small
 
 
@@ -188,8 +188,8 @@ class ReplayBufferTrainTests(unittest.TestCase):
     @classmethod
     def arguments(cls, out: Path) -> list[str]:
         arguments = train_arguments(cls.initial / "checkpoint.pt", out)
-        for flag, values in (("--data", [str(path) for path in cls.paths]),
-                             ("--latest-data", [str(path) for path in cls.paths[1:]]),
+        set_training_data(arguments, [str(path) for path in cls.paths])
+        for flag, values in (("--latest-data", [str(path) for path in cls.paths[1:]]),
                              ("--batch-size", ["2"]), ("--checkpoint-steps", ["2"])):
             start = arguments.index(flag) + 1
             arguments[start:start + 1] = values
@@ -232,8 +232,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         latest.write_bytes(content)
         out = self.root / "distinct-sequence"
         arguments = self.arguments(out)
-        first = arguments.index("--data") + 1
-        arguments[first:first + 3] = [str(self.paths[0]), str(self.paths[2]), str(latest)]
+        set_training_data(arguments, [str(self.paths[0]), str(self.paths[2]), str(latest)])
         first = arguments.index("--latest-data") + 1
         arguments[first:first + 2] = [str(latest)]
         arguments[arguments.index("--batch-size") + 1] = "256"

@@ -14,7 +14,9 @@ first-cycleはbranch-fromより後とし、生成、学習、照合の出力はc
 本線は--cycles-dir cycles --base-cycles-dir cycles --branch-from 0で実行する。
 cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、
 確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxに置く。
-通常生成のシードはサイクル番号×10⁹を基本とし、別系列では7×10⁸を加える。
+通常生成のシードは、本線と別系列のどちらもサイクル番号×10⁹＋--generation-seed-offsetとする。
+加算値は0以上5×10⁸未満の整数とし、加算値＋5×10⁸＋対局数の上限は10⁹以下とする。
+--start-positionはshuffled-setupかrandom-openingを必須とし、通常生成と再生成に同じ値を渡す。
 再生成は通常生成のシードに5×10⁸を加える。共有のシード台帳には、本線ではcycle-NNNN-gen、
 別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
 
@@ -35,7 +37,9 @@ summary.jsonのchunksは含めた塊の数であり、その範囲の3種類の�
 --replay-buffer-first-cycleは1以上、first-cycle以下の整数を必須とし、別系列でも同じ通し番号を使う。
 合計が目標に届かない場合もreplay-buffer-first-cycleでさかのぼりを止め、それより前の集計は読まない。
 ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
-後に加える。リプレイバッファ全体を--data、最新のサイクルだけを--latest-dataとして学習器へ渡す。
+後に加える。新しい学習では一覧を<cycle_path>/train-data.jsonのUTF-8のJSON配列に保存し、
+教師ファイルと一緒に送り、--data-listで学習器へ渡す。既存の一覧はバイト列が同じ場合だけ使う。
+最新のサイクルだけは--latest-dataの引数で渡し、再開ではチェックポイントの一覧を使う。
 リプレイバッファのサイクル番号、replay-buffer-first-cycle、replay-buffer-positions、生成と学習のコミットをサイクルの記録に残す。
 NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
 未完了の生成はgeneration-commitが一致する場合だけ再開する。
@@ -46,7 +50,8 @@ NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入�
 記録には各照合の結果を残す。
 
 送信ではColab機にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も
-含む全ファイルを1回のsha256sumで照合する。生成の塊の復元も同じ経路を使う。
+含む全ファイルを一括でsha256sumにより照合する。存在確認のJSON配列と検査和のNUL区切りの
+ファイル名は標準入力で渡し、コマンドの引数には並べない。生成の塊の復元も同じ経路を使う。
 一括の転送と照合の制限時間は、送信バイト数を1 MB/秒（1 MB = 10⁶ B）で割った秒数に
 120秒を足す。ほかの外部コマンドは120秒とする。
 
@@ -104,6 +109,8 @@ class Options:
     cycle_minutes: float
     cycle_cu: float
     target_positions: int
+    start_position: str
+    generation_seed_offset: int
     chunks: int
     simulations: int
     threads: int
@@ -142,6 +149,10 @@ class Options:
                      "batch_size", "checkpoint_steps"):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        if self.start_position not in ("shuffled-setup", "random-opening"):
+            raise ValueError("start_position must be shuffled-setup or random-opening")
+        if type(self.generation_seed_offset) is not int or not 0 <= self.generation_seed_offset < 5 * 10**8:
+            raise ValueError("generation_seed_offset must be an integer in [0, 500000000)")
         if self.last_cycle < self.first_cycle:
             raise ValueError("last_cycle must be at least first_cycle")
         if self.replay_buffer_first_cycle > self.first_cycle:
@@ -184,11 +195,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
     for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
                  "games-per-thread", "replay-buffer-first-cycle", "replay-buffer-positions", "batch-size", "checkpoint-steps",
-                 "train-seed-base", "branch-from"):
+                 "train-seed-base", "branch-from", "generation-seed-offset"):
         parser.add_argument(f"--{name}", type=int, required=True)
     for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds"):
         parser.add_argument(f"--{name}", type=float, required=True)
+    parser.add_argument("--start-position", choices=("shuffled-setup", "random-opening"), required=True)
     parser.add_argument("--precision", choices=("bf16", "fp32"), required=True)
     parser.add_argument("--cycle1-reference-summary", type=Path)
 
@@ -301,7 +313,7 @@ def _write(path: Path, contents: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _json_bytes(value: dict) -> bytes:
+def _json_bytes(value: dict | list[str]) -> bytes:
     return (json.dumps(value, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
 
 
@@ -351,10 +363,10 @@ class Remote:
                     "-o", "ControlPersist=900", "-o", "StrictHostKeyChecking=no",
                     "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
 
-    def _call(self, argv: list[str], timeout: float) -> str:
+    def _call(self, argv: list[str], timeout: float, input_text: str | None = None) -> str:
         for attempt in range(6):
             try:
-                result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+                result = subprocess.run(argv, input=input_text, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
             except subprocess.TimeoutExpired as error:
                 raise RuntimeError(f"{argv[0]} timed out after {timeout} seconds") from error
             if result.returncode == 0:
@@ -369,17 +381,17 @@ class Remote:
             time.sleep(30)
         raise AssertionError("retry loop did not return")
 
-    def shell(self, script: str, timeout: float) -> str:
+    def shell(self, script: str, timeout: float, input_text: str | None = None) -> str:
         command = shlex.join(["bash", "-c", "set -e\ncd /content/az\n" + script])
-        return self._call([*self.ssh, "root@colab", command], timeout)
+        return self._call([*self.ssh, "root@colab", command], timeout, input_text)
 
     def exists(self, relative: str) -> bool:
         return self.shell(f"if test -f {shlex.quote(relative)}; then echo yes; else echo no; fi", 120).strip() == "yes"
 
     def missing(self, files: list[str]) -> list[str]:
-        script = ("import json,pathlib; print(json.dumps([name for name in " + json.dumps(files)
-                  + " if not pathlib.Path(name).is_file()]))")
-        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
+        script = ("import json,pathlib,sys; print(json.dumps([name for name in json.load(sys.stdin)"
+                  " if not pathlib.Path(name).is_file()]))")
+        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120, json.dumps(files)))
 
     def files(self, relative: str) -> list[str]:
         script = ("import json,pathlib; p=pathlib.Path(" + repr(relative) + "); "
@@ -393,7 +405,7 @@ class Remote:
         return digest
 
     def sha256_many(self, files: list[str], timeout: float) -> dict[str, str]:
-        output = self.shell(shlex.join(["sha256sum", "--zero", "--", *files]), timeout)
+        output = self.shell("xargs -0 -r sha256sum --zero --", timeout, "".join(name + "\0" for name in files))
         records = output.split("\0")
         if records.pop() != "":
             raise ValueError("incomplete remote SHA-256 output")
@@ -620,6 +632,7 @@ class Runner:
                            "--nn-backend", "tensorrt", "--generation-commit", self.options.generation_commit,
                            "--seed", str(seed), "--games", str(games), "--chunk-games", str(chunk_games),
                            "--target-positions", str(target_positions),
+                           "--start-position", self.options.start_position,
                            "--simulations", str(self.options.simulations), "--playthrough-percent", str(playthrough),
                            "--threads", str(self.options.threads), "--games-per-thread", str(self.options.games_per_thread)]
                 self._begin(out)
@@ -640,7 +653,8 @@ class Runner:
         config = read_json(config_path)
         expected = {"network_sha256": sha256(self.root / network),
                     "nn_backend": "tensorrt", "seed": seed, "games": games, "chunk_games": chunk_games,
-                    "simulations": self.options.simulations, "playthrough_percent": playthrough}
+                    "simulations": self.options.simulations, "playthrough_percent": playthrough,
+                    "start_position": self.options.start_position}
         if (any(config[key] != value for key, value in expected.items())
                 or type(summary["target_positions"]) is not int
                 or summary["target_positions"] != target_positions
@@ -667,7 +681,15 @@ class Runner:
             return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
         initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                    self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
-        command = [*TRAINER, "train", "--init", initial, "--data", *files,
+        data_list = self.options.cycle_path(cycle) + "/train-data.json"
+        path = self.root / data_list
+        contents = _json_bytes(files)
+        if path.exists():
+            if path.read_bytes() != contents:
+                raise ValueError(f"immutable file differs: {data_list}")
+        else:
+            _write(path, contents)
+        command = [*TRAINER, "train", "--init", initial, "--data-list", data_list,
                    "--latest-data", *latest_files, "--out-dir", out,
                    "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
         for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
@@ -681,11 +703,14 @@ class Runner:
         if not local_summary.exists():
             state = self.remote.status(out)
             if state == "new" and not self.remote.exists(out + "/summary.json"):
-                send(self.remote, self.root, files)
+                command = self.training_command(cycle, files, latest_files)
+                transfer_files = list(files)
+                if "--data-list" in command:
+                    transfer_files.append(command[command.index("--data-list") + 1])
+                send(self.remote, self.root, transfer_files)
                 initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                            self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
                 send(self.remote, self.root, [initial])
-                command = self.training_command(cycle, files, latest_files)
                 self._begin(out)
                 self.remote.start(out, shlex.join(command), out + ".log", out + ".log")
                 state = "running"
@@ -827,12 +852,15 @@ class Runner:
             playthrough, calibration = resignation(options, cycle)
             reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(options, cycle - 1))
             games, chunk_games = game_counts(reference, options.target_positions, options.chunks)
-            seed = cycle * 10**9 + (0 if mainline else 7 * 10**8)
+            if options.generation_seed_offset + 5 * 10**8 + games > 10**9:
+                raise ValueError("generation seed range exceeds the cycle's 1000000000 interval")
+            seed = cycle * 10**9 + options.generation_seed_offset
             network = (self.options.cycle_path(0) + "/model.onnx" if cycle == 1 else
                        self.options.cycle_path(cycle - 1) + "/train/model.onnx")
             generation = {"network": network, "network_sha256": sha256(self.root / network), "seed": seed,
                           "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
                           "target_positions": options.target_positions,
+                          "start_position": options.start_position,
                           "threads": options.threads, "games_per_thread": options.games_per_thread,
                           "simulations": options.simulations}
             seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-gen", seed, games)
@@ -884,6 +912,7 @@ class Runner:
                 interval["balance_increased"] = True
             record = {**settings, "cycle": cycle, "generation_commit": generation["generation_commit"],
                       "trainer_commit": options.trainer_commit, "generation": generation,
+                      "generation_seed_offset": options.generation_seed_offset,
                       "resign_calibration": calibration, "selfplay_summary": summary,
                       "regeneration": regen_settings, "selfplay_regen_summary": regen_summary,
                       "training_files": files, "replay_buffer_cycles": replay_buffer_cycles,

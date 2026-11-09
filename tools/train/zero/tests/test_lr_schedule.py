@@ -19,7 +19,7 @@ from minase_zero import train
 from minase_zero.__main__ import _parse
 from minase_zero.data import is_training_sample, is_validation
 
-from .cli import COMMIT, require_success, run_cli, train_arguments
+from .cli import COMMIT, require_success, run_cli, set_training_data, train_arguments
 from .test_data import single_game, write_small
 
 
@@ -42,10 +42,12 @@ class LearningRateTests(unittest.TestCase):
                         int(numbers[validation][0])])
         write_small(cls.data_path, [single_game(game, game % 2, game % 3, 32768, (65_535,))
                                    for game in games], "engine-default")
-        args = vars(_parse(train_arguments(cls.initial / "checkpoint.pt", cls.root / "unused")))
+        arguments = train_arguments(cls.initial / "checkpoint.pt", cls.root / "unused")
+        set_training_data(arguments, [str(cls.data_path)])
+        args = vars(_parse(arguments))
         args.pop("command")
         args.pop("out_dir")
-        cls.config = {**args, "data": [str(cls.data_path)], "latest_data": [str(cls.data_path)],
+        cls.config = {**args, "latest_data": [str(cls.data_path)],
                       "batch_size": 2, "checkpoint_steps": 2}
 
     def test_every_group_uses_the_hand_calculated_rate_before_each_update(self):

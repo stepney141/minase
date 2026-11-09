@@ -1,5 +1,6 @@
 """実際のPythonサブプロセスで学習器を起動する試験用の共通処理。"""
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -31,8 +32,11 @@ def init_arguments(out: Path, seed: int) -> list[str]:
 
 def train_arguments(initial: Path, out: Path) -> list[str]:
     """設計書の再開試験で使う1サイクル分の設定を返す。"""
+    data_list = out.with_name(out.name + "-data.json")
+    data_list.parent.mkdir(parents=True, exist_ok=True)
+    data_list.write_text(json.dumps(["fixtures/zero-selfplay-small.mnsd"]), encoding="utf-8")
     return [
-        "train", "--init", str(initial), "--data", "fixtures/zero-selfplay-small.mnsd",
+        "train", "--init", str(initial), "--data-list", str(data_list),
         "--latest-data", "fixtures/zero-selfplay-small.mnsd",
         "--out-dir", str(out), "--cycle", "1", "--seed", "42", "--batch-size", "16",
         "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
@@ -45,3 +49,8 @@ def require_success(result: subprocess.CompletedProcess[str]) -> None:
     """試験の準備が失敗した場合も、子プロセスのエラーを隠さず失敗させる。"""
     if result.returncode != 0:
         raise AssertionError(f"exit={result.returncode}\n{result.stdout}\n{result.stderr}")
+
+
+def set_training_data(arguments: list[str], files: list[str]) -> None:
+    """CLIへ渡すJSON配列を指定したファイルの順に書く。"""
+    Path(arguments[arguments.index("--data-list") + 1]).write_text(json.dumps(files), encoding="utf-8")

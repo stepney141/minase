@@ -8,7 +8,9 @@ trainの出力先には、checkpoint.pt、model.onnx、およびsummary.jsonを�
 summary.jsonの存在をサイクルの完了とみなす。
 すべての更新を終えたcheckpoint.ptが、次のサイクルの--initに与えるチェックポイントになる。
 
---latest-dataは最新サイクルの生成ファイルの列で、--dataの末尾とパスの文字列も順も一致させる。
+--data-listは、空でないパスの文字列を要素とする、空でないUTF-8のJSON配列のファイルを指定する。
+読み込んだ配列をconfig["data"]に保存し、リストのファイル名は保存しない。再開ではリストのファイルを読まない。
+--latest-dataは最新サイクルの生成ファイルの列で、読み込んだ配列の末尾とパスの文字列も順も一致させる。
 リプレイバッファのファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
 最新サイクルの訓練局面数Nの4倍を抽出数とし、Nは1以上とする。
 抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、
@@ -549,8 +551,20 @@ def _peak_rss_bytes() -> int:
     return peak if sys.platform == "darwin" else peak * 1024
 
 
+def _read_data_list(path: Path) -> list[str]:
+    try:
+        files = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{path}: cannot read data list: {error}") from error
+    if not isinstance(files, list) or not files or any(not isinstance(name, str) or not name for name in files):
+        raise ValueError(f"{path}: data list must be a nonempty JSON array of nonempty path strings")
+    return files
+
+
 def train_new(config: dict, out_dir: Path) -> None:
     """完了したチェックポイントから、指定したリプレイバッファで新しいサイクルを始める。"""
+    config = dict(config)
+    config["data"] = _read_data_list(Path(config.pop("data_list")))
     _validate_training(config)
     device = _validate_device(config["device"], config["precision"])
     initial = _load_checkpoint(Path(config["init"]))
