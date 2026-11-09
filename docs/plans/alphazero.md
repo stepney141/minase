@@ -67,7 +67,7 @@ MCTSは、αβ探索の置き換えとしてではなく、同じリポジトリ
 - **Q**はある手を指した後の局面の価値を、その手の下で行ったシミュレーションで平均した値である。
 - **PUCT**はAlphaZeroが使う子の選択式で、Qに、方策の確率が大きく訪問回数が少ない手ほど大きくなる探索項を足した値が最大の子を選ぶ。
 - **サイクル**はRLの1回分の反復であり、100万局面の自己対局による生成と、そのデータを含む直近のデータでの学習からなる。
-- **学習窓**は、各サイクルの学習で局面を抽出する直近のサイクルの教師データである。窓の大きさと抽出の規則は[学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)と[強化学習の2回目の実行](alphazero-rl-2.md)の「学習窓」の節が定める。
+- **リプレイバッファ**は、各サイクルの学習で局面を抽出する直近のサイクルの教師データである。大きさと抽出の規則は[リプレイバッファのADR](../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)と[強化学習の2回目の実行](alphazero-rl-2.md)の「リプレイバッファ」の節が定める。
 - **作業機**は開発に使っている手元の機械（GPUはRTX 3060 Ti、8 GB）である。
 - **Colab機**は、利用者が契約しているGoogle Colab（以下Colab）の有料プランで借りる、GPUを1枚持つ仮想機械である。費用はプランに毎月付与される計算単位（compute unit、以下CU）で払う。
 - **レンタル機**は、vast.aiまたはRunpodで時間単位で借りる、GPUを1枚持つ機械である。Colab機とレンタル機を合わせて**借りた機械**という。

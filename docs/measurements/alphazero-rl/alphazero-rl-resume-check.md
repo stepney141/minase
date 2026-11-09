@@ -34,7 +34,7 @@ python -m minase_zero train --init cycles/cycle-0000/checkpoint.pt \
 ```
 
 生成器は1つの塊につき、投了以外で終えた対局の`chunk-N.mnsd`、投了で終えた対局の`chunk-N.resigned.mnsd`（投了を無効にしたので対局を含まない）、および塊の集計`chunk-N.json`の3ファイルを作り、学習器にはこのうち前の2つを与える。
-学習器に与える教師データのファイルの列（学習窓）とチェックポイントのパスは、どの機械でも`/content/az`からの相対パスで与えた。
+学習器に与える教師データのファイルの列（リプレイバッファ）とチェックポイントのパスは、どの機械でも`/content/az`からの相対パスで与えた。
 
 ## エンジン
 
@@ -73,7 +73,7 @@ Colab機は同時に1本の`colab ssh`しか受け付けず、2本目はHTTP 429
 
 機械Bの学習は、全1,231回のうち400回目の更新のチェックポイントを確定させた直後に止まった（[1回目のログ](alphazero-rl-resume-check/train-b-run1.log)）。
 作業機はこのチェックポイント（SHA-256 `a9a034d6…cfae`）だけをNASへ受け取り、機械Bを破棄した。
-機械Cには、学習窓の12ファイルと塊の集計、初期のチェックポイント、および止めた学習のチェックポイントを、機械Bと同じ相対パスに送った。
+機械Cには、リプレイバッファの12ファイルと塊の集計、初期のチェックポイント、および止めた学習のチェックポイントを、機械Bと同じ相対パスに送った。
 再開した学習は「resume: completed_steps=400/1231」と出力して401回目の更新から続け、全1,231回の更新を終えた（[2回目のログ](alphazero-rl-resume-check/train-b-run2.log)）。
 
 再開した学習（出力先`train-b`）と止めない学習（出力先`train-a`）の集計（[train-a](alphazero-rl-resume-check/train-a-summary.json)、[train-b](alphazero-rl-resume-check/train-b-summary.json)）は、時間と常駐メモリの欄を除くと、次の項目で一致した。どちらも機械Cで実行した。

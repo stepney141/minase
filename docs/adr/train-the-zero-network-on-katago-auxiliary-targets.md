@@ -43,7 +43,7 @@ minaseは量子化で0になった候補を記録しないので、合法でな�
 
 ## 結果
 
-短期の価値の目標、次の手番の方策、および次の手番の局面の合法手は、拡張モジュールが窓のファイルを再生する途中で対局全体から求め、抽出した局面の分だけ返す（[拡張モジュールのADR](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)）。
+短期の価値の目標、次の手番の方策、および次の手番の局面の合法手は、拡張モジュールがリプレイバッファのファイルを再生する途中で対局全体から求め、抽出した局面の分だけ返す（[拡張モジュールのADR](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)）。
 訓練と検証の診断、学習曲線、および終了報告は、各補助の項の平均を主の項と並べて持つ。
 補助目標の誤りは学習の再開の一致では見つからないので、手で計算した期待値との照合を試験に持つ。
 実装は`tools/train/zero/minase_zero/train.py`にある。

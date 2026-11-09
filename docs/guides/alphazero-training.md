@@ -26,7 +26,7 @@
 
 RLは、自己対局の生成、ネットの学習、および出力の照合を1サイクルとして繰り返す。
 生成では、前のサイクルのネットで、訓練局面が目標の100万に届くまで対局する。
-学習では、直近の数十サイクル分のデータ（学習窓）から抽出した局面でネットを更新する。
+学習では、直近の数十サイクル分のデータ（リプレイバッファ）から抽出した局面でネットを更新する。
 照合では、学習したネットをminaseが正しく読めることを確かめる。
 照合に通ったネットが、次のサイクルの生成に使われる。
 
@@ -44,7 +44,7 @@ NASの主な置き場所は次のとおりである。
 | `logs/runner-<セッション名>.log` | 起動スクリプトと実行器のログ |
 | `progress/`、`external/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
 
-1サイクルは、学習窓がサイクル3〜32の時点で約1時間（生成33〜37分、学習22〜25分）、約2 CUであった。
+1サイクルは、リプレイバッファがサイクル3〜32の時点で約1時間（生成33〜37分、学習22〜25分）、約2 CUであった。
 L4の消費レートは1.94 CU/時なので、休まず回すと1日に約47 CUを使う。
 
 ## 標準レシピ
@@ -85,7 +85,7 @@ minase data zero-selfplay --output-dir cycles/cycle-NNNN/selfplay \
 
 # 学習
 python -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
-  --data <学習窓のファイル...> --latest-data <最新のサイクルのファイル...> \
+  --data <リプレイバッファのファイル...> --latest-data <最新のサイクルのファイル...> \
   --out-dir cycles/cycle-NNNN/train --cycle NNNN --seed <20261100＋サイクル番号> \
   --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
   --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
@@ -268,7 +268,7 @@ kill -TERM $(pgrep -f "[.]venv/bin/python -m minase_zero run-cycles")
 
 - 生成が完了している場合は、`selfplay/summary.json`がNASにあれば、生成時のコミットが異なっていてもそのまま受け入れる。
 - 生成が途中の場合は、コミットが異なると実行器はエラーで止まる。
-- 学習が途中の場合は、学習器が同じ局面を同じ順に読むことを照合するので、窓や学習の設定を変えると再開できない。
+- 学習が途中の場合は、学習器が同じ局面を同じ順に読むことを照合するので、リプレイバッファや学習の設定を変えると再開できない。
 
 コードを切り替えるときは、生成が終わって学習が始まった直後に実行器を止めるのが最も無駄が少ない。
 その場合は、そのサイクルの`train.started.json`、`train/`などの学習の出力を、削除せずに`cycles/cycle-NNNN/rejected-<理由>/`へ移してから、新しいコミットで同じサイクルから起動する。
@@ -358,12 +358,12 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--threads <N>` | 4 | 生成器のスレッド数。1以上。 |
 | `--games-per-thread <N>` | 128 | スレッドごとの同時対局数。1以上。 |
 
-**学習窓**
+**リプレイバッファ**
 
 | 引数 | 標準の値 | 値域と意味 |
 |---|---|---|
-| `--window-first-cycle <N>` | 3 | 窓がさかのぼる最も古いサイクル。1以上`--first-cycle`以下。別系列でも本線と同じ通し番号を使う。 |
-| `--window-positions <N>` | 47802000 | 窓の局面数の目標。最新のサイクルからさかのぼり、生成し直しを含む`training_positions`の合計が初めてこの値以上になるまでを窓とする。1以上。 |
+| `--window-first-cycle <N>` | 3 | リプレイバッファがさかのぼる最も古いサイクル。1以上`--first-cycle`以下。別系列でも本線と同じ通し番号を使う。 |
+| `--window-positions <N>` | 47802000 | リプレイバッファの局面数の目標。最新のサイクルからさかのぼり、生成し直しを含む`training_positions`の合計が初めてこの値以上になるまでをリプレイバッファとする。1以上。 |
 
 **学習**
 
@@ -409,7 +409,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | 引数 | 実行器が渡す値 | 値域と意味 |
 |---|---|---|
 | `--init <FILE>` | 前のサイクルの`train/checkpoint.pt`（サイクル1は`cycle-0000/checkpoint.pt`） | すべての更新を終えたチェックポイント。 |
-| `--data <FILE...>` | 学習窓のファイル | 古いサイクルから、各生成の`training_files`の順に並べ、生成し直しを本体の後に加える。 |
+| `--data <FILE...>` | リプレイバッファのファイル | 古いサイクルから、各生成の`training_files`の順に並べ、生成し直しを本体の後に加える。 |
 | `--latest-data <FILE...>` | 最新のサイクルのファイル | `--data`の末尾とパスの文字列も順も一致させる。 |
 | `--out-dir <DIR>` | `<cycles-dir>/cycle-NNNN/train` | 存在しないか空のディレクトリ。 |
 | `--cycle <N>` | サイクル番号 | 0以上。 |
@@ -469,7 +469,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | 探索 | Gumbel AlphaZero、完全探索32回（確率0.25、それ以外は8回）、候補16、Qの尺度1.0、減衰する指し手の温度 | [Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択のADR](../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md) |
 | 1サイクルの生成量 | 訓練局面100万。目標に届いた最初の塊で締める | Gumbel dlshogiと同じ量（設計書の「生成と学習を交互に行う」の節）、[塊のADR](../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md) |
 | 生成の並列 | 4スレッド、スレッドごとに128局 | [試走](../measurements/alphazero-rl/alphazero-rl-trial.md)で比べた組のうち最も速かった（毎秒974局面） |
-| 学習窓と抽出 | サイクル3以後、パラメータ数の10倍の局面。最新のサイクルの訓練局面数の4倍を一様に抽出する | [学習窓のADR](../adr/sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md) |
+| リプレイバッファと抽出 | サイクル3以後、パラメータ数の10倍の局面。最新のサイクルの訓練局面数の4倍を一様に抽出する | [リプレイバッファのADR](../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md) |
 | 学習率 | 基準0.01、サイクルごとのcosine annealing、累計200万標本のウォームアップ | 基準はdlshogiの学習器の既定値、予定は[学習率の予定のADR](../adr/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)。一定の学習率との比較は打ち切った |
 | 最適化器 | ネステロフのモーメンタムつきSGD、係数0.9、重み減衰10⁻⁴、勾配のノルムの上限10 | dlshogiの学習器の既定値（[学習器の設計書](../plans/archived/alphazero-trainer.md)の「着手時に補った決定」の節） |
 | 価値の教師 | λ=0.333 | [定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md) |

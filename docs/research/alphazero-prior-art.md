@@ -59,7 +59,7 @@ Gumbel AlphaZeroは、ルートでGumbel-Top-k法により重複なしにm個の
 将棋では2つの適用例がある。
 技巧（WCSC34）は、既存の棋譜を使わずGumbel AlphaZeroで約5,000万対局を学習し、1手のシミュレーション数を約1,000万対局まで32、約4,000万対局まで64、以後128と段階的に増やしたと述べている（[詳細アピール文書](https://www.apply.computer-shogi.org/wcsc34/appeal/Gikou/gikou_appeal_detail.pdf)第1節と第4節。GPUは約20台、対局実験のMCTSのバッチサイズは1）。
 技巧の実装はRustの探索とPythonの学習（PyTorch Lightning、Torch-TensorRT）の組合せである。
-Gumbel dlshogi（2025年7月）は、1サイクル100万局面の生成と学習を交互に行い、シミュレーション数を16、32、64、学習窓を1、2、4サイクルと段階的に増やして、106サイクルを約3日22時間で回した（[途中経過](https://tadaoyamaoka.hatenablog.com/entry/2025/07/25/230204)、[スケジューラ](https://tadaoyamaoka.hatenablog.com/entry/2025/07/22/212555)）。
+Gumbel dlshogi（2025年7月）は、1サイクル100万局面の生成と学習を交互に行い、シミュレーション数を16、32、64、リプレイバッファを1、2、4サイクルと段階的に増やして、106サイクルを約3日22時間で回した（[途中経過](https://tadaoyamaoka.hatenablog.com/entry/2025/07/25/230204)、[スケジューラ](https://tadaoyamaoka.hatenablog.com/entry/2025/07/22/212555)）。
 学習初期には入玉宣言で終わる対局が7サイクル目に66.1%を占める退化戦略が生じた。最大手数（512手）で終わった対局を学習から除いても割合は増え続け（3サイクル目に41.2%）、3手詰めで詰みが見つかった対局を勝ちとして終える処理を自己対局に入れた実験で多くて0.2%になった（[その7](https://tadaoyamaoka.hatenablog.com/entry/2025/07/18/223232)、[その8](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/085509)、[その9](https://tadaoyamaoka.hatenablog.com/entry/2025/07/19/140913)。2026年10月28日の[監査](../audits/alphazero-rl-readiness-2026-10-28.md)で訂正した）。
 
 中将棋の合法手は1局面で100手を超えることが多く、800訪問の通常のPUCTでもルートの子を訪問し尽くせない。

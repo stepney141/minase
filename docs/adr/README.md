@@ -335,7 +335,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月28日 [審判層は獅子でない駒の捕獲可能性を利きの逆引きで判定し、合法手なしと詰みを駒ごとの生成で最初の逃れる手で打ち切る](judge-non-lion-captures-by-attacks-and-stop-mate-at-the-first-escape-in-the-referee.md)
 - 2026年10月28日 [AlphaZero型探索の自己対局は、選んだ手の勝率が1%を下回った側を投了させ、誤った投了の割合の片側95%上限が5%以下と確かめてから有効にする](resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)
 - 2026年10月29日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、合法手の確率を1×10⁻²、価値を5×10⁻²で照合する](compare-fp16-zero-network-values-within-five-hundredths.md)
-- 2026年10月29日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量だけを一様に抽出して学ぶ](archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)（置き換え済み）
+- 2026年10月29日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量だけを一様に抽出して学ぶ](archive/sample-zero-training-positions-from-a-replay-buffer-of-ten-times-the-parameter-count.md)（置き換え済み）
 - 2026年10月29日 [AlphaZero型探索の学習は、方策の損失を局面ごとの合法手だけで正規化せず、常に不可能なラベルの定数マスクにとどめる](keep-the-constant-policy-label-mask-without-per-position-legal-masks.md)
 - 2026年10月30日 [AlphaZero型探索の自己対局には、重みの移動平均ではなく平均でない重みのネットを使う](archive/keep-generating-zero-self-play-with-the-raw-weights-instead-of-the-ema.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をQの尺度1.0で行い、指す手のGumbel乱数にだけ手数で減る倍率を掛ける](use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)
@@ -345,11 +345,11 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、主の方策と価値に、KataGoの既定の重みで短期の価値、相手の次の手、およびソフト方策の補助目標を足して学ぶ](train-the-zero-network-on-katago-auxiliary-targets.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面と対局全体から決まる教師を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)
-- 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](archive/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)（置き換え済み）
+- 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](archive/sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](archive/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)
 - 2026年11月1日 [AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)
-- 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルを学習窓とし、そのサイクルの生成量の4倍の標本を窓から一様に抽出して学ぶ](sample-four-times-from-a-zero-training-window-of-ten-times-the-parameter-count-from-cycle-3.md)
+- 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)
 - 2026年11月2日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)
 - 2026年11月2日 [AlphaZero型探索の学習器は重みの移動平均を持たず、自己対局と進捗測定には学習の最後の重みのネットを使う](do-not-keep-a-moving-average-of-the-zero-network-weights.md)
 - 2026年11月2日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切り、判定は探索のモジュールに置く](stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)

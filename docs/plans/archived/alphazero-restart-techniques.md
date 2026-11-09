@@ -13,7 +13,7 @@ playout cap randomization（以下PCR）により、手番の25%だけを通常�
 学習器には、将来の局面の価値の指数平均を予測する短期の価値の目標（KataGoのTD目標）、相手の次の手の予測、および方策の目標を平らにしたソフト方策の目標の3つの補助目標を加えた。
 さらに、各局面を平均4回使うように抽出数を新規局面数の4倍にし、ランダム初期化から200万標本の間に学習率を線形に上げるウォームアップを入れた。
 作業機では、強制終了から再開した生成と学習が止めない場合と一致することを確かめた。
-Colab機のL4の試走では、窓が1サイクル分のときの1サイクルが55.7分、1.76 CUであり、窓が満ちた後は約74〜77分、約2.2〜2.3 CUと見込む。
+Colab機のL4の試走では、リプレイバッファが1サイクル分のときの1サイクルが55.7分、1.76 CUであり、リプレイバッファが満ちた後は約74〜77分、約2.2〜2.3 CUと見込む。
 
 ## 状態
 
@@ -23,7 +23,7 @@ Colab機のL4の試走では、窓が1サイクル分のときの1サイクル�
 実装はmasterから切ったブランチ`alphazero-restart-techniques`で行った。
 各技法の試験と既存の試験（workspaceの1,757件、学習器の230件、拡張モジュールの25件）が通り、αβ探索の深さ6のbenchは15局面すべてでmasterと一致した。
 測定の記録は、[判定の時間](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-mate3-cost.md)、[ランダム初期化のネットの出力の照合](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)、[作業機の再開の確認](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-resume-check.md)、および[試走](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-trial.md)にある。
-設計判断は、[Gumbel探索](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択](../../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)、[3手以内の勝ちの打ち切り](../../adr/archive/stop-zero-self-play-at-check-only-wins-within-three-plies.md)、[入力](../../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)、[ネットの構成](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[補助目標](../../adr/train-the-zero-network-on-katago-auxiliary-targets.md)、[拡張モジュール](../../adr/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)、[抽出](../../adr/archive/sample-each-new-zero-training-position-four-times-from-a-window-of-ten-times-the-parameter-count.md)、および[学習率の予定](../../adr/archive/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)の9本のADRへ移した。
+設計判断は、[Gumbel探索](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択](../../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)、[3手以内の勝ちの打ち切り](../../adr/archive/stop-zero-self-play-at-check-only-wins-within-three-plies.md)、[入力](../../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)、[ネットの構成](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[補助目標](../../adr/train-the-zero-network-on-katago-auxiliary-targets.md)、[拡張モジュール](../../adr/read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)、[抽出](../../adr/archive/sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)、および[学習率の予定](../../adr/archive/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)の9本のADRへ移した。
 強化学習の再出発の手順は、[強化学習の実行の設計書](alphazero-rl.md)の「状態」の節にある。
 
 ## 目的
@@ -57,7 +57,7 @@ Colab機のL4の試走では、窓が1サイクル分のときの1サイクル�
 
 ## 依存関係
 
-本書は、2026年10月31日にmasterへマージした強化学習の実行の学習器と実行器の実装（学習窓からの一様な抽出、`--lr-schedule`、重みの移動平均、および`runner`の`--cycles-dir`など）を前提とする。
+本書は、2026年10月31日にmasterへマージした強化学習の実行の学習器と実行器の実装（リプレイバッファからの一様な抽出、`--lr-schedule`、重みの移動平均、および`runner`の`--cycles-dir`など）を前提とする。
 自己対局生成器、探索、ネットの入出力、および学習器の既存の仕様は、凍結した[自己対局生成器](alphazero-selfplay.md)、[探索方式の共存とMCTS](alphazero-mcts.md)、[ネットの入出力と推論](alphazero-network.md)、[学習器](alphazero-trainer.md)、および各ADRとコードのdocコメントにある。
 王手限定の3手以内の勝ちの判定は、2026年10月31日の利用者の決定により、起案中の[詰み探索（df-pn）の設計書](../mate-search.md)とは別の探索として本書で作り、df-pnの探索核にも参照探索にも依存しない。
 王手の定義（受け方の唯一の王駒に攻め方の利きが届くこと）と、受け方の王駒が2枚の局面を判定の対象外とする扱いは、詰み探索の設計書と同じにする。
@@ -109,7 +109,7 @@ T(t)=0.15＋(1.0−0.15)×0.5^(t/12)とし、tは初期局面からの手数（�
 そのため、訓練局面を「価値と方策の候補の両方を記録した項目」と定め、生成器の集計`training_positions`、拡張モジュールの事前の計数、および再生のときの選別をこの定義にそろえる。
 今の拡張モジュールは価値があれば訓練局面として数え（`tools/train/zero/mnsd_reader/src/scan.rs` 96行）、学習器は抽出した局面に方策の候補がないとエラーにする（`tools/train/zero/minase_zero/data.py` 150行）ので、前者を改める。
 投了の判定と較正は、完全探索の手番だけで行う。
-速い探索の手番の方策も記録してKataGoのように相手の手の目標に使う案は、教師データが約4倍になり、学習窓を新しい機械へ送る時間が数時間に延びるので採らなかった（強化学習の実行の設計書の転送の速さからの見積もり）。
+速い探索の手番の方策も記録してKataGoのように相手の手の目標に使う案は、教師データが約4倍になり、リプレイバッファを新しい機械へ送る時間が数時間に延びるので採らなかった（強化学習の実行の設計書の転送の速さからの見積もり）。
 
 見積もり：記録する局面は1局の手番の約4分の1になるので、1サイクル100万局面に入る対局は約4倍、独立な勝敗も約4倍になる。
 一方、手番あたりの探索回数の平均は0.25×32＋0.75×8＝14回になり、手番ごとの根の評価1回を加えると、1つの訓練局面を作るネットの評価の回数は4×(14＋1)/(32＋1)で約1.8倍になる。
@@ -176,7 +176,7 @@ dlshogiの手数を固定した詰み探索は、攻め方の手を王手専用�
 したがって、Rustの推論が扱うネットの出力は変わらず、変わるのは入力の面の数だけである。
 
 見積もり：パラメータ数は、価値ヘッドで約115万、入力の面で約7万、補助ヘッドで約10万増え、約346万から約478万になる。
-学習窓はパラメータ数の10倍の規則のままなので、窓は約3,460万局面から約4,780万局面に広がる。
+リプレイバッファはパラメータ数の10倍の規則のままなので、リプレイバッファは約3,460万局面から約4,780万局面に広がる。
 パラメータ数は、今までどおり学習器の`init`が記録する、補助ヘッドを含む全体の値で数える。
 
 ### 補助目標
@@ -208,7 +208,7 @@ fは約0.038、0.110、0.303で、平均の遅れは約25手、8手、2手にな
 次の手番の手は、相手の視点ではなく、手番tの側から見た盤の座標でラベルに直す。
 このとき成りの面では、移動元か移動先が手番tの側の自陣の4段にあるラベルだけが有効になるので、相手の手の項には成りの段を反転した定数マスクを使う。
 ソフト方策の自手の目標は同じ局面の方策の目標から、相手の手の目標は次の手番の記録から作るので、生成器の変更は要らない。
-学習器は窓のファイルを先頭から再生しながら抽出した局面だけを残すので、短期の価値の目標、次の手番の方策、および次の手番の局面の合法手は、拡張モジュールが再生の途中で対局全体から求め、抽出した局面の分だけ返す。
+学習器はリプレイバッファのファイルを先頭から再生しながら抽出した局面だけを残すので、短期の価値の目標、次の手番の方策、および次の手番の局面の合法手は、拡張モジュールが再生の途中で対局全体から求め、抽出した局面の分だけ返す。
 
 ### 学習率の予定と抽出数
 
@@ -222,21 +222,21 @@ sはチェックポイントに記録してサイクルをまたいで引き継�
 各サイクルの抽出数は、そのサイクルの新規の訓練局面数Nの4倍とする。
 抽出は、更新に使う長さ4Nの通し番号の列sとして作る。
 q=⌊4N/T⌋、r=4N−qTとし、学習のシードから作る1本の乱数列（PCG64）で、まずT個全体の順列をq回、続いて重複のないr個を、既存の部分的なFisher–Yates法で順に引き、つないだものをsとする。
-Tは窓の訓練局面数であり、T≥4Nならq=0となって、重複のない4N個を引く今までの方式と同じになる。
+Tはリプレイバッファの訓練局面数であり、T≥4Nならq=0となって、重複のない4N個を引く今までの方式と同じになる。
 sには同じ局面が複数回現れてよいので、拡張モジュールにはsの重複を除いた番号を渡して局面を読み、学習器はsの順に局面を参照する。
 更新回数はceil(4N/256)とし、`sample_sha256`と`data_order_sha256`は重複を含むs全体から求める。
-抽出数が窓を超えると拒否する学習器の`sample_training_indices`（`data.py` 196行）と、重複した番号を拒否する拡張モジュール（`tools/train/zero/mnsd_reader/src/lib.rs` 260行）は、この契約に合わせて改める。
+抽出数がリプレイバッファを超えると拒否する学習器の`sample_training_indices`（`data.py` 196行）と、重複した番号を拒否する拡張モジュール（`tools/train/zero/mnsd_reader/src/lib.rs` 260行）は、この契約に合わせて改める。
 4倍は、KataGoの手引きが「conservative」として勧める、新しいデータ1行あたりの学習の回数である（`SelfplayTraining.md` 58、67行）。
-再開の照合は、[学習窓の抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
+再開の照合は、[リプレイバッファの抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-replay-buffer-of-ten-times-the-parameter-count.md)と同じ規則を列sに当てはめる。
 
 ### 1サイクルの所要時間と費用の見積もり
 
 L4のColab機で、リセット前のサイクル30の生成は1,115秒、学習の更新は143秒、読み込みは98秒、照合は174秒であった。
 見積もりでは、GPUの時間がネットの評価の回数に比例するとして、PCRで生成が約1.8倍の約2,030秒、抽出数の4倍で更新が約570秒になる。
-読み込みは窓の全手番の再生に比例し、窓の局面数が約1.6倍、1局面あたりの手番が約4倍になるので、約630秒になる。
+読み込みはリプレイバッファの全手番の再生に比例し、リプレイバッファの局面数が約1.6倍、1局面あたりの手番が約4倍になるので、約630秒になる。
 これらを合わせると1サイクルは約57分、約1.5 CUとなり、今までの約30分、約1.0 CUより長い。
 3手以内の勝ちの判定の費用はこの見積もりに入っていない。
-新しい機械で最初のサイクルを始めるときに送る学習窓のデータは、窓が約48サイクルになるので、方策の候補の数が今までと同じなら約16 GBとなる。
+新しい機械で最初のサイクルを始めるときに送るリプレイバッファのデータは、リプレイバッファが約48サイクルになるので、方策の候補の数が今までと同じなら約16 GBとなる。
 これに、方策を持たない速い探索の手番の記録（1手番11バイト、`records.rs` 56行）が1サイクル約33 MB、48サイクルで約1.6 GB加わるので、合わせて約18 GBとなり、作業機からColab機への転送（約6.2 MB/秒）に約50分かかる。
 これらと方策の候補の数の変化は試走で測り直し、強化学習の実行の設計書の見積もりを更新する。
 
@@ -247,7 +247,7 @@ L4のColab機で、リセット前のサイクル30の生成は1,115秒、学習
 - [Gumbel AlphaZeroのADR](../../adr/archive/use-gumbel-alphazero-for-zero-self-play-search.md)で定めた、Qの尺度0.1、毎手の倍率1.0のGumbel乱数、および手番ごとに同じ探索回数の3つの決定。
 - [入力のADR](../../adr/archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)で定めた、95面の入力と利きの面を入れない決定。
 - [ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)で定めた、1チャネルの価値ヘッド。
-- [学習窓の抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-window-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
+- [リプレイバッファの抽出のADR](../../adr/archive/sample-zero-training-positions-from-a-replay-buffer-of-ten-times-the-parameter-count.md)で定めた、抽出数を新規局面数とする決定。
 
 補助目標、3手以内の勝ちによる打ち切り、およびRLの学習率の予定は、新しいADRに書く。
 
