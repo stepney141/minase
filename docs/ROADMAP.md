@@ -63,7 +63,7 @@
 | AlphaZero型探索の自己対局生成器 | [plans/archived/alphazero-selfplay.md](plans/archived/alphazero-selfplay.md) | 完了（採用） | 2026年10月27日 |
 | AlphaZero型探索の学習器 | [plans/archived/alphazero-trainer.md](plans/archived/alphazero-trainer.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
-| AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/alphazero-rl-2-prep.md](plans/alphazero-rl-2-prep.md) | 起案 | |
+| AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/alphazero-rl-2-prep.md](plans/alphazero-rl-2-prep.md) | 進行中 | |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/alphazero-multi-gpu.md](plans/alphazero-multi-gpu.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
