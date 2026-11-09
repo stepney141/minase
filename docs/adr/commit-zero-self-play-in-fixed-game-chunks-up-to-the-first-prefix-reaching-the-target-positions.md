@@ -14,7 +14,7 @@ Colab機はセッションの上限時間、残高の枯渇、およびColab側�
 投了の誤りを判定する割合は、サイクルの対局がすべて終わるまで決まらない（[投了のADR](resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md)）。
 
 2026年10月27日の[前のADR](archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)は、1サイクルの生成量を対局数で与え、決まった対局数の塊に分けて確定させると決めた。
-100万局面に要る対局数は、[強化学習の実行](../plans/alphazero-rl.md)が、前のサイクルの1局あたりの訓練局面数から見積もる。
+100万局面に要る対局数は、[強化学習の実行](../plans/archived/alphazero-rl.md)が、前のサイクルの1局あたりの訓練局面数から見積もる。
 前のADRは、生成量を局面数で与える案を、塊の数が生成の結果で決まり、再開時にどの塊が欠けているかを定められなくなるとして採らなかった。
 
 2026年10月31日に学び直した本線では、サイクル2の1局あたりの訓練局面数が14.4で、サイクル3の対局数は69,581局と見積もられた。

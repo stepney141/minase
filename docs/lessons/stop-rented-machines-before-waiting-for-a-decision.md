@@ -18,4 +18,4 @@
 
 ## 出典
 
-[強化学習の実行の設計書](../plans/alphazero-rl.md)、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4節。
+[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)、[借りる機械の操作の手引き](../guides/alphazero-machines.md)の4節。

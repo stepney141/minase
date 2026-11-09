@@ -1,4 +1,4 @@
-"""実行器の契約を指示書brief-rl-runner.mdとdocs/plans/alphazero-rl.mdから固定する。
+"""実行器の契約を指示書brief-rl-runner.mdとdocs/plans/archived/alphazero-rl.mdから固定する。
 
 対局数、較正、窓の順序、開始の境界は独立した具体例で検証する。外部との境界には
 一時ディレクトリをColab機に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。

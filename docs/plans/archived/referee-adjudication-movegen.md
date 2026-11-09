@@ -27,7 +27,7 @@
 
 [AlphaZero型探索の監査対応](alphazero-audit-remediation.md)は、探索木が審判層の詰みと駒枯れの終局を認識しない欠陥を、根の`Game`の複製に経路を再生して裁定を得る方式で直した。
 その[測定記録](../../measurements/alphazero-audit-remediation/alphazero-audit-remediation-driver-cost.md)では、本番の駆動部を一様評価器で駆動した109局面で、根の探索時間の中央値が自己対局用のGumbelの32回の探索で0.094 msから0.555 msへ、対局用のPUCTの800回の探索で2.09 msから19.1 msへ増えた。
-自己対局の生成はGPUの推論が律速である見込みだが、再生の費用は経路の深さと探索回数に比例して積み上がるので、減らせる分は減らしてから[強化学習の実行](../alphazero-rl.md)の試走に臨むほうが、試走の結果から再生の費用を切り分けやすい。
+自己対局の生成はGPUの推論が律速である見込みだが、再生の費用は経路の深さと探索回数に比例して積み上がるので、減らせる分は減らしてから[強化学習の実行](alphazero-rl.md)の試走に臨むほうが、試走の結果から再生の費用を切り分けやすい。
 本書に現れる規則コードは、RULES.md第31条と第32条が定めるローカルルールの記号であり、R1はLishogi式の4回反復の裁定、R2とR3は既出局面の再現の禁止、E0は標準規則の駒枯れ、E1は王駒の実捕獲による終局、E3は裸玉の即時裁定を表す。
 
 費用の内訳は、同じ測定プログラム`driver_cost`（[tools/train/zero/feasibility/src/bin/driver_cost.rs](../../../tools/train/zero/feasibility/src/bin/driver_cost.rs)）を探索関数の区間だけ集計するvalgrindのcallgrindで調べた。
@@ -87,7 +87,7 @@
 ## 依存関係
 
 本書は、masterへマージ済みの[AlphaZero型探索の監査対応](alphazero-audit-remediation.md)の実装を前提とする。
-[強化学習の実行](../alphazero-rl.md)の内容は変えない。
+[強化学習の実行](alphazero-rl.md)の内容は変えない。
 強化学習の試走の前に本書を完了するかどうかは、利用者が決める。
 測定には、監査対応の測定に使った`driver_cost`と同じ局面、乱数、および探索回数を使う。
 

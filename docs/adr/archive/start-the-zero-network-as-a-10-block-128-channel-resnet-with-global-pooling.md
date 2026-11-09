@@ -28,7 +28,7 @@ ONNXの入力の名前は`input`（形`[バッチ, 95, 12, 12]`）、出力の�
 
 ## 結果
 
-伸びが止まった場合にネットを大きくする段階は、[強化学習の実行の設計書](../../plans/alphazero-rl.md)が定める。
+伸びが止まった場合にネットを大きくする段階は、[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)が定める。
 ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)）。
 minaseの推論は、セッションの作成時に入出力の名前、要素型、および形を確かめ、契約と異なるネットをエラーで拒否する。
 実装の基準は、ランダム初期化のネットを書き出す`tools/train/zero/feasibility/make_nets.py`の`ZeroNet`であり、学習器はこれと同じ構成を実装する。

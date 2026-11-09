@@ -2,7 +2,7 @@
 
 ## 目的
 
-[強化学習の実行の設計書](../../plans/alphazero-rl.md)のフェーズ2が求めるとおり、サイクル1で学習したネットを次のサイクルの生成に使う前に、作業機のRTX 3060 Tiで、ONNX RuntimeのCPUとTensorRTのFP16の出力が、PyTorchの出力と[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)の許容誤差に収まることを確かめる。
+[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)のフェーズ2が求めるとおり、サイクル1で学習したネットを次のサイクルの生成に使う前に、作業機のRTX 3060 Tiで、ONNX RuntimeのCPUとTensorRTのFP16の出力が、PyTorchの出力と[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)の許容誤差に収まることを確かめる。
 学習に使ったColab機のL4での同じ照合は、実行器`minase_zero run-cycles`がサイクルの手順の中で行い、2つの実行プロバイダと3つのバッチの大きさの組合せの6通りとも合格した（`cycles.jsonl`のサイクル1の行の`checks`）。
 
 ## コマンドライン

@@ -3,7 +3,7 @@
 ## 目的
 
 [学習技法の導入の設計書](../../plans/archived/alphazero-restart-techniques.md)のフェーズ5として、Colab機のL4で新しい構成の1サイクル（生成、読み込み、学習、照合）を実行器で回し、各処理の時間とColabの計算単位（CU）の消費を測る。
-この値で、[強化学習の実行の設計書](../../plans/alphazero-rl.md)の1サイクルの所要時間と費用の見積もりを直す。
+この値で、[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)の1サイクルの所要時間と費用の見積もりを直す。
 
 ## コマンドライン
 

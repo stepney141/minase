@@ -134,7 +134,7 @@ masterへのマージは、次の処理が動いていないことを`pgrep`で�
 | `sim_cost.rs` | 探索の速さの測定 | 削除 | MCTSの本番の駆動部`Driver`を使わず、独自の探索（`sim_cost.rs`の関数`search`）を測っている |
 | `train_bench.py` | 学習の1ステップの時間の測定 | 削除 | 合成データで`model(inputs)`を学習し、現行の学習器が方策と価値のほかに学ぶ補助目標（`forward_logits`）を通らない |
 | `make_nets.py`、`tools/train/zero/nn_torch_reference.py` | ランダム初期化のネットの生成と照合 | 削除 | 現行の初期ネットは`minase_zero init`が作り、照合は`minase_zero fixture-eval`が行う。2026年10月31日の学び直しでも、この2つで照合した |
-| `batch_probe.rs` | `NnBatchSize`の比較 | 削除 | 最初の進捗測定で値を決め、以後は固定すると[強化学習の実行](../alphazero-rl.md)が定めており、決定は済んでいる |
+| `batch_probe.rs` | `NnBatchSize`の比較 | 削除 | 最初の進捗測定で値を決め、以後は固定すると[強化学習の実行](alphazero-rl.md)が定めており、決定は済んでいる |
 | `driver_cost.rs` | 探索木の経路の再生の費用の測定 | 削除 | 使った2つのマイルストーンは完了している。再び使うのはCPUの探索が生成の速さを決めている場合だが、[試走](../../measurements/alphazero-rl/alphazero-rl-trial.md)ではGPUが速さを決めていた |
 | `mate_cost.rs` | 3手の判定の時間の測定 | 削除 | 判定の方式を決める測定は完了している。より深い判定を調べるときは、履歴から取り出して広げる |
 
@@ -142,7 +142,7 @@ masterへのマージは、次の処理が動いていないことを`pgrep`で�
 現在の手順は、`measure.sh`、`measure-trt.sh`、および`estimate.py`で処理ごとの速さを測り、式で1サイクルの時間を見積もる。
 改めた後は、まだ測っていない機械の構成で`minase_zero run-cycles`の1サイクルを実際に回し（試走）、その時間と料金から見積もる。
 現在の手引きも、部品からの見積もりには並列化の効率、推論との受け渡し、および記録の書き込みが含まれないと述べ、確定の判定を試走に委ねている。
-[強化学習の実行](../alphazero-rl.md)の、手引きの6節の式を参照する記述も合わせて改める。
+[強化学習の実行](alphazero-rl.md)の、手引きの6節の式を参照する記述も合わせて改める。
 
 ## `teacher_stats`の移動
 
@@ -263,7 +263,7 @@ Rustの子モジュールは親モジュールの非公開のフィールドを�
 ## 参考資料
 
 - [AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)
-- [強化学習の実行](../alphazero-rl.md)
+- [強化学習の実行](alphazero-rl.md)
 - [詰み探索（df-pn）の設計書](../mate-search.md)
 - [借りる機械の操作の手引き](../../guides/alphazero-machines.md)
 - [ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)

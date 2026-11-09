@@ -1,7 +1,7 @@
 # AlphaZero型探索の実装と強化学習計画の監査（2026年10月28日）
 
 本書は、強化学習（RL）のサイクルを始める前に、AlphaZero型探索に関わる実装と計画を監査した報告である。
-監査の基準はmasterのコミット255fb48cであり、範囲は探索木と駆動部`crates/minase/src/search/mcts/`、ネットの入出力`crates/minase/src/nn/`、自己対局生成器`crates/minase/src/bin/minase/zero_selfplay/`、学習器と拡張モジュール`tools/train/zero/`、ならびに設計書`docs/plans/alphazero.md`、`docs/plans/alphazero-rl.md`とそれらのADR（設計判断の記録）である。
+監査の基準はmasterのコミット255fb48cであり、範囲は探索木と駆動部`crates/minase/src/search/mcts/`、ネットの入出力`crates/minase/src/nn/`、自己対局生成器`crates/minase/src/bin/minase/zero_selfplay/`、学習器と拡張モジュール`tools/train/zero/`、ならびに設計書`docs/plans/alphazero.md`、`docs/plans/archived/alphazero-rl.md`とそれらのADR（設計判断の記録）である。
 監査は2026年10月28日に、Claude（Fable 5.1）とgpt-6-astra（codex経由）が、互いの所見を知らせずに独立に行い、その後2回の議論で所見を突き合わせて確定した。
 問いは4つである。実装に誤りや危うい設計がないか、計画している学習の進め方でよいか、先行実装（dlshogi、lc0、KataGo、ふかうら王、技巧、mctx、AlphaZero）で棄却された誤りが入っていないか、および先行実装の重要な技法が入っているかである。
 本文では、再現して確かめた事実、根拠のある推測、および確かめていない事項を区別して書く。
@@ -130,7 +130,7 @@ lc0の`src/selfplay/tournament.cc`は投了させない対局から誤りを数�
 
 ### FP16の照合の頻度
 
-[強化学習の実行](../plans/alphazero-rl.md)は、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を、最初のサイクルの後と10サイクルごとに行う。
+[強化学習の実行](../plans/archived/alphazero-rl.md)は、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を、最初のサイクルの後と10サイクルごとに行う。
 logitが大きくなるのは学習が進んでからなので、各サイクルの学習の直後に、次の生成の前に照合する方が安全である。
 固定局面集の照合は推論だけなら数秒だが、新しいネットではTensorRTのエンジンの作成（バッチ1、7、256で合計約21〜30秒）が加わる。
 
@@ -195,7 +195,7 @@ logitが大きくなるのは学習が進んでからなので、各サイクル
 
 ## 学習計画への指摘
 
-[強化学習の実行](../plans/alphazero-rl.md)には、次の事項が書かれていない。
+[強化学習の実行](../plans/archived/alphazero-rl.md)には、次の事項が書かれていない。
 
 - 学習率、モーメンタム、重み減衰、勾配のノルムの上限、バッチ、精度、λ、およびチェックポイントの間隔の初期値を定めていない（学習器の引数は既定値を持たない）。
 - 学習窓を1、2、4と広げる時期と、そのときのバッチ、更新回数、および学習率の扱いを定めていない（Gumbel dlshogiは窓1、2、4に合わせてバッチを256、512、1,024にしている）。

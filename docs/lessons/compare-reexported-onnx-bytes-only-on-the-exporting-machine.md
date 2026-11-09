@@ -21,4 +21,4 @@ PyTorchのONNXへの書き出しは、BatchNormを定数畳み込みで直前の
 
 ## 出典
 
-[最初のサイクルのネットの作業機での照合](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)、[強化学習の実行の設計書](../plans/alphazero-rl.md)。
+[最初のサイクルのネットの作業機での照合](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)、[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)。

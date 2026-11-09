@@ -327,7 +327,7 @@ minaseの2,000回に対するバッチ16は約0.8%であり、比率ではdlshog
 第一の候補は`classify_child`である。
 葉ごとに対局全体を複製し、経路の全手を`Game::play`で再生するので、経路の手数だけ裁定（詰みの判定を含む）が走る（`driver.rs` 334〜381行）。
 dlshogiは局面を複製して経路を`doMove`するだけで（`UctSearch.cpp`の`UctSearch`）、葉でだけ判定する。
-`plans/alphazero-rl.md`の160〜161行はこの再生を削減候補に挙げている。
+`plans/archived/alphazero-rl.md`の「サイクルの手順」の節は、この再生を削減候補に挙げている。
 
 GPUと木の処理が重ならない点が第二の候補である。
 minaseは葉の収集と推論を1本のスレッドで交互に行う。
