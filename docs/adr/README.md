@@ -365,3 +365,5 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月9日 [対局用MCTSは、ネットの方策のlogitを温度1.4で割ってからPUCTの事前確率を作る](divide-mcts-policy-logits-by-a-temperature-of-1-4.md)
 - 2026年11月9日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、最初から20ブロック256チャネルと32チャネルの価値ヘッドで学習し、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
 - 2026年11月10日 [AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)
+- 2026年11月10日 [AlphaZero型探索の自己対局の開始局面として、歩兵と仲人を動かさず、1〜3段目の駒を段の中で並べ替え、2枚の角行を偶奇の異なるマスに置き、後手を点対称に置いた初期配置を選べるようにする](shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)
+- 2026年11月10日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、2回目の学習には3×10⁸を与える](take-the-zero-series-seed-offset-as-a-required-runner-argument.md)
