@@ -2,24 +2,24 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月31日。
-[10ブロック128チャネルのResNetのADR](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)を置き換える。
+置き換え済み。[AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、最初から20ブロック256チャネルと32チャネルの価値ヘッドで学習し、学習用の補助ヘッドを持たせる](../start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)によって置き換えられた。
+[10ブロック128チャネルのResNetのADR](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)を置き換える。
 
 ## コンテキスト
 
 ネットの構成は、学習器が学習してONNXへ書き出す計算グラフであり、minaseの推論はその入出力の名前と形だけに依存する。
 初版は、各残差ブロックに大域プーリングを入れた10ブロック128チャネルのResNetであり、価値ヘッド（価値を出す部分）は1チャネルの1×1畳み込みに全結合層2つを続けた形であった。
 大域プーリングと10ブロック128チャネルから始める理由（KataGoの学習効率の報告、lc0（Leela Chess Zero）の学習の系列T70、Colab機のL4での1サイクルの所要時間）は、置き換えたADRと同じである。
-[調査](../research/alphazero-rl-training-efficiency.md)は、先行実装の価値ヘッドのチャネルが27〜32であり、1チャネルはminaseだけであることを確かめた。
+[調査](../../research/alphazero-rl-training-efficiency.md)は、先行実装の価値ヘッドのチャネルが27〜32であり、1チャネルはminaseだけであることを確かめた。
 dlshogiの価値ヘッドは、チャネルを広げた1×1畳み込みの後に全結合256を保つ形である。
 利用者は2026年10月31日に、価値ヘッドを広げることと補助目標を含む9つの技法をまとめて採ると決めた。
 
 ## 決定
 
 ネットは、入力の159面に対する3×3畳み込みと、それに続く残差ブロックの列からなるResNetとし、各残差ブロックに大域プーリングを入れる。
-方策ヘッドは、移動元の升ごとに249種類の移動を割り当てる249チャネルの1×1畳み込みとする（[方策のADR](encode-the-zero-policy-as-249-planes-per-from-square.md)）。
+方策ヘッドは、移動元の升ごとに249種類の移動を割り当てる249チャネルの1×1畳み込みとする（[方策のADR](../encode-the-zero-policy-as-249-planes-per-from-square.md)）。
 価値ヘッドは、32チャネルの1×1畳み込み、バッチ正規化、ReLU、全結合4,608→256、ReLU、全結合256→4とし、1つ目の出力を主の価値、残りの3つを短期の価値の補助の出力とする。
-方策には、主の方策ヘッドと同じ形の補助ヘッドを3つ足し、自手のソフト方策、相手の次の手、および相手の次の手のソフト方策を学ばせる（[補助目標のADR](train-the-zero-network-on-katago-auxiliary-targets.md)）。
+方策には、主の方策ヘッドと同じ形の補助ヘッドを3つ足し、自手のソフト方策、相手の次の手、および相手の次の手のソフト方策を学ばせる（[補助目標のADR](../train-the-zero-network-on-katago-auxiliary-targets.md)）。
 補助の出力と補助ヘッドは学習だけに使い、ONNXには今までどおり方策と主の価値だけを書き出す。
 大きさの初期値は10ブロック128チャネルとし、パラメータ数は補助ヘッドを含めて4,780,200である。
 ONNXの入力の名前は`input`（形`[バッチ, 159, 12, 12]`）、出力の名前は`policy`（形`[バッチ, 35856]`）と`value`（形`[バッチ, 1]`）とし、いずれも単精度とする。
@@ -38,8 +38,8 @@ lc0の全結合128の価値ヘッドは採らなかった。
 ## 結果
 
 パラメータ数は、価値ヘッドで約115万、入力の面で約7万、補助ヘッドで約10万増え、約346万から4,780,200になった。
-リプレイバッファはパラメータ数の10倍の規則のままなので、リプレイバッファは約4,780万局面に広がる（[抽出のADR](archive/sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)）。
-ネットを大きくする段階は[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)が定め、その段階でも価値ヘッドと補助ヘッドの形は保つ。
-ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../guides/alphazero-network-check.md)）。
-新しい構成のランダム初期化のネットの照合の結果は、[記録](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)にある。
+リプレイバッファはパラメータ数の10倍の規則のままなので、リプレイバッファは約4,780万局面に広がる（[抽出のADR](sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)）。
+ネットを大きくする段階は[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)が定め、その段階でも価値ヘッドと補助ヘッドの形は保つ。
+ネットの大きさを変えたときは、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の照合を改めて行う（[ネットの出力の照合の手引き](../../guides/alphazero-network-check.md)）。
+新しい構成のランダム初期化のネットの照合の結果は、[記録](../../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)にある。
 実装は`tools/train/zero/minase_zero/net.py`の`ZeroNet`にある。

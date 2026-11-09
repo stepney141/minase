@@ -143,7 +143,7 @@ GPUが律速している場合は、速いGPU種別か、終了期限のない�
 
 | 項目 | 初期10サイクルの値 | 根拠 |
 |---|---|---|
-| 規則、ネット、探索 | `engine-default`、10ブロック128チャネル（入力159面、価値ヘッド32チャネル）、Gumbelの探索回数32（確率0.25の完全探索。それ以外の手番は8回）、候補数の上限16、変換の係数50と1.0、指す手の温度、および王手限定の3手以内の勝ちによる打ち切り | 統括計画の適用範囲、[学習技法の導入の設計書](alphazero-restart-techniques.md)、[ネットの構成のADR](../../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[Gumbel AlphaZeroのADR](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md) |
+| 規則、ネット、探索 | `engine-default`、10ブロック128チャネル（入力159面、価値ヘッド32チャネル）、Gumbelの探索回数32（確率0.25の完全探索。それ以外の手番は8回）、候補数の上限16、変換の係数50と1.0、指す手の温度、および王手限定の3手以内の勝ちによる打ち切り | 統括計画の適用範囲、[学習技法の導入の設計書](alphazero-restart-techniques.md)、[ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、[Gumbel AlphaZeroのADR](../../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md) |
 | 学習率と最適化器 | 基準の学習率0.01に、サイクルごとのcosine annealingとランダム初期化から累計200万標本のウォームアップを掛ける。モーメンタム0.9、ネステロフあり、重み減衰1×10⁻⁴、勾配のノルムの上限10 | dlshogiの学習器の既定値（[学習器](alphazero-trainer.md)の「着手時に補った決定」の節）、「学習率の予定」の節 |
 | 価値の教師 | λ=0.333、主の方策と主の価値の損失の係数は1対1。短期の価値、相手の次の手、およびソフト方策の補助目標を足す | [学習器の定数マスクと診断のADR](../../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)、学習技法の導入の設計書 |
 | バッチと精度 | バッチ256、bf16の順伝播、単精度の損失、リプレイバッファから新規の訓練局面の数の4倍を抽出して1回ずつ読む | [実現性の実測](../../measurements/alphazero-environment/alphazero-feasibility.md)でL4が最も速かった設定 |
@@ -182,7 +182,7 @@ KataGoはリプレイバッファを行数とともに広げ、1行の使用を�
 抽出の数を生成量の4倍とする規則は、2026年10月31日に利用者が教師局面の使用回数を増やすと決め、その値をClaudeがKataGoの手引きの推奨値から選んだものである。
 この規則のままでは、ほぼ乱択の対局からなる初期のサイクルの局面も、リプレイバッファが満ちるまでの約48サイクルの間は学習に使われる。
 Gumbel dlshogiは、初期の質の悪いデータを含めないように、初めのうちは直近のデータだけを使った。
-2026年11月1日の利用者の決定により、10サイクル目の進捗測定を見て、ほぼ乱択の対局からなるサイクル1と2をリプレイバッファから外し、リプレイバッファをサイクル3以後に限った（[リプレイバッファのADR](../../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)）。
+2026年11月1日の利用者の決定により、10サイクル目の進捗測定を見て、ほぼ乱択の対局からなるサイクル1と2をリプレイバッファから外し、リプレイバッファをサイクル3以後に限った（[リプレイバッファのADR](../../adr/archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)）。
 実行器は、リプレイバッファをさかのぼる最初のサイクルを`--window-first-cycle`で受け取る。
 リセット前のサイクル1〜37の学習の経過は、[リセット前のサイクル1〜37の学習の経過](../../measurements/alphazero-rl/alphazero-rl-pre-reset-history.md)とほかの測定記録にだけ残っている。
 以後の記録には、生成器のコミットと学習器のコミットを別々に書く。

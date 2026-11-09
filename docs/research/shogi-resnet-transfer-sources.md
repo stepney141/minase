@@ -87,7 +87,7 @@ minaseの記述は、master のac2b3f3e（2026年10月31日）による。
 
 接合先になるminaseのネットは、2026年10月31日の2本のADR（設計判断の記録、architecture decision record）で入力と価値ヘッドが改められた。
 それ以前の入力は95面、価値ヘッドの1×1畳み込みは1チャネルであった。
-現在の構成は次のとおりである（[入力のADR](../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)、[構成のADR](../adr/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、`tools/train/zero/minase_zero/net.py` 66〜118行）。
+現在の構成は次のとおりである（[入力のADR](../adr/encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)、[構成のADR](../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)、`tools/train/zero/minase_zero/net.py` 66〜118行）。
 
 入力は手番側から見た12×12の盤の159面である。
 内訳は、両陣営について47種類の駒の状態を1面ずつ割り当てた94面、先獅子の升（直前の着手で獅子以外の駒が相手の獅子を取った升、RULES.md第15条）の1面、および両陣営について29の駒種ごとの利き29面と利き数が1以上、2以上、3以上の升の3面を割り当てた64面である。

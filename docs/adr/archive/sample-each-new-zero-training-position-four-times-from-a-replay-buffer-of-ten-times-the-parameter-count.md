@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](../sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)によって置き換えられた。
 [生成量だけを抽出するADR](sample-zero-training-positions-from-a-replay-buffer-of-ten-times-the-parameter-count.md)を置き換える。
 
 ## コンテキスト
