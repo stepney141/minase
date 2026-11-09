@@ -172,7 +172,7 @@ fn training_files_use_strict_five_percent_limit_and_handle_no_triggers() {
                 },
             },
         ];
-        let summary = summarize(&chunks, 60);
+        let summary = summarize(&chunks, 60, StartPosition::RandomOpening);
         assert_eq!(summary.false_resignation_rate, expected_rate);
         assert_eq!(summary.resigned_games_excluded, excluded);
         assert_eq!(summary.counts.games, 20);

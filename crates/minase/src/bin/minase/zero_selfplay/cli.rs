@@ -5,6 +5,7 @@ use std::{num::NonZeroUsize, path::PathBuf};
 use clap::ValueEnum;
 use minase::datagen::git::validate_commit_hash;
 use minase::nn::{ExecutionProvider, tensorrt_cache::cache_root};
+use serde::{Deserialize, Serialize};
 
 use super::Error;
 
@@ -26,6 +27,9 @@ pub(crate) struct Arguments {
     /// サイクルの基本シード。
     #[arg(long, required = true)]
     pub(super) seed: u64,
+    /// 自己対局を始める局面の種類。
+    #[arg(long, required = true, value_enum)]
+    pub(super) start_position: StartPosition,
     /// サイクルで生成する対局数の上限。
     #[arg(long, required = true, value_parser = clap::value_parser!(u32).range(1..))]
     pub(super) games: u32,
@@ -47,6 +51,23 @@ pub(crate) struct Arguments {
     /// 各スレッドの同時対局数と推論器の最大バッチ。
     #[arg(long, required = true)]
     pub(super) games_per_thread: NonZeroUsize,
+}
+
+/// 自己対局の開始局面と序盤の作り方。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum StartPosition {
+    ShuffledSetup,
+    RandomOpening,
+}
+
+impl std::fmt::Display for StartPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ShuffledSetup => "shuffled-setup",
+            Self::RandomOpening => "random-opening",
+        })
+    }
 }
 
 /// 明示的に選ぶ推論の実行プロバイダ。

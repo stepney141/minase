@@ -230,6 +230,8 @@ mod tests {
             "1",
             "--games-per-thread",
             "2",
+            "--start-position",
+            "random-opening",
         ]
     }
 
@@ -274,6 +276,8 @@ mod tests {
                 "g123456789abcdef0123456789abcdef01234567",
             ),
             ("--nn-backend", "auto"),
+            ("--start-position", "random"),
+            ("--start-position", ""),
         ] {
             let mut args = complete.clone();
             let index = args.iter().position(|&arg| arg == option).unwrap();
