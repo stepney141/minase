@@ -64,6 +64,7 @@
 | AlphaZero型探索の学習器 | [plans/archived/alphazero-trainer.md](plans/archived/alphazero-trainer.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
+| AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/alphazero-multi-gpu.md](plans/alphazero-multi-gpu.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
@@ -177,6 +178,7 @@
     - 自己対局は、前半を初期配置を組み替えた局面から、後半を1回目と同じく初期局面から8〜16手を乱択で指した局面から始める。
     - 前半で初めて伸びが止まったら、次のサイクルから後半の開始局面へ切り替える。
     - 機械はColabに限らず1サイクルの料金で選ぶ。ColabのG4では1サイクル約1時間、約9 CUで、サイクル30までの約270 CUは11月2日の残高247.87 CUを上回る見込みである。
+    - サイクル1の前に、[複数GPU化の設計書](plans/alphazero-multi-gpu.md)で、学習器をLightning FabricのDDPへ移し、自己対局の生成も同じ機種の複数GPUで回せるようにする。全体のバッチは1,024、基準の学習率は0.04に改める。この設計書は起案の段階である。
     - 承認の後は、[標準レシピv1の計画](plans/nnue-standard-recipe.md)と並行して進める。
     - [コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、学習のセッションを次に起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。
 
