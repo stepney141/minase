@@ -3,7 +3,138 @@
 use crate::board::{BOARD_RANKS, Bitboard};
 use crate::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::position::Position;
+use crate::rng::{XorShift64, derive_seed};
 use crate::test_util::{position_from_codes, sq};
+use crate::{Game, Rules, Square};
+
+fn shuffled_sample(number: u64) -> Position {
+    Position::shuffled_initial(&mut XorShift64::new(derive_seed(20261110, number)))
+}
+
+// 設計書alphazero-rl-2-prepの配置条件。S1〜S5を各2,000標本で検査する。
+#[test]
+fn shuffled_setup_preserves_fixed_ranks_multisets_bishop_parity_and_rotation() {
+    let initial = Position::initial();
+    for number in 1..=2000 {
+        let position = shuffled_sample(number);
+        for rank in 3..=8 {
+            for file in 0..12 {
+                assert_eq!(
+                    position.piece_at(sq(file, rank)),
+                    initial.piece_at(sq(file, rank))
+                );
+            }
+        }
+        for rank in 0..3 {
+            for kind in PieceKind::ALL {
+                let count = |position: &Position| {
+                    (0..12)
+                        .filter(|&file| {
+                            position.piece_at(sq(file, rank)).and_then(PieceCode::kind)
+                                == Some(kind)
+                        })
+                        .count()
+                };
+                assert_eq!(
+                    count(&position),
+                    count(&initial),
+                    "sample {number}, rank {rank}, {kind:?}"
+                );
+            }
+        }
+        assert_eq!(
+            (0..12)
+                .filter(|&file| position.piece_at(sq(file, 1)).is_none())
+                .count(),
+            4
+        );
+        let bishops: Vec<_> = (0..12)
+            .filter(|&file| {
+                position.piece_at(sq(file, 1)).and_then(PieceCode::kind) == Some(PieceKind::Bishop)
+            })
+            .collect();
+        assert_eq!(bishops.len(), 2);
+        assert_ne!(bishops[0] % 2, bishops[1] % 2);
+        for rank in 0..12 {
+            for file in 0..12 {
+                let expected = position.piece_at(sq(file, rank)).map(|piece| {
+                    PieceCode::new(piece.color().unwrap().opposite(), piece.kind().unwrap())
+                        .unwrap()
+                });
+                assert_eq!(position.piece_at(sq(11 - file, 11 - rank)), expected);
+            }
+        }
+        assert_eq!(position.side_to_move(), Color::Black);
+        assert!(position.lion_taken_by_non_lion.is_none());
+        assert!(position.promotion_deferred.is_empty());
+        position.validate().unwrap();
+    }
+}
+
+#[test]
+fn shuffled_setup_is_reproducible_and_diverse() {
+    let mut layouts = std::collections::HashSet::new();
+    for number in 1..=2000 {
+        let position = shuffled_sample(number);
+        assert_eq!(position, shuffled_sample(number));
+        layouts.insert(
+            Square::all()
+                .map(|square| position.piece_at(square))
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert!(layouts.len() >= 1990, "distinct layouts: {}", layouts.len());
+}
+
+#[test]
+fn shuffled_setup_file_frequencies_are_within_five_sigma() {
+    let mut kings = [0; 12];
+    let mut empty = [0; 12];
+    for number in 1..=12000 {
+        let position = shuffled_sample(number);
+        for file in 0..12 {
+            kings[usize::from(file)] += usize::from(
+                position.piece_at(sq(file, 0)).and_then(PieceCode::kind) == Some(PieceKind::King),
+            );
+            empty[usize::from(file)] += usize::from(position.piece_at(sq(file, 1)).is_none());
+        }
+    }
+    // 二項分布の標準偏差は玉将約30.3、空き升約51.6。許容幅は設計の5σ。
+    for file in 0..12 {
+        assert!(
+            (848..=1152).contains(&kings[file]),
+            "king file {file}: {}",
+            kings[file]
+        );
+        assert!(
+            (3742..=4258).contains(&empty[file]),
+            "empty file {file}: {}",
+            empty[file]
+        );
+    }
+}
+
+#[test]
+fn shuffled_setup_has_legal_moves_and_no_first_move_captures() {
+    for number in 1..=2000 {
+        let position = shuffled_sample(number);
+        let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+        let moves = game.legal_moves();
+        assert!(!moves.is_empty(), "sample {number}");
+        for mv in moves {
+            for square in mv.mid.into_iter().chain([mv.to]) {
+                // 正準形のじっとはto == fromであり、移動中はその升から自駒が離れている。
+                if square != mv.from {
+                    assert!(
+                        position.piece_at(square).is_none(),
+                        "sample {number}: {mv:?}"
+                    );
+                }
+            }
+            assert_eq!(position.captured_squares(mv), [None, None]);
+        }
+    }
+}
 
 /// 第5条の配置図の機械可読な写し。
 /// 行は段一〜十二、列は配置図の印字順(筋12→筋1)で、内部座標では
