@@ -244,7 +244,20 @@ bash $D/progress-workstation.sh $A/nets/cycles-rl2/cycle-0020.onnx $A/nets/cycle
 初期ネットで測った所要時間は[準備の設計書](../plans/alphazero-rl-2-prep.md)のフェーズ2の記録にあり、サイクル10の測定を始める前に、サイクル10のネットで見積もり直して利用者へ示す。
 
 αβ探索との差は、同じ10サイクルごとに、1手800シミュレーションのMCTSと、コミット45d5db54のαβ探索の1手500ノードを100ペア対局させて記録する（設計書の「進捗とαβ探索との差の記録」の節）。
-条件と実行の手順は[固定ノードの対局の記録](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)にある。
+MCTSの側は上と同じ固定したコミットのバイナリと最新のネット、αβ探索の側はコミット45d5db54のバイナリとそれに埋め込まれたNNUEである。
+同時対局数4などのほかの条件は、1回目の学習の[固定ノードの対局の記録](../measurements/adhoc/alphazero-rl-c0032-ab-ladder.md)と同じである。
+その記録の`run-cell.sh`はサイクル32のネットと出力先を固定しているので使わず、bashで次のように実行する。
+
+```bash
+source tools/train/zero/env.sh
+export XDG_CACHE_HOME=$HOME/.cache
+M=$PWD/target/release/minase
+N=$A/nets/cycles-rl2/cycle-0020.onnx
+"$M" match run --run-dir $A/progress/cycles-rl2/cycle-0020-vs-ab500 --seed <シード> \
+  --candidate "$M --protocol usi --rules engine-default --search mcts --nn-model $N" \
+  --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd \
+  --candidate-option NnBatchSize=16 --each nodes=800 --baseline-limit nodes=500 --concurrency 4 elo --pairs 100
+```
 
 固定の検証用棋譜の診断は、前回の測定より後の各サイクルについて行う。
 
