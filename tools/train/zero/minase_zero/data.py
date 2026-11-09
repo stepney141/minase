@@ -1,4 +1,4 @@
-"""学習窓から訓練局面を抽出し、最新の検証局面とともに入力順に保持する。
+"""リプレイバッファから訓練局面を抽出し、最新の検証局面とともに入力順に保持する。
 
 訓練局面は価値と方策の候補の両方を持ち、除外されていない項目とする。
 指した手を確率1とする方策も候補に含め、方策のない速い探索は採用しない。
@@ -64,7 +64,7 @@ class Header:
 class FileInfo:
     """正規化したパス、バイト数、ヘッダ、抽出前の局面数、および全対局番号を保持する。
 
-    game_numbersには選別後の局面が0件の対局も含み、学習窓での重複検査に使う。
+    game_numbersには選別後の局面が0件の対局も含み、リプレイバッファでの重複検査に使う。
     """
 
     path: Path
@@ -256,7 +256,7 @@ def _read_selected(info: FileInfo, indices: list[int], include_validation: bool)
     return dataset
 
 
-def read_window(
+def read_replay_buffer(
     paths: Sequence[str | Path], latest_paths: Sequence[str | Path], seed: int,
 ) -> tuple[Dataset, list[FileInfo], NDArray[np.int64]]:
     """抽出した訓練局面と最新の検証集合、全ファイル情報、更新順の通し番号を返す。
@@ -273,7 +273,7 @@ def read_window(
         raise ValueError("latest-data must be a nonempty suffix of data with identical path strings and order")
     normalized = [Path(path).resolve(strict=True) for path in paths]
     if len(set(normalized)) != len(normalized):
-        raise ValueError("duplicate normalized MNSD path in training window")
+        raise ValueError("duplicate normalized MNSD path in replay buffer")
     cpus = os.process_cpu_count()
     if cpus is None:
         raise ValueError("cannot determine CPU count for parallel MNSD replay")

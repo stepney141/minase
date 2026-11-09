@@ -1,10 +1,10 @@
 """実行器の契約を指示書brief-rl-runner.mdとdocs/plans/archived/alphazero-rl.mdから固定する。
 
-対局数、較正、窓の順序、開始の境界は独立した具体例で検証する。外部との境界には
+対局数、較正、リプレイバッファの順序、開始の境界は独立した具体例で検証する。外部との境界には
 一時ディレクトリをColab機に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
-局面数による窓、生成と学習のコミットの分離、一括転送はbrief-runner-window.mdに従う。
+局面数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
 """
 
 from dataclasses import replace
@@ -23,7 +23,7 @@ from unittest.mock import patch
 from minase_zero.__main__ import _parse
 from minase_zero.runner import (
     FIXTURE, Options, Remote, Runner, append_cycle, can_start, chunk_files, game_counts, parse_balance,
-    publish_network, receive, resignation, seed_registration, send, summaries, training_window,
+    publish_network, receive, resignation, seed_registration, send, summaries, replay_buffer,
 )
 
 
@@ -153,8 +153,8 @@ class RunnerCase(unittest.TestCase):
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
-            window_first_cycle=1,
-            window_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
+            replay_buffer_first_cycle=1,
+            replay_buffer_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
             train_seed_base=123, minase=self.directory / "minase", poll_seconds=60,
             cycle1_reference_summary=self.reference,
@@ -229,7 +229,7 @@ class CalculationTests(RunnerCase):
         self.assertEqual(calibration["n"], 100)
         self.assertAlmostEqual(calibration["upper_bound"], 0.0466, places=4)
 
-    def test_training_window_uses_position_boundary_and_keeps_summary_order(self):
+    def test_replay_buffer_uses_position_boundary_and_keeps_summary_order(self):
         # 3から数えると250、450、550局面。2の生成し直し50局面も含む。
         for cycle, positions in ((1, 100), (2, 150), (3, 250)):
             self.summary(cycle, "selfplay", {
@@ -250,37 +250,37 @@ class CalculationTests(RunnerCase):
             (550, [1, 2, 3], first + second + third), (1000, [1, 2, 3], first + second + third),
         ):
             with self.subTest(positions=positions):
-                self.assertEqual(training_window(self.options, 3, positions), (cycles, files, third))
-        self.assertEqual(training_window(self.options, 1, 1000), ([1], first, first))
-        self.assertEqual(training_window(self.options, 2, 100), ([2], second, second))
-        self.assertEqual(training_window(self.options, 2, 200), ([2], second, second))
+                self.assertEqual(replay_buffer(self.options, 3, positions), (cycles, files, third))
+        self.assertEqual(replay_buffer(self.options, 1, 1000), ([1], first, first))
+        self.assertEqual(replay_buffer(self.options, 2, 100), ([2], second, second))
+        self.assertEqual(replay_buffer(self.options, 2, 200), ([2], second, second))
 
-    def test_window_rejects_paths_outside_generation_output(self):
+    def test_replay_buffer_rejects_paths_outside_generation_output(self):
         self.summary(1, "selfplay", {"training_positions": 100, "training_files": ["../../outside.mnsd"]})
         with self.assertRaises(ValueError):
-            training_window(self.options, 1, 1)
+            replay_buffer(self.options, 1, 1)
 
-    def test_window_rejects_invalid_position_counts(self):
+    def test_replay_buffer_rejects_invalid_position_counts(self):
         for positions in (-1, 1.5, True):
             with self.subTest(positions=positions):
                 self.summary(1, "selfplay", {"training_positions": positions, "training_files": ["chunk-00000.mnsd"]})
                 with self.assertRaises(ValueError):
-                    training_window(self.options, 1, 100)
+                    replay_buffer(self.options, 1, 100)
 
-    def test_window_does_not_read_cycles_before_the_position_boundary(self):
+    def test_replay_buffer_does_not_read_cycles_before_the_position_boundary(self):
         self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
         files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(training_window(self.options, 3, 100), ([3], files, files))
+        self.assertEqual(replay_buffer(self.options, 3, 100), ([3], files, files))
 
-    def test_window_does_not_read_cycles_before_window_first_cycle(self):
-        options = replace(self.options, first_cycle=3, last_cycle=3, window_first_cycle=3,
+    def test_replay_buffer_does_not_read_cycles_before_replay_buffer_first_cycle(self):
+        options = replace(self.options, first_cycle=3, last_cycle=3, replay_buffer_first_cycle=3,
                           cycle1_reference_summary=None)
         self.summary(3, "selfplay", {"training_positions": 100, "training_files": ["chunk-00000.mnsd"]})
         files = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(training_window(options, 3, 1000), ([3], files, files))
+        self.assertEqual(replay_buffer(options, 3, 1000), ([3], files, files))
 
-    def test_window_starts_at_window_first_cycle_when_positions_are_insufficient(self):
-        options = replace(self.options, first_cycle=4, last_cycle=4, window_first_cycle=3,
+    def test_replay_buffer_starts_at_replay_buffer_first_cycle_when_positions_are_insufficient(self):
+        options = replace(self.options, first_cycle=4, last_cycle=4, replay_buffer_first_cycle=3,
                           cycle1_reference_summary=None)
         for cycle, positions in ((1, 1000), (2, 1000), (3, 100), (4, 200)):
             self.summary(cycle, "selfplay", {
@@ -288,9 +288,9 @@ class CalculationTests(RunnerCase):
             })
         third = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd"]
         fourth = ["cycles/cycle-0004/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(training_window(options, 4, 1000), ([3, 4], third + fourth, fourth))
+        self.assertEqual(replay_buffer(options, 4, 1000), ([3, 4], third + fourth, fourth))
 
-    def test_branch_window_and_calibration_use_the_explicit_boundary(self):
+    def test_branch_replay_buffer_and_calibration_use_the_explicit_boundary(self):
         options = replace(self.options, cycles_dir=Path("cycles-branch"), base_cycles_dir=Path("baseline"),
                           branch_from=2, first_cycle=3, last_cycle=4, cycle1_reference_summary=None)
         for directory, cycle, positions, samples in (("baseline", 1, 100, 0), ("baseline", 2, 150, 50),
@@ -309,23 +309,23 @@ class CalculationTests(RunnerCase):
         second = ["baseline/cycle-0002/selfplay/chunk-00000.mnsd",
                   "baseline/cycle-0002/selfplay-regen/chunk-00001.mnsd"]
         third = ["cycles-branch/cycle-0003/selfplay/chunk-00000.mnsd"]
-        self.assertEqual(training_window(options, 3, 450), ([2, 3], second + third, third))
-        self.assertEqual(training_window(options, 3, 451), (
+        self.assertEqual(replay_buffer(options, 3, 450), ([2, 3], second + third, third))
+        self.assertEqual(replay_buffer(options, 3, 451), (
             [1, 2, 3], ["baseline/cycle-0001/selfplay/chunk-00000.mnsd", *second, *third], third,
         ))
-        self.assertEqual(training_window(replace(options, window_first_cycle=2), 3, 1000),
+        self.assertEqual(replay_buffer(replace(options, replay_buffer_first_cycle=2), 3, 1000),
                          ([2, 3], second + third, third))
-        self.assertEqual(training_window(replace(options, window_first_cycle=3), 3, 1000),
+        self.assertEqual(replay_buffer(replace(options, replay_buffer_first_cycle=3), 3, 1000),
                          ([3], third, third))
         self.assertEqual(game_counts(summaries(options, 2), 1000, 2), (75, 38))
         self.assertEqual(resignation(options, 3)[0], 20)
         self.assertEqual(resignation(options, 4)[0], 100)
         (self.root / "baseline/cycle-0002/selfplay/summary.json").unlink()
         with self.assertRaises(FileNotFoundError):
-            training_window(options, 3, 450)
+            replay_buffer(options, 3, 450)
         (self.root / "cycles-branch/cycle-0003/selfplay/summary.json").unlink()
         with self.assertRaises(FileNotFoundError):
-            training_window(options, 3, 1)
+            replay_buffer(options, 3, 1)
 
     def test_start_accepts_equal_time_and_balance(self):
         deadline = NOW + timedelta(minutes=40)
@@ -675,7 +675,7 @@ class ResumeTests(RunnerCase):
                 self.assertEqual((self.remote_root / checkpoint).read_bytes(), b"branch checkpoint")
         self.assertEqual(self.remote.uploads, [checkpoint])
 
-    def test_new_training_passes_window_and_every_explicit_setting(self):
+    def test_new_training_passes_replay_buffer_and_every_explicit_setting(self):
         latest = ["cycles/cycle-0003/selfplay/chunk-00000.mnsd",
                   "cycles/cycle-0003/selfplay-regen/chunk-00000.mnsd"]
         files = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd", *latest]
@@ -1049,7 +1049,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                 self.assertFalse((self.root / "cycles" / cycle / "train/summary.json").exists())
 
         self.remote.on_download = before_download
-        self.execute(replace(self.options, last_cycle=2, window_positions=2000))
+        self.execute(replace(self.options, last_cycle=2, replay_buffer_positions=2000))
         rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
         intervals = [json.loads(line) for line in (self.root / "sessions.jsonl").read_text().splitlines()]
         self.assertEqual([row["cycle"] for row in rows], [1, 2])
@@ -1071,9 +1071,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(rows[0]["teacher_stats"]["game_length_plies"], {"p50": 100, "p90": 120, "p99": 140})
         self.assertEqual([row["generation_commit"] for row in rows], [GENERATION_COMMIT, GENERATION_COMMIT])
         self.assertEqual([row["trainer_commit"] for row in rows], [TRAINER_COMMIT, TRAINER_COMMIT])
-        self.assertEqual([row["window_cycles"] for row in rows], [[1], [1, 2]])
-        self.assertEqual([row["window_first_cycle"] for row in rows], [1, 1])
-        self.assertEqual([row["window_positions"] for row in rows], [2000, 2000])
+        self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1], [1, 2]])
+        self.assertEqual([row["replay_buffer_first_cycle"] for row in rows], [1, 1])
+        self.assertEqual([row["replay_buffer_positions"] for row in rows], [2000, 2000])
         self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], TRAINER_COMMIT)
         self.assertEqual(rows[0]["selfplay_summary"]["win_reason_royal_capture"], 10)
         self.assertEqual(rows[0]["machine"], {"gpu": "NVIDIA L4", "cpu": "Test CPU", "nproc": 12})
@@ -1122,14 +1122,14 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.execute(replace(self.options, last_cycle=2))
         self.assertEqual(len(self.remote.starts), start_count)
 
-    def test_cycles_record_configured_window_first_cycle(self):
+    def test_cycles_record_configured_replay_buffer_first_cycle(self):
         self.execute(replace(self.options, last_cycle=2))
         self.remote.balances = [96, 94]
-        self.execute(replace(self.options, first_cycle=3, last_cycle=3, window_first_cycle=2,
+        self.execute(replace(self.options, first_cycle=3, last_cycle=3, replay_buffer_first_cycle=2,
                              cycle1_reference_summary=None))
         rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
-        self.assertEqual([row["window_first_cycle"] for row in rows], [1, 1, 2])
-        self.assertEqual([row["window_cycles"] for row in rows], [[1], [2], [3]])
+        self.assertEqual([row["replay_buffer_first_cycle"] for row in rows], [1, 1, 2])
+        self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1], [2], [3]])
 
     def test_branch_cycles_keep_outputs_records_seeds_and_networks_separate(self):
         self.execute(replace(self.options, last_cycle=2))
@@ -1139,7 +1139,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         before = len(self.remote.starts)
         options = replace(self.options, cycles_dir=Path("cycles-branch"), branch_from=1,
                           first_cycle=2, last_cycle=3, cycle1_reference_summary=None,
-                          window_positions=2500)
+                          replay_buffer_positions=2500)
         self.execute(options)
         rows = [json.loads(line) for line in (self.root / "cycles-branch.jsonl").read_text().splitlines()]
         intervals = [json.loads(line) for line in (self.root / "cycles-branch-sessions.jsonl").read_text().splitlines()]
@@ -1148,7 +1148,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             "cycles/cycle-0001/train/model.onnx", "cycles-branch/cycle-0002/train/model.onnx",
         ])
         self.assertEqual([row["generation"]["seed"] for row in rows], [2_700_000_000, 3_700_000_000])
-        self.assertEqual([row["window_cycles"] for row in rows], [[1, 2], [1, 2, 3]])
+        self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1, 2], [1, 2, 3]])
         for row in [*rows, *intervals]:
             self.assertEqual(row["cycles_dir"], "cycles-branch")
             self.assertEqual(row["base_cycles_dir"], "cycles")
@@ -1269,7 +1269,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertFalse((self.root / "cycles/cycle-0001/train/summary.json").exists())
         self.assertFalse((self.root / "cycles.jsonl").exists())
 
-    def test_false_resignations_generate_replacements_and_append_them_to_window(self):
+    def test_false_resignations_generate_replacements_and_append_them_to_replay_buffer(self):
         self.regenerate = True
         self.runner.run()
         row = json.loads((self.root / "cycles.jsonl").read_text())
@@ -1374,7 +1374,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         (self.root / (out + ".log")).unlink()
         self.remote.states[out] = ["running", "running", 0]
         before = len(self.remote.starts)
-        _, files, latest = training_window(self.options, 1, 1000)
+        _, files, latest = replay_buffer(self.options, 1, 1000)
         with patch("minase_zero.runner.time.sleep") as sleep:
             self.runner.training(1, files, latest)
         self.assertEqual((self.root / out / "checkpoint.pt").read_bytes(), b"checkpoint 1")
@@ -1503,8 +1503,8 @@ class ArgumentTests(RunnerCase):
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
                 "--chunks", "20", "--simulations", "32", "--threads", "6", "--games-per-thread", "4",
-                "--window-first-cycle", "1",
-                "--window-positions", "34625240", "--batch-size", "256", "--lr", "0.01",
+                "--replay-buffer-first-cycle", "1",
+                "--replay-buffer-positions", "34625240", "--batch-size", "256", "--lr", "0.01",
                 "--momentum", "0.9",
                 "--weight-decay", "0.0001", "--clip-grad-norm", "10", "--value-lambda", "0.333",
                 "--precision", "bf16", "--checkpoint-steps", "200", "--train-seed-base", "123",
@@ -1515,7 +1515,7 @@ class ArgumentTests(RunnerCase):
         args = self.arguments()
         parsed = vars(_parse(args))
         self.assertEqual(parsed.pop("command"), "run-cycles")
-        self.assertEqual(parsed["window_first_cycle"], 1)
+        self.assertEqual(parsed["replay_buffer_first_cycle"], 1)
         self.assertEqual(Options(**parsed).deadline, datetime(2026, 10, 29, 3, 0, tzinfo=UTC))
         for index in range(1, len(args) - 2, 2):
             with self.subTest(missing=args[index]), self.assertRaises(ValueError):
@@ -1529,21 +1529,21 @@ class ArgumentTests(RunnerCase):
         result = replace(self.options, first_cycle=2, last_cycle=3, cycle1_reference_summary=None)
         self.assertIsNone(result.cycle1_reference_summary)
 
-    def test_window_first_cycle_bounds_apply_to_mainline_and_branches(self):
+    def test_replay_buffer_first_cycle_bounds_apply_to_mainline_and_branches(self):
         for directory, branch_from in (("cycles", 0), ("cycles-branch", 2)):
             options = replace(self.options, cycles_dir=Path(directory), branch_from=branch_from,
                               first_cycle=4, last_cycle=4, cycle1_reference_summary=None)
             for first in (1, 2, 3, 4):
                 with self.subTest(directory=directory, first=first):
-                    self.assertEqual(replace(options, window_first_cycle=first).window_first_cycle, first)
+                    self.assertEqual(replace(options, replay_buffer_first_cycle=first).replay_buffer_first_cycle, first)
             for first in (-1, 0, 5, True, 1.5):
                 with self.subTest(directory=directory, first=first), self.assertRaises(ValueError):
-                    replace(options, window_first_cycle=first)
+                    replace(options, replay_buffer_first_cycle=first)
 
     def test_invalid_inputs_fail_before_remote_work(self):
         for changes in ({"deadline": NOW.replace(tzinfo=None)}, {"generation_commit": "abcd"},
                         {"trainer_commit": "abcd"}, {"session": "x; echo secret"},
-                        {"poll_seconds": 0}, {"window_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
+                        {"poll_seconds": 0}, {"replay_buffer_positions": 0}, {"cycle_cu": float("nan")}, {"cycle_minutes": -1},
                         {"weight_decay": -1}, {"value_lambda": 2}, {"train_seed_base": 2**64 - 1},
                         {"cycles_dir": Path("/absolute")},
                         {"cycles_dir": Path("cycles branch")},

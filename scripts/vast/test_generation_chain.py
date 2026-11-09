@@ -72,7 +72,7 @@ def cli_values(root: Path) -> dict[str, str | list[str]]:
             'minase-bin': str(root / 'inspect'), 'trainer-bin': str(root / 'trainer'),
             'gen0-commit': '0' * 40, 'first-generation': '1', 'last-generation': '2', 'train-place': 'local',
             'ref-prefix': 'refs/nnue-standard-recipe', 'books-per-generation': '1',
-            'window': '1', 'fit': 'yes', 'lr-linear': '0.67903', 'games': '10', 'nodes': '20000',
+            'replay-buffer-generations': '1', 'fit': 'yes', 'lr-linear': '0.67903', 'games': '10', 'nodes': '20000',
             'random-moves': '0', 'max-ply': '4000', 'hash-mb': '16', 'seed-base': '9000000000',
             'seed-generation-step': '10000000', 'seed-book-step': '100000',
             'calibration-books': '1', 'lambda': '1.0', 'feature-set': 'P', 'width': '256',
@@ -953,8 +953,8 @@ class StandardRecipeTests(ChainTestCase):
         self.assertFalse(self.commands.calls)
 
     def test_recipe_arguments_reject_invalid_values_before_creating(self) -> None:
-        """事例2: 窓、補正、学習率、検証間隔、参照名の不正を起動前に拒否する。"""
-        cases = [('window', '3'), ('fit', 'maybe'), ('lr-linear', '0'), ('lr-linear', 'nan'),
+        """事例2: リプレイバッファ、補正、学習率、検証間隔、参照名の不正を起動前に拒否する。"""
+        cases = [('replay-buffer-generations', '3'), ('fit', 'maybe'), ('lr-linear', '0'), ('lr-linear', 'nan'),
                  ('lr-linear', 'inf'), ('lr-linear', '-1'), ('validation-interval', '-1'),
                  ('books-per-generation', '0'), ('books-per-generation', '1.5')]
         cases.extend(('ref-prefix', prefix) for prefix in
@@ -1078,9 +1078,9 @@ class StandardRecipeTests(ChainTestCase):
         # (12分 × (11本 + 32本) × 1.3 / 60 + 学習待ち1.2時間) × 3600 = 44568秒。
         self.assertEqual(int((self.root / 'run/deadline').read_text()), 2_000_001_000 + 44_568)
 
-    def test_window_two_local_training_uses_previous_then_current_books(self) -> None:
-        """事例7: 窓2の学習だけに前世代を加え、各世代の番号は数値順に並べる。"""
-        self.values.update({'window': '2', 'books-per-generation': '12'})
+    def test_replay_buffer_two_local_training_uses_previous_then_current_books(self) -> None:
+        """事例7: 2世代分のリプレイバッファで学習するときだけ前世代を加え、各世代の番号は数値順に並べる。"""
+        self.values.update({'replay-buffer-generations': '2', 'books-per-generation': '12'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         commands = self.local_commands(2)
         previous = [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(12)]
@@ -1089,9 +1089,9 @@ class StandardRecipeTests(ChainTestCase):
         for name in ('removal', 'fit'):
             self.assertEqual(option_values(commands[name], '--data'), current)
 
-    def test_window_two_generator_uploads_and_trains_previous_then_current_books(self) -> None:
+    def test_replay_buffer_two_generator_uploads_and_trains_previous_then_current_books(self) -> None:
         """事例7: 空の生成機へ前世代から順に転送し、遠隔パスで学習、診断、補正する。"""
-        self.values.update({'train-place': 'generator', 'window': '2', 'books-per-generation': '12',
+        self.values.update({'train-place': 'generator', 'replay-buffer-generations': '2', 'books-per-generation': '12',
                             'last-generation': '1'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         mark = len(self.commands.calls)
@@ -1112,9 +1112,9 @@ class StandardRecipeTests(ChainTestCase):
             self.assertEqual((self.commands.remote / f'teacher/gen-1/book-{number}.mnsd').read_bytes(),
                              (self.root / f'run/gen-1/teacher/book-{number}.mnsd').read_bytes())
 
-    def test_window_two_rejects_missing_previous_books_before_training(self) -> None:
-        """事例7: 前世代の教師がなければ窓を縮めず、学習前に止める。"""
-        self.values.update({'window': '2', 'last-generation': '1'})
+    def test_replay_buffer_two_rejects_missing_previous_books_before_training(self) -> None:
+        """事例7: 前世代の教師がなければリプレイバッファを縮めず、学習前に止める。"""
+        self.values.update({'replay-buffer-generations': '2', 'last-generation': '1'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         (self.root / 'run/gen-1/teacher/book-0.mnsd').unlink()
         self.save_book(2, 0, 120)
@@ -1123,9 +1123,9 @@ class StandardRecipeTests(ChainTestCase):
             runner.train(2)
         self.assertFalse(self.train_calls(2))
 
-    def test_window_two_checks_previous_books_against_their_generation_commit(self) -> None:
+    def test_replay_buffer_two_checks_previous_books_against_their_generation_commit(self) -> None:
         """事例7: 前世代の教師は、その生成コミットとネットの検査和で照合する。"""
-        self.values.update({'window': '2', 'last-generation': '1'})
+        self.values.update({'replay-buffer-generations': '2', 'last-generation': '1'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.save_book(2, 0, 120)
         runner = chain.Chain(chain.arguments(argv(self.values)))
@@ -1136,9 +1136,9 @@ class StandardRecipeTests(ChainTestCase):
                     runner.train(2)
                 self.assertFalse(self.train_calls(2))
 
-    def test_window_two_preserves_a_larger_previous_generation(self) -> None:
+    def test_replay_buffer_two_preserves_a_larger_previous_generation(self) -> None:
         """前世代を増量していても、その教師を当世代の指定本数で切り詰めない。"""
-        self.values.update({'window': '2', 'books-per-generation': '3', 'last-generation': '1'})
+        self.values.update({'replay-buffer-generations': '2', 'books-per-generation': '3', 'last-generation': '1'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.values.update({'books-per-generation': '1', 'first-generation': '2', 'last-generation': '2'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
@@ -1146,16 +1146,16 @@ class StandardRecipeTests(ChainTestCase):
                          [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(3)]
                          + [str(self.root / 'run/gen-2/teacher/book-0.mnsd')])
 
-    def test_window_one_second_generation_uses_only_current_books(self) -> None:
-        """事例8: 窓1の第2世代は当世代の教師だけを使う。"""
-        self.values.update({'window': '1', 'books-per-generation': '12'})
+    def test_replay_buffer_one_second_generation_uses_only_current_books(self) -> None:
+        """事例8: 1世代分のリプレイバッファを使う第2世代は当世代の教師だけを使う。"""
+        self.values.update({'replay-buffer-generations': '1', 'books-per-generation': '12'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual(option_values(self.train_calls(2)[0], '--data'),
                          [str(self.root / f'run/gen-2/teacher/book-{number}.mnsd') for number in range(12)])
 
-    def test_window_two_first_generation_uses_only_current_books(self) -> None:
-        """事例8: 窓2でも第1世代には前世代の教師を要求しない。"""
-        self.values.update({'window': '2', 'books-per-generation': '12', 'last-generation': '1'})
+    def test_replay_buffer_two_first_generation_uses_only_current_books(self) -> None:
+        """事例8: 2世代分のリプレイバッファでも第1世代には前世代の教師を要求しない。"""
+        self.values.update({'replay-buffer-generations': '2', 'books-per-generation': '12', 'last-generation': '1'})
         self.assertEqual(self.execute(), 0, self.errors.getvalue())
         self.assertEqual(option_values(self.train_calls(1)[0], '--data'),
                          [str(self.root / f'run/gen-1/teacher/book-{number}.mnsd') for number in range(12)])

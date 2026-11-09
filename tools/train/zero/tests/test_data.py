@@ -1,4 +1,4 @@
-"""生成器の固定データとMNSDの形式仕様を使い、読み込み境界と学習窓を検証する。"""
+"""生成器の固定データとMNSDの形式仕様を使い、読み込み境界とリプレイバッファを検証する。"""
 
 from pathlib import Path
 import shutil
@@ -10,7 +10,7 @@ from unittest.mock import patch
 import minase_mnsd_reader
 import numpy as np
 
-from minase_zero.data import is_training_sample, read_file, read_window
+from minase_zero.data import is_training_sample, read_file, read_replay_buffer
 from minase_zero.encoding import policy_labels, policy_mask
 
 
@@ -151,19 +151,19 @@ class DataTests(unittest.TestCase):
         for paths in ([FIXTURE, FIXTURE], [FIXTURE, alias]):
             with self.subTest(paths=paths):
                 with self.assertRaises(ValueError):
-                    read_window(paths, paths, 42)
+                    read_replay_buffer(paths, paths, 42)
 
     def test_copied_games_are_rejected(self) -> None:
         copy = self.directory / "copy.mnsd"
         shutil.copyfile(FIXTURE, copy)
         with self.assertRaises(ValueError):
-            read_window([FIXTURE, copy], [copy], 42)
+            read_replay_buffer([FIXTURE, copy], [copy], 42)
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
         write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "engine-default")
         write_small(second, [single_game(3, 1, 0, 456, (65535,))], "engine-default")
-        data, infos, _ = read_window([first, second], [first, second], 42)
+        data, infos, _ = read_replay_buffer([first, second], [first, second], 42)
         self.assertEqual([info.path for info in infos], [first, second])
         np.testing.assert_array_equal(data.games, [9, 3])
         np.testing.assert_array_equal(data.plies, [23, 23])
@@ -175,7 +175,7 @@ class DataTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(data.legal_offsets) > np.diff(data.policy_offsets)))
         # 方策の仕様表: 先手の王将の右・右前、後手の歩兵の前。移動元は0、0、131。
         np.testing.assert_array_equal(data.policy_labels, [3168, 1584, 12])
-        reversed_data, _, _ = read_window([second, first], [second, first], 42)
+        reversed_data, _, _ = read_replay_buffer([second, first], [second, first], 42)
         np.testing.assert_array_equal(reversed_data.games, [3, 9])
         np.testing.assert_array_equal(reversed_data.policy_offsets, [0, 1, 3])
         np.testing.assert_array_equal(reversed_data.policy_labels, [12, 3168, 1584])
@@ -197,7 +197,7 @@ class DataTests(unittest.TestCase):
         changed = bytearray(first.read_bytes())
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
-        data, infos, _ = read_window([first, second], [first, second], 42)
+        data, infos, _ = read_replay_buffer([first, second], [first, second], 42)
         self.assertEqual([info.header.seed for info in infos], [20261038, 42])
         np.testing.assert_array_equal(data.games, [1, 1])
         np.testing.assert_array_equal(data.results, [0.5, 0.5])
@@ -210,9 +210,9 @@ class DataTests(unittest.TestCase):
         self.assertEqual(len(data), 0)
         self.assertEqual(info.game_numbers, (1,))
         with self.assertRaises(ValueError):
-            read_window([first, second], [second], 42)
+            read_replay_buffer([first, second], [second], 42)
 
-    def test_empty_files_and_empty_window(self) -> None:
+    def test_empty_files_and_empty_replay_buffer(self) -> None:
         path = self.directory / "empty.mnsd"
         write_small(path, [], "engine-default")
         data, info = read_file(path)
@@ -225,9 +225,9 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.training_count, 0)
         self.assertEqual(info.validation_count, 0)
         with self.assertRaises(ValueError):
-            read_window([path], [path], 42)
+            read_replay_buffer([path], [path], 42)
         with self.assertRaises(ValueError):
-            read_window([], [], 42)
+            read_replay_buffer([], [], 42)
 
     def test_equivalent_rule_name_is_accepted_and_other_rules_rejected(self) -> None:
         path = self.directory / "rules.mnsd"
@@ -314,7 +314,7 @@ class DataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             minase_mnsd_reader.read(str(path))
 
-    def test_auxiliary_columns_use_the_current_view_and_survive_window_concatenation(self) -> None:
+    def test_auxiliary_columns_use_the_current_view_and_survive_replay_buffer_concatenation(self) -> None:
         paths = [self.directory / name for name in ("first.mnsd", "second.mnsd")]
         for path, number in zip(paths, (9, 3), strict=True):
             board = bytearray(144)
@@ -352,7 +352,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual(first.opponent_legal_labels.dtype, np.uint16)
         self.assertGreater(first.opponent_legal_offsets[1], 1)
         self.assertEqual(first.opponent_legal_offsets[1], first.opponent_legal_offsets[2])
-        combined, _, selected = read_window(paths, paths, 42)
+        combined, _, selected = read_replay_buffer(paths, paths, 42)
         self.assertEqual(len(combined), 4)
         self.assertEqual(len(selected), 4 * int((~combined.validation).sum()))
         np.testing.assert_array_equal(combined.short_term_values, np.tile(first.short_term_values, (2, 1)))

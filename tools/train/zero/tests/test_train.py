@@ -21,14 +21,14 @@ import unittest
 import numpy as np
 import torch
 
-from minase_zero.data import is_training_sample, is_validation, read_window
+from minase_zero.data import is_training_sample, is_validation, read_replay_buffer
 from minase_zero.encoding import encode_planes, policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import compute_losses
 
 from .cli import COMMIT, ZERO, environment, init_arguments, require_success, run_cli, train_arguments
 from .test_data import single_game, write_small
-from .test_window import reference_sample
+from .test_replay_buffer import reference_sample
 
 
 class LossTests(unittest.TestCase):
@@ -152,7 +152,7 @@ class TrainTests(unittest.TestCase):
         cls.state_b = torch.load(cls.b / "checkpoint.pt", weights_only=True)
         cls.summary_a = json.loads((cls.a / "summary.json").read_text())
         cls.summary_b = json.loads((cls.b / "summary.json").read_text())
-        cls.data, cls.infos, _ = read_window(
+        cls.data, cls.infos, _ = read_replay_buffer(
             [ZERO / "fixtures/zero-selfplay-small.mnsd"], [ZERO / "fixtures/zero-selfplay-small.mnsd"], 42,
         )
 
@@ -254,7 +254,7 @@ class TrainTests(unittest.TestCase):
             (validation_game, 0, 2, 32768, (65_535,)),
         ]
         write_small(path, [single_game(*game) for game in sorted(games)], "engine-default")
-        data, _, _ = read_window([path], [path], 42)
+        data, _, _ = read_replay_buffer([path], [path], 42)
         indices = np.flatnonzero(~data.validation)
         indices = indices[reference_sample(len(indices), 4 * len(indices), 42)]
         model = ZeroNet(1, 16).train()

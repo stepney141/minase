@@ -4,7 +4,7 @@
 引数はすべて既定値を持たない。
 
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
-- train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（学習窓の
+- train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（リプレイバッファの
   MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
   --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
@@ -14,7 +14,7 @@
 - external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
-- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--window-positionsで学習窓の
+- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--replay-buffer-positionsでリプレイバッファの
   局面数、--generation-commitと--trainer-commitで生成と学習のコミットを指定する。
   引数と再開の契約はrunner.pyにある。
 

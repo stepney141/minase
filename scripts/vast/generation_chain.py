@@ -5,7 +5,7 @@
 必須条件をすべて指定し、systemd-run --userの同じサービス内で実行する。
 --offerは新しく生成機を借りるときだけ指定する。
 --books-per-generationで1世代の本数を定め、番号0から指定本数の直前までを生成する。
---window 1はその世代の本だけ、2は直前の世代の本も先に並べて学習に使う。
+--replay-buffer-generations 1はその世代の本だけ、2は直前の世代の本も先に並べて学習に使う。
 第1世代の学習と各世代の診断、補正には、その世代の本だけを使う。
 --fit yesでは--fit-tau、--fit-seed、--fit-threadsも指定し、補正したネットをコミットする。
 --fit noではこれらの補正引数を指定せず、学習したネットをそのままコミットする。
@@ -529,9 +529,9 @@ class Chain:
             time.sleep(self.args.poll_seconds)
 
     def training_books(self, generation: int) -> list[Path]:
-        """窓に含める直前の世代の本を検査し、世代順と番号順で学習入力を返す。"""
+        """リプレイバッファに含める直前の世代の本を検査し、世代順と番号順で学習入力を返す。"""
         previous = []
-        if self.args.window == 2 and generation >= 2:
+        if self.args.replay_buffer_generations == 2 and generation >= 2:
             commit = self.previous_commit(generation - 1)
             if not self.books(generation - 1, commit, self.checksum(commit)):
                 raise ChainStop(f'第{generation - 1}世代の教師がありません')
@@ -935,7 +935,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                  'deadline-margin', 'training-wait-hours', 'idle-limit-hours', 'poll-seconds', 'book-stall-minutes',
                  'ssh-failure-minutes', 'lr-linear'):
         run.add_argument('--' + name, required=True, type=positive_float, help='正の有限値')
-    run.add_argument('--window', required=True, type=int, choices=(1, 2), help='学習に使う教師の世代数')
+    run.add_argument('--replay-buffer-generations', required=True, type=int, choices=(1, 2), help='リプレイバッファに含める教師の世代数')
     run.add_argument('--validation-interval', required=True, type=int, help='0以上の整数。0は途中検証なし')
     run.add_argument('--fit', required=True, choices=('yes', 'no'), help='線形の経路を補正するか')
     run.add_argument('--fit-tau', nargs='+', type=positive_float, help='補正する場合に必要な1個以上の正の有限値')

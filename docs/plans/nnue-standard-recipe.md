@@ -20,7 +20,7 @@
 フェーズ1の3つの測定で、標準レシピv1は線形の経路の学習率0.03を保ち（[測定1](../measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、学習率0.67903は`H0`）、補正を行わず（[測定2](../measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、補正前が補正後に対して`H1`）、1世代分のリプレイバッファを保つ（[測定3](../measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)、2世代分のリプレイバッファは`H0`）と決まった。
 フェーズ2では、連続生成スクリプトを本数、リプレイバッファ、補正の有無、線形の経路の学習率、および参照の接頭辞を引数で選べる形に改め、安い生成機で2世代の試走を終えた（[試走](../measurements/nnue-standard-recipe/nnue-standard-recipe-chain-trial.md)）。
 フェーズ3は生成機の借用を伴うので、利用者がフェーズ3の着手を指示するまで待つ。
-次の一手は、ブランチ`nnue-standard-recipe`に第0世代の比較用コミットを置き、中断した系列の第1世代の26本を複製して、`--window 1 --fit no --lr-linear 0.03 --validation-interval 0`で第1世代の残りの11本を生成して学ぶことである。
+次の一手は、ブランチ`nnue-standard-recipe`に第0世代の比較用コミットを置き、中断した系列の第1世代の26本を複製して、`--replay-buffer-generations 1 --fit no --lr-linear 0.03 --validation-interval 0`で第1世代の残りの11本を生成して学ぶことである。
 
 ## 目的
 

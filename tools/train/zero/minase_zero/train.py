@@ -1,15 +1,15 @@
-"""自己対局の学習窓から局面を抽出し、更新の境界で保存して再開する。
+"""自己対局のリプレイバッファから局面を抽出し、更新の境界で保存して再開する。
 
 trainの出力先には、checkpoint.pt、model.onnx、およびsummary.jsonを置く。
 どれも同じディレクトリの一時ファイルへ書いて同期し、名前を変えてから親ディレクトリを
 同期して確定させる。checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に
 置き換え、最新の1つだけを残す。最後の更新の後は、最終のチェックポイントを確定させてから
-窓全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、summary.jsonの順に確定させて、
+リプレイバッファ全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、summary.jsonの順に確定させて、
 summary.jsonの存在をサイクルの完了とみなす。
 すべての更新を終えたcheckpoint.ptが、次のサイクルの--initに与えるチェックポイントになる。
 
 --latest-dataは最新サイクルの生成ファイルの列で、--dataの末尾とパスの文字列も順も一致させる。
-窓のファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
+リプレイバッファのファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
 最新サイクルの訓練局面数Nの4倍を抽出数とし、Nは1以上とする。
 抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、
 Generator(PCG64(seed))を使い続けて、T個の順列をfloor(4N/T)回と残りの重複なし抽出をつなぐ。
@@ -24,7 +24,7 @@ Bをバッチの大きさとして、k番目の更新はs[kB:min((k+1)B,4N)]を�
 およびsample_sha256を照合する。ファイルのSHA-256は初回に来歴として計算し、再開時は計算し直さない。
 data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と
 「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で
-置き換えた値の16進表記である。中断の有無にかかわらず、同じ学習窓とシードなら同じ値になる。
+置き換えた値の16進表記である。中断の有無にかかわらず、同じリプレイバッファとシードなら同じ値になる。
 
 学習率はcosine annealingで減衰させる。この式のTはサイクルの全更新回数、tは0始まりの更新番号を表す。
 lr * 0.5 * (1 + cos(pi * t / T))に、
@@ -49,7 +49,7 @@ trainのsummary.jsonの欄は次のとおりである。
 | provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
 | sample_count | 重複を含む更新列の長さ4N。 |
-| window_training_count | 窓全体の抽出前の訓練局面数T。 |
+| replay_buffer_training_count | リプレイバッファ全体の抽出前の訓練局面数T。 |
 | file_training_counts | ファイルごとの抽出前の訓練局面数。dataの順に並ぶ。 |
 | sample_sha256 | 抽出した通し番号を更新順に並べた列sのSHA-256。 |
 | training_count / validation_count | 重複を除いて保持した訓練局面数と、最新サイクルの検証局面数。 |
@@ -130,7 +130,7 @@ from numpy.typing import NDArray
 import torch
 from torch.nn import functional as F
 
-from .data import Dataset, FileInfo, read_window
+from .data import Dataset, FileInfo, read_replay_buffer
 from .encoding import POLICY_SIZE, encode_planes, policy_mask
 from .fixture import evaluate_fixture
 from .net import TrainingLogits, ZeroNet, export_onnx
@@ -538,7 +538,7 @@ def _sampling_metadata(config: dict, infos: list[FileInfo], selected: NDArray[np
     return {
         "latest_data": config["latest_data"],
         "sample_count": len(selected),
-        "window_training_count": sum(info.training_count for info in infos),
+        "replay_buffer_training_count": sum(info.training_count for info in infos),
         "file_training_counts": [info.training_count for info in infos],
         "sample_sha256": hashlib.sha256(selected.astype("<i8").tobytes()).hexdigest(),
     }
@@ -550,7 +550,7 @@ def _peak_rss_bytes() -> int:
 
 
 def train_new(config: dict, out_dir: Path) -> None:
-    """完了したチェックポイントから、指定した学習窓で新しいサイクルを始める。"""
+    """完了したチェックポイントから、指定したリプレイバッファで新しいサイクルを始める。"""
     _validate_training(config)
     device = _validate_device(config["device"], config["precision"])
     initial = _load_checkpoint(Path(config["init"]))
@@ -559,7 +559,7 @@ def train_new(config: dict, out_dir: Path) -> None:
     _prepare_output(out_dir)
     config = {**config, "blocks": initial["config"]["blocks"], "channels": initial["config"]["channels"]}
     started = time.perf_counter()
-    data, infos, selected = read_window(config["data"], config["latest_data"], config["seed"])
+    data, infos, selected = read_replay_buffer(config["data"], config["latest_data"], config["seed"])
     loading_peak_rss = _peak_rss_bytes()
     training_count, validation_count = _counts(data, len(infos) - len(config["latest_data"]))
     sampling = _sampling_metadata(config, infos, selected)
@@ -595,20 +595,20 @@ def resume(out_dir: Path, device_name: str) -> None:
     records = state["provenance"]["files"]
     paths = [record["path"] for record in records]
     if config["data"] != paths:
-        raise ValueError("training window path sequence differs from provenance")
+        raise ValueError("replay buffer path sequence differs from provenance")
     started = time.perf_counter()
-    data, infos, selected = read_window(paths, config["latest_data"], config["seed"])
+    data, infos, selected = read_replay_buffer(paths, config["latest_data"], config["seed"])
     state["loading_peak_rss_bytes"] = max(state["loading_peak_rss_bytes"], _peak_rss_bytes())
     for record, info in zip(records, infos):
         if (record["size"], record["training_count"], record["validation_count"]) != (
             info.size, info.training_count, info.validation_count,
         ):
-            raise ValueError(f"training window size or position counts differ: {record['path']}")
+            raise ValueError(f"replay buffer size or position counts differ: {record['path']}")
     for key, value in _sampling_metadata(config, infos, selected).items():
         if state[key] != value or config[key] != value:
-            raise ValueError(f"training window sampling condition differs: {key}")
+            raise ValueError(f"replay buffer sampling condition differs: {key}")
     if _counts(data, len(infos) - len(config["latest_data"])) != (state["training_count"], state["validation_count"]):
-        raise ValueError("training window total position counts differ")
+        raise ValueError("replay buffer total position counts differ")
     batch_size = config["batch_size"]
     if state["total_steps"] != (state["sample_count"] + batch_size - 1) // batch_size:
         raise ValueError("checkpoint total_steps disagrees with sample_count and batch_size")
@@ -711,7 +711,7 @@ def _run(
         "cycle": state["cycle"], "config": config, "provenance": state["provenance"],
         "lr": config["lr"],
         "training_count": state["training_count"], "validation_count": state["validation_count"],
-        **{key: state[key] for key in ("latest_data", "sample_count", "window_training_count",
+        **{key: state[key] for key in ("latest_data", "sample_count", "replay_buffer_training_count",
                                       "file_training_counts", "sample_sha256")},
         "completed_steps": state["completed_steps"], "total_steps": state["total_steps"],
         "positions_seen": state["positions_seen"],

@@ -1,4 +1,4 @@
-"""学習窓の仕様から、抽出数、分割、保持件数、更新順と再開時の照合を検証する。"""
+"""リプレイバッファの仕様から、抽出数、分割、保持件数、更新順と再開時の照合を検証する。"""
 
 from dataclasses import fields
 import hashlib
@@ -17,7 +17,7 @@ import minase_mnsd_reader
 import numpy as np
 import torch
 
-from minase_zero.data import Dataset, is_training_sample, read_window, sample_training_indices
+from minase_zero.data import Dataset, is_training_sample, read_replay_buffer, sample_training_indices
 
 from .cli import ZERO, environment, init_arguments, require_success, run_cli, train_arguments
 from .test_data import single_game, write_small
@@ -60,9 +60,9 @@ def training_keys() -> list[tuple[int, int]]:
             for game in games if game not in VALIDATION_GAMES[seed]]
 
 
-class WindowTests(unittest.TestCase):
+class ReplayBufferTests(unittest.TestCase):
     def setUp(self) -> None:
-        directory = tempfile.TemporaryDirectory(prefix="minase-zero-window-")
+        directory = tempfile.TemporaryDirectory(prefix="minase-zero-replay-buffer-")
         self.addCleanup(directory.cleanup)
         self.paths = cycle_files(Path(directory.name))
 
@@ -83,9 +83,9 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(state[2:], after[2:])
 
     def test_same_seed_reproduces_selection_and_other_seed_changes_it(self) -> None:
-        data, infos, first = read_window(self.paths, self.paths[1:], 42)
-        repeated_data, _, repeated = read_window(self.paths, self.paths[1:], 42)
-        _, _, different = read_window(self.paths, self.paths[1:], 43)
+        data, infos, first = read_replay_buffer(self.paths, self.paths[1:], 42)
+        repeated_data, _, repeated = read_replay_buffer(self.paths, self.paths[1:], 42)
+        _, _, different = read_replay_buffer(self.paths, self.paths[1:], 43)
         self.assertEqual([info.training_count for info in infos], [73, 37, 36])
         self.assertEqual(first.tolist(), reference_sample(146, 292, 42))
         np.testing.assert_array_equal(first, repeated)
@@ -94,7 +94,7 @@ class WindowTests(unittest.TestCase):
             np.testing.assert_array_equal(getattr(data, field.name), getattr(repeated_data, field.name))
 
     def test_selected_positions_exclude_validation_and_keep_only_latest_validation(self) -> None:
-        data, _, selected = read_window(self.paths, self.paths[1:], 42)
+        data, _, selected = read_replay_buffer(self.paths, self.paths[1:], 42)
         self.assertEqual(len(selected), 292)
         self.assertEqual(len(set(selected)), 146)
         keys = training_keys()
@@ -110,7 +110,7 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(np.any(data.training_sample & data.validation))
 
     def test_extension_and_python_keep_only_sampled_rows_and_latest_validation(self) -> None:
-        data, infos, selected = read_window(self.paths, self.paths[1:], 42)
+        data, infos, selected = read_replay_buffer(self.paths, self.paths[1:], 42)
         self.assertEqual(len(data), 146 + 7)
         self.assertLess(len(data), sum(info.position_count for info in infos))
         offset = 0
@@ -132,9 +132,9 @@ class WindowTests(unittest.TestCase):
         alias = str(third.parent) + "/./" + third.name
         for latest in ([], [first], [third, second], [second], [alias], [first, second, third, third]):
             with self.subTest(latest=latest), self.assertRaises(ValueError):
-                read_window([str(path) for path in self.paths], latest, 42)
+                read_replay_buffer([str(path) for path in self.paths], latest, 42)
         # パス列を並べ替えれば通し番号も変わるが、新しい末尾に対する抽出は定義できる。
-        _, infos, selected = read_window([third, second, first], [first], 42)
+        _, infos, selected = read_replay_buffer([third, second, first], [first], 42)
         self.assertEqual([info.training_count for info in infos], [36, 37, 73])
         self.assertEqual(len(selected), 292)
 
@@ -143,16 +143,16 @@ class WindowTests(unittest.TestCase):
         # seed=20261038の対局番号によらず、価値なしの項目は訓練局面数に含まない。
         write_small(path, [single_game(100, 0, 2, None, ())], "engine-default")
         with self.assertRaises(ValueError):
-            read_window(self.paths, [path], 42)
+            read_replay_buffer(self.paths, [path], 42)
         for total, count, seed in ((1, 0, 0), (0, 2, 0), (1, 1, -1), (1, 1, 1 << 64)):
             with self.subTest(total=total, count=count, seed=seed), self.assertRaises(ValueError):
                 sample_training_indices(total, count, seed)
 
 
-class WindowTrainTests(unittest.TestCase):
+class ReplayBufferTrainTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        directory = tempfile.TemporaryDirectory(prefix="minase-zero-window-train-")
+        directory = tempfile.TemporaryDirectory(prefix="minase-zero-replay-buffer-train-")
         cls.addClassCleanup(directory.cleanup)
         cls.root = Path(directory.name)
         cls.paths = cycle_files(cls.root)
@@ -195,7 +195,7 @@ class WindowTrainTests(unittest.TestCase):
             arguments[start:start + 1] = values
         return arguments
 
-    def test_window_resume_preserves_order_learning_curve_and_onnx_bytes(self) -> None:
+    def test_replay_buffer_resume_preserves_order_learning_curve_and_onnx_bytes(self) -> None:
         resumed = torch.load(self.resumed / "checkpoint.pt", weights_only=True)
         summary = json.loads((self.resumed / "summary.json").read_text())
         for key in ("data_order_sha256", "sample_sha256", "learning_curve", "positions_seen", "loss_sums", "samples_seen", "samples_seen_start"):
@@ -207,7 +207,7 @@ class WindowTrainTests(unittest.TestCase):
         ordered = reference_sample(146, 292, 42)
         sample_digest = hashlib.sha256(b"".join(struct.pack("<q", index) for index in ordered)).hexdigest()
         expected = {"latest_data": [str(path) for path in self.paths[1:]], "sample_count": 292,
-                    "window_training_count": 146, "file_training_counts": [73, 37, 36],
+                    "replay_buffer_training_count": 146, "file_training_counts": [73, 37, 36],
                     "sample_sha256": sample_digest}
         for record in (self.state, self.summary, self.state["config"], self.summary["config"]):
             for key, value in expected.items():
@@ -221,9 +221,9 @@ class WindowTrainTests(unittest.TestCase):
         self.assertEqual(self.summary["positions_seen"], 292)
         self.assertEqual(self.summary["total_steps"], math.ceil(292 / 2))
 
-    def test_window_larger_than_four_times_latest_trains_the_distinct_sequence(self) -> None:
+    def test_replay_buffer_larger_than_four_times_latest_trains_the_distinct_sequence(self) -> None:
         # 最新を対局0〜38の36訓練局面とし、診断用の対局32も含める。
-        # 窓は73+36+36=145局面、4N=144なので順列の反復が不要になる。
+        # リプレイバッファは73+36+36=145局面、4N=144なので順列の反復が不要になる。
         latest = self.root / "distinct-latest.mnsd"
         write_small(latest, [single_game(game, game % 2, game % 3, 200 * game, (65_535,))
                              for game in range(39)], "engine-default")
@@ -270,7 +270,7 @@ class WindowTrainTests(unittest.TestCase):
 
     def test_resume_rejects_changed_sampling_conditions(self) -> None:
         changes = {"latest_data": [str(self.paths[-1])], "sample_count": 74,
-                   "window_training_count": 147, "file_training_counts": [72, 38, 36],
+                   "replay_buffer_training_count": 147, "file_training_counts": [72, 38, 36],
                    "sample_sha256": "0" * 64, "seed": 43}
         for key, value in changes.items():
             with self.subTest(key=key):

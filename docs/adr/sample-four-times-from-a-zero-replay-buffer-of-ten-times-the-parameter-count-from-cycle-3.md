@@ -24,7 +24,7 @@ Gumbel dlshogiは、初期の質の悪いデータを含めないように、初
 
 サイクルcのリプレイバッファは、cから古い順にさかのぼって、訓練局面（価値と方策の候補を記録した項目）の合計が初めてネットのパラメータ数の10倍以上になるまでのサイクルとし、サイクル3より前にはさかのぼらない。
 合計が届かないうちは、サイクル3からcまでをリプレイバッファとする。
-リプレイバッファに含める最も古いサイクルは実行器の`--window-first-cycle`で与え、本線では3とする。
+リプレイバッファに含める最も古いサイクルは実行器の`--replay-buffer-first-cycle`で与え、本線では3とする。
 抽出の数、抽出の列の組み立て、更新回数、検査和、および検証集合は、前のADRと同じとする。
 抽出の数はサイクルcの生成の訓練局面数Nの4倍とし、Tをリプレイバッファの訓練局面数、q=⌊4N/T⌋、r=4N−qTとして、学習のシードから作る1本の乱数列（PCG64）で、T個全体の順列をq回、続いて重複のないr個を部分的なFisher–Yates法で引き、つないだ長さ4Nの列を更新に使う。
 
@@ -46,7 +46,7 @@ Gumbel dlshogiのように、初めのうちは直近の数サイクルだけを
 ## 結果
 
 リプレイバッファから外したサイクルの局面は学習に使わないが、ファイルとシードの台帳の登録は残す。
-変更の前のサイクルのリプレイバッファはサイクル1から始まっており、各サイクルの記録の`window_cycles`と`window_first_cycle`で区別できる。
+変更の前のサイクルのリプレイバッファはサイクル1から始まっており、1回目の学習の各サイクルの記録の`window_cycles`と`window_first_cycle`で区別できる（2026年11月9日に欄名を`replay_buffer_cycles`と`replay_buffer_first_cycle`に改めたが、1回目の記録は書き換えていない）。
 リプレイバッファが満ちた後は、サイクル3より前は自然に外れるので、この決定の影響は満ちるまでの学習に限られる。
-実装は`tools/train/zero/minase_zero/runner.py`の`training_window`にある。
+実装は`tools/train/zero/minase_zero/runner.py`の`replay_buffer`にある。
 学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。

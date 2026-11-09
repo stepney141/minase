@@ -4,7 +4,7 @@
 # 作業機で nohup setsid bash launch-session.sh ... > <ログ> 2>&1 & として起動する。
 # 学習器と実行器は、このスクリプトを置いた作業ツリーのtools/train/zeroのものを使う。
 # 集計には作業ツリーのtarget/release/minaseを使うので、起動前にcargo build --release --bin minaseを実行する。
-# 学習窓はサイクル3より前にさかのぼらない（学習窓のADR）。最初のサイクルは3以上で起動する。
+# リプレイバッファはサイクル3より前にさかのぼらない（リプレイバッファのADR）。最初のサイクルは3以上で起動する。
 # サイクル1の対局数は、学習技法の導入の試走の生成の集計（trial-restart のサイクル1）から決める。
 set -u
 session=$1; first=$2; last=$3; C=$4
@@ -38,7 +38,7 @@ cd "$Z" && uv run --frozen python -m minase_zero run-cycles --root "$A" --sessio
     --generation-commit "$C" --trainer-commit "$C" --first-cycle "$first" --last-cycle "$last" \
     --deadline "$deadline" --cycle-minutes 80 --cycle-cu 2.4 \
     --target-positions 1000000 --chunks 20 --simulations 32 --threads 4 --games-per-thread 128 \
-    --window-first-cycle 3 --window-positions 47802000 --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 \
+    --replay-buffer-first-cycle 3 --replay-buffer-positions 47802000 --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 \
     --clip-grad-norm 10 --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
     --train-seed-base 20261100 --minase "$R/target/release/minase" \
     --poll-seconds 60

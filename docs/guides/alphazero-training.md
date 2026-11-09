@@ -66,7 +66,7 @@ uv run --frozen python -m minase_zero run-cycles --root "$A" --session <セッ�
   --first-cycle <最初のサイクル> --last-cycle <最後のサイクル> \
   --deadline <借りた時刻の8時間後> --cycle-minutes 80 --cycle-cu 2.4 \
   --target-positions 1000000 --chunks 20 --simulations 32 --threads 4 --games-per-thread 128 \
-  --window-first-cycle 3 --window-positions 47802000 \
+  --replay-buffer-first-cycle 3 --replay-buffer-positions 47802000 \
   --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
   --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
   --train-seed-base 20261100 --minase <作業ツリー>/target/release/minase --poll-seconds 60
@@ -92,7 +92,7 @@ python -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
   --device cuda --trainer-commit <コミット>
 ```
 
-ネットは10ブロック128チャネル（推論で約478万パラメータ）であり、`--window-positions`はその10倍である。
+ネットは10ブロック128チャネル（推論で約478万パラメータ）であり、`--replay-buffer-positions`はその10倍である。
 ネットの大きさは学習器の`init`で決まり、以後のサイクルは前のサイクルのチェックポイントから続ける。
 
 **止まる条件と見直す条件**
@@ -139,8 +139,8 @@ cargo build --release --bin minase            # 実行器が各サイクルの�
 
 スクリプトはL4を1台借り、環境を導入して（3〜17分）実行器を走らせる。
 実行器が終わると、終了コードによらず機械を返し、借用の記録を`rentals.jsonl`に追記する。
-スクリプトが渡す`--window-first-cycle 3`は`--first-cycle`以下でなければならないので、スクリプトは最初のサイクルが3以上のときだけ使える。
-サイクル1から始める系列では`run-cycles`を直接起動し、`--first-cycle 1`に`--window-first-cycle 1`と`--cycle1-reference-summary`を添える（[オプション一覧](#minase_zero-run-cycles)）。
+スクリプトが渡す`--replay-buffer-first-cycle 3`は`--first-cycle`以下でなければならないので、スクリプトは最初のサイクルが3以上のときだけ使える。
+サイクル1から始める系列では`run-cycles`を直接起動し、`--first-cycle 1`に`--replay-buffer-first-cycle 1`と`--cycle1-reference-summary`を添える（[オプション一覧](#minase_zero-run-cycles)）。
 
 1つのセッションには、借りた時刻から8時間の終了期限がある。
 実行器は、期限までに80分残っていないとき、または残高が2.4 CUを下回るときに次のサイクルを始めず、正常に終了する。
@@ -308,7 +308,7 @@ CPUの照合が通っていてFP16の差だけが許容誤差をわずかに超�
 
 ネットの大きさを変えるときは、`init`で新しいネットを作り、[出力の照合の手引き](alphazero-network-check.md)で照合してから、その系列の`cycle-0000/`に置く。
 先例は[学習技法の導入の照合](../measurements/alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)である。
-`--window-positions`は新しいネットのパラメータ数の10倍に変える。
+`--replay-buffer-positions`は新しいネットのパラメータ数の10倍に変える。
 
 NASの記録はコミットのハッシュを参照するので、記録に現れたコミットのブランチはリベースせず、`--no-ff`でマージする。
 生成のシードは実行器がサイクル番号から決めるので、実行器は別系列の分も含めてシードの台帳（`seed-ledger.jsonl`）で重なりを検査する。
@@ -362,8 +362,8 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 
 | 引数 | 標準の値 | 値域と意味 |
 |---|---|---|
-| `--window-first-cycle <N>` | 3 | リプレイバッファがさかのぼる最も古いサイクル。1以上`--first-cycle`以下。別系列でも本線と同じ通し番号を使う。 |
-| `--window-positions <N>` | 47802000 | リプレイバッファの局面数の目標。最新のサイクルからさかのぼり、生成し直しを含む`training_positions`の合計が初めてこの値以上になるまでをリプレイバッファとする。1以上。 |
+| `--replay-buffer-first-cycle <N>` | 3 | リプレイバッファがさかのぼる最も古いサイクル。1以上`--first-cycle`以下。別系列でも本線と同じ通し番号を使う。 |
+| `--replay-buffer-positions <N>` | 47802000 | リプレイバッファの局面数の目標。最新のサイクルからさかのぼり、生成し直しを含む`training_positions`の合計が初めてこの値以上になるまでをリプレイバッファとする。1以上。 |
 
 **学習**
 

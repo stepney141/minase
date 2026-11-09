@@ -20,7 +20,7 @@ import minase_mnsd_reader
 import torch
 
 from minase_zero.__main__ import main
-from minase_zero.data import read_file, read_window
+from minase_zero.data import read_file, read_replay_buffer
 from minase_zero.external import external_eval
 from minase_zero.net import ZeroNet
 
@@ -192,7 +192,7 @@ class ExternalEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "MCTS"):
             read_file(self.first)
         with self.assertRaisesRegex(ValueError, "MCTS"):
-            read_window([self.first], [self.first], 42)
+            read_replay_buffer([self.first], [self.first], 42)
         self.assertFalse((self.directory / "mcts.json").exists())
 
     def test_out_of_range_sample_and_seed_are_rejected(self) -> None:
