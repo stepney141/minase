@@ -163,7 +163,20 @@
 
 #### AlphaZero型探索
 
-- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。6本のサブタスクのうち5本を完了し、残る[強化学習の実行](plans/alphazero-rl.md)はサイクル32で止めている（再出発の前に[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませた）。[コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、次のセッションを起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。c0032はSTCでαβ探索に2勝192敗であり、再開の前に探索回数とネットの拡大を検討する。[大敗の原因の調査](proposals/alphazero-strength-gap.md)は、探索回数もネットの大きさもいまの段階の主因ではないと結論し、葉で王駒を取られるかの判定、温度と係数の調整、および自己対局の局面の分布の拡大を先に試すよう勧めている。前の2つは、[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](plans/archived/mcts-royal-capture-temperature.md)で、サイクル32のネットのままMCTS同士のSTCにかけて採用した（「直近の完了」）。3つ目の自己対局の局面の分布の拡大は、[候補と起案前に決めたこと](proposals/alphazero-selfplay-distribution.md)を提案にまとめてあり、設計書は未起案である。2026年11月9日の利用者の決定で、初期配置を組み替えた局面を開始局面に試し、本線、学習窓を縮めた系列、および窓を縮めて開始局面を組み替えた系列の3本を、サイクル32から10サイクルずつ回すことにした。同じ日の利用者の決定で、再開を[標準レシピv1の計画](plans/nnue-standard-recipe.md)の後とする2026年11月3日の順序をやめ、3本の系列は設計書の承認後にその計画と並行して回す。
+- [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とし、6本のサブタスクに分かれている。
+  - サブタスク1〜5の[実行環境と実現性の実測](plans/archived/alphazero-environment.md)、[ネットの入出力と推論](plans/archived/alphazero-network.md)、[探索方式の共存とMCTS](plans/archived/alphazero-mcts.md)、[自己対局生成器](plans/archived/alphazero-selfplay.md)、および[学習器](plans/archived/alphazero-trainer.md)は完了した。
+  - サブタスク6の[強化学習の実行](plans/alphazero-rl.md)は、[学習技法の導入](plans/archived/alphazero-restart-techniques.md)を済ませて再出発した後、サイクル32で中断している。
+    - サイクル32のネットのMCTSは、STCでαβ探索に2勝192敗であった。
+    - [大敗の原因の調査](proposals/alphazero-strength-gap.md)は、探索回数もネットの大きさもいまの段階の主因ではないと結論し、次の3つを先に試すよう勧めている。
+      - 葉で王駒を取られるかの判定は採用した。[MCTSの葉での王駒の捕獲の判定と方策の温度の設計書](plans/archived/mcts-royal-capture-temperature.md)で、サイクル32のネットのままMCTS同士のSTCにかけた（本書の「直近の完了」の節）。
+      - 方策の温度とPUCTの係数の調整のうち、温度は同じ設計書で1.4を採用した。PUCTの6つの係数の調整は、その設計書の範囲外であり、まだ行っていない。
+      - 自己対局の局面の分布の拡大は、[候補と起案前に決めたこと](proposals/alphazero-selfplay-distribution.md)を提案にまとめてあり、設計書は未起案である。
+    - 2026年11月9日の利用者の決定で、分布の拡大は次の形で試す。
+      - 初期配置を組み替えた局面を、自己対局の開始局面に使う。
+      - 本線、学習窓を縮めた系列、および学習窓を縮めて開始局面を組み替えた系列の3本を、サイクル32から10サイクルずつ回す。
+      - 3本の系列は、設計書の承認後に[標準レシピv1の計画](plans/nnue-standard-recipe.md)と並行して回す。再開をその計画の後とした2026年11月3日の順序は、この決定で改めた。
+    - 次は、分布の拡大の設計書を起案する。探索回数とネットの大きさを増やす段階を、伸びが止まる前に進めるかは、まだ決まっていない。
+    - [コードの配置の整理](plans/archived/zero-code-layout.md)の後なので、学習のセッションを次に起動する前に、起動する作業ツリーで`cargo build --release --bin minase`を実行する。
 
 #### 探索
 
