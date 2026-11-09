@@ -31,6 +31,6 @@ ONNXの入力と出力の名前、形、および精度は、置き換えたADR�
 
 リプレイバッファはパラメータ数の10倍の規則のままなので、上限は280,520,080局面に広がる（[リプレイバッファのADR](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)）。
 進捗測定の対局を行う開発用の機械（作業機）では、実現性の測定の大きいバッチの条件で、20ブロック256チャネルの推論は10ブロック128チャネルの4.3〜6.3分の1の速さであり、進捗測定の対局の時間が延びる。
-初期ネットの出力の照合と、作業機での対局の所要時間は、[準備の設計書](../plans/alphazero-rl-2-prep.md)のフェーズ2で記録する。
+初期ネットの出力の照合と、作業機での対局の所要時間は、[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)のフェーズ2で記録する。
 1回目の10ブロック128チャネルのネットとチェックポイントは、NASの`cycles/`と`nets/`に残す。
 実装は`tools/train/zero/minase_zero/net.py`の`ZeroNet`にあり、大きさは学習器の`init`の`--blocks`と`--channels`で与え、以後のサイクルはチェックポイントから受け継ぐ。

@@ -1,0 +1,177 @@
+run_dir: /home/stepney141/board-games/minase/data/matches/alphazero-rl-2-prep-match-timing/model-vs-model
+rules: L0,P0,R1,E0
+seed: 20261110011
+max_ply: 4096
+candidate: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800
+baseline: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800
+response_timeout: 120 s
+pair 1: pair_seed=7987960695895869241 opening_seed=12582704273685631174 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 1 opening: plies=8
+  1: move (5,2)->(4,4)
+  2: move (9,11)->(8,10)
+  3: move (9,0)->(10,1)
+  4: move (10,9)->(10,10)
+  5: move (5,1)->(3,1)
+  6: move (11,9)->(10,9)
+  7: move (4,2)->(5,2)
+  8: move (11,8)->(11,7)
+pair 1 game 1 settings: A=Black seed_a=12647763093312445996 B=White seed_b=11663584774036647386
+pair 1 game 1: plies=218 result=draw reason=Repetition
+pair 1 game 2 settings: B=Black seed_b=13962124148248518552 A=White seed_a=6251652357126223943
+pair 1 game 2: plies=218 result=draw reason=Repetition
+pair 1 result: score_a=1.0 category=2
+pair 2: pair_seed=9153210633443665182 opening_seed=10387348325780739817 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 2 opening: plies=10
+  1: move (2,0)->(1,1)
+  2: move (4,10)->(3,10)
+  3: move (7,2)->(8,1)
+  4: move (4,11)->(4,10)
+  5: move (6,2)->(7,2)
+  6: move (6,9)->(7,7)
+  7: move (5,2)->(7,4)
+  8: move (7,7)->(9,7)
+  9: move (4,1)->(3,1)
+  10: move (10,11)->(10,10)
+pair 2 game 1 settings: A=Black seed_a=11077231582499525740 B=White seed_b=10636057544509106036
+pair 2 game 1: plies=42 result=draw reason=Repetition
+pair 2 game 2 settings: B=Black seed_b=966556321614378564 A=White seed_a=16823844527727450808
+pair 2 game 2: plies=42 result=draw reason=Repetition
+pair 2 result: score_a=1.0 category=2
+pair 3: pair_seed=14220159025442131796 opening_seed=8808880541778662187 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 3 opening: plies=11
+  1: move (2,0)->(3,1)
+  2: move (6,9)->(5,7)
+  3: move (9,0)->(10,1)
+  4: move (1,8)->(1,7)
+  5: move (8,2)->(8,1)
+  6: move (7,10)->(6,9)
+  7: move (5,2)->(5,4)
+  8: move (9,8)->(9,7)
+  9: move (1,3)->(1,4)
+  10: move (5,7)->(3,5)
+  11: move (5,4)->(7,4)
+pair 3 game 1 settings: A=Black seed_a=11771155082568834620 B=White seed_b=15758235700485857818
+pair 3 game 1: plies=37 result=draw reason=Repetition
+pair 3 game 2 settings: B=Black seed_b=4342883835210373322 A=White seed_a=7797641449879906329
+pair 3 game 2: plies=37 result=draw reason=Repetition
+pair 3 result: score_a=1.0 category=2
+pair 4: pair_seed=2965066274208182430 opening_seed=17633275898267924785 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 4 opening: plies=9
+  1: move (4,0)->(3,1)
+  2: move (8,7)->(8,6)
+  3: move (8,2)->(8,1)
+  4: move (7,11)->(8,10)
+  5: move (10,0)->(10,1)
+  6: move (3,7)->(3,6)
+  7: move (5,2)->(4,0)
+  8: move (8,6)->(8,7)
+  9: move (9,3)->(9,4)
+pair 4 game 1 settings: A=Black seed_a=8035589574445421527 B=White seed_b=283274312867861737
+pair 4 game 1: plies=86 result=draw reason=Repetition
+pair 4 game 2 settings: B=Black seed_b=4023666993238517928 A=White seed_a=3887521406603755854
+pair 4 game 2: plies=86 result=draw reason=Repetition
+pair 4 result: score_a=1.0 category=2
+pair 5: pair_seed=140949883191132843 opening_seed=152729210132432925 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 5 opening: plies=8
+  1: move (8,4)->(8,5)
+  2: move (6,9)->(8,10)
+  3: move (1,3)->(1,4)
+  4: move (2,11)->(1,10)
+  5: move (4,1)->(3,1)
+  6: move (6,8)->(6,7)
+  7: move (1,0)->(1,1)
+  8: move (5,9)->(6,8)
+pair 5 game 1 settings: A=Black seed_a=12713765913364790418 B=White seed_b=12348096877719798706
+pair 5 game 1: plies=177 result=draw reason=Repetition
+pair 5 game 2 settings: B=Black seed_b=8440280479187494608 A=White seed_a=9365341712444093255
+pair 5 game 2: plies=177 result=draw reason=Repetition
+pair 5 result: score_a=1.0 category=2
+pair 6: pair_seed=14652916856004459669 opening_seed=650044944496871493 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 6 opening: plies=9
+  1: move (2,0)->(1,1)
+  2: move (1,11)->(1,10)
+  3: move (6,3)->(6,4)
+  4: move (1,10)->(1,11)
+  5: move (10,0)->(10,1)
+  6: move (3,7)->(3,6)
+  7: move (5,2)->(4,4)
+  8: move (6,8)->(6,7)
+  9: move (8,2)->(8,1)
+pair 6 game 1 settings: A=Black seed_a=15189766887233825614 B=White seed_b=9259877168099552637
+pair 6 game 1: plies=261 result=draw reason=Repetition
+pair 6 game 2 settings: B=Black seed_b=7460297630753688669 A=White seed_a=14923484318116313924
+pair 6 game 2: plies=261 result=draw reason=Repetition
+pair 6 result: score_a=1.0 category=2
+pair 7: pair_seed=10929572771711446096 opening_seed=16021305191267139859 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 7 opening: plies=10
+  1: move (5,2)->(4,4)
+  2: move (9,8)->(9,7)
+  3: move (2,0)->(1,1)
+  4: move (10,8)->(10,7)
+  5: move (4,0)->(3,1)
+  6: move (7,8)->(7,7)
+  7: move (4,4)->(3,5)
+  8: move (6,9)->(6,7)
+  9: move (3,5)->(2,7)
+  10: move (7,10)->(8,10)
+pair 7 game 1 settings: A=Black seed_a=9594366901927552815 B=White seed_b=3403214017556364684
+pair 7 game 1: plies=32 result=draw reason=Repetition
+pair 7 game 2 settings: B=Black seed_b=14029489845367847886 A=White seed_a=10933720128982961670
+pair 7 game 2: plies=32 result=draw reason=Repetition
+pair 7 result: score_a=1.0 category=2
+pair 8: pair_seed=17318342108780704580 opening_seed=6256766695569109142 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 8 opening: plies=9
+  1: move (6,3)->(6,4)
+  2: move (1,9)->(1,10)
+  3: move (9,3)->(9,4)
+  4: move (3,9)->(3,10)
+  5: move (4,0)->(3,1)
+  6: move (2,8)->(2,7)
+  7: move (7,3)->(7,4)
+  8: move (6,9)->(7,7)
+  9: move (9,4)->(9,5)
+pair 8 game 1 settings: A=Black seed_a=3141301936144291645 B=White seed_b=990946705474665479
+pair 8 game 1: plies=61 result=draw reason=Repetition
+pair 8 game 2 settings: B=Black seed_b=11480596267167784673 A=White seed_a=11910124160843944069
+pair 8 game 2: plies=61 result=draw reason=Repetition
+pair 8 result: score_a=1.0 category=2
+pair 9: pair_seed=1728738296626952199 opening_seed=2799298539781885496 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 9 opening: plies=10
+  1: move (4,2)->(3,1)
+  2: move (2,11)->(3,10)
+  3: move (6,3)->(6,4)
+  4: move (4,8)->(4,7)
+  5: move (9,0)->(10,1)
+  6: move (4,9)->(4,8)
+  7: move (0,3)->(0,4)
+  8: move (0,8)->(0,7)
+  9: move (3,2)->(4,2)
+  10: move (8,11)->(8,10)
+pair 9 game 1 settings: A=Black seed_a=14810732846816594845 B=White seed_b=3153657200684849639
+pair 9 game 1: plies=71 result=draw reason=Repetition
+pair 9 game 2 settings: B=Black seed_b=10418017162704656610 A=White seed_a=331974313691688709
+pair 9 game 2: plies=71 result=draw reason=Repetition
+pair 9 result: score_a=1.0 category=2
+pair 10: pair_seed=5497158284687303976 opening_seed=2551277310897170287 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 10 opening: plies=9
+  1: move (4,2)->(3,1)
+  2: move (7,10)->(8,10)
+  3: move (4,3)->(4,4)
+  4: move (8,9)->(7,10)
+  5: move (9,0)->(10,1)
+  6: move (6,9)->(5,7)
+  7: move (3,2)->(4,2)
+  8: move (7,8)->(7,7)
+  9: move (2,1)->(5,4)
+pair 10 game 1 settings: A=Black seed_a=14223311338097017154 B=White seed_b=17131856060456467996
+pair 10 game 1: plies=37 result=draw reason=Repetition
+pair 10 game 2 settings: B=Black seed_b=17108364609487719747 A=White seed_a=5721158946109268614
+pair 10 game 2: plies=37 result=draw reason=Repetition
+pair 10 result: score_a=1.0 category=2
+ponder candidate: predictions=827 illegal_predictions=0 go_ponder=0 hits=0 moves=929
+ponder baseline: predictions=827 illegal_predictions=0 go_ponder=0 hits=0 moves=929
+summary: mode=elo pairs=10 valid_pairs=10 discarded_pairs=0
+pentanomial: [0, 0, 10, 0, 0]
+elo: estimate=-0.000000 ci95=[-0.000000, -0.000000]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 271.961533 s

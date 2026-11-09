@@ -1,0 +1,7 @@
+/mnt/synology_nas/minase/alphazero/progress/c0030-vs-c0020: games=400 turns=198109 mean_turns=495.3 min_turns=1 max_turns=1480 wall_per_turn=0.0839s
+  fit: fixed=1.52s per_turn=0.0808s max_residual=35.57s
+/home/stepney141/board-games/minase/data/matches/alphazero-rl-2-prep-match-timing-probe/model-vs-model: games=2 turns=848 mean_turns=424.0 min_turns=424 max_turns=424 wall_per_turn=0.1601s
+/home/stepney141/board-games/minase/data/matches/alphazero-rl-2-prep-match-timing/model-vs-model: games=20 turns=1858 mean_turns=92.9 min_turns=22 max_turns=252 wall_per_turn=0.2901s
+measured (all): games=22 turns=2706 mean_turns=123.0 min_turns=22 max_turns=424 wall_per_turn=0.2494s
+  fit: fixed=8.44s per_turn=0.1808s max_residual=17.21s
+estimate for 400 games of the reference lengths at concurrency 2: 19593s (5.44h)

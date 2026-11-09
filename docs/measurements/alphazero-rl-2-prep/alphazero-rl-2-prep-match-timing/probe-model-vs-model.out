@@ -1,0 +1,29 @@
+run_dir: /home/stepney141/board-games/minase/data/matches/alphazero-rl-2-prep-match-timing-probe/model-vs-model
+rules: L0,P0,R1,E0
+seed: 20261110001
+max_ply: 4096
+candidate: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800
+baseline: /home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800
+response_timeout: 120 s
+pair 1: pair_seed=13494519905146900714 opening_seed=12855151703063080150 player_a=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 player_b=/home/stepney141/board-games/minase/data/worktrees/alphazero-rl-2-prep/target/release/minase --protocol usi --rules engine-default --search mcts --nn-model /mnt/synology_nas/minase/alphazero/cycles-rl2/cycle-0000/model.onnx limit=nodes=800 rules=L0,P0,R1,E0 max_ply=4096
+pair 1 opening: plies=8
+  1: move (7,1)->(8,1)
+  2: move (10,9)->(10,10)
+  3: move (5,1)->(7,1)
+  4: move (9,11)->(8,10)
+  5: move (10,3)->(10,4)
+  6: move (4,10)->(3,10)
+  7: move (7,3)->(7,4)
+  8: move (5,10)->(4,10)
+pair 1 game 1 settings: A=Black seed_a=165162216051971820 B=White seed_b=9220573217362448399
+pair 1 game 1: plies=432 result=draw reason=Repetition
+pair 1 game 2 settings: B=Black seed_b=11554182238476441614 A=White seed_a=10056903639733267124
+pair 1 game 2: plies=432 result=draw reason=Repetition
+pair 1 result: score_a=1.0 category=2
+ponder candidate: predictions=407 illegal_predictions=0 go_ponder=0 hits=0 moves=424
+ponder baseline: predictions=407 illegal_predictions=0 go_ponder=0 hits=0 moves=424
+summary: mode=elo pairs=1 valid_pairs=1 discarded_pairs=0
+pentanomial: [0, 0, 1, 0, 0]
+elo: estimate=-0.000000 ci95=[-0.000000, -0.000000]
+engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0
+elapsed: 136.210905 s

@@ -2,20 +2,25 @@
 
 ## 先に読む要約
 
-本書は、[AlphaZero型探索と深層強化学習の統括計画](alphazero.md)の6本目のサブタスクである[強化学習の2回目の実行](alphazero-rl-2.md)を始める前に、その学習が最初のサイクルから使うコードと初期ネットを用意するマイルストーンの設計書である。
+本書は、[AlphaZero型探索と深層強化学習の統括計画](../alphazero.md)の6本目のサブタスクである[強化学習の2回目の実行](../alphazero-rl-2.md)を始める前に、その学習が最初のサイクルから使うコードと初期ネットを用意するマイルストーンの設計書である。
 2回目の学習は、局面から各合法手の確率（方策）と手番側の勝率（価値）を出力する20ブロック256チャネルのネットをランダムに初期化して始める。
 学習の前半の事前学習の期間には、Chess960（Fischer Random Chess）のように初期配置の駒を段の中で並べ替えた局面から自己対局を始める。
 そのために本書は、自己対局の生成器`minase data zero-selfplay`に組み替えた初期配置の開始局面を加え、1回目と同じく初期局面から8〜16手を乱択で指した開始局面とのどちらから対局を始めるかを、必須の引数で選べるようにする。
 あわせて、生成と学習をサイクルごとに起動する実行器`minase_zero run-cycles`、学習器、および進捗測定のスクリプトを改め、2回目の学習の系列を1回目の系列と分けて長く回せるようにする。
 そのうえで20ブロック256チャネルの初期ネットを作り、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力の差が許容誤差に収まることを確かめ、作業機での対局の所要時間を測る。
-生成と学習を複数のGPUで回す[複数GPU化の設計書](alphazero-multi-gpu.md)は、本書と同じ学習器と実行器を書き換え、本書の開始局面と初期ネットで1サイクルの時間と料金を測るので、本書はその設計書のフェーズ2より前に完了させる。
+生成と学習を複数のGPUで回す[複数GPU化の設計書](../alphazero-multi-gpu.md)は、本書と同じ学習器と実行器を書き換え、本書の開始局面と初期ネットで1サイクルの時間と料金を測るので、本書はその設計書のフェーズ2より前に完了させる。
 本書は、実装を試験とレビューを通してmasterへマージし、初期ネットと測定の記録を残した時点で完了する。
 
 ## 状態
 
-進行中。2026年11月10日に起案し、同じ日に利用者の指示で着手した。
-組み替えの制約を含む方式は、2026年11月9日に起案した2回目の実行の設計書から引き継いだものであり、着手の指示で承認された。
-フェーズ1の実装を進めている。
+> 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+
+完了（採用）。2026年11月10日に起案し、同じ日に利用者の指示で着手して完了した。
+フェーズ1の生成器、実行器、学習器、測定のスクリプト、手引き、およびADRの変更は、試験とcodexのレビューを通し、利用者の許可を得てmasterへマージした。
+フェーズ2では、20ブロック256チャネルの初期ネットについて、PyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力が許容誤差の中で一致することを確かめ（[記録](../../measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、その初期ネットをNASの`cycles-rl2/cycle-0000/`に置いた。
+作業機での対局は、1手あたり10ブロック128チャネルの約2.2倍の時間で、GPUのメモリは1 GiB未満で収まり、200ペアの進捗測定は約5.4時間と見込まれる（[記録](../../measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
+設計判断は、[組み替えた初期配置のADR](../../adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)、[系列の基本シードの加算値のADR](../../adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)、[リプレイバッファのADR](../../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)、および[ネットの構成のADR](../../adr/start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)へ移した。
+リプレイバッファのADRは、本文に例外を書き加えずに、新しいADRで置き換えた。承認済みのADRの本文を書き換えない規則（[ADRの書き方](../../adr/README.md)の「不変性」の節）に従ったためである。
 
 ## 目的
 
@@ -42,16 +47,16 @@
 
 ## 依存関係
 
-本書は、統括計画のサブタスク4の[自己対局生成器](archived/alphazero-selfplay.md)とサブタスク5の[学習器](archived/alphazero-trainer.md)で作ったコードを改める。
-サイクルを回す手順と標準レシピは[深層強化学習を回す手引き](../guides/alphazero-training.md)が、ネットの出力の照合は[出力の照合の手引き](../guides/alphazero-network-check.md)が定める。
+本書は、統括計画のサブタスク4の[自己対局生成器](alphazero-selfplay.md)とサブタスク5の[学習器](alphazero-trainer.md)で作ったコードを改める。
+サイクルを回す手順と標準レシピは[深層強化学習を回す手引き](../../guides/alphazero-training.md)が、ネットの出力の照合は[出力の照合の手引き](../../guides/alphazero-network-check.md)が定める。
 
-[複数GPU化の設計書](alphazero-multi-gpu.md)も学習器と実行器を大きく変え、そのフェーズ4では、本書が加える組み替えた初期配置の開始局面と、本書が作る初期ネットで1サイクルを測る。
+[複数GPU化の設計書](../alphazero-multi-gpu.md)も学習器と実行器を大きく変え、そのフェーズ4では、本書が加える組み替えた初期配置の開始局面と、本書が作る初期ネットで1サイクルを測る。
 そこで、複数GPU化の設計書のフェーズ2以降は、本書の完了の後に始める。
 複数GPU化の設計書のフェーズ1は、推論器とGPUの照会を変え、生成器の起動引数に`--devices`を1つ加えるだけなので、本書と並行して進め、引数の定義の競合は後からマージする側で解消する。
-[2回目の実行の設計書](alphazero-rl-2.md)は、本書の完了の後に開始局面の偏りを確かめ、複数GPU化の設計書の完了も待ってからサイクル1を始める。
+[2回目の実行の設計書](../alphazero-rl-2.md)は、本書の完了の後に開始局面の偏りを確かめ、複数GPU化の設計書の完了も待ってからサイクル1を始める。
 この順序は、Claudeが提案して本書の承認で決めるものである。
 
-本書の測定は開発に使う作業機で行うので、[NNUEの標準レシピの計画](nnue-standard-recipe.md)の対局の測定と重ならないように順番を調整する。
+本書の測定は開発に使う作業機で行うので、[NNUEの標準レシピの計画](../nnue-standard-recipe.md)の対局の測定と重ならないように順番を調整する。
 
 ## 設計判断
 
@@ -60,14 +65,14 @@
 | 組み替えの制約 | 歩兵と仲人を動かさず、1〜3段目の駒をそれぞれの段の12マスの中で並べ替え、2枚の角行を偶奇の異なるマスに置き、後手を先手と点対称に置く | 段をまたいで並べ替える、空きマスの位置を固定する、後手を線対称に置く |
 | 系列の基本シード | 加算値を実行器の必須の引数とし、2回目の学習では3×10⁸を与える | 本線以外の系列に7×10⁸を足す今の固定の規則（2回目の区間が登録済みの区間と重なる） |
 | リプレイバッファのファイル名の受け渡し | 一覧をファイルに書いて渡す | 1つのコマンドの引数に並べる今の方式（59サイクル分でLinuxの1引数の上限を超える） |
-| 初期ネットの照合の許容誤差 | [FP16の照合のADR](../adr/compare-fp16-zero-network-values-within-five-hundredths.md)の値のまま | 大きいネットのために広げる（広げる根拠が今はない） |
+| 初期ネットの照合の許容誤差 | [FP16の照合のADR](../../adr/compare-fp16-zero-network-values-within-five-hundredths.md)の値のまま | 大きいネットのために広げる（広げる根拠が今はない） |
 
 各論点の方式は、Claudeが提案して本書の承認で決めるものである。
 
 ### 初期配置を組み替えた局面（Chess960型の初期配置）
 
 本節の段は、各側の最も奥の段を1段目として数える。
-[競技規則](../rules/chu-shogi.md)の段の番号では、先手の1段目は十二段にあたる。
+[競技規則](../../rules/chu-shogi.md)の段の番号では、先手の1段目は十二段にあたる。
 中将棋の標準の初期配置は、先手から見て次のとおりである。
 1段目は香車、猛豹、銅将、銀将、金将、玉将、酔象、金将、銀将、銅将、猛豹、香車の12枚である。
 2段目は反車、角行、盲虎、麒麟、鳳凰、盲虎、角行、反車の8枚であり、12マスのうち4マスが空いている。
@@ -136,7 +141,7 @@
 
 初期ネットは`minase_zero init --blocks 20 --channels 256 --seed 20261109 --out-dir <空のディレクトリ> --trainer-commit <コミット>`で作る。
 ネットの構成は大きさのほかは1回目と同じであり、パラメータ数は補助ヘッドを含めて28,052,008である。
-[出力の照合の手引き](../guides/alphazero-network-check.md)のとおり、作業機でPyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を照合し、NASの`cycles-rl2/cycle-0000/`に置く。
+[出力の照合の手引き](../../guides/alphazero-network-check.md)のとおり、作業機でPyTorch、ONNX RuntimeのCPU、およびTensorRTのFP16の出力を照合し、NASの`cycles-rl2/cycle-0000/`に置く。
 照合が許容誤差（FP16の照合のADR）に収まらなければ、利用者に諮る。
 許容誤差はそのADRが小さいネットで測って決めた値であり、大きいネットのために広げる根拠は今はない。
 
@@ -152,7 +157,7 @@
 - 実行器と学習器が、リプレイバッファのファイル名の一覧をファイルで受け渡すように改める。
 - 進捗測定と出力の照合のスクリプトを、比べるネットと出力先を引数で受け取るように改める。
 - 手引きの標準レシピ、手順、およびオプション一覧を2回目の学習に合わせて書き直し、最古のサイクルを3とするリプレイバッファのADRを、サイクル13までの学習の最古のサイクルを1とするADRで置き換え、旧ADRを`docs/adr/archive/`へ移す（2回目の実行の設計書の「リプレイバッファ」の節）。
-- [ネットの構成のADR](../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)を、大きさの初期値を20ブロック256チャネルとするADRで置き換え、旧ADRを`docs/adr/archive/`へ移す。
+- [ネットの構成のADR](../../adr/archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)を、大きさの初期値を20ブロック256チャネルとするADRで置き換え、旧ADRを`docs/adr/archive/`へ移す。
 
 組み替えの試験では、歩兵と仲人の位置、各段の駒の組、角行の偶奇、後手が先手の点対称であること、同じシードで同じ局面になること、および局面が規則上の検査に通ることを確かめる。
 フェーズ1は、試験とcodexのレビューを通し、利用者の許可を得てmasterへマージした時点で完了する。
@@ -174,6 +179,6 @@
 ## 参考資料
 
 - Y. Demura and T. Kaneko, "Initial state diversification for efficient AlphaZero-style training", ICGA Journal 46(2), 40–66, 2024, [doi:10.3233/ICG-240255](https://doi.org/10.3233/ICG-240255)：Shogi816Kの作り方（3.2節）。
-- [自己対局の分布の提案](../proposals/alphazero-selfplay-distribution.md)：開始局面を広げる候補と、起案の前に決めたこと。
-- [2回目の実行の設計書](alphazero-rl-2.md)：本書の成果を使う学習の規則。
-- [複数GPU化の設計書](alphazero-multi-gpu.md)：本書の後に学習器と実行器を変え、本書の開始局面と初期ネットで1サイクルを測る計画。
+- [自己対局の分布の提案](../../proposals/alphazero-selfplay-distribution.md)：開始局面を広げる候補と、起案の前に決めたこと。
+- [2回目の実行の設計書](../alphazero-rl-2.md)：本書の成果を使う学習の規則。
+- [複数GPU化の設計書](../alphazero-multi-gpu.md)：本書の後に学習器と実行器を変え、本書の開始局面と初期ネットで1サイクルを測る計画。

@@ -108,7 +108,7 @@ python -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
 ネットは20ブロック256チャネル（パラメータ数は補助ヘッドを含めて28,052,008）であり、`--replay-buffer-positions`はその10倍である。
 ネットの大きさは、`minase_zero init`で初期ネットを作るときに決まる。
 サイクル1は`cycles-rl2/cycle-0000/`の初期ネットから、以後のサイクルは前のサイクルのチェックポイントから学習を続ける。
-初期ネットは`minase_zero init --blocks 20 --channels 256 --seed 20261109`で作った（[準備の設計書](../plans/alphazero-rl-2-prep.md)）。
+初期ネットは`minase_zero init --blocks 20 --channels 256 --seed 20261109`で作った（[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)）。
 
 **止まる条件と見直す条件**
 
@@ -241,7 +241,7 @@ bash $D/progress-workstation.sh $A/nets/cycles-rl2/cycle-0020.onnx $A/nets/cycle
 サイクル10の10サイクル前のネットは、`$A/cycles-rl2/cycle-0000/model.onnx`の初期ネットである。
 `NnBatchSize`の16は、1回目の学習の[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-progress-c0010.md)で決めた値である。
 20ブロック256チャネルのネットでは、作業機の対局の時間が1回目より延びる。
-初期ネットで測った所要時間は[準備の設計書](../plans/alphazero-rl-2-prep.md)のフェーズ2の記録にあり、サイクル10の測定を始める前に、サイクル10のネットで見積もり直して利用者へ示す。
+初期ネットで測った所要時間は[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)のフェーズ2の記録にあり、サイクル10の測定を始める前に、サイクル10のネットで見積もり直して利用者へ示す。
 
 αβ探索との差は、同じ10サイクルごとに、1手800シミュレーションのMCTSと、コミット45d5db54のαβ探索の1手500ノードを100ペア対局させて記録する（設計書の「進捗とαβ探索との差の記録」の節）。
 MCTSの側は上と同じ固定したコミットのバイナリと最新のネット、αβ探索の側はコミット45d5db54のバイナリとそれに埋め込まれたNNUEである。
@@ -349,7 +349,7 @@ Colabの機械では`colab sessions`で確かめる。
 3. コードの変更はブランチで行い、起動はそのブランチの作業ツリーの起動スクリプトから行ってよい。スクリプトは自分の置かれた作業ツリーの実行器を使う。
 
 ネットの大きさを変えるときは、`init`で新しいネットを作り、[出力の照合の手引き](alphazero-network-check.md)で照合してから、その系列の`cycle-0000/`に置く。
-2回目の学習の初期ネットの先例は、[準備の設計書](../plans/alphazero-rl-2-prep.md)のフェーズ2の記録である。
+2回目の学習の初期ネットの先例は、[準備の設計書](../plans/archived/alphazero-rl-2-prep.md)のフェーズ2の記録である。
 `--replay-buffer-positions`は新しいネットのパラメータ数の10倍に変える。
 
 NASの記録はコミットのハッシュを参照するので、記録に現れたコミットのブランチはリベースせず、`--no-ff`でマージする。

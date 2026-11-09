@@ -63,7 +63,7 @@
 | AlphaZero型探索の自己対局生成器 | [plans/archived/alphazero-selfplay.md](plans/archived/alphazero-selfplay.md) | 完了（採用） | 2026年10月27日 |
 | AlphaZero型探索の学習器 | [plans/archived/alphazero-trainer.md](plans/archived/alphazero-trainer.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
-| AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/alphazero-rl-2-prep.md](plans/alphazero-rl-2-prep.md) | 進行中 | |
+| AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/alphazero-multi-gpu.md](plans/alphazero-multi-gpu.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
@@ -136,6 +136,7 @@
 
 ### 直近の完了
 
+- [AlphaZero型探索の強化学習の2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)は2026年11月10日に、採用で完了した。自己対局の生成器は、開始局面として、初期配置の1〜3段目を段の中で並べ替えた局面（Chess960型）と、初期局面から8〜16手を乱択で指した局面のどちらかを、必須の引数で選べるようになった（[ADR](adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)）。実行器は系列の基本シードの加算値を必須の引数で受け取り（[ADR](adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)）、リプレイバッファのファイル名の一覧をファイルで学習器へ渡す。20ブロック256チャネルの初期ネットが出力の照合に通ったことを確かめ（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、そのネットをNASの`cycles-rl2/cycle-0000/`に置いた。作業機での対局は1手あたり10ブロック128チャネルの約2.2倍の時間で、200ペアの進捗測定は約5.4時間と見込まれる（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
 - [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)でサイクル0からやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
 - [MCTSの葉での王駒の捕獲の判定と方策の温度](plans/archived/mcts-royal-capture-temperature.md)は2026年11月9日に、採用で完了した。新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定は、MCTS同士のSTCで得点率60.9%の`H1`となり（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、MCTS 800回対αβ 500ノードのEloの点推定を−70から+3.5へ上げた。方策の温度は固定ノードの対局で1.4を選び、STCで得点率71.1%の`H1`となった（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。どちらもLTCは開発者の決定で省いた（[判定のADR](adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。
 - [NNUEの世代反復をv0からやり直す計画](plans/archived/nnue-generation-reset.md)は2026年11月6日に、利用者の決定で中断した。第2世代まで作り、第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較で、学習条件に根拠の弱い点が多く見つかり、検証損失がエポック2〜3で最良になる原因も分からないままである（[状態](plans/archived/nnue-generation-reset.md#状態)）。教師は足りておらず、局面数が同じなら対局が多いほうが強い（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)）。標準の学習条件を決め直してから、v0の教師生成からやり直す。統合の前にブランチに埋め込んだネットをmasterのネットへ戻したので、masterのエンジンの評価は変わっていない。
@@ -171,13 +172,13 @@
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 
 2回目の実行は、次の3本の設計書で進める。
-3本とも起案の段階であり、利用者の承認を待っている。
+1本目の準備は2026年11月10日に完了し、残る2本は起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
-| 1 | [2回目の実行の準備](plans/alphazero-rl-2-prep.md) | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
-| 2 | [複数GPU化](plans/alphazero-multi-gpu.md) | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | フェーズ1は1と並行できる。フェーズ2以降は1の完了の後 |
-| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了の後、サイクル1は2の完了の後 |
+| 1 | [2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)（完了） | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
+| 2 | [複数GPU化](plans/alphazero-multi-gpu.md) | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
+| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 

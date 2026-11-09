@@ -1,0 +1,29 @@
+2026-11-10T03:12:36+09:00
+NN session creation: 0.273127 s
+NN inference (288 positions): 5.459259 s
+NN session creation: 10.782589 s
+NN inference (288 positions): 0.223931 s
+NN session creation: 0.267426 s
+NN inference (288 positions): 4.787909 s
+NN session creation: 11.264041 s
+NN inference (288 positions): 0.075555 s
+NN session creation: 0.265115 s
+NN inference (288 positions): 3.681894 s
+NN session creation: 18.504744 s
+NN inference (288 positions): 0.052043 s
+== cpu batch 1
+{"positions":288,"max_logit_abs_diff":4.824696826916108e-07,"max_probability_abs_diff":9.962440612049095e-09,"max_value_abs_diff":8.79486083960046e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 1
+{"positions":288,"max_logit_abs_diff":0.0013253398601531935,"max_probability_abs_diff":3.201102653557775e-05,"max_value_abs_diff":0.0002606761116027423,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== cpu batch 7
+{"positions":288,"max_logit_abs_diff":4.824696826916108e-07,"max_probability_abs_diff":9.962440612049095e-09,"max_value_abs_diff":8.79486083960046e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 7
+{"positions":288,"max_logit_abs_diff":0.0014876167868042023,"max_probability_abs_diff":3.210909070685761e-05,"max_value_abs_diff":0.0002606761116027423,"best_move_mismatches":2,"best_move_mismatch_gaps":[[66,0.0003055781126022339],[147,8.147954940795898e-05]]}
+== cpu batch 256
+{"positions":288,"max_logit_abs_diff":4.824696826916108e-07,"max_probability_abs_diff":9.962440612049095e-09,"max_value_abs_diff":8.79486083960046e-08,"best_move_mismatches":0,"best_move_mismatch_gaps":[]}
+== tensorrt batch 256
+{"positions":288,"max_logit_abs_diff":0.0017065455845642064,"max_probability_abs_diff":3.724939637464453e-05,"max_value_abs_diff":0.00027267874984737706,"best_move_mismatches":1,"best_move_mismatch_gaps":[[13,0.00011020898818969727]]}
+elapsed_seconds 58
+failed 0
+exit 0
+2026-11-10T03:13:34+09:00

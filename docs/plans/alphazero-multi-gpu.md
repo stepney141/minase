@@ -21,7 +21,7 @@ vast.aiで借りる複数GPUの機械もその候補にできるように、本�
 
 起案。2026年11月10日に起案し、まだ着手していない。
 次の一手は、レビューを反映した本書の承認を利用者から得て、フェーズ1を始めることである。
-[2回目の実行の準備の設計書](alphazero-rl-2-prep.md)も学習器と実行器を変え、本書のフェーズ4はその開始局面と初期ネットで測るので、本書のフェーズ2以降は、準備の設計書の完了の後に始める（「依存関係」の節）。
+本書のフェーズ2以降の前提だった[2回目の実行の準備の設計書](archived/alphazero-rl-2-prep.md)は、2026年11月10日に完了した（「依存関係」の節）。
 
 ## 目的
 
@@ -68,7 +68,7 @@ GPU 1枚あたりの料金が同じ機械で、生成と学習が枚数に比例
 本書は、統括計画のサブタスク4の[自己対局生成器](archived/alphazero-selfplay.md)とサブタスク5の[学習器](archived/alphazero-trainer.md)で作ったコードを改める。
 2回目の学習は本書の完了を前提とし、2回目の設計書の「系列の置き場所と起動」の節と「費用」の節は、vast.aiの機械の起動の手順と料金の比較を本書に任せている。
 
-[2回目の実行の準備の設計書](alphazero-rl-2-prep.md)も、生成器の起動引数（開始局面の種類）、実行器、および学習器（リプレイバッファのファイル名の一覧を引数ではなくファイルで渡す変更）を変える。
+[2回目の実行の準備の設計書](archived/alphazero-rl-2-prep.md)も、生成器の起動引数（開始局面の種類）、実行器、および学習器（リプレイバッファのファイル名の一覧を引数ではなくファイルで渡す変更）を変える。
 同じファイルを並行して大きく変えると、後からマージする側で多くの競合を解くことになる。
 また、本書のフェーズ4は、準備の設計書が加える組み替えた初期配置の開始局面と、準備の設計書が作る20ブロック256チャネルの初期ネットで1サイクルを測る。
 本書のフェーズ1は、推論器の作成とGPUの照会（`crates/minase/src/nn/`）とスレッドの割り振りを変え、生成器の起動引数には`--devices`を1つ加えるだけなので、準備の設計書と並行して進め、引数の定義の競合は、後からマージする側で解消する。
@@ -451,7 +451,7 @@ G4は1回のセッションが最長8時間で約7サイクルである。vast.a
 
 ### フェーズ2　学習器のFabric化とtorch.compile
 
-[準備の設計書](alphazero-rl-2-prep.md)の完了の後に、masterを取り込んでから始める。
+[準備の設計書](archived/alphazero-rl-2-prep.md)の完了の後に、masterを取り込んでから始める。
 
 - 学習器をFabricで書き直し、「全体のバッチと勾配累積」「サイクルの端数」「BatchNormの移動統計」「局面の保持」「再開」の各節のとおりにする。
 - 依存に`lightning-fabric==2.6.6`を加え、`tools/train/zero/uv.lock`を更新する。
@@ -511,6 +511,6 @@ torch.compileを採用した場合は完了（採用）とし、コンパイル�
 - KataGo（lightvector/KataGo）、コミットd91ea855：`python/train.py`（GPUごとのバッチ、1局面あたりの学習率、集団通信の待ち時間）、`python/katago/train/trainloop_helpers.py`（DDPの包み方と`broadcast_buffers`）、`python/katago/train/data_processing_pytorch.py`（各GPUの取り分と端数）。
 - PyTorch Lightning、タグ2.6.6（コミット771017e4）：Trainerの再開、標本の並びの分配、および精度の扱い。Fabricの`launch`、`setup`、`no_backward_sync`、および`all_reduce`。
 - [ふかうら王の学習](https://github.com/yaneurao/YaneuraOu/wiki/%E3%81%B5%E3%81%8B%E3%81%86%E3%82%89%E7%8E%8B%E3%81%AE%E5%AD%A6%E7%BF%92)（YaneuraOuのwikiのコミット87d9c8c2）：「学習の基本その14」。
-- [2回目の実行の準備の設計書](alphazero-rl-2-prep.md)：本書の前に学習器と実行器を変え、フェーズ4の測定に使う開始局面と初期ネットを用意する計画。
+- [2回目の実行の準備の設計書](archived/alphazero-rl-2-prep.md)：本書の前に学習器と実行器を変え、フェーズ4の測定に使う開始局面と初期ネットを用意する計画。
 - [2回目の実行の設計書](alphazero-rl-2.md)：G4の1サイクルの見積もりと、機械の選択の規則。
 - [実現性の測定](../measurements/alphazero-environment/alphazero-feasibility.md)：機械ごとの推論と学習の速さ。
