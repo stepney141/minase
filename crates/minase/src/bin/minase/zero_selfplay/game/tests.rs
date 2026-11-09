@@ -24,6 +24,7 @@ fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) -> usize 
 #[test]
 fn playout_caps_use_an_independent_seed_and_record_only_full_search_policies() {
     let settings = Settings {
+        start_position: StartPosition::RandomOpening,
         rules: Rules::ENGINE_DEFAULT,
         seed: 7,
         simulations: 8,
@@ -100,6 +101,7 @@ fn fast_search_neither_resigns_nor_records_a_calibration_trigger() {
         let mut game = PlayingGame::new(
             1,
             Settings {
+                start_position: StartPosition::RandomOpening,
                 rules: Rules::ENGINE_DEFAULT,
                 seed: 7,
                 simulations: 4,
@@ -131,6 +133,7 @@ fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
         let mut game = PlayingGame::new(
             1,
             Settings {
+                start_position: StartPosition::RandomOpening,
                 rules: Rules::ENGINE_DEFAULT,
                 seed: 7,
                 simulations: 4,
@@ -190,6 +193,7 @@ fn two_royals_do_not_cut_off_a_game_after_a_searched_move() {
     let mut game = PlayingGame::new(
         1,
         Settings {
+            start_position: StartPosition::RandomOpening,
             rules: Rules::ENGINE_DEFAULT,
             seed: 7,
             simulations: 4,
@@ -252,6 +256,7 @@ fn search_decision_counts_the_random_opening_in_its_temperature() {
     let playing = PlayingGame::new(
         1,
         Settings {
+            start_position: StartPosition::RandomOpening,
             rules: Rules::ENGINE_DEFAULT,
             seed: 7,
             simulations: 8,
@@ -604,6 +609,7 @@ fn single_simulation_plays_unvisited_action_after_repetition_loss() {
     let mut game = PlayingGame::new(
         1,
         Settings {
+            start_position: StartPosition::RandomOpening,
             rules,
             seed: 7,
             simulations: 4,
@@ -664,6 +670,7 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
     let mut game = PlayingGame::new(
         1,
         Settings {
+            start_position: StartPosition::RandomOpening,
             rules: Rules::ENGINE_DEFAULT,
             seed: 7,
             simulations: 8,
@@ -724,6 +731,7 @@ fn royal_capture_proven_root_preserves_resignation_and_playthrough_cutoffs() {
             let mut game = PlayingGame::new(
                 1,
                 Settings {
+                    start_position: StartPosition::RandomOpening,
                     rules,
                     seed: 7,
                     simulations: 32,

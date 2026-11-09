@@ -26,7 +26,7 @@ from minase_zero.encoding import encode_planes, policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import compute_losses
 
-from .cli import COMMIT, ZERO, environment, init_arguments, require_success, run_cli, train_arguments
+from .cli import COMMIT, ZERO, environment, init_arguments, require_success, run_cli, set_training_data, train_arguments
 from .test_data import single_game, write_small
 from .test_replay_buffer import reference_sample
 
@@ -146,6 +146,7 @@ class TrainTests(unittest.TestCase):
         ):
             raise AssertionError("SIGKILL did not interrupt an unfinished cycle")
         shutil.copytree(cls.b, cls.partial)
+        cls.b.with_name(cls.b.name + "-data.json").unlink()
         cls.resumption = run_cli(["train", "--resume", str(cls.b), "--device", "cpu"])
         require_success(cls.resumption)
         cls.state_a = torch.load(cls.a / "checkpoint.pt", weights_only=True)
@@ -183,6 +184,13 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
         self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
         self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
+
+    def test_data_list_stores_only_paths_and_resume_does_not_read_the_list(self) -> None:
+        self.assertFalse(self.b.with_name(self.b.name + "-data.json").exists())
+        for saved in (self.state_a, self.state_b, self.summary_a, self.summary_b):
+            self.assertNotIn("data_list", saved["config"])
+            self.assertEqual(saved["config"]["data"], ["fixtures/zero-selfplay-small.mnsd"])
+            self.assertEqual([item["path"] for item in saved["provenance"]["files"]], saved["config"]["data"])
 
     def test_order_digest_counts_and_batch_normalization_follow_the_contract(self) -> None:
         training = np.flatnonzero(~self.data.validation)
@@ -309,7 +317,8 @@ class TrainTests(unittest.TestCase):
         initial = self.root / "legacy-checkpoint.pt"
         torch.save(legacy, initial)
         arguments = train_arguments(initial, out)
-        for flag, value in (("--data", str(path)), ("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
+        set_training_data(arguments, [str(path)])
+        for flag, value in (("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
                             ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
             arguments[arguments.index(flag) + 1] = value
@@ -422,7 +431,7 @@ class TrainTests(unittest.TestCase):
         write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "engine-default")
         out = self.root / "no-sample"
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
-        arguments[arguments.index("--data") + 1] = str(path)
+        set_training_data(arguments, [str(path)])
         arguments[arguments.index("--latest-data") + 1] = str(path)
         result = run_cli(arguments)
         self.assertEqual(result.returncode, 1, result.stderr)
@@ -441,6 +450,26 @@ class TrainTests(unittest.TestCase):
                 result = run_cli(arguments)
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+
+
+class DataListTests(unittest.TestCase):
+    def test_invalid_data_lists_report_filename_and_one_error_line(self):
+        with tempfile.TemporaryDirectory(prefix="minase-data-list-") as directory:
+            root = Path(directory)
+            arguments = train_arguments(root / "unused.pt", root / "out")
+            path = Path(arguments[arguments.index("--data-list") + 1])
+            for content in (b"[]", b"{}", b"[", b'["valid.mnsd", 7]', b'[""]', b"\xff"):
+                with self.subTest(content=content):
+                    path.write_bytes(content)
+                    result = run_cli(arguments)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                    self.assertIn(str(path), result.stderr)
+                    self.assertFalse((root / "out").exists())
+            path.unlink()
+            result = run_cli(arguments)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn(str(path), result.stderr)
 
 
 if __name__ == "__main__":

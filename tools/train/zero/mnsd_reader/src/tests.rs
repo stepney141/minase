@@ -20,6 +20,69 @@ use std::{
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
+    use minase_core::rng::{XorShift64, derive_seed};
+    let fixture = Fixture::new();
+    let start = Position::shuffled_initial(&mut XorShift64::new(derive_seed(20261110, 1)));
+    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut moves = Vec::new();
+    let mut entries = Vec::new();
+    for _ in 0..6 {
+        let mv = sorted_legal_moves(&game).unwrap()[0];
+        entries.push(
+            Entry::new(
+                Some(mv),
+                Value::Mcts(32768),
+                Exclusion::None,
+                Policy::Candidates(vec![(mv, 65535)]),
+                Some(4),
+            )
+            .unwrap(),
+        );
+        game.play(mv).unwrap();
+        moves.push(mv);
+    }
+    entries.push(Entry::new(None, Value::None, Exclusion::None, Policy::None, Some(0)).unwrap());
+    let record =
+        GameRecord::new(1, Origin::RandomSelfplay, draw(), 0, start.clone(), entries).unwrap();
+    let path = fixture.write(TeacherKind::Mcts, &[record]);
+    let actual = read_file(&path).unwrap();
+    assert_eq!(actual.plies.len(), moves.len());
+    let planes = control_planes(&actual.boards, &actual.sides).unwrap();
+    let mut expected = Game::from_position(Rules::ENGINE_DEFAULT, start);
+    for (index, mv) in moves.into_iter().enumerate() {
+        assert_eq!(u32::from(actual.plies[index]), expected.ply_count());
+        assert_eq!(
+            actual.sides[index],
+            expected.position().side_to_move() as u8
+        );
+        assert_eq!(
+            actual.boards[index * 144..(index + 1) * 144],
+            records::encode_board(expected.position()).unwrap()
+        );
+        let mut input = vec![0.0; INPUT_SIZE];
+        encode(expected.position(), &mut input).unwrap();
+        assert_eq!(
+            planes[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
+            input[95 * 144..]
+        );
+        let begin = actual.legal_offsets[index] as usize;
+        let end = actual.legal_offsets[index + 1] as usize;
+        let legal: Vec<_> = (begin..end)
+            .map(|i| Move {
+                from: Square::from_dense(actual.legal_from[i] as usize).unwrap(),
+                mid: (actual.legal_mid[i] != 255)
+                    .then(|| Square::from_dense(actual.legal_mid[i] as usize).unwrap()),
+                to: Square::from_dense(actual.legal_to[i] as usize).unwrap(),
+                promote: actual.legal_promote[i] != 0,
+            })
+            .collect();
+        assert_eq!(legal, sorted_legal_moves(&expected).unwrap());
+        expected.play(mv).unwrap();
+    }
+}
+
+#[test]
 fn control_planes_match_inference_for_every_retained_record() {
     // フェーズ3: MNSDの再生で得た局面を推論で符号化し、盤の配列から得た64面と照合する。
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");

@@ -2,19 +2,19 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月1日。
+置き換え済み。[AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](../sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)によって置き換えられた。
 
 ## コンテキスト
 
-2026年10月31日の[前のADR](archive/sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)は、サイクルcのリプレイバッファを、cから古い順にさかのぼって訓練局面の合計が初めてネットのパラメータ数の10倍以上になるまでのサイクルとし、合計が届かないうちは全サイクルとした。
+2026年10月31日の[前のADR](sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)は、サイクルcのリプレイバッファを、cから古い順にさかのぼって訓練局面の合計が初めてネットのパラメータ数の10倍以上になるまでのサイクルとし、合計が届かないうちは全サイクルとした。
 抽出の数はサイクルcで生成した訓練局面数Nの4倍であり、リプレイバッファの決め方と、1回の学習に1つの対局の全局面が入らないようにする理由、および4倍の根拠は前のADRに書いた。
-[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)は、ほぼ乱択の対局からなる初期のサイクルの局面を早めに外すかどうかを、10サイクル目の進捗測定の結果を見て決めるとしていた。
+[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)は、ほぼ乱択の対局からなる初期のサイクルの局面を早めに外すかどうかを、10サイクル目の進捗測定の結果を見て決めるとしていた。
 Gumbel dlshogiは、初期の質の悪いデータを含めないように、初めのうちは直近のデータだけを使った。
 
 2026年10月31日に学び直した本線では、サイクル1をランダム初期化のネットが、サイクル2をサイクル1のネットが生成した。
 この2サイクルの対局は1局平均88手と70手で、99.9%が王手限定の3手以内の勝ちで終わった。
 サイクル3以後の対局は1局349手以上で、反復による引き分けも含み、後のサイクルと同じ性質の対局になった。
-[10サイクル目の進捗測定](../measurements/alphazero-rl/alphazero-rl-restart-progress-c0010.md)の時点で、サイクル1と2はリプレイバッファの約1,280万局面の13.7%を占めていた。
+[10サイクル目の進捗測定](../../measurements/alphazero-rl/alphazero-rl-restart-progress-c0010.md)の時点で、サイクル1と2はリプレイバッファの約1,280万局面の13.7%を占めていた。
 リプレイバッファから一様に抽出するので、毎サイクルの学習の標本でも、ほぼ同じ割合をこの2サイクルが占めていた。
 生成と無関係なαβ探索の棋譜に対する価値の損失はサイクル4以後0.60前後で横ばいであり、これは初期のデータが学習の妨げになっている可能性と整合するが、その原因であることは示されていない。
 最新のサイクルの訓練の標本と検証集合の価値の損失の差は約0.02で、過学習の兆候はなかった。
@@ -37,7 +37,7 @@ Gumbel dlshogiは、初期の質の悪いデータを含めないように、初
 サイクル3の対局は1局349手で、反復による引き分けも含み、サイクル4以後と同じ性質であった。
 
 Gumbel dlshogiのように、初めのうちは直近の数サイクルだけをリプレイバッファにする案は採らなかった。
-学び直す前の学習では、直近1サイクルだけのリプレイバッファで価値の過学習が起きた（[学習の局面の選び方の調査](../research/alphazero-training-sample-selection.md)）。
+学び直す前の学習では、直近1サイクルだけのリプレイバッファで価値の過学習が起きた（[学習の局面の選び方の調査](../../research/alphazero-training-sample-selection.md)）。
 サイクル1と2を外してもリプレイバッファは約1,100万局面残るので、過学習を防ぐリプレイバッファの大きさはほとんど変わらない。
 
 外すサイクルを局面の質の指標から自動で決める案は採らなかった。
@@ -49,4 +49,4 @@ Gumbel dlshogiのように、初めのうちは直近の数サイクルだけを
 変更の前のサイクルのリプレイバッファはサイクル1から始まっており、1回目の学習の各サイクルの記録の`window_cycles`と`window_first_cycle`で区別できる（2026年11月9日に欄名を`replay_buffer_cycles`と`replay_buffer_first_cycle`に改めたが、1回目の記録は書き換えていない）。
 リプレイバッファが満ちた後は、サイクル3より前は自然に外れるので、この決定の影響は満ちるまでの学習に限られる。
 実装は`tools/train/zero/minase_zero/runner.py`の`replay_buffer`にある。
-学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。
+学習率の予定は[学習率の予定のADR](../warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。

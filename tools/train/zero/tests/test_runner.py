@@ -152,6 +152,7 @@ class RunnerCase(unittest.TestCase):
             cycles_dir=Path("cycles"), base_cycles_dir=Path("cycles"), branch_from=0,
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
+            start_position="random-opening", generation_seed_offset=0,
             target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
             replay_buffer_first_cycle=1,
             replay_buffer_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
@@ -554,6 +555,14 @@ class StorageTests(RunnerCase):
 
 
 class GenerationTests(RunnerCase):
+    def test_generation_rejects_a_different_start_position(self):
+        path = self.root / self.out / "config.json"
+        saved = json.loads(path.read_text())
+        saved["start_position"] = "shuffled-setup"
+        write_json(path, saved)
+        with self.assertRaisesRegex(ValueError, "generation settings differ"):
+            self.generation()
+
     def setUp(self):
         super().setUp()
         self.out = "cycles/cycle-0001/selfplay"
@@ -561,7 +570,7 @@ class GenerationTests(RunnerCase):
         write_json(self.root / self.out / "config.json", {
             "generation_commit": GENERATION_COMMIT,
             "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
-            "nn_backend": "tensorrt", "seed": 1000000000, "games": 11, "chunk_games": 5,
+            "start_position": "random-opening", "nn_backend": "tensorrt", "seed": 1000000000, "games": 11, "chunk_games": 5,
             "simulations": 32, "playthrough_percent": 100,
         })
         self.saved_summary = {"target_positions": 1000, "chunks": 2, "games": 10}
@@ -618,6 +627,30 @@ class GenerationTests(RunnerCase):
 
 
 class ResumeTests(RunnerCase):
+    def test_new_training_manifest_preserves_order_and_identical_bytes(self):
+        files = ["old/a.mnsd", "new/局面 b.mnsd"]
+        command = self.runner.training_command(1, files, files[-1:])
+        path = self.root / "cycles/cycle-0001/train-data.json"
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), files)
+        self.assertEqual(command[command.index("--data-list") + 1], "cycles/cycle-0001/train-data.json")
+        self.assertNotIn("--data", command)
+        os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        self.runner.training_command(1, files, files[-1:])
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
+        self.assertFalse((self.root / "cycles/cycle-0001/train").exists())
+
+    def test_different_training_manifest_stops_before_upload_or_launch(self):
+        path = self.root / "cycles/cycle-0001/train-data.json"
+        for before in (b'["different.mnsd"]\n', b'[ "expected.mnsd" ]\n'):
+            with self.subTest(contents=before):
+                write(path, before)
+                with self.assertRaisesRegex(ValueError, "train-data.json"):
+                    self.runner.training(1, ["expected.mnsd"], ["expected.mnsd"])
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(self.remote.starts, [])
+                self.assertEqual(self.remote.uploads, [])
+
     def test_incomplete_generation_rejects_a_different_saved_commit_before_launch(self):
         out = "cycles/cycle-0001/selfplay"
         for location in (self.root, self.remote_root):
@@ -625,7 +658,7 @@ class ResumeTests(RunnerCase):
                 write_json(location / out / "config.json", {
                     "generation_commit": "c" * 40,
                     "network_sha256": digest(self.root / "cycles/cycle-0000/model.onnx"),
-                    "nn_backend": "tensorrt", "seed": 1000000000, "games": 10, "chunk_games": 5,
+                    "start_position": "random-opening", "nn_backend": "tensorrt", "seed": 1000000000, "games": 10, "chunk_games": 5,
                     "simulations": 32, "playthrough_percent": 100,
                 })
                 with self.assertRaises(ValueError):
@@ -682,7 +715,8 @@ class ResumeTests(RunnerCase):
         command = self.runner.training_command(3, files, latest)
         self.assertEqual(command, [
             "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero", "python", "-m", "minase_zero",
-            "train", "--init", "cycles/cycle-0002/train/checkpoint.pt", "--data", *files, "--latest-data", *latest,
+            "train", "--init", "cycles/cycle-0002/train/checkpoint.pt",
+            "--data-list", "cycles/cycle-0003/train-data.json", "--latest-data", *latest,
             "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
             "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
@@ -732,6 +766,32 @@ class ResumeTests(RunnerCase):
 
 
 class RemoteTests(unittest.TestCase):
+    def test_large_missing_list_uses_stdin_below_linux_argument_limit(self):
+        files = [f"cycles/{number:05d}/" + "局面" * 20 + ".mnsd" for number in range(2000)]
+        self.assertGreater(len("".join(files).encode("utf-8")), 131072)
+
+        def run(argv, **kwargs):
+            self.assertTrue(all(len(arg.encode("utf-8")) < 131072 for arg in argv))
+            self.assertEqual(json.loads(kwargs["input"]), files)
+            return subprocess.CompletedProcess(argv, 0, json.dumps(files[::2]), "")
+
+        with patch("minase_zero.runner.subprocess.run", side_effect=run):
+            self.assertEqual(Remote("test").missing(files), files[::2])
+
+    def test_large_sha256_list_uses_nul_stdin_below_linux_argument_limit(self):
+        files = [f"cycles/{number:05d}/" + "局面" * 20 + " '\n.mnsd" for number in range(2000)]
+        self.assertGreater(len("".join(files).encode("utf-8")), 131072)
+        expected = {name: hashlib.sha256(name.encode("utf-8")).hexdigest() for name in files}
+
+        def run(argv, **kwargs):
+            self.assertTrue(all(len(arg.encode("utf-8")) < 131072 for arg in argv))
+            self.assertEqual(kwargs["input"], "\0".join(files) + "\0")
+            output = "".join(f"{checksum}  {name}\0" for name, checksum in expected.items())
+            return subprocess.CompletedProcess(argv, 0, output, "")
+
+        with patch("minase_zero.runner.subprocess.run", side_effect=run):
+            self.assertEqual(Remote("test").sha256_many(files, 120), expected)
+
     def test_batch_transfer_uses_one_files_from_rsync_and_one_checksum_command(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "NAS with spaces"
@@ -770,7 +830,7 @@ class RemoteTests(unittest.TestCase):
             self.assertEqual(commands[1][0][0], "rsync")
             self.assertEqual(commands[1][1], 122.5)
             checksum_script = shlex.split(commands[2][0][-1])[-1].splitlines()[-1]
-            self.assertEqual(shlex.split(checksum_script), ["sha256sum", "--zero", "--", *files])
+            self.assertEqual(shlex.split(checksum_script), ["xargs", "-0", "-r", "sha256sum", "--zero", "--"])
             self.assertEqual(commands[2][1], 122.5)
             self.assertEqual(len(manifests), 1)
             self.assertEqual(manifests[0][1], b"new/chunk-00001.mnsd\0new/chunk-00000.mnsd\0")
@@ -828,10 +888,10 @@ class RemoteTests(unittest.TestCase):
             root = Path(directory)
             remote = Remote("local")
 
-            def execute(argv, timeout):
+            def execute(argv, timeout, input_text):
                 command = shlex.split(argv[-1])
                 command[-1] = command[-1].replace("/content/az", str(root / "absent"))
-                return subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=timeout)
+                return subprocess.run(command, input=input_text, cwd=root, capture_output=True, text=True, timeout=timeout)
 
             with patch.object(remote, "_call", side_effect=execute):
                 result = remote.shell("echo first\nprintf wrong > marker", 120)
@@ -937,6 +997,52 @@ class RemoteTests(unittest.TestCase):
 
 
 class CycleTests(RunnerCase):
+    def test_start_position_reaches_generation_and_regeneration_and_cycle_record(self):
+        self.regenerate = True
+        self.execute(replace(self.options, start_position="shuffled-setup"))
+        row = json.loads((self.root / "cycles.jsonl").read_text())
+        self.assertEqual(row["generation_seed_offset"], 0)
+        self.assertEqual(row["generation"]["seed"], 1_000_000_000)
+        self.assertEqual(row["regeneration"]["seed"], 1_500_000_000)
+        commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts if "/selfplay" in stem]
+        self.assertEqual(len(commands), 2)
+        self.assertEqual([command[command.index("--start-position") + 1] for command in commands],
+                         ["shuffled-setup", "shuffled-setup"])
+        for field in ("generation", "regeneration"):
+            self.assertEqual(row[field]["start_position"], "shuffled-setup")
+
+    def test_generation_seed_interval_overflow_leaves_ledger_unchanged(self):
+        write_json(self.reference, {"games": 1, "training_positions": 1})
+        ledger = self.root / "seed-ledger.jsonl"
+        before = ledger.read_bytes()
+        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=200_000_001)
+        with self.assertRaisesRegex(ValueError, "generation seed range"):
+            self.execute(options)
+        self.assertEqual(ledger.read_bytes(), before)
+        self.assertEqual(self.remote.starts, [])
+
+    def test_generation_seed_interval_accepts_exact_upper_boundary(self):
+        write_json(self.reference, {"games": 1, "training_positions": 1})
+        options = replace(self.options, generation_seed_offset=300_000_000, target_positions=200_000_000)
+        with patch.object(Runner, "generation", side_effect=RuntimeError("generation reached")):
+            with self.assertRaisesRegex(RuntimeError, "generation reached"):
+                self.execute(options)
+        row = json.loads((self.root / "seed-ledger.jsonl").read_text())
+        self.assertEqual((row["seed"], row["games"]), (1_300_000_000, 200_000_000))
+
+    def test_new_training_sends_manifest_with_replay_buffer(self):
+        self.runner.run()
+        row = json.loads((self.root / "cycles.jsonl").read_text())
+        manifest = "cycles/cycle-0001/train-data.json"
+        for root in (self.root, self.remote_root):
+            self.assertEqual(json.loads((root / manifest).read_text()), row["training_files"])
+        self.assertIn(manifest, self.remote.uploads)
+        batches = [files for files, _ in self.remote.hash_batches if manifest in files]
+        self.assertEqual(batches, [[*row["training_files"], manifest]])
+        command = shlex.split(next(body for stem, body, _, _ in self.remote.starts if stem.endswith("/train")))
+        self.assertEqual(command[command.index("--data-list") + 1], manifest)
+        self.assertNotIn("--data", command)
+
     def setUp(self):
         super().setUp()
         (self.root / "seed-ledger.jsonl").touch()
@@ -978,7 +1084,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
             count, chunk = int(value("--games")), int(value("--chunk-games"))
             config = {"generation_commit": value("--generation-commit"),
                       "network_sha256": digest(self.remote_root / value("--nn-model")),
-                      "nn_backend": "tensorrt", "seed": int(value("--seed")), "games": count,
+                      "start_position": value("--start-position"), "nn_backend": "tensorrt", "seed": int(value("--seed")), "games": count,
                       "chunk_games": chunk, "simulations": int(value("--simulations")),
                       "playthrough_percent": int(value("--playthrough-percent"))}
             write_json(self.remote_root / stem / "config.json", config)
@@ -1087,7 +1193,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                 (self.root / f"cycles/cycle-{row['cycle']:04d}/train/summary.json").read_text()))
             command = shlex.split(next(body for stem, body, _, _ in self.remote.starts
                                        if stem == f"cycles/cycle-{row['cycle']:04d}/train"))
-            data = command[command.index("--data") + 1:command.index("--latest-data")]
+            manifest = command[command.index("--data-list") + 1]
+            data = json.loads((self.remote_root / manifest).read_text())
+            self.assertNotIn("--data", command)
             latest = command[command.index("--latest-data") + 1:command.index("--out-dir")]
             self.assertEqual(data, row["training_files"])
             self.assertEqual(latest, row["teacher_stats"]["files"])
@@ -1137,7 +1245,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                      if path.is_file() and path.name != "seed-ledger.jsonl"}
         self.remote.balances = [100, 98, 98, 96]
         before = len(self.remote.starts)
-        options = replace(self.options, cycles_dir=Path("cycles-branch"), branch_from=1,
+        options = replace(self.options, cycles_dir=Path("cycles-branch"), generation_seed_offset=300_000_000, branch_from=1,
                           first_cycle=2, last_cycle=3, cycle1_reference_summary=None,
                           replay_buffer_positions=2500)
         self.execute(options)
@@ -1147,7 +1255,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual([row["generation"]["network"] for row in rows], [
             "cycles/cycle-0001/train/model.onnx", "cycles-branch/cycle-0002/train/model.onnx",
         ])
-        self.assertEqual([row["generation"]["seed"] for row in rows], [2_700_000_000, 3_700_000_000])
+        self.assertEqual([row["generation"]["seed"] for row in rows], [2_300_000_000, 3_300_000_000])
+        self.assertEqual([row["generation_seed_offset"] for row in rows], [300_000_000, 300_000_000])
+        self.assertEqual([row["generation"]["start_position"] for row in rows], ["random-opening", "random-opening"])
         self.assertEqual([row["replay_buffer_cycles"] for row in rows], [[1, 2], [1, 2, 3]])
         for row in [*rows, *intervals]:
             self.assertEqual(row["cycles_dir"], "cycles-branch")
@@ -1175,7 +1285,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
         self.assertEqual([(row["name"], row["seed"]) for row in ledger], [
             ("cycle-0001-gen", 1_000_000_000), ("cycle-0002-gen", 2_000_000_000),
-            ("cycles-branch-0002-gen", 2_700_000_000), ("cycles-branch-0003-gen", 3_700_000_000),
+            ("cycles-branch-0002-gen", 2_300_000_000), ("cycles-branch-0003-gen", 3_300_000_000),
         ])
         for path, content in unchanged.items():
             self.assertEqual(path.read_bytes(), content, str(path))
@@ -1196,16 +1306,17 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-gen", 1_000_000_000, 10)
         seed_registration(self.root / "seed-ledger.jsonl", "cycle-0001-regen", 1_500_000_000, 3)
         seed_registration(self.root / "seed-ledger.jsonl", "cycle-0002-gen", 2_000_000_000, 10)
-        self.execute(replace(self.options, cycles_dir=Path("cycles-branch")))
+        self.execute(replace(self.options, cycles_dir=Path("cycles-branch"), generation_seed_offset=300_000_000))
         row = json.loads((self.root / "cycles-branch.jsonl").read_text())
         self.assertEqual(row["generation"]["network"], "cycles/cycle-0000/model.onnx")
-        self.assertEqual(row["generation"]["seed"], 1_700_000_000)
-        self.assertEqual(row["regeneration"]["seed"], 2_200_000_000)
+        self.assertEqual(row["generation"]["seed"], 1_300_000_000)
+        self.assertEqual(row["regeneration"]["seed"], 1_800_000_000)
+        self.assertEqual(row["generation_seed_offset"], 300_000_000)
         self.assertTrue(all(name.startswith("cycles-branch/cycle-0001/") for name in row["training_files"]))
         self.assertTrue(any("/selfplay-regen/" in name for name in row["training_files"]))
         ledger = [json.loads(line) for line in (self.root / "seed-ledger.jsonl").read_text().splitlines()]
         self.assertEqual([(item["name"], item["seed"]) for item in ledger[-2:]], [
-            ("cycles-branch-0001-gen", 1_700_000_000), ("cycles-branch-0001-regen", 2_200_000_000),
+            ("cycles-branch-0001-gen", 1_300_000_000), ("cycles-branch-0001-regen", 1_800_000_000),
         ])
 
     def test_nested_relative_directory_is_used_by_all_stages(self):
@@ -1429,7 +1540,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         command = shlex.split(self.remote.starts[0][1])
         self.assertEqual(command[command.index("--trainer-commit") + 1], "e" * 40)
         batches = [files for files, _ in self.remote.upload_batches if any(name.endswith(".mnsd") for name in files)]
-        self.assertEqual(batches, [row["training_files"]])
+        self.assertEqual(batches, [[*row["training_files"], "cycles/cycle-0001/train-data.json"]])
 
     def test_new_generation_checks_its_commit_before_accepting_the_summary(self):
         complete = self.remote.on_start
@@ -1496,9 +1607,27 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
 
 
 class ArgumentTests(RunnerCase):
+    def test_start_position_and_seed_offset_reject_invalid_options_and_cli_values(self):
+        for offset in (-1, 500_000_000, 1_000_000_000, 1.5, True, "0"):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                replace(self.options, generation_seed_offset=offset)
+        for offset in (0, 300_000_000, 499_999_999):
+            self.assertEqual(replace(self.options, generation_seed_offset=offset).generation_seed_offset, offset)
+        with self.assertRaises(ValueError):
+            replace(self.options, start_position="unknown")
+        for option, value in (("--start-position", "unknown"), ("--generation-seed-offset", "-1"),
+                              ("--generation-seed-offset", "500000000"), ("--generation-seed-offset", "1.5")):
+            arguments = self.arguments()
+            arguments[arguments.index(option) + 1] = value
+            with self.subTest(option=option, value=value), self.assertRaises(ValueError):
+                parsed = vars(_parse(arguments))
+                parsed.pop("command")
+                Options(**parsed)
+
     def arguments(self):
         return ["run-cycles", "--root", str(self.root), "--session", "l4-one",
                 "--cycles-dir", "cycles", "--base-cycles-dir", "cycles", "--branch-from", "0",
+                "--start-position", "random-opening", "--generation-seed-offset", "0",
                 "--generation-commit", GENERATION_COMMIT, "--trainer-commit", TRAINER_COMMIT,
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",

@@ -14,7 +14,7 @@
 //! - `run-zero-network-inference-through-ort-load-dynamic.md`
 //! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
-//! - `start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
+//! - `start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
 //!
 //! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。
 

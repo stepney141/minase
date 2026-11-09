@@ -12,7 +12,8 @@
 //! `config.json`がない場合の空の判定では、`.zero_selfplay.lock`と`config.json.tmp`だけを無視する。
 //! それ以外の項目があればエラーにする。
 //! 保存済みの生成条件とは、`rules`、`generation_commit`、`network_sha256`、`nn_backend`、
-//! `seed`、`games`、`chunk_games`、`simulations`、`playthrough_percent`、`max_ply`を照合し、相違する欄の名前を報告する。
+//! `start_position`、`seed`、`games`、`chunk_games`、`simulations`、`playthrough_percent`、`max_ply`を照合し、相違する欄の名前を報告する。
+//! `start_position`は`shuffled-setup`か`random-opening`で、サイクルの集計にも保存する。
 //! `nn_backend`の綴りは`tensorrt`、`cuda`、`cpu`とする。
 //! スレッド数、スレッドごとの同時対局数、GPUの種類、およびネットのファイルパスは照合しない。
 //! ネットの同一性は`network_sha256`で照合する。
@@ -107,6 +108,7 @@ use minase::training::records::{Header, Outcome, TeacherKind, Writer};
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 use serde::{Deserialize, Serialize};
 
+use super::cli::StartPosition;
 use super::game::{CompletedGame, Settings, false_resignation};
 use super::worker::Workers;
 use super::{Error, FALSE_RESIGNATION_LIMIT};
@@ -124,6 +126,7 @@ pub(super) struct Config {
     pub(super) network_sha256: String,
     pub(super) nn_backend: String,
     pub(super) seed: u64,
+    pub(super) start_position: StartPosition,
     pub(super) games: u32,
     pub(super) chunk_games: u32,
     pub(super) simulations: u32,
@@ -169,6 +172,10 @@ impl Config {
             ),
             (self.nn_backend != saved.nn_backend, "nn_backend"),
             (self.seed != saved.seed, "seed"),
+            (
+                self.start_position != saved.start_position,
+                "start_position",
+            ),
             (self.games != saved.games, "games"),
             (self.chunk_games != saved.chunk_games, "chunk_games"),
             (self.simulations != saved.simulations, "simulations"),
@@ -325,6 +332,7 @@ pub(super) struct ChunkSummary {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct Summary {
+    pub(super) start_position: StartPosition,
     pub(super) target_positions: u64,
     pub(super) chunks: u32,
     #[serde(flatten)]
@@ -337,7 +345,11 @@ pub(super) struct Summary {
 
 /// 塊の集計だけから、サイクルの件数と学習ファイルを決める。
 /// 誤投了率の分母が0なら率は未定義とし、投了ファイルを除外しない。
-pub(super) fn summarize(chunks: &[ChunkSummary], target_positions: u64) -> Summary {
+pub(super) fn summarize(
+    chunks: &[ChunkSummary],
+    target_positions: u64,
+    start_position: StartPosition,
+) -> Summary {
     let mut counts = Counts::default();
     for chunk in chunks {
         counts.add(&chunk.counts);
@@ -362,6 +374,7 @@ pub(super) fn summarize(chunks: &[ChunkSummary], target_positions: u64) -> Summa
             counts.resigned_positions
         };
     Summary {
+        start_position,
         target_positions,
         chunks: chunks.len() as u32,
         counts,
@@ -383,6 +396,7 @@ impl RunReport {
     pub(super) fn print(&self, config: &Config) -> Result<(), Error> {
         let mut stdout = io::stdout().lock();
         writeln!(stdout, "seed: {}", config.seed)?;
+        writeln!(stdout, "start_position: {}", config.start_position)?;
         writeln!(stdout, "rules: {}", config.rules)?;
         writeln!(stdout, "commit: {}", config.generation_commit)?;
         writeln!(stdout, "network_sha256: {}", config.network_sha256)?;
@@ -390,6 +404,9 @@ impl RunReport {
         writeln!(stdout, "max_ply: {}", config.max_ply)?;
         if let serde_json::Value::Object(fields) = serde_json::to_value(&self.summary)? {
             for (name, value) in fields {
+                if name == "start_position" {
+                    continue;
+                }
                 writeln!(stdout, "{name}: {value}")?;
             }
         }
@@ -472,6 +489,7 @@ pub(super) fn generate(
         let settings = Settings {
             rules: header.rules(),
             seed: config.seed,
+            start_position: config.start_position,
             simulations: config.simulations,
             playthrough_percent: config.playthrough_percent,
             max_ply: config.max_ply,
@@ -527,7 +545,7 @@ pub(super) fn generate(
     }
     let included = included.ok_or(Error::IncompleteChunks)?;
     let chunks: Vec<_> = completed.into_values().take(included as usize).collect();
-    let summary = summarize(&chunks, target_positions);
+    let summary = summarize(&chunks, target_positions, config.start_position);
     atomic_json(directory, "summary.json", &summary)?;
     Ok(RunReport {
         summary,

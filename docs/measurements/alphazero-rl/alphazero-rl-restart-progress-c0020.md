@@ -30,7 +30,7 @@ uv run --frozen --project tools/train/zero python long_trend.py /mnt/synology_na
 両エンジンとも、masterのコミットd673bc1fと同じソースをビルドしたminaseのMCTS（`--search mcts`）であり、規則は`engine-default`（`L0,P0,R1,E0`）である。
 ネットはNASの`nets/cycle-0020.onnx`と`nets/cycle-0010.onnx`である。
 サイクル11〜13の生成器と学習器のコミットは29b01a5c、サイクル14の生成は29b01a5cで学習はd0e22dbf、サイクル15〜20はd0e22dbfである。
-サイクル13までのリプレイバッファはサイクル1から、サイクル14からはサイクル3から始まる（[リプレイバッファのADR](../../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)）。
+サイクル13までのリプレイバッファはサイクル1から、サイクル14からはサイクル3から始まる（[リプレイバッファのADR](../../adr/archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)）。
 
 ## 環境
 

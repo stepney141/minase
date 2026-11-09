@@ -342,14 +342,14 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索の自己対局は、手番の25%だけを通常の回数で探索して方策を記録し、残りの手番は4分の1の回数で探索して指した手と価値だけを記録する](randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md)
 - 2026年10月31日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切る](archive/stop-zero-self-play-at-check-only-wins-within-three-plies.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索のネットの入力は、手番側から見た盤の95面に駒種ごとの利きと利き数の64面を足した159面とし、履歴と左右反転による水増しを入れない](encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md)
-- 2026年10月31日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
+- 2026年10月31日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルと32チャネルの価値ヘッドから始め、学習用の補助ヘッドを持たせる](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の学習器は、主の方策と価値に、KataGoの既定の重みで短期の価値、相手の次の手、およびソフト方策の補助目標を足して学ぶ](train-the-zero-network-on-katago-auxiliary-targets.md)
 - 2026年10月31日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、利きの面と対局全体から決まる教師を拡張モジュールで作り、駒の面と方策のラベルはPythonでバッチごとに作る](read-mnsd-into-the-zero-trainer-and-build-control-planes-and-replay-targets-in-a-rust-extension.md)
 - 2026年10月31日 [AlphaZero型探索の学習は、パラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](archive/sample-each-new-zero-training-position-four-times-from-a-replay-buffer-of-ten-times-the-parameter-count.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](archive/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)（置き換え済み）
 - 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)
 - 2026年11月1日 [AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)
-- 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)
+- 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)（置き換え済み）
 - 2026年11月2日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)
 - 2026年11月2日 [AlphaZero型探索の学習器は重みの移動平均を持たず、自己対局と進捗測定には学習の最後の重みのネットを使う](do-not-keep-a-moving-average-of-the-zero-network-weights.md)
 - 2026年11月2日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切り、判定は探索のモジュールに置く](stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)
@@ -363,3 +363,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月5日 [歩兵と仲人の移動元は到達升の集合のシフトで選び、効果が小さいと見込まれたほかの生成とSEEの高速化は実装しない](shift-pawn-origins-and-skip-other-low-yield-movegen-and-see-speedups.md)
 - 2026年11月8日 [MCTSは、新しい節点の手番側が相手の最後の王駒を取れるなら、反復の近似より前に1手の勝ちに確定させる](prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)
 - 2026年11月9日 [対局用MCTSは、ネットの方策のlogitを温度1.4で割ってからPUCTの事前確率を作る](divide-mcts-policy-logits-by-a-temperature-of-1-4.md)
+- 2026年11月9日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、最初から20ブロック256チャネルと32チャネルの価値ヘッドで学習し、学習用の補助ヘッドを持たせる](start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md)
+- 2026年11月10日 [AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)
+- 2026年11月10日 [AlphaZero型探索の自己対局の開始局面として、歩兵と仲人を動かさず、1〜3段目の駒を段の中で並べ替え、2枚の角行を偶奇の異なるマスに置き、後手を点対称に置いた初期配置を選べるようにする](shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)
+- 2026年11月10日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、2回目の学習には3×10⁸を与える](take-the-zero-series-seed-offset-as-a-required-runner-argument.md)

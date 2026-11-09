@@ -4,8 +4,9 @@
 引数はすべて既定値を持たない。
 
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
-- train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data（リプレイバッファの
-  MNSDファイルの列）、--latest-data（最新サイクルのファイルの列で、dataの末尾と一致する）、
+- train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data-list（リプレイバッファの
+  MNSDファイルの列を保存したUTF-8のJSON配列のファイル）、
+  --latest-data（最新サイクルのファイルの列で、読み込んだ配列の末尾と一致する）、
   --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
@@ -57,7 +58,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--resume", type=Path, required=True)
     else:
         train.add_argument("--init", required=True)
-        train.add_argument("--data", nargs="+", required=True)
+        train.add_argument("--data-list", type=Path, required=True)
         train.add_argument("--latest-data", nargs="+", required=True)
         train.add_argument("--out-dir", type=Path, required=True)
         for name in ("cycle", "seed", "batch-size", "checkpoint-steps"):

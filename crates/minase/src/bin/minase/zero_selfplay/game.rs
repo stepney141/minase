@@ -1,7 +1,8 @@
 //! 1局の序盤、探索回数の乱択、投了、3手以内の勝ちによる打ち切り、および教師情報の記録。
 //!
 //! 対局番号はサイクル内の1からの通し番号であり、対局のシードは`derive_seed(基本シード, 対局番号)`とする。
-//! 序盤の乱択には`derive_seed(対局のシード, 0)`を使い、初期局面から8〜16手を一様に選ぶ。
+//! `shuffled-setup`は`derive_seed(対局のシード, 0)`で配置を組み替え、乱択の手順を加えない。
+//! `random-opening`の序盤の乱択には`derive_seed(対局のシード, 0)`を使い、初期局面から8〜16手を一様に選ぶ。
 //! 序盤で終局した場合は、序盤のシードから再び`derive_seed(序盤のシード, 0)`を派生させて作り直す。
 //! Gumbel乱数には`derive_seed(対局のシード, 1)`で初期化した1本の乱数列を全手番で使う。
 //! `derive_seed(対局のシード, 2) % 100 < playthrough_percent`を満たす対局は投了させずに最後まで指させる。
@@ -29,7 +30,8 @@
 //! この方策の目標はGumbel乱数を含まないため、最後の選択で使う倍率の影響を受けない。
 //! 候補をMNSDの合法手の番号順に並べ、確率の合計が65,535になるよう最大剰余法で量子化し、0になった候補は記録しない。
 //!
-//! 対局記録は初期局面を開始局面、開始手数を0、由来を乱数開始の自己対局とする。
+//! 対局記録の開始局面は`shuffled-setup`では組み替えた配置、`random-opening`では標準の初期局面とする。
+//! どちらも開始手数は0、由来は乱数開始の自己対局とする。
 //! 手順の各項目は着手前の局面を表し、除外理由はすべて「なし」とする。
 //! 序盤の項目は指した手だけを持ち、価値と方策はなし、訪問回数は0とする。
 //! 完全探索の項目は指した手、上記の価値と方策、および根の総訪問回数を持ち、訓練局面として数える。
@@ -63,6 +65,7 @@ use minase::training::records::{
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{Color, Game, GameResult, Move, Position, Rules};
 
+use super::cli::StartPosition;
 use super::{Error, GUMBEL_VALUE_SCALE, RESIGN_THRESHOLD, TREE_CAPACITY};
 
 /// 全対局で共有する条件。手数上限は試験でも同じ経路から渡す。
@@ -70,6 +73,7 @@ use super::{Error, GUMBEL_VALUE_SCALE, RESIGN_THRESHOLD, TREE_CAPACITY};
 pub(super) struct Settings {
     pub(super) rules: Rules,
     pub(super) seed: u64,
+    pub(super) start_position: StartPosition,
     pub(super) simulations: u32,
     pub(super) playthrough_percent: u8,
     pub(super) max_ply: u32,
@@ -92,6 +96,7 @@ pub(super) struct CompletedGame {
 pub(super) struct PlayingGame {
     number: u32,
     game: Game,
+    start_position: Position,
     settings: Settings,
     entries: Vec<Entry>,
     rng: XorShift64,
@@ -108,7 +113,18 @@ pub(super) struct PlayingGame {
 impl PlayingGame {
     pub(super) fn new(number: u32, settings: Settings) -> Result<Self, Error> {
         let seed = derive_seed(settings.seed, u64::from(number));
-        let (game, opening) = generate_opening(settings.rules, seed)?;
+        let (game, opening, start_position) = match settings.start_position {
+            StartPosition::RandomOpening => {
+                let (game, opening) = generate_opening(settings.rules, seed)?;
+                (game, opening, Position::initial())
+            }
+            StartPosition::ShuffledSetup => {
+                let position =
+                    Position::shuffled_initial(&mut XorShift64::new(derive_seed(seed.get(), 0)));
+                let game = Game::from_position(settings.rules, position.clone());
+                (game, Vec::new(), position)
+            }
+        };
         let entries = opening
             .into_iter()
             .map(|mv| {
@@ -124,6 +140,7 @@ impl PlayingGame {
         Ok(Self {
             number,
             game,
+            start_position,
             settings,
             entries,
             rng: XorShift64::new(derive_seed(seed.get(), 1)),
@@ -242,7 +259,7 @@ impl PlayingGame {
                 Origin::RandomSelfplay,
                 result,
                 0,
-                Position::initial(),
+                self.start_position,
                 self.entries,
             )?)
         } else {

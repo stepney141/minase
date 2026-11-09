@@ -1,9 +1,12 @@
 //! 空局面と初期配置の作成。
 
+use core::num::NonZeroUsize;
+
 use super::zobrist::zobrist_keys;
 use super::{Position, PositionBuilder};
 use crate::board::{BOARD_FILES, BOARD_RANKS, Bitboard, RAW_SQUARE_COUNT, Square};
 use crate::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
+use crate::rng::XorShift64;
 
 impl Position {
     /// 指定手番で駒のない局面を作る。
@@ -28,46 +31,39 @@ impl Position {
 
     /// 初期配置(第5条)の局面を作る。
     pub fn initial() -> Self {
-        let mut builder = PositionBuilder::new(Color::Black);
-        let back_rank = [
-            PieceKind::Lance,
-            PieceKind::FerociousLeopard,
-            PieceKind::CopperGeneral,
-            PieceKind::SilverGeneral,
-            PieceKind::GoldGeneral,
-            PieceKind::King,
-            PieceKind::DrunkElephant,
-            PieceKind::GoldGeneral,
-            PieceKind::SilverGeneral,
-            PieceKind::CopperGeneral,
-            PieceKind::FerociousLeopard,
-            PieceKind::Lance,
-        ];
-        let second_rank = [
-            (0, PieceKind::ReverseChariot),
-            (2, PieceKind::Bishop),
-            (4, PieceKind::BlindTiger),
-            (5, PieceKind::Kirin),
-            (6, PieceKind::Phoenix),
-            (7, PieceKind::BlindTiger),
-            (9, PieceKind::Bishop),
-            (11, PieceKind::ReverseChariot),
-        ];
-        let third_rank = [
-            PieceKind::SideMover,
-            PieceKind::VerticalMover,
-            PieceKind::Rook,
-            PieceKind::DragonHorse,
-            PieceKind::DragonKing,
-            PieceKind::Lion,
-            PieceKind::FreeKing,
-            PieceKind::DragonKing,
-            PieceKind::DragonHorse,
-            PieceKind::Rook,
-            PieceKind::VerticalMover,
-            PieceKind::SideMover,
-        ];
+        Self::from_setup_ranks(initial_ranks())
+    }
 
+    /// 自己対局の開始局面に使う組み替えた配置を作る。第5条の初期配置ではない。
+    ///
+    /// 奥の3段を段ごとにFisher–Yates法で並べ替え、2枚の角行は筋の偶奇を異ならせる。
+    /// 歩兵と仲人は動かさず、後手を先手の180度回転として置く。
+    pub fn shuffled_initial(rng: &mut XorShift64) -> Self {
+        let mut ranks = initial_ranks();
+        for (rank_index, rank) in ranks.iter_mut().enumerate() {
+            loop {
+                for i in (1..rank.len()).rev() {
+                    let j = rng.index(NonZeroUsize::new(i + 1).expect("i + 1 is positive"));
+                    rank.swap(i, j);
+                }
+                if rank_index != 1
+                    || rank
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, kind)| **kind == Some(PieceKind::Bishop))
+                        .map(|(file, _)| file % 2)
+                        .sum::<usize>()
+                        == 1
+                {
+                    break;
+                }
+            }
+        }
+        Self::from_setup_ranks(ranks)
+    }
+
+    fn from_setup_ranks(ranks: [[Option<PieceKind>; 12]; 3]) -> Self {
+        let mut builder = PositionBuilder::new(Color::Black);
         for color in Color::ALL {
             let rotate = |file: u8, rank: u8| match color {
                 Color::Black => (file, rank),
@@ -84,14 +80,12 @@ impl Position {
                     .unwrap();
             };
 
-            for (file, kind) in back_rank.into_iter().enumerate() {
-                put(file as u8, 0, kind);
-            }
-            for (file, kind) in second_rank {
-                put(file, 1, kind);
-            }
-            for (file, kind) in third_rank.into_iter().enumerate() {
-                put(file as u8, 2, kind);
+            for (rank, kinds) in ranks.iter().enumerate() {
+                for (file, kind) in kinds.iter().enumerate() {
+                    if let Some(kind) = kind {
+                        put(file as u8, rank as u8, *kind);
+                    }
+                }
             }
             for file in 0..BOARD_FILES {
                 put(file, 3, PieceKind::Pawn);
@@ -103,4 +97,50 @@ impl Position {
 
         builder.finish().unwrap()
     }
+}
+
+fn initial_ranks() -> [[Option<PieceKind>; 12]; 3] {
+    let back_rank = [
+        PieceKind::Lance,
+        PieceKind::FerociousLeopard,
+        PieceKind::CopperGeneral,
+        PieceKind::SilverGeneral,
+        PieceKind::GoldGeneral,
+        PieceKind::King,
+        PieceKind::DrunkElephant,
+        PieceKind::GoldGeneral,
+        PieceKind::SilverGeneral,
+        PieceKind::CopperGeneral,
+        PieceKind::FerociousLeopard,
+        PieceKind::Lance,
+    ];
+    let second_rank = [
+        Some(PieceKind::ReverseChariot),
+        None,
+        Some(PieceKind::Bishop),
+        None,
+        Some(PieceKind::BlindTiger),
+        Some(PieceKind::Kirin),
+        Some(PieceKind::Phoenix),
+        Some(PieceKind::BlindTiger),
+        None,
+        Some(PieceKind::Bishop),
+        None,
+        Some(PieceKind::ReverseChariot),
+    ];
+    let third_rank = [
+        PieceKind::SideMover,
+        PieceKind::VerticalMover,
+        PieceKind::Rook,
+        PieceKind::DragonHorse,
+        PieceKind::DragonKing,
+        PieceKind::Lion,
+        PieceKind::FreeKing,
+        PieceKind::DragonKing,
+        PieceKind::DragonHorse,
+        PieceKind::Rook,
+        PieceKind::VerticalMover,
+        PieceKind::SideMover,
+    ];
+    [back_rank.map(Some), second_rank, third_rank.map(Some)]
 }
