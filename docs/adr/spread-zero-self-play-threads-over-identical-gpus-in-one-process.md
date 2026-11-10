@@ -12,13 +12,13 @@ GPUを複数持つ機械を借りて1サイクルの料金を下げるには、�
 塊の確定、生成を止める規則、および再開は、このカウンタと出力先の塊のファイルだけで決まる（[塊の確定のADR](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)）。
 
 TensorRTの実行プロバイダは、GPUの機種名とメモリの容量をキャッシュの鍵に入れ、作ったエンジンを再利用する。
-`nvidia-smi`は`CUDA_VISIBLE_DEVICES`を無視し、ONNX Runtimeはこれに従うので、この変数を設定すると2つの見るGPUが食い違い得る。
+`nvidia-smi`は`CUDA_VISIBLE_DEVICES`を無視し、ONNX Runtimeはこれに従うので、この変数を設定すると両者が見るGPUが食い違い得る。
 エンジンの開発者は、2026年11月9日に生成も複数GPUにすると決め、方式はClaudeが提案して設計書の承認で決まった。
 
 ## 決定
 
 生成器は必須の引数`--devices <N>`で使うGPUの枚数を受け取り、0から数えたスレッドtの推論器をCUDAの機器番号t mod Nに置く。
-`--threads`はNの倍数でなければ起動を拒み、TensorRTとCUDAでは`nvidia-smi`の全GPUが同じ機種名と容量で、枚数がNと等しいことを確かめる。
+`--threads`がNの倍数でなければ起動を拒み、TensorRTとCUDAでは`nvidia-smi`の全GPUが同じ機種名と容量で、枚数がNと等しいことを確かめる。
 TensorRTとCUDAの推論器は、`CUDA_VISIBLE_DEVICES`が設定されていれば（空の文字列を含む）起動を拒む。
 `--devices`は`--threads`と同じく実行の条件として扱い、保存する生成条件には入れないので、塊、停止、再開、およびシードの規則は変わらない。
 
@@ -36,7 +36,8 @@ GPUごとに生成器のプロセスを起動し、塊を分け合う案は採�
 ## 結果
 
 同じ基本シードと対局番号の対局は、Nによらず同じシードを使うが、推論のバッチの組み方とFP16の丸めが変わり得るので、着手まで同じになるとは限らない。
-作業機では、`--devices 1`の生成が改める前の生成器と同じ塊をバイト単位で書いた（[作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)）。
+作業機では、`--devices 1`の生成が、改める前の生成器とバイト単位で同じ塊を書いた（[作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)）。
 `minase dev nn-eval`と対局用のMCTSは機器0で推論し、`--nn-backend cpu`では`--devices`を1に限る。
-同じ機種の別の番号のGPUでも同じTensorRTのエンジンを読めることを前提にしており、これは4枚の機械で確かめる。
+同じ機種の別の番号のGPUでも同じTensorRTのエンジンを読めることを前提にしている。
+4枚のRTX 4090の機械では、1つのキャッシュのディレクトリを4枚で共有した生成が最後まで動いた（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 実装は`crates/minase/src/bin/minase/zero_selfplay/`と`crates/minase/src/nn/tensorrt_cache.rs`にある。

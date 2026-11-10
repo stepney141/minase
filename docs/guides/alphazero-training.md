@@ -51,6 +51,7 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `progress/cycles-rl2/`、`external/cycles-rl2/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
 
 1サイクルの時間と費用は、ColabのG4の機械で約1時間、約9 CU（Colabの計算単位）と見込む（設計書の「費用」の節）。
+vast.aiのRTX 4090が4枚の機械では、サイクル1を約36分、約1.23米ドルで回した（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 1回目の学習の10ブロック128チャネルのネットでは、ColabのL4の機械で約1時間、約2 CUであった。
 
 ## 標準レシピ
@@ -530,7 +531,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 | 開始局面 | 事前学習の期間は組み替えた初期配置、微調整の期間は初期局面から8〜16手の乱択 | [組み替えた初期配置のADR](../adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)、設計書の「期間の切り替え」の節 |
 | 探索 | Gumbel AlphaZero、完全探索32回（確率0.25、それ以外は8回）、候補16、Qの尺度1.0、減衰する指し手の温度 | [Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択のADR](../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md) |
 | 1サイクルの生成量 | 訓練局面100万。目標に届いた最初の塊で締める | Gumbel dlshogiと同じ量（[1回目の実行の設計書](../plans/archived/alphazero-rl.md)の「生成と学習を交互に行う」の節）、[塊のADR](../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md) |
-| 生成の並列 | 4スレッド、スレッドごとに128局 | 1回目の学習の[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)で比べた組のうち最も速かった（毎秒974局面） |
+| 生成の並列 | GPUあたり4スレッド、スレッドごとに128局 | 1回目の学習の[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)で比べた組のうち最も速かった（毎秒974局面）。4枚の4090ではGPUあたり8スレッドより速かった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)） |
 | 系列の基本シード | サイクル番号×10⁹＋3×10⁸ | [シードの加算値のADR](../adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md) |
 | リプレイバッファと抽出 | パラメータ数の10倍の局面。最古のサイクルは、サイクル13までの学習で1、サイクル14からの学習で3。最新のサイクルの訓練局面数の4倍を一様に抽出する | [リプレイバッファのADR](../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md) |
 | 学習率 | 基準0.04、サイクルごとのcosine annealing、累計200万標本のウォームアップ | 全体のバッチ256のときの基準0.01（dlshogiの学習器の既定値）を、バッチに比例させて4倍にした。予定は[学習率のADR](../adr/warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)。一定の学習率との比較は打ち切った |
