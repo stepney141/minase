@@ -203,14 +203,14 @@ pub fn query_gpus() -> Result<GpuInventory, GpuQueryError> {
 
 /// ネット、GPUの機種と容量、および最大バッチを区別するTensorRTのキャッシュの鍵。
 ///
-/// ONNX Runtime 1.28の`TRTGenerateId`とエンジン名の`_sm<計算能力>`は、
+/// ONNX Runtime 1.28と1.31の`TRTGenerateId`とエンジン名の`_sm<計算能力>`は、
 /// TensorRT・ONNX Runtime・CUDAの版と計算能力を区別するため、ここには含めない。
 /// メモリから読んだネットではそのハッシュに重みが入らないため、ネットのSHA-256が必要になる。
 /// GPUの機種とメモリ容量も含め、大容量のGPU向けのエンジンを別のGPUで共有しない。
 /// 最適化プロファイルが異なるとONNX Runtimeは同じ名前のエンジンを作り直すため、
 /// 最大バッチも含め、異なる設定による同じディレクトリへの交互の上書きを避ける。
 /// 根拠は`onnxruntime/core/providers/tensorrt/tensorrt_execution_provider_utils.h`の523〜596行と
-/// `tensorrt_execution_provider.cc`の3512〜3525行および3555行（いずれも1.28）にある。
+/// `tensorrt_execution_provider.cc`の3512〜3525行および3555行（1.28.3と1.31.1で同じ）にある。
 #[derive(Clone, Debug)]
 pub struct TensorRtCacheKey {
     network_sha256: [u8; 32],
