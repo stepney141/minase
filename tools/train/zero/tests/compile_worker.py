@@ -36,7 +36,16 @@ def main() -> None:
     fabric.launch()
     torch._dynamo.reset()
     counters.clear()
+    compilation_settings = []
+
+    def record_compilation_settings(graph):
+        compilation_settings.append({
+            "deterministic": torch._inductor.config.deterministic,
+            "emulate_precision_casts": torch._inductor.config.emulate_precision_casts,
+        })
+
     with (patch.object(train, "training_fabric", return_value=nullcontext(fabric)),
+          torch._inductor.config.patch(post_grad_custom_post_pass=record_compilation_settings, fx_graph_cache=False),
           patch.object(fabric, "setup", wraps=fabric.setup) as setup):
         train.train_new(arguments, out)
     (root / "compile-count.json").write_text(json.dumps({
@@ -44,6 +53,7 @@ def main() -> None:
         "graph_breaks": sum(counters["graph_break"].values()),
         "reapply_compile": setup.call_args.kwargs["_reapply_compile"],
         "emulate_precision_casts": torch._inductor.config.emulate_precision_casts,
+        "compilation_settings": compilation_settings,
     }), encoding="utf-8")
 
 

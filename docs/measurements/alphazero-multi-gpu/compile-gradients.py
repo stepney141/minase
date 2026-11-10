@@ -11,8 +11,10 @@
 --dataの全ファイルを最新サイクルとして読み、学習器の抽出列の先頭から1ミクロバッチを選ぶ。
 価値の混合係数は学習チェックポイントのvalue_lambdaを使う。
 initのチェックポイントは学習条件を持たないため、測定条件としてvalue_lambda=0.333を使い、出力にも記録する。
-3通りともtrainモードで、各計算の前に重みとBatchNormの移動統計をチェックポイントの値に戻す。
-CPUでは3通りともfp32で実行し、道具の動作確認だけに使う。
+4通りともtrainモードで、各計算の前に重みとBatchNormの移動統計をチェックポイントの値に戻す。
+CUDAではコンパイルの有無とbf16・fp32の組合せを測り、fp32のコンパイル誤差も別に記録する。
+deterministicには、コンパイラへ渡した設定を記録する。
+CPUでは4通りともfp32で実行し、道具の動作確認だけに使う。
 採否の条件はCUDAで測ったコンパイルの相対誤差が、bf16とfp32の相対誤差より小さいことである。
 """
 
@@ -66,11 +68,14 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
     short_term = torch.from_numpy(data.short_term_values[indices]).to(device)
     network = _model(state).to(device).train()
     compiled = compile_training(network)
+    # Dynamoの状態復元で変わる前の、コンパイル時の設定を記録する。
+    deterministic = torch._inductor.config.deterministic
     gradients = []
     for forward, case_precision, context in (
         (network.forward_logits, precision, nullcontext()),
         (compiled, precision, compiled_forward_context()),
         (network.forward_logits, "fp32", nullcontext()),
+        (compiled, "fp32", compiled_forward_context()),
     ):
         network.load_state_dict(state["model"])
         network.zero_grad(set_to_none=True)
@@ -88,12 +93,15 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
         if not torch.isfinite(gradient).all():
             raise ValueError("non-finite gradient")
         gradients.append(gradient)
-    eager, compiled_gradient, fp32 = gradients
+    eager, compiled_gradient, fp32, compiled_fp32 = gradients
     norms = [torch.linalg.vector_norm(gradient).item() for gradient in gradients]
     if norms[0] == 0:
         raise ValueError("eager gradient norm is zero; relative error is undefined")
+    if norms[2] == 0:
+        raise ValueError("eager fp32 gradient norm is zero; relative error is undefined")
     compile_error = torch.linalg.vector_norm(eager - compiled_gradient).item() / norms[0]
     precision_error = torch.linalg.vector_norm(eager - fp32).item() / norms[0]
+    compile_fp32_error = torch.linalg.vector_norm(fp32 - compiled_fp32).item() / norms[2]
     return {
         "checkpoint": str(checkpoint), "data": [str(path) for path in paths], "seed": seed,
         "sample_indices": selected[:micro_batch_size].tolist(),
@@ -101,12 +109,14 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
         "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else platform.machine(),
         "pytorch_version": str(torch.__version__), "micro_batch_size": micro_batch_size,
         "emulate_precision_casts": torch._inductor.config.emulate_precision_casts,
+        "deterministic": deterministic,
         "precision": precision, "cpu_smoke_test": device.type == "cpu",
-        "precision_note": ("CPU smoke test: all three runs use fp32; bf16 is not measured."
-                           if device.type == "cpu" else "Runs 1 and 2 use bf16 autocast; run 3 uses fp32."),
+        "precision_note": ("CPU smoke test: all four runs use fp32; bf16 is not measured."
+                           if device.type == "cpu" else "Runs 1 and 2 use bf16 autocast; runs 3 and 4 use fp32."),
         "value_lambda": value_lambda, "value_lambda_source": value_lambda_source,
-        "gradient_norms": {"eager": norms[0], "compiled": norms[1], "eager_fp32": norms[2]},
+        "gradient_norms": {"eager": norms[0], "compiled": norms[1], "eager_fp32": norms[2], "compiled_fp32": norms[3]},
         "relative_error_compile": compile_error,
+        "relative_error_compile_fp32": compile_fp32_error,
         "relative_error_bf16_fp32": precision_error,
         "acceptance_condition": "relative_error_compile < relative_error_bf16_fp32",
         "acceptance_applicable": device.type == "cuda",

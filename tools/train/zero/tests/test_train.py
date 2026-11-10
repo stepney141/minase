@@ -71,6 +71,27 @@ class LossTests(unittest.TestCase):
         self.assertAlmostEqual(values.grad[1, 0].item(), -(0.667 * 0.5 + 0.333) / 2, places=6)
         self.assertGreater(logits.grad[0, 17].item(), 0)
 
+    def test_policy_loss_and_gradients_match_positionwise_scatter_mean(self) -> None:
+        # 局面ごとの旧集計と、候補数が異なり確率0も含む教師で照合する。
+        mask = torch.from_numpy(policy_mask())
+        logits = torch.randn(3, len(mask), generator=torch.Generator().manual_seed(31), requires_grad=True)
+        reference_logits = logits.detach().clone().requires_grad_()
+        rows = torch.tensor([0, 1, 1, 1, 2, 2])
+        labels = torch.tensor([2, 4, 23, 500, 2, 23])
+        probabilities = torch.tensor([65_535, 0, 12_345, 53_190, 32_768, 32_767])
+        results = torch.tensor([1.0, 0.0, 0.5])
+        actual = compute_losses(
+            logits, torch.zeros(3, 1), rows, labels, probabilities,
+            results, torch.tensor([0, 65_535, 32_768]), 0.333, mask,
+        )[0]
+        candidate_losses = -torch.log_softmax(reference_logits.masked_fill(~mask, -torch.inf), dim=1)[rows, labels]
+        candidate_losses = candidate_losses * (probabilities.float() / 65_535)
+        expected = torch.zeros(3, dtype=torch.float32).scatter_add_(0, rows, candidate_losses).mean()
+        torch.testing.assert_close(actual, expected)
+        torch.testing.assert_close(
+            torch.autograd.grad(actual, logits)[0], torch.autograd.grad(expected, reference_logits)[0],
+        )
+
     def test_bfloat_logits_do_not_round_quantized_teachers_before_mixing(self) -> None:
         policy, value, result = compute_losses(
             torch.zeros(1, 35_856, dtype=torch.bfloat16),

@@ -88,6 +88,28 @@ class DiagnosticTests(unittest.TestCase):
                 for name, value in expected.items():
                     self.assertAlmostEqual(actual[name], value, places=6, msg=name)
 
+    def test_diagnostics_match_scatter_sum_reference(self) -> None:
+        data, model = example()
+        rows = torch.from_numpy(np.repeat(np.arange(3), np.diff(data.policy_offsets).astype(np.int64)))
+        labels = torch.from_numpy(data.policy_labels.astype(np.int64))
+        probabilities = torch.from_numpy(data.policy_probabilities.astype(np.float32))
+        legal_rows = torch.from_numpy(np.repeat(np.arange(3), np.diff(data.legal_offsets).astype(np.int64)))
+        legal_labels = torch.from_numpy(data.legal_labels.astype(np.int64))
+        logits = model.policy.masked_fill(~self.mask, -torch.inf)
+        legal_logits = logits[legal_rows, legal_labels]
+        legal_max = torch.stack([legal_logits[legal_rows == row].max() for row in range(3)])
+        # 旧版の局面ごとのscatter_add_を参照にし、同率の一致率は手計算で定める。
+        legal_sum = torch.zeros(3, dtype=torch.float32).scatter_add_(
+            0, legal_rows, (legal_logits - legal_max[legal_rows]).exp(),
+        )
+        maximum = logits.max(dim=1).values
+        log_mass = legal_max - maximum + legal_sum.log() - (logits - maximum[:, None]).exp().sum(dim=1).log()
+        expected = (log_mass.exp().mean(), log_mass.mean(), torch.tensor(2 / 3, dtype=torch.float32))
+        actual = compute_policy_diagnostics(
+            model.policy, rows, labels, probabilities, legal_rows, legal_labels, self.mask,
+        )
+        torch.testing.assert_close(actual, expected)
+
     def test_auxiliary_diagnostics_average_positions_across_partial_batches(self) -> None:
         data, model = example()
         large = (30_000 / 65_535 + 1e-7) ** 0.25

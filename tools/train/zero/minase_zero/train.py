@@ -322,12 +322,21 @@ class TrainingModule(torch.nn.Module):
 
 
 def compile_training(network: ZeroNet) -> torch.nn.Module:
-    """学習用の全logitを返す順伝播を、既定モードの単一グラフにコンパイルする。"""
+    """学習用の全logitを返す順伝播を、既定モードの単一グラフにコンパイルする。
+
+    実行時の計測で選ぶカーネル構成がプロセスごとに変わり再開前後の学習が食い違ったため、deterministicをプロセス全体に設定する。
+    RTX 3060 Tiでの再開試験では、この設定で出力が一致し、速度は毎秒990局面のままだった。
+    """
     # bf16のamaxの逆伝播でNaNが生じるのを防ぐため、eagerと同じ丸めを残す。
-    # Inductorは逆伝播グラフを最初の逆伝播時にコンパイルするので、
-    # 順伝播だけの文脈に限定せず、プロセス全体に設定する。
     torch._inductor.config.emulate_precision_casts = True
-    return torch.compile(TrainingModule(network), fullgraph=True)
+    # 実行時の計測によるカーネル構成の変動を避け、再開前後の計算をそろえる。
+    torch._inductor.config.deterministic = True
+    # Dynamoの状態復元はdeterministicを書き換えるため、両設定をオプションにも固定する。
+    # 順伝播と遅延コンパイルされる逆伝播で、プロセス全体に指定した同じ設定を使う。
+    return torch.compile(
+        TrainingModule(network), fullgraph=True,
+        options={"deterministic": True, "emulate_precision_casts": True},
+    )
 
 
 @contextmanager
@@ -415,6 +424,7 @@ def compute_losses(
 
     rowsとlabelsは候補の行番号とラベル、probabilitiesとvaluesは0〜65,535、
     resultsは手番側の結果、maskは同じ機器に置いた方策の定数マスクである。
+    方策の損失は全候補の損失を合計して局面数で割り、GPUの原子的な加算を使わない。
     マスク外の教師ラベルはValueErrorとし、結果だけの監視用損失には勾配を持たせない。
     """
     policy_logits, value_logits = policy_logits.float(), value_logits.float().flatten()
@@ -423,8 +433,7 @@ def compute_losses(
         raise ValueError("policy target label is outside the constant mask")
     policy_logits = policy_logits.masked_fill(~mask, -torch.inf)
     candidate_losses = -F.log_softmax(policy_logits, dim=1)[rows, labels] * (probabilities / 65_535)
-    per_position = torch.zeros(len(results), dtype=torch.float32, device=policy_logits.device)
-    policy_loss = per_position.scatter_add_(0, rows, candidate_losses).mean()
+    policy_loss = candidate_losses.sum() / len(results)
     target = (1 - value_lambda) * results + value_lambda * (values / 65_535)
     value_loss = F.binary_cross_entropy_with_logits(value_logits, target)
     with torch.no_grad():
@@ -556,9 +565,10 @@ def compute_policy_diagnostics(
     )
     if not torch.all(torch.isfinite(legal_max)):
         raise ValueError("each position must have a finite maximum legal logit")
-    legal_sum = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_add_(
-        0, legal_rows, (legal_logits - legal_max[legal_rows]).exp(),
-    )
+    # GPUの原子的な加算を避け、CPUで入力順に加算して診断値を再現する。
+    legal_sum = torch.zeros(count, dtype=torch.float32, device="cpu").index_add_(
+        0, legal_rows.cpu(), (legal_logits - legal_max[legal_rows]).exp().cpu(),
+    ).to(logits.device)
     log_mass = (legal_max - maximum) + legal_sum.log() - log_denominator
     best_labels = torch.full((count,), size, dtype=torch.int64, device=logits.device).scatter_reduce_(
         0, legal_rows, torch.where(legal_logits == legal_max[legal_rows], legal_labels, size), reduce="amin",
