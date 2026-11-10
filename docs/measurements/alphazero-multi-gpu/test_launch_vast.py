@@ -52,10 +52,11 @@ class Clock:
 
 
 class Runner:
-    def __init__(self, clock, code, timeouts):
+    def __init__(self, clock, code, timeouts, exit_seconds):
         self.clock = clock
         self.code = code
         self.timeouts = timeouts
+        self.exit_seconds = exit_seconds
         self.returncode = None
 
     def poll(self):
@@ -66,6 +67,7 @@ class Runner:
             self.timeouts -= 1
             self.clock.advance(timeout)
             raise subprocess.TimeoutExpired("uv", timeout)
+        self.clock.advance(self.exit_seconds)
         self.returncode = self.code
         return self.returncode
 
@@ -97,7 +99,14 @@ class LaunchTests(unittest.TestCase):
         self.container_error = False
         self.runner_code = 0
         self.runner_timeouts = 0
+        self.runner_exit_seconds = 0
         self.runner = None
+        self.validation_error = None
+        self.jobs = []
+        self.jobs_error = False
+        self.rsync_seconds = 0
+        self.hash_seconds = 0
+        self.events_at_rsync = None
         self.files = {"cycles/cycle-0001/train/checkpoint.pt": b"checkpoint bytes",
                       "cycles/cycle-0001/log space\nquote'\\.txt": b"log bytes"}
         self.stdout = io.StringIO()
@@ -120,7 +129,8 @@ class LaunchTests(unittest.TestCase):
         self.popen = self.patch("Popen", launch.subprocess, side_effect=self.start_runner)
         self.fsync = self.patch("fsync", launch.os, wraps=os.fsync)
         self.runner_args = ["--cycles-dir", "experiments/run-a", "--first-cycle", "8", "--last-cycle", "10",
-                            "--cycle-minutes", "80", "--threads-per-gpu", "4", "--precision", "bf16"]
+                            "--cycle-minutes", "80", "--threads-per-gpu", "4", "--precision", "bf16",
+                            "--generation-commit", self.commit, "--trainer-commit", self.commit]
         self.args = ["--offer", "456", "--label", "multi gpu test", "--image", "ubuntu-cuda:version",
                      "--hours", "1", "--commit", self.commit, "--root", str(self.root),
                      "--salvage-dir", str(self.salvage_dir), "--", *self.runner_args]
@@ -177,13 +187,22 @@ class LaunchTests(unittest.TestCase):
                 return subprocess.CompletedProcess(argv, 0, str(self.tree) + "\n", "")
             self.assertIn("archive", argv)
             Path(argv[argv.index("-o") + 1]).write_bytes(b"source archive")
+        elif argv[0] == "uv":
+            self.assertEqual(argv[:5], ["uv", "run", "--frozen", "python", "-c"])
+            self.assertEqual(kwargs["cwd"], self.tree / "tools/train/zero")
+            self.assertFalse(self.api.create.called)
+            if self.validation_error is not None:
+                raise subprocess.CalledProcessError(1, argv, stderr=self.validation_error)
         elif argv[0] == "scp":
             self.assertEqual(argv[-2], "root@192.0.2.10:/workspace/setup.log")
             if self.log_error:
                 raise subprocess.CalledProcessError(255, argv, stderr=b"connection lost")
             Path(argv[-1]).write_bytes(b"setup log\n")
         elif argv[0] == "rsync":
+            self.events_at_rsync = self.events()
+            self.clock.advance(self.rsync_seconds)
             self.assertIn(f"--compare-dest={self.root}/", argv)
+            self.assertEqual(kwargs["timeout"], 3600)
             if self.rsync_error is not None:
                 raise subprocess.CalledProcessError(self.rsync_error, argv, stderr=b"transfer failed")
             destination = Path(argv[-1])
@@ -204,6 +223,7 @@ class LaunchTests(unittest.TestCase):
                     self.setup_statuses.pop(0)
                 return subprocess.CompletedProcess(argv, 0, status, b"")
             if "sha256sum" in command:
+                self.clock.advance(self.hash_seconds)
                 names = kwargs["input"].split(b"\0")
                 self.assertEqual(names.pop(), b"")
                 self.assertEqual(set(map(os.fsdecode, names)), set(self.files))
@@ -223,6 +243,10 @@ class LaunchTests(unittest.TestCase):
                     records[0] = b"invalid\0"
                 return subprocess.CompletedProcess(argv, 0, b"".join(records), b"")
             if command.startswith("python3 -c"):
+                if shlex.split(command)[-1] == "/workspace/az":
+                    if self.jobs_error:
+                        raise subprocess.CalledProcessError(255, argv, stderr=b"connection lost")
+                    return subprocess.CompletedProcess(argv, 0, json.dumps(self.jobs).encode(), b"")
                 self.assertIn("/proc/1/environ", command)
                 self.assertIn("CONTAINER_API_KEY", command)
                 self.assertEqual(shlex.split(command)[-1], "731")
@@ -235,7 +259,7 @@ class LaunchTests(unittest.TestCase):
         return subprocess.CompletedProcess(argv, 0, b"", b"")
 
     def start_runner(self, argv, **kwargs):
-        self.runner = Runner(self.clock, self.runner_code, self.runner_timeouts)
+        self.runner = Runner(self.clock, self.runner_code, self.runner_timeouts, self.runner_exit_seconds)
         return self.runner
 
     def test_normal_lifecycle_preserves_metadata_arguments_and_cycles(self):
@@ -266,8 +290,10 @@ class LaunchTests(unittest.TestCase):
                                    "--root", str(self.root), *self.runner_args])
         self.assertEqual(self.popen.call_args.kwargs["cwd"], self.tree / "tools/train/zero")
         self.api.wait_ssh.assert_called_once_with(731, "192.0.2.10", 2222)
-        self.api.scp.assert_called_once_with("192.0.2.10", 2222, "/workspace/",
-                                             self.root / f"src/minase-{self.commit}.tar", SCRIPT.with_name("vast-setup.sh"))
+        self.api.run_timed.assert_called_once_with(
+            ["scp", "-r", "-i", str(self.home / ".ssh/id_vastai"), "-P", "2222",
+             str(self.root / f"src/minase-{self.commit}.tar"), str(SCRIPT.with_name("vast-setup.sh")),
+             "root@[192.0.2.10]:/workspace/"], 600)
         self.assertEqual((self.salvage_dir / "731/setup.log").read_bytes(), b"setup log\n")
         self.api.destroy.assert_called_once_with(731)
         self.api.stop.assert_not_called()
@@ -301,13 +327,49 @@ class LaunchTests(unittest.TestCase):
         self.api.destroy.assert_called_once_with(731)
         self.popen.assert_not_called()
 
-    def test_runner_failure_still_salvages_and_deletes(self):
-        """指示書3: 実行器が1で終わっても受け取りに成功したら削除する。"""
+    def test_runner_failure_without_live_jobs_salvages_and_deletes(self):
+        """工程が動いていなければ、異常終了後も回収と照合を終えてから削除する。"""
         self.runner_code = 1
         self.assertEqual(launch.main(self.args), 1)
         self.assertEqual(self.events()[-3:], ["runner_exited", "salvage_finished", "destroyed"])
         self.assertEqual(self.row("runner_exited")["exit_code"], 1)
         self.api.destroy.assert_called_once_with(731)
+
+    def test_runner_failure_with_live_jobs_keeps_instance_without_salvage(self):
+        """接続断後も動いている工程と、その途中の成果物を保全する。"""
+        self.runner_code = 1
+        self.jobs = ["cycles/cycle-0008/generate", "cycles/cycle-0008/train"]
+        self.assertEqual(launch.main(self.args), 1)
+        self.assertEqual(self.events()[-2:], ["runner_exited", "kept_running_jobs"])
+        self.assertEqual(self.row("kept_running_jobs")["jobs"], self.jobs)
+        self.assertIn("機械の上で工程が動いているので機械を残した", self.stderr.getvalue())
+        self.assertIsNone(self.events_at_rsync)
+        self.api.destroy.assert_not_called()
+        self.api.stop.assert_not_called()
+
+    def test_failed_job_check_keeps_instance_without_salvage(self):
+        self.runner_code = 1
+        self.jobs_error = True
+        self.assertEqual(launch.main(self.args), 1)
+        self.assertEqual(self.events()[-2:], ["runner_exited", "kept_running_jobs"])
+        self.assertIsNone(self.row("kept_running_jobs")["jobs"])
+        self.assertIn("error", self.row("kept_running_jobs"))
+        self.assertIn("機械を残した", self.stderr.getvalue())
+        self.assertIsNone(self.events_at_rsync)
+        self.api.destroy.assert_not_called()
+
+    def test_successful_runner_does_not_query_jobs(self):
+        self.jobs_error = True
+        self.assertEqual(launch.main(self.args), 0)
+        self.api.destroy.assert_called_once_with(731)
+
+    def test_malformed_job_response_keeps_instance(self):
+        self.runner_code = 1
+        self.jobs = {"unexpected": "response"}
+        self.assertEqual(launch.main(self.args), 1)
+        self.assertIn("error", self.row("kept_running_jobs"))
+        self.assertIsNone(self.events_at_rsync)
+        self.api.destroy.assert_not_called()
 
     def test_rsync_failure_keeps_instance(self):
         """指示書4: 転送に失敗したら機械とその上のファイルを残す。"""
@@ -349,7 +411,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(launch.main(self.args), 1)
         self.api.destroy.assert_not_called()
 
-    def test_connection_loss_still_attempts_salvage_and_keeps_instance(self):
+    def test_salvage_connection_loss_without_live_jobs_keeps_instance(self):
         """指示書5: 接続断だけを理由に成果物を破棄しない。"""
         self.runner_code = 1
         self.rsync_error = 255
@@ -367,6 +429,46 @@ class LaunchTests(unittest.TestCase):
                                          "runner_exited", "salvage_finished", "destroyed"])
         self.assertTrue(self.row("stop_requested")["success"])
         self.assertEqual(self.clock.elapsed, 180)
+
+    def test_deadline_during_setup_and_later_phases_is_checked_only_once(self):
+        self.running["end_date"] = self.clock.time() + 20
+        self.setup_statuses = [b"running\n", b"running\n", b"done\n"]
+        self.runner_timeouts = 2
+        self.rsync_seconds = 60
+        with mock.patch.object(launch, "stop_at_deadline", wraps=launch.stop_at_deadline) as stop:
+            self.assertEqual(launch.main(self.args), 0)
+        stop.assert_called_once()
+        self.api.stop.assert_called_once_with(731)
+        self.assertLess(self.events().index("stop_requested"), self.events().index("setup_finished"))
+
+    def test_setup_timeout_checks_deadline_before_deletion(self):
+        self.setup_statuses = [b"running\n"]
+        self.assertEqual(launch.main(self.args), 1)
+        self.api.stop.assert_called_once_with(731)
+        self.assertLess(self.events().index("stop_requested"), self.events().index("setup_failed"))
+
+    def test_deadline_before_salvage_requests_stop(self):
+        self.running["end_date"] = self.clock.time() + 30
+        self.runner_exit_seconds = 30
+        self.assertEqual(launch.main(self.args), 0)
+        self.api.stop.assert_called_once_with(731)
+        self.assertIn("stop_requested", self.events_at_rsync)
+
+    def test_deadline_during_salvage_requests_stop_before_deletion(self):
+        self.running["end_date"] = self.clock.time() + 30
+        self.hash_seconds = 30
+        self.assertEqual(launch.main(self.args), 0)
+        self.api.stop.assert_called_once_with(731)
+        self.assertNotIn("stop_requested", self.events_at_rsync)
+        self.assertLess(self.events().index("stop_requested"), self.events().index("salvage_finished"))
+
+    def test_deadline_during_failed_salvage_still_requests_stop(self):
+        self.running["end_date"] = self.clock.time() + 30
+        self.rsync_seconds = 30
+        self.rsync_error = 255
+        self.assertEqual(launch.main(self.args), 1)
+        self.api.stop.assert_called_once_with(731)
+        self.api.destroy.assert_not_called()
 
     def test_stop_failure_uses_container_credentials_once(self):
         self.running["end_date"] = self.clock.time() + 30
@@ -446,6 +548,38 @@ class LaunchTests(unittest.TestCase):
                     args[args.index(option) + 1] = value
                     self.assert_rejected_before_commands(args)
 
+    def test_runner_commits_must_match_before_commands(self):
+        for option in ("--generation-commit", "--trainer-commit"):
+            for value in ("b" * 40, "abcdef0"):
+                with self.subTest(option=option, value=value):
+                    args = self.args.copy()
+                    args[args.index(option) + 1] = value
+                    self.assert_rejected_before_commands(args)
+        self.api.create.assert_not_called()
+
+    def test_both_runner_commits_are_required_before_commands(self):
+        for option in ("--generation-commit", "--trainer-commit"):
+            with self.subTest(option=option):
+                index = self.args.index(option)
+                self.assert_rejected_before_commands(self.args[:index] + self.args[index + 2:])
+        self.api.create.assert_not_called()
+
+    def test_invalid_runner_options_report_stderr_without_creating_instance(self):
+        self.validation_error = "ValueError: branch-from must be nonnegative and less than first-cycle\n"
+        self.assertEqual(launch.main(self.args), 1)
+        self.assertIn(self.validation_error, self.stderr.getvalue())
+        self.api.create.assert_not_called()
+        self.popen.assert_not_called()
+        self.assertFalse((self.root / "src").exists())
+
+    def test_runner_validation_uses_temporary_machine_and_deadline(self):
+        self.assertEqual(launch.main(self.args), 0)
+        validation = next(call for call in self.run.call_args_list if call.args[0][0] == "uv")
+        self.assertEqual(validation.args[0][6:], [
+            "run-cycles", "--machine", "vast", "--vast-instance", "1",
+            "--deadline", datetime.fromtimestamp(1_800_003_600.25, timezone.utc).isoformat(),
+            "--root", str(self.root), *self.runner_args])
+
     def test_missing_key_is_rejected_before_commands(self):
         (self.home / ".ssh/id_vastai").unlink()
         self.assertEqual(launch.main(self.args), 1)
@@ -466,7 +600,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(launch.main(self.args), 1)
         self.assertEqual(self.events(), ["created", "running", "setup_failed", "destroyed"])
         self.popen.assert_not_called()
-        self.api.scp.assert_not_called()
+        self.api.run_timed.assert_not_called()
         self.api.destroy.assert_called_once_with(731)
 
     def test_invalid_rental_end_is_setup_failure(self):
@@ -508,7 +642,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(failure["error"], "ssh unavailable")
         self.assertEqual(failure["before_destroy"], self.before_destroy)
         self.popen.assert_not_called()
-        self.api.scp.assert_not_called()
+        self.api.run_timed.assert_not_called()
         self.api.ssh.assert_not_called()
         self.api.stop.assert_not_called()
         self.assertFalse(any(call.args[0][0] in ("ssh", "scp", "rsync") for call in self.run.call_args_list))
@@ -562,11 +696,83 @@ class LaunchTests(unittest.TestCase):
         self.popen.assert_not_called()
 
     def test_runner_arguments_with_equals_are_forwarded_unchanged(self):
-        index = self.args.index("--cycles-dir")
-        self.args[index:index + 2] = ["--cycles-dir=experiments/run-a"]
+        for option in ("--cycles-dir", "--generation-commit", "--trainer-commit"):
+            index = self.args.index(option)
+            self.args[index:index + 2] = [f"{option}={self.args[index + 1]}"]
         self.assertEqual(launch.main(self.args), 0)
         suffix = self.args[self.args.index("--") + 1:]
         self.assertEqual(self.popen.call_args.args[0][-len(suffix):], suffix)
+
+
+class RunningJobsTests(unittest.TestCase):
+    """遠隔で実行する探索をローカルのPID記録で検証し、ゾンビと終了済みの工程を除く。"""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.pid = os.getpid()
+        self.remote = mock.Mock()
+        self.remote.shell.side_effect = self.shell
+
+    def shell(self, command, timeout):
+        python, flag, script, root = shlex.split(command)
+        self.assertEqual((python, flag, root), ("python3", "-c", "/workspace/az"))
+        self.assertGreater(timeout, 0)
+        with (mock.patch.object(sys, "argv", ["-c", str(self.root)]),
+              mock.patch.object(sys, "stdout", io.StringIO()) as output):
+            exec(compile(script, "<running-jobs>", "exec"), {})
+        return output.getvalue().encode()
+
+    def marker(self, name):
+        marker = self.root / name
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(str(self.pid))
+        return marker
+
+    def test_only_unfinished_live_jobs_are_reported_with_relative_names(self):
+        self.marker("cycles/cycle-0008/train.pid")
+        self.marker("cycles/cycle-0009/generate.pid")
+        self.marker("cycles/cycle-0008/generate.pid").with_suffix(".exit").write_text("0\n")
+        self.assertEqual(launch.running_jobs(self.remote), [
+            "cycles/cycle-0008/train", "cycles/cycle-0009/generate"])
+
+    def test_zombie_is_not_running_even_when_kill_zero_succeeds(self):
+        self.marker("cycles/train.pid")
+        read_text = Path.read_text
+
+        def read(path, *args, **kwargs):
+            if path == Path(f"/proc/{self.pid}/stat"):
+                return f"{self.pid} (name with ) parentheses) Z 1 1 1\n"
+            return read_text(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", read):
+            self.assertEqual(launch.running_jobs(self.remote), [])
+
+    def test_disappeared_process_is_not_running(self):
+        self.marker("cycles/train.pid")
+        with mock.patch.object(os, "kill", side_effect=ProcessLookupError):
+            self.assertEqual(launch.running_jobs(self.remote), [])
+
+    def test_process_disappearing_between_kill_and_stat_is_not_running(self):
+        self.marker("cycles/train.pid")
+        read_text = Path.read_text
+
+        def read(path, *args, **kwargs):
+            if path == Path(f"/proc/{self.pid}/stat"):
+                raise FileNotFoundError(path)
+            return read_text(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", read):
+            self.assertEqual(launch.running_jobs(self.remote), [])
+
+    def test_invalid_pid_is_an_error(self):
+        marker = self.marker("cycles/train.pid")
+        for value in ("", "0", "-1", "not-a-pid"):
+            with self.subTest(value=value):
+                marker.write_text(value)
+                with self.assertRaises(ValueError):
+                    launch.running_jobs(self.remote)
 
 
 class ContainerStopTests(unittest.TestCase):

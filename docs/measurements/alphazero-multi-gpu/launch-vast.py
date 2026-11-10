@@ -4,11 +4,13 @@
 作業機で次のように起動し、--の後ろにrun-cyclesの引数を指定する。
 python3 launch-vast.py --offer ID --label LABEL --image IMAGE --hours HOURS --commit COMMIT --root ROOT --salvage-dir /ABS/PATH -- --cycles-dir cycles ...
 起動側の引数はすべて必須で、commitは40桁の16進数字、hoursは正の有限数とする。
+生成と学習のコミットはcommitと一致させ、機械を作る前に実行器の引数を検査する。
 実行器のmachine、vast-instance、deadline、rootはこのスクリプトが指定し、sessionとcycle-cuは指定できない。
 ソースの書庫を用意して自己停止を予約し、貸出期限と自己停止時刻の早いほうを終了期限にする。
-導入のログを回収した後、この作業ツリーの実行器を起動し、60秒ごとに終了期限を確認する。
+導入中と最後の受け取りの前後に終了期限を確認し、実行器の起動中も60秒ごとに確認する。
 期限を超えた機械には停止を1回だけ要求し、実行器が自ら終了するまで監視する。
-実行器の終了コードや接続断にかかわらず、NASとの差分をsalvage-dirのインスタンス別ディレクトリへ受け取り、SHA-256を照合する。
+実行器が異常終了した場合は工程の稼働を調べ、動いている工程があるか照会に失敗すれば機械を残す。
+正常終了した場合と稼働中の工程がない場合は、NASとの差分をsalvage-dirのインスタンス別ディレクトリへ受け取り、SHA-256を照合する。
 SSHの準備または導入に失敗した機械、または最後の受け取りと照合に成功した機械を削除する。
 最後の受け取りか照合に失敗した機械は残し、自己停止までに受け取り直して削除するよう通知する。
 停止要求または削除が失敗した場合は、SSHの準備が済んでいればコンテナ専用の鍵を使って停止を要求する。
@@ -44,6 +46,36 @@ spec.loader.exec_module(common)
 
 FAILURES = (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError)
 FORBIDDEN = ("--machine", "--vast-instance", "--deadline", "--session", "--cycle-cu", "--root")
+
+VALIDATE_RUNNER = """import sys
+from minase_zero.__main__ import _parse
+from minase_zero.runner import Options
+try:
+    arguments = vars(_parse(sys.argv[1:]))
+except SystemExit as error:
+    raise ValueError('run-cycles arguments must describe a run') from error
+arguments.pop('command')
+Options(**arguments)
+"""
+
+RUNNING_JOBS = """import json, os, pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+jobs = []
+for marker in sorted(root.rglob('*.pid')):
+    if marker.with_suffix('.exit').exists():
+        continue
+    pid = marker.read_text().strip()
+    if re.fullmatch(r'[1-9][0-9]*', pid) is None:
+        raise ValueError('invalid PID: ' + str(marker))
+    try:
+        os.kill(int(pid), 0)
+        state = pathlib.Path('/proc/' + pid + '/stat').read_text().rsplit(')', 1)[1].split()[0]
+    except (ProcessLookupError, FileNotFoundError):
+        continue
+    if state not in ('Z', 'X'):
+        jobs.append(marker.with_suffix('').relative_to(root).as_posix())
+print(json.dumps(jobs))
+"""
 
 # 鍵も例外の詳細も作業機へ返さず、PID 1の環境にある資格情報だけで要求する。
 CONTAINER_STOP = """import pathlib, sys, urllib.request
@@ -102,7 +134,12 @@ def arguments(argv):
             parser.error(f"--の後ろには指定できません: {option}")
     cycles_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     cycles_parser.add_argument("--cycles-dir", type=Path, required=True)
+    for name in ("generation-commit", "trainer-commit"):
+        cycles_parser.add_argument(f"--{name}", required=True)
     cycles, _ = cycles_parser.parse_known_args(options.runner_args)
+    for name in ("generation_commit", "trainer_commit"):
+        if getattr(cycles, name) != options.commit:
+            parser.error(f"--{name.replace('_', '-')}は--commitと同じ40桁の値が必要です")
     directory = cycles.cycles_dir
     if (directory.is_absolute() or directory == Path(".") or ".." in directory.parts
             or any(character.isspace() for character in str(directory))):
@@ -115,6 +152,18 @@ def arguments(argv):
 
 def utc(timestamp):
     return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+
+def validate_runner(tree, options):
+    command = ["uv", "run", "--frozen", "python", "-c", VALIDATE_RUNNER, "run-cycles",
+               "--machine", "vast", "--vast-instance", "1", "--deadline", utc(time.time() + 3600),
+               "--root", str(options.root), *options.runner_args]
+    try:
+        subprocess.run(command, cwd=tree / "tools/train/zero", check=True,
+                       capture_output=True, text=True, timeout=600)
+    except subprocess.CalledProcessError as error:
+        print(error.stderr, end="", file=sys.stderr)
+        raise ValueError("実行器の引数の検査に失敗しました") from error
 
 
 class Journal:
@@ -189,9 +238,13 @@ def destroy(remote, journal, preceding_event, **fields):
     return True
 
 
-def setup(remote, archive):
+def setup(remote, archive, check_deadline):
     # 最小構成のイメージにはrsyncがまだないため、導入前の転送はSCPを使う。
-    common.scp(remote.host, remote.port, "/workspace/", archive, SCRIPT_DIR / "vast-setup.sh")
+    check_deadline()
+    common.run_timed(["scp", "-r", *common.ssh_options(remote.port, "-P"),
+                      str(archive), str(SCRIPT_DIR / "vast-setup.sh"),
+                      f"root@[{remote.host}]:/workspace/"], 600)
+    check_deadline()
     end = time.monotonic() + 3600
     remaining = end - time.monotonic()
     if remaining <= 0:
@@ -205,6 +258,7 @@ def setup(remote, archive):
             f"elif kill -0 {pid.decode('ascii')} 2>/dev/null; then echo running; "
             "else echo failed; fi")
     while (remaining := end - time.monotonic()) > 0:
+        check_deadline()
         status = remote.shell(poll, min(60, remaining)).strip()
         if status == b"done":
             return
@@ -238,16 +292,13 @@ def stop_at_deadline(remote, journal):
         journal.write("stop_requested", success=True)
 
 
-def run_cycles(tree, options, remote, journal, deadline):
+def run_cycles(tree, options, journal, deadline, check_deadline):
     command = ["uv", "run", "--frozen", "python", "-m", "minase_zero", "run-cycles",
                "--machine", "vast", "--vast-instance", str(journal.instance),
                "--deadline", utc(deadline), "--root", str(options.root), *options.runner_args]
     process = subprocess.Popen(command, cwd=tree / "tools/train/zero")
-    checked_deadline = False
     while process.poll() is None:
-        if not checked_deadline and time.time() >= deadline:
-            checked_deadline = True
-            stop_at_deadline(remote, journal)
+        check_deadline()
         try:
             return process.wait(timeout=60)
         except subprocess.TimeoutExpired:
@@ -273,7 +324,16 @@ def completed_cycles(options, instance):
     return cycles
 
 
-def salvage(remote, root, destination, journal):
+def running_jobs(remote):
+    output = remote.shell(shlex.join(["python3", "-c", RUNNING_JOBS, "/workspace/az"]), 60)
+    jobs = json.loads(output)
+    if not isinstance(jobs, list) or any(not isinstance(name, str) or not name for name in jobs):
+        raise ValueError("稼働中の工程の応答が不正です")
+    return jobs
+
+
+def salvage(remote, root, destination, journal, check_deadline):
+    check_deadline()
     operation = "rsync"
     pending = []
     files_known = False
@@ -316,6 +376,8 @@ def salvage(remote, root, destination, journal):
         print(f"インスタンス {journal.instance}: 受け取りに失敗したので機械を残した。"
               "自己停止の時刻まで受け取り直してから削除すること", file=sys.stderr)
         return False
+    finally:
+        check_deadline()
     return destroy(remote, journal, "salvage_finished", files=[path.relative_to(destination).as_posix() for path in paths])
 
 
@@ -328,6 +390,7 @@ def launch(options):
     if not output:
         raise ValueError("作業ツリーの根を取得できません")
     tree = Path(output)
+    validate_runner(tree, options)
     archive = options.root / "src" / f"minase-{options.commit}.tar"
     archive.parent.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
@@ -371,13 +434,22 @@ def launch(options):
         except FAILURES as error:
             destroy(remote, journal, "setup_failed", error=str(error))
             return 1
+        checked_deadline = False
+
+        def check_deadline():
+            nonlocal checked_deadline
+            if not checked_deadline and time.time() >= deadline:
+                checked_deadline = True
+                stop_at_deadline(remote, journal)
+
         setup_fields = {}
         setup_error = None
         try:
-            setup(remote, archive)
+            setup(remote, archive, check_deadline)
         except FAILURES as error:
             setup_error = str(error)
         finally:
+            check_deadline()
             try:
                 log = options.salvage_dir / str(instance) / "setup.log"
                 log.parent.mkdir(parents=True, exist_ok=True)
@@ -387,13 +459,15 @@ def launch(options):
             except FAILURES as error:
                 setup_fields["setup_log_error"] = str(error)
                 print(f"インスタンス {instance}: setup.logの受け取りに失敗しました: {error}", file=sys.stderr)
+            finally:
+                check_deadline()
         if setup_error is not None:
             destroy(remote, journal, "setup_failed", error=setup_error, **setup_fields)
             return 1
         journal.write("setup_finished", **setup_fields)
         runner_fields = {}
         try:
-            code = run_cycles(tree, options, remote, journal, deadline)
+            code = run_cycles(tree, options, journal, deadline, check_deadline)
         except FAILURES as error:
             code = 1
             runner_fields["error"] = str(error)
@@ -403,7 +477,19 @@ def launch(options):
             runner_fields["cycles_error"] = str(error)
             print(f"インスタンス {instance}: サイクルの記録を読めません: {error}", file=sys.stderr)
         journal.write("runner_exited", exit_code=code, **runner_fields)
-        if not salvage(remote, options.root, options.salvage_dir / str(instance) / "az", journal):
+        check_deadline()
+        if code != 0:
+            try:
+                jobs = running_jobs(remote)
+            except FAILURES as error:
+                journal.write("kept_running_jobs", jobs=None, error=str(error))
+                print(f"インスタンス {instance}: 工程の稼働確認に失敗したので機械を残した: {error}", file=sys.stderr)
+                return 1
+            if jobs:
+                journal.write("kept_running_jobs", jobs=jobs)
+                print(f"インスタンス {instance}: 機械の上で工程が動いているので機械を残した", file=sys.stderr)
+                return 1
+        if not salvage(remote, options.root, options.salvage_dir / str(instance) / "az", journal, check_deadline):
             return 1
         return 1 if "cycles_error" in runner_fields else code
     except FAILURES as error:
