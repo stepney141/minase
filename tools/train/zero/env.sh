@@ -9,4 +9,4 @@ ZERO_SITE_PACKAGES="$ZERO_DIR/.venv/lib/python3.13/site-packages"
 
 export ORT_DYLIB_PATH="$ORT_DIR/lib/libonnxruntime.so"
 export LD_LIBRARY_PATH="$ZERO_SITE_PACKAGES/tensorrt_libs:$ZERO_SITE_PACKAGES/nvidia/cu13/lib:$ZERO_SITE_PACKAGES/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
