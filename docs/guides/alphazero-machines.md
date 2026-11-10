@@ -168,9 +168,11 @@ vast.aiのアカウント、CLI、2要素認証、およびコンテナのCPUの
 **出品を選ぶ**
 
 次の条件で照会し、1時間あたりの料金（`dph_total`）の安い順に選ぶ。
+条件には、vast.aiが出品に載せるPCIeの帯域（`pcie_bw`）の下限を入れる。
+4枚のRTX 4090の機械を4台測ったところ、`pcie_bw`が20.9〜22.6 GB/sの3台に対して、10.9 GB/sの1台は生成が約3分の1の速さになり、1サイクルの料金が約2倍になったからである（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)の「機械Hの生成が遅い理由」）。
 
 ```console
-vastai search offers 'num_gpus=4 gpu_name=RTX_4090 reliability>0.98 verified=true rentable=true direct_port_count>=1 cuda_vers>=13.0 disk_space>=100 cpu_cores_effective>=32 cpu_ram>=128 duration>=1' \
+vastai search offers 'num_gpus=4 gpu_name=RTX_4090 reliability>0.98 verified=true rentable=true direct_port_count>=1 cuda_vers>=13.0 disk_space>=100 cpu_cores_effective>=32 cpu_ram>=128 duration>=1 pcie_bw>=20' \
   --type on-demand --raw --limit 200
 ```
 

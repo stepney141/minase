@@ -65,7 +65,7 @@
 | AlphaZero型探索の強化学習の実行 | [plans/archived/alphazero-rl.md](plans/archived/alphazero-rl.md) | 中断 | 2026年11月9日 |
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
-| AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/alphazero-multi-gpu.md](plans/alphazero-multi-gpu.md) | 着手 | |
+| AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
@@ -136,19 +136,19 @@
 
 ### 直近の完了
 
+- [AlphaZero型探索の学習と自己対局生成の複数GPU化](plans/archived/alphazero-multi-gpu.md)は2026年11月11日に、採用で完了した。生成器は探索のスレッドを同じ機種のGPUへ割り振り、学習器はLightning FabricのDDPでGPUの枚数によらず全体のバッチ1,024を学ぶ（[ADR](adr/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)）。4枚のRTX 4090の機械の1サイクルは約36分、約1.23米ドルで、ColabのG4の見積もり（約61分、約0.90米ドル）より速いが高く、学習は1枚の2.59倍の速さであった（[記録](measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。照合の終了処理の異常終了を避けるため、ONNX Runtimeを1.31.1へ上げた（[ADR](adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。4枚の機械の生成の速さは出品によって約3倍違い、遅い機械ではホストとGPUの間の転送が頭打ちになっていたと考えられる。
 - [AlphaZero型探索の強化学習の2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)は2026年11月10日に、採用で完了した。自己対局の生成器は、開始局面として、初期配置の1〜3段目を段の中で並べ替えた局面（Chess960型）と、初期局面から8〜16手を乱択で指した局面のどちらかを、必須の引数で選べるようになった（[ADR](adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)）。実行器は系列の基本シードの加算値を必須の引数で受け取り（[ADR](adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)）、リプレイバッファのファイル名の一覧をファイルで学習器へ渡す。20ブロック256チャネルの初期ネットが出力の照合に通ったことを確かめ（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、そのネットをNASの`cycles-rl2/cycle-0000/`に置いた。作業機での対局は1手あたり10ブロック128チャネルの約2.2倍の時間で、200ペアの進捗測定は約5.4時間と見込まれる（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
 - [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)でサイクル0からやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
 - [MCTSの葉での王駒の捕獲の判定と方策の温度](plans/archived/mcts-royal-capture-temperature.md)は2026年11月9日に、採用で完了した。新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定は、MCTS同士のSTCで得点率60.9%の`H1`となり（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、MCTS 800回対αβ 500ノードのEloの点推定を−70から+3.5へ上げた。方策の温度は固定ノードの対局で1.4を選び、STCで得点率71.1%の`H1`となった（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。どちらもLTCは開発者の決定で省いた（[判定のADR](adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。
 - [NNUEの世代反復をv0からやり直す計画](plans/archived/nnue-generation-reset.md)は2026年11月6日に、利用者の決定で中断した。第2世代まで作り、第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較で、学習条件に根拠の弱い点が多く見つかり、検証損失がエポック2〜3で最良になる原因も分からないままである（[状態](plans/archived/nnue-generation-reset.md#状態)）。教師は足りておらず、局面数が同じなら対局が多いほうが強い（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)）。標準の学習条件を決め直してから、v0の教師生成からやり直す。統合の前にブランチに埋め込んだネットをmasterのネットへ戻したので、masterのエンジンの評価は変わっていない。
 - [NNUE教師生成を探索結果を変えずに速くする計画](plans/archived/teacher-generation-speedup.md)は2026年11月6日に完了した。教師ファイルがバイト単位で一致する変更だけで、生成機の代理環境の探索速度が基準版の1.580倍になった（[測定](measurements/teacher-generation-speedup/teacher-generation-speedup-engine.md)）。変更は世代反復のブランチ`nnue-generation-reset`の統合でmasterへ入った。統合後は親ディレクトリの`.cargo/config.toml`にインライン化の指定が入るので、古いコミットと比べる対局ではビルドを混ぜない（[教訓](lessons/do-not-mix-builds-across-cargo-config-changes.md)）。
-- [NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)は2026年11月4日に、一部不採用で完了した。幅256の第1層、要素積、2段の隠れ層、skip接続、および16ビットの累算値を、同じ教師で学んだ幅128のネットに`H1`を取らないまま世代反復で使う構成として確定した（[ADR](adr/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-pairwise-products-with-two-hidden-layers.md)）。[STC](measurements/nnue-architecture-revision/nnue-architecture-revision-init-stc.md)は`H0`（得点率43.6%）、[固定ノードの対局](measurements/nnue-architecture-revision/nnue-architecture-revision-init-fixed-nodes.md)は−2.6 Elo（95%区間−35.8〜+30.5）、探索速度は約0.91倍である。隠れ層の重みをi8からi16へ改めると、量子化誤差は29.80 cpから9.45 cpへ下がった（[記録](measurements/nnue-architecture-revision/nnue-architecture-revision-training.md)）。開発者の決定により世代反復の起点としてmasterへ統合したので、masterのエンジンは統合前より弱いと見込まれる。統合前のコミットはブランチ`nnue-width128-regressed`に残し、世代反復の最終候補の比較の基準にする。最終候補が決まるまで、masterからのリリースとBotの更新ではエンジンが弱くなる。
 
 ### 次の候補
 
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
-- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。中断した系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。
+- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。中断した系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)の統合前のコミットを残したブランチ`nnue-width128-regressed`と比べる。最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
 #### 評価関数（NNUE）
@@ -172,13 +172,13 @@
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 
 2回目の実行は、次の3本の設計書で進める。
-1本目の準備は2026年11月10日に完了し、2本目の複数GPU化は同じ日に着手した。3本目の2回目の実行は起案の段階で、利用者の承認を待っている。
+1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の2回目の実行は起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
 | 1 | [2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)（完了） | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
-| 2 | [複数GPU化](plans/alphazero-multi-gpu.md) | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
-| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了の後 |
+| 2 | [複数GPU化](plans/archived/alphazero-multi-gpu.md)（完了） | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
+| 3 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 

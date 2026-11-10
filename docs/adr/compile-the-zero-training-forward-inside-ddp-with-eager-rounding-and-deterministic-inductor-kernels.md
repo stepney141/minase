@@ -7,7 +7,7 @@
 ## コンテキスト
 
 [ふかうら王の学習](https://github.com/yaneurao/YaneuraOu/wiki/%E3%81%B5%E3%81%8B%E3%81%86%E3%82%89%E7%8E%8B%E3%81%AE%E5%AD%A6%E7%BF%92)は、dlshogiの学習器で`torch.compile`を使うと学習が約1.6倍速くなると紹介している。
-[1回目の実行の設計書](../plans/archived/alphazero-rl.md)は2026年10月29日のエンジンの開発者の決定でこれを導入するとし、[複数GPU化の設計書](../plans/alphazero-multi-gpu.md)は、採否を3つの条件で決めるとした。
+[1回目の実行の設計書](../plans/archived/alphazero-rl.md)は2026年10月29日のエンジンの開発者の決定でこれを導入するとし、[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)は、採否を3つの条件で決めるとした。
 1つ目は初回のコンパイルを含めた1サイクルの学習の時間がコンパイルしない版より短いこと、2つ目は同じ機械で同じGPUの枚数のまま強制終了し、空のコンパイルのキャッシュで再開した学習が、途中で止めない学習とバイト単位で一致すること、3つ目はコンパイルの有無による勾配の相対誤差がbf16とfp32の間の相対誤差より小さいことである。
 
 設計書のとおりにコンパイルすると、作業機のRTX 3060 Tiで、bf16の勾配の大半がNaNになり、再開した学習も重みまで食い違った（[作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)）。

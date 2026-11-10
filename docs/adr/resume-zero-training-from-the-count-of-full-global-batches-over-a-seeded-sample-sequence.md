@@ -10,7 +10,7 @@
 [学習器のDDPのADR](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)により、学習器は複数のGPUのプロセスで全体のバッチ1,024をミクロバッチ256に分けて学ぶようになった。
 端数のバッチがあると、GPUごとのミクロバッチの数がそろわず、`torch.compile`が受け取る入力の形が最後の更新で変わる。
 借りた機械を替えると、GPUの枚数が変わることもある。
-方式はClaudeが提案し、[複数GPU化の設計書](../plans/alphazero-multi-gpu.md)の承認で決まった。
+方式はClaudeが提案し、[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の承認で決まった。
 
 作業機のGPUで、途中で強制終了して再開した学習を途中で止めない学習と比べると、コンパイルしない学習器でも、学習曲線の1つの値がfloat32の最後の1桁で食い違った（[作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)）。
 記録にだけ使う方策の損失を、GPUの原子的な加算（`scatter_add_`）で局面ごとに足していたことによると考えられる。

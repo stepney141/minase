@@ -8,7 +8,7 @@
 
 学習器はGPUを1枚だけ使い、自前の学習ループで再開をバイト単位で保証していた（[再開の方式のADR](archive/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)）。
 エンジンの開発者は、2026年11月9日に学習器をPyTorch Lightningへ移して複数GPUで学ぶと決め、11月10日に全体のバッチをGPUの枚数によらず固定し、GPUが少ない機械では勾配累積で補うと決めた。
-LightningのTrainerは、2.6.6では状態を保存できないローダーでの途中からの再開、標本の並びの分配、およびautocastの範囲の3点で今の保証と食い違う（[複数GPU化の設計書](../plans/alphazero-multi-gpu.md)の「学習器の枠組み」の節）。
+LightningのTrainerは、2.6.6では状態を保存できないローダーでの途中からの再開、標本の並びの分配、およびautocastの範囲の3点で今の保証と食い違う（[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の「学習器の枠組み」の節）。
 dlshogiの開発者は、全体のバッチを4,096に固定した2枚のGPUの学習が1枚の0.53倍の時間で同じ損失になったと報告し、GPUごとのバッチを固定して枚数を増やすと損失が上がったと報告している（設計書の「全体のバッチと勾配累積」の節）。
 具体の方式はClaudeが提案し、設計書の承認で決まった。
 

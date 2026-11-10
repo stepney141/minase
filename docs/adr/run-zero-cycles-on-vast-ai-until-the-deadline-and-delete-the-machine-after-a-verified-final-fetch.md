@@ -14,7 +14,7 @@ vast.aiのコンテナでは、表示されるCPUの数がcgroupの割当てよ�
 vast.aiの料金は、稼働中の時間単価のほかに、停止から削除までのディスクの保管料と貸し手ごとの転送料がかかる。
 また、サイクルの記録は完了したサイクルにしか書かれないので、途中で失われた機械の費用は残らない。
 SPSAでは、費用を、期限での自己停止と、取得を終えた機械の削除で抑えている（[SPSAの費用のADR](limit-rented-spsa-costs-by-self-stop-deadlines-and-deletion-after-the-last-game.md)）。
-方式はClaudeが提案し、[複数GPU化の設計書](../plans/alphazero-multi-gpu.md)の承認で決まった。
+方式はClaudeが提案し、[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の承認で決まった。
 
 ## 決定
 

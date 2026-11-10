@@ -19,5 +19,5 @@ PyTorch 2.11.0の`torchrun`は、各ワーカーを新しいセッションで�
 
 ## 出典
 
-- [複数GPU化の設計書](../plans/alphazero-multi-gpu.md)のフェーズ2の試験（`tools/train/zero/tests/cli.py`の`kill_training`）
+- [複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)のフェーズ2の試験（`tools/train/zero/tests/cli.py`の`kill_training`）
 - [作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)の再開の確認（`docs/measurements/alphazero-multi-gpu/resume-check.py`）

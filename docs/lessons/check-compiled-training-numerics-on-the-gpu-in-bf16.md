@@ -22,5 +22,5 @@ GPUのfp32どうしの比較では、畳み込みが既定ではTF32で計算さ
 
 ## 出典
 
-- [複数GPU化の設計書](../plans/alphazero-multi-gpu.md)の「着手時に補った決定」
+- [複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の「着手時に補った決定」
 - [作業機の測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)

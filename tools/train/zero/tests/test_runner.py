@@ -5,7 +5,7 @@
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
 局面数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
-機械の種類と複数GPUの契約はphase3a.mdとdocs/plans/alphazero-multi-gpu.mdに従う。
+機械の種類と複数GPUの契約はphase3a.mdとdocs/plans/archived/alphazero-multi-gpu.mdに従う。
 """
 
 from contextlib import redirect_stdout
