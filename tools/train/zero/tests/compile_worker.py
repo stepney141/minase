@@ -13,6 +13,7 @@ from unittest.mock import patch
 from lightning_fabric import Fabric
 from lightning_fabric.strategies import SingleDeviceStrategy
 import torch
+import torch._inductor.config
 from torch._dynamo.utils import counters
 
 from minase_zero import train
@@ -42,6 +43,7 @@ def main() -> None:
         "unique_graphs": counters["stats"]["unique_graphs"],
         "graph_breaks": sum(counters["graph_break"].values()),
         "reapply_compile": setup.call_args.kwargs["_reapply_compile"],
+        "emulate_precision_casts": torch._inductor.config.emulate_precision_casts,
     }), encoding="utf-8")
 
 

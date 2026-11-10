@@ -10,7 +10,7 @@ import torch
 from minase_zero.data import read_replay_buffer
 from minase_zero.encoding import encode_planes, policy_mask
 from minase_zero.net import ZeroNet
-from minase_zero.train import TrainingModule, accumulate_gradients, training_fabric
+from minase_zero.train import accumulate_gradients, compile_training, training_fabric
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
         reference = copy.deepcopy(network)
         initial_buffers = {name: value.clone() for name, value in network.named_buffers()}
         optimizer = torch.optim.SGD(network.parameters(), lr=0.01, momentum=0.9, nesterov=True)
-        compiled = torch.compile(TrainingModule(network), fullgraph=True)
+        compiled = compile_training(network)
         model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)
         data, _, selected, retained = read_replay_buffer(
             ["fixtures/zero-selfplay-small.mnsd"], ["fixtures/zero-selfplay-small.mnsd"], 42,

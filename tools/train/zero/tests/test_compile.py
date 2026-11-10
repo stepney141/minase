@@ -13,12 +13,27 @@ import tempfile
 import unittest
 
 import torch
+import torch._inductor.config
+
+from minase_zero.net import ZeroNet
+from minase_zero.train import compile_training, compiled_forward_context
 
 from tests.cli import ZERO, environment, require_success, run_command
 from tests.test_replay_buffer import reference_sample
 
 
 SCRIPT = ZERO.parents[2] / "docs/measurements/alphazero-multi-gpu/compile-gradients.py"
+
+
+class CompilationSettingsTests(unittest.TestCase):
+    def test_compilation_keeps_eager_rounding_enabled_for_later_backward(self):
+        with torch._inductor.config.patch(emulate_precision_casts=False):
+            compile_training(ZeroNet(1, 4))
+            self.assertIs(torch._inductor.config.emulate_precision_casts, True)
+            with compiled_forward_context():
+                self.assertIs(torch._inductor.config.emulate_precision_casts, True)
+            # 逆伝播は順伝播の文脈を抜けてから初めてコンパイルされる。
+            self.assertIs(torch._inductor.config.emulate_precision_casts, True)
 
 
 class CompileTests(unittest.TestCase):
@@ -34,6 +49,7 @@ class CompileTests(unittest.TestCase):
         self.assertEqual(counts["unique_graphs"], 1)
         self.assertEqual(counts["graph_breaks"], 0)
         self.assertIs(counts["reapply_compile"], False)
+        self.assertIs(counts["emulate_precision_casts"], True)
         summary = json.loads((self.root / "trained/summary.json").read_text())
         # このfixtureの抽出数は2572であり、全体のバッチ16の端数12局面を捨てる。
         self.assertEqual(summary["sample_count"], 2572)
@@ -74,6 +90,7 @@ class CompileTests(unittest.TestCase):
         self.assertEqual(actual["seed"], 42)
         self.assertEqual(actual["sample_indices"], reference_sample(643, 2572, 42)[:4])
         self.assertEqual(actual["pytorch_version"], str(torch.__version__))
+        self.assertIs(actual["emulate_precision_casts"], True)
         self.assertTrue(actual["device_name"])
         self.assertEqual(actual["value_lambda"], 0.333)
         self.assertEqual(actual["value_lambda_source"], "init measurement condition")

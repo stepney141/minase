@@ -13,8 +13,8 @@ from minase_zero.data import read_file
 from minase_zero.encoding import policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import (
-    LOSS_NAMES, TrainingModule, _batch, _policy_batch, accumulate_gradients,
-    compute_training_losses, total_loss,
+    LOSS_NAMES, _batch, _policy_batch, accumulate_gradients,
+    compile_training, compute_training_losses, total_loss,
 )
 
 from tests.cli import ZERO
@@ -36,7 +36,7 @@ class AccumulationTests(unittest.TestCase):
         self.network = ZeroNet(1, 4).train()
         self.reference = copy.deepcopy(self.network)
         optimizer = torch.optim.SGD(self.network.parameters(), lr=0.01)
-        compiled = torch.compile(TrainingModule(self.network), fullgraph=True)
+        compiled = compile_training(self.network)
         self.model, self.optimizer = self.fabric.setup(compiled, optimizer, _reapply_compile=False)
         self.config = {"batch_size": 16, "micro_batch_size": 4, "precision": "fp32", "value_lambda": 0.333}
         self.mask = torch.from_numpy(policy_mask())

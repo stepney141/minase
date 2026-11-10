@@ -28,6 +28,8 @@ k番目の更新はs[kB:(k+1)B]を使い、全更新回数はfloor(S/B)となる
 ミクロバッチjはs[kB+jm:kB+(j+1)m]で、ランクrはj mod N=rのものを番号順に処理する。
 Lightning Fabricは精度32-trueの分散データ並列（DDP）を使い、自分の最後のミクロバッチだけで勾配を同期する。
 学習用の全出力を返すTrainingModuleの順伝播を、torch.compile(..., fullgraph=True)の既定モードで常にコンパイルする。
+bf16のamaxの逆伝播でNaNが生じるのを防ぐため、torch._inductor.config.emulate_precision_casts=Trueをプロセス全体に設定し、コンパイルしない実行と同じ丸めを残す。
+逆伝播のグラフは最初の逆伝播時にコンパイルされるため、この設定を順伝播だけの文脈に限定しない。
 fabric.setup(..., _reapply_compile=False)に渡し、コンパイルしたラッパーをDDPの内側に置く。
 各順伝播はtorch._functorch.config.patch(backward_pass_autocast="off")の中で呼び、逆伝播をautocastの外で行う計算としてコンパイルする。
 すべての学習入力はm局面で形を固定し、端数のミクロバッチは作らない。
@@ -150,6 +152,7 @@ import numpy as np
 from numpy.typing import NDArray
 import torch
 import torch._functorch.config
+import torch._inductor.config
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_replay_buffer
@@ -316,6 +319,22 @@ class TrainingModule(torch.nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> TrainingLogits:
         return self.network.forward_logits(inputs)
+
+
+def compile_training(network: ZeroNet) -> torch.nn.Module:
+    """学習用の全logitを返す順伝播を、既定モードの単一グラフにコンパイルする。"""
+    # bf16のamaxの逆伝播でNaNが生じるのを防ぐため、eagerと同じ丸めを残す。
+    # Inductorは逆伝播グラフを最初の逆伝播時にコンパイルするので、
+    # 順伝播だけの文脈に限定せず、プロセス全体に設定する。
+    torch._inductor.config.emulate_precision_casts = True
+    return torch.compile(TrainingModule(network), fullgraph=True)
+
+
+@contextmanager
+def compiled_forward_context() -> Iterator[None]:
+    """逆伝播をautocastの外で行う前提を、順伝播の呼び出し中に保つ。"""
+    with torch._functorch.config.patch(backward_pass_autocast="off"):
+        yield
 
 
 def _environment(trainer_commit: str, device: torch.device) -> dict:
@@ -771,7 +790,7 @@ def accumulate_gradients(
         j = fabric.global_rank + index * fabric.world_size
         saved = [buffer.clone() for buffer in buffers] if j != 0 else []
         with fabric.no_backward_sync(model, enabled=index + 1 < len(batches)):
-            with torch._functorch.config.patch(backward_pass_autocast="off"):
+            with compiled_forward_context():
                 tensors = _batch(model, data, batch, fabric.device, config)
             losses = compute_training_losses(
                 *tensors,
@@ -802,7 +821,7 @@ def _run(
         network.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
     )
-    compiled = torch.compile(TrainingModule(network), fullgraph=True)
+    compiled = compile_training(network)
     # _reapply_compileは下線で始まる引数なので、Fabric 2.6.6から版を上げる際は
     # コンパイルしたラッパーがDDPの内側に置かれることを確かめ直す。
     model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)

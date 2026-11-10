@@ -29,13 +29,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools/train/zero")
 
 import numpy as np
 import torch
-import torch._functorch.config
+import torch._inductor.config
 
 from minase_zero.data import read_replay_buffer
 from minase_zero.encoding import policy_mask
 from minase_zero.train import (
-    TrainingModule, _batch, _load_checkpoint, _model, _policy_batch, _validate_device,
-    compute_training_losses, total_loss,
+    _batch, _load_checkpoint, _model, _policy_batch, _validate_device,
+    compile_training, compiled_forward_context, compute_training_losses, total_loss,
 )
 
 
@@ -65,11 +65,11 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
     opponent = _policy_batch(data, indices, device, "opponent_")
     short_term = torch.from_numpy(data.short_term_values[indices]).to(device)
     network = _model(state).to(device).train()
-    compiled = torch.compile(TrainingModule(network), fullgraph=True)
+    compiled = compile_training(network)
     gradients = []
     for forward, case_precision, context in (
         (network.forward_logits, precision, nullcontext()),
-        (compiled, precision, torch._functorch.config.patch(backward_pass_autocast="off")),
+        (compiled, precision, compiled_forward_context()),
         (network.forward_logits, "fp32", nullcontext()),
     ):
         network.load_state_dict(state["model"])
@@ -100,6 +100,7 @@ def compare_gradients(checkpoint: Path, paths: list[Path], micro_batch_size: int
         "device": device_name,
         "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else platform.machine(),
         "pytorch_version": str(torch.__version__), "micro_batch_size": micro_batch_size,
+        "emulate_precision_casts": torch._inductor.config.emulate_precision_casts,
         "precision": precision, "cpu_smoke_test": device.type == "cpu",
         "precision_note": ("CPU smoke test: all three runs use fp32; bf16 is not measured."
                            if device.type == "cpu" else "Runs 1 and 2 use bf16 autocast; run 3 uses fp32."),
