@@ -27,6 +27,12 @@ Bとmは正の整数、Bはmの倍数、KはNの倍数とし、Fabricの作成�
 k番目の更新はs[kB:(k+1)B]を使い、全更新回数はfloor(S/B)となる。
 ミクロバッチjはs[kB+jm:kB+(j+1)m]で、ランクrはj mod N=rのものを番号順に処理する。
 Lightning Fabricは精度32-trueの分散データ並列（DDP）を使い、自分の最後のミクロバッチだけで勾配を同期する。
+学習用の全出力を返すTrainingModuleの順伝播を、torch.compile(..., fullgraph=True)の既定モードで常にコンパイルする。
+fabric.setup(..., _reapply_compile=False)に渡し、コンパイルしたラッパーをDDPの内側に置く。
+各順伝播はtorch._functorch.config.patch(backward_pass_autocast="off")の中で呼び、逆伝播をautocastの外で行う計算としてコンパイルする。
+すべての学習入力はm局面で形を固定し、端数のミクロバッチは作らない。
+入力面の符号化、損失の計算、勾配のクリップ、およびBatchNormの移動統計の退避と復元はコンパイルしない。
+最終診断とONNXの書き出しもコンパイルせず、DDPとラッパーを通さない元のZeroNetを使う。
 各ミクロバッチの平均損失にN/Kを掛けて逆伝播し、同期後に勾配のクリップと更新を1回行う。
 損失の記録は各ミクロバッチの平均損失×mをfloat32で累計し、all_reduceのsumで全ランクの和を取る。
 バッチ正規化（BatchNorm）の移動統計はj=0だけで更新する。
@@ -143,6 +149,7 @@ from lightning_fabric.strategies import DDPStrategy
 import numpy as np
 from numpy.typing import NDArray
 import torch
+import torch._functorch.config
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_replay_buffer
@@ -764,8 +771,10 @@ def accumulate_gradients(
         j = fabric.global_rank + index * fabric.world_size
         saved = [buffer.clone() for buffer in buffers] if j != 0 else []
         with fabric.no_backward_sync(model, enabled=index + 1 < len(batches)):
+            with torch._functorch.config.patch(backward_pass_autocast="off"):
+                tensors = _batch(model, data, batch, fabric.device, config)
             losses = compute_training_losses(
-                *_batch(model, data, batch, fabric.device, config),
+                *tensors,
                 _policy_batch(data, batch, fabric.device, "opponent_"),
                 torch.from_numpy(data.short_term_values[batch]).to(fabric.device),
                 config["value_lambda"], mask, opponent_mask,
@@ -793,7 +802,10 @@ def _run(
         network.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
     )
-    model, optimizer = fabric.setup(TrainingModule(network), optimizer)
+    compiled = torch.compile(TrainingModule(network), fullgraph=True)
+    # _reapply_compileは下線で始まる引数なので、Fabric 2.6.6から版を上げる際は
+    # コンパイルしたラッパーがDDPの内側に置かれることを確かめ直す。
+    model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)
     # load_state_dictは現在のパラメータの機器へモーメンタムも移す。
     if state["optimizer"] is not None:
         optimizer.load_state_dict(state["optimizer"])

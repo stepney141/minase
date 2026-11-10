@@ -36,7 +36,8 @@ class AccumulationTests(unittest.TestCase):
         self.network = ZeroNet(1, 4).train()
         self.reference = copy.deepcopy(self.network)
         optimizer = torch.optim.SGD(self.network.parameters(), lr=0.01)
-        self.model, self.optimizer = self.fabric.setup(TrainingModule(self.network), optimizer)
+        compiled = torch.compile(TrainingModule(self.network), fullgraph=True)
+        self.model, self.optimizer = self.fabric.setup(compiled, optimizer, _reapply_compile=False)
         self.config = {"batch_size": 16, "micro_batch_size": 4, "precision": "fp32", "value_lambda": 0.333}
         self.mask = torch.from_numpy(policy_mask())
         self.opponent_mask = torch.from_numpy(policy_mask(opponent=True))
@@ -87,3 +88,17 @@ class AccumulationTests(unittest.TestCase):
                     with patch("minase_zero.train.compute_training_losses", return_value=tuple(losses)):
                         with self.assertRaisesRegex(ValueError, "non-finite training loss at update 1, rank 0"):
                             self.accumulate()
+
+    def test_each_forward_disables_backward_autocast_and_restores_the_callers_setting(self):
+        settings = []
+
+        def batch(*args):
+            settings.append(torch._functorch.config.backward_pass_autocast)
+            return _batch(*args)
+
+        with torch._functorch.config.patch(backward_pass_autocast="same_as_forward"):
+            with patch("minase_zero.train._batch", side_effect=batch):
+                self.accumulate()
+                self.accumulate()
+            self.assertEqual(torch._functorch.config.backward_pass_autocast, "same_as_forward")
+        self.assertEqual(settings, ["off"] * 8)

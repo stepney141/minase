@@ -22,7 +22,8 @@ def main():
         reference = copy.deepcopy(network)
         initial_buffers = {name: value.clone() for name, value in network.named_buffers()}
         optimizer = torch.optim.SGD(network.parameters(), lr=0.01, momentum=0.9, nesterov=True)
-        model, optimizer = fabric.setup(TrainingModule(network), optimizer)
+        compiled = torch.compile(TrainingModule(network), fullgraph=True)
+        model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)
         data, _, selected, retained = read_replay_buffer(
             ["fixtures/zero-selfplay-small.mnsd"], ["fixtures/zero-selfplay-small.mnsd"], 42,
             rank=fabric.global_rank, world_size=fabric.world_size,
