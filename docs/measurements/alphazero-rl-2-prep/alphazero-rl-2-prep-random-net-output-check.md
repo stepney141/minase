@@ -58,7 +58,7 @@ TensorRTのエンジン（ネットをGPU向けに最適化したもの）の作
 10ブロック128チャネルの初期ネットの[照合](../alphazero-restart-techniques/alphazero-restart-techniques-random-net-output-check.md)と比べると、FP16の差の最大は、logitで約2.4倍、価値で約2.0倍であった。
 ただし、ランダム初期化のネットは出力の散らばりが小さいので、この差は学習したネットの差の目安にならない（[教訓](../../lessons/judge-low-precision-inference-on-trained-outputs.md)）。
 
-照合に通ったネット、チェックポイント、`init`の集計、およびPyTorchの出力は、NASの`cycles-rl2/cycle-0000/`（PyTorchの出力は`check/pytorch.json`）に置き、検査和の一致を確かめてから読み取り専用にした。
+照合に通ったネット、チェックポイント、`init`の集計、PyTorchの出力、および`check.sh`が書いたCPUとTensorRTの出力は、NASの`cycles-rl2/cycle-0000/`（PyTorchの出力は`check/pytorch.json`、CPUとTensorRTの出力は`check-workstation/`）に置き、検査和の一致を確かめてから読み取り専用にした。
 
 ## 結論
 
