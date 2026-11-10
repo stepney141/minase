@@ -11,7 +11,7 @@ fi
 apt-get update
 date -Is
 apt-get install -y --no-install-recommends \
-    ca-certificates curl rsync python3 build-essential pkg-config git xz-utils procps
+    ca-certificates curl rsync python3 build-essential pkg-config git xz-utils procps time
 date -Is
 
 mkdir -p /workspace/src /workspace/az /workspace/cache
