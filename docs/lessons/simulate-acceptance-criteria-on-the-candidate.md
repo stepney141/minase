@@ -17,5 +17,5 @@
 
 ## 出典
 
-- [秒読みつき時間制御の配分](../plans/time-management-byoyomi.md)の「設計判断」の「候補K1の不採用」。
-- [time-management-byoyomi-k1](../measurements/time-management-byoyomi-k1.md)。
+- 削除済みのブランチ`time-management-byoyomi`にあった設計書「秒読みつき時間制御の配分」の「設計判断」の「候補K1の不採用」と、同じブランチの診断記録`time-management-byoyomi-k1.md`。どちらもmasterには収録されていない。
+- この教訓を引き継いだ設計書は[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)であり、削除済みのブランチの成果物の一覧は[初形の実測](../measurements/time-management-efficiency/time-management-efficiency-probe.md)にある。
