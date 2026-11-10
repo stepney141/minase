@@ -13,7 +13,7 @@ use ort::session::{Session, SessionOutputs};
 use ort::value::{TensorElementType, TensorRef, ValueType};
 use sha2::{Digest, Sha256};
 
-use super::tensorrt_cache::{TensorRtCacheKey, query_gpu};
+use super::tensorrt_cache::{TensorRtCacheKey, query_gpus, validate_cuda_visible_devices};
 use super::{
     Evaluator, INPUT_PLANES, INPUT_SIZE, NnError, POLICY_SIZE, Query, encode, policy_label,
 };
@@ -65,9 +65,14 @@ pub enum ExecutionProvider {
     TensorRt {
         /// 設定ごとのキャッシュ用ディレクトリを置く親ディレクトリ。
         cache_root: PathBuf,
+        /// 推論に使うCUDAの機器番号。0から始まる。
+        device_id: usize,
     },
     /// CUDAによる推論。
-    Cuda,
+    Cuda {
+        /// 推論に使うCUDAの機器番号。0から始まる。
+        device_id: usize,
+    },
     /// CPUによる推論。
     Cpu,
 }
@@ -77,7 +82,7 @@ impl ExecutionProvider {
     pub fn name(&self) -> &'static str {
         match self {
             Self::TensorRt { .. } => "tensorrt",
-            Self::Cuda => "cuda",
+            Self::Cuda { .. } => "cuda",
             Self::Cpu => "cpu",
         }
     }
@@ -137,6 +142,7 @@ impl OnnxEvaluator {
     ///
     /// `ORT_DYLIB_PATH`が示すファイルからONNX Runtimeをプロセスで1回だけ初期化する。
     /// TensorRTとCUDAではCPUへの部分的な退避も禁じる。
+    /// TensorRTとCUDAでは`CUDA_VISIBLE_DEVICES`が設定されていれば、空値でも起動を拒む。
     /// 入力はf32の`input: [動的バッチ, 159, 12, 12]`、出力はf32の
     /// `policy: [動的バッチ, 35856]`と`value: [動的バッチ, 1]`でなければならない。
     ///
@@ -148,6 +154,9 @@ impl OnnxEvaluator {
         provider: &ExecutionProvider,
         max_batch: NonZeroUsize,
     ) -> Result<Self, NnError> {
+        if !matches!(provider, ExecutionProvider::Cpu) {
+            validate_cuda_visible_devices(env::var_os("CUDA_VISIBLE_DEVICES").as_deref())?;
+        }
         let input = allocate_input(max_batch)?;
         initialize_runtime()?;
         let mut builder = Session::builder()?
@@ -159,8 +168,12 @@ impl OnnxEvaluator {
                 .map_err(ort::Error::from)?;
         }
         let provider = match provider {
-            ExecutionProvider::TensorRt { cache_root } => {
-                let key = TensorRtCacheKey::new(*network.sha256(), query_gpu()?, max_batch);
+            ExecutionProvider::TensorRt {
+                cache_root,
+                device_id,
+            } => {
+                let device_id = ort_device_id(*device_id)?;
+                let key = TensorRtCacheKey::new(*network.sha256(), query_gpus()?.gpu, max_batch);
                 let path = cache_root.join(key.directory_name());
                 let cache_path = path
                     .to_str()
@@ -171,6 +184,7 @@ impl OnnxEvaluator {
                 })?;
                 let profile = format!("input:{}x{INPUT_PLANES}x12x12", max_batch.get());
                 ep::TensorRT::default()
+                    .with_device_id(device_id)
                     .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
                     .with_profile_opt_shapes(&profile)
                     .with_profile_max_shapes(&profile)
@@ -180,7 +194,9 @@ impl OnnxEvaluator {
                     .with_timing_cache(false)
                     .build()
             }
-            ExecutionProvider::Cuda => ep::CUDA::default().build(),
+            ExecutionProvider::Cuda { device_id } => ep::CUDA::default()
+                .with_device_id(ort_device_id(*device_id)?)
+                .build(),
             ExecutionProvider::Cpu => ep::CPU::default().build(),
         };
         let session = builder
@@ -205,6 +221,10 @@ impl OnnxEvaluator {
             max_batch,
         })
     }
+}
+
+fn ort_device_id(device_id: usize) -> Result<i32, NnError> {
+    i32::try_from(device_id).map_err(|_| NnError::InvalidDeviceId { device_id })
 }
 
 fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<f32>, NnError> {
@@ -335,6 +355,20 @@ mod tests {
     use minase_core::test_util::{position, sq};
     use minase_core::{Color, Move, PieceKind};
     use ort::value::{Shape, SymbolicDimensions};
+
+    // ortの契約: CUDAの機器番号は非負のi32とし、表せない番号は型付きエラーにする。
+    #[test]
+    fn device_ids_must_fit_ort_signed_integers() {
+        for (input, expected) in [(0, 0), (3, 3), (i32::MAX as usize, i32::MAX)] {
+            assert_eq!(ort_device_id(input).unwrap(), expected);
+        }
+        for invalid in [i32::MAX as usize + 1, usize::MAX] {
+            assert!(matches!(
+                ort_device_id(invalid),
+                Err(NnError::InvalidDeviceId { device_id }) if device_id == invalid
+            ));
+        }
+    }
 
     // [`Network`]の契約: バイト列を保持し、SHA-256の既知の値を返す。
     #[test]

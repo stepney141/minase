@@ -54,6 +54,7 @@ impl Arguments {
         match (&self.backend, &self.cache_dir) {
             (Backend::TensorRt, Some(cache_root)) => Ok(ExecutionProvider::TensorRt {
                 cache_root: cache_root.clone(),
+                device_id: 0,
             }),
             (Backend::TensorRt, None) => Err(super::subcommand_command(&["dev", "nn-eval"]).error(
                 clap::error::ErrorKind::MissingRequiredArgument,
@@ -63,7 +64,7 @@ impl Arguments {
                 clap::error::ErrorKind::ArgumentConflict,
                 "--cache-dir requires --backend tensorrt",
             )),
-            (Backend::Cuda, None) => Ok(ExecutionProvider::Cuda),
+            (Backend::Cuda, None) => Ok(ExecutionProvider::Cuda { device_id: 0 }),
             (Backend::Cpu, None) => Ok(ExecutionProvider::Cpu),
         }
     }
@@ -232,7 +233,7 @@ mod tests {
         let cache = ["--cache-dir", "cache"];
         assert!(matches!(
             parse_provider("tensorrt", "7", &cache),
-            Ok(ExecutionProvider::TensorRt { .. })
+            Ok(ExecutionProvider::TensorRt { device_id: 0, .. })
         ));
         assert!(matches!(
             parse_provider("cpu", "1", &[]),
@@ -240,7 +241,7 @@ mod tests {
         ));
         assert!(matches!(
             parse_provider("cuda", "256", &[]),
-            Ok(ExecutionProvider::Cuda)
+            Ok(ExecutionProvider::Cuda { device_id: 0 })
         ));
         for (backend, batch, cache, kind) in [
             ("tensorrt", "7", &[][..], ErrorKind::MissingRequiredArgument),

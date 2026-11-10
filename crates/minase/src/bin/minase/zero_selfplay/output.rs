@@ -442,6 +442,7 @@ fn included_chunks(
 }
 
 /// 確定済みの塊は読むだけにし、サイクルの範囲がまだ決まらないときだけ推論器を作る。
+/// 推論器の生成関数には0から始まるスレッド番号を順に渡し、全推論器を作ってからスレッドを起動する。
 pub(super) fn generate(
     directory: &Path,
     config: &Config,
@@ -449,7 +450,7 @@ pub(super) fn generate(
     checksum: &[u8; 32],
     threads: NonZeroUsize,
     games_per_thread: NonZeroUsize,
-    mut make_evaluator: impl FnMut() -> Result<Box<dyn Evaluator + Send>, Error>,
+    mut make_evaluator: impl FnMut(usize) -> Result<Box<dyn Evaluator + Send>, Error>,
 ) -> Result<RunReport, Error> {
     let started = Instant::now();
     config.validate()?;
@@ -483,8 +484,8 @@ pub(super) fn generate(
             .flat_map(|chunk| config.game_range(chunk).map(|number| number as u32))
             .collect();
         let mut evaluators = Vec::new();
-        for _ in 0..threads.get() {
-            evaluators.push(make_evaluator()?);
+        for thread in 0..threads.get() {
+            evaluators.push(make_evaluator(thread)?);
         }
         let settings = Settings {
             rules: header.rules(),
