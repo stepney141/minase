@@ -66,7 +66,7 @@
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
-| AlphaZero型探索の推論のホストとGPUの間の転送の削減 | [plans/alphazero-inference-transfer.md](plans/alphazero-inference-transfer.md) | 起案 | |
+| AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/alphazero-inference-transfer.md](plans/alphazero-inference-transfer.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
