@@ -228,21 +228,23 @@ DDPは`find_unused_parameters=True`ではバケットを組み替えない。
 
 | 実行 | 回数 | 異常終了 |
 |---|---|---|
-| TensorRT、エンジンを作る（`ort-exit`段の各バッチの最初の実行、照合の時間の測定、新しいキャッシュでのgdbの下の実行） | 7 | 5 |
+| TensorRT、エンジンを作る（`ort-exit`段の各バッチの最初の実行、照合の時間の測定、新しいキャッシュかつgdbの下での実行） | 7 | 5 |
 | TensorRT、キャッシュのエンジンを読む | 9 | 0 |
 | CUDA | 3 | 1（最初の実行） |
 | CPU | 2 | 0 |
-| TensorRT、キャッシュを読む、glibcのデバッグ用のmalloc | 3 | 0 |
+| TensorRT、キャッシュのエンジンを読む、glibcのデバッグ用のmalloc | 3 | 0 |
 
 異常終了した実行の出力は、どれも全288局面を書き終えており、照合の時間の測定（下の節）では、異常終了したTensorRTのバッチ1と256の出力も許容誤差に収まった。
-gdbで捉えたスタックでは、異常終了は、プロセスの終了処理で動的リンカが呼んだ`libcuda.so.1`の終了処理の中の`free`で起き、そのとき残っていたスレッドは、主のスレッドのほかに`libcuda.so.1`の中で待つ3本だけであった。
-[ネットの入出力の照合の記録](../alphazero-network/random-net-output-check.md)でも、作業機のCUDAの実行プロバイダで同じ`libcuda.so.1`の終了処理の`free`の異常終了が出ており、[実現性の測定](../alphazero-environment/alphazero-feasibility.md)ではColabのA100のTensorRTで同じ形の異常終了が出ている。
-同じ機械Bで19分動いた生成器は、TensorRTのエンジンを作ってから正常に終わった。
+gdbで捉えたスタックでは、プロセスの終了処理で動的リンカが呼んだ`libcuda.so.1`の終了処理内の`free`で異常終了が起きていた。
+そのとき残っていたスレッドは、主スレッドのほかに`libcuda.so.1`の中で待つ3本だけであった。
+[ネットの入出力の照合の記録](../alphazero-network/random-net-output-check.md)でも、作業機のCUDAの実行プロバイダで同じ`libcuda.so.1`の終了処理内の`free`による異常終了が出ており、[実現性の測定](../alphazero-environment/alphazero-feasibility.md)ではColabのA100のTensorRTで同じ形の異常終了が出ている。
+機械Cと同じ機械である機械Bで19分動いた生成器は、TensorRTのエンジンを作ったが、正常に終わった。
 
 ### 照合の異常終了の切り分け（機械DとE）
 
 ドライバの版、ライブラリの読み込みの順序、およびヒープの検査の方式を変えて、新しいキャッシュでTensorRTのエンジンを作る`minase dev nn-eval`のバッチ1を繰り返した（`ort-exit2`段）。
 `libcuda.so.1`か`libonnxruntime.so`を`LD_PRELOAD`で先に読み込ませると、そのライブラリの終了処理の順序が変わる。
+次の表の値は異常終了の回数である。
 
 | 実行 | 機械D（ドライバ580.159.03） | 機械E（ドライバ610.43.02） |
 |---|---|---|
@@ -252,24 +254,23 @@ gdbで捉えたスタックでは、異常終了は、プロセスの終了処�
 | glibcのデバッグ用のmalloc（`MALLOC_CHECK_=3`）、gdbの下 | 4回中3回 | 4回中0回 |
 | AddressSanitizerの実行時ライブラリを先に読み込む | 4回中0回 | 4回中0回 |
 
-表の値は異常終了の回数である。
 異常終了は2つのドライバの両方で起き、読み込みの順序を変えても減らなかった。
 デバッグ用のmallocでも、破壊が検出された場所は`libcuda.so.1`の終了処理の`free`のままであった（[バックトレース](alphazero-multi-gpu-vast/mallocdebug-backtrace-machine-d.txt)）。
-AddressSanitizerの下の8回は、どれも正常に終わり、報告も出なかった。
+AddressSanitizerの下での計8回（機械DとEで4回ずつ）は、どれも正常に終わり、AddressSanitizerのエラー報告も出なかった。
 そのままの実行で異常終了する割合（機械Dで6回中4回、機械Eで6回中3回）が保たれるなら、8回とも正常に終わる確率は1%未満である。
 AddressSanitizerは`malloc`と`free`を自前の割り当て器に置き換え、解放した領域を隔離して再利用を遅らせるので、計装していないライブラリが解放済みの領域や範囲の外へ書いても、glibcの空き領域の管理情報は壊れない。
-ただし、この実行ではセッションの作成が約19秒から約45秒に延び、デバッグ用のmallocでも機械Eでは4回とも正常に終わったので、時機に依存する誤りが隠れただけである可能性も残る。
-また、`libcuda.so.1`の`free`が横取りされたことは確かめていない。
+ただし、`libcuda.so.1`の`free`がAddressSanitizerに横取りされていたかは確かめていない。
+また、この実行ではセッションの作成が約19秒から約45秒に延び、デバッグ用のmallocでも機械Eでは4回とも正常に終わったので、実行のタイミングに依存する誤りが隠れただけである可能性も残る。
 CUDAの実行プロバイダはエンジンを作らなくても同じ形で異常終了する（機械Cの3回中1回、[ネットの入出力の照合の記録](../alphazero-network/random-net-output-check.md)の作業機の4回中2回）ので、エンジンの作成だけが原因とも言えない。
-原因は特定できておらず、計装していないライブラリ（ONNX Runtime、TensorRT、CUDA）が解放済みの領域か範囲の外へ書いていることとも、時機に依存する誤りとも矛盾しない。
+原因は特定できておらず、この結果は、計装していないライブラリ（ONNX Runtime、TensorRT、CUDA）が解放済みの領域か範囲の外へ書いていることとも、実行のタイミングに依存する誤りとも矛盾しない。
 生データは[機械D](alphazero-multi-gpu-vast/ort-exit2-machine-d.tsv)と[機械E](alphazero-multi-gpu-vast/ort-exit2-machine-e.tsv)にある。
 
 ONNX Runtimeの1.29.0〜1.31.1のリリースノートには、TensorRTやCUDAの実行プロバイダの終了処理やヒープの破壊を直したという項目はなかった。
-TensorRTの実行プロバイダの独自の演算の領域を2度解放する不具合の修正（[#27471](https://github.com/microsoft/onnxruntime/pull/27471)）は、1.28.3にも入っている。
+TensorRTの実行プロバイダで独自の演算の領域を2度解放する不具合の修正（[#27471](https://github.com/microsoft/onnxruntime/pull/27471)）は、1.28.3にも入っている。
 
 ### ONNX Runtimeの版の比較（機械G）
 
-同じ機械で、ONNX Runtime 1.28.3と1.31.1を交互に使い、新しいキャッシュでTensorRTのエンジンを作る`minase dev nn-eval`のバッチ1を10回ずつと、生成器で8局を生成する実行を4回ずつ行った。
+同一の機械（機械G）で、ONNX Runtime 1.28.3と1.31.1を交互に使い、新しいキャッシュでTensorRTのエンジンを作る`minase dev nn-eval`のバッチ1を10回ずつと、生成器で8局を生成する実行を4回ずつ行った。
 ortは`=2.0.0-rc.13`のまま、`ORT_DYLIB_PATH`だけを替えた。
 
 | 実行 | 1.28.3 | 1.31.1 |
