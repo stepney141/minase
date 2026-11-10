@@ -210,7 +210,7 @@ DDPは`find_unused_parameters=True`ではバケットを組み替えない。
 | TensorRT、キャッシュを読む、glibcのデバッグ用のmalloc | 3 | 0 |
 
 異常終了した実行の出力は、どれも全288局面を書き終えており、照合の時間の測定（下の節）では、異常終了したTensorRTのバッチ1と256の出力も許容誤差に収まった。
-gdbで捉えたスタックでは、異常終了は、プロセスの終了処理で動的リンカが呼んだ`libcuda.so.1`の終了処理の中の`free`で起き、そのとき約226本のスレッドが残っていた。
+gdbで捉えたスタックでは、異常終了は、プロセスの終了処理で動的リンカが呼んだ`libcuda.so.1`の終了処理の中の`free`で起き、そのとき残っていたスレッドは、主のスレッドのほかに`libcuda.so.1`の中で待つ3本だけであった。
 [ネットの入出力の照合の記録](../alphazero-network/random-net-output-check.md)でも、作業機のCUDAの実行プロバイダで同じ`libcuda.so.1`の終了処理の`free`の異常終了が出ており、[実現性の測定](../alphazero-environment/alphazero-feasibility.md)ではColabのA100のTensorRTで同じ形の異常終了が出ている。
 同じ機械Bで19分動いた生成器は、TensorRTのエンジンを作ってから正常に終わった。
 どのライブラリがヒープを壊したかは、まだ分かっていない。

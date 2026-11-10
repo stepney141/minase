@@ -18,6 +18,7 @@
 #   ort-exit <ネット>       minase dev nn-evalを各実行プロバイダで繰り返して終了コードを数え、異常終了したときのスタックをgdbで取る
 #   check-timing <学習の出力>  実行器の照合と同じ12個のコマンドの時間と終了コードを、異常終了で止めずに測る
 #   seed2                  抽出のシードだけを変えたN=4の1サイクルと、その出力の比較
+#   ort-exit2 <ネット>      新しいキャッシュでTensorRTのエンジンを作るnn-evalを、libcudaやONNX Runtimeを先に読み込ませる場合とデバッグ用のmallocの場合で繰り返す
 set -euo pipefail
 stage=$1; C=$2; shift 2
 Z=/workspace/src/tools/train/zero
@@ -207,6 +208,42 @@ seed2)
     done
     uv run --frozen python "$D/compare-outputs.py" --reference "$M/fixture-n4-seed1.json" \
         --candidate "$M/fixture-n4-seed2.json" --out "$M/seed1-vs-seed2.json"
+    ;;
+ort-exit2)
+    net=$1
+    out=$M/ort-exit2
+    mkdir -p "$out"
+    command -v gdb > /dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdb > /dev/null
+    minase=/workspace/src/target/release/minase
+    cuda=/usr/lib/x86_64-linux-gnu/libcuda.so.1
+    debug=/usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+    n=0
+    build() {  # <名前> <回数> [環境変数...]
+        local name=$1 count=$2; shift 2
+        for i in $(seq 1 "$count"); do
+            n=$((n + 1))
+            local started=$(date +%s%N)
+            set +e
+            env "$@" "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 1 \
+                --out "$out/$name-$i.json" --cache-dir "/workspace/cache/ort-exit2-$n" > "$out/$name-$i.out" 2> "$out/$name-$i.err"
+            local code=$?
+            set -e
+            printf '%s\t%s\t%s\t%s\n' "$name-$i" "$code" "$(( ($(date +%s%N) - started) / 1000000 ))" "$(tail -n 1 "$out/$name-$i.err" | tr '\t' ' ')" >> "$out/exit.tsv"
+        done
+    }
+    build base 6
+    build preload-libcuda 6 LD_PRELOAD="$cuda"
+    build preload-ort 6 LD_PRELOAD="$ORT_DYLIB_PATH"
+    for i in 1 2 3 4; do
+        n=$((n + 1))
+        set +e
+        gdb -batch -ex "set environment LD_PRELOAD $debug" -ex "set environment MALLOC_CHECK_ 3" -ex run -ex bt -ex "info sharedlibrary" \
+            --args "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 1 \
+            --out "$out/mallocdebug-gdb-$i.json" --cache-dir "/workspace/cache/ort-exit2-$n" > "$out/mallocdebug-gdb-$i.txt" 2>&1
+        set -e
+        printf '%s\t%s\n' "mallocdebug-gdb-$i" "$(grep -c SIGABRT "$out/mallocdebug-gdb-$i.txt")" >> "$out/exit.tsv"
+    done
+    cat "$out/exit.tsv"
     ;;
 *)
     echo "unknown stage: $stage" >&2
