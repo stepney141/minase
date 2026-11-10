@@ -151,19 +151,25 @@ class DataTests(unittest.TestCase):
         for paths in ([FIXTURE, FIXTURE], [FIXTURE, alias]):
             with self.subTest(paths=paths):
                 with self.assertRaises(ValueError):
-                    read_replay_buffer(paths, paths, 42)
+                    read_replay_buffer(paths, paths, 42,
+                        rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                    )
 
     def test_copied_games_are_rejected(self) -> None:
         copy = self.directory / "copy.mnsd"
         shutil.copyfile(FIXTURE, copy)
         with self.assertRaises(ValueError):
-            read_replay_buffer([FIXTURE, copy], [copy], 42)
+            read_replay_buffer([FIXTURE, copy], [copy], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
         write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "engine-default")
         write_small(second, [single_game(3, 1, 0, 456, (65535,))], "engine-default")
-        data, infos, _ = read_replay_buffer([first, second], [first, second], 42)
+        data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual([info.path for info in infos], [first, second])
         np.testing.assert_array_equal(data.games, [9, 3])
         np.testing.assert_array_equal(data.plies, [23, 23])
@@ -175,7 +181,9 @@ class DataTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(data.legal_offsets) > np.diff(data.policy_offsets)))
         # 方策の仕様表: 先手の王将の右・右前、後手の歩兵の前。移動元は0、0、131。
         np.testing.assert_array_equal(data.policy_labels, [3168, 1584, 12])
-        reversed_data, _, _ = read_replay_buffer([second, first], [second, first], 42)
+        reversed_data, _, _, _ = read_replay_buffer([second, first], [second, first], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         np.testing.assert_array_equal(reversed_data.games, [3, 9])
         np.testing.assert_array_equal(reversed_data.policy_offsets, [0, 1, 3])
         np.testing.assert_array_equal(reversed_data.policy_labels, [12, 3168, 1584])
@@ -197,7 +205,9 @@ class DataTests(unittest.TestCase):
         changed = bytearray(first.read_bytes())
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
-        data, infos, _ = read_replay_buffer([first, second], [first, second], 42)
+        data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual([info.header.seed for info in infos], [20261038, 42])
         np.testing.assert_array_equal(data.games, [1, 1])
         np.testing.assert_array_equal(data.results, [0.5, 0.5])
@@ -210,7 +220,9 @@ class DataTests(unittest.TestCase):
         self.assertEqual(len(data), 0)
         self.assertEqual(info.game_numbers, (1,))
         with self.assertRaises(ValueError):
-            read_replay_buffer([first, second], [second], 42)
+            read_replay_buffer([first, second], [second], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
 
     def test_empty_files_and_empty_replay_buffer(self) -> None:
         path = self.directory / "empty.mnsd"
@@ -225,9 +237,11 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.training_count, 0)
         self.assertEqual(info.validation_count, 0)
         with self.assertRaises(ValueError):
-            read_replay_buffer([path], [path], 42)
+            read_replay_buffer([path], [path], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
         with self.assertRaises(ValueError):
-            read_replay_buffer([], [], 42)
+            read_replay_buffer([], [], 42, rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1)
 
     def test_equivalent_rule_name_is_accepted_and_other_rules_rejected(self) -> None:
         path = self.directory / "rules.mnsd"
@@ -352,7 +366,9 @@ class DataTests(unittest.TestCase):
         self.assertEqual(first.opponent_legal_labels.dtype, np.uint16)
         self.assertGreater(first.opponent_legal_offsets[1], 1)
         self.assertEqual(first.opponent_legal_offsets[1], first.opponent_legal_offsets[2])
-        combined, _, selected = read_replay_buffer(paths, paths, 42)
+        combined, _, selected, _ = read_replay_buffer(paths, paths, 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual(len(combined), 4)
         self.assertEqual(len(selected), 4 * int((~combined.validation).sum()))
         np.testing.assert_array_equal(combined.short_term_values, np.tile(first.short_term_values, (2, 1)))

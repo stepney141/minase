@@ -1,4 +1,4 @@
-"""リプレイバッファから訓練局面を抽出し、最新の検証局面とともに入力順に保持する。
+"""リプレイバッファから訓練局面を抽出し、各ランクが使う局面を入力順に保持する。
 
 訓練局面は価値と方策の候補の両方を持ち、除外されていない項目とする。
 指した手を確率1とする方策も候補に含め、方策のない速い探索は採用しない。
@@ -7,7 +7,6 @@
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, fields
-import os
 from pathlib import Path
 
 import minase_mnsd_reader
@@ -245,26 +244,33 @@ def _scan_file(path: Path) -> FileInfo:
     return _file_info(path, minase_mnsd_reader.scan(str(path)), teacher_kind=1)
 
 
-def _read_selected(info: FileInfo, indices: list[int], include_validation: bool) -> Dataset:
-    raw = minase_mnsd_reader.read_selected(str(info.path), indices, include_validation)
+def _read_selected(
+    info: FileInfo, indices: list[int], diagnostic_indices: list[int], include_validation: bool,
+) -> tuple[Dataset, NDArray[np.int64]]:
+    raw = minase_mnsd_reader.read_selected(str(info.path), indices, diagnostic_indices, include_validation)
     if _file_info(info.path, raw, teacher_kind=1) != info:
         raise ValueError(f"{info.path}: file metadata changed between counting and replay")
     dataset = _dataset(raw, info)
+    retained = np.frombuffer(raw["training_indices"], dtype="<u8").astype(np.int64)
     validation_count = info.validation_count if include_validation else 0
-    if len(dataset) != len(indices) + validation_count or np.count_nonzero(dataset.validation) != validation_count:
+    if len(dataset) != len(retained) + validation_count or np.count_nonzero(dataset.validation) != validation_count:
         raise ValueError(f"{info.path}: retained position counts differ from the selection")
-    return dataset
+    return dataset, retained
 
 
 def read_replay_buffer(
     paths: Sequence[str | Path], latest_paths: Sequence[str | Path], seed: int,
-) -> tuple[Dataset, list[FileInfo], NDArray[np.int64]]:
-    """抽出した訓練局面と最新の検証集合、全ファイル情報、更新順の通し番号を返す。
+    *, rank: int, world_size: int, batch_size: int, micro_batch_size: int, replay_threads: int,
+) -> tuple[Dataset, list[FileInfo], NDArray[np.int64], NDArray[np.int64]]:
+    """担当する局面、全ファイル情報、抽出列、および保持した訓練局面の通し番号を返す。
 
-    latest_pathsはpathsの末尾と文字列で一致する必要がある。その訓練局面数Nを数え、
-    全訓練局面の通し番号[0,T)からsample_training_indicesで4N個の更新列を作る。
+    latest_pathsはpathsの末尾と文字列で一致する必要がある。
+    その訓練局面数の4倍を、全訓練局面の通し番号[0,T)から抽出する。
     計数は再生なしで行い、再生はGILを解放してファイルごとに並列に1回行う。
-    配列には抽出した訓練局面の重複を除き、最新の検証集合とともにファイル順に保持する。
+    抽出列の端数を捨て、ミクロバッチの番号をworld_sizeで割った余りがrankの局面を保持する。
+    ランク0は、端数を除いた抽出列の訓練診断標本と、最新の検証集合も保持する。
+    第4戻り値は、保持した非検証局面の行に対応する、リプレイバッファ全体の通し番号である。
+    配列は重複を除いてファイル順に保持し、抽出数がbatch_size未満なら再生前にエラーにする。
     正規化後のパス、または基本シードと対局番号の組が重複すればValueErrorとする。
     """
     if not paths:
@@ -274,11 +280,8 @@ def read_replay_buffer(
     normalized = [Path(path).resolve(strict=True) for path in paths]
     if len(set(normalized)) != len(normalized):
         raise ValueError("duplicate normalized MNSD path in replay buffer")
-    cpus = os.process_cpu_count()
-    if cpus is None:
-        raise ValueError("cannot determine CPU count for parallel MNSD replay")
     latest_start = len(paths) - len(latest_paths)
-    with ThreadPoolExecutor(max_workers=min(len(paths), cpus)) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(paths), replay_threads)) as pool:
         infos = list(pool.map(_scan_file, normalized))
         seen_games: set[tuple[int, int]] = set()
         for info in infos:
@@ -289,17 +292,28 @@ def read_replay_buffer(
                 seen_games.add(key)
         count = sum(info.training_count for info in infos[latest_start:])
         total = sum(info.training_count for info in infos)
+        if SAMPLE_MULTIPLIER * count < batch_size:
+            raise ValueError("sample count must be at least batch_size for one full update")
         selected = sample_training_indices(total, SAMPLE_MULTIPLIER * count, seed)
-        ordered = np.unique(selected)
+        used = selected[:len(selected) // batch_size * batch_size]
+        ordered = np.unique(used.reshape(-1, micro_batch_size)[rank::world_size])
+        diagnostic = np.unique(used) if rank == 0 else np.empty(0, dtype=np.int64)
         futures = []
+        offsets = []
         offset = 0
         for index, info in enumerate(infos):
             end = offset + info.training_count
             first, last = np.searchsorted(ordered, [offset, end])
             indices = (ordered[first:last] - offset).tolist()
-            futures.append(pool.submit(_read_selected, info, indices, index >= latest_start))
+            first, last = np.searchsorted(diagnostic, [offset, end])
+            diagnostic_indices = (diagnostic[first:last] - offset).tolist()
+            futures.append(pool.submit(_read_selected, info, indices, diagnostic_indices,
+                                       rank == 0 and index >= latest_start))
+            offsets.append(offset)
             offset = end
-        datasets = [future.result() for future in futures]
+        results = [future.result() for future in futures]
+        datasets = [data for data, _ in results]
+        retained = np.concatenate([indices + offset for (_, indices), offset in zip(results, offsets, strict=True)])
     prefixes = ("policy", "legal", "opponent_policy", "opponent_legal")
     offset_parts = {prefix: [] for prefix in prefixes}
     counts = dict.fromkeys(prefixes, 0)
@@ -316,4 +330,4 @@ def read_replay_buffer(
         columns[f"{prefix}_offsets"] = np.concatenate(
             [*offset_parts[prefix], np.array([counts[prefix]], dtype=np.uint64)]
         )
-    return Dataset(**columns), infos, selected
+    return Dataset(**columns), infos, selected, retained

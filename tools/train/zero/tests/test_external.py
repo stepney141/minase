@@ -24,8 +24,8 @@ from minase_zero.data import read_file, read_replay_buffer
 from minase_zero.external import external_eval
 from minase_zero.net import ZeroNet
 
-from .cli import require_success, run_cli
-from .test_data import FIXTURE
+from tests.cli import require_success, run_cli
+from tests.test_data import FIXTURE
 
 
 def write_alpha(path: Path, seed: int, games: list[tuple[int, tuple[int, ...], int]]) -> None:
@@ -173,7 +173,7 @@ class ExternalEvaluationTests(unittest.TestCase):
 
     def test_every_cli_argument_is_required_and_device_is_restricted(self) -> None:
         groups = [["--checkpoint", str(self.checkpoint)], ["--data", *map(str, self.paths)],
-                  ["--games", "5"], ["--seed", "42"], ["--device", "cpu"],
+                  ["--games", "5"], ["--seed", "42"], ["--device", "cpu", "--replay-threads", "1"],
                   ["--out", str(self.directory / "missing.json")]]
         invalid = [["external-eval", *(arg for index, group in enumerate(groups) if index != missing for arg in group)]
                    for missing in range(len(groups))]
@@ -192,7 +192,9 @@ class ExternalEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "MCTS"):
             read_file(self.first)
         with self.assertRaisesRegex(ValueError, "MCTS"):
-            read_replay_buffer([self.first], [self.first], 42)
+            read_replay_buffer([self.first], [self.first], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
         self.assertFalse((self.directory / "mcts.json").exists())
 
     def test_out_of_range_sample_and_seed_are_rejected(self) -> None:
@@ -253,8 +255,8 @@ class ExternalEvaluationTests(unittest.TestCase):
         # 対局1だけの集合と対局4だけの集合は、この棋譜の訓練・検証の分割と一致する。
         training = minase_mnsd_reader.read_games(str(self.first), {(11, 1), (29, 4)})
         validation = minase_mnsd_reader.read_games(str(self.first), {(29, 1), (11, 4)})
-        self.assertEqual(training, minase_mnsd_reader.read_selected(str(self.first), [0], False))
-        self.assertEqual(validation, minase_mnsd_reader.read_selected(str(self.first), [], True))
+        self.assertEqual(training, minase_mnsd_reader.read_selected(str(self.first), [0], [], False))
+        self.assertEqual(validation, minase_mnsd_reader.read_selected(str(self.first), [], [], True))
         self.assertEqual(training["games"], struct.pack("<I", 1))
         self.assertEqual(validation["games"], struct.pack("<II", 4, 4))
         self.assertEqual(len(training["boards"]), 144)

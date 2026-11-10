@@ -13,7 +13,6 @@ import shutil
 import signal
 import struct
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -26,9 +25,10 @@ from minase_zero.encoding import encode_planes, policy_mask
 from minase_zero.net import ZeroNet
 from minase_zero.train import compute_losses
 
-from .cli import COMMIT, ZERO, environment, init_arguments, require_success, run_cli, set_training_data, train_arguments
-from .test_data import single_game, write_small
-from .test_replay_buffer import reference_sample
+from tests.cli import (COMMIT, ZERO, command, environment, init_arguments, kill_training,
+                  require_success, run_cli, set_training_data, train_arguments)
+from tests.test_data import single_game, write_small
+from tests.test_replay_buffer import reference_sample
 
 
 class LossTests(unittest.TestCase):
@@ -119,43 +119,51 @@ class TrainTests(unittest.TestCase):
         cls.root = Path(directory.name)
         cls.initial = cls.root / "initial"
         require_success(run_cli(init_arguments(cls.initial, 23)))
-        cls.a, cls.b, cls.partial = (cls.root / name for name in ("continuous", "resumed", "partial"))
-        cls.uninterrupted = run_cli(train_arguments(cls.initial / "checkpoint.pt", cls.a))
-        require_success(cls.uninterrupted)
-        with (cls.root / "interrupted.log").open("w+") as log:
+        cls.runs = {n: cls.train_pair(n) for n in (1, 2)}
+        for name, value in cls.runs[1].items():
+            setattr(cls, name, value)
+        cls.data, cls.infos, _, _ = read_replay_buffer(
+            [ZERO / "fixtures/zero-selfplay-small.mnsd"], [ZERO / "fixtures/zero-selfplay-small.mnsd"], 42,
+            rank=0, world_size=1, batch_size=16, micro_batch_size=4, replay_threads=1,
+        )
+
+    @classmethod
+    def train_pair(cls, n):
+        a, b, partial = (cls.root / f"{name}-{n}" for name in ("continuous", "resumed", "partial"))
+        uninterrupted = run_cli(train_arguments(cls.initial / "checkpoint.pt", a), n)
+        require_success(uninterrupted)
+        with (cls.root / f"interrupted-{n}.log").open("w+") as log:
             process = subprocess.Popen(
-                [sys.executable, "-m", "minase_zero", *train_arguments(cls.initial / "checkpoint.pt", cls.b)],
-                cwd=ZERO, env=environment(), stdout=log, stderr=log,
+                command(train_arguments(cls.initial / "checkpoint.pt", b), n),
+                cwd=ZERO, env=environment(), stdout=log, stderr=log, start_new_session=True,
             )
             try:
                 deadline = time.monotonic() + 120
-                while not (cls.b / "checkpoint.pt").exists():
+                while not (b / "checkpoint.pt").exists():
                     if process.poll() is not None or time.monotonic() >= deadline:
                         log.seek(0)
                         raise AssertionError("training ended before a checkpoint appeared: " + log.read())
                     time.sleep(0.002)
-                process.kill()
-                cls.interrupted_returncode = process.wait(timeout=30)
+                interrupted_returncode = kill_training(process)
             finally:
                 if process.poll() is None:
-                    process.kill()
-                    process.wait(timeout=30)
-        cls.interrupted_state = torch.load(cls.b / "checkpoint.pt", weights_only=True)
-        if (cls.b / "summary.json").exists() or not (
-            0 < cls.interrupted_state["completed_steps"] < cls.interrupted_state["total_steps"]
+                    kill_training(process)
+        interrupted_state = torch.load(b / "checkpoint.pt", weights_only=True)
+        if (b / "summary.json").exists() or not (
+            0 < interrupted_state["completed_steps"] < interrupted_state["total_steps"]
         ):
             raise AssertionError("SIGKILL did not interrupt an unfinished cycle")
-        shutil.copytree(cls.b, cls.partial)
-        cls.b.with_name(cls.b.name + "-data.json").unlink()
-        cls.resumption = run_cli(["train", "--resume", str(cls.b), "--device", "cpu"])
-        require_success(cls.resumption)
-        cls.state_a = torch.load(cls.a / "checkpoint.pt", weights_only=True)
-        cls.state_b = torch.load(cls.b / "checkpoint.pt", weights_only=True)
-        cls.summary_a = json.loads((cls.a / "summary.json").read_text())
-        cls.summary_b = json.loads((cls.b / "summary.json").read_text())
-        cls.data, cls.infos, _ = read_replay_buffer(
-            [ZERO / "fixtures/zero-selfplay-small.mnsd"], [ZERO / "fixtures/zero-selfplay-small.mnsd"], 42,
-        )
+        shutil.copytree(b, partial)
+        b.with_name(b.name + "-data.json").unlink()
+        resumption = run_cli(["train", "--resume", str(b), "--device", "cpu", "--replay-threads", "1"], n)
+        require_success(resumption)
+        return dict(a=a, b=b, partial=partial, uninterrupted=uninterrupted,
+                    interrupted_returncode=interrupted_returncode, interrupted_state=interrupted_state,
+                    resumption=resumption,
+                    state_a=torch.load(a / "checkpoint.pt", weights_only=True),
+                    state_b=torch.load(b / "checkpoint.pt", weights_only=True),
+                    summary_a=json.loads((a / "summary.json").read_text()),
+                    summary_b=json.loads((b / "summary.json").read_text()))
 
     def assert_state_equal(self, left: object, right: object) -> None:
         """最適化器の入れ子を含め、全テンソルをtorch.equalで比べる。"""
@@ -174,16 +182,72 @@ class TrainTests(unittest.TestCase):
             self.assertEqual(left, right)
 
     def test_sigkill_resume_matches_uninterrupted_training(self) -> None:
-        self.assertEqual(self.interrupted_returncode, -signal.SIGKILL)
-        self.assertGreater(self.interrupted_state["completed_steps"], 0)
-        self.assertLess(self.interrupted_state["completed_steps"], self.interrupted_state["total_steps"])
-        for key in ("model", "optimizer", "completed_steps", "total_steps", "positions_seen",
-                    "data_order_sha256", "loss_sums", "learning_curve", "samples_seen", "samples_seen_start"):
-            with self.subTest(key=key):
-                self.assert_state_equal(self.state_a[key], self.state_b[key])
-        self.assertEqual(self.summary_a["diagnostics"], self.summary_b["diagnostics"])
-        self.assertEqual((self.a / "model.onnx").read_bytes(), (self.b / "model.onnx").read_bytes())
-        self.assertIn(f"completed_steps={self.interrupted_state['completed_steps']}/", self.resumption.stderr)
+        for n, run in self.runs.items():
+            with self.subTest(world_size=n):
+                self.assertEqual(run["interrupted_returncode"], -signal.SIGKILL)
+                for key in run["state_a"].keys() - {"elapsed_seconds", "loading_peak_rss_bytes"}:
+                    self.assert_state_equal(run["state_a"][key], run["state_b"][key])
+                for key in run["summary_a"].keys() - {"elapsed_seconds", "loading_peak_rss_bytes", "positions_per_second"}:
+                    self.assert_state_equal(run["summary_a"][key], run["summary_b"][key])
+                self.assertEqual((run["a"] / "model.onnx").read_bytes(), (run["b"] / "model.onnx").read_bytes())
+                self.assertIn(f"completed_steps={run['interrupted_state']['completed_steps']}/", run["resumption"].stderr)
+
+    def assert_close_nested(self, left, right):
+        if isinstance(left, dict):
+            self.assertEqual(left.keys(), right.keys())
+            for key in left:
+                self.assert_close_nested(left[key], right[key])
+        elif isinstance(left, list):
+            self.assertEqual(len(left), len(right))
+            for a, b in zip(left, right, strict=True):
+                self.assert_close_nested(a, b)
+        elif isinstance(left, float):
+            torch.testing.assert_close(torch.tensor(left, dtype=torch.float32), torch.tensor(right, dtype=torch.float32))
+        elif isinstance(left, torch.Tensor):
+            torch.testing.assert_close(left, right)
+        else:
+            self.assertEqual(left, right)
+
+    def test_one_and_two_ranks_have_the_same_updates_and_batch_norm_statistics(self):
+        states = {}
+        for n in (1, 2):
+            out = self.root / f"short-{n}"
+            args = train_arguments(self.initial / "checkpoint.pt", out)
+            args[args.index("--batch-size") + 1] = "512"
+            args[args.index("--micro-batch-size") + 1] = "128"
+            require_success(run_cli(args, n))
+            state = torch.load(out / "checkpoint.pt", weights_only=True)
+            self.assertEqual(state["sample_count"], 2572)
+            self.assertEqual(state["completed_steps"], 5)
+            self.assertEqual(state["total_steps"], 5)
+            self.assertEqual(state["provenance"]["world_size"], n)
+            self.assertNotIn("replay_threads", state["config"])
+            self.assertEqual({p.name for p in out.iterdir()}, {"checkpoint.pt", "model.onnx", "summary.json"})
+            states[n] = state
+        one, two = (states[n] for n in (1, 2))
+        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "samples_seen",
+                    "sample_count", "sample_sha256", "training_count", "validation_count"):
+            self.assertEqual(one[key], two[key], key)
+        buffers = ("running_mean", "running_var", "num_batches_tracked")
+        for name in one["model"]:
+            with self.subTest(name=name, buffer=name.endswith(buffers)):
+                if name.endswith("num_batches_tracked"):
+                    self.assertTrue(torch.equal(one["model"][name], two["model"][name]))
+                else:
+                    torch.testing.assert_close(one["model"][name], two["model"][name])
+        for key in ("optimizer", "loss_sums", "learning_curve"):
+            self.assert_close_nested(one[key], two[key])
+
+    def test_resume_can_change_world_size_and_replay_threads(self):
+        out = self.root / "changed-world-size"
+        shutil.copytree(self.partial, out)
+        result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "2"], 2)
+        require_success(result)
+        state = torch.load(out / "checkpoint.pt", weights_only=True)
+        self.assertEqual(state["provenance"]["world_size"], 1)
+        self.assertEqual(state["completed_steps"], state["total_steps"])
+        for key in ("data_order_sha256", "completed_steps", "total_steps", "positions_seen", "samples_seen"):
+            self.assertEqual(state[key], self.state_a[key])
 
     def test_data_list_stores_only_paths_and_resume_does_not_read_the_list(self) -> None:
         self.assertFalse(self.b.with_name(self.b.name + "-data.json").exists())
@@ -196,21 +260,23 @@ class TrainTests(unittest.TestCase):
         training = np.flatnonzero(~self.data.validation)
         ordered = reference_sample(len(training), 4 * len(training), 42)
         digest = bytes(32)
-        for start in range(0, len(ordered), 16):
+        for start in range(0, len(ordered) // 16 * 16, 16):
             digest = hashlib.sha256(digest + b"".join(struct.pack("<q", index) for index in ordered[start:start + 16])).digest()
-        updates = math.ceil(4 * len(training) / 16)
+        updates = 4 * len(training) // 16
         self.assertGreaterEqual(updates, 30)
         self.assertNotEqual(4 * len(training) % 16, 0)
         for state in (self.state_a, self.state_b, self.summary_a, self.summary_b):
             self.assertEqual(state["data_order_sha256"], digest.hex())
             self.assertEqual(state["completed_steps"], updates)
             self.assertEqual(state["total_steps"], updates)
-            self.assertEqual(state["positions_seen"], 4 * len(training))
+            self.assertEqual(state["positions_seen"], 16 * updates)
+            self.assertEqual(state["sample_count"], 4 * len(training))
+            self.assertEqual(state["samples_seen"], state["samples_seen_start"] + 16 * updates)
         checkpoints = list(range(4, updates + 1, 4))
         if checkpoints[-1] != updates:
             checkpoints.append(updates)
         self.assertEqual([point["completed_steps"] for point in self.summary_a["learning_curve"]], checkpoints)
-        self.assertEqual(len(self.uninterrupted.stderr.splitlines()), len(checkpoints))
+        self.assertEqual(sum(line.startswith("steps=") for line in self.uninterrupted.stderr.splitlines()), len(checkpoints))
         for name, value in self.state_a["model"].items():
             if name.endswith("num_batches_tracked"):
                 self.assertEqual(value.item(), updates)
@@ -223,7 +289,7 @@ class TrainTests(unittest.TestCase):
         (out / "model.onnx").unlink()
         (out / "summary.json").unlink()
         saved_bytes = (out / "checkpoint.pt").read_bytes()
-        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu"]))
+        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"]))
         self.assertEqual(saved_bytes, (out / "checkpoint.pt").read_bytes())
         self.assertEqual((out / "model.onnx").read_bytes(), (self.a / "model.onnx").read_bytes())
         summary = json.loads((out / "summary.json").read_text())
@@ -262,7 +328,9 @@ class TrainTests(unittest.TestCase):
             (validation_game, 0, 2, 32768, (65_535,)),
         ]
         write_small(path, [single_game(*game) for game in sorted(games)], "engine-default")
-        data, _, _ = read_replay_buffer([path], [path], 42)
+        data, _, _, _ = read_replay_buffer([path], [path], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         indices = np.flatnonzero(~data.validation)
         indices = indices[reference_sample(len(indices), 4 * len(indices), 42)]
         model = ZeroNet(1, 16).train()
@@ -314,12 +382,13 @@ class TrainTests(unittest.TestCase):
         legacy["ema"] = {"model": {}, "samples_since_update": 0, "updates": 1}
         obsolete_settings = {"ema_period_samples": 500_000, "ema_scale": 8, "lr_schedule": "constant"}
         legacy["config"].update(obsolete_settings)
+        del legacy["config"]["micro_batch_size"]
         initial = self.root / "legacy-checkpoint.pt"
         torch.save(legacy, initial)
         arguments = train_arguments(initial, out)
         set_training_data(arguments, [str(path)])
         for flag, value in (("--latest-data", str(path)), ("--cycle", "2"), ("--batch-size", "8"),
-                            ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
+                            ("--micro-batch-size", "8"), ("--lr", "0.03"), ("--momentum", "0.8"), ("--weight-decay", "0.0002"),
                             ("--clip-grad-norm", "0.1")):
             arguments[arguments.index(flag) + 1] = value
         require_success(run_cli(arguments))
@@ -346,7 +415,7 @@ class TrainTests(unittest.TestCase):
 
     def test_finished_nonempty_unfinished_init_and_cpu_bf16_are_rejected(self) -> None:
         cases = [
-            ["train", "--resume", str(self.a), "--device", "cpu"],
+            ["train", "--resume", str(self.a), "--device", "cpu", "--replay-threads", "1"],
             train_arguments(self.initial / "checkpoint.pt", self.a),
             train_arguments(self.partial / "checkpoint.pt", self.root / "bad-init"),
         ]
@@ -357,7 +426,7 @@ class TrainTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 result = run_cli(arguments)
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1, result.stderr)
 
     def test_resume_checks_raw_paths_sizes_and_training_validation_counts(self) -> None:
         for field in ("path", "size", "training_count", "validation_count"):
@@ -371,9 +440,9 @@ class TrainTests(unittest.TestCase):
                 else:
                     record[field] += 1
                 torch.save(state, out / "checkpoint.pt")
-                result = run_cli(["train", "--resume", str(out), "--device", "cpu"])
+                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"])
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1, result.stderr)
                 self.assertFalse((out / "summary.json").exists())
 
     def test_resume_uses_recorded_provenance_without_rechecking_content_hash(self) -> None:
@@ -393,7 +462,7 @@ class TrainTests(unittest.TestCase):
         recorded = state["provenance"]["files"][0]["sha256"]
         self.assertNotEqual(recorded, hashlib.sha256(content).hexdigest())
         torch.save(state, out / "checkpoint.pt")
-        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu"]))
+        require_success(run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"]))
         summary = json.loads((out / "summary.json").read_text())
         self.assertEqual(summary["provenance"]["files"][0]["sha256"], recorded)
         self.assertEqual(summary["diagnostics"], self.summary_a["diagnostics"])
@@ -433,6 +502,7 @@ class TrainTests(unittest.TestCase):
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
         set_training_data(arguments, [str(path)])
         arguments[arguments.index("--latest-data") + 1] = str(path)
+        arguments[arguments.index("--batch-size") + 1] = "4"
         result = run_cli(arguments)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("training diagnostic sample", result.stderr)
@@ -444,12 +514,12 @@ class TrainTests(unittest.TestCase):
         wrong_commit[-1] = "z" * 40
         missing = train_arguments(self.root / "missing.pt", self.root / "missing-output")
         cases = [[], ["init"], wrong_commit, missing,
-                 ["train", "--resume", str(self.partial), "--device", "cpu", "--seed", "1"]]
+                 ["train", "--resume", str(self.partial), "--device", "cpu", "--replay-threads", "1", "--seed", "1"]]
         for arguments in cases:
             with self.subTest(arguments=arguments):
                 result = run_cli(arguments)
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1, result.stderr)
 
 
 class DataListTests(unittest.TestCase):
@@ -463,7 +533,7 @@ class DataListTests(unittest.TestCase):
                     path.write_bytes(content)
                     result = run_cli(arguments)
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+                    self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1, result.stderr)
                     self.assertIn(str(path), result.stderr)
                     self.assertFalse((root / "out").exists())
             path.unlink()

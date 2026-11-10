@@ -11,7 +11,7 @@ from minase_zero.encoding import policy_mask
 from minase_zero.net import TrainingLogits
 from minase_zero.train import PolicyTargets, _policy_batch, compute_training_losses, soft_policy_targets, total_loss
 
-from .test_diagnostics import example
+from tests.test_diagnostics import example
 
 
 def make_targets(rows, labels, probabilities, legal_offsets, legal_labels):

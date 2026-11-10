@@ -8,10 +8,10 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 import minase_mnsd_reader
 import numpy as np
@@ -19,8 +19,9 @@ import torch
 
 from minase_zero.data import Dataset, is_training_sample, read_replay_buffer, sample_training_indices
 
-from .cli import ZERO, environment, init_arguments, require_success, run_cli, set_training_data, train_arguments
-from .test_data import single_game, write_small
+from tests.cli import (ZERO, command, environment, init_arguments, kill_training,
+                  require_success, run_cli, set_training_data, train_arguments)
+from tests.test_data import single_game, write_small
 
 
 # shuffle.rsの既知値。seed=11と22の0..79について、検証に入る対局番号である。
@@ -83,9 +84,15 @@ class ReplayBufferTests(unittest.TestCase):
         self.assertEqual(state[2:], after[2:])
 
     def test_same_seed_reproduces_selection_and_other_seed_changes_it(self) -> None:
-        data, infos, first = read_replay_buffer(self.paths, self.paths[1:], 42)
-        repeated_data, _, repeated = read_replay_buffer(self.paths, self.paths[1:], 42)
-        _, _, different = read_replay_buffer(self.paths, self.paths[1:], 43)
+        data, infos, first, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
+        repeated_data, _, repeated, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
+        _, _, different, _ = read_replay_buffer(self.paths, self.paths[1:], 43,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual([info.training_count for info in infos], [73, 37, 36])
         self.assertEqual(first.tolist(), reference_sample(146, 292, 42))
         np.testing.assert_array_equal(first, repeated)
@@ -94,7 +101,9 @@ class ReplayBufferTests(unittest.TestCase):
             np.testing.assert_array_equal(getattr(data, field.name), getattr(repeated_data, field.name))
 
     def test_selected_positions_exclude_validation_and_keep_only_latest_validation(self) -> None:
-        data, _, selected = read_replay_buffer(self.paths, self.paths[1:], 42)
+        data, _, selected, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual(len(selected), 292)
         self.assertEqual(len(set(selected)), 146)
         keys = training_keys()
@@ -110,14 +119,16 @@ class ReplayBufferTests(unittest.TestCase):
         self.assertFalse(np.any(data.training_sample & data.validation))
 
     def test_extension_and_python_keep_only_sampled_rows_and_latest_validation(self) -> None:
-        data, infos, selected = read_replay_buffer(self.paths, self.paths[1:], 42)
+        data, infos, selected, _ = read_replay_buffer(self.paths, self.paths[1:], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual(len(data), 146 + 7)
         self.assertLess(len(data), sum(info.position_count for info in infos))
         offset = 0
         rows = 0
         for index, info in enumerate(infos):
             local = np.unique(selected[(selected >= offset) & (selected < offset + info.training_count)] - offset)
-            raw = minase_mnsd_reader.read_selected(str(info.path), local.tolist(), index >= 1)
+            raw = minase_mnsd_reader.read_selected(str(info.path), local.tolist(), [], index >= 1)
             kept = len(local) + (info.validation_count if index >= 1 else 0)
             self.assertEqual(len(raw["games"]), kept * 4)
             self.assertEqual(len(raw["boards"]), kept * 144)
@@ -132,9 +143,13 @@ class ReplayBufferTests(unittest.TestCase):
         alias = str(third.parent) + "/./" + third.name
         for latest in ([], [first], [third, second], [second], [alias], [first, second, third, third]):
             with self.subTest(latest=latest), self.assertRaises(ValueError):
-                read_replay_buffer([str(path) for path in self.paths], latest, 42)
+                read_replay_buffer([str(path) for path in self.paths], latest, 42,
+                    rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+                )
         # パス列を並べ替えれば通し番号も変わるが、新しい末尾に対する抽出は定義できる。
-        _, infos, selected = read_replay_buffer([third, second, first], [first], 42)
+        _, infos, selected, _ = read_replay_buffer([third, second, first], [first], 42,
+            rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+        )
         self.assertEqual([info.training_count for info in infos], [36, 37, 73])
         self.assertEqual(len(selected), 292)
 
@@ -143,10 +158,48 @@ class ReplayBufferTests(unittest.TestCase):
         # seed=20261038の対局番号によらず、価値なしの項目は訓練局面数に含まない。
         write_small(path, [single_game(100, 0, 2, None, ())], "engine-default")
         with self.assertRaises(ValueError):
-            read_replay_buffer(self.paths, [path], 42)
+            read_replay_buffer(self.paths, [path], 42,
+                rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
+            )
         for total, count, seed in ((1, 0, 0), (0, 2, 0), (1, 1, -1), (1, 1, 1 << 64)):
             with self.subTest(total=total, count=count, seed=seed), self.assertRaises(ValueError):
                 sample_training_indices(total, count, seed)
+
+    def test_ranks_keep_assigned_occurrences_and_rank_zero_diagnostics_without_the_tail(self):
+        keys = training_keys()
+        # 最新が1ファイルのときはS=144<T=146であり、B=128なら末尾16個を捨てる。
+        # 最新が2ファイルのときはS=292>Tで、同じ通し番号が複数ランクへ配られる。
+        for latest, count in ((self.paths[-1:], 144), (self.paths[1:], 292)):
+            selected = reference_sample(146, count, 42)
+            used = selected[:count // 128 * 128]
+            diagnostics = {index for index in used
+                           if is_training_sample(11 if keys[index][0] == 0 else 22,
+                                                 np.array([keys[index][1]], dtype=np.uint32))[0]}
+            for n in (1, 2, 4):
+                for rank in range(n):
+                    with self.subTest(count=count, n=n, rank=rank):
+                        expected = {ordinal for position, ordinal in enumerate(used) if (position // 16) % n == rank}
+                        if rank == 0:
+                            expected |= diagnostics
+                        data, infos, actual, retained = read_replay_buffer(
+                            self.paths, latest, 42, rank=rank, world_size=n,
+                            batch_size=128, micro_batch_size=16, replay_threads=2,
+                        )
+                        self.assertEqual(actual.tolist(), selected)
+                        self.assertEqual(retained.tolist(), sorted(expected))
+                        self.assertEqual(list(zip(data.file_indices[~data.validation], data.games[~data.validation])),
+                                         [keys[index] for index in sorted(expected)])
+                        validation_count = sum(info.validation_count for info in infos[-len(latest):]) if rank == 0 else 0
+                        self.assertEqual(np.count_nonzero(data.validation), validation_count)
+                        if rank == 0:
+                            diagnostic_rows = list(zip(data.file_indices[data.training_sample], data.games[data.training_sample]))
+                            self.assertEqual(diagnostic_rows, [keys[index] for index in sorted(diagnostics)])
+
+    def test_insufficient_sample_count_fails_before_any_replay(self):
+        with patch("minase_zero.data._read_selected", side_effect=AssertionError("replay must not start")):
+            with self.assertRaisesRegex(ValueError, "sample count must be at least batch_size"):
+                read_replay_buffer(self.paths, self.paths[1:], 42, rank=0, world_size=1,
+                                   batch_size=512, micro_batch_size=16, replay_threads=2)
 
 
 class ReplayBufferTrainTests(unittest.TestCase):
@@ -162,8 +215,8 @@ class ReplayBufferTrainTests(unittest.TestCase):
         require_success(run_cli(init_arguments(cls.initial, 29)))
         require_success(run_cli(cls.arguments(cls.continuous)))
         with (cls.root / "interrupted.log").open("w+") as log:
-            process = subprocess.Popen([sys.executable, "-m", "minase_zero", *cls.arguments(cls.resumed)],
-                                       cwd=ZERO, env=environment(), stdout=log, stderr=log)
+            process = subprocess.Popen(command(cls.arguments(cls.resumed)),
+                                       cwd=ZERO, env=environment(), stdout=log, stderr=log, start_new_session=True)
             try:
                 deadline = time.monotonic() + 120
                 while not (cls.resumed / "checkpoint.pt").exists():
@@ -171,17 +224,15 @@ class ReplayBufferTrainTests(unittest.TestCase):
                         log.seek(0)
                         raise AssertionError("no intermediate checkpoint: " + log.read())
                     time.sleep(0.002)
-                process.kill()
-                process.wait(timeout=30)
+                kill_training(process)
             finally:
                 if process.poll() is None:
-                    process.kill()
-                    process.wait(timeout=30)
+                    kill_training(process)
         interrupted = torch.load(cls.resumed / "checkpoint.pt", weights_only=True)
         if not 0 < interrupted["completed_steps"] < interrupted["total_steps"]:
             raise AssertionError("training was not interrupted between updates")
         shutil.copytree(cls.resumed, cls.partial)
-        require_success(run_cli(["train", "--resume", str(cls.resumed), "--device", "cpu"]))
+        require_success(run_cli(["train", "--resume", str(cls.resumed), "--device", "cpu", "--replay-threads", "1"]))
         cls.state = torch.load(cls.continuous / "checkpoint.pt", weights_only=True)
         cls.summary = json.loads((cls.continuous / "summary.json").read_text())
 
@@ -190,7 +241,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         arguments = train_arguments(cls.initial / "checkpoint.pt", out)
         set_training_data(arguments, [str(path) for path in cls.paths])
         for flag, values in (("--latest-data", [str(path) for path in cls.paths[1:]]),
-                             ("--batch-size", ["2"]), ("--checkpoint-steps", ["2"])):
+                             ("--batch-size", ["2"]), ("--micro-batch-size", ["2"]), ("--checkpoint-steps", ["2"])):
             start = arguments.index(flag) + 1
             arguments[start:start + 1] = values
         return arguments
@@ -219,7 +270,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         self.assertEqual(self.summary["training_count"], 146)
         self.assertEqual(self.summary["validation_count"], 7)
         self.assertEqual(self.summary["positions_seen"], 292)
-        self.assertEqual(self.summary["total_steps"], math.ceil(292 / 2))
+        self.assertEqual(self.summary["total_steps"], 292 // 2)
 
     def test_replay_buffer_larger_than_four_times_latest_trains_the_distinct_sequence(self) -> None:
         # 最新を対局0〜38の36訓練局面とし、診断用の対局32も含める。
@@ -235,7 +286,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         set_training_data(arguments, [str(self.paths[0]), str(self.paths[2]), str(latest)])
         first = arguments.index("--latest-data") + 1
         arguments[first:first + 2] = [str(latest)]
-        arguments[arguments.index("--batch-size") + 1] = "256"
+        arguments[arguments.index("--batch-size") + 1] = "144"
         require_success(run_cli(arguments))
         summary = json.loads((out / "summary.json").read_text())
         ordered = reference_sample(145, 144, 42)
@@ -246,7 +297,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
         self.assertEqual(summary["total_steps"], 1)
         self.assertEqual(summary["positions_seen"], 144)
         self.assertEqual(summary["samples_seen"], 144)
-        self.assertEqual(summary["last_lr"], 0.01 * (256 / 2_000_000))
+        self.assertEqual(summary["last_lr"], 0.01 * (144 / 2_000_000))
         self.assertEqual(summary["sample_sha256"], hashlib.sha256(encoded).hexdigest())
         self.assertEqual(summary["data_order_sha256"], hashlib.sha256(bytes(32) + encoded).hexdigest())
 
@@ -278,9 +329,9 @@ class ReplayBufferTrainTests(unittest.TestCase):
                 state = torch.load(out / "checkpoint.pt", weights_only=True)
                 state["config"][key] = value
                 torch.save(state, out / "checkpoint.pt")
-                result = run_cli(["train", "--resume", str(out), "--device", "cpu"])
+                result = run_cli(["train", "--resume", str(out), "--device", "cpu", "--replay-threads", "1"])
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1)
+                self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1)
                 self.assertFalse((out / "summary.json").exists())
 
     def test_cli_requires_latest_data_and_rejects_non_suffix_order(self) -> None:
@@ -294,7 +345,7 @@ class ReplayBufferTrainTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 result = run_cli(arguments)
                 self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertEqual(len(result.stderr.splitlines()), 1)
+                self.assertEqual(sum(line.startswith("minase_zero:") for line in result.stderr.splitlines()), 1)
                 self.assertIn("latest-data", result.stderr)
 
 
