@@ -15,6 +15,9 @@
 #   n1pair                 GPU 0で全体のバッチ1,024、GPU 1で256のN=1の1サイクルを同時に学ぶ
 #   compare                N=1とN=4の出力の差と、全体のバッチ256と1,024の検証の損失の比較
 #   load                   約3,000万局面の読み込みの時間と最大常駐メモリ
+#   ort-exit <ネット>       minase dev nn-evalを各実行プロバイダで繰り返して終了コードを数え、異常終了したときのスタックをgdbで取る
+#   check-timing <学習の出力>  実行器の照合と同じ12個のコマンドの時間と終了コードを、異常終了で止めずに測る
+#   seed2                  抽出のシードだけを変えたN=4の1サイクルと、その出力の比較
 set -euo pipefail
 stage=$1; C=$2; shift 2
 Z=/workspace/src/tools/train/zero
@@ -126,6 +129,84 @@ load)
     cd "$Z"
     uv run --frozen python "$D/load-check.py" --out "$M/load" --commit "$C" --init "$M/init/checkpoint.pt" \
         --data-list "$M/buf.json" --latest-list "$M/latest.json" --nproc 4 --replay-threads "$R"
+    ;;
+ort-exit)
+    net=$1
+    out=$M/ort-exit
+    mkdir -p "$out"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdb > /dev/null
+    minase=/workspace/src/target/release/minase
+    run() {  # <名前> <コマンド...>
+        local name=$1; shift
+        local started=$(date +%s%N)
+        set +e
+        "$@" > "$out/$name.out" 2> "$out/$name.err"
+        local code=$?
+        set -e
+        printf '%s\t%s\t%s\t%s\n' "$name" "$code" "$(( ($(date +%s%N) - started) / 1000000 ))" "$(tail -n 1 "$out/$name.err" | tr '\t' ' ')" >> "$out/exit.tsv"
+    }
+    for i in 1 2 3 4 5; do run "trt-b1-$i" "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 1 --out "$out/trt-b1-$i.json" --cache-dir /workspace/cache/ort-exit; done
+    for i in 1 2 3; do run "trt-b7-$i" "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 7 --out "$out/trt-b7-$i.json" --cache-dir /workspace/cache/ort-exit; done
+    for i in 1 2 3; do run "trt-b256-$i" "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 256 --out "$out/trt-b256-$i.json" --cache-dir /workspace/cache/ort-exit; done
+    for i in 1 2 3; do run "cuda-b7-$i" "$minase" dev nn-eval --nn-model "$net" --backend cuda --batch 7 --out "$out/cuda-b7-$i.json"; done
+    for i in 1 2; do run "cpu-b7-$i" "$minase" dev nn-eval --nn-model "$net" --backend cpu --batch 7 --out "$out/cpu-b7-$i.json"; done
+    debug=$(ls /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0 2>/dev/null || true)
+    if [ -n "$debug" ]; then
+        for i in 1 2 3; do run "trt-b1-mallocdebug-$i" env LD_PRELOAD="$debug" MALLOC_CHECK_=3 "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 1 --out "$out/trt-b1-mallocdebug-$i.json" --cache-dir /workspace/cache/ort-exit; done
+    fi
+    for i in 1 2 3; do
+        set +e
+        gdb -batch -ex run -ex bt -ex "info sharedlibrary" --args "$minase" dev nn-eval --nn-model "$net" --backend tensorrt --batch 1 \
+            --out "$out/gdb-$i.json" --cache-dir /workspace/cache/ort-exit > "$out/gdb-$i.txt" 2>&1
+        set -e
+        if grep -q "SIGABRT" "$out/gdb-$i.txt"; then break; fi
+    done
+    cat "$out/exit.tsv"
+    ;;
+check-timing)
+    train=$1
+    out=$M/check-timing
+    mkdir -p "$out"
+    cd "$Z"
+    minase=/workspace/src/target/release/minase
+    fixture=/workspace/src/crates/minase/tests/fixtures/nn-positions.jsonl
+    step() {  # <名前> <コマンド...>
+        local name=$1; shift
+        local started=$(date +%s%N)
+        set +e
+        "$@" > "$out/$name.out" 2> "$out/$name.err"
+        local code=$?
+        set -e
+        printf '%s\t%s\t%s\n' "$name" "$code" "$(( ($(date +%s%N) - started) / 1000000 ))" >> "$out/steps.tsv"
+    }
+    step fixture-eval uv run --frozen python -m minase_zero fixture-eval --checkpoint "$train/checkpoint.pt" \
+        --onnx "$train/model.onnx" --fixture "$fixture" --out "$out/pytorch.json"
+    for batch in 1 7 256; do
+        step "cpu-b$batch" "$minase" dev nn-eval --nn-model "$train/model.onnx" --backend cpu --batch "$batch" --out "$out/cpu-b$batch.json"
+        step "cpu-b$batch-compare" uv run --frozen python nn_compare.py --reference "$out/pytorch.json" --candidate "$out/cpu-b$batch.json" \
+            --policy logits --policy-tolerance 1e-4 --value-tolerance 1e-4
+        step "trt-b$batch" "$minase" dev nn-eval --nn-model "$train/model.onnx" --backend tensorrt --batch "$batch" --out "$out/trt-b$batch.json" \
+            --cache-dir /workspace/cache/check-timing
+        step "trt-b$batch-compare" uv run --frozen python nn_compare.py --reference "$out/pytorch.json" --candidate "$out/trt-b$batch.json" \
+            --policy probabilities --policy-tolerance 1e-2 --value-tolerance 5e-2
+    done
+    cat "$out/steps.tsv"
+    ;;
+seed2)
+    cd "$Z"
+    mkdir -p "$M/seed2-cache"
+    mapfile -t arguments < <(new_cycle "$M/seed2" 1024 0.04 50 "$C")
+    arguments=("${arguments[@]/#20261101/20261102}")
+    TORCHINDUCTOR_CACHE_DIR="$M/seed2-cache/inductor" TRITON_CACHE_DIR="$M/seed2-cache/triton" \
+        uv run --frozen torchrun --standalone --nproc-per-node 4 -m minase_zero train "${arguments[@]}"
+    fixture=/workspace/src/crates/minase/tests/fixtures/nn-positions.jsonl
+    for pair in "seed1 $M/resume-n4/uninterrupted" "seed2 $M/seed2"; do
+        read -r name run <<< "$pair"
+        uv run --frozen python -m minase_zero fixture-eval --checkpoint "$run/checkpoint.pt" \
+            --onnx "$run/model.onnx" --fixture "$fixture" --out "$M/fixture-n4-$name.json"
+    done
+    uv run --frozen python "$D/compare-outputs.py" --reference "$M/fixture-n4-seed1.json" \
+        --candidate "$M/fixture-n4-seed2.json" --out "$M/seed1-vs-seed2.json"
     ;;
 *)
     echo "unknown stage: $stage" >&2

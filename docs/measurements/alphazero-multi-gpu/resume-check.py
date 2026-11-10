@@ -9,6 +9,7 @@
 全体のバッチ1,024、ミクロバッチ256、学習率0.04、bf16で、--data-listの全ファイルをリプレイバッファと最新のサイクルの両方に使う。
 強制終了では、torchrunとその子孫のプロセス群のすべてへSIGKILLを送る。torchrunはワーカーを別のセッションで起動するからである。
 比べるのは、経過時間と最大常駐メモリを除くチェックポイントの全項目、経過時間と速さと最大常駐メモリを除くsummary.jsonの全項目、およびmodel.onnxのバイト列である。
+チェックポイントの重みで食い違ったテンソルの名前も記録する。
 結果は<out>/result.jsonに書く。
 """
 
@@ -148,6 +149,8 @@ result = {
     "model_onnx_bytes_equal": (a / "model.onnx").read_bytes() == (b / "model.onnx").read_bytes(),
     "network_sha256": [summary_a["network_sha256"], summary_b["network_sha256"]],
 }
+result["model_tensors_differing"] = sorted(
+    name for name in state_a["model"] if not same(state_a["model"][name], state_b["model"][name]))
 result["all_equal"] = (all(result["checkpoint"].values()) and all(result["summary"].values())
                        and result["model_onnx_bytes_equal"])
 (args.out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
