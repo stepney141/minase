@@ -20,6 +20,19 @@ from minase_zero.train import training_fabric
 from tests.cli import ZERO, environment, init_arguments, require_success, run_cli, run_command, train_arguments
 
 
+class FabricSettingsTests(unittest.TestCase):
+    def test_ddp_keeps_bucket_order_and_does_not_broadcast_buffers(self):
+        ranks = {"WORLD_SIZE": "4", "LOCAL_WORLD_SIZE": "4", "RANK": "0", "LOCAL_RANK": "0"}
+        # 分散処理の起動と終了だけを差し替え、実際のFabricとDDPStrategyを検証する。
+        with (patch.dict(os.environ, ranks, clear=True),
+              patch.object(train.Fabric, "launch"),
+              patch.object(torch.distributed, "destroy_process_group")):
+            with training_fabric("cpu", "fp32") as fabric:
+                self.assertIsInstance(fabric.strategy, train.DDPStrategy)
+                self.assertIs(fabric.strategy._ddp_kwargs["find_unused_parameters"], True)
+                self.assertIs(fabric.strategy._ddp_kwargs["broadcast_buffers"], False)
+
+
 class FabricTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

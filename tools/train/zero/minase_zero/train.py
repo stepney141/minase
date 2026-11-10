@@ -27,6 +27,7 @@ Bとmは正の整数、Bはmの倍数、KはNの倍数とし、Fabricの作成�
 k番目の更新はs[kB:(k+1)B]を使い、全更新回数はfloor(S/B)となる。
 ミクロバッチjはs[kB+jm:kB+(j+1)m]で、ランクrはj mod N=rのものを番号順に処理する。
 Lightning Fabricは精度32-trueの分散データ並列（DDP）を使い、自分の最後のミクロバッチだけで勾配を同期する。
+DDPのfind_unused_parameters=Trueで勾配のバケットの組み替えを止め、再開前後の加算順をそろえる。
 学習用の全出力を返すTrainingModuleの順伝播を、torch.compile(..., fullgraph=True)の既定モードで常にコンパイルする。
 bf16のamaxの逆伝播でNaNが生じるのを防ぐため、torch._inductor.config.emulate_precision_casts=Trueをプロセス全体に設定し、コンパイルしない実行と同じ丸めを残す。
 逆伝播のグラフは最初の逆伝播時にコンパイルされるため、この設定を順伝播だけの文脈に限定しない。
@@ -288,7 +289,10 @@ def training_fabric(device_name: str, precision: str) -> Iterator[Fabric]:
         accelerator=device_name, devices=world_size, num_nodes=1,
         strategy=DDPStrategy(
             process_group_backend="nccl" if device_name == "cuda" else "gloo",
-            broadcast_buffers=False, find_unused_parameters=False, timeout=timedelta(hours=1),
+            # バケットの組み替えで再開直後の更新の加算順が変わり、GPU 4枚での再開後の重みが食い違ったと考えられる。
+            # find_unused_parameters=Trueで組み替えを止める。
+            # RTX 4090 4枚で189回の更新を学ぶ再開の確認では、この設定で一致し、学習時間の差は約2%だった。
+            broadcast_buffers=False, find_unused_parameters=True, timeout=timedelta(hours=1),
         ),
         precision="32-true",
     )
