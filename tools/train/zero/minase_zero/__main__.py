@@ -16,8 +16,10 @@
 - external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
-- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--replay-buffer-positionsでリプレイバッファの
-  局面数、--generation-commitと--trainer-commitで生成と学習のコミットを指定する。
+- run-cycles：--machine colab|vastで指定した機械で生成、学習、照合を順に実行し、NASへ受け取る。
+  colabでは--sessionと--cycle-cu、vastでは--vast-instanceを必須とし、ほかの種類の機械の引数は指定できない。
+  --threads-per-gpuでGPUあたりの生成スレッド数、--replay-buffer-positionsでリプレイバッファの局面数を指定する。
+  --generation-commitと--trainer-commitで生成と学習のコミットを指定する。
   引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。

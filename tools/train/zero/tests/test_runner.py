@@ -1,15 +1,18 @@
 """実行器の契約を指示書brief-rl-runner.mdとdocs/plans/archived/alphazero-rl.mdから固定する。
 
 対局数、較正、リプレイバッファの順序、開始の境界は独立した具体例で検証する。外部との境界には
-一時ディレクトリをColab機に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
+一時ディレクトリを借りた機械に見立てたRemoteを使い、実ファイルで再開と転送を確かめる。
 照合のシェルは外部コマンドだけを小さな実行ファイルへ置き換えて実際に走らせる。
 台帳の欠落とチェックポイントの置き換え競合はbrief-rl-runner-fix.mdの契約に従う。
 局面数によるリプレイバッファ、生成と学習のコミットの分離、一括転送を検証する。
+機械の種類と複数GPUの契約はphase3a.mdとdocs/plans/alphazero-multi-gpu.mdに従う。
 """
 
+from contextlib import redirect_stdout
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -20,13 +23,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from minase_zero.__main__ import _parse
+from minase_zero.__main__ import _parse, main
+from minase_zero import runner as runner_module
 from minase_zero.runner import (
-    FIXTURE, Options, Remote, Runner, append_cycle, can_start, chunk_files, game_counts, parse_balance,
+    Options, Remote, RemotePaths, Runner, append_cycle, can_start, chunk_files, game_counts, parse_balance,
     publish_network, receive, resignation, seed_registration, send, summaries, replay_buffer,
+    load_vast_common, machine_info,
 )
 
 
+FIXTURE = "/content/src/crates/minase/tests/fixtures/nn-positions.jsonl"
+VAST_FIXTURE = "/workspace/src/crates/minase/tests/fixtures/nn-positions.jsonl"
 GENERATION_COMMIT = "a" * 40
 TRAINER_COMMIT = "b" * 40
 NOW = datetime(2026, 10, 29, 1, 0, tzinfo=UTC)
@@ -45,12 +52,18 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def colab_remote(session):
+    remote = Remote(session)
+    remote.connect("colab", None)
+    return remote
+
+
 class FakeRemote:
     """転送と起動だけを置き換え、NAS側の確定処理は実物で検証する。"""
 
     def __init__(self, root: Path):
         self.root = root
-        self.source_files = {FIXTURE}
+        self.source_files = {FIXTURE, VAST_FIXTURE}
         self.existence_checks = []
         self.uploads = []
         self.upload_batches = []
@@ -63,9 +76,16 @@ class FakeRemote:
         self.states = {}
         self.balances = [100.0, 98.0, 98.0, 96.0]
         self.machine_calls = 0
+        self.hardware = {"gpu": "NVIDIA L4", "gpu_memory_mib": 23034, "gpu_count": 1,
+                         "cpu": "Test CPU", "nproc": 12, "cpus_available": 12}
         self.corrupt = False
         self.on_start = None
         self.on_download = None
+
+    def connect(self, kind, vast_instance):
+        self.kind = kind
+        self.vast_instance = vast_instance
+        self.paths = RemotePaths(kind)
 
     def exists(self, relative):
         self.existence_checks.append(relative)
@@ -109,11 +129,16 @@ class FakeRemote:
         write(target, b"corrupt" if self.corrupt else (self.root / relative).read_bytes())
 
     def usage(self):
+        if self.kind != "colab":
+            raise AssertionError("vast must not query a balance")
         return self.balances.pop(0)
 
     def machine(self):
         self.machine_calls += 1
-        return {"gpu": "NVIDIA L4", "cpu": "Test CPU", "nproc": 12}
+        info = {**self.hardware, "kind": self.kind}
+        if self.kind == "vast":
+            info["vast_instance"] = self.vast_instance
+        return info
 
     def status(self, stem):
         if stem in self.states:
@@ -148,12 +173,13 @@ class RunnerCase(unittest.TestCase):
         self.reference = self.directory / "trial.json"
         write_json(self.reference, {"games": 20, "training_positions": 2000})
         self.options = Options(
-            root=self.root, session="test-session", generation_commit=GENERATION_COMMIT,
+            root=self.root, machine="colab", vast_instance=None, session="test-session",
+            generation_commit=GENERATION_COMMIT,
             cycles_dir=Path("cycles"), base_cycles_dir=Path("cycles"), branch_from=0,
             trainer_commit=TRAINER_COMMIT, first_cycle=1, last_cycle=1,
             deadline=NOW + timedelta(hours=8), cycle_minutes=40, cycle_cu=2,
             start_position="random-opening", generation_seed_offset=0,
-            target_positions=1000, chunks=2, simulations=32, threads=6, games_per_thread=4,
+            target_positions=1000, chunks=2, simulations=32, threads_per_gpu=6, games_per_thread=4,
             replay_buffer_first_cycle=1,
             replay_buffer_positions=1000, batch_size=256, lr=0.01, momentum=0.9, weight_decay=0.0001,
             clip_grad_norm=10, value_lambda=0.333, precision="bf16", checkpoint_steps=200,
@@ -627,6 +653,41 @@ class GenerationTests(RunnerCase):
 
 
 class ResumeTests(RunnerCase):
+    def test_training_uses_four_processes_and_floors_replay_threads_for_new_and_resumed_cycles(self):
+        self.remote.hardware.update(gpu_count=4, cpus_available=18)
+        options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
+                          batch_size=1024)
+        runner = Runner(options, self.remote)
+        files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
+        prefix = ["uv", "run", "--frozen", "--project", "/workspace/src/tools/train/zero", "torchrun",
+                  "--standalone", "--nproc-per-node", "4", "-m", "minase_zero", "train"]
+        command = runner.training_command(1, files, files)
+        self.assertEqual(command[:len(prefix)], prefix)
+        self.assertEqual(command[command.index("--batch-size") + 1], "1024")
+        self.assertEqual(command[command.index("--micro-batch-size") + 1], "256")
+        self.assertEqual(command[command.index("--replay-threads") + 1], "4")
+        checkpoint = "cycles/cycle-0001/train/checkpoint.pt"
+        write(self.root / checkpoint, b"saved checkpoint")
+        for location in ("nas", "remote"):
+            with self.subTest(location=location):
+                command = runner.training_command(1, files, files)
+                self.assertEqual(command, [*prefix, "--resume", "cycles/cycle-0001/train",
+                                           "--device", "cuda", "--replay-threads", "4"])
+                self.assertNotIn("--micro-batch-size", command)
+        self.assertEqual(self.remote.uploads, [checkpoint])
+
+    def test_training_requires_one_cpu_per_gpu_before_upload_or_launch(self):
+        self.remote.hardware.update(gpu_count=4, cpus_available=3)
+        for checkpoint in (None, self.root, self.remote_root):
+            with self.subTest(checkpoint=checkpoint):
+                if checkpoint is not None:
+                    write(checkpoint / "cycles/cycle-0001/train/checkpoint.pt", b"checkpoint")
+                with self.assertRaisesRegex(ValueError, "CPU"):
+                    self.runner.training(1, ["unavailable.mnsd"], ["unavailable.mnsd"])
+                self.assertEqual(self.remote.starts, [])
+                self.assertEqual(self.remote.uploads, [])
+                self.assertFalse((self.root / "cycles/cycle-0001/train-data.json").exists())
+
     def test_new_training_manifest_preserves_order_and_identical_bytes(self):
         files = ["old/a.mnsd", "new/局面 b.mnsd"]
         command = self.runner.training_command(1, files, files[-1:])
@@ -674,7 +735,7 @@ class ResumeTests(RunnerCase):
         write(self.root / relative, b"older checkpoint")
         files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         command = self.runner.training_command(1, files, files)
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
         self.assertEqual(self.remote.uploads, [])
 
     def test_nas_checkpoint_is_uploaded_for_resume(self):
@@ -682,7 +743,7 @@ class ResumeTests(RunnerCase):
         write(self.root / relative, b"saved checkpoint")
         files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         command = self.runner.training_command(1, files, files)
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
         self.assertEqual(self.remote.uploads, [relative])
         self.assertEqual((self.remote_root / relative).read_bytes(), b"saved checkpoint")
 
@@ -704,7 +765,7 @@ class ResumeTests(RunnerCase):
             with self.subTest(location=location):
                 command = runner.training_command(3, files, files)
                 self.assertEqual(command[command.index("train"):],
-                                 ["train", "--resume", "cycles-branch/cycle-0003/train", "--device", "cuda"])
+                                 ["train", "--resume", "cycles-branch/cycle-0003/train", "--device", "cuda", "--replay-threads", "12"])
                 self.assertEqual((self.remote_root / checkpoint).read_bytes(), b"branch checkpoint")
         self.assertEqual(self.remote.uploads, [checkpoint])
 
@@ -714,14 +775,15 @@ class ResumeTests(RunnerCase):
         files = ["cycles/cycle-0002/selfplay/chunk-00000.mnsd", *latest]
         command = self.runner.training_command(3, files, latest)
         self.assertEqual(command, [
-            "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero", "python", "-m", "minase_zero",
-            "train", "--init", "cycles/cycle-0002/train/checkpoint.pt",
+            "uv", "run", "--frozen", "--project", "/content/src/tools/train/zero",
+            "torchrun", "--standalone", "--nproc-per-node", "1", "-m", "minase_zero", "train", "--init", "cycles/cycle-0002/train/checkpoint.pt",
             "--data-list", "cycles/cycle-0003/train-data.json", "--latest-data", *latest,
             "--out-dir", "cycles/cycle-0003/train", "--cycle", "3", "--seed", "126",
             "--batch-size", "256", "--lr", "0.01", "--momentum", "0.9", "--weight-decay", "0.0001",
             "--clip-grad-norm", "10", "--value-lambda", "0.333", "--precision", "bf16",
             "--checkpoint-steps", "200",
-            "--device", "cuda", "--trainer-commit", TRAINER_COMMIT,
+            "--micro-batch-size", "256", "--device", "cuda", "--replay-threads", "12",
+            "--trainer-commit", TRAINER_COMMIT,
         ])
         first_files = ["cycles/cycle-0001/selfplay/chunk-00000.mnsd"]
         first = self.runner.training_command(1, first_files, first_files)
@@ -766,6 +828,90 @@ class ResumeTests(RunnerCase):
 
 
 class RemoteTests(unittest.TestCase):
+    def test_vast_helpers_load_from_the_repository_and_require_the_file(self):
+        repository = Path(__file__).resolve().parents[4]
+        self.assertEqual(Path(load_vast_common().__file__), repository / "scripts/vast/common.py")
+        with tempfile.TemporaryDirectory() as directory:
+            absent = Path(directory) / "tools/train/zero/minase_zero/runner.py"
+            with patch.object(runner_module, "__file__", str(absent)), self.assertRaises(FileNotFoundError):
+                load_vast_common()
+
+    def test_vast_ssh_and_rsync_share_one_resolved_address_and_connection(self):
+        common = load_vast_common()
+        for host, rsync_host in (("192.0.2.10", "192.0.2.10"), ("2001:db8::10", "[2001:db8::10]")):
+            with self.subTest(host=host), patch.object(common, "ssh_address", return_value=(host, 22222)) as address, \
+                    patch("minase_zero.runner.load_vast_common", return_value=common), \
+                    patch("minase_zero.runner.subprocess.run",
+                          return_value=subprocess.CompletedProcess([], 0, "yes\n", "")) as run:
+                remote = Remote(None)
+                remote.connect("vast", 12345)
+                self.assertTrue(remote.exists("model.onnx"))
+                remote.upload(Path("/NAS"), ["checkpoint.pt", "data.mnsd"], 121)
+                remote.download("model.onnx", Path("/tmp/model.onnx"))
+                self.assertTrue(remote.exists("checkpoint.pt"))
+                address.assert_called_once_with(12345, 600)
+                ssh = run.call_args_list[0].args[0]
+                self.assertEqual(ssh[ssh.index("-i") + 1], str(Path.home() / ".ssh/id_vastai"))
+                self.assertEqual(ssh[ssh.index("-p") + 1], "22222")
+                self.assertEqual(ssh[-2], f"root@{host}")
+                for option in ("BatchMode=yes", "StrictHostKeyChecking=accept-new", "ConnectTimeout=20",
+                               "ServerAliveInterval=30", "ControlMaster=auto",
+                               "ControlPath=/tmp/vast-cm-12345", "ControlPersist=900"):
+                    self.assertIn(option, ssh)
+                self.assertFalse(any("colab" in arg for arg in ssh))
+                for call in run.call_args_list[1:3]:
+                    argv = call.args[0]
+                    self.assertEqual(argv[0], "rsync")
+                    self.assertEqual(shlex.split(argv[argv.index("-e") + 1]), ssh[:-2])
+                self.assertEqual(run.call_args_list[1].args[0][-1], f"root@{rsync_host}:/workspace/az/")
+                self.assertEqual(run.call_args_list[2].args[0][-2], f"root@{rsync_host}:/workspace/az/model.onnx")
+
+    def test_vast_retries_connections_without_resolving_the_address_again(self):
+        common = load_vast_common()
+        for code, detail in ((255, "connection lost"), (1, "HTTP 429 Too Many Requests")):
+            with self.subTest(code=code), patch.object(common, "ssh_address", return_value=("192.0.2.10", 22222)) as address, \
+                    patch("minase_zero.runner.load_vast_common", return_value=common), \
+                    patch("minase_zero.runner.time.sleep") as sleep, \
+                    patch("minase_zero.runner.subprocess.run",
+                          return_value=subprocess.CompletedProcess([], code, "", detail)) as run:
+                remote = Remote(None)
+                remote.connect("vast", 12345)
+                with self.assertRaises(RuntimeError):
+                    remote.exists("model.onnx")
+                self.assertEqual(run.call_count, 6)
+                self.assertEqual([call.args for call in sleep.call_args_list], [(30,)] * 5)
+                address.assert_called_once_with(12345, 600)
+
+    def test_detached_jobs_use_each_machines_work_source_and_cache(self):
+        common = load_vast_common()
+        for kind, base, session, instance in (("colab", "/content", "test", None),
+                                               ("vast", "/workspace", None, 12345)):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory, \
+                    patch.object(common, "ssh_address", return_value=("192.0.2.10", 22222)), \
+                    patch("minase_zero.runner.load_vast_common", return_value=common):
+                root = Path(directory)
+                write(root / "env.sh", b"export TEST_ENV_LOADED=yes\n")
+                remote = Remote(session)
+                remote.connect(kind, instance)
+
+                def execute(argv, timeout, input_text):
+                    command = shlex.split(argv[-1])
+                    script = command[-1]
+                    self.assertTrue(script.startswith(f"set -e\ncd {base}/az\n"))
+                    script = script.replace(f"cd {base}/az\n", f"cd {shlex.quote(str(root))}\n")
+                    script = script.replace(f"source {base}/src/tools/train/zero/env.sh",
+                                            "source " + shlex.quote(str(root / "env.sh")))
+                    script = 'setsid() { "$@"; }\n' + script.replace("< /dev/null &\n", "< /dev/null\n")
+                    return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                          timeout=timeout, check=True).stdout
+
+                with patch.object(remote, "_call", side_effect=execute):
+                    remote.start("job", 'printf "%s\\n" "$TEST_ENV_LOADED" "$XDG_CACHE_HOME" "$PYTHONPATH"',
+                                 "job.out", "job.err")
+                self.assertEqual((root / "job.out").read_text().splitlines(),
+                                 ["yes", base + "/cache", base + "/src/tools/train/zero"])
+                self.assertEqual((root / "job.exit").read_text(), "0\n")
+
     def test_large_missing_list_uses_stdin_below_linux_argument_limit(self):
         files = [f"cycles/{number:05d}/" + "局面" * 20 + ".mnsd" for number in range(2000)]
         self.assertGreater(len("".join(files).encode("utf-8")), 131072)
@@ -776,7 +922,7 @@ class RemoteTests(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, json.dumps(files[::2]), "")
 
         with patch("minase_zero.runner.subprocess.run", side_effect=run):
-            self.assertEqual(Remote("test").missing(files), files[::2])
+            self.assertEqual(colab_remote("test").missing(files), files[::2])
 
     def test_large_sha256_list_uses_nul_stdin_below_linux_argument_limit(self):
         files = [f"cycles/{number:05d}/" + "局面" * 20 + " '\n.mnsd" for number in range(2000)]
@@ -790,7 +936,7 @@ class RemoteTests(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, output, "")
 
         with patch("minase_zero.runner.subprocess.run", side_effect=run):
-            self.assertEqual(Remote("test").sha256_many(files, 120), expected)
+            self.assertEqual(colab_remote("test").sha256_many(files, 120), expected)
 
     def test_batch_transfer_uses_one_files_from_rsync_and_one_checksum_command(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -801,7 +947,7 @@ class RemoteTests(unittest.TestCase):
             for name, size in zip(files, (1000000, 2000000, 500000)):
                 write(root / name, b"x" * size)
             write(destination / files[0], (root / files[0]).read_bytes())
-            remote = Remote("local")
+            remote = colab_remote("local")
             commands = []
             manifests = []
             original_run = subprocess.run
@@ -839,7 +985,7 @@ class RemoteTests(unittest.TestCase):
                 self.assertEqual((destination / name).read_bytes(), (root / name).read_bytes())
 
     def test_batch_checksum_rejects_missing_duplicate_or_malformed_results(self):
-        remote = Remote("local")
+        remote = colab_remote("local")
         first = "a" * 64 + "  first.mnsd\0"
         second = "b" * 64 + "  second.mnsd\0"
         for output in (first, first + first, first + second[:-1], first + "invalid\0",
@@ -849,7 +995,7 @@ class RemoteTests(unittest.TestCase):
                     remote.sha256_many(["first.mnsd", "second.mnsd"], 120)
 
     def test_failed_batch_transfer_removes_its_file_list(self):
-        remote = Remote("local")
+        remote = colab_remote("local")
         manifests = []
 
         def fail(argv, **kwargs):
@@ -867,7 +1013,7 @@ class RemoteTests(unittest.TestCase):
             original = "train output/checkpoint.pt"
             snapshot = "train output/.checkpoint.pt.snapshot"
             write(root / original, b"before replacement")
-            remote = Remote("local")
+            remote = colab_remote("local")
 
             def shell(script, timeout):
                 return subprocess.run(["bash", "-c", script], cwd=root, capture_output=True,
@@ -886,7 +1032,7 @@ class RemoteTests(unittest.TestCase):
     def test_missing_remote_working_directory_stops_before_commands(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            remote = Remote("local")
+            remote = colab_remote("local")
 
             def execute(argv, timeout, input_text):
                 command = shlex.split(argv[-1])
@@ -899,7 +1045,7 @@ class RemoteTests(unittest.TestCase):
             self.assertFalse((root / "marker").exists())
 
     def test_ssh_and_rsync_share_control_connection_and_use_timeout(self):
-        remote = Remote("l4-one")
+        remote = colab_remote("l4-one")
         with patch("minase_zero.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "yes\n", "")) as run:
             self.assertTrue(remote.exists("cycles/cycle-0001/train/checkpoint.pt"))
             remote.download("cycles/cycle-0001/train/checkpoint.pt", Path("/tmp/local-checkpoint"))
@@ -917,7 +1063,7 @@ class RemoteTests(unittest.TestCase):
         for code, error in ((255, "connection lost"), (1, "HTTP 429 Too Many Requests"),
                             (12, "rsync: connection unexpectedly closed (code 255)")):
             with self.subTest(code=code), patch("minase_zero.runner.time.sleep") as sleep:
-                remote = Remote("l4-one")
+                remote = colab_remote("l4-one")
                 with patch("minase_zero.runner.subprocess.run", return_value=subprocess.CompletedProcess([], code, "", error)) as run:
                     with self.assertRaises(RuntimeError):
                         if code == 12:
@@ -931,24 +1077,24 @@ class RemoteTests(unittest.TestCase):
         results = [subprocess.CompletedProcess([], 255, "", "connection lost"),
                    subprocess.CompletedProcess([], 0, "Current balance: 12.5 compute units\n", "")]
         with patch("minase_zero.runner.time.sleep"), patch("minase_zero.runner.subprocess.run", side_effect=results):
-            self.assertEqual(Remote("l4-one").usage(), 12.5)
+            self.assertEqual(colab_remote("l4-one").usage(), 12.5)
 
     def test_command_failure_and_timeout_are_not_retried(self):
         with patch("minase_zero.runner.time.sleep") as sleep:
             with patch("minase_zero.runner.subprocess.run", return_value=subprocess.CompletedProcess([], 2, "", "invalid command")) as run:
                 with self.assertRaises(RuntimeError):
-                    Remote("l4-one").usage()
+                    colab_remote("l4-one").usage()
                 self.assertEqual(run.call_count, 1)
             with patch("minase_zero.runner.subprocess.run", side_effect=subprocess.TimeoutExpired("ssh", 120)) as run:
                 with self.assertRaises(RuntimeError):
-                    Remote("l4-one").exists("file")
+                    colab_remote("l4-one").exists("file")
                 self.assertEqual(run.call_count, 1)
             sleep.assert_not_called()
 
     def test_remote_status_detects_live_dead_and_completed_processes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            remote = Remote("local")
+            remote = colab_remote("local")
 
             def shell(script, timeout):
                 result = subprocess.run(["bash", "-c", script], cwd=root, capture_output=True, text=True, timeout=timeout)
@@ -972,7 +1118,7 @@ class RemoteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write(root / "env.sh", b"# test environment\n")
-            remote = Remote("local")
+            remote = colab_remote("local")
             scripts = []
 
             def shell(script, timeout):
@@ -996,7 +1142,249 @@ class RemoteTests(unittest.TestCase):
             self.assertIn("echo $! > job.pid", scripts[0])
 
 
+class MachineTests(unittest.TestCase):
+    """GPUの同一性とcgroupの境界値はphase3a.mdの照会規則から定める。"""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="minase-machine-")
+        self.addCleanup(temporary.cleanup)
+        self.cgroup = Path(temporary.name)
+        self.gpus = "NVIDIA RTX 4090, 24564\n"
+        self.cpuset = 8
+        self.cpuinfo = "processor : 0\nmodel name : Test CPU\n"
+        self.nproc = 32
+        read_text = Path.read_text
+
+        def read(path, *args, **kwargs):
+            if path == Path("/proc/cpuinfo"):
+                return self.cpuinfo
+            return read_text(path, *args, **kwargs)
+
+        def output(argv, **kwargs):
+            self.assertTrue(kwargs["text"])
+            if argv == ["nproc"]:
+                return f"{self.nproc}\n"
+            self.assertEqual(argv, ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+            return self.gpus
+
+        for target, replacement in (("pathlib.Path.read_text", read),
+                                     ("subprocess.check_output", output),
+                                     ("os.sched_getaffinity", lambda pid: set(range(self.cpuset)))):
+            mock = patch(target, replacement)
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    def test_gpu_count_accepts_one_or_four_identical_rows(self):
+        write(self.cgroup / "cpu.max", b"max 100000\n")
+        for count in (1, 4):
+            with self.subTest(count=count):
+                self.gpus = "NVIDIA RTX 4090, 24564\n" * count
+                self.assertEqual(machine_info(str(self.cgroup)), {
+                    "gpu": "NVIDIA RTX 4090", "gpu_memory_mib": 24564, "gpu_count": count,
+                    "cpu": "Test CPU", "nproc": 32, "cpus_available": 8,
+                })
+
+    def test_gpu_query_rejects_empty_mixed_and_incomplete_rows(self):
+        write(self.cgroup / "cpu.max", b"max 100000\n")
+        for output in ("", " \n", "NVIDIA RTX 4090, 24564\nNVIDIA RTX 4080, 24564\n",
+                       "NVIDIA RTX 4090, 24564\nNVIDIA RTX 4090, 24563\n",
+                       "NVIDIA RTX 4090\n", "NVIDIA RTX 4090, N/A\n", ", 24564\n",
+                       "NVIDIA RTX 4090, 0\n"):
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                self.gpus = output
+                machine_info(str(self.cgroup))
+
+    def test_cgroup_v2_uses_the_smaller_of_cpuset_and_floored_quota(self):
+        for allocation, cpuset, expected in (("max 100000", 8, 8), ("400000 100000", 8, 4),
+                                             ("350000 100000", 8, 3), ("400000 100000", 2, 2),
+                                             ("50000 100000", 8, 0)):
+            with self.subTest(allocation=allocation, cpuset=cpuset):
+                write(self.cgroup / "cpu.max", allocation.encode())
+                self.cpuset = cpuset
+                self.assertEqual(machine_info(str(self.cgroup))["cpus_available"], expected)
+
+    def test_machine_query_requires_cpu_name_nproc_and_affinity(self):
+        write(self.cgroup / "cpu.max", b"max 100000\n")
+        for cpuinfo, nproc, cpuset in (("", 32, 8), ("model name : \n", 32, 8),
+                                       ("model name : Test CPU\n", 0, 8),
+                                       ("model name : Test CPU\n", "N/A", 8),
+                                       ("model name : Test CPU\n", 32, 0)):
+            with self.subTest(cpuinfo=cpuinfo, nproc=nproc, cpuset=cpuset), self.assertRaises(ValueError):
+                self.cpuinfo, self.nproc, self.cpuset = cpuinfo, nproc, cpuset
+                machine_info(str(self.cgroup))
+
+    def test_cgroup_v1_uses_unlimited_or_floored_quota(self):
+        write(self.cgroup / "cpu/cpu.cfs_period_us", b"100000\n")
+        for quota, cpuset, expected in ((-1, 8, 8), (400000, 8, 4), (350000, 8, 3), (400000, 2, 2)):
+            with self.subTest(quota=quota, cpuset=cpuset):
+                write(self.cgroup / "cpu/cpu.cfs_quota_us", str(quota).encode())
+                self.cpuset = cpuset
+                self.assertEqual(machine_info(str(self.cgroup))["cpus_available"], expected)
+
+    def test_cgroup_missing_or_invalid_allocation_is_an_error(self):
+        with self.assertRaises(ValueError):
+            machine_info(str(self.cgroup))
+        for allocation in ("", "max", "max 0", "max -1", "0 100000", "-1 100000", "invalid 100000"):
+            with self.subTest(allocation=allocation), self.assertRaises(ValueError):
+                write(self.cgroup / "cpu.max", allocation.encode())
+                machine_info(str(self.cgroup))
+        (self.cgroup / "cpu.max").unlink()
+        write(self.cgroup / "cpu/cpu.cfs_quota_us", b"-1\n")
+        with self.assertRaises(FileNotFoundError):
+            machine_info(str(self.cgroup))
+        for quota, period in ((-1, 0), (0, 100000), (-2, 100000)):
+            with self.subTest(quota=quota, period=period), self.assertRaises(ValueError):
+                write(self.cgroup / "cpu/cpu.cfs_quota_us", str(quota).encode())
+                write(self.cgroup / "cpu/cpu.cfs_period_us", str(period).encode())
+                machine_info(str(self.cgroup))
+
+    def test_remote_machine_executes_self_contained_probe_and_adds_machine_identity(self):
+        write(self.cgroup / "cpu.max", b"350000 100000\n")
+        common = load_vast_common()
+
+        def shell(command, timeout):
+            argv = shlex.split(command)
+            self.assertEqual(argv[:2], ["python3", "-c"])
+            self.assertEqual(timeout, 120)
+            output = io.StringIO()
+            script = argv[2].replace("'/sys/fs/cgroup'", repr(str(self.cgroup)))
+            with redirect_stdout(output):
+                exec(script, {})
+            return output.getvalue()
+
+        for kind, session, instance in (("colab", "test", None), ("vast", None, 12345)):
+            with self.subTest(kind=kind), patch.object(common, "ssh_address", return_value=("192.0.2.10", 22222)), \
+                    patch("minase_zero.runner.load_vast_common", return_value=common):
+                remote = Remote(session)
+                remote.connect(kind, instance)
+                with patch.object(remote, "shell", side_effect=shell):
+                    info = remote.machine()
+                expected = {"gpu": "NVIDIA RTX 4090", "gpu_memory_mib": 24564, "gpu_count": 1,
+                            "cpu": "Test CPU", "nproc": 32, "cpus_available": 3, "kind": kind}
+                if kind == "vast":
+                    expected["vast_instance"] = 12345
+                self.assertEqual(info, expected)
+
+
 class CycleTests(RunnerCase):
+    def test_vast_cycles_record_machine_and_devices_without_balance_queries(self):
+        self.remote.hardware.update(gpu_count=4, cpus_available=18, nproc=32)
+        self.regenerate = True
+        options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
+                          threads_per_gpu=4, batch_size=1024, last_cycle=2)
+        common = load_vast_common()
+        # 接続先の確定は実物を通し、転送とジョブは一時ディレクトリ内で実行する。
+        with patch.object(common, "ssh_address", return_value=("192.0.2.10", 22222)) as address, \
+                patch("minase_zero.runner.load_vast_common", return_value=common), \
+                patch.object(self.remote, "connect", side_effect=lambda kind, instance: Remote.connect(self.remote, kind, instance)), \
+                patch.object(self.remote, "usage", side_effect=AssertionError("vast must not query a balance")):
+            self.execute(options)
+        address.assert_called_once_with(12345, 600)
+        self.assertEqual(self.remote.machine_calls, 1)
+        self.assertEqual(self.remote.existence_checks[0], VAST_FIXTURE)
+        rows = [json.loads(line) for line in (self.root / "cycles.jsonl").read_text().splitlines()]
+        intervals = [json.loads(line) for line in (self.root / "sessions.jsonl").read_text().splitlines()]
+        self.assertEqual([row["cycle"] for row in rows], [1, 2])
+        for row, interval in zip(rows, intervals):
+            self.assertEqual(row["machine"], {
+                "gpu": "NVIDIA L4", "gpu_memory_mib": 23034, "gpu_count": 4,
+                "cpu": "Test CPU", "nproc": 32, "cpus_available": 18,
+                "kind": "vast", "vast_instance": 12345,
+            })
+            self.assertEqual(row["interval"], interval)
+            self.assertEqual(interval["machine_kind"], "vast")
+            self.assertEqual(interval["vast_instance"], 12345)
+            for absent in ("session", "start_balance", "end_balance", "balance_difference", "balance_increased"):
+                self.assertNotIn(absent, interval)
+            for field in ("generation", "regeneration"):
+                self.assertEqual(row[field]["threads"], 16)
+                self.assertEqual(row[field]["threads_per_gpu"], 4)
+                self.assertEqual(row[field]["devices"], 4)
+        self.assertEqual(intervals[1]["started_at"], intervals[0]["ended_at"])
+        for stem, body, _, _ in self.remote.starts:
+            if stem.endswith("/check"):
+                continue
+            command = shlex.split(body)
+            if "zero-selfplay" in command:
+                self.assertEqual(command[0], "/workspace/src/target/release/minase")
+                self.assertEqual(command[command.index("--threads") + 1], "16")
+                self.assertEqual(command[command.index("--devices") + 1], "4")
+            else:
+                self.assertEqual(command[:13], [
+                    "uv", "run", "--frozen", "--project", "/workspace/src/tools/train/zero", "torchrun",
+                    "--standalone", "--nproc-per-node", "4", "-m", "minase_zero", "train", "--init",
+                ])
+                self.assertEqual(command[command.index("--replay-threads") + 1], "4")
+                self.assertEqual(command[command.index("--micro-batch-size") + 1], "256")
+        commands = [json.loads(line) for line in (self.remote_root / "commands.jsonl").read_text().splitlines()]
+        self.assertEqual(len(commands), 26)
+        for command in commands:
+            if "fixture-eval" in command:
+                self.assertEqual(command[:7], ["run", "--frozen", "--project", "/workspace/src/tools/train/zero",
+                                               "python", "-m", "minase_zero"])
+                self.assertEqual(command[command.index("--fixture") + 1], VAST_FIXTURE)
+            elif "--candidate" in command:
+                self.assertEqual(command[:6], ["run", "--frozen", "--project", "/workspace/src/tools/train/zero",
+                                               "python", "/workspace/src/tools/train/zero/nn_compare.py"])
+            elif command[command.index("--backend") + 1] == "tensorrt":
+                self.assertEqual(command[command.index("--cache-dir") + 1], "/workspace/cache/nn-eval")
+
+    def test_vast_deadline_rejects_overrun_and_accepts_equality_without_querying_balance(self):
+        options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
+                          deadline=NOW + timedelta(minutes=40, microseconds=-1))
+        with patch.object(self.remote, "usage", side_effect=AssertionError("vast must not query a balance")):
+            self.execute(options)
+            self.assertEqual(self.remote.starts, [])
+            self.assertEqual(self.remote.machine_calls, 0)
+            self.assertFalse((self.root / "cycles.jsonl").exists())
+            self.execute(replace(options, deadline=NOW + timedelta(minutes=40)))
+        self.assertEqual(len(self.remote.starts), 3)
+        self.assertEqual(json.loads((self.root / "cycles.jsonl").read_text())["cycle"], 1)
+
+    def test_generation_rejects_threads_above_available_cpus_and_accepts_equality(self):
+        options = replace(self.options, threads_per_gpu=4, batch_size=1024)
+        self.remote.hardware.update(gpu_count=4, cpus_available=15)
+        with self.assertRaisesRegex(ValueError, "threads.*CPU"):
+            self.execute(options)
+        self.assertEqual(self.remote.starts, [])
+        self.assertEqual(self.remote.uploads, [])
+        self.remote.hardware["cpus_available"] = 16
+        self.execute(options)
+        command = shlex.split(self.remote.starts[0][1])
+        self.assertEqual(command[command.index("--threads") + 1], "16")
+        self.assertEqual(command[command.index("--devices") + 1], "4")
+
+    def test_vast_resumes_colab_checkpoint_without_repeating_completed_generation(self):
+        complete = self.remote.on_start
+
+        def interrupt_training(stem, body):
+            if stem.endswith("/train"):
+                write(self.remote_root / stem / "checkpoint.pt", b"partial checkpoint")
+                return 9
+            return complete(stem, body)
+
+        self.remote.on_start = interrupt_training
+        with self.assertRaises(RuntimeError):
+            self.runner.run()
+        ledger = (self.root / "seed-ledger.jsonl").read_bytes()
+        shutil.rmtree(self.remote_root)
+        self.remote_root.mkdir()
+        self.remote = FakeRemote(self.remote_root)
+        self.remote.hardware.update(gpu_count=4, cpus_available=18)
+        self.remote.on_start = self.complete_job
+        # 生成済みなので、新しい機械で生成する場合のCPU上限は検査しない。
+        options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
+                          threads_per_gpu=10)
+        self.execute(options)
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["train", "check"])
+        self.assertEqual(shlex.split(self.remote.starts[0][1]), [
+            "uv", "run", "--frozen", "--project", "/workspace/src/tools/train/zero", "torchrun",
+            "--standalone", "--nproc-per-node", "4", "-m", "minase_zero", "train",
+            "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "4",
+        ])
+        self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
+        self.assertEqual(json.loads((self.root / "cycles.jsonl").read_text())["machine"]["vast_instance"], 12345)
+
     def test_start_position_reaches_generation_and_regeneration_and_cycle_record(self):
         self.regenerate = True
         self.execute(replace(self.options, start_position="shuffled-setup"))
@@ -1072,7 +1460,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         if stem.endswith("/check"):
             if self.compare_failure:
                 write(self.remote_root / "fail-comparison", b"")
-            script = body.replace("/content/src/target/release/minase", shlex.quote(str(self.tool)))
+            script = body.replace(self.remote.paths.engine, shlex.quote(str(self.tool)))
             script = script.replace("uv run", shlex.quote(str(self.tool)) + " run")
             result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", script], cwd=self.remote_root,
                                     capture_output=True, text=True, timeout=20)
@@ -1168,7 +1556,12 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual(rows[0]["generation"]["games"], 10)
         self.assertEqual(rows[0]["generation"]["chunk_games"], 5)
         self.assertEqual([row["generation"]["target_positions"] for row in rows], [1000, 1000])
+        self.assertEqual([row["generation"]["threads"] for row in rows], [6, 6])
+        self.assertEqual([row["generation"]["threads_per_gpu"] for row in rows], [6, 6])
+        self.assertEqual([row["generation"]["devices"] for row in rows], [1, 1])
         commands = [shlex.split(body) for stem, body, _, _ in self.remote.starts if stem.endswith("/selfplay")]
+        self.assertEqual([command[command.index("--threads") + 1] for command in commands], ["6", "6"])
+        self.assertEqual([command[command.index("--devices") + 1] for command in commands], ["1", "1"])
         self.assertEqual([command[command.index("--target-positions") + 1] for command in commands], ["1000", "1000"])
         self.assertEqual([command[command.index("--nn-model") + 1] for command in commands],
                          [row["generation"]["network"] for row in rows])
@@ -1182,7 +1575,12 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.assertEqual([row["replay_buffer_positions"] for row in rows], [2000, 2000])
         self.assertEqual(rows[0]["training_summary"]["provenance"]["trainer_commit"], TRAINER_COMMIT)
         self.assertEqual(rows[0]["selfplay_summary"]["win_reason_royal_capture"], 10)
-        self.assertEqual(rows[0]["machine"], {"gpu": "NVIDIA L4", "cpu": "Test CPU", "nproc": 12})
+        self.assertEqual(rows[0]["machine"], {
+            "gpu": "NVIDIA L4", "gpu_memory_mib": 23034, "gpu_count": 1,
+            "cpu": "Test CPU", "nproc": 12, "cpus_available": 12, "kind": "colab",
+        })
+        self.assertEqual([row["machine_kind"] for row in intervals], ["colab", "colab"])
+        self.assertEqual([row["session"] for row in intervals], ["test-session", "test-session"])
         self.assertEqual([row["balance_difference"] for row in intervals], [2, 2])
         self.assertEqual(intervals[1]["started_at"], intervals[0]["ended_at"])
         self.assertEqual(intervals[1]["start_balance"], intervals[0]["end_balance"])
@@ -1514,7 +1912,7 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
         self.execute(self.options)
         self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["train", "check"])
         command = shlex.split(self.remote.starts[0][1])
-        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda"])
+        self.assertEqual(command[command.index("train"):], ["train", "--resume", "cycles/cycle-0001/train", "--device", "cuda", "--replay-threads", "12"])
         self.assertIn("cycles/cycle-0001/train/checkpoint.pt", self.remote.uploads)
         self.assertEqual((self.root / "seed-ledger.jsonl").read_bytes(), ledger)
         row = json.loads((self.root / "cycles.jsonl").read_text())
@@ -1607,6 +2005,54 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
 
 
 class ArgumentTests(RunnerCase):
+    def vast_arguments(self):
+        args = self.arguments()
+        args[args.index("--machine") + 1] = "vast"
+        for flag in ("--session", "--cycle-cu"):
+            index = args.index(flag)
+            del args[index:index + 2]
+        return [*args, "--vast-instance", "12345"]
+
+    def test_vast_arguments_require_instance_deadline_duration_and_threads_per_gpu(self):
+        args = self.vast_arguments()
+        parsed = vars(_parse(args))
+        parsed.pop("command")
+        options = Options(**parsed)
+        self.assertEqual(options.machine, "vast")
+        self.assertEqual(options.vast_instance, 12345)
+        self.assertIsNone(options.session)
+        self.assertIsNone(options.cycle_cu)
+        for flag in ("--machine", "--vast-instance", "--deadline", "--cycle-minutes", "--threads-per-gpu"):
+            index = args.index(flag)
+            with self.subTest(missing=flag), self.assertRaises(ValueError):
+                parsed = vars(_parse(args[:index] + args[index + 2:]))
+                parsed.pop("command")
+                Options(**parsed)
+
+    def test_invalid_machine_argument_combinations_fail_before_external_commands(self):
+        colab = self.arguments()
+        vast = self.vast_arguments()
+        cases = [colab + ["--vast-instance", "12345"], vast + ["--cycle-cu", "2"],
+                 vast + ["--session", "test"], colab + ["--threads", "4"]]
+        for base, flag in ((vast, "--vast-instance"), (colab, "--cycle-cu"), (colab, "--session")):
+            index = base.index(flag)
+            cases.append(base[:index] + base[index + 2:])
+        for base, flag, value in ((vast, "--vast-instance", "0"), (vast, "--vast-instance", "-1"),
+                                  (vast, "--vast-instance", "1.5"), (colab, "--threads-per-gpu", "0"),
+                                  (colab, "--threads-per-gpu", "-1"), (colab, "--threads-per-gpu", "1.5"),
+                                  (colab, "--machine", "unknown")):
+            changed = list(base)
+            changed[changed.index(flag) + 1] = value
+            cases.append(changed)
+        for args in cases:
+            with self.subTest(args=args), patch("sys.argv", ["minase_zero", *args]), \
+                    patch("sys.stderr", new_callable=io.StringIO), \
+                    patch("minase_zero.runner.subprocess.run") as run, \
+                    patch("minase_zero.runner.load_vast_common") as common:
+                self.assertEqual(main(), 1)
+                run.assert_not_called()
+                common.assert_not_called()
+
     def test_start_position_and_seed_offset_reject_invalid_options_and_cli_values(self):
         for offset in (-1, 500_000_000, 1_000_000_000, 1.5, True, "0"):
             with self.subTest(offset=offset), self.assertRaises(ValueError):
@@ -1625,13 +2071,13 @@ class ArgumentTests(RunnerCase):
                 Options(**parsed)
 
     def arguments(self):
-        return ["run-cycles", "--root", str(self.root), "--session", "l4-one",
+        return ["run-cycles", "--root", str(self.root), "--machine", "colab", "--session", "l4-one",
                 "--cycles-dir", "cycles", "--base-cycles-dir", "cycles", "--branch-from", "0",
                 "--start-position", "random-opening", "--generation-seed-offset", "0",
                 "--generation-commit", GENERATION_COMMIT, "--trainer-commit", TRAINER_COMMIT,
                 "--first-cycle", "1", "--last-cycle", "3", "--deadline", "2026-10-29T12:00:00+09:00",
                 "--cycle-minutes", "40", "--cycle-cu", "2", "--target-positions", "1000000",
-                "--chunks", "20", "--simulations", "32", "--threads", "6", "--games-per-thread", "4",
+                "--chunks", "20", "--simulations", "32", "--threads-per-gpu", "6", "--games-per-thread", "4",
                 "--replay-buffer-first-cycle", "1",
                 "--replay-buffer-positions", "34625240", "--batch-size", "256", "--lr", "0.01",
                 "--momentum", "0.9",
@@ -1640,7 +2086,7 @@ class ArgumentTests(RunnerCase):
                 "--minase", str(self.options.minase), "--poll-seconds", "60",
                 "--cycle1-reference-summary", str(self.reference)]
 
-    def test_all_arguments_other_than_reference_are_required(self):
+    def test_colab_arguments_other_than_reference_are_required(self):
         args = self.arguments()
         parsed = vars(_parse(args))
         self.assertEqual(parsed.pop("command"), "run-cycles")
@@ -1648,7 +2094,9 @@ class ArgumentTests(RunnerCase):
         self.assertEqual(Options(**parsed).deadline, datetime(2026, 10, 29, 3, 0, tzinfo=UTC))
         for index in range(1, len(args) - 2, 2):
             with self.subTest(missing=args[index]), self.assertRaises(ValueError):
-                _parse(args[:index] + args[index + 2:])
+                parsed = vars(_parse(args[:index] + args[index + 2:]))
+                parsed.pop("command")
+                Options(**parsed)
 
     def test_reference_is_required_exactly_for_first_cycle_one(self):
         with self.assertRaises(ValueError):

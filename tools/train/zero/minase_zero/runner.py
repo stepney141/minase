@@ -1,77 +1,98 @@
-"""Colab機で自己対局、学習、出力の照合を順に行い、確定したファイルをNASへ受け取る。
+"""Colab機またはvast.aiの機械で自己対局、学習、出力の照合を順に行い、確定したファイルをNASへ受け取る。
 
-run-cyclesの引数はすべて明示する。cycle1-reference-summaryだけは開始サイクルが1の
-ときに必須で、それ以外では指定できない。deadlineは時差を含むISO 8601の時刻とする。
-generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定する。Colab機の
-/content/srcにはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
---minaseは作業機で集計に使う実行ファイルを指定し、借りた機械で使うENGINEとは別である。
-NASのrootと/content/azは同じ相対パスを使い、接続と転送は1本ずつ実行する。
+run-cyclesは--machine colab|vastで機械の種類を指定する。
+colabでは--sessionと--cycle-cuを必須とし、--vast-instanceは指定できない。
+vastでは正の整数の--vast-instanceを必須とし、--sessionと--cycle-cuは指定できない。
+cycle1-reference-summaryは開始サイクルが1のときに必須で、それ以外では指定できない。
+ほかの引数はすべて明示し、deadlineは時差を含むISO 8601の時刻とする。
+generation-commitとtrainer-commitはそれぞれ40桁の16進数字で指定する。
+作業場所、ソース、キャッシュは、Colab機では/contentの下のaz、src、cache、vast.aiでは/workspaceの下のaz、src、cacheとする。
+ソースの場所にはtrainer-commitの書庫を展開し、導入とビルドを済ませておく。
+--minaseは作業機で集計に使う実行ファイルを指定する。
+NASのrootと借りた機械の作業場所は同じ相対パスを使い、接続と転送は1本ずつ実行する。
+Colab機にはcolab sshを中継にして接続する。
+vast.aiでは起動時にscripts/vast/common.pyのssh_addressで接続先を1回だけ照会し、専用の鍵~/.ssh/id_vastaiで直接接続する。
+
+最初のサイクルの前にGPUとCPUを1回照会し、全GPUの機種名とメモリ容量が同じであることを確かめる。
+GPUの枚数をN、cpusetのCPU数とcgroupのCPU割当てを周期で割って切り捨てた値の小さいほうをCとする。
+cgroupに上限がなければCはcpusetのCPU数とし、v2とv1のどちらの割当ても読めなければエラーにする。
+生成器には--threads-per-gpuにNを掛けた--threadsと、--devices Nを渡し、スレッドの総数がCを超えれば起動しない。
+学習器はtorchrun --standalone --nproc-per-node Nで起動し、--replay-threadsにfloor(C/N)を渡す。
+CがNより小さければ学習を起動しない。
+新しいサイクルでは--batch-sizeを全体のバッチとして渡し、--micro-batch-sizeは256に固定する。
+再開では--resume、--device cuda、--replay-threadsだけを学習器へ渡し、ミクロバッチはチェックポイントから読む。
+出力の照合はGPU 0で行う。
+サイクルのmachineにはkind、gpu、gpu_memory_mib、gpu_count、cpu、nproc、cpus_availableを記録し、vastではvast_instanceも残す。
+生成の記録にはthreadsの総数、threads_per_gpu、devicesを残す。
 
 --cycles-dirと--base-cycles-dirはrootからの相対ディレクトリを必須とする。
 cycles-dirはシード台帳の名前にも使うため、空白文字を含められない。
 --branch-from以下のサイクルはbase-cycles-dirから、それより後はcycles-dirから読む。
 first-cycleはbranch-fromより後とし、生成、学習、照合の出力はcycles-dirに置く。
 本線は--cycles-dir cycles --base-cycles-dir cycles --branch-from 0で実行する。
-cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、
-確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxに置く。
+cycles-dirがcycles以外なら、記録は<cycles-dir>.jsonlと<cycles-dir>-sessions.jsonl、確定したネットはnets/<cycles-dir>/cycle-NNNN.onnxに置く。
 通常生成のシードは、本線と別系列のどちらもサイクル番号×10⁹＋--generation-seed-offsetとする。
 加算値は0以上5×10⁸未満の整数とし、加算値＋5×10⁸＋対局数の上限は10⁹以下とする。
 --start-positionはshuffled-setupかrandom-openingを必須とし、通常生成と再生成に同じ値を渡す。
-再生成は通常生成のシードに5×10⁸を加える。共有のシード台帳には、本線ではcycle-NNNN-gen、
-別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
+再生成は通常生成のシードに5×10⁸を加える。
+共有のシード台帳には、本線ではcycle-NNNN-gen、別系列では<cycles-dir>-NNNN-genの名前で登録し、再生成では末尾をregenにする。
 
-通常生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から
-見積もった対局数を上限とする。
-塊の配置は対局数の上限と塊の対局数で固定し、塊0から連続する確定済み塊の
-positions + resigned_positionsが初めて目標以上になる塊までをサイクルに含める。
+通常生成は--target-positionsを生成器へ渡し、前のサイクルの1局あたりの訓練局面数から見積もった対局数を上限とする。
+塊の配置は対局数の上限と塊の対局数で固定し、塊0から連続する確定済み塊のpositions + resigned_positionsが初めて目標以上になる塊までをサイクルに含める。
 全塊でも目標に届かない場合は全塊を含める。
-誤った投了による生成し直しでは、本体のresigned_positionsを目標、resigned_gamesを
-対局数の上限とし、投了を無効にする。
-目標は各対局の生成条件を変えないためconfig.jsonには保存せず、summary.jsonと
-サイクルのgenerationおよびregenerationに記録する。
+誤った投了による生成し直しでは、本体のresigned_positionsを目標、resigned_gamesを対局数の上限とし、投了を無効にする。
+目標は各対局の生成条件を変えないためconfig.jsonには保存せず、summary.jsonとサイクルのgenerationおよびregenerationに記録する。
 summary.jsonのchunksは含めた塊の数であり、その範囲の3種類のファイルをすべて検査する。
 範囲より後の確定済み塊も転送するが、学習にはsummary.jsonのtraining_filesだけを使う。
 
-リプレイバッファは最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が
-初めてreplay-buffer-positions以上になるまでとする。
+リプレイバッファは最新のサイクルからさかのぼり、生成し直しを含むtraining_positionsの合計が初めてreplay-buffer-positions以上になるまでとする。
 --replay-buffer-first-cycleは1以上、first-cycle以下の整数を必須とし、別系列でも同じ通し番号を使う。
 合計が目標に届かない場合もreplay-buffer-first-cycleでさかのぼりを止め、それより前の集計は読まない。
-ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の
-後に加える。新しい学習では一覧を<cycle_path>/train-data.jsonのUTF-8のJSON配列に保存し、
-教師ファイルと一緒に送り、--data-listで学習器へ渡す。既存の一覧はバイト列が同じ場合だけ使う。
+ファイルは古いサイクルから、各生成のtraining_filesの順に並べ、生成し直しを本体の後に加える。
+新しい学習では一覧を<cycle_path>/train-data.jsonのUTF-8のJSON配列に保存し、教師ファイルと一緒に送り、--data-listで学習器へ渡す。
+既存の一覧はバイト列が同じ場合だけ使う。
 最新のサイクルだけは--latest-dataの引数で渡し、再開ではチェックポイントの一覧を使う。
 リプレイバッファのサイクル番号、replay-buffer-first-cycle、replay-buffer-positions、生成と学習のコミットをサイクルの記録に残す。
 NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入れる。
 未完了の生成はgeneration-commitが一致する場合だけ再開する。
 
-自己対局は前のサイクルのtrain/model.onnxを使う。最初のサイクルではcycle-0000/model.onnxを
-参照し、ネットがなければエラーにする。学習後のネットはCPUとTensorRTのバッチ1、7、256の
-6通りで照合し、本線ではnets/cycle-NNNN.onnxへ読み取り専用で確定する。
+自己対局は前のサイクルのtrain/model.onnxを使う。
+最初のサイクルではcycle-0000/model.onnxを参照し、ネットがなければエラーにする。
+学習後のネットはCPUとTensorRTのバッチ1、7、256の6通りで照合し、本線ではnets/cycle-NNNN.onnxへ読み取り専用で確定する。
 記録には各照合の結果を残す。
 
-送信ではColab機にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も
-含む全ファイルを一括でsha256sumにより照合する。存在確認のJSON配列と検査和のNUL区切りの
-ファイル名は標準入力で渡し、コマンドの引数には並べない。生成の塊の復元も同じ経路を使う。
-一括の転送と照合の制限時間は、送信バイト数を1 MB/秒（1 MB = 10⁶ B）で割った秒数に
-120秒を足す。ほかの外部コマンドは120秒とする。
+送信では借りた機械にないファイルを一括で調べ、1回のrsync --files-fromで送り、既存分も含む全ファイルを一括でsha256sumにより照合する。
+存在確認のJSON配列と検査和のNUL区切りのファイル名は標準入力で渡し、コマンドの引数には並べない。
+生成の塊の復元も同じ経路を使う。
+一括の転送と照合の制限時間は、送信バイト数を1 MB/秒（1 MB = 10⁶ B）で割った秒数に120秒を足す。
+vast.aiの接続先の照会は600秒、ほかの外部コマンドは120秒とする。
 
-塊はJSONを最後に、生成と学習はsummary.jsonを最後に受け取る。SHA-256を照合してから
-一時ファイルを改名し、既存ファイルの相違はエラーにする。置き換えを許すのは学習中の
-checkpoint.ptと追記する台帳だけである。NASで受信済みの工程は機械を替えても再実行しない。
-シードの台帳は既存のものを使い、見つからなければエラーにする。checkpoint.ptはColab機で
-一時の名前へ複写し、その版の検査和を求めて受け取る。複写は受信の成否にかかわらず削除する。
-工程のstarted.jsonとfinished.jsonは作業機での初回の監視開始と受信完了を保存するので、
-再開を挟んだ経過秒数には停止中の時間も含む。Colab機の照合自体の秒数は別に記録する。
+塊はJSONを最後に、生成と学習はsummary.jsonを最後に受け取る。
+SHA-256を照合してから一時ファイルを改名し、既存ファイルの相違はエラーにする。
+置き換えを許すのは学習中のcheckpoint.ptと追記する台帳だけである。
+NASで受信済みの工程は機械を替えても再実行しない。
+シードの台帳は既存のものを使い、見つからなければエラーにする。
+checkpoint.ptは借りた機械で一時の名前へ複写し、その版の検査和を求めて受け取る。
+複写は受信の成否にかかわらず削除する。
+工程のstarted.jsonとfinished.jsonは作業機での初回の監視開始と受信完了を保存するので、再開を挟んだ経過秒数には停止中の時間も含む。
+借りた機械の照合自体の秒数は別に記録する。
 
 PIDが残っていて終了コードがなく、プロセスもいなければ異常終了として止める。
 接続の終了コード255とHTTP 429だけは30秒間隔で最大5回再試行する。
-期限またはCU残高が不足すれば正常終了し、セッションを止める操作は行わない。
+次のサイクルは、現在の時刻にcycle-minutesを足した時刻がdeadline以前の場合に始める。
+Colab機ではCU残高がcycle-cu以上であることも条件とし、vast.aiでは残高を照会しない。
+開始条件を満たさなければ正常終了し、機械を止める操作は行わない。
+セッションの区間にはmachine_kindを記録する。
+colabの区間はsessionと残高の欄を持ち、vastの区間はvast_instanceを持ち、sessionと残高の欄を持たない。
 """
 
 import argparse
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import cached_property
 import hashlib
+import importlib.util
+import inspect
 import json
 import math
 import os
@@ -87,11 +108,23 @@ import time
 from . import rl
 
 
-SOURCE = "/content/src/tools/train/zero"
-FIXTURE = "/content/src/crates/minase/tests/fixtures/nn-positions.jsonl"
-ENGINE = "/content/src/target/release/minase"
-PYTHON = ["uv", "run", "--frozen", "--project", SOURCE, "python"]
-TRAINER = [*PYTHON, "-m", "minase_zero"]
+MICRO_BATCH_SIZE = 256
+
+
+class RemotePaths:
+    """機械の種類から作業場所と実行ファイルの配置を導く。"""
+
+    def __init__(self, kind: str):
+        base = {"colab": "/content", "vast": "/workspace"}[kind]
+        source = base + "/src"
+        self.work = base + "/az"
+        self.source = source + "/tools/train/zero"
+        self.cache = base + "/cache"
+        self.fixture = source + "/crates/minase/tests/fixtures/nn-positions.jsonl"
+        self.engine = source + "/target/release/minase"
+        self.uv = ["uv", "run", "--frozen", "--project", self.source]
+        self.python = [*self.uv, "python"]
+        self.trainer = [*self.python, "-m", "minase_zero"]
 
 
 @dataclass(frozen=True)
@@ -100,20 +133,22 @@ class Options:
     cycles_dir: Path
     base_cycles_dir: Path
     branch_from: int
-    session: str
+    machine: str
+    vast_instance: int | None
+    session: str | None
     generation_commit: str
     trainer_commit: str
     first_cycle: int
     last_cycle: int
     deadline: datetime
     cycle_minutes: float
-    cycle_cu: float
+    cycle_cu: float | None
     target_positions: int
     start_position: str
     generation_seed_offset: int
     chunks: int
     simulations: int
-    threads: int
+    threads_per_gpu: int
     games_per_thread: int
     replay_buffer_first_cycle: int
     replay_buffer_positions: int
@@ -139,13 +174,25 @@ class Options:
             raise ValueError("cycles_dir must contain no whitespace because it names seed-ledger entries")
         if type(self.branch_from) is not int or not 0 <= self.branch_from < self.first_cycle:
             raise ValueError("branch-from must be nonnegative and less than first-cycle")
-        if re.fullmatch(r"[A-Za-z0-9_-]+", self.session) is None:
-            raise ValueError("session must contain only letters, digits, underscores or hyphens")
+        if self.machine == "colab":
+            if self.vast_instance is not None:
+                raise ValueError("--vast-instance cannot be used with --machine colab")
+            if self.session is None or re.fullmatch(r"[A-Za-z0-9_-]+", self.session) is None:
+                raise ValueError("--session is required for colab and must contain only letters, digits, underscores or hyphens")
+            if self.cycle_cu is None or not math.isfinite(self.cycle_cu) or self.cycle_cu <= 0:
+                raise ValueError("--cycle-cu is required for colab and must be finite and positive")
+        elif self.machine == "vast":
+            if type(self.vast_instance) is not int or self.vast_instance < 1:
+                raise ValueError("--vast-instance is required for vast and must be a positive integer")
+            if self.session is not None or self.cycle_cu is not None:
+                raise ValueError("--session and --cycle-cu cannot be used with --machine vast")
+        else:
+            raise ValueError("--machine must be colab or vast")
         for name in ("generation_commit", "trainer_commit"):
             if re.fullmatch(r"[0-9a-fA-F]{40}", getattr(self, name)) is None:
                 raise ValueError(f"{name} must be 40 hexadecimal digits")
         for name in ("first_cycle", "last_cycle", "target_positions", "chunks", "simulations",
-                     "threads", "games_per_thread", "replay_buffer_first_cycle", "replay_buffer_positions",
+                     "threads_per_gpu", "games_per_thread", "replay_buffer_first_cycle", "replay_buffer_positions",
                      "batch_size", "checkpoint_steps"):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -161,7 +208,7 @@ class Options:
             raise ValueError("cycle1-reference-summary is required exactly when first-cycle is 1")
         if self.deadline.utcoffset() is None:
             raise ValueError("deadline must include a UTC offset")
-        for name in ("cycle_minutes", "cycle_cu", "lr", "momentum", "clip_grad_norm", "poll_seconds"):
+        for name in ("cycle_minutes", "lr", "momentum", "clip_grad_norm", "poll_seconds"):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
@@ -187,17 +234,21 @@ class Options:
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
-    """run-cyclesだけの必須引数を登録する。"""
+    """run-cyclesの引数を登録し、機械ごとの組合せはOptionsで検査する。"""
     for name in ("root", "minase", "cycles-dir", "base-cycles-dir"):
         parser.add_argument(f"--{name}", type=Path, required=True)
-    for name in ("session", "generation-commit", "trainer-commit"):
+    parser.add_argument("--machine", choices=("colab", "vast"), required=True)
+    parser.add_argument("--vast-instance", type=int)
+    parser.add_argument("--session")
+    parser.add_argument("--cycle-cu", type=float)
+    for name in ("generation-commit", "trainer-commit"):
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--deadline", type=datetime.fromisoformat, required=True)
-    for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads",
+    for name in ("first-cycle", "last-cycle", "target-positions", "chunks", "simulations", "threads-per-gpu",
                  "games-per-thread", "replay-buffer-first-cycle", "replay-buffer-positions", "batch-size", "checkpoint-steps",
                  "train-seed-base", "branch-from", "generation-seed-offset"):
         parser.add_argument(f"--{name}", type=int, required=True)
-    for name in ("cycle-minutes", "cycle-cu", "lr", "momentum", "weight-decay", "clip-grad-norm",
+    for name in ("cycle-minutes", "lr", "momentum", "weight-decay", "clip-grad-norm",
                  "value-lambda", "poll-seconds"):
         parser.add_argument(f"--{name}", type=float, required=True)
     parser.add_argument("--start-position", choices=("shuffled-setup", "random-opening"), required=True)
@@ -352,16 +403,84 @@ def seed_registration(ledger: Path, name: str, seed: int, games: int) -> dict:
     return rl.register_seed_range(ledger, name, seed, games)
 
 
+def load_vast_common():
+    """リポジトリ内のvast.ai操作モジュールを、ファイルの位置から読み込む。"""
+    path = Path(__file__).resolve().parents[4] / "scripts/vast/common.py"
+    spec = importlib.util.spec_from_file_location("minase_zero_vast_common", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load vast.ai helpers: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def machine_info(cgroup: str) -> dict:
+    """GPUとCPUの割当てを調べる。
+
+    Remote.machineがこの関数のソースを送るため、依存の読み込みも関数内で完結させる。
+    """
+    import os
+    from pathlib import Path
+    import subprocess
+
+    output = subprocess.check_output([
+        "nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits",
+    ], text=True)
+    gpus = [(name.strip(), int(memory.strip()))
+            for name, memory in (line.rsplit(",", 1) for line in output.strip().splitlines())]
+    if not gpus or any(not name or memory <= 0 for name, memory in gpus):
+        raise ValueError("incomplete GPU information")
+    if any(gpu != gpus[0] for gpu in gpus):
+        raise ValueError("all GPUs must have the same model and memory capacity")
+    models = [line.split(":", 1)[1].strip()
+              for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")]
+    count = int(subprocess.check_output(["nproc"], text=True))
+    cpuset = len(os.sched_getaffinity(0))
+    if not models or not models[0] or count < 1 or cpuset < 1:
+        raise ValueError("incomplete CPU information")
+    root = Path(cgroup)
+    v2, v1 = root / "cpu.max", root / "cpu/cpu.cfs_quota_us"
+    if v2.is_file():
+        quota_text, period_text = v2.read_text().split()
+        quota = None if quota_text == "max" else int(quota_text)
+        period = int(period_text)
+    elif v1.is_file():
+        quota_value = int(v1.read_text())
+        quota = None if quota_value == -1 else quota_value
+        period = int((root / "cpu/cpu.cfs_period_us").read_text())
+    else:
+        raise ValueError("cannot read cgroup CPU allocation")
+    if period <= 0 or (quota is not None and quota <= 0):
+        raise ValueError("cgroup CPU quota and period must be positive")
+    available = cpuset if quota is None else min(cpuset, quota // period)
+    return {"gpu": gpus[0][0], "gpu_memory_mib": gpus[0][1], "gpu_count": len(gpus),
+            "cpu": models[0], "nproc": count, "cpus_available": available}
+
+
 class Remote:
     """ssh、rsync、残高の照会を逐次実行し、接続障害だけを有限回再試行する。"""
 
-    def __init__(self, session: str):
-        if re.fullmatch(r"[A-Za-z0-9_-]+", session) is None:
-            raise ValueError("invalid session name")
-        self.ssh = ["ssh", "-o", f"ProxyCommand=colab ssh --proxy-mode -s {session}",
-                    "-o", "ControlMaster=auto", "-o", f"ControlPath=/tmp/colab-cm-{session}",
-                    "-o", "ControlPersist=900", "-o", "StrictHostKeyChecking=no",
-                    "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    def __init__(self, session: str | None):
+        self.session = session
+
+    def connect(self, kind: str, vast_instance: int | None) -> None:
+        """実行器の起動時に接続先を決め、以後のSSHとrsyncで共有する。"""
+        self.kind = kind
+        self.vast_instance = vast_instance
+        self.paths = RemotePaths(kind)
+        if kind == "colab":
+            self.host = "colab"
+            self.ssh = ["ssh", "-o", f"ProxyCommand=colab ssh --proxy-mode -s {self.session}",
+                        "-o", "ControlMaster=auto", "-o", f"ControlPath=/tmp/colab-cm-{self.session}",
+                        "-o", "ControlPersist=900", "-o", "StrictHostKeyChecking=no",
+                        "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+        else:
+            common = load_vast_common()
+            self.host, port = common.ssh_address(vast_instance, 600)
+            self.ssh = ["ssh", *common.ssh_options(port, "-p"), "-o", "ControlMaster=auto",
+                        "-o", f"ControlPath=/tmp/vast-cm-{vast_instance}", "-o", "ControlPersist=900"]
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        self.rsync_root = f"root@{host}:{self.paths.work}/"
 
     def _call(self, argv: list[str], timeout: float, input_text: str | None = None) -> str:
         for attempt in range(6):
@@ -382,8 +501,8 @@ class Remote:
         raise AssertionError("retry loop did not return")
 
     def shell(self, script: str, timeout: float, input_text: str | None = None) -> str:
-        command = shlex.join(["bash", "-c", "set -e\ncd /content/az\n" + script])
-        return self._call([*self.ssh, "root@colab", command], timeout, input_text)
+        command = shlex.join(["bash", "-c", f"set -e\ncd {self.paths.work}\n" + script])
+        return self._call([*self.ssh, f"root@{self.host}", command], timeout, input_text)
 
     def exists(self, relative: str) -> bool:
         return self.shell(f"if test -f {shlex.quote(relative)}; then echo yes; else echo no; fi", 120).strip() == "yes"
@@ -425,11 +544,11 @@ class Remote:
             manifest.write(("\0".join(files) + "\0").encode("utf-8"))
             manifest.flush()
             self._call(["rsync", "-a", "-s", "--from0", "--files-from", manifest.name,
-                        "-e", shlex.join(self.ssh), "--", str(root) + "/", "root@colab:/content/az/"], timeout)
+                        "-e", shlex.join(self.ssh), "--", str(root) + "/", self.rsync_root], timeout)
 
     def download(self, relative: str, target: Path) -> None:
         self._call(["rsync", "-a", "-s", "-e", shlex.join(self.ssh), "--",
-                    f"root@colab:/content/az/{relative}", str(target)], 120)
+                    self.rsync_root + relative, str(target)], 120)
 
     def copy(self, source: str, target: str) -> None:
         """開いたファイルを複写し、改名による置き換えの影響を受けない版を作る。"""
@@ -442,14 +561,13 @@ class Remote:
         return parse_balance(self._call(["colab", "usage"], 120))
 
     def machine(self) -> dict:
-        script = """import json,pathlib,subprocess
-gpu = subprocess.check_output(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], text=True).strip()
-cpu = next(line.split(':', 1)[1].strip() for line in pathlib.Path('/proc/cpuinfo').read_text().splitlines() if line.startswith('model name'))
-count = int(subprocess.check_output(['nproc'], text=True))
-if not gpu or not cpu or count < 1:
-    raise ValueError('incomplete machine information')
-print(json.dumps({'gpu': gpu, 'cpu': cpu, 'nproc': count}))"""
-        return json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
+        script = (inspect.getsource(machine_info)
+                  + "\nimport json\nprint(json.dumps(machine_info('/sys/fs/cgroup')))\n")
+        info = json.loads(self.shell(shlex.join(["python3", "-c", script]), 120))
+        info["kind"] = self.kind
+        if self.kind == "vast":
+            info["vast_instance"] = self.vast_instance
+        return info
 
     @staticmethod
     def _status_script(stem: str) -> str:
@@ -479,8 +597,8 @@ fi"""
         # 再試行でもPIDと終了コードを確かめ、受信だけが失敗した起動を繰り返さない。
         code = shlex.quote(stem + ".exit")
         temporary = shlex.quote(stem + ".exit.tmp")
-        job = ("(\nset -euo pipefail\nsource " + SOURCE + "/env.sh\n"
-               f"export XDG_CACHE_HOME=/content/cache PYTHONPATH={SOURCE}\n{body}\n)\n"
+        job = ("(\nset -euo pipefail\nsource " + self.paths.source + "/env.sh\n"
+               f"export XDG_CACHE_HOME={self.paths.cache} PYTHONPATH={self.paths.source}\n{body}\n)\n"
                f"result=$?\nprintf '%s\\n' \"$result\" > {temporary}\nmv -- {temporary} {code}\n")
         redirect = (f"> {shlex.quote(stdout)} 2>&1" if stdout == stderr else
                     f"> {shlex.quote(stdout)} 2> {shlex.quote(stderr)}")
@@ -568,12 +686,18 @@ def publish_network(options: Options, cycle: int) -> str:
 
 
 class Runner:
-    """確定済みのNASのファイルとColab機のプロセス状態から、サイクルの続きを決める。"""
+    """確定済みのNASのファイルと借りた機械のプロセス状態から、サイクルの続きを決める。"""
 
     def __init__(self, options: Options, remote: Remote):
         self.options = options
         self.root = options.root
         self.remote = remote
+        remote.connect(options.machine, options.vast_instance)
+        self.paths = remote.paths
+
+    @cached_property
+    def machine(self) -> dict:
+        return self.remote.machine()
 
     def log(self, cycle: int, message: str) -> None:
         print(f"{datetime.now(UTC).isoformat()} cycle={cycle:04d} {message}", file=sys.stderr, flush=True)
@@ -626,15 +750,20 @@ class Runner:
                 raise ValueError(f"generation commit differs: {out}")
             state = self.remote.status(out)
             if state == "new" and not self.remote.exists(f"{out}/summary.json"):
+                devices = self.machine["gpu_count"]
+                threads = self.options.threads_per_gpu * devices
+                if threads > self.machine["cpus_available"]:
+                    raise ValueError("generation threads exceed available CPUs")
                 send(self.remote, self.root, [network])
                 self.restore_generation(out)
-                command = [ENGINE, "data", "zero-selfplay", "--output-dir", out, "--nn-model", network,
+                command = [self.paths.engine, "data", "zero-selfplay", "--output-dir", out, "--nn-model", network,
                            "--nn-backend", "tensorrt", "--generation-commit", self.options.generation_commit,
                            "--seed", str(seed), "--games", str(games), "--chunk-games", str(chunk_games),
                            "--target-positions", str(target_positions),
                            "--start-position", self.options.start_position,
                            "--simulations", str(self.options.simulations), "--playthrough-percent", str(playthrough),
-                           "--threads", str(self.options.threads), "--games-per-thread", str(self.options.games_per_thread)]
+                           "--threads", str(threads), "--devices", str(devices),
+                           "--games-per-thread", str(self.options.games_per_thread)]
                 self._begin(out)
                 self.remote.start(out, shlex.join(command), out + ".out", out + ".err")
                 state = "running"
@@ -672,13 +801,20 @@ class Runner:
         return summary, self._finish(out)
 
     def training_command(self, cycle: int, files: list[str], latest_files: list[str]) -> list[str]:
+        devices = self.machine["gpu_count"]
+        replay_threads = self.machine["cpus_available"] // devices
+        if replay_threads < 1:
+            raise ValueError("training requires at least one available CPU per GPU")
+        trainer = [*self.paths.uv, "torchrun", "--standalone", "--nproc-per-node", str(devices),
+                   "-m", "minase_zero", "train"]
+        runtime = ["--device", "cuda", "--replay-threads", str(replay_threads)]
         out = self.options.cycle_path(cycle) + "/train"
         checkpoint = out + "/checkpoint.pt"
         if self.remote.exists(checkpoint):
-            return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
+            return [*trainer, "--resume", out, *runtime]
         if (self.root / checkpoint).exists():
             send(self.remote, self.root, [checkpoint])
-            return [*TRAINER, "train", "--resume", out, "--device", "cuda"]
+            return [*trainer, "--resume", out, *runtime]
         initial = (self.options.cycle_path(0) + "/checkpoint.pt" if cycle == 1 else
                    self.options.cycle_path(cycle - 1) + "/train/checkpoint.pt")
         data_list = self.options.cycle_path(cycle) + "/train-data.json"
@@ -689,13 +825,14 @@ class Runner:
                 raise ValueError(f"immutable file differs: {data_list}")
         else:
             _write(path, contents)
-        command = [*TRAINER, "train", "--init", initial, "--data-list", data_list,
+        command = [*trainer, "--init", initial, "--data-list", data_list,
                    "--latest-data", *latest_files, "--out-dir", out,
                    "--cycle", str(cycle), "--seed", str(self.options.train_seed_base + cycle)]
         for name in ("batch_size", "lr", "momentum", "weight_decay", "clip_grad_norm",
                      "value_lambda", "precision", "checkpoint_steps"):
             command.extend(["--" + name.replace("_", "-"), str(getattr(self.options, name))])
-        return [*command, "--device", "cuda", "--trainer-commit", self.options.trainer_commit]
+        return [*command, "--micro-batch-size", str(MICRO_BATCH_SIZE), *runtime,
+                "--trainer-commit", self.options.trainer_commit]
 
     def training(self, cycle: int, files: list[str], latest_files: list[str]) -> tuple[dict, float]:
         out = self.options.cycle_path(cycle) + "/train"
@@ -750,19 +887,19 @@ class Runner:
                  f"trap {shlex.quote(elapsed)} EXIT", "failed=0"]
         network = f"{train}/model.onnx"
         reference = f"{out}/pytorch.json"
-        lines.append(shlex.join([*TRAINER, "fixture-eval", "--checkpoint", train + "/checkpoint.pt",
-                                 "--onnx", network, "--fixture", FIXTURE,
+        lines.append(shlex.join([*self.paths.trainer, "fixture-eval", "--checkpoint", train + "/checkpoint.pt",
+                                 "--onnx", network, "--fixture", self.paths.fixture,
                                  "--out", reference]))
         for batch in (1, 7, 256):
             for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
                                                       ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
                 name = f"{out}/{label}-b{batch}"
-                command = [ENGINE, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
+                command = [self.paths.engine, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
                            "--batch", str(batch), "--out", name + ".json"]
                 if backend == "tensorrt":
-                    command += ["--cache-dir", "/content/cache/nn-eval"]
+                    command += ["--cache-dir", self.paths.cache + "/nn-eval"]
                 lines.append(shlex.join(command))
-                compare = [*PYTHON, SOURCE + "/nn_compare.py", "--reference", reference,
+                compare = [*self.paths.python, self.paths.source + "/nn_compare.py", "--reference", reference,
                            "--candidate", name + ".json", "--policy", policy,
                            "--policy-tolerance", ptol, "--value-tolerance", vtol]
                 lines.extend([f"if {shlex.join(compare)} > {shlex.quote(name + '.compare.json')} "
@@ -816,8 +953,8 @@ class Runner:
             raise RuntimeError(f"cannot run minase data teacher-stats: {options.minase}: {error}") from error
         if result.returncode != 0:
             raise RuntimeError(f"minase data teacher-stats --help exited {result.returncode}: {result.stderr}")
-        if not self.remote.exists(FIXTURE):
-            raise RuntimeError(f"deployed commit {options.trainer_commit} is missing fixture: {FIXTURE}")
+        if not self.remote.exists(self.paths.fixture):
+            raise RuntimeError(f"deployed commit {options.trainer_commit} is missing fixture: {self.paths.fixture}")
         mainline = options.cycles_dir == Path("cycles")
         cycles_log = self.root / f"{options.cycles_dir}.jsonl"
         sessions_log = self.root / ("sessions.jsonl" if mainline else f"{options.cycles_dir}-sessions.jsonl")
@@ -827,7 +964,6 @@ class Runner:
         numbers = [row["cycle"] for row in cycles]
         if len(set(numbers)) != len(numbers):
             raise ValueError(f"{cycles_log}: duplicate cycles")
-        machine = None
         start_balance = None
         for cycle in range(options.first_cycle, options.last_cycle + 1):
             if cycle in numbers:
@@ -841,14 +977,14 @@ class Runner:
             if now + timedelta(minutes=options.cycle_minutes) > options.deadline:
                 self.log(cycle, "deadline does not allow another cycle")
                 return
-            balance = self.remote.usage()
-            if not can_start(datetime.now(UTC), options.deadline, options.cycle_minutes, balance, options.cycle_cu):
-                self.log(cycle, "time or balance does not allow another cycle")
-                return
-            if start_balance is None:
-                start_balance = balance
-            if machine is None:
-                machine = self.remote.machine()
+            if options.machine == "colab":
+                balance = self.remote.usage()
+                if not can_start(datetime.now(UTC), options.deadline, options.cycle_minutes, balance, options.cycle_cu):
+                    self.log(cycle, "time or balance does not allow another cycle")
+                    return
+                if start_balance is None:
+                    start_balance = balance
+            machine = self.machine
             playthrough, calibration = resignation(options, cycle)
             reference = ([options.cycle1_reference_summary] if cycle == 1 else summaries(options, cycle - 1))
             games, chunk_games = game_counts(reference, options.target_positions, options.chunks)
@@ -861,7 +997,9 @@ class Runner:
                           "games": games, "chunk_games": chunk_games, "playthrough_percent": playthrough,
                           "target_positions": options.target_positions,
                           "start_position": options.start_position,
-                          "threads": options.threads, "games_per_thread": options.games_per_thread,
+                          "threads": options.threads_per_gpu * machine["gpu_count"],
+                          "threads_per_gpu": options.threads_per_gpu, "devices": machine["gpu_count"],
+                          "games_per_thread": options.games_per_thread,
                           "simulations": options.simulations}
             seed_registration(self.root / "seed-ledger.jsonl", f"{seed_name}-{cycle:04d}-gen", seed, games)
             self.log(cycle, f"generation games={games} chunk_games={chunk_games} playthrough_percent={playthrough}")
@@ -900,16 +1038,21 @@ class Runner:
             if not isinstance(stats, dict):
                 raise ValueError("minase data teacher-stats must output a JSON object")
             network_digest = publish_network(options, cycle)
-            end_balance = self.remote.usage()
+            if options.machine == "colab":
+                end_balance = self.remote.usage()
             ended = datetime.now(UTC)
             settings = {"lr": options.lr,
                         "cycles_dir": options.cycles_dir.as_posix(),
                         "base_cycles_dir": options.base_cycles_dir.as_posix(), "branch_from": options.branch_from}
-            interval = {**settings, "session": options.session, "cycle": cycle, "started_at": started.isoformat(),
-                        "ended_at": ended.isoformat(), "start_balance": start_balance,
-                        "end_balance": end_balance, "balance_difference": start_balance - end_balance}
-            if end_balance > start_balance:
-                interval["balance_increased"] = True
+            interval = {**settings, "machine_kind": options.machine, "cycle": cycle,
+                        "started_at": started.isoformat(), "ended_at": ended.isoformat()}
+            if options.machine == "colab":
+                interval.update(session=options.session, start_balance=start_balance,
+                                end_balance=end_balance, balance_difference=start_balance - end_balance)
+                if end_balance > start_balance:
+                    interval["balance_increased"] = True
+            else:
+                interval["vast_instance"] = options.vast_instance
             record = {**settings, "cycle": cycle, "generation_commit": generation["generation_commit"],
                       "trainer_commit": options.trainer_commit, "generation": generation,
                       "generation_seed_offset": options.generation_seed_offset,
@@ -925,5 +1068,9 @@ class Runner:
             # 各台帳は全体を改名する。2つの台帳の間で中断した場合は二重登録の検査で止める。
             append_cycle(sessions_log, interval)
             append_cycle(cycles_log, record)
-            self.log(cycle, f"complete balance={end_balance}")
-            started, start_balance = ended, end_balance
+            if options.machine == "colab":
+                self.log(cycle, f"complete balance={end_balance}")
+                start_balance = end_balance
+            else:
+                self.log(cycle, "complete")
+            started = ended
