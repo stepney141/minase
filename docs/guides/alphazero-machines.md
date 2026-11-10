@@ -2,7 +2,7 @@
 
 本書は、AlphaZero型探索の学習と自己対局に使うGPUの機械を、開発に使う作業機から操作して借り、環境を導入し、ファイルを転送し、計算を実行し、終了するまでの手順を定める。
 対象は、Google Colab（以下Colab）の有料プランで借りるGPUつきの仮想機械（以下Colab機）である。
-vast.aiとRunpodで時間単位で借りるレンタル機の手順は、まだ実機で確かめていないので、最後の節に、使う前に行う実測と、それまでの規則だけを書く。
+vast.aiで時間単位で借りるレンタル機の手順は最後の節に書き、Runpodはまだ実機で確かめていないので、同じ節に使う前の規則だけを書く。
 方式を選んだ理由は[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)と[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)に、手順の根拠になった実測の値は[実現性の実測の記録](../measurements/alphazero-environment/alphazero-feasibility.md)にある。
 
 ## 1. 準備
@@ -158,19 +158,57 @@ colab sessions
 
 ## 7. レンタル機
 
-vast.aiとRunpodのレンタル機の実測は、2026年10月26日の利用者の判断により、[実行環境と実現性の実測](../plans/archived/alphazero-environment.md)では行っていない。
-レンタル機を初めて使う前に、候補のGPU種別の機械を短時間ずつ借り、起動から導入とビルドを終えるまでの時間、および約5 GBの試験データの転送時間を測り、時間単価を記録する。
-そのうえで6節の試走で1サイクルの料金を見積もり、実際に行った手順を本書に書き足す。
-実行器`minase_zero run-cycles`の接続は今のところColab機にだけ対応する（`runner.py`の`Remote`）ので、レンタル機では接続の部分を実行器へ足してから試走する。
+### 7.1 vast.ai
 
-それまでは、レンタル機の扱いを次の規則で定める。
-レンタル機には独自のコンテナイメージを使わず、事業者が公開するUbuntuとCUDAのイメージの上で`tools/train/zero/setup.sh`を実行する。
-作業機からの操作は、vast.aiでは公式CLI`vastai`、Runpodでは公式CLI`runpodctl`で行い、ファイルの転送はSSH越しのrsyncで行う。
-vast.aiでは、vast.aiの中継を通らずにSSHで接続できる出品を選び、出品が借り手に保証するCPUのスレッド数を選定の条件に含める。
-Runpodでは、公開IPとTCPポートを使う完全なSSH接続ができる機械を選び、rsyncを作業機とレンタル機の両方に導入する。
-借りた直後に`nproc`と、コンテナに割り当てられたCPUの上限（cgroupのCPUの割当）を確かめて記録し、生成のスレッド数をその上限に合わせる。
-レンタル機にはColab機のようなセッションの上限時間がないので、承認を得た範囲のサイクルを1台で続けて回してよい。
-ただし、vast.aiの出品には貸出期限があり、期限に達した機械は停止するので、サイクルを始める前に残りの貸出期間を確かめ、そのサイクルの処理と転送を終えられる場合に限って始める。
-作業を終えるときは、5節と同じく必要なファイルを受け取って検査和を確かめてから、機械を破棄する（vast.aiではdestroy、Runpodではterminate）。
-停止しただけの機械には記憶領域の保管料がかかり続けるからである。
+vast.aiの機械は、起動スクリプト`docs/measurements/alphazero-multi-gpu/launch-vast.py`で借り、導入し、実行器を走らせ、受け取って削除する。
+2回目の学習では、このスクリプトを2回目の設計書の測定記録のディレクトリへ写して使う。
+方式を選んだ理由は[vast.aiの実行器のADR](../adr/run-zero-cycles-on-vast-ai-until-the-deadline-and-delete-the-machine-after-a-verified-final-fetch.md)にあり、実測の値は[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)にある。
 vast.aiのアカウント、CLI、2要素認証、およびコンテナのCPUの割当に関する運用上の注意は、[SPSAの手引き](spsa.md)の8節にある。
+
+**出品を選ぶ**
+
+次の条件で照会し、1時間あたりの料金（`dph_total`）の安い順に選ぶ。
+
+```console
+vastai search offers 'num_gpus=4 gpu_name=RTX_4090 reliability>0.98 verified=true rentable=true direct_port_count>=1 cuda_vers>=13.0 disk_space>=100 cpu_cores_effective>=32 cpu_ram>=128 duration>=1' \
+  --type on-demand --raw --limit 200
+```
+
+GPUは1枚、2枚、または4枚の同じ機種に限る（学習のミクロバッチの数4をGPUの枚数で割り切るため）。
+NVIDIAのドライバはCUDA 13に対応する版580以上、ディスクは100 GB、貸出期限（`duration`）は回すサイクルの範囲より長くする。
+安い出品はすぐに借りられるので、照会と作成の間を空けない。照会の直後でも`no_such_ask`で断られることがあり、その場合は照会し直す。
+借りる前に、出品の料金と回すサイクルの範囲の見込みを利用者に示して承認を得る。
+
+**起動する**
+
+```console
+python3 docs/measurements/alphazero-multi-gpu/launch-vast.py --offer <出品のID> --label <ラベル> \
+  --image nvidia/cuda:13.0.3-base-ubuntu24.04 --hours <自己停止までの時間> --commit <40桁のコミット> \
+  --root /mnt/synology_nas/minase/alphazero --salvage-dir /mnt/synology_nas/minase/alphazero/salvage \
+  -- <run-cyclesの引数のうち--machine、--vast-instance、--deadline、--rootを除いたもの>
+```
+
+起動スクリプトは、作業機で`nohup setsid`により端末から切り離して走らせ、標準出力と標準エラーをファイルへ向ける。
+起動スクリプトは、作成時に自己停止を予約し、自己停止の時刻と出品の貸出期限の早いほうを終了期限として実行器へ渡す。
+導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、および`minase`のビルドを行い、測った機械では11〜15分かかった。
+作業機からvast.aiの機械への転送は毎秒約5.5 MBであり、リプレイバッファの上限の約29 GBを新しい機械へ送るには約90分かかる。
+
+**終わり方**
+
+実行器が終わると、起動スクリプトは、機械の`/workspace/az`の下でNASにないファイルを`--salvage-dir`の下のインスタンスの番号のディレクトリへ受け取り、検査和を照合してから機械を削除する。
+受け取りか照合に失敗した機械は削除せずに残し、起動スクリプトは異常で終わる。
+この場合は、自己停止の時刻までに受け取り直して検査和を確かめてから、`scripts/vast/common.py`の`destroy`で削除する。
+削除が2要素認証の切れで失敗した場合、起動スクリプトはコンテナ専用の鍵で停止を要求してから異常で終わるので、利用者に`vastai tfa login`で認証し直してもらって削除する。
+SSHが使えない機械と導入に失敗した機械は、起動スクリプトが削除する。
+各機械の出来事と、作成の直後と削除の直前のインスタンスの情報の全体は、NASの`vast-instances.jsonl`に残る。
+1サイクルの料金は、この情報の`dph_total`（ディスクの保管料を含む1時間あたりの料金）に稼働した時間を掛け、転送料を加えて求める。
+
+### 7.2 Runpod
+
+Runpodの機械はまだ使っていない。
+使う前に、候補のGPU種別の機械を短時間借り、起動から導入とビルドを終えるまでの時間と転送の時間を測り、時間単価を記録する。
+それまでは、次の規則で扱う。
+事業者が公開するUbuntuとCUDAのイメージの上で`tools/train/zero/setup.sh`を実行し、作業機からは公式CLI`runpodctl`で操作し、ファイルの転送はSSH越しのrsyncで行う。
+公開IPとTCPポートを使う完全なSSH接続ができる機械を選び、rsyncを作業機と機械の両方に導入する。
+実行器`minase_zero run-cycles`の機械の種類は`colab`と`vast`だけなので、Runpodでは接続の部分を実行器へ足してから試走する。
+作業を終えるときは、必要なファイルを受け取って検査和を確かめてから、terminateで機械を破棄する。停止しただけの機械には記憶領域の保管料がかかり続けるからである。

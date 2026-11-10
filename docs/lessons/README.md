@@ -89,6 +89,8 @@ Rustのコードやテストを書くとき、およびそれらをcodexへ委�
 - [低精度の推論の照合の許容誤差は学習したネットの出力で決める](judge-low-precision-inference-on-trained-outputs.md) — FP16などの照合の許容誤差は学習した重みの出力で確かめてから固定し、logitではなく下流が使う確率と勝率で照合し、ランダム初期化の重みは並びのずれの検出にだけ使う。
 - [判定規則の誤判定は、差がないと分かっている比較で確かめる](use-a-same-net-control-for-distribution-rules.md) — 判定規則の誤判定を確かめるときは同じネットや同じコミットを本番と同じ比較の構造でもう1回測り、棋力が同程度であることを指標の差が0であることの根拠にしない。
 - [書き出し直したONNXのバイト列の一致は書き出した機械でのみ確かめる](compare-reexported-onnx-bytes-only-on-the-exporting-machine.md) — チェックポイントと書き出したネットのバイト列の対応は書き出した機械で1回だけ確かめ、ほかの機械ではその機械の参照の出力を基準に推論だけを照合し、機械をまたぐ同一性はファイルの検査和で確かめる。
+- [コンパイルした学習の数値は、本番と同じGPUとbf16で確かめる](check-compiled-training-numerics-on-the-gpu-in-bf16.md) — `torch.compile`などに通す変更はCPUの試験に加えてGPUのbf16の勾配を求めて有限であることと誤差を確かめ、再開の一致は空のコンパイルのキャッシュの別々のプロセスでGPUで確かめ、GPUのfp32どうしはTF32を切った計算との差を基準に読む。
+- [torchrunのワーカーは、torchrunのプロセスグループとは別に止める](kill-torchrun-workers-through-their-own-sessions.md) — `torchrun`はワーカーを別のセッションで起動するので、止める前に子孫のPIDを集めて各プロセスグループへ信号を送り、止めた後に集めたPIDが残っていないことを確かめる。
 
 ## 外部エンジンと通信
 

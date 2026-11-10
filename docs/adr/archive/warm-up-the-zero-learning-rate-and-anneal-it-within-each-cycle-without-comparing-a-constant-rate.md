@@ -2,11 +2,11 @@
 
 ## ステータス
 
-承認済み。決定日は2026年11月2日。
+置き換え済み。[AlphaZero型探索の学習率は、全体のバッチ1,024に対して基準を0.04とし、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](../warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)によって置き換えられた。
 
 ## コンテキスト
 
-2026年10月31日の[前のADR](archive/warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)は、学習率に、ランダム初期化からのウォームアップとサイクルごとのcosine annealingを掛け、cosine annealingと一定の学習率のどちらを続けるかは、再出発の後のサイクル20から分岐して5サイクルずつ回し、対局のGSPRTで決めるとした。
+2026年10月31日の[前のADR](warm-up-the-zero-learning-rate-over-two-million-samples-and-anneal-it-within-each-cycle.md)は、学習率に、ランダム初期化からのウォームアップとサイクルごとのcosine annealingを掛け、cosine annealingと一定の学習率のどちらを続けるかは、再出発の後のサイクル20から分岐して5サイクルずつ回し、対局のGSPRTで決めるとした。
 前のADRがこの比較を置いたのは、調べた強化学習の先行例はウォームアップの後は一定の学習率を基本として途中で段階的に下げ、サイクルごとにcosine annealingを始め直す例がなかったからである。
 本線は再出発のサイクル1からcosine annealingで学習した。
 比較のために、サイクル20のチェックポイントから一定の学習率の系列`cycles-constant/`を分岐して回したところ、サイクル22の出力の照合で止まった。
@@ -34,5 +34,5 @@ sはチェックポイントに記録してサイクルをまたいで引き継�
 サイクルごとにcosine annealingを始め直す方式が一定の学習率より強いことは、対局では確かめていない。
 打ち切った系列の出力はNASの`cycles-constant/`にサイクル22まで残っており、これらは本線のリプレイバッファには入らない。
 最初のサイクルは約400万標本を学び、ウォームアップは最初のサイクルの前半で終わる。
-伸びが止まったときに基準の学習率を下げる規則は、[強化学習の実行の設計書](../plans/archived/alphazero-rl.md)が定める。
+伸びが止まったときに基準の学習率を下げる規則は、[強化学習の実行の設計書](../../plans/archived/alphazero-rl.md)が定める。
 実装は`tools/train/zero/minase_zero/train.py`の`learning_rate`にある。

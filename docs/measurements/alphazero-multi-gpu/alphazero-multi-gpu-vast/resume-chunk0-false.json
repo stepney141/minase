@@ -1,0 +1,68 @@
+{
+  "killed_at_completed_steps": 100,
+  "total_steps": 189,
+  "nproc": 4,
+  "seconds": {
+    "uninterrupted": 74.53975749600795,
+    "interrupted": 52.88450615701731,
+    "resumed": 55.649443403992336
+  },
+  "uninterrupted_elapsed_seconds": {
+    "loading": 3.6446021099982318,
+    "training": 51.658267485996475,
+    "diagnostics": 0.9207808100036345
+  },
+  "checkpoint": {
+    "completed_steps": true,
+    "config": true,
+    "cycle": true,
+    "data_order_sha256": true,
+    "file_training_counts": true,
+    "latest_data": true,
+    "learning_curve": true,
+    "loss_sums": true,
+    "model": false,
+    "optimizer": true,
+    "positions_seen": true,
+    "provenance": true,
+    "replay_buffer_training_count": true,
+    "sample_count": true,
+    "sample_sha256": true,
+    "samples_seen": true,
+    "samples_seen_start": true,
+    "seed": true,
+    "total_steps": true,
+    "training_count": true,
+    "validation_count": true
+  },
+  "summary": {
+    "completed_steps": true,
+    "config": true,
+    "cycle": true,
+    "data_order_sha256": true,
+    "diagnostics": true,
+    "file_training_counts": true,
+    "last_lr": true,
+    "latest_data": true,
+    "learning_curve": true,
+    "lr": true,
+    "network_sha256": true,
+    "positions_seen": true,
+    "provenance": true,
+    "replay_buffer_training_count": true,
+    "sample_count": true,
+    "sample_sha256": true,
+    "samples_seen": true,
+    "samples_seen_start": true,
+    "total_steps": true,
+    "training_count": true,
+    "training_losses": true,
+    "validation_count": true
+  },
+  "model_onnx_bytes_equal": true,
+  "network_sha256": [
+    "d0caa31c9464c199f1766a318afb503f919a36c5375985f0a330ee98d4f0809e",
+    "d0caa31c9464c199f1766a318afb503f919a36c5375985f0a330ee98d4f0809e"
+  ],
+  "all_equal": false
+}

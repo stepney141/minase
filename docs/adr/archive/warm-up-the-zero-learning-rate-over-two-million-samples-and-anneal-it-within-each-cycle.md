@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。[AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](../warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)によって置き換えられた。
+置き換え済み。[AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)によって置き換えられた。
 
 ## コンテキスト
 
