@@ -1,0 +1,26 @@
+base-1	0	23160	NN inference (288 positions): 0.202868 s
+base-2	0	21662	NN inference (288 positions): 0.197555 s
+base-3	134	19774	corrupted double-linked list
+base-4	134	19966	corrupted double-linked list
+base-5	134	20316	corrupted double-linked list
+base-6	134	20120	corrupted double-linked list
+preload-libcuda-1	134	19930	corrupted double-linked list
+preload-libcuda-2	0	19892	NN inference (288 positions): 0.193096 s
+preload-libcuda-3	134	20518	corrupted double-linked list
+preload-libcuda-4	134	20673	corrupted double-linked list
+preload-libcuda-5	134	20231	corrupted double-linked list
+preload-libcuda-6	134	20477	corrupted double-linked list
+preload-ort-1	134	19894	corrupted double-linked list
+preload-ort-2	0	20013	NN inference (288 positions): 0.195268 s
+preload-ort-3	134	20522	corrupted double-linked list
+preload-ort-4	134	19918	corrupted double-linked list
+preload-ort-5	134	19779	corrupted double-linked list
+preload-ort-6	134	20175	corrupted double-linked list
+mallocdebug-gdb-1	0
+mallocdebug-gdb-2	1
+mallocdebug-gdb-3	1
+mallocdebug-gdb-4	1
+asan-1	0	NN inference (288 positions): 0.276394 s
+asan-2	0	NN inference (288 positions): 0.272273 s
+asan-3	0	NN inference (288 positions): 0.290608 s
+asan-4	0	NN inference (288 positions): 0.238848 s

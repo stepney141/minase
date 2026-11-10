@@ -1,9 +1,9 @@
 //! 下位のエラー型と、生成器の契約違反を保持するエラー。
 
-use std::{any::Any, fmt, io, path::PathBuf};
+use std::{any::Any, fmt, io, num::NonZeroUsize, path::PathBuf};
 
 use minase::{
-    nn::NnError,
+    nn::{NnError, tensorrt_cache::GpuQueryError},
     search::{SearchError, mate_in_three, mcts},
     training::records,
 };
@@ -14,14 +14,29 @@ pub(super) enum Error {
     Mcts(mcts::Error),
     Mate(mate_in_three::Error),
     Inference(NnError),
+    GpuQuery(GpuQueryError),
     Records(records::Error),
     Game(GameError),
     Search(SearchError),
     Io(io::Error),
     Json(serde_json::Error),
     CacheRootUnset,
+    ThreadsNotMultipleOfDevices {
+        threads: NonZeroUsize,
+        devices: NonZeroUsize,
+    },
+    CpuDeviceCount {
+        devices: NonZeroUsize,
+    },
+    DeviceCountMismatch {
+        requested: NonZeroUsize,
+        available: NonZeroUsize,
+    },
     NonemptyDirectory(PathBuf),
-    Locked { path: PathBuf, source: io::Error },
+    Locked {
+        path: PathBuf,
+        source: io::Error,
+    },
     ConfigMismatch(Vec<String>),
     InvalidSettings(&'static str),
     Collision,
@@ -41,12 +56,27 @@ impl fmt::Display for Error {
             Self::Mcts(error) => write!(f, "MCTS search failed: {error}"),
             Self::Mate(error) => error.fmt(f),
             Self::Inference(error) => write!(f, "inference failed: {error}"),
+            Self::GpuQuery(error) => write!(f, "cannot query GPU: {error}"),
             Self::Records(error) => write!(f, "MNSD record failed: {error}"),
             Self::Game(error) => write!(f, "game failed: {error}"),
             Self::Search(error) => write!(f, "cannot start search: {error}"),
             Self::Io(error) => error.fmt(f),
             Self::Json(error) => write!(f, "invalid JSON: {error}"),
             Self::CacheRootUnset => f.write_str("TensorRT requires nonempty XDG_CACHE_HOME"),
+            Self::ThreadsNotMultipleOfDevices { threads, devices } => write!(
+                f,
+                "--threads {threads} must be a multiple of --devices {devices}"
+            ),
+            Self::CpuDeviceCount { devices } => {
+                write!(f, "--nn-backend cpu requires --devices 1, got {devices}")
+            }
+            Self::DeviceCountMismatch {
+                requested,
+                available,
+            } => write!(
+                f,
+                "--devices {requested} does not match the GPU count reported by nvidia-smi: {available}"
+            ),
             Self::NonemptyDirectory(path) => write!(
                 f,
                 "output directory is not empty and has no config.json: {}",
@@ -95,6 +125,7 @@ impl std::error::Error for Error {
             Self::Mcts(error) => Some(error),
             Self::Mate(error) => Some(error),
             Self::Inference(error) => Some(error),
+            Self::GpuQuery(error) => Some(error),
             Self::Records(error) => Some(error),
             Self::Game(error) => Some(error),
             Self::Search(error) => Some(error),
@@ -123,6 +154,11 @@ impl From<mcts::tree::TreeError> for Error {
 impl From<NnError> for Error {
     fn from(error: NnError) -> Self {
         Self::Inference(error)
+    }
+}
+impl From<GpuQueryError> for Error {
+    fn from(error: GpuQueryError) -> Self {
+        Self::GpuQuery(error)
     }
 }
 impl From<records::Error> for Error {

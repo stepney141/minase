@@ -327,7 +327,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、同じ出力先で起動し直すと欠けた塊だけを生成する](archive/commit-zero-self-play-cycles-in-fixed-game-chunks.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習器は、MNSDをRustの拡張モジュールで読み、入力の95面と方策の目標はPythonでバッチごとに作る](archive/read-mnsd-into-the-zero-trainer-through-a-rust-extension.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索の学習器は、価値を対局結果と根の価値の混合で、方策を全出力の交差エントロピーで学習し、対局結果だけに対する検証損失を監視する](archive/train-the-zero-value-on-mixed-results-and-root-values.md)（置き換え済み）
-- 2026年10月27日 [AlphaZero型探索の学習は、シードで固定した順列と完了した更新の回数で再開し、チェックポイント、ONNX、および集計を原子的に確定させる](resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)
+- 2026年10月27日 [AlphaZero型探索の学習は、シードで固定した順列と完了した更新の回数で再開し、チェックポイント、ONNX、および集計を原子的に確定させる](archive/resume-zero-training-from-the-update-count-over-a-seeded-permutation.md)（置き換え済み）
 - 2026年10月28日 [AlphaZero型探索のネットのTensorRTのFP16の出力は、logitではなく合法手の確率と価値で照合する](archive/compare-fp16-zero-network-outputs-on-legal-move-probabilities.md)（置き換え済み）
 - 2026年10月28日 [MCTSは新しい節点を審判層の裁定で終局させてから反復の近似を適用し、引き分けの勝率を由来を問わず同じ値にする](adjudicate-mcts-leaves-by-the-referee-before-the-repetition-approximation.md)
 - 2026年10月28日 [AlphaZero型探索の学習器は、常に不可能な方策のラベルを損失の正規化から除き、価値を対局結果と根の価値の混合で学び、最終の重みで訓練集合の標本と検証集合を同じ条件で診断する](mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)
@@ -350,7 +350,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月31日 [AlphaZero型探索の自己対局は、対局数で決めた塊ごとに確定させ、訓練局面数が目標に届いた最初の塊まででサイクルを締める](commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md)
 - 2026年11月1日 [AlphaZero型探索の自己対局は3,000手で打ち切り、打ち切った対局を学習データから除く](discard-zero-self-play-games-that-reach-3000-plies.md)
 - 2026年11月1日 [AlphaZero型探索の学習は、サイクル3以後でパラメータ数の10倍の局面を持つ直近のサイクルをリプレイバッファとし、そのサイクルの生成量の4倍の標本をリプレイバッファから一様に抽出して学ぶ](archive/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3.md)（置き換え済み）
-- 2026年11月2日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)
+- 2026年11月2日 [AlphaZero型探索の学習率は、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げ、一定の学習率とは比べない](archive/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)（置き換え済み）
 - 2026年11月2日 [AlphaZero型探索の学習器は重みの移動平均を持たず、自己対局と進捗測定には学習の最後の重みのネットを使う](do-not-keep-a-moving-average-of-the-zero-network-weights.md)
 - 2026年11月2日 [AlphaZero型探索の自己対局は、着手の後に王手限定の3手以内の勝ちがあれば、その側の勝ちとして打ち切り、判定は探索のモジュールに置く](stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)
 - 2026年11月2日 [役目を終えたAlphaZero型探索の測定用の道具を削除し、1サイクルの見積もりは実際に1サイクル回して行う](delete-finished-zero-measurement-tools-and-estimate-cycles-by-running-one.md)
@@ -367,3 +367,10 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月10日 [AlphaZero型探索の学習は、訓練局面の合計がパラメータ数の10倍に届くまでの直近のサイクルをリプレイバッファとし、最古のサイクルをサイクル13までの学習では1、サイクル14からの学習では3として、生成量の4倍の標本を一様に抽出して学ぶ](sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)
 - 2026年11月10日 [AlphaZero型探索の自己対局の開始局面として、歩兵と仲人を動かさず、1〜3段目の駒を段の中で並べ替え、2枚の角行を偶奇の異なるマスに置き、後手を点対称に置いた初期配置を選べるようにする](shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)
 - 2026年11月10日 [AlphaZero型探索の実行器は、系列の基本シードの加算値を必須の引数で受け取り、2回目の学習には3×10⁸を与える](take-the-zero-series-seed-offset-as-a-required-runner-argument.md)
+- 2026年11月10日 [AlphaZero型探索の自己対局は、1つのプロセスの中でスレッドtの推論器をGPU t mod Nに置き、同じ機種のGPUだけの機械で動かす](spread-zero-self-play-threads-over-identical-gpus-in-one-process.md)
+- 2026年11月10日 [AlphaZero型探索の学習は、Lightning FabricのDDPで、GPUの枚数によらず全体のバッチ1,024をミクロバッチ256の勾配累積で学び、BatchNormの移動統計を最初のミクロバッチだけで更新する](train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)
+- 2026年11月10日 [AlphaZero型探索の学習は、シードで固定した抽出の列を全体のバッチで切った更新の回数で再開し、端数の局面を使わず、GPU 0のプロセスだけが原子的に確定させる](resume-zero-training-from-the-count-of-full-global-batches-over-a-seeded-sample-sequence.md)
+- 2026年11月10日 [AlphaZero型探索の学習率は、全体のバッチ1,024に対して基準を0.04とし、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)
+- 2026年11月10日 [AlphaZero型探索の学習は、学習の順伝播をDDPの内側でtorch.compileし、Inductorのemulate_precision_castsとdeterministicを有効にする](compile-the-zero-training-forward-inside-ddp-with-eager-rounding-and-deterministic-inductor-kernels.md)
+- 2026年11月10日 [AlphaZero型探索の実行器はvast.aiの機械にも対応して残高を照会せずに終了期限でサイクルを始め、起動スクリプトは最後の受け取りを照合してから機械を削除する](run-zero-cycles-on-vast-ai-until-the-deadline-and-delete-the-machine-after-a-verified-final-fetch.md)
+- 2026年11月10日 [AlphaZero型探索の推論は、ortのrc.13のまま、ONNX Runtime 1.31.1の実行時ライブラリを読み込む](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)

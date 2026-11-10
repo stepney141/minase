@@ -1,0 +1,28 @@
+eval-128-1	134	20559	corrupted double-linked list
+eval-131-1	0	20941	NN inference (288 positions): 0.186686 s
+eval-128-2	134	19993	corrupted double-linked list
+eval-131-2	0	19654	NN inference (288 positions): 0.186837 s
+eval-128-3	134	21973	corrupted double-linked list
+eval-131-3	0	21440	NN inference (288 positions): 0.192728 s
+eval-128-4	134	21010	corrupted double-linked list
+eval-131-4	0	20755	NN inference (288 positions): 0.183394 s
+eval-128-5	134	20772	corrupted double-linked list
+eval-131-5	0	20965	NN inference (288 positions): 0.187927 s
+eval-128-6	134	21443	corrupted double-linked list
+eval-131-6	0	20058	NN inference (288 positions): 0.192292 s
+eval-128-7	134	21251	corrupted double-linked list
+eval-131-7	0	20611	NN inference (288 positions): 0.186250 s
+eval-128-8	134	20243	corrupted double-linked list
+eval-131-8	0	20767	NN inference (288 positions): 0.192469 s
+eval-128-9	134	20482	corrupted double-linked list
+eval-131-9	0	20432	NN inference (288 positions): 0.188803 s
+eval-128-10	134	20987	corrupted double-linked list
+eval-131-10	0	20180	NN inference (288 positions): 0.185559 s
+gen-128-1	0	42870	chunks: 1/1 games: 8 positions: 823 elapsed_seconds: 40.072
+gen-131-1	0	37641	chunks: 1/1 games: 8 positions: 872 elapsed_seconds: 36.276
+gen-128-2	0	58121	chunks: 1/1 games: 8 positions: 1220 elapsed_seconds: 56.635
+gen-131-2	0	57103	chunks: 1/1 games: 8 positions: 795 elapsed_seconds: 54.999
+gen-128-3	0	38921	chunks: 1/1 games: 8 positions: 1114 elapsed_seconds: 37.592
+gen-131-3	0	38001	chunks: 1/1 games: 8 positions: 1138 elapsed_seconds: 36.097
+gen-128-4	0	40413	chunks: 1/1 games: 8 positions: 873 elapsed_seconds: 38.510
+gen-131-4	0	36053	chunks: 1/1 games: 8 positions: 1050 elapsed_seconds: 34.343

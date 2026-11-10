@@ -8,8 +8,9 @@
 //! `network_checksum`は32バイトのbytesである。
 //! `engine_default`は規則名ではなく、解釈した規則と`Rules::ENGINE_DEFAULT`の一致を表す。
 //! `scan(path)`は手順を再生せずにtraining_countとvalidation_countを数える。
-//! `read_selected(path, training_indices, include_validation)`は全手順を再生し、
-//! ファイル内の訓練局面の通し番号で指定した局面と、指定時だけ検証局面を返す。
+//! `read_selected(path, training_indices, diagnostic_indices, include_validation)`は全手順を再生する。
+//! 第1の列の訓練局面と、第2の列のうち訓練診断標本の対局に属する局面を保持する。
+//! 検証局面は指定時だけ保持し、保持した訓練局面の通し番号も昇順で返す。
 //! `read_games(path, games)`は基本シードと対局番号の組の集合を受け取り、
 //! 訓練・検証の分割を問わず、指定した対局の採用局面だけを返す。
 //! いずれも件数は抽出前の値であり、完全な形式検査は再生時に行う。
@@ -27,6 +28,7 @@
 //! |---|---|---|
 //! | `game_numbers` | u32 | g。局面が選別されなかった対局も含む全対局番号 |
 //! | `games` | u32 | n。各局面の対局番号 |
+//! | `training_indices` | u64 | 保持した非検証局面の行に対応する、ファイル内の訓練局面の通し番号 |
 //! | `plies` | u16 | n。開始手数と項目の添字の和 |
 //! | `boards` | u8 | n×144。MNSDの駒コード。保留印も保持 |
 //! | `sides` | u8 | n。先手0、後手1 |
@@ -203,6 +205,7 @@ impl FileInfo {
 #[derive(Debug)]
 pub struct Records {
     pub info: FileInfo,
+    pub training_indices: Vec<u64>,
     pub games: Vec<u32>,
     pub plies: Vec<u16>,
     pub boards: Vec<u8>,
@@ -240,6 +243,7 @@ impl Records {
     fn new(header: Header) -> Self {
         Self {
             info: FileInfo::new(header),
+            training_indices: Vec::new(),
             games: Vec::new(),
             plies: Vec::new(),
             boards: Vec::new(),
@@ -360,6 +364,8 @@ pub fn read_games(path: &Path, games: &HashSet<(u64, u32)>) -> Result<Records, E
 /// 全手順を再生し、指定した訓練局面と、指定時だけ検証局面を保持する。
 ///
 /// 訓練局面の番号は、価値と方策の候補があり除外されていない非検証局面に0から振る。
+/// `diagnostic_indices`のうち、対局のハッシュを20で割った余りが1の局面も保持する。
+/// 2列で重なる番号は1回だけ保持し、保持した訓練局面の番号を昇順で返す。
 /// 復号器が一時的に保持する1対局分を除き、局面のメモリは保持件数に比例する。
 ///
 /// # Errors
@@ -367,23 +373,32 @@ pub fn read_games(path: &Path, games: &HashSet<(u64, u32)>) -> Result<Records, E
 pub fn read_selected(
     path: &Path,
     training_indices: &[u64],
+    diagnostic_indices: &[u64],
     include_validation: bool,
 ) -> Result<Records, Error> {
-    if training_indices.windows(2).any(|pair| pair[0] >= pair[1]) {
+    if [training_indices, diagnostic_indices]
+        .iter()
+        .any(|indices| indices.windows(2).any(|pair| pair[0] >= pair[1]))
+    {
         return Err(Error::InvalidSelection);
     }
     let mut selected = training_indices.iter().peekable();
-    let output = read_positions(path, |_, validation, index| {
+    let mut diagnostic = diagnostic_indices.iter().peekable();
+    let output = read_positions(path, |(seed, game), validation, index| {
         if validation {
-            include_validation
-        } else if selected.peek().is_some_and(|&&next| next == index) {
-            selected.next();
-            true
-        } else {
-            false
+            return include_validation;
         }
+        let keep = selected.peek().is_some_and(|&&next| next == index);
+        if keep {
+            selected.next();
+        }
+        let sample = diagnostic.peek().is_some_and(|&&next| next == index);
+        if sample {
+            diagnostic.next();
+        }
+        keep || (sample && game_hash(seed, game) % 20 == 1)
     })?;
-    if selected.next().is_some() {
+    if selected.next().is_some() || diagnostic.next().is_some() {
         return Err(Error::InvalidSelection);
     }
     Ok(output)
@@ -391,10 +406,14 @@ pub fn read_selected(
 
 /// PythonとRust学習器のhash64と同じ折り返し演算で検証の対局を判定する。
 fn is_validation(seed: u64, game: u32) -> bool {
+    game_hash(seed, game).is_multiple_of(20)
+}
+
+fn game_hash(seed: u64, game: u32) -> u64 {
     let mut value = seed ^ u64::from(game).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    (value ^ (value >> 31)).is_multiple_of(20)
+    value ^ (value >> 31)
 }
 
 fn read_positions(
@@ -441,6 +460,9 @@ fn read_positions(
             };
             if !keep(key, validation, index_in_split) {
                 continue;
+            }
+            if !validation {
+                output.training_indices.push(index_in_split);
             }
             selected_entries.push(index);
             let ply = u16::try_from(index)

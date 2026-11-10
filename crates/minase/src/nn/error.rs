@@ -50,8 +50,13 @@ pub enum NnError {
         /// 指定されたパス。
         path: PathBuf,
     },
-    /// GPUの情報を取得できなかった。
+    /// GPUの環境変数の検査または情報の取得に失敗した。
     GpuQuery(GpuQueryError),
+    /// CUDAの機器番号をONNX Runtimeが要求する整数型で表せない。
+    InvalidDeviceId {
+        /// 指定されたCUDAの機器番号。
+        device_id: usize,
+    },
     /// ONNX Runtimeが返したエラー。
     Runtime(ort::Error),
     /// ネットの入出力の名前、要素型、個数、または形が契約と異なる。
@@ -159,6 +164,12 @@ impl fmt::Display for NnError {
                 write!(formatter, "cache path is not UTF-8: {}", path.display())
             }
             Self::GpuQuery(source) => write!(formatter, "cannot query GPU: {source}"),
+            Self::InvalidDeviceId { device_id } => {
+                write!(
+                    formatter,
+                    "CUDA device ID exceeds the i32 range: {device_id}"
+                )
+            }
             Self::Runtime(source) => write!(formatter, "ONNX Runtime error: {source}"),
             Self::ModelSignature {
                 expected,

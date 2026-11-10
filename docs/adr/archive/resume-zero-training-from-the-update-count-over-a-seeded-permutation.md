@@ -2,15 +2,15 @@
 
 ## ステータス
 
-承認済み。決定日は2026年10月27日。
+置き換え済み。[AlphaZero型探索の学習は、シードで固定した抽出の列を全体のバッチで切った更新の回数で再開し、端数の局面を使わず、GPU 0のプロセスだけが原子的に確定させる](../resume-zero-training-from-the-count-of-full-global-batches-over-a-seeded-sample-sequence.md)によって置き換えられた。
 
 ## コンテキスト
 
-強化学習（RL）の学習は、Google ColabのColab機またはvast.aiとRunpodのレンタル機で行い、これらの機械は途中で止まり得る（[Colab機の操作の手引き](../guides/alphazero-machines.md)）。
+強化学習（RL）の学習は、Google ColabのColab機またはvast.aiとRunpodのレンタル機で行い、これらの機械は途中で止まり得る（[Colab機の操作の手引き](../../guides/alphazero-machines.md)）。
 各サイクルの学習は直近kサイクルのデータ（リプレイバッファ）を1回ずつ読み、止まった場合も読んだデータと更新回数に重複も欠落もあってはならない。
-借りた機械を替えて再開することもあり、リプレイバッファのファイルは転送のたびに検査和を照合して確定させている（[強化学習の実行](../plans/archived/alphazero-rl.md)）。
-再開の照合に予算の設定を含めると、予算を変えただけの正当な再開まで拒否する（[教訓](../lessons/resume-hash-excludes-budgets.md)）。
-エンジンの開発者は、[学習器の設計書](../plans/archived/alphazero-trainer.md)でチェックポイントと再開を決め、着手時に読取位置と照合の範囲を補った。
+借りた機械を替えて再開することもあり、リプレイバッファのファイルは転送のたびに検査和を照合して確定させている（[強化学習の実行](../../plans/archived/alphazero-rl.md)）。
+再開の照合に予算の設定を含めると、予算を変えただけの正当な再開まで拒否する（[教訓](../../lessons/resume-hash-excludes-budgets.md)）。
+エンジンの開発者は、[学習器の設計書](../../plans/archived/alphazero-trainer.md)でチェックポイントと再開を決め、着手時に読取位置と照合の範囲を補った。
 
 ## 決定
 
@@ -39,6 +39,6 @@ k番目の更新は並べ替えた列のkB番目から(k+1)B番目の手前ま�
 ## 結果
 
 作業機のCPUの試験は、最初のチェックポイントの後に`SIGKILL`で止めて再開した学習の重み、最適化器の状態、更新回数、`data_order_sha256`、およびONNXが、中断しない学習と一致することを確かめる。
-作業機のGPUでも、200回目の更新の後に止めて再開した学習は、中断しない学習と出力したネットのバイト列まで一致した（[記録](../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
+作業機のGPUでも、200回目の更新の後に止めて再開した学習は、中断しない学習と出力したネットのバイト列まで一致した（[記録](../../measurements/alphazero-trainer/alphazero-trainer-gpu-resume-check.md)）。
 借りた機械を止めて作業機で確定したチェックポイントだけから再開する確認は、強化学習の実行のフェーズ1で行う。
 出力先の各ファイルの欄は、`tools/train/zero/minase_zero/train.py`のdocstringにある。

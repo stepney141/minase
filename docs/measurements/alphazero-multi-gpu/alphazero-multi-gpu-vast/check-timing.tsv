@@ -1,0 +1,13 @@
+fixture-eval	0	10156
+cpu-b1	0	56950
+cpu-b1-compare	0	104
+trt-b1	134	17926
+trt-b1-compare	0	101
+cpu-b7	0	40556
+cpu-b7-compare	0	107
+trt-b7	0	18449
+trt-b7-compare	0	105
+cpu-b256	0	21738
+cpu-b256-compare	0	102
+trt-b256	134	19063
+trt-b256-compare	0	99

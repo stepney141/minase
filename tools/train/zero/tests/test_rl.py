@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from minase_zero.rl import register_seed_range
 
-from .cli import require_success, run_cli
+from tests.cli import require_success, run_cli
 
 
 ENTRY = {

@@ -1,22 +1,25 @@
 """初期化、学習、再開、および固定局面集の推論を明示した引数で実行する。
 
-作業ディレクトリをtools/train/zeroにして、`uv run --frozen python -m minase_zero <サブコマンド>`で起動する。
+作業ディレクトリをtools/train/zeroにして、trainは`uv run --frozen torchrun --standalone --nproc-per-node N -m minase_zero train ...`で起動する。
+ほかのサブコマンドは`uv run --frozen python -m minase_zero <サブコマンド>`で起動する。
 引数はすべて既定値を持たない。
 
 - init：--blocks、--channels、--seedのネットを作り、--out-dir（存在しないか空）へ書く。
 - train（新しいサイクル）：--init（すべての更新を終えたチェックポイント）、--data-list（リプレイバッファの
   MNSDファイルの列を保存したUTF-8のJSON配列のファイル）、
   --latest-data（最新サイクルのファイルの列で、読み込んだ配列の末尾と一致する）、
-  --out-dir（存在しないか空）、--cycle、--seed、--batch-size、--lr、
+  --out-dir（存在しないか空）、--cycle、--seed、--batch-size（全体のバッチ）、--micro-batch-size、--lr、
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
-  --checkpoint-steps、--device（cudaかcpu）、--trainer-commit（40桁の16進数字）。
-- train --resume <出力先> --device：ほかの設定はチェックポイントから読み、中断した学習を続ける。
+  --checkpoint-steps、--device（cudaかcpu）、--replay-threads、--trainer-commit（40桁の16進数字）。
+- train --resume <出力先> --device --replay-threads：ほかの設定はチェックポイントから読み、中断した学習を続ける。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
 - resign-calibration：--summary（直前のサイクルの生成器の集計の列）。
-- run-cycles：NASとColab機の間で生成、学習、照合を順に実行する。--replay-buffer-positionsでリプレイバッファの
-  局面数、--generation-commitと--trainer-commitで生成と学習のコミットを指定する。
+- run-cycles：--machine colab|vastで指定した機械で生成、学習、照合を順に実行し、NASへ受け取る。
+  colabでは--sessionと--cycle-cu、vastでは--vast-instanceを必須とし、ほかの種類の機械の引数は指定できない。
+  --threads-per-gpuでGPUあたりの生成スレッド数、--replay-buffer-positionsでリプレイバッファの局面数を指定する。
+  --generation-commitと--trainer-commitで生成と学習のコミットを指定する。
   引数と再開の契約はrunner.pyにある。
 
 引数の誤りと実行時の条件違反は、標準エラーの1行と終了コード1で報告する。
@@ -51,6 +54,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
 
     train = commands.add_parser("train", allow_abbrev=False)
     train.add_argument("--device", choices=("cuda", "cpu"), required=True)
+    train.add_argument("--replay-threads", type=int, required=True)
     resuming = bool(argv) and argv[0] == "train" and any(
         arg == "--resume" or arg.startswith("--resume=") for arg in argv[1:]
     )
@@ -61,7 +65,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--data-list", type=Path, required=True)
         train.add_argument("--latest-data", nargs="+", required=True)
         train.add_argument("--out-dir", type=Path, required=True)
-        for name in ("cycle", "seed", "batch-size", "checkpoint-steps"):
+        for name in ("cycle", "seed", "batch-size", "micro-batch-size", "checkpoint-steps"):
             train.add_argument(f"--{name}", type=int, required=True)
         for name in ("lr", "momentum", "weight-decay", "clip-grad-norm", "value-lambda"):
             train.add_argument(f"--{name}", type=float, required=True)
@@ -111,7 +115,7 @@ def main() -> int:
             options = Options(**args)
             Runner(options, Remote(options.session)).run()
         elif "resume" in args:
-            resume(args["resume"], args["device"])
+            resume(args["resume"], args["device"], args["replay_threads"])
         else:
             out_dir = args.pop("out_dir")
             train_new(args, out_dir)

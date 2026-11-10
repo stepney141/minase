@@ -4,7 +4,7 @@
 費用、進捗の判定、期間の切り替え、および探索回数の引き上げといった進め方の規則と、学習の現在の状態は[強化学習の2回目の実行の設計書](../plans/alphazero-rl-2.md)（以下、設計書）にある。
 本書の標準レシピと手順は、20ブロック256チャネルのネットで始める2回目の学習のものである。
 2回目の学習に使う機械とその起動スクリプトは、設計書のフェーズ2で決めて用意するので、本書は実行器`minase_zero run-cycles`に渡す引数までを定める。
-サイクル1を始める前に、[複数GPU化の設計書](../plans/alphazero-multi-gpu.md)の作業で学習の全体のバッチと基準の学習率が変わり、実行器に機械の種類を選ぶ引数が加わるので、その完了の時点で本書の標準レシピも改める。
+標準レシピの学習器と実行器は、[複数GPU化の設計書](../plans/archived/alphazero-multi-gpu.md)の作業で改めたものである。学習は、借りた機械のGPUの枚数によらず全体のバッチ1,024で行い、実行器はColabの機械とvast.aiの機械を引数で選ぶ。
 サイクル32で中断した1回目の学習（10ブロック128チャネル）の起動スクリプトと測定のスクリプトは、測定記録の`docs/measurements/alphazero-rl/`に残っている。
 本書には、実行者（人間およびエージェント）が手順どおりに実行する部分だけを書く。
 実行者が判断を仰ぐ相手と、対話できる端末で認証を行う人を、本書では利用者と呼ぶ。
@@ -23,7 +23,7 @@
 
 - 学習を再開する前と設定を変える前に、設計書の「状態」の節を読む。再開の時期と、次に回すサイクルの設定はそこで決まる。
 - コマンドは、明記した箇所を除いて作業機のリポジトリのルートで実行する。本書の`$A`は、作業機にNFSでマウントしたNASのパス`/mnt/synology_nas/minase/alphazero`であり、シェルで`A=/mnt/synology_nas/minase/alphazero`と設定してから使う。
-- `minase_zero`のサブコマンド（実行器の`run-cycles`、学習器の`train`など）は、`tools/train/zero`を作業ディレクトリにして`uv run --frozen python -m minase_zero <サブコマンド>`で起動する。Pythonの環境がない作業ツリーでは、`bash tools/train/zero/setup.sh`で導入する。
+- `minase_zero`のサブコマンド（実行器の`run-cycles`など）は、`tools/train/zero`を作業ディレクトリにして`uv run --frozen python -m minase_zero <サブコマンド>`で起動する。学習器の`train`だけは、`uv run --frozen torchrun --standalone --nproc-per-node <GPUの枚数> -m minase_zero train ...`で起動する。Pythonの環境がない作業ツリーでは、`bash tools/train/zero/setup.sh`で導入する。
 - 機械を借りる操作は[借りる機械の操作の手引き](alphazero-machines.md)に、ネットの出力の照合は[出力の照合の手引き](alphazero-network-check.md)に、対局の測定の規約は[棋力測定の手引き](sprt.md)にある。
 
 ## サイクルの全体像
@@ -51,6 +51,7 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `progress/cycles-rl2/`、`external/cycles-rl2/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
 
 1サイクルの時間と費用は、ColabのG4の機械で約1時間、約9 CU（Colabの計算単位）と見込む（設計書の「費用」の節）。
+vast.aiのRTX 4090が4枚の機械では、サイクル1を約36分、約1.23米ドルで回した（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 1回目の学習の10ブロック128チャネルのネットでは、ColabのL4の機械で約1時間、約2 CUであった。
 
 ## 標準レシピ
@@ -61,18 +62,20 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 
 ```sh
 # tools/train/zeroで実行する
-uv run --frozen python -m minase_zero run-cycles --root "$A" --session <セッション名> \
+uv run --frozen python -m minase_zero run-cycles --machine colab --session <セッション名> \
+  --cycle-cu <1サイクルの見込みのCU> --root "$A" \
   --cycles-dir cycles-rl2 --base-cycles-dir cycles-rl2 --branch-from 0 \
   --generation-commit <コミット> --trainer-commit <コミット> \
   --first-cycle <最初のサイクル> --last-cycle <最後のサイクル> \
-  --deadline <終了期限> --cycle-minutes <1サイクルの見込みの分> --cycle-cu <1サイクルの見込みのCU> \
+  --deadline <終了期限> --cycle-minutes <1サイクルの見込みの分> \
   --start-position <shuffled-setupかrandom-opening> --generation-seed-offset 300000000 \
-  --target-positions 1000000 --chunks 20 --simulations 32 --threads 4 --games-per-thread 128 \
+  --target-positions 1000000 --chunks 20 --simulations 32 --threads-per-gpu 4 --games-per-thread 128 \
   --replay-buffer-first-cycle <1か3> --replay-buffer-positions 280520080 \
-  --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
-  --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
+  --batch-size 1024 --lr 0.04 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
+  --value-lambda 0.333 --precision bf16 --checkpoint-steps 50 \
   --train-seed-base 20261100 --minase <作業ツリー>/target/release/minase --poll-seconds 60
 # 最初のサイクルが1のセッションでは --cycle1-reference-summary <生成器の集計summary.json> を加える
+# vast.aiの機械では、--machine colab --session ... --cycle-cu ... の代わりに --machine vast --vast-instance <インスタンスの番号> を渡す
 ```
 
 セッションごとに値の変わる引数は、次の規則で決める。
@@ -82,7 +85,8 @@ uv run --frozen python -m minase_zero run-cycles --root "$A" --session <セッ�
 | `--start-position` | 事前学習の期間は組み替えた初期配置の`shuffled-setup`、微調整の期間は初期局面から8〜16手を乱択で指す`random-opening`とする。期間を切り替えるサイクルでセッションを区切る（設計書の「期間の切り替え」の節） |
 | `--replay-buffer-first-cycle` | 最後のサイクルが13以下のセッションは1、最初のサイクルが14以上のセッションは3とし、サイクル13でセッションを区切る（[リプレイバッファのADR](../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md)） |
 | `--cycle1-reference-summary` | 最初のサイクルが1のセッションだけに与える。サイクル1の対局数の上限を見積もるのに使う、生成器の集計`summary.json` |
-| `--deadline`、`--cycle-minutes`、`--cycle-cu` | 借りた機械の終了期限と、その機械での1サイクルの見込みの時間とCU（設計書の「系列の置き場所と起動」の節） |
+| `--machine`と機械ごとの引数 | Colabの機械では`--machine colab`、セッション名の`--session`、および1サイクルの見込みのCUの`--cycle-cu`、vast.aiの機械では`--machine vast`とインスタンスの番号の`--vast-instance` |
+| `--deadline`、`--cycle-minutes` | 借りた機械の終了期限と、その機械での1サイクルの見込みの時間（設計書の「系列の置き場所と起動」の節）。vast.aiの機械では、終了期限は起動スクリプトが決める |
 
 実行器は、各サイクルで借りた機械の生成器と学習器を次の引数で自動で起動するので、実行者がこれらを入力する必要はない。
 山括弧の値は実行器がサイクルごとに決める（[`minase data zero-selfplay`](#minase-data-zero-selfplay)と[`minase_zero train`](#minase_zero-train)の表）。
@@ -94,15 +98,15 @@ minase data zero-selfplay --output-dir cycles-rl2/cycle-NNNN/selfplay \
   --start-position <run-cyclesと同じ値> \
   --seed <サイクル番号×10⁹＋3×10⁸> --games <見積もった対局数> --chunk-games <対局数÷20の切り上げ> \
   --target-positions 1000000 --simulations 32 --playthrough-percent <100か20> \
-  --threads 4 --games-per-thread 128
+  --threads <4×GPUの枚数> --devices <GPUの枚数> --games-per-thread 128
 
 # 学習
-python -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
+torchrun --standalone --nproc-per-node <GPUの枚数> -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
   --data-list cycles-rl2/cycle-NNNN/train-data.json --latest-data <最新のサイクルのファイル...> \
   --out-dir cycles-rl2/cycle-NNNN/train --cycle NNNN --seed <20261100＋サイクル番号> \
-  --batch-size 256 --lr 0.01 --momentum 0.9 --weight-decay 0.0001 --clip-grad-norm 10 \
-  --value-lambda 0.333 --precision bf16 --checkpoint-steps 200 \
-  --device cuda --trainer-commit <コミット>
+  --batch-size 1024 --micro-batch-size 256 --lr 0.04 --momentum 0.9 --weight-decay 0.0001 \
+  --clip-grad-norm 10 --value-lambda 0.333 --precision bf16 --checkpoint-steps 50 \
+  --device cuda --replay-threads <使えるCPUの数÷GPUの枚数の切り捨て> --trainer-commit <コミット>
 ```
 
 ネットは20ブロック256チャネル（パラメータ数は補助ヘッドを含めて28,052,008）であり、`--replay-buffer-positions`はその10倍である。
@@ -114,7 +118,7 @@ python -m minase_zero train --init <前のサイクルのcheckpoint.pt> \
 
 | 時点 | 条件 | 対応 |
 |---|---|---|
-| サイクルの開始前 | 終了期限までの残り時間が`--cycle-minutes`の分数に満たないか、残高が`--cycle-cu`未満 | 実行器が次のサイクルを始めずに正常終了する |
+| サイクルの開始前 | 終了期限までの残り時間が`--cycle-minutes`の分数に満たないか、Colabの機械で残高が`--cycle-cu`未満 | 実行器が次のサイクルを始めずに正常終了する |
 | 生成の後 | 投了の誤り（投了の条件を満たした後も最後まで指させた対局で、条件を満たした側が負けなかった割合）が5%を超えた | 実行器が投了の対局を学習から外し、投了なしで生成し直す |
 | 生成の後 | 手数の上限で捨てた対局が10%を超えた | 上限または投了の条件を見直す |
 | 照合 | `check status=1` | 実行器が止まる。[止まったときに調べる](#止まったときに調べる)に従う |
@@ -159,7 +163,8 @@ Colabの機械を使う場合は、`colab usage`で認証と残高も確かめ�
 - 事前学習の期間から微調整の期間へ切り替える前で区切る。`--start-position`の値が変わる。
 
 セッション名は、`rentals.jsonl`の過去の名前と重ならないものにする。
-実行器は、終了期限までの残り時間が`--cycle-minutes`の分数に満たないとき、または残高が`--cycle-cu`を下回るときに次のサイクルを始めず、正常に終了する。
+実行器は、終了期限までの残り時間が`--cycle-minutes`の分数に満たないとき、またはColabの機械で残高が`--cycle-cu`を下回るときに次のサイクルを始めず、正常に終了する。
+vast.aiの機械では残高を照会しない。
 実行器が走っている作業ツリーは、セッションが終わるまで消さない。
 前のセッションが止まったら、次のセッションを同じ手順で起動する。
 
@@ -371,11 +376,13 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 
 | 引数 | 標準の値 | 値域と意味 |
 |---|---|---|
-| `--root <DIR>` | `$A` | NASの基準のディレクトリ。この下の相対パスの構成は、Colab機の`/content/az`の下と同じにする。 |
+| `--machine <KIND>` | 借りた機械の種類 | `colab`または`vast`。接続、作業場所（Colabは`/content`、vast.aiは`/workspace`の下）、および次のサイクルを始める判定を分ける。 |
+| `--vast-instance <ID>` | vast.aiの機械だけ | vast.aiのインスタンスの番号。正の整数。起動時に1回だけ接続先を照会する。Colabでは指定できない。 |
+| `--root <DIR>` | `$A` | NASの基準のディレクトリ。この下の相対パスの構成は、借りた機械の作業場所（Colabは`/content/az`、vast.aiは`/workspace/az`）の下と同じにする。 |
 | `--cycles-dir <DIR>` | `cycles-rl2` | 出力を置く`--root`からの相対ディレクトリ。`..`と空白を含めない。`cycles`以外なら別系列になり、記録は`<cycles-dir>.jsonl`、ネットは`nets/<cycles-dir>/`に置く。 |
 | `--base-cycles-dir <DIR>` | `cycles-rl2` | `--branch-from`以下のサイクルを読む相対ディレクトリ。 |
 | `--branch-from <N>` | 0 | 分岐するサイクル番号。0以上`--first-cycle`未満。 |
-| `--session <NAME>` | 起動スクリプトが渡す | セッション名。英数字、`_`、`-`だけ。 |
+| `--session <NAME>` | Colabの機械だけ、起動スクリプトが渡す | セッション名。英数字、`_`、`-`だけ。vast.aiでは指定できない。 |
 | `--minase <FILE>` | 作業ツリーの`target/release/minase` | 作業機で集計に使う実行ファイル。借りた機械で使うものとは別である。 |
 | `--poll-seconds <S>` | 60 | 状態を確かめる間隔。正の有限値。 |
 
@@ -390,7 +397,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--cycle1-reference-summary <FILE>` | 最初のサイクルが1のセッションだけ | サイクル1の対局数を見積もる生成の集計。`--first-cycle`が1のときだけ必須で、それ以外では指定できない。 |
 | `--deadline <TIME>` | 借りた機械の終了期限 | 時差を含むISO 8601の時刻。 |
 | `--cycle-minutes <M>` | 機械ごとの見込み | 期限までの残りがこれより短ければ、次のサイクルを始めない。正の有限値。 |
-| `--cycle-cu <CU>` | 機械ごとの見込み | 残高がこれを下回れば、次のサイクルを始めない。正の有限値。 |
+| `--cycle-cu <CU>` | Colabの機械だけ、機械ごとの見込み | 残高がこれを下回れば、次のサイクルを始めない。正の有限値。vast.aiでは指定できない。 |
 
 **生成**
 
@@ -401,7 +408,7 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--target-positions <N>` | 1000000 | 1サイクルの訓練局面数の目標。1以上。 |
 | `--chunks <N>` | 20 | 対局数の上限を分ける塊の数。1以上。 |
 | `--simulations <N>` | 32 | 完全探索（手番の25%で行い、方策を記録する探索）の回数。残りの手番で行う速い探索はこの4分の1。4以上の4の倍数（生成器が検査する）。 |
-| `--threads <N>` | 4 | 生成器のスレッド数。1以上。 |
+| `--threads-per-gpu <N>` | 4 | GPUあたりの生成器のスレッド数。1以上。生成器には、これにGPUの枚数を掛けた`--threads`を渡し、使えるCPUの数（cpusetとcgroupの割当ての小さいほう）を超えれば生成を起動しない。 |
 | `--games-per-thread <N>` | 128 | スレッドごとの同時対局数。1以上。 |
 
 **リプレイバッファ**
@@ -415,14 +422,14 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 
 | 引数 | 標準の値 | 値域と意味 |
 |---|---|---|
-| `--batch-size <N>` | 256 | 1更新の局面数。1以上。 |
-| `--lr <VALUE>` | 0.01 | 基準の学習率。正の有限値。 |
+| `--batch-size <N>` | 1024 | 全体のバッチ（1更新の局面数）。1以上。学習器が、ミクロバッチ256の倍数であることと、ミクロバッチの数がGPUの枚数の倍数であることを検査する。 |
+| `--lr <VALUE>` | 0.04 | 基準の学習率。正の有限値。 |
 | `--momentum <VALUE>` | 0.9 | ネステロフのモーメンタムの係数。正の有限値。 |
 | `--weight-decay <VALUE>` | 0.0001 | 重み減衰。非負の有限値。 |
 | `--clip-grad-norm <VALUE>` | 10 | 勾配のノルムの上限。正の有限値。 |
 | `--value-lambda <VALUE>` | 0.333 | 価値の教師で根の価値に掛ける割合λ。0以上1以下。 |
 | `--precision <NAME>` | `bf16` | `bf16`（順伝播だけをbf16で計算）または`fp32`。 |
-| `--checkpoint-steps <N>` | 200 | チェックポイントを保存する更新回数の間隔。1以上。 |
+| `--checkpoint-steps <N>` | 50 | チェックポイントを保存する更新回数の間隔。1以上。 |
 | `--train-seed-base <N>` | 20261100 | サイクルcの学習のシードを、この値＋cとする。 |
 
 ### `minase data zero-selfplay`
@@ -443,15 +450,17 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--chunk-games <N>` | `--games`を`--chunks`で割って切り上げた値 | 1つの塊の対局数。1以上。 |
 | `--simulations <N>` | `--simulations` | 完全探索の回数。4以上の4の倍数。 |
 | `--playthrough-percent <N>` | 投了が無効なら100、有効なら20（生成し直しでは100） | 投了させずに最後まで指させる対局の割合。1以上100以下。 |
-| `--threads <N>` | `--threads` | 推論器を1つずつ持つスレッドの数。1以上。 |
+| `--threads <N>` | `--threads-per-gpu`×GPUの枚数 | 推論器を1つずつ持つスレッドの数。`--devices`の倍数。 |
+| `--devices <N>` | GPUの枚数 | 使うGPUの枚数。0から数えたスレッドtの推論器をGPU t mod Nに置く。`tensorrt`と`cuda`では、`nvidia-smi`の全GPUが同じ機種と容量で、枚数がNと等しいことを確かめ、`CUDA_VISIBLE_DEVICES`が設定されていれば起動を拒む。`cpu`では1に限る。 |
 | `--games-per-thread <N>` | `--games-per-thread` | スレッドごとの同時対局数であり、推論の最大バッチでもある。1以上。 |
 
 投了の有効と無効は、直前のサイクルの較正（`resign-calibration`）で実行器が決める。
 
 ### `minase_zero train`
 
-学習器であり、実行器が借りた機械で起動する。
-出力先、抽出、学習率の式、および再開の契約は、`tools/train/zero/minase_zero/train.py`のdocstringが定める。
+学習器であり、実行器が借りた機械で`torchrun --standalone --nproc-per-node <GPUの枚数>`の下で起動する。
+`torchrun`の外で起動すると、引数を検査する前に止まる。
+出力先、抽出、全体のバッチとミクロバッチ、学習率の式、および再開の契約は、`tools/train/zero/minase_zero/train.py`のdocstringが定める。
 
 | 引数 | 実行器が渡す値 | 値域と意味 |
 |---|---|---|
@@ -462,11 +471,14 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | `--cycle <N>` | サイクル番号 | 0以上。 |
 | `--seed <N>` | `--train-seed-base`＋サイクル番号 | 抽出と更新順の乱数シード。uint64。 |
 | `--batch-size`、`--lr`、`--momentum`、`--weight-decay`、`--clip-grad-norm`、`--value-lambda`、`--precision`、`--checkpoint-steps` | `run-cycles`の同名の引数 | `run-cycles`と同じ。 |
+| `--micro-batch-size <N>` | 256 | 1回の順伝播の局面数。正の整数。実行器の定数`MICRO_BATCH_SIZE`で、チェックポイントに保存し、再開ではそこから読む。 |
 | `--device <NAME>` | `cuda` | `cuda`または`cpu`。 |
+| `--replay-threads <N>` | 使えるCPUの数÷GPUの枚数の切り捨て | 各GPUのプロセスのリプレイバッファの再生のスレッド数。1以上。再開の照合には入れない。 |
 | `--trainer-commit <HASH>` | `--trainer-commit` | 40桁の16進数字。 |
 
-中断した学習は、`train --resume <出力先> --device <cuda|cpu>`で続ける。
+中断した学習は、`torchrun`の下の`train --resume <出力先> --device <cuda|cpu> --replay-threads <N>`で続ける。
 ほかの設定はチェックポイントから読み、教師ファイルの大きさ、局面数、および抽出の検査和が一致しなければ再開しない。
+GPUの枚数の違う機械でも再開できるが、加算の順序が変わるので、途中で止めない学習とバイト単位では一致しない。
 
 ### その他のサブコマンド
 
@@ -501,6 +513,9 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | 検証の分割 | 対局のハッシュを20で割った余りが0の対局（約5%） | `data.py` |
 | 損失の重み | 方策1、価値1、ソフト方策8、相手の方策0.15、相手のソフト方策1.2、短期の価値3項は各1 | `train.py`の`LOSS_WEIGHTS` |
 | ソフト方策の目標 | (p＋10⁻⁷)の1/4乗を正規化する | `train.py` |
+| ミクロバッチ | 256局面 | `runner.py`の`MICRO_BATCH_SIZE` |
+| 学習の順伝播のコンパイル | `torch.compile`の既定のモード、`fullgraph=True`、DDPの内側。Inductorの`emulate_precision_casts`と`deterministic`を有効にする | `train.py`の`compile_training` |
+| サイクルの端数 | 抽出数を全体のバッチで割った余りの局面は、そのサイクルでは使わない | `train.py` |
 | ウォームアップ | 初期化から累計2,000,000標本 | `train.py`の`WARMUP_SAMPLES` |
 | サイクル内の学習率の予定 | 基準の学習率×(1＋cos(πt/T))/2 | `train.py` |
 | 照合の許容誤差 | CPUは方策のlogitと価値が10⁻⁴、TensorRTのFP16は方策の確率が10⁻²、価値が5×10⁻² | `runner.py` |
@@ -516,20 +531,20 @@ NASの記録はコミットのハッシュを参照するので、記録に現�
 | 開始局面 | 事前学習の期間は組み替えた初期配置、微調整の期間は初期局面から8〜16手の乱択 | [組み替えた初期配置のADR](../adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)、設計書の「期間の切り替え」の節 |
 | 探索 | Gumbel AlphaZero、完全探索32回（確率0.25、それ以外は8回）、候補16、Qの尺度1.0、減衰する指し手の温度 | [Gumbel AlphaZeroのADR](../adr/use-gumbel-alphazero-with-a-unit-q-scale-and-a-decaying-final-move-temperature.md)、[探索回数の乱択のADR](../adr/randomize-zero-self-play-playout-caps-and-learn-the-policy-only-from-full-searches.md) |
 | 1サイクルの生成量 | 訓練局面100万。目標に届いた最初の塊で締める | Gumbel dlshogiと同じ量（[1回目の実行の設計書](../plans/archived/alphazero-rl.md)の「生成と学習を交互に行う」の節）、[塊のADR](../adr/commit-zero-self-play-in-fixed-game-chunks-up-to-the-first-prefix-reaching-the-target-positions.md) |
-| 生成の並列 | 4スレッド、スレッドごとに128局 | 1回目の学習の[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)で比べた組のうち最も速かった（毎秒974局面） |
+| 生成の並列 | GPUあたり4スレッド、スレッドごとに128局 | 1回目の学習の[試走](../measurements/alphazero-rl/alphazero-rl-trial.md)で比べた組のうち最も速かった（毎秒974局面）。4枚の4090ではGPUあたり8スレッドより速かった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)） |
 | 系列の基本シード | サイクル番号×10⁹＋3×10⁸ | [シードの加算値のADR](../adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md) |
 | リプレイバッファと抽出 | パラメータ数の10倍の局面。最古のサイクルは、サイクル13までの学習で1、サイクル14からの学習で3。最新のサイクルの訓練局面数の4倍を一様に抽出する | [リプレイバッファのADR](../adr/sample-four-times-from-a-zero-replay-buffer-of-ten-times-the-parameter-count-from-cycle-3-after-cycle-13.md) |
-| 学習率 | 基準0.01、サイクルごとのcosine annealing、累計200万標本のウォームアップ | 基準はdlshogiの学習器の既定値、予定は[学習率の予定のADR](../adr/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)。一定の学習率との比較は打ち切った |
+| 学習率 | 基準0.04、サイクルごとのcosine annealing、累計200万標本のウォームアップ | 全体のバッチ256のときの基準0.01（dlshogiの学習器の既定値）を、バッチに比例させて4倍にした。予定は[学習率のADR](../adr/warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)。一定の学習率との比較は打ち切った |
 | 最適化器 | ネステロフのモーメンタムつきSGD、係数0.9、重み減衰10⁻⁴、勾配のノルムの上限10 | dlshogiの学習器の既定値（[学習器の設計書](../plans/archived/alphazero-trainer.md)の「着手時に補った決定」の節） |
 | 価値の教師 | λ=0.333 | [定数マスクと診断のADR](../adr/mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md) |
 | 方策の損失 | 常に不可能なラベルを除く16,108ラベルの定数マスク。合法手だけでは正規化しない | 同じADR。調べた先行実装の多くが全出力のsoftmaxで学習する（1回目の実行の設計書の「学習が動いてから決める技法」の節） |
 | 補助目標 | ソフト方策、相手の次の手、短期の価値 | [補助目標のADR](../adr/train-the-zero-network-on-katago-auxiliary-targets.md)。重みはKataGoの値 |
-| バッチと精度 | 256局面、bf16の順伝播 | [実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)でL4が最も速かった設定 |
+| バッチと精度 | 全体のバッチ1,024局面をミクロバッチ256局面の勾配累積で学ぶ。bf16の順伝播 | [学習器のDDPのADR](../adr/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)。ミクロバッチの256は、[実現性の実測](../measurements/alphazero-environment/alphazero-feasibility.md)でL4が最も速かったバッチ |
 | 重みの移動平均 | 使わない | 1回目の学習で学び直す前のサイクル25の比較で平均のネットが強いと言えなかった（[ADR](../adr/do-not-keep-a-moving-average-of-the-zero-network-weights.md)） |
 | 投了 | 勝率1%未満で投了、較正で有効化、有効なサイクルは20%を最後まで指させる | [投了のADR](../adr/resign-zero-self-play-games-below-one-percent-after-bounding-false-resignations.md) |
 | 手数の上限 | 3,000手 | [手数の上限のADR](../adr/discard-zero-self-play-games-that-reach-3000-plies.md)。上限に達した対局の大半は3,000手までに終わる（[長い対局の調査](../measurements/alphazero-rl/alphazero-rl-long-games.md)） |
 | 3手以内の勝ちによる打ち切り | 王手だけを読む | [打ち切りのADR](../adr/stop-zero-self-play-at-check-only-wins-within-three-plies-found-under-the-search-module.md)。dlshogiの3手詰めに当たる |
-| チェックポイントの間隔 | 200更新 | 監査対応で定めた暫定値 |
+| チェックポイントの間隔 | 50更新 | 監査対応で定めた暫定値の200更新（256局面ずつ）と同じ標本数ごとに保存する |
 | ゲーティング | 行わない | AlphaZeroはゲーティングなしでも学習が進む（1回目の実行の設計書の「生成と学習を交互に行う」の節） |
 
 ## 詳細の置き場所

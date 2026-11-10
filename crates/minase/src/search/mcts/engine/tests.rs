@@ -1165,8 +1165,16 @@ fn inference_options_accept_boundaries_and_map_backends_without_fallback() {
         assert_eq!(engine.backend, expected);
         let provider = engine.execution_provider().unwrap();
         assert_eq!(provider.name(), expected);
-        if let ExecutionProvider::TensorRt { cache_root } = provider {
-            assert_eq!(cache_root, PathBuf::from("/cache with spaces"));
+        match provider {
+            ExecutionProvider::TensorRt {
+                cache_root,
+                device_id,
+            } => {
+                assert_eq!(cache_root, PathBuf::from("/cache with spaces"));
+                assert_eq!(device_id, 0);
+            }
+            ExecutionProvider::Cuda { device_id } => assert_eq!(device_id, 0),
+            ExecutionProvider::Cpu => {}
         }
     }
     for size in [1, 1024] {

@@ -200,8 +200,9 @@ impl Engine {
             }
             "tensorrt" => Ok(ExecutionProvider::TensorRt {
                 cache_root: self.cache_dir.clone(),
+                device_id: 0,
             }),
-            "cuda" => Ok(ExecutionProvider::Cuda),
+            "cuda" => Ok(ExecutionProvider::Cuda { device_id: 0 }),
             "cpu" => Ok(ExecutionProvider::Cpu),
             _ => unreachable!("the backend was validated when set"),
         }

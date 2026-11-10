@@ -21,6 +21,11 @@
 //! 投了の有効化や再較正を行うサイクルの選択は、生成器を呼ぶ側が担う。
 //!
 //! `--threads`個の各スレッドは、推論器を1つと、最大`--games-per-thread`局を持つ。
+//! `--devices <N>`は使用するGPUの枚数で、`--threads`はNの倍数でなければならない。
+//! 0から数えたスレッドtの推論器を、CUDAの機器番号t mod Nに置く。
+//! `--nn-backend cpu`ではN=1に限り、GPUは照会しない。
+//! TensorRTとCUDAでは、照会したGPUの枚数がNと等しく、全GPUの機種名とメモリ容量が同じでなければ起動を拒む。
+//! TensorRTとCUDAでは、`CUDA_VISIBLE_DEVICES`が設定されていれば空値でも起動を拒む。
 //! 推論器はONNX Runtimeのセッションを所有し、スレッドの起動前に1つずつ作る。
 //! 各局を評価待ちまで進め、そのスレッドで待っている局から葉を1つずつ集めて推論する。
 //! バッチの大きさは評価を待つ局の数であり、推論器の最大バッチは`--games-per-thread`とする。
@@ -47,9 +52,11 @@ mod worker;
 
 pub(super) use cli::Arguments;
 use error::Error;
+use minase::nn::tensorrt_cache::{query_gpus, validate_cuda_visible_devices};
 use minase::nn::{Network, OnnxEvaluator};
 use minase::training::records;
 use minase_core::{Rules, rules::parse_rule_set};
+use std::num::NonZeroUsize;
 
 /// 序盤を含む手数の上限3,000手。到達しても未終局なら対局全体を破棄する。
 /// `docs/adr/discard-zero-self-play-games-that-reach-3000-plies.md`を参照。
@@ -79,8 +86,13 @@ pub(super) fn main(arguments: Arguments) {
 }
 
 fn run(arguments: Arguments) -> Result<(), Error> {
+    arguments.validate_execution()?;
+    if !matches!(arguments.nn_backend, cli::Backend::Cpu) {
+        validate_cuda_visible_devices(std::env::var_os("CUDA_VISIBLE_DEVICES").as_deref())?;
+        validate_gpu_count(arguments.devices, query_gpus()?.count)?;
+    }
     let network = Network::read(&arguments.nn_model)?;
-    let provider = arguments.nn_backend.provider()?;
+    let provider = arguments.nn_backend.provider(0)?;
     let rules = engine_default_rules()?;
     let config = output::Config {
         rules: rules.to_string(),
@@ -102,7 +114,10 @@ fn run(arguments: Arguments) -> Result<(), Error> {
         network.sha256(),
         arguments.threads,
         arguments.games_per_thread,
-        || {
+        |thread| {
+            let provider = arguments
+                .nn_backend
+                .provider(device_for_thread(thread, arguments.devices))?;
             Ok(Box::new(OnnxEvaluator::new(
                 &network,
                 &provider,
@@ -111,6 +126,22 @@ fn run(arguments: Arguments) -> Result<(), Error> {
         },
     )?;
     report.print(&config)
+}
+
+/// 照会したGPUの枚数が、使用する枚数の指定と一致することを検査する。
+fn validate_gpu_count(requested: NonZeroUsize, available: NonZeroUsize) -> Result<(), Error> {
+    if requested != available {
+        return Err(Error::DeviceCountMismatch {
+            requested,
+            available,
+        });
+    }
+    Ok(())
+}
+
+/// 0から数えたスレッド番号を、使用する機器の枚数を法とする剰余で機器番号へ対応させる。
+fn device_for_thread(thread: usize, devices: NonZeroUsize) -> usize {
+    thread % devices.get()
 }
 
 /// 生成器が使う規則を、公開の規則解析APIから構築する。

@@ -1,66 +1,88 @@
 """自己対局のリプレイバッファから局面を抽出し、更新の境界で保存して再開する。
 
 trainの出力先には、checkpoint.pt、model.onnx、およびsummary.jsonを置く。
-どれも同じディレクトリの一時ファイルへ書いて同期し、名前を変えてから親ディレクトリを
-同期して確定させる。checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に
-置き換え、最新の1つだけを残す。最後の更新の後は、最終のチェックポイントを確定させてから
-リプレイバッファ全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、summary.jsonの順に確定させて、
-summary.jsonの存在をサイクルの完了とみなす。
+どれも同じディレクトリの一時ファイルへ書いて同期し、名前を変えてから親ディレクトリを同期して確定させる。
+checkpoint.ptは--checkpoint-steps回の更新ごとと最後の更新の後に置き換え、最新の1つだけを残す。
+最後の更新の後は、最終のチェックポイントを確定させてからリプレイバッファ全体と最新サイクルの訓練標本、および検証集合を診断し、model.onnx、summary.jsonの順に確定させて、summary.jsonの存在をサイクルの完了とみなす。
 すべての更新を終えたcheckpoint.ptが、次のサイクルの--initに与えるチェックポイントになる。
 
 --data-listは、空でないパスの文字列を要素とする、空でないUTF-8のJSON配列のファイルを指定する。
-読み込んだ配列をconfig["data"]に保存し、リストのファイル名は保存しない。再開ではリストのファイルを読まない。
+読み込んだ配列をconfig["data"]に保存し、リストのファイル名は保存しない。
+再開ではリストのファイルを読まない。
 --latest-dataは最新サイクルの生成ファイルの列で、読み込んだ配列の末尾とパスの文字列も順も一致させる。
 リプレイバッファのファイルを指定順に並べ、各ファイルの訓練局面だけに0からT−1の通し番号を振る。
-最新サイクルの訓練局面数Nの4倍を抽出数とし、Nは1以上とする。
-抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、
-Generator(PCG64(seed))を使い続けて、T個の順列をfloor(4N/T)回と残りの重複なし抽出をつなぐ。
-列sが抽出結果と更新順を同時に定め、保持する局面はその重複を除く。
+最新サイクルの訓練局面数Lの4倍を抽出数Sとし、Lは1以上とする。
+抽出はdata.sample_training_indicesの部分的なFisher–Yates法に従い、Generator(PCG64(seed))を使い続けて、T個の順列をfloor(4L/T)回と残りの重複なし抽出をつなぐ。
+列sが抽出結果と更新順を同時に定める。
 sample_sha256は列sをリトルエンディアンのint64で並べたバイト列のSHA-256である。
-計数はMNSDの項目フラグを読んで再生なしで行い、その後、全ファイルを並列に1回再生して、
-抽出した訓練局面と最新サイクルの検証局面だけを保持する。
+計数はMNSDの項目フラグを読んで再生なしで行い、その後、全ファイルを並列に1回再生して、各ランクが担当するミクロバッチに含まれる局面を、通し番号の重複を除いて保持する。
+ランク0は、端数を除いた抽出列の訓練診断標本と最新サイクルの検証局面も保持する。
+再生のスレッド数は各プロセスの--replay-threadsで指定し、設定や再開の照合には含めない。
 
-Bをバッチの大きさとして、k番目の更新はs[kB:min((k+1)B,4N)]を使い、全更新回数はceil(4N/B)となる。
-再開は完了した更新の回数kから先頭のmin(kB,4N)個を飛ばす。保存したファイルの列を読み直して
-抽出を作り直し、各ファイルの大きさ、訓練局面数、検証局面数、latest_data、N、T、
-およびsample_sha256を照合する。ファイルのSHA-256は初回に来歴として計算し、再開時は計算し直さない。
-data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と
-「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で
-置き換えた値の16進表記である。中断の有無にかかわらず、同じリプレイバッファとシードなら同じ値になる。
+trainは、新しいサイクルも再開も単一機械のtorchrunから起動する。
+WORLD_SIZE、LOCAL_WORLD_SIZE、RANK、LOCAL_RANKは必須で、2つのプロセス数は一致させる。
+プロセス数をN、--batch-sizeで与える全体のバッチをB、--micro-batch-sizeをm、K=B/mとする。
+Bとmは正の整数、Bはmの倍数、KはNの倍数とし、Fabricの作成後、再生前に検査する。
+抽出列の先頭M=B×floor(S/B)個を使い、端数を捨て、S<Bなら再生前にエラーにする。
+k番目の更新はs[kB:(k+1)B]を使い、全更新回数はfloor(S/B)となる。
+ミクロバッチjはs[kB+jm:kB+(j+1)m]で、ランクrはj mod N=rのものを番号順に処理する。
+Lightning Fabricは精度32-trueの分散データ並列（DDP）を使い、自分の最後のミクロバッチだけで勾配を同期する。
+DDPのfind_unused_parameters=Trueで勾配のバケットの組み替えを止め、再開前後の加算順をそろえる。
+学習用の全出力を返すTrainingModuleの順伝播を、torch.compile(..., fullgraph=True)の既定モードで常にコンパイルする。
+bf16のamaxの逆伝播でNaNが生じるのを防ぐため、torch._inductor.config.emulate_precision_casts=Trueをプロセス全体に設定し、コンパイルしない実行と同じ丸めを残す。
+逆伝播のグラフは最初の逆伝播時にコンパイルされるため、この設定を順伝播だけの文脈に限定しない。
+fabric.setup(..., _reapply_compile=False)に渡し、コンパイルしたラッパーをDDPの内側に置く。
+各順伝播はtorch._functorch.config.patch(backward_pass_autocast="off")の中で呼び、逆伝播をautocastの外で行う計算としてコンパイルする。
+すべての学習入力はm局面で形を固定し、端数のミクロバッチは作らない。
+入力面の符号化、損失の計算、勾配のクリップ、およびBatchNormの移動統計の退避と復元はコンパイルしない。
+最終診断とONNXの書き出しもコンパイルせず、DDPとラッパーを通さない元のZeroNetを使う。
+各ミクロバッチの平均損失にN/Kを掛けて逆伝播し、同期後に勾配のクリップと更新を1回行う。
+損失の記録は各ミクロバッチの平均損失×mをfloat32で累計し、all_reduceのsumで全ランクの和を取る。
+バッチ正規化（BatchNorm）の移動統計はj=0だけで更新する。
+ほかのミクロバッチでは移動平均、移動分散、num_batches_trackedを順伝播前に複製し、逆伝播後にcopy_で復元する。
+DDPのbroadcast_buffersはFalseとし、保存するランク0の統計を各更新の最初のミクロバッチでそろえる。
+保存と最終診断はランク0だけが行い、元のZeroNetの重みと最適化器の状態を保存する。
+全ランクが分散プロセス群を解放してから、ランク0だけが最終診断とONNX出力を行う。
+診断はDDPを通さないZeroNetで行い、バッチの大きさにはmを使う。
+再開は完了した更新の回数kから先頭のkB個を飛ばす。
+保存したファイルの列を読み直して抽出を作り直し、各ファイルの大きさ、訓練局面数、検証局面数、latest_data、L、T、およびsample_sha256を照合する。
+ファイルのSHA-256は初回に来歴として計算し、再開時は計算し直さない。
+data_order_sha256は、初期値を32バイトの0とし、更新のたびに「直前の値の32バイト」と「その更新に使った抽出前の通し番号sの部分列をリトルエンディアンのint64で並べたバイト列」をつないだSHA-256で置き換えた値の16進表記である。
+同じリプレイバッファ・シード・Bなら、ランク数と中断の有無にかかわらず同じ値になる。
 
-学習率はcosine annealingで減衰させる。この式のTはサイクルの全更新回数、tは0始まりの更新番号を表す。
-lr * 0.5 * (1 + cos(pi * t / T))に、
-ウォームアップのmin(1, (samples_seen+B)/2,000,000)を掛けて全パラメータ群へ設定する。
+学習率はcosine annealingで減衰させる。
+この式のTはサイクルの全更新回数、tは0始まりの更新番号を表す。
+lr * 0.5 * (1 + cos(pi * t / T))に、ウォームアップのmin(1, (samples_seen+B)/2,000,000)を掛けて全パラメータ群へ設定する。
 samples_seenは初期化時に0とし、各更新で実際に読んだ標本数を足し、--initと--resumeで引き継ぐ。
-Bは設定したバッチの大きさであり、末尾の端数でも学習率の式にはBを使う。
+Bは全体のバッチであり、各更新でpositions_seenとsamples_seenへBを足す。
 最後の更新でも0にはならず、新しいサイクルではt=0から始め直す。
 lrはconfigとsummary.jsonに記録し、再開時は保存した完了更新回数をtとして続ける。
+mはconfigから読み、Nと再生スレッド数は再開の照合に含めない。
+mを持たない旧い学習器のチェックポイントは再開できないが、完了済みなら--initに使える。
 
-checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BNの移動統計を
-含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、
-来歴、抽出条件とsample_sha256、累計の損失、学習曲線、samples_seen、samples_seen_start、およびdata_order_sha256を持つ。initのチェックポイントは
-最適化器の状態を持たず、完了した更新の回数と全更新回数をともに0とする。
+checkpoint.ptは、torch.load(weights_only=True)で読める辞書であり、重み（BatchNormの移動統計を含む）、最適化器の状態、完了した更新の回数、全更新回数、サイクル番号、シード、設定、来歴、抽出条件とsample_sha256、累計の損失、学習曲線、samples_seen、samples_seen_start、およびdata_order_sha256を持つ。
+initのチェックポイントは最適化器の状態を持たず、完了した更新の回数と全更新回数をともに0とする。
 
 trainのsummary.jsonの欄は次のとおりである。
 
 | 欄 | 意味 |
 |---|---|
 | cycle | サイクル番号。 |
-| config | ネットの大きさと、新しいサイクルに指定した設定。出力先は含めない。 |
+| config | ネットの大きさと、新しいサイクルに指定した設定。出力先と再生スレッド数は含めない。 |
 | lr | 基準の学習率。configにも記録する。 |
-| provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴。 |
+| provenance | 学習器と環境定義のコミット、実行環境、初期重みと教師ファイルの来歴、および開始時のworld_size。 |
 | latest_data | 最新サイクルの生成ファイルの列。以下の抽出の4欄とともにconfigにも記録する。 |
-| sample_count | 重複を含む更新列の長さ4N。 |
+| sample_count | 重複と端数を含む抽出列の長さS=4L。 |
 | replay_buffer_training_count | リプレイバッファ全体の抽出前の訓練局面数T。 |
 | file_training_counts | ファイルごとの抽出前の訓練局面数。dataの順に並ぶ。 |
 | sample_sha256 | 抽出した通し番号を更新順に並べた列sのSHA-256。 |
-| training_count / validation_count | 重複を除いて保持した訓練局面数と、最新サイクルの検証局面数。 |
-| completed_steps / total_steps | 完了した更新回数と、このサイクルの全更新回数。 |
-| positions_seen | このサイクルの完了した更新で読んだ標本数。重複を含む。 |
+| training_count / validation_count | sの先頭M個の通し番号から重複を除いた数と、最新サイクルのファイルの検証局面数の和。 |
+| completed_steps / total_steps | 完了した更新回数と、このサイクルの全更新回数floor(S/B)。 |
+| positions_seen | B×completed_steps。重複を含む。 |
 | samples_seen_start / samples_seen | サイクル開始時と終了時の、初期化からの累計標本数。 |
 | last_lr | 最後の更新に使った学習率。 |
 | training_losses | 更新中の重み・訓練モードで局面数を重みとして平均したLOSS_NAMESの各項。補助の項も重みを掛ける前の値。 |
-| diagnostics.training_sample | 抽出した訓練局面のうち標本の対局に属するものを、最終の重みの推論モードで診断した値。 |
+| diagnostics.training_sample | 端数を除いた抽出列の訓練局面のうち標本の対局に属するものを、最終の重みの推論モードで診断した値。 |
 | diagnostics.latest_training_sample | training_sampleのうちlatest_dataに属する局面を、同じ関数で診断した値。 |
 | diagnostics.validation | latest_dataの検証局面を、同じ関数で診断した値。 |
 | diagnosticsの各集合のgame_count / position_count | 診断に含めた対局数と採用局面数。 |
@@ -72,48 +94,46 @@ trainのsummary.jsonの欄は次のとおりである。
 | learning_curve | 保存間隔ごとのcompleted_steps、training_losses、および区間の最後の更新で使ったlrとsamples_seen、サイクル開始時のsamples_seen_start。 |
 | data_order_sha256 | 更新に使った局面の通し番号を連鎖させたSHA-256。 |
 | network_sha256 | model.onnxのSHA-256。 |
-| elapsed_seconds | loading、training、diagnosticsの秒数。 |
-| loading_peak_rss_bytes | 読み込み直後までのプロセスの最大常駐メモリ。resource.getrusageで測り、バイトへ換算する。 |
+| elapsed_seconds | loadingは全ランクの最大秒数、trainingとdiagnosticsはランク0の秒数。 |
+| loading_peak_rss_bytes | 各ランクの読み込み直後までの最大常駐メモリの和。resource.getrusageで測り、バイトへ換算する。 |
 | positions_per_second | positions_seenをtrainingの秒数で割った値。 |
 
-policyは定数マスクが真となる16,108ラベルで正規化した交差エントロピー、valueは結果と根の価値を混ぜた
-教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
+policyは定数マスクが真となる16,108ラベルで正規化した交差エントロピー、valueは結果と根の価値を混ぜた教師に対する二値交差エントロピー、value_resultは結果だけに対する同じ損失である。
 価値の教師は (1−λ)·結果 + λ·根の価値 であり、λは--value-lambdaで与える。
 補助のsoft_policyは全合法手上で(p+1e-7)の1/4乗を正規化した目標への交差エントロピーである。
 ソフト方策の目標はバッチの準備時にCPUのNumPyで正規化してから機器へ移す。
 教師の値がGPUの原子的な加算の順序に依存しないよう、行ごとの和は合法手のオフセットで求める。
-opponent_policyとopponent_soft_policyは、直後の項目の方策とそのソフト方策を、
-成りの段を反転した定数マスクで正規化したlogitに対して学ぶ。
+opponent_policyとopponent_soft_policyは、直後の項目の方策とそのソフト方策を、成りの段を反転した定数マスクで正規化したlogitに対して学ぶ。
 相手の候補がない行は両項を0とし、平均の分母にはバッチの全局面を含める。
 short_term_value_1〜3は、拡張モジュールの短期価値目標への二値交差エントロピーである。
-更新する損失は主の方策と価値にこれらの補助項をLOSS_WEIGHTSの重みで足したものとし、
-最適化器はネステロフのモーメンタムつきSGDとする。
+更新する損失は主の方策と価値にこれらの補助項をLOSS_WEIGHTSの重みで足したものとし、最適化器はネステロフのモーメンタムつきSGDとする。
 --precision bf16では、ネットの順伝播だけをbf16のautocastで計算する。
-損失の計算と累計はfloat32で行う。訓練集合、2つの訓練標本、検証集合のいずれかが空なら、平均を定義できない
-ためエラーにする。シードはuint64、サイクルは0以上の整数とする。
+損失の計算と累計はfloat32で行う。
+訓練集合、2つの訓練標本、検証集合のいずれかが空なら、平均を定義できないためエラーにする。
+シードはuint64、サイクルは0以上の整数とする。
 
-loadingは教師の読み込みと初回の検査和計算、trainingはバッチの準備と更新、
-diagnosticsは3集合のバッチの準備と推論を測る。保存とONNX出力は含めない。
-loading_peak_rss_bytesは読み込みだけの増分ではなく、プロセス開始後の最大値である。
-再開時は保存済みの値と今回の読み込み直後の値の大きい方を記録する。
-再開時は保存済みの時間に今回の読み込みと更新の時間を加え、中断で失われた更新や
-停止中の時間は含めない。再開に指定した機器は実行に使い、configとprovenanceには
-サイクル開始時の設定と環境を保持する。
+loadingは教師の読み込みと初回の検査和計算、trainingはバッチの準備と更新、diagnosticsは3集合のバッチの準備と推論を測る。
+保存とONNX出力は含めない。
+loading_peak_rss_bytesは読み込みだけの増分ではなく、各プロセスの開始後の最大値を全ランクで足した値である。
+再開時は保存済みの値と今回の全ランクの和の大きい方を記録する。
+再開時は保存済みの時間に今回の読み込みと更新の時間を加え、中断で失われた更新や停止中の時間は含めない。
+再開に指定した機器は実行に使い、configとprovenanceにはサイクル開始時の設定と環境を保持する。
 
 診断ではeval()とinference_mode()を使い、勾配・バッチ正規化の移動統計・乱数状態を変えない。
-合法手の確率質量は、定数マスク内の全ラベルを分母、反復の履歴を考えない全合法手を
-分子とする。最大値を引いて単精度で計算し、対数は質量の指数化前に求める。
+合法手の確率質量は、定数マスク内の全ラベルを分母、反復の履歴を考えない全合法手を分子とする。
+最大値を引いて単精度で計算し、対数は質量の指数化前に求める。
 方策の一致率は、ネット側の同率なら最小ラベルを選び、教師側の同率はすべて正解とする。
 最後のチェックポイントで更新済みの重みから再開する場合も、3集合の診断をやり直す。
 
-initのsummary.jsonはblocks、channels、seed、parameters、network_sha256、
-provenanceだけを持つ。チェックポイントの内部形式は本モジュールだけで扱う。
+initのsummary.jsonはblocks、channels、seed、parameters、network_sha256、provenanceだけを持つ。
+チェックポイントの内部形式は本モジュールだけで扱う。
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext
 import copy
 from dataclasses import asdict
+from datetime import timedelta
 import hashlib
 import json
 import math
@@ -127,9 +147,13 @@ import tempfile
 import time
 from typing import NamedTuple
 
+from lightning_fabric import Fabric
+from lightning_fabric.strategies import DDPStrategy
 import numpy as np
 from numpy.typing import NDArray
 import torch
+import torch._functorch.config
+import torch._inductor.config
 from torch.nn import functional as F
 
 from .data import Dataset, FileInfo, read_replay_buffer
@@ -229,9 +253,11 @@ def _validate_device(device: str, precision: str) -> torch.device:
 
 def _validate_training(config: dict) -> None:
     _validate_common(config["seed"], config["trainer_commit"])
-    for name in ("batch_size", "checkpoint_steps"):
-        if config[name] <= 0:
-            raise ValueError(f"{name} must be positive")
+    for name in ("batch_size", "micro_batch_size"):
+        if type(config[name]) is not int or config[name] <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+    if config["checkpoint_steps"] <= 0:
+        raise ValueError("checkpoint_steps must be positive")
     if config["cycle"] < 0:
         raise ValueError("cycle must be nonnegative")
     for name in ("lr", "momentum", "clip_grad_norm"):
@@ -241,6 +267,86 @@ def _validate_training(config: dict) -> None:
         raise ValueError("weight_decay must be finite and nonnegative")
     if not math.isfinite(config["value_lambda"]) or not 0 <= config["value_lambda"] <= 1:
         raise ValueError("value_lambda must be between 0 and 1")
+
+
+@contextmanager
+def training_fabric(device_name: str, precision: str) -> Iterator[Fabric]:
+    """torchrunの単一機械の環境を検査し、Fabricの分散処理を開始して回収する。"""
+    names = ("WORLD_SIZE", "LOCAL_WORLD_SIZE", "RANK", "LOCAL_RANK")
+    missing = [name for name in names if name not in os.environ]
+    if missing:
+        raise ValueError("train must run under torchrun; missing " + ", ".join(missing))
+    try:
+        world_size, local_world_size, rank, local_rank = (int(os.environ[name]) for name in names)
+    except ValueError as error:
+        raise ValueError("torchrun rank and world size variables must be integers") from error
+    if world_size != local_world_size:
+        raise ValueError("torchrun WORLD_SIZE must equal LOCAL_WORLD_SIZE; only one node is supported")
+    if world_size < 1 or not 0 <= rank < world_size or local_rank != rank:
+        raise ValueError("invalid single-node torchrun ranks or world size")
+    _validate_device(device_name, precision)
+    fabric = Fabric(
+        accelerator=device_name, devices=world_size, num_nodes=1,
+        strategy=DDPStrategy(
+            process_group_backend="nccl" if device_name == "cuda" else "gloo",
+            # バケットの組み替えで再開直後の更新の加算順が変わり、GPU 4枚での再開後の重みが食い違ったと考えられる。
+            # find_unused_parameters=Trueで組み替えを止める。
+            # RTX 4090 4枚で189回の更新を学ぶ再開の確認では、この設定で一致し、学習時間の差は約2%だった。
+            broadcast_buffers=False, find_unused_parameters=True, timeout=timedelta(hours=1),
+        ),
+        precision="32-true",
+    )
+    fabric.launch()
+    # 例外時は集団通信の破棄で待たずにランクを終了させ、torchrunにほかのランクを止めさせる。
+    yield fabric
+    torch.distributed.destroy_process_group()
+
+
+def _validate_batches(config: dict, world_size: int, replay_threads: int) -> None:
+    _validate_training(config)
+    if type(replay_threads) is not int or replay_threads < 1:
+        raise ValueError("replay-threads must be a positive integer")
+    batch_size, micro_batch_size = config["batch_size"], config["micro_batch_size"]
+    if batch_size % micro_batch_size:
+        raise ValueError("batch_size must be a multiple of micro_batch_size")
+    if (batch_size // micro_batch_size) % world_size:
+        raise ValueError("microbatch count K must be a multiple of WORLD_SIZE")
+
+
+class TrainingModule(torch.nn.Module):
+    """学習用の全logitを、分散データ並列のforwardから計算する。"""
+
+    def __init__(self, network: ZeroNet) -> None:
+        super().__init__()
+        self.network = network
+
+    def forward(self, inputs: torch.Tensor) -> TrainingLogits:
+        return self.network.forward_logits(inputs)
+
+
+def compile_training(network: ZeroNet) -> torch.nn.Module:
+    """学習用の全logitを返す順伝播を、既定モードの単一グラフにコンパイルする。
+
+    実行時の計測で選ぶカーネル構成がプロセスごとに変わり再開前後の学習が食い違ったため、deterministicをプロセス全体に設定する。
+    RTX 3060 Tiでの再開試験では、この設定で出力が一致し、速度は毎秒990局面のままだった。
+    """
+    # bf16のamaxの逆伝播でNaNが生じるのを防ぐため、eagerと同じ丸めを残す。
+    torch._inductor.config.emulate_precision_casts = True
+    # 実行時の計測によるカーネル構成の変動を避け、再開前後の計算をそろえる。
+    torch._inductor.config.deterministic = True
+    # Dynamoの状態復元はdeterministicを書き換えるため、両設定をオプションにも固定する。
+    # 順伝播と遅延コンパイルされる逆伝播で、プロセス全体に指定した同じ設定を使う。
+    return torch.compile(
+        TrainingModule(network), fullgraph=True,
+        options={"deterministic": True, "emulate_precision_casts": True},
+    )
+
+
+@contextmanager
+def compiled_forward_context() -> Iterator[None]:
+    """逆伝播をautocastの外で行う前提を、順伝播の呼び出し中に保つ。"""
+    with torch._functorch.config.patch(backward_pass_autocast="off"):
+        yield
 
 
 def _environment(trainer_commit: str, device: torch.device) -> dict:
@@ -321,6 +427,7 @@ def compute_losses(
 
     rowsとlabelsは候補の行番号とラベル、probabilitiesとvaluesは0〜65,535、
     resultsは手番側の結果、maskは同じ機器に置いた方策の定数マスクである。
+    方策の損失は全候補の損失を合計して局面数で割り、GPUの原子的な加算を使わない。
     マスク外の教師ラベルはValueErrorとし、結果だけの監視用損失には勾配を持たせない。
     """
     policy_logits, value_logits = policy_logits.float(), value_logits.float().flatten()
@@ -329,8 +436,7 @@ def compute_losses(
         raise ValueError("policy target label is outside the constant mask")
     policy_logits = policy_logits.masked_fill(~mask, -torch.inf)
     candidate_losses = -F.log_softmax(policy_logits, dim=1)[rows, labels] * (probabilities / 65_535)
-    per_position = torch.zeros(len(results), dtype=torch.float32, device=policy_logits.device)
-    policy_loss = per_position.scatter_add_(0, rows, candidate_losses).mean()
+    policy_loss = candidate_losses.sum() / len(results)
     target = (1 - value_lambda) * results + value_lambda * (values / 65_535)
     value_loss = F.binary_cross_entropy_with_logits(value_logits, target)
     with torch.no_grad():
@@ -423,7 +529,7 @@ def _policy_batch(
 
 
 def _batch(
-    model: ZeroNet, data: Dataset, indices: NDArray[np.int64],
+    forward: Callable[[torch.Tensor], TrainingLogits], data: Dataset, indices: NDArray[np.int64],
     device: torch.device, config: dict,
 ) -> tuple[TrainingLogits, PolicyTargets, torch.Tensor, torch.Tensor]:
     """順伝播の出力、疎な方策、対局結果、および根の価値を返す。"""
@@ -435,7 +541,7 @@ def _batch(
     results = torch.from_numpy(data.results[indices]).to(device)
     values = torch.from_numpy(data.values[indices].astype(np.float32)).to(device)
     with torch.autocast("cuda", dtype=torch.bfloat16) if config["precision"] == "bf16" else nullcontext():
-        logits = model.forward_logits(inputs)
+        logits = forward(inputs)
     return logits, policy, results, values
 
 
@@ -462,9 +568,10 @@ def compute_policy_diagnostics(
     )
     if not torch.all(torch.isfinite(legal_max)):
         raise ValueError("each position must have a finite maximum legal logit")
-    legal_sum = torch.zeros(count, dtype=torch.float32, device=logits.device).scatter_add_(
-        0, legal_rows, (legal_logits - legal_max[legal_rows]).exp(),
-    )
+    # GPUの原子的な加算を避け、CPUで入力順に加算して診断値を再現する。
+    legal_sum = torch.zeros(count, dtype=torch.float32, device="cpu").index_add_(
+        0, legal_rows.cpu(), (legal_logits - legal_max[legal_rows]).exp().cpu(),
+    ).to(logits.device)
     log_mass = (legal_max - maximum) + legal_sum.log() - log_denominator
     best_labels = torch.full((count,), size, dtype=torch.int64, device=logits.device).scatter_reduce_(
         0, legal_rows, torch.where(legal_logits == legal_max[legal_rows], legal_labels, size), reduce="amin",
@@ -492,7 +599,7 @@ def diagnose(
     opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     for start in range(0, len(indices), config["batch_size"]):
         batch = indices[start:start + config["batch_size"]]
-        tensors = _batch(model, data, batch, device, config)
+        tensors = _batch(model.forward_logits, data, batch, device, config)
         logits, policy, results, values = tensors
         if auxiliary:
             losses = compute_training_losses(
@@ -524,14 +631,18 @@ def _mean(sums: dict[str, float], count: int) -> dict[str, float]:
     return {name: float(np.float32(value) / np.float32(count)) for name, value in sums.items()}
 
 
-def _counts(data: Dataset, latest_start: int) -> tuple[int, int]:
-    validation = int(np.count_nonzero(data.validation))
-    training = len(data) - validation
+def _counts(
+    data: Dataset, infos: list[FileInfo], selected: NDArray[np.int64], config: dict, rank: int,
+) -> tuple[int, int]:
+    latest_start = len(infos) - len(config["latest_data"])
+    validation = sum(info.validation_count for info in infos[latest_start:])
+    used = len(selected) // config["batch_size"] * config["batch_size"]
+    training = len(np.unique(selected[:used]))
     if training == 0 or validation == 0:
         raise ValueError("training and validation sets must both contain positions")
-    if not np.any(data.training_sample):
+    if rank == 0 and not np.any(data.training_sample):
         raise ValueError("training diagnostic sample must contain positions")
-    if not np.any(data.training_sample & (data.file_indices >= latest_start)):
+    if rank == 0 and not np.any(data.training_sample & (data.file_indices >= latest_start)):
         raise ValueError("latest training diagnostic sample must contain positions")
     return training, validation
 
@@ -561,42 +672,69 @@ def _read_data_list(path: Path) -> list[str]:
     return files
 
 
+def _read_training_data(
+    config: dict, fabric: Fabric, replay_threads: int,
+) -> tuple[Dataset, list[FileInfo], NDArray[np.int64], NDArray[np.int64]]:
+    return read_replay_buffer(
+        config["data"], config["latest_data"], config["seed"],
+        rank=fabric.global_rank, world_size=fabric.world_size,
+        batch_size=config["batch_size"], micro_batch_size=config["micro_batch_size"],
+        replay_threads=replay_threads,
+    )
+
+
+def _loading_measurements(fabric: Fabric, started: float, peak_rss: int) -> tuple[float, int]:
+    seconds = torch.tensor(time.perf_counter() - started, dtype=torch.float64, device=fabric.device)
+    memory = torch.tensor(peak_rss, dtype=torch.int64, device=fabric.device)
+    return (fabric.all_reduce(seconds, reduce_op="max").item(),
+            fabric.all_reduce(memory, reduce_op="sum").item())
+
+
 def train_new(config: dict, out_dir: Path) -> None:
     """完了したチェックポイントから、指定したリプレイバッファで新しいサイクルを始める。"""
     config = dict(config)
-    config["data"] = _read_data_list(Path(config.pop("data_list")))
-    _validate_training(config)
-    device = _validate_device(config["device"], config["precision"])
-    initial = _load_checkpoint(Path(config["init"]))
-    if initial["completed_steps"] != initial["total_steps"]:
-        raise ValueError("init checkpoint has unfinished updates")
-    _prepare_output(out_dir)
-    config = {**config, "blocks": initial["config"]["blocks"], "channels": initial["config"]["channels"]}
-    started = time.perf_counter()
-    data, infos, selected = read_replay_buffer(config["data"], config["latest_data"], config["seed"])
-    loading_peak_rss = _peak_rss_bytes()
-    training_count, validation_count = _counts(data, len(infos) - len(config["latest_data"]))
-    sampling = _sampling_metadata(config, infos, selected)
-    config.update(sampling)
-    provenance = _environment(config["trainer_commit"], device)
-    provenance["init_sha256"] = _sha256(Path(config["init"]))
-    provenance["files"] = [_file_provenance(path, info) for path, info in zip(config["data"], infos)]
-    state = {
-        "model": initial["model"], "optimizer": initial["optimizer"],
-        "completed_steps": 0, "total_steps": (len(selected) + config["batch_size"] - 1) // config["batch_size"],
-        "cycle": config["cycle"], "seed": config["seed"], "config": config, "provenance": provenance,
-        "training_count": training_count, "validation_count": validation_count,
-        **sampling,
-        "positions_seen": 0, "loss_sums": _zero_losses(), "learning_curve": [],
-        "samples_seen": initial["samples_seen"], "samples_seen_start": initial["samples_seen"],
-        "data_order_sha256": bytes(32).hex(),
-        "elapsed_seconds": {"loading": time.perf_counter() - started, "training": 0.0},
-        "loading_peak_rss_bytes": loading_peak_rss,
-    }
-    _run(state, data, selected, out_dir, device)
+    replay_threads = config.pop("replay_threads")
+    with training_fabric(config["device"], config["precision"]) as fabric:
+        _validate_batches(config, fabric.world_size, replay_threads)
+        config["data"] = _read_data_list(Path(config.pop("data_list")))
+        initial = _load_checkpoint(Path(config["init"]))
+        if initial["completed_steps"] != initial["total_steps"]:
+            raise ValueError("init checkpoint has unfinished updates")
+        if fabric.global_rank == 0:
+            _prepare_output(out_dir)
+        config = {**config, "blocks": initial["config"]["blocks"], "channels": initial["config"]["channels"]}
+        started = time.perf_counter()
+        data, infos, selected, retained = _read_training_data(config, fabric, replay_threads)
+        loading_peak_rss = _peak_rss_bytes()
+        training_count, validation_count = _counts(data, infos, selected, config, fabric.global_rank)
+        sampling = _sampling_metadata(config, infos, selected)
+        config.update(sampling)
+        if fabric.global_rank == 0:
+            provenance = _environment(config["trainer_commit"], fabric.device)
+            provenance["world_size"] = fabric.world_size
+            provenance["init_sha256"] = _sha256(Path(config["init"]))
+            provenance["files"] = [_file_provenance(path, info) for path, info in zip(config["data"], infos)]
+        loading_seconds, loading_peak_rss = _loading_measurements(fabric, started, loading_peak_rss)
+        state = {
+            "model": initial["model"], "optimizer": initial["optimizer"],
+            "completed_steps": 0, "total_steps": len(selected) // config["batch_size"],
+            "cycle": config["cycle"], "seed": config["seed"], "config": config,
+            "training_count": training_count, "validation_count": validation_count,
+            **sampling,
+            "positions_seen": 0, "loss_sums": _zero_losses(), "learning_curve": [],
+            "samples_seen": initial["samples_seen"], "samples_seen_start": initial["samples_seen"],
+            "data_order_sha256": bytes(32).hex(),
+            "elapsed_seconds": {"loading": loading_seconds, "training": 0.0},
+            "loading_peak_rss_bytes": loading_peak_rss,
+        }
+        if fabric.global_rank == 0:
+            state["provenance"] = provenance
+        network = _run(state, data, selected, retained, out_dir, fabric)
+    if fabric.global_rank == 0:
+        _finish(state, data, network, out_dir, fabric.device)
 
 
-def resume(out_dir: Path, device_name: str) -> None:
+def resume(out_dir: Path, device_name: str, replay_threads: int) -> None:
     """保存したファイル情報と抽出条件を照合し、最後に確定した更新から再開する。"""
     if (out_dir / "summary.json").exists():
         raise ValueError(f"training is already complete: {out_dir}")
@@ -604,15 +742,24 @@ def resume(out_dir: Path, device_name: str) -> None:
     if state["optimizer"] is None:
         raise ValueError("resume requires a training checkpoint")
     config = state["config"]
-    _validate_training(config)
-    device = _validate_device(device_name, config["precision"])
+    if "micro_batch_size" not in config:
+        raise ValueError("cannot resume a checkpoint from the old trainer: micro_batch_size is missing")
+    with training_fabric(device_name, config["precision"]) as fabric:
+        _validate_batches(config, fabric.world_size, replay_threads)
+        data, network = _resume(state, out_dir, fabric, replay_threads)
+    if fabric.global_rank == 0:
+        _finish(state, data, network, out_dir, fabric.device)
+
+
+def _resume(state: dict, out_dir: Path, fabric: Fabric, replay_threads: int) -> tuple[Dataset, ZeroNet]:
+    config = state["config"]
     records = state["provenance"]["files"]
     paths = [record["path"] for record in records]
     if config["data"] != paths:
         raise ValueError("replay buffer path sequence differs from provenance")
     started = time.perf_counter()
-    data, infos, selected = read_replay_buffer(paths, config["latest_data"], config["seed"])
-    state["loading_peak_rss_bytes"] = max(state["loading_peak_rss_bytes"], _peak_rss_bytes())
+    data, infos, selected, retained = _read_training_data(config, fabric, replay_threads)
+    peak_rss = _peak_rss_bytes()
     for record, info in zip(records, infos):
         if (record["size"], record["training_count"], record["validation_count"]) != (
             info.size, info.training_count, info.validation_count,
@@ -621,62 +768,106 @@ def resume(out_dir: Path, device_name: str) -> None:
     for key, value in _sampling_metadata(config, infos, selected).items():
         if state[key] != value or config[key] != value:
             raise ValueError(f"replay buffer sampling condition differs: {key}")
-    if _counts(data, len(infos) - len(config["latest_data"])) != (state["training_count"], state["validation_count"]):
+    if _counts(data, infos, selected, config, fabric.global_rank) != (state["training_count"], state["validation_count"]):
         raise ValueError("replay buffer total position counts differ")
     batch_size = config["batch_size"]
-    if state["total_steps"] != (state["sample_count"] + batch_size - 1) // batch_size:
+    if state["total_steps"] != state["sample_count"] // batch_size:
         raise ValueError("checkpoint total_steps disagrees with sample_count and batch_size")
-    if state["positions_seen"] != min(state["completed_steps"] * batch_size, state["sample_count"]):
+    if state["positions_seen"] != state["completed_steps"] * batch_size:
         raise ValueError("checkpoint positions_seen disagrees with completed_steps")
-    state["elapsed_seconds"]["loading"] += time.perf_counter() - started
-    print(f"resume: completed_steps={state['completed_steps']}/{state['total_steps']}", file=sys.stderr, flush=True)
-    _run(state, data, selected, out_dir, device)
+    loading_seconds, peak_rss = _loading_measurements(fabric, started, peak_rss)
+    state["loading_peak_rss_bytes"] = max(state["loading_peak_rss_bytes"], peak_rss)
+    state["elapsed_seconds"]["loading"] += loading_seconds
+    if fabric.global_rank == 0:
+        print(f"resume: completed_steps={state['completed_steps']}/{state['total_steps']}", file=sys.stderr, flush=True)
+    return data, _run(state, data, selected, retained, out_dir, fabric)
+
+
+def accumulate_gradients(
+    fabric: Fabric, model: torch.nn.Module, optimizer: torch.optim.Optimizer,
+    data: Dataset, batches: NDArray[np.int64], config: dict,
+    mask: torch.Tensor, opponent_mask: torch.Tensor, step: int,
+) -> torch.Tensor:
+    """1更新分の勾配を同期し、クリップ前の勾配と全局面の損失の和を得る。
+
+    batchesは、このランクに割り当てられたミクロバッチを番号順に並べた2次元配列である。
+    バッチ正規化の移動統計はj=0だけで更新し、ほかは逆伝播の後に復元する。
+    """
+    optimizer.zero_grad(set_to_none=True)
+    sums = torch.zeros(len(LOSS_NAMES), dtype=torch.float32, device=fabric.device)
+    micro_batch_size = config["micro_batch_size"]
+    scale = fabric.world_size / (config["batch_size"] // micro_batch_size)
+    buffers = [buffer for layer in model.modules() if isinstance(layer, torch.nn.modules.batchnorm._BatchNorm)
+               for buffer in (layer.running_mean, layer.running_var, layer.num_batches_tracked)]
+    for index, batch in enumerate(batches):
+        j = fabric.global_rank + index * fabric.world_size
+        saved = [buffer.clone() for buffer in buffers] if j != 0 else []
+        with fabric.no_backward_sync(model, enabled=index + 1 < len(batches)):
+            with compiled_forward_context():
+                tensors = _batch(model, data, batch, fabric.device, config)
+            losses = compute_training_losses(
+                *tensors,
+                _policy_batch(data, batch, fabric.device, "opponent_"),
+                torch.from_numpy(data.short_term_values[batch]).to(fabric.device),
+                config["value_lambda"], mask, opponent_mask,
+            )
+            if not all(torch.isfinite(loss).item() for loss in losses):
+                raise ValueError(f"non-finite training loss at update {step + 1}, rank {fabric.global_rank}")
+            fabric.backward(total_loss(losses) * scale)
+        with torch.no_grad():
+            for buffer, value in zip(buffers, saved):
+                buffer.copy_(value)
+            sums.add_(torch.stack([loss.detach() for loss in losses]) * micro_batch_size)
+    return fabric.all_reduce(sums, reduce_op="sum")
 
 
 def _run(
-    state: dict, data: Dataset, selected: NDArray[np.int64], out_dir: Path, device: torch.device,
-) -> None:
+    state: dict, data: Dataset, selected: NDArray[np.int64], retained: NDArray[np.int64],
+    out_dir: Path, fabric: Fabric,
+) -> ZeroNet:
     config = state["config"]
-    model = _model(state).to(device).train()
+    device = fabric.device
+    network = _model(state).train()
     mask = torch.from_numpy(policy_mask()).to(device)
     opponent_mask = torch.from_numpy(policy_mask(opponent=True)).to(device)
     optimizer = torch.optim.SGD(
-        model.parameters(), lr=config["lr"], momentum=config["momentum"],
+        network.parameters(), lr=config["lr"], momentum=config["momentum"],
         weight_decay=config["weight_decay"], nesterov=True,
     )
+    compiled = compile_training(network)
+    # _reapply_compileは下線で始まる引数なので、Fabric 2.6.6から版を上げる際は
+    # コンパイルしたラッパーがDDPの内側に置かれることを確かめ直す。
+    model, optimizer = fabric.setup(compiled, optimizer, _reapply_compile=False)
+    # load_state_dictは現在のパラメータの機器へモーメンタムも移す。
     if state["optimizer"] is not None:
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
             group.update(lr=config["lr"], momentum=config["momentum"], weight_decay=config["weight_decay"],
                          dampening=0, nesterov=True)
     indices = np.flatnonzero(~data.validation)
-    # 保持した訓練局面は通し番号の昇順なので、抽出した順から配列の行番号へ戻す。
-    order = indices[np.searchsorted(np.unique(selected), selected)]
     batch_size = config["batch_size"]
+    micro_batch_size = config["micro_batch_size"]
+    assigned = selected[:state["total_steps"] * batch_size].reshape(
+        state["total_steps"], batch_size // micro_batch_size, micro_batch_size,
+    )[:, fabric.global_rank::fabric.world_size]
+    order = indices[np.searchsorted(retained, assigned)]
     interval_sums, interval_count = _zero_losses(), 0
     interval_started = time.perf_counter()
     for step in range(state["completed_steps"], state["total_steps"]):
-        batch = order[step * batch_size:(step + 1) * batch_size]
-        optimizer.zero_grad(set_to_none=True)
-        losses = compute_training_losses(
-            *_batch(model, data, batch, device, config), _policy_batch(data, batch, device, "opponent_"),
-            torch.from_numpy(data.short_term_values[batch]).to(device),
-            config["value_lambda"], mask, opponent_mask,
+        losses = accumulate_gradients(
+            fabric, model, optimizer, data, order[step], config, mask, opponent_mask, step,
         )
-        if not all(torch.isfinite(loss).item() for loss in losses):
-            raise ValueError(f"non-finite training loss at update {step + 1}")
-        total_loss(losses).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), config["clip_grad_norm"], error_if_nonfinite=True)
         lr = learning_rate(config["lr"], step, state["total_steps"],
                            state["samples_seen"], batch_size)
         for group in optimizer.param_groups:
             group["lr"] = lr
         optimizer.step()
-        _accumulate(state["loss_sums"], losses, len(batch))
-        _accumulate(interval_sums, losses, len(batch))
-        state["positions_seen"] += len(batch)
-        state["samples_seen"] += len(batch)
-        interval_count += len(batch)
+        _accumulate(state["loss_sums"], losses, 1)
+        _accumulate(interval_sums, losses, 1)
+        state["positions_seen"] += batch_size
+        state["samples_seen"] += batch_size
+        interval_count += batch_size
         state["completed_steps"] = step + 1
         state["data_order_sha256"] = hashlib.sha256(
             bytes.fromhex(state["data_order_sha256"])
@@ -689,18 +880,26 @@ def _run(
             state["learning_curve"].append({"completed_steps": step + 1, "training_losses": averages, "lr": lr,
                                             "samples_seen_start": state["samples_seen_start"],
                                             "samples_seen": state["samples_seen"]})
-            state["model"], state["optimizer"] = model.state_dict(), optimizer.state_dict()
-            _save_checkpoint(out_dir / "checkpoint.pt", state)
-            print(
-                f"steps={step + 1}/{state['total_steps']} "
-                + " ".join(f"{name}={averages[name]:.6f}" for name in LOSS_NAMES)
-                + f" positions_per_second={interval_count / elapsed:.2f}",
-                file=sys.stderr, flush=True,
-            )
+            if fabric.global_rank == 0:
+                state["model"], state["optimizer"] = network.state_dict(), optimizer.state_dict()
+                _save_checkpoint(out_dir / "checkpoint.pt", state)
+                print(
+                    f"steps={step + 1}/{state['total_steps']} "
+                    + " ".join(f"{name}={averages[name]:.6f}" for name in LOSS_NAMES)
+                    + f" positions_per_second={interval_count / elapsed:.2f}",
+                    file=sys.stderr, flush=True,
+                )
             interval_sums, interval_count = _zero_losses(), 0
             interval_started = time.perf_counter()
 
-    model.eval()
+    return network
+
+
+def _finish(state: dict, data: Dataset, network: ZeroNet, out_dir: Path, device: torch.device) -> None:
+    """分散処理の終了後に、ランク0の元のネットで最終診断と出力を行う。"""
+    config = state["config"]
+    mask = torch.from_numpy(policy_mask()).to(device)
+    network.eval()
     started = time.perf_counter()
     diagnostics = {}
     latest = data.file_indices >= len(config["data"]) - len(config["latest_data"])
@@ -717,10 +916,12 @@ def _run(
             "game_count": len(games), "position_count": len(indices),
             "hash_modulus": 20, "hash_remainder": remainder, "games": games,
         }
-        diagnostics[name] = {**metadata, **diagnose(model, data, indices, device, config, mask, auxiliary=True)}
+        diagnostics[name] = {**metadata, **diagnose(
+            network, data, indices, device, {**config, "batch_size": config["micro_batch_size"]}, mask, auxiliary=True,
+        )}
     diagnostic_seconds = time.perf_counter() - started
     with _atomic_path(out_dir / "model.onnx") as temporary:
-        export_onnx(copy.deepcopy(model).cpu().float().eval(), temporary)
+        export_onnx(copy.deepcopy(network).cpu().float().eval(), temporary)
     _write_json(out_dir / "summary.json", {
         "cycle": state["cycle"], "config": config, "provenance": state["provenance"],
         "lr": config["lr"],

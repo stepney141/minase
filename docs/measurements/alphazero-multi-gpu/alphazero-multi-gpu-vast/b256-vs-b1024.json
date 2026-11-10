@@ -1,0 +1,284 @@
+{
+  "game_count": 440,
+  "position_count": 47145,
+  "reference": {
+    "path": "/workspace/m/n1-b256/checkpoint.pt",
+    "sha256": "0efc4ea90498bc4c801ebf415060f91794912008bc714770bb2f6f44cd1eb07f",
+    "mean_losses": {
+      "policy": 2.5860400147555467,
+      "value": 0.5683217204191348
+    }
+  },
+  "candidate": {
+    "path": "/workspace/m/n1-b1024/checkpoint.pt",
+    "sha256": "b59f9aa336a8d34b4940e6bc8428ade9ae961f9b6713cd055e16c558229f44c3",
+    "mean_losses": {
+      "policy": 2.579749050249777,
+      "value": 0.5695024588108177
+    }
+  },
+  "difference": {
+    "policy": {
+      "estimate": -0.006290964505769828,
+      "ci95": [
+        -0.011902325729558492,
+        -0.0007135855799362812
+      ]
+    },
+    "value": {
+      "estimate": 0.0011807383916829987,
+      "ci95": [
+        -0.0007962634127954283,
+        0.003313108223008014
+      ]
+    }
+  },
+  "resamples": 10000,
+  "seed": 20261110,
+  "decision": "判定できない",
+  "data": [
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00000.mnsd",
+      "seed": 32000000000,
+      "game_count": 18,
+      "position_count": 1878
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00000.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00001.mnsd",
+      "seed": 32000000000,
+      "game_count": 17,
+      "position_count": 1728
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00001.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00002.mnsd",
+      "seed": 32000000000,
+      "game_count": 26,
+      "position_count": 2504
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00002.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 109
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00003.mnsd",
+      "seed": 32000000000,
+      "game_count": 20,
+      "position_count": 2276
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00003.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 108
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00004.mnsd",
+      "seed": 32000000000,
+      "game_count": 18,
+      "position_count": 1444
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00004.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 2,
+      "position_count": 153
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00005.mnsd",
+      "seed": 32000000000,
+      "game_count": 26,
+      "position_count": 2265
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00005.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 2,
+      "position_count": 104
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00006.mnsd",
+      "seed": 32000000000,
+      "game_count": 17,
+      "position_count": 1597
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00006.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00007.mnsd",
+      "seed": 32000000000,
+      "game_count": 18,
+      "position_count": 2123
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00007.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 97
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00008.mnsd",
+      "seed": 32000000000,
+      "game_count": 16,
+      "position_count": 1436
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00008.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 42
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00009.mnsd",
+      "seed": 32000000000,
+      "game_count": 28,
+      "position_count": 3557
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00009.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 58
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00010.mnsd",
+      "seed": 32000000000,
+      "game_count": 18,
+      "position_count": 1840
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00010.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 3,
+      "position_count": 254
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00011.mnsd",
+      "seed": 32000000000,
+      "game_count": 25,
+      "position_count": 3458
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00011.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00012.mnsd",
+      "seed": 32000000000,
+      "game_count": 19,
+      "position_count": 2282
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00012.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 145
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00013.mnsd",
+      "seed": 32000000000,
+      "game_count": 18,
+      "position_count": 1590
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00013.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 3,
+      "position_count": 333
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00014.mnsd",
+      "seed": 32000000000,
+      "game_count": 25,
+      "position_count": 3076
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00014.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00015.mnsd",
+      "seed": 32000000000,
+      "game_count": 23,
+      "position_count": 2963
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00015.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 56
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00016.mnsd",
+      "seed": 32000000000,
+      "game_count": 24,
+      "position_count": 2968
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00016.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 1,
+      "position_count": 38
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00017.mnsd",
+      "seed": 32000000000,
+      "game_count": 21,
+      "position_count": 2354
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00017.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 2,
+      "position_count": 169
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00018.mnsd",
+      "seed": 32000000000,
+      "game_count": 15,
+      "position_count": 1262
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00018.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 2,
+      "position_count": 85
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00019.mnsd",
+      "seed": 32000000000,
+      "game_count": 26,
+      "position_count": 2793
+    },
+    {
+      "path": "/workspace/m/cycles/cycle-0032/selfplay/chunk-00019.resigned.mnsd",
+      "seed": 32000000000,
+      "game_count": 0,
+      "position_count": 0
+    }
+  ],
+  "value_lambda": 0.333,
+  "batch": 256,
+  "device": "cuda"
+}

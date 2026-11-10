@@ -82,7 +82,7 @@ fn resume_summarizes_only_the_target_prefix_without_inference_or_changing_commit
             before.push((path.clone(), fs::read(&path).unwrap()));
         }
         let one = NonZeroUsize::new(1).unwrap();
-        let report = generate(&directory.0, &config, 60, &[23; 32], one, one, || {
+        let report = generate(&directory.0, &config, 60, &[23; 32], one, one, |_| {
             panic!("a completed prefix must not construct an evaluator")
         })
         .unwrap();
@@ -121,7 +121,7 @@ fn resume_summarizes_only_the_target_prefix_without_inference_or_changing_commit
             }
         );
         // 目標だけを変えても同じconfig.jsonで再開できる。
-        let smaller = generate(&directory.0, &config, 23, &[23; 32], one, one, || {
+        let smaller = generate(&directory.0, &config, 23, &[23; 32], one, one, |_| {
             panic!("a smaller target must not construct an evaluator")
         })
         .unwrap();

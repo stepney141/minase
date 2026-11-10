@@ -1,0 +1,45 @@
+# 機械H（60075467）。copy-bandwidth.pyの出力。
+# 生成中（生成器が4枚を使っている間、GPU 3）
+pinned=False h2d 4.78 ms/copy 3.8 GB/s
+pinned=False d2h 17.41 ms/copy 1.1 GB/s
+pinned=True h2d 3.38 ms/copy 5.4 GB/s
+pinned=True d2h 2.22 ms/copy 8.3 GB/s
+# 生成の後、GPUが空いた状態で1枚ずつ
+gpu0 pinned=False h2d 2.12 ms/copy 8.6 GB/s
+gpu0 pinned=False d2h 2.99 ms/copy 6.1 GB/s
+gpu0 pinned=True h2d 1.39 ms/copy 13.2 GB/s
+gpu0 pinned=True d2h 1.04 ms/copy 17.6 GB/s
+gpu1 pinned=False h2d 2.06 ms/copy 8.9 GB/s
+gpu1 pinned=False d2h 3.01 ms/copy 6.1 GB/s
+gpu1 pinned=True h2d 1.13 ms/copy 16.2 GB/s
+gpu1 pinned=True d2h 0.86 ms/copy 21.2 GB/s
+gpu2 pinned=False h2d 2.45 ms/copy 7.5 GB/s
+gpu2 pinned=False d2h 3.12 ms/copy 5.9 GB/s
+gpu2 pinned=True h2d 1.17 ms/copy 15.7 GB/s
+gpu2 pinned=True d2h 0.85 ms/copy 21.5 GB/s
+gpu3 pinned=False h2d 1.90 ms/copy 9.7 GB/s
+gpu3 pinned=False d2h 3.11 ms/copy 5.9 GB/s
+gpu3 pinned=True h2d 1.13 ms/copy 16.2 GB/s
+gpu3 pinned=True d2h 0.86 ms/copy 21.4 GB/s
+# 生成の後、4枚で同時に
+gpu1 pinned=False h2d 3.88 ms/copy 4.7 GB/s
+gpu1 pinned=False d2h 8.90 ms/copy 2.1 GB/s
+gpu1 pinned=True h2d 2.29 ms/copy 8.0 GB/s
+gpu1 pinned=True d2h 1.47 ms/copy 12.5 GB/s
+gpu3 pinned=False h2d 5.91 ms/copy 3.1 GB/s
+gpu3 pinned=False d2h 9.16 ms/copy 2.0 GB/s
+gpu3 pinned=True h2d 2.16 ms/copy 8.5 GB/s
+gpu3 pinned=True d2h 2.53 ms/copy 7.2 GB/s
+gpu0 pinned=False h2d 6.59 ms/copy 2.8 GB/s
+gpu0 pinned=False d2h 11.17 ms/copy 1.6 GB/s
+gpu0 pinned=True h2d 2.26 ms/copy 8.1 GB/s
+gpu0 pinned=True d2h 1.73 ms/copy 10.6 GB/s
+gpu2 pinned=False h2d 6.76 ms/copy 2.7 GB/s
+gpu2 pinned=False d2h 11.22 ms/copy 1.6 GB/s
+gpu2 pinned=True h2d 3.06 ms/copy 6.0 GB/s
+gpu2 pinned=True d2h 1.51 ms/copy 12.1 GB/s
+# 作業機（RTX 3060 Ti、ベアメタル）で同じスクリプト
+pinned=False h2d 1.12 ms/copy 16.4 GB/s
+pinned=False d2h 1.49 ms/copy 12.3 GB/s
+pinned=True h2d 0.73 ms/copy 25.1 GB/s
+pinned=True d2h 0.71 ms/copy 26.0 GB/s

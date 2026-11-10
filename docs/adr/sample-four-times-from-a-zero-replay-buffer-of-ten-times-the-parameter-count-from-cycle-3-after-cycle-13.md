@@ -44,4 +44,4 @@ KataGoの式のリプレイバッファは、サイクル3〜10の時点で1〜2
 1回目の学習の記録は置き換えたADRの規則のままであり、書き換えない。
 リプレイバッファが上限に届くサイクル280前後までは、サイクル3からの全サイクルのファイルがリプレイバッファに入り、ファイル名を1つのコマンドの引数に並べるとLinuxの1引数の上限を超えるので、実行器はファイル名の一覧を、引数ではなくファイルで学習器へ渡す。
 実装は`tools/train/zero/minase_zero/runner.py`の`replay_buffer`にある。
-学習率の予定は[学習率の予定のADR](warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。
+学習率の予定は[学習率の予定のADR](archive/warm-up-the-zero-learning-rate-and-anneal-it-within-each-cycle-without-comparing-a-constant-rate.md)が定める。

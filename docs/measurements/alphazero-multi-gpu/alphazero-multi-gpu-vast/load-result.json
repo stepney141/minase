@@ -1,0 +1,11 @@
+{
+  "nproc": 4,
+  "replay_threads": 23,
+  "files": 1122,
+  "replay_buffer_training_count": 27416613,
+  "sample_count": 3644828,
+  "training_count": 3644416,
+  "loading_seconds": 96.02050283498829,
+  "loading_peak_rss_bytes": 10602827776,
+  "first_checkpoint_seconds": 144.0427217480028
+}

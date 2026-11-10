@@ -9,7 +9,7 @@ import unittest
 
 import torch
 
-from .cli import COMMIT, ZERO, init_arguments, require_success, run_cli
+from tests.cli import COMMIT, ZERO, init_arguments, require_success, run_cli
 
 
 FIXTURE = ZERO.parents[2] / "crates/minase/tests/fixtures/nn-positions.jsonl"

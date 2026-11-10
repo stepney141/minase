@@ -1,0 +1,19 @@
+trt-b1-1	134	17673	corrupted double-linked list
+trt-b1-2	0	2360	NN inference (288 positions): 0.186551 s
+trt-b1-3	0	2411	NN inference (288 positions): 0.182694 s
+trt-b1-4	0	2337	NN inference (288 positions): 0.195045 s
+trt-b1-5	0	2694	NN inference (288 positions): 0.182814 s
+trt-b7-1	0	17767	NN inference (288 positions): 0.072571 s
+trt-b7-2	0	3023	NN inference (288 positions): 0.056479 s
+trt-b7-3	0	2156	NN inference (288 positions): 0.070053 s
+trt-b256-1	134	18855	corrupted double-linked list
+trt-b256-2	0	2268	NN inference (288 positions): 0.047649 s
+trt-b256-3	0	2276	NN inference (288 positions): 0.049598 s
+cuda-b7-1	134	2169	corrupted double-linked list
+cuda-b7-2	0	2027	NN inference (288 positions): 0.549972 s
+cuda-b7-3	0	1896	NN inference (288 positions): 0.552290 s
+cpu-b7-1	0	36104	NN inference (288 positions): 35.552488 s
+cpu-b7-2	0	38591	NN inference (288 positions): 38.014060 s
+trt-b1-mallocdebug-1	0	3183	NN inference (288 positions): 0.187310 s
+trt-b1-mallocdebug-2	0	3050	NN inference (288 positions): 0.199581 s
+trt-b1-mallocdebug-3	0	3054	NN inference (288 positions): 0.185132 s

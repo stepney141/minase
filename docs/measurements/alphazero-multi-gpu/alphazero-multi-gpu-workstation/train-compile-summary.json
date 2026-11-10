@@ -1,0 +1,500 @@
+{
+  "cycle": 1,
+  "config": {
+    "device": "cuda",
+    "init": "<S>/init-checkpoint.pt",
+    "latest_data": [
+      "<S>/data/chunk-00000.mnsd",
+      "<S>/data/chunk-00000.resigned.mnsd"
+    ],
+    "cycle": 1,
+    "seed": 20261101,
+    "batch_size": 1024,
+    "micro_batch_size": 256,
+    "checkpoint_steps": 50,
+    "lr": 0.04,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "clip_grad_norm": 10.0,
+    "value_lambda": 0.333,
+    "precision": "bf16",
+    "trainer_commit": "8130d27026fe60ed50e8f34f92c9232335ba4dd1",
+    "data": [
+      "<S>/data/chunk-00000.mnsd",
+      "<S>/data/chunk-00000.resigned.mnsd"
+    ],
+    "blocks": 20,
+    "channels": 256,
+    "sample_count": 194288,
+    "replay_buffer_training_count": 48572,
+    "file_training_counts": [
+      45341,
+      3231
+    ],
+    "sample_sha256": "a1a868627cfd90e19cd6524dcd35d35a03e5c6dcd49beac841a50a7cdb1ef133"
+  },
+  "provenance": {
+    "trainer_commit": "8130d27026fe60ed50e8f34f92c9232335ba4dd1",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.11.0+cu130",
+    "cuda_version": "13.0",
+    "numpy_version": "2.5.4",
+    "device_name": "NVIDIA GeForce RTX 3060 Ti",
+    "world_size": 1,
+    "init_sha256": "02c75e68205a29e8b63edf619d5b8987d001bf88e58d613242327fa583292fff",
+    "files": [
+      {
+        "path": "<S>/data/chunk-00000.mnsd",
+        "size": 5636501,
+        "sha256": "97bc626e931492b26c2c1dba9a927c910541a4df4e0d0610434a88f7e10fc641",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "aa9a7fa87be6ba923ae853f333904c886ec2a801",
+          "network_checksum": "53c7c0a5f0e58b776a0633ea8c863297bffbaff43e01647914f9c5f71a9ed207",
+          "teacher_search_budget": 32,
+          "seed": 32000000000,
+          "game_count": 443,
+          "entry_count": 194078
+        },
+        "position_count": 47219,
+        "training_count": 45341,
+        "validation_count": 1878
+      },
+      {
+        "path": "<S>/data/chunk-00000.resigned.mnsd",
+        "size": 411268,
+        "sha256": "8e48b3c48a06d7fe1bd81baffbcdb393a54fad2c54ce43a3cf896a4c2807376f",
+        "header": {
+          "origin": 0,
+          "teacher_kind": 1,
+          "rule_set": "L0,P0,R1,E0",
+          "engine_default": true,
+          "generation_commit": "aa9a7fa87be6ba923ae853f333904c886ec2a801",
+          "network_checksum": "53c7c0a5f0e58b776a0633ea8c863297bffbaff43e01647914f9c5f71a9ed207",
+          "teacher_search_budget": 32,
+          "seed": 32000000000,
+          "game_count": 39,
+          "entry_count": 13559
+        },
+        "position_count": 3231,
+        "training_count": 3231,
+        "validation_count": 0
+      }
+    ]
+  },
+  "lr": 0.04,
+  "training_count": 48572,
+  "validation_count": 1878,
+  "latest_data": [
+    "<S>/data/chunk-00000.mnsd",
+    "<S>/data/chunk-00000.resigned.mnsd"
+  ],
+  "sample_count": 194288,
+  "replay_buffer_training_count": 48572,
+  "file_training_counts": [
+    45341,
+    3231
+  ],
+  "sample_sha256": "a1a868627cfd90e19cd6524dcd35d35a03e5c6dcd49beac841a50a7cdb1ef133",
+  "completed_steps": 189,
+  "total_steps": 189,
+  "positions_seen": 193536,
+  "samples_seen_start": 0,
+  "samples_seen": 193536,
+  "last_lr": 2.673609050215214e-07,
+  "training_losses": {
+    "policy": 7.711727619171143,
+    "value": 0.6877675652503967,
+    "value_result": 0.6882840394973755,
+    "soft_policy": 6.78164529800415,
+    "opponent_policy": 2.8765740394592285,
+    "opponent_soft_policy": 2.3864972591400146,
+    "short_term_value_1": 0.6870042085647583,
+    "short_term_value_2": 0.6893496513366699,
+    "short_term_value_3": 0.686938464641571
+  },
+  "diagnostics": {
+    "training_sample": {
+      "game_count": 21,
+      "position_count": 2210,
+      "hash_modulus": 20,
+      "hash_remainder": 1,
+      "games": [
+        {
+          "seed": 32000000000,
+          "game": 8
+        },
+        {
+          "seed": 32000000000,
+          "game": 104
+        },
+        {
+          "seed": 32000000000,
+          "game": 109
+        },
+        {
+          "seed": 32000000000,
+          "game": 115
+        },
+        {
+          "seed": 32000000000,
+          "game": 128
+        },
+        {
+          "seed": 32000000000,
+          "game": 142
+        },
+        {
+          "seed": 32000000000,
+          "game": 159
+        },
+        {
+          "seed": 32000000000,
+          "game": 225
+        },
+        {
+          "seed": 32000000000,
+          "game": 232
+        },
+        {
+          "seed": 32000000000,
+          "game": 249
+        },
+        {
+          "seed": 32000000000,
+          "game": 290
+        },
+        {
+          "seed": 32000000000,
+          "game": 297
+        },
+        {
+          "seed": 32000000000,
+          "game": 316
+        },
+        {
+          "seed": 32000000000,
+          "game": 350
+        },
+        {
+          "seed": 32000000000,
+          "game": 364
+        },
+        {
+          "seed": 32000000000,
+          "game": 424
+        },
+        {
+          "seed": 32000000000,
+          "game": 435
+        },
+        {
+          "seed": 32000000000,
+          "game": 448
+        },
+        {
+          "seed": 32000000000,
+          "game": 465
+        },
+        {
+          "seed": 32000000000,
+          "game": 473
+        },
+        {
+          "seed": 32000000000,
+          "game": 293
+        }
+      ],
+      "policy": 5.634210586547852,
+      "value": 0.6724186539649963,
+      "value_result": 0.6705320477485657,
+      "soft_policy": 5.232240200042725,
+      "opponent_policy": 2.4452450275421143,
+      "opponent_soft_policy": 2.015859365463257,
+      "short_term_value_1": 0.6755767464637756,
+      "short_term_value_2": 0.678608775138855,
+      "short_term_value_3": 0.6745462417602539,
+      "legal_probability_mass": 0.5052680373191833,
+      "log_legal_probability_mass": -0.7215430736541748,
+      "policy_agreement": 0.08009050041437149
+    },
+    "latest_training_sample": {
+      "game_count": 21,
+      "position_count": 2210,
+      "hash_modulus": 20,
+      "hash_remainder": 1,
+      "games": [
+        {
+          "seed": 32000000000,
+          "game": 8
+        },
+        {
+          "seed": 32000000000,
+          "game": 104
+        },
+        {
+          "seed": 32000000000,
+          "game": 109
+        },
+        {
+          "seed": 32000000000,
+          "game": 115
+        },
+        {
+          "seed": 32000000000,
+          "game": 128
+        },
+        {
+          "seed": 32000000000,
+          "game": 142
+        },
+        {
+          "seed": 32000000000,
+          "game": 159
+        },
+        {
+          "seed": 32000000000,
+          "game": 225
+        },
+        {
+          "seed": 32000000000,
+          "game": 232
+        },
+        {
+          "seed": 32000000000,
+          "game": 249
+        },
+        {
+          "seed": 32000000000,
+          "game": 290
+        },
+        {
+          "seed": 32000000000,
+          "game": 297
+        },
+        {
+          "seed": 32000000000,
+          "game": 316
+        },
+        {
+          "seed": 32000000000,
+          "game": 350
+        },
+        {
+          "seed": 32000000000,
+          "game": 364
+        },
+        {
+          "seed": 32000000000,
+          "game": 424
+        },
+        {
+          "seed": 32000000000,
+          "game": 435
+        },
+        {
+          "seed": 32000000000,
+          "game": 448
+        },
+        {
+          "seed": 32000000000,
+          "game": 465
+        },
+        {
+          "seed": 32000000000,
+          "game": 473
+        },
+        {
+          "seed": 32000000000,
+          "game": 293
+        }
+      ],
+      "policy": 5.634210586547852,
+      "value": 0.6724186539649963,
+      "value_result": 0.6705320477485657,
+      "soft_policy": 5.232240200042725,
+      "opponent_policy": 2.4452450275421143,
+      "opponent_soft_policy": 2.015859365463257,
+      "short_term_value_1": 0.6755767464637756,
+      "short_term_value_2": 0.678608775138855,
+      "short_term_value_3": 0.6745462417602539,
+      "legal_probability_mass": 0.5052680373191833,
+      "log_legal_probability_mass": -0.7215430736541748,
+      "policy_agreement": 0.08009050041437149
+    },
+    "validation": {
+      "game_count": 18,
+      "position_count": 1878,
+      "hash_modulus": 20,
+      "hash_remainder": 0,
+      "games": [
+        {
+          "seed": 32000000000,
+          "game": 31
+        },
+        {
+          "seed": 32000000000,
+          "game": 82
+        },
+        {
+          "seed": 32000000000,
+          "game": 100
+        },
+        {
+          "seed": 32000000000,
+          "game": 116
+        },
+        {
+          "seed": 32000000000,
+          "game": 133
+        },
+        {
+          "seed": 32000000000,
+          "game": 173
+        },
+        {
+          "seed": 32000000000,
+          "game": 229
+        },
+        {
+          "seed": 32000000000,
+          "game": 253
+        },
+        {
+          "seed": 32000000000,
+          "game": 259
+        },
+        {
+          "seed": 32000000000,
+          "game": 281
+        },
+        {
+          "seed": 32000000000,
+          "game": 313
+        },
+        {
+          "seed": 32000000000,
+          "game": 347
+        },
+        {
+          "seed": 32000000000,
+          "game": 370
+        },
+        {
+          "seed": 32000000000,
+          "game": 392
+        },
+        {
+          "seed": 32000000000,
+          "game": 402
+        },
+        {
+          "seed": 32000000000,
+          "game": 428
+        },
+        {
+          "seed": 32000000000,
+          "game": 456
+        },
+        {
+          "seed": 32000000000,
+          "game": 460
+        }
+      ],
+      "policy": 5.96027135848999,
+      "value": 0.6831536889076233,
+      "value_result": 0.6843615770339966,
+      "soft_policy": 5.52741813659668,
+      "opponent_policy": 2.33417010307312,
+      "opponent_soft_policy": 1.9048696756362915,
+      "short_term_value_1": 0.6849389672279358,
+      "short_term_value_2": 0.6832587122917175,
+      "short_term_value_3": 0.683599591255188,
+      "legal_probability_mass": 0.4914187788963318,
+      "log_legal_probability_mass": -0.7459592819213867,
+      "policy_agreement": 0.05111820995807648
+    }
+  },
+  "learning_curve": [
+    {
+      "completed_steps": 50,
+      "training_losses": {
+        "policy": 10.996986389160156,
+        "value": 0.6952007412910461,
+        "value_result": 0.6965952515602112,
+        "soft_policy": 9.470775604248047,
+        "opponent_policy": 3.2190182209014893,
+        "opponent_soft_policy": 2.8602781295776367,
+        "short_term_value_1": 0.6948895454406738,
+        "short_term_value_2": 0.6961795091629028,
+        "short_term_value_3": 0.6943103075027466
+      },
+      "lr": 0.0008633557185887917,
+      "samples_seen_start": 0,
+      "samples_seen": 51200
+    },
+    {
+      "completed_steps": 100,
+      "training_losses": {
+        "policy": 7.5523457527160645,
+        "value": 0.6910662055015564,
+        "value_result": 0.6915636658668518,
+        "soft_policy": 6.476649284362793,
+        "opponent_policy": 3.0030264854431152,
+        "opponent_soft_policy": 2.3663885593414307,
+        "short_term_value_1": 0.6892868280410767,
+        "short_term_value_2": 0.6919586062431335,
+        "short_term_value_3": 0.6904457211494446
+      },
+      "lr": 0.0009474763841675016,
+      "samples_seen_start": 0,
+      "samples_seen": 102400
+    },
+    {
+      "completed_steps": 150,
+      "training_losses": {
+        "policy": 6.145257472991943,
+        "value": 0.6839017271995544,
+        "value_result": 0.6839869022369385,
+        "soft_policy": 5.557971954345703,
+        "opponent_policy": 2.645171880722046,
+        "opponent_soft_policy": 2.1468307971954346,
+        "short_term_value_1": 0.6831474900245667,
+        "short_term_value_2": 0.6861625909805298,
+        "short_term_value_3": 0.6830073595046997
+      },
+      "lr": 0.0003271890406491819,
+      "samples_seen_start": 0,
+      "samples_seen": 153600
+    },
+    {
+      "completed_steps": 189,
+      "training_losses": {
+        "policy": 5.712493419647217,
+        "value": 0.6789642572402954,
+        "value_result": 0.6789343357086182,
+        "soft_policy": 5.293869972229004,
+        "opponent_policy": 2.572091579437256,
+        "opponent_soft_policy": 2.1121294498443604,
+        "short_term_value_1": 0.6789127588272095,
+        "short_term_value_2": 0.6813338398933411,
+        "short_term_value_3": 0.6780322790145874
+      },
+      "lr": 2.673609050215214e-07,
+      "samples_seen_start": 0,
+      "samples_seen": 193536
+    }
+  ],
+  "data_order_sha256": "b00329618f1c71d0274a456eff5b9bd2602b72045a0dfe307d024be4d040f6df",
+  "network_sha256": "791511acc7442d4dc404ef97a5af361dfe88ffad83e7eeacbd3f003b8307eee0",
+  "elapsed_seconds": {
+    "loading": 1.5483853969490156,
+    "training": 193.64067088905722,
+    "diagnostics": 2.3715787660330534
+  },
+  "loading_peak_rss_bytes": 1721098240,
+  "positions_per_second": 999.4594581366783
+}

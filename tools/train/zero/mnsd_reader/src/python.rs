@@ -81,10 +81,18 @@ fn read_selected(
     py: Python<'_>,
     path: String,
     training_indices: Vec<u64>,
+    diagnostic_indices: Vec<u64>,
     include_validation: bool,
 ) -> PyResult<Bound<'_, PyDict>> {
     let records = py
-        .detach(|| crate::read_selected(Path::new(&path), &training_indices, include_validation))
+        .detach(|| {
+            crate::read_selected(
+                Path::new(&path),
+                &training_indices,
+                &diagnostic_indices,
+                include_validation,
+            )
+        })
         .map_err(|error| python_error(&path, error))?;
     record_dict(py, &records)
 }
@@ -164,6 +172,10 @@ fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDic
 
 fn record_dict<'py>(py: Python<'py>, records: &Records) -> PyResult<Bound<'py, PyDict>> {
     let output = info_dict(py, &records.info)?;
+    output.set_item(
+        "training_indices",
+        bytes(py, &records.training_indices, |v| v.to_le_bytes())?,
+    )?;
     output.set_item("games", bytes(py, &records.games, |v| v.to_le_bytes())?)?;
     output.set_item("plies", bytes(py, &records.plies, |v| v.to_le_bytes())?)?;
     output.set_item("values", bytes(py, &records.values, |v| v.to_le_bytes())?)?;

@@ -48,9 +48,30 @@ pub(crate) struct Arguments {
     /// 推論器を1つずつ所有するスレッド数。
     #[arg(long, required = true)]
     pub(super) threads: NonZeroUsize,
+    /// 使用するGPUの枚数。スレッド数をこの枚数の倍数とし、CPUでは1を指定する。
+    #[arg(long, required = true, value_name = "N")]
+    pub(super) devices: NonZeroUsize,
     /// 各スレッドの同時対局数と推論器の最大バッチ。
     #[arg(long, required = true)]
     pub(super) games_per_thread: NonZeroUsize,
+}
+
+impl Arguments {
+    /// GPUやONNX Runtimeに触れる前に、スレッド数と機器数の組合せを検査する。
+    pub(super) fn validate_execution(&self) -> Result<(), Error> {
+        if !self.threads.get().is_multiple_of(self.devices.get()) {
+            return Err(Error::ThreadsNotMultipleOfDevices {
+                threads: self.threads,
+                devices: self.devices,
+            });
+        }
+        if matches!(self.nn_backend, Backend::Cpu) && self.devices.get() != 1 {
+            return Err(Error::CpuDeviceCount {
+                devices: self.devices,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// 自己対局の開始局面と序盤の作り方。
@@ -80,13 +101,14 @@ pub(super) enum Backend {
 }
 
 impl Backend {
-    pub(super) fn provider(self) -> Result<ExecutionProvider, Error> {
+    pub(super) fn provider(self, device_id: usize) -> Result<ExecutionProvider, Error> {
         Ok(match self {
             Self::TensorRt => ExecutionProvider::TensorRt {
                 cache_root: cache_root(std::env::var_os("XDG_CACHE_HOME").as_deref())
                     .ok_or(Error::CacheRootUnset)?,
+                device_id,
             },
-            Self::Cuda => ExecutionProvider::Cuda,
+            Self::Cuda => ExecutionProvider::Cuda { device_id },
             Self::Cpu => ExecutionProvider::Cpu,
         })
     }

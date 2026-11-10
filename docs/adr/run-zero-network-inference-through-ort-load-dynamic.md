@@ -47,3 +47,4 @@ minaseのビルドは、GPUのない環境でもONNX Runtimeのない環境で�
 ortをrc.14以降へ上げるときは、minaseの`rust-version`の引き上げと、環境定義のONNX Runtimeの更新を同じ変更で行う。
 TensorRT 11以降へ移るには、単精度のONNXにFP16の設定を付ける方式をやめ、FP16で書き出したONNXを使う形に改める必要がある。
 A100のColab機では、`session.run`の経路でもセッションの破棄か終了処理の時点でヒープの破壊が検出されたことがあり、作業機での終了処理は[ランダム初期化のネットの出力の照合](../measurements/alphazero-network/random-net-output-check.md)で確かめた。
+ONNX Runtimeの実行時ライブラリの版は、[ONNX Runtimeの版のADR](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)が定める。

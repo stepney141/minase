@@ -549,7 +549,7 @@ fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
     assert_eq!(all.outcomes, [0, 0, 1, 1]);
     assert_eq!(all.policy_offsets, [0, 1, 2, 3, 4]);
     assert_eq!(all.policy_probabilities, [65535; 4]);
-    let selected = read_selected(&path, &[1], true).unwrap();
+    let selected = read_selected(&path, &[1], &[], true).unwrap();
     assert_eq!(selected.games, [1, 4, 4]);
     assert_eq!(selected.plies, [3, 2, 3]);
     assert_eq!(selected.outcomes, [0, 1, 1]);
@@ -699,7 +699,7 @@ fn short_term_targets_include_fast_search_and_terminal_results_from_both_sides()
             // 直後が速い探索、または最終項目なら相手の手の教師を持たない。
             assert_eq!(records.opponent_policy_offsets, [0, 0, 0]);
             assert_eq!(records.opponent_legal_offsets, [0, 0, 0]);
-            let selected = read_selected(&path, &[1], false).unwrap();
+            let selected = read_selected(&path, &[1], &[], false).unwrap();
             assert_eq!(selected.short_term_values, [records.short_term_values[1]]);
         }
     }
@@ -719,8 +719,8 @@ fn short_term_targets_reject_missing_values_only_in_the_selected_suffix() {
         read_file(&path),
         Err(Error::MissingShortTermValue { game: 1, index: 1 })
     ));
-    assert!(read_selected(&path, &[1], false).is_ok());
-    assert!(read_selected(&path, &[], false).is_ok());
+    assert!(read_selected(&path, &[1], &[], false).is_ok());
+    assert!(read_selected(&path, &[], &[], false).is_ok());
 }
 
 #[test]
@@ -838,7 +838,7 @@ fn opponent_moves_and_legal_columns_describe_the_immediate_next_position() {
     )
     .unwrap();
     let path = fixture.write(TeacherKind::Mcts, &[record]);
-    let actual = read_selected(&path, &[0], false).unwrap();
+    let actual = read_selected(&path, &[0], &[], false).unwrap();
     assert_eq!(actual.opponent_policy_offsets, [0, 1]);
     assert_eq!(actual.opponent_policy_from, [53]);
     assert_eq!(actual.opponent_policy_mid, [255]);
@@ -1072,7 +1072,7 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
     let info = scan_file(&path).unwrap();
     assert_eq!(info.game_numbers, [1, 4]);
     assert_eq!((info.training_count, info.validation_count), (2, 2));
-    let selected = read_selected(&path, &[1], true).unwrap();
+    let selected = read_selected(&path, &[1], &[], true).unwrap();
     assert_eq!(selected.games, [1, 4, 4]);
     assert_eq!(selected.plies, [19, 31, 36]);
     assert_eq!(selected.boards.len(), 3 * 144);
@@ -1080,14 +1080,14 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
         (selected.info.training_count, selected.info.validation_count),
         (2, 2)
     );
-    let empty = read_selected(&path, &[], false).unwrap();
+    let empty = read_selected(&path, &[], &[], false).unwrap();
     assert!(empty.boards.is_empty());
     assert_eq!(empty.policy_offsets, [0]);
     assert_eq!(empty.legal_offsets, [0]);
     assert_eq!(empty.info.game_numbers, [1, 4]);
     for indices in [&[1, 1][..], &[1, 0], &[2]] {
         assert!(matches!(
-            read_selected(&path, indices, false),
+            read_selected(&path, indices, &[], false),
             Err(Error::InvalidSelection)
         ));
     }
@@ -1100,7 +1100,7 @@ fn scan_counts_flags_without_replay_and_selection_uses_training_ordinals() {
     let info = scan_file(&path).unwrap();
     assert_eq!((info.training_count, info.validation_count), (2, 2));
     assert!(matches!(
-        read_selected(&path, &[], false),
+        read_selected(&path, &[], &[], false),
         Err(Error::Format(records::Error::MissingPlayedMove))
     ));
 }
@@ -1234,7 +1234,7 @@ fn mcts_scan_and_selected_columns_match_the_generated_fixture() {
     assert_eq!(info.validation_count as usize, 741 - training.len());
     assert_eq!(info.game_numbers, all.info.game_numbers);
     let ordinals = [0, 50, training.len() as u64 - 1];
-    let selected = read_selected(&path, &ordinals, false).unwrap();
+    let selected = read_selected(&path, &ordinals, &[], false).unwrap();
     assert_eq!(selected.games.len(), 3);
     assert_eq!(selected.boards.len(), 3 * 144);
     for (row, ordinal) in ordinals.into_iter().enumerate() {
@@ -1283,5 +1283,46 @@ fn scan_rejects_truncation_counts_flags_and_trailing_bytes() {
     ] {
         fs::write(&path, bytes).unwrap();
         assert!(matches!(scan_file(&path), Err(Error::Format(_))));
+    }
+}
+
+#[test]
+fn diagnostic_selection_keeps_only_sample_games_and_merges_training_ordinals() {
+    // seed=11の対局13は剰余1、対局1は剰余8、対局4は検証である。
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        TeacherKind::AlphaBeta,
+        &[
+            alpha_game(1, 20, Position::initial()),
+            alpha_game(4, 30, Position::initial()),
+            alpha_game(13, 10, Position::initial()),
+        ],
+    );
+    let all = read_file(&path).unwrap();
+    let diagnostic = read_selected(&path, &[], &[0, 1, 2, 3], false).unwrap();
+    assert_eq!(diagnostic.training_indices, [2, 3]);
+    assert_eq!(diagnostic.games, [13, 13]);
+    assert_eq!(diagnostic.plies, [11, 16]);
+    let merged = read_selected(&path, &[0, 3], &[0, 1, 2, 3], true).unwrap();
+    assert_eq!(merged.training_indices, [0, 2, 3]);
+    assert_eq!(merged.games, [1, 4, 4, 13, 13]);
+    assert_eq!(merged.plies, [21, 31, 36, 11, 16]);
+    for (row, &ordinal) in merged.training_indices.iter().enumerate() {
+        let row = [0, 3, 4][row];
+        let source = [0, 1, 4, 5][ordinal as usize];
+        assert_eq!(merged.games[row], all.games[source]);
+        assert_eq!(merged.plies[row], all.plies[source]);
+        assert_eq!(
+            merged.boards[row * 144..(row + 1) * 144],
+            all.boards[source * 144..(source + 1) * 144]
+        );
+    }
+    for invalid in [&[1, 1][..], &[1, 0], &[4], &[u64::MAX]] {
+        for (training, diagnostic) in [(invalid, &[][..]), (&[][..], invalid)] {
+            assert!(matches!(
+                read_selected(&path, training, diagnostic, false),
+                Err(Error::InvalidSelection)
+            ));
+        }
     }
 }

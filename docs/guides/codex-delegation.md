@@ -30,6 +30,7 @@ codexプラグインの補助スクリプトでは、サブコマンド`task`に
 codexのサンドボックスにはネットワークもGPUもない。
 依存を追加させた場合、codexは`Cargo.lock`を更新できないので、委任元で`cargo build`を実行して`Cargo.lock`を更新し、`cargo fmt`、`cargo clippy`、および`cargo test`を実行し直す。
 GPUを要する学習の扱いは [GPUを要する学習はcodexへ委任しない](../lessons/run-gpu-training-outside-codex-sandbox.md) に従う。
+サンドボックスは`torchrun`のローカルのソケットも拒否する（`Operation not permitted`）ので、`torchrun`で起動する分散の試験は委任元が実行する。
 
 worktreeのgit管理領域は本体の`.git/worktrees/<名前>/`にあり、サンドボックスからは書き込めないので、codexはworktreeでコミットできない。
 worktreeで作業させるときは、指示書に「コミットしない、git addもしない、1回の実行で1フェーズだけ」と書き、フェーズごとに委任元が検証してコミットする。

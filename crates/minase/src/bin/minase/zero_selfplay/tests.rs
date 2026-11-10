@@ -96,7 +96,7 @@ fn generate(path: &Path, config: &Config, threads: usize, batch: usize) -> RunRe
         &CHECKSUM,
         nz(threads),
         nz(batch),
-        || Ok(Box::new(BiasedEvaluator)),
+        |_| Ok(Box::new(BiasedEvaluator)),
     )
     .unwrap()
 }
@@ -296,7 +296,13 @@ fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_
         serde_json::from_reader(File::open(directory.0.join("config.json")).unwrap()).unwrap();
     assert_eq!(saved_config["nn_backend"], "cpu");
     assert_eq!(saved_config.as_object().unwrap().len(), 11);
-    for absent in ["version", "threads", "games_per_thread", "target_positions"] {
+    for absent in [
+        "version",
+        "threads",
+        "devices",
+        "games_per_thread",
+        "target_positions",
+    ] {
         assert!(saved_config.get(absent).is_none());
     }
 }
@@ -365,7 +371,7 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
             &CHECKSUM,
             nz(3),
             nz(4),
-            || panic!("completed cycles must not construct an evaluator"),
+            |_| panic!("completed cycles must not construct an evaluator"),
         )
         .unwrap();
         assert_eq!(complete.generated_games, 0);
@@ -382,7 +388,7 @@ fn resume_regenerates_only_missing_chunk_deterministically_across_parallelism() 
             &CHECKSUM,
             nz(1),
             nz(1),
-            || panic!("mismatched conditions must fail before inference"),
+            |_| panic!("mismatched conditions must fail before inference"),
         )
         .err()
         .unwrap();
@@ -397,7 +403,7 @@ fn reaching_target_stops_generation_and_removes_unfinished_chunk_files() {
         seed: 1,
         ..config()
     };
-    let report = output::generate(&directory.0, &config, 1, &CHECKSUM, nz(1), nz(6), || {
+    let report = output::generate(&directory.0, &config, 1, &CHECKSUM, nz(1), nz(6), |_| {
         Ok(Box::new(BiasedEvaluator))
     })
     .unwrap();
@@ -472,7 +478,7 @@ fn inference_batches_contain_multiple_games_and_max_ply_discards_have_no_records
         &CHECKSUM,
         nz(1),
         nz(3),
-        || Ok(Box::new(BatchRecorder(Arc::clone(&batches)))),
+        |_| Ok(Box::new(BatchRecorder(Arc::clone(&batches)))),
     )
     .unwrap();
     let batches = batches.lock().unwrap();
@@ -550,7 +556,7 @@ fn inference_failures_keep_typed_causes_join_all_workers_and_allow_resume() {
             &CHECKSUM,
             nz(2),
             nz(2),
-            || {
+            |_| {
                 Ok(Box::new(FailingEvaluator {
                     failure,
                     dropped: Arc::clone(&dropped),
@@ -612,7 +618,7 @@ fn shuffled_records_start_at_seeded_setup_without_random_opening_entries() {
             &CHECKSUM,
             nz(2),
             nz(2),
-            || {
+            |_| {
                 if resigned {
                     Ok(Box::new(BiasedEvaluator))
                 } else {
@@ -707,7 +713,7 @@ fn changed_or_missing_start_position_rejects_resume_without_rewriting_files() {
             &CHECKSUM,
             nz(1),
             nz(1),
-            || panic!("invalid config must fail before inference"),
+            |_| panic!("invalid config must fail before inference"),
         )
         .err()
         .unwrap();
@@ -755,6 +761,8 @@ fn start_position_cli_is_required_and_accepts_only_the_two_kinds() {
         "100",
         "--threads",
         "1",
+        "--devices",
+        "1",
         "--games-per-thread",
         "2",
     ];
@@ -774,4 +782,132 @@ fn start_position_cli_is_required_and_accepts_only_the_two_kinds() {
                 .unwrap();
         assert_eq!(parsed.arguments.start_position, kind);
     }
+}
+
+fn execution_arguments(
+    directory: &Path,
+    backend: cli::Backend,
+    threads: usize,
+    devices: usize,
+) -> Arguments {
+    Arguments {
+        output_dir: directory.join("output"),
+        nn_model: directory.join("missing.onnx"),
+        nn_backend: backend,
+        generation_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
+        seed: 1,
+        start_position: cli::StartPosition::RandomOpening,
+        games: 2,
+        target_positions: 100,
+        chunk_games: 2,
+        simulations: 4,
+        playthrough_percent: 100,
+        threads: nz(threads),
+        devices: nz(devices),
+        games_per_thread: nz(1),
+    }
+}
+
+// 複数GPU化の設計: スレッド数がGPU数の倍数でなければ、外部資源に触れる前に拒む。
+#[test]
+fn startup_rejects_threads_not_divisible_by_devices_before_reading_network() {
+    let directory = TemporaryDirectory::new();
+    for backend in [
+        cli::Backend::TensorRt,
+        cli::Backend::Cuda,
+        cli::Backend::Cpu,
+    ] {
+        let arguments = execution_arguments(&directory.0, backend, 3, 2);
+        assert!(matches!(
+            run(arguments),
+            Err(Error::ThreadsNotMultipleOfDevices { threads, devices })
+                if threads.get() == 3 && devices.get() == 2
+        ));
+    }
+    assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
+}
+
+// フェーズ1の指示書: CPUではGPUを照会せず、devices=1だけを認める。
+#[test]
+fn cpu_requires_one_device_before_reading_network() {
+    let directory = TemporaryDirectory::new();
+    assert!(matches!(
+        run(execution_arguments(&directory.0, cli::Backend::Cpu, 4, 2)),
+        Err(Error::CpuDeviceCount { devices }) if devices.get() == 2
+    ));
+    assert!(matches!(
+        run(execution_arguments(&directory.0, cli::Backend::Cpu, 4, 1)),
+        Err(Error::Inference(NnError::ReadNetwork { path, .. }))
+            if path == directory.0.join("missing.onnx")
+    ));
+    assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
+}
+
+// 複数GPU化の設計: GPUごとに同数のスレッドを割り当てられる指定を認める。
+#[test]
+fn execution_settings_accept_thread_multiples() {
+    for backend in [cli::Backend::TensorRt, cli::Backend::Cuda] {
+        for (threads, devices) in [(1, 1), (2, 2), (8, 4)] {
+            execution_arguments(Path::new("unused"), backend, threads, devices)
+                .validate_execution()
+                .unwrap();
+        }
+    }
+}
+
+// 複数GPU化の設計: 使用するGPUの枚数は、照会した枚数と等しくなければならない。
+#[test]
+fn requested_gpu_count_must_match_inventory() {
+    validate_gpu_count(nz(4), nz(4)).unwrap();
+    assert!(matches!(
+        validate_gpu_count(nz(2), nz(4)),
+        Err(Error::DeviceCountMismatch { requested, available })
+            if requested.get() == 2 && available.get() == 4
+    ));
+}
+
+// 複数GPU化の設計: 8スレッドを4枚へ0,1,2,3の順で割り当て、1枚なら全スレッドを機器0へ置く。
+#[test]
+fn threads_cycle_through_cuda_devices() {
+    let device_ids: Vec<_> = (0..8)
+        .map(|thread| device_for_thread(thread, nz(4)))
+        .collect();
+    assert_eq!(device_ids, [0, 1, 2, 3, 0, 1, 2, 3]);
+    for device_id in device_ids {
+        assert!(matches!(
+            cli::Backend::Cuda.provider(device_id).unwrap(),
+            minase::nn::ExecutionProvider::Cuda { device_id: actual } if actual == device_id
+        ));
+    }
+    for thread in 0..8 {
+        assert_eq!(device_for_thread(thread, nz(1)), 0);
+    }
+}
+
+// [`output::generate`]の契約: 推論器の生成関数にスレッド番号を0から順に1回ずつ渡す。
+#[test]
+fn evaluator_factory_receives_each_thread_index_in_order() {
+    let directory = TemporaryDirectory::new();
+    let config = Config {
+        games: 2,
+        playthrough_percent: 100,
+        max_ply: 18,
+        ..config()
+    };
+    let mut created = Vec::new();
+    let report = output::generate(
+        &directory.0,
+        &config,
+        u64::MAX,
+        &CHECKSUM,
+        nz(8),
+        nz(1),
+        |thread| {
+            created.push(thread);
+            Ok(Box::new(UniformEvaluator))
+        },
+    )
+    .unwrap();
+    assert_eq!(created, [0, 1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(report.generated_games, 2);
 }
