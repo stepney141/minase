@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 
 use ort::ep;
 use ort::logging::LogLevel;
-use ort::session::{Session, SessionOutputs};
+use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
+use ort::session::{IoBinding, Session, SessionOutputs};
 use ort::value::{TensorElementType, TensorRef, ValueType};
 use sha2::{Digest, Sha256};
 
@@ -130,9 +131,14 @@ fn initialize_runtime() -> Result<(), NnError> {
 
 /// ONNX Runtimeのセッションと、最大バッチ分を一度だけ確保した入力バッファを持つ評価器。
 ///
-/// 出力は`session.run`でONNX Runtimeに確保させる。`IoBinding`による出力の束縛は使わない。
+/// TensorRTとCUDAでは、1つの[`IoBinding`]を保持し、出力をCUDAのピン留めメモリで受け取る。
+/// 出力の結び付けを保持するとONNX Runtime 1.31.1が2回目の呼び出しで同じ領域への転送を
+/// 拒むため、呼び出しごとに出力の結び付けを消して結び付け直す。
+/// 入力は通常のホストメモリに置き、CPUでは`session.run`で出力を受け取る。
 pub struct OnnxEvaluator {
     session: Session,
+    // MemoryInfoはSendではないので、機器番号を保持して呼び出しごとに作る。
+    output_binding: Option<(IoBinding, i32)>,
     input: Vec<f32>,
     max_batch: NonZeroUsize,
 }
@@ -167,7 +173,7 @@ impl OnnxEvaluator {
                 .with_disable_cpu_fallback()
                 .map_err(ort::Error::from)?;
         }
-        let provider = match provider {
+        let (provider, output_device_id) = match provider {
             ExecutionProvider::TensorRt {
                 cache_root,
                 device_id,
@@ -183,21 +189,28 @@ impl OnnxEvaluator {
                     source,
                 })?;
                 let profile = format!("input:{}x{INPUT_PLANES}x12x12", max_batch.get());
-                ep::TensorRT::default()
-                    .with_device_id(device_id)
-                    .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
-                    .with_profile_opt_shapes(&profile)
-                    .with_profile_max_shapes(&profile)
-                    .with_fp16(true)
-                    .with_engine_cache(true)
-                    .with_engine_cache_path(cache_path)
-                    .with_timing_cache(false)
-                    .build()
+                (
+                    ep::TensorRT::default()
+                        .with_device_id(device_id)
+                        .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
+                        .with_profile_opt_shapes(&profile)
+                        .with_profile_max_shapes(&profile)
+                        .with_fp16(true)
+                        .with_engine_cache(true)
+                        .with_engine_cache_path(cache_path)
+                        .with_timing_cache(false)
+                        .build(),
+                    Some(device_id),
+                )
             }
-            ExecutionProvider::Cuda { device_id } => ep::CUDA::default()
-                .with_device_id(ort_device_id(*device_id)?)
-                .build(),
-            ExecutionProvider::Cpu => ep::CPU::default().build(),
+            ExecutionProvider::Cuda { device_id } => {
+                let device_id = ort_device_id(*device_id)?;
+                (
+                    ep::CUDA::default().with_device_id(device_id).build(),
+                    Some(device_id),
+                )
+            }
+            ExecutionProvider::Cpu => (ep::CPU::default().build(), None),
         };
         let session = builder
             .with_execution_providers([provider.error_on_failure()])
@@ -215,8 +228,13 @@ impl OnnxEvaluator {
                 .map(|port| (port.name().to_owned(), port.dtype().clone()))
                 .collect(),
         )?;
+        let output_binding = match output_device_id {
+            Some(device_id) => Some((session.create_binding()?, device_id)),
+            None => None,
+        };
         Ok(Self {
             session,
+            output_binding,
             input,
             max_batch,
         })
@@ -310,7 +328,24 @@ impl Evaluator for OnnxEvaluator {
             encode(query.position, buffer)?;
         }
         let tensor = TensorRef::from_array_view(([n, INPUT_PLANES, 12, 12], &*input))?;
-        let outputs = self.session.run(ort::inputs!["input" => tensor])?;
+        let outputs = if let Some((binding, device_id)) = &mut self.output_binding {
+            let memory = MemoryInfo::new(
+                AllocationDevice::CUDA_PINNED,
+                *device_id,
+                AllocatorType::Device,
+                MemoryType::CPUOutput,
+            )?;
+            binding.bind_input("input", &tensor)?;
+            binding.clear_outputs();
+            binding.bind_output_to_device("policy", &memory)?;
+            binding.bind_output_to_device("value", &memory)?;
+            binding.synchronize_inputs()?;
+            let outputs = self.session.run_binding(binding)?;
+            binding.synchronize_outputs()?;
+            outputs
+        } else {
+            self.session.run(ort::inputs!["input" => tensor])?
+        };
         let policy = output_tensor(&outputs, "policy", [n, POLICY_SIZE])?;
         let value = output_tensor(&outputs, "value", [n, 1])?;
         collect_outputs(queries, policy, value, logits, values)
