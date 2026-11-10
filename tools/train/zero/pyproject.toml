@@ -8,6 +8,7 @@ dependencies = [
     "onnx",
     "numpy",
     "minase-mnsd-reader",
+    "lightning-fabric==2.6.6",
 ]
 
 [tool.uv]
