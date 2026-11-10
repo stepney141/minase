@@ -63,7 +63,7 @@ codexが判断を求めて止まった場合は、同じディレクトリで`ta
 
 補助スクリプトは、作業ディレクトリごとにcodexとの通信を仲介するプロセス（broker）を起動する。
 brokerは委任が終わっても終了しない。
-CLAUDE.mdが求める補助プロセスの後始末として、worktreeでの委任を終えたら、そのworktreeのbrokerを終了させる。
+AGENTS.mdが求める補助プロセスの後始末として、worktreeでの委任を終えたら、そのworktreeのbrokerを終了させる。
 プラグインがClaude Codeのセッションの終了時に実行するフックを、そのworktreeを`cwd`として手動で実行すると、そのworktreeのbrokerだけが終了し、ジョブの記録も消える。
 
 ```console
