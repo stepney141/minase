@@ -16,6 +16,7 @@ import io
 import json
 import os
 from pathlib import Path
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -2005,6 +2006,32 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
 
 
 class ArgumentTests(RunnerCase):
+    def test_vast_launcher_preflight_validates_without_constructing_runner_or_remote(self):
+        path = Path(__file__).resolve().parents[4] / "docs/measurements/alphazero-multi-gpu/launch-vast.py"
+        script = runpy.run_path(str(path))["VALIDATE_RUNNER"]
+        with (patch("sys.argv", ["-c", *self.vast_arguments()]),
+              patch("minase_zero.runner.Options", wraps=Options) as options,
+              patch("minase_zero.runner.Runner") as runner,
+              patch("minase_zero.runner.Remote") as remote,
+              patch("minase_zero.__main__.Runner") as cli_runner,
+              patch("minase_zero.__main__.Remote") as cli_remote):
+            exec(compile(script, "<runner-preflight>", "exec"), {})
+        options.assert_called_once()
+        self.assertEqual(options.call_args.kwargs["machine"], "vast")
+        for constructor in (runner, remote, cli_runner, cli_remote):
+            constructor.assert_not_called()
+
+    def test_vast_launcher_preflight_rejects_parser_errors_and_invalid_options(self):
+        path = Path(__file__).resolve().parents[4] / "docs/measurements/alphazero-multi-gpu/launch-vast.py"
+        script = runpy.run_path(str(path))["VALIDATE_RUNNER"]
+        args = self.vast_arguments()
+        invalid_options = args.copy()
+        invalid_options[invalid_options.index("--batch-size") + 1] = "0"
+        for invalid in (args + ["--unknown"], invalid_options, args + ["--help"]):
+            with (self.subTest(arguments=invalid), patch("sys.argv", ["-c", *invalid]),
+                  redirect_stdout(io.StringIO()), self.assertRaises(ValueError)):
+                exec(compile(script, "<runner-preflight>", "exec"), {})
+
     def vast_arguments(self):
         args = self.arguments()
         args[args.index("--machine") + 1] = "vast"

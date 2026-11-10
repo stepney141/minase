@@ -173,17 +173,19 @@ class ExternalEvaluationTests(unittest.TestCase):
 
     def test_every_cli_argument_is_required_and_device_is_restricted(self) -> None:
         groups = [["--checkpoint", str(self.checkpoint)], ["--data", *map(str, self.paths)],
-                  ["--games", "5"], ["--seed", "42"], ["--device", "cpu", "--replay-threads", "1"],
+                  ["--games", "5"], ["--seed", "42"], ["--device", "cpu"],
                   ["--out", str(self.directory / "missing.json")]]
-        invalid = [["external-eval", *(arg for index, group in enumerate(groups) if index != missing for arg in group)]
+        invalid = [(groups[missing][0],
+                    ["external-eval", *(arg for index, group in enumerate(groups) if index != missing for arg in group)])
                    for missing in range(len(groups))]
-        invalid.append(["external-eval", *(arg if arg != "cpu" else "auto" for group in groups for arg in group)])
-        for arguments in invalid:
+        invalid.append(("--device", ["external-eval", *(arg if arg != "cpu" else "auto" for group in groups for arg in group)]))
+        for option, arguments in invalid:
             with self.subTest(arguments=arguments), patch("sys.argv", ["minase_zero", *arguments]):
                 error = io.StringIO()
                 with redirect_stderr(error):
                     self.assertEqual(main(), 1)
                 self.assertEqual(len(error.getvalue().splitlines()), 1)
+                self.assertIn(option, error.getvalue())
         self.assertFalse((self.directory / "missing.json").exists())
 
     def test_mcts_is_rejected_and_alpha_beta_remains_unavailable_for_training(self) -> None:

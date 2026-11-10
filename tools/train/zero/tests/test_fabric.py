@@ -21,6 +21,29 @@ from tests.cli import ZERO, environment, init_arguments, require_success, run_cl
 
 
 class FabricSettingsTests(unittest.TestCase):
+    def test_exception_propagates_without_destroying_process_group(self):
+        """異常終了のランクをtorchrunが検知できるよう、集団通信の破棄を呼ばない。"""
+        ranks = {"WORLD_SIZE": "1", "LOCAL_WORLD_SIZE": "1", "RANK": "0", "LOCAL_RANK": "0"}
+        for error in (ValueError("non-finite loss"), KeyboardInterrupt()):
+            with (self.subTest(error=type(error).__name__),
+                  patch.dict(os.environ, ranks, clear=True),
+                  patch.object(train.Fabric, "launch"),
+                  patch.object(torch.distributed, "destroy_process_group") as destroy):
+                with self.assertRaises(type(error)) as raised:
+                    with training_fabric("cpu", "fp32"):
+                        raise error
+                self.assertIs(raised.exception, error)
+                destroy.assert_not_called()
+
+    def test_normal_completion_destroys_process_group(self):
+        ranks = {"WORLD_SIZE": "1", "LOCAL_WORLD_SIZE": "1", "RANK": "0", "LOCAL_RANK": "0"}
+        with (patch.dict(os.environ, ranks, clear=True),
+              patch.object(train.Fabric, "launch"),
+              patch.object(torch.distributed, "destroy_process_group") as destroy):
+            with training_fabric("cpu", "fp32"):
+                destroy.assert_not_called()
+            destroy.assert_called_once_with()
+
     def test_ddp_keeps_bucket_order_and_does_not_broadcast_buffers(self):
         ranks = {"WORLD_SIZE": "4", "LOCAL_WORLD_SIZE": "4", "RANK": "0", "LOCAL_RANK": "0"}
         # 分散処理の起動と終了だけを差し替え、実際のFabricとDDPStrategyを検証する。
@@ -41,6 +64,12 @@ class FabricTests(unittest.TestCase):
         cls.root = Path(directory.name)
         cls.initial = cls.root / "initial"
         require_success(run_cli(init_arguments(cls.initial, 23)))
+
+    def test_process_group_cleanup_on_success_and_exception_in_torchrun(self):
+        require_success(run_command([
+            sys.executable, "-m", "torch.distributed.run", "--standalone", "--nproc-per-node", "1",
+            "-m", "tests.fabric_cleanup_worker",
+        ]))
 
     def test_microbatch_and_replay_threads_are_required_in_their_respective_commands(self):
         args = train_arguments(self.initial / "checkpoint.pt", self.root / "arguments")

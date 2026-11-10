@@ -297,10 +297,9 @@ def training_fabric(device_name: str, precision: str) -> Iterator[Fabric]:
         precision="32-true",
     )
     fabric.launch()
-    try:
-        yield fabric
-    finally:
-        torch.distributed.destroy_process_group()
+    # 例外時は集団通信の破棄で待たずにランクを終了させ、torchrunにほかのランクを止めさせる。
+    yield fabric
+    torch.distributed.destroy_process_group()
 
 
 def _validate_batches(config: dict, world_size: int, replay_threads: int) -> None:
