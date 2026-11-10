@@ -1,0 +1,42 @@
+Thread 1 "minase" received signal SIGABRT, Aborted.
+0x00007f072eda6c0c in pthread_kill () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007f072eda6c0c in pthread_kill () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007f072ed4d27e in raise () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007f072ed308ff in abort () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007f072ed317b6 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x00007f072ed98b39 in __libc_fatal () from /lib/x86_64-linux-gnu/libc.so.6
+#5  0x00007f072f0396ec in ?? () from /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+#6  0x00007f072f03989b in ?? () from /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+#7  0x00007f072f03a330 in ?? () from /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+#8  0x00007f072f03a792 in ?? () from /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+#9  0x00007f072f03d323 in free () from /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+#10 0x00007f06d611c764 in ?? () from /lib/x86_64-linux-gnu/libcuda.so.1
+#11 0x00007f06d611c9bf in ?? () from /lib/x86_64-linux-gnu/libcuda.so.1
+#12 0x00007f072f07e000 in ?? () from /lib64/ld-linux-x86-64.so.2
+#13 0x0000000000000000 in ?? ()
+From                To                  Syms Read   Shared Object Library
+0x00007f072f047000  0x00007f072f071195  Yes (*)     /lib64/ld-linux-x86-64.so.2
+0x00007f072f0385e0  0x00007f072f03f1ca  Yes (*)     /usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0
+0x00007f072f008780  0x00007f072f02b745  Yes (*)     /lib/x86_64-linux-gnu/libgcc_s.so.1
+0x00007f072ef2b420  0x00007f072efa93a6  Yes (*)     /lib/x86_64-linux-gnu/libm.so.6
+0x00007f072ed30800  0x00007f072eeb8039  Yes (*)     /lib/x86_64-linux-gnu/libc.so.6
+0x00007f072d0f6340  0x00007f072e5f0d15  Yes (*)     /workspace/src/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+0x00007f072d03a040  0x00007f072d03a105  Yes (*)     /lib/x86_64-linux-gnu/libdl.so.2
+0x00007f072d035080  0x00007f072d0352b1  Yes (*)     /lib/x86_64-linux-gnu/librt.so.1
+0x00007f072d030040  0x00007f072d030105  Yes (*)     /lib/x86_64-linux-gnu/libpthread.so.0
+0x00007f072ce565c0  0x00007f072cf95ce2  Yes (*)     /lib/x86_64-linux-gnu/libstdc++.so.6
+0x00007f072cdad050  0x00007f072cdad12f  Yes (*)     /workspace/src/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_shared.so
+0x00007f072cce1400  0x00007f072cd87805  Yes (*)     /workspace/src/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_tensorrt.so
+0x00007f0729630bd0  0x00007f0729c4b722  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cu13/lib/libcublas.so.13
+0x00007f07039ce7c0  0x00007f071b975884  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/tensorrt_libs/libnvinfer.so.10
+0x00007f07024c6d80  0x00007f0702863ca8  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/tensorrt_libs/libnvonnxparser.so.10
+0x00007f070200e1a0  0x00007f0702084cb4  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cu13/lib/libcudart.so.13
+0x00007f0701c04230  0x00007f0701c14a36  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib/libcudnn.so.9
+0x00007f06dc49ad40  0x00007f06e2e243e2  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cu13/lib/libcublasLt.so.13
+0x00007f06d611af00  0x00007f06d709d324  Yes (*)     /lib/x86_64-linux-gnu/libcuda.so.1
+0x00007f06bd627180  0x00007f06bf31a322  Yes (*)     /workspace/src/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_cuda.so
+0x00007f06b4e0ae80  0x00007f06b4f2c6f2  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cu13/lib/libcurand.so.10
+0x00007f06b2189f40  0x00007f06b23c6db2  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/tensorrt_libs/libnvinfer_plugin.so.10
+0x00007f066b06b360  0x00007f066b2e6b22  Yes (*)     /workspace/src/tools/train/zero/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib/libcudnn_graph.so.9
+0x00007f072cc65260  0x00007f072cc76c40  Yes (*)     /lib/x86_64-linux-gnu/libz.so.1
+(*): Shared library is missing debugging information.
