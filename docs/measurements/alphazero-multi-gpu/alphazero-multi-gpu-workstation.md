@@ -61,7 +61,8 @@ vast.aiの測定に使う[load-check.py](load-check.py)、[compare-outputs.py](c
 
 ONNX Runtime 1.31.1の確認では、`env.sh`を1.31.1にしてから`tools/train/zero/setup.sh`で導入した。
 vast.aiの機械Bで学んだサイクル1のネットについて、実行器の照合と同じ`minase dev nn-eval`をCPUとTensorRT（新しいキャッシュ）のバッチ1、7、256で実行し、機械Bの照合が書いた`pytorch.json`と`nn_compare.py`で比べた。
-作業機の`fixture-eval`は、ONNXに書き出し直したバイト列が機械Bの`model.onnx`と一致しないとして止まったので、参照には機械Bの出力を使った。
+作業機の`fixture-eval`は、ONNXに書き出し直したバイト列が機械Bの`model.onnx`と一致しないとして止まった。
+書き出しの定数畳み込みの丸めがCPUによって変わるためで、[教訓](../../lessons/compare-reexported-onnx-bytes-only-on-the-exporting-machine.md)のとおり、参照には機械Bの照合が書いた出力を使った。
 続けて、CUDAの実行プロバイダのバッチ7を4回実行した。
 
 ```console
