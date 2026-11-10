@@ -1,0 +1,101 @@
+{
+  "cpu-b1": {
+    "positions": 288,
+    "max_logit_abs_diff": 1.0704467772626458e-05,
+    "max_probability_abs_diff": 6.552719069019552e-07,
+    "max_value_abs_diff": 3.684331512432415e-06,
+    "best_move_mismatches": 0,
+    "best_move_mismatch_gaps": []
+  },
+  "trt-b1": {
+    "positions": 288,
+    "max_logit_abs_diff": 0.04903411865234375,
+    "max_probability_abs_diff": 0.004005017391158966,
+    "max_value_abs_diff": 0.009542346000671387,
+    "best_move_mismatches": 4,
+    "best_move_mismatch_gaps": [
+      [
+        71,
+        0.0021686553955078125
+      ],
+      [
+        138,
+        0.009175300598144531
+      ],
+      [
+        172,
+        0.009226799011230469
+      ],
+      [
+        240,
+        0.009020805358886719
+      ]
+    ]
+  },
+  "cpu-b7": {
+    "positions": 288,
+    "max_logit_abs_diff": 1.0704467772626458e-05,
+    "max_probability_abs_diff": 6.552719069019552e-07,
+    "max_value_abs_diff": 3.684331512432415e-06,
+    "best_move_mismatches": 0,
+    "best_move_mismatch_gaps": []
+  },
+  "trt-b7": {
+    "positions": 288,
+    "max_logit_abs_diff": 0.046042442321777344,
+    "max_probability_abs_diff": 0.0035700613582189955,
+    "max_value_abs_diff": 0.00937181273696902,
+    "best_move_mismatches": 3,
+    "best_move_mismatch_gaps": [
+      [
+        6,
+        0.001312255859375
+      ],
+      [
+        23,
+        0.027204513549804688
+      ],
+      [
+        240,
+        0.009020805358886719
+      ]
+    ]
+  },
+  "cpu-b256": {
+    "positions": 288,
+    "max_logit_abs_diff": 1.0704467772626458e-05,
+    "max_probability_abs_diff": 6.552719069019552e-07,
+    "max_value_abs_diff": 3.684331512432415e-06,
+    "best_move_mismatches": 0,
+    "best_move_mismatch_gaps": []
+  },
+  "trt-b256": {
+    "positions": 288,
+    "max_logit_abs_diff": 0.043060302734375,
+    "max_probability_abs_diff": 0.0032346528121174056,
+    "max_value_abs_diff": 0.008565796000671422,
+    "best_move_mismatches": 5,
+    "best_move_mismatch_gaps": [
+      [
+        6,
+        0.001312255859375
+      ],
+      [
+        71,
+        0.0021686553955078125
+      ],
+      [
+        98,
+        0.0030536651611328125
+      ],
+      [
+        172,
+        0.009226799011230469
+      ],
+      [
+        240,
+        0.009020805358886719
+      ]
+    ]
+  }
+}

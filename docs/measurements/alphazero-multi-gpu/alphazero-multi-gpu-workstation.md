@@ -3,12 +3,13 @@
 ## 目的
 
 [複数GPU化の設計書](../../plans/alphazero-multi-gpu.md)のフェーズ1とフェーズ4のうち、作業機（GPU 1枚）で行う確認の記録である。
-確かめたのは次の4点である。
+確かめたのは次の5点である。
 
 1. 生成器に`--devices 1`を与えた生成が、改める前の生成器と同じ塊を書くこと。
 2. 全体のバッチ1,024をミクロバッチ256の4回の勾配累積で学ぶ学習が、最後まで動くこと。
 3. `torch.compile`の採否の3つ目の条件として、コンパイルの有無による勾配の相対誤差が、bf16とfp32の間の相対誤差より小さいこと。
 4. 採否の2つ目の条件として、同じNのまま強制終了して再開した学習が、空のコンパイルのキャッシュで、途中で止めない学習と出力のバイト列まで一致すること。
+5. ONNX Runtimeを1.31.1へ上げた環境で、実行器の照合と同じ6つの比較が許容誤差に収まり、CUDAの実行プロバイダが終了処理で異常終了しないこと。
 
 3と4は、初めの実装では満たさなかった。
 原因を調べてInductorの設定を2つ加え、加えた後の学習器で測り直した（「結果」の節）。
@@ -57,6 +58,19 @@ uv run --frozen python <wt>/docs/measurements/alphazero-multi-gpu/resume-check.p
 ```
 
 vast.aiの測定に使う[load-check.py](load-check.py)、[compare-outputs.py](compare-outputs.py)、および[compare-validation.py](compare-validation.py)も、同じデータで1回ずつ動かした。
+
+ONNX Runtime 1.31.1の確認では、`env.sh`を1.31.1にしてから`tools/train/zero/setup.sh`で導入した。
+vast.aiの機械Bで学んだサイクル1のネットについて、実行器の照合と同じ`minase dev nn-eval`をCPUとTensorRT（新しいキャッシュ）のバッチ1、7、256で実行し、機械Bの照合が書いた`pytorch.json`と`nn_compare.py`で比べた。
+作業機の`fixture-eval`は、ONNXに書き出し直したバイト列が機械Bの`model.onnx`と一致しないとして止まったので、参照には機械Bの出力を使った。
+続けて、CUDAの実行プロバイダのバッチ7を4回実行した。
+
+```console
+cd <wt>/tools/train/zero && source env.sh
+<wt>/target/release/minase dev nn-eval --nn-model <ネット> --backend <cpu|tensorrt|cuda> --batch <1、7、256> \
+  --out <結果>.json [--cache-dir <新しいキャッシュ>]
+uv run --frozen python nn_compare.py --reference <機械Bのpytorch.json> --candidate <結果>.json \
+  --policy <logits|probabilities> --policy-tolerance <1e-4|1e-2> --value-tolerance <1e-4|5e-2>
+```
 
 ## エンジン
 
@@ -140,6 +154,19 @@ TF32を切った計算を2回繰り返したときの相対誤差は2.2×10⁻�
 同じ初期値と同じデータでも、計算の丸めの違いが学習の間に育ち、FP16の照合の許容誤差（確率1×10⁻²）を大きく超えた。
 `compare-validation.py`は、同じ2つのネットの検証の18局1,878局面で動き、方策の損失の差の95%区間は−0.0084〜0.0183であった。
 
+### ONNX Runtime 1.31.1
+
+| 比較 | 確率の差の最大 | 価値の差の最大 | 最大の手が違う局面 |
+|---|---|---|---|
+| CPU、バッチ1、7、256 | 6.6×10⁻⁷ | 3.7×10⁻⁶ | 0 |
+| TensorRT、バッチ1 | 0.0040 | 0.0095 | 4 |
+| TensorRT、バッチ7 | 0.0036 | 0.0094 | 3 |
+| TensorRT、バッチ256 | 0.0032 | 0.0086 | 5 |
+
+6つの比較は、どれも照合の許容誤差（CPUは1×10⁻⁴、TensorRTは確率1×10⁻²、価値5×10⁻²）に収まった（[結果](alphazero-multi-gpu-workstation/ort-1.31.1-check.json)）。
+TensorRTのバッチ1の出力は、1.28.3で作ったエンジンの出力と288局面のすべてで一致した。
+CUDAの実行プロバイダは4回とも正常に終わった。1.28.3では、同じ作業機で4回中2回が終了処理で異常終了していた（[ネットの入出力の照合の記録](../alphazero-network/random-net-output-check.md)）。
+
 結果のJSONは[alphazero-multi-gpu-workstation/](alphazero-multi-gpu-workstation/)にある。
 
 ## 結論
@@ -147,3 +174,4 @@ TF32を切った計算を2回繰り返したときの相対誤差は2.2×10⁻�
 作業機では、`--devices 1`の生成が改める前と同じ塊を書き、4回の勾配累積の学習が最後まで動いた。
 `torch.compile`は、Inductorの`emulate_precision_casts`と`deterministic`を加えた最終の学習器で、採否の2つ目と3つ目の条件を満たし、作業機の学習を約1.11倍速くした。
 1つ目の条件（初回のコンパイルを含めた1サイクルの時間）は、vast.aiのGPU 4枚の機械で判定する。
+ONNX Runtime 1.31.1でも、照合の6つの比較は許容誤差に収まり、CUDAの実行プロバイダは終了処理で異常終了しなかった。

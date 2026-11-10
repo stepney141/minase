@@ -373,3 +373,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月10日 [AlphaZero型探索の学習率は、全体のバッチ1,024に対して基準を0.04とし、ランダム初期化から200万標本の間は線形に上げ、各サイクルの中ではcosine annealingで下げる](warm-up-the-zero-learning-rate-from-a-base-of-0-04-for-a-global-batch-of-1024.md)
 - 2026年11月10日 [AlphaZero型探索の学習は、学習の順伝播をDDPの内側でtorch.compileし、Inductorのemulate_precision_castsとdeterministicを有効にする](compile-the-zero-training-forward-inside-ddp-with-eager-rounding-and-deterministic-inductor-kernels.md)
 - 2026年11月10日 [AlphaZero型探索の実行器はvast.aiの機械にも対応して残高を照会せずに終了期限でサイクルを始め、起動スクリプトは最後の受け取りを照合してから機械を削除する](run-zero-cycles-on-vast-ai-until-the-deadline-and-delete-the-machine-after-a-verified-final-fetch.md)
+- 2026年11月10日 [AlphaZero型探索の推論は、ortのrc.13のまま、ONNX Runtime 1.31.1の実行時ライブラリを読み込む](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)
