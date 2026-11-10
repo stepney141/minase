@@ -1,0 +1,36 @@
+# 機械H（60075467）。生成の2,628秒の時点で、生成器（PID 8000）に対してthread-cpu.pyを10秒実行した出力。
+# スレッド名は15文字で切れるので、探索のスレッド10〜15は「zero-selfplay-1」にまとまる。
+zero-selfplay-1    threads=  7 total=  4.09 cores  top=[0.61, 0.61, 0.59, 0.59, 0.58, 0.56]
+zero-selfplay-2    threads=  1 total=  0.62 cores  top=[0.62]
+zero-selfplay-4    threads=  1 total=  0.61 cores  top=[0.61]
+zero-selfplay-0    threads=  1 total=  0.60 cores  top=[0.6]
+zero-selfplay-8    threads=  1 total=  0.58 cores  top=[0.58]
+zero-selfplay-3    threads=  1 total=  0.58 cores  top=[0.58]
+zero-selfplay-5    threads=  1 total=  0.56 cores  top=[0.56]
+zero-selfplay-6    threads=  1 total=  0.56 cores  top=[0.56]
+zero-selfplay-9    threads=  1 total=  0.55 cores  top=[0.55]
+zero-selfplay-7    threads=  1 total=  0.49 cores  top=[0.49]
+minase             threads=567 total=  0.02 cores  top=[0.02, 0.0, 0.0, 0.0, 0.0, 0.0]
+cuda-EvtHandlr     threads=  4 total=  0.01 cores  top=[0.0, 0.0, 0.0, 0.0]
+# 同じ時点のnvidia-smi dmon -s t（MB/s、5秒）
+# gpu  rxpci  txpci
+    0   1536   1087
+    1      0    994
+    2   1468   1798
+    3   1192   1330
+    0   4420   1590
+    1   1250   1280
+    2    969   1133
+    3   1143   1082
+    0   1802   1246
+    1    460    962
+    2    612   1244
+    3    612    639
+    0    608   1018
+    1    612   1167
+    2    448    628
+    3     67   1055
+    0   1099   1352
+    1    391    627
+    2    156   1058
+    3    612    943
