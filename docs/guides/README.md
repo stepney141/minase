@@ -12,6 +12,7 @@
 | [testing-general-principles.md](testing-general-principles.md) | テスト一般の原則（良いテストの条件、依存の使い分け、カバレッジと変異テスト、不安定なテストの扱い）と出典 | テストを設計またはレビューするとき、手引きの規則の理由を確かめるとき |
 | [debugging.md](debugging.md) | 症状を再現し、原因の局面と処理まで絞り込み、修正を確かめる手順 | 不具合を調べるとき |
 | [codex-delegation.md](codex-delegation.md) | codexへ実装を委任する手順と既知の落とし穴 | 実装をcodexへ任せるとき |
+| [gemini-proofreading.md](gemini-proofreading.md) | agyからGeminiを呼び出して文書を推敲させる手順と注意点 | 文書を書き終えたとき |
 | [usi-extensions.md](usi-extensions.md) | USI原典と異なるコマンドの扱い、中将棋の表記、オプション、および独自の照会コマンドの一覧 | GUIや対局用のプログラムからminaseをUSIで動かすとき、独自コマンドの書式を調べるとき |
 | [file-formats.md](file-formats.md) | ディスクに読み書きするファイル形式と、その仕様の場所の一覧 | ファイル形式の仕様を探すとき |
 | [release.md](release.md) | 版数の決定からタグのpush、およびcrates.ioへの公開までの手順 | ライブラリまたはエンジンをリリースするとき |
