@@ -21,12 +21,14 @@ vast.aiで借りる複数GPUの機械もその候補にできるように、本�
 
 > 本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
 
-完了（採用）。2026年11月10日に起案し、同じ日に利用者の遂行の指示で着手して、2026年11月11日に完了した。
-生成器はスレッドを同じ機種のGPUへ割り振り、学習器はLightning FabricのDDPで全体のバッチ1,024をミクロバッチ256の勾配累積で学び、`torch.compile`はInductorの設定を2つ加えて採用した（[作業機の測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)、[vast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+完了（採用）。2026年11月10日に起案し、同じ日に利用者の遂行指示を受けて着手し、2026年11月11日に完了した。
+生成器はスレッドを同じ機種のGPUへ割り振り、学習器はLightning FabricのDDPで全体のバッチ1,024をミクロバッチ256の勾配累積で学ぶ。
+`torch.compile`はInductorの設定を2つ加えて採用した（[作業機の測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-workstation.md)、[vast.aiの測定](../../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 4枚のRTX 4090の機械では、照合まで含む1サイクルが最後まで回り、学習は1枚の2.59倍の速さであった。
-N=1とN=4で学んだネットの出力の差は「BatchNormの移動統計」の節の基準を超えたが、抽出のシードだけを変えたときの差と同じ大きさで、利用者が受け入れると決めた。
-ColabのG4は割り当てを断られ続けたので、利用者の決定で2回目の設計書の見積もり（約61分、約0.90米ドル）と比べ、4枚の4090の1サイクルは約36分、約1.23米ドルであった。
-ONNX Runtime 1.28.3では照合の`minase dev nn-eval`が4090の機械の終了処理で異常終了したので、1.31.1へ上げた（[ONNX Runtimeの版のADR](../../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+GPU 1枚と4枚（N=1とN=4）で学んだネットの出力の差は「BatchNormの移動統計」の節の基準を超えたが、抽出のシードだけを変えたときの差と同じ大きさであったため、利用者が受け入れると決めた。
+ColabのG4は割り当てを断られ続けたため、利用者の決定により、比較対象には2回目の設計書の見積もり（約61分、約0.90米ドル）を用いた。
+これに対し、4枚の4090の1サイクルは約36分、約1.23米ドルであった。
+ONNX Runtime 1.28.3では、4090の機械において照合の`minase dev nn-eval`が終了処理で異常終了したので、1.31.1へ上げた（[ONNX Runtimeの版のADR](../../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
 4枚の機械の生成の速さは出品によって約3倍違い、遅い機械ではページング可能なメモリを通るGPU→ホストの転送が頭打ちになっていたと考えられる。
 
 ## 目的
