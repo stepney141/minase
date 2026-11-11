@@ -28,8 +28,6 @@ pub enum NnError {
     },
     /// ONNX Runtimeの共有ライブラリを読み込めなかった。
     RuntimeInitialization(ort::LoadDynamicError),
-    /// 別の呼び出し元がONNX Runtimeをすでに設定していた。
-    RuntimeAlreadyInitialized,
     /// ONNX Runtimeの初期化中のパニックにより排他ロックが汚染された。
     RuntimeInitializationPoisoned,
     /// ネットのファイルを読み込めなかった。
@@ -185,9 +183,6 @@ impl fmt::Display for NnError {
             }
             Self::RuntimeInitialization(source) => {
                 write!(formatter, "cannot initialize ONNX Runtime: {source}")
-            }
-            Self::RuntimeAlreadyInitialized => {
-                formatter.write_str("ONNX Runtime was already configured by another caller")
             }
             Self::RuntimeInitializationPoisoned => {
                 formatter.write_str("ONNX Runtime initialization lock is poisoned")
