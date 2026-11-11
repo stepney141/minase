@@ -66,7 +66,7 @@
 | AlphaZero型探索の強化学習の2回目の実行の準備 | [plans/archived/alphazero-rl-2-prep.md](plans/archived/alphazero-rl-2-prep.md) | 完了（採用） | 2026年11月10日 |
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
-| AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/alphazero-inference-transfer.md](plans/alphazero-inference-transfer.md) | 進行中 | |
+| AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
 | 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/docker-environment.md](plans/docker-environment.md) | 起案 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
@@ -138,6 +138,7 @@
 
 ### 直近の完了
 
+- [AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす](plans/archived/alphazero-inference-transfer.md)は2026年11月11日に、採用で完了した。推論は、入力をuint8で送り、方策を盤面によらず合法手になり得る16,108ラベルのFP16で受け取り、出力を呼び出しごとにピン留めメモリへ結び付ける（[ADR](adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)）。RTX 4090を4枚積んだ機械の自己対局の生成の速さは、遅い機械で毎秒426局面から1,306局面へ約3.07倍、速い機械で毎秒1,171局面から1,424局面へ約1.22倍になり、2台の差は約2.75倍から約1.09倍に縮まった（[記録](measurements/alphazero-inference-transfer/alphazero-inference-transfer-generation-speed.md)）。2回目の実行の初期ネットは新しい入出力の形で書き出し直してあり、それより前に書き出したネットは、チェックポイントから`export-onnx`で書き出し直さないと読めない。4枚の機械の1サイクルは31.4分、約1.00米ドルで回った（[記録](measurements/alphazero-inference-transfer/alphazero-inference-transfer-cycle.md)）。
 - [AlphaZero型探索の学習と自己対局生成の複数GPU化](plans/archived/alphazero-multi-gpu.md)は2026年11月11日に、採用で完了した。生成器は探索のスレッドを同じ機種のGPUへ割り振り、学習器はLightning FabricのDDPでGPUの枚数によらず全体のバッチ1,024を学ぶ（[ADR](adr/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)）。RTX 4090を4枚積んだ機械の1サイクルは約36分、約1.23米ドルで、ColabのG4の見積もり（約61分、約0.90米ドル）より速いが高い。また、学習は1枚の2.59倍の速さであった（[記録](measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。照合の終了処理の異常終了を避けるため、ONNX Runtimeを1.31.1へ上げた（[ADR](adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。4枚の機械の生成の速さは出品によって約2.7倍違い、遅い機械ではホストとGPUの間の転送が頭打ちになっていたと考えられる。
 - [AlphaZero型探索の強化学習の2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)は2026年11月10日に、採用で完了した。自己対局の生成器は、開始局面として、初期配置の1〜3段目を段の中で並べ替えた局面（Chess960型）と、初期局面から8〜16手を乱択で指した局面のどちらかを、必須の引数で選べるようになった（[ADR](adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)）。実行器は系列の基本シードの加算値を必須の引数で受け取り（[ADR](adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)）、リプレイバッファのファイル名の一覧をファイルで学習器へ渡す。20ブロック256チャネルの初期ネットが出力の照合に通ったことを確かめ（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、そのネットをNASの`cycles-rl2/cycle-0000/`に置いた。作業機での対局は1手あたり10ブロック128チャネルの約2.2倍の時間で、200ペアの進捗測定は約5.4時間と見込まれる（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
 - [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)でサイクル0からやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
@@ -174,15 +175,15 @@
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 
 2回目の実行は、次の5本の設計書で進める。
-1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の推論の転送の削減は、2026年11月11日に承認されて着手した。4本目のDockerイメージと5本目の2回目の実行は起案の段階で、利用者の承認を待っている。
+1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の推論の転送の削減も11月11日に完了した。4本目のDockerイメージと5本目の2回目の実行は起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
 | 1 | [2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)（完了） | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
 | 2 | [複数GPU化](plans/archived/alphazero-multi-gpu.md)（完了） | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
-| 3 | [推論の転送の削減](plans/alphazero-inference-transfer.md) | 推論の入出力の転送を減らす4つの候補（ピン留めメモリ、uint8の入力、FP16の方策、方策の固定の表による詰め）の採否 | 2の完了（済み） |
+| 3 | [推論の転送の削減](plans/archived/alphazero-inference-transfer.md)（完了） | 推論の入出力の転送を減らす4つの候補（ピン留めメモリ、uint8の入力、FP16の方策、方策の固定の表による詰め）の採否 | 2の完了（済み） |
 | 4 | [Dockerイメージ](plans/docker-environment.md) | 作業機の開発用のコンテナとvast.aiの機械で共用するイメージ。Colab機は今の導入スクリプトを使い続ける | 2の完了（済み）。3と並行できる |
-| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了の後。vast.aiで回すなら4の完了の後 |
+| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。vast.aiで回すなら4の完了の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 

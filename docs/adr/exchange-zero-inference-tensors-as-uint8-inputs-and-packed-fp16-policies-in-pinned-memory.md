@@ -12,7 +12,7 @@ GPUを時間単位で貸すサービスvast.aiで借りた、RTX 4090を4枚積�
 入力の159面はすべて0か1であり、方策の35,856ラベルのうち盤面によらず合法手になり得るのは16,108個である（[マスクのADR](mask-impossible-policy-labels-and-diagnose-the-zero-trainer-on-final-weights.md)）。
 dlshogi（ふかうら王）、Lc0、およびKataGoのCUDAの実装は、入出力をピン留めメモリ（OSが退避しないメモリ）に置き、Lc0は方策を固定の表で取り得る着手だけに詰め、FP16で返すネットも持つ。
 minaseは`unsafe_code = "forbid"`なので、独自のCUDAカーネルと、自分で確保したメモリのポインタから作るテンソルは使えない。どちらも`unsafe`を要するからである。
-決定の経緯は[推論の転送を減らす設計書](../plans/alphazero-inference-transfer.md)にある。
+決定の経緯は[推論の転送を減らす設計書](../plans/archived/alphazero-inference-transfer.md)にある。
 
 ## 決定
 

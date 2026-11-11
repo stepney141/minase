@@ -83,7 +83,7 @@ aptの10個のパッケージは版を固定していないので、借りた日
 ## 依存関係
 
 本書は、[複数GPU化](archived/alphazero-multi-gpu.md)とONNX Runtime 1.31.1への更新の後のmasterから始める。
-[推論の転送の削減](alphazero-inference-transfer.md)とは変えるファイルが重ならないので、並行して進められる。
+[推論の転送の削減](archived/alphazero-inference-transfer.md)とは変えるファイルが重ならない。
 どちらかが環境の入力を変えた場合は、変えた後のコミットでイメージを作り直す。
 2回目の実行をvast.aiで回すなら、そのサイクル1は本書の完了を待つ。
 

@@ -51,7 +51,7 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `progress/cycles-rl2/`、`external/cycles-rl2/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
 
 1サイクルの時間と費用は、ColabのG4の機械で約1時間、約9 CU（Colabの計算単位）と見込む（設計書の「費用」の節）。
-vast.aiのRTX 4090が4枚の機械では、サイクル1を約36分、約1.23米ドルで回した（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+vast.aiのRTX 4090が4枚の機械では、推論の入出力の転送を減らした後、サイクル1を31.4分、約1.00米ドルで回した（[1サイクルの記録](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-cycle.md)）。減らす前は約36分、約1.23米ドルであった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 1回目の学習の10ブロック128チャネルのネットでは、ColabのL4の機械で約1時間、約2 CUであった。
 
 ## 標準レシピ
