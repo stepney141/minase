@@ -3,12 +3,12 @@
 //! AlphaZero型探索のMCTS、自己対局生成器、およびPythonの学習器が共有するネットの入出力の契約を定める。
 //! 入力は159面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
 //! ONNXの入出力は入力がu8、方策がf16、価値がf32であり、評価器は合法手のlogitだけをf32へ変換して返す。
-//! ONNXの方策はメタデータ`policy_labels`の昇順の表に従って詰め、評価器が元のラベルから逆引きする。
+//! ONNXの方策はメタデータ`policy_labels`の昇順の表に従って、盤面によらず取り得る16,108ラベルへ詰め、評価器が元のラベルから逆引きする。
 //! 推論には評価器の抽象[`Evaluator`]とONNX Runtimeによる[`OnnxEvaluator`]を用意する。
 //! `test-util`フィーチャでは、各着手に同じ方策logitを返す試験用の評価器も公開する。
 //! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
 //!
-//! 設計判断は`docs/adr/`の次の7本に記録している。
+//! 設計判断は`docs/adr/`の次の8本に記録している。
 //!
 //! - `encode-zero-network-inputs-as-159-planes-with-pseudo-control-from-the-side-to-move.md`
 //! - `encode-the-zero-policy-as-249-planes-per-from-square.md`
@@ -17,6 +17,7 @@
 //! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
 //! - `start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
+//! - `exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md`
 //!
 //! 出力の照合の手順は`docs/guides/alphazero-network-check.md`にある。
 

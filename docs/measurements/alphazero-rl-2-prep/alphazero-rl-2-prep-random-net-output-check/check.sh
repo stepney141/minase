@@ -25,7 +25,7 @@ for batch in 1 7 256; do
     echo "== cpu batch $batch"
     uv run --frozen python "$repo/tools/train/zero/nn_compare.py" \
         --reference "$reference" --candidate "$out/cpu-b$batch.json" \
-        --policy logits --policy-tolerance 1e-4 --value-tolerance 1e-4 || failed=1
+        --policy fp16-logits --policy-tolerance 1e-4 --value-tolerance 1e-4 || failed=1
     echo "== tensorrt batch $batch"
     uv run --frozen python "$repo/tools/train/zero/nn_compare.py" \
         --reference "$reference" --candidate "$out/trt-b$batch.json" \
