@@ -43,7 +43,9 @@ class NetTests(unittest.TestCase):
     def test_onnx_names_shapes_types_and_dynamic_batch(self) -> None:
         with tempfile.TemporaryDirectory(prefix="minase-zero-net-") as directory:
             path = Path(directory) / "model.onnx"
-            export_onnx(ZeroNet(1, 16).eval(), path)
+            network = ZeroNet(1, 16).eval()
+            export_onnx(network, path)
+            self.assertFalse(network.training)
             model = onnx.load(path)
         self.assertFalse(any("soft_policy" in entry.name or "opponent_policy" in entry.name
                              for entry in model.graph.initializer))
@@ -53,13 +55,20 @@ class NetTests(unittest.TestCase):
         self.assertEqual([(op.domain, op.version) for op in model.opset_import], [("", 17)])
         self.assertEqual([entry.name for entry in model.graph.input], ["input"])
         self.assertEqual([entry.name for entry in model.graph.output], ["policy", "value"])
-        for entry, shape in zip(
-            [*model.graph.input, *model.graph.output], [(159, 12, 12), (35_856,), (1,)],
+        for entry, shape, dtype in zip(
+            [*model.graph.input, *model.graph.output],
+            [(159, 12, 12), (35_856,), (1,)],
+            [onnx.TensorProto.UINT8, onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT],
         ):
             tensor = entry.type.tensor_type
-            self.assertEqual(tensor.elem_type, onnx.TensorProto.FLOAT)
+            self.assertEqual(tensor.elem_type, dtype)
             self.assertEqual(tensor.shape.dim[0].dim_param, "batch")
             self.assertEqual(tuple(dim.dim_value for dim in tensor.shape.dim[1:]), shape)
+        casts = [node for node in model.graph.node
+                 if node.op_type == "Cast" and list(node.input) == ["input"]]
+        self.assertEqual(len(casts), 1)
+        self.assertEqual(next(attr.i for attr in casts[0].attribute if attr.name == "to"),
+                         onnx.TensorProto.FLOAT)
 
 
 if __name__ == "__main__":

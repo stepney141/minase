@@ -18,13 +18,13 @@ pub const CONTROL_SIZE: usize = CONTROL_PLANES * BOARD_SQUARE_COUNT;
 /// 面`32*r+29+(c-1)`は、その升へ利く駒が`c`枚以上なら1とする（`c=1,2,3`）。
 /// 疑似利きは[`Position::piece_control_with_occupancy`]に従い、味方の駒がある升も含む。
 /// 獅子の捕獲制限は判定せず、同じ駒から複数の経路で届いても1枚と数える。
-/// 並びは`[面][升]`で、後手番では盤を180度回転する。値は0.0か1.0だけである。
+/// 並びは`[面][升]`で、後手番では盤を180度回転する。値は0か1だけである。
 ///
 /// # Panics
 /// `out.len()`が[`CONTROL_SIZE`]でなければパニックする。
-pub fn encode_control(position: &Position, out: &mut [f32]) {
+pub fn encode_control(position: &Position, out: &mut [u8]) {
     assert_eq!(out.len(), CONTROL_SIZE);
-    out.fill(0.0);
+    out.fill(0);
     let occupied = position.occupied();
     let side = position.side_to_move();
     for color in Color::ALL {
@@ -37,7 +37,7 @@ pub fn encode_control(position: &Position, out: &mut [f32]) {
                 .expect("occupied square has a piece kind");
             for target in Position::piece_control_with_occupancy(occupied, color, kind, from) {
                 let square = relative_square(target, side);
-                out[(base + kind.index()) * BOARD_SQUARE_COUNT + square] = 1.0;
+                out[(base + kind.index()) * BOARD_SQUARE_COUNT + square] = 1;
                 counts[square] += 1;
             }
         }
@@ -45,7 +45,7 @@ pub fn encode_control(position: &Position, out: &mut [f32]) {
             for threshold in 1..=3 {
                 if usize::from(count) >= threshold {
                     out[(base + PIECE_KIND_COUNT + threshold - 1) * BOARD_SQUARE_COUNT + square] =
-                        1.0;
+                        1;
                 }
             }
         }

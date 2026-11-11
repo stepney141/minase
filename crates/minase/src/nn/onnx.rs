@@ -139,7 +139,7 @@ pub struct OnnxEvaluator {
     session: Session,
     // MemoryInfoはSendではないので、機器番号を保持して呼び出しごとに作る。
     output_binding: Option<(IoBinding, i32)>,
-    input: Vec<f32>,
+    input: Vec<u8>,
     max_batch: NonZeroUsize,
 }
 
@@ -149,7 +149,7 @@ impl OnnxEvaluator {
     /// `ORT_DYLIB_PATH`が示すファイルからONNX Runtimeをプロセスで1回だけ初期化する。
     /// TensorRTとCUDAではCPUへの部分的な退避も禁じる。
     /// TensorRTとCUDAでは`CUDA_VISIBLE_DEVICES`が設定されていれば、空値でも起動を拒む。
-    /// 入力はf32の`input: [動的バッチ, 159, 12, 12]`、出力はf32の
+    /// 入力はu8の`input: [動的バッチ, 159, 12, 12]`、出力はf32の
     /// `policy: [動的バッチ, 35856]`と`value: [動的バッチ, 1]`でなければならない。
     ///
     /// # Errors
@@ -245,7 +245,7 @@ fn ort_device_id(device_id: usize) -> Result<i32, NnError> {
     i32::try_from(device_id).map_err(|_| NnError::InvalidDeviceId { device_id })
 }
 
-fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<f32>, NnError> {
+fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<u8>, NnError> {
     let max = max_batch.get();
     let len = max
         .checked_mul(INPUT_SIZE)
@@ -254,7 +254,7 @@ fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<f32>, NnError> {
     input
         .try_reserve_exact(len)
         .map_err(|source| NnError::AllocateInput { max, source })?;
-    input.resize(len, 0.0);
+    input.resize(len, 0);
     Ok(input)
 }
 
@@ -262,24 +262,29 @@ fn validate_signature(
     inputs: Vec<(String, ValueType)>,
     outputs: Vec<(String, ValueType)>,
 ) -> Result<(), NnError> {
-    let matches = |ports: &[(String, ValueType)], name: &str, expected: &[i64]| {
+    let matches = |ports: &[(String, ValueType)], name: &str, element_type, expected: &[i64]| {
         ports.iter().any(|(actual_name, dtype)| {
             actual_name == name
                 && matches!(
                     dtype,
-                    ValueType::Tensor { ty: TensorElementType::Float32, shape, .. }
-                        if &shape[..] == expected
+                    ValueType::Tensor { ty, shape, .. }
+                        if *ty == element_type && &shape[..] == expected
                 )
         })
     };
     if inputs.len() != 1
         || outputs.len() != 2
-        || !matches(&inputs, "input", &[-1, INPUT_PLANES as i64, 12, 12])
-        || !matches(&outputs, "policy", &[-1, 35856])
-        || !matches(&outputs, "value", &[-1, 1])
+        || !matches(
+            &inputs,
+            "input",
+            TensorElementType::Uint8,
+            &[-1, INPUT_PLANES as i64, 12, 12],
+        )
+        || !matches(&outputs, "policy", TensorElementType::Float32, &[-1, 35856])
+        || !matches(&outputs, "value", TensorElementType::Float32, &[-1, 1])
     {
         return Err(NnError::ModelSignature {
-            expected: "input f32 [-1, 159, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]",
+            expected: "input u8 [-1, 159, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]",
             inputs,
             outputs,
         });
@@ -452,14 +457,10 @@ mod tests {
         )
     }
 
-    // [`OnnxEvaluator::new`]の契約: 出力の順序によらず、名前・f32・動的バッチ・固定幅を検査する。
+    // [`OnnxEvaluator::new`]の契約: 名前・入力u8・出力f32・動的バッチ・固定幅を検査する。
     #[test]
-    fn model_signature_requires_named_float_tensors_with_dynamic_batches() {
-        let input = tensor_port(
-            "input",
-            &[-1, INPUT_PLANES as i64, 12, 12],
-            TensorElementType::Float32,
-        );
+    fn model_signature_requires_uint8_input_and_float_outputs_with_dynamic_batches() {
+        let input = tensor_port("input", &[-1, 159, 12, 12], TensorElementType::Uint8);
         let outputs = vec![
             tensor_port("value", &[-1, 1], TensorElementType::Float32),
             tensor_port("policy", &[-1, 35856], TensorElementType::Float32),
@@ -470,28 +471,34 @@ mod tests {
             vec![input.clone(), input.clone()],
             vec![tensor_port(
                 "other",
-                &[-1, INPUT_PLANES as i64, 12, 12],
-                TensorElementType::Float32,
+                &[-1, 159, 12, 12],
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
-                &[7, INPUT_PLANES as i64, 12, 12],
-                TensorElementType::Float32,
+                &[7, 159, 12, 12],
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
                 &[-1, -1, 12, 12],
-                TensorElementType::Float32,
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
-                &[-1, INPUT_PLANES as i64, 12, 12],
+                &[-1, 159, 12, 12],
                 TensorElementType::Float16,
+            )],
+            vec![tensor_port(
+                "input",
+                &[-1, 159, 12, 12],
+                TensorElementType::Float32,
             )],
         ] {
             assert!(matches!(
                 validate_signature(inputs, outputs.clone()),
-                Err(NnError::ModelSignature { .. })
+                Err(NnError::ModelSignature { expected, .. })
+                    if expected == "input u8 [-1, 159, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]"
             ));
         }
         for invalid in [
@@ -502,6 +509,17 @@ mod tests {
         ] {
             assert!(matches!(
                 validate_signature(vec![input.clone()], vec![outputs[0].clone(), invalid]),
+                Err(NnError::ModelSignature { .. })
+            ));
+        }
+        for invalid in [
+            tensor_port("other", &[-1, 1], TensorElementType::Float32),
+            tensor_port("value", &[-1, 2], TensorElementType::Float32),
+            tensor_port("value", &[1, 1], TensorElementType::Float32),
+            tensor_port("value", &[-1, 1], TensorElementType::Float16),
+        ] {
+            assert!(matches!(
+                validate_signature(vec![input.clone()], vec![invalid, outputs[1].clone()]),
                 Err(NnError::ModelSignature { .. })
             ));
         }

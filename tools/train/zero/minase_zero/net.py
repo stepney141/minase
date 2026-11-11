@@ -84,12 +84,24 @@ class ZeroNet(nn.Module):
         )
 
 
+class _OnnxExport(nn.Module):
+    """ONNXのuint8入力をfloat32に変換して推論する。"""
+
+    def __init__(self, model: ZeroNet) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """0と1の入力を変換し、方策と勝率をそのまま返す。"""
+        return self.model(x.float())
+
+
 def export_onnx(model: ZeroNet, path: Path) -> None:
-    """実現性の測定と参照推論で同じ設定のONNXを書き出し、検査する。"""
-    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.float32)
+    """uint8入力とfloat32出力を持つ推論用ONNXを書き出し、検査する。"""
+    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.uint8)
     with torch.inference_mode():
         torch.onnx.export(
-            model,
+            _OnnxExport(model).eval(),
             sample,
             path,
             input_names=["input"],

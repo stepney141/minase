@@ -7,7 +7,7 @@ use minase_core::test_util::{position, sq};
 use minase_core::{PieceCode, PieceKind, PositionBuilder, Rules, Square};
 
 /// 面番号と回転は仕様の式から求め、符号化の補助関数は使わない。
-fn value(input: &[f32], side: Color, color: Color, plane: usize, square: Square) -> f32 {
+fn value(input: &[u8], side: Color, color: Color, plane: usize, square: Square) -> u8 {
     let square = match side {
         Color::Black => square.dense_index(),
         Color::White => 143 - square.dense_index(),
@@ -16,7 +16,7 @@ fn value(input: &[f32], side: Color, color: Color, plane: usize, square: Square)
 }
 
 fn assert_matches_attackers(position: &Position) {
-    let mut input = vec![7.0; CONTROL_SIZE];
+    let mut input = vec![7; CONTROL_SIZE];
     encode_control(position, &mut input);
     for color in Color::ALL {
         for target in Square::all() {
@@ -27,7 +27,7 @@ fn assert_matches_attackers(position: &Position) {
                     .any(|from| position.piece_at(from).unwrap().kind() == Some(kind));
                 assert_eq!(
                     value(&input, position.side_to_move(), color, kind.index(), target),
-                    f32::from(expected),
+                    u8::from(expected),
                     "side={:?}, color={color:?}, kind={kind:?}, target={target:?}, attackers={attackers:?}",
                     position.side_to_move()
                 );
@@ -42,13 +42,13 @@ fn assert_matches_attackers(position: &Position) {
                         29 + threshold - 1,
                         target
                     ),
-                    f32::from(count >= threshold),
+                    u8::from(count >= threshold),
                     "color={color:?}, target={target:?}, threshold={threshold}, count={count}"
                 );
             }
         }
     }
-    let mut full = vec![7.0; INPUT_SIZE];
+    let mut full = vec![7; INPUT_SIZE];
     encode(position, &mut full).unwrap();
     assert_eq!(&full[95 * 144..], input);
 }
@@ -92,7 +92,7 @@ fn lion_jumps_over_own_pieces_and_controls_a_defended_lion() {
         }
         let position = position(side, &pieces);
         assert_matches_attackers(&position);
-        let mut input = vec![0.0; CONTROL_SIZE];
+        let mut input = vec![0; CONTROL_SIZE];
         encode_control(&position, &mut input);
         for target in Square::all() {
             let expected = target != sq(5, 5)
@@ -100,12 +100,12 @@ fn lion_jumps_over_own_pieces_and_controls_a_defended_lion() {
                 && target.rank().abs_diff(5) <= 2;
             assert_eq!(
                 value(&input, side, Color::Black, PieceKind::Lion.index(), target),
-                f32::from(expected)
+                u8::from(expected)
             );
         }
         // 多数の2歩の経路が同じ升へ届いても、獅子1枚の利きは1本である。
-        assert_eq!(value(&input, side, Color::Black, 29, sq(7, 5)), 1.0);
-        assert_eq!(value(&input, side, Color::Black, 30, sq(7, 5)), 0.0);
+        assert_eq!(value(&input, side, Color::Black, 29, sq(7, 5)), 1);
+        assert_eq!(value(&input, side, Color::Black, 30, sq(7, 5)), 0);
     }
 }
 
@@ -136,14 +136,14 @@ fn falcon_and_eagle_reach_two_steps_in_their_forward_directions() {
                 }
                 let position = builder.finish().unwrap();
                 assert_matches_attackers(&position);
-                let mut input = vec![0.0; CONTROL_SIZE];
+                let mut input = vec![0; CONTROL_SIZE];
                 encode_control(&position, &mut input);
                 for &dx in directions {
                     for distance in 1..=3 {
                         let target = orient((5 + dx * distance) as u8, (5 + distance) as u8);
                         assert_eq!(
                             value(&input, side, color, kind.index(), target),
-                            f32::from(distance <= 2)
+                            u8::from(distance <= 2)
                         );
                     }
                 }
@@ -165,15 +165,15 @@ fn sliding_control_includes_the_first_piece_and_stops_there() {
             ],
         );
         assert_matches_attackers(&position);
-        let mut input = vec![0.0; CONTROL_SIZE];
+        let mut input = vec![0; CONTROL_SIZE];
         encode_control(&position, &mut input);
         for (target, expected) in [
-            (sq(5, 6), 1.0),
-            (sq(5, 7), 1.0),
-            (sq(5, 8), 0.0),
-            (sq(7, 5), 1.0),
-            (sq(8, 5), 1.0),
-            (sq(9, 5), 0.0),
+            (sq(5, 6), 1),
+            (sq(5, 7), 1),
+            (sq(5, 8), 0),
+            (sq(7, 5), 1),
+            (sq(8, 5), 1),
+            (sq(9, 5), 0),
         ] {
             assert_eq!(
                 value(&input, side, Color::Black, PieceKind::Rook.index(), target),
@@ -197,16 +197,16 @@ fn promoted_pieces_use_their_current_kind() {
                 .unwrap();
             let position = builder.finish().unwrap();
             assert_matches_attackers(&position);
-            let mut input = vec![0.0; CONTROL_SIZE];
+            let mut input = vec![0; CONTROL_SIZE];
             encode_control(&position, &mut input);
             let target = sq(4, 4);
             assert_eq!(
                 value(&input, side, color, PieceKind::GoldGeneral.index(), target),
-                1.0
+                1
             );
             assert_eq!(
                 value(&input, side, color, PieceKind::Pawn.index(), target),
-                0.0
+                0
             );
         }
     }
@@ -222,7 +222,7 @@ fn thresholds_count_pieces_even_when_their_kinds_are_equal() {
         (sq(6, 5), Color::Black, PieceKind::GoldGeneral),
     ];
     for side in Color::ALL {
-        let mut input = vec![7.0; CONTROL_SIZE];
+        let mut input = vec![7; CONTROL_SIZE];
         for count in (0..=4).rev() {
             let position = position(side, &pieces[..count]);
             assert_matches_attackers(&position);
@@ -230,11 +230,11 @@ fn thresholds_count_pieces_even_when_their_kinds_are_equal() {
             for threshold in 1..=3 {
                 assert_eq!(
                     value(&input, side, Color::Black, 29 + threshold - 1, sq(5, 5)),
-                    f32::from(count >= threshold)
+                    u8::from(count >= threshold)
                 );
             }
             if count == 0 {
-                assert!(input.iter().all(|&value| value == 0.0));
+                assert!(input.iter().all(|&value| value == 0));
             }
         }
     }

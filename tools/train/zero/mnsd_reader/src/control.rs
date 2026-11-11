@@ -10,6 +10,7 @@ use crate::Error;
 ///
 /// 駒コードは[`records::decode_position`]に従い、手番は先手0、後手1とする。
 /// 先獅子の升を含め、疑似利きに不要な状態は復元しない。
+/// 出力はf32で、各要素は0.0か1.0である。
 ///
 /// # Errors
 /// 配列長の不一致、不正な手番・駒コード、成り権の保留、および出力の確保失敗を返す。
@@ -27,6 +28,7 @@ pub fn control_planes(boards: &[u8], sides: &[u8]) -> Result<Vec<f32>, Error> {
         .try_reserve_exact(size)
         .map_err(Error::AllocateControl)?;
     output.resize(size, 0.0);
+    let mut control = [0; CONTROL_SIZE];
     for (index, ((board, &side), out)) in boards
         .iter()
         .zip(sides)
@@ -45,7 +47,10 @@ pub fn control_planes(boards: &[u8], sides: &[u8]) -> Result<Vec<f32>, Error> {
             });
         }
         let position = records::decode_position(board, side, None, false)?;
-        encode_control(&position, out);
+        encode_control(&position, &mut control);
+        for (target, &value) in out.iter_mut().zip(&control) {
+            *target = f32::from(value);
+        }
     }
     Ok(output)
 }
