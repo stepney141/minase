@@ -13,6 +13,7 @@
 4. 各候補のUSIエンジンが、既定のTensorRTの実行プロバイダで、準備、3回の連続の探索、および最大バッチ1,024での推論器の作り直しと探索を行い、続けてCUDAの実行プロバイダでの探索を終えること。
 
 生成の速さによる採否は、借りた機械で測って別の記録に残す。
+借りる前に、測定のスクリプトの動作を確かめるため、作業機でも5つの変種の生成を2周だけ試しに測った。
 
 ## コマンドライン
 
@@ -87,6 +88,18 @@ minase data zero-selfplay --output-dir <出力先> --nn-model <S>/S/rl2-init.onn
 3. `setoption name NnBatchSize value 1024`、`isready`、`go nodes 4096`。
 4. `setoption name NnBackend value cuda`、`setoption name NnBatchSize value 256`、`isready`、`go nodes 800`。
 5. `quit`。
+
+### 生成の速さの試走
+
+[measure-generation.py](measure-generation.py)で、5つの変種のそれぞれにエンジンを作らせた後、1,024局の生成を2周測った。
+1周目はS、A、B、C、Dの順、2周目は逆の順である。
+
+```console
+python3 measure-generation.py warm --variants <変種の一覧> --out <S>/trial --devices 1 --threads-per-gpu 4 \
+  --games-per-thread 128 --simulations 32 --seed 9100000000
+python3 measure-generation.py run --variants <変種の一覧> --out <S>/trial --round-start 0 --rounds 2 \
+  --games 1024 --chunk-games 256 --devices 1 --threads-per-gpu 4 --games-per-thread 128 --simulations 32 --seed 9100000000
+```
 
 ## エンジン
 
@@ -176,6 +189,25 @@ A、B、C、Dの4つとも、すべての`isready`が`readyok`を返し、5回�
 最大バッチ1,024での推論器の作り直しは、TensorRTのエンジンの作成を含めて41〜44秒かかった。
 
 ログは`usi-<変種>.log`にある。
+
+### 生成の速さの試走
+
+10回の生成は、どれも1,024局、147,593手、訓練局面36,728であった。
+生成の速さは次のとおりで、10回の最大と最小の差は約1.4%であった。
+
+| 変種 | 1周目（毎秒の訓練局面） | 2周目（毎秒の訓練局面） |
+|---|---|---|
+| S | 115.4 | 115.5 |
+| A | 114.6 | 115.0 |
+| B | 114.7 | 114.6 |
+| C | 115.0 | 113.9 |
+| D | 114.6 | 114.9 |
+
+作業機では、生成の間のGPUの使用率が100%で、GPUの計算が生成を律速していた。
+そのため、転送を減らす候補の効果はこの試走には現れず、候補が生成を遅くしないことだけが分かる。
+採否は、この試走では決めない。
+
+記録は`trial-runs.jsonl`と`trial-warm.jsonl`にある。
 
 ## 結論
 
