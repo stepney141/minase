@@ -68,6 +68,7 @@
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
 | 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/docker-environment.md](plans/docker-environment.md) | 起案 | |
+| AlphaZero型探索の推論で、終了処理での異常終了をなくす | [plans/alphazero-teardown-abort.md](plans/alphazero-teardown-abort.md) | 進行中 | |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/archived/strength-stage12.md](plans/archived/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |

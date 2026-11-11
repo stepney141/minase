@@ -1,0 +1,45 @@
+Thread 1 "minase" received signal SIGABRT, Aborted.
+__pthread_kill_implementation (threadid=<optimized out>, signo=signo@entry=6, no_tid=no_tid@entry=0) at pthread_kill.c:44
+44	      return INTERNAL_SYSCALL_ERROR_P (ret) ? INTERNAL_SYSCALL_ERRNO (ret) : 0;
+Downloading 167.06 K source file /usr/src/debug/glibc/glibc/malloc/malloc.c...
+#7  0x00007ffff7aa4f74 in unlink_chunk (p=p@entry=0x555556be3fb0, av=0x7ffff7c19ac0 <main_arena>) at malloc.c:1434
+1434	    malloc_printerr ("corrupted double-linked list");
+$1 = (mchunkptr) 0x555556be3fb0
+$2 = {mchunk_prev_size = 1, mchunk_size = 81, fd = 0x5555578d45e0, bk = 0x55555628ae7f, fd_nextsize = 0x0, bk_nextsize = 0x0}
+$3 = {mchunk_prev_size = 0, mchunk_size = 81, fd = 0x5555578e6000, bk = 0x555556be3fb0, fd_nextsize = 0x20, bk_nextsize = 0x30}
+$4 = {mchunk_prev_size = 36028760090279936, mchunk_size = 20736, fd = 0x555556be3fb000, bk = 0x555556289ee000, fd_nextsize = 0x2000, bk_nextsize = 0x3000}
+0x555556be3f70:	0x00000000000103e0	0x0000000000000020
+0x555556be3f80:	0x0000555556a28100	0x0000555556bcbd20
+0x555556be3f90:	0x0000000000018280	0x0000000000000020
+0x555556be3fa0:	0x0000000000000013	0x0000555556ace890
+0x555556be3fb0:	0x0000000000000001	0x0000000000000051
+0x555556be3fc0:	0x00005555578d45e0	0x000055555628ae7f
+0x555556be3fd0:	0x0000000000000000	0x0000000000000000
+0x555556be3fe0:	0x0000555556bf7e80	0x0000555556c01830
+0x555556be3ff0:	0x0000555556bf4f10	0x00000000000005be
+0x555556be4000:	0x0000000000000050	0x0000000000000020
+0x555556be4010:	0x0000000000000000	0x0000000000000000
+0x555556be4020:	0x006d61657274735f	0x00000000000020c1
+#8  0x00007ffff7aa61e8 in _int_free_merge_chunk (av=av@entry=0x7ffff7c19ac0 <main_arena>, p=0x555556be3fb0, size=<optimized out>) at malloc.c:4138
+4138	      unlink_chunk (av, p);
+prevsize = <optimized out>
+nextchunk = <optimized out>
+nextsize = <optimized out>
+$5 = <optimized out>
+#9  0x00007ffff7aa62f7 in _int_free_chunk (av=<optimized out>, p=<optimized out>, size=<optimized out>) at malloc.c:4069
+4069		_int_free_merge_chunk (av, p, size);
+No locals.
+_int_free_chunk + 55 in section .text of /usr/lib/libc.so.6
+#10 0x00007fffabf4bc75 in ?? () from /usr/lib/libcuda.so.1
+No symbol matches $pc.
+   0x7fffabf4bc69:	es std
+   0x7fffabf4bc6b:	(bad)
+   0x7fffabf4bc6c:	decl   (%rdi)
+rdi            0x3cf75d            3995485
+rsi            0x3cf75d            3995485
+rbx            0x0                 0
+r12            0x555556d4e070      93825017372784
+r13            0x555556d450a0      93825017335968
+r14            0x0                 0
+r15            0x0                 0
+rbp            0x7fffffff98d0      0x7fffffff98d0
