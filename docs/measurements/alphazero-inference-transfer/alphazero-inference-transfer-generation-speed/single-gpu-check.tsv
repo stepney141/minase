@@ -1,0 +1,4 @@
+D	cpu-b7	{"positions": 288, "max_logit_abs_diff": 0.00012192630088808665, "max_probability_abs_diff": 4.074586410177106e-06, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 1}
+D	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.0010944023670959452, "max_probability_abs_diff": 2.7735784564324184e-05, "max_value_abs_diff": 0.00025356190887448893, "best_move_mismatches": 2}
+S	cpu-b7	{"positions": 288, "max_logit_abs_diff": 4.60766029358739e-07, "max_probability_abs_diff": 1.0565004631563069e-08, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 0}
+S	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.0011449010351943963, "max_probability_abs_diff": 2.808261096313297e-05, "max_value_abs_diff": 0.00025422630996707607, "best_move_mismatches": 5}

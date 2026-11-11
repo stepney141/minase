@@ -43,3 +43,4 @@ AlphaZeroとlc0は、方策を移動元の升ごとの面として畳み込み�
 このため評価器`nn::Evaluator`は合法手のlogitだけを返し、非有限値の検査も取り出したlogitと価値だけに行う。
 ラベルの割り当てを変えると学習済みのネットと固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl`が使えなくなる。
 面の内訳と方向の番号は`crates/minase/src/nn/policy.rs`のdocコメントにある。
+ネットが推論で返す方策の型と幅は、2026年11月11日に[入出力の受け渡しのADR](exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)が、盤面によらず合法手になり得る16,108ラベルのFP16（1局面あたり約32 KB）へ改めた。ラベルの割り当ては変わらず、推論器は元のラベルから詰めた後の添字を引いて読む。

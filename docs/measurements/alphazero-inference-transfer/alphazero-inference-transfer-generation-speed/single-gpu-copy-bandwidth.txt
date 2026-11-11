@@ -1,0 +1,10 @@
+== single-0
+pinned=False h2d 0.81 ms/copy 22.6 GB/s
+pinned=False d2h 1.07 ms/copy 17.2 GB/s
+pinned=True h2d 0.35 ms/copy 53.2 GB/s
+pinned=True d2h 0.33 ms/copy 55.0 GB/s
+== concurrent-0
+pinned=False h2d 0.81 ms/copy 22.6 GB/s
+pinned=False d2h 1.06 ms/copy 17.3 GB/s
+pinned=True h2d 0.35 ms/copy 53.2 GB/s
+pinned=True d2h 0.33 ms/copy 55.1 GB/s

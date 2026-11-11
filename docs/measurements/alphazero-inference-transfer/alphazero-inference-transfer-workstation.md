@@ -209,9 +209,36 @@ A、B、C、Dの4つとも、すべての`isready`が`readyok`を返し、5回�
 
 記録は`trial-runs.jsonl`と`trial-warm.jsonl`にある。
 
+### 初期ネットの書き出し直し
+
+4つの候補をすべて採ることが決まった後（[生成の速さの測定](alphazero-inference-transfer-generation-speed.md)）、設計書の「依存関係」の節のとおり、2回目の実行の初期ネットを書き出し直してNASで置き換えた。
+書き出しと照合は、コミット`4aff04df`の学習器と`minase`で、作業機で行った。照合には、手引きが定例の照合に使う[check.sh](../alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check/check.sh)を使った。
+
+```console
+cd tools/train/zero
+uv run --frozen python -m minase_zero export-onnx --checkpoint <NAS>/cycles-rl2/cycle-0000/checkpoint.pt --out <S>/cycle-0000/model.onnx
+uv run --frozen python -m minase_zero fixture-eval --checkpoint <NAS>/cycles-rl2/cycle-0000/checkpoint.pt \
+  --onnx <S>/cycle-0000/model.onnx --fixture ../../../crates/minase/tests/fixtures/nn-positions.jsonl --out <S>/cycle-0000/check/pytorch.json
+bash check.sh <S>/cycle-0000/model.onnx <S>/cycle-0000/check/pytorch.json <S>/cycle-0000/check-workstation
+```
+
+CPUとTensorRTのバッチ1、7、256の6通りの比較は、すべて許容誤差に収まった。
+ファイルの対応は次のとおりである。
+
+| ファイル | SHA-256 |
+|---|---|
+| チェックポイント`checkpoint.pt`（変えていない） | `02c75e68205a29e8b63edf619d5b8987d001bf88e58d613242327fa583292fff` |
+| 置き換える前の`model.onnx`（入力がfloat32、方策がfloat32の35,856要素） | `8be01e2ed1608d4287853d8b43a871ce08d6f8dda4864b15ae966a62459683a6` |
+| 置き換えた後の`model.onnx`（入力がuint8、方策がFP16の16,108要素） | `7a9f3ec7827b832830fe5da0eceae91a2dd12ce0b1b94b81e37401d436d43d76` |
+
+NASの`cycles-rl2/cycle-0000/`では、`model.onnx`、集計`summary.json`の`network_sha256`の欄、PyTorchの出力`check/pytorch.json`、および作業機の出力`check-workstation/`の6ファイルを置き換えた。
+`summary.json`のほかの欄は変えていない。
+置き換える前の9ファイルは、NASの`superseded/cycles-rl2-cycle-0000-float32-io/`に保存し、写しのSHA-256が元と一致することを確かめた。
+
 ## 結論
 
 Aは、出力の結び付けを呼び出しごとにやり直す方式でだけ、ONNX Runtime 1.31.1のTensorRTとCUDAで動く。
 A、B、C、Dのどれも、作業機では照合の許容誤差を守り、USIエンジンとして動いた。
 Aは親と同じ対局のデータを書いた。
+2回目の実行の初期ネットは、新しい入出力の形で書き出し直したものに置き換えた。
 作業機はGPUが1枚なので、機器番号が1以上のGPUでのピン留めメモリの結び付けは確かめていない。これは、GPUを4枚積んだ借りた機械の測定で確かめる。

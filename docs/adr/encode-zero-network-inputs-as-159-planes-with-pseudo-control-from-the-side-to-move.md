@@ -45,3 +45,4 @@ dlshogiが駒種ごとの利きと利き数の両方を入れており、どち�
 ネットのパラメータ数は、入力の畳み込みで約7万増える。
 NNキャッシュの鍵が局面だけで決まることと、成り権を保留するP1、P2、P5の規則セット（chu-shogi.md第30条）で学習するには保留の升を示す面が要ることは、置き換えたADRと同じである。
 配置の詳細は`crates/minase/src/nn/encoding.rs`と`control.rs`のdocコメントにある。
+159面の値はすべて0か1であり、推論へ渡す型は、2026年11月11日に[入出力の受け渡しのADR](exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)がuint8へ改めた。面の意味は変わっていない。

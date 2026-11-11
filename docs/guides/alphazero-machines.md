@@ -169,7 +169,9 @@ vast.aiのアカウント、CLI、2要素認証、およびコンテナのCPUの
 
 次の条件で照会し、1時間あたりの料金（`dph_total`）の安い順に選ぶ。
 条件には、vast.aiが出品に載せるPCIeの帯域（`pcie_bw`）の下限を入れる。
-RTX 4090を4枚積んだ機械を4台測ったところ、`pcie_bw`が20.9〜22.6 GB/sの3台に対して、10.9 GB/sの1台は生成が約0.37倍の速さになり、1サイクルの料金が約1.9倍になったからである（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)の「機械Hの生成が遅い理由」）。
+`pcie_bw`が10.5 GB/sの機械では、推論の入出力の転送を減らした後も、生成が20.9 GB/sの機械の約0.92倍の速さにとどまり（[生成の速さの測定](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-generation-speed.md)）、学習の更新は約0.59倍の速さであった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+同じ機械では、生成器と`minase dev nn-eval`が、出力を書き終えた後の終了処理で異常終了することもあった（[ONNX Runtimeの版のADR](../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+`pcie_bw`は出品ごとに測り直されて変わるので、目安として使う。
 
 ```console
 vastai search offers 'num_gpus=4 gpu_name=RTX_4090 reliability>0.98 verified=true rentable=true direct_port_count>=1 cuda_vers>=13.0 disk_space>=100 cpu_cores_effective>=32 cpu_ram>=128 duration>=1 pcie_bw>=20' \
@@ -177,6 +179,8 @@ vastai search offers 'num_gpus=4 gpu_name=RTX_4090 reliability>0.98 verified=tru
 ```
 
 GPUは1枚、2枚、または4枚の同じ機種に限る（学習のミクロバッチの数4をGPUの枚数で割り切るため）。
+照会の結果の`gpu_ram`が、その機種の標準の値（RTX 4090なら24,564 MiB）である出品を選ぶ。
+メモリを増設したRTX 4090の出品（`gpu_ram`が49,140 MiB）には、4枚のうち1枚だけメモリの表示が違う機械があり、minaseは同じ機種と同じメモリのGPUであることを起動時に検査するので、その機械では推論器を作れなかった。
 NVIDIAのドライバはCUDA 13に対応する版580以上、ディスクは100 GB、貸出期限（`duration`）は回すサイクルの範囲より長くする。
 安い出品はすぐに借りられるので、照会と作成の間を空けない。照会の直後でも`no_such_ask`で断られることがあり、その場合は照会し直す。
 借りる前に、出品の料金と回すサイクルの範囲の見込みを利用者に示して承認を得る。
@@ -193,6 +197,7 @@ python3 docs/measurements/alphazero-multi-gpu/launch-vast.py --offer <出品のI
 起動スクリプトは、作業機で`nohup setsid`により端末から切り離して走らせ、標準出力と標準エラーをファイルへ向ける。
 起動スクリプトは、作成時に自己停止を予約し、自己停止の時刻と出品の貸出期限の早いほうを終了期限として実行器へ渡す。
 導入は`docs/measurements/alphazero-multi-gpu/vast-setup.sh`で、パッケージの導入、`tools/train/zero/setup.sh`、および`minase`のビルドを行い、測った機械では11〜15分かかった。
+GitHubからのONNX Runtimeの書庫の取得が毎秒約80 KBしか出ない機械もあった。その場合は、作業機の`tools/train/zero/.runtime/`にある同じ書庫を機械へ送り、`env.sh`の`ORT_SHA256`と照合してから`/workspace/src/tools/train/zero/.runtime/`へ展開しておくと、`setup.sh`は取得を省く。この形にした機械の導入は約4分で終わった。
 作業機からvast.aiの機械への転送は毎秒約5.5 MBであり、リプレイバッファの上限の約29 GBを新しい機械へ送るには約90分かかる。
 
 **終わり方**

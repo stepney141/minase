@@ -80,7 +80,7 @@ AlphaZero（19ブロック256チャネル）とAobaZero（20ブロック256チ�
 標準レシピの各値の根拠は、手引きの「標準レシピの設定と根拠」の節が挙げるADRにある。
 本書は、[準備の設計書](archived/alphazero-rl-2-prep.md)と、生成と学習を複数のGPUで回せるようにする[複数GPU化の設計書](archived/alphazero-multi-gpu.md)の完了を前提とする。
 サイクル1は、推論の入出力の転送を減らす[推論の転送の削減の設計書](alphazero-inference-transfer.md)の完了も待つ（2026年11月11日の利用者の決定）。
-その設計書がネットの入出力の形を変える候補を採った場合は、初期ネット`cycles-rl2/cycle-0000/model.onnx`をチェックポイントから書き出し直し、その検査和を使う。
+その設計書は、ネットの入力をuint8、方策の出力を取り得る16,108ラベルのFP16に改めたので、初期ネット`cycles-rl2/cycle-0000/model.onnx`は同じチェックポイントから書き出し直したものに置き換えてある（SHA-256は`7a9f3ec7…`、[記録](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-workstation.md)の「初期ネットの書き出し直し」）。
 フェーズ1の開始局面の偏りの確認は準備の設計書の成果だけを使うので、複数GPU化の設計書と並行して行える。
 フェーズ2のサイクル1は、両方の完了の後に始める。
 複数GPU化の設計書は、学習の全体のバッチを256から1,024へ、基準の学習率を0.01から0.04へ改める。

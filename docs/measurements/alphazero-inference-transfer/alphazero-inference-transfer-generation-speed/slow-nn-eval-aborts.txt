@@ -1,0 +1,10 @@
+# 遅い機械で、TensorRTのエンジンを新しく作ったnn-evalが終了処理で異常終了した2回の連鎖のログの末尾
+NN session creation: 19.129781 s
+NN inference (288 positions): 0.070896 s
+corrupted double-linked list
+/workspace/src/docs/measurements/alphazero-inference-transfer/vast-measure.sh: line 109: 14449 Aborted                 "$variant/target/release/minase" dev nn-eval --nn-model "$network" --backend tensorrt --batch 7 --out "$out/tensorrt-b7.json" --cache-dir /workspace/cache/nn-eval
+
+NN session creation: 18.950394 s
+NN inference (288 positions): 0.049917 s
+corrupted double-linked list
+/workspace/src/docs/measurements/alphazero-inference-transfer/vast-measure.sh: line 109: 15979 Aborted                 "$variant/target/release/minase" dev nn-eval --nn-model "$network" --backend tensorrt --batch 7 --out "$out/tensorrt-b7.json" --cache-dir /workspace/cache/nn-eval
