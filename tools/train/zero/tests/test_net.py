@@ -1,9 +1,11 @@
 """設計書の価値logitの契約と、onnx.rsの入出力契約を検証する。"""
 
+import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
 
+import numpy as np
 import onnx
 import torch
 
@@ -39,6 +41,8 @@ class NetTests(unittest.TestCase):
         self.assertEqual((model.value_head[4].in_features, model.value_head[4].out_features), (4608, 256))
         self.assertEqual(policy.shape, (3, 35_856))
         self.assertEqual(value.shape, (3, 1))
+        self.assertEqual(policy.dtype, torch.float32)
+        self.assertEqual(value.dtype, torch.float32)
 
     def test_onnx_names_shapes_types_and_dynamic_batch(self) -> None:
         with tempfile.TemporaryDirectory(prefix="minase-zero-net-") as directory:
@@ -58,7 +62,7 @@ class NetTests(unittest.TestCase):
         for entry, shape, dtype in zip(
             [*model.graph.input, *model.graph.output],
             [(159, 12, 12), (35_856,), (1,)],
-            [onnx.TensorProto.UINT8, onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT],
+            [onnx.TensorProto.UINT8, onnx.TensorProto.FLOAT16, onnx.TensorProto.FLOAT],
         ):
             tensor = entry.type.tensor_type
             self.assertEqual(tensor.elem_type, dtype)
@@ -69,6 +73,39 @@ class NetTests(unittest.TestCase):
         self.assertEqual(len(casts), 1)
         self.assertEqual(next(attr.i for attr in casts[0].attribute if attr.name == "to"),
                          onnx.TensorProto.FLOAT)
+        policy_cast = next(node for node in model.graph.node if list(node.output) == ["policy"])
+        self.assertEqual(policy_cast.op_type, "Cast")
+        self.assertEqual(next(attr.i for attr in policy_cast.attribute if attr.name == "to"),
+                         onnx.TensorProto.FLOAT16)
+
+    @unittest.skipUnless(importlib.util.find_spec("onnxruntime"), "onnxruntimeが未導入のためCPU推論を検証できない")
+    def test_onnx_policy_matches_rounded_forward_logits(self) -> None:
+        import onnxruntime as ort
+
+        torch.manual_seed(11)
+        network = ZeroNet(1, 16).eval()
+        with tempfile.TemporaryDirectory(prefix="minase-zero-net-") as directory:
+            path = Path(directory) / "model.onnx"
+            export_onnx(network, path)
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 1
+            session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+            for batch in (1, 3):
+                with self.subTest(batch=batch):
+                    inputs = torch.randint(0, 2, (batch, INPUT_PLANES, 12, 12), dtype=torch.uint8)
+                    with torch.inference_mode():
+                        policy, value = network(inputs.float())
+                    actual_policy, actual_value = session.run(["policy", "value"], {"input": inputs.numpy()})
+                    self.assertEqual(actual_policy.dtype, np.dtype("float16"))
+                    self.assertEqual(actual_value.dtype, np.dtype("float32"))
+                    rounded = policy.numpy().astype(np.float16)
+                    # 正の側の隣接値との差が、丸めた参照におけるFP16の1目盛りになる。
+                    magnitude = np.abs(rounded)
+                    step = (np.nextafter(magnitude, np.float16(np.inf)).astype(np.float64)
+                            - magnitude.astype(np.float64))
+                    difference = np.abs(actual_policy.astype(np.float64) - rounded.astype(np.float64))
+                    self.assertTrue(np.all(difference <= 1e-4 + step), float(difference.max()))
+                    np.testing.assert_allclose(actual_value, value.numpy(), atol=1e-4, rtol=0)
 
 
 if __name__ == "__main__":

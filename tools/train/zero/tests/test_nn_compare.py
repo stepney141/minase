@@ -55,10 +55,10 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(len(result.stdout.splitlines()), 1, result.stderr)
         return result, json.loads(result.stdout)
 
-    def test_proportional_error_passes_probabilities_but_fails_logits(self) -> None:
+    def test_proportional_error_passes_probabilities_but_fails_fp16_logits(self) -> None:
         reference = inference_result([[12.0, 10.0, 8.0]], [0.5])
         candidate = inference_result([[logit * 1.003 for logit in (12.0, 10.0, 8.0)]], [0.5])
-        for policy, expected_code in (("probabilities", 0), ("logits", 1)):
+        for policy, expected_code in (("probabilities", 0), ("fp16-logits", 1)):
             with self.subTest(policy=policy):
                 result, summary = self.compare(reference, candidate, policy, "1e-2", "0")
                 self.assertEqual(result.returncode, expected_code, result.stderr)
@@ -75,7 +75,7 @@ class CompareTests(unittest.TestCase):
     def test_value_tolerance_is_independent_of_policy_tolerance(self) -> None:
         reference = inference_result([[2.0, 1.0]], [0.0])
         candidate = inference_result([[2.0, 1.0]], [0.015])
-        for policy in ("logits", "probabilities"):
+        for policy in ("fp16-logits", "probabilities"):
             for tolerance, expected_code in (("2e-2", 0), ("1e-2", 1)):
                 with self.subTest(policy=policy, tolerance=tolerance):
                     result, summary = self.compare(reference, candidate, policy, "0", tolerance)
@@ -98,7 +98,7 @@ class CompareTests(unittest.TestCase):
         expected = max(differences)
         reference = inference_result(reference_logits, [0.25, 0.75])
         candidate = inference_result(candidate_logits, [0.25, 0.75])
-        for policy in ("logits", "probabilities"):
+        for policy in ("fp16-logits", "probabilities"):
             with self.subTest(policy=policy):
                 result, summary = self.compare(reference, candidate, policy, "1", "0")
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -116,7 +116,7 @@ class CompareTests(unittest.TestCase):
     def test_tolerance_boundary_is_inclusive(self) -> None:
         reference = inference_result([[0.0, 0.0]], [0.0])
         for policy, logits, tolerance in (
-            ("logits", [[0.125, 0.0]], 0.125),
+            ("fp16-logits", [[0.125, 0.0]], 0.125 - 2 ** -24),
             ("probabilities", [[0.0, -1000.0]], 0.5),
         ):
             candidate = inference_result(logits, [0.25])
@@ -128,7 +128,7 @@ class CompareTests(unittest.TestCase):
     def test_best_move_mismatch_is_reported_without_failing(self) -> None:
         reference = inference_result([[0.0, 0.001]], [0.5])
         candidate = inference_result([[0.001, 0.0]], [0.5])
-        for policy in ("logits", "probabilities"):
+        for policy in ("fp16-logits", "probabilities"):
             with self.subTest(policy=policy):
                 result, summary = self.compare(reference, candidate, policy, "1e-2", "0")
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -137,7 +137,7 @@ class CompareTests(unittest.TestCase):
 
     def test_zero_tolerances_accept_identical_outputs_including_empty_moves(self) -> None:
         reference = inference_result([[2.0, 1.0], []], [0.5, 1.0])
-        for policy in ("logits", "probabilities"):
+        for policy in ("fp16-logits", "probabilities"):
             with self.subTest(policy=policy):
                 result, summary = self.compare(reference, reference, policy, "0", "0")
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -156,7 +156,7 @@ class CompareTests(unittest.TestCase):
         reference = inference_result([[0.0]], [0.5])
         for options in (
             [],
-            ["--policy", "logits", "--policy-tolerance", "0.01", "--value-tolerance", "0.02"],
+            ["--policy", "fp16-logits", "--policy-tolerance", "0.01", "--value-tolerance", "0.02"],
         ):
             with self.subTest(options=options):
                 result = self.run_cli(reference, reference, [*options, "--tolerance", "0.01"])
@@ -164,10 +164,83 @@ class CompareTests(unittest.TestCase):
 
     def test_invalid_policy_is_rejected(self) -> None:
         reference = inference_result([[0.0]], [0.5])
-        result = self.run_cli(reference, reference, [
-            "--policy", "invalid", "--policy-tolerance", "0.01", "--value-tolerance", "0.02",
-        ])
-        self.assertEqual(result.returncode, 2, result.stderr)
+        for policy in ("invalid", "logits"):
+            with self.subTest(policy=policy):
+                result = self.run_cli(reference, reference, [
+                    "--policy", policy, "--policy-tolerance", "0.01", "--value-tolerance", "0.02",
+                ])
+                self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_rounded_reference_passes_and_summary_keeps_unrounded_difference(self) -> None:
+        # 12の1目盛りは2^-7。12 + 2^-8は中点なので、偶数側の12へ丸める。
+        reference = inference_result([[12.0 + 2 ** -8, -12.0 - 2 ** -8]], [0.5])
+        candidate = inference_result([[12.0, -12.0]], [0.5])
+        result, summary = self.compare(reference, candidate, "fp16-logits", "0", "0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(summary["max_logit_abs_diff"], 2 ** -8)
+        self.assertEqual(set(summary), {
+            "positions", "max_logit_abs_diff", "max_probability_abs_diff", "max_value_abs_diff",
+            "best_move_mismatches", "best_move_mismatch_gaps",
+        })
+
+    def test_fp16_step_plus_tolerance_accepts_inside_and_rejects_outside(self) -> None:
+        # 1 + 2^-12は1へ丸まり、その1目盛りは2^-10。両符号・両方向で境界を挟む。
+        for sign in (1, -1):
+            reference = inference_result([[sign * (1.0 + 2 ** -12), 0.0]], [0.5])
+            for direction in (1, -1):
+                for excess, expected_code in ((-1e-7, 0), (1e-7, 1)):
+                    with self.subTest(sign=sign, direction=direction, excess=excess):
+                        logit = sign + direction * (2 ** -10 + 1e-4 + excess)
+                        candidate = inference_result([[logit, 0.0]], [0.5])
+                        result, _ = self.compare(reference, candidate, "fp16-logits", "1e-4", "0")
+                        self.assertEqual(result.returncode, expected_code, result.stderr)
+
+    def test_fp16_midpoints_round_to_even_and_step_uses_rounded_exponent(self) -> None:
+        # 1付近の中点は偶数側へ丸まる。2へ切り上がると1目盛りは2^-9になる。
+        for reference_logit, rounded, step, direction in (
+            (1.0 + 2 ** -11, 1.0, 2 ** -10, -1),
+            (1.0 + 3 * 2 ** -11, 1.0 + 2 ** -9, 2 ** -10, 1),
+            (2.0 - 2 ** -11, 2.0, 2 ** -9, 1),
+        ):
+            for sign in (1, -1):
+                with self.subTest(reference=reference_logit, sign=sign):
+                    reference = inference_result([[sign * reference_logit]], [0.5])
+                    candidate = inference_result([[sign * (rounded + direction * step)]], [0.5])
+                    result, _ = self.compare(reference, candidate, "fp16-logits", "0", "0")
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_zero_and_subnormal_logits_allow_one_minimum_step(self) -> None:
+        # 0と非正規化数の1目盛りは2^-24。3 * 2^-25は偶数側の2^-23へ丸まる。
+        for reference_logit, rounded in (
+            (0.0, 0.0), (2 ** -26, 0.0), (2 ** -24, 2 ** -24),
+            (3 * 2 ** -25, 2 ** -23), (2 ** -14 - 2 ** -24, 2 ** -14 - 2 ** -24),
+            (2 ** -14, 2 ** -14),
+        ):
+            for sign in (1, -1):
+                for excess, expected_code in ((0.0, 0), (2 ** -30, 1)):
+                    with self.subTest(reference=reference_logit, sign=sign, excess=excess):
+                        reference = inference_result([[sign * reference_logit]], [0.5])
+                        candidate = inference_result([[sign * (rounded + 2 ** -24 + excess)]], [0.5])
+                        result, _ = self.compare(reference, candidate, "fp16-logits", "0", "0")
+                        self.assertEqual(result.returncode, expected_code, result.stderr)
+
+    def test_fp16_overflow_in_reference_is_reported_without_losing_summary(self) -> None:
+        # 最大有限値65504と次の指数の境界65536の中点65520は無限大へ丸まる。
+        for logit in (65520.0, -65520.0, 1e10):
+            with self.subTest(logit=logit):
+                reference = inference_result([[0.0], [0.0, logit]], [0.25, 0.75])
+                result, summary = self.compare(reference, reference, "fp16-logits", "1e10", "0")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("reference position 1", result.stderr)
+                self.assertIn("label 1", result.stderr)
+                self.assertIn("FP16", result.stderr)
+                self.assertEqual(summary["max_logit_abs_diff"], 0.0)
+        # 65504を超えても65520未満なら、丸めた値は有限である。
+        reference = inference_result([[65519.0, -65519.0]], [0.5])
+        candidate = inference_result([[65504.0, -65504.0]], [0.5])
+        result, summary = self.compare(reference, candidate, "fp16-logits", "0", "0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(summary["max_logit_abs_diff"], 15.0)
 
     def test_negative_and_nonfinite_tolerances_are_argument_errors(self) -> None:
         reference = inference_result([[0.0]], [0.5])

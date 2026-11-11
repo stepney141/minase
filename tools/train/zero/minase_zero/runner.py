@@ -891,7 +891,7 @@ class Runner:
                                  "--onnx", network, "--fixture", self.paths.fixture,
                                  "--out", reference]))
         for batch in (1, 7, 256):
-            for backend, label, policy, ptol, vtol in (("cpu", "cpu", "logits", "1e-4", "1e-4"),
+            for backend, label, policy, ptol, vtol in (("cpu", "cpu", "fp16-logits", "1e-4", "1e-4"),
                                                       ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
                 name = f"{out}/{label}-b{batch}"
                 command = [self.paths.engine, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
