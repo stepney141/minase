@@ -32,7 +32,7 @@ Development documents, including the rule book, live in [docs/](docs/) and are w
 
 ## Requirements
 
-Rust 1.88 or later (2024 edition).
+Rust 1.92 or later for the `minase` engine, and Rust 1.88 or later for the `minase-core` library (2024 edition).
 
 ## Build
 

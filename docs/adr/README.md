@@ -375,3 +375,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月10日 [AlphaZero型探索の実行器はvast.aiの機械にも対応して残高を照会せずに終了期限でサイクルを始め、起動スクリプトは最後の受け取りを照合してから機械を削除する](run-zero-cycles-on-vast-ai-until-the-deadline-and-delete-the-machine-after-a-verified-final-fetch.md)
 - 2026年11月10日 [AlphaZero型探索の推論は、ortのrc.13のまま、ONNX Runtime 1.31.1の実行時ライブラリを読み込む](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)
 - 2026年11月11日 [AlphaZero型探索のネットの推論は、入力をuint8で送り、方策を取り得る16,108ラベルのFP16で受け取り、出力を呼び出しごとにピン留めメモリへ結び付ける](exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)
+- 2026年11月11日 [AlphaZero型探索の推論は、ortのrc.15を使い、ONNX Runtimeの環境をプロセスの終了まで保持する](hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)

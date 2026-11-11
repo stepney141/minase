@@ -2,7 +2,9 @@
 
 ## 目的
 
-AlphaZero型探索の推論を使う`minase dev nn-eval`と自己対局の生成器が、出力を書き終えた後の終了処理で`corrupted double-linked list`を出して異常終了することがある（[ONNX Runtimeの版のADR](../../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+AlphaZero型探索は、ニューラルネットワーク（以下、ネット）の推論をONNX Runtimeで行う。
+推論を使う`minase dev nn-eval`（固定の288局面を評価して出力を書き出す開発用のコマンド）と自己対局の生成器が、出力を書き終えた後の終了処理で`corrupted double-linked list`を出して異常終了することがある（[ONNX Runtimeの版のADR](../../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+これまでの測定では、異常終了は借りた機械の一部で多く起き、作業機の現行のコードでは1回も起きていなかった。異常終了のスタックの先頭がNVIDIAのドライバのライブラリ`libcuda.so.1`であったので、ドライバの版とONNX Runtimeの版が疑われていたが、原因は分かっていなかった。
 本記録は、この異常終了を作業機で再現し、ヒープを壊している書き込みとその呼び出し元をgdbで特定する。
 あわせて、異常終了が1回も観測されていなかった作業機の現行の構成で、同じ書き込みが起きているかを確かめる。
 
@@ -20,11 +22,11 @@ python3 repeat.py --zero-dir <zero> --ort-version 1.28.3 --runs 12 -- \
   <旧> dev nn-eval --nn-model <旧形式> --backend cuda --batch 7 --out out.json
 ```
 
-gdbでの調べは、次の4つである。
+gdbでは、次の4つを調べた。
 
 1. 異常終了の時点のスタックと、glibcが壊れていると判定した領域の中身を表示する（出力は[gdb-corrupted-chunk.txt](zero-teardown-abort-root-cause/gdb-corrupted-chunk.txt)）。
-2. `exit`に入った時点で、壊れる8バイトにハードウェア監視点（`watch *(long*)0x555556be3fc8`）を置き、書き込みのたびにスタックを記録する（抜粋は[gdb-watchpoint-excerpt.txt](zero-teardown-abort-root-cause/gdb-watchpoint-excerpt.txt)）。
-3. `exit`に入った時点で、gdbから`ort::environment::release_env_on_exit`を呼んでから続行する。
+2. `exit`に入った時点で、1の領域のうち値が壊れていた8バイトにハードウェア監視点（`watch *(long*)0x555556be3fc8`）を置き、書き込みのたびにスタックを記録する（抜粋は[gdb-watchpoint-excerpt.txt](zero-teardown-abort-root-cause/gdb-watchpoint-excerpt.txt)）。
+3. `exit`に入った時点で、ortクレートが終了時に環境を解放するために呼ぶ関数`ort::environment::release_env_on_exit`を、gdbから先に呼んでから続行する。
 4. 2で見つけた関数の入口で、その関数が手放そうとする領域がすでに解放済みかを読む。
 
 4は、次の2つのコマンドで行う。1つ目が、ONNX RuntimeのCUDAの実行プロバイダの共有ライブラリから関数と静的変数の番地を探し、2つ目がその番地をgdbの下で調べる。
@@ -40,7 +42,7 @@ python3 probe.py --zero-dir <zero> --ort-version 1.31.1 --function 0x3cfdc0 --st
 | 呼び名 | コミット | 内容 |
 |---|---|---|
 | 現行 | `645d37c4`（調査の時点のmaster） | 入力がuint8、方策が16,108ラベルのFP16で、出力を`IoBinding`で受け取る |
-| 旧 | `982d772d`（2026年10月27日） | 推論を初めて入れたコミット。入力は95面のfloat32で、`session.run`で出力を受け取る |
+| 旧 | `982d772d`（2026年10月27日） | 推論を初めて入れたコミットであり、入力は95面のfloat32で、`session.run`で出力を受け取る |
 
 どちらも`cargo build --release --bin minase`に、デバッグ情報を付ける`CARGO_PROFILE_RELEASE_DEBUG=1`を加えてビルドした。
 ONNX RuntimeのRustバインディングであるortクレートは、どちらも`=2.0.0-rc.13`である。
@@ -49,7 +51,7 @@ ONNX RuntimeのRustバインディングであるortクレートは、どちら�
 新形式は、2回目の強化学習の初期ネット（20ブロック256チャネル、SHA-256の先頭は`7a9f3ec7`）である。
 旧形式は、同じ重みを159面のfloat32の入力と35,856ラベルのfloat32の方策で書き出したもの（SHA-256の先頭は`8be01e2e`）である。
 
-旧のコードは入力が95面のネットを前提とするので、旧形式のネットも入出力の不一致として拒む。
+旧のコードは入力が95面のネットを前提とするので、159面の入力を持つ旧形式のネットを、入出力の不一致として拒む。
 このとき旧のコードは、CUDAのセッションを作り、入出力の形を検査し、セッションを破棄して、推論を1回もせずに終了コード1で終わる。
 本記録はこの経路を「推論なしの経路」と呼ぶ。現行のコードに旧形式のネットを渡したときも、同じ経路を通る。
 
@@ -66,7 +68,7 @@ gdbを使わない実行の終了コードは次のとおりであった。異�
 
 | 実行ファイル | ONNX Runtime | 実行 | 回数 | 異常終了 |
 |---|---|---|---|---|
-| 現行 | 1.28.3 | 新形式のネットの推論（CUDAのバッチ1、7、256と、エンジンを新しく作るTensorRTのバッチ1） | 28 | 0 |
+| 現行 | 1.28.3 | 新形式のネットの推論（CUDAのバッチ1、7、256と、TensorRTのエンジンを新しく作るバッチ1） | 28 | 0 |
 | 現行 | 1.28.3 | 推論なしの経路（CUDA） | 12 | 0 |
 | 現行 | 1.31.1 | 推論なしの経路（CUDA） | 12 | 0 |
 | 旧 | 1.28.3 | 推論なしの経路（CUDA） | 12 | 8 |
@@ -81,17 +83,19 @@ gdbはアドレス空間の配置のランダム化を切るので、ヒープ�
 ### 壊れ方
 
 glibcは、解放済みの領域を大きさごとの双方向リストでつなぎ、リストから外すときに前後のポインタの整合を検査する。
-異常終了の時点で、番地`0x555556be3fb0`の領域（大きさ80バイト）の後ろ向きのポインタは`0x55555628ae7f`であった。
+この領域（大きさ80バイト）は、glibcの管理用の16バイトが番地`0x555556be3fb0`から始まり、プログラムに渡る部分がその16バイト後の`0x555556be3fc0`から始まる。
+プログラムに渡る部分の8バイト目からの8バイト（番地`0x555556be3fc8`）は、領域が解放されて双方向リストにあるときは、後ろ向きのポインタである。監視点はこの8バイトに置いた。
+異常終了の時点で、この後ろ向きのポインタは`0x55555628ae7f`であった。
 領域は16バイト境界に並ぶので、正しいポインタの下位4ビットは0である。この値は、正しい値`0x55555628ae80`から1を引いたものである。
 
 ### 書き込んだコード
 
 監視点は31,068回の書き込みを記録し、glibcの外からの書き込みは最初と最後の2回だけであった。
 
-`exit`に入った時点では、この領域はC++の`std::shared_ptr`の管理ブロックとして生きており、参照カウントは強い参照が1、弱い参照が1であった。
+`exit`に入った時点では、この領域はC++の`std::shared_ptr`の管理ブロックとして生きていた。管理ブロックは、先頭の8バイトに仮想関数表へのポインタを、続く8バイトに参照カウントを持つ。つまり、監視した8バイトは、領域が生きている間は参照カウントである。その値は、強い参照が1、弱い参照が1であった。
 1回目の書き込みは、`exit`が終了時の処理を順に呼ぶ関数（`__run_exit_handlers`）から直接呼ばれた`libonnxruntime_providers_cuda.so`の中のコードで、参照カウントを0にした。その直後にglibcがこの領域を解放した。
 最後の書き込みは、同じ`libonnxruntime_providers_cuda.so`の別の関数で、解放済みの領域の8バイト目を1減らした。
-この関数の呼び出し元は、新しい順に、`libonnxruntime.so`、ortクレートの`Environment`の破棄、`ort::environment::release_env_on_exit`、動的リンカの終了処理（`_dl_fini`）、`__run_exit_handlers`であった。
+この関数の呼び出し元は、この関数に近い側から順に、`libonnxruntime.so`、ortクレートの`Environment`の破棄、`ort::environment::release_env_on_exit`、動的リンカの終了処理（`_dl_fini`）、`__run_exit_handlers`であった。
 この減算の後、`libcuda.so.1`の終了処理が呼んだ`free`が、隣の領域をまとめるためにこの領域をリストから外そうとして、不整合を検出した。
 これまでの記録のスタックに出ていた`libcuda.so.1`は、ヒープを壊した側ではなく、検出の引き金になった側である。
 
@@ -99,7 +103,7 @@ glibcは、解放済みの領域を大きさごとの双方向リストでつな
 ONNX Runtime 1.31.1のソースでは、CUDAの実行プロバイダが、演算の実装の登録表を静的変数`static std::shared_ptr<KernelRegistry> s_kernel_registry;`に持つ（[`cuda_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/core/providers/cuda/cuda_execution_provider.cc) 3237行）。
 `DeleteRegistry()`がこれを`reset()`し（同3247〜3249行）、プロバイダの`Shutdown()`が`DeleteRegistry()`を呼ぶ（[`cuda_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/core/providers/cuda/cuda_provider_factory.cc) 302〜304行）。
 `Shutdown()`は、環境の破棄（`OrtEnv::~OrtEnv`、[`ort_env.cc`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/core/session/ort_env.cc) 38〜42行）が呼ぶ`UnloadSharedProviders()`から、`ProviderLibrary::Unload()`を通って呼ばれる（[`provider_bridge_ort.cc`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/core/session/provider_bridge_ort.cc) 2060〜2080行、2139〜2151行）。
-ONNX RuntimeのライセンスはMITである。
+ここで参照したONNX Runtimeのソースは、MITライセンスで公開されている。
 
 ### 原因
 
@@ -129,7 +133,7 @@ ONNX Runtimeのソースにも、環境がほかのグローバル変数より�
 ### 現行の構成で起きていること
 
 現行のコード、ONNX Runtime 1.31.1、および新形式のネットの推論で、登録表を手放す関数（番地`0x3cfdc0`）の入口の状態を読んだ。
-CUDAとTensorRT（保存済みのエンジンを読む実行）のどちらでも、この関数は`exit`に入った後に呼ばれ、その時点で静的変数は`exit`に入った時点と同じ管理ブロックを指していた。
+CUDAとTensorRT（保存済みのTensorRTのエンジンを読む実行）のどちらでも、この関数は`exit`に入った後に呼ばれ、その時点で静的変数は`exit`に入った時点と同じ管理ブロックを指していた。
 管理ブロックの中身は、`exit`の時点では参照カウントが強い参照1と弱い参照1であったが、関数の入口ではヒープの番地に変わっており、領域はすでに解放されていた。
 どちらの実行も、終了コード0で正常に終わった。
 

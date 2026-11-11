@@ -1,0 +1,37 @@
+> usi
+< usiok  [0.06s]
+> setoption name NnCacheDir value trt-cache/usi
+> isready
+< readyok  [17.97s]
+> usinewgame
+> position startpos
+> go nodes 800
+< info string nodes count MCTS simulations, not alpha-beta move applications
+< info string stop nodes
+< bestmove 8j9k ponder 5c4b  [0.13s]
+> setoption name NnBackend value cuda
+> isready
+< readyok  [0.32s]
+> position startpos
+> go nodes 800
+< info string nodes count MCTS simulations, not alpha-beta move applications
+< info string stop nodes
+< bestmove 10l9k ponder 8a9b  [0.68s]
+> setoption name NnBackend value tensorrt
+> isready
+< readyok  [0.39s]
+> position startpos
+> go nodes 800
+< info string nodes count MCTS simulations, not alpha-beta move applications
+< info string stop nodes
+< bestmove 8j9k ponder 10a11b  [0.13s]
+> setoption name NnBatchSize value 64
+> isready
+< readyok  [10.28s]
+> position startpos
+> go nodes 800
+< info string nodes count MCTS simulations, not alpha-beta move applications
+< info string stop nodes
+< bestmove 10l9k ponder 3a4b  [0.14s]
+> quit
+exit code 0

@@ -1,0 +1,27 @@
+Thread 1 "minase" hit Breakpoint 1, 0x00007ffff7a41080 in exit () from /usr/lib/libc.so.6
+PROBE at exit: static ptr=0x55555739cc40 ctrl=0x55555739cc30
+PROBE at exit: control block vptr=0x7ffff77498b8 use=1 weak=1 raw=0x100000001
+PROBE at exit: registry alive
+Thread 1 "minase" hit Breakpoint 2, 0x00007fffe01cfdc0 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime_providers_cuda.so
+PROBE reset function reached after exit began
+PROBE at reset function: static ptr=0x55555739cc40 ctrl=0x55555739cc30
+PROBE at reset function: control block vptr=0x7ffff7c1a148 use=1490290704 weak=21845 raw=0x555558d40810
+#0  0x00007fffe01cfdc0 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime_providers_cuda.so
+#1  0x00007ffff5b95a9f in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so
+#2  0x00007ffff5b95c64 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so
+#3  0x00007ffff5b6f50d in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so
+#4  0x00007ffff5b6f5dd in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so
+#5  0x00007ffff5b48b6d in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so
+#6  0x00005555561490b0 in ort::environment::{impl#5}::drop () at src/lib.rs:327
+#7  core::ptr::drop_glue<ort::environment::Environment> () at <rust>/library/core/src/ptr/mod.rs:823
+#8  core::ptr::drop_in_place<ort::environment::Environment> () at <rust>/library/core/src/ptr/mod.rs:818
+#9  alloc::sync::Arc::drop_slow<ort::environment::Environment, alloc::alloc::Global> () at <rust>/library/alloc/src/sync.rs:2143
+#10 0x0000555556148f54 in alloc::sync::{impl#42}::drop<ort::environment::Environment, alloc::alloc::Global> () at <rust>/library/alloc/src/sync.rs:2877
+#11 core::ptr::drop_glue<alloc::sync::Arc<ort::environment::Environment, alloc::alloc::Global>> () at <rust>/library/core/src/ptr/mod.rs:823
+#12 core::ptr::drop_glue<core::option::Option<alloc::sync::Arc<ort::environment::Environment, alloc::alloc::Global>>> () at <rust>/library/core/src/ptr/mod.rs
+#13 ort::environment::release_env_on_exit () at src/environment.rs:85
+#14 0x00007ffff7fc0012 in ?? () from /lib64/ld-linux-x86-64.so.2
+#15 0x00007ffff7fc40ae in ?? () from /lib64/ld-linux-x86-64.so.2
+[Inferior 1 (process 4118222) exited with code 01]
+PROBE exit code 1
+VERDICT pass
