@@ -1,0 +1,18 @@
+usi
+setoption name NnCacheDir value trt-cache/usi
+isready
+usinewgame
+position startpos
+go nodes 800
+setoption name NnBackend value cuda
+isready
+position startpos
+go nodes 800
+setoption name NnBackend value tensorrt
+isready
+position startpos
+go nodes 800
+setoption name NnBatchSize value 64
+isready
+position startpos
+go nodes 800

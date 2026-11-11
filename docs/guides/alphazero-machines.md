@@ -170,7 +170,7 @@ vast.aiのアカウント、CLI、2要素認証、およびコンテナのCPUの
 次の条件で照会し、1時間あたりの料金（`dph_total`）の安い順に選ぶ。
 条件には、vast.aiが出品に載せるPCIeの帯域（`pcie_bw`）の下限を入れる。
 `pcie_bw`が10.5 GB/sの機械では、推論の入出力の転送を減らした後も、生成が20.9 GB/sの機械の約0.92倍の速さにとどまり（[生成の速さの測定](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-generation-speed.md)）、学習の更新は約0.59倍の速さであった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
-同じ機械では、生成器と`minase dev nn-eval`が、出力を書き終えた後の終了処理で異常終了することもあった（[ONNX Runtimeの版のADR](../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+同じ機械では、生成器と`minase dev nn-eval`が、出力を書き終えた後の終了処理で異常終了することもあった。この異常終了は機械の性質ではなく、ortクレートのrc.13が原因であり、rc.15へ上げて直した（[ortの版と環境の寿命のADR](../adr/hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)）。出品を選ぶ条件にはしない。
 `pcie_bw`は出品ごとに測り直されて変わるので、目安として使う。
 
 ```console

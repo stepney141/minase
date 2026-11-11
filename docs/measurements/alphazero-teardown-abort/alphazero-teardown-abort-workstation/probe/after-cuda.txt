@@ -1,0 +1,8 @@
+Thread 1 "minase" hit Breakpoint 1, 0x00007ffff7a41080 in exit () from /usr/lib/libc.so.6
+PROBE at exit: static ptr=0x5555573a79c0 ctrl=0x5555573a79b0
+PROBE at exit: control block vptr=0x7ffff77498b8 use=1 weak=1 raw=0x100000001
+PROBE at exit: registry alive
+[Inferior 1 (process 4117611) exited normally]
+PROBE reset function not reached
+PROBE exit code 0
+VERDICT pass

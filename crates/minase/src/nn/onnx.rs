@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use half::f16;
+use ort::environment::Environment;
 use ort::ep;
 use ort::logging::LogLevel;
 use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
@@ -89,15 +90,25 @@ impl ExecutionProvider {
     }
 }
 
-/// 設定の確定だけを直列化し、失敗した読み込みは次の呼び出しで再試行できるようにする。
-static RUNTIME_INITIALIZED: Mutex<bool> = Mutex::new(false);
+/// プロセスに1つだけ作るONNX Runtimeの環境。作成を直列化し、作った環境はプロセスの終了まで保持して解放しない。
+///
+/// ortは、環境を1回作ったプロセスでは2回目の作成を拒む。推論器を破棄して作り直す呼び出し元があるので、
+/// 環境は推論器の寿命に結び付けず、ここに保持する。
+/// 終了処理で環境を解放すると、ONNX RuntimeのCUDAの実行プロバイダが静的デストラクタで解放した登録表を
+/// もう一度手放してヒープを壊すので、終了時にも解放しない。
+/// 理由は`docs/adr/hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md`にある。
+/// 作成に失敗したときは空のままにし、次の呼び出しで再試行できるようにする。
+static RUNTIME: Mutex<Option<Environment>> = Mutex::new(None);
 
-fn initialize_runtime() -> Result<(), NnError> {
-    let mut initialized = RUNTIME_INITIALIZED
+/// 保持している環境を返す。まだなければ、`ORT_DYLIB_PATH`の共有ライブラリを読み込んで環境を作る。
+///
+/// 作った環境は、返す前に[`RUNTIME`]へ入れる。呼び出し元の後続の処理が失敗しても、環境は失われない。
+fn initialize_runtime() -> Result<Environment, NnError> {
+    let mut runtime = RUNTIME
         .lock()
         .map_err(|_| NnError::RuntimeInitializationPoisoned)?;
-    if *initialized {
-        return Ok(());
+    if let Some(environment) = runtime.as_ref() {
+        return Ok(environment.clone());
     }
     let path = env::var_os("ORT_DYLIB_PATH")
         .filter(|value| !value.is_empty())
@@ -113,7 +124,7 @@ fn initialize_runtime() -> Result<(), NnError> {
     // ortは相対パスを実行ファイルの位置からも探す。絶対パスで指定したファイルに限定する。
     let path = std::path::absolute(&path)
         .map_err(|source| NnError::RuntimeLibraryPath { path, source })?;
-    let committed = ort::init_from(path)
+    let environment = ort::init_from(path)
         .map_err(NnError::RuntimeInitialization)?
         .with_logger(Arc::new(|level, _category, _id, location, message| {
             if level >= LogLevel::Warning {
@@ -121,12 +132,8 @@ fn initialize_runtime() -> Result<(), NnError> {
                 let _ = writeln!(io::stderr().lock(), "[{level:?}] {location}: {message}");
             }
         }))
-        .commit();
-    if !committed {
-        return Err(NnError::RuntimeAlreadyInitialized);
-    }
-    *initialized = true;
-    Ok(())
+        .build()?;
+    Ok(runtime.insert(environment).clone())
 }
 
 /// ONNX Runtimeのセッションと、最大バッチ分を一度だけ確保した入力バッファを持つ評価器。
@@ -137,8 +144,8 @@ fn initialize_runtime() -> Result<(), NnError> {
 /// 入力は通常のホストメモリに置き、CPUでは`session.run`で出力を受け取る。
 pub struct OnnxEvaluator {
     session: Session,
-    // MemoryInfoはSendではないので、機器番号を保持して呼び出しごとに作る。
-    output_binding: Option<(IoBinding, i32)>,
+    // CUDAのピン留めメモリの情報を保持し、出力を結び付け直すたびに再利用する。
+    output_binding: Option<(IoBinding, MemoryInfo<'static>)>,
     policy_map: PolicyMap,
     input: Vec<u8>,
     max_batch: NonZeroUsize,
@@ -167,8 +174,8 @@ impl OnnxEvaluator {
             validate_cuda_visible_devices(env::var_os("CUDA_VISIBLE_DEVICES").as_deref())?;
         }
         let input = allocate_input(max_batch)?;
-        initialize_runtime()?;
-        let mut builder = Session::builder()?
+        let environment = initialize_runtime()?;
+        let mut builder = Session::builder(&environment)?
             .with_log_level(LogLevel::Warning)
             .map_err(ort::Error::from)?;
         if !matches!(provider, ExecutionProvider::Cpu) {
@@ -234,7 +241,15 @@ impl OnnxEvaluator {
         let labels = session.metadata()?.custom("policy_labels");
         let policy_map = PolicyMap::from_metadata(labels.as_deref(), policy_width)?;
         let output_binding = match output_device_id {
-            Some(device_id) => Some((session.create_binding()?, device_id)),
+            Some(device_id) => Some((
+                session.create_binding()?,
+                MemoryInfo::new(
+                    AllocationDevice::CUDA_PINNED,
+                    device_id,
+                    AllocatorType::Device,
+                    MemoryType::CPUOutput,
+                )?,
+            )),
             None => None,
         };
         Ok(Self {
@@ -353,17 +368,11 @@ impl Evaluator for OnnxEvaluator {
             encode(query.position, buffer)?;
         }
         let tensor = TensorRef::from_array_view(([n, INPUT_PLANES, 12, 12], &*input))?;
-        let outputs = if let Some((binding, device_id)) = &mut self.output_binding {
-            let memory = MemoryInfo::new(
-                AllocationDevice::CUDA_PINNED,
-                *device_id,
-                AllocatorType::Device,
-                MemoryType::CPUOutput,
-            )?;
+        let outputs = if let Some((binding, memory)) = &mut self.output_binding {
             binding.bind_input("input", &tensor)?;
             binding.clear_outputs();
-            binding.bind_output_to_device("policy", &memory)?;
-            binding.bind_output_to_device("value", &memory)?;
+            binding.bind_output_to_device("policy", memory)?;
+            binding.bind_output_to_device("value", memory)?;
             binding.synchronize_inputs()?;
             let outputs = self.session.run_binding(binding)?;
             binding.synchronize_outputs()?;

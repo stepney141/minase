@@ -49,3 +49,4 @@ TensorRT 11以降へ移るには、単精度のONNXにFP16の設定を付ける�
 A100のColab機では、`session.run`の経路でもセッションの破棄か終了処理の時点でヒープの破壊が検出されたことがあり、作業機での終了処理は[ランダム初期化のネットの出力の照合](../measurements/alphazero-network/random-net-output-check.md)で確かめた。
 ONNX Runtimeの実行時ライブラリの版は、[ONNX Runtimeの版のADR](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)が定める。
 推論を`session.run`の経路で行う点と、`IoBinding`を採らなかった判断は、2026年11月11日に[入出力の受け渡しのADR](exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)が置き換えた。ONNX Runtime 1.31.1では、TensorRTとCUDAの出力を、呼び出しごとに結び付け直す`IoBinding`でピン留めメモリへ受け取る。
+ortの版を`=2.0.0-rc.13`に固定する点と、minaseの`rust-version`を1.88に保つ点は、2026年11月11日に[ortの版と環境の寿命のADR](hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)が置き換えた。ortは`=2.0.0-rc.15`、minaseの`rust-version`は1.92である。作業機で見られた終了処理でのヒープの破壊は、rc.13が環境を解放する順序が原因であった。A100のColab機で見られたものが同じ原因であるかは確かめていない。

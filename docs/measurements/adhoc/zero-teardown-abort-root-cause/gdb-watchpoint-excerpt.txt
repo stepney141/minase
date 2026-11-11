@@ -1,0 +1,69 @@
+# exitに入った時点（監視する領域はまだ生きている。vptr、use_count=1、weak_count=1）
+Thread 1 "minase" hit Breakpoint 1, __GI_exit (status=1) at exit.c:147
+147	{
+==== at exit
+#0  __GI_exit (status=1) at exit.c:147
+#1  0x0000555555c19875 in std::sys::exit::exit () at library/std/src/sys/exit.rs:79
+#2  0x0000555555c19804 in std::process::exit () at library/std/src/process.rs:2572
+#3  0x0000555555a0a09a in minase::nn_eval::main () at crates/minase/src/bin/minase/nn_eval.rs:166
+#4  minase::main () at crates/minase/src/bin/minase/main.rs:166
+0x555556be3fb0:	0x0000000000000001	0x0000000000000051
+0x555556be3fc0:	0x00007ffff7630f18	0x0000000100000001
+0x555556be3fd0:	0x0000000000000000	0x0000000000000000
+Hardware watchpoint 3: *(long*)0x555556be3fc8
+
+# 1回目の書き込み（31,068回のうち1回目）: CUDAプロバイダの静的デストラクタによる解放
+Thread 1 "minase" hit Hardware watchpoint 3: *(long*)0x555556be3fc8
+
+Old value = 4294967297
+New value = 0
+0x00007fffe4cc415e in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_cuda.so
+#0  0x00007fffe4cc415e in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_cuda.so
+#1  0x00007ffff7a40fbf in __run_exit_handlers (status=1, listp=0x7ffff7c19680 <__exit_funcs>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at exit.c:118
+#2  0x00007ffff7a4109e in __GI_exit (status=<optimized out>) at exit.c:148
+#3  0x0000555555c19875 in std::sys::exit::exit () at library/std/src/sys/exit.rs:79
+#4  0x0000555555c19804 in std::process::exit () at library/std/src/process.rs:2572
+#5  0x0000555555a0a09a in minase::nn_eval::main () at crates/minase/src/bin/minase/nn_eval.rs:166
+#6  minase::main () at crates/minase/src/bin/minase/main.rs:166
+0x555556be3fb0:	0x0000000000000001	0x0000000000000051
+0x555556be3fc0:	0x00007ffff7630f18	0x0000000000000000
+0x555556be3fd0:	0x0000000000000000	0x0000000000000000
+
+# 2〜31,067回目はglibcのmalloc/freeによる空き領域のリストの更新なので省く
+
+# 最後の書き込み（31,068回目）: ReleaseEnvから呼ばれた関数が、解放済みの領域の8バイト目を1減らす
+Thread 1 "minase" hit Hardware watchpoint 3: *(long*)0x555556be3fc8
+
+Old value = 93825006087808
+New value = 93825006087807
+0x00007fffe4ce6ed6 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_cuda.so
+#0  0x00007fffe4ce6ed6 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime_providers_cuda.so
+#1  0x00007ffff5f4eba1 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+#2  0x00007ffff5f4f434 in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+#3  0x00007ffff5f2930d in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+#4  0x00007ffff5f293dd in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+#5  0x00007ffff5f0211d in ?? () from <repo>/tools/train/zero/.runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.3/lib/libonnxruntime.so
+#6  0x0000555555bb95e5 in ort::environment::{impl#5}::drop () at src/lib.rs:327
+#7  core::ptr::drop_glue<ort::environment::Environment> () at <rust>/library/core/src/ptr/mod.rs:823
+#8  0x0000555555bb9510 in core::ptr::drop_in_place<ort::environment::Environment> () at <rust>/library/core/src/ptr/mod.rs:818
+#9  alloc::sync::Arc::drop_slow<ort::environment::Environment, alloc::alloc::Global> () at <rust>/library/alloc/src/sync.rs:2143
+#10 0x0000555555bb93d6 in alloc::sync::{impl#42}::drop<ort::environment::Environment, alloc::alloc::Global> () at <rust>/library/alloc/src/sync.rs:2877
+#11 core::ptr::drop_glue<alloc::sync::Arc<ort::environment::Environment, alloc::alloc::Global>> () at <rust>/library/core/src/ptr/mod.rs:823
+#12 core::ptr::drop_glue<core::option::Option<alloc::sync::Arc<ort::environment::Environment, alloc::alloc::Global>>> () at <rust>/library/core/src/ptr/mod.rs:823
+#13 ort::environment::release_env_on_exit () at src/environment.rs:85
+#14 0x00007ffff7fc0012 in _dl_call_fini (closure_map=closure_map@entry=0x7ffff7ffe3c0) at dl-call_fini.c:43
+#15 0x00007ffff7fc40ae in _dl_fini () at dl-fini.c:120
+#16 0x00007ffff7a40fbf in __run_exit_handlers (status=1, listp=0x7ffff7c19680 <__exit_funcs>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at exit.c:118
+#17 0x00007ffff7a4109e in __GI_exit (status=<optimized out>) at exit.c:148
+#18 0x0000555555c19875 in std::sys::exit::exit () at library/std/src/sys/exit.rs:79
+#19 0x0000555555c19804 in std::process::exit () at library/std/src/process.rs:2572
+#20 0x0000555555a0a09a in minase::nn_eval::main () at crates/minase/src/bin/minase/nn_eval.rs:166
+#21 minase::main () at crates/minase/src/bin/minase/main.rs:166
+0x555556be3fb0:	0x0000000000000001	0x0000000000000051
+0x555556be3fc0:	0x00005555578d45e0	0x000055555628ae7f
+0x555556be3fd0:	0x0000000000000000	0x0000000000000000
+corrupted double-linked list
+
+Thread 1 "minase" received signal SIGABRT, Aborted.
+__pthread_kill_implementation (threadid=<optimized out>, signo=signo@entry=6, no_tid=no_tid@entry=0) at pthread_kill.c:44
+44	      return INTERNAL_SYSCALL_ERROR_P (ret) ? INTERNAL_SYSCALL_ERRNO (ret) : 0;

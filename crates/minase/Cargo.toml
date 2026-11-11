@@ -2,7 +2,7 @@
 name = "minase"
 version = "2.6.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.92"
 description = "A USI/CECP chu shogi engine with search and evaluation built on minase-core."
 license = "GPL-3.0-or-later"
 repository = "https://github.com/stepney141/minase"
@@ -43,8 +43,9 @@ fs2 = "0.4.3"
 half = { version = "2.1", default-features = false }
 mimalloc = "0.1.52"
 # ONNX Runtime is loaded at run time from ORT_DYLIB_PATH, so building needs no GPU libraries.
-# See docs/adr/run-zero-network-inference-through-ort-load-dynamic.md.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "tensorrt", "cuda", "api-28", "half"] }
+# See docs/adr/run-zero-network-inference-through-ort-load-dynamic.md. The version is pinned by
+# docs/adr/hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "tensorrt", "cuda", "api-28", "half"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 sha2 = "0.10"
