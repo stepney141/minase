@@ -1,0 +1,40 @@
+== single-0
+pinned=False h2d 1.97 ms/copy 9.3 GB/s
+pinned=False d2h 2.89 ms/copy 6.3 GB/s
+pinned=True h2d 1.40 ms/copy 13.1 GB/s
+pinned=True d2h 1.06 ms/copy 17.3 GB/s
+== single-1
+pinned=False h2d 2.07 ms/copy 8.9 GB/s
+pinned=False d2h 3.02 ms/copy 6.1 GB/s
+pinned=True h2d 1.35 ms/copy 13.6 GB/s
+pinned=True d2h 1.04 ms/copy 17.6 GB/s
+== single-2
+pinned=False h2d 1.89 ms/copy 9.7 GB/s
+pinned=False d2h 3.17 ms/copy 5.8 GB/s
+pinned=True h2d 1.37 ms/copy 13.4 GB/s
+pinned=True d2h 1.10 ms/copy 16.6 GB/s
+== single-3
+pinned=False h2d 2.04 ms/copy 9.0 GB/s
+pinned=False d2h 2.93 ms/copy 6.3 GB/s
+pinned=True h2d 1.41 ms/copy 13.0 GB/s
+pinned=True d2h 1.01 ms/copy 18.2 GB/s
+== concurrent-0
+pinned=False h2d 5.15 ms/copy 3.6 GB/s
+pinned=False d2h 9.02 ms/copy 2.0 GB/s
+pinned=True h2d 2.23 ms/copy 8.2 GB/s
+pinned=True d2h 2.26 ms/copy 8.1 GB/s
+== concurrent-1
+pinned=False h2d 6.94 ms/copy 2.6 GB/s
+pinned=False d2h 9.28 ms/copy 2.0 GB/s
+pinned=True h2d 3.05 ms/copy 6.0 GB/s
+pinned=True d2h 2.12 ms/copy 8.7 GB/s
+== concurrent-2
+pinned=False h2d 6.06 ms/copy 3.0 GB/s
+pinned=False d2h 10.44 ms/copy 1.8 GB/s
+pinned=True h2d 4.03 ms/copy 4.6 GB/s
+pinned=True d2h 1.86 ms/copy 9.9 GB/s
+== concurrent-3
+pinned=False h2d 5.62 ms/copy 3.3 GB/s
+pinned=False d2h 9.07 ms/copy 2.0 GB/s
+pinned=True h2d 3.13 ms/copy 5.9 GB/s
+pinned=True d2h 3.21 ms/copy 5.7 GB/s

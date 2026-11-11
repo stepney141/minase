@@ -51,7 +51,7 @@ NASの`$A`の下の主な置き場所は次のとおりである。
 | `progress/cycles-rl2/`、`external/cycles-rl2/` | 作業機の進捗測定と、固定の検証用棋譜の診断の出力 |
 
 1サイクルの時間と費用は、ColabのG4の機械で約1時間、約9 CU（Colabの計算単位）と見込む（設計書の「費用」の節）。
-vast.aiのRTX 4090が4枚の機械では、サイクル1を約36分、約1.23米ドルで回した（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
+vast.aiのRTX 4090が4枚の機械では、推論の入出力の転送を減らした後、サイクル1を31.4分、約1.00米ドルで回した（[1サイクルの記録](../measurements/alphazero-inference-transfer/alphazero-inference-transfer-cycle.md)）。減らす前は約36分、約1.23米ドルであった（[vast.aiの測定](../measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。
 1回目の学習の10ブロック128チャネルのネットでは、ColabのL4の機械で約1時間、約2 CUであった。
 
 ## 標準レシピ
@@ -486,6 +486,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 |---|---|---|
 | `minase_zero init` | `--blocks`、`--channels`、`--seed`、`--out-dir`（存在しないか空）、`--trainer-commit` | ランダムに初期化したネットを作るとき |
 | `minase_zero fixture-eval` | `--checkpoint`、`--onnx`、`--fixture`、`--out` | 固定の局面集でPyTorchの出力を書き出し、照合の基準にするとき |
+| `minase_zero export-onnx` | `--checkpoint`、`--out`（存在しないパス） | ONNXの入力と出力の型や形を変えた後に、チェックポイントからONNXだけを書き出し直すとき |
 | `minase_zero external-eval` | `--checkpoint`、`--data`（αβ探索の自己対局の教師データのファイル。形式は[ファイル形式の手引き](file-formats.md)のMNSD。複数指定可）、`--games`、`--seed`、`--device`、`--out` | 固定の検証用棋譜で診断するとき |
 | `minase_zero seed-ledger` | `--ledger`（既存の台帳）、`--name`、`--seed`、`--games` | 実行器を通さずに生成するシードを台帳に登録するとき |
 | `minase_zero resign-calibration` | `--summary`（直前のサイクルの生成器の集計`summary.json`。複数指定可） | 投了を有効にできるかを手で確かめるとき |
@@ -518,7 +519,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 | サイクルの端数 | 抽出数を全体のバッチで割った余りの局面は、そのサイクルでは使わない | `train.py` |
 | ウォームアップ | 初期化から累計2,000,000標本 | `train.py`の`WARMUP_SAMPLES` |
 | サイクル内の学習率の予定 | 基準の学習率×(1＋cos(πt/T))/2 | `train.py` |
-| 照合の許容誤差 | CPUは方策のlogitと価値が10⁻⁴、TensorRTのFP16は方策の確率が10⁻²、価値が5×10⁻² | `runner.py` |
+| 照合の許容誤差 | CPUは、FP16へ丸めた基準に対する方策のlogitが10⁻⁴にFP16の1目盛りを足した範囲、価値が10⁻⁴。TensorRTのFP16は方策の確率が10⁻²、価値が5×10⁻² | `runner.py` |
 
 ## 標準レシピの設定と根拠
 

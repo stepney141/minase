@@ -140,7 +140,7 @@ struct Fixture {
     /// [`Position::lion_capture_square`]が返す先獅子の升を[`Square::dense_index`]で表す。
     /// これは直前に獅子以外の駒が獅子を取った升であり、記録がなければ`null`とする。
     lion_capture: Option<usize>,
-    /// [`nn::encode`](minase::nn::encode)の出力で1.0になる添字`面 * 144 + 相対升`を昇順に並べる。
+    /// [`nn::encode`](minase::nn::encode)の出力で1になる添字`面 * 144 + 相対升`を昇順に並べる。
     /// 相対升は先手番なら[`Square::dense_index`]、後手番なら`143 - dense_index`である。
     input: Vec<usize>,
     /// [`MoveGenerator`]が返す合法手の順に、`[移動元, 中継升 または null, 移動先, 成り, ラベル]`を並べる。
@@ -152,7 +152,7 @@ struct Fixture {
 fn fixture_bytes() -> Result<Vec<u8>, serde_json::Error> {
     let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
     let mut bytes = Vec::new();
-    let mut input = vec![0.0; INPUT_SIZE];
+    let mut input = vec![0; INPUT_SIZE];
     let mut moves = Vec::new();
     for position in fixture_positions() {
         let setup = SetupPosition::new(position.clone(), position.lion_capture_square(), 1)
@@ -181,7 +181,7 @@ fn fixture_bytes() -> Result<Vec<u8>, serde_json::Error> {
             input: input
                 .iter()
                 .enumerate()
-                .filter_map(|(index, &value)| (value == 1.0).then_some(index))
+                .filter_map(|(index, &value)| (value == 1).then_some(index))
                 .collect(),
             moves: moves
                 .iter()

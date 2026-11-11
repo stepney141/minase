@@ -1,0 +1,10 @@
+A	cpu-b7	{"positions": 288, "max_logit_abs_diff": 5.081965637199204e-07, "max_probability_abs_diff": 9.835037909078359e-09, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 0}
+A	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.001133382945404049, "max_probability_abs_diff": 2.8094653127710978e-05, "max_value_abs_diff": 0.00025713443756103516, "best_move_mismatches": 3}
+B	cpu-b7	{"positions": 288, "max_logit_abs_diff": 5.081965637199204e-07, "max_probability_abs_diff": 9.835037909078359e-09, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 0}
+B	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.0015780037931060753, "max_probability_abs_diff": 3.3154592604098254e-05, "max_value_abs_diff": 0.00026112919876097873, "best_move_mismatches": 3}
+C	cpu-b7	{"positions": 288, "max_logit_abs_diff": 0.00012192630088808665, "max_probability_abs_diff": 4.074586410177106e-06, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 1}
+C	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.001133382945404049, "max_probability_abs_diff": 2.8094653127710978e-05, "max_value_abs_diff": 0.00025713443756103516, "best_move_mismatches": 3}
+D	cpu-b7	{"positions": 288, "max_logit_abs_diff": 0.00012192630088808665, "max_probability_abs_diff": 4.074586410177106e-06, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 1}
+D	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.0012783085141754025, "max_probability_abs_diff": 2.2771342541909323e-05, "max_value_abs_diff": 0.0002488368919372208, "best_move_mismatches": 0}
+S	cpu-b7	{"positions": 288, "max_logit_abs_diff": 5.081965637199204e-07, "max_probability_abs_diff": 9.835037909078359e-09, "max_value_abs_diff": 8.79486083960046e-08, "best_move_mismatches": 0}
+S	tensorrt-b7	{"positions": 288, "max_logit_abs_diff": 0.001133382945404049, "max_probability_abs_diff": 2.8094653127710978e-05, "max_value_abs_diff": 0.00025713443756103516, "best_move_mismatches": 3}

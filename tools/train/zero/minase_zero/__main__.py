@@ -12,6 +12,7 @@
   --momentum、--weight-decay、--clip-grad-norm、--value-lambda、--precision（bf16かfp32）、
   --checkpoint-steps、--device（cudaかcpu）、--replay-threads、--trainer-commit（40桁の16進数字）。
 - train --resume <出力先> --device --replay-threads：ほかの設定はチェックポイントから読み、中断した学習を続ける。
+- export-onnx：--checkpointからONNXだけを--outへ書き出す。
 - fixture-eval：--checkpoint、--onnx、--fixture、--out。
 - external-eval：--checkpoint、--data（αβのMNSDの列）、--games、--seed、--device、--out。
 - seed-ledger：--ledger（既存の台帳）、--name、--seed、--games。
@@ -35,7 +36,7 @@ import sys
 from .external import external_eval
 from .rl import register_seed_range, resign_calibration
 from .runner import Options, Remote, Runner, add_arguments
-from .train import fixture_eval, initialize, resume, train_new
+from .train import export_checkpoint, fixture_eval, initialize, resume, train_new
 
 
 class _Parser(argparse.ArgumentParser):
@@ -72,6 +73,10 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         train.add_argument("--precision", choices=("bf16", "fp32"), required=True)
         train.add_argument("--trainer-commit", required=True)
 
+    export = commands.add_parser("export-onnx", allow_abbrev=False)
+    for name in ("checkpoint", "out"):
+        export.add_argument(f"--{name}", type=Path, required=True)
+
     fixture = commands.add_parser("fixture-eval", allow_abbrev=False)
     for name in ("checkpoint", "onnx", "fixture", "out"):
         fixture.add_argument(f"--{name}", type=Path, required=True)
@@ -103,6 +108,8 @@ def main() -> int:
         command = args.pop("command")
         if command == "init":
             initialize(**args)
+        elif command == "export-onnx":
+            print(json.dumps(export_checkpoint(**args), allow_nan=False))
         elif command == "fixture-eval":
             fixture_eval(**args)
         elif command == "external-eval":

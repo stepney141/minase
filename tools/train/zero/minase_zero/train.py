@@ -941,6 +941,17 @@ def _finish(state: dict, data: Dataset, network: ZeroNet, out_dir: Path, device:
     })
 
 
+def export_checkpoint(checkpoint: Path, out: Path) -> dict[str, str]:
+    """チェックポイントからONNXだけを書き出し、確定したファイルの検査和を返す。"""
+    if out.exists() or out.is_symlink():
+        raise ValueError(f"output already exists: {out}")
+    state = _load_checkpoint(checkpoint)
+    model = _model(state).eval()
+    with _atomic_path(out) as temporary:
+        export_onnx(model, temporary)
+    return {"network_sha256": _sha256(out)}
+
+
 def fixture_eval(checkpoint: Path, onnx: Path, fixture: Path, out: Path) -> None:
     """チェックポイントの重みとONNXの一致を確かめ、固定局面集をCPUで推論する。"""
     state = _load_checkpoint(checkpoint)

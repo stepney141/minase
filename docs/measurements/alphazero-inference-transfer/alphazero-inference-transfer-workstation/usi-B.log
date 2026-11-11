@@ -1,0 +1,39 @@
+> usi
+< 
+< usiok  [0.05s]
+> setoption name NnCacheDir value trt-cache/usi
+> isready
+< 
+< readyok  [17.96s]
+> usinewgame
+> position startpos
+> go nodes 800
+< info depth 7 score cp 75 nodes 800 nps 4859 time 164 pv 7j6h 6c7e 11l11k 2a2b 2j2k 5a4b 8l9k
+< bestmove 7j6h ponder 6c7e  [0.17s]
+> position startpos moves 7j6h
+> go nodes 800
+< info depth 9 score cp 28 nodes 800 nps 6047 time 132 pv 6c7e 11l11k 2a2b 2j2k 5a4b 8l9k 11c11b 8j7j 5c6c
+< bestmove 6c7e ponder 11l11k  [0.14s]
+> position startpos moves 7j6h 6c7e
+> go nodes 800
+< info depth 10 score cp 27 nodes 800 nps 6094 time 131 pv 11l11k 2a2b 2j2k 5a4b 8l9k 11c11b 8j7j 5c6c 11i11h 2d2e
+< bestmove 11l11k ponder 2a2b  [0.13s]
+> setoption name NnBatchSize value 1024
+> isready
+< 
+< readyok  [40.99s]
+> position startpos moves 7j6h 6c7e 11l11k
+> go nodes 4096
+< info depth 11 score cp 8 nodes 4096 nps 5730 time 714 pv 2a2b 2j2k 5a4b 8l9k 11c11b 8j7j 5c6c 11i11h 2d2e 2i2h 11d11e
+< bestmove 2a2b ponder 2j2k  [0.72s]
+> setoption name NnBackend value cuda
+> setoption name NnBatchSize value 256
+> isready
+< 
+< readyok  [0.35s]
+> position startpos moves 7j6h 6c7e 11l11k
+> go nodes 800
+< info depth 11 score cp 4 nodes 800 nps 1112 time 718 pv 2a2b 2j2k 5a4b 8l9k 11c11b 8j7j 5c6c 11i11h 2d2e 2i2h 11d11e
+< bestmove 2a2b ponder 2j2k  [0.72s]
+> quit
+exit code 0

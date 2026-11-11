@@ -1,0 +1,33 @@
+{
+  "rounds": {
+    "start": 0,
+    "count": 3
+  },
+  "variants": {
+    "S": {
+      "median": 580.8686121825378,
+      "min": 579.65233065863,
+      "max": 582.3027593596443,
+      "count": 3,
+      "width": 0.004562871268005998,
+      "nonzero_exits": 2
+    },
+    "D": {
+      "median": 711.7957305743992,
+      "min": 710.4885113030159,
+      "max": 711.8326189132342,
+      "count": 3,
+      "width": 0.0018883333412714612,
+      "nonzero_exits": 0
+    }
+  },
+  "comparisons": {
+    "D": {
+      "parent": "S",
+      "increment": 0.22539885207417187,
+      "threshold": 0.004562871268005998,
+      "decision": "adopt",
+      "slower_beyond_width": false
+    }
+  }
+}

@@ -7,16 +7,17 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use half::f16;
 use ort::ep;
 use ort::logging::LogLevel;
-use ort::session::{Session, SessionOutputs};
-use ort::value::{TensorElementType, TensorRef, ValueType};
+use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
+use ort::session::{IoBinding, Session, SessionOutputs};
+use ort::value::{PrimitiveTensorElementType, TensorElementType, TensorRef, ValueType};
 use sha2::{Digest, Sha256};
 
+use super::policy_map::PolicyMap;
 use super::tensorrt_cache::{TensorRtCacheKey, query_gpus, validate_cuda_visible_devices};
-use super::{
-    Evaluator, INPUT_PLANES, INPUT_SIZE, NnError, POLICY_SIZE, Query, encode, policy_label,
-};
+use super::{Evaluator, INPUT_PLANES, INPUT_SIZE, NnError, Query, encode, policy_label};
 
 /// ONNX形式のネットのバイト列とSHA-256。
 ///
@@ -130,10 +131,16 @@ fn initialize_runtime() -> Result<(), NnError> {
 
 /// ONNX Runtimeのセッションと、最大バッチ分を一度だけ確保した入力バッファを持つ評価器。
 ///
-/// 出力は`session.run`でONNX Runtimeに確保させる。`IoBinding`による出力の束縛は使わない。
+/// TensorRTとCUDAでは、1つの[`IoBinding`]を保持し、出力をCUDAのピン留めメモリで受け取る。
+/// 出力の結び付けを保持するとONNX Runtime 1.31.1が2回目の呼び出しで同じ領域への転送を
+/// 拒むため、呼び出しごとに出力の結び付けを消して結び付け直す。
+/// 入力は通常のホストメモリに置き、CPUでは`session.run`で出力を受け取る。
 pub struct OnnxEvaluator {
     session: Session,
-    input: Vec<f32>,
+    // MemoryInfoはSendではないので、機器番号を保持して呼び出しごとに作る。
+    output_binding: Option<(IoBinding, i32)>,
+    policy_map: PolicyMap,
+    input: Vec<u8>,
     max_batch: NonZeroUsize,
 }
 
@@ -143,11 +150,13 @@ impl OnnxEvaluator {
     /// `ORT_DYLIB_PATH`が示すファイルからONNX Runtimeをプロセスで1回だけ初期化する。
     /// TensorRTとCUDAではCPUへの部分的な退避も禁じる。
     /// TensorRTとCUDAでは`CUDA_VISIBLE_DEVICES`が設定されていれば、空値でも起動を拒む。
-    /// 入力はf32の`input: [動的バッチ, 159, 12, 12]`、出力はf32の
-    /// `policy: [動的バッチ, 35856]`と`value: [動的バッチ, 1]`でなければならない。
+    /// 入力はu8の`input: [動的バッチ, 159, 12, 12]`、出力はf16の
+    /// `policy: [動的バッチ, 正の固定幅]`とf32の`value: [動的バッチ, 1]`でなければならない。
+    /// メタデータ`policy_labels`には、詰める前のラベルを10進整数のカンマ区切りで指定する。
+    /// 表は厳密な昇順で、各ラベルは35,856未満、要素数は方策の固定幅と一致しなければならない。
     ///
     /// # Errors
-    /// ライブラリ、実行プロバイダ、キャッシュ、バッファ確保、またはネットの入出力に
+    /// ライブラリ、実行プロバイダ、キャッシュ、バッファ確保、ネットの入出力、またはラベルの表に
     /// 問題があれば[`NnError`]を返す。ほかのプロバイダやネットへの切り替えは行わない。
     pub fn new(
         network: &Network,
@@ -167,7 +176,7 @@ impl OnnxEvaluator {
                 .with_disable_cpu_fallback()
                 .map_err(ort::Error::from)?;
         }
-        let provider = match provider {
+        let (provider, output_device_id) = match provider {
             ExecutionProvider::TensorRt {
                 cache_root,
                 device_id,
@@ -183,27 +192,34 @@ impl OnnxEvaluator {
                     source,
                 })?;
                 let profile = format!("input:{}x{INPUT_PLANES}x12x12", max_batch.get());
-                ep::TensorRT::default()
-                    .with_device_id(device_id)
-                    .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
-                    .with_profile_opt_shapes(&profile)
-                    .with_profile_max_shapes(&profile)
-                    .with_fp16(true)
-                    .with_engine_cache(true)
-                    .with_engine_cache_path(cache_path)
-                    .with_timing_cache(false)
-                    .build()
+                (
+                    ep::TensorRT::default()
+                        .with_device_id(device_id)
+                        .with_profile_min_shapes(format!("input:1x{INPUT_PLANES}x12x12"))
+                        .with_profile_opt_shapes(&profile)
+                        .with_profile_max_shapes(&profile)
+                        .with_fp16(true)
+                        .with_engine_cache(true)
+                        .with_engine_cache_path(cache_path)
+                        .with_timing_cache(false)
+                        .build(),
+                    Some(device_id),
+                )
             }
-            ExecutionProvider::Cuda { device_id } => ep::CUDA::default()
-                .with_device_id(ort_device_id(*device_id)?)
-                .build(),
-            ExecutionProvider::Cpu => ep::CPU::default().build(),
+            ExecutionProvider::Cuda { device_id } => {
+                let device_id = ort_device_id(*device_id)?;
+                (
+                    ep::CUDA::default().with_device_id(device_id).build(),
+                    Some(device_id),
+                )
+            }
+            ExecutionProvider::Cpu => (ep::CPU::default().build(), None),
         };
         let session = builder
             .with_execution_providers([provider.error_on_failure()])
             .map_err(ort::Error::from)?
             .commit_from_memory(network.bytes())?;
-        validate_signature(
+        let policy_width = validate_signature(
             session
                 .inputs()
                 .iter()
@@ -215,8 +231,16 @@ impl OnnxEvaluator {
                 .map(|port| (port.name().to_owned(), port.dtype().clone()))
                 .collect(),
         )?;
+        let labels = session.metadata()?.custom("policy_labels");
+        let policy_map = PolicyMap::from_metadata(labels.as_deref(), policy_width)?;
+        let output_binding = match output_device_id {
+            Some(device_id) => Some((session.create_binding()?, device_id)),
+            None => None,
+        };
         Ok(Self {
             session,
+            output_binding,
+            policy_map,
             input,
             max_batch,
         })
@@ -227,7 +251,7 @@ fn ort_device_id(device_id: usize) -> Result<i32, NnError> {
     i32::try_from(device_id).map_err(|_| NnError::InvalidDeviceId { device_id })
 }
 
-fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<f32>, NnError> {
+fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<u8>, NnError> {
     let max = max_batch.get();
     let len = max
         .checked_mul(INPUT_SIZE)
@@ -236,46 +260,65 @@ fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<f32>, NnError> {
     input
         .try_reserve_exact(len)
         .map_err(|source| NnError::AllocateInput { max, source })?;
-    input.resize(len, 0.0);
+    input.resize(len, 0);
     Ok(input)
 }
 
 fn validate_signature(
     inputs: Vec<(String, ValueType)>,
     outputs: Vec<(String, ValueType)>,
-) -> Result<(), NnError> {
-    let matches = |ports: &[(String, ValueType)], name: &str, expected: &[i64]| {
+) -> Result<usize, NnError> {
+    let matches = |ports: &[(String, ValueType)], name: &str, element_type, expected: &[i64]| {
         ports.iter().any(|(actual_name, dtype)| {
             actual_name == name
                 && matches!(
                     dtype,
-                    ValueType::Tensor { ty: TensorElementType::Float32, shape, .. }
-                        if &shape[..] == expected
+                    ValueType::Tensor { ty, shape, .. }
+                        if *ty == element_type && &shape[..] == expected
                 )
         })
     };
-    if inputs.len() != 1
-        || outputs.len() != 2
-        || !matches(&inputs, "input", &[-1, INPUT_PLANES as i64, 12, 12])
-        || !matches(&outputs, "policy", &[-1, 35856])
-        || !matches(&outputs, "value", &[-1, 1])
+    let policy_width = outputs.iter().find_map(|(name, dtype)| {
+        if name == "policy"
+            && let ValueType::Tensor {
+                ty: TensorElementType::Float16,
+                shape,
+                ..
+            } = dtype
+            && let [-1, width] = &shape[..]
+        {
+            usize::try_from(*width).ok().filter(|&width| width > 0)
+        } else {
+            None
+        }
+    });
+    if inputs.len() == 1
+        && outputs.len() == 2
+        && matches(
+            &inputs,
+            "input",
+            TensorElementType::Uint8,
+            &[-1, INPUT_PLANES as i64, 12, 12],
+        )
+        && matches(&outputs, "value", TensorElementType::Float32, &[-1, 1])
+        && let Some(width) = policy_width
     {
-        return Err(NnError::ModelSignature {
-            expected: "input f32 [-1, 159, 12, 12]; policy f32 [-1, 35856], value f32 [-1, 1]",
-            inputs,
-            outputs,
-        });
+        return Ok(width);
     }
-    Ok(())
+    Err(NnError::ModelSignature {
+        expected: "input u8 [-1, 159, 12, 12]; policy f16 [-1, width] (fixed width > 0), value f32 [-1, 1]",
+        inputs,
+        outputs,
+    })
 }
 
-fn output_tensor<'a>(
+fn output_tensor<'a, T: PrimitiveTensorElementType>(
     outputs: &'a SessionOutputs<'_>,
     name: &'static str,
     expected: [usize; 2],
-) -> Result<&'a [f32], NnError> {
+) -> Result<&'a [T], NnError> {
     let output = outputs.get(name).ok_or(NnError::MissingOutput { name })?;
-    let (shape, values) = output.try_extract_tensor::<f32>()?;
+    let (shape, values) = output.try_extract_tensor::<T>()?;
     if **shape != expected.map(|dimension| dimension as i64) {
         return Err(NnError::OutputShape {
             name,
@@ -310,17 +353,35 @@ impl Evaluator for OnnxEvaluator {
             encode(query.position, buffer)?;
         }
         let tensor = TensorRef::from_array_view(([n, INPUT_PLANES, 12, 12], &*input))?;
-        let outputs = self.session.run(ort::inputs!["input" => tensor])?;
-        let policy = output_tensor(&outputs, "policy", [n, POLICY_SIZE])?;
-        let value = output_tensor(&outputs, "value", [n, 1])?;
-        collect_outputs(queries, policy, value, logits, values)
+        let outputs = if let Some((binding, device_id)) = &mut self.output_binding {
+            let memory = MemoryInfo::new(
+                AllocationDevice::CUDA_PINNED,
+                *device_id,
+                AllocatorType::Device,
+                MemoryType::CPUOutput,
+            )?;
+            binding.bind_input("input", &tensor)?;
+            binding.clear_outputs();
+            binding.bind_output_to_device("policy", &memory)?;
+            binding.bind_output_to_device("value", &memory)?;
+            binding.synchronize_inputs()?;
+            let outputs = self.session.run_binding(binding)?;
+            binding.synchronize_outputs()?;
+            outputs
+        } else {
+            self.session.run(ort::inputs!["input" => tensor])?
+        };
+        let policy = output_tensor::<f16>(&outputs, "policy", [n, self.policy_map.width()])?;
+        let value = output_tensor::<f32>(&outputs, "value", [n, 1])?;
+        collect_outputs(queries, &self.policy_map, policy, value, logits, values)
     }
 }
 
-/// 形を検査済みの出力から、依頼された合法手のlogitと価値だけを検査して取り出す。
+/// 形を検査済みの出力から、依頼された合法手のlogitだけをf32へ変換し、価値とともに検査して取り出す。
 fn collect_outputs(
     queries: &[Query<'_>],
-    policy: &[f32],
+    policy_map: &PolicyMap,
+    policy: &[f16],
     value: &[f32],
     logits: &mut Vec<f32>,
     values: &mut Vec<f32>,
@@ -338,7 +399,13 @@ fn collect_outputs(
         }
         for &mv in query.moves {
             let label = policy_label(mv, query.position.side_to_move());
-            let logit = policy[index * POLICY_SIZE + label];
+            let packed = policy_map
+                .packed_index(label)
+                .ok_or(NnError::MissingPolicyLabel {
+                    query: index,
+                    label,
+                })?;
+            let logit = policy[index * policy_map.width() + packed].to_f32();
             if !logit.is_finite() {
                 return Err(NnError::NonFiniteOutput { query: index });
             }
@@ -417,56 +484,85 @@ mod tests {
         )
     }
 
-    // [`OnnxEvaluator::new`]の契約: 出力の順序によらず、名前・f32・動的バッチ・固定幅を検査する。
+    // [`OnnxEvaluator::new`]の契約: 名前・入力u8・方策f16・価値f32・動的バッチ・固定幅を検査する。
     #[test]
-    fn model_signature_requires_named_float_tensors_with_dynamic_batches() {
-        let input = tensor_port(
-            "input",
-            &[-1, INPUT_PLANES as i64, 12, 12],
-            TensorElementType::Float32,
-        );
+    fn model_signature_requires_uint8_input_fp16_policy_fp32_value_and_dynamic_batches() {
+        let input = tensor_port("input", &[-1, 159, 12, 12], TensorElementType::Uint8);
         let outputs = vec![
             tensor_port("value", &[-1, 1], TensorElementType::Float32),
-            tensor_port("policy", &[-1, 35856], TensorElementType::Float32),
+            tensor_port("policy", &[-1, 3], TensorElementType::Float16),
         ];
-        validate_signature(vec![input.clone()], outputs.clone()).unwrap();
+        for width in [1, 3, 35856] {
+            assert_eq!(
+                validate_signature(
+                    vec![input.clone()],
+                    vec![
+                        outputs[0].clone(),
+                        tensor_port("policy", &[-1, width], TensorElementType::Float16),
+                    ],
+                )
+                .unwrap(),
+                width as usize
+            );
+        }
         for inputs in [
             vec![],
             vec![input.clone(), input.clone()],
             vec![tensor_port(
                 "other",
-                &[-1, INPUT_PLANES as i64, 12, 12],
-                TensorElementType::Float32,
+                &[-1, 159, 12, 12],
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
-                &[7, INPUT_PLANES as i64, 12, 12],
-                TensorElementType::Float32,
+                &[7, 159, 12, 12],
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
                 &[-1, -1, 12, 12],
-                TensorElementType::Float32,
+                TensorElementType::Uint8,
             )],
             vec![tensor_port(
                 "input",
-                &[-1, INPUT_PLANES as i64, 12, 12],
+                &[-1, 159, 12, 12],
                 TensorElementType::Float16,
+            )],
+            vec![tensor_port(
+                "input",
+                &[-1, 159, 12, 12],
+                TensorElementType::Float32,
             )],
         ] {
             assert!(matches!(
                 validate_signature(inputs, outputs.clone()),
+                Err(NnError::ModelSignature { expected, .. })
+                    if expected == "input u8 [-1, 159, 12, 12]; policy f16 [-1, width] (fixed width > 0), value f32 [-1, 1]"
+            ));
+        }
+        for invalid in [
+            tensor_port("other", &[-1, 3], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 0], TensorElementType::Float16),
+            tensor_port("policy", &[-1, -1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, -2], TensorElementType::Float16),
+            tensor_port("policy", &[1, 3], TensorElementType::Float16),
+            tensor_port("policy", &[-1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 3, 1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 3], TensorElementType::Float32),
+        ] {
+            assert!(matches!(
+                validate_signature(vec![input.clone()], vec![outputs[0].clone(), invalid]),
                 Err(NnError::ModelSignature { .. })
             ));
         }
         for invalid in [
-            tensor_port("other", &[-1, 35856], TensorElementType::Float32),
-            tensor_port("policy", &[-1, 35855], TensorElementType::Float32),
-            tensor_port("policy", &[1, 35856], TensorElementType::Float32),
-            tensor_port("policy", &[-1, 35856], TensorElementType::Float16),
+            tensor_port("other", &[-1, 1], TensorElementType::Float32),
+            tensor_port("value", &[-1, 2], TensorElementType::Float32),
+            tensor_port("value", &[1, 1], TensorElementType::Float32),
+            tensor_port("value", &[-1, 1], TensorElementType::Float16),
         ] {
             assert!(matches!(
-                validate_signature(vec![input.clone()], vec![outputs[0].clone(), invalid]),
+                validate_signature(vec![input.clone()], vec![invalid, outputs[1].clone()]),
                 Err(NnError::ModelSignature { .. })
             ));
         }
@@ -485,13 +581,13 @@ mod tests {
             Move {
                 from: sq(5, 5),
                 mid: None,
-                to: sq(5, 6),
+                to: sq(6, 5),
                 promote: false,
             },
             Move {
                 from: sq(5, 5),
                 mid: None,
-                to: sq(6, 5),
+                to: sq(5, 6),
                 promote: false,
             },
         ];
@@ -506,26 +602,67 @@ mod tests {
             },
             Query {
                 position: &white,
-                moves: &moves[1..],
+                moves: &moves[..1],
             },
         ];
         // 方策ラベルの仕様表: 南へ1歩は面0、東へ1歩は面22、後手から見た西へ1歩は面66。
-        let mut policy = vec![f32::NAN; 3 * POLICY_SIZE];
-        policy[65] = 2.0;
-        policy[22 * 144 + 65] = -3.0;
-        policy[2 * POLICY_SIZE + 66 * 144 + 78] = 4.0;
+        // 相対移動元は先手65、後手78なので、元のラベルは65、3233、9582である。
+        let policy_map = PolicyMap::from_metadata(Some("0,65,3233,9582,35855"), 5).unwrap();
+        let mut policy = vec![f16::NAN; 3 * 5];
+        policy[1] = f16::from_f32(2.0);
+        policy[2] = f16::from_f32(-3.0);
+        policy[2 * 5 + 3] = f16::from_f32(4.0);
         let mut logits = Vec::new();
         let mut values = Vec::new();
         collect_outputs(
             &queries,
+            &policy_map,
             &policy,
             &[0.0, 0.5, 1.0],
             &mut logits,
             &mut values,
         )
         .unwrap();
-        assert_eq!(logits, [2.0, -3.0, 4.0]);
+        assert_eq!(logits, [-3.0, 2.0, 4.0]);
         assert_eq!(values, [0.0, 0.5, 1.0]);
+    }
+
+    // メタデータの契約: 合法手が表にないときは、依頼番号と元のラベルを持つエラーを返す。
+    #[test]
+    fn rejects_requested_labels_missing_from_the_policy_map() {
+        let position = position(Color::Black, &[(sq(5, 5), Color::Black, PieceKind::Rook)]);
+        let moves = [Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 6),
+            promote: false,
+        }];
+        let queries = [
+            Query {
+                position: &position,
+                moves: &[],
+            },
+            Query {
+                position: &position,
+                moves: &moves,
+            },
+        ];
+        // 南へ1歩は面0、移動元の相対升は65。表の64と66の間に目的のラベルはない。
+        let policy_map = PolicyMap::from_metadata(Some("64,66"), 2).unwrap();
+        assert!(matches!(
+            collect_outputs(
+                &queries,
+                &policy_map,
+                &[f16::ZERO; 4],
+                &[0.5, 0.5],
+                &mut Vec::new(),
+                &mut Vec::new(),
+            ),
+            Err(NnError::MissingPolicyLabel {
+                query: 1,
+                label: 65
+            })
+        ));
     }
 
     // [`Evaluator`]の契約: 合法手の非有限logit、非有限の価値、および範囲外の価値を区別して拒む。
@@ -542,17 +679,27 @@ mod tests {
             position: &position,
             moves: &moves,
         }];
-        let mut policy = vec![0.0; POLICY_SIZE];
+        // 南へ1歩の面0と相対升65から得るラベルを、幅1の出力に対応付ける。
+        let policy_map = PolicyMap::from_metadata(Some("65"), 1).unwrap();
+        let mut policy = [f16::ZERO];
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            policy[65] = invalid;
-            assert!(matches!(
-                collect_outputs(&queries, &policy, &[0.5], &mut Vec::new(), &mut Vec::new()),
-                Err(NnError::NonFiniteOutput { query: 0 })
-            ));
-            policy[65] = 0.0;
+            policy[0] = f16::from_f32(invalid);
             assert!(matches!(
                 collect_outputs(
                     &queries,
+                    &policy_map,
+                    &policy,
+                    &[0.5],
+                    &mut Vec::new(),
+                    &mut Vec::new()
+                ),
+                Err(NnError::NonFiniteOutput { query: 0 })
+            ));
+            policy[0] = f16::ZERO;
+            assert!(matches!(
+                collect_outputs(
+                    &queries,
+                    &policy_map,
                     &policy,
                     &[invalid],
                     &mut Vec::new(),
@@ -563,7 +710,7 @@ mod tests {
         }
         for invalid in [-0.01, 1.01] {
             assert!(matches!(
-                collect_outputs(&queries, &policy, &[invalid], &mut Vec::new(), &mut Vec::new()),
+                collect_outputs(&queries, &policy_map, &policy, &[invalid], &mut Vec::new(), &mut Vec::new()),
                 Err(NnError::ValueOutOfRange { query: 0, value }) if value == invalid
             ));
         }

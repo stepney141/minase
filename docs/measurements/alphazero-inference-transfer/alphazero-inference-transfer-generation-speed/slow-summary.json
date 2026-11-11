@@ -1,0 +1,78 @@
+{
+  "rounds": {
+    "start": 0,
+    "count": 5
+  },
+  "variants": {
+    "S": {
+      "median": 425.68015391197434,
+      "min": 417.4929504622296,
+      "max": 431.653885357472,
+      "count": 5,
+      "width": 0.03326660819186492,
+      "nonzero_exits": 2
+    },
+    "A": {
+      "median": 594.4039855916894,
+      "min": 583.7302502597429,
+      "max": 609.0001759313154,
+      "count": 5,
+      "width": 0.042513048842392966,
+      "nonzero_exits": 0
+    },
+    "B": {
+      "median": 1005.4494584144331,
+      "min": 981.7399859940838,
+      "max": 1016.1598874745815,
+      "count": 5,
+      "width": 0.03423334827269886,
+      "nonzero_exits": 3
+    },
+    "C": {
+      "median": 1228.3408600209825,
+      "min": 1214.0102239056162,
+      "max": 1246.5195691667288,
+      "count": 5,
+      "width": 0.026466061920758184,
+      "nonzero_exits": 2
+    },
+    "D": {
+      "median": 1305.948130667561,
+      "min": 1264.038294059818,
+      "max": 1310.9617102230147,
+      "count": 5,
+      "width": 0.03593053587757028,
+      "nonzero_exits": 2
+    }
+  },
+  "comparisons": {
+    "A": {
+      "parent": "S",
+      "increment": 0.3963629267870572,
+      "threshold": 0.042513048842392966,
+      "decision": "adopt",
+      "slower_beyond_width": false
+    },
+    "B": {
+      "parent": "A",
+      "increment": 0.6915254318383741,
+      "threshold": 0.042513048842392966,
+      "decision": "adopt",
+      "slower_beyond_width": false
+    },
+    "C": {
+      "parent": "B",
+      "increment": 0.2216833474235922,
+      "threshold": 0.03423334827269886,
+      "decision": "adopt",
+      "slower_beyond_width": false
+    },
+    "D": {
+      "parent": "C",
+      "increment": 0.0631805658937803,
+      "threshold": 0.03593053587757028,
+      "decision": "adopt",
+      "slower_beyond_width": false
+    }
+  }
+}

@@ -1,9 +1,15 @@
 """固定局面集の推論結果を、合法手の方策と価値で照合する。
 
-ONNX RuntimeのCPUでは--policy logitsを選び、logitと価値をそれぞれ許容誤差1×10⁻⁴で比べる。
-TensorRTのFP16（16ビット浮動小数点）では--policy probabilitiesを選び、探索が使う合法手の確率で比べる。
+ONNXの方策の出力はFP16（16ビット浮動小数点）へ丸められている。
+ONNX RuntimeのCPUでは--policy fp16-logitsを選び、参照のlogitもIEEE 754のFP16へ最近接偶数で丸める。
+丸めた参照と候補との差の絶対値から、丸めた参照でのFP16の1目盛りを引き、0以上にした値の最大を許容誤差と比べる。
+1目盛りは、丸めた参照をrとして、|r|が2⁻¹⁴以上なら2^(floor(log2|r|) − 10)、それ未満なら2⁻²⁴である。
+float32の計算誤差により丸めの境界をまたぐと、両者がFP16で1目盛りずれるため、この分を認める。
+参照を丸めると無限大になる場合は不合格にする。CPUでは方策と価値の許容誤差をそれぞれ1×10⁻⁴とする。
+
+TensorRTのFP16では--policy probabilitiesを選び、探索が使う合法手の確率で比べる。
 確率は、各局面の合法手のlogitから、基準と候補のそれぞれで倍精度のsoftmaxにより計算する。
---policy-toleranceと--value-toleranceは必須であり、FP16では確率1×10⁻²、価値2×10⁻²などを指定する。
+--policy-toleranceと--value-toleranceは必須であり、FP16では確率1×10⁻²、価値5×10⁻²などを指定する。
 
 学習したネットの測定では、FP16の丸めの累積によるlogitの差の最大は4.3×10⁻²、価値の差の最大は1.1×10⁻²だったが、確率の差の最大は2.8×10⁻³であった。
 各logitを列の隣の着手から読み違えた場合、局面ごとの確率の差の最大は中央値3.5×10⁻²、全体で0.21となった。
@@ -11,14 +17,14 @@ TensorRTのFP16（16ビット浮動小数点）では--policy probabilitiesを�
 測定の詳細はdocs/measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.mdにある。
 
 最大のlogitを持つ手の不一致は件数と基準のlogitの差を報告し、合否に使わない。
-logitで比べる場合、各logitの差が許容誤差t以下なら、候補が最大とした手の基準logitは基準の最大から2t以内に収まる。
-この範囲は要素ごとの検査に含まれるため、最大の手を別途検査する必要はない。
+max_logit_abs_diffは、どちらの比較方法でも丸める前の参照と候補との差の最大を報告する。
 """
 
 import argparse
 import json
 import math
 from pathlib import Path
+import struct
 import sys
 
 
@@ -80,6 +86,7 @@ def compare(
                 problems.append(f"{name} position {index}: non-finite logit")
 
     max_logit_diff = 0.0
+    max_fp16_logit_diff = 0.0
     max_probability_diff = 0.0
     max_value_diff = 0.0
     best_move_mismatches = 0
@@ -98,13 +105,24 @@ def compare(
         if finite_values:
             max_value_diff = max(max_value_diff, abs(left["value"] - right["value"]))
         if finite_logits:
-            for (_, left_logit), (_, right_logit) in zip(left_moves, right_moves):
+            for (label, left_logit), (_, right_logit) in zip(left_moves, right_moves):
                 max_logit_diff = max(max_logit_diff, abs(left_logit - right_logit))
+                if policy == "fp16-logits":
+                    try:
+                        rounded = struct.unpack("e", struct.pack("e", left_logit))[0]
+                    except OverflowError:
+                        problems.append(
+                            f"reference position {index}: policy label {label} logit {left_logit} "
+                            "cannot be represented as finite FP16"
+                        )
+                        continue
+                    magnitude = abs(rounded)
+                    step = 2 ** (math.floor(math.log2(magnitude)) - 10) if magnitude >= 2 ** -14 else 2 ** -24
+                    max_fp16_logit_diff = max(max_fp16_logit_diff, abs(rounded - right_logit) - step)
             left_probabilities = softmax([float(logit) for _, logit in left_moves])
             right_probabilities = softmax([float(logit) for _, logit in right_moves])
             for left_probability, right_probability in zip(left_probabilities, right_probabilities):
                 max_probability_diff = max(max_probability_diff, abs(left_probability - right_probability))
-            # logitで比べる場合、各logitの差がt以下なら、候補が選んだ手の基準logitと基準の最大との差は2t以下。
             # どちらの比較方法でも、不一致の件数と差は報告だけに使う。
             # 同率なら列の先頭を採る。ラベル列の一致も別に検査する。
             left_best = max(range(len(left_moves)), key=lambda i: left_moves[i][1]) if left_moves else None
@@ -117,8 +135,8 @@ def compare(
                     gap = left_moves[left_best][1] - left_moves[right_best][1]
                     best_move_mismatch_gaps.append([index, gap])
 
-    if policy == "logits":
-        policy_name, max_policy_diff = "logit", max_logit_diff
+    if policy == "fp16-logits":
+        policy_name, max_policy_diff = "FP16 logit after subtracting one step", max_fp16_logit_diff
     else:
         policy_name, max_policy_diff = "probability", max_probability_diff
     if max_policy_diff > policy_tolerance:
@@ -159,7 +177,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
-    parser.add_argument("--policy", choices=("logits", "probabilities"), required=True)
+    parser.add_argument("--policy", choices=("fp16-logits", "probabilities"), required=True)
     parser.add_argument("--policy-tolerance", type=finite_nonnegative_float, required=True)
     parser.add_argument("--value-tolerance", type=finite_nonnegative_float, required=True)
     args = parser.parse_args()

@@ -19,7 +19,7 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 /// 面94は、直前の着手で獅子以外の駒が相手獅子を取った升（[`Position::lion_capture_square`]）に1を置く。
 /// 先獅子（chu-shogi.md第15条）の禁止は、この升と盤面から決まる。
 /// 面95〜158は[`encode_control`]が返す駒種ごとの疑似利きと利き数の面である。
-/// 全要素を0にした後に該当箇所へ1を置くため、値は0.0か1.0だけである。
+/// 全要素を0にした後に該当箇所へ1を置くため、値は0か1だけである。
 ///
 /// 規則セット`engine-default`（P0でP5なし）では、この159面で次の合法手が決まる。
 /// 過去の局面の履歴と反復の回数は含めない。
@@ -30,12 +30,12 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 ///
 /// # Panics
 /// `out.len()`が[`INPUT_SIZE`]でなければパニックする。
-pub fn encode(position: &Position, out: &mut [f32]) -> Result<(), NnError> {
+pub fn encode(position: &Position, out: &mut [u8]) -> Result<(), NnError> {
     assert_eq!(out.len(), INPUT_SIZE);
     if !position.promotion_deferred().is_empty() {
         return Err(NnError::PromotionDeferred);
     }
-    out.fill(0.0);
+    out.fill(0);
     let side = position.side_to_move();
     for square in position.occupied() {
         let piece = position
@@ -43,10 +43,10 @@ pub fn encode(position: &Position, out: &mut [f32]) -> Result<(), NnError> {
             .expect("occupied square has a piece");
         let opponent = usize::from(piece.color() != Some(side));
         let plane = opponent * PIECE_STATE_COUNT + piece_state(piece);
-        out[plane * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1.0;
+        out[plane * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1;
     }
     if let Some(square) = position.lion_capture_square() {
-        out[94 * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1.0;
+        out[94 * BOARD_SQUARE_COUNT + relative_square(square, side)] = 1;
     }
     encode_control(position, &mut out[95 * BOARD_SQUARE_COUNT..]);
     Ok(())
@@ -78,24 +78,20 @@ mod tests {
             .unwrap();
         let mut position = builder.finish().unwrap();
         position.set_lion_capture(Some(sq(5, 7))).unwrap();
-        let mut input = vec![7.0; INPUT_SIZE];
+        let mut input = vec![7; INPUT_SIZE];
         encode(&position, &mut input).unwrap();
         let active: Vec<_> = input[..95 * BOARD_SQUARE_COUNT]
             .iter()
             .enumerate()
-            .filter_map(|(i, &value)| (value != 0.0).then_some((i, value)))
+            .filter_map(|(i, &value)| (value != 0).then_some((i, value)))
             .collect();
         assert_eq!(
             active,
-            vec![
-                (29 * 144 + 105, 1.0),
-                (64 * 144 + 38, 1.0),
-                (94 * 144 + 54, 1.0)
-            ]
+            vec![(29 * 144 + 105, 1), (64 * 144 + 38, 1), (94 * 144 + 54, 1)]
         );
-        assert!(input.iter().all(|&value| value == 0.0 || value == 1.0));
+        assert!(input.iter().all(|&value| value == 0 || value == 1));
         encode(&Position::empty(Color::Black), &mut input).unwrap();
-        assert!(input.iter().all(|&value| value == 0.0));
+        assert!(input.iter().all(|&value| value == 0));
     }
 
     /// 盤と先獅子の升を180度回転し、手番と駒の色を交換する。
@@ -123,8 +119,8 @@ mod tests {
     // [`encode`]の契約: 後手番の入力は、180度回転と陣営交換をした先手番の入力に等しい。
     #[test]
     fn white_inputs_match_rotation_with_colors_swapped_in_random_games() {
-        let mut white_input = vec![0.0; INPUT_SIZE];
-        let mut black_input = vec![0.0; INPUT_SIZE];
+        let mut white_input = vec![0; INPUT_SIZE];
+        let mut black_input = vec![0; INPUT_SIZE];
         let mut checked_positions = 0;
         for mut position in random_positions()
             .into_iter()
@@ -167,7 +163,7 @@ mod tests {
                 .unwrap();
             assert!(!position.promotion_deferred().is_empty());
             assert!(matches!(
-                encode(&position, &mut vec![0.0; INPUT_SIZE]),
+                encode(&position, &mut vec![0; INPUT_SIZE]),
                 Err(NnError::PromotionDeferred)
             ));
         }

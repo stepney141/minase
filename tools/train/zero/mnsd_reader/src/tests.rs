@@ -60,11 +60,15 @@ fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
             actual.boards[index * 144..(index + 1) * 144],
             records::encode_board(expected.position()).unwrap()
         );
-        let mut input = vec![0.0; INPUT_SIZE];
+        let mut input = vec![0; INPUT_SIZE];
         encode(expected.position(), &mut input).unwrap();
         assert_eq!(
             planes[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
             input[95 * 144..]
+                .iter()
+                .copied()
+                .map(f32::from)
+                .collect::<Vec<_>>()
         );
         let begin = actual.legal_offsets[index] as usize;
         let end = actual.legal_offsets[index + 1] as usize;
@@ -84,13 +88,13 @@ fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
 
 #[test]
 fn control_planes_match_inference_for_every_retained_record() {
-    // フェーズ3: MNSDの再生で得た局面を推論で符号化し、盤の配列から得た64面と照合する。
+    // MNSDの再生で得た局面を推論で符号化し、盤の配列から得た64面と照合する。
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/zero-selfplay-small.mnsd");
     let records = read_file(&path).unwrap();
     let actual = control_planes(&records.boards, &records.sides).unwrap();
     assert_eq!(actual.len(), records.sides.len() * 64 * 144);
     let mut reader = Reader::new(BufReader::new(File::open(&path).unwrap())).unwrap();
-    let mut input = vec![0.0; INPUT_SIZE];
+    let mut input = vec![0; INPUT_SIZE];
     let mut index = 0;
     while let Some(game) = reader.read_game().unwrap() {
         for (entry, position) in game.record().entries().iter().zip(game.positions()) {
@@ -103,7 +107,11 @@ fn control_planes_match_inference_for_every_retained_record() {
             encode(position, &mut input).unwrap();
             assert_eq!(
                 actual[index * CONTROL_SIZE..(index + 1) * CONTROL_SIZE],
-                input[95 * 144..],
+                input[95 * 144..]
+                    .iter()
+                    .copied()
+                    .map(f32::from)
+                    .collect::<Vec<_>>(),
                 "record {index}"
             );
             index += 1;
@@ -162,9 +170,16 @@ fn control_planes_decode_promoted_pieces_and_both_sides_from_records() {
     let mut reader = Reader::new(BufReader::new(File::open(path).unwrap())).unwrap();
     for planes in actual.as_chunks::<CONTROL_SIZE>().0 {
         let game = reader.read_game().unwrap().unwrap();
-        let mut input = vec![0.0; INPUT_SIZE];
+        let mut input = vec![0; INPUT_SIZE];
         encode(&game.positions()[0], &mut input).unwrap();
-        assert_eq!(planes, &input[95 * 144..]);
+        assert_eq!(
+            planes.as_slice(),
+            input[95 * 144..]
+                .iter()
+                .copied()
+                .map(f32::from)
+                .collect::<Vec<_>>()
+        );
     }
     assert_eq!(records.sides, [0, 1]);
     assert!(reader.read_game().unwrap().is_none());

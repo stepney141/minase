@@ -3,12 +3,13 @@
 from pathlib import Path
 from typing import NamedTuple
 
+import numpy as np
 import onnx
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .encoding import INPUT_PLANES
+from .encoding import INPUT_PLANES, policy_mask
 
 
 class ResidualBlock(nn.Module):
@@ -84,12 +85,31 @@ class ZeroNet(nn.Module):
         )
 
 
+class _OnnxExport(nn.Module):
+    """ONNXのuint8入力をfloat32へ変換し、可能なラベルの方策だけをFP16で返す。"""
+
+    def __init__(self, model: ZeroNet) -> None:
+        super().__init__()
+        self.model = model
+        self.register_buffer("policy_labels", torch.tensor(np.flatnonzero(policy_mask()), dtype=torch.int64))
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """0と1の入力を変換し、方策を詰めてからFP16にし、勝率はfloat32で返す。"""
+        policy, value = self.model(x.float())
+        return policy.index_select(1, self.policy_labels).half(), value
+
+
 def export_onnx(model: ZeroNet, path: Path) -> None:
-    """実現性の測定と参照推論で同じ設定のONNXを書き出し、検査する。"""
-    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.float32)
+    """入力がuint8、方策がFP16、価値がfloat32の推論用ONNXを書き出し、検査する。
+
+    方策はpolicy_maskが真のラベルへ昇順に詰める。メタデータのpolicy_labelsに、
+    詰める前のラベルを空白なしの10進整数のカンマ区切りで記録する。
+    """
+    sample = torch.zeros(1, INPUT_PLANES, 12, 12, dtype=torch.uint8)
+    export_model = _OnnxExport(model).eval()
     with torch.inference_mode():
         torch.onnx.export(
-            model,
+            export_model,
             sample,
             path,
             input_names=["input"],
@@ -102,4 +122,9 @@ def export_onnx(model: ZeroNet, path: Path) -> None:
                 "value": {0: "batch"},
             },
         )
+    network = onnx.load(path)
+    labels = network.metadata_props.add()
+    labels.key = "policy_labels"
+    labels.value = ",".join(str(label) for label in export_model.policy_labels.tolist())
+    onnx.save(network, path)
     onnx.checker.check_model(str(path))

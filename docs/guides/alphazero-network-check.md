@@ -45,13 +45,17 @@ done
 10ブロック128チャネルのネットでは、TensorRTの初回の実行でエンジンの作成に7〜10秒かかり、2回目以降はキャッシュからの読み込みが0.4秒ほどで終わる。
 キャッシュは、ネット、GPU、および最大バッチの組ごとに、`<キャッシュの親ディレクトリ>`の下の別のディレクトリに作られる。
 ONNX Runtime 1.28.3では、CUDAの実行プロバイダと、RTX 4090の機械でTensorRTのエンジンを作る実行が、出力を書き終えた後の終了処理で異常終了することがあった（終了コード134）。
-`env.sh`が固定する1.31.1では、どちらも起きていない（[ONNX Runtimeの版のADR](../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+`env.sh`が固定する1.31.1では、作業機と多くの機械で起きていないが、2026年11月11日に借りたRTX 4090の機械の1台では、TensorRTのエンジンを新しく作った実行が4回中2回、同じ形で異常終了した（[ONNX Runtimeの版のADR](../adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。
+出力のJSONは終了処理の前に書き終わっており、エンジンはキャッシュに残るので、同じコマンドをもう1回実行すると、キャッシュのエンジンで正常に終わる。
 
 ## 4. PyTorchの出力を書き出す
 
 PyTorchの出力は、照合する`minase dev nn-eval`の出力と同じ形のJSON（`"backend": "pytorch"`）で書き出す。
 学習したネットと、学習器の`init`が書き出す強化学習の初期ネットの出力は、どちらも学習器`minase_zero`の`fixture-eval`がチェックポイントから書き出す。
 `fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
+PyTorchの出力は、ネットが学習に使う順伝播の値であり、合法手のlogitは方策の35,856ラベルの元の番号で引いたfloat32の値である。
+書き出したONNXは、入力をuint8で受け、方策を、盤面によらず合法手になり得る16,108ラベルへ詰めたFP16で返す（[入出力の受け渡しのADR](../adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)）。
+`minase dev nn-eval`は、詰めた後の添字から読んだlogitを、元のラベルの番号とともに書き出すので、2つの出力は同じ形で比べられる。
 書き出しはBatchNormを定数畳み込みで畳み込みの重みとバイアスへ融合し、その単精度の丸めはCPUによって変わるので、このバイト単位の一致は学習した機械でしか成り立たない。
 1サイクル分学習したネットを作業機で書き出し直すと、70個の初期値のうち28個が最大4.8×10⁻⁷異なった（[記録](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)）。
 このため`fixture-eval`は学習した機械で実行し、作業機などほかの機械では、そこで書いた出力を照合の基準に使う。
@@ -65,18 +69,20 @@ uv run --frozen python -m minase_zero fixture-eval --checkpoint <出力先>/chec
 ## 5. 照合する
 
 各出力を、PyTorchの出力を基準として`tools/train/zero/nn_compare.py`で照合する。
-ONNX RuntimeのCPUの出力の照合では、合法手のlogitと価値の差を、どちらも許容誤差1×10⁻⁴で比べる。
+ONNX RuntimeのCPUの出力の照合では、PyTorchの出力のlogitをFP16へ丸めてから合法手のlogitを比べ、差の絶対値からFP16の1目盛りを引いた値を許容誤差1×10⁻⁴で判定する。価値の差も許容誤差1×10⁻⁴で比べる。
+1目盛りを許すのは、ONNXが返すlogitがFP16へ丸められており、float32の計算の誤差で丸めの境界をまたぐと1目盛りずれるからである。
 TensorRTのFP16の出力の照合では、各局面の合法手のlogitをsoftmaxで正規化した確率の差を許容誤差1×10⁻²で、価値の差を5×10⁻²で比べる。
 
 ```console
 uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/cpu-b7.json \
-  --policy logits --policy-tolerance 1e-4 --value-tolerance 1e-4
+  --policy fp16-logits --policy-tolerance 1e-4 --value-tolerance 1e-4
 uv run --frozen python nn_compare.py --reference <出力>/pytorch.json --candidate <出力>/trt-b7.json \
   --policy probabilities --policy-tolerance 1e-2 --value-tolerance 5e-2
 ```
 
 照合は、ネットのSHA-256、局面数、各局面のSFEN、ラベルの列が一致し、すべての値が有限であり、`--policy`で選んだ量と価値の差の絶対値の最大がそれぞれの許容誤差以下のときに、終了コード0で終了する。
 標準出力の1行のJSONは、局面数、logitの差の最大、合法手の確率の差の最大、価値の差の最大、最大のlogitを持つ手（以下、最大の手）の不一致の数、および不一致の局面ごとの基準のlogitの差を示す。
+logitの差の最大は、どちらの比べ方でも、丸める前のPyTorchの出力との差である。FP16への丸めだけで、学習したネットでは約4×10⁻³になる（logitの絶対値が8以上16未満のときの1目盛りの半分）。
 
 FP16をlogitではなく確率で比べるのは、FP16の丸めの誤差が値の大きさに比例して層ごとに累積し、logitの大きい学習したネットではlogitの差も大きくなるからである。
 1サイクル分学習した10ブロック128チャネルのネットでは、合法手のlogitの最大が約14あり、FP16のlogitの差は最大4.3×10⁻²、価値の差は最大1.1×10⁻²であったが、MCTSが使う合法手の確率の差は最大2.8×10⁻³であった（[記録](../measurements/alphazero-trainer/alphazero-trainer-trained-net-output-check.md)）。
@@ -84,7 +90,7 @@ FP16をlogitではなく確率で比べるのは、FP16の丸めの誤差が値�
 FP16の照合を確率と価値の形にしたのは2026年10月28日の開発者の決定であり、価値の許容誤差は、強化学習のサイクルが進むにつれて価値の差が丸めの累積で増え、サイクル6で0.0218になったことを受けて、2026年10月29日に2×10⁻²から5×10⁻²へ改めた（[ADR](../adr/compare-fp16-zero-network-values-within-five-hundredths.md)）。
 
 最大の手の不一致は合否に使わない。
-logitで比べる場合、各logitの差が許容誤差t以下なら、候補が最大とした手の基準のlogitは基準の最大から2t以内に収まるので、最大の手の一致は要素ごとの検査に含まれ、ほぼ同点の局面でだけ入れ替わる。
+要素ごとの検査が通れば、最大の手は、logitがほぼ同点の局面でだけ入れ替わるからである。
 
 ランダム初期化のネットは、合法手のlogitの散らばりが小さく（局面ごとの標準偏差0.05〜0.07）、確率がほぼ一様になるので、FP16の確率の照合では読み違えを検出できない。
 価値の散らばりも0.003しかなく、FP16の照合では価値の読み出しのずれも検出できない。
@@ -101,6 +107,16 @@ CPUの照合が通り、TensorRTの照合だけが許容誤差を超えた場合
 
 固定局面集は、入力の符号化または方策のラベルを変えたときだけ書き直す。
 入力の符号化か方策のラベルを変えると、学習済みのネットはすべて使えなくなる。
+
+入力の面とラベルの意味を変えずに、ONNXの入力と出力の型や形だけを変えた場合は、固定局面集を書き直さない。
+この場合、変える前に書き出したONNXは推論器が起動時に拒むので、チェックポイントからONNXだけを書き出し直す。
+
+```console
+cd tools/train/zero
+uv run --frozen python -m minase_zero export-onnx --checkpoint <出力先>/checkpoint.pt --out <新しいネット.onnx>
+```
+
+書き出し直したONNXはSHA-256が変わるので、PyTorchの出力も同じ機械で`fixture-eval`を実行して作り直す。
 
 ```console
 cargo run --release --bin minase -- dev nn-fixture --out crates/minase/tests/fixtures/nn-positions.jsonl
