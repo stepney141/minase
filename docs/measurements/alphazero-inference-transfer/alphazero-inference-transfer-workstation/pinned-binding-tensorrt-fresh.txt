@@ -1,0 +1,22 @@
+runtime_build_info: ORT Build Info: git-branch=HEAD, git-commit-id=41d4d61f1, int4-kv-cache=1, fp8-kv-cache=1, fp4-qmoe=1, build type=Release
+mode: fresh
+backend: tensorrt
+max_batch: 128
+iterations: 1000
+batch_sweep_iterations: 256
+total_iterations: 1256
+random_seed: 5573589319906701683
+difference_scope: finite pairs only; both tests combined
+policy_max_abs_diff: 0.000000000e0
+policy_non_finite_binding: 0
+policy_non_finite_run: 0
+value_max_abs_diff: 0.000000000e0
+value_non_finite_binding: 0
+value_non_finite_run: 0
+non_finite_total: 0
+run_binding_total_ms: 20885.746438
+session_run_total_ms: 22382.704343
+run_binding_mean_ms: 16.628779
+session_run_mean_ms: 17.820624
+timing_scope: calls only; both tests combined; first invocation included
+exit=0

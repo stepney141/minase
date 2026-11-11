@@ -1,0 +1,4 @@
+runtime_build_info: ORT Build Info: git-branch=HEAD, git-commit-id=41d4d61f1, int4-kv-cache=1, fp8-kv-cache=1, fp4-qmoe=1, build type=Release
+mode=keep; backend=cuda; test=continuous; iteration=2; total_iteration=2; batch=128; operation=run_binding: /onnxruntime_src/onnxruntime/core/providers/cuda/gpu_data_transfer.cc:104 virtual onnxruntime::common::Status onnxruntime::GPUDataTransfer::CopyTensorAsync(const onnxruntime::Tensor&, onnxruntime::Tensor&, onnxruntime::Stream&) const dst_data != src_data was false. 
+
+exit=1
