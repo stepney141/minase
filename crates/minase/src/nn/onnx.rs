@@ -15,10 +15,9 @@ use ort::session::{IoBinding, Session, SessionOutputs};
 use ort::value::{PrimitiveTensorElementType, TensorElementType, TensorRef, ValueType};
 use sha2::{Digest, Sha256};
 
+use super::policy_map::PolicyMap;
 use super::tensorrt_cache::{TensorRtCacheKey, query_gpus, validate_cuda_visible_devices};
-use super::{
-    Evaluator, INPUT_PLANES, INPUT_SIZE, NnError, POLICY_SIZE, Query, encode, policy_label,
-};
+use super::{Evaluator, INPUT_PLANES, INPUT_SIZE, NnError, Query, encode, policy_label};
 
 /// ONNX形式のネットのバイト列とSHA-256。
 ///
@@ -140,6 +139,7 @@ pub struct OnnxEvaluator {
     session: Session,
     // MemoryInfoはSendではないので、機器番号を保持して呼び出しごとに作る。
     output_binding: Option<(IoBinding, i32)>,
+    policy_map: PolicyMap,
     input: Vec<u8>,
     max_batch: NonZeroUsize,
 }
@@ -151,10 +151,12 @@ impl OnnxEvaluator {
     /// TensorRTとCUDAではCPUへの部分的な退避も禁じる。
     /// TensorRTとCUDAでは`CUDA_VISIBLE_DEVICES`が設定されていれば、空値でも起動を拒む。
     /// 入力はu8の`input: [動的バッチ, 159, 12, 12]`、出力はf16の
-    /// `policy: [動的バッチ, 35856]`とf32の`value: [動的バッチ, 1]`でなければならない。
+    /// `policy: [動的バッチ, 正の固定幅]`とf32の`value: [動的バッチ, 1]`でなければならない。
+    /// メタデータ`policy_labels`には、詰める前のラベルを10進整数のカンマ区切りで指定する。
+    /// 表は厳密な昇順で、各ラベルは35,856未満、要素数は方策の固定幅と一致しなければならない。
     ///
     /// # Errors
-    /// ライブラリ、実行プロバイダ、キャッシュ、バッファ確保、またはネットの入出力に
+    /// ライブラリ、実行プロバイダ、キャッシュ、バッファ確保、ネットの入出力、またはラベルの表に
     /// 問題があれば[`NnError`]を返す。ほかのプロバイダやネットへの切り替えは行わない。
     pub fn new(
         network: &Network,
@@ -217,7 +219,7 @@ impl OnnxEvaluator {
             .with_execution_providers([provider.error_on_failure()])
             .map_err(ort::Error::from)?
             .commit_from_memory(network.bytes())?;
-        validate_signature(
+        let policy_width = validate_signature(
             session
                 .inputs()
                 .iter()
@@ -229,6 +231,8 @@ impl OnnxEvaluator {
                 .map(|port| (port.name().to_owned(), port.dtype().clone()))
                 .collect(),
         )?;
+        let labels = session.metadata()?.custom("policy_labels");
+        let policy_map = PolicyMap::from_metadata(labels.as_deref(), policy_width)?;
         let output_binding = match output_device_id {
             Some(device_id) => Some((session.create_binding()?, device_id)),
             None => None,
@@ -236,6 +240,7 @@ impl OnnxEvaluator {
         Ok(Self {
             session,
             output_binding,
+            policy_map,
             input,
             max_batch,
         })
@@ -262,7 +267,7 @@ fn allocate_input(max_batch: NonZeroUsize) -> Result<Vec<u8>, NnError> {
 fn validate_signature(
     inputs: Vec<(String, ValueType)>,
     outputs: Vec<(String, ValueType)>,
-) -> Result<(), NnError> {
+) -> Result<usize, NnError> {
     let matches = |ports: &[(String, ValueType)], name: &str, element_type, expected: &[i64]| {
         ports.iter().any(|(actual_name, dtype)| {
             actual_name == name
@@ -273,24 +278,38 @@ fn validate_signature(
                 )
         })
     };
-    if inputs.len() != 1
-        || outputs.len() != 2
-        || !matches(
+    let policy_width = outputs.iter().find_map(|(name, dtype)| {
+        if name == "policy"
+            && let ValueType::Tensor {
+                ty: TensorElementType::Float16,
+                shape,
+                ..
+            } = dtype
+            && let [-1, width] = &shape[..]
+        {
+            usize::try_from(*width).ok().filter(|&width| width > 0)
+        } else {
+            None
+        }
+    });
+    if inputs.len() == 1
+        && outputs.len() == 2
+        && matches(
             &inputs,
             "input",
             TensorElementType::Uint8,
             &[-1, INPUT_PLANES as i64, 12, 12],
         )
-        || !matches(&outputs, "policy", TensorElementType::Float16, &[-1, 35856])
-        || !matches(&outputs, "value", TensorElementType::Float32, &[-1, 1])
+        && matches(&outputs, "value", TensorElementType::Float32, &[-1, 1])
+        && let Some(width) = policy_width
     {
-        return Err(NnError::ModelSignature {
-            expected: "input u8 [-1, 159, 12, 12]; policy f16 [-1, 35856], value f32 [-1, 1]",
-            inputs,
-            outputs,
-        });
+        return Ok(width);
     }
-    Ok(())
+    Err(NnError::ModelSignature {
+        expected: "input u8 [-1, 159, 12, 12]; policy f16 [-1, width] (fixed width > 0), value f32 [-1, 1]",
+        inputs,
+        outputs,
+    })
 }
 
 fn output_tensor<'a, T: PrimitiveTensorElementType>(
@@ -352,15 +371,16 @@ impl Evaluator for OnnxEvaluator {
         } else {
             self.session.run(ort::inputs!["input" => tensor])?
         };
-        let policy = output_tensor::<f16>(&outputs, "policy", [n, POLICY_SIZE])?;
+        let policy = output_tensor::<f16>(&outputs, "policy", [n, self.policy_map.width()])?;
         let value = output_tensor::<f32>(&outputs, "value", [n, 1])?;
-        collect_outputs(queries, policy, value, logits, values)
+        collect_outputs(queries, &self.policy_map, policy, value, logits, values)
     }
 }
 
 /// 形を検査済みの出力から、依頼された合法手のlogitだけをf32へ変換し、価値とともに検査して取り出す。
 fn collect_outputs(
     queries: &[Query<'_>],
+    policy_map: &PolicyMap,
     policy: &[f16],
     value: &[f32],
     logits: &mut Vec<f32>,
@@ -379,7 +399,13 @@ fn collect_outputs(
         }
         for &mv in query.moves {
             let label = policy_label(mv, query.position.side_to_move());
-            let logit = policy[index * POLICY_SIZE + label].to_f32();
+            let packed = policy_map
+                .packed_index(label)
+                .ok_or(NnError::MissingPolicyLabel {
+                    query: index,
+                    label,
+                })?;
+            let logit = policy[index * policy_map.width() + packed].to_f32();
             if !logit.is_finite() {
                 return Err(NnError::NonFiniteOutput { query: index });
             }
@@ -464,9 +490,21 @@ mod tests {
         let input = tensor_port("input", &[-1, 159, 12, 12], TensorElementType::Uint8);
         let outputs = vec![
             tensor_port("value", &[-1, 1], TensorElementType::Float32),
-            tensor_port("policy", &[-1, 35856], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 3], TensorElementType::Float16),
         ];
-        validate_signature(vec![input.clone()], outputs.clone()).unwrap();
+        for width in [1, 3, 35856] {
+            assert_eq!(
+                validate_signature(
+                    vec![input.clone()],
+                    vec![
+                        outputs[0].clone(),
+                        tensor_port("policy", &[-1, width], TensorElementType::Float16),
+                    ],
+                )
+                .unwrap(),
+                width as usize
+            );
+        }
         for inputs in [
             vec![],
             vec![input.clone(), input.clone()],
@@ -499,14 +537,18 @@ mod tests {
             assert!(matches!(
                 validate_signature(inputs, outputs.clone()),
                 Err(NnError::ModelSignature { expected, .. })
-                    if expected == "input u8 [-1, 159, 12, 12]; policy f16 [-1, 35856], value f32 [-1, 1]"
+                    if expected == "input u8 [-1, 159, 12, 12]; policy f16 [-1, width] (fixed width > 0), value f32 [-1, 1]"
             ));
         }
         for invalid in [
-            tensor_port("other", &[-1, 35856], TensorElementType::Float16),
-            tensor_port("policy", &[-1, 35855], TensorElementType::Float16),
-            tensor_port("policy", &[1, 35856], TensorElementType::Float16),
-            tensor_port("policy", &[-1, 35856], TensorElementType::Float32),
+            tensor_port("other", &[-1, 3], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 0], TensorElementType::Float16),
+            tensor_port("policy", &[-1, -1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, -2], TensorElementType::Float16),
+            tensor_port("policy", &[1, 3], TensorElementType::Float16),
+            tensor_port("policy", &[-1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 3, 1], TensorElementType::Float16),
+            tensor_port("policy", &[-1, 3], TensorElementType::Float32),
         ] {
             assert!(matches!(
                 validate_signature(vec![input.clone()], vec![outputs[0].clone(), invalid]),
@@ -539,13 +581,13 @@ mod tests {
             Move {
                 from: sq(5, 5),
                 mid: None,
-                to: sq(5, 6),
+                to: sq(6, 5),
                 promote: false,
             },
             Move {
                 from: sq(5, 5),
                 mid: None,
-                to: sq(6, 5),
+                to: sq(5, 6),
                 promote: false,
             },
         ];
@@ -560,26 +602,67 @@ mod tests {
             },
             Query {
                 position: &white,
-                moves: &moves[1..],
+                moves: &moves[..1],
             },
         ];
         // 方策ラベルの仕様表: 南へ1歩は面0、東へ1歩は面22、後手から見た西へ1歩は面66。
-        let mut policy = vec![f16::NAN; 3 * POLICY_SIZE];
-        policy[65] = f16::from_f32(2.0);
-        policy[22 * 144 + 65] = f16::from_f32(-3.0);
-        policy[2 * POLICY_SIZE + 66 * 144 + 78] = f16::from_f32(4.0);
+        // 相対移動元は先手65、後手78なので、元のラベルは65、3233、9582である。
+        let policy_map = PolicyMap::from_metadata(Some("0,65,3233,9582,35855"), 5).unwrap();
+        let mut policy = vec![f16::NAN; 3 * 5];
+        policy[1] = f16::from_f32(2.0);
+        policy[2] = f16::from_f32(-3.0);
+        policy[2 * 5 + 3] = f16::from_f32(4.0);
         let mut logits = Vec::new();
         let mut values = Vec::new();
         collect_outputs(
             &queries,
+            &policy_map,
             &policy,
             &[0.0, 0.5, 1.0],
             &mut logits,
             &mut values,
         )
         .unwrap();
-        assert_eq!(logits, [2.0, -3.0, 4.0]);
+        assert_eq!(logits, [-3.0, 2.0, 4.0]);
         assert_eq!(values, [0.0, 0.5, 1.0]);
+    }
+
+    // メタデータの契約: 合法手が表にないときは、依頼番号と元のラベルを持つエラーを返す。
+    #[test]
+    fn rejects_requested_labels_missing_from_the_policy_map() {
+        let position = position(Color::Black, &[(sq(5, 5), Color::Black, PieceKind::Rook)]);
+        let moves = [Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 6),
+            promote: false,
+        }];
+        let queries = [
+            Query {
+                position: &position,
+                moves: &[],
+            },
+            Query {
+                position: &position,
+                moves: &moves,
+            },
+        ];
+        // 南へ1歩は面0、移動元の相対升は65。表の64と66の間に目的のラベルはない。
+        let policy_map = PolicyMap::from_metadata(Some("64,66"), 2).unwrap();
+        assert!(matches!(
+            collect_outputs(
+                &queries,
+                &policy_map,
+                &[f16::ZERO; 4],
+                &[0.5, 0.5],
+                &mut Vec::new(),
+                &mut Vec::new(),
+            ),
+            Err(NnError::MissingPolicyLabel {
+                query: 1,
+                label: 65
+            })
+        ));
     }
 
     // [`Evaluator`]の契約: 合法手の非有限logit、非有限の価値、および範囲外の価値を区別して拒む。
@@ -596,17 +679,27 @@ mod tests {
             position: &position,
             moves: &moves,
         }];
-        let mut policy = vec![f16::ZERO; POLICY_SIZE];
+        // 南へ1歩の面0と相対升65から得るラベルを、幅1の出力に対応付ける。
+        let policy_map = PolicyMap::from_metadata(Some("65"), 1).unwrap();
+        let mut policy = [f16::ZERO];
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            policy[65] = f16::from_f32(invalid);
-            assert!(matches!(
-                collect_outputs(&queries, &policy, &[0.5], &mut Vec::new(), &mut Vec::new()),
-                Err(NnError::NonFiniteOutput { query: 0 })
-            ));
-            policy[65] = f16::ZERO;
+            policy[0] = f16::from_f32(invalid);
             assert!(matches!(
                 collect_outputs(
                     &queries,
+                    &policy_map,
+                    &policy,
+                    &[0.5],
+                    &mut Vec::new(),
+                    &mut Vec::new()
+                ),
+                Err(NnError::NonFiniteOutput { query: 0 })
+            ));
+            policy[0] = f16::ZERO;
+            assert!(matches!(
+                collect_outputs(
+                    &queries,
+                    &policy_map,
                     &policy,
                     &[invalid],
                     &mut Vec::new(),
@@ -617,7 +710,7 @@ mod tests {
         }
         for invalid in [-0.01, 1.01] {
             assert!(matches!(
-                collect_outputs(&queries, &policy, &[invalid], &mut Vec::new(), &mut Vec::new()),
+                collect_outputs(&queries, &policy_map, &policy, &[invalid], &mut Vec::new(), &mut Vec::new()),
                 Err(NnError::ValueOutOfRange { query: 0, value }) if value == invalid
             ));
         }

@@ -9,7 +9,7 @@ import numpy as np
 import onnx
 import torch
 
-from minase_zero.encoding import INPUT_PLANES
+from minase_zero.encoding import INPUT_PLANES, policy_mask
 from minase_zero.net import ZeroNet, export_onnx
 
 
@@ -61,7 +61,7 @@ class NetTests(unittest.TestCase):
         self.assertEqual([entry.name for entry in model.graph.output], ["policy", "value"])
         for entry, shape, dtype in zip(
             [*model.graph.input, *model.graph.output],
-            [(159, 12, 12), (35_856,), (1,)],
+            [(159, 12, 12), (16_108,), (1,)],
             [onnx.TensorProto.UINT8, onnx.TensorProto.FLOAT16, onnx.TensorProto.FLOAT],
         ):
             tensor = entry.type.tensor_type
@@ -77,6 +77,27 @@ class NetTests(unittest.TestCase):
         self.assertEqual(policy_cast.op_type, "Cast")
         self.assertEqual(next(attr.i for attr in policy_cast.attribute if attr.name == "to"),
                          onnx.TensorProto.FLOAT16)
+        # 書き出し契約: 固定の表で軸1を詰め、その後にFP16へ変換する。
+        gather = next(node for node in model.graph.node if node.output[0] == policy_cast.input[0])
+        self.assertEqual(gather.op_type, "Gather")
+        self.assertEqual(next(attr.i for attr in gather.attribute if attr.name == "axis"), 1)
+        labels = np.flatnonzero(policy_mask())
+        table = next(entry for entry in model.graph.initializer if entry.name == gather.input[1])
+        np.testing.assert_array_equal(onnx.numpy_helper.to_array(table), labels)
+        self.assertEqual(
+            [entry.value for entry in model.metadata_props if entry.key == "policy_labels"],
+            [",".join(str(label) for label in labels)],
+        )
+
+    def test_repeated_export_has_identical_bytes(self) -> None:
+        torch.manual_seed(19)
+        network = ZeroNet(1, 16).eval()
+        with tempfile.TemporaryDirectory(prefix="minase-zero-net-") as directory:
+            first = Path(directory) / "first.onnx"
+            second = Path(directory) / "second.onnx"
+            export_onnx(network, first)
+            export_onnx(network, second)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
 
     @unittest.skipUnless(importlib.util.find_spec("onnxruntime"), "onnxruntimeが未導入のためCPU推論を検証できない")
     def test_onnx_policy_matches_rounded_forward_logits(self) -> None:
@@ -98,7 +119,8 @@ class NetTests(unittest.TestCase):
                     actual_policy, actual_value = session.run(["policy", "value"], {"input": inputs.numpy()})
                     self.assertEqual(actual_policy.dtype, np.dtype("float16"))
                     self.assertEqual(actual_value.dtype, np.dtype("float32"))
-                    rounded = policy.numpy().astype(np.float16)
+                    rounded = policy.numpy()[:, np.flatnonzero(policy_mask())].astype(np.float16)
+                    self.assertEqual(actual_policy.shape, (batch, 16_108))
                     # 正の側の隣接値との差が、丸めた参照におけるFP16の1目盛りになる。
                     magnitude = np.abs(rounded)
                     step = (np.nextafter(magnitude, np.float16(np.inf)).astype(np.float64)

@@ -3,6 +3,7 @@
 //! AlphaZero型探索のMCTS、自己対局生成器、およびPythonの学習器が共有するネットの入出力の契約を定める。
 //! 入力は159面、方策のラベルは249面×144升で、価値は手番側の勝率1つである。
 //! ONNXの入出力は入力がu8、方策がf16、価値がf32であり、評価器は合法手のlogitだけをf32へ変換して返す。
+//! ONNXの方策はメタデータ`policy_labels`の昇順の表に従って詰め、評価器が元のラベルから逆引きする。
 //! 推論には評価器の抽象[`Evaluator`]とONNX Runtimeによる[`OnnxEvaluator`]を用意する。
 //! `test-util`フィーチャでは、各着手に同じ方策logitを返す試験用の評価器も公開する。
 //! プロジェクト内では`minase_core`と駒の状態番号を得るための`crate::eval::features`にだけ依存し、`search`を参照しない。
@@ -27,6 +28,7 @@ mod error;
 pub mod evaluator;
 pub mod onnx;
 pub mod policy;
+mod policy_map;
 pub mod tensorrt_cache;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;

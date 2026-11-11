@@ -1,10 +1,11 @@
 use core::fmt;
 use std::collections::TryReserveError;
 use std::io;
+use std::num::ParseIntError;
 use std::path::PathBuf;
 
-use super::INPUT_PLANES;
 use super::tensorrt_cache::GpuQueryError;
+use super::{INPUT_PLANES, POLICY_SIZE};
 
 /// ネットの読み込み、推論の準備、入力の符号化、または評価に失敗した理由。
 #[derive(Debug)]
@@ -68,6 +69,42 @@ pub enum NnError {
         /// 実際の出力の名前と型。テンソルの型は形も含む。
         outputs: Vec<(String, ort::value::ValueType)>,
     },
+    /// ネットのメタデータに`policy_labels`がない。
+    MissingPolicyLabels,
+    /// `policy_labels`にラベルが1つもない。
+    EmptyPolicyLabels,
+    /// `policy_labels`の要素を10進の非負整数として読めない。
+    InvalidPolicyLabel {
+        /// 表の中の0から始まる添字。
+        index: usize,
+        /// 読めなかった要素。
+        value: String,
+        /// 元の整数解析エラー。
+        source: ParseIntError,
+    },
+    /// `policy_labels`が厳密な昇順ではない。
+    PolicyLabelsNotAscending {
+        /// 順序に反した要素の0から始まる添字。
+        index: usize,
+        /// 直前のラベル。
+        previous: usize,
+        /// 順序に反したラベル。
+        label: usize,
+    },
+    /// `policy_labels`のラベルが方策全体の範囲を超えている。
+    PolicyLabelOutOfRange {
+        /// 表の中の0から始まる添字。
+        index: usize,
+        /// 範囲外のラベル。
+        label: usize,
+    },
+    /// `policy_labels`の要素数が方策の出力幅と一致しない。
+    PolicyLabelCount {
+        /// 署名が指定する方策の出力幅。
+        expected: usize,
+        /// 表に含まれるラベルの数。
+        actual: usize,
+    },
     /// 最大バッチから入力バッファの要素数を表現できない。
     InvalidMaxBatch {
         /// 指定された最大バッチ。
@@ -100,6 +137,13 @@ pub enum NnError {
         expected: [usize; 2],
         /// 実際の形。
         actual: Vec<i64>,
+    },
+    /// 依頼された合法手のラベルがネットの`policy_labels`にない。
+    MissingPolicyLabel {
+        /// バッチ内の依頼の添字。
+        query: usize,
+        /// 詰める前の方策ラベル。
+        label: usize,
     },
     /// 依頼した合法手のlogitまたは価値に非有限値がある。
     NonFiniteOutput {
@@ -179,6 +223,32 @@ impl fmt::Display for NnError {
                 formatter,
                 "invalid model signature: expected {expected}; got inputs {inputs:?}, outputs {outputs:?}"
             ),
+            Self::MissingPolicyLabels => formatter.write_str("missing policy_labels metadata"),
+            Self::EmptyPolicyLabels => formatter.write_str("policy_labels must not be empty"),
+            Self::InvalidPolicyLabel {
+                index,
+                value,
+                source,
+            } => write!(
+                formatter,
+                "invalid policy_labels entry {index} ({value:?}): {source}"
+            ),
+            Self::PolicyLabelsNotAscending {
+                index,
+                previous,
+                label,
+            } => write!(
+                formatter,
+                "policy_labels entry {index} ({label}) is not greater than {previous}"
+            ),
+            Self::PolicyLabelOutOfRange { index, label } => write!(
+                formatter,
+                "policy_labels entry {index} ({label}) is outside 0..{POLICY_SIZE}"
+            ),
+            Self::PolicyLabelCount { expected, actual } => write!(
+                formatter,
+                "policy_labels count {actual} differs from policy output width {expected}"
+            ),
             Self::InvalidMaxBatch { max } => write!(formatter, "maximum batch is too large: {max}"),
             Self::AllocateInput { max, source } => {
                 write!(formatter, "cannot allocate input for batch {max}: {source}")
@@ -194,6 +264,10 @@ impl fmt::Display for NnError {
             } => write!(
                 formatter,
                 "invalid {name} shape: expected {expected:?}, got {actual:?}"
+            ),
+            Self::MissingPolicyLabel { query, label } => write!(
+                formatter,
+                "policy label {label} for query {query} is missing from policy_labels"
             ),
             Self::NonFiniteOutput { query } => {
                 write!(formatter, "non-finite output for query {query}")
@@ -217,6 +291,7 @@ impl std::error::Error for NnError {
             Self::RuntimeInitialization(source) => Some(source),
             Self::GpuQuery(source) => Some(source),
             Self::Runtime(source) => Some(source),
+            Self::InvalidPolicyLabel { source, .. } => Some(source),
             Self::AllocateInput { source, .. } => Some(source),
             _ => None,
         }
