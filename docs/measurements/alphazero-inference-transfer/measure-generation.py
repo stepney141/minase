@@ -4,11 +4,16 @@
 warmは最大バッチを指定して16局を生成し、warm.jsonlへ名前、elapsed_seconds、
 exit_codeを追記する。runは偶数周を一覧の順、奇数周を逆順に実行し、runs.jsonlへ
 生成器が測った時間と訓練局面数を残す。記録後に対局ファイルを削除し、JSONを残す。
+runは終了コードが0以外でもsummary.jsonと標準出力の集計をすべて読めれば記録し、
+終了コードをexit_codeに残して標準エラーへ通知する。
+ONNX RuntimeとTensorRTの終了処理で異常終了しても、生成器の経過時間には終了処理が
+含まれないため、集計が完全なら生成の速さの測定として扱う。
 既存の生成先は再使用せず、追加測定の周は--round-startで指定する。
 summarizeは--variants V --runs <runs.jsonl> [...] --round-start R --rounds Nを受け取り、
 一覧にある変種のR以上R+N未満の周を集計する。roundsにはstartとcountを置き、
 名前をキーとするvariantsとcomparisonsを出力する。
 variantsのmedian、min、maxは毎秒の訓練局面数、countは回数、widthは幅である。
+nonzero_exitsは終了コードが0以外の回数である。
 comparisonsにはparent、increment、threshold、decision、slower_beyond_widthを置く。
 引数はすべて必須で、子プロセスの環境変数は呼び出し元からそのまま引き継ぐ。
 """
@@ -224,7 +229,7 @@ def _report(output: Path, stdout: str) -> dict:
 
 
 def run(args: argparse.Namespace, variants: list[dict]) -> None:
-    """周と変種の重複を開始前に拒み、成功した生成だけを記録して対局を削除する。"""
+    """周と変種の重複を開始前に拒み、集計が完全な生成だけを記録して対局を削除する。"""
     runs = args.out / "runs.jsonl"
     existing = set()
     if runs.exists():
@@ -248,10 +253,22 @@ def run(args: argparse.Namespace, variants: list[dict]) -> None:
             output = args.out / f"round-{number:02d}" / variant["name"]
             started_at = datetime.now(timezone.utc).isoformat()
             code, stdout = _generate(args, variant, output, args.games, args.chunk_games)
-            _check_exit(code, output)
+            try:
+                report = _report(output, stdout)
+            except (OSError, ValueError) as error:
+                if code != 0:
+                    raise RuntimeError(
+                        f"generator exited with code {code}; log: {_log_path(output)}; {error}"
+                    ) from error
+                raise
             record = {"round": number, "position": position, "name": variant["name"],
-                      "commit": variant["commit"], **_report(output, stdout), "started_at": started_at}
+                      "commit": variant["commit"], **report, "started_at": started_at,
+                      "exit_code": code}
             _append(runs, record)
+            if code != 0:
+                print(f"measure-generation: round={number}, name={variant['name']}: "
+                      f"recorded generator exit with code {code}; log: {_log_path(output)}",
+                      file=sys.stderr)
             for path in output.glob("*.mnsd"):
                 path.unlink()
 
@@ -261,6 +278,7 @@ def summarize(variants: list[dict], paths: list[Path], round_start: int, rounds:
     selected_rounds = range(round_start, round_start + rounds)
     commits = {variant["name"]: variant["commit"].lower() for variant in variants}
     samples = {variant["name"]: {} for variant in variants}
+    nonzero_exits = {name: 0 for name in samples}
     for path in paths:
         for row, source in _records(path):
             number = _integer(_field(row, "round", source), f"{source}.round")
@@ -268,6 +286,9 @@ def summarize(variants: list[dict], paths: list[Path], round_start: int, rounds:
             commit = _hex(_field(row, "commit", source), 40, f"{source}.commit")
             speed = _number(_field(row, "positions_per_second", source),
                             f"{source}.positions_per_second")
+            code = _field(row, "exit_code", source)
+            if type(code) is not int:
+                raise ValueError(f"{source}.exit_code: must be an integer")
             if name not in samples or number not in selected_rounds:
                 continue
             if commit.lower() != commits[name]:
@@ -275,6 +296,7 @@ def summarize(variants: list[dict], paths: list[Path], round_start: int, rounds:
             if number in samples[name]:
                 raise ValueError(f"{source}: duplicate measurement: round={number}, name={name}")
             samples[name][number] = speed
+            nonzero_exits[name] += code != 0
     stats = {}
     for name, measurements in samples.items():
         missing = [number for number in selected_rounds if number not in measurements]
@@ -286,7 +308,7 @@ def summarize(variants: list[dict], paths: list[Path], round_start: int, rounds:
             raise ValueError(f"{name}: median positions_per_second must be positive")
         minimum, maximum = min(values), max(values)
         stats[name] = {"median": median, "min": minimum, "max": maximum, "count": len(values),
-                       "width": (maximum - minimum) / median}
+                       "width": (maximum - minimum) / median, "nonzero_exits": nonzero_exits[name]}
     comparisons = {}
     for variant in variants:
         name, parent = variant["name"], variant["parent"]

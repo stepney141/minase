@@ -25,6 +25,7 @@ FAKE_GENERATOR = '''
 import json
 import os
 from pathlib import Path
+import resource
 import sys
 
 scenario = json.loads(Path(__file__).with_name("generator.json").read_text())
@@ -34,7 +35,8 @@ output = Path(arguments[arguments.index("--output-dir") + 1])
 (output / "environment.json").write_text(json.dumps({
     name: os.environ[name] for name in ("ORT_DYLIB_PATH", "XDG_CACHE_HOME") if name in os.environ
 }))
-(output / "summary.json").write_text(json.dumps(scenario["summary"]))
+if scenario["summary"] is not None:
+    (output / "summary.json").write_text(json.dumps(scenario["summary"]))
 (output / "chunk-00000.json").write_text("{}")
 (output / "chunk-00000.mnsd").write_bytes(b"games")
 (output / "chunk-00000.resigned.mnsd").write_bytes(b"resigned games")
@@ -42,6 +44,11 @@ for line in scenario["stdout"]:
     print(line)
 for line in scenario["stderr"]:
     print(line, file=sys.stderr)
+if scenario["exit_code"] < 0:
+    sys.stdout.flush()
+    sys.stderr.flush()
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.kill(os.getpid(), -scenario["exit_code"])
 raise SystemExit(scenario["exit_code"])
 '''
 
@@ -111,7 +118,7 @@ class MeasurementTests(unittest.TestCase):
         for name, speeds in samples.items():
             for number, speed in enumerate(speeds):
                 lines[number % 2].append({"round": number, "name": name, "commit": COMMIT,
-                                          "positions_per_second": speed})
+                                          "positions_per_second": speed, "exit_code": 0})
         for path, rows in zip(files, lines):
             self.write_rows(path, rows)
         return files
@@ -136,8 +143,9 @@ class MeasurementTests(unittest.TestCase):
                 "round": 0, "position": position, "name": name, "commit": COMMIT,
                 "network_sha256": CHECKSUM, "training_positions": 40, "plies": 70,
                 "full_searches": 44, "fast_searches": 26, "games": 8, "discarded_max_ply": 1,
-                "elapsed_seconds": 2.5, "positions_per_second": 16.0,
+                "elapsed_seconds": 2.5, "positions_per_second": 16.0, "exit_code": 0,
             })
+            self.assertIs(type(row["exit_code"]), int)
             arguments = json.loads((output / "arguments.json").read_text())
             self.assertEqual(arguments[:2], ["data", "zero-selfplay"])
             self.assertEqual(dict(zip(arguments[2::2], arguments[3::2])), {
@@ -218,15 +226,52 @@ class MeasurementTests(unittest.TestCase):
         self.assertFalse((self.out / "round-00/S").exists())
         self.assertFalse((self.out / "runs.jsonl").exists())
 
-    def test_failed_generator_stops_without_recording_or_deleting_games(self) -> None:
-        self.scenario["exit_code"] = 1
-        self.write_scenario()
-        code, _, stderr = self.invoke(self.run_arguments())
-        self.assertEqual(code, 1)
-        self.assertIn(str(self.out / "round-00/S.log"), stderr)
-        self.assertFalse((self.out / "runs.jsonl").exists())
-        self.assertFalse((self.out / "round-00/A").exists())
-        self.assertEqual((self.out / "round-00/S/chunk-00000.mnsd").read_bytes(), b"games")
+    def test_complete_nonzero_exit_is_recorded_and_next_variant_runs(self) -> None:
+        for exit_code in (-6, 7):
+            with self.subTest(exit_code=exit_code):
+                self.out = self.root / f"nonzero-exit-{exit_code}"
+                self.scenario["exit_code"] = exit_code
+                self.write_scenario()
+                code, stdout, stderr = self.invoke(self.run_arguments())
+                self.assertEqual((code, stdout), (0, ""), stderr)
+                rows = self.read_rows(self.out / "runs.jsonl")
+                self.assertEqual([(row["name"], row["exit_code"]) for row in rows],
+                                 [("S", exit_code), ("A", exit_code)])
+                warnings = stderr.splitlines()
+                self.assertEqual(len(warnings), 2)
+                for row, warning in zip(rows, warnings):
+                    name = row["name"]
+                    output = self.out / "round-00" / name
+                    log = self.out / "round-00" / f"{name}.log"
+                    self.assertEqual(row["elapsed_seconds"], 2.5)
+                    self.assertEqual(row["training_positions"], 40)
+                    self.assertEqual(row["positions_per_second"], 16.0)
+                    self.assertIs(type(row["exit_code"]), int)
+                    self.assertEqual(list(output.glob("*.mnsd")), [])
+                    self.assertTrue((output / "summary.json").is_file())
+                    self.assertTrue((output / "chunk-00000.json").is_file())
+                    self.assertIn("elapsed_seconds: 2.500000", log.read_text())
+                    self.assertIn("round=0", warning)
+                    self.assertIn(f"name={name}", warning)
+                    self.assertIn(f"code {exit_code}", warning)
+                    self.assertIn(str(log), warning)
+
+    def test_incomplete_nonzero_exit_stops_without_recording_or_deleting_games(self) -> None:
+        summary, stdout = self.scenario["summary"], self.scenario["stdout"]
+        for index, (report, lines) in enumerate(((None, []), (None, stdout),
+                                                (summary, []), ({}, stdout))):
+            with self.subTest(summary=report, stdout=lines):
+                self.out = self.root / f"incomplete-{index}"
+                self.scenario.update(summary=report, stdout=lines, exit_code=7)
+                self.write_scenario()
+                code, _, stderr = self.invoke(self.run_arguments())
+                self.assertEqual(code, 1)
+                self.assertIn("code 7", stderr)
+                self.assertIn(str(self.out / "round-00/S.log"), stderr)
+                self.assertFalse((self.out / "runs.jsonl").exists())
+                self.assertFalse((self.out / "round-00/A").exists())
+                self.assertEqual((self.out / "round-00/S/chunk-00000.mnsd").read_bytes(), b"games")
+                self.assertTrue((self.out / "round-00/S/chunk-00000.resigned.mnsd").is_file())
 
     def test_record_write_failure_preserves_games_and_stops(self) -> None:
         original_open = Path.open
@@ -337,7 +382,8 @@ class MeasurementTests(unittest.TestCase):
         result = json.loads(stdout)
         self.assertEqual(result["rounds"], {"start": 0, "count": 3})
         self.assertEqual(result["variants"]["S"],
-                         {"median": 8, "min": 7, "max": 9, "count": 3, "width": 0.25})
+                         {"median": 8, "min": 7, "max": 9, "count": 3, "width": 0.25,
+                          "nonzero_exits": 0})
         self.assertEqual(result["variants"]["A"]["median"], 12)
         self.assertAlmostEqual(result["variants"]["A"]["width"], 1 / 6)
         # 増分が幅と等しい候補と、低下が親の幅と等しい候補は境界の内側である。
@@ -361,6 +407,48 @@ class MeasurementTests(unittest.TestCase):
                 self.assertIs(comparison["slower_beyond_width"], slower)
         self.assertIn('\n  "variants":', stdout)
 
+    def test_summary_counts_nonzero_exits_without_changing_decisions(self) -> None:
+        path = self.root / "runs.jsonl"
+        self.write_rows(path, [
+            {"round": number, "name": name, "commit": COMMIT,
+             "positions_per_second": speed, "exit_code": exit_code}
+            for name, measurements in (("S", ((8, 0), (10, -6), (12, 7))),
+                                       ("A", ((16, 0), (20, 0), (24, -6))))
+            for number, (speed, exit_code) in enumerate(measurements)
+        ])
+        code, stdout, stderr = self.invoke([
+            "summarize", "--variants", str(self.variants_path), "--runs", str(path),
+            "--round-start", "0", "--rounds", "3",
+        ])
+        self.assertEqual((code, stderr), (0, ""))
+        result = json.loads(stdout)
+        self.assertEqual(result["variants"], {
+            "S": {"median": 10, "min": 8, "max": 12, "count": 3, "width": 0.4,
+                  "nonzero_exits": 2},
+            "A": {"median": 20, "min": 16, "max": 24, "count": 3, "width": 0.4,
+                  "nonzero_exits": 1},
+        })
+        self.assertEqual(result["comparisons"]["A"], {
+            "parent": "S", "increment": 1, "threshold": 0.4,
+            "decision": "adopt", "slower_beyond_width": False,
+        })
+
+    def test_summary_requires_integer_exit_code(self) -> None:
+        paths = self.write_speeds({"S": [8], "A": [12]})
+        rows = self.read_rows(paths[0])
+        valid = rows[0]
+        invalid = [{key: value for key, value in valid.items() if key != "exit_code"}]
+        invalid += [{**valid, "exit_code": value} for value in (True, False, 0.0, -6.0, "0", None)]
+        for row in invalid:
+            with self.subTest(row=row):
+                self.write_rows(paths[0], [row, *rows[1:]])
+                code, stdout, stderr = self.invoke([
+                    "summarize", "--variants", str(self.variants_path), "--runs", *map(str, paths),
+                    "--round-start", "0", "--rounds", "1",
+                ])
+                self.assertEqual((code, stdout), (1, ""))
+                self.assertIn("exit_code", stderr)
+
     def test_summary_even_count_and_missing_rounds(self) -> None:
         variants = measure.load_variants(self.variants_path)
         result = measure.summarize(variants, self.write_speeds({"S": [2, 6], "A": [4, 8]}), 0, 2)
@@ -378,7 +466,8 @@ class MeasurementTests(unittest.TestCase):
                    "C": [103, 104, 105, 106, 107, 108, 109, 110], "D": [110] * 5}
         path = self.root / "runs.jsonl"
         self.write_rows(path, [
-            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed}
+            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed,
+             "exit_code": 0}
             for name, speeds in samples.items() for number, speed in enumerate(speeds)
         ])
         self.write_variants(variants)
@@ -408,8 +497,10 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(result["rounds"], {"start": 0, "count": 8})
         # 8回の中央の2値はBが103と104、Cが106と107であり、最大と最小の差はともに7である。
         self.assertEqual(result["variants"], {
-            "B": {"median": 103.5, "min": 100, "max": 107, "count": 8, "width": 14 / 207},
-            "C": {"median": 106.5, "min": 103, "max": 110, "count": 8, "width": 14 / 213},
+            "B": {"median": 103.5, "min": 100, "max": 107, "count": 8, "width": 14 / 207,
+                  "nonzero_exits": 0},
+            "C": {"median": 106.5, "min": 103, "max": 110, "count": 8, "width": 14 / 213,
+                  "nonzero_exits": 0},
         })
         self.assertEqual(set(result["comparisons"]), {"C"})
         comparison = result["comparisons"]["C"]
@@ -446,7 +537,8 @@ class MeasurementTests(unittest.TestCase):
             with self.subTest(listed=listed, recorded=recorded):
                 variants = [{**variant, "commit": listed} for variant in self.variants]
                 self.write_rows(path, [
-                    {"round": 0, "name": name, "commit": recorded, "positions_per_second": speed}
+                    {"round": 0, "name": name, "commit": recorded, "positions_per_second": speed,
+                     "exit_code": 0}
                     for name, speed in (("S", 8), ("A", 12))
                 ])
                 result = measure.summarize(variants, [path], 0, 1)
@@ -468,20 +560,22 @@ class MeasurementTests(unittest.TestCase):
     def test_summary_ignores_unselected_rounds_and_names(self) -> None:
         path = self.root / "runs.jsonl"
         rows = [
-            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed}
+            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed,
+             "exit_code": 0}
             for number, name, speed in ((2, "S", 2), (3, "S", 6), (2, "A", 4), (3, "A", 8))
         ]
         # 対象外の行は形式だけを検査し、コミットの不一致や重複を集計へ持ち込まない。
         ignored = [
-            {"round": number, "name": name, "commit": "f" * 40, "positions_per_second": 1000}
+            {"round": number, "name": name, "commit": "f" * 40, "positions_per_second": 1000,
+             "exit_code": -6}
             for number, name in ((1, "S"), (4, "S"), (2, "outside"))
         ]
         self.write_rows(path, [*ignored, *rows, *ignored])
         result = measure.summarize(self.variants, [path], 2, 2)
         self.assertEqual(result["rounds"], {"start": 2, "count": 2})
         self.assertEqual(result["variants"], {
-            "S": {"median": 4, "min": 2, "max": 6, "count": 2, "width": 1},
-            "A": {"median": 6, "min": 4, "max": 8, "count": 2, "width": 2 / 3},
+            "S": {"median": 4, "min": 2, "max": 6, "count": 2, "width": 1, "nonzero_exits": 0},
+            "A": {"median": 6, "min": 4, "max": 8, "count": 2, "width": 2 / 3, "nonzero_exits": 0},
         })
         self.assertEqual(set(result["comparisons"]), {"A"})
 
@@ -509,9 +603,11 @@ class MeasurementTests(unittest.TestCase):
         path = self.root / "invalid.jsonl"
         invalid = {"round": (-1, True, "0", None), "name": (1, "", "../S"),
                    "commit": (1, "a" * 39, "g" * 40),
+                   "exit_code": (True, 0.0, "0", None),
                    "positions_per_second": (-1, True, "8", None, float("nan"), float("inf"))}
         for number, name in ((1, "S"), (0, "outside")):
-            valid = {"round": number, "name": name, "commit": COMMIT, "positions_per_second": 8}
+            valid = {"round": number, "name": name, "commit": COMMIT, "positions_per_second": 8,
+                     "exit_code": 0}
             rows = [{key: value for key, value in valid.items() if key != field} for field in valid]
             rows += [{**valid, field: value} for field, values in invalid.items() for value in values]
             for row in rows:
