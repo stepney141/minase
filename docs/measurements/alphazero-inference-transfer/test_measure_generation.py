@@ -101,15 +101,19 @@ class MeasurementTests(unittest.TestCase):
     def read_rows(self, path: Path) -> list[dict]:
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
+    def write_rows(self, path: Path, rows: list[dict]) -> None:
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
     def write_speeds(self, samples: dict[str, list[float]]) -> list[Path]:
         # 2ファイルに分け、全ファイルを合わせた中央値になることも検査する。
         files = [self.root / "first.jsonl", self.root / "second.jsonl"]
         lines = [[], []]
         for name, speeds in samples.items():
             for number, speed in enumerate(speeds):
-                lines[number % 2].append(json.dumps({"name": name, "positions_per_second": speed}))
+                lines[number % 2].append({"round": number, "name": name, "commit": COMMIT,
+                                          "positions_per_second": speed})
         for path, rows in zip(files, lines):
-            path.write_text("".join(line + "\n" for line in rows), encoding="utf-8")
+            self.write_rows(path, rows)
         return files
 
     def test_run_records_counts_arguments_environment_and_deletes_only_games(self) -> None:
@@ -327,9 +331,11 @@ class MeasurementTests(unittest.TestCase):
         paths = self.write_speeds(samples)
         code, stdout, stderr = self.invoke([
             "summarize", "--variants", str(self.variants_path), "--runs", *map(str, paths),
+            "--round-start", "0", "--rounds", "3",
         ])
         self.assertEqual(code, 0, stderr)
         result = json.loads(stdout)
+        self.assertEqual(result["rounds"], {"start": 0, "count": 3})
         self.assertEqual(result["variants"]["S"],
                          {"median": 8, "min": 7, "max": 9, "count": 3, "width": 0.25})
         self.assertEqual(result["variants"]["A"]["median"], 12)
@@ -355,14 +361,129 @@ class MeasurementTests(unittest.TestCase):
                 self.assertIs(comparison["slower_beyond_width"], slower)
         self.assertIn('\n  "variants":', stdout)
 
-    def test_summary_even_count_and_count_mismatch(self) -> None:
+    def test_summary_even_count_and_missing_rounds(self) -> None:
         variants = measure.load_variants(self.variants_path)
-        result = measure.summarize(variants, self.write_speeds({"S": [2, 6], "A": [4, 8]}))
+        result = measure.summarize(variants, self.write_speeds({"S": [2, 6], "A": [4, 8]}), 0, 2)
         self.assertEqual(result["variants"]["S"]["median"], 4)
         self.assertEqual(result["variants"]["A"]["median"], 6)
         self.assertEqual(result["variants"]["S"]["count"], 2)
-        with self.assertRaisesRegex(ValueError, "counts differ"):
-            measure.summarize(variants, self.write_speeds({"S": [2, 6], "A": [4]}))
+        for samples, name in (({"S": [2, 6], "A": [4]}, "A"), ({"S": [2], "A": [4]}, "S")):
+            with self.subTest(samples=samples), self.assertRaisesRegex(ValueError, rf"{name}:.*missing rounds.*1"):
+                measure.summarize(variants, self.write_speeds(samples), 0, 2)
+
+    def test_summary_selects_initial_five_rounds_or_eight_rounds_for_a_pair(self) -> None:
+        variants = [self.variant(name, parent) for name, parent in
+                    (("S", None), ("A", "S"), ("B", "A"), ("C", "B"), ("D", "C"))]
+        samples = {"S": [90] * 5, "A": [95] * 5, "B": [100, 101, 102, 103, 104, 105, 106, 107],
+                   "C": [103, 104, 105, 106, 107, 108, 109, 110], "D": [110] * 5}
+        path = self.root / "runs.jsonl"
+        self.write_rows(path, [
+            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed}
+            for name, speeds in samples.items() for number, speed in enumerate(speeds)
+        ])
+        self.write_variants(variants)
+        code, stdout, stderr = self.invoke([
+            "summarize", "--variants", str(self.variants_path), "--runs", str(path),
+            "--round-start", "0", "--rounds", "5",
+        ])
+        self.assertEqual(code, 0, stderr)
+        result = json.loads(stdout)
+        self.assertEqual(result["rounds"], {"start": 0, "count": 5})
+        self.assertEqual(set(result["variants"]), {"S", "A", "B", "C", "D"})
+        for stats in result["variants"].values():
+            self.assertEqual(stats["count"], 5)
+        self.assertEqual(result["variants"]["B"]["median"], 102)
+        self.assertEqual(result["variants"]["C"]["median"], 105)
+        self.assertAlmostEqual(result["comparisons"]["C"]["increment"], 1 / 34)
+        self.assertAlmostEqual(result["comparisons"]["C"]["threshold"], 2 / 51)
+        self.assertEqual(result["comparisons"]["C"]["decision"], "undecided")
+
+        self.write_variants([self.variant("B", None), self.variant("C", "B")])
+        code, stdout, stderr = self.invoke([
+            "summarize", "--variants", str(self.variants_path), "--runs", str(path),
+            "--round-start", "0", "--rounds", "8",
+        ])
+        self.assertEqual(code, 0, stderr)
+        result = json.loads(stdout)
+        self.assertEqual(result["rounds"], {"start": 0, "count": 8})
+        # 8回の中央の2値はBが103と104、Cが106と107であり、最大と最小の差はともに7である。
+        self.assertEqual(result["variants"], {
+            "B": {"median": 103.5, "min": 100, "max": 107, "count": 8, "width": 14 / 207},
+            "C": {"median": 106.5, "min": 103, "max": 110, "count": 8, "width": 14 / 213},
+        })
+        self.assertEqual(set(result["comparisons"]), {"C"})
+        comparison = result["comparisons"]["C"]
+        self.assertEqual(comparison["parent"], "B")
+        self.assertAlmostEqual(comparison["increment"], 2 / 69)
+        self.assertAlmostEqual(comparison["threshold"], 14 / 207)
+        self.assertEqual(comparison["decision"], "undecided")
+        self.assertIs(comparison["slower_beyond_width"], False)
+
+        self.write_variants(variants)
+        code, stdout, stderr = self.invoke([
+            "summarize", "--variants", str(self.variants_path), "--runs", str(path),
+            "--round-start", "0", "--rounds", "8",
+        ])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertRegex(stderr, r"S:.*missing rounds.*5.*6.*7")
+
+    def test_summary_rejects_commit_mismatch(self) -> None:
+        self.variants[1]["commit"] = "b" * 40
+        self.write_variants(self.variants)
+        paths = self.write_speeds({"S": [8], "A": [12]})
+        code, stdout, stderr = self.invoke([
+            "summarize", "--variants", str(self.variants_path), "--runs", *map(str, paths),
+            "--round-start", "0", "--rounds", "1",
+        ])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertRegex(stderr, r"A:.*commit")
+
+    def test_summary_compares_commits_case_insensitively(self) -> None:
+        path = self.root / "runs.jsonl"
+        for listed, recorded in ((COMMIT, COMMIT.upper()), (COMMIT.upper(), COMMIT)):
+            with self.subTest(listed=listed, recorded=recorded):
+                variants = [{**variant, "commit": listed} for variant in self.variants]
+                self.write_rows(path, [
+                    {"round": 0, "name": name, "commit": recorded, "positions_per_second": speed}
+                    for name, speed in (("S", 8), ("A", 12))
+                ])
+                result = measure.summarize(variants, [path], 0, 1)
+                self.assertEqual(result["comparisons"]["A"]["decision"], "adopt")
+
+    def test_summary_rejects_duplicate_round_and_name_within_and_across_files(self) -> None:
+        paths = self.write_speeds({"S": [8, 10], "A": [12, 14]})
+        copied = self.root / "copied.jsonl"
+        copied.write_bytes(paths[0].read_bytes())
+        for duplicate in (paths[0], copied):
+            with self.subTest(duplicate=duplicate), self.assertRaisesRegex(
+                    ValueError, r"duplicate measurement: round=0, name=S"):
+                measure.summarize(self.variants, [*paths, duplicate], 0, 2)
+        rows = self.read_rows(paths[0])
+        self.write_rows(paths[0], [*rows, rows[0]])
+        with self.assertRaisesRegex(ValueError, r"duplicate measurement: round=0, name=S"):
+            measure.summarize(self.variants, paths, 0, 2)
+
+    def test_summary_ignores_unselected_rounds_and_names(self) -> None:
+        path = self.root / "runs.jsonl"
+        rows = [
+            {"round": number, "name": name, "commit": COMMIT, "positions_per_second": speed}
+            for number, name, speed in ((2, "S", 2), (3, "S", 6), (2, "A", 4), (3, "A", 8))
+        ]
+        # 対象外の行は形式だけを検査し、コミットの不一致や重複を集計へ持ち込まない。
+        ignored = [
+            {"round": number, "name": name, "commit": "f" * 40, "positions_per_second": 1000}
+            for number, name in ((1, "S"), (4, "S"), (2, "outside"))
+        ]
+        self.write_rows(path, [*ignored, *rows, *ignored])
+        result = measure.summarize(self.variants, [path], 2, 2)
+        self.assertEqual(result["rounds"], {"start": 2, "count": 2})
+        self.assertEqual(result["variants"], {
+            "S": {"median": 4, "min": 2, "max": 6, "count": 2, "width": 1},
+            "A": {"median": 6, "min": 4, "max": 8, "count": 2, "width": 2 / 3},
+        })
+        self.assertEqual(set(result["comparisons"]), {"A"})
 
     def test_summary_missing_candidate_or_parent_fails_without_partial_output(self) -> None:
         for samples in ({"S": [8]}, {"A": [12]}, {}):
@@ -370,26 +491,42 @@ class MeasurementTests(unittest.TestCase):
                 paths = self.write_speeds(samples)
                 code, stdout, stderr = self.invoke([
                     "summarize", "--variants", str(self.variants_path), "--runs", *map(str, paths),
+                    "--round-start", "0", "--rounds", "1",
                 ])
                 self.assertEqual(code, 1)
                 self.assertEqual(stdout, "")
-                self.assertIn("no measurement rows", stderr)
+                missing = "A" if "S" in samples else "S"
+                self.assertRegex(stderr, rf"{missing}:.*missing rounds.*0")
 
     def test_summary_rejects_invalid_speed_and_zero_median(self) -> None:
         variants = measure.load_variants(self.variants_path)
         for value in (-1, True, "8", None, float("nan"), float("inf"), 0):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                measure.summarize(variants, self.write_speeds({"S": [value], "A": [12]}))
+                measure.summarize(variants, self.write_speeds({"S": [value], "A": [12]}), 0, 1)
 
-    def test_summary_rejects_missing_speed_unknown_name_and_malformed_rows(self) -> None:
+    def test_summary_validates_fields_even_in_unselected_rows(self) -> None:
+        paths = self.write_speeds({"S": [8], "A": [12]})
         path = self.root / "invalid.jsonl"
-        for row in ('{"name":"S"}', '{"positions_per_second":8}',
-                    '{"name":"unknown","positions_per_second":8}', '[]', 'null', '{', '',
-                    '{"name":"S","name":"A","positions_per_second":8}'):
+        invalid = {"round": (-1, True, "0", None), "name": (1, "", "../S"),
+                   "commit": (1, "a" * 39, "g" * 40),
+                   "positions_per_second": (-1, True, "8", None, float("nan"), float("inf"))}
+        for number, name in ((1, "S"), (0, "outside")):
+            valid = {"round": number, "name": name, "commit": COMMIT, "positions_per_second": 8}
+            rows = [{key: value for key, value in valid.items() if key != field} for field in valid]
+            rows += [{**valid, field: value} for field, values in invalid.items() for value in values]
+            for row in rows:
+                with self.subTest(row=row), self.assertRaises(ValueError):
+                    self.write_rows(path, [row])
+                    measure.summarize(self.variants, [*paths, path], 0, 1)
+
+    def test_summary_rejects_malformed_rows(self) -> None:
+        paths = self.write_speeds({"S": [8], "A": [12]})
+        path = self.root / "invalid.jsonl"
+        for row in ('[]', 'null', '{', '', '{"name":"S","name":"A","positions_per_second":8}'):
             with self.subTest(row=row):
                 path.write_text(row + "\n")
                 with self.assertRaises(ValueError):
-                    measure.summarize(measure.load_variants(self.variants_path), [path])
+                    measure.summarize(self.variants, [*paths, path], 0, 1)
 
     def test_variants_reject_missing_extra_duplicate_and_unknown_parent(self) -> None:
         cases = [
@@ -432,13 +569,26 @@ class MeasurementTests(unittest.TestCase):
 
     def test_all_arguments_are_required(self) -> None:
         for complete in (self.warm_arguments(), self.run_arguments(),
-                         ["summarize", "--variants", str(self.variants_path), "--runs", "runs.jsonl"]):
+                         ["summarize", "--variants", str(self.variants_path), "--runs", "runs.jsonl",
+                          "--round-start", "0", "--rounds", "1"]):
             for index in range(1, len(complete), 2):
                 with self.subTest(command=complete[0], missing=complete[index]):
                     code, _, stderr = self.invoke(complete[:index] + complete[index + 2:])
                     self.assertEqual(code, 1)
                     self.assertIn(complete[index], stderr)
         self.assertFalse(self.out.exists())
+
+    def test_summary_rejects_invalid_round_arguments(self) -> None:
+        for option, value in (("--round-start", "-1"), ("--round-start", "1.5"),
+                              ("--rounds", "0"), ("--rounds", "-1"), ("--rounds", "1.5")):
+            with self.subTest(option=option, value=value):
+                arguments = ["summarize", "--variants", str(self.variants_path), "--runs", "runs.jsonl",
+                             "--round-start", "0", "--rounds", "1"]
+                arguments[arguments.index(option) + 1] = value
+                code, stdout, stderr = self.invoke(arguments)
+                self.assertEqual(code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn(option, stderr)
 
     def test_invalid_numeric_arguments_fail_before_generation(self) -> None:
         for option, value in (

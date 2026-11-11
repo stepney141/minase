@@ -5,7 +5,9 @@ warmは最大バッチを指定して16局を生成し、warm.jsonlへ名前、e
 exit_codeを追記する。runは偶数周を一覧の順、奇数周を逆順に実行し、runs.jsonlへ
 生成器が測った時間と訓練局面数を残す。記録後に対局ファイルを削除し、JSONを残す。
 既存の生成先は再使用せず、追加測定の周は--round-startで指定する。
-summarizeは名前をキーとするvariantsとcomparisonsを出力する。
+summarizeは--variants V --runs <runs.jsonl> [...] --round-start R --rounds Nを受け取り、
+一覧にある変種のR以上R+N未満の周を集計する。roundsにはstartとcountを置き、
+名前をキーとするvariantsとcomparisonsを出力する。
 variantsのmedian、min、maxは毎秒の訓練局面数、countは回数、widthは幅である。
 comparisonsにはparent、increment、threshold、decision、slower_beyond_widthを置く。
 引数はすべて必須で、子プロセスの環境変数は呼び出し元からそのまま引き継ぐ。
@@ -254,20 +256,31 @@ def run(args: argparse.Namespace, variants: list[dict]) -> None:
                 path.unlink()
 
 
-def summarize(variants: list[dict], paths: list[Path]) -> dict:
-    """生成の速さの中央値と幅を求め、比較相手に対する増分を判定する。"""
-    samples = {variant["name"]: [] for variant in variants}
+def summarize(variants: list[dict], paths: list[Path], round_start: int, rounds: int) -> dict:
+    """指定した変種と周の記録を検査し、中央値と幅から比較相手に対する増分を判定する。"""
+    selected_rounds = range(round_start, round_start + rounds)
+    commits = {variant["name"]: variant["commit"].lower() for variant in variants}
+    samples = {variant["name"]: {} for variant in variants}
     for path in paths:
         for row, source in _records(path):
+            number = _integer(_field(row, "round", source), f"{source}.round")
             name = _name(_field(row, "name", source), f"{source}.name")
-            if name not in samples:
-                raise ValueError(f"{source}: unknown variant {name}")
-            samples[name].append(_number(_field(row, "positions_per_second", source),
-                                         f"{source}.positions_per_second"))
+            commit = _hex(_field(row, "commit", source), 40, f"{source}.commit")
+            speed = _number(_field(row, "positions_per_second", source),
+                            f"{source}.positions_per_second")
+            if name not in samples or number not in selected_rounds:
+                continue
+            if commit.lower() != commits[name]:
+                raise ValueError(f"{source}: {name}: commit mismatch ({commit} != {commits[name]})")
+            if number in samples[name]:
+                raise ValueError(f"{source}: duplicate measurement: round={number}, name={name}")
+            samples[name][number] = speed
     stats = {}
-    for name, values in samples.items():
-        if not values:
-            raise ValueError(f"{name}: no measurement rows")
+    for name, measurements in samples.items():
+        missing = [number for number in selected_rounds if number not in measurements]
+        if missing:
+            raise ValueError(f"{name}: missing rounds {missing}")
+        values = list(measurements.values())
         median = statistics.median(values)
         if median == 0:
             raise ValueError(f"{name}: median positions_per_second must be positive")
@@ -280,16 +293,14 @@ def summarize(variants: list[dict], paths: list[Path]) -> dict:
         if parent is None:
             continue
         candidate, reference = stats[name], stats[parent]
-        if candidate["count"] != reference["count"]:
-            raise ValueError(f"{name} and {parent}: measurement counts differ "
-                             f"({candidate['count']} != {reference['count']})")
         increment = candidate["median"] / reference["median"] - 1
         threshold = max(candidate["width"], reference["width"])
         decision = "adopt" if increment > threshold else "undecided" if increment > 0 else "reject"
         comparisons[name] = {"parent": parent, "increment": increment, "threshold": threshold,
                              "decision": decision,
                              "slower_beyond_width": increment < -reference["width"]}
-    return {"variants": stats, "comparisons": comparisons}
+    return {"rounds": {"start": round_start, "count": rounds},
+            "variants": stats, "comparisons": comparisons}
 
 
 def _parse(argv: list[str]) -> argparse.Namespace:
@@ -300,6 +311,8 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         subparser.add_argument("--variants", type=Path, required=True)
         if command == "summarize":
             subparser.add_argument("--runs", type=Path, nargs="+", required=True)
+            for name in ("round-start", "rounds"):
+                subparser.add_argument(f"--{name}", type=int, required=True)
             continue
         subparser.add_argument("--out", type=Path, required=True)
         for name in ("devices", "threads-per-gpu", "games-per-thread", "simulations", "seed"):
@@ -308,7 +321,12 @@ def _parse(argv: list[str]) -> argparse.Namespace:
             for name in ("round-start", "rounds", "games", "chunk-games"):
                 subparser.add_argument(f"--{name}", type=int, required=True)
     args = parser.parse_args(argv)
-    if args.command != "summarize":
+    if args.command == "summarize":
+        if args.round_start < 0:
+            raise ValueError("--round-start must be nonnegative")
+        if args.rounds <= 0:
+            raise ValueError("--rounds must be positive")
+    else:
         positive = ["devices", "threads_per_gpu", "games_per_thread", "simulations"]
         if args.command == "run":
             positive += ["rounds", "games", "chunk_games"]
@@ -332,8 +350,8 @@ def main(argv: list[str]) -> int:
         elif args.command == "run":
             run(args, variants)
         else:
-            print(json.dumps(summarize(variants, args.runs), ensure_ascii=False,
-                             indent=2, allow_nan=False))
+            print(json.dumps(summarize(variants, args.runs, args.round_start, args.rounds),
+                             ensure_ascii=False, indent=2, allow_nan=False))
     except (OSError, ValueError, RuntimeError) as error:
         print(f"measure-generation: {error}", file=sys.stderr)
         return 1

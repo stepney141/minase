@@ -17,9 +17,11 @@
 #   check <CPUの比較の方式> <名前>...        CPUとTensorRTのバッチ7の出力を参照と比べる。
 #   warm <GPUの枚数>                        各変種で16局を生成し、TensorRTのエンジンを作る。
 #   run <GPUの枚数> <最初の周> <周の数> [変種の一覧のファイル]  4,096局ずつの生成を測る。
-#   summarize [変種の一覧のファイル]        生成の測定を集計し、summary.jsonにも保存する。
+#   summarize <最初の周> <周の数> [変種の一覧のファイル]  生成の測定を集計し、周の範囲を付けて保存する。
 # CPUの比較の方式はlogitsまたはfp16-logitsを指定する。最初の周は0から数える。
 # runとsummarizeで変種の一覧を省略した場合は/workspace/in/variants.jsonを使う。
+# 集計はgen/summary-<最初の周>-<周の数>.jsonへ保存する。
+# 一覧を指定した場合は、末尾の.jsonを-<一覧のファイル名から拡張子を除いたもの>.jsonに替える。
 set -euo pipefail
 
 fail() {
@@ -49,7 +51,7 @@ run)
     [[ $# -ge 3 && $# -le 4 ]] || fail '使い方: bash vast-measure.sh run <GPUの枚数> <最初の周> <周の数> [変種の一覧のファイル]'
     ;;
 summarize)
-    [[ $# -le 1 ]] || fail '使い方: bash vast-measure.sh summarize [変種の一覧のファイル]'
+    [[ $# -ge 2 && $# -le 3 ]] || fail '使い方: bash vast-measure.sh summarize <最初の周> <周の数> [変種の一覧のファイル]'
     ;;
 *)
     fail "不明な段: $stage"
@@ -137,13 +139,16 @@ run)
         --round-start "$2" --rounds "$3" --games 4096 --chunk-games 256
     ;;
 summarize)
-    if [[ $# -eq 1 ]]; then
-        variants=$1
+    summary=$M/gen/summary-$1-$2
+    if [[ $# -eq 3 ]]; then
+        variants=$3
+        name=${variants##*/}
+        summary=$summary-${name%.*}
     else
         variants=/workspace/in/variants.json
     fi
     python3 "$D/measure-generation.py" summarize --variants "$variants" --runs "$M/gen/runs.jsonl" \
-        | tee "$M/gen/summary.json"
+        --round-start "$1" --rounds "$2" | tee "$summary.json"
     ;;
 esac
 date -Is
