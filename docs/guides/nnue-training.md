@@ -56,7 +56,7 @@ minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
 | 学習 | `summary.json`の`status`が`candidate`でない。 |
 | 診断 | 終了コードが0以外である。 |
 | 補正 | `decision.d`が負でない。 |
-| 埋め込みの後 | 深さ5の`minase dev bench`が完走しない。 |
+| 埋め込みの後 | 深さ5の`bench`（USIの独自コマンド）が完走しない。 |
 
 ## 手順
 

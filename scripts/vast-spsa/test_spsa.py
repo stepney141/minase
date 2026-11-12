@@ -276,14 +276,16 @@ class SpsaTests(unittest.TestCase):
         binary.write_text(
             '#!/usr/bin/env python3\n'
             'import fcntl\nfrom pathlib import Path\nimport sys\n'
-            'assert sys.argv[1:] == ["dev", "bench", "--depth", "9", "--repetitions", "3"]\n'
+            'assert sys.argv[1:] == ["--protocol", "usi"]\n'
+            'assert sys.stdin.read() == "bench depth 9 repetitions 3\\nquit\\n"\n'
             'with Path(__file__).with_suffix(".count").open("r+") as counter:\n'
             '    fcntl.flock(counter, fcntl.LOCK_EX)\n'
             '    index = int(counter.read())\n'
             '    counter.seek(0)\n'
             '    counter.write(str(index + 1))\n'
             '    counter.truncate()\n'
-            'print(f"median: nps={(100, 301)[index]}")\n')
+            'print(f"info string median: nps={(100, 301)[index]}")\n'
+            'print("info string end")\n')
         binary.chmod(0o755)
         command = [sys.executable, str(SCRIPT_DIR / 'bench.py'), 'engine']
         result = subprocess.run([*command, '2', 'logs'], cwd=self.root,
@@ -300,6 +302,25 @@ class SpsaTests(unittest.TestCase):
                 self.assertIn('本数には正の整数が必要です', result.stderr)
         self.assertEqual(counter.read_text(), '2')
 
+    def test_bench_rejects_missing_end_and_nonzero_exit(self) -> None:
+        """終了コード0と終端行の両方が揃った場合だけ測定を採用する。"""
+        binary = self.root / 'engine'
+        logs = self.root / 'logs'
+        logs.mkdir()
+        for ending, code in [('', 0), ('info string end', 7)]:
+            with self.subTest(ending=ending, code=code):
+                binary.write_text(
+                    '#!/usr/bin/env python3\nimport sys\n'
+                    'assert sys.argv[1:] == ["--protocol", "usi"]\n'
+                    'assert sys.stdin.read() == "bench depth 9 repetitions 3\\nquit\\n"\n'
+                    'print("info string median: nps=100")\n'
+                    f'print({ending!r})\nsys.exit({code})\n')
+                binary.chmod(0o755)
+                children = remote.Children()
+                with self.assertRaises(ValueError):
+                    remote.bench(binary, 1, logs, children)
+                self.assertEqual(children.processes, [])
+
 
 class WorkflowTests(unittest.TestCase):
     """偽の外部コマンドを通して取得、起動とシグナルの結果を確かめる。"""
@@ -310,6 +331,12 @@ class WorkflowTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.fake = test_common.FakeCommands(self.root)
+        engine = test_common.FAKE.replace(
+            "if 'transfer' in response:",
+            "if name == 'minase' and sys.argv[1:] == ['--protocol', 'usi']:\n"
+            "    assert sys.stdin.read() == response['input']\n"
+            "if 'transfer' in response:")
+        (self.fake.bin / 'minase').write_text(engine)
         self.fake.environment.start()
         self.addCleanup(self.fake.environment.stop)
         self.enterContext(redirect_stdout(io.StringIO()))
@@ -701,7 +728,8 @@ class WorkflowTests(unittest.TestCase):
                 self.fake.add('git', ['rev-parse', '--verify', '--end-of-options', CONFIG['commit'] + '^{commit}'], CONFIG['commit'] + '\n')
                 self.fake.add('cargo', ['build', '--release', '--locked', '--bin', 'minase'])
                 self.fake.add('minase', ['spsa', 'params', '--engine', 'commit:' + CONFIG['commit']], 'parameter 1\n')
-                self.fake.add('minase', ['dev', 'bench', '--depth', '9', '--repetitions', '3'], 'median: nps=866000\n')
+                self.fake.add('minase', ['--protocol', 'usi'], 'info string median: nps=866000\ninfo string end\n',
+                              input='bench depth 9 repetitions 3\nquit\n')
                 good = ('summary: applied=1 valid_pairs=8 discarded_pairs=0\n'
                         'engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0\n')
                 if scenario != 'too_slow':
@@ -732,7 +760,8 @@ class WorkflowTests(unittest.TestCase):
         (job / '.build-ready').touch()
         self.fake.add('git', ['checkout', '--detach', CONFIG['runner_commit']])
         self.fake.add('git', ['rev-parse', '--verify'], CONFIG['commit'] + '\n')
-        self.fake.add('minase', ['dev', 'bench'], 'median: nps=866000\n')
+        self.fake.add('minase', ['--protocol', 'usi'], 'info string median: nps=866000\ninfo string end\n',
+                      input='bench depth 9 repetitions 3\nquit\n')
         self.fake.add('minase', ['spsa', '--resume', str(job / 'trial')],
                       'summary: applied=3750 valid_pairs=30000 discarded_pairs=0\n'
                       'engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0\n')

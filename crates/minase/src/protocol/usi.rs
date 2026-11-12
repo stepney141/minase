@@ -11,6 +11,8 @@
 //! | `position` | `UsiProtocol::handle_position`で局面を同期する。 |
 //! | `gameover` | [`EngineCommand::EndGame`]を適用する。 |
 //! | `moves`、`state` | `handle_moves`と`handle_state`の独自照会を処理する。 |
+//! | `perft <深さ> [divide]` | 現局の着手規則で経路を数え、各行に`info string`を付けて終端行`end`まで出力する。 |
+//! | `bench [depth <N>] [threads <N>] [repetitions <N>]` | 規則や準備を要求せず、専用のαβ探索で固定局面を測り、各行と終端行を出力する。 |
 //! | `d`、`eval`、`tt` | `handle_diagnostic`の診断を出力する。 |
 //! | 引数に`mate`を含む`go` | `checkmate notimplemented`を1行返す。 |
 //! | それ以外の`go` | `parse_go_config`で手番側と相手側の時計を検査し、`start_go`で探索を開始する。 |
@@ -19,7 +21,7 @@
 //! | `ponderhit` | `info string error: ponderhit requires an active ponder search`を返す。 |
 //! | それ以外 | `info string error: unknown command <第1語>`を返す。 |
 //!
-//! `usinewgame`、`position`、`go`（`go mate`を含む）、`gameover`、`moves`、`state`、`d`、`eval`、`tt`は、
+//! `usinewgame`、`position`、`go`（`go mate`を含む）、`gameover`、`moves`、`state`、`d`、`eval`、`tt`、`perft`は、
 //! 規則が未設定なら固有の検査に先立って`info string error: required option RuleSet is not set`で拒否し、セッションを続ける。
 //! 最初の有効な`RuleSet`で対局状態を生成し、現局と次局の規則を設定する。
 //! 対局に依存しない設定は規則の指定前でも検査して適用する。
@@ -41,6 +43,8 @@
 //! それ以外の入力は`isready`、`setoption`、`position`も含めて待ち行列に積み、探索の解放後に受信順で処理する。
 //! 入力が閉じた場合は有限探索の完了を待って`bestmove`を出すが、
 //! 結果を保留する`go infinite`と`go ponder`は停止も的中も届かないため捨てる。
+
+mod diagnostics;
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
@@ -75,7 +79,7 @@ use super::{Protocol, RuleSetNotSet};
 /// 理由は`docs/adr/decide-resignation-in-the-usi-layer.md`にある。
 const DEFAULT_RESIGN_VALUE: i32 = 20_000;
 
-/// プロセス内で一度でもgoを受信したら調整係数を固定する。
+/// プロセス内でgoを受信、またはbenchを実行したら調整係数を固定する。
 #[cfg(feature = "tuning")]
 static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 
@@ -237,6 +241,7 @@ impl UsiProtocol {
                     | "d"
                     | "eval"
                     | "tt"
+                    | "perft"
             )
         {
             write_error(output, &RuleSetNotSet.to_string())?;
@@ -287,6 +292,8 @@ impl UsiProtocol {
             "moves" => self.handle_moves(output)?,
             "state" => self.handle_state(output)?,
             "d" | "eval" | "tt" => self.handle_diagnostic(command, output)?,
+            "perft" => self.handle_perft(&tokens[1..], output)?,
+            "bench" => self.handle_bench(&tokens[1..], output)?,
             "ponderhit" => write_error(output, "ponderhit requires an active ponder search")?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
@@ -2279,6 +2286,7 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+    mod diagnostics;
     mod history;
     mod mcts_options;
     mod tuning;
@@ -2511,6 +2519,7 @@ mod tests {
             "d",
             "eval",
             "tt",
+            "perft 1",
         ] {
             let mut protocol = UsiProtocol::new();
             assert_eq!(

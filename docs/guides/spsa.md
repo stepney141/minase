@@ -184,7 +184,7 @@ game_rss_bytes = 630000000
 `runner_commit`には、調整機で別の機械へ移って再開できる版の`minase`を含むコミット（2026年10月18日以降のmaster）を指定する。
 調整対象のコミットがそれより古い場合も、runnerだけを新しくすれば再開できる。
 
-`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に`dev bench --depth 9 --repetitions 3`で走らせた平均NPSである。
+`local_nps`は、測定機でほかの測定、SPSA、教師生成、および学習を止めた状態で、調整対象のコミットの調整用ビルドを16本同時に起動し、それぞれへUSIの独自コマンド`bench depth 9 repetitions 3`を送って走らせた平均NPSである。
 lishogiのBotは止めない。測定機でのSPSAも、Botと共用した状態で行ってきたからである。
 `scripts/vast-spsa/bench.py`で測れる。調整機の`remote.py`も、同じ関数で調整機の負荷時の速度を測る。
 

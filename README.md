@@ -127,20 +127,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Bundled tools
 
 The crate builds a single executable, `minase`.
-Started with `--protocol` and `--rules`, it runs the engine; the development and measurement tools run as its subcommands.
+Started with `--protocol`, it runs the engine; the measurement and data tools run as its subcommands.
 
 | Command | Purpose |
 |---|---|
-| `minase --protocol <usi\|cecp> --rules <rules>` | The engine |
+| `minase --protocol <usi\|cecp>` | The engine |
 | `minase match run` | SPRT harness for self-play and matches against external engines |
 | `minase match report` | Recomputes Elo and statistics from saved match records |
 | `minase spsa` | Tunes search and time-management parameters with SPSA |
 | `minase data selfplay` | Generates self-play data for evaluation training |
 | `minase data lishogi` | Converts lishogi game records into training data |
-| `minase dev bench` | Benchmarks search and move generation |
-| `minase dev perft` | Verifies and times legal-move generation |
 | `minase dev random-play` | Checks invariants with random play |
 | `minase dev usi-random` | Random-move engine for calibrating the harness |
+
+Diagnostics of the engine itself are USI commands of the running engine, not subcommands.
+
+| USI command | Purpose |
+|---|---|
+| `bench [depth <N>] [threads <N>] [repetitions <N>]` | Benchmarks the search on fixed positions |
+| `perft <depth> [divide]` | Counts legal-move paths from the current position |
+| `d`, `eval`, `tt` | Show the position, the evaluation, and transposition-table entries |
+
+```bash
+printf 'bench depth 5\nquit\n' | ./target/release/minase --protocol usi
+```
+
+Each output line starts with `info string`, and a successful run ends with `info string end`.
+The commands are described in [docs/guides/usi-extensions.md](docs/guides/usi-extensions.md) (Japanese).
 
 ## License
 

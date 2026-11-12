@@ -80,9 +80,12 @@ class Children:
 
     def run(self, command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
         seconds = kwargs.pop('timeout') if 'timeout' in kwargs else None
+        input_data = kwargs.pop('input') if 'input' in kwargs else None
+        if input_data is not None:
+            kwargs['stdin'] = subprocess.PIPE
         process = self.start(command, **kwargs)
         try:
-            output, errors = process.communicate(timeout=seconds)
+            output, errors = process.communicate(input=input_data, timeout=seconds)
         except subprocess.TimeoutExpired:
             self.terminate(process)
             raise
@@ -761,8 +764,15 @@ class Chain:
             try:
                 self.children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'], cwd=self.args.worktree,
                                   preexec_fn=low_priority)
-                self.children.run([str(self.args.worktree / 'target/release/minase'), 'dev', 'bench',
-                                   '--depth', str(self.args.bench_depth)], cwd=self.args.worktree)
+                result = self.children.run(
+                    [str(self.args.worktree / 'target/release/minase'), '--protocol', 'usi'],
+                    input=f'bench depth {self.args.bench_depth}\nquit\n', text=True,
+                    stdout=subprocess.PIPE, cwd=self.args.worktree)
+                lines = result.stdout.splitlines()
+                if 'info string end' not in lines:
+                    raise ChainStop('benchの出力に終端の行がありません')
+                for line in lines:
+                    print(line.removeprefix('info string '))
             except BaseException:
                 self.git('checkout', 'HEAD', '--', NETWORK)
                 raise

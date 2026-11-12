@@ -28,7 +28,7 @@ codegen-units = 1
 # Enable core invariants and compare incremental NNUE accumulators with full recomputation
 # at every evaluation in search.
 invariants = ["minase-core/invariants"]
-# Disabled by default; count per-worker search statistics, printed only by `minase dev bench`.
+# Disabled by default; count per-worker search statistics, printed only by the USI command `bench`.
 # See docs/adr/count-search-statistics-behind-a-feature.md.
 search-stats = []
 # Expose bounded Tune_ USI options for search and time-management coefficients.

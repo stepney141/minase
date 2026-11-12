@@ -26,16 +26,23 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 | `d` | USIで`position`の後に送る | 駒を漢字で書いた盤面、拡張SFEN、手番、手数、対局の状態、先獅子と成り権の保留、2つのZobristキーを表示する。表示の前に局面の不変条件を検査する。 |
 | `eval` | USIで`position`の後に送る | 手番側から見た静的評価と、升ごとの寄与を12行12列の表で表示する。 |
 | `tt` | USIで`go`の後に送る | 置換表に残る現局面と全子局面の項目（深さ、境界の種類、評価値、最善手）を表示する。 |
+| `perft <深さ> [divide]` | USIで`position`の後に送る | 現局面から指定した深さまでの合法手の経路数を、深さごとに数える。`divide`を付けると、根の合法手ごとの内訳を出す。 |
+| `bench [depth <N>] [threads <N>] [repetitions <N>]` | USIで送る。規則の設定も`isready`も要らない | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
 | `--io-log <パス>` | `minase`の起動引数 | 受け取った行と送った行を、起動からの経過ミリ秒付きでファイルへ記録する。 |
 | フィーチャ`invariants` | `cargo test`では常に有効。他のビルドでは`--features invariants` | 着手の実行と取消しのたびに局面を全検査し、探索中の評価のたびに差分更新の値を全計算と照合する。失敗すると診断を出してパニックする。 |
-| フィーチャ`search-stats` | `--features search-stats`で`minase dev bench`をビルドする | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`minase dev bench`が出力する。 |
+| フィーチャ`search-stats` | `--features search-stats`でビルドして`bench`を送る | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`bench`が出力する。 |
 
-`eval`と`tt`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
+`eval`、`tt`、`perft`、および`bench`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
 `d`の出力は、StockfishとYaneuraOuに合わせて接頭辞のない素の行であり、`rights-zobrist`の行で終わる。
 盤面の各升は、後手の駒に`^`、成駒に`+`を付けた漢字1文字で書き、空升を`・`とする。
 成駒は成った後の駒種の漢字で書くので、金将の成駒は`+飛`、歩兵の成駒は`+金`と表示される。
-3つのコマンドとも、失敗した場合は`info string error:`で始まる1行だけが返る。
+どのコマンドも、受け付けなかった場合は`info string error:`で始まる1行だけが返り、終端の行は出ない。
 探索中に送ったコマンドは、探索が終わってから処理される。
+
+`perft`と`bench`をスクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、出力に終端の行`info string end`があることの両方で成功を判定する。
+引数の誤りはエラーの行を出すだけでエンジンを終了しないので、終了コードだけでは検出できない。
+不変条件の違反のような実行時の失敗では、エラーの行を出して終了コード1で終わる。
+これらを独自コマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
 
 ## 再現の手段
 
@@ -44,8 +51,7 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 **局面の再現**：USIの`position sfen`は、盤面と手番の2欄に先獅子の升と手数を加えた4欄、または成り権の保留を加えた5欄の拡張SFENだけを受理し、2欄SFENを拒否する。
 先獅子の状態がない局面は、2欄SFENの末尾に`- 1`を付けて4欄にする（例：`position sfen <盤面> b - 1`）。
 着手列が分かっている場合は、`position startpos moves ...`または`position sfen ... moves ...`で局面を作る。
-着手列で作った局面を他の道具へ渡すときは、`d`が表示する拡張SFENを写す。
-`minase dev perft`の`--sfen`も、2欄SFENに加えて同じ拡張SFENを受理する。
+着手列で作った局面を別のセッションで再現するときは、`d`が表示する拡張SFENを`position sfen`へ写す。
 
 **ランダム対局**：`minase dev random-play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
 失敗すると、規則、シード、局番号、手数、問題の手、直前の局面のSFEN、および全手順を標準エラーへ出して終了コード1で終わる。
@@ -100,15 +106,17 @@ done
 
 1. chu-shogi.mdの該当条文を読み、期待する挙動を条文から決める。実装の出力を正としない。
 2. `minase dev random-play`を`--verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
-3. 失敗した局面を`minase dev perft`へ与え、`--divide`で根の手ごとの件数を出す。
-4. 条文から数えた期待値と食い違う手を1手進め、深さを1減らして`--divide`を繰り返し、誤りのある局面と手まで絞り込む。
+3. 失敗した局面を`position`で設定し、`perft <深さ> divide`で根の手ごとの件数を出す。
+4. 条文から数えた期待値と食い違う手を`position`の着手列に足して1手進め、深さを1減らして`divide`を繰り返し、誤りのある局面と手まで絞り込む。
 
 ```console
-cargo run --release --bin minase -- dev perft 3 --rules JCSA --sfen "<拡張SFEN>" --divide
+printf 'setoption name RuleSet value JCSA\nposition sfen <拡張SFEN>\nperft 3 divide\nquit\n' \
+  | cargo run --release --bin minase -- --protocol usi
 ```
 
-`--rules`は必須であり、不具合が出た対局と同じ規則セットを与える。
-`--sfen`には、USIの独自コマンド`d`が表示する拡張SFENをそのまま与えられ、先獅子の状態と成り権の保留も復元される。
+`perft`は、`position`で設定した局面を、現局に適用中の規則で数える。
+`RuleSet`には、不具合が出た対局と同じ規則セットを与える。
+`position sfen`には、`d`が表示する拡張SFENをそのまま与えられ、先獅子の状態と成り権の保留も復元される。
 perftの数値は、テストの正しさの基準にしない（[ADR](../adr/verify-movegen-without-perft-counts.md)）。
 perftはdivideによる絞り込みと速度の計測に使う。
 
@@ -118,8 +126,14 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 
 探索の不具合は、結果の誤り（明らかに悪い手、詰みの見落とし、評価値の異常）と、挙動の意図しない変化に分かれる。
 
-**挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、`minase dev bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
-`minase dev bench`は、`Threads=1`の固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
+**挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、USIの独自コマンド`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
+`bench`は、省略時には1スレッドの固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
+規則は規則セット`JCSA`に固定で、局面、置換表、およびhistory表はbench専用のものを使うので、セッションの対局と設定には影響しない。
+
+```console
+printf 'bench depth 5\nquit\n' | target/release/minase --protocol usi
+```
+
 `scripts/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
 `--baseline`と`--parent`は速度の比を求める比較先であり、挙動の一致だけを確かめるときは3つとも同じ比較先のコミットを与える。
 
@@ -145,16 +159,16 @@ scripts/bench_compare.py --reference master --baseline master --parent master --
 表示される値は照会の時点で表に残っている項目であり、直前の探索が最後に保存した値とは限らない（深い項目は浅い探索の結果で上書きされない）。
 項目の最善手は評価値と別の語に保存されるので、評価値と同じ探索に由来するとは限らない。
 
-**探索内部の計測**：静止探索の割合、置換表の一致率、βカットの割合など、探索の健全性を示す回数は、`--features search-stats`でビルドした`minase dev bench`で数える。
+**探索内部の計測**：静止探索の割合、置換表の一致率、βカットの割合など、探索の健全性を示す回数は、`--features search-stats`でビルドしたminaseの`bench`で数える。
 統計は局面ごとの行とサマリの後に`stats:`の行で出力され、回数と、分母が0でない比が並ぶ。
 測定用の`target/release`を上書きしないよう、別のターゲットディレクトリでビルドする。
 
 ```console
 CARGO_TARGET_DIR=target/stats cargo build --release --features search-stats --bin minase
-target/stats/release/minase dev bench --depth 5
+printf 'bench depth 5\nquit\n' | target/stats/release/minase --protocol usi
 ```
 
-変更の前後で統計を比べるときは、同じ深さと`Threads=1`で両方の`minase dev bench`を実行し、回数の比だけを読む。
+変更の前後で統計を比べるときは、同じ深さと1スレッドで両方の`bench`を実行し、回数の比だけを読む。
 速度は計測コードなしのバイナリで測り直す（[教訓](../lessons/shared-probe-counter-distorts-threads.md)）。
 特定の改良の発動回数のように固定項目にない回数は、`crates/minase/src/search/stats.rs`の項目の宣言へ項目を1つ足し、該当箇所に加算を書いたパッチで数える。
 合算と出力は宣言から自動で生成される。
@@ -170,7 +184,7 @@ target/stats/release/minase dev bench --depth 5
 評価関数の不具合は、差分更新の誤り、対称性の破れ、および重みの誤りに分かれる。
 
 差分更新の誤りは、探索が使う差分更新の値と`pst::evaluate`の全計算の値を比べて見つける。
-フィーチャ`invariants`は探索中の評価のたびにこの照合を行うので、`cargo test`と、`--features invariants`でビルドした`minase dev bench`が照合の失敗を報告する。
+フィーチャ`invariants`は探索中の評価のたびにこの照合を行うので、`cargo test`と、`--features invariants`でビルドしたminaseの`bench`が照合の失敗を報告する。
 失敗の診断は、局面のZobristキー、手数、差分更新と全計算の両方の中間値を含む。
 
 対称性の破れは、段反転と陣営交換を施した局面で評価が一致するかで調べる。
@@ -270,5 +284,5 @@ RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi
 修正は、次の3点を確かめてから採用する。
 
 1. 修正を一時的に外すと失敗する回帰テストを追加する（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。規則に関わるテストは、期待値をchu-shogi.mdの条文から導き、条文の番号をテストに書く。`cargo test`は整合検査（フィーチャ`invariants`）を常に有効にして走るので、テストの中の着手と探索も全検査を受ける。
-2. 探索木を変えないはずの修正は、`minase dev bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
+2. 探索木を変えないはずの修正は、`bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
 3. 探索木を変える修正のうち、棋力に影響し得るものは、[sprt.md](sprt.md)の手順で採否を決める。

@@ -49,6 +49,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | `quit` | 探索中なら探索の結果を捨てて終了する。 |
 | `debug`、`register` | 応答せずに無視する。 |
 | `moves`、`state`、`d`、`eval`、`tt` | minase独自の照会であり、「独自のコマンド」の節にある。 |
+| `perft`、`bench` | minase独自の診断であり、「診断のコマンド」の節にある。 |
 | 上記以外 | `info string error: unknown command <第1語>`を返す。 |
 
 ## 標準コマンドとの違い
@@ -68,7 +69,7 @@ USI原典は解釈できないコマンドを無視するよう定めるが、mi
 minaseは規則セットの既定値を持たないので、GUIや対局用のプログラムは、`isready`より前に`setoption name RuleSet value <規則>`を送る必要がある。
 規則セットは、対局に採用する規則コードの組であり、値の書き方は「オプション」の節の表にある。
 規則セットが未設定のまま`isready`を受けると、minaseは`info string error: required option RuleSet is not set`を出し、`readyok`を返さずに終了コード1で終わる。
-`isready`を送らないクライアントに備えて、`usinewgame`、`position`、`go`、`gameover`、および独自のコマンドの`moves`、`state`、`d`、`eval`、`tt`も、規則セットが未設定の間は同じ文言のエラーで拒否する。
+`isready`を送らないクライアントに備えて、`usinewgame`、`position`、`go`、`gameover`、および独自のコマンドの`moves`、`state`、`d`、`eval`、`tt`、`perft`も、規則セットが未設定の間は同じ文言のエラーで拒否する。
 この場合はエンジンを終了せず、次のコマンドを待つ。
 `USI_Hash`や`Threads`などのほかのオプションは、規則セットより先に送ってよく、届いた時点で検査して適用する。
 
@@ -240,3 +241,55 @@ MCTSで起動したminaseでは`info string error: tt requires --search alphabet
 `d`、`eval`、および`tt`は対局中と終局後に応答し、対局の開始前にはエラーを返す。
 出力の詳しい読み方と、不具合の調査での使い方は[デバッグの手引き](debugging.md)にある。
 3つを独自コマンドにした理由は[ADR](../adr/show-position-evaluation-and-tt-as-usi-commands.md)にある。
+
+## 診断のコマンド
+
+minaseは、エンジンの実装を検証する診断を、USIの独自コマンドとして持つ。
+対局中に送るものではなく、開発者が手で、またはスクリプトから実行する。
+これらをサブコマンドではなくUSIのコマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
+
+### 共通の契約
+
+診断のコマンドは、次の契約に従う。
+
+- 探索していないときに同期で実行する。探索中に送ると、ほかのコマンドと同じく、探索が終わってから実行する。実行中に届いた`stop`と`quit`は、診断が終わってから処理する。
+- 出力の各行に`info string`を付け、正常に終わったときだけ最後に`info string end`を出す。
+- 引数の誤り（未知の語、値の欠落、範囲外の値、同じ引数の重複）は、`info string error: <内容>`の1行で拒否し、次のコマンドを待つ。終端の行は出さない。
+- 不変条件の違反のような実行時の失敗は、`info string error: <内容>`を出して終了コード1で終わる。
+- 対局の局面、置換表、および設定を変えない。
+
+スクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、終端の行があることの両方で成功を判定する。
+引数の誤りではエンジンが終了しないので、終了コードだけでは検出できない。
+
+```console
+printf 'bench depth 5\nquit\n' | target/release/minase --protocol usi
+```
+
+### perft
+
+```text
+perft <深さ> [divide]
+```
+
+現局面から、指定した深さまでの合法手の経路数を、深さごとに数える。
+局面は`position`で設定したものを使い、規則は現局に適用中の規則を使う。
+`divide`を付けると、根の合法手ごとの内訳も出す。
+深さ0は受け付け、`divide`との併用だけを引数の誤りとして拒否する。
+計数は、千日手や終局の裁定を使わず、合法手生成器と局面の複製で行うので、終局した対局の局面でも数えられる。
+規則セットが未設定の場合と、対局の開始前で現局面がない場合は、エラーで拒否する。
+perftの件数は合法手生成の正しさの基準にせず（[ADR](../adr/verify-movegen-without-perft-counts.md)）、不具合の絞り込みと速度の計測に使う（[デバッグの手引き](debugging.md)）。
+
+### bench
+
+```text
+bench [depth <N>] [threads <N>] [repetitions <N>]
+```
+
+固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。
+省略時の値は、`depth`が3、`threads`が1、`repetitions`が1である。
+`repetitions`が2以上なら、計測に入れないウォームアップを1回行い、反復ごとの行と中央値の行を出す。
+規則は規則セット`JCSA`に固定であり、局面、置換表、およびhistory表はbench専用のものを使う。
+そのため、規則の設定も`isready`も要らず、セッションの対局、`USI_Hash`、および`Threads`には影響しない。
+MCTSで起動したminaseでも、同じαβ探索の測定として実行できる。
+`--features tuning`でビルドしたminaseでは、`bench`も探索を実行するので、`go`と同じく、実行した時点から`Tune_<名前>`の変更を拒否する。
+探索木を変えない変更の確認と速度の比較での使い方は、[デバッグの手引き](debugging.md)にある。

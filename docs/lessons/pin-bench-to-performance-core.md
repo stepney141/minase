@@ -12,7 +12,7 @@
 
 ## 以後の規則
 
-速度を比べるbenchは`taskset -c <性能コアの論理CPU>`で固定し（例 `taskset -c 3 minase dev bench --depth 5 --repetitions 3`）、比べるすべての構成を同じCPUで測る。
+速度を比べるbenchは`taskset -c <性能コアの論理CPU>`で固定し（例 `printf 'bench depth 5 repetitions 3\nquit\n' | taskset -c 3 minase --protocol usi`）、比べるすべての構成を同じCPUで測る。
 固定後も各構成を3回測り、値の幅が構成間の差より十分小さいことを確かめてから差を評価する。
 固定しても他の負荷の影響は残り得るので、測る前に負荷の大きい測定が動いていないことを確かめる（[測定中の負荷の確認](check-running-measurements-before-cpu-load.md)）。
 

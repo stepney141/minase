@@ -56,7 +56,7 @@ Finny tables（accumulator cache、refresh tableとも呼ぶ）は、自玉の�
 P型の文脈は1種類なので、この全再計算は起きない。
 [P型を採るADR](../adr/use-p-type-input-features-for-the-nnue.md)（設計判断の記録）が再比較のために実装を残すと決めた`HalfKpHmB8`の文脈は、自陣の王将（なければ太子）の段と筋から決まる8区分と、左右鏡映の有無の組である。
 この文脈は、王将または太子の移動、醉象の成り、および王駒の捕獲のときだけ求め直される（`crates/minase/src/eval/nnue/feature_set.rs`）。
-全再計算の回数は`AccumulatorStats`が数え、`minase dev bench`の`accumulators:`行が`refresh_fraction`として出力する。
+全再計算の回数は`AccumulatorStats`が数え、USIの独自コマンド`bench`の`accumulators:`行が`refresh_fraction`として出力する。
 `invariants`機能を有効にしたビルドでは、探索中に静的評価を求める局面で、差分更新の累算値を全再計算と照合する（`Network::assert_accumulator`）。
 現行の学習器で再学習したHalfKP-hm-b8のネットは、ブランチ`halfkp-retrain`のコミット`ae1b384c`に埋め込まれている（[記録](../measurements/nnue-early-best-epoch/halfkp-retrain-stc.md)）。
 探索木を変えない高速化のNPSの比較には、`scripts/bench_compare.py`を使う。
@@ -196,7 +196,7 @@ null moveは文脈を変えないので、表を使わない。
 
 ### フェーズ1　効果の上限の測定
 
-候補のネットを埋め込んだコミットで、`minase dev bench --depth 9`を、過去の速度の記録と同じく3回実行し、`refresh_fraction`を記録する。
+候補のネットを埋め込んだコミットで、`bench depth 9`を、過去の速度の記録と同じく3回実行し、`refresh_fraction`を記録する。
 次に、全再計算の経路（文脈が変わった視点でのバイアスの複写と特徴の加算）が探索時間に占める割合pを求める。
 `add_hidden`は差分更新と全再計算の両方から呼ばれ、関数ごとの集計では2つを分けられないので、計測用のブランチで全再計算の経路を`#[inline(never)]`の関数へ切り出し、その関数と呼び出し先の関数を合わせた時間を全再計算の時間とする。このブランチは計測にだけ使い、masterへ入れない。
 benchは[性能コアへ固定](../lessons/pin-bench-to-performance-core.md)して`perf record`で採り、[計測区間の処理だけで正規化する手順](../lessons/perf-hybrid-cpu-normalize-search-samples.md)に従って、benchの計測区間外の置換表の消去を除いてからpを求める。
@@ -230,7 +230,7 @@ cargo fmt --check
 cargo clippy --release --all-targets
 cargo test --release
 cargo test --release --features invariants
-cargo run --release --features invariants --bin minase -- dev bench --depth 9 --threads 1
+printf 'bench depth 9 threads 1\nquit\n' | cargo run --release --features invariants --bin minase -- --protocol usi
 scripts/bench_compare.py --reference <表を入れる前の候補> --baseline <表を入れる前の候補> --parent <表を入れる前の候補> --depth 9 --repetitions 3 --rounds 5 --threads 1
 ```
 

@@ -380,3 +380,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [規則セットは起動後のプロトコルで必ず指定させ、エンジンは既定値を持たない](require-the-rule-set-through-the-protocol-and-keep-no-default.md)
 - 2026年11月12日 [AlphaZero型探索のネットはUSIのオプション`NnModel`のファイルで指定し、`isready`で読み込む](select-zero-networks-by-the-usi-option-nnmodel.md)
 - 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)
+- 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)

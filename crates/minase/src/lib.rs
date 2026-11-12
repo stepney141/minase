@@ -21,6 +21,7 @@
 
 #[doc(hidden)]
 pub mod datagen;
+pub mod diagnostics;
 pub mod eval;
 #[doc(hidden)]
 pub mod harness;

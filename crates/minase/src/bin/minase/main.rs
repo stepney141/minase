@@ -5,7 +5,6 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
-mod bench;
 mod engine;
 mod io_log;
 mod lishogi_import;
@@ -13,7 +12,6 @@ mod match_report;
 mod match_runner;
 mod nn_eval;
 mod nn_fixture;
-mod perft;
 mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
@@ -121,14 +119,10 @@ enum DataCommand {
 
 #[derive(Subcommand)]
 enum DevCommand {
-    /// 固定局面で探索を検証する。
-    Bench(bench::Arguments),
     /// ネットの入出力の照合に使う固定局面集を書き出す。
     NnFixture(nn_fixture::Arguments),
     /// 固定局面集をネットで評価し、推論の照合用JSONを書き出す。
     NnEval(nn_eval::Arguments),
-    /// 合法手の経路数を数える。
-    Perft(perft::Arguments),
     /// ランダム対局で不変条件を検証する。
     RandomPlay(random_play::Arguments),
     /// 校正用のランダム着手エンジンを起動する。
@@ -164,10 +158,8 @@ fn main() -> ExitCode {
         Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
         Some(Command::Data(DataCommand::TeacherStats(arguments))) => teacher_stats::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
-        Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
         Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
         Some(Command::Dev(DevCommand::NnEval(arguments))) => nn_eval::main(arguments),
-        Some(Command::Dev(DevCommand::Perft(arguments))) => perft::main(arguments),
         Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
         Some(Command::Dev(DevCommand::UsiRandom)) => {
             if let Err(error) = usi_random::main() {
@@ -349,7 +341,6 @@ mod tests {
                 "--nodes",
                 "200",
             ],
-            vec!["dev", "bench"],
             vec!["dev", "nn-fixture", "--out", "positions.jsonl"],
             vec![
                 "dev",
@@ -363,7 +354,6 @@ mod tests {
                 "--out",
                 "evaluation.json",
             ],
-            vec!["dev", "perft", "1", "--rules", "JCSA"],
             vec!["dev", "random-play", "--rules", "JCSA"],
             vec!["dev", "usi-random"],
         ] {
@@ -427,7 +417,11 @@ mod tests {
     // [`Arguments`]の契約: 解析後の検査でも使い方に新しい呼び出し名を表示する。
     #[test]
     fn validation_errors_use_full_subcommand_names() {
-        for path in [["match", "run"], ["dev", "random-play"], ["dev", "perft"]] {
+        for path in [
+            ["match", "run"],
+            ["dev", "random-play"],
+            ["dev", "nn-fixture"],
+        ] {
             let error = subcommand_command(&path)
                 .error(clap::error::ErrorKind::ValueValidation, "invalid arguments");
             assert_eq!(error.exit_code(), 2);

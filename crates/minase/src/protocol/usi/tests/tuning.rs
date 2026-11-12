@@ -18,6 +18,9 @@ fn tuning_usi_contract_in_isolated_process() {
                 "go depth nope",
                 "go mate 1",
                 "go",
+                "bench depth 1",
+                "bench depth 0",
+                "mcts bench",
             ] {
                 let output = std::process::Command::new(std::env::current_exe().unwrap())
                     .args([
@@ -410,10 +413,30 @@ fn tuning_usi_contract_in_isolated_process() {
         ),
         ""
     );
-    if scenario != "go" {
-        run(&mut protocol, "position startpos\n");
+    if scenario == "bench depth 0" {
+        let output = run(
+            &mut protocol,
+            "bench depth 0\nsetoption name Tune_DeltaMargin value 300\n",
+        );
+        assert_eq!(error_lines(&output).len(), 1, "{output}");
+        assert!(!output.contains("tuning parameters cannot change"));
+        assert!(!output.contains("info string end"));
+        assert_eq!(params::delta_margin(), 300);
+        return;
     }
-    run(&mut protocol, &format!("{scenario}\nstop\n"));
+    if scenario == "mcts bench" {
+        let mut mcts = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+        let output = run(&mut mcts, "bench depth 1\n");
+        assert!(output.ends_with("info string end\n"), "{output}");
+    } else if scenario == "bench depth 1" {
+        let output = run(&mut protocol, "bench depth 1\n");
+        assert!(output.ends_with("info string end\n"), "{output}");
+    } else {
+        if scenario != "go" {
+            run(&mut protocol, "position startpos\n");
+        }
+        run(&mut protocol, &format!("{scenario}\nstop\n"));
+    }
     for prefix in ["", "usinewgame\n"] {
         assert_eq!(
             run(

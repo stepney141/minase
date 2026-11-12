@@ -1,7 +1,7 @@
 //! 固定局面の探索で決定性と毎秒ノード数（NPS）を測る。
 //!
-//! 規則は`JCSA`に固定し、深さは`--depth`で既定3、ワーカー数は`--threads`で指定する。
-//! `--repetitions 1`では各局面の`position=<名前> depth=... nodes=... best=... score=... elapsed=...`、
+//! 規則は`JCSA`に固定し、深さは`depth`で既定3、ワーカー数は`threads`で指定する。
+//! `repetitions 1`では各局面の`position=<名前> depth=... nodes=... best=... score=... elapsed=...`、
 //! `summary:`、および`accumulators:`の行を出す。
 //! 2回以上では計測外のウォームアップを1回行い、反復ごとの`run=`行と最後の`median:`行を出す。
 //! この場合も累算器の統計を反復ごとと全反復の合計について出す。
@@ -12,34 +12,118 @@
 //! 特定の総ノード数は固定しない。`scripts/bench_compare.py`は局面ごとの深さ、ノード数、最善手、評価値を比較する。
 //! 固定局面の共有は[`BENCH_POSITIONS`]に従う。
 
-use std::num::NonZeroUsize;
+use std::fmt;
+use std::io;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Instant;
 
-use clap::Parser;
-use minase::eval::Nnue;
-use minase::eval::nnue::AccumulatorStats;
-use minase::search::{
-    DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
-};
+use crate::eval::Nnue;
+use crate::eval::nnue::AccumulatorStats;
+use crate::search::{MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase_core::notation::usi;
 use minase_core::{Game, MoveGenerator, Rules, parse_sfen};
 
-/// 既定の探索深さ。
-const DEFAULT_DEPTH: u32 = 3;
-
-/// 固定局面探索ベンチのコマンドライン引数。
-#[derive(Parser)]
-#[command(name = "bench")]
-pub(super) struct Arguments {
-    /// 全局面を探索する固定深さ。
-    #[arg(long, default_value_t = DEFAULT_DEPTH, value_parser = parse_positive_u32)]
-    depth: u32,
-    /// 探索ワーカーの総数。
-    #[arg(long, default_value_t = DEFAULT_THREADS, value_parser = parse_threads)]
+/// benchの検査済み引数。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Arguments {
+    depth: NonZeroU32,
     threads: NonZeroUsize,
-    /// 計測する反復回数。2回以上では計測外のウォームアップを先に行う。
-    #[arg(long, default_value = "1", value_parser = parse_repetitions)]
     repetitions: NonZeroUsize,
+}
+
+/// benchの引数の範囲違反。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArgumentError {
+    /// 探索深さが上限を超えた。
+    Depth,
+    /// ワーカー数が256を超えた。
+    Threads,
+}
+
+impl fmt::Display for ArgumentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Depth => write!(f, "depth must be from 1 to {MAX_PLY}"),
+            Self::Threads => f.write_str("threads must be from 1 to 256"),
+        }
+    }
+}
+
+impl std::error::Error for ArgumentError {}
+
+impl Arguments {
+    /// 探索深さとワーカー数を検査して構築する。各値は正数でなければならない。
+    pub fn new(
+        depth: NonZeroU32,
+        threads: NonZeroUsize,
+        repetitions: NonZeroUsize,
+    ) -> Result<Self, ArgumentError> {
+        if depth.get() > MAX_PLY {
+            return Err(ArgumentError::Depth);
+        }
+        if threads.get() > 256 {
+            return Err(ArgumentError::Threads);
+        }
+        Ok(Self {
+            depth,
+            threads,
+            repetitions,
+        })
+    }
+}
+
+/// 省略時の探索深さ。
+pub const DEFAULT_DEPTH: NonZeroU32 = const { NonZeroU32::new(3).unwrap() };
+
+/// 固定局面の探索または結果の出力に失敗した原因。
+#[derive(Debug)]
+pub enum Error {
+    /// 埋め込みの評価関数を読み込めなかった。
+    Weights(crate::eval::nnue::Error),
+    /// 固定局面の表記が不正だった。
+    Position(minase_core::notation::sfen::SfenError),
+    /// 探索の入力が不正だった。
+    Search(crate::search::SearchError),
+    /// 置換表を確保できなかった。
+    Table(crate::search::TranspositionTableError),
+    /// 探索で得た最善手を表記できなかった。
+    BestMove(minase_core::IllegalMove),
+    /// 総ノード数がu64に収まらなかった。
+    CountOverflow,
+    /// 反復ごとの測定結果を保存する領域を確保できなかった。
+    Allocation(std::collections::TryReserveError),
+    /// 出力先への書き込みに失敗した。
+    Output(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Weights(error) => write!(f, "embedded evaluation weights are invalid: {error}"),
+            Self::Position(error) => write!(f, "bench position is invalid: {error}"),
+            Self::Search(error) => write!(f, "bench search failed: {error}"),
+            Self::Table(error) => write!(f, "bench transposition table failed: {error}"),
+            Self::BestMove(error) => write!(f, "bench best move is invalid: {error}"),
+            Self::CountOverflow => f.write_str("bench total node count overflow"),
+            Self::Output(error) => write!(f, "bench output failed: {error}"),
+            Self::Allocation(error) => write!(f, "bench allocation failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Weights(error) => Some(error),
+            Self::Position(error) => Some(error),
+            Self::Search(error) => Some(error),
+            Self::Table(error) => Some(error),
+            Self::BestMove(error) => Some(error),
+            Self::Output(error) => Some(error),
+            Self::Allocation(error) => Some(error),
+            Self::CountOverflow => None,
+        }
+    }
 }
 
 /// ベンチ対象の名前と2欄SFEN。
@@ -129,45 +213,13 @@ const BENCH_POSITIONS: &[BenchPosition] = &[
     },
 ];
 
-/// 0より大きい探索深さを解析する。
-fn parse_positive_u32(text: &str) -> Result<u32, String> {
-    let depth = text
-        .parse::<u32>()
-        .map_err(|error| format!("invalid positive integer '{text}': {error}"))?;
-    if depth == 0 {
-        return Err("depth must be at least 1".to_owned());
-    }
-    if depth > MAX_PLY {
-        return Err(format!("depth must not exceed {MAX_PLY}"));
-    }
-    Ok(depth)
-}
-
-/// 1以上256以下のワーカー数を解析する。
-fn parse_threads(text: &str) -> Result<NonZeroUsize, String> {
-    let threads = text
-        .parse::<usize>()
-        .map_err(|error| format!("invalid worker count '{text}': {error}"))?;
-    NonZeroUsize::new(threads)
-        .filter(|threads| threads.get() <= 256)
-        .ok_or_else(|| "threads must be from 1 to 256".to_owned())
-}
-
-/// 1以上の反復回数を解析する。
-fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
-    let repetitions = text
-        .parse::<usize>()
-        .map_err(|error| format!("invalid repetition count '{text}': {error}"))?;
-    NonZeroUsize::new(repetitions).ok_or_else(|| "repetitions must be at least 1".to_owned())
-}
-
 /// bench 1回分の集計。
 struct BenchRun {
     /// 全探索ワーカーの累算器更新・再計算の回数。
     accumulators: AccumulatorStats,
     /// 計測した全局面の探索統計。
     #[cfg(feature = "search-stats")]
-    stats: minase::search::SearchStats,
+    stats: crate::search::SearchStats,
     /// 全局面が到達した深さ。
     depth: u32,
     /// 全局面の総ノード数。
@@ -177,26 +229,27 @@ struct BenchRun {
 }
 
 /// 全更新を分母とし、根の初期化も含む再計算率を出力する。
-fn print_accumulator_stats(stats: AccumulatorStats) {
+fn print_accumulator_stats(
+    stats: AccumulatorStats,
+    output: &mut dyn FnMut(&str) -> io::Result<()>,
+) -> Result<(), Error> {
     let updates = stats.updates();
-    print!(
+    let mut line = format!(
         "accumulators: accumulator_updates={updates} accumulator_refreshes={}",
         stats.refreshes
     );
     if updates != 0 {
-        print!(
+        line.push_str(&format!(
             " refresh_fraction={:.6}",
             stats.refreshes as f64 / updates as f64
-        );
+        ));
     }
-    println!();
+    output(&line).map_err(Error::Output)
 }
 
 /// 回数と、分母が正の項目の比だけを1行に整形する。
 #[cfg(feature = "search-stats")]
-fn format_stats(stats: &minase::search::SearchStats) -> String {
-    use std::fmt::Write;
-
+fn format_stats(stats: &crate::search::SearchStats) -> String {
     let mut line = stats.to_string();
     let nodes = stats.normal_nodes + stats.quiesce_nodes;
     let ranked = stats.best_move_rank_1
@@ -238,8 +291,10 @@ fn format_stats(stats: &minase::search::SearchStats) -> String {
         ),
     ] {
         if denominator != 0 {
-            write!(line, " {name}={:.6}", numerator as f64 / denominator as f64)
-                .expect("writing to a String cannot fail");
+            line.push_str(&format!(
+                " {name}={:.6}",
+                numerator as f64 / denominator as f64
+            ));
         }
     }
     line
@@ -282,8 +337,9 @@ fn run_bench(
     threads: NonZeroUsize,
     transposition_table: &mut TranspositionTable,
     print_positions: bool,
-) -> BenchRun {
-    let mut histories = minase::search::HistoryTables::new(threads);
+    output: &mut dyn FnMut(&str) -> io::Result<()>,
+) -> Result<BenchRun, Error> {
+    let mut histories = crate::search::HistoryTables::new(threads);
     let mut reached_depth = u32::MAX;
     let mut total_nodes = 0_u64;
     let mut total_elapsed = 0.0_f64;
@@ -291,12 +347,12 @@ fn run_bench(
     // 前の探索や診断の計数を計測へ持ち込まない。
     nnue.take_accumulator_stats();
     #[cfg(feature = "search-stats")]
-    let mut stats = minase::search::SearchStats::default();
+    let mut stats = crate::search::SearchStats::default();
 
     for bench_position in BENCH_POSITIONS {
-        let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
+        let position = parse_sfen(bench_position.sfen).map_err(Error::Position)?;
         let game = Game::from_position(rules, position);
-        let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
+        let snapshot = SearchSnapshot::from_game(&game).map_err(Error::Search)?;
         transposition_table.clear();
         histories.clear();
         let position_start = Instant::now();
@@ -308,7 +364,7 @@ fn run_bench(
             transposition_table,
             &mut histories,
         )
-        .expect("bench search input must be valid");
+        .map_err(Error::Search)?;
         let elapsed = position_start.elapsed();
         // searchは全補助ワーカーをjoinして戻る。主ワーカー分も計測外で回収する。
         accumulators += nnue.take_accumulator_stats();
@@ -320,7 +376,7 @@ fn run_bench(
         total_elapsed += elapsed.as_secs_f64();
         total_nodes = total_nodes
             .checked_add(result.nodes)
-            .expect("total node count overflow");
+            .ok_or(Error::CountOverflow)?;
         if print_positions {
             // 最善手と探索値は計測区間の外で文字列化する。局面別の一致比較に使う。
             let best_move = usi::text(
@@ -328,8 +384,8 @@ fn run_bench(
                 result.best_move,
                 &MoveGenerator::new(rules.moves),
             )
-            .expect("search must return a legal best move");
-            println!(
+            .map_err(Error::BestMove)?;
+            output(&format!(
                 "position={} depth={} nodes={} best={} score={} elapsed={:.6}s",
                 bench_position.name,
                 result.depth,
@@ -337,36 +393,37 @@ fn run_bench(
                 best_move,
                 result.score,
                 elapsed.as_secs_f64()
-            );
+            ))
+            .map_err(Error::Output)?;
             #[cfg(feature = "search-stats")]
-            println!("{}", format_stats(&result.stats));
+            output(&format_stats(&result.stats)).map_err(Error::Output)?;
         }
     }
 
-    BenchRun {
+    Ok(BenchRun {
         accumulators,
         #[cfg(feature = "search-stats")]
         stats,
         depth: reached_depth,
         nodes: total_nodes,
         elapsed: total_elapsed,
-    }
+    })
 }
 
 /// 探索ベンチを実行する。
-pub(super) fn main(arguments: Arguments) {
-    let nnue = minase::eval::weights().unwrap_or_else(|error| {
-        eprintln!("error: embedded evaluation weights are invalid: {error}");
-        std::process::exit(1);
-    });
+pub fn run(
+    arguments: Arguments,
+    output: &mut dyn FnMut(&str) -> io::Result<()>,
+) -> Result<(), Error> {
+    let nnue = crate::eval::weights().map_err(Error::Weights)?;
     let rules = Rules::JCSA;
-    let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
-        .expect("the CLI parser accepts only valid search depths");
+    let limits =
+        SearchLimits::new(Some(arguments.depth.get()), None, None, None).map_err(Error::Search)?;
     // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
     // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
     // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
-    let mut transposition_table = TranspositionTable::new(minase::search::DEFAULT_TT_SIZE_MB)
-        .expect("default transposition table size must be valid");
+    let mut transposition_table =
+        TranspositionTable::new(crate::search::DEFAULT_TT_SIZE_MB).map_err(Error::Table)?;
     if arguments.repetitions.get() == 1 {
         let result = run_bench(
             &nnue,
@@ -375,19 +432,21 @@ pub(super) fn main(arguments: Arguments) {
             arguments.threads,
             &mut transposition_table,
             true,
-        );
-        println!(
+            output,
+        )?;
+        output(&format!(
             "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
             BENCH_POSITIONS.len(),
             arguments.depth,
             result.nodes,
             result.elapsed,
             result.nps()
-        );
-        print_accumulator_stats(result.accumulators);
+        ))
+        .map_err(Error::Output)?;
+        print_accumulator_stats(result.accumulators, output)?;
         #[cfg(feature = "search-stats")]
-        println!("{}", format_stats(&result.stats));
-        return;
+        output(&format_stats(&result.stats)).map_err(Error::Output)?;
+        return Ok(());
     }
 
     let _ = run_bench(
@@ -397,8 +456,11 @@ pub(super) fn main(arguments: Arguments) {
         arguments.threads,
         &mut transposition_table,
         false,
-    );
-    let mut runs = Vec::with_capacity(arguments.repetitions.get());
+        output,
+    )?;
+    let mut runs = Vec::new();
+    runs.try_reserve_exact(arguments.repetitions.get())
+        .map_err(Error::Allocation)?;
     for run in 1..=arguments.repetitions.get() {
         let result = run_bench(
             &nnue,
@@ -407,45 +469,50 @@ pub(super) fn main(arguments: Arguments) {
             arguments.threads,
             &mut transposition_table,
             false,
-        );
-        println!(
+            output,
+        )?;
+        output(&format!(
             "run={run} depth={} nodes={} elapsed={:.6}s nps={:.0}",
             result.depth,
             result.nodes,
             result.elapsed,
             result.nps()
-        );
-        print_accumulator_stats(result.accumulators);
+        ))
+        .map_err(Error::Output)?;
+        print_accumulator_stats(result.accumulators, output)?;
         #[cfg(feature = "search-stats")]
-        println!("{}", format_stats(&result.stats));
+        output(&format_stats(&result.stats)).map_err(Error::Output)?;
         runs.push(result);
     }
     let mut depths: Vec<_> = runs.iter().map(|run| u64::from(run.depth)).collect();
     let mut nodes: Vec<_> = runs.iter().map(|run| run.nodes).collect();
     let mut elapsed: Vec<_> = runs.iter().map(|run| run.elapsed).collect();
     let mut nps: Vec<_> = runs.iter().map(BenchRun::nps).collect();
-    println!(
+    output(&format!(
         "median: depth={} nodes={} elapsed={:.6}s nps={:.0}",
         median_u64(&mut depths),
         median_u64(&mut nodes),
         median_f64(&mut elapsed),
         median_f64(&mut nps)
-    );
+    ))
+    .map_err(Error::Output)?;
     // 中央値ではなく、ウォームアップを除く計測反復の合計を使う。
     let mut accumulators = AccumulatorStats::default();
     for run in &runs {
         accumulators += run.accumulators;
     }
-    print_accumulator_stats(accumulators);
+    print_accumulator_stats(accumulators, output)?;
     #[cfg(feature = "search-stats")]
     {
-        let mut stats = minase::search::SearchStats::default();
+        let mut stats = crate::search::SearchStats::default();
         for run in &runs {
             stats += run.stats;
         }
         // 中央値の回数ではなく、ウォームアップを除く全計測反復の合計。
-        println!("{} scope=all_measured_runs", format_stats(&stats));
+        output(&format!("{} scope=all_measured_runs", format_stats(&stats)))
+            .map_err(Error::Output)?;
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -455,22 +522,31 @@ mod tests {
     #[test]
     fn depth_accepts_only_one_through_max_ply() {
         for depth in [1, MAX_PLY] {
-            let args = Arguments::try_parse_from(["bench", "--depth", &depth.to_string()]).unwrap();
-            assert_eq!(args.depth, depth);
+            assert!(
+                Arguments::new(
+                    NonZeroU32::new(depth).unwrap(),
+                    NonZeroUsize::MIN,
+                    NonZeroUsize::MIN
+                )
+                .is_ok()
+            );
         }
-        for depth in [0, MAX_PLY + 1] {
-            let error = Arguments::try_parse_from(["bench", "--depth", &depth.to_string()])
-                .err()
-                .unwrap();
-            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
-        }
+        assert_eq!(
+            Arguments::new(
+                NonZeroU32::new(MAX_PLY + 1).unwrap(),
+                NonZeroUsize::MIN,
+                NonZeroUsize::MIN
+            )
+            .unwrap_err(),
+            ArgumentError::Depth
+        );
     }
 
     /// [`format_stats`]の契約に従い、分母0の比を省き、回数を残す。
     #[cfg(feature = "search-stats")]
     #[test]
     fn stats_omit_ratios_with_zero_denominators() {
-        let mut stats = minase::search::SearchStats::default();
+        let mut stats = crate::search::SearchStats::default();
         let zero = format_stats(&stats);
         assert!(zero.starts_with("stats: "));
         assert!(zero.contains("tt_probes=0"));
@@ -487,35 +563,6 @@ mod tests {
         stats.null_move_verifications = 4;
         stats.null_move_verification_failures = 1;
         assert!(format_stats(&stats).contains("null_move_verification_failure_fraction=0.250000"));
-    }
-
-    #[test]
-    fn arguments_accept_thread_and_repetition_boundaries() {
-        let minimum =
-            Arguments::try_parse_from(["bench", "--threads", "1", "--repetitions", "1"]).unwrap();
-        assert_eq!(minimum.threads.get(), 1);
-        assert_eq!(minimum.repetitions.get(), 1);
-
-        let maximum_threads =
-            Arguments::try_parse_from(["bench", "--threads", "256", "--repetitions", "2"]).unwrap();
-        assert_eq!(maximum_threads.threads.get(), 256);
-        assert_eq!(maximum_threads.repetitions.get(), 2);
-    }
-
-    #[test]
-    fn arguments_reject_invalid_threads_and_repetitions() {
-        for value in ["0", "257", "not-a-number"] {
-            assert!(
-                Arguments::try_parse_from(["bench", "--threads", value]).is_err(),
-                "threads={value} must be rejected"
-            );
-        }
-        for value in ["0", "not-a-number"] {
-            assert!(
-                Arguments::try_parse_from(["bench", "--repetitions", value]).is_err(),
-                "repetitions={value} must be rejected"
-            );
-        }
     }
 
     #[test]
@@ -536,7 +583,7 @@ mod tests {
     fn total_node_counts_are_reproducible_across_runs() {
         let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
-        let nnue = minase::eval::weights().unwrap();
+        let nnue = crate::eval::weights().unwrap();
         // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {
@@ -544,10 +591,12 @@ mod tests {
                 &nnue,
                 rules,
                 &limits,
-                DEFAULT_THREADS,
+                crate::search::DEFAULT_THREADS,
                 &mut transposition_table,
                 false,
+                &mut |_| Ok(()),
             )
+            .unwrap()
             .nodes
         };
         let first = run();
@@ -559,19 +608,28 @@ mod tests {
     /// 全ワーカーの根の再計算を数え、集計を次の実行へ持ち越さないことを検査する。
     #[test]
     fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
-        use minase::eval::nnue::{
+        use crate::eval::nnue::{
             ActiveFeatureSet,
             feature_set::{FeatureSet, Mirror},
         };
 
-        let nnue = Nnue::decode(include_bytes!("../../../nets/nnue.bin")).unwrap();
+        let nnue = Nnue::decode(include_bytes!("../../nets/nnue.bin")).unwrap();
         let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let mut table = TranspositionTable::new(1).unwrap();
         for count in [1, 2] {
             let threads = NonZeroUsize::new(count).unwrap();
             for _ in 0..2 {
-                let run = run_bench(&nnue, rules, &limits, threads, &mut table, false);
+                let run = run_bench(
+                    &nnue,
+                    rules,
+                    &limits,
+                    threads,
+                    &mut table,
+                    false,
+                    &mut |_| Ok(()),
+                )
+                .unwrap();
                 let roots = (BENCH_POSITIONS.len() * count) as u64;
                 // P型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
                 if ActiveFeatureSet::MIRROR == Mirror::Shared {
