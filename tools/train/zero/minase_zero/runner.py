@@ -65,6 +65,7 @@ NASにsummary.jsonがある生成はconfig.jsonのgeneration_commitを受け入�
 存在確認のJSON配列と検査和のNUL区切りのファイル名は標準入力で渡し、コマンドの引数には並べない。
 生成の塊の復元も同じ経路を使う。
 一括の転送と照合の制限時間は、送信バイト数を1 MB/秒（1 MB = 10⁶ B）で割った秒数に120秒を足す。
+受信の制限時間は、受信バイト数を1 MB/秒で割った秒数に120秒を足す。
 vast.aiの接続先の照会は600秒、ほかの外部コマンドは120秒とする。
 
 塊はJSONを最後に、生成と学習はsummary.jsonを最後に受け取る。
@@ -524,6 +525,12 @@ class Remote:
             raise ValueError(f"invalid remote SHA-256: {relative}")
         return digest
 
+    def size(self, relative: str) -> int:
+        output = self.shell(shlex.join(["stat", "-c", "%s", "--", relative]), 120).strip()
+        if re.fullmatch(r"[0-9]+", output) is None:
+            raise ValueError(f"invalid remote file size for {relative}: {output!r}")
+        return int(output)
+
     def sha256_many(self, files: list[str], timeout: float) -> dict[str, str]:
         output = self.shell("xargs -0 -r sha256sum --zero --", timeout, "".join(name + "\0" for name in files))
         records = output.split("\0")
@@ -547,9 +554,9 @@ class Remote:
             self._call(["rsync", "-a", "-s", "--from0", "--files-from", manifest.name,
                         "-e", shlex.join(self.ssh), "--", str(root) + "/", self.rsync_root], timeout)
 
-    def download(self, relative: str, target: Path) -> None:
+    def download(self, relative: str, target: Path, timeout: float) -> None:
         self._call(["rsync", "-a", "-s", "-e", shlex.join(self.ssh), "--",
-                    self.rsync_root + relative, str(target)], 120)
+                    self.rsync_root + relative, str(target)], timeout)
 
     def copy(self, source: str, target: str) -> None:
         """開いたファイルを複写し、改名による置き換えの影響を受けない版を作る。"""
@@ -624,10 +631,11 @@ def receive(remote: Remote, root: Path, relative: str, replace: bool) -> bool:
                 return False
             if not replace:
                 raise ValueError(f"immutable file differs: {relative}")
+        timeout = 120 + remote.size(source) / 1_000_000
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.tmp")
         try:
-            remote.download(source, temporary)
+            remote.download(source, temporary, timeout)
             if sha256(temporary) != expected:
                 raise ValueError(f"checksum mismatch: {relative}")
             _sync_replace(temporary, path)
