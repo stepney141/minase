@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Dockerイメージの設計書](../../plans/docker-environment.md)の「検証」の節の項目11の記録である。
+[Dockerイメージの設計書](../../plans/archived/docker-environment.md)の「検証」の節の項目11の記録である。
 Google Colabで借りる機械（以下、Colab機）はコンテナを使えないので、実行環境をイメージではなく`tools/train/zero/setup.sh`で導入する。
 この設計書は`setup.sh`を、すべての導入先を`tools/train/zero/`の下の`.runtime/`と`.venv/`に置く形へ改め、学習器の拡張モジュール`mnsd_reader`のビルドを新しい`sync-env.sh`へ分けた。
 この2つのスクリプトで、導入、ビルド、およびニューラルネットワーク（以下、ネット）の出力の照合が通るかを、NVIDIA L4の機械で確かめた。

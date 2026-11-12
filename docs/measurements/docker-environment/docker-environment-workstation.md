@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Dockerイメージの設計書](../../plans/docker-environment.md)のフェーズ2の記録である。
+[Dockerイメージの設計書](../../plans/archived/docker-environment.md)のフェーズ2の記録である。
 作業機で`Dockerfile`からイメージを作り、docker composeで起動した開発用のコンテナの中で、設計書の「検証」の節の項目1〜7が通るかを確かめた。
 
 ## コマンドライン
@@ -96,6 +96,12 @@ CPUの欄のlogitの差は、PyTorchの出力との差そのものである。�
 あわせて、導入先を`tools/train/zero/`の下に閉じる形へ改めた`setup.sh`を、作業機のホストでも実行した。
 uv、rustup、Rustのツールチェーン、Python、およびONNX Runtimeが作業ツリーの`tools/train/zero/.runtime/`（1.1 GB）に入り、ホームのディレクトリのシェルの設定ファイルは変わらなかった。
 `setup.sh`は、仮想環境をロックファイルの外部のパッケージだけに揃えるので、仮想環境に入っていた`mnsd_reader`は外れた。ホストでも、`setup.sh`の後に`sync-env.sh`を実行して`mnsd_reader`を入れ直す。
+
+### 層を分けたイメージ
+
+7項目を確かめた後、vast.aiの機械がイメージを取得できなかったので、導入したファイルを8つの層に分ける`Dockerfile`（コミット`b2e2cd2f`）も作った（経過は[vast.aiでの確認の記録](docker-environment-vast.md)）。
+このイメージの`/opt/minase-zero`は、分ける前のイメージと、ファイル、ディレクトリ、およびシンボリックリンクの一覧（種類、権限、所有者、ファイルの大きさ、リンク先）が26,066行とも一致し、全ファイルのSHA-256の一覧のSHA-256も一致した。
+その後、vast.aiではイメージを使わないと決まったので、`Dockerfile`は7項目を確かめたコミット`ffe28348`の内容へ戻した。
 
 ## 結論
 

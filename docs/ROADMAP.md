@@ -67,7 +67,7 @@
 | AlphaZero型探索の強化学習の2回目の実行 | [plans/alphazero-rl-2.md](plans/alphazero-rl-2.md) | 起案 | |
 | AlphaZero型探索の学習と自己対局生成の複数GPU化 | [plans/archived/alphazero-multi-gpu.md](plans/archived/alphazero-multi-gpu.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす | [plans/archived/alphazero-inference-transfer.md](plans/archived/alphazero-inference-transfer.md) | 完了（採用） | 2026年11月11日 |
-| 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/docker-environment.md](plans/docker-environment.md) | 進行中 | |
+| 開発環境とvast.aiの機械の実行環境を、1つのDockerイメージで用意する | [plans/archived/docker-environment.md](plans/archived/docker-environment.md) | 完了（一部不採用） | 2026年11月13日 |
 | AlphaZero型探索の推論で、終了処理での異常終了をなくす | [plans/archived/alphazero-teardown-abort.md](plans/archived/alphazero-teardown-abort.md) | 完了（採用） | 2026年11月11日 |
 | AlphaZero型探索の監査対応 | [plans/archived/alphazero-audit-remediation.md](plans/archived/alphazero-audit-remediation.md) | 完了（採用） | 2026年10月28日 |
 | AlphaZero型探索の強化学習の再出発に向けた学習技法の導入 | [plans/archived/alphazero-restart-techniques.md](plans/archived/alphazero-restart-techniques.md) | 完了（採用） | 2026年10月31日 |
@@ -165,15 +165,15 @@
 サブタスク1〜5は完了し、強化学習の[1回目の実行](plans/archived/alphazero-rl.md)はサイクル32で中断したので、次は2回目の実行で、20ブロック256チャネルのネットをランダムに初期化してやり直す。
 
 2回目の実行は、次の5本の設計書で進める。
-1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の推論の転送の削減も11月11日に完了した。4本目のDockerイメージは2026年11月12日に着手して進行中であり、5本目の2回目の実行は起案の段階で、利用者の承認を待っている。
+1本目の準備は2026年11月10日に、2本目の複数GPU化は11月11日に完了した。3本目の推論の転送の削減も11月11日に完了した。4本目のDockerイメージは11月13日に完了した。5本目の2回目の実行は起案の段階で、利用者の承認を待っている。
 
 | 順 | 設計書 | 内容 | 前提 |
 |---|---|---|---|
 | 1 | [2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)（完了） | 組み替えた初期配置の開始局面、20ブロック256チャネルの初期ネット、および実行器と測定のスクリプトの変更 | なし |
 | 2 | [複数GPU化](plans/archived/alphazero-multi-gpu.md)（完了） | 学習器と生成器の複数GPU化、vast.aiの機械への対応、およびColabのG4との1サイクルの料金の比較 | 1の完了（済み） |
 | 3 | [推論の転送の削減](plans/archived/alphazero-inference-transfer.md)（完了） | 推論の入出力の転送を減らす4つの候補（ピン留めメモリ、uint8の入力、FP16の方策、方策の固定の表による詰め）の採否 | 2の完了（済み） |
-| 4 | [Dockerイメージ](plans/docker-environment.md) | 作業機の開発用のコンテナとvast.aiの機械で共用するイメージ。Colab機は今の導入スクリプトを使い続ける | 2の完了（済み）。3と並行できる |
-| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。vast.aiで回すなら4の完了の後 |
+| 4 | [Dockerイメージ](plans/archived/docker-environment.md)（完了） | 作業機の開発用のコンテナのイメージと、導入先を1つのディレクトリに閉じた導入スクリプト。vast.aiの機械をイメージで借りる方式は採用せず、借りる機械は導入スクリプトを使い続ける | 2の完了（済み）。3と並行できる |
+| 5 | [2回目の実行](plans/alphazero-rl-2.md) | 開始局面の偏りの確認、機械の選択、およびサイクルの実行 | 偏りの確認は1の完了（済み）の後、サイクル1は2の完了（済み）と3の完了（済み）の後。4の完了（済み）の後 |
 
 次の2件は、2回目の実行と独立に進められる。
 

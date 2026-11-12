@@ -3,9 +3,9 @@
 本書は、minaseの開発と確認を、作業機のDockerコンテナの中で行う手順を定める。
 作業機とは、開発者が手元で使うArch Linuxの計算機のことであり、コンテナの外側の作業機をホストと呼ぶ。
 コンテナは、リポジトリの直下の`Dockerfile`から作るイメージ`minase-dev`を使う。
-vast.aiは、GPUつきの機械を時間単位で貸し出すサービスである。
-このイメージは、AlphaZero型探索の学習と自己対局のためにvast.aiで借りる機械にも同じものを使うので、コンテナの中で通った確認は、借りた機械と同じOSとライブラリの下で通ったことになる。
-イメージを使う方式を選んだ理由は、設計判断の記録（ADR）である[実行環境のADR](../adr/provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)にある。
+AlphaZero型探索の学習と自己対局は、Google Colabやvast.aiで借りるGPUつきの機械で動かし、それらの機械には`tools/train/zero/setup.sh`で実行環境を導入する。
+イメージは、vast.aiで借りる機械と同じベースのイメージ（Ubuntu 24.04）の上で、同じ`setup.sh`を実行して作る。そのため、コンテナの中で通った確認は、借りる機械と同じOSと同じ版のライブラリの下で通ったことになる。
+イメージを使う方式を選んだ理由は、設計判断の記録（ADR）である[実行環境のADR](../adr/install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)にある。
 
 イメージには、Ubuntu 24.04の上に、uv（Pythonのパッケージ管理ツール）、Rustのツールチェーン、Pythonの依存パッケージを入れた仮想環境、およびONNX Runtimeが入っている。
 ONNX Runtimeは、ニューラルネットワーク（以下、ネット）の推論のライブラリである。
@@ -160,18 +160,3 @@ docker compose down -v    # ボリュームも削除する
 ボリュームには、ビルド出力（`target/`と`mnsd_reader/target/`）、ホームのディレクトリ（uvのキャッシュを含む）、およびcargoが取得したクレートが入っている。
 残しておけば、次にコンテナを起動したときに、クレートの取得とビルドを最初からやり直さずに済む。4節の`sync-env.sh`は、その場合も実行し直す。
 worktreeを削除するときは、先にそのworktreeで`docker compose down -v`を実行し、ボリュームを残さない。
-
-## 8. イメージをGHCRへ登録する
-
-vast.aiの機械は、GitHubのコンテナレジストリ（GitHub Container Registry、以下GHCR）からイメージを取得する。
-イメージは`ghcr.io/stepney141/minase-dev`に非公開で置き、タグには、イメージを作ったコミットの40桁のハッシュを使う。
-登録するのは、環境の入力か`Dockerfile`を変えてイメージを作り直したときである。
-
-```console
-docker tag minase-dev:local ghcr.io/stepney141/minase-dev:$(git rev-parse HEAD)
-docker push ghcr.io/stepney141/minase-dev:$(git rev-parse HEAD)
-```
-
-登録には、作業機での`docker login ghcr.io`と、書き込みの権限（`write:packages`）を持つトークンが要る。
-`docker push`が最後に表示する`digest: sha256:...`の値が、イメージのダイジェストである。
-vast.aiの機械を借りるときは、タグではなく`ghcr.io/stepney141/minase-dev@sha256:<ダイジェスト>`の形で指定する（[借りる機械の操作の手引き](alphazero-machines.md)の7.1節）。

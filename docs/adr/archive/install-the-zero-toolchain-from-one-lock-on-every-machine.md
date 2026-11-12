@@ -2,7 +2,7 @@
 
 ## ステータス
 
-置き換え済み。決定日は2026年10月27日。[AlphaZero型探索の実行環境は、作業機とvast.aiでは1つのコンテナイメージで用意し、Colab機では同じ導入スクリプトを実行する](../provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)によって置き換えられた。
+置き換え済み。決定日は2026年10月27日。[AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](../install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)によって置き換えられた。
 
 ## コンテキスト
 

@@ -1,0 +1,18 @@
+インスタンス 60362083: SSHの準備を確認できないため再試行します
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+2026-11-12T14:20:50.029013+00:00 cycle=0001 generation games=5299 chunk_games=2650 playthrough_percent=100
+2026-11-12T14:21:15.815767+00:00 connection retry=1/5
+2026-11-12T14:23:42.247723+00:00 cycle=0001 selfplay status=running received=1
+2026-11-12T14:24:44.524244+00:00 cycle=0001 selfplay status=running received=0
+2026-11-12T14:25:46.168192+00:00 cycle=0001 selfplay status=running received=0
+2026-11-12T14:26:47.798830+00:00 cycle=0001 selfplay status=running received=0
+2026-11-12T14:28:20.725972+00:00 cycle=0001 selfplay status=running received=3
+2026-11-12T14:29:44.499389+00:00 cycle=0001 selfplay status=0 received=3
+2026-11-12T14:30:34.718495+00:00 connection retry=1/5
+2026-11-12T14:34:37.633379+00:00 cycle=0001 train status=running received=0
+2026-11-12T14:35:39.445393+00:00 cycle=0001 train status=running received=0
+minase_zero: rsync timed out after 120 seconds
+インスタンス 60362083: 機械の上で工程が動いているので機械を残した

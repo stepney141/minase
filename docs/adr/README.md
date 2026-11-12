@@ -382,4 +382,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)
 - 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)
 - 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)
-- 2026年11月12日 [AlphaZero型探索の実行環境は、作業機とvast.aiでは1つのコンテナイメージで用意し、Colab機では同じ導入スクリプトを実行する](provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)
+- 2026年11月13日 [AlphaZero型探索の実行環境は、借りる機械では導入スクリプトで導入し、作業機の開発用のコンテナは同じスクリプトから作る](install-the-zero-toolchain-with-setup-sh-on-rented-machines-and-build-the-workstation-image-from-it.md)
