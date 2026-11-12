@@ -134,6 +134,7 @@
 | NNUE教師生成を探索結果を変えずに速くする | [plans/archived/teacher-generation-speedup.md](plans/archived/teacher-generation-speedup.md) | 完了 | 2026年11月6日 |
 | NNUEの標準レシピv1と、v0からの世代反復のやり直し | [plans/nnue-standard-recipe.md](plans/nnue-standard-recipe.md) | 待機中 | |
 | MCTSの葉での王駒の捕獲の判定と方策の温度 | [plans/archived/mcts-royal-capture-temperature.md](plans/archived/mcts-royal-capture-temperature.md) | 完了（採用） | 2026年11月9日 |
+| 起動引数と診断ツールをUSIへ移す | [plans/cli-to-usi.md](plans/cli-to-usi.md) | 起案 | |
 
 ## 現在地
 
@@ -202,6 +203,10 @@
 
 - [合法手生成と利き計算の高速化（第3期）](plans/movegen-speedup-3.md)は、起案のまま着手していない。
 - [早期投了の導入判定](plans/match-early-resignation.md)は待機中である。校正群とは別に、仮想投了が3,000回以上発火する検証群を確保できる記録量に達しておらず、統計契約も確定していない。
+
+#### プロトコルと起動引数
+
+- [起動引数と診断ツールをUSIへ移す](plans/cli-to-usi.md)は、規則とネットの指定を起動引数からUSIのオプションへ移し、perft、bench、およびネットとランダム対局の診断をUSIの独自コマンドにする。規則セットは既定値をなくして指定を必須にし、名前`engine-default`を`JCSA`へ改める。エンジンの起動引数とライブラリの公開APIの互換性を壊すので、lishogi Botと開発用GUIは同じ時期に追従する必要がある。
 
 #### 配備
 
