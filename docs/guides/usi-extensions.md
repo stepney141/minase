@@ -1,6 +1,8 @@
 # USIの独自拡張
 
-本書は、minaseを`--protocol usi`で起動したときに使えるUSI（Universal Shogi Interface）のコマンドのうち、USI原典の仕様と異なる点と、minaseが独自に追加したコマンドだけをまとめる。
+本書は、minaseを`--protocol usi`で起動したときに使えるUSI（Universal Shogi Interface）のコマンドについて、USI原典の仕様と異なる点と、minaseが独自に追加したコマンドだけをまとめる。
+minaseは、NNUE（評価関数のニューラルネット）を使うαβ探索と、AlphaZero型探索のMCTS（モンテカルロ木探索）の2つの探索方式を持ち、起動引数`--search alphabeta|mcts`で選ぶ。省略時はαβ探索である。
+本書で「MCTSで起動したminase」と書くときは、`--search mcts`で起動した場合を指す。
 USI原典のコマンド体系と各コマンドの基本的な使い方は、[USI原典仕様とlishogi系拡張の調査](../research/protocols/usi-lishogi.md)と、そこに挙げた原典にあり、本書では説明しない。
 エラーの文言、値の境界、および探索中の扱いを含む各コマンドの契約は、`crates/minase/src/protocol/usi.rs`のモジュールと各処理関数のdocコメントが定める。
 本書はその要点と、詳しい記述の場所を示す。
@@ -38,7 +40,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | コマンド | minaseでの扱い |
 |---|---|
 | `usi` | 標準どおり。宣言するオプションは「オプション」の節にある。 |
-| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTS（モンテカルロ木探索）ではニューラルネット（以下ネット）をここで読み込んで推論器を作り、失敗した場合も同じくエラーを1行出して終了する（「isready」の節）。 |
+| `isready` | 規則セットが未設定なら、エラーを1行出してエンジンを終了する（「規則セットの指定」の節）。MCTSではニューラルネット（以下ネット）をここで読み込んで推論器を作り、失敗した場合も同じくエラーを1行出して終了する（「isready」の節）。 |
 | `setoption` | minase独自のオプションを持つ。 |
 | `usinewgame` | 省略してよい。 |
 | `position` | 中将棋の表記を使い、終局した対局では受け付けない。 |
@@ -73,7 +75,7 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 この場合はエンジンを終了せず、次のコマンドを待つ。
 `USI_Hash`や`Threads`などのほかのオプションは、規則セットより先に送ってよく、届いた時点で検査して適用する。
 
-最初に受け付けた`RuleSet`は、その時点から始まる対局と次の対局の両方の規則になる。
+最初に受け付けた`RuleSet`は、直ちに現在の対局の規則になり、以降の対局にも引き継がれる。
 2回目以降の`RuleSet`は次の対局の規則だけを変え、進行中の対局には影響しない。
 値のない`RuleSet`と、空の文字列を表す`<empty>`の指定は、`info string error: RuleSet requires a value`で拒否する。
 既定値を置かない理由は[ADR](../adr/require-the-rule-set-through-the-protocol-and-keep-no-default.md)にある。
@@ -83,7 +85,7 @@ minaseは規則セットの既定値を持たないので、GUIや対局用の�
 MCTSで起動したminaseは、`isready`でオプション`NnModel`のファイルからネットを読み込み、推論器（ネットを読み込んで局面を評価する部品）を作る。
 `NnModel`が未設定なら`info string error: required option NnModel is not set`を出し、`readyok`を返さずに終了コード1で終わる。
 ファイルを読めない場合と推論器を作れない場合も、エラーを1行出して終了し、別のネットや実行プロバイダへは切り替えない。
-読み込みに成功した`isready`は、`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
+`isready`でネットの読み込みに成功すると、minaseは`readyok`の直前に`info string network_sha256 <64桁の16進数>`を1行出す。
 この値は、推論に渡すバイト列のチェックサム（SHA-256）であり、対局ハーネスがネットの同一性の照合に使う（[SPRTの手引き](sprt.md)の「エンジンの指定方法」の節）。
 αβ探索で起動したminaseは、この行を出さない。
 
@@ -105,7 +107,7 @@ Lishogi-Botは`usinewgame`を送らないので、minaseは対局の開始を待
 `byoyomi`が0で`movetime`も指定しない`go`では、相手の残り時間を目安時間の補正に使うので、手番でない側の`btime`または`wtime`を省略すると拒否する。
 引数の検査規則は`parse_go_config`のdocコメントにある。
 
-`go mate`は詰み探索を実装していないので、USI原典の定めに従って`checkmate notimplemented`を返す。
+minaseは詰み探索を実装していないので、`go mate`にはUSI原典の定めに従って`checkmate notimplemented`を返す。
 
 `--search mcts`で起動したMCTSでは、`nodes`の値はシミュレーションの回数を表し、αβ探索の着手の適用回数とは意味が異なる。
 MCTSは正常に始まった`go`のたびに、この違いを`info string nodes count MCTS simulations, not alpha-beta move applications`の1行で知らせる。
@@ -122,7 +124,7 @@ minaseは`bestmove`の直前に必ず`info string stop <理由>`の1行を出す
 理由は、指定深さの完了なら`depth`、ノード数の上限なら`nodes`、時間制限のうち目安時間なら`soft`、上限時間なら`hard`、`stop`などの外部からの停止なら`external`である。
 対局用のハーネスは、この行から手ごとの停止理由を記録する。
 
-完了した探索の評価値が`-ResignValue` cp以下なら、`bestmove resign`を返す。
+完了した探索の評価値が`-ResignValue` cp（センチポーン、評価値の単位）以下なら、`bestmove resign`を返す。
 予想手は、GUIが先読みを有効にしているかどうかにかかわらず、読み筋の2手目が合法で、その手で対局が終わらない場合だけ`bestmove <着手> ponder <予想手>`の形で付ける（[ADR](../adr/take-ponder-move-from-the-pv.md)）。
 
 `info`の`score cp <値>`は、探索の内部の評価値を換算せずに出す。
@@ -146,7 +148,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 | `USI_Variant` | string | `chushogi` | 変種名。`chushogi`だけを受け付け、それ以外の値はエラーにする。Lishogi-Botが対局ごとに変種名として送る値を受けるための宣言である。 |
 | `USI_Hash` | spin、1〜65,536 | 256 | αβ探索では置換表、MCTSでは探索木の大きさ（MiB）。 |
 | `Threads` | spin、αβ探索は1〜256、MCTSは1だけ | 1 | 探索スレッドの数。 |
-| `ResignValue` | spin、1〜99,999 | 20,000 | 投了の閾値（cp）。完了した深さが1以上で、評価値が`-ResignValue`以下なら投了する。反復による勝敗を表す専用の評価値の帯は投了の判定から除く（[ADR](../adr/decide-resignation-in-the-usi-layer.md)）。 |
+| `ResignValue` | spin、1〜99,999 | 20,000 | 投了の閾値（cp）。完了した深さが1以上で、評価値が`-ResignValue`以下なら投了する。千日手などの同一局面の反復による勝敗を表す専用の評価値の帯は投了の判定から除く（[ADR](../adr/decide-resignation-in-the-usi-layer.md)）。 |
 | `ByoyomiMargin` | spin、0〜60,000 | 30 | 秒読みの締切の前に残す余裕で、単位はmsである（[ADR](../adr/give-the-byoyomi-margin-as-a-millisecond-usi-option.md)）。 |
 | `DrawValueBlack` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が先手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
 | `DrawValueWhite` | spin、−28,999〜28,999 | 0 | 探索を始める局面（根）が後手番のときに引き分けへ与える評価値。単位は根の手番側から見たcpである。 |
@@ -214,7 +216,7 @@ eval
 αβ探索で起動したminaseでは、現局面のNNUE（評価関数のニューラルネット）による手番側の評価値と、升ごとの線形の寄与を12行12列の表で表示する。
 各行に`info string`を付け、最後の行を`info string end`とする。
 
-MCTSで起動したminaseでは、現局面をセッションの推論器で推論し、ネットの出力を次の形で表示する。
+MCTSで起動したminaseでは、現局面を、`isready`で準備した推論器で推論し、ネットの出力を次の形で表示する。
 
 ```text
 info string value <手番側の勝率>
@@ -224,7 +226,7 @@ info string end
 ```
 
 `move`の行は全合法手について1行ずつあり、事前確率の降順に並ぶ。
-logitは方策（着手の確率）の正規化する前の値であり、事前確率は、探索が各手を読み始めるときに使う確率で、logitを`PolicyTemperature`の温度で割ってから正規化して求める。
+logitは方策（着手の確率分布）を正規化する前の値であり、事前確率は、探索が各手を読み始めるときに使う確率で、logitを`PolicyTemperature`の温度で割ってから正規化して求める。
 推論器が準備されていなければ`info string error: eval requires isready`を返し、`eval`からネットを読み込むことはしない。
 
 ### tt
@@ -233,7 +235,7 @@ logitは方策（着手の確率）の正規化する前の値であり、事前
 tt
 ```
 
-αβ探索の置換表に残る現局面と、全合法手の子局面の項目を表示する。
+現局面と全合法手の子局面について、αβ探索の置換表に残っている項目を表示する。
 項目は、深さ、境界の種類、評価値、最善手、および静的評価である。
 `eval`と同じく各行に`info string`を付け、最後の行を`info string end`とする。
 MCTSで起動したminaseでは`info string error: tt requires --search alphabeta`を返す。
@@ -245,6 +247,7 @@ MCTSで起動したminaseでは`info string error: tt requires --search alphabet
 ## 診断のコマンド
 
 minaseは、エンジンの実装を検証する診断を、USIの独自コマンドとして持つ。
+以下では、エンジンの起動から終了までの1回のやり取りをセッションと呼ぶ。
 対局中に送るものではなく、開発者が手で、またはスクリプトから実行する。
 これらをサブコマンドではなくUSIのコマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
 

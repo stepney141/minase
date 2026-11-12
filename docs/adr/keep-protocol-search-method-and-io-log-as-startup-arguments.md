@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[起動引数と診断ツールをUSIへ移す計画](../plans/cli-to-usi.md)は、エンジンへの情報の渡し方を、プロセスの起動時から起動後のプロトコルへ移した。
+[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)は、エンジンへの情報の渡し方を、プロセスの起動時から起動後のプロトコルへ移した。
 規則セットとニューラルネットのファイルは、USIのオプションで渡すようになった（[規則セットの決定](require-the-rule-set-through-the-protocol-and-keep-no-default.md)、[ネットの決定](select-zero-networks-by-the-usi-option-nnmodel.md)）。
 残る起動時の情報は、起動引数`--protocol`、`--search`、`--io-log`と、ONNX Runtimeの共有ライブラリの場所を指す環境変数`ORT_DYLIB_PATH`である。
 これらもプロトコルへ移すかどうかを決める必要があった。

@@ -11,7 +11,7 @@ AlphaZero型探索のMCTS（モンテカルロ木探索）が局面の評価に�
 その決定が起動引数を選んだ理由は、対局ハーネス`minase match run`に、比べる2つのエンジン（候補と基準）のそれぞれへ任意のUSIのオプションを送る手段がなかったことである。
 この制約は、ハーネスに`--candidate-option`と`--baseline-option`が加わって解消した（[オプションを送る決定](pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)）。
 
-[起動引数と診断ツールをUSIへ移す計画](../plans/cli-to-usi.md)は、起動後のプロトコルで渡せる情報をプロトコルへ集める。
+[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)は、起動後のプロトコルで渡せる情報をプロトコルへ集める。
 推論の設定のうち、実行プロバイダ（推論を実行する基盤）、バッチの大きさ、およびキャッシュの場所は、すでにUSIのオプション`NnBackend`、`NnBatchSize`、`NnCacheDir`で渡している。
 ネットの指定だけが起動引数に残っていた。
 ネットをオプションで指定する方式には先例があり、StockfishのUCIのオプション`EvalFile`、将棋のエンジンdlshogiの`DNN_Model`、およびチェスのエンジンlc0の`WeightsFile`がこれに当たる。各先例のソースの該当箇所は、本決定が置き換えた上記の決定に挙げてある。

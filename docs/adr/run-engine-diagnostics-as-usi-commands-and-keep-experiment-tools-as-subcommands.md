@@ -17,7 +17,7 @@ minaseは、補助ツールを実行ファイル`minase`のサブコマンドと
 Stockfishは`bench`、`d`、`eval`をUCIのコマンドとして受け、perftを`go perft <深さ>`として受ける。
 やねうら王も`bench`、`d`、`eval`をUSIのコマンドとして受け、`go`の引数として`perft`を受ける。
 minase自身も、局面、評価、置換表を表示する`d`、`eval`、`tt`をUSIの独自コマンドとして持っている（[ADR](show-position-evaluation-and-tt-as-usi-commands.md)）。
-この判断は[起動引数と診断ツールをUSIへ移す計画](../plans/cli-to-usi.md)で下した。
+この判断は[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)で下した。
 
 ## 決定
 

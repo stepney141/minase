@@ -13,7 +13,7 @@
 これまでは、ネットをサイクル番号つきのファイル名で保持して上書きしない運用で防いでいた。
 
 ネットの指定が起動引数からUSIのオプション`NnModel`へ移り（[ネットをオプションで指定する決定](select-zero-networks-by-the-usi-option-nnmodel.md)）、エンジンは`isready`で読み込んだネットのチェックサムを`info string network_sha256 <64桁の16進数>`の行で返すようになった。
-この判断は[起動引数と診断ツールをUSIへ移す計画](../plans/cli-to-usi.md)で下した。
+この判断は[起動引数と診断ツールをUSIへ移す計画](../plans/archived/cli-to-usi.md)で下した。
 
 ## 決定
 
