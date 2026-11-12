@@ -13,7 +13,7 @@ These facts are documented in Japanese by the [Japanese Wikipedia article on Kan
 
 ## Overview
 
-- Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `engine-default` and `lishogi`.
+- Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `JCSA` and `lishogi`.
 - Protocols: The engine speaks USI (including the lishogi extensions) and CECP (XBoard).
 - Search and evaluation: The search uses alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP for parallel search. The evaluation is a piece-square table interpolated by game phase.
 - Verification: The repository includes unit tests, perft, replay checks against real game records, and an SPRT self-play harness.
@@ -51,8 +51,8 @@ The engine binary is written to `target/release/minase`.
 Both `--protocol` and `--rules` are required.
 
 ```bash
-# USI, standard rules
-./target/release/minase --protocol usi --rules engine-default
+# USI, Japan Chu Shogi Association rules
+./target/release/minase --protocol usi --rules JCSA
 
 # USI, lishogi rules
 ./target/release/minase --protocol usi --rules lishogi
@@ -63,7 +63,7 @@ Both `--protocol` and `--rules` are required.
 
 `--rules` accepts one of the following.
 
-- `engine-default`: the standard rules (L0,P0,R1,E0)
+- `JCSA`: the rules of the Japan Chu Shogi Association, with its repetition rule (R0) replaced by R1 (L0,P0,R1,E0)
 - `lishogi`: the rules used on lishogi (L1,L2,P0,P3,R1,E1,E3)
 - A comma-separated list of rule codes. The list must contain exactly one code from each of the groups L, P, R, and E (chu-shogi.md, Article 33).
 
@@ -94,7 +94,7 @@ setoption name DrawValueWhite value -1
 Add `minase-core` to Cargo.toml to use position handling and legal-move generation from Rust. The library does not depend on the engine.
 
 ```rust
-use minase_core::{Game, MoveGenerator, Position};
+use minase_core::{Game, MoveGenerator, Position, Rules};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initial position
@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Legal moves in the initial position: {}", legal_moves.len());
 
     // Playing a game and adjudicating the result
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     if let Some(&mv) = legal_moves.first() {
         let status = game.play(mv)?;
         println!("Game status after the move: {status:?}");

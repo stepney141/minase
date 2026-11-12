@@ -1,6 +1,6 @@
 //! 固定局面の探索で決定性と毎秒ノード数（NPS）を測る。
 //!
-//! 規則は`engine-default`に固定し、深さは`--depth`で既定3、ワーカー数は`--threads`で指定する。
+//! 規則は`JCSA`に固定し、深さは`--depth`で既定3、ワーカー数は`--threads`で指定する。
 //! `--repetitions 1`では各局面の`position=<名前> depth=... nodes=... best=... score=... elapsed=...`、
 //! `summary:`、および`accumulators:`の行を出す。
 //! 2回以上では計測外のウォームアップを1回行い、反復ごとの`run=`行と最後の`median:`行を出す。
@@ -22,7 +22,6 @@ use minase::search::{
     DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
 };
 use minase_core::notation::usi;
-use minase_core::rules::parse_rule_set;
 use minase_core::{Game, MoveGenerator, Rules, parse_sfen};
 
 /// 既定の探索深さ。
@@ -360,8 +359,7 @@ pub(super) fn main(arguments: Arguments) {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         std::process::exit(1);
     });
-    let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
-    let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+    let rules = Rules::JCSA;
     let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
         .expect("the CLI parser accepts only valid search depths");
     // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
@@ -536,8 +534,7 @@ mod tests {
     // モジュールdocの再現性と[`BENCH_POSITIONS`]の固定局面を検査する。
     #[test]
     fn total_node_counts_are_reproducible_across_runs() {
-        let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
-        let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+        let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let nnue = minase::eval::weights().unwrap();
         // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
@@ -568,8 +565,7 @@ mod tests {
         };
 
         let nnue = Nnue::decode(include_bytes!("../../../nets/nnue.bin")).unwrap();
-        let codes = parse_rule_set("engine-default").unwrap();
-        let rules = Rules::from_codes(&codes).unwrap();
+        let rules = Rules::JCSA;
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let mut table = TranspositionTable::new(1).unwrap();
         for count in [1, 2] {

@@ -52,8 +52,8 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 失敗した局は、同じ`--seed`と`--game`で単独に再現できる。
 
 ```console
-cargo run --release --bin minase -- dev random-play --rules engine-default --seed 1 --games 10000
-cargo run --release --bin minase -- dev random-play --rules engine-default --seed 1 --game 4213 --verify-all --verbose
+cargo run --release --bin minase -- dev random-play --rules JCSA --seed 1 --games 10000
+cargo run --release --bin minase -- dev random-play --rules JCSA --seed 1 --game 4213 --verify-all --verbose
 ```
 
 `--verify-all`を付けると、ランダムに選んだ1手だけでなく、各手番の全合法手を1手ずつ対局の複製へ適用し、生成した合法手が着手として拒否されないことを確かめる。
@@ -62,7 +62,7 @@ cargo run --release --bin minase -- dev random-play --rules engine-default --see
 この場合は、不変条件が壊れた最初の着手の直後に、理由、手、差分更新と全再計算の両方のZobristキー、および升ごとの駒コードの生データを出して止まる。
 
 ```console
-cargo run --release --features invariants --bin minase -- dev random-play --rules engine-default --seed 1 --games 1000
+cargo run --release --features invariants --bin minase -- dev random-play --rules JCSA --seed 1 --games 1000
 ```
 
 規則セットを横断して確かめるときは、[ランダム対局の設計書](../plans/archived/random-play.md)が完了の検証に使った代表9規則セットで各300局を走らせる。
@@ -104,7 +104,7 @@ done
 4. 条文から数えた期待値と食い違う手を1手進め、深さを1減らして`--divide`を繰り返し、誤りのある局面と手まで絞り込む。
 
 ```console
-cargo run --release --bin minase -- dev perft 3 --rules engine-default --sfen "<拡張SFEN>" --divide
+cargo run --release --bin minase -- dev perft 3 --rules JCSA --sfen "<拡張SFEN>" --divide
 ```
 
 `--rules`は必須であり、不具合が出た対局と同じ規則セットを与える。
@@ -191,7 +191,7 @@ minaseの評価で成り立つ対称性は「段反転と陣営交換」だけ�
 
 ```console
 printf 'usi\nisready\nposition startpos\nmoves\nstate\ngo depth 4\n' \
-  | cargo run --release --bin minase -- --protocol usi --rules engine-default
+  | cargo run --release --bin minase -- --protocol usi --rules JCSA
 ```
 
 探索中に`quit`を受けると、minaseは探索の結果を捨てて終了する。
@@ -214,8 +214,8 @@ Xディスプレイのない環境では、Xvfbなどの仮想Xディスプレ�
 
 ```console
 xboard -variant chu \
-  -fcp "target/release/minase --protocol cecp --rules engine-default" \
-  -scp "target/release/minase --protocol cecp --rules engine-default" \
+  -fcp "target/release/minase --protocol cecp --rules JCSA" \
+  -scp "target/release/minase --protocol cecp --rules JCSA" \
   -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
   -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
 ```
@@ -257,7 +257,7 @@ releaseプロファイルはデバッグ情報を持たないので、行番号�
 ```console
 CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_TARGET_DIR=target/debuginfo \
   cargo build --release --bin minase
-RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi --rules engine-default
+RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi --rules JCSA
 ```
 
 対局ハーネスは、エンジンのクラッシュと応答タイムアウトを`engine_failures:`の行に理由別に数える（[sprt.md](sprt.md)の「異常時の裁定」）。

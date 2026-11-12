@@ -45,7 +45,7 @@ pub(crate) struct Arguments {
     /// 採用するローカルルールコード列または規則セット名。
     #[arg(
         long,
-        default_value = "engine-default",
+        default_value = "JCSA",
         value_parser = parse_rule_set_argument
     )]
     pub(super) rules: RuleSetArgument,
@@ -604,7 +604,7 @@ mod tests {
             vec!["--candidate", "random"],
             vec!["--baseline", "random"],
             vec!["--each", "depth=1"],
-            vec!["--rules", "engine-default"],
+            vec!["--rules", "JCSA"],
             vec!["--max-ply", "16"],
             vec!["--response-timeout", "120"],
             vec!["--concurrency", "1"],
@@ -724,12 +724,12 @@ mod tests {
     }
 
     // chu-shogi.md第33条: 共通parserへの接続と指定原文の保持を検査する。
-    // docs/guides/sprt.md: --rules省略時にはengine-defaultを使う。
+    // docs/guides/sprt.md: --rules省略時にはJCSAを使う。
     #[test]
     fn rules_presets_resolve_per_article_33() {
         let default = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
-            .expect("omitting --rules must fall back to engine-default");
-        assert_eq!(default.rules.source, "engine-default");
+            .expect("omitting --rules must fall back to JCSA");
+        assert_eq!(default.rules.source, "JCSA");
         assert_eq!(
             default.rules.codes,
             vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]

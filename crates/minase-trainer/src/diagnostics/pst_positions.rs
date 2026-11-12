@@ -175,15 +175,15 @@ struct Promotion {
     after: AfterPosition,
 }
 
-/// 代表局面の合法な成り手をエンジン既定の`L0,P0,R1,E0`で実際に適用し、[`Promotion`]を作る。
+/// 代表局面の合法な成り手を規則セット`JCSA`（`L0,P0,R1,E0`）で実際に適用し、[`Promotion`]を作る。
 /// 着手後の独立整数PST参照が`after_opposite`と異なる場合、または参照から求めた差が`delta`と異なる場合は失敗する。
 /// モデルごとの照合した手の総数を、呼び手が`rust_promotion_agreement`に数える。
 fn promotions(model: &Weights, record: &Sample) -> Result<Vec<Promotion>> {
     let position = record.to_position()?;
     let side = position.side_to_move();
     let before = evaluate_for_diagnostics(&model.engine, &position, side);
-    let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
-    let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+    let generator = MoveGenerator::new(Rules::JCSA.moves);
+    let game = Game::from_position(Rules::JCSA, position.clone());
     let mut rows = Vec::new();
     for mv in game.legal_moves() {
         if !mv.promote {

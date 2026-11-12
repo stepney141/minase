@@ -82,7 +82,7 @@ mod tests {
     /// [`Arguments`]の既定値、必須引数、排他指定、および局番号の契約を検査する。
     #[test]
     fn cli_defaults_flags_and_conflicts_follow_the_design_document() {
-        let defaults = Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
+        let defaults = Arguments::try_parse_from(["random_play", "--rules", "JCSA"])
             .expect("the minimal documented invocation must be accepted");
         assert_eq!(defaults.games, 1);
         assert_eq!(defaults.max_ply, 4096);
@@ -94,7 +94,7 @@ mod tests {
         let full = Arguments::try_parse_from([
             "random_play",
             "--rules",
-            "engine-default",
+            "JCSA",
             "--games",
             "30",
             "--seed",
@@ -118,7 +118,7 @@ mod tests {
             Arguments::try_parse_from([
                 "random_play",
                 "--rules",
-                "engine-default",
+                "JCSA",
                 "--game",
                 "2",
                 "--games",
@@ -128,8 +128,7 @@ mod tests {
         );
         // 局番号は1起算のため0は受理しない
         assert!(
-            Arguments::try_parse_from(["random_play", "--rules", "engine-default", "--game", "0",])
-                .is_err()
+            Arguments::try_parse_from(["random_play", "--rules", "JCSA", "--game", "0",]).is_err()
         );
     }
 

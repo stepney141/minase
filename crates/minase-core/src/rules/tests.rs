@@ -116,20 +116,51 @@ fn article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_or
 }
 
 #[test]
-fn article_33_5_and_33_6_presets_expand_from_rule_constants() {
-    for name in ["engine-default", "Engine-Default"] {
+fn article_33_5_jcsa_expands_case_insensitively_to_standard_rules_with_r1() {
+    let expected = vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0];
+    assert_eq!(Vec::<RuleCode>::from(Rules::JCSA), expected);
+    for name in ["JCSA", "jcsa", "Jcsa"] {
         let codes = parse_rule_set(name).unwrap();
-        assert_eq!(Rules::from_codes(&codes), Ok(Rules::ENGINE_DEFAULT));
-        assert_eq!(codes, Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT));
+        assert_eq!(Rules::from_codes(&codes), Ok(Rules::JCSA));
+        assert_eq!(codes, expected, "{name}");
     }
+}
+
+#[test]
+fn article_33_6_lishogi_expands_case_insensitively_to_its_rule_codes() {
+    let expected = vec![
+        RuleCode::L1,
+        RuleCode::L2,
+        RuleCode::P0,
+        RuleCode::P3,
+        RuleCode::R1,
+        RuleCode::E1,
+        RuleCode::E3,
+    ];
     for name in ["lishogi", "Lishogi"] {
         let codes = parse_rule_set(name).unwrap();
         assert_eq!(Rules::from_codes(&codes), Ok(Rules::LISHOGI));
-        assert_eq!(codes, Vec::<RuleCode>::from(Rules::LISHOGI));
+        assert_eq!(codes, expected, "{name}");
     }
-    for invalid in ["engine-default,L1", "engine-default,lishogi"] {
-        assert!(parse_rule_set(invalid).is_err(), "{invalid}");
+}
+
+#[test]
+fn article_33_5_jcsa_must_be_alone_and_errors_use_its_canonical_name() {
+    for invalid in ["JCSA,L1", "JCSA,lishogi", "jcsa,L1", "L1,Jcsa"] {
+        assert_eq!(
+            parse_rule_set(invalid),
+            Err(RuleSetParseError::PresetMustBeAlone { preset: "JCSA" }),
+            "{invalid}"
+        );
     }
+}
+
+#[test]
+fn article_33_5_previous_preset_name_is_an_unknown_code() {
+    assert!(matches!(
+        parse_rule_set("engine-default"),
+        Err(RuleSetParseError::UnknownCode(error)) if error.input() == "engine-default"
+    ));
 }
 
 #[test]
@@ -158,7 +189,7 @@ fn rule_set_parse_errors_preserve_the_failure_kind() {
 
 #[test]
 fn rule_set_display_includes_all_four_base_groups() {
-    assert_eq!(Rules::ENGINE_DEFAULT.to_string(), "L0,P0,R1,E0");
+    assert_eq!(Rules::JCSA.to_string(), "L0,P0,R1,E0");
     assert_eq!(Rules::LISHOGI.to_string(), "L1,L2,P0,P3,R1,E1,E3");
 }
 

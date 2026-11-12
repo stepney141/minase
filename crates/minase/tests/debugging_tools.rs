@@ -110,7 +110,7 @@ fn perft_rejects_invalid_state_without_output() {
             "perft",
             "1",
             "--rules",
-            "engine-default",
+            "JCSA",
             "--sfen",
             &format!("{board} -"),
         ])

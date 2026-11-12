@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(recording_start(12, &[14, 50, 91]), 92);
     }
 
-    use crate::selfplay_gen::{engine_default_rules, test_support::test_table};
+    use crate::selfplay_gen::test_support::test_table;
     use minase::datagen::statistics::INJECTION_HISTOGRAM_BINS;
     use std::collections::BTreeSet;
 
@@ -350,7 +350,7 @@ mod tests {
     /// 同じ対局条件はレコードと全統計を再現する。
     #[test]
     fn play_game_is_deterministic_for_same_seed_and_arguments() {
-        let rules = engine_default_rules().expect("engine-default rules are valid");
+        let rules = Rules::JCSA;
         let nnue = crate::selfplay_gen::test_support::epoch_zero_nnue();
         let mut first_table = test_table();
         let mut second_table = test_table();
@@ -421,7 +421,7 @@ mod tests {
     /// 注入計画の途中で打ち切った対局でも実施回数と探索回数を正しく集計する。
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
-        let rules = engine_default_rules().expect("engine-default rules are valid");
+        let rules = Rules::JCSA;
         let nnue = minase::eval::weights().expect("embedded weights are valid");
         let maximum = 80;
 

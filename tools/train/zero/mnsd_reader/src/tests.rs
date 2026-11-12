@@ -24,7 +24,7 @@ fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
     use minase_core::rng::{XorShift64, derive_seed};
     let fixture = Fixture::new();
     let start = Position::shuffled_initial(&mut XorShift64::new(derive_seed(20261110, 1)));
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut game = Game::from_position(Rules::JCSA, start.clone());
     let mut moves = Vec::new();
     let mut entries = Vec::new();
     for _ in 0..6 {
@@ -49,7 +49,7 @@ fn shuffled_start_replays_boards_plies_legal_moves_and_control_planes() {
     let actual = read_file(&path).unwrap();
     assert_eq!(actual.plies.len(), moves.len());
     let planes = control_planes(&actual.boards, &actual.sides).unwrap();
-    let mut expected = Game::from_position(Rules::ENGINE_DEFAULT, start);
+    let mut expected = Game::from_position(Rules::JCSA, start);
     for (index, mv) in moves.into_iter().enumerate() {
         assert_eq!(u32::from(actual.plies[index]), expected.ply_count());
         assert_eq!(
@@ -141,8 +141,7 @@ fn control_planes_decode_promoted_pieces_and_both_sides_from_records() {
         }
         let start = builder.finish().unwrap();
         let candidate =
-            sorted_legal_moves(&Game::from_position(Rules::ENGINE_DEFAULT, start.clone())).unwrap()
-                [0];
+            sorted_legal_moves(&Game::from_position(Rules::JCSA, start.clone())).unwrap()[0];
         games.push(
             GameRecord::new(
                 side as u32,
@@ -251,15 +250,8 @@ impl Fixture {
     }
 
     fn write(&self, kind: TeacherKind, games: &[GameRecord]) -> PathBuf {
-        let header = Header::new(
-            "engine-default".into(),
-            "a1".repeat(20),
-            [37; 32],
-            kind,
-            1_234,
-            11,
-        )
-        .unwrap();
+        let header =
+            Header::new("JCSA".into(), "a1".repeat(20), [37; 32], kind, 1_234, 11).unwrap();
         let mut writer = Writer::new(Cursor::new(Vec::new()), header).unwrap();
         for game in games {
             writer.write_game(game).unwrap();
@@ -287,7 +279,7 @@ fn square(file: u8, rank: u8) -> Square {
 }
 
 fn alpha_game(number: u32, start_ply: u16, start: Position) -> GameRecord {
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut game = Game::from_position(Rules::JCSA, start.clone());
     let specifications = [
         (Value::AlphaBeta(100), Exclusion::None),
         (Value::AlphaBeta(-200), Exclusion::None),
@@ -328,7 +320,7 @@ fn alpha_beta_policy_positions_match_trainer_records_in_original_order() {
     let fixture = Fixture::new();
     let mut black = Position::initial();
     black.set_lion_capture(Some(square(1, 8))).unwrap();
-    let mut white_game = Game::with_default_rules();
+    let mut white_game = Game::new(Rules::JCSA);
     white_game
         .play(sorted_legal_moves(&white_game).unwrap()[0])
         .unwrap();
@@ -366,8 +358,8 @@ fn alpha_beta_policy_positions_match_trainer_records_in_original_order() {
     }
     assert_eq!(actual.sides, [1, 0, 0, 1]);
     assert_eq!(actual.info.origin, Some(Origin::RandomSelfplay));
-    assert_eq!(actual.info.header.rule_set(), "engine-default");
-    assert_eq!(actual.info.header.rules(), Rules::ENGINE_DEFAULT);
+    assert_eq!(actual.info.header.rule_set(), "JCSA");
+    assert_eq!(actual.info.header.rules(), Rules::JCSA);
     assert_eq!(actual.info.header.generation_commit(), "a1".repeat(20));
     assert_eq!(actual.info.header.network_checksum(), &[37; 32]);
     assert_eq!(actual.info.header.teacher_kind(), TeacherKind::AlphaBeta);
@@ -381,7 +373,7 @@ fn alpha_beta_policy_positions_match_trainer_records_in_original_order() {
 fn mcts_preserves_resignation_search_and_expands_played_policy() {
     // 生成器の契約: 序盤と合意終局の最終項目には価値がなく、投了時には探索結果がある。
     let fixture = Fixture::new();
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     let opening = sorted_legal_moves(&game).unwrap()[0];
     game.play(opening).unwrap();
     let searched = sorted_legal_moves(&game).unwrap()[1];
@@ -426,7 +418,7 @@ fn mcts_preserves_resignation_search_and_expands_played_policy() {
             .unwrap();
     }
     let position = builder.finish().unwrap();
-    let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+    let game = Game::from_position(Rules::JCSA, position.clone());
     let two_step: Vec<_> = sorted_legal_moves(&game)
         .unwrap()
         .into_iter()
@@ -511,7 +503,7 @@ fn mcts_scan_and_replay_skip_value_only_entries_and_read_mate_in_three_wins() {
     let mut games = Vec::new();
     // seed=11では対局1が訓練、対局4が検証。両方に同じ選別規則を適用する。
     for (number, winner) in [(1, Color::Black), (4, Color::White)] {
-        let mut game = Game::with_default_rules();
+        let mut game = Game::new(Rules::JCSA);
         let mut entries = Vec::new();
         for index in 0..6 {
             let mv = sorted_legal_moves(&game).unwrap()[0];
@@ -592,7 +584,7 @@ fn short_game(side: Color, values: &[Option<u16>], full: &[bool], outcome: Outco
             .unwrap();
     }
     let start = builder.finish().unwrap();
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut game = Game::from_position(Rules::JCSA, start.clone());
     let mut entries = Vec::new();
     let mut kings = [square(0, 0), square(11, 11)];
     for (index, (&value, &full)) in values.iter().zip(full).enumerate() {
@@ -812,14 +804,11 @@ fn opponent_moves_and_legal_columns_describe_the_immediate_next_position() {
             .unwrap();
     }
     let start = builder.finish().unwrap();
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut game = Game::from_position(Rules::JCSA, start.clone());
     let first = sorted_legal_moves(&game).unwrap()[0];
     game.play(first).unwrap();
-    let expected_legal = sorted_legal_moves(&Game::from_position(
-        Rules::ENGINE_DEFAULT,
-        game.position().clone(),
-    ))
-    .unwrap();
+    let expected_legal =
+        sorted_legal_moves(&Game::from_position(Rules::JCSA, game.position().clone())).unwrap();
     let promotion = expected_legal
         .iter()
         .copied()
@@ -960,7 +949,7 @@ fn deferred_promotion_bit_and_maximum_ply_are_preserved() {
     builder.mark_promotion_deferred(square(4, 8)).unwrap();
     let start = builder.finish().unwrap();
     let candidate =
-        sorted_legal_moves(&Game::from_position(Rules::ENGINE_DEFAULT, start.clone())).unwrap()[0];
+        sorted_legal_moves(&Game::from_position(Rules::JCSA, start.clone())).unwrap()[0];
     let game = GameRecord::new(
         1,
         Origin::RandomSelfplay,

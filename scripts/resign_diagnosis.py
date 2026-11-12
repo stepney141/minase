@@ -2,7 +2,7 @@
 """保存済み対局記録へ仮想的な投了条件を当て、誤投了で放棄する得点と削減時間を集計する。
 
 `table` は閾値ごとの発火数、誤投了数、放棄する得点の割合、および削減時間の割合を、
-全記録と現行構成群（両エンジンが境界日以降のコミットで、時間制御、engine-default）
+全記録と現行構成群（両エンジンが境界日以降のコミットで、時間制御を使い、規則がL0,P0,R1,E0）
 について出力する。`detail` は指定閾値の誤投了局を1局ずつ列挙する。
 設計は docs/plans/usi-resignation.md、結果は docs/audits/usi-resignation-diagnosis-2026-09-23.md。
 """
@@ -68,7 +68,7 @@ def winner_of(termination):
 
 
 def is_current(manifest, boundary):
-    if manifest.get("rules_source") != "engine-default":
+    if manifest.get("canonical_rules") != ["L0", "P0", "R1", "E0"]:
         return False
     for engine in (manifest["candidate"], manifest["baseline"]):
         identity = engine["identity"]

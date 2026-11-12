@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn completed_pair_rejects_inconsistent_seed_opening_colors_and_category() {
-        let rules = Rules::ENGINE_DEFAULT;
+        let rules = Rules::JCSA;
         let seed = derive_seed(7, 1);
         let opening = generate_opening(rules, seed);
         let loser = stored_color(opening.game.position().side_to_move());
@@ -476,7 +476,7 @@ mod tests {
             is_random: true,
             limit: parse_search_limit("depth=1").unwrap(),
             hash_mb: None,
-            rules_source: "engine-default".into(),
+            rules_source: "JCSA".into(),
             options: vec![],
         };
         let validate = |record| {
@@ -514,7 +514,7 @@ mod tests {
     // [`validate_saved_game`]に従い、着手後に応答が途絶えた側の反則負けを再検証する。
     #[test]
     fn saved_timeout_after_a_move_is_valid_without_a_failure_turn() {
-        let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(7, 1));
+        let opening = generate_opening(Rules::JCSA, derive_seed(7, 1));
         let mut game = opening.game.clone();
         let selected = game.legal_moves()[0];
         let text = usi::text(
@@ -582,7 +582,7 @@ mod tests {
     // docs/plans/archived/movetime-deadline.md: 再開でも固定時間の境界と時間切れの分類を保つ。
     #[test]
     fn saved_movetime_game_validates_the_forfeit_boundary_for_both_players() {
-        let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(8, 1));
+        let opening = generate_opening(Rules::JCSA, derive_seed(8, 1));
         let side = stored_color(opening.game.position().side_to_move());
         let limit = parse_search_limit("movetime=300,timemargin=100").unwrap();
         let timed = parse_search_limit("time=10000+0").unwrap();
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn saved_game_validation_rejects_protocol_clock_and_ply_contradictions() {
-        let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(8, 1));
+        let opening = generate_opening(Rules::JCSA, derive_seed(8, 1));
         let side = stored_color(opening.game.position().side_to_move());
         let fixed_conditions = SavedGameConditions {
             candidate_protocol: Protocol::Cecp,
@@ -737,8 +737,7 @@ mod tests {
     // [`TurnRecord::ponder`]は不合法な予想手も保存する。
     #[test]
     fn saved_predictions_validate_tokens_and_protocol_without_requiring_legality() {
-        let opening =
-            generate_opening(Rules::ENGINE_DEFAULT, std::num::NonZeroU64::new(1).unwrap());
+        let opening = generate_opening(Rules::JCSA, std::num::NonZeroU64::new(1).unwrap());
         let side = stored_color(opening.game.position().side_to_move());
         let mut record = GameRecord {
             candidate_color: side,

@@ -212,13 +212,11 @@ pub(super) fn run_game(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase_core::RuleCode;
 
     /// [`run_game`]の再現性と打ち切りの契約を検査する。
     #[test]
     fn same_seed_and_game_number_reproduce_the_same_game() {
-        let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
-            .expect("the complete engine-default rule set must be valid");
+        let rules = Rules::JCSA;
         let first = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
         // run_gameの契約により、全合法手の適用検査を有効にしても同じ対局になる。
         let second = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, true);

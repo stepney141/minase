@@ -3,7 +3,7 @@
 use minase::training::records::*;
 use minase_core::test_util::{position, position_from_codes, sq};
 use minase_core::{
-    Color, DrawReason, Game, GameResult, Move, PieceCode, PieceKind, Position, WinReason,
+    Color, DrawReason, Game, GameResult, Move, PieceCode, PieceKind, Position, Rules, WinReason,
 };
 use std::io::Cursor;
 
@@ -319,7 +319,7 @@ fn header_names_and_commits_are_checked_on_creation_and_reading() {
         Err(Error::InvalidRuleSetName)
     ));
     assert!(matches!(
-        make("engine-default\0", COMMIT),
+        make("JCSA\0", COMMIT),
         Err(Error::InvalidRuleSetName)
     ));
     assert!(matches!(make("", COMMIT), Err(Error::RuleSetParse(_))));
@@ -333,14 +333,14 @@ fn header_names_and_commits_are_checked_on_creation_and_reading() {
         Err(Error::Rules(_))
     ));
     assert!(matches!(
-        make("engine-default", "123"),
+        make("JCSA", "123"),
         Err(Error::InvalidGenerationCommit)
     ));
     assert!(matches!(
-        make("engine-default", &"g".repeat(40)),
+        make("JCSA", &"g".repeat(40)),
         Err(Error::InvalidGenerationCommit)
     ));
-    assert!(make("ENGINE-DEFAULT", COMMIT).is_ok());
+    assert!(make("JCSA", COMMIT).is_ok());
     for name in [
         vec![255],
         b"L0\0x".to_vec(),
@@ -687,7 +687,7 @@ fn constructors_and_writer_reject_inconsistent_records() {
         GameRecord::new(0, Origin::HumanGame, draw(), 0, Position::initial(), vec![]),
         Err(Error::EmptyGame)
     ));
-    let mv = sorted_legal_moves(&Game::with_default_rules()).unwrap()[0];
+    let mv = sorted_legal_moves(&Game::new(Rules::JCSA)).unwrap()[0];
     assert!(matches!(
         GameRecord::new(
             0,

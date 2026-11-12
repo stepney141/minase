@@ -10,7 +10,7 @@ pub(super) fn rotate(square: Square) -> Square {
 
 /// 3局を最大500手ずつ進め、王駒の消失または合法手なしで打ち切る。
 pub(super) fn random_positions() -> Vec<Position> {
-    let rules = Rules::ENGINE_DEFAULT.moves;
+    let rules = Rules::JCSA.moves;
     let generator = MoveGenerator::new(rules);
     let mut positions = Vec::new();
     let mut moves = Vec::new();

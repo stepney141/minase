@@ -630,7 +630,7 @@ mod tests {
                 },
                 options: Vec::new(),
             },
-            rules_source: "engine-default".to_owned(),
+            rules_source: "JCSA".to_owned(),
             canonical_rules: vec!["L1".to_owned(), "P0".to_owned()],
             mode: ManifestMode::Gsprt {
                 h0_elo: 0.0,

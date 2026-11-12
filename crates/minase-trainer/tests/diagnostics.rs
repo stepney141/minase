@@ -115,7 +115,7 @@ impl Fixture {
             &weights,
             v0_piece_values(),
             1016.0,
-            "engine-default",
+            "JCSA",
             minase::eval::pst::FmWeights {
                 embeddings: &vec![embedding; FEATURE_COUNT],
                 signs: &[1; FM_RANK],
@@ -135,7 +135,7 @@ impl Fixture {
             &path,
             quantize(model)
                 .unwrap()
-                .encode(&v0_piece_values(), "engine-default")
+                .encode(&v0_piece_values(), "JCSA")
                 .unwrap(),
         )
         .unwrap();
@@ -348,7 +348,7 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
                 .unwrap()
             })
             .collect();
-        f.records(name, &records, seed, "engine-default");
+        f.records(name, &records, seed, "JCSA");
     }
     f.baseline("base.bin", &pawn_linear(50.0), 0);
     for (set, name) in [
@@ -445,7 +445,7 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
 fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() {
     let f = Fixture::new();
     let positions = distribution_positions();
-    f.data("data.mnsd", &positions, 11, &[4; 24], "engine-default");
+    f.data("data.mnsd", &positions, 11, &[4; 24], "JCSA");
     f.baseline("base.bin", &pawn_linear(50.0), 0);
     f.network(
         "net.bin",
@@ -544,7 +544,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         .unwrap();
         assert!(record.lion_by_kirin_promotion());
         assert_eq!(record.to_position().unwrap(), position);
-        f.records("data.mnsd", &[record], 11, "engine-default");
+        f.records("data.mnsd", &[record], 11, "JCSA");
         let values = v0_piece_values();
         let linear: Vec<_> = (0..FEATURE_COUNT)
             .map(|feature| {
@@ -609,7 +609,7 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
         let f = Fixture::new();
         let position =
             common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        f.data("data.mnsd", &[position], 11, &[4], "engine-default");
+        f.data("data.mnsd", &[position], 11, &[4], "JCSA");
         let mut linear = pawn_linear(80.0);
         for row in &mut linear {
             row[0] /= 2.0;
@@ -662,7 +662,7 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
         )
         .unwrap();
         assert_eq!(record.to_position().unwrap(), position);
-        f.records("data.mnsd", &[record], 11, "engine-default");
+        f.records("data.mnsd", &[record], 11, "JCSA");
         fs::remove_file(f.path("report.json")).unwrap();
         let report = f.success(&removal_args("1"), "report.json");
         // 先獅子の特徴は除去後も残り、-80+1000*0.125*2*(0.4*0.5-0.5*0.7)=-117.5。
@@ -679,7 +679,7 @@ fn removal_uses_f64_recomputation_and_the_integer_network_cp_per_logit() {
 fn removal_samples_without_replacement_using_the_existing_splitmix64_sequence() {
     let f = Fixture::new();
     let pawn = common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-    f.data("data.mnsd", &vec![pawn; 12], 11, &[4; 12], "engine-default");
+    f.data("data.mnsd", &vec![pawn; 12], 11, &[4; 12], "JCSA");
     let m = model(InputFeatureSet::P, &pawn_linear(100.0), 1016.0);
     f.network("net.bin", &m);
     f.checkpoint(m);
@@ -704,7 +704,7 @@ fn removal_samples_without_replacement_using_the_existing_splitmix64_sequence() 
 fn failed_removal_is_saved_before_the_command_returns_exit_code_one() {
     let f = Fixture::new();
     let pawn = common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-    f.data("data.mnsd", &[pawn], 11, &[4], "engine-default");
+    f.data("data.mnsd", &[pawn], 11, &[4], "JCSA");
     let mut m = model(InputFeatureSet::P, &pawn_linear(100.0), 1000.0);
     // 有限だが極端な定数項により、独立再計算では100 cpが桁落ちする。一括差分は-100 cp。
     m.parameter_mut(Parameter::OutputBias)[0] = 1e20;
@@ -758,7 +758,7 @@ fn removal_checks_phase_boundaries_and_both_sides_with_nonlinear_weights() {
                 positions.push(position);
             }
         }
-        f.data("data.mnsd", &positions, 11, &[4; 12], "engine-default");
+        f.data("data.mnsd", &positions, 11, &[4; 12], "JCSA");
         let mut linear = pawn_linear(40.0);
         for row in &mut linear {
             row[1] *= 0.9;
@@ -913,7 +913,7 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
             None,
         ),
     ];
-    f.data("data.mnsd", &positions, 11, &[1; 2], "engine-default");
+    f.data("data.mnsd", &positions, 11, &[1; 2], "JCSA");
     f.baseline("base.bin", &pawn_linear(50.0), 2);
     f.network("net.bin", &tempo_model(InputFeatureSet::P));
     let report = f.success(&moves_args(), "report.json");
@@ -921,7 +921,7 @@ fn moves_cover_captures_promotions_and_terminal_moves_using_library_games() {
     let mut promotion = false;
     let mut terminal = false;
     for (i, position) in positions.iter().enumerate() {
-        let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+        let game = Game::from_position(Rules::JCSA, position.clone());
         let mut deltas = Vec::new();
         let mut pst_deltas = Vec::new();
         let before = if i == 0 { 50.0 } else { 0.0 };
@@ -970,7 +970,7 @@ fn moves_reject_nondefault_rules_and_empty_input() {
         Some(&ContractError::NondefaultRules)
     );
     assert!(!f.path("report.json").exists());
-    f.data("data.mnsd", &[], 11, &[], "engine-default");
+    f.data("data.mnsd", &[], 11, &[], "JCSA");
     let error = f.diagnose(&moves_args()).unwrap_err();
     assert_eq!(
         error.downcast_ref::<ContractError>(),

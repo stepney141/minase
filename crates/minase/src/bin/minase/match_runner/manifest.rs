@@ -232,7 +232,7 @@ mod tests {
                     parse_player_spec("cecp:engine").unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     hash_mb,
-                    "engine-default",
+                    "JCSA",
                     Vec::new(),
                     None,
                 )
@@ -241,7 +241,7 @@ mod tests {
             let manifest = run_manifest(
                 &player(candidate_hash),
                 &player(baseline_hash),
-                &parse_rule_set_argument("engine-default").unwrap(),
+                &parse_rule_set_argument("JCSA").unwrap(),
                 ManifestMode::Elo,
                 1,
                 4096,

@@ -11,7 +11,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use minase::nn::test_util::UniformEvaluator;
 use minase::nn::{Evaluator, NnError, Query};
-use minase::training::records::{DecodedGame, Header, Outcome, Policy, Reader, TeacherKind, Value};
+use minase::training::records::{
+    self, DecodedGame, Header, Outcome, Policy, Reader, TeacherKind, Value,
+};
 use minase_core::{
     Color, GameResult, WinReason,
     rng::{XorShift64, derive_seed},
@@ -47,7 +49,7 @@ const CHECKSUM: [u8; 32] = [23; 32];
 
 pub(super) fn config() -> Config {
     Config {
-        rules: engine_default_rules().unwrap().to_string(),
+        rules: Rules::JCSA.to_string(),
         generation_commit: "0123456789abcdef0123456789abcdef01234567".into(),
         network_sha256: minase::datagen::hex(&CHECKSUM),
         nn_backend: "cpu".into(),
@@ -129,8 +131,7 @@ fn full_searches(config: &Config, number: u32) -> impl Iterator<Item = bool> {
 
 fn first_full_black_search(config: &Config, number: u32) -> Option<usize> {
     let seed = derive_seed(config.seed, u64::from(number));
-    let (game, _) =
-        minase::datagen::opening::generate_opening(engine_default_rules().unwrap(), seed).unwrap();
+    let (game, _) = minase::datagen::opening::generate_opening(Rules::JCSA, seed).unwrap();
     (game.ply_count()..config.max_ply)
         .zip(full_searches(config, number))
         .position(|(ply, full)| ply.is_multiple_of(2) && full)
@@ -221,9 +222,7 @@ fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_
     for decoded in resigned {
         let record = decoded.record();
         let seed = derive_seed(config.seed, u64::from(record.game_number()));
-        let (_, opening) =
-            minase::datagen::opening::generate_opening(engine_default_rules().unwrap(), seed)
-                .unwrap();
+        let (_, opening) = minase::datagen::opening::generate_opening(Rules::JCSA, seed).unwrap();
         let opening_len = opening.len();
         assert!((8..=16).contains(&opening_len));
         let searched = first_full_black_search(&config, record.game_number()).unwrap() + 1;
@@ -238,7 +237,7 @@ fn enabled_resignation_records_first_full_black_search_with_mcts_headers_policy_
                 reason: WinReason::Resignation
             })
         );
-        let mut replay = minase_core::Game::new(engine_default_rules().unwrap());
+        let mut replay = minase_core::Game::new(Rules::JCSA);
         let mut full = full_searches(&config, record.game_number());
         for (index, entry) in record.entries().iter().enumerate() {
             assert_eq!(entry.exclusion(), records::Exclusion::None);

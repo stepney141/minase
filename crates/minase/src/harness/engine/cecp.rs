@@ -243,7 +243,7 @@ mod tests {
             parse_player_spec("cecp:engine").unwrap(),
             parse_search_limit("movetime=300,timemargin=100").unwrap(),
             None,
-            "engine-default",
+            "JCSA",
             Vec::new(),
             None,
         );

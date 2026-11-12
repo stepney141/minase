@@ -348,7 +348,7 @@ class TrainTests(unittest.TestCase):
             (int(train_games[1]), 1, 0, 54321, (65_535,)),
             (validation_game, 0, 2, 32768, (65_535,)),
         ]
-        write_small(path, [single_game(*game) for game in sorted(games)], "engine-default")
+        write_small(path, [single_game(*game) for game in sorted(games)], "JCSA")
         data, _, _, _ = read_replay_buffer([path], [path], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
@@ -518,7 +518,7 @@ class TrainTests(unittest.TestCase):
         sample = is_training_sample(20261038, numbers)
         selected = sorted([int(numbers[validation][0]), int(numbers[~(validation | sample)][0])])
         path = self.root / "no-sample.mnsd"
-        write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "engine-default")
+        write_small(path, [single_game(game, 0, 2, 32768, (65_535,)) for game in selected], "JCSA")
         out = self.root / "no-sample"
         arguments = train_arguments(self.initial / "checkpoint.pt", out)
         set_training_data(arguments, [str(path)])

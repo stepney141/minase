@@ -69,7 +69,7 @@ def signal(its, pawn_value):
 
 def main(run_dir, engine, count=200, pawn_value=100):
     samples, byoyomi = main_phase_positions(run_dir, int(count))
-    proc = subprocess.Popen([engine, "--protocol", "usi", "--rules", "engine-default"],
+    proc = subprocess.Popen([engine, "--protocol", "usi", "--rules", "JCSA"],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
 
     def send(line):

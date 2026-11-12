@@ -153,7 +153,7 @@ fn lazy_accumulator_skips_null_tt_cutoff_and_applies_lion_expiry_on_read() {
 fn lazy_accumulator_matches_eager_update_once_per_move_across_rules() {
     let net = epoch_zero_nnue();
     for specification in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",

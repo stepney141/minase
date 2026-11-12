@@ -82,11 +82,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
             let nnue = minase::eval::weights().map_err(data_error)?;
             // MNSDの規則セット名は selfplay_gen と同じく規則コードの列挙で書く。
             let header = Header::new(
-                minase_core::Rules::from_codes(
-                    &minase_core::rules::parse_rule_set("engine-default").map_err(data_error)?,
-                )
-                .map_err(data_error)?
-                .to_string(),
+                minase_core::Rules::JCSA.to_string(),
                 commit.clone(),
                 *nnue.checksum(),
                 TeacherKind::AlphaBeta,

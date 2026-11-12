@@ -200,19 +200,19 @@ mod tests {
         for args in [
             vec!["perft"],
             vec!["perft", "1"],
-            vec!["perft", "--rules", "engine-default"],
+            vec!["perft", "--rules", "JCSA"],
         ] {
             assert_eq!(
                 Arguments::try_parse_from(args).err().unwrap().kind(),
                 ErrorKind::MissingRequiredArgument
             );
         }
-        assert!(Arguments::try_parse_from(["perft", "1", "--rules", "engine-default"]).is_ok());
+        assert!(Arguments::try_parse_from(["perft", "1", "--rules", "JCSA"]).is_ok());
     }
 
     #[test]
     fn parse_position_accepts_basic_and_extended_and_rejects_invalid_state() {
-        let rules = Rules::ENGINE_DEFAULT;
+        let rules = Rules::JCSA;
         let initial = Position::initial();
         let board = to_sfen(&initial);
         assert_eq!(parse_position(&board, rules).unwrap(), initial);

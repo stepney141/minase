@@ -80,7 +80,7 @@ mod tests {
     // だけランダムに進めて作り、ペアシードから決定的に再現される。
     #[test]
     fn openings_stay_within_8_to_12_plies_and_vary_between_pairs() {
-        let rules = Rules::ENGINE_DEFAULT;
+        let rules = Rules::JCSA;
         let mut all_moves = Vec::new();
         // rng::derive_seedのdocにあるsplitmix64(pair_seed + 0)の固定ベクトル。
         for (pair_seed, expected_seed) in [

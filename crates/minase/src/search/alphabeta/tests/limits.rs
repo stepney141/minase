@@ -1,6 +1,7 @@
 //! 探索制限とスナップショットを検査する。
 
 use super::*;
+use minase_core::Rules;
 
 // 深さ制約は1以上、最大探索ply（256）
 // 以下だけを受理し、範囲外は`SearchLimits`の検証で拒否する。
@@ -74,7 +75,7 @@ fn time_advantage_clock_requires_opponent_remaining_time() {
 // 確定した局面、規則、履歴およびルート合法手を一括して複製する。
 #[test]
 fn snapshot_is_constructed_from_one_game_state() {
-    let game = minase_core::Game::with_default_rules();
+    let game = minase_core::Game::new(Rules::JCSA);
     let snapshot = SearchSnapshot::from_game(&game).unwrap();
 
     assert_eq!(snapshot.position(), game.position());
@@ -82,16 +83,14 @@ fn snapshot_is_constructed_from_one_game_state() {
     assert_eq!(snapshot.history_keys(), game.repetition_key_history());
     assert_eq!(snapshot.root_moves(), game.legal_moves());
 
-    let empty = minase_core::Game::from_position(
-        minase_core::Rules::ENGINE_DEFAULT,
-        position(Color::Black, &[]),
-    );
+    let empty =
+        minase_core::Game::from_position(minase_core::Rules::JCSA, position(Color::Black, &[]));
     assert!(matches!(
         SearchSnapshot::from_game(&empty),
         Err(SearchError::NoLegalMoves)
     ));
 
-    let mut finished = minase_core::Game::with_default_rules();
+    let mut finished = minase_core::Game::new(Rules::JCSA);
     finished.agree_draw().unwrap();
     assert!(matches!(
         SearchSnapshot::from_game(&finished),

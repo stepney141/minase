@@ -38,7 +38,7 @@ fn rook_cycle() -> [Move; 4] {
 }
 
 fn after_plies(start: Position, cycle: &[Move], plies: usize) -> Game {
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start);
+    let mut game = Game::from_position(Rules::JCSA, start);
     for (index, &mv) in cycle.iter().cycle().take(plies).enumerate() {
         assert_eq!(game.play(mv), Ok(GameStatus::Ongoing), "ply {}", index + 1);
     }

@@ -33,7 +33,7 @@ fn invalid_search_arguments_exit_one_on_stderr_before_session_start() {
         ),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["--protocol", protocol, "--rules", "engine-default"])
+            .args(["--protocol", protocol, "--rules", "JCSA"])
             .args(args)
             .output()
             .unwrap();
@@ -66,7 +66,7 @@ fn mcts_initialization_error_reaches_process_exit_without_readyok() {
             "--protocol",
             "usi",
             "--rules",
-            "engine-default",
+            "JCSA",
             "--search",
             "mcts",
             "--nn-model",

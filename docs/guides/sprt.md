@@ -254,14 +254,15 @@ cargo run --release --bin minase -- match report \
 ビルドには実行した作業ツリーの`.cargo/config.toml`の`rustflags`も連結されて適用されるので、ビルド設定を変えた後の比較は[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)に従う。
 起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
 `--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
-規則コードP0とE0を導入する前のコミットを対戦相手とする測定では、規則コードを列挙した指定を旧版のバイナリが拒否するので、`engine-default`などのプリセット名で指定する。
+規則セット名`JCSA`は、`engine-default`から改名したものであり、改名より前のコミットのバイナリは受理しないので、改名の前後をまたぐ測定では規則コード列`L0,P0,R1,E0`で指定する。
+規則コードP0とE0を導入する前のコミットは、規則コードを列挙した指定も拒否するので、そのコミットを対戦相手とする測定は当時のハーネスで行う。
 `commit:`のエンジンに起動引数を足すときは、`--candidate-args`または`--baseline-args`に空白で区切った引数を指定する。
 足した引数は`--protocol usi --rules <マッチ規則>`の後に続き、`manifest.json`のエンジンの同一性に記録されて、再開時に照合される（理由は[起動引数の拡張のADR](../adr/append-startup-arguments-to-commit-engine-specs.md)）。
 引数の相対パスは、`minase match run`を起動した作業ディレクトリから解決される。
 この2つの引数は`commit:`以外の指定には使えず、`--resume`とも併用できない。
 
 未コミットの作業ツリーや外部のUSIエンジンを測る場合は、パスと空白区切りの引数からなる起動コマンドで指定する。
-たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
+たとえば`"target/release/minase --protocol usi --rules JCSA"`のように書く。
 minase本体は`--protocol`と`--rules`の指定が必須なので、この形式では両方の引数を必ず書く。
 数時間を超える測定で作業ツリーのバイナリを使うときは、[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)に従う。
 
@@ -297,7 +298,7 @@ TensorRTのエンジンの作成は、作業機の10ブロック128チャネル�
 
 ```console
 source tools/train/zero/env.sh   # bashで実行する
-printf 'usi\nisready\nquit\n' | target/release/minase --protocol usi --rules engine-default \
+printf 'usi\nisready\nquit\n' | target/release/minase --protocol usi --rules JCSA \
   --search mcts --nn-model <ネットのファイル>
 ```
 

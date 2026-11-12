@@ -57,11 +57,6 @@ impl Game {
         Self::from_position(rules, Position::initial())
     }
 
-    /// エンジン既定規則で初期局面から対局を構築する。
-    pub fn with_default_rules() -> Self {
-        Self::new(Rules::ENGINE_DEFAULT)
-    }
-
     /// 着手を検証して適用し、王駒捕獲、反復、駒枯れ、合法手なし、詰みの順で裁定する。
     ///
     /// 終局後、局面合法手でない場合、およびR2かR3で禁止される場合はエラーを返し、
@@ -251,7 +246,7 @@ mod tests {
         for repetition in [RepetitionRule::R1, RepetitionRule::R2, RepetitionRule::R3] {
             let game = Game::new(Rules {
                 repetition,
-                ..Rules::ENGINE_DEFAULT
+                ..Rules::JCSA
             });
             assert!(game.same_state(&game.clone()));
             let mut changed = game.clone();
@@ -282,7 +277,7 @@ mod tests {
     #[test]
     fn same_state_distinguishes_real_histories_ending_at_the_same_position() {
         let mut game = Game::from_position(
-            Rules::ENGINE_DEFAULT,
+            Rules::JCSA,
             position(
                 Color::Black,
                 &[

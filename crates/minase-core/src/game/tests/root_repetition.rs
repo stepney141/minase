@@ -36,7 +36,7 @@ fn after_plies(mut game: Game, cycle: &[Move], plies: usize) -> Game {
 fn direct_loss() -> (Game, Move) {
     let cycle = rook_cycle();
     let mut start = rook_cycle_position();
-    start.make_move_unchecked(cycle[0], Rules::ENGINE_DEFAULT.moves);
+    start.make_move_unchecked(cycle[0], Rules::JCSA.moves);
     let rotated = [cycle[1], cycle[2], cycle[3], cycle[0]];
     (after_plies(game(start), &rotated, 11), cycle[0])
 }

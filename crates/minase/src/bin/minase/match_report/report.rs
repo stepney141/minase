@@ -601,7 +601,7 @@ mod tests {
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "mode": {"kind": "elo"},
-                "rules_source": "engine-default",
+                "rules_source": "JCSA",
                 "canonical_rules": ["L0", "P0", "R1", "E0"],
                 "seed": 20260828_u64,
                 "max_ply": 4096,

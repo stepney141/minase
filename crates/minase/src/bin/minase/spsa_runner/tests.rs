@@ -50,7 +50,7 @@ fn manifest(s: Settings) -> Manifest {
         engine_sha256: "b".repeat(64),
         settings: s,
         each: "nodes=1".to_owned(),
-        rules_source: "engine-default".to_owned(),
+        rules_source: "JCSA".to_owned(),
         canonical_rules: vec!["L1".to_owned()],
         max_ply: 4096,
         response_timeout_secs: 120,
@@ -373,7 +373,7 @@ fn cli_requires_explicit_session_conditions_and_excludes_other_protocols() {
         "--params",
         "params.txt",
         "--rules",
-        "engine-default",
+        "JCSA",
         "--each",
         "nodes=1",
         "--concurrency",
@@ -409,7 +409,7 @@ fn cli_requires_explicit_session_conditions_and_excludes_other_protocols() {
             "--engine",
             "./engine",
             "--rules",
-            "engine-default"
+            "JCSA"
         ])
         .is_ok()
     );
@@ -684,7 +684,7 @@ with open(sys.argv[1], 'a', buffering=1) as log:
             "--params",
             params_file.to_str().unwrap(),
             "--rules",
-            "engine-default",
+            "JCSA",
             "--each",
             "nodes=1",
             "--concurrency",
@@ -1349,7 +1349,7 @@ fn resume_cli_accepts_only_the_run_directory() {
         ("--seed", "42"),
         ("--engine", "./engine"),
         ("--params", "params.txt"),
-        ("--rules", "engine-default"),
+        ("--rules", "JCSA"),
         ("--each", "nodes=1"),
         ("--concurrency", "1"),
         ("--iterations", "2"),

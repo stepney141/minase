@@ -245,7 +245,7 @@ class ComparisonFileTests(unittest.TestCase):
             (paths[1], 22, [single_game(4, 1, 1, 456, (65535,)), single_game(6, 1, 1, 456, (65535,))]),
             (paths[2], 11, [single_game(22, 0, 2, 32768, (65535,))]),
         ):
-            write_small(path, games, "engine-default")
+            write_small(path, games, "JCSA")
             content = bytearray(path.read_bytes())
             struct.pack_into("<Q", content, 128, seed)
             path.write_bytes(content)
@@ -259,9 +259,9 @@ class ComparisonFileTests(unittest.TestCase):
         copied = self.directory / "copy.mnsd"
         shutil.copyfile(FIXTURE, copied)
         empty = self.directory / "empty.mnsd"
-        write_small(empty, [], "engine-default")
+        write_small(empty, [], "JCSA")
         training = self.directory / "training.mnsd"
-        write_small(training, [single_game(3, 0, 0, 123, (65535,))], "engine-default")
+        write_small(training, [single_game(3, 0, 0, 123, (65535,))], "JCSA")
         alias = self.directory / "alias.mnsd"
         alias.symlink_to(FIXTURE)
         for paths in ([FIXTURE, alias], [FIXTURE, copied], [empty], [training]):

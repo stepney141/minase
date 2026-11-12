@@ -371,8 +371,8 @@ mod tests {
                 "--out",
                 "evaluation.json",
             ],
-            vec!["dev", "perft", "1", "--rules", "engine-default"],
-            vec!["dev", "random-play", "--rules", "engine-default"],
+            vec!["dev", "perft", "1", "--rules", "JCSA"],
+            vec!["dev", "random-play", "--rules", "JCSA"],
             vec!["dev", "usi-random"],
         ] {
             let parsed = Arguments::try_parse_from(std::iter::once("minase").chain(args));
@@ -385,12 +385,12 @@ mod tests {
     fn engine_arguments_conflict_with_subcommands() {
         for args in [
             vec!["--protocol", "usi"],
-            vec!["--rules", "engine-default"],
+            vec!["--rules", "JCSA"],
             vec!["--io-log", "io.log"],
             vec!["--search", "alphabeta"],
             vec!["--search", "mcts"],
             vec!["--nn-model", "net.onnx"],
-            vec!["--protocol", "usi", "--rules", "engine-default"],
+            vec!["--protocol", "usi", "--rules", "JCSA"],
         ] {
             let error = Arguments::try_parse_from(
                 std::iter::once("minase")
@@ -417,7 +417,7 @@ mod tests {
                 "--params",
                 "params.txt",
                 "--rules",
-                "engine-default",
+                "JCSA",
                 "--each",
                 "depth=2",
                 "--concurrency",
@@ -427,7 +427,7 @@ mod tests {
                 "--pairs-per-iteration",
                 "1",
             ],
-            vec!["params", "--engine", "engine", "--rules", "engine-default"],
+            vec!["params", "--engine", "engine", "--rules", "JCSA"],
             vec!["apply", "--run-dir", "run", "--source", "params.rs"],
         ] {
             let parsed = Arguments::try_parse_from(["minase", "spsa"].into_iter().chain(args));
@@ -456,31 +456,17 @@ mod tests {
         // 既定値と自動判別を設けない。
         assert!(Arguments::try_parse_from(["minase"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
-        assert!(Arguments::try_parse_from(["minase", "--rules", "engine-default"]).is_err());
+        assert!(Arguments::try_parse_from(["minase", "--rules", "JCSA"]).is_err());
         // --protocolの値はusiとcecpの2値のみ。
         assert!(
-            Arguments::try_parse_from([
-                "minase",
-                "--protocol",
-                "xboard",
-                "--rules",
-                "engine-default"
-            ])
-            .is_err()
+            Arguments::try_parse_from(["minase", "--protocol", "xboard", "--rules", "JCSA"])
+                .is_err()
         );
         assert!(
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "engine-default"])
-                .is_ok()
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "JCSA"]).is_ok()
         );
         assert!(
-            Arguments::try_parse_from([
-                "minase",
-                "--protocol",
-                "cecp",
-                "--rules",
-                "engine-default"
-            ])
-            .is_ok()
+            Arguments::try_parse_from(["minase", "--protocol", "cecp", "--rules", "JCSA"]).is_ok()
         );
     }
 

@@ -30,7 +30,7 @@ fn game(side: Color, pieces: &[(u8, u8, Color, PieceKind)]) -> Game {
         };
         builder.put(sq(file, rank), piece.unwrap()).unwrap();
     }
-    Game::from_position(Rules::ENGINE_DEFAULT, builder.finish().unwrap())
+    Game::from_position(Rules::JCSA, builder.finish().unwrap())
 }
 
 fn win(winner: Color, reason: WinReason) -> GameStatus {
@@ -380,7 +380,7 @@ fn repetition_draw_at_m1_or_m2_changes_the_same_boards_verdict() {
         for ply in 0..plies {
             assert_eq!(game.play(cycle[ply % 4]).unwrap(), GameStatus::Ongoing);
         }
-        let fresh = Game::from_position(Rules::ENGINE_DEFAULT, game.position().clone());
+        let fresh = Game::from_position(Rules::JCSA, game.position().clone());
         let original = game.clone();
         assert_eq!(mate_in_three(&fresh).unwrap(), Verdict::Win);
         assert_eq!(mate_in_three(&game).unwrap(), Verdict::NoWin);
@@ -399,7 +399,7 @@ fn repetition_draw_at_m1_or_m2_changes_the_same_boards_verdict() {
 
 #[test]
 fn finished_games_and_missing_defender_royals_are_errors() {
-    let mut finished = Game::with_default_rules();
+    let mut finished = Game::new(Rules::JCSA);
     finished.agree_draw().unwrap();
     assert!(matches!(
         mate_in_three(&finished),

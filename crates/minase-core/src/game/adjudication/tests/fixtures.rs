@@ -758,7 +758,7 @@ fn article_21_mate_handles_one_two_and_separated_royals_and_restores_position() 
 /// 自分の反復負けは回避にならない。既存の固定例と同じ合法な往復で履歴を作る。
 #[test]
 fn articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects() {
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     for (black_pawn, white_pawn, result, is_mated) in [
         (
@@ -849,7 +849,7 @@ fn articles_21_31_immediate_win_draw_and_loss_have_distinct_mate_effects() {
 /// その手で駒枯れ負けが確定する場合は詰みから逃れられない。
 #[test]
 fn articles_21_22_immediate_exhaustion_loss_is_not_a_mate_escape() {
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     let mut board = position(
         Color::Black,
@@ -885,7 +885,7 @@ fn articles_21_22_immediate_exhaustion_loss_is_not_a_mate_escape() {
 /// chu-shogi.md第23条。王手がなくても合法手がなければ負けとなり、詰みとは区別する。
 #[test]
 fn article_23_no_legal_move_is_distinct_from_mate() {
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     let mut board = position(
         Color::Black,

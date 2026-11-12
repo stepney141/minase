@@ -50,7 +50,7 @@ class Header:
     origin: int | None
     teacher_kind: int
     rule_set: str
-    engine_default: bool
+    jcsa: bool
     generation_commit: str
     network_checksum: bytes
     teacher_search_budget: int
@@ -122,10 +122,10 @@ class Dataset:
 
 
 def read_file(path: str | Path) -> tuple[Dataset, FileInfo]:
-    """MCTS・乱数開始の自己対局・engine-defaultの1ファイルを読み込む。
+    """MCTS・乱数開始の自己対局・JCSAの1ファイルを読み込む。
 
     成り権の保留、候補や合法手の欠落、確率和の不一致もValueErrorとする。
-    規則名の別表記は、解釈した規則がengine-defaultと一致すれば受け付ける。
+    規則名の別表記は、解釈した規則がJCSAと一致すれば受け付ける。
     0局のファイルは由来を問わず、空の局面配列と区切り[0]を返す。
     """
     path = Path(path).resolve(strict=True)
@@ -141,8 +141,8 @@ def _file_info(path: Path, raw: dict, *, teacher_kind: int) -> FileInfo:
         raise ValueError(f"{path}: teacher must be {teacher}")
     if header.game_count != 0 and header.origin != 0:
         raise ValueError(f"{path}: origin must be random selfplay")
-    if not header.engine_default:
-        raise ValueError(f"{path}: rules must equal engine-default")
+    if not header.jcsa:
+        raise ValueError(f"{path}: rules must equal JCSA")
     return FileInfo(
         path=path, size=path.stat().st_size, header=header,
         position_count=raw["training_count"] + raw["validation_count"],

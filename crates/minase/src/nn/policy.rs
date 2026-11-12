@@ -196,7 +196,7 @@ mod tests {
     // [`policy_label`]の契約: 合法手のラベルは範囲内で単射、180度回転で不変、盤面なしで逆変換できる。
     #[test]
     fn labels_are_injective_and_rotation_invariant_in_random_games() {
-        let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
+        let generator = MoveGenerator::new(Rules::JCSA.moves);
         let positions = random_positions();
         assert!(positions.len() >= 300);
         let mut moves = Vec::new();

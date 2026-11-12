@@ -143,8 +143,8 @@ fn random_usi_match_output_is_independent_of_concurrency() {
 #[test]
 fn minase_cecp_match_is_failure_free_and_matches_usi() {
     let minase = env!("CARGO_BIN_EXE_minase");
-    let cecp_spec = format!("cecp:{minase} --protocol cecp --rules engine-default");
-    let usi_spec = format!("{minase} --protocol usi --rules engine-default");
+    let cecp_spec = format!("cecp:{minase} --protocol cecp --rules JCSA");
+    let usi_spec = format!("{minase} --protocol usi --rules JCSA");
     let cecp = run_minase_candidate_match(&cecp_spec);
     let usi = run_minase_candidate_match(&usi_spec);
     let no_failures =
@@ -723,7 +723,7 @@ fn commit_startup_arguments_are_forwarded_recorded_and_restored() {
     let binary = cache.join("minase");
     std::fs::write(&binary, r#"#!/bin/sh
 printf '%s\n' "$*" >> "$MINASE_TEST_ARGS_LOG"
-test "$1" = '--protocol' && test "$2" = 'usi' && test "$3" = '--rules' && test "$4" = 'engine-default' || exit 21
+test "$1" = '--protocol' && test "$2" = 'usi' && test "$3" = '--rules' && test "$4" = 'JCSA' || exit 21
 shift 4
 case "$*" in
     '--search mcts --nn-model net.onnx'|'--search alphabeta') ;;
@@ -833,8 +833,8 @@ done
     );
     assert_eq!(json_file(&dir.join("manifest.json")), manifest);
     let invocations = std::fs::read_to_string(log).unwrap();
-    let candidate = "--protocol usi --rules engine-default --search mcts --nn-model net.onnx";
-    let baseline = "--protocol usi --rules engine-default --search alphabeta";
+    let candidate = "--protocol usi --rules JCSA --search mcts --nn-model net.onnx";
+    let baseline = "--protocol usi --rules JCSA --search alphabeta";
     assert!(invocations.lines().any(|line| line == candidate));
     assert!(invocations.lines().any(|line| line == baseline));
     assert!(
@@ -1043,7 +1043,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
     let check_commands = || {
         for (log, expected) in logs.iter().zip([
             vec![
-                "setoption name RuleSet value engine-default",
+                "setoption name RuleSet value JCSA",
                 "setoption name USI_Hash value 32",
                 "setoption name ResignValue value 99999",
                 "setoption name NnBatchSize value 64",
@@ -1053,7 +1053,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 "isready",
             ],
             vec![
-                "setoption name RuleSet value engine-default",
+                "setoption name RuleSet value JCSA",
                 "setoption name USI_Hash value 64",
                 "setoption name ResignValue value 99999",
                 "setoption name NnBatchSize value 256",

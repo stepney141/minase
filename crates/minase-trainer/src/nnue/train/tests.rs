@@ -412,7 +412,7 @@ fn cpu_training_inherits_mnue_metadata_and_initializes_only_from_search_values()
     values[PieceKind::King.index()] = royal;
     values[PieceKind::CrownPrince.index()] = royal;
     let scale = 317.25;
-    let rules = minase_core::Rules::ENGINE_DEFAULT.to_string();
+    let rules = minase_core::Rules::JCSA.to_string();
     let head = PairwiseL16L32::decode(&vec![0; PairwiseL16L32::byte_len(4)], 4, true).unwrap();
     fs::write(
         &args.base,

@@ -106,7 +106,7 @@ fn evaluate(
     );
 
     let positions = fixture_positions();
-    let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
+    let generator = MoveGenerator::new(Rules::JCSA.moves);
     let moves: Vec<Vec<_>> = positions
         .iter()
         .map(|position| {

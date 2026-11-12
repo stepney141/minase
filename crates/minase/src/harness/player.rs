@@ -279,7 +279,7 @@ mod tests {
                     parse_player_spec(spec).unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     None,
-                    "engine-default",
+                    "JCSA",
                     Vec::new(),
                     Some(args),
                 );
@@ -324,9 +324,8 @@ mod tests {
                 args: Vec::new(),
             }
         );
-        let minase =
-            parse_player_spec("cecp:target/release/minase --protocol cecp --rules engine-default")
-                .expect("a CECP command with arguments must be accepted");
+        let minase = parse_player_spec("cecp:target/release/minase --protocol cecp --rules JCSA")
+            .expect("a CECP command with arguments must be accepted");
         assert_eq!(
             minase.kind,
             PlayerKind::Cecp {
@@ -335,7 +334,7 @@ mod tests {
                     "--protocol".to_owned(),
                     "cecp".to_owned(),
                     "--rules".to_owned(),
-                    "engine-default".to_owned(),
+                    "JCSA".to_owned(),
                 ],
             }
         );

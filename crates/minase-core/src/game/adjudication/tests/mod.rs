@@ -49,7 +49,7 @@ fn article_21_3_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
             (sq(11, 0), piece(Color::White, PieceKind::King)),
         ],
     );
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     let mut position = start;
     let mut state = r1_state(&position);
@@ -111,7 +111,7 @@ fn article_21_3_r1_repetition_loss_does_not_rescue_mate() {
             (sq(11, 0), piece(Color::White, PieceKind::King)),
         ],
     );
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     let mut state = r1_state(&position);
     let w_out = step(sq(0, 5), sq(2, 5));
@@ -166,7 +166,7 @@ fn article_21_3_immediate_loss_overrides_royal_capture_avoidance() {
             (sq(11, 11), piece(Color::White, PieceKind::King)),
         ],
     );
-    let rules = Rules::ENGINE_DEFAULT;
+    let rules = Rules::JCSA;
     let generator = MoveGenerator::new(rules.moves);
     let state = r1_state(&position);
     let before = position.clone();

@@ -118,7 +118,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 
 | 名前 | 型と範囲 | 既定値 | 意味 |
 |---|---|---|---|
-| `RuleSet` | string | 起動時の`--rules`の正準表記 | 規則セット（chu-shogi.md第33条）。規則コードのコンマ区切り、`engine-default`、または`lishogi`で指定し、次の対局から反映される。 |
+| `RuleSet` | string | 起動時の`--rules`の正準表記 | 規則セット（chu-shogi.md第33条）。規則コードのコンマ区切り、`JCSA`、または`lishogi`で指定し、次の対局から反映される。 |
 | `USI_Variant` | string | `chushogi` | 変種名。`chushogi`だけを受け付け、それ以外の値はエラーにする。Lishogi-Botが対局ごとに変種名として送る値を受けるための宣言である。 |
 | `USI_Hash` | spin、1〜65,536 | 256 | αβ探索では置換表、MCTSでは探索木の大きさ（MiB）。 |
 | `Threads` | spin、αβ探索は1〜256、MCTSは1だけ | 1 | 探索スレッドの数。 |

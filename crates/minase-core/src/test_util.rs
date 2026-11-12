@@ -138,7 +138,7 @@ pub fn capture_test_positions() -> Vec<Position> {
 pub fn capture_test_rules() -> [crate::rules::MoveRules; 5] {
     use crate::rules::{LionRule, MoveRules, PromotionRule, Rules};
     [
-        Rules::ENGINE_DEFAULT.moves,
+        Rules::JCSA.moves,
         Rules::LISHOGI.moves,
         MoveRules {
             promotion: PromotionRule::P1,

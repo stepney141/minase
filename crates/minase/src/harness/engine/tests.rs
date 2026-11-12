@@ -77,7 +77,7 @@ for raw in sys.stdin:
         is_random: false,
         limit: parse_search_limit(limit).unwrap(),
         hash_mb: None,
-        rules_source: "engine-default".to_owned(),
+        rules_source: "JCSA".to_owned(),
         options: Vec::new(),
     }
 }
@@ -95,7 +95,7 @@ fn position(history: &[String]) -> String {
 }
 
 fn line_of_play(count: usize) -> (Vec<String>, Vec<Move>) {
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     let mut text = Vec::new();
     let mut moves = Vec::new();
     for _ in 0..count {
@@ -133,7 +133,7 @@ fn movetime_game_records_and_counts_time_forfeits() {
     );
     let b = fake(vec![], "movetime=1,timemargin=0");
     let result = play_game(
-        Game::new(Rules::ENGINE_DEFAULT),
+        Game::new(Rules::JCSA),
         vec![],
         vec![],
         100,
@@ -210,7 +210,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
         "time=10000+50",
     );
     let result = play_game(
-        Game::new(Rules::ENGINE_DEFAULT),
+        Game::new(Rules::JCSA),
         vec![],
         vec![],
         100,
@@ -251,7 +251,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
     let mut counts = [PonderCounts::default(), PonderCounts::default()];
     count_ponder_game(
         &result.record,
-        Game::new(Rules::ENGINE_DEFAULT),
+        Game::new(Rules::JCSA),
         true,
         100,
         &mut counts,
@@ -278,14 +278,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
         }
     );
     let mut off = [PonderCounts::default(), PonderCounts::default()];
-    count_ponder_game(
-        &result.record,
-        Game::new(Rules::ENGINE_DEFAULT),
-        false,
-        100,
-        &mut off,
-    )
-    .unwrap();
+    count_ponder_game(&result.record, Game::new(Rules::JCSA), false, 100, &mut off).unwrap();
     assert_eq!(off[0].predictions, 2);
     assert_eq!(off[0].starts + off[0].hits + off[1].starts + off[1].hits, 0);
 }
@@ -296,7 +289,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
 fn ponder_miss_discards_old_output_and_debits_stop_time() {
     for early in [false, true] {
         let (m, moves) = line_of_play(2);
-        let mut game = Game::new(Rules::ENGINE_DEFAULT);
+        let mut game = Game::new(Rules::JCSA);
         game.play(moves[0]).unwrap();
         let z = game
             .legal_moves()
@@ -370,7 +363,7 @@ fn ponder_miss_discards_old_output_and_debits_stop_time() {
 #[test]
 fn ponder_miss_uses_one_response_deadline() {
     let (m, moves) = line_of_play(2);
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     game.play(moves[0]).unwrap();
     let a = fake(
         vec![
@@ -401,7 +394,7 @@ fn ponder_miss_uses_one_response_deadline() {
 #[test]
 fn ponder_hit_excludes_opponent_time_and_uses_updated_clock() {
     let (m, moves) = line_of_play(2);
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     game.play(moves[0]).unwrap();
     let a = fake(
         vec![
@@ -455,7 +448,7 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
             "time=1000+0",
         );
         let result = play_game(
-            Game::new(Rules::ENGINE_DEFAULT),
+            Game::new(Rules::JCSA),
             vec![],
             vec![],
             100,
@@ -478,7 +471,7 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
         let mut counts = [PonderCounts::default(), PonderCounts::default()];
         count_ponder_game(
             &result.record,
-            Game::new(Rules::ENGINE_DEFAULT),
+            Game::new(Rules::JCSA),
             true,
             100,
             &mut counts,
@@ -498,7 +491,7 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
             (sq(0, 0), Color::Black, PieceKind::King),
         ],
     );
-    let game = Game::from_position(Rules::ENGINE_DEFAULT, board);
+    let game = Game::from_position(Rules::JCSA, board);
     assert!(matches!(ponder_move(&game, "7g7d"), Ok((_, false))));
     let a = fake(vec![], "time=1000+0");
     let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
@@ -529,7 +522,7 @@ fn ponder_cleanup_keeps_result_when_stop_times_out_and_drop_reaps() {
     let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
     process.timeout = Duration::from_millis(100);
     let pid = process.child.id();
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     game.play(moves[0]).unwrap();
     let clocks = GameClocks::new(Color::Black, a.limit, a.limit);
     process.start_ponder(
@@ -562,7 +555,7 @@ fn ponder_cleanup_keeps_result_when_stop_times_out_and_drop_reaps() {
         "time=1000+0",
     );
     let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     game.play(moves[0]).unwrap();
     let clocks = GameClocks::new(Color::Black, a.limit, a.limit);
     process.start_ponder(
@@ -582,7 +575,7 @@ fn ponder_start_send_failure_returns_to_idle() {
     let (m, moves) = line_of_play(2);
     let a = fake(vec![], "time=1000+0");
     let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     game.play(moves[0]).unwrap();
     let clocks = GameClocks::new(Color::Black, a.limit, a.limit);
     drop(process.input.take());
@@ -655,7 +648,7 @@ fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
             },
         );
         let result = play_game(
-            Game::new(Rules::ENGINE_DEFAULT),
+            Game::new(Rules::JCSA),
             vec![],
             vec![],
             max_ply,
@@ -691,7 +684,7 @@ fn ponder_stops_on_opponent_terminal_move_and_never_starts_after_terminal_move()
             (sq(0, 0), Color::Black, PieceKind::King),
         ],
     );
-    let game = Game::from_position(Rules::ENGINE_DEFAULT, board);
+    let game = Game::from_position(Rules::JCSA, board);
     let a = fake(
         vec![
             step("position startpos", ""),
@@ -755,7 +748,7 @@ fn predictions_are_saved_when_ponder_is_disabled() {
         "time=1000+0",
     );
     let result = play_game(
-        Game::new(Rules::ENGINE_DEFAULT),
+        Game::new(Rules::JCSA),
         vec![],
         vec![],
         100,
@@ -779,7 +772,7 @@ fn predictions_are_saved_when_ponder_is_disabled() {
     let mut counts = [PonderCounts::default(), PonderCounts::default()];
     count_ponder_game(
         &result.record,
-        Game::new(Rules::ENGINE_DEFAULT),
+        Game::new(Rules::JCSA),
         false,
         100,
         &mut counts,

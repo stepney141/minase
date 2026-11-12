@@ -892,7 +892,7 @@ impl UsiProtocol {
     /// 各キーワードの直後の1語を名前と値として読み、名前がなければ無応答で無視する。
     /// 探索器のstringオプションでは`value`以降を1つの空白でつなぎ、`<empty>`は空文字列にする。
     /// `RuleSet`は[`parse_rule_set`]の規則コードのコンマ区切り、または
-    /// `engine-default`か`lishogi`の単独指定として読み、次局の規則だけを変える。
+    /// `JCSA`か`lishogi`の単独指定として読み、次局の規則だけを変える。
     /// 受理時の置換表、history表、および局面トークン履歴の消去は[`Self::apply_silent`]に従う。
     /// `USI_Variant`は大小文字を区別せず`chushogi`だけを受理する。
     /// `USI_Hash`は1〜65,536 MiBで置換表を確保または作り直し、history表を空にする。
@@ -3575,7 +3575,7 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "gameover win\nsetoption name RuleSet value engine-default\nposition startpos\nstate\n",
+            "gameover win\nsetoption name RuleSet value JCSA\nposition startpos\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
     }
@@ -4526,7 +4526,7 @@ mod tests {
         let states = state_lines(&output);
 
         // [`UsiProtocol::handle_moves`]の契約に従い、期待集合はGame::legal_moves()のUSI表記から作る。
-        let game = Game::new(Rules::ENGINE_DEFAULT);
+        let game = Game::new(Rules::JCSA);
         let expected: HashSet<String> = game
             .legal_moves()
             .into_iter()

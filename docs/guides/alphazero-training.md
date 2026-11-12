@@ -259,7 +259,7 @@ export XDG_CACHE_HOME=$HOME/.cache
 M=$PWD/target/release/minase
 N=$A/nets/cycles-rl2/cycle-0020.onnx
 "$M" match run --run-dir $A/progress/cycles-rl2/cycle-0020-vs-ab500 --seed <シード> \
-  --candidate "$M --protocol usi --rules engine-default --search mcts --nn-model $N" \
+  --candidate "$M --protocol usi --rules JCSA --search mcts --nn-model $N" \
   --baseline commit:45d5db5498e1739b2307b3719891a1eec24f7fbd \
   --candidate-option NnBatchSize=16 --each nodes=800 --baseline-limit nodes=500 --concurrency 4 elo --pairs 100
 ```
@@ -498,7 +498,7 @@ GPUの枚数の違う機械でも再開できるが、加算の順序が変わ�
 
 | 項目 | 値 | 場所 |
 |---|---|---|
-| 規則 | `engine-default` | `bin/minase/zero_selfplay/mod.rs` |
+| 規則 | `JCSA` | `bin/minase/zero_selfplay/mod.rs` |
 | 手数の上限 | 序盤を含めて3,000手。到達した対局は捨てる | `bin/minase/zero_selfplay/mod.rs`の`MAX_PLY` |
 | 開始局面の作り方 | `random-opening`は初期局面から8〜16手を一様に選んで指す。`shuffled-setup`は歩兵と仲人を動かさず、1〜3段目の駒を段の中で並べ替え、2枚の角行を筋の偶奇の異なるマスに置き、後手を先手と点対称に置く | `bin/minase/zero_selfplay/game.rs`、`crates/minase-core/src/position/setup.rs`の`Position::shuffled_initial` |
 | 完全探索の確率 | 0.25。それ以外の手番は回数n/4の速い探索 | `bin/minase/zero_selfplay/game.rs`の`choose_full_search` |

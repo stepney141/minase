@@ -5,13 +5,13 @@ use crate::protocol::{Engine as GameEngine, UsiProtocol};
 use crate::search::mcts::test_support::SCALE;
 use crate::search::mcts::{Config, Engine};
 use crate::search::{PrepareError, Searcher};
-use minase_core::rules::parse_rule_set;
+use minase_core::{RuleCode, Rules};
 use std::io;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
 fn session(searcher: Engine) -> (GameEngine, UsiProtocol) {
-    let engine = GameEngine::new(parse_rule_set("engine-default").unwrap()).unwrap();
+    let engine = GameEngine::new(Vec::<RuleCode>::from(Rules::JCSA)).unwrap();
     let protocol = UsiProtocol::with_searcher(&engine, Searcher::Mcts(searcher));
     (engine, protocol)
 }

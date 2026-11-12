@@ -883,7 +883,7 @@ fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
 use minase::training::records::{
     Entry, Exclusion, GameRecord, Origin, Policy, Reader, TeacherKind, Value,
 };
-use minase_core::{Game, GameResult, WinReason};
+use minase_core::{Game, GameResult, Rules, WinReason};
 
 fn ab_header(seed: u64, scale: u64) -> Header {
     Header::new(
@@ -898,7 +898,7 @@ fn ab_header(seed: u64, scale: u64) -> Header {
 }
 
 fn played_game(number: u32, start_ply: u16, values: &[(Option<i16>, Exclusion)]) -> GameRecord {
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     let mut entries = Vec::new();
     for (index, &(score, exclusion)) in values.iter().enumerate() {
         let mv = if index + 1 == values.len() {

@@ -48,7 +48,7 @@ impl Drop for Session {
 /// 必須のプロトコルと規則を指定し、任意のログを設定する。
 fn command(protocol: &str, log: Option<&Path>) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
-    command.args(["--protocol", protocol, "--rules", "engine-default"]);
+    command.args(["--protocol", protocol, "--rules", "JCSA"]);
     if let Some(log) = log {
         command.arg("--io-log").arg(log);
     }

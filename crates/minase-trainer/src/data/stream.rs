@@ -131,7 +131,7 @@ pub(crate) fn read_file(
 mod tests {
     use super::*;
     use minase::training::records::{Entry, GameRecord, Policy, Writer, sorted_legal_moves};
-    use minase_core::{Color, Game, GameResult, Position, WinReason};
+    use minase_core::{Color, Game, GameResult, Position, Rules, WinReason};
     use std::{
         fs,
         io::Cursor,
@@ -180,7 +180,7 @@ mod tests {
     }
 
     fn played_game(number: u32, start_ply: u16, values: &[(Value, Exclusion)]) -> GameRecord {
-        let mut game = Game::with_default_rules();
+        let mut game = Game::new(Rules::JCSA);
         let mut entries = Vec::new();
         for (index, &(value, exclusion)) in values.iter().enumerate() {
             let mv = if index + 1 == values.len() {
@@ -245,7 +245,7 @@ mod tests {
                 Some(options) => compute_lookahead(&games, &plies, &raw, options).unwrap(),
                 None => raw.to_vec(),
             };
-            let mut replay = Game::with_default_rules();
+            let mut replay = Game::new(Rules::JCSA);
             let mut positions = vec![replay.position().clone()];
             for index in 0..5 {
                 let mv = sorted_legal_moves(&replay).unwrap()[index];

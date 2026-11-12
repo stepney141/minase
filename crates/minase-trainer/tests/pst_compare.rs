@@ -349,7 +349,7 @@ fn games_are_counted_by_file_and_game_number() {
     let reader = Reader::new(fs::File::open(&fixture.data[0]).unwrap()).unwrap();
     let header = reader.header().clone();
     let start = sparse();
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+    let mut game = Game::from_position(Rules::JCSA, start.clone());
     let mut entries = Vec::new();
     for (index, score) in [100, -200, 300].into_iter().enumerate() {
         let mv = sorted_legal_moves(&game).unwrap()[index];

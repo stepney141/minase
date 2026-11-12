@@ -11,7 +11,7 @@ use minase::{
         Writer, sorted_legal_moves,
     },
 };
-use minase_core::{Game, GameResult, PieceCode, PieceKind, PositionBuilder, WinReason};
+use minase_core::{Game, GameResult, PieceCode, PieceKind, PositionBuilder, Rules, WinReason};
 use sha2::{Digest, Sha256};
 use std::{
     io::Cursor,
@@ -67,7 +67,7 @@ fn encode(linear: &[[i16; 2]]) -> Vec<u8> {
     nnue::encode::<P, _>(&EncodeInput {
         width: 4,
         cp_per_logit: 200.0,
-        rule_set: "engine-default",
+        rule_set: "JCSA",
         piece_values: &values,
         linear,
         weights: &vec![1; FEATURE_COUNT * 4],
@@ -387,7 +387,7 @@ fn check_integer_evaluation_change(exact: bool) {
     let base = base_bytes();
     let original = IntegerNetwork::decode(&base).unwrap();
     let mut positions = Vec::new();
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     for ply in 0..40 {
         positions.push(game.position().clone());
         let moves = sorted_legal_moves(&game).unwrap();

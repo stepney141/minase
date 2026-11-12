@@ -46,7 +46,7 @@ def write_alpha(path: Path, seed: int, games: list[tuple[int, tuple[int, ...], i
         records.append(header + board + bytes([0, 255, 0]) + entries)
         entry_count += len(flags) + 1
     header = (
-        b"MNSD" + struct.pack("<I", 2) + b"engine-default".ljust(32, b"\0")
+        b"MNSD" + struct.pack("<I", 2) + b"JCSA".ljust(32, b"\0")
         + b"a" * 40 + bytes(32) + struct.pack("<B7xQQQQ", 0, 128, seed, len(games), entry_count)
     )
     path.write_bytes(header + b"".join(records))

@@ -129,7 +129,7 @@ fn games_filter_in_specified_order_and_preserve_details_and_records() {
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
             .find(|g| g["id"] == id)
             .unwrap();
-        let mut replay = Game::new(Rules::ENGINE_DEFAULT);
+        let mut replay = Game::new(Rules::JCSA);
         let mut moves = Vec::new();
         for text in input["moves"].as_str().unwrap().split_whitespace() {
             if replay.result().is_some() {
@@ -233,7 +233,7 @@ fn openings_keep_unrated_unfinished_games_and_stop_before_illegal_moves() {
         report["retained_plies"]["opening-prefix-2u7dwJf9"],
         json!([40, 60])
     );
-    let mut replay = Game::new(Rules::ENGINE_DEFAULT);
+    let mut replay = Game::new(Rules::JCSA);
     let mut expected = BTreeMap::new();
     for (index, text) in game["moves"]
         .as_str()
@@ -256,8 +256,7 @@ fn openings_keep_unrated_unfinished_games_and_stop_before_illegal_moves() {
         let mut fields = line.splitn(3, ' ');
         assert_eq!(fields.next(), Some("opening-prefix-2u7dwJf9"));
         let ply: usize = fields.next().unwrap().parse().unwrap();
-        let setup =
-            parse_extended_sfen(fields.next().unwrap(), Rules::ENGINE_DEFAULT.moves).unwrap();
+        let setup = parse_extended_sfen(fields.next().unwrap(), Rules::JCSA.moves).unwrap();
         assert_eq!(setup.next_move_number() as usize, ply + 1);
         assert_eq!(setup.position(), &expected[&ply]);
     }
@@ -421,7 +420,7 @@ fn inspect_dump_reports_entry_fields_and_summarizes_all_games() {
         )
         .unwrap();
         let mut writer = Writer::new(File::create(&path).unwrap(), header).unwrap();
-        let mut game = Game::new(Rules::ENGINE_DEFAULT);
+        let mut game = Game::new(Rules::JCSA);
         let first = usi::parse(game.position(), "1i1h").unwrap();
         let initial = game.position().clone();
         game.play(first).unwrap();

@@ -19,8 +19,7 @@ use crate::search::MAX_PLY;
 
 fn moves(count: usize) -> Vec<Move> {
     let mut moves = Vec::new();
-    MoveGenerator::new(Rules::ENGINE_DEFAULT.moves)
-        .generate_moves(&Position::initial(), &mut moves);
+    MoveGenerator::new(Rules::JCSA.moves).generate_moves(&Position::initial(), &mut moves);
     assert!(moves.len() >= count);
     moves.truncate(count);
     moves

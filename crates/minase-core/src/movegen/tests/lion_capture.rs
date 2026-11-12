@@ -38,7 +38,7 @@ fn fixture(side_to_move: Color, pieces: &[(Square, PieceCode)]) -> Position {
 
 /// 基準規則として標準規則＋R1を用いる。
 fn base() -> MoveRules {
-    Rules::ENGINE_DEFAULT.moves
+    Rules::JCSA.moves
 }
 
 fn rules_of(codes: &[RuleCode]) -> MoveRules {

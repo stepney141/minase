@@ -25,7 +25,7 @@ fn play_to_end(game: &mut PlayingGame, evaluator: &mut impl Evaluator) -> usize 
 fn playout_caps_use_an_independent_seed_and_record_only_full_search_policies() {
     let settings = Settings {
         start_position: StartPosition::RandomOpening,
-        rules: Rules::ENGINE_DEFAULT,
+        rules: Rules::JCSA,
         seed: 7,
         simulations: 8,
         playthrough_percent: 100,
@@ -102,7 +102,7 @@ fn fast_search_neither_resigns_nor_records_a_calibration_trigger() {
             1,
             Settings {
                 start_position: StartPosition::RandomOpening,
-                rules: Rules::ENGINE_DEFAULT,
+                rules: Rules::JCSA,
                 seed: 7,
                 simulations: 4,
                 playthrough_percent,
@@ -134,7 +134,7 @@ fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
             1,
             Settings {
                 start_position: StartPosition::RandomOpening,
-                rules: Rules::ENGINE_DEFAULT,
+                rules: Rules::JCSA,
                 seed: 7,
                 simulations: 4,
                 playthrough_percent,
@@ -143,7 +143,7 @@ fn a_searched_move_can_end_in_a_mate_in_three_win_for_the_next_side() {
         )
         .unwrap();
         game.game = Game::from_position(
-            Rules::ENGINE_DEFAULT,
+            Rules::JCSA,
             position(
                 Color::White,
                 &[
@@ -194,7 +194,7 @@ fn two_royals_do_not_cut_off_a_game_after_a_searched_move() {
         1,
         Settings {
             start_position: StartPosition::RandomOpening,
-            rules: Rules::ENGINE_DEFAULT,
+            rules: Rules::JCSA,
             seed: 7,
             simulations: 4,
             playthrough_percent: 100,
@@ -221,7 +221,7 @@ fn two_royals_do_not_cut_off_a_game_after_a_searched_move() {
     game.game = Game::from_position(
         Rules {
             exhaustion: ExhaustionRule::E2,
-            ..Rules::ENGINE_DEFAULT
+            ..Rules::JCSA
         },
         builder.finish().unwrap(),
     );
@@ -257,7 +257,7 @@ fn search_decision_counts_the_random_opening_in_its_temperature() {
         1,
         Settings {
             start_position: StartPosition::RandomOpening,
-            rules: Rules::ENGINE_DEFAULT,
+            rules: Rules::JCSA,
             seed: 7,
             simulations: 8,
             playthrough_percent: 100,
@@ -304,7 +304,7 @@ fn search_decision_counts_the_random_opening_in_its_temperature() {
 
 #[test]
 fn search_uses_value_scale_one() {
-    let snapshot = SearchSnapshot::from_game(&Game::new(Rules::ENGINE_DEFAULT)).unwrap();
+    let snapshot = SearchSnapshot::from_game(&Game::new(Rules::JCSA)).unwrap();
     let mut search =
         Search::new(snapshot, &mut XorShift64::new(derive_seed(7, 1)), 2, true).unwrap();
     for (simulation, value) in [0.5, 0.25, 0.75].into_iter().enumerate() {
@@ -345,7 +345,7 @@ fn gumbel_noise_is_finite_at_both_uniform_endpoints() {
 }
 
 fn small_tree(count: usize) -> Tree {
-    let moves = Game::new(Rules::ENGINE_DEFAULT).legal_moves();
+    let moves = Game::new(Rules::JCSA).legal_moves();
     let mut tree = Tree::new(&moves[..count], TREE_CAPACITY).unwrap();
     tree.evaluate(&[], &vec![0.0; count], 0.001).unwrap();
     tree
@@ -441,7 +441,7 @@ fn unresolved_root_with_unvisited_edges_resigns_only_without_repetition_cutoffs(
         let mut tree = small_tree(3);
         let gumbel = Gumbel::new(vec![100.0, 10.0, 0.0], 2, 1.0).unwrap();
         let first = tree.select_leaf(SelectionRule::Gumbel(&gumbel)).unwrap();
-        let moves = Game::new(Rules::ENGINE_DEFAULT).legal_moves();
+        let moves = Game::new(Rules::JCSA).legal_moves();
         tree.create_child(&first.path, Child::Pending(&moves[..2]))
             .unwrap();
         tree.evaluate(&first.path, &[0.0, 0.0], 0.999).unwrap();
@@ -547,7 +547,7 @@ fn selfplay_driver_keeps_repetition_draw_at_half_despite_nonzero_draw_option() {
     ];
     let rules = Rules {
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let mut game = Game::from_position(rules, start);
     for &mv in &line[..3] {
@@ -604,7 +604,7 @@ fn single_simulation_plays_unvisited_action_after_repetition_loss() {
     // 4手目の反復は探索では白の負けになり、唯一訪問した候補から除かれる。
     let rules = Rules {
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let mut game = PlayingGame::new(
         1,
@@ -671,7 +671,7 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
         1,
         Settings {
             start_position: StartPosition::RandomOpening,
-            rules: Rules::ENGINE_DEFAULT,
+            rules: Rules::JCSA,
             seed: 7,
             simulations: 8,
             playthrough_percent: 100,
@@ -684,7 +684,7 @@ fn proven_root_stops_before_budget_and_terminal_move_has_an_unsearched_last_entr
     game.game = Game::from_position(
         Rules {
             exhaustion: ExhaustionRule::E2,
-            ..Rules::ENGINE_DEFAULT
+            ..Rules::JCSA
         },
         position(
             Color::Black,
@@ -724,7 +724,7 @@ fn royal_capture_proven_root_preserves_resignation_and_playthrough_cutoffs() {
     let rules = Rules {
         e1: true,
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     for full_search in [false, true] {
         for playthrough_percent in [1, 100] {

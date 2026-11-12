@@ -157,7 +157,7 @@ mod tests {
             parse_player_spec("python3").unwrap(),
             parse_search_limit("depth=1").unwrap(),
             None,
-            "engine-default",
+            "JCSA",
             vec![(name.to_owned(), value.to_owned())],
             None,
         )

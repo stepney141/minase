@@ -152,7 +152,7 @@ fn article_21_3_d_r1_repetition_draw_rescues_mate() {
     let candidate = step(sq(3, 10), sq(3, 9));
 
     for e1 in [false, true] {
-        let mut rules = Rules::ENGINE_DEFAULT;
+        let mut rules = Rules::JCSA;
         rules.e1 = e1;
         let mut game = Game::from_position(rules, start.clone());
         // 初期局面・4手目・8手目と同じ局面へ12手目で戻る。
@@ -211,7 +211,7 @@ fn article_21_5_lion_double_capture_of_both_royals_wins() {
 #[test]
 fn article_21_6_resignation_ends_the_game() {
     // 投了した側が敗者となる。盤面や履歴は裁定に関与しない。
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     assert_eq!(
         game.resign(Color::Black),
         win(Color::White, WinReason::Resignation)

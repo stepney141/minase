@@ -62,7 +62,7 @@ fn representative_rule_sets_random_self_play_accepts_legal_moves_and_valid_resul
     const PLY_CAP: u32 = 1_500;
     const RULE_SETS: [(&str, &[RuleCode], u64); 10] = [
         (
-            "engine-default",
+            "JCSA",
             &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
             0x4741_4d45_5f53_4f41,
         ),

@@ -31,12 +31,12 @@ const GAME_POSITION_COUNT: usize = 284;
 
 /// 初期局面、ランダム対局の283局面、および手で組んだ4局面を、この順に返す。
 ///
-/// 規則は`engine-default`、乱数は固定シード2026の`XorShift64`を対局間で継続する。
+/// 規則は`JCSA`、乱数は固定シード2026の`XorShift64`を対局間で継続する。
 /// 各対局は最大1,024手とし、合法手がなくなるか、どちらかの王駒がなくなれば打ち切る。
 /// 序盤から終盤まで一定の17手間隔で採り、奇数間隔により先手番と後手番を交互に含める。
 /// 手で組む4局面は、獅子の2歩と長い走りを持つ疎な盤面、および両陣営の成駒と先獅子を持つ盤面を、両手番で用意する。
 pub(crate) fn fixture_positions() -> Vec<Position> {
-    let rules = Rules::ENGINE_DEFAULT.moves;
+    let rules = Rules::JCSA.moves;
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(NonZeroU64::new(2026).expect("fixture seed is nonzero"));
     let mut positions = vec![Position::initial()];
@@ -150,14 +150,14 @@ struct Fixture {
 
 /// 固定局面集をUTF-8のJSON Linesへ直列化する。最終行にも改行を付ける。
 fn fixture_bytes() -> Result<Vec<u8>, serde_json::Error> {
-    let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
+    let generator = MoveGenerator::new(Rules::JCSA.moves);
     let mut bytes = Vec::new();
     let mut input = vec![0; INPUT_SIZE];
     let mut moves = Vec::new();
     for position in fixture_positions() {
         let setup = SetupPosition::new(position.clone(), position.lion_capture_square(), 1)
             .expect("fixed positions and move number are valid");
-        encode(&position, &mut input).expect("engine-default fixtures have no deferred promotion");
+        encode(&position, &mut input).expect("JCSA fixtures have no deferred promotion");
         moves.clear();
         generator.generate_moves(&position, &mut moves);
         let fixture = Fixture {
@@ -238,7 +238,7 @@ mod tests {
         let positions = fixture_positions();
         assert_eq!(positions.len(), 288);
         assert_eq!(positions[0], Position::initial());
-        let generator = MoveGenerator::new(Rules::ENGINE_DEFAULT.moves);
+        let generator = MoveGenerator::new(Rules::JCSA.moves);
         let mut sides = [0; 2];
         let mut lion_captures = [0; 2];
         let mut families = [0; 6];
@@ -304,11 +304,10 @@ mod tests {
             assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
             let value: serde_json::Value = serde_json::from_str(line).unwrap();
             assert_eq!(value["board"].as_array().unwrap().len(), 144);
-            let restored =
-                parse_extended_sfen(value["sfen"].as_str().unwrap(), Rules::ENGINE_DEFAULT.moves)
-                    .unwrap()
-                    .restore_position()
-                    .unwrap();
+            let restored = parse_extended_sfen(value["sfen"].as_str().unwrap(), Rules::JCSA.moves)
+                .unwrap()
+                .restore_position()
+                .unwrap();
             assert_eq!(restored, position);
         }
     }

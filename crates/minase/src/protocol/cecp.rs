@@ -1517,7 +1517,7 @@ mod tests {
             .map(|line| line.strip_prefix("move ").unwrap())
             .collect();
 
-        let game = Game::new(Rules::ENGINE_DEFAULT);
+        let game = Game::new(Rules::JCSA);
         if payload == "@@@@" {
             // 正準じっと（移動元=移動先・中間升なし・不成）が初期局面に存在することの確認。
             assert!(

@@ -147,7 +147,7 @@ fn articles_21_23_32_piece_group_order_matches_piece_kind_order() {
             let rules = Rules {
                 exhaustion: ExhaustionRule::E2,
                 e1,
-                ..Rules::ENGINE_DEFAULT
+                ..Rules::JCSA
             };
             let generator = MoveGenerator::new(rules.moves);
             let state = r1_state(&board);
@@ -175,7 +175,7 @@ fn article_21_3_first_group_escapes_by_moving_a_royal() {
     );
     let rules = Rules {
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let generator = MoveGenerator::new(rules.moves);
     let state = r1_state(&board);
@@ -200,7 +200,7 @@ fn article_21_3_second_group_escapes_by_capturing_the_attacker() {
     );
     let rules = Rules {
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let generator = MoveGenerator::new(rules.moves);
     let state = r1_state(&board);
@@ -226,7 +226,7 @@ fn article_21_3_third_group_escapes_by_interposing() {
     );
     let rules = Rules {
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let generator = MoveGenerator::new(rules.moves);
     let state = r1_state(&board);
@@ -267,7 +267,7 @@ fn articles_23_31_32_repetition_prohibition_preserves_results_in_both_orders() {
                 repetition,
                 exhaustion: ExhaustionRule::E2,
                 e1,
-                ..Rules::ENGINE_DEFAULT
+                ..Rules::JCSA
             };
             let generator = MoveGenerator::new(rules.moves);
             let mut board = position(Color::White, &pieces);

@@ -26,7 +26,7 @@
 
 ```console
 target/release/minase spsa params \
-  --engine commit:<調整対象コミット> --rules engine-default > <パラメーターファイル>
+  --engine commit:<調整対象コミット> --rules JCSA > <パラメーターファイル>
 ```
 
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
@@ -52,7 +52,7 @@ target/release/minase spsa params \
 target/release/minase spsa \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
+  --rules JCSA --each time=10000+100 --concurrency 16 \
   --iterations 3750 --pairs-per-iteration 8
 ```
 
@@ -125,7 +125,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 
    ```console
    target/release/minase spsa params \
-     --engine commit:<候補コミット> --rules engine-default
+     --engine commit:<候補コミット> --rules JCSA
    ```
 
 2. 採否の前に、STCの条件で候補コミットと調整対象コミットの短い固定局数の対局を行い、時間切れとエンジン異常が0件であることを確かめる。
@@ -172,7 +172,7 @@ runner_commit = "master"
 seed = 3250000000
 iterations = 3750
 pairs_per_iteration = 8
-rules = "engine-default"
+rules = "JCSA"
 precheck = true
 precheck_seed = 3200000000
 local_nps = 1264584
