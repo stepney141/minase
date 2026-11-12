@@ -7,13 +7,13 @@ The library contains no search or evaluation, and it is the rules layer of the [
 ## Rules
 
 The rules follow the Japan Chu Shogi Association by default.
-Local rules used by lishogi, HaChu, and other sources are selected through rule codes from four groups (lion rules L, promotion rules P, repetition rules R, and bare-king rules E), or through the presets `engine-default` and `lishogi`.
+Local rules used by lishogi, HaChu, and other sources are selected through rule codes from four groups (lion rules L, promotion rules P, repetition rules R, and bare-king rules E), or through the presets `JCSA` and `lishogi`.
 The rule book that defines each code and cites its sources is [chu-shogi.md](https://github.com/stepney141/minase/blob/master/docs/rules/chu-shogi.md) (Japanese) in the repository.
 
 ## Example
 
 ```rust
-use minase_core::{Game, MoveGenerator, Position};
+use minase_core::{Game, MoveGenerator, Position, Rules};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initial position
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Legal moves in the initial position: {}", legal_moves.len());
 
     // Playing a game and adjudicating the result
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     if let Some(&mv) = legal_moves.first() {
         let status = game.play(mv)?;
         println!("Game status after the move: {status:?}");

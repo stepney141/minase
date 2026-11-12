@@ -58,7 +58,7 @@ mod tests {
     fn uniform_evaluation_returns_legal_move_logits_and_clears_empty_batches() {
         let position = Position::initial();
         let mut moves = Vec::new();
-        MoveGenerator::new(Rules::ENGINE_DEFAULT.moves).generate_moves(&position, &mut moves);
+        MoveGenerator::new(Rules::JCSA.moves).generate_moves(&position, &mut moves);
         let queries = [
             Query {
                 position: &position,

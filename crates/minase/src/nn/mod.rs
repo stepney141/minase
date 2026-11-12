@@ -14,7 +14,7 @@
 //! - `encode-the-zero-policy-as-249-planes-per-from-square.md`
 //! - `predict-a-single-win-probability-in-the-zero-network.md`
 //! - `run-zero-network-inference-through-ort-load-dynamic.md`
-//! - `select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md`
+//! - `select-zero-networks-by-the-usi-option-nnmodel.md`
 //! - `key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md`
 //! - `start-the-zero-network-as-a-20-block-256-channel-resnet-with-global-pooling-and-a-32-channel-value-head.md`
 //! - `exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md`

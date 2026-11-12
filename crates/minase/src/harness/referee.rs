@@ -53,7 +53,7 @@ mod tests {
     // [`validate_bestmove`]の審判層との照合を検査する。
     #[test]
     fn referee_rejects_bestmove_outside_the_legal_move_list() {
-        let game = Game::new(Rules::ENGINE_DEFAULT);
+        let game = Game::new(Rules::JCSA);
         let legal = game.legal_moves()[0];
         let legal_text = usi::text(
             game.position(),

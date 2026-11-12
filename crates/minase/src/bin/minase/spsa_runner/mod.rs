@@ -34,17 +34,9 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
             .map_err(apply::ApplyError::AfterWrite)?;
         return Ok(());
     }
-    if let Some(Command::Params { engine, rules }) = arguments.command {
-        Rules::from_codes(&parse_rule_set(&rules)?)?;
-        let player = resolve_engine(
-            engine,
-            SearchLimit::Fixed {
-                depth: Some(1),
-                nodes: None,
-            },
-            &rules,
-        )?;
-        for d in declarations(&probe_usi_options(&player, Duration::from_secs(120))?)? {
+    if let Some(Command::Params { engine }) = arguments.command {
+        let (path, args, _) = engine::resolve_command(&engine)?;
+        for d in declarations(&probe_usi_options(&path, &args, Duration::from_secs(120))?)? {
             println!("{}", parameter_line(&d));
         }
         return Ok(());
@@ -85,7 +77,7 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
                 configured
             };
-            Ok(run_pair(
+            run_pair(
                 rules,
                 &manifest.rules_source,
                 settings.seed,
@@ -96,7 +88,8 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
                 timeout,
                 false,
                 stop,
-            ))
+            )
+            .map_err(io::Error::other)
         },
         |record| {
             store.save(record)?;
@@ -149,7 +142,7 @@ fn new_session(
     let timeout = Duration::from_secs(arguments.response_timeout);
     let parameters = parse_parameters(
         &fs::read_to_string(arguments.params.as_ref().expect("required params"))?,
-        &declarations(&probe_usi_options(&player, timeout)?)?,
+        &declarations(&probe_usi_options(&player.path, &player.args, timeout)?)?,
     )?;
     let iterations = arguments.iterations.expect("required iterations");
     let settings = Settings {

@@ -159,15 +159,18 @@ impl std::error::Error for SetOptionError {
 /// 探索前の推論器の準備に失敗した理由。
 #[derive(Debug)]
 pub enum PrepareError {
+    /// 推論に使うネットのパスが指定されていない。
+    MissingModel,
     /// TensorRTのキャッシュ先が指定されていない。
     MissingCacheDir,
-    /// ネットの推論セッションを作成できない。
+    /// ネットを読み込めない、または推論セッションを作成できない。
     Network(crate::nn::NnError),
 }
 
 impl fmt::Display for PrepareError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingModel => formatter.write_str("required option NnModel is not set"),
             Self::MissingCacheDir => {
                 formatter.write_str("NnCacheDir must be set for NnBackend tensorrt")
             }
@@ -179,7 +182,7 @@ impl fmt::Display for PrepareError {
 impl std::error::Error for PrepareError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::MissingCacheDir => None,
+            Self::MissingModel | Self::MissingCacheDir => None,
             Self::Network(error) => Some(error),
         }
     }
@@ -251,19 +254,16 @@ impl Searcher {
         Self::AlphaBeta(alphabeta::Engine::new())
     }
 
-    /// NNUEの勝率尺度を使い、指定されたネットでMCTSを作る。
-    /// 推論器は[`Self::prepare`]で作成する。
+    /// NNUEの勝率尺度を使い、ネットが未設定のMCTSを作る。
+    /// `NnModel`を[`Self::set_option`]で設定し、[`Self::prepare`]でネットと推論器を準備する。
     ///
     /// # Errors
     /// 勝率尺度を持つNNUEの重みを読み込めない場合は拒否する。
-    pub fn mcts(network: crate::nn::Network) -> Result<Self, StartError> {
+    pub fn mcts() -> Result<Self, StartError> {
         let scale = crate::eval::weights()
             .map_err(StartError::Weights)?
             .cp_per_logit();
-        Ok(Self::Mcts(mcts::Engine::new(
-            network,
-            mcts::Config::new(scale),
-        )))
+        Ok(Self::Mcts(mcts::Engine::new(mcts::Config::new(scale))))
     }
 
     /// 選ばれた方式のオプションを宣言順に返す。
@@ -311,10 +311,10 @@ impl Searcher {
     /// 探索前に必要な領域と推論器を準備する。
     /// αβ探索では未確保の置換表だけを既定容量で確保する。
     /// 置換表の確保の失敗は次の[`Self::start`]で再試行して報告する。
-    /// MCTSでは、未作成または設定変更で破棄された推論器を作成する。
+    /// MCTSでは、`NnModel`の未読込のネットを読み、未作成または設定変更で破棄された推論器を作成する。
     ///
     /// # Errors
-    /// MCTSのキャッシュ先が未設定、または推論器を作れない場合は原因を返す。
+    /// MCTSのネットやキャッシュ先が未設定、ネットを読めない、または推論器を作れない場合は原因を返す。
     pub fn prepare(&mut self) -> Result<(), PrepareError> {
         match self {
             Self::AlphaBeta(engine) => {
@@ -322,6 +322,37 @@ impl Searcher {
                 Ok(())
             }
             Self::Mcts(engine) => engine.prepare(),
+        }
+    }
+
+    /// 読み込み済みのMCTSのネットのSHA-256を返す。αβ探索と未読込では`None`。
+    pub fn network_sha256(&self) -> Option<&[u8; 32]> {
+        match self {
+            Self::AlphaBeta(_) => None,
+            Self::Mcts(engine) => engine.network_sha256(),
+        }
+    }
+
+    /// 準備済みの推論器で局面の列を評価する。
+    ///
+    /// `NnBatchSize`局面ずつ推論し、依頼順の生のlogitを`logits`へ連結し、
+    /// 手番側の勝率を`values`へ1局面につき1つ格納する。探索木と局面は変更しない。
+    /// 両出力は処理の初めに空にし、失敗時の内容は未規定とする。
+    ///
+    /// # Errors
+    /// αβ探索、未準備、符号化できない入力、および推論の失敗を原因別に返す。
+    /// 各依頼の着手は、その局面に適用する規則の合法手を呼び出し側が渡す。
+    pub fn evaluate(
+        &mut self,
+        queries: &[crate::nn::Query<'_>],
+        logits: &mut Vec<f32>,
+        values: &mut Vec<f32>,
+    ) -> Result<(), super::EvaluationError> {
+        logits.clear();
+        values.clear();
+        match self {
+            Self::AlphaBeta(_) => Err(super::EvaluationError::UnsupportedSearch),
+            Self::Mcts(engine) => engine.evaluate(queries, logits, values),
         }
     }
 
@@ -438,7 +469,7 @@ mod tests {
             Searcher::alpha_beta().set_option("Threads", SearchOptionValue::String("1".to_owned())),
             Err(SetOptionError::InvalidValue { .. })
         ));
-        let mut searcher = Searcher::mcts(crate::nn::Network::from_bytes(Vec::new())).unwrap();
+        let mut searcher = Searcher::mcts().unwrap();
         for (name, value) in [
             ("Threads", SearchOptionValue::Combo("1".to_owned())),
             ("NnBackend", SearchOptionValue::Spin(1)),

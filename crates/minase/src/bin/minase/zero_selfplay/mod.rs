@@ -1,5 +1,5 @@
 //! Gumbel AlphaZeroによる自己対局を生成し、教師データ形式MNSDの版2で保存する。
-//! 規則は`engine-default`を使い、対局の進行と規則上の終局の裁定は[`minase_core::Game`]が担う。
+//! 規則は`JCSA`を使い、対局の進行と規則上の終局の裁定は[`minase_core::Game`]が担う。
 //! 探索した手を指しても未終局なら、次の手番側の王手限定の3手以内の勝ちを調べ、勝ちがあれば打ち切る。
 //! この打ち切りはMNSDの終局理由12で記録し、投了させない対局にも適用する。
 //! `--games`を対局数の上限とし、`--chunk-games`局ずつの塊として確定させる。
@@ -54,8 +54,7 @@ pub(super) use cli::Arguments;
 use error::Error;
 use minase::nn::tensorrt_cache::{query_gpus, validate_cuda_visible_devices};
 use minase::nn::{Network, OnnxEvaluator};
-use minase::training::records;
-use minase_core::{Rules, rules::parse_rule_set};
+use minase_core::Rules;
 use std::num::NonZeroUsize;
 
 /// 序盤を含む手数の上限3,000手。到達しても未終局なら対局全体を破棄する。
@@ -93,7 +92,7 @@ fn run(arguments: Arguments) -> Result<(), Error> {
     }
     let network = Network::read(&arguments.nn_model)?;
     let provider = arguments.nn_backend.provider(0)?;
-    let rules = engine_default_rules()?;
+    let rules = Rules::JCSA;
     let config = output::Config {
         rules: rules.to_string(),
         generation_commit: arguments.generation_commit,
@@ -142,12 +141,6 @@ fn validate_gpu_count(requested: NonZeroUsize, available: NonZeroUsize) -> Resul
 /// 0から数えたスレッド番号を、使用する機器の枚数を法とする剰余で機器番号へ対応させる。
 fn device_for_thread(thread: usize, devices: NonZeroUsize) -> usize {
     thread % devices.get()
-}
-
-/// 生成器が使う規則を、公開の規則解析APIから構築する。
-fn engine_default_rules() -> Result<Rules, Error> {
-    let codes = parse_rule_set("engine-default").map_err(records::Error::RuleSetParse)?;
-    Ok(Rules::from_codes(&codes).map_err(records::Error::Rules)?)
 }
 
 #[cfg(test)]

@@ -325,7 +325,7 @@ fn linear_correction_base() -> Vec<u8> {
     encode::<P, _>(&EncodeInput {
         width: 4,
         cp_per_logit: 200.0,
-        rule_set: "engine-default",
+        rule_set: "JCSA",
         piece_values: &values,
         linear: &linear,
         weights: &vec![1; FEATURE_COUNT * 4],
@@ -1011,7 +1011,7 @@ fn embedded_width_checksum_and_rules_match_header() {
     let codes = minase_core::rules::parse_rule_set(nnue.rule_set()).unwrap();
     assert_eq!(
         minase_core::Rules::from_codes(&codes).unwrap(),
-        minase_core::Rules::ENGINE_DEFAULT
+        minase_core::Rules::JCSA
     );
 }
 
@@ -2331,7 +2331,7 @@ fn pairwise_output_matches_u8_reference_in_random_games() {
         (shared, p, head)
     });
     for rule_set in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P0,R3,E0",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""作業ツリーの`minase dev bench`を照合参照コミット、基準コミット、および親コミットと比較する。
+"""作業ツリーの`minase --protocol usi`へ送る`bench`を照合参照コミット、基準コミット、および親コミットと比較する。
 
 照合参照コミットとは局面別のノード数、最善手、探索値を全行で比較し、
 不一致があれば終了コード1で報告する。速度は4者（基準、参照、親、候補）を
@@ -12,7 +12,8 @@
 コミットは`git archive`で`target/bench-cache/<完全ハッシュ>/src`へ展開し、
 通常のrelease設定でビルドする。参照の局面別出力は1回実行の結果を同じ
 ディレクトリへ保存して再利用する。候補は作業ツリーをビルドする。
-補助ツールをminaseのサブコマンドへ移したコミット（docs/plans/cli-subcommands.md）より前のコミットは扱えず、そのminaseはdevサブコマンドを知らないため引数エラーで停止する。
+benchをUSIの独自コマンドへ移したコミット以後だけを対象とする（docs/adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md）。
+標準入力へbenchとquitを送り、終了コード0と終端行を確認してから解析する。
 
 使い方:
     scripts/bench_compare.py --reference <参照コミット> --baseline <基準コミット>
@@ -66,17 +67,20 @@ def build_worktree(root):
     return root / "target" / "release" / "minase"
 
 
-def bench_args(depth, threads, repetitions):
-    return [
-        "dev",
-        "bench",
-        "--depth",
-        str(depth),
-        "--threads",
-        str(threads),
-        "--repetitions",
-        str(repetitions),
-    ]
+def run_bench(binary, depth, threads, repetitions):
+    result = subprocess.run(
+        [str(binary), "--protocol", "usi"],
+        input=f"bench depth {depth} threads {threads} repetitions {repetitions}\nquit\n",
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout
+
+
+def bench_output(output):
+    lines = output.splitlines()
+    if "info string end" not in lines:
+        raise SystemExit("bench output contains no end line")
+    return "\n".join(line.removeprefix("info string ") for line in lines)
 
 
 def parse_positions(output):
@@ -114,11 +118,12 @@ def parse_median(output):
 
 def positions_of(binary, depth, threads, cache_file=None):
     if cache_file is not None and cache_file.exists():
-        return parse_positions(cache_file.read_text())
-    output = run([str(binary), *bench_args(depth, threads, 1)])
+        return parse_positions(bench_output(cache_file.read_text()))
+    output = run_bench(binary, depth, threads, 1)
+    positions = parse_positions(bench_output(output))
     if cache_file is not None:
         cache_file.write_text(output)
-    return parse_positions(output)
+    return positions
 
 
 def compare_positions(reference, candidate):
@@ -148,8 +153,8 @@ def measure_rounds(binaries, depth, threads, repetitions, rounds):
     samples = {label: [] for label in binaries}
     for _ in range(rounds):
         for label, binary in binaries.items():
-            output = run([str(binary), *bench_args(depth, threads, repetitions)])
-            samples[label].append(parse_median(output))
+            output = run_bench(binary, depth, threads, repetitions)
+            samples[label].append(parse_median(bench_output(output)))
     return samples
 
 

@@ -17,10 +17,9 @@ CLIに残すのは、起動引数`--protocol`、`--search`、`--io-log`と、対
 
 ## 状態
 
-起案。2026年11月12日に起案した。
-着手は利用者の指示を待つ。
-いま詰まっている点はない。
-次の一手は、利用者の着手指示を受けて、masterから切ったブランチのworktreeでフェーズ1から始めることである。
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../../adr/README.md)にある。
+完了（採用）。2026年11月12日に起案し、同じ日に着手して完了した。
+起動引数`--rules`と`--nn-model`、およびサブコマンド`dev perft`、`dev bench`、`dev nn-eval`、`dev nn-fixture`、`dev random-play`を削除してUSIへ移し、移した機能は移す前と同じ結果を返した（[検証の記録](../../measurements/cli-to-usi/cli-to-usi-verification.md)）。
 
 ## 目的
 
@@ -64,7 +63,7 @@ CLIには、プロトコルが始まる前に決まっていなければなら�
 - 起動引数`--protocol`、`--search`、`--io-log`は残す。理由は「設計判断」節にある。
 - 環境変数`ORT_DYLIB_PATH`（ONNX Runtimeの共有ライブラリの場所）は残す。理由は「設計判断」節にある。
 - サブコマンド`match run`、`match report`、`spsa`（`apply`と`params`を含む）、`data`の6本（`selfplay generate`、`selfplay inspect`、`zero-selfplay`、`teacher-stats`、`lishogi games`、`lishogi openings`）、および`dev usi-random`は残す。理由は「設計判断」節にある。
-- CECPには診断のコマンドを加えない。開発用GUIと対局ハーネスはminaseとUSIで接続し、既存の診断用の独自コマンドである`d`（局面の表示）、`eval`（評価の内訳の表示）、`tt`（置換表の項目の表示）もUSIだけに置いている（[ADR](../adr/show-position-evaluation-and-tt-as-usi-commands.md)）。
+- CECPには診断のコマンドを加えない。開発用GUIと対局ハーネスはminaseとUSIで接続し、既存の診断用の独自コマンドである`d`（局面の表示）、`eval`（評価の内訳の表示）、`tt`（置換表の項目の表示）もUSIだけに置いている（[ADR](../../adr/show-position-evaluation-and-tt-as-usi-commands.md)）。
 - ビルドのフィーチャや現在の設定値を照会するコマンドは加えない。CLIにも存在しない新しい機能であり、本書の目的である移行に当たらない。
 - NNUEの重みを外部のファイルから読むオプションは加えない。重みは実行ファイルへの埋め込みだけで運用しており、差し替える用途がない。
 - MCTSの速度を測るbenchは加えない。`bench`は移す前と同じαβ探索の測定である。
@@ -72,15 +71,15 @@ CLIには、プロトコルが始まる前に決まっていなければなら�
 
 ## 依存関係
 
-USIの状態機械、`position`の扱い、および規則を次局から確定する仕組みは[プロトコル層](archived/protocol-layer.md)と[ADR](../adr/commit-pending-rules-on-first-position.md)が定める。
-探索方式を起動時に選ぶ構造と、探索器の境界`Searcher`は[ADR](../adr/select-the-search-method-at-startup-through-a-closed-enum.md)が定める。
-ネットの読み込みと推論器は`crates/minase/src/nn/onnx.rs`にあり、対局ハーネスが、比べる2つのエンジン（候補と基準）へUSIのオプションを送る仕組みは[ADR](../adr/pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)が定める。
+USIの状態機械、`position`の扱い、および規則を次局から確定する仕組みは[プロトコル層](protocol-layer.md)と[ADR](../../adr/commit-pending-rules-on-first-position.md)が定める。
+探索方式を起動時に選ぶ構造と、探索器の境界`Searcher`は[ADR](../../adr/select-the-search-method-at-startup-through-a-closed-enum.md)が定める。
+ネットの読み込みと推論器は`crates/minase/src/nn/onnx.rs`にあり、対局ハーネスが、比べる2つのエンジン（候補と基準）へUSIのオプションを送る仕組みは[ADR](../../adr/pass-usi-options-to-match-engines-and-record-them-in-the-manifest.md)が定める。
 本書は完了済みのマイルストーンだけを前提とする。
 
 進行中または起案中のマイルストーンとは、次の点で順序を調整する。
 
-- [AlphaZero型探索の強化学習の2回目の実行](alphazero-rl-2.md)は、学習の実行器が`minase dev nn-eval`を各サイクルで呼ぶ。実行器とエンジンの実行ファイルは同じコミットから取るので、2回目の実行が進行中の間は、その実行が使うworktreeへ本書の変更を取り込まない。
-- [詰み探索](mate-search.md)は`go mate`をUSIに実装する。本書は`go`の引数の検査を変えないので、どちらを先に進めてもよい。
+- [AlphaZero型探索の強化学習の2回目の実行](../alphazero-rl-2.md)は、学習の実行器が`minase dev nn-eval`を各サイクルで呼ぶ。実行器とエンジンの実行ファイルは同じコミットから取るので、2回目の実行が進行中の間は、その実行が使うworktreeへ本書の変更を取り込まない。
+- [詰み探索](../mate-search.md)は`go mate`をUSIに実装する。本書は`go`の引数の検査を変えないので、どちらを先に進めてもよい。
 - 対局ハーネスの記録形式の版を上げるので、本書のフェーズ2をマージする時点で、再開を予定している実行が残っていないことを確かめる。
 
 ## 設計判断
@@ -94,7 +93,7 @@ USIの状態機械、`position`の扱い、および規則を次局から確定�
 | 規則の既定値 | 既定値を持たず、`RuleSet`の指定を必須にする。 | `RuleSet`の既定値を`JCSA`にする案は採らない。指定漏れのまま、意図しない規則で対局が始まる。起動時に規則を明示させる現在の契約を、プロトコルの側で保つ。 |
 | 規則の未設定の検出 | `isready`で検査し、未設定ならエラーの行を出して終了コード1で終える。 | 最初の`position`で検査する案は採らない。Lishogi-Botと対局ハーネスはどちらも`usi`、`setoption`、`isready`の順に送るので、`isready`のほうが早く、1か所で検出できる。エラーの行だけを返して待つ案は、`readyok`を待つ相手が止まるので採らない。 |
 | 規則セット名 | `engine-default`を`JCSA`へ改名し、旧名の別名は置かない。 | 旧名も受理する案は、同じ規則セットに2つの名前を残すので採らない。 |
-| ネットの指定 | MCTSで起動したときだけ宣言するオプション`NnModel`で指定し、`isready`で読み込む。 | 起動引数のまま残す案は採らない。[元のADR](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が起動引数を選んだ理由は、対局ハーネスが任意のオプションを送れないことだったが、`--candidate-option`の追加で解消している。 |
+| ネットの指定 | MCTSで起動したときだけ宣言するオプション`NnModel`で指定し、`isready`で読み込む。 | 起動引数のまま残す案は採らない。[元のADR](../../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が起動引数を選んだ理由は、対局ハーネスが任意のオプションを送れないことだったが、`--candidate-option`の追加で解消している。 |
 | 探索方式の選択 | 起動引数`--search`のまま残す。 | USIのオプションにする案は採らない。理由は「CLIに残すもの」節にある。 |
 | 入出力の記録 | 起動引数`--io-log`のまま残す。 | USIのオプションにする案は採らない。理由は「CLIに残すもの」節にある。 |
 | 診断の実行方法 | 探索していないときに同期で実行し、各行に`info string`を付けて`info string end`で終える。 | 探索と同じ別スレッドで実行して`stop`を受け付ける案は採らない。診断は対局中に送るものではなく、停止の経路を持つ費用に見合う用途がない。 |
@@ -132,7 +131,7 @@ Stockfishは、`bench`、局面を表示する`d`、評価を表示する`eval`�
 
 ネットをオプションで指定する方式にも先例がある。
 Stockfishのオプション`EvalFile`は、評価関数のネットのファイルを指定し、設定された時点で読み込む（`src/engine.cpp`の136〜140行）。
-将棋のエンジンdlshogiのオプション`DNN_Model`と、チェスのエンジンlc0のオプション`WeightsFile`も、ネットのファイルを指定する。この2つは、[元のADR](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が該当箇所を挙げている。
+将棋のエンジンdlshogiのオプション`DNN_Model`と、チェスのエンジンlc0のオプション`WeightsFile`も、ネットのファイルを指定する。この2つは、[元のADR](../../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)が該当箇所を挙げている。
 
 コマンドの失敗でプロセスを終了する方式にも先例がある。
 Stockfishは、`go`の引数が不正な場合や局面の反転に失敗した場合に、`info string CRITICAL ERROR`で始まる行を出して終了コード1で終わる（`src/uci.cpp`の232行と695〜700行）。
@@ -184,8 +183,10 @@ CECPでは、`feature option="RuleSet -string "`と宣言し、既定値の欄�
 最初の`new`までに`option RuleSet=<規則>`を受けていなければ、`Error (required option RuleSet is not set): new`を出し、終了コード1で終える。
 CECPには`isready`に当たるコマンドがないので、規則を必要とする最初のコマンドである`new`で検出する。
 XBoardは、握手の直後に`new`を送る。
-公開されているXBoardのソースでは、起動設定`-firstOptions`に書いたオプションを`new`より前に送ると読めるが、本書の起案では実物で確かめていないので、フェーズ2で実物のXBoardを使って確かめる。
-確かめた結果、`new`より前に規則を渡す手段がなければ、CECPでの検出の時点を設計し直す。
+XBoard 4.9.1は、起動設定`-firstOptions`に書いたオプションを、握手の`feature option`を受理した直後に送り、`new`はその後に送る。
+この順序は、実物のXBoardとminaseの入出力の記録で確かめた。
+規則が未設定のまま届いた`go`、`setboard`、`usermove`は、`Error (required option RuleSet is not set): <コマンド名>`で拒否し、セッションは続ける。
+`new`を送らずにこれらを送る入力に備えるためであり、USIで`isready`を送らない入力に備えるのと同じ扱いである。
 
 ### 規則セット名の改名
 
@@ -195,7 +196,7 @@ XBoardは、握手の直後に`new`を送る。
 `state rules`と対局ハーネスの記録が返す値は、正準のコード列（`L0,P0,R1,E0`）なので、改名の影響を受けない。
 
 `JCSA`は日本中将棋連盟の規則そのものではない。
-規則書の標準規則は連盟の競技規則に基づくが、連盟式の千日手（規則コードR0）は、条文にない解釈を補わなければ裁定できないので実装していない（[ADR](../adr/do-not-implement-r0-repetition.md)）。
+規則書の標準規則は連盟の競技規則に基づくが、連盟式の千日手（規則コードR0）は、条文にない解釈を補わなければ裁定できないので実装していない（[ADR](../../adr/do-not-implement-r0-repetition.md)）。
 そこで、規則書の第33条第5項を次の文に改め、題名の版数を第17版とする。
 
 > Minaseは、標準規則の千日手（R0）をR1に置き換えた構成「L0＋P0＋R1＋E0」（第3項の表記では「標準規則－R0＋R1」）を、規則セット名JCSAとしても受理する。JCSAは日本中将棋連盟（Japan Chu Shogi Association）の略である。MinaseはR0を選択可能な規則コードとして提供しない（第31条）ため、この規則セットは、千日手の扱いに限り連盟の規則と異なる。規則セット名の照合は大文字小文字を区別せず、規則コードまたは他の規則セット名との併記は認めない。この名前は第12版でengine-defaultとして追記し、第14版で構成を全群明示の形に改め、第17版でJCSAへ改名した。
@@ -307,7 +308,7 @@ bench [depth <N>] [threads <N>] [repetitions <N>]
 省略時の値は`dev bench`と同じく、`depth`が3、`threads`が1、`repetitions`が1である。
 測定の内容は`dev bench`から変えない。
 規則は`Rules::JCSA`に固定し、既定の容量の置換表を1つ確保して局面ごとに計測の外で消し、反復が2回以上ならウォームアップを1回行って中央値を出す。
-置換表を使い回して計測の外で消すのは、確保と消去の時間を速度の指標に含めないためである（[教訓](../lessons/bench-allocation-outside-timing.md)）。
+置換表を使い回して計測の外で消すのは、確保と消去の時間を速度の指標に含めないためである（[教訓](../../lessons/bench-allocation-outside-timing.md)）。
 
 `bench`は、規則の設定も`isready`も要求しない。
 局面、規則、置換表、およびhistory表はbench専用のものを使い、セッションの対局、`USI_Hash`、および`Threads`には触れない。
@@ -451,6 +452,8 @@ ONNX Runtimeの共有ライブラリの場所は、環境変数`ORT_DYLIB_PATH`�
 `spsa`も、`commit:`のエンジンを同じ固定の引数で起動している（`crates/minase/src/bin/minase/spsa_runner/engine.rs`）。
 こちらも`--protocol usi`だけにする。
 `spsa`には起動引数を足す引数がないので、変更より前のコミットを調整の対象にするときは、その時点のハーネスを使う。
+係数のファイルを生成する`spsa params`の引数`--rules`は、握手で宣言を読むためのエンジンの起動引数にしか使っていないので、削除する。
+調整機で`spsa params`を呼ぶ`scripts/vast-spsa/remote.py`も合わせて改める。
 `spsa`の`manifest.json`には形式の版の欄がないので、フェーズ2をマージする前に、再開を予定しているSPSAの実行が残っていないことを確かめる。
 
 ### ネットのチェックサムの記録
@@ -556,7 +559,7 @@ benchを呼ぶ次のスクリプトは、`minase --protocol usi`を起動して�
 `scripts/bench_compare.py`は、過去のコミットをビルドして現在の作業ツリーと比べる。
 変更の後は、変更以後のコミットだけを扱い、旧い呼び出し方へ切り替える分岐は持たせない。
 互換のための分岐を置かないのは、プロジェクトの方針である。
-補助ツールをサブコマンドにしたときも同じ扱いにしている（[ADR](../adr/run-developer-tools-as-engine-subcommands.md)）。
+補助ツールをサブコマンドにしたときも同じ扱いにしている（[ADR](../../adr/run-developer-tools-as-engine-subcommands.md)）。
 
 学習の実行器`tools/train/zero/minase_zero/runner.py`は、各サイクルの照合で、実行プロバイダ2種（CPUとTensorRT）とバッチの大きさ3種（1、7、256）の組について、`dev nn-eval`を6回呼んでいる。
 これを、`minase --protocol usi --search mcts`を起動し、`RuleSet`、`NnModel`、`NnBackend`、`NnBatchSize`、`NnCacheDir`を設定して`isready`と`nn-eval`を送る形に改める。
@@ -606,12 +609,12 @@ Botのイメージは、crates.ioで公開されたminaseを、版を固定し�
 配備の順序を誤ると、Botが動かなくなる。
 新しいminaseを古い設定で起動すると、規則が未設定のまま`isready`を受けて終了する。
 古いminaseを新しい起動用のスクリプトで起動すると、`--rules`がないので起動の直後に終了する。
-Botのイメージでは、minaseの版、起動用のスクリプト、および`config.yml`を同じコミットで切り替え、配備と同じ環境でエンジンを実際に起動して`readyok`まで確かめる（[教訓](../lessons/verify-bridge-launch-path.md)）。
+Botのイメージでは、minaseの版、起動用のスクリプト、および`config.yml`を同じコミットで切り替え、配備と同じ環境でエンジンを実際に起動して`readyok`まで確かめる（[教訓](../../lessons/verify-bridge-launch-path.md)）。
 
 ## 実装フェーズ
 
 実装は、masterから切った1つのブランチのworktreeで進める。
-各フェーズの終わりには、[テストの手引き](../guides/testing-minase-rules.md)の「マージ前の検査」の4つを通し、変更したPythonのスクリプトのテストを実行する。
+各フェーズの終わりには、[テストの手引き](../../guides/testing-minase-rules.md)の「マージ前の検査」の4つを通し、変更したPythonのスクリプトのテストを実行する。
 独立したプロジェクト`tools/train/zero/mnsd_reader`を変えたフェーズでは、そのディレクトリでの`cargo test`と、学習器のPythonのテストも実行する。
 各フェーズは、呼び出し側のスクリプトと手引きの変更までを含めて1つのまとまりとし、フェーズの境界で作業ツリーが一貫した状態になるようにする。
 
@@ -665,18 +668,18 @@ Botのイメージでは、minaseの版、起動用のスクリプト、およ�
 perftとbenchについては、次を確かめる。
 
 - 初期局面と、先獅子または成りの保留を含む局面で、`perft`の深さごとの件数と`divide`の内訳が、変更の前の`dev perft`と一致する。
-- 探索スレッドの数が1のとき、`bench`の局面ごとの深さ、ノード数、最善手、および評価値が、変更の前の`dev bench`と一致する。毎秒ノード数は、同じ性能コアへ固定して交互に測り、変更の前の値の幅に収まることを確かめる（[教訓](../lessons/verify-move-only-reorganization.md)、[教訓](../lessons/pin-bench-to-performance-core.md)）。
+- 探索スレッドの数が1のとき、`bench`の局面ごとの深さ、ノード数、最善手、および評価値が、変更の前の`dev bench`と一致する。毎秒ノード数は、同じ性能コアへ固定して交互に測り、変更の前の値の幅に収まることを確かめる（[教訓](../../lessons/verify-move-only-reorganization.md)、[教訓](../../lessons/pin-bench-to-performance-core.md)）。
 - 引数の誤りでセッションが続き、終端の行が出ない。
 - 実行ファイルに対して、探索中に診断のコマンドを送ると、探索が終わるまで保留され、`stop`で探索を止めた後に実行される。
 
 3つの診断については、次を確かめる。
 
 - `nn-fixture`の出力が、コミット済みの固定局面集とバイト単位で一致する。
-- 同じネットと同じ機械を使い、実行プロバイダをCPU、バッチの大きさを[照合の手引き](../guides/alphazero-network-check.md)が定める1、7、256としたときの`nn-eval`の出力が、それぞれ変更の前の`dev nn-eval`の出力と一致する。
+- 同じネットと同じ機械を使い、実行プロバイダをCPU、バッチの大きさを[照合の手引き](../../guides/alphazero-network-check.md)が定める1、7、256としたときの`nn-eval`の出力が、それぞれ変更の前の`dev nn-eval`の出力と一致する。
 - 同じ規則、シード、および局数で、`random-play`の集計が、変更の前の`dev random-play`と一致する。
 - 不変条件の違反を人為的に起こしたとき、違反の報告の行が出て、終了コード1で終わる。この確認は、検査の対象の処理に一時的な誤りを入れて行い、確認の後に戻す。
 
-テストは、USIの手引きとコードのdocコメントに書いた契約から期待値を導いて書く（[テストの手引き](../guides/testing-minase-rules.md)）。
+テストは、USIの手引きとコードのdocコメントに書いた契約から期待値を導いて書く（[テストの手引き](../../guides/testing-minase-rules.md)）。
 テストの入力は、ほかのクライアントと同じく、先頭で`setoption name RuleSet`を送る。
 規則を設定済みのセッションをテストのためだけに作る入口は設けない。
 
@@ -687,7 +690,7 @@ perftとbenchについては、次を確かめる。
 - 「検証」節の項目がすべて確かめられている。
 - 起動引数`--rules`と`--nn-model`、およびサブコマンド`dev perft`、`dev bench`、`dev nn-eval`、`dev nn-fixture`、`dev random-play`が削除されている。
 - `README.md`、公開するcrateの2つの`README.md`、`CONTRIBUTING.md`の互換性の対象の記述、および「書き換える箇所の洗い出し」節に挙げた手引きが、新しい呼び出し方を案内している。
-- 設計判断がADRへ移されている。新しく書くADRは、規則の指定を必須にして既定値を持たない決定、規則セット名の改名、ネットをオプションで指定する決定、対局ハーネスがネットのチェックサムを記録して照合する決定、診断をUSIのコマンドにする決定と配置の基準、および起動引数に残すものの理由である。置き換えられるADRは、[ネットを起動引数で指定する決定](../adr/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)であり、`docs/adr/archive/`へ移す。[補助ツールをサブコマンドにする決定](../adr/run-developer-tools-as-engine-subcommands.md)、[起動引数を足す決定](../adr/append-startup-arguments-to-commit-engine-specs.md)、および[規則を最初の局面設定で確定する決定](../adr/commit-pending-rules-on-first-position.md)は、本書が変える部分について新しいADRから参照する。
+- 設計判断がADRへ移されている。新しく書くADRは、規則の指定を必須にして既定値を持たない決定、規則セット名の改名、ネットをオプションで指定する決定、対局ハーネスがネットのチェックサムを記録して照合する決定、診断をUSIのコマンドにする決定と配置の基準、および起動引数に残すものの理由である。置き換えられるADRは、[ネットを起動引数で指定する決定](../../adr/archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)であり、`docs/adr/archive/`へ移す。[補助ツールをサブコマンドにする決定](../../adr/run-developer-tools-as-engine-subcommands.md)、[起動引数を足す決定](../../adr/append-startup-arguments-to-commit-engine-specs.md)、および[規則を最初の局面設定で確定する決定](../../adr/commit-pending-rules-on-first-position.md)は、本書が変える部分について新しいADRから参照する。
 - 関連リポジトリに必要な変更が、それぞれのリポジトリの計画として起案されている。
 
 本書の変更は、エンジンの起動引数、USIのオプション、およびライブラリの公開APIの互換性を壊す。
@@ -696,8 +699,8 @@ perftとbenchについては、次を確かめる。
 
 ## 参考資料
 
-- [USI原典仕様とlishogi系拡張の調査](../research/protocols/usi-lishogi.md)。USIの`option`の宣言と`setoption`の構文、およびLishogi-Botが送るコマンドを扱う。
-- [エンジンのデバッグ機能の調査](../research/engine-debugging-survey.md)。Stockfishとやねうら王の診断のコマンドを扱う。
+- [USI原典仕様とlishogi系拡張の調査](../../research/protocols/usi-lishogi.md)。USIの`option`の宣言と`setoption`の構文、およびLishogi-Botが送るコマンドを扱う。
+- [エンジンのデバッグ機能の調査](../../research/engine-debugging-survey.md)。Stockfishとやねうら王の診断のコマンドを扱う。
 - Stockfish、コミット5c4cef0bfe61fb3249178b2bcf21f5673557efe7。`src/uci.cpp`、`src/engine.cpp`。
 - やねうら王、コミット3b8d53fa8b976bf6d54656de43026e03f28722ce。`source/usi.cpp`。
 - Lishogi-Botの`engine_wrapper.py`の`USIEngine`。`usi`、オプションの設定、`isready`の順で送る。

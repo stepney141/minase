@@ -635,7 +635,7 @@ fn cached_quiet_scores_preserve_reference_order_with_all_history_terms() {
             })
             .collect();
         for rule_name in [
-            "engine-default",
+            "JCSA",
             "lishogi",
             "L1,L3,P0,P5,P6,R2,E1,E2",
             "L0,P1,R1,E0",

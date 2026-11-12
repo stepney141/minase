@@ -136,7 +136,7 @@ fn articles_24_1_and_31_r1_f1_cycle_draws_at_ply_12() {
     // F1(初期局面の仲人往復)は④⑧⑫の完了時に初期
     // 局面の2〜4回目を生じさせ、全12手が非攻撃的なため⑫で引き分けになる。
     // 対局開始局面は履歴上の第1回として数える。
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     let f1 = [
         step(sq(3, 4), sq(3, 5)),
         step(sq(8, 7), sq(8, 6)),

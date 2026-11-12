@@ -11,8 +11,6 @@ pub(super) use cli::Arguments;
 use cli::Operation;
 use generate::generate;
 use inspect::inspect;
-use minase::datagen::invalid_data;
-use minase_core::{Rules, rules::parse_rule_set};
 use std::{io, num::NonZeroUsize, process};
 
 /// 教師探索の既定ノード上限100,000。
@@ -51,13 +49,6 @@ fn run(arguments: Arguments) -> io::Result<()> {
         Operation::Generate(arguments) => generate(&arguments),
         Operation::Inspect(arguments) => inspect(&arguments),
     }
-}
-
-/// `engine-default`を公開規則解析APIから構築する。
-fn engine_default_rules() -> io::Result<Rules> {
-    let codes =
-        parse_rule_set("engine-default").map_err(|error| invalid_data(error.to_string()))?;
-    Rules::from_codes(&codes).map_err(|error| invalid_data(error.to_string()))
 }
 
 #[cfg(test)]

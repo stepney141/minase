@@ -172,12 +172,12 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// 起動時規則をactiveとpendingの両方へ設定して状態機械を構築する。
+    /// 指定された規則を現局用と次局用の両方へ設定して状態機械を構築する。
     ///
-    /// 規則コードの重複・矛盾、または実行可能な反復規則の欠落は起動時に
+    /// 規則コードの重複・矛盾、または実行可能な反復規則の欠落は構築時に
     /// 拒否するため、構築後に規則未確定状態は存在しない。
-    pub fn new(startup_codes: Vec<RuleCode>) -> Result<Self, RejectReason> {
-        let selection = validate_rules(startup_codes)?;
+    pub fn new(codes: Vec<RuleCode>) -> Result<Self, RejectReason> {
+        let selection = validate_rules(codes)?;
         let game = Game::new(selection.rules);
         Ok(Self {
             game,

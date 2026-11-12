@@ -1,5 +1,9 @@
 //! 自己対局測定ハーネスのプロセス境界を検査する統合テスト。
 
+#[cfg(unix)]
+#[path = "match_runner/network.rs"]
+mod network;
+
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -42,6 +46,7 @@ fn run_random_match(concurrency: &str, pairs: &str) -> String {
     let run_dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
         .args(["match", "run"])
+        .args(["--rules", "JCSA"])
         .arg("--run-dir")
         .arg(&run_dir)
         .args([
@@ -85,6 +90,7 @@ fn run_minase_candidate_match(candidate: &str) -> String {
     let run_dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
         .args(["match", "run"])
+        .args(["--rules", "JCSA"])
         .arg("--run-dir")
         .arg(&run_dir)
         .args([
@@ -143,8 +149,8 @@ fn random_usi_match_output_is_independent_of_concurrency() {
 #[test]
 fn minase_cecp_match_is_failure_free_and_matches_usi() {
     let minase = env!("CARGO_BIN_EXE_minase");
-    let cecp_spec = format!("cecp:{minase} --protocol cecp --rules engine-default");
-    let usi_spec = format!("{minase} --protocol usi --rules engine-default");
+    let cecp_spec = format!("cecp:{minase} --protocol cecp");
+    let usi_spec = format!("{minase} --protocol usi");
     let cecp = run_minase_candidate_match(&cecp_spec);
     let usi = run_minase_candidate_match(&usi_spec);
     let no_failures =
@@ -169,6 +175,7 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
         let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
         command.args(["match", "run"]).arg(operation).arg(&run_dir);
         if operation == "--run-dir" {
+            command.args(["--rules", "JCSA"]);
             command.args([
                 "--seed",
                 "20260828",
@@ -234,6 +241,7 @@ fn ponder_invalid_conditions_do_not_create_run_directory() {
     let run_dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
         .args(["match", "run"])
+        .args(["--rules", "JCSA"])
         .arg("--run-dir")
         .arg(&run_dir)
         .arg("--ponder")
@@ -257,6 +265,8 @@ fn ponder_resume_replays_all_counts() {
             command.args(["--target-pairs", pairs]);
         } else {
             command.args([
+                "--rules",
+                "JCSA",
                 "--seed",
                 "1234",
                 "--each",
@@ -318,7 +328,7 @@ fn write_json(path: &std::path::Path, value: &serde_json::Value) {
 
 fn small_run(path: &std::path::Path) {
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(path)
         .args([
             "--seed",
@@ -351,7 +361,7 @@ fn resume_run(path: &std::path::Path, args: &[&str]) -> std::process::Output {
 
 fn small_gsprt_run(path: &std::path::Path, hypotheses: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(path)
         .args([
             "--seed",
@@ -394,7 +404,7 @@ done
     let (elo0, elo1) = ("-12.5", "7.25");
     let dir = parent.join(format!("run-{elo0}-{elo1}"));
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(&dir)
         .args([
             "--seed",
@@ -536,7 +546,7 @@ fn resume_records_only_invocations_that_execute_games() {
     small_run(&dir);
     let manifest = std::fs::read(dir.join("manifest.json")).unwrap();
     let value = json_file(&dir.join("manifest.json"));
-    assert_eq!(value["format_version"], 7);
+    assert_eq!(value["format_version"], 8);
     assert!(value.get("runner").is_none());
     assert!(value.get("cpu").is_none());
     assert_eq!(
@@ -723,10 +733,10 @@ fn commit_startup_arguments_are_forwarded_recorded_and_restored() {
     let binary = cache.join("minase");
     std::fs::write(&binary, r#"#!/bin/sh
 printf '%s\n' "$*" >> "$MINASE_TEST_ARGS_LOG"
-test "$1" = '--protocol' && test "$2" = 'usi' && test "$3" = '--rules' && test "$4" = 'engine-default' || exit 21
-shift 4
+test "$1" = '--protocol' && test "$2" = 'usi' || exit 21
+shift 2
 case "$*" in
-    '--search mcts --nn-model net.onnx'|'--search alphabeta') ;;
+    '--search mcts'|'--search alphabeta') ;;
     *) exit 22 ;;
 esac
 while IFS= read -r line; do
@@ -747,7 +757,7 @@ done
     let log = repository.join("startup.log");
     let dir = repository.join("run");
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(&dir)
         .args([
             "--candidate",
@@ -755,7 +765,7 @@ done
             "--baseline",
             "commit:HEAD",
             "--candidate-args",
-            "--search   mcts\t--nn-model net.onnx",
+            "--search   mcts",
             "--baseline-args",
             "--search alphabeta",
             "--each",
@@ -782,10 +792,10 @@ done
         String::from_utf8_lossy(&output.stderr)
     );
     let manifest = json_file(&dir.join("manifest.json"));
-    assert_eq!(manifest["format_version"], 7);
+    assert_eq!(manifest["format_version"], 8);
     assert_eq!(
         manifest["candidate"]["identity"]["args"],
-        serde_json::json!(["--search", "mcts", "--nn-model", "net.onnx"])
+        serde_json::json!(["--search", "mcts"])
     );
     assert_eq!(
         manifest["baseline"]["identity"]["args"],
@@ -833,8 +843,8 @@ done
     );
     assert_eq!(json_file(&dir.join("manifest.json")), manifest);
     let invocations = std::fs::read_to_string(log).unwrap();
-    let candidate = "--protocol usi --rules engine-default --search mcts --nn-model net.onnx";
-    let baseline = "--protocol usi --rules engine-default --search alphabeta";
+    let candidate = "--protocol usi --search mcts";
+    let baseline = "--protocol usi --search alphabeta";
     assert!(invocations.lines().any(|line| line == candidate));
     assert!(invocations.lines().any(|line| line == baseline));
     assert!(
@@ -894,11 +904,13 @@ done
         .parse()
         .unwrap();
     assert!(llr.abs() < 1e-9);
-    assert!(
-        !std::fs::read_to_string(&log)
-            .unwrap()
-            .contains("setoption name USI_Hash")
-    );
+    // 事前起動は保存容量を送り、既定値と一致すると判明した後の各局では省略する。
+    let commands = std::fs::read_to_string(&log).unwrap();
+    let hash_commands: Vec<_> = commands
+        .lines()
+        .filter(|line| line.starts_with("setoption name USI_Hash"))
+        .collect();
+    assert_eq!(hash_commands, ["setoption name USI_Hash value 16"; 2]);
     let before = std::fs::read(dir.join("invocations.json")).unwrap();
     assert!(resume_run(&dir, &[]).status.success());
     assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
@@ -972,7 +984,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
     };
     let dir = parent.join("run");
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(&dir)
         .args([
             "--candidate",
@@ -1021,7 +1033,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
         String::from_utf8_lossy(&output.stderr)
     );
     let manifest = json_file(&dir.join("manifest.json"));
-    assert_eq!(manifest["format_version"], 7);
+    assert_eq!(manifest["format_version"], 8);
     assert_eq!(
         manifest["candidate"]["options"],
         serde_json::json!([
@@ -1043,7 +1055,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
     let check_commands = || {
         for (log, expected) in logs.iter().zip([
             vec![
-                "setoption name RuleSet value engine-default",
+                "setoption name RuleSet value JCSA",
                 "setoption name USI_Hash value 32",
                 "setoption name ResignValue value 99999",
                 "setoption name NnBatchSize value 64",
@@ -1053,7 +1065,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 "isready",
             ],
             vec![
-                "setoption name RuleSet value engine-default",
+                "setoption name RuleSet value JCSA",
                 "setoption name USI_Hash value 64",
                 "setoption name ResignValue value 99999",
                 "setoption name NnBatchSize value 256",
@@ -1069,7 +1081,7 @@ fn usi_options_are_forwarded_recorded_and_restored_for_each_engine() {
                 .lines()
                 .filter(|line| line.starts_with("setoption ") || *line == "isready")
                 .collect();
-            assert_eq!(commands, expected.repeat(2), "{}", log.display());
+            assert_eq!(commands, expected.repeat(3), "{}", log.display());
         }
     };
     check_commands();
@@ -1129,7 +1141,7 @@ fn usi_options_reject_unknown_names_invalid_values_and_unsupported_types() {
         ] {
             let dir = parent.join("run");
             let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-                .args(["match", "run", "--run-dir"])
+                .args(["match", "run", "--rules", "JCSA", "--run-dir"])
                 .arg(&dir)
                 .args([
                     &format!("--{side}"),
@@ -1169,7 +1181,7 @@ fn usi_options_reject_random_and_cecp_before_engine_start() {
         ] {
             let dir = run_directory();
             let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-                .args(["match", "run", "--run-dir"])
+                .args(["match", "run", "--rules", "JCSA", "--run-dir"])
                 .arg(&dir)
                 .args([
                     &format!("--{side}"),
@@ -1187,7 +1199,7 @@ fn usi_options_reject_random_and_cecp_before_engine_start() {
     }
 }
 
-// 形式7では両側のoptionsが必須であり、形式6も再開・集計の前に拒否する。
+// 形式8では両側のoptionsが必須であり、形式6と7は再開・集計の前に拒否する。
 #[test]
 fn old_manifests_and_missing_option_lists_are_rejected_without_writes() {
     let dir = run_directory();
@@ -1195,24 +1207,29 @@ fn old_manifests_and_missing_option_lists_are_rejected_without_writes() {
     let original = json_file(&dir.join("manifest.json"));
     let history = std::fs::read(dir.join("invocations.json")).unwrap();
     let summary = std::fs::read(dir.join("summary.json")).unwrap();
-    for missing in [None, Some("candidate"), Some("baseline")] {
+    for (version, missing) in [
+        (6, None),
+        (7, None),
+        (8, Some("candidate")),
+        (8, Some("baseline")),
+    ] {
         let mut manifest = original.clone();
         let message = if let Some(side) = missing {
             manifest[side].as_object_mut().unwrap().remove("options");
-            "missing field `options`"
+            "missing field `options`".to_owned()
         } else {
-            manifest["format_version"] = serde_json::json!(6);
+            manifest["format_version"] = serde_json::json!(version);
             for side in ["candidate", "baseline"] {
                 manifest[side].as_object_mut().unwrap().remove("options");
             }
-            "version 6"
+            format!("version {version}")
         };
         write_json(&dir.join("manifest.json"), &manifest);
         let before = std::fs::read(dir.join("manifest.json")).unwrap();
         let output = resume_run(&dir, &[]);
         assert!(!output.status.success());
         assert!(
-            String::from_utf8_lossy(&output.stderr).contains(message),
+            String::from_utf8_lossy(&output.stderr).contains(&message),
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
@@ -1225,10 +1242,10 @@ fn old_manifests_and_missing_option_lists_are_rejected_without_writes() {
         let report_message = if missing.is_some() {
             message
         } else {
-            "found 6"
+            format!("found {version}")
         };
         assert!(
-            String::from_utf8_lossy(&output.stderr).contains(report_message),
+            String::from_utf8_lossy(&output.stderr).contains(&report_message),
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
@@ -1253,7 +1270,7 @@ fn each_limit_is_shared_and_per_engine_overrides_are_applied() {
     let (candidate_depth, baseline_depth) = (2, 1);
     let dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_minase"))
-        .args(["match", "run", "--run-dir"])
+        .args(["match", "run", "--rules", "JCSA", "--run-dir"])
         .arg(&dir)
         .args([
             "--seed",

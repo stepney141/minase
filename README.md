@@ -13,7 +13,7 @@ These facts are documented in Japanese by the [Japanese Wikipedia article on Kan
 
 ## Overview
 
-- Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `engine-default` and `lishogi`.
+- Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `JCSA` and `lishogi`.
 - Protocols: The engine speaks USI (including the lishogi extensions) and CECP (XBoard).
 - Search and evaluation: The search uses alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP for parallel search. The evaluation is a piece-square table interpolated by game phase.
 - Verification: The repository includes unit tests, perft, replay checks against real game records, and an SPRT self-play harness.
@@ -48,22 +48,29 @@ The engine binary is written to `target/release/minase`.
 
 ### Running the engine
 
-Both `--protocol` and `--rules` are required.
+`--protocol` is required and selects USI or CECP.
 
 ```bash
-# USI, standard rules
-./target/release/minase --protocol usi --rules engine-default
-
-# USI, lishogi rules
-./target/release/minase --protocol usi --rules lishogi
-
-# CECP, explicit rule codes
-./target/release/minase --protocol cecp --rules L0,P0,R1,E0
+./target/release/minase --protocol usi
+./target/release/minase --protocol cecp
 ```
 
-`--rules` accepts one of the following.
+The rule set is given after startup, and the engine has no default rule set.
+A USI client sets the option `RuleSet` before `isready`.
 
-- `engine-default`: the standard rules (L0,P0,R1,E0)
+```text
+usi
+setoption name RuleSet value JCSA
+isready
+```
+
+A CECP client sends `option RuleSet=<rules>` before `new`.
+XBoard does so when it is started with `-firstOptions "RuleSet=JCSA"`.
+If `isready` (USI) or `new` (CECP) arrives before a rule set, the engine reports the error and exits with status 1.
+
+`RuleSet` accepts one of the following.
+
+- `JCSA`: the rules of the Japan Chu Shogi Association, with its repetition rule (R0) replaced by R1 (L0,P0,R1,E0)
 - `lishogi`: the rules used on lishogi (L1,L2,P0,P3,R1,E1,E3)
 - A comma-separated list of rule codes. The list must contain exactly one code from each of the groups L, P, R, and E (chu-shogi.md, Article 33).
 
@@ -94,7 +101,7 @@ setoption name DrawValueWhite value -1
 Add `minase-core` to Cargo.toml to use position handling and legal-move generation from Rust. The library does not depend on the engine.
 
 ```rust
-use minase_core::{Game, MoveGenerator, Position};
+use minase_core::{Game, MoveGenerator, Position, Rules};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initial position
@@ -107,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Legal moves in the initial position: {}", legal_moves.len());
 
     // Playing a game and adjudicating the result
-    let mut game = Game::with_default_rules();
+    let mut game = Game::new(Rules::JCSA);
     if let Some(&mv) = legal_moves.first() {
         let status = game.play(mv)?;
         println!("Game status after the move: {status:?}");
@@ -120,20 +127,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Bundled tools
 
 The crate builds a single executable, `minase`.
-Started with `--protocol` and `--rules`, it runs the engine; the development and measurement tools run as its subcommands.
+Started with `--protocol`, it runs the engine; the measurement and data tools run as its subcommands.
 
 | Command | Purpose |
 |---|---|
-| `minase --protocol <usi\|cecp> --rules <rules>` | The engine |
+| `minase --protocol <usi\|cecp>` | The engine |
 | `minase match run` | SPRT harness for self-play and matches against external engines |
 | `minase match report` | Recomputes Elo and statistics from saved match records |
 | `minase spsa` | Tunes search and time-management parameters with SPSA |
 | `minase data selfplay` | Generates self-play data for evaluation training |
 | `minase data lishogi` | Converts lishogi game records into training data |
-| `minase dev bench` | Benchmarks search and move generation |
-| `minase dev perft` | Verifies and times legal-move generation |
-| `minase dev random-play` | Checks invariants with random play |
 | `minase dev usi-random` | Random-move engine for calibrating the harness |
+
+Diagnostics of the engine itself are USI commands of the running engine, not subcommands.
+
+| USI command | Purpose |
+|---|---|
+| `bench [depth <N>] [threads <N>] [repetitions <N>]` | Benchmarks the search on fixed positions |
+| `perft <depth> [divide]` | Counts legal-move paths from the current position |
+| `random-play [games <N>] [seed <S>] ...` | Checks invariants with random play under the session's rules |
+| `nn-eval out <path>`, `nn-fixture out <path>` | Write the network's outputs on fixed positions, and the fixed positions themselves |
+| `d`, `eval`, `tt` | Show the position, the evaluation, and transposition-table entries |
+
+```bash
+printf 'bench depth 5\nquit\n' | ./target/release/minase --protocol usi
+```
+
+Each output line starts with `info string`, and a successful run ends with `info string end`.
+The commands are described in [docs/guides/usi-extensions.md](docs/guides/usi-extensions.md) (Japanese).
 
 ## License
 

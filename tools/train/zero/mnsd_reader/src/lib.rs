@@ -4,9 +4,9 @@
 //! Pythonの`read(path: str) -> dict`は、次のキーを持つ辞書を返す。
 //! ヘッダの`origin`はint（0〜3）、対局が0局ならNoneである。
 //! `teacher_kind`（αβ0、MCTS1）、`teacher_search_budget`、`seed`、`game_count`、
-//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`engine_default`はbool、
+//! `entry_count`はint、`rule_set`と`generation_commit`はstr、`jcsa`はbool、
 //! `network_checksum`は32バイトのbytesである。
-//! `engine_default`は規則名ではなく、解釈した規則と`Rules::ENGINE_DEFAULT`の一致を表す。
+//! `jcsa`は規則名ではなく、解釈した規則と`Rules::JCSA`の一致を表す。
 //! `scan(path)`は手順を再生せずにtraining_countとvalidation_countを数える。
 //! `read_selected(path, training_indices, diagnostic_indices, include_validation)`は全手順を再生する。
 //! 第1の列の訓練局面と、第2の列のうち訓練診断標本の対局に属する局面を保持する。

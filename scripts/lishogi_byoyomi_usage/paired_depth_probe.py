@@ -35,10 +35,11 @@ def positions(run_dir, count, seed=1):
 class Engine:
     def __init__(self, path):
         self.proc = subprocess.Popen(
-            [path, "--protocol", "usi", "--rules", "engine-default"],
+            [path, "--protocol", "usi"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
         )
         self.send("usi"); self.wait("usiok")
+        self.send("setoption name RuleSet value JCSA")
         self.send("isready"); self.wait("readyok")
 
     def send(self, line):

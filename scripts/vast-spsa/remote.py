@@ -224,8 +224,13 @@ def bench(binary: Path, count: int, logs: Path, children: Children,
         try:
             for index in range(1, count + 1):
                 output = stack.enter_context((logs / f'bench-{index}.log').open('w'))
-                processes.append(children.start([str(binary), 'dev', 'bench', '--depth', '9',
-                                                 '--repetitions', '3'], cwd=cwd, stdout=output, stderr=subprocess.STDOUT))
+                process = children.start([str(binary), '--protocol', 'usi'], cwd=cwd,
+                                         stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT)
+                processes.append(process)
+                if process.stdin is None:
+                    raise RuntimeError('benchの標準入力を開けませんでした')
+                process.stdin.write('bench depth 9 repetitions 3\nquit\n')
+                process.stdin.close()
             codes = [process.wait() for process in processes]
             for process in processes:
                 children.processes.remove(process)
@@ -236,8 +241,11 @@ def bench(binary: Path, count: int, logs: Path, children: Children,
         raise ValueError('benchが失敗しました')
     values = []
     for index in range(1, count + 1):
-        matches = re.findall(r'^median:.*\bnps=([0-9]+)\s*$',
-                             (logs / f'bench-{index}.log').read_text(), re.M)
+        lines = (logs / f'bench-{index}.log').read_text().splitlines()
+        if 'info string end' not in lines:
+            raise ValueError(f'bench-{index}.logに終端の行がありません')
+        output = '\n'.join(line.removeprefix('info string ') for line in lines)
+        matches = re.findall(r'^median:.*\bnps=([0-9]+)\s*$', output, re.M)
         if len(matches) != 1 or int(matches[0]) <= 0:
             raise ValueError(f'bench-{index}.logの中央値NPSが不正です')
         values.append(Decimal(matches[0]))
@@ -315,8 +323,7 @@ def execute(session: str, job: Path, children: Children) -> int:
             children.run(['cargo', 'build', '--release', '--locked', '--bin', 'minase'],
                          cwd=repository, stdout=output, stderr=subprocess.STDOUT)
         with (logs / 'declared.params').open('w') as output, (logs / 'build.log').open('a') as errors:
-            children.run(['target/release/minase', 'spsa', 'params', '--engine', 'commit:' + config['commit'],
-                          '--rules', config['rules']], cwd=repository, stdout=output, stderr=errors)
+            children.run(['target/release/minase', 'spsa', 'params', '--engine', 'commit:' + config['commit']], cwd=repository, stdout=output, stderr=errors)
         (job / '.build-ready').touch()
     binary = repository / 'target/match-cache' / (config['commit'] + '-tuning/minase')
     if not os.access(binary, os.X_OK):

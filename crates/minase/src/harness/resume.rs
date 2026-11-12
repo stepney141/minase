@@ -1,6 +1,6 @@
 //! 保存したエンジン指定の復元と再開エラー。
 
-use super::{EngineIdentity, PlayerKind, PlayerSpec, StoredProtocol};
+use super::{EngineIdentity, MatchEngineError, PlayerKind, PlayerSpec, StoredProtocol};
 use std::io;
 
 /// 保存条件を安全に復元できない理由。
@@ -18,6 +18,8 @@ pub enum ResumeError {
     EngineIdentityMismatch,
     /// 探索ワーカー数の既定値が変わった。
     ThreadsMismatch,
+    /// エンジンが報告したネットのSHA-256が記録と異なる。
+    NetworkMismatch(MatchEngineError),
     /// 保存した置換表容量を再現できない。
     HashUnavailable,
 }
@@ -40,11 +42,19 @@ impl std::fmt::Display for ResumeError {
             Self::HashUnavailable => {
                 "recorded hash size is unavailable but the engine now reports a default"
             }
+            Self::NetworkMismatch(error) => return error.fmt(f),
         })
     }
 }
 
-impl std::error::Error for ResumeError {}
+impl std::error::Error for ResumeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NetworkMismatch(source) => Some(source),
+            _ => None,
+        }
+    }
+}
 
 impl From<ResumeError> for io::Error {
     fn from(error: ResumeError) -> Self {
@@ -100,10 +110,7 @@ mod tests {
     #[test]
     fn commit_resume_requires_the_recorded_working_directory_with_or_without_arguments() {
         let current = std::env::current_dir().unwrap();
-        for args in [
-            Vec::new(),
-            vec!["--nn-model".to_owned(), "net.onnx".to_owned()],
-        ] {
+        for args in [Vec::new(), vec!["--search".to_owned(), "mcts".to_owned()]] {
             let mut identity = EngineIdentity::Commit {
                 hash: "a".repeat(40),
                 sha256: "b".repeat(64),

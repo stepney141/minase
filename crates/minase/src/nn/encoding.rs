@@ -21,7 +21,7 @@ pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 /// 面95〜158は[`encode_control`]が返す駒種ごとの疑似利きと利き数の面である。
 /// 全要素を0にした後に該当箇所へ1を置くため、値は0か1だけである。
 ///
-/// 規則セット`engine-default`（P0でP5なし）では、この159面で次の合法手が決まる。
+/// 規則セット`JCSA`（P0でP5なし）では、この159面で次の合法手が決まる。
 /// 過去の局面の履歴と反復の回数は含めない。
 ///
 /// # Errors
@@ -145,7 +145,7 @@ mod tests {
             (PromotionRule::P2, false),
             (PromotionRule::P0, true),
         ] {
-            let mut rules = Rules::ENGINE_DEFAULT.moves;
+            let mut rules = Rules::JCSA.moves;
             rules.promotion = promotion;
             rules.p5 = p5;
             let generator = MoveGenerator::new(rules);

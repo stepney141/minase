@@ -9,45 +9,75 @@ use crate::harness::records::EngineIdentity;
 use std::io;
 use std::time::Duration;
 
-/// 1エンジンを事前起動し、実際のプロトコル応答から既定資源を得る。
+/// 事前の起動に失敗した側と、文字列化していない元の原因。
+#[derive(Debug)]
+pub struct EngineProbeError {
+    /// 候補側または基準側。
+    pub side: crate::harness::EngineSide,
+    /// 起動、宣言の検査、または準備の失敗。
+    pub source: io::Error,
+}
+
+impl std::fmt::Display for EngineProbeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} engine: {}", self.side, self.source)
+    }
+}
+
+impl std::error::Error for EngineProbeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+/// 1エンジンを事前起動し、実際のプロトコル応答から既定資源とネットのSHA-256を得る。
+/// 握手後は対局開始時と同じ設定を送り、`readyok`まで待つ。
+/// `random`とCECPは事前起動せず、ネットのSHA-256は`None`とする。
 ///
-/// 追加のUSIオプションは同じ応答の宣言と名前を完全一致で照合する。
+/// `validate_options`が真なら、追加のUSIオプションを同じ応答の宣言と名前を完全一致で照合する。
+/// 再開では保存時に検査済みの列を使い、この照合を繰り返さず送信する。
 /// `spin`は宣言範囲の整数、`combo`は宣言された選択肢、`check`は`true`か`false`を受理する。
 /// `string`の値は変更せず、未宣言の名前や未対応の型は入力エラーにする。
 pub fn probe_engine_defaults(
     player: &PlayerConfig,
+    validate_options: bool,
     timeout: Duration,
 ) -> io::Result<EngineDefaults> {
     if player.is_random {
         return Ok(EngineDefaults {
             threads: Some(1),
             hash_mb: None,
+            network_sha256: None,
         });
     }
     if player.protocol == Protocol::Cecp {
         return Ok(EngineDefaults {
             threads: None,
             hash_mb: Some(CECP_MEMORY_MB),
+            network_sha256: None,
         });
     }
-    let mut process = EngineProcess::spawn(player, timeout).map_err(|_| {
-        io::Error::other(format!(
-            "failed to start {} for USI resource probe",
-            player.text
-        ))
-    })?;
-    let (defaults, declarations) = process.read_usi_declarations().map_err(|failure| {
+    let mut process = EngineProcess::spawn(&player.path, &player.args, player.protocol, timeout)
+        .map_err(|_| {
+            io::Error::other(format!(
+                "failed to start {} for USI resource probe",
+                player.text
+            ))
+        })?;
+    let (mut defaults, declarations) = process.read_usi_declarations().map_err(|failure| {
         io::Error::other(format!(
             "failed to read USI resource defaults from {}: {failure:?}",
             player.text
         ))
     })?;
-    validate_usi_options(&player.options, &declarations).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid USI options for {}: {error}", player.text),
-        )
-    })?;
+    if validate_options {
+        validate_usi_options(&player.options, &declarations).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid USI options for {}: {error}", player.text),
+            )
+        })?;
+    }
     if matches!(player.identity, EngineIdentity::Commit { .. })
         && (defaults.threads.is_none() || defaults.hash_mb.is_none())
     {
@@ -59,15 +89,19 @@ pub fn probe_engine_defaults(
             ),
         ));
     }
+    defaults.network_sha256 = process
+        .initialize_usi(player, 0)
+        .map_err(io::Error::other)?;
     Ok(defaults)
 }
 
 /// USI握手で宣言されたoption行を、期限つきの既存通信経路で取得する。
 pub fn probe_usi_options(
-    player: &PlayerConfig,
+    path: &std::path::Path,
+    args: &[String],
     timeout: Duration,
 ) -> Result<Vec<String>, EngineFailure> {
-    let mut process = EngineProcess::spawn(player, timeout)?;
+    let mut process = EngineProcess::spawn(path, args, Protocol::Usi, timeout)?;
     let (_, options) = process.read_usi_declarations()?;
     Ok(options)
 }
@@ -157,7 +191,7 @@ mod tests {
             parse_player_spec("python3").unwrap(),
             parse_search_limit("depth=1").unwrap(),
             None,
-            "engine-default",
+            "JCSA",
             vec![(name.to_owned(), value.to_owned())],
             None,
         )
@@ -170,11 +204,13 @@ import sys
 for line in sys.stdin:
     if line.strip() == 'usi':
         print(sys.argv[1] + '\nusiok', flush=True)
+    elif line.strip() == 'isready':
+        print('readyok', flush=True)
 "#
             .to_owned(),
             declarations.to_owned(),
         ];
-        probe_engine_defaults(&player, Duration::from_secs(5))
+        probe_engine_defaults(&player, true, Duration::from_secs(5))
     }
 
     // フェーズ3の設計: 宣言範囲の両端、選択肢、真偽値、文字列を型に応じて受理する。
@@ -225,7 +261,8 @@ for line in sys.stdin:
                     result.unwrap(),
                     EngineDefaults {
                         threads: Some(1),
-                        hash_mb: Some(16)
+                        hash_mb: Some(16),
+                        network_sha256: None,
                     },
                     "{name}={value}"
                 );

@@ -118,7 +118,7 @@ fn shuffled_setup_file_frequencies_are_within_five_sigma() {
 fn shuffled_setup_has_legal_moves_and_no_first_move_captures() {
     for number in 1..=2000 {
         let position = shuffled_sample(number);
-        let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+        let game = Game::from_position(Rules::JCSA, position.clone());
         let moves = game.legal_moves();
         assert!(!moves.is_empty(), "sample {number}");
         for mv in moves {

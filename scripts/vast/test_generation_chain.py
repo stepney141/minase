@@ -181,6 +181,7 @@ class Commands:
         self.interrupt_training = False
         self.training_done_failures = 0
         self.training_missing = []
+        self.bench_output = "info string summary: positions=15\ninfo string end\n"
 
     def start_training(self, generation: int) -> None:
         directory = self.remote / f'training/gen-{generation}'
@@ -376,7 +377,11 @@ class Commands:
             else:
                 raise AssertionError(command)
             return self.result(command, '', 0, kwargs)
-        if name in ('cargo', 'minase'):
+        if name == 'minase':
+            assert args == ['--protocol', 'usi']
+            assert kwargs['input'] == f'bench depth {self.root_bench_depth}\nquit\n'
+            return self.result(command, self.bench_output, 0, kwargs)
+        if name == 'cargo':
             return self.result(command, '', 0, kwargs)
         raise AssertionError(command)
 
@@ -393,6 +398,33 @@ class Commands:
         pass
 
 
+class ChildrenTests(unittest.TestCase):
+    """USIの標準入力と子プロセスの終了コードを、実際のパイプで検査する。"""
+
+    def test_bench_commands_use_stdin_and_nonzero_exit_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'engine.py'
+            for code in [0, 7]:
+                with self.subTest(code=code):
+                    binary.write_text(
+                        'import sys\n'
+                        'assert sys.argv[1:] == ["--protocol", "usi"]\n'
+                        'assert sys.stdin.read() == "bench depth 1\\nquit\\n"\n'
+                        'print("info string summary: positions=15")\n'
+                        'print("info string end")\n'
+                        f'sys.exit({code})\n')
+                    children = chain.Children()
+                    command = [sys.executable, str(binary), '--protocol', 'usi']
+                    kwargs = dict(input='bench depth 1\nquit\n', text=True, stdout=subprocess.PIPE)
+                    if code:
+                        with self.assertRaises(subprocess.CalledProcessError):
+                            children.run(command, **kwargs)
+                    else:
+                        result = children.run(command, **kwargs)
+                        self.assertEqual(result.stdout.splitlines()[-1], 'info string end')
+                    self.assertEqual(children.processes, [])
+
+
 class ChainTestCase(unittest.TestCase):
     """指示書の作業機側の観測可能な結果と外部コマンドを確かめる。"""
 
@@ -402,6 +434,7 @@ class ChainTestCase(unittest.TestCase):
         self.root = Path(temporary.name)
         self.values = cli_values(self.root)
         self.commands = Commands(self.root)
+        self.commands.root_bench_depth = self.values["bench-depth"]
         self.clock = Clock()
         self.output, self.errors = io.StringIO(), io.StringIO()
         self.enterContext(redirect_stdout(self.output))
@@ -821,10 +854,16 @@ class ChainTests(ChainTestCase):
     def test_failed_bench_restores_network_without_touching_other_files(self) -> None:
         unrelated = self.root / 'tree/other.txt'
         unrelated.write_text('作業中の変更')
-        self.commands.fail_command = [str(self.root / 'tree/target/release/minase'), 'dev', 'bench']
+        self.commands.fail_command = [str(self.root / 'tree/target/release/minase'), '--protocol', 'usi']
         self.assertNotEqual(self.execute(), 0)
         self.assertEqual((self.root / 'tree/crates/minase/nets/nnue.bin').read_bytes(), network(0))
         self.assertEqual(unrelated.read_text(), '作業中の変更')
+        self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
+
+    def test_missing_bench_end_restores_network_without_committing(self) -> None:
+        self.commands.bench_output = 'info string summary: positions=15\n'
+        self.assertNotEqual(self.execute(), 0)
+        self.assertEqual((self.root / 'tree/crates/minase/nets/nnue.bin').read_bytes(), network(0))
         self.assertNotIn('refs/nnue-standard-recipe/gen-1', self.commands.refs)
 
     def test_commit_already_written_only_creates_reference(self) -> None:
@@ -1337,7 +1376,7 @@ class GeneratorTrainingTests(ChainTestCase):
         self.assertNotEqual(fitted, (self.root / 'run/gen-1/train/nnue.bin').read_bytes())
         self.assertEqual((self.root / 'run/gen-1/training-logs/train.log').read_text(), '生成機での学習ログ\n')
         self.assertFalse((self.root / 'run/gen-1/training-received').exists())
-        self.assertTrue(any(call[1:3] == ['dev', 'bench'] for call in calls))
+        self.assertTrue(any(call[1:] == ['--protocol', 'usi'] for call in calls))
         self.assert_no_local_training()
 
     def test_training_worker_upload_replaces_final_file_after_transfer(self) -> None:

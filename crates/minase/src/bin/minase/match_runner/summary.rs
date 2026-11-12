@@ -245,6 +245,8 @@ mod tests {
         ] {
             let arguments = Arguments::try_parse_from([
                 "match_runner",
+                "--rules",
+                "JCSA",
                 "--run-dir",
                 "run",
                 "gsprt",

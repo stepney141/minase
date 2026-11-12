@@ -10,13 +10,15 @@ mod think;
 mod usi;
 
 #[cfg(test)]
+mod network_tests;
+#[cfg(test)]
 mod tests;
 
 pub(in crate::harness) use cecp::{CECP_FIXED_TIME_CS, canonical_jitto, validate_cecp_limit};
-pub(in crate::harness) use process::EngineProcess;
+pub(in crate::harness) use process::{EngineProcess, InitializationError};
 pub(in crate::harness) use resources::EngineResourceUsage;
 
-pub use probe::{probe_engine_defaults, probe_usi_options};
+pub use probe::{EngineProbeError, probe_engine_defaults, probe_usi_options};
 
 use crate::harness::records::{ScoreBound, StopReasonRecord};
 use std::time::Duration;
@@ -78,11 +80,13 @@ pub(in crate::harness) struct ThinkResult {
     pub(in crate::harness) completed_time_ms: Option<u64>,
 }
 
-/// USI初期化応答が報告する既定の探索資源。
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+/// USI初期化応答が報告する既定の探索資源とネットのチェックサム。
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct EngineDefaults {
     /// `Threads`の既定値。
     pub threads: Option<u32>,
     /// `USI_Hash`の既定値(MB)。
     pub hash_mb: Option<u64>,
+    /// `isready`から`readyok`までに報告されたネットのSHA-256。未報告では`None`。
+    pub network_sha256: Option<crate::harness::NetworkSha256>,
 }

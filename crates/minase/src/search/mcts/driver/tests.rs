@@ -357,7 +357,7 @@ fn r1_path_cycles_classify_both_attackers_and_draws_without_inference() {
                 1
             );
             assert_eq!(driver.simulations(), 5);
-            root.make_move_unchecked(cycle[offset], Rules::ENGINE_DEFAULT.moves);
+            root.make_move_unchecked(cycle[offset], Rules::JCSA.moves);
         }
     }
 }
@@ -1155,7 +1155,7 @@ fn audit_terminal_examples_follow_the_full_endgame_rules() {
                 let configured = Rules {
                     e1,
                     exhaustion,
-                    ..Rules::ENGINE_DEFAULT
+                    ..Rules::JCSA
                 };
                 let expected = if (result == win(Color::Black, WinReason::Mate) && e1)
                     || (result != win(Color::Black, WinReason::Mate)
@@ -1200,7 +1200,7 @@ fn royal_capture_handles_the_prince_and_both_steps_of_a_lion_move() {
             ),
         ],
     );
-    let game = Game::from_position(Rules::ENGINE_DEFAULT, position);
+    let game = Game::from_position(Rules::JCSA, position);
     for to in [sq(5, 6), sq(6, 6)] {
         check_transition(&game, step(sq(5, 5), to), GameStatus::Ongoing);
     }
@@ -1220,7 +1220,7 @@ fn royal_capture_handles_the_prince_and_both_steps_of_a_lion_move() {
 fn grace_game() -> (Game, Move) {
     (
         Game::from_position(
-            Rules::ENGINE_DEFAULT,
+            Rules::JCSA,
             position(
                 Color::Black,
                 &[
@@ -1281,7 +1281,7 @@ fn grace_is_carried_from_the_root_and_isolated_between_branches() {
     );
     // 余分な駒を取っても王駒同士が隣接していれば、対局は継続する。
     let mut adjacent = Game::from_position(
-        Rules::ENGINE_DEFAULT,
+        Rules::JCSA,
         position(
             Color::Black,
             &[
@@ -1302,7 +1302,7 @@ fn material_counts_dead_pieces_unpromoted_pieces_and_capturable_bare_kings() {
     for kind in [PieceKind::Pawn, PieceKind::Lance] {
         for (color, rank) in [(Color::Black, 11), (Color::White, 0)] {
             let game = Game::from_position(
-                Rules::ENGINE_DEFAULT,
+                Rules::JCSA,
                 position(
                     Color::Black,
                     &[
@@ -1322,7 +1322,7 @@ fn material_counts_dead_pieces_unpromoted_pieces_and_capturable_bare_kings() {
     }
     for kind in [PieceKind::Pawn, PieceKind::GoBetween] {
         let game = Game::from_position(
-            Rules::ENGINE_DEFAULT,
+            Rules::JCSA,
             position(
                 Color::Black,
                 &[
@@ -1341,7 +1341,7 @@ fn material_counts_dead_pieces_unpromoted_pieces_and_capturable_bare_kings() {
         let game = Game::from_position(
             Rules {
                 exhaustion,
-                ..Rules::ENGINE_DEFAULT
+                ..Rules::JCSA
             },
             position(
                 Color::Black,
@@ -1360,7 +1360,7 @@ fn bare_king_wins_and_draws_are_exact() {
     use minase_core::{DrawReason, ExhaustionRule};
     let configured = Rules {
         exhaustion: ExhaustionRule::E3,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     };
     let game = Game::from_position(
         configured,
@@ -1396,7 +1396,7 @@ fn exact_r1_wins_losses_and_draws_precede_the_cycle_approximation() {
     use minase_core::DrawReason;
     for attacks in [[true, false], [false, true], [false, false], [true, true]] {
         let (start, cycle) = rook_cycle(attacks[0], attacks[1]);
-        let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start);
+        let mut game = Game::from_position(Rules::JCSA, start);
         for ply in 0..12 {
             let mv = cycle[ply % 4];
             let expected = if ply < 11 {
@@ -1465,7 +1465,7 @@ fn exact_draws_use_the_configured_probability_from_either_side() {
             game = Game::from_position(
                 Rules {
                     exhaustion,
-                    ..Rules::ENGINE_DEFAULT
+                    ..Rules::JCSA
                 },
                 game.position().clone(),
             );
@@ -1528,7 +1528,7 @@ fn seeded_games_match_the_referee_without_terminal_inference() {
             let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
             let mut game = Game::new(Rules {
                 repetition,
-                ..Rules::ENGINE_DEFAULT
+                ..Rules::JCSA
             });
             for _ in 0..600 {
                 let moves = game.legal_moves();
@@ -1569,7 +1569,7 @@ fn seeded_games_match_the_referee_without_terminal_inference() {
 
 #[test]
 fn reuse_compares_full_rules_and_the_draw_perspective() {
-    let game = Game::with_default_rules();
+    let game = Game::new(Rules::JCSA);
     let mut driver = Driver::new(
         SearchSnapshot::from_game(&game).unwrap(),
         CAPACITY,
@@ -1682,7 +1682,7 @@ fn illegal_replay_returns_the_original_error_and_cancels_virtual_loss() {
 #[test]
 fn an_existing_path_cannot_continue_after_an_exact_terminal() {
     let game = Game::from_position(
-        Rules::ENGINE_DEFAULT,
+        Rules::JCSA,
         position(
             Color::Black,
             &[
@@ -1745,7 +1745,7 @@ fn exact_repetition_can_rescue_mate_but_a_fresh_position_cannot() {
         if drawn {
             pieces.push((sq(7, 9), Color::White, PieceKind::Pawn));
         }
-        let mut game = Game::from_position(Rules::ENGINE_DEFAULT, position(Color::White, &pieces));
+        let mut game = Game::from_position(Rules::JCSA, position(Color::White, &pieces));
         let w_out = step(sq(0, 5), sq(2, 5));
         let w_back = step(sq(2, 5), sq(0, 5));
         let z_out = step(sq(1, 8), sq(1, 2));
@@ -1778,7 +1778,7 @@ fn exhaustion_grace_precedes_mate_and_its_consumption_precedes_capture_search() 
     use minase_core::PieceCode;
     use minase_core::test_util::position_from_codes;
     let game = Game::from_position(
-        Rules::ENGINE_DEFAULT,
+        Rules::JCSA,
         position_from_codes(
             Color::Black,
             &[
@@ -1817,7 +1817,7 @@ fn exhaustion_grace_precedes_mate_and_its_consumption_precedes_capture_search() 
 #[test]
 fn fourth_occurrence_at_eleven_reversible_plies_is_still_only_approximate() {
     let mut game = Game::from_position(
-        Rules::ENGINE_DEFAULT,
+        Rules::JCSA,
         position(
             Color::Black,
             &[
@@ -1841,7 +1841,7 @@ fn fourth_occurrence_at_eleven_reversible_plies_is_still_only_approximate() {
 #[test]
 fn sibling_replays_do_not_share_repetition_history() {
     let (start, cycle) = rook_cycle(false, false);
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start);
+    let mut game = Game::from_position(Rules::JCSA, start);
     for &mv in &cycle[..3] {
         game.play(mv).unwrap();
     }

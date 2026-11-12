@@ -2,7 +2,6 @@
 
 use super::{
     cli::GenerateArguments,
-    engine_default_rules,
     opening::{Opening, OpeningError, read_openings},
     play::{PlaySettings, play_game, play_game_from_opening},
     statistics::{format_rate_percent, score_mean_and_std, score_percentile},
@@ -42,7 +41,7 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
             .games
             .ok_or_else(|| data_error(OpeningError::MissingGames))?,
     };
-    let rules = engine_default_rules()?;
+    let rules = Rules::JCSA;
     let rule_set = rules.to_string();
     let generation_commit = git_output(&["rev-parse", "HEAD"])?;
     validate_commit_hash(&generation_commit)?;
@@ -442,7 +441,7 @@ mod tests {
 
     /// テスト用の完了対局を1レコード付きで作る。
     fn completed_game(game_number: u32) -> CompletedGame {
-        let game = Game::new(engine_default_rules().expect("engine-default rules are valid"));
+        let game = Game::new(Rules::JCSA);
         let score = i16::try_from(game_number).unwrap() - 2;
         let search_key = if game_number >= 3 {
             10

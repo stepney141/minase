@@ -57,7 +57,7 @@ class DataTests(unittest.TestCase):
         self.assertEqual(info.header.teacher_kind, 1)
         self.assertEqual(info.header.origin, 0)
         self.assertEqual(info.header.rule_set, "L0,P0,R1,E0")
-        self.assertTrue(info.header.engine_default)
+        self.assertTrue(info.header.jcsa)
         self.assertEqual(info.header.seed, 20261038)
         self.assertEqual(info.header.game_count, 32)
         self.assertEqual(info.header.entry_count, 3375)
@@ -128,12 +128,12 @@ class DataTests(unittest.TestCase):
 
     def test_extension_returns_python_scalars_and_little_endian_bytes(self) -> None:
         path = self.directory / "scalars.mnsd"
-        write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "engine-default")
+        write_small(path, [single_game(0x10203040, 0, 1, 0x1234, (65535,))], "JCSA")
         raw = minase_mnsd_reader.read(str(path))
         self.assertEqual(minase_mnsd_reader.FORMAT_VERSION, 2)
         for key in ("origin", "teacher_kind", "teacher_search_budget", "seed", "game_count", "entry_count"):
             self.assertIs(type(raw[key]), int)
-        self.assertIs(type(raw["engine_default"]), bool)
+        self.assertIs(type(raw["jcsa"]), bool)
         self.assertIs(type(raw["rule_set"]), str)
         self.assertEqual(raw["generation_commit"], "a" * 40)
         self.assertEqual(raw["network_checksum"], bytes(range(32)))
@@ -165,8 +165,8 @@ class DataTests(unittest.TestCase):
 
     def test_same_seed_disjoint_games_preserve_input_and_candidate_order(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "engine-default")
-        write_small(second, [single_game(3, 1, 0, 456, (65535,))], "engine-default")
+        write_small(first, [single_game(9, 0, 0, 123, (12345, 53190))], "JCSA")
+        write_small(second, [single_game(3, 1, 0, 456, (65535,))], "JCSA")
         data, infos, _, _ = read_replay_buffer([first, second], [first, second], 42,
             rank=0, world_size=1, batch_size=1, micro_batch_size=1, replay_threads=1,
         )
@@ -201,7 +201,7 @@ class DataTests(unittest.TestCase):
 
     def test_same_game_number_with_different_seed_is_accepted(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(1, 0, 2, 32768, (65535,))], "engine-default")
+        write_small(first, [single_game(1, 0, 2, 32768, (65535,))], "JCSA")
         changed = bytearray(first.read_bytes())
         struct.pack_into("<Q", changed, 128, 42)
         second.write_bytes(changed)
@@ -214,7 +214,7 @@ class DataTests(unittest.TestCase):
 
     def test_unselected_games_still_participate_in_duplicate_detection(self) -> None:
         first, second = self.directory / "first.mnsd", self.directory / "second.mnsd"
-        write_small(first, [single_game(1, 0, 2, None, ())], "engine-default")
+        write_small(first, [single_game(1, 0, 2, None, ())], "JCSA")
         shutil.copyfile(first, second)
         data, info = read_file(first)
         self.assertEqual(len(data), 0)
@@ -226,7 +226,7 @@ class DataTests(unittest.TestCase):
 
     def test_empty_files_and_empty_replay_buffer(self) -> None:
         path = self.directory / "empty.mnsd"
-        write_small(path, [], "engine-default")
+        write_small(path, [], "JCSA")
         data, info = read_file(path)
         self.assertEqual(len(data), 0)
         self.assertEqual(data.boards.shape, (0, 144))
@@ -249,14 +249,14 @@ class DataTests(unittest.TestCase):
         write_small(path, [game], "L0,P0,R1,E0")
         data, info = read_file(path)
         self.assertEqual(len(data), 1)
-        self.assertTrue(info.header.engine_default)
+        self.assertTrue(info.header.jcsa)
         write_small(path, [game], "L0,P1,R1,E0")
         with self.assertRaises(ValueError):
             read_file(path)
 
     def test_non_mcts_non_selfplay_and_deferred_positions_are_rejected(self) -> None:
         path = self.directory / "rejected.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "engine-default")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
         original = path.read_bytes()
         alpha = bytearray(original)
         alpha[112] = 0
@@ -273,7 +273,7 @@ class DataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_file(path)
         # recordsの駒コードのビット128は、盤の100番升の歩兵に付く保留印である。
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "engine-default")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
         changed = bytearray(path.read_bytes())
         changed[152 + 14 + 100] = 129
         path.write_bytes(changed)
@@ -283,7 +283,7 @@ class DataTests(unittest.TestCase):
 
     def test_value_without_policy_is_not_a_training_position(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, ())], "engine-default")
+        write_small(path, [single_game(1, 0, 2, 123, ())], "JCSA")
         info = minase_mnsd_reader.scan(str(path))
         self.assertEqual((info["training_count"], info["validation_count"]), (0, 0))
         data, metadata = read_file(path)
@@ -293,7 +293,7 @@ class DataTests(unittest.TestCase):
 
     def test_selected_positions_still_require_candidates(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "engine-default")
+        write_small(path, [single_game(1, 0, 2, 123, (65535,))], "JCSA")
         raw = minase_mnsd_reader.read(str(path))
         # 拡張モジュールから不完全な局面が返った場合も、Python側の検査で拒否する。
         raw["policy_offsets"] = struct.pack("<QQ", 0, 0)
@@ -304,7 +304,7 @@ class DataTests(unittest.TestCase):
 
     def test_wrong_probability_sum_is_rejected(self) -> None:
         path = self.directory / "policy.mnsd"
-        write_small(path, [single_game(1, 0, 2, 123, (65534,))], "engine-default")
+        write_small(path, [single_game(1, 0, 2, 123, (65534,))], "JCSA")
         with self.assertRaises(ValueError):
             read_file(path)
 
@@ -315,7 +315,7 @@ class DataTests(unittest.TestCase):
             game = bytearray(single_game(number, side, winner, 32768, (65535,)))
             game[6] = 12
             games.append(bytes(game))
-        write_small(path, games, "engine-default")
+        write_small(path, games, "JCSA")
         data, info = read_file(path)
         self.assertEqual(info.position_count, 4)
         np.testing.assert_array_equal(data.results, [1.0, 0.0, 0.0, 1.0])
@@ -342,7 +342,7 @@ class DataTests(unittest.TestCase):
                 + struct.pack("<HHBHI", 0, 21845, 0, 0, 1)
                 + struct.pack("<HHBHI", 65535, 0, 4, 0, 0)
             )
-            write_small(path, [header + board + bytes([0, 255, 0]) + entries], "engine-default")
+            write_small(path, [header + board + bytes([0, 255, 0]) + entries], "JCSA")
             contents = bytearray(path.read_bytes())
             struct.pack_into("<Q", contents, 144, 4)
             path.write_bytes(contents)

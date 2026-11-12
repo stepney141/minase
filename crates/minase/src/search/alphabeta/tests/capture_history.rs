@@ -996,7 +996,7 @@ fn capture_history_i16_matches_i32_reference_on_random_capture_sequences() {
     let bonuses = [i32::MIN, -10_692, -1001, -9, 0, 9, 1001, 10_692, i32::MAX];
     let mut updates = 0_usize;
     for text in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",

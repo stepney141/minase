@@ -28,7 +28,7 @@ fn king_cycle() -> [Move; 4] {
 fn article_26_12_no_moves_are_accepted_after_the_game_ends() {
     // 終局済みの対局への着手入力は理由によらず拒否され、
     // 記録済みの結果は変化しない。終局後の対局合法手は空である。
-    let mut agreed = Game::with_default_rules();
+    let mut agreed = Game::new(Rules::JCSA);
     let legal = agreed.legal_moves()[0];
     agreed.agree_draw().unwrap();
     assert_eq!(agreed.play(legal), Err(GameError::GameAlreadyOver));
@@ -135,7 +135,7 @@ fn article_27_1_rejected_moves_leave_the_game_state_unchanged() {
     // キー履歴・対局合法手集合・対局状態がすべて不変である。
 
     // 相手の駒を動かす入力(第26条1号)。
-    let mut opponent = Game::with_default_rules();
+    let mut opponent = Game::new(Rules::JCSA);
     assert_rejection_is_pure(
         &mut opponent,
         step(sq(0, 8), sq(0, 7)),
@@ -143,7 +143,7 @@ fn article_27_1_rejected_moves_leave_the_game_state_unchanged() {
     );
 
     // 仲人は前後にしか動けないため、横の空升への入力は第26条2号に反する(第9条)。
-    let mut movement = Game::with_default_rules();
+    let mut movement = Game::new(Rules::JCSA);
     assert_rejection_is_pure(
         &mut movement,
         step(sq(3, 4), sq(4, 4)),

@@ -67,11 +67,13 @@ pub struct PlayerConfig {
     pub limit: SearchLimit,
     /// このプレイヤーに適用する置換表容量(MB)。省略時はエンジンの既定値。
     pub hash_mb: Option<u64>,
-    /// 起動引数と規則オプションへ渡す`--rules`入力原文。
+    /// 規則オプションへ渡す、対局ハーネスの`--rules`入力原文。
     pub rules_source: String,
     /// USIの握手後、`isready`より前に送るオプションの名前と値。
     /// 同名の重複も含めて列順に送る。
     pub options: Vec<(String, String)>,
+    /// 事前の起動で記録したネットのSHA-256。局ごとの初期化で報告値と照合する。
+    pub network_sha256: Option<super::NetworkSha256>,
 }
 
 impl PlayerConfig {
@@ -137,7 +139,7 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 ///
 /// 追加のUSIオプションは[`PlayerConfig::options`]に従う。
 /// `random`またはCECP指定で追加オプションがあれば、プロセスを起動する前に入力エラーを返す。
-/// コミット指定は通常ビルドを使い、`startup_args`を`--protocol usi --rules <規則>`の後に足す。
+/// コミット指定は通常ビルドを使い、`startup_args`を`--protocol usi`の後に足す。
 /// コミット以外に`startup_args`を指定すると、空配列でも起動前に入力エラーを返す。
 /// `random`は`std::env::current_exe()`で得た実行中の実行ファイルを`dev usi-random`で起動し、
 /// その同一性の記録にはSHA-256を持たない。
@@ -202,12 +204,7 @@ pub fn resolve_player(
         PlayerKind::Commit(revision) => {
             let (path, hash, sha256) = resolve_commit(&revision, None)?;
             let extra_args = startup_args.unwrap_or_default();
-            let mut args = vec![
-                "--protocol".to_owned(),
-                "usi".to_owned(),
-                "--rules".to_owned(),
-                rules_text.to_owned(),
-            ];
+            let mut args = vec!["--protocol".to_owned(), "usi".to_owned()];
             args.extend_from_slice(&extra_args);
             (
                 path,
@@ -261,6 +258,7 @@ pub fn resolve_player(
         hash_mb,
         rules_source: rules_text.to_owned(),
         options,
+        network_sha256: None,
     })
 }
 
@@ -279,7 +277,7 @@ mod tests {
                     parse_player_spec(spec).unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     None,
-                    "engine-default",
+                    "JCSA",
                     Vec::new(),
                     Some(args),
                 );
@@ -299,18 +297,13 @@ mod tests {
         assert_eq!(commit.kind, PlayerKind::Commit("0045833".to_owned()));
 
         // 起動コマンド形式: 2語目以降は起動引数として渡す
-        let command = parse_player_spec("target/release/minase --protocol usi --rules R1")
+        let command = parse_player_spec("target/release/minase --protocol usi")
             .expect("a command line spec must be accepted");
         assert_eq!(
             command.kind,
             PlayerKind::Command {
                 program: PathBuf::from("target/release/minase"),
-                args: vec![
-                    "--protocol".to_owned(),
-                    "usi".to_owned(),
-                    "--rules".to_owned(),
-                    "R1".to_owned(),
-                ],
+                args: vec!["--protocol".to_owned(), "usi".to_owned(),],
             }
         );
 
@@ -324,19 +317,13 @@ mod tests {
                 args: Vec::new(),
             }
         );
-        let minase =
-            parse_player_spec("cecp:target/release/minase --protocol cecp --rules engine-default")
-                .expect("a CECP command with arguments must be accepted");
+        let minase = parse_player_spec("cecp:target/release/minase --protocol cecp")
+            .expect("a CECP command with arguments must be accepted");
         assert_eq!(
             minase.kind,
             PlayerKind::Cecp {
                 program: PathBuf::from("target/release/minase"),
-                args: vec![
-                    "--protocol".to_owned(),
-                    "cecp".to_owned(),
-                    "--rules".to_owned(),
-                    "engine-default".to_owned(),
-                ],
+                args: vec!["--protocol".to_owned(), "cecp".to_owned(),],
             }
         );
 
@@ -388,10 +375,11 @@ mod tests {
                 assert_eq!(player.path, PathBuf::from("engine"), "{text}");
                 assert_eq!(player.args, ["--option", "value"], "{text}");
                 assert_eq!(
-                    probe_engine_defaults(&player, Duration::from_secs(1)).unwrap(),
+                    probe_engine_defaults(&player, true, Duration::from_secs(1)).unwrap(),
                     EngineDefaults {
                         threads: None,
-                        hash_mb: Some(256)
+                        hash_mb: Some(256),
+                        network_sha256: None,
                     },
                     "{text}"
                 );

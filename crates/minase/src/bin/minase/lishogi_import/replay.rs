@@ -22,7 +22,7 @@ pub(super) struct Replay {
 
 /// 対局全体の規則と勝者を照合してから、探索対象を返す。
 pub(super) fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclusion> {
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     let mut positions = Vec::new();
     let mut truncated = None;
     let mut played_moves = Vec::new();

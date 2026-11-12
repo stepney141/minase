@@ -18,6 +18,9 @@ fn tuning_usi_contract_in_isolated_process() {
                 "go depth nope",
                 "go mate 1",
                 "go",
+                "bench depth 1",
+                "bench depth 0",
+                "mcts bench",
             ] {
                 let output = std::process::Command::new(std::env::current_exe().unwrap())
                     .args([
@@ -47,10 +50,17 @@ fn tuning_usi_contract_in_isolated_process() {
         }
         Err(error) => panic!("invalid child scenario: {error}"),
     };
-    let mut engine = make_engine(&[RuleCode::R1]);
-    let mut protocol = UsiProtocol::new(&engine);
+    let mut protocol = UsiProtocol::new();
+    let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+    assert_eq!(
+        run(
+            &mut protocol,
+            &format!("setoption name RuleSet value {rules}\n")
+        ),
+        ""
+    );
     if scenario == "options" {
-        let handshake = run(&mut protocol, &mut engine, "usi\n");
+        let handshake = run(&mut protocol, "usi\n");
         let declarations: Vec<_> = handshake
             .lines()
             .filter(|line| line.starts_with("option name Tune_"))
@@ -346,7 +356,6 @@ fn tuning_usi_contract_in_isolated_process() {
                 assert_eq!(
                     run(
                         &mut protocol,
-                        &mut engine,
                         &format!("setoption name Tune_{name} value {value}\n")
                     ),
                     ""
@@ -376,7 +385,6 @@ fn tuning_usi_contract_in_isolated_process() {
                 assert_eq!(
                     run(
                         &mut protocol,
-                        &mut engine,
                         &format!("setoption name Tune_{name} {suffix}\n")
                     ),
                     format!("info string error: {error}\n")
@@ -386,7 +394,6 @@ fn tuning_usi_contract_in_isolated_process() {
             assert_eq!(
                 run(
                     &mut protocol,
-                    &mut engine,
                     &format!("setoption name Tune_{name} value {default}\n")
                 ),
                 ""
@@ -394,11 +401,7 @@ fn tuning_usi_contract_in_isolated_process() {
             assert_eq!(read(), default);
         }
         assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name Tune_Unknown value 0\n"
-            ),
+            run(&mut protocol, "setoption name Tune_Unknown value 0\n"),
             "info string error: unknown tuning parameter 'Unknown'\n"
         );
         return;
@@ -406,33 +409,47 @@ fn tuning_usi_contract_in_isolated_process() {
     assert_eq!(
         run(
             &mut protocol,
-            &mut engine,
             "setoption name Tune_DeltaMargin value 200\nsetoption name USI_Hash value 1\n"
         ),
         ""
     );
-    if scenario != "go" {
-        run(&mut protocol, &mut engine, "position startpos\n");
+    if scenario == "bench depth 0" {
+        let output = run(
+            &mut protocol,
+            "bench depth 0\nsetoption name Tune_DeltaMargin value 300\n",
+        );
+        assert_eq!(error_lines(&output).len(), 1, "{output}");
+        assert!(!output.contains("tuning parameters cannot change"));
+        assert!(!output.contains("info string end"));
+        assert_eq!(params::delta_margin(), 300);
+        return;
     }
-    run(&mut protocol, &mut engine, &format!("{scenario}\nstop\n"));
+    if scenario == "mcts bench" {
+        let mut mcts = UsiProtocol::with_searcher(Searcher::mcts().unwrap());
+        let output = run(&mut mcts, "bench depth 1\n");
+        assert!(output.ends_with("info string end\n"), "{output}");
+    } else if scenario == "bench depth 1" {
+        let output = run(&mut protocol, "bench depth 1\n");
+        assert!(output.ends_with("info string end\n"), "{output}");
+    } else {
+        if scenario != "go" {
+            run(&mut protocol, "position startpos\n");
+        }
+        run(&mut protocol, &format!("{scenario}\nstop\n"));
+    }
     for prefix in ["", "usinewgame\n"] {
         assert_eq!(
             run(
                 &mut protocol,
-                &mut engine,
                 &format!("{prefix}setoption name Tune_DeltaMargin value 300\n")
             ),
             "info string error: tuning parameters cannot change after go\n"
         );
         assert_eq!(params::delta_margin(), 200);
     }
-    let mut protocol = UsiProtocol::new(&engine);
+    let mut protocol = UsiProtocol::new();
     assert_eq!(
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name Tune_DeltaMargin value 300\n"
-        ),
+        run(&mut protocol, "setoption name Tune_DeltaMargin value 300\n"),
         "info string error: tuning parameters cannot change after go\n"
     );
     assert_eq!(params::delta_margin(), 200);

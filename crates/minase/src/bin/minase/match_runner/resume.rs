@@ -70,9 +70,9 @@ impl std::error::Error for ModeMismatch {}
 /// 記録した作業ディレクトリと同じ場所からだけ復元する。
 /// 任意の起動コマンドの実体と`random`にはSHA-256の照合がない。
 /// `random`は現在の実行プログラム自身を`dev usi-random`で起動する。
-/// 追加のUSIオプションは保存した列を復元し、宣言との照合は繰り返さない。
+/// 追加のUSIオプションは事前の起動より前に保存した列を復元し、宣言との照合は繰り返さない。
 ///
-/// 各エンジンを1回起動して読んだ`Threads`の既定値が記録と異なればエラーとする。
+/// 各エンジンを1回起動して読んだ`Threads`の既定値とネットのSHA-256が記録と異なればエラーとする。
 /// 置換表容量は記録値と既定値が等しければ送らず、異なれば記録値を送る。
 /// 理由は`docs/adr/resume-from-the-manifest-and-accept-rebuilt-tuning-commits.md`にある。
 pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig, PlayerConfig)> {
@@ -81,12 +81,14 @@ pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig
     let rules = Rules::from_codes(&codes)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     let candidate = restore_player(
+        EngineSide::Candidate,
         &manifest.candidate,
         manifest.engine_threads.candidate,
         manifest.hash_mb.candidate,
         manifest,
     )?;
     let baseline = restore_player(
+        EngineSide::Baseline,
         &manifest.baseline,
         manifest.engine_threads.baseline,
         manifest.hash_mb.baseline,
@@ -96,6 +98,7 @@ pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig
 }
 
 fn restore_player(
+    side: EngineSide,
     record: &EngineRecord,
     threads: Option<u32>,
     hash_mb: Option<u64>,
@@ -112,17 +115,31 @@ fn restore_player(
         limit,
         hash_mb,
         &manifest.rules_source,
-        Vec::new(),
+        record.options.clone(),
         args,
     )?;
     verify_identity(&record.identity, &player.identity)?;
-    let defaults =
-        probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;
+    player.network_sha256 = record.network_sha256.clone();
+    let defaults = probe_engine_defaults(
+        &player,
+        false,
+        Duration::from_secs(manifest.response_timeout_secs),
+    )
+    .map_err(|source| io::Error::other(EngineProbeError { side, source }))?;
     if defaults.threads != threads {
         return Err(ResumeError::ThreadsMismatch.into());
     }
+    if defaults.network_sha256 != record.network_sha256 {
+        return Err(ResumeError::NetworkMismatch(MatchEngineError {
+            side,
+            source: NetworkError::Mismatch {
+                recorded: record.network_sha256.clone(),
+                received: defaults.network_sha256,
+            },
+        })
+        .into());
+    }
     player.hash_mb = restored_hash(hash_mb, defaults.hash_mb)?;
-    player.options = record.options.clone();
     Ok(player)
 }
 
@@ -175,10 +192,7 @@ mod tests {
 
     #[test]
     fn resume_identity_includes_commit_working_directory() {
-        for args in [
-            Vec::new(),
-            vec!["--nn-model".to_owned(), "net.onnx".to_owned()],
-        ] {
+        for args in [Vec::new(), vec!["--search".to_owned(), "mcts".to_owned()]] {
             let recorded = EngineIdentity::Commit {
                 hash: "a".repeat(40),
                 sha256: "b".repeat(64),

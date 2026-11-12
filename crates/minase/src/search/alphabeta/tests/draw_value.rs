@@ -6,7 +6,7 @@ use minase_core::{Game, GameStatus, RepetitionRule, Rules};
 
 #[test]
 fn article_31_r1_draw_value_defaults_and_validation() {
-    let game = Game::new(Rules::ENGINE_DEFAULT);
+    let game = Game::new(Rules::JCSA);
     for (source, snapshot) in [
         (
             "article_31_r1_game",
@@ -109,7 +109,7 @@ fn article_31_r1_draw_value_signs_history_cycles_from_both_root_colors() {
         for offset in [0, 1] {
             let (start, cycle) = rotated_cycle(attacks, attacks, offset);
             for history_plies in [2, 3] {
-                let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+                let mut game = Game::from_position(Rules::JCSA, start.clone());
                 play(&mut game, &cycle[..history_plies]);
                 for draw_value in [-50, 0] {
                     let snapshot = SearchSnapshot::from_game(&game)
@@ -147,7 +147,7 @@ fn article_31_r1_draw_value_keeps_repetition_win_and_loss_in_their_band() {
             let (start, cycle) =
                 rotated_cycle(attacker == Color::Black, attacker == Color::White, offset);
             for history_plies in [0, 2, 3] {
-                let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+                let mut game = Game::from_position(Rules::JCSA, start.clone());
                 play(&mut game, &cycle[..history_plies]);
                 for draw_value in [-50, 0, 50] {
                     let snapshot = SearchSnapshot::from_game(&game)
@@ -179,7 +179,7 @@ fn article_31_r1_draw_value_keeps_repetition_win_and_loss_in_their_band() {
 fn article_31_r1_negative_draw_value_selects_a_quiet_move_over_a_history_draw() {
     let nnue = epoch_zero_nnue();
     let (root, cycle) = rook_cycle(false, false);
-    let mut game = Game::from_position(Rules::ENGINE_DEFAULT, root);
+    let mut game = Game::from_position(Rules::JCSA, root);
     play(&mut game, &cycle[..3]);
     assert_eq!(game.consecutive_attacking_moves(), Some([0; 2]));
     let returning = cycle[3];
@@ -239,7 +239,7 @@ fn article_31_r1_draw_value_does_not_change_r2_or_r3_search() {
             let mut game = Game::from_position(
                 Rules {
                     repetition: rule,
-                    ..Rules::ENGINE_DEFAULT
+                    ..Rules::JCSA
                 },
                 root,
             );

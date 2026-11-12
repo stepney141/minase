@@ -85,8 +85,18 @@ pub(super) fn run_manifest(
     ponder: bool,
 ) -> io::Result<RunManifest> {
     let timeout = Duration::from_secs(response_timeout_secs);
-    let candidate_defaults = probe_engine_defaults(candidate, timeout)?;
-    let baseline_defaults = probe_engine_defaults(baseline, timeout)?;
+    let candidate_defaults = probe_engine_defaults(candidate, true, timeout).map_err(|source| {
+        io::Error::other(EngineProbeError {
+            side: EngineSide::Candidate,
+            source,
+        })
+    })?;
+    let baseline_defaults = probe_engine_defaults(baseline, true, timeout).map_err(|source| {
+        io::Error::other(EngineProbeError {
+            side: EngineSide::Baseline,
+            source,
+        })
+    })?;
     let physical_cores = physical_core_count();
     let concurrency = match concurrency {
         Some(concurrency) => concurrency,
@@ -105,11 +115,13 @@ pub(super) fn run_manifest(
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
             options: candidate.options.clone(),
+            network_sha256: candidate_defaults.network_sha256,
         },
         baseline: EngineRecord {
             identity: baseline.identity.clone(),
             limit: stored_search_limit(baseline.limit),
             options: baseline.options.clone(),
+            network_sha256: baseline_defaults.network_sha256,
         },
         rules_source: rules.source.clone(),
         canonical_rules: rules.codes.iter().map(ToString::to_string).collect(),
@@ -232,7 +244,7 @@ mod tests {
                     parse_player_spec("cecp:engine").unwrap(),
                     parse_search_limit("depth=1").unwrap(),
                     hash_mb,
-                    "engine-default",
+                    "JCSA",
                     Vec::new(),
                     None,
                 )
@@ -241,7 +253,7 @@ mod tests {
             let manifest = run_manifest(
                 &player(candidate_hash),
                 &player(baseline_hash),
-                &parse_rule_set_argument("engine-default").unwrap(),
+                &parse_rule_set_argument("JCSA").unwrap(),
                 ManifestMode::Elo,
                 1,
                 4096,

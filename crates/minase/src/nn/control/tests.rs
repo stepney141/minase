@@ -63,13 +63,10 @@ fn all_fixture_controls_match_attackers_by_kind_and_count() {
     assert_eq!(fixtures.lines().count(), 288);
     for line in fixtures.lines() {
         let fixture: serde_json::Value = serde_json::from_str(line).unwrap();
-        let position = parse_extended_sfen(
-            fixture["sfen"].as_str().unwrap(),
-            Rules::ENGINE_DEFAULT.moves,
-        )
-        .unwrap()
-        .restore_position()
-        .unwrap();
+        let position = parse_extended_sfen(fixture["sfen"].as_str().unwrap(), Rules::JCSA.moves)
+            .unwrap()
+            .restore_position()
+            .unwrap();
         assert_matches_attackers(&position);
     }
 }

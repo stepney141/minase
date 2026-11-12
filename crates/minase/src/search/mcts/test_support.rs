@@ -16,7 +16,7 @@ pub(super) fn rules(repetition: RepetitionRule) -> Rules {
     Rules {
         repetition,
         exhaustion: ExhaustionRule::E2,
-        ..Rules::ENGINE_DEFAULT
+        ..Rules::JCSA
     }
 }
 
@@ -31,7 +31,7 @@ pub(super) fn step(from: minase_core::Square, to: minase_core::Square) -> Move {
 
 pub(super) fn legal_moves(position: &Position) -> Vec<Move> {
     let mut moves = Vec::new();
-    MoveGenerator::new(Rules::ENGINE_DEFAULT.moves).generate_moves(position, &mut moves);
+    MoveGenerator::new(Rules::JCSA.moves).generate_moves(position, &mut moves);
     moves
 }
 
@@ -98,7 +98,7 @@ impl ScriptedEvaluator {
         for &mv in moves {
             assert!(legal_moves(&position).contains(&mv));
             script.push((position.clone(), mv));
-            position.make_move_unchecked(mv, Rules::ENGINE_DEFAULT.moves);
+            position.make_move_unchecked(mv, Rules::JCSA.moves);
         }
         Self {
             script,

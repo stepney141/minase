@@ -44,7 +44,7 @@ pub enum ContractError {
     FloatingPstMismatch,
     /// 実数FMの量子化結果と入力MNPTのFMが異なる。
     FloatingFmMismatch,
-    /// 診断局面の規則がエンジンの既定規則と異なる。
+    /// 診断局面の規則が規則セット`JCSA`と異なる。
     NondefaultRules,
     /// 着手診断の入力局面が空である。
     EmptyPositions,
@@ -105,9 +105,7 @@ impl std::fmt::Display for ContractError {
             Self::FloatingFmMismatch => {
                 f.write_str("floating FM does not quantize to the input MNPT FM")
             }
-            Self::NondefaultRules => {
-                f.write_str("diagnostic positions must use engine-default rules")
-            }
+            Self::NondefaultRules => f.write_str("diagnostic positions must use JCSA rules"),
             Self::EmptyPositions => f.write_str("move probe positions must be nonempty"),
             Self::AsymmetricReference => f.write_str("removal reference mirror sharing"),
             Self::Quantization => {

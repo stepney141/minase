@@ -22,8 +22,6 @@ from pathlib import Path
 
 RESULT_RE = re.compile(r"^(1-0|0-1|1/2-1/2)(?:\s*\{(.*)\})?\s*$")
 
-DEFAULT_RULE_SETS = ["R2,E1", "L1,R2,E1"]
-
 
 class Minase:
     """CECPで駆動するminaseプロセス1個。"""
@@ -32,7 +30,7 @@ class Minase:
         self.log = log
         self.rules = rules
         self.proc = subprocess.Popen(
-            [binary, "--protocol", "cecp", "--rules", rules],
+            [binary, "--protocol", "cecp"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -114,6 +112,7 @@ def replay_game(binary: str, rules: str, game: dict, log) -> dict:
         engine.send("xboard")
         engine.send("protover 2")
         engine.send("variant chu")
+        engine.send(f"option RuleSet={rules}")
         engine.send("new")
         engine.send("force")
         engine.sync()
@@ -161,7 +160,8 @@ def main() -> int:
     parser.add_argument(
         "--rules",
         action="append",
-        help="照合する規則セット。複数回指定できる（既定はR2,E1とL1,R2,E1）",
+        required=True,
+        help="照合する規則セット。複数回指定できる。",
     )
     parser.add_argument("--out", help="照合結果NDJSONの出力先")
     parser.add_argument("--log", help="CECP送受信ログの出力先")
@@ -172,7 +172,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    rule_sets = args.rules or DEFAULT_RULE_SETS
+    rule_sets = args.rules
     games = []
     with open(args.games, encoding="utf-8") as handle:
         for line in handle:

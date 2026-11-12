@@ -346,7 +346,7 @@ mod tests {
     /// 保留と強制成りを含む5規則セットを交換列の照合に使う。
     fn see_test_rules() -> [MoveRules; 5] {
         [
-            "engine-default",
+            "JCSA",
             "lishogi",
             "L1,L3,P0,P5,P6,R2,E1,E2",
             "L0,P1,R1,E0",

@@ -93,7 +93,7 @@ pub(super) fn process_job(
     let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
     for candidate in &replay.positions {
         let position = &candidate.position;
-        let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+        let game = Game::from_position(Rules::JCSA, position.clone());
         if openings && game.legal_moves().is_empty() {
             no_legal_moves += 1;
             continue;
@@ -129,7 +129,7 @@ pub(super) fn process_job(
                 Exclusion::MateBand
             } else if best_move_is_tactical(
                 position,
-                &MoveGenerator::new(Rules::ENGINE_DEFAULT.moves),
+                &MoveGenerator::new(Rules::JCSA.moves),
                 result.best_move,
             )
             .map_err(data_error)?

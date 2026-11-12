@@ -60,7 +60,7 @@ fn article_31_r1_history_attack_counts_cover_exactly_the_history_part() {
     for attacker in Color::ALL {
         let (start, cycle) = rook_cycle(attacker == Color::Black, attacker == Color::White);
         for plies in [2, 3] {
-            let mut game = Game::from_position(Rules::ENGINE_DEFAULT, start.clone());
+            let mut game = Game::from_position(Rules::JCSA, start.clone());
             for &mv in &cycle[..plies] {
                 assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
             }
@@ -114,7 +114,7 @@ fn article_31_r1_nearest_occurrence_excludes_an_earlier_quiet_move() {
         cycle[3],
     ];
     for in_history in [false, true] {
-        let mut game = Game::from_position(Rules::ENGINE_DEFAULT, root.clone());
+        let mut game = Game::from_position(Rules::JCSA, root.clone());
         if in_history {
             for &mv in detour.iter().chain(&cycle[..3]) {
                 assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
@@ -437,7 +437,7 @@ fn article_31_r1_snapshot_selects_the_rule_and_r2_r3_keep_draws() {
     for rule in [RepetitionRule::R1, RepetitionRule::R2, RepetitionRule::R3] {
         let rules = Rules {
             repetition: rule,
-            ..Rules::ENGINE_DEFAULT
+            ..Rules::JCSA
         };
         let game = Game::from_position(rules, root.clone());
         let snapshot = SearchSnapshot::from_game(&game).unwrap();
@@ -522,7 +522,7 @@ fn repetition_filter_preserves_collisions_nearest_occurrence_and_null_boundary()
 #[test]
 fn repetition_filter_matches_linear_scan_on_random_game_positions() {
     for specification in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",

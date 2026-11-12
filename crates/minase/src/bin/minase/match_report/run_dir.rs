@@ -29,6 +29,12 @@ pub(super) struct EngineRecord {
     /// 追加のUSIオプションは比較条件に残す。読み取りにも欄を必須とする。
     #[serde(rename = "options")]
     _options: Vec<(String, String)>,
+    /// ネットの報告値は未報告のnullも含めて必須とし、不正な形式を拒否する。
+    #[serde(
+        rename = "network_sha256",
+        deserialize_with = "minase::harness::deserialize_network_sha256"
+    )]
+    _network_sha256: Option<minase::harness::NetworkSha256>,
 }
 
 /// 校正で許可する固定ペア数Eloモード。

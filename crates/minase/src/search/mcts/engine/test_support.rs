@@ -12,7 +12,14 @@ impl Engine {
         evaluator: Option<Box<dyn Evaluator + Send>>,
         config: Config,
     ) -> Self {
-        let mut engine = Self::new(Network::from_bytes(Vec::new()), config);
+        let mut engine = Self::new(config);
+        engine
+            .set_option(
+                "NnModel",
+                crate::search::SearchOptionValue::String("test.onnx".to_owned()),
+            )
+            .unwrap();
+        engine.network = Some(Network::from_bytes(Vec::new()));
         engine.evaluator = evaluator;
         engine
     }

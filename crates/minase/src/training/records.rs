@@ -1311,7 +1311,7 @@ mod tests {
         // 理由12は両陣営の勝ちを表せるが、結果2とは組み合わせられない。
         for winner in Color::ALL {
             let header = Header::new(
-                "engine-default".into(),
+                "JCSA".into(),
                 "a".repeat(40),
                 [0; 32],
                 TeacherKind::Mcts,

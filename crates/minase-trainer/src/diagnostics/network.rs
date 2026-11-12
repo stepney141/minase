@@ -253,13 +253,13 @@ mod tests {
         let directory = Directory(path);
         let weights = vec![[0; 2]; FEATURE_COUNT];
         let values = crate::pst::v0_piece_values();
-        let without = Pst::from_weights(&weights, values, 1000.0, "engine-default").unwrap();
+        let without = Pst::from_weights(&weights, values, 1000.0, "JCSA").unwrap();
         let embeddings = vec![[1; FM_RANK]; FEATURE_COUNT];
         let with = Pst::from_weights_with_fm(
             &weights,
             values,
             1000.0,
-            "engine-default",
+            "JCSA",
             FmWeights {
                 embeddings: &embeddings,
                 signs: &[1; FM_RANK],

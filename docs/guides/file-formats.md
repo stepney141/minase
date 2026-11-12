@@ -98,7 +98,7 @@ ONNXのネットはONNXが形式を定めるので載せない。
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| 対局ハーネスの実行条件`manifest.json` | `format_version = 5` | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
+| 対局ハーネスの実行条件`manifest.json` | `format_version = 8` | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスの起動の記録`invocations.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスの累計実行時間`summary.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスのペアの記録`pairs/<番号>.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/harness/records/mod.rs` |
@@ -127,8 +127,8 @@ ONNXのネットそのものとTensorRTのエンジンのキャッシュは、ON
 
 | 形式 | 識別と版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| 固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl` | なし | `minase dev nn-fixture` | minaseのテスト、学習器の`fixture-eval`、学習器の試験 | `crates/minase/src/bin/minase/nn_fixture.rs` |
-| 固定局面集の推論の結果（`--out`で指定） | なし | `minase dev nn-eval`、学習器の`fixture-eval` | `tools/train/zero/nn_compare.py` | `crates/minase/src/bin/minase/nn_eval.rs` |
+| 固定局面集`crates/minase/tests/fixtures/nn-positions.jsonl` | なし | USIの独自コマンド`nn-fixture` | minaseのテスト、学習器の`fixture-eval`、学習器の試験 | `crates/minase/src/diagnostics/nn_fixture.rs` |
+| 固定局面集の推論の結果（出力先を指定） | なし | USIの独自コマンド`nn-eval`、学習器の`fixture-eval` | `tools/train/zero/nn_compare.py` | `crates/minase/src/diagnostics/nn_eval.rs` |
 
 ## 同じ名前で中身が違うファイル
 

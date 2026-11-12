@@ -36,7 +36,7 @@ impl Drop for TemporaryDirectory {
 }
 
 fn record(number: u32, start_ply: u16, plies: usize, outcome: Outcome) -> GameRecord {
-    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut game = Game::new(Rules::JCSA);
     let mut entries = Vec::new();
     for _ in 0..plies {
         let played = sorted_legal_moves(&game).unwrap()[0];
@@ -75,7 +75,7 @@ fn record(number: u32, start_ply: u16, plies: usize, outcome: Outcome) -> GameRe
 
 fn write_games(path: &Path, records: &[GameRecord]) {
     let header = Header::new(
-        "engine-default".into(),
+        "JCSA".into(),
         "0123456789abcdef0123456789abcdef01234567".into(),
         [0; 32],
         TeacherKind::AlphaBeta,

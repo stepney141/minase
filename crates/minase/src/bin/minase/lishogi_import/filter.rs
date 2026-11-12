@@ -62,7 +62,7 @@ pub(super) enum Exclusion {
     /// `duplicate`は先行するメタデータ検査を通過した棋譜IDの重複で、両サブコマンドで数える。
     /// 先行する同一IDの棋譜が再生時に除外された場合も、後続の棋譜を重複として扱う。
     Duplicate,
-    /// `illegal_default_rules`は`games`で着手の解析または`engine-default`規則での適用に失敗した場合である。
+    /// `illegal_default_rules`は`games`で着手の解析または`JCSA`規則での適用に失敗した場合である。
     /// 両サブコマンドで、候補局面の経過手数がu16の上限65,535手を超えた場合も数える。
     /// `openings`の不合法手による再生の打ち切りは、[`Report::truncated_illegal`]に記録する。
     IllegalDefaultRules,

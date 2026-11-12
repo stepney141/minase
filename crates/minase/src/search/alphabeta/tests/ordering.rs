@@ -226,7 +226,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
     let capture_history = empty_capture_history();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for name in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",
@@ -694,7 +694,7 @@ fn limited_quiet_picker_preserves_original_ordinals_and_promotions() {
     let mut skipped_total = 0;
     let mut retained_promotions = 0;
     for name in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",

@@ -37,7 +37,7 @@ fn round_trip<F: FeatureSet>() {
     let bytes = encode::<F, _>(&EncodeInput {
         width: width as u32,
         cp_per_logit: 7.9375,
-        rule_set: "engine-default",
+        rule_set: "JCSA",
         piece_values: &piece_values,
         linear: &vec![[0; 2]; FEATURE_COUNT],
         weights: &vec![0; F::DIMENSIONS * width],
@@ -59,7 +59,7 @@ fn round_trip<F: FeatureSet>() {
     let network = Network::<F, PairwiseL16L32>::decode(&read).unwrap();
     assert_eq!(network.width(), width);
     assert_eq!(network.cp_per_logit(), 7.9375);
-    assert_eq!(network.rule_set(), "engine-default");
+    assert_eq!(network.rule_set(), "JCSA");
     assert_eq!(
         network.checksum(),
         &<[u8; 32]>::from(Sha256::digest(&read[192..]))

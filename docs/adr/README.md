@@ -81,7 +81,7 @@ GSPRTは、同じ開始局面で先後を入れ替えた2局を1ペアとし、�
 `H1`は候補が基準より強いと判定された結果、`H0`は10 Eloの改善があるとは言えないと判定された結果を指す。
 STCは持ち時間10秒と1手0.1秒の加算の短い時間制御、LTCは持ち時間60秒と1手0.2秒の加算の長い時間制御であり、採用はLTCの`H1`で決める。
 有効ペアは、手数の上限に達して破棄されたペアを除いた、統計に算入されたペアである。
-benchは、`minase dev bench`で決まった局面の集合を探索し、ノード数と時間を測る診断である。
+benchは、決まった局面の集合を探索し、ノード数と時間を測る診断である。USIの独自コマンド`bench`で実行し、2026年11月12日より前のADRは、当時のサブコマンドの名前で`minase dev bench`と書いている。
 SPSAは、多数の係数を自己対局の結果から同時に調整する手法であり、手順は[SPSAの手引き](../guides/spsa.md)にある。
 
 探索の用語は次のとおりである。
@@ -316,7 +316,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月27日 [AlphaZero型探索のネットは、大域プーリングを入れたResNetとし、10ブロック128チャネルから始める](archive/start-the-zero-network-as-a-10-block-128-channel-resnet-with-global-pooling.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索のネットの推論は、ortクレートのload-dynamicでONNX Runtimeを実行時に読み込み、既定ではTensorRTのFP16で行う](run-zero-network-inference-through-ort-load-dynamic.md)
 - 2026年10月27日 [TensorRTのエンジンのキャッシュは、ネットの検査和、GPUの機種名とメモリ容量、および最大バッチで分けたディレクトリに置く](key-tensorrt-engine-caches-by-network-checksum-gpu-and-max-batch.md)
-- 2026年10月27日 [AlphaZero型探索のネットは起動引数`--nn-model`のファイルで指定し、到達の判定に使うネットだけを埋め込む](select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)
+- 2026年10月27日 [AlphaZero型探索のネットは起動引数`--nn-model`のファイルで指定し、到達の判定に使うネットだけを埋め込む](archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)（置き換え済み）
 - 2026年10月27日 [探索方式は起動引数`--search`で起動時に選び、探索の境界の閉じた列挙型`Searcher`で束ねる](select-the-search-method-at-startup-through-a-closed-enum.md)
 - 2026年10月27日 [AlphaZero型探索の強化学習の自己対局は、Gumbel AlphaZeroの探索をmctxの既定値で行う](archive/use-gumbel-alphazero-for-zero-self-play-search.md)（置き換え済み）
 - 2026年10月27日 [MCTSの対局の探索は、dlshogiの式のPUCTと仮想損失によるバッチ評価で行い、時間配分はαβ探索と同じ式を使う](search-mcts-games-by-puct-with-virtual-loss-batches.md)
@@ -376,3 +376,9 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月10日 [AlphaZero型探索の推論は、ortのrc.13のまま、ONNX Runtime 1.31.1の実行時ライブラリを読み込む](load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)
 - 2026年11月11日 [AlphaZero型探索のネットの推論は、入力をuint8で送り、方策を取り得る16,108ラベルのFP16で受け取り、出力を呼び出しごとにピン留めメモリへ結び付ける](exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)
 - 2026年11月11日 [AlphaZero型探索の推論は、ortのrc.15を使い、ONNX Runtimeの環境をプロセスの終了まで保持する](hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)
+- 2026年11月12日 [標準規則の千日手をR1に置き換えた規則セットをJCSAと名づける](name-the-standard-rule-set-jcsa.md)
+- 2026年11月12日 [規則セットは起動後のプロトコルで必ず指定させ、エンジンは既定値を持たない](require-the-rule-set-through-the-protocol-and-keep-no-default.md)
+- 2026年11月12日 [AlphaZero型探索のネットはUSIのオプション`NnModel`のファイルで指定し、`isready`で読み込む](select-zero-networks-by-the-usi-option-nnmodel.md)
+- 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)
+- 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)
+- 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)

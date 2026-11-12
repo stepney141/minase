@@ -7,7 +7,7 @@
 ## コンテキスト
 
 対局ハーネス`minase match run`の`commit:`の指定は、コミットをビルドしたエンジンを`--protocol usi --rules <規則>`の起動引数で起動し、ほかの引数を受け付けなかった。
-MCTSは起動引数`--search mcts`と`--nn-model <ネットのファイル>`で選ぶので（[探索方式の選択のADR](select-the-search-method-at-startup-through-a-closed-enum.md)、[ネットの指定のADR](select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)）、このままではハーネスでMCTSを測れない。
+MCTSは起動引数`--search mcts`と`--nn-model <ネットのファイル>`で選ぶので（[探索方式の選択のADR](select-the-search-method-at-startup-through-a-closed-enum.md)、[ネットの指定のADR](archive/select-zero-networks-by-startup-argument-and-embed-only-the-judged-one.md)）、このままではハーネスでMCTSを測れない。
 [CONTRIBUTING.md](../../CONTRIBUTING.md)は、ハーネスへ機能比較のスイッチを足すことを禁じ、棋力に影響し得る変更をコミット対コミットの対局で判定すると定めている。
 エンジンの開発者は、[探索方式の共存とMCTSの設計書](../plans/archived/alphazero-mcts.md)でこの拡張を決めた。
 

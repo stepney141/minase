@@ -1,22 +1,15 @@
 //! 中将棋エンジンと補助ツールの引数を解析し、実行先を振り分ける。
 
 use std::path::PathBuf;
-use std::process::{ExitCode, Termination};
+use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use minase_core::RuleCode;
-use minase_core::rules::parse_rule_set;
 
-mod bench;
 mod engine;
 mod io_log;
 mod lishogi_import;
 mod match_report;
 mod match_runner;
-mod nn_eval;
-mod nn_fixture;
-mod perft;
-mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
 mod teacher_stats;
@@ -30,12 +23,12 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// エンジンの起動と補助ツールの呼び出しを排他的に解析する。
 ///
-/// サブコマンドなしはエンジン起動であり、`--protocol`と`--rules`を必須とする。
-/// 両欄は`Option`だが`required = true`を付け、`subcommand_negates_reqs`で補助ツール時だけ必須を外す。
-/// `--protocol`、`--rules`、`--io-log`、`--search`、`--nn-model`とサブコマンドの併用は拒否する。
-/// 探索方式は既定で`alphabeta`とし、`mcts`にはUSIと`--nn-model`の指定を要求する。
+/// サブコマンドなしはエンジン起動であり、`--protocol`を必須とする。
+/// この欄は`Option`だが`required = true`を付け、`subcommand_negates_reqs`で補助ツール時だけ必須を外す。
+/// `--protocol`、`--io-log`、`--search`とサブコマンドの併用は拒否する。
+/// 探索方式は既定で`alphabeta`とし、`mcts`にはUSIを要求し、ネットは`NnModel`で指定する。
 /// 引数なしの起動もエラーである。プロトコルは`usi`か`cecp`で、既定値も自動判別も持たない。
-/// 対局ハーネスの`commit:`は過去のコミットを`--protocol usi --rules <規則>`で起動するため、この形は互換性の対象である。
+/// 対局ハーネスの`commit:`はコミットを`--protocol usi`で起動するため、この形は互換性の対象である。
 /// 理由は`docs/adr/run-developer-tools-as-engine-subcommands.md`にある。
 #[derive(Parser)]
 #[command(
@@ -47,32 +40,15 @@ struct Arguments {
     /// 使用する通信プロトコル。
     #[arg(long, value_enum, required = true)]
     protocol: Option<ProtocolKind>,
-    /// 採用するローカルルールコード列。
-    #[arg(long, required = true, value_parser = parse_rule_set_argument)]
-    rules: Option<RuleSetArgument>,
     /// 入出力のログを新規作成するパス。
     #[arg(long)]
     io_log: Option<PathBuf>,
     /// 起動時に選ぶ探索方式。
     #[arg(long, value_enum, default_value = "alphabeta")]
     search: SearchKind,
-    /// MCTSで読むONNX形式のネットのパス。
-    #[arg(long)]
-    nn_model: Option<PathBuf>,
     /// 補助ツールの呼び出し。
     #[command(subcommand)]
     command: Option<Command>,
-}
-
-/// 解析済みの`--rules`引数。
-#[derive(Clone)]
-struct RuleSetArgument(Vec<RuleCode>);
-
-/// `--rules`の値を規則セット名またはコード列として解析する。
-fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
-    parse_rule_set(input)
-        .map(RuleSetArgument)
-        .map_err(|error| error.to_string())
 }
 
 /// 対応する通信プロトコル。
@@ -140,16 +116,6 @@ enum DataCommand {
 
 #[derive(Subcommand)]
 enum DevCommand {
-    /// 固定局面で探索を検証する。
-    Bench(bench::Arguments),
-    /// ネットの入出力の照合に使う固定局面集を書き出す。
-    NnFixture(nn_fixture::Arguments),
-    /// 固定局面集をネットで評価し、推論の照合用JSONを書き出す。
-    NnEval(nn_eval::Arguments),
-    /// 合法手の経路数を数える。
-    Perft(perft::Arguments),
-    /// ランダム対局で不変条件を検証する。
-    RandomPlay(random_play::Arguments),
     /// 校正用のランダム着手エンジンを起動する。
     UsiRandom,
 }
@@ -173,12 +139,8 @@ fn main() -> ExitCode {
             arguments
                 .protocol
                 .expect("clap requires --protocol for the engine"),
-            arguments
-                .rules
-                .expect("clap requires --rules for the engine"),
             arguments.io_log,
             arguments.search,
-            arguments.nn_model,
         ),
         Some(Command::Match(MatchCommand::Run(arguments))) => match_runner::main(arguments),
         Some(Command::Match(MatchCommand::Report(arguments))) => match_report::main(arguments),
@@ -187,12 +149,12 @@ fn main() -> ExitCode {
         Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
         Some(Command::Data(DataCommand::TeacherStats(arguments))) => teacher_stats::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
-        Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
-        Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
-        Some(Command::Dev(DevCommand::NnEval(arguments))) => nn_eval::main(arguments),
-        Some(Command::Dev(DevCommand::Perft(arguments))) => perft::main(arguments),
-        Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
-        Some(Command::Dev(DevCommand::UsiRandom)) => return usi_random::main().report(),
+        Some(Command::Dev(DevCommand::UsiRandom)) => {
+            if let Err(error) = usi_random::main() {
+                eprintln!("error: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
     }
     ExitCode::SUCCESS
 }
@@ -340,7 +302,17 @@ mod tests {
     #[test]
     fn subcommands_do_not_require_engine_arguments() {
         for args in [
-            vec!["match", "run", "--run-dir", "run", "elo", "--pairs", "4"],
+            vec![
+                "match",
+                "run",
+                "--rules",
+                "JCSA",
+                "--run-dir",
+                "run",
+                "elo",
+                "--pairs",
+                "4",
+            ],
             vec!["match", "report", "--run-dir", "run"],
             vec!["data", "selfplay", "inspect", "positions.mnsd"],
             zero_selfplay_arguments(),
@@ -357,22 +329,6 @@ mod tests {
                 "--nodes",
                 "200",
             ],
-            vec!["dev", "bench"],
-            vec!["dev", "nn-fixture", "--out", "positions.jsonl"],
-            vec![
-                "dev",
-                "nn-eval",
-                "--nn-model",
-                "net.onnx",
-                "--backend",
-                "cpu",
-                "--batch",
-                "7",
-                "--out",
-                "evaluation.json",
-            ],
-            vec!["dev", "perft", "1", "--rules", "engine-default"],
-            vec!["dev", "random-play", "--rules", "engine-default"],
             vec!["dev", "usi-random"],
         ] {
             let parsed = Arguments::try_parse_from(std::iter::once("minase").chain(args));
@@ -385,12 +341,9 @@ mod tests {
     fn engine_arguments_conflict_with_subcommands() {
         for args in [
             vec!["--protocol", "usi"],
-            vec!["--rules", "engine-default"],
             vec!["--io-log", "io.log"],
             vec!["--search", "alphabeta"],
             vec!["--search", "mcts"],
-            vec!["--nn-model", "net.onnx"],
-            vec!["--protocol", "usi", "--rules", "engine-default"],
         ] {
             let error = Arguments::try_parse_from(
                 std::iter::once("minase")
@@ -417,7 +370,7 @@ mod tests {
                 "--params",
                 "params.txt",
                 "--rules",
-                "engine-default",
+                "JCSA",
                 "--each",
                 "depth=2",
                 "--concurrency",
@@ -427,7 +380,7 @@ mod tests {
                 "--pairs-per-iteration",
                 "1",
             ],
-            vec!["params", "--engine", "engine", "--rules", "engine-default"],
+            vec!["params", "--engine", "engine"],
             vec!["apply", "--run-dir", "run", "--source", "params.rs"],
         ] {
             let parsed = Arguments::try_parse_from(["minase", "spsa"].into_iter().chain(args));
@@ -438,7 +391,7 @@ mod tests {
     // [`Arguments`]の契約: 解析後の検査でも使い方に新しい呼び出し名を表示する。
     #[test]
     fn validation_errors_use_full_subcommand_names() {
-        for path in [["match", "run"], ["dev", "random-play"], ["dev", "perft"]] {
+        for path in [["match", "run"], ["spsa", "params"]] {
             let error = subcommand_command(&path)
                 .error(clap::error::ErrorKind::ValueValidation, "invalid arguments");
             assert_eq!(error.exit_code(), 2);
@@ -451,59 +404,11 @@ mod tests {
     }
 
     #[test]
-    fn cli_requires_explicit_protocol_and_rules() {
-        // [`Arguments`]はエンジンの起動に--protocol usi|cecpと--rulesを必須とし、
-        // 既定値と自動判別を設けない。
+    fn cli_requires_explicit_protocol() {
         assert!(Arguments::try_parse_from(["minase"]).is_err());
-        assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
-        assert!(Arguments::try_parse_from(["minase", "--rules", "engine-default"]).is_err());
-        // --protocolの値はusiとcecpの2値のみ。
-        assert!(
-            Arguments::try_parse_from([
-                "minase",
-                "--protocol",
-                "xboard",
-                "--rules",
-                "engine-default"
-            ])
-            .is_err()
-        );
-        assert!(
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "engine-default"])
-                .is_ok()
-        );
-        assert!(
-            Arguments::try_parse_from([
-                "minase",
-                "--protocol",
-                "cecp",
-                "--rules",
-                "engine-default"
-            ])
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn article_33_rules_argument_shares_the_wire_value_grammar() {
-        // --rulesはUSIの規則オプションと同じ文法を[`minase_core::rules::parse_rule_set`]で解析する。
-        // chu-shogi.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
-        let parse = |value: &str| {
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
-                .map(|arguments| arguments.rules.unwrap().0)
-        };
-
-        assert_eq!(
-            parse("LISHOGI").unwrap(),
-            vec![
-                RuleCode::L1,
-                RuleCode::L2,
-                RuleCode::P0,
-                RuleCode::P3,
-                RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E3
-            ]
-        );
+        assert!(Arguments::try_parse_from(["minase", "--protocol", "xboard"]).is_err());
+        for protocol in ["usi", "cecp"] {
+            assert!(Arguments::try_parse_from(["minase", "--protocol", protocol]).is_ok());
+        }
     }
 }

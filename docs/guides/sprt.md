@@ -37,7 +37,7 @@ STCの標準コマンドは次のとおりである。
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each time=10000+100 gsprt --max-pairs 3000
+  --rules JCSA --each time=10000+100 gsprt --max-pairs 3000
 ```
 
 STCの判定は、次の振分け規則で扱う。
@@ -56,7 +56,7 @@ LTCの標準コマンドは次のとおりである。
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-ltc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each time=60000+200 gsprt
+  --rules JCSA --each time=60000+200 gsprt
 ```
 
 LTCのシードは、STCの基本シードからペア数以上離れた未使用の値とする（[隣接シードで対局が重複する教訓](../lessons/derive-seed-adjacent-collision.md)）。
@@ -92,6 +92,8 @@ cargo run --release --bin minase -- match run \
 ```
 
 ベースライン側だけ`--baseline-limit`で深さ1へ上書きする非対称条件が、このゲートの定義である。
+コミット0045833は、握手で`Threads`と`USI_Hash`を宣言せず、規則を起動引数で受ける版なので、現行のハーネスでは起動できない。
+このゲートを測り直すときは、当時のハーネスを使う。
 
 ### 外部エンジンとの強さ比較
 
@@ -123,7 +125,7 @@ HaChuが自玉の詰みを判定して着手を返さずに結果行だけを出
 cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新> --baseline commit:<旧> \
-  --each depth=4 elo --pairs 200
+  --rules JCSA --each depth=4 elo --pairs 200
 ```
 
 全勝または全敗の標本ではロジスティックEloの点推定が無限大になる。
@@ -252,17 +254,23 @@ cargo run --release --bin minase -- match report \
 キャッシュの検証と再ビルドの規則は、`crates/minase/src/harness/commit.rs`の`resolve_commit`のdocコメントにある。
 作業ツリーにある未コミットの変更は、この形式のビルドには含まれない。
 ビルドには実行した作業ツリーの`.cargo/config.toml`の`rustflags`も連結されて適用されるので、ビルド設定を変えた後の比較は[教訓](../lessons/do-not-mix-builds-across-cargo-config-changes.md)に従う。
-起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
-`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
-規則コードP0とE0を導入する前のコミットを対戦相手とする測定では、規則コードを列挙した指定を旧版のバイナリが拒否するので、`engine-default`などのプリセット名で指定する。
+起動引数`--protocol usi`は自動で付与される。
+対局の規則は、新しい測定では`--rules`で必ず指定する。
+ハーネスは、`--rules`の値を入力原文のまま、握手の後に`setoption name RuleSet value <値>`で両エンジンへ送り、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
+`--resume`では`--rules`を指定できず、`manifest.json`に記録した値を使う。
 `commit:`のエンジンに起動引数を足すときは、`--candidate-args`または`--baseline-args`に空白で区切った引数を指定する。
-足した引数は`--protocol usi --rules <マッチ規則>`の後に続き、`manifest.json`のエンジンの同一性に記録されて、再開時に照合される（理由は[起動引数の拡張のADR](../adr/append-startup-arguments-to-commit-engine-specs.md)）。
+足した引数は`--protocol usi`の後に続き、`manifest.json`のエンジンの同一性に記録されて、再開時に照合される（理由は[起動引数の拡張のADR](../adr/append-startup-arguments-to-commit-engine-specs.md)）。
 引数の相対パスは、`minase match run`を起動した作業ディレクトリから解決される。
 この2つの引数は`commit:`以外の指定には使えず、`--resume`とも併用できない。
 
+規則を起動引数`--rules`で受けていた版のコミットは、起動引数`--rules`がないと起動しない。
+この版のコミットを対戦相手にする測定では、その側に`--baseline-args '--rules L0,P0,R1,E0'`のように起動引数を足し、`match run --rules`にも同じコード列を渡す。
+規則セット名`JCSA`は`engine-default`から改名したものであり、この版のバイナリは受理しないので、名前ではなくコード列で指定する。
+規則コードP0とE0を導入する前のコミットは、コード列の指定も拒否するので、そのコミットを対戦相手とする測定は当時のハーネスで行う。
+
 未コミットの作業ツリーや外部のUSIエンジンを測る場合は、パスと空白区切りの引数からなる起動コマンドで指定する。
-たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
-minase本体は`--protocol`と`--rules`の指定が必須なので、この形式では両方の引数を必ず書く。
+たとえば`"target/release/minase --protocol usi"`のように書く。
+minase本体は`--protocol`の指定が必須なので、この形式では必ず書く。
 数時間を超える測定で作業ツリーのバイナリを使うときは、[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)に従う。
 
 USIオプションは`--candidate-option '名前=値'`と`--baseline-option '名前=値'`でそれぞれ繰り返し指定でき、最初の`=`で名前と値を分ける。
@@ -286,19 +294,26 @@ USIのエンジンへ`go movetime`を送る`movetime=`とは別の指定であ�
 HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
 測定の詳細は[1手固定時間の測定記録](../measurements/hachu-condition-grid/hachu-grid-fixed1-2.md)にある。
 外部エンジンに1手固定時間を与える測定では、[外部エンジンの固定時間は時間切れ判定との余裕を本測定前に見積もる](../lessons/fixed-time-forfeit-margin.md)に従う。
-規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+外部エンジンの規則はそのエンジンの側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+握手で`feature option="RuleSet ..."`を宣言するCECPのエンジン（minase自身をCECPで動かす場合）には、ハーネスが`new`の前に`option RuleSet=<--rulesの値>`を送る。
 
-AlphaZero型探索のMCTSは、`--candidate-args "--search mcts --nn-model <ネットのファイル>"`のように起動引数で選ぶ。
+AlphaZero型探索のMCTSは、`--candidate-args '--search mcts'`で探索方式を選び、`--candidate-option 'NnModel=<ネットのファイル>'`でネットを指定する。
+ネットのパスは`manifest.json`のオプションの欄に残る。
+ネットの内容は、エンジンが`isready`で返すチェックサムをハーネスが`manifest.json`のエンジンごとの欄`network_sha256`に記録し、再開時と各対局の開始時に照合する（理由は[チェックサムの照合のADR](../adr/record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
+同じパスのファイルを測定の途中で書き換えると、次の対局の開始時に測定がエラーで止まる。
+その局は反則負けにならず、それまでに終わったペアの記録は残るので、ファイルを元に戻して`--resume`で再開する。
+αβ探索のエンジンのようにチェックサムを返さないエンジンでは、欄は`null`になる。
 MCTSの推論にはONNX Runtimeが要るので、`tools/train/zero/setup.sh`で導入した環境の`tools/train/zero/env.sh`をbashで読み込んでから`minase match run`を起動する。
 推論の設定は`--candidate-option NnBatchSize=64`や`--baseline-option NnBackend=cuda`のように指定でき、指定がなければMCTSは既定のTensorRTで推論し、TensorRTのエンジン（ネットをGPU向けに最適化したもの）のキャッシュを`$XDG_CACHE_HOME/minase/tensorrt`に置く。
 `XDG_CACHE_HOME`が設定されていないとminaseは`isready`でエラーになって終了するので、測定の前に設定する。
 TensorRTのエンジンの作成は、作業機の10ブロック128チャネルのネットで約11秒かかり、キャッシュの鍵には1回の推論の最大バッチ（`NnBatchSize`、既定256）が入る。
-同時に起動した複数の局が同じTensorRTのエンジンを作り始めないように、測定の前に同じネットと最大バッチでエンジンを1回起動してキャッシュを作っておく。
+ハーネスは、対局を始める前に候補と基準のエンジンを順に1回ずつ起動して`isready`まで進めるので、TensorRTのエンジンのキャッシュはこの事前の起動で作られ、同時に始まる複数の局が同じエンジンを作り始めることはない。
+事前の起動も応答の期限（`--response-timeout`、既定は120秒）に従うので、TensorRTのエンジンの作成が期限を超えてエラーになる場合は、期限を延ばすか、次のように同じネットと最大バッチでエンジンを1回起動してキャッシュを先に作る。
 
 ```console
 source tools/train/zero/env.sh   # bashで実行する
-printf 'usi\nisready\nquit\n' | target/release/minase --protocol usi --rules engine-default \
-  --search mcts --nn-model <ネットのファイル>
+printf 'usi\nsetoption name RuleSet value JCSA\nsetoption name NnModel value <ネットのファイル>\nisready\nquit\n' \
+  | target/release/minase --protocol usi --search mcts
 ```
 
 MCTSの`Threads`は1だけを受け付け、USIの`nodes`はシミュレーションの回数を表し、`depth`の制限は受け付けない。

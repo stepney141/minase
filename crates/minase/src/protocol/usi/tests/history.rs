@@ -7,15 +7,21 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 
 const CORRECTION_INDEX: usize = 17;
 
-fn setup() -> (Engine, UsiProtocol) {
-    let mut engine = make_engine(&[RuleCode::R1]);
-    let mut protocol = UsiProtocol::new(&engine);
+fn setup() -> UsiProtocol {
+    let mut protocol = UsiProtocol::new();
+    let rules = canonical_rules_text(&rule_codes(&[RuleCode::R1]));
+    assert_eq!(
+        run(
+            &mut protocol,
+            &format!("setoption name RuleSet value {rules}\n")
+        ),
+        ""
+    );
     run(
         &mut protocol,
-        &mut engine,
         "setoption name USI_Hash value 1\nposition startpos\n",
     );
-    (engine, protocol)
+    protocol
 }
 
 fn seed(protocol: &mut UsiProtocol) {
@@ -80,12 +86,8 @@ fn assert_seed(protocol: &UsiProtocol, command: &str) {
 
 #[test]
 fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
-    let (mut engine, mut protocol) = setup();
-    run(
-        &mut protocol,
-        &mut engine,
-        "setoption name Threads value 4\n",
-    );
+    let mut protocol = setup();
+    run(&mut protocol, "setoption name Threads value 4\n");
     seed(&mut protocol);
     for command in [
         "setoption name RuleSet value XX9",
@@ -95,7 +97,7 @@ fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
         "setoption name Threads value nope",
         "setoption name USI_Hash value 0",
     ] {
-        let output = run(&mut protocol, &mut engine, command);
+        let output = run(&mut protocol, command);
         assert!(output.contains("info string error:"), "{command}: {output}");
         assert_seed(&protocol, command);
     }
@@ -106,7 +108,7 @@ fn history_carry_usi_preserves_rejected_settings_and_unchanged_threads() {
         "position startpos",
         "isready",
     ] {
-        run(&mut protocol, &mut engine, command);
+        run(&mut protocol, command);
         assert_seed(&protocol, command);
     }
 }
@@ -122,14 +124,10 @@ fn history_carry_usi_clears_new_games_accepted_settings_and_changed_threads() {
         ("setoption name DrawValueBlack value -50", 4),
         ("setoption name DrawValueWhite value 50", 4),
     ] {
-        let (mut engine, mut protocol) = setup();
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name Threads value 4\n",
-        );
+        let mut protocol = setup();
+        run(&mut protocol, "setoption name Threads value 4\n");
         seed(&mut protocol);
-        let output = run(&mut protocol, &mut engine, command);
+        let output = run(&mut protocol, command);
         assert!(!output.contains("error"), "{command}: {output}");
         let histories = protocol.searcher.as_ref().unwrap().histories_for_test();
         assert_eq!(histories.workers.len(), workers, "{command}");
@@ -170,32 +168,26 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
     // 返却値は開始時の履歴を1回だけ減衰させた商である。
     for held in [false, true] {
         for hit in [false, true] {
-            let (mut engine, mut protocol) = setup();
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name Threads value 4\n",
-            );
+            let mut protocol = setup();
+            run(&mut protocol, "setoption name Threads value 4\n");
             seed(&mut protocol);
             let mut output = Vec::new();
             let mut active = protocol
-                .start_go(&engine, &["ponder", "depth", "3"], &mut output)
+                .start_go(&["ponder", "depth", "3"], &mut output)
                 .unwrap();
             if held {
                 while matches!(active, Some(ActiveSearch::Running { .. })) {
                     protocol
-                        .wait_search_event(&engine, &mut active, &mut output)
+                        .wait_search_event(&mut active, &mut output)
                         .unwrap();
                 }
                 assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
             }
             if hit {
-                protocol
-                    .ponderhit(&engine, &mut active, &mut output)
-                    .unwrap();
+                protocol.ponderhit(&mut active, &mut output).unwrap();
                 if active.is_some() {
                     protocol
-                        .finish_search(&engine, &mut active, &mut output, false)
+                        .finish_search(&mut active, &mut output, false)
                         .unwrap();
                 }
             } else {

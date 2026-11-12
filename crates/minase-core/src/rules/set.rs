@@ -123,8 +123,11 @@ pub struct Rules {
 }
 
 impl Rules {
-    /// エンジン既定の規則集合L0・P0・R1・E0(第33条第5項)。
-    pub const ENGINE_DEFAULT: Self = Self {
+    /// 規則セット名JCSAが表す規則集合L0・P0・R1・E0(第33条第5項)。
+    ///
+    /// JCSAは日本中将棋連盟(Japan Chu Shogi Association)の略である。
+    /// 連盟式の千日手R0は提供しないので、千日手の扱いに限り連盟の規則と異なる。
+    pub const JCSA: Self = Self {
         moves: MoveRules::standard(),
         repetition: RepetitionRule::R1,
         e1: false,

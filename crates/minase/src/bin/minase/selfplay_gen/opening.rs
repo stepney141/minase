@@ -2,7 +2,7 @@
 //!
 //! 開始局面一覧の行形式は書き手の[`crate::lishogi_import`]に定める。
 //! [`read_openings`]はUTF-8の全行を空白区切りで読み、空行やコメントを読み飛ばさない。
-//! 0行のファイルもエラーとし、拡張SFENの復元にはエンジン既定の移動規則を使う。
+//! 0行のファイルもエラーとし、拡張SFENの復元にはJCSAの移動規則を使う。
 
 use minase::datagen::data_error;
 use minase::datagen::opening::generate_opening;
@@ -76,13 +76,13 @@ pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
             let _id = fields.next().ok_or(OpeningError::InvalidFields)?;
             let ply: u32 = fields.next().ok_or(OpeningError::InvalidFields)?.parse()?;
             let sfen = fields.collect::<Vec<_>>().join(" ");
-            let setup = parse_extended_sfen(&sfen, Rules::ENGINE_DEFAULT.moves)?;
+            let setup = parse_extended_sfen(&sfen, Rules::JCSA.moves)?;
             if ply >= u32::from(u16::MAX) || setup.next_move_number() != ply + 1 {
                 return Err(OpeningError::InvalidFields.into());
             }
             let (mut position, lion, _) = setup.into_parts();
             position.set_lion_capture(lion)?;
-            let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+            let game = Game::from_position(Rules::JCSA, position.clone());
             if !position.promotion_deferred().is_empty()
                 || game.legal_moves().is_empty()
                 || position.royal_pieces(Color::Black).is_empty()
@@ -235,7 +235,7 @@ mod tests {
                 .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
                 .find(|game| game["id"] == "opening-prefix-2u7dwJf9")
                 .unwrap();
-        let mut original = Game::new(Rules::ENGINE_DEFAULT);
+        let mut original = Game::new(Rules::JCSA);
         for text in input["moves"].as_str().unwrap().split_whitespace().take(60) {
             original
                 .play(usi::parse(original.position(), text).unwrap())
@@ -250,18 +250,14 @@ mod tests {
         let path = directory.0.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
         let openings = read_openings(&path).unwrap();
-        let (start, moves) = starting_game(
-            Rules::ENGINE_DEFAULT,
-            derive_seed(42, 1),
-            Some(&openings[0]),
-        )
-        .unwrap();
+        let (start, moves) =
+            starting_game(Rules::JCSA, derive_seed(42, 1), Some(&openings[0])).unwrap();
         assert_eq!(start.position(), original.position());
         assert_eq!(start.ply_count(), 0);
         assert!(moves.is_empty());
         let completed = play_game_from_opening(
             &epoch_zero_nnue(),
-            Rules::ENGINE_DEFAULT,
+            Rules::JCSA,
             1,
             PlaySettings {
                 base_seed: 42,

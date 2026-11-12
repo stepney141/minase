@@ -41,7 +41,7 @@ class LearningRateTests(unittest.TestCase):
         games = sorted([int(numbers[sample][0]), *map(int, numbers[~(validation | sample)][:6]),
                         int(numbers[validation][0])])
         write_small(cls.data_path, [single_game(game, game % 2, game % 3, 32768, (65_535,))
-                                   for game in games], "engine-default")
+                                   for game in games], "JCSA")
         arguments = train_arguments(cls.initial / "checkpoint.pt", cls.root / "unused")
         set_training_data(arguments, [str(cls.data_path)])
         args = vars(_parse(arguments))

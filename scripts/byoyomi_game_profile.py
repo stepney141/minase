@@ -105,10 +105,10 @@ def observe_search_data(turn: dict[str, Any], line: str) -> None:
 class Engine:
     """期限つきでUSIの行を読み、終了時に回収するエンジンプロセス。"""
 
-    def __init__(self, path: Path, rules: str, timeout: float) -> None:
+    def __init__(self, path: Path, timeout: float) -> None:
         self.timeout = timeout
         self.proc = subprocess.Popen(
-            [str(path), "--protocol", "usi", "--rules", rules],
+            [str(path), "--protocol", "usi"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             bufsize=0,
@@ -253,7 +253,7 @@ def play(args: argparse.Namespace) -> dict[str, Any]:
         engines = {}
         try:
             for side in budgets.COLORS:
-                engine = Engine(args.engine, args.rules, args.response_timeout)
+                engine = Engine(args.engine, args.response_timeout)
                 stack.callback(engine.close)
                 engines[side] = engine
                 engine.initialize(args.rules, args.hash)

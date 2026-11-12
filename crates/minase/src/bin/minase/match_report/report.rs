@@ -592,16 +592,18 @@ mod tests {
                 "format_version": FORMAT_VERSION,
                 "candidate": {
                     "identity": {"kind": "commit", "hash": "a", "sha256": "b", "args": []},
+                    "network_sha256": null,
                     "options": [["NnBatchSize", "64"]],
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "baseline": {
                     "identity": {"kind": "commit", "hash": "c", "sha256": "d", "args": []},
+                    "network_sha256": null,
                     "options": [],
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
                 },
                 "mode": {"kind": "elo"},
-                "rules_source": "engine-default",
+                "rules_source": "JCSA",
                 "canonical_rules": ["L0", "P0", "R1", "E0"],
                 "seed": 20260828_u64,
                 "max_ply": 4096,

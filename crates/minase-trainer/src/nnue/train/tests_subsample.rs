@@ -4,7 +4,7 @@ use minase::training::records::{
     Entry, Exclusion, GameRecord, Origin, Outcome as GameOutcome, Policy, TeacherKind,
     Value as TeacherValue, sorted_legal_moves,
 };
-use minase_core::{Game, GameResult, Position, WinReason};
+use minase_core::{Game, GameResult, Position, Rules, WinReason};
 
 /// 仕様の64ビット演算をu128の剰余演算で独立に評価する。
 fn spec_mix(value: u64) -> u64 {
@@ -50,7 +50,7 @@ fn played_inputs(fixture: &Fixture, args: &mut Args) -> Vec<InputPosition> {
         .unwrap();
         let mut games = Vec::new();
         for number in 0..24_u32 {
-            let mut game = Game::with_default_rules();
+            let mut game = Game::new(Rules::JCSA);
             let mut entries = Vec::new();
             let start = 7 + number as u16;
             let length = 5 + number as usize % 3;

@@ -87,10 +87,12 @@ def extract_cases(root):
 class Engine:
     def __init__(self, binary, rules):
         self.process = subprocess.Popen(
-            [binary, "--protocol", "usi", "--rules", rules],
+            [binary, "--protocol", "usi"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
         )
         self.send("usi")
+        self.wait("usiok")
+        self.send(f"setoption name RuleSet value {rules}")
         self.send("isready")
         self.wait("readyok")
         self.send("usinewgame")

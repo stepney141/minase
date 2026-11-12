@@ -31,7 +31,7 @@ fn prince(color: Color) -> PieceCode {
 }
 
 fn game(position: Position) -> Game {
-    Game::from_position(Rules::ENGINE_DEFAULT, position)
+    Game::from_position(Rules::JCSA, position)
 }
 
 fn game_with_codes(position: Position, codes: &[RuleCode]) -> Game {

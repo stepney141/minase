@@ -1,6 +1,7 @@
 //! CECP（XBoard）セッションの初期化、送信、および応答の解釈。
 //!
 //! 起動後に`xboard`と`protover 2`を送り、`feature done=1`を待つ。
+//! `RuleSet`オプションの宣言があれば、`new`より前に規則の原文を`option RuleSet=`で送る。
 //! 続けて`memory`、`new`、`variant chu`、`easy`、`nopost`、`force`を送り、
 //! 深さ固定なら`sd`、秒読みだけの固定時間なら`st`、それ以外の時間制御なら`level`を送る。
 //! 表現できる制限は[`validate_cecp_limit`]が定める。
@@ -38,6 +39,43 @@ pub(super) const CECP_MEMORY_MB: u64 = 256;
 pub(in crate::harness) const CECP_FIXED_TIME_CS: u64 = 3_000_000;
 
 impl EngineProcess {
+    /// 複数行のfeature宣言を`done=1`まで読み、RuleSetオプションの有無を返す。
+    pub(super) fn read_cecp_features(&self) -> Result<bool, EngineFailure> {
+        let mut has_ruleset = false;
+        self.receive_until(|line| {
+            let mut fields = line.splitn(2, char::is_whitespace);
+            if fields.next() != Some("feature") {
+                return false;
+            }
+            let Some(mut rest) = fields.next() else {
+                return false;
+            };
+            let mut done = false;
+            while !rest.trim_start().is_empty() {
+                rest = rest.trim_start();
+                let Some((name, value)) = rest.split_once('=') else {
+                    break;
+                };
+                let (value, tail) = if let Some(quoted) = value.strip_prefix('"') {
+                    let Some(pair) = quoted.split_once('"') else {
+                        break;
+                    };
+                    pair
+                } else {
+                    match value.split_once(char::is_whitespace) {
+                        Some(pair) => pair,
+                        None => (value, ""),
+                    }
+                };
+                has_ruleset |= name == "option" && value.starts_with("RuleSet ");
+                done |= name == "done" && value == "1";
+                rest = tail;
+            }
+            done
+        })?;
+        Ok(has_ruleset)
+    }
+
     /// CECPの差分着手と時計を送り、`pong`までの応答を解釈する。
     pub(super) fn bestmove_cecp(
         &mut self,
@@ -243,7 +281,7 @@ mod tests {
             parse_player_spec("cecp:engine").unwrap(),
             parse_search_limit("movetime=300,timemargin=100").unwrap(),
             None,
-            "engine-default",
+            "JCSA",
             Vec::new(),
             None,
         );

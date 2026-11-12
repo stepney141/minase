@@ -3,21 +3,16 @@
 use std::io::{self, BufRead, Cursor, Write};
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use minase::protocol::{Engine, EngineLifecycle, Protocol, UsiProtocol};
+use minase::protocol::{EngineLifecycle, Protocol, RuleSetNotSet, UsiProtocol};
 use minase_core::MoveGenerator;
 use minase_core::notation::usi;
 use minase_core::rng::XorShift64;
-use minase_core::rules::parse_rule_set;
 
-/// 既定の規則セット。
-const DEFAULT_RULE_SET: &str = "L0,P0,R1,E0";
 /// 既定の乱数シード。
 const DEFAULT_SEED: NonZeroU64 = NonZeroU64::new(1).unwrap();
 
 /// 合法手から一様ランダムに選ぶ最小のUSIエンジン。
 struct RandomUsi {
-    /// 局面と規則を管理する状態機械。
-    engine: Engine,
     /// `position`等の解釈を委譲するUSIアダプター。
     protocol: UsiProtocol,
     /// 着手選択に使う擬似乱数生成器。
@@ -25,15 +20,10 @@ struct RandomUsi {
 }
 
 impl RandomUsi {
-    /// 既定の規則セットとシードで構築する。
+    /// 規則未設定のセッションと既定のシードで構築する。
     fn new() -> Self {
-        let codes = parse_rule_set(DEFAULT_RULE_SET)
-            .expect("the default rule set must be valid and executable");
-        let engine = Engine::new(codes).expect("the default rule set must construct an engine");
-        let protocol = UsiProtocol::new(&engine);
         Self {
-            engine,
-            protocol,
+            protocol: UsiProtocol::new(),
             rng: XorShift64::new(DEFAULT_SEED),
         }
     }
@@ -66,6 +56,11 @@ impl RandomUsi {
                 true
             }
             "isready" => {
+                if self.protocol.engine().is_err() {
+                    write_error(output, &RuleSetNotSet.to_string())?;
+                    output.flush()?;
+                    return Err(RuleSetNotSet.into());
+                }
                 writeln!(output, "readyok")?;
                 true
             }
@@ -73,7 +68,7 @@ impl RandomUsi {
                 self.handle_setoption(line, &tokens[1..], output)?;
                 true
             }
-            "usinewgame" | "position" => {
+            "usinewgame" | "position" | "gameover" | "moves" | "state" | "d" | "eval" | "tt" => {
                 self.handle_standard_line(line, output)?;
                 true
             }
@@ -91,17 +86,14 @@ impl RandomUsi {
     /// 1行をUSIアダプターへそのまま委譲する。
     fn handle_standard_line(&mut self, line: &str, output: &mut dyn Write) -> io::Result<()> {
         let mut input = Cursor::new(line.as_bytes());
-        self.protocol.run(&mut self.engine, &mut input, output)
+        self.protocol.run(&mut input, output)
     }
 
     /// `usi`への応答としてエンジン名とoption宣言を出力する。
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "id name minase-usi-random")?;
         writeln!(output, "id author stepney141")?;
-        writeln!(
-            output,
-            "option name RuleSet type string default {DEFAULT_RULE_SET}"
-        )?;
+        writeln!(output, "option name RuleSet type string default <empty>")?;
         writeln!(
             output,
             "option name Seed type string default {DEFAULT_SEED}"
@@ -141,11 +133,15 @@ impl RandomUsi {
     /// `go`への応答として合法手から一様ランダムに1手選んで返す。
     /// 探索制限の引数は無視する。
     fn handle_go(&mut self, output: &mut dyn Write) -> io::Result<()> {
-        if self.engine.lifecycle() != EngineLifecycle::InGame {
+        let engine = match self.protocol.engine() {
+            Ok(engine) => engine,
+            Err(error) => return write_error(output, &error.to_string()),
+        };
+        if engine.lifecycle() != EngineLifecycle::InGame {
             return write_error(output, "go requires an active game");
         }
 
-        let game = self.engine.game();
+        let game = engine.game();
         let moves = game.legal_moves();
         if moves.is_empty() {
             return write_error(output, "go requires at least one legal move");
@@ -192,6 +188,7 @@ mod tests {
 
     fn run(input: &str) -> String {
         let mut engine = RandomUsi::new();
+        let input = format!("setoption name RuleSet value JCSA\n{input}");
         let mut input = Cursor::new(input.as_bytes());
         let mut output = Vec::new();
         engine.run(&mut input, &mut output).unwrap();
@@ -199,12 +196,62 @@ mod tests {
     }
 
     #[test]
+    fn isready_without_ruleset_fails_without_readyok() {
+        let mut engine = RandomUsi::new();
+        let mut output = Vec::new();
+        let error = engine
+            .run(&mut Cursor::new("isready\n"), &mut output)
+            .unwrap_err();
+        use std::error::Error;
+        assert!(error.source().unwrap().is::<RuleSetNotSet>());
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "info string error: required option RuleSet is not set\n"
+        );
+    }
+
+    #[test]
+    fn commands_without_ruleset_reject_and_keep_the_session_alive() {
+        let mut engine = RandomUsi::new();
+        let mut output = Vec::new();
+        engine
+            .run(
+                &mut Cursor::new(concat!(
+                    "position startpos\ngo\ngameover win\n",
+                    "setoption name RuleSet\nsetoption name RuleSet value <empty>\n",
+                    "setoption name RuleSet value JCSA\nisready\n",
+                )),
+                &mut output,
+            )
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            concat!(
+                "info string error: required option RuleSet is not set\n",
+                "info string error: required option RuleSet is not set\n",
+                "info string error: required option RuleSet is not set\n",
+                "info string error: RuleSet requires a value\n",
+                "info string error: RuleSet requires a value\n",
+                "readyok\n",
+            )
+        );
+    }
+
+    #[test]
     fn handshake_declares_ruleset_and_seed_defaults() {
-        let output = run("usi\nisready\nquit\n");
+        let mut engine = RandomUsi::new();
+        let mut output = Vec::new();
+        engine
+            .run(
+                &mut Cursor::new("usi\nsetoption name RuleSet value JCSA\nisready\nquit\n"),
+                &mut output,
+            )
+            .unwrap();
+        let output = String::from_utf8(output).unwrap();
         let lines: Vec<_> = output.lines().collect();
         assert!(lines.iter().any(|line| line.starts_with("id name ")));
         assert!(lines.iter().any(|line| line.starts_with("id author ")));
-        assert!(lines.contains(&"option name RuleSet type string default L0,P0,R1,E0"));
+        assert!(lines.contains(&"option name RuleSet type string default <empty>"));
         assert!(
             lines
                 .iter()

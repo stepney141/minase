@@ -56,7 +56,7 @@ minase-trainer nnue fit-linear --base <学習の出力>/nnue.bin \
 | 学習 | `summary.json`の`status`が`candidate`でない。 |
 | 診断 | 終了コードが0以外である。 |
 | 補正 | `decision.d`が負でない。 |
-| 埋め込みの後 | 深さ5の`minase dev bench`が完走しない。 |
+| 埋め込みの後 | 深さ5の`bench`（USIの独自コマンド）が完走しない。 |
 
 ## 手順
 
@@ -218,7 +218,7 @@ minase-trainer diag nnue-moves \
 ```
 
 - `--base`には、PSTとFMの両方を持つMNPTを与える。
-- `--positions`には、ヘッダの規則セットがエンジンの既定の`engine-default`であるMNSDを指定する。由来が合成のMNSDも指定できる。
+- `--positions`には、ヘッダの規則セットが`JCSA`（L0,P0,R1,E0）と同じ規則であるMNSDを指定する。由来が合成のMNSDも指定できる。
 - 片方のモデルにしかない合法手があると、`error`を含む報告を保存して終了コード1で終わる。規則か局面の復元の不一致として調べる。
 
 ### 線形の経路を対局結果で補正する

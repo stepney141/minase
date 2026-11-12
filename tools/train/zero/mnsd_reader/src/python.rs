@@ -44,7 +44,7 @@ fn bytes<'py, T, const N: usize>(
 ///
 /// ヘッダはorigin（intまたはNone）、teacher_kind、teacher_search_budget、seed、
 /// game_count、entry_count（int）、rule_set、generation_commit（str）、
-/// engine_default（bool）、network_checksum（32バイトのbytes）である。
+/// jcsa（bool）、network_checksum（32バイトのbytes）である。
 /// 配列もbytesであり、game_numbersとgamesはu32、pliesはu16、valuesはi32、visitsはu32、
 /// policy_offsetsはu64、policy_probabilitiesはu16、boards、sides、lions、
 /// policy_from、policy_mid、policy_to、policy_promoteはu8である。
@@ -151,7 +151,7 @@ fn info_dict<'py>(py: Python<'py>, info: &FileInfo) -> PyResult<Bound<'py, PyDic
     output.set_item("origin", info.origin.map(|origin| origin as u8))?;
     output.set_item("teacher_kind", header.teacher_kind() as u8)?;
     output.set_item("rule_set", header.rule_set())?;
-    output.set_item("engine_default", header.rules() == Rules::ENGINE_DEFAULT)?;
+    output.set_item("jcsa", header.rules() == Rules::JCSA)?;
     output.set_item("generation_commit", header.generation_commit())?;
     output.set_item(
         "network_checksum",

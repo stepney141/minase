@@ -2218,7 +2218,7 @@ fn quiet_see_is_monotone_and_check_evaluation_order_is_irrelevant() {
     let mut pruned_count = 0;
     let mut retained_count = 0;
     for text in [
-        "engine-default",
+        "JCSA",
         "lishogi",
         "L1,L3,P0,P5,P6,R2,E1,E2",
         "L0,P1,R1,E0",

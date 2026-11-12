@@ -164,7 +164,7 @@ minaseのネットのロジットは、`(線形の経路の値)/K + (非線形�
 ```console
 minase match run --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<候補> --baseline commit:<対照> \
-  --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
+  --rules JCSA --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
 ```
 
 | 順 | 測定名 | シード | 候補 | 対照 | 決定 |

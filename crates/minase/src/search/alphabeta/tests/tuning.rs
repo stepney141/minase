@@ -566,7 +566,7 @@ fn tuning_parameters_in_isolated_process() {
                 &vec![[0; 2]; FEATURE_COUNT],
                 std::array::from_fn(|state| test_nnue().piece_value_of_state(state)),
                 test_nnue().cp_per_logit(),
-                "engine-default",
+                "JCSA",
                 FmWeights {
                     embeddings: &vec![embedding; FEATURE_COUNT],
                     signs: &[1; FM_RANK],
