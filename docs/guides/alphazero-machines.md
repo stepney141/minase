@@ -3,7 +3,7 @@
 本書は、AlphaZero型探索の学習と自己対局に使うGPUの機械を、開発に使う作業機から操作して借り、環境を導入し、ファイルを転送し、計算を実行し、終了するまでの手順を定める。
 対象は、Google Colab（以下Colab）の有料プランで借りるGPUつきの仮想機械（以下Colab機）である。
 vast.aiで時間単位で借りるレンタル機の手順は最後の節に書き、Runpodはまだ実機で確かめていないので、同じ節に使う前の規則だけを書く。
-方式を選んだ理由は[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)と[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)に、手順の根拠になった実測の値は[実現性の実測の記録](../measurements/alphazero-environment/alphazero-feasibility.md)にある。
+方式を選んだ理由は[Colab機の借り方のADR](../adr/rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)と[実行環境のADR](../adr/provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)に、手順の根拠になった実測の値は[実現性の実測の記録](../measurements/alphazero-environment/alphazero-feasibility.md)にある。
 
 ## 1. 準備
 
@@ -67,10 +67,12 @@ Colab機は同時に1本の`colab ssh`しか受け付けず、2本目の接続�
 作業機の回線では、作業機からColab機への転送が約6.2 MB/秒、Colab機から作業機への転送が約9.7 MB/秒であった。
 学習データは圧縮したまま送り、Colab機で展開する。
 
-Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導入してから、minaseをビルドする。
+Colab機では、書庫を展開し、`tools/train/zero/setup.sh`で環境を導入してから、学習器の拡張モジュールとminaseをビルドする。
 次のコマンドは、`colab ssh -s <名前>`で開いたColab機のシェルで実行するか、4節の方法によりバックグラウンドで起動する。
-`setup.sh`は、uvのロックファイルからPythonの依存パッケージを、rustupから固定した版のRustのツールチェーンを、Microsoftの配布物からONNX Runtimeを導入し、版を表示して終わる。
-uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）も、固定した版のツールチェーンでビルドして導入する。
+`setup.sh`は、uv、固定した版のRustのツールチェーン、uvのロックファイルが固定するPythonの依存パッケージ、およびMicrosoftの配布物のONNX Runtimeを導入し、版を表示して終わる。
+導入先はすべて`tools/train/zero/`の下の`.runtime/`と`.venv/`であり、ホームのディレクトリには何も置かない。
+学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`tools/train/zero/mnsd_reader/`）は、`setup.sh`では入らないので、`env.sh`を読み込んだ後に`sync-env.sh`でビルドして導入する。
+`setup.sh`を実行し直すと拡張モジュールが仮想環境から外れるので、その後には`sync-env.sh`も実行し直す。
 新しいColab機での所要時間は、導入がL4で81秒、A100で214秒、G4で96〜98秒、minaseのビルドが40〜82秒であった。
 2026年10月28日から29日に借りた3台のL4では、依存パッケージの取得だけで2分2秒、10分52秒、14分30秒かかり、取得の時間は日と機械によって大きく変わった（[試走の記録](../measurements/alphazero-rl/alphazero-rl-trial.md)）。
 
@@ -78,10 +80,12 @@ uvは、学習器がMNSDを読む拡張モジュール`minase_mnsd_reader`（`to
 mkdir -p /content/src && tar -xf /content/minase.tar -C /content/src
 bash /content/src/tools/train/zero/setup.sh
 source /content/src/tools/train/zero/env.sh
-cd /content/src && cargo +"$RUST_TOOLCHAIN" build --release --bin minase
+/content/src/tools/train/zero/sync-env.sh
+cd /content/src && cargo build --release --bin minase
 ```
 
-`env.sh`は、ONNX Runtimeの共有ライブラリを`ORT_DYLIB_PATH`に、TensorRT、CUDA、およびcuDNNの共有ライブラリを`LD_LIBRARY_PATH`に設定する。
+`env.sh`は、導入したuvとRustのツールチェーンを`PATH`に加え、`cargo`が使うツールチェーンの版を固定する。
+あわせて、ONNX Runtimeの共有ライブラリを`ORT_DYLIB_PATH`に、TensorRT、CUDA、およびcuDNNの共有ライブラリを`LD_LIBRARY_PATH`に設定する。
 minaseのGPUの推論を使うコマンドは、この設定の下で実行する。
 
 ## 4. 計算を実行する

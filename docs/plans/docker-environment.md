@@ -19,9 +19,9 @@ minase本体と、学習器が教師ファイルを読むための拡張モジ�
 
 ## 状態
 
-起案。本書は2026年11月11日に書いた。
-利用者は同日、composeとvast.aiの両方で同じイメージを使うこと、GHCRに非公開で置くこと、および作業機に残っていた古いイメージ`minase-zero:dev`を削除することを決め、古いイメージはその日のうちに削除した。
-次の一手は、利用者の承認と着手の指示を待つことである。
+進行中。本書は2026年11月11日に書き、11月12日に着手した。
+利用者は11月11日に、composeとvast.aiの両方で同じイメージを使うこと、GHCRに非公開で置くこと、および作業機に残っていた古いイメージ`minase-zero:dev`を削除することを決め、古いイメージはその日のうちに削除した。
+完了したフェーズはまだない。次の一手は、フェーズ1の環境の入力と実行器の変更である。
 
 ## 目的
 
@@ -142,6 +142,7 @@ uvの実行ファイルは`.runtime/bin`、rustupの`RUSTUP_HOME`と`CARGO_HOME`
 uvの公式のインストーラには`UV_UNMANAGED_INSTALL`で導入先を指定し、シェルの設定ファイルを書き換えさせない。
 今の`setup.sh`は`command -v uv`と`command -v rustup`で既存の導入を見つけると導入を省くので、別の場所の既存のツールを使ってしまう。改めた`setup.sh`は、環境のディレクトリの中の決まったパスにある実行ファイルとその版を確かめ、なければ入れる。
 `env.sh`は、これらの変数と`PATH`を設定し、加えて`UV_PROJECT_ENVIRONMENT`を環境のディレクトリの`.venv`に設定する。
+`env.sh`は、さらに2つの変数を設定する。`RUSTUP_TOOLCHAIN`は固定した版とし、版を指定しない`cargo`と、`mnsd_reader`をビルドするときにmaturinが起動するcargoが、同じツールチェーンを使うようにする。`UV_MANAGED_PYTHON`は1とし、uvが機械にもとからあるPythonを使わず、`.runtime/python`に入れたPythonだけを使うようにする。
 `UV_PROJECT_ENVIRONMENT`を設定すると、`uv run --project <ソース>`はソースの中の`.venv`ではなく、環境のディレクトリの仮想環境を使う。
 Colab機では環境のディレクトリがソースの中にあるので、今の`uv run`と同じ仮想環境を指す。
 これで、`env.sh`を読み込んだシェルは、利用者と`$HOME`によらず同じツールを使う。
@@ -161,20 +162,20 @@ minase本体をイメージに入れないのは、`.cargo/config.toml`が`targe
 `mnsd_reader`は、動かす機械で作業ツリーを指定した`uv sync --frozen --project <作業ツリー>/tools/train/zero`を実行し、そのコミットのソースからビルドして入れる。
 vast.aiの準備スクリプトとColab機の手順は、導入の直後にこの同期を実行し、ビルドの失敗を最初のサイクルの前に検出する。
 
-イメージを作る時点では`mnsd_reader/`をイメージへ写さない。uv 0.13.4が、`tools/train/zero/pyproject.toml`からパスで参照している`mnsd_reader/`のディレクトリがない状態で`--no-install-local`の同期を受け付けるかは、まだ確かめていない。
-受け付けない場合は、`mnsd_reader/pyproject.toml`だけをイメージへ写し、環境の入力に加える。
-フェーズ1では、ディレクトリがない構成と`pyproject.toml`だけを置いた構成の両方で同期を実行し、受け付ける構成を採る。
+イメージを作る時点では`mnsd_reader/`をイメージへ写さない。
+uv 0.13.4は、`tools/train/zero/pyproject.toml`からパスで参照している`mnsd_reader/`のディレクトリがない状態でも、`--no-install-local`の同期を受け付ける。2026年11月12日に作業機で、`pyproject.toml`、`uv.lock`、および`.python-version`だけを置いたディレクトリで同期を実行して確かめた。
 
 ### 環境の入力の検査
 
 イメージは、作ったときの環境の入力の写しを`/opt/minase-zero/`に持つ。
-検査のスクリプトは、作業ツリーの絶対パスを受け取り、環境の入力の各ファイルを写しとバイト列で比べ、違うファイルがあればその名前を出して異常で終わる。
+検査のスクリプト`check-env-inputs.sh`は作業ツリーの`tools/train/zero/`に置き、`env.sh`を読み込んだシェルから引数なしで実行する。
+スクリプトは、自分と同じディレクトリにある環境の入力の各ファイルを、環境のディレクトリの写しとバイト列で比べ、違うファイルがあればそのパスを出して異常で終わる。環境のディレクトリは、`env.sh`が設定した`UV_PROJECT_ENVIRONMENT`の親のディレクトリとする。
 検査を置くのは、作業ツリーの`uv.lock`がイメージのものと違うまま同期すると、uvが作業ツリーの`uv.lock`に合わせてイメージの仮想環境のパッケージを入れ替え、イメージで固定したはずの版が知らないうちに変わるからである。
 検査に失敗したら、そのコミットでイメージを作り直す。
 
 vast.aiの機械では、ソースは起動時に送った1つのコミットから変わらないので、準備スクリプトが最初に1回検査すればよい。
 開発用のコンテナでは、作業ツリーはホストから書き換えられ、コンテナは常駐するので、起動時の検査だけでは足りない。
-そこで、開発用のコンテナでは`UV_NO_SYNC=1`を設定して`uv run`の自動の同期を止め、仮想環境を変える操作を、検査してから`uv sync --frozen`を実行する同期のスクリプトだけに限る。
+そこで、開発用のコンテナでは`UV_NO_SYNC=1`を設定して`uv run`の自動の同期を止め、仮想環境を変える操作を、検査してから`uv sync --frozen`を実行する同期のスクリプト`sync-env.sh`だけに限る。`sync-env.sh`も作業ツリーの`tools/train/zero/`に置く。
 `mnsd_reader`のソースやminaseのクレートを変えたときも、開発者はこの同期のスクリプトで`mnsd_reader`をビルドし直す。
 起動時の検査は、開発用のサービスを起動するときにも行い、失敗したらサービスを起動しない。
 
@@ -188,9 +189,10 @@ vast.aiの機械には、タグではなく`ghcr.io/stepney141/minase-dev@sha256
 
 vast.aiは、`vastai create instance`の`--login`に`'-u <GitHubの利用者名> -p <トークン> ghcr.io'`の形で渡したログインの情報で、非公開のイメージを取得する。
 トークンは読み取りの権限だけを持つものとし、リポジトリの外のファイル（権限600）に置き、起動スクリプトは必須の引数でそのファイルの場所を受け取る。
-`scripts/vast/common.py`の`create`にログインの引数を加え、ログインの要らない公開のイメージを使う既存のスクリプトは、ログインなしを明示して呼ぶ。
-今の`create`は、`vastai`が失敗すると、コマンドの全体を含む`CalledProcessError`か`TimeoutExpired`を投げ、起動スクリプトはその文字列を表示する。
-`--login`を加えたままでは、この表示にトークンが入るので、`create`はこれらの例外を、ログインの情報を含まない例外へ変換して投げる。
+`scripts/vast/common.py`の`create`に、レジストリ、利用者名、およびトークンを持つログインの引数を加え、ログインの要らない公開のイメージを使う既存のスクリプトは、ログインなしを明示して呼ぶ。
+ログインなしの`create`は、`vastai`が失敗すると、コマンドの全体を含む`CalledProcessError`か`TimeoutExpired`を投げ、呼び出し元はその文字列を表示する。
+`--login`を加えたままでは、この表示にトークンが入る。そこで、ログインつきの`create`はこれらの例外を、ログインの情報を含まない例外へ変換して投げ、`vastai`の標準エラーも、トークンを置き換えてから表示する。
+ログインなしの`create`の例外は変えない。探索の係数の調整のスクリプトなどが、この例外から終了コードを決めているからである。
 トークンはvast.aiにも渡るが、読み取りの権限だけなので、漏れても書き換えや削除はできない。
 
 公開にしない理由は、イメージに入るTensorRTとcuDNNの再配布の条件を、NVIDIAのライセンスでまだ確かめていないからである。
@@ -221,7 +223,7 @@ vast.aiの機械は、このイメージで借りることを前提にする。�
 
 `compose.yml`は、1回だけ動く準備のサービス`dev-init`と、開発用のサービス`dev`の2つを持つ。
 `dev`は、Dockerfileからビルドしたイメージに`minase-dev:local`と名付けて使い、起動したら`sleep infinity`で待つ。
-開発者は作業ツリーの直下で`docker compose up -d dev`を実行して起動し、`docker compose exec dev bash`でシェルに入る。シェルは起動時に`/opt/minase-zero/env.sh`を読み込む。
+開発者は作業ツリーの直下で`docker compose up -d dev`を実行して起動し、`docker compose exec dev bash`でシェルに入る。イメージの`/etc/bash.bashrc`に1行を足してあるので、対話シェルは起動時に`/opt/minase-zero/env.sh`を読み込む。
 GHCRへ登録するときは、`minase-dev:local`にコミットのタグを付けて送る。
 
 1つのコンテナは、1つの作業ツリーだけを扱う。
@@ -243,14 +245,15 @@ worktreeの作成、削除、および`git worktree prune`はホストだけで�
 
 `compose.yml`は、作業ツリーの直下の`.env`（git管理外）から、次の変数を`${変数:?}`の形で読み、変数がなければ起動を拒む。
 
-- ホストの利用者のUIDとGID。
-- 扱う作業ツリーの絶対パスと、リポジトリの本体の`.git`の絶対パス。
-- composeのプロジェクトの名前。トップレベルの`name`に使う。
+- ホストの利用者のUIDとGID（`MINASE_UID`、`MINASE_GID`）。
+- 扱う作業ツリーの絶対パス（`MINASE_TREE`）と、リポジトリの本体の`.git`の絶対パス（`MINASE_GIT_DIR`）。
+- composeのプロジェクトの名前（`COMPOSE_PROJECT_NAME`）。トップレベルの`name`に使う。
 
 リポジトリの本体の`.env`には、2026年10月の試みで書いた`GHCR_IO_TOKEN`がすでにある。composeはこのファイル全体を読むので、既存の行は残したまま上の変数を書き足す。
 
 `dev-init`はrootで動き、新しく作られたボリューム（`target/`、`mnsd_reader/target/`、ホームのディレクトリ、およびcargoのレジストリ）の所有者を、ホストの利用者のUIDとGIDに合わせて終わる。
 作業ツリーの下に覆いかぶせるボリュームは、イメージの中に同じパスがないので、Dockerがrootの所有で作る。そのままでは、ホストの利用者で動く`dev`が書き込めない。
+`dev-init`は、ボリュームをかぶせる先の2つのディレクトリ（作業ツリーの`target/`と`tools/train/zero/mnsd_reader/target/`）も、ホストの利用者の所有で作る。ホストの側にこれらがないまま`dev`を起動すると、Dockerがマウント先として空のディレクトリをrootの所有でホストに作るからである。
 `dev`は、`dev-init`が成功して終わってから、ホストの利用者のUIDとGIDで起動する。
 `HOME`は、名前つきのボリュームに置く`/home/dev`とし、uvのキャッシュもこの下に置く。
 cargoのレジストリ（`/opt/minase-zero/.runtime/cargo/registry`）も名前つきのボリュームに置き、コンテナを作り直しても取得し直さないようにする。
@@ -275,8 +278,7 @@ codexのサンドボックスにはネットワーク、GPU、およびDockerが
 `setup.sh`と`env.sh`を「導入先を環境のディレクトリに閉じる」と「minaseとmnsd_readerは動かす機械でビルドする」の節のとおりに改め、検査のスクリプトと同期のスクリプトを`tools/train/zero/`に置く。
 実行器の`RemotePaths`に読み込む`env.sh`の場所を加え、`scripts/vast/common.py`の`create`にログインの引数と例外の変換を加え、それぞれの試験を改める。
 `create`の試験では、ダミーのトークンで`vastai`の異常終了と時間切れを模擬し、例外の文字列と標準エラーにトークンが出ないことを確かめる。
-あわせて、`mnsd_reader`のディレクトリがない構成での`--no-install-local`の同期を作業機で実行し、受け付ける構成を決める。
-完了条件は、`tools/train/zero/tests`、`scripts/vast/`、および`scripts/vast-spsa/`の試験が通り、同期の構成が決まることである。
+完了条件は、`tools/train/zero/tests`、`scripts/vast/`、および`scripts/vast-spsa/`の試験が通ることである。
 
 ### フェーズ2: イメージと開発用のコンテナ
 

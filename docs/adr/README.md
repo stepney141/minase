@@ -308,7 +308,7 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月26日 [NNUEの出力を、探索用駒価値で初期化した線形の経路と隠れ層のない直接内積の和にする](archive/compose-the-nnue-of-a-piece-value-initialized-linear-path-and-a-direct-screlu-head.md)（置き換え済み）
 - 2026年10月26日 [AlphaZero型探索のネットはPyTorchで学習し、ONNXへ出力してminaseで推論する](train-the-zero-network-in-pytorch-and-export-it-as-onnx.md)
 - 2026年10月27日 [AlphaZero型探索のGPUはColab機を公式CLIで借り、状態は作業機のNASにだけ置く](rent-colab-gpus-through-the-cli-and-keep-state-on-the-nas.md)
-- 2026年10月27日 [AlphaZero型探索の実行環境は、独自のコンテナイメージを作らず、同じロックファイルと固定した版を用いてすべての機械へ導入する](install-the-zero-toolchain-from-one-lock-on-every-machine.md)
+- 2026年10月27日 [AlphaZero型探索の実行環境は、独自のコンテナイメージを作らず、同じロックファイルと固定した版を用いてすべての機械へ導入する](archive/install-the-zero-toolchain-from-one-lock-on-every-machine.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索のサブタスクは統合ブランチに集めず、1本ずつmasterへマージする](merge-alphazero-subtasks-into-master-one-by-one.md)
 - 2026年10月27日 [AlphaZero型探索のネットの入力は、手番側から見た盤の95面とし、履歴、利き、および左右反転による水増しを入れない](archive/encode-zero-network-inputs-as-95-planes-from-the-side-to-move.md)（置き換え済み）
 - 2026年10月27日 [AlphaZero型探索のネットの方策は、移動元の升ごとに249種類の移動を割り当てた35,856要素で表す](encode-the-zero-policy-as-249-planes-per-from-square.md)
@@ -382,3 +382,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年11月12日 [対局ハーネスは、エンジンが`isready`で返すネットのチェックサムを実行条件に記録し、対局の開始時と再開時に照合する](record-and-verify-the-network-checksum-reported-by-match-engines.md)
 - 2026年11月12日 [エンジンの実装を検証する診断はUSIの独自コマンドにし、実験の管理とデータの生産はサブコマンドに残す](run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)
 - 2026年11月12日 [プロトコルの種類、探索方式、入出力の記録は起動引数に残し、ONNX Runtimeの場所は環境変数に残す](keep-protocol-search-method-and-io-log-as-startup-arguments.md)
+- 2026年11月12日 [AlphaZero型探索の実行環境は、作業機とvast.aiでは1つのコンテナイメージで用意し、Colab機では同じ導入スクリプトを実行する](provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)

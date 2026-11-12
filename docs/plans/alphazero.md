@@ -183,7 +183,7 @@ masterへマージする前に、αβ探索の深さ6のbench（起動引数`--s
 統合ブランチの理由とした[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)の教訓は、既定の探索の評価関数をランダム初期化のネットに替えた事例から得たものであり、起動引数`--search mcts`で起動したときだけ動くMCTSには当てはまらないからである。
 統合ブランチには、数か月にわたるmasterの取り込み、設計書とコードの分断、およびサブタスクの設計書を最後まで凍結できないという負担があった。
 
-RLの生成器と学習器は、masterの固定したコミットから`git archive`で作った書庫を借りた機械へ転送してビルドする（[実行環境の導入のADR](../adr/install-the-zero-toolchain-from-one-lock-on-every-machine.md)）。
+RLの生成器と学習器は、masterの固定したコミットから`git archive`で作った書庫を借りた機械へ転送してビルドする（[実行環境のADR](../adr/provide-the-zero-toolchain-as-one-image-for-the-workstation-and-vast-ai-and-through-setup-sh-on-colab.md)）。
 
 ## 到達の判定
 
