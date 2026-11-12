@@ -65,6 +65,33 @@ fn perft_zero_counts_the_root_and_emits_no_depth_lines() {
 #[test]
 fn invalid_diagnostic_arguments_leave_the_session_running() {
     for command in [
+        "nn-fixture",
+        "nn-fixture out",
+        "nn-fixture foo x",
+        "nn-eval",
+        "nn-eval out",
+        "nn-eval foo x",
+        "random-play games 0",
+        "random-play game 0",
+        "random-play games 2 game 1",
+        "random-play max-ply 0",
+        "random-play seed x",
+        "random-play foo",
+        "random-play games 1 games 2",
+        "random-play seed 1 seed 2",
+        "random-play game 1 game 2",
+        "random-play max-ply 1 max-ply 2",
+        "random-play verify-all verify-all",
+        "random-play verbose verbose",
+        "random-play games",
+        "random-play seed",
+        "random-play game",
+        "random-play max-ply",
+        "random-play games -1",
+        "random-play seed 18446744073709551616",
+        "random-play games 18446744073709551616",
+        "random-play game 18446744073709551616",
+        "random-play max-ply 4294967296",
         "perft",
         "perft x",
         "perft -1",
@@ -276,7 +303,7 @@ fn bench_repetitions_report_runs_and_median() {
 
 #[test]
 fn bench_and_perft_preserve_game_settings_and_search_state() {
-    for diagnostic in ["bench depth 1", "perft 1"] {
+    for diagnostic in ["bench depth 1", "perft 1", "random-play max-ply 2 seed 7"] {
         let mut protocol = UsiProtocol::new();
         run(
             &mut protocol,
@@ -378,6 +405,7 @@ fn diagnostics_flush_every_line() {
     for input in [
         "setoption name RuleSet value JCSA\nposition startpos\nperft 1\n",
         "bench depth 1\n",
+        "setoption name RuleSet value JCSA\nrandom-play max-ply 2 seed 7\n",
     ] {
         let mut output = FlushedLines::default();
         UsiProtocol::new()

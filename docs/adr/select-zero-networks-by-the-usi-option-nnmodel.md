@@ -13,8 +13,8 @@ AlphaZero型探索のMCTS（モンテカルロ木探索）が局面の評価に�
 
 [起動引数と診断ツールをUSIへ移す計画](../plans/cli-to-usi.md)は、起動後のプロトコルで渡せる情報をプロトコルへ集める。
 推論の設定のうち、実行プロバイダ（推論を実行する基盤）、バッチの大きさ、およびキャッシュの場所は、すでにUSIのオプション`NnBackend`、`NnBatchSize`、`NnCacheDir`で渡している。
-ネットだけが起動引数に残っていた。
-ネットをオプションで指定する方式には先例があり、StockfishのUCIのオプション`EvalFile`、将棋のエンジンdlshogiの`DNN_Model`、およびチェスのエンジンlc0の`WeightsFile`がこれに当たる。該当箇所は、置き換えた決定が挙げている。
+ネットの指定だけが起動引数に残っていた。
+ネットをオプションで指定する方式には先例があり、StockfishのUCIのオプション`EvalFile`、将棋のエンジンdlshogiの`DNN_Model`、およびチェスのエンジンlc0の`WeightsFile`がこれに当たる。各先例のソースの該当箇所は、本決定が置き換えた上記の決定に挙げてある。
 
 ## 決定
 
@@ -22,7 +22,7 @@ AlphaZero型探索のMCTS（モンテカルロ木探索）が局面の評価に�
 ネットは`isready`で読み込み、`NnModel`が未設定なら、エラーの行を出して終了コード1で終わる。
 読み込みに成功した`isready`は、`readyok`の直前に`info string network_sha256 <64桁の16進数>`を出す。この値は、推論に渡すバイト列のチェックサム（SHA-256）である。
 `NnModel`の値を変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`まで探索と診断を拒否する。
-宣言と拒否の文言は、`crates/minase/src/search/mcts/engine.rs`と`crates/minase/src/protocol/usi.rs`のdocコメントにある。
+オプションの宣言と、未設定の場合の拒否の文言は、`crates/minase/src/search/mcts/engine.rs`と`crates/minase/src/protocol/usi.rs`のdocコメントにある。
 
 ## 検討した代案
 
@@ -43,9 +43,9 @@ AlphaZero型探索のMCTS（モンテカルロ木探索）が局面の評価に�
 パスは実行条件の記録`manifest.json`に残り、ネットの内容は、エンジンが返すチェックサムをハーネスが記録して照合する（[チェックサムを照合する決定](record-and-verify-the-network-checksum-reported-by-match-engines.md)）。
 USIの文字列のオプションは、`value`の後の語を1つの空白でつないで値にするので、連続する空白やタブを含むパスは指定できない。この制約は`NnCacheDir`と同じである。
 
-置き換えた決定のうち、次の2点は変えていない。
+本決定が置き換えた決定のうち、次の2点は変えていない。
 1点目に、ファイルを読めない場合と推論器を作れない場合は、別のネットや実行プロバイダへ切り替えずにエラーで終了する。
-2点目に、ネットを実行ファイルへ埋め込むのは、到達の判定に使うネットに限る。埋め込みのネットを持つビルドはまだなく、`NnModel`の指定は必須である。
+2点目に、ネットを実行ファイルへ埋め込むのは、到達の判定（MCTSがαβ探索と同等以上に強いかの判定）に使うネットに限る。埋め込みのネットを持つビルドはまだなく、`NnModel`の指定は必須である。
 
 自己対局生成器`minase data zero-selfplay`は、エンジンのセッションではなく、データ一式を生産するサブコマンドなので、自身の引数`--nn-model`でネットを受け取り続ける。
-ネットの読み込みは、どちらも`crates/minase/src/nn/onnx.rs`の`Network`にある。
+ネットを読み込む処理は、どちらも`crates/minase/src/nn/onnx.rs`の`Network`にある。

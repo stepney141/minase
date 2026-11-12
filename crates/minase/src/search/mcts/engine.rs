@@ -249,6 +249,17 @@ impl Engine {
         self.network.as_ref().map(Network::sha256)
     }
 
+    /// 準備済み推論器のチェックサム、実行プロバイダ名、およびバッチ上限を返す。
+    pub(crate) fn evaluation_metadata(
+        &self,
+    ) -> Result<(&[u8; 32], &str, NonZeroUsize), EvaluationError> {
+        if self.evaluator.is_none() {
+            return Err(EvaluationError::NotPrepared);
+        }
+        let network = self.network.as_ref().ok_or(EvaluationError::NotPrepared)?;
+        Ok((network.sha256(), &self.backend, self.config.batch_size))
+    }
+
     /// 診断を受け付ける前に、推論器と現局の規則を探索と同じ条件で検査する。
     pub(crate) fn validate_evaluation(&self, rules: minase_core::MoveRules) -> Result<(), Error> {
         if self.evaluator.is_none() {

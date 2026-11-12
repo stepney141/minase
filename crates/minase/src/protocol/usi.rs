@@ -13,6 +13,9 @@
 //! | `moves`、`state` | `handle_moves`と`handle_state`の独自照会を処理する。 |
 //! | `perft <深さ> [divide]` | 現局の着手規則で経路を数え、各行に`info string`を付けて終端行`end`まで出力する。 |
 //! | `bench [depth <N>] [threads <N>] [repetitions <N>]` | 規則や準備を要求せず、専用のαβ探索で固定局面を測り、各行と終端行を出力する。 |
+//! | `nn-fixture out <パス>` | 規則や準備を要求せず、288局面のJSON Linesを書き出し、報告と終端行を返す。 |
+//! | `nn-eval out <パス>` | MCTSの準備済み推論器で288局面を評価してJSONを書き出し、所要時間と終端行を返す。 |
+//! | `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | 最後に受理した規則で独立した対局を検査し、結果と終端行を返す。 |
 //! | `d`、`eval`、`tt` | `handle_diagnostic`の診断を出力する。 |
 //! | 引数に`mate`を含む`go` | `checkmate notimplemented`を1行返す。 |
 //! | それ以外の`go` | `parse_go_config`で手番側と相手側の時計を検査し、`start_go`で探索を開始する。 |
@@ -21,7 +24,7 @@
 //! | `ponderhit` | `info string error: ponderhit requires an active ponder search`を返す。 |
 //! | それ以外 | `info string error: unknown command <第1語>`を返す。 |
 //!
-//! `usinewgame`、`position`、`go`（`go mate`を含む）、`gameover`、`moves`、`state`、`d`、`eval`、`tt`、`perft`は、
+//! `usinewgame`、`position`、`go`（`go mate`を含む）、`gameover`、`moves`、`state`、`d`、`eval`、`tt`、`perft`、`random-play`は、
 //! 規則が未設定なら固有の検査に先立って`info string error: required option RuleSet is not set`で拒否し、セッションを続ける。
 //! 最初の有効な`RuleSet`で対局状態を生成し、現局と次局の規則を設定する。
 //! 対局に依存しない設定は規則の指定前でも検査して適用する。
@@ -242,6 +245,7 @@ impl UsiProtocol {
                     | "eval"
                     | "tt"
                     | "perft"
+                    | "random-play"
             )
         {
             write_error(output, &RuleSetNotSet.to_string())?;
@@ -294,6 +298,9 @@ impl UsiProtocol {
             "d" | "eval" | "tt" => self.handle_diagnostic(command, output)?,
             "perft" => self.handle_perft(&tokens[1..], output)?,
             "bench" => self.handle_bench(&tokens[1..], output)?,
+            "nn-fixture" => self.handle_nn_fixture(&tokens[1..], output)?,
+            "nn-eval" => self.handle_nn_eval(&tokens[1..], output)?,
+            "random-play" => self.handle_random_play(&tokens[1..], output)?,
             "ponderhit" => write_error(output, "ponderhit requires an active ponder search")?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
@@ -937,7 +944,7 @@ impl UsiProtocol {
     /// `Threads`は1〜256で、変更時はhistory表をその数で作り直し、置換表は保つ。
     /// MCTSでは`USI_Hash`は探索木の容量MiBを表し、変更すると木を捨てる。`Threads`は1だけを受理する。
     /// `NnModel`はONNXのパスで、変更するとネット、推論器、および探索木を捨てる。
-    /// 次の`isready`が成功するまで`go`と`eval`を拒否する。同値の再設定では状態を保つ。
+    /// 次の`isready`が成功するまで`go`、`eval`、`nn-eval`を拒否する。同値の再設定では状態を保つ。
     /// `NnBackend`は大小文字を区別せず`tensorrt`、`cuda`、`cpu`を受理する。
     /// `NnCacheDir`または1〜1,024の`NnBatchSize`も含め、推論の設定が変わると次の`isready`で推論器を作り直す。
     /// `PolicyTemperature`は方策の温度の100倍を表す10〜1,000の整数で、変更すると木を捨てる。
@@ -2289,6 +2296,7 @@ mod tests {
     mod diagnostics;
     mod history;
     mod mcts_options;
+    mod nn_diagnostics;
     mod tuning;
     use std::collections::HashSet;
 
@@ -2520,6 +2528,7 @@ mod tests {
             "eval",
             "tt",
             "perft 1",
+            "random-play",
         ] {
             let mut protocol = UsiProtocol::new();
             assert_eq!(

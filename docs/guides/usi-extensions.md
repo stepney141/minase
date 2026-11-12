@@ -49,7 +49,7 @@ SFENは千日手の判定に使う局面の履歴を含まない。
 | `quit` | 探索中なら探索の結果を捨てて終了する。 |
 | `debug`、`register` | 応答せずに無視する。 |
 | `moves`、`state`、`d`、`eval`、`tt` | minase独自の照会であり、「独自のコマンド」の節にある。 |
-| `perft`、`bench` | minase独自の診断であり、「診断のコマンド」の節にある。 |
+| `perft`、`bench`、`nn-eval`、`nn-fixture`、`random-play` | minase独自の診断であり、「診断のコマンド」の節にある。 |
 | 上記以外 | `info string error: unknown command <第1語>`を返す。 |
 
 ## 標準コマンドとの違い
@@ -69,7 +69,7 @@ USI原典は解釈できないコマンドを無視するよう定めるが、mi
 minaseは規則セットの既定値を持たないので、GUIや対局用のプログラムは、`isready`より前に`setoption name RuleSet value <規則>`を送る必要がある。
 規則セットは、対局に採用する規則コードの組であり、値の書き方は「オプション」の節の表にある。
 規則セットが未設定のまま`isready`を受けると、minaseは`info string error: required option RuleSet is not set`を出し、`readyok`を返さずに終了コード1で終わる。
-`isready`を送らないクライアントに備えて、`usinewgame`、`position`、`go`、`gameover`、および独自のコマンドの`moves`、`state`、`d`、`eval`、`tt`、`perft`も、規則セットが未設定の間は同じ文言のエラーで拒否する。
+`isready`を送らないクライアントに備えて、`usinewgame`、`position`、`go`、`gameover`、および独自のコマンドの`moves`、`state`、`d`、`eval`、`tt`、`perft`、`random-play`も、規則セットが未設定の間は同じ文言のエラーで拒否する。
 この場合はエンジンを終了せず、次のコマンドを待つ。
 `USI_Hash`や`Threads`などのほかのオプションは、規則セットより先に送ってよく、届いた時点で検査して適用する。
 
@@ -159,7 +159,7 @@ minaseは`usi`への応答で次のオプションを宣言する。
 
 引き分けの評価値は、規則R1の千日手のように探索が引き分けと判定する局面で使う（[ADR](../adr/set-the-draw-value-by-usi-option-signed-from-the-root-side.md)）。
 `NnBackend`、`NnCacheDir`、または`NnBatchSize`を変えると、次の`isready`で推論器を作り直す。
-`NnModel`を別の値へ変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`でネットを読み直すまで`go`と`eval`を拒否する。
+`NnModel`を別の値へ変えると、読み込み済みのネット、推論器、およびMCTSが対局の間に持ち越す探索木を捨て、次の`isready`でネットを読み直すまで`go`、`eval`、および`nn-eval`を拒否する。
 文字列のオプションの値は、`value`の後の語を1つの空白でつないだものなので、連続する空白やタブを含むパスは指定できない。
 各オプションの受理で置換表や探索木を消すかどうかと、拒否の文言は、`UsiProtocol::handle_setoption`のdocコメントにある。
 
@@ -255,8 +255,8 @@ minaseは、エンジンの実装を検証する診断を、USIの独自コマ�
 - 探索していないときに同期で実行する。探索中に送ると、ほかのコマンドと同じく、探索が終わってから実行する。実行中に届いた`stop`と`quit`は、診断が終わってから処理する。
 - 出力の各行に`info string`を付け、正常に終わったときだけ最後に`info string end`を出す。
 - 引数の誤り（未知の語、値の欠落、範囲外の値、同じ引数の重複）は、`info string error: <内容>`の1行で拒否し、次のコマンドを待つ。終端の行は出さない。
-- 不変条件の違反のような実行時の失敗は、`info string error: <内容>`を出して終了コード1で終わる。
-- 対局の局面、置換表、および設定を変えない。
+- 不変条件の違反、推論の失敗、ファイルの書き込みの失敗のような実行時の失敗は、`info string error: <内容>`を出して終了コード1で終わる。
+- 対局の局面、置換表、探索木、および設定を変えない。
 
 スクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、終端の行があることの両方で成功を判定する。
 引数の誤りではエンジンが終了しないので、終了コードだけでは検出できない。
@@ -293,3 +293,43 @@ bench [depth <N>] [threads <N>] [repetitions <N>]
 MCTSで起動したminaseでも、同じαβ探索の測定として実行できる。
 `--features tuning`でビルドしたminaseでは、`bench`も探索を実行するので、`go`と同じく、実行した時点から`Tune_<名前>`の変更を拒否する。
 探索木を変えない変更の確認と速度の比較での使い方は、[デバッグの手引き](debugging.md)にある。
+
+### nn-eval
+
+```text
+nn-eval out <パス>
+```
+
+固定の288局面をセッションの推論器で推論し、各局面の価値（手番側の勝率）と合法手ごとのlogitをJSONのファイルへ書き出す。
+288局面は、初期局面、固定のシードのランダム対局から採った283局面、および手で組んだ4局面である。
+出力は、ネットを学習した側（PyTorch）の出力と突き合わせて、推論の経路を検証するために使う（[ネットの出力の照合の手引き](alphazero-network-check.md)）。
+`nn-eval`はMCTSで起動したminaseでだけ使え、`isready`で推論器を準備した後に受け付ける。
+ネット、実行プロバイダ、バッチの大きさ、およびキャッシュの場所は、オプション`NnModel`、`NnBackend`、`NnBatchSize`、`NnCacheDir`の値を使い、推論は`NnBatchSize`の局面数ごとにまとめて行う。
+αβ探索で起動したminaseでは`info string error: nn-eval requires --search mcts`を、推論器が準備されていなければ`info string error: nn-eval requires isready`を返す。
+パスは`out`の後の語を1つの空白でつないだものであり、相対パスはエンジンの作業ディレクトリから解決し、既存のファイルは上書きする。
+出力のJSONの形式は`crates/minase/src/diagnostics/nn_eval.rs`のdocコメントにある。
+
+### nn-fixture
+
+```text
+nn-fixture out <パス>
+```
+
+`nn-eval`が使う288局面について、局面、入力の符号化、および合法手のラベルをJSON Linesのファイルへ書き出す。
+出力は、リポジトリにコミットしている`crates/minase/tests/fixtures/nn-positions.jsonl`の再生成に使う。
+規則の設定も`isready`も要らず、どちらの探索方式で起動したminaseでも実行できる。
+出力の形式は`crates/minase/src/diagnostics/nn_fixture.rs`のdocコメントにある。
+
+### random-play
+
+```text
+random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]
+```
+
+ランダムな合法手で対局を進め、毎手、局面の不変条件と合法手の適用を検査する。
+`games`は対局数（省略時は1）、`seed`は全局の乱数列を作る基本シード（省略時は時刻から作り、どちらの場合も出力に表示する）、`game`は単独で再現する1起算の局番号、`max-ply`は1局を打ち切る手数の上限（省略時は4,096）である。
+`games`と`game`は同時に指定できない。
+`verify-all`を付けると、毎手の全合法手を対局の複製へ適用して検査し、`verbose`を付けると各局の全手順を表示する。
+規則は、最後に受け付けた`RuleSet`を使い、セッションの対局の局面は使わない。
+違反を見つけたときは、`info string error: random-play invariant failure: <内容>`に続けて、規則、基本シード、局番号、手数、問題の着手、直前の局面のSFEN、および全手順を`info string`の行で出し、終了コード1で終わる。
+使い方は[デバッグの手引き](debugging.md)にある。

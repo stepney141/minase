@@ -1327,8 +1327,9 @@ class CycleTests(RunnerCase):
             elif "--candidate" in command:
                 self.assertEqual(command[:6], ["run", "--frozen", "--project", "/workspace/src/tools/train/zero",
                                                "python", "/workspace/src/tools/train/zero/nn_compare.py"])
-            elif command[command.index("--backend") + 1] == "tensorrt":
-                self.assertEqual(command[command.index("--cache-dir") + 1], "/workspace/cache/nn-eval")
+            else:
+                self.assertEqual(command, ["--protocol", "usi", "--search", "mcts"])
+        self.assert_usi_commands("/workspace/cache", (1, 2))
 
     def test_vast_deadline_rejects_overrun_and_accepts_equality_without_querying_balance(self):
         options = replace(self.options, machine="vast", vast_instance=12345, session=None, cycle_cu=None,
@@ -1451,11 +1452,77 @@ if any(arg.endswith('/nn_compare.py') for arg in args):
         name = 'cpu-b7.json'
         sys.exit(1 if args[args.index('--candidate') + 1].endswith(name) else 0)
     sys.exit(0)
-out = pathlib.Path(args[args.index('--out') + 1])
+engine = args == ['--protocol', 'usi', '--search', 'mcts']
+if engine:
+    commands = sys.stdin.read().splitlines()
+    with open('usi-input.jsonl', 'a') as output:
+        output.write(json.dumps(commands) + '\\n')
+    paths = [line.removeprefix('nn-eval out ') for line in commands if line.startswith('nn-eval out ')]
+    assert len(paths) == 1
+    out = pathlib.Path(paths[0])
+else:
+    out = pathlib.Path(args[args.index('--out') + 1])
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) + '\\n')
+if engine:
+    if not pathlib.Path('missing-end').exists():
+        print('info string end')
+    if pathlib.Path('fail-engine').exists():
+        sys.exit(9)
 ''')
         self.tool.chmod(0o755)
+
+    def assert_usi_commands(self, cache, cycles):
+        actual = [json.loads(line) for line in (self.remote_root / "usi-input.jsonl").read_text().splitlines()]
+        expected = []
+        for cycle in cycles:
+            path = f"cycles/cycle-{cycle:04d}"
+            for batch in (1, 7, 256):
+                for backend, label in (("cpu", "cpu"), ("tensorrt", "trt")):
+                    commands = ["usi", "setoption name RuleSet value JCSA",
+                                f"setoption name NnModel value {path}/train/model.onnx",
+                                f"setoption name NnBackend value {backend}",
+                                f"setoption name NnBatchSize value {batch}"]
+                    if backend == "tensorrt":
+                        commands.append(f"setoption name NnCacheDir value {cache}/nn-eval")
+                    expected.append([*commands, "isready", f"nn-eval out {path}/check/{label}-b{batch}.json", "quit"])
+        self.assertEqual(actual, expected)
+
+    def test_missing_diagnostic_end_fails_check_and_blocks_next_cycle(self):
+        write(self.remote_root / "missing-end", b"")
+        with self.assertRaisesRegex(RuntimeError, "network check exited 1"):
+            self.execute(replace(self.options, last_cycle=2))
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertFalse((self.root / "nets/cycle-0001.onnx").exists())
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["selfplay", "train", "check"])
+        self.assertNotIn("info string end", (self.root / "cycles/cycle-0001/check/cpu-b1.usi.log").read_text())
+
+    def test_engine_nonzero_exit_fails_check_even_with_end(self):
+        write(self.remote_root / "fail-engine", b"")
+        with self.assertRaisesRegex(RuntimeError, "network check exited 1"):
+            self.execute(replace(self.options, last_cycle=2))
+        self.assertFalse((self.root / "cycles.jsonl").exists())
+        self.assertFalse((self.root / "nets/cycle-0001.onnx").exists())
+        self.assertEqual([Path(item[0]).name for item in self.remote.starts], ["selfplay", "train", "check"])
+        self.assertEqual((self.root / "cycles/cycle-0001/check/cpu-b1.usi.log").read_text(), "info string end\n")
+
+    def test_check_rejects_newlines_in_paths_before_starting(self):
+        for newline in ("\n", "\r"):
+            with self.subTest(newline=newline):
+                with patch.object(self.runner.paths, "cache", f"/cache{newline}quit"):
+                    with self.assertRaisesRegex(ValueError, "USI paths must not contain a newline"):
+                        self.runner.check_script(1)
+                with patch.object(Options, "cycle_path", return_value=f"cycles{newline}quit"):
+                    with self.assertRaisesRegex(ValueError, "USI paths must not contain a newline"):
+                        self.runner.check_script(1)
+        self.assertEqual(self.remote.starts, [])
+
+    def test_check_quotes_shell_characters_and_preserves_spaces_in_usi_paths(self):
+        cache = "/cache with spaces/'$`literal`"
+        with patch.object(self.runner.paths, "cache", cache):
+            body = self.runner.check_script(1)
+            self.assertEqual(self.complete_job("cycles/cycle-0001/check", body), 0)
+        self.assert_usi_commands(cache, (1,))
 
     def complete_job(self, stem, body):
         if stem.endswith("/check"):
@@ -1617,8 +1684,9 @@ out.write_text(json.dumps({'network_sha256': 'test-network', 'positions': []}) +
                 self.assertEqual(command[command.index("--policy") + 1], "fp16-logits" if cpu else "probabilities")
                 self.assertEqual(command[command.index("--policy-tolerance") + 1], "1e-4" if cpu else "1e-2")
                 self.assertEqual(command[command.index("--value-tolerance") + 1], "1e-4" if cpu else "5e-2")
-            elif command[command.index("--backend") + 1] == "tensorrt":
-                self.assertEqual(command[command.index("--cache-dir") + 1], "/content/cache/nn-eval")
+            else:
+                self.assertEqual(command, ["--protocol", "usi", "--search", "mcts"])
+        self.assert_usi_commands("/content/cache", (1, 2))
         for cycle, row in enumerate(rows, 1):
             target = self.root / f"nets/cycle-{cycle:04d}.onnx"
             self.assertEqual(target.read_bytes(), f"network {cycle}".encode())

@@ -1,30 +1,20 @@
 //! 学習器との符号化の照合と推論の比較に使う固定局面集を書き出す。
 //!
 //! 本モジュールは固定局面集のJSON Lines形式の正本を定める。
-//! 固定局面集は`crates/minase/tests/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`minase dev nn-eval`の推論に使われる。
+//! 固定局面集は`crates/minase/tests/fixtures/nn-positions.jsonl`にコミットされ、Pythonの学習器との符号化の照合と`nn-eval`の推論に使われる。
 //! 1行につき1局面を記録し、キーの順は[`Fixture`]のフィールド順に固定する。
 
-use std::fs;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::path::PathBuf;
-use std::process;
+use std::path::{Path, PathBuf};
+use std::{fmt, fs, io};
 
-use clap::Parser;
-use minase::nn::{INPUT_SIZE, encode, policy_label};
+use crate::nn::{INPUT_SIZE, encode, policy_label};
 use minase_core::notation::sfen::{SetupPosition, to_extended_sfen};
 use minase_core::rng::XorShift64;
 use minase_core::{
     Color, MoveGenerator, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square,
 };
 use serde::Serialize;
-
-/// 固定局面集の書き出し先。
-#[derive(Parser)]
-pub(super) struct Arguments {
-    /// JSON Lines形式で書き出すファイル。既存のファイルは上書きする。
-    #[arg(long)]
-    out: PathBuf,
-}
 
 /// 初期局面とランダム対局から採る局面数。
 const GAME_POSITION_COUNT: usize = 284;
@@ -140,11 +130,11 @@ struct Fixture {
     /// [`Position::lion_capture_square`]が返す先獅子の升を[`Square::dense_index`]で表す。
     /// これは直前に獅子以外の駒が獅子を取った升であり、記録がなければ`null`とする。
     lion_capture: Option<usize>,
-    /// [`nn::encode`](minase::nn::encode)の出力で1になる添字`面 * 144 + 相対升`を昇順に並べる。
+    /// [`nn::encode`](crate::nn::encode)の出力で1になる添字`面 * 144 + 相対升`を昇順に並べる。
     /// 相対升は先手番なら[`Square::dense_index`]、後手番なら`143 - dense_index`である。
     input: Vec<usize>,
     /// [`MoveGenerator`]が返す合法手の順に、`[移動元, 中継升 または null, 移動先, 成り, ラベル]`を並べる。
-    /// 升は[`Square::dense_index`]、成りはその着手で成るかどうかの真偽値、ラベルは[`nn::policy_label`](minase::nn::policy_label)で表す。
+    /// 升は[`Square::dense_index`]、成りはその着手で成るかどうかの真偽値、ラベルは[`nn::policy_label`](crate::nn::policy_label)で表す。
     moves: Vec<(usize, Option<usize>, usize, bool, usize)>,
 }
 
@@ -202,35 +192,73 @@ fn fixture_bytes() -> Result<Vec<u8>, serde_json::Error> {
     Ok(bytes)
 }
 
-/// 指定されたファイルへ固定局面集を書き出し、失敗は標準エラーへ報告する。
-pub(super) fn main(arguments: Arguments) {
-    let bytes = match fixture_bytes() {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            eprintln!("failed to serialize NN fixtures: {error}");
-            process::exit(1);
+/// 固定局面集の直列化または出力の失敗。
+#[derive(Debug)]
+pub enum Error {
+    /// JSON Linesへ直列化できない。
+    Serialize(serde_json::Error),
+    /// 指定されたファイルへ書き込めない。
+    Write {
+        /// 書き込み先。
+        path: PathBuf,
+        /// 入出力の原因。
+        source: io::Error,
+    },
+    /// 報告の行を出力できない。
+    Output(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Serialize(error) => write!(f, "failed to serialize NN fixtures: {error}"),
+            Self::Write { path, source } => write!(
+                f,
+                "failed to write NN fixtures to {}: {source}",
+                path.display()
+            ),
+            Self::Output(error) => write!(f, "failed to report NN fixtures: {error}"),
         }
-    };
-    if let Err(error) = fs::write(&arguments.out, bytes) {
-        eprintln!(
-            "failed to write NN fixtures to {}: {error}",
-            arguments.out.display()
-        );
-        process::exit(1);
     }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Serialize(error) => Some(error),
+            Self::Write { source, .. } | Self::Output(source) => Some(source),
+        }
+    }
+}
+
+/// 固定局面集を指定ファイルへ上書きし、局面数と出力先を1行で報告する。
+/// 規則の設定も推論器の準備も必要としない。
+pub fn run(out: &Path, output: &mut dyn FnMut(&str) -> io::Result<()>) -> Result<(), Error> {
+    let bytes = fixture_bytes().map_err(Error::Serialize)?;
+    let count = bytes.iter().filter(|&&byte| byte == b'\n').count();
+    fs::write(out, bytes).map_err(|source| Error::Write {
+        path: out.to_owned(),
+        source,
+    })?;
+    output(&format!(
+        "nn-fixture wrote {count} positions to {}",
+        out.display()
+    ))
+    .map_err(Error::Output)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minase::nn::POLICY_SIZE;
+    use crate::nn::POLICY_SIZE;
     use minase_core::notation::sfen::parse_extended_sfen;
 
     const FIXTURE_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/nn-positions.jsonl"
     );
-    const REGENERATE: &str = "再生成: cargo run --release --offline --bin minase -- dev nn-fixture --out crates/minase/tests/fixtures/nn-positions.jsonl";
+    const REGENERATE: &str =
+        "再生成: USIでnn-fixture out crates/minase/tests/fixtures/nn-positions.jsonlを送る";
 
     // [`fixture_positions`]の契約: 288局面が両手番・先獅子・両軍の成駒・全ラベル族・長い移動を含む。
     #[test]
@@ -285,7 +313,24 @@ mod tests {
     // [`fixture_bytes`]の契約: 学習器の参照ファイルとバイト単位で一致し、SFENから元の局面を復元できる。
     #[test]
     fn generated_jsonl_matches_checked_in_fixture() {
-        let bytes = fixture_bytes().unwrap();
+        use crate::protocol::{Protocol, UsiProtocol};
+        let directory = crate::diagnostics::test_support::TempDir::new();
+        let path = directory.path().join("positions with spaces.jsonl");
+        let mut output = Vec::new();
+        UsiProtocol::new()
+            .run(
+                &mut io::Cursor::new(format!("nn-fixture out {}\n", path.display())),
+                &mut output,
+            )
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!(
+                "info string nn-fixture wrote 288 positions to {}\ninfo string end\n",
+                path.display()
+            )
+        );
+        let bytes = fs::read(path).unwrap();
         let expected = fs::read(FIXTURE_PATH).expect(REGENERATE);
         assert!(bytes == expected, "固定局面集が一致しない。{REGENERATE}");
         assert_eq!(bytes.last(), Some(&b'\n'));

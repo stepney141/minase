@@ -10,9 +10,6 @@ mod io_log;
 mod lishogi_import;
 mod match_report;
 mod match_runner;
-mod nn_eval;
-mod nn_fixture;
-mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
 mod teacher_stats;
@@ -119,12 +116,6 @@ enum DataCommand {
 
 #[derive(Subcommand)]
 enum DevCommand {
-    /// ネットの入出力の照合に使う固定局面集を書き出す。
-    NnFixture(nn_fixture::Arguments),
-    /// 固定局面集をネットで評価し、推論の照合用JSONを書き出す。
-    NnEval(nn_eval::Arguments),
-    /// ランダム対局で不変条件を検証する。
-    RandomPlay(random_play::Arguments),
     /// 校正用のランダム着手エンジンを起動する。
     UsiRandom,
 }
@@ -158,9 +149,6 @@ fn main() -> ExitCode {
         Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
         Some(Command::Data(DataCommand::TeacherStats(arguments))) => teacher_stats::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
-        Some(Command::Dev(DevCommand::NnFixture(arguments))) => nn_fixture::main(arguments),
-        Some(Command::Dev(DevCommand::NnEval(arguments))) => nn_eval::main(arguments),
-        Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
         Some(Command::Dev(DevCommand::UsiRandom)) => {
             if let Err(error) = usi_random::main() {
                 eprintln!("error: {error}");
@@ -341,20 +329,6 @@ mod tests {
                 "--nodes",
                 "200",
             ],
-            vec!["dev", "nn-fixture", "--out", "positions.jsonl"],
-            vec![
-                "dev",
-                "nn-eval",
-                "--nn-model",
-                "net.onnx",
-                "--backend",
-                "cpu",
-                "--batch",
-                "7",
-                "--out",
-                "evaluation.json",
-            ],
-            vec!["dev", "random-play", "--rules", "JCSA"],
             vec!["dev", "usi-random"],
         ] {
             let parsed = Arguments::try_parse_from(std::iter::once("minase").chain(args));
@@ -417,11 +391,7 @@ mod tests {
     // [`Arguments`]の契約: 解析後の検査でも使い方に新しい呼び出し名を表示する。
     #[test]
     fn validation_errors_use_full_subcommand_names() {
-        for path in [
-            ["match", "run"],
-            ["dev", "random-play"],
-            ["dev", "nn-fixture"],
-        ] {
+        for path in [["match", "run"], ["spsa", "params"]] {
             let error = subcommand_command(&path)
                 .error(clap::error::ErrorKind::ValueValidation, "invalid arguments");
             assert_eq!(error.exit_code(), 2);

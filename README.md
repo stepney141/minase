@@ -137,7 +137,6 @@ Started with `--protocol`, it runs the engine; the measurement and data tools ru
 | `minase spsa` | Tunes search and time-management parameters with SPSA |
 | `minase data selfplay` | Generates self-play data for evaluation training |
 | `minase data lishogi` | Converts lishogi game records into training data |
-| `minase dev random-play` | Checks invariants with random play |
 | `minase dev usi-random` | Random-move engine for calibrating the harness |
 
 Diagnostics of the engine itself are USI commands of the running engine, not subcommands.
@@ -146,6 +145,8 @@ Diagnostics of the engine itself are USI commands of the running engine, not sub
 |---|---|
 | `bench [depth <N>] [threads <N>] [repetitions <N>]` | Benchmarks the search on fixed positions |
 | `perft <depth> [divide]` | Counts legal-move paths from the current position |
+| `random-play [games <N>] [seed <S>] ...` | Checks invariants with random play under the session's rules |
+| `nn-eval out <path>`, `nn-fixture out <path>` | Write the network's outputs on fixed positions, and the fixed positions themselves |
 | `d`, `eval`, `tt` | Show the position, the evaluation, and transposition-table entries |
 
 ```bash

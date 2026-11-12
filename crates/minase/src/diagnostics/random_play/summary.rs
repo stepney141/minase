@@ -1,6 +1,8 @@
 //! ランダム対局の結果と手数を集計して表示する。
 
-use std::time::Duration;
+use std::{io, num::NonZeroU64, time::Duration};
+
+use super::Error;
 
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 
@@ -43,7 +45,7 @@ pub(super) struct Summary {
     /// 手数上限による打ち切り数。
     cutoffs: u64,
     /// 全局の手数合計。
-    total_plies: u64,
+    total_plies: u128,
     /// 最短の手数。
     min_plies: Option<u32>,
     /// 最長の手数。
@@ -54,7 +56,7 @@ impl Summary {
     /// 1局の結果を集計へ加える。
     fn record(&mut self, completed: &CompletedGame) {
         self.games += 1;
-        self.total_plies += u64::from(completed.plies);
+        self.total_plies += u128::from(completed.plies);
         self.min_plies = Some(
             self.min_plies
                 .map_or(completed.plies, |minimum| minimum.min(completed.plies)),
@@ -75,36 +77,42 @@ impl Summary {
     }
 
     /// 全局の集計を表示する。
-    pub(super) fn print(&self, elapsed: Duration) {
+    pub(super) fn print(
+        &self,
+        elapsed: Duration,
+        output: &mut dyn FnMut(&str) -> io::Result<()>,
+    ) -> Result<(), Error> {
+        let minimum = self.min_plies.ok_or(Error::NoGames)?;
+        let mut output = |line: &str| output(line).map_err(Error::Output);
         let average = self.total_plies as f64 / self.games as f64;
-        println!("summary: games={}", self.games);
-        println!(
+        output(&format!("summary: games={}", self.games))?;
+        output(&format!(
             "results: BlackWins={} WhiteWins={} Draws={} Cutoffs={}",
             self.wins[Color::Black.index()],
             self.wins[Color::White.index()],
             self.draws,
             self.cutoffs
-        );
-        println!("win reasons:");
+        ))?;
+        output("win reasons:")?;
         for reason in WIN_REASONS {
-            println!(
+            output(&format!(
                 "  {reason:?}={}",
                 self.win_reasons[win_reason_index(reason)]
-            );
+            ))?;
         }
-        println!("draw reasons:");
+        output("draw reasons:")?;
         for reason in DRAW_REASONS {
-            println!(
+            output(&format!(
                 "  {reason:?}={}",
                 self.draw_reasons[draw_reason_index(reason)]
-            );
+            ))?;
         }
-        println!(
+        output(&format!(
             "plies: min={} max={} average={average:.3}",
-            self.min_plies.expect("at least one game must be recorded"),
-            self.max_plies
-        );
-        println!("elapsed: {:.6} s", elapsed.as_secs_f64());
+            minimum, self.max_plies
+        ))?;
+        output(&format!("elapsed: {:.6} s", elapsed.as_secs_f64()))?;
+        Ok(())
     }
 }
 
@@ -133,21 +141,23 @@ const fn draw_reason_index(reason: DrawReason) -> usize {
 
 /// 1局の結果と、指定時は全手順を表示して集計へ加える。
 pub(super) fn report_game(
-    game_number: u64,
+    game_number: NonZeroU64,
     completed: CompletedGame,
     verbose: bool,
     summary: &mut Summary,
-) {
-    println!(
+    output: &mut dyn FnMut(&str) -> io::Result<()>,
+) -> io::Result<()> {
+    output(&format!(
         "game {game_number}: plies={} result={}",
         completed.plies,
         outcome_text(completed.outcome)
-    );
+    ))?;
     if verbose {
-        println!("game {game_number} moves:");
+        output(&format!("game {game_number} moves:"))?;
         for (index, &mv) in completed.moves.iter().enumerate() {
-            println!("  {}: {}", index + 1, move_text(mv));
+            output(&format!("  {}: {}", index + 1, move_text(mv)))?;
         }
     }
     summary.record(&completed);
+    Ok(())
 }

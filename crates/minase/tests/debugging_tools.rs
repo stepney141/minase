@@ -145,7 +145,13 @@ fn bench_succeeds_as_a_usi_command() {
 /// 診断はUSIだけから受け付け、削除したサブコマンドは引数エラーにする。
 #[test]
 fn diagnostic_subcommands_are_rejected() {
-    for diagnostic in [vec!["bench"], vec!["perft", "1"]] {
+    for diagnostic in [
+        vec!["bench"],
+        vec!["perft", "1"],
+        vec!["nn-eval"],
+        vec!["nn-fixture", "--out", "x"],
+        vec!["random-play", "--rules", "JCSA"],
+    ] {
         let result = Command::new(env!("CARGO_BIN_EXE_minase"))
             .arg("dev")
             .args(diagnostic)
@@ -169,5 +175,23 @@ fn diagnostic_runtime_failure_ends_the_process() {
     assert!(
         stdout.starts_with("info string error: bench allocation failed: "),
         "{stdout}"
+    );
+}
+
+/// ランダム対局はUSIから受け付け、正常終了と終端行を返す。
+#[test]
+fn random_play_succeeds_as_a_usi_command() {
+    let result =
+        usi_session("setoption name RuleSet value JCSA\nrandom-play games 1 seed 1\nquit\n");
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("info string end\n")
     );
 }

@@ -894,11 +894,21 @@ class Runner:
             for backend, label, policy, ptol, vtol in (("cpu", "cpu", "fp16-logits", "1e-4", "1e-4"),
                                                       ("tensorrt", "trt", "probabilities", "1e-2", "5e-2")):
                 name = f"{out}/{label}-b{batch}"
-                command = [self.paths.engine, "dev", "nn-eval", "--nn-model", network, "--backend", backend,
-                           "--batch", str(batch), "--out", name + ".json"]
+                for path in (network, name + ".json", self.paths.cache):
+                    if "\n" in path or "\r" in path:
+                        raise ValueError(f"USI paths must not contain a newline: {path!r}")
+                commands = ["usi", "setoption name RuleSet value JCSA",
+                            f"setoption name NnModel value {network}",
+                            f"setoption name NnBackend value {backend}",
+                            f"setoption name NnBatchSize value {batch}"]
                 if backend == "tensorrt":
-                    command += ["--cache-dir", self.paths.cache + "/nn-eval"]
-                lines.append(shlex.join(command))
+                    commands.append(f"setoption name NnCacheDir value {self.paths.cache}/nn-eval")
+                commands += ["isready", f"nn-eval out {name}.json", "quit"]
+                feed = shlex.join(["printf", "%s\\n", *commands])
+                engine = shlex.join([self.paths.engine, "--protocol", "usi", "--search", "mcts"])
+                stdout = shlex.quote(name + ".usi.log")
+                lines.extend([f"if ! {feed} | {engine} > {stdout}; then exit 1; fi",
+                              f"if ! grep -Fxq -- 'info string end' {stdout}; then exit 1; fi"])
                 compare = [*self.paths.python, self.paths.source + "/nn_compare.py", "--reference", reference,
                            "--candidate", name + ".json", "--policy", policy,
                            "--policy-tolerance", ptol, "--value-tolerance", vtol]

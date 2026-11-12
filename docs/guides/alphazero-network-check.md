@@ -30,18 +30,26 @@ cargo build --release --bin minase
 
 ## 3. minaseの出力を書き出す
 
-`minase dev nn-eval`は、`crates/minase/tests/fixtures/nn-positions.jsonl`と同じ288局面の固定局面集を、指定した実行プロバイダとバッチの大きさで推論し、各局面の合法手のラベルとlogit、および価値をJSONで書き出す。
+USIの独自コマンド`nn-eval out <パス>`は、`crates/minase/tests/fixtures/nn-positions.jsonl`と同じ288局面の固定局面集を、セッションの推論器で推論し、各局面の合法手のラベルとlogit、および価値をJSONで書き出す。
+`nn-eval`は、`--search mcts`で起動したminaseが`isready`で推論器を準備した後に受け付け、ネット、実行プロバイダ、バッチの大きさ、およびキャッシュの場所には、オプション`NnModel`、`NnBackend`、`NnBatchSize`、`NnCacheDir`の値を使う。
 CPUとTensorRTのFP16を、それぞれバッチの大きさ1、7、および256で実行する。
 
-```console
+```bash
+run() {  # 実行プロバイダ、バッチの大きさ、出力のパス
+  { printf 'usi\nsetoption name RuleSet value JCSA\nsetoption name NnModel value %s\n' '<ネット.onnx>'
+    printf 'setoption name NnBackend value %s\nsetoption name NnBatchSize value %s\n' "$1" "$2"
+    [ "$1" = tensorrt ] && printf 'setoption name NnCacheDir value %s\n' '<キャッシュの親ディレクトリ>'
+    printf 'isready\nnn-eval out %s\nquit\n' "$3"
+  } | target/release/minase --protocol usi --search mcts | tee "$3.log" | grep -q '^info string end$'
+}
 for b in 1 7 256; do
-  target/release/minase dev nn-eval --nn-model <ネット.onnx> --backend cpu --batch $b --out <出力>/cpu-b$b.json
-  target/release/minase dev nn-eval --nn-model <ネット.onnx> --backend tensorrt --cache-dir <キャッシュの親ディレクトリ> \
-    --batch $b --out <出力>/trt-b$b.json
+  run cpu $b <出力>/cpu-b$b.json && run tensorrt $b <出力>/trt-b$b.json || break
 done
 ```
 
-標準エラーには、セッションの作成と推論にかかった秒数が出る。
+`RuleSet`は照合の内容に関係しないが、`isready`が要求するので送る。
+成功した`nn-eval`は最後に`info string end`を出すので、上の例はこの行の有無で成否を判定している。
+出力には、推論にかかった秒数が`info string NN inference`の行で出る。
 10ブロック128チャネルのネットでは、TensorRTの初回の実行でエンジンの作成に7〜10秒かかり、2回目以降はキャッシュからの読み込みが0.4秒ほどで終わる。
 キャッシュは、ネット、GPU、および最大バッチの組ごとに、`<キャッシュの親ディレクトリ>`の下の別のディレクトリに作られる。
 ortクレートがrc.13であった2026年11月11日までのコミットでは、CUDAとTensorRTの実行が、出力を書き終えた後の終了処理で異常終了することがあった（終了コード134、標準エラーに`corrupted double-linked list`）。
@@ -50,12 +58,12 @@ ortクレートがrc.13であった2026年11月11日までのコミットでは�
 
 ## 4. PyTorchの出力を書き出す
 
-PyTorchの出力は、照合する`minase dev nn-eval`の出力と同じ形のJSON（`"backend": "pytorch"`）で書き出す。
+PyTorchの出力は、照合する`nn-eval`の出力と同じ形のJSON（`"backend": "pytorch"`）で書き出す。
 学習したネットと、学習器の`init`が書き出す強化学習の初期ネットの出力は、どちらも学習器`minase_zero`の`fixture-eval`がチェックポイントから書き出す。
 `fixture-eval`は、チェックポイントの重みのネットをONNXへ書き出し直し、`--onnx`のファイルとバイト単位で一致しなければ失敗する。
 PyTorchの出力は、ネットが学習に使う順伝播の値であり、合法手のlogitは方策の35,856ラベルの元の番号で引いたfloat32の値である。
 書き出したONNXは、入力をuint8で受け、方策を、盤面によらず合法手になり得る16,108ラベルへ詰めたFP16で返す（[入出力の受け渡しのADR](../adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)）。
-`minase dev nn-eval`は、詰めた後の添字から読んだlogitを、元のラベルの番号とともに書き出すので、2つの出力は同じ形で比べられる。
+`nn-eval`は、詰めた後の添字から読んだlogitを、元のラベルの番号とともに書き出すので、2つの出力は同じ形で比べられる。
 書き出しはBatchNormを定数畳み込みで畳み込みの重みとバイアスへ融合し、その単精度の丸めはCPUによって変わるので、このバイト単位の一致は学習した機械でしか成り立たない。
 1サイクル分学習したネットを作業機で書き出し直すと、70個の初期値のうち28個が最大4.8×10⁻⁷異なった（[記録](../measurements/alphazero-rl/alphazero-rl-cycle1-workstation-check.md)）。
 このため`fixture-eval`は学習した機械で実行し、作業機などほかの機械では、そこで書いた出力を照合の基準に使う。
@@ -119,7 +127,8 @@ uv run --frozen python -m minase_zero export-onnx --checkpoint <出力先>/check
 書き出し直したONNXはSHA-256が変わるので、PyTorchの出力も同じ機械で`fixture-eval`を実行して作り直す。
 
 ```console
-cargo run --release --bin minase -- dev nn-fixture --out crates/minase/tests/fixtures/nn-positions.jsonl
+printf 'nn-fixture out crates/minase/tests/fixtures/nn-positions.jsonl\nquit\n' \
+  | cargo run --release --bin minase -- --protocol usi
 ```
 
 minaseのテストは、生成した内容とこのファイルがバイト単位で一致することを確かめる。

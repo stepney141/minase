@@ -27,19 +27,20 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 | `eval` | USIで`position`の後に送る | 手番側から見た静的評価と、升ごとの寄与を12行12列の表で表示する。 |
 | `tt` | USIで`go`の後に送る | 置換表に残る現局面と全子局面の項目（深さ、境界の種類、評価値、最善手）を表示する。 |
 | `perft <深さ> [divide]` | USIで`position`の後に送る | 現局面から指定した深さまでの合法手の経路数を、深さごとに数える。`divide`を付けると、根の合法手ごとの内訳を出す。 |
+| `random-play [games <N>] [seed <S>] [game <K>] [max-ply <N>] [verify-all] [verbose]` | USIで`RuleSet`の設定の後に送る | ランダムな合法手で対局を進め、毎手、局面の不変条件と合法手の適用を検査する。 |
 | `bench [depth <N>] [threads <N>] [repetitions <N>]` | USIで送る。規則の設定も`isready`も要らない | 固定の局面集をαβ探索で探索し、局面ごとの深さ、ノード数、最善手、評価値と、全体の毎秒ノード数を出す。 |
 | `--io-log <パス>` | `minase`の起動引数 | 受け取った行と送った行を、起動からの経過ミリ秒付きでファイルへ記録する。 |
 | フィーチャ`invariants` | `cargo test`では常に有効。他のビルドでは`--features invariants` | 着手の実行と取消しのたびに局面を全検査し、探索中の評価のたびに差分更新の値を全計算と照合する。失敗すると診断を出してパニックする。 |
 | フィーチャ`search-stats` | `--features search-stats`でビルドして`bench`を送る | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`bench`が出力する。 |
 
-`eval`、`tt`、`perft`、および`bench`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
+`eval`、`tt`、`perft`、`random-play`、および`bench`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
 `d`の出力は、StockfishとYaneuraOuに合わせて接頭辞のない素の行であり、`rights-zobrist`の行で終わる。
 盤面の各升は、後手の駒に`^`、成駒に`+`を付けた漢字1文字で書き、空升を`・`とする。
 成駒は成った後の駒種の漢字で書くので、金将の成駒は`+飛`、歩兵の成駒は`+金`と表示される。
 どのコマンドも、受け付けなかった場合は`info string error:`で始まる1行だけが返り、終端の行は出ない。
 探索中に送ったコマンドは、探索が終わってから処理される。
 
-`perft`と`bench`をスクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、出力に終端の行`info string end`があることの両方で成功を判定する。
+`perft`、`random-play`、および`bench`をスクリプトから実行するときは、`minase --protocol usi`を起動して標準入力へコマンドと`quit`を渡し、終了コードが0であることと、出力に終端の行`info string end`があることの両方で成功を判定する。
 引数の誤りはエラーの行を出すだけでエンジンを終了しないので、終了コードだけでは検出できない。
 不変条件の違反のような実行時の失敗では、エラーの行を出して終了コード1で終わる。
 これらを独自コマンドにした理由は[ADR](../adr/run-engine-diagnostics-as-usi-commands-and-keep-experiment-tools-as-subcommands.md)にある。
@@ -53,22 +54,25 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 着手列が分かっている場合は、`position startpos moves ...`または`position sfen ... moves ...`で局面を作る。
 着手列で作った局面を別のセッションで再現するときは、`d`が表示する拡張SFENを`position sfen`へ写す。
 
-**ランダム対局**：`minase dev random-play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
-失敗すると、規則、シード、局番号、手数、問題の手、直前の局面のSFEN、および全手順を標準エラーへ出して終了コード1で終わる。
-失敗した局は、同じ`--seed`と`--game`で単独に再現できる。
+**ランダム対局**：USIの独自コマンド`random-play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
+失敗すると、`info string error: random-play invariant failure: <内容>`に続けて、規則、シード、局番号、手数、問題の手、直前の局面のSFEN、および全手順を`info string`の行で出し、終了コード1で終わる。
+失敗した局は、同じ`seed`と`game`で単独に再現できる。
 
 ```console
-cargo run --release --bin minase -- dev random-play --rules JCSA --seed 1 --games 10000
-cargo run --release --bin minase -- dev random-play --rules JCSA --seed 1 --game 4213 --verify-all --verbose
+printf 'setoption name RuleSet value JCSA\nrandom-play seed 1 games 10000\nquit\n' \
+  | cargo run --release --bin minase -- --protocol usi
+printf 'setoption name RuleSet value JCSA\nrandom-play seed 1 game 4213 verify-all verbose\nquit\n' \
+  | cargo run --release --bin minase -- --protocol usi
 ```
 
-`--verify-all`を付けると、ランダムに選んだ1手だけでなく、各手番の全合法手を1手ずつ対局の複製へ適用し、生成した合法手が着手として拒否されないことを確かめる。
-規則による差を疑うときは、`--rules`に該当するコード列を与える。
+`verify-all`を付けると、ランダムに選んだ1手だけでなく、各手番の全合法手を1手ずつ対局の複製へ適用し、生成した合法手が着手として拒否されないことを確かめる。
+`random-play`は、最後に受け付けた`RuleSet`の規則で対局するので、規則による差を疑うときは、`RuleSet`に該当するコード列を与える。
 `--features invariants`を付けてビルドすると、着手の実行と取消しの内部でも毎回局面を検査する。
 この場合は、不変条件が壊れた最初の着手の直後に、理由、手、差分更新と全再計算の両方のZobristキー、および升ごとの駒コードの生データを出して止まる。
 
 ```console
-cargo run --release --features invariants --bin minase -- dev random-play --rules JCSA --seed 1 --games 1000
+printf 'setoption name RuleSet value JCSA\nrandom-play seed 1 games 1000\nquit\n' \
+  | cargo run --release --features invariants --bin minase -- --protocol usi
 ```
 
 規則セットを横断して確かめるときは、[ランダム対局の設計書](../plans/archived/random-play.md)が完了の検証に使った代表9規則セットで各300局を走らせる。
@@ -78,7 +82,8 @@ cargo run --release --features invariants --bin minase -- dev random-play --rule
 ```console
 for rules in L0,P0,R1,E0 L0,P0,R2,E0 L0,P0,R3,E0 lishogi L0,L3,P0,R1,E0 \
     L0,P1,R1,E0 L0,P2,R1,E0 L0,P0,P4,R1,E0 L0,P0,R1,E2; do
-  cargo run --release --bin minase -- dev random-play --rules "$rules" --seed 1 --games 300 || break
+  printf 'setoption name RuleSet value %s\nrandom-play seed 1 games 300\nquit\n' "$rules" \
+    | target/release/minase --protocol usi || break
 done
 ```
 
@@ -105,7 +110,7 @@ done
 合法手の過不足、不正な局面への遷移、Zobristキーの不一致は、次の順で調べる。
 
 1. chu-shogi.mdの該当条文を読み、期待する挙動を条文から決める。実装の出力を正としない。
-2. `minase dev random-play`を`--verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
+2. `random-play`を`verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
 3. 失敗した局面を`position`で設定し、`perft <深さ> divide`で根の手ごとの件数を出す。
 4. 条文から数えた期待値と食い違う手を`position`の着手列に足して1手進め、深さを1減らして`divide`を繰り返し、誤りのある局面と手まで絞り込む。
 
