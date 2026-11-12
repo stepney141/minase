@@ -173,7 +173,7 @@ def start_offer(session: str, minutes: int, offer_id: int, offers_output: str,
             raise ValueError('出品の作成待機時間を過ぎました')
         try:
             instance_id = common.create(str(offer_id), label, temporary / 'onstart.sh',
-                                        f'rust:{version}-bookworm', 50)
+                                        f'rust:{version}-bookworm', 50, None)
         except FAILURES:
             try:
                 ids = common.ids(label)

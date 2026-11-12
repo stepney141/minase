@@ -151,8 +151,8 @@ class LaunchTests(unittest.TestCase):
     def row(self, event):
         return next(row for row in self.records() if row["event"] == event)
 
-    def create(self, offer, label, onstart, image, disk):
-        self.assertEqual((offer, label, image, disk), ("456", "multi gpu test", "ubuntu-cuda:version", 100))
+    def create(self, offer, label, onstart, image, disk, login):
+        self.assertEqual((offer, label, image, disk, login), ("456", "multi gpu test", "ubuntu-cuda:version", 100, None))
         self.assertEqual(onstart.read_text(), "self-stop 1800003600\n")
         return 731
 

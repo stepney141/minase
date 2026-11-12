@@ -401,7 +401,7 @@ def launch(options):
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".sh") as onstart:
         onstart.write(common.onstart_prefix(self_stop))
         onstart.flush()
-        instance = common.create(options.offer, options.label, Path(onstart.name), options.image, 100)
+        instance = common.create(options.offer, options.label, Path(onstart.name), options.image, 100, None)
     journal = Journal(options.root, instance)
     created = {"offer": options.offer, "label": options.label, "image": options.image,
                "disk_gb": 100, "self_stop": self_stop}
