@@ -2,7 +2,7 @@
 
 本書は、minaseの各マイルストーンの状態と次の計画を一覧するダッシュボードである。
 各マイルストーンの計画は plans/ 配下の設計書（完了時に凍結する）、仕様の正はコードとそのdocコメント、設計判断は [adr/](adr/README.md)、測定記録は measurements/、教訓は lessons/ であり（docs/ 全体の配置は [README.md](README.md)）、本書は状態表、現在地、および次期候補だけを保持する。状態表と現在地は追記せず、マイルストーンの完了時または待機理由の変化時に書き直す。
-「直近の完了」には完了日の新しい順に3件だけを置き、件数の規則と削除する項目の扱いは [plans/README.md](plans/README.md#上書きの規則) が定める。
+完了したマイルストーンの結論を現在地に書かない理由と、その結論に依存する項目の書き方は、[plans/README.md](plans/README.md#上書きの規則) が定める。
 
 ## マイルストーン状態表
 
@@ -138,30 +138,18 @@
 
 ## 現在地
 
-### 直近の完了
-
-- [AlphaZero型探索の推論で、終了処理での異常終了をなくす](plans/archived/alphazero-teardown-abort.md)は2026年11月11日に、採用で完了した。生成器と`minase dev nn-eval`が終了処理で`corrupted double-linked list`を出して異常終了する原因は、ortクレートのrc.13がONNX Runtimeの環境を解放する順序にあり、NVIDIAのドライバではなかった（[調査の記録](measurements/adhoc/zero-teardown-abort-root-cause.md)）。ortをrc.15へ上げ、環境をプロセスの終了まで保持する形にした（[ADR](adr/hold-the-onnx-runtime-environment-until-process-exit-through-ort-rc15.md)）。minaseのビルドにはRust 1.92以降が要る。作業機では、解放済みの領域への書き込みが4つの経路のすべてでなくなり、推論と64局の生成の出力は変更の前後でバイト列が一致した（[記録](measurements/alphazero-teardown-abort/alphazero-teardown-abort-workstation.md)）。
-- [AlphaZero型探索の推論で、ホストとGPUの間の転送を減らす](plans/archived/alphazero-inference-transfer.md)は2026年11月11日に、採用で完了した。推論は、入力をuint8で送り、方策を盤面によらず合法手になり得る16,108ラベルのFP16で受け取り、出力を呼び出しごとにピン留めメモリへ結び付ける（[ADR](adr/exchange-zero-inference-tensors-as-uint8-inputs-and-packed-fp16-policies-in-pinned-memory.md)）。RTX 4090を4枚積んだ機械の自己対局の生成の速さは、遅い機械で毎秒426局面から1,306局面へ約3.07倍、速い機械で毎秒1,171局面から1,424局面へ約1.22倍になり、2台の差は約2.75倍から約1.09倍に縮まった（[記録](measurements/alphazero-inference-transfer/alphazero-inference-transfer-generation-speed.md)）。2回目の実行の初期ネットは新しい入出力の形で書き出し直してあり、それより前に書き出したネットは、チェックポイントから`export-onnx`で書き出し直さないと読めない。4枚の機械の1サイクルは31.4分、約1.00米ドルで回った（[記録](measurements/alphazero-inference-transfer/alphazero-inference-transfer-cycle.md)）。
-- [AlphaZero型探索の学習と自己対局生成の複数GPU化](plans/archived/alphazero-multi-gpu.md)は2026年11月11日に、採用で完了した。生成器は探索のスレッドを同じ機種のGPUへ割り振り、学習器はLightning FabricのDDPでGPUの枚数によらず全体のバッチ1,024を学ぶ（[ADR](adr/train-zero-cycles-with-fabric-ddp-over-a-fixed-global-batch-of-1024.md)）。RTX 4090を4枚積んだ機械の1サイクルは約36分、約1.23米ドルで、ColabのG4の見積もり（約61分、約0.90米ドル）より速いが高い。また、学習は1枚の2.59倍の速さであった（[記録](measurements/alphazero-multi-gpu/alphazero-multi-gpu-vast.md)）。照合の終了処理の異常終了を避けるため、ONNX Runtimeを1.31.1へ上げた（[ADR](adr/load-onnx-runtime-1-31-1-through-ort-rc13-for-zero-inference.md)）。4枚の機械の生成の速さは出品によって約2.7倍違い、遅い機械ではホストとGPUの間の転送が頭打ちになっていたと考えられる。
-- [AlphaZero型探索の強化学習の2回目の実行の準備](plans/archived/alphazero-rl-2-prep.md)は2026年11月10日に、採用で完了した。自己対局の生成器は、開始局面として、初期配置の1〜3段目を段の中で並べ替えた局面（Chess960型）と、初期局面から8〜16手を乱択で指した局面のどちらかを、必須の引数で選べるようになった（[ADR](adr/shuffle-the-first-three-ranks-within-each-rank-for-zero-self-play-start-positions.md)）。実行器は系列の基本シードの加算値を必須の引数で受け取り（[ADR](adr/take-the-zero-series-seed-offset-as-a-required-runner-argument.md)）、リプレイバッファのファイル名の一覧をファイルで学習器へ渡す。20ブロック256チャネルの初期ネットが出力の照合に通ったことを確かめ（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-random-net-output-check.md)）、そのネットをNASの`cycles-rl2/cycle-0000/`に置いた。作業機での対局は1手あたり10ブロック128チャネルの約2.2倍の時間で、200ペアの進捗測定は約5.4時間と見込まれる（[記録](measurements/alphazero-rl-2-prep/alphazero-rl-2-prep-match-timing.md)）。
-- [AlphaZero型探索の強化学習の1回目の実行](plans/archived/alphazero-rl.md)は2026年11月9日に、利用者の決定で中断した。サイクル30のネットはサイクル20にEloの点推定+237で勝ち、伸びは止まっていなかったが、サイクル32のMCTSはαβ探索とのSTCで97ペア2勝192敗であった（[記録](measurements/alphazero-rl/alphazero-rl-restart-stc-c0032.md)）。途中で設定を変え、続けるとサイクル33から自己対局の探索も変わるので、[2回目の実行](plans/alphazero-rl-2.md)でサイクル0からやり直す（[状態](plans/archived/alphazero-rl.md#状態)）。サイクル0〜32のネットはNASに残す。
-- [MCTSの葉での王駒の捕獲の判定と方策の温度](plans/archived/mcts-royal-capture-temperature.md)は2026年11月9日に、採用で完了した。新しい節点の手番側が相手の最後の王駒を取れるなら1手の勝ちに確定させる判定は、MCTS同士のSTCで得点率60.9%の`H1`となり（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-royal-stc.md)）、MCTS 800回対αβ 500ノードのEloの点推定を−70から+3.5へ上げた。方策の温度は固定ノードの対局で1.4を選び、STCで得点率71.1%の`H1`となった（[記録](measurements/mcts-royal-capture-temperature/mcts-royal-capture-temperature-temperature-stc.md)）。どちらもLTCは開発者の決定で省いた（[判定のADR](adr/prove-mcts-nodes-whose-side-to-move-can-capture-the-last-royal.md)、[温度のADR](adr/divide-mcts-policy-logits-by-a-temperature-of-1-4.md)）。
-- [NNUEの世代反復をv0からやり直す計画](plans/archived/nnue-generation-reset.md)は2026年11月6日に、利用者の決定で中断した。第2世代まで作り、第2世代は第1世代に`H1`（得点率81.7%）を取った。第2世代の教師での比較で、学習条件に根拠の弱い点が多く見つかり、検証損失がエポック2〜3で最良になる原因も分からないままである（[状態](plans/archived/nnue-generation-reset.md#状態)）。教師は足りておらず、局面数が同じなら対局が多いほうが強い（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-diversity.md)）。標準の学習条件を決め直してから、v0の教師生成からやり直す。統合の前にブランチに埋め込んだネットをmasterのネットへ戻したので、masterのエンジンの評価は変わっていない。
-
-### 次の候補
-
 以下の計画に着手するかどうかと実施の順序は、いずれも利用者の指示で決める。
 方式と測定の条件は各設計書にあるので、ここには位置づけと次の判断だけを書く。
 
-- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。中断した系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)の統合前のコミットを残したブランチ`nnue-width128-regressed`と比べる。最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
+- [NNUEの標準レシピv1と、v0からの世代反復のやり直し](plans/nnue-standard-recipe.md)は、2026年11月7日にフェーズ1と2を終え、フェーズ3（第1世代の生成）は利用者の着手の指示を待っている。2026年11月6日に中断した[世代反復のやり直し](plans/archived/nnue-generation-reset.md)の系列の教師での対局の結果、標準レシピv1は線形の経路の学習率0.03を保ち、学習後の補正を行わず、その世代の教師だけで学ぶと決まった（[測定1](measurements/nnue-standard-recipe/nnue-standard-recipe-lr-linear-stc.md)、[測定2](measurements/nnue-standard-recipe/nnue-standard-recipe-fit-stc.md)、[測定3](measurements/nnue-standard-recipe/nnue-standard-recipe-window-stc.md)）。補正前のネットは補正後のネットに得点率57.1%で勝ち、第1世代の教師を併用したネットは第2世代の教師だけのネットに得点率36.4%で負けた。次は1世代を教師37本と定めてv0から世代反復をやり直し、第1世代は中断した系列でv0が生成した26本を使い、不足の11本を足す。世代反復の最終候補は、[NNUEの構成の見直し](plans/archived/nnue-architecture-revision.md)の統合前のコミットを残したブランチ`nnue-width128-regressed`と比べる。最終候補が決まるまで、masterのエンジンは統合前より弱いと見込まれる。
 - 教師生成の運用の残りの候補として、教師ファイルの末尾で次のファイルを重ねて始める案と、NUMAノードごとに2つのプロセスへ分ける案がある。前者は第2世代の生成機の実測で約1.12〜1.14倍の見込みだが、節約に対してスクリプトの変更が大きいので2026年11月5日の利用者の決定で見送った（[記録](measurements/nnue-generation-reset/nnue-generation-reset-gen2-training.md)）。後者は第1世代の測定で1.06〜1.09倍の見込みである（[記録](measurements/nnue-generation-reset/nnue-generation-reset-generator-speed.md)）。世代反復を延長するときなどに検討する。
 
-#### 評価関数（NNUE）
+### 評価関数（NNUE）
 
 - [tataraの調査](research/tatara-nnue-transfer.md)の残りの候補（出力bucket、損失の形など）は、設計書がまだなく、世代反復の結果を見て起案する。採用条件は、棋力が向上し、配置の偏りが悪化しないことである（2026年11月3日の開発者の決定）。
 - [第1層の全再計算の差分化（Finny tables）](plans/nnue-finny-tables.md)は待機中である。現行のP型では探索中に全再計算が起きないので、自玉の位置で条件付けるネットを対局で測るか、累算器の更新方式を変えた時点で再開する。
 
-#### 教師生成
+### 教師生成
 
 強くする手段に人間の棋譜は使わない（[ADR](adr/do-not-use-human-games-to-strengthen-the-engine.md)）。
 
@@ -170,7 +158,7 @@
 - AlphaZero型のネットの評価値で教師の値を付け直す案は、[強豪エンジンの教師生成の調査](research/teacher-generation-strong-engines.md)を受けて、AlphaZero型の計画の後に起案する（2026年10月25日の開発者の決定）。tanuki-はこの方法でレーティング差R+104.3を得ている。付け直しに使う前に、[線形経路の計画](plans/archived/nnue-material-linear-init.md)の麒麟の診断で、そのネットに偏りがないことを確かめる。
 - 設計書のない着想は調査メモにある。対局途中のランダム化と評価が食い違う局面の採取は[教師生成の調査](research/teacher-generation-strong-engines.md)に、教師の予算の重点配分は[評価関数を改善する3つの観点](proposals/archived/evaluation-improvement-strategy.md)に、別系統の局面を開始局面に加える案は[偏りの先行事例](research/self-play-bias-prior-art.md)にある。
 
-#### AlphaZero型探索
+### AlphaZero型探索
 
 [統括計画](plans/alphazero.md)は、ゼロから強化学習で育てたネットのMCTSを、αβ探索とNNUEの組合せと同等以上に強くすることを目標とする。
 統括計画のサブタスクは、実行環境、ネットの入出力と推論、探索方式の共存とMCTS、自己対局生成器、学習器、および強化学習の実行の6本であり、状態表のそのほかのAlphaZero型探索の行は、サブタスクを補う設計書である。
@@ -194,24 +182,24 @@
 
 統括計画の完了の後には、AlphaZero型のネットで教師の値を付け直す案（「教師生成」の節）を起案する。到達の判定でMCTSがαβ探索と同等以上とされた場合は、既定の探索方式の変更とlishogi Botへの配備も別の設計書で扱う。
 
-#### 探索
+### 探索
 
 - [棋力向上の段階計画](plans/strength-stages.md)は、段階11（並列度、終盤処理）が未着手である。
 - [詰み探索（df-pn）](plans/mate-search.md)は、攻め方の手を王手に限る標準df-pnのソルバを、`go mate`と対局探索の両方から呼べるライブラリとして作る。αβ探索とPV-MCTSへの組み込みは、発動率を測ってから別の設計書で起案する。
 
-#### 合法手生成と対局ハーネス
+### 合法手生成と対局ハーネス
 
 - [合法手生成と利き計算の高速化（第3期）](plans/movegen-speedup-3.md)は、起案のまま着手していない。
 - [早期投了の導入判定](plans/match-early-resignation.md)は待機中である。校正群とは別に、仮想投了が3,000回以上発火する検証群を確保できる記録量に達しておらず、統計契約も確定していない。
 
-#### プロトコルと起動引数
+### プロトコルと起動引数
 
 - [起動引数と診断ツールをUSIへ移す](plans/cli-to-usi.md)は、規則とネットの指定を起動引数からUSIのオプションへ移し、perft、bench、およびネットとランダム対局の診断をUSIの独自コマンドにする。規則セットは既定値をなくして指定を必須にし、名前`engine-default`を`JCSA`へ改める。エンジンの起動引数とライブラリの公開APIの互換性を壊すので、lishogi Botと開発用GUIは同じ時期に追従する必要がある。
 
-#### 配備
+### 配備
 
 - [lishogi Bot接続](plans/lishogi-bot.md)は公開運用中であり、完了条件の達成状況の確認と配備方式の記述の見直しが残っている。Botはcrates.ioのminase 2.6.0を固定しているので、結果回帰の補正ネットを配備するには[リリース](guides/release.md)が要る。
 
-#### 前提の見直しが要る計画
+### 前提の見直しが要る計画
 
 - [Athénanの計画](plans/athenan.md)は、PSTを既定の評価関数とする前提で書かれており、2026年10月12日にNNUEへ置き換わった後の扱いが決まっていない。対局用の探索UBFMsは評価関数によらない試みなので計画は残し（2026年11月3日の利用者の判断）、着手の前に前提を見直す。
