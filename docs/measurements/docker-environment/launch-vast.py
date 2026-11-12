@@ -11,6 +11,7 @@ python3 launch-vast.py --offer ID --label LABEL --image 'ghcr.io/stepney141/mina
 生成と学習のコミットはcommitと一致させ、機械を作る前に実行器の引数を検査する。
 実行器のmachine、vast-instance、deadline、rootはこのスクリプトが指定し、sessionとcycle-cuは指定できない。
 ソースの書庫を用意して自己停止を予約し、貸出期限と自己停止時刻の早いほうを終了期限にする。
+機械の作成から起動の確認まで最大45分待ち、確認できなければ機械を削除する。
 導入中と最後の受け取りの前後に終了期限を確認し、実行器の起動中も60秒ごとに確認する。
 期限を超えた機械には停止を1回だけ要求し、実行器が自ら終了するまで監視する。
 実行器が異常終了した場合は工程の稼働を調べ、動いている工程があるか照会に失敗すれば機械を残す。
@@ -51,6 +52,8 @@ spec.loader.exec_module(common)
 
 FAILURES = (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError)
 FORBIDDEN = ("--machine", "--vast-instance", "--deadline", "--session", "--cycle-cu", "--root")
+# イメージは圧縮後でも約7 GBあり、取得に時間がかかるため起動を45分待つ。
+RUNNING_SECONDS = 2700
 
 VALIDATE_RUNNER = """import sys
 from minase_zero.__main__ import _parse
@@ -436,7 +439,7 @@ def launch(options, login):
         raise RuntimeError(f"インスタンス {instance}: 作成直後の照会に失敗しました。機械を残します") from error
     journal.write("created", **created)
     try:
-        common.wait_running(instance, 900)
+        common.wait_running(instance, RUNNING_SECONDS)
         journal.write("running")
         operation = "ssh_address"
         try:

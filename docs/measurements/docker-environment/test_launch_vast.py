@@ -178,7 +178,7 @@ class LaunchTests(unittest.TestCase):
         return copy.deepcopy(self.before_destroy)
 
     def running_after_record(self, instance, seconds):
-        self.assertEqual((instance, seconds), (731, 900))
+        self.assertEqual((instance, seconds), (731, 2700))
         self.assertEqual(self.events(), ["created"])
         self.assertEqual(self.fsync.call_count, 1)
 
